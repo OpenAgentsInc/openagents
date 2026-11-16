@@ -169,6 +169,25 @@ Each batch is pushed to `main` green, with its checks, and commented on #13653.
 - The farm's and plain's colliders are walked. The ring's and lab's wait, because the jam loaded
   each as a sealed map. Inside the garage, `garage.coax`'s walls stand in. The farm map's 315 m
   block over the garage's spot (StaticMeshActor_1300) is left out.
+- Item 3 landed. Her body is the Director and the rave's raiders are the jam's six raider bodies, from
+  a second private pack, `private:splice-bots-jam-chars` (`jam/jam-chars.coax` has its format,
+  `jam/jam-cast.coax` the draw). The game picks her clip from how she moves: idle, walk, jog,
+  sprint, the jump's three parts, the crouch and the board. The game's five raiders are every third of
+  the jam's 16 in `L_Ring`, and their plans in the garage start there. While the party is on, the
+  other 11 dance as the crowd. The page skins the bodies on the GPU from palettes baked per frame.
+  Without the pack, the page draws the prototype's bodies.
+
+  The characters come as their own pack for three reasons. They do not wait on an importer rebuild of
+  the world pack. A change to them does not mean uploading the world pack again. The page loads
+  without either pack. Make the pack from the retargeted rigs:
+
+  ```
+  coax/web/tool.sh metaverse/splice-bots/tools/jam-chars-pack.coax \
+    ~/.openagents/unreal/splice-bots-jam/rig \
+    ~/.openagents/verse/private-build/web/splice-bots-jam-chars.pack
+  ```
+
+  To check the pack, run `jam-run-check.coax PACK CHARS`.
 
 ## Acceptance
 
@@ -189,7 +208,8 @@ do for the prototype:
 
 ## What stays private
 
-The pack (models, textures, sounds, characters, the Microduck) stays in `private:splice-bots-jam`,
-served locally at `/private/splice-bots-jam.pack` with `?pack`, and on openagents.com by the broker
-after `metaverse/tools/humans/upload_packs.coax`. Git holds the code, the checks and a synthetic
+The pack (models, textures, sounds, the Microduck) stays in `private:splice-bots-jam`, and the
+characters in `private:splice-bots-jam-chars`. Locally, `?pack` serves both from
+`/private/NAME.pack`. On openagents.com, the broker serves them after
+`metaverse/tools/humans/upload_packs.coax`. Neither pack is ever listed on `/worlds/splice-bots`. Git holds the code, the checks and a synthetic
 catalog of boxes, never the game's models or tables.

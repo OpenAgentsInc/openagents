@@ -1,0 +1,123 @@
+// jam-chars.coax's and jam-cast.coax's checks, on a synthetic characters catalog (no private content): two
+// characters, the Director with five clips and a raider with three, their parts' words made up.
+// splice-jam.coax loads this file with `#load ... #test;`.
+SJCT_CATALOG :: "pack test\nsjc 1 1000 32\nchar 0 director 65 0 3 18 3 21 1750\nchar 1 raider-1 65 29 3 47 3 50 1800\nclip 0 idle 0 4 30000 1 0\nclip 0 walk 4 4 30000 1 1200\nclip 0 jog 8 4 30000 1 3000\nclip 0 sprint 12 4 30000 1 0\nclip 0 jump_start 16 4 30000 0 0\nclip 1 idle 20 4 30000 1 0\nclip 1 walk 24 4 30000 1 1300\nclip 1 jog 28 4 30000 1 3400\n";
+SJCT_BYTES :: (1000 + 32 * SJC_PALETTE) * 4;
+// Seven raiders along the ring's entry (map 2 in the draw checks' catalog), as the jam places its sixteen.
+SJCT_RING :: "P 2 0 0 0 0 0 0 0 1 -4.3 0 -168 1 1 1 SpliceRaveRaider_UAID_1/CharacterMesh0\nP 2 0 0 0 0 0 0 0 1 4.3 0 -162.5 1 1 1 SpliceRaveRaider_UAID_2/CharacterMesh0\nP 2 0 0 0 0 0 0 0 1 -4.9 0 -157 1 1 1 SpliceRaveRaider_UAID_3/CharacterMesh0\nP 2 0 0 0 0 0 0 0 1 4.9 0 -151.5 1 1 1 SpliceRaveRaider_UAID_4/CharacterMesh0\nP 2 0 0 0 0 0 0 0 1 -5.5 0 -146 1 1 1 SpliceRaveRaider_UAID_5/CharacterMesh0\nP 2 0 0 0 0 0 0 0 1 5.5 0 -140.5 1 1 1 SpliceRaveRaider_UAID_6/CharacterMesh0\nP 2 0 0 0 0 0 0 0 1 -4.3 0 -135 1 1 1 SpliceRaveRaider_UAID_7/CharacterMesh0\n";
+
+#test "chars: a characters catalog reads as its characters and clips; one that does not hold is refused, saying why" {
+  c: [1] SjcCast;
+  #assert sjc_read(c[..], SJCT_CATALOG) && c[0].n == 2 && c[0].clip_n == 8 && c[0].pword == 1000 && c[0].frames == 32;
+  #assert sjc_name(c[..], 1) == "raider-1" && sjc_find(c[..], "director") == 0 && sjc_find(c[..], "raider-9") == -1;
+  e := c[0].chars[1];
+  #assert e.vword == 29 && e.vertices == 3 && e.iword == 47 && e.indices == 3 && e.cword == 50 && abs(e.height - 1.8) < 0.001;
+  w := c[0].clips[c[0].chars[0].clip[SJC_WALK]];
+  #assert w.frame0 == 4 && w.frames == 4 && abs(w.rate - 30) < 0.001 && w.looping && abs(w.distance - 1.2) < 0.001;
+  #assert !c[0].clips[c[0].chars[0].clip[SJC_JUMP_START]].looping;
+  #assert !sjc_read(c[..], "char 0 director 65 0 3 18 3 21 1750\n") && c[0].why == "not a characters pack";
+  #assert !sjc_read(c[..], "sjc 2 0 4\n") && c[0].why == "a characters pack of another version";
+  #assert !sjc_read(c[..], "sjc 1 0 4\nchar 0 d 65 0 3 3 3 6 1000\nclip 0 idle 2 4 30000 1 0\n") && c[0].why == "a clip past the palettes";
+  #assert !sjc_read(c[..], "sjc 1 0 4\nchar 0 d 65 0 3 3 3 6 1000\nclip 0 walk 0 4 30000 1 0\n") && c[0].why == "a character with no idle";
+  #assert !sjc_read(c[..], "sjc 1 0 4\nchar 0 d 64 0 3 3 3 6 1000\n") && c[0].why == "a character that does not hold";
+  #assert !sjc_read(c[..], "sjc 1 0 4\nchar 0 d 65 0 3 3 3 6 1000\nclip 0 idle 0 4 30000 1 0\nclip 0 idle 0 4 30000 1 0\n") && c[0].why == "a clip that does not hold";
+}
+#test "chars: her clip from how she moves: the board, the air, landing, sneaking, then still, walk, jog and sprint by speed" {
+  #assert sjc_her_role(true, true, true, 0, false, false, 9) == SJC_BOARD;
+  #assert sjc_her_role(false, true, true, 0.1, false, false, 5) == SJC_JUMP_START;
+  #assert sjc_her_role(false, true, true, 0.5, false, false, 5) == SJC_JUMP_LOOP && sjc_her_role(false, true, false, 0, false, false, 0) == SJC_JUMP_LOOP;
+  #assert sjc_her_role(false, false, false, 0, true, false, 0.2) == SJC_JUMP_LAND && sjc_her_role(false, false, false, 0, true, false, 5.6) == SJC_JOG;
+  #assert sjc_her_role(false, false, false, 0, false, true, 2.5) == SJC_CROUCH_WALK && sjc_her_role(false, false, false, 0, false, true, 0) == SJC_CROUCH_IDLE;
+  #assert sjc_her_role(false, false, false, 0, false, false, 0) == SJC_IDLE && sjc_her_role(false, false, false, 0, false, false, 1.5) == SJC_WALK;
+  #assert sjc_her_role(false, false, false, 0, false, false, T_WALK) == SJC_JOG && sjc_her_role(false, false, false, 0, false, false, T_WALK * 1.5) == SJC_SPRINT;
+  // a raider dances (its idle, bounced by the game), stands, or walks and runs by its speed
+  #assert sjc_raider_role(true, false, 0) == SJC_IDLE && sjc_raider_role(false, true, 3) == SJC_IDLE && sjc_raider_role(false, false, 0) == SJC_IDLE;
+  #assert sjc_raider_role(false, false, 1.8) == SJC_WALK && sjc_raider_role(false, false, T_RAIDER_SPEED) == SJC_JOG;
+}
+#test "chars: a role a character has no clip for plays the nearest it has; a gait keeps pace with the ground; a change fades" {
+  c: [1] SjcCast; #assert sjc_read(c[..], SJCT_CATALOG);
+  // the raider has no sprint, crouch, board or jump: its jog, walk, idle and idle
+  #assert sjc_clip(c[..], 1, SJC_SPRINT) == c[0].chars[1].clip[SJC_JOG] && sjc_clip(c[..], 1, SJC_CROUCH_WALK) == c[0].chars[1].clip[SJC_WALK];
+  #assert sjc_clip(c[..], 1, SJC_BOARD) == c[0].chars[1].clip[SJC_IDLE] && sjc_clip(c[..], 1, SJC_JUMP_START) == c[0].chars[1].clip[SJC_IDLE];
+  #assert sjc_clip(c[..], 0, SJC_JUMP_START) == c[0].chars[0].clip[SJC_JUMP_START] && sjc_clip(c[..], 5, SJC_IDLE) == -1;
+  // the jog (3 m a 4-frame loop at 30/s: 22.5 m/s) plays as fast as she runs, within its limits
+  j := c[0].clips[c[0].chars[0].clip[SJC_JOG]];
+  #assert abs(sjc_rate(j, 22.5, 0) - 1) < 0.001 && sjc_rate(j, 0, 0) == SJC_RATE_LO && sjc_rate(j, 100, 0) == SJC_RATE_HI && sjc_rate(j, 0, 1.1) == 1.1f32;
+  #assert sjc_rate(c[0].clips[c[0].chars[0].clip[SJC_IDLE]], 9, 0) == 1;
+  p: [1] SjcPlay;
+  sjc_play(p[..], c[..], 0, SJC_IDLE, 0.016, 0, 0);
+  #assert p[0].clip == c[0].chars[0].clip[SJC_IDLE] && p[0].t == 0 && p[0].fade == 0;   // the first clip: no fade
+  sjc_play(p[..], c[..], 0, SJC_IDLE, 0.05, 0, 0);
+  f := sjc_frames(p[..], c[..]);
+  #assert f.a == 1 && f.b == 2 && abs(f.w - 0.5) < 0.01;   // 1.5 frames in
+  sjc_play(p[..], c[..], 0, SJC_IDLE, 0.1, 0, 0);   // 0.15 s: past the 4-frame loop (0.133 s), wrapped
+  #assert p[0].t < 0.02 && sjc_frames(p[..], c[..]).a == 0;
+  sjc_play(p[..], c[..], 0, SJC_WALK, 0.016, 0, 0);   // a change: the walk from its start, fading from the idle's frame
+  f = sjc_frames(p[..], c[..]);
+  #assert p[0].clip == c[0].chars[0].clip[SJC_WALK] && p[0].fade > 0 && f.a == 0 && f.b == 4 && f.w < 0.2;
+  for k: 0..<20 { sjc_play(p[..], c[..], 0, SJC_WALK, 0.016, 0.9, 0); }
+  #assert p[0].fade == 0 && p[0].from == -1;
+  // a jump's start, played once, holds its last frame
+  for k: 0..<31 { sjc_play(p[..], c[..], 0, SJC_JUMP_START, 0.016, 0, 0); }
+  #assert sjc_frames(p[..], c[..]).a == 19 && sjc_frames(p[..], c[..]).b == 19;
+}
+
+// The page with the jam world's pack (the draw checks' catalog and seven raiders in the ring). The page reads
+// the catalog where it lies, so the text lives as long as the check.
+SjctCheck :: struct { f: [1] SjFrameCheck; cat: [8192] u8; }
+sjct_page :: (c: [] SjctCheck) {
+  b := c[0].f[..]; s := b[0].s[..];
+  cat := c[0].cat[..]; n := 0;
+  for ch: SJDT_CATALOG { cat[n] = ch; n += 1; } for ch: SJCT_RING { cat[n] = ch; n += 1; }
+  splice_jam_catalog(s, b[0].store[..], cast(string) cat[0..<n], b[0].rows[..]); splice_jam_asset(s, 1, 4800); splice_jam_asset(s, 2, 216);
+}
+#test "chars: the game's five raiders keep their garage plans from where the jam places every third raider; plans out of the garage stay" #steps 8000000000 #traversal 4000000000 {
+  c: [1] SjctCheck; b := c[0].f[..]; s := b[0].s[..]; g := s[0].page[0].game[..];
+  _ = sj_check_frame(b);
+  sjct_page(c[..]);
+  j := g[0].jr[..];
+  #assert g[0].jam && j[0].count[SJ_RAIDER] == 7;
+  r0 := sj_foe_raider(j, 0); r1 := sj_foe_raider(j, 1); r2 := sj_foe_raider(j, 2);
+  #assert r0 >= 0 && abs(j[0].actors[r0].z + 168) < 0.01 && abs(j[0].actors[r1].z + 151.5) < 0.01 && abs(j[0].actors[r2].z + 135) < 0.01 && sj_foe_raider(j, 3) == -1;
+  shifted := 0;
+  for when: 0..<NPL_WHENS {
+    p := sc_plan(g[0].c[..], 0, when);
+    if !p.ok || p.n == 0 || g_plan_out(g, p) { continue; }
+    #assert p.x[0] == -430 && p.z[0] == -16800;   // in the garage: from where the jam places it, in cm
+    shifted += 1;
+  }
+  #assert shifted >= 1;
+}
+#test "chars: with the characters pack in, the page draws her as the Director and the raiders the game drew as the jam's, and the game draws neither" #steps 8000000000 #traversal 4000000000 {
+  cc: [1] SjctCheck; b := cc[0].f[..]; s := b[0].s[..]; g := s[0].page[0].game[..]; actors := b[0].actors[..];
+  _ = sj_check_frame(b);
+  sjct_page(cc[..]);
+  g_enter_mine(g);   // in the jam world: the farm, by day
+  _ = sj_check_frame(b); _ = sj_check_frame(b);
+  #assert g[0].mode == M_PLAY && !g[0].hide[TK_SMUGGLER] && splice_jam_fact(s, 12) == 0;   // no characters yet: the game's own body
+  splice_jam_chars_catalog(s, SJCT_CATALOG);
+  #assert splice_jam_fact(s, 11) == 0;   // its catalog, not yet its words
+  splice_jam_chars_asset(s, SJCT_BYTES);
+  _ = sj_check_frame(b);
+  #assert splice_jam_fact(s, 11) == 1 && splice_jam_fact(s, 14) == 2 && g[0].hide[TK_SMUGGLER] && g[0].hide[TK_RAIDER];
+  #assert splice_jam_fact(s, 13) == 1 && splice_jam_fact(s, 12) >= 1;
+  // her draw: the Director's triangles in order, no index buffer, one instance at slot 0; her row where she stands
+  n := splice_jam_draw_count(s); found := false;
+  for k: 0..<n { if s[0].draws[k * 4 + 2] == (cast(u32) SJC_BASE | 0x80000000) { found = true; #assert s[0].draws[k * 4] == 18 && s[0].draws[k * 4 + 1] == 3 && s[0].draws[k * 4 + 3] == 1; } }
+  #assert found;
+  o := SJC_AT + SJC_HER * SJC_SLOT_FLOATS;
+  #assert abs(actors[o] - g[0].px) < 0.001 && abs(actors[o + 2] - g[0].pz) < 0.001 && actors[o + 3] == 1 && actors[o + 16] == 0 && actors[o + 17] == 21 && actors[o + 19] == 1000;
+  // at the rave by night the party's raiders the game drew stand in raider bodies where the game has them, and the crowd dances
+  g_stage(g, 8); g[0].mode = M_PLAY;
+  _ = sj_check_frame(b); _ = sj_check_frame(b);
+  drawn := 0;
+  for i: 0..<F_RAIDERS {
+    k := SJC_AT + (SJC_PARTY + i) * SJC_SLOT_FLOATS;
+    if actors[k + 3] == 1 { drawn += 1; #assert abs(actors[k] - g[0].fx[i]) < 0.6 && abs(actors[k + 2] - g[0].fz[i]) < 0.6 && actors[k + 16] == 29; }
+  }
+  crowd := 0; for k: SJC_CROWD..<SJC_SLOTS { if actors[SJC_AT + k * SJC_SLOT_FLOATS + 3] == 1 { crowd += 1; } }
+  #assert drawn >= 1 && crowd == 4;   // seven placed: three are the game's, four the crowd
+  // without the jam world nothing is handed over
+  g[0].jam = false; _ = sj_check_frame(b);
+  #assert !g[0].hide[TK_SMUGGLER] && splice_jam_fact(s, 12) == 0;
+}

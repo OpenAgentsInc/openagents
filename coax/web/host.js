@@ -159,7 +159,10 @@
 //                 outfit, the pack OTHER-NAME. On a phone (or ?phone) it asks first for NAME-phone, the
 //                 pack's phone build, then NAME. Never in a golden, nowhere else. Its four parts as pack:'s.
 //                 Not asked for, absent, refused or broken, its parts fail quietly (bytes 0, no error,
-//                 the world loads on), so the page draws what it has without it.
+//                 the world loads on), so the page draws what it has without it. A page's later private
+//                 packs (the jam's characters beside its world, metaverse/splice-bots/jam/jam-chars.coax)
+//                 keep their own names, load where the first may load (locally when ?pack is given), and
+//                 have no outfit or phone build.
 //   message 608     a claimed realm's maker's display name (oa-api /api/playtest/makers/<realm>), to draw "Made by <name>" and TIP
 //   local:URL     data that only a local address loads: a lab's big licensed capture, kept in a cache
 //                 outside the repo (coax/web/serve.c's /private/, Splat Lab's skull). Anywhere else,
@@ -1660,15 +1663,17 @@ function parseAssets(text) {
       // On a local address only when asked (serve.c's /private/); on openagents.com always, through
       // the broker (privatePack), never in a golden.
       const q = new URLSearchParams(location.search), site = /(^|\.)openagents\.com$/.test(location.hostname);
-      const pick = golden ? null : dev ? q.get("pack") : site ? q.get("pack") || rest : null;
-      const outfit = pick !== null ? q.get("outfit") : null, name = (pick || rest) + (outfit ? `-${outfit}` : "");
+      const later = list.some((a) => a.pack?.private);
+      const pick = golden ? null : later ? (dev ? (q.get("pack") !== null ? rest : null) : site ? rest : null)
+        : dev ? q.get("pack") : site ? q.get("pack") || rest : null;
+      const outfit = pick !== null && !later ? q.get("outfit") : null, name = (pick || rest) + (outfit ? `-${outfit}` : "");
       // a phone (a coarse pointer on a small screen, or ?phone; ?phone=0 never) asks first for the
       // pack's phone build, NAME-phone (pack_human.coax --phone: smaller layers and meshes), and the
       // full pack when there is none
-      const asked = q.get("phone"), phone = asked !== null ? asked !== "0"
-        : matchMedia("(pointer: coarse)").matches && Math.min(screen.width, screen.height) <= 820;
+      const asked = q.get("phone"), phone = !later && (asked !== null ? asked !== "0"
+        : matchMedia("(pointer: coarse)").matches && Math.min(screen.width, screen.height) <= 820);
       const urls = (phone ? [`${name}-phone`, name] : [name]).map((n) => dev ? `/private/${n}.pack` : `/api/verse/packs/${n}`);
-      const pack = { url: urls[0], urls, broker: !dev, quiet: true,
+      const pack = { url: urls[0], urls, broker: !dev, quiet: true, private: true,
         away: pick === null || !/^[a-z0-9-]{1,58}$/.test(name) };
       for (const part of PACK_PARTS) list.push({ i: list.length, kind: part, pack });
     }

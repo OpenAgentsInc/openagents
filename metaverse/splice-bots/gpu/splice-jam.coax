@@ -9,11 +9,62 @@
 // linear RGBA) placed by the row's rows, and moved by its game actor's row of the actor store
 // (jam-draw.coax sjd_actor_rows: hidden, or its parts turned about its middle and set down where the game says).
 // Its colour is the vertex's times its material's, times its colour layer at its UV when it has one.
+// From SJC_GPU_BASE an instance is a body (jam/jam-cast.coax): her Director or a raider, from the characters pack
+// (`chars`, the second private pack's words, jam/jam-chars.coax). A draw of its triangles in order, with no
+// index buffer: the vertex index is a word of its indices, and the vertex is skinned by its four joints from
+// the two palette frames its slot names (blended by the second's share), then placed by the slot's frame.
 // Each entry here is a thin wrapper, so the module's entries keep the names the host looks for.
 #load "splice-bots.coax";
 #load "../../../metaverse-engine/render/sampling.coax";
 
 SJ_GPU_BASE :: 65536;   // jam-draw.coax SJD_BASE
+SJC_GPU_BASE :: 131072; // jam-cast.coax SJC_BASE
+SJC_GPU_AT :: 1536;     // jam-cast.coax SJC_AT in vec4s: the slots after the jam's actors
+SJC_GPU_SLOT :: 5;      // vec4s a slot (SJC_SLOT_FLOATS / 4)
+SJC_GPU_PALETTE :: 780; // words a palette frame (jam-chars.coax SJC_PALETTE)
+
+// ---- the bodies
+SjcSkinned :: struct { p:V3; n:V3; colour:u32; obj:f32; shown:bool; }
+// One joint's skinning matrix, rows r of frames a and b blended by w.
+sjc_row :: (chars:[]u32,a:u32,b:u32,w:f32,j:u32,r:u32)->V4 {
+  ia:int=cast(int)(add_wrap(a,add_wrap(mul_wrap(j,cast(u32)12),mul_wrap(r,cast(u32)4))));
+  ib:int=cast(int)(add_wrap(b,add_wrap(mul_wrap(j,cast(u32)12),mul_wrap(r,cast(u32)4))));
+  va:V4=v4(f32_from_bits(chars[ia]),f32_from_bits(chars[ia+1]),f32_from_bits(chars[ia+2]),f32_from_bits(chars[ia+3]));
+  vb:V4=v4(f32_from_bits(chars[ib]),f32_from_bits(chars[ib+1]),f32_from_bits(chars[ib+2]),f32_from_bits(chars[ib+3]));
+  return v4(mix(va.x,vb.x,w),mix(va.y,vb.y,w),mix(va.z,vb.z,w),mix(va.w,vb.w,w));
+}
+// A body's vertex: its index from the draw's vertex index, skinned, then set in its slot's frame.
+sjc_skin :: (id:u32,instance:u32,chars:[]u32,jam_actors:[]V4)->SjcSkinned {
+  o:SjcSkinned;
+  k:int=SJC_GPU_AT+(cast(int)(instance-cast(u32)SJC_GPU_BASE)*SJC_GPU_SLOT);
+  at:V4=jam_actors[k]; ax:V4=jam_actors[k+1]; ay:V4=jam_actors[k+2]; az:V4=jam_actors[k+3]; base:V4=jam_actors[k+4];
+  o.shown=at.w>0.5f32;
+  pword:u32=cast(u32)(base.w+0.5f32);
+  fa:u32=add_wrap(pword,mul_wrap(cast(u32)(ax.w+0.5f32),cast(u32)SJC_GPU_PALETTE));
+  fb:u32=add_wrap(pword,mul_wrap(cast(u32)(ay.w+0.5f32),cast(u32)SJC_GPU_PALETTE));
+  w:f32=az.w;
+  v:u32=add_wrap(cast(u32)(base.x+0.5f32),mul_wrap(chars[cast(int)id],cast(u32)6));
+  rest:V4=v4(f32_from_bits(chars[cast(int)v]),f32_from_bits(chars[cast(int)add_wrap(v,cast(u32)1)]),f32_from_bits(chars[cast(int)add_wrap(v,cast(u32)2)]),1.0f32);
+  nw:u32=chars[cast(int)add_wrap(v,cast(u32)3)];
+  n4:V4=wg_unpack4x8snorm(nw);
+  rn:V4=v4(n4.x,n4.y,n4.z,0.0f32);
+  joints:u32=chars[cast(int)add_wrap(v,cast(u32)4)];
+  weights:V4=wg_unpack4x8unorm(chars[cast(int)add_wrap(v,cast(u32)5)]);
+  p:V3=v3(0.0f32,0.0f32,0.0f32); n:V3=v3(0.0f32,0.0f32,0.0f32);
+  for q:0..<4 {
+    j:u32=(joints>>(cast(u32)q*cast(u32)8))&cast(u32)255;
+    wq:f32=ifx q==0 then weights.x else ifx q==1 then weights.y else ifx q==2 then weights.z else weights.w;
+    r0:V4=sjc_row(chars,fa,fb,w,j,cast(u32)0); r1:V4=sjc_row(chars,fa,fb,w,j,cast(u32)1); r2:V4=sjc_row(chars,fa,fb,w,j,cast(u32)2);
+    p=v3(p.x+(wq*wg_dot4(r0,rest)),p.y+(wq*wg_dot4(r1,rest)),p.z+(wq*wg_dot4(r2,rest)));
+    n=v3(n.x+(wq*wg_dot4(r0,rn)),n.y+(wq*wg_dot4(r1,rn)),n.z+(wq*wg_dot4(r2,rn)));
+  }
+  o.p=v3(at.x+(ax.x*p.x)+(ay.x*p.y)+(az.x*p.z),at.y+(ax.y*p.x)+(ay.y*p.y)+(az.y*p.z),at.z+(ax.z*p.x)+(ay.z*p.y)+(az.z*p.z));
+  o.n=v3((ax.x*n.x)+(ay.x*n.y)+(az.x*n.z),(ax.y*n.x)+(ay.y*n.y)+(az.y*n.z),(ax.z*n.x)+(ay.z*n.y)+(az.z*n.z));
+  region:u32=nw>>cast(u32)24;
+  o.colour=chars[cast(int)add_wrap(cast(u32)(base.y+0.5f32),region)];
+  o.obj=base.z;
+  return o;
+}
 
 // The jam row's surface, and Splice's in the same struct (its uv unused, its layer -1).
 SjS :: struct {pos:V4; world:V3; normal:V3; colour:V3; mat:f32 #flat; param:f32; obj:f32 #flat; uv:V2; layer:f32 #flat; }
@@ -45,8 +96,14 @@ sj_rest :: (id:u32,vertices:[]u32)->V4 {
   return v4(f32_from_bits(vertices[at]),f32_from_bits(vertices[at+1]),f32_from_bits(vertices[at+2]),1.0f32);
 }
 
-sj_shadow_vs :: (id:u32,instance:u32,u:[]f32,world:[]u32,live:[]u32,pieces:[]u32,places:[]u32,vertices:[]u32,jam_rows:[]V4,jam_actors:[]V4)->AnimelabShade {
+sj_shadow_vs :: (id:u32,instance:u32,u:[]f32,world:[]u32,live:[]u32,pieces:[]u32,places:[]u32,vertices:[]u32,chars:[]u32,jam_rows:[]V4,jam_actors:[]V4)->AnimelabShade {
   if (instance<cast(u32)SJ_GPU_BASE) {return spg_shadow_vs(id,instance,u,world,live,pieces,places);}
+  if (instance>=cast(u32)SJC_GPU_BASE) {
+    b:SjcSkinned=sjc_skin(id,instance,chars,jam_actors);
+    t:AnimelabShade;
+    t.pos=ifx b.shown then al_rows(u,AL_SHADOW,b.p) else v4(0.0f32,0.0f32,-2.0f32,1.0f32);
+    return t;
+  }
   o:int=cast(int)(instance-cast(u32)SJ_GPU_BASE)*8;
   s:AnimelabShade;
   s.pos=al_rows(u,AL_SHADOW,sj_place(sj_rest(id,vertices),o,jam_rows,jam_actors));
@@ -54,8 +111,21 @@ sj_shadow_vs :: (id:u32,instance:u32,u:[]f32,world:[]u32,live:[]u32,pieces:[]u32
   if ((jam_rows[o+7].z>3.5f32)||sj_hidden(o,jam_rows,jam_actors)) {s.pos=v4(0.0f32,0.0f32,-2.0f32,1.0f32);}
   return s;
 }
-sj_scene_vs :: (id:u32,instance:u32,u:[]f32,world:[]u32,live:[]u32,pieces:[]u32,places:[]u32,vertices:[]u32,jam_rows:[]V4,jam_actors:[]V4)->SjS {
+sj_scene_vs :: (id:u32,instance:u32,u:[]f32,world:[]u32,live:[]u32,pieces:[]u32,places:[]u32,vertices:[]u32,chars:[]u32,jam_rows:[]V4,jam_actors:[]V4)->SjS {
   o:SjS;
+  if (instance>=cast(u32)SJC_GPU_BASE) {
+    b:SjcSkinned=sjc_skin(id,instance,chars,jam_actors);
+    c4:V4=wg_unpack4x8unorm(b.colour);
+    o.world=b.p;
+    o.pos=ifx b.shown then al_rows(u,4,b.p) else v4(0.0f32,0.0f32,-2.0f32,1.0f32);
+    o.normal=b.n;
+    o.colour=v3(al_decode1(c4.x),al_decode1(c4.y),al_decode1(c4.z));
+    o.mat=floor((c4.w*255.0f32)+0.5f32);
+    o.param=0.0f32;
+    o.obj=b.obj;
+    o.uv=v2(0.0f32,0.0f32); o.layer=-1.0f32;
+    return o;
+  }
   if (instance<cast(u32)SJ_GPU_BASE) {
     a:AnimelabS=spg_scene_vs(id,instance,u,world,live,pieces,places);
     o.pos=a.pos; o.world=a.world; o.normal=a.normal; o.colour=a.colour; o.mat=a.mat; o.param=a.param; o.obj=a.obj;
@@ -109,22 +179,22 @@ sj_fx_vs :: (_vid2:u32,_iid3:u32,in_:animelab_fx_vs_in,u:[]f32)->AnimelabV {retu
   rows[0] = v4(2, 0, 0, 3); rows[1] = v4(0, 1, 0, 1); rows[2] = v4(0, 0, 1, -2);
   rows[3] = v4(0.5, 0, 0, 0); rows[4] = v4(0, 1, 0, 0); rows[5] = v4(0, 0, 1, 0);
   rows[6] = v4(0.5, 1, 1, 1); rows[7] = v4(-1, 0, 0, 7);
-  s := sj_scene_vs(0, 65536, u[..], world[..], live[..], pieces[..], places[..], v[..], rows[..], actors[..]);
+  s := sj_scene_vs(0, 65536, u[..], world[..], live[..], pieces[..], places[..], v[..], v[..], rows[..], actors[..]);
   #assert s.world.x == 4 && s.world.y == 1 && s.world.z == -2 && s.normal.y == 1 && s.obj == 7 && s.layer == -1 && s.uv.y == 0.75f32;
   #assert abs(s.colour.x - 0.5) < 0.001 && abs(s.colour.y - 64.0 / 255.0) < 0.001 && s.pos.w == 1;
   // its actor (slot 1): set down at (10, 0, 0) from its middle (4, 1, -2), a quarter turn
   rows[7].y = 1; actors[0] = v4(10, 0, 0, 1); actors[1] = v4(4, 1, -2, 0); actors[2] = v4(0, 1, 0, 0);
-  t := sj_scene_vs(0, 65536, u[..], world[..], live[..], pieces[..], places[..], v[..], rows[..], actors[..]);
+  t := sj_scene_vs(0, 65536, u[..], world[..], live[..], pieces[..], places[..], v[..], v[..], rows[..], actors[..]);
   #assert abs(t.world.x - 10) < 0.0001 && abs(t.world.y) < 0.0001 && abs(t.world.z) < 0.0001;
   #assert abs(t.normal.y - 1) < 0.0001;
   v[3] = f32_bits(1); v[4] = f32_bits(0);   // a normal along +x (halved by the row) turns a quarter to -z
-  t = sj_scene_vs(0, 65536, u[..], world[..], live[..], pieces[..], places[..], v[..], rows[..], actors[..]);
+  t = sj_scene_vs(0, 65536, u[..], world[..], live[..], pieces[..], places[..], v[..], v[..], rows[..], actors[..]);
   #assert abs(t.normal.z + 0.5) < 0.0001 && abs(t.normal.x) < 0.0001;
   actors[0].w = 0;   // hidden
-  #assert sj_scene_vs(0, 65536, u[..], world[..], live[..], pieces[..], places[..], v[..], rows[..], actors[..]).pos.z == -2;
-  #assert sj_shadow_vs(0, 65536, u[..], world[..], live[..], pieces[..], places[..], v[..], rows[..], actors[..]).pos.z == -2;
+  #assert sj_scene_vs(0, 65536, u[..], world[..], live[..], pieces[..], places[..], v[..], v[..], rows[..], actors[..]).pos.z == -2;
+  #assert sj_shadow_vs(0, 65536, u[..], world[..], live[..], pieces[..], places[..], v[..], v[..], rows[..], actors[..]).pos.z == -2;
   // instance 0 reads Splice's world store, as /worlds/splice-bots does
   world[0] = f32_bits(3); world[1] = f32_bits(4); world[2] = f32_bits(5); world[4] = 0x00FFFFFF;
-  w := sj_scene_vs(0, 0, u[..], world[..], live[..], pieces[..], places[..], v[..], rows[..], actors[..]);
+  w := sj_scene_vs(0, 0, u[..], world[..], live[..], pieces[..], places[..], v[..], v[..], rows[..], actors[..]);
   #assert w.world.x == 3 && w.world.z == 5 && w.layer == -1;
 }

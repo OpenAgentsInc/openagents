@@ -1,0 +1,205 @@
+// The jam's characters (GitHub #13653): her body is the jam's Director and the rave's raiders are its six
+// raider bodies, all retargeted onto the people's 65 joints (metaverse-engine/tools/unreal-rig.coax splice-bots).
+// They reach the page as a second private pack, private:splice-bots-jam-chars, built from the rigs by
+// tools/jam-chars-pack.coax and never committed. Without it the page draws the prototype's bodies.
+//
+// The pack's vertices part is one block of words the GPU reads as it is (gpu/splice-jam.coax sjc_scene_vs):
+//   a character's vertices   SJC_VERTEX words each: x, y, z (f32 bits, metres, standing on y = 0 facing +z),
+//                            its normal (three signed bytes) and its region (the top byte), its four joints
+//                            (a byte each), its four weights (a byte each, summing to 255)
+//   a character's indices    a word each, into its own vertices
+//   a character's colours    SJC_COLOURS words: a region's colour (sRGB bytes) and anime material (the top byte)
+//   the palettes             SJC_PALETTE floats a frame: each joint's skinning matrix, three rows of four
+//                            (metaverse-engine/anim/sample.coax anim_sample), every clip of every character
+//                            baked at its own rate, frame after frame
+// The catalog says where each part is:
+//   sjc 1 PWORD FRAMES                                        version, the palettes' first word, their frames
+//   char K NAME JOINTS VWORD VERTICES IWORD INDICES CWORD MM  character K and its height in millimetres
+//   clip K ROLE FRAME0 FRAMES RATE_MILLI LOOP DISTANCE_MM     a clip of character K: ROLE one of SJC_ROLE
+//
+// What plays when: sjc_her_role reads her movement (the game's riding, air, landing, sneaking and speed) as
+// one of the Director's clips; sjc_raider_role reads a raider's (dancing, standing, or walking at a speed).
+// sjc_play steps a character's playback: a gait (a clip that travels) keeps pace with the ground, any
+// other clip runs on the clock, and a change of clip fades from the frame it left over SJC_FADE seconds.
+//   coax/bin/coax test metaverse/splice-bots/splice-jam.coax --only chars
+#load "../../../metaverse-engine/world/imported-read.coax";
+
+SJC_VERSION :: 1;
+SJC_CHARS :: 8;            // characters a pack has at most: the Director and six raiders
+SJC_CLIPS :: 80;           // clips at most, every character's
+SJC_JOINTS :: 65;          // the people's skeleton
+SJC_PALETTE :: SJC_JOINTS * 12;
+SJC_VERTEX :: 6;           // words a vertex
+SJC_COLOURS :: 8;          // words of colours a character
+SJC_NAME :: 16;
+SJC_FADE :: 0.18f32;       // s a change of clip blends over
+// The clips' roles, as the rigs name them (unreal-rig.coax DIRECTOR_CLIPS; the raiders have the first six).
+SJC_IDLE :: 0; SJC_WALK :: 1; SJC_JOG :: 2; SJC_JUMP_START :: 3; SJC_JUMP_LOOP :: 4; SJC_JUMP_LAND :: 5;
+SJC_SPRINT :: 6; SJC_CROUCH_IDLE :: 7; SJC_CROUCH_WALK :: 8; SJC_BOARD :: 9; SJC_ROLES :: 10;
+SJC_ROLE :: [SJC_ROLES] string.["idle", "walk", "jog", "jump_start", "jump_loop", "jump_land", "sprint", "crouch_idle", "crouch_walk", "board_stance"];
+// The role a character plays when it has no clip for one: the nearest it has (idle has none).
+SJC_INSTEAD :: [SJC_ROLES] int.[-1, SJC_IDLE, SJC_WALK, SJC_JUMP_LOOP, SJC_IDLE, SJC_IDLE, SJC_JOG, SJC_IDLE, SJC_WALK, SJC_IDLE];
+// A vertex's region (by the joint that moves it most): its colour in the character's colours.
+SJC_SKIN :: 0; SJC_HAIR :: 1; SJC_TOP :: 2; SJC_BOTTOM :: 3; SJC_SHOES :: 4; SJC_REGIONS :: 5;
+// Speeds (m/s) that choose a clip: below SJC_STILL she stands; from SJC_JOG_FROM she jogs, from SJC_SPRINT_FROM sprints.
+SJC_STILL :: 0.4f32; SJC_JOG_FROM :: 2.5f32; SJC_SPRINT_FROM :: 6.5f32;
+SJC_RATE_LO :: 0.5f32; SJC_RATE_HI :: 2.2f32;   // a gait plays no slower or faster than this, to keep pace
+
+SjcChar :: struct {
+  name: [SJC_NAME] u8; name_n: int;
+  joints: int; vword: int; vertices: int; iword: int; indices: int; cword: int; height: f32;
+  clip: [SJC_ROLES] int;     // its clip for each role, or -1
+}
+SjcClip :: struct { who: int; role: int; frame0: int; frames: int; rate: f32; looping: bool; distance: f32; }
+SjcCast :: struct {
+  ok: bool; why: string;
+  chars: [SJC_CHARS] SjcChar; n: int;
+  clips: [SJC_CLIPS] SjcClip; clip_n: int;
+  pword: int; frames: int;
+}
+
+// The region of the people's joint j: the neck and head skin (sjc_region_at makes the top of the head hair),
+// the hands and fingers skin, the chest and arms the top, the hips and legs the bottom, the feet shoes.
+sjc_region_of_joint :: (j: int) -> int {
+  if j == 5 || j == 6 { return SJC_SKIN; }
+  if (j >= 10 && j <= 30) || (j >= 34 && j <= 54) { return SJC_SKIN; }
+  if j == 0 || j == 1 || j == 55 || j == 56 || j == 60 || j == 61 { return SJC_BOTTOM; }
+  if (j >= 57 && j <= 59) || (j >= 62 && j <= 64) { return SJC_SHOES; }
+  return SJC_TOP;
+}
+// A vertex's region: its heaviest joint's, and hair on the head above `hair_y` (m) or at its back.
+sjc_region_at :: (heaviest: int, y: f32, nz: f32, hair_y: f32) -> int {
+  r := sjc_region_of_joint(heaviest);
+  if heaviest == 6 && (y > hair_y || nz < -0.55) { return SJC_HAIR; }
+  return r;
+}
+sjc_role_of :: (name: string) -> int { for k: 0..<SJC_ROLES { if SJC_ROLE[k] == name { return k; } } return -1; }
+sjc_int :: (s: string) -> int { n := iw_num(s); return ifx n.ok then cast(int) n.v else -1; }
+sjc_refuse :: (c: [] SjcCast, why: string) -> bool { c[0].ok = false; c[0].why = why; return false; }
+
+// The cast from a characters pack's catalog. False, with why, when it is not one or does not hold.
+sjc_read :: (c: [] SjcCast, text: string) -> bool {
+  c[0] = SjcCast.{};
+  from := 0; seen := false;
+  for at: 0..<text.count + 1 {
+    if at < text.count && text[at] != '\n' { continue; }
+    line := text[from..<at]; from = at + 1;
+    head := iw_field(line, 0);
+    if head == "sjc" && iw_fields(line) == 4 {
+      if sjc_int(iw_field(line, 1)) != SJC_VERSION { return sjc_refuse(c, "a characters pack of another version"); }
+      c[0].pword = sjc_int(iw_field(line, 2)); c[0].frames = sjc_int(iw_field(line, 3)); seen = true;
+    } else if head == "char" && iw_fields(line) == 10 {
+      k := sjc_int(iw_field(line, 1)); name := iw_field(line, 2);
+      if k != c[0].n || k >= SJC_CHARS || name.count == 0 || name.count > SJC_NAME { return sjc_refuse(c, "a character out of order"); }
+      e := SjcChar.{joints = sjc_int(iw_field(line, 3)), vword = sjc_int(iw_field(line, 4)), vertices = sjc_int(iw_field(line, 5)),
+                    iword = sjc_int(iw_field(line, 6)), indices = sjc_int(iw_field(line, 7)), cword = sjc_int(iw_field(line, 8)),
+                    height = cast(f32) sjc_int(iw_field(line, 9)) / 1000};
+      if e.joints != SJC_JOINTS || e.vword < 0 || e.vertices < 1 || e.iword < 0 || e.indices < 3 || e.indices % 3 != 0 || e.cword < 0 || e.height <= 0 { return sjc_refuse(c, "a character that does not hold"); }
+      for r: 0..<SJC_ROLES { e.clip[r] = -1; }
+      for ch, i: name { e.name[i] = ch; } e.name_n = name.count;
+      c[0].chars[k] = e; c[0].n += 1;
+    } else if head == "clip" && iw_fields(line) == 8 {
+      k := sjc_int(iw_field(line, 1)); role := sjc_role_of(iw_field(line, 2));
+      if k < 0 || k >= c[0].n || role < 0 || c[0].clip_n >= SJC_CLIPS || c[0].chars[k].clip[role] >= 0 { return sjc_refuse(c, "a clip that does not hold"); }
+      e := SjcClip.{who = k, role = role, frame0 = sjc_int(iw_field(line, 3)), frames = sjc_int(iw_field(line, 4)),
+                    rate = cast(f32) sjc_int(iw_field(line, 5)) / 1000, looping = iw_field(line, 6) == "1", distance = cast(f32) sjc_int(iw_field(line, 7)) / 1000};
+      if e.frame0 < 0 || e.frames < 1 || e.rate <= 0 || e.distance < 0 { return sjc_refuse(c, "a clip that does not hold"); }
+      c[0].chars[k].clip[role] = c[0].clip_n; c[0].clips[c[0].clip_n] = e; c[0].clip_n += 1;
+    }
+  }
+  if !seen { return sjc_refuse(c, "not a characters pack"); }
+  if c[0].n == 0 { return sjc_refuse(c, "no characters"); }
+  for k: 0..<c[0].clip_n { e := c[0].clips[k]; if e.frame0 + e.frames > c[0].frames { return sjc_refuse(c, "a clip past the palettes"); } }
+  for k: 0..<c[0].n { if c[0].chars[k].clip[SJC_IDLE] < 0 { return sjc_refuse(c, "a character with no idle"); } }
+  c[0].ok = true;
+  return true;
+}
+// Character k's name.
+sjc_name :: (c: [] SjcCast, k: int) -> string { return ifx k >= 0 && k < c[0].n then cast(string) c[0].chars[k].name[0..<c[0].chars[k].name_n] else ""; }
+// The character named `name`, or -1.
+sjc_find :: (c: [] SjcCast, name: string) -> int { for k: 0..<c[0].n { if sjc_name(c, k) == name { return k; } } return -1; }
+// Character k's clip for a role: its own, or the nearest it has (SJC_INSTEAD), at last its idle.
+sjc_clip :: (c: [] SjcCast, k: int, role: int) -> int {
+  if k < 0 || k >= c[0].n { return -1; }
+  r := role;
+  while r >= 0 && r < SJC_ROLES { if c[0].chars[k].clip[r] >= 0 { return c[0].chars[k].clip[r]; } r = SJC_INSTEAD[r]; }
+  return c[0].chars[k].clip[SJC_IDLE];
+}
+
+// ---- which clip plays
+
+// Her role from how she moves: on the board, in the air (rising off a jump at first, then the loop), landing,
+// sneaking (walking or still), and on foot by her speed: still, a walk, the jog at her walking pace, a sprint.
+sjc_her_role :: (riding: bool, airborne: bool, rising: bool, up_t: f32, landing: bool, sneaking: bool, speed: f32) -> int {
+  if riding { return SJC_BOARD; }
+  if airborne { return ifx rising && up_t < 0.35 then SJC_JUMP_START else SJC_JUMP_LOOP; }
+  if landing && speed < SJC_JOG_FROM { return SJC_JUMP_LAND; }
+  if sneaking { return ifx speed > SJC_STILL then SJC_CROUCH_WALK else SJC_CROUCH_IDLE; }
+  if speed >= SJC_SPRINT_FROM { return SJC_SPRINT; }
+  if speed >= SJC_JOG_FROM { return SJC_JOG; }
+  if speed > SJC_STILL { return SJC_WALK; }
+  return SJC_IDLE;
+}
+// A raider's role: dancing (its idle: the game bounces and turns it to the beat; the jam's jog leans into a
+// run, which reads as falling in place), standing or asleep (idle), walking or running by its speed.
+sjc_raider_role :: (dance: bool, still: bool, speed: f32) -> int {
+  if dance { return SJC_IDLE; }
+  if still || speed <= SJC_STILL { return SJC_IDLE; }
+  return ifx speed >= SJC_JOG_FROM then SJC_JOG else SJC_WALK;
+}
+
+// ---- playback
+
+// One character's playback: the clip playing and its seconds, and the one it left while a change fades.
+SjcPlay :: struct { clip: int = -1; t: f32; from: int = -1; from_t: f32; fade: f32; }
+// A clip's seconds.
+sjc_seconds :: (e: SjcClip) -> f32 { return cast(f32) e.frames / e.rate; }
+// How fast a clip plays for a character moving at `speed` m/s: a gait keeps her feet with the ground (its metres
+// a loop over its seconds), within SJC_RATE_LO to SJC_RATE_HI; `beat` (above 0) plays a clip on the clock that
+// many times as fast; any other clip plays at 1.
+sjc_rate :: (e: SjcClip, speed: f32, beat: f32) -> f32 {
+  if beat > 0 { return beat; }
+  if e.distance <= 0 { return 1; }
+  natural := e.distance / sjc_seconds(e);
+  r := speed / natural;
+  return ifx r < SJC_RATE_LO then SJC_RATE_LO else ifx r > SJC_RATE_HI then SJC_RATE_HI else r;
+}
+// Step character k's playback by dt for a role at `speed` m/s (beat: sjc_rate's): a new clip starts at its
+// beginning and fades in from the frame the last one left; a loop wraps, a clip played once holds its end.
+sjc_play :: (p: [] SjcPlay, c: [] SjcCast, k: int, role: int, dt: f32, speed: f32, beat: f32) {
+  clip := sjc_clip(c, k, role);
+  if clip < 0 { p[0] = SjcPlay.{}; return; }
+  if clip != p[0].clip {
+    p[0].from = p[0].clip; p[0].from_t = p[0].t; p[0].fade = ifx p[0].clip >= 0 then SJC_FADE else 0.0f32;
+    p[0].clip = clip; p[0].t = 0;
+  } else {
+    e := c[0].clips[clip]; s := sjc_seconds(e);
+    p[0].t += dt * sjc_rate(e, speed, beat);
+    if e.looping { while p[0].t >= s { p[0].t -= s; } } else if p[0].t > s { p[0].t = s; }
+  }
+  if p[0].fade > 0 { p[0].fade -= dt; if p[0].fade <= 0 { p[0].fade = 0; p[0].from = -1; } }
+}
+// A clip's palette frame at t seconds (the cast's frame number).
+sjc_frame_at :: (c: [] SjcCast, clip: int, t: f32) -> int {
+  e := c[0].clips[clip];
+  f := cast(int) floor(t * e.rate);
+  if f >= e.frames { f = ifx e.looping then f % e.frames else e.frames - 1; }
+  if f < 0 { f = 0; }
+  return e.frame0 + f;
+}
+// The two palette frames a character is drawn between and the second's share: the clip's frame and the
+// next, or while a change fades, the frame it left and the new clip's.
+SjcFrames :: struct { a: int; b: int; w: f32; }
+sjc_frames :: (p: [] SjcPlay, c: [] SjcCast) -> SjcFrames {
+  if p[0].clip < 0 { return SjcFrames.{}; }
+  e := c[0].clips[p[0].clip];
+  now := sjc_frame_at(c, p[0].clip, p[0].t);
+  if p[0].from >= 0 && p[0].fade > 0 {
+    k := 1 - p[0].fade / SJC_FADE;
+    return SjcFrames.{a = sjc_frame_at(c, p[0].from, p[0].from_t), b = now, w = k * k * (3 - 2 * k)};
+  }
+  share := p[0].t * e.rate - floor(p[0].t * e.rate);
+  next := now + 1;
+  if next >= e.frame0 + e.frames { next = ifx e.looping then e.frame0 else now; }
+  return SjcFrames.{a = now, b = next, w = share};
+}

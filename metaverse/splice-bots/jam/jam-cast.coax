@@ -1,0 +1,166 @@
+// The jam's characters in the game (GitHub #13653): her body as the Director and the rave's raiders as the jam's
+// raider bodies, where and as the game has them (jam-chars.coax has the pack and the clips). The splice-jam page
+// (splice-jam.coax) steps this each frame after the game's own frame.
+//
+// Her: where the game stands her (as front.coax fr_player does: her feet, her facing, up on the board's deck),
+// playing the clip sjc_her_role reads off how she moves; left out as fr_player leaves the prototype's body out
+// (the camera at her head, the blink after a hit).
+// The raiders: every raider the game drew this frame (its things list, g_thing: a host that draws a kind
+// itself hides it and is told where each one is) has a body where the game's frame for it is: the party's five
+// (splice-game.coax g_raider_pose: dancing, asleep, standing, walking, in a fight) and those leaving the garage
+// (g_leaver_frame). While any of the party is drawn, the jam's other raiders dance where the jam places them
+// (the crowd). Each raider's body is one of the six by its place in the ring (sjc_body_of).
+// Until the pack is in, nothing is hidden and the game draws its own bodies.
+//
+// A body is a slot: a row of the actor store after the jam's actors (SJC_AT floats in; gpu/splice-jam.coax
+// sjc_scene_vs) and one draw of its character's triangles, in order, with no index buffer:
+//   (its frame's origin, 1)  (its x axis, palette frame a)  (its y axis, frame b)  (its z axis, b's share)
+//   (its character's first vertex word, its first colour word, its ink object, the palettes' first word)
+#load "jam-chars.coax";
+
+SJC_SLOTS :: 32;
+SJC_SLOT_FLOATS :: 20;
+SJC_AT :: SJ_ACTORS * SJD_ACTOR_FLOATS;   // the slots' first float in the actor store
+SJC_BASE :: 131072;                      // a body's instance: SJC_BASE + its slot (past the jam's rows)
+SJC_HER :: 0; SJC_PARTY :: 1; SJC_LEAVING :: SJC_PARTY + F_RAIDERS; SJC_CROWD :: SJC_LEAVING + F_RAIDERS;
+SJC_MATCH :: 0.3f32;                     // m: a raider the game drew is the one whose frame stands this near
+SJC_HER_OBJ :: 246;                      // her ink object (front.coax FR_OBJ)
+SJC_DANCE_RATE :: 1.1f32;                // a dancer's idle, a little quick, under the game's bounce to the beat (g_dance_frame)
+
+SjcPage :: struct {
+  crew: [1] SjcCast;
+  bytes: int;                            // the pack's vertices part as it arrived (0: not here)
+  play: [SJC_SLOTS] SjcPlay;
+  was: [SJC_SLOTS] bool; px: [SJC_SLOTS] f32; pz: [SJC_SLOTS] f32;   // where each slot's body was last frame
+  on: [SJC_SLOTS] bool; ch: [SJC_SLOTS] int;
+  shown: int;                            // bodies drawn this frame
+}
+
+// The characters pack's catalog arrived (page asset 4).
+sjc_catalog :: (d: [] SjcPage, text: string) { _ := sjc_read(d[0].crew[..], text); }
+// Its vertices part arrived (page asset 5), its bytes (0: it failed or is not here).
+sjc_asset :: (d: [] SjcPage, bytes: int) { d[0].bytes = bytes; }
+// The pack is in: its catalog read and its words on the GPU, as many as the catalog's parts need.
+sjc_ready :: (d: [] SjcPage) -> bool {
+  c := d[0].crew[..];
+  if !c[0].ok || d[0].bytes <= 0 { return false; }
+  return (c[0].pword + c[0].frames * SJC_PALETTE) * 4 <= d[0].bytes;
+}
+sjc_her_body :: (d: [] SjcPage) -> int { return ifx sjc_ready(d) then sjc_find(d[0].crew[..], "director") else -1; }
+// The raider body for the n-th raider in the ring: the six in turn, shifted each round so every SJ_FOE_EVERY-th
+// (the game's five) differ.
+sjc_body_of :: (n: int) -> int { return (n + n / 6) % 6; }
+sjc_raider_body :: (d: [] SjcPage, n: int) -> int {
+  if !sjc_ready(d) { return -1; }
+  names := [6] string.["raider-1", "raider-2", "raider-3", "raider-4", "raider-5", "raider-6"];
+  k := sjc_find(d[0].crew[..], names[sjc_body_of(n)]);
+  return ifx k >= 0 then k else sjc_find(d[0].crew[..], names[0]);   // a pack with fewer raiders: the first
+}
+// Whether the game hands this page her body and its raiders' (before the game's frame: splice-game.coax g_thing).
+sjc_hide :: (d: [] SjcPage, g: [] SpGame) {
+  g[0].hide[TK_SMUGGLER] = g[0].jam && sjc_her_body(d) >= 0;
+  g[0].hide[TK_RAIDER] = g[0].jam && sjc_raider_body(d, 0) >= 0;
+}
+
+// The game drew a raider this frame standing at (x, z) (its things list).
+sjc_drawn :: (g: [] SpGame, x: f32, z: f32) -> bool {
+  for k: 0..<g[0].thing_n {
+    o := k * THING_FLOATS;
+    if cast(int) g[0].things[o] != TK_RAIDER { continue; }
+    if abs(g[0].things[o + 2] - x) < SJC_MATCH && abs(g[0].things[o + 4] - z) < SJC_MATCH { return true; }
+  }
+  return false;
+}
+
+// How fast slot s's body moved since last frame, standing at f now (m/s; 0 when it was not drawn).
+sjc_moved :: (d: [] SjcPage, s: int, f: Frame, dt: f32) -> f32 {
+  if s < 0 || s >= SJC_SLOTS || !d[0].was[s] || dt <= 0 { return 0; }
+  dx := f.o.x - d[0].px[s]; dz := f.o.z - d[0].pz[s];
+  return sqrt(dx * dx + dz * dz) / dt;
+}
+// One body this frame: character ch in slot s, at frame f, playing `role` at `speed` m/s (sjc_play's beat);
+// its row and its draw.
+sjc_put :: (d: [] SjcPage, s: int, ch: int, f: Frame, role: int, speed: f32, beat: f32, obj: int, dt: f32, rows: [] f32, draws: [] u32, at: int) -> int {
+  if s < 0 || s >= SJC_SLOTS || ch < 0 { return at; }
+  c := d[0].crew[..];
+  if d[0].ch[s] != ch { d[0].play[s] = SjcPlay.{}; d[0].ch[s] = ch; }
+  sjc_play(d[0].play[s..<s + 1], c, ch, role, dt, speed, beat);
+  fr := sjc_frames(d[0].play[s..<s + 1], c);
+  d[0].on[s] = true; d[0].px[s] = f.o.x; d[0].pz[s] = f.o.z;
+  o := SJC_AT + s * SJC_SLOT_FLOATS;
+  if o + SJC_SLOT_FLOATS > rows.count || (at + 1) * 4 > draws.count { return at; }
+  e := c[0].chars[ch];
+  rows[o] = f.o.x; rows[o + 1] = f.o.y; rows[o + 2] = f.o.z; rows[o + 3] = 1;
+  rows[o + 4] = f.x.x; rows[o + 5] = f.x.y; rows[o + 6] = f.x.z; rows[o + 7] = cast(f32) fr.a;
+  rows[o + 8] = f.y.x; rows[o + 9] = f.y.y; rows[o + 10] = f.y.z; rows[o + 11] = cast(f32) fr.b;
+  rows[o + 12] = f.z.x; rows[o + 13] = f.z.y; rows[o + 14] = f.z.z; rows[o + 15] = fr.w;
+  rows[o + 16] = cast(f32) e.vword; rows[o + 17] = cast(f32) e.cword; rows[o + 18] = cast(f32) obj; rows[o + 19] = cast(f32) c[0].pword;
+  draws[at * 4] = cast(u32) e.iword; draws[at * 4 + 1] = cast(u32) e.indices; draws[at * 4 + 2] = cast(u32) (SJC_BASE + s) | 0x80000000; draws[at * 4 + 3] = 1;
+  d[0].shown += 1;
+  return at + 1;
+}
+
+// The frame's bodies, after the game's frame: their rows into `rows` (the actor store) and their draws after
+// draws[at]; how many draws there are now. Nothing until the pack is in or outside the jam world.
+sjc_frame :: (d: [] SjcPage, g: [] SpGame, dt: f32, rows: [] f32, draws: [] u32, at: int) -> int {
+  d[0].shown = 0;
+  for s: 0..<SJC_SLOTS { d[0].was[s] = d[0].on[s]; d[0].on[s] = false; }
+  n := at;
+  if g[0].jam && g[0].hide[TK_SMUGGLER] { n = sjc_her(d, g, dt, rows, draws, n); }
+  if g[0].jam && g[0].hide[TK_RAIDER] { n = sjc_raiders(d, g, dt, rows, draws, n); }
+  // a slot not drawn this frame starts its clip again when it comes back
+  for s: 0..<SJC_SLOTS {
+    if !d[0].on[s] { d[0].play[s] = SjcPlay.{}; o := SJC_AT + s * SJC_SLOT_FLOATS; if o + 3 < rows.count { rows[o + 3] = 0; } }
+  }
+  return n;
+}
+
+// Her, where front.coax fr_player would stand the prototype's body.
+sjc_her :: (d: [] SjcPage, g: [] SpGame, dt: f32, rows: [] f32, draws: [] u32, at: int) -> int {
+  if g[0].mode != M_PLAY && g[0].mode != M_BANNER { return at; }
+  if cm_too_near(g) { return at; }
+  if g[0].hit_cool > 0 && fract(g[0].t * 8) < 0.5 { return at; }
+  fl := g[0].fl[0]; jp := g[0].air[0];
+  role := sjc_her_role(g_riding(g), g_airborne(g), jp.vy > 0 && jp.jumped, fl.up_t, fl.land_t > 0, d_sneaking(g), fl.speed);
+  f := frame_at(v3(g[0].px, g_feet_y(g) + fl_deck_y(g), g[0].pz), g_face(g));
+  return sjc_put(d, SJC_HER, sjc_her_body(d), f, role, fl.speed, 0, SJC_HER_OBJ, dt, rows, draws, at);
+}
+
+// The raiders the game drew, and the crowd while the party is on.
+sjc_raiders :: (d: [] SjcPage, g: [] SpGame, dt: f32, rows: [] f32, draws: [] u32, at: int) -> int {
+  n := at; t := g[0].t; j := g[0].jr[..]; party := false;
+  for i: 0..<F_RAIDERS {
+    if !g_foe_in(g, i) { continue; }
+    rp := g_raider_pose(g, i, t);
+    if !sjc_drawn(g, rp.f.o.x, rp.f.o.z) { continue; }
+    party = true;
+    ring := sj_foe_raider(j, i); nth := ifx ring >= 0 then i * SJ_FOE_EVERY else i;
+    // in a fight or on the run it runs at the raiders' speed; on a plan, as fast as it moved since last frame
+    moving := g[0].fhost[i] || g[0].fflee[i];
+    speed := ifx moving then T_RAIDER_SPEED else sjc_moved(d, SJC_PARTY + i, rp.f, dt);
+    role := sjc_raider_role(rp.dance, rp.still && !moving, speed);
+    n = sjc_put(d, SJC_PARTY + i, sjc_raider_body(d, nth), rp.f, role, speed, ifx rp.dance then SJC_DANCE_RATE else 0.0f32, 100 + i * 5, dt, rows, draws, n);
+  }
+  lu := t - g[0].leave_at;
+  if lu >= 0 && lu < T_LEAVING {
+    for i: 0..<F_RAIDERS {
+      f := g_leaver_frame(g, i, lu);
+      if sjc_drawn(g, f.o.x, f.o.z) { n = sjc_put(d, SJC_LEAVING + i, sjc_raider_body(d, i * SJ_FOE_EVERY + 1), f, SJC_JOG, 4.2, 0, 100 + i * 5, dt, rows, draws, n); }
+    }
+  }
+  if party {
+    s := SJC_CROWD; k := 0;
+    while s < SJC_SLOTS {
+      a := sj_nth(j, SJ_RAIDER, SJ_RING, k);
+      if a < 0 { break; }
+      if k % SJ_FOE_EVERY != 0 || k / SJ_FOE_EVERY >= F_RAIDERS {
+        e := j[0].actors[a]; beat := t * 7.5 + cast(f32) k * 1.3;
+        f := g_dance_frame(v3(e.x, e.y, e.z), beat, k, true, e.yaw);
+        n = sjc_put(d, s, sjc_raider_body(d, k), f, SJC_IDLE, 0, SJC_DANCE_RATE, 130 + k, dt, rows, draws, n);
+        s += 1;
+      }
+      k += 1;
+    }
+  }
+  return n;
+}

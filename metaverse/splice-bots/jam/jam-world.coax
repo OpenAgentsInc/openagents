@@ -262,6 +262,35 @@ sj_places :: (g: [] SpGame) {
   if !g[0].jam { return; }
   sp := g[0].jr[0].spawn[SJ_FARM];
   if sp.ok { g[0].at.start_x = sp.x; g[0].at.start_z = sp.z; }
+  sj_raider_places(g);
+}
+// The rave's raiders (#13653): the jam places 16 along the ring's entry; the game's five raiders (F_RAIDERS, with
+// their plans, fights and blows) are every SJ_FOE_EVERY-th of them, and the rest dance as the crowd
+// (jam/jam-cast.coax). A raider's plans in the garage move with it, keeping their shape: each starts where the
+// jam places it. A plan out of the garage (scavenging the desert at dusk) stays where it is.
+SJ_FOE_EVERY :: 3;
+// The jam raider that game raider i is (sj_nth's order in the ring), or -1 when the jam places fewer.
+sj_foe_raider :: (j: [] SjJam, i: int) -> int { return ifx i >= 0 && i < F_RAIDERS then sj_nth(j, SJ_RAIDER, SJ_RING, i * SJ_FOE_EVERY) else -1; }
+sj_raider_places :: (g: [] SpGame) {
+  j := g[0].jr[..];
+  for i: 0..<F_RAIDERS {
+    a := sj_foe_raider(j, i);
+    if a < 0 { continue; }
+    x := j[0].actors[a].x; z := j[0].actors[a].z;
+    g[0].at.foe_ax[i] = x; g[0].at.foe_az[i] = z; g[0].at.foe_bx[i] = x; g[0].at.foe_bz[i] = z;
+    for when: 0..<NPL_WHENS {
+      k := i * NPL_WHENS + when;
+      if k >= SC_PLAN_MAX { continue; }
+      p := g[0].c[0].plans[k];
+      if !p.ok || p.n <= 0 || g_plan_out(g, p) { continue; }
+      dx := cast(int) floor(x * 100 + 0.5) - p.x[0]; dz := cast(int) floor(z * 100 + 0.5) - p.z[0];
+      for q: 0..<p.n { p.x[q] += dx; p.z[q] += dz; }
+      g[0].c[0].plans[k] = p;
+    }
+    // one in play and not in a fight stands where its plan for now starts
+    pl := sc_plan(g[0].c[..], i, g_phase(g));
+    if pl.ok && pl.n > 0 && !g[0].fout[i] && !g[0].fhost[i] && !g[0].fflee[i] { g[0].fx[i] = mp_m(pl.x[0]); g[0].fz[i] = mp_m(pl.z[0]); }
+  }
 }
 // Where a run starts in the jam world: the farm's player start by day. False when the jam has none.
 sj_begin :: (g: [] SpGame) -> bool {

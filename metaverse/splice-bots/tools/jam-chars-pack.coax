@@ -1,0 +1,232 @@
+// tool.sh: stack-gib 3
+// The jam's characters as one private pack (GitHub #13653; jam/jam-chars.coax has the format): the Director
+// (her body) and the six raider bodies, from the rigs metaverse-engine/tools/unreal-rig.coax splice-bots wrote
+// (RIG_ROOT/director, RIG_ROOT/raider-1 .. raider-6, each its library.bundle). Each mesh's skin8 vertices go
+// to SJC_VERTEX words (its four heaviest joints, their weights summed to 255 again) with a region each for its
+// colour; each clip is sampled at its own rate with the engine's sampler (metaverse-engine/anim/sample.coax)
+// into skinning matrices, frame after frame. A clip that walks off (its hips' travel) is put back in place,
+// its metres a loop kept as its distance, so the game moves the body and the gait keeps pace.
+//
+//   coax/web/tool.sh metaverse/splice-bots/tools/jam-chars-pack.coax RIG_ROOT OUT.pack
+//
+// RIG_ROOT is ~/.openagents/unreal/splice-bots-jam/rig; OUT is ~/.openagents/verse/private-build/web/
+// splice-bots-jam-chars.pack, which coax/web/serve.c serves at /private/splice-bots-jam-chars.pack on a local
+// address and metaverse/tools/humans/upload_packs.coax splice-bots-jam-chars puts behind openagents.com's
+// broker. The rigs are the owner's: read here, never committed; the pack is written outside the repository.
+#import "Basic";
+#load "../../../metaverse-engine/editor/pack-import.coax";
+#load "../../../coax/lib/image/pillow.coax";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/fs.coax";
+#load "../../../coax/lib/sys/args.coax";
+#load "../../../metaverse-engine/anim/bundle.coax";
+#load "../../../metaverse-engine/anim/sample.coax";
+#load "../jam/jam-chars.coax";
+ceil :: (x: f64) -> f64 #foreign #effects(all);
+
+JCP_N :: 7;
+JCP_NAMES :: [JCP_N] string.["director", "raider-1", "raider-2", "raider-3", "raider-4", "raider-5", "raider-6"];
+JCP_BUDGET :: 96000000;
+JCP_WORDS :: 20000000;
+JCP_TRAVEL :: 0.1;          // m: a clip whose hips go further than this over it walks off, and is put back in place
+// Each character's colours by region (skin, hair, top, bottom, shoes): sRGB, and the anime material
+// (gpu/animelab.coax: 1 skin, 2 hair, 10 cloth). The rigs carry no textures, so the cel look is these.
+JCP_SKIN :: 1; JCP_HAIR :: 2; JCP_CLOTH :: 10;
+JCP_RGB :: [JCP_N * SJC_REGIONS * 3] f32.[
+  0.93, 0.76, 0.64,  0.14, 0.11, 0.10,  0.17, 0.25, 0.34,  0.30, 0.31, 0.35,  0.10, 0.10, 0.11,   // the Director
+  0.80, 0.58, 0.44,  0.20, 0.14, 0.10,  1.00, 0.36, 0.62,  0.20, 0.20, 0.24,  0.12, 0.11, 0.11,   // raiders: the party's pink
+  0.62, 0.43, 0.32,  0.08, 0.08, 0.09,  1.00, 0.55, 0.15,  0.28, 0.24, 0.20,  0.14, 0.12, 0.10,   //   orange
+  0.90, 0.72, 0.60,  0.55, 0.30, 0.15,  0.20, 0.75, 0.72,  0.18, 0.18, 0.22,  0.10, 0.10, 0.12,   //   teal
+  0.48, 0.33, 0.25,  0.06, 0.06, 0.06,  0.95, 0.85, 0.20,  0.22, 0.22, 0.26,  0.12, 0.10, 0.08,   //   yellow
+  0.92, 0.74, 0.62,  0.60, 0.12, 0.30,  0.62, 0.30, 0.90,  0.16, 0.16, 0.20,  0.08, 0.08, 0.09,   //   violet
+  0.85, 0.66, 0.52,  0.95, 0.85, 0.45,  0.92, 0.22, 0.20,  0.24, 0.26, 0.30,  0.12, 0.12, 0.12    //   red
+];
+
+jcp_byte :: (v: f32) -> u32 { x := ifx v < 0 then 0.0f32 else ifx v > 1 then 1.0f32 else v; return cast(u32) floor(x * 255 + 0.5); }
+jcp_snorm :: (v: f32) -> u32 { x := ifx v < -1 then -1.0f32 else ifx v > 1 then 1.0f32 else v; return cast(u32) (cast(int) floor(x * 127 + 0.5) & 255); }
+jcp_u16 :: (b: [] u8, at: int) -> int { return cast(int) b[at] | (cast(int) b[at + 1] << 8); }
+
+JcpOut :: struct { words: [JCP_WORDS * 4] u8; n: int; palettes: [JCP_WORDS / 2] u32; pn: int; frames: int; over: bool; }
+JcpChar :: struct { vword: int; vertices: int; iword: int; indices: int; cword: int; height: f32; clips: int; }
+JcpClipRow :: struct { who: int; role: int; frame0: int; frames: int; rate: f32; looping: bool; distance: f32; }
+
+jcp_put :: (o: [] JcpOut, w: u32) {
+  if o[0].n >= JCP_WORDS { o[0].over = true; return; }
+  at := o[0].n * 4; for b: 0..<4 { o[0].words[at + b] = cast(u8) ((w >> cast(u32) (b * 8)) & 255); }
+  o[0].n += 1;
+}
+
+// One character's mesh (every section, joined) into the words, and its colours: what it took.
+jcp_mesh :: (o: [] JcpOut, lib: [] AnimLibrary, k: int) -> JcpChar {
+  r := lib[0].rig[0]; packs := lib[0].packs[..];
+  c := JcpChar.{vword = o[0].n};
+  // the head's top: hair is its upper third
+  head_lo: f32 = 1e9; head_hi: f32 = -1e9; top: f32 = -1e9;
+  for s: 0..<r.sections {
+    m := r.meshes[s]; b := packs[m.vertices.pack].bytes;
+    for v: 0..<m.vertices.count {
+      at := m.vertices.offset + v * m.vertices.stride; y := anim_float(b, at + 4);
+      if y > top { top = y; }
+      best := 0; bw := -1; for i: 0..<8 { w := cast(int) b[at + 52 + i]; if w > bw { bw = w; best = jcp_u16(b, at + 36 + i * 2); } }
+      if best == 6 { if y < head_lo { head_lo = y; } if y > head_hi { head_hi = y; } }
+    }
+  }
+  hair_y := head_hi - (head_hi - head_lo) * 0.36;
+  base := 0;
+  for s: 0..<r.sections {
+    m := r.meshes[s]; b := packs[m.vertices.pack].bytes;
+    for v: 0..<m.vertices.count {
+      at := m.vertices.offset + v * m.vertices.stride;
+      // the four heaviest of its eight joints
+      js: [4] int; ws: [4] int; used: [8] bool;
+      for q: 0..<4 {
+        bi := -1; bw := -1;
+        for i: 0..<8 { w := cast(int) b[at + 52 + i]; if !used[i] && w > bw { bw = w; bi = i; } }
+        used[bi] = true; js[q] = jcp_u16(b, at + 36 + bi * 2); ws[q] = bw;
+      }
+      sum := ws[0] + ws[1] + ws[2] + ws[3];
+      w8: [4] int; left := 255;
+      for q: 1..<4 { w8[q] = ifx sum > 0 then (ws[q] * 255 + sum / 2) / sum else 0; left -= w8[q]; }
+      w8[0] = left;
+      y := anim_float(b, at + 4); nz := anim_float(b, at + 20);
+      region := sjc_region_at(js[0], y, nz, hair_y);
+      jcp_put(o, f32_bits(anim_float(b, at))); jcp_put(o, f32_bits(y)); jcp_put(o, f32_bits(anim_float(b, at + 8)));
+      jcp_put(o, jcp_snorm(anim_float(b, at + 12)) | (jcp_snorm(anim_float(b, at + 16)) << 8) | (jcp_snorm(nz) << 16) | (cast(u32) region << 24));
+      jcp_put(o, cast(u32) js[0] | (cast(u32) js[1] << 8) | (cast(u32) js[2] << 16) | (cast(u32) js[3] << 24));
+      jcp_put(o, cast(u32) w8[0] | (cast(u32) w8[1] << 8) | (cast(u32) w8[2] << 16) | (cast(u32) w8[3] << 24));
+    }
+    c.vertices += m.vertices.count;
+  }
+  c.iword = o[0].n;
+  for s: 0..<r.sections {
+    m := r.meshes[s]; b := packs[m.indices.pack].bytes;
+    for i: 0..<m.indices.count { jcp_put(o, anim_word(b, m.indices.offset + i * m.indices.stride) + cast(u32) base); }
+    c.indices += m.indices.count; base += m.vertices.count;
+  }
+  c.cword = o[0].n;
+  rgb := JCP_RGB; mats := [SJC_REGIONS] u32.[JCP_SKIN, JCP_HAIR, JCP_CLOTH, JCP_CLOTH, JCP_CLOTH];
+  for g: 0..<SJC_COLOURS {
+    rg := ifx g < SJC_REGIONS then g else SJC_TOP; at := (k * SJC_REGIONS + rg) * 3;
+    jcp_put(o, jcp_byte(rgb[at]) | (jcp_byte(rgb[at + 1]) << 8) | (jcp_byte(rgb[at + 2]) << 16) | (mats[rg] << 24));
+  }
+  c.height = top;
+  return c;
+}
+
+// One clip's frames into the palettes: put back in place when its hips walk off. Its row.
+jcp_clip :: (o: [] JcpOut, lib: [] AnimLibrary, k: int, ci: int, s: [] AnimSample, distance: f32) -> JcpClipRow {
+  r := lib[0].rig[0]; clip := lib[0].clips[ci]; clip.looping = false;
+  nm := [1] AnimName.[lib[0].clips[ci].name];
+  row := JcpClipRow.{who = k, role = sjc_role_of(anim_text(nm[..], 0)), frame0 = o[0].frames, frames = clip.frames, rate = clip.rate, looping = lib[0].clips[ci].looping};
+  anim_sample(r, clip, lib[0].packs[..], 0, s); x0 := s[0].position[1].x; z0 := s[0].position[1].z;
+  anim_sample(r, clip, lib[0].packs[..], cast(f32) (clip.frames - 1) / clip.rate, s);
+  dx := s[0].position[1].x - x0; dz := s[0].position[1].z - z0; travel := sqrt(dx * dx + dz * dz);
+  walks := travel > JCP_TRAVEL && clip.frames > 1;
+  // a loop's metres: the hips' travel (the last frame is one frame short of the loop), or what the rig says
+  // the clip covers in place (character.json, ur_rig_files)
+  row.distance = ifx walks then travel * cast(f32) clip.frames / cast(f32) (clip.frames - 1) else distance;
+  // every clip but a jump's start and landing loops in the game (the jam's sprint, Sprint_Loop, says it does not)
+  row.looping = row.role != SJC_JUMP_START && row.role != SJC_JUMP_LAND;
+  for f: 0..<clip.frames {
+    anim_sample(r, clip, lib[0].packs[..], cast(f32) f / clip.rate, s);
+    sx := ifx walks then dx * cast(f32) f / cast(f32) (clip.frames - 1) else 0.0f32;
+    sz := ifx walks then dz * cast(f32) f / cast(f32) (clip.frames - 1) else 0.0f32;
+    for j: 0..<SJC_JOINTS {
+      for e: 0..<12 {
+        v := s[0].palette[j * 12 + e];
+        if e == 3 { v -= sx; } if e == 11 { v -= sz; }
+        if o[0].pn >= o[0].palettes.count { o[0].over = true; return row; }
+        o[0].palettes[o[0].pn] = f32_bits(v); o[0].pn += 1;
+      }
+    }
+  }
+  o[0].frames += clip.frames;
+  return row;
+}
+
+// The metres a clip of `role` covers a loop, as the rig's character.json says (its clips' distance_m), or 0.
+jcp_distance :: (text: string, role: string) -> f32 {
+  nodes: [4096] JvNode; d: [1] Jv;
+  if anim_json(text, d[..], nodes[..]) != 0 { return 0; }
+  clips := jv_get(d[0], 0, "clips");
+  for i: 0..<jv_len(d[0], clips) {
+    row := jv_at(d[0], clips, i); b: [64] u8; n := jv_str(d[0], jv_get(d[0], row, "role"), b[..]);
+    if n > 0 && cast(string) b[0..<n] == role { return cast(f32) anim_decimal(jv_raw(d[0], jv_get(d[0], row, "distance_m"))).value; }
+  }
+  return 0;
+}
+jcp_line_int :: (out: [] u8, at: int, v: int) -> int { a := pi_put(out, at, " "); return pi_put_int(out, a, v); }
+jcp_mm :: (v: f32) -> int { return cast(int) floor(v * 1000 + 0.5); }
+
+tool_main :: () -> int #export_c #effects(all) {
+  args: [1] Args;
+  if !args_load(args[..]) || args_count(args[..]) != 2 { tool_errln("usage: jam-chars-pack RIG_ROOT OUT.pack"); return 2; }
+  root := args_at(args[..], 0); outp := args_at(args[..], 1);
+  o: [1] JcpOut; chars: [JCP_N] JcpChar; rows: [SJC_CLIPS] JcpClipRow; rn := 0;
+  bundle: [33554432] u8; json: [65536] u8; lib: [1] AnimLibrary; s: [1] AnimSample;
+  for k: 0..<JCP_N {
+    pb: [4096] u8; db: [4096] u8;
+    path := fs_join(fs_join(root, JCP_NAMES[k], db[..]), "library.bundle", pb[..]);
+    n := fs_read(path, bundle[..]);
+    if n <= 0 || n >= bundle.count { tool_err("jam-chars-pack: cannot read "); tool_errln(path); return 1; }
+    jb: [4096] u8; jpath := fs_join(fs_join(root, JCP_NAMES[k], db[..]), "character.json", jb[..]);
+    jn := fs_read(jpath, json[..]);
+    if jn <= 0 || jn >= json.count { tool_err("jam-chars-pack: cannot read "); tool_errln(jpath); return 1; }
+    e := anim_bundle_load(bundle[0..<n], lib[..]);
+    if e != 0 { tool_err("jam-chars-pack: refused "); tool_err(path); tool_err(": "); tool_errln(anim_error_name(e)); return 1; }
+    if lib[0].rig[0].joints != SJC_JOINTS || lib[0].rig[0].sections < 1 { tool_err("jam-chars-pack: not on the people's 65 joints: "); tool_errln(path); return 1; }
+    chars[k] = jcp_mesh(o[..], lib[..], k);
+    for ci: 0..<lib[0].count {
+      if rn >= SJC_CLIPS { tool_errln("jam-chars-pack: too many clips"); return 1; }
+      nm := [1] AnimName.[lib[0].clips[ci].name];
+      row := jcp_clip(o[..], lib[..], k, ci, s[..], jcp_distance(cast(string) json[0..<jn], anim_text(nm[..], 0)));
+      if row.role < 0 { continue; }
+      rows[rn] = row; rn += 1; chars[k].clips += 1;
+      print("% %: % frames at %/s, % m a loop\n", JCP_NAMES[k], SJC_ROLE[row.role], row.frames, row.rate, row.distance);
+    }
+    print("% : % vertices, % triangles, % m tall\n", JCP_NAMES[k], chars[k].vertices, chars[k].indices / 3, chars[k].height);
+    if o[0].over { tool_errln("jam-chars-pack: over the pack's words"); return 1; }
+  }
+  // the palettes after the meshes
+  pword := o[0].n;
+  for i: 0..<o[0].pn { jcp_put(o[..], o[0].palettes[i]); }
+  if o[0].over { tool_errln("jam-chars-pack: over the pack's words"); return 1; }
+  // the pack: the catalog, the words as its vertices, three indices (the page reads its own from the words) and a white layer
+  pixel := [4] u8.[255, 255, 255, 255]; z: [1] PiZ; filtered: [5] u8; png: [256] u8;
+  png_n := pi_png(pi_img(pixel[..], 1, 1, 4), z[..], filtered[..], png[..]);
+  if png_n < 1 { return 1; }
+  three: [12] u8;
+  catalog: [65536] u8; sources: [4] PackSource; total := 0; at := 0;
+  for pass: 0..<5 {
+    at = pi_put(catalog[..], 0, "pack splice-bots-jam-chars\nbudget 96000000\nbytes ");
+    at = pi_put_int(catalog[..], at, total);
+    at = pi_put(catalog[..], at, "\nL 0 Splice Bots jam characters|private, the owner's|https://openagents.com/worlds/splice-bots-jam\nM chars 0 3 0\nT 0 neutral 0\nsjc 1");
+    at = jcp_line_int(catalog[..], at, pword); at = jcp_line_int(catalog[..], at, o[0].frames);
+    for k: 0..<JCP_N {
+      c := chars[k];
+      at = pi_put(catalog[..], at, "\nchar"); at = jcp_line_int(catalog[..], at, k); at = pi_put(catalog[..], at, " "); at = pi_put(catalog[..], at, JCP_NAMES[k]);
+      at = jcp_line_int(catalog[..], at, SJC_JOINTS); at = jcp_line_int(catalog[..], at, c.vword); at = jcp_line_int(catalog[..], at, c.vertices);
+      at = jcp_line_int(catalog[..], at, c.iword); at = jcp_line_int(catalog[..], at, c.indices); at = jcp_line_int(catalog[..], at, c.cword); at = jcp_line_int(catalog[..], at, jcp_mm(c.height));
+    }
+    for i: 0..<rn {
+      e := rows[i];
+      at = pi_put(catalog[..], at, "\nclip"); at = jcp_line_int(catalog[..], at, e.who); at = pi_put(catalog[..], at, " "); at = pi_put(catalog[..], at, SJC_ROLE[e.role]);
+      at = jcp_line_int(catalog[..], at, e.frame0); at = jcp_line_int(catalog[..], at, e.frames); at = jcp_line_int(catalog[..], at, jcp_mm(e.rate));
+      at = jcp_line_int(catalog[..], at, ifx e.looping then 1 else 0); at = jcp_line_int(catalog[..], at, jcp_mm(e.distance));
+    }
+    at = pi_put(catalog[..], at, "\n");
+    sources[0] = PackSource.{kind = PACK_CATALOG, licence = PACK_MANY, name = "catalog", data = cast(string) catalog[0..<at]};
+    sources[1] = PackSource.{kind = PACK_VERTICES, licence = PACK_MANY, name = "vertices", data = cast(string) o[0].words[0..<o[0].n * 4]};
+    sources[2] = PackSource.{kind = PACK_INDICES, licence = PACK_MANY, name = "indices", data = cast(string) three[..]};
+    sources[3] = PackSource.{kind = PACK_LAYER, licence = 0, name = "neutral", data = cast(string) png[0..<png_n]};
+    total = pack_size(sources[..]);
+  }
+  // the page reads it back as it will
+  cast_: [1] SjcCast;
+  if !sjc_read(cast_[..], cast(string) catalog[0..<at]) { tool_err("jam-chars-pack: the catalog does not read back: "); tool_errln(cast_[0].why); tool_errln(cast(string) catalog[0..<at]); return 1; }
+  out: [JCP_BUDGET] u8; size := pack_write(sources[..], JCP_BUDGET, out[..]); read: [1] PackRead;
+  if size < 1 || !pack_read(cast(string) out[0..<size], read[..]) { tool_err("jam-chars-pack: the pack is refused: "); tool_errln(read[0].why); return 1; }
+  if !fs_write(outp, cast(string) out[0..<size]) { tool_err("jam-chars-pack: cannot write "); tool_errln(outp); return 1; }
+  print("splice-bots-jam-chars: % characters, % clips, % palette frames, % words, % bytes: %\n", cast_[0].n, cast_[0].clip_n, o[0].frames, o[0].n, size, outp);
+  return 0;
+}

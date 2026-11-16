@@ -1,20 +1,26 @@
 // Splice Bots in the jam build's levels, openagents.com/worlds/splice-bots-jam (unlisted, GitHub #13653):
 // the same game as /worlds/splice-bots (splice-bots.coax, loaded whole), put in the jam world
 // (jam/jam-world.coax) and with the private pack's levels drawn in its cel and ink pass (jam/jam-draw.coax).
-// The pack is the realm's one private asset, private:splice-bots-jam: its catalog, vertices, indices and
+// The pack is the realm's first private asset, private:splice-bots-jam: its catalog, vertices, indices and
 // colour layers. Without it (a golden, or a page that may not load it) the game plays in its own world.
+// The second, private:splice-bots-jam-chars, is the jam's characters (jam/jam-chars.coax): her body is the
+// Director and the rave's raiders the jam's, where and as the game has them (jam/jam-cast.coax). Without it
+// the game draws its own bodies.
 // The C face is splice-jam-face.c (splice-face.c with the pack's parts and two more stores); the
 // shader is gpu/splice-jam.coax.
 //   coax/bin/coax test metaverse/splice-bots/splice-jam.coax --only jam
 #load "splice-bots.coax";
 #load "jam/jam-draw.coax";
 #load "jam/jam-draw-checks.coax" #test;
+#load "jam/jam-cast.coax";
+#load "jam/jam-chars-checks.coax" #test;
 
 SJ_PAGE_DRAWS :: 4 * (2 + SC_PIECE_MAX) + 4 * 8;   // Splice's draws (Splice.draws), and room for the farm's and the kits'
 SpliceJam :: struct {
   page: [1] Splice;           // first: the face hands this state to Splice's exports as a Splice (splice-jam-face.c)
   jam: [1] SjDraw;
-  draws: [SJ_PAGE_DRAWS + SJD_DRAWS * 4] u32; draw_n: int;
+  chars: [1] SjcPage;         // her body and the raiders' (jam/jam-cast.coax)
+  draws: [SJ_PAGE_DRAWS + SJD_DRAWS * 4 + SJC_SLOTS * 4] u32; draw_n: int;
 }
 
 // The pack's catalog (its data part): the jam world read into the page's store (jam-world.coax sj_load, kept
@@ -35,44 +41,55 @@ splice_jam_catalog :: (s: [] SpliceJam, store: [] SjStore, text: string, rows: [
   sjd_build(s[0].jam[..], store, rows);
 }
 splice_jam_asset :: (s: [] SpliceJam, index: int, bytes: int) #export_c #effects(all) { sjd_asset(s[0].jam[..], index, bytes); }
+// The characters pack's catalog (page asset 4) and its vertices part (asset 5, its bytes).
+splice_jam_chars_catalog :: (s: [] SpliceJam, text: string) #export_c #effects(all) { sjc_catalog(s[0].chars[..], text); }
+splice_jam_chars_asset :: (s: [] SpliceJam, bytes: int) #export_c #effects(all) { sjc_asset(s[0].chars[..], bytes); }
 
 // The frame: Splice's (the game steps, writes what moves and draws its interface), then the jam's draws
-// after its own and the game actors' rows. The rock wall goes once Digger has drilled it, the barricade
-// once the drill mech has, and the walls the one world walks through from the start (their colliders
-// open then: jam-world.coax sj_openings_set, sj_push).
+// after its own and the game actors' rows, then the bodies' (her and the raiders, once the characters pack
+// is in: the game leaves them to this page, jam-cast.coax sjc_hide). The rock wall goes once Digger has
+// drilled it, the barricade once the drill mech has, and the walls the one world walks through from the
+// start (their colliders open then: jam-world.coax sj_openings_set, sj_push).
 splice_jam_frame :: (s: [] SpliceJam, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool,
                      world: [] u32, live: [] u32, pieces: [] u32, places: [] u32, style: [] f32, actors: [] f32) -> int #export_c #effects(all) {
   if s.count < 1 { return 0; }
   p := s[0].page[..]; g := p[0].game[..];
   none: [1] u8;
+  sjc_hide(s[0].chars[..], g);
   n := splice_frame(p, out, u, width, height, dpr, dt, still, world, live, pieces, places, style, none[0..<0]);
   m := splice_draw_count(p);
   for k: 0..<m * 4 { s[0].draws[k] = p[0].draws[k]; }
   s[0].draw_n = ifx m > 0 && g[0].jam then sjd_draws(s[0].jam[..], s[0].draws[..], m) else m;
+  if m > 0 { s[0].draw_n = sjc_frame(s[0].chars[..], g, ifx still then 0.0f32 else dt, actors, s[0].draws[..], s[0].draw_n); }
   sj_openings_set(g);   // the rock wall, the barricade and the walls the one world walks through (jam-world.coax)
   _ := sjd_actor_rows(g[0].jr[..], actors);
   return n;
 }
 splice_jam_draw_count :: (s: [] SpliceJam) -> int #export_c #effects(all) { return s[0].draw_n; }
-// The two stores past Splice's four: 4 the jam's rows, 5 its actors (bytes; the actors are copied every frame).
+// The two stores past Splice's four: 4 the jam's rows, 5 its actors and after them the bodies' slots (bytes;
+// copied every frame).
 splice_jam_store_bytes :: (s: [] SpliceJam, k: int) -> int #export_c #effects(all) {
-  return ifx k == 4 then sjd_store_bytes(s[0].jam[..]) else s[0].page[0].game[0].jr[0].n * SJD_ACTOR_FLOATS * 4;
+  return ifx k == 4 then sjd_store_bytes(s[0].jam[..]) else (SJC_AT + SJC_SLOTS * SJC_SLOT_FLOATS) * 4;
 }
 splice_jam_store_version :: (s: [] SpliceJam) -> int #export_c #effects(all) { return s[0].jam[0].store_gen; }
 // For a headless check: 0 the game is in the jam world, 1 to 4 each pack part's bytes, 5 rows, 6 draws,
-// 7 actors, 8 skies, 9 twins, 10 actors' parts drawn.
+// 7 actors, 8 skies, 9 twins, 10 actors' parts drawn; the characters (jam-cast.coax): 11 their pack is in,
+// 12 bodies drawn this frame, 13 hers is drawn, 14 the characters the pack has.
 splice_jam_fact :: (s: [] SpliceJam, k: int) -> int #export_c #effects(all) {
   d := s[0].jam[..]; g := s[0].page[0].game[..];
   if k == 0 { return ifx g[0].jam then 1 else 0; }
   if k >= 1 && k <= 4 { return d[0].assets[k - 1]; }
   if k == 5 { return d[0].rows; } if k == 6 { return d[0].draw_n; } if k == 7 { return g[0].jr[0].n; }
   if k == 8 { return d[0].skies; } if k == 9 { return d[0].twins; } if k == 10 { return d[0].parts; }
+  c := s[0].chars[..];
+  if k == 11 { return ifx sjc_ready(c) then 1 else 0; } if k == 12 { return c[0].shown; }
+  if k == 13 { return ifx c[0].on[SJC_HER] then 1 else 0; } if k == 14 { return c[0].crew[0].n; }
   return -1;
 }
 
 // The frame's stores at check size (as splice-bots.coax SpFrameCheck), the page's jam store, and the jam's rows and actors.
 SjFrameCheck :: struct { s: [1] SpliceJam; out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; world: [SP_WORLD_WORDS * VERTEX_WORDS] u32; live: [SP_WORLD_WORDS * VERTEX_WORDS] u32;
-                         pieces: [SD_PIECE_WORDS] u32; places: [SD_PLACE_WORDS] u32; style: [STYLE_FLOATS] f32; store: [1] SjStore; rows: [64 * IW_OBJECT] f32; actors: [SJ_ACTORS * SJD_ACTOR_FLOATS] f32; }
+                         pieces: [SD_PIECE_WORDS] u32; places: [SD_PLACE_WORDS] u32; style: [STYLE_FLOATS] f32; store: [1] SjStore; rows: [64 * IW_OBJECT] f32; actors: [SJC_AT + SJC_SLOTS * SJC_SLOT_FLOATS] f32; }
 sj_check_frame :: (b: [] SjFrameCheck) -> int #effects(all) {
   return splice_jam_frame(b[0].s[..], b[0].out[..], b[0].u[..], 1280, 720, 1, 0.016, false, b[0].world[..], b[0].live[..], b[0].pieces[..], b[0].places[..], b[0].style[..], b[0].actors[..]);
 }
@@ -88,7 +105,7 @@ sj_check_frame :: (b: [] SjFrameCheck) -> int #effects(all) {
   #assert splice_world_version(s[0].page[..]) == w0 + 1;   // the world written again without the prototype's plain and garage
   m = splice_draw_count(s[0].page[..]);
   #assert splice_jam_draw_count(s) == m + 3 && s[0].draws[m * 4 + 2] == SJD_BASE;
-  #assert splice_jam_fact(s, 5) == 7 && splice_jam_store_bytes(s, 4) == 7 * IW_OBJECT * 4 && splice_jam_store_bytes(s, 5) == splice_jam_fact(s, 7) * 48;
+  #assert splice_jam_fact(s, 5) == 7 && splice_jam_store_bytes(s, 4) == 7 * IW_OBJECT * 4 && splice_jam_store_bytes(s, 5) == (SJC_AT + SJC_SLOTS * SJC_SLOT_FLOATS) * 4;
   // Sniper is the game's: the jam's stands hidden; the rock wall shows until the rubble is drilled
   j := s[0].page[0].game[0].jr[..]; sn := sj_nth(j, SJ_SNIPER, SJ_FARM, 0); rw := sj_nth(j, SJ_ROCK, SJ_RING, 0);
   #assert actors[sn * SJD_ACTOR_FLOATS + 3] == 0 && actors[rw * SJD_ACTOR_FLOATS + 3] == 1;

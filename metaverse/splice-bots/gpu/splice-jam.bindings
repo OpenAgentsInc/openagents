@@ -1,18 +1,19 @@
 # The jam realm's bindings for coax/web/wgsl-module.coax (NAME GROUP BINDING [uniform VEC4FS]), as coax/web/host.js lays
-# them out: Splice's (splice-bots.bindings), with group 1 first the private pack's vertices (its storage part), then the
-# page's six stores (world, live, pieces, places, the jam's rows, its actors), then the pack's layers and their sampler.
+# them out: Splice's (splice-bots.bindings), with group 1 first the private packs' vertices (their storage parts: the
+# jam's world, then its characters, jam/jam-chars.coax), then the page's six stores (world, live, pieces, places, the jam's rows, its actors), then the pack's layers and their sampler.
 u 0 0 uniform 88
 sans_atlas 0 1
 sans_sampler 0 2
 vertices 1 0
-world 1 1
-live 1 2
-pieces 1 3
-places 1 4
-jam_rows 1 5
-jam_actors 1 6
-sheets 1 7
-sheet 1 8
+chars 1 1
+world 1 2
+live 1 3
+pieces 1 4
+places 1 5
+jam_rows 1 6
+jam_actors 1 7
+sheets 1 8
+sheet 1 9
 shadow_map 2 0
 shadow_cmp 2 1
 bloom_src 1 0

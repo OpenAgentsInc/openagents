@@ -726,6 +726,37 @@ g_step :: (g: [] SpGame, dt: f32) {
   g_bot(g, dt);
 }
 
+// Where raider i of the party stands and how (the jam page draws its body there too, jam/jam-cast.coax): dancing
+// (a bounce and a sway to its beat) until someone starts a fight, or as its plan says: asleep on its back,
+// standing, or walking where it faces; in a fight it faces her and winds up, locks, strikes or is open.
+SpRaiderPose :: struct { f: Frame; dance: bool; still: bool; beat: f32; }
+g_raider_pose :: (g: [] SpGame, i: int, t: f32) -> SpRaiderPose {
+  face := atan2(g[0].px - g[0].fx[i], g[0].pz - g[0].fz[i]);
+  fy := ground_y(g, g[0].fx[i], g[0].fz[i]);
+  reel := ifx g[0].fstag[i] > 0 then sin(t * 50) * 0.08 else 0.0f32;
+  pose := g[0].fpose[i];
+  dance := !g[0].fhost[i] && !g[0].fflee[i] && pose == MP_DANCE;
+  beat := t * 7.5 + cast(f32) i * 1.3;
+  f := g_dance_frame(v3(g[0].fx[i] + reel, fy, g[0].fz[i]), beat, i, dance, ifx g[0].fhost[i] then sb_face(g, i, face) else g[0].fyaw[i]);
+  f = sb_blow_pose(g, i, f);   // winding up, locked, striking or open (splice-battle.coax, #13552)
+  if pose == MP_SLEEP && !g[0].fhost[i] && !g[0].fflee[i] { f = g_lying(v3(g[0].fx[i], fy + 0.18, g[0].fz[i]), g[0].fyaw[i]); }
+  return SpRaiderPose.{f = f, dance = dance, still = pose == MP_SLEEP || pose == MP_STAND, beat = beat};
+}
+// A dancer's frame at its feet `at`: a bounce and a sway to its beat (k turns each its own way); or, not
+// dancing, standing at `at` facing `yaw`.
+g_dance_frame :: (at: Point, beat: f32, k: int, dance: bool, yaw: f32) -> Frame {
+  if !dance { return frame_at(at, yaw); }
+  return frame_at(v3(at.x, at.y + abs(sin(beat)) * 0.22, at.z), sin(beat * 0.5) * 0.9 + cast(f32) k);
+}
+// Raider i of those leaving the garage lu seconds after Sniper pulled in: up the cut from the tunnel in a
+// file, past her, then off along the desert to either side.
+g_leaver_frame :: (g: [] SpGame, i: int, lu: f32) -> Frame {
+  sd := ifx i % 2 == 0 then -1.0f32 else 1.0f32; w := lu * 4.2; z0 := -12 - cast(f32) i * 4; run := 18 - z0;
+  lx := sd * 1.6; lz := z0 + w; ly := 0.0f32;
+  if w > run { lx = sd * (1.6 + (w - run)); lz = 18 + (w - run) * 0.3; ly = sd * PI * 0.5; }
+  return frame_at(v3(lx, ground_y(g, lx, lz), lz), ly);
+}
+
 // The foes on their plans. A foe that notices you does what its plan says on seeing you: chases, calls
 // the others near it too, flees, or ignores you; one in a fight or on the run gives up past T_GIVE_UP or at
 // the catwalk, and a guard past twice its notice from its post. Simulating (unseen), nobody is there to see.
@@ -1238,11 +1269,7 @@ g_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   lu := t - g[0].leave_at;
   if lu >= 0 && lu < T_LEAVING && g[0].zone == Z_MINE {
     for i: 0..<F_RAIDERS {
-      // up the cut from the tunnel in a file, past her, then off along the desert to either side
-      sd := ifx i % 2 == 0 then -1.0f32 else 1.0f32; w := lu * 4.2; z0 := -12 - cast(f32) i * 4; run := 18 - z0;
-      lx := sd * 1.6; lz := z0 + w; ly := 0.0f32;
-      if w > run { lx = sd * (1.6 + (w - run)); lz = 18 + (w - run) * 0.3; ly = sd * PI * 0.5; }
-      f := frame_at(v3(lx, ground_y(g, lx, lz), lz), ly);
+      f := g_leaver_frame(g, i, lu);
       lk := g_thing(g, p, TK_RAIDER, 0, f, 0.95, t * 9);
       if lk >= 0 { cast_raider(buf, p, f, 0.95, 100 + i * 5, t3(1.0, 0.36, 0.62), t * 9, cast_colour()); g_thing_end(g, p, lk); }
     }
@@ -1255,14 +1282,7 @@ g_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
     reel := ifx g[0].fstag[i] > 0 then sin(t * 50) * 0.08 else 0.0f32;
     pose := g[0].fpose[i];
     if i < F_RAIDERS {
-      // a raider: dancing (a bounce and a sway) until someone starts a fight, or as its plan says: asleep on
-      // its back, standing, or walking where it faces
-      dance := !g[0].fhost[i] && !g[0].fflee[i] && pose == MP_DANCE;
-      beat := t * 7.5 + cast(f32) i * 1.3;
-      f := frame_at(v3(g[0].fx[i] + reel, fy + (ifx dance then abs(sin(beat)) * 0.22 else 0.0f32), g[0].fz[i]), ifx dance then sin(beat * 0.5) * 0.9 + cast(f32) i else ifx g[0].fhost[i] then sb_face(g, i, face) else g[0].fyaw[i]);
-      f = sb_blow_pose(g, i, f);   // winding up, locked, striking or open (splice-battle.coax, #13552)
-      if pose == MP_SLEEP && !g[0].fhost[i] && !g[0].fflee[i] { f = g_lying(v3(g[0].fx[i], fy + 0.18, g[0].fz[i]), g[0].fyaw[i]); }
-      still := pose == MP_SLEEP || pose == MP_STAND;
+      rp := g_raider_pose(g, i, t); f := rp.f; dance := rp.dance; beat := rp.beat; still := rp.still;
       fk := g_thing(g, p, TK_RAIDER, ifx g[0].fhost[i] then 1 else 0, f, 0.95, ifx dance then beat else ifx still then 0.0f32 else t * 9);
       if fk >= 0 {
       cast_raider(buf, p, f, 0.95, 100 + i * 5, ifx g[0].fhost[i] then t3(1.0, 0.30, 0.12) else t3(1.0, 0.36, 0.62), ifx dance then beat else ifx still && !g[0].fhost[i] then 0.0f32 else t * 9, cast_colour());
