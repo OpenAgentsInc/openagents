@@ -1,0 +1,46 @@
+// Explicit product-C fixture for owned tool strings and provider continuation.
+// checks-c intentionally refuses these dynamic borrowed strings; this exercises
+// the ordinary product backend without changing that eligibility policy.
+// The profile runs the evaluator baseline, then the ordinary native backend.
+#load "../../lib/gateway/chat.coax";
+#load "../../lib/gateway/tool-step.coax";
+
+#test "gateway tools: native fixture also passes the original evaluator" #steps 200000000 {
+ #assert gwt_native_checks()==0;
+}
+
+gwt_native_checks :: ()->int #export_c #effects(all) {
+ s:[1]GwToolStep;gwt_step_begin(s[..]);arena:[GW_TOOL_OUTPUT+512]u8;ar:=[1]ClArena.[ClArena.{buf=arena[..]}];ev:[16]GwEvent;
+ body:="{\"choices\":[{\"message\":{\"tool_calls\":[{\"id\":\"call_café\",\"type\":\"function\",\"function\":{\"name\":\"read_file\",\"arguments\":\"{\\\"path\\\":\\\"note.txt\\\"}\"}}]},\"finish_reason\":\"tool_calls\"}]}";
+ n:=gw_chat_whole(ar[..],body,ev[..]);#assert n==2;
+ for i:0..<n {#assert gwt_step_feed(s[..],ev[i]);}for i:0..<arena.count {arena[i]=0;}
+ #assert gwt_step_call(s[..],0).call_id=="" && !gwt_step_end(s[..],false);
+ gwt_step_begin(s[..]);ar[0]=ClArena.{buf=arena[..]};n=gw_chat_whole(ar[..],body,ev[..]);for i:0..<n {#assert gwt_step_feed(s[..],ev[i]);}for i:0..<arena.count {arena[i]=0;}
+ #assert gwt_step_end(s[..],true);calls:=[1]GwToolCall.[gwt_step_call(s[..],0)];
+ #assert calls[0].call_id=="call_café" && calls[0].name=="read_file" && calls[0].input_json=="{\"path\":\"note.txt\"}";
+ raw:[524288]u8;owned:[GW_TOOL_OUTPUT+512]u8;copied:[1]GwToolCall;
+ k:=gwt_call_write(calls[0],raw[..]);#assert k>0 && gwt_call_read(cast(string)raw[0..<k],copied[..],owned[..]);
+ for i:0..<raw.count {raw[i]=0;}#assert copied[0].call_id==calls[0].call_id && copied[0].input_json==calls[0].input_json;
+ result:=GwToolResult.{call_id=calls[0].call_id,output="first\nsecond",is_error=true};k=gwt_result_write(result,raw[..]);answer:[1]GwToolResult;
+ #assert k>0 && gwt_result_read(cast(string)raw[0..<k],answer[..],owned[..]) && answer[0].is_error && answer[0].output=="first\nsecond";
+ messages:=[3]GwMessage.[GwMessage.{role="user",text="Read"},GwMessage.{role="assistant",calls=calls[..]},GwMessage.{role="tool",result=result}];
+ k=gw_chat_body(GwRequest.{model="m",messages=messages[..],stream=false},0,raw[..]);#assert k>0;request:=cast(string)raw[0..<k];
+ #assert cl_raw(request,"messages.1.tool_calls.0.id")=="\"call_café\"" && cl_raw(request,"messages.2.tool_call_id")=="\"call_café\"" && cl_raw(request,"messages.2.content")=="\"first\\nsecond\"";
+ messages[2].result.call_id="foreign";#assert gw_chat_body(GwRequest.{model="m",messages=messages[..]},0,raw[..])<0;
+
+ // Every physical slot and the full argument extent pass through ordinary C.
+ ids:=[8]string.["0","1","2","3","4","5","6","7"];gwt_step_begin(s[..]);
+ for i:0..<GW_TOOL_CALLS {#assert gwt_step_feed(s[..],GwEvent.{kind=GW_EV_TOOL,status=i,call_id=ids[i],text="read",reason="{}"});}
+ #assert gwt_step_feed(s[..],GwEvent.{kind=GW_EV_DONE,reason="tool_calls"}) && gwt_step_end(s[..],true);
+ for i:0..<GW_TOOL_CALLS {#assert gwt_step_call(s[..],i).call_id==ids[i];}
+ #assert !gwt_step_feed(s[..],GwEvent.{kind=GW_EV_TOOL}) && gwt_step_call(s[..],0).call_id=="";
+ input:[GW_TOOL_INPUT+1]u8;input[0]='{';input[1]='}';for i:2..<input.count {input[i]=' ';}id:[GW_TOOL_ID]u8;for i:0..<id.count {id[i]='a';}
+ gwt_step_begin(s[..]);#assert gwt_step_feed(s[..],GwEvent.{kind=GW_EV_TOOL,call_id=cast(string)id[..],text=cast(string)id[..],reason=cast(string)input[0..<GW_TOOL_INPUT]});
+ #assert gwt_step_feed(s[..],GwEvent.{kind=GW_EV_DONE,reason="tool_calls"}) && gwt_step_end(s[..],true) && gwt_step_call(s[..],0).input_json.count==GW_TOOL_INPUT;
+ #assert !gwt_call_valid(GwToolCall.{call_id="a",name="read",input_json=cast(string)input[..]});
+ output:[GW_TOOL_OUTPUT+1]u8;for i:0..<output.count {output[i]='x';}result=GwToolResult.{call_id="a",output=cast(string)output[0..<GW_TOOL_OUTPUT]};
+ k=gwt_result_write(result,raw[..]);#assert k>0 && gwt_result_read(cast(string)raw[0..<k],answer[..],owned[..]) && answer[0].output.count==GW_TOOL_OUTPUT;
+ result.output=cast(string)output[..];#assert gwt_result_write(result,raw[..])<0;
+ for malformed:[3]string.["[]","{\"a\":1,\"\\u0061\":2}","{\"a\":\"\\ud800\"}"] {#assert !gwt_call_valid(GwToolCall.{call_id="a",name="read",input_json=malformed});}
+ return 0;
+}

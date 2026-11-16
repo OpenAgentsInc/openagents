@@ -1,0 +1,77 @@
+// Bounded assembly of one provider step. Finish metadata does not authorize
+// a prefix: the transport owner separately seals a whole successful response.
+// Returned calls borrow this owner until its next begin; they grant no effects.
+// coax/bin/coax test coax/lib/gateway/tool-step.coax --library
+#load "tool-history.coax";
+#authority;
+GwToolDraft :: struct {id:[GW_TOOL_ID]u8;ni:int;name:[GW_TOOL_ID]u8;nn:int;input:[GW_TOOL_INPUT]u8;nb:int;used:bool;}
+GwToolStep :: struct {calls:[GW_TOOL_CALLS]GwToolDraft;n:int;done:bool;sealed:bool;failed:bool;tools:bool;}
+
+#test "gateway tools: deltas are owned and inaccessible until a successful transport seals the step" {
+ s:[1]GwToolStep;gwt_step_begin(s[..]);id:[4]u8;_=js_copy(id[..],"call");
+ #assert gwt_step_feed(s[..],GwEvent.{kind=GW_EV_TOOL,status=0,call_id=cast(string)id[..],text="read_",reason="{\"pa"});for i:0..<id.count {id[i]=0;}
+ #assert gwt_step_feed(s[..],GwEvent.{kind=GW_EV_TOOL,status=0,call_id="_1",text="file",reason="th\":\"note.txt\"}"}) && gwt_step_call(s[..],0).call_id=="";
+ #assert !gwt_step_end(s[..],true) && !s[0].failed;
+ #assert gwt_step_feed(s[..],GwEvent.{kind=GW_EV_DONE,reason="tool_calls"}) && gwt_step_call(s[..],0).call_id=="";
+ #assert gwt_step_end(s[..],true) && s[0].sealed && gwt_step_call(s[..],0).call_id=="call_1" && gwt_step_call(s[..],0).name=="read_file" && gwt_step_call(s[..],0).input_json=="{\"path\":\"note.txt\"}";
+ #assert gwt_step_call(s[..],-1).call_id=="" && gwt_step_call(s[..],1).call_id=="";
+ #assert !gwt_step_feed(s[..],GwEvent.{kind=GW_EV_TOOL}) && !gwt_step_end(s[..],true) && gwt_step_call(s[..],0).call_id=="";
+ gwt_step_begin(s[..]);#assert s[0].n==0 && !s[0].done && !s[0].sealed && !s[0].failed && !s[0].calls[0].used;
+}
+#test "gateway tools: prefixes cannot survive transport failure refusal truncation or malformed arguments" {
+ for bad:0..<7 {s:[1]GwToolStep;gwt_step_begin(s[..]);#assert gwt_step_feed(s[..],GwEvent.{kind=GW_EV_TOOL,call_id=ifx bad==4 then "" else "a",text=ifx bad==5 then "" else "read",reason=ifx bad==6 then "[]" else "{}"});
+  if bad==0 {#assert gwt_step_feed(s[..],GwEvent.{kind=GW_EV_DONE,reason="tool_calls"}) && !gwt_step_end(s[..],false);}
+  else if bad==1 {#assert !gwt_step_feed(s[..],GwEvent.{kind=GW_EV_REFUSED});}
+  else {#assert gwt_step_feed(s[..],GwEvent.{kind=GW_EV_DONE,reason=ifx bad==2 then "length" else ifx bad==3 then "stop" else "tool_calls"}) && !gwt_step_end(s[..],true);}
+  #assert s[0].failed && !s[0].sealed && gwt_step_call(s[..],0).call_id=="" && !gwt_step_feed(s[..],GwEvent.{kind=GW_EV_DONE,reason="tool_calls"});
+ }
+ s:[1]GwToolStep;gwt_step_begin(s[..]);#assert gwt_step_feed(s[..],GwEvent.{kind=GW_EV_TEXT,text="answer"}) && gwt_step_feed(s[..],GwEvent.{kind=GW_EV_REASONING,text="thought"}) && gwt_step_feed(s[..],GwEvent.{kind=GW_EV_DONE,reason="stop"}) && gwt_step_end(s[..],true) && s[0].n==0;
+ gwt_step_begin(s[..]);#assert gwt_step_feed(s[..],GwEvent.{kind=GW_EV_DONE,reason="tool_calls"}) && !gwt_step_end(s[..],true);
+ gwt_step_begin(s[..]);#assert !gwt_step_feed(s[..],GwEvent.{kind=GW_EV_DONE,reason="other"}) && !gwt_step_end(s[..],true);
+}
+#test "gateway tools: indices duplicate identities sparse lists and late events cannot publish a subset" {
+ s:[1]GwToolStep;
+ for index:[2]int.[-1,GW_TOOL_CALLS] {gwt_step_begin(s[..]);#assert !gwt_step_feed(s[..],GwEvent.{kind=GW_EV_TOOL,status=index}) && s[0].failed;}
+ gwt_step_begin(s[..]);#assert gwt_step_feed(s[..],GwEvent.{kind=GW_EV_TOOL,status=1,call_id="b",text="read",reason="{}"}) && gwt_step_feed(s[..],GwEvent.{kind=GW_EV_DONE,reason="tool_calls"}) && !gwt_step_end(s[..],true);
+ for duplicate:0..<2 {gwt_step_begin(s[..]);#assert gwt_step_feed(s[..],GwEvent.{kind=GW_EV_TOOL,status=1,call_id=ifx duplicate==1 then "a" else "b",text="read",reason="{}"}) && gwt_step_feed(s[..],GwEvent.{kind=GW_EV_TOOL,status=0,call_id="a",text="read",reason="{}"}) && gwt_step_feed(s[..],GwEvent.{kind=GW_EV_DONE,reason="tool_calls"});
+  #assert gwt_step_end(s[..],true)==(duplicate==0);if duplicate==0 {#assert s[0].n==2 && gwt_step_call(s[..],0).call_id=="a" && gwt_step_call(s[..],1).call_id=="b";}
+ }
+ for kind:[3]int.[GW_EV_TEXT,GW_EV_DONE,GW_EV_TOOL] {gwt_step_begin(s[..]);#assert gwt_step_feed(s[..],GwEvent.{kind=GW_EV_DONE,reason="stop"}) && !gwt_step_feed(s[..],GwEvent.{kind=kind}) && s[0].failed;}
+}
+#test "gateway tools: delta byte capacities accept the complete boundary and poison a later overflow" {
+ text:[GW_TOOL_INPUT+1]u8;for i:0..<text.count {text[i]=' ';}text[0]='{';text[1]='}';id:[GW_TOOL_ID]u8;for i:0..<id.count {id[i]='a';}
+ for field:0..<3 {s:[1]GwToolStep;gwt_step_begin(s[..]);#assert gwt_step_feed(s[..],GwEvent.{kind=GW_EV_TOOL,call_id=ifx field==0 then cast(string)id[..] else "a",text=ifx field==1 then cast(string)id[..] else "read",reason=ifx field==2 then cast(string)text[0..<GW_TOOL_INPUT] else "{}"}) && gwt_step_feed(s[..],GwEvent.{kind=GW_EV_DONE,reason="tool_calls"}) && gwt_step_end(s[..],true);
+  gwt_step_begin(s[..]);#assert gwt_step_feed(s[..],GwEvent.{kind=GW_EV_TOOL,call_id=ifx field==0 then cast(string)id[..] else "a",text=ifx field==1 then cast(string)id[..] else "read",reason=ifx field==2 then cast(string)text[0..<GW_TOOL_INPUT] else "{}"});
+  #assert !gwt_step_feed(s[..],GwEvent.{kind=GW_EV_TOOL,call_id=ifx field==0 then "b" else "",text=ifx field==1 then "b" else "",reason=ifx field==2 then " " else ""}) && s[0].failed;
+ }
+}
+#test "gateway tools: a full step retains eight calls and guards the physical final array slot" {
+ s:[1]GwToolStep;gwt_step_begin(s[..]);ids:[GW_TOOL_CALLS][8]u8;o:[1]Jo;
+ for i:0..<GW_TOOL_CALLS {jo_start(o[..],ids[i][..]);jo_int(o[..],i);#assert gwt_step_feed(s[..],GwEvent.{kind=GW_EV_TOOL,status=i,call_id=jo_text(o[..]),text="read",reason="{}"});}
+ #assert gwt_step_feed(s[..],GwEvent.{kind=GW_EV_DONE,reason="tool_calls"}) && gwt_step_end(s[..],true) && s[0].n==GW_TOOL_CALLS;
+ for i:0..<GW_TOOL_CALLS {#assert gwt_step_call(s[..],i).call_id==cast(string)ids[i][0..<1];}
+ #assert gwt_step_call(s[..],GW_TOOL_CALLS).call_id=="";
+}
+
+gwt_step_begin :: (s:[]GwToolStep) #effects(all) {s[0]=GwToolStep.{};}
+gwt_step_fail :: (s:[]GwToolStep)->bool #effects(all) {s[0].failed=true;s[0].sealed=false;return false;}
+gwt_step_feed :: (s:[]GwToolStep,e:GwEvent)->bool #effects(all) {
+ if s[0].failed || s[0].done {return gwt_step_fail(s);}
+ if e.kind==GW_EV_REFUSED {return gwt_step_fail(s);}
+ if e.kind==GW_EV_DONE {s[0].done=true;s[0].tools=e.reason=="tool_calls";if !s[0].tools && e.reason!="stop" && e.reason!="length" {return gwt_step_fail(s);}return true;}
+ if e.kind!=GW_EV_TOOL {return true;}if e.status<0 || e.status>=GW_TOOL_CALLS {return gwt_step_fail(s);}p:=s[0].calls[e.status..<e.status+1];
+ if e.call_id.count>GW_TOOL_ID-p[0].ni || e.text.count>GW_TOOL_ID-p[0].nn || e.reason.count>GW_TOOL_INPUT-p[0].nb {return gwt_step_fail(s);}
+ p[0].ni+=js_copy(p[0].id[p[0].ni..<GW_TOOL_ID],e.call_id);p[0].nn+=js_copy(p[0].name[p[0].nn..<GW_TOOL_ID],e.text);p[0].nb+=js_copy(p[0].input[p[0].nb..<GW_TOOL_INPUT],e.reason);p[0].used=true;
+ if s[0].n<e.status+1 { // mutant: equivalent (including n == status+1 in this condition only assigns the same count again)
+  s[0].n=e.status+1;
+ }return true;
+}
+gwt_step_call :: (s:[]GwToolStep,index:int)->GwToolCall #effects(all) {
+ if !s[0].sealed || s[0].failed || index<0 || index>=s[0].n {return GwToolCall.{};}p:=s[0].calls[index..<index+1];return GwToolCall.{call_id=cast(string)p[0].id[0..<p[0].ni],name=cast(string)p[0].name[0..<p[0].nn],input_json=cast(string)p[0].input[0..<p[0].nb]};
+}
+gwt_step_end :: (s:[]GwToolStep,clean:bool)->bool #effects(all) {
+ if s[0].failed {return false;}if !clean {return gwt_step_fail(s);}if !s[0].done {return false;}
+ if (s[0].n>0)!=s[0].tools {return gwt_step_fail(s);}s[0].sealed=true;
+ for i:0..<s[0].n {if !s[0].calls[i].used || !gwt_call_valid(gwt_step_call(s,i)) {return gwt_step_fail(s);}for j:0..<i {if gwt_step_call(s,j).call_id==gwt_step_call(s,i).call_id {return gwt_step_fail(s);}}}
+ return true;
+}

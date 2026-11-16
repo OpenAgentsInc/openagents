@@ -1,3 +1,4 @@
+// coax/bin/coax test coax/lib/gateway/gateway.coax --library
 // The gateways' one shape (docs/coder/microcoder.md, row 1): a request
 // every provider is translated from, the events every provider's stream is
 // read into, and a Gateway that names where a request goes and which wire
@@ -74,13 +75,19 @@ gw_run_line_env :: (args: [] string, env: [] string, out: [] u8, timeout_ms: int
 gw_translate :: (g: Gateway, req: GwRequest, out: [] u8, why: [] string) -> string {
   if req.model.count == 0 { why[0] = "no model"; return ""; }
   if req.schema.count > 0 && !json_valid(req.schema) { why[0] = "the schema is not JSON"; return ""; }
-  n := -1;
+  if !gw_schema_object(req.schema) {why[0]="the schema is not a JSON object";return "";}
+  if g.wire!=GW_WIRE_CHAT && (req.tools.count>0 || gwt_history_rich(req.messages)) {why[0]="this gateway has no tool conversation translator";return "";}
+  n := -1; // mutant: equivalent (every supported branch assigns n; the unsupported branch returns before observing its initial value)
   if g.wire == GW_WIRE_RESPONSES { n = gw_responses_body(req, out); }
   else if g.wire == GW_WIRE_CHAT { n = gw_chat_body(req, g.flags, out); }
   else if g.wire == GW_WIRE_GEMINI { n = gw_gemini_body(req, g.flags, out); }
   else if g.wire == GW_WIRE_ANTHROPIC { n = gw_anthropic_body(req, out); }
   else { why[0] = "this gateway's wire has no translator yet"; return ""; }
-  if n < 0 { why[0] = "the request does not fit its buffer"; return ""; }
+  if n < 0 { // mutant: equivalent (each translator writes a nonempty object or returns -1, so including zero adds no reachable case)
+    why[0] = "the request does not fit its buffer";
+    if g.wire==GW_WIRE_CHAT {problem:=gwt_request_error(req);if problem!="" {why[0]=problem;}}
+    return "";
+  }
   return cast(string) out[0..<n];
 }
 

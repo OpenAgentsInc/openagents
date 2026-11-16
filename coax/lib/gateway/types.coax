@@ -7,6 +7,7 @@
 // Part of the gateways (docs/coder/microcoder.md).
 
 #load "../agent/claude/fields.coax";
+#load "tool-types.coax";
 
 GW_WIRE_RESPONSES :: 1;          // Open Responses: POST /v1/responses (Vercel AI Gateway, OpenRouter, psionic)
 GW_WIRE_CHAT :: 2;               // Chat Completions (chat.coax)
@@ -15,11 +16,11 @@ GW_WIRE_ANTHROPIC :: 4;          // Anthropic Messages
 
 GW_EV_TEXT :: 1;                 // text: a piece of the answer
 GW_EV_REASONING :: 2;            // text: a piece of the model's reasoning, never the answer
-GW_EV_DONE :: 3;                 // usage; reason "stop" or "length"
+GW_EV_DONE :: 3;                 // usage; reason "stop", "length" or "tool_calls"
 GW_EV_REFUSED :: 4;              // status (HTTP; 0 inside a 200 stream or with no response) and reason
 GW_EV_TOOL :: 5;                 // a function call the model asked for (Chat Completions tool_calls, a request with tools):
                                  // status its index, text its name ("" on a later piece of the same call), reason a piece
-                                 // of its arguments' JSON (the pieces of one index joined are the whole)
+                                 // of its arguments' JSON; call_id extends the native ID of that same index
 
 GwUsage :: struct {
   observed: int;                 // token presence bits: input=1 output=2 cache=4 reasoning=8 cache-write=16
@@ -40,11 +41,14 @@ GwEvent :: struct {
   usage: GwUsage;
   status: int;
   reason: string;
+  call_id: string;               // native tool-call ID; absent on later argument-only deltas
 }
 
 GwMessage :: struct {
-  role: string;                  // "user" or "assistant"
+  role: string;                  // "user", "assistant" or correlated "tool"
   text: string;
+  calls: [] GwToolCall;          // assistant calls, in native order
+  result: GwToolResult;          // role tool: correlated output; text and calls are empty
 }
 
 GwRequest :: struct {

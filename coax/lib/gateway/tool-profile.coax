@@ -1,0 +1,27 @@
+// Exact bytes and the already published chat ToolCall/ToolResult descriptor.
+#load "tool-wire.coax";
+#load "../proto/importer.coax";
+#load "../proto/golden-keys.coax";
+#load "../sys/tool.coax";
+#load "../sys/fs.coax";
+#load "../sys/args.coax";
+#load "../sys/native-check.coax";
+tool_main :: ()->int #export_c #effects(all) {
+ pb:[65536]u8;pn:=fs_read("proto/descriptors/chat-turn.pb",pb[..]);g:[1]PkDescriptor;
+ if pn<1 || pk_load(g[..],cast(string)pb[0..<pn])!="" {return 2;}
+ data:[8192]u8;n:=fs_read("proto/coder/chat-tools-v2alpha1.json",data[..]);d:[1]Jv;nodes:[64]JvNode;
+ if n<1 || !jv_parse(d[..],cast(string)data[0..<n],nodes[..]) {return 2;}
+ arena:[GW_TOOL_INPUT+GW_TOOL_OUTPUT+512]u8;raw:[131072]u8;actual:[131072]u8;o:[1]Jo;ok:=true;
+ for key:[3]string.["call","result","error"] {
+  jo_start(o[..],raw[..]);jv_write(d[0],jv_get(d[0],0,key),o[..]);expected:=jo_text(o[..]);written:= -1;
+  message_name:=".openagents.chat.v2alpha1.ToolResult";
+  if key=="call" {v:[1]GwToolCall;message_name=".openagents.chat.v2alpha1.ToolCall";if gwt_call_read(expected,v[..],arena[..]) {written=gwt_call_write(v[0],actual[..]);}}
+  else {v:[1]GwToolResult;if gwt_result_read(expected,v[..],arena[..]) {written=gwt_result_write(v[0],actual[..]);}}
+  fields:[64]JvNode;good:=written>0 && cast(string)actual[0..<written]==expected && pk_text_keys(g[0].state[..],message_name,expected,false,false,fields[..])=="";
+  print("% %\n",ifx good then "ok  " else "FAIL",key);ok=ok && good;
+ }
+ if !ok {return 1;}args:[1]Args;if args_load(args[..]) && args_has(args[..],"--native") {
+  checks:=[4]string.["coax/bin/coax","test","coax/tests/gateway/tools-native.coax","--library"];if nc_run(checks[..],120,actual[..])<0 {return 1;}print("evaluator native fixture: passed\n");
+  return nc_qualify("coax/tests/gateway/tools-native.coax","gwt_native_checks");
+ }return 0;
+}

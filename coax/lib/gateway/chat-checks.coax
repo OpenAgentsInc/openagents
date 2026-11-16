@@ -95,6 +95,48 @@
 }
 gw_test_has_tools :: (body: string) -> bool { return cl_raw(body, "tools").count > 0; }
 
+#test "shared gateway carries a correlated function call result and model continuation without flattening" {
+ calls:=[1]GwToolCall.[GwToolCall.{call_id="call_1",name="read_file",input_json="{\"path\":\"note.txt\"}"}];
+ messages:=[4]GwMessage.[GwMessage.{role="user",text="Read"},GwMessage.{role="assistant",calls=calls[..]},GwMessage.{role="tool",result=GwToolResult.{call_id="call_1",output="contents"}},GwMessage.{role="assistant",text="I read contents"}];
+ out:[4096]u8;why:[1]string;g:=Gateway.{wire=GW_WIRE_CHAT};req:=GwRequest.{model="m",messages=messages[..],stream=false};body:=gw_translate(g,req,out[..],why[..]);
+ #assert body=="{\"model\":\"m\",\"messages\":[{\"role\":\"user\",\"content\":\"Read\"},{\"role\":\"assistant\",\"content\":\"\",\"tool_calls\":[{\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"read_file\",\"arguments\":\"{\\\"path\\\":\\\"note.txt\\\"}\"}}]},{\"role\":\"tool\",\"tool_call_id\":\"call_1\",\"content\":\"contents\"},{\"role\":\"assistant\",\"content\":\"I read contents\"}],\"stream\":false}";
+ #assert gw_translate(g,req,out[0..<1],why[..])=="" && why[0]=="the request does not fit its buffer";
+ for wire:[3]int.[GW_WIRE_ANTHROPIC,GW_WIRE_GEMINI,GW_WIRE_RESPONSES] {g.wire=wire;#assert gw_translate(g,req,out[..],why[..])=="" && why[0]=="this gateway has no tool conversation translator";}
+ g.wire=GW_WIRE_CHAT;messages[2].result.call_id="foreign";#assert gw_translate(g,req,out[..],why[..])=="" && why[0]=="invalid tool conversation";
+ req.messages=messages[0..<1];for raw:[4]string.["{","null","{}","true"] {req.tools=raw;#assert gw_translate(g,req,out[..],why[..])=="" && why[0]=="tools must be a JSON array";}
+ req.tools="[]";#assert gw_translate(g,req,out[..],why[..])!="";
+}
+#test "native tool IDs survive streamed and whole replies and an event overflow refuses the entire tool prefix" {
+ arena:[4096]u8;ar:=[1]ClArena.[ClArena.{buf=arena[..]}];events:[4]GwEvent;
+ body:="{\"choices\":[{\"message\":{\"tool_calls\":[{\"id\":\"a\",\"function\":{\"name\":\"read\",\"arguments\":\"{}\"}},{\"id\":\"b\",\"function\":{\"name\":\"find\",\"arguments\":\"{}\"}}]},\"finish_reason\":\"tool_calls\"}]}";
+ n:=gw_chat_whole(ar[..],body,events[..]);#assert n==3 && events[0].call_id=="a" && events[1].call_id=="b" && events[2].reason=="tool_calls";
+ n=gw_chat_tools(ar[..],cl_raw(body,"choices.0.message"),events[0..<1],0);#assert n==1 && events[0].kind==GW_EV_REFUSED;
+ n=gw_chat_tools(ar[..],cl_raw(body,"choices.0.message"),events[0..<2],0);#assert n==2 && events[0].call_id=="a" && events[1].call_id=="b";
+ n=gw_chat_tools(ar[..],cl_raw(body,"choices.0.message"),events[..],3);#assert n==1 && events[0].kind==GW_EV_REFUSED;
+ #assert gw_chat_tools(ar[..],"",events[..],2)==2;
+ tiny:[1]u8;ar[0]=ClArena.{buf=tiny[..]};n=gw_chat_tools(ar[..],"{\"tool_calls\":[{\"id\":\"\\u0061\\u0062\",\"function\":{\"name\":\"read\",\"arguments\":\"{}\"}}]}",events[..],0);#assert n==1 && events[0].kind==GW_EV_REFUSED;
+ ar[0]=ClArena.{buf=arena[..]};for bad:[4]string.["{\"tool_calls\":[{\"id\":3}]}","{\"tool_calls\":[{\"index\":-1}]}","{\"tool_calls\":[{\"function\":{\"arguments\":{}}}]}","{\"tool_calls\":[{\"type\":\"custom\",\"function\":{\"name\":\"read\",\"arguments\":\"{}\"}}]}"] {n=gw_chat_tools(ar[..],bad,events[..],0);#assert n==1 && events[0].kind==GW_EV_REFUSED;}
+ n=gw_chat_tools(ar[..],"{\"tool_calls\":0}",events[..],0);#assert n==1 && events[0].kind==GW_EV_REFUSED;
+}
+#test "Chat translation retains each existing dialect flag at its one-byte boundaries" {
+ messages:=[1]GwMessage.[GwMessage.{role="user",text="x"}];out:[4096]u8;arena:[4096]u8;ar:=[1]ClArena.[ClArena.{buf=arena[..]}];
+ for flags:[13]int.[0,1,2,8,9,16,24,32,33,64,96,34,123] {req:=GwRequest.{model="m",system="!",messages=messages[..],schema="{}",schema_name="s",schema_hint="?",max_tokens=1,effort="x"};n:=gw_chat_body(req,flags,out[..]);#assert n>0;body:=cast(string)out[0..<n];#assert json_valid(body);
+  #assert cl_str(ar[..],body,"messages.0.content")==ifx (flags&32)!=0 then "!?" else "!";
+  #assert (cl_raw(body,"response_format").count>0)==((flags&32)==0) && (cl_raw(body,"max_tokens")=="1")==((flags&1)!=0) && (cl_raw(body,"max_completion_tokens")=="1")==((flags&1)==0);
+  #assert (cl_raw(body,"reasoning_effort").count>0)==((flags&2)==0) && (cl_raw(body,"thinking.type")=="\"enabled\"")==((flags&2)!=0);
+  #assert (cl_raw(body,"provider.data_collection")=="\"deny\"")==((flags&24)!=0) && (cl_raw(body,"provider.zdr")=="true")==((flags&16)!=0);
+  #assert (cl_raw(body,"providerOptions.gateway.zeroDataRetention")=="true")==((flags&64)!=0);
+ }
+ req:=GwRequest.{model="m",messages=messages[..],schema="{}",schema_hint="?"};n:=gw_chat_body(req,GW_NO_STRICT_SCHEMA,out[..]);#assert n>0 && cl_str(ar[..],cast(string)out[0..<n],"messages.0.content")=="?";
+ req.schema="";req.system="";req.schema_hint="?";n=gw_chat_body(req,GW_NO_STRICT_SCHEMA,out[..]);#assert n>0 && cl_str(ar[..],cast(string)out[0..<n],"messages.0.content")=="x";
+ messages[0].role="";n=gw_chat_body(req,0,out[..]);#assert n>0 && cl_raw(cast(string)out[0..<n],"messages.0.role")=="\"user\"";
+ messages[0].role="user";req.tools="{";#assert gw_chat_body(req,0,out[..])<0;req.tools="[]";messages[0].role="";#assert gw_chat_body(req,0,out[..])<0;
+ why:[1]string;req=GwRequest.{};#assert gw_translate(Gateway.{wire=GW_WIRE_CHAT},req,out[..],why[..])=="" && why[0]=="no model";
+ req.model="m";req.schema="{";#assert gw_translate(Gateway.{wire=GW_WIRE_CHAT},req,out[..],why[..])=="" && why[0]=="the schema is not JSON";
+ req.schema="";req.tools="[";#assert gw_translate(Gateway.{wire=GW_WIRE_GEMINI},req,out[..],why[..])=="" && why[0]=="this gateway has no tool conversation translator";
+ req.tools="";for schema:[3]string.["0","true","[]"] {req.schema=schema;#assert gw_translate(Gateway.{wire=GW_WIRE_CHAT},req,out[..],why[..])=="" && why[0]=="the schema is not a JSON object" && gw_chat_body(req,0,out[..])<0;}
+}
+
 #test "the recorded Vertex OpenAI-endpoint stream (gemini-3.8-flash) parses, and reasoning beside completion_tokens is added in" {
   r: [1] GwReplay; fx := GW_FX_VERTEX_OPENAI_GEMINI_3_8_FLASH;
   gw_replay(GW_WIRE_CHAT, fx[..], r[..]);

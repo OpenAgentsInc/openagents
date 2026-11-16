@@ -1,4 +1,5 @@
 // Bounded JSON tree, preserving raw intervals and unescaping every key/value.
+#module "coax.json.tree"; // one owner when the gateway and serving/CLI contexts share the tree
 #load "../../../coax/lib/nostr/json.coax";
 #authority;
 RS_BODY :: 65536;

@@ -1,0 +1,89 @@
+// Rich gateway history is inert data. Every result must match one earlier
+// unresolved native call, before another user/assistant message can follow.
+// coax/bin/coax test coax/lib/gateway/tool-history.coax --library
+#load "types.coax";
+#load "tool-wire.coax";
+#authority;
+GW_TOOL_CALLS :: 8; GW_TOOL_HISTORY :: 64; GW_TOOL_MESSAGES :: 128;
+
+#test "gateway tools: history preserves parallel call IDs result order and later model continuation" {
+ calls:=[2]GwToolCall.[GwToolCall.{call_id="a",name="read",input_json="{}"},GwToolCall.{call_id="b",name="find",input_json="{}"}];
+ messages:=[5]GwMessage.[GwMessage.{role="user",text="Read"},GwMessage.{role="assistant",text="Checking",calls=calls[..]},GwMessage.{role="tool",result=GwToolResult.{call_id="b",output="missing",is_error=true}},GwMessage.{role="tool",result=GwToolResult.{call_id="a",output="contents"}},GwMessage.{role="assistant",text="Done"}];
+ #assert gwt_history_rich(messages[..]) && gwt_history_valid(messages[..]);
+ #assert gwt_history_rich(messages[0..<2]);messages[3].result.call_id="b";#assert !gwt_history_valid(messages[..]);messages[3].result.call_id="a";
+ #assert !gwt_history_valid(messages[0..<2]) && !gwt_history_valid(messages[0..<3]) && gwt_history_valid(messages[0..<4]);
+ plain:=[2]GwMessage.[GwMessage.{role="user",text="Hi"},GwMessage.{role="assistant",text="Hello"}];#assert !gwt_history_rich(plain[..]) && gwt_history_valid(plain[..]) && gwt_history_valid(plain[0..<0]);
+}
+#test "gateway tools: history refuses foreign repeated missing and interleaved outcomes" {
+ calls:=[1]GwToolCall.[GwToolCall.{call_id="a",name="read",input_json="{}"}];m:=[3]GwMessage.[GwMessage.{role="assistant",calls=calls[..]},GwMessage.{role="tool",result=GwToolResult.{call_id="a"}},GwMessage.{role="user",text="Next"}];
+ #assert gwt_history_valid(m[..]);m[1].result.call_id="b";#assert !gwt_history_valid(m[..]);m[1].result.call_id="a";
+ m[2]=m[1];#assert !gwt_history_valid(m[..]);m[2]=GwMessage.{role="assistant",calls=calls[..]};#assert !gwt_history_valid(m[..]);
+ m[0].role="user";#assert !gwt_history_valid(m[0..<2]);m[0].role="assistant";
+ m[1]=GwMessage.{role="user",text="Interrupt"};#assert !gwt_history_valid(m[0..<2]);
+ m[1]=GwMessage.{role="tool",text="ambiguous",result=GwToolResult.{call_id="a"}};#assert !gwt_history_valid(m[0..<2]);m[1].text="";
+ m[1].calls=calls[..];#assert !gwt_history_valid(m[0..<2]);m[1].calls=calls[0..<0];m[1].result.call_id="";#assert !gwt_history_valid(m[0..<2]);
+ m[0]=GwMessage.{role="user",result=GwToolResult.{call_id="x"}};#assert gwt_history_rich(m[0..<1]) && !gwt_history_valid(m[0..<1]);
+ m[0]=GwMessage.{role="user",result=GwToolResult.{output="unexpected"}};#assert gwt_history_rich(m[0..<1]) && !gwt_history_valid(m[0..<1]);
+ m[0].result.output="!";#assert gwt_history_rich(m[0..<1]) && !gwt_history_valid(m[0..<1]);
+ m[0]=GwMessage.{role="user",result=GwToolResult.{is_error=true}};#assert gwt_history_rich(m[0..<1]) && !gwt_history_valid(m[0..<1]);
+ m[0]=GwMessage.{role="system"};#assert !gwt_history_valid(m[0..<1]);
+ m[0]=GwMessage.{role="tool"};#assert gwt_history_rich(m[0..<1]) && !gwt_history_valid(m[0..<1]);
+ repeated:=[4]GwMessage.[GwMessage.{role="assistant",calls=calls[..]},GwMessage.{role="tool",result=GwToolResult.{call_id="a"}},GwMessage.{role="assistant",calls=calls[..]},GwMessage.{role="tool",result=GwToolResult.{call_id="a"}}];#assert gwt_history_rich(repeated[0..<1]) && !gwt_history_valid(repeated[..]);
+}
+#test "gateway tools: history bounds all native calls and refuses malformed data before writing" {
+ calls:[65]GwToolCall;ids:[65][8]u8;messages:[129]GwMessage;out:[1]Jo;
+ for i:0..<65 {jo_start(out[..],ids[i][..]);jo_int(out[..],i);calls[i]=GwToolCall.{call_id=jo_text(out[..]),name="read",input_json="{}"};}
+ for count:[3]int.[8,64,65] {n:=0;at:=0;while at<count {end:=at+8;if end>count {end=count;}messages[n]=GwMessage.{role="assistant",calls=calls[at..<end]};n+=1;for i:at..<end {messages[n]=GwMessage.{role="tool",result=GwToolResult.{call_id=calls[i].call_id}};n+=1;}at=end;}#assert gwt_history_valid(messages[0..<n])==(count<=64);}
+ messages[0]=GwMessage.{role="assistant",calls=calls[0..<9]};#assert !gwt_history_valid(messages[0..<1]);
+ calls[1].call_id=calls[0].call_id;messages[0].calls=calls[0..<2];#assert !gwt_history_valid(messages[0..<1]);
+ calls[0].input_json="[]";messages[0].calls=calls[0..<1];#assert !gwt_history_valid(messages[0..<1]);
+ for i:0..<messages.count {messages[i]=GwMessage.{role="user"};}#assert gwt_history_valid(messages[0..<128]) && !gwt_history_valid(messages[..]);
+}
+#test "gateway tools: Chat continuation serializes native IDs exact arguments outputs and complete buffers" {
+ out:[2048]u8;calls:=[1]GwToolCall.[GwToolCall.{call_id="call_café",name="read_file",input_json=" {\"path\":\"note.txt\"} "}];
+ n:=gwt_chat_message(out[..],0,GwMessage.{role="assistant",text="Checking",calls=calls[..]});
+ #assert n>0 && cast(string)out[0..<n]=="{\"role\":\"assistant\",\"content\":\"Checking\",\"tool_calls\":[{\"id\":\"call_café\",\"type\":\"function\",\"function\":{\"name\":\"read_file\",\"arguments\":\" {\\\"path\\\":\\\"note.txt\\\"} \"}}]}";
+ n=gwt_chat_message(out[..],0,GwMessage.{role="tool",result=GwToolResult.{call_id="call_café",output="line\nsecond",is_error=true}});
+ #assert n>0 && cast(string)out[0..<n]=="{\"role\":\"tool\",\"tool_call_id\":\"call_café\",\"content\":\"line\\nsecond\"}";
+ n=gwt_chat_message(out[..],0,GwMessage.{role="user",text="Hi"});#assert n>0 && cast(string)out[0..<n]=="{\"role\":\"user\",\"content\":\"Hi\"}";
+ two:=[2]GwToolCall.[calls[0],GwToolCall.{call_id="b",name="find",input_json="{}"}];n=gwt_chat_message(out[..],0,GwMessage.{role="assistant",calls=two[..]});#assert n>0 && cl_count(cl_raw(cast(string)out[0..<n],"tool_calls"))==2;
+ #assert gwt_chat_message(out[0..<1],0,GwMessage.{role="assistant",calls=calls[..]})<0 && gwt_chat_message(out[0..<1],0,GwMessage.{role="tool",result=GwToolResult.{call_id="a"}})<0;
+}
+#test "gateway tools: request admission reports malformed schemas lists and incomplete history before writing" {
+ #assert gw_schema_object("") && gw_schema_object(" {} ") && !gw_schema_object("{") && !gw_schema_object("true") && !gw_schema_object("[]");
+ req:=GwRequest.{};#assert gwt_request_error(req)=="";req.schema="0";#assert gwt_request_error(req)=="the schema is not a JSON object";req.schema="{}";
+ req.tools="[";#assert gwt_request_error(req)=="tools must be a JSON array";req.tools="{}";#assert gwt_request_error(req)=="tools must be a JSON array";
+ req.tools="[]";#assert gwt_request_error(req)=="";calls:=[1]GwToolCall.[GwToolCall.{call_id="x",name="read",input_json="{}"}];messages:=[1]GwMessage.[GwMessage.{role="assistant",calls=calls[..]}];req.messages=messages[..];
+ #assert gwt_request_error(req)=="invalid tool conversation";req.tools="";#assert gwt_request_error(req)=="invalid tool conversation";
+}
+
+gwt_has_result :: (m:GwMessage)->bool #effects(all) {return m.result.call_id.count>0 || m.result.output.count>0 || m.result.is_error;}
+gw_schema_object :: (raw:string)->bool #effects(all) {if raw=="" {return true;}v:=cl_root(raw);return v.ok && v.tok==JSON_OBJECT;}
+gwt_request_error :: (req:GwRequest)->string #effects(all) {
+ if !gw_schema_object(req.schema) {return "the schema is not a JSON object";}
+ if req.tools!="" {v:=cl_root(req.tools);if !v.ok || v.tok!=JSON_ARRAY {return "tools must be a JSON array";}}
+ if (req.tools!="" || gwt_history_rich(req.messages)) && !gwt_history_valid(req.messages) {return "invalid tool conversation";}return "";
+}
+gwt_history_rich :: (messages:[]GwMessage)->bool #effects(all) {for m:messages {if m.role=="tool" || m.calls.count>0 || gwt_has_result(m) {return true;}}return false;}
+gwt_history_valid :: (messages:[]GwMessage)->bool #effects(all) {
+ if messages.count>GW_TOOL_MESSAGES {return false;}seen:[GW_TOOL_HISTORY]string;count:=0;pending:[GW_TOOL_CALLS]string;settled:[GW_TOOL_CALLS]bool;np:=0;remaining:=0; // mutant: equivalent (one initial empty pending slot cannot match any valid nonempty result ID)
+ for m:messages {
+  if m.role=="tool" {
+   if m.text!="" || m.calls.count!=0 || !gwt_result_valid(m.result) {return false;}found:= -1;
+   for i:0..<np {if pending[i]==m.result.call_id {found=i;}}
+   if found<0 || settled[found] {return false;}settled[found]=true;remaining-=1;continue;
+  }
+  if remaining!=0 || (m.role!="user" && m.role!="assistant") || gwt_has_result(m) {return false;}
+  if m.calls.count==0 {continue;}if m.role!="assistant" || m.calls.count>GW_TOOL_CALLS {return false;}
+  np=m.calls.count;remaining=np;for i:0..<np {call:=m.calls[i];if !gwt_call_valid(call) || count>=GW_TOOL_HISTORY {return false;}
+   for j:0..<count {if seen[j]==call.call_id {return false;}}seen[count]=call.call_id;count+=1;pending[i]=call.call_id;settled[i]=false;
+  }
+ }return remaining==0;
+}
+// Provider-native continuation bytes; called only after whole-history admission.
+gwt_chat_message :: (out:[]u8,at:int,m:GwMessage)->int #effects(all) {
+ n:=at;if m.role=="tool" {n=json_raw(out,n,"{\"role\":\"tool\",\"tool_call_id\":");n=json_write_string(out,n,m.result.call_id);n=json_raw(out,n,",\"content\":");n=json_write_string(out,n,m.result.output);return json_raw(out,n,"}");}
+ n=json_raw(out,n,ifx m.role=="assistant" then "{\"role\":\"assistant\",\"content\":" else "{\"role\":\"user\",\"content\":");n=json_write_string(out,n,m.text);
+ if m.calls.count>0 {n=json_raw(out,n,",\"tool_calls\":[");for call,i:m.calls {if i>0 {n=json_raw(out,n,",");}n=json_raw(out,n,"{\"id\":");n=json_write_string(out,n,call.call_id);n=json_raw(out,n,",\"type\":\"function\",\"function\":{\"name\":");n=json_write_string(out,n,call.name);n=json_raw(out,n,",\"arguments\":");n=json_write_string(out,n,call.input_json);n=json_raw(out,n,"}}");}n=json_raw(out,n,"]");}
+ return json_raw(out,n,"}");
+}

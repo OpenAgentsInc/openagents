@@ -1,0 +1,5 @@
+{
+  "call": {"call_id":"call_café","name":"read_file","input_json":"{\"path\":\"note.txt\"}"},
+  "result": {"call_id":"call_café","output":"first\nsecond","is_error":false},
+  "error": {"call_id":"call_café","output":"File unavailable","is_error":true}
+}

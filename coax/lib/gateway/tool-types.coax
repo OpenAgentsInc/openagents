@@ -1,0 +1,5 @@
+// The existing chat v2 ToolCall/ToolResult, shared with provider continuations.
+// These are data: neither a call nor its recorded result grants execution.
+GW_TOOL_ID :: 128; GW_TOOL_INPUT :: 32768; GW_TOOL_OUTPUT :: 65536;
+GwToolCall :: struct {call_id:string;name:string;input_json:string;}
+GwToolResult :: struct {call_id:string;output:string;is_error:bool;}

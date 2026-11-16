@@ -1,0 +1,85 @@
+// Sole codecs for chat v2 ToolCall/ToolResult. Existing durable-text doors
+// keep rejecting tools; the tool consumer uses these complete records.
+// coax/bin/coax test coax/lib/gateway/tool-wire.coax --library
+#load "tool-types.coax";
+#load "../json/shape.coax";
+#load "../../../psionic/lib/responses/json.coax";
+#authority;
+
+#test "gateway tools: records preserve exact arguments result flag and owned decoded bytes" {
+ b:[131072]u8;arena:[GW_TOOL_INPUT+GW_TOOL_OUTPUT+512]u8;c:[1]GwToolCall;r:[1]GwToolResult;
+ call:=GwToolCall.{call_id="call_café",name="read_file",input_json="{\"path\":\"note.txt\"}"};
+ n:=gwt_call_write(call,b[..]);#assert n>0 && cast(string)b[0..<n]=="{\"call_id\":\"call_café\",\"name\":\"read_file\",\"input_json\":\"{\\\"path\\\":\\\"note.txt\\\"}\"}";
+ #assert gwt_call_read(cast(string)b[0..<n],c[..],arena[..]) && c[0].call_id==call.call_id && c[0].name==call.name && c[0].input_json==call.input_json;
+ for i:0..<n {b[i]=0;}#assert c[0].input_json==call.input_json;
+ for error:0..<2 {value:=GwToolResult.{call_id="call_café",output="first\nsecond",is_error=error==1};n=gwt_result_write(value,b[..]);#assert n>0 && gwt_result_read(cast(string)b[0..<n],r[..],arena[..]) && r[0].call_id==value.call_id && r[0].output==value.output && r[0].is_error==value.is_error;}
+ #assert gwt_call_write(call,b[0..<1])<0 && gwt_result_write(GwToolResult.{call_id="x"},b[0..<1])<0;
+}
+#test "gateway tools: identities and JSON objects refuse malformed ambiguous or incomplete arguments" {
+ for id:[5]string.["","a\n","a\0","\t","\r"] {#assert !gwt_id(id) && !gwt_call_valid(GwToolCall.{call_id=id,name="read",input_json="{}"}) && !gwt_result_valid(GwToolResult.{call_id=id});}
+ for raw:[8]string.["[]","null","1","{","{} {}","{\"a\":1,\"\\u0061\":2}","{\"a\":\"\\ud800\"}","{\"a\":[] ,}"] {#assert !gwt_object(raw) && !gwt_call_valid(GwToolCall.{call_id="x",name="read",input_json=raw});}
+ #assert gwt_object(" {\"nested\":[true,null,{\"café\":-1.5}]} ") && gwt_id("café");
+ #assert !gwt_call_valid(GwToolCall.{call_id="x",input_json="{}"});
+ bad:=[1]u8.[255];#assert !gwt_id(cast(string)bad[..]) && !gwt_result_valid(GwToolResult.{call_id="x",output=cast(string)bad[..]});
+}
+#test "gateway tools: codecs reject unknown repeated escaped missing or wrongly typed fields atomically" {
+ c:=[1]GwToolCall.[GwToolCall.{call_id="kept"}];r:=[1]GwToolResult.[GwToolResult.{call_id="kept"}];arena:[GW_TOOL_OUTPUT+512]u8;
+ for raw:[7]string.["{}","[]","{\"call_id\":\"x\",\"name\":\"r\",\"input_json\":\"{}\",\"extra\":1}","{\"call_id\":\"x\",\"call_id\":\"x\",\"name\":\"r\",\"input_json\":\"{}\"}","{\"call_id\":\"x\",\"name\":\"r\",\"input_json\":{}}","{\"call_id\":\"x\",\"name\":\"r\",\"input_json\":\"[]\"}","{\"call_id\":\"x\",\"n\\u0061me\":\"r\",\"input_json\":\"{}\"}"] {#assert !gwt_call_read(raw,c[..],arena[..]) && c[0].call_id=="kept";}
+ for raw:[6]string.["{}","[]","{\"call_id\":\"x\",\"output\":\"\",\"is_error\":null}","{\"call_id\":\"x\",\"output\":\"\",\"is_error\":\"false\"}","{\"call_id\":\"x\",\"output\":\"\",\"is_error\":false,\"extra\":1}","{\"call_id\":\"x\",\"output\":1,\"is_error\":false}"] {#assert !gwt_result_read(raw,r[..],arena[..]) && r[0].call_id=="kept";}
+ #assert !gwt_call_read("{}",c[..],arena[0..<0]) && !gwt_result_read("{}",r[..],arena[0..<0]);
+}
+#test "gateway tools: record byte limits include escaped input and binary zero in output" {
+ ids:[129]u8;for i:0..<ids.count {ids[i]='x';}#assert gwt_id(cast(string)ids[0..<128]) && !gwt_id(cast(string)ids[..]);
+ body:[GW_TOOL_INPUT+1]u8;for i:0..<body.count {body[i]=' ';}body[0]='{';body[1]='}';#assert gwt_object(cast(string)body[0..<GW_TOOL_INPUT]) && !gwt_object(cast(string)body[..]);
+ output:[GW_TOOL_OUTPUT+1]u8;for i:0..<output.count {output[i]='x';}#assert gwt_result_valid(GwToolResult.{call_id="x",output=cast(string)output[0..<GW_TOOL_OUTPUT]}) && !gwt_result_valid(GwToolResult.{call_id="x",output=cast(string)output[..]});
+ raw:[131072]u8;arena:[GW_TOOL_OUTPUT+512]u8;result:[1]GwToolResult;call:[1]GwToolCall;
+ n:=gwt_result_write(GwToolResult.{call_id="x",output="a\0b"},raw[..]);#assert n>0 && gwt_result_read(cast(string)raw[0..<n],result[..],arena[..]) && result[0].output=="a\0b";
+ n=gwt_call_write(GwToolCall.{call_id="x",name="r",input_json="{}"},raw[..]);#assert n>0 && !gwt_call_read(cast(string)raw[0..<n],call[..],arena[0..<GW_TOOL_INPUT+2*GW_TOOL_ID-1]);
+ n=gwt_result_write(GwToolResult.{call_id="x"},raw[..]);#assert n>0 && !gwt_result_read(cast(string)raw[0..<n],result[..],arena[0..<GW_TOOL_OUTPUT+GW_TOOL_ID-1]);
+}
+#test "gateway tools: readers accept exact decoding spans empty output and encoded ceilings" #steps 200000000 {
+ raw:[524289]u8;arena:[GW_TOOL_OUTPUT+GW_TOOL_INPUT+512]u8;c:[1]GwToolCall;r:[1]GwToolResult;
+ n:=gwt_call_write(GwToolCall.{call_id=" ",name="read",input_json="{}"},raw[..]);#assert n>0 && gwt_call_read(cast(string)raw[0..<n],c[..],arena[0..<GW_TOOL_INPUT+2*GW_TOOL_ID]);
+ for i:n..<131073 {raw[i]=' ';}#assert gwt_call_read(cast(string)raw[0..<131072],c[..],arena[..]) && !gwt_call_read(cast(string)raw[0..<131073],c[..],arena[..]);
+ n=gwt_result_write(GwToolResult.{call_id="x"},raw[..]);#assert n>0 && gwt_result_read(cast(string)raw[0..<n],r[..],arena[0..<GW_TOOL_OUTPUT+GW_TOOL_ID]) && r[0].output=="" && !r[0].is_error;
+ for i:n..<raw.count {raw[i]=' ';}#assert gwt_result_read(cast(string)raw[0..<524288],r[..],arena[..]) && !gwt_result_read(cast(string)raw[..],r[..],arena[..]);
+ #assert gwt_call_write(GwToolCall.{},raw[..])<0 && gwt_result_write(GwToolResult.{},raw[..])<0;
+ #assert !gwt_call_read("{",c[..],arena[..]) && !gwt_result_read("{",r[..],arena[..]);
+ for bad:[3]string.["{\"call_id\":\"\",\"name\":\"read\",\"input_json\":\"{}\"}","{\"call_id\":\"x\",\"name\":\"\",\"input_json\":\"{}\"}","{\"call_id\":\"x\",\"name\":\"read\",\"input_json\":\"\"}"] {#assert !gwt_call_read(bad,c[..],arena[..]);}
+ #assert !gwt_result_read("{\"call_id\":\"\",\"output\":\"\",\"is_error\":false}",r[..],arena[..]);
+}
+#test "gateway tools: fields reject decoded overflow independently and invalid UTF8 results" {
+ raw:[524288]u8;arena:[GW_TOOL_OUTPUT+GW_TOOL_INPUT+512]u8;c:[1]GwToolCall;r:[1]GwToolResult;o:[1]Jo;id:[129]u8;for i:0..<id.count {id[i]='x';}
+ for field:0..<3 {jo_start(o[..],raw[..]);jo_obj(o[..]);jo_key(o[..],"call_id");jo_str(o[..],ifx field==0 then cast(string)id[..] else "x");jo_key(o[..],"name");jo_str(o[..],ifx field==1 then cast(string)id[..] else "read");jo_key(o[..],"input_json");
+  text:[GW_TOOL_INPUT+1]u8;for i:0..<text.count {text[i]=' ';}text[0]='{';text[1]='}';jo_str(o[..],ifx field==2 then cast(string)text[..] else "{}");jo_end(o[..]);#assert !gwt_call_read(jo_text(o[..]),c[..],arena[..]);
+ }
+ for field:0..<3 {jo_start(o[..],raw[..]);jo_obj(o[..]);jo_key(o[..],"call_id");jo_str(o[..],ifx field==0 then cast(string)id[..] else "x");jo_key(o[..],"output");text:[GW_TOOL_OUTPUT+1]u8;for i:0..<text.count {text[i]='x';}bad:=[1]u8.[255];jo_str(o[..],ifx field==1 then cast(string)text[..] else ifx field==2 then cast(string)bad[..] else "");jo_key(o[..],"is_error");jo_bool(o[..],false);jo_end(o[..]);#assert !gwt_result_read(jo_text(o[..]),r[..],arena[..]);}
+}
+
+gwt_id :: (s:string)->bool #effects(all) {if s.count<1 || s.count>GW_TOOL_ID || !js_utf8(s) {return false;}for c:s {if c<32 {return false;}}return true;}
+gwt_object :: (raw:string)->bool #effects(all) {if raw.count>GW_TOOL_INPUT {return false;}nodes:[512]RsNode;arena:[GW_TOOL_INPUT]u8;return rs_json(raw,nodes[..],arena[..]).ok && nodes[0].kind==JSON_OBJECT;}
+gwt_call_valid :: (v:GwToolCall)->bool #effects(all) {return gwt_id(v.call_id) && gwt_id(v.name) && gwt_object(v.input_json);}
+gwt_result_valid :: (v:GwToolResult)->bool #effects(all) {return gwt_id(v.call_id) && v.output.count<=GW_TOOL_OUTPUT && js_utf8(v.output);}
+gwt_call_write :: (v:GwToolCall,out:[]u8)->int #effects(all) {
+ if !gwt_call_valid(v) {return -1;}o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"call_id");jo_str(o[..],v.call_id);jo_key(o[..],"name");jo_str(o[..],v.name);jo_key(o[..],"input_json");jo_str(o[..],v.input_json);jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;
+}
+gwt_result_write :: (v:GwToolResult,out:[]u8)->int #effects(all) {
+ if !gwt_result_valid(v) {return -1;}o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"call_id");jo_str(o[..],v.call_id);jo_key(o[..],"output");jo_str(o[..],v.output);jo_key(o[..],"is_error");jo_bool(o[..],v.is_error);jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;
+}
+gwt_call_read :: (raw:string,out:[]GwToolCall,arena:[]u8)->bool #effects(all) {
+ if arena.count<GW_TOOL_INPUT+2*GW_TOOL_ID || raw.count>131072 {return false;}d:[1]Jv;nodes:[8]JvNode;if !jv_parse(d[..],raw,nodes[..]) {return false;}v:=d[0];keys:=[3]string.["call_id","name","input_json"];
+ if !js_fields(v,0,keys[..]) || jv_len(v,0)!=3 {return false;}
+ a:=js_string(v,jv_get(v,0,"call_id"),arena[0..<GW_TOOL_ID]); // mutant: equivalent (a one-byte wider span still fails gwt_id's 128-byte bound)
+ b:=js_string(v,jv_get(v,0,"name"),arena[GW_TOOL_ID..<2*GW_TOOL_ID]); // mutant: equivalent (a one-byte wider span still fails gwt_id's 128-byte bound)
+ c:=js_string(v,jv_get(v,0,"input_json"),arena[2*GW_TOOL_ID..<2*GW_TOOL_ID+GW_TOOL_INPUT]);
+ if a<0 || b<0 || c<0 {return false;} // mutant: equivalent (also rejecting zero-length fields changes nothing: empty IDs/names and empty JSON arguments fail gwt_call_valid)
+ value:=GwToolCall.{call_id=cast(string)arena[0..<a],name=cast(string)arena[GW_TOOL_ID..<GW_TOOL_ID+b],input_json=cast(string)arena[2*GW_TOOL_ID..<2*GW_TOOL_ID+c]};if !gwt_call_valid(value) {return false;}out[0]=value;return true;
+}
+gwt_result_read :: (raw:string,out:[]GwToolResult,arena:[]u8)->bool #effects(all) {
+ if arena.count<GW_TOOL_OUTPUT+GW_TOOL_ID || raw.count>524288 {return false;}d:[1]Jv;nodes:[8]JvNode;if !jv_parse(d[..],raw,nodes[..]) {return false;}v:=d[0];keys:=[3]string.["call_id","output","is_error"];
+ if !js_fields(v,0,keys[..]) || jv_len(v,0)!=3 {return false;} // mutant: equivalent (changing OR to AND adds no accepted record: all three required typed members are checked below; a missing/replaced key still fails, while extra/repeated keys with all three make both predicates true)
+ a:=js_string(v,jv_get(v,0,"call_id"),arena[0..<GW_TOOL_ID]); // mutant: equivalent (a one-byte wider span still fails gwt_id's 128-byte bound)
+ b:=jv_str(v,jv_get(v,0,"output"),arena[GW_TOOL_ID..<GW_TOOL_ID+GW_TOOL_OUTPUT]);flag:=jv_kind(v,jv_get(v,0,"is_error"));
+ if a<0 || b<0 || (flag!=JV_TRUE && flag!=JV_FALSE) {return false;} // mutant: equivalent (also rejecting a zero-length ID changes nothing: gwt_result_valid refuses it)
+ value:=GwToolResult.{call_id=cast(string)arena[0..<a],output=cast(string)arena[GW_TOOL_ID..<GW_TOOL_ID+b],is_error=flag==JV_TRUE};if !gwt_result_valid(value) {return false;}out[0]=value;return true;
+}
