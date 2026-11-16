@@ -51,6 +51,8 @@ apps/openagents-ios/check.sh
 
 ```sh
 coax/remote/remote.sh run -- coax/bin/coax test apps/openagents-ios/chat.coax
+coax/remote/remote.sh run -- coax/remote/check.sh only coax/native/gpu-editor-check.coax
+coax/remote/remote.sh run -- coax/bin/coax test apps/openagents-ios/editor.coax --library --run-steps 250000000 --steps 200000000
 ```
 
 `OpenAgentsSidebar` runs `UITests/SidebarTests.swift` against the actual
@@ -58,6 +60,12 @@ UIKit control and GPU drawer: repeated open/close, Settings and login Back.
 Use an isolated simulator and override `OA_IOS_BUNDLE_ID` for the test app,
 so its Keychain and preferences stay separate from an installed account.
 The test uses a local unreachable API origin and sends no login request.
+
+The explicit `gpu-editor-check.coax` suite loads the shared editor; the next
+command tests its compiled-page adapter and the app. `components/` and the iOS folder
+are outside the web suite discovery roots, so selecting those file paths
+directly with `check.sh only` would run no suites. The Apple app continues
+to use its platform text views; the canvas editor is the Linux adapter.
 
 ## Release
 

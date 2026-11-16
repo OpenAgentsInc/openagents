@@ -23,8 +23,8 @@ Both ordinary and fully instrumented C/Coax builds pass, with
 `-fsanitize=address,undefined`, `ASAN_OPTIONS=detect_leaks=1` and
 `UBSAN_OPTIONS=halt_on_error=1`. The renderer here is Mesa Lavapipe, a software
 Vulkan implementation; this is not a physical GPU performance measurement.
-The SDK does not yet qualify Wayland IME, focus traversal or live account
-and agent services in the compiled Linux application.
+This first fixture did not qualify active text input, keyboard traversal or
+live account/agent services. The subsequent active-editor record is below.
 
 ![Actual shared login on Linux Vulkan](linux-login.png)
 
@@ -37,6 +37,47 @@ link libraries come from the existing native SDK environment. Generated C
 and headers are written directly by the compiler, preserving crypto table
 lines larger than the process observer's line limit. Compiler/linker flags
 use the shared, checked `nc_flags` argv reader, with no shell interpretation.
+
+## Active canvas editor on Linux
+
+The actual shared page now receives committed text, provisional transactions,
+paste and named keys through the same callbacks installed on the Wayland host.
+The Vulkan fixture asserts that preedit never enters the login draft, commit
+replaces it once, Backspace and undo work, a one-character paste undoes alone,
+Tab/Shift-Tab leave and return to the field, and blurred fields reject input.
+It renders the library's existing composer body and uses the SDK's shared
+focus-ring painter. The SDK explicitly constructs Coax ownership state after
+allocation; raw zero-filled storage is not a Coax constructor.
+
+Ordinary and ASan/UBSan/LSan builds pass. Their new PNGs are byte-identical:
+SHA-256 `89170f2b7c75582cc6d28271b9b65b866ef651625547b27696208649bc02fda1`.
+
+![Active editor and shared keyboard focus ring](linux-editor.png)
+
+The real Wayland protocol/descriptor tests additionally assert buffered
+preedit/commit delivery, UTF-8 byte cursor boundaries, hidden/reversed cursor
+ranges, whole-transaction refusal, prior-field replies, cancellation and a
+distinct paste callback. Existing v1 receipts retain their exact rows; new
+SDK assertions do not change that published shape. Normal and sanitizer
+runs pass. The new cursor admission procedure kills all 34 changed mutants.
+
+`coax/native/gpu-editor-check.coax` is an explicit suite root for the component
+checks (87 passing). The compiled-page check runs separately (933 passing). The web suite discoverer does not
+select files directly under `components/` or the iOS folder; an empty suite
+selection is not evidence that those tests ran. The shared buffer now refuses
+oversized replace/mark operations before changing undo or redo. Coax tests
+also cover selection, owner retirement, atomic capacity checks, horizontal
+single-line scrolling and cut only after clipboard acceptance.
+
+An initial combined suite also pulled the app's unchanged authority closure
+into interpreted UI mutation; that run was stopped within ten minutes and
+is not cited as passing. Component checks and app checks now run separately;
+the changed Wayland admission procedure retains its own full mutation gate.
+
+These controlled observations do not qualify a third-party compositor/IME,
+Orca's active text/selection support, a physical GPU's performance or live
+Linux account and agent services. The GTK application remains until those
+replacement gates pass.
 
 ## Accessibility and Apple SDKs
 

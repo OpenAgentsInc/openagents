@@ -5,6 +5,7 @@
 #include "host.h"
 #include "core-host.h"
 #include "../shared/host/apple/phone-drive.h"
+#include "../shared/host/focus-ring.h"
 
 typedef struct {
   App app;
@@ -16,6 +17,9 @@ typedef struct {
   coax_t_OaDrive *drive;   // coax drive's session (debug builds, -OADrive), or NULL
   void (*drove)(void *context); void *drove_context;   // the host's own turn after each operation
   void (*changed)(void *context); void *context;
+#ifndef __APPLE__
+  coax_t_ChEditor *editor;
+#endif
 } Chat;
 
 static coax_v_t_ChatPage oc_state(Chat *c) { return (coax_v_t_ChatPage){c->s, 1}; }
@@ -51,8 +55,16 @@ static void oc_woke(Chat *c) { oc_changed(c); if (c->changed) c->changed(c->cont
 static int oc_on_frame(void *user, float *vertices, float w, float h, float dpr, float dt) {
   Chat *c = user;
   if (c->drive) dt = oa_drive_dt((coax_v_t_OaDrive){c->drive, 1}, dt);   // the driver holds the clock
+#ifndef __APPLE__
+  c->focused=che_sync((coax_v_t_ChEditor){c->editor,1},oc_state(c));
+#endif
   chat_env(oc_state(c), c->safe_top, c->safe_bottom, c->keyboard, c->focused != 0, c->editor_height, c->reduced != 0);
   int n = (int)chat_frame(oc_state(c), (coax_v_f32){vertices, (int64_t)c->app.max_vertices * coaxial_components_vertex_floats()}, w, h, dpr, dt);
+#ifndef __APPLE__
+  n=(int)che_paint((coax_v_t_ChEditor){c->editor,1},oc_state(c),(coax_v_f32){vertices,(int64_t)c->app.max_vertices*coaxial_components_vertex_floats()},n,dt);
+  float ring[4],style[14];
+  if(che_ring((coax_v_t_ChEditor){c->editor,1},oc_state(c),(coax_v_f32){ring,4}) && chat_style((coax_v_f32){style,14}))n=(int)ui_focus_ring(vertices,(uint32_t)n,c->app.max_vertices,dpr,ring[0],ring[1],ring[2],ring[3],style+10);
+#endif
   if (atlas_serve(&c->app)) oc_changed(c);
   if (c->settle > 0) c->settle--;
   return n < 0 ? 0 : n;
@@ -60,6 +72,9 @@ static int oc_on_frame(void *user, float *vertices, float w, float h, float dpr,
 static void oc_on_pointer(void *user, float x, float y, int phase, int clicks, int mods) {
   (void)clicks; (void)mods;
   Chat *c = user;
+#ifndef __APPLE__
+  if(che_pointer((coax_v_t_ChEditor){c->editor,1},oc_state(c),x,y,phase,clicks,mods)){oc_woke(c);return;}
+#endif
   chat_pointer(oc_state(c), x, y, phase);
   oc_woke(c);
 }
@@ -83,6 +98,27 @@ static int oc_access_read(void *user,int row,UiElement *out) {
 static int oc_access_press(void *user,const char *id) {Chat *c=user;int pressed=chat_activate(oc_state(c),oc_string(id));if(pressed)oc_woke(c);return pressed;}
 
 static void oc_window_changed(void *user) {oc_woke(user);}
+#ifndef __APPLE__
+// Exact SDK callbacks, also callable by the hidden Vulkan qualification.
+int oc_input_key(void *chat,int key,int mods,int down) {
+ Chat*c=chat;if(!c||!down)return 0;coax_v_t_ChEditor editor={c->editor,1};char copy[16384];
+ int n=(int)che_copy(editor,oc_state(c),key,mods,(coax_v_u8){(uint8_t*)copy,sizeof copy});
+ if(n>0){if(ui_copy(c->app.host,copy,(size_t)n))(void)che_copied(editor,oc_state(c),key,mods);oc_woke(c);return 1;}
+ int took=che_key(editor,oc_state(c),key,mods);if(took)oc_woke(c);return took;
+}
+int oc_input_text(void *chat,const char *text,size_t n) {Chat*c=chat;if(!c||!text)return 0;int took=che_insert((coax_v_t_ChEditor){c->editor,1},oc_state(c),(coax_string){text,(int64_t)n});if(took)oc_woke(c);return took;}
+int oc_input_paste(void *chat,const char *text,size_t n) {Chat*c=chat;if(!c||!text)return 0;int took=che_paste((coax_v_t_ChEditor){c->editor,1},oc_state(c),(coax_string){text,(int64_t)n});if(took)oc_woke(c);return took;}
+int oc_input_edit(void *chat,const char *commit,size_t n,const char *preedit,size_t m,int begin,int end) {Chat*c=chat;if(!c)return 0;int took=che_edit((coax_v_t_ChEditor){c->editor,1},oc_state(c),(coax_string){commit,(int64_t)n},(coax_string){preedit,(int64_t)m},begin,end);if(took)oc_woke(c);return took;}
+static int oc_input_wants(void *chat) {Chat*c=chat;return che_sync((coax_v_t_ChEditor){c->editor,1},oc_state(c));}
+static int oc_input_rect(void *chat,float out[4]) {Chat*c=chat;return che_rect((coax_v_t_ChEditor){c->editor,1},oc_state(c),(coax_v_f32){out,4});}
+static uint64_t oc_input_owner(void *chat) {Chat*c=chat;(void)oc_input_wants(c);return che_owner((coax_v_t_ChEditor){c->editor,1});}
+static void oc_input_cancel(void *chat) {Chat*c=chat;che_cancel((coax_v_t_ChEditor){c->editor,1});oc_woke(c);}
+static void oc_input_focus(void *chat,int on) {Chat*c=chat;che_focus((coax_v_t_ChEditor){c->editor,1},on!=0);oc_woke(c);}
+static int oc_sdk_key(void*u,int k,int m,int d) {return oc_input_key(u,k,m,d);}
+static void oc_sdk_text(void*u,const char*t,size_t n) {(void)oc_input_text(u,t,n);}
+static void oc_sdk_paste(void*u,const char*t,size_t n) {(void)oc_input_paste(u,t,n);}
+static void oc_sdk_edit(void*u,const char*c,size_t n,const char*p,size_t m,int a,int b) {(void)oc_input_edit(u,c,n,p,m,a,b);}
+#endif
 static void oc_wheel(void *user,float dy) {Chat *c=user;float f[3];if(oc_scroll_info(c,f) && f[0])oc_scroll_to(c,f[1]+dy/ui_dpr(c->app.host));}
 void *oc_open_window(const char *resources,int width,int height,int hidden) {
   Chat *c = calloc(1, sizeof *c);
@@ -98,10 +134,17 @@ void *oc_open_window(const char *resources,int width,int height,int hidden) {
   resources);
   c->s = calloc(1, sizeof *c->s);
   if (!c->s) { free(c); return NULL; }
+#ifndef __APPLE__
+  c->editor=calloc(1,sizeof *c->editor);if(!c->editor){free(c->s);free(c);return NULL;}
+  che_open((coax_v_t_ChEditor){c->editor,1});
+#endif
   a->atlas = c->s->atlas.e; a->max_vertices = (uint32_t)chat_max_vertices();
   UiApp app = {.title = "OpenAgents", .app_id="com.openagents.desktop", .width = width, .height = height, .hidden=hidden, .min_width=360,.min_height=480,.external_clock=1,.changed=oc_window_changed,.max_vertices = a->max_vertices, .shader = shader, .user = c,
                .frame = oc_on_frame, .pointer = oc_on_pointer, .drive = oc_on_drive,.wheel=oc_wheel,.busy=oc_moving,
                .access_capacity=(uint32_t)chat_access_capacity(),.elements=oc_access_count,.element=oc_access_read,.activate=oc_access_press};
+#ifndef __APPLE__
+  app.key=oc_sdk_key;app.text=oc_sdk_text;app.wants_text=oc_input_wants;app.text_rect=oc_input_rect;app.text_owner=oc_input_owner;app.text_edit=oc_sdk_edit;app.text_cancel=oc_input_cancel;app.text_paste=oc_sdk_paste;app.focus=oc_input_focus;
+#endif
   a->host = ui_open(&app,
 #ifdef __APPLE__
   0
@@ -109,10 +152,21 @@ void *oc_open_window(const char *resources,int width,int height,int hidden) {
   hidden!=0
 #endif
   );
-  if (!a->host) { free(c->s); free(c); return NULL; }
+  if (!a->host) {
+#ifndef __APPLE__
+    free(c->editor);
+#endif
+    free(c->s); free(c); return NULL;
+  }
   a->dpr = ui_dpr(a->host); if (a->dpr < 1) a->dpr = 1;
   a->dpr *= chat_scale();
-  if (!atlas_setup(a)) { gallery_free(a); free(c->s); free(c); return NULL; }
+  if (!atlas_setup(a)) {
+    gallery_free(a);
+#ifndef __APPLE__
+    free(c->editor);
+#endif
+    free(c->s); free(c); return NULL;
+  }
   oc_changed(c);
   return c;
 }
@@ -211,6 +265,9 @@ void oc_close(void *chat) {
   free(c->drive);
   oa_core_on_guest(NULL, NULL);
   gallery_free(&c->app);
+#ifndef __APPLE__
+  ue_close((coax_v_t_UiEditor){c->editor->edit.e,1});free(c->editor);
+#endif
   free(c->s); free(c);
 }
 static int oc_bytes(int64_t n, char *out, int cap) { if (cap < 1) return 0; if (n < 0) n = 0; if (n > cap - 1) n = cap - 1; out[n] = 0; return (int)n; }

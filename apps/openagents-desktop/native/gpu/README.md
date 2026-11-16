@@ -76,5 +76,11 @@ OA_REMOTE=1 coax/remote/remote.sh run -- nix-shell -p gcc pkg-config at-spi2-cor
 Lavapipe and passed semantic Settings/login activation, a committed field
 value, actual animation settling and blur; PNGs match exactly. See the
 [evidence and picture](../../../../docs/verification/gpu-native-13645/README.md).
-Wayland IME, keyboard traversal and actual account/device SDK services are
-still required before normal launch replaces the GTK client.
+The canvas-host editor now also passes actual Vulkan calls for committed
+typing, provisional IME isolation, undo, Tab/Shift-Tab and stale-field refusal,
+normally and with sanitizers. It uses the component library's existing
+composer body and edit buffer; no second parser or wrapper is introduced.
+The production Wayland protocol listeners pass buffered commit/preedit and
+owner/cursor refusal checks normally and instrumented. Third-party compositor
+IME, active text/selection through AT-SPI, actual account/device services and
+an Orca ceremony are still required before normal launch replaces GTK.

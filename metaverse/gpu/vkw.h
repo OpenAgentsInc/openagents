@@ -46,6 +46,9 @@ typedef struct {
   int (*wants_text)(void *user);
   int (*text_rect)(void *user,float rect[4]);
   uint64_t (*text_owner)(void *user);
+  void (*text_edit)(void*,const char*,size_t,const char*,size_t,int,int);
+  void (*text_cancel)(void*);
+  void (*text_paste)(void*,const char*,size_t);
   void (*text_error)(void *user,const char *message);
   // The pointer came over the window: set its cursor (a desktop app's; a realm hides it and draws its own).
   void (*pointer_enter)(void *user,struct wl_pointer *pointer,uint32_t serial);
@@ -397,7 +400,7 @@ static void vkw_open(Vkc *v, Vkw *w, const char *title, uint32_t width, uint32_t
   if (!w->compositor || !w->wm) { fprintf(stderr, "vk-realm: the compositor has no xdg-shell\n"); exit(1); }
   w->surface = wl_compositor_create_surface(w->compositor);
 #ifdef ENGINE_WAYLAND_TEXT_V1
-  if(to.realm_key)hwt_open_sdk(&w->text_sdk,(HwtTo){.user=to.user,.text=to.text,.wants=to.wants_text,.rect=to.text_rect,.owner=to.text_owner,.error=to.text_error,.cancel_compose=vkw_compose_cancel,.cancel_user=w},w->surface,w->seat);
+  if(to.realm_key)hwt_open_sdk(&w->text_sdk,(HwtTo){.user=to.user,.text=to.text,.wants=to.wants_text,.rect=to.text_rect,.owner=to.text_owner,.error=to.text_error,.cancel_compose=vkw_compose_cancel,.cancel_user=w,.edit=to.text_edit,.cancel_edit=to.text_cancel,.paste=to.text_paste},w->surface,w->seat);
 #endif
   w->xdg = xdg_wm_base_get_xdg_surface(w->wm, w->surface);
   xdg_surface_add_listener(w->xdg, &vkw_xdg_listener, NULL);

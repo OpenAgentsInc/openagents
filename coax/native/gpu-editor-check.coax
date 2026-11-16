@@ -1,0 +1,5 @@
+// Explicit component suite root: components/ is outside the web discovery
+// roots. The compiled app is tested separately (apps/openagents-ios/README.md),
+// so UI-only work does not pull its unchanged authority rules into mutation.
+// coax test coax/native/gpu-editor-check.coax --library
+#load "../../components/zeron/editor.coax";

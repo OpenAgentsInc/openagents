@@ -22,7 +22,15 @@ int main(int argc,char **argv) {
  void *page=oc_open_window(argv[1],720,850,1),*core=oa_core_open();assert(page && core);oc_attach(page,core,"");oa_linux_fixture((coax_v_t_AppCore){core,1});oc_step(page);render(page);
  press(page,"nav.menu");press(page,"drawer.settings");press(page,"settings.login");press(page,"login.email");
  char focus[65]={0},value[1024]={0};oc_focus(page,focus,sizeof focus);assert(!strcmp(focus,"login.email"));
- assert(oc_set_field(page,"fixture@example.test"));render(page);oc_field_text(page,value,sizeof value);assert(!strcmp(value,"fixture@example.test"));
+ assert(oc_input_text(page,"fixture",7));render(page);oc_field_text(page,value,sizeof value);assert(!strcmp(value,"fixture"));
+ assert(oc_input_edit(page,"",0,"é",2,0,2));render(page);oc_field_text(page,value,sizeof value);assert(!strcmp(value,"fixture"));
+ assert(oc_input_edit(page,"@example.test",13,"",0,0,0));render(page);oc_field_text(page,value,sizeof value);assert(!strcmp(value,"fixture@example.test"));
+ assert(oc_input_paste(page,"x",1));render(page);assert(oc_input_key(page,'z',2,1));render(page);oc_field_text(page,value,sizeof value);assert(!strcmp(value,"fixture@example.test"));
+ assert(oc_input_key(page,-3,0,1));render(page);oc_field_text(page,value,sizeof value);assert(!strcmp(value,"fixture@example.tes"));
+ assert(oc_input_key(page,'z',2,1));render(page);oc_field_text(page,value,sizeof value);assert(!strcmp(value,"fixture@example.test"));
+ assert(oc_input_key(page,-15,0,1));render(page);oc_focus(page,focus,sizeof focus);assert(!*focus);
+ assert(oc_input_key(page,-15,1,1));render(page);oc_focus(page,focus,sizeof focus);assert(!strcmp(focus,"login.email"));
  assert(oc_shot_write(page,argv[2]));oc_blur(page);render(page);oc_focus(page,focus,sizeof focus);assert(!*focus);
- oc_close(page);oa_core_close(core);puts("Vulkan: actual compiled page/core, GPU Settings/login, semantic activation, committed field value and blur passed; no IME claim");return 0;
+ assert(!oc_input_text(page,"stale",5));
+ oc_close(page);oa_core_close(core);puts("Vulkan: actual compiled page/core, GPU Settings/login, committed text, provisional IME isolation, undo, Tab/Shift-Tab and stale-field refusal passed; no external compositor/IME ceremony claim");return 0;
 }

@@ -353,6 +353,19 @@ The production SDK/descriptor/window-callback component record is
 `docs/verification/host-contract-2026-11-05/wayland-text.md`; it does not claim
 an interactive third-party input-method session or complete window parity.
 
+Canvas text consumers may receive a whole Wayland commit/preedit transaction
+after `done`, separately from committed key text and clipboard paste. Cursor
+indices are admitted UTF-8 byte boundaries (including a hidden cursor); a
+bad index refuses the entire transaction. The component editor keeps preedit
+out of the application draft, preflights combined capacity before applying a
+commit and next composition, and restores the original selection on an owner
+boundary. Single-line fields reuse the composer's horizontal scroll and hit
+geometry. An oversized buffer edit changes neither undo nor redo. Native
+allocations explicitly construct Coax ownership state; zero-filled C storage
+does not run field defaults. Controlled Vulkan and actual Wayland protocol
+SDK checks cover these rules normally and instrumented, without claiming an
+external compositor/IME or screen-reader ceremony (#13645).
+
 The shared WebGPU renderer has one physical mutable frame-buffer set. Its
 availability is checked before producer advancement, and its busy state
 waits for both validation and actual queue completion. Completion counts

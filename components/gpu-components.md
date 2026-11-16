@@ -653,8 +653,9 @@ it cancels/fences reads on close or background. Failed reads retain the
 previous list. Paging refreshes its current cursor. `app_side_window` lays
 out only visible rows, with one-line titles normalized by the shared Unicode
 text helper. The sidebar slides at its full width, so animation never changes
-row wrapping. Paired-computer session history is still a separate G4 consumer;
-this list is explicitly named Account chats.
+row wrapping. Paired-computer sessions now share that same window through
+the existing `AppNavigation` cache; the account section is explicitly named
+Account chats.
 
 ### Desktop accessibility foundation (2026-11-16)
 
@@ -728,6 +729,20 @@ target. Ordinary and ASan/UBSan/LSan builds render Settings/login and pass
 committed-row activation, text synchronization, bounded animation settling
 and blur. Their PNGs match exactly on Lavapipe; this is not an IME or physical
 GPU performance claim. See the [record and picture](../docs/verification/gpu-native-13645/README.md).
+
+The canvas-only active editor now reuses the shared composer's text body,
+selection, undo, wrapping and caret rather than drawing a second text box.
+`components/zeron/editor.coax` isolates provisional composition from committed
+app text. The Wayland SDK buffers an entire commit/preedit transaction until
+`done`, admits UTF-8 cursor boundaries and cancels it across field owners.
+The compiled page's Linux adapter supplies single-line horizontal scrolling,
+pointer selection and Tab/Shift-Tab over the committed semantic focus order.
+Actual Vulkan SDK calls pass typing, preedit isolation, undo, traversal and
+stale-field refusal normally and under ASan/UBSan/LSan. The existing Wayland
+protocol/descriptor SDK tests also pass normally and instrumented. These are
+controlled SDK tests, not a third-party compositor/IME or Orca ceremony.
+Linux live services, active-editor accessibility and the default desktop
+replacement remain G6 exits.
 
 The desktop SDK now has `AppMacDevice`: asynchronous discovery and bounded
 process carriage through the installed `openagents-environment key` and

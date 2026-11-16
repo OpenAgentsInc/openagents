@@ -1,0 +1,123 @@
+// The shared compiled page's active text adapter on canvas-only hosts.
+// Apple keeps its platform text view. Wayland supplies transactions; the one
+// component editor owns provisional text and publishes only committed values.
+#load "chat.coax";
+#load "../../components/zeron/editor.coax";
+
+#test "the compiled login receives commits once, not provisional text or retired-field input" {
+ s:[1]ChatPage;o:[1]ChOut;e:[1]ChEditor;ch_test_atlas(s[0].atlas[..]);_:=ch_test_frame(s[..],o[..]);lf_t_out(s[0].lf[..]);lf_open(s[0].lf[..]);_:=ch_test_frame(s[..],o[..]);
+ #assert chat_activate(s[..],"login.email");_:=ch_test_frame(s[..],o[..]);#assert che_sync(e[..],s[..]);owner:=che_owner(e[..]);
+ #assert placeholder_of(e[0].edit[0].body[..])==lf_placeholder(LF_FIELD_EMAIL);
+ #assert che_edit(e[..],s[..],"","ab",2,2) && lf_email(s[0].lf[..])=="";
+ #assert che_edit(e[..],s[..],"a@b.test","",0,0) && lf_email(s[0].lf[..])=="a@b.test";
+ #assert che_edit(e[..],s[..],"","pending",0,7);che_cancel(e[..]);#assert ue_value(e[0].edit[..])=="a@b.test";
+ chat_blur(s[..]);#assert !che_sync(e[..],s[..]) && che_owner(e[..])==0 && !che_edit(e[..],s[..],"stale","",0,0);
+ #assert chat_activate(s[..],"login.email");#assert che_sync(e[..],s[..]) && che_owner(e[..])!=owner;
+ #assert che_key(e[..],s[..],KEY_BACKSPACE,0) && lf_email(s[0].lf[..])=="a@b.tes";
+}
+#test "keyboard traversal follows the committed focus order, skips disabled controls and can leave a field" {
+ s:[1]ChatPage;o:[1]ChOut;e:[1]ChEditor;ch_test_atlas(s[0].atlas[..]);_:=ch_test_frame(s[..],o[..]);lf_t_out(s[0].lf[..]);lf_open(s[0].lf[..]);_:=ch_test_frame(s[..],o[..]);
+ #assert chat_activate(s[..],"login.email");#assert che_sync(e[..],s[..]);
+ #assert che_key(e[..],s[..],-15,0) && ch_focus(s[..])=="" && che_owner(e[..])==0;
+ #assert cast(string)e[0].key[0..<e[0].nk]!="login.email";
+ #assert che_key(e[..],s[..],-15,MOD_SHIFT) && ch_focus(s[..])=="login.email" && che_owner(e[..])>0;
+ ring:[4]f32;#assert che_ring(e[..],s[..],ring[..]) && ring[2]>100;
+ #assert !che_pointer(e[..],s[..],-100,-100,0,1,0) && !che_ring(e[..],s[..],ring[..]);
+}
+#test "cut publishes only after clipboard acceptance and even a one-character paste undoes alone" {
+ s:[1]ChatPage;o:[1]ChOut;e:[1]ChEditor;ch_test_atlas(s[0].atlas[..]);_:=ch_test_frame(s[..],o[..]);lf_t_out(s[0].lf[..]);lf_open(s[0].lf[..]);_:=ch_test_frame(s[..],o[..]);
+ #assert chat_activate(s[..],"login.email") && che_sync(e[..],s[..]);#assert che_insert(e[..],s[..],"ab");
+ #assert che_paste(e[..],s[..],"c") && che_key(e[..],s[..],'z',MOD_CTRL) && lf_email(s[0].lf[..])=="ab";
+ #assert che_key(e[..],s[..],'a',MOD_CTRL);out:[64]u8;
+ #assert che_copy(e[..],s[..],'x',MOD_CTRL,out[..])==2 && cast(string)out[0..<2]=="ab" && lf_email(s[0].lf[..])=="ab";
+ #assert !che_copied(e[..],s[..],'x',0) && lf_email(s[0].lf[..])=="ab";
+ #assert che_copied(e[..],s[..],'x',MOD_CTRL) && lf_email(s[0].lf[..])=="";
+}
+
+ChEditor :: struct {edit:[1]UiEditor;id:[EL_ID]u8;ni:int;epoch:u64=1;box:[4]f32;key:[EL_ID]u8;nk:int;ring:bool;}
+// calloc does not run Coax field defaults; every SDK allocation calls this.
+che_open :: (e:[]ChEditor) #export_c #effects(all) {if e.count>0 {e[0]=ChEditor.{};}}
+che_owner :: (e:[]ChEditor)->u64 #export_c #effects(all) {return ifx e.count>0 then ue_owner(e[0].edit[..]) else 0;}
+che_text :: (s:[]ChatPage)->string {return ifx ch_focus(s)==VIEW_COMPOSER_ID then ch_draft(s) else ifx ch_focus(s)=="login.email" then lf_email(s[0].lf[..]) else ifx ch_focus(s)=="login.code" then lf_code(s[0].lf[..]) else "";}
+che_sync :: (e:[]ChEditor,s:[]ChatPage)->bool #export_c #effects(all) {
+ if e.count<1 || s.count<1 || !s[0].ready {return false;}
+ id:=ch_focus(s);active:=id==VIEW_COMPOSER_ID || ch_login_field(id)!=LF_FIELD_NONE;
+ if !active {if e[0].ni>0 {ue_close(e[0].edit[..]);e[0].ni=0;}return false;}
+ text:=che_text(s);
+ if id!=cast(string)e[0].id[0..<e[0].ni] || ue_value(e[0].edit[..])!=text {
+  ue_close(e[0].edit[..]);e[0].ni=0;if e[0].epoch==0 || e[0].epoch>=9223372036854775807 {e[0].epoch=0;return false;}e[0].epoch+=1;
+  if !ue_open(e[0].edit[..],e[0].epoch,text) {return false;}e[0].ni=el_copy(e[0].id[..],id);
+  e[0].edit[0].body[0].no_wrap=id!=VIEW_COMPOSER_ID;e[0].nk=el_copy(e[0].key[..],id);
+  e[0].edit[0].body[0].placeholder=ifx id==VIEW_COMPOSER_ID then VIEW_PLACEHOLDER else lf_placeholder(ch_login_field(id));
+ }
+ u:=ch_u(s);k:=arcade_phone_skin();box:[6]f32;
+ if id==VIEW_COMPOSER_ID {if !chat_editor(s,box[..]) {return false;}e[0].box[0]=box[0]/u;e[0].box[1]=(box[1]+box[4])/u;e[0].box[2]=box[2]/u;e[0].box[3]=(box[3]-2*box[4])/u;}
+ else {if !chat_field_box(s,box[..]) {return false;}e[0].box[0]=box[0]/u+k.chrome.field_pad;e[0].box[1]=box[1]/u+(box[3]/u-k.body.line)/2;e[0].box[2]=box[2]/u-2*k.chrome.field_pad;e[0].box[3]=k.body.line;}
+ return true;
+}
+che_publish :: (e:[]ChEditor,s:[]ChatPage)->bool {
+ text:=ue_value(e[0].edit[..]);accepted:=ifx ch_focus(s)==VIEW_COMPOSER_ID then chat_set_text(s,text) else chat_set_field(s,text);
+ if !accepted {_ = che_sync(e,s);}return accepted;
+}
+che_edit :: (e:[]ChEditor,s:[]ChatPage,commit:string,preedit:string,begin:int,end:int)->bool #export_c #effects(all) {
+ if !che_sync(e,s) || !ue_transaction(e[0].edit[..],commit,preedit,begin,end) {return false;}
+ return che_publish(e,s);
+}
+che_insert :: (e:[]ChEditor,s:[]ChatPage,text:string)->bool #export_c #effects(all) {
+ if !che_sync(e,s) || !ue_insert(e[0].edit[..],text) {return false;}return che_publish(e,s);
+}
+che_paste :: (e:[]ChEditor,s:[]ChatPage,text:string)->bool #export_c #effects(all) {
+ if !che_sync(e,s) || !ue_paste(e[0].edit[..],text) {return false;}return che_publish(e,s);
+}
+che_clip_key :: (key:int,mods:int)->bool {return mods==MOD_CTRL && (key=='c' || key=='C' || key=='x' || key=='X');}
+che_copy :: (e:[]ChEditor,s:[]ChatPage,key:int,mods:int,out:[]u8)->int #export_c #effects(all) {
+ if !che_clip_key(key,mods) || !che_sync(e,s) || e[0].edit[0].body[0].ed[0].marked {return 0;}
+ text:=selected(e[0].edit[0].body[..]);if out.count<text.count {return 0;}for c,i:text {out[i]=c;}return text.count;
+}
+che_copied :: (e:[]ChEditor,s:[]ChatPage,key:int,mods:int)->bool #export_c #effects(all) {
+ if !che_clip_key(key,mods) || !che_sync(e,s) || e[0].edit[0].body[0].ed[0].marked {return false;}
+ if key=='x' || key=='X' {composer_cut_selection(e[0].edit[0].body[..]);ue_committed(e[0].edit[..]);return che_publish(e,s);}return true;
+}
+che_cancel :: (e:[]ChEditor) #export_c #effects(all) {if e.count>0 {ue_cancel(e[0].edit[..]);}}
+che_key :: (e:[]ChEditor,s:[]ChatPage,key:int,mods:int)->bool #export_c #effects(all) {
+ if e.count<1 || s.count<1 {return false;}
+ _:=che_sync(e,s);
+ if key== -15 && (mods==0 || mods==MOD_SHIFT) {
+  t:=[1]ElTable.[ch_rows(s)];at:=elt_focus_step(t[..],elt_find(t[..],cast(string)e[0].key[0..<e[0].nk]),mods==MOD_SHIFT);
+  if at<0 {return false;}id:=elt_id(t[..],at);e[0].nk=el_copy(e[0].key[..],id);e[0].ring=true;
+  if t[0].rows[at].role==EL_FIELD {_ = chat_activate(s,id);}else {chat_blur(s);}_ = che_sync(e,s);return true;
+ }
+ if key==KEY_ESCAPE && mods==0 {che_cancel(e);chat_blur(s);_ = che_sync(e,s);return true;}
+ if key==KEY_ENTER && mods==0 {
+  if che_owner(e)>0 {
+   if e[0].edit[0].body[0].ed[0].marked {return false;}
+   return ifx ch_focus(s)==VIEW_COMPOSER_ID then chat_activate(s,VIEW_SEND_ID) else chat_submit(s);
+  }
+  return chat_activate(s,cast(string)e[0].key[0..<e[0].nk]);
+ }
+ if key==' ' && mods==0 && che_owner(e)==0 {return chat_activate(s,cast(string)e[0].key[0..<e[0].nk]);}
+ if !ue_key(e[0].edit[..],s[0].atlas[..],key,mods) {return false;}return che_publish(e,s);
+}
+che_pointer :: (e:[]ChEditor,s:[]ChatPage,x:f32,y:f32,phase:int,clicks:int,mods:int)->bool #export_c #effects(all) {
+ if e.count<1 {return false;}if phase==0 {e[0].ring=false;}
+ if !che_sync(e,s) {return false;}c:=e[0].edit[0].body[..];u:=s[0].d;px:=x/u;py:=y/u;
+ if phase==0 {if px<e[0].box[0] || py<e[0].box[1] || px>=e[0].box[0]+e[0].box[2] || py>=e[0].box[1]+e[0].box[3] {return false;}
+  che_cancel(e);return composer_press(c,s[0].atlas[..],px,py,clicks,(mods&MOD_SHIFT)!=0);
+ }
+ if !c[0].selecting {return false;}if phase==1 {composer_drag(c,s[0].atlas[..],px,py);}else {composer_release(c);}return true;
+}
+che_focus :: (e:[]ChEditor,on:bool) #export_c #effects(all) {if e.count>0 {if !on {che_cancel(e);}e[0].edit[0].body[0].focused=on;}}
+che_rect :: (e:[]ChEditor,s:[]ChatPage,out:[]f32)->bool #export_c #effects(all) {
+ if out.count<4 || !che_sync(e,s) {return false;}for i:0..<4 {out[i]=e[0].box[i]*ch_u(s);}return true;
+}
+// The shared SDK focus-ring painter consumes this committed box in points.
+che_ring :: (e:[]ChEditor,s:[]ChatPage,out:[]f32)->bool #export_c #effects(all) {
+ if e.count<1 || s.count<1 || out.count<4 || !e[0].ring {return false;}
+ t:=[1]ElTable.[ch_rows(s)];i:=elt_find(t[..],cast(string)e[0].key[0..<e[0].nk]);if !elt_focus_stop(t[..],i) {return false;}
+ b:=elt_visible(t[..],i);u:=ch_u(s);out[0]=b.x*u;out[1]=b.y*u;out[2]=b.w*u;out[3]=b.h*u;return true;
+}
+che_paint :: (e:[]ChEditor,s:[]ChatPage,out:[]f32,at:int,dt:f32)->int #export_c #effects(all) {
+ if e.count<1 || s.count<1 {return at;}v:=at;
+ if che_sync(e,s) {v=ue_paint(e[0].edit[..],s[0].atlas[..],out,v,s[0].d,e[0].box[..],arcade_phone_skin(),dt);}
+ return v;
+}

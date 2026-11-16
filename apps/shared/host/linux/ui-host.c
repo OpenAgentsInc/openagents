@@ -151,6 +151,11 @@ static uint32_t to_key(void *user, int key, int mods, int down) { UiHost *h = us
 static void to_text(void *user, const char *bytes, size_t n) { UiHost *h = user; if (h->app.text) h->app.text(h->app.user, bytes, n); }
 static int to_wants(void *user) { UiHost *h = user; return h->app.wants_text ? h->app.wants_text(h->app.user) : 0; }
 static int to_rect(void *user, float rect[4]) { UiHost *h = user; return h->app.text_rect ? h->app.text_rect(h->app.user, rect) : 0; }
+static uint64_t to_owner(void *user) {UiHost*h=user;return h->app.text_owner?h->app.text_owner(h->app.user):1;}
+static void to_edit(void*user,const char*c,size_t n,const char*p,size_t m,int a,int b) {UiHost*h=user;if(h->app.text_edit)h->app.text_edit(h->app.user,c,n,p,m,a,b);}
+static void to_cancel(void*user) {UiHost*h=user;if(h->app.text_cancel)h->app.text_cancel(h->app.user);}
+static void to_paste(void*user,const char*t,size_t n) {UiHost*h=user;if(h->app.text_paste)h->app.text_paste(h->app.user,t,n);}
+static int to_focus(void*user,int on) {UiHost*h=user;if(h->app.focus)h->app.focus(h->app.user,on);return 0;}
 static void to_error(void *user, const char *message) { (void)user; fprintf(stderr, "ui-host: %s\n", message); }
 
 // The cursor, from the session's cursor theme. With no theme the compositor's last cursor stays.
@@ -205,7 +210,7 @@ UiHost *ui_open(const UiApp *app, int offscreen) {
   if (offscreen) vkc_open(&h->v);
   else {
     VkwTo to = {.pointer = to_pointer, .wheel = to_wheel, .user = h, .moved = to_moved, .realm_key = to_key, .text = to_text,
-                .wants_text = to_wants, .text_rect = to_rect, .text_error = to_error, .pointer_enter = to_enter, .app_id = app->app_id};
+                .wants_text = to_wants, .text_rect = to_rect, .text_owner=to_owner,.text_edit=app->text_edit?to_edit:NULL,.text_cancel=to_cancel,.text_paste=app->text_paste?to_paste:NULL,.focus=to_focus,.text_error = to_error, .pointer_enter = to_enter, .app_id = app->app_id};
     vkw_open(&h->v, &h->win, app->title, app->width, app->height, 0, to);
     vkp_open(&h->v, &h->p, h->win.vk_surface, (uint32_t)h->win.want_w, (uint32_t)h->win.want_h);
     h->registry = wl_display_get_registry(h->win.display);

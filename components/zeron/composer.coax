@@ -48,12 +48,14 @@ Composer :: struct {
   upstream: bool;               // the caret at a soft wrap sits at the end of the upper row
   column: f32; has_column: bool;                   // Up/Down keep this x (preferred_column)
   focused: bool;
+  caret_hidden: bool;           // an input method may request no cursor during preedit
   since: f32;                   // seconds since the last keystroke or caret move (the blink)
   sent: int;                    // messages Enter has cleared
   // the pointer: a press's unit and the range it first selected
   selecting: bool; drag_unit: int; drag_from: int; drag_to: int;
   // scrolling once the text outgrows the box
   scroll: f32; follow: bool;
+  scroll_x: f32; no_wrap: bool; // active single-line platform fields
   // where it was last drawn (logical px), for the pointer and the IME
   x: f32; y: f32; w: f32; h: f32;
   text_x: f32; text_y: f32; text_w: f32; view_h: f32;
@@ -361,7 +363,7 @@ unit_to :: (c: [] Composer, unit: int, i: int) -> int {
   return ifx e < c[0].ed[0].n then e + 1 else e;
 }
 // The content point under a logical window point.
-content_hit :: (c: [] Composer, a: [] Atlas, x: f32, y: f32) -> Hit { return hit_at(c, a, x - c[0].text_x, y - c[0].text_y + c[0].scroll); }
+content_hit :: (c: [] Composer, a: [] Atlas, x: f32, y: f32) -> Hit { return hit_at(c, a, x - c[0].text_x + c[0].scroll_x, y - c[0].text_y + c[0].scroll); }
 
 // A press at logical (x, y) with its click count: focuses the composer when
 // inside it; one click puts the caret, shift-click extends, two select the
@@ -427,6 +429,21 @@ byte_in :: (s: string, u16: int) -> int { return eb_byte_in(s, u16); }
 
 // ---------------------------------------------------------------- paint
 
+#test "an active field reuses the composer text body without its panel or actions" {
+  a: [1] Atlas; test_atlas(a[..]); c: [1] Composer;
+  c[0].focused = true; composer_insert(c[..], "ab\ncd\nef");
+  composer_body_layout(c[..], a[..], 10, 20, 80, 22.75);
+  #assert c[0].text_x == 10 && c[0].text_y == 20 && c[0].text_w == 80 && c[0].view_h == 22.75;
+  #assert c[0].lines == 3 && c[0].scroll == 45.5f32;
+  p: [64] Prim; split: [1] int;
+  n := composer_body_prims(p[..], 0, c[..], a[..], split[..]);
+  #assert n > 2 && p[0].kind == PRIM_CLIP && p[n-1].kind == PRIM_CLIP && !p[n-1].on && split[0] < n;
+  for i: 0..<n { #assert p[i].kind == PRIM_CLIP || p[i].kind == PRIM_TEXT || p[i].kind == PRIM_BOX; }
+  composer_select_all(c[..]); n = composer_body_prims(p[..], 0, c[..], a[..], split[..]);
+  #assert p[1].kind == PRIM_BOX && p[1].fill.r == composer_skin(c[..]).selection.r;
+  for i: split[0]..<n { #assert p[i].kind != PRIM_BOX; } // no second caret over the selection
+}
+
 // The composer paints into a display list (paint/list.coax) in its skin's
 // roles, and paint_composer draws the list (backend/gpu.coax gpu_draw).
 COMPOSER_PRIMS :: 256;
@@ -435,17 +452,19 @@ COMPOSER_PRIMS :: 256;
 // the suffix with its gap (pickers.rs model_chip_width ceils each text).
 chip_label_width :: (c: [] Composer, a: [] Atlas, s: string) -> f32 { return ceil(text_width(a, composer_skin(c).label.face, s)); }
 
-// The expanded composer at logical (x, y), width w, into list; returns the
-// count. Lays it out too (where it was drawn, its rows, its scroll). split[0]
-// is where the typed text's prims end (the IME's underline goes after them).
-composer_prims :: (list: [] Prim, n: int, c: [] Composer, a: [] Atlas, x: f32, y: f32, w: f32, split: [] int) -> int {
-  sk := composer_skin(c); m := sk.cmp;
-  left := x + 1 + m.text_inset; text_w := w - 2 - 2 * m.text_inset;
-  composer_wrap(c, a, text_w);
-  h := round_layout(y + composer_height(c, c[0].lines)) - y;   // Taffy rounds the pill's edges
-  view_h := text_box(m, c[0].lines) - m.pad_v;
-  c[0].x = x; c[0].y = y; c[0].w = w; c[0].h = h;
-  c[0].text_x = left; c[0].text_y = y + 1 + m.pad_top; c[0].text_w = text_w; c[0].view_h = view_h;
+// The shared active text body. A platform field can supply its own frame and
+// actions while retaining this buffer, line layout, selection, scroll and caret.
+composer_body_layout :: (c: [] Composer, a: [] Atlas, x: f32, y: f32, w: f32, h: f32) {
+  c[0].text_x = x; c[0].text_y = y; c[0].text_w = w; c[0].view_h = h;
+  composer_wrap(c, a, ifx c[0].no_wrap then cast(f32)COMPOSER_UNBOUNDED else w); composer_body_scroll(c);
+  if c[0].no_wrap {
+    cursor:=x_in_row(c,a,0,c[0].ed[0].caret);most:=text_width(a,composer_face(c),typed(c))-w+composer_skin(c).cmp.caret;
+    if c[0].follow {if cursor<c[0].scroll_x {c[0].scroll_x=cursor;}else if cursor+composer_skin(c).cmp.caret>c[0].scroll_x+w {c[0].scroll_x=cursor+composer_skin(c).cmp.caret-w;}}
+    if c[0].scroll_x>most {c[0].scroll_x=most;}if c[0].scroll_x<0 {c[0].scroll_x=0;}
+  }else {c[0].scroll_x=0;}
+}
+composer_body_scroll :: (c: [] Composer) {
+  m := composer_skin(c).cmp; view_h := c[0].view_h;
   lh := m.line;
   // the scroll keeps the caret's row in view (clamp_scroll)
   most := cast(f32) c[0].lines * lh - view_h;
@@ -456,12 +475,13 @@ composer_prims :: (list: [] Prim, n: int, c: [] Composer, a: [] Atlas, x: f32, y
   }
   if c[0].scroll > most { c[0].scroll = most; }
   if c[0].scroll < 0 { c[0].scroll = 0; }
-  // shadow-lg, then the pill (theme.rs: no shadow on frost, this is opaque)
-  k := uiskin_float(list, n, sk, x, y, w, h, m.radius);
-  k = prim_box(list, k, x, y, w, h, m.radius, 1, sk.surface, sk.field_edge);
+}
+composer_body_prims :: (list: [] Prim, n: int, c: [] Composer, a: [] Atlas, split: [] int) -> int {
+  sk := composer_skin(c); m := sk.cmp; lh := m.line;
+  left := c[0].text_x-c[0].scroll_x; text_w := c[0].text_w; view_h := c[0].view_h;
   // the text box, clipped to the input's bounds (paint_bounds: into the top padding once scrolled)
   pad := ifx c[0].scroll > 1 then m.pad_top else 0.0f32;
-  k = prim_clip(list, k, left, c[0].text_y - pad, left + text_w, (c[0].text_y - pad) + (view_h + pad));
+  k := prim_clip(list, n, c[0].text_x, c[0].text_y - pad, c[0].text_x + text_w, (c[0].text_y - pad) + (view_h + pad));
   t := typed(c);
   top := c[0].text_y - c[0].scroll;
   lo := sel_lo(c); hi := sel_hi(c);
@@ -488,12 +508,30 @@ composer_prims :: (list: [] Prim, n: int, c: [] Composer, a: [] Atlas, x: f32, y
   }
   split[0] = k;
   // the caret: 2px in the accent, the line's height, blinking; none over a selection
-  if c[0].focused && hi == lo && cast(int) floor(c[0].since / m.caret_blink) % 2 == 0 {
+  if c[0].focused && !c[0].caret_hidden && hi == lo && cast(int) floor(c[0].since / m.caret_blink) % 2 == 0 {
     r := row_of(c, c[0].ed[0].caret, c[0].upstream);
     cx := left + x_in_row(c, a, r, c[0].ed[0].caret);
     k = prim_fill(list, k, cx, top + cast(f32) r * lh, m.caret, lh, 0, sk.accent);
   }
-  k = prim_unclip(list, k);
+  return prim_unclip(list, k);
+}
+
+// The expanded composer at logical (x, y), width w, into list; returns the
+// count. Lays it out too (where it was drawn, its rows, its scroll). split[0]
+// is where the typed text's prims end (the IME's underline goes after them).
+composer_prims :: (list: [] Prim, n: int, c: [] Composer, a: [] Atlas, x: f32, y: f32, w: f32, split: [] int) -> int {
+  sk := composer_skin(c); m := sk.cmp;
+  left := x + 1 + m.text_inset; text_w := w - 2 - 2 * m.text_inset;
+  composer_wrap(c, a, text_w);
+  h := round_layout(y + composer_height(c, c[0].lines)) - y;   // Taffy rounds the pill's edges
+  view_h := text_box(m, c[0].lines) - m.pad_v;
+  c[0].x = x; c[0].y = y; c[0].w = w; c[0].h = h;
+  c[0].text_x = left; c[0].text_y = y + 1 + m.pad_top; c[0].text_w = text_w; c[0].view_h = view_h;
+  composer_body_scroll(c);
+  // shadow-lg, then the pill (theme.rs: no shadow on frost, this is opaque)
+  k := uiskin_float(list, n, sk, x, y, w, h, m.radius);
+  k = prim_box(list, k, x, y, w, h, m.radius, 1, sk.surface, sk.field_edge);
+  k = composer_body_prims(list, k, c, a, split);
   // the actions row: 42 tall at the pill's bottom inside the hairline, 32px items centered
   row_mid := y + h - 1 - m.actions_bottom - m.chip_h / 2;
   k = composer_attach(list, k, c, sk, x + 1 + m.action_inset, row_mid);
@@ -510,7 +548,7 @@ composer_underline :: (out: [] f32, at: int, c: [] Composer, a: [] Atlas, d: f32
   if !c[0].ed[0].marked || c[0].ed[0].n == 0 { return at; }
   sk := composer_skin(c); m := sk.cmp;
   lh := m.line;
-  left := c[0].text_x; top := c[0].text_y - c[0].scroll;
+  left := c[0].text_x-c[0].scroll_x; top := c[0].text_y - c[0].scroll;
   fi := a[0].fonts[sk.body.face].ascent; fd := a[0].fonts[sk.body.face].descent;
   v := at;
   for k: 0..<c[0].lines {
@@ -526,7 +564,7 @@ composer_underline :: (out: [] f32, at: int, c: [] Composer, a: [] Atlas, d: f32
     }
   }
   pad := ifx c[0].scroll > 1 then m.pad_top else 0.0f32;
-  gp_clip(out, at, v, d, left, c[0].text_y - pad, c[0].text_w, c[0].view_h + pad);
+  gp_clip(out, at, v, d, c[0].text_x, c[0].text_y - pad, c[0].text_w, c[0].view_h + pad);
   return v;
 }
 

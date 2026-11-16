@@ -1,6 +1,19 @@
 // Bounds and ownership for asynchronous Wayland text-input and clipboard effects.
+// coax test metaverse-engine/host/wayland-text.coax --library
 #load "../../coax/lib/net/ws.coax";
 #authority;
+#test "preedit cursors are UTF8 boundaries, including reversed selections and a hidden cursor" {
+ #assert hwt_mark_range("é🙂",0,6) && hwt_mark_range("é🙂",6,2) && hwt_mark_range("é🙂",2,2) && hwt_mark_range("",0,0);
+ #assert hwt_mark_range("候補",-1,-1) && !hwt_mark_range("a",-1,0) && !hwt_mark_range("a",0,-1) && !hwt_mark_range("a",-2,-2);
+ #assert !hwt_mark_range("é🙂",1,6) && !hwt_mark_range("é🙂",0,3) && !hwt_mark_range("a",2,0) && !hwt_mark_range("a",0,2);
+ bad:=[2]u8.[195,40];#assert !hwt_mark_range(cast(string)bad[..],0,0);
+ big:[4097]u8;for i:0..<big.count {big[i]='a';}#assert !hwt_mark_range(cast(string)big[..],0,0);
+}
+hwt_mark_range :: (text:string,begin:int,end:int)->bool #export_c #effects(all) {
+ if !hwt_text(text,false) {return false;}if begin== -1 && end== -1 {return true;}
+ if begin<0 || end<0 || begin>text.count || end>text.count {return false;}
+ return (begin==text.count || (text[begin]&0xC0)!=0x80) && (end==text.count || (text[end]&0xC0)!=0x80);
+}
 #test "text transactions admit whole UTF8 and never a truncated prefix or NUL" {
  #assert hwt_text("",false)&&hwt_text("café 🙂\n",false)&&hwt_text("paste",true);
  bad:=[2]u8.[195,40];nul:=[3]u8.[97,0,98];#assert !hwt_text(cast(string)bad[..],false)&&!hwt_text(cast(string)nul[..],true);

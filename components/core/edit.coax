@@ -285,12 +285,20 @@ eb_splice :: (e: [] EditBuf, from: int, to: int, s: string) -> bool {
 }
 // replace_text_in_range: the given range (from < 0: the composition, else
 // the selection) becomes s, the caret after it. Whether the text changed.
+#test "a refused whole replacement or composition leaves undo and redo untouched" {
+  e:[1]EditBuf;eb_set(e[..],"ab");#assert eb_insert(e[..],"c");#assert eb_undo(e[..]);
+  u:=e[0].hist[EB_UNDO].count;r:=e[0].hist[EB_REDO].count;g:=e[0].gen;
+  big:[EB_TEXT+1]u8;
+  #assert !eb_replace(e[..],0,0,cast(string)big[..]) && !eb_mark(e[..],0,0,cast(string)big[..],0,0);
+  #assert eb_text(e[..])=="ab" && e[0].gen==g && !e[0].marked;
+  #assert e[0].hist[EB_UNDO].count==u && e[0].hist[EB_REDO].count==r && eb_redo(e[..]) && eb_text(e[..])=="abc";
+}
 eb_replace :: (e: [] EditBuf, from_in: int, to_in: int, s: string) -> bool {
   from := from_in; to := to_in;
   if from < 0 {
     if e[0].marked { from = e[0].marked_at; to = e[0].marked_end; } else { from = eb_sel_lo(e); to = eb_sel_hi(e); }
   }
-  if from > e[0].n || to > e[0].n || from > to { return false; }
+  if !eb_fits(e, from, to, s) { return false; }
   // an IME commit is the tail of a composition whose snapshot was taken when it began
   if !e[0].marked { eb_record_edit(e, from, to, s); }
   if !eb_splice(e, from, to, s) { return false; }
@@ -306,7 +314,7 @@ eb_mark :: (e: [] EditBuf, from_in: int, to_in: int, s: string, sel_from: int, s
   if from < 0 {
     if e[0].marked { from = e[0].marked_at; to = e[0].marked_end; } else { from = eb_sel_lo(e); to = eb_sel_hi(e); }
   }
-  if from > e[0].n || to > e[0].n || from > to { return false; }
+  if !eb_fits(e, from, to, s) { return false; }
   if !e[0].marked {
     // the composition's first keystroke: one undo drops all of it
     eb_hist_push(e, EB_UNDO);

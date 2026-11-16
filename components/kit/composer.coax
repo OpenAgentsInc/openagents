@@ -89,7 +89,7 @@ composer_box :: (m: TextMeasure, s: UiSkin, w: f32, look: ComposerLook) -> Compo
 }
 
 // The action's mark: an arrow that turns into Stop's square as `turn` goes 0 to 1.
-composer_mark :: (sh: [] Sheet, s: UiSkin, cx: f32, cy: f32, turn: f32, ink: Rgba) {
+composer_action_mark :: (sh: [] Sheet, s: UiSkin, cx: f32, cy: f32, turn: f32, ink: Rgba) {
   t := am_unit(turn); a := s.cmp.chip_icon / 2; stroke := s.animated.drawer_stroke;
   if t < 1 {
     c := opacity(ink, 1 - t);
@@ -163,7 +163,7 @@ ctx_composer :: (f: [] UiFrame, id: string, send_id: string, x: f32, bottom: f32
   ax := x + box.send_x + box.send / 2;
   if look.enabled { sheet_fill(sh, ax - circle / 2, mid - circle / 2, circle, circle, circle / 2, s.accent); }
   else { _ := sheet_box(sh, ax - circle / 2, mid - circle / 2, circle, circle, circle / 2, s.border, s.clear, s.hairline); }
-  composer_mark(sh, s, ax, mid, turn, ifx look.enabled then s.on_accent else s.faint);
+  composer_action_mark(sh, s, ax, mid, turn, ifx look.enabled then s.on_accent else s.faint);
   action := uiframe_semantic(f, send_id, EL_BUTTON, ifx look.stop then "Stop generating" else "Send message", x + box.send_x, row, box.send, box.send,
                              ifx look.enabled then 0 else EL_S_DISABLED, send_action);
   sheet_hit(sh, UIFRAME_HIT, action, 0, x + box.send_x, row, box.send, box.send);

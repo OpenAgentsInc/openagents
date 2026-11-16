@@ -1,0 +1,121 @@
+// The active GPU text body used where a platform exposes an input-method
+// protocol rather than a native text view. One Composer owns editing; this
+// adapter supplies no second edit buffer, line wrapper or key implementation.
+// Its owner is a host-issued nonzero epoch, separate from the app reducer.
+#load "composer.coax";
+
+#test "active text stays provisional until commit and cancellation restores its selection" {
+  e: [1] UiEditor; a: [1] Atlas; test_atlas(a[..]);
+  #assert ue_open(e[..], 1, "ab");
+  composer_select_all(e[0].body[..]);
+  #assert ue_mark(e[..], "候補", 0, 6) && ue_value(e[..]) == "ab";
+  #assert typed(e[0].body[..]) == "候補" && e[0].body[0].ed[0].marked;
+  ue_cancel(e[..]);
+  #assert typed(e[0].body[..]) == "ab" && sel_lo(e[0].body[..]) == 0 && sel_hi(e[0].body[..]) == 2;
+  #assert ue_mark(e[..], "候補", 6, 6) && ue_insert(e[..], "確定🙂");
+  #assert ue_value(e[..]) == "確定🙂" && !e[0].body[0].ed[0].marked;
+  composer_undo(e[0].body[..]); ue_committed(e[..]); #assert ue_value(e[..]) == "ab";
+}
+#test "active editor fences owners and refuses an over-capacity whole edit" {
+  e: [1] UiEditor; a: [1] Atlas; test_atlas(a[..]);
+  #assert !ue_open(e[..], 0, "no owner") && ue_open(e[..], 7, "hello");
+  #assert ue_key(e[..], a[..], KEY_LEFT, 0) && e[0].body[0].ed[0].caret == 4;
+  #assert ue_insert(e[..], "🙂") && ue_value(e[..]) == "hell🙂o";
+  big: [EB_TEXT+1] u8; for i: 0..<big.count {big[i]='a';}
+  #assert !ue_insert(e[..], cast(string)big[..]) && ue_value(e[..]) == "hell🙂o";
+  #assert !ue_open(e[..], 8, cast(string)big[..]) && e[0].owner == 7;
+  #assert ue_mark(e[..], "x", 0, 1); ue_close(e[..]);
+  #assert e[0].owner == 0 && e[0].n == 0 && !e[0].body[0].focused && e[0].body[0].ed[0].hist[0].used == 0;
+  #assert !ue_insert(e[..], "stale") && !ue_mark(e[..], "stale", 0, 5);
+  #assert ue_open(e[..], 8, "new") && ue_value(e[..]) == "new";
+}
+#test "field Return and Escape belong to the caller, ordinary keys use shared editing" {
+  e: [1] UiEditor; a: [1] Atlas; test_atlas(a[..]); #assert ue_open(e[..], 1, "draft");
+  #assert !ue_key(e[..], a[..], KEY_ENTER, 0) && ue_value(e[..]) == "draft";
+  #assert !ue_key(e[..], a[..], KEY_ESCAPE, 0) && ue_value(e[..]) == "draft";
+  #assert ue_key(e[..], a[..], KEY_ENTER, MOD_SHIFT) && ue_value(e[..]) == "draft\n";
+  #assert ue_key(e[..], a[..], KEY_BACKSPACE, 0) && ue_value(e[..]) == "draft";
+}
+#test "an input-method transaction preflights commit and next preedit together" {
+  e:[1]UiEditor;#assert ue_open(e[..],1,"ab");
+  #assert ue_transaction(e[..],"","候補",0,6) && ue_value(e[..])=="ab";
+  big:[EB_TEXT]u8;for i:0..<big.count {big[i]='x';}
+  #assert !ue_transaction(e[..],"commit",cast(string)big[..],0,0);
+  #assert ue_value(e[..])=="ab" && typed(e[0].body[..])=="ab候補" && e[0].body[0].ed[0].marked;
+  #assert ue_transaction(e[..],"確定","次",-1,-1) && ue_value(e[..])=="ab確定";
+  #assert e[0].body[0].caret_hidden && typed(e[0].body[..])=="ab確定次";
+  #assert ue_transaction(e[..],"","",0,0) && ue_value(e[..])=="ab確定" && !e[0].body[0].caret_hidden;
+}
+#test "single-line fields scroll horizontally and pointer hit testing follows that offset" {
+  e:[1]UiEditor;a:[1]Atlas;test_atlas(a[..]);#assert ue_open(e[..],1,"abcdefghijklmnop");
+  c:=e[0].body[..];c[0].no_wrap=true;composer_body_layout(c,a[..],10,20,40,22.75);
+  #assert c[0].lines==1 && c[0].scroll==0 && c[0].scroll_x>0;
+  hit:=content_hit(c,a[..],50,25);#assert hit.at==16;
+  move_to(c,0);composer_body_layout(c,a[..],10,20,40,22.75);#assert c[0].scroll_x==0;
+}
+
+UiEditor :: struct {body: [1] Composer; owner: u64; committed: [EB_TEXT] u8; n: int;}
+ue_value :: (e: [] UiEditor) -> string {return cast(string)e[0].committed[0..<e[0].n];}
+ue_committed :: (e: [] UiEditor) {
+  if e[0].body[0].ed[0].marked {return;}
+  t:=typed(e[0].body[..]); for c,i:t {e[0].committed[i]=c;}e[0].n=t.count;
+}
+ue_close :: (e: [] UiEditor) #export_c #effects(all) {if e.count>0 {e[0]=UiEditor.{};}}
+// A successful caller supplies complete valid UTF-8, already admitted by its
+// platform text adapter. Oversize values never become a truncated document.
+ue_open :: (e: [] UiEditor, owner: u64, text: string) -> bool #export_c #effects(all) {
+  if e.count<1 || owner==0 || text.count>EB_TEXT {return false;}
+  ue_close(e);e[0].owner=owner;e[0].body[0].focused=true;e[0].body[0].follow=true;
+  eb_set(e[0].body[0].ed[..],text);ue_committed(e);return true;
+}
+ue_cancel :: (e: [] UiEditor) #export_c #effects(all) {
+  if e.count<1 || !e[0].body[0].ed[0].marked {return;}
+  composer_undo(e[0].body[..]);
+  e[0].body[0].ed[0].hist[EB_REDO].count=0;e[0].body[0].ed[0].hist[EB_REDO].used=0;
+  e[0].body[0].caret_hidden=false;ue_committed(e);
+}
+ue_insert :: (e: [] UiEditor, text: string) -> bool #export_c #effects(all) {
+  if e.count<1 || e[0].owner==0 {return false;}
+  b:=e[0].body[0].ed[..];g:=b[0].gen;
+  if !eb_replace(b,-1,-1,text) {return false;}
+  e[0].body[0].caret_hidden=false;composer_touched(e[0].body[..],g);ue_committed(e);return true;
+}
+// Wayland's selection offsets are bytes in the marked text, not UTF-16.
+// The SDK admits UTF-8 boundaries before this call; -1 means no visible caret.
+ue_mark :: (e: [] UiEditor, text: string, from: int, to: int) -> bool #export_c #effects(all) {
+  if e.count<1 || e[0].owner==0 {return false;}
+  b:=e[0].body[0].ed[..];g:=b[0].gen;
+  if !eb_mark(b,-1,-1,text,from,to) {return false;}
+  e[0].body[0].caret_hidden=from== -1 && to== -1;composer_touched(e[0].body[..],g);return true;
+}
+// The SDK has validated complete UTF-8 and cursor boundaries. Atomic capacity
+// admission prevents a valid commit followed by an unrepresentable preedit.
+ue_transaction :: (e:[]UiEditor,commit:string,preedit:string,begin:int,end:int)->bool #export_c #effects(all) {
+  if e.count<1 || e[0].owner==0 {return false;}
+  b:=e[0].body[0].ed[..];lo:=ifx b[0].marked then b[0].marked_at else eb_sel_lo(b);hi:=ifx b[0].marked then b[0].marked_end else eb_sel_hi(b);
+  if commit.count>EB_TEXT || preedit.count>EB_TEXT || b[0].n-(hi-lo)+commit.count+preedit.count>EB_TEXT {return false;}
+  if commit.count>0 || b[0].marked {if !ue_insert(e,commit) {return false;}}
+  if preedit.count>0 {return ue_mark(e,preedit,ifx begin<end then begin else end,ifx begin>end then begin else end);}
+  e[0].body[0].caret_hidden=false;return true;
+}
+ue_key :: (e: [] UiEditor, a: [] Atlas, key: int, mods: int) -> bool #export_c #effects(all) {
+  if e.count<1 || e[0].owner==0 || key==KEY_ESCAPE || (key==KEY_ENTER && mods==0) {return false;}
+  if e[0].body[0].ed[0].marked {return false;}
+  took:=composer_key(e[0].body[..],a,key,mods);if took {ue_committed(e);}return took;
+}
+ue_paste :: (e:[]UiEditor,text:string)->bool #export_c #effects(all) {
+ if e.count<1 || e[0].owner==0 {return false;}b:=e[0].body[0].ed[..];g:=b[0].gen;
+ if !eb_paste(b,text) {return false;}e[0].body[0].caret_hidden=false;composer_touched(e[0].body[..],g);ue_committed(e);return true;
+}
+ue_text :: (e: [] UiEditor, out: [] u8) -> int #export_c #effects(all) {
+  if e.count<1 || out.count<e[0].n {return -1;}for i:0..<e[0].n {out[i]=e[0].committed[i];}return e[0].n;
+}
+ue_owner :: (e: [] UiEditor) -> u64 #export_c #effects(all) {return ifx e.count>0 then e[0].owner else 0;}
+ue_paint :: (e: [] UiEditor, a: [] Atlas, out: [] f32, at: int, d: f32, box: [] f32, skin: UiSkin, dt: f32) -> int #export_c #effects(all) {
+  if e.count<1 || e[0].owner==0 || box.count<4 || box[2]<=0 || box[3]<=0 || !a[0].ready {return at;} // not a size: four rectangle coordinates
+  c:=e[0].body[..];composer_set_skin(c,skin);c[0].since+=dt;c[0].ed[0].clock+=dt;
+  c[0].x=box[0];c[0].y=box[1];c[0].w=box[2];c[0].h=box[3];
+  composer_body_layout(c,a,box[0],box[1],box[2],box[3]);
+  list:[COMPOSER_PRIMS]Prim;split:[1]int;n:=composer_body_prims(list[..],0,c,a,split[..]);
+  return composer_draw(out,at,c,a,d,list[..],n,split[0]);
+}

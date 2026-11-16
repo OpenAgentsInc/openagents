@@ -31,6 +31,8 @@
 #load "flow.coax";
 #load "../../../../components/kit/form.coax";
 
+lf_placeholder :: (field:int)->string {return ifx field==LF_FIELD_CODE then "000000" else ifx field==LF_FIELD_EMAIL then "you@example.com" else "";}
+
 // The id of the field that holds the keyboard ("" for none), for the frame's UiInput.
 lf_focus_id :: (l: [] LoginFlow) -> string {
   f := l[0].focus;
@@ -50,8 +52,8 @@ lf_card :: (f: [] UiFrame, l: [] LoginFlow, x: f32, y: f32, w: f32, editing: boo
   h := pad;
   h += ctx_heading(f, "login.title", "login.sent", ix, y + h, iw, ifx code then "Email code" else "Log in", ifx code then al_trim(lf_email(l)) else "") + s.space;
   rest := ifx busy then EL_S_DISABLED else 0;
-  if code { h += ctx_field(f, "login.code", ix, y + h, iw, "Email code", lf_code(l), "000000", editing && l[0].focus == LF_FIELD_CODE, rest, LF_ACT_CODE); }
-  else { h += ctx_field(f, "login.email", ix, y + h, iw, "Email address", lf_email(l), "you@example.com", editing && l[0].focus == LF_FIELD_EMAIL, rest, LF_ACT_EMAIL); }
+  if code { h += ctx_field(f, "login.code", ix, y + h, iw, "Email code", lf_code(l), lf_placeholder(LF_FIELD_CODE), editing && l[0].focus == LF_FIELD_CODE, rest, LF_ACT_CODE); }
+  else { h += ctx_field(f, "login.email", ix, y + h, iw, "Email address", lf_email(l), lf_placeholder(LF_FIELD_EMAIL), editing && l[0].focus == LF_FIELD_EMAIL, rest, LF_ACT_EMAIL); }
   h += s.space;
   // the step's action: busy while its request is in flight
   label := "Send code";

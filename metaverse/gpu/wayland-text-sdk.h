@@ -16,6 +16,10 @@ typedef struct {
  uint64_t (*owner)(void*);
  void (*error)(void*,const char*);
  void (*cancel_compose)(void*);void *cancel_user;
+ // Optional whole transaction. Provisional bytes never go through text().
+ void (*edit)(void*,const char*,size_t,const char*,size_t,int,int);
+ void (*cancel_edit)(void*);
+ void (*paste)(void*,const char*,size_t);
 } HwtTo;
 typedef struct HwtSdk HwtSdk;
 typedef struct {HwtSdk *host;struct wl_data_offer *offer;int mime;} HwtOffer;
@@ -29,6 +33,7 @@ struct HwtSdk {
  uint32_t serial,commits,since;uint64_t epoch,host_owner,paste_epoch,paste_owner;
  int focused,entered,wants,enabled,bad,preedit,pending_preedit;float rectangle[4];
  char commit[4097];size_t commit_n;
+ char marked[4097];size_t marked_n;int marked_begin,marked_end;
  int paste_fd;char *paste;size_t paste_n;int64_t paste_start;
 };
 static int64_t hwt_now(void){struct timespec t;clock_gettime(CLOCK_MONOTONIC,&t);return (int64_t)t.tv_sec*1000+t.tv_nsec/1000000;}
@@ -37,12 +42,13 @@ static int hwt_wants(HwtSdk*s){return s->to.wants&&s->to.wants(s->to.user);}
 static uint64_t hwt_host_owner(HwtSdk*s){return s->to.owner?s->to.owner(s->to.user):1;}
 static void hwt_paste_close(HwtSdk*s){if(s->paste_fd>=0)close(s->paste_fd);s->paste_fd=-1;free(s->paste);s->paste=NULL;s->paste_n=0;}
 static int hwt_commit_state(HwtSdk*s){if(s->commits==INT32_MAX){hwt_error(s,"Text input unavailable");return 0;}zwp_text_input_v3_commit(s->input);s->commits++;return 1;}
-static void hwt_clear_pending(HwtSdk*s){s->bad=0;s->commit_n=0;s->pending_preedit=0;}
+static void hwt_clear_pending(HwtSdk*s){s->bad=0;s->commit_n=0;s->pending_preedit=0;s->marked_n=0;s->marked_begin=s->marked_end=0;}
 // Invalidate before changing the protocol state: old field replies and held pipes
 // cannot publish even if their physical completion arrives in the next dispatch.
 static void hwt_boundary_sdk(HwtSdk*s){
  s->epoch=hwt_epoch(s->epoch);hwt_paste_close(s);hwt_clear_pending(s);s->preedit=0;
  if(s->to.cancel_compose)s->to.cancel_compose(s->to.cancel_user);
+ if(s->to.cancel_edit)s->to.cancel_edit(s->to.user);
  if(s->enabled){zwp_text_input_v3_disable(s->input);hwt_commit_state(s);s->enabled=0;}
 }
 static int hwt_sync(HwtSdk*s){
@@ -59,13 +65,21 @@ static int hwt_sync(HwtSdk*s){
 static void hwt_focus(HwtSdk*s,int focused){if(s->focused!=focused){hwt_boundary_sdk(s);s->focused=focused;}hwt_sync(s);}
 static void hwt_enter(void*d,struct zwp_text_input_v3*i,struct wl_surface*surface){(void)i;HwtSdk*s=d;if(surface==s->surface){s->entered=1;hwt_sync(s);}}
 static void hwt_leave(void*d,struct zwp_text_input_v3*i,struct wl_surface*surface){(void)i;(void)surface;HwtSdk*s=d;hwt_boundary_sdk(s);s->entered=0;}
-static void hwt_preedit(void*d,struct zwp_text_input_v3*i,const char*text,int32_t begin,int32_t end){(void)i;(void)begin;(void)end;HwtSdk*s=d;size_t n=text?strnlen(text,4097):0;if(!hwt_text((coax_string){text?text:"",(int64_t)n},false))s->bad=1;else s->pending_preedit=n!=0;}
+static void hwt_preedit(void*d,struct zwp_text_input_v3*i,const char*text,int32_t begin,int32_t end){
+ (void)i;HwtSdk*s=d;size_t n=text?strnlen(text,4097):0;
+ if(!hwt_mark_range((coax_string){text?text:"",(int64_t)n},begin,end)){s->bad=1;return;}
+ if(n)memcpy(s->marked,text,n);s->marked_n=n;s->marked_begin=begin;s->marked_end=end;s->pending_preedit=n!=0;
+}
 static void hwt_string(void*d,struct zwp_text_input_v3*i,const char*text){(void)i;HwtSdk*s=d;size_t n=text?strnlen(text,4097):0;if(!hwt_text((coax_string){text?text:"",(int64_t)n},false)){s->bad=1;return;}if(n)memcpy(s->commit,text,n);s->commit_n=n;}
 static void hwt_delete(void*d,struct zwp_text_input_v3*i,uint32_t before,uint32_t after){(void)i;HwtSdk*s=d;if(before||after)s->bad=1;}
 static void hwt_done(void*d,struct zwp_text_input_v3*i,uint32_t serial){
  (void)i;HwtSdk*s=d;hwt_sync(s);
  if(s->enabled&&hwt_serial(s->commits,s->since,serial)&&hwt_owner(s->epoch,s->epoch,s->focused,s->wants)){
-  if(s->bad)hwt_error(s,"Text input unavailable");else{if(s->commit_n&&s->to.text)s->to.text(s->to.user,s->commit,s->commit_n);s->preedit=s->pending_preedit;}
+  if(s->bad)hwt_error(s,"Text input unavailable");else{
+   if(s->to.edit)s->to.edit(s->to.user,s->commit,s->commit_n,s->marked,s->marked_n,s->marked_begin,s->marked_end);
+   else if(s->commit_n&&s->to.text)s->to.text(s->to.user,s->commit,s->commit_n);
+   s->preedit=s->pending_preedit;
+  }
  }
  hwt_clear_pending(s);
 }
@@ -119,7 +133,7 @@ static void hwt_poll(HwtSdk*s){
   if(!hwt_owner(s->paste_epoch,s->epoch,s->focused,s->wants)||s->paste_owner!=s->host_owner){hwt_paste_close(s);}
   else if(!hwt_time(s->paste_start,now)){hwt_paste_close(s);hwt_error(s,"Clipboard unavailable");}
   else{char bytes[32768];ssize_t n=read(s->paste_fd,bytes,sizeof bytes);if(n>0){if(!hwt_chunk((int64_t)s->paste_n,n)){hwt_paste_close(s);hwt_error(s,"Clipboard unavailable");}else{memcpy(s->paste+s->paste_n,bytes,(size_t)n);s->paste_n+=(size_t)n;}}
-   else if(n==0){if(hwt_text((coax_string){s->paste,(int64_t)s->paste_n},true)){if(s->paste_n&&s->to.text)s->to.text(s->to.user,s->paste,s->paste_n);}else hwt_error(s,"Clipboard unavailable");hwt_paste_close(s);}
+   else if(n==0){if(hwt_text((coax_string){s->paste,(int64_t)s->paste_n},true)){if(s->paste_n){if(s->to.paste)s->to.paste(s->to.user,s->paste,s->paste_n);else if(s->to.text)s->to.text(s->to.user,s->paste,s->paste_n);}}else hwt_error(s,"Clipboard unavailable");hwt_paste_close(s);}
    else if(errno!=EAGAIN&&errno!=EINTR){hwt_paste_close(s);hwt_error(s,"Clipboard unavailable");}
   }
  }

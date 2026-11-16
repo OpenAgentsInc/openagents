@@ -4,6 +4,14 @@
 // link and does the effects the page asks for. Rectangles are in points from the view's top left.
 #ifndef OPENAGENTS_CHAT_HOST_H
 #define OPENAGENTS_CHAT_HOST_H
+#include <stddef.h>
+#ifndef __APPLE__
+// Canvas-host text callbacks; callers supply complete valid UTF-8 transactions.
+int oc_input_key(void *chat,int key,int mods,int down);
+int oc_input_text(void *chat,const char *text,size_t n);
+int oc_input_paste(void *chat,const char *text,size_t n);
+int oc_input_edit(void *chat,const char *commit,size_t n,const char *preedit,size_t m,int begin,int end);
+#endif
 // resources: the folder holding the component shader, fonts and icons. NULL when it cannot open.
 void *oc_open(const char *resources);
 // Desktop SDK carrier; hidden qualification never shows a window or takes focus.

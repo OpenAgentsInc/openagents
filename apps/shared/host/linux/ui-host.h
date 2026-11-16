@@ -100,6 +100,12 @@ typedef struct {
   // An Apple SDK display link owns scheduling: ui_frame never waits for an event.
   int external_clock;
   void (*changed)(void *user); // window geometry changed; request one frame
+  // Wayland text-input transactions: complete commit + provisional text and
+  // byte cursor offsets. owner changes fence delayed replies between fields.
+  uint64_t (*text_owner)(void *user);
+  void (*text_edit)(void*,const char*,size_t,const char*,size_t,int,int);
+  void (*text_cancel)(void*);
+  void (*text_paste)(void*,const char*,size_t);
 } UiApp;
 
 // The input method's view of the text box (UTF-16 units). which: 0 selection start, 1 its end,

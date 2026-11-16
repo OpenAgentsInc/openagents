@@ -7,6 +7,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/socket.h>
+#include <assert.h>
 #include <wayland-client.h>
 #include "wayland-text-sdk.h"
 static int wanted=1,texts,errors,rows;static size_t text_bytes;static uint64_t owner=1,hash;
@@ -17,6 +18,22 @@ static uint64_t owner_cb(void*d){(void)d;return owner;}
 static int rect_cb(void*d,float r[4]){(void)d;r[0]=20;r[1]=30;r[2]=200;r[3]=24;return 1;}
 static void error_cb(void*d,const char*m){(void)d;(void)m;errors++;}
 static void reset(void){texts=errors=0;text_bytes=0;hash=0;}
+static int pastes;
+static void paste_cb(void*d,const char*t,size_t n){(void)d;assert(n==1&&t[0]=='x');pastes++;}
+static int edits,cancels,selection_begin,selection_end;static char committed[32],marked[32];
+static void edit_cb(void*d,const char*c,size_t n,const char*p,size_t m,int a,int b){(void)d;assert(n<sizeof committed&&m<sizeof marked);memcpy(committed,c,n);committed[n]=0;memcpy(marked,p,m);marked[m]=0;selection_begin=a;selection_end=b;edits++;}
+static void cancel_cb(void*d){(void)d;cancels++;}
+static void check_editor(HwtSdk*s){
+ reset();s->to.edit=edit_cb;s->to.cancel_edit=cancel_cb;
+ hwt_preedit(s,s->input,"候補",6,0);assert(edits==0);hwt_done(s,s->input,s->commits);
+ assert(edits==1&&texts==0&&!strcmp(marked,"候補")&&!*committed&&selection_begin==6&&selection_end==0);
+ hwt_string(s,s->input,"確定");hwt_preedit(s,s->input,"次",-1,-1);hwt_done(s,s->input,s->commits);
+ assert(edits==2&&texts==0&&!strcmp(committed,"確定")&&!strcmp(marked,"次")&&selection_begin== -1&&selection_end== -1);
+ hwt_string(s,s->input,"must not commit");hwt_preedit(s,s->input,"é",1,2);hwt_done(s,s->input,s->commits);assert(edits==2&&errors==1);
+ uint32_t old=s->commits;hwt_preedit(s,s->input,"orphan",0,6);owner++;hwt_done(s,s->input,old);assert(edits==2&&cancels==1);
+ hwt_preedit(s,s->input,"",0,0);hwt_done(s,s->input,s->commits);assert(edits==3&&!*committed&&!*marked);
+ hwt_focus(s,0);assert(cancels==2);s->to.edit=NULL;s->to.cancel_edit=NULL;
+}
 static int request_fd(struct wl_display*display,int peer){
  if(wl_display_flush(display)<0)return -1;unsigned char bytes[65536],control[CMSG_SPACE(8*sizeof(int))];struct iovec io={bytes,sizeof bytes};struct msghdr m={.msg_iov=&io,.msg_iovlen=1,.msg_control=control,.msg_controllen=sizeof control};
  ssize_t n=recvmsg(peer,&m,MSG_DONTWAIT);if(n<0)return -1;int result=-1;for(struct cmsghdr*c=CMSG_FIRSTHDR(&m);c;c=CMSG_NXTHDR(&m,c))if(c->cmsg_level==SOL_SOCKET&&c->cmsg_type==SCM_RIGHTS){size_t count=(c->cmsg_len-CMSG_LEN(0))/sizeof(int);int *fds=(int*)CMSG_DATA(c);for(size_t i=0;i<count;i++){if(result<0)result=fds[i];else close(fds[i]);}}return result;
@@ -59,6 +76,7 @@ int main(void){
  HwtSource*second=NULL;for(int i=0;i<4;i++)if(s.sources[i].bytes)second=&s.sources[i];if(pipe(pipes))return 2;close(pipes[0]);hwt_source_send(second,second->source,"text/plain",pipes[1]);hwt_poll(&s);row(23,errors,second->refs,source_bytes(&s));
  // Source cells are bounded while the compositor has not cancelled them.
  int accepted=0;for(int i=0;i<5;i++)accepted+=hwt_copy(&s,"x",1);row(24,accepted,source_bytes(&s),0);
- hwt_close_sdk(&s);row(25,source_bytes(&s),s.paste==NULL,s.input==NULL);
+ reset();s.to.paste=paste_cb;fd=paste(&s,display,pair[1]);assert(fd>=0);finish_paste(&s,fd,"x",1);assert(pastes==1&&texts==0);s.to.paste=NULL;
+ check_editor(&s);hwt_close_sdk(&s);row(25,source_bytes(&s),s.paste==NULL,s.input==NULL);
  wl_surface_destroy(surface);wl_compositor_destroy(compositor);wl_seat_destroy(seat);wl_registry_destroy(registry);wl_display_disconnect(display);close(pair[1]);printf("]}\n");return 0;
 }
