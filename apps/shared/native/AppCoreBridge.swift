@@ -32,7 +32,7 @@ import Foundation
 }
 
 /// effects.coax FX_ kinds.
-enum AppCoreKind: Int64 { case http = 1, authState = 2, authEmail = 3, authVerify = 4, authLogout = 5, ids = 6, clipboard = 7, link = 8, authCancel = 9, deviceList = 10, devicePair = 11, deviceCall = 12 }
+enum AppCoreKind: Int64 { case http = 1, authState = 2, authEmail = 3, authVerify = 4, authLogout = 5, ids = 6, clipboard = 7, link = 8, authCancel = 9, deviceList = 10, devicePair = 11, deviceCall = 12, identity = 13 }
 /// host.coax APP_HOST_ fields, in order.
 enum AppCoreField: Int { case kind = 0, generation, method, limit, timeout, owner; static let count = 6 }
 /// url-policy.coax UP_ methods and dispatch.coax LIFE_ codes.
@@ -94,6 +94,9 @@ enum AppCoreCode { static let get: Int64 = 1, post: Int64 = 2; static let foregr
         case .deviceCall:
             guard let host = words(core.text(op)), let body = core.body(op) else { return nil }
             return .deviceCall(host: host, body: body)
+        case .identity:
+            guard let action = words(core.text(op)), let expected = words(core.body(op)) else { return nil }
+            return .identity(action: action, expected: expected)
         }
     }
 
@@ -103,7 +106,7 @@ enum AppCoreCode { static let get: Int64 = 1, post: Int64 = 2; static let foregr
         let json = (try? JSONSerialization.jsonObject(with: c.body)) as? [String: Any] ?? [:]
         var status: Int32 = 0, flag = false, text = Data(), more = Data(), value: Int64 = 0
         switch kind {
-        case .http?: status = c.status; text = c.body
+        case .http?, .identity?: status = c.status; text = c.body
         case .authState?, .authLogout?: flag = json["loggedIn"] as? Bool ?? false
         case .authEmail?, .authVerify?:
             flag = c.state == .done

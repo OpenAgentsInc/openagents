@@ -82,4 +82,19 @@ int oc_sheet(void *chat);
 int oc_find(void *chat, const char *id, float box[4]);
 int oc_row_value(void *chat, int i, char *out, int cap);
 void oc_close(void *chat);
+// Private SDK functions: caller-owned native buffers only, never the page or drive protocol.
+int oi_change(int mode,const char *command,const char *expected,const char *account,const unsigned char *state,int state_n,const char *input,char *out,int cap);
+int oi_backup(const unsigned char *raw,int n,const char *expected,char *out,int cap);
+int oi_public(const unsigned char *raw,int n,unsigned char *out,int cap);
+int oi_identity(const char *account,const char *pubkey,unsigned char *out,int cap);
+int oi_http(int method,const char *path,int bytes);
+void oc_secret_ready(void *chat,int ready);
+int oc_private_mode(void *chat);
+void oc_scroll_to(void *chat,float points);
+int oc_scroll_info(void *chat,float out[3]);
+void oc_native_scroll(void *chat,int on);
+void oc_type_scale(void *chat,float factor);
+int oc_row_visible(void *chat,int row);
 #endif
+
+int oi_cancel(const unsigned char *raw,int n,unsigned char *out,int cap);

@@ -1,0 +1,15 @@
+// The closed native identity service's HTTP effects. Never a general authenticated HTTP bridge.
+#authority;
+#test "private identity HTTP has exact methods, paths and body limits" {
+ #assert ids_http(1,"/api/auth/identity/v1",0) && !ids_http(1,"/api/auth/identity/v1",1) && !ids_http(1,"/api/auth/identity/v1",-1);
+ #assert ids_http(1,"/api/auth/identity/state/v1",0) && !ids_http(2,"/api/auth/identity/state/v1",1) && !ids_http(1,"/api/auth/identity/state/v1",1);
+ for path:[3]string.["/api/auth/identity/backup/v1","/api/auth/identity/change/v1","/api/auth/identity/cancel/v1"] {
+  #assert ids_http(2,path,1) && ids_http(2,path,1024) && !ids_http(2,path,0) && !ids_http(2,path,-1) && !ids_http(2,path,1025);
+  #assert !ids_http(1,path,0) && !ids_http(3,path,1) && !ids_http(0,path,1);
+ }
+ #assert !ids_http(2,"/api/auth/identity/v1",1) && !ids_http(2,"/api/wallet/spend",1) && !ids_http(1,"https://evil/api/auth/identity/v1",0) && !ids_http(1,"/api/auth/identity/v1/",0);
+}
+ids_http :: (method:int,path:string,bytes:int)->bool #export_c #effects(all) {
+ if method==1 {return (path=="/api/auth/identity/v1" || path=="/api/auth/identity/state/v1") && bytes==0;}
+ return method==2 && (path=="/api/auth/identity/backup/v1" || path=="/api/auth/identity/change/v1" || path=="/api/auth/identity/cancel/v1") && bytes>0 && bytes<=1024;
+}

@@ -1,3 +1,5 @@
+#load "auth-identity-change-wire.coax";
+#load "auth-identity-change-policy.coax";
 // The one JSON codec for saved account settings and private identity backups.
 #load "api-wire.coax";
 #load "account-settings-policy.coax";
@@ -113,4 +115,16 @@ asw_write :: (s:[]AccountSettings,out:[]u8)->int #export_c #effects(all) {
 }
 asw_backup :: (pubkey:string,secret:string,out:[]u8)->int #export_c #effects(all) {
  if !aw_hex(pubkey,64) || !aw_hex(secret,64) {return -1;}o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],ASW_BACKUP);jo_key(o[..],"pubkey");jo_str(o[..],pubkey);jo_key(o[..],"secret");jo_str(o[..],secret);jo_end(o[..]);return aw_len(o[..]);
+}
+// Private SDK caller only. Public projections must never call this reader.
+asw_backup_read :: (raw:string,expected:string,secret:[]u8)->bool #export_c #effects(all) {
+ if secret.count!=64 || !aw_hex(expected,64) {return false;}d:[1]Jv;nodes:[12]JvNode;
+ if !jv_parse(d[..],raw,nodes[..]) {return false;}v:=d[0];fields:=[3]string.["schema","pubkey","secret"];
+ if !js_fields(v,0,fields[..]) || jv_len(v,0)!=3 || jv_raw(v,jv_get(v,0,"schema"))!=ASW_BACKUP || jv_raw(v,jv_get(v,0,"pubkey"))!=expected {return false;}
+ return js_string(v,jv_get(v,0,"secret"),secret)==64 && aw_hex(cast(string)secret,64);
+}
+#test "private backup reader keeps public identity binding and refuses foreign shapes" {
+ pub:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";secret:="0000000000000000000000000000000000000000000000000000000000000001";
+ b:[512]u8;key:[64]u8;n:=asw_backup(pub,secret,b[..]);#assert n>0 && asw_backup_read(cast(string)b[0..<n],pub,key[..]) && cast(string)key[..]==secret;
+ #assert !asw_backup_read(cast(string)b[0..<n],"bad",key[..]) && !asw_backup_read(cast(string)b[0..<n],pub,key[0..<63]) && !asw_backup_read("{}",pub,key[..]);
 }

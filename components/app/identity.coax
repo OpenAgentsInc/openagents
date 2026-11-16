@@ -1,0 +1,33 @@
+// Public identity/settings components. Private text belongs only to the active platform editor.
+#load "base.coax";
+AppIdentity :: struct { pubkey:string; busy:bool; managed:bool; confirm:int; secret_ready:bool; backup:bool; unknown:bool; note:string; }
+// Action numbers are supplied by the screen; the kit has no account or protocol dependency.
+AppIdentityActions :: struct { back:int; copy:int; backup:int; rotate:int; restore:int; confirm:int; cancel:int; secret:int; retry:int; discard:int; }
+app_identity :: (f:[]UiFrame,x:f32,top:f32,w:f32,v:AppIdentity,a:AppIdentityActions)->f32 {
+ k:=f[0].skin;gap:=k.app.gap;y:=top;start:=y;
+ y+=app_button(f,"settings.back",x,y,w,-1,"Back",APP_BUTTON_QUIET,0,a.back)+gap;
+ y+=app_text(f,"settings.title",x,y,w,APP_TEXT_TITLE,"Nostr keys")+gap;
+ off:=ifx v.busy then EL_S_DISABLED else 0;
+ if v.pubkey.count==0 {
+  if v.note.count>0 {y+=app_notice(f,"identity.note",x,y,w,v.note,APP_NOTICE_ERROR)+gap;y+=app_button(f,"identity.retry",x,y,w,-1,"Try again",APP_BUTTON_DEFAULT,off,a.retry);}
+  else {y+=app_text(f,"settings.loading",x,y,w,APP_TEXT_BODY,"Loading…");}
+  return y-start;
+ }
+ y+=app_text(f,"identity.public.label",x,y,w,APP_TEXT_CAPTION,"Public key");
+ y+=app_text(f,"identity.public",x,y,w,APP_TEXT_CODE,v.pubkey)+gap;
+ y+=app_button(f,"identity.copy",x,y,w,-1,"Copy public key",APP_BUTTON_DEFAULT,off,a.copy)+gap;
+ if v.confirm>0 || v.backup {
+  words:=ifx v.confirm==a.discard then "A finished change stays. Discard prevents an unfinished change from running later." else ifx v.confirm==a.backup then "Keep this key private. Anyone with it can use your Nostr identity." else "This changes your public identity. Earlier messages keep their original key.";
+  y+=app_notice(f,"identity.warning",x,y,w,words,APP_NOTICE_ERROR)+gap;
+  if v.confirm==a.restore || v.backup {y+=app_field(f,"identity.secret",x,y,w,ifx v.backup then "Backup key" else "Private key","",ifx v.backup then "Tap to view backup" else "nsec or hex",true,true,"",off,a.secret)+gap;}
+  if !v.backup {disabled:=off | (ifx v.confirm==a.restore && !v.secret_ready then EL_S_DISABLED else 0);y+=app_button(f,"identity.confirm",x,y,w,-1,ifx v.busy then "Verifying…" else ifx v.confirm==a.backup then "Show backup" else "Confirm",APP_BUTTON_PRIMARY,disabled | (ifx v.busy then EL_S_BUSY else 0),a.confirm)+gap;}
+  y+=app_button(f,"identity.cancel",x,y,w,-1,"Done",APP_BUTTON_QUIET,0,a.cancel)+gap;
+ } else {
+  if v.managed {y+=app_button(f,"identity.backup",x,y,w,-1,"Backup key",APP_BUTTON_DEFAULT,off,a.backup)+gap;}
+  y+=app_button(f,"identity.rotate",x,y,w,-1,"Rotate key",APP_BUTTON_DEFAULT,off,a.rotate)+gap;
+  y+=app_button(f,"identity.restore",x,y,w,-1,"Restore key",APP_BUTTON_DEFAULT,off,a.restore)+gap;
+ }
+ if v.unknown {y+=app_button(f,"identity.retry",x,y,w,-1,"Retry change",APP_BUTTON_PRIMARY,off,a.retry)+gap;y+=app_button(f,"identity.discard",x,y,w,-1,"Discard retry",APP_BUTTON_QUIET,off,a.discard)+gap;}
+ if v.note.count>0 {y+=app_notice(f,"identity.note",x,y,w,v.note,APP_NOTICE_ERROR);}
+ return y-start;
+}

@@ -1,0 +1,52 @@
+// Private native SDK entry points. Secrets never pass through the app core or its view.
+#run_steps 250000000;
+#load "identity-http-policy.coax";
+#load "../../../../coax/native/account-key.coax";
+#load "../../../../coax/web/api/account-settings-wire.coax";
+#load "../../../../coax/lib/crypto/schnorr_sign.coax";
+#load "../../../../coax/web/api/auth-identity-wire.coax";
+ids_public :: (raw:string,out:[]u8)->int #export_c #effects(all) {
+ account:[128]u8;pub:[64]u8;length:[1]int;source:=aiw_read(raw,account[..],pub[..],length[..]);
+ if source==0 {return -1;}return aiw_write(cast(string)account[0..<length[0]],cast(string)pub[..],source,out);
+}
+ids_identity :: (account:string,pubkey:string,out:[]u8)->int #export_c #effects(all) {return aiw_write(account,pubkey,2,out);}
+
+
+#test "the private SDK canonicalizes nsec/hex and refuses zero before making a restore request" #steps 1000000000 {
+ out:[1024]u8;g:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";command:="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";state:[512]u8;sn:=aic_state_write("fixture",g,2,0,state[..]);#assert sn>0;
+ #assert ids_change(2,command,g,"fixture",cast(string)state[0..<sn],"0000000000000000000000000000000000000000000000000000000000000000",out[..])<0;
+ n:=ids_change(2,command,g,"fixture",cast(string)state[0..<sn],"0000000000000000000000000000000000000000000000000000000000000001",out[..]);a:[1]IdentityChange;
+ #assert n>0 && aic_read(cast(string)out[0..<n],a[..]) && a[0].secret[63]=='1';
+ #assert ids_change(1,command,g,"fixture",cast(string)state[0..<sn],"",out[..])>0 && ids_change(3,command,g,"fixture",cast(string)state[0..<sn],"",out[..])<0;
+}
+ids_change :: (mode:int,command:string,expected:string,account:string,raw_state:string,input:string,out:[]u8)->int #export_c #effects(all) {
+ if command.count!=32 || expected.count!=64 || mode<1 || mode>2 {return -1;}
+ state:[1]IdentityState;if !aic_state_read(raw_state,state[..]) {return -3;}
+ if cast(string)state[0].account[0..<state[0].account_n]!=account || cast(string)state[0].pubkey[..]!=expected {return -2;}
+ a:[1]IdentityChange;a[0].mode=mode;a[0].revision=state[0].revision;for i:0..<32 {a[0].command[i]=command[i];}for i:0..<64 {a[0].expected[i]=expected[i];}
+ key:[32]u8;work:[1]SignWork;result:=-1;
+ if mode==1 {result=aic_write(a[..],out);}
+ else if nas_key(input,key[..]) && sw_key(key[..],work[..])==SIGN_MORE {
+  r:=hex_encode_checked(cast(string)key[..],a[0].secret[..],false);if r.error==NC_OK {result=aic_write(a[..],out);}
+ }
+ for i:0..<32 {key[i]=0;}for i:0..<64 {a[0].secret[i]=0;}_:=sw_clear(work[..]);return result;
+}
+ids_backup :: (raw:string,expected:string,out:[]u8)->int #export_c #effects(all) {
+ encoded:[64]u8;key:[32]u8;work:[1]SignWork;result:=-1;pub:[64]u8;
+ if asw_backup_read(raw,expected,encoded[..]) && nas_key(cast(string)encoded[..],key[..]) && sw_key(key[..],work[..])==SIGN_MORE {
+  r:=hex_encode_checked(cast(string)work[0].prep[0].public_key[..],pub[..],false);
+  if r.error==NC_OK && cast(string)pub[..]==expected {result=nas_encode(key[..],true,out);}
+ }
+ for i:0..<32 {key[i]=0;}for i:0..<64 {encoded[i]=0;}_:=sw_clear(work[..]);return result;
+}
+#test "private backup display verifies that the secret really derives the selected public key" #steps 1000000000 {
+ g:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";secret:="0000000000000000000000000000000000000000000000000000000000000001";
+ raw:[512]u8;text:[128]u8;n:=asw_backup(g,secret,raw[..]);#assert n>0 && ids_backup(cast(string)raw[0..<n],g,text[..])>0;
+ n=asw_backup(g,"0000000000000000000000000000000000000000000000000000000000000002",raw[..]);#assert n>0 && ids_backup(cast(string)raw[0..<n],g,text[..])<0;
+}
+
+#test "discard reads the protected command through its one codec" {
+ a:[1]IdentityChange;b:[1024]u8;c:[256]u8;id:[32]u8;a[0].mode=1;for i:0..<32 {a[0].command[i]='a';}for i:0..<64 {a[0].expected[i]=AIC_G[i];}
+ n:=aic_write(a[..],b[..]);size:=ids_cancel(cast(string)b[0..<n],c[..]);#assert size>0 && aic_cancel_read(cast(string)c[0..<size],id[..]) && id[0]=='a';#assert ids_cancel("{}",c[..])<0;
+}
+ids_cancel :: (raw:string,out:[]u8)->int #export_c #effects(all) {a:[1]IdentityChange;if !aic_read(raw,a[..]) {return -1;}return aic_cancel_write(cast(string)a[0].command[..],out);}

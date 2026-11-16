@@ -41,6 +41,23 @@ UP_COPY_MAX :: 131072; UP_LINK_MAX :: 4096;
   #assert up_link("https://openagents.com/#chat") && !up_link("javascript:alert(1)") && !up_link("");
   #assert up_copy(0) && up_copy(UP_COPY_MAX) && !up_copy(UP_COPY_MAX + 1) && !up_copy(-1);
 }
+#test "identity metadata is readable; private custody is only a closed platform effect" {
+ #assert up_identity("read","") && !up_identity("read","a");
+ #assert up_http(UP_GET,"/api/auth/identity/v1",0) && !up_http(UP_POST,"/api/auth/identity/v1",2);
+ #assert !up_path("/api/auth/identity/change/v1") && !up_path("/api/auth/identity/backup/v1");
+ for action:[5]string.["backup","rotate","restore","retry","discard"] {#assert up_identity(action,"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798");}
+ #assert !up_identity("sign","79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798") && !up_identity("restore","bad") && !up_identity("rotate","");
+}
+#forall "identity custody admits exactly lowercase hex public keys" byte:0..<256 {
+ key:[64]u8;for i:0..<64 {key[i]='0';}key[31]=cast(u8)byte;
+ allowed:=byte>=48 && byte<=57 || byte>=97 && byte<=102;
+ #assert up_identity("restore",cast(string)key[..])==allowed;
+}
+up_identity :: (action:string,pubkey:string)->bool #effects(all) {
+ if action=="read" {return pubkey.count==0;}
+ if action!="backup" && action!="rotate" && action!="restore" && action!="retry" && action!="discard" {return false;}
+ if pubkey.count!=64 {return false;}for c:pubkey {if !(c>='0' && c<='9' || c>='a' && c<='f') {return false;}}return true;
+}
 
 up_safe :: (path: string) -> bool #effects(all) {
   if path.count > UP_PATH_MAX { return false; }
@@ -50,11 +67,12 @@ up_safe :: (path: string) -> bool #effects(all) {
 }
 // A relative API path this app may request.
 up_path :: (path: string) -> bool #export_c #effects(all) {
-  return up_safe(path) && ((path.count >= 10 && path[0..<10] == "/api/chat/") || path == "/api/auth/account");
+  return up_safe(path) && ((path.count >= 10 && path[0..<10] == "/api/chat/") || path == "/api/auth/account" || path == "/api/auth/identity/v1");
 }
 // One HTTP request: its method, its path and its body's bytes.
 up_http :: (method: int, path: string, body_bytes: int) -> bool #export_c #effects(all) {
   if !up_path(path) { return false; }
+  if path=="/api/auth/identity/v1" && method!=UP_GET {return false;}
   if method == UP_GET { return body_bytes == 0; }
   return method == UP_POST && body_bytes >= 1 && body_bytes <= UP_BODY_MAX;
 }

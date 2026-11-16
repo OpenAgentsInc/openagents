@@ -1,0 +1,45 @@
+// Real compiled page checks; the whole app state is too large for the evaluator.
+#import "Basic";
+#load "../../../openagents-ios/chat.coax";
+iks_screen_answer :: (s:[]ChatPage,c:[]AppCore) {
+ op:=s[0].identity[0].op;#assert op>0;at:=fx_find(c[0].out[..],op);#assert at>=0 && c[0].out[0].slots[at].kind==FX_IDENTITY;
+ gen:=fx_generation(c[0].out[..],IKS_OWNER);#assert fx_take(c[0].out[..],op);
+ body:[512]u8;n:=aiw_write("fixture",AIW_G,2,body[..]);#assert n>0;
+ #assert app_dispatch(c,AppEvent.{kind=EV_DONE,op=op,generation=gen,outcome=FXO_DONE,status=200,text=cast(string)body[0..<n]})==APP_GUEST;
+ chat_guest(s,cast(string)body[0..<n]);#assert s[0].identity[0].loaded;
+}
+iks_screen_setup :: (s:[]ChatPage,c:[]AppCore,o:[]ChOut) {
+ app_init(c);c[0].auth=AUTH_IN;ch_test_atlas(s[0].atlas[..]);chat_attach(s,c,"");chat_step(s);iks_screen_answer(s,c);
+ _:=ch_test_frame(s,o);#assert chat_activate(s,"nav.menu");_:=ch_test_frame(s,o);#assert chat_activate(s,"drawer.settings");iks_screen_answer(s,c);_:=ch_test_frame(s,o);
+}
+iks_screen_keys :: () {
+ s:[1]ChatPage;c:[1]AppCore;o:[1]ChOut;iks_screen_setup(s[..],c[..],o[..]);
+ #assert ch_test_has(s[..],"identity.public") && ch_test_has(s[..],"identity.rotate") && ch_test_has(s[..],"identity.restore") && chat_refused(s[..])==0;
+ #assert chat_activate(s[..],"identity.restore");_:=ch_test_frame(s[..],o[..]);
+ #assert ch_test_has(s[..],"identity.secret") && !chat_activate(s[..],"identity.confirm");
+ #assert chat_activate(s[..],"identity.secret");_:=ch_test_frame(s[..],o[..]);
+ out:[8192]u8;n:=chat_drive(s[..],"tree",out[..]);#assert n>0;
+ // The portable field's value is empty: only its public label is in the tree.
+ t:=[1]ElTable.[ch_rows(s[..])];field:=elt_find(t[..],"identity.secret");#assert field>=0 && elt_value_of(t[..],field)=="";
+ chat_secret_ready(s[..],true);_:=ch_test_frame(s[..],o[..]);#assert chat_activate(s[..],"identity.confirm");
+ op:=s[0].identity[0].op;at:=fx_find(c[0].out[..],op);#assert at>=0 && fx_body(c[0].out[..],at)==AIW_G;
+}
+iks_screen_large :: () {
+ s:[1]ChatPage;c:[1]AppCore;o:[1]ChOut;iks_screen_setup(s[..],c[..],o[..]);
+ chat_type_scale(s[..],2);_:=ch_test_frame(s[..],o[..]);_:=ch_test_frame(s[..],o[..]);
+ #assert ch_scroll_max(s[..])>0 && chat_refused(s[..])==0;
+ chat_scroll_to(s[..],ch_scroll_max(s[..]));_:=ch_test_frame(s[..],o[..]);
+ #assert !chat_activate(s[..],"settings.back"); // a clipped row is never an active invisible target
+ #assert chat_activate(s[..],"identity.restore");_:=ch_test_frame(s[..],o[..]);
+ chat_scroll_to(s[..],ch_scroll_max(s[..]));_:=ch_test_frame(s[..],o[..]);
+ #assert chat_activate(s[..],"identity.secret");
+ chat_env(s[..],59,34,336,true,0,true);_:=chat_frame(s[..],o[0].v[..],1206,2622,3,0.1);_:=chat_frame(s[..],o[0].v[..],1206,2622,3,0.1);
+ #assert chat_row_visible(s[..],surface_find(ch_live(s[..]),"identity.secret")) && chat_refused(s[..])==0;
+ // A settled, reduced-motion page needs no continuing frame loop.
+ _:=chat_frame(s[..],o[0].v[..],1206,2622,3,0.1);#assert !chat_moving(s[..]);
+}
+native_check :: (i:int,run:bool)->int #export_c #effects(all) {
+ if i==0 {if run {iks_screen_keys();}else {print("GPU settings, confirmation and public-only semantic rows");}}
+ if i==1 {if run {iks_screen_large();}else {print("large type, clipped targets, keyboard reveal and idle motion");}}
+ return 2;
+}

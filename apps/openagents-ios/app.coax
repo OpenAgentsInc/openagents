@@ -3,8 +3,10 @@
 // builder and its tables for the shared carrier
 // (components/gallery/linux/main.c, built without the gallery's page).
 // generate.sh compiles this file to Generated/gallery.c.
+#run_steps 250000000;
 #load "../../components/raster/host-tables.coax";
 #load "chat.coax";
+#load "../shared/app/settings/identity-sdk.coax";
 // The shared app core (apps/shared/app/README.md): state, dispatch, the effect outbox and the
 // host ABI that core-host.c wraps.
 #load "../shared/app/core/core.coax";
@@ -12,7 +14,7 @@
 // service (apps/shared/native/AppDeviceLink.swift) calls them through core-host.c with the device
 // key for one call. Their secp256k1 tables are built at compile time.
 #load "../shared/app/device/seal.coax";
-#run_steps 250000000;
+
 
 // A dispatch answered APP_GUEST with no page to take it (core-host.c oa_core_on_guest: the chat page
 // routes the environment picker's reads itself): the root releases it.

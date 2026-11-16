@@ -45,6 +45,7 @@ enum AppCall {
     case devicePair(String)
     /// One environment request to a paired computer (its key, 64 hex).
     case deviceCall(host: String, body: Data)
+    case identity(action: String, expected: String)
     case unsupported
 }
 /// The phone's own computers (AppDeviceLink on iOS). The device key and the grants stay in it.
@@ -82,6 +83,11 @@ struct AppCompletion: Equatable {
     func copy(_ text: String) -> Bool
     func open(_ link: String, done: @escaping (Bool) -> Void)
 }
+/// Closed custody effects. Only public metadata or a static refusal returns to the app core.
+@MainActor protocol AppIdentityService: AnyObject {
+    func perform(action: String, expected: String, done: @escaping (AppCompletion.State, Int32, Data) -> Void)
+    func clear()
+}
 
 @MainActor final class AppEffects {
     private weak var outbox: AppOutbox?
@@ -90,6 +96,7 @@ struct AppCompletion: Equatable {
     private let wake: AppWake
     private weak var platform: AppPlatform?
     private weak var devices: AppDeviceService?
+    var identity: AppIdentityService?
     private var inside = false
     private var late: [AppCompletion] = []
     /// Requests with a completion still owed, and the generation each had.
@@ -162,6 +169,11 @@ struct AppCompletion: Equatable {
         case .deviceCall(let host, let body):
             guard let devices else { finish(op, generation, .unsupported, 0, Data()); return }
             devices.call(host: host, body: body) { [weak self] state, view in self?.finish(op, generation, state, 200, view) }
+        case .identity(let action, let expected):
+            guard let identity else { finish(op, generation, .unsupported, 0, Data()); return }
+            identity.perform(action: action, expected: expected) { [weak self] state, status, publicBody in
+                self?.finish(op, generation, state, status, publicBody)
+            }
         case .unsupported: finish(op, generation, .unsupported, 0, Data())
         }
     }

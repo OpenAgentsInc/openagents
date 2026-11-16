@@ -1,0 +1,40 @@
+{
+  "id": "openagents.account.identity.change.v1",
+  "method": "POST",
+  "path": "/api/auth/identity/change/v1",
+  "request": {
+    "schema": "openagents.account.identity.change.v1",
+    "command": "32 lowercase hex; account-scoped idempotency key",
+    "expected": "64 lowercase hex current public key",
+    "mode": "rotate|restore",
+    "secret": "empty for rotate; 64 lowercase hex private scalar for restore",
+    "expected_revision": "0..2147483646, from the separately versioned identity state"
+  },
+  "response": "openagents.account.identity.v1",
+  "selection": {
+    "account": "authenticated account",
+    "pubkey": "64 lowercase hex",
+    "revision": "1..2147483647; monotonic, never wraps"
+  },
+  "receipt": {
+    "account": "authenticated account",
+    "command": "32 lowercase hex",
+    "digest": "64 lowercase hex request SHA256",
+    "expected": "64 lowercase hex",
+    "pubkey": "64 lowercase hex for completed change; null for cancellation",
+    "mode": "rotate|restore|cancel",
+    "cancelled": "boolean; true exactly for cancellation tombstones"
+  },
+  "privacy": "Private/no-store. Private input remains in native secure memory or protected pending-operation storage. Never a core/drive event.",
+  "state": {
+    "schema": "openagents.account.identity.state.v1",
+    "account": "account",
+    "pubkey": "64 lowercase hex",
+    "source": "account|linked",
+    "revision": "0..2147483647"
+  },
+  "cancel": {
+    "schema": "openagents.account.identity.cancel.v1",
+    "command": "32 lowercase hex; terminal cancellation, never private restore input"
+  }
+}

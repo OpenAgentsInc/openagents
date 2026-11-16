@@ -3,6 +3,7 @@
 #load "auth_harness.coax";
 #load "../account-settings-wire.coax";
 #load "../auth-recover-crypto.coax";
+#load "../auth-identity-change-wire.coax";
 settings_checks :: (t:[]Ap,dir:string) {
  b:[8192]u8;c:[1]Sb;body:[1]Sb;code:[6]u8;link:[64]u8;pb:[128]u8;
  ap_check(t,"settings refuses anonymous reads",ac_call(t,"GET","/api/auth/settings/v1","","","","")==401,"");
@@ -20,12 +21,43 @@ settings_checks :: (t:[]Ap,dir:string) {
  st=ac_call(t,"POST","/api/auth/settings/v1","{}",auth,"","");ap_check(t,"malformed settings change nothing",st==400,"");
  st=ac_call(t,"GET","/api/auth/settings/v1","",auth,"","");ap_check(t,"failed writes preserve the complete saved settings",st==200 && asw_read(ap_body(t),s[..]) && s[0].revision==1 && asw_field(s[..],0)=="Ada",ap_body(t));
  st=ac_call(t,"POST","/api/auth/identity/backup/v1","{}",auth,"","");ap_check(t,"email alone cannot export an identity",st==401,"");
+ st=ac_call(t,"POST","/api/auth/identity/change/v1","{}",auth,"","");ap_check(t,"email alone cannot replace an identity",st==401,"");
  q:[1]Sb;sb(q[..],"UPDATE auth.sessions SET level='L2',l2_at=now() WHERE account='");sb(q[..],acct);sb(q[..],"'");ap_do(t,sb_text(q[..]));
  st=ac_call(t,"GET","/api/auth/identity/v1","",auth,"","");pubb:[64]u8;pub:=ap_member(ap_body(t),"pubkey",pubb[..]);
  st=ac_call(t,"POST","/api/auth/identity/backup/v1","{}",auth,"","");secret:[64]u8;key:[32]u8;actual:[64]u8;
  value:=ap_member(ap_body(t),"secret",secret[..]);ok:=hex_decode_checked(value,key[..],false).error==NC_OK && arc_public(key[..],actual[..]);
  ap_check(t,"fresh strong session exports exactly its canonical key",st==200 && ok && cast(string)actual[..]==pub,"");
  ap_check(t,"secret backup is never cached",ap_has(ac_head(t),"private, no-store"),"");
+ // Keep the fixture's original private bytes only in this disposable oracle, never in a failure body.
+ original:[64]u8;for i:0..<64 {original[i]=secret[i];}
+ change:[1]IdentityChange;for i:0..<32 {change[0].command[i]='c';}for i:0..<64 {change[0].expected[i]=pubb[i];}change[0].mode=AIC_ROTATE;
+ cn:=aic_write(change[..],b[..]);st=ac_call(t,"POST","/api/auth/identity/change/v1",cast(string)b[0..<cn],auth,"","");
+ newer:[64]u8;pk:=ap_member(ap_body(t),"pubkey",newer[..]);
+ ap_check(t,"rotation selects a different real identity",st==200 && pk.count==64 && pk!=pub,"");
+ st=ac_call(t,"POST","/api/auth/identity/change/v1",cast(string)b[0..<cn],auth,"","");actualpub:[64]u8;pk=ap_member(ap_body(t),"pubkey",actualpub[..]);
+ ap_check(t,"retry returns exactly the first rotation",st==200 && pk==cast(string)newer[..],"");
+ change[0].command[0]='d';cn=aic_write(change[..],b[..]);st=ac_call(t,"POST","/api/auth/identity/change/v1",cast(string)b[0..<cn],auth,"","");ap_check(t,"stale CAS never generates a competing identity",st==409,"");
+ for i:0..<64 {change[0].expected[i]=newer[i];}change[0].command[0]='c';cn=aic_write(change[..],b[..]);
+ st=ac_call(t,"POST","/api/auth/identity/change/v1",cast(string)b[0..<cn],auth,"","");ap_check(t,"command reuse with changed bytes refuses",st==409,"");
+ change[0].revision=1;change[0].command[0]='e';change[0].mode=AIC_RESTORE;for i:0..<64 {change[0].secret[i]='0';}cn=aic_write(change[..],b[..]);
+ st=ac_call(t,"POST","/api/auth/identity/change/v1",cast(string)b[0..<cn],auth,"","");ap_check(t,"zero scalar cannot become an identity",st==400,"");
+ change[0].command[0]='f';for i:0..<64 {change[0].secret[i]=original[i];}cn=aic_write(change[..],b[..]);
+ st=ac_call(t,"POST","/api/auth/identity/change/v1",cast(string)b[0..<cn],auth,"","");pk=ap_member(ap_body(t),"pubkey",actualpub[..]);
+ ap_check(t,"restore reselects the original key without losing its alias",st==200 && pk==pub,"");
+ change[0].mode=AIC_ROTATE;change[0].command[0]='b';change[0].revision=0;for i:0..<64 {change[0].expected[i]=pubb[i];}cn=aic_write(change[..],b[..]);
+ st=ac_call(t,"POST","/api/auth/identity/change/v1",cast(string)b[0..<cn],auth,"","");ap_check(t,"restoring the original key cannot revive a delayed old command",st==409,"");
+ state:[1]IdentityState;st=ac_call(t,"GET","/api/auth/identity/state/v1","",auth,"","");ap_check(t,"revision advances even when the public key returns to its old value",st==200 && aic_state_read(ap_body(t),state[..]) && state[0].revision==2 && cast(string)state[0].pubkey[..]==pub,"");
+ cancel:[256]u8;cc:=aic_cancel_write("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",cancel[..]);
+ st=ac_call(t,"POST","/api/auth/identity/cancel/v1",cast(string)cancel[0..<cc],auth,"","");ap_check(t,"discard resolves an unknown command",st==200,"");
+ for i:0..<32 {change[0].command[i]='e';}change[0].revision=2;cn=aic_write(change[..],b[..]);
+ st=ac_call(t,"POST","/api/auth/identity/change/v1",cast(string)b[0..<cn],auth,"","");ap_check(t,"a delayed discarded command cannot replace the identity",st==409,"");
+ st=ac_call(t,"POST","/api/auth/identity/cancel/v1",cast(string)cancel[0..<cc],auth,"","");ap_check(t,"discard is idempotent",st==200,"");
+ cc=aic_cancel_write("cccccccccccccccccccccccccccccccc",cancel[..]);st=ac_call(t,"POST","/api/auth/identity/cancel/v1",cast(string)cancel[0..<cc],auth,"","");
+ pk=ap_member(ap_body(t),"pubkey",actualpub[..]);ap_check(t,"discard never undoes a completed rotation",st==200 && pk.count==64 && cast(string)actualpub[..]==pub,"");
+
+ st=ac_call(t,"GET","/api/auth/identity/v1","",auth,"","");pk=ap_member(ap_body(t),"pubkey",actualpub[..]);ap_check(t,"public identity reads the selected key",st==200 && pk==pub,"");
+ sb_clear(q[..]);sb(q[..],"SELECT count(*) FROM auth.account_identity_keys_v1 WHERE account='");sb(q[..],acct);sb(q[..],"'");ap_check(t,"rotation retains both historical keys",ap_sql(t,sb_text(q[..]),b[..])=="2","");
+ for i:0..<64 {original[i]=0;change[0].secret[i]=0;}
  for i:0..<key.count {key[i]=0;}for i:0..<secret.count {secret[i]=0;}
  st=ac_call(t,"POST","/api/auth/settings/profile-event/v1","{}",auth,"","");decoded:[8192]u8;e:=nostr_event_read(ap_body(t),decoded[..],false);
  ap_check(t,"only saved public kind-zero metadata is signed",st==200 && e.error==0 && e.kind==0 && !ap_has(ap_body(t),"private_clipboard") && !ap_has(ap_body(t),"security"),"");

@@ -43,6 +43,8 @@ targets:
       # Native services for the compiled app: HTTP, the account, wakes, the device and the effect bridge.
       - ../shared/native/AppHTTP.swift
       - ../shared/native/AppAccount.swift
+      - ../shared/native/AppIdentity.swift
+      - ../shared/native/KitPasskey.swift
       - ../shared/native/AppWake.swift
       - ../shared/native/AppEffects.swift
       - ../shared/native/AppDevice.swift
@@ -70,8 +72,25 @@ targets:
         SWIFT_OBJC_BRIDGING_HEADER: Bridge.h
         HEADER_SEARCH_PATHS: ["$(SRCROOT)/Generated"]
         GCC_OPTIMIZATION_LEVEL: "2"
+  OpenAgentsIdentityTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [Tests]
+    dependencies:
+      - target: OpenAgents
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.openagents.app.identity-tests
+        GENERATE_INFOPLIST_FILE: YES
 schemes:
   OpenAgents:
     build:
       targets:
         OpenAgents: all
+  OpenAgentsIdentity:
+    build:
+      targets:
+        OpenAgents: all
+        OpenAgentsIdentityTests: [test]
+    test:
+      targets: [OpenAgentsIdentityTests]

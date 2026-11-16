@@ -14,10 +14,17 @@ nc_qualify :: (source:string,entry:string)->int {
 // Large native app states use the existing fork/thread suite driver, whose
 // owned large stack keeps one failed case from hiding the remaining cases.
 nc_suite :: (source:string)->int {return nc_qualify_main(source,"",true);}
+// A large app suite can qualify each compiler mode in a separate bounded job.
+nc_suite_mode :: (source:string,mode:int)->int {
+ if mode<0 || mode>1 {return 2;}return nc_qualify_modes(source,"",true,mode,mode+1,300);
+}
 nc_qualify_main :: (source:string,entry:string,suite:bool)->int {
+ return nc_qualify_modes(source,entry,suite,0,2,120);
+}
+nc_qualify_modes :: (source:string,entry:string,suite:bool,first:int,last:int,compile_seconds:int)->int {
   path:[1024]u8;dir:=fs_temp("coax-native-check-",path[..]);#assert dir.count>0;
   cb:[1024]u8;exe:[1024]u8;cpath:=fs_join(dir,"check.c",cb[..]);binary:=fs_join(dir,"check",exe[..]);out:[16777216]u8;
-  for mode:0..<2 {
+  for mode:first..<last {
     args:=[5]string.["coax/bin/coax","c",source,"--library","--release"];
     n:=nc_run(args[0..<4+mode],120,out[..]);if n<0 {return 1;}
     #assert fs_write(cpath,cast(string)out[0..<n]);
@@ -27,7 +34,7 @@ nc_qualify_main :: (source:string,entry:string,suite:bool)->int {
       if suite {flags[count]="coax/web/native-check.c";count+=1;flags[count]="-pthread";count+=1;}
       for arg:[4]string.["-lm","-o",binary,"-g"] {flags[count]=arg;count+=1;}
       if sanitized==1 {flags[count]="-fsanitize=address,undefined";count+=1;flags[count]="-fno-omit-frame-pointer";count+=1;}
-      if nc_run(flags[0..<count],120,out[..])<0 {return 1;}
+      if nc_run(flags[0..<count],compile_seconds,out[..])<0 {return 1;}
       run:=[1]string.[binary];if nc_run(run[..],60,out[..])<0 {return 1;}
       print("native: mode %, sanitizers %: passed\n",mode,sanitized);
     }

@@ -7,3 +7,20 @@
 }
 scroll_max :: (content:f32,viewport:f32)->f32 #export_c #effects(all) {m:=content-viewport;return ifx m<0 then 0.0f32 else m;}
 scroll_at_end :: (content:f32,viewport:f32,offset:f32,slack:f32)->bool #export_c #effects(all) {return offset>=scroll_max(content,viewport)-slack;}
+scroll_clamp :: (offset:f32,content:f32,viewport:f32)->f32 {
+ maximum:=scroll_max(content,viewport);return ifx offset<0 then 0.0f32 else ifx offset>maximum then maximum else offset;
+}
+// A focused field remains visible when the keyboard or large type shrinks its viewport.
+scroll_reveal :: (offset:f32,content:f32,viewport:f32,top:f32,bottom:f32)->f32 {
+ value:=offset;
+ if bottom-top>=viewport || top<offset {value=top;}
+ else if bottom>offset+viewport {value=bottom-viewport;}
+ return scroll_clamp(value,content,viewport);
+}
+#test "a focused child is revealed without moving an already visible one" {
+ #assert scroll_reveal(20,500,100,30,60)==20;
+ #assert scroll_reveal(20,500,100,130,160)==60;
+ #assert scroll_reveal(80,500,100,30,60)==30;
+ #assert scroll_reveal(20,500,100,30,200)==30;
+ #assert scroll_clamp(-1,500,100)==0 && scroll_clamp(600,500,100)==400 && scroll_clamp(1,20,100)==0;
+}

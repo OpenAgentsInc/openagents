@@ -20,6 +20,24 @@ typedef struct {
 
 static coax_v_t_ChatPage oc_state(Chat *c) { return (coax_v_t_ChatPage){c->s, 1}; }
 static coax_string oc_string(const char *text) { return (coax_string){text ? text : "", text ? (int64_t)strlen(text) : 0}; }
+static void oc_changed(Chat *c);
+static void oc_woke(Chat *c);
+int oi_change(int mode,const char *command,const char *expected,const char *account,const unsigned char *state,int state_n,const char *input,char *out,int cap) {
+ if (cap<1) return -1;int n=(int)ids_change(mode,oc_string(command),oc_string(expected),oc_string(account),(coax_string){(const char *)state,state_n},oc_string(input),(coax_v_u8){(uint8_t *)out,cap-1});if(n>=0) out[n]=0;return n;
+}
+int oi_backup(const unsigned char *raw,int n,const char *expected,char *out,int cap) {
+ if(cap<1 || n<0) return -1;int count=(int)ids_backup((coax_string){(const char *)raw,n},oc_string(expected),(coax_v_u8){(uint8_t *)out,cap-1});if(count>=0) out[count]=0;return count;
+}
+int oi_public(const unsigned char *raw,int n,unsigned char *out,int cap) {return n<0 ? -1:(int)ids_public((coax_string){(const char *)raw,n},(coax_v_u8){out,cap});}
+int oi_identity(const char *account,const char *pubkey,unsigned char *out,int cap) {return (int)ids_identity(oc_string(account),oc_string(pubkey),(coax_v_u8){out,cap});}
+int oi_http(int method,const char *path,int bytes) {return ids_http(method,oc_string(path),bytes);}
+void oc_secret_ready(void *chat,int ready) {Chat *c=chat;if(c) {chat_secret_ready(oc_state(c),ready!=0);oc_changed(c);}}
+int oc_private_mode(void *chat) {Chat *c=chat;return c ? (int)chat_private_mode(oc_state(c)):0;}
+void oc_scroll_to(void *chat,float points) {Chat *c=chat;if(c) {chat_scroll_to(oc_state(c),points/chat_ui_scale(oc_state(c)));oc_woke(c);}}
+int oc_scroll_info(void *chat,float out[3]) {Chat *c=chat;return c && chat_scroll_info(oc_state(c),(coax_v_f32){out,3});}
+void oc_native_scroll(void *chat,int on) {Chat *c=chat;if(c) chat_native_scroll(oc_state(c),on!=0);}
+void oc_type_scale(void *chat,float factor) {Chat *c=chat;if(c) chat_type_scale(oc_state(c),factor);}
+int oc_row_visible(void *chat,int row) {Chat *c=chat;return c && chat_row_visible(oc_state(c),row);}
 static void oc_changed(Chat *c) { c->settle = 3; }
 static void oc_woke(Chat *c) { oc_changed(c); if (c->changed) c->changed(c->context); }
 
@@ -187,3 +205,5 @@ int oc_find(void *chat, const char *id, float box[4]) { Chat *c = chat; return c
 int oc_row_value(void *chat, int i, char *out, int cap) { Chat *c = chat; return c && cap > 0 ? oc_bytes(chat_row_value(oc_state(c), i, (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap) : 0; }
 #include "core-host.c"
 #include "../../components/app/gallery/host.c"
+
+int oi_cancel(const unsigned char *raw,int n,unsigned char *out,int cap) {return (int)ids_cancel((coax_string){(const char *)raw,n},(coax_v_u8){out,cap});}

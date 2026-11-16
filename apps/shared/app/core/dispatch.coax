@@ -334,6 +334,11 @@ app_guest_http :: (c: [] AppCore, owner: int, purpose: int, method: int, path: s
   if c[0].auth != AUTH_IN || owner < OWN_ENVIRONMENT || owner > OWN_GUEST_LAST { return 0; }
   return fx_request(c[0].out[..], owner, FX_HTTP, purpose, method, path, "", body, UP_RESPONSE_MAX, TC_HTTP_TIMEOUT_MS);
 }
+// Closed custody request. Only its action and public expected key cross the core.
+app_guest_identity :: (c:[]AppCore,owner:int,purpose:int,action:string,pubkey:string)->int {
+ if c[0].auth!=AUTH_IN || owner<OWN_ENVIRONMENT || owner>OWN_GUEST_LAST {return 0;}
+ return fx_request(c[0].out[..],owner,FX_IDENTITY,purpose,0,"",action,pubkey,0,0);
+}
 // Fence a guest's requests (its screen closed): late results are dropped.
 app_guest_cancel :: (c: [] AppCore, owner: int) -> bool {
   if owner < OWN_ENVIRONMENT || owner > OWN_GUEST_LAST { return false; }

@@ -1,0 +1,90 @@
+// The one codec for identity change requests and their SQL selection/journal.
+#load "api-wire.coax";
+#load "../../lib/json/shape.coax";
+AIC_G :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+AIC_SCHEMA :: "openagents.account.identity.change.v1";
+AIC_ROTATE :: 1; AIC_RESTORE :: 2;
+AIC_STATE_SCHEMA :: "openagents.account.identity.state.v1";
+AIC_REVISION_MAX :: 2147483647;
+IdentityChange :: struct { command: [32]u8; expected: [64]u8; secret: [64]u8; mode:int; revision:int; }
+IdentityState :: struct {account:[128]u8;account_n:int;pubkey:[64]u8;source:int;revision:int;}
+// Cancellation settles an unknown command without resending its private restore input.
+aic_cancel_write :: (command:string,out:[]u8)->int #export_c #effects(all) {
+ if !aw_hex(command,32) {return -1;}o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"openagents.account.identity.cancel.v1");jo_key(o[..],"command");jo_str(o[..],command);jo_end(o[..]);return aw_len(o[..]);
+}
+aic_cancel_read :: (raw:string,out:[]u8)->bool #export_c #effects(all) {
+ if out.count!=32 || raw.count>256 {return false;}d:[1]Jv;nodes:[8]JvNode;if !jv_parse(d[..],raw,nodes[..]) {return false;}
+ fields:=[2]string.["schema","command"];v:=d[0];
+ return js_fields(v,0,fields[..]) && jv_len(v,0)==2 && jv_raw(v,jv_get(v,0,"schema"))=="openagents.account.identity.cancel.v1" && js_string(v,jv_get(v,0,"command"),out)==32 && aw_hex(cast(string)out,32);
+}
+#test "discard names only one exact command, never its private request" {
+ b:[256]u8;c:[32]u8;cmd:="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";n:=aic_cancel_write(cmd,b[..]);
+ #assert n>0 && aic_cancel_read(cast(string)b[0..<n],c[..]) && cast(string)c[..]==cmd;
+ #assert aic_cancel_write("bad",b[..])<0 && aic_cancel_write(cmd,b[0..<8])<0 && !aic_cancel_read("{}",c[..]);
+ #assert !aic_cancel_read("{\"schema\":\"openagents.account.identity.cancel.v1\",\"command\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"secret\":\"bad\"}",c[..]);
+}
+
+#test "identity changes round trip with closed fields and no secret for rotation" {
+ a:[1]IdentityChange;b:[1024]u8;c:[1]IdentityChange;
+ for i:0..<32 {a[0].command[i]='a';}for i:0..<64 {a[0].expected[i]=AIC_G[i];}
+ a[0].mode=AIC_ROTATE;n:=aic_write(a[..],b[..]);#assert n>0 && aic_read(cast(string)b[0..<n],c[..]) && c[0].mode==AIC_ROTATE && c[0].expected[0]=='7';
+ a[0].mode=AIC_RESTORE;for i:0..<64 {a[0].secret[i]='0';}a[0].secret[63]='1';
+ n=aic_write(a[..],b[..]);#assert n>0 && aic_read(cast(string)b[0..<n],c[..]) && c[0].secret[63]=='1';
+ #assert !aic_read("{}",c[..]) && !aic_read("bad",c[..]) && aic_write(a[..],b[0..<20])<0;
+ a[0].command[0]='g';#assert aic_write(a[..],b[..])<0;
+ a[0].command[0]='a';a[0].expected[0]='X';#assert aic_write(a[..],b[..])<0;
+ a[0].expected[0]='7';a[0].mode=3;#assert aic_write(a[..],b[..])<0;
+ a[0].mode=AIC_RESTORE;a[0].secret[0]='z';#assert aic_write(a[..],b[..])<0;
+}
+#test "malformed, missing, extra and contradictory fields cannot replace a key" {
+ a:[1]IdentityChange;
+ #assert !aic_read("{\"schema\":\"openagents.account.identity.change.v1\",\"command\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"expected\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"mode\":\"rotate\",\"secret\":\"1\"}",a[..]);
+ #assert !aic_read("{\"schema\":\"openagents.account.identity.change.v1\",\"command\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"expected\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"mode\":\"restore\",\"secret\":\"\"}",a[..]);
+}
+aic_valid :: (a:[]IdentityChange)->bool {
+ return a.count==1 && a[0].revision>=0 && a[0].revision<AIC_REVISION_MAX && aw_hex(cast(string)a[0].command[..],32) && aw_hex(cast(string)a[0].expected[..],64) && (a[0].mode==AIC_ROTATE || a[0].mode==AIC_RESTORE && aw_hex(cast(string)a[0].secret[..],64));
+}
+aic_write :: (a:[]IdentityChange,out:[]u8)->int #export_c #effects(all) {
+ if !aic_valid(a) {return -1;}o:[1]Jo;aw_at(o[..],out,0);
+ jo_put(o[..],"{\"schema\":");jo_quoted(o[..],AIC_SCHEMA);jo_put(o[..],",\"command\":");jo_quoted(o[..],cast(string)a[0].command[..]);
+ jo_put(o[..],",\"expected\":");jo_quoted(o[..],cast(string)a[0].expected[..]);jo_put(o[..],",\"mode\":");jo_quoted(o[..],ifx a[0].mode==AIC_ROTATE then "rotate" else "restore");
+ jo_put(o[..],",\"secret\":");jo_quoted(o[..],ifx a[0].mode==AIC_RESTORE then cast(string)a[0].secret[..] else "");jo_put(o[..],",\"expected_revision\":");jo_int(o[..],a[0].revision);jo_put(o[..],"}");return aw_len(o[..]);
+}
+aic_read :: (raw:string,a:[]IdentityChange)->bool #export_c #effects(all) {
+ if a.count!=1 || raw.count>1024 {return false;}a[0]=IdentityChange.{};d:[1]Jv;nodes:[20]JvNode;
+ if !jv_parse(d[..],raw,nodes[..]) {return false;}v:=d[0];fields:=[6]string.["schema","command","expected","mode","secret","expected_revision"];
+ if !js_fields(v,0,fields[..]) || jv_len(v,0)!=6 || jv_raw(v,jv_get(v,0,"schema"))!=AIC_SCHEMA {return false;}
+ if js_string(v,jv_get(v,0,"command"),a[0].command[..])!=32 || js_string(v,jv_get(v,0,"expected"),a[0].expected[..])!=64 {return false;}
+ mode:=jv_raw(v,jv_get(v,0,"mode"));a[0].mode=ifx mode=="rotate" then AIC_ROTATE else ifx mode=="restore" then AIC_RESTORE else 0;
+ n:=js_string(v,jv_get(v,0,"secret"),a[0].secret[..]);
+ a[0].revision=js_number(v,jv_get(v,0,"expected_revision"));
+ return (a[0].mode==AIC_ROTATE && n==0 || a[0].mode==AIC_RESTORE && n==64) && aic_valid(a);
+}
+// A separately versioned public state read supplies the CAS revision; identity-v1 is unchanged.
+aic_state_write :: (account:string,pubkey:string,source:int,revision:int,out:[]u8)->int #export_c #effects(all) {
+ if account.count<1 || account.count>127 || !aw_hex(pubkey,64) || (source!=1 && source!=2) || revision<0 || revision>AIC_REVISION_MAX {return -1;}
+ o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],AIC_STATE_SCHEMA);jo_key(o[..],"account");jo_str(o[..],account);jo_key(o[..],"pubkey");jo_str(o[..],pubkey);jo_key(o[..],"source");jo_str(o[..],ifx source==2 then "account" else "linked");jo_key(o[..],"revision");jo_int(o[..],revision);jo_end(o[..]);return aw_len(o[..]);
+}
+aic_state_read :: (raw:string,s:[]IdentityState)->bool #export_c #effects(all) {
+ if s.count!=1 {return false;}s[0]=IdentityState.{};d:[1]Jv;nodes:[16]JvNode;if !jv_parse(d[..],raw,nodes[..]) {return false;}v:=d[0];fields:=[5]string.["schema","account","pubkey","source","revision"];
+ if !js_fields(v,0,fields[..]) || jv_len(v,0)!=5 || jv_raw(v,jv_get(v,0,"schema"))!=AIC_STATE_SCHEMA {return false;}
+ s[0].account_n=js_string(v,jv_get(v,0,"account"),s[0].account[..]);s[0].revision=js_number(v,jv_get(v,0,"revision"));source:=jv_raw(v,jv_get(v,0,"source"));s[0].source=ifx source=="account" then 2 else ifx source=="linked" then 1 else 0;
+ return s[0].account_n>0 && s[0].account_n<=127 && js_string(v,jv_get(v,0,"pubkey"),s[0].pubkey[..])==64 && aw_hex(cast(string)s[0].pubkey[..],64) && s[0].source>0 && s[0].revision>=0 && s[0].revision<=AIC_REVISION_MAX;
+}
+#test "public identity state binds the exact revision without changing identity-v1" {
+ b:[512]u8;s:[1]IdentityState;
+ for revision:[3]int.[0,1,AIC_REVISION_MAX] {n:=aic_state_write("fixture",AIC_G,2,revision,b[..]);#assert n>0 && aic_state_read(cast(string)b[0..<n],s[..]) && s[0].revision==revision && s[0].source==2;}
+ #assert !aic_state_read("{}",s[..]) && aic_state_write("fixture",AIC_G,2,-1,b[..])<0 && aic_state_write("fixture",AIC_G,2,AIC_REVISION_MAX+1,b[..])<0;
+}
+// Relational storage readers/validators for the two registered public stored shapes.
+aic_selection :: (account:string,pubkey:string,revision:int)->bool #export_c #effects(all) {return account.count>0 && aw_hex(pubkey,64) && revision>=1 && revision<=AIC_REVISION_MAX;}
+aic_receipt :: (account:string,command:string,digest:string,expected:string,pubkey:string,mode:string,cancelled:bool)->bool #export_c #effects(all) {
+ return account.count>0 && aw_hex(command,32) && aw_hex(digest,64) && aw_hex(expected,64) && (cancelled && mode=="cancel" && pubkey.count==0 || !cancelled && aw_hex(pubkey,64) && (mode=="rotate" || mode=="restore"));
+}
+#test "stored selections and operation receipts keep all public fields bounded" {
+ #assert aic_selection("a",AIC_G,1) && !aic_selection("",AIC_G,1) && !aic_selection("a","bad",1) && !aic_selection("a",AIC_G,0) && !aic_selection("a",AIC_G,AIC_REVISION_MAX+1);
+ cmd:="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+ #assert aic_receipt("a",cmd,AIC_G,AIC_G,AIC_G,"rotate",false) && aic_receipt("a",cmd,AIC_G,AIC_G,AIC_G,"restore",false);
+ #assert aic_receipt("a",cmd,AIC_G,AIC_G,"","cancel",true) && !aic_receipt("a",cmd,AIC_G,AIC_G,AIC_G,"cancel",true) && !aic_receipt("a",cmd,AIC_G,AIC_G,"","cancel",false);
+ #assert !aic_receipt("a","bad",AIC_G,AIC_G,AIC_G,"rotate",false) && !aic_receipt("a",cmd,"bad",AIC_G,AIC_G,"rotate",false) && !aic_receipt("a",cmd,AIC_G,"bad",AIC_G,"rotate",false) && !aic_receipt("a",cmd,AIC_G,AIC_G,AIC_G,"sign",false);
+}

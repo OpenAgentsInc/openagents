@@ -98,6 +98,13 @@ final class FieldEditor:UITextField {
         style=next;face=NativeKitText.face(CGFloat(next[0]>0 ? next[0]:17));font=face
         if let p=attributedPlaceholder?.string {attributedPlaceholder=NSAttributedString(string:p,attributes:[.foregroundColor:NativeKitText.color(style,6),.font:face])}
     }
+    override var accessibilityValue:String? {get {kind == .secret ? nil:super.accessibilityValue} set {super.accessibilityValue=newValue}}
+    override func copy(_ sender:Any?) {
+        if kind == .secret {
+            guard !isSecureTextEntry,let range=selectedTextRange,let value=text(in:range),!value.isEmpty,!UIScreen.main.isCaptured else {return}
+            UIPasteboard.general.setItems([["public.utf8-plain-text":value]],options:[.localOnly:true,.expirationDate:Date().addingTimeInterval(60)])
+        }else {super.copy(sender)}
+    }
     /// Sets what the field takes and its placeholder. Changing the kind reloads the keyboard.
     func configure(_ next:KitFieldKind,placeholder:String) {
         attributedPlaceholder=NSAttributedString(string:placeholder,attributes:[.foregroundColor:NativeKitText.color(style,6),.font:face])

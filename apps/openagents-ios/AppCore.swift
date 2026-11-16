@@ -49,6 +49,7 @@ import UIKit
     private let effects: AppEffects
     private let device = AppDevice()
     private let account: AppAccount
+    let identity: AppIdentityNative
     /// The conversation to rejoin, kept across launches (an ID, never a token).
     private static let rejoinKey = "openagents.rejoin"
 
@@ -56,11 +57,13 @@ import UIKit
         guard let core = AppCoreC() else { return nil }
         self.core = core
         account = AppAccount(auth: auth)
+        identity = AppIdentityNative(auth: auth)
         let http = AppHTTP(policy: .init(origin: auth.origin, admit: { method, path, bytes in
             oa_policy_http(method == "GET" ? AppCoreCode.get : method == "POST" ? AppCoreCode.post : 0, path, Int64(bytes)) != 0
         }), authorize: AppAccount.authorizer(auth))
         bridge = AppCoreBridge(core: core)
         effects = AppEffects(outbox: bridge, http: http, account: account, wake: AppWake(), platform: device, devices: AppDeviceLink.shared)
+        effects.identity = identity
         bridge.effects = effects
         device.fact = { [weak self] fact in
             guard let self else { return }

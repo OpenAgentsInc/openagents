@@ -23,12 +23,15 @@ import UIKit
     }
 }
 
-@MainActor final class ChatScreen:UIViewController,UITextViewDelegate,UITextFieldDelegate,KitAccessSource {
+@MainActor final class ChatScreen:UIViewController,UITextViewDelegate,UITextFieldDelegate,KitAccessSource,UIScrollViewDelegate {
     private var owner:UnsafeMutableRawPointer?
     private var canvas:UIView?
     private var display:CADisplayLink?
     private var keyboard:CGFloat=0
     private var draftRev:Int32 = -1
+    private var editorFieldID=""
+    private let scrollDriver=GPUScrollDriver()
+    private var syncingScroll=false
     private var access:KitAccess?
     private var zoom:Float=1
     /// The editors' style from the page's skin, at the text size the page draws.
@@ -49,6 +52,11 @@ import UIKit
         self.owner=owner
         services=AppServices()
         if let services {
+            services.identity.anchor={ [weak self] in self?.view.window }
+            services.identity.input={ [weak self] in self?.field.text ?? "" }
+            services.identity.clearInput={ [weak self] in
+                guard let self else {return};if self.field.kind == .secret {self.field.text=""};oc_secret_ready(owner,0)
+            }
             services.bridge.changed={ [weak self] in self?.wake() }
             oc_attach(owner,services.core.raw,AppServices.keptDraft)
             oc_env_restore(owner,AppServices.keptEnvironment)
@@ -63,7 +71,12 @@ import UIKit
             MainActor.assumeIsolated {screen.wake()}
         },Unmanaged.passUnretained(self).toOpaque())
         let canvas=Unmanaged<UIView>.fromOpaque(raw).takeUnretainedValue();self.canvas=canvas
-        canvas.frame=view.bounds;canvas.autoresizingMask=[.flexibleWidth,.flexibleHeight];view.addSubview(canvas)
+        scrollDriver.frame=view.bounds;scrollDriver.autoresizingMask=[.flexibleWidth,.flexibleHeight]
+        scrollDriver.contentInsetAdjustmentBehavior = .never;scrollDriver.delegate=self
+        scrollDriver.delaysContentTouches=false;scrollDriver.isDirectionalLockEnabled=true
+        scrollDriver.showsVerticalScrollIndicator=false;scrollDriver.backgroundColor = .clear
+        view.addSubview(scrollDriver);scrollDriver.addSubview(canvas);canvas.frame=scrollDriver.bounds
+        canvas.autoresizingMask=[.flexibleWidth,.flexibleHeight];oc_native_scroll(owner,1)
         canvas.isAccessibilityElement=false;canvas.accessibilityElementsHidden=true
         // the menu button and the chips' picker are system controls over the page
         oc_native(owner,1)
@@ -80,6 +93,8 @@ import UIKit
         center.addObserver(self,selector:#selector(wake),name:UIApplication.didBecomeActiveNotification,object:nil)
         center.addObserver(self,selector:#selector(wake),name:UIAccessibility.reduceMotionStatusDidChangeNotification,object:nil)
         center.addObserver(self,selector:#selector(textSize),name:UIContentSizeCategory.didChangeNotification,object:nil)
+        center.addObserver(self,selector:#selector(clearPrivate),name:UIApplication.didEnterBackgroundNotification,object:nil)
+        center.addObserver(self,selector:#selector(captureChanged),name:UIScreen.capturedDidChangeNotification,object:nil)
         DevGallery.install(on:self)
     }
     override func viewDidAppear(_ animated:Bool) {
@@ -141,6 +156,7 @@ import UIKit
         var page=[CChar](repeating:0,count:17000);_ = oc_text(owner,&page,Int32(page.count))
         var fieldText=[CChar](repeating:0,count:512);_ = oc_field_text(owner,&fieldText,Int32(fieldText.count))
         let held=input===field ? String(cString:fieldText):String(cString:page)
+        if field.kind == .secret {return} // private editors are never debug transcript output
         let text=(input as? UITextView)?.text ?? (input as? UITextField)?.text ?? ""
         print("OA-EDIT \(op) focus \(focusID()) editor \"\(text)\" marked \(input?.markedTextRange != nil) page \"\(held)\" content \((input as? UITextField)?.textContentType?.rawValue ?? "-")")
     }
@@ -164,15 +180,19 @@ import UIKit
     }
     @objc private func background() {
         display?.invalidate();display=nil
+        if field.kind == .secret {field.isHidden=true;field.text="";services?.identity.hideBackup();if let owner {oc_secret_ready(owner,0)}}
         // the chips' choices, kept for the next launch
         if let owner {var bytes=[CChar](repeating:0,count:8192);_ = oc_env_save(owner,&bytes,Int32(bytes.count));AppServices.keepEnvironment(String(cString:bytes))}
     }
+    @objc private func clearPrivate() {services?.identity.clear();field.text="";if let owner {oc_secret_ready(owner,0);if focusID()=="identity.secret" {oc_blur(owner)}};wake()}
+    @objc private func captureChanged() {if UIScreen.main.isCaptured {clearPrivate()};wake()}
     fileprivate func step() {
         guard let owner else {return}
         // editing: a platform editor holds the keyboard over the focused field, and draws its text
         let insets=view.safeAreaInsets,composing=editor.isFirstResponder,editing=composing||field.isFirstResponder
         oc_env(owner,Float(insets.top),Float(insets.bottom),Float(keyboard),editing ? 1:0,composing ? Float(editor.textHeight(width:editor.bounds.width)):0,UIAccessibility.isReduceMotionEnabled ? 1:0)
         oc_frame(owner)
+        syncScroll()
         services?.pump()
         if oc_action(owner)==1 {_ = focus()}
         followFocus();placeEditor();access?.refresh();keepDraft()
@@ -182,6 +202,23 @@ import UIKit
         chrome?.sync(owner,rowsStamp:oc_rows_stamp(owner))
         // A static page sleeps: no frame runs until something wakes it.
         if oc_moving(owner)==0 {display?.isPaused=true}
+    }
+
+    // UIKit supplies only pan/deceleration. Coax retains the keyed/list offset and paints every pixel.
+    private func syncScroll() {
+        guard let owner else {return};var facts=[Float](repeating:0,count:3)
+        guard oc_scroll_info(owner,&facts) != 0 else {return}
+        syncingScroll=true;defer {syncingScroll=false}
+        scrollDriver.isScrollEnabled=facts[0] != 0 && facts[2]>0
+        scrollDriver.contentSize=CGSize(width:scrollDriver.bounds.width,height:scrollDriver.bounds.height+CGFloat(max(0,facts[2])))
+        if !scrollDriver.isTracking && !scrollDriver.isDragging && !scrollDriver.isDecelerating {
+            let target=CGPoint(x:0,y:CGFloat(facts[1]));if scrollDriver.contentOffset != target {scrollDriver.contentOffset=target}
+        }
+        canvas?.frame=CGRect(origin:scrollDriver.contentOffset,size:scrollDriver.bounds.size)
+    }
+    func scrollViewDidScroll(_ scrollView:UIScrollView) {
+        canvas?.frame=CGRect(origin:scrollView.contentOffset,size:scrollView.bounds.size)
+        if !syncingScroll,let owner {oc_scroll_to(owner,Float(scrollView.contentOffset.y));wake()}
     }
 
     // MARK: the platform editor
@@ -214,17 +251,24 @@ import UIKit
     private func followFocus() {
         guard let owner else {return}
         let id=focusID()
+        if editorFieldID != id {if id=="identity.secret" || editorFieldID=="identity.secret" {field.text=""};editorFieldID=id}
         if id != "chat.composer",editor.isFirstResponder {_ = editor.resignFirstResponder()}
-        guard id.hasPrefix("login.") else {if field.isFirstResponder {_ = field.resignFirstResponder()};field.removeFromSuperview();return}
+        let privateField=id=="identity.secret"
+        guard id.hasPrefix("login.") || privateField else {if field.isFirstResponder {_ = field.resignFirstResponder()};field.removeFromSuperview();if oc_private_mode(owner)==0 {field.text="";services?.identity.hideBackup()};return}
         var b=[Float](repeating:0,count:4)
-        guard oc_field_box(owner,&b) != 0 else {return}
+        guard oc_field_box(owner,&b) != 0 else {field.isHidden=true;return}
         let row=CGRect(x:CGFloat(b[0]),y:CGFloat(b[1]),width:CGFloat(b[2]),height:CGFloat(b[3]))
         // the editor sits over the field's text line, in the middle of the field's row
-        let frame=CGRect(x:row.minX+11,y:row.midY-min(22,row.height/2),width:max(40,row.width-22),height:min(44,row.height))
+        let scale=CGFloat(zoom)
+        let frame=CGRect(x:row.minX+11*scale,y:row.midY-min(22*scale,row.height/2),width:max(40,row.width-22*scale),height:min(44*scale,row.height))
         if field.superview==nil {view.addSubview(field)}
+        field.isHidden=privateField && UIScreen.main.isCaptured
         if field.frame != frame {field.frame=frame}
-        field.configure(id=="login.code" ? .code:.email,placeholder:id=="login.code" ? "000000":"you@example.com")
-        if field.markedTextRange==nil {
+        field.configure(privateField ? .secret:id=="login.code" ? .code:.email,placeholder:privateField ? "nsec or hex":id=="login.code" ? "000000":"you@example.com")
+        if privateField {
+            field.isSecureTextEntry=oc_private_mode(owner) != 2
+            if oc_private_mode(owner)==2 {field.text=UIScreen.main.isCaptured ? "":services?.identity.backup ?? ""}
+        } else if field.markedTextRange==nil {
             var bytes=[CChar](repeating:0,count:512);_ = oc_field_text(owner,&bytes,Int32(bytes.count));let held=String(cString:bytes)
             if field.text != held {field.text=held}
         }
@@ -241,11 +285,13 @@ import UIKit
     @objc private func fieldChanged() {
         // an input method's provisional text stays the platform's until it is committed (one editing authority)
         guard let owner,field.markedTextRange==nil else {return}
+        if focusID()=="identity.secret" {oc_secret_ready(owner,(field.text ?? "").isEmpty ? 0:1);wake();return}
         if oc_set_field(owner,field.text ?? "")==0 {var bytes=[CChar](repeating:0,count:512);_ = oc_field_text(owner,&bytes,Int32(bytes.count));field.text=String(cString:bytes)}
         wake()
     }
-    func textFieldShouldReturn(_ textField:UITextField)->Bool {if let owner {_ = oc_submit(owner)};wake();return false}
-    func textFieldDidEndEditing(_ textField:UITextField) {if let owner,focusID().hasPrefix("login.") {oc_blur(owner)};wake()}
+    func textFieldShouldReturn(_ textField:UITextField)->Bool {if let owner {if focusID()=="identity.secret" {_ = field.resignFirstResponder();oc_blur(owner)}else {_ = oc_submit(owner)}};wake();return false}
+    func textField(_ textField:UITextField,shouldChangeCharactersIn range:NSRange,replacementString string:String)->Bool {guard let owner else {return false};return focusID() != "identity.secret" || oc_private_mode(owner) != 2}
+    func textFieldDidEndEditing(_ textField:UITextField) {if let owner,focusID().hasPrefix("login.") || focusID()=="identity.secret" {oc_blur(owner)};wake()}
     @discardableResult private func focus()->Bool {attachEditor();let took=editor.becomeFirstResponder();wake();return took}
     func textViewDidBeginEditing(_ textView:UITextView) {wake()}
     func textViewDidEndEditing(_ textView:UITextView) {editor.removeFromSuperview();if let owner,focusID()=="chat.composer" {oc_blur(owner)};wake()}
@@ -314,8 +360,8 @@ import UIKit
         }
         // VoiceOver's escape: the open picker, the login card or the sidebar closes, as their own close does
         access.escape={ [weak self] in
-            guard let self,let owner=self.owner,oc_layer(owner) != 0 else {return false}
-            for id in ["env.close","login.back","drawer.scrim"] where oc_activate(owner,id) != 0 {self.wake();return true}
+            guard let self,let owner=self.owner else {return false}
+            for id in ["settings.back","env.close","login.back","drawer.scrim"] where oc_activate(owner,id) != 0 {self.wake();return true}
             return false
         }
         #if DEBUG
@@ -343,3 +389,13 @@ import UIKit
     init(_ screen:ChatScreen) {self.screen=screen}
     @objc func tick() {screen?.step()}
 }
+
+private final class GPUScrollDriver:UIScrollView {
+    override func gestureRecognizerShouldBegin(_ gestureRecognizer:UIGestureRecognizer)->Bool {
+        if gestureRecognizer===panGestureRecognizer {
+            let v=panGestureRecognizer.velocity(in:self);if abs(v.x)>abs(v.y) {return false}
+        }
+        return super.gestureRecognizerShouldBegin(gestureRecognizer)
+    }
+}
+>>>>>>> 85c2e87256 (Restore managed Nostr identity settings on the compiled GPU app (#13645))

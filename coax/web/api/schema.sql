@@ -19760,6 +19760,26 @@ ALTER SEQUENCE anime.calls_id_seq OWNED BY anime.calls.id;
 
 
 --
+-- Name: account_identity_changes_v1; Type: TABLE; Schema: auth; Owner: -
+--
+
+CREATE TABLE auth.account_identity_changes_v1 (
+    account text NOT NULL,
+    command text NOT NULL,
+    digest text NOT NULL,
+    expected text NOT NULL,
+    pubkey text,
+    mode text NOT NULL,
+    cancelled boolean DEFAULT false NOT NULL,
+    CONSTRAINT account_identity_changes_v1_check CHECK (((cancelled AND (mode = 'cancel'::text) AND (pubkey IS NULL)) OR ((NOT cancelled) AND (mode <> 'cancel'::text) AND (pubkey IS NOT NULL)))),
+    CONSTRAINT account_identity_changes_v1_command_check CHECK ((command ~ '^[0-9a-f]{32}$'::text)),
+    CONSTRAINT account_identity_changes_v1_digest_check CHECK ((digest ~ '^[0-9a-f]{64}$'::text)),
+    CONSTRAINT account_identity_changes_v1_expected_check CHECK ((expected ~ '^[0-9a-f]{64}$'::text)),
+    CONSTRAINT account_identity_changes_v1_mode_check CHECK ((mode = ANY (ARRAY['rotate'::text, 'restore'::text, 'cancel'::text])))
+);
+
+
+--
 -- Name: account_identity_keys_v1; Type: TABLE; Schema: auth; Owner: -
 --
 
@@ -19771,6 +19791,18 @@ CREATE TABLE auth.account_identity_keys_v1 (
     CONSTRAINT account_identity_keys_v1_created_ms_check CHECK ((created_ms >= 0)),
     CONSTRAINT account_identity_keys_v1_pubkey_check CHECK ((pubkey ~ '^[0-9a-f]{64}$'::text)),
     CONSTRAINT account_identity_keys_v1_sealed_check CHECK ((sealed ~ '^[0-9a-f]{210}$'::text))
+);
+
+
+--
+-- Name: account_identity_selection_v1; Type: TABLE; Schema: auth; Owner: -
+--
+
+CREATE TABLE auth.account_identity_selection_v1 (
+    account text NOT NULL,
+    pubkey text NOT NULL,
+    revision bigint NOT NULL,
+    CONSTRAINT account_identity_selection_v1_revision_check CHECK (((revision >= 1) AND (revision <= 2147483647)))
 );
 
 
@@ -24003,11 +24035,27 @@ ALTER TABLE ONLY anime.calls
 
 
 --
+-- Name: account_identity_changes_v1 account_identity_changes_v1_pkey; Type: CONSTRAINT; Schema: auth; Owner: -
+--
+
+ALTER TABLE ONLY auth.account_identity_changes_v1
+    ADD CONSTRAINT account_identity_changes_v1_pkey PRIMARY KEY (account, command);
+
+
+--
 -- Name: account_identity_keys_v1 account_identity_keys_v1_pkey; Type: CONSTRAINT; Schema: auth; Owner: -
 --
 
 ALTER TABLE ONLY auth.account_identity_keys_v1
     ADD CONSTRAINT account_identity_keys_v1_pkey PRIMARY KEY (pubkey);
+
+
+--
+-- Name: account_identity_selection_v1 account_identity_selection_v1_pkey; Type: CONSTRAINT; Schema: auth; Owner: -
+--
+
+ALTER TABLE ONLY auth.account_identity_selection_v1
+    ADD CONSTRAINT account_identity_selection_v1_pkey PRIMARY KEY (account);
 
 
 --
@@ -27037,11 +27085,43 @@ ALTER TABLE ONLY access.redemptions
 
 
 --
+-- Name: account_identity_changes_v1 account_identity_changes_v1_account_fkey; Type: FK CONSTRAINT; Schema: auth; Owner: -
+--
+
+ALTER TABLE ONLY auth.account_identity_changes_v1
+    ADD CONSTRAINT account_identity_changes_v1_account_fkey FOREIGN KEY (account) REFERENCES auth.accounts(id);
+
+
+--
+-- Name: account_identity_changes_v1 account_identity_changes_v1_pubkey_fkey; Type: FK CONSTRAINT; Schema: auth; Owner: -
+--
+
+ALTER TABLE ONLY auth.account_identity_changes_v1
+    ADD CONSTRAINT account_identity_changes_v1_pubkey_fkey FOREIGN KEY (pubkey) REFERENCES auth.account_identity_keys_v1(pubkey) ON DELETE CASCADE;
+
+
+--
 -- Name: account_identity_keys_v1 account_identity_keys_v1_account_fkey; Type: FK CONSTRAINT; Schema: auth; Owner: -
 --
 
 ALTER TABLE ONLY auth.account_identity_keys_v1
     ADD CONSTRAINT account_identity_keys_v1_account_fkey FOREIGN KEY (account) REFERENCES auth.accounts(id);
+
+
+--
+-- Name: account_identity_selection_v1 account_identity_selection_v1_account_fkey; Type: FK CONSTRAINT; Schema: auth; Owner: -
+--
+
+ALTER TABLE ONLY auth.account_identity_selection_v1
+    ADD CONSTRAINT account_identity_selection_v1_account_fkey FOREIGN KEY (account) REFERENCES auth.accounts(id);
+
+
+--
+-- Name: account_identity_selection_v1 account_identity_selection_v1_pubkey_fkey; Type: FK CONSTRAINT; Schema: auth; Owner: -
+--
+
+ALTER TABLE ONLY auth.account_identity_selection_v1
+    ADD CONSTRAINT account_identity_selection_v1_pubkey_fkey FOREIGN KEY (pubkey) REFERENCES auth.account_identity_keys_v1(pubkey) ON DELETE CASCADE;
 
 
 --

@@ -1,0 +1,51 @@
+// Account identity settings on the compiled app core. Public metadata only.
+#load "../core/core.coax";
+#load "../../../../coax/web/api/auth-identity-wire.coax";
+IKS_OWNER :: 4; IKS_READ :: 1; IKS_BACKUP :: 2; IKS_ROTATE :: 3; IKS_RESTORE :: 4; IKS_RETRY :: 5; IKS_DISCARD :: 6;
+IKS_BACK :: 201; IKS_COPY :: 202; IKS_CONFIRM :: 203; IKS_CANCEL :: 204; IKS_SECRET :: 205; IKS_LOGOUT :: 206; IKS_LOGIN :: 207;
+IdentitySettings :: struct {
+ open:bool; signed_in:bool; loaded:bool; source:int;
+ account:[128]u8; account_n:int; pubkey:[64]u8;
+ op:int; purpose:int; confirm:int; unknown:bool; backup:bool; secret_ready:bool;
+ note:[256]u8; note_n:int;
+}
+
+iks_note :: (s:[]IdentitySettings,text:string) {s[0].note_n=js_copy(s[0].note[..],text);}
+iks_words :: (s:[]IdentitySettings)->string {return cast(string)s[0].note[0..<s[0].note_n];}
+iks_pubkey :: (s:[]IdentitySettings)->string {return ifx s[0].loaded then cast(string)s[0].pubkey[..] else "";}
+iks_sync :: (s:[]IdentitySettings,c:[]AppCore) {
+ logged:=c[0].auth==AUTH_IN;
+ if logged!=s[0].signed_in {was:=s[0].open;s[0]=IdentitySettings.{};s[0].open=was;s[0].signed_in=logged;}
+ if logged && !s[0].loaded && s[0].op==0 && s[0].note_n==0 {
+  s[0].op=app_guest_identity(c,IKS_OWNER,IKS_READ,"read","");s[0].purpose=IKS_READ;
+  if s[0].op==0 {iks_note(s,"Account busy. Try again.");}
+ }
+}
+iks_request :: (s:[]IdentitySettings,c:[]AppCore,act:int)->bool {
+ if act==IKS_BACK {s[0].open=false;s[0].confirm=0;s[0].backup=false;s[0].secret_ready=false;return true;}
+ if act==IKS_CANCEL {s[0].confirm=0;s[0].backup=false;s[0].secret_ready=false;return true;}
+ if act==IKS_RETRY && s[0].signed_in && !s[0].loaded && s[0].op==0 {s[0].note_n=0;return true;}
+ if s[0].op!=0 || !s[0].signed_in || !s[0].loaded {return false;}
+ if act==IKS_COPY {return fx_request(c[0].out[..],OWN_PAGE,FX_CLIPBOARD,0,0,"","",iks_pubkey(s),0,0)>0;}
+ if act==IKS_ROTATE || act==IKS_RESTORE || act==IKS_BACKUP || act==IKS_DISCARD && s[0].unknown {s[0].confirm=act;s[0].backup=false;s[0].secret_ready=false;s[0].note_n=0;return true;}
+ want:=ifx act==IKS_RETRY && s[0].unknown then IKS_RETRY else ifx act==IKS_CONFIRM then s[0].confirm else 0;
+ if want==0 || want==IKS_RESTORE && !s[0].secret_ready {return false;}
+ action:=ifx want==IKS_BACKUP then "backup" else ifx want==IKS_ROTATE then "rotate" else ifx want==IKS_RESTORE then "restore" else ifx want==IKS_DISCARD then "discard" else "retry";
+ op:=app_guest_identity(c,IKS_OWNER,want,action,iks_pubkey(s));if op==0 {iks_note(s,"Account busy. Try again.");return false;}
+ s[0].op=op;s[0].purpose=want;s[0].note_n=0;return true;
+}
+iks_guest :: (s:[]IdentitySettings,c:[]AppCore,raw:string)->bool {
+ g:=c[0].guest;if !g.waiting || g.owner!=IKS_OWNER {return false;}
+ if g.op==s[0].op {
+  s[0].op=0;s[0].unknown=g.outcome==FXO_UNKNOWN;
+  if g.outcome==FXO_DONE && (g.status==200 || g.status==202) {
+   s[0].unknown=g.status==202;
+   length:[1]int;account:[128]u8;pub:[64]u8;source:=aiw_read(raw,account[..],pub[..],length[..]);
+   if source>0 {s[0].loaded=true;s[0].source=source;s[0].account_n=length[0];for i:0..<length[0] {s[0].account[i]=account[i];}for i:0..<64 {s[0].pubkey[i]=pub[i];}s[0].note_n=0;}
+   else {iks_note(s,"Identity unavailable. Try again.");}
+   s[0].backup=s[0].purpose==IKS_BACKUP;s[0].confirm=0;s[0].secret_ready=false;
+   if s[0].purpose==IKS_ROTATE || s[0].purpose==IKS_RESTORE || s[0].purpose==IKS_RETRY || s[0].purpose==IKS_DISCARD {s[0].loaded=false;}
+  } else {iks_note(s,ifx s[0].unknown then "Connection lost. Retry the same change." else ifx g.status==409 then "Identity changed. Reopen Settings." else "Could not finish. Try again.");}
+ }
+ app_guest_done(c);return true;
+}

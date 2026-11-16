@@ -1,0 +1,33 @@
+// Identity replacement admission. Host facts are not authority by themselves.
+#load "account-settings-policy.coax";
+#authority;
+AICP_REFUSE :: 0; AICP_REPLAY :: 1; AICP_CHANGE :: 2;
+
+#test "identity replacement keeps fresh strong human admission" {
+ #assert aicp_allowed(2,true,false,0,2,300000);
+ #assert !aicp_allowed(2,true,false,0,2,300001) && !aicp_allowed(2,true,false,0,2,-1);
+ #assert !aicp_allowed(2,true,false,0,1,0) && !aicp_allowed(2,true,false,0,3,0);
+ #assert !aicp_allowed(1,true,false,0,2,0) && !aicp_allowed(3,true,false,0,2,0);
+ #assert !aicp_allowed(2,false,false,0,2,0) && !aicp_allowed(2,true,true,0,2,0) && !aicp_allowed(2,true,false,1,2,0) && !aicp_allowed(2,true,false,-1,2,0);
+}
+#test "an operation replay precedes CAS; changed bytes or stale identities refuse" {
+ for existing:[2]bool.[false,true] {for same:[2]bool.[false,true] {for expected:[2]bool.[false,true] {
+ want:=ifx existing then (ifx same then AICP_REPLAY else AICP_REFUSE) else (ifx expected then AICP_CHANGE else AICP_REFUSE);
+ #assert aicp_plan(existing,same,expected)==want;
+ }}}
+}
+#test "only a derived scalar not owned by another account can be selected" {
+ for valid:[2]bool.[false,true] {for other:[2]bool.[false,true] {
+ #assert aicp_key(valid,other)==(valid && !other);
+ }}
+}
+aicp_allowed :: (kind:int,session:bool,limited:bool,frozen:int,level:int,age:int)->bool #export_c #effects(all) {return asp_backup(kind,session,limited,frozen,level,age);}
+aicp_plan :: (existing:bool,same:bool,expected:bool)->int #export_c #effects(all) {
+ if existing {return ifx same then AICP_REPLAY else AICP_REFUSE;}return ifx expected then AICP_CHANGE else AICP_REFUSE;
+}
+aicp_key :: (valid:bool,other:bool)->bool #export_c #effects(all) {return valid && !other;}
+aicp_revision :: (expected:int,current:int)->bool #export_c #effects(all) {return expected==current && current>=0 && current<2147483647;}
+#test "a revision never wraps or admits an old command after restoring its original key" {
+ #assert aicp_revision(0,0) && aicp_revision(2147483646,2147483646);
+ #assert !aicp_revision(0,2) && !aicp_revision(2,0) && !aicp_revision(-1,-1) && !aicp_revision(2147483647,2147483647);
+}

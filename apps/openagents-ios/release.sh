@@ -24,7 +24,7 @@ uuid="$(security cms -D -i "$out/OpenAgents.mobileprovision" | plutil -extract U
 for profile_dir in "$HOME/Library/MobileDevice/Provisioning Profiles" "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"; do
   mkdir -p "$profile_dir"; cp "$out/OpenAgents.mobileprovision" "$profile_dir/$uuid.mobileprovision"
 done
-../../coax/remote/remote.sh run --local -- xcodebuild -project OpenAgents.xcodeproj -scheme OpenAgents -configuration Release \
+../../coax/remote/remote.sh run --local -- xcodebuild -project OpenAgents.xcodeproj -scheme OpenAgents -configuration Release -jobs 2 \
   -destination generic/platform=iOS -derivedDataPath "$out/dd" -archivePath "$out/OpenAgents.xcarchive" \
   DEVELOPMENT_TEAM=HQWSG26L43 CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="$sha1" \
   OA_APP_PROVISIONING_PROFILE="OpenAgents App Store" archive
@@ -38,13 +38,13 @@ with open(sys.argv[1],'wb') as file:
                   'provisioningProfiles':{'com.openagents.app':'OpenAgents App Store'},
                   'manageAppVersionAndBuildNumber':False,'uploadSymbols':True},file)
 PY
-../../coax/remote/remote.sh run --local -- xcodebuild -exportArchive -archivePath "$out/OpenAgents.xcarchive" \
+../../coax/remote/remote.sh run --local -- xcodebuild -jobs 2 -exportArchive -archivePath "$out/OpenAgents.xcarchive" \
   -exportOptionsPlist "$out/ExportOptions.plist" -exportPath "$out/upload"
 # The build's dSYMs, kept by UUID so a crash report's frames resolve to lines (#13379,
 # coax/web/symbols.sh app-frame). Never stops a release.
 ../../coax/web/symbols.sh app "$out/OpenAgents.xcarchive" || echo "release: the dSYMs were not kept (coax/web/symbols.sh app $out/OpenAgents.xcarchive)" >&2
 keys="$(mktemp -d)"
-trap 'rm -rf "$keys"' EXIT
+trap 'rm -f "$keys/AuthKey_$ASC_API_KEY_ID.p8"; rmdir "$keys"' EXIT
 cp "$ASC_API_PRIVATE_KEY_PATH" "$keys/AuthKey_$ASC_API_KEY_ID.p8"
 API_PRIVATE_KEYS_DIR="$keys" xcrun altool --upload-app -t ios -f "$out/upload/OpenAgents.ipa" \
   --apiKey "$ASC_API_KEY_ID" --apiIssuer "$ASC_API_ISSUER_ID"

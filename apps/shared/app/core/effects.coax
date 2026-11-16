@@ -40,7 +40,8 @@ FX_AUTH_CANCEL :: 9;   // forget the email attempt the host keeps (back to the e
 FX_DEVICE_LIST :: 10;  // the computers this phone is paired with (apps/shared/app/device/)
 FX_DEVICE_PAIR :: 11;  // body: a pairing link the person opened
 FX_DEVICE_CALL :: 12;  // text: a paired computer's key; body: its environment request
-FX_KINDS :: 12;
+FX_IDENTITY :: 13;    // private SDK action, public expected key only
+FX_KINDS :: 13;
 
 // A held request.
 FX_FREE :: 0; FX_QUEUED :: 1; FX_PENDING :: 2; FX_CANCELLED :: 3;
@@ -106,7 +107,7 @@ fx_rollback :: (o: [] FxOutbox, m: FxMark) {
   o[0].next_op = m.next_op; o[0].payload_n = m.payload_n;
 }
 
-fx_text_kind :: (kind: int) -> bool { return kind == FX_AUTH_EMAIL || kind == FX_AUTH_VERIFY || kind == FX_DEVICE_CALL; }
+fx_text_kind :: (kind: int) -> bool { return kind == FX_AUTH_EMAIL || kind == FX_AUTH_VERIFY || kind == FX_DEVICE_CALL || kind == FX_IDENTITY; }
 // Admit one request. Returns its operation ID, or 0 and changes nothing: an unknown kind or owner,
 // a retired owner or outbox, a request the installed policy refuses, or no room.
 fx_request :: (o: [] FxOutbox, owner: int, kind: int, purpose: int, method: int, path: string, text: string, body: string, limit: int, timeout_ms: int) -> int {
@@ -120,6 +121,7 @@ fx_request :: (o: [] FxOutbox, owner: int, kind: int, purpose: int, method: int,
     else if kind == FX_LINK { if !up_link(body) { return 0; } }
     else if kind == FX_DEVICE_PAIR { if !up_device_link(body) { return 0; } }
     else if kind == FX_DEVICE_CALL { if !up_device_call(text, body) { return 0; } }
+    else if kind == FX_IDENTITY { if !up_identity(text,body) {return 0;} }
     else if body.count != 0 { return 0; }
   }
   if o[0].payload_n + body.count > FX_PAYLOAD { return 0; }
