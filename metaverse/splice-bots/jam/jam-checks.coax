@@ -1,0 +1,67 @@
+// The jam world's checks (jam-world.coax, #13653), on a small catalog written here: two route maps of
+// boxes, a player start and game actors named as the jam's are. No game content is in it; the real pack's
+// run is metaverse/splice-bots/tools/jam-run-check.coax's.
+// splice-game.coax loads this file with `#load ... #test;`.
+
+// The farm with its start, Sniper's three parts, a pickup, a charge point, a wall west of the start and a
+// box to stand on south of it; the ring with a rave raider; a map that is not on the route.
+SJT_CATALOG :: "world 1 jam-test\ntitle Jam test\nmap 0 /Game/SpliceBots/World/Maps/L_SolarFarm\nmap 1 /Game/World/Graybox/L_Cabin\nmap 2 /Game/World/Graybox/L_Ring\nmat 0 0.5 0.5 0.5 1 -1 0\nM s0 0 36 0 -0.5 -0.5 -0.5 0.5 0.5 0.5\nspawn 0 -800 1 -105 3.1415927\nfall 0 -50\nspawn 1 0 0 0 0\nfall 1 -50\nspawn 2 0 1 -60 1.5707963\nfall 2 -50\nP 0 0 0 -13 -2 0 0 0 1 -772 1 -126 3 2 4 SpliceSniper_0/Cab\nP 0 0 0 -13 -2 0 0 0 1 -772 1 -128 3 2 4 SpliceSniper_0/Car\nP 0 0 0 -13 -2 0 0 0 1 -772 1 -130 3 2 4 SpliceSniper_0/Tail\nP 0 0 0 -13 -3 0 0 0 1 -832 0.6 -138 1 1 1 SpliceFarmPickup_10/Mesh\nP 0 0 0 -13 -3 0 0.7071068 0 0.7071068 -826 0 -131 1 1 1 SpliceFarmChargePoint_0/Post\nP 0 0 0 -13 -2 0 0 0 1 -805 1 -105 2 2 2 StaticMeshActor_7/StaticMeshComponent0\nP 0 0 0 -13 -2 0 0 0 1 -800 0.5 -110 2 1 2 L_SolarFarm_GreekQuarter.StaticMeshActor_3/StaticMeshComponent0\nP 1 0 0 0 0 0 0 0 1 0 0 0 1 1 1 SpliceDigger_9/Body\nP 2 0 0 0 -3 0 0 0 1 -4.3 0 -168 1 1 1 SpliceRaveRaider_UAID_1/Mesh\ncol 0 box -806 0 -106 -804 2 -104 StaticMeshActor_7\ncol 0 box -801 0 -111 -799 1 -109 L_SolarFarm_GreekQuarter.StaticMeshActor_3\n";
+
+#test "jam: the route's maps, their starts and the game actors are read off a pack's catalog" #steps 1000000000 {
+  j: [1] SjJam;
+  #assert sj_read(j[..], SJT_CATALOG) && j[0].ok;
+  #assert j[0].map[SJ_FARM] == 0 && j[0].map[SJ_RING] == 2 && j[0].map[SJ_PLAIN] == -1 && j[0].map[SJ_LAB] == -1;
+  #assert j[0].spawn[SJ_FARM].ok && j[0].spawn[SJ_FARM].x == -800 && j[0].spawn[SJ_FARM].z == -105 && !j[0].spawn[SJ_PLAIN].ok;
+  // Sniper's three parts are one actor at their middle; the Digger on the cabin map is not on the route
+  #assert j[0].count[SJ_SNIPER] == 1 && j[0].count[SJ_PICKUP] == 1 && j[0].count[SJ_CHARGE] == 1 && j[0].count[SJ_RAIDER] == 1 && j[0].count[SJ_DIGGER] == 0;
+  k := sj_nth(j[..], SJ_SNIPER, SJ_FARM, 0);
+  #assert k >= 0 && j[0].actors[k].parts == 3 && abs(j[0].actors[k].z + 128) < 0.001 && abs(j[0].actors[k].x + 772) < 0.001;
+  c := sj_nth(j[..], SJ_CHARGE, -1, 0);
+  #assert c >= 0 && abs(j[0].actors[c].yaw - PI * 0.5) < 0.001 && cast(string) j[0].actors[c].name[0..<j[0].actors[c].name_n] == "SpliceFarmChargePoint_0";
+  r := sj_nth(j[..], SJ_RAIDER, SJ_RING, 0); #assert r >= 0 && j[0].actors[r].route == SJ_RING;
+  #assert sj_near(j[..], SJ_PICKUP, -830, -137) == sj_nth(j[..], SJ_PICKUP, -1, 0) && sj_nth(j[..], SJ_PICKUP, -1, 1) == -1;
+  // names: a sublevel's prefix and the component go; a class is matched whole, with its '_'
+  #assert sj_actor_name("L_SolarFarm_GreekQuarter.StaticMeshActor_3/StaticMeshComponent0") == "StaticMeshActor_3";
+  #assert sj_kind_of("SpliceFarmPickup_10") == SJ_PICKUP && sj_kind_of("SpliceFarmPickupX_1") == -1 && sj_kind_of("SpliceSniper") == -1;
+}
+#test "jam: a pack of another game is refused, and the game stays in its own world" #steps 1000000000 {
+  j: [1] SjJam;
+  #assert !sj_read(j[..], "world 1 x\nmap 0 /Game/Maps/Other\nspawn 0 0 0 0 0\n") && !j[0].ok && j[0].why.count > 0;
+  s := [1] SjStore.[SjStore.{}];
+  #assert !sj_load(s[..], "map 0 x\n") && !s[0].jam[0].ok;
+  g := [1] SpGame.[SpGame.{}]; g_reset(g[..]);
+  sj_bind(g[..], s[..]);
+  #assert !g[0].jam && g[0].jw_n == 0;
+}
+#test "jam: a run starts at the farm's player start; its walls stop her and its tops hold her" #steps 2000000000 #traversal 1000000000 {
+  s := [1] SjStore.[SjStore.{}];
+  #assert sj_load(s[..], SJT_CATALOG);
+  #assert s[0].cols[SJ_FARM].nw == 2 && s[0].cols[SJ_RING].nw == 0;
+  g := [1] SpGame.[SpGame.{}]; g_reset(g[..]); if g[0].layer[0].st[0].n == 0 { _ := spw_shipped(g[..]); }
+  sj_bind(g[..], s[..]);
+  #assert g[0].jam && g[0].jw_on[SJ_FARM] && !g[0].jw_on[SJ_PLAIN] && g[0].at.start_x == -800;
+  g_reset(g[..]);   // the jam world outlives a reset
+  #assert g[0].jam && g[0].jw_n == SJ_MAPS && g[0].jr[0].ok && g[0].at.start_z == -105;
+  #assert g_key(g[..], -2, true) && g[0].mode == M_CREW;
+  #assert g_key(g[..], -2, true) && g[0].mode == M_PLAY && g[0].phase == PH_DAY;
+  #assert abs(g[0].px + 800) < 0.01 && abs(g[0].pz + 105) < 0.01;
+  // the wall west of her: walking at it stops her at its face (her radius out)
+  g[0].px = -803; g[0].pz = -105; g[0].yaw = 0;
+  for i: 0..<60 { g[0].px -= 0.05; g_step(g[..], 0.02); }
+  #assert g[0].px > -804 + T_RADIUS - 0.05;
+  // the box south of her: a jump lands her on its top, 1 m up
+  g[0].px = -800; g[0].pz = -107.5; g_step(g[..], 0.02);
+  #assert g_feet_y(g[..]) < 0.1;
+  _ = g_key(g[..], ' ', true); g_step(g[..], 0.02);
+  top := 0.0f32;
+  for i: 0..<80 { if g[0].pz > -110 { g[0].pz -= 0.12; } g_step(g[..], 0.02); top = hi(top, g_feet_y(g[..])); }
+  _ = g_key(g[..], ' ', false);
+  #assert abs(g_feet_y(g[..]) - 1) < 0.05;
+}
+#test "jam: the whole run plays in the jam world, from the title to SCENE RESTORED" #steps 2000000000 #traversal 1000000000 {
+  s := [1] SjStore.[SjStore.{}];
+  #assert sj_load(s[..], SJT_CATALOG);
+  g := [1] SpGame.[SpGame.{}]; g_reset(g[..]); #assert spw_shipped(g[..]) == SPW_SHIPPED_N;
+  sj_bind(g[..], s[..]);
+  #assert g_play_run(g[..]) == 0;
+}

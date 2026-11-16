@@ -1,0 +1,246 @@
+// An imported world: the catalog of a pack metaverse-engine/tools/unreal-level-import.coax wrote (its
+// lines are in metaverse-engine/import/unreal/convert.coax's header), read whole for a realm that
+// walks it. Any imported pack works; nothing here knows a game. It gives a realm:
+//   - each map's instances as indexed draws over the pack's vertices and indices, with an object
+//     store of their transforms and colours (iw_draws)
+//   - each map's colliders as the shared walker's World (iw_walker): walls, floors, hulls and bodies
+//   - each map's player start, key light, point lights, named spots and the height you fall out at
+// A catalog that breaks its form is refused whole (iw_admit says why); a realm then draws nothing.
+//   coax/bin/coax test metaverse-engine/world/imported.coax
+//
+// This file is the reader without the walker, for a module that has its own World (Splice Bots' game,
+// metaverse/splice-bots/jam/jam-world.coax): imported.coax loads it and adds iw_walker.
+#load "../physics/stand.coax";
+
+IW_MAPS :: 16; IW_MATS :: 512; IW_SECTIONS :: 4096; IW_INSTANCES :: 8192; IW_LIGHTS :: 16; IW_SPOTS :: 1024;
+IW_SHAPES :: 8192; IW_HULL_WORDS :: 3 + 4 * 32; IW_POOL :: 131072;
+IW_OBJECT :: 32;                  // floats an instance takes in the object store: 8 vec4s (below)
+// A map's colliders, the most a walker World is given.
+IW_WALLS :: 4096; IW_FLOORS :: 1024; IW_HULLS :: 1024; IW_BODIES :: 512;
+
+IwMat :: struct { rgba: [4] f32; layer: int; flags: int; }
+IwSection :: struct { first: int; count: int; }
+IwInst :: struct { map: int; section: int; mat: int; q: [4] f32; t: [3] f32; s: [3] f32; }
+IwLight :: struct { at: [3] f32; rgb: [3] f32; intensity: f32; range: f32; }
+IwSpot :: struct { map: int; kind: int; at: [3] f32; yaw: f32; name: [32] u8; name_n: int; }
+IW_SPOT_START :: 0; IW_SPOT_TAG :: 1; IW_SPOT_TARGET :: 2;
+IwShape :: struct { map: int; kind: int; at: int; n: int; }   // its n numbers at `at` in the world's pool
+IW_BOX :: 0; IW_HULL :: 1; IW_FLOOR :: 2; IW_CAPSULE :: 3;
+IwMap :: struct {
+  id: [96] u8; id_n: int;
+  spawn: [3] f32; yaw: f32; has_spawn: bool;
+  key: bool; key_dir: [3] f32; key_rgb: [3] f32; key_i: f32;
+  lights: [IW_LIGHTS] IwLight; nl: int;
+  fall: f32 = -50;
+  instances: int; shapes: int;
+}
+IwWorld :: struct {
+  ok: bool; why: string;
+  name: [32] u8; name_n: int; title: [96] u8; title_n: int;
+  maps: [IW_MAPS] IwMap; nm: int;
+  mats: [IW_MATS] IwMat; nmat: int;
+  sections: [IW_SECTIONS] IwSection; ns: int;
+  inst: [IW_INSTANCES] IwInst; ni: int;
+  spots: [IW_SPOTS] IwSpot; nspot: int;
+  shapes: [IW_SHAPES] IwShape; nshape: int;
+  pool: [IW_POOL] f32; pool_n: int;
+}
+
+// ---- reading
+
+// Field k of a line split on single spaces, or "".
+iw_field :: (line: string, k: int) -> string #effects(all) {
+  i := 0; from := 0;
+  for c, at: line { if c == ' ' { if i == k { return line[from..<at]; } i += 1; from = at + 1; } }
+  return ifx i == k then line[from..<line.count] else "";
+}
+iw_fields :: (line: string) -> int #effects(all) { n := 1; for c: line { if c == ' ' { n += 1; } } return n; }
+// A decimal as the importer writes it (sign, digits, an optional point and digits, an optional exponent).
+IwNum :: struct { ok: bool; v: f64; }
+iw_num :: (s: string) -> IwNum #effects(all) {
+  if s.count == 0 || s.count > 40 { return IwNum.{}; }
+  at := 0; neg := false;
+  if s[0] == '-' { neg = true; at = 1; }
+  v := 0.0; digits := 0;
+  while at < s.count && s[at] >= '0' && s[at] <= '9' { v = v * 10 + cast(f64) (s[at] - '0'); at += 1; digits += 1; }
+  if at < s.count && s[at] == '.' {
+    at += 1; scale := 0.1;
+    while at < s.count && s[at] >= '0' && s[at] <= '9' { v += scale * cast(f64) (s[at] - '0'); scale *= 0.1; at += 1; digits += 1; }
+  }
+  if digits == 0 { return IwNum.{}; }
+  if at < s.count && (s[at] == 'e' || s[at] == 'E') {
+    at += 1; eneg := false; e := 0; ed := 0;
+    if at < s.count && (s[at] == '-' || s[at] == '+') { eneg = s[at] == '-'; at += 1; }
+    while at < s.count && s[at] >= '0' && s[at] <= '9' && e < 400 { e = e * 10 + cast(int) (s[at] - '0'); at += 1; ed += 1; }
+    if ed == 0 { return IwNum.{}; }
+    for k: 0..<e { v = ifx eneg then v * 0.1 else v * 10; }
+  }
+  if at != s.count || !(v == v) || v > 1e12 { return IwNum.{}; }
+  return IwNum.{ok = true, v = ifx neg then -v else v};
+}
+IwLine :: struct { line: string; bad: bool; }
+iw_f :: (l: [] IwLine, k: int) -> f32 #effects(all) { n := iw_num(iw_field(l[0].line, k)); if !n.ok { l[0].bad = true; } return cast(f32) n.v; }
+iw_i :: (l: [] IwLine, k: int, lo: int, hi: int) -> int #effects(all) {
+  n := iw_num(iw_field(l[0].line, k));
+  if !n.ok || n.v != floor(n.v) || n.v < cast(f64) lo || n.v > cast(f64) hi { l[0].bad = true; return lo; }
+  return cast(int) n.v;
+}
+iw_copy :: (s: string, out: [] u8) -> int #effects(all) { n := ifx s.count < out.count then s.count else out.count; for k: 0..<n { out[k] = s[k]; } return n; }
+iw_refuse :: (w: [] IwWorld, why: string) -> bool #effects(all) { w[0].ok = false; w[0].why = why; return false; }
+
+// The catalog into w, whole or refused (w.why).
+// A world emptied in place: it is megabytes, too big to build whole on a browser's 1 MiB stack and copy in.
+iw_clear :: (w: [] IwWorld) #effects(all) {
+  w[0].ok = false; w[0].why = ""; w[0].name_n = 0; w[0].title_n = 0;
+  w[0].nm = 0; w[0].nmat = 0; w[0].ns = 0; w[0].ni = 0; w[0].nspot = 0; w[0].nshape = 0; w[0].pool_n = 0;
+  for k: 0..<IW_MAPS { w[0].maps[k] = IwMap.{}; }
+}
+iw_admit :: (w: [] IwWorld, text: string) -> bool #effects(all) {
+  iw_clear(w);
+  at := 0; version := false;
+  while at < text.count {
+    e := at; while e < text.count && text[e] != '\n' { e += 1; }
+    ll: [1] IwLine; l := ll[..]; l[0].line = text[at..<e]; at = e + 1;
+    what := iw_field(l[0].line, 0); n := iw_fields(l[0].line);
+    if what == "world" {
+      if iw_field(l[0].line, 1) != "1" { return iw_refuse(w, "not an imported world of version 1"); }
+      w[0].name_n = iw_copy(iw_field(l[0].line, 2), w[0].name[..]); version = true;
+    } else if what == "title" {
+      w[0].title_n = iw_copy(l[0].line[ifx l[0].line.count > 6 then 6 else l[0].line.count..<l[0].line.count], w[0].title[..]);
+    } else if what == "map" {
+      k := iw_i(l, 1, 0, IW_MAPS - 1);
+      if l[0].bad || k != w[0].nm { return iw_refuse(w, "maps out of order"); }
+      w[0].maps[k] = IwMap.{}; w[0].maps[k].id_n = iw_copy(iw_field(l[0].line, 2), w[0].maps[k].id[..]); w[0].nm += 1;
+    } else if what == "mat" {
+      k := iw_i(l, 1, 0, IW_MATS - 1);
+      if l[0].bad || k != w[0].nmat || n != 8 { return iw_refuse(w, "materials out of order or of the wrong form"); }
+      for c: 0..<4 { w[0].mats[k].rgba[c] = iw_f(l, 2 + c); }
+      w[0].mats[k].layer = iw_i(l, 6, -1, 4095); w[0].mats[k].flags = iw_i(l, 7, 0, 255); w[0].nmat += 1;
+    } else if what == "M" {
+      if w[0].ns >= IW_SECTIONS || n != 11 { return iw_refuse(w, "more sections than a world holds, or one of the wrong form"); }
+      w[0].sections[w[0].ns] = IwSection.{first = iw_i(l, 2, 0, 2147483647), count = iw_i(l, 3, 0, 2147483647)}; w[0].ns += 1;
+    } else if what == "P" {
+      if w[0].ni >= IW_INSTANCES || n != 17 { return iw_refuse(w, "more instances than a world holds, or one of the wrong form"); }
+      p: IwInst; p.map = iw_i(l, 1, 0, IW_MAPS - 1); p.section = iw_i(l, 2, 0, IW_SECTIONS - 1); p.mat = iw_i(l, 3, 0, IW_MATS - 1);
+      for c: 0..<4 { p.q[c] = iw_f(l, 6 + c); } for c: 0..<3 { p.t[c] = iw_f(l, 10 + c); p.s[c] = iw_f(l, 13 + c); }
+      w[0].inst[w[0].ni] = p; w[0].ni += 1;
+    } else if what == "spawn" || what == "fall" || what == "key" || what == "light" {
+      m := iw_i(l, 1, 0, IW_MAPS - 1);
+      if l[0].bad || m >= w[0].nm { return iw_refuse(w, "a line for a map the catalog doesn't have"); }
+      mp := w[0].maps[m];
+      if what == "spawn" { for c: 0..<3 { mp.spawn[c] = iw_f(l, 2 + c); } mp.yaw = iw_f(l, 5); mp.has_spawn = true; }
+      if what == "fall" { mp.fall = iw_f(l, 2); }
+      if what == "key" { for c: 0..<3 { mp.key_dir[c] = iw_f(l, 2 + c); mp.key_rgb[c] = iw_f(l, 5 + c); } mp.key_i = iw_f(l, 8); mp.key = true; }
+      if what == "light" && mp.nl < IW_LIGHTS {
+        li: IwLight; for c: 0..<3 { li.at[c] = iw_f(l, 2 + c); li.rgb[c] = iw_f(l, 5 + c); } li.intensity = iw_f(l, 8); li.range = iw_f(l, 9); mp.lights[mp.nl] = li; mp.nl += 1;
+      }
+      w[0].maps[m] = mp;
+    } else if what == "spot" {
+      if w[0].nspot >= IW_SPOTS || n != 8 { return iw_refuse(w, "more spots than a world holds, or one of the wrong form"); }
+      s: IwSpot; s.map = iw_i(l, 1, 0, IW_MAPS - 1);
+      kind := iw_field(l[0].line, 2); s.kind = ifx kind == "player_start" then IW_SPOT_START else ifx kind == "tag" then IW_SPOT_TAG else IW_SPOT_TARGET;
+      for c: 0..<3 { s.at[c] = iw_f(l, 3 + c); } s.yaw = iw_f(l, 6); s.name_n = iw_copy(iw_field(l[0].line, 7), s.name[..]); w[0].spots[w[0].nspot] = s; w[0].nspot += 1;
+    } else if what == "col" {
+      if w[0].nshape >= IW_SHAPES { return iw_refuse(w, "more colliders than a world holds"); }
+      sh: IwShape; sh.map = iw_i(l, 1, 0, IW_MAPS - 1); kind := iw_field(l[0].line, 2);
+      need := 0;
+      if kind == "box" { sh.kind = IW_BOX; need = 6; }
+      else if kind == "floor" { sh.kind = IW_FLOOR; need = 9; }
+      else if kind == "capsule" { sh.kind = IW_CAPSULE; need = 7; }
+      else if kind == "hull" { sh.kind = IW_HULL; faces := iw_i(l, 3, 4, 32); need = 3 + faces * 4; }
+      else { return iw_refuse(w, "a collider of a kind the engine doesn't have"); }
+      if n != 4 + need { return iw_refuse(w, "a collider of the wrong form"); }
+      if w[0].pool_n + need > IW_POOL { return iw_refuse(w, "more collider numbers than a world holds"); }
+      sh.at = w[0].pool_n; for c: 0..<need { w[0].pool[sh.at + c] = iw_f(l, 3 + c); } sh.n = need; w[0].pool_n += need; w[0].shapes[w[0].nshape] = sh; w[0].nshape += 1;
+    }
+    if l[0].bad { return iw_refuse(w, "a number out of its form"); }
+  }
+  if !version { return iw_refuse(w, "not an imported world (no world line)"); }
+  if w[0].nm == 0 { return iw_refuse(w, "a world with no map"); }
+  for k: 0..<w[0].nm { if !w[0].maps[k].has_spawn { return iw_refuse(w, "a map with no player start"); } }
+  for k: 0..<w[0].ni {
+    p := w[0].inst[k];
+    if p.map >= w[0].nm || p.section >= w[0].ns || p.mat >= w[0].nmat { return iw_refuse(w, "an instance of a map, section or material the catalog doesn't have"); }
+    w[0].maps[p.map].instances += 1;
+  }
+  for k: 0..<w[0].nshape { if w[0].shapes[k].map >= w[0].nm { return iw_refuse(w, "a collider of a map the catalog doesn't have"); } w[0].maps[w[0].shapes[k].map].shapes += 1; }
+  for k: 0..<w[0].nspot { if w[0].spots[k].map >= w[0].nm { return iw_refuse(w, "a spot of a map the catalog doesn't have"); } }
+  w[0].ok = true; w[0].why = "";
+  return true;
+}
+// A map's name to show: its id's last part, after the last '/' and before any '.'.
+iw_map_name :: (w: [] IwWorld, map: int) -> string #effects(all) {
+  id := cast(string) w[0].maps[map].id[0..<w[0].maps[map].id_n]; from := 0; to := id.count;
+  for c, k: id { if c == '/' { from = k + 1; to = id.count; } if c == '.' && k > from { to = k; } }
+  return id[from..<to];
+}
+
+// ---- drawing
+
+// A unit quaternion's rows of rotation.
+IwRows :: struct { r: [9] f32; }
+iw_rows :: (q: [4] f32) -> IwRows #effects(all) {
+  x := q[0]; y := q[1]; z := q[2]; ww := q[3]; m: IwRows;
+  m.r[0] = 1 - 2 * (y * y + z * z); m.r[1] = 2 * (x * y - z * ww); m.r[2] = 2 * (x * z + y * ww);
+  m.r[3] = 2 * (x * y + z * ww); m.r[4] = 1 - 2 * (x * x + z * z); m.r[5] = 2 * (y * z - x * ww);
+  m.r[6] = 2 * (x * z - y * ww); m.r[7] = 2 * (y * z + x * ww); m.r[8] = 1 - 2 * (x * x + y * y);
+  return m;
+}
+// Map `map`'s instances as indexed draws [first, count, instance, 1] and their object store: per
+// instance three rows of position (rotation times scale, then translation), three rows of the normal
+// (rotation over scale: the inverse transpose), then the material's linear RGBA. The draw count.
+iw_draws :: (w: [] IwWorld, map: int, draws: [] u32, objects: [] f32) -> int #effects(all) {
+  n := 0;
+  for k: 0..<w[0].ni {
+    p := w[0].inst[k];
+    if p.map != map { continue; }
+    if (n + 1) * 4 > draws.count || (n + 1) * IW_OBJECT > objects.count { break; }
+    sc := w[0].sections[p.section];
+    draws[n * 4] = cast(u32) sc.first; draws[n * 4 + 1] = cast(u32) sc.count; draws[n * 4 + 2] = cast(u32) n; draws[n * 4 + 3] = 1;
+    m := iw_rows(p.q); o := n * IW_OBJECT;
+    for r: 0..<3 {
+      for c: 0..<3 {
+        objects[o + r * 4 + c] = m.r[r * 3 + c] * p.s[c];
+        inv := ifx abs(p.s[c]) > 0.000001 then 1.0f32 / p.s[c] else 0.0f32;
+        objects[o + 12 + r * 4 + c] = m.r[r * 3 + c] * inv;
+      }
+      objects[o + r * 4 + 3] = p.t[r]; objects[o + 12 + r * 4 + 3] = 0;
+    }
+    mt := w[0].mats[p.mat];
+    for c: 0..<4 { objects[o + 24 + c] = mt.rgba[c]; }
+    if mt.flags & 4 != 0 { objects[o + 27] = -mt.rgba[3]; }   // unlit: the shader takes a negative alpha
+    objects[o + 28] = cast(f32) mt.layer; objects[o + 29] = 0; objects[o + 30] = 0; objects[o + 31] = 0;   // its colour layer, or -1
+    n += 1;
+  }
+  return n;
+}
+
+// ---- walking
+
+// The walker's arrays for one map: the caller's, so a realm keeps them.
+IwColliders :: struct {
+  walls: [IW_WALLS * 6] f32; floors: [IW_FLOORS * STAND_FLOATS] f32; hulls: [IW_HULLS * IW_HULL_WORDS] f32; bodies: [IW_BODIES * 7] f32;
+  nw: int; nf: int; nh: int; hull_words: int; nb: int; over: int;
+}
+// Map `map`'s colliders into c (what is over its arrays is counted in c.over, never silently dropped).
+iw_colliders :: (w: [] IwWorld, map: int, c: [] IwColliders) #effects(all) {
+  c[0].nw = 0; c[0].nf = 0; c[0].nh = 0; c[0].hull_words = 0; c[0].nb = 0; c[0].over = 0;
+  for k: 0..<w[0].nshape {
+    sh := w[0].shapes[k];
+    if sh.map != map { continue; }
+    nums := w[0].pool[sh.at..<sh.at + sh.n];
+    if sh.kind == IW_BOX {
+      if c[0].nw >= IW_WALLS { c[0].over += 1; continue; }
+      for j: 0..<6 { c[0].walls[c[0].nw * 6 + j] = nums[j]; } c[0].nw += 1;
+    } else if sh.kind == IW_FLOOR {
+      if c[0].nf >= IW_FLOORS { c[0].over += 1; continue; }
+      stand_put_quad(c[0].floors[..], c[0].nf, nums[0], nums[1], nums[2], nums[3], nums[4], nums[5], nums[6], nums[7], nums[8]); c[0].nf += 1;
+    } else if sh.kind == IW_CAPSULE {
+      if c[0].nb >= IW_BODIES { c[0].over += 1; continue; }
+      for j: 0..<7 { c[0].bodies[c[0].nb * 7 + j] = nums[j]; } c[0].nb += 1;
+    } else {
+      if c[0].nh >= IW_HULLS || c[0].hull_words + sh.n > c[0].hulls.count { c[0].over += 1; continue; }
+      for j: 0..<sh.n { c[0].hulls[c[0].hull_words + j] = nums[j]; } c[0].hull_words += sh.n; c[0].nh += 1;
+    }
+  }
+}

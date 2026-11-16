@@ -31,6 +31,8 @@
 #load "hud.coax";                  // the HUD and the edit bay, SPLICE UI v2 (#13505)
 #load "director.coax";             // the Director's keys, Digger's pickups, the inventory, Heat's sensing and health (#13505)
 #load "sound.coax";                // the sound table and the moments each sound plays (#13505)
+#load "jam/jam-world.coax";         // the jam build's world: the imported levels' landmarks and colliders (#13653)
+#load "jam/jam-checks.coax" #test;
 #load "sound-checks.coax" #test;
 #load "layer-checks.coax" #test;   // the colliders' and the layer's checks
 #load "walk-checks.coax" #test;
@@ -115,6 +117,8 @@ SpGame :: struct {
   at: SpPlaces;               // the landmarks the game reads, from them
   gray: bool;                 // graybox (G): the world in grays, orange, yellow and cyan kept; outlives a reset
   jam: bool;                  // the jam build's world (jam/jam-world.coax, #13653): the imported levels stand for the drawn world; outlives a reset
+  jw: [SJ_MAPS] Colliders; jw_open: [SJ_MAPS] Colliders; jw_on: [SJ_MAPS] bool; jw_n: int;   // and its route maps' colliders, over the page's store (sj_bind); outlive a reset
+  jr: [1] SjJam;              // and its route: the maps, their starts and the game actors (sj_read); outlives a reset
   mode: int; zone: int; phase: int; t: f32;
   px: f32; pz: f32; yaw: f32; pitch: f32; stride: f32;
   face_off: f32;               // her body's turn from the view's yaw: she turns to face the way she walks (g_face)
@@ -272,6 +276,7 @@ g_places :: (g: [] SpGame) -> bool {
   m = sc_mark(c, LM_GARAGE); a.gar_x = GA_X; a.gar_z = GA_Z; a.gar_r = GA_R;
   if m.id == LM_GARAGE && m.r > 10 { a.gar_x = m.x; a.gar_z = m.z; a.gar_r = m.r; }
   g[0].at = a;
+  sj_places(g);   // the jam world's landmarks, when the game plays in it (jam/jam-world.coax)
   return ok;
 }
 g_foes :: (g: [] SpGame) {
@@ -317,7 +322,7 @@ g_respawn :: (g: [] SpGame) {
 }
 g_reset :: (g: [] SpGame) {
   gray := g[0].gray; zoom := g[0].zoom; calm := g[0].calm;   // the graybox toggle and the wheel are the viewer's, not the run's
-  jam := g[0].jam;   // and the jam world is the page's
+  jam := g[0].jam; jw := g[0].jw; jw_open := g[0].jw_open; jw_on := g[0].jw_on; jw_n := g[0].jw_n; jr := g[0].jr[0];   // and the jam world is the page's
   hide: [TK_KINDS] bool; for k: 0..<TK_KINDS { hide[k] = g[0].hide[k]; }   // and what a host draws is the host's
   hview := g[0].hview; hview_on := g[0].hview_on; haim := g[0].haim; haim_on := g[0].haim_on;   // and so is the view it places
   tables := g[0].c[0];   // the content tables are read once
@@ -331,7 +336,7 @@ g_reset :: (g: [] SpGame) {
   g[0].snd[0] = sound; g[0].snd[0].ready = false;
   g[0].view = view; g[0].shown = shown; g[0].unseen = unseen;
   g[0].imp[0] = imports;
-  g[0].gray = gray; g[0].zoom = zoom; g[0].calm = calm; g[0].jam = jam;
+  g[0].gray = gray; g[0].zoom = zoom; g[0].calm = calm; g[0].jam = jam; g[0].jw = jw; g[0].jw_open = jw_open; g[0].jw_on = jw_on; g[0].jw_n = jw_n; g[0].jr[0] = jr;
   if tables.ok { g[0].c[0] = tables; } else { _ := sc_load(g[0].c[..], SC_SHIPPED); }
   _ := g_places(g);
   g[0].layer[0] = layer;
@@ -364,6 +369,7 @@ g_begin :: (g: [] SpGame) {
   g[0].zone = Z_MINE; g[0].phase = s.when; g_go(g, sc_m(s.x), sc_m(s.z), s.yaw);
   // a world that starts past the rail starts with the rail's Battery: the edit bay needs it for Digger's cut
   g[0].have[H_BATTERY] = true; g[0].taken[H_BATTERY] = true;
+  _ = sj_begin(g);   // the jam world starts at the farm's player start (jam/jam-world.coax)
   g_foes(g); g_keep(g);
 }
 // Stand at (x, z) metres facing `deg` degrees, the Digger beside you.
@@ -404,6 +410,7 @@ g_collide :: (g: [] SpGame) {
   }
   if g[0].zone == Z_MINE && g_feet_y(g) < ff_low() - 0.05 { q = ff_push(g[0].px, g[0].pz, T_RADIUS); g[0].px = q.x; g[0].pz = q.z; }   // the solar farm's lines, unless on their top (farm.coax)
   if g[0].zone == Z_MINE { q = ga_lab_push(g, g[0].px, g[0].pz, T_RADIUS); g[0].px = q.x; g[0].pz = q.z; }   // the lab's round wall (garage.coax)
+  if g[0].zone == Z_MINE && !sp_in_room(g) { q = sj_push(g, g[0].px, g[0].pz, T_RADIUS, g_feet_y(g) + 0.05); g[0].px = q.x; g[0].pz = q.z; }   // the jam world's walls and solids (jam/jam-world.coax)
   if g[0].zone == Z_MINE {   // the drill mech's body (#13578): walked into, she stopped inside it and the camera, boxed in by it, looked straight down
     t := g[0].bt[0]; dx := g[0].px - t.mech_x; dz := g[0].pz - t.mech_z; d := sqrt(dx * dx + dz * dz); r := SB_MECH_R + T_RADIUS;
     if d < r && d > 0.0001 { g[0].px = t.mech_x + dx / d * r; g[0].pz = t.mech_z + dz / d * r; }
@@ -632,6 +639,7 @@ g_jump_key :: (g: [] SpGame, down: bool) {
 g_jump :: (g: [] SpGame, dt: f32) {
   j := g[0].air[..]; x := g[0].px; z := g[0].pz;
   gr := g_ground(g, x, z);
+  if g[0].zone == Z_MINE && !sp_in_room(g) { gr = sj_floor(g, x, z, ifx g_air_here(g) then j[0].y else gr, gr); }   // the jam world's floors (jam/jam-world.coax)
   if !g_air_here(g) { presses := j[0].presses; j[0] = jump_place(gr); j[0].presses = presses; }
   g[0].air_x = x; g[0].air_z = z;
   floors: [SP_FLOORS * STAND_FLOATS] f32;

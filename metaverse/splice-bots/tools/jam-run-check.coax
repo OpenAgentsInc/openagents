@@ -1,0 +1,66 @@
+// tool.sh: stack-gib 1
+// tool.sh: run-steps 250000000
+// The jam run on a real pack (GitHub #13653; docs/unreal/2026-11-16-splice-bots-jam-port-plan.md, Acceptance):
+// the game in the jam world (jam/jam-world.coax) read off PACK, a private pack the importer wrote
+// (metaverse-engine/tools/unreal-level-import.coax), played three ways:
+//   - the whole run, title to SCENE RESTORED and back (splice-game.coax g_play_run; long walks are
+//     stood in for by placing her);
+//   - from the farm's player start to Sniper with real keys (the mouse turns, W walks), against the
+//     jam's own colliders;
+//   - from the garage's door to the boss's fall with real keys (sp_keys_play), against them too.
+//
+//   coax/web/tool.sh metaverse/splice-bots/tools/jam-run-check.coax PACK
+//
+// It prints the route it read and a line a run: 0 is a pass, else the number of the beat that failed
+// (the beats are numbered in g_run_to_garage, g_run_from_garage and sp_keys_play). It exits 1 when a run
+// fails. The pack is the owner's content: read here, never written or copied.
+#import "Basic";
+#load "../splice-game.coax";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/fs.coax";
+#load "../../../metaverse-engine/editor/pack.coax";
+
+
+jrc_line :: (what: string, r: int) { print("%: % %\n", what, r, ifx r == 0 then "(pass)" else "(failed at that beat)"); }
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 1 { print("usage: jam-run-check PACK\n"); return 2; }
+  pack_b: [268435456] u8; path := args_at(a[..], 0); pn := fs_size(path);
+  if pn < 0 || pn > pack_b.count || fs_read(path, pack_b[0..<pn]) != pn { tool_errln("jam-run-check: could not read the pack"); return 1; }
+  pack := cast(string) pack_b[0..<pn]; rd: [1] PackRead;
+  if !pack_read(pack, rd[..]) { tool_err("jam-run-check: the pack is refused: "); tool_errln(rd[0].why); return 1; }
+  cat := pack_bytes(pack, rd[..], 0);
+  s := [1] SjStore.[SjStore.{}];
+  if !sj_load(s[..], cat) { tool_err("jam-run-check: no jam world: "); tool_errln(s[0].jam[0].why); return 1; }
+  j := s[0].jam[0];
+  for r: 0..<SJ_MAPS {
+    c := s[0].cols[r];
+    if j.map[r] < 0 { print("%: not in the pack\n", SJ_MAP_IDS[r]); continue; }
+    print("%: % boxes, % solids, % floors, % over the arrays, %\n", SJ_MAP_IDS[r], c.nw, c.nh, c.nf, c.over, ifx j.spawn[r].ok then "a player start" else "no player start");
+  }
+  for k: 0..<SJ_KINDS { print("% %\n", SJ_CLASS[k], j.count[k]); }
+  failed := false;
+  // the whole run
+  g := [1] SpGame.[SpGame.{}]; g_reset(g[..]); _ := spw_shipped(g[..]);
+  sj_bind(g[..], s[..]);
+  r := g_play_run(g[..]); jrc_line("the whole run", r); failed = failed || r != 0;
+  if r != 0 { print("  she stopped at (%, %), zone %, phase %\n", g[0].px, g[0].pz, g[0].zone, g[0].phase); }
+  // the farm's start to Sniper's door with the keys
+  g_reset(g[..]);
+  ok := g_key(g[..], -2, true) && g_key(g[..], -2, true) && g[0].mode == M_PLAY;
+  tr := g_shipped_at(g[..], 123); k := [1] SpKeys.[SpKeys.{}]; d: f32 = 1e9;
+  for i: 0..<cast(int) (120 / 0.05) { d = sp_keys_toward(g[..], k[..], tr.x + 2.2, tr.z, 0.05); if dist2(g[0].px, g[0].pz, tr.x, tr.z) < T_SAVE_RANGE { break; } }
+  sp_keys_free(g[..]);
+  r = ifx ok && dist2(g[0].px, g[0].pz, tr.x, tr.z) < T_SAVE_RANGE then 0 else 1;
+  if r != 0 { print("  she stopped at (%, %); Sniper is at (%, %)\n", g[0].px, g[0].pz, tr.x, tr.z); }
+  print("the farm's start to Sniper with the keys: % m from the door's mark\n", cast(int) d); jrc_line("the farm's start to Sniper", r); failed = failed || r != 0;
+  // the garage's door to the boss with the keys
+  g_reset(g[..]);
+  r = g_run_to_garage(g[..]);
+  if r == 0 { r = sp_keys_play(g[..]); }
+  jrc_line("the garage's door to the boss with the keys", r);
+  if r != 0 { print("  she stopped at (%, %), zone %\n", g[0].px, g[0].pz, g[0].zone); }
+  failed = failed || r != 0;
+  return ifx failed then 1 else 0;
+}
