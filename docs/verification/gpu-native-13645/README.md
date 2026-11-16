@@ -280,3 +280,11 @@ An earlier mutable-checkout preparation overlapped a rebase and generated a
 not accepted or distributed. Do not use `/tmp/oa-gpu-usage-1402/`. The separate
 fixed-checkout delivery above is the 1402 release. Rebase and release generation
 must not run concurrently in one checkout.
+
+At handoff the accepted 1402 build is still `NOT_YET_LISTED` in App Store
+Connect; Owner assignment is pending. Processing was not waited on. The
+[issue handoff](https://github.com/OpenAgentsInc/openagents/issues/13645#issuecomment-6920823389)
+contains the assignment commands, source map, validation and remaining work.
+The main-green watcher remains down under existing pipeline issue #13637;
+the state check reports zero open red entries. This release cites the explicit
+local gates above, not an unobserved after-landing pass.
