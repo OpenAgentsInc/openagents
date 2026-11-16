@@ -1,0 +1,232 @@
+// An imported world, walked: any pack metaverse-engine/tools/unreal-level-import.coax wrote, loaded as the
+// realm's private pack (realms.json names it; the Splice Bots jam build's is private:splice-bots-jam).
+// Its maps' instances are drawn by section and material (gpu/importworld.coax), you walk them with the
+// shared walker against their own colliders (metaverse-engine/world/imported.coax), you start at each
+// map's player start, its key light and point lights light it, and 1 to 9 or M change map.
+// Keys: W A S D or the arrows move and look, Space jumps, Shift runs, R goes back to the start.
+// On a phone the left thumb moves and the right one looks; the map button is at the top right.
+//   coax/bin/coax test apps/openagents-web/importworld.coax
+#load "../../metaverse-engine/world/imported.coax";
+#load "../../metaverse-engine/ui/draw.coax";
+#load "../../metaverse-engine/core/sticks.coax";
+
+IWR_DRAWS :: 4096;
+IWR_HUD :: 32768;
+IWR_UNIFORMS :: 256;
+IWR_SKY :: [3] f32.[0.62, 0.72, 0.84];
+IWR_GROUND :: [3] f32.[0.42, 0.40, 0.37];
+IWR_SUN :: [3] f32.[0.35, 0.9, 0.25];    // a map with no key light of its own is lit from here
+ImportWorld :: struct {
+  world: [1] IwWorld;
+  ready: bool; admitted: bool; failed: bool; assets: [4] int;
+  map: int; you: walker.Player; started: bool;
+  colliders: [1] IwColliders;
+  draws: [IWR_DRAWS * 4] u32; objects: [IWR_DRAWS * IW_OBJECT] f32; draw_n: int; store_version: int;
+  keys: int; look_x: f32; look_y: f32; thumbs: Sticks; active: [4] bool; ids: [4] int; now: f64;
+  width: f32 = 1280; height: f32 = 800; d: f32 = 1;
+  falls: int;
+  title_text: [96] u8; title_n: int;
+}
+
+// The state's defaults, set field by field over zeroed memory: the state is megabytes, too big to build
+// on the browser's stack and copy in whole (importworld-face.c coaxial_state_init).
+iwr_init :: (s: [] ImportWorld) #export_c #effects(all) {
+  for k: 0..<IW_MAPS { s[0].world[0].maps[k].fall = -50; }
+  s[0].you = walker.walk_place(0, 0, 0, 0); s[0].thumbs = metaverse_sticks_reset();
+  s[0].width = 1280; s[0].height = 800; s[0].d = 1;
+}
+
+// ---- the pack
+
+iwr_catalog :: (s: [] ImportWorld, text: string) #export_c #effects(all) {
+  s[0].assets[0] = text.count;
+  if !iw_admit(s[0].world[..], text) { s[0].failed = true; return; }
+  s[0].admitted = true; iwr_map(s, 0);
+}
+iwr_asset :: (s: [] ImportWorld, index: int, bytes: int) #export_c #effects(all) {
+  if index < 0 || index > 3 { return; }
+  s[0].assets[index] = bytes;
+  if bytes == 0 && index <= 2 { s[0].failed = true; }
+  s[0].ready = s[0].admitted && !s[0].failed && s[0].assets[1] > 0 && s[0].assets[2] > 0;
+}
+iwr_draw_count :: (s: [] ImportWorld) -> int #export_c #effects(all) { return ifx s[0].ready then s[0].draw_n else 0; }
+
+// ---- maps and walking
+
+iwr_map :: (s: [] ImportWorld, map: int) #effects(all) {
+  if !s[0].admitted || map < 0 || map >= s[0].world[0].nm { return; }
+  s[0].map = map;
+  iw_colliders(s[0].world[..], map, s[0].colliders[..]);
+  s[0].draw_n = iw_draws(s[0].world[..], map, s[0].draws[..], s[0].objects[..]); s[0].store_version += 1;
+  iwr_start(s);
+}
+iwr_start :: (s: [] ImportWorld) #effects(all) {
+  if !s[0].admitted { return; }
+  m := s[0].world[0].maps[s[0].map];
+  w := iw_walker(s[0].world[..], s[0].map, s[0].colliders[..]);
+  s[0].you = walker.place_in(w, m.spawn[0], m.spawn[1], m.spawn[2], m.yaw);
+  s[0].you.body.on_ground = true; s[0].started = true;
+}
+iwr_blur :: (s: [] ImportWorld) #export_c #effects(all) {
+  s[0].keys = 0; s[0].thumbs = metaverse_sticks_reset(); for k: 0..<4 { s[0].active[k] = false; } s[0].look_x = 0; s[0].look_y = 0;
+  s[0].you = walker.walk_input(s[0].you, 0, 0, 0, 0, false, false, 0, 0);
+}
+iwr_key :: (s: [] ImportWorld, key: int, down: bool) -> bool #export_c #effects(all) {
+  if key == -1 { iwr_blur(s); return true; }
+  bit := 0;
+  if key == 87 || key == 119 || key == -6 { bit = 1; } if key == 83 || key == 115 || key == -7 { bit = 2; }
+  if key == 65 || key == 97 { bit = 4; } if key == 68 || key == 100 { bit = 8; }
+  if key == 32 { bit = 16; } if key == -13 { bit = 32; }
+  if bit != 0 {
+    if down { s[0].keys |= bit; } else { s[0].keys = (s[0].keys | bit) - bit; }
+    if bit == 16 { p := s[0].you; s[0].you = walker.walk_input(p, p.body.key_x, p.body.key_y, p.body.pad_x, p.body.pad_y, p.body.run, down, 0, 0); }
+    return true;
+  }
+  if !down { return false; }
+  if key == -4 { s[0].look_x += 0.12; return true; }
+  if key == -5 { s[0].look_x -= 0.12; return true; }
+  if key == 82 || key == 114 { iwr_blur(s); iwr_start(s); return true; }
+  if key == 77 || key == 109 { if s[0].admitted { iwr_blur(s); iwr_map(s, (s[0].map + 1) % s[0].world[0].nm); } return true; }
+  if key >= 49 && key <= 57 { if s[0].admitted && key - 49 < s[0].world[0].nm { iwr_blur(s); iwr_map(s, key - 49); } return true; }
+  return false;
+}
+iwr_step :: (s: [] ImportWorld, dt: f32, still: bool) #effects(all) {
+  if !s[0].admitted || still { return; }
+  if !s[0].started { iwr_start(s); }
+  k := s[0].keys; t := s[0].thumbs;
+  p := walker.walk_input(s[0].you, cast(f32) ((ifx k & 8 != 0 then 1 else 0) - (ifx k & 4 != 0 then 1 else 0)), cast(f32) ((ifx k & 1 != 0 then 1 else 0) - (ifx k & 2 != 0 then 1 else 0)),
+    t.pad_x, t.pad_y, walker.walk_runs(k & 32 != 0, t.run, t.pad_x, t.pad_y), k & 16 != 0 || t.jump, s[0].look_x + t.dyaw, s[0].look_y + t.dpitch);
+  w := iw_walker(s[0].world[..], s[0].map, s[0].colliders[..]);
+  s[0].you = walker.advance_in(w, p, dt);
+  s[0].look_x = 0; s[0].look_y = 0; s[0].thumbs = metaverse_sticks_used(t); s[0].now += cast(f64) dt;
+  if s[0].you.body.pos.y < s[0].world[0].maps[s[0].map].fall { s[0].falls += 1; iwr_start(s); }
+}
+iwr_pointer :: (s: [] ImportWorld, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
+  cx := x / s[0].d; cy := y / s[0].d; width := s[0].width / s[0].d;
+  if phase == 0 && cy < 64 && cx > width - 120 { return iwr_key(s, 77, true); }
+  if phase == 0 && cy < 64 && cx < 120 { return iwr_key(s, 82, true); }
+  slot := -1;
+  for k: 0..<4 { if s[0].active[k] && s[0].ids[k] == id { slot = k; } }
+  if phase == 0 { for k: 0..<4 { if !s[0].active[k] { slot = k; break; } } if slot < 0 { return false; } s[0].active[slot] = true; s[0].ids[slot] = id; }
+  if slot < 0 { return false; }
+  s[0].thumbs = sticks_touch(s[0].thumbs, slot, phase, x, y, s[0].width, s[0].height, s[0].d, s[0].now, kind == 0);
+  if phase >= 2 { s[0].active[slot] = false; }
+  return true;
+}
+iwr_wheel :: (s: [] ImportWorld, dy: f32) #export_c #effects(all) { s[0].you = walker.walk_zoom(s[0].you, dy * 0.01); }
+
+// ---- the frame
+
+// The world's title as words: the catalog's underscores are spaces, and a dash the HUD's font has.
+iwr_title :: (s: [] ImportWorld) -> string #effects(all) {
+  tb := s[0].title_text[..]; tn := 0;
+  if s[0].admitted {
+    t := cast(string) s[0].world[0].title[0..<s[0].world[0].title_n]; k := 0;
+    while k < t.count && tn < tb.count {
+      if k + 2 < t.count && t[k] == 0xE2 && t[k + 1] == 0x80 && (t[k + 2] == 0x94 || t[k + 2] == 0x93) { tb[tn] = '-'; k += 3; }
+      else if t[k] == '_' && k + 1 < t.count && t[k + 1] == '_' {
+        // a run of them stood for a letter the catalog does not carry (a dash): " - "
+        while k < t.count && t[k] == '_' { k += 1; }
+        if tn > 0 && tb[tn - 1] == ' ' { tn -= 1; }
+        if tn + 3 > tb.count { break; }
+        tb[tn] = ' '; tb[tn + 1] = '-'; tb[tn + 2] = ' '; tn += 2;
+      }
+      else { tb[tn] = ifx t[k] == '_' then ' ' else t[k]; k += 1; }
+      tn += 1;
+    }
+  }
+  s[0].title_n = tn;
+  return ifx tn > 0 then cast(string) tb[0..<tn] else "Imported world";
+}
+iwr_put3 :: (u: [] f32, at: int, a: f32, b: f32, c: f32) #effects(all) { u[at] = a; u[at + 1] = b; u[at + 2] = c; }
+iwr_frame :: (s: [] ImportWorld, out: [] f32, u: [] f32, w: f32, h: f32, d: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
+  if !(w > 0) || !(h > 0) || !(d > 0) || u.count < IWR_UNIFORMS { return 0; }
+  s[0].width = w; s[0].height = h; s[0].d = d;
+  iwr_step(s, walker.lo(walker.hi(dt, 0), 0.25), still);
+  for k: 0..<IWR_UNIFORMS { u[k] = 0; }
+  u[0] = w; u[1] = h; u[2] = cast(f32) s[0].now; u[3] = 1;
+  // first person (an imported world has no body of yours to look at): from your head, along the walker's view
+  shot := walker.walk_shot(s[0].you); body := s[0].you.body.pos;
+  dx := shot.at.x - shot.eye.x; dy := shot.at.y - shot.eye.y; dz := shot.at.z - shot.eye.z;
+  across := sqrt(dx * dx + dz * dz);
+  if across < 0.001 { dx = 0; dz = -1; across = 1; }
+  head := world_point(body.x, body.y + 1.6, body.z);
+  look := world_point(head.x + dx / across, head.y + walker.lo(walker.hi(dy / across + 0.25, -1.5), 1.5), head.z + dz / across);
+  lens := lens_at(head, look, w * 0.5, h * 0.5, (ifx w < h then w else h) * 1.0, 0.05);
+  iwr_put3(u, 8, lens.eye.x, lens.eye.y, lens.eye.z); iwr_put3(u, 12, lens.right.x, lens.right.y, lens.right.z);
+  iwr_put3(u, 16, lens.up.x, lens.up.y, lens.up.z); iwr_put3(u, 20, lens.ahead.x, lens.ahead.y, lens.ahead.z);
+  u[24] = lens.focal; u[26] = lens.cx; u[27] = lens.cy;
+  iwr_put3(u, 36, IWR_SKY[0], IWR_SKY[1], IWR_SKY[2]); iwr_put3(u, 40, IWR_GROUND[0], IWR_GROUND[1], IWR_GROUND[2]); u[39] = 700; u[31] = 0.55;
+  iwr_put3(u, 28, IWR_SUN[0], IWR_SUN[1], IWR_SUN[2]); iwr_put3(u, 32, 0.8, 0.78, 0.72);
+  name := ""; maps := 0;
+  if s[0].admitted {
+    m := s[0].world[0].maps[s[0].map]; name = iw_map_name(s[0].world[..], s[0].map); maps = s[0].world[0].nm;
+    if m.key {
+      // the key light's colour, its brightness folded to the range the shader lights in
+      bright := walker.lo(walker.hi(m.key_i, 0), 10) / 10 * 0.6 + 0.4;
+      iwr_put3(u, 28, m.key_dir[0], m.key_dir[1], m.key_dir[2]); iwr_put3(u, 32, m.key_rgb[0] * bright, m.key_rgb[1] * bright, m.key_rgb[2] * bright);
+    }
+    u[35] = cast(f32) m.nl;
+    for k: 0..<m.nl {
+      l := m.lights[k]; b := 44 + k * 8; i := walker.lo(l.intensity, 4);
+      iwr_put3(u, b, l.at[0], l.at[1], l.at[2]); u[b + 3] = l.range; iwr_put3(u, b + 4, l.rgb[0] * i, l.rgb[1] * i, l.rgb[2] * i);
+    }
+  }
+  // the HUD
+  pen := HdPen.{d = d, top = 0, bottom = h / d, cyan = false};
+  width := w / d; height := h / d; n := 0;
+  title := iwr_title(s);
+  n = hd_text_fit(out, n, title, 20, 34, 11, walker.lo(380, width - 140) - 24, pen, 0);
+  if s[0].failed { return hd_text_fit(out, n, "This world isn't available here", 20, 62, 11, width - 40, pen, 1); }
+  if !s[0].ready { return hd_text_fit(out, n, "Loading the world", 20, 62, 11, width - 40, pen, 1); }
+  num: [8] u8; num[0] = cast,trunc(u8) (49 + s[0].map); num[1] = '/'; num[2] = cast,trunc(u8) (48 + maps);
+  n = hd_text(out, n, cast(string) num[0..<3], 20, 58, 11, pen, 0);
+  n = hd_text_fit(out, n, name, 52, 58, 11, walker.lo(380, width - 140) - 56, pen, 0);
+  n = hd_text(out, n, "NEXT MAP", width - 100, 35, 11, pen, 0);
+  if width >= 700 {
+    n = hd_text(out, n, "WASD MOVE  SPACE JUMP  SHIFT RUN  1-9 OR M MAP  R START", 20, height - 21, 10, pen, 0);
+  }
+  return n;
+}
+
+#test "a world waits for its pack, then starts you at the map's player start, and maps switch" #steps 1000000000 {
+  s: [1] ImportWorld; out: [IWR_HUD * 12] f32; u: [IWR_UNIFORMS] f32;
+  #assert iwr_frame(s[..], out[..], u[..], 1280, 800, 1, 0.016, false) > 0 && iwr_draw_count(s[..]) == 0;
+  iwr_catalog(s[..], IWT_CATALOG);
+  #assert s[0].admitted && iwr_draw_count(s[..]) == 0;
+  iwr_asset(s[..], 1, 4800); iwr_asset(s[..], 2, 168); iwr_asset(s[..], 3, 0);
+  #assert s[0].ready && iwr_draw_count(s[..]) == 2 && s[0].draws[1] == 36;
+  #assert abs(s[0].you.body.pos.x + 8.4) < 0.001 && abs(s[0].you.body.pos.z + 1.36) < 0.001;
+  #assert iwr_frame(s[..], out[..], u[..], 1280, 800, 1, 0.016, false) > 0 && u[24] > 0 && u[35] == 0;
+  #assert iwr_key(s[..], 50, true) && s[0].map == 1 && iwr_draw_count(s[..]) == 1 && abs(s[0].you.body.pos.z + 3.83) < 0.001;
+  _ = iwr_frame(s[..], out[..], u[..], 1280, 800, 1, 0.016, false);
+  #assert u[35] == 1 && u[47] == 22 && abs(u[28] - 0.3) < 0.0001;   // the lab's light and key
+  #assert iwr_key(s[..], 77, true) && s[0].map == 0;
+  #assert iwr_key(s[..], 57, true) && s[0].map == 0;   // no ninth map
+}
+#test "the title's underscores read as spaces, and a run of them as a dash" #steps 1000000000 {
+  s: [1] ImportWorld; out: [IWR_HUD * 12] f32; u: [IWR_UNIFORMS] f32;
+  iwr_catalog(s[..], IWT_CATALOG); iwr_asset(s[..], 1, 4800); iwr_asset(s[..], 2, 168);
+  t := "Splice_Bots_____Unreal_jam"; for k: 0..<t.count { s[0].world[0].title[k] = t[k]; } s[0].world[0].title_n = t.count;
+  #assert iwr_frame(s[..], out[..], u[..], 1280, 800, 1, 0.016, false) > 0;
+  #assert iwr_title(s[..]) == "Splice Bots - Unreal jam";
+}
+#test "you walk, the wall stops you, and falling out of the world brings you back to the start" #steps 1000000000 {
+  s: [1] ImportWorld; out: [IWR_HUD * 12] f32; u: [IWR_UNIFORMS] f32;
+  iwr_catalog(s[..], IWT_CATALOG); iwr_asset(s[..], 1, 4800); iwr_asset(s[..], 2, 168);
+  x := s[0].you.body.pos.x; z := s[0].you.body.pos.z;
+  #assert iwr_key(s[..], 87, true);
+  for k: 0..<64 { _ = iwr_frame(s[..], out[..], u[..], 1280, 800, 1, 1.0 / 64.0, false); }
+  #assert abs(s[0].you.body.pos.x - x) + abs(s[0].you.body.pos.z - z) > 0.5;
+  #assert iwr_key(s[..], 87, false) && s[0].keys == 0;
+  s[0].you.body.pos.y = -30; s[0].you.body.prev_pos.y = -30;
+  _ = iwr_frame(s[..], out[..], u[..], 1280, 800, 1, 1.0 / 64.0, false);
+  #assert s[0].falls == 1 && abs(s[0].you.body.pos.x + 8.4) < 0.001;
+  #assert iwr_key(s[..], 82, true) && abs(s[0].you.body.pos.z + 1.36) < 0.001;
+}
+#test "a broken catalog or a missing pack shows a plain line and draws nothing" #steps 1000000000 {
+  s: [1] ImportWorld; out: [IWR_HUD * 12] f32; u: [IWR_UNIFORMS] f32;
+  iwr_catalog(s[..], "world 2 x\n"); #assert s[0].failed && iwr_draw_count(s[..]) == 0;
+  #assert iwr_frame(s[..], out[..], u[..], 390, 844, 3, 0.016, false) > 0;
+  t: [1] ImportWorld; iwr_asset(t[..], 0, 0); #assert t[0].failed && iwr_draw_count(t[..]) == 0;
+}

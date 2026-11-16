@@ -150,11 +150,16 @@ render_memory_pages :: (app:string)->int #effects(all) {return ifx app=="animati
   r:=render_adoption("everglade2","everglade2");#assert r.tracked_legacy && !r.shared && r.profile== -1;
   #assert !render_adoption("everglade2","fivelab").tracked_legacy && !render_adoption("everglade","everglade2").tracked_legacy;
 }
+#test "the Splice Bots jam build binds the imported-world renderer only (#13649)" {
+  r:=render_adoption("splice-bots-jam","importworld");#assert r.tracked_legacy && !r.shared && r.profile== -1;
+  #assert !render_adoption("splice-bots-jam","valleyworld").tracked_legacy && !render_adoption("valley-world","importworld").tracked_legacy;
+}
 render_adoption :: (slug: string, app: string) -> RenderAdoption #export_c #effects(all) {
   if slug == "ocarina-lab" && app == "ocarinalab" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "animation-lab" && app == "animationlab" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "valley-world" && app == "valleyworld" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "valley-canyon" && app == "valleycanyon" { return RenderAdoption.{tracked_legacy = true}; }
+  if slug == "splice-bots-jam" && app == "importworld" { return RenderAdoption.{tracked_legacy = true}; }   // an imported Unreal world (#13649)
   if slug == "valley-lab" && app == "valleylab" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "built" && app == "myrealm" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "bitcoin-lab" && app == "bitcoin-lab" { return RenderAdoption.{tracked_legacy = true}; }

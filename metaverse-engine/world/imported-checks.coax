@@ -1,0 +1,54 @@
+// imported.coax's checks: a small catalog in the importer's form, read, drawn and walked.
+IWT_CATALOG :: "budget 100\nbytes 90\nL 0 test|private|-\nworld 1 test\ntitle A test world\nnorth 0 0 -1\nmap 0 /Data/level_layout/farm\nmap 1 /Game/Maps/L_Lab.L_Lab\nmat 0 0.5 0.52 0.56 1 -1 0\nmat 1 0.7 0.7 0.7 1 -1 16\nM s0 0 36 0 -0.5 -0.5 -0.5 0.5 0.5 0.5\nM s1 36 6 0 -0.5 0 -0.5 0.5 0 0.5\nspawn 0 -8.4 0 -1.36 0\nfall 0 -20\nspawn 1 0 0 -3.83 1.5707963\nfall 1 -20\nkey 1 0.3 0.9 0.2 1 0.95 0.9 3\nlight 1 0 8.2 -4.06 1 1 1 1.1 22\nspot 0 player_start -8.4 0 -1.36 0 Arrive_01_start\nspot 0 target_point -8.26 0.7 -1.31 0 charge_point_CP1\nP 0 0 0 -1 -1 0 0 0 1 -9.293 0.68 -1.89 21 1.36 1.2 bank_L01_B1\nP 0 1 1 -1 -1 0 0 0 1 -9.6 0 -2.05 210 1 127 ground\nP 1 0 0 0 -1 0 0.3826834 0 0.9238795 0 0.5 -4 1 1 1 crate\ncol 0 box -9.398 0 -1.896 -9.188 1.36 -1.884 bank_L01_B1\ncol 0 floor -9.6 -2.05 210 0 0 127 0 0 0 ground\ncol 1 hull 6 0 1 0.7071068 0 0.7071068 -2.3284272 -0.7071068 0 -0.7071068 3.3284272 -0.7071068 0 0.7071068 -2.3284272 0.7071068 0 -0.7071068 3.3284272 0 -1 0 0 0 1 0 1 crate\ntable 0 /Data/x csv 1 2\nX 0 a,b\nX 0 1,2\n";
+#test "an imported catalog reads whole: maps, materials, sections, instances, starts, lights and colliders" #steps 1000000000 {
+  w: [1] IwWorld;
+  #assert iw_admit(w[..], IWT_CATALOG) && w[0].ok;
+  #assert w[0].nm == 2 && w[0].nmat == 2 && w[0].ns == 2 && w[0].ni == 3 && w[0].nspot == 2 && w[0].nshape == 3;
+  #assert cast(string) w[0].name[0..<w[0].name_n] == "test" && cast(string) w[0].title[0..<w[0].title_n] == "A test world";
+  #assert iw_map_name(w[..], 0) == "farm" && iw_map_name(w[..], 1) == "L_Lab";
+  #assert w[0].maps[0].instances == 2 && w[0].maps[1].instances == 1 && w[0].maps[0].shapes == 2;
+  #assert w[0].maps[1].key && w[0].maps[1].nl == 1 && w[0].maps[1].lights[0].range == 22 && !w[0].maps[0].key;
+  #assert w[0].maps[0].spawn[0] == -8.4f32 && w[0].maps[1].yaw == 1.5707963f32 && w[0].spots[1].kind == IW_SPOT_TARGET;
+  #assert w[0].mats[1].flags == 16 && w[0].sections[1].first == 36 && w[0].sections[1].count == 6;
+}
+#test "a catalog out of its form is refused whole, saying why" #steps 1000000000 {
+  w: [1] IwWorld;
+  #assert !iw_admit(w[..], "map 0 x\n") && w[0].why == "not an imported world (no world line)";
+  #assert !iw_admit(w[..], "world 2 x\n") && !w[0].ok;
+  #assert !iw_admit(w[..], "world 1 x\nmap 0 a\n") && w[0].why == "a map with no player start";
+  #assert !iw_admit(w[..], "world 1 x\nmap 1 a\n") && w[0].why == "maps out of order";
+  #assert !iw_admit(w[..], "world 1 x\nmap 0 a\nspawn 0 1 x 2 0\n") && w[0].why == "a number out of its form";
+  #assert !iw_admit(w[..], "world 1 x\nmap 0 a\nspawn 0 0 0 0 0\ncol 0 cone 1 2 3 x\n") && !w[0].ok;
+  #assert iw_num("-929.3").ok && iw_num("-929.3").v == -929.3 && iw_num("1.1368683772161603e-13").ok && !iw_num("1.2.3").ok && !iw_num("").ok && !iw_num("-").ok;
+}
+#test "a map's instances are draws over their sections, with rows that place and light them" #steps 1000000000 {
+  w: [1] IwWorld; #assert iw_admit(w[..], IWT_CATALOG);
+  draws: [64] u32; objects: [16 * IW_OBJECT] f32;
+  #assert iw_draws(w[..], 0, draws[..], objects[..]) == 2;
+  #assert draws[0] == 0 && draws[1] == 36 && draws[2] == 0 && draws[3] == 1 && draws[4] == 36 && draws[5] == 6 && draws[6] == 1;
+  // the bank: unturned, scale (21, 1.36, 1.2) on the diagonal, its middle at t
+  #assert objects[0] == 21 && objects[5] == 1.36f32 && objects[10] == 1.2f32 && objects[3] == -9.293f32 && objects[7] == 0.68f32;
+  #assert abs(objects[12] - 1.0f32 / 21) < 0.000001 && objects[24] == 0.5f32;
+  // the crate on map 1: a quarter turn's half about y; its rows are a rotation
+  #assert iw_draws(w[..], 1, draws[..], objects[..]) == 1;
+  #assert abs(objects[0] - 0.7071068) < 0.00001 && abs(objects[2] - 0.7071068) < 0.00001 && abs(objects[8] + 0.7071068) < 0.00001 && objects[7] == 0.5f32;
+}
+#test "the shared walker stands on an imported floor, is stopped by its wall and stands on a hull" #steps 1000000000 {
+  w: [1] IwWorld; #assert iw_admit(w[..], IWT_CATALOG);
+  c: [1] IwColliders; iw_colliders(w[..], 0, c[..]);
+  #assert c[0].nw == 1 && c[0].nf == 1 && c[0].nh == 0 && c[0].over == 0;
+  world := iw_walker(w[..], 0, c[..]);
+  #assert abs(walker.floor_at(world, -5, 30, 0.2)) < 0.0001;
+  // walk north (toward -z) into the bank from in front of it: it stops you short of its face
+  toward := false;
+  for way: 0..<2 {
+    p := walker.walk_place(-9.3, 0, -1.0, 0);
+    for k: 0..<192 { p = walker.walk_input(p, 0, ifx way == 0 then 1.0f32 else -1.0f32, 0, 0, false, false, 0, 0); p = walker.advance_in(world, p, 1.0 / 64.0); }
+    #assert p.body.pos.z > -1.884 && p.body.pos.y < 0.01;   // never through it, never on it
+    if p.body.pos.z < -1.3 { toward = true; }
+  }
+  #assert toward;
+  iw_colliders(w[..], 1, c[..]); #assert c[0].nh == 1 && c[0].hull_words == 27;
+  world = iw_walker(w[..], 1, c[..]);
+  #assert abs(walker.floor_at(world, 0, -4, 1.0) - 1.0) < 0.0001;
+}

@@ -1,0 +1,3 @@
+--vertices iwr_bg_vs,iwr_scene_vs,iwr_fx_vs
+--fragments iwr_bg_fs,iwr_scene_fs,iwr_fx_fs
+--bindings apps/openagents-web/gpu/importworld.bindings --strip iwr_

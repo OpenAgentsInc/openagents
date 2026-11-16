@@ -354,6 +354,9 @@ timed character-host "$here/../../coax/web/wasm.sh" "$here/character-host.coax" 
 characterhost=$!
 timed valleyworld "$here/../../coax/web/wasm.sh" "$here/valleyworld.coax" "$here/valleyworld-face.c" "$here/build/valleyworld.wasm" &
 valleyworld=$!
+# /realms/splice-bots-jam: an imported world (an Unreal level through metaverse-engine/tools/unreal-level-import.coax), walked.
+timed importworld "$here/../../coax/web/wasm.sh" "$here/importworld.coax" "$here/importworld-face.c" "$here/build/importworld.wasm" &
+importworld=$!
 # /worlds/anime-lab: direct an anime (docs/metaverse/anime-lab.md): the director and stage (metaverse-engine/anime/), the
 # anime style's block from its own library (animelab-style.coax). (animelab.wgsl loads metaverse/style.coax in gpu/animelab.coax.)
 old timed animelab "$here/../../coax/web/wasm.sh" "$here/animelab.coax" "$here/animelab-face.c" "$here/build/animelab.wasm" "$here/animelab-style.coax" &
@@ -589,6 +592,7 @@ wait "$characterhost"
 wait "$animationlab"
 wait "$ocarinalab"
 wait "$valleyworld"
+wait "$importworld"
 wait "$droprealm"
 wait "$builder"
 wait "$worldbuilder"
