@@ -1,4 +1,4 @@
-// Puts private human packs where openagents.com's broker serves them (coax/web/api/verse_packs.c,
+// Puts private packs (human VPK1, realm VPK2) where openagents.com's broker serves them (coax/web/api/verse_packs.c,
 // docs/metaverse/metahuman-support.md, "Sending packs to browsers"). Owner-run, on the machine that builds
 // them; nothing here goes in git and nothing secret is printed.
 //
@@ -128,10 +128,19 @@ up_sha :: (path: string, out: [] u8) -> string {
     n := fs_read_at(path, at, buf[..]);
     if n < 0 { return ""; }
     if n == 0 { break; }
-    r = sha256_update(state[..], buf[0..<n]);
+    // sha256_update takes at most CB_MAX_BYTES (1 MiB) a call and refuses more: feed the chunk in slices
+    // and stop on any refusal (a 4 MiB slice, refused unseen, once hashed every pack as empty input)
+    k := 0;
+    while k < n {
+      m := n - k; if m > 1048576 { m = 1048576; }
+      r = sha256_update(state[..], buf[k..<k + m]);
+      if r != SHA_OK { return ""; }
+      k += m;
+    }
     at += n;
   }
   d: [32] u8; r = sha256_final(state[..], d[..]);
+  if r != SHA_OK { return ""; }
   hex := "0123456789abcdef";
   for i: 0..<32 { out[2 * i] = hex[cast(int) d[i] >> 4]; out[2 * i + 1] = hex[cast(int) d[i] & 15]; }
   return cast(string) out[0..<64];
@@ -195,7 +204,8 @@ up_packs :: (u: [] Up, dir: string, bucket: string, work: string, names: [] stri
     src := ub_text(sp[..]);
     if fs_kind(src) != 1 { tool_err("upload_packs: no "); tool_errln(src); return 1; }
     head: [4] u8; hn := fs_read_at(src, 0, head[..]);
-    if hn != 4 || cast(string) head[..] != "VPK1" { tool_err("upload_packs: "); tool_err(src); tool_errln(" is not a VPK1 pack"); return 1; }
+    // VPK1: a human pack (pack_human.coax); VPK2: a realm pack (unreal-level-import.coax), read by the same pack: path
+    if hn != 4 || (cast(string) head[..] != "VPK1" && cast(string) head[..] != "VPK2") { tool_err("upload_packs: "); tool_err(src); tool_errln(" is not a VPK1 or VPK2 pack"); return 1; }
   }
   out: [UP_MANIFEST] u8; on: [1] int;
   m: [1] Ub;   // the manifest
