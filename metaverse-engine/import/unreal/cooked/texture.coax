@@ -1,0 +1,194 @@
+// A cooked 2D texture into a bundle row and an 8-bit PNG of its largest mip (BUNDLE.md 3.4).
+//
+// After its properties a cooked texture holds: a guid flag, two sets of strip flags, a cooked flag
+// and a mip-data flag; then, per platform format, the format's name, a 64-bit skip offset and the
+// platform data: a 16-byte placeholder, the size, packed flags (cube, optional data, CPU copy, the
+// slice count), the pixel format's name as a string, the optional data when flagged, the first mip
+// kept and the mip count; per mip a bulk-data reference (its payload inline right after when the
+// payload is not at the end of the file, else in the .ubulk) and the mip's size; a virtual-texture
+// flag. A name None ends the list.
+//
+// Decoded here: BC1, BC3 (DXT1, DXT5), BC4, BC5, G8 and B8G8R8A8. A BC5 normal map gets its blue
+// channel back from the other two (z = sqrt(1 - x^2 - y^2)), since the bundle's PNG is an ordinary
+// normal map. Any other format is refused with its name (BC6H, BC7, float formats).
+#load "out.coax";
+#load "../../../../coax/lib/image/pillow.coax";
+ceil :: (x: f64) -> f64 #foreign #effects(all);   // pillow.coax rounds with it; its users declare it
+
+CT_SIDE :: 8192; CT_PIXELS :: CT_SIDE * CT_SIDE * 4;
+CtScratch :: struct { px: [CT_PIXELS] u8; filtered: [CT_PIXELS + CT_SIDE] u8; png: [CT_PIXELS + 65536] u8; z: [1] PiZ; }
+CtResult :: struct { ok: bool; why: [256] u8; why_n: int; }
+ct_fail :: (res: [] CtResult, why: string) -> bool #effects(all) { res[0].ok = false; res[0].why_n = sc_put(res[0].why[..], 0, why); return false; }
+
+CT_FORMATS :: [6] string.["PF_DXT1", "PF_DXT5", "PF_BC4", "PF_BC5", "PF_G8", "PF_B8G8R8A8"];
+CT_DXT1 :: 0; CT_DXT5 :: 1; CT_BC4 :: 2; CT_BC5 :: 3; CT_G8 :: 4; CT_BGRA :: 5;
+ct_block_bytes :: (f: int) -> int #effects(all) { return ifx f == CT_DXT1 || f == CT_BC4 then 8 else 16; }
+// The bytes a mip of this format and size takes.
+ct_mip_bytes :: (f: int, w: int, h: int) -> int #effects(all) {
+  if f == CT_G8 { return w * h; }
+  if f == CT_BGRA { return 4 * w * h; }
+  return ((w + 3) / 4) * ((h + 3) / 4) * ct_block_bytes(f);
+}
+
+// ---- block decoders: out is RGBA, 4 bytes a pixel, row stride w
+
+ct_565 :: (c: int, rgb: [] int) #effects(all) {
+  r := (c >> 11) & 31; g := (c >> 5) & 63; b := c & 31;
+  rgb[0] = (r * 255 + 15) / 31; rgb[1] = (g * 255 + 31) / 63; rgb[2] = (b * 255 + 15) / 31;
+}
+// The colour half of a BC1/BC3 block at b[at]: four colours (or three and transparent black).
+ct_colour_block :: (b: string, at: int, four: bool, out: [] u8, w: int, h: int, bx: int, by: int) #effects(all) {
+  c0 := cast(int) b[at] | (cast(int) b[at + 1] << 8); c1 := cast(int) b[at + 2] | (cast(int) b[at + 3] << 8);
+  pal: [16] int; e0: [3] int; e1: [3] int; ct_565(c0, e0[..]); ct_565(c1, e1[..]);
+  for ch: 0..<3 { pal[ch] = e0[ch]; pal[4 + ch] = e1[ch]; }
+  pal[3] = 255; pal[7] = 255;
+  if four || c0 > c1 {
+    for ch: 0..<3 { pal[8 + ch] = (2 * e0[ch] + e1[ch] + 1) / 3; pal[12 + ch] = (e0[ch] + 2 * e1[ch] + 1) / 3; }
+    pal[11] = 255; pal[15] = 255;
+  } else {
+    for ch: 0..<3 { pal[8 + ch] = (e0[ch] + e1[ch] + 1) / 2; pal[12 + ch] = 0; }
+    pal[11] = 255; pal[15] = 0;
+  }
+  bits := zu32(b, at + 4);
+  for py: 0..<4 { for px: 0..<4 {
+    x := bx * 4 + px; y := by * 4 + py;
+    if x >= w || y >= h { continue; }
+    sel := (bits >> (2 * (py * 4 + px))) & 3;
+    o := 4 * (y * w + x);
+    for ch: 0..<4 { out[o + ch] = cast,trunc(u8) pal[sel * 4 + ch]; }
+  } }
+}
+// A BC4 block (one channel, as BC3's alpha) at b[at] into channel ch.
+ct_bc4_block :: (b: string, at: int, out: [] u8, w: int, h: int, bx: int, by: int, ch: int) #effects(all) {
+  a0 := cast(int) b[at]; a1 := cast(int) b[at + 1];
+  pal: [8] int; pal[0] = a0; pal[1] = a1;
+  if a0 > a1 { for i: 1..<7 { pal[1 + i] = ((7 - i) * a0 + i * a1 + 3) / 7; } }
+  else { for i: 1..<5 { pal[1 + i] = ((5 - i) * a0 + i * a1 + 2) / 5; } pal[6] = 0; pal[7] = 255; }
+  lo := zu32(b, at + 2); hi := cast(int) b[at + 6] | (cast(int) b[at + 7] << 8);
+  for i: 0..<16 {
+    x := bx * 4 + i % 4; y := by * 4 + i / 4;
+    if x >= w || y >= h { continue; }
+    bit := 3 * i;
+    sel := ifx bit + 3 <= 32 then (lo >> bit) & 7 else ifx bit >= 32 then (hi >> (bit - 32)) & 7 else ((lo >> bit) | (hi << (32 - bit))) & 7;
+    out[4 * (y * w + x) + ch] = cast,trunc(u8) pal[sel];
+  }
+}
+// A mip's bytes in format f to RGBA in out. False when the bytes are short.
+ct_decode :: (f: int, b: string, w: int, h: int, out: [] u8) -> bool #effects(all) {
+  if b.count < ct_mip_bytes(f, w, h) || out.count < 4 * w * h { return false; }
+  if f == CT_G8 { for i: 0..<w * h { v := b[i]; out[4 * i] = v; out[4 * i + 1] = v; out[4 * i + 2] = v; out[4 * i + 3] = 255; } return true; }
+  if f == CT_BGRA { for i: 0..<w * h { out[4 * i] = b[4 * i + 2]; out[4 * i + 1] = b[4 * i + 1]; out[4 * i + 2] = b[4 * i]; out[4 * i + 3] = b[4 * i + 3]; } return true; }
+  bw := (w + 3) / 4; bh := (h + 3) / 4; size := ct_block_bytes(f);
+  for by: 0..<bh { for bx: 0..<bw {
+    at := (by * bw + bx) * size;
+    if f == CT_DXT1 { ct_colour_block(b, at, false, out, w, h, bx, by); }
+    if f == CT_DXT5 { ct_colour_block(b, at + 8, true, out, w, h, bx, by); ct_bc4_block(b, at, out, w, h, bx, by, 3); }
+    if f == CT_BC4 { ct_bc4_block(b, at, out, w, h, bx, by, 0); }
+    if f == CT_BC5 { ct_bc4_block(b, at, out, w, h, bx, by, 0); ct_bc4_block(b, at + 8, out, w, h, bx, by, 1); }
+  } }
+  if f == CT_BC4 { for i: 0..<w * h { out[4 * i + 1] = out[4 * i]; out[4 * i + 2] = out[4 * i]; out[4 * i + 3] = 255; } }
+  if f == CT_BC5 {
+    for i: 0..<w * h {
+      nx := cast(f64) out[4 * i] / 127.5 - 1.0; ny := cast(f64) out[4 * i + 1] / 127.5 - 1.0;
+      zz := 1.0 - nx * nx - ny * ny; nz := ifx zz > 0.0 then sqrt(zz) else 0.0;
+      out[4 * i + 2] = cast,trunc(u8) cast(int) floor((nz + 1.0) * 127.5 + 0.5); out[4 * i + 3] = 255;
+    }
+  }
+  return true;
+}
+
+// TextureCompressionSettings (by value) as the bundle's word index in CO_COMPRESSIONS.
+ct_compression :: (v: int) -> int #effects(all) {
+  // TC_Default 0, Normalmap 1, Masks 2, Grayscale 3, Displacementmap 4, VectorDisplacementmap 5, HDR 6,
+  // EditorIcon 7 (user interface), Alpha 8, DistanceFieldFont 9, HDR_Compressed 10, BC7 11, the rest other
+  words := [17] int.[0, 1, 2, 3, 6, 7, 4, 9, 5, 10, 10, 8, 10, 10, 10, 10, 10];
+  return ifx v >= 0 && v < 17 then words[v] else 10;
+}
+
+// Texture export e of package p into a row of o and its PNG (textures/NNNN.png).
+ct_texture :: (k: [] Ck, o: [] Co, p: int, e: int, number: int, s: [] CtScratch, res: [] CtResult) -> bool #effects(all) {
+  res[0].ok = true; res[0].why_n = 0;
+  cl := ck_class(k, p, e);
+  if cl.t < 0 { return ct_fail(res, "the class is not in the schema"); }
+  r: [1] Zr; r[0] = ck_cursor(k, p, e, CK_MAIN);
+  root := ck_props(k, r[..], p, cl.t);
+  if root < 0 { wb: [512] u8; return ct_fail(res, ck_why(k, wb[..])); }
+  x := k[0].x[..];
+  srgb := pv_int(x, pv_at(x, root, "SRGB"), 1) != 0;
+  comp := ct_compression(pv_int(x, pv_at(x, root, "CompressionSettings"), 0));
+  _ = zr_u32(r[..]); zr_skip(r[..], 4);
+  cooked := zr_u32(r[..]); _ = zr_u32(r[..]);
+  if !r[0].ok || cooked != 1 { return ct_fail(res, "not cooked platform data"); }
+  pk := k[0].cat[0].pkg[p];
+  fi := zr_u32(r[..]); _ = zr_u32(r[..]);
+  if !r[0].ok || fi >= pk.name_n { return ct_fail(res, "no platform data"); }
+  _ = zr_u64(r[..]);
+  zr_skip(r[..], 16);
+  _ = zr_i32(r[..]); _ = zr_i32(r[..]);
+  packed := zr_u32(r[..]);
+  fmt_id := px_string(k[0].x[..], r[..]);
+  if !r[0].ok || fmt_id < 0 { return ct_fail(res, "the platform data's header is malformed"); }
+  fmt_name := zs(k[0].pv[0].pool[..], fmt_id);
+  if (packed & 0x20000000) != 0 { return ct_fail(res, "the platform data keeps a CPU copy, which this reader does not take"); }
+  if (packed & 0x80000000) != 0 || (packed & 0x3fffffff & 0x3fff) > 1 { return ct_fail(res, "a cube or array texture"); }
+  if (packed & 0x40000000) != 0 { zr_skip(r[..], 8); }
+  _ = zr_i32(r[..]); mips := zr_i32(r[..]);
+  if !r[0].ok || mips < 1 || mips > 20 { return ct_fail(res, "no mips"); }
+  f := -1; for n, i: CT_FORMATS { if n == fmt_name { f = i; } }
+  if f < 0 { d: [128] u8; return ct_fail(res, ck_cat("a pixel format this reader does not decode: ", fmt_name, d[..])); }
+  // the largest mip whose bytes the build carries
+  for m: 0..<mips {
+    bi := zr_i32(r[..]);
+    if !r[0].ok || bi < 0 || bi >= pk.bulk_n { return ct_fail(res, "a mip's bulk data reference is malformed"); }
+    bk := k[0].cat[0].bulk[pk.bulk + bi];
+    inline_at := -1;
+    if (bk.flags & 1) == 0 { if bk.size < 0 || bk.size > r[0].end - r[0].at { return ct_fail(res, "an inline mip runs past its export"); } inline_at = r[0].at; zr_skip(r[..], bk.size); }
+    w := zr_i32(r[..]); h := zr_i32(r[..]); _ = zr_i32(r[..]);
+    if !r[0].ok || w < 1 || h < 1 || w > CT_SIDE || h > CT_SIDE { return ct_fail(res, "a mip's size is out of range"); }
+    if (bk.flags & 0x800) != 0 { continue; }   // in the optional .uptnl the build does not ship
+    need := ct_mip_bytes(f, w, h);
+    if bk.size < need { return ct_fail(res, "a mip holds fewer bytes than its size needs"); }
+    bytes := "";
+    if inline_at >= 0 { bytes = r[0].b[inline_at..<inline_at + bk.size]; }
+    else { bytes = cast(string) ck_bulk(k, p, bk.off, bk.size); if bytes.count == 0 { return ct_fail(res, "a mip's bytes are outside the .ubulk"); } }
+    if !ct_decode(f, bytes, w, h, s[0].px[..]) { return ct_fail(res, "a mip did not decode"); }
+    gray := f == CT_G8 || f == CT_BC4;
+    if gray { for i: 0..<w * h { s[0].px[i] = s[0].px[4 * i]; } }
+    n := pi_png(pi_img(s[0].px[..], w, h, ifx gray then 1 else 4), s[0].z[..], s[0].filtered[..], s[0].png[..]);
+    if n < 0 { return ct_fail(res, "the PNG writer refused the image"); }
+    idb: [1024] u8; id := zc_path(k[0].cat, p, e, idb[..]);
+    file := co_file(o, "textures", number, ".png", s[0].png[0..<n]);
+    if file < 0 { return ct_fail(res, "could not write the PNG"); }
+    if o[0].textures >= CO_TEXTURES { return ct_fail(res, "the texture table is full"); }
+    o[0].tex[o[0].textures] = CoTex.{id = co_add(o, id), file = file, w = w, h = h, srgb = srgb, compression = comp};
+    o[0].textures += 1;
+    return true;
+  }
+  return ct_fail(res, "no mip's bytes are in the build (all optional)");
+}
+
+#test "a BC1 block: two endpoints and their thirds, and the three-colour mode's transparent black" {
+  // c0 = pure red (0xF800), c1 = pure blue (0x001F), c0 > c1: four colours; pixel selectors 0,1,2,3 in the first row
+  b := [8] u8.[0x00, 0xF8, 0x1F, 0x00, 0xE4, 0, 0, 0];
+  out: [64] u8;
+  #assert ct_decode(CT_DXT1, cast(string) b[..], 4, 4, out[..]);
+  #assert out[0] == 255 && out[2] == 0;                          // selector 0: c0, red
+  #assert out[4] == 0 && out[6] == 255;                          // selector 1: c1, blue
+  #assert out[8] == 170 && out[10] == 85 && out[11] == 255;      // selector 2: 2/3 c0 + 1/3 c1
+  // swap endpoints: c0 < c1 gives three colours and selector 3 transparent
+  t := [8] u8.[0x1F, 0x00, 0x00, 0xF8, 0xC0, 0, 0, 0];
+  #assert ct_decode(CT_DXT1, cast(string) t[..], 4, 4, out[..]) && out[15] == 0 && out[14] == 0;
+}
+#test "a BC4 block's eight-value ramp, and BC5's normal gets its blue back" {
+  b := [8] u8.[255, 0, 0x08, 0, 0, 0, 0, 0];   // pixel 1 selects index 1 (a1 = 0), pixel 0 index 0 (a0 = 255)
+  out: [64] u8;
+  #assert ct_decode(CT_BC4, cast(string) b[..], 4, 4, out[..]) && out[0] == 255 && out[4] == 0 && out[5] == 0 && out[7] == 255;
+  flat := [16] u8.[128, 128, 0, 0, 0, 0, 0, 0, 128, 128, 0, 0, 0, 0, 0, 0];   // x = y = 0: the normal points straight out
+  #assert ct_decode(CT_BC5, cast(string) flat[..], 4, 4, out[..]) && out[2] == 255;
+  #assert !ct_decode(CT_BC5, cast(string) flat[0..<8], 4, 4, out[..]);       // short bytes are refused
+}
+#test "the compression setting's bundle word" {
+  #assert CO_COMPRESSIONS[ct_compression(0)] == "default" && CO_COMPRESSIONS[ct_compression(1)] == "normalmap" && CO_COMPRESSIONS[ct_compression(6)] == "hdr";
+  #assert CO_COMPRESSIONS[ct_compression(7)] == "ui" && CO_COMPRESSIONS[ct_compression(8)] == "alpha" && CO_COMPRESSIONS[ct_compression(11)] == "bc7" && CO_COMPRESSIONS[ct_compression(12)] == "other";
+  #assert CO_COMPRESSIONS[ct_compression(4)] == "displacementmap" && CO_COMPRESSIONS[ct_compression(5)] == "vectordisplacementmap";
+}

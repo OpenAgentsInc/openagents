@@ -1,0 +1,161 @@
+// Cooked materials and material instances into bundle rows (BUNDLE.md 3.3): blend mode, two-sided,
+// shading model, and every global texture, scalar and vector parameter after inheritance, so a
+// reader of the bundle needs no parent chain.
+//
+// A cooked material keeps its parameters' defaults after its properties: a guid flag, a flag
+// saying the cached expression data follows, then that data as unversioned properties. Its
+// RuntimeEntries hold the parameters' names by type (0 scalars, 1 vectors, 3 textures) in the
+// order of ScalarValues, VectorValues and TextureValues. An instance names its parent and lists
+// the parameters it overrides; its BasePropertyOverrides change blend, two-sided and shading when
+// their bOverride_ flags say so. An instance's row starts as a copy of its parent's (read first,
+// once) and applies its own overrides.
+#load "out.coax";
+
+CMA_MAX :: 4096;
+// Where each material read so far landed: (package << 20 | export) -> row in o.mat, or -1 refused.
+CmaMemo :: struct { key: [CMA_MAX] int; row: [CMA_MAX] int; n: int; }
+CmaResult :: struct { ok: bool; why: [512] u8; why_n: int; }
+cma_fail :: (res: [] CmaResult, why: string) -> int #effects(all) { if res[0].ok { res[0].ok = false; res[0].why_n = sc_put(res[0].why[..], 0, why); } return -1; }
+
+CMA_ASSOC_GLOBAL :: 2;
+// Content of an engine plugin (/Water/, /ControlRig/...): its ids have no root the bundle allows.
+CMA_PLUGIN_WHY :: "plugin content: a bundle id starts /Game/, /Engine/ or /Data/";
+cma_blend :: (v: int) -> int #effects(all) { return ifx v >= 0 && v <= 3 then v else 2; }   // Modulate, AlphaComposite, AlphaHoldout... drawn as translucent
+cma_shading :: (v: int) -> int #effects(all) { return ifx v == 1 then 0 else ifx v == 0 then 1 else ifx v == 2 || v == 5 then 2 else 3; }
+
+// Sets parameter (kind, name) in row m's list, replacing one of the same kind and name.
+cma_set :: (o: [] Co, m: int, pa: CoParam) -> bool #effects(all) {
+  mt := o[0].mat[m];
+  for q: 0..<mt.param_n {
+    old := o[0].param[mt.params + q];
+    if old.kind == pa.kind && co_s(o, old.name) == co_s(o, pa.name) { o[0].param[mt.params + q] = pa; return true; }
+  }
+  if mt.params + mt.param_n != o[0].params || o[0].params >= CO_PARAMS { return co_full(o, "material parameters"); }
+  o[0].param[o[0].params] = pa; o[0].params += 1; o[0].mat[m].param_n += 1;
+  return true;
+}
+
+// The material at (p, e) as a row of o: its row, or -1 (res says why). Parents are read first.
+cma_material :: (k: [] Ck, o: [] Co, memo: [] CmaMemo, p: int, e: int, depth: int, res: [] CmaResult) -> int #effects(all) {
+  key := (p << 20) | e;
+  for i: 0..<memo[0].n { if memo[0].key[i] == key { r := memo[0].row[i]; if r < 0 { _ = cma_fail(res, "its parent is refused"); } return r; } }
+  row := cma_read(k, o, memo, p, e, depth, res);
+  if memo[0].n < CMA_MAX { memo[0].key[memo[0].n] = key; memo[0].row[memo[0].n] = row; memo[0].n += 1; }
+  return row;
+}
+cma_read :: (k: [] Ck, o: [] Co, memo: [] CmaMemo, p: int, e: int, depth: int, res: [] CmaResult) -> int #effects(all) {
+  if depth > 16 { return cma_fail(res, "a parent chain longer than 16"); }
+  cl := ck_class(k, p, e);
+  if cl.t < 0 { return cma_fail(res, "the class is not in the schema"); }
+  is_mat := ck_is(k, cl.t, "UMaterial"); is_mic := ck_is(k, cl.t, "UMaterialInstance");
+  if !is_mat && !is_mic { return cma_fail(res, "not a material or a material instance"); }
+  r: [1] Zr; r[0] = ck_cursor(k, p, e, CK_MAIN);
+  root := ck_props(k, r[..], p, cl.t);
+  if root < 0 { wb: [512] u8; return cma_fail(res, ck_why(k, wb[..])); }
+  x := k[0].x[..];
+  idb: [1024] u8; id := zc_path(k[0].cat, p, e, idb[..]);
+  if !ab_id_ok(id) && depth == 0 { return cma_fail(res, CMA_PLUGIN_WHY); }   // read only as a parent, never carried
+  if o[0].materials >= CO_MATERIALS { return cma_fail(res, "the material table is full"); }
+  if is_mat {
+    m := o[0].materials; o[0].materials += 1;
+    idn := co_add(o, id);
+    o[0].mat[m] = CoMat.{id = idn, parent = idn, root = idn, blend = cma_blend(pv_int(x, pv_at(x, root, "BlendMode"), 0)),
+      two_sided = pv_int(x, pv_at(x, root, "TwoSided"), 0) != 0, shading = cma_shading(pv_int(x, pv_at(x, root, "ShadingModel"), 1)), params = o[0].params, param_n = 0};
+    // the cached expression data after the properties
+    _ = zr_u32(r[..]); saved := zr_u32(r[..]);
+    if !r[0].ok || saved != 1 { return m; }   // no parameters kept: the row stands with none
+    t := sc_type(k[0].sch, "FMaterialCachedExpressionData");
+    if t < 0 { return cma_fail(res, "the schema lacks the cached expression data"); }
+    k[0].x[0].fault = PX_OK;
+    cd := px_unversioned(k[0].x[..], r[..], t, -1, 0);
+    if cd < 0 { wb: [512] u8; return cma_fail(res, ck_why(k, wb[..])); }
+    kinds := [3] int.[CO_PARAM_SCALAR, CO_PARAM_VECTOR, CO_PARAM_TEX];
+    entries := [3] int.[0, 1, 3]; values := [3] string.["ScalarValues", "VectorValues", "TextureValues"];
+    for which: 0..<3 {
+      ent := pv_at(x, cd, ck_entry_path(entries[which]));
+      names := pv_at(x, ent, "ParameterInfoSet");
+      vals := pv_at(x, cd, values[which]);
+      n := pv_count(x, names);
+      if n != pv_count(x, vals) { return cma_fail(res, "a parameter list and its values differ in length"); }
+      for i: 0..<n {
+        info := pv_nth(x, names, i);
+        if pv_int(x, pv_at(x, info, "Association"), CMA_ASSOC_GLOBAL) != CMA_ASSOC_GLOBAL { continue; }
+        nb: [256] u8; pname := pv_name(x, pv_at(x, info, "Name"), nb[..]);
+        if pname.count == 0 { continue; }
+        v := pv_nth(x, vals, i);
+        if !cma_param(k, o, m, kinds[which], pname, v, true) { return cma_fail(res, "the parameter table is full"); }
+      }
+    }
+    return m;
+  }
+  // an instance: its parent first
+  parent := ck_ref(k, pv_at(x, root, "Parent"));
+  if (parent.kind != ZI_EXPORT && parent.kind != ZI_PACKAGE) || parent.pkg < 0 || parent.exp < 0 { return cma_fail(res, "its parent is not in the build"); }
+  // keep what this instance states before reading the parent overwrites the value tree's bytes
+  pr := cma_material(k, o, memo, parent.pkg, parent.exp, depth + 1, res);
+  if pr < 0 { return -1; }
+  // the parent's read reused the package buffer: read this one again
+  r[0] = ck_cursor(k, p, e, CK_MAIN);
+  root = ck_props(k, r[..], p, cl.t);
+  if root < 0 { wb: [512] u8; return cma_fail(res, ck_why(k, wb[..])); }
+  if o[0].materials >= CO_MATERIALS || o[0].params + o[0].mat[pr].param_n > CO_PARAMS { return cma_fail(res, "the material table is full"); }
+  m := o[0].materials; o[0].materials += 1;
+  base := o[0].mat[pr];
+  pb: [1024] u8;
+  pid := zc_path(k[0].cat, parent.pkg, parent.exp, pb[..]);
+  // an instance of a plugin's material (an id the bundle cannot hold) is carried flattened: its own
+  // parent and root, with everything it inherits, as the editor route carries it
+  idn := co_add(o, id);
+  flat := !ab_id_ok(pid) || !ab_id_ok(co_s(o, base.root));
+  o[0].mat[m] = CoMat.{id = idn, parent = ifx flat then idn else co_add(o, pid), root = ifx flat then idn else base.root,
+    blend = base.blend, two_sided = base.two_sided, shading = base.shading, params = o[0].params, param_n = 0};
+  for q: 0..<base.param_n { o[0].param[o[0].params] = o[0].param[base.params + q]; o[0].params += 1; o[0].mat[m].param_n += 1; }
+  ov := pv_at(x, root, "BasePropertyOverrides");
+  if ov >= 0 {
+    if pv_int(x, pv_at(x, ov, "bOverride_BlendMode"), 0) != 0 { o[0].mat[m].blend = cma_blend(pv_int(x, pv_at(x, ov, "BlendMode"), 0)); }
+    if pv_int(x, pv_at(x, ov, "bOverride_TwoSided"), 0) != 0 { o[0].mat[m].two_sided = pv_int(x, pv_at(x, ov, "TwoSided"), 0) != 0; }
+    if pv_int(x, pv_at(x, ov, "bOverride_ShadingModel"), 0) != 0 { o[0].mat[m].shading = cma_shading(pv_int(x, pv_at(x, ov, "ShadingModel"), 1)); }
+  }
+  lists := [3] string.["ScalarParameterValues", "VectorParameterValues", "TextureParameterValues"];
+  kinds := [3] int.[CO_PARAM_SCALAR, CO_PARAM_VECTOR, CO_PARAM_TEX];
+  for which: 0..<3 {
+    l := pv_at(x, root, lists[which]);
+    for i: 0..<pv_count(x, l) {
+      item := pv_nth(x, l, i);
+      info := pv_at(x, item, "ParameterInfo");
+      if pv_int(x, pv_at(x, info, "Association"), CMA_ASSOC_GLOBAL) != CMA_ASSOC_GLOBAL { continue; }
+      nb: [256] u8; pname := pv_name(x, pv_at(x, info, "Name"), nb[..]);
+      if pname.count == 0 { continue; }
+      if !cma_param(k, o, m, kinds[which], pname, pv_at(x, item, "ParameterValue"), false) { return cma_fail(res, "the parameter table is full"); }
+    }
+  }
+  return m;
+}
+ck_entry_path :: (i: int) -> string #effects(all) {
+  return ifx i == 0 then "RuntimeEntries[0]" else ifx i == 1 then "RuntimeEntries[1]" else "RuntimeEntries[3]";
+}
+// One parameter value node into row m. A texture value is a soft path (a material's defaults) or
+// an object reference (an instance's); an empty one clears nothing and adds nothing.
+cma_param :: (k: [] Ck, o: [] Co, m: int, kind: int, name: string, v: int, soft: bool) -> bool #effects(all) {
+  x := k[0].x[..];
+  pa: CoParam; pa.kind = kind; pa.name = co_add(o, name); pa.tex = 0; pa.v = [4] f64.[0.0, 0.0, 0.0, 0.0];
+  if kind == CO_PARAM_SCALAR { pa.v[0] = pv_f(x, v, 0.0); }
+  if kind == CO_PARAM_VECTOR { for c: 0..<4 { pa.v[c] = pv_f(x, pv_nth(x, v, c), 0.0); } }
+  if kind == CO_PARAM_TEX {
+    tb: [1024] u8;
+    tid := ifx soft then ck_soft_id(k, v, tb[..]) else ck_ref_id(k, ck_ref(k, v), tb[..]);
+    if tid.count == 0 { return true; }
+    pa.tex = co_add(o, tid);
+  }
+  return cma_set(o, m, pa);
+}
+
+#test "an instance's parameter replaces its parent's of the same kind and name, and adds a new one" {
+  st: [1] CoStore = ---; o: [1] Co = ---; co_init(o[..], st[..], "/nowhere");
+  o[0].mat[0] = CoMat.{id = co_add(o[..], "/Game/M.M"), params = 0, param_n = 0}; o[0].materials = 1;
+  #assert cma_set(o[..], 0, CoParam.{kind = CO_PARAM_SCALAR, name = co_add(o[..], "Rough"), v = [4] f64.[0.5, 0, 0, 0]});
+  #assert cma_set(o[..], 0, CoParam.{kind = CO_PARAM_VECTOR, name = co_add(o[..], "Rough"), v = [4] f64.[1, 1, 1, 1]});   // another kind: its own row
+  #assert cma_set(o[..], 0, CoParam.{kind = CO_PARAM_SCALAR, name = co_add(o[..], "Rough"), v = [4] f64.[0.9, 0, 0, 0]});
+  #assert o[0].mat[0].param_n == 2 && o[0].param[0].v[0] == 0.9;
+  #assert cma_blend(1) == 1 && cma_blend(4) == 2 && CO_SHADINGS[cma_shading(1)] == "default_lit" && CO_SHADINGS[cma_shading(0)] == "unlit" && CO_SHADINGS[cma_shading(9)] == "other";
+}

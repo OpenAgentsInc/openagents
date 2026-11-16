@@ -1,0 +1,474 @@
+// What the cooked reader carries into the bundle, row by row, and how it writes the bundle's
+// manifest.json and skipped.json (metaverse-engine/import/unreal/BUNDLE.md). The asset readers fill
+// these tables in any order; the writer sorts every list by id (placements and the other map
+// lists by name) and drops nothing silently: a row that would name a row the bundle does not
+// carry becomes a skipped row instead.
+#load "read.coax";
+#load "../files.coax";
+
+CO_POOL :: 16777216; CO_STRINGS :: 262144; CO_FILES :: 8192;
+CO_MESHES :: 2048; CO_MATERIALS :: 2048; CO_TEXTURES :: 2048; CO_SOUNDS :: 512; CO_SKELETONS :: 64; CO_BONES :: 16384;
+CO_MAPS :: 16; CO_PLACEMENTS :: 65536; CO_LIGHTS :: 8192; CO_SPOTS :: 8192; CO_VOLUMES :: 8192;
+CO_REFS :: 524288; CO_SHAPES :: 65536; CO_HULL :: 524288; CO_SKIPS :: 65536; CO_PARAMS :: 65536;
+
+CoFile :: struct { path: int; sha: [64] u8; bytes: int; }
+CoMesh :: struct { id: int; file: int; tris: int; verts: int; bounds: [6] f64; nanite: bool; mats: int; mat_n: int; cas: bool; shapes: int; shape_n: int; }
+CO_BOX :: 0; CO_SPHERE :: 1; CO_CAPSULE :: 2; CO_CONVEX :: 3;
+CoShape :: struct { kind: int; c: CkV; q: CkQ; e: CkV; verts: int; vert_n: int; }   // e: half extent; radius in x, length in y
+CoTex :: struct { id: int; file: int; w: int; h: int; srgb: bool; compression: int; }
+CO_PARAM_TEX :: 0; CO_PARAM_SCALAR :: 1; CO_PARAM_VECTOR :: 2;
+CoParam :: struct { kind: int; name: int; tex: int; v: [4] f64; }
+CoMat :: struct { id: int; parent: int; root: int; blend: int; two_sided: bool; shading: int; params: int; param_n: int; }
+CoSound :: struct { id: int; file: int; seconds: f64; channels: int; rate: int; }
+CoBone :: struct { name: int; parent: int; t: CkV; q: CkQ; s: CkV; }
+CoSkeleton :: struct { id: int; bones: int; bone_n: int; }
+CoPlace :: struct {
+  map: int; name: int; actor: int; actor_class: int; component: int; instance: int; skeletal: bool; asset: int;
+  xf: CkXf; mats: int; mat_n: int; collision: int; visible: bool; cast_shadow: bool; tags: int; tag_n: int;
+}
+CO_DIRECTIONAL :: 0; CO_POINT :: 1; CO_SPOT_LIGHT :: 2; CO_RECT :: 3; CO_SKY :: 4;
+CoLight :: struct { map: int; name: int; kind: int; xf: CkXf; color: CkV; intensity: f64; units: int; radius: f64; inner: f64; outer: f64; shadows: bool; mobility: int; }
+CO_PLAYER_START :: 0; CO_TAG :: 1; CO_TARGET :: 2;
+CoSpot :: struct { map: int; name: int; kind: int; xf: CkXf; tags: int; tag_n: int; }
+CoVolume :: struct { map: int; name: int; cls: int; xf: CkXf; shapes: int; shape_n: int; }
+CoMap :: struct { id: int; atmosphere: int; streamed: int; streamed_n: int; }
+CoSkip :: struct { map: int; actor: int; cls: int; component: int; reason: int; detail: int; }
+CO_REASONS :: [8] string.["logic", "niagara", "sequencer", "audio_graph", "widget", "decal", "hidden", "unsupported"];
+CO_LOGIC :: 0; CO_NIAGARA :: 1; CO_SEQUENCER :: 2; CO_AUDIO_GRAPH :: 3; CO_WIDGET :: 4; CO_DECAL :: 5; CO_HIDDEN :: 6; CO_UNSUPPORTED :: 7;
+CO_BLENDS :: [4] string.["opaque", "masked", "translucent", "additive"];
+CO_SHADINGS :: [4] string.["default_lit", "unlit", "subsurface", "other"];
+CO_COLLISIONS :: [3] string.["block", "overlap", "none"];
+CO_LIGHT_KINDS :: [5] string.["directional", "point", "spot", "rect", "sky"];
+CO_UNITS :: [4] string.["unitless", "candelas", "lumens", "lux"];
+CO_MOBILITY :: [3] string.["static", "stationary", "movable"];
+CO_SPOT_KINDS :: [3] string.["player_start", "tag", "target_point"];
+CO_COMPRESSIONS :: [11] string.["default", "normalmap", "masks", "grayscale", "hdr", "alpha", "displacementmap", "vectordisplacementmap", "bc7", "ui", "other"];
+
+Co :: struct {
+  pool: [1] Zs; dir: [4096] u8; dir_n: int; full: bool; why: [512] u8; why_n: int;
+  files: int; file: [CO_FILES] CoFile;
+  meshes: int; mesh: [CO_MESHES] CoMesh; shapes: int; shape: [CO_SHAPES] CoShape; hulls: int; hull: [CO_HULL] CkV;
+  textures: int; tex: [CO_TEXTURES] CoTex;
+  materials: int; mat: [CO_MATERIALS] CoMat; params: int; param: [CO_PARAMS] CoParam;
+  sounds: int; sound: [CO_SOUNDS] CoSound;
+  skeletons: int; skel: [CO_SKELETONS] CoSkeleton; bones: int; bone: [CO_BONES] CoBone;
+  maps: int; map: [CO_MAPS] CoMap;
+  placements: int; place: [CO_PLACEMENTS] CoPlace; lights: int; light: [CO_LIGHTS] CoLight;
+  spots: int; spot: [CO_SPOTS] CoSpot; volumes: int; volume: [CO_VOLUMES] CoVolume;
+  refs: int; ref: [CO_REFS] int;
+  skips: int; skip: [CO_SKIPS] CoSkip;
+}
+CoStore :: struct { b: [CO_POOL] u8; at: [CO_STRINGS] int; n: [CO_STRINGS] int; }
+co_init :: (o: [] Co, st: [] CoStore, dir: string) #effects(all) {
+  zs_init(o[0].pool[..], st[0].b[..], st[0].at[..], st[0].n[..]);
+  n := ifx dir.count < 4096 then dir.count else 4096; for i: 0..<n { o[0].dir[i] = dir[i]; } o[0].dir_n = n;
+  o[0].full = false; o[0].why_n = 0;
+  o[0].files = 0; o[0].meshes = 0; o[0].shapes = 0; o[0].hulls = 0; o[0].textures = 0; o[0].materials = 0; o[0].params = 0; o[0].sounds = 0;
+  o[0].skeletons = 0; o[0].bones = 0; o[0].maps = 0; o[0].placements = 0; o[0].lights = 0; o[0].spots = 0; o[0].volumes = 0; o[0].refs = 0; o[0].skips = 0;
+}
+co_s :: (o: [] Co, id: int) -> string #effects(all) { return zs(o[0].pool[..], id); }
+co_add :: (o: [] Co, s: string) -> int #effects(all) { v := zs_add(o[0].pool[..], s); if o[0].pool[0].full { _ = co_full(o, "the string pool"); } return v; }
+co_full :: (o: [] Co, what: string) -> bool #effects(all) {
+  if !o[0].full { o[0].full = true; o[0].why_n = sc_put(o[0].why[..], 0, what); }
+  return false;
+}
+co_ref :: (o: [] Co, s: string) -> bool #effects(all) {
+  if o[0].refs >= CO_REFS { return co_full(o, "references"); }
+  o[0].ref[o[0].refs] = co_add(o, s); o[0].refs += 1; return true;
+}
+co_skip :: (o: [] Co, map: string, actor: string, cls: string, component: string, reason: int, detail: string) #effects(all) {
+  if o[0].skips >= CO_SKIPS { _ = co_full(o, "skipped rows"); return; }
+  o[0].skip[o[0].skips] = CoSkip.{map = co_add(o, map), actor = co_add(o, actor), cls = co_add(o, cls), component = co_add(o, component), reason = reason,
+    detail = co_add(o, ifx reason == CO_UNSUPPORTED && detail.count == 0 then "not read" else detail)};
+  o[0].skips += 1;
+}
+
+// A file into the bundle's folder: its row in files, or -1. The name is DIR/NNNN.EXT (BUNDLE.md 2).
+co_file :: (o: [] Co, dir: string, number: int, ext: string, bytes: [] u8) -> int #effects(all) {
+  if o[0].files >= CO_FILES { _ = co_full(o, "files"); return -1; }
+  rel: [128] u8; n := sc_put(rel[..], 0, dir); n = sc_put(rel[..], n, "/");
+  d: [12] u8; v := number; for i: 0..<4 { d[3 - i] = cast,trunc(u8) (48 + v % 10); v /= 10; }
+  digits := 4; if number >= 10000 { digits = 0; t := number; while t > 0 { digits += 1; t /= 10; } v = number; for i: 0..<digits { d[digits - 1 - i] = cast,trunc(u8) (48 + v % 10); v /= 10; } }
+  for i: 0..<digits { rel[n] = d[i]; n += 1; }
+  n = sc_put(rel[..], n, ext);
+  path := cast(string) rel[0..<n];
+  fb: [4096] u8; full := fs_join(cast(string) o[0].dir[0..<o[0].dir_n], path, fb[..]);
+  if !fs_write(full, cast(string) bytes) { return -1; }
+  f := o[0].files;
+  o[0].file[f].path = co_add(o, path); o[0].file[f].bytes = bytes.count;
+  if !uf_sha_hex(bytes, o[0].file[f].sha[..]) { return -1; }
+  o[0].files += 1;
+  return f;
+}
+
+// ---- sorting: a merge sort of row numbers by a key the caller's compare gives
+
+CO_KEY_ID :: 0;
+// Rows sorted by their pool string keys (keys[row]); ties keep their order.
+co_sort :: (o: [] Co, order: [] int, keys: [] int, tmp: [] int) #effects(all) {
+  n := order.count; width := 1;
+  while width < n {
+    i := 0;
+    while i < n {
+      mid := ifx i + width < n then i + width else n; hi := ifx i + 2 * width < n then i + 2 * width else n;
+      a := i; b := mid; t := i;
+      while a < mid || b < hi {
+        take_a := b >= hi || (a < mid && ab_cmp(co_s(o, keys[order[a]]), co_s(o, keys[order[b]])) <= 0);
+        if take_a { tmp[t] = order[a]; a += 1; } else { tmp[t] = order[b]; b += 1; }
+        t += 1;
+      }
+      i += 2 * width;
+    }
+    for j: 0..<n { order[j] = tmp[j]; }
+    width *= 2;
+  }
+}
+
+// ---- writing
+
+// A number rounded to 6 decimals, as the editor route writes its scales and light values (bundle-diff
+// compares those exactly).
+co_r6 :: (v: f64) -> f64 #effects(all) {
+  if !(v == v) || v > 1.0e12 || v < -1.0e12 { return v; }
+  a := ifx v < 0.0 then -v else v; n := cast(int) (a * 1000000.0 + 0.5); r := cast(f64) n / 1000000.0;
+  return ifx v < 0.0 && n != 0 then -r else r;
+}
+co_vec6 :: (j: [] Jo, key: string, v: CkV) #effects(all) { jo_key(j, key); jo_arr(j); uf_num(j, co_r6(v.x)); uf_num(j, co_r6(v.y)); uf_num(j, co_r6(v.z)); jo_end(j); }
+co_vec :: (j: [] Jo, key: string, v: CkV) #effects(all) { jo_key(j, key); jo_arr(j); uf_num(j, v.x); uf_num(j, v.y); uf_num(j, v.z); jo_end(j); }
+co_quat :: (j: [] Jo, key: string, q: CkQ) #effects(all) { jo_key(j, key); jo_arr(j); uf_num(j, q.x); uf_num(j, q.y); uf_num(j, q.z); uf_num(j, q.w); jo_end(j); }
+co_str :: (j: [] Jo, key: string, s: string) #effects(all) { jo_key(j, key); jo_str(j, s); }
+co_refs :: (o: [] Co, j: [] Jo, key: string, first: int, n: int) #effects(all) {
+  jo_key(j, key); jo_arr(j); for i: 0..<n { jo_str(j, co_s(o, o[0].ref[first + i])); } jo_end(j);
+}
+co_shapes :: (o: [] Co, j: [] Jo, first: int, n: int, kind: int) #effects(all) {
+  jo_arr(j);
+  for i: 0..<n {
+    sh := o[0].shape[first + i];
+    if sh.kind != kind { continue; }
+    jo_obj(j);
+    if kind == CO_BOX { co_vec(j, "center_cm", sh.c); co_quat(j, "rotation", sh.q); co_vec(j, "extent_cm", sh.e); }
+    if kind == CO_SPHERE { co_vec(j, "center_cm", sh.c); jo_key(j, "radius_cm"); uf_num(j, sh.e.x); }
+    if kind == CO_CAPSULE { co_vec(j, "center_cm", sh.c); co_quat(j, "rotation", sh.q); jo_key(j, "radius_cm"); uf_num(j, sh.e.x); jo_key(j, "length_cm"); uf_num(j, sh.e.y); }
+    if kind == CO_CONVEX { jo_key(j, "vertices_cm"); jo_arr(j); for v: 0..<sh.vert_n { p := o[0].hull[sh.verts + v]; jo_arr(j); uf_num(j, p.x); uf_num(j, p.y); uf_num(j, p.z); jo_end(j); } jo_end(j); }
+    jo_end(j);
+  }
+  jo_end(j);
+}
+co_file_path :: (o: [] Co, f: int) -> string #effects(all) { return ifx f >= 0 then co_s(o, o[0].file[f].path) else ""; }
+co_has :: (o: [] Co, sorted: [] int, keys: [] int, id: string) -> bool #effects(all) {
+  lo := 0; hi := sorted.count - 1;
+  while lo <= hi {
+    mid := (lo + hi) / 2; c := ab_cmp(co_s(o, keys[sorted[mid]]), id);
+    if c == 0 { return true; }
+    if c < 0 { lo = mid + 1; } else { hi = mid - 1; }
+  }
+  return false;
+}
+
+CoSorted :: struct {
+  file: [CO_FILES] int; mesh: [CO_MESHES] int; mat: [CO_MATERIALS] int; tex: [CO_TEXTURES] int; sound: [CO_SOUNDS] int; skel: [CO_SKELETONS] int;
+  map: [CO_MAPS] int; place: [CO_PLACEMENTS] int; light: [CO_LIGHTS] int; spot: [CO_SPOTS] int; volume: [CO_VOLUMES] int; skip: [CO_SKIPS] int;
+  keys: [CO_PLACEMENTS] int; tmp: [CO_PLACEMENTS] int;
+  mesh_ok: [CO_MESHES] bool; mat_ok: [CO_MATERIALS] bool; place_ok: [CO_PLACEMENTS] bool;
+}
+co_order :: (o: [] Co, so: [] CoSorted, order: [] int, n: int, key_of: int) #effects(all) {
+  for i: 0..<n { order[i] = i; }
+  co_sort(o, order[0..<n], so[0].keys[0..<n], so[0].tmp[0..<n]);
+}
+
+// Engine content (any id outside /Game/) is carried only when something carried uses it: a mesh
+// a map places, a material a carried mesh or placement names (or one a carried material derives
+// from), a texture a carried material names. The rest is dropped, its file removed from the folder,
+// and each gets a skipped row. Returns how many rows were dropped.
+CoPrune :: struct { mesh: [CO_MESHES] bool; mat: [CO_MATERIALS] bool; tex: [CO_TEXTURES] bool; file: [CO_FILES] int; }
+co_game :: (id: string) -> bool #effects(all) { return id.count >= 6 && id[0..<6] == "/Game/"; }
+co_prune :: (o: [] Co, pr: [] CoPrune) -> int #effects(all) {
+  for i: 0..<o[0].meshes {
+    id := co_s(o, o[0].mesh[i].id); keep := co_game(id);
+    for p: 0..<o[0].placements { if keep { break; } if co_s(o, o[0].place[p].asset) == id { keep = true; } }
+    pr[0].mesh[i] = keep;
+  }
+  for i: 0..<o[0].materials { pr[0].mat[i] = co_game(co_s(o, o[0].mat[i].id)); }
+  // names used by kept meshes and placements, then parents and roots until nothing changes
+  changed := true;
+  for m: 0..<o[0].materials {
+    if pr[0].mat[m] { continue; }
+    id := co_s(o, o[0].mat[m].id);
+    for i: 0..<o[0].meshes { if !pr[0].mesh[i] { continue; } me := o[0].mesh[i]; for q: 0..<me.mat_n { if co_s(o, o[0].ref[me.mats + q]) == id { pr[0].mat[m] = true; } } }
+    for p: 0..<o[0].placements { if pr[0].mat[m] { break; } pl := o[0].place[p]; for q: 0..<pl.mat_n { if co_s(o, o[0].ref[pl.mats + q]) == id { pr[0].mat[m] = true; } } }
+  }
+  while changed {
+    changed = false;
+    for m: 0..<o[0].materials {
+      if !pr[0].mat[m] { continue; }
+      for a: 0..<o[0].materials {
+        if pr[0].mat[a] { continue; }
+        aid := co_s(o, o[0].mat[a].id);
+        if co_s(o, o[0].mat[m].parent) == aid || co_s(o, o[0].mat[m].root) == aid { pr[0].mat[a] = true; changed = true; }
+      }
+    }
+  }
+  for m: 0..<o[0].materials { if !ab_id_ok(co_s(o, o[0].mat[m].id)) { pr[0].mat[m] = false; } }   // a plugin's: read as a parent only
+  for t: 0..<o[0].textures {
+    id := co_s(o, o[0].tex[t].id); keep := co_game(id);
+    for m: 0..<o[0].materials {
+      if keep { break; }
+      if !pr[0].mat[m] { continue; }
+      mt := o[0].mat[m];
+      for q: 0..<mt.param_n { pa := o[0].param[mt.params + q]; if pa.kind == CO_PARAM_TEX && co_s(o, pa.tex) == id { keep = true; } }
+    }
+    pr[0].tex[t] = keep;
+  }
+  // drop: files first (their rows' file indices are remapped), then the rows
+  for f: 0..<CO_FILES { pr[0].file[f] = 0; }
+  for i: 0..<o[0].meshes { if !pr[0].mesh[i] { pr[0].file[o[0].mesh[i].file] = -1; } }
+  for i: 0..<o[0].textures { if !pr[0].tex[i] { pr[0].file[o[0].tex[i].file] = -1; } }
+  w := 0;
+  for f: 0..<o[0].files {
+    if pr[0].file[f] < 0 {
+      fb: [4096] u8; _ = fs_remove(fs_join(cast(string) o[0].dir[0..<o[0].dir_n], co_s(o, o[0].file[f].path), fb[..]));
+      continue;
+    }
+    pr[0].file[f] = w; o[0].file[w] = o[0].file[f]; w += 1;
+  }
+  o[0].files = w;
+  why := "engine content that nothing the bundle carries uses";
+  dropped := 0;
+  w = 0;
+  for i: 0..<o[0].meshes {
+    if !pr[0].mesh[i] { co_skip(o, "", co_s(o, o[0].mesh[i].id), "/Script/Engine.StaticMesh", "", CO_UNSUPPORTED, why); dropped += 1; continue; }
+    o[0].mesh[w] = o[0].mesh[i]; o[0].mesh[w].file = pr[0].file[o[0].mesh[i].file]; w += 1;
+  }
+  o[0].meshes = w; w = 0;
+  for i: 0..<o[0].textures {
+    if !pr[0].tex[i] { co_skip(o, "", co_s(o, o[0].tex[i].id), "/Script/Engine.Texture2D", "", CO_UNSUPPORTED, why); dropped += 1; continue; }
+    o[0].tex[w] = o[0].tex[i]; o[0].tex[w].file = pr[0].file[o[0].tex[i].file]; w += 1;
+  }
+  o[0].textures = w; w = 0;
+  for i: 0..<o[0].materials {
+    if !pr[0].mat[i] {
+      mid := co_s(o, o[0].mat[i].id);
+      co_skip(o, "", mid, "/Script/Engine.MaterialInterface", "", CO_UNSUPPORTED, ifx ab_id_ok(mid) then why else "plugin material: carried only flattened into the instances of it");
+      dropped += 1; continue;
+    }
+    o[0].mat[w] = o[0].mat[i]; w += 1;
+  }
+  o[0].materials = w;
+  for i: 0..<o[0].sounds { o[0].sound[i].file = pr[0].file[o[0].sound[i].file]; }
+  return dropped;
+}
+
+// Drops every reference that names nothing the bundle carries, turning the row that held it into a
+// skipped row, until nothing changes (a material whose texture was refused keeps its row without
+// that parameter; a mesh whose material was refused is skipped, and so on to its placements).
+co_close :: (o: [] Co, so: [] CoSorted) #effects(all) {
+  // each material's parameters by name, as the editor route lists them
+  for m: 0..<o[0].materials {
+    b := o[0].mat[m].params;
+    for i: 1..<o[0].mat[m].param_n {
+      j := i;
+      while j > 0 && ab_cmp(co_s(o, o[0].param[b + j - 1].name), co_s(o, o[0].param[b + j].name)) > 0 { t := o[0].param[b + j]; o[0].param[b + j] = o[0].param[b + j - 1]; o[0].param[b + j - 1] = t; j -= 1; }
+    }
+  }
+  for i: 0..<o[0].textures { so[0].keys[i] = o[0].tex[i].id; }
+  co_order(o, so, so[0].tex[..], o[0].textures, 0);
+  tk: [CO_TEXTURES] int; for i: 0..<o[0].textures { tk[i] = o[0].tex[i].id; }
+  for m: 0..<o[0].materials {
+    so[0].mat_ok[m] = true;
+    w := 0; mt := o[0].mat[m];
+    for q: 0..<mt.param_n {
+      pa := o[0].param[mt.params + q];
+      if pa.kind == CO_PARAM_TEX && !co_has(o, so[0].tex[0..<o[0].textures], tk[..], co_s(o, pa.tex)) {
+        co_skip(o, "", co_s(o, mt.id), "", co_s(o, pa.name), CO_UNSUPPORTED, ck_dropped("texture parameter dropped: its texture is not carried: ", co_s(o, pa.tex), o));
+        continue;
+      }
+      o[0].param[mt.params + w] = pa; w += 1;
+    }
+    o[0].mat[m].param_n = w;
+  }
+  mk: [CO_MATERIALS] int; for i: 0..<o[0].materials { mk[i] = o[0].mat[i].id; so[0].keys[i] = mk[i]; }
+  co_order(o, so, so[0].mat[..], o[0].materials, 0);
+  for i: 0..<o[0].meshes { so[0].keys[i] = o[0].mesh[i].id; }
+  co_order(o, so, so[0].mesh[..], o[0].meshes, 0);
+  mesh_keys: [CO_MESHES] int; for i: 0..<o[0].meshes { mesh_keys[i] = o[0].mesh[i].id; }
+  for m: 0..<o[0].meshes {
+    so[0].mesh_ok[m] = true; me := o[0].mesh[m];
+    for q: 0..<me.mat_n {
+      id := co_s(o, o[0].ref[me.mats + q]);
+      if !co_has(o, so[0].mat[0..<o[0].materials], mk[..], id) {
+        so[0].mesh_ok[m] = false;
+        co_skip(o, "", co_s(o, me.id), "/Script/Engine.StaticMesh", "", CO_UNSUPPORTED, ck_dropped("a material slot names a material that is not carried: ", id, o));
+        break;
+      }
+    }
+  }
+  // the meshes carried, in order, for the placements' lookups
+  kept: [CO_MESHES] int; kn := 0;
+  for i: 0..<o[0].meshes { r := so[0].mesh[i]; if so[0].mesh_ok[r] { kept[kn] = r; kn += 1; } }
+  for p: 0..<o[0].placements {
+    pl := o[0].place[p]; ok := !pl.skeletal && co_has(o, kept[0..<kn], mesh_keys[..], co_s(o, pl.asset));
+    why := "the mesh is not carried: ";
+    if ok { for q: 0..<pl.mat_n { if !co_has(o, so[0].mat[0..<o[0].materials], mk[..], co_s(o, o[0].ref[pl.mats + q])) { ok = false; why = "a material override is not carried: "; } } }
+    so[0].place_ok[p] = ok;
+    if !ok { co_skip(o, co_s(o, pl.map), co_s(o, pl.actor), co_s(o, pl.actor_class), co_s(o, pl.component), CO_UNSUPPORTED, ck_dropped(why, co_s(o, pl.asset), o)); }
+  }
+}
+ck_dropped :: (why: string, id: string, o: [] Co) -> string #effects(all) {
+  b: [1024] u8; n := sc_put(b[..], 0, why); n = sc_put(b[..], n, id);
+  return co_s(o, co_add(o, cast(string) b[0..<n]));
+}
+
+CoSource :: struct { project: string; engine: string; plan_sha: string; }
+co_manifest :: (o: [] Co, so: [] CoSorted, src: CoSource, j: [] Jo) #effects(all) {
+  jo_obj(j);
+  jo_key(j, "aimport"); jo_int(j, 1);
+  for i: 0..<o[0].maps { so[0].keys[i] = o[0].map[i].id; } co_order(o, so, so[0].map[..], o[0].maps, 0);
+  jo_key(j, "source"); jo_obj(j);
+  co_str(j, "route", "cooked"); co_str(j, "project", src.project); jo_key(j, "revision"); jo_null(j); co_str(j, "engine", src.engine);
+  jo_key(j, "maps"); jo_arr(j); for i: 0..<o[0].maps { jo_str(j, co_s(o, o[0].map[so[0].map[i]].id)); } jo_end(j);
+  co_str(j, "plan_sha256", src.plan_sha);
+  jo_end(j);
+  for i: 0..<o[0].files { so[0].keys[i] = o[0].file[i].path; } co_order(o, so, so[0].file[..], o[0].files, 0);
+  jo_key(j, "files"); jo_arr(j);
+  for i: 0..<o[0].files { f := o[0].file[so[0].file[i]]; jo_obj(j); co_str(j, "path", co_s(o, f.path)); co_str(j, "sha256", cast(string) f.sha[..]); jo_key(j, "bytes"); jo_int(j, f.bytes); jo_end(j); }
+  jo_end(j);
+  jo_key(j, "meshes"); jo_arr(j);
+  for i: 0..<o[0].meshes {
+    r := so[0].mesh[i]; if !so[0].mesh_ok[r] { continue; }
+    m := o[0].mesh[r]; id := co_s(o, m.id);
+    jo_obj(j); co_str(j, "id", id); co_str(j, "file", co_file_path(o, m.file));
+    jo_key(j, "triangles"); jo_int(j, m.tris); jo_key(j, "vertices"); jo_int(j, m.verts);
+    jo_key(j, "bounds_cm"); uf_nums(j, m.bounds[..]); jo_key(j, "nanite"); jo_bool(j, m.nanite);
+    co_refs(o, j, "materials", m.mats, m.mat_n);
+    jo_key(j, "collision"); jo_obj(j); jo_key(j, "complex_as_simple"); jo_bool(j, m.cas);
+    jo_key(j, "boxes"); co_shapes(o, j, m.shapes, m.shape_n, CO_BOX); jo_key(j, "spheres"); co_shapes(o, j, m.shapes, m.shape_n, CO_SPHERE);
+    jo_key(j, "capsules"); co_shapes(o, j, m.shapes, m.shape_n, CO_CAPSULE); jo_key(j, "convex"); co_shapes(o, j, m.shapes, m.shape_n, CO_CONVEX);
+    jo_end(j);
+    co_str(j, "origin", ck_origin(id));
+    jo_end(j);
+  }
+  jo_end(j);
+  jo_key(j, "skeletal_meshes"); jo_arr(j); jo_end(j);
+  for i: 0..<o[0].skeletons { so[0].keys[i] = o[0].skel[i].id; } co_order(o, so, so[0].skel[..], o[0].skeletons, 0);
+  jo_key(j, "skeletons"); jo_arr(j);
+  for i: 0..<o[0].skeletons {
+    sk := o[0].skel[so[0].skel[i]]; id := co_s(o, sk.id);
+    jo_obj(j); co_str(j, "id", id); co_str(j, "origin", ck_origin(id));
+    jo_key(j, "bones"); jo_arr(j);
+    for b: 0..<sk.bone_n {
+      bo := o[0].bone[sk.bones + b];
+      jo_obj(j); co_str(j, "name", co_s(o, bo.name)); jo_key(j, "parent"); jo_int(j, bo.parent);
+      co_vec(j, "rest_translation_cm", bo.t); co_quat(j, "rest_rotation", bo.q); co_vec(j, "rest_scale", bo.s);
+      jo_end(j);
+    }
+    jo_end(j); jo_end(j);
+  }
+  jo_end(j);
+  jo_key(j, "animations"); jo_arr(j); jo_end(j);
+  jo_key(j, "materials"); jo_arr(j);
+  for i: 0..<o[0].materials {
+    m := o[0].mat[so[0].mat[i]]; id := co_s(o, m.id);
+    jo_obj(j); co_str(j, "id", id); co_str(j, "parent", co_s(o, m.parent)); co_str(j, "root", co_s(o, m.root));
+    co_str(j, "blend", CO_BLENDS[m.blend]); jo_key(j, "two_sided"); jo_bool(j, m.two_sided); co_str(j, "shading", CO_SHADINGS[m.shading]);
+    jo_key(j, "textures"); jo_arr(j);
+    for q: 0..<m.param_n { pa := o[0].param[m.params + q]; if pa.kind == CO_PARAM_TEX { jo_obj(j); co_str(j, "name", co_s(o, pa.name)); co_str(j, "texture", co_s(o, pa.tex)); jo_end(j); } }
+    jo_end(j);
+    jo_key(j, "scalars"); jo_arr(j);
+    for q: 0..<m.param_n { pa := o[0].param[m.params + q]; if pa.kind == CO_PARAM_SCALAR { jo_obj(j); co_str(j, "name", co_s(o, pa.name)); jo_key(j, "value"); uf_num(j, pa.v[0]); jo_end(j); } }
+    jo_end(j);
+    jo_key(j, "vectors"); jo_arr(j);
+    for q: 0..<m.param_n { pa := o[0].param[m.params + q]; if pa.kind == CO_PARAM_VECTOR { jo_obj(j); co_str(j, "name", co_s(o, pa.name)); jo_key(j, "value"); uf_nums(j, pa.v[..]); jo_end(j); } }
+    jo_end(j);
+    jo_key(j, "baked"); jo_obj(j); jo_end(j);
+    co_str(j, "origin", ck_origin(id));
+    jo_end(j);
+  }
+  jo_end(j);
+  jo_key(j, "textures"); jo_arr(j);
+  for i: 0..<o[0].textures {
+    t := o[0].tex[so[0].tex[i]]; id := co_s(o, t.id);
+    jo_obj(j); co_str(j, "id", id); co_str(j, "file", co_file_path(o, t.file)); jo_key(j, "width"); jo_int(j, t.w); jo_key(j, "height"); jo_int(j, t.h);
+    jo_key(j, "srgb"); jo_bool(j, t.srgb); co_str(j, "compression", CO_COMPRESSIONS[t.compression]); co_str(j, "origin", ck_origin(id));
+    jo_end(j);
+  }
+  jo_end(j);
+  for i: 0..<o[0].sounds { so[0].keys[i] = o[0].sound[i].id; } co_order(o, so, so[0].sound[..], o[0].sounds, 0);
+  jo_key(j, "sounds"); jo_arr(j);
+  for i: 0..<o[0].sounds {
+    s := o[0].sound[so[0].sound[i]]; id := co_s(o, s.id);
+    jo_obj(j); co_str(j, "id", id); co_str(j, "file", co_file_path(o, s.file)); jo_key(j, "seconds"); uf_num(j, s.seconds);
+    jo_key(j, "channels"); jo_int(j, s.channels); jo_key(j, "rate"); jo_int(j, s.rate); co_str(j, "origin", ck_origin(id));
+    jo_end(j);
+  }
+  jo_end(j);
+  // per map: placements, lights, spots and volumes sorted by name within the map
+  for i: 0..<o[0].placements { so[0].keys[i] = o[0].place[i].name; } co_order(o, so, so[0].place[..], o[0].placements, 0);
+  for i: 0..<o[0].lights { so[0].keys[i] = o[0].light[i].name; } co_order(o, so, so[0].light[..], o[0].lights, 0);
+  for i: 0..<o[0].spots { so[0].keys[i] = o[0].spot[i].name; } co_order(o, so, so[0].spot[..], o[0].spots, 0);
+  for i: 0..<o[0].volumes { so[0].keys[i] = o[0].volume[i].name; } co_order(o, so, so[0].volume[..], o[0].volumes, 0);
+  jo_key(j, "maps"); jo_arr(j);
+  for mi: 0..<o[0].maps {
+    m := so[0].map[mi]; mp := o[0].map[m];
+    jo_obj(j); co_str(j, "id", co_s(o, mp.id));
+    jo_key(j, "placements"); jo_arr(j);
+    for i: 0..<o[0].placements {
+      r := so[0].place[i]; pl := o[0].place[r];
+      if pl.map != mp.id || !so[0].place_ok[r] { continue; }
+      jo_obj(j); co_str(j, "name", co_s(o, pl.name)); co_str(j, "actor", co_s(o, pl.actor)); co_str(j, "actor_class", co_s(o, pl.actor_class));
+      co_str(j, "component", co_s(o, pl.component)); jo_key(j, "instance"); jo_int(j, pl.instance); co_str(j, "kind", ifx pl.skeletal then "skeletal" else "static");
+      co_str(j, "asset", co_s(o, pl.asset)); co_vec(j, "translation_cm", pl.xf.t); co_quat(j, "rotation", pl.xf.q); co_vec6(j, "scale", pl.xf.s);
+      co_refs(o, j, "materials", pl.mats, pl.mat_n); co_str(j, "collision", CO_COLLISIONS[pl.collision]);
+      jo_key(j, "visible"); jo_bool(j, pl.visible); jo_key(j, "cast_shadow"); jo_bool(j, pl.cast_shadow); co_refs(o, j, "tags", pl.tags, pl.tag_n);
+      jo_end(j);
+    }
+    jo_end(j);
+    jo_key(j, "lights"); jo_arr(j);
+    for i: 0..<o[0].lights {
+      l := o[0].light[so[0].light[i]]; if l.map != mp.id { continue; }
+      jo_obj(j); co_str(j, "name", co_s(o, l.name)); co_str(j, "kind", CO_LIGHT_KINDS[l.kind]); co_vec(j, "translation_cm", l.xf.t); co_quat(j, "rotation", l.xf.q);
+      co_vec6(j, "color", l.color); jo_key(j, "intensity"); uf_num(j, co_r6(l.intensity)); co_str(j, "units", CO_UNITS[l.units]); jo_key(j, "radius_cm"); uf_num(j, l.radius);
+      jo_key(j, "inner_deg"); uf_num(j, co_r6(l.inner)); jo_key(j, "outer_deg"); uf_num(j, co_r6(l.outer)); jo_key(j, "cast_shadows"); jo_bool(j, l.shadows); co_str(j, "movable", CO_MOBILITY[l.mobility]);
+      jo_end(j);
+    }
+    jo_end(j);
+    jo_key(j, "spots"); jo_arr(j);
+    for i: 0..<o[0].spots {
+      s := o[0].spot[so[0].spot[i]]; if s.map != mp.id { continue; }
+      jo_obj(j); co_str(j, "name", co_s(o, s.name)); co_str(j, "kind", CO_SPOT_KINDS[s.kind]); co_vec(j, "translation_cm", s.xf.t); co_quat(j, "rotation", s.xf.q);
+      co_refs(o, j, "tags", s.tags, s.tag_n); jo_end(j);
+    }
+    jo_end(j);
+    jo_key(j, "volumes"); jo_arr(j);
+    for i: 0..<o[0].volumes {
+      v := o[0].volume[so[0].volume[i]]; if v.map != mp.id { continue; }
+      jo_obj(j); co_str(j, "name", co_s(o, v.name)); co_str(j, "class", co_s(o, v.cls)); co_vec(j, "translation_cm", v.xf.t); co_quat(j, "rotation", v.xf.q); co_vec6(j, "scale", v.xf.s);
+      jo_key(j, "boxes"); co_shapes(o, j, v.shapes, v.shape_n, CO_BOX); jo_end(j);
+    }
+    jo_end(j);
+    jo_key(j, "landscapes"); jo_arr(j); jo_end(j);
+    jo_key(j, "atmosphere"); if mp.atmosphere > 0 { jo_raw(j, co_s(o, mp.atmosphere)); } else { jo_obj(j); jo_end(j); }
+    co_refs(o, j, "streamed", mp.streamed, mp.streamed_n);
+    jo_end(j);
+  }
+  jo_end(j);
+  jo_end(j);
+}
+co_skip_key :: (o: [] Co, k: int, out: [] u8) -> int #effects(all) {
+  s := o[0].skip[k]; n := 0;
+  for part, i: [5] string.[co_s(o, s.map), co_s(o, s.actor), co_s(o, s.component), CO_REASONS[s.reason], co_s(o, s.detail)] { if i > 0 { n = sc_put(out, n, "\n"); } n = sc_put(out, n, part); }
+  return co_add(o, cast(string) out[0..<n]);
+}
+co_skipped :: (o: [] Co, so: [] CoSorted, j: [] Jo) #effects(all) {
+  for i: 0..<o[0].skips { b: [2048] u8; so[0].keys[i] = co_skip_key(o, i, b[..]); }
+  co_order(o, so, so[0].skip[..], o[0].skips, 0);
+  jo_arr(j);
+  for i: 0..<o[0].skips {
+    s := o[0].skip[so[0].skip[i]];
+    if i > 0 && co_s(o, so[0].keys[so[0].skip[i]]) == co_s(o, so[0].keys[so[0].skip[i - 1]]) { continue; }   // the same row twice (two maps' shared template)
+    jo_obj(j); co_str(j, "map", co_s(o, s.map)); co_str(j, "actor", co_s(o, s.actor)); co_str(j, "class", co_s(o, s.cls));
+    co_str(j, "component", co_s(o, s.component)); co_str(j, "reason", CO_REASONS[s.reason]);
+    if s.detail > 0 { co_str(j, "detail", co_s(o, s.detail)); }
+    jo_end(j);
+  }
+  jo_end(j);
+}

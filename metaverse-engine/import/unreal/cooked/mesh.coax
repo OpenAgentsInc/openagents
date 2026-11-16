@@ -1,0 +1,344 @@
+// A cooked static mesh into a bundle row and a glTF binary (BUNDLE.md 3.1): LOD 0's positions,
+// normals, two UV sets and colours, its sections gathered into one primitive per material slot,
+// the slots' materials, the bounds Unreal states, and the simple collision of its body setup.
+//
+// What a cooked static mesh holds after its properties, in the order this reads it (our reading of
+// the engine's serializer, section 4.4 of the spec): a guid flag, strip flags, a cooked flag, the
+// body setup and navigation collision as object references, a lighting guid, the sockets; then the
+// render data: the count of LODs and, per LOD, strip flags, the sections (ten 32-bit fields each),
+// the source bounds (seven doubles), the deviation, cooked-out and inlined flags, a ray-tracing
+// flag, and either the vertex and index buffers in place or a bulk-data reference to them in the
+// package's .ubulk. The buffers: strip flags; positions (stride, count, an array of 3 floats);
+// strip flags, UV set count, vertex count, full-precision-UV and high-precision-tangent flags, the
+// tangent array (two packed normals a vertex) and the UV array (half or full floats, set by set
+// within a vertex); strip flags, colour stride and count, the colour array (BGRA); the 32-bit flag
+// and the index bytes.
+//
+// Every count is checked against the bytes left and every index against the vertices; a mesh
+// that fails any check is refused whole, with the reason, and never half written.
+#load "out.coax";
+#load "../../../export/glb-mesh.coax";
+
+CM_VERTS :: 1048576; CM_INDICES :: 4194304; CM_SECTIONS :: 256; CM_GLB :: 134217728;
+CmScratch :: struct {
+  pos: [CM_VERTS * 3] f32; nrm: [CM_VERTS * 3] f32; uv0: [CM_VERTS * 2] f32; uv1: [CM_VERTS * 2] f32; col: [CM_VERTS * 4] u8;
+  idx: [CM_INDICES] u32; out: [CM_INDICES] u32; glb: [CM_GLB] u8;
+}
+// The arrays a buffer read fills: views into a CmScratch, or into small arrays in a check.
+CmViews :: struct { pos: [] f32; nrm: [] f32; uv0: [] f32; uv1: [] f32; col: [] u8; idx: [] u32; }
+cm_views :: (s: [] CmScratch) -> CmViews #effects(all) { return CmViews.{pos = s[0].pos[..], nrm = s[0].nrm[..], uv0 = s[0].uv0[..], uv1 = s[0].uv1[..], col = s[0].col[..], idx = s[0].idx[..]}; }
+CmSection :: struct { mat: int; first: int; tris: int; }
+CmResult :: struct { ok: bool; why: [256] u8; why_n: int; bounds_off: f64; }
+cm_fail :: (res: [] CmResult, why: string) -> bool #effects(all) { res[0].ok = false; res[0].why_n = sc_put(res[0].why[..], 0, why); return false; }
+
+// A half float's value.
+cm_half :: (h: int) -> f32 #effects(all) {
+  sign := (h >> 15) & 1; e := (h >> 10) & 31; m := h & 1023;
+  bits: u32 = 0;
+  if e == 0 {
+    if m == 0 { bits = cast(u32) (sign << 31); }
+    else { v := cast(f32) m / 16777216.0; return ifx sign == 1 then -v else v; }   // subnormal: m * 2^-24
+  } else if e == 31 { bits = cast(u32) ((sign << 31) | 0x7f800000 | (m << 13)); }
+  else { bits = cast(u32) ((sign << 31) | ((e - 15 + 127) << 23) | (m << 13)); }
+  return f32_from_bits(bits);
+}
+cm_s8 :: (b: int) -> f32 #effects(all) { v := ifx b >= 128 then b - 256 else b; f := cast(f32) v / 127.0; return ifx f < -1.0 then -1.0 else f; }
+cm_s16 :: (b: int) -> f32 #effects(all) { v := ifx b >= 32768 then b - 65536 else b; f := cast(f32) v / 32767.0; return ifx f < -1.0 then -1.0 else f; }
+
+// A bulk array: element size, count, then the bytes; the bytes' cursor offset, or -1.
+CmArray :: struct { at: int; size: int; count: int; }
+cm_array :: (r: [] Zr, size: int) -> CmArray #effects(all) {
+  a: CmArray; a.at = -1; a.size = zr_i32(r); a.count = zr_i32(r);
+  if !r[0].ok || a.size != size || a.count < 0 || a.count > (r[0].end - r[0].at) / (ifx size > 0 then size else 1) { r[0].ok = false; return a; }
+  a.at = r[0].at; zr_skip(r, size * a.count);
+  return a;
+}
+cm_f32 :: (b: string, at: int) -> f32 #effects(all) { return f32_from_bits(cast,trunc(u32) zu32(b, at)); }
+
+// The LOD's buffers at the cursor into s; the vertex and index counts in n.
+CmBuffers :: struct { verts: int; uvs: int; colours: bool; indices: int; }
+cm_buffers :: (r: [] Zr, s: CmViews, res: [] CmResult) -> CmBuffers #effects(all) {
+  bf: CmBuffers; bf.verts = -1;
+  b := r[0].b;
+  zr_skip(r, 2);
+  _ = zr_u32(r); nv := zr_u32(r);
+  pa := cm_array(r, 12);
+  if !r[0].ok || pa.count != nv { _ = cm_fail(res, "the position buffer is malformed"); return bf; }
+  if nv <= 0 || 3 * nv > s.pos.count { _ = cm_fail(res, "more vertices than the reader holds (1,048,576), or none"); return bf; }
+  zr_skip(r, 2);
+  ntc := zr_u32(r); nv2 := zr_u32(r); full_uv := zr_u32(r); hi_tan := zr_u32(r);
+  if !r[0].ok || nv2 != nv || ntc < 0 || ntc > 8 { _ = cm_fail(res, "the vertex buffer's header is malformed"); return bf; }
+  ta := cm_array(r, ifx hi_tan != 0 then 16 else 8);
+  ua := cm_array(r, ifx full_uv != 0 then 8 else 4);
+  if !r[0].ok || ta.count != nv || ua.count != nv * ntc { _ = cm_fail(res, "the tangent or UV buffer is malformed"); return bf; }
+  zr_skip(r, 2);
+  _ = zr_u32(r); cn := zr_u32(r);
+  ca: CmArray; ca.count = 0;
+  if cn > 0 { ca = cm_array(r, 4); if !r[0].ok || ca.count != nv || cn != nv { _ = cm_fail(res, "the colour buffer is malformed"); return bf; } }
+  b32 := zr_u32(r);
+  ia := cm_array(r, 1);
+  isz := ifx b32 != 0 then 4 else 2;
+  if !r[0].ok || ia.count % isz != 0 { _ = cm_fail(res, "the index buffer is malformed"); return bf; }
+  ni := ia.count / isz;
+  if ni > s.idx.count { _ = cm_fail(res, "more indices than the reader holds"); return bf; }
+  for v: 0..<nv {
+    x := cm_f32(b, pa.at + 12 * v); y := cm_f32(b, pa.at + 12 * v + 4); z := cm_f32(b, pa.at + 12 * v + 8);
+    if !ck_finite(cast(f64) x) || !ck_finite(cast(f64) y) || !ck_finite(cast(f64) z) { _ = cm_fail(res, "a vertex position is not a finite number"); return bf; }
+    // Unreal (X, Y, Z) cm -> glTF (X, Z, Y) m (axes.coax)
+    s.pos[3 * v] = x / 100.0; s.pos[3 * v + 1] = z / 100.0; s.pos[3 * v + 2] = y / 100.0;
+    // the normal is the second packed vector (tangent Z)
+    nx: f32 = 0; ny: f32 = 0; nz: f32 = 1;
+    if hi_tan != 0 {
+      o := ta.at + 16 * v + 8;
+      nx = cm_s16(cast(int) b[o] | (cast(int) b[o + 1] << 8)); ny = cm_s16(cast(int) b[o + 2] | (cast(int) b[o + 3] << 8)); nz = cm_s16(cast(int) b[o + 4] | (cast(int) b[o + 5] << 8));
+    } else {
+      o := ta.at + 8 * v + 4;
+      nx = cm_s8(cast(int) b[o]); ny = cm_s8(cast(int) b[o + 1]); nz = cm_s8(cast(int) b[o + 2]);
+    }
+    l := sqrt(cast(f64) (nx * nx + ny * ny + nz * nz));
+    if l > 0.000001 { nx = cast(f32) (cast(f64) nx / l); ny = cast(f32) (cast(f64) ny / l); nz = cast(f32) (cast(f64) nz / l); } else { nx = 0; ny = 0; nz = 1; }
+    s.nrm[3 * v] = nx; s.nrm[3 * v + 1] = nz; s.nrm[3 * v + 2] = ny;
+    for set: 0..<2 {
+      if set >= ntc { continue; }
+      u: f32 = 0; w: f32 = 0;
+      if full_uv != 0 { o := ua.at + 8 * (v * ntc + set); u = cm_f32(b, o); w = cm_f32(b, o + 4); }
+      else { o := ua.at + 4 * (v * ntc + set); u = cm_half(cast(int) b[o] | (cast(int) b[o + 1] << 8)); w = cm_half(cast(int) b[o + 2] | (cast(int) b[o + 3] << 8)); }
+      if set == 0 { s.uv0[2 * v] = u; s.uv0[2 * v + 1] = w; } else { s.uv1[2 * v] = u; s.uv1[2 * v + 1] = w; }
+    }
+    if ca.count > 0 { o := ca.at + 4 * v; s.col[4 * v] = b[o + 2]; s.col[4 * v + 1] = b[o + 1]; s.col[4 * v + 2] = b[o]; s.col[4 * v + 3] = b[o + 3]; }
+  }
+  for i: 0..<ni {
+    o := ia.at + isz * i;
+    v := ifx isz == 4 then zu32(b, o) else cast(int) b[o] | (cast(int) b[o + 1] << 8);
+    if v >= nv { _ = cm_fail(res, "an index past the vertices"); return bf; }
+    s.idx[i] = cast(u32) v;
+  }
+  bf.verts = nv; bf.uvs = ntc; bf.colours = ca.count > 0; bf.indices = ni;
+  return bf;
+}
+
+// Simple collision from body setup reference node (an object reference), into o's shapes.
+CM_CTF_COMPLEX_AS_SIMPLE :: 3;
+cm_collision :: (k: [] Ck, o: [] Co, mesh_p: int, ref: ZRef, row: [] CoMesh, mesh_id: string) #effects(all) {
+  row[0].shapes = o[0].shapes; row[0].shape_n = 0; row[0].cas = false;
+  if ref.kind != ZI_EXPORT || ref.pkg != mesh_p || ref.exp < 0 { return; }
+  cl := ck_class(k, ref.pkg, ref.exp);
+  if cl.t < 0 || !ck_is(k, cl.t, "UBodySetup") { return; }
+  r: [1] Zr; r[0] = ck_cursor(k, ref.pkg, ref.exp, CK_MAIN);
+  root := ck_props(k, r[..], ref.pkg, cl.t);
+  if root < 0 { wb: [512] u8; cb: [600] u8; co_skip(o, "", mesh_id, "/Script/Engine.BodySetup", "", CO_UNSUPPORTED, ck_cat("collision not read: ", ck_why(k, wb[..]), cb[..])); return; }
+  x := k[0].x[..];
+  row[0].cas = pv_int(x, pv_at(x, root, "CollisionTraceFlag"), 0) == CM_CTF_COMPLEX_AS_SIMPLE;
+  agg := pv_at(x, root, "AggGeom");
+  if agg < 0 { return; }
+  zero := CkV.{x = 0.0, y = 0.0, z = 0.0};
+  boxes := pv_at(x, agg, "BoxElems");
+  for i: 0..<pv_count(x, boxes) {
+    e := pv_nth(x, boxes, i);
+    full := CkV.{x = pv_f(x, pv_at(x, e, "X"), 1.0), y = pv_f(x, pv_at(x, e, "Y"), 1.0), z = pv_f(x, pv_at(x, e, "Z"), 1.0)};
+    cm_shape(o, row, CoShape.{kind = CO_BOX, c = ck_vec(k, pv_at(x, e, "Center"), zero), q = ck_rot(k, pv_at(x, e, "Rotation")), e = CkV.{x = full.x / 2.0, y = full.y / 2.0, z = full.z / 2.0}});
+  }
+  spheres := pv_at(x, agg, "SphereElems");
+  for i: 0..<pv_count(x, spheres) {
+    e := pv_nth(x, spheres, i);
+    cm_shape(o, row, CoShape.{kind = CO_SPHERE, c = ck_vec(k, pv_at(x, e, "Center"), zero), q = CkQ.{x = 0.0, y = 0.0, z = 0.0, w = 1.0}, e = CkV.{x = pv_f(x, pv_at(x, e, "Radius"), 1.0), y = 0.0, z = 0.0}});
+  }
+  sphyls := pv_at(x, agg, "SphylElems");
+  for i: 0..<pv_count(x, sphyls) {
+    e := pv_nth(x, sphyls, i);
+    cm_shape(o, row, CoShape.{kind = CO_CAPSULE, c = ck_vec(k, pv_at(x, e, "Center"), zero), q = ck_rot(k, pv_at(x, e, "Rotation")),
+      e = CkV.{x = pv_f(x, pv_at(x, e, "Radius"), 1.0), y = pv_f(x, pv_at(x, e, "Length"), 1.0), z = 0.0}});
+  }
+  convex := pv_at(x, agg, "ConvexElems");
+  for i: 0..<pv_count(x, convex) {
+    e := pv_nth(x, convex, i);
+    verts := pv_at(x, e, "VertexData"); n := pv_count(x, verts);
+    if n < 4 || n > 256 {
+      d: [256] u8; dn := sc_put(d[..], 0, "convex hull ");
+      nb: [24] u8; dn = sc_put(d[..], dn, cm_int(i, nb[..])); dn = sc_put(d[..], dn, " has "); dn = sc_put(d[..], dn, cm_int(n, nb[..])); dn = sc_put(d[..], dn, " vertices (a bundle hull holds 4 to 256)");
+      co_skip(o, "", mesh_id, "/Script/Engine.BodySetup", "", CO_UNSUPPORTED, cast(string) d[0..<dn]);
+      continue;
+    }
+    xf := ck_xf_id();
+    tr := pv_at(x, e, "Transform");
+    if tr >= 0 {
+      rq := pv_at(x, tr, "Rotation");
+      if rq >= 0 { xf.q = ck_qnorm(CkQ.{x = pv_f(x, pv_nth(x, rq, 0), 0.0), y = pv_f(x, pv_nth(x, rq, 1), 0.0), z = pv_f(x, pv_nth(x, rq, 2), 0.0), w = pv_f(x, pv_nth(x, rq, 3), 1.0)}); }
+      xf.t = ck_vec(k, pv_at(x, tr, "Translation"), zero); xf.s = ck_vec(k, pv_at(x, tr, "Scale3D"), CkV.{x = 1.0, y = 1.0, z = 1.0});
+    }
+    if o[0].hulls + n > CO_HULL { _ = co_full(o, "hull vertices"); return; }
+    first := o[0].hulls;
+    for v: 0..<n {
+      p := ck_vec(k, pv_nth(x, verts, v), zero);
+      w := ck_xf_mul(xf, CkXf.{t = p, q = CkQ.{x = 0.0, y = 0.0, z = 0.0, w = 1.0}, s = CkV.{x = 1.0, y = 1.0, z = 1.0}});
+      o[0].hull[o[0].hulls] = w.t; o[0].hulls += 1;
+    }
+    cm_shape(o, row, CoShape.{kind = CO_CONVEX, c = zero, q = CkQ.{x = 0.0, y = 0.0, z = 0.0, w = 1.0}, e = zero, verts = first, vert_n = n});
+  }
+}
+cm_int :: (v: int, out: [] u8) -> string #effects(all) {
+  n := 0; a := ifx v < 0 then -v else v; d: [24] u8; dn := 0;
+  if a == 0 { d[0] = '0'; dn = 1; }
+  while a > 0 { d[dn] = cast,trunc(u8) (48 + a % 10); dn += 1; a /= 10; }
+  if v < 0 { out[n] = '-'; n += 1; }
+  for i: 0..<dn { out[n] = d[dn - 1 - i]; n += 1; }
+  return cast(string) out[0..<n];
+}
+cm_shape :: (o: [] Co, row: [] CoMesh, s: CoShape) #effects(all) {
+  if o[0].shapes >= CO_SHAPES { _ = co_full(o, "collision shapes"); return; }
+  o[0].shape[o[0].shapes] = s; o[0].shapes += 1; row[0].shape_n += 1;
+}
+
+// Static mesh export e of package p into a row of o and its glTF file; false (res says why) when
+// it is refused. number names its file (meshes/NNNN.glb).
+cm_mesh :: (k: [] Ck, o: [] Co, p: int, e: int, number: int, s: [] CmScratch, res: [] CmResult) -> bool #effects(all) {
+  res[0].ok = true; res[0].why_n = 0; res[0].bounds_off = 0.0;
+  cl := ck_class(k, p, e);
+  if cl.t < 0 { return cm_fail(res, "the class is not in the schema"); }
+  r: [1] Zr; r[0] = ck_cursor(k, p, e, CK_MAIN);
+  root := ck_props(k, r[..], p, cl.t);
+  if root < 0 { wb: [512] u8; return cm_fail(res, ck_why(k, wb[..])); }
+  x := k[0].x[..];
+  idb: [1024] u8; id := zc_path(k[0].cat, p, e, idb[..]);
+  row: [1] CoMesh; row[0].id = co_add(o, id); row[0].file = -1;
+  // properties: the slots, the bounds, Nanite
+  slots := pv_at(x, root, "StaticMaterials");
+  slot_n := pv_count(x, slots);
+  if slot_n <= 0 || slot_n > CM_SECTIONS { return cm_fail(res, "no material slots, or more than 256"); }
+  eb := pv_at(x, root, "ExtendedBounds");
+  zero := CkV.{x = 0.0, y = 0.0, z = 0.0};
+  c := ck_vec(k, pv_at(x, eb, "Origin"), zero); ext := ck_vec(k, pv_at(x, eb, "BoxExtent"), zero);
+  row[0].bounds = [6] f64.[c.x - ext.x, c.y - ext.y, c.z - ext.z, c.x + ext.x, c.y + ext.y, c.z + ext.z];
+  row[0].nanite = pv_int(x, pv_at(x, root, "NaniteSettings.bEnabled"), 0) != 0;
+  // after the properties
+  _ = zr_u32(r[..]); zr_skip(r[..], 2);
+  cooked := zr_u32(r[..]); body := zr_i32(r[..]); _ = zr_i32(r[..]); zr_skip(r[..], 16);
+  socket_n := zr_i32(r[..]);
+  if !r[0].ok || cooked != 1 || socket_n < 0 || socket_n > 4096 { return cm_fail(res, "not cooked render data"); }
+  zr_skip(r[..], 4 * socket_n);
+  lods := zr_i32(r[..]);
+  if !r[0].ok || lods < 1 || lods > 16 { return cm_fail(res, "no LODs"); }
+  zr_skip(r[..], 2);
+  sec_n := zr_i32(r[..]);
+  if !r[0].ok || sec_n < 1 || sec_n > CM_SECTIONS { return cm_fail(res, "LOD 0 has no sections, or too many"); }
+  sec: [CM_SECTIONS] CmSection;
+  for i: 0..<sec_n {
+    sec[i].mat = zr_i32(r[..]); sec[i].first = zr_u32(r[..]); sec[i].tris = zr_u32(r[..]); zr_skip(r[..], 28);
+  }
+  zr_skip(r[..], 7 * 8 + 4);
+  cooked_out := zr_u32(r[..]); inlined := zr_u32(r[..]);
+  if !r[0].ok { return cm_fail(res, "the LOD header ends early"); }
+  if cooked_out != 0 { return cm_fail(res, "LOD 0 is cooked out of this build"); }
+  _ = zr_u32(r[..]);   // ray-tracing geometry
+  bf: CmBuffers;
+  if inlined != 0 { bf = cm_buffers(r[..], cm_views(s), res); }
+  else {
+    bi := zr_i32(r[..]);
+    pk := k[0].cat[0].pkg[p];
+    if !r[0].ok || bi < 0 || bi >= pk.bulk_n { return cm_fail(res, "LOD 0's bulk data reference is malformed"); }
+    bk := k[0].cat[0].bulk[pk.bulk + bi];
+    if (bk.flags & 0x800) != 0 { return cm_fail(res, "LOD 0 is in an optional bulk file the build does not carry"); }
+    if (bk.flags & 1) == 0 { return cm_fail(res, "LOD 0's buffers are inline bulk data, which this reader does not take"); }
+    bytes := ck_bulk(k, p, bk.off, bk.size);
+    if bytes.count == 0 { return cm_fail(res, "LOD 0's buffers are outside the .ubulk"); }
+    br: [1] Zr; br[0] = zr(cast(string) bytes, 0, bytes.count);
+    bf = cm_buffers(br[..], cm_views(s), res);
+  }
+  if !res[0].ok || bf.verts <= 0 { if res[0].ok { _ = cm_fail(res, "LOD 0's buffers are malformed"); } return false; }
+  // sections into one primitive a slot, in slot order
+  prims: [CM_SECTIONS] GlbPrim; pn := 0; at := 0; tris := 0;
+  for slot: 0..<slot_n {
+    first := at;
+    for i: 0..<sec_n {
+      if sec[i].mat < 0 || sec[i].mat >= slot_n { return cm_fail(res, "a section names a slot the mesh lacks"); }
+      if sec[i].mat != slot { continue; }
+      if sec[i].first < 0 || sec[i].tris < 0 || sec[i].first + 3 * sec[i].tris > bf.indices { return cm_fail(res, "a section runs past the indices"); }
+      for q: 0..<3 * sec[i].tris { s[0].out[at + q] = s[0].idx[sec[i].first + q]; }
+      at += 3 * sec[i].tris; tris += sec[i].tris;
+    }
+    if at > first { prims[pn] = GlbPrim.{first = first, count = at - first, material = slot}; pn += 1; }
+  }
+  if pn == 0 { return cm_fail(res, "LOD 0 has no triangles"); }
+  // the slots' materials
+  row[0].mats = o[0].refs; row[0].mat_n = 0;
+  mats: [CM_SECTIONS] string; mb: [CM_SECTIONS] [512] u8;
+  for slot: 0..<slot_n {
+    mid := ck_ref_id(k, ck_ref(k, pv_at(x, pv_nth(x, slots, slot), "MaterialInterface")), mb[slot][..]);
+    if mid.count == 0 { mid = "/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial"; }   // an empty slot draws Unreal's default material
+    mats[slot] = mid;
+    if !co_ref(o, mid) { return cm_fail(res, "the reference table is full"); }
+    row[0].mat_n += 1;
+  }
+  // the self-check: the vertices' bounds against the stated bounds
+  lo := [3] f64.[1.0e30, 1.0e30, 1.0e30]; hi := [3] f64.[-1.0e30, -1.0e30, -1.0e30];
+  for v: 0..<bf.verts {
+    u := [3] f64.[cast(f64) s[0].pos[3 * v] * 100.0, cast(f64) s[0].pos[3 * v + 2] * 100.0, cast(f64) s[0].pos[3 * v + 1] * 100.0];
+    for a: 0..<3 { if u[a] < lo[a] { lo[a] = u[a]; } if u[a] > hi[a] { hi[a] = u[a]; } }
+  }
+  worst := 0.0;
+  for a: 0..<3 {
+    d1 := lo[a] - row[0].bounds[a]; d2 := hi[a] - row[0].bounds[3 + a];
+    if d1 < 0 { d1 = -d1; } if d2 < 0 { d2 = -d2; }
+    if d1 > worst { worst = d1; } if d2 > worst { worst = d2; }
+  }
+  res[0].bounds_off = worst;
+  m: GlbMesh; nb: [256] u8;
+  m.name = zc_export_name(k[0].cat, p, e); m.vertices = bf.verts;
+  m.pos = s[0].pos[0..<3 * bf.verts]; m.nrm = s[0].nrm[0..<3 * bf.verts];
+  if bf.uvs >= 1 { m.uv0 = s[0].uv0[0..<2 * bf.verts]; }
+  if bf.uvs >= 2 { m.uv1 = s[0].uv1[0..<2 * bf.verts]; }
+  if bf.colours { m.col = s[0].col[0..<4 * bf.verts]; }
+  m.idx = s[0].out[0..<at]; m.prims = prims[0..<pn]; m.materials = mats[0..<slot_n];
+  n := glb_mesh(m, s[0].glb[..]);
+  if n < 0 { return cm_fail(res, "the glTF writer refused the mesh"); }
+  // collision, then the file and the row
+  cm_collision(k, o, p, zc_index(k[0].cat, p, body), row[..], id);
+  row[0].file = co_file(o, "meshes", number, ".glb", s[0].glb[0..<n]);
+  if row[0].file < 0 { return cm_fail(res, "could not write the glTF file"); }
+  row[0].tris = tris; row[0].verts = bf.verts;
+  if o[0].meshes >= CO_MESHES { return cm_fail(res, "the mesh table is full"); }
+  o[0].mesh[o[0].meshes] = row[0]; o[0].meshes += 1;
+  return true;
+}
+
+#test "half floats decode as IEEE binary16" {
+  #assert cm_half(0x3c00) == 1.0 && cm_half(0xc000) == -2.0 && cm_half(0x3800) == 0.5 && cm_half(0) == 0.0;
+  #assert cm_half(0x7bff) == 65504.0 && cm_half(1) == 0.000000059604645;
+}
+#test "packed normals: a signed byte or short over 127 or 32767, clamped at -1" {
+  #assert cm_s8(127) == 1.0 && cm_s8(129) == -1.0 && cm_s8(128) == -1.0 && cm_s8(0) == 0.0;
+  #assert cm_s16(32767) == 1.0 && cm_s16(32768) == -1.0;
+}
+#test "a buffer set with an index past its vertices, or an array longer than its bytes, is refused" {
+  pos: [12] f32; nrm: [12] f32; uv0: [8] f32; uv1: [8] f32; col: [16] u8; idx: [8] u32; res: [1] CmResult;
+  s := CmViews.{pos = pos[..], nrm = nrm[..], uv0 = uv0[..], uv1 = uv1[..], col = col[..], idx = idx[..]};
+  res[0].ok = true;
+  b: [256] u8; n := cm_fixture(b[..], 3, 2);
+  r: [1] Zr; r[0] = zr(cast(string) b[0..<n], 0, n);
+  bf := cm_buffers(r[..], s, res[..]);
+  #assert bf.verts == 3 && bf.indices == 3 && res[0].ok;
+  #assert s.pos[3] == 1.0 && s.pos[4] == 0.0 && s.pos[5] == 0.0 && s.nrm[1] == 1.0;   // the normal (0, 0, 1) is glTF's up   // (100, 0, 0) cm -> (1, 0, 0) m
+  #assert s.pos[7] == 0.0 && s.pos[8] == 1.0 && s.uv0[0] == 1.0;                          // (0, 100, 0) cm -> (0, 0, 1) m: Y becomes z
+  bad: [256] u8; m := cm_fixture(bad[..], 3, 3);                              // the last index is 3: past three vertices
+  r[0] = zr(cast(string) bad[0..<m], 0, m); res[0].ok = true;
+  #assert cm_buffers(r[..], s, res[..]).verts == -1 && !res[0].ok;
+  r[0] = zr(cast(string) b[0..<n], 0, 40); res[0].ok = true;                 // cut short inside the positions
+  #assert cm_buffers(r[..], s, res[..]).verts == -1;
+}
+// A tiny buffer set: three vertices (0,0,0), (100,0,0), (0,100,0) cm; one UV set; indices 0 1 last.
+cm_fixture :: (out: [] u8, nv: int, last: int) -> int #effects(all) {
+  n := 0;
+  n = px_put(out, n, 0, 2); n = px_put(out, n, 12, 4); n = px_put(out, n, nv, 4);
+  n = px_put(out, n, 12, 4); n = px_put(out, n, nv, 4);
+  pts := [9] f32.[0, 0, 0, 100, 0, 0, 0, 100, 0];
+  for v: pts { n = px_putf(out, n, v); }
+  n = px_put(out, n, 0, 2); n = px_put(out, n, 1, 4); n = px_put(out, n, nv, 4); n = px_put(out, n, 0, 4); n = px_put(out, n, 0, 4);
+  n = px_put(out, n, 8, 4); n = px_put(out, n, nv, 4);
+  for v: 0..<nv { n = px_put(out, n, 0, 4); n = px_put(out, n, 0x007f0000, 4); }   // tangent X, then Z = (0, 0, 127)
+  n = px_put(out, n, 4, 4); n = px_put(out, n, nv, 4);
+  for v: 0..<nv { n = px_put(out, n, 0x3c00, 2); n = px_put(out, n, 0, 2); }
+  n = px_put(out, n, 0, 2); n = px_put(out, n, 0, 4); n = px_put(out, n, 0, 4);   // no colours
+  n = px_put(out, n, 0, 4); n = px_put(out, n, 1, 4); n = px_put(out, n, 6, 4);   // 16-bit indices: six bytes
+  n = px_put(out, n, 0, 2); n = px_put(out, n, 1, 2); n = px_put(out, n, last, 2);
+  return n;
+}

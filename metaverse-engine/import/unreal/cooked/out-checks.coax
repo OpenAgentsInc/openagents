@@ -1,0 +1,30 @@
+// Checks of the cooked reader's bundle writer that need a whole table store (Co): kept out of
+// out.coax so tools that load it are not compiled with them.
+//   coax/bin/coax test metaverse-engine/import/unreal/cooked/out-checks.coax
+#load "out.coax";
+
+#test "engine content is kept only when something carried uses it, and plugin materials never are" {
+  // materials and textures only: meshes, refs and files are too large for a check's storage, and a
+  // mesh is kept by the same rule (an id under /Game/, or a placement that names it)
+  st: [1] CoStore = ---; o: [1] Co = ---; co_init(o[..], st[..], "/nowhere");
+  grid := co_add(o[..], "/Engine/M/Grid.Grid");
+  o[0].mat[0] = CoMat.{id = co_add(o[..], "/Game/M/MI_Crate.MI_Crate"), parent = grid, root = grid, params = 0, param_n = 0};
+  o[0].mat[1] = CoMat.{id = grid, parent = grid, root = grid, params = 0, param_n = 1};
+  o[0].param[0] = CoParam.{kind = CO_PARAM_TEX, name = co_add(o[..], "Tex"), tex = co_add(o[..], "/Engine/T/Used.Used")}; o[0].params = 1;
+  o[0].mat[2] = CoMat.{id = co_add(o[..], "/Engine/M/Unused.Unused"), params = 1, param_n = 0};
+  o[0].mat[3] = CoMat.{id = co_add(o[..], "/Water/M/Water.Water"), params = 1, param_n = 0};
+  o[0].materials = 4;
+  o[0].tex[0] = CoTex.{id = co_add(o[..], "/Engine/T/Used.Used"), file = 0}; o[0].tex[1] = CoTex.{id = co_add(o[..], "/Engine/T/Unused.Unused"), file = 0};
+  o[0].textures = 2;
+  pr: [1] CoPrune = ---;
+  #assert co_prune(o[..], pr[..]) == 3;
+  #assert o[0].materials == 2 && co_s(o[..], o[0].mat[1].id) == "/Engine/M/Grid.Grid";   // the instance keeps its engine parent
+  #assert o[0].textures == 1 && co_s(o[..], o[0].tex[0].id) == "/Engine/T/Used.Used";    // and the parent its texture
+  #assert o[0].skips == 3;   // each dropped row is named in skipped.json
+}
+
+#test "scales and light values are written rounded to 6 decimals, and a half turn has one sign" {
+  #assert co_r6(1.2726713) == 1.272671 && co_r6(-0.0000004) == 0.0 && co_r6(2.0) == 2.0 && co_r6(-1.5000006) == -1.500001;
+  q := ck_qnorm(CkQ.{x = 0.0, y = 0.0, z = -1.0, w = 0.0});
+  #assert q.z == 1.0 && q.w == 0.0;
+}

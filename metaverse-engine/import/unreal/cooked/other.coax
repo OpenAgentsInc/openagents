@@ -1,0 +1,82 @@
+// The smaller cooked kinds: skeletons (their reference pose, BUNDLE.md 3.2), and sounds, which the
+// bundle can carry only as PCM: a compressed sound becomes a skipped row naming its format and
+// stating its length, channels and rate, so nothing about it is dropped silently.
+//
+// A cooked skeleton after its properties: a guid flag, then its reference skeleton: the bone count
+// and, per bone, a name and a parent index; the count again and, per bone, its local transform
+// (a quaternion, a translation and a scale, all doubles).
+#load "out.coax";
+
+COT_BONES :: 1024;
+// Skeleton export e of package p into a skeleton row; "" on success, else why not.
+cot_skeleton :: (k: [] Ck, o: [] Co, p: int, e: int, why: [] u8) -> string #effects(all) {
+  cl := ck_class(k, p, e);
+  if cl.t < 0 { return "the class is not in the schema"; }
+  r: [1] Zr; r[0] = ck_cursor(k, p, e, CK_MAIN);
+  if ck_props(k, r[..], p, cl.t) < 0 { return ck_why(k, why); }
+  _ = zr_u32(r[..]);
+  n := zr_i32(r[..]);
+  if !r[0].ok || n < 1 || n > COT_BONES || n * 12 > r[0].end - r[0].at { return "the reference skeleton's bone count is out of range"; }
+  if o[0].skeletons >= CO_SKELETONS || o[0].bones + n > CO_BONES { return "the skeleton table is full"; }
+  pk := k[0].cat[0].pkg[p];
+  first := o[0].bones;
+  for b: 0..<n {
+    ni := zr_u32(r[..]); num := zr_u32(r[..]); parent := zr_i32(r[..]);
+    if !r[0].ok || ni >= pk.name_n { return "a bone's name is outside the package's names"; }
+    if (b == 0) != (parent < 0) || parent >= b { return "a bone's parent is not an earlier bone (or the root has one)"; }
+    nb: [512] u8; base := zc_s(k[0].cat, k[0].cat[0].name[pk.names + ni]);
+    nm := ifx num > 0 then cot_numbered(base, num - 1, nb[..]) else base;
+    o[0].bone[first + b] = CoBone.{name = co_add(o, nm), parent = ifx parent < 0 then -1 else parent};
+  }
+  n2 := zr_i32(r[..]);
+  if !r[0].ok || n2 != n || n * 80 > r[0].end - r[0].at { return "the reference pose's count differs from the bones'"; }
+  for b: 0..<n {
+    q := CkQ.{x = zr_f64(r[..]), y = zr_f64(r[..]), z = zr_f64(r[..]), w = zr_f64(r[..])};
+    t := CkV.{x = zr_f64(r[..]), y = zr_f64(r[..]), z = zr_f64(r[..])};
+    s := CkV.{x = zr_f64(r[..]), y = zr_f64(r[..]), z = zr_f64(r[..])};
+    xf := CkXf.{t = t, q = q, s = s};
+    if !ck_xf_finite(xf) { return "a bone's rest transform is not finite"; }
+    o[0].bone[first + b].t = t; o[0].bone[first + b].q = ck_qnorm(q); o[0].bone[first + b].s = s;
+  }
+  idb: [1024] u8;
+  o[0].skel[o[0].skeletons] = CoSkeleton.{id = co_add(o, zc_path(k[0].cat, p, e, idb[..])), bones = first, bone_n = n};
+  o[0].skeletons += 1; o[0].bones += n;
+  return "";
+}
+cot_numbered :: (base: string, v: int, out: [] u8) -> string #effects(all) {
+  n := sc_put(out, 0, base); n = sc_put(out, n, "_");
+  d: [24] u8; dn := 0; a := v;
+  if a == 0 { d[0] = '0'; dn = 1; }
+  while a > 0 { d[dn] = cast,trunc(u8) (48 + a % 10); dn += 1; a /= 10; }
+  for i: 0..<dn { if n < out.count { out[n] = d[dn - 1 - i]; n += 1; } }
+  return cast(string) out[0..<n];
+}
+
+// A sound wave: the skipped row's detail (its format, length, channels and rate).
+COT_CODECS :: [7] string.["BINKA", "OGG", "OPUS", "ADPCM", "RADA", "PCM", "XMA"];
+cot_sound :: (k: [] Ck, p: int, e: int, out: [] u8) -> string #effects(all) {
+  cl := ck_class(k, p, e);
+  codec := "an unknown format";
+  pk := k[0].cat[0].pkg[p];
+  for i: 0..<pk.name_n { nm := zc_s(k[0].cat, k[0].cat[0].name[pk.names + i]); for c: COT_CODECS { if nm == c { codec = c; } } }
+  n := sc_put(out, 0, "compressed audio (");
+  n = sc_put(out, n, codec);
+  n = sc_put(out, n, ") the bundle carries only as PCM, and no decoder for it is ours");
+  if cl.t >= 0 {
+    r: [1] Zr; r[0] = ck_cursor(k, p, e, CK_MAIN);
+    root := ck_props(k, r[..], p, cl.t);
+    if root >= 0 {
+      x := k[0].x[..]; t: [48] u8;
+      n = sc_put(out, n, ": ");
+      n = sc_put(out, n, uf_num_text(pv_f(x, pv_at(x, root, "Duration"), 0.0), t[..])); n = sc_put(out, n, " s, ");
+      n = sc_put(out, n, uf_num_text(cast(f64) pv_int(x, pv_at(x, root, "NumChannels"), 0), t[..])); n = sc_put(out, n, " channels, ");
+      n = sc_put(out, n, uf_num_text(cast(f64) pv_int(x, pv_at(x, root, "SampleRate"), 0), t[..])); n = sc_put(out, n, " Hz");
+    }
+  }
+  return cast(string) out[0..<n];
+}
+
+#test "a numbered name: the stored number is one more than the suffix" {
+  b: [64] u8;
+  #assert cot_numbered("spine", 0, b[..]) == "spine_0" && cot_numbered("ik_hand", 11, b[..]) == "ik_hand_11";
+}

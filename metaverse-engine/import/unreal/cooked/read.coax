@@ -1,0 +1,279 @@
+// The cooked reader's working context: the catalog, the schema and the value tree together, the
+// bytes of the packages being read, and the questions every asset reader asks (an export's class,
+// its properties, its template chain, where an object reference points, an id's spelling).
+//
+// Two package buffers: one for the package an asset reader works through, one for the packages its
+// templates live in (a Blueprint's component templates), so reading a template never drops the
+// bytes of the export that asked for it.
+#load "scan.coax";
+#load "schema-load.coax";
+#load "props.coax";
+
+CK_MAIN :: 0; CK_SIDE :: 1;
+CkBytes :: struct { b: [] u8; n: int; pkg: int; }
+CK_TEMPLATES :: 32768;
+Ck :: struct {
+  cat: [] Zcat; sch: [] Sch; scr: [] ScScript; pv: [] Pv; x: [1] Px;
+  bytes: [2] CkBytes;
+  bulk: [] u8;                                   // a .ubulk range a reader asked for
+  tmpl_key: [CK_TEMPLATES] int; tmpl_root: [CK_TEMPLATES] int; tmpl_n: int;   // parsed templates: (package << 20 | export) -> root
+}
+ck_init :: (k: [] Ck, c: [] Zcat, s: [] Sch, h: [] ScScript, v: [] Pv, main: [] u8, side: [] u8, bulk: [] u8) #effects(all) {
+  k[0].cat = c; k[0].sch = s; k[0].scr = h; k[0].pv = v;
+  k[0].bytes[0] = CkBytes.{b = main, n = 0, pkg = -1}; k[0].bytes[1] = CkBytes.{b = side, n = 0, pkg = -1};
+  k[0].bulk = bulk; k[0].tmpl_n = 0;
+  k[0].x[0].cat = c; k[0].x[0].sch = s; k[0].x[0].pv = v; k[0].x[0].pkg = 0; k[0].x[0].fault = PX_OK;
+}
+// Forget every value read so far (between assets and maps).
+ck_reset :: (k: [] Ck) #effects(all) {
+  v := k[0].pv; pv_init(v, v[0].node, v[0].pool[0].b, v[0].pool[0].at, v[0].pool[0].n); k[0].tmpl_n = 0;
+}
+
+ck_s :: (k: [] Ck, id: int) -> string #effects(all) { return zc_s(k[0].cat, id); }
+ck_pkg_name :: (k: [] Ck, p: int) -> string #effects(all) { return zc_s(k[0].cat, k[0].cat[0].pkg[p].name); }
+ck_cat :: (a: string, b: string, out: [] u8) -> string #effects(all) {
+  n := 0; for ch: a { if n < out.count { out[n] = ch; n += 1; } } for ch: b { if n < out.count { out[n] = ch; n += 1; } }
+  return cast(string) out[0..<n];
+}
+
+// Package p's .uexp in buffer slot; false when it is missing, too large or unreadable.
+ck_load :: (k: [] Ck, p: int, slot: int) -> bool #effects(all) {
+  if p < 0 { return false; }
+  if k[0].bytes[slot].pkg == p { return true; }
+  other := 1 - slot;
+  if k[0].bytes[other].pkg == p && k[0].bytes[other].n <= k[0].bytes[slot].b.count {
+    for i: 0..<k[0].bytes[other].n { k[0].bytes[slot].b[i] = k[0].bytes[other].b[i]; }
+    k[0].bytes[slot].n = k[0].bytes[other].n; k[0].bytes[slot].pkg = p; return true;
+  }
+  size := k[0].cat[0].pkg[p].uexp;
+  if size < 0 || size > k[0].bytes[slot].b.count { return false; }
+  pb: [4096] u8; path := ck_cat(ck_s(k, k[0].cat[0].pkg[p].file), ".uexp", pb[..]);
+  n := fs_read(path, k[0].bytes[slot].b);
+  if n != size { k[0].bytes[slot].pkg = -1; return false; }
+  k[0].bytes[slot].n = n; k[0].bytes[slot].pkg = p;
+  return true;
+}
+// A cursor over export e of package p (loaded in slot), or a refused one.
+ck_cursor :: (k: [] Ck, p: int, e: int, slot: int) -> Zr #effects(all) {
+  r := zr("", 0, 0); r.ok = false;
+  if !ck_load(k, p, slot) { return r; }
+  x := zc_export(k[0].cat, p, e);
+  at := x.off;   // the catalog's offsets count from the .uexp's start (zen.coax)
+  if at < 0 || x.size < 0 || at + x.size > k[0].bytes[slot].n { return r; }
+  return zr(cast(string) k[0].bytes[slot].b[0..<k[0].bytes[slot].n], at, at + x.size);
+}
+// Bytes [off, off + size) of package p's .ubulk into k.bulk; the view, or an empty one.
+ck_bulk :: (k: [] Ck, p: int, off: int, size: int) -> [] u8 #effects(all) {
+  e: [] u8;
+  total := k[0].cat[0].pkg[p].ubulk;
+  if off < 0 || size <= 0 || size > k[0].bulk.count || total < 0 || off + size > total { return e; }
+  pb: [4096] u8; path := ck_cat(ck_s(k, k[0].cat[0].pkg[p].file), ".ubulk", pb[..]);
+  n := fs_read_at(path, off, k[0].bulk[0..<size]);
+  if n != size { return e; }
+  return k[0].bulk[0..<size];
+}
+
+// The schema type of export e's class: its index, or -1 for a class the schema lacks (a Blueprint's
+// class, a game class of another revision). bp is set when the class is a Blueprint's.
+CkClass :: struct { t: int; bp: bool; script: bool; }
+ck_class :: (k: [] Ck, p: int, e: int) -> CkClass #effects(all) {
+  c: CkClass; c.t = -1; c.bp = false; c.script = false;
+  r := zc_resolve(k[0].cat, p, zc_export(k[0].cat, p, e).cls);
+  if r.kind == ZI_SCRIPT {
+    c.script = true;
+    v := sc_script(k[0].scr, r.script);
+    if v >= 0 && v % 2 == 0 { c.t = v / 2; }
+  } else if r.kind == ZI_EXPORT || r.kind == ZI_PACKAGE { c.bp = true; }
+  return c;
+}
+ck_type_name :: (k: [] Ck, t: int) -> string #effects(all) { return ifx t < 0 then "" else sc_s(k[0].sch, k[0].sch[0].type[t].name); }
+// True when type t is the named class or derives from it.
+ck_is :: (k: [] Ck, t: int, name: string) -> bool #effects(all) {
+  at := t; steps := 0;
+  while at >= 0 && steps < 64 { if sc_s(k[0].sch, k[0].sch[0].type[at].name) == name { return true; } at = k[0].sch[0].type[at].sup; steps += 1; }
+  return false;
+}
+
+// Export e's properties as type t: the tree's root, or -1 (k.x says why); r is left after them.
+ck_props :: (k: [] Ck, r: [] Zr, p: int, t: int) -> int #effects(all) {
+  k[0].x[0].pkg = p; k[0].x[0].fault = PX_OK; k[0].x[0].fault_prop = -1; k[0].x[0].fault_type = -1; k[0].x[0].depth = 0;
+  if !r[0].ok { k[0].x[0].fault = PX_SHORT; return -1; }
+  return px_unversioned(k[0].x[..], r, t, -1, 0);
+}
+// The reason a read was refused, in words.
+ck_why :: (k: [] Ck, out: [] u8) -> string #effects(all) {
+  n := 0;
+  n = sc_put(out, n, PX_WHY[k[0].x[0].fault]);
+  if k[0].x[0].fault_type >= 0 { n = sc_put(out, n, " in "); n = sc_put(out, n, ck_type_name(k, k[0].x[0].fault_type)); }
+  if k[0].x[0].fault_prop >= 0 { n = sc_put(out, n, "."); n = sc_put(out, n, sc_s(k[0].sch, k[0].sch[0].prop[k[0].x[0].fault_prop].name)); }
+  return cast(string) out[0..<n];
+}
+
+// The template chain of export e: its own tree first, then its template's, and so on, ending
+// where a template is a native default object (whose values the caller knows) or unreadable.
+// Returns the count in roots; roots[0] is the instance (read by the caller, passed in).
+CK_CHAIN :: 8;
+ck_chain :: (k: [] Ck, p: int, e: int, own: int, roots: [] int) -> int #effects(all) {
+  n := 0;
+  if own >= 0 { roots[0] = own; n = 1; }
+  at_p := p; at_e := e;
+  while n < roots.count {
+    ref := zc_resolve(k[0].cat, at_p, zc_export(k[0].cat, at_p, at_e).tmpl);
+    if ref.kind != ZI_EXPORT && ref.kind != ZI_PACKAGE { break; }
+    if ref.pkg < 0 || ref.exp < 0 { break; }
+    root := ck_template(k, ref.pkg, ref.exp);
+    if root < 0 { break; }
+    roots[n] = root; n += 1;
+    at_p = ref.pkg; at_e = ref.exp;
+  }
+  return n;
+}
+// Export e of package p read as a template (once; later asks get the same tree), or -1.
+ck_template :: (k: [] Ck, p: int, e: int) -> int #effects(all) {
+  key := (p << 20) | e;
+  for i: 0..<k[0].tmpl_n { if k[0].tmpl_key[i] == key { return k[0].tmpl_root[i]; } }
+  cl := ck_class(k, p, e);
+  root := -1;
+  if cl.t >= 0 {
+    slot := ifx k[0].bytes[CK_MAIN].pkg == p then CK_MAIN else CK_SIDE;
+    r: [1] Zr; r[0] = ck_cursor(k, p, e, slot);
+    saved := k[0].x[0];
+    root = ck_props(k, r[..], p, cl.t);
+    k[0].x[0] = saved;
+  }
+  if k[0].tmpl_n < CK_TEMPLATES { k[0].tmpl_key[k[0].tmpl_n] = key; k[0].tmpl_root[k[0].tmpl_n] = root; k[0].tmpl_n += 1; }
+  return root;
+}
+
+// ---- object references and ids
+
+// Where object reference node n (a PV_OBJ) points.
+ck_ref :: (k: [] Ck, n: int) -> ZRef #effects(all) {
+  r: ZRef; r.kind = ZI_NULL; r.pkg = -1; r.exp = -1; r.script = 0;
+  if n <= 0 || k[0].pv[0].node[n].kind != PV_OBJ { return r; }
+  return zc_index(k[0].cat, k[0].pv[0].node[n].s2, k[0].pv[0].node[n].i);
+}
+// The id (object path) of what reference r names, into out; "" for null, a native object or a
+// package the build does not carry.
+ck_ref_id :: (k: [] Ck, r: ZRef, out: [] u8) -> string #effects(all) {
+  if (r.kind != ZI_EXPORT && r.kind != ZI_PACKAGE) || r.pkg < 0 || r.exp < 0 { return ""; }
+  return zc_path(k[0].cat, r.pkg, r.exp, out);
+}
+// A soft path node's id ("/Game/X/T.T", its subpath after ':'), or "".
+ck_soft_id :: (k: [] Ck, n: int, out: [] u8) -> string #effects(all) {
+  if n <= 0 || k[0].pv[0].node[n].kind != PV_SOFT { return ""; }
+  base := zs(k[0].pv[0].pool[..], k[0].pv[0].node[n].s);
+  m := sc_put(out, 0, base);
+  sub := k[0].pv[0].node[n].s2;
+  if sub > 0 { m = sc_put(out, m, ":"); m = sc_put(out, m, zs(k[0].pv[0].pool[..], sub)); }
+  return cast(string) out[0..<m];
+}
+// "engine" for what Unreal or its templates made (BUNDLE.md 3.1), else "project".
+CK_TEMPLATE_DIRS :: [4] string.["/Characters/Mannequins", "/LevelPrototyping", "/ThirdPerson", "/StarterContent"];
+ck_origin :: (id: string) -> string #effects(all) {
+  if !sc_starts(id, "/Game/") { return "engine"; }
+  for d: CK_TEMPLATE_DIRS { if sc_find(id, d, 0) >= 0 { return "engine"; } }
+  return "project";
+}
+// The package and export an id names, or -1s.
+CkAt :: struct { pkg: int; exp: int; }
+ck_find :: (k: [] Ck, id: string) -> CkAt #effects(all) {
+  a: CkAt; a.pkg = -1; a.exp = -1;
+  dot := -1; for i: 0..<id.count { if id[i] == '.' { dot = i; break; } }
+  if dot < 0 { return a; }
+  p := zc_pkg(k[0].cat, id[0..<dot]);
+  if p < 0 { return a; }
+  name := id[dot + 1..<id.count];
+  for e: 0..<k[0].cat[0].pkg[p].export_n {
+    x := zc_export(k[0].cat, p, e);
+    if zi_kind(x.outer) == ZI_NULL && zc_s(k[0].cat, x.name) == name { a.pkg = p; a.exp = e; return a; }
+  }
+  return a;
+}
+// The top-level export of package p named like the package (its asset), or -1.
+ck_asset :: (k: [] Ck, p: int) -> int #effects(all) {
+  pn := ck_pkg_name(k, p); slash := 0;
+  for i: 0..<pn.count { if pn[i] == '/' { slash = i + 1; } }
+  short := pn[slash..<pn.count];
+  for e: 0..<k[0].cat[0].pkg[p].export_n {
+    x := zc_export(k[0].cat, p, e);
+    if zi_kind(x.outer) == ZI_NULL && zc_s(k[0].cat, x.name) == short { return e; }
+  }
+  return -1;
+}
+
+// ---- small math: Unreal's rotator (degrees) as its quaternion, quaternion products
+
+CkQ :: struct { x: f64; y: f64; z: f64; w: f64; }
+CkV :: struct { x: f64; y: f64; z: f64; }
+CK_DEG :: 0.017453292519943295;
+ck_rotator :: (pitch: f64, yaw: f64, roll: f64) -> CkQ #effects(all) {
+  sp := sin(pitch * CK_DEG * 0.5); cp := cos(pitch * CK_DEG * 0.5);
+  sy := sin(yaw * CK_DEG * 0.5); cy := cos(yaw * CK_DEG * 0.5);
+  sr := sin(roll * CK_DEG * 0.5); cr := cos(roll * CK_DEG * 0.5);
+  return CkQ.{x = cr * sp * sy - sr * cp * cy, y = -cr * sp * cy - sr * cp * sy, z = cr * cp * sy - sr * sp * cy, w = cr * cp * cy + sr * sp * sy};
+}
+ck_qmul :: (a: CkQ, b: CkQ) -> CkQ #effects(all) {
+  return CkQ.{x = a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y, y = a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
+    z = a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w, w = a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z};
+}
+ck_qrot :: (q: CkQ, v: CkV) -> CkV #effects(all) {
+  // v + 2 w (u x v) + 2 u x (u x v)
+  tx := 2.0 * (q.y * v.z - q.z * v.y); ty := 2.0 * (q.z * v.x - q.x * v.z); tz := 2.0 * (q.x * v.y - q.y * v.x);
+  return CkV.{x = v.x + q.w * tx + (q.y * tz - q.z * ty), y = v.y + q.w * ty + (q.z * tx - q.x * tz), z = v.z + q.w * tz + (q.x * ty - q.y * tx)};
+}
+ck_qnorm :: (q: CkQ) -> CkQ #effects(all) {
+  l := sqrt(q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w);
+  if l <= 0.0 || !(l == l) { return CkQ.{x = 0.0, y = 0.0, z = 0.0, w = 1.0}; }
+  r := CkQ.{x = q.x / l, y = q.y / l, z = q.z / l, w = q.w / l};
+  // one sign for the same rotation: w positive; a half turn (w zero) with its first nonzero part positive
+  flip := r.w < 0.0;
+  if r.w == 0.0 { flip = r.x < 0.0 || (r.x == 0.0 && (r.y < 0.0 || (r.y == 0.0 && r.z < 0.0))); }
+  if flip { r = CkQ.{x = -r.x, y = -r.y, z = -r.z, w = -r.w}; }
+  if r.w == 0.0 { r.w = 0.0; }   // never -0
+  return r;
+}
+// A placed frame: translation, rotation, scale; child in parent: T = Tp + Rp (Sp t), R = Rp R, S = Sp S.
+CkXf :: struct { t: CkV; q: CkQ; s: CkV; }
+ck_xf_id :: () -> CkXf #effects(all) { return CkXf.{t = CkV.{x = 0.0, y = 0.0, z = 0.0}, q = CkQ.{x = 0.0, y = 0.0, z = 0.0, w = 1.0}, s = CkV.{x = 1.0, y = 1.0, z = 1.0}}; }
+ck_xf_mul :: (parent: CkXf, child: CkXf) -> CkXf #effects(all) {
+  st := CkV.{x = parent.s.x * child.t.x, y = parent.s.y * child.t.y, z = parent.s.z * child.t.z};
+  rt := ck_qrot(parent.q, st);
+  return CkXf.{t = CkV.{x = parent.t.x + rt.x, y = parent.t.y + rt.y, z = parent.t.z + rt.z}, q = ck_qnorm(ck_qmul(parent.q, child.q)),
+    s = CkV.{x = parent.s.x * child.s.x, y = parent.s.y * child.s.y, z = parent.s.z * child.s.z}};
+}
+ck_finite :: (v: f64) -> bool #effects(all) { return v == v && v < 1.0e300 && v > -1.0e300; }
+ck_xf_finite :: (x: CkXf) -> bool #effects(all) {
+  return ck_finite(x.t.x) && ck_finite(x.t.y) && ck_finite(x.t.z) && ck_finite(x.q.x) && ck_finite(x.q.y) && ck_finite(x.q.z) && ck_finite(x.q.w)
+    && ck_finite(x.s.x) && ck_finite(x.s.y) && ck_finite(x.s.z);
+}
+// A vector node (3 numbers) as CkV, or fallback when absent; a zero value is zero.
+ck_vec :: (k: [] Ck, n: int, fallback: CkV) -> CkV #effects(all) {
+  if n < 0 { return fallback; }
+  x := k[0].x[..];
+  return CkV.{x = pv_f(x, pv_nth(x, n, 0), fallback.x), y = pv_f(x, pv_nth(x, n, 1), fallback.y), z = pv_f(x, pv_nth(x, n, 2), fallback.z)};
+}
+// A rotator node (pitch, yaw, roll) as a quaternion.
+ck_rot :: (k: [] Ck, n: int) -> CkQ #effects(all) {
+  if n < 0 { return CkQ.{x = 0.0, y = 0.0, z = 0.0, w = 1.0}; }
+  x := k[0].x[..];
+  return ck_qnorm(ck_rotator(pv_f(x, pv_nth(x, n, 0), 0.0), pv_f(x, pv_nth(x, n, 1), 0.0), pv_f(x, pv_nth(x, n, 2), 0.0)));
+}
+
+ck_near :: (a: f64, b: f64) -> bool #effects(all) { d := a - b; return d < 0.000001 && d > -0.000001; }
+#test "Unreal's rotator turns as Unreal does: yaw 90 takes +X to +Y, pitch 90 takes +X to +Z, roll 90 takes +Y to -Z" {
+  v := ck_qrot(ck_rotator(0.0, 90.0, 0.0), CkV.{x = 1.0, y = 0.0, z = 0.0});
+  #assert ck_near(v.x, 0.0) && ck_near(v.y, 1.0) && ck_near(v.z, 0.0);
+  w := ck_qrot(ck_rotator(90.0, 0.0, 0.0), CkV.{x = 1.0, y = 0.0, z = 0.0});
+  #assert ck_near(w.x, 0.0) && ck_near(w.y, 0.0) && ck_near(w.z, 1.0);
+  r := ck_qrot(ck_rotator(0.0, 0.0, 90.0), CkV.{x = 0.0, y = 1.0, z = 0.0});
+  #assert ck_near(r.z, -1.0);   // roll 90 takes +Y to -Z, as FRotator does
+  parent := CkXf.{t = CkV.{x = 100.0, y = 0.0, z = 0.0}, q = ck_rotator(0.0, 90.0, 0.0), s = CkV.{x = 2.0, y = 2.0, z = 2.0}};
+  child := ck_xf_id(); child.t = CkV.{x = 10.0, y = 0.0, z = 0.0};
+  world := ck_xf_mul(parent, child);
+  #assert ck_near(world.t.x, 100.0) && ck_near(world.t.y, 20.0) && ck_near(world.s.x, 2.0);
+}
+#test "an id's origin: the engine's and its template folders' are engine" {
+  #assert ck_origin("/Engine/BasicShapes/Cube.Cube") == "engine" && ck_origin("/Game/Characters/Mannequins/Meshes/SKM_Manny.SKM_Manny") == "engine";
+  #assert ck_origin("/Game/SpliceBots/Things/SM_Garage.SM_Garage") == "project";
+}
