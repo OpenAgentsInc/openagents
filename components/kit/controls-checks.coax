@@ -138,3 +138,148 @@ ctl_measure :: (id: int, a: [] Atlas) -> TextMeasure { return ifx id == UISKIN_T
     #assert panel_height(s, 100, false) == 100 + 2 * s.pad;
   }
 }
+
+// ---------------------------------------------------------------- the frame context (GitHub #13645, stage G0)
+
+// A surface over a test's own arrays, and a keyed store.
+CtxStore :: struct { a: [1] CtlStore; b: [1] CtlStore; rows_a: [24] El; rows_b: [24] El; keyed: [8] Keyed; }
+ctx_surface :: (st: [] CtxStore) -> UiSurface {
+  return surface_over(ctl_sheet(st[0].a[..]), st[0].rows_a[..], ctl_sheet(st[0].b[..]), st[0].rows_b[..]);
+}
+ctx_same_color :: (a: Rgba, b: Rgba) -> bool { return a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a; }
+// Two primitives are the same primitive.
+ctx_same_prim :: (a: Prim, b: Prim) -> bool {
+  return a.kind == b.kind && a.x == b.x && a.y == b.y && a.w == b.w && a.h == b.h && a.radius == b.radius && a.border == b.border
+    && ctx_same_color(a.fill, b.fill) && ctx_same_color(a.edge, b.edge) && a.a == b.a && a.b == b.b && a.c == b.c && a.d == b.d
+    && a.id == b.id && a.on == b.on && a.text == b.text && a.line == b.line && a.off == b.off && a.pts.count == b.pts.count;
+}
+// Two sheets hold the same display lists, and hits over the same boxes.
+ctx_same_sheet :: (a: Sheet, b: Sheet) -> bool {
+  if a.nu != b.nu || a.no != b.no || a.nh != b.nh || a.nl != b.nl || a.np != b.np { return false; }
+  for i: 0..<a.nu { if !ctx_same_prim(a.under[i], b.under[i]) { return false; } }
+  for i: 0..<a.no { if !ctx_same_prim(a.over[i], b.over[i]) { return false; } }
+  for i: 0..<a.nh { if a.hits[i].x != b.hits[i].x || a.hits[i].y != b.hits[i].y || a.hits[i].w != b.hits[i].w || a.hits[i].h != b.hits[i].h { return false; } }
+  return true;
+}
+// The seven controls, laid out once through the context forms. `rest` puts no pointer on them.
+ctx_all :: (f: [] UiFrame) {
+  s := f[0].skin;
+  tab_ids := [3] string.["tab.chat", "tab.files", "tab.runs"]; labels := [3] string.["Chat", "Files", "Runs"];
+  row_ids := [3] string.["row.one", "row.two", "row.three"]; rows := [3] string.["One", "Two", "Three"];
+  inside := ctx_panel(f, "panel", 0, 0, 400, 600, "Title");
+  _ = ctx_button(f, "send", 10, 60, "Send", true, 0, 11);
+  _ = ctx_button(f, "cancel", 200, 60, "Cancel", false, 0, 12);
+  _ = ctx_toggle(f, "wrap", 10, 110, "Wrap", true, 0, 13);
+  ctx_slider(f, "volume", 10, 160, 200, "Volume", 0.25, 0, 14);
+  _ = ctx_tabs(f, tab_ids[..], 10, 210, labels[..], 1, 15);
+  _ = ctx_list(f, row_ids[..], 10, 260, 120, "Recent", rows[..], 2, 16);
+  _ = ctx_bar(f, "usage", 10, 500, 100, "Usage", 0.5, s.success);
+  ctx_panel_end(f);
+}
+// The same seven through the forms that take a sheet, a measure and a skin.
+ctx_all_before :: (sh: [] Sheet, m: TextMeasure, s: UiSkin) {
+  labels := [3] string.["Chat", "Files", "Runs"]; rows := [3] string.["One", "Two", "Three"];
+  inside := panel(sh, m, s, 0, 0, 400, 600, "Title");
+  _ = button(sh, m, s, 10, 60, "Send", UISKIN_PRIMARY, 1, 0);
+  _ = button(sh, m, s, 200, 60, "Cancel", UISKIN_REST, 1, 1);
+  _ = toggle(sh, m, s, 10, 110, "Wrap", true, 2, 0);
+  slider(sh, s, 10, 160, 200, 0.25, 3, 0);
+  _ = tabs(sh, m, s, 10, 210, labels[..], 1, -1, 4, 0);
+  _ = list_rows(sh, m, s, 10, 260, 120, "Recent", rows[..], 2, -1, 5, 0);
+  _ = bar(sh, s, 10, 500, 100, 0.5, s.success);
+}
+
+#test "the context forms paint the same primitives as the forms before them, in every skin" #steps 100000000 {
+  st: [1] CtxStore; old: [1] CtlStore; bare: [1] CtlStore; a: [1] Atlas; text_test_atlas(a[..]);
+  for id: 0..<UISKINS {
+    s := uiskin(id); m := ctl_measure(id, a[..]);
+    before: [1] Sheet; before[0] = ctl_sheet(old[..]);
+    ctx_all_before(before[..], m, s);
+    #assert before[0].nu > 8 && before[0].no > 8 && before[0].nh == 10 && before[0].lost == 0;
+    // on a surface, with rows and keyed state
+    sf := [1] UiSurface.[ctx_surface(st[..])]; ks := [1] KeyedStore.[KeyedStore.{rows = st[0].keyed[..]}]; f: [1] UiFrame;
+    uiframe_begin(f[..], sf[..], ks[..], m, s, UiInput.{}, 0, 0.016, false, false);
+    ctx_all(f[..]);
+    #assert uiframe_end(f[..], sf[..]) && ctx_same_sheet(surface_sheet(sf[..]), before[0]) && surface_rows(sf[..]).n == 12;
+    // through the adapter: a context over a sheet, a measure and a skin alone
+    plain: [1] Sheet; plain[0] = ctl_sheet(bare[..]); g := [1] UiFrame.[uiframe_over(plain[..], m, s)];
+    ctx_all(g[..]);
+    #assert ctx_same_sheet(plain[0], before[0]) && plain[0].hits[0].kind == UIFRAME_HIT && uiframe_hit_row(plain[0].hits[0]) == -1;
+  }
+}
+#test "each context control records its row and its hit together, under its id" {
+  st: [1] CtxStore; a: [1] Atlas; text_test_atlas(a[..]); s := zeron_skin(); m := measure_font(a[..]);
+  sf := [1] UiSurface.[ctx_surface(st[..])]; ks := [1] KeyedStore.[KeyedStore.{rows = st[0].keyed[..]}]; f: [1] UiFrame;
+  uiframe_begin(f[..], sf[..], ks[..], m, s, uiinput(0, 0, false, false, "", "wrap"), 0, 0.016, false, false);
+  ctx_all(f[..]);
+  #assert uiframe_end(f[..], sf[..]);
+  out: [2048] u8; t := [1] ElTable.[surface_rows(sf[..])]; n := elt_detail(t[..], out[..]);
+  got := cast(string) out[0..<n];
+  #assert el_has(got, "panel region \"Title\" at 0 0 size 400x600\n");
+  #assert el_has(got, "send button \"Send\" at 10 60 size 56x32 action 11 focus 1 in panel\n");
+  #assert el_has(got, "cancel button \"Cancel\" at 200 60 size 72x32 action 12 focus 2 in panel\n");
+  #assert el_has(got, "wrap toggle \"Wrap\" at 10 110 size 75x32 [checked focused checks] action 13 focus 3 in panel\n");
+  #assert el_has(got, "volume slider \"Volume\" at 10 160 size 200x32 value \"25%\" action 14 focus 4 in panel\n");
+  #assert el_has(got, "tab.chat tab \"Chat\" at 10 210 size 56x32 action 15 focus 5 in panel\n");
+  #assert el_has(got, "tab.files tab \"Files\" at 70 210 size 64x32 [current] action 15 focus 6 in panel\n");
+  #assert el_has(got, "tab.runs tab \"Runs\" at 138 210 size 56x32 action 15 focus 7 in panel\n");
+  #assert el_has(got, "row.one row \"One\" at 10 282 size 120x32 action 16 focus 8 in panel\n");
+  #assert el_has(got, "row.two row \"Two\" at 10 314 size 120x32 action 16 focus 9 in panel\n");
+  #assert el_has(got, "row.three row \"Three\" at 10 346 size 120x32 [current] action 16 focus 10 in panel\n");
+  #assert el_has(got, "usage progress \"Usage\" at 10 500 size 100x8 value \"50%\" in panel\n");
+  #assert got.count == 41 + 66 + 71 + 92 + 84 + 68 + 80 + 69 + 67 + 67 + 82 + 56 + 9;
+  // every hit names a row of the same generation, over the row's own box
+  sh := surface_sheet(sf[..]);
+  #assert sh.nh == 10;
+  for i: 0..<sh.nh {
+    r := uiframe_hit_row(sh.hits[i]);
+    #assert r >= 1 && r <= 10 && t[0].rows[r].x == sh.hits[i].x && t[0].rows[r].y == sh.hits[i].y && t[0].rows[r].w == sh.hits[i].w && t[0].rows[r].h == sh.hits[i].h;
+  }
+  // a press is routed through the committed rows
+  hit := surface_hit(sf[..], 80, 220); #assert surface_id(sf[..], hit) == "tab.files" && surface_action(sf[..], hit) == 15;
+  #assert surface_id(sf[..], surface_hit(sf[..], 300, 400)) == "panel" && surface_id(sf[..], surface_focus_step(sf[..], surface_find(sf[..], "row.three"), false)) == "send";
+}
+#test "hover, press, focus and disabled come from the input snapshot and the row's state" {
+  st: [1] CtxStore; a: [1] Atlas; text_test_atlas(a[..]); s := zeron_skin(); m := measure_font(a[..]);
+  sf := [1] UiSurface.[ctx_surface(st[..])]; ks := [1] KeyedStore.[KeyedStore.{rows = st[0].keyed[..]}]; f: [1] UiFrame;
+  // frame 1: no pointer. Frame 2: the pointer is over Cancel, as frame 1 committed it.
+  uiframe_begin(f[..], sf[..], ks[..], m, s, UiInput.{}, 0, 0.016, false, false);
+  _ = ctx_button(f[..], "cancel", 200, 60, "Cancel", false, 0, 12); _ = ctx_button(f[..], "off", 10, 60, "Off", true, EL_S_DISABLED, 9);
+  #assert uiframe_end(f[..], sf[..]) && surface_sheet(sf[..]).under[0].fill.r == s.raised.r;
+  off := surface_sheet(sf[..]); #assert off.under[1].fill.r == s.raised.r && off.over[1].fill.r == s.faint.r && off.nh == 2;
+  uiframe_begin(f[..], sf[..], ks[..], m, s, uiinput(210, 70, true, true, "cancel", "cancel"), 0.016, 0.016, false, false);
+  #assert uiframe_hovered(f[..], "cancel") && uiframe_pressed(f[..], "cancel") && uiframe_focused(f[..], "cancel") && !uiframe_hovered(f[..], "off") && uiframe_look(f[..], "cancel", false) == UISKIN_HOVER;
+  _ = ctx_button(f[..], "cancel", 200, 60, "Cancel", false, 0, 12);
+  k := uiframe_key(f[..], "cancel"); p := uiframe_press(f[..], k, "cancel");
+  #assert k >= 0 && p > 0 && p < 1 && uiframe_key(f[..], "cancel") == -1 && ks[0].refused_duplicate == 1 && uiframe_entry(f[..], k) > 0 && uiframe_moving(f[..]);
+  #assert uiframe_end(f[..], sf[..]) && surface_sheet(sf[..]).under[0].fill.r == s.hover.r;
+  t := [1] ElTable.[surface_rows(sf[..])]; #assert elt_has(t[..], 0, EL_S_PRESSED | EL_S_FOCUSED);
+  // frame 3: the pointer is lifted and "cancel" is not keyed, so its state retires
+  uiframe_begin(f[..], sf[..], ks[..], m, s, uiinput(210, 70, false, false, "", ""), 0.032, 0.016, true, true);
+  #assert !uiframe_hovered(f[..], "cancel") && f[0].reduced_motion && f[0].reduced_transparency && f[0].clock == 0.032;
+  _ = ctx_button(f[..], "cancel", 200, 60, "Cancel", false, 0, 12);
+  #assert uiframe_end(f[..], sf[..]) && ks[0].live == 0 && ks[0].retired == 1 && surface_sheet(sf[..]).under[0].fill.r == s.raised.r;
+  out: [256] u8; n := uiframe_counts(sf[..], ks[..], out[..]);
+  #assert cast(string) out[0..<n] == "generation 3 refused 0 lost 0 prims 1/128 text 1/128 hits 1/32 rows 1/24\nkeyed 0/8 refused 1 (full 0, duplicate 0 this frame) retired 1\n";
+}
+#test "a frame that overflows its surface is refused whole; a clip cuts paint and presses together" {
+  st: [1] CtxStore; a: [1] Atlas; text_test_atlas(a[..]); s := zeron_skin(); m := measure_font(a[..]);
+  sf := [1] UiSurface.[ctx_surface(st[..])]; ks := [1] KeyedStore.[KeyedStore.{rows = st[0].keyed[..]}]; f: [1] UiFrame;
+  uiframe_begin(f[..], sf[..], ks[..], m, s, UiInput.{}, 0, 0.016, false, false);
+  uiframe_clip(f[..], 0, 0, 400, 70);
+  _ = ctx_button(f[..], "half", 10, 60, "Half", false, 0, 1);       // y 60..<92: only 60..<70 shows
+  uiframe_unclip(f[..]);
+  _ = uiframe_row(f[..], "note", EL_TEXT, "Read me", 10, 100, 100, 20, 0, 0);
+  #assert uiframe_end(f[..], sf[..]);
+  sh := surface_sheet(sf[..]);
+  #assert sh.under[0].kind == PRIM_CLIP && sh.under[0].on && sh.over[0].kind == PRIM_CLIP && sh.nh == 1 && surface_rows(sf[..]).n == 2;
+  #assert surface_id(sf[..], surface_hit(sf[..], 20, 65)) == "half" && surface_hit(sf[..], 20, 80) == -1 && surface_id(sf[..], surface_hit(sf[..], 20, 110)) == "note";
+  // 33 buttons need 33 hits and 33 rows: more than the surface declares
+  uiframe_begin(f[..], sf[..], ks[..], m, s, UiInput.{}, 0, 0.016, false, false);
+  name: [EL_ID] u8;
+  for k: 0..<33 { n := el_put_i(name[..], el_copy(name[..], "b."), k); _ = ctx_button(f[..], cast(string) name[0..<n], 0, cast(f32) k * 40, "B", false, 0, 1); }
+  #assert !uiframe_end(f[..], sf[..]) && sf[0].refused == 1 && sf[0].last.rows == 9 && sf[0].last.sheet == 1 && sf[0].generation == 1;
+  // the committed frame is still the first one, in paint, hits and rows
+  sh = surface_sheet(sf[..]);
+  #assert sh.nh == 1 && sh.under[0].kind == PRIM_CLIP && surface_rows(sf[..]).n == 2 && surface_id(sf[..], 0) == "half" && surface_find(sf[..], "b.0") == -1;
+}

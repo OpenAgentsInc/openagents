@@ -1,0 +1,232 @@
+// A presentation surface's committed frame (components/gpu-components.md,
+// "The frame" and "Bounds"; GitHub #13645, stage G0): the display list, the
+// hit regions and the semantic rows a frame lays out, published together as
+// one generation.
+//
+// A surface holds two generations over arrays its caller declares, so each
+// surface states its own capacity: primitives, text lines, hits, pooled
+// bytes and semantic rows. A frame writes the back one; surface_commit swaps
+// it in. A reader (gpu_draw, the hit test, keyboard focus, the accessibility
+// bridge, `coax drive`) reads the committed one through surface_sheet and
+// surface_rows, during a frame as well as between frames, so it sees the old
+// set or the new set and never new paint with old hit regions.
+//
+//   st: [1] MySurfaceArrays;      // two of each array, sized for this surface
+//   sf := [1] UiSurface.[surface_over(sheet_a, rows_a[..], sheet_b, rows_b[..])];
+//   b := surface_begin(sf[..]);                     // the back generation, emptied
+//   ... components fill sf[0].sheet[b..<b + 1] and sf[0].rows[b..<b + 1] ...
+//   if surface_commit(sf[..]) { ... draw surface_sheet(sf[..]) ... }
+//
+// A frame that lost anything is refused: surface_commit returns false, counts
+// the refusal and what was lost (`refused`, `lost`, `last`), and the last
+// committed generation stays for every reader. An overflow therefore never
+// drops a label or leaves a hit region without its paint. What counts as
+// lost: anything the sheet counted (paint/sheet.coax `lost`), any semantic
+// row or nesting the table counted (core/elements.coax `lost`), and a
+// display list left full, because a component that appends to `under` or
+// `over` itself is not counted by the sheet. Declare each list at least one
+// longer than the largest frame needs.
+//
+// Text a primitive shows is a view. It must stay unchanged while its
+// generation is committed: keep it in the app's state, or in the sheet's
+// pool (sheet_pool), which is per generation.
+//   coax/bin/coax test components/paint/surface.coax
+
+#load "sheet.coax";
+#load "../core/elements.coax";
+
+// What one frame lost, by kind.
+UiSurfaceLoss :: struct {
+  sheet: int;      // counted by the sheet: boxes, text, lines, hits, pooled bytes
+  under: int;      // 1: `under` was left full
+  over: int;       // 1: `over` was left full
+  rows: int;       // semantic rows, or nesting, that did not fit
+}
+UiSurface :: struct {
+  sheet: [2] Sheet;            // the two generations' sheets, over the caller's arrays
+  rows: [2] ElTable;           // and their semantic tables
+  front: int;                  // which of the two is committed
+  generation: int;             // frames committed; 0: nothing is committed yet
+  writing: bool;               // between surface_begin and surface_commit
+  refused: int;                // frames refused since the surface was made
+  lost: int;                   // what the refused frames lost, summed
+  last: UiSurfaceLoss;         // the last frame's losses
+}
+
+// A surface over two sets of arrays. Each sheet's views and each row array's
+// count are that generation's capacity; give both generations the same.
+surface_over :: (a: Sheet, a_rows: [] El, b: Sheet, b_rows: [] El) -> UiSurface {
+  s: UiSurface;
+  s.sheet[0] = a; s.sheet[1] = b;
+  s.rows[0] = elt_over(a_rows); s.rows[1] = elt_over(b_rows);
+  return s;
+}
+// A frame starts: the back generation, emptied. Returns which it is; the
+// frame fills s[0].sheet[b..<b + 1] and s[0].rows[b..<b + 1].
+surface_begin :: (s: [] UiSurface) -> int {
+  b := 1 - s[0].front;
+  s[0].sheet[b].nu = 0; s[0].sheet[b].no = 0; s[0].sheet[b].nl = 0; s[0].sheet[b].nh = 0; s[0].sheet[b].np = 0; s[0].sheet[b].lost = 0;
+  elt_begin(s[0].rows[b..<b + 1]);
+  s[0].writing = true;
+  return b;
+}
+// What the frame being written has lost so far.
+surface_loss :: (s: [] UiSurface) -> UiSurfaceLoss {
+  b := 1 - s[0].front; sh := s[0].sheet[b];
+  l: UiSurfaceLoss;
+  l.sheet = sh.lost;
+  if sh.under.count > 0 && sh.nu >= sh.under.count { l.under = 1; }
+  if sh.over.count > 0 && sh.no >= sh.over.count { l.over = 1; }
+  l.rows = s[0].rows[b].lost;
+  return l;
+}
+surface_loss_total :: (l: UiSurfaceLoss) -> int { return l.sheet + l.under + l.over + l.rows; }
+// The frame ends. True: the back generation is now the committed one, the
+// display list, hit regions and semantic rows together. False: the frame
+// lost something, so it is refused and counted, and the generation committed
+// before stays. Without a surface_begin it does nothing and returns false.
+surface_commit :: (s: [] UiSurface) -> bool {
+  if !s[0].writing { return false; }
+  s[0].writing = false;
+  l := surface_loss(s);
+  s[0].last = l;
+  total := surface_loss_total(l);
+  if total > 0 { s[0].refused += 1; s[0].lost += total; return false; }
+  s[0].front = 1 - s[0].front;
+  s[0].generation += 1;
+  return true;
+}
+
+// The committed generation, for readers. Before the first commit both are empty.
+surface_sheet :: (s: [] UiSurface) -> Sheet {
+  if s.count == 0 || s[0].generation == 0 { return Sheet.{}; }
+  return s[0].sheet[s[0].front];
+}
+surface_rows :: (s: [] UiSurface) -> ElTable {
+  if s.count == 0 || s[0].generation == 0 { return ElTable.{}; }
+  return s[0].rows[s[0].front];
+}
+// The committed row under a logical point (the topmost, honouring clips), or -1.
+surface_hit :: (s: [] UiSurface, x: f32, y: f32) -> int {
+  t := [1] ElTable.[surface_rows(s)];
+  return elt_hit(t[..], x, y);
+}
+// The committed row with an id, or -1; a committed row's id ("" out of range) and its action (0: none).
+surface_find :: (s: [] UiSurface, id: string) -> int {
+  t := [1] ElTable.[surface_rows(s)];
+  return elt_find(t[..], id);
+}
+surface_id :: (s: [] UiSurface, i: int) -> string {
+  if s.count == 0 || s[0].generation == 0 || i < 0 || i >= s[0].rows[s[0].front].n { return ""; }
+  f := s[0].front;
+  return cast(string) s[0].rows[f].rows[i].id[0..<s[0].rows[f].rows[i].id_n];
+}
+surface_action :: (s: [] UiSurface, i: int) -> int {
+  if s.count == 0 || s[0].generation == 0 || i < 0 || i >= s[0].rows[s[0].front].n { return 0; }
+  return s[0].rows[s[0].front].rows[i].action;
+}
+// Keyboard focus over the committed rows (core/elements.coax elt_focus_step).
+surface_focus_step :: (s: [] UiSurface, from: int, back: bool) -> int {
+  t := [1] ElTable.[surface_rows(s)];
+  return elt_focus_step(t[..], from, back);
+}
+// The committed rows as `coax drive`'s tree.
+surface_tree :: (s: [] UiSurface, out: [] u8) -> int {
+  t := [1] ElTable.[surface_rows(s)];
+  return elt_tree(t[..], out);
+}
+// The surface's counts as one line, for a driver or a log:
+// `generation G refused R lost L prims U/CAP text O/CAP hits H/CAP rows N/CAP`.
+surface_counts :: (s: [] UiSurface, out: [] u8) -> int {
+  f := s[0].front; live := s[0].generation > 0;
+  sh := s[0].sheet[f];
+  n := el_put(out, 0, "generation "); n = el_put_i(out, n, s[0].generation);
+  n = el_put(out, n, " refused "); n = el_put_i(out, n, s[0].refused);
+  n = el_put(out, n, " lost "); n = el_put_i(out, n, s[0].lost);
+  n = el_put(out, n, " prims "); n = el_put_i(out, n, ifx live then sh.nu else 0); n = el_put(out, n, "/"); n = el_put_i(out, n, sh.under.count);
+  n = el_put(out, n, " text "); n = el_put_i(out, n, ifx live then sh.no else 0); n = el_put(out, n, "/"); n = el_put_i(out, n, sh.over.count);
+  n = el_put(out, n, " hits "); n = el_put_i(out, n, ifx live then sh.nh else 0); n = el_put(out, n, "/"); n = el_put_i(out, n, sh.hits.count);
+  n = el_put(out, n, " rows "); n = el_put_i(out, n, ifx live then s[0].rows[f].n else 0); n = el_put(out, n, "/"); n = el_put_i(out, n, s[0].rows[f].rows.count);
+  return el_put(out, n, "\n");
+}
+
+// ---------------------------------------------------------------- checks
+
+// A small surface over a test's own arrays: 4 primitives, 4 runs of text, 2 hits and 3 rows a generation.
+SurfaceStore :: struct {
+  under: [2] [4] Prim; over: [2] [4] Prim; lines: [2] [2] SheetLine; hits: [2] [2] SheetHit; pool: [2] [8] u8; rows: [2] [3] El;
+}
+surface_test :: (st: [] SurfaceStore) -> UiSurface {
+  a := Sheet.{under = st[0].under[0][..], over = st[0].over[0][..], lines = st[0].lines[0][..], hits = st[0].hits[0][..], pool = st[0].pool[0][..]};
+  b := Sheet.{under = st[0].under[1][..], over = st[0].over[1][..], lines = st[0].lines[1][..], hits = st[0].hits[1][..], pool = st[0].pool[1][..]};
+  return surface_over(a, st[0].rows[0][..], b, st[0].rows[1][..]);
+}
+// One frame: `boxes` boxes at x, each with a hit and a row "ID.k" (k from 1) for the first `rows` of them.
+surface_test_frame :: (s: [] UiSurface, id: string, x: f32, boxes: int, rows: int) -> bool {
+  b := surface_begin(s);
+  sh := s[0].sheet[b..<b + 1]; t := s[0].rows[b..<b + 1];
+  name: [EL_ID] u8;
+  for k: 0..<boxes {
+    sheet_fill(sh, x, cast(f32) k * 10, 10, 10, 0, hex(0xffffff, 1));
+    if k < rows {
+      n := el_copy(name[..], id); n = el_put(name[..], n, "."); n = el_put_i(name[..], n, k + 1);
+      i := elt_row(t, cast(string) name[0..<n], EL_BUTTON, "b", x, cast(f32) k * 10, 10, 10);
+      sheet_hit(sh, 9, i, 0, x, cast(f32) k * 10, 10, 10);
+    }
+  }
+  return surface_commit(s);
+}
+
+#test "a commit publishes the display list, the hits and the rows as one generation" {
+  st: [1] SurfaceStore; sf := [1] UiSurface.[surface_test(st[..])]; s := sf[..];
+  // nothing committed: readers see an empty set
+  #assert surface_sheet(s).nu == 0 && surface_rows(s).n == 0 && surface_hit(s, 5, 5) == -1 && surface_id(s, 0) == "" && !surface_commit(s);
+  #assert surface_test_frame(s, "one", 0, 2, 2) && s[0].generation == 1;
+  sh := surface_sheet(s); t := surface_rows(s);
+  #assert sh.nu == 2 && sh.nh == 2 && t.n == 2 && sh.under[0].x == 0 && sh.hits[1].a == 1 && surface_id(s, 1) == "one.2" && surface_hit(s, 5, 15) == 1;
+  // while the next frame is being written, readers still see the whole first one
+  b := surface_begin(s);
+  sheet_fill(s[0].sheet[b..<b + 1], 100, 0, 10, 10, 0, hex(0xffffff, 1));
+  _ = elt_row(s[0].rows[b..<b + 1], "two.1", EL_BUTTON, "b", 100, 0, 10, 10);
+  sh = surface_sheet(s); t = surface_rows(s);
+  #assert sh.nu == 2 && sh.under[0].x == 0 && sh.nh == 2 && t.n == 2 && surface_find(s, "two.1") == -1 && surface_find(s, "one.1") == 0 && surface_hit(s, 105, 5) == -1;
+  // committed: all three are the second frame's
+  sheet_hit(s[0].sheet[b..<b + 1], 9, 0, 0, 100, 0, 10, 10);
+  #assert surface_commit(s) && s[0].generation == 2 && s[0].refused == 0;
+  sh = surface_sheet(s); t = surface_rows(s);
+  #assert sh.nu == 1 && sh.under[0].x == 100 && sh.nh == 1 && sh.hits[0].x == 100 && t.n == 1 && surface_id(s, 0) == "two.1" && surface_hit(s, 105, 5) == 0 && surface_hit(s, 5, 5) == -1;
+  out: [128] u8; n := surface_counts(s, out[..]);
+  #assert cast(string) out[0..<n] == "generation 2 refused 0 lost 0 prims 1/4 text 0/4 hits 1/2 rows 1/3\n";
+  n = surface_tree(s, out[..]); #assert cast(string) out[0..<n] == "two.1 button \"b\" at 100 0 size 10x10\n";
+}
+#test "a frame that overflows is refused and counted, and the committed generation stays whole" {
+  st: [1] SurfaceStore; sf := [1] UiSurface.[surface_test(st[..])]; s := sf[..];
+  #assert surface_test_frame(s, "kept", 0, 2, 2);
+  // one hit too many (and no row for it): refused
+  b := surface_begin(s);
+  for k: 0..<3 { sheet_hit(s[0].sheet[b..<b + 1], 9, k, 0, 50, 0, 10, 10); }
+  #assert !surface_commit(s) && s[0].refused == 1 && s[0].lost == 1 && s[0].last.sheet == 1 && s[0].generation == 1 && !s[0].writing;
+  // a row too many: refused
+  b = surface_begin(s);
+  for k: 0..<4 { _ = elt_row(s[0].rows[b..<b + 1], "r", EL_ITEM, "", 0, 0, 1, 1); }
+  #assert surface_loss(s).rows == 1 && !surface_commit(s) && s[0].refused == 2 && s[0].last.rows == 1 && s[0].last.sheet == 0;
+  // a display list left full, by a component that appends itself: refused
+  b = surface_begin(s);
+  for k: 0..<4 { s[0].sheet[b].nu = prim_fill(s[0].sheet[b].under, s[0].sheet[b].nu, 70, 0, 1, 1, 0, hex(0, 1)); }
+  #assert !surface_commit(s) && s[0].last.under == 1 && s[0].refused == 3;
+  // text that did not fit, pooled bytes that did not fit, nesting too deep: each refused
+  b = surface_begin(s);
+  for k: 0..<5 { _ = sheet_text(s[0].sheet[b..<b + 1], measure_cells(), -1, 0, 0, 1, 0, hex(0, 1), "t"); }
+  #assert !surface_commit(s) && s[0].last.sheet == 1 && s[0].last.over == 1;
+  b = surface_begin(s); #assert sheet_pool(s[0].sheet[b..<b + 1], "123456789") == "" && !surface_commit(s) && s[0].last.sheet == 1;
+  b = surface_begin(s);
+  for k: 0..<EL_DEPTH + 1 { elt_open(s[0].rows[b..<b + 1], -1); }
+  #assert !surface_commit(s) && s[0].last.rows == 1 && s[0].refused == 6 && s[0].lost == 7;
+  // through every refusal the readers kept the frame committed first, whole
+  sh := surface_sheet(s); t := surface_rows(s);
+  #assert s[0].generation == 1 && sh.nu == 2 && sh.nh == 2 && sh.hits[0].a == 0 && sh.under[1].y == 10 && t.n == 2 && surface_id(s, 0) == "kept.1" && surface_id(s, 1) == "kept.2" && surface_hit(s, 5, 15) == 1;
+  // a frame that fits commits again, and the loss is zero
+  #assert surface_test_frame(s, "next", 0, 3, 2) && s[0].generation == 2 && surface_loss_total(s[0].last) == 0 && surface_id(s, 1) == "next.2" && surface_sheet(s).nu == 3;
+  // exactly full is refused: a list is declared one longer than its largest frame
+  #assert !surface_test_frame(s, "full", 0, 4, 0) && s[0].last.under == 1 && surface_sheet(s).nu == 3 && surface_action(s, 0) == 0 && surface_focus_step(s, -1, false) == -1;
+}

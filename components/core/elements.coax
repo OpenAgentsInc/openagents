@@ -6,55 +6,86 @@
 // An id is the part and its name ("composer.send", "session.5e55a0e1"), never an index that moves
 // when another row comes or goes. `tree` writes the rows in the layout trace's format
 // (metaverse-engine/agent/drive.coax): `ID ROLE "LABEL" at X Y size WxH`, logical px, y down.
+//
+// It is the one semantic table of a presentation surface (components/gpu-components.md, "One
+// semantic table"; GitHub #13645, stage G0). A row also carries its state (EL_S_*), a value, its
+// parent, the action it dispatches, its focus order and the clip it was recorded under. Four
+// readers use the same committed rows: hit testing (elt_hit), keyboard focus (elt_focus_step), the
+// accessibility bridge (the rows in order, elt_visible, elt_parent) and `coax drive` (elt_tree).
+//
+// Two forms share one row type and one set of rules:
+// - ElTable: the caller's rows, so each surface declares its own capacity.
+//     rows: [64] El; t := [1] ElTable.[elt_over(rows[..])];
+//     elt_begin(t[..]);
+//     i := elt_row(t[..], "login.send", EL_BUTTON, "Send code", x, y, w, h);
+//     elt_state(t[..], i, EL_S_DISABLED); elt_action(t[..], i, ACT_SEND); elt_focusable(t[..], i);
+// - Elements: 192 rows inside the struct, with the el_* procedures. It is the form older callers
+//   hold (the desk, the editor's chrome) and it keeps working unchanged; el_table gives its rows
+//   as an ElTable for the new lookups.
+//
+// How the tree's attributes (core/tree.coax) map onto a row, so one description serves DOM
+// attributes and native accessibility: AT_LABEL is the label; AT_ROLE the role; AT_VALUE the
+// value; AT_DISABLED, AT_PRESSED, AT_EXPANDED, AT_CURRENT, AT_CHECKED and AT_LIVE are EL_S_DISABLED,
+// EL_S_PRESSED (with EL_S_TOGGLES), EL_S_EXPANDED (with EL_S_EXPANDS), EL_S_CURRENT, EL_S_CHECKED
+// (with EL_S_CHECKS) and EL_S_LIVE; AT_FOCUS is EL_S_FOCUSED.
 //   coax/bin/coax test components/core/elements.coax
 
-EL_MAX :: 192;       // rows in one frame's table
+EL_MAX :: 192;       // rows in an Elements (an ElTable's capacity is its caller's)
 EL_ID :: 48;         // bytes of an id
 EL_LABEL :: 64;      // bytes of a label
+EL_VALUE :: 64;      // bytes of a value
+EL_DEPTH :: 16;      // open parents, and clips, at once
 EL_BUTTON :: 0; EL_ROW :: 1; EL_TAB :: 2; EL_FIELD :: 3; EL_REGION :: 4; EL_ITEM :: 5;
-EL_ROLE :: [6] string.["button", "row", "tab", "field", "region", "item"];
+EL_TOGGLE :: 6; EL_SLIDER :: 7; EL_TEXT :: 8; EL_HEADING :: 9; EL_LINK :: 10; EL_IMAGE :: 11; EL_PROGRESS :: 12; EL_NOTICE :: 13;
+EL_ROLES :: 14;
+EL_ROLE :: [14] string.["button", "row", "tab", "field", "region", "item", "toggle", "slider", "text", "heading", "link", "image", "progress", "notice"];
+
+// A row's state, a bit each.
+EL_S_DISABLED :: 1;      // it cannot be pressed or typed into
+EL_S_BUSY :: 2;          // its work is under way
+EL_S_PRESSED :: 4;       // the pointer is down on it, or a toggle button is on
+EL_S_EXPANDED :: 8;      // its content is shown (with EL_S_EXPANDS)
+EL_S_CURRENT :: 16;      // the one of its set that is shown: the active tab, the open session
+EL_S_CHECKED :: 32;      // on (with EL_S_CHECKS)
+EL_S_FOCUSED :: 64;      // it has the keyboard
+EL_S_EXPANDS :: 128;     // it can expand: collapsed when EL_S_EXPANDED is clear
+EL_S_CHECKS :: 256;      // it can be checked: off when EL_S_CHECKED is clear
+EL_S_TOGGLES :: 512;     // its pressed state is kept (a toggle button), not only held
+EL_S_LIVE :: 1024;       // a change to it is announced
+EL_STATES :: 11;
+EL_STATE :: [11] string.["disabled", "busy", "pressed", "expanded", "current", "checked", "focused", "expands", "checks", "toggles", "live"];
 
 El :: struct {
   id: [EL_ID] u8; id_n: int;
   role: int;
   label: [EL_LABEL] u8; label_n: int;
   x: f32; y: f32; w: f32; h: f32;
+  state: int;                          // EL_S_* bits
+  value: [EL_VALUE] u8; value_n: int;  // what it holds: a field's text, a slider's share
+  parent: int;                         // its parent's row, or -1 at the top
+  action: int;                         // the action a press dispatches (the app's numbers); 0: none
+  focus: int;                          // its place in keyboard focus order, from 1; 0: the keyboard skips it
+  clipped: bool; cl: f32; ct: f32; cr: f32; cb: f32;   // the clip it was recorded under: only that part can be pressed
 }
+// What can be pressed or read of a row: its box cut by its clip.
+ElBox :: struct { x: f32; y: f32; w: f32; h: f32; visible: bool; }
+
+// A semantic table over the caller's rows; rows.count is the surface's capacity.
+ElTable :: struct {
+  rows: [] El; n: int;
+  lost: int;                           // rows, or nesting, that did not fit: a frame with any is refused (paint/surface.coax)
+  renamed: int;                        // rows whose id was already in the table and got a number after it
+  open: [EL_DEPTH] int; depth: int;    // the open parents
+  cl: [EL_DEPTH] f32; ct: [EL_DEPTH] f32; cr: [EL_DEPTH] f32; cb: [EL_DEPTH] f32; clips: int;   // the open clips, each already cut by the ones around it
+  focus_n: int;                        // focus places handed out by elt_focusable
+}
+// The older form: EL_MAX rows of its own.
 Elements :: struct { rows: [EL_MAX] El; n: int; lost: int; }
 
-el_clear :: (e: [] Elements) { if e.count > 0 { e[0].n = 0; e[0].lost = 0; } }
 el_copy :: (dst: [] u8, src: string) -> int {
   n := 0;
   for c: src { if n >= dst.count { break; } dst[n] = c; n += 1; }
   return n;
-}
-el_id :: (e: [] Elements, i: int) -> string { return cast(string) e[0].rows[i].id[0..<e[0].rows[i].id_n]; }
-el_label :: (e: [] Elements, i: int) -> string { return cast(string) e[0].rows[i].label[0..<e[0].rows[i].label_n]; }
-// A row; one with no area or an empty id is not kept (it can't be pressed). An id already in the
-// table this frame gets "-2", "-3" after it, so two rows never answer to one id.
-el_add :: (e: [] Elements, id: string, role: int, label: string, x: f32, y: f32, w: f32, h: f32) {
-  if e.count == 0 || id.count == 0 || !(w > 0) || !(h > 0) { return; }
-  if e[0].n >= EL_MAX { e[0].lost += 1; return; }
-  r: El;
-  r.id_n = el_copy(r.id[..], id);
-  // an id already in the table this frame: the first of id-2, id-3 ... that is not
-  if el_find(e, id) >= 0 && r.id_n + 3 <= EL_ID {
-    base := r.id_n;
-    for again: 2..<100 {
-      k := base; r.id[k] = '-'; k += 1;
-      if again >= 10 { r.id[k] = cast(u8) ('0' + again / 10); k += 1; }
-      r.id[k] = cast(u8) ('0' + again % 10); k += 1;
-      r.id_n = k;
-      if el_find(e, cast(string) r.id[0..<k]) < 0 { break; }
-    }
-  }
-  r.role = ifx role >= 0 && role < EL_ROLE.count then role else EL_REGION;
-  r.label_n = el_copy(r.label[..], label);
-  if label.count > r.label_n { while r.label_n > 0 && (label[r.label_n] & 0xC0) == 0x80 { r.label_n -= 1; } }   // not inside a character
-  for i: 0..<r.label_n { if r.label[i] == '"' || r.label[i] < 32 { r.label[i] = ' '; } }
-  r.x = x; r.y = y; r.w = w; r.h = h;
-  e[0].rows[e[0].n] = r;
-  e[0].n += 1;
 }
 // An id made of a part and a name: "session." and the name, its spaces and odd bytes as "-".
 el_join :: (out: [] u8, part: string, name: string) -> string {
@@ -67,6 +98,229 @@ el_join :: (out: [] u8, part: string, name: string) -> string {
   }
   return cast(string) out[0..<n];
 }
+
+// ---------------------------------------------------------------- the rules, over any rows
+
+el_rows_find :: (rows: [] El, n: int, id: string) -> int {
+  for i: 0..<n { if rows[i].id_n == id.count && cast(string) rows[i].id[0..<rows[i].id_n] == id { return i; } }
+  return -1;
+}
+// A row from its id, role, label and box: the id cut to EL_ID bytes, one already among the first
+// n rows numbered ("-2", "-3"), the label cut at a character and cleaned for the tree's quotes.
+// `renamed` says the id got a number.
+ElMade :: struct { row: El; renamed: bool; }
+el_rows_make :: (rows: [] El, n: int, id: string, role: int, label: string, x: f32, y: f32, w: f32, h: f32) -> ElMade {
+  r: El; renamed := false;
+  r.id_n = el_copy(r.id[..], id);
+  // an id already in the table this frame: the first of id-2, id-3 ... that is not
+  if el_rows_find(rows, n, cast(string) r.id[0..<r.id_n]) >= 0 {
+    renamed = true;
+    if r.id_n + 3 <= EL_ID {
+      base := r.id_n;
+      for again: 2..<100 {
+        k := base; r.id[k] = '-'; k += 1;
+        if again >= 10 { r.id[k] = cast(u8) ('0' + again / 10); k += 1; }
+        r.id[k] = cast(u8) ('0' + again % 10); k += 1;
+        r.id_n = k;
+        if el_rows_find(rows, n, cast(string) r.id[0..<k]) < 0 { break; }
+      }
+    }
+  }
+  r.role = ifx role >= 0 && role < EL_ROLES then role else EL_REGION;
+  r.label_n = el_copy(r.label[..], label);
+  if label.count > r.label_n { while r.label_n > 0 && (label[r.label_n] & 0xC0) == 0x80 { r.label_n -= 1; } }   // not inside a character
+  for i: 0..<r.label_n { if r.label[i] == '"' || r.label[i] < 32 { r.label[i] = ' '; } }
+  r.x = x; r.y = y; r.w = w; r.h = h;
+  r.parent = -1;
+  return ElMade.{row = r, renamed = renamed};
+}
+// What can be pressed or read of a row.
+el_box :: (r: El) -> ElBox {
+  if !r.clipped { return ElBox.{x = r.x, y = r.y, w = r.w, h = r.h, visible = r.w > 0 && r.h > 0}; }
+  x0 := ifx r.x > r.cl then r.x else r.cl; y0 := ifx r.y > r.ct then r.y else r.ct;
+  x1 := ifx r.x + r.w < r.cr then r.x + r.w else r.cr; y1 := ifx r.y + r.h < r.cb then r.y + r.h else r.cb;
+  if !(x1 > x0) || !(y1 > y0) { return ElBox.{x = x0, y = y0}; }
+  return ElBox.{x = x0, y = y0, w = x1 - x0, h = y1 - y0, visible = true};
+}
+// The row under a logical point: the last one added (the one drawn on top) whose box, cut by its
+// clip, holds the point. -1 when there is none.
+el_rows_hit :: (rows: [] El, n: int, x: f32, y: f32) -> int {
+  i := n - 1;
+  while i >= 0 {
+    b := el_box(rows[i]);
+    if b.visible && x >= b.x && x < b.x + b.w && y >= b.y && y < b.y + b.h { return i; }
+    i -= 1;
+  }
+  return -1;
+}
+
+// ---------------------------------------------------------------- ElTable: a surface's table
+
+elt_over :: (rows: [] El) -> ElTable { return ElTable.{rows = rows}; }
+// A frame's table starts empty.
+elt_begin :: (t: [] ElTable) {
+  if t.count == 0 { return; }
+  t[0].n = 0; t[0].lost = 0; t[0].renamed = 0; t[0].depth = 0; t[0].clips = 0; t[0].focus_n = 0;
+}
+elt_capacity :: (t: [] ElTable) -> int { return ifx t.count > 0 then t[0].rows.count else 0; }
+elt_ok :: (t: [] ElTable, i: int) -> bool { return t.count > 0 && i >= 0 && i < t[0].n; }
+elt_id :: (t: [] ElTable, i: int) -> string { return ifx elt_ok(t, i) then cast(string) t[0].rows[i].id[0..<t[0].rows[i].id_n] else ""; }
+elt_label :: (t: [] ElTable, i: int) -> string { return ifx elt_ok(t, i) then cast(string) t[0].rows[i].label[0..<t[0].rows[i].label_n] else ""; }
+elt_value_of :: (t: [] ElTable, i: int) -> string { return ifx elt_ok(t, i) then cast(string) t[0].rows[i].value[0..<t[0].rows[i].value_n] else ""; }
+elt_parent :: (t: [] ElTable, i: int) -> int { return ifx elt_ok(t, i) then t[0].rows[i].parent else -1; }
+elt_has :: (t: [] ElTable, i: int, state: int) -> bool { return elt_ok(t, i) && (t[0].rows[i].state & state) == state; }
+elt_visible :: (t: [] ElTable, i: int) -> ElBox { if !elt_ok(t, i) { return ElBox.{}; } return el_box(t[0].rows[i]); }
+
+// A row: its index, or -1. One with no area or an empty id is not kept (it can't be pressed). One
+// that does not fit is counted in `lost`. An id already in the table this frame gets "-2", "-3"
+// after it and is counted in `renamed`, so two rows never answer to one id. The row's parent is
+// the open one (elt_open) and its clip the open one (elt_clip).
+elt_row :: (t: [] ElTable, id: string, role: int, label: string, x: f32, y: f32, w: f32, h: f32) -> int {
+  if t.count == 0 || id.count == 0 || !(w > 0) || !(h > 0) { return -1; }
+  if t[0].n >= t[0].rows.count { t[0].lost += 1; return -1; }
+  m := el_rows_make(t[0].rows, t[0].n, id, role, label, x, y, w, h);
+  r := m.row;
+  if m.renamed { t[0].renamed += 1; }
+  if t[0].depth > 0 && t[0].depth <= EL_DEPTH { r.parent = t[0].open[t[0].depth - 1]; }
+  if t[0].clips > 0 && t[0].clips <= EL_DEPTH {
+    c := t[0].clips - 1;
+    r.clipped = true; r.cl = t[0].cl[c]; r.ct = t[0].ct[c]; r.cr = t[0].cr[c]; r.cb = t[0].cb[c];
+  }
+  at := t[0].n;
+  t[0].rows[at] = r;
+  t[0].n += 1;
+  return at;
+}
+// State bits added to a row, its value, its action and its focus place. A row of -1 (one that
+// was not kept) is left alone, so a component need not test what elt_row returned.
+elt_state :: (t: [] ElTable, i: int, state: int) { if elt_ok(t, i) { t[0].rows[i].state |= state; } }
+elt_value :: (t: [] ElTable, i: int, value: string) {
+  if !elt_ok(t, i) { return; }
+  r := t[0].rows[i];
+  r.value_n = el_copy(r.value[..], value);
+  if value.count > r.value_n { while r.value_n > 0 && (value[r.value_n] & 0xC0) == 0x80 { r.value_n -= 1; } }
+  for k: 0..<r.value_n { if r.value[k] == '"' || r.value[k] < 32 { r.value[k] = ' '; } }
+  t[0].rows[i] = r;
+}
+// A row's value as a share (0..1), written as a percentage: "25%" (a slider, a bar).
+elt_value_share :: (t: [] ElTable, i: int, share: f32) {
+  v := ifx share < 0 then 0.0f32 else ifx share > 1 then 1.0f32 else share;
+  b: [8] u8;
+  n := el_put_i(b[..], 0, el_round(v * 100));
+  n = el_put(b[..], n, "%");
+  elt_value(t, i, cast(string) b[0..<n]);
+}
+elt_action :: (t: [] ElTable, i: int, action: int) { if elt_ok(t, i) { t[0].rows[i].action = action; } }
+// The keyboard reaches this row at `order` (from 1; rows with one order go in the order added).
+elt_focus :: (t: [] ElTable, i: int, order: int) { if elt_ok(t, i) { t[0].rows[i].focus = ifx order > 0 then order else 0; } }
+// The keyboard reaches this row after every row made focusable before it.
+elt_focusable :: (t: [] ElTable, i: int) { if elt_ok(t, i) { t[0].focus_n += 1; t[0].rows[i].focus = t[0].focus_n; } }
+// Rows added until elt_close are children of row i. Nesting deeper than EL_DEPTH is counted in
+// `lost`; opening a row that was not kept still nests, with no parent.
+elt_open :: (t: [] ElTable, i: int) {
+  if t.count == 0 { return; }
+  if t[0].depth < EL_DEPTH { t[0].open[t[0].depth] = ifx elt_ok(t, i) then i else -1; } else { t[0].lost += 1; }
+  t[0].depth += 1;
+}
+elt_close :: (t: [] ElTable) { if t.count > 0 && t[0].depth > 0 { t[0].depth -= 1; } }
+// Rows added until elt_unclip can be pressed only inside (left, top, right, bottom), cut by the
+// clips already open (a scroll area inside a panel).
+elt_clip :: (t: [] ElTable, left: f32, top: f32, right: f32, bottom: f32) {
+  if t.count == 0 { return; }
+  if t[0].clips >= EL_DEPTH { t[0].lost += 1; t[0].clips += 1; return; }
+  l := left; u := top; r := right; b := bottom;
+  if t[0].clips > 0 {
+    c := t[0].clips - 1;
+    if t[0].cl[c] > l { l = t[0].cl[c]; } if t[0].ct[c] > u { u = t[0].ct[c]; }
+    if t[0].cr[c] < r { r = t[0].cr[c]; } if t[0].cb[c] < b { b = t[0].cb[c]; }
+  }
+  c := t[0].clips;
+  t[0].cl[c] = l; t[0].ct[c] = u; t[0].cr[c] = r; t[0].cb[c] = b;
+  t[0].clips += 1;
+}
+elt_unclip :: (t: [] ElTable) { if t.count > 0 && t[0].clips > 0 { t[0].clips -= 1; } }
+
+// The four readers' lookups.
+elt_find :: (t: [] ElTable, id: string) -> int { if t.count == 0 { return -1; } return el_rows_find(t[0].rows, t[0].n, id); }
+// Hit test: the topmost row under a logical point, honouring each row's clip. -1: none.
+elt_hit :: (t: [] ElTable, x: f32, y: f32) -> int { if t.count == 0 { return -1; } return el_rows_hit(t[0].rows, t[0].n, x, y); }
+// Whether the keyboard stops on a row: it has a focus place, is not disabled and some of it shows.
+elt_focus_stop :: (t: [] ElTable, i: int) -> bool {
+  return elt_ok(t, i) && t[0].rows[i].focus > 0 && (t[0].rows[i].state & EL_S_DISABLED) == 0 && el_box(t[0].rows[i]).visible;
+}
+// Keyboard focus: the stop after row `from` in focus order (before it when `back`), wrapping
+// round. From -1, or a row that is not a stop, it is the first stop (the last when `back`).
+// -1 when the table has no stop.
+elt_focus_step :: (t: [] ElTable, from: int, back: bool) -> int {
+  if t.count == 0 { return -1; }
+  placed := elt_focus_stop(t, from);
+  best := -1; edge := -1;         // the nearest stop past `from`; the stop to wrap to
+  for i: 0..<t[0].n {
+    if !elt_focus_stop(t, i) || i == from { continue; }
+    fi := t[0].rows[i].focus;
+    // i before j in focus order: a lower place, or the same place and added earlier
+    if edge < 0 { edge = i; }
+    else {
+      fe := t[0].rows[edge].focus;
+      first := fi < fe || (fi == fe && i < edge);
+      if first != back { edge = i; }
+    }
+    if !placed { continue; }
+    ff := t[0].rows[from].focus;
+    after := fi > ff || (fi == ff && i > from);
+    if after == back { continue; }
+    if best < 0 { best = i; }
+    else {
+      fb := t[0].rows[best].focus;
+      nearer := fi < fb || (fi == fb && i < best);
+      if nearer != back { best = i; }
+    }
+  }
+  if best >= 0 { return best; }
+  if edge >= 0 { return edge; }
+  return ifx placed then from else -1;
+}
+// The rows of another table (a part laid out at its own origin), moved by dx, dy, with their
+// state, value, action, focus place and clip. A top row of `from` becomes a child of the open
+// row; a focus place follows the ones already handed out.
+elt_append :: (t: [] ElTable, from: [] ElTable, dx: f32, dy: f32) {
+  if t.count == 0 || from.count == 0 { return; }
+  base := t[0].n; places := t[0].focus_n;
+  for i: 0..<from[0].n {
+    r := from[0].rows[i];
+    at := elt_row(t, elt_id(from, i), r.role, elt_label(from, i), r.x + dx, r.y + dy, r.w, r.h);
+    if at < 0 { continue; }
+    n := t[0].rows[at];
+    n.state = r.state; n.value = r.value; n.value_n = r.value_n; n.action = r.action;
+    if r.focus > 0 { n.focus = places + r.focus; if n.focus > t[0].focus_n { t[0].focus_n = n.focus; } }
+    if r.parent >= 0 { n.parent = base + r.parent; }
+    if r.clipped {
+      l := r.cl + dx; u := r.ct + dy; rr := r.cr + dx; b := r.cb + dy;
+      if n.clipped { if n.cl > l { l = n.cl; } if n.ct > u { u = n.ct; } if n.cr < rr { rr = n.cr; } if n.cb < b { b = n.cb; } }
+      n.clipped = true; n.cl = l; n.ct = u; n.cr = rr; n.cb = b;
+    }
+    t[0].rows[at] = n;
+  }
+  t[0].lost += from[0].lost;
+}
+
+// ---------------------------------------------------------------- Elements: the older form
+
+// An Elements' rows as a table, for the lookups above (elt_hit, elt_focus_step ...). It is a
+// copy of the counts: rows added through it are not counted in the Elements.
+el_table :: (e: [] Elements) -> ElTable { return ElTable.{rows = e[0].rows[..], n = e[0].n, lost = e[0].lost}; }
+el_clear :: (e: [] Elements) { if e.count > 0 { e[0].n = 0; e[0].lost = 0; } }
+el_id :: (e: [] Elements, i: int) -> string { return cast(string) e[0].rows[i].id[0..<e[0].rows[i].id_n]; }
+el_label :: (e: [] Elements, i: int) -> string { return cast(string) e[0].rows[i].label[0..<e[0].rows[i].label_n]; }
+// A row; one with no area or an empty id is not kept (it can't be pressed). An id already in the
+// table this frame gets "-2", "-3" after it, so two rows never answer to one id.
+el_add :: (e: [] Elements, id: string, role: int, label: string, x: f32, y: f32, w: f32, h: f32) {
+  if e.count == 0 || id.count == 0 || !(w > 0) || !(h > 0) { return; }
+  if e[0].n >= EL_MAX { e[0].lost += 1; return; }
+  m := el_rows_make(e[0].rows[..], e[0].n, id, role, label, x, y, w, h);
+  e[0].rows[e[0].n] = m.row;
+  e[0].n += 1;
+}
 // The rows of another table (a part laid out at its own origin), moved by dx, dy.
 el_append :: (e: [] Elements, from: [] Elements, dx: f32, dy: f32) {
   if e.count == 0 || from.count == 0 { return; }
@@ -78,19 +332,13 @@ el_append :: (e: [] Elements, from: [] Elements, dx: f32, dy: f32) {
 }
 el_find :: (e: [] Elements, id: string) -> int {
   if e.count == 0 { return -1; }
-  for i: 0..<e[0].n { if el_id(e, i) == id { return i; } }
-  return -1;
+  return el_rows_find(e[0].rows[..], e[0].n, id);
 }
 // The id of the row under a logical point, the last one added (the one drawn on top), or "".
 el_at :: (e: [] Elements, x: f32, y: f32) -> string {
   if e.count == 0 { return ""; }
-  i := e[0].n - 1;
-  while i >= 0 {
-    r := e[0].rows[i];
-    if x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h { return el_id(e, i); }
-    i -= 1;
-  }
-  return "";
+  i := el_rows_hit(e[0].rows[..], e[0].n, x, y);
+  return ifx i >= 0 then el_id(e, i) else "";
 }
 
 el_put :: (out: [] u8, n: int, s: string) -> int { m := n; for c: s { if m >= out.count { break; } out[m] = c; m += 1; } return m; }
@@ -110,20 +358,49 @@ el_has :: (s: string, part: string) -> bool {
   return false;
 }
 el_round :: (v: f32) -> int { return ifx v >= 0 then cast(int) (v + 0.5) else -cast(int) (0.5 - v); }
-// The table as text, one row a line: `ID ROLE "LABEL" at X Y size WxH`. Bytes written.
-el_tree :: (e: [] Elements, out: [] u8) -> int {
+// Rows as text, one a line: `ID ROLE "LABEL" at X Y size WxH`. With `detail`, what the row also
+// carries follows on its line, each part only when set: ` [disabled focused]`, ` value "V"`,
+// ` action N`, ` focus N`, ` in PARENT-ID`. Bytes written.
+el_rows_tree :: (rows: [] El, count: int, lost: int, detail: bool, out: [] u8) -> int {
   n := 0;
-  if e.count == 0 || e[0].n == 0 && e[0].lost == 0 { return el_put(out, 0, "(nothing yet: no rows drawn)\n"); }
-  for i: 0..<e[0].n {
-    r := e[0].rows[i];
-    n = el_put(out, n, el_id(e, i)); n = el_put(out, n, " "); n = el_put(out, n, EL_ROLE[r.role]);
-    n = el_put(out, n, " \""); n = el_put(out, n, el_label(e, i)); n = el_put(out, n, "\" at ");
+  if count == 0 && lost == 0 { return el_put(out, 0, "(nothing yet: no rows drawn)\n"); }
+  roles := EL_ROLE; states := EL_STATE;
+  for i: 0..<count {
+    r := rows[i];
+    n = el_put(out, n, cast(string) rows[i].id[0..<r.id_n]); n = el_put(out, n, " "); n = el_put(out, n, roles[r.role]);
+    n = el_put(out, n, " \""); n = el_put(out, n, cast(string) rows[i].label[0..<r.label_n]); n = el_put(out, n, "\" at ");
     n = el_put_i(out, n, el_round(r.x)); n = el_put(out, n, " "); n = el_put_i(out, n, el_round(r.y));
     n = el_put(out, n, " size "); n = el_put_i(out, n, el_round(r.w)); n = el_put(out, n, "x"); n = el_put_i(out, n, el_round(r.h));
+    if detail {
+      if r.state != 0 {
+        n = el_put(out, n, " ["); first := true;
+        for b: 0..<EL_STATES { if (r.state & (1 << b)) != 0 { if !first { n = el_put(out, n, " "); } n = el_put(out, n, states[b]); first = false; } }
+        n = el_put(out, n, "]");
+      }
+      if r.value_n > 0 { n = el_put(out, n, " value \""); n = el_put(out, n, cast(string) rows[i].value[0..<r.value_n]); n = el_put(out, n, "\""); }
+      if r.action != 0 { n = el_put(out, n, " action "); n = el_put_i(out, n, r.action); }
+      if r.focus > 0 { n = el_put(out, n, " focus "); n = el_put_i(out, n, r.focus); }
+      if r.parent >= 0 && r.parent < count { n = el_put(out, n, " in "); n = el_put(out, n, cast(string) rows[r.parent].id[0..<rows[r.parent].id_n]); }
+    }
     n = el_put(out, n, "\n");
   }
-  if e[0].lost > 0 { n = el_put(out, n, "(and "); n = el_put_i(out, n, e[0].lost); n = el_put(out, n, " more rows)\n"); }
+  if lost > 0 { n = el_put(out, n, "(and "); n = el_put_i(out, n, lost); n = el_put(out, n, " more rows)\n"); }
   return n;
+}
+// The table as text, one row a line: `ID ROLE "LABEL" at X Y size WxH`. Bytes written.
+el_tree :: (e: [] Elements, out: [] u8) -> int {
+  if e.count == 0 { return el_put(out, 0, "(nothing yet: no rows drawn)\n"); }
+  return el_rows_tree(e[0].rows[..], e[0].n, e[0].lost, false, out);
+}
+// A surface's table as `coax drive`'s tree: the same lines as el_tree.
+elt_tree :: (t: [] ElTable, out: [] u8) -> int {
+  if t.count == 0 { return el_put(out, 0, "(nothing yet: no rows drawn)\n"); }
+  return el_rows_tree(t[0].rows, t[0].n, t[0].lost, false, out);
+}
+// The same lines with each row's state, value, action, focus place and parent.
+elt_detail :: (t: [] ElTable, out: [] u8) -> int {
+  if t.count == 0 { return el_put(out, 0, "(nothing yet: no rows drawn)\n"); }
+  return el_rows_tree(t[0].rows, t[0].n, t[0].lost, true, out);
 }
 
 #test "rows keep their ids, a repeated id is numbered, and the tree is the trace's format" {
@@ -147,4 +424,119 @@ el_tree :: (e: [] Elements, out: [] u8) -> int {
   el_add(e[..], "cut", EL_ITEM, cast(string) long[0..<66], 0, 0, 1, 1);
   #assert e[0].rows[el_find(e[..], "cut")].label_n == 62;
   el_clear(e[..]); n = el_tree(e[..], out[..]); #assert cast(string) out[0..<n] == "(nothing yet: no rows drawn)\n";
+}
+
+#test "a surface declares its capacity: rows past it are counted, and the tree matches the older form" {
+  rows: [3] El; t := [1] ElTable.[elt_over(rows[..])]; e: [1] Elements;
+  elt_begin(t[..]); #assert elt_capacity(t[..]) == 3;
+  a := elt_row(t[..], "composer", EL_FIELD, "Do anything", 10, 20, 300, 80.4);
+  b := elt_row(t[..], "composer.send", EL_BUTTON, "Send", 280, 60, 28, 28);
+  c := elt_row(t[..], "composer.send", EL_BUTTON, "Send", 0, 0, 2, 2);
+  #assert a == 0 && b == 1 && c == 2 && t[0].renamed == 1 && elt_id(t[..], c) == "composer.send-2" && rows[a].parent == -1;
+  #assert elt_row(t[..], "nothing", EL_BUTTON, "zero", 0, 0, 0, 10) == -1 && elt_row(t[..], "", EL_BUTTON, "x", 0, 0, 1, 1) == -1 && t[0].lost == 0;
+  #assert elt_row(t[..], "one.more", EL_ITEM, "x", 0, 0, 1, 1) == -1 && t[0].lost == 1 && t[0].n == 3;
+  el_add(e[..], "composer", EL_FIELD, "Do anything", 10, 20, 300, 80.4);
+  el_add(e[..], "composer.send", EL_BUTTON, "Send", 280, 60, 28, 28);
+  el_add(e[..], "composer.send", EL_BUTTON, "Send", 0, 0, 2, 2);
+  o1: [512] u8; o2: [512] u8; n1 := elt_tree(t[..], o1[..]); n2 := el_tree(e[..], o2[..]);
+  #assert n2 > 0 && cast(string) o1[0..<n2] == cast(string) o2[0..<n2] && cast(string) o1[n2..<n1] == "(and 1 more rows)\n";
+  // a row that was not kept takes no state; an unknown role is a region
+  elt_state(t[..], -1, EL_S_BUSY); elt_value(t[..], 9, "x"); elt_action(t[..], -1, 4); elt_focusable(t[..], -1);
+  #assert t[0].focus_n == 0 && !elt_has(t[..], -1, EL_S_BUSY) && elt_id(t[..], 9) == "" && elt_parent(t[..], 9) == -1 && !elt_visible(t[..], 9).visible;
+  elt_begin(t[..]); #assert t[0].n == 0 && t[0].lost == 0 && t[0].renamed == 0 && elt_row(t[..], "odd", 99, "", 0, 0, 1, 1) == 0 && rows[0].role == EL_REGION;
+  // an Elements' rows through the new lookups
+  v := [1] ElTable.[el_table(e[..])];
+  #assert v[0].n == 3 && elt_hit(v[..], 290, 70) == 1 && elt_find(v[..], "composer.send-2") == 2 && el_at(e[..], 290, 70) == "composer.send";
+  none: [1] ElTable; #assert elt_row(none[..], "a", EL_ITEM, "", 0, 0, 1, 1) == -1 && none[0].lost == 1 && elt_row(none[0..<0], "a", EL_ITEM, "", 0, 0, 1, 1) == -1;
+  #assert elt_find(none[0..<0], "a") == -1 && elt_hit(none[0..<0], 0, 0) == -1 && elt_focus_step(none[0..<0], -1, false) == -1 && elt_capacity(none[0..<0]) == 0;
+}
+#test "a row carries state, value, action and parent, and the detail lines show them" {
+  rows: [8] El; t := [1] ElTable.[elt_over(rows[..])]; elt_begin(t[..]);
+  form := elt_row(t[..], "login", EL_REGION, "Log in", 0, 0, 320, 400);
+  elt_open(t[..], form);
+  field := elt_row(t[..], "login.email", EL_FIELD, "Email", 20, 60, 280, 44);
+  elt_value(t[..], field, "a@b.co"); elt_state(t[..], field, EL_S_FOCUSED); elt_focusable(t[..], field);
+  send := elt_row(t[..], "login.send", EL_BUTTON, "Send code", 20, 120, 280, 44);
+  elt_state(t[..], send, EL_S_DISABLED | EL_S_BUSY); elt_action(t[..], send, 7); elt_focusable(t[..], send);
+  elt_close(t[..]);
+  note := elt_row(t[..], "notice", EL_NOTICE, "Check your email", 0, 420, 320, 24); elt_state(t[..], note, EL_S_LIVE);
+  #assert elt_parent(t[..], field) == form && elt_parent(t[..], send) == form && elt_parent(t[..], note) == -1 && elt_parent(t[..], form) == -1;
+  #assert elt_value_of(t[..], field) == "a@b.co" && elt_has(t[..], field, EL_S_FOCUSED) && !elt_has(t[..], field, EL_S_DISABLED);
+  #assert elt_has(t[..], send, EL_S_DISABLED | EL_S_BUSY) && rows[send].action == 7 && rows[field].focus == 1 && rows[send].focus == 2;
+  out: [1024] u8; n := elt_detail(t[..], out[..]);
+  #assert cast(string) out[0..<n] == "login region \"Log in\" at 0 0 size 320x400\nlogin.email field \"Email\" at 20 60 size 280x44 [focused] value \"a@b.co\" focus 1 in login\nlogin.send button \"Send code\" at 20 120 size 280x44 [disabled busy] action 7 focus 2 in login\nnotice notice \"Check your email\" at 0 420 size 320x24 [live]\n";
+  // a value is cleaned like a label, and cut at a character
+  long: [70] u8; for i: 0..<62 { long[i] = 'a'; } long[62] = 0xE2; long[63] = 0x80; long[64] = 0xA6; long[65] = 'b'; long[3] = '"';
+  elt_value(t[..], field, cast(string) long[0..<66]); #assert rows[field].value_n == 62 && rows[field].value[3] == ' ';
+  elt_value_share(t[..], note, 0.254); #assert elt_value_of(t[..], note) == "25%";
+  elt_value_share(t[..], note, -1); #assert elt_value_of(t[..], note) == "0%";
+  elt_value_share(t[..], note, 7); #assert elt_value_of(t[..], note) == "100%";
+  // nesting past EL_DEPTH is counted, and closing balances
+  for i: 0..<EL_DEPTH + 2 { elt_open(t[..], form); }
+  #assert t[0].lost == 2 && t[0].depth == EL_DEPTH + 2;
+  deep := elt_row(t[..], "deep", EL_ITEM, "", 0, 0, 1, 1); #assert elt_parent(t[..], deep) == -1;
+  for i: 0..<EL_DEPTH + 2 { elt_close(t[..]); } elt_close(t[..]);
+  #assert t[0].depth == 0 && elt_parent(t[..], elt_row(t[..], "top", EL_ITEM, "", 0, 0, 1, 1)) == -1;
+}
+#test "the hit test takes the topmost row and honours nested clips" {
+  rows: [8] El; t := [1] ElTable.[elt_over(rows[..])]; elt_begin(t[..]);
+  page := elt_row(t[..], "page", EL_REGION, "", 0, 0, 400, 600);
+  // a panel's clip, and a scroll area's clip inside it that reaches past the panel
+  elt_clip(t[..], 20, 100, 380, 500);
+  elt_clip(t[..], 0, 300, 400, 900);
+  inner := elt_row(t[..], "row.1", EL_ROW, "one", 0, 280, 400, 40);        // only y 300..<320, x 20..<380 shows
+  below := elt_row(t[..], "row.9", EL_ROW, "nine", 0, 520, 400, 40);       // inside the scroll area's clip, outside the panel's
+  elt_unclip(t[..]);
+  outer := elt_row(t[..], "panel.close", EL_BUTTON, "Close", 340, 90, 60, 30);   // the panel's clip only
+  elt_unclip(t[..]);
+  free := elt_row(t[..], "toast", EL_NOTICE, "Saved", 300, 560, 100, 40);
+  #assert elt_hit(t[..], 200, 310) == inner && elt_hit(t[..], 200, 290) == page && elt_hit(t[..], 10, 310) == page && elt_hit(t[..], 379, 319) == inner && elt_hit(t[..], 380, 310) == page;
+  #assert elt_hit(t[..], 200, 540) == page && !elt_visible(t[..], below).visible;
+  #assert elt_hit(t[..], 350, 110) == outer && elt_hit(t[..], 350, 95) == page && elt_hit(t[..], 390, 110) == page;
+  #assert elt_hit(t[..], 350, 570) == free && elt_hit(t[..], 500, 10) == -1 && elt_hit(t[..], 0, 0) == page && elt_hit(t[..], 400, 600) == -1;
+  b := elt_visible(t[..], inner); #assert b.visible && b.x == 20 && b.y == 300 && b.w == 360 && b.h == 20;
+  b = elt_visible(t[..], outer); #assert b.x == 340 && b.y == 100 && b.w == 40 && b.h == 20 && !rows[free].clipped && rows[page].clipped == false;
+  // clips past EL_DEPTH are counted and unclip balances
+  for i: 0..<EL_DEPTH + 1 { elt_clip(t[..], 0, 0, 10, 10); }
+  #assert t[0].lost == 1 && t[0].clips == EL_DEPTH + 1;
+  for i: 0..<EL_DEPTH + 1 { elt_unclip(t[..]); } elt_unclip(t[..]);
+  #assert t[0].clips == 0 && !rows[elt_row(t[..], "after", EL_ITEM, "", 0, 0, 1, 1)].clipped;
+}
+#test "focus order follows places then the order added, skips disabled and hidden rows, and wraps" {
+  rows: [8] El; t := [1] ElTable.[elt_over(rows[..])]; elt_begin(t[..]);
+  title := elt_row(t[..], "title", EL_HEADING, "Log in", 0, 0, 100, 20);
+  b := elt_row(t[..], "b", EL_BUTTON, "B", 0, 20, 10, 10); elt_focus(t[..], b, 2);
+  a := elt_row(t[..], "a", EL_FIELD, "A", 0, 40, 10, 10); elt_focus(t[..], a, 1);
+  c := elt_row(t[..], "c", EL_BUTTON, "C", 0, 60, 10, 10); elt_focus(t[..], c, 2);
+  off := elt_row(t[..], "off", EL_BUTTON, "Off", 0, 80, 10, 10); elt_focus(t[..], off, 1); elt_state(t[..], off, EL_S_DISABLED);
+  elt_clip(t[..], 0, 0, 10, 10);
+  gone := elt_row(t[..], "gone", EL_BUTTON, "Gone", 0, 100, 10, 10); elt_focus(t[..], gone, 1);
+  elt_unclip(t[..]);
+  #assert elt_focus_step(t[..], -1, false) == a && elt_focus_step(t[..], a, false) == b && elt_focus_step(t[..], b, false) == c && elt_focus_step(t[..], c, false) == a;
+  #assert elt_focus_step(t[..], -1, true) == c && elt_focus_step(t[..], c, true) == b && elt_focus_step(t[..], b, true) == a && elt_focus_step(t[..], a, true) == c;
+  #assert !elt_focus_stop(t[..], title) && !elt_focus_stop(t[..], off) && !elt_focus_stop(t[..], gone) && elt_focus_stop(t[..], a);
+  // from a row that is not a stop: the first (or last) stop
+  #assert elt_focus_step(t[..], title, false) == a && elt_focus_step(t[..], off, true) == c && elt_focus_step(t[..], 99, false) == a;
+  // one stop steps to itself; none answers -1; a place below 1 takes the row out
+  elt_focus(t[..], b, 0); elt_focus(t[..], c, -3);
+  #assert elt_focus_step(t[..], a, false) == a && elt_focus_step(t[..], a, true) == a && elt_focus_step(t[..], -1, false) == a;
+  elt_focus(t[..], a, 0); #assert elt_focus_step(t[..], -1, false) == -1 && elt_focus_step(t[..], a, false) == -1;
+}
+#test "appended rows keep what they carry, with parents, focus places and clips moved" {
+  part: [4] El; p := [1] ElTable.[elt_over(part[..])]; elt_begin(p[..]);
+  box := elt_row(p[..], "menu", EL_REGION, "Model", 0, 0, 100, 60);
+  elt_open(p[..], box); elt_clip(p[..], 0, 0, 100, 30);
+  one := elt_row(p[..], "menu.1", EL_ROW, "Fast", 0, 0, 100, 30); elt_focusable(p[..], one); elt_action(p[..], one, 3); elt_value(p[..], one, "on"); elt_state(p[..], one, EL_S_CHECKS | EL_S_CHECKED);
+  two := elt_row(p[..], "menu.2", EL_ROW, "Deep", 0, 30, 100, 30); elt_focusable(p[..], two);
+  rows: [8] El; t := [1] ElTable.[elt_over(rows[..])]; elt_begin(t[..]);
+  chip := elt_row(t[..], "chip", EL_BUTTON, "Model", 0, 0, 50, 20); elt_focusable(t[..], chip);
+  elt_open(t[..], chip); elt_clip(t[..], 0, 0, 1000, 215);
+  elt_append(t[..], p[..], 200, 200);
+  elt_unclip(t[..]); elt_close(t[..]);
+  m := elt_find(t[..], "menu"); m1 := elt_find(t[..], "menu.1"); m2 := elt_find(t[..], "menu.2");
+  #assert m == 1 && elt_parent(t[..], m) == chip && elt_parent(t[..], m1) == m && elt_parent(t[..], m2) == m && rows[m1].x == 200 && rows[m2].y == 230;
+  #assert rows[m1].focus == 2 && rows[m2].focus == 3 && t[0].focus_n == 3 && rows[m1].action == 3 && elt_value_of(t[..], m1) == "on" && elt_has(t[..], m1, EL_S_CHECKED);
+  // the part's clip moved and cut by the open one: y 200..<215
+  bx := elt_visible(t[..], m1); #assert bx.visible && bx.y == 200 && bx.h == 15 && !elt_visible(t[..], m2).visible && elt_hit(t[..], 250, 210) == m1 && elt_hit(t[..], 250, 220) == -1;
+  #assert elt_focus_step(t[..], chip, false) == m1 && elt_focus_step(t[..], m1, false) == chip;
 }

@@ -10,6 +10,14 @@
 // them across frames), so two components can lay out onto one sheet. A
 // procedure that fills one takes it as a view of one Sheet and moves its
 // counts.
+//
+// `lost` counts what did not fit, through the sheet_* procedures here: a box,
+// a run of text, a line, a hit or pooled bytes. A surface refuses a frame
+// that lost anything (paint/surface.coax; components/gpu-components.md, "The
+// frame"), so a label never goes missing and no hit is left without its
+// paint. A component that appends to `under` or `over` itself (sh[0].nu =
+// prim_...) is not counted here; the surface also refuses a frame that left
+// either list full.
 //   coax/bin/coax test components/paint/sheet.coax
 
 #load "list.coax";
@@ -29,11 +37,16 @@ Sheet :: struct {
   hits: [] SheetHit; nh: int;
   pool: [] u8; np: int;
   hover_kind: int; hover_a: int; hover_b: int;    // the hit the pointer is over, so a layout can light it
+  lost: int;                  // primitives, lines, hits and pooled bytes that did not fit
 }
+
+// `under` is now n long: what a prim_* call returned. A count that did not move was not kept.
+sheet_under :: (sh: [] Sheet, n: int) { if n == sh[0].nu { sh[0].lost += 1; } sh[0].nu = n; }
+sheet_over_n :: (sh: [] Sheet, n: int) { if n == sh[0].no { sh[0].lost += 1; } sh[0].no = n; }
 
 // Keeps bytes for as long as the sheet's owner keeps its pool; "" when full.
 sheet_pool :: (sh: [] Sheet, s: string) -> string {
-  if sh[0].np + s.count > sh[0].pool.count { return ""; }
+  if sh[0].np + s.count > sh[0].pool.count { sh[0].lost += 1; return ""; }
   at := sh[0].np;
   for k: 0..<s.count { sh[0].pool[at + k] = s[k]; }
   sh[0].np += s.count;
@@ -43,26 +56,26 @@ sheet_pool :: (sh: [] Sheet, s: string) -> string {
 // A box under the text. Returns its index in `under`, or -1 when full.
 sheet_box :: (sh: [] Sheet, x: f32, y: f32, w: f32, h: f32, radius: f32, border: f32, fill: Rgba, edge: Rgba) -> int {
   n := prim_box(sh[0].under, sh[0].nu, x, y, w, h, radius, border, fill, edge);
-  if n == sh[0].nu { return -1; }
+  if n == sh[0].nu { sh[0].lost += 1; return -1; }
   sh[0].nu = n;
   return n - 1;
 }
 sheet_fill :: (sh: [] Sheet, x: f32, y: f32, w: f32, h: f32, radius: f32, fill: Rgba) {
-  sh[0].nu = prim_box(sh[0].under, sh[0].nu, x, y, w, h, radius, 0, fill, fill);
+  sheet_under(sh, prim_box(sh[0].under, sh[0].nu, x, y, w, h, radius, 0, fill, fill));
 }
 // A rule: a line as thick as a hairline, level or upright (a table's
 // divider, a quote's rail, a strike through text).
 sheet_rule :: (sh: [] Sheet, x: f32, y: f32, w: f32, h: f32, color: Rgba) {
-  sh[0].nu = prim_rule(sh[0].under, sh[0].nu, x, y, w, h, color);
+  sheet_under(sh, prim_rule(sh[0].under, sh[0].nu, x, y, w, h, color));
 }
 sheet_icon :: (sh: [] Sheet, icon: int, x: f32, y: f32, size: f32, color: Rgba) {
-  sh[0].nu = prim_icon(sh[0].under, sh[0].nu, icon, x, y, size, size, color);
+  sheet_under(sh, prim_icon(sh[0].under, sh[0].nu, icon, x, y, size, size, color));
 }
 sheet_elbow :: (sh: [] Sheet, x: f32, y: f32, radius: f32, end_x: f32, joined: bool, color: Rgba) {
-  sh[0].nu = prim_elbow(sh[0].under, sh[0].nu, x, y, radius, end_x, joined, color);
+  sheet_under(sh, prim_elbow(sh[0].under, sh[0].nu, x, y, radius, end_x, joined, color));
 }
 sheet_hit :: (sh: [] Sheet, kind: int, a: int, b: int, x: f32, y: f32, w: f32, h: f32) {
-  if sh[0].nh >= sh[0].hits.count { return; }
+  if sh[0].nh >= sh[0].hits.count { sh[0].lost += 1; return; }
   sh[0].hits[sh[0].nh] = SheetHit.{x = x, y = y, w = w, h = h, kind = kind, a = a, b = b};
   sh[0].nh += 1;
 }
@@ -71,7 +84,7 @@ sheet_hovered :: (sh: [] Sheet, kind: int, a: int, b: int) -> bool {
 }
 // A selectable line begins at (x, y), h tall; its runs follow. Returns the line, or -1 when full.
 sheet_line :: (sh: [] Sheet, x: f32, y: f32, h: f32, hard: bool) -> int {
-  if sh[0].nl >= sh[0].lines.count { return -1; }
+  if sh[0].nl >= sh[0].lines.count { sh[0].lost += 1; return -1; }
   s := sh[0].nl; sh[0].nl += 1;
   sh[0].lines[s] = SheetLine.{x = x, y = y, h = h, item0 = sh[0].no, items = 0, hard = hard};
   return s;
@@ -80,7 +93,8 @@ sheet_line :: (sh: [] Sheet, x: f32, y: f32, h: f32, hard: bool) -> int {
 // at y. line < 0: not selectable. Returns its width.
 sheet_text :: (sh: [] Sheet, m: TextMeasure, line: int, x: f32, y: f32, h: f32, face: int, color: Rgba, text: string) -> f32 {
   w := measure_width(m, face, text);
-  if sh[0].no >= sh[0].over.count || text.count == 0 { return w; }
+  if text.count == 0 { return w; }
+  if sh[0].no >= sh[0].over.count { sh[0].lost += 1; return w; }
   off := 0;
   if line >= 0 {
     for k: sh[0].lines[line].item0..<sh[0].no { off += sh[0].over[k].text.count; }
@@ -99,12 +113,12 @@ sheet_plain :: (sh: [] Sheet, m: TextMeasure, x: f32, y: f32, h: f32, face: int,
 // What follows, under and over, is cut at a right edge (a table wider than
 // its column); sheet_unclip ends it. Call both outside a selectable line.
 sheet_clip_right :: (sh: [] Sheet, right: f32) {
-  sh[0].nu = prim_clip(sh[0].under, sh[0].nu, -PRIM_OPEN, -PRIM_OPEN, right, PRIM_OPEN);
-  sh[0].no = prim_clip(sh[0].over, sh[0].no, -PRIM_OPEN, -PRIM_OPEN, right, PRIM_OPEN);
+  sheet_under(sh, prim_clip(sh[0].under, sh[0].nu, -PRIM_OPEN, -PRIM_OPEN, right, PRIM_OPEN));
+  sheet_over_n(sh, prim_clip(sh[0].over, sh[0].no, -PRIM_OPEN, -PRIM_OPEN, right, PRIM_OPEN));
 }
 sheet_unclip :: (sh: [] Sheet) {
-  sh[0].nu = prim_unclip(sh[0].under, sh[0].nu);
-  sh[0].no = prim_unclip(sh[0].over, sh[0].no);
+  sheet_under(sh, prim_unclip(sh[0].under, sh[0].nu));
+  sheet_over_n(sh, prim_unclip(sh[0].over, sh[0].no));
 }
 
 // ---------------------------------------------------------------- checks
@@ -147,4 +161,19 @@ sheet_over :: (st: [] SheetStore) -> Sheet {
   sheet_elbow(sh[..], 4, 8, 6, 20, true, hex(0, 1));
   sheet_icon(sh[..], 3, 0, 0, 16, hex(0, 1));
   #assert sh[0].under[3].kind == PRIM_ELBOW && sh[0].under[3].on && sh[0].under[4].kind == PRIM_ICON && sh[0].under[4].id == 3 && sh[0].under[4].h == 16;
+}
+#test "what does not fit is counted: a box, text, a line, a hit and pooled bytes" {
+  under: [1] Prim; over: [1] Prim; lines: [1] SheetLine; hits: [1] SheetHit; pool: [2] u8;
+  sh := [1] Sheet.[Sheet.{under = under[..], over = over[..], lines = lines[..], hits = hits[..], pool = pool[..]}];
+  m := measure_cells(); c := hex(0xffffff, 1);
+  sheet_fill(sh[..], 0, 0, 1, 1, 0, c); ln := sheet_line(sh[..], 0, 0, 1, true); w := sheet_text(sh[..], m, ln, 0, 0, 1, 0, c, "a");
+  sheet_hit(sh[..], 1, 0, 0, 0, 0, 1, 1); #assert sheet_pool(sh[..], "12") == "12" && sh[0].lost == 0 && sheet_text(sh[..], m, -1, 0, 0, 1, 0, c, "") == 0 && sh[0].lost == 0;
+  sheet_fill(sh[..], 0, 0, 1, 1, 0, c); #assert sh[0].lost == 1 && sh[0].nu == 1;
+  #assert sheet_box(sh[..], 0, 0, 1, 1, 0, 0, c, c) == -1 && sh[0].lost == 2;
+  sheet_rule(sh[..], 0, 0, 1, 1, c); sheet_icon(sh[..], 0, 0, 0, 1, c); sheet_elbow(sh[..], 0, 0, 1, 1, true, c); #assert sh[0].lost == 5;
+  #assert sheet_text(sh[..], m, -1, 0, 0, 1, 0, c, "b") == 1 && sh[0].lost == 6 && sh[0].no == 1;
+  #assert sheet_line(sh[..], 0, 0, 1, true) == -1 && sh[0].lost == 7;
+  sheet_hit(sh[..], 1, 0, 0, 0, 0, 1, 1); #assert sh[0].lost == 8 && sh[0].nh == 1;
+  #assert sheet_pool(sh[..], "3") == "" && sh[0].lost == 9 && sheet_pool(sh[..], "") == "" && sh[0].lost == 9;
+  sheet_clip_right(sh[..], 10); sheet_unclip(sh[..]); #assert sh[0].lost == 13;
 }

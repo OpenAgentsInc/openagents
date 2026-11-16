@@ -1,0 +1,187 @@
+// The frame context (components/gpu-components.md, "Frame context"; GitHub
+// #13645, stage G0): the one value a component call receives. It carries
+// the sheet, the text measure and the skin; the semantic table for this
+// frame; the keyed state store; the input snapshot (pointer, pressed id,
+// focused id, hovered id); the frame clock; and the reduced-motion and
+// reduced-transparency facts. With it a component call needs only its id,
+// its inputs and its position.
+//
+// It lives in kit/, not core/: it names the sheet (paint/) and the skin
+// (skin/), and a layer loads only the layers before it, so core/ cannot hold
+// it. What it refers to stays in its own layer: the semantic table and the
+// keyed store in core/ (elements.coax, keyed.coax), the committed surface in
+// paint/ (surface.coax). The context is a set of views over those, made new
+// each frame; it owns nothing.
+//
+// One frame:
+//
+//   f: [1] UiFrame;
+//   uiframe_begin(f[..], surface, keyed, m, skin, input, clock, dt, reduced_motion, reduced_transparency);
+//   w := ctx_button(f[..], "login.send", x, y, "Send code", true, 0, ACT_SEND);   // kit/controls.coax
+//   if uiframe_end(f[..], surface) { ... gpu_draw surface_sheet(surface) ... }    // false: refused, the last frame stays
+//
+// A press is routed through the committed rows: surface_hit(surface, x, y)
+// gives the row, surface_id and surface_action say what it is. The hit a
+// context-taking component leaves on the sheet has kind UIFRAME_HIT, and
+// uiframe_hit_row gives its semantic row in the same generation.
+//
+// Code that has only a sheet, a measure and a skin (every caller before G0)
+// makes a context with uiframe_over: the same components paint, and nothing
+// is recorded.
+//   coax/bin/coax test components/kit/controls-checks.coax
+
+#load "../paint/surface.coax";
+#load "../skin/skin.coax";
+#load "../core/keyed.coax";
+
+UIFRAME_HIT :: -2;     // the kind of a hit left by a context-taking component: a + b is its semantic row (uiframe_hit_row)
+
+// The input snapshot a frame is laid out against. Ids are copied, so the
+// snapshot does not depend on the rows it was read from.
+UiInput :: struct {
+  x: f32; y: f32;                        // the pointer, logical px
+  present: bool;                         // there is a pointer (a lifted finger has none)
+  down: bool;                            // it is pressed
+  pressed: [EL_ID] u8; pressed_n: int;   // the id the press began on
+  focused: [EL_ID] u8; focused_n: int;   // the id that has the keyboard
+  hovered: [EL_ID] u8; hovered_n: int;   // the id under the pointer; uiframe_begin fills it from the committed rows
+}
+// A snapshot from what the host and the app know. `pressed` is the id the
+// press began on ("" when nothing is pressed); `focused` is the app's.
+uiinput :: (x: f32, y: f32, present: bool, down: bool, pressed: string, focused: string) -> UiInput {
+  i: UiInput;
+  i.x = x; i.y = y; i.present = present; i.down = down;
+  i.pressed_n = el_copy(i.pressed[..], pressed);
+  i.focused_n = el_copy(i.focused[..], focused);
+  return i;
+}
+
+UiFrame :: struct {
+  sheet: [] Sheet;             // one sheet: this frame's display list, lines, hits and pool
+  rows: [] ElTable;            // one table: this frame's semantic rows (none: nothing is recorded)
+  keyed: [] KeyedStore;        // one store: state kept by id across frames (none: components are stateless)
+  m: TextMeasure;
+  skin: UiSkin;
+  input: UiInput;
+  clock: f32;                  // seconds, the caller's clock
+  dt: f32;                     // seconds since the frame before
+  reduced_motion: bool;        // motion settles at once
+  reduced_transparency: bool;  // a component paints an opaque ground where it would blur or wash
+}
+
+// A context over a sheet, a measure and a skin alone: no rows, no keyed
+// state, no input. The adapter for code written before the context.
+uiframe_over :: (sh: [] Sheet, m: TextMeasure, s: UiSkin) -> UiFrame {
+  return UiFrame.{sheet = sh, m = m, skin = s};
+}
+// A frame starts on a surface: its back generation is emptied and becomes
+// the frame's sheet and table, the keyed store starts its frame, and the
+// hovered id is read from the rows committed last (the ones on screen).
+uiframe_begin :: (f: [] UiFrame, surface: [] UiSurface, keyed: [] KeyedStore, m: TextMeasure, s: UiSkin, input: UiInput, clock: f32, dt: f32, reduced_motion: bool, reduced_transparency: bool) {
+  in := input;
+  in.hovered_n = 0;
+  if in.present { in.hovered_n = el_copy(in.hovered[..], surface_id(surface, surface_hit(surface, in.x, in.y))); }
+  b := surface_begin(surface);
+  keyed_begin(keyed, dt, reduced_motion);
+  f[0] = UiFrame.{sheet = surface[0].sheet[b..<b + 1], rows = surface[0].rows[b..<b + 1], keyed = keyed, m = m, skin = s, input = in,
+    clock = clock, dt = dt, reduced_motion = reduced_motion, reduced_transparency = reduced_transparency};
+}
+// The frame ends: ids not seen retire from the keyed store, and the surface
+// commits the display list, hit regions and rows together. False: the frame
+// overflowed and is refused; the generation committed before stays.
+uiframe_end :: (f: [] UiFrame, surface: [] UiSurface) -> bool {
+  _ = keyed_end(f[0].keyed);
+  return surface_commit(surface);
+}
+
+// ---------------------------------------------------------------- input
+
+uiframe_pressed :: (f: [] UiFrame, id: string) -> bool { return f[0].input.down && f[0].input.pressed_n > 0 && cast(string) f[0].input.pressed[0..<f[0].input.pressed_n] == id; }
+uiframe_focused :: (f: [] UiFrame, id: string) -> bool { return f[0].input.focused_n > 0 && cast(string) f[0].input.focused[0..<f[0].input.focused_n] == id; }
+uiframe_hovered :: (f: [] UiFrame, id: string) -> bool { return f[0].input.hovered_n > 0 && cast(string) f[0].input.hovered[0..<f[0].input.hovered_n] == id; }
+// How a control's ground looks this frame (skin/skin.coax): the primary
+// action, lit under the pointer or a press, or resting.
+uiframe_look :: (f: [] UiFrame, id: string, primary: bool) -> int {
+  if primary { return UISKIN_PRIMARY; }
+  return ifx uiframe_hovered(f, id) || uiframe_pressed(f, id) then UISKIN_HOVER else UISKIN_REST;
+}
+
+// ---------------------------------------------------------------- rows and hits
+
+// Whether a role is one a person presses or types into: it gets a hit region and a place in focus order.
+uiframe_acts :: (role: int) -> bool {
+  return role == EL_BUTTON || role == EL_ROW || role == EL_TAB || role == EL_FIELD || role == EL_TOGGLE || role == EL_SLIDER || role == EL_LINK;
+}
+// A component's semantic row under its id and box, without a hit region
+// (the component leaves its own, as the controls do through their painters).
+// `state` is the component's own EL_S_* bits; the frame adds EL_S_FOCUSED
+// and EL_S_PRESSED from the input snapshot. A role that acts gets its place
+// in focus order. Returns the row, or -1 when the frame records none or the
+// row did not fit.
+uiframe_semantic :: (f: [] UiFrame, id: string, role: int, label: string, x: f32, y: f32, w: f32, h: f32, state: int, action: int) -> int {
+  i := elt_row(f[0].rows, id, role, label, x, y, w, h);
+  if i < 0 { return -1; }
+  bits := state;
+  if uiframe_focused(f, id) { bits |= EL_S_FOCUSED; }
+  if uiframe_pressed(f, id) { bits |= EL_S_PRESSED; }
+  elt_state(f[0].rows, i, bits);
+  elt_action(f[0].rows, i, action);
+  if uiframe_acts(role) { elt_focusable(f[0].rows, i); }
+  return i;
+}
+// A component's semantic row and its hit region, recorded together under
+// its id and box: uiframe_semantic, and for a role that acts a hit of kind
+// UIFRAME_HIT over the same box. When the row is not recorded no hit is
+// left either, so no hit is ever without its row.
+uiframe_row :: (f: [] UiFrame, id: string, role: int, label: string, x: f32, y: f32, w: f32, h: f32, state: int, action: int) -> int {
+  i := uiframe_semantic(f, id, role, label, x, y, w, h, state, action);
+  if i >= 0 && uiframe_acts(role) { sheet_hit(f[0].sheet, UIFRAME_HIT, i, 0, x, y, w, h); }
+  return i;
+}
+// The semantic row a hit belongs to, in its own generation: -1 for a hit a
+// context-taking component did not leave, or one left with no table.
+uiframe_hit_row :: (h: SheetHit) -> int {
+  if h.kind != UIFRAME_HIT || h.a < 0 { return -1; }
+  return h.a + h.b;
+}
+// Rows recorded until uiframe_close are children of row i (a panel's content, a list's rows).
+uiframe_open :: (f: [] UiFrame, i: int) { elt_open(f[0].rows, i); }
+uiframe_close :: (f: [] UiFrame) { elt_close(f[0].rows); }
+// What follows is cut to a box, in paint and in what can be pressed, until
+// uiframe_unclip: a scroll area. Clips nest.
+uiframe_clip :: (f: [] UiFrame, left: f32, top: f32, right: f32, bottom: f32) {
+  sheet_under(f[0].sheet, prim_clip(f[0].sheet[0].under, f[0].sheet[0].nu, left, top, right, bottom));
+  sheet_over_n(f[0].sheet, prim_clip(f[0].sheet[0].over, f[0].sheet[0].no, left, top, right, bottom));
+  elt_clip(f[0].rows, left, top, right, bottom);
+}
+uiframe_unclip :: (f: [] UiFrame) {
+  sheet_unclip(f[0].sheet);
+  elt_unclip(f[0].rows);
+}
+
+// ---------------------------------------------------------------- keyed state
+
+// This component's keyed state for the frame: its row in the store, or -1
+// (no store, a duplicate id, a full store). Every reader below takes -1.
+uiframe_key :: (f: [] UiFrame, id: string) -> int { return keyed_see(f[0].keyed, id); }
+// Entry, 0 to 1 over the skin's enter time from the frame the id appears.
+uiframe_entry :: (f: [] UiFrame, k: int) -> f32 { return keyed_entry(f[0].keyed, k, f[0].skin.motion.enter, AM_OUT_QUAD); }
+// Press, toward 1 while this id is pressed and back when it is released, over the skin's press time.
+uiframe_press :: (f: [] UiFrame, k: int, id: string) -> f32 { return keyed_press(f[0].keyed, k, uiframe_pressed(f, id), f[0].skin.motion.press, AM_IN_OUT_QUAD); }
+// A spring following a target (a switch's knob toward on or off).
+uiframe_spring :: (f: [] UiFrame, k: int, target: f32) -> f32 { return keyed_spring(f[0].keyed, k, target); }
+// Whether another frame is due for motion alone.
+uiframe_moving :: (f: [] UiFrame) -> bool { return keyed_moving(f[0].keyed); }
+
+// A surface's and a store's counts as text, for a driver or a log: the
+// surface's line (paint/surface.coax surface_counts), then
+// `keyed LIVE/CAP refused R (full F, duplicate D this frame) retired T`.
+uiframe_counts :: (surface: [] UiSurface, keyed: [] KeyedStore, out: [] u8) -> int {
+  n := surface_counts(surface, out);
+  if keyed.count == 0 { return n; }
+  n = el_put(out, n, "keyed "); n = el_put_i(out, n, keyed[0].live); n = el_put(out, n, "/"); n = el_put_i(out, n, keyed[0].rows.count);
+  n = el_put(out, n, " refused "); n = el_put_i(out, n, keyed[0].refused);
+  n = el_put(out, n, " (full "); n = el_put_i(out, n, keyed[0].refused_full); n = el_put(out, n, ", duplicate "); n = el_put_i(out, n, keyed[0].refused_duplicate);
+  n = el_put(out, n, " this frame) retired "); n = el_put_i(out, n, keyed[0].retired);
+  return el_put(out, n, "\n");
+}

@@ -5,10 +5,18 @@
 // control that can be pressed leaves a hit on the sheet (the caller's kind
 // and number); the caller keeps the state (which tab, how far a slider is)
 // and says how each control looks this frame (resting, hovered, primary).
+//
+// Each of the seven also has a form that takes the frame context
+// (kit/frame.coax; components/gpu-components.md, GitHub #13645 stage G0):
+// ctx_panel, ctx_button, ctx_toggle, ctx_slider, ctx_tabs, ctx_list and
+// ctx_bar, at the end of this file. A context form takes a stable id in
+// place of a hit kind and number. It paints through the procedure of the
+// same name here, so the primitives are the same, and records the control's
+// semantic row and hit region under that id. The forms that take a sheet, a
+// measure and a skin keep working unchanged.
 //   coax/bin/coax test components/kit/controls-checks.coax
 
-#load "../paint/sheet.coax";
-#load "../skin/skin.coax";
+#load "frame.coax";         // the frame context; it loads paint/sheet.coax and skin/skin.coax
 
 // ---------------------------------------------------------------- panel
 
@@ -37,10 +45,14 @@ button_width :: (m: TextMeasure, s: UiSkin, label: string) -> f32 {
 }
 // A button at (x, y) in a state (UISKIN_REST, UISKIN_HOVER, UISKIN_PRIMARY). Returns its width.
 button :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, x: f32, y: f32, label: string, state: int, hit_kind: int, hit_a: int) -> f32 {
+  return button_inked(sh, m, s, x, y, label, state, ifx state == UISKIN_PRIMARY then s.on_accent else s.ink, hit_kind, hit_a);
+}
+// The button with its label in a colour role the caller picks from the skin (a disabled one's is faint).
+button_inked :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, x: f32, y: f32, label: string, state: int, ink: Rgba, hit_kind: int, hit_a: int) -> f32 {
   w := button_width(m, s, label);
   sh[0].nu = uiskin_control(sh[0].under, sh[0].nu, s, x, y, w, s.control_h, state);
   ty := y + (s.control_h - s.label.line) / 2;
-  tw := sheet_text(sh, m, -1, x + s.control_pad, ty, s.label.line, s.label.face, ifx state == UISKIN_PRIMARY then s.on_accent else s.ink, label);
+  tw := sheet_text(sh, m, -1, x + s.control_pad, ty, s.label.line, s.label.face, ink, label);
   sheet_hit(sh, hit_kind, hit_a, 0, x, y, w, s.control_h);
   return w;
 }
@@ -212,7 +224,7 @@ tabs :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, x: f32, y: f32, labels: [] str
     tw := sheet_text(sh, m, -1, pen + s.control_pad, ty, s.label.line, s.label.face, ifx k == active then s.ink else s.muted, labels[k]);
     // the active tab's mark: a rule in the accent under its label (a terminal has no room under a one-row tab)
     if k == active && s.control_h > s.label.line { sheet_rule(sh, pen + s.control_pad, y + s.control_h - 2 * s.border, w - 2 * s.control_pad, s.border, s.accent); }
-    if sh[0].nh < sh[0].hits.count { sh[0].hits[sh[0].nh] = SheetHit.{x = pen, y = y, w = w, h = s.control_h, kind = hit_kind, a = hit_a, b = k}; sh[0].nh += 1; }
+    sheet_hit(sh, hit_kind, hit_a, k, pen, y, w, s.control_h);
     pen += w + s.space / 2;
   }
   return pen - x;
@@ -235,7 +247,7 @@ list_rows :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, x: f32, y: f32, w: f32, s
     else if k == hot { sheet_fill(sh, x, ry, w, s.control_h, s.radius_control, s.hover); }
     ty := ry + (s.control_h - s.body.line) / 2;
     tw := sheet_text(sh, m, -1, x + s.control_pad, ty, s.body.line, s.body.face, ifx k == picked then s.ink else s.muted, rows[k]);
-    if sh[0].nh < sh[0].hits.count { sh[0].hits[sh[0].nh] = SheetHit.{x = x, y = ry, w = w, h = s.control_h, kind = hit_kind, a = hit_a, b = k}; sh[0].nh += 1; }
+    sheet_hit(sh, hit_kind, hit_a, k, x, ry, w, s.control_h);
     h += s.control_h;
   }
   return h;
@@ -248,4 +260,90 @@ bar :: (sh: [] Sheet, s: UiSkin, x: f32, y: f32, w: f32, share: f32, color: Rgba
   h := s.bar_h;
   sh[0].nu = uiskin_bar(sh[0].under, sh[0].nu, s, x, y, w, h, share, color);
   return h;
+}
+
+// ---------------------------------------------------------------- with the frame context
+
+// The forms that take the frame context (kit/frame.coax). Each records its
+// semantic row and its hit region under the caller's stable id, then paints
+// through the procedure above. `state` is the control's own EL_S_* bits
+// (EL_S_DISABLED, EL_S_BUSY); the frame adds focused and pressed. `action`
+// is the app's number for what a press dispatches (0: none). A hit left by
+// one of these has kind UIFRAME_HIT; uiframe_hit_row gives its semantic row
+// (for tabs and a list, a is the first one's row and b says which).
+
+// A panel: its region row, then its frame and title. Rows recorded until
+// ctx_panel_end are its children.
+ctx_panel :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, h: f32, title: string) -> PanelInside {
+  uiframe_open(f, uiframe_semantic(f, id, EL_REGION, title, x, y, w, h, 0, 0));
+  return panel(f[0].sheet, f[0].m, f[0].skin, x, y, w, h, title);
+}
+ctx_panel_end :: (f: [] UiFrame) { uiframe_close(f); }
+
+// A button. Its ground is the primary action's, lit under the pointer or a
+// press, or resting; a disabled one rests with a faint label. Returns its width.
+ctx_button :: (f: [] UiFrame, id: string, x: f32, y: f32, label: string, primary: bool, state: int, action: int) -> f32 {
+  s := f[0].skin;
+  off := (state & EL_S_DISABLED) != 0;
+  row := uiframe_semantic(f, id, EL_BUTTON, label, x, y, button_width(f[0].m, s, label), s.control_h, state, action);
+  look := ifx off then UISKIN_REST else uiframe_look(f, id, primary);
+  w := button_inked(f[0].sheet, f[0].m, s, x, y, label, look, ifx off then s.faint else ifx look == UISKIN_PRIMARY then s.on_accent else s.ink, UIFRAME_HIT, row);
+  return w;
+}
+// A toggle with its label after it. Returns its width.
+ctx_toggle :: (f: [] UiFrame, id: string, x: f32, y: f32, label: string, on: bool, state: int, action: int) -> f32 {
+  s := f[0].skin;
+  w := uiskin_toggle_width(s) + s.space + measure_width(f[0].m, s.body.face, label);
+  row := uiframe_semantic(f, id, EL_TOGGLE, label, x, y, w, s.control_h, state | EL_S_CHECKS | (ifx on then EL_S_CHECKED else 0), action);
+  _ = toggle(f[0].sheet, f[0].m, s, x, y, label, on, UIFRAME_HIT, row);
+  return w;
+}
+// A slider w wide, filled to value (0..1). Its label is what it sets (it is
+// not drawn); its row's value is the share as a percentage.
+ctx_slider :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, label: string, value: f32, state: int, action: int) {
+  s := f[0].skin;
+  row := uiframe_semantic(f, id, EL_SLIDER, label, x, y, w, s.control_h, state, action);
+  elt_value_share(f[0].rows, row, value);
+  slider(f[0].sheet, s, x, y, w, value, UIFRAME_HIT, row);
+}
+// A row of tabs, one active; ids[k] is tab k's id. The tab under the pointer
+// is lit. Returns the row's width.
+ctx_tabs :: (f: [] UiFrame, ids: [] string, x: f32, y: f32, labels: [] string, active: int, action: int) -> f32 {
+  s := f[0].skin;
+  hot := -1; first := -1; pen := x;
+  n := ifx ids.count < labels.count then ids.count else labels.count;
+  for k: 0..<n {
+    w := ceil(measure_width(f[0].m, s.label.face, labels[k])) + 2 * s.control_pad;
+    row := uiframe_semantic(f, ids[k], EL_TAB, labels[k], pen, y, w, s.control_h, ifx k == active then EL_S_CURRENT else 0, action);
+    if k == 0 { first = row; }
+    if uiframe_hovered(f, ids[k]) || uiframe_pressed(f, ids[k]) { hot = k; }
+    pen += w + s.space / 2;
+  }
+  tw := tabs(f[0].sheet, f[0].m, s, x, y, labels[0..<n], active, hot, UIFRAME_HIT, first);
+  return tw;
+}
+// A list with a section heading; ids[k] is row k's id. The picked row is
+// current and the row under the pointer is lit. Returns its height.
+ctx_list :: (f: [] UiFrame, ids: [] string, x: f32, y: f32, w: f32, section: string, rows: [] string, picked: int, action: int) -> f32 {
+  s := f[0].skin;
+  hot := -1; first := -1;
+  h: f32 = 0;
+  if section.count > 0 { h += s.small.line + s.space / 2; }
+  n := ifx ids.count < rows.count then ids.count else rows.count;
+  for k: 0..<n {
+    row := uiframe_semantic(f, ids[k], EL_ROW, rows[k], x, y + h, w, s.control_h, ifx k == picked then EL_S_CURRENT else 0, action);
+    if k == 0 { first = row; }
+    if uiframe_hovered(f, ids[k]) || uiframe_pressed(f, ids[k]) { hot = k; }
+    h += s.control_h;
+  }
+  lh := list_rows(f[0].sheet, f[0].m, s, x, y, w, section, rows[0..<n], picked, hot, UIFRAME_HIT, first);
+  return lh;
+}
+// A bar filled to a share (0..1) in a colour role the caller picks from the
+// skin. Its label is what it measures (it is not drawn); its row's value is
+// the share as a percentage. Returns its height.
+ctx_bar :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, label: string, share: f32, color: Rgba) -> f32 {
+  row := uiframe_semantic(f, id, EL_PROGRESS, label, x, y, w, f[0].skin.bar_h, 0, 0);
+  elt_value_share(f[0].rows, row, share);
+  return bar(f[0].sheet, f[0].skin, x, y, w, share, color);
 }

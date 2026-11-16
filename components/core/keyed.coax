@@ -1,0 +1,290 @@
+// The keyed state store (components/gpu-components.md, "Identity and keyed
+// state"; GitHub #13645, stage G0): state that outlives one frame, owned by a
+// component's stable id ("composer.send", "message.4.7"), never by its place
+// in a list. It generalizes the node store in native/scene.coax to string
+// ids and a capacity the caller declares.
+//
+// The caller owns the rows; their count is the capacity:
+//
+//   rows: [64] Keyed; st := [1] KeyedStore.[KeyedStore.{rows = rows[..]}];
+//   keyed_begin(st[..], dt, reduced_motion);     // a frame starts
+//   k := keyed_see(st[..], "composer.send");     // this id is on screen: its row, or -1
+//   p := keyed_press(st[..], k, down, 0.1, AM_IN_OUT_QUAD);
+//   keyed_end(st[..]);                           // an id not seen this frame retires
+//
+// Rules:
+// - An id seen again gets the row it had, whatever order ids arrive in, so
+//   reordering never moves state from one id to another.
+// - An id not seen between keyed_begin and keyed_end retires: its row is
+//   free, and the id starts fresh if it returns.
+// - A second keyed_see of one id in a frame, or a new id when every row is
+//   held, is refused: keyed_see returns -1 and counts it. A refused component
+//   gets no row. It never shares another's.
+// - Every accessor takes -1 and answers as a stateless component would (an
+//   entry already complete, a press that follows the pointer at once, a
+//   spring at its target), so a refusal degrades motion, never correctness.
+// - An id longer than EL_ID bytes is cut; two ids equal after the cut count
+//   as one id, so the second is refused.
+//
+// A row holds entry and press motion (core/arwes/motion.coax), one spring
+// (core/spring.coax), a scroll offset, an expanded or collapsed flag and
+// KEYED_SLOTS numbers a component names itself (a caret's blink phase). Each
+// motion advances at most once a frame, by the dt keyed_begin was given,
+// however often a component reads it.
+//   coax/bin/coax test components/core/keyed.coax
+
+#load "elements.coax";     // EL_ID, el_copy: one id length for rows and state
+#load "spring.coax";       // UiSpring, and ArMotion through arwes/motion.coax
+
+KEYED_SLOTS :: 4;          // numbers a component keeps for itself
+KEYED_DT_MAX :: 0.064;     // the longest step one frame advances motion by (a resumed app never jumps)
+KEYED_T_ENTRY :: 1; KEYED_T_PRESS :: 2; KEYED_T_SPRING :: 4;   // what has advanced this frame
+
+Keyed :: struct {
+  id: [EL_ID] u8; id_n: int;       // id_n 0: the row is free
+  seen: bool;                      // seen this frame
+  fresh: bool;                     // made this frame: the id was not on screen in the frame before
+  ticked: int;                     // KEYED_T_* that advanced this frame
+  entry: [1] ArMotion;             // 0 to 1 from the frame the id appears
+  press: [1] ArMotion;             // 0 to 1 while pressed, back when released
+  spring: [1] UiSpring;            // a value following a target (a switch's knob, a drawer)
+  scroll: f32;                     // a scroll offset, logical px
+  open: bool; open_set: bool;      // expanded or collapsed, once the component or a person has said
+  slot: [KEYED_SLOTS] f32;
+}
+
+KeyedStore :: struct {
+  rows: [] Keyed;                  // the caller's rows; rows.count is the capacity
+  dt: f32; reduced: bool;          // this frame's step and the reduced-motion fact
+  live: int;                       // rows held now
+  frame: int;                      // frames ended
+  refused_full: int;               // refusals this frame: every row was held
+  refused_duplicate: int;          // refusals this frame: the id was already seen
+  refused: int;                    // refusals since the store was made
+  retired: int;                    // ids retired since the store was made
+}
+
+keyed_id :: (s: [] KeyedStore, k: int) -> string { return cast(string) s[0].rows[k].id[0..<s[0].rows[k].id_n]; }
+keyed_capacity :: (s: [] KeyedStore) -> int { return ifx s.count > 0 then s[0].rows.count else 0; }
+// Whether k names a held row.
+keyed_ok :: (s: [] KeyedStore, k: int) -> bool { return s.count > 0 && k >= 0 && k < s[0].rows.count && s[0].rows[k].id_n > 0; }
+
+// A frame starts: nothing is seen yet, and this frame's refusal counts are zero.
+keyed_begin :: (s: [] KeyedStore, dt: f32, reduced: bool) {
+  if s.count == 0 { return; }
+  s[0].dt = ifx dt > KEYED_DT_MAX then cast(f32) KEYED_DT_MAX else ifx dt > 0 then dt else 0.0f32;
+  s[0].reduced = reduced;
+  s[0].refused_full = 0; s[0].refused_duplicate = 0;
+  for i: 0..<s[0].rows.count { s[0].rows[i].seen = false; s[0].rows[i].fresh = false; s[0].rows[i].ticked = 0; }
+}
+// The row an id holds, or -1. It does not mark the id seen.
+keyed_find :: (s: [] KeyedStore, id: string) -> int {
+  if s.count == 0 || id.count == 0 { return -1; }
+  key := ifx id.count > EL_ID then cast(string) id[0..<EL_ID] else id;
+  for i: 0..<s[0].rows.count { if s[0].rows[i].id_n == key.count && keyed_id(s, i) == key { return i; } }
+  return -1;
+}
+// This id is on screen this frame. Returns its row: the one it held, or a
+// new one. Returns -1 and counts a refusal when the id was already seen this
+// frame or no row is free. An empty id has no state and is not counted.
+keyed_see :: (s: [] KeyedStore, id: string) -> int {
+  if s.count == 0 || id.count == 0 { return -1; }
+  key := ifx id.count > EL_ID then cast(string) id[0..<EL_ID] else id;
+  free := -1;
+  for i: 0..<s[0].rows.count {
+    if s[0].rows[i].id_n == 0 { if free < 0 { free = i; } continue; }
+    if s[0].rows[i].id_n == key.count && keyed_id(s, i) == key {
+      if s[0].rows[i].seen { s[0].refused_duplicate += 1; s[0].refused += 1; return -1; }
+      s[0].rows[i].seen = true;
+      return i;
+    }
+  }
+  if free < 0 { s[0].refused_full += 1; s[0].refused += 1; return -1; }
+  r: Keyed;
+  r.id_n = el_copy(r.id[..], key);
+  r.seen = true; r.fresh = true;
+  r.spring[0] = UiSpring.{clamp = true};
+  s[0].rows[free] = r;
+  s[0].live += 1;
+  return free;
+}
+// The frame ends: every held id that was not seen retires. Returns how many did.
+keyed_end :: (s: [] KeyedStore) -> int {
+  if s.count == 0 { return 0; }
+  gone := 0;
+  for i: 0..<s[0].rows.count {
+    if s[0].rows[i].id_n > 0 && !s[0].rows[i].seen { s[0].rows[i].id_n = 0; gone += 1; }
+  }
+  s[0].live -= gone; s[0].retired += gone; s[0].frame += 1;
+  return gone;
+}
+// Whether the id appeared this frame (it was not on screen in the frame before).
+keyed_fresh :: (s: [] KeyedStore, k: int) -> bool { return keyed_ok(s, k) && s[0].rows[k].fresh; }
+
+// ---------------------------------------------------------------- motion
+
+// Entry: 0 when the id appears, 1 after `duration` seconds, eased
+// (AM_OUT_QUAD ...). 1 at once with reduced motion or without a row.
+keyed_entry :: (s: [] KeyedStore, k: int, duration: f32, easing: int) -> f32 {
+  if !keyed_ok(s, k) { return 1; }
+  ar_motion_to(s[0].rows[k].entry[..], true, duration, easing);
+  if s[0].reduced { s[0].rows[k].entry[0].value = 1; s[0].rows[k].entry[0].phase = AM_ENTERED; return 1; }
+  if (s[0].rows[k].ticked & KEYED_T_ENTRY) == 0 {
+    s[0].rows[k].ticked |= KEYED_T_ENTRY;
+    ar_motion_tick(s[0].rows[k].entry[..], s[0].dt);
+  }
+  return s[0].rows[k].entry[0].value;
+}
+// Press: toward 1 while down, back toward 0 when released; a press cut
+// short reverses from where it is. With reduced motion or without a row it
+// is 1 or 0 at once.
+keyed_press :: (s: [] KeyedStore, k: int, down: bool, duration: f32, easing: int) -> f32 {
+  now := ifx down then 1.0f32 else 0.0f32;
+  if !keyed_ok(s, k) { return now; }
+  ar_motion_to(s[0].rows[k].press[..], down, duration, easing);
+  if s[0].reduced { s[0].rows[k].press[0].value = now; s[0].rows[k].press[0].phase = ifx down then AM_ENTERED else AM_EXITED; return now; }
+  if (s[0].rows[k].ticked & KEYED_T_PRESS) == 0 {
+    s[0].rows[k].ticked |= KEYED_T_PRESS;
+    ar_motion_tick(s[0].rows[k].press[..], s[0].dt);
+  }
+  return s[0].rows[k].press[0].value;
+}
+// A spring following a target (core/spring.coax's defaults, clamped). An id
+// that just appeared starts at its target: a switch that is on does not
+// slide on when its screen opens. Without a row it is the target.
+keyed_spring :: (s: [] KeyedStore, k: int, target: f32) -> f32 {
+  if !keyed_ok(s, k) { return target; }
+  s[0].rows[k].spring[0].target = target;
+  if s[0].rows[k].fresh && (s[0].rows[k].ticked & KEYED_T_SPRING) == 0 { s[0].rows[k].spring[0].value = target; s[0].rows[k].spring[0].velocity = 0; }
+  if (s[0].rows[k].ticked & KEYED_T_SPRING) == 0 {
+    s[0].rows[k].ticked |= KEYED_T_SPRING;
+    ui_spring_step(s[0].rows[k].spring[..], s[0].dt, s[0].reduced);
+  }
+  return s[0].rows[k].spring[0].value;
+}
+// The spring's value moved to `value` at rest (a drag sets it; release lets it follow its target again).
+keyed_spring_set :: (s: [] KeyedStore, k: int, value: f32) {
+  if !keyed_ok(s, k) { return; }
+  s[0].rows[k].spring[0].value = value; s[0].rows[k].spring[0].velocity = 0;
+}
+// Whether any held row is still moving: an entry or press under way, or a
+// spring away from its target. A surface with nothing moving and nothing
+// dirty runs no frame.
+keyed_moving :: (s: [] KeyedStore) -> bool {
+  if s.count == 0 { return false; }
+  for i: 0..<s[0].rows.count {
+    if s[0].rows[i].id_n == 0 { continue; }
+    e := s[0].rows[i].entry[0].phase; p := s[0].rows[i].press[0].phase;
+    if e == AM_ENTERING || e == AM_EXITING || p == AM_ENTERING || p == AM_EXITING { return true; }
+    sp := s[0].rows[i].spring[0];
+    if sp.value != sp.target || sp.velocity != 0 { return true; }
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------- plain state
+
+keyed_scroll :: (s: [] KeyedStore, k: int) -> f32 { return ifx keyed_ok(s, k) then s[0].rows[k].scroll else 0.0f32; }
+keyed_scroll_set :: (s: [] KeyedStore, k: int, offset: f32) { if keyed_ok(s, k) { s[0].rows[k].scroll = offset; } }
+// Expanded or collapsed. `initial` answers until keyed_open_set has been called for the id, and without a row.
+keyed_open :: (s: [] KeyedStore, k: int, initial: bool) -> bool {
+  if !keyed_ok(s, k) || !s[0].rows[k].open_set { return initial; }
+  return s[0].rows[k].open;
+}
+keyed_open_set :: (s: [] KeyedStore, k: int, open: bool) { if keyed_ok(s, k) { s[0].rows[k].open = open; s[0].rows[k].open_set = true; } }
+// One of KEYED_SLOTS numbers the component names itself; 0 without a row or out of range.
+keyed_slot :: (s: [] KeyedStore, k: int, slot: int) -> f32 {
+  if !keyed_ok(s, k) || slot < 0 || slot >= KEYED_SLOTS { return 0; }
+  return s[0].rows[k].slot[slot];
+}
+keyed_slot_set :: (s: [] KeyedStore, k: int, slot: int, value: f32) {
+  if keyed_ok(s, k) && slot >= 0 && slot < KEYED_SLOTS { s[0].rows[k].slot[slot] = value; }
+}
+
+// ---------------------------------------------------------------- checks
+
+// One frame over a store: see each id, in order. Returns how many were refused.
+keyed_test_frame :: (s: [] KeyedStore, ids: [] string, dt: f32) -> int {
+  keyed_begin(s, dt, false);
+  for id: ids { k := keyed_see(s, id); if k >= 0 { _ = keyed_entry(s, k, 1, AM_LINEAR); } }
+  n := s[0].refused_full + s[0].refused_duplicate;
+  _ = keyed_end(s);
+  return n;
+}
+
+#test "an id keeps its state when the order changes, and each id advances once a frame" {
+  rows: [4] Keyed; st := [1] KeyedStore.[KeyedStore.{rows = rows[..]}]; s := st[..];
+  abc := [3] string.["row.a", "row.b", "row.c"];
+  #assert keyed_test_frame(s, abc[..], 0.05) == 0 && s[0].live == 3;
+  a := keyed_find(s, "row.a"); b := keyed_find(s, "row.b"); c := keyed_find(s, "row.c");
+  #assert a >= 0 && b >= 0 && c >= 0 && a != b && b != c;
+  keyed_scroll_set(s, b, 120); keyed_open_set(s, c, true); keyed_slot_set(s, a, 2, 7);
+  // the same ids, reversed, with one more in front
+  cba := [4] string.["row.new", "row.c", "row.b", "row.a"];
+  #assert keyed_test_frame(s, cba[..], 0.05) == 0 && s[0].live == 4;
+  #assert keyed_find(s, "row.a") == a && keyed_find(s, "row.b") == b && keyed_find(s, "row.c") == c;
+  #assert keyed_scroll(s, b) == 120 && keyed_open(s, c, false) && keyed_slot(s, a, 2) == 7;
+  #assert keyed_scroll(s, a) == 0 && !keyed_open(s, a, false) && keyed_open(s, a, true) && keyed_slot(s, b, 2) == 0;
+  // two frames of 0.05 s into a 1 s linear entry; the new id has had one
+  #assert abs(s[0].rows[a].entry[0].value - 0.1) < 0.00001 && abs(s[0].rows[keyed_find(s, "row.new")].entry[0].value - 0.05) < 0.00001;
+  // read twice in one frame: advanced once
+  keyed_begin(s, 0.05, false); k := keyed_see(s, "row.a");
+  v := keyed_entry(s, k, 1, AM_LINEAR); #assert keyed_entry(s, k, 1, AM_LINEAR) == v && abs(v - 0.15) < 0.00001 && !keyed_fresh(s, k);
+}
+#test "an id not seen in a frame retires and starts fresh when it returns" {
+  rows: [4] Keyed; st := [1] KeyedStore.[KeyedStore.{rows = rows[..]}]; s := st[..];
+  ab := [2] string.["a", "b"]; only_b := [1] string.["b"];
+  #assert keyed_test_frame(s, ab[..], 0.05) == 0;
+  keyed_scroll_set(s, keyed_find(s, "a"), 40); keyed_open_set(s, keyed_find(s, "a"), true);
+  #assert keyed_test_frame(s, only_b[..], 0.05) == 0 && keyed_find(s, "a") < 0 && s[0].live == 1 && s[0].retired == 1 && s[0].frame == 2;
+  #assert abs(s[0].rows[keyed_find(s, "b")].entry[0].value - 0.1) < 0.00001;
+  keyed_begin(s, 0.05, false); k := keyed_see(s, "a");
+  #assert k >= 0 && keyed_fresh(s, k) && keyed_scroll(s, k) == 0 && !keyed_open(s, k, false) && s[0].rows[k].entry[0].value == 0;
+  #assert keyed_end(s) == 1 && keyed_find(s, "b") < 0 && s[0].retired == 2;
+  // nothing seen: everything retires, and an empty store has nothing moving
+  keyed_begin(s, 0.05, false); #assert keyed_end(s) == 1 && s[0].live == 0 && !keyed_moving(s);
+}
+#test "a duplicate id and a full store are refused and counted; the holder keeps its state" {
+  rows: [2] Keyed; st := [1] KeyedStore.[KeyedStore.{rows = rows[..]}]; s := st[..];
+  #assert keyed_capacity(s) == 2;
+  keyed_begin(s, 0.016, false);
+  a := keyed_see(s, "a"); keyed_scroll_set(s, a, 9);
+  #assert a >= 0 && keyed_see(s, "a") == -1 && s[0].refused_duplicate == 1 && s[0].refused_full == 0;
+  b := keyed_see(s, "b");
+  #assert b >= 0 && b != a && keyed_see(s, "c") == -1 && s[0].refused_full == 1 && s[0].refused == 2 && s[0].live == 2;
+  #assert keyed_scroll(s, a) == 9 && keyed_scroll(s, b) == 0;
+  // a refused component reads stateless answers and writes nothing
+  keyed_scroll_set(s, -1, 5); keyed_open_set(s, -1, true); keyed_slot_set(s, -1, 0, 5); keyed_spring_set(s, -1, 5);
+  #assert keyed_scroll(s, -1) == 0 && keyed_open(s, -1, true) && !keyed_open(s, -1, false) && keyed_slot(s, -1, 0) == 0;
+  #assert keyed_entry(s, -1, 1, AM_LINEAR) == 1 && keyed_press(s, -1, true, 1, AM_LINEAR) == 1 && keyed_press(s, -1, false, 1, AM_LINEAR) == 0 && keyed_spring(s, -1, 0.3) == 0.3;
+  #assert keyed_scroll(s, a) == 9 && keyed_scroll(s, 99) == 0 && !keyed_ok(s, 99) && keyed_slot(s, a, KEYED_SLOTS) == 0;
+  _ = keyed_end(s);
+  // the next frame's counts start at zero; the total stays; a retired row is free again
+  keyed_begin(s, 0.016, false); #assert s[0].refused_full == 0 && s[0].refused_duplicate == 0 && s[0].refused == 2;
+  #assert keyed_see(s, "c") == -1 && keyed_see(s, "b") == b;
+  _ = keyed_end(s);
+  keyed_begin(s, 0.016, false); #assert keyed_see(s, "c") == a && keyed_scroll(s, a) == 0 && keyed_see(s, "") == -1 && s[0].refused == 3;
+  // ids are cut at EL_ID bytes: two that are equal after the cut are one id
+  long: [60] u8; for i: 0..<60 { long[i] = 'x'; } long[59] = 'y';
+  #assert keyed_see(st[0..<0], "a") == -1 && keyed_capacity(st[0..<0]) == 0 && keyed_end(st[0..<0]) == 0;
+  rows2: [2] Keyed; st2 := [1] KeyedStore.[KeyedStore.{rows = rows2[..]}];
+  keyed_begin(st2[..], 0, false);
+  #assert keyed_see(st2[..], cast(string) long[0..<59]) == 0 && keyed_see(st2[..], cast(string) long[..]) == -1 && st2[0].refused_duplicate == 1;
+  #assert keyed_find(st2[..], cast(string) long[..]) == 0;
+}
+#test "press reverses from where it is, a spring follows its target, and reduced motion settles at once" {
+  rows: [2] Keyed; st := [1] KeyedStore.[KeyedStore.{rows = rows[..]}]; s := st[..];
+  keyed_begin(s, 0.05, false); k := keyed_see(s, "send");
+  #assert keyed_press(s, k, true, 0.1, AM_LINEAR) == 0.5 && keyed_spring(s, k, 1) == 1 && keyed_moving(s);
+  _ = keyed_end(s);
+  keyed_begin(s, 0.025, false); k = keyed_see(s, "send");
+  #assert keyed_press(s, k, false, 0.1, AM_LINEAR) == 0.375 && keyed_press(s, k, false, 0.1, AM_LINEAR) == 0.375;
+  v := keyed_spring(s, k, 0); #assert v < 1 && v > 0 && keyed_spring(s, k, 0) == v && keyed_moving(s);
+  _ = keyed_end(s);
+  // a long pause advances by at most KEYED_DT_MAX
+  keyed_begin(s, 5, false); #assert s[0].dt == 0.064;
+  _ = keyed_see(s, "send"); _ = keyed_end(s);
+  keyed_begin(s, 0.016, true); k = keyed_see(s, "send");
+  #assert keyed_press(s, k, true, 0.1, AM_LINEAR) == 1 && keyed_spring(s, k, 0) == 0 && keyed_entry(s, k, 1, AM_LINEAR) == 1 && !keyed_moving(s);
+  keyed_spring_set(s, k, 0.5); #assert keyed_moving(s) && s[0].rows[k].spring[0].value == 0.5;
+}
