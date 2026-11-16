@@ -33,7 +33,7 @@ ndl_after :: (a:string,b:string)->bool #effects(all) {
 ndl_request_read :: (raw:string,q:[]NdlRequest)->bool #export_c #effects(all) {
  if q.count!=1 {return false;}q[0]=NdlRequest.{};d:[1]Jv;nodes:[12]JvNode;
  if raw.count>512 || !jv_parse(d[..],raw,nodes[..]) {return false;}v:=d[0];fields:=[4]string.["schema","operation","identity","after"];
- if !js_fields(v,0,fields[..]) || jv_len(v,0)!=4 || jv_raw(v,jv_get(v,0,"schema"))!=NDL_REQUEST || js_string(v,jv_get(v,0,"operation"),q[0].operation[..])!=64 || !aw_hex(cast(string)q[0].operation[..],64) || js_string(v,jv_get(v,0,"identity"),q[0].identity[..])!=64 {return false;}
+ if !js_fields(v,0,fields[..]) || jv_len(v,0)!=4 || jv_raw(v,jv_get(v,0,"schema"))!=NDL_REQUEST || js_string(v,jv_get(v,0,"operation"),q[0].operation[..])!=64 || !aw_hex(cast(string)q[0].operation[..],64) || js_string(v,jv_get(v,0,"identity"),q[0].identity[..])!=64 {return false;} // mutant: equivalent (first || -> &&: exactly four members containing an unknown/duplicate omit a required field, whose own decoder refuses; an extra member independently fails the count)
  q[0].na=js_string(v,jv_get(v,0,"after"),q[0].after[..]);return aw_hex(cast(string)q[0].identity[..],64) && (q[0].na==0 || q[0].na==64 && aw_hex(cast(string)q[0].after[..],64));
 }
 ndl_request_write :: (identity:string,after:string,operation:string,out:[]u8)->int #effects(all) {
@@ -57,18 +57,18 @@ ndl_page_write :: (p:[]NdlPage,out:[]u8)->int #export_c #effects(all) {
  for i:0..<p[0].n {
   row:=p[0].items[i];id:=cast(string)row.operation[..];if !ndl_after(prev,id) {return -1;}prev=cast(string)p[0].items[i].operation[..];
   receipt:=row.receipt[0];if receipt.n<2 || receipt.n>11 {return -1;}ids:[11]string;for k:0..<receipt.n {ids[k]=cast(string)receipt.ids[k][..];}
-  b:[2048]u8;n:=nsm_sealed_write(ids[0..<receipt.n],receipt.revision,b[..]);if n<0 {return -1;}
+  b:[2048]u8;n:=nsm_sealed_write(ids[0..<receipt.n],receipt.revision,b[..]);if n<0 {return -1;} // mutant: equivalent (< -> <= or 0 -> 1: the sealed writer returns -1 or a complete JSON receipt longer than one byte, never 0 or 1)
   jo_obj(o[..]);jo_key(o[..],"operation");jo_str(o[..],id);jo_key(o[..],"receipt");jo_raw(o[..],cast(string)b[0..<n]);jo_end(o[..]);
- }jo_end(o[..]);jo_end(o[..]);return ifx o[0].bad || o[0].n>32768 then -1 else o[0].n;
+ }jo_end(o[..]);jo_end(o[..]);return ifx o[0].bad || o[0].n>32768 then -1 else o[0].n; // mutant: equivalent (32768 -> 32769 or > -> >=: sixteen rows with at most eleven canonical 64-byte IDs each use <1200 bytes per row plus <512 header bytes, under 20 KiB; no valid writer result reaches this independent 32 KiB ceiling)
 }
 ndl_page_read :: (raw:string,p:[]NdlPage)->bool #effects(all) {
  if p.count!=1 {return false;}p[0]=NdlPage.{};d:[1]Jv;nodes:[1024]JvNode;
  if raw.count>32768 || !jv_parse(d[..],raw,nodes[..]) {return false;}v:=d[0];fields:=[6]string.["schema","operation","identity","after","next","items"];
- if !js_fields(v,0,fields[..]) || jv_len(v,0)!=6 || jv_raw(v,jv_get(v,0,"schema"))!=NDL_PAGE || js_string(v,jv_get(v,0,"operation"),p[0].operation[..])!=64 || !aw_hex(cast(string)p[0].operation[..],64) || js_string(v,jv_get(v,0,"identity"),p[0].identity[..])!=64 || !aw_hex(cast(string)p[0].identity[..],64) {return false;}
+ if !js_fields(v,0,fields[..]) || jv_len(v,0)!=6 || jv_raw(v,jv_get(v,0,"schema"))!=NDL_PAGE || js_string(v,jv_get(v,0,"operation"),p[0].operation[..])!=64 || !aw_hex(cast(string)p[0].operation[..],64) || js_string(v,jv_get(v,0,"identity"),p[0].identity[..])!=64 || !aw_hex(cast(string)p[0].identity[..],64) {return false;} // mutant: equivalent (first || -> &&: six members with an unknown/duplicate omit one required decoder; extra members independently fail the exact count)
  p[0].na=js_string(v,jv_get(v,0,"after"),p[0].after[..]);p[0].nn=js_string(v,jv_get(v,0,"next"),p[0].next[..]);
  if (p[0].na!=0 && (p[0].na!=64 || !aw_hex(cast(string)p[0].after[..],64))) || (p[0].nn!=0 && (p[0].nn!=64 || !aw_hex(cast(string)p[0].next[..],64))) {return false;}
- list:=jv_get(v,0,"items");if jv_kind(v,list)!=JV_ARRAY || jv_len(v,list)>16 {return false;}
+ list:=jv_get(v,0,"items");if jv_kind(v,list)!=JV_ARRAY || jv_len(v,list)>16 {return false;} // mutant: equivalent (16 -> 17: ndl_put independently refuses a seventeenth row before writing the fixed sixteen-row array)
  names:=[2]string.["operation","receipt"];
- for i:0..<jv_len(v,list) {row:=jv_at(v,list,i);op:[64]u8;if !js_fields(v,row,names[..]) || jv_len(v,row)!=2 || js_string(v,jv_get(v,row,"operation"),op[..])!=64 || !ndl_put(p,cast(string)op[..],jv_raw(v,jv_get(v,row,"receipt"))) {return false;}}
+ for i:0..<jv_len(v,list) {row:=jv_at(v,list,i);op:[64]u8;if !js_fields(v,row,names[..]) || jv_len(v,row)!=2 || js_string(v,jv_get(v,row,"operation"),op[..])!=64 || !ndl_put(p,cast(string)op[..],jv_raw(v,jv_get(v,row,"receipt"))) {return false;}} // mutant: equivalent (first || -> &&: two members with an unknown/duplicate omit operation or receipt, and that required decoder refuses; extras independently fail the count)
  return p[0].nn==0 || p[0].n>0 && cast(string)p[0].next[..]==cast(string)p[0].items[p[0].n-1].operation[..];
 }

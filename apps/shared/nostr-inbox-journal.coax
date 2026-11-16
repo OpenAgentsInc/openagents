@@ -140,10 +140,11 @@ ndj_next :: (j:[]NostrInboxJournal,s:[]NostrInbox)->bool #effects(all) {
  }
  if !ndj_operation(j) {j[0].failed=true;return false;}
  none:[1]string;id:=cast(string)s[0].identity[..];op:=cast(string)j[0].operation[..];n:= -1;
- if j[0].phase==1 {filter:[1024]u8;nf:=ndj_filter(id,filter[..]);if nf>=0 {n=nms_request_write("index",op,id,"",none[0..<0],0,j[0].revision,j[0].cursor,cast(string)filter[0..<nf],j[0].body[..]);}}
+ if j[0].phase==1 {filter:[1024]u8;nf:=ndj_filter(id,filter[..]);if nf>=0 {n=nms_request_write("index",op,id,"",none[0..<0],0,j[0].revision,j[0].cursor,cast(string)filter[0..<nf],j[0].body[..]);}} // mutant: equivalent (>= -> > or 0 -> 1: the filter writer returns -1 or a complete filter JSON object longer than one byte, never 0 or 1)
  else if j[0].phase==2 {n=nms_request_write("event",op,id,"",none[0..<0],0,0,0,cast(string)j[0].index[0].rows[j[0].at].id[..],j[0].body[..]);}
  // phase 3 is emitted by the event reply while its exact original is owned.
- if n<0 {j[0].failed=true;return false;}j[0].nb=n;j[0].action=MS_OP;j[0].busy=true;return true;
+ if n<0 {j[0].failed=true;return false;} // mutant: equivalent (0 -> 1 or < -> <=: the request writer returns -1 or complete request JSON longer than one byte; the unsupported phase retains -1)
+ j[0].nb=n;j[0].action=MS_OP;j[0].busy=true;return true;
 }
 ndj_filter :: (identity:string,out:[]u8)->int #effects(all) {
  if !aw_hex(identity,64) {return -1;}f:NostrFilter;kinds:=[1]int.[1059];tags:[1]NostrTagFilter;keys:=[1]string.[identity];
@@ -172,6 +173,6 @@ ndj_reply :: (j:[]NostrInboxJournal,s:[]NostrInbox,generation:int,raw:string,fai
  original:=cast(string)r[0].payload[0..<r[0].n];scratch:[65536]u8;e:=nostr_event_read(original,scratch[..],false);outer:[64]u8;
  if e.error!=NE_OK || e.kind!=1059 || hex_encode_checked(cast(string)e.id[..],outer[..],false).error!=NC_OK || cast(string)outer[..]!=cast(string)j[0].index[0].rows[j[0].at].id[..] {j[0].failed=true;return false;}
  n:=nsc_request("open",cast(string)j[0].operation[..],cast(string)s[0].identity[..],original,j[0].body[..]);
- if n<0 || !ndi_begin(s,cast(string)j[0].operation[..],cast(string)j[0].index[0].rows[j[0].at].id[..]) {j[0].failed=true;return false;}
+ if n<0 || !ndi_begin(s,cast(string)j[0].operation[..],cast(string)j[0].index[0].rows[j[0].at].id[..]) {j[0].failed=true;return false;} // mutant: equivalent (0 -> 1 or < -> <= on n only: nsc_request returns -1 or complete custody request JSON longer than one byte, never 0 or 1)
  j[0].nb=n;j[0].phase=3;j[0].action=NSC_OP;j[0].busy=true;return true;
 }

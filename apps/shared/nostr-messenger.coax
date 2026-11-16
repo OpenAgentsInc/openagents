@@ -24,6 +24,7 @@ NostrMessenger :: struct {
 #load "nostr-messenger-loop.coax";
 #load "nostr-messenger-compose.coax";
 #load "nostr-messenger-checks.coax" #test;
+#load "nostr-messenger-lifecycle-checks.coax" #test;
 #test "messenger bootstrap binds one account and cold-replays before claiming an empty live inbox" {
  m:[1]NostrMessenger;q:[1]MsRequest;b:[4096]u8;p:[2048]u8;rows:[1]MsIndexRow;
  me:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";urls:=[1]string.["wss://relay.example"];

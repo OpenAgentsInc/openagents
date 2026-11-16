@@ -18,6 +18,7 @@ NostrDeliveries :: struct {operation:[64]u8;generation:int;identity:[64]u8;rows:
  index[0].ok=true;index[0].revision=8;index[0].n=1;index[0].rows[0].kind=1059;index[0].rows[0].accepted=1;for c,i:op {index[0].rows[0].id[i]=c;}
  #assert ndd_index(s[..],inbox[..],1,0,index[..]) && nds_status(s[0].rows[0].state[..])==1;
  #assert !ndd_index(s[..],inbox[..],2,0,index[..]);
+ s[0].generation=2;#assert !ndd_index(s[..],inbox[..],1,0,index[..]);s[0].generation=1;
  #assert ndd_begin(s[..],inbox[..]);n=ndl_page_write(p[..],b[..]);#assert ndd_page(s[..],inbox[..],1,cast(string)b[0..<n]) && s[0].n==1 && nds_status(s[0].rows[0].state[..])==1;
  #assert ndd_begin(s[..],inbox[..]);p[0].items[0].receipt[0].revision=8;n=ndl_page_write(p[..],b[..]);
  #assert n>0 && !ndd_page(s[..],inbox[..],1,cast(string)b[0..<n]) && s[0].corrupt && s[0].rows[0].state[0].receipt[0].revision==7;
@@ -98,7 +99,7 @@ ndd_index :: (s:[]NostrDeliveries,inbox:[]NostrInbox,generation:int,at:int,index
  s[0].generation+=1;#assert ndd_begin(s[..],inbox[..]) && s[0].n==0 && s[0].generation==inbox[0].generation;
  s[0].n=1;s[0].identity[0]='0';s[0].rows[0].created=99;#assert ndd_begin(s[..],inbox[..]) && s[0].n==0 && cast(string)s[0].identity[..]==me;
  a:NsmSealed;b:NsmSealed;a.n=2;b.n=2;a.revision=3;b.revision=3;
- #assert ndd_same(a,b);b.ids[1][0]='f';#assert !ndd_same(a,b);b=a;b.self[0]='f';#assert !ndd_same(a,b);b=a;b.revision=4;#assert !ndd_same(a,b);b=a;b.n=3;#assert !ndd_same(a,b);
+ #assert ndd_same(a,b);for i:0..<2 {b=a;b.ids[i][0]='f';#assert !ndd_same(a,b);}b=a;b.self[0]='f';#assert !ndd_same(a,b);b=a;b.revision=4;#assert !ndd_same(a,b);b=a;b.n=3;#assert !ndd_same(a,b);
  rumor:[32]u8;#assert ndd_find(s[..],rumor[..])== -1;s[0].n=2;s[0].rows[0].rumor[0]=1;s[0].rows[1].rumor=rumor;#assert ndd_find(s[..],rumor[..])==1;
  _=op;
 }
@@ -132,11 +133,11 @@ ndd_index :: (s:[]NostrDeliveries,inbox:[]NostrInbox,generation:int,at:int,index
  inbox:[1]NostrInbox;s:[1]NostrDeliveries;q:[1]NdlRequest;p:[1]NdlPage;b:[32768]u8;r:[2048]u8;
  me:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";op:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";ids:=[2]string.[op,me];nr:=nsm_sealed_write(ids[..],7,r[..]);
  #assert ndi_bind(inbox[..],"a",me) && ndd_begin(s[..],inbox[..]);n:=ndd_request(s[..],op,b[..]);#assert ndl_request_read(cast(string)b[0..<n],q[..]) && ndl_begin(p[..],q[..]) && ndl_put(p[..],op,cast(string)r[0..<nr]);
- for mismatch:0..<4 {
+ for mismatch:0..<5 {
   saved:=p[0];
   if mismatch==0 {p[0].operation=p[0].identity;}if mismatch==1 {p[0].identity=p[0].operation;}if mismatch==2 {p[0].after=p[0].identity;p[0].na=64;}
-  n=ndl_page_write(p[..],b[..]);#assert n>0;generation:=1;if mismatch==3 {generation=2;}
-  #assert !ndd_page(s[..],inbox[..],generation,cast(string)b[0..<n]) && s[0].n==0 && !s[0].complete;p[0]=saved;
+  n=ndl_page_write(p[..],b[..]);#assert n>0;generation:=1;if mismatch==3 {generation=2;}s[0].generation=ifx mismatch==4 then 2 else 1;
+  #assert !ndd_page(s[..],inbox[..],generation,cast(string)b[0..<n]) && s[0].n==0 && !s[0].complete;p[0]=saved;s[0].generation=1;
  }
  #assert !ndd_page(s[..],inbox[..],1,"{}");
  // A valid receipt is not enough: a received copy or a missing outer cannot attach it.

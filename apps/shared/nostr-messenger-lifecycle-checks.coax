@@ -1,0 +1,54 @@
+// Lifecycle and owner-fence oracles, independent of transport scheduling order.
+#test "messenger readiness requires each independent live ownership and catchup fact" {
+ m:[1]NostrMessenger;p:=m[0].relays[..];p[0].active=true;p[0].nr=1;p[0].relays[0].messages=0;p[0].relays[0].relay[0].state=RL_OPEN;p[0].relays[0].relay[0].subs[0].state=RS_CAUGHT;
+ for absent:0..<7 {
+  m[0].started=absent!=0;m[0].active=absent!=1;m[0].own_ready=absent!=2;m[0].journal[0].ready=absent!=3;m[0].mode=ifx absent==4 then 0 else 1;p[0].active=absent!=5;p[0].partial=absent==6;
+  #assert !ndm_ready(m[..]);
+ }
+ m[0].started=true;m[0].active=true;m[0].own_ready=true;m[0].journal[0].ready=true;m[0].mode=1;p[0].active=true;p[0].partial=false;#assert ndm_ready(m[..]);
+ ndm_pause(m[..]);#assert !m[0].active && !p[0].active && p[0].reset && m[0].dirty && !ndm_ready(m[..]);
+}
+#test "messenger launch preserves a busy request and owns the full accepted body until its deadline" {
+ m:[1]NostrMessenger;large:[800001]u8;m[0].ms=123;m[0].retry=true;
+ #assert ndm_launch(m[..],22,4,"owned") && m[0].nb==5 && cast(string)m[0].body[0..<5]=="owned" && m[0].op==22 && m[0].action==22 && m[0].flight==4 && m[0].deadline==45123 && !m[0].retry;
+ #assert !ndm_launch(m[..],21,8,"replacement") && m[0].flight==4 && m[0].action==22 && cast(string)m[0].body[0..<5]=="owned";
+ m[0].flight=0;#assert !ndm_launch(m[..],21,8,cast(string)large[..]) && m[0].action==22 && m[0].nb==5;
+ large[799999]=165;#assert ndm_launch(m[..],21,8,cast(string)large[0..<800000]) && m[0].nb==800000 && m[0].body[799999]==165;
+}
+#test "messenger peer transitions preserve the same peer and invalidate discovery for a different peer" {
+ m:[1]NostrMessenger;me:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";peer:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+ #assert !ndm_peer(m[..],peer) && ndi_bind(m[0].inbox[..],"a",me);m[0].started=true;
+ #assert !ndm_peer(m[..],"bad") && !ndm_peer(m[..],me) && ndm_peer(m[..],peer) && m[0].np==64 && cast(string)m[0].peer[..]==peer && !m[0].peer_ready && m[0].head_wanted && !m[0].head_peer && m[0].discovery_at==0 && m[0].dirty;
+ m[0].head_wanted=false;m[0].peer_ready=true;m[0].head_peer=true;m[0].discovery_at=17;m[0].dirty=false;
+ #assert ndm_peer(m[..],peer) && m[0].peer_ready && !m[0].head_wanted && m[0].head_peer && m[0].discovery_at==17 && !m[0].dirty;
+ #assert ndm_peer(m[..],"") && m[0].np==0 && !m[0].peer_ready && m[0].head_wanted && !m[0].head_peer && m[0].discovery_at==0;
+}
+#test "messenger settings validate before replacing the saved discovery inputs" {
+ m:[1]NostrMessenger;urls:=[7]string.["wss://one.example","wss://two.example","wss://three.example","wss://four.example","wss://five.example","wss://six.example","wss://seven.example"];
+ me:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";#assert !ndm_settings(m[..],urls[0..<1]) && ndi_bind(m[0].inbox[..],"a",me);m[0].started=true;
+ #assert !ndm_settings(m[..],urls[0..<0]) && !ndm_settings(m[..],urls[..]) && ndm_settings(m[..],urls[0..<6]) && m[0].ns==6 && m[0].settings_changed && m[0].dirty;
+ for i:0..<6 {#assert cast(string)m[0].saved[i][0..<m[0].saved_n[i]]==urls[i];}
+ m[0].settings_changed=false;m[0].dirty=false;#assert ndm_settings(m[..],urls[0..<6]) && !m[0].settings_changed && !m[0].dirty;
+ duplicate:=[2]string.[urls[0],urls[0]];invalid:=[1]string.["ws://insecure.example"];
+ #assert !ndm_settings(m[..],duplicate[..]) && !ndm_settings(m[..],invalid[..]) && m[0].ns==6 && !m[0].settings_changed;
+ #assert ndm_settings(m[..],urls[0..<1]) && m[0].ns==1 && m[0].settings_changed && m[0].dirty;
+}
+#test "reply ownership fences refuse stale effects without consuming the current request" {
+ m:[1]NostrMessenger;me:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";
+ #assert ndi_bind(m[0].inbox[..],"a",me);
+ for absent:0..<4 {m[0].flight=ifx absent==0 then 0 else 4;m[0].op=22;m[0].generation=1;m[0].inbox[0].generation=ifx absent==3 then 2 else 1;m[0].action=22;m[0].dirty=false;
+  #assert !ndm_reply(m[..],ifx absent==1 then 21 else 22,ifx absent==2 then 2 else 1,503,"",true) && m[0].flight==(ifx absent==0 then 0 else 4) && m[0].action==22 && !m[0].dirty;
+ }
+ m[0].inbox[0].generation=1;m[0].flight=4;m[0].ms=100;
+ #assert ndm_reply(m[..],22,1,503,"",true) && m[0].flight==0 && m[0].action==0 && m[0].dirty && m[0].retry && m[0].retry_task==4 && m[0].retry_at==5100;
+ #assert ndm_retry(m[..])==false;m[0].active=true;#assert ndm_retry(m[..]) && m[0].retry_at==0;
+ m[0].retry=false;#assert !ndm_retry(m[..]);m[0].flight=2;#assert !ndm_retry(m[..]);
+}
+#test "committed send reply resets publication discovery without replacing its frozen ciphertext receipt" {
+ m:[1]NostrMessenger;b:[8192]u8;receipt:[2048]u8;
+ me:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";peer:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+ #assert ndi_bind(m[0].inbox[..],"a",me) && ndo_begin(m[0].outgoing[..],m[0].inbox[..],me,peer,1730000000,"one intent","");m[0].generation=1;m[0].flight=3;m[0].op=21;m[0].action=21;m[0].submit=true;m[0].pub_phase=4;m[0].pub_cursor=8;m[0].pub_revision=9;
+ ids:=[2]string.[peer,me];n:=nsm_sealed_write(ids[..],7,receipt[..]);n=nsr_write("custody","seal",me,me,"ok",7,0,cast(string)receipt[0..<n],b[..]);
+ #assert n>0 && ndm_reply(m[..],21,1,0,cast(string)b[0..<n],false) && m[0].outgoing[0].phase==3 && !m[0].submit && m[0].pub_phase==0 && m[0].pub_cursor==0 && m[0].pub_revision==0 && m[0].want_receipts && m[0].flight==0 && m[0].action==0 && m[0].dirty;
+ #assert !ndm_reply(m[..],21,1,0,cast(string)b[0..<n],false) && cast(string)m[0].outgoing[0].delivery[0].receipt[0].self[..]==me;
+}
