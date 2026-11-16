@@ -48,6 +48,7 @@ SjRules :: struct {
   dig_stay: bool;             // Digger stays (G)
   heat: int; level: int;      // the jam's Heat and its level
   said: int; said_item: string; said_t: f32;
+  button: int;                // the pointer's button now: 0 left (Attack), 2 right (Use), as the jam binds them
 }
 
 // The item table the rules read: the slice's items, their categories and stacks (UE-STOW-01: parts 64,
@@ -283,9 +284,11 @@ sjx_key :: (g: [] SpGame, key: int, down: bool) -> int {
   if down && (key == 'g' || key == 'G') { sjx_crew_key(g); return 1; }
   return 0;
 }
-// The pointer in play: the left button is the jam's Attack when a target answers (else it points Digger).
+// The pointer in play: the left button is the jam's Attack when a target answers (else it points Digger), the
+// right its Use.
 sjx_pointer :: (g: [] SpGame, phase: int) -> bool {
   if !sjx_on(g) || g[0].mode != M_PLAY || d_cursor(g) || g[0].dr[0].map || g[0].look_free { return false; }
+  if g[0].jx[0].button == 2 { return phase == 0 && sjx_use(g); }   // the right button: Use (feed, a core in), as E does
   if phase == 0 { return sjx_left(g, true); }
   if phase == 2 || phase == 3 { _ := sjx_left(g, false); }
   return false;
@@ -343,13 +346,30 @@ sjx_step :: (g: [] SpGame, dt: f32) {
   sjx_heat(g);
 }
 
+// For a page check (splice-bots.coax splice_world_fact): 16 the jam's hotbar is up, 17 the slot picked,
+// 18 batteries she carries, 19 robots harvested, 20 and 21 the first charge point's x and z (cm), 22 what the
+// rules last said (SJX_*), 23 what a left click would act on (SJX_T_*).
+sjx_fact :: (g: [] SpGame, k: int) -> int {
+  if !sjx_on(g) { return -1; }
+  x := g[0].jx[0];
+  if k == 16 { return ifx g[0].mode == M_PLAY then 1 else 0; }
+  if k == 17 { return x.inv[0].selected; }
+  if k == 18 { return sjx_count(g, ITEM_BATTERY); }
+  if k == 19 { return x.harvests; }
+  if k == 22 { return x.said; } if k == 23 { return sjx_target(g, SJX_ATTACK_REACH, false).kind; }
+  if (k == 20 || k == 21) && x.charge_n > 0 { a := g[0].jr[0].actors[x.charge_actor[0]]; return we_cm(ifx k == 20 then a.x else a.z); }
+  return -1;
+}
+
 // ---- the HUD: the hotbar at the bottom, Heat's level at the top left, what she faces and what was said
 SJX_LEVELS :: [3] string.["HEAT LOW", "HEAT MEDIUM", "HEAT HIGH"];
 sjx_hud :: (g: [] SpGame, out: [] f32, at: int, q: Ui) -> int {
-  if !sjx_on(g) || g[0].mode != M_PLAY { return at; }
+  if !sjx_on(g) || g[0].mode != M_PLAY || sb_fighting(g) { return at; }   // a battle's own panel takes the bottom centre
   n := at; k := q.k; x := g[0].jx[0]; nb: [48] u8;
   // the hotbar: 9 slots, the held one lit, each with its item and count
-  cw := 46 * k; gap := 4 * k; w := 9 * cw + 8 * gap; x0 := q.w * 0.5 - w * 0.5; y1 := ro_safe(q.w, q.h).y1 - 80 * k; y0 := y1 - cw;
+  cw := 46 * k; gap := 4 * k; w := 9 * cw + 8 * gap;
+  extra := 12 * k + cw + (ifx g[0].bot then cw * 1.3 + gap else 0.0f32);   // Digger's and Stun's cells after it
+  x0 := q.w * 0.5 - (w + extra) * 0.5; y1 := ro_safe(q.w, q.h).y1 - 8 * k; y0 := y1 - cw;
   for i: 0..<SR_HOTBAR_SLOTS {
     s := x.inv[0].main[0].slots[i]; cx0 := x0 + cast(f32) i * (cw + gap);
     on := i == x.inv[0].selected;
@@ -361,6 +381,20 @@ sjx_hud :: (g: [] SpGame, out: [] f32, at: int, q: Ui) -> int {
       if s.count > 1 { cb: [16] u8; n = hv_right(out, n, F_MONO, num(cb[..], "", s.count, ""), cx0 + cw - 4 * k, y1 - 5 * k, 6.5 * k, HV_CREAM(), 1); }
     }
   }
+  // Digger and Stun, which the prototype's bar showed (hv_slots): beside the hotbar, Digger with his state, F for Stun
+  ex := x0 + w + 12 * k;
+  if g[0].bot {
+    dn := d_down(g); dw := ifx dn then "DOWN" else ifx x.dig_stay then "STAYS" else "DIGGER";
+    n = hv_rect(out, n, ex, y0, ex + cw * 1.3, y1, HV_CELL(), 0.88);
+    n = hv_frame(out, n, ex, y0, ex + cw * 1.3, y1, k, HV_LINE(), 1);
+    n = hv_mid(out, n, F_TITLE, dw, ex + cw * 0.65, y0 + cw * 0.45, 6 * k, ifx dn then HV_ORANGE() else HV_CREAM(), 1);
+    n = hv_mid(out, n, F_MONO, "G", ex + cw * 0.65, y1 - 6 * k, 5.5 * k, HV_DIM(), 1);
+    ex += cw * 1.3 + gap;
+  }
+  n = hv_rect(out, n, ex, y0, ex + cw, y1, HV_CELL(), 0.88);
+  n = hv_frame(out, n, ex, y0, ex + cw, y1, k, HV_LINE(), 1);
+  n = hv_mid(out, n, F_TITLE, "STUN", ex + cw * 0.5, y0 + cw * 0.45, 6 * k, HV_CREAM(), 1);
+  n = hv_mid(out, n, F_MONO, "F", ex + cw * 0.5, y1 - 6 * k, 5.5 * k, HV_DIM(), 1);
   // Heat's level
   n = hv_text(out, n, F_TITLE, SJX_LEVELS[x.level], ro_safe(q.w, q.h).x0, ro_safe(q.w, q.h).y0 + 70 * k, 9 * k, ifx x.level == SR_HEAT_LOW then HV_DIM() else HV_ORANGE(), 1);
   // what the rules said, or the harvest's hold

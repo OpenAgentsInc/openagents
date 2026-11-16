@@ -104,7 +104,7 @@ sjr_click :: (g: [] SpGame) -> bool { r := g_pointer(g, 640, 360, 0); _ := g_poi
   g[0].yaw = atan2(g[0].jx[0].bots[1].x - g[0].px, g[0].jx[0].bots[1].z - g[0].pz);
   #assert sjx_target(g[..], SJX_USE_REACH, true).kind == SJX_T_BOT;
   #assert sr_resolve_right_click(sjx_input(g[..], sjx_target(g[..], SJX_USE_REACH, true))).verb == SR_VERB_FEED;
-  #assert g_key(g[..], 'e', true);
+  g[0].jx[0].button = 2; #assert g_pointer(g[..], 640, 360, 0); _ := g_pointer(g[..], 640, 360, 2); g[0].jx[0].button = 0;   // the right button: Use
   #assert abs(g[0].jx[0].bots[1].robot.state.health - 12) < 0.001;
   #assert sjx_count(g[..], ITEM_BATTERY) == 0 && g[0].jx[0].said == SJX_FED;
 }

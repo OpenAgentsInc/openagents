@@ -4,7 +4,8 @@
 //   coax/web/tool.sh metaverse/splice-bots/tools/jam-keys-check.coax URL OUT.png
 // URL is the page with ?pack=splice-bots-jam&stage=1 on a dev server (coax/web/serve.sh). It prints the
 // readings and exits 0 when the run starts at the jam farm's player start, W walks her, S brings her
-// back and Space lifts her.
+// back, Space lifts her, 3 picks the jam hotbar's third slot and a left click at a charge point takes its
+// battery (jam/jam-farm.coax).
 //
 // Why a page check needs focus emulation: a headless page has no focus, and the host lets go of every
 // held key when the page has no focus (host.js hostLifeEvent: a blur clears the game's keys, so W pressed
@@ -21,6 +22,17 @@ jk_key :: (c: [] Cdp, key: string, code: string, vk: int, down: bool) {
   if down && key.count == 1 { jo_key(j[..], "text"); jo_str(j[..], key); }
   jo_end(j[..]);
   #assert cdp_call(c, "Input.dispatchKeyEvent", jo_text(j[..]), CDP_CALL_MS) >= 0;
+}
+// A mouse button at the view's middle, pressed or let go, as the browser's own event (0 left, 2 right).
+jk_mouse :: (c: [] Cdp, button: int, down: bool) {
+  p: [512] u8; j: [1] Jo; jo_start(j[..], p[..]); jo_obj(j[..]);
+  jo_key(j[..], "type"); jo_str(j[..], ifx down then "mousePressed" else "mouseReleased");
+  jo_key(j[..], "x"); jo_int(j[..], 640); jo_key(j[..], "y"); jo_int(j[..], 360);
+  jo_key(j[..], "button"); jo_str(j[..], ifx button == 2 then "right" else "left");
+  jo_key(j[..], "buttons"); jo_int(j[..], ifx down then (ifx button == 2 then 2 else 1) else 0);
+  jo_key(j[..], "clickCount"); jo_int(j[..], 1);
+  jo_end(j[..]);
+  #assert cdp_call(c, "Input.dispatchMouseEvent", jo_text(j[..]), CDP_CALL_MS) >= 0;
 }
 jk_eval :: (c: [] Cdp, js: string) { if cdp_evaluate(c, js) < 0 { print("evaluate failed: %\n", js); } }
 
@@ -52,7 +64,16 @@ tool_main :: () -> int #export_c #effects(all) {
   jk_key(c[..], " ", "Space", 32, true);
   for k: 0..<20 { proc_sleep(40); jk_eval(c[..], "J.peak=Math.max(J.peak,coaxial.fieldProbe(14));1"); }
   jk_key(c[..], " ", "Space", 32, false); proc_sleep(800);
-  vn := media_value(c[..], "(()=>{const d=(p,q)=>Math.hypot(p[0]-q[0],p[1]-q[1]);J.walk_cm=Math.round(d(J.start,J.walked));J.back_cm=Math.round(d(J.walked,J.back));J.jump_cm=J.peak-J.start[2];J.ok=J.focus&&Math.hypot(J.start[0]+84000,J.start[1]+13600)<300&&J.walk_cm>300&&J.back_cm>150&&J.jump_cm>50;return JSON.stringify(J)})()", value[..]);
+  // the jam's hotbar (jam/jam-farm.coax): 3 picks its third slot; at a charge point the left button takes a battery
+  jk_key(c[..], "3", "Digit3", 51, true); jk_key(c[..], "3", "Digit3", 51, false); proc_sleep(200);
+  jk_eval(c[..], "J.hotbar=coaxial.fieldProbe(16);J.slot=coaxial.fieldProbe(17);coaxial.send(611,`${coaxial.fieldProbe(20)+150} ${coaxial.fieldProbe(21)} -90 0`);1");
+  proc_sleep(500);
+  // a person's first click holds the pointer (mouselook); headless Chrome refuses the lock, so the dev page's stand-in holds it
+  jk_eval(c[..], "coaxial.pointerLock?.(1);1"); proc_sleep(200);
+  jk_eval(c[..], "J.target=coaxial.fieldProbe(23);1");
+  jk_mouse(c[..], 0, true); proc_sleep(120); jk_mouse(c[..], 0, false); proc_sleep(300);
+  jk_eval(c[..], "J.battery=coaxial.fieldProbe(18);1");
+  vn := media_value(c[..], "(()=>{const d=(p,q)=>Math.hypot(p[0]-q[0],p[1]-q[1]);J.walk_cm=Math.round(d(J.start,J.walked));J.back_cm=Math.round(d(J.walked,J.back));J.jump_cm=J.peak-J.start[2];J.ok=J.focus&&Math.hypot(J.start[0]+84000,J.start[1]+13600)<300&&J.walk_cm>300&&J.back_cm>150&&J.jump_cm>50&&J.hotbar===1&&J.slot===2&&J.battery===1;return JSON.stringify(J)})()", value[..]);
   cdp_close(c[..]);
   if vn < 0 { return 5; }
   result := cast(string) value[0..<vn]; print("%\n", result);

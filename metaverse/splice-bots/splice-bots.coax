@@ -263,7 +263,8 @@ splice_world_fact :: (s: [] Splice, k: int) -> int #export_c #effects(all) {
   if k == 9 { return s[0].game[0].imp[0].gen; } if k == 10 { return s[0].game[0].imp[0].n; } if k == 11 { return s[0].imports_refused; }
   if k == 12 { return s[0].ld[0].mesh_n; } if k == 13 { return s[0].imports_n; }
   if k == 14 { return we_cm(g_feet_y(s[0].game[..])); }
-  if k == 15 { return ifx s[0].game[0].jam then 1 else 0; }   // the game plays in the jam world (jam/jam-world.coax)   // her feet's height (metaverse/splice-bots/tools/jam-keys-check.coax)
+  if k == 15 { return ifx s[0].game[0].jam then 1 else 0; }   // the game plays in the jam world (jam/jam-world.coax)
+  if k >= 16 && k <= 23 { return sjx_fact(s[0].game[..], k); }   // the jam's rules (jam/jam-farm.coax sjx_fact; jam-keys-check.coax)
   return -1;
 }
 // The world's import pack as it arrived (the page's data asset, GitHub #13420): read whole
@@ -538,6 +539,12 @@ splice_mouselook :: (s: [] Splice) -> int #export_c #effects(all) {
 splice_look :: (s: [] Splice, dx: f32, dy: f32) #export_c #effects(all) { if !s[0].gallery && s[0].started { g_look(s[0].game[..], dx, dy); } }
 splice_wheel :: (s: [] Splice, dy: f32) #export_c #effects(all) { if !s[0].gallery && s[0].started && !(s[0].edit && !vp_hands(s[0].vp[..])) { cm_wheel(s[0].game[..], dy); } }   // the camera in or out (camera.coax)
 splice_lock :: (s: [] Splice, status: int) #export_c #effects(all) { if !s[0].gallery && s[0].started { g_lock(s[0].game[..], status); } }
+// The pointer with its button (the host's coaxial_pointer_buttons_v1): 0 left, 2 right. The jam world binds the
+// right button to Use (jam/jam-farm.coax sjx_pointer); everything else plays as splice_pointer.
+splice_pointer_button :: (s: [] Splice, x: f32, y: f32, phase: int, button: int) -> bool #export_c #effects(all) {
+  if !s[0].gallery && s[0].started && button >= 0 { s[0].game[0].jx[0].button = button; }
+  return splice_pointer(s, x, y, phase);
+}
 splice_pointer :: (s: [] Splice, x: f32, y: f32, phase: int) -> bool #export_c #effects(all) {
   if s[0].gallery || !s[0].started { return false; }
   if s[0].edit && !vp_hands(s[0].vp[..]) { spv_pointer(s[0].game[..], s[0].page[..], s[0].vp[..], s[0].vw[..], s[0].vview, x, y, phase); return true; }

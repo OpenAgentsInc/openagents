@@ -166,6 +166,10 @@ EXPORT("coaxial_pointer") uint32_t coaxial_pointer(cx_face_addr state, float x, 
 // Mouse look: the host holds the pointer while the smuggler walks and frees it in the edit bay.
 EXPORT("coaxial_mouselook") uint32_t coaxial_mouselook(cx_face_addr state) { return (uint32_t)splice_mouselook(at(state)); }
 EXPORT("coaxial_look_delta") void coaxial_look_delta(cx_face_addr state, float dx, float dy) { splice_look(at(state), dx, dy); }
+// The same with the DOM button (0 left, 2 right; -1 on a move), so a right click can be the jam's Use.
+EXPORT("coaxial_pointer_buttons_v1") uint32_t coaxial_pointer_buttons_v1(cx_face_addr state, float x, float y, int32_t phase, int32_t kind, int32_t id, int32_t button) {
+  return (kind ? splice_touch(at(state),x,y,phase,id) : splice_pointer_button(at(state), x, y, phase, button)) ? 1u : 0u;
+}
 EXPORT("coaxial_pointer_lock") void coaxial_pointer_lock(cx_face_addr state, int32_t status) { splice_lock(at(state), status); }
 // The wheel or a trackpad's two fingers zoom the camera (camera.coax cm_wheel).
 EXPORT("coaxial_wheel") void coaxial_wheel(cx_face_addr state, float dy) { splice_wheel(at(state), dy); }

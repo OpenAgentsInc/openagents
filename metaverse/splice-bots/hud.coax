@@ -420,7 +420,7 @@ hv_hud :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui) -> int {
   n = hv_toasts(g, out, n, q);
   n = hv_gauges(g, out, n, q);
   n = hv_board(g, out, n, q);
-  if !sb_fighting(g) { n = hv_slots(g, out, n, q); }   // a battle's own panel takes the bottom centre (splice-battle.coax)
+  if !sb_fighting(g) && !sjx_on(g) { n = hv_slots(g, out, n, q); }   // in the jam world its hotbar takes the bar's place (sjx_hud)   // a battle's own panel takes the bottom centre (splice-battle.coax)
   n = hv_card(g, out, n, q);
   n = sb_hud(g, out, u, q, n);   // health bars over the bots, and a battle's panels
   n = sjx_hud(g, out, n, q);   // the jam's hotbar, Heat's level and its lines, in the jam world (jam/jam-farm.coax)
