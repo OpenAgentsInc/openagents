@@ -1,0 +1,130 @@
+// CityHash64 (Google's public hash, version 1.1) and the script-object id a cooked Unreal package uses
+// for a native class or object it imports (the importer's spec, section 4.4). A zen package names
+// /Script/Engine.StaticMesh not by text but by a 62-bit hash of it: the path lowercased, '.' and ':'
+// as '/', hashed as UTF-16 little endian, the top two bits cleared. The reader hashes the names it
+// knows and looks the import up.
+//   coax/bin/coax test metaverse-engine/import/unreal/cooked/city.coax
+
+CITY_K0 :: cast(u64) 0xc3a5c85c97cb3127;
+CITY_K1 :: cast(u64) 0xb492b66fbe98f273;
+CITY_K2 :: cast(u64) 0x9ae16a3b2f90404f;
+CITY_MUL :: cast(u64) 0x9ddfea08eb382d69;
+
+city_u64 :: (s: string, i: int) -> u64 #effects(all) {
+  v: u64 = 0; for k: 0..<8 { v = v | (cast(u64) s[i + k] << cast(u64) (8 * k)); } return v;
+}
+city_u32 :: (s: string, i: int) -> u64 #effects(all) {
+  v: u64 = 0; for k: 0..<4 { v = v | (cast(u64) s[i + k] << cast(u64) (8 * k)); } return v;
+}
+city_rot :: (v: u64, n: u64) -> u64 #effects(all) { return ifx n == 0 then v else rotr(v, n); }
+city_mix :: (v: u64) -> u64 #effects(all) { return v ^ (v >> 47); }
+city_swap :: (v: u64) -> u64 #effects(all) {
+  r: u64 = 0; for k: 0..<8 { r = (r << 8) | ((v >> cast(u64) (8 * k)) & 255); } return r;
+}
+city_16 :: (u: u64, v: u64, mul: u64) -> u64 #effects(all) {
+  a := mul_wrap(u ^ v, mul); a = a ^ (a >> 47);
+  b := mul_wrap(v ^ a, mul); b = b ^ (b >> 47);
+  return mul_wrap(b, mul);
+}
+city_0_16 :: (s: string, n: int) -> u64 #effects(all) {
+  ln := cast(u64) n;
+  if n >= 8 {
+    mul := add_wrap(CITY_K2, ln * 2); a := add_wrap(city_u64(s, 0), CITY_K2); b := city_u64(s, n - 8);
+    c := add_wrap(mul_wrap(city_rot(b, 37), mul), a); d := mul_wrap(add_wrap(city_rot(a, 25), b), mul);
+    return city_16(c, d, mul);
+  }
+  if n >= 4 {
+    mul := add_wrap(CITY_K2, ln * 2); a := city_u32(s, 0);
+    return city_16(add_wrap(ln, a << 3), city_u32(s, n - 4), mul);
+  }
+  if n > 0 {
+    a := cast(u64) s[0]; b := cast(u64) s[n >> 1]; c := cast(u64) s[n - 1];
+    y := a + (b << 8); z := ln + (c << 2);
+    return mul_wrap(city_mix(mul_wrap(y, CITY_K2) ^ mul_wrap(z, CITY_K0)), CITY_K2);
+  }
+  return CITY_K2;
+}
+city_17_32 :: (s: string, n: int) -> u64 #effects(all) {
+  mul := add_wrap(CITY_K2, cast(u64) n * 2);
+  a := mul_wrap(city_u64(s, 0), CITY_K1); b := city_u64(s, 8);
+  c := mul_wrap(city_u64(s, n - 8), mul); d := mul_wrap(city_u64(s, n - 16), CITY_K2);
+  return city_16(add_wrap(add_wrap(city_rot(add_wrap(a, b), 43), city_rot(c, 30)), d), add_wrap(add_wrap(a, city_rot(add_wrap(b, CITY_K2), 18)), c), mul);
+}
+city_33_64 :: (s: string, n: int) -> u64 #effects(all) {
+  mul := add_wrap(CITY_K2, cast(u64) n * 2);
+  a := mul_wrap(city_u64(s, 0), CITY_K2); b := city_u64(s, 8); c := city_u64(s, n - 24); d := city_u64(s, n - 32);
+  e := mul_wrap(city_u64(s, 16), CITY_K2); f := mul_wrap(city_u64(s, 24), 9); g := city_u64(s, n - 8); h := mul_wrap(city_u64(s, n - 16), mul);
+  u := add_wrap(city_rot(add_wrap(a, g), 43), mul_wrap(add_wrap(city_rot(b, 30), c), 9));
+  v := add_wrap(add_wrap(add_wrap(a, g) ^ d, f), 1);
+  w := add_wrap(city_swap(mul_wrap(add_wrap(u, v), mul)), h);
+  x := add_wrap(city_rot(add_wrap(e, f), 42), c);
+  y := mul_wrap(add_wrap(city_swap(mul_wrap(add_wrap(v, w), mul)), g), mul);
+  z := add_wrap(add_wrap(e, f), c);
+  a = add_wrap(city_swap(add_wrap(mul_wrap(add_wrap(x, z), mul), y)), b);
+  b = mul_wrap(city_mix(add_wrap(add_wrap(mul_wrap(add_wrap(z, a), mul), d), h)), mul);
+  return add_wrap(b, x);
+}
+CityPair :: struct { a: u64; b: u64; }
+city_weak :: (s: string, i: int, a0: u64, b0: u64) -> CityPair #effects(all) {
+  w := city_u64(s, i); x := city_u64(s, i + 8); y := city_u64(s, i + 16); z := city_u64(s, i + 24);
+  a := add_wrap(a0, w); b := city_rot(add_wrap(add_wrap(b0, a), z), 21); c := a;
+  a = add_wrap(a, x); a = add_wrap(a, y); b = add_wrap(b, city_rot(a, 44));
+  return CityPair.{a = add_wrap(a, z), b = add_wrap(b, c)};
+}
+// CityHash64 of s.
+city64 :: (s: string) -> u64 #effects(all) {
+  n := s.count;
+  if n <= 16 { return city_0_16(s, n); }
+  if n <= 32 { return city_17_32(s, n); }
+  if n <= 64 { return city_33_64(s, n); }
+  ln := cast(u64) n;
+  x := city_u64(s, n - 40); y := add_wrap(city_u64(s, n - 16), city_u64(s, n - 56));
+  z := city_16(add_wrap(city_u64(s, n - 48), ln), city_u64(s, n - 24), CITY_MUL);
+  v := city_weak(s, n - 64, ln, z); w := city_weak(s, n - 32, add_wrap(y, CITY_K1), x);
+  x = add_wrap(mul_wrap(x, CITY_K1), city_u64(s, 0));
+  left := ((n - 1) / 64) * 64; p := 0;
+  while true {
+    x = mul_wrap(city_rot(add_wrap(add_wrap(add_wrap(x, y), v.a), city_u64(s, p + 8)), 37), CITY_K1);
+    y = mul_wrap(city_rot(add_wrap(add_wrap(y, v.b), city_u64(s, p + 48)), 42), CITY_K1);
+    x = x ^ w.b;
+    y = add_wrap(add_wrap(y, v.a), city_u64(s, p + 40));
+    z = mul_wrap(city_rot(add_wrap(z, w.a), 33), CITY_K1);
+    v = city_weak(s, p, mul_wrap(v.b, CITY_K1), add_wrap(x, w.a));
+    w = city_weak(s, p + 32, add_wrap(z, w.b), add_wrap(y, city_u64(s, p + 16)));
+    t := z; z = x; x = t;
+    p += 64; left -= 64;
+    if left == 0 { break; }
+  }
+  return city_16(add_wrap(add_wrap(city_16(v.a, w.a, CITY_MUL), mul_wrap(city_mix(y), CITY_K1)), z), add_wrap(city_16(v.b, w.b, CITY_MUL), x), CITY_MUL);
+}
+
+CITY_PATH_MAX :: 1024;
+// The id a cooked package gives the script object at path ("/Script/Engine.StaticMesh"), or 0 for a
+// path too long to hash here. ASCII paths only: native object names are.
+city_script :: (path: string) -> u64 #effects(all) {
+  if path.count > CITY_PATH_MAX { return 0; }
+  b: [2 * CITY_PATH_MAX] u8 = ---;
+  for c, k: path {
+    d := c; if d >= 'A' && d <= 'Z' { d = d + 32; } if d == '.' || d == ':' { d = '/'; }
+    b[2 * k] = d; b[2 * k + 1] = 0;
+  }
+  return city64(cast(string) b[0..<2 * path.count]) & 0x3fffffffffffffff;
+}
+
+#test "CityHash64 matches the reference values across every length branch" {
+  #assert city64("") == 0x9ae16a3b2f90404f;
+  #assert city64("a") == 0xb3454265b6df75e3;
+  #assert city64("abcd") == 0x1a5502de4a1f8101;
+  #assert city64("hello world!") == 0x3f87e91e111fcf64;
+  #assert city64("0123456789abcdef0123") == 0x78416b103e7074dd;
+  forty: [40] u8; for k: 0..<40 { forty[k] = 'x'; } #assert city64(cast(string) forty[..]) == 0xf6c8e2c2a453ffe5;
+  sixty_four: [64] u8; for k: 0..<64 { sixty_four[k] = 'y'; } #assert city64(cast(string) sixty_four[..]) == 0x955f8ade2aa9ae6b;
+  sixty_five: [65] u8; for k: 0..<65 { sixty_five[k] = 'z'; } #assert city64(cast(string) sixty_five[..]) == 0xfdf05150ba8c92ab;
+  run: [200] u8; for k: 0..<200 { run[k] = cast,trunc(u8) k; } #assert city64(cast(string) run[..]) == 0xf4d24e8c7493c3d8;
+}
+#test "a native class's id is its lowercased path's hash, as a cooked package stores it" {
+  #assert city_script("/Script/Engine.StaticMesh") == 0x7cde1a593e47cf;
+  #assert city_script("/script/engine/staticmesh") == 0x7cde1a593e47cf;
+  #assert city_script("/Script/Engine.Default__StaticMeshActor:StaticMeshComponent0") == 0xf9f2fa380625a28;
+  #assert (city_script("/Script/Engine.Texture2D") >> 62) == 0;
+}

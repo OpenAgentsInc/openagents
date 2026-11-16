@@ -1,0 +1,316 @@
+// The property layouts of Unreal's classes and structs, read when the reader runs from the C++
+// that Unreal's header tool generated for a local engine build (each module's UHT/*.gen.cpp).
+// A cooked package stores properties "unversioned": by their index in the class's layout, with no
+// names. The layout is the class's own properties in declaration order, then its super's, each
+// static-array element one index, editor-only properties absent (the importer's spec, section 4.4).
+// Nothing derived from the engine is kept in this repository; the engine on the machine is read.
+//
+// What a generated file states, and the only lines this parser reads:
+//   #define UHT_STATICS Z_Construct_UClass_UStaticMesh_Statics       a class's (or a struct's) section
+//   const UECodeGen_Private::FArrayPropertyParams UHT_STATICS::NewProp_X = { "X", ..., (EPropertyFlags)0x..,
+//       UECodeGen_Private::EPropertyGenFlags::Array, ..., ARRAY_DIM, ..., Z_Construct_UScriptStruct_FY ... };
+//   UHT_STATICS::PropPointers[] = { ... &UHT_STATICS::NewProp_X, ... };    declaration order; a
+//       container's element property (and a map's key and value, an enum's underlying integer) come
+//       just before it
+//   UHT_STATICS::DependentSingletons[] = { Z_Construct_UClass_USuper, ... }  a class's super first
+//   UHT_STATICS::StructParams = { package, Z_Construct_UScriptStruct_FSuper or nullptr, ..., EStructFlags(0x..) }
+// A static array whose size the header names by expression (CPP_ARRAY_DIM) takes its size from
+// SC_DIMS, the cases the reader meets; any other is refused when a layout needs it.
+//   coax/bin/coax test metaverse-engine/import/unreal/cooked/schema.coax
+#load "zen.coax";
+
+// Property kinds.
+SK_NONE :: 0; SK_BYTE :: 1; SK_INT8 :: 2; SK_INT16 :: 3; SK_UINT16 :: 4; SK_INT :: 5; SK_UINT32 :: 6; SK_INT64 :: 7; SK_UINT64 :: 8;
+SK_FLOAT :: 9; SK_DOUBLE :: 10; SK_BOOL :: 11; SK_ENUM :: 12; SK_NAME :: 13; SK_STR :: 14; SK_OBJECT :: 15; SK_SOFT :: 16;
+SK_STRUCT :: 17; SK_ARRAY :: 18; SK_SET :: 19; SK_MAP :: 20; SK_TEXT :: 21; SK_DELEGATE :: 22; SK_MDELEGATE :: 23; SK_OPTIONAL :: 24;
+SK_LAZY :: 25; SK_FIELDPATH :: 26; SK_OTHER :: 27;
+SK_GEN :: [33] string.["Byte", "Int8", "Int16", "UInt16", "Int", "UInt32", "Int64", "UInt64", "Float", "Double", "LargeWorldCoordinatesReal",
+  "Bool", "Enum", "Name", "Str", "Object", "Class", "WeakObject", "Interface", "SoftObject", "SoftClass", "Struct", "Array", "Set", "Map",
+  "Text", "Delegate", "InlineMulticastDelegate", "SparseMulticastDelegate", "Optional", "LazyObject", "FieldPath", "ObjectPtr"];
+SK_OF :: [33] int.[SK_BYTE, SK_INT8, SK_INT16, SK_UINT16, SK_INT, SK_UINT32, SK_INT64, SK_UINT64, SK_FLOAT, SK_DOUBLE, SK_DOUBLE,
+  SK_BOOL, SK_ENUM, SK_NAME, SK_STR, SK_OBJECT, SK_OBJECT, SK_OBJECT, SK_OBJECT, SK_SOFT, SK_SOFT, SK_STRUCT, SK_ARRAY, SK_SET, SK_MAP,
+  SK_TEXT, SK_DELEGATE, SK_MDELEGATE, SK_MDELEGATE, SK_OPTIONAL, SK_LAZY, SK_FIELDPATH, SK_OBJECT];
+// How many element properties precede a property of each kind in PropPointers.
+sc_inners :: (kind: int) -> int #effects(all) {
+  return ifx kind == SK_MAP then 2 else ifx kind == SK_ARRAY || kind == SK_SET || kind == SK_ENUM || kind == SK_OPTIONAL then 1 else 0;
+}
+
+SC_EDITOR_ONLY :: cast(u64) 0x800000000;   // CPF_EditorOnly
+SC_STRUCT_IMMUTABLE :: 0x20;          // STRUCT_Immutable: serialized as its fields in order, no header
+
+ScType :: struct { name: int; modname: int; is_struct: bool; super_name: int; sup: int; flags: int; props: int; prop_n: int; flat: int; flat_n: int; }
+ScProp :: struct { kind: int; name: int; flags: u64; dim: int; ref: int; inner0: int; inner1: int; var: int; }
+ScFlat :: struct { prop: int; elem: int; }
+
+Sch :: struct {
+  pool: [1] Zs; by_name: [1] Zh; by_var: [1] Zh;
+  types: int; type: [] ScType;
+  props: int; prop: [] ScProp;
+  flats: int; flat: [] ScFlat;
+  files: int; modules: int; refused: int;
+}
+SC_POOL :: 16777216; SC_STRINGS :: 524288; SC_SLOTS :: 131072; SC_TYPES :: 65536; SC_PROPS :: 524288; SC_FLATS :: 1048576; SC_VARS :: 4096;
+ScStore :: struct {
+  b: [SC_POOL] u8; at: [SC_STRINGS] int; n: [SC_STRINGS] int; key: [SC_SLOTS] int; val: [SC_SLOTS] int; vkey: [SC_VARS] int; vval: [SC_VARS] int;
+  type: [SC_TYPES] ScType; prop: [SC_PROPS] ScProp; flat: [SC_FLATS] ScFlat;
+}
+sc_init :: (s: [] Sch, st: [] ScStore) #effects(all) {
+  zs_init(s[0].pool[..], st[0].b[..], st[0].at[..], st[0].n[..]); zh_init(s[0].by_name[..], st[0].key[..], st[0].val[..]);
+  zh_init(s[0].by_var[..], st[0].vkey[..], st[0].vval[..]);
+  s[0].type = st[0].type[..]; s[0].prop = st[0].prop[..]; s[0].flat = st[0].flat[..];
+  s[0].types = 0; s[0].props = 0; s[0].flats = 0; s[0].files = 0; s[0].modules = 0; s[0].refused = 0;
+}
+sc_s :: (s: [] Sch, id: int) -> string #effects(all) { return zs(s[0].pool[..], id); }
+sc_type :: (s: [] Sch, name: string) -> int #effects(all) { return zh_get(s[0].by_name[..], s[0].pool[..], name); }
+
+// The static arrays whose size the generated code names by expression: (owner, property, size).
+SC_DIMS :: [11] string.["FMeshUVChannelInfo.LocalUVDensities", "UMaterial.PhysicalMaterialMap", "UMaterialInstance.PhysicalMaterialMap",
+  "UInstancedStaticMeshComponent.CachedBounds", "ULevel.LevelSimplification", "AWorldSettings.BookMarks", "UWorld.LineBatchers",
+  "FMaterialCachedExpressionData.RuntimeEntries", "FPostProcessSettings.LensFlareTints", "FPostProcessSettings.DepthOfFieldMatteBoxFlags",
+  "FOverrideAtmosphericLight.Direction"];
+SC_DIM_OF :: [11] int.[4, 8, 8, 3, 4, 10, 4, 11, 8, 3, 2];
+sc_dim :: (owner: string, prop: string) -> int #effects(all) {
+  for d, k: SC_DIMS {
+    if d.count == owner.count + 1 + prop.count && d[0..<owner.count] == owner && d[owner.count] == '.' && d[owner.count + 1..<d.count] == prop { return SC_DIM_OF[k]; }
+  }
+  return -1;
+}
+
+// ---- text helpers for one line
+
+sc_starts :: (s: string, p: string) -> bool #effects(all) { return s.count >= p.count && s[0..<p.count] == p; }
+sc_find :: (s: string, p: string, from: int) -> int #effects(all) {
+  if p.count == 0 { return from; }
+  i := from;
+  while i + p.count <= s.count { if s[i] == p[0] && s[i..<i + p.count] == p { return i; } i += 1; }
+  return -1;
+}
+sc_ident_char :: (c: u8) -> bool #effects(all) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'; }
+// The identifier at i.
+sc_ident :: (s: string, i: int) -> string #effects(all) {
+  j := i; while j < s.count && sc_ident_char(s[j]) { j += 1; }
+  return s[i..<j];
+}
+sc_hex :: (s: string, i: int) -> u64 #effects(all) {
+  v: u64 = 0; j := i;
+  while j < s.count && j < i + 16 {
+    c := s[j]; d := ifx c >= '0' && c <= '9' then cast(int) c - 48 else ifx c >= 'a' && c <= 'f' then cast(int) c - 87 else ifx c >= 'A' && c <= 'F' then cast(int) c - 55 else -1;
+    if d < 0 { break; }
+    v = (v << 4) | cast(u64) d; j += 1;
+  }
+  return v;
+}
+sc_dec :: (s: string, i: int) -> int #effects(all) {
+  v := 0; j := i;
+  while j < s.count && j < i + 9 && s[j] >= '0' && s[j] <= '9' { v = v * 10 + cast(int) s[j] - 48; j += 1; }
+  return ifx j == i then -1 else v;
+}
+
+// ---- one generated file
+
+ScParse :: struct { cur: int; is_struct: bool; first_prop: int; order: [4096] int; order_n: int; mode: int; sp_line: int; super_name: int; sflags: int; modname: int; }
+SC_MODE_NONE :: 0; SC_MODE_POINTERS :: 1; SC_MODE_DEPENDENT :: 2; SC_MODE_STRUCT :: 3;
+
+// The property declared on one NewProp line, appended to the raw table; false when it is not one.
+sc_prop_line :: (s: [] Sch, line: string) -> bool #effects(all) {
+  head := "const UECodeGen_Private::F";
+  if !sc_starts(line, head) { return false; }
+  at := sc_find(line, "UHT_STATICS::NewProp_", head.count);
+  if at < 0 { return false; }
+  var := sc_ident(line, at + 21);
+  q := sc_find(line, "{ \"", at); if q < 0 { return false; }
+  qe := sc_find(line, "\"", q + 3); if qe < 0 { return false; }
+  name := line[q + 3..<qe];
+  fa := sc_find(line, "(EPropertyFlags)0x", qe); if fa < 0 { return false; }
+  flags := sc_hex(line, fa + 18);
+  ga := sc_find(line, "EPropertyGenFlags::", fa); if ga < 0 { return false; }
+  gen := sc_ident(line, ga + 19);
+  kind := SK_OTHER;
+  for g, k: SK_GEN { if g == gen { kind = SK_OF[k]; } }
+  da := sc_find(line, "nullptr, nullptr, ", ga);
+  dim := 1;
+  if da >= 0 {
+    if sc_starts(line[da + 18..<line.count], "CPP_ARRAY_DIM(") { dim = -1; } else { dim = sc_dec(line, da + 18); if dim <= 0 { dim = 1; } }
+  }
+  ref := 0;
+  ra := sc_find(line, "Z_Construct_UScriptStruct_", ga);
+  if ra >= 0 && kind == SK_STRUCT { ref = zs_add(s[0].pool[..], sc_ident(line, ra + 26)); }
+  if s[0].props >= s[0].prop.count { return false; }
+  p: ScProp; p.kind = kind; p.name = zs_add(s[0].pool[..], name); p.flags = flags; p.dim = dim; p.ref = ref; p.inner0 = -1; p.inner1 = -1;
+  p.var = zs_add(s[0].pool[..], var);
+  s[0].prop[s[0].props] = p; s[0].props += 1;
+  return true;
+}
+
+// The section's properties, in PropPointers order, linked to their element properties, as one type.
+sc_close :: (s: [] Sch, ps: [] ScParse, name: int) #effects(all) {
+  if s[0].types >= s[0].type.count { s[0].refused += 1; return; }
+  // map each pointer name to its raw property (the raw lines came first, in the same section)
+  base := s[0].props;
+  n := 0;
+  for k: 0..<ps[0].order_n {
+    want := sc_s(s, ps[0].order[k]); found := -1;
+    for j: ps[0].first_prop..<base { if s[0].prop[j].var == ps[0].order[k] || sc_s(s, s[0].prop[j].var) == want { found = j; break; } }
+    if found < 0 || base + n >= s[0].prop.count { s[0].refused += 1; return; }
+    s[0].prop[base + n] = s[0].prop[found]; n += 1;
+  }
+  // link inners: walking back from the end, an owner takes the properties just before it
+  i := n - 1;
+  while i >= 0 {
+    i = sc_link(s, base, i);
+    if i < -1 { s[0].refused += 1; return; }
+  }
+  t: ScType; t.name = name; t.modname = ps[0].modname; t.is_struct = ps[0].is_struct; t.super_name = ps[0].super_name; t.sup = -1;
+  t.flags = ps[0].sflags; t.props = base; t.prop_n = n; t.flat = -1; t.flat_n = 0;
+  // the raw lines are dropped: the ordered copies replace them
+  for k: 0..<n { s[0].prop[ps[0].first_prop + k] = s[0].prop[base + k]; }
+  t.props = ps[0].first_prop;
+  for k: 0..<n { if s[0].prop[t.props + k].inner0 >= 0 { s[0].prop[t.props + k].inner0 += t.props - base; } if s[0].prop[t.props + k].inner1 >= 0 { s[0].prop[t.props + k].inner1 += t.props - base; } }
+  s[0].props = t.props + n;
+  if !zh_put(s[0].by_name[..], s[0].pool[..], name, s[0].types) { s[0].refused += 1; return; }
+  s[0].type[s[0].types] = t; s[0].types += 1;
+}
+// Links the property at base + i with the element properties before it; the next index to link, or
+// -2 when an owner lacks its elements.
+sc_link :: (s: [] Sch, base: int, i: int) -> int #effects(all) {
+  p := base + i; need := sc_inners(s[0].prop[p].kind);
+  at := i - 1;
+  if need >= 1 { if at < 0 { return -2; } s[0].prop[p].inner0 = base + at; at = sc_link(s, base, at); if at < -1 { return -2; } }
+  if need >= 2 { if at < 0 { return -2; } s[0].prop[p].inner1 = base + at; at = sc_link(s, base, at); if at < -1 { return -2; } }
+  return at;
+}
+
+// Reads one generated file's text into the schema.
+sc_file :: (s: [] Sch, text: string, modname: int) #effects(all) {
+  ps: [1] ScParse; ps[0].cur = 0; ps[0].mode = SC_MODE_NONE; ps[0].modname = modname;
+  at := 0; cur := 0;
+  while at < text.count {
+    e := at; while e < text.count && text[e] != '\n' { e += 1; }
+    line := text[at..<e]; at = e + 1;
+    while line.count > 0 && line[line.count - 1] == '\r' { line = line[0..<line.count - 1]; }
+    if sc_starts(line, "#define UHT_STATICS ") {
+      cur = 0; ps[0].mode = SC_MODE_NONE;
+      d := line[20..<line.count];
+      cls := sc_starts(d, "Z_Construct_UClass_"); st := sc_starts(d, "Z_Construct_UScriptStruct_");
+      if (cls || st) && sc_find(d, "_Statics", 0) == d.count - 8 {
+        nm := ifx cls then d[19..<d.count - 8] else d[26..<d.count - 8];
+        cur = zs_add(s[0].pool[..], nm); ps[0].is_struct = st; ps[0].first_prop = s[0].props; ps[0].order_n = 0;
+        ps[0].super_name = 0; ps[0].sflags = 0; ps[0].sp_line = 0;
+      }
+      continue;
+    }
+    if cur == 0 { continue; }
+    if ps[0].mode == SC_MODE_POINTERS {
+      if sc_starts(line, "};") { ps[0].mode = SC_MODE_NONE; continue; }
+      q := sc_find(line, "NewProp_", 0);
+      if q >= 0 && ps[0].order_n < 4096 { ps[0].order[ps[0].order_n] = zs_add(s[0].pool[..], sc_ident(line, q + 8)); ps[0].order_n += 1; }
+      continue;
+    }
+    if ps[0].mode == SC_MODE_DEPENDENT {
+      if sc_starts(line, "};") { ps[0].mode = SC_MODE_NONE; continue; }
+      q := sc_find(line, "Z_Construct_UClass_", 0);
+      if q >= 0 && ps[0].super_name == 0 { ps[0].super_name = zs_add(s[0].pool[..], sc_ident(line, q + 19)); }
+      continue;
+    }
+    if ps[0].mode == SC_MODE_STRUCT {
+      ps[0].sp_line += 1;
+      if ps[0].sp_line == 2 { q := sc_find(line, "Z_Construct_UScriptStruct_", 0); if q >= 0 { ps[0].super_name = zs_add(s[0].pool[..], sc_ident(line, q + 26)); } }
+      fq := sc_find(line, "EStructFlags(0x", 0);
+      if fq >= 0 { ps[0].sflags = cast(int) (sc_hex(line, fq + 15) & 0xffffffff); }
+      if sc_starts(line, "};") { ps[0].mode = SC_MODE_NONE; sc_close(s, ps[..], cur); cur = 0; }
+      continue;
+    }
+    if sc_prop_line(s, line) { continue; }
+    if sc_find(line, "UHT_STATICS::PropPointers[] = {", 0) >= 0 { ps[0].mode = SC_MODE_POINTERS; continue; }
+    if sc_find(line, "UHT_STATICS::DependentSingletons[] = {", 0) >= 0 && !ps[0].is_struct { ps[0].mode = SC_MODE_DEPENDENT; continue; }
+    if sc_find(line, "UHT_STATICS::StructParams = {", 0) >= 0 && ps[0].is_struct { ps[0].mode = SC_MODE_STRUCT; ps[0].sp_line = 0; continue; }
+    if sc_starts(line, "const UECodeGen_Private::FClassParams UHT_STATICS::ClassParams = {") && !ps[0].is_struct { sc_close(s, ps[..], cur); cur = 0; continue; }
+  }
+}
+
+// After every file: each type's super by name.
+sc_link_supers :: (s: [] Sch) #effects(all) {
+  for k: 0..<s[0].types {
+    if s[0].type[k].super_name != 0 { s[0].type[k].sup = sc_type(s, sc_s(s, s[0].type[k].super_name)); }
+  }
+}
+
+// The flattened layout of type t (own properties first, then the super's), built once. Its first
+// entry and count in s.flat, or count -1 when the layout cannot be stated (a static array of
+// unknown size, a super chain too long, a full table).
+ScLayout :: struct { first: int; count: int; }
+sc_layout :: (s: [] Sch, t: int) -> ScLayout #effects(all) {
+  out: ScLayout; out.first = 0; out.count = -1;
+  if t < 0 || t >= s[0].types { return out; }
+  if s[0].type[t].flat >= 0 { out.first = s[0].type[t].flat; out.count = s[0].type[t].flat_n; return out; }
+  first := s[0].flats; at := t; depth := 0;
+  while at >= 0 && depth < 64 {
+    ty := s[0].type[at];
+    for k: 0..<ty.prop_n {
+      pi := ty.props + k;
+      if sc_is_inner(s, ty, pi) { continue; }
+      p := s[0].prop[pi];
+      if (p.flags & SC_EDITOR_ONLY) != 0 { continue; }
+      d := p.dim;
+      if d < 0 { d = sc_dim(sc_s(s, ty.name), sc_s(s, p.name)); }
+      if d < 0 || s[0].flats + d > s[0].flat.count { s[0].flats = first; return out; }
+      for e: 0..<d { s[0].flat[s[0].flats] = ScFlat.{prop = pi, elem = e}; s[0].flats += 1; }
+    }
+    at = ty.sup; depth += 1;
+    if ty.super_name != 0 && ty.sup < 0 { s[0].flats = first; return out; }   // a super the schema lacks
+  }
+  s[0].type[t].flat = first; s[0].type[t].flat_n = s[0].flats - first;
+  out.first = first; out.count = s[0].flats - first; return out;
+}
+// Whether property pi is some other property's element (it is then not a layout entry).
+sc_is_inner :: (s: [] Sch, ty: ScType, pi: int) -> bool #effects(all) {
+  for k: 0..<ty.prop_n { q := s[0].prop[ty.props + k]; if q.inner0 == pi || q.inner1 == pi { return true; } }
+  return false;
+}
+
+// ---- checks over a made-up generated file (not engine code: a fixture written for these checks)
+
+SC_FIXTURE :: "#define UHT_STATICS Z_Construct_UScriptStruct_FPair_Statics\nconst UECodeGen_Private::FFloatPropertyParams UHT_STATICS::NewProp_A = { \"A\", nullptr, (EPropertyFlags)0x0010000000000001, UECodeGen_Private::EPropertyGenFlags::Float, nullptr, nullptr, 1, 0, METADATA_PARAMS(0, nullptr) };\nconst UECodeGen_Private::FIntPropertyParams UHT_STATICS::NewProp_B = { \"B\", nullptr, (EPropertyFlags)0x0000000800000001, UECodeGen_Private::EPropertyGenFlags::Int, nullptr, nullptr, 1, 4, METADATA_PARAMS(0, nullptr) };\nconst UECodeGen_Private::FFloatPropertyParams UHT_STATICS::NewProp_C = { \"C\", nullptr, (EPropertyFlags)0x0010000000000001, UECodeGen_Private::EPropertyGenFlags::Float, nullptr, nullptr, 3, 8, METADATA_PARAMS(0, nullptr) };\nconst UECodeGen_Private::FPropertyParamsBase* const UHT_STATICS::PropPointers[] = {\n\t(const UECodeGen_Private::FPropertyParamsBase*)&UHT_STATICS::NewProp_A,\n\t(const UECodeGen_Private::FPropertyParamsBase*)&UHT_STATICS::NewProp_B,\n\t(const UECodeGen_Private::FPropertyParamsBase*)&UHT_STATICS::NewProp_C,\n};\nconst UECodeGen_Private::FStructParams UHT_STATICS::StructParams = {\n\t(FTypeConstructFunc*)Z_Construct_UPackage__Script_Fixture,\n\tnullptr,\n\t&NewStructOps,\n\t\"Pair\",\n\tEStructFlags(0x00000001),\n};\n#define UHT_STATICS Z_Construct_UClass_UThing_Statics\nconst UECodeGen_Private::FStructPropertyParams UHT_STATICS::NewProp_Items_Inner = { \"Items\", nullptr, (EPropertyFlags)0x0000000000000000, UECodeGen_Private::EPropertyGenFlags::Struct, nullptr, nullptr, 1, 0, Z_Construct_UScriptStruct_FPair, METADATA_PARAMS(0, nullptr) };\nconst UECodeGen_Private::FArrayPropertyParams UHT_STATICS::NewProp_Items = { \"Items\", nullptr, (EPropertyFlags)0x0010000000000001, UECodeGen_Private::EPropertyGenFlags::Array, nullptr, nullptr, 1, 0, EArrayPropertyFlags::None, METADATA_PARAMS(0, nullptr) };\nconst UECodeGen_Private::FNamePropertyParams UHT_STATICS::NewProp_Label = { \"Label\", nullptr, (EPropertyFlags)0x0010000000000001, UECodeGen_Private::EPropertyGenFlags::Name, nullptr, nullptr, 1, 0, METADATA_PARAMS(0, nullptr) };\nconst UECodeGen_Private::FPropertyParamsBase* const UHT_STATICS::PropPointers[] = {\n\t(const UECodeGen_Private::FPropertyParamsBase*)&UHT_STATICS::NewProp_Items_Inner,\n\t(const UECodeGen_Private::FPropertyParamsBase*)&UHT_STATICS::NewProp_Items,\n\t(const UECodeGen_Private::FPropertyParamsBase*)&UHT_STATICS::NewProp_Label,\n};\nFTypeConstructFunc* UHT_STATICS::DependentSingletons[] = {\n\t(FTypeConstructFunc*)Z_Construct_UClass_UBase,\n};\nconst UECodeGen_Private::FClassParams UHT_STATICS::ClassParams = {\n};\n#define UHT_STATICS Z_Construct_UClass_UBase_Statics\nconst UECodeGen_Private::FBoolPropertyParams UHT_STATICS::NewProp_On = { \"On\", nullptr, (EPropertyFlags)0x0010000000000001, UECodeGen_Private::EPropertyGenFlags::Bool, nullptr, nullptr, 1, 0, METADATA_PARAMS(0, nullptr) };\nconst UECodeGen_Private::FPropertyParamsBase* const UHT_STATICS::PropPointers[] = {\n\t(const UECodeGen_Private::FPropertyParamsBase*)&UHT_STATICS::NewProp_On,\n};\nconst UECodeGen_Private::FClassParams UHT_STATICS::ClassParams = {\n};\n";
+
+ScSmall :: struct {
+  b: [65536] u8; at: [1024] int; n: [1024] int; key: [256] int; val: [256] int; vkey: [16] int; vval: [16] int;
+  type: [16] ScType; prop: [64] ScProp; flat: [64] ScFlat;
+}
+sc_small :: (s: [] Sch, st: [] ScSmall) #effects(all) {
+  zs_init(s[0].pool[..], st[0].b[..], st[0].at[..], st[0].n[..]); zh_init(s[0].by_name[..], st[0].key[..], st[0].val[..]);
+  zh_init(s[0].by_var[..], st[0].vkey[..], st[0].vval[..]);
+  s[0].type = st[0].type[..]; s[0].prop = st[0].prop[..]; s[0].flat = st[0].flat[..];
+  s[0].types = 0; s[0].props = 0; s[0].flats = 0; s[0].files = 0; s[0].modules = 0; s[0].refused = 0;
+}
+
+#test "a generated file's structs and classes read with their kinds, order, elements and supers" {
+  st: [1] ScSmall; s: [1] Sch; sc_small(s[..], st[..]);
+  sc_file(s[..], SC_FIXTURE, zs_add(s[0].pool[..], "Fixture"));
+  sc_link_supers(s[..]);
+  #assert s[0].refused == 0 && s[0].types == 3;
+  pair := sc_type(s[..], "FPair"); thing := sc_type(s[..], "UThing"); base := sc_type(s[..], "UBase");
+  #assert pair >= 0 && thing >= 0 && base >= 0;
+  #assert s[0].type[pair].is_struct && s[0].type[pair].flags == 1 && s[0].type[thing].sup == base;
+  items := s[0].prop[s[0].type[thing].props + 1];
+  #assert items.kind == SK_ARRAY && items.inner0 == s[0].type[thing].props && s[0].prop[items.inner0].kind == SK_STRUCT;
+  #assert sc_s(s[..], s[0].prop[items.inner0].ref) == "FPair";
+}
+#test "a layout is own properties first, then the super's, arrays per element, editor-only ones absent" {
+  st: [1] ScSmall; s: [1] Sch; sc_small(s[..], st[..]);
+  sc_file(s[..], SC_FIXTURE, zs_add(s[0].pool[..], "Fixture"));
+  sc_link_supers(s[..]);
+  l := sc_layout(s[..], sc_type(s[..], "FPair"));
+  #assert l.count == 4;   // A, then C three times: B is editor-only
+  #assert sc_s(s[..], s[0].prop[s[0].flat[l.first].prop].name) == "A";
+  #assert sc_s(s[..], s[0].prop[s[0].flat[l.first + 3].prop].name) == "C" && s[0].flat[l.first + 3].elem == 2;
+  t := sc_layout(s[..], sc_type(s[..], "UThing"));
+  #assert t.count == 3;   // Items, Label, then the super's On
+  #assert sc_s(s[..], s[0].prop[s[0].flat[t.first].prop].name) == "Items" && sc_s(s[..], s[0].prop[s[0].flat[t.first + 2].prop].name) == "On";
+  again := sc_layout(s[..], sc_type(s[..], "UThing"));
+  #assert again.first == t.first && again.count == 3;
+}
+#test "a static array sized by expression takes its size from the table, or is refused" {
+  #assert sc_dim("FMeshUVChannelInfo", "LocalUVDensities") == 4;
+  #assert sc_dim("FMaterialCachedExpressionData", "RuntimeEntries") == 11;
+  #assert sc_dim("FMeshUVChannelInfo", "Other") == -1;
+}

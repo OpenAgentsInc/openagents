@@ -1,0 +1,521 @@
+// Reads an export's properties as a cooked package stores them: unversioned (schema.coax), into a
+// tree of values (Pv) the rest of the reader asks by name.
+//
+// The format, in our words (the importer's spec, section 4.4). A run of 16-bit fragments, each
+// "skip S layout entries, then N values follow", bit 7 saying some of those N are zero, bit 8 that
+// it is the last fragment; then, when any fragment had zeros, a bit mask over those values (one
+// byte for up to 8, two bytes for up to 16, else 32-bit words), a set bit meaning "this value is
+// zero and has no bytes". A value not listed at all equals the object's template's, so a reader
+// asks the template chain (pv_find over several trees) for what an export leaves out.
+//
+// Values: integers and enums in their size, a bool as one byte, a name as two 32-bit words (an
+// index into the package's names and a number), a string as a signed length and its bytes (UTF-16
+// when negative) with a terminator, an object as a 32-bit package index, a soft path as two names
+// and a string, an array or set as a count and elements (a set first states a count of removals,
+// zero in a cooked file), a map as removals, a count and key, value pairs. A struct is read through
+// its own layout, unless the engine serializes it natively (a vector, a colour...: PV_NATIVE) or it
+// is immutable (its fields in order, no header).
+//
+// Untrusted input: every count is checked against the bytes left, nesting is bounded, and the
+// first fault ends the read (Px.fault); a caller then refuses the whole export.
+//   coax/bin/coax test metaverse-engine/import/unreal/cooked/props.coax
+#load "schema.coax";
+
+PV_NONE :: 0; PV_INT :: 1; PV_FLOAT :: 2; PV_NAME :: 3; PV_STR :: 4; PV_OBJ :: 5; PV_SOFT :: 6; PV_STRUCT :: 7; PV_ARRAY :: 8;
+PV_MAP :: 9; PV_TEXT :: 10; PV_NUMS :: 11; PV_ZERO :: 12;
+// key: the schema property (-1 for an element); elem: its static-array index. i: an integer, a
+// bool, a name's number, an object's package index; f: a float; s: a pool string (a name's text,
+// a string, a soft path's package.asset); s2: an object's package slot, or a soft path's subpath.
+PvNode :: struct { kind: int; key: int; elem: int; i: int; f: f64; s: int; s2: int; first: int; next: int; count: int; }
+Pv :: struct { node: [] PvNode; nodes: int; pool: [1] Zs; full: bool; }
+pv_init :: (v: [] Pv, nodes: [] PvNode, bytes: [] u8, at: [] int, n: [] int) #effects(all) {
+  v[0].node = nodes; v[0].nodes = 1; v[0].full = false; zs_init(v[0].pool[..], bytes, at, n);
+  v[0].node[0] = PvNode.{kind = PV_ZERO, key = -1, first = -1, next = -1};   // node 0: "zero", the value of a zero-masked field
+}
+pv_new :: (v: [] Pv, kind: int, key: int, elem: int) -> int #effects(all) {
+  if v[0].nodes >= v[0].node.count { v[0].full = true; return -1; }
+  k := v[0].nodes; v[0].nodes += 1;
+  v[0].node[k] = PvNode.{kind = kind, key = key, elem = elem, first = -1, next = -1};
+  return k;
+}
+// Appends child to parent's children (kept in order through a last-child link in count's place
+// while building: first, then next along; count is the number of children).
+pv_add :: (v: [] Pv, parent: int, last: [] int, child: int) #effects(all) {
+  if parent < 0 || child < 0 { return; }
+  if v[0].node[parent].first < 0 { v[0].node[parent].first = child; } else { v[0].node[last[0]].next = child; }
+  last[0] = child; v[0].node[parent].count += 1;
+}
+
+// The read's context: the catalog and schema, the package being read, and the first fault.
+PX_OK :: 0; PX_SHORT :: 1; PX_SCHEMA :: 2; PX_NATIVE :: 3; PX_KIND :: 4; PX_DEPTH :: 5; PX_FULL :: 6; PX_COUNT :: 7; PX_NAME :: 8;
+PX_WHY :: [9] string.["read", "the data ends inside a value", "a layout the schema lacks", "a natively serialized struct this reader does not read",
+  "a property kind this reader does not read", "nested too deep", "the value table is full", "a count larger than the bytes left", "a name index outside the package's names"];
+Px :: struct { cat: [] Zcat; sch: [] Sch; pv: [] Pv; pkg: int; fault: int; fault_type: int; fault_prop: int; depth: int; }
+px_fail :: (x: [] Px, r: [] Zr, why: int) -> int #effects(all) {
+  if x[0].fault == PX_OK { x[0].fault = why; }
+  r[0].ok = false; return -1;
+}
+PX_DEPTH_MAX :: 24;
+
+// A name: its base text's pool id in s, its number in i.
+px_name :: (x: [] Px, r: [] Zr, node: int) -> bool #effects(all) {
+  idx := zr_u32(r); num := zr_u32(r);
+  if !r[0].ok { return false; }
+  pk := x[0].cat[0].pkg[x[0].pkg];
+  if idx >= pk.name_n { _ = px_fail(x, r, PX_NAME); return false; }
+  if node >= 0 { x[0].pv[0].node[node].s = x[0].cat[0].name[pk.names + idx]; x[0].pv[0].node[node].i = num; x[0].pv[0].node[node].s2 = -1; }
+  return true;
+}
+// A string's text into the pool (UTF-16 kept when ASCII, else as '?'); its pool id, or -1.
+px_string :: (x: [] Px, r: [] Zr) -> int #effects(all) {
+  n := zr_i32(r);
+  if !r[0].ok { return -1; }
+  if n == 0 { return 0; }
+  wide := n < 0; m := ifx wide then -n else n;
+  bytes := ifx wide then 2 * m else m;
+  if m > 1048576 || bytes > r[0].end - r[0].at { return px_fail(x, r, PX_COUNT); }
+  s := zr_take(r, bytes);
+  t: [4096] u8 = ---; k := 0;
+  for i: 0..<m - 1 {
+    if k >= 4096 { break; }
+    c := ifx wide then (ifx s[2 * i + 1] == 0 && s[2 * i] < 128 then s[2 * i] else '?') else s[i];
+    t[k] = c; k += 1;
+  }
+  return zs_add(x[0].pv[0].pool[..], cast(string) t[0..<k]);
+}
+
+// ---- natively serialized structs
+
+PN_LIST :: [36] string.["FVector", "FVector3d", "FVector3f", "FVector2D", "FVector2d", "FVector2f", "FVector4", "FVector4d", "FVector4f",
+  "FPlane", "FPlane4d", "FPlane4f", "FQuat", "FQuat4d", "FQuat4f", "FRotator", "FRotator3d", "FRotator3f", "FLinearColor", "FColor", "FGuid",
+  "FIntPoint", "FIntVector", "FBox", "FBox3d", "FBox2D", "FPerPlatformInt", "FPerPlatformFloat", "FPerPlatformBool", "FPerQualityLevelInt",
+  "FPerQualityLevelFloat", "FSoftObjectPath", "FSoftClassPath", "FFrameNumber", "FFrameRate", "FMatrix"];
+// The rest of the engine's natively serialized structs this reader meets and does not read; a
+// value of one refuses its export (its bytes have no layout to skip by).
+PN_REFUSED :: [24] string.["FTwoVectors", "FGameplayTagContainer", "FDateTime", "FTimespan", "FRichCurveKey", "FSimpleCurveKey",
+  "FInstancedStruct", "FNavAgentSelector", "FUniqueNetIdRepl", "FTimeline", "FKLevelSetElem", "FExpressionInput", "FSmartName",
+  "FFloatCurve", "FVectorCurve", "FTransformCurve", "FAnimNotifyEvent", "FAnimSyncMarker", "FCompressedRichCurve",
+  "FHierarchicalSimplification", "FConstraintInstance", "FMatrix44f", "FColorMaterialInput", "FScalarMaterialInput"];
+pn_native :: (name: string) -> int #effects(all) {
+  for n, k: PN_LIST { if n == name { return k; } }
+  for n: PN_REFUSED { if n == name { return -2; } }
+  return -1;
+}
+px_nums :: (x: [] Px, r: [] Zr, node: int, n: int, wide: bool) #effects(all) {
+  last: [1] int;
+  for k: 0..<n {
+    c := pv_new(x[0].pv, PV_FLOAT, -1, k);
+    if c < 0 { _ = px_fail(x, r, PX_FULL); return; }
+    x[0].pv[0].node[c].f = ifx wide then zr_f64(r) else zr_f32(r);
+    pv_add(x[0].pv, node, last[..], c);
+  }
+}
+px_ints :: (x: [] Px, r: [] Zr, node: int, n: int, bytes: int) #effects(all) {
+  last: [1] int;
+  for k: 0..<n {
+    c := pv_new(x[0].pv, PV_INT, -1, k);
+    if c < 0 { _ = px_fail(x, r, PX_FULL); return; }
+    x[0].pv[0].node[c].i = ifx bytes == 1 then zr_u8(r) else zr_i32(r);
+    pv_add(x[0].pv, node, last[..], c);
+  }
+}
+// A soft object path: package name, asset name (as "package.asset" in s), subpath string (s2).
+px_soft :: (x: [] Px, r: [] Zr, node: int) #effects(all) {
+  pi := zr_u32(r); pn := zr_u32(r); ai := zr_u32(r); an := zr_u32(r);
+  if !r[0].ok { return; }
+  pk := x[0].cat[0].pkg[x[0].pkg];
+  if pi >= pk.name_n || ai >= pk.name_n { _ = px_fail(x, r, PX_NAME); return; }
+  t: [2048] u8 = ---; k := 0;
+  pkg := zs(x[0].cat[0].pool[..], x[0].cat[0].name[pk.names + pi]); asset := zs(x[0].cat[0].pool[..], x[0].cat[0].name[pk.names + ai]);
+  if pkg.count + asset.count + 1 > 2048 { _ = px_fail(x, r, PX_COUNT); return; }
+  for ch: pkg { t[k] = ch; k += 1; }
+  if asset.count > 0 { t[k] = '.'; k += 1; for ch: asset { t[k] = ch; k += 1; } }
+  sub := px_string(x, r);
+  if node >= 0 { x[0].pv[0].node[node].s = zs_add(x[0].pv[0].pool[..], cast(string) t[0..<k]); x[0].pv[0].node[node].s2 = sub; x[0].pv[0].node[node].i = pn + an; }
+}
+px_native :: (x: [] Px, r: [] Zr, which: int, key: int, elem: int) -> int #effects(all) {
+  name := PN_LIST[which];
+  if name == "FSoftObjectPath" || name == "FSoftClassPath" {
+    node := pv_new(x[0].pv, PV_SOFT, key, elem); if node < 0 { return px_fail(x, r, PX_FULL); }
+    px_soft(x, r, node); return ifx r[0].ok then node else -1;
+  }
+  node := pv_new(x[0].pv, PV_NUMS, key, elem); if node < 0 { return px_fail(x, r, PX_FULL); }
+  if name == "FVector" || name == "FVector3d" || name == "FRotator" || name == "FRotator3d" { px_nums(x, r, node, 3, true); }
+  else if name == "FVector3f" || name == "FRotator3f" { px_nums(x, r, node, 3, false); }
+  else if name == "FVector2D" || name == "FVector2d" { px_nums(x, r, node, 2, true); }
+  else if name == "FVector2f" { px_nums(x, r, node, 2, false); }
+  else if name == "FVector4" || name == "FVector4d" || name == "FPlane" || name == "FPlane4d" || name == "FQuat" || name == "FQuat4d" { px_nums(x, r, node, 4, true); }
+  else if name == "FVector4f" || name == "FPlane4f" || name == "FQuat4f" || name == "FLinearColor" { px_nums(x, r, node, 4, false); }
+  else if name == "FColor" {
+    // stored B, G, R, A; kept as R, G, B, A
+    b := zr_u8(r); g := zr_u8(r); rr := zr_u8(r); al := zr_u8(r);
+    last: [1] int; vals := [4] int.[rr, g, b, al];
+    for k: 0..<4 { c := pv_new(x[0].pv, PV_INT, -1, k); if c < 0 { return px_fail(x, r, PX_FULL); } x[0].pv[0].node[c].i = vals[k]; pv_add(x[0].pv, node, last[..], c); }
+  }
+  else if name == "FGuid" { px_ints(x, r, node, 4, 4); }
+  else if name == "FIntPoint" { px_ints(x, r, node, 2, 4); }
+  else if name == "FIntVector" { px_ints(x, r, node, 3, 4); }
+  else if name == "FBox" || name == "FBox3d" { px_nums(x, r, node, 6, true); px_ints(x, r, node, 1, 1); }
+  else if name == "FBox2D" { px_nums(x, r, node, 4, true); px_ints(x, r, node, 1, 1); }
+  else if name == "FPerPlatformInt" { _ = zr_u32(r); px_ints(x, r, node, 1, 4); }
+  else if name == "FPerPlatformFloat" { _ = zr_u32(r); px_nums(x, r, node, 1, false); }
+  else if name == "FPerPlatformBool" { _ = zr_u32(r); px_ints(x, r, node, 1, 4); }
+  else if name == "FPerQualityLevelInt" || name == "FPerQualityLevelFloat" {
+    // cooked flag, the default, then a map of quality level to value
+    _ = zr_u32(r);
+    if name == "FPerQualityLevelInt" { px_ints(x, r, node, 1, 4); } else { px_nums(x, r, node, 1, false); }
+    n := zr_i32(r);
+    if n < 0 || n * 8 > r[0].end - r[0].at { return px_fail(x, r, PX_COUNT); }
+    zr_skip(r, 8 * n);
+  }
+  else if name == "FFrameNumber" { px_ints(x, r, node, 1, 4); }
+  else if name == "FFrameRate" { px_ints(x, r, node, 2, 4); }
+  else if name == "FMatrix" { px_nums(x, r, node, 16, true); }
+  else { return px_fail(x, r, PX_NATIVE); }
+  return ifx r[0].ok && x[0].fault == PX_OK then node else -1;
+}
+
+// ---- values
+
+px_int_bytes :: (kind: int) -> int #effects(all) {
+  return ifx kind == SK_BYTE || kind == SK_INT8 || kind == SK_BOOL then 1 else ifx kind == SK_INT16 || kind == SK_UINT16 then 2
+    else ifx kind == SK_INT || kind == SK_UINT32 then 4 else ifx kind == SK_INT64 || kind == SK_UINT64 then 8 else 0;
+}
+px_int :: (r: [] Zr, bytes: int, signed: bool) -> int #effects(all) {
+  if bytes == 1 { v := zr_u8(r); return ifx signed && v >= 128 then v - 256 else v; }
+  if bytes == 2 { v := zr_u16(r); return ifx signed && v >= 32768 then v - 65536 else v; }
+  if bytes == 4 { return ifx signed then zr_i32(r) else zr_u32(r); }
+  u := zr_u64(r);
+  if u >= 0x8000000000000000 { return ifx signed then -cast(int) (sub_wrap(cast(u64) 0, u) & 0x7fffffffffffffff) else cast(int) (u & 0x7fffffffffffffff); }
+  return cast(int) u;
+}
+
+// One value of property p (a schema property index), as node key/elem; the node, or -1.
+px_value :: (x: [] Px, r: [] Zr, p: int, key: int, elem: int) -> int #effects(all) {
+  if x[0].depth > PX_DEPTH_MAX { return px_fail(x, r, PX_DEPTH); }
+  pr := x[0].sch[0].prop[p]; k := pr.kind; v := x[0].pv;
+  if (k >= SK_BYTE && k <= SK_UINT64) || k == SK_BOOL {
+    node := pv_new(v, PV_INT, key, elem); if node < 0 { return px_fail(x, r, PX_FULL); }
+    signed := k == SK_INT8 || k == SK_INT16 || k == SK_INT || k == SK_INT64;
+    v[0].node[node].i = px_int(r, px_int_bytes(k), signed);
+    return ifx r[0].ok then node else px_fail(x, r, PX_SHORT);
+  }
+  if k == SK_ENUM {
+    node := pv_new(v, PV_INT, key, elem); if node < 0 { return px_fail(x, r, PX_FULL); }
+    under := ifx pr.inner0 >= 0 then x[0].sch[0].prop[pr.inner0].kind else SK_BYTE;
+    bytes := px_int_bytes(under); if bytes == 0 { bytes = 1; }
+    v[0].node[node].i = px_int(r, bytes, false);
+    return ifx r[0].ok then node else px_fail(x, r, PX_SHORT);
+  }
+  if k == SK_FLOAT || k == SK_DOUBLE {
+    node := pv_new(v, PV_FLOAT, key, elem); if node < 0 { return px_fail(x, r, PX_FULL); }
+    v[0].node[node].f = ifx k == SK_FLOAT then zr_f32(r) else zr_f64(r);
+    return ifx r[0].ok then node else px_fail(x, r, PX_SHORT);
+  }
+  if k == SK_NAME {
+    node := pv_new(v, PV_NAME, key, elem); if node < 0 { return px_fail(x, r, PX_FULL); }
+    return ifx px_name(x, r, node) then node else px_fail(x, r, PX_SHORT);
+  }
+  if k == SK_STR {
+    node := pv_new(v, PV_STR, key, elem); if node < 0 { return px_fail(x, r, PX_FULL); }
+    s := px_string(x, r); v[0].node[node].s = s;
+    return ifx r[0].ok && s >= 0 then node else px_fail(x, r, PX_SHORT);
+  }
+  if k == SK_OBJECT {
+    node := pv_new(v, PV_OBJ, key, elem); if node < 0 { return px_fail(x, r, PX_FULL); }
+    v[0].node[node].i = zr_i32(r); v[0].node[node].s2 = x[0].pkg;
+    return ifx r[0].ok then node else px_fail(x, r, PX_SHORT);
+  }
+  if k == SK_SOFT {
+    node := pv_new(v, PV_SOFT, key, elem); if node < 0 { return px_fail(x, r, PX_FULL); }
+    px_soft(x, r, node);
+    return ifx r[0].ok then node else px_fail(x, r, PX_SHORT);
+  }
+  if k == SK_STRUCT {
+    x[0].depth += 1; node := px_struct(x, r, zs(x[0].sch[0].pool[..], pr.ref), key, elem); x[0].depth -= 1;
+    return node;
+  }
+  if k == SK_ARRAY || k == SK_SET || k == SK_MAP {
+    if k != SK_ARRAY { removed := zr_i32(r); if removed != 0 { return px_fail(x, r, PX_KIND); } }
+    n := zr_i32(r);
+    if !r[0].ok { return px_fail(x, r, PX_SHORT); }
+    if n < 0 || n > r[0].end - r[0].at { return px_fail(x, r, PX_COUNT); }   // every element is at least a byte
+    node := pv_new(v, ifx k == SK_MAP then PV_MAP else PV_ARRAY, key, elem); if node < 0 { return px_fail(x, r, PX_FULL); }
+    if pr.inner0 < 0 || (k == SK_MAP && pr.inner1 < 0) { return px_fail(x, r, PX_SCHEMA); }
+    last: [1] int;
+    x[0].depth += 1;
+    for i: 0..<n {
+      // a map's key is its first element property in PropPointers order... the one nearest the map
+      a := px_value(x, r, pr.inner0, -1, i);
+      if a < 0 { x[0].depth -= 1; return -1; }
+      pv_add(v, node, last[..], a);
+      if k == SK_MAP {
+        b := px_value(x, r, pr.inner1, -1, i);
+        if b < 0 { x[0].depth -= 1; return -1; }
+        pv_add(v, node, last[..], b);
+      }
+    }
+    x[0].depth -= 1;
+    return node;
+  }
+  if k == SK_TEXT {
+    node := pv_new(v, PV_TEXT, key, elem); if node < 0 { return px_fail(x, r, PX_FULL); }
+    _ = zr_u32(r); history := zr_u8(r);
+    if history == 255 { has := zr_u32(r); if has != 0 { v[0].node[node].s = px_string(x, r); } }
+    else if history == 0 { _ = px_string(x, r); _ = px_string(x, r); v[0].node[node].s = px_string(x, r); }   // namespace, key, source
+    else if history == 11 { if !px_name(x, r, -1) { return -1; } v[0].node[node].s = px_string(x, r); }   // a string-table entry: table, key
+    else { return px_fail(x, r, PX_KIND); }
+    return ifx r[0].ok then node else px_fail(x, r, PX_SHORT);
+  }
+  if k == SK_DELEGATE {
+    node := pv_new(v, PV_NONE, key, elem); if node < 0 { return px_fail(x, r, PX_FULL); }
+    _ = zr_i32(r); if !px_name(x, r, -1) { return -1; }
+    return ifx r[0].ok then node else px_fail(x, r, PX_SHORT);
+  }
+  if k == SK_MDELEGATE {
+    node := pv_new(v, PV_NONE, key, elem); if node < 0 { return px_fail(x, r, PX_FULL); }
+    n := zr_i32(r);
+    if n < 0 || n * 12 > r[0].end - r[0].at { return px_fail(x, r, PX_COUNT); }
+    for i: 0..<n { _ = zr_i32(r); if !px_name(x, r, -1) { return -1; } }
+    return ifx r[0].ok then node else px_fail(x, r, PX_SHORT);
+  }
+  return px_fail(x, r, PX_KIND);
+}
+
+// A struct value of the named struct type.
+px_struct :: (x: [] Px, r: [] Zr, name: string, key: int, elem: int) -> int #effects(all) {
+  nat := pn_native(name);
+  if nat >= 0 { return px_native(x, r, nat, key, elem); }
+  if nat == -2 { return px_fail(x, r, PX_NATIVE); }
+  t := sc_type(x[0].sch, name);
+  if t < 0 { return px_fail(x, r, PX_SCHEMA); }
+  if (x[0].sch[0].type[t].flags & SC_STRUCT_IMMUTABLE) != 0 {
+    l := sc_layout(x[0].sch, t);
+    if l.count < 0 { return px_fail(x, r, PX_SCHEMA); }
+    node := pv_new(x[0].pv, PV_STRUCT, key, elem); if node < 0 { return px_fail(x, r, PX_FULL); }
+    last: [1] int;
+    for e: 0..<l.count {
+      f := x[0].sch[0].flat[l.first + e];
+      c := px_value(x, r, f.prop, f.prop, f.elem);
+      if c < 0 { return -1; }
+      pv_add(x[0].pv, node, last[..], c);
+    }
+    return node;
+  }
+  return px_unversioned(x, r, t, key, elem);
+}
+
+// The unversioned properties of type t at the cursor, as a PV_STRUCT node.
+PX_FRAGMENTS :: 1024;
+px_unversioned :: (x: [] Px, r: [] Zr, t: int, key: int, elem: int) -> int #effects(all) {
+  l := sc_layout(x[0].sch, t);
+  if l.count < 0 { x[0].fault_type = t; return px_fail(x, r, PX_SCHEMA); }
+  skip: [PX_FRAGMENTS] int = ---; num: [PX_FRAGMENTS] int = ---; zeros: [PX_FRAGMENTS] bool = ---; frags := 0;
+  zero_n := 0; total := 0;
+  while true {
+    w := zr_u16(r);
+    if !r[0].ok { return px_fail(x, r, PX_SHORT); }
+    if frags >= PX_FRAGMENTS { return px_fail(x, r, PX_COUNT); }
+    skip[frags] = w & 0x7f; zeros[frags] = (w & 0x80) != 0; num[frags] = w >> 9;
+    if zeros[frags] { zero_n += num[frags]; }
+    total += skip[frags] + num[frags];
+    frags += 1;
+    if (w & 0x100) != 0 { break; }
+  }
+  if total > l.count { x[0].fault_type = t; return px_fail(x, r, PX_SCHEMA); }
+  mask: [4096] bool = ---;
+  if zero_n > 4096 { return px_fail(x, r, PX_COUNT); }
+  if zero_n > 0 {
+    if zero_n <= 8 { b := zr_u8(r); for i: 0..<zero_n { mask[i] = ((b >> i) & 1) != 0; } }
+    else if zero_n <= 16 { b := zr_u16(r); for i: 0..<zero_n { mask[i] = ((b >> i) & 1) != 0; } }
+    else {
+      words := (zero_n + 31) / 32;
+      for wi: 0..<words { b := zr_u32(r); for j: 0..<32 { i := wi * 32 + j; if i < zero_n { mask[i] = ((b >> j) & 1) != 0; } } }
+    }
+    if !r[0].ok { return px_fail(x, r, PX_SHORT); }
+  }
+  node := pv_new(x[0].pv, PV_STRUCT, key, elem); if node < 0 { return px_fail(x, r, PX_FULL); }
+  last: [1] int;
+  idx := 0; zi := 0;
+  for fi: 0..<frags {
+    idx += skip[fi];
+    for k: 0..<num[fi] {
+      f := x[0].sch[0].flat[l.first + idx];
+      zero := false;
+      if zeros[fi] { zero = mask[zi]; zi += 1; }
+      c := -1;
+      if zero {
+        c = pv_new(x[0].pv, PV_ZERO, f.prop, f.elem);
+        if c < 0 { return px_fail(x, r, PX_FULL); }
+      } else {
+        c = px_value(x, r, f.prop, f.prop, f.elem);
+        if c < 0 { if x[0].fault_prop < 0 { x[0].fault_prop = f.prop; x[0].fault_type = t; } return -1; }
+      }
+      pv_add(x[0].pv, node, last[..], c);
+      idx += 1;
+    }
+  }
+  return node;
+}
+
+// ---- asking the tree
+
+// The child of struct node n whose property is named name (elem e), or -1. A zero struct answers
+// zero (node 0) for every field.
+pv_child :: (x: [] Px, n: int, name: string, e: int) -> int #effects(all) {
+  if n < 0 { return -1; }
+  if x[0].pv[0].node[n].kind == PV_ZERO { return 0; }
+  if x[0].pv[0].node[n].kind != PV_STRUCT { return -1; }
+  c := x[0].pv[0].node[n].first;
+  while c >= 0 {
+    nd := x[0].pv[0].node[c];
+    if nd.key >= 0 && nd.elem == e && zs(x[0].sch[0].pool[..], x[0].sch[0].prop[nd.key].name) == name { return c; }
+    c = nd.next;
+  }
+  return -1;
+}
+// The value at a dotted path ("BodyInstance.CollisionProfileName") under root, or -1.
+pv_at :: (x: [] Px, root: int, path: string) -> int #effects(all) {
+  n := root; at := 0;
+  while at <= path.count && n >= 0 {
+    e := at; while e < path.count && path[e] != '.' { e += 1; }
+    part := path[at..<e];
+    elem := 0;
+    lb := 0; while lb < part.count && part[lb] != '[' { lb += 1; }
+    if lb < part.count { elem = sc_dec(part, lb + 1); part = part[0..<lb]; }
+    n = pv_child(x, n, part, elem);
+    at = e + 1;
+    if e >= path.count { break; }
+  }
+  return n;
+}
+// The value at path in the first of the trees (an export, then its template, then that one's...)
+// that states it, or -1 when none does.
+pv_find :: (x: [] Px, roots: [] int, path: string) -> int #effects(all) {
+  for root: roots { n := pv_at(x, root, path); if n >= 0 { return n; } }
+  return -1;
+}
+pv_zero :: (x: [] Px, n: int) -> bool #effects(all) { return n == 0 || (n > 0 && x[0].pv[0].node[n].kind == PV_ZERO); }
+pv_int :: (x: [] Px, n: int, fallback: int) -> int #effects(all) {
+  if pv_zero(x, n) { return 0; }
+  if n < 0 { return fallback; }
+  return ifx x[0].pv[0].node[n].kind == PV_INT then x[0].pv[0].node[n].i else fallback;
+}
+pv_f :: (x: [] Px, n: int, fallback: f64) -> f64 #effects(all) {
+  if pv_zero(x, n) { return 0.0; }
+  if n < 0 { return fallback; }
+  nd := x[0].pv[0].node[n];
+  return ifx nd.kind == PV_FLOAT then nd.f else ifx nd.kind == PV_INT then cast(f64) nd.i else fallback;
+}
+// The k-th child (an element, a component of a vector), or -1; of a zero value, zero.
+pv_nth :: (x: [] Px, n: int, k: int) -> int #effects(all) {
+  if pv_zero(x, n) { return 0; }
+  if n < 0 { return -1; }
+  c := x[0].pv[0].node[n].first; i := 0;
+  while c >= 0 { if i == k { return c; } c = x[0].pv[0].node[c].next; i += 1; }
+  return -1;
+}
+pv_count :: (x: [] Px, n: int) -> int #effects(all) { return ifx n <= 0 then 0 else x[0].pv[0].node[n].count; }
+// A name's text (with its number) into out.
+pv_name :: (x: [] Px, n: int, out: [] u8) -> string #effects(all) {
+  if n <= 0 || x[0].pv[0].node[n].kind != PV_NAME { return ""; }
+  base := zs(x[0].cat[0].pool[..], x[0].pv[0].node[n].s); num := x[0].pv[0].node[n].i;
+  m := 0; for c: base { if m < out.count { out[m] = c; m += 1; } }
+  if num > 0 {
+    if m < out.count { out[m] = '_'; m += 1; }
+    v := num - 1; d: [24] u8 = ---; dn := 0;
+    if v == 0 { d[0] = '0'; dn = 1; }
+    while v > 0 { d[dn] = cast,trunc(u8) (48 + v % 10); dn += 1; v /= 10; }
+    for k: 0..<dn { if m < out.count { out[m] = d[dn - 1 - k]; m += 1; } }
+  }
+  return cast(string) out[0..<m];
+}
+pv_text :: (x: [] Px, n: int) -> string #effects(all) {
+  if n <= 0 { return ""; }
+  k := x[0].pv[0].node[n].kind;
+  return ifx k == PV_STR || k == PV_TEXT || k == PV_SOFT then zs(x[0].pv[0].pool[..], x[0].pv[0].node[n].s) else "";
+}
+
+// ---- checks over made-up bytes and the made-up schema of schema.coax's fixture
+
+ZcSmall :: struct {
+  b: [65536] u8; at: [1024] int; n: [1024] int; key: [64] int; val: [64] int;
+  pkg: [4] ZcPkg; name: [64] int; exp: [4] ZcExport; imp: [4] u64; hash: [4] u64; bulk: [4] ZcBulk; pkgname: [4] int;
+}
+zc_small :: (c: [] Zcat, s: [] ZcSmall) #effects(all) {
+  zs_init(c[0].pool[..], s[0].b[..], s[0].at[..], s[0].n[..]); zh_init(c[0].by_name[..], s[0].key[..], s[0].val[..]);
+  c[0].pkg = s[0].pkg[..]; c[0].name = s[0].name[..]; c[0].exp = s[0].exp[..]; c[0].imp = s[0].imp[..]; c[0].hash = s[0].hash[..];
+  c[0].bulk = s[0].bulk[..]; c[0].pkgname = s[0].pkgname[..];
+  c[0].pkgs = 1; c[0].names = 2; c[0].exports = 0; c[0].imports = 0; c[0].hashes = 0; c[0].bulks = 0; c[0].pkgnames = 0;
+  c[0].name[0] = zs_add(c[0].pool[..], "None"); c[0].name[1] = zs_add(c[0].pool[..], "Hello");
+  c[0].pkg[0].names = 0; c[0].pkg[0].name_n = 2;
+}
+PvSmall :: struct { node: [256] PvNode; b: [4096] u8; at: [64] int; n: [64] int; }
+// A UThing: Items = [ {A 1.5, C [2, 3, 4]} ], Label zero, On true.
+px_put :: (out: [] u8, n: int, v: int, bytes: int) -> int #effects(all) {
+  for k: 0..<bytes { out[n + k] = cast,trunc(u8) ((v >> (8 * k)) & 255); } return n + bytes;
+}
+px_putf :: (out: [] u8, n: int, f: f32) -> int #effects(all) { return px_put(out, n, cast(int) f32_bits(f), 4); }
+px_thing :: (out: [] u8) -> int #effects(all) {
+  n := 0;
+  n = px_put(out, n, (3 << 9) | 0x100 | 0x80, 2);   // skip 0, three values, some zero, last
+  n = px_put(out, n, 2, 1);                          // the mask: the second value (Label) is zero
+  n = px_put(out, n, 1, 4);                          // Items: one element
+  n = px_put(out, n, (4 << 9) | 0x100, 2);           //   FPair: four values (A, C[0..2]), none zero, last
+  n = px_putf(out, n, 1.5); n = px_putf(out, n, 2.0); n = px_putf(out, n, 3.0); n = px_putf(out, n, 4.0);
+  n = px_put(out, n, 1, 1);                          // On
+  return n;
+}
+px_setup :: (x: [] Px, s: [] Sch, st: [] ScSmall, c: [] Zcat, cs: [] ZcSmall, v: [] Pv, vs: [] PvSmall) #effects(all) {
+  sc_small(s, st); sc_file(s, SC_FIXTURE, zs_add(s[0].pool[..], "Fixture")); sc_link_supers(s);
+  zc_small(c, cs);
+  pv_init(v, vs[0].node[..], vs[0].b[..], vs[0].at[..], vs[0].n[..]);
+  x[0].cat = c; x[0].sch = s; x[0].pv = v; x[0].pkg = 0; x[0].fault = PX_OK; x[0].fault_prop = -1; x[0].fault_type = -1; x[0].depth = 0;
+}
+
+#test "unversioned properties read by layout index, with zero-masked values and nested structs" {
+  st: [1] ScSmall; s: [1] Sch; cs: [1] ZcSmall; c: [1] Zcat; vs: [1] PvSmall; v: [1] Pv; x: [1] Px;
+  px_setup(x[..], s[..], st[..], c[..], cs[..], v[..], vs[..]);
+  b: [64] u8; n := px_thing(b[..]);
+  r: [1] Zr; r[0] = zr(cast(string) b[..], 0, n);
+  root := px_unversioned(x[..], r[..], sc_type(s[..], "UThing"), -1, 0);
+  #assert root > 0 && x[0].fault == PX_OK && r[0].at == n;
+  items := pv_at(x[..], root, "Items");
+  #assert pv_count(x[..], items) == 1;
+  first := pv_nth(x[..], items, 0);
+  #assert pv_f(x[..], pv_at(x[..], first, "A"), -1.0) == 1.5;
+  #assert pv_f(x[..], pv_at(x[..], first, "C[2]"), -1.0) == 4.0 && pv_f(x[..], pv_at(x[..], first, "C"), -1.0) == 2.0;
+  label := pv_at(x[..], root, "Label");
+  #assert label > 0 && pv_zero(x[..], label) && pv_int(x[..], label, -1) == 0;   // zero-masked: present, and zero
+  #assert pv_int(x[..], pv_at(x[..], root, "On"), -1) == 1;
+  #assert pv_at(x[..], root, "Missing") == -1;
+}
+#test "a value an export leaves out comes from its template" {
+  st: [1] ScSmall; s: [1] Sch; cs: [1] ZcSmall; c: [1] Zcat; vs: [1] PvSmall; v: [1] Pv; x: [1] Px;
+  px_setup(x[..], s[..], st[..], c[..], cs[..], v[..], vs[..]);
+  // the instance states only On (index 2): skip 2, one value, last; the template states everything
+  ib: [8] u8; m := px_put(ib[..], 0, 2 | (1 << 9) | 0x100, 2); m = px_put(ib[..], m, 0, 1);
+  r: [1] Zr; r[0] = zr(cast(string) ib[..], 0, m);
+  inst := px_unversioned(x[..], r[..], sc_type(s[..], "UThing"), -1, 0);
+  tb: [64] u8; tn := px_thing(tb[..]);
+  r[0] = zr(cast(string) tb[..], 0, tn);
+  tmpl := px_unversioned(x[..], r[..], sc_type(s[..], "UThing"), -1, 0);
+  roots := [2] int.[inst, tmpl];
+  #assert pv_int(x[..], pv_find(x[..], roots[..], "On"), -1) == 0;   // the instance's own false wins
+  #assert pv_count(x[..], pv_find(x[..], roots[..], "Items")) == 1;  // left out: the template's
+}
+#test "a truncated value or an index past the layout refuses the read" {
+  st: [1] ScSmall; s: [1] Sch; cs: [1] ZcSmall; c: [1] Zcat; vs: [1] PvSmall; v: [1] Pv; x: [1] Px;
+  px_setup(x[..], s[..], st[..], c[..], cs[..], v[..], vs[..]);
+  b: [64] u8; n := px_thing(b[..]);
+  r: [1] Zr; r[0] = zr(cast(string) b[..], 0, n - 3);
+  #assert px_unversioned(x[..], r[..], sc_type(s[..], "UThing"), -1, 0) == -1 && x[0].fault == PX_SHORT;
+  x[0].fault = PX_OK;
+  over: [8] u8; m := px_put(over[..], 0, 3 | (1 << 9) | 0x100, 2);   // skip 3: past UThing's three entries
+  r[0] = zr(cast(string) over[..], 0, m);
+  #assert px_unversioned(x[..], r[..], sc_type(s[..], "UThing"), -1, 0) == -1 && x[0].fault == PX_SCHEMA;
+  x[0].fault = PX_OK;
+  huge: [8] u8; m = px_put(huge[..], 0, (1 << 9) | 0x100, 2); m = px_put(huge[..], m, 1000000, 4);   // Items: a million elements in four bytes
+  r[0] = zr(cast(string) huge[..], 0, m);
+  #assert px_unversioned(x[..], r[..], sc_type(s[..], "UThing"), -1, 0) == -1 && x[0].fault == PX_COUNT;
+}

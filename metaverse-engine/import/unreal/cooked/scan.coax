@@ -1,0 +1,50 @@
+// Walks the folder `UnrealPak IoStore -FindAndExtract` wrote and reads every package header into
+// the catalog (zen.coax). Every .uheader is one package; its .uexp and .ubulk are beside it.
+// A header the catalog refuses is counted and named, never skipped quietly.
+#load "zen.coax";
+#load "../../../../coax/lib/sys/fs.coax";
+
+ZW_DEPTH :: 24;
+ZW_HEADER :: 67108864;   // the largest header read (64 MiB; Splice Bots' largest is under 4 MiB)
+ZwScan :: struct { packages: int; refused: int; first_refused: [512] u8; first_refused_n: int; why: int; dirs: int; full: bool; }
+
+zw_ends :: (s: string, tail: string) -> bool #effects(all) { return s.count >= tail.count && s[s.count - tail.count..<s.count] == tail; }
+
+zw_note :: (w: [] ZwScan, path: string, why: int) #effects(all) {
+  w[0].refused += 1;
+  if w[0].first_refused_n == 0 { n := ifx path.count < 512 then path.count else 512; for k: 0..<n { w[0].first_refused[k] = path[k]; } w[0].first_refused_n = n; w[0].why = why; }
+}
+
+zw_dir :: (c: [] Zcat, w: [] ZwScan, dir: string, depth: int, buf: [] u8) #effects(all) {
+  if depth > ZW_DEPTH { w[0].full = true; return; }
+  l: [1] FsList = ---;
+  n := fs_list(dir, l[..]);
+  if n < 0 { return; }
+  if l[0].full { w[0].full = true; }
+  w[0].dirs += 1;
+  for i: 0..<n {
+    name := fs_entry(l[..], i);
+    pb: [4096] u8 = ---; path := fs_join(dir, name, pb[..]);
+    if path.count == 0 { w[0].full = true; continue; }
+    kind := fs_kind(path);
+    if kind == 2 { zw_dir(c, w, path, depth + 1, buf); continue; }
+    if !zw_ends(name, ".uheader") { continue; }
+    stem := path[0..<path.count - 8];
+    hn := fs_read(path, buf);
+    eb: [4096] u8 = ---; bb: [4096] u8 = ---;
+    ue := fs_size(zw_cat(stem, ".uexp", eb[..])); ub := fs_size(zw_cat(stem, ".ubulk", bb[..]));
+    if hn <= 0 { zw_note(w, path, ZP_BAD); continue; }
+    why := zc_add(c, cast(string) buf[0..<hn], stem, ue, ub);
+    if why == ZP_OK { w[0].packages += 1; } else { zw_note(w, path, why); }
+  }
+}
+zw_cat :: (a: string, b: string, out: [] u8) -> string #effects(all) {
+  n := 0; for ch: a { if n < out.count { out[n] = ch; n += 1; } } for ch: b { if n < out.count { out[n] = ch; n += 1; } }
+  return cast(string) out[0..<n];
+}
+// Reads every package under root. The scan's counts say what was read and what was refused.
+zw_scan :: (c: [] Zcat, root: string, buf: [] u8) -> ZwScan #effects(all) {
+  w: [1] ZwScan; w[0].packages = 0; w[0].refused = 0; w[0].first_refused_n = 0; w[0].why = 0; w[0].dirs = 0; w[0].full = false;
+  zw_dir(c, w[..], root, 0, buf);
+  return w[0];
+}

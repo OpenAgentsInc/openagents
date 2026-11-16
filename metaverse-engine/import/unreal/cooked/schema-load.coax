@@ -1,0 +1,137 @@
+// Finds and reads the generated files of an engine build (and, when given, the game project's own)
+// into the schema, and names every class's script object by the hash a cooked package stores
+// (city.coax), so a script import resolves to its class.
+//
+// Where the files are: SOURCE/Engine/Intermediate/Build/PLATFORM/UnrealEditor/Inc/MODULE/UHT/*.gen.cpp
+// for the engine's modules, and the same under each plugin's folder (SOURCE/Engine/Plugins/...); a
+// project's are under PROJECT/Intermediate/... and PROJECT/Plugins/.... PLATFORM is the first of
+// Mac, Linux, Win64 that exists. The walk through Plugins does not enter source, content or binary
+// folders, so it visits about a thousand folders, not the whole tree.
+#load "schema.coax";
+#load "../../../../coax/lib/sys/fs.coax";
+
+SC_PLATFORMS :: [3] string.["Mac", "Linux", "Win64"];
+SC_PRUNE :: [10] string.["Source", "Content", "Resources", "Binaries", "Shaders", "Config", "Docs", "Extras", "ThirdParty", "Saved"];
+SC_FILE :: 33554432;   // the largest generated file read (32 MiB)
+
+// Script objects by hash: a class (2 t), its default object (2 t + 1), a module package (-2).
+ScScript :: struct { key: [] u64; val: [] int; count: int; }
+SC_SCRIPT_SLOTS :: 262144;
+ScScriptStore :: struct { key: [SC_SCRIPT_SLOTS] u64; val: [SC_SCRIPT_SLOTS] int; }
+sc_script_init :: (h: [] ScScript, st: [] ScScriptStore) #effects(all) {
+  h[0].key = st[0].key[..]; h[0].val = st[0].val[..]; h[0].count = 0;
+  for k: 0..<SC_SCRIPT_SLOTS { st[0].key[k] = 0; st[0].val[k] = 0; }
+}
+sc_script_slot :: (h: [] ScScript, key: u64) -> int #effects(all) {
+  n := h[0].key.count; i := cast(int) (key & cast(u64) (n - 1));
+  for step: 0..<n { if h[0].val[i] == 0 || h[0].key[i] == key { return i; } i = (i + 1) & (n - 1); }
+  return -1;
+}
+sc_script_put :: (h: [] ScScript, key: u64, v: int) #effects(all) {
+  i := sc_script_slot(h, key);
+  if i < 0 || key == 0 || h[0].count >= h[0].key.count / 2 { return; }
+  if h[0].val[i] == 0 { h[0].count += 1; h[0].key[i] = key; h[0].val[i] = v + 3; }   // values are stored + 3 (so -2 is 1 and empty is 0)
+}
+SC_SCRIPT_NONE :: -3;
+sc_script :: (h: [] ScScript, key: u64) -> int #effects(all) {
+  i := sc_script_slot(h, key); return ifx i >= 0 && h[0].val[i] != 0 then h[0].val[i] - 3 else SC_SCRIPT_NONE;
+}
+sc_put :: (out: [] u8, n: int, w: string) -> int #effects(all) { m := n; for c: w { if m < out.count { out[m] = c; m += 1; } } return m; }
+// The /Script path of type t's class object, or of its default object.
+sc_script_path :: (s: [] Sch, t: int, cdo: bool, out: [] u8) -> string #effects(all) {
+  n := 0;
+  n = sc_put(out, n, "/Script/"); n = sc_put(out, n, sc_s(s, s[0].type[t].modname)); n = sc_put(out, n, ".");
+  if cdo { n = sc_put(out, n, "Default__"); }
+  nm := sc_s(s, s[0].type[t].name);
+  n = sc_put(out, n, ifx nm.count > 1 then nm[1..<nm.count] else nm);
+  return cast(string) out[0..<n];
+}
+sc_index_scripts :: (s: [] Sch, h: [] ScScript) #effects(all) {
+  for t: 0..<s[0].types {
+    if s[0].type[t].is_struct { continue; }
+    b: [1024] u8 = ---;
+    sc_script_put(h, city_script(sc_script_path(s, t, false, b[..])), 2 * t);
+    sc_script_put(h, city_script(sc_script_path(s, t, true, b[..])), 2 * t + 1);
+    n := 0; for c: "/Script/" { b[n] = c; n += 1; } for c: sc_s(s, s[0].type[t].modname) { if n < 1024 { b[n] = c; n += 1; } }
+    sc_script_put(h, city_script(cast(string) b[0..<n]), -2);
+  }
+}
+
+sc_ends :: (s: string, tail: string) -> bool #effects(all) { return s.count >= tail.count && s[s.count - tail.count..<s.count] == tail; }
+
+// Every .gen.cpp of one module's UHT folder.
+sc_module :: (s: [] Sch, uht: string, modname: string, buf: [] u8) #effects(all) {
+  l: [1] FsList = ---;
+  n := fs_list(uht, l[..]);
+  if n <= 0 { return; }
+  mod := zs_add(s[0].pool[..], modname);
+  s[0].modules += 1;
+  for i: 0..<n {
+    name := fs_entry(l[..], i);
+    if !sc_ends(name, ".gen.cpp") { continue; }
+    pb: [4096] u8 = ---; m := fs_read(fs_join(uht, name, pb[..]), buf);
+    if m < 0 { s[0].refused += 1; continue; }
+    sc_file(s, cast(string) buf[0..<m], mod); s[0].files += 1;
+  }
+}
+// Every module under one Inc folder.
+sc_inc :: (s: [] Sch, inc: string, buf: [] u8) #effects(all) {
+  l: [1] FsList = ---;
+  n := fs_list(inc, l[..]);
+  for i: 0..<n {
+    name := fs_entry(l[..], i);
+    pb: [4096] u8 = ---; ub: [4096] u8 = ---;
+    uht := fs_join(fs_join(inc, name, pb[..]), "UHT", ub[..]);
+    if fs_kind(uht) == 2 { sc_module(s, uht, name, buf); }
+  }
+}
+// The Inc folder under root/Intermediate/Build/PLATFORM/UnrealEditor, if any.
+sc_root_inc :: (s: [] Sch, root: string, buf: [] u8) -> bool #effects(all) {
+  for plat: SC_PLATFORMS {
+    p: [4096] u8 = ---; n := 0;
+    for c: root { if n < 4000 { p[n] = c; n += 1; } }
+    for c: "/Intermediate/Build/" { p[n] = c; n += 1; } for c: plat { p[n] = c; n += 1; } for c: "/UnrealEditor/Inc" { p[n] = c; n += 1; }
+    if fs_kind(cast(string) p[0..<n]) == 2 { sc_inc(s, cast(string) p[0..<n], buf); return true; }
+  }
+  return false;
+}
+// Plugins: every folder under dir that has an Intermediate build, descending past nothing pruned.
+sc_plugins :: (s: [] Sch, dir: string, depth: int, buf: [] u8) #effects(all) {
+  if depth > 8 { return; }
+  l: [1] FsList = ---;
+  n := fs_list(dir, l[..]);
+  for i: 0..<n {
+    name := fs_entry(l[..], i);
+    pruned := name == "Intermediate"; for p: SC_PRUNE { if name == p { pruned = true; } }
+    if pruned || (name.count > 0 && name[0] == '.') { continue; }
+    pb: [4096] u8 = ---; sub := fs_join(dir, name, pb[..]);
+    if fs_kind(sub) != 2 { continue; }
+    if !sc_root_inc(s, sub, buf) { sc_plugins(s, sub, depth + 1, buf); }
+  }
+}
+// The engine at source (its Engine folder inside) and, when project is not "", the game project.
+// False when the engine's own modules are not there: without them nothing can be read.
+sc_load :: (s: [] Sch, source: string, project: string, buf: [] u8) -> bool #effects(all) {
+  eb: [4096] u8 = ---; engine := fs_join(source, "Engine", eb[..]);
+  if !sc_root_inc(s, engine, buf) { return false; }
+  pb: [4096] u8 = ---; sc_plugins(s, fs_join(engine, "Plugins", pb[..]), 0, buf);
+  if project.count > 0 {
+    _ = sc_root_inc(s, project, buf);
+    qb: [4096] u8 = ---; sc_plugins(s, fs_join(project, "Plugins", qb[..]), 0, buf);
+  }
+  sc_link_supers(s);
+  return sc_type(s, "UStaticMesh") >= 0 && sc_type(s, "UObject") >= 0;
+}
+
+#test "script objects are found by the hash of their path, and a miss says so" {
+  st: [1] ScSmall; s: [1] Sch; sc_small(s[..], st[..]);
+  sc_file(s[..], SC_FIXTURE, zs_add(s[0].pool[..], "Fixture"));
+  sc_link_supers(s[..]);
+  hs: [1] ScScriptStore; h: [1] ScScript; sc_script_init(h[..], hs[..]);
+  sc_index_scripts(s[..], h[..]);
+  thing := sc_type(s[..], "UThing");
+  #assert sc_script(h[..], city_script("/Script/Fixture.Thing")) == 2 * thing;
+  #assert sc_script(h[..], city_script("/Script/Fixture.Default__Thing")) == 2 * thing + 1;
+  #assert sc_script(h[..], city_script("/Script/Fixture")) == -2;
+  #assert sc_script(h[..], city_script("/Script/Fixture.Pair")) == SC_SCRIPT_NONE;   // a struct is not a script import here
+}

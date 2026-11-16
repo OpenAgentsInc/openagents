@@ -1,0 +1,390 @@
+// The cooked reader's view of a zen package (the importer's spec, section 4.4): what
+// `UnrealPak IoStore -FindAndExtract` writes for each package, a .uheader (the package summary,
+// its name map, bulk-data map, imports and exports), a .uexp (the export bodies, back to back) and,
+// when it has any, a .ubulk (bulk payloads stored outside the export bodies).
+//
+// The bytes are untrusted. Every read is bounds checked through a Zr cursor that turns false and
+// stays false on the first fault; a caller checks it once and refuses the whole package. Nothing here
+// trusts a count or an offset the file states until it has been checked against the file's size.
+//
+// The catalog (Zcat) holds every package's header in one place, so an import resolves to the
+// package and export it names without reading that package again: an import is a package (by
+// name) and a public export hash, and the export whose hash it is carries the name.
+//   coax/bin/coax test metaverse-engine/import/unreal/cooked/zen.coax
+#load "city.coax";
+
+// ---- the cursor
+
+Zr :: struct { b: string; at: int; end: int; ok: bool; }
+zr :: (b: string, at: int, end: int) -> Zr #effects(all) {
+  r: Zr; r.b = b; r.at = at; r.end = end; r.ok = at >= 0 && end >= at && end <= b.count; return r;
+}
+zr_need :: (r: [] Zr, n: int) -> bool #effects(all) {
+  if !r[0].ok || n < 0 || n > r[0].end - r[0].at { r[0].ok = false; return false; }
+  return true;
+}
+zr_u8 :: (r: [] Zr) -> int #effects(all) { if !zr_need(r, 1) { return 0; } v := cast(int) r[0].b[r[0].at]; r[0].at += 1; return v; }
+zr_u16 :: (r: [] Zr) -> int #effects(all) {
+  if !zr_need(r, 2) { return 0; } a := r[0].at; r[0].at += 2;
+  return cast(int) r[0].b[a] | (cast(int) r[0].b[a + 1] << 8);
+}
+zr_u32 :: (r: [] Zr) -> int #effects(all) {
+  if !zr_need(r, 4) { return 0; } a := r[0].at; r[0].at += 4;
+  return cast(int) r[0].b[a] | (cast(int) r[0].b[a + 1] << 8) | (cast(int) r[0].b[a + 2] << 16) | (cast(int) r[0].b[a + 3] << 24);
+}
+zr_i32 :: (r: [] Zr) -> int #effects(all) { v := zr_u32(r); return ifx v >= 0x80000000 then v - 0x100000000 else v; }
+zr_u64 :: (r: [] Zr) -> u64 #effects(all) {
+  if !zr_need(r, 8) { return 0; } a := r[0].at; r[0].at += 8;
+  v: u64 = 0; for k: 0..<8 { v = v | (cast(u64) r[0].b[a + k] << cast(u64) (8 * k)); } return v;
+}
+// A signed 64-bit count or offset; anything outside 0..2^53 is refused, which no real file needs.
+zr_i64 :: (r: [] Zr) -> int #effects(all) {
+  v := zr_u64(r);
+  if v > 0x20000000000000 { r[0].ok = false; return 0; }
+  return cast(int) v;
+}
+// A signed 64-bit value read as two's complement; outside -2^53..2^53 is refused.
+zr_s64 :: (r: [] Zr) -> int #effects(all) {
+  v := zr_u64(r);
+  if v <= 0x20000000000000 { return cast(int) v; }
+  if v >= 0xffe0000000000000 { return -cast(int) sub_wrap(cast(u64) 0, v); }
+  r[0].ok = false; return 0;
+}
+zr_f32 :: (r: [] Zr) -> f64 #effects(all) { return cast(f64) f32_from_bits(cast,trunc(u32) zr_u32(r)); }
+zr_f64 :: (r: [] Zr) -> f64 #effects(all) { return f64_from_bits(zr_u64(r)); }
+zr_skip :: (r: [] Zr, n: int) #effects(all) { if zr_need(r, n) { r[0].at += n; } }
+// The next n bytes as a view, or "" (and the cursor false).
+zr_take :: (r: [] Zr, n: int) -> string #effects(all) { if !zr_need(r, n) { return ""; } a := r[0].at; r[0].at += n; return r[0].b[a..<a + n]; }
+
+// Little-endian reads at a fixed place, for callers that index a table directly.
+zu32 :: (b: string, at: int) -> int #effects(all) {
+  return cast(int) b[at] | (cast(int) b[at + 1] << 8) | (cast(int) b[at + 2] << 16) | (cast(int) b[at + 3] << 24);
+}
+
+// ---- the string pool
+
+// The pool's storage is the caller's: zs_init takes the byte and table views it fills.
+Zs :: struct { b: [] u8; at: [] int; n: [] int; used: int; count: int; full: bool; }
+zs_init :: (p: [] Zs, bytes: [] u8, at: [] int, n: [] int) #effects(all) {   // id 0 is ""
+  p[0].b = bytes; p[0].at = at; p[0].n = n; p[0].used = 0; p[0].count = 1; p[0].at[0] = 0; p[0].n[0] = 0; p[0].full = false;
+}
+zs_add :: (p: [] Zs, s: string) -> int #effects(all) {
+  if s.count == 0 { return 0; }
+  if p[0].count >= p[0].at.count || p[0].used + s.count > p[0].b.count { p[0].full = true; return 0; }
+  k := p[0].count; p[0].at[k] = p[0].used; p[0].n[k] = s.count;
+  for c, i: s { p[0].b[p[0].used + i] = c; }
+  p[0].used += s.count; p[0].count += 1; return k;
+}
+zs :: (p: [] Zs, id: int) -> string #effects(all) {
+  if id <= 0 || id >= p[0].count { return ""; }
+  return cast(string) p[0].b[p[0].at[id]..<p[0].at[id] + p[0].n[id]];
+}
+// s, then "_" and number - 1 when number > 0: how a name with a number reads.
+zs_numbered :: (p: [] Zs, s: string, number: int) -> int #effects(all) {
+  if number <= 0 { return zs_add(p, s); }
+  t: [1100] u8 = ---; n := 0;
+  if s.count > 1024 { return 0; }
+  for c: s { t[n] = c; n += 1; }
+  t[n] = '_'; n += 1;
+  v := number - 1; d: [24] u8 = ---; m := 0;
+  if v == 0 { d[0] = '0'; m = 1; }
+  while v > 0 { d[m] = cast,trunc(u8) (48 + v % 10); m += 1; v /= 10; }
+  for k: 0..<m { t[n] = d[m - 1 - k]; n += 1; }
+  return zs_add(p, cast(string) t[0..<n]);
+}
+
+// A string-keyed table: slot -> value + 1 (0 empty), keyed by pool string ids.
+// The slot count is a power of two, the views' length.
+Zh :: struct { key: [] int; val: [] int; count: int; }
+zh_init :: (h: [] Zh, key: [] int, val: [] int) #effects(all) { h[0].key = key; h[0].val = val; for k: 0..<key.count { key[k] = 0; val[k] = 0; } h[0].count = 0; }
+zh_slot :: (h: [] Zh, p: [] Zs, s: string) -> int #effects(all) {
+  slots := h[0].key.count;
+  if slots == 0 || (slots & (slots - 1)) != 0 { return -1; }
+  i := cast(int) (city64(s) & cast(u64) (slots - 1));
+  for step: 0..<slots {
+    if h[0].val[i] == 0 || zs(p, h[0].key[i]) == s { return i; }
+    i = (i + 1) & (slots - 1);
+  }
+  return -1;
+}
+zh_get :: (h: [] Zh, p: [] Zs, s: string) -> int #effects(all) {
+  i := zh_slot(h, p, s); return ifx i >= 0 && h[0].val[i] > 0 then h[0].val[i] - 1 else -1;
+}
+// Sets s to v; false when the table is full (a caller refuses rather than drop the entry).
+zh_put :: (h: [] Zh, p: [] Zs, key_id: int, v: int) -> bool #effects(all) {
+  i := zh_slot(h, p, zs(p, key_id));
+  if i < 0 || (h[0].val[i] == 0 && h[0].count >= h[0].key.count / 2) { return false; }
+  if h[0].val[i] == 0 { h[0].count += 1; }
+  h[0].key[i] = key_id; h[0].val[i] = v + 1; return true;
+}
+
+// ---- package object indexes (FPackageObjectIndex)
+
+ZI_EXPORT :: 0; ZI_SCRIPT :: 1; ZI_PACKAGE :: 2; ZI_NULL :: 3;
+ZI_NONE :: cast(u64) 0xffffffffffffffff;
+zi_kind :: (ix: u64) -> int #effects(all) { return ifx ix == ZI_NONE then ZI_NULL else cast(int) (ix >> 62); }
+zi_value :: (ix: u64) -> u64 #effects(all) { return ix & 0x3fffffffffffffff; }
+
+// ---- the catalog
+
+ZcExport :: struct { name: int; outer: u64; cls: u64; sup: u64; tmpl: u64; pub: u64; off: int; size: int; oflags: int; }
+ZcBulk :: struct { off: int; size: int; flags: int; }
+ZcPkg :: struct {
+  name: int; file: int;                        // the package path (/Game/...), the file path without its extension
+  flags: int; header_size: int; uexp: int; ubulk: int;   // .uexp and .ubulk sizes (-1: none)
+  names: int; name_n: int; exports: int; export_n: int; imports: int; import_n: int;
+  hashes: int; hash_n: int; bulk: int; bulk_n: int; pkgs: int; pkg_n: int;
+}
+// The catalog's tables are views into storage the caller owns (ZcStore for a tool, small arrays in a check).
+Zcat :: struct {
+  pool: [1] Zs; by_name: [1] Zh;
+  pkgs: int; pkg: [] ZcPkg;
+  names: int; name: [] int;
+  exports: int; exp: [] ZcExport;
+  imports: int; imp: [] u64;
+  hashes: int; hash: [] u64;
+  bulks: int; bulk: [] ZcBulk;
+  pkgnames: int; pkgname: [] int;   // an imported package's name (pool id)
+}
+ZC_POOL :: 33554432; ZC_STRINGS :: 1048576; ZC_SLOTS :: 16384;
+ZC_PKGS :: 4096; ZC_EXPORTS :: 131072; ZC_IMPORTS :: 262144; ZC_NAMES :: 1048576; ZC_HASHES :: 262144; ZC_BULK :: 65536; ZC_PKGNAMES :: 65536;
+ZcStore :: struct {
+  b: [ZC_POOL] u8; at: [ZC_STRINGS] int; n: [ZC_STRINGS] int; key: [ZC_SLOTS] int; val: [ZC_SLOTS] int;
+  pkg: [ZC_PKGS] ZcPkg; name: [ZC_NAMES] int; exp: [ZC_EXPORTS] ZcExport; imp: [ZC_IMPORTS] u64; hash: [ZC_HASHES] u64;
+  bulk: [ZC_BULK] ZcBulk; pkgname: [ZC_PKGNAMES] int;
+}
+zc_init :: (c: [] Zcat, s: [] ZcStore) #effects(all) {
+  zs_init(c[0].pool[..], s[0].b[..], s[0].at[..], s[0].n[..]); zh_init(c[0].by_name[..], s[0].key[..], s[0].val[..]);
+  c[0].pkg = s[0].pkg[..]; c[0].name = s[0].name[..]; c[0].exp = s[0].exp[..]; c[0].imp = s[0].imp[..]; c[0].hash = s[0].hash[..];
+  c[0].bulk = s[0].bulk[..]; c[0].pkgname = s[0].pkgname[..];
+  c[0].pkgs = 0; c[0].names = 0; c[0].exports = 0; c[0].imports = 0; c[0].hashes = 0; c[0].bulks = 0; c[0].pkgnames = 0;
+}
+zc_s :: (c: [] Zcat, id: int) -> string #effects(all) { return zs(c[0].pool[..], id); }
+
+// One name batch (the package's names, or the imported packages' names) at r: the pool ids into
+// out, their count, or -1. A name is Latin-1 or UTF-16; a UTF-16 name is kept only when it is
+// ASCII (Unreal object paths a reader looks up are), otherwise refused.
+zc_names :: (r: [] Zr, p: [] Zs, out: [] int) -> int #effects(all) {
+  n := zr_u32(r);
+  if !r[0].ok { return -1; }
+  if n == 0 { return 0; }
+  _ = zr_u32(r); _ = zr_u64(r);   // the text's byte count (the headers decide) and the hash version
+  if n > out.count { return -1; }
+  zr_skip(r, 8 * n);
+  heads := r[0].at; zr_skip(r, 2 * n);
+  if !r[0].ok { return -1; }
+  for k: 0..<n {
+    h0 := cast(int) r[0].b[heads + 2 * k]; h1 := cast(int) r[0].b[heads + 2 * k + 1];
+    wide := (h0 & 0x80) != 0; ln := ((h0 & 0x7f) << 8) | h1;
+    if wide {
+      if r[0].at % 2 == 1 { zr_skip(r, 1); }   // UTF-16 text starts at an even offset in the header
+      s := zr_take(r, 2 * ln);
+      if !r[0].ok { return -1; }
+      t: [4096] u8 = ---;
+      if ln > 4096 { return -1; }
+      for i: 0..<ln { if s[2 * i + 1] != 0 || s[2 * i] >= 128 { return -1; } t[i] = s[2 * i]; }
+      out[k] = zs_add(p, cast(string) t[0..<ln]);
+    } else {
+      s := zr_take(r, ln);
+      if !r[0].ok { return -1; }
+      out[k] = zs_add(p, s);
+    }
+    if ln > 0 && out[k] == 0 { return -1; }   // the pool is full
+  }
+  return n;
+}
+
+ZP_OK :: 0; ZP_BAD :: 1; ZP_FULL :: 2; ZP_VERSIONED :: 3;
+ZP_WHY :: [4] string.["read", "malformed header", "a table is full", "carries versioning information (an uncooked or editor package)"];
+
+// Reads one package header (h, the .uheader's bytes) into the catalog as package slot c.pkgs.
+// file is the path without extension; uexp and ubulk the sizes of the files beside it (-1: none).
+// Returns ZP_OK, or why it was refused; a refused header leaves the catalog as it was.
+zc_add :: (c: [] Zcat, h: string, file: string, uexp: int, ubulk: int) -> int #effects(all) {
+  if c[0].pkgs >= c[0].pkg.count { return ZP_FULL; }
+  r: [1] Zr; r[0] = zr(h, 0, h.count);
+  versioned := zr_u32(r[..]);
+  if versioned != 0 { return ZP_VERSIONED; }
+  header_size := zr_u32(r[..]);
+  name_ix := zr_u32(r[..]); name_no := zr_u32(r[..]);
+  flags := zr_u32(r[..]); _ = zr_u32(r[..]);
+  o: [7] int; for k: 0..<7 { o[k] = zr_i32(r[..]); }
+  cell_imp := zr_i32(r[..]); cell_exp := zr_i32(r[..]);
+  if !r[0].ok || header_size != h.count || (name_ix >> 30) != 0 { return ZP_BAD; }
+  // the seven table offsets, in order, inside the header
+  hashes_at := o[0]; import_at := o[1]; export_at := o[2]; pkgnames_at := o[6];
+  if hashes_at < r[0].at || import_at < hashes_at || export_at < import_at || cell_imp < export_at || cell_exp < cell_imp || pkgnames_at > h.count || pkgnames_at < 0 { return ZP_BAD; }
+  if (import_at - hashes_at) % 8 != 0 || (export_at - import_at) % 8 != 0 || (cell_imp - export_at) % 72 != 0 { return ZP_BAD; }
+  save_names := c[0].names; save_pool := c[0].pool[0].count; save_used := c[0].pool[0].used;
+  pk: ZcPkg;
+  pk.names = c[0].names;
+  n := zc_names(r[..], c[0].pool[..], c[0].name[c[0].names..<c[0].name.count]);
+  if n < 0 { c[0].pool[0].count = save_pool; c[0].pool[0].used = save_used; return ZP_BAD; }
+  pk.name_n = n; c[0].names += n;
+  if name_ix >= n { c[0].names = save_names; c[0].pool[0].count = save_pool; c[0].pool[0].used = save_used; return ZP_BAD; }
+  // the bulk-data map
+  pad := zr_i64(r[..]); zr_skip(r[..], pad);
+  bm := zr_i64(r[..]);
+  ok := r[0].ok && bm % 32 == 0 && bm >= 0 && r[0].at + bm <= hashes_at;
+  pk.bulk = c[0].bulks; pk.bulk_n = ifx ok then bm / 32 else 0;
+  if ok && c[0].bulks + pk.bulk_n > c[0].bulk.count { ok = false; }
+  for k: 0..<pk.bulk_n {
+    if !ok { break; }
+    e: ZcBulk; e.off = zr_s64(r[..]); _ = zr_s64(r[..]); e.size = zr_s64(r[..]);   // a duplicate offset is -1 when there is none e.flags = zr_u32(r[..]); _ = zr_u32(r[..]);
+    c[0].bulk[c[0].bulks + k] = e;
+  }
+  ok = ok && r[0].ok;
+  pk.hash_n = (import_at - hashes_at) / 8; pk.import_n = (export_at - import_at) / 8; pk.export_n = (cell_imp - export_at) / 72;
+  if c[0].hashes + pk.hash_n > c[0].hash.count || c[0].imports + pk.import_n > c[0].imp.count || c[0].exports + pk.export_n > c[0].exp.count { ok = false; }
+  if !ok { c[0].names = save_names; c[0].pool[0].count = save_pool; c[0].pool[0].used = save_used; return ifx r[0].ok then ZP_FULL else ZP_BAD; }
+  pk.hashes = c[0].hashes; pk.imports = c[0].imports; pk.exports = c[0].exports;
+  t: [1] Zr; t[0] = zr(h, hashes_at, import_at);
+  for k: 0..<pk.hash_n { c[0].hash[pk.hashes + k] = zr_u64(t[..]); }
+  t[0] = zr(h, import_at, export_at);
+  for k: 0..<pk.import_n { c[0].imp[pk.imports + k] = zr_u64(t[..]); }
+  t[0] = zr(h, export_at, cell_imp);
+  for k: 0..<pk.export_n {
+    e: ZcExport;
+    e.off = zr_i64(t[..]); e.size = zr_i64(t[..]);
+    ni := zr_u32(t[..]); nn := zr_u32(t[..]);
+    e.outer = zr_u64(t[..]); e.cls = zr_u64(t[..]); e.sup = zr_u64(t[..]); e.tmpl = zr_u64(t[..]); e.pub = zr_u64(t[..]);
+    e.oflags = zr_u32(t[..]); _ = zr_u8(t[..]); zr_skip(t[..], 3);
+    if !t[0].ok || (ni >> 30) != 0 || ni >= n || e.off + e.size > (ifx uexp < 0 then 0 else uexp) { ok = false; break; }
+    e.name = zs_numbered(c[0].pool[..], zs(c[0].pool[..], c[0].name[pk.names + ni]), nn);
+    c[0].exp[pk.exports + k] = e;
+  }
+  // the imported packages' names, each with its number
+  pk.pkgs = c[0].pkgnames; pk.pkg_n = 0;
+  if ok {
+    t[0] = zr(h, pkgnames_at, h.count);
+    ids: [4096] int = ---;
+    m := zc_names(t[..], c[0].pool[..], ids[..]);
+    if m < 0 || c[0].pkgnames + m > c[0].pkgname.count { ok = false; }
+    for k: 0..<m {
+      if !ok { break; }
+      num := zr_i32(t[..]);
+      c[0].pkgname[c[0].pkgnames + k] = zs_numbered(c[0].pool[..], zs(c[0].pool[..], ids[k]), num);
+    }
+    ok = ok && t[0].ok;
+    if ok { pk.pkg_n = m; }
+  }
+  if !ok || c[0].pool[0].full { c[0].names = save_names; c[0].pool[0].count = save_pool; c[0].pool[0].used = save_used; return ZP_BAD; }
+  pk.name = zs_numbered(c[0].pool[..], zs(c[0].pool[..], c[0].name[pk.names + name_ix]), name_no);
+  pk.file = zs_add(c[0].pool[..], file);
+  pk.flags = flags; pk.header_size = header_size; pk.uexp = uexp; pk.ubulk = ubulk;
+  if zh_get(c[0].by_name[..], c[0].pool[..], zs(c[0].pool[..], pk.name)) >= 0 { c[0].names = save_names; c[0].pool[0].count = save_pool; c[0].pool[0].used = save_used; return ZP_BAD; }
+  if !zh_put(c[0].by_name[..], c[0].pool[..], pk.name, c[0].pkgs) { return ZP_FULL; }
+  c[0].hashes += pk.hash_n; c[0].imports += pk.import_n; c[0].exports += pk.export_n; c[0].bulks += pk.bulk_n; c[0].pkgnames += pk.pkg_n;
+  c[0].pkg[c[0].pkgs] = pk; c[0].pkgs += 1;
+  return ZP_OK;
+}
+
+zc_pkg :: (c: [] Zcat, name: string) -> int #effects(all) { return zh_get(c[0].by_name[..], c[0].pool[..], name); }
+zc_export :: (c: [] Zcat, p: int, k: int) -> ZcExport #effects(all) { return c[0].exp[c[0].pkg[p].exports + k]; }
+zc_export_name :: (c: [] Zcat, p: int, k: int) -> string #effects(all) { return zc_s(c, c[0].exp[c[0].pkg[p].exports + k].name); }
+
+// The export in package p whose public hash is h, or -1.
+zc_by_hash :: (c: [] Zcat, p: int, h: u64) -> int #effects(all) {
+  if p < 0 || h == 0 { return -1; }
+  for k: 0..<c[0].pkg[p].export_n { if c[0].exp[c[0].pkg[p].exports + k].pub == h { return k; } }
+  return -1;
+}
+
+// What a package index (an import or export reference in package p) names.
+ZRef :: struct { kind: int; pkg: int; exp: int; script: u64; }   // kind ZI_*; pkg/exp for an export anywhere; script hash
+zc_resolve :: (c: [] Zcat, p: int, ix: u64) -> ZRef #effects(all) {
+  r: ZRef; r.kind = ZI_NULL; r.pkg = -1; r.exp = -1; r.script = 0;
+  k := zi_kind(ix);
+  if k == ZI_EXPORT {
+    v := cast(int) zi_value(ix);
+    if v < c[0].pkg[p].export_n { r.kind = ZI_EXPORT; r.pkg = p; r.exp = v; }
+  } else if k == ZI_SCRIPT {
+    r.kind = ZI_SCRIPT; r.script = zi_value(ix);
+  } else if k == ZI_PACKAGE {
+    v := zi_value(ix); pi := cast(int) (v >> 32); hi := cast(int) (v & 0xffffffff);
+    if pi < c[0].pkg[p].pkg_n && hi < c[0].pkg[p].hash_n {
+      target := zc_pkg(c, zc_s(c, c[0].pkgname[c[0].pkg[p].pkgs + pi]));
+      r.kind = ZI_PACKAGE; r.pkg = target;
+      r.exp = zc_by_hash(c, target, c[0].hash[c[0].pkg[p].hashes + hi]);
+      if target < 0 { r.pkg = -1 - pi; }   // a package the build does not carry: its imported-name slot, negative
+    }
+  }
+  return r;
+}
+// A serialized FPackageIndex (an object reference in export data): > 0 export n - 1, < 0 import
+// -n - 1, 0 null.
+zc_index :: (c: [] Zcat, p: int, v: int) -> ZRef #effects(all) {
+  if v > 0 && v - 1 < c[0].pkg[p].export_n { return zc_resolve(c, p, cast(u64) (v - 1)); }
+  if v < 0 && -v - 1 < c[0].pkg[p].import_n { return zc_resolve(c, p, c[0].imp[c[0].pkg[p].imports - v - 1]); }
+  r: ZRef; r.kind = ZI_NULL; r.pkg = -1; r.exp = -1; r.script = 0; return r;
+}
+
+// The object path of export k of package p: /Game/Dir/Pkg.Obj, /Game/Dir/Pkg.Outer:Sub (Unreal's
+// spelling: '.' after the package, ':' before a subobject of a subobject's outer... as SUBOBJECT_DELIMITER).
+zc_path :: (c: [] Zcat, p: int, k: int, out: [] u8) -> string #effects(all) {
+  chain: [32] int = ---; n := 0; at := k;
+  while at >= 0 && n < 32 {
+    chain[n] = at; n += 1;
+    e := zc_export(c, p, at);
+    if zi_kind(e.outer) != ZI_EXPORT { break; }
+    nx := cast(int) zi_value(e.outer);
+    if nx >= c[0].pkg[p].export_n || nx == at { break; }
+    at = nx;
+  }
+  m := 0;
+  for ch: zc_s(c, c[0].pkg[p].name) { if m < out.count { out[m] = ch; m += 1; } }
+  for i: 0..<n {
+    sep: u8 = ifx i == 1 then 58 else 46;   // ":" before a subobject, "." otherwise
+    if m < out.count { out[m] = sep; m += 1; }
+    for ch: zc_export_name(c, p, chain[n - 1 - i]) { if m < out.count { out[m] = ch; m += 1; } }
+  }
+  return cast(string) out[0..<m];
+}
+
+#test "the cursor refuses a read past its end and stays refused" {
+  a := [5] u8.[1, 2, 3, 4, 5]; b := cast(string) a[..];
+  r: [1] Zr; r[0] = zr(b, 0, 5);
+  #assert zr_u32(r[..]) == 0x04030201 && r[0].ok;
+  #assert zr_u16(r[..]) == 0 && !r[0].ok;
+  #assert zr_u8(r[..]) == 0 && !r[0].ok;
+  r[0] = zr(b, 2, 9);
+  #assert !r[0].ok;
+  m := [4] u8.[255, 255, 255, 255];
+  r[0] = zr(cast(string) m[..], 0, 4);
+  #assert zr_i32(r[..]) == -1;
+  one := [8] u8.[0, 0, 0, 0, 0, 0, 240, 63];
+  r[0] = zr(cast(string) one[..], 0, 8);
+  #assert zr_f64(r[..]) == 1.0;
+  big := [8] u8.[255, 255, 255, 255, 255, 255, 255, 127];
+  r[0] = zr(cast(string) big[..], 0, 8);
+  #assert zr_i64(r[..]) == 0 && !r[0].ok;
+}
+#test "a name batch reads Latin-1 and ASCII UTF-16 names, and refuses a short one" {
+  pb: [256] u8; pa: [16] int; pn: [16] int; p: [1] Zs; zs_init(p[..], pb[..], pa[..], pn[..]);
+  // two names, "Abc" (Latin-1) and "Cd" (UTF-16, at an even offset after one pad byte)
+  b: [64] u8; n := 0;
+  for v: [8] u8.[2, 0, 0, 0, 7, 0, 0, 0] { b[n] = v; n += 1; }
+  for k: 0..<24 { b[n] = 'h'; n += 1; }              // the hash version and two hashes
+  for v: [4] u8.[0, 3, 128, 2] { b[n] = v; n += 1; } // the headers: 3 Latin-1, 2 UTF-16
+  b[n] = 'A'; b[n + 1] = 'b'; b[n + 2] = 'c'; n += 3;
+  b[n] = 0; n += 1;                                   // the pad to an even offset
+  for v: [4] u8.['C', 0, 'd', 0] { b[n] = v; n += 1; }
+  out: [4] int;
+  r: [1] Zr; r[0] = zr(cast(string) b[..], 0, n);
+  #assert zc_names(r[..], p[..], out[..]) == 2;
+  #assert zs(p[..], out[0]) == "Abc" && zs(p[..], out[1]) == "Cd";
+  r[0] = zr(cast(string) b[..], 0, n - 1);
+  #assert zc_names(r[..], p[..], out[..]) == -1;
+}
+#test "an import index splits into its kind and value" {
+  #assert zi_kind(ZI_NONE) == ZI_NULL;
+  #assert zi_kind((cast(u64) 1 << 62) | 0x7cde1a593e47cf) == ZI_SCRIPT && zi_value((cast(u64) 1 << 62) | 0x7cde1a593e47cf) == 0x7cde1a593e47cf;
+  #assert zi_kind((cast(u64) 2 << 62) | (cast(u64) 3 << 32) | 5) == ZI_PACKAGE;
+  #assert zi_kind(7) == ZI_EXPORT;
+}
+#test "a numbered name reads as Unreal writes it" {
+  pb: [256] u8; pa: [16] int; pn: [16] int; p: [1] Zs; zs_init(p[..], pb[..], pa[..], pn[..]);
+  #assert zs(p[..], zs_numbered(p[..], "LightComponent", 0)) == "LightComponent";
+  #assert zs(p[..], zs_numbered(p[..], "BodySetup", 1)) == "BodySetup_0";
+  #assert zs(p[..], zs_numbered(p[..], "Actor", 13)) == "Actor_12";
+}
