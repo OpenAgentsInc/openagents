@@ -1,0 +1,192 @@
+// Parity checks for cab.coax: SpliceTests/Rules/SpliceCabTests.cpp. The numbers are the prototype's
+// (drive.coax:322-330, vehicle.coax via GDD 02 10.8); GDD 02 10.20 checks 1, 3 and 4 are ported; the reverse cap
+// is INFERRED. The C++ grounds (flat, and the stepped strip) are SrCabGround bands; its yaw-limit lambda is the
+// trail view passed to sr_cab_sub_step. rules.coax loads this file with `#load ... #test;`.
+
+CB_FRAME :: 1.0 / 60.0;
+CB_SUB :: 1.0 / 120.0;
+
+cb_drive :: (throttle: f64, steer: f64) -> SrCabInput { return SrCabInput.{throttle = throttle, steer = steer}; }
+// The prototype's yaw rate written out from GDD 02 10.8 with its literal numbers.
+cb_prototype_yaw_rate_deg :: (speed: f64) -> f64 {
+  v := abs(speed);
+  lock := 0.55 * (1.0 - 0.6 * fmin(v / 24.0, 1.0));
+  return sr_rad_to_deg(fmin(v * tan(lock) / 2.8, 1.3 * (9.81 + 5.0) / v));
+}
+// The worst distance from any car's hitches to the trail.
+cb_worst_off_trail :: (t: [] const SrTrail, pose: SrTrainPose) -> f64 {
+  worst := 0.0;
+  for c: 0..<SR_TRAIL_FOLLOW_CARS {
+    worst = fmax(worst, sr_trail_distance_to(t, pose.cars[c].front_hitch));
+    worst = fmax(worst, sr_trail_distance_to(t, pose.cars[c].rear_hitch));
+  }
+  return worst;
+}
+
+#test "Splice.Rules.Cab.TopSpeed" {
+  t: SrCabTuning;
+  flat := sr_cab_flat_ground(0.0);
+  none: [1] SrTrail;
+  s: SrCabState;
+  max_speed := 0.0; at2 := 0.0; dist2 := 0.0;
+  start := s.location;
+  // GDD 02 10.20 check 1: hold the throttle on a flat strip for 12 s.
+  for i: 1..<12 * 60 + 1 {
+    s = sr_cab_step(t, s, cb_drive(1.0, 0.0), CB_FRAME, flat, none[0..<0]);
+    max_speed = fmax(max_speed, s.speed);
+    if i == 2 * 60 { at2 = s.speed; dist2 = d3_dist(s.location, start); }
+  }
+  #assert max_speed <= 24.0 + 0.0001;
+  #assert abs(s.speed - 24.0) <= 0.001;
+  #assert cast(int) floor(s.speed * 3.6 + 0.5) == 86;
+  // 9 m/s^2 from rest: 18 m/s after 2 s.
+  #assert abs(at2 - 18.0) <= 0.05;
+  #assert dist2 > 5.0;
+  #assert abs(s.yaw_deg) <= 0.0001;
+  #assert s.grounded && abs(s.location.z) < 0.000001;
+  // Let go: the coast slows it and never turns it round.
+  for i: 0..<60 * 60 { s = sr_cab_step(t, s, cb_drive(0.0, 0.0), CB_FRAME, flat, none[0..<0]); }
+  #assert s.speed >= 0.0 && s.speed < 0.1;
+}
+
+#test "Splice.Rules.Cab.ReverseIsSlower" {
+  t: SrCabTuning;
+  flat := sr_cab_flat_ground(0.0);
+  none: [1] SrTrail;
+  #assert t.reverse_speed < t.top_speed;
+  s: SrCabState;
+  min_speed := 0.0;
+  for i: 0..<12 * 60 { s = sr_cab_step(t, s, cb_drive(-1.0, 0.0), CB_FRAME, flat, none[0..<0]); min_speed = fmin(min_speed, s.speed); }
+  #assert min_speed >= -t.reverse_speed - 0.0001;
+  #assert abs(s.speed + t.reverse_speed) <= 0.001;
+  #assert s.location.x < -50.0;
+  #assert abs(s.speed) < t.top_speed;
+  // From top speed, S first brakes at 16 m/s^2, then backs up once stopped.
+  b: SrCabState;
+  b.speed = 24.0;
+  for i: 0..<60 { b = sr_cab_step(t, b, cb_drive(-1.0, 0.0), CB_FRAME, flat, none[0..<0]); }
+  #assert abs(b.speed - 8.0) <= 0.1;
+  stopped := false;
+  for i: 0..<3 * 60 { b = sr_cab_step(t, b, cb_drive(-1.0, 0.0), CB_FRAME, flat, none[0..<0]); if abs(b.speed) < 0.6 { stopped = true; } }
+  #assert stopped;
+  #assert b.speed < -1.0;
+}
+
+#test "Splice.Rules.Cab.TurnRate" {
+  t: SrCabTuning;
+  flat := sr_cab_flat_ground(0.0);
+  none: [1] SrTrail;
+  // GDD 02 10.20 check 4: full lock 0.55 rad at rest, 0.22 rad at top speed.
+  #assert abs(sr_cab_lock_at(t, 0.0) - 0.55) <= 0.00001;
+  #assert abs(sr_cab_lock_at(t, 24.0) - 0.22) <= 0.00001;
+  #assert abs(sr_cab_lock_at(t, 30.0) - 0.22) <= 0.00001;
+  speeds := [7] f64.[2.0, 5.0, 8.0, 11.0, 14.0, 18.0, 24.0];
+  for v: speeds { #assert abs(sr_cab_max_yaw_rate_deg(t, v) - cb_prototype_yaw_rate_deg(v)) <= 0.001; }
+  // At top speed the tyres hold it: 19.253 m/s^2 over 24 m/s, 45.96 degrees a second.
+  #assert abs(sr_cab_max_yaw_rate_deg(t, 24.0) - 45.96) <= 0.02;
+  #assert sr_cab_yaw_rate_deg(t, 0.0, 0.55) == 0.0;
+  #assert sr_cab_yaw_rate_deg(t, 5.0, 0.4) > 0.0;
+  #assert sr_cab_yaw_rate_deg(t, -5.0, 0.4) < 0.0;
+  // Integrated: at top speed with D held, the wheels reach the lock and the heading turns at 45.96 deg/s.
+  s: SrCabState;
+  s.speed = 24.0;
+  for i: 0..<60 { s = sr_cab_step(t, s, cb_drive(1.0, 1.0), CB_FRAME, flat, none[0..<0]); }
+  #assert abs(s.steer_angle - 0.22) <= 0.0001;
+  yaw0 := s.yaw_deg;
+  for i: 0..<60 { s = sr_cab_step(t, s, cb_drive(1.0, 1.0), CB_FRAME, flat, none[0..<0]); }
+  #assert abs(sr_unwind_deg(s.yaw_deg - yaw0) - 45.96) <= 0.1;
+  // The steer angle follows the input at 4 rad/s, not at once.
+  w: SrCabState;
+  w = sr_cab_sub_step(t, w, cb_drive(0.0, 1.0), 0.05, flat, none[0..<0]);
+  #assert abs(w.steer_angle - 0.2) <= 0.00001;
+}
+
+// A strip with a 0.3 m step up at 10 m, back down at 20 m, and a 2 m wall at 40 m.
+cb_stepped :: () -> SrCabGround { return sr_cab_ground_add_band(sr_cab_ground_add_band(sr_cab_flat_ground(0.0), 40.0, SR_GROUND_FAR, 2.0), 10.0, 20.0, 0.3); }
+cb_under :: (t: SrCabTuning, g: SrCabGround, s: SrCabState) -> f64 {
+  return fmax(sr_cab_ground_height(g, d3_add(s.location, d3(t.axle_offset, 0.0, 0.0))), sr_cab_ground_height(g, d3_sub(s.location, d3(t.axle_offset, 0.0, 0.0))));
+}
+#test "Splice.Rules.Cab.SteppedGround" {
+  t: SrCabTuning;
+  g := cb_stepped();
+  none: [1] SrTrail;
+  s: SrCabState;
+  never_below := true; rode_up := false; landed_after := false; blocked := false; went_air := false;
+  max_front_x := -1000000000.0;
+  for i: 0..<10 * 120 {
+    s = sr_cab_sub_step(t, s, cb_drive(1.0, 0.0), CB_SUB, g, none[0..<0]);
+    never_below = never_below && s.location.z >= cb_under(t, g, s) - 0.000001;
+    max_front_x = fmax(max_front_x, s.location.x + t.axle_offset);
+    if s.location.x > 11.5 && s.location.x < 18.5 && abs(s.location.z - 0.3) < 0.000001 && s.grounded { rode_up = true; }
+    if !s.grounded { went_air = true; }
+    if s.location.x > 30.0 && s.location.x < 38.0 && s.grounded && abs(s.location.z) < 0.000001 { landed_after = true; }
+    if s.blocked { blocked = true; }
+  }
+  #assert never_below;
+  #assert rode_up;
+  #assert went_air;
+  #assert landed_after;
+  #assert blocked;
+  #assert max_front_x < 40.0;
+  // Each blocked sub-step zeroes the speed; with W still held it only creeps up to the wall again.
+  #assert s.speed < 0.5;
+  #assert s.grounded && abs(s.location.z) < 0.000001;
+  // And back down the strip: up the step's far side, down its near side, never through.
+  never_below = true;
+  back_up := false;
+  for i: 0..<20 * 120 {
+    s = sr_cab_sub_step(t, s, cb_drive(-1.0, 0.0), CB_SUB, g, none[0..<0]);
+    never_below = never_below && s.location.z >= cb_under(t, g, s) - 0.000001;
+    if s.location.x > 11.5 && s.location.x < 18.5 && abs(s.location.z - 0.3) < 0.000001 { back_up = true; }
+  }
+  #assert never_below;
+  #assert back_up;
+  #assert s.location.x < 5.0;
+}
+
+CbRun :: struct { cruise: f64; seconds: f64; min_turn_deg: f64; }
+CbCircle :: struct { worst: f64; worst_hitch: f64; turned: f64; clamped: bool; }
+cb_check :: (trail: [] SrTrail, s: SrCabState, r: [] CbCircle) {
+  sr_trail_update(trail, sr_cab_pose(s));
+  pose := sr_trail_place_cars(trail, sr_cab_pose(s));
+  if pose.clamped { r[0].clamped = true; }
+  r[0].worst = fmax(r[0].worst, cb_worst_off_trail(trail, pose));
+  for c: 0..<SR_TRAIL_FOLLOW_CARS { r[0].worst_hitch = fmax(r[0].worst_hitch, abs(sr_trail_hitch_angle_deg(pose, c))); }
+}
+// Flat out on full lock (about a 30 m circle), then at 6 m/s, where full lock would fold the train past the
+// 40 degree clamp and the trail's limiter holds the steering back (UE-VEH-03).
+#test "Splice.Rules.Cab.CarsFollowCircle" {
+  t: SrCabTuning;
+  flat := sr_cab_flat_ground(0.0);
+  runs := [2] CbRun.[CbRun.{cruise = 30.0, seconds = 20.0, min_turn_deg = 720.0}, CbRun.{cruise = 6.0, seconds = 30.0, min_turn_deg = 360.0}];
+  for run: runs {
+    s: SrCabState;
+    trail: [1] SrTrail;
+    sr_trail_reset(trail[..], sr_cab_pose(s));
+    r: [1] CbCircle;
+    steps := cast(int) floor(run.seconds * 120.0 + 0.5);
+    for i: 0..<steps {
+      throttle := ifx s.speed < run.cruise then 1.0 else 0.0;
+      before := s.yaw_deg;
+      s = sr_cab_sub_step(t, s, cb_drive(throttle, 1.0), CB_SUB, flat, trail[..]);
+      r[0].turned += sr_unwind_deg(s.yaw_deg - before);
+      cb_check(trail[..], s, r[..]);
+    }
+    #assert r[0].turned > run.min_turn_deg;
+    #assert r[0].worst < 0.02;
+    #assert !r[0].clamped;
+    #assert r[0].worst_hitch <= SR_TRAIL_MAX_HITCH_DEG + 0.01;
+    // Back up straight for 3 s. On the wide circle the cars retrace the trail they laid; on the tight one the
+    // clamp holds the train, so only the hitch angle is asserted there.
+    r[0].worst = 0.0; r[0].worst_hitch = 0.0; r[0].clamped = false;
+    for i: 0..<3 * 120 {
+      s = sr_cab_sub_step(t, s, cb_drive(-1.0, 0.0), CB_SUB, flat, trail[..]);
+      cb_check(trail[..], s, r[..]);
+    }
+    #assert r[0].worst_hitch <= SR_TRAIL_MAX_HITCH_DEG + 0.01;
+    if run.cruise > 10.0 {
+      #assert r[0].worst < 0.02;
+      #assert !r[0].clamped;
+    }
+  }
+}

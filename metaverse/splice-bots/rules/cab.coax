@@ -1,0 +1,224 @@
+// Splice Bots rules: Sniper's cab, throttle and steer in, speed and heading out (SpliceCab.h, package V-01;
+// GDD 04 4.1, decision 9: a kinematic tracked vehicle, Chaos Vehicles rejected; UE-VEH-01: a port of
+// metaverse-engine/physics/vehicle.coax as drive.coax configures it; UE-VEH-04: a step that would enter a
+// collider is taken back and the rover stops; GDD 02 10.8 lists the vehicle model's numbers).
+// The prototype's cab is a sprung rigid body on four wheels. This is its kinematic reading: one speed along
+// the heading, the drive, brake and coast forces over the mass, the steering lock and fade, and a yaw rate
+// from the wheelbase capped by the tyres' friction circle. No suspension, no side slip, no physics body.
+// The C++ takes the ground and the train's yaw limit as callbacks. Coax has none, so a sub-step is split:
+//   1. sr_cab_drive: steer and speed, the wanted yaw rate and the most there is;
+//   2. the caller picks the rate: the wanted one, or sr_trail_limit_yaw_rate's (UE-VEH-03);
+//   3. sr_cab_moved: the moved pose (trail.coax's sr_trail_step_cab, so the limiter previews the same step);
+//   4. the caller reads the ground under the axles (sr_cab_probes) at the moved pose and at the old one;
+//   5. sr_cab_finish: settle on the ground, or take the move back (blocked).
+// sr_cab_sub_step and sr_cab_step do all five over a data ground (SrCabGround) and an optional trail view
+// (empty: no limit).
+// Units: metres, seconds, degrees for headings and yaw rates, radians for the steer angle (as vehicle.coax).
+// Yaw as Unreal: 0 faces +x, 90 faces +y. Steer +1 (D) turns towards +yaw. location is the cab's middle on the
+// ground plane with z its underside, where the tracks meet the ground.
+#load "../../../metaverse-engine/core/math-d.coax";
+#load "trail.coax";
+
+SrCabTuning :: struct {
+  top_speed: f64 = 24.0;        // drive.coax:324 DV_TOP (m/s); GDD 02 10.8 step 5: 86 KM/H
+  // INFERRED: vehicle.coax drives backward up to top_speed; the brief and the trail want a slower reverse.
+  // A third of the top speed (Docs/decisions/LOG.md).
+  reverse_speed: f64 = 8.0;
+  mass: f64 = 1000.0;           // drive.coax:322 DV_MASS (kg)
+  drive_force: f64 = 9000.0;    // vehicle.coax:87: 9 m/s^2 over DV_MASS
+  brake_force: f64 = 16000.0;   // vehicle.coax:87: 16 m/s^2
+  brake_above: f64 = 0.5;       // GDD 02 10.8: S brakes while moving the other way faster than this
+  coast: f64 = 0.35;            // vehicle.coax:87, /s
+  handbrake_drag: f64 = 0.3;    // vehicle.coax:158, /s on the whole cab
+  steer_lock: f64 = 0.55;       // vehicle.coax:89, rad standing
+  steer_fade: f64 = 0.6;        // of it lost at top speed (0.22 rad)
+  steer_rate: f64 = 4.0;        // vehicle.coax:124, rad/s
+  axle_offset: f64 = 1.4;       // vehicle.coax:82-83: a 2.8 m wheelbase; the ground is read under each axle
+  mu: f64 = 1.3;                // vehicle.coax:86, against gravity plus the stick pull (vehicle.coax:90)
+  stick: f64 = 5.0;
+  gravity: f64 = 9.81;
+  max_step_up: f64 = 0.5;       // INFERRED: rising more than this in a sub-step is a wall
+  snap_down: f64 = 0.05;        // INFERRED: falling away less than this is followed at once
+  steps_per_second: f64 = 120.0;   // drive.coax:325 DV_STEPS; GDD 02 10.8 step 3
+  max_sub_steps: int = 12;
+}
+sr_cab_wheelbase :: (t: SrCabTuning) -> f64 { return 2.0 * t.axle_offset; }
+// The most the tyres hold, m/s^2.
+sr_cab_grip :: (t: SrCabTuning) -> f64 { return t.mu * (t.gravity + t.stick); }
+
+SrCabInput :: struct { throttle: f64; steer: f64; handbrake: bool; }   // W - S and D - A, -1..1
+SrCabState :: struct {
+  location: D3;          // the middle on the ground plane, z the underside
+  yaw_deg: f64;
+  speed: f64;            // m/s along the heading; negative backs up
+  steer_angle: f64;      // rad, the front wheels' angle
+  vertical_speed: f64;   // m/s, up positive; 0 on the ground
+  grounded: bool = true;
+  yaw_rate_deg: f64;     // of the last sub-step
+  pitch_deg: f64;        // nose up positive, from the ground under the two axles (cosmetic)
+  blocked: bool;         // the last sub-step was taken back
+}
+sr_cab_pose :: (s: SrCabState) -> SrCabPose { return SrCabPose.{location = s.location, yaw_deg = s.yaw_deg}; }
+
+// GDD 02 10.8 step 3: ceil(dt * StepsPerSecond), clamped to 1..MaxSubSteps.
+sr_cab_num_sub_steps :: (t: SrCabTuning, dt: f64) -> int {
+  if dt <= 0.0 { return 1; }
+  return sr_clampi(cast(int) -floor(-(dt * t.steps_per_second - 0.0001)), 1, sr_maxi(1, t.max_sub_steps));
+}
+// vehicle.coax:89: the lock at this speed, rad. 0.55 standing, 0.22 at top speed and above.
+sr_cab_lock_at :: (t: SrCabTuning, speed: f64) -> f64 {
+  share := ifx t.top_speed > 0.0 then fmin(abs(speed) / t.top_speed, 1.0) else 1.0;
+  return t.steer_lock * (1.0 - t.steer_fade * share);
+}
+// The yaw rate, deg/s, at `speed` with the wheels at steer_angle: speed * tan(angle) / wheelbase, capped where
+// the sideways pull would pass the grip. Backing up turns the other way. Standing, 0: the cab does not pivot.
+sr_cab_yaw_rate_deg :: (t: SrCabTuning, speed: f64, steer_angle: f64) -> f64 {
+  v := abs(speed);
+  if v < SR_TRAIL_KINDA_SMALL || sr_cab_wheelbase(t) <= 0.0 { return 0.0; }
+  cap := sr_cab_grip(t) / v;
+  return sr_rad_to_deg(fclamp(speed * tan(steer_angle) / sr_cab_wheelbase(t), -cap, cap));
+}
+// The most yaw rate at `speed`: the rate at full lock. Always >= 0.
+sr_cab_max_yaw_rate_deg :: (t: SrCabTuning, speed: f64) -> f64 { return abs(sr_cab_yaw_rate_deg(t, abs(speed), sr_cab_lock_at(t, speed))); }
+
+// The speed after h seconds of input, on the ground: drive, brake, coast and handbrake, held within
+// -ReverseSpeed..TopSpeed by throttle (the drive stops at the cap).
+sr_cab_step_speed :: (t: SrCabTuning, speed: f64, input: SrCabInput, h: f64) -> f64 {
+  throttle := fclamp(input.throttle, -1.0, 1.0);
+  mass := fmax(t.mass, 1.0);
+  grip := sr_cab_grip(t);
+  v := speed;
+  if throttle != 0.0 && v * throttle < -t.brake_above {
+    // Throttle against the motion brakes, and stops at standstill rather than passing it.
+    a := fmin(abs(throttle) * t.brake_force / mass, grip);
+    next := v - sr_signf(v) * a * h;
+    v = ifx next * v <= 0.0 then 0.0 else next;
+  } else if throttle > 0.0 {
+    a := fmin(throttle * t.drive_force / mass, grip);
+    if v < t.top_speed { v = fmin(v + a * h, t.top_speed); }
+  } else if throttle < 0.0 {
+    a := fmin(-throttle * t.drive_force / mass, grip);
+    if v > -t.reverse_speed { v = fmax(v - a * h, -t.reverse_speed); }
+  } else {
+    v *= exp(-t.coast * h);
+    if abs(v) < 0.01 { v = 0.0; }
+  }
+  if input.handbrake {
+    v *= exp(-t.handbrake_drag * h);
+    if throttle == 0.0 && abs(v) < 0.01 { v = 0.0; }
+  }
+  return v;
+}
+
+// Step 1. next has the new steer angle and speed and blocked cleared; the rest is the old state.
+SrCabDrive :: struct { next: SrCabState; wanted_rate: f64; max_rate: f64; }
+sr_cab_drive :: (t: SrCabTuning, s: SrCabState, input: SrCabInput, h: f64) -> SrCabDrive {
+  d: SrCabDrive;
+  d.next = s;
+  d.next.blocked = false;
+  if h <= 0.0 { return d; }
+  // The wheels follow the input towards this speed's lock at SteerRate.
+  target := fclamp(input.steer, -1.0, 1.0) * sr_cab_lock_at(t, s.speed);
+  d.next.steer_angle = s.steer_angle + fclamp(target - s.steer_angle, -t.steer_rate * h, t.steer_rate * h);
+  // Forces act only with the tracks on the ground; in the air the speed is kept.
+  if s.grounded { d.next.speed = sr_cab_step_speed(t, s.speed, input, h); }
+  d.wanted_rate = sr_cab_yaw_rate_deg(t, d.next.speed, d.next.steer_angle);
+  d.max_rate = sr_cab_max_yaw_rate_deg(t, d.next.speed);
+  return d;
+}
+// Step 3: the pose after turning at `rate` and moving at the new speed.
+sr_cab_moved :: (s: SrCabState, d: SrCabDrive, rate: f64, h: f64) -> SrCabPose { return sr_trail_step_cab(sr_cab_pose(s), d.next.speed, rate, h); }
+
+// Step 4: the points to read the ground at, under each axle. z is the height to look down from (the old
+// underside, base, plus MaxStepUp). The ground answers a height, or nothing below (the cab falls).
+SrCabProbes :: struct { front: D3; rear: D3; }
+SrCabGroundRead :: struct { has_front: bool; front: f64; has_rear: bool; rear: f64; }
+sr_cab_probes :: (t: SrCabTuning, middle: D3, yaw_deg: f64, base: f64) -> SrCabProbes {
+  f := d3_scale(sr_trail_forward(yaw_deg), t.axle_offset);
+  z := base + t.max_step_up;
+  return SrCabProbes.{front = d3(middle.x + f.x, middle.y + f.y, z), rear = d3(middle.x - f.x, middle.y - f.y, z)};
+}
+sr_cab_ground_has_high :: (g: SrCabGroundRead) -> bool { return g.has_front || g.has_rear; }
+// The higher of the two (needs one of them).
+sr_cab_ground_high :: (g: SrCabGroundRead) -> f64 {
+  if g.has_front && g.has_rear { return fmax(g.front, g.rear); }
+  return ifx g.has_front then g.front else g.rear;
+}
+
+// The underside against the ground: ride up and follow small drops at once, fall past larger ones, never end
+// below the ground.
+sr_cab_settle :: (t: SrCabTuning, n: [] SrCabState, g: SrCabGroundRead, base: f64, h: f64) {
+  has := sr_cab_ground_has_high(g);
+  high := ifx has then sr_cab_ground_high(g) else 0.0;
+  if has && (high >= base || (n[0].grounded && high >= base - t.snap_down)) {
+    n[0].location.z = high; n[0].vertical_speed = 0.0; n[0].grounded = true;
+  } else {
+    n[0].vertical_speed -= t.gravity * h;
+    n[0].location.z = base + n[0].vertical_speed * h;
+    n[0].grounded = false;
+    if has && n[0].location.z <= high { n[0].location.z = high; n[0].vertical_speed = 0.0; n[0].grounded = true; }
+  }
+  n[0].pitch_deg = ifx n[0].grounded && g.has_front && g.has_rear && t.axle_offset > 0.0 then sr_atan2_deg(g.front - g.rear, 2.0 * t.axle_offset) else 0.0;
+}
+
+// Step 5. Ground more than MaxStepUp above the underside under the moved axles takes the move back and stops
+// the cab dead (UE-VEH-04, GDD 02 10.8 step 6: blocked); then it settles on the ground at the old pose.
+sr_cab_finish :: (t: SrCabTuning, s: SrCabState, d: SrCabDrive, rate: f64, moved: SrCabPose, at_moved: SrCabGroundRead, at_old: SrCabGroundRead, h: f64) -> SrCabState {
+  n := [1] SrCabState.[d.next];
+  if h <= 0.0 { return n[0]; }
+  base := s.location.z;
+  g := at_moved;
+  if sr_cab_ground_has_high(g) && sr_cab_ground_high(g) > base + t.max_step_up + 0.0001 {
+    n[0].location = s.location; n[0].yaw_deg = s.yaw_deg; n[0].speed = 0.0; n[0].yaw_rate_deg = 0.0; n[0].blocked = true;
+    g = at_old;
+  } else {
+    n[0].location.x = moved.location.x; n[0].location.y = moved.location.y;
+    n[0].yaw_deg = moved.yaw_deg; n[0].yaw_rate_deg = rate;
+  }
+  sr_cab_settle(t, n[..], g, base, h);
+  return n[0];
+}
+
+// A data ground for the convenience steps: `base` everywhere, but the first band holding the point's x
+// (x_min <= x < x_max) sets the height there. Enough for a flat strip, steps and walls across it.
+SR_GROUND_BANDS_MAX :: 4;
+SR_GROUND_FAR :: 1000000000.0;
+SrGroundBand :: struct { x_min: f64; x_max: f64; height: f64; }
+SrCabGround :: struct { base: f64; n: int; bands: [SR_GROUND_BANDS_MAX] SrGroundBand; }
+sr_cab_flat_ground :: (height: f64) -> SrCabGround { g: SrCabGround; g.base = height; return g; }
+sr_cab_ground_add_band :: (g: SrCabGround, x_min: f64, x_max: f64, height: f64) -> SrCabGround {
+  r := g;
+  r.bands[r.n] = SrGroundBand.{x_min = x_min, x_max = x_max, height = height};
+  r.n += 1;
+  return r;
+}
+sr_cab_ground_height :: (g: SrCabGround, at: D3) -> f64 {
+  for k: 0..<g.n { b := g.bands[k]; if at.x >= b.x_min && at.x < b.x_max { return b.height; } }
+  return g.base;
+}
+sr_cab_ground_read :: (g: SrCabGround, p: SrCabProbes) -> SrCabGroundRead {
+  return SrCabGroundRead.{has_front = true, front = sr_cab_ground_height(g, p.front), has_rear = true, rear = sr_cab_ground_height(g, p.rear)};
+}
+
+// One sub-step of length h over a data ground. trail: the train's trail for the yaw limit
+// (sr_trail_limit_yaw_rate with the cab before the sub-step), or an empty view for none.
+sr_cab_sub_step :: (t: SrCabTuning, s: SrCabState, input: SrCabInput, h: f64, ground: SrCabGround, trail: [] const SrTrail) -> SrCabState {
+  d := sr_cab_drive(t, s, input, h);
+  if h <= 0.0 { return d.next; }
+  rate := ifx trail.count > 0 then sr_trail_limit_yaw_rate(trail, sr_cab_pose(s), d.next.speed, d.wanted_rate, d.max_rate, h) else d.wanted_rate;
+  moved := sr_cab_moved(s, d, rate, h);
+  base := s.location.z;
+  at_moved := sr_cab_ground_read(ground, sr_cab_probes(t, moved.location, moved.yaw_deg, base));
+  at_old := sr_cab_ground_read(ground, sr_cab_probes(t, s.location, s.yaw_deg, base));
+  return sr_cab_finish(t, s, d, rate, moved, at_moved, at_old, h);
+}
+// A frame: NumSubSteps sub-steps of dt / n. blocked if any was.
+sr_cab_step :: (t: SrCabTuning, s: SrCabState, input: SrCabInput, dt: f64, ground: SrCabGround, trail: [] const SrTrail) -> SrCabState {
+  n := sr_cab_num_sub_steps(t, dt);
+  h := dt / cast(f64) n;
+  out := s;
+  blocked := false;
+  for i: 0..<n { out = sr_cab_sub_step(t, out, input, h, ground, trail); if out.blocked { blocked = true; } }
+  out.blocked = blocked;
+  return out;
+}
