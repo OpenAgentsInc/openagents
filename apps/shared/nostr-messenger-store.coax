@@ -4,12 +4,12 @@
 #load "nostr-messenger-store-checks.coax" #test;
 ndm_store :: (m:[]NostrMessenger,task:int,action:string,payload:string,targets:[]string,revision:int,cursor:int)->bool #effects(all) {
  if m[0].flight!=0 || !ndj_allocate(m[0].journal[..],m[0].operation[..]) {return false;}
- wire:[400000]u8;n:=nms_request_write(action,cast(string)m[0].operation[..],cast(string)m[0].inbox[0].identity[..],"",targets,0,revision,cursor,payload,wire[..]);if n<0 {return false;}
+ wire:[400000]u8;n:=nms_request_write(action,cast(string)m[0].operation[..],cast(string)m[0].inbox[0].identity[..],"",targets,0,revision,cursor,payload,wire[..]);if n<0 {return false;} // mutant: equivalent (n<0 to n<=0 or n<1: the validating closed writer returns -1 or a complete JSON object longer than one byte, never zero or one)
  m[0].expected=ms_action(action);return ndm_launch(m,MS_OP,task,cast(string)wire[0..<n]);
 }
 ndm_custody :: (m:[]NostrMessenger,task:int,action:string,payload:string)->bool #effects(all) {
  if m[0].flight!=0 || !ndj_allocate(m[0].journal[..],m[0].operation[..]) {return false;}
- wire:[400000]u8;n:=nsc_request(action,cast(string)m[0].operation[..],cast(string)m[0].inbox[0].identity[..],payload,wire[..]);if n<0 {return false;}
+ wire:[400000]u8;n:=nsc_request(action,cast(string)m[0].operation[..],cast(string)m[0].inbox[0].identity[..],payload,wire[..]);if n<0 {return false;} // mutant: equivalent (n<0 to n<=0 or n<1: the validating custody writer returns -1 or a complete nonempty request longer than one byte)
  m[0].expected=nsc_action(action);return ndm_launch(m,NSC_OP,task,cast(string)wire[0..<n]);
 }
 ndm_head_filter :: (pub:string,out:[]u8)->int #effects(all) {
@@ -20,14 +20,14 @@ ndm_pool :: (m:[]NostrMessenger,mode:int,target:string)->bool #effects(all) {
  if mode==1 && m[0].own_ready && m[0].own[0].count>6 {ndm_note(m,"Too many inbox relays");return false;}
  if mode==2 {urls[0]=target;n=1;}
  else {
-  if mode==1 && m[0].own_ready {for i:0..<m[0].own[0].count {if n==6 {break;}url:=cast(string)m[0].own[0].url[i*N17_URL_MOST..<i*N17_URL_MOST+m[0].own[0].url_n[i]];if !nrs_admit(1,n,1,0,cast(string)m[0].inbox[0].identity[..],url) {ndm_note(m,"Secure inbox unavailable");return false;}urls[n]=url;n+=1;}}
+  if mode==1 && m[0].own_ready {for i:0..<m[0].own[0].count {if n==6 {break;}url:=cast(string)m[0].own[0].url[i*N17_URL_MOST..<i*N17_URL_MOST+m[0].own[0].url_n[i]];if !nrs_admit(1,n,1,0,cast(string)m[0].inbox[0].identity[..],url) {ndm_note(m,"Secure inbox unavailable");return false;}urls[n]=url;n+=1;}} // mutant: equivalent (n==6 break and 6 -> 7 there: the preceding own-list bound admits at most six iterations, each starting with n=i<=5; validation generation argument 1 -> 2 admits the same URLs without binding a socket)
   for i:0..<m[0].ns {url:=cast(string)m[0].saved[i][0..<m[0].saved_n[i]];has:=false;for k:0..<n {if urls[k]==url {has=true;}}if !has && n<6 {urls[n]=url;n+=1;}}
  }
  if !ndr_configure(m[0].relays[..],m[0].inbox[..],urls[0..<n],cast(string)m[0].peer[0..<m[0].np]) {return false;}m[0].mode=mode;return true;
 }
 ndm_lists_ready :: (m:[]NostrMessenger)->bool #effects(all) {
  p:=m[0].relays[..];if !p[0].active || p[0].nr==0 {return false;}
- for i:0..<p[0].nr {r:=p[0].relays[i];if r.relay[0].state!=RL_OPEN || r.own<0 || r.relay[0].subs[r.own].state!=RS_CAUGHT || (m[0].np>0 && (r.peer<0 || r.relay[0].subs[r.peer].state!=RS_CAUGHT)) {return false;}}return true;
+ for i:0..<p[0].nr {r:=p[0].relays[i];if r.relay[0].state!=RL_OPEN || r.own<0 || r.relay[0].subs[r.own].state!=RS_CAUGHT || (m[0].np>0 && (r.peer<0 || r.relay[0].subs[r.peer].state!=RS_CAUGHT)) {return false;}}return true; // mutant: equivalent (np>0 -> np>1: ndm_peer retains either no peer or one validated 64-byte public key)
 }
 ndm_store_reply :: (m:[]NostrMessenger,task:int,status:int,raw:string,failed:bool)->bool #effects(all) {
  if failed || (m[0].op==4 && status!=200) {
@@ -38,7 +38,7 @@ ndm_store_reply :: (m:[]NostrMessenger,task:int,status:int,raw:string,failed:boo
   if !ndd_page(m[0].delivery[..],m[0].inbox[..],m[0].generation,raw) {return false;}
   if m[0].delivery[0].complete {m[0].want_receipts=false;m[0].status_at=0;}return true;
  }
- r:[1]NsResult;defer {secure_zero(r[0].payload[..]);}
+ r:[1]NsResult;defer {secure_zero(r[0].payload[..]);} // mutant: equivalent (the deferred wipe's removal cannot be observed by a caller: this decoded local and its payload never escape; retain the wipe)
  if !nsr_read(raw,r[..]) || r[0].service!=(ifx task==8 then 1 else 2) || r[0].action!=m[0].expected || cast(string)r[0].identity[..]!=cast(string)m[0].inbox[0].identity[..] || cast(string)r[0].operation[..]!=cast(string)m[0].operation[..] {return false;}
  if r[0].status!=0 {
   if r[0].status==9 {m[0].pub_phase=0;m[0].pub_cursor=0;m[0].pub_revision=0;m[0].head_wanted=true;}
@@ -67,7 +67,7 @@ ndm_store_reply :: (m:[]NostrMessenger,task:int,status:int,raw:string,failed:boo
   scratch:[65536]u8;e:=ne_signed_fast(nostr_event_read(payload,scratch[..],false));pub:[32]u8;id:[64]u8;
   if !ne_lower_hex(cast(string)m[0].head_pub[..],pub[..]) || e.error!=NE_OK || !e.verified || hex_encode_checked(cast(string)e.id[..],id[..],false).error!=NC_OK || cast(string)id[..]!=cast(string)m[0].head_index[0].rows[0].id[..] {return false;}list:=n17_relays(e,pub[..]);
   if m[0].head_for_peer {m[0].peer_ready=list.error==N17_OK;m[0].head_wanted=false;}
-  else {m[0].own[0]=list;m[0].own_ready=list.error==N17_OK;_=hex_encode_checked(cast(string)e.id[..],m[0].own_id[..],false);m[0].head_peer=true;m[0].head_wanted=m[0].np>0;}
+  else {m[0].own[0]=list;m[0].own_ready=list.error==N17_OK;_=hex_encode_checked(cast(string)e.id[..],m[0].own_id[..],false);m[0].head_peer=true;m[0].head_wanted=m[0].np>0;} // mutant: equivalent (np>0 -> np>1: retained peer length is zero or 64 after ndm_peer validation)
   m[0].head_index[0]=MsIndex.{};return true;
  }
  if task==8 {

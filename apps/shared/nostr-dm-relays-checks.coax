@@ -1,4 +1,48 @@
 // Real installed-wire and Relay transitions; no alternate socket state machine.
+#load "../../coax/tests/nostr/nip59_vectors.coax" #test;
+#test "actual OK frames update the held publication and invalidate its delivery observation" {
+ s:[1]NostrInbox;p:[1]NostrDmRelays;b:[2048]u8;ndr_test_caught(s[..],p[..]);
+ #assert ndr_stage(p[..],1,NMS_LIST_EVENT);entry:=p[0].publish_entry;#assert rl_next(p[0].relays[1].relay[..],100).kind==RL_OUT_EVENT;
+ o:[1]Jo;jo_start(o[..],b[..]);jo_arr(o[..]);jo_str(o[..],"OK");jo_str(o[..],NMS_LIST_ID_HEX);jo_bool(o[..],true);jo_str(o[..],"");jo_end(o[..]);p[0].changed=false;
+ #assert ndr_frame(p[..],1,cast(string)b[0..<o[0].n]) && p[0].changed && p[0].relays[1].relay[0].pubs[entry].state==RP_ACCEPTED;
+}
+#test "changing a relay pool retires every socket preserves generation counters and resets discovery metadata" {
+ s:[1]NostrInbox;p:[1]NostrDmRelays;ndr_test_caught(s[..],p[..]);p[0].partial=true;p[0].heads_changed=true;p[0].now=123;p[0].clock_at=456;
+ for i:0..<6 {p[0].relays[i].relay[0].gen=7+i;p[0].relays[i].relay[0].state=RL_OPEN;}
+ urls:=[1]string.["wss://changed.example"];#assert ndr_configure(p[..],s[..],urls[..],"") && p[0].np==0 && p[0].nr==1 && p[0].reset && p[0].active && !p[0].partial && p[0].now==0 && p[0].clock_at==0 && p[0].changed && !p[0].heads_changed;
+ for i:0..<6 {#assert p[0].relays[i].relay[0].gen==7+i && p[0].relays[i].ack==0 && p[0].relays[i].partial==false;}
+ p[0].publish[65535]=165;for i:0..<6 {p[0].relays[i].relay[0].state=RL_OPEN;}ndr_pause(p[..]);#assert crypto_zeroed(p[0].publish[..]);for i:0..<6 {#assert p[0].relays[i].relay[0].state==RL_SHUT;}
+}
+#test "gift wraps count real verified observations separately from inbox list discovery" {
+ s:[1]NostrInbox;p:[1]NostrDmRelays;b:[16000]u8;ndr_test_caught(s[..],p[..]);p[0].changed=false;p[0].heads_changed=false;wrap:=N59_TS_WRAP;
+ n:=ndr_test_frame(p[..],1,2,"EVENT",cast(string)wrap[..],b[..]);#assert ndr_frame(p[..],1,cast(string)b[0..<n]) && p[0].changed && !p[0].heads_changed && p[0].relays[1].received==1;
+ #assert ndr_frame(p[..],1,cast(string)b[0..<n]) && p[0].relays[1].received==2;
+ n=ndr_test_frame(p[..],1,0,"EVENT",cast(string)wrap[..],b[..]);#assert !ndr_frame(p[..],1,cast(string)b[0..<n]) && p[0].relays[1].partial;
+}
+#test "stage refuses inactive busy wrong-slot malformed forged oversized and full publisher inputs" {
+ s:[1]NostrInbox;p:[1]NostrDmRelays;large:[65537]u8;ndr_test_caught(s[..],p[..]);
+ p[0].active=false;#assert !ndr_stage(p[..],1,NMS_LIST_EVENT);p[0].active=true;#assert !ndr_stage(p[..],-1,NMS_LIST_EVENT) && !ndr_stage(p[..],2,NMS_LIST_EVENT);
+ p[0].relays[1].relay[0].state=RL_CONNECTING;#assert !ndr_stage(p[..],1,NMS_LIST_EVENT);p[0].relays[1].relay[0].state=RL_OPEN;
+ #assert !ndr_stage(p[..],1,"{}") && !ndr_stage(p[..],1,NMS_AUTH_EVENT);
+ for c,i:NMS_LIST_EVENT {large[i]=c;}for i:NMS_LIST_EVENT.count..<65537 {large[i]=' ';}#assert !ndr_stage(p[..],1,cast(string)large[..]);
+ for i:0..<RL_PUBS {p[0].relays[1].relay[0].pubs[i].state=RP_SENT;id:=rl_id_of(i);p[0].relays[1].relay[0].pubs[i].id=id;}
+ #assert !ndr_stage(p[..],1,NMS_LIST_EVENT) && p[0].publish_n==0;
+}
+#test "AUTH preparation and every custody reply remain bound to the live challenge owner and exact operation" {
+ s:[1]NostrInbox;p:[1]NostrDmRelays;b:[16000]u8;q:[1]NscRequest;urls:=[1]string.["wss://relay.example/"];other:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+ #assert ndi_bind(s[..],"a",NMS_LIST_PUB) && ndr_configure(p[..],s[..],urls[..],"");p[0].reset=false;p[0].now=NMS_LIST_AT;p[0].clock_at=60000;r:=p[0].relays[0..<1];r[0].relay[0].state=RL_OPEN;r[0].relay[0].gen=7;
+ for k:0..<2 {_=rl_next(r[0].relay[..],0);}#assert ndr_frame(p[..],0,"[\"AUTH\",\"fixture\"]") && ndr_tick(p[..],0) && p[0].needs_auth;
+ p[0].busy=true;#assert !ndr_auth(p[..],s[..],NMS_LIST_PUB);p[0].busy=false;p[0].needs_auth=false;#assert !ndr_auth(p[..],s[..],NMS_LIST_PUB);p[0].needs_auth=true;
+ s[0].generation=2;#assert !ndr_auth(p[..],s[..],NMS_LIST_PUB);s[0].generation=1;#assert !ndr_auth(p[..],s[..],"bad");
+ #assert ndr_auth(p[..],s[..],NMS_LIST_PUB) && p[0].busy && p[0].pending==7 && p[0].action==21 && p[0].auth_gen==7 && cast(string)p[0].auth_operation[..]==NMS_LIST_PUB && nsc_read(cast(string)p[0].body[0..<p[0].nb],q[..]) && q[0].action==2;
+ for wrong:0..<5 {n:=nsr_write(ifx wrong==0 then "store" else "custody",ifx wrong==0 then "ingest" else ifx wrong==1 then "open" else "relay-auth",ifx wrong==2 then other else NMS_LIST_PUB,ifx wrong==3 then other else NMS_LIST_PUB,"ok",0,0,NMS_AUTH_EVENT,b[..]);#assert n>0 && !ndr_reply(p[..],s[..],1,ifx wrong==4 then "{}" else cast(string)b[0..<n],false) && p[0].busy && p[0].needs_auth;}
+ n:=nsr_write("custody","relay-auth",NMS_LIST_PUB,NMS_LIST_PUB,"ok",0,0,NMS_AUTH_EVENT,b[..]);#assert ndr_reply(p[..],s[..],1,cast(string)b[0..<n],false) && !p[0].needs_auth && p[0].busy && p[0].pending==2 && p[0].action==23 && r[0].relay[0].auth==RA_SENT;
+}
+#test "AUTH refuses malformed or unrelated signatures and a failed signing provider drops the owned connection" {
+ s:[1]NostrInbox;p:[1]NostrDmRelays;b:[16000]u8;ndr_test_caught(s[..],p[..]);p[0].slot=1;p[0].auth_gen=7;_=ndi_copy(p[0].auth_operation[..],NMS_LIST_PUB);
+ for event:[3]string.["{}",NMS_INBOX_SELF,NMS_LIST_EVENT] {p[0].busy=true;p[0].pending=7;p[0].action=21;p[0].needs_auth=true;p[0].relays[1].partial=false;n:=nsr_write("custody","relay-auth",NMS_LIST_PUB,NMS_LIST_PUB,"ok",0,0,event,b[..]);#assert ndr_reply(p[..],s[..],1,cast(string)b[0..<n],false) && !p[0].busy && p[0].action==0 && !p[0].needs_auth && p[0].relays[1].partial;}
+ p[0].busy=true;p[0].pending=7;p[0].action=21;p[0].needs_auth=true;p[0].relays[1].partial=false;#assert ndr_reply(p[..],s[..],1,"",true) && !p[0].busy && p[0].action==0 && !p[0].needs_auth && p[0].relays[1].partial && p[0].relays[1].relay[0].state==RL_BACKOFF;
+}
 ndr_test_caught :: (s:[]NostrInbox,p:[]NostrDmRelays) #effects(all) {
  urls:=[2]string.["wss://one.example","wss://two.example"];peer:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
  #assert ndi_bind(s,"a",NMS_LIST_PUB) && ndr_configure(p,s,urls[..],peer);

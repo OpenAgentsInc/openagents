@@ -1,7 +1,8 @@
 # NIP-17 inbox verification — in progress
 
 Issue [#13629](https://github.com/OpenAgentsInc/openagents/issues/13629)
-remains open. This work has **not** been pushed or deployed. The delivery
+remains open. Client changes have **not** been pushed or deployed. The API
+companion is deployed as recorded below. The delivery
 contract is [Nostr direct messages](../../protocol/nostr-direct-messages-v1.md).
 
 The implementation uses one Coax messenger and conversation view in the
@@ -35,7 +36,7 @@ Logs below live in the isolated `oa-arcade-dm` worktree's ignored `build/`.
 | Actual native recipient picker/composer and accessible delivery glyph | Passed on the isolated signed simulator | `dm-native-final-ui-tests.log` |
 | Shared DOM adapter, including complete digest IDs, focus and field values | 19 checks passed | `dm-full-id-modules.log` |
 | Compiled native/web/reference exchange, native cold history-row selection, exact committed-send retry | Passed, signed iOS simulator and real relay/API | `dm-id128-live-tests.log`, `dm-id128-live-reference.log` |
-| Browser cold recovery through the real history row | Passed; both texts recovered | `dm-id128-cold-result.log`, `dm-id128-cold-final.png` |
+| Browser cold recovery through the real history row | Passed; both texts recovered | `dm-id128-cold-result.log`, [browser cold recovery](browser-cold.png) |
 | Tools, wire registry and component layers | Passed | `dm-final-tools.log`, `dm-final-wire.log`, `dm-final-components.log`, `dm-final-layer.log` |
 
 The receipt/coordination checks now also cover closed nested rows, independent
@@ -107,8 +108,8 @@ production account, limit, key, inbox or service was changed.
 
 ## Merged native regression checks
 
-The complete app was regenerated on November 15 after rebasing onto
-`90f8dfcf8f`, retaining the native task controls and current Microduck/world
+The app is being regenerated again on November 15 after rebasing onto
+`46c331be3c`, retaining the native task controls and current Microduck/world
 resources. The native regression run covered 55 non-live cases. Two obsolete
 assertions still attempted to search through the reference drawer’s already
 removed field; those now check actual paging, retention of both computers, and
@@ -123,6 +124,17 @@ frame against the current 39,273,640-byte account/task/inbox state. The Coax
 state plus stack fits the installed limit; both app and extras now match the
 independent WebAssembly frames and actions (`dm-final-runtime-oracle-memory.log`).
 The installed limit was unchanged.
+
+## API deployment
+
+The isolated prepared API snapshot `6c8d5c9d29` differs from source
+`1c4979ceee` only by the remote snapshot’s build ignore marker. Its verified
+image is `sha256:b13b90c35331507df8d0cc375550cf9de96fb9cfb004642ad975b9069b8f23c1`.
+Staging `oa-api-staging-00233-wj8` and production `oa-api-00170-5v8` passed
+migrations and deployment smoke checks; both serve that same immutable image.
+The API’s new read-position policy had already passed the focused PostgreSQL
+and ASan suite. No production user keys or plaintext messages were loaded for
+verification.
 
 ## Remaining release work
 

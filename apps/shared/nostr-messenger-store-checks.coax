@@ -1,4 +1,26 @@
 // Complete existing wire replies, through the real coordinator decoder.
+#test "receiver pool retains all six complete own URLs and never admits a seventh saved target" {
+ m:[1]NostrMessenger;urls:=[7]string.["wss://one.example","wss://two.example","wss://three.example","wss://four.example","wss://five.example","wss://six.example","wss://seven.example"];
+ #assert ndm_start(m[..],"a",NMS_LIST_PUB,NMS_LIST_PUB,urls[0..<6]);m[0].own_ready=true;m[0].own[0].count=6;
+ for i:0..<6 {m[0].own[0].url_n[i]=ndi_copy(m[0].own[0].url[i*N17_URL_MOST..<(i+1)*N17_URL_MOST],urls[i]);}
+ #assert ndm_pool(m[..],1,"") && m[0].mode==1 && m[0].relays[0].nr==6;
+ for i:0..<6 {#assert cast(string)m[0].relays[0].relays[i].url[0..<m[0].relays[0].relays[i].nu]==urls[i];}
+ m[0].saved_n[0]=ndi_copy(m[0].saved[0][..],urls[6]);#assert ndm_pool(m[..],1,"") && m[0].relays[0].nr==6;
+ m[0].own[0].count=7;m[0].own_ready=false;#assert ndm_pool(m[..],0,"") && m[0].mode==0;
+ m[0].own_ready=true;m[0].own[0].count=1;m[0].own[0].url_n[0]=ndi_copy(m[0].own[0].url[0..<N17_URL_MOST],"ws://bad.example");
+ #assert !ndm_pool(m[..],1,"") && cast(string)m[0].note[0..<m[0].nn]=="Secure inbox unavailable";
+}
+#test "closed head and setup replies refuse altered signatures wrong event kinds and wrong signed owners" {
+ m:[1]NostrMessenger;broken:[4096]u8;b:[8192]u8;
+ #assert ndi_bind(m[0].inbox[..],"a",NMS_LIST_PUB);m[0].op=21;m[0].expected=5;_=ndi_copy(m[0].operation[..],NMS_LIST_PUB);
+ n:=ndi_copy(broken[..],NMS_LIST_EVENT);broken[n-3]=ifx broken[n-3]=='0' then '1' else '0';
+ for event:[4]string.["{}",cast(string)broken[0..<n],NMS_EXPIRING_EVENT,NMS_INBOX_SELF] {#assert !ndm_test_store_answer(m[..],8,"publish-list","ok",event,0,0) && !m[0].enable && m[0].setup_n==0;}
+ m[0].op=22;m[0].expected=6;_=ndi_copy(m[0].head_pub[..],NMS_LIST_PUB);_=ndi_copy(m[0].head_index[0].rows[0].id[..],NMS_LIST_ID_HEX);m[0].head_index[0].n=1;
+ #assert !ndm_test_store_answer(m[..],7,"event","ok",cast(string)broken[0..<n],0,0) && !m[0].own_ready;
+ m[0].np=ndi_copy(m[0].peer[..],"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798");
+ #assert ndm_test_store_answer(m[..],7,"event","ok",NMS_LIST_EVENT,0,0) && m[0].own_ready && m[0].head_peer && m[0].head_wanted;
+ m[0].op=4;m[0].generation=1;m[0].want_receipts=true;#assert !ndm_store_reply(m[..],10,200,"{}",false) && m[0].want_receipts;
+}
 #test "receipt index replies update recovered and current outgoing acceptance only after a complete matching index" {
  m:[1]NostrMessenger;b:[16000]u8;receipt:[2048]u8;q:[1]NdlRequest;page:[1]NdlPage;rows:[2]MsIndexRow;
  me:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";op:=NMS_LIST_PUB;

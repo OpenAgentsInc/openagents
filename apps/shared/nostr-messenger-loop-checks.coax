@@ -1,4 +1,76 @@
 // Fixtures describe already-owned phase boundaries; scheduling is the product's.
+#test "receipt status polling uses the committed exact outer identifiers and relay changes trigger immediate reconciliation" {
+ m:[1]NostrMessenger;b:[2048]u8;q:[1]MsRequest;ndm_test_quiet(m[..]);ids:=[2]string.[NMS_LIST_PUB,"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"];
+ n:=nsm_sealed_write(ids[..],7,b[..]);m[0].delivery[0].n=1;#assert nsm_sealed_read(cast(string)b[0..<n],m[0].delivery[0].rows[0].state[0].receipt[..]);
+ #assert ndm_tick(m[..],0) && m[0].flight==11 && m[0].op==22 && nms_request_read(cast(string)m[0].body[0..<m[0].nb],q[..]) && q[0].action==5;
+ expected:[4096]u8;length:=ndd_filter(m[0].delivery[..],0,expected[..]);#assert cast(string)q[0].payload[0..<q[0].n]==cast(string)expected[0..<length];
+ m[0].flight=0;m[0].action=0;m[0].status_at=1;m[0].relays[0].changed=true;m[0].journal[0].busy=true;m[0].dirty=false;
+ #assert !ndm_tick(m[..],0) && !m[0].relays[0].changed && m[0].refresh_at==5100 && m[0].pub_phase==0 && m[0].journal[0].phase==0 && m[0].dirty;
+}
+#test "the scheduler accepts one full elapsed second and fences an exhausted HTTP operation namespace" {
+ m:[1]NostrMessenger;#assert !ndm_tick(m[..],1) && m[0].ms==1000 && m[0].relays[0].ms==1000;
+ ndm_test_quiet(m[..]);m[0].journal[0].serial=2147483647;m[0].http_available=true;m[0].want_receipts=true;#assert ndd_begin(m[0].delivery[..],m[0].inbox[..]);
+ #assert !ndm_tick(m[..],0) && m[0].flight==0 && m[0].action==0 && m[0].journal[0].serial==2147483647;
+}
+#test "outbox ignores mask bits outside the recorded relay pool and cannot replace a staged original" {
+ m:[1]NostrMessenger;ndm_test_quiet(m[..]);m[0].pub_phase=1;m[0].outbox[0].n=1;m[0].outbox[0].relays_n=2;m[0].outbox[0].rows[0].pending=4;_=ndi_copy(m[0].outbox[0].rows[0].id[..],NMS_LIST_ID_HEX);
+ #assert ndm_outbox(m[..]) && m[0].pub_phase==5 && m[0].flight==0;
+ m[0].pub_phase=3;m[0].outbox[0].relays_n=1;m[0].outbox[0].nr[0]=ndi_copy(m[0].outbox[0].relays[0][..],"wss://relay.example");m[0].relays[0].nr=1;m[0].relays[0].relays[0].nu=ndi_copy(m[0].relays[0].relays[0].url[..],"wss://relay.example");m[0].relays[0].relays[0].relay[0].state=RL_OPEN;m[0].relays[0].publish_n=1;m[0].original_n=ndi_copy(m[0].original[..],NMS_LIST_EVENT);
+ #assert !ndm_outbox(m[..]) && m[0].pub_phase==3 && m[0].relays[0].publish_n==1;
+}
+#test "discovery refresh fires at its exact deadline and cannot reconfigure an in-flight original" {
+ m:[1]NostrMessenger;ndm_test_lists(m[..],true);m[0].mode=1;m[0].discovery_at=100;m[0].head_wanted=false;m[0].head_peer=true;m[0].head_index[0].n=1;
+ #assert ndm_tick(m[..],0) && m[0].mode==0 && m[0].discovery_at==30100 && m[0].head_wanted && !m[0].head_peer && m[0].head_index[0].n==0;
+ for phase:[2]int.[3,4] {n:[1]NostrMessenger;ndm_test_lists(n[..],false);n[0].mode=1;n[0].pub_phase=phase;n[0].settings_changed=true;n[0].outbox[0].relays_n=1;n[0].outbox[0].nr[0]=ndi_copy(n[0].outbox[0].relays[0][..],"wss://relay.example");n[0].relays[0].relays[0].relay[0].state=RL_CONNECTING;n[0].relays[0].relays[0].relay[0].deadline=10000;n[0].relays[0].publish_n=1;
+  #assert !ndm_tick(n[..],0) && n[0].mode==1 && n[0].settings_changed && n[0].pub_phase==phase && n[0].flight==0;
+ }
+}
+ndm_test_lists :: (m:[]NostrMessenger,peer:bool) {
+ ndm_test_quiet(m);m[0].relays[0].busy=false;
+ if peer {m[0].np=ndi_copy(m[0].peer[..],"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798");}
+ #assert ndm_pool(m,0,"");p:=m[0].relays[..];p[0].reset=false;p[0].changed=false;p[0].clock_at=10000;p[0].now=NMS_LIST_AT;
+ for i:0..<p[0].nr {r:=p[0].relays[i..<i+1];r[0].relay[0].gen=7;r[0].relay[0].state=RL_OPEN;r[0].idle=10000;for k:0..<RL_SUBS {if r[0].relay[0].subs[k].state==RS_WANT {r[0].relay[0].subs[k].state=RS_CAUGHT;}}}
+}
+#test "retrying a journal respects the exact refresh deadline and retains its owned request" {
+ m:[1]NostrMessenger;ndm_test_quiet(m[..]);#assert ndj_refresh(m[0].journal[..],m[0].inbox[..]) && ndj_next(m[0].journal[..],m[0].inbox[..]);
+ m[0].journal[0].action=0;#assert !ndj_reply(m[0].journal[..],m[0].inbox[..],1,"",true);m[0].refresh_at=101;
+ #assert !ndm_tick(m[..],0) && m[0].flight==0 && m[0].journal[0].retry;m[0].ms=101;
+ #assert ndm_tick(m[..],0) && m[0].flight==1 && m[0].action==22 && m[0].refresh_at==5101 && !m[0].journal[0].retry && m[0].journal[0].busy;
+}
+#test "discovered own and peer heads use exact authors and no new list is signed before its read barrier" {
+ m:[1]NostrMessenger;q:[1]MsRequest;ndm_test_lists(m[..],true);m[0].head_wanted=true;
+ #assert ndm_tick(m[..],0) && m[0].flight==6 && !m[0].head_for_peer && cast(string)m[0].head_pub[..]==NMS_LIST_PUB && nms_request_read(cast(string)m[0].body[0..<m[0].nb],q[..]) && q[0].action==5;
+ expected:[1024]u8;n:=ndm_head_filter(NMS_LIST_PUB,expected[..]);#assert cast(string)q[0].payload[0..<q[0].n]==cast(string)expected[0..<n];
+ m[0].flight=0;m[0].action=0;m[0].head_peer=true;
+ #assert ndm_tick(m[..],0) && m[0].flight==6 && m[0].head_for_peer && cast(string)m[0].head_pub[..]==cast(string)m[0].peer[..];
+ m[0].flight=0;m[0].action=0;m[0].head_wanted=false;m[0].head_peer=true;m[0].relays[0].heads_changed=true;
+ #assert ndm_tick(m[..],0) && m[0].head_wanted && !m[0].head_peer && !m[0].head_for_peer && !m[0].relays[0].heads_changed && m[0].flight==6;
+}
+#test "inbox setup uses the completed discovery pool and preserves the exact prior list identifier" {
+ m:[1]NostrMessenger;q:[1]NscRequest;ndm_test_lists(m[..],false);m[0].enable=true;_=ndi_copy(m[0].own_id[..],NMS_LIST_ID_HEX);
+ #assert ndm_tick(m[..],0) && m[0].flight==8 && m[0].op==21 && nsc_read(cast(string)m[0].body[0..<m[0].nb],q[..]) && q[0].action==5;
+ d:[1]Jv;nodes:[64]JvNode;#assert jv_parse(d[..],cast(string)q[0].payload[0..<q[0].n],nodes[..]);
+ #assert jv_raw(d[0],jv_get(d[0],0,"base"))==NMS_LIST_ID_HEX;
+ m[0].flight=0;m[0].action=0;m[0].mode=1;m[0].relays[0].busy=true;#assert ndm_tick(m[..],0) && m[0].flight==0 && m[0].mode==1;
+ m[0].relays[0].busy=false;#assert ndm_tick(m[..],0) && m[0].mode==0 && m[0].flight==0;
+}
+#test "finished publication returns to the receiver pool without changing its recorded targets" {
+ m:[1]NostrMessenger;ndm_test_lists(m[..],false);m[0].head_wanted=false;m[0].mode=2;
+ #assert ndm_tick(m[..],0) && m[0].mode==1 && m[0].flight==0;
+ m[0].mode=2;m[0].own_ready=false;#assert ndm_tick(m[..],0) && m[0].mode==0 && m[0].flight==0;
+ m[0].own_ready=true;m[0].head_wanted=false;#assert ndm_tick(m[..],0) && m[0].mode==1 && m[0].discovery_at==30100;
+}
+#test "private receipt and read requests require HTTP and synchronize without a refresh button" {
+ m:[1]NostrMessenger;q:[1]NdlRequest;r:[1]NrdMarker;b:[8192]u8;ndm_test_quiet(m[..]);
+ #assert ndd_begin(m[0].delivery[..],m[0].inbox[..]);m[0].want_receipts=true;#assert !ndm_tick(m[..],0) && m[0].flight==0;
+ m[0].http_available=true;#assert ndm_tick(m[..],0) && m[0].flight==10 && m[0].op==4 && ndl_request_read(cast(string)m[0].body[0..<m[0].nb],q[..]) && cast(string)q[0].identity[..]==NMS_LIST_PUB;
+ m[0].flight=0;m[0].action=0;m[0].want_receipts=false;#assert ndi_begin(m[0].inbox[..],NMS_LIST_PUB,NMS_LIST_PUB);n:=nsr_write("custody","open",NMS_LIST_PUB,NMS_LIST_PUB,"ok",0,0,DM_OPENED_GOLDEN,b[..]);#assert ndi_opened(m[0].inbox[..],1,cast(string)b[0..<n]);nrp_sync(m[0].read_positions[..],m[0].inbox[..]);
+ #assert ndm_tick(m[..],0) && m[0].flight==12 && m[0].op==4 && nrd_read(cast(string)m[0].body[0..<m[0].nb],false,r[..]) && r[0].created== -1 && m[0].read_positions[0].pending;
+}
+#test "periodic refresh invalidates private read knowledge and restarts outbox and journal reconciliation" {
+ m:[1]NostrMessenger;ndm_test_quiet(m[..]);m[0].read_positions[0].n=2;for i:0..<2 {m[0].read_positions[0].rows[i].known=true;}m[0].read_at=100;m[0].refresh_at=100;m[0].pub_cursor=7;m[0].pub_revision=9;m[0].dirty=false;
+ #assert !ndm_tick(m[..],0) && m[0].read_at==60100 && !m[0].read_positions[0].rows[0].known && !m[0].read_positions[0].rows[1].known && m[0].refresh_at==5100 && m[0].pub_phase==0 && m[0].pub_cursor==0 && m[0].pub_revision==0 && m[0].dirty && m[0].journal[0].phase==1;
+}
 ndm_test_quiet :: (m:[]NostrMessenger) {
  #assert ndi_bind(m[0].inbox[..],"a",NMS_LIST_PUB) && ndj_start(m[0].journal[..],m[0].inbox[..],NMS_LIST_PUB);
  m[0].started=true;m[0].active=true;m[0].generation=1;m[0].ms=100;m[0].journal[0].phase=0;m[0].journal[0].ready=true;
