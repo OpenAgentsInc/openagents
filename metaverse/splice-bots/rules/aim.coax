@@ -1,0 +1,176 @@
+// Splice Bots rules: which thing under the reticle each click means (SpliceAim.h, package S-01, the pure
+// part; GDD 04 6.1 UE-INT-01 two sweeps from the camera through the reticle, radius 0.35 m; UE-INT-02
+// reach from her chest, a clear second line from her chest, the 10 Hz prompt; UE-INT-06 the prompt names
+// each click; UE-CAM-11 her robots do not block the chest line; risk 3 her own robots are ignored by the
+// attack trace; UE-QA-08 the aim test). Built on click-rules.coax (the click answers and sr_click_safety).
+// The game sweeps the world and hands in what the sweep touched as candidates. Units: the tuning is in
+// metres; sr_aim_scaled gives it in engine units. The rules only compare distances.
+//
+// The C++ asks the chest line through a callback (ISpliceAimWorld::IsChestLineClear), and only for the
+// one candidate that decides. Coax has no procedure values, so a pick is split: sr_aim_decider walks the
+// ray and returns the candidate whose chest line must be traced (or -1), the caller traces it, and
+// sr_aim_finish ends the pick. sr_aim_pick_target_with and sr_aim_pick_with take every candidate's
+// chest-line answer as data instead (the caller may answer only the decider's; the rest are not read).
+#load "../../../metaverse-engine/core/math-d.coax";
+#load "click-rules.coax";
+
+SR_AIM_USE_REACH_METRES :: 4.5;      // UE-INT-02 T_USE_RANGE, from her chest
+SR_AIM_ATTACK_REACH_METRES :: 3.0;   // UE-INT-02 (INFERRED in the GDD)
+SR_AIM_SWEEP_RADIUS_METRES :: 0.35;  // UE-INT-01
+SR_AIM_PROMPT_HZ :: 10.0;            // UE-INT-02: the same traces run at 10 Hz to drive the prompt
+// INFERRED: the reticle ray starts at the camera, 6.5 m behind her. A hit nearer the camera than her
+// chest, by more than this, is behind her and never picked (and never hides what is in front of her).
+SR_AIM_BEHIND_SLACK_METRES :: 0.5;
+SR_AIM_CANDIDATES_MAX :: 16;
+
+SrAimTuning :: struct {
+  use_reach: f64 = SR_AIM_USE_REACH_METRES;
+  attack_reach: f64 = SR_AIM_ATTACK_REACH_METRES;
+  sweep_radius: f64 = SR_AIM_SWEEP_RADIUS_METRES;
+  behind_slack: f64 = SR_AIM_BEHIND_SLACK_METRES;
+}
+// Every length times units_per_metre (100 for engine centimetres).
+sr_aim_scaled :: (t: SrAimTuning, units_per_metre: f64) -> SrAimTuning {
+  o := t; o.use_reach *= units_per_metre; o.attack_reach *= units_per_metre; o.sweep_radius *= units_per_metre; o.behind_slack *= units_per_metre;
+  return o;
+}
+// ESpliceAimClick: IA_Use (right click, LT), IA_Attack (left click, RT).
+SR_AIM_USE :: 0; SR_AIM_ATTACK :: 1;
+// ESpliceAimKind: solid and answers neither click; walkable ground (a body placed, the board ridden);
+// an actor that may answer a click.
+SR_AIM_BLOCKER :: 0; SR_AIM_GROUND :: 1; SR_AIM_THING :: 2;
+// ESpliceAimReject: why a candidate was not picked.
+SR_AIM_PICKED :: 0;          // None: picked
+SR_AIM_HIDDEN :: 1;          // a nearer hit on the reticle ray decided first
+SR_AIM_BEHIND :: 2;          // between the camera and her (or behind the camera)
+SR_AIM_HER_ROBOT :: 3;       // the attack trace ignores her own robots (risk 3)
+SR_AIM_REJECT_BLOCKER :: 4;  // solid and answers neither click: hides what is behind it
+SR_AIM_NOT_THIS_CLICK :: 5;  // answers the other click only: hides what is behind it
+SR_AIM_PAST_REACH :: 6;      // further from her chest than this click's reach (UE-INT-02)
+SR_AIM_CHEST_BLOCKED :: 7;   // the second line, from her chest to the hit point, is not clear
+
+// One hit of the reticle sweep.
+SrAimCandidate :: struct {
+  point: D3;
+  kind: int = SR_AIM_THING;
+  answers_use: bool;     // carries a use answer (the core socket)
+  answers_hit: bool;     // carries a hit answer
+  facts: SrTargetFacts;  // owner, robot, core, and the rest for the click rules
+}
+// One aim question: the reticle ray, her chest, and what the sweep touched (any order).
+SrAimQuery :: struct {
+  ray_origin: D3;                        // the camera
+  ray_dir: D3 = D3.{x = 1.0, y = 0.0, z = 0.0};   // through the reticle
+  chest: D3;                             // reach and the second line start here
+  n: int;
+  candidates: [SR_AIM_CANDIDATES_MAX] SrAimCandidate;
+}
+sr_aim_add :: (q: [] SrAimQuery, c: SrAimCandidate) -> int {
+  if q[0].n >= SR_AIM_CANDIDATES_MAX { return -1; }
+  q[0].candidates[q[0].n] = c; q[0].n += 1; return q[0].n - 1;
+}
+// One click's pick in progress: `why` per candidate, and the decider whose chest line is wanted.
+SrAimPending :: struct { decider: int = -1; why: [SR_AIM_CANDIDATES_MAX] int; }
+SrAimResult :: struct {
+  use_index: int = -1; hit_index: int = -1;
+  use_why: [SR_AIM_CANDIDATES_MAX] int; hit_why: [SR_AIM_CANDIDATES_MAX] int;   // one per candidate
+}
+// What each click would do on the thing in reach (UE-INT-06).
+SrAimPrompt :: struct {
+  right_input: SrClickInput; left_input: SrClickInput;
+  right: SrClickAnswer; left: SrClickAnswer;
+  right_safety: SrClickSafety; left_safety: SrClickSafety;
+}
+
+// A robot of hers that is alive with her core in it. A coreless body of hers is not one: the attack
+// trace still finds it so a left click can shrink it (UE-CORE-07).
+sr_aim_is_her_robot :: (f: SrTargetFacts) -> bool { return f.is_robot && f.is_hers && f.has_core; }
+
+// The rules, in order along the reticle ray from the camera (a stable order: equal distances keep the
+// list order). Hits behind her are skipped; for the attack click her own robots are skipped (they
+// neither count nor hide). The first other hit decides: a blocker, or one that does not answer this
+// click, or is past reach, hides what is behind it and nothing is picked. Otherwise its chest line
+// decides: decider is that candidate (why PICKED until sr_aim_finish says otherwise).
+sr_aim_decider :: (t: SrAimTuning, q: SrAimQuery, click: int) -> SrAimPending {
+  p: SrAimPending;
+  for i: 0..<q.n { p.why[i] = SR_AIM_HIDDEN; }
+  dl := d3_len(q.ray_dir);
+  if q.n == 0 || !(dl > 0.00000001) { return p; }
+  dir := d3_scale(q.ray_dir, 1.0 / dl);
+  if abs(dir.x) <= 0.0001 && abs(dir.y) <= 0.0001 && abs(dir.z) <= 0.0001 { return p; }
+  along: [SR_AIM_CANDIDATES_MAX] f64; order: [SR_AIM_CANDIDATES_MAX] int;
+  for i: 0..<q.n {
+    along[i] = d3_dot(d3_sub(q.candidates[i].point, q.ray_origin), dir);
+    // Insertion into the sorted order, after every equal one (stable).
+    k := i;
+    while k > 0 && along[order[k - 1]] > along[i] { order[k] = order[k - 1]; k -= 1; }
+    order[k] = i;
+  }
+  her_along := d3_dot(d3_sub(q.chest, q.ray_origin), dir);
+  reach := ifx click == SR_AIM_USE then t.use_reach else t.attack_reach;
+  for oi: 0..<q.n {
+    i := order[oi]; c := q.candidates[i];
+    // Between the camera and her: skipped, and hides nothing in front of her.
+    if along[i] < 0.0 || along[i] < her_along - t.behind_slack { p.why[i] = SR_AIM_BEHIND; continue; }
+    // Risk 3: the attack trace ignores her own robots.
+    if click == SR_AIM_ATTACK && c.kind == SR_AIM_THING && sr_aim_is_her_robot(c.facts) { p.why[i] = SR_AIM_HER_ROBOT; continue; }
+    // From here the first hit decides, whatever it is.
+    if c.kind == SR_AIM_BLOCKER { p.why[i] = SR_AIM_REJECT_BLOCKER; return p; }
+    answers := ifx click == SR_AIM_USE then (c.kind == SR_AIM_GROUND || c.answers_use) else (c.kind == SR_AIM_THING && c.answers_hit);
+    if !answers { p.why[i] = SR_AIM_NOT_THIS_CLICK; return p; }
+    // UE-INT-02: reach is measured from her chest, not from the camera.
+    if d3_dist(q.chest, c.point) > reach { p.why[i] = SR_AIM_PAST_REACH; return p; }
+    p.why[i] = SR_AIM_PICKED; p.decider = i;
+    return p;
+  }
+  return p;
+}
+// UE-INT-02: the second line, from her chest to the decider's point, must be clear. Returns the pick or -1.
+sr_aim_finish :: (p: [] SrAimPending, chest_line_clear: bool) -> int {
+  if p[0].decider < 0 { return -1; }
+  if !chest_line_clear { p[0].why[p[0].decider] = SR_AIM_CHEST_BLOCKED; return -1; }
+  return p[0].decider;
+}
+// The pick with every candidate's chest-line answer given (only the decider's is read). why gets one
+// reason per candidate (it may be an empty view).
+sr_aim_pick_target_with :: (t: SrAimTuning, q: SrAimQuery, chest_clear: [] const bool, click: int, why: [] int) -> int {
+  p := [1] SrAimPending.[sr_aim_decider(t, q, click)];
+  d := p[0].decider;
+  picked := sr_aim_finish(p[..], d < 0 || d >= chest_clear.count || chest_clear[d]);
+  for i: 0..<q.n { if i < why.count { why[i] = p[0].why[i]; } }
+  return picked;
+}
+// Both clicks on one candidate list.
+sr_aim_pick_with :: (t: SrAimTuning, q: SrAimQuery, chest_clear: [] const bool) -> SrAimResult {
+  r: SrAimResult;
+  r.use_index = sr_aim_pick_target_with(t, q, chest_clear, SR_AIM_USE, r.use_why[..]);
+  r.hit_index = sr_aim_pick_target_with(t, q, chest_clear, SR_AIM_ATTACK, r.hit_why[..]);
+  return r;
+}
+// The click rules' view of a pick: a thing's facts (has_target set), ground as is_ground, nothing for -1.
+sr_aim_facts_for :: (q: SrAimQuery, index: int) -> SrTargetFacts {
+  f: SrTargetFacts;
+  if index < 0 || index >= q.n { return f; }
+  c := q.candidates[index];
+  if c.kind == SR_AIM_GROUND { f.is_ground = true; }   // a walkable ground point is not "a target"
+  else if c.kind == SR_AIM_THING { f = c.facts; f.has_target = true; f.is_ground = false; }
+  return f;
+}
+// The two clicks from one base input (held item, Shift, crew, room) and the two targets.
+sr_aim_build_prompt :: (base: SrClickInput, use_target: SrTargetFacts, hit_target: SrTargetFacts) -> SrAimPrompt {
+  p: SrAimPrompt;
+  p.right_input = base; p.right_input.target = use_target;
+  p.left_input = base; p.left_input.target = hit_target;
+  p.right = sr_resolve_right_click(p.right_input); p.left = sr_resolve_left_click(p.left_input);
+  p.right_safety = sr_click_safety(p.right_input, p.right); p.left_safety = sr_click_safety(p.left_input, p.left);
+  return p;
+}
+sr_aim_shows :: (a: SrClickAnswer) -> bool { return a.yes || a.refusal != SR_REFUSE_NONE; }
+// UE-INT-06: with nothing in reach there is no prompt (neither click says yes or refuses).
+sr_aim_prompt_empty :: (p: SrAimPrompt) -> bool { return !sr_aim_shows(p.right) && !sr_aim_shows(p.left); }
+sr_aim_same_answer :: (a: SrClickAnswer, b: SrClickAnswer) -> bool { return a.yes == b.yes && a.verb == b.verb && a.prompt_key == b.prompt_key && a.refusal == b.refusal; }
+sr_aim_same_safety :: (a: SrClickSafety, b: SrClickSafety) -> bool { return a.reversible == b.reversible && a.hold_seconds == b.hold_seconds; }
+// Compares what the prompt shows: verbs, yes, refusals, keys and holds.
+sr_aim_prompt_same :: (a: SrAimPrompt, b: SrAimPrompt) -> bool {
+  return sr_aim_same_answer(a.right, b.right) && sr_aim_same_answer(a.left, b.left) && sr_aim_same_safety(a.right_safety, b.right_safety) && sr_aim_same_safety(a.left_safety, b.left_safety);
+}

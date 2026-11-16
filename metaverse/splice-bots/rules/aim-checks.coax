@@ -1,0 +1,179 @@
+// Parity checks for aim.coax: SpliceTests/Rules/SpliceAimTests.cpp, the aim tests on grey boxes. The
+// scene, in metres, z up: she stands at the origin, her chest 1.3 m up; the camera is 6 m behind her at
+// chest height looking down +x unless a check moves it. The C++ test's FBoxWorld (grey boxes that block
+// the chest line, FMath::LineBoxIntersection) is am_box_world here: it answers each candidate's chest line
+// as data for sr_aim_pick_with. Not ported: PromptNamesBothClicks' four HUD asserts
+// (FSpliceHudModel::BuildPrompt's right and left line text, the pale FULL line); the HUD model is not
+// in the Coax port yet. The prompt's verbs and refusals in that test are ported.
+// rules.coax loads this file with `#load ... #test;`.
+
+AM_CHEST :: D3.{x = 0.0, y = 0.0, z = 1.3};
+AM_WALLS_MAX :: 4;
+AmBoxWorld :: struct { n: int; lo: [AM_WALLS_MAX] D3; hi: [AM_WALLS_MAX] D3; }
+// The segment a..b crosses the box (the slab test, as FMath::LineBoxIntersection).
+am_segment_hits_box :: (lo: D3, hi: D3, a: D3, b: D3) -> bool {
+  t0 := 0.0; t1 := 1.0;
+  d := d3_sub(b, a);
+  starts := [3] f64.[a.x, a.y, a.z]; dirs := [3] f64.[d.x, d.y, d.z];
+  los := [3] f64.[lo.x, lo.y, lo.z]; his := [3] f64.[hi.x, hi.y, hi.z];
+  for k: 0..<3 {
+    if abs(dirs[k]) < 0.000000001 {
+      if starts[k] < los[k] || starts[k] > his[k] { return false; }
+    } else {
+      u := (los[k] - starts[k]) / dirs[k]; v := (his[k] - starts[k]) / dirs[k];
+      if u > v { w := u; u = v; v = w; }
+      t0 = fmax(t0, u); t1 = fmin(t1, v);
+      if t0 > t1 { return false; }
+    }
+  }
+  return true;
+}
+am_line_clear :: (w: AmBoxWorld, from: D3, to: D3) -> bool {
+  for k: 0..<w.n { if am_segment_hits_box(w.lo[k], w.hi[k], from, to) { return false; } }
+  return true;
+}
+// Both clicks against the grey-box world: every candidate's chest line answered.
+am_pick :: (t: SrAimTuning, q: SrAimQuery, w: AmBoxWorld) -> SrAimResult {
+  clear: [SR_AIM_CANDIDATES_MAX] bool;
+  for i: 0..<q.n { clear[i] = am_line_clear(w, q.chest, q.candidates[i].point); }
+  return sr_aim_pick_with(t, q, clear[0..<q.n]);
+}
+am_query :: () -> SrAimQuery { return SrAimQuery.{ray_origin = d3(-6.0, 0.0, 1.3), ray_dir = d3(1.0, 0.0, 0.0), chest = AM_CHEST}; }
+am_q1 :: (c: SrAimCandidate) -> SrAimQuery { q := [1] SrAimQuery.[am_query()]; _ = sr_aim_add(q[..], c); return q[0]; }
+am_q2 :: (a: SrAimCandidate, b: SrAimCandidate) -> SrAimQuery { q := [1] SrAimQuery.[am_query()]; _ = sr_aim_add(q[..], a); _ = sr_aim_add(q[..], b); return q[0]; }
+// An awake robot that is not hers: answers use (core socket) and hit (vitals).
+am_foe :: (p: D3) -> SrAimCandidate {
+  c := SrAimCandidate.{point = p, kind = SR_AIM_THING, answers_use = true, answers_hit = true};
+  c.facts.is_robot = true; c.facts.awake = true; c.facts.has_core = true;
+  return c;
+}
+// Her live robot, not full.
+am_her_robot :: (p: D3) -> SrAimCandidate { c := am_foe(p); c.facts.is_hers = true; c.facts.counted_in_crew = true; return c; }
+// A placed body of hers with no core.
+am_her_body :: (p: D3) -> SrAimCandidate { c := am_her_robot(p); c.facts.has_core = false; c.facts.awake = false; c.facts.counted_in_crew = false; return c; }
+am_charge_point :: (p: D3) -> SrAimCandidate { c := SrAimCandidate.{point = p, kind = SR_AIM_THING, answers_hit = true}; c.facts.harvestable_ready = true; return c; }
+am_of :: (kind: int, p: D3) -> SrAimCandidate { return SrAimCandidate.{point = p, kind = kind}; }
+am_holding :: (id: string, category: int) -> SrClickInput {
+  inp := SrClickInput.{crew_count = 1, place_has_room = true};
+  if id != "" { inp.held = sr_item(id, 1); inp.held_category = category; }
+  return inp;
+}
+
+#test "Splice.Rules.Aim.PastReachIsNotPicked" {
+  t: SrAimTuning; w: AmBoxWorld;
+  // 5 m from her chest: past both reaches, though the camera is 11 m from it either way.
+  q := am_q1(am_foe(d3(5.0, 0.0, 1.3)));
+  r := am_pick(t, q, w);
+  #assert r.use_index == -1 && r.hit_index == -1;
+  #assert r.use_why[0] == SR_AIM_PAST_REACH && r.hit_why[0] == SR_AIM_PAST_REACH;
+  // 4 m: in use reach (4.5 m) but past attack reach (3 m).
+  q.candidates[0].point = d3(4.0, 0.0, 1.3);
+  r = am_pick(t, q, w);
+  #assert r.use_index == 0 && r.hit_index == -1;
+  // 2.5 m: both.
+  q.candidates[0].point = d3(2.5, 0.0, 1.3);
+  r = am_pick(t, q, w);
+  #assert r.use_index == 0 && r.hit_index == 0;
+  // Reach is from her, not the camera: the camera pulled 20 m back changes nothing.
+  q.ray_origin = d3(-20.0, 0.0, 1.3);
+  r = am_pick(t, q, w);
+  #assert r.use_index == 0 && r.hit_index == 0;
+  // The engine-unit tuning scales with the scene: the same scene in centimetres.
+  cm := am_query(); cm.ray_origin = d3_scale(cm.ray_origin, 100.0); cm.chest = d3_scale(cm.chest, 100.0);
+  cq := [1] SrAimQuery.[cm]; _ = sr_aim_add(cq[..], am_foe(d3(400.0, 0.0, 130.0)));
+  r = am_pick(sr_aim_scaled(t, 100.0), cq[0], w);
+  #assert r.use_index == 0 && r.hit_index == -1;
+}
+
+#test "Splice.Rules.Aim.BlockedChestLineIsNotPicked" {
+  t: SrAimTuning;
+  // A low wall 1 m tall between her and a robot crouched behind it. The camera, high behind her,
+  // sees over the wall; her chest does not.
+  target := d3(2.5, 0.0, 0.3);
+  q := am_q1(am_foe(target));
+  q.ray_origin = d3(-5.0, 0.0, 6.0); q.ray_dir = d3_unit(d3_sub(target, q.ray_origin));
+  open: AmBoxWorld;
+  r := am_pick(t, q, open);
+  #assert r.use_index == 0 && r.hit_index == 0;
+  walled := AmBoxWorld.{n = 1};
+  walled.lo[0] = d3(1.0, -2.0, 0.0); walled.hi[0] = d3(1.3, 2.0, 1.0);
+  // The grey box really is off the camera's line, and across her chest's line.
+  #assert !am_segment_hits_box(walled.lo[0], walled.hi[0], q.ray_origin, target);
+  r = am_pick(t, q, walled);
+  #assert r.use_index == -1 && r.hit_index == -1;
+  #assert r.use_why[0] == SR_AIM_CHEST_BLOCKED && r.hit_why[0] == SR_AIM_CHEST_BLOCKED;
+  // The split form gives the same: the decider is the robot; its chest line is blocked.
+  p := [1] SrAimPending.[sr_aim_decider(t, q, SR_AIM_USE)];
+  #assert p[0].decider == 0 && sr_aim_finish(p[..], am_line_clear(walled, q.chest, target)) == -1 && p[0].why[0] == SR_AIM_CHEST_BLOCKED;
+}
+
+#test "Splice.Rules.Aim.HerRobotSkippedByAttackPickedByUse" {
+  t: SrAimTuning; w: AmBoxWorld;
+  // Her robot stands between her and a foe, both in reach.
+  q := am_q2(am_her_robot(d3(1.5, 0.0, 1.3)), am_foe(d3(2.5, 0.0, 1.3)));
+  r := am_pick(t, q, w);
+  #assert r.use_index == 0 && r.hit_index == 1;
+  #assert r.hit_why[0] == SR_AIM_HER_ROBOT && r.use_why[1] == SR_AIM_HIDDEN;
+  // Her robot alone: use picks it, attack picks nothing.
+  alone := am_q1(am_her_robot(d3(1.5, 0.0, 1.3)));
+  r = am_pick(t, alone, w);
+  #assert r.use_index == 0 && r.hit_index == -1;
+  // A coreless body of hers is not skipped: a left click shrinks it (UE-CORE-07).
+  body := am_q1(am_her_body(d3(1.5, 0.0, 1.3)));
+  r = am_pick(t, body, w);
+  #assert r.hit_index == 0;
+  p := sr_aim_build_prompt(am_holding("", SR_CAT_OTHER), sr_aim_facts_for(body, r.use_index), sr_aim_facts_for(body, r.hit_index));
+  #assert p.left.verb == SR_VERB_SHRINK_BODY;
+}
+
+#test "Splice.Rules.Aim.NearestValidTargetWins" {
+  t: SrAimTuning; w: AmBoxWorld;
+  // Two foes on the ray, listed far first: the nearer wins whatever the list order.
+  q := [1] SrAimQuery.[am_q2(am_foe(d3(2.6, 0.0, 1.3)), am_foe(d3(2.0, 0.2, 1.3)))];
+  r := am_pick(t, q[0], w);
+  #assert r.use_index == 1 && r.hit_index == 1;
+  // A robot following behind her, between her and the camera, is skipped and hides nothing.
+  _ = sr_aim_add(q[..], am_foe(d3(-1.5, 0.0, 1.3)));
+  r = am_pick(t, q[0], w);
+  #assert r.use_index == 1 && r.use_why[2] == SR_AIM_BEHIND;
+  // A grey-box panel nearer on the ray hides both.
+  _ = sr_aim_add(q[..], am_of(SR_AIM_BLOCKER, d3(1.8, 0.0, 1.3)));
+  r = am_pick(t, q[0], w);
+  #assert r.use_index == -1 && r.hit_index == -1 && r.hit_why[1] == SR_AIM_HIDDEN;
+  // A nearer thing that answers only the other click hides what is behind it for this click.
+  c := am_q2(am_foe(d3(2.5, 0.0, 1.3)), am_charge_point(d3(1.5, 0.0, 1.3)));
+  r = am_pick(t, c, w);
+  #assert r.hit_index == 1 && r.use_index == -1 && r.use_why[1] == SR_AIM_NOT_THIS_CLICK;
+  // Ground in reach is a use target, never an attack target.
+  g := am_q1(am_of(SR_AIM_GROUND, d3(3.0, 0.0, 0.0)));
+  r = am_pick(t, g, w);
+  #assert r.use_index == 0 && r.hit_index == -1;
+  gf := sr_aim_facts_for(g, r.use_index);
+  #assert gf.is_ground && !gf.has_target;
+}
+
+#test "Splice.Rules.Aim.PromptNamesBothClicks" {
+  t: SrAimTuning; w: AmBoxWorld;
+  // A battery held; her hurt robot in front, a foe behind it. Right click feeds her robot, left attacks the foe.
+  q := am_q2(am_her_robot(d3(1.5, 0.0, 1.3)), am_foe(d3(2.5, 0.0, 1.3)));
+  r := am_pick(t, q, w);
+  p := sr_aim_build_prompt(am_holding(ITEM_BATTERY, SR_CAT_CONSUMABLE), sr_aim_facts_for(q, r.use_index), sr_aim_facts_for(q, r.hit_index));
+  #assert p.right.yes && p.right.verb == SR_VERB_FEED;
+  #assert p.left.yes && p.left.verb == SR_VERB_ATTACK;
+  #assert !sr_aim_prompt_empty(p);
+  // A refusal names its reason: her robot full refuses the battery (FULL).
+  full := q; full.candidates[0].facts.energy_full = true;
+  pf := sr_aim_build_prompt(am_holding(ITEM_BATTERY, SR_CAT_CONSUMABLE), sr_aim_facts_for(full, r.use_index), sr_aim_facts_for(full, r.hit_index));
+  #assert !pf.right.yes && pf.right.refusal == SR_REFUSE_FULL;
+  #assert !sr_aim_prompt_same(pf, p);
+  // A body held over ground in reach: PLACE; the left click has nothing.
+  g := am_q1(am_of(SR_AIM_GROUND, d3(3.0, 0.0, 0.0)));
+  rg := am_pick(t, g, w);
+  pg := sr_aim_build_prompt(am_holding(ITEM_BODY_DIGGER, SR_CAT_ROBOT_BODY), sr_aim_facts_for(g, rg.use_index), sr_aim_facts_for(g, rg.hit_index));
+  #assert pg.right.verb == SR_VERB_PLACE_BODY && !pg.left.yes;
+  // Nothing in reach, empty hand: no prompt.
+  far := am_q1(am_foe(d3(8.0, 0.0, 1.3)));
+  rn := am_pick(t, far, w);
+  pn := sr_aim_build_prompt(am_holding("", SR_CAT_OTHER), sr_aim_facts_for(far, rn.use_index), sr_aim_facts_for(far, rn.hit_index));
+  #assert sr_aim_prompt_empty(pn);
+}
