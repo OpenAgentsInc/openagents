@@ -45,7 +45,10 @@ app_sidebar_shift :: (w: f32, share: f32) -> f32 { return share * app_sidebar_wi
 app_sidebar_ease :: (share: f32, open: bool, dt: f32, reduced: bool) -> f32 {
   goal: f32 = ifx open then 1 else 0;
   if reduced { return goal; }
-  k := dt * APP_SIDEBAR_RATE; if k > 1 { k = 1; }
+  // a frame's step is capped at a 30 Hz frame's: the first frame after the display link wakes carries
+  // the idle time, which would otherwise jump the whole way in one frame
+  step := ifx dt > 1.0f32 / 30 then 1.0f32 / 30 else dt;
+  k := step * APP_SIDEBAR_RATE; if k > 1 { k = 1; }
   next := share + (goal - share) * k;
   if abs(next - goal) < 0.004 { return goal; }
   return next;
