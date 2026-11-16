@@ -38,7 +38,13 @@ void *og_open(const char *resources) {
   if (!g) return NULL;
   App *a = &g->app;
   snprintf(a->resources, sizeof a->resources, "%s", resources);
-  char shader[PATH_MAX + 32]; snprintf(shader, sizeof shader, "%s/components.metal", resources);
+  char shader[PATH_MAX + 32]; snprintf(shader, sizeof shader,
+#ifdef __APPLE__
+  "%s/components.metal",
+#else
+  "%s/components.spv",
+#endif
+  resources);
   g->s = calloc(1, sizeof *g->s);
   if (!g->s) { free(g); return NULL; }
   a->atlas = g->s->atlas.e; a->max_vertices = (uint32_t)appgallery_max_vertices();
@@ -51,7 +57,11 @@ void *og_open(const char *resources) {
   if (!atlas_setup(a)) { gallery_free(a); free(g->s); free(g); return NULL; }
   return g;
 }
+#ifdef __APPLE__
 void *og_view(void *gallery) { return gallery ? ui_view(((AppGalleryHost *)gallery)->app.host) : NULL; }
+#else
+void *og_view(void *gallery) {(void)gallery;return NULL;}
+#endif
 void og_frame(void *gallery) { if (gallery) ui_frame(((AppGalleryHost *)gallery)->app.host); }
 int og_moving(void *gallery) { AppGalleryHost *g = gallery; return g && appgallery_moving(og_state(g)); }
 void og_on_change(void *gallery, void (*changed)(void *context), void *context) { AppGalleryHost *g = gallery; if (g) { g->changed = changed; g->context = context; } }

@@ -58,3 +58,23 @@ Remaining before this becomes the default desktop application: existing preferen
 production signing/passkey ceremonies, real VoiceOver and closing the GUI during a running turn. Linux
 still needs its shared-core service adapter and AT-SPI bridge. Do not delete
 the existing desktop clients on the strength of this qualification target.
+
+## Compiled Linux qualification
+
+`linux-build.coax` builds the actual shared page/core on the same atlas carrier
+and Vulkan shader source. It uses the common Coax native SDK linker; the
+older generic gallery is not its entry. The executable is explicitly
+`OpenAgentsGPUCheck`, not a replacement desktop launcher.
+
+```sh
+OA_REMOTE=1 coax/remote/remote.sh run -- nix-shell -p gcc pkg-config at-spi2-core \
+  vulkan-headers vulkan-loader wayland wayland-scanner wayland-protocols libxkbcommon \
+  --run 'coax/web/tool.sh apps/openagents-desktop/native/gpu/linux-build.coax'
+```
+
+`--sanitized` builds `OpenAgentsGPUCheckASan`. Both rendered the real page on
+Lavapipe and passed semantic Settings/login activation, a committed field
+value, actual animation settling and blur; PNGs match exactly. See the
+[evidence and picture](../../../../docs/verification/gpu-native-13645/README.md).
+Wayland IME, keyboard traversal and actual account/device SDK services are
+still required before normal launch replaces the GTK client.

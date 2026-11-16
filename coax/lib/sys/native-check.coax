@@ -3,6 +3,31 @@
 #load "tool.coax";
 #load "fs.coax";
 #load "proc.coax";
+#test "SDK flag words copy into argv and refuse quoted or overflowing output atomically" {
+ a:[1]Args;#assert args_add(a[..],"cc") && nc_flags(a[..]," -I/sdk\t-latk\r\n-pthread ") && a[0].n==4 && a[0].v[1]=="-I/sdk" && a[0].v[2]=="-latk" && a[0].v[3]=="-pthread";
+ #assert nc_flags(a[..],"head") && a[0].v[4]=="head";
+ before:=a[0].n;used:=a[0].used;#assert !nc_flags(a[..],"-O1 '-I/path with space'") && a[0].n==before && a[0].used==used;
+ #assert !nc_flags(a[..],"-O1 \"-I/path\"") && a[0].n==before && a[0].used==used;
+ #assert !nc_flags(a[..],"-O1 -I/path\\name") && a[0].n==before && a[0].used==used;
+ while a[0].n<ARGS_MAX {#assert args_add(a[..],"x");}#assert !nc_flags(a[..],"-O2") && a[0].n==ARGS_MAX && !a[0].full;
+}
+// pkg-config output in the native SDKs uses plain whitespace-separated words.
+// No shell is involved; refuse quoting rather than silently changing an argv.
+nc_flags :: (args:[]Args,text:string)->bool {
+ old_n:=args[0].n;old_used:=args[0].used;old_full:=args[0].full;from:=0;ok:=true;
+ for c,i:text {
+  if c=='\'' || c=='"' || c=='\\' {ok=false;break;}
+  if c==' ' || c=='\n' || c=='\t' || c=='\r' {
+   if i>from && !args_add(args,cast(string)text[from..<i]) {
+    ok=false; // mutant: equivalent (without this assignment the final retry is a superset of the refused token, with unchanged capacity, so args_add must refuse again)
+    break;
+   }
+   from=i+1;
+  }
+ }
+ if ok && from<text.count {ok=args_add(args,cast(string)text[from..<text.count]);}
+ if !ok {args[0].n=old_n;args[0].used=old_used;args[0].full=old_full;}return ok;
+}
 nc_run :: (args:[]string,seconds:int,out:[]u8)->int {
   err:[65536]u8;r:=proc_run(args,seconds*1000,out,err[..]);
   if r.started!=0 || r.status!=0 || r.timed_out || r.cut {print("native check failed: executable %, started %, status %, timed out %, cut %, output % bytes\n",args[0],r.started,r.status,r.timed_out,r.cut,r.out_n);tool_errln(cast(string)err[0..<r.err_n]);tool_errln(cast(string)out[0..<r.out_n]);return -1;}

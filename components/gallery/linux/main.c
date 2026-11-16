@@ -156,7 +156,9 @@ static void gallery_free(App *a) {
 }
 #ifdef COMPONENTS_EMBEDDED
 #include "../apple/embedded.h"
+#ifdef __APPLE__
 #include "../../../apps/shared/host/apple/ui-host-apple.h"
+#endif
 #ifndef COMPONENTS_NO_GALLERY
 void *cg_open(const char *resources) {
   App *a=calloc(1,sizeof *a);if (!a) return NULL;

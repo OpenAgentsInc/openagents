@@ -1,0 +1,9 @@
+// An SDK-only controlled account: no credential store, network, pairing or agent.
+#run_steps 250000000;
+#load "../../../../openagents-ios/app.coax";
+oa_linux_fixture :: (c:[]AppCore) #export_c #effects(all) {
+ #assert app_host_launch(c,1,1,"")>0;
+ for i:0..<16 {op:=app_host_next(c);if op==0 {return;}fields:[6]int;#assert app_host_request(c,op,fields[..]);#assert fields[0]==FX_AUTH_STATE || fields[0]==FX_DEVICE_LIST;
+  #assert app_host_taken(c,1,1,op,true)>0;#assert app_host_done(c,1,1,op,fields[1],FXO_DONE,200,false,"","",0)>0;
+ }#assert false;
+}

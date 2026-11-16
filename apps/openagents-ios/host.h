@@ -20,6 +20,8 @@ enum { OA_VIEW_EMAIL=0,OA_VIEW_REJOIN=1,OA_VIEW_ENVIRONMENT=2 };
 void *oc_view(void *chat);
 // One frame. Call it while oc_moving says 1, and once after anything changes.
 void oc_frame(void *chat);
+int oc_shot_frame(void *chat,int width,int height,float dt);
+int oc_shot_write(void *chat,const char *path);
 int oc_moving(void *chat);
 // Called when something changed without the native side's doing (a touch on the surface).
 void oc_on_change(void *chat, void (*changed)(void *context), void *context);

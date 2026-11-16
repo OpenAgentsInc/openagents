@@ -89,14 +89,26 @@ void *oc_open_window(const char *resources,int width,int height,int hidden) {
   if (!c) return NULL;
   App *a = &c->app;
   snprintf(a->resources, sizeof a->resources, "%s", resources);
-  char shader[PATH_MAX + 32]; snprintf(shader, sizeof shader, "%s/components.metal", resources);
+  char shader[PATH_MAX + 32]; snprintf(shader, sizeof shader,
+#ifdef __APPLE__
+  "%s/components.metal",
+#else
+  "%s/components.spv",
+#endif
+  resources);
   c->s = calloc(1, sizeof *c->s);
   if (!c->s) { free(c); return NULL; }
   a->atlas = c->s->atlas.e; a->max_vertices = (uint32_t)chat_max_vertices();
   UiApp app = {.title = "OpenAgents", .app_id="com.openagents.desktop", .width = width, .height = height, .hidden=hidden, .min_width=360,.min_height=480,.external_clock=1,.changed=oc_window_changed,.max_vertices = a->max_vertices, .shader = shader, .user = c,
-               .frame = oc_on_frame, .pointer = oc_on_pointer, .drive = oc_on_drive,.wheel=oc_wheel,
+               .frame = oc_on_frame, .pointer = oc_on_pointer, .drive = oc_on_drive,.wheel=oc_wheel,.busy=oc_moving,
                .access_capacity=(uint32_t)chat_access_capacity(),.elements=oc_access_count,.element=oc_access_read,.activate=oc_access_press};
-  a->host = ui_open(&app, 0);
+  a->host = ui_open(&app,
+#ifdef __APPLE__
+  0
+#else
+  hidden!=0
+#endif
+  );
   if (!a->host) { free(c->s); free(c); return NULL; }
   a->dpr = ui_dpr(a->host); if (a->dpr < 1) a->dpr = 1;
   a->dpr *= chat_scale();
@@ -105,7 +117,11 @@ void *oc_open_window(const char *resources,int width,int height,int hidden) {
   return c;
 }
 void *oc_open(const char *resources) {return oc_open_window(resources,402,874,0);}
+#ifdef __APPLE__
 void *oc_window(void *chat) {return chat ? ui_window(((Chat *)chat)->app.host):NULL;}
+#else
+void *oc_window(void *chat) {(void)chat;return NULL;}
+#endif
 int oc_drive(void *chat,const char *op,char *out,int cap) {
 #ifdef OPENAGENTS_PHONE_DRIVE
  (void)chat;(void)op;(void)out;(void)cap;return -1;
@@ -113,9 +129,16 @@ int oc_drive(void *chat,const char *op,char *out,int cap) {
  return chat ? ui_drive(((Chat *)chat)->app.host,op,out,cap):-1;
 #endif
 }
+#ifdef __APPLE__
 void oc_access_editor(void *chat,const char *id,void *view) {if(chat)ui_access_editor(((Chat *)chat)->app.host,id,view);}
 void *oc_view(void *chat) { return chat ? ui_view(((Chat *)chat)->app.host) : NULL; }
+#else
+void oc_access_editor(void *chat,const char *id,void *view) {(void)chat;(void)id;(void)view;}
+void *oc_view(void *chat) {(void)chat;return NULL;}
+#endif
 void oc_frame(void *chat) { if (chat) ui_frame(((Chat *)chat)->app.host); }
+int oc_shot_frame(void *chat,int width,int height,float dt) {return chat && width>0 && height>0 && ui_shot_frame(((Chat *)chat)->app.host,(uint32_t)width,(uint32_t)height,dt);}
+int oc_shot_write(void *chat,const char *path) {return chat && path && ui_shot_write(((Chat *)chat)->app.host,path);}
 int oc_moving(void *chat) { Chat *c = chat; return c && (c->settle > 0 || chat_moving(oc_state(c))); }
 void oc_on_change(void *chat, void (*changed)(void *context), void *context) { Chat *c = chat; if (c) { c->changed = changed; c->context = context; } }
 void oc_env(void *chat, float safe_top, float safe_bottom, float keyboard, int focused, float editor_height, int reduced) {
@@ -175,7 +198,13 @@ float oc_text_zoom(void *chat, float zoom) {
   return now;
 }
 int oc_refused(void *chat) { Chat *c = chat; return c ? (int)chat_refused(oc_state(c)) : 0; }
-unsigned long long oc_presented(void *chat) { return chat ? ui_presented(((Chat *)chat)->app.host) : 0; }
+unsigned long long oc_presented(void *chat) {
+#ifdef __APPLE__
+ return chat ? ui_presented(((Chat *)chat)->app.host) : 0;
+#else
+ (void)chat;return 0;
+#endif
+}
 void oc_close(void *chat) {
   Chat *c = chat;
   if (!c) return;

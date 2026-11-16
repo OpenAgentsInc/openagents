@@ -720,8 +720,14 @@ retirement pass ordinary and ASan/UBSan/LSan checks on a Linux build host.
 Its AT-SPI registration now passes a separate actual D-Bus client's discovery,
 redacted-field and activation queries. The Vulkan host's integration compiles
 against its generated Wayland and actual Vulkan/ATK SDKs. Active text/focus,
-the compiled OpenAgents Linux consumer and an Orca ceremony remain separate
+the production OpenAgents Linux client and an Orca ceremony remain separate
 gates; G6 is still open.
+
+The actual shared page/core now also has a hidden Linux Vulkan qualification
+target. Ordinary and ASan/UBSan/LSan builds render Settings/login and pass
+committed-row activation, text synchronization, bounded animation settling
+and blur. Their PNGs match exactly on Lavapipe; this is not an IME or physical
+GPU performance claim. See the [record and picture](../docs/verification/gpu-native-13645/README.md).
 
 The desktop SDK now has `AppMacDevice`: asynchronous discovery and bounded
 process carriage through the installed `openagents-environment key` and

@@ -12,8 +12,7 @@ tool_main :: ()->int #export_c #effects(all) {
  n:=nc_run(flags[0].v[0..<flags[0].n],30,out[..]);if n<0 {return 1;}
  cc:[1]Args;for flag:[8]string.["cc","-std=gnu11","-O1","-Wall","-Wextra","-Werror",ifx bus then "apps/shared/host/linux/tests/access-bus.c" else "apps/shared/host/linux/tests/access.c","apps/shared/host/linux/access.c"] {#assert args_add(cc[..],flag);}
  if bus {#assert args_add(cc[..],"apps/shared/host/linux/access-bus.c");}
- from:=0;for c,i:cast(string)out[0..<n] {if c==' ' || c=='\n' || c=='\t' {if i>from {#assert args_add(cc[..],cast(string)out[from..<i]);}from=i+1;}}
- if from<n {#assert args_add(cc[..],cast(string)out[from..<n]);}#assert args_add(cc[..],"-o") && args_add(cc[..],binary);
+ #assert nc_flags(cc[..],cast(string)out[0..<n]) && args_add(cc[..],"-o") && args_add(cc[..],binary);
  if host {
   query:=[3]string.["pkg-config","--variable=pkgdatadir","wayland-protocols"];n=nc_run(query[..],10,out[..]);if n<1 {return 1;}
   while n>0 && (out[n-1]=='\n' || out[n-1]=='\r') {n-=1;}

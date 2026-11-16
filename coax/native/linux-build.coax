@@ -1,0 +1,44 @@
+// The common C/Wayland/Vulkan SDK linker for compiled Coax Native surfaces.
+#load "../lib/sys/native-check.coax";
+CnlBuild :: struct {source:string;carrier:string;entry:string;parent:string;folder:string;sanitized:bool;}
+cnl_add :: (a:[]Args,s:string) {#assert args_add(a,s);}
+cnl_compile :: (source:string,cfile:string,header:string,out:[]u8)->bool {
+ // File output preserves generated crypto-table lines that exceed a process
+ // observer's line limit. The compiler owns writing its C/header pair.
+ gen:=[8]string.["coax/bin/coax","c",source,"--library","--header",header,"-o",cfile];return nc_run(gen[..],120,out)>=0 && fs_exists(cfile);
+}
+cnl_build :: (b:CnlBuild)->int {
+ out:[1048576]u8;cdirb:[1200]u8;wdirb:[1200]u8;rdirb:[1200]u8;
+ cdir:=fs_join(b.folder,"c",cdirb[..]);wdir:=fs_join(b.folder,"wl",wdirb[..]);rdir:=fs_join(b.folder,"Components",rdirb[..]);
+ for path:[5]string.[b.parent,b.folder,cdir,wdir,rdir] {if !fs_mkdir(path) {return 2;}}
+ cfiles:[3][1200]u8;headers:[3][1200]u8;
+ sources:=[3]string.[b.source,"metaverse-engine/host/wayland-input.coax","metaverse-engine/host/wayland-text.coax"];
+ cnames:=[3]string.["gallery.c","wayland-input.c","wayland-text.c"];hnames:=[3]string.["gallery.h","wayland-input.h","wayland-text.h"];
+ for i:0..<3 {if !cnl_compile(sources[i],fs_join(cdir,cnames[i],cfiles[i][..]),fs_join(cdir,hnames[i],headers[i][..]),out[..]) {return 1;}}
+ shaderb:[1200]u8;module_path:=fs_join(rdir,"components.spv",shaderb[..]);
+ gen:=[9]string.["coax/bin/coax","spirv","components/backend/gpu-shader.coax","--vertex","chat_fx_vs","--fragment","chat_fx_fs","-o",module_path];if nc_run(gen[..],90,out[..])<0 {return 1;}
+ query:=[3]string.["pkg-config","--variable=pkgdatadir","wayland-protocols"];n:=nc_run(query[..],20,out[..]);if n<1 {return 1;}while n>0 && (out[n-1]=='\n' || out[n-1]=='\r') {n-=1;}
+ directory:[4096]u8;if n>directory.count {return 2;}for i:0..<n {directory[i]=out[i];}
+ specs:=[3]string.["stable/xdg-shell/xdg-shell.xml","unstable/xdg-decoration/xdg-decoration-unstable-v1.xml","unstable/text-input/text-input-unstable-v3.xml"];
+ names:=[3]string.["xdg-shell","xdg-decoration-unstable-v1","text-input-unstable-v3"];protocols:[3][1200]u8;
+ for i:0..<3 {
+  input:[8192]u8;source:=fs_join(cast(string)directory[0..<n],specs[i],input[..]);
+  for mode:0..<2 {leaf:[256]u8;at:=0;for c:names[i] {leaf[at]=c;at+=1;}for c:(ifx mode==0 then "-client-protocol.h" else "-protocol.c") {leaf[at]=c;at+=1;}
+   output:[1200]u8;path:=fs_join(wdir,cast(string)leaf[0..<at],output[..]);scan:=[4]string.["wayland-scanner",ifx mode==0 then "client-header" else "private-code",source,path];if nc_run(scan[..],20,out[..])<0 {return 1;}
+   if mode==1 {for c,j:path {protocols[i][j]=c;}}
+  }
+ }
+ cc:[1]Args;for arg:[15]string.["cc","-std=gnu11","-O1","-w","-ffp-contract=off","-fno-fast-math","-DENGINE_WAYLAND_INPUT_V1","-DENGINE_WAYLAND_TEXT_V1","-DUI_ATSPI","-Iapps/shared/host/linux","-Imetaverse/gpu","-Imetaverse/kms","-Icoax/platform",b.carrier,b.entry] {cnl_add(cc[..],arg);}
+ cnl_add(cc[..],"-I");cnl_add(cc[..],cdir);cnl_add(cc[..],"-I");cnl_add(cc[..],wdir);
+ for i:0..<3 {cnl_add(cc[..],fs_join(cdir,cnames[i],cfiles[i][..]));}
+ for path:[6]string.["apps/shared/host/linux/ui-host.c","apps/shared/host/linux/access.c","apps/shared/host/linux/access-bus.c","metaverse/gpu/vkc.c","metaverse/gpu/vks.c","metaverse/gpu/vkp.c"] {cnl_add(cc[..],path);}
+ pnames:=[3]string.["xdg-shell-protocol.c","xdg-decoration-unstable-v1-protocol.c","text-input-unstable-v3-protocol.c"];
+ for i:0..<3 {cnl_add(cc[..],fs_join(wdir,pnames[i],protocols[i][..]));}
+ flags:=[8]string.["pkg-config","--cflags","--libs","wayland-client","wayland-cursor","xkbcommon","atk","atk-bridge-2.0"];
+ n=nc_run(flags[..],20,out[..]);if n<0 || !nc_flags(cc[..],cast(string)out[0..<n]) {return 1;}
+ binb:[1200]u8;binary:=fs_join(b.folder,ifx b.sanitized then "OpenAgentsGPUCheckASan" else "OpenAgentsGPUCheck",binb[..]);for arg:[5]string.["-lvulkan","-lpthread","-lm","-o",binary] {cnl_add(cc[..],arg);}
+ if b.sanitized {cnl_add(cc[..],"-fsanitize=address,undefined");cnl_add(cc[..],"-fno-omit-frame-pointer");}
+ if nc_run(cc[0].v[0..<cc[0].n],240,out[..])<0 {return 1;}
+ for path:[3]string.["components/zeron/fonts","components/zeron/icons","components/zeron/NOTICE"] {copy:=[4]string.["cp","-R",path,rdir];if nc_run(copy[..],20,out[..])<0 {return 1;}}
+ print("built %\n",binary);return 0;
+}
