@@ -258,3 +258,25 @@ not production desktop adoption. G3 composition, the world library, Project
 file attachments, desktop default migration and physical-phone acceptance
 remain open under #13645. The owner asked to stop after this Usage release;
 resume only on further instruction.
+
+The UIKit fixture is logged out and has no computer or account credentials:
+
+![GPU Usage on the regular Settings page](usage-1402.png)
+
+### TestFlight 1402 delivery
+
+The accepted build was generated, archived and uploaded from the separate fixed
+release checkout at `ed3736938b`, after the Usage change landed on main. The
+archive confirms `com.openagents.app`, version 1.0.0, build **1402**. Archive,
+export and the no-JavaScript/no-WebKit/no-old-projection package audit pass.
+App Store Connect accepted delivery `81c55de6-c318-4332-8bb6-9ab037ff5031` on
+2026-11-16. The arm64 dSYM UUID is
+`6FAE2113-83DF-3D78-BBB6-724CC32DB0D4`; the symbols keeper uploaded it.
+Artifacts are `/tmp/oa-gpu-usage-1402-frozen/` and the release log is
+`/tmp/oa-gpu-usage-1402-frozen-release.log`.
+
+An earlier mutable-checkout preparation overlapped a rebase and generated a
+1401 archive. Apple rejected that discarded attempt as a duplicate; it was
+not accepted or distributed. Do not use `/tmp/oa-gpu-usage-1402/`. The separate
+fixed-checkout delivery above is the 1402 release. Rebase and release generation
+must not run concurrently in one checkout.
