@@ -1,1 +1,0 @@
-The navigation drawer now opens as a full panel with labeled places, recent chats, search and a fixed account and new chat footer. Navigation rows have icons and the app keeps its OpenAgents colors.

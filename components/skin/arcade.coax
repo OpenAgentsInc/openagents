@@ -19,8 +19,15 @@ arcade_skin :: ()->UiSkin {
 // Arcade on a phone: the production grayscale with touch-sized controls, as
 // mono-native's reference button and field are (44 points tall, 18 and 12 of
 // padding). The first consumer is the native login (apps/shared/login/, #13645).
+// What dims a screen behind a card laid over it: the ground, mostly opaque (mono-native's drawer shade).
+arcade_scrim :: ()->Rgba {return arcade_color((MONO_GROUND&0xffffff00)|0x99);}
+// Points per layout unit on a phone: the kit's 14-unit text is read at 16.8 points. A screen
+// lays out in units, draws at the screen's scale times this, and gives its host points.
+ARCADE_PHONE_SCALE :: 1.2;
 arcade_phone_skin :: ()->UiSkin {
  s:=arcade_skin();s.name="Arcade phone";
+ // the touch composer (kit/composer.coax): a 30-point action, a 34-point chip, 10 points from the edge
+ s.cmp.line=23/ARCADE_PHONE_SCALE;s.cmp.text_inset=6/ARCADE_PHONE_SCALE;s.cmp.send=25;s.cmp.stop=10;s.cmp.stop_radius=2.5;s.cmp.chip_h=28;s.cmp.chip_pad=10;s.cmp.chip_radius=14;s.cmp.action_inset=8;s.cmp.chip_icon=13;s.cmp.chip_gap=5;
  s.label=s.body;s.control_h=44;s.control_pad=18;s.radius_control=22;s.pad=20;s.space=12;
  s.chrome.field_h=44;s.chrome.field_pad=18;s.chrome.field_radius=22;s.chrome.field_focus=1;
  s.field_edge=arcade_color(MONO_LINE);s.raised=arcade_color(MONO_RAISED);

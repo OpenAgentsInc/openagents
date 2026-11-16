@@ -24,21 +24,25 @@ antialiased segments. General image/blur/composition and the full Arcade
 catalog are still requirements below, not features of this checkpoint.
 The gallery is compiled into the new native runtime and is not an OTA renderer.
 
-## Implementation checkpoint: the GPU login screen (stage G1)
+## Implementation checkpoint: the iOS chat page (stage G1)
 
-The iOS login screen is the first screen with no platform controls. The
-shared display-list kit draws it over a live scene in one Metal pass, as
-compiled Coax in the installed runtime. It does not use the JavaScript
-runtime or Updates. [gpu-components.md](gpu-components.md#g1-as-built) has
-the parts, the session handoff and what is not checked.
+The iOS app is one compiled Coax page on one Metal view: a title over the
+composer, drawn by the shared display-list kit. Send does nothing yet. It uses
+no JavaScript runtime, no Updates and no platform controls except the
+editor over the focused field.
+[gpu-components.md](gpu-components.md#the-ios-app-grown-screen-by-screen)
+has the parts, how the page and its host talk, and what is left out.
 
 What this checkpoint adds to the list above:
 
 - A scene under components: `apps/shared/host/apple/ui-scene.m` draws a
   full-screen pass and a vertex pass, both emitted from Coax as Metal,
   through the host's layer. The login's scene is the openagents.com splash.
-- Platform text entry over a GPU field: one `UITextField` over the focused
-  row's committed box, with nothing painted under it.
+- Platform text entry over a GPU field: one `UITextField` (the login) or
+  one multiline `UITextView` (the composer) over the focused row's committed
+  box, with nothing painted under it. The composer takes its text height
+  from the editor while it has the keyboard.
+- A whole app page on the kit, with no JavaScript runtime under it.
 - An accessibility bridge from the committed semantic rows, with the Metal
   view hidden.
 - A static screen that submits no frames: the display link pauses when

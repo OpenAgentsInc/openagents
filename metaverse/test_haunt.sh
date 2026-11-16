@@ -10,7 +10,7 @@ coax/bin/coax mutate metaverse/haunt-buffer.coax
 coax/bin/coax c metaverse/haunt.coax --library --header "$work/Haunt.h" > "$work/Haunt.c"
 coax/bin/coax c metaverse/haunt-buffer.coax --library --header "$work/HauntBuffer.h" > "$work/HauntBuffer.c"
 "${CC:-cc}" -std=c11 -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer -Wno-unused-value -I "$work" "$work/Haunt.c" "$work/HauntBuffer.c" metaverse/haunt_smoke.c -lm -o "$work/test"
-"$work/test" apps/openagents-ios/OpenAgents/Resources
+"$work/test" metaverse/stage-resources
 if [[ -n "${PROTOC:-}" && -n "${PROTO_PYTHON:-}" ]]; then
   "$PROTO_PYTHON" metaverse/haunt_oracle.py "$work/test"
 fi

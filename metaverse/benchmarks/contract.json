@@ -7,7 +7,7 @@
     "anim/anim.h": "9941024631e14ee74bb5cb89e0143d28134effa75b24e1652374df7d5ce9fad0",
     "vec3.h": "f4970f19ec9ef86fb3e0d788c07f582a9b652da78918ddb29e151493689f9250"
   },
-  "asset": "apps/openagents-ios/OpenAgents/Resources/Cast.bin",
+  "asset": "metaverse/stage-resources/Cast.bin",
   "asset_sha256": "2e7d976b00d0a8dd5d65c45fef83af0b57f7533f666d7e587b035cfea1abb596",
   "frames_per_repeat": 540,
   "repeats": 9,

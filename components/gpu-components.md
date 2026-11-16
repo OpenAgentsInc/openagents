@@ -3,8 +3,9 @@
 Written 2026-11-15. Status: specification, with stage G0 built (the frame
 context, the keyed state store, the semantic table and the surface commit;
 see [Stages](#stages)) and stage G1 built and checked in the iOS Simulator
-(the login screen; see [G1 as built](#g1-as-built)). G1's physical-phone
-exit checks are not done. Tracked in
+(the chat composer as its own surface, and the login form as a card over
+the chat; see [G1 as built](#the-ios-app-grown-screen-by-screen)). G1's physical-phone exit checks
+are not done. Tracked in
 [#13645](https://github.com/OpenAgentsInc/openagents/issues/13645).
 
 This document decides how native Coax Native apps draw their components. It
@@ -375,141 +376,64 @@ does not start the next one's removals.
 | Stage | Work | Exit condition |
 | --- | --- | --- |
 | G0 (built 2026-11-15) | The frame context (`kit/frame.coax`), keyed state store (`core/keyed.coax`), semantic table (`core/elements.coax`) and surface commit (`paint/surface.coax`), with adapters for existing callers | Existing gallery and chat pictures unchanged; checks for identity, retirement and refusal |
-| G1 | The iOS login screen, in the installed compiled runtime that already hosts the component gallery: email-code login drawn by the kit over a live GPU scene (see [The first screen](#the-first-screen-login)). Includes the text-field overlay and the VoiceOver bridge | The screen has no UIKit controls except the focused field's editor; login works with the keyboard, an input method, one-time-code AutoFill and VoiceOver on a physical phone; the scene holds the frame-rate objective while typing |
-| G2 | Settings, with the scroll driver | The screen has no UIKit controls; large text lays out; scrolling feels native |
+| G1 (in progress; composer built 2026-11-15) | The iOS app as one compiled page: the chat page (composer first, then chat logic, transcript and the login card) on the kit, with the text-editor overlay and the VoiceOver bridge. No JavaScript, no Updates, no UIKit control projection (see [The iOS app](#the-ios-app-grown-screen-by-screen)) | The app links no JavaScriptCore or WebKit and holds no `.js`, `.wasm` or `.html`; typing, sending, stopping, scrolling and login work against the account fixture; a still page presents no frames |
+| G2 | The next screens of the iOS app, one at a time, each on the kit: the sidebar with chat history, then Settings, with the scroll driver | Each screen has no UIKit controls; large text lays out; scrolling feels native on a physical phone |
 | G3 | Backend gaps the chat needs: images, nested clips, transforms, group opacity, blur | Each has a gallery specimen and a generated-shader check on Metal and WebGPU |
-| G4 | The rest of iOS, screen by screen: chat and composer, history, Projects, Usage, world library and editor chrome | Each screen passes its acceptance case on a physical phone, and the transcript workloads under [Measurements](#measurements) are recorded |
-| G5 | Delete the UIKit control projection on iOS | No iOS screen builds controls from the tree |
+| G4 | The rest of iOS, screen by screen: Projects, Usage, environment and repository choice, the world library | Each screen passes its acceptance case on a physical phone, and the transcript workloads under [Measurements](#measurements) are recorded |
 | G6 | Desktop on Mac and Linux: move the native environment client's screens from AppKit and GTK controls onto the kit, on the shared AppKit/Metal and Wayland/Vulkan hosts the recovery shell already uses; then delete those projections | Login, history and chat run on both desktops through the kit, with real text entry, keyboard focus and a screen reader |
 | G7 | Android on the existing Vulkan host | Real input method, TalkBack and device evidence before any parity claim |
 
-iOS is first because it is the product in focus, and login is the first
-screen (owner, 2026-11-15). The shared pieces built for it in G0 to G3 are
-what desktop and Android reuse.
+iOS is first because it is the product in focus. The shared pieces built
+for it are what desktop and Android reuse.
 
-### The first screen: login
+### The iOS app, grown screen by screen
 
-Login is the first thing a person sees, so it is where the GPU kit should
-show what a native-control screen cannot: the email login over a live scene,
-like the home splash, in one Metal surface.
+The iOS app (`apps/openagents-ios`) is one compiled Coax page on one Metal
+view. It compiles nothing to JavaScript or WebAssembly and has no Updates
+path (owner, 2026-11-15). The earlier app (a JavaScript runtime that
+projected a tree into UIKit controls, with worlds, the wallet and Updates)
+is deleted from the iOS app; git history is the archive. The update service
+is removed. The app keeps its bundle ID, so it updates the installed app in
+place.
 
-- **Flow:** unchanged. Email, then the code, through the existing
-  `auth.emailStart` and `auth.emailVerify` services. The page says "Log in".
-- **Scene:** a full-screen animated scene behind the form, drawn in the
-  same surface as the components. It reuses existing scene and shader code
-  (the home splash, the Metaverse Engine or the ARWES backgrounds in
-  `core/arwes/`) and adds no app-private renderer. The implementation
-  change names which one.
-- **Form:** the kit's title, field, button, notice and busy state, in the
-  production skin, composited over the scene with the scene dimmed or
-  blurred behind the form so text stays readable.
-- **Text entry:** the focused field uses the platform editor overlay. The
-  code field supports one-time-code AutoFill.
-- **Motion:** the form enters with the kit's motion. With reduced motion,
-  the scene is a still frame and the form appears at once.
-- **Limits:** the scene never delays the first interactive frame or typing.
-  If the scene cannot load or the GPU budget refuses it, the form shows on
-  the plain canvas colour and login still works.
-- **Lifecycle:** the scene stops presenting in the background and releases
-  its resources after login.
+Status, 2026-11-15: the page is a title over the GPU composer. The composer
+takes text through the platform editor, grows with it and stays above the
+keyboard. Send does nothing yet. The page makes no chat request and has no
+transcript, no login, no chips and no navigation button.
 
-Screens that have not moved keep their current presentation. A screen is
-either on the kit or on the old projection, never half of each.
+The app grows one screen at a time. A part is added only when it runs on
+the compiled path with real data.
 
-### G1 as built
+| Part | Owner |
+| --- | --- |
+| Page state, layout, paint and semantic rows | `apps/openagents-ios/chat.coax` |
+| Composer | `components/kit/composer.coax` (`ctx_composer`) |
+| GPU carrier | `apps/openagents-ios/host.c` on `components/gallery/linux/main.c` (built with `COMPONENTS_NO_GALLERY`) and `apps/shared/host/apple/ui-host.m` |
+| Atlas tables for a host without the gallery page | `components/raster/host-tables.coax` |
+| Platform editor | `apps/shared/native/KitEditor.swift` |
+| Lifecycle, keyboard, VoiceOver | `apps/openagents-ios/App.swift` |
 
-The login screen runs in the installed compiled runtime. Checked in the iOS
-Simulator only; see [what is not checked](#what-g1-has-not-checked).
+Each frame the host gives the window's facts (`chat_env`) and takes the
+vertices (`chat_frame`). While the composer holds the keyboard, one
+`UITextView` sits over its text and Coax paints nothing under it. VoiceOver
+gets one element per committed semantic row. The display link sleeps while
+nothing moves.
 
-| Part | Where | What it does |
-| --- | --- | --- |
-| Screen | `apps/shared/login/screen.coax` | State, layout, paint and rows for email, then the code. No effects. One `UiSurface` and one `KeyedStore`; a frame the surface refuses is counted and the last one is drawn |
-| Form set | `kit/form.coax`, `skin/arcade.coax` (`arcade_phone_skin`) | Field, full-width action with busy state, quiet action, notice, heading; 44-point controls in the production grayscale |
-| Scene | `apps/shared/login/scene.coax`, `scene-shader.coax` | The openagents.com splash: its nebula, agent graph with payments, and stroke font writing OPENAGENTS. The shader wraps the splash's two passes in grayscale and dims the scene behind the form |
-| Scene layer | `apps/shared/host/apple/ui-scene.m` | Draws the two emitted Metal passes under the components through `ui_layer`. Shaders compile off the main thread |
-| Carrier | `apps/shared/login/host.c`, `scene-host.c` | Frames, touches and values across the C boundary. `host.c` shares the gallery carrier's atlas code |
-| Native side | `apps/shared/native/NativeLogin.swift` | Display link, the platform editor, VoiceOver elements, and the calls to `AppAuth` |
+Next, in order: the chat logic on `apps/shared/durable-chat.coax` with the
+host doing HTTP, the transcript on `components/kit/markdown.coax`, and the
+login card (`apps/shared/login/`, which runs as a card on this carrier).
 
-**Scene choice.** The home splash runs as is. `coax metal` emits
-`splash_bg_fs` and `splash_fx_fs` unchanged, so the scene adds no shader
-math of its own beyond the grayscale and the dimming. The graph is drawn in
-the upper part of an upright screen and the form sits below it. The form is
-dimmed, not blurred: the backend has no blur yet (stage G3).
+`apps/openagents-ios/check.sh` fails if the built app links JavaScriptCore
+or WebKit, holds a `.js`, `.wasm` or `.html` file, or has a symbol of the
+removed projection.
 
-**Text entry.** `NativeLogin` keeps one `UITextField`. When a field's row
-is focused, it places the editor over the row's committed box and makes it
-first responder. While focused, the screen paints the field's frame only;
-the editor draws the text, the placeholder and the caret in the kit's face
-and the skin's colours (`login_editor`). Each edit sends the whole value to
-`login_set_text`, which stores it with `eb_set`. The code field uses
-`.oneTimeCode` and the number pad.
+The Coax application the earlier iOS app ran (`home/`, `extras/`) is still
+the desktop client's program. It lives in `apps/openagents-desktop/home`
+and `apps/openagents-desktop/extras`, and `coax/native/generate.sh` now
+generates only what the desktop build uses.
 
-**Semantics.** Each part records one row: `login.form` (region),
-`login.title`, `login.sent`, `login.email`, `login.code`, `login.send`,
-`login.verify`, `login.resend`, `login.change`, `login.key` and
-`login.note` (live). A press is routed through `surface_hit` and the row's
-action; `login_activate` and `login_drive` (`tree`, `tap ID`,
-`type ID TEXT`, `counts`) use the same rows. The host builds one
-`UIAccessibilityElement` per row and hides the Metal view. A field that
-does not hold the keyboard is represented by a text field that is never in
-the view hierarchy; the focused one is the editor itself.
-
-**Sleeping.** The display link pauses when `lg_moving` is false: no scene
-motion, no keyed motion, no busy mark. With reduced motion the scene
-computes one frame and the screen presents none while nothing changes. With
-the scene animating, frames run at the display link's rate.
-
-**Fallback.** `ui_scene_open` returns nothing when a shader file is
-missing, and a shader that does not compile leaves the scene not ready. In
-both cases the screen paints the canvas colour and login works. The form
-does not wait for the scene.
-
-#### Sharing the session with the JavaScript runtime
-
-The two runtimes share one thing: the session. `AppAuth` owns it.
-
-1. `NativeHost` loads the existing programs as before. While `AppAuth` has
-   no session, it covers them with `NativeLogin` and hides their view.
-2. The login screen asks its host to start the email or verify the code.
-   `NativeLogin` calls `AppAuth.emailStart` and `AppAuth.emailVerify`.
-   `AppAuth` stores the tokens. The pending handle stays in Swift. No token
-   or handle enters either Coax runtime.
-3. `AppAuth` posts `didChangeSession`. `NativeHost` loads the programs
-   again; they ask `auth.state`, read `loggedIn`, and open the account.
-   The login screen fades out and frees its surface, atlas and scene.
-4. A logout in the existing runtime posts the same notification, and the
-   cover returns.
-
-The key login has not moved. "Use a Nostr key" hides the cover and presses
-the existing runtime's `login.key`; when that page closes without a login,
-the cover returns.
-
-#### What G1 has not checked
-
-- A physical phone: VoiceOver, one-time-code AutoFill from Messages or
-  Mail, an input method, and the frame-rate objective while typing.
-- Measurements. No frame time, input latency or idle wakeup number is
-  recorded.
-- Large text. The screen draws at a fixed scale (`LG_SCALE`); it does not
-  follow Dynamic Type yet.
-
-### The JavaScript and Updates path
-
-The owner decided on 2026-11-15 to drop Coax Native Updates and the
-JavaScriptCore executor, and has not yet said to start. Until then:
-
-- The shipped UIKit and JavaScriptCore runtime keeps working and keeps
-  receiving fixes. Screens that have not moved still run on it.
-- A migrated screen runs as compiled Coax in the installed runtime, the way
-  the component gallery does today. It ships in a store build, not an
-  update.
-- No work under this spec adds a dependency on it.
-- Its removal is a separate change with its own owner approval. Stage G5
-  removes the iOS control projection; it does not remove Updates.
-
-When that removal starts, the sections of `rendering.md` and
-`coax/native.md` that describe what Updates can deliver stop applying to
-native components.
+Not checked: a physical phone, VoiceOver by hand, an input method,
+dictation, large text sizes and iPad layouts.
 
 ## Bounds
 

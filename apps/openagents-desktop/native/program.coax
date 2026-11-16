@@ -1,6 +1,6 @@
 // The same Coax Native application as iPhone, executed as C on Linux.
 // Only this projection knows the component tree's identifiers and semantics.
-#load "../../openagents-ios/home/app.coax";
+#load "../home/app.coax";
 #load "../../../components/skin/mono-native.coax";
 nd_size :: ()->int #export_c #effects(all) {return size_of(Starter);}
 nd_frame :: (s:[]Starter)->int #export_c #effects(all) {_ = st_frame(s,0.016,true);return s[0].tree[0].n;}

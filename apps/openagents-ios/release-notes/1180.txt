@@ -1,1 +1,0 @@
-The Reference component gallery now includes selectable model rows, notification switch rows, project context and a usage meter, with refined slider and progress dimensions.

@@ -7,7 +7,7 @@ This is the native-control delivery profile of [Coax Native](../native.md).
 Builds 1068–1069 used the earlier WebKit profile.
 
 The reusable starter is `starter/app.coax`; OpenAgents builds its application
-surface from `apps/openagents-ios/home/app.coax`. Its canonical resources live here and in
+surface from `apps/openagents-desktop/home/app.coax`. Its canonical resources live here and in
 `components/` and `coax/web/`; generated copies are ignored. The iOS target
 uses the existing bundle `com.openagents.app`, signing team, icons,
 entitlements and 1.0.0 version line. Old world/wallet screens were excluded
@@ -115,9 +115,9 @@ both; remote hosts build C/Wasm, and the Mac uses its existing Binaryen SDK
 for the subsecond JavaScript emission. For example:
 
 ```sh
-coax/remote/remote.sh run -- coax/web/wasm.sh apps/openagents-ios/home/app.coax \
-  apps/openagents-ios/home/face.c apps/openagents-ios/Starter/build/app.wasm
-coax/remote/remote.sh run -- coax/web/wasm.sh apps/openagents-ios/extras/app.coax \
+coax/remote/remote.sh run -- coax/web/wasm.sh apps/openagents-desktop/home/app.coax \
+  apps/openagents-desktop/home/face.c apps/openagents-ios/Starter/build/app.wasm
+coax/remote/remote.sh run -- coax/web/wasm.sh apps/openagents-desktop/extras/app.coax \
   coax/native/starter/face.c apps/openagents-ios/Starter/build/extras.wasm
 coax/web/tool.sh coax/native/compile.coax apps/openagents-ios/Starter/build/app.wasm /tmp/app-mvp.wasm apps/openagents-ios/Starter/build/app.js
 coax/web/tool.sh coax/native/compile.coax apps/openagents-ios/Starter/build/extras.wasm /tmp/extras-mvp.wasm apps/openagents-ios/Starter/build/extras.js

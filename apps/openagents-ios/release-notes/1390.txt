@@ -1,1 +1,0 @@
-World viewers stay responsive while a previous graphics frame is still running.

@@ -6,8 +6,12 @@
 #ifndef LOGIN_HOST_H
 #define LOGIN_HOST_H
 // resources: the folder holding the component shader, fonts and icons (and the scene's shaders).
-// scene 0 opens the form on the plain canvas. NULL when the surface cannot open.
-void *lg_open(const char *resources, int scene);
+// scene 0 opens the form on the plain canvas. card 1 opens it as a card over the screen behind:
+// the view is clear, the screen dims what is behind it, and it can be closed. NULL when the
+// surface cannot open.
+void *lg_open(const char *resources, int scene, int card);
+// Whether the host has a key login to open: 0 leaves the form's key link out.
+void lg_keys(void *login, int offered);
 void *lg_view(void *login);
 // One frame. Call it while lg_moving says 1, and once after anything changes.
 void lg_frame(void *login);
@@ -18,7 +22,8 @@ void lg_on_change(void *login, void (*changed)(void *context), void *context);
 int lg_moving(void *login);
 // The window's facts: safe areas and the keyboard's overlap in points, and reduced motion.
 void lg_env(void *login, float safe_top, float safe_bottom, float keyboard, int reduced);
-// The action the screen asks for, once: 0 none, 1 start the email, 2 verify the code, 3 open the key login.
+// The action the screen asks for, once: 0 none, 1 start the email, 2 verify the code, 3 open the
+// key login, 4 close the card.
 int lg_action(void *login);
 // The answer: ok 1 when the email was sent or the code accepted; message the refusal's words ("" for the screen's own).
 void lg_reply(void *login, int action, int ok, const char *message);

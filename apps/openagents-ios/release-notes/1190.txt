@@ -1,1 +1,0 @@
-The Reference gallery adds screen and sheet headers, settings pickers, icon-led settings, project and session rows, and an action menu inspired by the captured mobile interface.

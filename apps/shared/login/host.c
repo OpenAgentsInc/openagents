@@ -49,7 +49,7 @@ static int lg_on_drive(void *user, const char *op, char *out, int cap) {
   return (int)login_drive(lg_state(l), lg_string(op), (coax_v_u8){(uint8_t *)out, cap});
 }
 
-void *lg_open(const char *resources, int scene) {
+void *lg_open(const char *resources, int scene, int card) {
   Login *l = calloc(1, sizeof *l);
   if (!l) return NULL;
   App *a = &l->app;
@@ -59,17 +59,19 @@ void *lg_open(const char *resources, int scene) {
   if (!l->s) { free(l); return NULL; }
   a->atlas = l->s->atlas.e; a->max_vertices = (uint32_t)login_max_vertices();
   UiApp app = {.title = "Log in", .width = 402, .height = 874, .max_vertices = a->max_vertices, .shader = shader, .user = l,
-               .frame = lg_on_frame, .pointer = lg_on_pointer, .drive = lg_on_drive};
+               .frame = lg_on_frame, .pointer = lg_on_pointer, .drive = lg_on_drive, .transparent = card != 0};
+  login_card(lg_state(l), card != 0);
   a->host = ui_open(&app, 0);
   if (!a->host) { free(l->s); free(l); return NULL; }
   // the atlas at the scale the screen draws its units at
   a->dpr = ui_dpr(a->host); if (a->dpr < 1) a->dpr = 1;
   a->dpr *= login_scale();
   if (!atlas_setup(a)) { gallery_free(a); free(l->s); free(l); return NULL; }
-  if (scene) l->scene = lgs_open(a->host, resources);
+  if (scene && !card) l->scene = lgs_open(a->host, resources);
   lg_changed(l);
   return l;
 }
+void lg_keys(void *login, int offered) { Login *l = login; if (l) { login_keys(lg_state(l), offered != 0); lg_changed(l); } }
 void *lg_view(void *login) { return login ? ui_view(((Login *)login)->app.host) : NULL; }
 void lg_frame(void *login) { if (login) ui_frame(((Login *)login)->app.host); }
 void lg_on_change(void *login, void (*changed)(void *context), void *context) { Login *l = login; if (l) { l->changed = changed; l->context = context; } }

@@ -1,0 +1,286 @@
+// The touch composer on the display list (components/gpu-components.md,
+// stage G1; GitHub #13645): the chat input bar a phone shows under a
+// transcript. A pill holding the message's text, and under the text a row
+// with the model's chip on the left and one round action on the right: Send,
+// or Stop while a reply runs. Its geometry is the shared native composer
+// layout (layout/native-composer.coax, in points); its paint is the skin's.
+//
+// It never edits text. The caller holds the draft. While the platform's
+// editor is over the text (text entry, in gpu-components.md) the composer
+// paints no text, placeholder or caret, and takes the text's height from the
+// editor, which lays out what it is editing. Otherwise the composer wraps and
+// paints the text itself with the one line wrapper (layout/text.coax), a
+// paragraph at a time.
+//
+// It is called through the frame context (kit/frame.coax). Under its id it
+// records the field's row, the action's row and the model's row, and keeps
+// its motion as keyed state: its height follows its text on a spring, its
+// edge lights while it holds the keyboard, and the action turns from Send to
+// Stop. With reduced motion each is at once.
+//   coax/bin/coax test components/kit/composer.coax
+
+#load "animated.coax";
+#load "frame.coax";
+#load "../layout/native-composer.coax";
+
+COMPOSER_WRAP_LINES :: 64;      // rows of text a draft is wrapped into (the box shows four)
+
+// What a composer shows this frame.
+ComposerLook :: struct {
+  placeholder: string;
+  text: string;                 // the draft
+  model: string;                // the model's chip ("" none)
+  editing: bool;                // the platform editor is over the text and draws it
+  editor_h: f32;                // the editor's own text height, layout units (used while editing; 0: wrap here)
+  stop: bool;                   // a reply runs: the action is Stop
+  enabled: bool;                // the action can be pressed
+  locked: bool;                 // the text can't be edited now (a turn is being sent)
+  unit: f32;                    // points per layout unit: the layout is in points
+}
+// Where its parts are, in layout units from its own top left, and how tall it wants to be.
+ComposerBox :: struct {
+  height: f32;                  // the whole composer
+  radius: f32;
+  text_x: f32; text_y: f32; text_w: f32; text_h: f32;   // the text's box (the platform editor goes here)
+  line: f32;                    // a line of text
+  inset: f32;                   // the text's first line from the box's top
+  row_y: f32;                   // the action row's top
+  send_x: f32; send: f32;       // the action's target
+  lines: int;                   // rows the text wraps to
+}
+
+composer_unit :: (look: ComposerLook) -> f32 { return ifx look.unit > 0 then look.unit else 1.0f32; }
+// One paragraph's rows at a width (at least one).
+composer_paragraph :: (m: TextMeasure, face: int, text: string, width: f32, out: [] TextLine) -> int {
+  none: [1] MdRun;
+  return text_wrap(m, TextFaces.{plain = face, bold = face, code = face}, text, none[0..<0], ifx width > 1 then width else 1.0f32, out);
+}
+// The draft's rows at a width: each paragraph wrapped by the one line
+// wrapper, a newline starting the next. Rows are byte ranges of text.
+// Returns the count (at least one; at most out.count).
+composer_rows :: (m: TextMeasure, face: int, text: string, width: f32, out: [] TextLine) -> int {
+  n := 0; start := 0;
+  while n < out.count {
+    stop := start;
+    while stop < text.count && text[stop] != '\n' { stop += 1; }
+    part: [COMPOSER_WRAP_LINES] TextLine;
+    k := composer_paragraph(m, face, cast(string) text[start..<stop], width, part[..]);
+    for i: 0..<k { if n >= out.count { break; } out[n] = TextLine.{from = start + part[i].from, to = start + part[i].to}; n += 1; }
+    if stop >= text.count { break; }
+    start = stop + 1;
+  }
+  return ifx n < 1 then 1 else n;
+}
+// The composer's parts for a width, in layout units: the shared native layout, read in points.
+composer_box :: (m: TextMeasure, s: UiSkin, w: f32, look: ComposerLook) -> ComposerBox {
+  u := composer_unit(look);
+  first := nc_layout(cast(f64) (w * u), cast(f64) (s.cmp.line * u), 1, false);
+  line := s.cmp.line;
+  text_w := cast(f32) first.editor_w / u;
+  rows: [COMPOSER_WRAP_LINES] TextLine;
+  lines := ifx look.text.count == 0 then 1 else composer_rows(m, s.body.face, look.text, text_w, rows[..]);
+  text_h := cast(f32) lines * line;
+  if look.editing && look.editor_h > 0 { text_h = look.editor_h; }
+  g := nc_layout(cast(f64) (w * u), cast(f64) (text_h * u), 1, look.text.count > 0);
+  return ComposerBox.{height = cast(f32) g.height / u, radius = cast(f32) g.radius / u,
+    text_x = cast(f32) g.editor_x / u, text_y = cast(f32) g.editor_y / u, text_w = text_w, text_h = cast(f32) g.editor_h / u,
+    line = line, inset = s.cmp.text_inset,
+    row_y = cast(f32) g.toolbar_y / u, send_x = cast(f32) g.send_x / u, send = cast(f32) g.send_size / u, lines = lines};
+}
+
+// The action's mark: an arrow that turns into Stop's square as `turn` goes 0 to 1.
+composer_mark :: (sh: [] Sheet, s: UiSkin, cx: f32, cy: f32, turn: f32, ink: Rgba) {
+  t := am_unit(turn); a := s.cmp.chip_icon / 2; stroke := s.animated.drawer_stroke;
+  if t < 1 {
+    c := opacity(ink, 1 - t);
+    sheet_under(sh, prim_line(sh[0].under, sh[0].nu, cx, cy + a, cx, cy - a, stroke, c));
+    rise := a / 2 / 2; wing := a - rise;
+    sheet_under(sh, prim_line(sh[0].under, sh[0].nu, cx - wing, cy - rise, cx, cy - a, stroke, c));
+    sheet_under(sh, prim_line(sh[0].under, sh[0].nu, cx + wing, cy - rise, cx, cy - a, stroke, c));
+  }
+  if t > 0 { side := s.cmp.stop * t; sheet_fill(sh, cx - side / 2, cy - side / 2, side, side, s.cmp.stop_radius, opacity(ink, t)); }
+}
+
+// A composer at (x, y), w wide, on the frame context. Its rows are the
+// field (id, with the draft as its value), the action (send_id) and the
+// model (id + ".model"); `field_action` and `send_action` are what a press on
+// each dispatches. Its top edge moves as its height follows its text, and
+// its bottom edge stays at y + bottom, so a caller docks it by its bottom.
+// Returns its box at the height it is drawn at this frame.
+ctx_composer :: (f: [] UiFrame, id: string, send_id: string, x: f32, bottom: f32, w: f32, look: ComposerLook, field_action: int, send_action: int) -> ComposerBox {
+  s := f[0].skin; m := f[0].m; sh := f[0].sheet;
+  box := composer_box(m, s, w, look);
+  key := uiframe_key(f, id);
+  // its height follows its text on its spring; its edge lights with the keyboard; it turns to Stop
+  h := uiframe_spring(f, key, box.height);
+  if h < box.height - box.text_h { h = box.height - box.text_h; }
+  y := bottom - h;
+  grown := h - box.height;                     // what the spring still owes (negative while growing)
+  lit := keyed_press(f[0].keyed, key, uiframe_focused(f, id), s.motion.focus, AM_IN_OUT_QUAD);
+  send_key := uiframe_key(f, send_id);
+  turn := uiframe_spring(f, send_key, ifx look.stop then 1.0f32 else 0.0f32);
+  held := uiframe_press(f, send_key, send_id);
+  // the pill: the skin's field surface, its edge in the accent as it takes the keyboard
+  _ := sheet_box(sh, x, y, w, h, box.radius, s.border, s.surface, s.field_edge);
+  if lit > 0 { _ := sheet_box(sh, x, y, w, h, box.radius, s.border, s.clear, opacity(s.accent, lit * s.chrome.field_focus)); }
+  // the text: its row first, then its paint unless the platform editor has it
+  tx := x + box.text_x; ty := y + box.text_y; view_h := box.text_h + grown;
+  if view_h < box.line { view_h = box.line; }
+  field := uiframe_semantic(f, id, EL_FIELD, look.placeholder, x, y, w, box.row_y + grown, ifx look.locked then EL_S_DISABLED else 0, field_action);
+  elt_value(f[0].rows, field, look.text);
+  sheet_hit(sh, UIFRAME_HIT, field, 0, x, y, w, box.row_y + grown);
+  if !look.editing {
+    first := ty + box.inset;
+    if look.text.count == 0 { _ := sheet_text(sh, m, -1, tx, first, box.line, s.body.face, s.faint, look.placeholder); }
+    else {
+      rows: [COMPOSER_WRAP_LINES] TextLine;
+      n := composer_rows(m, s.body.face, look.text, box.text_w, rows[..]);
+      uiframe_clip(f, tx, ty, tx + box.text_w, ty + view_h);
+      for i: 0..<n {
+        ly := first + cast(f32) i * box.line;
+        if ly > ty + view_h { break; }
+        _ := sheet_text(sh, m, -1, tx, ly, box.line, s.body.face, ifx look.locked then s.muted else s.ink, cast(string) look.text[rows[i].from..<rows[i].to]);
+      }
+      uiframe_unclip(f);
+    }
+  }
+  // the action row
+  row := y + box.row_y + grown; mid := row + box.send / 2;
+  if look.model.count > 0 {
+    c := s.cmp; cw := ceil(measure_width(m, s.small.face, look.model)) + 2 * c.chip_pad;
+    most := box.send_x - 2 * c.action_inset; if cw > most { cw = most; }
+    if cw > 2 * c.chip_pad {
+      sheet_fill(sh, x + c.action_inset, mid - c.chip_h / 2, cw, c.chip_h, c.chip_radius, s.raised);
+      sheet_clip_right(sh, x + c.action_inset + cw - c.chip_pad);
+      _ := sheet_text(sh, m, -1, x + c.action_inset + c.chip_pad, mid - s.small.line / 2, s.small.line, s.small.face, s.muted, look.model);
+      sheet_unclip(sh);
+      model: [EL_ID] u8;
+      _ := uiframe_semantic(f, el_join(model[..], id, ".model"), EL_TEXT, look.model, x + c.action_inset, mid - c.chip_h / 2, cw, c.chip_h, 0, 0);
+    }
+  }
+  // the action: a filled circle when it can be pressed, a ring when it can't; it dips while held
+  circle := s.cmp.send * (1 - held * s.animated.frame_square_fraction);
+  ax := x + box.send_x + box.send / 2;
+  if look.enabled { sheet_fill(sh, ax - circle / 2, mid - circle / 2, circle, circle, circle / 2, s.accent); }
+  else { _ := sheet_box(sh, ax - circle / 2, mid - circle / 2, circle, circle, circle / 2, s.border, s.clear, s.hairline); }
+  composer_mark(sh, s, ax, mid, turn, ifx look.enabled then s.on_accent else s.faint);
+  action := uiframe_semantic(f, send_id, EL_BUTTON, ifx look.stop then "Stop generating" else "Send message", x + box.send_x, row, box.send, box.send,
+                             ifx look.enabled then 0 else EL_S_DISABLED, send_action);
+  sheet_hit(sh, UIFRAME_HIT, action, 0, x + box.send_x, row, box.send, box.send);
+  out := box; out.height = h;
+  return out;
+}
+
+// ---------------------------------------------------------------- checks
+
+ComposerStore :: struct { under_a: [96] Prim; over_a: [96] Prim; hits_a: [8] SheetHit; under_b: [96] Prim; over_b: [96] Prim; hits_b: [8] SheetHit; rows_a: [8] El; rows_b: [8] El; keys: [8] Keyed; }
+composer_test_surface :: (st: [] ComposerStore) -> UiSurface {
+  return surface_over(Sheet.{under = st[0].under_a[..], over = st[0].over_a[..], hits = st[0].hits_a[..]}, st[0].rows_a[..],
+                      Sheet.{under = st[0].under_b[..], over = st[0].over_b[..], hits = st[0].hits_b[..]}, st[0].rows_b[..]);
+}
+composer_test_skin :: () -> UiSkin {
+  s := UiSkin.{}; s.body.line = 23; s.small.line = 13; s.border = 1; s.chrome.field_focus = 1;
+  s.cmp.line = 23; s.cmp.text_inset = 6; s.cmp.send = 30; s.cmp.stop = 12; s.cmp.stop_radius = 3; s.cmp.chip_h = 34; s.cmp.chip_pad = 12; s.cmp.chip_radius = 17; s.cmp.action_inset = 10; s.cmp.chip_icon = 16;
+  return s;
+}
+composer_test_texts :: (sh: Sheet, text: string) -> int {
+  n := 0; for i: 0..<sh.no { if sh.over[i].kind == PRIM_TEXT && sh.over[i].text == text { n += 1; } }
+  return n;
+}
+
+#test "a draft wraps a paragraph at a time: a newline starts a row, long words wrap, an empty draft is one row" {
+  m := measure_cells(); rows: [COMPOSER_WRAP_LINES] TextLine;
+  #assert composer_rows(m, 0, "", 10, rows[..]) == 1;
+  t := "one two\nthree";
+  n := composer_rows(m, 0, t, 20, rows[..]);
+  #assert n == 2 && cast(string) t[rows[0].from..<rows[0].to] == "one two" && cast(string) t[rows[1].from..<rows[1].to] == "three";
+  n = composer_rows(m, 0, t, 5, rows[..]);
+  #assert n >= 3 && rows[n - 1].to == t.count && rows[1].from > 0 && rows[1].from < 7;
+  // a blank line is a row of its own, and a trailing newline starts an empty one
+  u := "a\n\nb\n"; n = composer_rows(m, 0, u, 20, rows[..]);
+  #assert n == 4 && rows[1].from == rows[1].to && rows[3].from == 5 && rows[3].to == 5;
+}
+
+#test "the box is the shared native layout: one line is 94 points, text grows it to the four-line cap, the editor's own height wins while editing" {
+  m := measure_cells(); s := composer_test_skin();
+  a := composer_box(m, s, 378, ComposerLook.{placeholder = "Message", unit = 1});
+  #assert a.height == 94 && a.text_x == 14 && a.text_w == 350 && a.row_y == 46 && a.send_x == 330 && a.send == 44 && a.lines == 1;
+  b := composer_box(m, s, 378, ComposerLook.{text = "one\ntwo", unit = 1});
+  #assert b.height == 116 && b.text_h == 58 && b.lines == 2;
+  c := composer_box(m, s, 378, ComposerLook.{text = "1\n2\n3\n4\n5\n6\n7\n8", unit = 1});
+  #assert c.height == 162 && c.text_h == 104 && c.lines == 8;
+  // the platform editor measured three lines for one this file wraps to two
+  d := composer_box(m, s, 378, ComposerLook.{text = "one\ntwo", editing = true, editor_h = 69, unit = 1});
+  #assert d.height == 139;
+  // layout units of 1.2 points: the same composer, smaller numbers
+  ks := s; ks.cmp.line = 23 / 1.2; ks.cmp.text_inset = 6 / 1.2;
+  e := composer_box(m, ks, 315, ComposerLook.{unit = 1.2});
+  #assert abs(e.height - 94 / 1.2) < 0.01 && abs(e.send - 44 / 1.2) < 0.01;
+}
+
+#test "a composer records its field, its action and its model as rows, paints its text unless the editor has it, and turns to Stop" {
+  st: [1] ComposerStore; sf := [1] UiSurface.[composer_test_surface(st[..])]; ks := [1] KeyedStore.[KeyedStore.{rows = st[0].keys[..]}];
+  m := measure_cells(); s := composer_test_skin(); f: [1] UiFrame;
+  look := ComposerLook.{placeholder = "Message", model = "Gemini 4 Hydrogen", unit = 1};
+  uiframe_begin(f[..], sf[..], ks[..], m, s, uiinput(0, 0, false, false, "", ""), 0, 0.016, true, false);
+  box := ctx_composer(f[..], "chat.composer", "chat.composer.send", 12, 800, 378, look, 1, 2);
+  #assert uiframe_end(f[..], sf[..]) && box.height == 94;
+  t := [1] ElTable.[surface_rows(sf[..])];
+  i := elt_find(t[..], "chat.composer"); j := elt_find(t[..], "chat.composer.send"); k := elt_find(t[..], "chat.composer.model");
+  #assert i >= 0 && j >= 0 && k >= 0 && t[0].rows[i].role == EL_FIELD && elt_label(t[..], i) == "Message" && elt_value_of(t[..], i) == "" && t[0].rows[i].action == 1;
+  #assert t[0].rows[j].role == EL_BUTTON && elt_label(t[..], j) == "Send message" && elt_has(t[..], j, EL_S_DISABLED) && t[0].rows[j].w == 44 && t[0].rows[j].h == 44 && t[0].rows[j].action == 2;
+  #assert elt_label(t[..], k) == "Gemini 4 Hydrogen" && t[0].rows[i].y == 800 - 94 && t[0].rows[j].y + t[0].rows[j].h <= 800;
+  // the rows are the hit regions: the text, then the action
+  #assert surface_id(sf[..], surface_hit(sf[..], 100, 720)) == "chat.composer" && surface_id(sf[..], surface_hit(sf[..], 12 + 330 + 20, 800 - 94 + 46 + 20)) == "chat.composer.send";
+  #assert composer_test_texts(surface_sheet(sf[..]), "Message") == 1;
+  // a draft: its text is painted, the action can be pressed, the field's row carries the value
+  look.text = "one\ntwo"; look.enabled = true;
+  uiframe_begin(f[..], sf[..], ks[..], m, s, uiinput(0, 0, false, false, "", ""), 0, 0.016, true, false);
+  box = ctx_composer(f[..], "chat.composer", "chat.composer.send", 12, 800, 378, look, 1, 2);
+  #assert uiframe_end(f[..], sf[..]) && box.height == 116;
+  t[0] = surface_rows(sf[..]);
+  #assert elt_value_of(t[..], elt_find(t[..], "chat.composer")) == "one two" && !elt_has(t[..], elt_find(t[..], "chat.composer.send"), EL_S_DISABLED);
+  #assert composer_test_texts(surface_sheet(sf[..]), "one") == 1 && composer_test_texts(surface_sheet(sf[..]), "two") == 1 && composer_test_texts(surface_sheet(sf[..]), "Message") == 0;
+  // the platform editor has the text: nothing of it is painted, the row says it is focused
+  look.editing = true;
+  uiframe_begin(f[..], sf[..], ks[..], m, s, uiinput(0, 0, false, false, "", "chat.composer"), 0, 0.016, true, false);
+  box = ctx_composer(f[..], "chat.composer", "chat.composer.send", 12, 800, 378, look, 1, 2);
+  #assert uiframe_end(f[..], sf[..]);
+  t[0] = surface_rows(sf[..]);
+  #assert composer_test_texts(surface_sheet(sf[..]), "one") == 0 && elt_has(t[..], elt_find(t[..], "chat.composer"), EL_S_FOCUSED);
+  // a reply runs: the action is Stop, and the text is locked
+  look.editing = false; look.stop = true; look.locked = true;
+  uiframe_begin(f[..], sf[..], ks[..], m, s, uiinput(0, 0, false, false, "", ""), 0, 0.016, true, false);
+  box = ctx_composer(f[..], "chat.composer", "chat.composer.send", 12, 800, 378, look, 1, 2);
+  #assert uiframe_end(f[..], sf[..]);
+  t[0] = surface_rows(sf[..]);
+  #assert elt_label(t[..], elt_find(t[..], "chat.composer.send")) == "Stop generating" && elt_has(t[..], elt_find(t[..], "chat.composer"), EL_S_DISABLED);
+}
+
+#test "its height follows its text on its spring with its bottom held, and reduced motion moves it at once" {
+  st: [1] ComposerStore; sf := [1] UiSurface.[composer_test_surface(st[..])]; ks := [1] KeyedStore.[KeyedStore.{rows = st[0].keys[..]}];
+  m := measure_cells(); s := composer_test_skin(); f: [1] UiFrame;
+  look := ComposerLook.{placeholder = "Message", unit = 1};
+  uiframe_begin(f[..], sf[..], ks[..], m, s, uiinput(0, 0, false, false, "", ""), 0, 0.016, false, false);
+  box := ctx_composer(f[..], "c", "c.send", 0, 400, 378, look, 1, 2);
+  #assert uiframe_end(f[..], sf[..]) && box.height == 94;     // it appears at its height
+  look.text = "1\n2\n3\n4";
+  uiframe_begin(f[..], sf[..], ks[..], m, s, uiinput(0, 0, false, false, "", ""), 0, 0.016, false, false);
+  box = ctx_composer(f[..], "c", "c.send", 0, 400, 378, look, 1, 2);
+  moving := uiframe_moving(f[..]);
+  #assert uiframe_end(f[..], sf[..]) && box.height > 94 && box.height < 162 && moving;
+  // the action row keeps its place from the bottom while the top edge moves
+  t := [1] ElTable.[surface_rows(sf[..])];
+  #assert abs(t[0].rows[elt_find(t[..], "c.send")].y - (400 - 48)) < 0.01 && t[0].rows[elt_find(t[..], "c")].y == 400 - box.height;
+  for q: 0..<200 {
+    uiframe_begin(f[..], sf[..], ks[..], m, s, uiinput(0, 0, false, false, "", ""), 0, 0.016, false, false);
+    box = ctx_composer(f[..], "c", "c.send", 0, 400, 378, look, 1, 2);
+    moving = uiframe_moving(f[..]);
+    #assert uiframe_end(f[..], sf[..]);
+  }
+  #assert box.height == 162 && !moving;
+  look.text = "";
+  uiframe_begin(f[..], sf[..], ks[..], m, s, uiinput(0, 0, false, false, "", ""), 0, 0.016, true, false);
+  box = ctx_composer(f[..], "c", "c.send", 0, 400, 378, look, 1, 2);
+  #assert uiframe_end(f[..], sf[..]) && box.height == 94;
+}

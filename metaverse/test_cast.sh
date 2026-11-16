@@ -7,4 +7,4 @@ coax/bin/coax c metaverse/cast.coax --library --header "$work/Cast.h" > "$work/C
 coax/bin/coax c metaverse-engine/move/player.coax --library --header "$work/Player.h" > "$work/Player.c"
 "${CC:-cc}" -std=c11 -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer \
   -I "$work" "$work/Cast.c" "$work/Player.c" metaverse/cast_smoke.c -lm -o "$work/test"
-"$work/test" apps/openagents-ios/OpenAgents/Resources/Cast.bin
+"$work/test" metaverse/stage-resources/Cast.bin

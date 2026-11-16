@@ -11,7 +11,7 @@ with tempfile.TemporaryDirectory(prefix='haunt-oracle-') as temporary:
  subprocess.run([protoc,'-I'+str(ROOT/'proto'),'--python_out='+temporary,'openagents/metareal/haunt/v1alpha1/haunt.proto'],check=True)
  sys.path.insert(0,temporary)
  from openagents.metareal.haunt.v1alpha1.haunt_pb2 import Resource,Save
- resources=ROOT/'apps/openagents-ios/OpenAgents/Resources'
+ resources=ROOT/'metaverse/stage-resources'
  r=Resource.FromString((resources/'Haunt.pb').read_bytes())
  source=json.loads((ROOT/'metaverse/haunt/house.json').read_text());capture=json.loads((ROOT/'metaverse/haunt/compiled.json').read_text())
  entities={e.id:e for e in r.entities}

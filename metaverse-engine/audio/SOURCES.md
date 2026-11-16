@@ -135,5 +135,5 @@ Licence: CC0 1.0 (made by OpenAgents for this repository).
 ## Earlier sounds
 
 - The haunted house's `haunt-*.mp3` sounds: CC0, listed in
-  `apps/openagents-ios/OpenAgents/Resources/Haunt-NOTICE.txt`.
+  `metaverse/stage-resources/Haunt-NOTICE.txt`.
 - The Metaverse Engine's `promo-epic` score ([`epic.coax`](epic.coax)): synthesized, CC0.

@@ -1,15 +1,14 @@
 #!/usr/bin/env bash
-# Firm reason: 5 (thin wrapper: generate the Coax Native starter on a build host).
+# Firm reason: 5 (thin wrapper: Coax to C and Coax to Metal on a build host, in one job; holds no logic).
+# component and scene shaders as Metal, with the kit's fonts and icons beside them. Nothing is
+# compiled to JavaScript or WebAssembly.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
-coax/remote/remote.sh run -- bash coax/native/generate.sh
-coax/remote/remote.sh run -- bash -ec 'coax/web/tool.sh coax/native/worlds/generate.coax; coax/bin/coax c coax/native/worlds/host.coax --library --header apps/openagents-ios/Generated/NativeWorld.h > apps/openagents-ios/Generated/NativeWorld.c; coax/bin/coax c apps/openagents-ios/world-binding.coax --library --header apps/openagents-ios/Generated/NativePlayerBind.h > apps/openagents-ios/Generated/NativePlayerBind.c; coax/bin/coax c metaverse-engine/host/native-audio.coax --library --header apps/openagents-ios/Generated/native-audio.h > apps/openagents-ios/Generated/native-audio.c; coax/bin/coax c metaverse-engine/host/core/core-face.coax --library --header apps/openagents-ios/Generated/engine-core-face.h > apps/openagents-ios/Generated/engine-core-face.c; coax/web/tool.sh metaverse/tools/assets/microduck-pack.coax --fetch apps/openagents-ios/build/world-assets/microduck.pack; coax/web/tool.sh coax/native/worlds/package.coax apps/openagents-ios/build/world-assets; coax/web/wasm.sh apps/openagents-ios/worlds/app.coax apps/openagents-ios/home/face.c apps/openagents-ios/Starter/build/worlds.wasm; coax/web/wasm.sh apps/openagents-web/editor-shell.coax apps/openagents-web/editor-shell-face.c apps/openagents-ios/Starter/build/editor.wasm'
-coax/web/tool.sh coax/native/compile.coax apps/openagents-ios/Starter/build/app.wasm apps/openagents-ios/Starter/build/app-mvp.wasm apps/openagents-ios/Starter/build/app.js
-coax/web/tool.sh coax/native/compile.coax apps/openagents-ios/Starter/build/extras.wasm apps/openagents-ios/Starter/build/extras-mvp.wasm apps/openagents-ios/Starter/build/extras.js
-coax/web/tool.sh coax/native/compile.coax apps/openagents-ios/Starter/build/editor.wasm apps/openagents-ios/Starter/build/editor-mvp.wasm apps/openagents-ios/Starter/build/editor.js
-coax/web/tool.sh coax/native/compile.coax apps/openagents-ios/Starter/build/worlds.wasm apps/openagents-ios/Starter/build/worlds-mvp.wasm apps/openagents-ios/Starter/build/worlds.js
-coax/web/tool.sh coax/native/worlds/prepare.coax
-coax/remote/remote.sh run --local -- coax/web/tool.sh coax/native/worlds/apple.coax "${WORLDS_SDK:-iphonesimulator}"
-cp apps/openagents-ios/Generated/runtime.txt apps/openagents-ios/Generated/runtime-base.txt
-coax/web/tool.sh coax/native/runtime.coax apps/openagents-ios/Generated/runtime.txt apps/openagents-ios/Generated/runtime-base.txt apps/shared/host/apple/Deep.swift apps/shared/host/apple/PhoneTurn.swift apps/shared/native/NativeWorldAssets.swift apps/shared/native/NativeWorldConversation.swift apps/shared/native/NativeWorldEditor.swift apps/shared/native/NativeWorldHost.swift apps/shared/native/NativeWorldLibrary.swift metaverse-engine/host/apple/PageHost.m metaverse-engine/host/apple/page-host.h metaverse-engine/host/apple/PageHost.metal metaverse-engine/host/apple/page-host.exports metaverse-engine/host/apple/page-producer.exports apps/openagents-ios/NativeWorldUnit.c apps/openagents-ios/NativeAudioUnit.c apps/openagents-ios/Generated/native-audio.c apps/metaverse-engine-desktop/Sources/MetalAudio.swift metaverse-engine/host/apple/PageAudio.swift metaverse-engine/host/apple/audio-host.c apps/openagents-ios/Generated/NativeWorld.c apps/openagents-ios/Generated/NativePlayerBind.c apps/openagents-ios/Generated/engine-core-face.c apps/openagents-ios/Generated/Worlds/splice-bots/identity.txt apps/openagents-ios/Generated/Worlds/everglade/identity.txt apps/openagents-ios/Generated/Worlds/everglade2/identity.txt apps/openagents-ios/Generated/Worlds/myrealm/identity.txt apps/openagents-ios/Generated/Worlds/microduck/identity.txt
-coax/web/tool.sh coax/native/prepare.coax
+coax/remote/remote.sh run -- bash -ec '
+g=apps/openagents-ios/Generated; mkdir -p $g/Components
+coax/bin/coax c apps/openagents-ios/app.coax --library --header $g/gallery.h > $g/gallery.c
+coax/bin/coax metal components/backend/gpu-shader.coax --vertex chat_fx_vs --fragment chat_fx_fs -o $g/Components/components.metal
+rm -rf $g/Components/fonts $g/Components/icons
+cp -R components/zeron/fonts components/zeron/icons $g/Components/
+cp components/zeron/NOTICE $g/Components/NOTICE
+'

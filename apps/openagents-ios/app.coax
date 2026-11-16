@@ -1,0 +1,7 @@
+// The compiled Coax linked into the OpenAgents iOS app, one generated library
+// (components/gpu-components.md; GitHub #13645): the chat page, with the atlas
+// builder and its tables for the shared carrier
+// (components/gallery/linux/main.c, built without the gallery's page).
+// generate.sh compiles this file to Generated/gallery.c.
+#load "../../components/raster/host-tables.coax";
+#load "chat.coax";

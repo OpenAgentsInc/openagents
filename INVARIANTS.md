@@ -4521,7 +4521,7 @@ There is no claim of a full engine migration or general protobuf compiler.
 ## The iOS wallet seed is read, never written; sends go through Coax
 
 The Coax Native replacement (build 1069) exposes only `wallet.balance`, in
-the OpenAgents-only `apps/openagents-ios/extras/` side module. The same
+the OpenAgents-only `apps/openagents-desktop/extras/` side module. The same
 `WalletKeychain.readSeed`, BIP-39 word list, default mainnet account and
 `Application Support/spark-mainnet` directory are reused. `SparkHost.swift`
 still owns every SDK import; `SparkConnection` shares the connection setup

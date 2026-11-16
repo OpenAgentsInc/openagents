@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Firm reason: 5 (thin Coax generation, signing SDK and upload wrapper).
-# Archive this rebuilt OpenAgents app, export and upload. Processing/group
-# assignment is separate; do not spin or create new testers here.
+# Archive the OpenAgents app (com.openagents.app), export and upload it to App Store Connect.
+# Processing and TestFlight group assignment are separate (tools/app_store.py status).
+# The version and build number are MARKETING_VERSION and CURRENT_PROJECT_VERSION in project.yml.
 # Usage: apps/openagents-ios/release.sh /absolute/output/directory
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -13,8 +14,7 @@ if [[ -z "${ASC_API_KEY_ID:-}" ]]; then
 fi
 : "${ASC_API_KEY_ID:?}" "${ASC_API_ISSUER_ID:?}" "${ASC_API_PRIVATE_KEY_PATH:?}"
 mkdir -p "$out"
-WORLDS_SDK=iphoneos ./generate.sh
-node ../../coax/native/tests/runtime-oracle.cjs Starter
+./generate.sh
 xcodegen generate
 cert="${OPENAGENTS_CERT_ID:-GCN7Q59Y27}"
 sha1="$(python3 tools/app_store.py cert-sha1 "$cert")"
@@ -24,13 +24,12 @@ uuid="$(security cms -D -i "$out/OpenAgents.mobileprovision" | plutil -extract U
 for profile_dir in "$HOME/Library/MobileDevice/Provisioning Profiles" "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"; do
   mkdir -p "$profile_dir"; cp "$out/OpenAgents.mobileprovision" "$profile_dir/$uuid.mobileprovision"
 done
-cp Native.plist "$out/Native.plist"
-cp Generated/runtime.txt "$out/runtime.txt"
 ../../coax/remote/remote.sh run --local -- xcodebuild -project OpenAgents.xcodeproj -scheme OpenAgents -configuration Release \
   -destination generic/platform=iOS -derivedDataPath "$out/dd" -archivePath "$out/OpenAgents.xcarchive" \
   DEVELOPMENT_TEAM=HQWSG26L43 CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="$sha1" \
   OA_APP_PROVISIONING_PROFILE="OpenAgents App Store" archive
-../../coax/web/tool.sh ../../coax/native/worlds/link-check.coax "$out/OpenAgents.xcarchive/Products/Applications/OpenAgents.app"
+# The archived app holds no JavaScript path.
+./check.sh "$out/OpenAgents.xcarchive/Products/Applications/OpenAgents.app"
 python3 - "$out/ExportOptions.plist" "$sha1" <<'PY'
 import plistlib,sys
 with open(sys.argv[1],'wb') as file:

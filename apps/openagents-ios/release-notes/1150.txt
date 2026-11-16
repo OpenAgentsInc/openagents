@@ -1,1 +1,0 @@
-The Reference section in Settings → Components now catalogs each observed small UI element, including icons, selection marks, fields, progress, sheets and page indicators.

@@ -1,3 +1,0 @@
-Uploaded 2026-11-15 21:54 UTC (delivery 22dde31b-e3e4-4dda-82ce-d90a7745395a): Home → Microduck → menu → Illustrative servo. Compare Baseline, Delayed and Limited; change target/delay/effort; pause/reset and try negative-inertia refusal. These are authored illustrative coefficients, not measured motors or walking physics.
-
-Next-build source addition (4450f44715 landed after this upload): The Reference component gallery now includes a text-size slider, selectable network rows, a project card and context buttons. Open Settings, then Components and choose Reference. Preserve this work in the next build; do not reuse 1097, which Apple has already accepted.

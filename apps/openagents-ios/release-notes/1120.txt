@@ -1,1 +1,0 @@
-Navigation buttons use Liquid Glass on iOS 26 and later. The Components gallery's Reference section has more visual studies of text, icons, fields and other small elements.

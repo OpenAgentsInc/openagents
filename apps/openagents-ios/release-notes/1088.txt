@@ -1,1 +1,0 @@
-Arcade-style Account settings and sliding icon drawer. Native profile editing, relays, privacy, security notifications, keys/passkeys, protected identity backups, device sessions and changelog. White/grayscale shared components. Existing email login, chats, projects, worlds and Bitcoin wallet records are preserved.

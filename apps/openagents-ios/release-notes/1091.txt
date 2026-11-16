@@ -1,3 +1,0 @@
-Private Projects: create a Project with instructions and text or Markdown knowledge, then start, continue and reopen saved Project chats. Projects created from the CLI use the same account and appear in the app.
-
-Account chat routing now uses live reports from your computers, including available memory and disk, load, GPU, and signed-in coding agents. The app shows the chosen computer, agent, model and effort. Delegation remains a preview: it does not start work on the computer yet.

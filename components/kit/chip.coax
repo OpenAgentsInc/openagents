@@ -1,0 +1,59 @@
+// A chip on the display list: a small pill holding an icon and a value, that
+// opens a choice (components/gpu-components.md, stage G1; GitHub #13645). The
+// first consumers are the two chips over the chat composer: where the next
+// message runs, and its repository. Its sizes are the skin's chip measures
+// (skin.cmp: chip_h, chip_pad, chip_radius, chip_icon, chip_gap); its paint
+// is the skin's roles.
+//
+// It is called through the frame context (kit/frame.coax). Its row says what
+// it chooses (the label) and what is chosen now (the value), so a screen
+// reader reads both; a disabled chip keeps its row and its value and takes no
+// press.
+//   coax/bin/coax test components/kit/chip.coax
+
+#load "controls.coax";
+#load "frame.coax";
+
+// A chip's width for its value: the icon (when it has one), the gap, the value and the padding.
+chip_width :: (m: TextMeasure, s: UiSkin, icon: int, value: string) -> f32 {
+  c := s.cmp;
+  return ceil(measure_width(m, s.small.face, value)) + 2 * c.chip_pad + (ifx icon >= 0 then c.chip_icon + c.chip_gap else 0.0f32);
+}
+// A chip at (x, y): `icon` is the target's icon slot (-1: none), `label` what it chooses and `value`
+// what is chosen. It is lit while held. Returns its width.
+ctx_chip :: (f: [] UiFrame, id: string, x: f32, y: f32, icon: int, label: string, value: string, state: int, action: int) -> f32 {
+  s := f[0].skin; m := f[0].m; sh := f[0].sheet; c := s.cmp;
+  w := chip_width(m, s, icon, value); off := (state & EL_S_DISABLED) != 0;
+  row := uiframe_semantic(f, id, EL_BUTTON, label, x, y, w, c.chip_h, state, action);
+  elt_value(f[0].rows, row, value);
+  held := !off && uiframe_pressed(f, id);
+  _ := sheet_box(sh, x, y, w, c.chip_h, c.chip_radius, s.border, ifx held then s.hover else s.raised, s.hairline);
+  ink := ifx off then s.faint else ifx held then s.ink else s.muted;
+  tx := x + c.chip_pad;
+  if icon >= 0 { sheet_icon(sh, icon, tx, y + (c.chip_h - c.chip_icon) / 2, c.chip_icon, ink); tx += c.chip_icon + c.chip_gap; }
+  _ := sheet_text(sh, m, -1, tx, y + (c.chip_h - s.small.line) / 2, s.small.line, s.small.face, ink, value);
+  if !off { sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, w, c.chip_h); }
+  return w;
+}
+
+// ---------------------------------------------------------------- checks
+
+ChipStore :: struct { under_a: [16] Prim; over_a: [16] Prim; hits_a: [4] SheetHit; under_b: [16] Prim; over_b: [16] Prim; hits_b: [4] SheetHit; rows_a: [4] El; rows_b: [4] El; keys: [4] Keyed; }
+
+#test "a chip records what it chooses and what is chosen, paints its icon and value, and a disabled one takes no press" {
+  st: [1] ChipStore;
+  sf := [1] UiSurface.[surface_over(Sheet.{under = st[0].under_a[..], over = st[0].over_a[..], hits = st[0].hits_a[..]}, st[0].rows_a[..],
+                                    Sheet.{under = st[0].under_b[..], over = st[0].over_b[..], hits = st[0].hits_b[..]}, st[0].rows_b[..])];
+  ks := [1] KeyedStore.[KeyedStore.{rows = st[0].keys[..]}];
+  s := UiSkin.{}; s.cmp.chip_h = 28; s.cmp.chip_pad = 10; s.cmp.chip_radius = 14; s.cmp.chip_icon = 13; s.cmp.chip_gap = 6; s.small.line = 1; s.border = 1; m := measure_cells();
+  f: [1] UiFrame;
+  uiframe_begin(f[..], sf[..], ks[..], m, s, uiinput(0, 0, false, false, "", ""), 0, 0.016, true, false);
+  w := ctx_chip(f[..], "composer.environment", 0, 0, 0, "Environment", "Default", 0, 3);
+  v := ctx_chip(f[..], "composer.repo", w + 8, 0, 1, "Repository", "No repository", EL_S_DISABLED, 4);
+  #assert uiframe_end(f[..], sf[..]) && w == 7 + 20 + 19 && v == 13 + 20 + 19 && chip_width(m, s, -1, "Default") == 27;
+  t := [1] ElTable.[surface_rows(sf[..])];
+  #assert t[0].n == 2 && elt_id(t[..], 0) == "composer.environment" && t[0].rows[0].role == EL_BUTTON && elt_label(t[..], 0) == "Environment" && elt_value_of(t[..], 0) == "Default" && t[0].rows[0].action == 3 && t[0].rows[0].h == 28;
+  #assert elt_label(t[..], 1) == "Repository" && elt_value_of(t[..], 1) == "No repository" && elt_has(t[..], 1, EL_S_DISABLED);
+  sh := surface_sheet(sf[..]); icons := 0; for i: 0..<sh.nu { if sh.under[i].kind == PRIM_ICON { icons += 1; } }
+  #assert icons == 2 && sh.nh == 1 && surface_id(sf[..], surface_hit(sf[..], 5, 5)) == "composer.environment";
+}

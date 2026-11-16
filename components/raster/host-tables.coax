@@ -1,0 +1,31 @@
+// The atlas's tables for a native host that carries pages without the
+// component gallery (the OpenAgents iOS app; GitHub #13645): the fonts and
+// icons the shared atlas code (components/gallery/linux/main.c) reads and
+// rasterizes, and the vertex size. They are the component library's own
+// tables (skin/zeron.coax); the gallery's page exports the same values under
+// its own names for hosts that link it.
+//   coax/bin/coax test components/raster/host-tables.coax --library
+#load "atlas.coax";
+#load "../skin/zeron.coax";
+#load "../backend/gpu.coax";
+
+coaxial_atlas_font_count :: () -> int #export_c #effects(all) { return GP_FONTS; }
+coaxial_atlas_font_size :: (k: int) -> f32 #export_c #effects(all) { sizes := FONT_SIZES; return ifx k >= 0 && k < GP_FONTS then sizes[k] else 14.0f32; }
+coaxial_atlas_font_weight :: (k: int) -> int #export_c #effects(all) { weights := FONT_WEIGHTS; return ifx k >= 0 && k < GP_FONTS then weights[k] else 0; }
+coaxial_atlas_icon_count :: () -> int #export_c #effects(all) { return ICON_COUNT; }
+coaxial_atlas_icon_size :: (i: int) -> f32 #export_c #effects(all) { sizes := ICON_SIZES; return ifx i >= 0 && i < ICON_COUNT then sizes[i] else 16.0f32; }
+coaxial_atlas_icon_text :: (i: int, out: [] u8) -> int #export_c #effects(all) {
+  if i < 0 || i >= ICON_COUNT { return 0; }
+  names := ICON_NAMES; n := 0;
+  for c: names[i] { if n >= out.count { break; } out[n] = c; n += 1; }
+  return n;
+}
+coaxial_atlas_vertex_floats :: () -> int #export_c #effects(all) { return GP_VERTEX_FLOATS; }
+
+#test "the host's tables are the component library's: every font has a size and every icon a name" {
+  #assert coaxial_atlas_font_count() == GP_FONTS && coaxial_atlas_icon_count() == ICON_COUNT && coaxial_atlas_vertex_floats() == 28;
+  for k: 0..<GP_FONTS { #assert coaxial_atlas_font_size(k) > 0; }
+  name: [64] u8;
+  for i: 0..<ICON_COUNT { #assert coaxial_atlas_icon_text(i, name[..]) > 0 && coaxial_atlas_icon_size(i) > 0; }
+  #assert coaxial_atlas_icon_text(ICON_COUNT, name[..]) == 0 && coaxial_atlas_font_size(-1) == 14;
+}

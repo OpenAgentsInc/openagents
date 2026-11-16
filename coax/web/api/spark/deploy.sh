@@ -19,7 +19,7 @@ api_sa=157437760789-compute@developer.gserviceaccount.com
 export CLOUDSDK_CONFIG="${CLOUDSDK_CONFIG:-$HOME/work/.secrets/gcloud-sa-config}"
 if ! gcloud secrets describe "$secret" --project "$project" >/dev/null 2>&1; then
   gcloud secrets create "$secret" --project "$project" --replication-policy automatic --quiet >/dev/null
-  PYTHONDONTWRITEBYTECODE=1 python3 -I - "$repo/apps/openagents-ios/OpenAgents/Resources/bip39-english.txt" <<'PY' | gcloud secrets versions add "$secret" --project "$project" --data-file=- --quiet >/dev/null
+  PYTHONDONTWRITEBYTECODE=1 python3 -I - "$repo/metaverse/stage-resources/bip39-english.txt" <<'PY' | gcloud secrets versions add "$secret" --project "$project" --data-file=- --quiet >/dev/null
 import hashlib, secrets, sys
 data = open(sys.argv[1], "rb").read()
 assert hashlib.sha256(data).hexdigest() == "2f5eed53a4727b4bf8880d8f3f199efc90e58503646d9ff8eff3a2ed3b24dbda"

@@ -1,1 +1,0 @@
-Fixes the crash when opening worlds. Everglade now opens the current Everglade II forest and winding path instead of the deprecated town. World assets download separately and are cached for later visits.

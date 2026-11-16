@@ -22,10 +22,27 @@
 #include <mach-o/dyld.h>
 #endif
 
+// A host that carries its own pages and not the gallery's (COMPONENTS_NO_GALLERY: the OpenAgents
+// iOS app) builds the atlas from the same tables under their own names (components/raster/host-tables.coax).
+#ifdef COMPONENTS_NO_GALLERY
+#define coaxial_components_font_count coaxial_atlas_font_count
+#define coaxial_components_font_size coaxial_atlas_font_size
+#define coaxial_components_font_weight coaxial_atlas_font_weight
+#define coaxial_components_icon_count coaxial_atlas_icon_count
+#define coaxial_components_icon_size coaxial_atlas_icon_size
+#define coaxial_components_icon_text coaxial_atlas_icon_text
+#define coaxial_components_vertex_floats coaxial_atlas_vertex_floats
+typedef struct coax_t_GalleryState coax_t_GalleryState;
+#endif
+
 typedef struct {
   UiHost *host;
   coax_t_GalleryState *g;
   coax_t_Atlas *atlas;          // the atlas the frames draw with: the gallery's, or another page's on this carrier
+  // A page with icons of its own (the chat composer's chips): their folder under the resources,
+  // how many, each one's size and its file's name. All NULL: the component library's icons.
+  const char *icons_dir;
+  int (*icon_count)(void); float (*icon_size)(int i); int (*icon_name)(int i, char *out, int cap);
   char resources[PATH_MAX];
   coax_t_RaFonts fonts;
   uint8_t *font_bytes[4];
@@ -51,7 +68,9 @@ static uint8_t *slurp(const char *dir, const char *sub, const char *name, const 
   fclose(f); p[size] = 0; *n = (size_t)size;
   return p;
 }
+#ifndef COMPONENTS_NO_GALLERY
 static coax_v_t_GalleryState state_of(App *a) { return (coax_v_t_GalleryState){a->g, 1}; }
+#endif
 static coax_v_t_Atlas atlas_of(App *a) { return (coax_v_t_Atlas){a->atlas, 1}; }
 static coax_v_t_RaPlan plan_of(App *a) { return (coax_v_t_RaPlan){&a->plan, 1}; }
 static size_t mono_bytes(App *a) { return (size_t)coaxial_ra_width(plan_of(a)) * (size_t)coaxial_ra_height(plan_of(a)); }
@@ -69,14 +88,14 @@ static int atlas_setup(App *a) {
     a->font_bytes[w] = bytes;
     if (!bytes || !coaxial_ra_open((coax_v_t_RaFonts){&a->fonts, 1}, w, (coax_v_u8){bytes, (int64_t)n})) { fprintf(stderr, "Components: %s is not a TrueType font\n", files[w]); return 0; }
   }
-  a->nfonts = (int)coaxial_components_font_count(); a->nicons = (int)coaxial_components_icon_count();
+  a->nfonts = (int)coaxial_components_font_count(); a->nicons = a->icon_count ? a->icon_count() : (int)coaxial_components_icon_count();
   if (a->nfonts > 16 || a->nicons > 64) return 0;
   for (int k = 0; k < a->nfonts; k++) { a->sizes[k] = coaxial_components_font_size(k); a->weights[k] = coaxial_components_font_weight(k); }
   for (int i = 0; i < a->nicons; i++) {
-    char name[65]; int n = (int)coaxial_components_icon_text(i, (coax_v_u8){(uint8_t *)name, 64});
+    char name[65]; int n = a->icon_name ? a->icon_name(i, name, 64) : (int)coaxial_components_icon_text(i, (coax_v_u8){(uint8_t *)name, 64});
     name[n] = 0;
-    a->icon_sizes[i] = coaxial_components_icon_size(i);
-    a->svg[i] = (char *)slurp(a->resources, "icons", name, ".svg", &a->svg_n[i]);
+    a->icon_sizes[i] = a->icon_size ? a->icon_size(i) : coaxial_components_icon_size(i);
+    a->svg[i] = (char *)slurp(a->resources, a->icons_dir ? a->icons_dir : "icons", name, ".svg", &a->svg_n[i]);
   }
   a->work = calloc(1, sizeof *a->work);
   if (!a->work) return 0;
@@ -104,6 +123,7 @@ static int atlas_serve(App *a) {
   return 1;
 }
 
+#ifndef COMPONENTS_NO_GALLERY
 static int on_frame(void *user, float *vertices, float w, float h, float dpr, float dt) {
   App *a = user;
   float uniforms[4] = {0};
@@ -124,6 +144,7 @@ static void on_pointer(void *user, float x, float y, int phase, int clicks, int 
   );
 }
 static void on_wheel(void *user, float dy) { App *a = user; coaxial_components_wheel(state_of(a), dy); }
+#endif
 
 // Embedded apps use the exact same host and atlas, with independent owners.
 static void gallery_free(App *a) {
@@ -136,6 +157,7 @@ static void gallery_free(App *a) {
 #ifdef COMPONENTS_EMBEDDED
 #include "../apple/embedded.h"
 #include "../../../apps/shared/host/apple/ui-host-apple.h"
+#ifndef COMPONENTS_NO_GALLERY
 void *cg_open(const char *resources) {
   App *a=calloc(1,sizeof *a);if (!a) return NULL;
   snprintf(a->resources,sizeof a->resources,"%s",resources);
@@ -159,9 +181,18 @@ void cg_close(void *owner) {if (owner) {gallery_free(owner);free(owner);}}
 void cg_section(void *owner,int section) {if (owner && section>=0 && section<=5) {App *a=owner;coaxial_components_section(state_of(a),section);}}
 void cg_motion(void *owner,int action) {if (owner) {App *a=owner;coaxial_components_motion(state_of(a),action);}}
 void cg_scroll(void *owner,float dy) {if (owner) on_wheel(owner,dy);}
+#endif
 #ifdef COMPONENTS_LOGIN
 // The native login's surface shares this carrier and its atlas code (apps/shared/login/host.c, #13645).
 #include "../../../apps/shared/login/host.c"
+#endif
+#ifdef COMPONENTS_CHAT
+// The OpenAgents iOS chat page, on the same carrier (apps/openagents-ios/host.c, #13645).
+#include "../../../apps/openagents-ios/host.c"
+#endif
+#ifdef COMPONENTS_COMPOSER
+// The chat composer's surface, on the same carrier (apps/shared/composer/host.c, #13645).
+#include "../../../apps/shared/composer/host.c"
 #endif
 #else
 static const char *value(int argc, char **argv, const char *name) {

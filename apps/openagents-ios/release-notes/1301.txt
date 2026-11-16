@@ -1,1 +1,0 @@
-Microduck now saves, opens, shares and replays bounded servo experiments. Scrub a saved run or branch from its complete delay queue. The animation menu also includes an illustrative assembly, explosion, reassembly and walking sequence. No physical robot control or trained locomotion is included.

@@ -16,7 +16,7 @@ Modular Character Outfits, Universal Animation Library 1 and 2); the robot
 is OpenAgents' own Grid art.
 
     python3 -I metaverse/tools/pack_cast.py ../aethyr-cpp/assets \
-        apps/openagents-ios/OpenAgents/Resources
+        metaverse/stage-resources
 
 The table (MRC1): magic, version 1, buffer count, 0; then per buffer a
 16-byte semantic, byte offset, byte length, byte stride and element count

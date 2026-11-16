@@ -1,1 +1,0 @@
-The navigation drawer now uses rounded reference-style buttons, rows and search instead of HUD frames, while keeping the OpenAgents monochrome palette.

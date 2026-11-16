@@ -1,1 +1,0 @@
-The sidebar has a simpler Recents section, more space between icons and labels, and no duplicate close button or search field.

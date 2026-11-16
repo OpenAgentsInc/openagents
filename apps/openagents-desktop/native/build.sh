@@ -3,13 +3,13 @@
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
 coax/remote/remote.sh run -- bash coax/native/generate.sh
-coax/web/tool.sh coax/native/compile.coax apps/openagents-ios/Starter/build/app.wasm apps/openagents-ios/Starter/build/app-mvp.wasm apps/openagents-ios/Starter/build/app.js
+coax/web/tool.sh coax/native/compile.coax apps/openagents-desktop/build/Starter/build/app.wasm apps/openagents-desktop/build/Starter/build/app-mvp.wasm apps/openagents-desktop/build/Starter/build/app.js
 coax/remote/remote.sh run -- bash -ec 'mkdir -p apps/openagents-desktop/build/native-c; coax/bin/coax c apps/openagents-desktop/lab-sign.coax --library --run-steps 250000000 > apps/openagents-desktop/build/native-c/lab-sign.c'
 work="$PWD/apps/openagents-desktop/build"
 app="$work/Native/OpenAgents.app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 for unit in NativePolicy NativeText; do
-  coax/remote/remote.sh run --local -- /usr/bin/clang -O2 -w -c "apps/openagents-ios/Generated/$unit.c" -o "$work/native-c/$unit.o"
+  coax/remote/remote.sh run --local -- /usr/bin/clang -O2 -w -c "$work/native-gen/$unit.c" -o "$work/native-c/$unit.o"
 done
 coax/remote/remote.sh run --local -- /usr/bin/clang -O2 -w -c "$work/native-c/lab-sign.c" -o "$work/native-c/lab-sign.o"
 coax/remote/remote.sh run --local -- xcrun swiftc -O -swift-version 5 -suppress-warnings -parse-as-library -import-objc-header apps/openagents-desktop/native/NativeBridge.h \
@@ -22,7 +22,7 @@ coax/remote/remote.sh run --local -- xcrun swiftc -O -swift-version 5 -suppress-
 cp apps/openagents-desktop/Info.plist "$app/Contents/Info.plist"
 cp apps/openagents-desktop/native/OpenAgents.icns "$app/Contents/Resources/OpenAgents.icns"
 rm -rf "$app/Contents/Resources/Starter"
-cp -R apps/openagents-ios/Starter "$app/Contents/Resources/Starter"
+cp -R "$work/Starter" "$app/Contents/Resources/Starter"
 codesign --force --options runtime --entitlements apps/openagents-desktop/native/entitlements.plist \
   --sign "${OA_DESKTOP_SIGNING_IDENTITY:-Developer ID Application: OpenAgents, Inc. (HQWSG26L43)}" "$app"
 "$app/Contents/MacOS/OpenAgents" --inspect-program

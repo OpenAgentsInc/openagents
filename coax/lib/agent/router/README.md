@@ -7,7 +7,7 @@ So far: the types, the rules in code, the questions for the decision model,
 a stand-in for Google's Decisions API, two labelled sets scored against
 answers Google gave, and a command line to try decisions with. It starts no
 agent. The iPhone app's account chat calls it through the API
-(`coax/web/api/router.c`, `apps/openagents-ios/home/route.coax`) and shows
+(`coax/web/api/router.c`, `apps/openagents-desktop/home/route.coax`) and shows
 what would run.
 
 ## Try it

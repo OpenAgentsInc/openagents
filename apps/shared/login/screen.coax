@@ -39,23 +39,24 @@
 #load "../../../components/skin/arcade.coax";
 #load "../../../components/backend/gpu.coax";
 
-LG_SCALE :: 1.2;             // points per layout unit: the atlas is made at the screen's scale times this
+LG_SCALE :: ARCADE_PHONE_SCALE;   // points per layout unit: the atlas is made at the screen's scale times this
 LG_MAX_VERTICES :: 16384;
 // The surface's declared capacity, a generation: primitives, runs of text, hits, pooled bytes, semantic rows; and keyed ids.
 LG_UNDER :: 256; LG_OVER :: 128; LG_HITS :: 16; LG_POOL :: 512; LG_ROWS :: 16; LG_KEYED :: 16;
 LG_EMAIL_MAX :: 254; LG_CODE_MAX :: 32; LG_NOTE_MAX :: 240;
 LG_PANEL_MAX :: 340.0;       // the form's widest, units
 LG_MARGIN :: 14.0;           // the form from the screen's sides, units
-LG_REST :: 0.68;             // where the form's middle rests, a share of the screen's height
+LG_REST :: 0.68;             // where the form's middle rests over its scene, a share of the screen's height
+LG_REST_CARD :: 0.42;        // and as a card over another screen
 LG_RISE :: 14.0;             // units the form rises as it enters
 
 // Steps, fields, hits and actions.
 LG_STEP_EMAIL :: 0; LG_STEP_CODE :: 1;
 LG_FIELD_NONE :: 0; LG_FIELD_EMAIL :: 1; LG_FIELD_CODE :: 2;
 // What a row dispatches when pressed (its action in the semantic table).
-LG_HIT_EMAIL :: 1; LG_HIT_CODE :: 2; LG_HIT_SEND :: 3; LG_HIT_VERIFY :: 4; LG_HIT_RESEND :: 5; LG_HIT_CHANGE :: 6; LG_HIT_KEY :: 7;
+LG_HIT_EMAIL :: 1; LG_HIT_CODE :: 2; LG_HIT_SEND :: 3; LG_HIT_VERIFY :: 4; LG_HIT_RESEND :: 5; LG_HIT_CHANGE :: 6; LG_HIT_KEY :: 7; LG_HIT_CLOSE :: 8;
 // What the host is asked to do.
-LG_ACT_NONE :: 0; LG_ACT_START :: 1; LG_ACT_VERIFY :: 2; LG_ACT_KEY :: 3;
+LG_ACT_NONE :: 0; LG_ACT_START :: 1; LG_ACT_VERIFY :: 2; LG_ACT_KEY :: 3; LG_ACT_CLOSE :: 4;
 
 // One generation of the surface's arrays.
 LgGeneration :: struct { under: [LG_UNDER] Prim; over: [LG_OVER] Prim; hits: [LG_HITS] SheetHit; pool: [LG_POOL] u8; rows: [LG_ROWS] El; }
@@ -65,6 +66,8 @@ LoginScreen :: struct {
   atlas: [1] Atlas; sbytes: [64] u8;
   // the window's facts, in points
   safe_top: f32; safe_bottom: f32; keyboard: f32; reduced: bool; scene: bool;
+  no_key: bool;                         // the host has no key login: the form does not offer one
+  card: bool;                           // a card over another screen: the view is clear, a scrim dims what is behind, and it can be closed
   step: int; busy: int;                 // busy: the action in flight (LG_ACT_*), or 0
   done: bool;                           // the code was accepted: the host is opening the app
   email: [1] EditBuf; code: [1] EditBuf;
@@ -147,12 +150,14 @@ lg_layout :: (s: [] LoginScreen, f: [] UiFrame, w: f32, h: f32) -> f32 {
   // where it rests: its middle at LG_REST, clear of the keyboard and the safe areas
   top := s[0].safe_top / LG_SCALE + k.space; bottom := h - s[0].safe_bottom / LG_SCALE - k.space;
   if s[0].keyboard > 0 { bottom = h - s[0].keyboard / LG_SCALE - k.space; }
-  rest := h * LG_REST - ph / 2;
+  share: f32 = ifx s[0].card then LG_REST_CARD else LG_REST; rest := h * share - ph / 2;
   if rest + ph > bottom { rest = bottom - ph; }
   if rest < top { rest = top; }
   // the keyboard and a taller notice move it on its spring; entering, it rises into place
   py := uiframe_spring(f, key, rest) + (1 - p) * LG_RISE;
   form := uiframe_semantic(f, "login.form", EL_REGION, "Log in", px, py, pw, ph, 0, 0);
+  // over another screen the card is opaque: what is behind it must not show through its wash
+  if s[0].card { sheet_fill(f[0].sheet, px, py, pw, ph, 0, k.surface); }
   animated_frame(f[0].sheet, k, px, py, pw, ph, p, 1);
   uiframe_open(f, form);
   x := px + k.pad; y := py + k.pad;
@@ -177,7 +182,13 @@ lg_layout :: (s: [] LoginScreen, f: [] UiFrame, w: f32, h: f32) -> f32 {
     _ := ctx_link(f, "login.resend", x - k.space, y, "Resend code", "Resend email code", state, LG_HIT_RESEND);
     lw := form_link_width(m, k, "Change email");
     _ := ctx_link(f, "login.change", x + cw + k.space - lw, y, "Change email", "Change email", state, LG_HIT_CHANGE);
-  } else {
+  } else if s[0].card {
+    _ := ctx_link(f, "login.close", x - k.space, y, "Cancel", "Cancel", state, LG_HIT_CLOSE);
+    if !s[0].no_key {
+      lw := form_link_width(m, k, "Use a Nostr key");
+      _ := ctx_link(f, "login.key", x + cw + k.space - lw, y, "Use a Nostr key", "Nostr key", state, LG_HIT_KEY);
+    }
+  } else if !s[0].no_key {
     lw := form_link_width(m, k, "Use a Nostr key");
     _ := ctx_link(f, "login.key", x + (cw - lw) / 2, y, "Use a Nostr key", "Nostr key", state, LG_HIT_KEY);
   }
@@ -219,6 +230,7 @@ lg_press :: (s: [] LoginScreen, kind: int) -> bool {
     s[0].step = LG_STEP_EMAIL; eb_clear(s[0].code[..]); lg_note(s, "", false); s[0].focus = LG_FIELD_EMAIL; return true;
   }
   if kind == LG_HIT_KEY && s[0].step == LG_STEP_EMAIL { s[0].focus = LG_FIELD_NONE; s[0].action = LG_ACT_KEY; return true; }
+  if kind == LG_HIT_CLOSE && s[0].card { s[0].focus = LG_FIELD_NONE; s[0].action = LG_ACT_CLOSE; return true; }
   return false;
 }
 // Pressing a committed row dispatches its action.
@@ -242,6 +254,11 @@ lg_moving :: (s: [] LoginScreen) -> bool {
 // ---------------------------------------------------------------- the host's calls
 
 // The window's facts, in points. scene: a scene is drawn behind, so the screen leaves the canvas clear.
+// The screen as a card over another screen (the chat): the host's view is clear, the screen dims
+// what is behind it, and Cancel or a tap outside the card closes it (LG_ACT_CLOSE).
+login_card :: (s: [] LoginScreen, card: bool) #export_c #effects(all) { if s.count > 0 { s[0].card = card; } }
+// A host with no key login: the form leaves the key link out.
+login_keys :: (s: [] LoginScreen, offered: bool) #export_c #effects(all) { if s.count > 0 { s[0].no_key = !offered; } }
 login_env :: (s: [] LoginScreen, safe_top: f32, safe_bottom: f32, keyboard: f32, reduced: bool, scene: bool) #export_c #effects(all) {
   if s.count < 1 { return; }
   s[0].safe_top = ifx safe_top > 0 then safe_top else 0.0f32; s[0].safe_bottom = ifx safe_bottom > 0 then safe_bottom else 0.0f32;
@@ -261,8 +278,9 @@ login_frame :: (s: [] LoginScreen, out: [] f32, width: f32, height: f32, dpr: f3
   a[0].frame += 1;
   k := arcade_phone_skin();
   v := 0;
-  // with no scene behind, the plain canvas colour
-  if !s[0].scene { v = paint_quad(out, 0, d, 0, 0, w, h, 0, 0, k.canvas, k.canvas); }
+  // a card: the scrim over the screen behind it, coming up with the card. Else, with no scene behind, the plain canvas colour
+  if s[0].card { scrim := opacity(arcade_scrim(), am_unit(s[0].entered)); v = paint_quad(out, 0, d, 0, 0, w, h, 0, 0, scrim, scrim); }
+  else if !s[0].scene { v = paint_quad(out, 0, d, 0, 0, w, h, 0, 0, k.canvas, k.canvas); }
   if !a[0].ready { return v; }
   f: [1] UiFrame;
   input := uiinput(s[0].px, s[0].py, s[0].touching, s[0].touching, cast(string) s[0].pressed[0..<s[0].pressed_n], lg_focus_id(s));
@@ -297,8 +315,9 @@ login_pointer :: (s: [] LoginScreen, x: f32, y: f32, phase: int) -> bool #export
   s[0].touching = false; s[0].pressed_n = 0;
   if phase != 2 { return false; }
   if held { return lg_press_row(s, row); }
-  // outside the form: the keyboard goes
+  // outside the form: the keyboard goes; with no keyboard, a card closes
   if row < 0 && s[0].focus != LG_FIELD_NONE { s[0].focus = LG_FIELD_NONE; return true; }
+  if row < 0 && s[0].card && s[0].busy == LG_ACT_NONE && !s[0].done { s[0].action = LG_ACT_CLOSE; return true; }
   return false;
 }
 // The action the host is asked for (LG_ACT_*), once.
@@ -638,4 +657,26 @@ lg_test_has :: (s: [] LoginScreen, id: string, state: int) -> bool { t := [1] El
   e: [1] LoginScreen; login_env(e[..], 0, 0, 0, true, false);
   #assert lg_test_frame(e[..], o[..]) == 6;
   login_env(e[..], 0, 0, 0, true, true); #assert lg_test_frame(e[..], o[..]) == 0;
+}
+
+#test "login: as a card it dims the screen behind it, sits higher, and closes by Cancel or a tap outside it" #steps 900000000 {
+  s: [1] LoginScreen; o: [1] LgOut; lg_test_atlas(s[0].atlas[..]);
+  login_card(s[..], true); login_env(s[..], 59, 34, 0, true, false);
+  n := lg_test_frame(s[..], o[..]); n = lg_test_frame(s[..], o[..]);
+  // the first quad is the scrim: it covers the screen
+  #assert n > 6 && o[0].v[0] <= 0 && o[0].v[1] <= 0;
+  form: [5] f32; #assert login_form(s[..], form[..]) && form[1] + form[3] / 2 < 874 * 0.5;
+  #assert lg_find(s[..], "login.close") >= 0 && lg_find(s[..], "login.key") >= 0 && lg_test_text(s[..], "Cancel") == 1;
+  #assert lg_test_tap(s[..], "login.close") && login_action(s[..]) == LG_ACT_CLOSE;
+  // a tap outside: first the keyboard goes, then the card closes
+  #assert lg_test_tap(s[..], "login.email"); _ := lg_test_frame(s[..], o[..]);
+  _ := login_pointer(s[..], 30, 300, 0); #assert login_pointer(s[..], 30, 300, 2) && login_focus(s[..]) == LG_FIELD_NONE && login_action(s[..]) == LG_ACT_NONE;
+  _ := login_pointer(s[..], 30, 300, 0); #assert login_pointer(s[..], 30, 300, 2) && login_action(s[..]) == LG_ACT_CLOSE;
+  // while an action is in flight it stays
+  login_set_text(s[..], LG_FIELD_EMAIL, "ada@example.com"); #assert login_submit(s[..]) && login_action(s[..]) == LG_ACT_START;
+  _ := login_pointer(s[..], 30, 300, 0); #assert !login_pointer(s[..], 30, 300, 2) && login_action(s[..]) == LG_ACT_NONE;
+  // the full screen has no Cancel and does not close
+  t: [1] LoginScreen; lg_test_atlas(t[0].atlas[..]); login_env(t[..], 59, 34, 0, true, true);
+  _ := lg_test_frame(t[..], o[..]);
+  #assert lg_find(t[..], "login.close") < 0; _ := login_pointer(t[..], 30, 300, 0); #assert !login_pointer(t[..], 30, 300, 2) && login_action(t[..]) == LG_ACT_NONE;
 }

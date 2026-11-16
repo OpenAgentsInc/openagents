@@ -10,7 +10,7 @@ import unittest
 ROOT=Path(__file__).resolve().parents[1]
 COAX=Path(os.environ.get('COAX_TEST_BIN',str(ROOT/'coax/bin/coax')))
 PROTOC=os.environ.get('PROTOC','protoc')
-RESOURCE=ROOT/'apps/openagents-ios/OpenAgents/Resources/Home.pb'
+RESOURCE=ROOT/'metaverse/stage-resources/Home.pb'
 
 class Dot(C.Structure): _fields_=[(name,C.c_float) for name in ['x','y','size','light','soft','crisp','pad0','pad1']]
 class Line(C.Structure): _fields_=[(name,C.c_float) for name in ['ax','ay','bx','by','lightA','lightB','width','pad']]

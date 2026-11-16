@@ -1,3 +1,3 @@
 #include "../account-mac.h"
-#include "../../openagents-ios/Generated/NativePolicy.h"
-#include "../../openagents-ios/Generated/NativeText.h"
+#include "../build/native-gen/NativePolicy.h"
+#include "../build/native-gen/NativeText.h"

@@ -203,7 +203,7 @@ def main():
         home = text_format.Parse((ROOT.parent/'metaverse/home.textproto').read_text(), HomeConfiguration())
         home_path = output/'Home.pb'
         home_path.write_bytes(home.SerializeToString(deterministic=True))
-        artifacts['../apps/openagents-ios/OpenAgents/Resources/Home.pb'] = home_path
+        artifacts['../metaverse/stage-resources/Home.pb'] = home_path
         if args.mode == 'migrate-profile-catalog':
             from openagents.engine.v1.assets_pb2 import AssetProfileCatalog
             from google.protobuf.message import DecodeError

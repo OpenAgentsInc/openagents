@@ -1,1 +1,0 @@
-Chat history now uses a searchable sidebar, with grouped computer and account conversations. Phones slide between history and the conversation; wider screens keep history beside it. Drafts survive switching chats. Settings and Worlds live in the sidebar. Model and effort controls stay by the composer. Includes the shared mono HUD controls from #13580.

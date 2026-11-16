@@ -4,7 +4,7 @@ Gives the Haunted House's lit windows warm glass: a flat arched pane
 the wall where the frame and the wall hide its edge, carrying the glow the
 frame had. The frame keeps no glow, so it reads as dark wood round the light.
 Run once on the packed resources with the pinned protobuf tools venv:
-haunt_panes.py RESOURCES_DIR (apps/openagents-ios/OpenAgents/Resources).
+haunt_panes.py RESOURCES_DIR (metaverse/stage-resources).
 """
 import math, struct, subprocess, sys, tempfile
 from pathlib import Path

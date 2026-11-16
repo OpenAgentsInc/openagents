@@ -1,1 +1,0 @@
-Shared Nostr messaging foundation: account-scoped history, exact encrypted send recovery and authenticated relay sessions. Feed, chats, projects and worlds remain available. Messaging screens follow separately.

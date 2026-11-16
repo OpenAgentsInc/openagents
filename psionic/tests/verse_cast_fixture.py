@@ -4,7 +4,7 @@ as a Coax fixture.
 
     python3 -I psionic/tests/verse_cast_fixture.py [--write]
 
-Reads apps/openagents-ios/OpenAgents/Resources/Cast.bin (metaverse/tools/pack_cast.py
+Reads metaverse/stage-resources/Cast.bin (metaverse/tools/pack_cast.py
 writes it; metaverse/cast.coax reads it), records its SHA-256, and compares the
 fixture it would write with the committed one; --write replaces it. Values
 are copied as F32 bit patterns, so the fixture is exact. Tooling only.
@@ -15,7 +15,7 @@ import struct
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
-CAST = ROOT / "apps/openagents-ios/OpenAgents/Resources/Cast.bin"
+CAST = ROOT / "metaverse/stage-resources/Cast.bin"
 FIXTURE = ROOT / "psionic/fixtures/verse-cast-skeleton.coax"
 
 
@@ -53,7 +53,7 @@ def main() -> int:
     for j in range(joints):
         idle += ["0x%08x" % v for v in struct.unpack_from("<7I", b, poff + (first * joints + j) * pstride)]
     text = f"""// Chapter 150's Verse character slice, written by psionic/tests/verse_cast_fixture.py
-// from apps/openagents-ios/OpenAgents/Resources/Cast.bin (sha256 {sha}):
+// from metaverse/stage-resources/Cast.bin (sha256 {sha}):
 // the character's {joints} joints (parent, then bind position x, y, z as F32 bit
 // patterns) and frame 0 of its idle clip ({frames} frames; per joint the
 // skinning rotation x, y, z, w and translation x, y, z as F32 bit patterns).

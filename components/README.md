@@ -24,6 +24,8 @@ a second set of native-only components.
 | Measured native controls painted in one shared GPU scene | `native/scene.coax`, `native/apple.{c,h}`, `skin/arcade.coax`; SDK projection: `apps/shared/native/NativeArcade.swift` |
 | Shared easing, timelines and effects | `core/arwes/motion.coax`, `core/arwes/fx.coax` |
 | Real bounded line series/response plots | `kit/plot.coax`; twelve-float world HUD adapter: `metaverse-engine/ui/plot.coax` |
+| Display-list chip: icon, chosen value, opens a choice | `kit/chip.coax` (`ctx_chip`) |
+| Display-list touch composer: multiline text, model chip, Send and Stop | `kit/composer.coax` (`ctx_composer`); geometry in `layout/native-composer.coax` |
 | Display-list forms: field, full-width action, quiet action, notice, heading | `kit/form.coax` (and its `ctx_*` forms); phone sizes in `skin/arcade.coax` (`arcade_phone_skin`) |
 | Display-list controls, Markdown and game HUD | `kit/controls.coax` (and its `ctx_*` forms on the frame context), `kit/markdown.coax`, `kit/hud.coax` |
 | Tree-based forms, chat and settings | `kit/frames.coax`, `kit/settings.coax`, `kit/dock.coax`, `kit/work.coax` |

@@ -1,3 +1,0 @@
-// Application assembly of the account player's published request codec.
-// Account identity belongs to the application, not the Coax Native toolchain.
-#load "../../coax/web/api/account-chat-player-bind.coax";

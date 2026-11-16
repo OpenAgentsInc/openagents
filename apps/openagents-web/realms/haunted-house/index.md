@@ -49,7 +49,7 @@ A browser with WebGPU: a current Chrome or Edge, or Safari 26. About 6.6 MB arri
 
 ## Credits
 
-Original layout and art by OpenAgents (Apache-2.0); sounds CC0; Quaternius CC0 props (`apps/openagents-ios/OpenAgents/Resources/Haunt-NOTICE.txt`).
+Original layout and art by OpenAgents (Apache-2.0); sounds CC0; Quaternius CC0 props (`metaverse/stage-resources/Haunt-NOTICE.txt`).
 
 ## Make your own world
 

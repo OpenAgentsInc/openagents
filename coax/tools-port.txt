@@ -17,8 +17,6 @@
 apps/openagents-desktop/zeron/fixtures/fixture.py
 apps/openagents-desktop/zeron/fixtures/psionic.py
 apps/openagents-ios/tools/app_store.py
-apps/openagents-ios/tools/test-bip39.sh
-apps/openagents-ios/tools/voice-sim-test.sh
 apps/openagents-web/.dev/nostr/build.sh
 apps/openagents-web/.dev/nostr/probe-test.cjs
 apps/openagents-web/.dev/nostr/test.py

@@ -1,7 +1,0 @@
-#load "app.coax";
-#load "../../shared/copy-budget.coax";
-#load "../../../coax/lib/sys/tool.coax";
-world_copy_words :: ()->int {s:[1]Starter;s[0].ready=true;_ = mono_frames(s[0].sets[..]);_ = st_frame(s[..],0,true);return copy_tree_words(s[0].tree[..],"");}
-// Baseline 5fc963163c: 44 visible words in the empty library.
-#test "world library chrome stays below half its pre-edit word count" {#assert world_copy_words()<=22;}
-tool_main :: ()->int #export_c #effects(all) {b:[96]u8;tool_errln(tr_join(b[..],"world library: ",world_copy_words()));return 0;}

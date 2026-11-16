@@ -1,5 +1,5 @@
 // Chapter 150's Verse character slice, written by psionic/tests/verse_cast_fixture.py
-// from apps/openagents-ios/OpenAgents/Resources/Cast.bin (sha256 c7d8eb91167d9438c1d2397342187f651995f87788765cbb30575c4599438f31):
+// from metaverse/stage-resources/Cast.bin (sha256 c7d8eb91167d9438c1d2397342187f651995f87788765cbb30575c4599438f31):
 // the character's 65 joints (parent, then bind position x, y, z as F32 bit
 // patterns) and frame 0 of its idle clip (75 frames; per joint the
 // skinning rotation x, y, z, w and translation x, y, z as F32 bit patterns).

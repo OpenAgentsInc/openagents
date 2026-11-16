@@ -1,1 +1,0 @@
-The Reference component gallery adds grouped icon actions, selectable repository rows, an empty state and a usage card based on the captured mobile screens.

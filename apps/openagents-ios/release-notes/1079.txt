@@ -1,1 +1,0 @@
-Simpler computer-backed chat: tool calls are compact rows that expand on tap, and long tool output stays out of the conversation until you open it. Refresh status is a small icon in the header. Includes the latest model and effort controls from main. Earlier history stays still while you read it.

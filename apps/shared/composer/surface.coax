@@ -1,0 +1,420 @@
+// The chat composer as its own presentation surface (components/
+// gpu-components.md, stage G1; GitHub #13645): the input bar under a chat,
+// drawn by the shared display-list kit (components/kit/composer.coax) on the
+// frame context, in the phone skin. It is compiled Coax linked into the app.
+// The screen around it (the transcript, the header, the history) is still
+// the existing runtime's; this surface owns only the bar.
+//
+// The existing chat program still owns the draft and the turn. Its composer
+// element says what the bar shows (the placeholder, the draft, the model, Send
+// or Stop, whether it can be pressed, whether the text is locked) and the
+// native host passes that here (composer_surface_set, composer_surface_set_text).
+// This file lays it out, paints it and records its rows; it has no effects.
+// What a person does goes back the same way:
+//   - a press on the action is composer_surface_action's CS_ACT_SEND: the host
+//     presses the program's own send id, as the UIKit button did;
+//   - a press on the text is CS_ACT_FOCUS: the host gives the platform editor
+//     the keyboard, over the text's committed box (composer_surface_editor);
+//   - each edit in the platform editor is the whole draft to the program
+//     (its own field id) and to composer_surface_set_text, so the bar's height
+//     and its action follow at once.
+// While the editor holds the keyboard the bar paints no text and no caret,
+// and takes the text's height from the editor (composer_surface_env).
+//
+// Its rows carry the program's own ids ("chat.composer", "chat.composer.send"),
+// so one id names the part in the program, in VoiceOver and in a check.
+// Layout is in the skin's units; every number the host sees is in points.
+//   coax/bin/coax test apps/shared/composer/surface.coax
+
+#load "../../../components/kit/composer.coax";
+#load "../../../components/kit/chip.coax";
+#load "../../../components/core/edit.coax";
+#load "../../../components/skin/arcade.coax";
+#load "../../../components/backend/gpu.coax";
+
+CS_MAX_VERTICES :: 16384;
+// The surface's declared capacity, a generation, and its keyed ids.
+CS_UNDER :: 64; CS_OVER :: 96; CS_HITS :: 8; CS_ROWS :: 8; CS_KEYED :: 8;
+CS_NAME :: 64;
+CS_ACT_NONE :: 0; CS_ACT_SEND :: 1; CS_ACT_FOCUS :: 2; CS_ACT_ENVIRONMENT :: 3; CS_ACT_REPOSITORY :: 4;
+// What a row dispatches.
+CS_HIT_TEXT :: 1; CS_HIT_SEND :: 2; CS_HIT_ENVIRONMENT :: 3; CS_HIT_REPOSITORY :: 4;
+// The surface's own icons, from the Apps SDK set (components/icons/apps-sdk/): the host builds its
+// atlas from these names, in this order.
+CS_ICON_ENVIRONMENT :: 0; CS_ICON_REPOSITORY :: 1; CS_ICONS :: 2;
+CS_ICON_NAMES :: [2] string.["desktop", "branch"];
+CS_CHIPS_GAP :: 6.0;        // points between the chips' row and the bar (the bar's own gap from the keyboard)
+
+CsGeneration :: struct { under: [CS_UNDER] Prim; over: [CS_OVER] Prim; hits: [CS_HITS] SheetHit; rows: [CS_ROWS] El; }
+ComposerSurface :: struct {
+  ready: bool; time: f32; d: f32;
+  atlas: [1] Atlas;
+  // what the chat program's composer says
+  draft: [1] EditBuf;
+  placeholder: [CS_NAME] u8; placeholder_n: int; model: [CS_NAME] u8; model_n: int;
+  field_id: [EL_ID] u8; field_n: int; send_id: [EL_ID] u8; send_n: int;
+  stop: bool; enabled: bool; locked: bool;
+  // the chips over the bar (the chat home): where the next message runs, and its repository
+  chips: bool; environment: [CS_NAME] u8; environment_n: int; repository: [CS_NAME] u8; repository_n: int;
+  environment_on: bool; repository_on: bool;
+  // the platform editor, and the window's facts
+  focused: bool; editor_h: f32; reduced: bool;
+  px: f32; py: f32; touching: bool; pressed: [EL_ID] u8; pressed_n: int;
+  action: int;
+  gen: [2] CsGeneration; surface: [1] UiSurface;
+  keys: [CS_KEYED] Keyed; keyed: [1] KeyedStore;
+  box: ComposerBox;                    // as last drawn, units
+  target: f32;                         // the height it wants, units
+  stamp: int; moving: bool; refused: int;
+}
+
+cs_init :: (s: [] ComposerSurface) {
+  s[0].ready = true;
+  g := s[0].gen[..];
+  s[0].surface[0] = surface_over(Sheet.{under = g[0].under[..], over = g[0].over[..], hits = g[0].hits[..]}, g[0].rows[..],
+                                 Sheet.{under = g[1].under[..], over = g[1].over[..], hits = g[1].hits[..]}, g[1].rows[..]);
+  s[0].keyed[0] = KeyedStore.{rows = s[0].keys[..]};
+}
+cs_out :: (out: [] u8, text: string) -> int {
+  n := 0;
+  for c: text { if n >= out.count { break; } out[n] = c; n += 1; }
+  return n;
+}
+cs_field :: (s: [] ComposerSurface) -> string { return ifx s[0].field_n > 0 then cast(string) s[0].field_id[0..<s[0].field_n] else "composer.input"; }
+cs_send :: (s: [] ComposerSurface) -> string { return ifx s[0].send_n > 0 then cast(string) s[0].send_id[0..<s[0].send_n] else "composer.send"; }
+cs_rows :: (s: [] ComposerSurface) -> ElTable { return surface_rows(s[0].surface[..]); }
+cs_look :: (s: [] ComposerSurface) -> ComposerLook {
+  return ComposerLook.{placeholder = cast(string) s[0].placeholder[0..<s[0].placeholder_n], text = eb_text(s[0].draft[..]),
+    model = cast(string) s[0].model[0..<s[0].model_n], editing = s[0].focused, editor_h = s[0].editor_h / ARCADE_PHONE_SCALE,
+    stop = s[0].stop, enabled = s[0].enabled, locked = s[0].locked, unit = ARCADE_PHONE_SCALE};
+}
+// What the accessibility bridge compares: the committed rows' names, state, values and whole-unit boxes.
+cs_stamp :: (s: [] ComposerSurface) -> int {
+  t := [1] ElTable.[cs_rows(s)];
+  st := 17;
+  for i: 0..<t[0].n {
+    r := t[0].rows[i];
+    for c: elt_id(t[..], i) { st = (st * 31 + cast(int) c) & 0x3fffffff; }
+    for c: elt_label(t[..], i) { st = (st * 31 + cast(int) c) & 0x3fffffff; }
+    for c: elt_value_of(t[..], i) { st = (st * 31 + cast(int) c) & 0x3fffffff; }
+    st = (st * 31 + r.state) & 0x3fffffff;
+    st = (st * 31 + el_round(r.x) + 7 * el_round(r.y) + 13 * el_round(r.w) + 17 * el_round(r.h)) & 0x3fffffff;
+  }
+  return st;
+}
+// Pressing a committed row dispatches its action.
+cs_press :: (s: [] ComposerSurface, row: int) -> bool {
+  act := surface_action(s[0].surface[..], row);
+  t := [1] ElTable.[cs_rows(s)];
+  if act == CS_HIT_TEXT { s[0].action = CS_ACT_FOCUS; return true; }
+  if act == CS_HIT_SEND && !elt_has(t[..], row, EL_S_DISABLED) { s[0].action = CS_ACT_SEND; return true; }
+  if act == CS_HIT_ENVIRONMENT && !elt_has(t[..], row, EL_S_DISABLED) { s[0].action = CS_ACT_ENVIRONMENT; return true; }
+  if act == CS_HIT_REPOSITORY && !elt_has(t[..], row, EL_S_DISABLED) { s[0].action = CS_ACT_REPOSITORY; return true; }
+  return false;
+}
+
+// ---------------------------------------------------------------- the host's calls
+
+// What the chat program's composer element says: the ids of its field and its action, the
+// placeholder, the model's name, whether a reply runs (Stop), whether the action can be pressed,
+// and whether the text is locked.
+composer_surface_set :: (s: [] ComposerSurface, field_id: string, send_id: string, placeholder: string, model: string, stop: bool, enabled: bool, locked: bool) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].field_n = el_copy(s[0].field_id[..], field_id); s[0].send_n = el_copy(s[0].send_id[..], send_id);
+  s[0].placeholder_n = cs_out(s[0].placeholder[..], placeholder); s[0].model_n = cs_out(s[0].model[..], model);
+  s[0].stop = stop; s[0].enabled = enabled; s[0].locked = locked;
+}
+// The chips over the bar: what each shows now and whether it can be pressed. show false: no chips
+// (a composer that is not the chat home's).
+composer_surface_chips :: (s: [] ComposerSurface, show: bool, environment: string, environment_on: bool, repository: string, repository_on: bool) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].chips = show; s[0].environment_n = cs_out(s[0].environment[..], environment); s[0].repository_n = cs_out(s[0].repository[..], repository);
+  s[0].environment_on = environment_on; s[0].repository_on = repository_on;
+}
+// The surface's icons for the host's atlas: how many, each one's size in layout units and its file's name.
+composer_surface_icon_count :: () -> int #export_c #effects(all) { return CS_ICONS; }
+composer_surface_icon_size :: (i: int) -> f32 #export_c #effects(all) { return arcade_phone_skin().cmp.chip_icon; }
+composer_surface_icon_name :: (i: int, out: [] u8) -> int #export_c #effects(all) {
+  if i < 0 || i >= CS_ICONS { return 0; }
+  names := CS_ICON_NAMES; return cs_out(out, names[i]);
+}
+// The whole draft: the program's value, or the platform editor's text after an edit. One longer than a draft may be is refused.
+composer_surface_set_text :: (s: [] ComposerSurface, text: string) -> bool #export_c #effects(all) {
+  if s.count < 1 || text.count > EB_TEXT { return false; }
+  if text != eb_text(s[0].draft[..]) { eb_set(s[0].draft[..], text); }
+  return true;
+}
+composer_surface_text :: (s: [] ComposerSurface, out: [] u8) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return cs_out(out, eb_text(s[0].draft[..])); }
+// The platform editor: whether it holds the keyboard, and its own text height in points while it does. Reduced motion.
+composer_surface_env :: (s: [] ComposerSurface, focused: bool, editor_height: f32, reduced: bool) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].focused = focused; s[0].editor_h = ifx focused && editor_height > 0 then editor_height else 0.0f32; s[0].reduced = reduced;
+}
+// One frame of width by height device pixels: the bar docked at the view's bottom. Returns the vertex count.
+composer_surface_frame :: (s: [] ComposerSurface, out: [] f32, width: f32, height: f32, dpr: f32, dt: f32) -> int #export_c #effects(all) {
+  if s.count < 1 || width < 1 || height < 1 { return 0; }
+  if !s[0].ready { cs_init(s); }
+  a := s[0].atlas[..];
+  d := (ifx dpr < 1 then 1.0f32 else dpr) * ARCADE_PHONE_SCALE;
+  w := width / d; h := height / d;
+  s[0].d = d;
+  t := ifx dt < 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
+  if !s[0].reduced { s[0].time += t; }
+  a[0].frame += 1;
+  k := arcade_phone_skin();
+  v := paint_quad(out, 0, d, 0, 0, w, h, 0, 0, k.canvas, k.canvas);
+  if !a[0].ready { return v; }
+  f: [1] UiFrame;
+  input := uiinput(s[0].px, s[0].py, s[0].touching, s[0].touching, cast(string) s[0].pressed[0..<s[0].pressed_n], ifx s[0].focused then cs_field(s) else "");
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_font(a), k, input, s[0].time, t, s[0].reduced, false);
+  look := cs_look(s);
+  // the chips sit in a row over the bar and move with its top edge
+  above: f32 = ifx s[0].chips then k.cmp.chip_h + CS_CHIPS_GAP / ARCADE_PHONE_SCALE else 0.0f32;
+  s[0].target = composer_box(f[0].m, k, w, look).height + above;
+  s[0].box = ctx_composer(f[..], cs_field(s), cs_send(s), 0, h, w, look, CS_HIT_TEXT, CS_HIT_SEND);
+  if s[0].chips {
+    y := h - s[0].box.height - above;
+    cw := ctx_chip(f[..], "composer.environment", 0, y, CS_ICON_ENVIRONMENT, "Environment", cast(string) s[0].environment[0..<s[0].environment_n],
+                   ifx s[0].environment_on then 0 else EL_S_DISABLED, CS_HIT_ENVIRONMENT);
+    _ := ctx_chip(f[..], "composer.repo", cw + k.space / 2, y, CS_ICON_REPOSITORY, "Repository", cast(string) s[0].repository[0..<s[0].repository_n],
+                  ifx s[0].repository_on then 0 else EL_S_DISABLED, CS_HIT_REPOSITORY);
+  }
+  s[0].moving = uiframe_moving(f[..]);
+  if !uiframe_end(f[..], s[0].surface[..]) { s[0].refused += 1; }
+  s[0].stamp = cs_stamp(s);
+  sh := surface_sheet(s[0].surface[..]);
+  v = gpu_draw(out, v, a, d, sh.under[0..<sh.nu], 0, 0, -8, h + 8);
+  v = gpu_draw(out, v, a, d, sh.over[0..<sh.no], 0, 0, -8, h + 8);
+  gpu_monochrome(out, v);
+  return v;
+}
+// A touch, in device pixels: phase 0 down, 1 moved, 2 up, 3 cancelled, routed through the committed rows.
+composer_surface_pointer :: (s: [] ComposerSurface, x: f32, y: f32, phase: int) -> bool #export_c #effects(all) {
+  if s.count < 1 || !(s[0].d > 0) { return false; }
+  ux := x / s[0].d; uy := y / s[0].d;
+  s[0].px = ux; s[0].py = uy;
+  row := surface_hit(s[0].surface[..], ux, uy);
+  id := surface_id(s[0].surface[..], row);
+  acts := surface_action(s[0].surface[..], row) != 0;
+  was := cast(string) s[0].pressed[0..<s[0].pressed_n];
+  if phase == 0 { s[0].touching = true; s[0].pressed_n = ifx acts then el_copy(s[0].pressed[..], id) else 0; return acts; }
+  if phase == 1 { if was != id { s[0].pressed_n = 0; } return s[0].pressed_n > 0; }
+  held := s[0].pressed_n > 0 && was == id;
+  s[0].touching = false; s[0].pressed_n = 0;
+  return phase == 2 && held && cs_press(s, row);
+}
+// The action the host is asked for (CS_ACT_*), once.
+composer_surface_action :: (s: [] ComposerSurface) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  act := s[0].action; s[0].action = CS_ACT_NONE;
+  return act;
+}
+// The height the bar wants, in points: the host gives its view this height.
+composer_surface_height :: (s: [] ComposerSurface) -> f32 #export_c #effects(all) {
+  if s.count < 1 || !(s[0].target > 0) { return 94; }
+  return s[0].target * ARCADE_PHONE_SCALE;
+}
+// The text's committed box for the platform editor, in points from the view's top left: x, y, w, h,
+// then the first line's inset and a line's height.
+composer_surface_editor :: (s: [] ComposerSurface, out: [] f32) -> bool #export_c #effects(all) {
+  if s.count < 1 || out.count < 6 { return false; }
+  t := [1] ElTable.[cs_rows(s)];
+  i := elt_find(t[..], cs_field(s));
+  if i < 0 { return false; }
+  b := s[0].box; u: f32 = ARCADE_PHONE_SCALE;
+  out[0] = (t[0].rows[i].x + b.text_x) * u; out[1] = (t[0].rows[i].y + b.text_y) * u; out[2] = b.text_w * u; out[3] = b.text_h * u;
+  out[4] = b.inset * u; out[5] = b.line * u;
+  return true;
+}
+// How the platform editor is styled, from the skin: the text's size and line (points), then the
+// ink, the placeholder's ink and the caret's, each straight RGBA.
+composer_surface_style :: (out: [] f32) -> bool #export_c #effects(all) {
+  if out.count < 14 { return false; }
+  k := arcade_phone_skin();
+  out[0] = k.body.size * ARCADE_PHONE_SCALE; out[1] = 23;
+  out[2] = k.ink.r; out[3] = k.ink.g; out[4] = k.ink.b; out[5] = k.ink.a;
+  out[6] = k.faint.r; out[7] = k.faint.g; out[8] = k.faint.b; out[9] = k.faint.a;
+  out[10] = k.accent.r; out[11] = k.accent.g; out[12] = k.accent.b; out[13] = k.accent.a;
+  return true;
+}
+// Whether the next frame differs with no input: its height, its edge or its action is still moving.
+composer_surface_moving :: (s: [] ComposerSurface) -> bool #export_c #effects(all) { return s.count > 0 && (!s[0].ready || !s[0].reduced && s[0].moving); }
+composer_surface_refused :: (s: [] ComposerSurface) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return s[0].refused; }
+composer_surface_max_vertices :: () -> int #export_c #effects(all) { return CS_MAX_VERTICES; }
+composer_surface_scale :: () -> f32 #export_c #effects(all) { return ARCADE_PHONE_SCALE; }
+
+// ---- the committed semantic rows, for the accessibility bridge and the driver
+
+composer_surface_rows :: (s: [] ComposerSurface) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return cs_rows(s).n; }
+composer_surface_rows_stamp :: (s: [] ComposerSurface) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return s[0].stamp; }
+// Row i: its box in points (x, y, w, h), its role (components/core/elements.coax EL_*), its state (EL_S_* bits) and its parent.
+composer_surface_row :: (s: [] ComposerSurface, i: int, out: [] f32) -> bool #export_c #effects(all) {
+  if s.count < 1 || out.count < 7 { return false; }
+  t := [1] ElTable.[cs_rows(s)];
+  if !elt_ok(t[..], i) { return false; }
+  r := t[0].rows[i]; u: f32 = ARCADE_PHONE_SCALE;
+  out[0] = r.x * u; out[1] = r.y * u; out[2] = r.w * u; out[3] = r.h * u;
+  out[4] = cast(f32) r.role; out[5] = cast(f32) r.state; out[6] = cast(f32) r.parent;
+  return true;
+}
+composer_surface_row_id :: (s: [] ComposerSurface, i: int, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  t := [1] ElTable.[cs_rows(s)]; return cs_out(out, elt_id(t[..], i));
+}
+composer_surface_row_label :: (s: [] ComposerSurface, i: int, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  t := [1] ElTable.[cs_rows(s)]; return cs_out(out, elt_label(t[..], i));
+}
+composer_surface_row_value :: (s: [] ComposerSurface, i: int, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  t := [1] ElTable.[cs_rows(s)]; return cs_out(out, elt_value_of(t[..], i));
+}
+// Activating a row by its id does what a tap on it does.
+composer_surface_activate :: (s: [] ComposerSurface, id: string) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  return cs_press(s, surface_find(s[0].surface[..], id));
+}
+// coax drive: `tree`, `tap ID`, `type ID TEXT` and `counts` over the same rows. The answer's length, or -1.
+composer_surface_drive :: (s: [] ComposerSurface, op: string, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 { return -1; }
+  if op == "tree" { return surface_tree(s[0].surface[..], out); }
+  if op == "counts" { return uiframe_counts(s[0].surface[..], s[0].keyed[..], out); }
+  if op.count > 4 && op[0..<4] == "tap " {
+    row := surface_find(s[0].surface[..], cast(string) op[4..<op.count]);
+    if row < 0 { return cs_out(out, "no such row\n"); }
+    return cs_out(out, ifx cs_press(s, row) then "tapped\n" else "nothing to press\n");
+  }
+  if op.count > 5 && op[0..<5] == "type " {
+    rest := cast(string) op[5..<op.count];
+    cut := 0; while cut < rest.count && rest[cut] != ' ' { cut += 1; }
+    if cast(string) rest[0..<cut] != cs_field(s) { return cs_out(out, "no such field\n"); }
+    _ := composer_surface_set_text(s, ifx cut < rest.count then cast(string) rest[cut + 1..<rest.count] else "");
+    return cs_out(out, "typed\n");
+  }
+  return -1;
+}
+
+// ---------------------------------------------------------------- checks
+
+CsOut :: struct { v: [CS_MAX_VERTICES * GP_VERTEX_FLOATS] f32; }
+cs_test_atlas :: (a: [] Atlas) { text_test_atlas(a); gp_set_atlas(a, 4096, 4096, 2); for k: 0..<CS_ICONS { gp_set_icon(a, k, 0, 0, 32, 32); } }
+// A 378-point bar at 3x in a view as tall as it wants.
+cs_test_frame :: (s: [] ComposerSurface, o: [] CsOut) -> int { return composer_surface_frame(s, o[0].v[..], 378 * 3, composer_surface_height(s) * 3, 3, 0.016); }
+cs_test_text :: (s: [] ComposerSurface, text: string) -> int {
+  sh := surface_sheet(s[0].surface[..]); n := 0;
+  for i: 0..<sh.no { if sh.over[i].kind == PRIM_TEXT && sh.over[i].text == text { n += 1; } }
+  return n;
+}
+cs_test_tap :: (s: [] ComposerSurface, id: string) -> bool {
+  i := surface_find(s[0].surface[..], id); if i < 0 { return false; }
+  r := cs_rows(s).rows[i]; x := (r.x + r.w / 2) * s[0].d; y := (r.y + r.h / 2) * s[0].d;
+  _ := composer_surface_pointer(s, x, y, 0);
+  return composer_surface_pointer(s, x, y, 2);
+}
+
+#test "composer surface: the program's ids name its rows; the action sends only when it can; the text asks for the keyboard" #steps 900000000 {
+  s: [1] ComposerSurface; o: [1] CsOut; cs_test_atlas(s[0].atlas[..]);
+  composer_surface_env(s[..], false, 0, true);
+  composer_surface_set(s[..], "chat.composer", "chat.composer.send", "Message", "Gemini 4 Hydrogen", false, false, false);
+  n := cs_test_frame(s[..], o[..]);
+  #assert n > 0 && composer_surface_height(s[..]) == 94 && composer_surface_refused(s[..]) == 0 && cs_test_text(s[..], "Message") == 1 && cs_test_text(s[..], "Gemini 4 Hydrogen") == 1;
+  #assert composer_surface_rows(s[..]) == 3;
+  row: [7] f32; id: [64] u8; label: [64] u8;
+  #assert composer_surface_row(s[..], 0, row[..]) && cast(string) id[0..<composer_surface_row_id(s[..], 0, id[..])] == "chat.composer" && cast(int) row[4] == EL_FIELD && row[2] == 378;
+  send := surface_find(s[0].surface[..], "chat.composer.send");
+  #assert composer_surface_row(s[..], send, row[..]) && cast(int) row[4] == EL_BUTTON && row[2] == 44 && row[3] == 44 && (cast(int) row[5] & EL_S_DISABLED) != 0;
+  #assert cast(string) label[0..<composer_surface_row_label(s[..], send, label[..])] == "Send message";
+  // nothing typed: the action takes no press; the text asks for the keyboard
+  #assert !cs_test_tap(s[..], "chat.composer.send") && composer_surface_action(s[..]) == CS_ACT_NONE;
+  #assert cs_test_tap(s[..], "chat.composer") && composer_surface_action(s[..]) == CS_ACT_FOCUS && composer_surface_action(s[..]) == CS_ACT_NONE;
+  // a draft from the program, and the program says it can be sent
+  #assert composer_surface_set_text(s[..], "Hello there");
+  composer_surface_set(s[..], "chat.composer", "chat.composer.send", "Message", "Gemini 4 Hydrogen", false, true, false);
+  _ := cs_test_frame(s[..], o[..]);
+  #assert cs_test_text(s[..], "Hello there") == 1 && cs_test_text(s[..], "Message") == 0;
+  #assert cs_test_tap(s[..], "chat.composer.send") && composer_surface_action(s[..]) == CS_ACT_SEND;
+  #assert composer_surface_activate(s[..], "chat.composer.send") && composer_surface_action(s[..]) == CS_ACT_SEND && !composer_surface_activate(s[..], "chat.composer.model");
+  buf: [64] u8; #assert cast(string) buf[0..<composer_surface_text(s[..], buf[..])] == "Hello there";
+  // a reply runs: Stop, pressable, the text locked
+  composer_surface_set(s[..], "chat.composer", "chat.composer.send", "Message", "Gemini 4 Hydrogen", true, true, true);
+  _ := cs_test_frame(s[..], o[..]);
+  #assert cast(string) label[0..<composer_surface_row_label(s[..], send, label[..])] == "Stop generating" && cs_test_tap(s[..], "chat.composer.send") && composer_surface_action(s[..]) == CS_ACT_SEND;
+  out: [400] u8; k := composer_surface_drive(s[..], "tree", out[..]);
+  #assert el_has(cast(string) out[0..<k], "chat.composer.send button \"Stop generating\"") && composer_surface_drive(s[..], "dance", out[..]) == -1;
+  // every vertex is grey
+  n = cs_test_frame(s[..], o[..]);
+  for i: 0..<n { at := i * GP_VERTEX_FLOATS; #assert o[0].v[at + 12] == o[0].v[at + 13] && o[0].v[at + 13] == o[0].v[at + 14]; }
+}
+
+#test "composer surface: it grows to four lines and stops, the editor's own height wins while it has the keyboard, and nothing is painted under it" #steps 900000000 {
+  s: [1] ComposerSurface; o: [1] CsOut; cs_test_atlas(s[0].atlas[..]);
+  composer_surface_env(s[..], false, 0, true);
+  composer_surface_set(s[..], "", "", "Message", "", false, true, false);
+  _ := cs_test_frame(s[..], o[..]);
+  #assert composer_surface_rows(s[..]) == 2 && surface_find(s[0].surface[..], "composer.input") == 0 && surface_find(s[0].surface[..], "composer.send") == 1;
+  #assert composer_surface_set_text(s[..], "one\ntwo"); _ := cs_test_frame(s[..], o[..]);
+  #assert abs(composer_surface_height(s[..]) - 116) < 0.01;
+  #assert composer_surface_set_text(s[..], "1\n2\n3\n4\n5\n6"); _ := cs_test_frame(s[..], o[..]);
+  #assert abs(composer_surface_height(s[..]) - 162) < 0.01;
+  box: [6] f32; #assert composer_surface_editor(s[..], box[..]) && abs(box[0] - 14) < 0.01 && abs(box[2] - 350) < 0.01 && abs(box[3] - 104) < 0.01 && abs(box[4] - 6) < 0.01 && abs(box[5] - 23) < 0.01;
+  // the editor has the keyboard and measured three lines
+  #assert composer_surface_set_text(s[..], "one\ntwo");
+  composer_surface_env(s[..], true, 69, true); _ := cs_test_frame(s[..], o[..]);
+  #assert abs(composer_surface_height(s[..]) - 139) < 0.01 && cs_test_text(s[..], "one") == 0 && cs_test_text(s[..], "Message") == 0;
+  t := [1] ElTable.[cs_rows(s[..])]; #assert elt_has(t[..], 0, EL_S_FOCUSED);
+  composer_surface_env(s[..], false, 0, true); _ := cs_test_frame(s[..], o[..]);
+  #assert abs(composer_surface_height(s[..]) - 116) < 0.01 && cs_test_text(s[..], "one") == 1;
+  // a draft past the buffer is refused whole
+  big: [EB_TEXT + 1] u8; for i: 0..<EB_TEXT + 1 { big[i] = 'a'; }
+  #assert !composer_surface_set_text(s[..], cast(string) big[..]);
+  style: [14] f32; #assert composer_surface_style(style[..]) && abs(style[0] - 16.8) < 0.01 && style[1] == 23;
+}
+
+#test "composer surface: a static bar draws the same frame again; growth and the Stop turn move, then rest" #steps 900000000 {
+  s: [1] ComposerSurface; o: [1] CsOut; a: [1] CsOut; cs_test_atlas(s[0].atlas[..]);
+  composer_surface_env(s[..], false, 0, false);
+  composer_surface_set(s[..], "chat.composer", "chat.composer.send", "Message", "Gemini 4 Hydrogen", false, false, false);
+  #assert composer_surface_moving(s[..]);
+  _ := cs_test_frame(s[..], o[..]); _ := cs_test_frame(s[..], o[..]);
+  #assert !composer_surface_moving(s[..]);
+  n := cs_test_frame(s[..], a[..]); m := cs_test_frame(s[..], o[..]);
+  #assert n == m; for i: 0..<n * GP_VERTEX_FLOATS { #assert a[0].v[i] == o[0].v[i]; }
+  #assert composer_surface_set_text(s[..], "1\n2\n3");
+  _ := cs_test_frame(s[..], o[..]); #assert composer_surface_moving(s[..]) && abs(composer_surface_height(s[..]) - 139) < 0.01;
+  for i: 0..<300 { _ := cs_test_frame(s[..], o[..]); }
+  #assert !composer_surface_moving(s[..]);
+  composer_surface_set(s[..], "chat.composer", "chat.composer.send", "Message", "Gemini 4 Hydrogen", true, true, true);
+  _ := cs_test_frame(s[..], o[..]); #assert composer_surface_moving(s[..]);
+  for i: 0..<300 { _ := cs_test_frame(s[..], o[..]); }
+  #assert !composer_surface_moving(s[..]);
+  // reduced motion never moves
+  composer_surface_env(s[..], false, 0, true); #assert composer_surface_set_text(s[..], ""); _ := cs_test_frame(s[..], o[..]);
+  #assert !composer_surface_moving(s[..]) && composer_surface_height(s[..]) == 94;
+}
+
+#test "composer surface: two chips over the bar say where the message runs and its repository; a disabled one keeps its value and takes no press" #steps 900000000 {
+  s: [1] ComposerSurface; o: [1] CsOut; cs_test_atlas(s[0].atlas[..]);
+  composer_surface_env(s[..], false, 0, true);
+  composer_surface_set(s[..], "chat.composer", "chat.composer.send", "Message", "", false, false, false);
+  _ := cs_test_frame(s[..], o[..]); bare := composer_surface_height(s[..]);
+  composer_surface_chips(s[..], true, "Default", true, "No repository", false);
+  _ := cs_test_frame(s[..], o[..]); _ := cs_test_frame(s[..], o[..]);
+  #assert abs(composer_surface_height(s[..]) - (bare + 34 + CS_CHIPS_GAP)) < 0.5 && composer_surface_refused(s[..]) == 0;
+  t := [1] ElTable.[cs_rows(s[..])];
+  e := elt_find(t[..], "composer.environment"); r := elt_find(t[..], "composer.repo"); field := elt_find(t[..], "chat.composer");
+  #assert e >= 0 && r >= 0 && elt_label(t[..], e) == "Environment" && elt_value_of(t[..], e) == "Default" && elt_label(t[..], r) == "Repository" && elt_value_of(t[..], r) == "No repository";
+  #assert !elt_has(t[..], e, EL_S_DISABLED) && elt_has(t[..], r, EL_S_DISABLED);
+  // left-aligned in one row, directly over the bar
+  #assert t[0].rows[e].x == 0 && t[0].rows[r].x > t[0].rows[e].x + t[0].rows[e].w && t[0].rows[r].y == t[0].rows[e].y && t[0].rows[e].y + t[0].rows[e].h < t[0].rows[field].y;
+  #assert cs_test_text(s[..], "Default") == 1 && cs_test_text(s[..], "No repository") == 1;
+  v: [64] u8; #assert cast(string) v[0..<composer_surface_row_value(s[..], e, v[..])] == "Default";
+  #assert cs_test_tap(s[..], "composer.environment") && composer_surface_action(s[..]) == CS_ACT_ENVIRONMENT;
+  #assert !cs_test_tap(s[..], "composer.repo") && composer_surface_action(s[..]) == CS_ACT_NONE && !composer_surface_activate(s[..], "composer.repo");
+  // they move up with the bar as it grows
+  y0 := t[0].rows[e].y; #assert composer_surface_set_text(s[..], "1\n2\n3"); _ := cs_test_frame(s[..], o[..]);
+  t[0] = cs_rows(s[..]); e = elt_find(t[..], "composer.environment"); #assert y0 > 0 && t[0].rows[e].y + t[0].rows[e].h <= t[0].rows[elt_find(t[..], "chat.composer")].y + 0.01;
+  name: [16] u8; #assert composer_surface_icon_count() == 2 && cast(string) name[0..<composer_surface_icon_name(0, name[..])] == "desktop" && cast(string) name[0..<composer_surface_icon_name(1, name[..])] == "branch";
+  // no chips for another composer
+  composer_surface_chips(s[..], false, "", false, "", false); _ := cs_test_frame(s[..], o[..]);
+  t[0] = cs_rows(s[..]); #assert elt_find(t[..], "composer.environment") < 0;
+}

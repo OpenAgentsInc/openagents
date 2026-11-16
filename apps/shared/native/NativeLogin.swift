@@ -1,7 +1,13 @@
 // Firm reason: 6 (UIKit lifecycle, the keyboard and text input, VoiceOver and the native auth adapter).
-// The login screen's native side (components/gpu-components.md, stage G1; GitHub #13645). The
-// screen is compiled Coax (apps/shared/login/screen.coax) drawn by the shared GPU component host
-// over its scene, in one Metal view. This file owns only what a GPU surface cannot:
+// The login's native side (components/gpu-components.md, stage G1; GitHub #13645). The form is
+// compiled Coax (apps/shared/login/screen.coax) drawn by the shared GPU component host in one
+// Metal view. It is shown two ways:
+//   - a card over the chat, when someone who is not logged in sends a message or opens anything
+//     that needs the account. The view is clear, the screen dims the chat behind the card, and
+//     Cancel or a tap outside closes it;
+//   - a demo, from Settings, Components: the form over its live scene (the openagents.com splash).
+//     It sends nothing and logs nobody in.
+// This file owns only what a GPU surface cannot:
 //   - the display link, which sleeps while nothing moves and stops in the background;
 //   - the platform editor: one UITextField placed over the focused field's committed bounds. It
 //     is the only editing authority; Coax receives each whole value and paints no text or caret
@@ -14,10 +20,14 @@ import UIKit
 import CoreText
 
 @MainActor final class NativeLogin: UIViewController,UITextFieldDelegate {
+    /// A card over the screen behind it, or the demo of the form over its scene.
+    enum Mode {case card,demo}
     private let auth:AppAuth
+    private let mode:Mode
     private let wantsScene:Bool
     private let done:()->Void
     private let useKey:()->Void
+    private let cancel:()->Void
     private var owner:UnsafeMutableRawPointer?
     private var canvas:UIView?
     private var display:CADisplayLink?
@@ -30,26 +40,37 @@ import CoreText
     private var finished=false
     private var said=""
     private lazy var editor=LoginEditor()
+    private var closeControl:UIView?
     private var proxies:[String:LoginFieldProxy]=[:]
     /// Frames this screen presented and frames its scene computed, for checks.
     var presented:UInt64 {owner.map {UInt64(lg_presented($0))} ?? 0}
     var sceneFrames:UInt64 {owner.map {UInt64(lg_scene_frames($0))} ?? 0}
     var hasScene:Bool {owner.map {lg_scene($0) != 0} ?? false}
 
-    init(auth:AppAuth,scene:Bool=true,done:@escaping ()->Void,useKey:@escaping ()->Void) {
-        self.auth=auth;wantsScene=scene;self.done=done;self.useKey=useKey;super.init(nibName:nil,bundle:nil)
+    init(auth:AppAuth,mode:Mode,scene:Bool=true,done:@escaping ()->Void,useKey:@escaping ()->Void,cancel:@escaping ()->Void) {
+        self.auth=auth;self.mode=mode;wantsScene=scene && mode == .demo;self.done=done;self.useKey=useKey;self.cancel=cancel;super.init(nibName:nil,bundle:nil)
     }
     required init?(coder:NSCoder) {fatalError()}
 
     override func viewDidLoad() {
-        super.viewDidLoad();view.backgroundColor=NativeSkin.ground;view.accessibilityIdentifier="login.screen"
-        guard let resources=Bundle.main.path(forResource:"Components",ofType:nil),let owner=resources.withCString({lg_open($0,wantsScene ? 1:0)}),let raw=lg_view(owner) else {
+        super.viewDidLoad();view.accessibilityIdentifier="login.screen"
+        #if OA_NEXT
+        view.backgroundColor = .clear
+        #else
+        view.backgroundColor=mode == .card ? .clear:NativeSkin.ground
+        #endif
+        // The card is modal for VoiceOver: the chat behind it is not read.
+        view.accessibilityViewIsModal=true
+        guard let resources=Bundle.main.path(forResource:"Components",ofType:nil),let owner=resources.withCString({lg_open($0,wantsScene ? 1:0,mode == .card ? 1:0)}),let raw=lg_view(owner) else {
             // The surface could not open: say so plainly. The app's own login under this one still works.
-            let label=UILabel();label.text="Log in is unavailable. Restart OpenAgents.";label.numberOfLines=0;label.textAlignment = .center;label.textColor=NativeSkin.color(NativeSkin.tokens.ink)
+            let label=UILabel();label.text="Log in is unavailable. Restart OpenAgents.";label.numberOfLines=0;label.textAlignment = .center;label.textColor = .label
             label.translatesAutoresizingMaskIntoConstraints=false;view.addSubview(label)
             NSLayoutConstraint.activate([label.centerYAnchor.constraint(equalTo:view.centerYAnchor),label.leadingAnchor.constraint(equalTo:view.leadingAnchor,constant:24),label.trailingAnchor.constraint(equalTo:view.trailingAnchor,constant:-24)]);return
         }
         self.owner=owner
+        #if OA_NEXT
+        lg_keys(owner,0)   // the lean app has no key login yet
+        #endif
         // A touch lands on the Metal view, not here: the surface says when one changed something.
         lg_on_change(owner,{ context in
             guard let context else {return}
@@ -61,6 +82,15 @@ import CoreText
         // The GPU view is not an accessibility element; the rows are (refreshRows).
         canvas.isAccessibilityElement=false;canvas.accessibilityElementsHidden=true
         editor.delegate=self;editor.addTarget(self,action:#selector(edited),for:.editingChanged)
+        #if !OA_NEXT
+        if mode == .demo {
+            // The demo is left by its own control: nothing on the form closes it.
+            let close=NativeButton(.icon);close.glass=true;close.show("Close demo",symbol:"xmark");close.accessibilityIdentifier="login.demo.close"
+            close.addAction(UIAction { [weak self] _ in self?.cancel() },for:.primaryActionTriggered)
+            close.translatesAutoresizingMaskIntoConstraints=false;view.addSubview(close);closeControl=close
+            NSLayoutConstraint.activate([close.leadingAnchor.constraint(equalTo:view.safeAreaLayoutGuide.leadingAnchor,constant:12),close.topAnchor.constraint(equalTo:view.safeAreaLayoutGuide.topAnchor),close.widthAnchor.constraint(equalToConstant:44),close.heightAnchor.constraint(equalToConstant:44)])
+        }
+        #endif
         let center=NotificationCenter.default
         center.addObserver(self,selector:#selector(keyboardMoved(_:)),name:UIResponder.keyboardWillChangeFrameNotification,object:nil)
         center.addObserver(self,selector:#selector(keyboardHid),name:UIResponder.keyboardWillHideNotification,object:nil)
@@ -129,7 +159,13 @@ import CoreText
 
     private func act(_ action:Int32) {
         guard owner != nil,action != 0 else {return}
-        if action==3 {useKey();return}
+        if action==4 {editor.resignFirstResponder();cancel();return}
+        if mode == .demo {
+            // The demo talks to nobody: the email step moves on, the code is never accepted.
+            if action==1 {reply(1,true,"")}else if action==2 {reply(2,false,"This is a demo. Nothing was sent.")}
+            return
+        }
+        if action==3 {editor.resignFirstResponder();useKey();return}
         work?.cancel()
         if action==1 {
             let email=text(1)
@@ -249,6 +285,7 @@ import CoreText
             if role==0 {element.activate={ [weak self] in self?.activate(name) ?? false }}
             elements.append(element)
         }
+        if let closeControl {elements.insert(closeControl,at:0)}
         view.accessibilityElements=elements
         if names != ids {ids=names;UIAccessibility.post(notification:.layoutChanged,argument:nil)}
         if notice != said {said=notice;if !notice.isEmpty {UIAccessibility.post(notification:.announcement,argument:notice)}}
@@ -290,14 +327,8 @@ private final class LoginFieldProxy:UITextField {
 /// at the size the screen draws it, the skin's ink, placeholder and caret.
 private final class LoginEditor:UITextField {
     private static let style:[Float] = {var s=[Float](repeating:0,count:14);_ = lg_editor(&s);return s}()
-    private static func color(_ at:Int)->UIColor {UIColor(red:CGFloat(style[at]),green:CGFloat(style[at+1]),blue:CGFloat(style[at+2]),alpha:CGFloat(style[at+3]))}
-    private static let face:UIFont = {
-        let size=CGFloat(style[0]>0 ? style[0]:17)
-        if let path=Bundle.main.path(forResource:"Geist",ofType:"ttf",inDirectory:"Components/fonts"),let data=CGDataProvider(url:URL(fileURLWithPath:path) as CFURL),let font=CGFont(data) {
-            return CTFontCreateWithGraphicsFont(font,size,nil,nil) as UIFont
-        }
-        return .systemFont(ofSize:size)
-    }()
+    private static func color(_ at:Int)->UIColor {NativeKitText.color(style,at)}
+    private static let face=NativeKitText.face(CGFloat(style[0]>0 ? style[0]:17))
     init() {
         super.init(frame:.zero)
         borderStyle = .none;backgroundColor = .clear;font=Self.face;textColor=Self.color(2);tintColor=Self.color(10)
