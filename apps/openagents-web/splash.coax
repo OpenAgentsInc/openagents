@@ -41,6 +41,7 @@ UNIFORM_FLOATS :: 16; // width, height, time, fade, still, scene, 0, 0, then the
 
 CAP :: 11.0;         // COMING SOON's cap height, CSS pixels
 TITLE_CAP :: 20.0;   // 404's cap height, CSS pixels
+WORDMARK_CAP :: 15.0; // OPENAGENTS's cap height over the native login, points
 GAP :: 0.72;         // letter gap, in cap heights (the old page's 0.6em spacing)
 SPACE :: 1.5;        // a space, in cap heights
 CORE :: 0.62;        // half the stroke, CSS pixels (a 1.2 px line, like weight 500 at 13 px)
@@ -57,10 +58,12 @@ clamp :: (a: f32, low: f32, high: f32) -> f32 { return lo(high, hi(low, a)); }
 ease :: (x: f32) -> f32 { t := clamp(x, 0, 1); return t * t * (3 - 2 * t); }
 
 // Lines: 0 COMING SOON on the splash; 1 "404" and 2 NOT FOUND on the
-// not-found page. How many letters line l has.
+// not-found page; 3 OPENAGENTS, the wordmark over the native login's scene
+// (apps/shared/login/scene.coax). How many letters line l has.
 line_count :: (l: int) -> int {
   if l == 1 { return 3; }
   if l == 2 { return 9; }
+  if l == 3 { return 10; }
   return 11;
 }
 
@@ -69,6 +72,7 @@ letter :: (l: int, i: int) -> u8 {
   if i < 0 || i >= line_count(l) { return 0; }
   if l == 1 { t := [3] u8.['4', '0', '4']; return t[i]; }
   if l == 2 { t := [9] u8.['N', 'O', 'T', 0, 'F', 'O', 'U', 'N', 'D']; return t[i]; }
+  if l == 3 { t := [10] u8.['O', 'P', 'E', 'N', 'A', 'G', 'E', 'N', 'T', 'S']; return t[i]; }
   t := [11] u8.['C', 'O', 'M', 'I', 'N', 'G', 0, 'S', 'O', 'O', 'N'];
   return t[i];
 }
@@ -79,7 +83,7 @@ page_lines :: (page: int) -> int { return ifx page == 1 then 2 else 1; }
 
 // Line l's cap height in CSS pixels, when it starts, and where its centre
 // sits as a fraction of the page height. The not-found page comes up quickly.
-line_cap :: (l: int) -> f32 { return ifx l == 1 then TITLE_CAP else CAP; }
+line_cap :: (l: int) -> f32 { return ifx l == 1 then TITLE_CAP else ifx l == 3 then WORDMARK_CAP else CAP; }
 
 // Line l's cap height on a page width CSS pixels wide: a big line shrinks to
 // keep a margin on a narrow phone.
@@ -87,6 +91,7 @@ fitted_cap :: (l: int, width: f32) -> f32 { return lo(line_cap(l), width * 0.86 
 line_start :: (l: int) -> f32 {
   if l == 1 { return 0.4; }
   if l == 2 { return 1.0; }
+  if l == 3 { return 0.5; }
   return START;
 }
 line_y :: (l: int) -> f32 { return ifx l == 2 then 0.205f32 else 0.14f32; }
@@ -325,6 +330,18 @@ coaxial_splash_uniform_floats :: () -> int #export_c #effects(all) { return UNIF
   #assert page_strokes(out[..], 0, 1280, 800, 1, 1, false) < strokes(out[..], 1280, 800, 1, 0, true);
   text: [FONT_MAX_POINTS * 2] u8;
   for l: 1..<3 { for i: 0..<line_count(l) { c := letter(l, i); #assert c == 0 || glyph(cast(u32) c, text[..]) > 1; } }
+}
+
+#test "the login wordmark writes OPENAGENTS whole, centred, inside a phone" {
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  n := line_strokes(out[..], 0, 3, 402 * 3, 874 * 3, 3, 0, true);
+  #assert n > 0 && n % 6 == 0 && line_strokes(out[..], 0, 3, 402 * 3, 874 * 3, 3, 0.2, false) == 0;
+  #assert n == line_strokes(out[..], 0, 3, 402 * 3, 874 * 3, 3, 30, false);
+  lowest := 1.0e9f32; highest := -1.0e9f32;
+  for v: 0..<n { x := out[v * VERTEX_FLOATS]; lowest = lo(lowest, x); highest = hi(highest, x); }
+  #assert lowest > 0 && highest < 402 * 3 && abs((lowest + highest) * 0.5 - 201 * 3) < 6;
+  text: [FONT_MAX_POINTS * 2] u8;
+  for i: 0..<line_count(3) { #assert glyph(cast(u32) letter(3, i), text[..]) > 1; }
 }
 
 #test "404 keeps a margin on a small phone" {

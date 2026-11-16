@@ -1,0 +1,60 @@
+// The native login scene's shaders (components/gpu-components.md, "The first
+// screen: login"; GitHub #13645): the openagents.com splash's two passes
+// (apps/openagents-web/gpu/splash.coax: the nebula, and the strokes of the
+// words, the graph and the payments), in the production grayscale, dimmed
+// behind the form. All the scene's light is the splash's; this file only
+// takes its colour away and makes room for the form.
+//
+// It is emitted as Metal for the Apple host (apps/shared/host/apple/ui-scene.m):
+//   coax metal apps/shared/login/scene-shader.coax --vertex login_bg_vs --fragment login_bg_fs
+//   coax metal apps/shared/login/scene-shader.coax --vertex login_fx_vs --fragment login_fx_fs
+// Uniforms: the splash's 16 floats, then (scene.coax) the form's panel x, y,
+// w, h in device pixels at 16, its corner at 20, how dark at 21 and the
+// edge's softness at 22.
+//   coax/bin/coax test apps/shared/login/scene-shader.coax --library
+#load "../../openagents-web/gpu/splash.coax";
+
+// The light a colour has, as one grey (Rec. 709).
+login_grey :: (c:V3)->f32 {
+  return wg_dot3(c,v3(0.2126f32,0.7152f32,0.0722f32));
+}
+// How much of the scene shows at pixel p: all of it away from the form, the
+// rest behind its panel, fading over the soft edge outside it.
+login_veil :: (p:V2,u:[]f32)->f32 {
+  if (u[21]<=0.0f32) {
+    return 1.0f32;
+  }
+  half:V2=v2(u[18]*0.5f32,u[19]*0.5f32);
+  r:f32=fmin(u[20],fmin(half.x,half.y));
+  q:V2=v2(abs(p.x-(u[16]+half.x))-(half.x-r),abs(p.y-(u[17]+half.y))-(half.y-r));
+  outside:f32=(wg_length2(v2(fmax(q.x,0.0f32),fmax(q.y,0.0f32)))+fmin(fmax(q.x,q.y),0.0f32))-r;
+  return 1.0f32-(u[21]*(1.0f32-smoothstep(0.0f32,fmax(u[22],1.0f32),outside)));
+}
+login_bg_vs :: (i:u32,_iid1:u32)->V4 {
+  return splash_bg_vs(i,_iid1);
+}
+login_bg_fs :: (pos:V4,u:[]f32)->V4 {
+  c:V4=splash_bg_fs(pos,u);
+  g:f32=login_grey(v3(c.x,c.y,c.z))*login_veil(v2(pos.x,pos.y),u);
+  return v4(g,g,g,1.0f32);
+}
+login_fx_vs :: (_vid2:u32,_iid3:u32,in_:splash_fx_vs_in,u:[]f32)->SplashV {
+  return splash_fx_vs(_vid2,_iid3,in_,u);
+}
+login_fx_fs :: (v:SplashV,u:[]f32)->V4 {
+  c:V4=splash_fx_fs(v,u);
+  g:f32=login_grey(v3(c.x,c.y,c.z))*login_veil(v2(v.pos.x,v.pos.y),u);
+  return v4(g,g,g,1.0f32);
+}
+
+#test "the veil is whole away from the form, dim behind it, and soft at its edge" {
+  u:[24]f32;
+  #assert login_veil(v2(10.0f32,10.0f32),u[..])==1.0f32;
+  u[16]=100;u[17]=200;u[18]=400;u[19]=300;u[20]=30;u[21]=0.8;u[22]=60;
+  inside:=login_veil(v2(300.0f32,350.0f32),u[..]);far:=login_veil(v2(300.0f32,900.0f32),u[..]);edge:=login_veil(v2(300.0f32,530.0f32),u[..]);
+  #assert abs(inside-0.2f32)<0.0001f32 && far==1.0f32 && edge>inside && edge<far;
+  // a white pixel stays white, a pure orange one is its light, and nothing gains a hue
+  #assert abs(login_grey(v3(1.0f32,1.0f32,1.0f32))-1.0f32)<0.0001f32 && login_grey(v3(1.0f32,0.55f32,0.12f32))<0.7f32;
+  u[0]=1206;u[1]=2622;u[2]=20;u[3]=1;u[5]=1;
+  c:=login_bg_fs(v4(300.0f32,350.0f32,0.0f32,1.0f32),u[..]);#assert c.x==c.y && c.y==c.z && c.w==1.0f32;
+}

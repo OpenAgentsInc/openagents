@@ -1,0 +1,92 @@
+// The scene behind the native login (components/gpu-components.md, "The first
+// screen: login"; GitHub #13645): the openagents.com splash, on the phone. It
+// is the splash's own nebula, graph and stroke font (apps/openagents-web/
+// splash.coax, graph.coax), laid out for a screen held upright: OPENAGENTS
+// writes itself near the top, the agent graph fills the band under it with
+// payments running its links, and the form sits below. Nothing here draws a
+// control: the form is the component kit's (screen.coax), drawn over this in
+// the same Metal pass.
+//
+// The host owns the GPU. Each frame it asks for the scene's vertices (the
+// splash's 16 floats each) and its uniforms: the splash's 16 floats, then
+// where the form is, so the shader (scene-shader.coax) dims the scene behind
+// it. With reduced motion the scene is one still frame: its clock doesn't
+// move, the words are written, and no payments run.
+//   coax/bin/coax test apps/shared/login/scene.coax
+
+#load "../../openagents-web/splash.coax";
+
+LOGIN_SCENE_UNIFORMS :: 24;   // the splash's 16, then the form: x, y, w, h (device px), its corner, how dark, the edge's softness, 0
+LOGIN_SCENE_BAND :: 0.72;     // the share of the screen's height the graph is centred in, from the top
+LOGIN_SCENE_DIM :: 0.82;      // how much of the scene the form's panel takes away
+LOGIN_SCENE_EDGE :: 28.0;     // points the dimming fades over, outside the panel
+
+LoginScene :: struct { time: f32; frames: int; still: bool; }
+
+// One frame. form_*: the form's panel in device pixels (w 0: no form yet,
+// nothing is dimmed). Returns the vertex count; 0 when it cannot draw.
+login_scene_frame :: (s: [] LoginScene, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool,
+                      form_x: f32, form_y: f32, form_w: f32, form_h: f32, form_radius: f32) -> int #export_c #effects(all) {
+  if s.count < 1 || uniforms.count < LOGIN_SCENE_UNIFORMS || width < 1 || height < 1 { return 0; }
+  if !still { s[0].time += clamp(dt, 0, 0.1); }
+  s[0].frames += 1; s[0].still = still;
+  t := s[0].time;
+  d := hi(dpr, 1);
+  for i: 0..<LOGIN_SCENE_UNIFORMS { uniforms[i] = 0; }
+  uniforms[0] = width; uniforms[1] = height;
+  uniforms[2] = ifx still then 20.0f32 else 20 + t;       // the nebula's clock, as the splash
+  uniforms[3] = ifx still then 1.0f32 else ease(t / FADE);
+  uniforms[4] = ifx still then 1.0f32 else 0.0f32;
+  uniforms[5] = 1;
+  uniforms[16] = form_x; uniforms[17] = form_y; uniforms[18] = form_w; uniforms[19] = form_h;
+  uniforms[20] = form_radius;
+  uniforms[21] = ifx form_w > 0 && form_h > 0 then LOGIN_SCENE_DIM else 0.0f32;
+  uniforms[22] = LOGIN_SCENE_EDGE * d;
+  words := line_strokes(out, 0, 3, width, height, d, t, still);
+  // the graph keeps clear of the wordmark and of the form
+  cap := fitted_cap(3, width / d) * d;
+  top := Hole.{cx = width * 0.5, cy = height * line_y(3), w = text_width(3) * cap * 0.5, h = cap * 0.5};
+  under := Hole.{cx = form_x + form_w * 0.5, cy = form_y + form_h * 0.5, w = hi(form_w * 0.5, 1), h = hi(form_h * 0.5, 1)};
+  if !(form_w > 0) || !(form_h > 0) { under = top; }
+  graph := graph_draw(out, words, width, height * LOGIN_SCENE_BAND, d, ifx still then 20.0f32 else t, still, top, under);
+  return words + graph;
+}
+login_scene_max_vertices :: () -> int #export_c #effects(all) { return MAX_VERTICES; }
+login_scene_vertex_floats :: () -> int #export_c #effects(all) { return VERTEX_FLOATS; }
+login_scene_uniform_floats :: () -> int #export_c #effects(all) { return LOGIN_SCENE_UNIFORMS; }
+// Whether the next frame differs from this one: a still scene is drawn once.
+login_scene_moving :: (s: [] LoginScene) -> bool #export_c #effects(all) { return s.count > 0 && !s[0].still; }
+
+LoginSceneOut :: struct { v: [MAX_VERTICES * VERTEX_FLOATS] f32; }
+
+#test "the scene writes the wordmark and the graph, and tells the shader where the form is" #steps 400000000 {
+  s: [1] LoginScene; o: [1] LoginSceneOut; u: [LOGIN_SCENE_UNIFORMS] f32;
+  s[0].time = 12;
+  n := login_scene_frame(s[..], o[0].v[..], u[..], 1206, 2622, 3, 0.016, false, 60, 1300, 1086, 700, 60);
+  #assert n > 0 && n % 6 == 0 && n <= MAX_VERTICES && login_scene_moving(s[..]);
+  #assert u[0] == 1206 && u[1] == 2622 && u[3] == 1 && u[13] == 0 && u[16] == 60 && u[19] == 700 && u[21] == LOGIN_SCENE_DIM;
+  // the graph stays in the upper band: nothing is centred under the form's middle
+  below := 0;
+  for q: 0..<n / 6 { y := (o[0].v[q * 6 * VERTEX_FLOATS + 1] + o[0].v[(q * 6 + 2) * VERTEX_FLOATS + 1]) * 0.5; if y > 2622 * 0.9 { below += 1; } }
+  #assert below == 0;
+  // no form: nothing dimmed
+  _ := login_scene_frame(s[..], o[0].v[..], u[..], 1206, 2622, 3, 0.016, false, 0, 0, 0, 0, 0);
+  #assert u[21] == 0;
+}
+
+#test "reduced motion is one still frame: the clock stays, the words are whole, no payments run" #steps 400000000 {
+  s: [1] LoginScene; a: [1] LoginSceneOut; b: [1] LoginSceneOut; u: [LOGIN_SCENE_UNIFORMS] f32; w: [LOGIN_SCENE_UNIFORMS] f32;
+  n := login_scene_frame(s[..], a[0].v[..], u[..], 1206, 2622, 3, 0.05, true, 60, 1300, 1086, 700, 60);
+  m := login_scene_frame(s[..], b[0].v[..], w[..], 1206, 2622, 3, 0.05, true, 60, 1300, 1086, 700, 60);
+  #assert n > 0 && n == m && s[0].time == 0 && !login_scene_moving(s[..]) && u[3] == 1 && u[4] == 1;
+  for i: 0..<n * VERTEX_FLOATS { #assert a[0].v[i] == b[0].v[i]; }
+  for i: 0..<LOGIN_SCENE_UNIFORMS { #assert u[i] == w[i]; }
+  for q: 0..<n / 6 { #assert a[0].v[q * 6 * VERTEX_FLOATS + 11] != MODE_PULSE; }
+}
+
+#test "a missing state, small uniforms or an empty screen draw nothing" {
+  s: [1] LoginScene; out: [96] f32; u: [LOGIN_SCENE_UNIFORMS] f32;
+  #assert login_scene_frame(s[0..<0], out[..], u[..], 400, 800, 1, 0, true, 0, 0, 0, 0, 0) == 0;
+  #assert login_scene_frame(s[..], out[..], u[0..<16], 400, 800, 1, 0, true, 0, 0, 0, 0, 0) == 0;
+  #assert login_scene_frame(s[..], out[..], u[..], 0, 800, 1, 0, true, 0, 0, 0, 0, 0) == 0;
+}
