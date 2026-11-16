@@ -25,6 +25,7 @@
 typedef struct {
   UiHost *host;
   coax_t_GalleryState *g;
+  coax_t_Atlas *atlas;          // the atlas the frames draw with: the gallery's, or another page's on this carrier
   char resources[PATH_MAX];
   coax_t_RaFonts fonts;
   uint8_t *font_bytes[4];
@@ -51,7 +52,7 @@ static uint8_t *slurp(const char *dir, const char *sub, const char *name, const 
   return p;
 }
 static coax_v_t_GalleryState state_of(App *a) { return (coax_v_t_GalleryState){a->g, 1}; }
-static coax_v_t_Atlas atlas_of(App *a) { return (coax_v_t_Atlas){a->g->atlas.e, 1}; }
+static coax_v_t_Atlas atlas_of(App *a) { return (coax_v_t_Atlas){a->atlas, 1}; }
 static coax_v_t_RaPlan plan_of(App *a) { return (coax_v_t_RaPlan){&a->plan, 1}; }
 static size_t mono_bytes(App *a) { return (size_t)coaxial_ra_width(plan_of(a)) * (size_t)coaxial_ra_height(plan_of(a)); }
 static size_t color_bytes(App *a) { return (size_t)coaxial_ra_width(plan_of(a)) * (size_t)coaxial_ra_color_height(plan_of(a)) * 4; }
@@ -72,8 +73,8 @@ static int atlas_setup(App *a) {
   if (a->nfonts > 16 || a->nicons > 64) return 0;
   for (int k = 0; k < a->nfonts; k++) { a->sizes[k] = coaxial_components_font_size(k); a->weights[k] = coaxial_components_font_weight(k); }
   for (int i = 0; i < a->nicons; i++) {
-    char name[65]; int n = (int)coaxial_components_icon_name(state_of(a), i);
-    memcpy(name, a->g->sbytes.e, (size_t)n); name[n] = 0;
+    char name[65]; int n = (int)coaxial_components_icon_text(i, (coax_v_u8){(uint8_t *)name, 64});
+    name[n] = 0;
     a->icon_sizes[i] = coaxial_components_icon_size(i);
     a->svg[i] = (char *)slurp(a->resources, "icons", name, ".svg", &a->svg_n[i]);
   }
@@ -94,14 +95,20 @@ static int atlas_setup(App *a) {
   return 1;
 }
 
+// The graphemes and cells this frame wanted, for the next. 1 when the atlas changed.
+static int atlas_serve(App *a) {
+  coaxial_ra_clean(plan_of(a));
+  if (coaxial_ra_serve(atlas_of(a), plan_of(a), (coax_v_t_RaFonts){&a->fonts, 1}, (coax_v_s64){a->weights, a->nfonts}, (coax_v_f32){a->sizes, a->nfonts},
+                       (coax_v_u8){a->mono, (int64_t)mono_bytes(a)}, (coax_v_t_RaWork){a->work, 1}) <= 0) return 0;
+  atlas_upload(a);
+  return 1;
+}
+
 static int on_frame(void *user, float *vertices, float w, float h, float dpr, float dt) {
   App *a = user;
   float uniforms[4] = {0};
   int n = (int)coaxial_components_frame(state_of(a), (coax_v_f32){vertices, (int64_t)a->max_vertices * coaxial_components_vertex_floats()}, (coax_v_f32){uniforms, 4}, w, h, dpr, dt);
-  // the graphemes and cells this frame wanted, for the next
-  coaxial_ra_clean(plan_of(a));
-  if (coaxial_ra_serve(atlas_of(a), plan_of(a), (coax_v_t_RaFonts){&a->fonts, 1}, (coax_v_s64){a->weights, a->nfonts}, (coax_v_f32){a->sizes, a->nfonts},
-                       (coax_v_u8){a->mono, (int64_t)mono_bytes(a)}, (coax_v_t_RaWork){a->work, 1}) > 0) atlas_upload(a);
+  atlas_serve(a);
   ui_cursor(a->host, coaxial_components_cursor(state_of(a)) == 1 ? 2 : 0);
   return n < 0 ? 0 : n;
 }
@@ -135,6 +142,7 @@ void *cg_open(const char *resources) {
   char shader[PATH_MAX+32];snprintf(shader,sizeof shader,"%s/components.metal",resources);
   a->g=calloc(1,sizeof *a->g);a->max_vertices=(uint32_t)coaxial_components_max_vertices();
   if (!a->g) {free(a);return NULL;}
+  a->atlas=a->g->atlas.e;
   UiApp app={.title="Components",.width=390,.height=844,.max_vertices=a->max_vertices,.shader=shader,.user=a,.frame=on_frame,.pointer=on_pointer,.wheel=on_wheel};
   a->host=ui_open(&app,0);
   if (!a->host) {gallery_free(a);free(a);return NULL;}
@@ -151,6 +159,10 @@ void cg_close(void *owner) {if (owner) {gallery_free(owner);free(owner);}}
 void cg_section(void *owner,int section) {if (owner && section>=0 && section<=5) {App *a=owner;coaxial_components_section(state_of(a),section);}}
 void cg_motion(void *owner,int action) {if (owner) {App *a=owner;coaxial_components_motion(state_of(a),action);}}
 void cg_scroll(void *owner,float dy) {if (owner) on_wheel(owner,dy);}
+#ifdef COMPONENTS_LOGIN
+// The native login's surface shares this carrier and its atlas code (apps/shared/login/host.c, #13645).
+#include "../../../apps/shared/login/host.c"
+#endif
 #else
 static const char *value(int argc, char **argv, const char *name) {
   for (int i = 1; i + 1 < argc; i++) if (!strcmp(argv[i], name)) return argv[i + 1];
@@ -187,6 +199,7 @@ int main(int argc, char **argv) {
   if (a.dpr <= 0) a.dpr = 1;
   a.g = calloc(1, sizeof *a.g);
   if (!a.g) return 1;
+  a.atlas = a.g->atlas.e;
   a.max_vertices = (uint32_t)coaxial_components_max_vertices();
   UiApp app = {.title = "Components", .app_id = "com.openagents.components", .width = w, .height = h, .max_vertices = a.max_vertices, .shader = shader,
                .user = &a, .frame = on_frame, .pointer = on_pointer, .wheel = on_wheel};

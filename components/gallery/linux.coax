@@ -7,3 +7,13 @@
 // which is how the page is looked at on a machine with no WebGPU capture.
 #load "page.coax";
 #load "../raster/atlas.coax";
+
+// An icon's file name into the caller's bytes: a native host builds the atlas
+// with it, also for a page that keeps no gallery state (the native login,
+// apps/shared/login/host.c).
+coaxial_components_icon_text :: (i: int, out: [] u8) -> int #export_c #effects(all) {
+  if i < 0 || i >= ICON_COUNT { return 0; }
+  names := ICON_NAMES; n := 0;
+  for c: names[i] { if n >= out.count { break; } out[n] = c; n += 1; }
+  return n;
+}
