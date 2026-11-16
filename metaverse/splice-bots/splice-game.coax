@@ -126,6 +126,7 @@ SpGame :: struct {
   jr: [1] SjJam;              // and its route: the maps, their starts and the game actors (sj_read); outlives a reset
   jway: [SJ_WAYS] SjWay;      // the drill mech's way round the jam world's walls (jam/jam-world.coax sj_way)
   jx: [1] SjRules;            // the jam's rules in the jam world: her inventory, the charge points, the farm robot, her crew, Heat (jam/jam-farm.coax)
+  jf: [1] SjFx;               // the jam's jetpack, and the jam's sound moments (jam/jam-fx.coax)
   jd: string;                 // the jam's Data tables: the jam pack's catalog, kept by the page (jam/jam-data.coax); "" without it
   mode: int; zone: int; phase: int; t: f32;
   px: f32; pz: f32; yaw: f32; pitch: f32; stride: f32;
@@ -361,6 +362,7 @@ g_reset :: (g: [] SpGame) {
   g[0].bot = true; g_bot_home(g);   // Digger is with her from the first step (director.coax)
   sb_reset(g);
   sjx_reset(g);   // the jam's rules, in the jam world (jam/jam-farm.coax)
+  sjf_reset(g);   // and its jetpack (jam/jam-fx.coax)
 }
 g_say :: (g: [] SpGame, m: int) { g[0].msg = m; g[0].msg_t = 3.5; g_event(g, m); }
 // The Digger beside you: where it stands when it is not at work.
@@ -384,6 +386,7 @@ g_begin :: (g: [] SpGame) {
   g[0].have[H_BATTERY] = true; g[0].taken[H_BATTERY] = true;
   _ = sj_begin(g);   // the jam world starts at the farm's player start (jam/jam-world.coax)
   sjx_reset(g);      // and a new run's jam rules: an empty inventory, the farm's pickups and robot (jam/jam-farm.coax)
+  sjf_reset(g);      // and the jetpack lying by her start (jam/jam-fx.coax)
   g_foes(g); g_keep(g);
 }
 // Stand at (x, z) metres facing `deg` degrees, the Digger beside you.
@@ -668,7 +671,8 @@ g_jump :: (g: [] SpGame, dt: f32) {
   c := Colliders.{ground = gr, floors = floors[0..<sl_floors(g, x, z, floors[..]) * STAND_FLOATS]};
   under := query_stand_checked(c, x, z, j[0].y, T_RADIUS);
   fl_jump_tune(j);   // a second Space in the air jumps higher (#13505 playtest), coyote time and a press buffer (feel.coax)
-  j[0] = jump_advance(j[0], fl_loc_of(g), ifx under.status == QueryStatus.ok then hi(gr, under.y) else gr, dt);
+  loc := sjf_loc(g, j, fl_loc_of(g), dt);   // the jam's jetpack: its thrust, and plain gravity while it fires (jam/jam-fx.coax)
+  j[0] = jump_advance(j[0], loc, ifx under.status == QueryStatus.ok then hi(gr, under.y) else gr, dt);
   // standing: on the floor exactly (the catwalk's ramps), not eased onto it
   if j[0].on_ground && under.status == QueryStatus.ok { j[0].y = hi(gr, under.y); }
   if j[0].on_ground { g[0].air_from = j[0].y; }
@@ -731,6 +735,7 @@ g_step :: (g: [] SpGame, dt: f32) {
   // As shipped, raiders dance where they stand and fight only if you hit them; Imperial robots patrol,
   // notice you (from further at higher Heat), chase, and give up at the catwalk or far away
   sjx_step(g, dt);   // the jam's rules: pickups, charge points, the farm robot, her crew (jam/jam-farm.coax)
+  sjf_step(g, dt);   // the jam's jetpack where it lies, and its exhaust (jam/jam-fx.coax)
   g_foes_step(g, dt);
   d_post(g, dt);   // Heat's floor, and Digger's own errands (director.coax)
   g_bot(g, dt);
@@ -1246,6 +1251,7 @@ g_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   }
   sb_live(g, buf, p);   // the drill mech, the raider mech, the boss (splice-battle.coax)
   if g[0].zone != Z_MINE { return; }
+  sjf_live(g, buf, p);   // the jam's jetpack, lying or on her back (jam/jam-fx.coax)
   if g[0].have[H_CORE] { kit_pen(p, 66, MAT_GLOW, blue); ball(buf, p, v3(g[0].px - sin(g[0].yaw) * 0.45, y + 1.2, g[0].pz - cos(g[0].yaw) * 0.45), 0.24, 10); }
   // pickups: hardware in sand and orange, cards as film frames, banned tech glowing blue
   for i: 0..<PICKS {

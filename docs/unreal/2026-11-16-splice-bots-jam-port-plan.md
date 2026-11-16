@@ -66,7 +66,7 @@ different in the jam; the jam wins. **Missing**: not in the prototype.
 | --- | --- | --- | --- |
 | One continuous world | Four maps with full level loads (its own TODO asks for one world) | One world: farm, plain, garage, lab | Have (the prototype's way is the jam's goal) |
 | Solar farm layout | `L_SolarFarm`: 84 banks in 4 rows, 6 charge points (18 actors with posts), 10 pickups, 6 Imperial stand-ins, Sniper, Digger, the buried crate, 1,777 static meshes | `farm.coax`: the same rows, drawn in code | Differs: draw the imported map |
-| Greek quarter jump course | `L_SolarFarm_GreekQuarter`, 310 meshes, plateaus P1 to P3 at 1.0, 1.8, 2.6 m | none | Missing |
+| Greek quarter jump course | `L_SolarFarm_GreekQuarter`, 310 meshes, plateaus P1 to P3 at 1.0, 1.8, 2.6 m | `jam/jam-fx.coax` | Done |
 | The plain | `L_Plain`: mesas, giants, garage shell, the farm's road | `plain.coax`: ground, edge stakes, rocks, peaks, pads | Differs: draw the imported map |
 | The garage ring | `L_Ring`: 1,903 meshes, 24 bay instances (`LI_Bay`, `LI_Bay_Balcony`), the rock wall (20 chunks), 16 rave raiders, a 400-card crowd | `garage.coax`: the ring, bays, LEDs, the rock wall (rubble) | Differs: draw the imported map; the game keeps its bay logic |
 | The lab | `L_Lab`: the hallway and the round lab, 12 lights | `garage.coax ga_draw_lab` | Differs: draw the imported map |
@@ -83,7 +83,7 @@ different in the jam; the jam wins. **Missing**: not in the prototype.
 | Jump | 10.6 m/s (about 1.67 m), gravity 32 rising and 1.25x falling, double jump 1.15x, coyote 0.1 s, buffer 0.12 s | 9 m/s, gravity 30, the same coyote and buffer | Differs: the jam's numbers (check the solar rows' tops still land) |
 | Camera | Free orbit, zoom 1.4 to 14 m, first person below 1.4 m, V toggles | Follow camera with zoom, rises over the boss | Have; first person is Missing |
 | Hearts | 3, a hit costs 1 | `T_HEARTS` | Have |
-| Jetpack | Jump, jump, hold Space: 100 fuel in 3 cells, 28/s, climbs 6.5 m/s | none | Missing (the item is never handed out in the jam; a pickup is needed) |
+| Jetpack | Jump, jump, hold Space: 100 fuel in 3 cells, 28/s, climbs 6.5 m/s | `jam/jam-fx.coax` | Done (a pickup by her farm start, as in the jam's graybox stage) |
 | Hoverboard | Right click to board; casual 22 m/s, sprint 40, ollie 6.5 m/s, R spins 900 deg/s | Q boards; casual and fast speeds from the `board` table | Differs: the jam's speeds and keys |
 
 ### Robots, the crew and the fights
@@ -198,6 +198,11 @@ Each batch is pushed to `main` green, with its checks, and commented on #13653.
   colliders. A pickup is hers only from its own floor, and Digger fetches only from his, so P3's battery and banned
   piece are the course's reward. `jam-run-check` climbs P1 to P3 with the keys and takes them, then climbs the
   quarter's village to the highest roof a chain of jumps reaches.
+- The jetpack plays (`jam/jam-fx.coax` on the rules port's `rules/jetpack.coax`). It lies 4.5 m ahead of her farm
+  start and 2.5 m to its right, as in the jam's graybox stage, and she owns it while it is in her inventory. Jump,
+  double jump, then hold Space: 100 fuel in 3 cells burns at 28 a second, thrust climbs up to 6.5 m/s with plain
+  gravity, and she flies along her keys up to 15 m/s. Fuel refills on the ground. The HUD shows JET and its cells,
+  and HOLD SPACE  JETPACK when it can fire. `jam-run-check` and `jam-keys-check` both fly it with the keys.
 
 ## Acceptance
 

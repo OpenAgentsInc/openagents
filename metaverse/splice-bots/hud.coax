@@ -424,6 +424,7 @@ hv_hud :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui) -> int {
   n = hv_card(g, out, n, q);
   n = sb_hud(g, out, u, q, n);   // health bars over the bots, and a battle's panels
   n = sjx_hud(g, out, n, q);   // the jam's hotbar, Heat's level and its lines, in the jam world (jam/jam-farm.coax)
+  n = sjf_hud(g, out, n, q);   // the jam's jetpack: its fuel cells and HOLD SPACE (jam/jam-fx.coax)
   if !open { n = hv_prompt(g, out, n, q); }
   // the scanner gate: Heat is cool, pass
   if g[0].zone == Z_VILLAGE && (g[0].pass_t > 0 || g[0].pz > g[0].at.vil_z + 4) {

@@ -1,4 +1,4 @@
-// The jam build's jump course on the game (GitHub #13653; the plan: docs/unreal/2026-11-16-splice-bots-jam-port-plan.md,
+// The jam build's jump course and jetpack on the game (GitHub #13653; the plan: docs/unreal/2026-11-16-splice-bots-jam-port-plan.md,
 // item 6). jam-rules.coax loads this file; nothing here acts outside the jam world (g[0].jam).
 //
 //   The jump course  The farm's three plateaus (P1 to P3: 1.0, 1.8 and 2.6 m) and the Greek quarter's hillside
@@ -7,15 +7,139 @@
 //                    and the banned piece on P3: a pickup is hers only from its own floor (sjf_pick_near), and
 //                    Digger, who does not climb, fetches only from his.
 //
+//   The jetpack      The jam's (SpliceJetpack, the rules port's rules/jetpack.coax): jump, double jump, then
+//                    hold Space. 100 fuel in 3 cells, 28 a second, refills on the ground; thrust up to a 6.5 m/s
+//                    climb, and flight along her keys up to 15 m/s. She owns it while it is in her inventory.
+//                    The jam leaves one 4.5 m ahead of her farm start and 2.5 m to its right (its graybox
+//                    stage); here too. The HUD shows JET and its three cells, and HOLD SPACE  JETPACK when it
+//                    can fire. Its numbers act in the jam world only.
+//
 //   coax/bin/coax test metaverse/splice-bots/splice-bots.coax --only "jam fx"
+#load "../rules/jetpack.coax";
 
 SJF_PICK_LOW :: -0.5f32; SJF_PICK_TALL :: 1.9f32;   // m: she takes a pickup whose middle is between these over her feet (her body)
 SJF_DIG_RISE :: 1.5f32;       // m: Digger fetches a pickup on his floor (SpliceCompanionBrain: |dz| < 1.5 m)
 SJF_PICK_LIFT :: 0.55f32;     // m: a jam pickup's middle over its floor
+SJF_JET_AHEAD :: 4.5f32; SJF_JET_RIGHT :: 2.5f32;   // where the jetpack lies from her farm start (USpliceJetpackComponent)
+SjFx :: struct {
+  ok: bool;
+  jet: SrJetpackState; jt: SrJetpackTuning;
+  lying: bool; lx: f32; lz: f32;      // the jetpack where it lies, until she takes it
+  plume: f32;                          // the exhaust's throttle, eased (0 to 1)
+}
+
+sjf_reset :: (g: [] SpGame) {
+  f := g[0].jf[..]; f[0] = SjFx.{};
+  if !g[0].jam { return; }
+  f[0].ok = true;
+  sp := g[0].jr[0].spawn[SJ_FARM];
+  if sp.ok {
+    fx := sin(sp.yaw); fz := cos(sp.yaw);
+    f[0].lying = true; f[0].lx = sp.x + fx * SJF_JET_AHEAD - fz * SJF_JET_RIGHT; f[0].lz = sp.z + fz * SJF_JET_AHEAD + fx * SJF_JET_RIGHT;
+  }
+}
+sjf_on :: (g: [] SpGame) -> bool { return g[0].jam && g[0].jf[0].ok; }
+sjf_owned :: (g: [] SpGame) -> bool { return sjx_on(g) && sjx_count(g, ITEM_JETPACK) > 0; }
+sjf_firing :: (g: [] SpGame) -> bool { return sjf_on(g) && g[0].jf[0].jet.firing; }
 
 // ---- the jump course: whether a farm pickup is near enough to take (jam/jam-farm.coax sjx_step)
 sjf_pick_near :: (g: [] SpGame, a: SjActor) -> bool {
   base := a.y - SJF_PICK_LIFT;
   if dist2(g[0].px, g[0].pz, a.x, a.z) < SJX_PICK_REACH && a.y - sj_feet(g) > SJF_PICK_LOW && a.y - sj_feet(g) < SJF_PICK_TALL { return true; }
   return g[0].bot && !d_down(g) && dist2(g[0].bot_x, g[0].bot_z, a.x, a.z) < d_range(g) && abs(sj_floor(g, g[0].bot_x, g[0].bot_z, 0, 0) - base) < SJF_DIG_RISE;
+}
+
+// ---- the jetpack
+// Her jump this step (splice-game.coax g_jump, before the engine's jump steps): the jetpack's rules step, and
+// while it fires its thrust lifts her and her fall is plain gravity (the jam tunes the thrust against it).
+sjf_loc :: (g: [] SpGame, j: [] Jump, loc: LocomotionProfile, dt: f32) -> LocomotionProfile {
+  if !sjf_on(g) { return loc; }
+  f := g[0].jf[..];
+  in := SrJetpackInput.{owned = sjf_owned(g), jump_held = j[0].presses.held, on_ground = j[0].on_ground, air_jumps_spent = j[0].air_used >= j[0].air_jumps,
+    blocked = g[0].mode != M_PLAY || g_riding(g) || d_cursor(g)};
+  f[0].jet = sr_jetpack_step(f[0].jet, in, f[0].jt, dt);
+  if !f[0].jet.firing { return loc; }
+  j[0].vy = sr_jetpack_vertical_after(j[0].vy * 100, 0, f[0].jt, dt) / 100;
+  out := loc; out.fall_gravity_scale = 1;
+  return out;
+}
+// Her velocity in the air while it fires (feel.coax fl_walk): pushed along her keys, up to its flight speed.
+sjf_fly :: (g: [] SpGame, v: SourceVelocity, wx: f32, wz: f32, dt: f32) -> SourceVelocity {
+  if !sjf_firing(g) || !g_airborne(g) { return v; }
+  d := sr_jetpack_fly_after(d2(cast(f64) v.x * 100, cast(f64) v.z * 100), d2(cast(f64) wx, cast(f64) wz), g[0].jf[0].jt, dt);
+  out := v; out.x = cast(f32) d.x / 100; out.z = cast(f32) d.y / 100;
+  return out;
+}
+// Each step in play (after the jam's rules): the jetpack where it lies is hers when she comes near, and the
+// exhaust eases with the throttle.
+sjf_step :: (g: [] SpGame, dt: f32) {
+  if g[0].jam && !g[0].jf[0].ok { sjf_reset(g); }
+  if !sjf_on(g) || !sjx_on(g) { return; }
+  f := g[0].jf[..];
+  if f[0].lying && g[0].zone == Z_MINE && dist2(g[0].px, g[0].pz, f[0].lx, f[0].lz) < SJX_PICK_REACH && sjx_give(g, sr_stack(ITEM_JETPACK, 1)) { f[0].lying = false; }
+  want := ifx f[0].jet.firing then 1.0f32 else 0.0f32;
+  f[0].plume += (want - f[0].plume) * lo(1, (ifx f[0].jet.firing then 14.0f32 else 8.0f32) * dt);
+}
+// Whether it can fire now: she owns it, is in the air with her air jump spent, and it has the fuel to start.
+sjf_ready :: (g: [] SpGame) -> bool {
+  if !sjf_owned(g) || g[0].mode != M_PLAY || g_riding(g) { return false; }
+  f := g[0].jf[0]; j := g[0].air[0];
+  return !j.on_ground && j.air_used >= j.air_jumps && !f.jet.firing && f.jet.fuel >= f.jt.min_fuel_to_start;
+}
+
+// The jetpack drawn (splice-game.coax g_live): where it lies, bobbing, and on her back while she owns it, its
+// plumes stretched by the throttle (the jam's graybox: a black pack, two thrusters with cream bands).
+sjf_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
+  if !sjf_on(g) || g[0].zone != Z_MINE { return; }
+  f := g[0].jf[0]; t := g[0].t;
+  if f.lying {
+    y := sj_floor(g, f.lx, f.lz, 0, 0) + 0.6 + sin(t * 2.2) * 0.1;
+    sjf_pack(buf, p, frame_at(v3(f.lx, y, f.lz), t * 1.2), 0);
+    return;
+  }
+  if !sjf_owned(g) || g_riding(g) || sp_in_room(g) || cm_too_near(g) { return; }
+  yaw := g_face(g);
+  sjf_pack(buf, p, frame_at(v3(g[0].px - sin(yaw) * 0.2, g_feet_y(g) + 1.15, g[0].pz - cos(yaw) * 0.2), yaw), f.plume);
+}
+sjf_pack :: (buf: [] u32, p: [] Pen, f: Frame, plume: f32) {
+  black := t3(0.10, 0.08, 0.07); cream := t3(0.91, 0.87, 0.79); warm := t3(1.0, 0.67, 0.35);
+  kit_pen(p, 236, MAT_CLOTH, black); box(buf, p, f, 0.10, 0.20, 0.07);
+  for side: 0..<2 {
+    sx := ifx side == 0 then -0.16f32 else 0.16f32;
+    kit_pen(p, 237, MAT_CLOTH, black); tube(buf, p, kit_at(f, sx, -0.23, -0.08), 0.42, 0.075, 0.075, 0.075, 0.075, 8, true);
+    kit_pen(p, 238, MAT_CLOTH, cream); tube(buf, p, kit_at(f, sx, 0.02, -0.08), 0.06, 0.078, 0.078, 0.078, 0.078, 8, true);
+    if plume > 0.02 { kit_pen(p, 239, MAT_GLOW, warm); tube(buf, p, kit_at(f, sx, -0.23 - 0.7 * plume, -0.08), 0.7 * plume, 0.01, 0.01, 0.06, 0.06, 6, true); }
+  }
+}
+
+// The HUD (hud.coax, after the jam's hotbar): JET and its three cells at the hotbar's left while she owns it,
+// lit in the throttle's colour as it fires, and the control at the moment it can fire.
+sjf_hud :: (g: [] SpGame, out: [] f32, at: int, q: Ui) -> int {
+  if !sjf_owned(g) || g[0].mode != M_PLAY || sb_fighting(g) { return at; }
+  n := at; k := q.k; f := g[0].jf[0];
+  cw := 26 * k; ch := 10 * k; gap := 5 * k;
+  x0 := ro_safe(q.w, q.h).x0; y1 := ro_safe(q.w, q.h).y1 - 8 * k - 46 * k - 14 * k; y0 := y1 - ch;
+  n = hv_rect(out, n, x0, y0 - 6 * k, x0 + 44 * k + 3 * (cw + gap), y1 + 6 * k, HV_DARK(), 0.72);
+  n = hv_text(out, n, F_TITLE, "JET", x0 + 10 * k, y1, 8 * k, HV_CREAM(), 1);
+  fuel := f.jet.fuel / f.jt.fuel_max * cast(f32) f.jt.cells;
+  for c: 0..<f.jt.cells {
+    cx := x0 + 40 * k + cast(f32) c * (cw + gap);
+    n = hv_rect(out, n, cx, y0, cx + cw, y1, HV_CELL(), 0.9);
+    fill := clamp(fuel - cast(f32) c, 0, 1);
+    if fill > 0 { n = hv_rect(out, n, cx, y0, cx + cw * fill, y1, ifx f.jet.firing then HV_ORANGE() else HV_CREAM(), 1); }
+  }
+  if sjf_ready(g) { n = hv_mid(out, n, F_TITLE, "HOLD SPACE  JETPACK", q.w * 0.5, q.h * 0.5 + 56 * k, 9 * k, HV_ORANGE(), 1); }
+  return n;
+}
+
+// For a page check (splice-bots.coax splice_world_fact): 40 she owns the jetpack, 41 its fuel, 42 it fires, 43 and
+// 44 where it lies (x and z, cm; -1 once taken).
+sjf_fact :: (g: [] SpGame, k: int) -> int {
+  if !sjf_on(g) { return -1; }
+  f := g[0].jf[0];
+  if k == 40 { return ifx sjf_owned(g) then 1 else 0; }
+  if k == 41 { return cast(int) f.jet.fuel; }
+  if k == 42 { return ifx f.jet.firing then 1 else 0; }
+  if k == 43 || k == 44 { return ifx !f.lying then -1 else we_cm(ifx k == 43 then f.lx else f.lz); }
+  return -1;
 }

@@ -39,3 +39,35 @@ sjf_hop :: (g: [] SpGame, tx: f32, tz: f32, secs: f32) {
   sjf_hop(g[..], -810, -90, 3);
   #assert abs(sj_feet(g[..]) - 1.2) < 0.05;
 }
+
+// Space held for n steps of 0.02 s (or let go), and her highest feet over them.
+sjf_space :: (g: [] SpGame, down: bool, n: int) -> f32 {
+  top := sj_feet(g); _ := g_key(g, ' ', down);
+  for i: 0..<n { g_step(g, 0.02); top = hi(top, sj_feet(g)); }
+  return top;
+}
+
+#test "jam fx: the jetpack lies by her start; she takes it, and jump, double jump, hold Space lifts her on its fuel, which refills on the ground" #steps 3000000000 #traversal 1000000000 {
+  s := [1] SjStore.[SjStore.{}]; g := [1] SpGame.[SpGame.{}];
+  sjf_start(g[..], s[..]);
+  // it lies 4.5 m ahead of her farm start and 2.5 m to its right; she has none yet, and holding Space only jumps
+  #assert sjf_fact(g[..], 43) == -80250 && sjf_fact(g[..], 44) == -10050 && sjf_fact(g[..], 40) == 0;
+  g[0].px = -795; g[0].pz = -104;
+  top := sjf_space(g[..], true, 8); top = hi(top, sjf_space(g[..], false, 6)); top = hi(top, sjf_space(g[..], true, 80));
+  #assert top > 1 && sjf_fact(g[..], 42) == 0;
+  plain := top;
+  _ = sjf_space(g[..], false, 100);
+  // she walks to it and it is hers, its fuel full
+  g[0].px = -802.5; g[0].pz = -101.5; for i: 0..<10 { g_step(g[..], 0.02); }
+  #assert sjf_fact(g[..], 40) == 1 && sjf_fact(g[..], 43) == -1 && sjf_fact(g[..], 41) == 100;
+  // jump, double jump, and hold: it fires, burns, and lifts her far past a double jump's height
+  g[0].px = -795; g[0].pz = -104;
+  _ = sjf_space(g[..], true, 8); _ = sjf_space(g[..], false, 6);
+  _ = sjf_space(g[..], true, 3);
+  #assert sjf_fact(g[..], 42) == 1;
+  top = sjf_space(g[..], true, 150);
+  #assert top > plain + 3 && sjf_fact(g[..], 41) < 70;
+  // let go: she falls and lands, and its fuel refills
+  _ = sjf_space(g[..], false, 300);
+  #assert sj_feet(g[..]) < 0.1 && sjf_fact(g[..], 42) == 0 && sjf_fact(g[..], 41) == 100;
+}

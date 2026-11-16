@@ -115,6 +115,7 @@ fl_walk :: (g: [] SpGame, go: f32, side: f32, pace: f32, dt: f32) {
   t := sjx_feel(g);   // the prototype's numbers, or the jam's (jam/jam-rules.coax)
   v := source_velocity(f[0].vx, f[0].vz, wx, wz, amount, pace, ifx air then t.accel * t.air else t.accel,
     ifx air then t.air_friction else t.friction, ifx air then t.air_brake else t.brake, 1, dt);
+  v = sjf_fly(g, v, wx * amount, wz * amount, dt);   // the jam's jetpack: flight along the keys while it fires (jam/jam-fx.coax)
   x0 := g[0].px; z0 := g[0].pz;
   g[0].px += v.x * dt; g[0].pz += v.z * dt;
   g_collide(g);
