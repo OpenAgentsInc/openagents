@@ -13,6 +13,7 @@
 		43F4D16A20C18037A922D32F /* AppCoreBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77B22B57F0B9827AF4F47864 /* AppCoreBridge.swift */; };
 		43F923AC9E6B0E0FBEB39C71 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 776F82566A59AA4CF6654437 /* Assets.xcassets */; };
 		4BD534419A18D33EAA0A7955 /* AppWake.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9389244D4DF6F9694B96642C /* AppWake.swift */; };
+		4F06476208B2F575C6678AAB /* GlassChrome.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2DDF0D85022AFB3A1EE6365 /* GlassChrome.swift */; };
 		5DDDFC88C8FA34C1DF663BB1 /* DevGallery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9738192D7078650DA6AC16FA /* DevGallery.swift */; };
 		6EBCAD7693B6953906E65EA1 /* AppAuth.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0AAC9508FA4369A9715A69 /* AppAuth.swift */; };
 		7113DF6985BD789F6BF1BDE7 /* KitEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB0368202C3F17310FAA5C61 /* KitEditor.swift */; };
@@ -45,6 +46,7 @@
 		BF0AAC9508FA4369A9715A69 /* AppAuth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppAuth.swift; sourceTree = "<group>"; };
 		C6F4AFFB9B751E6D6F603036 /* ComponentsHost.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ComponentsHost.m; sourceTree = "<group>"; };
 		D53AE5A2D45A0A6B3D45B8D4 /* phone-drive.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "phone-drive.c"; sourceTree = "<group>"; };
+		F2DDF0D85022AFB3A1EE6365 /* GlassChrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassChrome.swift; sourceTree = "<group>"; };
 		F76D38DB61717639D91263A1 /* App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App.swift; sourceTree = "<group>"; };
 		FB0368202C3F17310FAA5C61 /* KitEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KitEditor.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -117,6 +119,7 @@
 				346439B2CDF1C4DE6F844825 /* Components */,
 				C6F4AFFB9B751E6D6F603036 /* ComponentsHost.m */,
 				9738192D7078650DA6AC16FA /* DevGallery.swift */,
+				F2DDF0D85022AFB3A1EE6365 /* GlassChrome.swift */,
 				61353A3754B849E19D09A2E0 /* apple */,
 				5B366C12F710C7D176CACD52 /* Generated */,
 				CE39949D08373FFAF4241801 /* linux */,
@@ -210,6 +213,7 @@
 				AD751202F9DD8187E36837E4 /* ComponentsHost.m in Sources */,
 				5DDDFC88C8FA34C1DF663BB1 /* DevGallery.swift in Sources */,
 				D3B1BBC9420E21741699D348 /* DeviceKey.swift in Sources */,
+				4F06476208B2F575C6678AAB /* GlassChrome.swift in Sources */,
 				7113DF6985BD789F6BF1BDE7 /* KitEditor.swift in Sources */,
 				2DA485D5475D62C7827367D5 /* gallery.c in Sources */,
 				356C79ECD7093B4A053F18F7 /* main.c in Sources */,
@@ -286,7 +290,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1391;
+				CURRENT_PROJECT_VERSION = 1392;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = HQWSG26L43;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -379,7 +383,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1391;
+				CURRENT_PROJECT_VERSION = 1392;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = HQWSG26L43;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
