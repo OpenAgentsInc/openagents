@@ -49,7 +49,11 @@ ag_test_show :: (s: [] AppGallery, o: [] AgOut, id: string) {
   _ := appgallery_pointer(s[..], x, y, 0); _ := appgallery_pointer(s[..], x, y, 2);
   #assert !appgallery_keyboard(s[..]);
   _ := ag_test_tap(s[..], o[..], "g.email");
-  #assert ag_test_tap(s[..], o[..], "g.primary") && !appgallery_keyboard(s[..]) && s[0].presses == 1;
+  // the page clips what scrolls to the screen: bring the button into view first
+  ag_test_show(s[..], o[..], "g.primary");
+  #assert ag_test_tap(s[..], o[..], "g.primary");
+  #assert !appgallery_keyboard(s[..]);
+  #assert s[0].presses == 1;
 }
 #test "app gallery: examples answer their taps, and a drag scrolls without pressing" #steps 2000000000 {
   s: [1] AppGallery; o: [1] AgOut; ag_test_atlas(s[0].atlas[..]);

@@ -434,13 +434,30 @@ gpu_draws :: (p: Prim) -> bool {
 // after the offset) are written, and inside a clip only those that start
 // before its right edge; pass -PRIM_OPEN and PRIM_OPEN to draw them all. Text
 // reads its face's cells from the atlas. Returns the vertex count so far.
+GP_CLIP_DEPTH :: 8;   // clips inside clips a list may nest
 gpu_draw :: (out: [] f32, at: int, a: [] Atlas, d: f32, list: [] Prim, ox: f32, oy: f32, y0: f32, y1: f32) -> int {
   v := at;
   clip := false; cl: f32 = 0; ct: f32 = 0; cr: f32 = 0; cb: f32 = 0;
+  // clips nest as the semantic rows' do (elt_clip): a clip inside another draws in both, and its end
+  // brings back the one around it
+  depth := 0; sl: [GP_CLIP_DEPTH] f32; st: [GP_CLIP_DEPTH] f32; sr: [GP_CLIP_DEPTH] f32; sb: [GP_CLIP_DEPTH] f32; son: [GP_CLIP_DEPTH] bool;
   fade := false; ft: f32 = 0; fa: f32 = 0; fb: f32 = 0; fc: f32 = 0;
   for k: 0..<list.count {
     p := list[k];
-    if p.kind == PRIM_CLIP { clip = p.on; cl = p.x; ct = p.y; cr = p.a; cb = p.b; continue; }
+    if p.kind == PRIM_CLIP {
+      if p.on {
+        if depth < GP_CLIP_DEPTH { son[depth] = clip; sl[depth] = cl; st[depth] = ct; sr[depth] = cr; sb[depth] = cb; }
+        depth += 1;
+        if clip {
+          if p.x > cl { cl = p.x; } if p.y > ct { ct = p.y; } if p.a < cr { cr = p.a; } if p.b < cb { cb = p.b; }
+        } else { cl = p.x; ct = p.y; cr = p.a; cb = p.b; }
+        clip = true;
+      } else if depth > 0 {
+        depth -= 1;
+        if depth < GP_CLIP_DEPTH { clip = son[depth]; cl = sl[depth]; ct = st[depth]; cr = sr[depth]; cb = sb[depth]; } else { clip = false; }
+      } else { clip = false; }
+      continue;
+    }
     if p.kind == PRIM_FADE { fade = p.on; ft = p.y; fa = p.a; fb = p.b; fc = p.c; continue; }
     x := p.x + ox; y := p.y + oy;
     if y > y1 || y + prim_extent(p) < y0 { continue; }
@@ -613,6 +630,20 @@ gpu_same :: (p: [] f32, q: [] f32, n: int) -> bool {
   #assert out[c + 4] == 86 && out[c + 22] == 106 && out[c + 20] == -GP_NO_CLIP && out[c + 23] == GP_NO_CLIP;   // right edge (50 + 3) * 2
   #assert out[18 * GP_VERTEX_FLOATS + 22] == GP_NO_CLIP;
   #assert gpu_draw(out[..], 0, a[..], 2, list[0..<n], 3, 0, 111, 200) == 0;
+  // a clip inside a clip draws in both; its end brings back the outer one
+  m := 0;
+  m = prim_clip(list[..], m, -PRIM_OPEN, 100, PRIM_OPEN, 150);
+  m = prim_clip(list[..], m, -PRIM_OPEN, 0, 50, PRIM_OPEN);
+  m = prim_fill(list[..], m, 0, 120, 10, 10, 0, hex(0xffffff, 1));
+  m = prim_unclip(list[..], m);
+  m = prim_fill(list[..], m, 0, 120, 10, 10, 0, hex(0xffffff, 1));
+  m = prim_unclip(list[..], m);
+  m = prim_fill(list[..], m, 0, 120, 10, 10, 0, hex(0xffffff, 1));
+  w := gpu_draw(out[..], 0, a[..], 1, list[0..<m], 0, 0, -PRIM_OPEN, PRIM_OPEN);
+  #assert w == 18;
+  #assert out[21] == 100 && out[22] == 50 && out[23] == 150;                                   // both: top 100, right 50, bottom 150
+  #assert out[6 * GP_VERTEX_FLOATS + 21] == 100 && out[6 * GP_VERTEX_FLOATS + 22] == GP_NO_CLIP;   // the outer again
+  #assert out[12 * GP_VERTEX_FLOATS + 23] == GP_NO_CLIP;
 }
 #test "a ring is a round border, a level line a thin box, a slanted line its band; an arc waits for the shader" {
   a: [1] Atlas; gpu_test_atlas(a[..]);

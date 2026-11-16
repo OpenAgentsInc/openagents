@@ -22,7 +22,7 @@
 
 APP_SIDEBAR_MOST :: 360.0;     // the panel's widest, in layout units
 APP_SIDEBAR_SHARE :: 0.78;     // the panel's share of a narrow screen
-APP_SIDEBAR_DIM :: 0.55;       // how dark the page under it goes when fully open
+APP_SIDEBAR_DIM :: 0.5;        // how dark the page under it goes when fully open: half black over it
 APP_SIDEBAR_RATE :: 16.0;      // how fast the share follows its target, per second
 APP_SIDEBAR_ROW :: 48.0;       // an icon row's height
 APP_SIDEBAR_ICON :: 20.0;      // an icon row's icon
@@ -55,6 +55,8 @@ app_sidebar :: (f: [] UiFrame, id: string, scrim_id: string, ox: f32, oy: f32, w
   // the page, pushed right and dimmed
   if rest > 0 {
     sheet_fill(sh, edge, oy, rest, h, 0, opacity(black, APP_SIDEBAR_DIM * share));
+    // the page's square left edge, a hairline, so the black panel and the dark page read apart
+    sheet_rule(sh, edge, oy, s.border, h, s.hairline);
     scrim := uiframe_semantic(f, scrim_id, EL_BUTTON, "Close menu", edge, oy, rest, h, 0, close);
     sheet_hit(sh, UIFRAME_HIT, scrim, 0, edge, oy, rest, h);
   }

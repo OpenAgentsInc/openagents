@@ -309,11 +309,14 @@ ag_layout :: (s: [] AppGallery, f: [] UiFrame, w: f32, h: f32) {
   x: f32 = AG_PAD; cw := w - 2 * AG_PAD;
   head := s[0].safe_top / ARCADE_PHONE_SCALE + AG_HEAD;
   y := head - s[0].scroll;
+  // what scrolls is clipped under the fixed header, so none of it shows over the header or the status bar
+  uiframe_clip(f, 0, head, w, h);
   y += ag_basics(s, f, x, y, cw);
   y += ag_chat(s, f, x, y, cw);
   y += ag_task(s, f, x, y, cw);
   y += ag_account(s, f, x, y, cw);
   y += ag_navigation(s, f, x, y, cw);
+  uiframe_unclip(f);
   y += 24 + s[0].safe_bottom / ARCADE_PHONE_SCALE;
   s[0].content = y + s[0].scroll - head; s[0].view = h - head;
   // the fixed header, over what scrolls: its region row is on top, so a press on it reaches nothing under it
