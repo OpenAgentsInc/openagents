@@ -72,7 +72,7 @@
  #assert ndi_bind(s[..],"a",id) && ndj_start(j[..],s[..],id) && ndj_next(j[..],s[..]);e:=nostr_event_read(cast(string)wrap[..],scratch[..],false);#assert e.error==NE_OK;
  for mode:0..<4 {
   j[0].phase=2;j[0].busy=true;j[0].action=22;j[0].failed=false;j[0].index[0].n=1;j[0].at=0;
-  _=hex_encode_checked(cast(string)e.id[..],j[0].index[0].rows[0].id[..],false);if mode==1 {j[0].index[0].rows[0].id[0]='g';}s[0].pending=mode==2;
+  _=hex_encode_checked(cast(string)e.id[..],j[0].index[0].rows[0].id[..],false);if mode==1 {j[0].index[0].rows[0].id[0]=ifx j[0].index[0].rows[0].id[0]=='0' then '1' else '0';}s[0].pending=mode==2;
   different:[8192]u8;rumor:=N59_TS_RUMOR;nd:=n59_signed_copy(cast(string)rumor[..],different[..]);#assert nd>0;
   payload:=ifx mode==0 then "{}" else ifx mode==3 then cast(string)different[0..<nd] else cast(string)wrap[..];
   if mode==3 {other:=nostr_event_read(payload,scratch[..],false);#assert other.error==NE_OK && other.kind!=1059;_=hex_encode_checked(cast(string)other.id[..],j[0].index[0].rows[0].id[..],false);}
@@ -92,4 +92,10 @@
  n=nsr_write("custody","open",cast(string)j[0].operation[..],id,"ok",0,0,cast(string)rumor[..],b[..]);#assert ndj_reply(j[..],s[..],1,cast(string)b[0..<n],false) && j[0].rejected==0 && j[0].at==1;
  // An unused zero tail row must not be visited when the exact end was reached.
  j[0].index[0].rows[1].id[0]='a';#assert ndj_next(j[..],s[..]) && j[0].ready && j[0].phase==0 && j[0].at==1;
+}
+#test "a full known journal page terminates before reading beyond its exact row bound" {
+ s:[1]NostrInbox;j:[1]NostrInboxJournal;id:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";
+ #assert ndi_bind(s[..],"a",id) && ndj_start(j[..],s[..],id);j[0].phase=2;j[0].index[0].n=16;j[0].index[0].complete=true;s[0].n=16;
+ for i:0..<16 {for k:0..<64 {j[0].index[0].rows[i].id[k]='0';}j[0].index[0].rows[i].id[63]=cast(u8)('a'+i%6);j[0].index[0].rows[i].id[62]=cast(u8)('0'+i/6);s[0].messages[i].outer=j[0].index[0].rows[i].id;}
+ #assert ndj_next(j[..],s[..]) && j[0].phase==0 && j[0].at==16 && j[0].ready && !j[0].busy && j[0].action==0;
 }

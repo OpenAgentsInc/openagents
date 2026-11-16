@@ -1,6 +1,7 @@
 // Foreground scheduling. Every socket/custody/store effect uses its shared
 // owner; the queue's signed original and targets survive a disconnected UI.
 #authority;
+#load "nostr-messenger-loop-checks.coax" #test;
 ndm_enable :: (m:[]NostrMessenger)->bool #effects(all) {
  if !m[0].started || !m[0].active || m[0].own_ready || m[0].enable || m[0].retry {return false;}
  m[0].enable=true;m[0].head_wanted=true;m[0].head_peer=false;m[0].discovery_at=0;ndm_note(m,"");return true;

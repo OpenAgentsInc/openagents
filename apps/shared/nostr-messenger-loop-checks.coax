@@ -1,0 +1,70 @@
+// Fixtures describe already-owned phase boundaries; scheduling is the product's.
+ndm_test_quiet :: (m:[]NostrMessenger) {
+ #assert ndi_bind(m[0].inbox[..],"a",NMS_LIST_PUB) && ndj_start(m[0].journal[..],m[0].inbox[..],NMS_LIST_PUB);
+ m[0].started=true;m[0].active=true;m[0].generation=1;m[0].ms=100;m[0].journal[0].phase=0;m[0].journal[0].ready=true;
+ m[0].ns=1;m[0].saved_n[0]=ndi_copy(m[0].saved[0][..],"wss://relay.example");m[0].pub_phase=5;m[0].mode=1;m[0].own_ready=true;m[0].http_available=false;
+ m[0].relays[0].busy=true;m[0].relays[0].generation=1;m[0].relays[0].identity=m[0].inbox[0].identity;m[0].refresh_at=10000;m[0].discovery_at=10000;m[0].read_at=10000;
+}
+#test "enabling messages requires every live setup prerequisite and freezes one setup intent" {
+ m:[1]NostrMessenger;
+ for absent:0..<5 {m[0].started=absent!=0;m[0].active=absent!=1;m[0].own_ready=absent==2;m[0].enable=absent==3;m[0].retry=absent==4;#assert !ndm_enable(m[..]);}
+ m[0].started=true;m[0].active=true;m[0].own_ready=false;m[0].enable=false;m[0].retry=false;m[0].head_wanted=false;m[0].head_peer=true;m[0].discovery_at=500;m[0].nn=ndi_copy(m[0].note[..],"prior failure");m[0].dirty=false;
+ #assert ndm_enable(m[..]) && m[0].enable && m[0].head_wanted && !m[0].head_peer && m[0].discovery_at==0 && m[0].nn==0 && m[0].dirty && !ndm_enable(m[..]);
+}
+#test "taking a queued journal or relay effect preserves it when another request owns the flight" {
+ m:[1]NostrMessenger;#assert !ndm_take_journal(m[..]) && !ndm_take_relay(m[..]);m[0].flight=3;
+ m[0].journal[0].action=22;m[0].journal[0].nb=ndi_copy(m[0].journal[0].body[..],"journal request");m[0].relays[0].action=23;m[0].relays[0].nb=ndi_copy(m[0].relays[0].body[..],"relay request");
+ #assert !ndm_take_journal(m[..]) && !ndm_take_relay(m[..]) && m[0].journal[0].action==22 && m[0].relays[0].action==23 && m[0].flight==3;
+ m[0].flight=0;#assert ndm_take_journal(m[..]) && m[0].flight==1 && m[0].action==22 && m[0].journal[0].action==0 && cast(string)m[0].body[0..<m[0].nb]=="journal request" && m[0].relays[0].action==23;
+ m[0].flight=0;#assert ndm_take_relay(m[..]) && m[0].flight==2 && m[0].action==23 && m[0].relays[0].action==0 && cast(string)m[0].body[0..<m[0].nb]=="relay request";
+}
+#test "outbox traversal selects the exact pending original target and exclusive next page" {
+ m:[1]NostrMessenger;q:[1]MsRequest;ndm_test_quiet(m[..]);m[0].pub_phase=0;m[0].pub_revision=7;m[0].pub_cursor=3;
+ #assert ndm_outbox(m[..]) && m[0].flight==4 && nms_request_read(cast(string)m[0].body[0..<m[0].nb],q[..]) && q[0].action==9 && q[0].revision==7 && q[0].cursor==3;
+ m[0].flight=0;m[0].pub_phase=1;m[0].outbox[0].n=2;m[0].outbox[0].relays_n=2;m[0].outbox[0].rows[0].pending=2;
+ _=ndi_copy(m[0].outbox[0].rows[0].id[..],NMS_LIST_ID_HEX);_=ndi_copy(m[0].outbox[0].rows[1].id[..],NMS_LIST_PUB);
+ #assert ndm_outbox(m[..]) && m[0].flight==5 && m[0].pub_phase==2 && m[0].pub_at==0 && m[0].pub_target==1 && nms_request_read(cast(string)m[0].body[0..<m[0].nb],q[..]) && q[0].action==6 && cast(string)q[0].payload[0..<q[0].n]==NMS_LIST_ID_HEX;
+ m[0].flight=0;m[0].pub_phase=1;m[0].pub_at=0;m[0].pub_target=0;m[0].outbox[0].rows[0].pending=0;m[0].outbox[0].rows[1].pending=1;
+ #assert ndm_outbox(m[..]) && m[0].pub_at==1 && m[0].pub_target==0 && nms_request_read(cast(string)m[0].body[0..<m[0].nb],q[..]) && cast(string)q[0].payload[0..<q[0].n]==NMS_LIST_PUB;
+ m[0].flight=0;m[0].pub_phase=1;m[0].pub_at=0;m[0].outbox[0].rows[1].pending=0;m[0].outbox[0].cursor=4;
+ #assert ndm_outbox(m[..]) && m[0].pub_phase==0 && m[0].pub_cursor==4 && m[0].flight==0;
+ m[0].pub_phase=1;m[0].pub_at=2;m[0].outbox[0].cursor=0;m[0].pub_revision=7;
+ #assert ndm_outbox(m[..]) && m[0].pub_phase==5 && m[0].pub_cursor==0 && m[0].pub_revision==0 && !ndm_outbox(m[..]);
+}
+#test "outbox publishing uses its immutable stored target and drains only an actually finished publish" {
+ m:[1]NostrMessenger;ndm_test_quiet(m[..]);m[0].relays[0].busy=false;m[0].pub_phase=3;m[0].outbox[0].relays_n=1;m[0].outbox[0].nr[0]=ndi_copy(m[0].outbox[0].relays[0][..],"wss://target.example");m[0].original_n=ndi_copy(m[0].original[..],NMS_LIST_EVENT);
+ #assert ndm_outbox(m[..]) && m[0].mode==2 && m[0].relays[0].nr==1 && cast(string)m[0].relays[0].relays[0].url[0..<m[0].relays[0].relays[0].nu]=="wss://target.example";
+ #assert !ndm_outbox(m[..]) && m[0].pub_phase==3;
+ m[0].relays[0].active=true;m[0].relays[0].relays[0].relay[0].state=RL_OPEN;m[0].relays[0].relays[0].relay[0].gen=1;
+ #assert ndm_outbox(m[..]) && m[0].pub_phase==4 && cast(string)m[0].relays[0].publish[0..<m[0].relays[0].publish_n]==NMS_LIST_EVENT && !ndm_outbox(m[..]);
+ m[0].relays[0].publish_n=0;m[0].relays[0].publish_entry= -1;m[0].pub_cursor=7;m[0].pub_revision=9;
+ #assert ndm_outbox(m[..]) && m[0].pub_phase==0 && m[0].pub_cursor==0 && m[0].pub_revision==0 && m[0].original_n==0;
+}
+#test "scheduler clocks deadlines and retry timing cannot replace an owned request" {
+ m:[1]NostrMessenger;#assert !ndm_tick(m[..],0.125) && m[0].ms==125 && m[0].relays[0].ms==125;
+ #assert !ndm_tick(m[..],-1) && !ndm_tick(m[..],1.1) && m[0].ms==125;
+ ndm_test_quiet(m[..]);m[0].flight=1;m[0].op=22;m[0].action=0;m[0].deadline=101;m[0].journal[0].phase=1;m[0].journal[0].busy=true;
+ #assert !ndm_tick(m[..],0) && m[0].flight==1;m[0].ms=101;
+ #assert ndm_tick(m[..],0) && m[0].flight==0 && m[0].journal[0].retry && !m[0].journal[0].busy;
+ m[0].retry=true;m[0].retry_at=102;m[0].retry_task=8;m[0].op=21;m[0].nb=ndi_copy(m[0].body[..],"same request");
+ #assert !ndm_tick(m[..],0);m[0].ms=102;#assert ndm_tick(m[..],0) && !m[0].retry && m[0].flight==8 && m[0].action==21 && m[0].deadline==45102 && cast(string)m[0].body[0..<m[0].nb]=="same request";
+}
+#test "foreground sends precede background replay and inactive clients perform only relay retirement" {
+ m:[1]NostrMessenger;ndm_test_quiet(m[..]);peer:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+ #assert ndo_begin(m[0].outgoing[..],m[0].inbox[..],NMS_LIST_PUB,peer,1730000000,"foreground","");m[0].submit=true;m[0].journal[0].action=22;m[0].journal[0].nb=7;
+ #assert ndm_tick(m[..],0) && m[0].flight==3 && m[0].action==21 && m[0].journal[0].action==22 && cast(string)m[0].body[0..<m[0].nb]==cast(string)m[0].outgoing[0].request[0..<m[0].outgoing[0].nr];
+ m[0].flight=0;m[0].action=0;m[0].submit=false;m[0].journal[0].action=0;m[0].active=false;m[0].relays[0].busy=false;m[0].relays[0].active=true;
+ #assert ndm_tick(m[..],0) && !m[0].relays[0].active && m[0].flight==2 && m[0].op==23 && m[0].relays[0].pending==5;
+}
+#test "completed replay starts receipt reconciliation and discovery refresh resets the prior head barrier" {
+ m:[1]NostrMessenger;ndm_test_quiet(m[..]);m[0].journal[0].phase=2;m[0].journal[0].index[0].complete=true;
+ _=ndm_tick(m[..],0);#assert m[0].journal[0].phase==0 && m[0].journal[0].ready && m[0].want_receipts && m[0].delivery[0].generation==1;
+ m[0].want_receipts=false;m[0].settings_changed=true;m[0].relays[0].busy=false;m[0].head_index[0].n=1;m[0].head_peer=true;
+ #assert ndm_tick(m[..],0) && !m[0].settings_changed && m[0].mode==0 && m[0].discovery_at==30100 && m[0].head_wanted && !m[0].head_peer && m[0].head_index[0].n==0 && m[0].flight==2;
+}
+#test "setup queue and head reads use their exact existing wire actions before any publication" {
+ m:[1]NostrMessenger;q:[1]MsRequest;ndm_test_quiet(m[..]);m[0].enable=true;m[0].setup_n=ndi_copy(m[0].setup_original[..],NMS_LIST_EVENT);
+ #assert ndm_tick(m[..],0) && m[0].flight==9 && m[0].op==22 && nms_request_read(cast(string)m[0].body[0..<m[0].nb],q[..]) && q[0].action==3 && q[0].targets_n==1 && cast(string)q[0].targets[0][0..<q[0].nt[0]]=="wss://relay.example" && cast(string)q[0].payload[0..<q[0].n]==NMS_LIST_EVENT;
+ m[0].flight=0;m[0].action=0;m[0].enable=false;m[0].setup_n=0;m[0].head_index[0].n=1;_=ndi_copy(m[0].head_index[0].rows[0].id[..],NMS_LIST_ID_HEX);
+ #assert ndm_tick(m[..],0) && m[0].flight==7 && nms_request_read(cast(string)m[0].body[0..<m[0].nb],q[..]) && q[0].action==6 && cast(string)q[0].payload[0..<q[0].n]==NMS_LIST_ID_HEX;
+}

@@ -63,6 +63,9 @@ existing journal namespace, account lifecycle and canonical-identity gate.
 An old device cannot roll it back. Unread excludes authored messages; unknown
 read positions remain unknown until reconciled. Marking follows the admitted
 visible conversation, with Earlier navigation preserving its previous position.
+`coax/native/nostr-read-policy.coax` owns mark admission, capacity and monotonic
+ordering. The API supplies journal-presence/count facts and persists its
+decision under the existing account lock; SQL and C do not choose the position.
 
 ### Recovering send status
 

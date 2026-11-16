@@ -1,5 +1,6 @@
 // The one codec and monotonic position policy for private account read markers.
 #load "nostr-delivery-wire.coax";
+#load "nostr-read-policy.coax";
 #authority;
 #load "nostr-read-checks.coax" #test;
 NRD_REQUEST :: "openagents.nostr.read-request.v1";
@@ -18,12 +19,6 @@ NrdMarker :: struct {operation:[64]u8;identity:[64]u8;conversation:[64]u8;create
  a:="0000000000000000000000000000000000000000000000000000000000000001";b:="0000000000000000000000000000000000000000000000000000000000000002";
  #assert nrd_later(1,a,0,b) && nrd_later(1,b,1,a) && !nrd_later(1,a,1,a) && !nrd_later(0,b,1,a) && !nrd_later(1,a,1,b);
  #assert nrd_room(4095,false) && !nrd_room(4096,false) && nrd_room(4096,true) && !nrd_room(-1,false);
-}
-nrd_room :: (count:int,existing:bool)->bool #export_c #effects(all) {return count>=0 && (existing || count<4096);}
-nrd_later :: (created:int,event:string,previous:int,previous_event:string)->bool #export_c #effects(all) {
- if created<0 || created>9007199254740991 || !aw_hex(event,64) || previous< -1 || previous>9007199254740991 {return false;} // mutant: equivalent (previous upper bound +1: created is independently bounded at the same maximum, so such a previous position cannot be advanced anyway)
- if previous== -1 {return previous_event.count==0;}if !aw_hex(previous_event,64) {return false;}
- return created>previous || created==previous && ndl_after(previous_event,event);
 }
 nrd_valid :: (s:[]NrdMarker)->bool #effects(all) {
  return s.count==1 && aw_hex(cast(string)s[0].operation[..],64) && aw_hex(cast(string)s[0].identity[..],64) && aw_hex(cast(string)s[0].conversation[..],64) && (s[0].created== -1 && s[0].ne==0 || s[0].created>=0 && s[0].created<=9007199254740991 && s[0].ne==64 && aw_hex(cast(string)s[0].event[..],64));

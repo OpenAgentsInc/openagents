@@ -56,8 +56,8 @@ ndm_note :: (m:[]NostrMessenger,text:string) #effects(all) {m[0].nn=ndi_copy(m[0
  m[0].flight=0;#assert ndm_tick(m[..],0) && m[0].op==21 && m[0].flight==3 && cast(string)m[0].body[0..<m[0].nb]==cast(string)m[0].outgoing[0].request[0..<m[0].outgoing[0].nr];
 }
 ndm_settings :: (m:[]NostrMessenger,urls:[]string)->bool #effects(all) {
- if !m[0].started || urls.count<1 || urls.count>6 {return false;}changed:=urls.count!=m[0].ns;
- for url,i:urls {if url.count>256 || !nrs_admit(1,i,1,0,cast(string)m[0].inbox[0].identity[..],url) {return false;}for k:0..<i {if urls[k]==url {return false;}}if url!=cast(string)m[0].saved[i][0..<m[0].saved_n[i]] {changed=true;}}
+ if !m[0].started || urls.count<1 || urls.count>6 {return false;}changed:=urls.count!=m[0].ns; // mutant: equivalent (6 -> 7: every URL still passes nrs_admit, whose independent slot bound refuses index six before any saved input changes)
+ for url,i:urls {if url.count>256 || !nrs_admit(1,i,1,0,cast(string)m[0].inbox[0].identity[..],url) {return false;}for k:0..<i {if urls[k]==url {return false;}}if url!=cast(string)m[0].saved[i][0..<m[0].saved_n[i]] {changed=true;}} // mutant: equivalent (256 -> 257: open admission independently caps the URL at 256; validation generation argument 1 -> 2: both are valid nonzero generations and this pure predicate does not create or bind a socket)
  if !changed {return true;}m[0].ns=urls.count;for url,i:urls {m[0].saved_n[i]=ndi_copy(m[0].saved[i][..],url);}m[0].settings_changed=true;m[0].dirty=true;return true;
 }
 #test "send remains bound to its peer and an uncertain response never authorizes another intent" {
@@ -78,8 +78,8 @@ ndm_clear :: (m:[]NostrMessenger) #effects(all) {
  m[0].started=false;m[0].active=false;m[0].settings_changed=false;m[0].dirty=true;m[0].action=0;m[0].op=0;m[0].flight=0;m[0].nb=0;m[0].generation=0;m[0].retry=false;m[0].retry_task=0;m[0].submit=false;m[0].enable=false;m[0].want_receipts=false;m[0].ns=0;m[0].np=0;m[0].mode=0;m[0].own[0]=N17Relays.{};m[0].own_ready=false;m[0].peer_ready=false;m[0].head_wanted=false;m[0].head_peer=false;m[0].head_for_peer=false;m[0].head_index[0]=MsIndex.{};m[0].outbox[0]=MsIndex.{};m[0].pub_phase=0;m[0].pub_at=0;m[0].pub_target=0;m[0].pub_cursor=0;m[0].pub_revision=0;m[0].original_n=0;m[0].setup_n=0;m[0].nn=0;m[0].status_at=0;
 }
 ndm_start :: (m:[]NostrMessenger,account:string,identity:string,seed:string,urls:[]string)->bool #effects(all) {
- if !aw_hex(seed,64) || urls.count<1 || urls.count>6 {return false;}
- for url,i:urls {if url.count>256 || !nrs_admit(1,i,1,0,identity,url) {return false;}for k:0..<i {if urls[k]==url {return false;}}}
+ if !aw_hex(seed,64) || urls.count<1 || urls.count>6 {return false;} // mutant: equivalent (6 -> 7: nrs_admit independently refuses the seventh slot before any current owner is retired)
+ for url,i:urls {if url.count>256 || !nrs_admit(1,i,1,0,identity,url) {return false;}for k:0..<i {if urls[k]==url {return false;}}} // mutant: equivalent (256 -> 257: open admission independently enforces 256 bytes; validation generation 1 -> 2: either is inside its valid nonzero range without creating a socket)
  if m[0].started && account==cast(string)m[0].inbox[0].account[0..<m[0].inbox[0].na] && identity==cast(string)m[0].inbox[0].identity[..] {m[0].active=true;m[0].discovery_at=0;return ndm_settings(m,urls);}
  if m[0].flight!=0 {return false;}
  if m[0].inbox[0].na>0 && (account!=cast(string)m[0].inbox[0].account[0..<m[0].inbox[0].na] || identity!=cast(string)m[0].inbox[0].identity[..]) {ndm_clear(m);}

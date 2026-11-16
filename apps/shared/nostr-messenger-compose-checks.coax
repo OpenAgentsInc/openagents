@@ -1,0 +1,28 @@
+#test "send admission independently requires every owner readiness clock and in-flight fact" {
+ m:[1]NostrMessenger;me:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";peer:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+ #assert ndi_bind(m[0].inbox[..],"a",me);_=ndi_copy(m[0].peer[..],peer);
+ for absent:0..<8 {
+  m[0].started=absent!=0;m[0].active=absent!=1;m[0].own_ready=absent!=2;m[0].peer_ready=absent!=3;m[0].np=ifx absent==4 then 63 else 64;m[0].relays[0].now=ifx absent==5 then 172799 else 172800;m[0].submit=absent==6;m[0].prepared[0].pending=absent==7;
+  #assert !ndm_can_send(m[..]) && !ndm_prepare(m[..],"not admitted","");
+ }
+ m[0].started=true;m[0].active=true;m[0].own_ready=true;m[0].peer_ready=true;m[0].np=64;m[0].relays[0].now=172800;m[0].submit=false;m[0].prepared[0].pending=false;
+ for phase:0..<6 {for seen:0..<2 {m[0].outgoing[0].phase=phase;m[0].outgoing[0].seen=seen==1;#assert ndm_can_send(m[..])==(phase==0 || phase==3 && seen==1);}}
+}
+#test "preparation validates a complete purpose and freezes exact text reply owner and redraw state" {
+ m:[1]NostrMessenger;me:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";peer:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+ #assert ndi_bind(m[0].inbox[..],"a",me);m[0].started=true;m[0].active=true;m[0].own_ready=true;m[0].peer_ready=true;m[0].np=ndi_copy(m[0].peer[..],peer);m[0].relays[0].now=172800;
+ #assert !ndm_prepare(m[..],"","") && !m[0].prepared[0].pending && !ndm_prepare(m[..],"text","bad") && !m[0].prepared[0].pending;
+ m[0].dirty=false;#assert ndm_prepare(m[..],"Frozen **text**",me) && m[0].dirty;
+ p:=m[0].prepared[..];#assert p[0].pending && p[0].generation==1 && p[0].nt==15 && cast(string)p[0].text[0..<p[0].nt]=="Frozen **text**" && p[0].nr==64 && cast(string)p[0].reply[..]==me && cast(string)p[0].peer[..]==peer;
+ m[0].nn=ndi_copy(m[0].note[..],"prior failure");m[0].dirty=false;
+ #assert ndm_submit_prepared(m[..],peer,172800) && m[0].submit && !p[0].pending && p[0].nt==0 && p[0].nr==0 && m[0].nn==0 && m[0].dirty;
+ #assert cast(string)m[0].outgoing[0].text[0..<m[0].outgoing[0].nt]=="Frozen **text**" && cast(string)m[0].outgoing[0].reply[..]==me;
+}
+#test "late entropy and refused outgoing admission preserve the prepared intent without launching a send" {
+ m:[1]NostrMessenger;me:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";peer:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+ #assert ndi_bind(m[0].inbox[..],"a",me);p:=m[0].prepared[..];p[0].nt=ndi_copy(p[0].text[..],"retained");p[0].generation=1;_=ndi_copy(p[0].peer[..],peer);
+ for absent:0..<3 {p[0].pending=absent!=0;m[0].started=absent!=1;p[0].generation=ifx absent==2 then 2 else 1;#assert !ndm_submit_prepared(m[..],peer,1730000000) && !m[0].submit && p[0].nt==8;}
+ p[0].pending=true;p[0].generation=1;m[0].started=true;
+ #assert !ndm_submit_prepared(m[..],"bad",1730000000) && p[0].pending && !m[0].submit && p[0].nt==8;
+ ndm_cancel_prepared(m[..]);#assert !p[0].pending && p[0].nt==0 && p[0].nr==0 && crypto_zeroed(p[0].text[..]) && crypto_zeroed(p[0].peer[..]) && crypto_zeroed(p[0].reply[..]);
+}

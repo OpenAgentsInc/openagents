@@ -1,0 +1,55 @@
+// Real installed-wire and Relay transitions; no alternate socket state machine.
+#test "relay configuration validates the whole pool before replacing an owner" {
+ s:[1]NostrInbox;p:[1]NostrDmRelays;urls:=[7]string.["wss://one.example","wss://two.example","wss://three.example","wss://four.example","wss://five.example","wss://six.example","wss://seven.example"];
+ #assert !ndr_configure(p[..],s[..],urls[0..<1],"") && ndi_bind(s[..],"a",NMS_LIST_PUB);
+ #assert !ndr_configure(p[..],s[..],urls[0..<0],"") && !ndr_configure(p[..],s[..],urls[..],"") && !ndr_configure(p[..],s[..],urls[0..<1],"bad");
+ duplicate:=[2]string.[urls[0],urls[0]];#assert !ndr_configure(p[..],s[..],duplicate[..],"");
+ #assert ndr_configure(p[..],s[..],urls[0..<6],"") && p[0].nr==6 && p[0].generation==1 && p[0].active && p[0].reset && p[0].changed && !p[0].partial && !p[0].heads_changed;
+ for i:0..<6 {#assert cast(string)p[0].relays[i].url[0..<p[0].relays[i].nu]==urls[i] && p[0].relays[i].own==0 && p[0].relays[i].peer== -1 && p[0].relays[i].messages==1;}
+ p[0].reset=false;p[0].changed=false;#assert ndr_configure(p[..],s[..],urls[0..<6],"") && !p[0].reset && !p[0].changed;
+ p[0].busy=true;#assert !ndr_configure(p[..],s[..],urls[0..<1],"") && p[0].nr==6;p[0].busy=false;
+ peer:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+ #assert ndr_configure(p[..],s[..],urls[0..<1],peer) && p[0].np==64 && cast(string)p[0].peer[..]==peer && p[0].relays[0].peer==1 && p[0].relays[0].messages==2;
+ p[0].publish_n=4;p[0].publish[0]=165;p[0].publish_entry=2;p[0].needs_auth=true;
+ ndr_pause(p[..]);#assert !p[0].active && p[0].reset && !p[0].needs_auth && p[0].publish_n==0 && p[0].publish_entry== -1 && crypto_zeroed(p[0].publish[..]);
+}
+#test "installed relay requests bind the exact action generation acknowledgement identity and payload" {
+ p:[1]NostrDmRelays;q:[1]NrsRequest;_=ndi_copy(p[0].identity[..],NMS_LIST_PUB);p[0].generation=7;p[0].relays[0].relay[0].gen=9;p[0].relays[0].ack=12;
+ for action:1..<7 {
+  payload:=ifx action==1 then "wss://relay.example" else ifx action==2 then "[\"CLOSE\",\"a\"]" else "";p[0].busy=false;p[0].action=0;
+  #assert ndr_do(p[..],action,0,payload) && p[0].pending==action && p[0].slot==0 && p[0].busy && p[0].action==23 && nrs_read(cast(string)p[0].body[0..<p[0].nb],q[..]);
+  #assert q[0].action==action && q[0].generation==(ifx action==5 then 0 else ifx action==6 then 7 else 9) && q[0].sequence==(ifx action==3 || action==4 then 12 else 0) && cast(string)q[0].identity[..]==NMS_LIST_PUB && cast(string)q[0].payload[0..<q[0].n]==payload;
+ }
+ p[0].busy=false;p[0].action=0;large:[131073]u8;#assert !ndr_do(p[..],2,0,cast(string)large[..]) && p[0].partial && !p[0].busy && p[0].action==0;
+}
+#test "message requests use the full reader target and exact two-day resume overlap while list requests stay bounded" {
+ s:[1]NostrInbox;p:[1]NostrDmRelays;b:[8192]u8;urls:=[1]string.["wss://relay.example"];peer:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+ #assert ndi_bind(s[..],"a",NMS_LIST_PUB) && ndr_configure(p[..],s[..],urls[..],peer);
+ times:=[4]int.[0,172800,172801,1730000000];
+ for sub:0..<3 {for resume:0..<2 {for at:times {
+  n:=ndr_req(p[..],0,sub,resume==1,at,b[..]);d:[1]Jv;nodes:[64]JvNode;#assert n>0 && jv_parse(d[..],cast(string)b[0..<n],nodes[..]);v:=d[0];f:=jv_at(v,0,2);
+  #assert jv_raw(v,jv_at(v,0,0))=="REQ" && js_number(v,jv_at(v,jv_get(v,f,"kinds"),0))==(ifx sub==2 then 1059 else 10050) && js_number(v,jv_get(v,f,"limit"))==(ifx sub==2 then 128 else 1);
+  if sub<2 {#assert jv_raw(v,jv_at(v,jv_get(v,f,"authors"),0))==(ifx sub==1 then peer else NMS_LIST_PUB) && jv_get(v,f,"since")<0;}
+  else {#assert jv_raw(v,jv_at(v,jv_get(v,f,"#p"),0))==NMS_LIST_PUB;if resume==1 && at>172800 {#assert js_number(v,jv_get(v,f,"since"))==at-172800;}else {#assert jv_get(v,f,"since")<0;}}
+ }}}
+}
+#test "relay readiness requires every socket message barrier and retained completeness fact" {
+ p:[1]NostrDmRelays;p[0].active=true;p[0].nr=2;for i:0..<2 {p[0].relays[i].messages=0;p[0].relays[i].relay[0].state=RL_OPEN;p[0].relays[i].relay[0].subs[0].state=RS_CAUGHT;}
+ #assert ndr_ready(p[..]);p[0].active=false;#assert !ndr_ready(p[..]);p[0].active=true;p[0].nr=0;#assert !ndr_ready(p[..]);p[0].nr=2;p[0].partial=true;#assert !ndr_ready(p[..]);p[0].partial=false;
+ for i:0..<2 {for missing:0..<4 {saved:=p[0].relays[i];if missing==0 {p[0].relays[i].partial=true;}if missing==1 {p[0].relays[i].relay[0].state=RL_CONNECTING;}if missing==2 {p[0].relays[i].messages= -1;}if missing==3 {p[0].relays[i].relay[0].subs[0].state=RS_LIVE;}#assert !ndr_ready(p[..]);p[0].relays[i]=saved;}}
+}
+#test "relay observation fences preserve a current request and exact sequences control reconnect state" {
+ s:[1]NostrInbox;p:[1]NostrDmRelays;b:[8192]u8;urls:=[1]string.["wss://relay.example"];other:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+ #assert ndi_bind(s[..],"a",NMS_LIST_PUB) && ndr_configure(p[..],s[..],urls[..],"");r:=p[0].relays[0..<1];r[0].relay[0].gen=7;r[0].relay[0].state=RL_CONNECTING;
+ for absent:0..<7 {
+  p[0].busy=absent!=0;p[0].action=23;p[0].pending=3;p[0].generation=ifx absent==1 then 2 else 1;s[0].generation=ifx absent==2 then 2 else 1;
+  n:=nrs_observation(ifx absent==4 then 1 else 0,ifx absent==5 then 8 else 7,1,ifx absent==3 then other else NMS_LIST_PUB,"open","",b[..]);
+  #assert !ndr_reply(p[..],s[..],1,ifx absent==6 then "{}" else cast(string)b[0..<n],false) && p[0].busy==(absent!=0) && p[0].action==23;
+ }
+ p[0].generation=1;s[0].generation=1;p[0].busy=true;p[0].pending=3;r[0].partial=true;r[0].received=99;
+ n:=nrs_observation(0,7,1,NMS_LIST_PUB,"open","",b[..]);#assert ndr_reply(p[..],s[..],1,cast(string)b[0..<n],false) && !p[0].busy && p[0].action==0 && r[0].ack==1 && !r[0].partial && r[0].received==0 && r[0].relay[0].state==RL_OPEN;
+ p[0].busy=true;p[0].action=23;n=nrs_observation(0,7,1,NMS_LIST_PUB,"open","",b[..]);#assert !ndr_reply(p[..],s[..],1,cast(string)b[0..<n],false) && r[0].ack==1;
+ p[0].busy=true;n=nrs_observation(0,7,3,NMS_LIST_PUB,"closed","",b[..]);#assert ndr_reply(p[..],s[..],1,cast(string)b[0..<n],false) && r[0].partial && r[0].ack==1 && r[0].relay[0].state!=RL_OPEN;
+ p[0].busy=true;p[0].pending=6;p[0].ms=123;#assert ndr_reply(p[..],s[..],1,"",true) && p[0].clock_at==5123 && !p[0].busy;
+ p[0].busy=true;p[0].pending=5;#assert ndr_reply(p[..],s[..],1,"",true) && p[0].reset && !p[0].busy;
+}

@@ -1,0 +1,20 @@
+// Private read-position admission; the API supplies journal and row-count facts.
+// SQL stores the selected monotonic position under the existing account lock.
+#load "nostr-delivery-wire.coax";
+#authority;
+#test "mark admission retains journal presence capacity and existing-room exceptions independently" {
+ journals:=[9]bool.[false,false,true,true,true,true,true,true,true];
+ counts:=[9]int.[0,4096,0,4095,4096,4096,-1,-1,4097];
+ existing:=[9]bool.[false,true,false,false,false,true,true,false,true];
+ statuses:=[9]int.[2,2,0,0,7,0,7,7,0];
+ for i:0..<9 {#assert nrd_mark_status(journals[i],counts[i],existing[i])==statuses[i];}
+}
+nrd_mark_status :: (journal:bool,count:int,existing:bool)->int #export_c #effects(all) {
+ if !journal {return 2;}return ifx nrd_room(count,existing) then 0 else 7;
+}
+nrd_room :: (count:int,existing:bool)->bool #export_c #effects(all) {return count>=0 && (existing || count<4096);}
+nrd_later :: (created:int,event:string,previous:int,previous_event:string)->bool #export_c #effects(all) {
+ if created<0 || created>9007199254740991 || !aw_hex(event,64) || previous< -1 || previous>9007199254740991 {return false;} // mutant: equivalent (previous upper bound +1: created is independently bounded at the same maximum, so such a previous position cannot be advanced anyway)
+ if previous== -1 {return previous_event.count==0;}if !aw_hex(previous_event,64) {return false;}
+ return created>previous || created==previous && ndl_after(previous_event,event);
+}

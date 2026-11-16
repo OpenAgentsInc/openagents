@@ -1,0 +1,98 @@
+// Complete existing wire replies, through the real coordinator decoder.
+ndm_test_store_answer :: (m:[]NostrMessenger,task:int,action:string,status:string,payload:string,revision:int,cursor:int)->bool {
+ b:[400000]u8;n:=nsr_write(ifx task==8 then "custody" else "store",action,cast(string)m[0].operation[..],cast(string)m[0].inbox[0].identity[..],status,revision,cursor,payload,b[..]);
+ #assert n>0;return ndm_store_reply(m,task,200,cast(string)b[0..<n],false);
+}
+#test "store and custody requests allocate distinct references and cannot replace an owned effect" {
+ m:[1]NostrMessenger;q:[1]MsRequest;c:[1]NscRequest;none:[1]string;
+ me:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";
+ #assert ndi_bind(m[0].inbox[..],"a",me) && ndj_start(m[0].journal[..],m[0].inbox[..],me);
+ m[0].flight=2;#assert !ndm_store(m[..],4,"outbox","",none[0..<0],0,0) && !ndm_custody(m[..],8,"publish-list","{}") && m[0].journal[0].serial==0;m[0].flight=0;
+ #assert ndm_store(m[..],4,"outbox","",none[0..<0],7,3) && m[0].op==22 && m[0].flight==4 && m[0].expected==9 && nms_request_read(cast(string)m[0].body[0..<m[0].nb],q[..]) && q[0].revision==7 && q[0].cursor==3 && cast(string)q[0].identity[..]==me;
+ first:=m[0].operation;m[0].flight=0;#assert !ndm_store(m[..],4,"invalid","",none[0..<0],0,0) && m[0].flight==0;
+ #assert ndm_custody(m[..],8,"publish-list","{}") && m[0].op==21 && m[0].flight==8 && m[0].expected==5 && nsc_read(cast(string)m[0].body[0..<m[0].nb],c[..]) && cast(string)c[0].operation[..]==cast(string)m[0].operation[..] && cast(string)m[0].operation[..]!=cast(string)first[..];
+ m[0].flight=0;#assert !ndm_custody(m[..],8,"invalid","") && m[0].flight==0;
+ m[0].journal[0].serial=2147483647;#assert !ndm_store(m[..],4,"outbox","",none[0..<0],0,0) && !ndm_custody(m[..],8,"publish-list","{}");
+ b:[2048]u8;n:=ndm_head_filter(me,b[..]);#assert n>0 && cast(string)b[0..<n]=="{\"authors\":[\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"],\"kinds\":[10050],\"limit\":1}" && ndm_head_filter("bad",b[..])== -1;
+}
+#test "uncertain setup requests require explicit retry while read failures retain their scheduled retry" {
+ m:[1]NostrMessenger;
+ for task:4..<13 {for effect:0..<2 {
+  m[0].retry=false;m[0].retry_task=0;m[0].retry_at=0;m[0].ms=123;m[0].op=ifx effect==0 then 22 else 4;
+  #assert ndm_store_reply(m[..],task,ifx effect==0 then 200 else 503,"",effect==0) && m[0].retry && m[0].retry_task==task;
+  #assert m[0].retry_at==(ifx task==8 || task==9 then 9007199254740991 else 5123);
+  #assert cast(string)m[0].note[0..<m[0].nn]==(ifx task==8 || task==9 then "Check inbox setup" else "Connection lost");
+ }}
+}
+#test "closed result ownership and every refusal status gate publication recovery" {
+ m:[1]NostrMessenger;b:[4096]u8;payload:[2048]u8;rows:[1]MsIndexRow;me:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";other:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+ #assert ndi_bind(m[0].inbox[..],"a",me);_=ndi_copy(m[0].operation[..],me);m[0].op=22;m[0].expected=9;m[0].pub_phase=3;
+ np:=ms_index_write(0,0,true,rows[0..<0],payload[..]);
+ for mode:0..<5 {
+  n:=nsr_write(ifx mode==0 then "custody" else "store",ifx mode==0 then "publish-list" else ifx mode==1 then "event" else "outbox",ifx mode==2 then other else me,ifx mode==3 then other else me,"ok",0,0,cast(string)payload[0..<np],b[..]);#assert n>0;
+  #assert !ndm_store_reply(m[..],4,200,ifx mode==4 then "{}" else cast(string)b[0..<n],false) && m[0].pub_phase==3 && !m[0].retry;
+ }
+ m[0].expected=5;n:=nsr_write("store","index",me,me,"ok",0,0,NMS_LIST_EVENT,b[..]);#assert !ndm_store_reply(m[..],8,200,cast(string)b[0..<n],false) && !m[0].enable;m[0].expected=9;
+ for status:1..<12 {
+  m[0].ms=100;m[0].pub_phase=3;m[0].pub_cursor=4;m[0].pub_revision=5;m[0].head_wanted=false;
+  #assert ndm_test_store_answer(m[..],4,"outbox",NS_STATUSES[status],"",0,0);
+  if status==9 {#assert m[0].pub_phase==0 && m[0].pub_cursor==0 && m[0].pub_revision==0 && m[0].head_wanted;}
+  else {#assert m[0].refresh_at==5100 && cast(string)m[0].note[0..<m[0].nn]==(ifx status==2 then "Inbox unavailable" else ifx status==4 then "Log in again" else "History unavailable");}
+ }
+}
+#test "relay pools deduplicate discovery inputs retain the exact target and refuse insecure or excessive own lists" {
+ m:[1]NostrMessenger;urls:=[2]string.["wss://own.example","wss://saved.example"];
+ #assert ndm_start(m[..],"a",NMS_LIST_PUB,NMS_LIST_PUB,urls[..]);m[0].own_ready=true;m[0].own[0].count=1;m[0].own[0].url_n[0]=ndi_copy(m[0].own[0].url[0..<N17_URL_MOST],urls[0]);
+ #assert ndm_pool(m[..],1,"") && m[0].mode==1 && m[0].relays[0].nr==2 && cast(string)m[0].relays[0].relays[0].url[0..<m[0].relays[0].relays[0].nu]==urls[0] && cast(string)m[0].relays[0].relays[1].url[0..<m[0].relays[0].relays[1].nu]==urls[1];
+ #assert ndm_pool(m[..],2,"wss://target.example") && m[0].mode==2 && m[0].relays[0].nr==1 && cast(string)m[0].relays[0].relays[0].url[0..<m[0].relays[0].relays[0].nu]=="wss://target.example";
+ m[0].relays[0].busy=true;#assert !ndm_pool(m[..],2,urls[0]) && m[0].mode==2;m[0].relays[0].busy=false;
+ m[0].own[0].count=7;#assert !ndm_pool(m[..],1,"") && m[0].mode==2 && cast(string)m[0].note[0..<m[0].nn]=="Too many inbox relays";
+ m[0].own[0].count=1;m[0].own[0].url_n[0]=ndi_copy(m[0].own[0].url[0..<N17_URL_MOST],"ws://insecure.example");#assert !ndm_pool(m[..],1,"") && m[0].mode==2;
+ m[0].own_ready=false;#assert ndm_pool(m[..],0,"") && m[0].mode==0 && m[0].relays[0].nr==2;
+}
+#test "list-read readiness requires every configured relay and both selected subscription barriers" {
+ m:[1]NostrMessenger;p:=m[0].relays[..];p[0].nr=2;m[0].np=64;
+ for r:0..<2 {p[0].relays[r].own=0;p[0].relays[r].peer=1;p[0].relays[r].relay[0].state=RL_OPEN;p[0].relays[r].relay[0].subs[0].state=RS_CAUGHT;p[0].relays[r].relay[0].subs[1].state=RS_CAUGHT;}
+ p[0].active=true;#assert ndm_lists_ready(m[..]);p[0].active=false;#assert !ndm_lists_ready(m[..]);p[0].active=true;p[0].nr=0;#assert !ndm_lists_ready(m[..]);p[0].nr=2;
+ for r:0..<2 {for missing:0..<5 {
+  saved:=p[0].relays[r];if missing==0 {p[0].relays[r].relay[0].state=RL_IDLE;}if missing==1 {p[0].relays[r].own= -1;}if missing==2 {p[0].relays[r].relay[0].subs[0].state=RS_WANT;}if missing==3 {p[0].relays[r].peer= -1;}if missing==4 {p[0].relays[r].relay[0].subs[1].state=RS_WANT;}
+  #assert !ndm_lists_ready(m[..]);p[0].relays[r]=saved;
+ }}m[0].np=0;for r:0..<2 {p[0].relays[r].peer= -1;}#assert ndm_lists_ready(m[..]);
+}
+#test "receipt and read-position HTTP replies update only their actual owned projections" {
+ m:[1]NostrMessenger;b:[32768]u8;q:[1]NdlRequest;p:[1]NdlPage;read:[1]NrdMarker;me:=NMS_LIST_PUB;
+ #assert ndi_bind(m[0].inbox[..],"a",me) && ndd_begin(m[0].delivery[..],m[0].inbox[..]);m[0].generation=1;m[0].want_receipts=true;m[0].status_at=9;
+ n:=ndd_request(m[0].delivery[..],me,b[..]);#assert ndl_request_read(cast(string)b[0..<n],q[..]) && ndl_begin(p[..],q[..]);n=ndl_page_write(p[..],b[..]);
+ #assert ndm_store_reply(m[..],10,200,cast(string)b[0..<n],false) && !m[0].want_receipts && m[0].status_at==0 && m[0].delivery[0].complete;
+ #assert ndi_begin(m[0].inbox[..],me,me);n=nsr_write("custody","open",me,me,"ok",0,0,DM_OPENED_GOLDEN,b[..]);#assert ndi_opened(m[0].inbox[..],1,cast(string)b[0..<n]);nrp_sync(m[0].read_positions[..],m[0].inbox[..]);
+ n=nrp_request(m[0].read_positions[..],me,b[..]);#assert n>0 && nrd_read(cast(string)b[0..<n],false,read[..]);read[0].created=1730000000;read[0].ne=ndi_copy(read[0].event[..],"6cb5d5d7777d282781248a294413a0ff0f730bf3822b08050e23c42c36bab265");n=nrd_write(read[..],true,b[..]);
+ #assert ndm_store_reply(m[..],12,200,cast(string)b[0..<n],false) && m[0].read_positions[0].rows[0].known && !m[0].read_positions[0].pending && nrp_unread(m[0].read_positions[..],m[0].inbox[..],m[0].inbox[0].messages[0].message.room[..])==0;
+}
+#test "outbox index event and setup acknowledgements publish only their matching originals" {
+ m:[1]NostrMessenger;p:[65536]u8;rows:[1]MsIndexRow;
+ #assert ndi_bind(m[0].inbox[..],"a",NMS_LIST_PUB);_=ndi_copy(m[0].operation[..],NMS_LIST_PUB);m[0].op=22;m[0].expected=9;m[0].pub_at=9;m[0].pub_target=2;
+ _=ndi_copy(rows[0].id[..],NMS_LIST_ID_HEX);_=ndi_copy(rows[0].author[..],NMS_LIST_PUB);rows[0].kind=10050;rows[0].created=NMS_LIST_AT;n:=ms_index_write(7,3,false,rows[..],p[..]);
+ #assert ndm_test_store_answer(m[..],4,"outbox","ok",cast(string)p[0..<n],7,3) && m[0].outbox[0].n==1 && m[0].pub_revision==7 && m[0].pub_at==0 && m[0].pub_target==0 && m[0].pub_phase==1;
+ #assert !ndm_test_store_answer(m[..],4,"outbox","ok",cast(string)p[0..<n],8,3) && !ndm_test_store_answer(m[..],4,"outbox","ok",cast(string)p[0..<n],7,4) && !ndm_test_store_answer(m[..],4,"outbox","ok","{}",7,3);
+ m[0].expected=6;#assert !ndm_test_store_answer(m[..],5,"event","ok","{}",0,0);m[0].outbox[0].rows[0].id[0]='0';#assert !ndm_test_store_answer(m[..],5,"event","ok",NMS_LIST_EVENT,0,0);_=ndi_copy(m[0].outbox[0].rows[0].id[..],NMS_LIST_ID_HEX);
+ #assert ndm_test_store_answer(m[..],5,"event","ok",NMS_LIST_EVENT,0,0) && m[0].pub_phase==3 && cast(string)m[0].original[0..<m[0].original_n]==NMS_LIST_EVENT;
+ m[0].expected=5;#assert ndm_test_store_answer(m[..],8,"publish-list","ok",NMS_LIST_EVENT,0,0) && m[0].enable && cast(string)m[0].setup_original[0..<m[0].setup_n]==NMS_LIST_EVENT;
+ m[0].expected=3;m[0].pub_cursor=5;m[0].pub_revision=6;m[0].head_wanted=false;m[0].head_peer=true;m[0].head_index[0].n=1;
+ #assert ndm_test_store_answer(m[..],9,"queue","ok","",0,0) && !m[0].enable && m[0].setup_n==0 && m[0].pub_phase==0 && m[0].pub_cursor==0 && m[0].pub_revision==0 && m[0].head_wanted && !m[0].head_peer && m[0].head_index[0].n==0;
+}
+#test "discovered list ownership and absent-head transitions stay bound to the selected peer" {
+ m:[1]NostrMessenger;p:[4096]u8;rows:[1]MsIndexRow;other:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+ #assert ndi_bind(m[0].inbox[..],"a",NMS_LIST_PUB);_=ndi_copy(m[0].operation[..],NMS_LIST_PUB);m[0].op=22;m[0].expected=5;m[0].np=ndi_copy(m[0].peer[..],other);
+ for peer:0..<2 {
+  m[0].head_for_peer=peer==1;m[0].head_pub=m[0].peer;m[0].own_ready=true;m[0].peer_ready=true;m[0].own[0].count=1;_=ndi_copy(m[0].own_id[..],NMS_LIST_ID_HEX);
+  n:=ms_index_write(7,0,true,rows[0..<0],p[..]);#assert ndm_test_store_answer(m[..],6,"index","ok",cast(string)p[0..<n],7,0) && m[0].head_peer && m[0].head_wanted==(peer==0);
+  if peer==1 {#assert !m[0].peer_ready;}else {#assert !m[0].own_ready && m[0].own[0].count==0 && crypto_zeroed(m[0].own_id[..]);}
+ }
+ m[0].head_for_peer=true;_=ndi_copy(m[0].head_pub[..],NMS_LIST_PUB);m[0].head_peer=true;m[0].head_wanted=false;
+ n:=ms_index_write(7,0,true,rows[0..<0],p[..]);#assert ndm_test_store_answer(m[..],6,"index","ok",cast(string)p[0..<n],7,0) && m[0].head_wanted && !m[0].head_peer;
+ // A genuinely signed list is admitted only for the exact discovered original.
+ m[0].expected=6;m[0].head_for_peer=false;m[0].np=0;_=ndi_copy(m[0].head_pub[..],NMS_LIST_PUB);_=ndi_copy(m[0].head_index[0].rows[0].id[..],NMS_LIST_ID_HEX);m[0].head_index[0].n=1;
+ #assert ndm_test_store_answer(m[..],7,"event","ok",NMS_LIST_EVENT,0,0) && m[0].own_ready && m[0].own[0].count==1 && n17_url(m[0].own[0],0,"wss://inbox.example") && cast(string)m[0].own_id[..]==NMS_LIST_ID_HEX && m[0].head_peer && !m[0].head_wanted && m[0].head_index[0].n==0;
+ m[0].head_for_peer=true;m[0].np=ndi_copy(m[0].peer[..],NMS_LIST_PUB);m[0].head_index[0].n=1;_=ndi_copy(m[0].head_index[0].rows[0].id[..],NMS_LIST_ID_HEX);m[0].peer_ready=false;
+ #assert ndm_test_store_answer(m[..],7,"event","ok",NMS_LIST_EVENT,0,0) && m[0].peer_ready && !m[0].head_wanted && m[0].head_index[0].n==0;
+}

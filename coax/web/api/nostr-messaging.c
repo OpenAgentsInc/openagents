@@ -72,9 +72,8 @@ bool nostr_messaging_route(const request *q,PGconn *db,const char *op) {
   bool exists=PQntuples(row)==1;int64_t previous_at= -1;
   if (exists) {previous_at=strtoll(PQgetvalue(row,0,0),NULL,10);if (PQgetlength(row,0,1)!=64) {PQclear(row);goto done;}memcpy(previous,PQgetvalue(row,0,1),64);}PQclear(row);
   if (nrd_later(read_marker->created,nss(event),previous_at,nss(previous))) {
-   if (total==0) {result.status=2;goto answer;}
    row=PQexecParams(db,"SELECT count(*)::text FROM auth.nostr_read_markers_v1 WHERE namespace=$1",1,NULL,keys,NULL,NULL,0);
-   ok=PQresultStatus(row)==PGRES_TUPLES_OK && PQntuples(row)==1;bool room=ok && nrd_room(strtoll(PQgetvalue(row,0,0),NULL,10),exists);PQclear(row);if (!ok) goto done;if (!room) {result.status=7;goto answer;}
+   ok=PQresultStatus(row)==PGRES_TUPLES_OK && PQntuples(row)==1;if (ok) result.status=nrd_mark_status(total>0,strtoll(PQgetvalue(row,0,0),NULL,10),exists);PQclear(row);if (!ok) goto done;if (result.status!=0) goto answer;
    char created[32];snprintf(created,sizeof created,"%lld",(long long)read_marker->created);const char *values[]={scope_hex,p->account,canonical,conversation,created,event};
    row=PQexecParams(db,"INSERT INTO auth.nostr_read_markers_v1(namespace,account,identity,conversation,created_at,event) VALUES($1,$2,$3,$4,$5::bigint,$6) ON CONFLICT(namespace,conversation) DO UPDATE SET created_at=EXCLUDED.created_at,event=EXCLUDED.event",6,NULL,values,NULL,NULL,0);ok=PQresultStatus(row)==PGRES_COMMAND_OK;PQclear(row);if (!ok) goto done;
    previous_at=read_marker->created;memcpy(previous,event,65);

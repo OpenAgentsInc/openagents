@@ -1,12 +1,15 @@
 // Freeze the intended peer, reply and text before asking the platform for a
 // fresh operation reference. A later view or draft edit cannot retarget it.
 #authority;
+#load "nostr-messenger-compose-checks.coax" #test;
 ndm_can_send :: (m:[]NostrMessenger)->bool #effects(all) {
  o:=m[0].outgoing[..];return m[0].started && m[0].active && m[0].own_ready && m[0].peer_ready && m[0].np==64 && m[0].relays[0].now>=172800 && !m[0].submit && !m[0].prepared[0].pending && (o[0].phase==0 || o[0].phase==3 && o[0].seen);
 }
 ndm_prepare :: (m:[]NostrMessenger,text:string,reply:string)->bool #effects(all) {
- if !ndm_can_send(m) {return false;}b:[100000]u8;defer {secure_zero(b[..]);}
- n:=nsp_seal_request(cast(string)m[0].inbox[0].identity[..],cast(string)m[0].peer[..],m[0].relays[0].now,text,reply,b[..]);if n<0 {return false;}
+ if !ndm_can_send(m) {return false;}b:[100000]u8;
+ defer {secure_zero(b[..]);} // mutant: equivalent (removing deferred erasure of a dead local is unobservable to safe Coax callers after return; retain it for native plaintext stack hygiene)
+ n:=nsp_seal_request(cast(string)m[0].inbox[0].identity[..],cast(string)m[0].peer[..],m[0].relays[0].now,text,reply,b[..]);
+ if n<0 {return false;} // mutant: equivalent (< -> <= or 0 -> 1: the purpose writer returns -1 or a complete JSON object longer than one byte, never 0 or 1)
  p:=m[0].prepared[..];p[0].pending=true;p[0].generation=m[0].inbox[0].generation;p[0].peer=m[0].peer;p[0].nt=ndi_copy(p[0].text[..],text);p[0].nr=ndi_copy(p[0].reply[..],reply);m[0].dirty=true;return true;
 }
 ndm_cancel_prepared :: (m:[]NostrMessenger) #effects(all) {m[0].prepared[0]=NostrPrepared.{};}

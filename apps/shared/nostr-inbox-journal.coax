@@ -100,7 +100,7 @@ NostrInboxJournal :: struct {
  #assert ndj_filter("bad",p[..])== -1;
 }
 ndj_clear :: (j:[]NostrInboxJournal) #effects(all) {
- for i:0..<j[0].body.count {j[0].body[i]=0;}j[0].index[0]=MsIndex.{};
+ for i:0..<j[0].body.count {j[0].body[i]=0;}j[0].index[0]=MsIndex.{}; // mutant: equivalent (j[0] -> j[1] only in body.count: the fixed array extent is a type-level constant; its receiver/index is not evaluated. Actual body[i] erasure is checked byte for byte)
  for i:0..<64 {j[0].seed[i]=0;j[0].operation[i]=0;}
  j[0].generation=0;j[0].serial=0;j[0].phase=0;j[0].busy=false;j[0].action=0;j[0].nb=0;j[0].at=0;j[0].cursor=0;j[0].revision=0;j[0].ready=false;j[0].failed=false;j[0].retry=false;j[0].rejected=0;
 }

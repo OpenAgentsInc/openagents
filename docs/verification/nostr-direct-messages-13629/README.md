@@ -26,11 +26,25 @@ Logs below live in the isolated `oa-arcade-dm` worktree's ignored `build/`.
 | Immutable outgoing intent, recovery and sender-copy recognition | 244 mutants: 225 killed, 19 reviewed equivalents, no survivors | `dm-outgoing-recovery-qualified.log` |
 | Extracted unsigned-rumor adapter | 63 mutants killed, no survivors | `dm-rumor-initial-qualified.log` |
 | Extracted kind-10050 relay projection | 78 mutants killed, no survivors | `dm-receipt-baseline-and-relay-projection.log` |
+| Extracted NIP-17 message projection, including exact rumor-size ceiling | 293 mutants: 287 killed, 6 reviewed equivalents, no survivors | `dm-message-projection-qualified.log` |
 | Actual native recipient picker/composer and accessible delivery glyph | Passed on the isolated signed simulator | `dm-native-final-ui-tests.log` |
 | Shared DOM adapter, including complete digest IDs, focus and field values | 19 checks passed | `dm-full-id-modules.log` |
 | Compiled native/web/reference exchange, native cold history-row selection, exact committed-send retry | Passed, signed iOS simulator and real relay/API | `dm-id128-live-tests.log`, `dm-id128-live-reference.log` |
 | Browser cold recovery through the real history row | Passed; both texts recovered | `dm-id128-cold-result.log`, `dm-id128-cold-final.png` |
 | Tools, wire registry and component layers | Passed | `dm-tools-latest.log`, `dm-wire-latest.log`, `dm-components-latest.log` |
+
+The receipt/coordination checks now also cover closed nested rows, independent
+generation fences, all known open-refusal statuses, exact operation-hash
+vectors, stale revision/offset replacement, native history dispatch, and the
+independent lifecycle prerequisites. The shared coordinator's latest ordinary
+suite passed 1,027 checks (`dm-receipt-and-lifecycle-final-baseline.log`).
+
+Initial mutation diagnostics used bounded shards and, for some runs, the
+documented native mutation profile with a smaller evaluator slot budget.
+Every check still runs; checks exceeding that budget must pass and run for
+each mutant as native code. A timeout, failed baseline, or undecided site is
+retained as incomplete evidence. None is treated as successful qualification.
+Final journal/receipt passes also keep the compiler's killer hints for reuse.
 
 Equivalent annotations name the specific redundant condition or unobservable
 local cleanup they cover. They do not remove the production checks or cleanup.
@@ -89,7 +103,7 @@ production account, limit, key, inbox or service was changed.
 ## Remaining release work
 
 1. Finish initial mutation qualification of the remaining new coordinator,
-   relay, journal, outgoing, receipt-codec/cache and extracted primitive units.
+   relay, journal, and receipt-codec/cache units, and the read policy's API move.
    Retained survivor/timeout reports are not successful qualification.
 2. Rebase onto current main, retain its concurrent app/world work, and run the
    final touched checks and existing agent/account/environment regressions.

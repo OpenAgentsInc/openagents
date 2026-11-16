@@ -1,6 +1,7 @@
 // Existing store/custody codecs and a separate private receipt HTTP request.
 // Included by nostr-messenger.coax after the coordinator's state declaration.
 #authority;
+#load "nostr-messenger-store-checks.coax" #test;
 ndm_store :: (m:[]NostrMessenger,task:int,action:string,payload:string,targets:[]string,revision:int,cursor:int)->bool #effects(all) {
  if m[0].flight!=0 || !ndj_allocate(m[0].journal[..],m[0].operation[..]) {return false;}
  wire:[400000]u8;n:=nms_request_write(action,cast(string)m[0].operation[..],cast(string)m[0].inbox[0].identity[..],"",targets,0,revision,cursor,payload,wire[..]);if n<0 {return false;}

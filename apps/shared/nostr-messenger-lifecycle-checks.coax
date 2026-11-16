@@ -52,3 +52,108 @@
  #assert n>0 && ndm_reply(m[..],21,1,0,cast(string)b[0..<n],false) && m[0].outgoing[0].phase==3 && !m[0].submit && m[0].pub_phase==0 && m[0].pub_cursor==0 && m[0].pub_revision==0 && m[0].want_receipts && m[0].flight==0 && m[0].action==0 && m[0].dirty;
  #assert !ndm_reply(m[..],21,1,0,cast(string)b[0..<n],false) && cast(string)m[0].outgoing[0].delivery[0].receipt[0].self[..]==me;
 }
+#test "retiring a messenger erases all private owners requests drafts and discovery projections" {
+ m:[1]NostrMessenger;me:="dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";peer:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+ #assert ndi_bind(m[0].inbox[..],"a",me) && ndj_start(m[0].journal[..],m[0].inbox[..],me) && ndo_begin(m[0].outgoing[..],m[0].inbox[..],me,peer,1730000000,"private outgoing","");
+ m[0].inbox[0].n=1;m[0].inbox[0].messages[0].n=7;_=ndi_copy(m[0].inbox[0].messages[0].body[..],"private");m[0].inbox[0].pending=true;
+ m[0].journal[0].nb=ndi_copy(m[0].journal[0].body[..],"private request");m[0].journal[0].busy=true;m[0].journal[0].serial=7;
+ m[0].delivery[0].n=1;m[0].delivery[0].identity=m[0].inbox[0].identity;m[0].read_positions[0].n=1;m[0].read_positions[0].pending=true;m[0].read_positions[0].rows[0].created=9;m[0].read_at=99;
+ p:=m[0].prepared[..];p[0].pending=true;p[0].nt=ndi_copy(p[0].text[..],"private draft");p[0].nr=ndi_copy(p[0].reply[..],me);_=ndi_copy(p[0].peer[..],peer);
+ m[0].relays[0].active=true;m[0].relays[0].publish_n=1;m[0].relays[0].publish[0]=165;
+ m[0].body[0]=165;m[0].body[799999]=165;m[0].original[0]=165;m[0].setup_original[0]=165;_=ndi_copy(m[0].peer[..],peer);_=ndi_copy(m[0].operation[..],me);_=ndi_copy(m[0].own_id[..],me);_=ndi_copy(m[0].head_pub[..],me);m[0].nn=ndi_copy(m[0].note[..],"private note");
+ m[0].started=true;m[0].active=true;m[0].settings_changed=true;m[0].dirty=false;m[0].action=23;m[0].op=21;m[0].flight=3;m[0].nb=4;m[0].generation=1;m[0].retry=true;m[0].retry_task=8;m[0].submit=true;m[0].enable=true;m[0].want_receipts=true;m[0].ns=6;m[0].np=64;m[0].mode=2;
+ m[0].own[0].count=1;m[0].own_ready=true;m[0].peer_ready=true;m[0].head_wanted=true;m[0].head_peer=true;m[0].head_for_peer=true;m[0].head_index[0].n=1;m[0].outbox[0].n=1;
+ m[0].pub_phase=4;m[0].pub_at=9;m[0].pub_target=2;m[0].pub_cursor=3;m[0].pub_revision=7;m[0].original_n=5;m[0].setup_n=6;m[0].status_at=8;
+ ndm_clear(m[..]);
+ #assert m[0].inbox[0].na==0 && m[0].inbox[0].n==0 && !m[0].inbox[0].pending && m[0].inbox[0].messages[0].n==0 && crypto_zeroed(m[0].inbox[0].messages[0].body[..]);
+ #assert m[0].journal[0].generation==0 && !m[0].journal[0].busy && m[0].journal[0].nb==0 && m[0].journal[0].serial==0 && crypto_zeroed(m[0].journal[0].body[..]);
+ #assert m[0].outgoing[0].phase==0 && m[0].outgoing[0].nt==0 && crypto_zeroed(m[0].outgoing[0].text[..]) && crypto_zeroed(m[0].outgoing[0].request[..]);
+ #assert m[0].delivery[0].n==0 && crypto_zeroed(m[0].delivery[0].identity[..]) && m[0].read_positions[0].n==0 && !m[0].read_positions[0].pending && m[0].read_positions[0].rows[0].created== -1 && m[0].read_at==0;
+ #assert !p[0].pending && p[0].nt==0 && crypto_zeroed(p[0].text[..]) && !m[0].relays[0].active && m[0].relays[0].publish_n==0 && m[0].relays[0].reset;
+ #assert crypto_zeroed(m[0].body[..]) && crypto_zeroed(m[0].original[..]) && crypto_zeroed(m[0].setup_original[..]) && crypto_zeroed(m[0].peer[..]) && crypto_zeroed(m[0].operation[..]) && crypto_zeroed(m[0].own_id[..]) && crypto_zeroed(m[0].head_pub[..]) && crypto_zeroed(m[0].note[..]);
+ #assert !m[0].started && !m[0].active && !m[0].settings_changed && m[0].dirty && m[0].action==0 && m[0].op==0 && m[0].flight==0 && m[0].nb==0 && m[0].generation==0 && !m[0].retry && m[0].retry_task==0 && !m[0].submit && !m[0].enable && !m[0].want_receipts && m[0].ns==0 && m[0].np==0 && m[0].mode==0;
+ #assert m[0].own[0].count==0 && !m[0].own_ready && !m[0].peer_ready && !m[0].head_wanted && !m[0].head_peer && !m[0].head_for_peer && m[0].head_index[0].n==0 && m[0].outbox[0].n==0;
+ #assert m[0].pub_phase==0 && m[0].pub_at==0 && m[0].pub_target==0 && m[0].pub_cursor==0 && m[0].pub_revision==0 && m[0].original_n==0 && m[0].setup_n==0 && m[0].nn==0 && m[0].status_at==0;
+ m[0].dirty=false;ndm_note(m[..],"Connection lost");#assert m[0].dirty && m[0].nn==15 && cast(string)m[0].note[0..<m[0].nn]=="Connection lost";
+}
+#test "start validates discovery metadata before replacing a bound account and initializes one exact operation namespace" {
+ m:[1]NostrMessenger;me:=NMS_LIST_PUB;peer:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+ urls:=[7]string.["wss://one.example","wss://two.example","wss://three.example","wss://four.example","wss://five.example","wss://six.example","wss://seven.example"];
+ #assert ndi_bind(m[0].inbox[..],"a",me);
+ #assert !ndm_start(m[..],"b",me,"bad",urls[0..<1]) && cast(string)m[0].inbox[0].account[0..<m[0].inbox[0].na]=="a";
+ #assert !ndm_start(m[..],"b",me,me,urls[0..<0]) && !ndm_start(m[..],"b",me,me,urls[..]) && cast(string)m[0].inbox[0].account[0..<m[0].inbox[0].na]=="a";
+ duplicate:=[2]string.[urls[0],urls[0]];bad:=[1]string.["ws://insecure.example"];#assert !ndm_start(m[..],"b",me,me,duplicate[..]) && !ndm_start(m[..],"b",me,me,bad[..]) && cast(string)m[0].inbox[0].account[0..<m[0].inbox[0].na]=="a";
+ m[0].mode=2;m[0].dirty=false;m[0].ms=123;m[0].head_wanted=false;
+ #assert ndm_start(m[..],"a",me,me,urls[0..<6]) && m[0].started && m[0].active && m[0].dirty && m[0].mode==0 && m[0].head_wanted && m[0].refresh_at==5123 && m[0].generation==1 && m[0].journal[0].generation==1 && cast(string)m[0].journal[0].seed[..]==me && m[0].ns==6 && m[0].relays[0].nr==6;
+ for i:0..<6 {#assert cast(string)m[0].saved[i][0..<m[0].saved_n[i]]==urls[i];}
+ m[0].journal[0].serial=9;m[0].active=false;m[0].discovery_at=17;#assert ndm_start(m[..],"a",me,me,urls[0..<6]) && m[0].journal[0].serial==9 && m[0].active && m[0].discovery_at==0;
+ #assert ndm_start(m[..],"b",me,me,urls[0..<1]) && cast(string)m[0].inbox[0].account[0..<m[0].inbox[0].na]=="b" && m[0].generation==3;
+ #assert ndm_start(m[..],"b",peer,peer,urls[0..<1]) && cast(string)m[0].inbox[0].identity[..]==peer && m[0].generation==5;
+}
+#test "bounded discovery URLs include 256 bytes while overlong metadata cannot retire the current owner" {
+ m:[1]NostrMessenger;url:[257]u8;prefix:="wss://a.example/";for c,i:prefix {url[i]=c;}for i:prefix.count..<257 {url[i]='a';}
+ urls:=[1]string.[cast(string)url[0..<256]];
+ #assert ndm_start(m[..],"a",NMS_LIST_PUB,NMS_LIST_PUB,urls[..]) && m[0].saved_n[0]==256;
+ m[0].settings_changed=false;#assert ndm_settings(m[..],urls[..]) && !m[0].settings_changed;
+ urls[0]=cast(string)url[..];#assert !ndm_start(m[..],"b",NMS_LIST_PUB,NMS_LIST_PUB,urls[..]) && !ndm_settings(m[..],urls[..]) && cast(string)m[0].inbox[0].account[0..<m[0].inbox[0].na]=="a";
+}
+#test "start cannot bypass a blocked journal relay owner or exhausted account generation" {
+ m:[1]NostrMessenger;urls:=[1]string.["wss://relay.example"];me:=NMS_LIST_PUB;
+ #assert ndi_bind(m[0].inbox[..],"a",me);m[0].journal[0].busy=true;#assert !ndm_start(m[..],"a",me,me,urls[..]) && !m[0].started;
+ m[0].journal[0].busy=false;m[0].relays[0].busy=true;#assert !ndm_start(m[..],"a",me,me,urls[..]) && !m[0].started;
+ m[0].relays[0].busy=false;m[0].inbox[0].generation=2147483647;#assert !ndm_start(m[..],"b",me,me,urls[..]) && !m[0].started;
+}
+#test "direct send clears its prior notice and failed retry ownership cannot authorize another seal" {
+ m:[1]NostrMessenger;me:=NMS_LIST_PUB;peer:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+ #assert ndi_bind(m[0].inbox[..],"a",me);m[0].started=true;m[0].active=true;m[0].own_ready=true;m[0].peer_ready=true;m[0].np=ndi_copy(m[0].peer[..],peer);m[0].relays[0].now=1730000000;ndm_note(m[..],"prior failure");
+ #assert ndm_send(m[..],me,1730000000,"one intent","") && m[0].submit && m[0].nn==0 && m[0].dirty;
+ #assert ndm_reply(m[..],21,1,0,"",true)==false;
+ m[0].outgoing[0].phase=2;m[0].outgoing[0].busy=false;m[0].outgoing[0].generation=2;m[0].submit=false;
+ #assert !ndm_retry(m[..]) && m[0].outgoing[0].phase==2 && !m[0].submit;
+ m[0].outgoing[0].phase=0;m[0].journal[0].retry=true;m[0].journal[0].generation=1;m[0].journal[0].phase=2;m[0].journal[0].nb=16;m[0].flight=2;
+ #assert ndm_retry(m[..]) && m[0].journal[0].busy && m[0].journal[0].action==22 && m[0].flight==2;
+}
+#test "replay callbacks release only completed stages and expose the next custody request without losing its owner" {
+ m:[1]NostrMessenger;b:[20000]u8;p:[4096]u8;rows:[1]MsIndexRow;scratch:[65536]u8;urls:=[1]string.["wss://relay.example"];wrap:=N59_TS_WRAP;rumor:=N59_TS_RUMOR;
+ #assert ndm_start(m[..],"a",NMS_LIST_PUB,NMS_LIST_PUB,urls[..]) && ndm_tick(m[..],0) && m[0].flight==1;m[0].action=0;
+ #assert !ndm_reply(m[..],22,1,200,"{}",false) && m[0].flight==1 && m[0].journal[0].busy && m[0].journal[0].action==0;
+ e:=nostr_event_read(cast(string)wrap[..],scratch[..],false);#assert e.error==NE_OK;_=hex_encode_checked(cast(string)e.id[..],rows[0].id[..],false);_=hex_encode_checked(cast(string)e.public_key[..],rows[0].author[..],false);rows[0].kind=1059;rows[0].created=e.created_at;
+ n:=ms_index_write(7,0,true,rows[..],p[..]);n=nsr_write("store","index",cast(string)m[0].journal[0].operation[..],NMS_LIST_PUB,"ok",7,0,cast(string)p[0..<n],b[..]);
+ #assert ndm_reply(m[..],22,1,200,cast(string)b[0..<n],false) && m[0].flight==0 && ndm_tick(m[..],0) && m[0].flight==1 && m[0].op==22;m[0].action=0;
+ n=nsr_write("store","event",cast(string)m[0].journal[0].operation[..],NMS_LIST_PUB,"ok",7,0,cast(string)wrap[..],b[..]);
+ #assert ndm_reply(m[..],22,1,200,cast(string)b[0..<n],false) && m[0].flight==0 && m[0].journal[0].busy && m[0].journal[0].action==21;
+ #assert ndm_tick(m[..],0) && m[0].flight==1 && m[0].op==21 && m[0].journal[0].action==0;m[0].action=0;
+ n=nsr_write("custody","open",cast(string)m[0].journal[0].operation[..],NMS_LIST_PUB,"ok",0,0,cast(string)rumor[..],b[..]);
+ #assert ndm_reply(m[..],21,1,0,cast(string)b[0..<n],false) && m[0].flight==0 && m[0].inbox[0].n==1 && m[0].read_positions[0].n==1 && m[0].read_positions[0].generation==1;
+}
+#test "relay and AUTH callbacks preserve incomplete flights and hand the next authenticated send back to the scheduler" {
+ m:[1]NostrMessenger;b:[16000]u8;urls:=[1]string.["wss://relay.example/"];
+ #assert ndi_bind(m[0].inbox[..],"a",NMS_LIST_PUB) && ndr_configure(m[0].relays[..],m[0].inbox[..],urls[..],"");m[0].generation=1;m[0].flight=2;m[0].op=23;
+ p:=m[0].relays[..];r:=p[0].relays[0..<1];p[0].reset=false;p[0].busy=true;p[0].action=0;p[0].pending=3;r[0].relay[0].gen=7;r[0].relay[0].state=RL_CONNECTING;
+ #assert !ndm_reply(m[..],23,1,0,"{}",false) && m[0].flight==2 && p[0].busy;
+ n:=nrs_observation(0,7,1,NMS_LIST_PUB,"open","",b[..]);#assert ndm_reply(m[..],23,1,0,cast(string)b[0..<n],false) && m[0].flight==0 && !p[0].busy && m[0].dirty;
+ p[0].now=NMS_LIST_AT;p[0].clock_at=60000;_=rl_next(r[0].relay[..],0);_=rl_next(r[0].relay[..],0);
+ #assert ndr_frame(p,0,"[\"AUTH\",\"fixture\"]") && ndr_tick(p,0) && p[0].needs_auth && ndr_auth(p,m[0].inbox[..],NMS_LIST_PUB);
+ p[0].action=0;m[0].flight=2;m[0].op=21;m[0].dirty=false;n=nsr_write("custody","relay-auth",NMS_LIST_PUB,NMS_LIST_PUB,"ok",0,0,NMS_AUTH_EVENT,b[..]);
+ #assert ndm_reply(m[..],21,1,0,cast(string)b[0..<n],false) && m[0].flight==0 && m[0].dirty && p[0].busy && p[0].action==23 && p[0].pending==2;
+}
+#test "send refusals preserve one exact intent and parent status never turns an unrelated callback into completion" {
+ m:[1]NostrMessenger;b:[8192]u8;me:=NMS_LIST_PUB;peer:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";statuses:=[2]int.[2,5];
+ #assert ndi_bind(m[0].inbox[..],"a",me);m[0].generation=1;
+ for status:statuses {
+  ndo_clear(m[0].outgoing[..]);#assert ndo_begin(m[0].outgoing[..],m[0].inbox[..],me,peer,1730000000,"one retained intent","");m[0].flight=3;m[0].op=21;m[0].submit=true;m[0].action=0;m[0].dirty=false;
+  n:=nsr_write("custody","seal",peer,me,"ok",0,0,"{}",b[..]);#assert !ndm_reply(m[..],21,1,0,cast(string)b[0..<n],false) && m[0].flight==3 && m[0].outgoing[0].busy;
+  n=nsr_write("custody","seal",me,me,NS_STATUSES[status],0,0,"",b[..]);
+  #assert ndm_reply(m[..],21,1,0,cast(string)b[0..<n],false) && m[0].flight==0 && !m[0].submit && m[0].outgoing[0].phase==2 && m[0].dirty && cast(string)m[0].outgoing[0].text[0..<m[0].outgoing[0].nt]=="one retained intent";
+  #assert cast(string)m[0].note[0..<m[0].nn]==(ifx status==2 then "Inbox unavailable" else "Check send");
+ }
+}
+#test "a completed replay callback associates an admitted self copy and synchronizes private read rooms" {
+ m:[1]NostrMessenger;b:[8192]u8;p:[2048]u8;rows:[1]MsIndexRow;urls:=[1]string.["wss://relay.example"];
+ me:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";peer:=NMS_LIST_PUB;
+ #assert ndi_bind(m[0].inbox[..],"a",me) && ndi_begin(m[0].inbox[..],me,me);n:=nsr_write("custody","open",me,me,"ok",0,0,DM_OPENED_GOLDEN,b[..]);#assert ndi_opened(m[0].inbox[..],1,cast(string)b[0..<n]);
+ #assert ndo_begin(m[0].outgoing[..],m[0].inbox[..],me,peer,1730000000,"hello **Bob**","");ids:=[2]string.[peer,me];n=nsm_sealed_write(ids[..],7,p[..]);n=nsr_write("custody","seal",me,me,"ok",7,0,cast(string)p[0..<n],b[..]);#assert ndo_reply(m[0].outgoing[..],m[0].inbox[..],1,cast(string)b[0..<n],false) && !m[0].outgoing[0].seen;
+ #assert ndm_start(m[..],"a",me,me,urls[..]) && ndm_tick(m[..],0);m[0].action=0;
+ n=ms_index_write(7,0,true,rows[0..<0],p[..]);n=nsr_write("store","index",cast(string)m[0].journal[0].operation[..],me,"ok",7,0,cast(string)p[0..<n],b[..]);
+ #assert ndm_reply(m[..],22,1,200,cast(string)b[0..<n],false) && m[0].flight==0 && m[0].read_positions[0].n==1 && m[0].outgoing[0].seen;
+}

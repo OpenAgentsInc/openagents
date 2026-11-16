@@ -9,6 +9,7 @@
 #load "../../coax/lib/nostr/message.coax";
 #load "../../coax/native/fixtures/messaging_vectors.coax" #test;
 #authority;
+#load "nostr-dm-relays-checks.coax" #test;
 DmRelay :: struct {url:[256]u8;nu:int;relay:[1]Relay;auth:[1]Nip42;ack:int;idle:int;own:int= -1;peer:int= -1;messages:int= -1;partial:bool;received:int;}
 NostrDmRelays :: struct {
  generation:int;identity:[64]u8;peer:[64]u8;np:int;relays:[6]DmRelay;nr:int;
