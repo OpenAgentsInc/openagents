@@ -4,8 +4,8 @@
 // splice-game.coax loads this file with `#load ... #test;`.
 
 // The farm with its start, Sniper's three parts, a pickup, a charge point, a wall west of the start and a
-// box to stand on south of it; the ring with a rave raider; a map that is not on the route.
-SJT_CATALOG :: "world 1 jam-test\ntitle Jam test\nmap 0 /Game/SpliceBots/World/Maps/L_SolarFarm\nmap 1 /Game/World/Graybox/L_Cabin\nmap 2 /Game/World/Graybox/L_Ring\nmat 0 0.5 0.5 0.5 1 -1 0\nM s0 0 36 0 -0.5 -0.5 -0.5 0.5 0.5 0.5\nspawn 0 -800 1 -105 3.1415927\nfall 0 -50\nspawn 1 0 0 0 0\nfall 1 -50\nspawn 2 0 1 -60 1.5707963\nfall 2 -50\nP 0 0 0 -13 -2 0 0 0 1 -772 1 -126 3 2 4 SpliceSniper_0/Cab\nP 0 0 0 -13 -2 0 0 0 1 -772 1 -128 3 2 4 SpliceSniper_0/Car\nP 0 0 0 -13 -2 0 0 0 1 -772 1 -130 3 2 4 SpliceSniper_0/Tail\nP 0 0 0 -13 -3 0 0 0 1 -832 0.6 -138 1 1 1 SpliceFarmPickup_10/Mesh\nP 0 0 0 -13 -3 0 0.7071068 0 0.7071068 -826 0 -131 1 1 1 SpliceFarmChargePoint_0/Post\nP 0 0 0 -13 -2 0 0 0 1 -805 1 -105 2 2 2 StaticMeshActor_7/StaticMeshComponent0\nP 0 0 0 -13 -2 0 0 0 1 -800 0.5 -110 2 1 2 L_SolarFarm_GreekQuarter.StaticMeshActor_3/StaticMeshComponent0\nP 1 0 0 0 0 0 0 0 1 0 0 0 1 1 1 SpliceDigger_9/Body\nP 2 0 0 0 -3 0 0 0 1 -4.3 0 -168 1 1 1 SpliceRaveRaider_UAID_1/Mesh\ncol 0 box -806 0 -106 -804 2 -104 StaticMeshActor_7\ncol 0 box -801 0 -111 -799 1 -109 L_SolarFarm_GreekQuarter.StaticMeshActor_3\n";
+// box to stand on south of it, a block standing in for the garage; the ring with a rave raider; a map that is not on the route.
+SJT_CATALOG :: "world 1 jam-test\ntitle Jam test\nmap 0 /Game/SpliceBots/World/Maps/L_SolarFarm\nmap 1 /Game/World/Graybox/L_Cabin\nmap 2 /Game/World/Graybox/L_Ring\nmat 0 0.5 0.5 0.5 1 -1 0\nM s0 0 36 0 -0.5 -0.5 -0.5 0.5 0.5 0.5\nspawn 0 -800 1 -105 3.1415927\nfall 0 -50\nspawn 1 0 0 0 0\nfall 1 -50\nspawn 2 0 1 -60 1.5707963\nfall 2 -50\nP 0 0 0 -13 -2 0 0 0 1 -772 1 -126 3 2 4 SpliceSniper_0/Cab\nP 0 0 0 -13 -2 0 0 0 1 -772 1 -128 3 2 4 SpliceSniper_0/Car\nP 0 0 0 -13 -2 0 0 0 1 -772 1 -130 3 2 4 SpliceSniper_0/Tail\nP 0 0 0 -13 -3 0 0 0 1 -832 0.6 -138 1 1 1 SpliceFarmPickup_10/Mesh\nP 0 0 0 -13 -3 0 0.7071068 0 0.7071068 -826 0 -131 1 1 1 SpliceFarmChargePoint_0/Post\nP 0 0 0 -13 -2 0 0 0 1 -805 1 -105 2 2 2 StaticMeshActor_7/StaticMeshComponent0\nP 0 0 0 -13 -2 0 0 0 1 -800 0.5 -110 2 1 2 L_SolarFarm_GreekQuarter.StaticMeshActor_3/StaticMeshComponent0\nP 1 0 0 0 0 0 0 0 1 0 0 0 1 1 1 SpliceDigger_9/Body\nP 2 0 0 0 -3 0 0 0 1 -4.3 0 -168 1 1 1 SpliceRaveRaider_UAID_1/Mesh\ncol 0 box -806 0 -106 -804 2 -104 StaticMeshActor_7\ncol 0 box -801 0 -111 -799 1 -109 L_SolarFarm_GreekQuarter.StaticMeshActor_3\ncol 0 box -157.5 0 -352.5 157.5 13 -37.5 StaticMeshActor_1300\n";
 
 #test "jam: the route's maps, their starts and the game actors are read off a pack's catalog" #steps 1000000000 {
   j: [1] SjJam;
@@ -36,7 +36,7 @@ SJT_CATALOG :: "world 1 jam-test\ntitle Jam test\nmap 0 /Game/SpliceBots/World/M
 #test "jam: a run starts at the farm's player start; its walls stop her and its tops hold her" #steps 2000000000 #traversal 1000000000 {
   s := [1] SjStore.[SjStore.{}];
   #assert sj_load(s[..], SJT_CATALOG);
-  #assert s[0].cols[SJ_FARM].nw == 2 && s[0].cols[SJ_RING].nw == 0;
+  #assert s[0].cols[SJ_FARM].nw == 2 && s[0].cols[SJ_RING].nw == 0 && s[0].stand_ins == 1;   // the block over the garage's spot left out
   g := [1] SpGame.[SpGame.{}]; g_reset(g[..]); if g[0].layer[0].st[0].n == 0 { _ := spw_shipped(g[..]); }
   sj_bind(g[..], s[..]);
   #assert g[0].jam && g[0].jw_on[SJ_FARM] && !g[0].jw_on[SJ_PLAIN] && g[0].at.start_x == -800;

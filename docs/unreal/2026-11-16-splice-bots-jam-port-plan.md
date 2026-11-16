@@ -153,10 +153,22 @@ Each batch is pushed to `main` green, with its checks, and commented on #13653.
    stay/follow, Heat levels, the farm's objective lines and story cards, the desk refusal, the
    boss's numbers and bite, the night exit.
 5. **The edit bay's recipes and the Microduck.** The jam's cards and recipes in the edit bay, and the
-   Microduck built at the bench and following her (the model only in the private pack; #13652
-   shares the bench).
+   Microduck built at the bench and following her (the model only in the private pack). The game
+   reuses the edit bay demo (`metaverse/microduck-bay/`, #13652): its craft at the bench, its
+   Microduck spawn and wander, its LI_Bay and bay_A1 dressing. It does not copy them.
 6. **The rest.** The Greek quarter's jump course and the jetpack, the chest, first person, the jam's
    sounds and music.
+
+## Status
+
+- Item 1 landed (ac93d16498, then the garage stand-in fix). The source of truth is the editor pack
+  (`~/.openagents/unreal/splice-bots-jam/import-editor/splice-bots-jam-editor.pack`, all ten maps;
+  the cooked build matches 4,511 of its 4,861 placements, #13650). On it, `jam-run-check.coax`
+  passes the whole run, the farm's start to Sniper with the keys, and the garage door to the boss
+  with the keys.
+- The farm's and plain's colliders are walked. The ring's and lab's wait, because the jam loaded
+  each as a sealed map. Inside the garage, `garage.coax`'s walls stand in. The farm map's 315 m
+  block over the garage's spot (StaticMeshActor_1300) is left out.
 
 ## Acceptance
 

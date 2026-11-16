@@ -40,6 +40,7 @@ tool_main :: () -> int #export_c #effects(all) {
     print("%: % boxes, % solids, % floors, % over the arrays, %\n", SJ_MAP_IDS[r], c.nw, c.nh, c.nf, c.over, ifx j.spawn[r].ok then "a player start" else "no player start");
   }
   for k: 0..<SJ_KINDS { print("% %\n", SJ_CLASS[k], j.count[k]); }
+  print("stand-ins for the garage left out: %\n", s[0].stand_ins);
   failed := false;
   // the whole run
   g := [1] SpGame.[SpGame.{}]; g_reset(g[..]); _ := spw_shipped(g[..]);

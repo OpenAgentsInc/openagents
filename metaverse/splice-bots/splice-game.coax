@@ -410,7 +410,7 @@ g_collide :: (g: [] SpGame) {
   }
   if g[0].zone == Z_MINE && g_feet_y(g) < ff_low() - 0.05 { q = ff_push(g[0].px, g[0].pz, T_RADIUS); g[0].px = q.x; g[0].pz = q.z; }   // the solar farm's lines, unless on their top (farm.coax)
   if g[0].zone == Z_MINE { q = ga_lab_push(g, g[0].px, g[0].pz, T_RADIUS); g[0].px = q.x; g[0].pz = q.z; }   // the lab's round wall (garage.coax)
-  if g[0].zone == Z_MINE && !sp_in_room(g) { q = sj_push(g, g[0].px, g[0].pz, T_RADIUS, g_feet_y(g) + 0.05); g[0].px = q.x; g[0].pz = q.z; }   // the jam world's walls and solids (jam/jam-world.coax)
+  if sj_here(g) { q = sj_push(g, g[0].px, g[0].pz, T_RADIUS, sj_feet(g) + 0.05); g[0].px = q.x; g[0].pz = q.z; }   // the jam world's walls and solids (jam/jam-world.coax)
   if g[0].zone == Z_MINE {   // the drill mech's body (#13578): walked into, she stopped inside it and the camera, boxed in by it, looked straight down
     t := g[0].bt[0]; dx := g[0].px - t.mech_x; dz := g[0].pz - t.mech_z; d := sqrt(dx * dx + dz * dz); r := SB_MECH_R + T_RADIUS;
     if d < r && d > 0.0001 { g[0].px = t.mech_x + dx / d * r; g[0].pz = t.mech_z + dz / d * r; }
@@ -639,7 +639,7 @@ g_jump_key :: (g: [] SpGame, down: bool) {
 g_jump :: (g: [] SpGame, dt: f32) {
   j := g[0].air[..]; x := g[0].px; z := g[0].pz;
   gr := g_ground(g, x, z);
-  if g[0].zone == Z_MINE && !sp_in_room(g) { gr = sj_floor(g, x, z, ifx g_air_here(g) then j[0].y else gr, gr); }   // the jam world's floors (jam/jam-world.coax)
+  if sj_here(g) { gr = sj_floor(g, x, z, ifx g_air_here(g) then j[0].y else gr, gr); }   // the jam world's floors (jam/jam-world.coax)
   if !g_air_here(g) { presses := j[0].presses; j[0] = jump_place(gr); j[0].presses = presses; }
   g[0].air_x = x; g[0].air_z = z;
   floors: [SP_FLOORS * STAND_FLOATS] f32;
