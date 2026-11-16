@@ -13,13 +13,14 @@
 }
 #test "an actual AUTH challenge schedules only its matching installed custody request" {
  m:[1]NostrMessenger;q:[1]NscRequest;ndm_test_lists(m[..],false);r:=m[0].relays[0].relays[0..<1];
- #assert ndr_frame(m[0].relays[..],0,"[\"AUTH\",\"fixture\"]");m[0].relays[0].needs_auth=true;m[0].relays[0].slot=0;
+ #assert ndr_frame(m[0].relays[..],0,"[\"AUTH\",\"fixture\"]");m[0].head_wanted=true;m[0].relays[0].needs_auth=true;m[0].relays[0].slot=0;
  #assert ndm_tick(m[..],0) && m[0].flight==2 && m[0].op==21 && m[0].relays[0].pending==7 && nsc_read(cast(string)m[0].body[0..<m[0].nb],q[..]) && q[0].action==2;
  purpose:[1]NscPurpose;#assert nsp_read(2,NMS_LIST_PUB,cast(string)q[0].payload[0..<q[0].n],purpose[..]) && purpose[0].generation==7;
 }
 #test "receipt status polling uses the committed exact outer identifiers and relay changes trigger immediate reconciliation" {
  m:[1]NostrMessenger;b:[2048]u8;q:[1]MsRequest;ndm_test_quiet(m[..]);ids:=[2]string.[NMS_LIST_PUB,"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"];
  n:=nsm_sealed_write(ids[..],7,b[..]);m[0].delivery[0].n=1;#assert nsm_sealed_read(cast(string)b[0..<n],m[0].delivery[0].rows[0].state[0].receipt[..]);
+ m[0].want_receipts=true;#assert !ndm_tick(m[..],0) && m[0].flight==0 && m[0].status_at==0;m[0].want_receipts=false;
  #assert ndm_tick(m[..],0) && m[0].flight==11 && m[0].op==22 && nms_request_read(cast(string)m[0].body[0..<m[0].nb],q[..]) && q[0].action==5 && q[0].subscription==0 && q[0].revision==0 && q[0].cursor==0;
  expected:[4096]u8;length:=ndd_filter(m[0].delivery[..],0,expected[..]);#assert cast(string)q[0].payload[0..<q[0].n]==cast(string)expected[0..<length];
  m[0].flight=0;m[0].action=0;m[0].status_at=1;m[0].relays[0].changed=true;m[0].journal[0].busy=true;m[0].dirty=false;
@@ -116,8 +117,8 @@ ndm_test_quiet :: (m:[]NostrMessenger) {
  #assert ndm_outbox(m[..]) && m[0].flight==5 && m[0].pub_phase==2 && m[0].pub_at==0 && m[0].pub_target==1 && nms_request_read(cast(string)m[0].body[0..<m[0].nb],q[..]) && q[0].action==6 && q[0].subscription==0 && q[0].revision==0 && q[0].cursor==0 && cast(string)q[0].payload[0..<q[0].n]==NMS_LIST_ID_HEX;
  m[0].flight=0;m[0].pub_phase=1;m[0].pub_at=0;m[0].pub_target=0;m[0].outbox[0].rows[0].pending=0;m[0].outbox[0].rows[1].pending=1;
  #assert ndm_outbox(m[..]) && m[0].pub_at==1 && m[0].pub_target==0 && nms_request_read(cast(string)m[0].body[0..<m[0].nb],q[..]) && cast(string)q[0].payload[0..<q[0].n]==NMS_LIST_PUB;
- m[0].flight=0;m[0].pub_phase=1;m[0].pub_at=0;m[0].outbox[0].rows[1].pending=0;m[0].outbox[0].cursor=4;
- #assert ndm_outbox(m[..]) && m[0].pub_phase==0 && m[0].pub_cursor==4 && m[0].flight==0;
+ m[0].flight=0;m[0].pub_phase=1;m[0].pub_at=0;m[0].outbox[0].rows[1].pending=0;m[0].outbox[0].cursor=1;
+ #assert ndm_outbox(m[..]) && m[0].pub_phase==0 && m[0].pub_cursor==1 && m[0].flight==0;
  m[0].pub_phase=1;m[0].pub_at=2;m[0].outbox[0].rows[2].pending=1;_=ndi_copy(m[0].outbox[0].rows[2].id[..],NMS_LIST_ID_HEX);m[0].outbox[0].cursor=0;m[0].pub_revision=7;
  #assert ndm_outbox(m[..]) && m[0].pub_phase==5 && m[0].pub_cursor==0 && m[0].pub_revision==0 && !ndm_outbox(m[..]);
 }
@@ -162,4 +163,18 @@ ndm_test_quiet :: (m:[]NostrMessenger) {
 #test "an empty setup buffer cannot allocate or enqueue a setup operation" {
  m:[1]NostrMessenger;ndm_test_quiet(m[..]);m[0].enable=true;m[0].setup_n=0;m[0].head_wanted=true;
  serial:=m[0].journal[0].serial;#assert !ndm_tick(m[..],0) && m[0].flight==0 && m[0].journal[0].serial==serial;
+}
+
+#test "HTTP disabled read synchronization cannot allocate a request and idle HTTP never burns an operation" {
+ m:[1]NostrMessenger;b:[8192]u8;ndm_test_quiet(m[..]);
+ #assert ndi_begin(m[0].inbox[..],NMS_LIST_PUB,NMS_LIST_PUB);n:=nsr_write("custody","open",NMS_LIST_PUB,NMS_LIST_PUB,"ok",0,0,DM_OPENED_GOLDEN,b[..]);#assert ndi_opened(m[0].inbox[..],1,cast(string)b[0..<n]);nrp_sync(m[0].read_positions[..],m[0].inbox[..]);
+ serial:=m[0].journal[0].serial;#assert nrp_work(m[0].read_positions[..]) && !ndm_tick(m[..],0) && m[0].flight==0 && m[0].journal[0].serial==serial && !m[0].read_positions[0].pending;
+ m[0].read_positions[0].rows[0].known=true;m[0].http_available=true;#assert !nrp_work(m[0].read_positions[..]) && !ndm_tick(m[..],0) && m[0].flight==0 && m[0].journal[0].serial==serial;
+}
+
+#test "a background outbox launch reports progress and refresh cannot reset a failed nonidle journal" {
+ m:[1]NostrMessenger;ndm_test_quiet(m[..]);m[0].pub_phase=0;
+ #assert ndm_tick(m[..],0) && m[0].flight==4 && m[0].op==22;
+ m[0].flight=0;m[0].action=0;m[0].pub_phase=5;m[0].journal[0].phase=2;m[0].journal[0].failed=true;m[0].journal[0].revision=7;m[0].journal[0].cursor=3;m[0].refresh_at=100;
+ #assert !ndm_tick(m[..],0) && m[0].journal[0].phase==2 && m[0].journal[0].failed && m[0].journal[0].revision==7 && m[0].journal[0].cursor==3;
 }

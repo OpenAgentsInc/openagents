@@ -49,7 +49,7 @@ ndm_tick :: (m:[]NostrMessenger,dt:f32)->bool #effects(all) {
  if ndm_take_journal(m) || ndm_take_relay(m) {return true;}
  j:=m[0].journal[..];p:=m[0].relays[..];
  if j[0].retry && m[0].ms>=m[0].refresh_at {m[0].refresh_at=m[0].ms+5000;_=ndj_retry(j,m[0].inbox[..]);return ndm_take_journal(m);}
- if j[0].phase!=0 && !j[0].failed {
+ if j[0].phase!=0 && !j[0].failed { // mutant: equivalent (AND -> OR: ndj_next independently refuses both phase==0 and failed, with no effects; it is the only body call before any state change)
   if ndj_next(j,m[0].inbox[..]) {m[0].dirty=true;if j[0].phase==0 {m[0].want_receipts=true;_=ndd_begin(m[0].delivery[..],m[0].inbox[..]);}if ndm_take_journal(m) {return true;}}
  }
  if p[0].needs_auth {op:[64]u8;if ndj_allocate(j,op[..]) && ndr_auth(p,m[0].inbox[..],cast(string)op[..]) {return ndm_take_relay(m);}}
@@ -76,7 +76,7 @@ ndm_tick :: (m:[]NostrMessenger,dt:f32)->bool #effects(all) {
  if m[0].want_receipts && j[0].phase==0 && m[0].http_available {
   wire:[512]u8;op:[64]u8;if !ndj_allocate(j,op[..]) {return false;}n:=ndd_request(m[0].delivery[..],cast(string)op[..],wire[..]);if n>0 {return ndm_launch(m,4,10,cast(string)wire[0..<n]);} // mutant: equivalent (positive-length threshold 0 -> 1: this closed writer yields failure/empty or a complete JSON object longer than one byte; for nonnegative-length mutations, the writer never returns zero)
  }
- if !m[0].want_receipts && m[0].status_at<m[0].delivery[0].n {
+ if !m[0].want_receipts && m[0].status_at<m[0].delivery[0].n { // mutant: equivalent (status_at < n -> <= n: ndd_filter rejects at==n before writing or changing state; its -1 result cannot launch a store request)
   filter:[4096]u8;n:=ndd_filter(m[0].delivery[..],m[0].status_at,filter[..]);if n>0 {return ndm_store(m,11,"index",cast(string)filter[0..<n],none[0..<0],0,0);} // mutant: equivalent (positive-length threshold 0 -> 1: this closed writer yields failure/empty or a complete JSON object longer than one byte; for nonnegative-length mutations, the writer never returns zero)
  }
  if m[0].http_available && nrp_work(m[0].read_positions[..]) {

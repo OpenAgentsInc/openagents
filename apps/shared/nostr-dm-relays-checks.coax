@@ -25,10 +25,10 @@
  #assert ndr_tick(p[..],0) && p[0].pending==1 && p[0].slot==5 && r[0].relay[0].gen==9;
  p[0].busy=false;p[0].action=0;p[0].next=5;r[0].relay[0].state=RL_OPEN;r[0].idle=10000;p[0].relays[0].idle=100;p[0].relays[4].idle=100;
  #assert ndr_tick(p[..],0) && p[0].pending==3 && p[0].slot==0;
- p[0].busy=false;p[0].action=0;p[0].now=NMS_LIST_AT;p[0].next=5;p[0].relays[0].idle=10000;p[0].relays[4].idle=10000;
+ p[0].busy=false;p[0].action=0;p[0].now=NMS_LIST_AT;p[0].next=5;r[0].relay[0].attempt=0;p[0].relays[0].idle=10000;p[0].relays[4].idle=10000;
  #assert ndr_frame(p[..],5,"[\"AUTH\",\"fixture\"]") && ndr_tick(p[..],0) && p[0].needs_auth && p[0].slot==5 && ndr_auth(p[..],s[..],NMS_LIST_PUB);
  refusal:=nsr_write("custody","relay-auth",NMS_LIST_PUB,NMS_LIST_PUB,"not-ready",0,0,"",b[..]);
- #assert refusal>0 && ndr_reply(p[..],s[..],1,cast(string)b[0..<refusal],false) && !p[0].busy && p[0].action==0 && !p[0].needs_auth && r[0].partial && r[0].relay[0].state==RL_BACKOFF;
+ #assert refusal>0 && ndr_reply(p[..],s[..],1,cast(string)b[0..<refusal],false) && !p[0].busy && p[0].action==0 && !p[0].needs_auth && r[0].partial && r[0].relay[0].state==RL_BACKOFF && r[0].relay[0].deadline==600;
 }
 #test "rotation chooses the next ready socket instead of the first and can cross more than two sockets" {
  s:[1]NostrInbox;p:[1]NostrDmRelays;ndr_test_caught(s[..],p[..]);for i:0..<2 {p[0].relays[i].idle=100;}
@@ -216,7 +216,24 @@ ndr_test_frame :: (p:[]NostrDmRelays,i:int,sub:int,kind:string,payload:string,ou
  p[0].generation=1;s[0].generation=1;p[0].busy=true;p[0].pending=3;r[0].partial=true;r[0].received=99;
  n:=nrs_observation(0,7,1,NMS_LIST_PUB,"open","",b[..]);#assert ndr_reply(p[..],s[..],1,cast(string)b[0..<n],false) && !p[0].busy && p[0].action==0 && r[0].ack==1 && !r[0].partial && r[0].received==0 && r[0].relay[0].state==RL_OPEN;
  p[0].busy=true;p[0].action=23;n=nrs_observation(0,7,1,NMS_LIST_PUB,"open","",b[..]);#assert !ndr_reply(p[..],s[..],1,cast(string)b[0..<n],false) && r[0].ack==1;
- p[0].busy=true;n=nrs_observation(0,7,3,NMS_LIST_PUB,"closed","",b[..]);#assert ndr_reply(p[..],s[..],1,cast(string)b[0..<n],false) && r[0].partial && r[0].ack==1 && r[0].relay[0].state!=RL_OPEN;
+ p[0].busy=true;n=nrs_observation(0,7,3,NMS_LIST_PUB,"closed","",b[..]);#assert ndr_reply(p[..],s[..],1,cast(string)b[0..<n],false) && r[0].partial && r[0].ack==1 && r[0].relay[0].state!=RL_OPEN && r[0].relay[0].deadline==500;
  p[0].busy=true;p[0].pending=6;p[0].ms=123;#assert ndr_reply(p[..],s[..],1,"",true) && p[0].clock_at==5123 && !p[0].busy;
- p[0].busy=true;p[0].pending=5;#assert ndr_reply(p[..],s[..],1,"",true) && p[0].reset && !p[0].busy;
+ p[0].busy=true;p[0].pending=5;p[0].reset=false;#assert ndr_reply(p[..],s[..],1,"",true) && p[0].reset && !p[0].busy;
+}
+
+#test "changing only one URL in a same-sized live pool retires the prior socket owner" {
+ s:[1]NostrInbox;p:[1]NostrDmRelays;ndr_test_caught(s[..],p[..]);urls:=[2]string.["wss://one.example","wss://changed.example"];peer:=cast(string)p[0].peer[0..<p[0].np];
+ #assert ndr_configure(p[..],s[..],urls[..],peer) && p[0].reset && cast(string)p[0].relays[1].url[0..<p[0].relays[1].nu]==urls[1];
+}
+#test "a real refused publication is retired without treating a timeout as a refusal" {
+ s:[1]NostrInbox;p:[1]NostrDmRelays;b:[2048]u8;ndr_test_caught(s[..],p[..]);r:=p[0].relays[1..<2];
+ #assert ndr_stage(p[..],1,NMS_LIST_EVENT);entry:=p[0].publish_entry;#assert rl_next(r[0].relay[..],100).kind==RL_OUT_EVENT;
+ o:[1]Jo;jo_start(o[..],b[..]);jo_arr(o[..]);jo_str(o[..],"OK");jo_str(o[..],NMS_LIST_ID_HEX);jo_bool(o[..],false);jo_str(o[..],"blocked: fixture");jo_end(o[..]);
+ #assert ndr_frame(p[..],1,cast(string)b[0..<o[0].n]) && r[0].relay[0].pubs[entry].state==RP_REFUSED;
+ #assert !ndr_tick(p[..],0) && p[0].publish_n==0 && p[0].publish_entry== -1 && r[0].relay[0].pubs[entry].state==RP_FREE;
+}
+
+#test "a valid signed frame cannot report progress before the owned socket has opened" {
+ s:[1]NostrInbox;p:[1]NostrDmRelays;b:[16000]u8;ndr_test_caught(s[..],p[..]);p[0].relays[1].relay[0].state=RL_CONNECTING;p[0].heads_changed=false;
+ n:=ndr_test_frame(p[..],1,0,"EVENT",NMS_LIST_EVENT,b[..]);#assert !ndr_frame(p[..],1,cast(string)b[0..<n]) && !p[0].heads_changed;
 }

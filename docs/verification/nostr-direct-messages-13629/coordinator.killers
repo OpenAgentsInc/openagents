@@ -16,6 +16,7 @@ apps/shared/nostr-dm-relays.coax	ndr_auth	11	0 became 1	apps/shared/nostr-dm-rel
 apps/shared/nostr-dm-relays.coax	ndr_auth	12	0 became 1	apps/shared/nostr-dm-relays-checks.coax	AUTH preparation and every custody reply remain bound to the live challenge owner and exact operation
 apps/shared/nostr-dm-relays.coax	ndr_auth	13	'+' became '-'	apps/shared/nostr-dm-relays-checks.coax	AUTH preparation and every custody reply remain bound to the live challenge owner and exact operation
 apps/shared/nostr-dm-relays.coax	ndr_auth	14	0 became 1	apps/shared/nostr-dm-relays-checks.coax	AUTH preparation and every custody reply remain bound to the live challenge owner and exact operation
+apps/shared/nostr-dm-relays.coax	ndr_auth	15	1 became 2	apps/shared/nostr-dm-relays-checks.coax	the sixth relay retains exact slice ownership reconnect initialization and both connecting and failed observations
 apps/shared/nostr-dm-relays.coax	ndr_auth	16	0 became 1	apps/shared/nostr-dm-relays-checks.coax	AUTH preparation and every custody reply remain bound to the live challenge owner and exact operation
 apps/shared/nostr-dm-relays.coax	ndr_auth	17	0 became 1	apps/shared/nostr-dm-relays-checks.coax	AUTH preparation and every custody reply remain bound to the live challenge owner and exact operation
 apps/shared/nostr-dm-relays.coax	ndr_auth	18	0 became 1	apps/shared/nostr-dm-relays-checks.coax	AUTH preparation and every custody reply remain bound to the live challenge owner and exact operation
@@ -25,6 +26,7 @@ apps/shared/nostr-dm-relays.coax	ndr_auth	20	0 became 1	apps/shared/nostr-dm-rel
 apps/shared/nostr-dm-relays.coax	ndr_auth	21	0 became 1	apps/shared/nostr-dm-relays-checks.coax	AUTH preparation and every custody reply remain bound to the live challenge owner and exact operation
 apps/shared/nostr-dm-relays.coax	ndr_auth	22	0 became 1	apps/shared/nostr-dm-relays-checks.coax	AUTH preparation and every custody reply remain bound to the live challenge owner and exact operation
 apps/shared/nostr-dm-relays.coax	ndr_auth	23	the if condition was negated	apps/shared/nostr-dm-relays-checks.coax	AUTH preparation and every custody reply remain bound to the live challenge owner and exact operation
+apps/shared/nostr-dm-relays.coax	ndr_auth	26	false became true	apps/shared/nostr-dm-relays-checks.coax	AUTH preparation and every custody reply remain bound to the live challenge owner and exact operation
 apps/shared/nostr-dm-relays.coax	ndr_auth	27	the assignment was removed	apps/shared/nostr-dm-relays-checks.coax	AUTH preparation and every custody reply remain bound to the live challenge owner and exact operation
 apps/shared/nostr-dm-relays.coax	ndr_auth	28	0 became 1	apps/shared/nostr-dm-relays-checks.coax	AUTH preparation and every custody reply remain bound to the live challenge owner and exact operation
 apps/shared/nostr-dm-relays.coax	ndr_auth	29	0 became 1	apps/shared/nostr-messenger-checks.coax	inbox setup crosses completed discovery signing queue publish and a real ACK before settling
@@ -87,6 +89,8 @@ apps/shared/nostr-dm-relays.coax	ndr_configure	29	0 became 1	apps/shared/nostr-d
 apps/shared/nostr-dm-relays.coax	ndr_configure	3	'||' became '&&'	apps/shared/nostr-dm-relays-checks.coax	relay configuration validates the whole pool before replacing an owner
 apps/shared/nostr-dm-relays.coax	ndr_configure	30	the if condition was negated	apps/shared/nostr-dm-relays-checks.coax	relay scheduler independently retains busy action AUTH retirement and clock barriers
 apps/shared/nostr-dm-relays.coax	ndr_configure	31	false became true	apps/shared/nostr-dm-relays-checks.coax	relay configuration validates the whole pool before replacing an owner
+apps/shared/nostr-dm-relays.coax	ndr_configure	32	'&&' became '||'	apps/shared/nostr-dm-relays-checks.coax	pool prefix changes and a new account generation cannot reuse the previous configuration
+apps/shared/nostr-dm-relays.coax	ndr_configure	33	'&&' became '||'	apps/shared/nostr-dm-relays-checks.coax	pool prefix changes and a new account generation cannot reuse the previous configuration
 apps/shared/nostr-dm-relays.coax	ndr_configure	34	'==' became '!='	apps/shared/nostr-dm-relays-checks.coax	relay configuration validates the whole pool before replacing an owner
 apps/shared/nostr-dm-relays.coax	ndr_configure	35	0 became 1	apps/shared/nostr-dm-relays-checks.coax	relay scheduler independently retains busy action AUTH retirement and clock barriers
 apps/shared/nostr-dm-relays.coax	ndr_configure	36	0 became 1	apps/shared/nostr-dm-relays-checks.coax	relay scheduler independently retains busy action AUTH retirement and clock barriers
@@ -100,6 +104,7 @@ apps/shared/nostr-dm-relays.coax	ndr_configure	42	the if condition was negated	a
 apps/shared/nostr-dm-relays.coax	ndr_configure	43	0 became 1	apps/shared/nostr-dm-relays-checks.coax	relay scheduler independently retains busy action AUTH retirement and clock barriers
 apps/shared/nostr-dm-relays.coax	ndr_configure	44	0 became 1	apps/shared/nostr-dm-relays-checks.coax	relay scheduler independently retains busy action AUTH retirement and clock barriers
 apps/shared/nostr-dm-relays.coax	ndr_configure	45	0 became 1	apps/shared/nostr-dm-relays-checks.coax	relay scheduler independently retains busy action AUTH retirement and clock barriers
+apps/shared/nostr-dm-relays.coax	ndr_configure	46	the assignment was removed	apps/shared/nostr-dm-relays-checks.coax	changing only one URL in a same-sized live pool retires the prior socket owner
 apps/shared/nostr-dm-relays.coax	ndr_configure	47	false became true	apps/shared/nostr-dm-relays-checks.coax	changing a relay pool retires every socket preserves generation counters and resets discovery metadata
 apps/shared/nostr-dm-relays.coax	ndr_configure	48	the if condition was negated	apps/shared/nostr-dm-relays-checks.coax	relay scheduler independently retains busy action AUTH retirement and clock barriers
 apps/shared/nostr-dm-relays.coax	ndr_configure	49	'&&' became '||'	apps/shared/nostr-dm-relays-checks.coax	changing a relay pool retires every socket preserves generation counters and resets discovery metadata
@@ -209,6 +214,7 @@ apps/shared/nostr-dm-relays.coax	ndr_frame	107	0 became 1	apps/shared/nostr-dm-r
 apps/shared/nostr-dm-relays.coax	ndr_frame	108	'!=' became '=='	apps/shared/nostr-dm-relays-checks.coax	relay frames preserve actual subscription barriers event kinds signatures and completeness
 apps/shared/nostr-dm-relays.coax	ndr_frame	109	1 became 2	apps/shared/nostr-dm-relays-checks.coax	relay frames preserve actual subscription barriers event kinds signatures and completeness
 apps/shared/nostr-dm-relays.coax	ndr_frame	11	the if condition was negated	apps/shared/nostr-dm-relays.coax	recoverable authentication closure does not poison completed catchup or erase earlier incomplete history
+apps/shared/nostr-dm-relays.coax	ndr_frame	110	false became true	apps/shared/nostr-dm-relays-checks.coax	a valid signed frame cannot report progress before the owned socket has opened
 apps/shared/nostr-dm-relays.coax	ndr_frame	111	the if condition was negated	apps/shared/nostr-dm-relays-checks.coax	relay frames preserve actual subscription barriers event kinds signatures and completeness
 apps/shared/nostr-dm-relays.coax	ndr_frame	112	'==' became '!='	apps/shared/nostr-dm-relays-checks.coax	relay frames preserve actual subscription barriers event kinds signatures and completeness
 apps/shared/nostr-dm-relays.coax	ndr_frame	113	10050 became 10051	apps/shared/nostr-dm-relays-checks.coax	relay frames preserve actual subscription barriers event kinds signatures and completeness
@@ -231,6 +237,7 @@ apps/shared/nostr-dm-relays.coax	ndr_frame	16	0 became 1	apps/shared/nostr-dm-re
 apps/shared/nostr-dm-relays.coax	ndr_frame	17	false became true	apps/shared/nostr-dm-relays-checks.coax	relay frames preserve actual subscription barriers event kinds signatures and completeness
 apps/shared/nostr-dm-relays.coax	ndr_frame	18	'&&' became '||'	apps/shared/nostr-dm-relays-checks.coax	actual OK frames update the held publication and invalidate its delivery observation
 apps/shared/nostr-dm-relays.coax	ndr_frame	19	'>=' became '>'	apps/shared/nostr-dm-relays-checks.coax	relay frames preserve actual subscription barriers event kinds signatures and completeness
+apps/shared/nostr-dm-relays.coax	ndr_frame	2	1 became 2	apps/shared/nostr-dm-relays-checks.coax	the sixth relay retains exact slice ownership reconnect initialization and both connecting and failed observations
 apps/shared/nostr-dm-relays.coax	ndr_frame	20	14 became 15	apps/shared/nostr-dm-relays-checks.coax	relay frames preserve actual subscription barriers event kinds signatures and completeness
 apps/shared/nostr-dm-relays.coax	ndr_frame	21	0 became 1	apps/shared/nostr-dm-relays.coax	recoverable authentication closure does not poison completed catchup or erase earlier incomplete history
 apps/shared/nostr-dm-relays.coax	ndr_frame	22	14 became 15	apps/shared/nostr-dm-relays-checks.coax	relay frames preserve actual subscription barriers event kinds signatures and completeness
@@ -385,7 +392,9 @@ apps/shared/nostr-dm-relays.coax	ndr_reply	115	the if condition was negated	apps
 apps/shared/nostr-dm-relays.coax	ndr_reply	116	the assignment was removed	apps/shared/nostr-dm-relays-checks.coax	relay observation fences preserve a current request and exact sequences control reconnect state
 apps/shared/nostr-dm-relays.coax	ndr_reply	117	false became true	apps/shared/nostr-dm-relays-checks.coax	relay observation fences preserve a current request and exact sequences control reconnect state
 apps/shared/nostr-dm-relays.coax	ndr_reply	118	0 became 1	apps/shared/nostr-dm-relays-checks.coax	relay observation fences preserve a current request and exact sequences control reconnect state
+apps/shared/nostr-dm-relays.coax	ndr_reply	119	the assignment was removed	apps/shared/nostr-dm-relays-checks.coax	the sixth relay retains exact slice ownership reconnect initialization and both connecting and failed observations
 apps/shared/nostr-dm-relays.coax	ndr_reply	12	'&&' became '||'	apps/shared/nostr-dm-relays-checks.coax	late retired and clock observations retain their exact ownership and backoff semantics
+apps/shared/nostr-dm-relays.coax	ndr_reply	120	0 became 1	apps/shared/nostr-dm-relays-checks.coax	the sixth relay retains exact slice ownership reconnect initialization and both connecting and failed observations
 apps/shared/nostr-dm-relays.coax	ndr_reply	121	0 became 1	apps/shared/nostr-dm-relays-checks.coax	relay observation fences preserve a current request and exact sequences control reconnect state
 apps/shared/nostr-dm-relays.coax	ndr_reply	122	the if condition was negated	apps/shared/nostr-dm-relays-checks.coax	relay observation fences preserve a current request and exact sequences control reconnect state
 apps/shared/nostr-dm-relays.coax	ndr_reply	123	'==' became '!='	apps/shared/nostr-dm-relays-checks.coax	relay observation fences preserve a current request and exact sequences control reconnect state
@@ -396,6 +405,15 @@ apps/shared/nostr-dm-relays.coax	ndr_reply	127	0 became 1	apps/shared/nostr-dm-r
 apps/shared/nostr-dm-relays.coax	ndr_reply	128	5000 became 5001	apps/shared/nostr-dm-relays-checks.coax	relay observation fences preserve a current request and exact sequences control reconnect state
 apps/shared/nostr-dm-relays.coax	ndr_reply	129	0 became 1	apps/shared/nostr-dm-relays-checks.coax	relay observation fences preserve a current request and exact sequences control reconnect state
 apps/shared/nostr-dm-relays.coax	ndr_reply	13	0 became 1	apps/shared/nostr-dm-relays.coax	authenticated relay ownership starts with a reset and cannot consume an older account reply
+apps/shared/nostr-dm-relays.coax	ndr_reply	130	the assignment was removed	apps/shared/nostr-dm-relays-checks.coax	the sixth relay retains exact slice ownership reconnect initialization and both connecting and failed observations
+apps/shared/nostr-dm-relays.coax	ndr_reply	131	true became false	apps/shared/nostr-dm-relays-checks.coax	the sixth relay retains exact slice ownership reconnect initialization and both connecting and failed observations
+apps/shared/nostr-dm-relays.coax	ndr_reply	132	0 became 1	apps/shared/nostr-dm-relays-checks.coax	the sixth relay retains exact slice ownership reconnect initialization and both connecting and failed observations
+apps/shared/nostr-dm-relays.coax	ndr_reply	133	0 became 1	apps/shared/nostr-dm-relays-checks.coax	the sixth relay retains exact slice ownership reconnect initialization and both connecting and failed observations
+apps/shared/nostr-dm-relays.coax	ndr_reply	134	0 became 1	apps/shared/nostr-dm-relays-checks.coax	the sixth relay retains exact slice ownership reconnect initialization and both connecting and failed observations
+apps/shared/nostr-dm-relays.coax	ndr_reply	135	0 became 1	apps/shared/nostr-dm-relays-checks.coax	the sixth relay retains exact slice ownership reconnect initialization and both connecting and failed observations
+apps/shared/nostr-dm-relays.coax	ndr_reply	136	0 became 1	apps/shared/nostr-dm-relays-checks.coax	the sixth relay retains exact slice ownership reconnect initialization and both connecting and failed observations
+apps/shared/nostr-dm-relays.coax	ndr_reply	137	'*' became '+'	apps/shared/nostr-dm-relays-checks.coax	the sixth relay retains exact slice ownership reconnect initialization and both connecting and failed observations
+apps/shared/nostr-dm-relays.coax	ndr_reply	138	117 became 118	apps/shared/nostr-dm-relays-checks.coax	the sixth relay retains exact slice ownership reconnect initialization and both connecting and failed observations
 apps/shared/nostr-dm-relays.coax	ndr_reply	139	true became false	apps/shared/nostr-dm-relays-checks.coax	relay observation fences preserve a current request and exact sequences control reconnect state
 apps/shared/nostr-dm-relays.coax	ndr_reply	14	'!=' became '=='	apps/shared/nostr-dm-relays-checks.coax	late retired and clock observations retain their exact ownership and backoff semantics
 apps/shared/nostr-dm-relays.coax	ndr_reply	140	the if condition was negated	apps/shared/nostr-dm-relays-checks.coax	late retired and clock observations retain their exact ownership and backoff semantics
@@ -447,6 +465,7 @@ apps/shared/nostr-dm-relays.coax	ndr_reply	181	4 became 5	apps/shared/nostr-dm-r
 apps/shared/nostr-dm-relays.coax	ndr_reply	182	true became false	apps/shared/nostr-dm-relays-checks.coax	late retired and clock observations retain their exact ownership and backoff semantics
 apps/shared/nostr-dm-relays.coax	ndr_reply	183	0 became 1	apps/shared/nostr-dm-relays-checks.coax	late retired and clock observations retain their exact ownership and backoff semantics
 apps/shared/nostr-dm-relays.coax	ndr_reply	184	'+' became '-'	apps/shared/nostr-dm-relays-checks.coax	late retired and clock observations retain their exact ownership and backoff semantics
+apps/shared/nostr-dm-relays.coax	ndr_reply	185	1 became 2	apps/shared/nostr-dm-relays-checks.coax	the sixth relay retains exact slice ownership reconnect initialization and both connecting and failed observations
 apps/shared/nostr-dm-relays.coax	ndr_reply	186	the if condition was negated	apps/shared/nostr-dm-relays-checks.coax	relay observation fences preserve a current request and exact sequences control reconnect state
 apps/shared/nostr-dm-relays.coax	ndr_reply	187	'==' became '!='	apps/shared/nostr-dm-relays-checks.coax	late retired and clock observations retain their exact ownership and backoff semantics
 apps/shared/nostr-dm-relays.coax	ndr_reply	188	0 became 1	apps/shared/nostr-dm-relays-checks.coax	late retired and clock observations retain their exact ownership and backoff semantics
@@ -533,11 +552,13 @@ apps/shared/nostr-dm-relays.coax	ndr_reply	260	0 became 1	apps/shared/nostr-dm-r
 apps/shared/nostr-dm-relays.coax	ndr_reply	261	'*' became '+'	apps/shared/nostr-dm-relays-checks.coax	late retired and clock observations retain their exact ownership and backoff semantics
 apps/shared/nostr-dm-relays.coax	ndr_reply	262	117 became 118	apps/shared/nostr-dm-relays-checks.coax	late retired and clock observations retain their exact ownership and backoff semantics
 apps/shared/nostr-dm-relays.coax	ndr_reply	263	true became false	apps/shared/nostr-dm-relays-checks.coax	late retired and clock observations retain their exact ownership and backoff semantics
+apps/shared/nostr-dm-relays.coax	ndr_reply	264	false became true	apps/shared/nostr-dm-relays-checks.coax	the sixth relay retains exact slice ownership reconnect initialization and both connecting and failed observations
 apps/shared/nostr-dm-relays.coax	ndr_reply	27	'==' became '!='	apps/shared/nostr-dm-relays.coax	authenticated relay ownership starts with a reset and cannot consume an older account reply
 apps/shared/nostr-dm-relays.coax	ndr_reply	28	7 became 8	apps/shared/nostr-dm-relays-checks.coax	AUTH preparation and every custody reply remain bound to the live challenge owner and exact operation
 apps/shared/nostr-dm-relays.coax	ndr_reply	29	0 became 1	apps/shared/nostr-dm-relays-checks.coax	AUTH preparation and every custody reply remain bound to the live challenge owner and exact operation
 apps/shared/nostr-dm-relays.coax	ndr_reply	3	0 became 1	apps/shared/nostr-dm-relays.coax	authenticated relay ownership starts with a reset and cannot consume an older account reply
 apps/shared/nostr-dm-relays.coax	ndr_reply	30	'+' became '-'	apps/shared/nostr-dm-relays-checks.coax	AUTH preparation and every custody reply remain bound to the live challenge owner and exact operation
+apps/shared/nostr-dm-relays.coax	ndr_reply	31	1 became 2	apps/shared/nostr-dm-relays-checks.coax	the sixth relay retains exact slice ownership reconnect initialization and both connecting and failed observations
 apps/shared/nostr-dm-relays.coax	ndr_reply	32	the if condition was negated	apps/shared/nostr-dm-relays-checks.coax	AUTH preparation and every custody reply remain bound to the live challenge owner and exact operation
 apps/shared/nostr-dm-relays.coax	ndr_reply	33	'&&' became '||'	apps/shared/nostr-dm-relays-checks.coax	AUTH preparation and every custody reply remain bound to the live challenge owner and exact operation
 apps/shared/nostr-dm-relays.coax	ndr_reply	34	'||' became '&&'	apps/shared/nostr-dm-relays-checks.coax	AUTH preparation and every custody reply remain bound to the live challenge owner and exact operation
@@ -585,6 +606,7 @@ apps/shared/nostr-dm-relays.coax	ndr_reply	72	0 became 1	apps/shared/nostr-dm-re
 apps/shared/nostr-dm-relays.coax	ndr_reply	73	0 became 1	apps/shared/nostr-dm-relays-checks.coax	AUTH preparation and every custody reply remain bound to the live challenge owner and exact operation
 apps/shared/nostr-dm-relays.coax	ndr_reply	74	0 became 1	apps/shared/nostr-dm-relays-checks.coax	AUTH preparation and every custody reply remain bound to the live challenge owner and exact operation
 apps/shared/nostr-dm-relays.coax	ndr_reply	75	false became true	apps/shared/nostr-dm-relays-checks.coax	AUTH preparation and every custody reply remain bound to the live challenge owner and exact operation
+apps/shared/nostr-dm-relays.coax	ndr_reply	76	'&&' became '||'	apps/shared/nostr-dm-relays-checks.coax	AUTH preparation and every custody reply remain bound to the live challenge owner and exact operation
 apps/shared/nostr-dm-relays.coax	ndr_reply	77	'&&' became '||'	apps/shared/nostr-dm-relays-checks.coax	AUTH preparation and every custody reply remain bound to the live challenge owner and exact operation
 apps/shared/nostr-dm-relays.coax	ndr_reply	79	'==' became '!='	apps/shared/nostr-dm-relays-checks.coax	AUTH preparation and every custody reply remain bound to the live challenge owner and exact operation
 apps/shared/nostr-dm-relays.coax	ndr_reply	8	false became true	apps/shared/nostr-dm-relays.coax	authenticated relay ownership starts with a reset and cannot consume an older account reply
@@ -621,6 +643,7 @@ apps/shared/nostr-dm-relays.coax	ndr_req	16	0 became 1	apps/shared/nostr-dm-rela
 apps/shared/nostr-dm-relays.coax	ndr_req	17	0 became 1	apps/shared/nostr-dm-relays-checks.coax	message requests use the full reader target and exact two-day resume overlap while list requests stay bounded
 apps/shared/nostr-dm-relays.coax	ndr_req	18	0 became 1	apps/shared/nostr-dm-relays-checks.coax	message requests use the full reader target and exact two-day resume overlap while list requests stay bounded
 apps/shared/nostr-dm-relays.coax	ndr_req	19	0 became 1	apps/shared/nostr-dm-relays-checks.coax	message requests use the full reader target and exact two-day resume overlap while list requests stay bounded
+apps/shared/nostr-dm-relays.coax	ndr_req	2	1 became 2	apps/shared/nostr-dm-relays-checks.coax	the sixth relay retains exact slice ownership reconnect initialization and both connecting and failed observations
 apps/shared/nostr-dm-relays.coax	ndr_req	20	the if condition was negated	apps/shared/nostr-dm-relays-checks.coax	message requests use the full reader target and exact two-day resume overlap while list requests stay bounded
 apps/shared/nostr-dm-relays.coax	ndr_req	21	the assignment was removed	apps/shared/nostr-dm-relays-checks.coax	message requests use the full reader target and exact two-day resume overlap while list requests stay bounded
 apps/shared/nostr-dm-relays.coax	ndr_req	22	true became false	apps/shared/nostr-dm-relays-checks.coax	message requests use the full reader target and exact two-day resume overlap while list requests stay bounded
@@ -665,7 +688,9 @@ apps/shared/nostr-dm-relays.coax	ndr_stage	0	the if condition was negated	apps/s
 apps/shared/nostr-dm-relays.coax	ndr_stage	1	'||' became '&&'	apps/shared/nostr-messenger-loop-checks.coax	outbox ignores mask bits outside the recorded relay pool and cannot replace a staged original
 apps/shared/nostr-dm-relays.coax	ndr_stage	10	'<' became '<='	apps/shared/nostr-dm-relays.coax	current challenge AUTH uses custody and the existing signed AUTH adapter
 apps/shared/nostr-dm-relays.coax	ndr_stage	11	0 became 1	apps/shared/nostr-dm-relays.coax	current challenge AUTH uses custody and the existing signed AUTH adapter
+apps/shared/nostr-dm-relays.coax	ndr_stage	12	'>=' became '>'	apps/shared/nostr-dm-relays-checks.coax	stage refuses inactive busy wrong-slot malformed forged oversized and full publisher inputs
 apps/shared/nostr-dm-relays.coax	ndr_stage	13	0 became 1	apps/shared/nostr-dm-relays-checks.coax	actual OK frames update the held publication and invalidate its delivery observation
+apps/shared/nostr-dm-relays.coax	ndr_stage	14	'>' became '>='	apps/shared/nostr-dm-relays-checks.coax	stage refuses inactive busy wrong-slot malformed forged oversized and full publisher inputs
 apps/shared/nostr-dm-relays.coax	ndr_stage	15	65536 became 65537	apps/shared/nostr-dm-relays-checks.coax	stage refuses inactive busy wrong-slot malformed forged oversized and full publisher inputs
 apps/shared/nostr-dm-relays.coax	ndr_stage	16	'!=' became '=='	apps/shared/nostr-dm-relays-checks.coax	actual OK frames update the held publication and invalidate its delivery observation
 apps/shared/nostr-dm-relays.coax	ndr_stage	17	0 became 1	apps/shared/nostr-dm-relays-checks.coax	actual OK frames update the held publication and invalidate its delivery observation
@@ -705,6 +730,8 @@ apps/shared/nostr-dm-relays.coax	ndr_tick	0	the call was removed	apps/shared/nos
 apps/shared/nostr-dm-relays.coax	ndr_tick	1	the if condition was negated	apps/shared/nostr-dm-relays-checks.coax	relay scheduler independently retains busy action AUTH retirement and clock barriers
 apps/shared/nostr-dm-relays.coax	ndr_tick	10	the if condition was negated	apps/shared/nostr-dm-relays-checks.coax	relay scheduler independently retains busy action AUTH retirement and clock barriers
 apps/shared/nostr-dm-relays.coax	ndr_tick	100	the if condition was negated	apps/shared/nostr-dm-relays-checks.coax	relay polling rotates fairly and enforces exactly twelve observations per frame
+apps/shared/nostr-dm-relays.coax	ndr_tick	101	'&&' became '||'	apps/shared/nostr-dm-relays-checks.coax	a held publish cannot be completed by an accepted entry belonging to another relay
+apps/shared/nostr-dm-relays.coax	ndr_tick	102	'&&' became '||'	apps/shared/nostr-dm-relays-checks.coax	a held publish cannot be completed by an accepted entry belonging to another relay
 apps/shared/nostr-dm-relays.coax	ndr_tick	104	0 became 1	apps/shared/nostr-dm-relays-checks.coax	relay polling rotates fairly and enforces exactly twelve observations per frame
 apps/shared/nostr-dm-relays.coax	ndr_tick	106	'==' became '!='	apps/shared/nostr-dm-relays-checks.coax	relay output adapts real REQ CLOSE EVENT acceptance and AUTH without manufacturing a second frame
 apps/shared/nostr-dm-relays.coax	ndr_tick	107	0 became 1	apps/shared/nostr-dm-relays-checks.coax	relay output adapts real REQ CLOSE EVENT acceptance and AUTH without manufacturing a second frame
@@ -720,6 +747,7 @@ apps/shared/nostr-dm-relays.coax	ndr_tick	115	'||' became '&&'	apps/shared/nostr
 apps/shared/nostr-dm-relays.coax	ndr_tick	116	'==' became '!='	apps/shared/nostr-dm-relays-checks.coax	relay output adapts real REQ CLOSE EVENT acceptance and AUTH without manufacturing a second frame
 apps/shared/nostr-dm-relays.coax	ndr_tick	117	3 became 4	apps/shared/nostr-dm-relays-checks.coax	relay output adapts real REQ CLOSE EVENT acceptance and AUTH without manufacturing a second frame
 apps/shared/nostr-dm-relays.coax	ndr_tick	118	'==' became '!='	apps/shared/nostr-dm-relays-checks.coax	relay output adapts real REQ CLOSE EVENT acceptance and AUTH without manufacturing a second frame
+apps/shared/nostr-dm-relays.coax	ndr_tick	119	4 became 5	apps/shared/nostr-dm-relays-checks.coax	a real refused publication is retired without treating a timeout as a refusal
 apps/shared/nostr-dm-relays.coax	ndr_tick	12	the assignment was removed	apps/shared/nostr-dm-relays-checks.coax	relay scheduler independently retains busy action AUTH retirement and clock barriers
 apps/shared/nostr-dm-relays.coax	ndr_tick	120	0 became 1	apps/shared/nostr-dm-relays-checks.coax	relay output adapts real REQ CLOSE EVENT acceptance and AUTH without manufacturing a second frame
 apps/shared/nostr-dm-relays.coax	ndr_tick	121	0 became 1	apps/shared/nostr-dm-relays-checks.coax	relay output adapts real REQ CLOSE EVENT acceptance and AUTH without manufacturing a second frame
@@ -741,6 +769,7 @@ apps/shared/nostr-dm-relays.coax	ndr_tick	135	4 became 5	apps/shared/nostr-dm-re
 apps/shared/nostr-dm-relays.coax	ndr_tick	136	the assignment was removed	apps/shared/nostr-dm-relays-checks.coax	relay output adapts real REQ CLOSE EVENT acceptance and AUTH without manufacturing a second frame
 apps/shared/nostr-dm-relays.coax	ndr_tick	137	true became false	apps/shared/nostr-dm-relays-checks.coax	relay output adapts real REQ CLOSE EVENT acceptance and AUTH without manufacturing a second frame
 apps/shared/nostr-dm-relays.coax	ndr_tick	138	0 became 1	apps/shared/nostr-dm-relays-checks.coax	relay output adapts real REQ CLOSE EVENT acceptance and AUTH without manufacturing a second frame
+apps/shared/nostr-dm-relays.coax	ndr_tick	139	the assignment was removed	apps/shared/nostr-dm-relays-checks.coax	relay output adapts real REQ CLOSE EVENT acceptance and AUTH without manufacturing a second frame
 apps/shared/nostr-dm-relays.coax	ndr_tick	14	0 became 1	apps/shared/nostr-dm-relays-checks.coax	relay scheduler independently retains busy action AUTH retirement and clock barriers
 apps/shared/nostr-dm-relays.coax	ndr_tick	140	0 became 1	apps/shared/nostr-dm-relays-checks.coax	relay output adapts real REQ CLOSE EVENT acceptance and AUTH without manufacturing a second frame
 apps/shared/nostr-dm-relays.coax	ndr_tick	141	true became false	apps/shared/nostr-dm-relays-checks.coax	relay output adapts real REQ CLOSE EVENT acceptance and AUTH without manufacturing a second frame
@@ -785,6 +814,8 @@ apps/shared/nostr-dm-relays.coax	ndr_tick	184	'&&' became '||'	apps/shared/nostr
 apps/shared/nostr-dm-relays.coax	ndr_tick	185	'||' became '&&'	apps/shared/nostr-dm-relays-checks.coax	relay polling rotates fairly and enforces exactly twelve observations per frame
 apps/shared/nostr-dm-relays.coax	ndr_tick	186	'==' became '!='	apps/shared/nostr-dm-relays-checks.coax	relay polling rotates fairly and enforces exactly twelve observations per frame
 apps/shared/nostr-dm-relays.coax	ndr_tick	187	2 became 3	apps/shared/nostr-dm-relays-checks.coax	relay polling rotates fairly and enforces exactly twelve observations per frame
+apps/shared/nostr-dm-relays.coax	ndr_tick	188	'==' became '!='	apps/shared/nostr-dm-relays-checks.coax	the sixth relay retains exact slice ownership reconnect initialization and both connecting and failed observations
+apps/shared/nostr-dm-relays.coax	ndr_tick	189	1 became 2	apps/shared/nostr-dm-relays-checks.coax	the sixth relay retains exact slice ownership reconnect initialization and both connecting and failed observations
 apps/shared/nostr-dm-relays.coax	ndr_tick	19	0 became 1	apps/shared/nostr-dm-relays-checks.coax	relay scheduler independently retains busy action AUTH retirement and clock barriers
 apps/shared/nostr-dm-relays.coax	ndr_tick	190	'>=' became '>'	apps/shared/nostr-dm-relays-checks.coax	relay polling rotates fairly and enforces exactly twelve observations per frame
 apps/shared/nostr-dm-relays.coax	ndr_tick	191	0 became 1	apps/shared/nostr-dm-relays-checks.coax	relay scheduler rotates idle connections and bounds exhausted generations and connect timeouts
@@ -796,6 +827,7 @@ apps/shared/nostr-dm-relays.coax	ndr_tick	196	1 became 2	apps/shared/nostr-dm-re
 apps/shared/nostr-dm-relays.coax	ndr_tick	197	0 became 1	apps/shared/nostr-dm-relays-checks.coax	relay polling rotates fairly and enforces exactly twelve observations per frame
 apps/shared/nostr-dm-relays.coax	ndr_tick	198	0 became 1	apps/shared/nostr-dm-relays-checks.coax	relay polling rotates fairly and enforces exactly twelve observations per frame
 apps/shared/nostr-dm-relays.coax	ndr_tick	199	the assignment was removed	apps/shared/nostr-dm-relays-checks.coax	relay polling rotates fairly and enforces exactly twelve observations per frame
+apps/shared/nostr-dm-relays.coax	ndr_tick	2	'||' became '&&'	apps/shared/nostr-dm-relays-checks.coax	a queued reset cannot overwrite any busy action or outstanding AUTH ownership
 apps/shared/nostr-dm-relays.coax	ndr_tick	20	'>=' became '>'	apps/shared/nostr-dm-relays-checks.coax	relay polling rotates fairly and enforces exactly twelve observations per frame
 apps/shared/nostr-dm-relays.coax	ndr_tick	200	'+=' became '-='	apps/shared/nostr-dm-relays-checks.coax	relay polling rotates fairly and enforces exactly twelve observations per frame
 apps/shared/nostr-dm-relays.coax	ndr_tick	201	1 became 2	apps/shared/nostr-dm-relays-checks.coax	relay polling rotates fairly and enforces exactly twelve observations per frame
@@ -811,6 +843,7 @@ apps/shared/nostr-dm-relays.coax	ndr_tick	26	0 became 1	apps/shared/nostr-dm-rel
 apps/shared/nostr-dm-relays.coax	ndr_tick	27	0 became 1	apps/shared/nostr-dm-relays-checks.coax	relay scheduler independently retains busy action AUTH retirement and clock barriers
 apps/shared/nostr-dm-relays.coax	ndr_tick	28	the assignment was removed	apps/shared/nostr-dm-relays-checks.coax	relay scheduler independently retains busy action AUTH retirement and clock barriers
 apps/shared/nostr-dm-relays.coax	ndr_tick	29	'+' became '-'	apps/shared/nostr-dm-relays-checks.coax	relay scheduler independently retains busy action AUTH retirement and clock barriers
+apps/shared/nostr-dm-relays.coax	ndr_tick	3	'||' became '&&'	apps/shared/nostr-dm-relays-checks.coax	a queued reset cannot overwrite any busy action or outstanding AUTH ownership
 apps/shared/nostr-dm-relays.coax	ndr_tick	30	0 became 1	apps/shared/nostr-dm-relays-checks.coax	relay scheduler independently retains busy action AUTH retirement and clock barriers
 apps/shared/nostr-dm-relays.coax	ndr_tick	31	60000 became 60001	apps/shared/nostr-dm-relays-checks.coax	relay scheduler independently retains busy action AUTH retirement and clock barriers
 apps/shared/nostr-dm-relays.coax	ndr_tick	32	0 became 1	apps/shared/nostr-dm-relays-checks.coax	relay scheduler independently retains busy action AUTH retirement and clock barriers
@@ -818,11 +851,14 @@ apps/shared/nostr-dm-relays.coax	ndr_tick	33	6 became 7	apps/shared/nostr-dm-rel
 apps/shared/nostr-dm-relays.coax	ndr_tick	34	0 became 1	apps/shared/nostr-dm-relays-checks.coax	relay scheduler independently retains busy action AUTH retirement and clock barriers
 apps/shared/nostr-dm-relays.coax	ndr_tick	35	0 became 1	apps/shared/nostr-dm-relays-checks.coax	relay polling rotates fairly and enforces exactly twelve observations per frame
 apps/shared/nostr-dm-relays.coax	ndr_tick	36	0 became 1	apps/shared/nostr-dm-relays-checks.coax	relay polling rotates fairly and enforces exactly twelve observations per frame
+apps/shared/nostr-dm-relays.coax	ndr_tick	37	'%' became '/'	apps/shared/nostr-dm-relays-checks.coax	rotation chooses the next ready socket instead of the first and can cross more than two sockets
+apps/shared/nostr-dm-relays.coax	ndr_tick	38	'+' became '-'	apps/shared/nostr-dm-relays-checks.coax	the sixth relay retains exact slice ownership reconnect initialization and both connecting and failed observations
 apps/shared/nostr-dm-relays.coax	ndr_tick	39	0 became 1	apps/shared/nostr-dm-relays-checks.coax	relay polling rotates fairly and enforces exactly twelve observations per frame
 apps/shared/nostr-dm-relays.coax	ndr_tick	4	0 became 1	apps/shared/nostr-dm-relays-checks.coax	relay scheduler independently retains busy action AUTH retirement and clock barriers
 apps/shared/nostr-dm-relays.coax	ndr_tick	40	0 became 1	apps/shared/nostr-dm-relays-checks.coax	relay polling rotates fairly and enforces exactly twelve observations per frame
 apps/shared/nostr-dm-relays.coax	ndr_tick	41	0 became 1	apps/shared/nostr-dm-relays-checks.coax	relay polling rotates fairly and enforces exactly twelve observations per frame
 apps/shared/nostr-dm-relays.coax	ndr_tick	42	'+' became '-'	apps/shared/nostr-dm-relays-checks.coax	relay polling rotates fairly and enforces exactly twelve observations per frame
+apps/shared/nostr-dm-relays.coax	ndr_tick	43	1 became 2	apps/shared/nostr-dm-relays-checks.coax	the sixth relay retains exact slice ownership reconnect initialization and both connecting and failed observations
 apps/shared/nostr-dm-relays.coax	ndr_tick	44	0 became 1	apps/shared/nostr-dm-relays-checks.coax	relay polling rotates fairly and enforces exactly twelve observations per frame
 apps/shared/nostr-dm-relays.coax	ndr_tick	45	0 became 1	apps/shared/nostr-dm-relays-checks.coax	relay polling rotates fairly and enforces exactly twelve observations per frame
 apps/shared/nostr-dm-relays.coax	ndr_tick	46	0 became 1	apps/shared/nostr-dm-relays-checks.coax	relay polling rotates fairly and enforces exactly twelve observations per frame
@@ -847,6 +883,7 @@ apps/shared/nostr-dm-relays.coax	ndr_tick	62	'||' became '&&'	apps/shared/nostr-
 apps/shared/nostr-dm-relays.coax	ndr_tick	63	'==' became '!='	apps/shared/nostr-dm-relays-checks.coax	relay polling rotates fairly and enforces exactly twelve observations per frame
 apps/shared/nostr-dm-relays.coax	ndr_tick	64	0 became 1	apps/shared/nostr-dm-relays-checks.coax	relay scheduler rotates idle connections and bounds exhausted generations and connect timeouts
 apps/shared/nostr-dm-relays.coax	ndr_tick	65	'==' became '!='	apps/shared/nostr-dm-relays-checks.coax	relay polling rotates fairly and enforces exactly twelve observations per frame
+apps/shared/nostr-dm-relays.coax	ndr_tick	66	1 became 2	apps/shared/nostr-dm-relays-checks.coax	the sixth relay retains exact slice ownership reconnect initialization and both connecting and failed observations
 apps/shared/nostr-dm-relays.coax	ndr_tick	67	the if condition was negated	apps/shared/nostr-dm-relays-checks.coax	relay scheduler rotates idle connections and bounds exhausted generations and connect timeouts
 apps/shared/nostr-dm-relays.coax	ndr_tick	68	'>=' became '>'	apps/shared/nostr-dm-relays-checks.coax	relay scheduler rotates idle connections and bounds exhausted generations and connect timeouts
 apps/shared/nostr-dm-relays.coax	ndr_tick	69	0 became 1	apps/shared/nostr-dm-relays-checks.coax	relay scheduler rotates idle connections and bounds exhausted generations and connect timeouts
@@ -867,9 +904,11 @@ apps/shared/nostr-dm-relays.coax	ndr_tick	81	0 became 1	apps/shared/nostr-dm-rel
 apps/shared/nostr-dm-relays.coax	ndr_tick	82	0 became 1	apps/shared/nostr-dm-relays-checks.coax	relay scheduler rotates idle connections and bounds exhausted generations and connect timeouts
 apps/shared/nostr-dm-relays.coax	ndr_tick	83	0 became 1	apps/shared/nostr-dm-relays-checks.coax	relay scheduler rotates idle connections and bounds exhausted generations and connect timeouts
 apps/shared/nostr-dm-relays.coax	ndr_tick	84	0 became 1	apps/shared/nostr-dm-relays-checks.coax	relay scheduler rotates idle connections and bounds exhausted generations and connect timeouts
+apps/shared/nostr-dm-relays.coax	ndr_tick	85	0 became 1	apps/shared/nostr-dm-relays-checks.coax	the sixth relay retains exact slice ownership reconnect initialization and both connecting and failed observations
 apps/shared/nostr-dm-relays.coax	ndr_tick	86	0 became 1	apps/shared/nostr-dm-relays-checks.coax	relay scheduler rotates idle connections and bounds exhausted generations and connect timeouts
 apps/shared/nostr-dm-relays.coax	ndr_tick	87	the assignment was removed	apps/shared/nostr-dm-relays-checks.coax	relay scheduler rotates idle connections and bounds exhausted generations and connect timeouts
 apps/shared/nostr-dm-relays.coax	ndr_tick	88	'%' became '/'	apps/shared/nostr-dm-relays-checks.coax	relay scheduler rotates idle connections and bounds exhausted generations and connect timeouts
+apps/shared/nostr-dm-relays.coax	ndr_tick	89	'+' became '-'	apps/shared/nostr-dm-relays-checks.coax	the sixth relay retains exact slice ownership reconnect initialization and both connecting and failed observations
 apps/shared/nostr-dm-relays.coax	ndr_tick	9	false became true	apps/shared/nostr-dm-relays-checks.coax	relay scheduler independently retains busy action AUTH retirement and clock barriers
 apps/shared/nostr-dm-relays.coax	ndr_tick	90	1 became 2	apps/shared/nostr-dm-relays-checks.coax	relay scheduler rotates idle connections and bounds exhausted generations and connect timeouts
 apps/shared/nostr-dm-relays.coax	ndr_tick	91	0 became 1	apps/shared/nostr-dm-relays-checks.coax	relay scheduler rotates idle connections and bounds exhausted generations and connect timeouts
@@ -950,6 +989,7 @@ apps/shared/nostr-messenger-loop.coax	ndm_outbox	134	0 became 1	apps/shared/nost
 apps/shared/nostr-messenger-loop.coax	ndm_outbox	135	true became false	apps/shared/nostr-messenger-loop-checks.coax	outbox publishing uses its immutable stored target and drains only an actually finished publish
 apps/shared/nostr-messenger-loop.coax	ndm_outbox	136	false became true	apps/shared/nostr-messenger-loop-checks.coax	outbox traversal selects the exact pending original target and exclusive next page
 apps/shared/nostr-messenger-loop.coax	ndm_outbox	14	the while condition was negated	apps/shared/nostr-messenger-loop-checks.coax	outbox traversal selects the exact pending original target and exclusive next page
+apps/shared/nostr-messenger-loop.coax	ndm_outbox	15	'<' became '<='	apps/shared/nostr-messenger-loop-checks.coax	outbox traversal selects the exact pending original target and exclusive next page
 apps/shared/nostr-messenger-loop.coax	ndm_outbox	16	0 became 1	apps/shared/nostr-messenger-loop-checks.coax	outbox traversal selects the exact pending original target and exclusive next page
 apps/shared/nostr-messenger-loop.coax	ndm_outbox	17	0 became 1	apps/shared/nostr-messenger-loop-checks.coax	outbox ignores mask bits outside the recorded relay pool and cannot replace a staged original
 apps/shared/nostr-messenger-loop.coax	ndm_outbox	18	0 became 1	apps/shared/nostr-messenger-loop-checks.coax	outbox ignores mask bits outside the recorded relay pool and cannot replace a staged original
@@ -973,6 +1013,7 @@ apps/shared/nostr-messenger-loop.coax	ndm_outbox	33	0 became 1	apps/shared/nostr
 apps/shared/nostr-messenger-loop.coax	ndm_outbox	34	5 became 6	apps/shared/nostr-messenger-loop-checks.coax	outbox traversal selects the exact pending original target and exclusive next page
 apps/shared/nostr-messenger-loop.coax	ndm_outbox	35	0 became 1	apps/shared/nostr-messenger-loop-checks.coax	outbox traversal selects the exact pending original target and exclusive next page
 apps/shared/nostr-messenger-loop.coax	ndm_outbox	36	0 became 1	apps/shared/nostr-messenger-loop-checks.coax	outbox traversal selects the exact pending original target and exclusive next page
+apps/shared/nostr-messenger-loop.coax	ndm_outbox	37	0 became 1	apps/shared/nostr-messenger-loop-checks.coax	outbox traversal selects the exact pending original target and exclusive next page
 apps/shared/nostr-messenger-loop.coax	ndm_outbox	38	0 became 1	apps/shared/nostr-messenger-loop-checks.coax	outbox traversal selects the exact pending original target and exclusive next page
 apps/shared/nostr-messenger-loop.coax	ndm_outbox	39	the assignment was removed	apps/shared/nostr-messenger-loop-checks.coax	outbox ignores mask bits outside the recorded relay pool and cannot replace a staged original
 apps/shared/nostr-messenger-loop.coax	ndm_outbox	4	4 became 5	apps/shared/nostr-messenger-loop-checks.coax	outbox traversal selects the exact pending original target and exclusive next page
@@ -990,6 +1031,7 @@ apps/shared/nostr-messenger-loop.coax	ndm_outbox	5	0 became 1	apps/shared/nostr-
 apps/shared/nostr-messenger-loop.coax	ndm_outbox	50	the if condition was negated	apps/shared/nostr-messenger-loop-checks.coax	outbox ignores mask bits outside the recorded relay pool and cannot replace a staged original
 apps/shared/nostr-messenger-loop.coax	ndm_outbox	51	'>' became '>='	apps/shared/nostr-messenger-loop-checks.coax	outbox ignores mask bits outside the recorded relay pool and cannot replace a staged original
 apps/shared/nostr-messenger-loop.coax	ndm_outbox	52	0 became 1	apps/shared/nostr-messenger-loop-checks.coax	outbox traversal selects the exact pending original target and exclusive next page
+apps/shared/nostr-messenger-loop.coax	ndm_outbox	53	0 became 1	apps/shared/nostr-messenger-loop-checks.coax	outbox traversal selects the exact pending original target and exclusive next page
 apps/shared/nostr-messenger-loop.coax	ndm_outbox	54	the assignment was removed	apps/shared/nostr-messenger-loop-checks.coax	outbox traversal selects the exact pending original target and exclusive next page
 apps/shared/nostr-messenger-loop.coax	ndm_outbox	55	0 became 1	apps/shared/nostr-messenger-loop-checks.coax	outbox traversal selects the exact pending original target and exclusive next page
 apps/shared/nostr-messenger-loop.coax	ndm_outbox	56	0 became 1	apps/shared/nostr-messenger-loop-checks.coax	outbox traversal selects the exact pending original target and exclusive next page
@@ -1038,6 +1080,7 @@ apps/shared/nostr-messenger-loop.coax	ndm_outbox	94	'&&' became '||'	apps/shared
 apps/shared/nostr-messenger-loop.coax	ndm_outbox	95	0 became 1	apps/shared/nostr-messenger-loop-checks.coax	outbox publishing uses its immutable stored target and drains only an actually finished publish
 apps/shared/nostr-messenger-loop.coax	ndm_outbox	96	2 became 3	apps/shared/nostr-messenger-loop-checks.coax	outbox publishing uses its immutable stored target and drains only an actually finished publish
 apps/shared/nostr-messenger-loop.coax	ndm_outbox	97	true became false	apps/shared/nostr-messenger-loop-checks.coax	outbox publishing uses its immutable stored target and drains only an actually finished publish
+apps/shared/nostr-messenger-loop.coax	ndm_outbox	98	false became true	apps/shared/nostr-messenger-loop-checks.coax	a blocked target switch reports no progress and relay retirement redraws the actual lifecycle change
 apps/shared/nostr-messenger-loop.coax	ndm_outbox	99	the if condition was negated	apps/shared/nostr-messenger-loop-checks.coax	outbox publishing uses its immutable stored target and drains only an actually finished publish
 apps/shared/nostr-messenger-loop.coax	ndm_take_journal	0	0 became 1	apps/shared/nostr-messenger-loop-checks.coax	taking a queued journal or relay effect preserves it when another request owns the flight
 apps/shared/nostr-messenger-loop.coax	ndm_take_journal	1	the if condition was negated	apps/shared/nostr-messenger-loop-checks.coax	taking a queued journal or relay effect preserves it when another request owns the flight
@@ -1076,6 +1119,7 @@ apps/shared/nostr-messenger-loop.coax	ndm_take_relay	9	0 became 1	apps/shared/no
 apps/shared/nostr-messenger-loop.coax	ndm_tick	0	the if condition was negated	apps/shared/nostr-messenger-loop-checks.coax	scheduler clocks deadlines and retry timing cannot replace an owned request
 apps/shared/nostr-messenger-loop.coax	ndm_tick	1	'&&' became '||'	apps/shared/nostr-messenger-loop-checks.coax	scheduler clocks deadlines and retry timing cannot replace an owned request
 apps/shared/nostr-messenger-loop.coax	ndm_tick	10	the if condition was negated	apps/shared/nostr-messenger-loop-checks.coax	scheduler clocks deadlines and retry timing cannot replace an owned request
+apps/shared/nostr-messenger-loop.coax	ndm_tick	100	true became false	apps/shared/nostr-messenger-loop-checks.coax	completed replay starts receipt reconciliation and discovery refresh resets the prior head barrier
 apps/shared/nostr-messenger-loop.coax	ndm_tick	101	0 became 1	apps/shared/nostr-messenger-loop-checks.coax	completed replay starts receipt reconciliation and discovery refresh resets the prior head barrier
 apps/shared/nostr-messenger-loop.coax	ndm_tick	102	the if condition was negated	apps/shared/nostr-messenger-loop-checks.coax	completed replay starts receipt reconciliation and discovery refresh resets the prior head barrier
 apps/shared/nostr-messenger-loop.coax	ndm_tick	103	'==' became '!='	apps/shared/nostr-messenger-loop-checks.coax	completed replay starts receipt reconciliation and discovery refresh resets the prior head barrier
@@ -1091,6 +1135,7 @@ apps/shared/nostr-messenger-loop.coax	ndm_tick	111	the if condition was negated	
 apps/shared/nostr-messenger-loop.coax	ndm_tick	112	true became false	apps/shared/nostr-messenger.coax	same-owner metadata resumes a paused messenger without replacing an outstanding request
 apps/shared/nostr-messenger-loop.coax	ndm_tick	113	the if condition was negated	apps/shared/nostr-messenger-checks.coax	inbox setup crosses completed discovery signing queue publish and a real ACK before settling
 apps/shared/nostr-messenger-loop.coax	ndm_tick	114	0 became 1	apps/shared/nostr-messenger-loop-checks.coax	completed replay starts receipt reconciliation and discovery refresh resets the prior head barrier
+apps/shared/nostr-messenger-loop.coax	ndm_tick	115	the if condition was negated	apps/shared/nostr-messenger-loop-checks.coax	an actual AUTH challenge schedules only its matching installed custody request
 apps/shared/nostr-messenger-loop.coax	ndm_tick	116	'&&' became '||'	apps/shared/nostr-messenger-checks.coax	inbox setup crosses completed discovery signing queue publish and a real ACK before settling
 apps/shared/nostr-messenger-loop.coax	ndm_tick	117	0 became 1	apps/shared/nostr-messenger-checks.coax	inbox setup crosses completed discovery signing queue publish and a real ACK before settling
 apps/shared/nostr-messenger-loop.coax	ndm_tick	118	the if condition was negated	apps/shared/nostr-messenger-loop-checks.coax	completed replay starts receipt reconciliation and discovery refresh resets the prior head barrier
@@ -1163,6 +1208,7 @@ apps/shared/nostr-messenger-loop.coax	ndm_tick	179	0 became 1	apps/shared/nostr-
 apps/shared/nostr-messenger-loop.coax	ndm_tick	18	'>=' became '>'	apps/shared/nostr-messenger-loop-checks.coax	scheduler clocks deadlines and retry timing cannot replace an owned request
 apps/shared/nostr-messenger-loop.coax	ndm_tick	180	0 became 1	apps/shared/nostr-messenger-loop-checks.coax	setup queue and head reads use their exact existing wire actions before any publication
 apps/shared/nostr-messenger-loop.coax	ndm_tick	181	0 became 1	apps/shared/nostr-messenger-loop-checks.coax	setup queue and head reads use their exact existing wire actions before any publication
+apps/shared/nostr-messenger-loop.coax	ndm_tick	182	0 became 1	apps/shared/nostr-messenger-loop-checks.coax	setup queue and head reads use their exact existing wire actions before any publication
 apps/shared/nostr-messenger-loop.coax	ndm_tick	183	0 became 1	apps/shared/nostr-messenger-loop-checks.coax	setup queue and head reads use their exact existing wire actions before any publication
 apps/shared/nostr-messenger-loop.coax	ndm_tick	184	the if condition was negated	apps/shared/nostr-messenger-loop-checks.coax	completed replay starts receipt reconciliation and discovery refresh resets the prior head barrier
 apps/shared/nostr-messenger-loop.coax	ndm_tick	185	'==' became '!='	apps/shared/nostr-messenger-loop-checks.coax	completed replay starts receipt reconciliation and discovery refresh resets the prior head barrier
@@ -1176,6 +1222,7 @@ apps/shared/nostr-messenger-loop.coax	ndm_tick	191	0 became 1	apps/shared/nostr-
 apps/shared/nostr-messenger-loop.coax	ndm_tick	192	0 became 1	apps/shared/nostr-messenger-loop-checks.coax	setup queue and head reads use their exact existing wire actions before any publication
 apps/shared/nostr-messenger-loop.coax	ndm_tick	193	0 became 1	apps/shared/nostr-messenger-loop-checks.coax	setup queue and head reads use their exact existing wire actions before any publication
 apps/shared/nostr-messenger-loop.coax	ndm_tick	194	0 became 1	apps/shared/nostr-messenger-loop-checks.coax	setup queue and head reads use their exact existing wire actions before any publication
+apps/shared/nostr-messenger-loop.coax	ndm_tick	195	0 became 1	apps/shared/nostr-messenger-loop-checks.coax	setup queue and head reads use their exact existing wire actions before any publication
 apps/shared/nostr-messenger-loop.coax	ndm_tick	196	0 became 1	apps/shared/nostr-messenger-loop-checks.coax	setup queue and head reads use their exact existing wire actions before any publication
 apps/shared/nostr-messenger-loop.coax	ndm_tick	197	the if condition was negated	apps/shared/nostr-messenger-loop-checks.coax	finished publication returns to the receiver pool without changing its recorded targets
 apps/shared/nostr-messenger-loop.coax	ndm_tick	198	'&&' became '||'	apps/shared/nostr-messenger-loop-checks.coax	finished publication returns to the receiver pool without changing its recorded targets
@@ -1210,6 +1257,8 @@ apps/shared/nostr-messenger-loop.coax	ndm_tick	225	6 became 7	apps/shared/nostr-
 apps/shared/nostr-messenger-loop.coax	ndm_tick	226	0 became 1	apps/shared/nostr-messenger-loop-checks.coax	discovered own and peer heads use exact authors and no new list is signed before its read barrier
 apps/shared/nostr-messenger-loop.coax	ndm_tick	227	0 became 1	apps/shared/nostr-messenger-loop-checks.coax	discovered own and peer heads use exact authors and no new list is signed before its read barrier
 apps/shared/nostr-messenger-loop.coax	ndm_tick	228	0 became 1	apps/shared/nostr-messenger-loop-checks.coax	discovered own and peer heads use exact authors and no new list is signed before its read barrier
+apps/shared/nostr-messenger-loop.coax	ndm_tick	229	0 became 1	apps/shared/nostr-messenger-loop-checks.coax	discovered own and peer heads use exact authors and no new list is signed before its read barrier
+apps/shared/nostr-messenger-loop.coax	ndm_tick	230	0 became 1	apps/shared/nostr-messenger-loop-checks.coax	discovered own and peer heads use exact authors and no new list is signed before its read barrier
 apps/shared/nostr-messenger-loop.coax	ndm_tick	231	the if condition was negated	apps/shared/nostr-messenger-loop-checks.coax	completed replay starts receipt reconciliation and discovery refresh resets the prior head barrier
 apps/shared/nostr-messenger-loop.coax	ndm_tick	232	'&&' became '||'	apps/shared/nostr-messenger-loop-checks.coax	finished publication returns to the receiver pool without changing its recorded targets
 apps/shared/nostr-messenger-loop.coax	ndm_tick	233	'&&' became '||'	apps/shared/nostr-messenger-loop-checks.coax	finished publication returns to the receiver pool without changing its recorded targets
@@ -1315,8 +1364,11 @@ apps/shared/nostr-messenger-loop.coax	ndm_tick	333	11 became 12	apps/shared/nost
 apps/shared/nostr-messenger-loop.coax	ndm_tick	334	0 became 1	apps/shared/nostr-messenger-loop-checks.coax	receipt status polling uses the committed exact outer identifiers and relay changes trigger immediate reconciliation
 apps/shared/nostr-messenger-loop.coax	ndm_tick	335	0 became 1	apps/shared/nostr-messenger-loop-checks.coax	receipt status polling uses the committed exact outer identifiers and relay changes trigger immediate reconciliation
 apps/shared/nostr-messenger-loop.coax	ndm_tick	336	0 became 1	apps/shared/nostr-messenger-loop-checks.coax	receipt status polling uses the committed exact outer identifiers and relay changes trigger immediate reconciliation
+apps/shared/nostr-messenger-loop.coax	ndm_tick	337	0 became 1	apps/shared/nostr-messenger-loop-checks.coax	receipt status polling uses the committed exact outer identifiers and relay changes trigger immediate reconciliation
+apps/shared/nostr-messenger-loop.coax	ndm_tick	338	0 became 1	apps/shared/nostr-messenger-loop-checks.coax	receipt status polling uses the committed exact outer identifiers and relay changes trigger immediate reconciliation
 apps/shared/nostr-messenger-loop.coax	ndm_tick	339	the if condition was negated	apps/shared/nostr-messenger-loop-checks.coax	private receipt and read requests require HTTP and synchronize without a refresh button
 apps/shared/nostr-messenger-loop.coax	ndm_tick	34	the assignment was removed	apps/shared/nostr-messenger-loop-checks.coax	scheduler clocks deadlines and retry timing cannot replace an owned request
+apps/shared/nostr-messenger-loop.coax	ndm_tick	340	'&&' became '||'	apps/shared/nostr-messenger-loop-checks.coax	HTTP disabled read synchronization cannot allocate a request and idle HTTP never burns an operation
 apps/shared/nostr-messenger-loop.coax	ndm_tick	341	0 became 1	apps/shared/nostr-messenger-loop-checks.coax	completed replay starts receipt reconciliation and discovery refresh resets the prior head barrier
 apps/shared/nostr-messenger-loop.coax	ndm_tick	342	0 became 1	apps/shared/nostr-messenger-loop-checks.coax	private receipt and read requests require HTTP and synchronize without a refresh button
 apps/shared/nostr-messenger-loop.coax	ndm_tick	343	the if condition was negated	apps/shared/nostr-messenger-loop-checks.coax	private receipt and read requests require HTTP and synchronize without a refresh button
@@ -1384,6 +1436,9 @@ apps/shared/nostr-messenger-loop.coax	ndm_tick	400	0 became 1	apps/shared/nostr-
 apps/shared/nostr-messenger-loop.coax	ndm_tick	401	the assignment was removed	apps/shared/nostr-messenger-loop-checks.coax	periodic refresh invalidates private read knowledge and restarts outbox and journal reconciliation
 apps/shared/nostr-messenger-loop.coax	ndm_tick	402	true became false	apps/shared/nostr-messenger-loop-checks.coax	periodic refresh invalidates private read knowledge and restarts outbox and journal reconciliation
 apps/shared/nostr-messenger-loop.coax	ndm_tick	403	0 became 1	apps/shared/nostr-messenger-loop-checks.coax	completed replay starts receipt reconciliation and discovery refresh resets the prior head barrier
+apps/shared/nostr-messenger-loop.coax	ndm_tick	404	the if condition was negated	apps/shared/nostr-messenger-loop-checks.coax	a blocked target switch reports no progress and relay retirement redraws the actual lifecycle change
+apps/shared/nostr-messenger-loop.coax	ndm_tick	405	the assignment was removed	apps/shared/nostr-messenger-loop-checks.coax	a blocked target switch reports no progress and relay retirement redraws the actual lifecycle change
+apps/shared/nostr-messenger-loop.coax	ndm_tick	406	true became false	apps/shared/nostr-messenger-loop-checks.coax	a blocked target switch reports no progress and relay retirement redraws the actual lifecycle change
 apps/shared/nostr-messenger-loop.coax	ndm_tick	407	0 became 1	apps/shared/nostr-messenger-loop-checks.coax	completed replay starts receipt reconciliation and discovery refresh resets the prior head barrier
 apps/shared/nostr-messenger-loop.coax	ndm_tick	41	'+' became '-'	apps/shared/nostr-messenger-loop-checks.coax	scheduler clocks deadlines and retry timing cannot replace an owned request
 apps/shared/nostr-messenger-loop.coax	ndm_tick	42	0 became 1	apps/shared/nostr-messenger-loop-checks.coax	scheduler clocks deadlines and retry timing cannot replace an owned request
@@ -1403,6 +1458,8 @@ apps/shared/nostr-messenger-loop.coax	ndm_tick	54	the call was removed	apps/shar
 apps/shared/nostr-messenger-loop.coax	ndm_tick	55	0 became 1	apps/shared/nostr-messenger-loop-checks.coax	foreground sends precede background replay and inactive clients perform only relay retirement
 apps/shared/nostr-messenger-loop.coax	ndm_tick	56	0 became 1	apps/shared/nostr-messenger-loop-checks.coax	foreground sends precede background replay and inactive clients perform only relay retirement
 apps/shared/nostr-messenger-loop.coax	ndm_tick	57	the if condition was negated	apps/shared/nostr-messenger.coax	an explicit uncertain-send retry can wait behind a current relay effect without replacing either request
+apps/shared/nostr-messenger-loop.coax	ndm_tick	58	'&&' became '||'	apps/shared/nostr-messenger-loop-checks.coax	an unsubmitted or differently staged intent cannot acquire a signing flight
+apps/shared/nostr-messenger-loop.coax	ndm_tick	59	'&&' became '||'	apps/shared/nostr-messenger-loop-checks.coax	an unsubmitted or differently staged intent cannot acquire a signing flight
 apps/shared/nostr-messenger-loop.coax	ndm_tick	6	'*' became '+'	apps/shared/nostr-messenger-loop-checks.coax	scheduler clocks deadlines and retry timing cannot replace an owned request
 apps/shared/nostr-messenger-loop.coax	ndm_tick	60	0 became 1	apps/shared/nostr-messenger.coax	an explicit uncertain-send retry can wait behind a current relay effect without replacing either request
 apps/shared/nostr-messenger-loop.coax	ndm_tick	61	'==' became '!='	apps/shared/nostr-messenger.coax	an explicit uncertain-send retry can wait behind a current relay effect without replacing either request
@@ -1445,6 +1502,7 @@ apps/shared/nostr-messenger-loop.coax	ndm_tick	95	0 became 1	apps/shared/nostr-m
 apps/shared/nostr-messenger-loop.coax	ndm_tick	96	0 became 1	apps/shared/nostr-messenger-loop-checks.coax	completed replay starts receipt reconciliation and discovery refresh resets the prior head barrier
 apps/shared/nostr-messenger-loop.coax	ndm_tick	97	the if condition was negated	apps/shared/nostr-messenger-loop-checks.coax	completed replay starts receipt reconciliation and discovery refresh resets the prior head barrier
 apps/shared/nostr-messenger-loop.coax	ndm_tick	98	0 became 1	apps/shared/nostr-messenger-loop-checks.coax	completed replay starts receipt reconciliation and discovery refresh resets the prior head barrier
+apps/shared/nostr-messenger-loop.coax	ndm_tick	99	the assignment was removed	apps/shared/nostr-messenger-loop-checks.coax	completed replay starts receipt reconciliation and discovery refresh resets the prior head barrier
 apps/shared/nostr-messenger-store.coax	ndm_custody	0	the if condition was negated	apps/shared/nostr-messenger-loop-checks.coax	inbox setup uses the completed discovery pool and preserves the exact prior list identifier
 apps/shared/nostr-messenger-store.coax	ndm_custody	1	'||' became '&&'	apps/shared/nostr-messenger-loop-checks.coax	inbox setup uses the completed discovery pool and preserves the exact prior list identifier
 apps/shared/nostr-messenger-store.coax	ndm_custody	10	0 became 1	apps/shared/nostr-messenger-loop-checks.coax	inbox setup uses the completed discovery pool and preserves the exact prior list identifier
@@ -1497,6 +1555,7 @@ apps/shared/nostr-messenger-store.coax	ndm_lists_ready	23	'&&' became '||'	apps/
 apps/shared/nostr-messenger-store.coax	ndm_lists_ready	24	'>' became '>='	apps/shared/nostr-messenger-store-checks.coax	list-read readiness requires every configured relay and both selected subscription barriers
 apps/shared/nostr-messenger-store.coax	ndm_lists_ready	25	0 became 1	apps/shared/nostr-messenger-store-checks.coax	list-read readiness requires every configured relay and both selected subscription barriers
 apps/shared/nostr-messenger-store.coax	ndm_lists_ready	27	'||' became '&&'	apps/shared/nostr-messenger-store-checks.coax	list-read readiness requires every configured relay and both selected subscription barriers
+apps/shared/nostr-messenger-store.coax	ndm_lists_ready	28	'<' became '<='	apps/shared/nostr-messenger-store-checks.coax	a caught selected peer subscription at slot zero remains a valid barrier
 apps/shared/nostr-messenger-store.coax	ndm_lists_ready	3	0 became 1	apps/shared/nostr-messenger-store-checks.coax	list-read readiness requires every configured relay and both selected subscription barriers
 apps/shared/nostr-messenger-store.coax	ndm_lists_ready	30	'!=' became '=='	apps/shared/nostr-messenger-store-checks.coax	list-read readiness requires every configured relay and both selected subscription barriers
 apps/shared/nostr-messenger-store.coax	ndm_lists_ready	31	0 became 1	apps/shared/nostr-messenger-store-checks.coax	list-read readiness requires every configured relay and both selected subscription barriers
@@ -1523,6 +1582,7 @@ apps/shared/nostr-messenger-store.coax	ndm_pool	18	the assignment was removed	ap
 apps/shared/nostr-messenger-store.coax	ndm_pool	19	1 became 2	apps/shared/nostr-messenger-store-checks.coax	relay pools deduplicate discovery inputs retain the exact target and refuse insecure or excessive own lists
 apps/shared/nostr-messenger-store.coax	ndm_pool	2	'&&' became '||'	apps/shared/nostr-messenger-loop-checks.coax	finished publication returns to the receiver pool without changing its recorded targets
 apps/shared/nostr-messenger-store.coax	ndm_pool	20	the if condition was negated	apps/shared/nostr-messenger-store-checks.coax	relay pools deduplicate discovery inputs retain the exact target and refuse insecure or excessive own lists
+apps/shared/nostr-messenger-store.coax	ndm_pool	21	'&&' became '||'	apps/shared/nostr-messenger-store-checks.coax	an own relay not in saved discovery is retained and mode zero ignores the owned receiver list
 apps/shared/nostr-messenger-store.coax	ndm_pool	22	'==' became '!='	apps/shared/nostr-messenger-store-checks.coax	receiver pool retains all six complete own URLs and never admits a seventh saved target
 apps/shared/nostr-messenger-store.coax	ndm_pool	23	1 became 2	apps/shared/nostr-messenger-store-checks.coax	relay pools deduplicate discovery inputs retain the exact target and refuse insecure or excessive own lists
 apps/shared/nostr-messenger-store.coax	ndm_pool	24	0 became 1	apps/shared/nostr-messenger-store-checks.coax	relay pools deduplicate discovery inputs retain the exact target and refuse insecure or excessive own lists
@@ -1531,6 +1591,7 @@ apps/shared/nostr-messenger-store.coax	ndm_pool	26	0 became 1	apps/shared/nostr-
 apps/shared/nostr-messenger-store.coax	ndm_pool	27	0 became 1	apps/shared/nostr-messenger-store-checks.coax	relay pools deduplicate discovery inputs retain the exact target and refuse insecure or excessive own lists
 apps/shared/nostr-messenger-store.coax	ndm_pool	28	the if condition was negated	apps/shared/nostr-messenger-store-checks.coax	relay pools deduplicate discovery inputs retain the exact target and refuse insecure or excessive own lists
 apps/shared/nostr-messenger-store.coax	ndm_pool	29	'==' became '!='	apps/shared/nostr-messenger-store-checks.coax	receiver pool retains all six complete own URLs and never admits a seventh saved target
+apps/shared/nostr-messenger-store.coax	ndm_pool	3	'&&' became '||'	apps/shared/nostr-messenger-store-checks.coax	receiver pool retains all six complete own URLs and never admits a seventh saved target
 apps/shared/nostr-messenger-store.coax	ndm_pool	31	0 became 1	apps/shared/nostr-messenger-store-checks.coax	relay pools deduplicate discovery inputs retain the exact target and refuse insecure or excessive own lists
 apps/shared/nostr-messenger-store.coax	ndm_pool	32	0 became 1	apps/shared/nostr-messenger-store-checks.coax	relay pools deduplicate discovery inputs retain the exact target and refuse insecure or excessive own lists
 apps/shared/nostr-messenger-store.coax	ndm_pool	33	'*' became '+'	apps/shared/nostr-messenger-store-checks.coax	receiver pool retains all six complete own URLs and never admits a seventh saved target
@@ -1549,6 +1610,7 @@ apps/shared/nostr-messenger-store.coax	ndm_pool	45	0 became 1	apps/shared/nostr-
 apps/shared/nostr-messenger-store.coax	ndm_pool	46	the call was removed	apps/shared/nostr-messenger-store-checks.coax	receiver pool retains all six complete own URLs and never admits a seventh saved target
 apps/shared/nostr-messenger-store.coax	ndm_pool	47	false became true	apps/shared/nostr-messenger-store-checks.coax	relay pools deduplicate discovery inputs retain the exact target and refuse insecure or excessive own lists
 apps/shared/nostr-messenger-store.coax	ndm_pool	48	the assignment was removed	apps/shared/nostr-messenger-store-checks.coax	relay pools deduplicate discovery inputs retain the exact target and refuse insecure or excessive own lists
+apps/shared/nostr-messenger-store.coax	ndm_pool	49	the assignment was removed	apps/shared/nostr-messenger-store-checks.coax	an own relay not in saved discovery is retained and mode zero ignores the owned receiver list
 apps/shared/nostr-messenger-store.coax	ndm_pool	5	1 became 2	apps/shared/nostr-messenger-store-checks.coax	relay pools deduplicate discovery inputs retain the exact target and refuse insecure or excessive own lists
 apps/shared/nostr-messenger-store.coax	ndm_pool	50	'+=' became '-='	apps/shared/nostr-messenger-store-checks.coax	receiver pool retains all six complete own URLs and never admits a seventh saved target
 apps/shared/nostr-messenger-store.coax	ndm_pool	51	1 became 2	apps/shared/nostr-messenger-store-checks.coax	relay pools deduplicate discovery inputs retain the exact target and refuse insecure or excessive own lists
@@ -1788,6 +1850,7 @@ apps/shared/nostr-messenger-store.coax	ndm_store_reply	262	the assignment was re
 apps/shared/nostr-messenger-store.coax	ndm_store_reply	263	'==' became '!='	apps/shared/nostr-messenger-store-checks.coax	discovered list ownership and absent-head transitions stay bound to the selected peer
 apps/shared/nostr-messenger-store.coax	ndm_store_reply	264	0 became 1	apps/shared/nostr-messenger-store-checks.coax	discovered list ownership and absent-head transitions stay bound to the selected peer
 apps/shared/nostr-messenger-store.coax	ndm_store_reply	265	0 became 1	apps/shared/nostr-messenger-store-checks.coax	discovered list ownership and absent-head transitions stay bound to the selected peer
+apps/shared/nostr-messenger-store.coax	ndm_store_reply	266	the assignment was removed	apps/shared/nostr-messenger-store-checks.coax	discovered list ownership and absent-head transitions stay bound to the selected peer
 apps/shared/nostr-messenger-store.coax	ndm_store_reply	267	false became true	apps/shared/nostr-messenger-store-checks.coax	discovered list ownership and absent-head transitions stay bound to the selected peer
 apps/shared/nostr-messenger-store.coax	ndm_store_reply	268	0 became 1	apps/shared/nostr-messenger-store-checks.coax	discovered list ownership and absent-head transitions stay bound to the selected peer
 apps/shared/nostr-messenger-store.coax	ndm_store_reply	269	the assignment was removed	apps/shared/nostr-messenger-store-checks.coax	discovered list ownership and absent-head transitions stay bound to the selected peer
@@ -1799,6 +1862,7 @@ apps/shared/nostr-messenger-store.coax	ndm_store_reply	273	'==' became '!='	apps
 apps/shared/nostr-messenger-store.coax	ndm_store_reply	274	0 became 1	apps/shared/nostr-messenger-store-checks.coax	discovered list ownership and absent-head transitions stay bound to the selected peer
 apps/shared/nostr-messenger-store.coax	ndm_store_reply	275	0 became 1	apps/shared/nostr-messenger-store-checks.coax	discovered list ownership and absent-head transitions stay bound to the selected peer
 apps/shared/nostr-messenger-store.coax	ndm_store_reply	276	0 became 1	apps/shared/nostr-messenger-store-checks.coax	discovered list ownership and absent-head transitions stay bound to the selected peer
+apps/shared/nostr-messenger-store.coax	ndm_store_reply	277	false became true	apps/shared/nostr-messenger-store-checks.coax	discovered list ownership and absent-head transitions stay bound to the selected peer
 apps/shared/nostr-messenger-store.coax	ndm_store_reply	278	the assignment was removed	apps/shared/nostr-messenger-store-checks.coax	discovered list ownership and absent-head transitions stay bound to the selected peer
 apps/shared/nostr-messenger-store.coax	ndm_store_reply	279	true became false	apps/shared/nostr-messenger-store-checks.coax	discovered list ownership and absent-head transitions stay bound to the selected peer
 apps/shared/nostr-messenger-store.coax	ndm_store_reply	28	'==' became '!='	apps/shared/nostr-messenger-store-checks.coax	uncertain setup requests require explicit retry while read failures retain their scheduled retry
