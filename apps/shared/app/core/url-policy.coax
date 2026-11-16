@@ -1,0 +1,64 @@
+// The installed service policy of the shared app core (GitHub #13645): which
+// HTTP requests, links and clipboard writes the core may ask the host for.
+// The host performs an admitted request and nothing else; it holds no path
+// list of its own. Salvaged from the installed policy of the old iOS runtime
+// (coax/native/updates-policy.coax cn_safe and cn_api at 269227265a^), without
+// its Nostr routes, which this app does not use yet.
+//
+// HTTP: relative paths on the app's own origin only, GET or POST, under
+// /api/chat/ or exactly /api/auth/account. The host adds the account's
+// credentials natively; no token is ever a field of a request. Login itself
+// (/api/auth/email/...) is the auth service's, never an HTTP request.
+//   coax/bin/coax test apps/shared/app/core/url-policy.coax --library
+#load "../../../../coax/native/text-link-policy.coax";
+#load "../../../../coax/native/text-copy-policy.coax";
+#authority;
+
+UP_GET :: 1; UP_POST :: 2;
+// Declared limits: a path, a request body and the response the host may hand back.
+UP_PATH_MAX :: 1024; UP_BODY_MAX :: 131072; UP_RESPONSE_MAX :: 1048576;
+UP_COPY_MAX :: 131072; UP_LINK_MAX :: 4096;
+
+#test "a request cannot choose an origin, a path outside chat or a privileged route" {
+  #assert up_path("/api/chat/submit/v2alpha1") && up_path("/api/chat/task/v1alpha1?host=h&task=t") && up_path("/api/auth/account");
+  for s: [10] string.["", "https://evil/api/chat/x", "//evil/api/chat/x", "/api/wallet/spend", "/api/auth/../chat/x", "/api/chat/x\\y", "/api/chat/x%2fy", "/api/chat/x\n", "/api/auth/account/", "/api/auth/email/start"] { #assert !up_path(s); }
+  #assert !up_path("/api/chat/..") && !up_path("/api/chat/a..b") && up_path("/api/chat/a.b");
+}
+#test "path admission checks the length boundary and every control byte" {
+  path: [1026] u8; for i: 0..<1026 { path[i] = 'a'; } for c, i: "/api/chat/" { path[i] = c; }
+  #assert up_path(cast(string) path[0..<1024]) && !up_path(cast(string) path[0..<1025]);
+  #assert up_path("/api/chat/") && !up_path("/api/chat") && !up_path("/api/chatx/y");
+  path[10] = 31; #assert !up_path(cast(string) path[0..<12]);
+  path[10] = 32; #assert up_path(cast(string) path[0..<12]);
+}
+#test "HTTP admits GET without a body and POST with a bounded one" {
+  p := "/api/chat/stop/v2alpha1";
+  #assert up_http(UP_GET, p, 0) && !up_http(UP_GET, p, 1) && !up_http(UP_GET, p, -1);
+  #assert up_http(UP_POST, p, 1) && up_http(UP_POST, p, UP_BODY_MAX) && !up_http(UP_POST, p, UP_BODY_MAX + 1) && !up_http(UP_POST, p, 0);
+  #assert !up_http(0, p, 0) && !up_http(3, p, 1) && !up_http(UP_GET, "/api/wallet", 0) && !up_http(UP_POST, "/api/wallet", 1);
+}
+#test "links are web documents and copies are bounded" {
+  #assert up_link("https://openagents.com/#chat") && !up_link("javascript:alert(1)") && !up_link("");
+  #assert up_copy(0) && up_copy(UP_COPY_MAX) && !up_copy(UP_COPY_MAX + 1) && !up_copy(-1);
+}
+
+up_safe :: (path: string) -> bool #effects(all) {
+  if path.count > UP_PATH_MAX { return false; }
+  for c: path { if c < 32 || c == '\\' || c == '%' { return false; } }
+  for i: 0..<path.count - 1 { if path[i] == '.' && path[i + 1] == '.' { return false; } }
+  return true;
+}
+// A relative API path this app may request.
+up_path :: (path: string) -> bool #export_c #effects(all) {
+  return up_safe(path) && ((path.count >= 10 && path[0..<10] == "/api/chat/") || path == "/api/auth/account");
+}
+// One HTTP request: its method, its path and its body's bytes.
+up_http :: (method: int, path: string, body_bytes: int) -> bool #export_c #effects(all) {
+  if !up_path(path) { return false; }
+  if method == UP_GET { return body_bytes == 0; }
+  return method == UP_POST && body_bytes >= 1 && body_bytes <= UP_BODY_MAX;
+}
+// A link the person tapped: an HTTP(S) document, opened with no account headers.
+up_link :: (url: string) -> bool #export_c #effects(all) { return nt_link(url); }
+// A copy the person asked for; the app never reads the clipboard.
+up_copy :: (bytes: int) -> bool #export_c #effects(all) { return nt_copy_admit(2, bytes); }

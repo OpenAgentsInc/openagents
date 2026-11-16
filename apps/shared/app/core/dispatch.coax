@@ -1,0 +1,326 @@
+// The one entry point of the shared app core (GitHub #13645; coax/native.md
+// "Application state and dispatch", "Time and lifecycle").
+//
+// Everything that happens enters app_dispatch as an AppEvent, one at a time:
+// a tap or an edit (EV_ACTION), the clock (EV_CLOCK), a lifecycle fact
+// (EV_LIFECYCLE), the launch (EV_LAUNCH), the host taking or refusing a
+// request (EV_TAKEN) and an effect's result (EV_DONE). Platform callbacks
+// queue an event and call in from the one thread that owns the core; they
+// never call in from inside another call.
+//
+// An event is admitted whole or refused whole. A refusal returns a negative
+// code, counts in AppCore.refusals and leaves the committed state exactly as
+// it was: no partial change, no request in the outbox. Each handler checks
+// everything it needs before its first write.
+//
+// Every event carries the host's clock facts: mono_ms, a monotonic time that
+// never goes back, and wall_ms, civil time in milliseconds. The core reads no
+// clock. After each call the host asks app_busy and app_next_wake: a static
+// screen has neither, and sleeps until the next input or completion.
+
+EV_LAUNCH :: 1;      // text: the conversation to rejoin (a cnv_ ID the host kept), or ""
+EV_CLOCK :: 2;       // the time app_next_wake asked for has come
+EV_LIFECYCLE :: 3;   // code: LIFE_FOREGROUND or LIFE_BACKGROUND
+EV_ACTION :: 4;      // code: an ACT_ value; text, more: its arguments
+EV_TAKEN :: 5;       // op; flag: the host accepted (true) or refused (false) the request
+EV_DONE :: 6;        // op, generation, outcome, and the result fields of its kind (host.coax)
+
+LIFE_FOREGROUND :: 1; LIFE_BACKGROUND :: 2;
+
+ACT_DRAFT :: 1;        // text: the whole composer text of the current conversation
+ACT_SEND :: 2;         // send the draft as a new request
+ACT_STOP :: 3;         // stop the running reply or task
+ACT_ALLOW :: 4;        // answer the open permission prompt: allow once
+ACT_DENY :: 5;         // answer it: deny
+ACT_RETRY :: 6;        // send again the kept request whose outcome is unknown, byte for byte
+ACT_RECONNECT :: 7;    // read the conversation and its task again now
+ACT_OPEN :: 8;         // text: a saved conversation's ID
+ACT_NEW :: 9;          // a new, empty chat
+ACT_ENVIRONMENT :: 10; // text: the value; more: its label ("" and "" clears)
+ACT_REPOSITORY :: 11;  // text: the value; more: its label
+ACT_LOGIN_SHOW :: 12;  // flag: show (true) or put away (false) the login flow
+ACT_LOGIN_EMAIL :: 13; // text: the email address to send a code to
+ACT_LOGIN_CODE :: 14;  // text: the code from the email
+ACT_LOGIN_BACK :: 15;  // back from the code step to the email step
+ACT_LOGOUT :: 16;
+ACT_COPY :: 17;        // text: what to copy
+ACT_LINK :: 18;        // text: the URL to open
+
+// What app_dispatch answers.
+APP_OK :: 1;           // committed
+APP_GUEST :: 2;        // committed, and a guest's result waits: route it, then app_guest_done
+APP_LOGIN :: 3;        // committed: a send while logged out asked for the login flow (login_wanted)
+APP_R_BUSY :: -1;      // called from inside a dispatch
+APP_R_INVALID :: -2;   // not a well-formed event, or time went back
+APP_R_FULL :: -3;      // no room in the outbox
+APP_R_LOGIN :: -4;     // the person must log in first
+APP_R_BLOCKED :: -5;   // an earlier request is unresolved, or the state does not allow this now
+APP_R_EMPTY :: -6;     // nothing to send
+APP_R_RETIRED :: -7;   // the owner or the outbox is retired
+APP_R_STALE :: -8;     // a result for no pending operation: a duplicate, or never issued
+APP_R_LATE :: -9;      // a result fenced by a cancellation or a log out; its reservation is released
+
+AppEvent :: struct {
+  kind: int; code: int; mono_ms: int; wall_ms: int;
+  flag: bool; text: string; more: string;
+  op: int; generation: int; outcome: int; status: int; value: int;
+}
+
+app_account_request :: (c: [] AppCore, kind: int, text: string, body: string) -> bool {
+  op := fx_request(c[0].out[..], OWN_ACCOUNT, kind, kind, 0, "", text, body, 0, 0);
+  if op == 0 { return false; }
+  c[0].account_op = op; c[0].account_purpose = kind;
+  return true;
+}
+// The account is gone (a log out, or the service said so): fence every account-bound owner and
+// forget what belonged to the account.
+app_logged_out :: (c: [] AppCore, words: string) {
+  c[0].auth = AUTH_OUT; c[0].login = LOGIN_IDLE; c[0].rejoin_n = 0;
+  tc_reset(c, "");
+  for owner: OWN_PAGE..<OWN_GUEST_LAST + 1 { _ := fx_cancel(c[0].out[..], owner); }
+  c[0].guest = AppGuest.{};
+  app_drafts_clear(c);
+  c[0].environment[0] = AppSlot.{}; c[0].repository[0] = AppSlot.{};
+  app_say(c, words); app_mark(c, SURF_ALL);
+}
+app_logged_in :: (c: [] AppCore) {
+  c[0].auth = AUTH_IN; c[0].login = LOGIN_IDLE; c[0].login_wanted = false; c[0].words_n = 0;
+  if c[0].rejoin_n > 0 && c[0].chat[0].id_n == 0 && !dca_blocked(c[0].chat[..]) { tc_reset(c, cast(string) c[0].rejoin[0..<c[0].rejoin_n]); }
+  c[0].rejoin_n = 0;
+  app_mark(c, SURF_ALL);
+}
+app_login_words :: (c: [] AppCore, said: string, ours: string) {
+  n := js_copy(c[0].words[..], ifx said.count > 0 then said else ours); c[0].words_n = ifx n < 0 then 0 else n;
+}
+
+app_action :: (c: [] AppCore, e: AppEvent) -> int {
+  d := c[0].chat[..]; n := d[0].native[..]; a := e.code;
+  if a == ACT_DRAFT {
+    if !app_draft_keep(c, app_conversation(c), e.text) { return APP_R_INVALID; }
+    app_mark(c, SURF_COMPOSER); return APP_OK;
+  }
+  if a == ACT_SEND {
+    if c[0].auth == AUTH_OUT && app_draft(c).count > 0 { c[0].login_wanted = true; app_mark(c, SURF_ACCOUNT); return APP_LOGIN; }
+    state := app_send_state(c);
+    if state == SEND_EMPTY { return APP_R_EMPTY; }
+    if state != SEND_READY { return APP_R_BLOCKED; }
+    d[0].submitted_n = js_copy(d[0].submitted[..], app_draft(c));
+    if d[0].id_n == 0 { d[0].revision = 0; d[0].project_n = 0; d[0].project_revision = -1; d[0].legacy_n = 0; d[0].legacy_revision = -1; }
+    d[0].pending = 1; d[0].body_n = 0; d[0].uncertain = false;
+    app_say(c, ""); app_mark(c, SURF_TRANSCRIPT | SURF_COMPOSER); return APP_OK;
+  }
+  if a == ACT_STOP {
+    if c[0].auth != AUTH_IN { return APP_R_LOGIN; }
+    if dca_working(d) {
+      if d[0].pending != 0 || d[0].want_stop { return APP_R_BLOCKED; }
+      if tc_same_turn(d) { nta_hold_for_stop(n); }
+      d[0].want_stop = true; app_mark(c, SURF_COMPOSER | SURF_TASK); return APP_OK;
+    }
+    if !nta_intent(n, "stop") { return APP_R_BLOCKED; }
+    app_mark(c, SURF_COMPOSER | SURF_TASK); return APP_OK;
+  }
+  if a == ACT_ALLOW || a == ACT_DENY {
+    if c[0].auth != AUTH_IN { return APP_R_LOGIN; }
+    if !nta_intent(n, ifx a == ACT_ALLOW then "approve" else "deny") { return APP_R_BLOCKED; }
+    app_mark(c, SURF_TASK); return APP_OK;
+  }
+  if a == ACT_RETRY {
+    if c[0].auth != AUTH_IN { return APP_R_LOGIN; }
+    if d[0].pending != 0 && d[0].body_n > 0 && d[0].uncertain { d[0].uncertain = false; app_say(c, ""); app_mark(c, SURF_COMPOSER); return APP_OK; }
+    if n[0].body_n > 0 && n[0].uncertain { n[0].uncertain = false; nta_note(n, ""); app_mark(c, SURF_TASK); return APP_OK; }
+    return APP_R_BLOCKED;
+  }
+  if a == ACT_RECONNECT {
+    if c[0].auth != AUTH_IN { return APP_R_LOGIN; }
+    if d[0].id_n == 0 { return APP_R_EMPTY; }
+    c[0].read_at = 0; c[0].poll_at = 0; c[0].task_at = 0; c[0].idle_at = 0;
+    if d[0].has_view { c[0].want_turn = true; } else { tc_history(c, d[0].history_after, false); }
+    if n[0].selected && !nta_pending(n) && n[0].need == 0 { n[0].need = ifx n[0].bound then 2 else 1; n[0].absent = false; }
+    return APP_OK;
+  }
+  if a == ACT_OPEN {
+    if c[0].auth != AUTH_IN { return APP_R_LOGIN; }
+    if !ex_reference(e.text, "cnv_") { return APP_R_INVALID; }
+    if e.text == app_conversation(c) { return APP_OK; }
+    if dca_blocked(d) { return APP_R_BLOCKED; }
+    tc_reset(c, e.text); app_say(c, ""); return APP_OK;
+  }
+  if a == ACT_NEW {
+    if dca_blocked(d) { return APP_R_BLOCKED; }
+    tc_reset(c, ""); app_say(c, ""); return APP_OK;
+  }
+  if a == ACT_ENVIRONMENT || a == ACT_REPOSITORY {
+    if !app_slot_set(ifx a == ACT_ENVIRONMENT then c[0].environment[..] else c[0].repository[..], e.text, e.more) { return APP_R_INVALID; }
+    app_mark(c, SURF_ENVIRONMENT | SURF_COMPOSER); return APP_OK;
+  }
+  if a == ACT_LOGIN_SHOW {
+    c[0].login_wanted = e.flag && c[0].auth != AUTH_IN; app_mark(c, SURF_ACCOUNT); return APP_OK;
+  }
+  if a == ACT_LOGIN_EMAIL {
+    if c[0].auth == AUTH_IN || c[0].account_op != 0 { return APP_R_BLOCKED; }
+    if e.text.count < 3 || e.text.count > APP_EMAIL { return APP_R_INVALID; }
+    if !app_account_request(c, FX_AUTH_EMAIL, e.text, "") { return APP_R_FULL; }
+    c[0].email_n = js_copy(c[0].email[..], e.text); c[0].login = LOGIN_SENDING; c[0].login_wanted = true; c[0].words_n = 0;
+    app_mark(c, SURF_ACCOUNT); return APP_OK;
+  }
+  if a == ACT_LOGIN_CODE {
+    if c[0].login != LOGIN_CODE || c[0].account_op != 0 { return APP_R_BLOCKED; }
+    if e.text.count < 1 || e.text.count > APP_CODE { return APP_R_INVALID; }
+    if !app_account_request(c, FX_AUTH_VERIFY, e.text, "") { return APP_R_FULL; }
+    c[0].login = LOGIN_VERIFYING; c[0].words_n = 0;
+    app_mark(c, SURF_ACCOUNT); return APP_OK;
+  }
+  if a == ACT_LOGIN_BACK {
+    if c[0].login != LOGIN_CODE || c[0].account_op != 0 { return APP_R_BLOCKED; }
+    if !app_account_request(c, FX_AUTH_CANCEL, "", "") { return APP_R_FULL; }
+    c[0].login = LOGIN_IDLE; c[0].words_n = 0; app_mark(c, SURF_ACCOUNT); return APP_OK;
+  }
+  if a == ACT_LOGOUT {
+    if c[0].auth != AUTH_IN { return APP_R_BLOCKED; }
+    // the native session is cleared by a request of a new account generation; everything the old
+    // account asked for is fenced first
+    _ := fx_cancel(c[0].out[..], OWN_ACCOUNT); c[0].account_op = 0;
+    if !app_account_request(c, FX_AUTH_LOGOUT, "", "") { return APP_R_RETIRED; }
+    app_logged_out(c, ""); return APP_OK;
+  }
+  if a == ACT_COPY || a == ACT_LINK {
+    kind := ifx a == ACT_COPY then FX_CLIPBOARD else FX_LINK;
+    if e.text.count < 1 || (a == ACT_COPY && !up_copy(e.text.count)) || (a == ACT_LINK && !up_link(e.text)) { return APP_R_INVALID; }
+    if fx_request(c[0].out[..], OWN_PAGE, kind, kind, 0, "", "", e.text, 0, 0) == 0 { return APP_R_FULL; }
+    return APP_OK;
+  }
+  return APP_R_INVALID;
+}
+
+// The result of an account request.
+app_account_done :: (c: [] AppCore, kind: int, e: AppEvent) {
+  c[0].account_op = 0; c[0].account_purpose = 0; app_mark(c, SURF_ACCOUNT);
+  done := e.outcome == FXO_DONE;
+  if kind == FX_AUTH_STATE {
+    // an answer we cannot read as yes or no leaves the state unknown; the launch asks again on the next foreground
+    if !done { return; }
+    if e.flag { if c[0].auth != AUTH_IN { app_logged_in(c); } } else if c[0].auth == AUTH_IN { app_logged_out(c, "Log in again to continue."); } else { c[0].auth = AUTH_OUT; app_mark(c, SURF_ALL); }
+    return;
+  }
+  if kind == FX_AUTH_EMAIL {
+    if done { c[0].login = LOGIN_CODE; c[0].words_n = 0; return; }
+    c[0].login = LOGIN_IDLE; app_login_words(c, ifx done then "" else e.text, "We could not send the code. Check the address and try again.");
+    return;
+  }
+  if kind == FX_AUTH_VERIFY {
+    if done && e.flag { app_logged_in(c); return; }
+    // a wrong code keeps the step; an unknown outcome is settled by asking the host for the truth
+    c[0].login = LOGIN_CODE; app_login_words(c, ifx done then "" else e.text, "That code did not work. Try again.");
+    if e.outcome == FXO_UNKNOWN { _ := app_account_request(c, FX_AUTH_STATE, "", ""); }
+    return;
+  }
+}
+
+app_done :: (c: [] AppCore, e: AppEvent) -> int {
+  o := c[0].out[..];
+  at := fx_find(o, e.op);
+  if at < 0 { return APP_R_STALE; }
+  r := o[0].slots[at]; owner := r.owner; purpose := r.purpose; kind := r.kind;
+  answer := fx_complete(o, e.op, e.generation, e.outcome);
+  if answer == FXC_NONE { return APP_R_STALE; }
+  if answer == FXC_DROPPED { return APP_R_LATE; }
+  if owner == OWN_ACCOUNT {
+    if e.op == c[0].account_op { app_account_done(c, kind, e); }
+    return APP_OK;
+  }
+  if owner == OWN_PAGE {
+    if e.outcome != FXO_DONE { app_say(c, ifx kind == FX_CLIPBOARD then "We could not copy that." else "We could not open that link."); }
+    return APP_OK;
+  }
+  // an account request the service no longer accepts: the session is over
+  if kind == FX_HTTP && e.outcome == FXO_DONE && e.status == 401 { app_logged_out(c, "Log in again to continue."); return APP_OK; }
+  if owner == OWN_CHAT {
+    _ := tc_reply(c, e.op, purpose, e.outcome, e.status, e.text, e.text, e.more, e.value);
+    return APP_OK;
+  }
+  c[0].guest = AppGuest.{waiting = true, owner = owner, purpose = purpose, op = e.op, outcome = e.outcome, status = e.status};
+  return APP_GUEST;
+}
+
+// The serialized entry point. Returns APP_OK, APP_GUEST or APP_LOGIN when the event is committed, or a
+// negative APP_R_ refusal that changed nothing.
+app_dispatch :: (c: [] AppCore, e: AppEvent) -> int {
+  if c.count < 1 || !c[0].ready { return APP_R_INVALID; }
+  if c[0].in_dispatch { c[0].refusals += 1; return APP_R_BUSY; }
+  c[0].in_dispatch = true;
+  result := APP_R_INVALID;
+  if e.mono_ms >= c[0].mono_ms && e.wall_ms >= 0 && !(c[0].guest.waiting) {
+    // time is a fact of every admitted event; a refusal below restores it
+    mono := c[0].mono_ms; wall := c[0].wall_ms;
+    c[0].mono_ms = e.mono_ms; c[0].wall_ms = e.wall_ms;
+    if e.kind == EV_LAUNCH {
+      if e.text.count > 0 && !ex_reference(e.text, "cnv_") { result = APP_R_INVALID; }
+      else if c[0].account_op != 0 { result = APP_R_BLOCKED; }
+      else if !app_account_request(c, FX_AUTH_STATE, "", "") { result = APP_R_FULL; }
+      else { c[0].rejoin_n = js_copy(c[0].rejoin[..], e.text); result = APP_OK; }
+    }
+    else if e.kind == EV_CLOCK { result = APP_OK; }
+    else if e.kind == EV_LIFECYCLE {
+      if e.code == LIFE_FOREGROUND {
+        c[0].foreground = true; app_mark(c, SURF_ALL); result = APP_OK;
+        // the account may have changed while we were away, and reads resume at once
+        if c[0].account_op == 0 { _ := app_account_request(c, FX_AUTH_STATE, "", ""); }
+        c[0].read_at = 0; c[0].poll_at = 0; c[0].task_at = 0;
+      }
+      else if e.code == LIFE_BACKGROUND { c[0].foreground = false; result = APP_OK; }
+    }
+    else if e.kind == EV_ACTION { result = app_action(c, e); }
+    else if e.kind == EV_TAKEN {
+      o := c[0].out[..];
+      if e.flag { result = ifx fx_take(o, e.op) then APP_OK else APP_R_STALE; }
+      else {
+        // a refusal by the host is a result: the request did not run
+        at := fx_find(o, e.op);
+        if at < 0 || o[0].slots[at].state != FX_QUEUED { result = APP_R_STALE; }
+        else { generation := o[0].slots[at].generation; _ := fx_take(o, e.op); refused := e; refused.generation = generation; refused.outcome = FXO_REFUSED; refused.status = 0; refused.text = ""; refused.more = ""; refused.flag = false; result = app_done(c, refused); }
+      }
+    }
+    else if e.kind == EV_DONE { result = app_done(c, e); }
+    if result > 0 { tc_step(c); } else { c[0].mono_ms = mono; c[0].wall_ms = wall; }
+  }
+  if result < 0 { c[0].refusals += 1; }
+  c[0].in_dispatch = false;
+  return result;
+}
+
+// ---------------------------------------------------------------- guests
+
+// A shared module outside the core asks for an account HTTP request. Returns its operation ID, or
+// 0 with nothing changed (not logged in, not a guest owner, refused by policy, or no room). Its
+// result arrives as the dispatch answer APP_GUEST.
+app_guest_http :: (c: [] AppCore, owner: int, purpose: int, method: int, path: string, body: string) -> int {
+  if c[0].auth != AUTH_IN || owner < OWN_ENVIRONMENT || owner > OWN_GUEST_LAST { return 0; }
+  return fx_request(c[0].out[..], owner, FX_HTTP, purpose, method, path, "", body, UP_RESPONSE_MAX, TC_HTTP_TIMEOUT_MS);
+}
+// Fence a guest's requests (its screen closed): late results are dropped.
+app_guest_cancel :: (c: [] AppCore, owner: int) -> bool {
+  if owner < OWN_ENVIRONMENT || owner > OWN_GUEST_LAST { return false; }
+  return fx_cancel(c[0].out[..], owner);
+}
+// The root routed the waiting guest result (its body is the EV_DONE event's text). Until this is
+// called, the next event is refused as APP_R_INVALID, so a result is never overwritten.
+app_guest_done :: (c: [] AppCore) { c[0].guest = AppGuest.{}; }
+
+// ---------------------------------------------------------------- busy and the next wake
+
+// Why the app is not idle: BUSY_ bits, 0 when it can sleep until the next input.
+app_busy :: (c: [] AppCore) -> int {
+  o := c[0].out[..]; busy := 0;
+  if fx_queued(o) > 0 || fx_outstanding(o) > 0 { busy = busy | BUSY_EFFECT; }
+  if tc_wake(c) >= 0 { busy = busy | BUSY_SCHEDULED; }
+  if c[0].dirty != 0 { busy = busy | BUSY_DIRTY; }
+  return busy;
+}
+// The monotonic time (ms) of the next scheduled work, when the host sends EV_CLOCK; -1 for none.
+app_next_wake :: (c: [] AppCore) -> int { return tc_wake(c); }
+// The surfaces that changed since they were last taken, and clear those in mask.
+app_dirty_take :: (c: [] AppCore, mask: int) -> int {
+  was := c[0].dirty & mask;
+  c[0].dirty = c[0].dirty - was;
+  return was;
+}

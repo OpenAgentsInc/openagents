@@ -1,0 +1,11 @@
+// The shared app core (GitHub #13645), loaded whole: the state record
+// (state.coax), the effect outbox (effects.coax), the #13620 task client
+// adapter (task-client.coax), the one entry point (dispatch.coax) and the host
+// ABI with the service table (host.coax). A root loads this file once.
+//   coax/bin/coax test apps/shared/app/core/core.coax --library --traversal 1000000000
+#load "state.coax";
+#load "task-client.coax";
+#load "dispatch.coax";
+#load "host.coax";
+
+#load "core-checks.coax" #test;

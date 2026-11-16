@@ -1,0 +1,111 @@
+// Checks of the app core through its host ABI (host.coax): launch, login,
+// a send through command IDs to the submit, refusal atomicity, log out
+// fencing and the guest route.
+ckt_field :: (c: [] AppCore, op: int, field: int) -> int {
+  f: [APP_HOST_FIELDS] int; if !app_host_request(c, op, f[..]) { return -1; } return f[field];
+}
+ckt_kind :: (c: [] AppCore, op: int) -> int { return ckt_field(c, op, APP_HOST_KIND); }
+ckt_gen :: (c: [] AppCore, op: int) -> int { return ckt_field(c, op, APP_HOST_GENERATION); }
+// Take the next request and answer it done; returns its kind.
+ckt_answer :: (c: [] AppCore, t: int, flag: bool, status: int, text: string, more: string, value: int) -> int {
+  op := app_host_next(c); if op < 1 { return -1; }
+  k := ckt_kind(c, op); g := ckt_gen(c, op);
+  if app_host_taken(c, t, t, op, true) != APP_OK { return -2; }
+  if app_host_done(c, t, t, op, g, FXO_DONE, status, flag, text, more, value) != APP_OK { return -3; }
+  return k;
+}
+ckt_login :: (c: [] AppCore) -> bool {
+  return app_host_init(c) && app_host_launch(c, 1, 1000, "") == APP_OK && ckt_answer(c, 2, true, 0, "", "", 0) == FX_AUTH_STATE && c[0].auth == AUTH_IN && app_host_next(c) == 0;
+}
+
+#test "launch asks for the login state and a logged-out send asks to log in" {
+  a: [1] AppCore; c := a[..];
+  #assert app_host_init(c) && app_host_launch(c, 1, 1000, "") == APP_OK && c[0].auth == AUTH_UNKNOWN;
+  #assert (app_host_busy(c) & BUSY_EFFECT) != 0;
+  #assert ckt_answer(c, 2, false, 0, "", "", 0) == FX_AUTH_STATE && c[0].auth == AUTH_OUT;
+  #assert app_host_action(c, 3, 1000, ACT_DRAFT, false, "hello", "") == APP_OK && app_send_state(c) == SEND_LOGIN;
+  #assert app_host_action(c, 4, 1000, ACT_SEND, false, "", "") == APP_LOGIN && c[0].login_wanted && app_host_next(c) == 0;
+  // time never goes back
+  #assert app_host_clock(c, 3, 1000) == APP_R_INVALID && c[0].mono_ms == 4;
+}
+#test "email login keeps the attempt native and verifies the code" {
+  buf: [4096] u8;
+  a: [1] AppCore; c := a[..];
+  #assert app_host_init(c) && app_host_launch(c, 1, 1, "") == APP_OK && ckt_answer(c, 2, false, 0, "", "", 0) == FX_AUTH_STATE;
+  #assert app_host_action(c, 3, 1, ACT_LOGIN_EMAIL, false, "a@b.test", "") == APP_OK && c[0].login == LOGIN_SENDING;
+  op := app_host_next(c); #assert ckt_kind(c, op) == FX_AUTH_EMAIL;
+  n := app_host_text(c, op, buf[..]); #assert cast(string) buf[0..<n] == "a@b.test" && app_host_body(c, op, buf[..]) == 0;
+  // a second email while one is out is blocked and changes nothing
+  #assert app_host_action(c, 3, 1, ACT_LOGIN_EMAIL, false, "x@y.test", "") == APP_R_BLOCKED && app_email(c) == "a@b.test";
+  #assert ckt_answer(c, 4, false, 0, "", "", 0) == FX_AUTH_EMAIL && c[0].login == LOGIN_CODE;
+  #assert app_host_action(c, 5, 1, ACT_LOGIN_CODE, false, "123456", "") == APP_OK && c[0].login == LOGIN_VERIFYING;
+  op = app_host_next(c); #assert ckt_kind(c, op) == FX_AUTH_VERIFY && app_host_body(c, op, buf[..]) == 0;
+  #assert ckt_answer(c, 6, true, 0, "", "", 0) == FX_AUTH_VERIFY && c[0].auth == AUTH_IN && c[0].login == LOGIN_IDLE;
+}
+#test "a wrong code keeps the code step and back forgets the attempt" {
+  a: [1] AppCore; c := a[..];
+  #assert app_host_init(c) && app_host_launch(c, 1, 1, "") == APP_OK && ckt_answer(c, 2, false, 0, "", "", 0) == FX_AUTH_STATE;
+  #assert app_host_action(c, 3, 1, ACT_LOGIN_EMAIL, false, "a@b.test", "") == APP_OK && ckt_answer(c, 4, false, 0, "", "", 0) == FX_AUTH_EMAIL;
+  #assert app_host_action(c, 5, 1, ACT_LOGIN_CODE, false, "000000", "") == APP_OK && ckt_answer(c, 6, false, 0, "", "", 0) == FX_AUTH_VERIFY;
+  #assert c[0].login == LOGIN_CODE && app_words(c) == "That code did not work. Try again." && c[0].auth == AUTH_OUT;
+  #assert app_host_action(c, 7, 1, ACT_LOGIN_BACK, false, "", "") == APP_OK && c[0].login == LOGIN_IDLE;
+  #assert ckt_answer(c, 8, false, 0, "", "", 0) == FX_AUTH_CANCEL;
+}
+#test "a send asks for command IDs, then posts the submit once" {
+  buf: [4096] u8;
+  a: [1] AppCore; c := a[..]; #assert ckt_login(c);
+  #assert app_host_action(c, 10, 1, ACT_DRAFT, false, "fix the build", "") == APP_OK && app_draft(c) == "fix the build" && app_send_state(c) == SEND_READY;
+  #assert app_host_action(c, 11, 1, ACT_SEND, false, "", "") == APP_OK;
+  #assert ckt_answer(c, 12, false, 0, "0123456789abcdef0123456789abcdef", "fedcba9876543210fedcba9876543210", 1700000000000) == FX_IDS;
+  op := app_host_next(c); #assert ckt_kind(c, op) == FX_HTTP && ckt_field(c, op, APP_HOST_METHOD) == UP_POST && ckt_field(c, op, APP_HOST_OWNER) == OWN_CHAT;
+  n := app_host_path(c, op, buf[..]); #assert n > 10 && up_path(cast(string) buf[0..<n]);
+  #assert app_host_body(c, op, buf[..]) > 0 && app_send_state(c) == SEND_WAIT;
+  // one write in flight: no second request is made
+  #assert app_host_taken(c, 13, 1, op, true) == APP_OK && app_host_next(c) == 0;
+  // an unknown outcome is kept for the person and never sent again by itself
+  #assert app_host_done(c, 14, 1, op, fx_generation(c[0].out[..], OWN_CHAT), FXO_UNKNOWN, 0, false, "", "", 0) == APP_OK;
+  #assert c[0].chat[0].uncertain && app_host_next(c) == 0 && app_host_wake(c) == -1;
+  #assert app_host_clock(c, 100000, 1) == APP_OK && app_host_next(c) == 0;
+  // ACT_RETRY sends the same bytes again
+  #assert app_host_action(c, 100001, 1, ACT_RETRY, false, "", "") == APP_OK;
+  again := app_host_next(c); #assert again > op && ckt_kind(c, again) == FX_HTTP;
+}
+#test "a duplicate or unknown completion changes nothing" {
+  a: [1] AppCore; c := a[..]; #assert ckt_login(c);
+  refused := c[0].refusals;
+  #assert app_host_done(c, 3, 1, 999, 1, FXO_DONE, 200, false, "", "", 0) == APP_R_STALE && c[0].refusals == refused + 1;
+  #assert app_host_taken(c, 3, 1, 999, true) == APP_R_STALE;
+}
+#test "log out fences the chat and drops its late result" {
+  a: [1] AppCore; c := a[..]; #assert ckt_login(c);
+  #assert app_host_action(c, 10, 1, ACT_DRAFT, false, "hi", "") == APP_OK && app_host_action(c, 11, 1, ACT_SEND, false, "", "") == APP_OK;
+  op := app_host_next(c); g := ckt_gen(c, op); #assert app_host_taken(c, 12, 1, op, true) == APP_OK;
+  #assert app_host_action(c, 13, 1, ACT_LOGOUT, false, "", "") == APP_OK && c[0].auth == AUTH_OUT && app_draft(c) == "";
+  #assert app_host_cancel_next(c) == op && app_host_cancel_next(c) == 0;
+  out := app_host_next(c); #assert ckt_kind(c, out) == FX_AUTH_LOGOUT;
+  #assert app_host_done(c, 14, 1, op, g, FXO_DONE, 0, false, "0123456789abcdef0123456789abcdef", "0123456789abcdef0123456789abcdef", 1) == APP_R_LATE;
+}
+#test "a 401 logs the account out" {
+  a: [1] AppCore; c := a[..]; #assert ckt_login(c);
+  #assert app_guest_http(c, OWN_ENVIRONMENT, 1, UP_GET, "/api/chat/environments", "") > 0;
+  op := app_host_next(c); g := ckt_gen(c, op); #assert app_host_taken(c, 3, 1, op, true) == APP_OK;
+  #assert app_host_done(c, 4, 1, op, g, FXO_DONE, 401, false, "", "", 0) == APP_OK && c[0].auth == AUTH_OUT;
+}
+#test "a guest result waits for its root and blocks the next event until routed" {
+  a: [1] AppCore; c := a[..]; #assert ckt_login(c);
+  #assert app_guest_http(c, OWN_PAGE, 1, UP_GET, "/api/chat/x", "") == 0;
+  op := app_guest_http(c, OWN_ENVIRONMENT, 7, UP_GET, "/api/chat/environments", ""); #assert op > 0;
+  g := ckt_gen(c, op); #assert app_host_taken(c, 3, 1, op, true) == APP_OK;
+  #assert app_host_done(c, 4, 1, op, g, FXO_DONE, 200, false, "{}", "", 0) == APP_GUEST && c[0].guest.waiting && c[0].guest.purpose == 7;
+  #assert app_host_clock(c, 5, 1) == APP_R_INVALID;
+  app_guest_done(c); #assert app_host_clock(c, 5, 1) == APP_OK;
+}
+#test "a launch with a saved conversation rejoins it after login" {
+  buf: [4096] u8;
+  a: [1] AppCore; c := a[..];
+  #assert app_host_init(c) && app_host_launch(c, 1, 1, "not-a-conversation") == APP_R_INVALID && app_host_next(c) == 0;
+  #assert app_host_launch(c, 1, 1, "cnv_0123456789abcdef0123456789abcdef") == APP_OK;
+  #assert ckt_answer(c, 2, true, 0, "", "", 0) == FX_AUTH_STATE && app_conversation(c) == "cnv_0123456789abcdef0123456789abcdef";
+  n := app_host_keep(c, buf[..]); #assert cast(string) buf[0..<n] == "cnv_0123456789abcdef0123456789abcdef";
+  op := app_host_next(c); #assert ckt_kind(c, op) == FX_HTTP && ckt_field(c, op, APP_HOST_METHOD) == UP_GET;
+}

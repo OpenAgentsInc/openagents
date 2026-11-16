@@ -1,0 +1,205 @@
+// The effect outbox of the shared app core (GitHub #13645; coax/native.md
+// "Application state and dispatch", "Services and native modules").
+//
+// Coax never performs a platform effect. An action that needs one puts a typed
+// request here; the host takes it and later reports what happened. The rules:
+//
+// - A request carries an operation ID (never reused), its owner and the
+//   owner's generation at the time it was made.
+// - The host taking a request means it accepted or refused it, not that the
+//   effect succeeded. The result arrives later as a completion event.
+// - A completion is delivered once. A second completion, or one for an
+//   operation the outbox does not hold, changes nothing.
+// - Cancelling an owner (a closed conversation, a log out) advances its
+//   generation. Requests not yet taken are removed. Requests the host already
+//   holds stay reserved until the host completes them, and that late result is
+//   dropped, never delivered.
+// - The outbox never retries. An unknown outcome stays unknown until the owner
+//   reads the truth or the person asks again.
+// - Operation IDs and generations do not wrap. At the last generation the
+//   owner retires; at the last operation ID the outbox retires. A retired
+//   owner admits no request.
+// - Storage is caller-owned and declared: FX_MAX requests, FX_PAYLOAD bytes of
+//   bodies that wait to be taken. A full outbox refuses; it never drops.
+// - A batch is atomic: fx_mark before the first request, fx_rollback if any
+//   request of the batch is refused.
+//   coax/bin/coax test apps/shared/app/core/effects.coax --library
+#load "../../../../coax/lib/json/shape.coax";
+#load "url-policy.coax";
+
+// What the host is asked to do (the service table; host.coax documents each shape).
+FX_HTTP :: 1;          // method, path, body, response limit, timeout
+FX_AUTH_STATE :: 2;    // is an account logged in
+FX_AUTH_EMAIL :: 3;    // text: the email address to send a code to
+FX_AUTH_VERIFY :: 4;   // text: the code from the email (the host keeps the attempt it verifies)
+FX_AUTH_LOGOUT :: 5;   // clear the native account session
+FX_IDS :: 6;           // two fresh random 128-bit IDs and the wall clock
+FX_CLIPBOARD :: 7;     // body: the text to copy
+FX_LINK :: 8;          // body: the URL to open
+FX_AUTH_CANCEL :: 9;   // forget the email attempt the host keeps (back to the email step)
+FX_KINDS :: 9;
+
+// A held request.
+FX_FREE :: 0; FX_QUEUED :: 1; FX_PENDING :: 2; FX_CANCELLED :: 3;
+// How an operation ended (fx_state also returns these for a finished one).
+FX_DONE :: 4; FX_FAILED :: 5; FX_UNKNOWN :: 6; FX_LATE :: 7;
+
+// What the host reports in a completion.
+FXO_DONE :: 1;         // the effect ran and its result is attached
+FXO_FAILED :: 2;       // it did not run: nothing left the device
+FXO_UNKNOWN :: 3;      // it may have run: sent, and no answer came (timeout, lost connection)
+FXO_CANCELLED :: 4;    // the host stopped it on request
+FXO_UNSUPPORTED :: 5;  // this host has no such service
+FXO_REFUSED :: 6;      // set by the core when the host refused to take the request
+
+// What fx_complete answers.
+FXC_NONE :: 0;         // no such pending operation (a duplicate, or never issued): nothing changed
+FXC_DELIVER :: 1;      // live: hand the result to the owner
+FXC_DROPPED :: 2;      // fenced: the owner was cancelled or retired; the reservation is released
+
+FX_MAX :: 8; FX_OWNERS :: 8; FX_RECENT :: 16;
+FX_TEXT :: 512; FX_PAYLOAD :: 270336;
+FX_OP_MAX :: 2147483647; FX_GENERATION_MAX :: 2147483647;
+
+FxRequest :: struct {
+  state: int; op: int; kind: int; owner: int; generation: int; purpose: int;
+  method: int; path: [UP_PATH_MAX] u8; path_n: int;
+  text: [FX_TEXT] u8; text_n: int;
+  body_at: int; body_n: int;          // in the outbox's payload, until taken
+  limit: int; timeout_ms: int;
+  told: bool;                         // a cancelled request the host has been told to stop
+}
+FxOwner :: struct { generation: int = 1; retired: bool; }
+FxEnded :: struct { op: int; state: int; }
+FxOutbox :: struct {
+  slots: [FX_MAX] FxRequest;
+  owners: [FX_OWNERS] FxOwner;
+  recent: [FX_RECENT] FxEnded; recent_at: int;
+  payload: [FX_PAYLOAD] u8; payload_n: int;
+  next_op: int = 1; retired: bool;
+  dropped: int;                       // late results fenced so far
+}
+// A point to roll a refused batch back to.
+FxMark :: struct { next_op: int; payload_n: int; }
+
+fx_init :: (o: [] FxOutbox) { o[0] = FxOutbox.{}; }
+
+fx_find :: (o: [] FxOutbox, op: int) -> int {
+  if op < 1 { return -1; }
+  for i: 0..<FX_MAX { if o[0].slots[i].state != FX_FREE && o[0].slots[i].op == op { return i; } }
+  return -1;
+}
+fx_held :: (o: [] FxOutbox) -> int { n := 0; for i: 0..<FX_MAX { if o[0].slots[i].state != FX_FREE { n += 1; } } return n; }
+fx_queued :: (o: [] FxOutbox) -> int { n := 0; for i: 0..<FX_MAX { if o[0].slots[i].state == FX_QUEUED { n += 1; } } return n; }
+// Requests the host holds and has not completed, cancelled ones included.
+fx_outstanding :: (o: [] FxOutbox) -> int { n := 0; for i: 0..<FX_MAX { s := o[0].slots[i].state; if s == FX_PENDING || s == FX_CANCELLED { n += 1; } } return n; }
+fx_owner_live :: (o: [] FxOutbox, owner: int) -> bool { return owner >= 0 && owner < FX_OWNERS && !o[0].owners[owner].retired && !o[0].retired; }
+fx_generation :: (o: [] FxOutbox, owner: int) -> int { return ifx owner >= 0 && owner < FX_OWNERS then o[0].owners[owner].generation else 0; }
+
+fx_mark :: (o: [] FxOutbox) -> FxMark { return FxMark.{next_op = o[0].next_op, payload_n = o[0].payload_n}; }
+// Remove every request made since the mark. Only queued requests can be that new.
+fx_rollback :: (o: [] FxOutbox, m: FxMark) {
+  for i: 0..<FX_MAX { if o[0].slots[i].state == FX_QUEUED && o[0].slots[i].op >= m.next_op { o[0].slots[i] = FxRequest.{}; } }
+  o[0].next_op = m.next_op; o[0].payload_n = m.payload_n;
+}
+
+fx_text_kind :: (kind: int) -> bool { return kind == FX_AUTH_EMAIL || kind == FX_AUTH_VERIFY; }
+// Admit one request. Returns its operation ID, or 0 and changes nothing: an unknown kind or owner,
+// a retired owner or outbox, a request the installed policy refuses, or no room.
+fx_request :: (o: [] FxOutbox, owner: int, kind: int, purpose: int, method: int, path: string, text: string, body: string, limit: int, timeout_ms: int) -> int {
+  if kind < 1 || kind > FX_KINDS || !fx_owner_live(o, owner) || o[0].next_op >= FX_OP_MAX { return 0; }
+  if text.count > FX_TEXT || (text.count > 0) != fx_text_kind(kind) || timeout_ms < 0 { return 0; }
+  if kind == FX_HTTP {
+    if !up_http(method, path, body.count) || limit < 1 || limit > UP_RESPONSE_MAX || timeout_ms < 1 { return 0; }
+  } else {
+    if method != 0 || path.count != 0 || limit != 0 { return 0; }
+    if kind == FX_CLIPBOARD { if !up_copy(body.count) { return 0; } }
+    else if kind == FX_LINK { if !up_link(body) { return 0; } }
+    else if body.count != 0 { return 0; }
+  }
+  if o[0].payload_n + body.count > FX_PAYLOAD { return 0; }
+  at := -1;
+  for i: 0..<FX_MAX { if o[0].slots[i].state == FX_FREE { at = i; break; } }
+  if at < 0 { return 0; }
+  op := o[0].next_op; o[0].next_op += 1;
+  o[0].slots[at] = FxRequest.{state = FX_QUEUED, op = op, kind = kind, owner = owner, generation = o[0].owners[owner].generation, purpose = purpose, method = method, limit = limit, timeout_ms = timeout_ms};
+  r := o[0].slots[at..<at + 1];
+  r[0].path_n = js_copy(r[0].path[..], path); r[0].text_n = js_copy(r[0].text[..], text);
+  r[0].body_at = o[0].payload_n; r[0].body_n = body.count;
+  for c, i: body { o[0].payload[o[0].payload_n + i] = c; }
+  o[0].payload_n += body.count;
+  return op;
+}
+fx_body :: (o: [] FxOutbox, at: int) -> string { r := o[0].slots[at]; return cast(string) o[0].payload[r.body_at..<r.body_at + r.body_n]; }
+fx_remember :: (o: [] FxOutbox, op: int, state: int) {
+  o[0].recent[o[0].recent_at] = FxEnded.{op = op, state = state};
+  o[0].recent_at = (o[0].recent_at + 1) % FX_RECENT;
+}
+// The payload only serves requests that wait to be taken.
+fx_reclaim :: (o: [] FxOutbox) { if fx_queued(o) == 0 { o[0].payload_n = 0; } }
+
+// The oldest request that waits for the host, or 0.
+fx_next :: (o: [] FxOutbox) -> int {
+  best := 0;
+  for i: 0..<FX_MAX { r := o[0].slots[i]; if r.state == FX_QUEUED && (best == 0 || r.op < best) { best = r.op; } }
+  return best;
+}
+// The host took a queued request: it holds a copy now and owes one completion. False when op is not queued.
+fx_take :: (o: [] FxOutbox, op: int) -> bool {
+  at := fx_find(o, op);
+  if at < 0 || o[0].slots[at].state != FX_QUEUED { return false; }
+  o[0].slots[at].state = FX_PENDING; o[0].slots[at].body_n = 0;
+  fx_reclaim(o);
+  return true;
+}
+// The host's result for a pending operation. The caller reads the slot (owner, purpose) before
+// calling this when the answer is FXC_DELIVER, through fx_find.
+fx_complete :: (o: [] FxOutbox, op: int, generation: int, outcome: int) -> int {
+  at := fx_find(o, op);
+  if at < 0 || outcome < FXO_DONE || outcome > FXO_REFUSED { return FXC_NONE; }
+  r := o[0].slots[at];
+  if r.generation != generation || r.state == FX_QUEUED { return FXC_NONE; }
+  live := r.state == FX_PENDING && fx_owner_live(o, r.owner) && o[0].owners[r.owner].generation == r.generation;
+  o[0].slots[at] = FxRequest.{};
+  if !live { o[0].dropped += 1; fx_remember(o, op, FX_LATE); return FXC_DROPPED; }
+  fx_remember(o, op, ifx outcome == FXO_DONE then FX_DONE else ifx outcome == FXO_UNKNOWN then FX_UNKNOWN else FX_FAILED);
+  return FXC_DELIVER;
+}
+// The host refused a queued request. It never held it, so the slot is released at once.
+fx_refuse :: (o: [] FxOutbox, op: int) -> bool {
+  at := fx_find(o, op);
+  if at < 0 || o[0].slots[at].state != FX_QUEUED { return false; }
+  o[0].slots[at] = FxRequest.{}; fx_remember(o, op, FX_FAILED); fx_reclaim(o);
+  return true;
+}
+// Fence an owner: its queued requests go, its pending ones become cancelled reservations and a new
+// generation begins. At the last generation the owner retires instead. False for an unknown owner.
+fx_cancel :: (o: [] FxOutbox, owner: int) -> bool {
+  if owner < 0 || owner >= FX_OWNERS { return false; }
+  for i: 0..<FX_MAX {
+    if o[0].slots[i].state == FX_FREE || o[0].slots[i].owner != owner { continue; }
+    if o[0].slots[i].state == FX_QUEUED { fx_remember(o, o[0].slots[i].op, FX_LATE); o[0].slots[i] = FxRequest.{}; }
+    else if o[0].slots[i].state == FX_PENDING { o[0].slots[i].state = FX_CANCELLED; }
+  }
+  fx_reclaim(o);
+  if o[0].owners[owner].generation >= FX_GENERATION_MAX { o[0].owners[owner].retired = true; }
+  else { o[0].owners[owner].generation += 1; }
+  return true;
+}
+// A cancelled operation the host should stop and has not been told about yet, or 0. Telling is
+// once; the host still completes it, and that completion releases the reservation.
+fx_cancel_next :: (o: [] FxOutbox) -> int {
+  for i: 0..<FX_MAX { if o[0].slots[i].state == FX_CANCELLED && !o[0].slots[i].told { o[0].slots[i].told = true; return o[0].slots[i].op; } }
+  return 0;
+}
+// An operation's state: queued, pending or cancelled while held; done, failed, unknown or late
+// for one of the last FX_RECENT that ended; FX_FREE when the outbox has no record of it.
+fx_state :: (o: [] FxOutbox, op: int) -> int {
+  at := fx_find(o, op);
+  if at >= 0 { return o[0].slots[at].state; }
+  if op < 1 { return FX_FREE; }
+  for i: 0..<FX_RECENT { if o[0].recent[i].op == op { return o[0].recent[i].state; } }
+  return FX_FREE;
+}
+
+#load "effects-checks.coax" #test;

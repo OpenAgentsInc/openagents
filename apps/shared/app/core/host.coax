@@ -1,0 +1,119 @@
+// The host side of the shared app core (GitHub #13645): the service table and
+// the C entry points a compiled app's host calls. The host performs platform
+// effects and nothing else; every decision is in the core.
+//
+// The loop, on the one thread that owns the core:
+//   1. Allocate one zeroed coax_t_AppCore (about 19 MiB: heap, never stack)
+//      and call app_host_init, then app_host_launch.
+//   2. After every call: while app_host_next answers an op, read it with
+//      app_host_request, app_host_path, app_host_text and app_host_body, then
+//      call app_host_taken(op, accepted). Then, while app_host_cancel_next
+//      answers an op, stop that operation (it still completes, as cancelled).
+//   3. When an effect ends, call app_host_done in a later turn, never inside
+//      another call into the core.
+//   4. Sleep until input, a completion, or app_host_wake (monotonic ms; -1 is
+//      none), then call app_host_clock.
+//   5. Redraw the surfaces app_host_dirty_take hands you.
+// Every call takes the host's clock facts: mono_ms (monotonic, never goes back)
+// and wall_ms (civil time in ms). The core reads no clock. A call answers
+// APP_OK, APP_GUEST or APP_LOGIN (dispatch.coax), or a negative APP_R_ refusal that
+// changed nothing.
+//
+// The service table. Each request names an op, its kind and the generation it
+// was made in; app_host_done gives the outcome (FXO_DONE, FXO_FAILED when
+// nothing left the device, FXO_UNKNOWN when it may have run, FXO_CANCELLED,
+// FXO_UNSUPPORTED) and these result fields:
+//
+// | Kind            | Request                                   | Result                                   |
+// | --------------- | ----------------------------------------- | ---------------------------------------- |
+// | FX_HTTP         | method (UP_GET/UP_POST), relative path on  | status: HTTP status; text: the body.     |
+// |                 | the app's origin, body, response limit,   | The host adds account credentials        |
+// |                 | timeout. No cookies, no redirects.        | natively; 401 logs the account out.      |
+// | FX_AUTH_STATE   | -                                         | flag: an account is logged in            |
+// | FX_AUTH_EMAIL   | text: the email address                   | text on failure: words to show, or ""    |
+// | FX_AUTH_VERIFY  | text: the code (the host keeps the        | flag: verified; text on failure: words   |
+// |                 | attempt; no handle enters Coax)           |                                          |
+// | FX_AUTH_CANCEL  | - (forget the email attempt)              | -                                        |
+// | FX_AUTH_LOGOUT  | - (clear the native session)              | -                                        |
+// | FX_IDS          | - (command and reader IDs)                | text, more: two fresh random 128-bit IDs |
+// |                 |                                           | as 32 lowercase hex; value: wall ms      |
+// | FX_CLIPBOARD    | body: the text to write                   | -                                        |
+// | FX_LINK         | body: an http(s) URL, opened with no      | -                                        |
+// |                 | account headers                           |                                          |
+//
+// Lifecycle facts arrive through app_host_lifecycle (LIFE_FOREGROUND,
+// LIFE_BACKGROUND). Wakes are not a service: the host reads app_host_wake.
+// The policy of what may be asked (url-policy.coax) is the core's; the host
+// holds no path list. Tokens, keys and the email attempt never enter Coax.
+//   coax/bin/coax test apps/shared/app/core/core.coax --library --traversal 1000000000
+
+// Request fields app_host_request writes, in this order.
+APP_HOST_KIND :: 0; APP_HOST_GENERATION :: 1; APP_HOST_METHOD :: 2; APP_HOST_LIMIT :: 3; APP_HOST_TIMEOUT :: 4; APP_HOST_OWNER :: 5;
+APP_HOST_FIELDS :: 6;
+
+app_host_event :: (kind: int, mono_ms: int, wall_ms: int) -> AppEvent { return AppEvent.{kind = kind, mono_ms = mono_ms, wall_ms = wall_ms}; }
+
+app_host_init :: (c: [] AppCore) -> bool #export_c #effects(all) { if c.count < 1 { return false; } app_init(c); return true; }
+// rejoin: the conversation ID the host kept from the last run (the value of app_host_keep), or "".
+app_host_launch :: (c: [] AppCore, mono_ms: int, wall_ms: int, rejoin: string) -> int #export_c #effects(all) {
+  e := app_host_event(EV_LAUNCH, mono_ms, wall_ms); e.text = rejoin; return app_dispatch(c, e);
+}
+app_host_clock :: (c: [] AppCore, mono_ms: int, wall_ms: int) -> int #export_c #effects(all) { return app_dispatch(c, app_host_event(EV_CLOCK, mono_ms, wall_ms)); }
+app_host_lifecycle :: (c: [] AppCore, mono_ms: int, wall_ms: int, code: int) -> int #export_c #effects(all) {
+  e := app_host_event(EV_LIFECYCLE, mono_ms, wall_ms); e.code = code; return app_dispatch(c, e);
+}
+// A person's action (dispatch.coax ACT_ values). Views normally build these; a host only forwards
+// platform-owned ones (the editor's text as ACT_DRAFT, a hardware Return as ACT_SEND).
+app_host_action :: (c: [] AppCore, mono_ms: int, wall_ms: int, code: int, flag: bool, text: string, more: string) -> int #export_c #effects(all) {
+  e := app_host_event(EV_ACTION, mono_ms, wall_ms); e.code = code; e.flag = flag; e.text = text; e.more = more; return app_dispatch(c, e);
+}
+
+// The oldest request waiting for the host, or 0.
+app_host_next :: (c: [] AppCore) -> int #export_c #effects(all) { if c.count < 1 { return 0; } return fx_next(c[0].out[..]); }
+// A queued request's fields (APP_HOST_ order) into out. False when op is not queued.
+app_host_request :: (c: [] AppCore, op: int, out: [] int) -> bool #export_c #effects(all) {
+  if c.count < 1 || out.count < APP_HOST_FIELDS { return false; }
+  at := fx_find(c[0].out[..], op);
+  if at < 0 || c[0].out[0].slots[at].state != FX_QUEUED { return false; }
+  r := c[0].out[0].slots[at];
+  out[APP_HOST_KIND] = r.kind; out[APP_HOST_GENERATION] = r.generation; out[APP_HOST_METHOD] = r.method;
+  out[APP_HOST_LIMIT] = r.limit; out[APP_HOST_TIMEOUT] = r.timeout_ms; out[APP_HOST_OWNER] = r.owner;
+  return true;
+}
+app_host_copy :: (s: string, out: [] u8) -> int { if s.count > out.count { return -1; } for ch, i: s { out[i] = ch; } return s.count; }
+// A queued request's path, text or body into out: the byte count, or -1 (not queued, or out too small).
+app_host_path :: (c: [] AppCore, op: int, out: [] u8) -> int #export_c #effects(all) {
+  at := ifx c.count < 1 then -1 else fx_find(c[0].out[..], op);
+  if at < 0 || c[0].out[0].slots[at].state != FX_QUEUED { return -1; }
+  o := c[0].out[..]; r := o[0].slots[at..<at + 1]; return app_host_copy(cast(string) r[0].path[0..<r[0].path_n], out);
+}
+app_host_text :: (c: [] AppCore, op: int, out: [] u8) -> int #export_c #effects(all) {
+  at := ifx c.count < 1 then -1 else fx_find(c[0].out[..], op);
+  if at < 0 || c[0].out[0].slots[at].state != FX_QUEUED { return -1; }
+  o := c[0].out[..]; r := o[0].slots[at..<at + 1]; return app_host_copy(cast(string) r[0].text[0..<r[0].text_n], out);
+}
+app_host_body :: (c: [] AppCore, op: int, out: [] u8) -> int #export_c #effects(all) {
+  at := ifx c.count < 1 then -1 else fx_find(c[0].out[..], op);
+  if at < 0 || c[0].out[0].slots[at].state != FX_QUEUED { return -1; }
+  return app_host_copy(fx_body(c[0].out[..], at), out);
+}
+// The host took (accepted: true) or refused the request. A refusal is a result: the request did not run.
+app_host_taken :: (c: [] AppCore, mono_ms: int, wall_ms: int, op: int, accepted: bool) -> int #export_c #effects(all) {
+  e := app_host_event(EV_TAKEN, mono_ms, wall_ms); e.op = op; e.flag = accepted; return app_dispatch(c, e);
+}
+// A cancelled operation the host should stop, told once, or 0. It still completes; that completion is dropped.
+app_host_cancel_next :: (c: [] AppCore) -> int #export_c #effects(all) { if c.count < 1 { return 0; } return fx_cancel_next(c[0].out[..]); }
+// An effect ended. generation is the one app_host_request gave; the result fields are in the table above.
+app_host_done :: (c: [] AppCore, mono_ms: int, wall_ms: int, op: int, generation: int, outcome: int, status: int, flag: bool, text: string, more: string, value: int) -> int #export_c #effects(all) {
+  e := app_host_event(EV_DONE, mono_ms, wall_ms);
+  e.op = op; e.generation = generation; e.outcome = outcome; e.status = status; e.flag = flag; e.text = text; e.more = more; e.value = value;
+  return app_dispatch(c, e);
+}
+
+app_host_wake :: (c: [] AppCore) -> int #export_c #effects(all) { if c.count < 1 { return -1; } return app_next_wake(c); }
+app_host_busy :: (c: [] AppCore) -> int #export_c #effects(all) { if c.count < 1 { return 0; } return app_busy(c); }
+app_host_dirty_take :: (c: [] AppCore, mask: int) -> int #export_c #effects(all) { if c.count < 1 { return 0; } return app_dirty_take(c, mask); }
+// The conversation to keep for the next launch's rejoin: its ID into out, the byte count (0 for none).
+app_host_keep :: (c: [] AppCore, out: [] u8) -> int #export_c #effects(all) {
+  if c.count < 1 { return 0; } n := app_host_copy(app_conversation(c), out); return ifx n < 0 then 0 else n;
+}

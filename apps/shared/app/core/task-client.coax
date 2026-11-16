@@ -1,0 +1,286 @@
+// The #13620 chat and task client, driven from the app core (GitHub #13645).
+// It adapts the shared client as it is (apps/shared/durable-chat.coax,
+// chat-task-app.coax, chat-task-protocol.coax, coax/lib/agent/environment/):
+// those modules own the records, codecs and control rules; this file owns only
+// when a request is made and what a result changes. Ported from the old iOS
+// app's durable.coax and native-task.coax (269227265a^), with their one-flight
+// rule kept and their frame clock replaced by scheduled times.
+//
+// One request is in flight for the conversation at a time. Actions record an
+// intent; tc_step turns the most urgent due intent into one request. So an
+// action never fails for lack of outbox room, and a refused request leaves
+// its intent in place.
+//
+// Writes are never repeated by the client. A write whose outcome is unknown
+// keeps its exact bytes: a submit waits for the person (ACT_RETRY sends the
+// same operation again, which the service answers idempotently); a Stop also
+// resolves by reading that the turn stopped.
+
+// The purpose of a chat request, carried in the outbox.
+TC_IDS_WRITE :: 130;   // fresh operation ID for a submit or Stop
+TC_WRITE :: 131;       // POST submit or stop
+TC_HISTORY :: 132;     // GET a page of the saved conversation
+TC_TURN :: 133;        // GET the current turn's snapshot
+TC_EVENTS :: 134;      // GET the turn's events after a cursor
+TC_BINDING :: 140;     // GET the turn's task
+TC_STATUS :: 141;      // GET the task's status
+TC_IDS_CAPTURE :: 142; // fresh reader IDs for a transcript capture
+TC_CAPTURE :: 143;     // GET a page of the task's transcript
+TC_IDS_CONTROL :: 144; // fresh command ID for a permission answer or task Stop
+TC_CONTROL :: 145;     // POST the control
+
+TC_HTTP_TIMEOUT_MS :: 60000;
+TC_POLL_MS :: 400;     // between reads of a running turn's events
+TC_IDLE_MS :: 2000;    // between rounds of task status reads
+TC_BACKOFF_MS :: 2000; // after a read that failed
+
+TcPlan :: struct { what: int; at: int; }
+
+tc_turn :: (d: [] DurableChat) -> string { return cast(string) d[0].view[0].turn[..]; }
+tc_same_turn :: (d: [] DurableChat) -> bool { n := d[0].native[..]; return d[0].has_view && n[0].selected && cast(string) n[0].turn[..] == tc_turn(d); }
+tc_hex32 :: (s: string) -> bool {
+  if s.count != 32 { return false; }
+  for ch: s { if !((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f')) { return false; } }
+  return true;
+}
+// The ID answer in the form the shared task reducers read (nta_command, nta_capture_begin).
+tc_ids_text :: (command: string, session: string, now_ms: int, out: [] u8) -> string {
+  o: [1] Jo; jo_start(o[..], out); jo_obj(o[..]);
+  jo_key(o[..], "command_id"); jo_str(o[..], command); jo_key(o[..], "session_id"); jo_str(o[..], session); jo_key(o[..], "now_ms"); jo_int(o[..], now_ms);
+  jo_end(o[..]);
+  return ifx o[0].bad then "" else jo_text(o[..]);
+}
+
+tc_http :: (c: [] AppCore, purpose: int, path: string, body: string) -> bool {
+  op := fx_request(c[0].out[..], OWN_CHAT, FX_HTTP, purpose, ifx body.count > 0 then UP_POST else UP_GET, path, "", body, UP_RESPONSE_MAX, TC_HTTP_TIMEOUT_MS);
+  if op == 0 { return false; }
+  c[0].flight = op; c[0].purpose = purpose;
+  return true;
+}
+tc_ids :: (c: [] AppCore, purpose: int) -> bool {
+  op := fx_request(c[0].out[..], OWN_CHAT, FX_IDS, purpose, 0, "", "", "", 0, 0);
+  if op == 0 { return false; }
+  c[0].flight = op; c[0].purpose = purpose;
+  return true;
+}
+
+// Begin a new, empty conversation state. Late results of the old one are fenced.
+tc_reset :: (c: [] AppCore, id: string) {
+  _ := fx_cancel(c[0].out[..], OWN_CHAT);
+  c[0].flight = 0; c[0].purpose = 0; c[0].last_task = false; c[0].want_history = false; c[0].want_turn = false;
+  c[0].read_at = 0; c[0].poll_at = 0; c[0].task_at = 0; c[0].idle_at = 0;
+  c[0].chat[0] = DurableChat.{}; d := c[0].chat[..]; d[0].enabled = true;
+  if id.count > 0 { d[0].id_n = js_copy(d[0].id[..], id); d[0].history_after = 0; d[0].latest = true; c[0].want_history = true; }
+  app_mark(c, SURF_TRANSCRIPT | SURF_COMPOSER | SURF_TASK);
+}
+tc_history :: (c: [] AppCore, after: int, latest: bool) { d := c[0].chat[..]; if d[0].id_n == 0 { return; } d[0].history_after = after; d[0].latest = latest; c[0].want_history = true; }
+
+// The task need a round of reads starts with, when none is recorded: 1 the turn's task, 2 its status.
+tc_derive :: (c: [] AppCore) -> int {
+  d := c[0].chat[..]; n := d[0].native[..];
+  if !n[0].selected || n[0].need != 0 { return n[0].need; }
+  if n[0].body_n > 0 { return ifx n[0].uncertain && n[0].bound then 2 else 0; }
+  if n[0].preparing { return 0; }
+  if !n[0].bound { return ifx dca_working(d) && tc_same_turn(d) && !n[0].absent then 1 else 0; }
+  return ifx !n[0].has_status || !xt_terminal(n[0].status[0].state) then 2 else 0;
+}
+// The next request and when it is due, or what == 0 when the conversation is settled.
+tc_plan :: (c: [] AppCore) -> TcPlan {
+  d := c[0].chat[..]; n := d[0].native[..]; now := c[0].mono_ms;
+  // writes come first
+  if d[0].pending != 0 {
+    if d[0].body_n == 0 { return TcPlan.{what = TC_IDS_WRITE, at = now}; }
+    if !d[0].uncertain { return TcPlan.{what = TC_WRITE, at = now}; }
+    if d[0].pending == 1 { return TcPlan.{}; }
+  } else if d[0].want_stop && dca_working(d) { return TcPlan.{what = TC_IDS_WRITE, at = now}; }
+  if c[0].want_history { return TcPlan.{what = TC_HISTORY, at = ifx c[0].read_at > now then c[0].read_at else now}; }
+  if c[0].want_turn && d[0].has_view { return TcPlan.{what = TC_TURN, at = ifx c[0].read_at > now then c[0].read_at else now}; }
+  task := TcPlan.{}; events := TcPlan.{};
+  if n[0].selected {
+    at := ifx c[0].task_at > now then c[0].task_at else now;
+    if n[0].preparing { task = TcPlan.{what = TC_IDS_CONTROL, at = at}; }
+    else if n[0].body_n > 0 && !n[0].uncertain { task = TcPlan.{what = TC_CONTROL, at = at}; }
+    else {
+      need := tc_derive(c);
+      if (n[0].need == 0 || need == 1) && c[0].idle_at > at { at = c[0].idle_at; }
+      if need == 1 { task = TcPlan.{what = TC_BINDING, at = at}; }
+      else if need == 2 { task = TcPlan.{what = TC_STATUS, at = at}; }
+      else if need == 3 { task = TcPlan.{what = TC_IDS_CAPTURE, at = at}; }
+      else if need == 4 { task = TcPlan.{what = TC_CAPTURE, at = at}; }
+    }
+  }
+  if dca_working(d) { events = TcPlan.{what = TC_EVENTS, at = ifx c[0].poll_at > now then c[0].poll_at else now}; }
+  if task.what == 0 { return events; }
+  if events.what == 0 { return task; }
+  if task.at != events.at { return ifx task.at < events.at then task else events; }
+  return ifx c[0].last_task then events else task;
+}
+// Make the due request, if any. Called after every committed event.
+tc_step :: (c: [] AppCore) {
+  if c[0].auth != AUTH_IN || !c[0].foreground || c[0].flight != 0 { return; }
+  d := c[0].chat[..]; n := d[0].native[..]; now := c[0].mono_ms;
+  // follow the running turn
+  if dca_working(d) && !tc_same_turn(d) { if nta_select(n, tc_turn(d), dca_id(d)) { c[0].task_at = now; c[0].idle_at = now + TC_POLL_MS; app_mark(c, SURF_TASK); } }
+  p := tc_plan(c);
+  if p.what == 0 || p.at > now { return; }
+  path: [UP_PATH_MAX] u8; sent := false; is_task := p.what >= TC_BINDING;
+  if p.what == TC_IDS_WRITE {
+    sent = tc_ids(c, TC_IDS_WRITE);
+    if sent && d[0].pending == 0 { d[0].want_stop = false; d[0].pending = 2; d[0].body_n = 0; d[0].uncertain = false; }
+  }
+  else if p.what == TC_WRITE { sent = tc_http(c, TC_WRITE, dca_path(ifx d[0].pending == 2 then "stop" else "submit", "", -1, path[..]), cast(string) d[0].body[0..<d[0].body_n]); }
+  else if p.what == TC_HISTORY { sent = tc_http(c, TC_HISTORY, dca_path("conversation", dca_id(d), d[0].history_after, path[..]), ""); if sent { c[0].want_history = false; } }
+  else if p.what == TC_TURN { sent = tc_http(c, TC_TURN, dca_path("turn", tc_turn(d), -1, path[..]), ""); if sent { c[0].want_turn = false; } }
+  else if p.what == TC_EVENTS { sent = tc_http(c, TC_EVENTS, dca_path("events", tc_turn(d), d[0].view[0].sequence, path[..]), ""); }
+  else if p.what == TC_IDS_CONTROL { sent = tc_ids(c, TC_IDS_CONTROL); }
+  else if p.what == TC_CONTROL { sent = tc_http(c, TC_CONTROL, nta_path(n, 3, path[..]), cast(string) n[0].body[0..<n[0].body_n]); if sent { nta_sent(n); } }
+  else if p.what == TC_BINDING { sent = tc_http(c, TC_BINDING, nta_path(n, 1, path[..]), ""); if sent { n[0].need = 1; } }
+  else if p.what == TC_STATUS { sent = tc_http(c, TC_STATUS, nta_path(n, 2, path[..]), ""); if sent { n[0].need = 2; } }
+  else if p.what == TC_IDS_CAPTURE { sent = tc_ids(c, TC_IDS_CAPTURE); if sent { n[0].need = 3; } }
+  else if p.what == TC_CAPTURE { sent = tc_http(c, TC_CAPTURE, nta_path(n, 4, path[..]), ""); }
+  if sent { c[0].last_task = is_task; return; }
+  // no room, or the request could not be formed: look again later instead of spinning
+  if is_task { c[0].task_at = now + TC_BACKOFF_MS; } else { c[0].read_at = now + TC_BACKOFF_MS; c[0].poll_at = now + TC_BACKOFF_MS; }
+}
+// When the conversation next needs the clock: a time in ms, or -1 when it waits only for events.
+tc_wake :: (c: [] AppCore) -> int {
+  if c[0].auth != AUTH_IN || !c[0].foreground || c[0].flight != 0 { return -1; }
+  p := tc_plan(c);
+  return ifx p.what == 0 then -1 else p.at;
+}
+
+// A turn or task Stop that we could not confirm resolves when a read shows the turn stopping or over.
+tc_stop_seen :: (c: [] AppCore) {
+  d := c[0].chat[..];
+  if d[0].has_view && ct_terminal(d[0].view[0].state) { d[0].want_stop = false; }
+  if d[0].pending == 2 && d[0].uncertain && d[0].has_view && (d[0].view[0].stop_requested || ct_terminal(d[0].view[0].state)) { d[0].pending = 0; d[0].uncertain = false; d[0].body_n = 0; app_say(c, ""); }
+}
+tc_after_terminal :: (c: [] AppCore) {
+  d := c[0].chat[..];
+  if ct_terminal(d[0].view[0].state) && !d[0].terminal_refreshed { d[0].terminal_refreshed = true; d[0].page = 0; tc_history(c, 0, true); }
+}
+
+// The result of the chat owner's request. Returns false when it is not the request in flight.
+tc_reply :: (c: [] AppCore, op: int, purpose: int, outcome: int, status: int, raw: string, id_a: string, id_b: string, wall_ms: int) -> bool {
+  if op != c[0].flight || purpose != c[0].purpose { return false; }
+  c[0].flight = 0; c[0].purpose = 0;
+  d := c[0].chat[..]; n := d[0].native[..]; now := c[0].mono_ms;
+  app_mark(c, SURF_TRANSCRIPT | SURF_COMPOSER | SURF_TASK);
+  ok := outcome == FXO_DONE && status >= 200 && status < 300;
+  ids := purpose == TC_IDS_WRITE || purpose == TC_IDS_CAPTURE || purpose == TC_IDS_CONTROL;
+  if ids { ok = outcome == FXO_DONE && tc_hex32(id_a) && tc_hex32(id_b) && wall_ms > 0; }
+  // may the write have been applied?
+  unsure := outcome == FXO_UNKNOWN || (outcome == FXO_DONE && (status == 0 || status >= 500));
+
+  if purpose == TC_IDS_WRITE {
+    if !ok || !dca_write(d, id_a) { stop := d[0].pending == 2; d[0].pending = 0; d[0].body_n = 0; app_say(c, ifx stop then "We could not ask the reply to stop. Try again." else "We could not prepare your message. Your draft is kept."); }
+    return true;
+  }
+  if purpose == TC_WRITE {
+    stop := d[0].pending == 2;
+    if ok {
+      result: [1] CtControl; arena: [72] u8;
+      if !ctr_control_read(raw, result[..], arena[..]) || (d[0].id_n > 0 && dca_id(d) != result[0].conversation) || (stop && result[0].turn != tc_turn(d)) {
+        d[0].uncertain = true; app_say(c, ifx stop then "We could not confirm that the reply stopped. Check again." else "Your message may have been sent. Check again to continue."); return true;
+      }
+      old: [APP_ID] u8; old_n := js_copy(old[..], dca_id(d));
+      d[0].id_n = js_copy(d[0].id[..], result[0].conversation); d[0].revision = result[0].revision; d[0].pending = 0; d[0].uncertain = false; d[0].body_n = 0;
+      if !stop {
+        d[0].legacy_n = 0; d[0].legacy_revision = -1;
+        _ := ct_view_begin(d[0].view[..], result[0].conversation, result[0].turn); d[0].has_view = true; d[0].terminal_refreshed = false;
+        // the sent text leaves the composer unless the person typed on
+        if app_draft_of(c, cast(string) old[0..<old_n]) == cast(string) d[0].submitted[0..<d[0].submitted_n] { _ := app_draft_keep(c, cast(string) old[0..<old_n], ""); }
+        else if old_n == 0 { text: [APP_DRAFT_BYTES] u8; tn := js_copy(text[..], app_draft_of(c, "")); _ := app_draft_keep(c, "", ""); _ := app_draft_keep(c, dca_id(d), cast(string) text[0..<tn]); }
+        c[0].poll_at = now; c[0].idle_at = now + TC_POLL_MS;
+      }
+      app_say(c, ""); c[0].want_turn = true; return true;
+    }
+    if unsure { d[0].uncertain = true; app_say(c, ifx stop then "We could not confirm that the reply stopped. Check again." else "Your message may have been sent. Check again to continue."); return true; }
+    d[0].pending = 0; d[0].body_n = 0;
+    app_say(c, ifx stop then "We could not ask the reply to stop. Try again." else ifx status == 409 then "This chat changed somewhere else. Open it again before you send." else ifx status == 403 then "Chat is not available for this account yet." else "We could not send your message. Your draft is kept.");
+    return true;
+  }
+  if purpose == TC_HISTORY || purpose == TC_TURN || purpose == TC_EVENTS {
+    if !ok {
+      if outcome == FXO_DONE && status == 404 { tc_reset(c, ""); app_say(c, "This chat is no longer available."); return true; }
+      c[0].read_at = now + TC_BACKOFF_MS; c[0].poll_at = now + TC_BACKOFF_MS;
+      if purpose == TC_HISTORY { c[0].want_history = true; } else if purpose == TC_TURN { c[0].want_turn = true; }
+      app_say(c, "We could not read this chat. We will try again.");
+      return true;
+    }
+    if purpose == TC_HISTORY {
+      next := c[0].scratch[..];
+      if !ctr_history_read(raw, next) || cast(string) next[0].id[..] != dca_id(d) || (next[0].next >= 0 && next[0].next != d[0].history_after + next[0].n) { app_say(c, "We could not read this chat completely."); return true; }
+      d[0].history[0] = next[0]; d[0].loaded = true; d[0].revision = next[0].revision; d[0].project_n = js_copy(d[0].project[..], cast(string) next[0].project[0..<next[0].project_n]); d[0].window_end = next[0].n;
+      if d[0].latest && next[0].next >= 0 && d[0].page < 127 { d[0].page += 1; d[0].pages[d[0].page] = next[0].next; tc_history(c, next[0].next, true); return true; }
+      d[0].latest = false;
+      if next[0].active_n > 0 && (!d[0].has_view || tc_turn(d) != cast(string) next[0].active[..]) { _ := ct_view_begin(d[0].view[..], dca_id(d), cast(string) next[0].active[..]); d[0].has_view = true; d[0].terminal_refreshed = false; c[0].want_turn = true; }
+      app_say(c, ""); return true;
+    }
+    if purpose == TC_TURN {
+      if !dca_snapshot(d, raw) { c[0].want_turn = true; c[0].read_at = now + TC_BACKOFF_MS; app_say(c, "We could not read this reply completely. We will try again."); return true; }
+      tc_stop_seen(c); c[0].poll_at = now;
+      if !d[0].loaded { d[0].terminal_refreshed = ct_terminal(d[0].view[0].state); d[0].page = 0; tc_history(c, 0, true); } else { tc_after_terminal(c); }
+      return true;
+    }
+    page: [1] CtPage;
+    if !ctr_page_apply(raw, d[0].view[..], page[..]) { c[0].want_turn = true; return true; }
+    c[0].poll_at = ifx page[0].more then now else now + TC_POLL_MS;
+    tc_stop_seen(c); tc_after_terminal(c);
+    return true;
+  }
+  // the task
+  if !ok {
+    c[0].task_at = now + TC_BACKOFF_MS;
+    if purpose == TC_CONTROL {
+      if unsure { n[0].uncertain = true; n[0].need = 0; nta_note(n, "We could not confirm your answer. Check again."); }
+      else { n[0].body_n = 0; n[0].verb = ""; n[0].uncertain = false; n[0].sent = false; n[0].need = 2; nta_note(n, "We could not send your answer. Try again."); }
+    }
+    else if purpose == TC_IDS_CONTROL { n[0].preparing = false; n[0].verb = ""; nta_note(n, "We could not prepare your answer. Nothing was sent."); }
+    else if purpose == TC_BINDING && status == 404 { n[0].absent = true; n[0].need = 0; c[0].task_at = now; }
+    else if purpose == TC_IDS_CAPTURE { n[0].need = 3; }
+    else {
+      if status == 403 || status == 404 { n[0].available = false; }
+      n[0].need = ifx purpose == TC_CAPTURE && status != 409 then 4 else ifx purpose == TC_CAPTURE then 3 else ifx purpose == TC_BINDING then 1 else 2;
+      nta_note(n, "We lost the connection to this task. We will try again.");
+    }
+    return true;
+  }
+  c[0].task_at = now; c[0].idle_at = now + TC_IDLE_MS;
+  if purpose == TC_BINDING {
+    if nta_binding(n, raw) { nta_note(n, ""); c[0].idle_at = now; } else { n[0].need = 1; c[0].task_at = now + TC_BACKOFF_MS; nta_note(n, "We could not read this task. We will try again."); }
+    return true;
+  }
+  if purpose == TC_STATUS {
+    if !nta_observe(n, raw, "") { n[0].available = false; n[0].need = 2; c[0].task_at = now + TC_BACKOFF_MS; nta_note(n, "We could not confirm this task's state. We will try again."); return true; }
+    _ := nta_reconcile(n);
+    if nta_pending(n) { n[0].need = 0; return true; }
+    n[0].need = ifx n[0].has_session && cast(string) n[0].captured[0..<n[0].captured_n] == cast(string) n[0].canonical[0..<n[0].canonical_n] then 0 else 3;
+    nta_note(n, ""); return true;
+  }
+  if purpose == TC_IDS_CAPTURE {
+    if nta_pending(n) { n[0].need = 0; return true; }
+    text: [160] u8;
+    if !nta_capture_begin(n, tc_ids_text(id_a, id_b, wall_ms, text[..]), c[0].task_data[..]) { n[0].need = 3; c[0].task_at = now + TC_BACKOFF_MS; }
+    return true;
+  }
+  if purpose == TC_CAPTURE {
+    n[0].now = c[0].wall_ms;
+    if !nta_capture_page(n, raw) { n[0].need = 3; c[0].task_at = now + TC_BACKOFF_MS; return true; }
+    if n[0].capture[0].client[0].done {
+      if nta_publish(n, c[0].task_pools[1 - n[0].pool_index][..], c[0].task_decode[..]) { nta_note(n, ""); }
+      else { n[0].need = 3; c[0].task_at = now + TC_BACKOFF_MS; nta_note(n, "We could not read this task's activity. We will try again."); }
+    }
+    return true;
+  }
+  if purpose == TC_IDS_CONTROL {
+    text: [160] u8;
+    if !nta_command(n, tc_ids_text(id_a, id_b, wall_ms, text[..])) { n[0].preparing = false; n[0].verb = ""; nta_note(n, "We could not prepare your answer. Nothing was sent."); }
+    return true;
+  }
+  if purpose == TC_CONTROL {
+    if nta_control_reply(n, raw) { nta_note(n, ""); } else { n[0].uncertain = true; n[0].need = 0; nta_note(n, "We could not confirm your answer. Check again."); }
+    return true;
+  }
+  return true;
+}

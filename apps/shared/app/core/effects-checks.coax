@@ -1,0 +1,100 @@
+// Checks of the effect outbox (effects.coax): refusal atomicity, exhaustion,
+// cancellation, duplicate and late completions and unknown outcomes.
+FXT_PATH :: "/api/chat/turn/v2alpha1?id=x";
+fxt_get :: (o: [] FxOutbox, owner: int) -> int { return fx_request(o, owner, FX_HTTP, 7, UP_GET, FXT_PATH, "", "", 4096, 30000); }
+
+#test "a request is queued, taken, then completed exactly once" {
+  o: [1] FxOutbox;
+  op := fxt_get(o[..], 1);
+  #assert op == 1 && fx_state(o[..], op) == FX_QUEUED && fx_next(o[..]) == op && fx_outstanding(o[..]) == 0;
+  // a completion before the host took it is not a completion
+  #assert fx_complete(o[..], op, 1, FXO_DONE) == FXC_NONE && fx_state(o[..], op) == FX_QUEUED;
+  #assert fx_take(o[..], op) && !fx_take(o[..], op) && fx_state(o[..], op) == FX_PENDING && fx_next(o[..]) == 0 && fx_outstanding(o[..]) == 1;
+  // the wrong generation is not this operation
+  #assert fx_complete(o[..], op, 2, FXO_DONE) == FXC_NONE && fx_state(o[..], op) == FX_PENDING;
+  #assert fx_complete(o[..], op, 1, FXO_DONE) == FXC_DELIVER && fx_state(o[..], op) == FX_DONE && fx_held(o[..]) == 0;
+  // a duplicate changes nothing
+  #assert fx_complete(o[..], op, 1, FXO_DONE) == FXC_NONE && fx_complete(o[..], op, 1, FXO_FAILED) == FXC_NONE && fx_state(o[..], op) == FX_DONE;
+  #assert fx_complete(o[..], 99, 1, FXO_DONE) == FXC_NONE && fx_complete(o[..], 0, 1, FXO_DONE) == FXC_NONE;
+}
+#test "failed and unknown outcomes are kept apart and nothing is queued again" {
+  o: [1] FxOutbox;
+  a := fxt_get(o[..], 1); b := fxt_get(o[..], 1); c := fxt_get(o[..], 1);
+  #assert fx_take(o[..], a) && fx_take(o[..], b) && fx_take(o[..], c);
+  #assert fx_complete(o[..], a, 1, FXO_UNKNOWN) == FXC_DELIVER && fx_complete(o[..], b, 1, FXO_FAILED) == FXC_DELIVER && fx_complete(o[..], c, 1, FXO_UNSUPPORTED) == FXC_DELIVER;
+  #assert fx_state(o[..], a) == FX_UNKNOWN && fx_state(o[..], b) == FX_FAILED && fx_state(o[..], c) == FX_FAILED;
+  #assert fx_next(o[..]) == 0 && fx_held(o[..]) == 0;
+  #assert fx_complete(o[..], a, 1, 0) == FXC_NONE && fx_complete(o[..], a, 1, 7) == FXC_NONE;
+}
+#test "a refused request changes nothing" {
+  o: [1] FxOutbox; before := o[0].next_op;
+  // policy, shape and capacity refusals
+  #assert fx_request(o[..], 1, FX_HTTP, 0, UP_GET, "/api/wallet/spend", "", "", 4096, 1000) == 0;
+  #assert fx_request(o[..], 1, FX_HTTP, 0, UP_GET, FXT_PATH, "", "body", 4096, 1000) == 0;
+  #assert fx_request(o[..], 1, FX_HTTP, 0, UP_POST, FXT_PATH, "", "", 4096, 1000) == 0;
+  #assert fx_request(o[..], 1, FX_HTTP, 0, UP_GET, FXT_PATH, "", "", 0, 1000) == 0 && fx_request(o[..], 1, FX_HTTP, 0, UP_GET, FXT_PATH, "", "", UP_RESPONSE_MAX + 1, 1000) == 0;
+  #assert fx_request(o[..], 1, FX_HTTP, 0, UP_GET, FXT_PATH, "", "", 4096, 0) == 0;
+  #assert fx_request(o[..], 1, 0, 0, 0, "", "", "", 0, 0) == 0 && fx_request(o[..], 1, FX_KINDS + 1, 0, 0, "", "", "", 0, 0) == 0;
+  #assert fx_request(o[..], -1, FX_IDS, 0, 0, "", "", "", 0, 0) == 0 && fx_request(o[..], FX_OWNERS, FX_IDS, 0, 0, "", "", "", 0, 0) == 0;
+  #assert fx_request(o[..], 1, FX_LINK, 0, 0, "", "", "javascript:alert(1)", 0, 0) == 0;
+  #assert fx_request(o[..], 1, FX_AUTH_EMAIL, 0, 0, "", "", "", 0, 0) == 0 && fx_request(o[..], 1, FX_IDS, 0, 0, "", "x", "", 0, 0) == 0;
+  #assert fx_request(o[..], 1, FX_AUTH_VERIFY, 0, 0, "", "", "", 0, 0) == 0 && fx_request(o[..], 1, FX_AUTH_VERIFY, 0, 0, "", "123456", "handle", 0, 0) == 0;
+  #assert o[0].next_op == before && fx_held(o[..]) == 0 && o[0].payload_n == 0;
+  #assert fx_request(o[..], 1, FX_AUTH_EMAIL, 0, 0, "", "a@b.test", "", 0, 0) == 1 && fx_request(o[..], 1, FX_AUTH_VERIFY, 0, 0, "", "123456", "", 0, 0) == 2;
+  #assert fx_request(o[..], 1, FX_LINK, 0, 0, "", "", "https://openagents.com/", 0, 0) == 3 && fx_request(o[..], 1, FX_CLIPBOARD, 0, 0, "", "", "copied", 0, 0) == 4;
+}
+#test "a full outbox refuses and a refused batch rolls back whole" {
+  o: [1] FxOutbox;
+  for i: 0..<FX_MAX - 1 { #assert fxt_get(o[..], 1) == i + 1; }
+  m := fx_mark(o[..]);
+  first := fx_request(o[..], 2, FX_HTTP, 0, UP_POST, FXT_PATH, "", "{\"a\":1}", 4096, 1000);
+  #assert first == FX_MAX && o[0].payload_n == 7 && fxt_get(o[..], 2) == 0;
+  fx_rollback(o[..], m);
+  #assert fx_state(o[..], first) == FX_FREE && fx_held(o[..]) == FX_MAX - 1 && o[0].next_op == FX_MAX && o[0].payload_n == 0;
+  // the same operation ID is issued to the next admitted request: the rolled-back one never existed
+  #assert fxt_get(o[..], 2) == FX_MAX;
+}
+#test "bodies wait in the payload until taken and an oversized batch refuses" {
+  o: [1] FxOutbox; big: [UP_BODY_MAX] u8; for i: 0..<UP_BODY_MAX { big[i] = 'a'; }
+  a := fx_request(o[..], 1, FX_HTTP, 0, UP_POST, FXT_PATH, "", cast(string) big[..], 4096, 1000);
+  b := fx_request(o[..], 1, FX_HTTP, 0, UP_POST, FXT_PATH, "", cast(string) big[..], 4096, 1000);
+  #assert a == 1 && b == 2 && fx_request(o[..], 1, FX_HTTP, 0, UP_POST, FXT_PATH, "", cast(string) big[..], 4096, 1000) == 0;
+  #assert fx_body(o[..], fx_find(o[..], b)).count == UP_BODY_MAX && fx_take(o[..], a) && o[0].payload_n == 2 * UP_BODY_MAX;
+  #assert fx_take(o[..], b) && o[0].payload_n == 0;
+}
+#test "cancelling an owner removes queued requests and fences late results" {
+  o: [1] FxOutbox;
+  held := fxt_get(o[..], 1); #assert fx_take(o[..], held);
+  waiting := fxt_get(o[..], 1); other := fxt_get(o[..], 2); #assert fx_take(o[..], other);
+  #assert fx_cancel(o[..], 1) && fx_generation(o[..], 1) == 2 && fx_generation(o[..], 2) == 1;
+  // never offered: gone. Held by the host: reserved until it answers.
+  #assert fx_state(o[..], waiting) == FX_LATE && fx_state(o[..], held) == FX_CANCELLED && fx_outstanding(o[..]) == 2 && fx_next(o[..]) == 0;
+  #assert fx_cancel_next(o[..]) == held && fx_cancel_next(o[..]) == 0;
+  // a new request of the same owner carries the new generation
+  again := fxt_get(o[..], 1); #assert o[0].slots[fx_find(o[..], again)].generation == 2;
+  // the late result is dropped whatever it says, once
+  #assert fx_complete(o[..], held, 1, FXO_DONE) == FXC_DROPPED && fx_state(o[..], held) == FX_LATE && o[0].dropped == 1;
+  #assert fx_complete(o[..], held, 1, FXO_DONE) == FXC_NONE && o[0].dropped == 1;
+  // the other owner is untouched
+  #assert fx_complete(o[..], other, 1, FXO_DONE) == FXC_DELIVER;
+  #assert !fx_cancel(o[..], -1) && !fx_cancel(o[..], FX_OWNERS);
+}
+#test "the last generation retires an owner instead of wrapping" {
+  o: [1] FxOutbox; o[0].owners[1].generation = FX_GENERATION_MAX - 1;
+  held := fxt_get(o[..], 1); #assert held > 0 && fx_take(o[..], held);
+  #assert fx_cancel(o[..], 1) && fx_generation(o[..], 1) == FX_GENERATION_MAX && fx_owner_live(o[..], 1);
+  last := fxt_get(o[..], 1); #assert last > 0 && fx_take(o[..], last);
+  #assert fx_cancel(o[..], 1) && fx_generation(o[..], 1) == FX_GENERATION_MAX && !fx_owner_live(o[..], 1);
+  #assert fxt_get(o[..], 1) == 0 && fxt_get(o[..], 2) > 0;
+  // results of a retired owner are fenced even at the same generation number
+  #assert fx_complete(o[..], last, FX_GENERATION_MAX, FXO_DONE) == FXC_DROPPED && fx_complete(o[..], held, FX_GENERATION_MAX - 1, FXO_DONE) == FXC_DROPPED;
+}
+#test "the last operation ID retires the outbox" {
+  o: [1] FxOutbox; o[0].next_op = FX_OP_MAX - 1;
+  #assert fxt_get(o[..], 1) == FX_OP_MAX - 1 && fxt_get(o[..], 1) == 0 && fxt_get(o[..], 2) == 0 && o[0].next_op == FX_OP_MAX;
+}
+#test "a host refusal releases the request and is recorded as failed" {
+  o: [1] FxOutbox; op := fxt_get(o[..], 1);
+  #assert fx_refuse(o[..], op) && !fx_refuse(o[..], op) && fx_state(o[..], op) == FX_FAILED && fx_held(o[..]) == 0;
+  op = fxt_get(o[..], 1); #assert fx_take(o[..], op) && !fx_refuse(o[..], op);
+}
