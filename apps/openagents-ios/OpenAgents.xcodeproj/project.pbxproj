@@ -8,7 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		2DA485D5475D62C7827367D5 /* gallery.c in Sources */ = {isa = PBXBuildFile; fileRef = 550581B2872EB638FBFB4619 /* gallery.c */; settings = {COMPILER_FLAGS = "-Wno-unused-function -Wno-unused-variable -Wno-unknown-attributes -ffp-contract=off -fno-fast-math"; }; };
-		356C79ECD7093B4A053F18F7 /* main.c in Sources */ = {isa = PBXBuildFile; fileRef = 8D7450B781EC0703F345FA9F /* main.c */; settings = {COMPILER_FLAGS = "-DCOMPONENTS_EMBEDDED=1 -DCOMPONENTS_NO_GALLERY=1 -DCOMPONENTS_CHAT=1 -IGenerated -I../shared/host/linux"; }; };
+		356C79ECD7093B4A053F18F7 /* main.c in Sources */ = {isa = PBXBuildFile; fileRef = 8D7450B781EC0703F345FA9F /* main.c */; settings = {COMPILER_FLAGS = "-DCOMPONENTS_EMBEDDED=1 -DCOMPONENTS_NO_GALLERY=1 -DCOMPONENTS_CHAT=1 -DOPENAGENTS_PHONE_DRIVE=1 -IGenerated -I../shared/host/linux"; }; };
 		3855A03C1A8AACCFA9A564D8 /* App.swift in Sources */ = {isa = PBXBuildFile; fileRef = F76D38DB61717639D91263A1 /* App.swift */; };
 		43F4D16A20C18037A922D32F /* AppCoreBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77B22B57F0B9827AF4F47864 /* AppCoreBridge.swift */; };
 		43F923AC9E6B0E0FBEB39C71 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 776F82566A59AA4CF6654437 /* Assets.xcassets */; };

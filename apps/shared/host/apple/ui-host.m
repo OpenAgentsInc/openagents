@@ -353,12 +353,12 @@ static int ui_to(NSRange r) { return r.location == NSNotFound ? -1 : (int)(r.loc
 // its stable id so VoiceOver's cursor stays on it from frame to frame. Its value and whether it can be
 // pressed come from the app's optional `about ID` ("value TEXT" and "enabled 0|1" lines); pressing it is
 // the app's `tap ID`, the same operation coax drive's checks use.
-enum { UI_AX_BUTTON, UI_AX_ROW, UI_AX_TAB, UI_AX_FIELD, UI_AX_REGION, UI_AX_ITEM };
+enum { UI_AX_BUTTON, UI_AX_ROW, UI_AX_TAB, UI_AX_FIELD, UI_AX_REGION, UI_AX_ITEM, UI_AX_TOGGLE, UI_AX_SLIDER, UI_AX_TEXT, UI_AX_HEADING, UI_AX_LINK, UI_AX_IMAGE, UI_AX_PROGRESS, UI_AX_NOTICE };
 static const char *const ui_ax_roles[] = {"button", "row", "tab", "field", "region", "item"};
 @interface UiAxElement : NSAccessibilityElement
 @property(nonatomic, assign) UiHost *host;
 @property(nonatomic, copy) NSString *ident, *label, *value;
-@property(nonatomic) int kind, enabled;
+@property(nonatomic) int kind, enabled, state;
 @property(nonatomic) NSRect box;   // logical px, y down from the view's top left
 @end
 static int ui_ax_tap(UiHost *h, NSString *ident);
@@ -368,7 +368,13 @@ static int ui_ax_tap(UiHost *h, NSString *ident);
     case UI_AX_BUTTON: case UI_AX_ROW: return NSAccessibilityButtonRole;
     case UI_AX_TAB: return NSAccessibilityRadioButtonRole;
     case UI_AX_FIELD: return NSAccessibilityTextFieldRole;
-    case UI_AX_ITEM: return NSAccessibilityStaticTextRole;
+    case UI_AX_ITEM: case UI_AX_TEXT: case UI_AX_NOTICE: return NSAccessibilityStaticTextRole;
+    case UI_AX_TOGGLE: return NSAccessibilityCheckBoxRole;
+    case UI_AX_SLIDER: return NSAccessibilitySliderRole;
+    case UI_AX_HEADING: if (@available(macOS 26.0,*)) return NSAccessibilityHeadingRole; else return NSAccessibilityStaticTextRole;
+    case UI_AX_LINK: return NSAccessibilityLinkRole;
+    case UI_AX_IMAGE: return NSAccessibilityImageRole;
+    case UI_AX_PROGRESS: return NSAccessibilityProgressIndicatorRole;
   }
   return NSAccessibilityGroupRole;
 }
@@ -380,7 +386,8 @@ static int ui_ax_tap(UiHost *h, NSString *ident);
 }
 - (NSString *)accessibilityIdentifier { return self.ident; }
 - (NSString *)accessibilityLabel { return self.kind == UI_AX_ITEM && !self.value ? nil : self.label; }   // text is read once, as its value
-- (id)accessibilityValue { return self.kind == UI_AX_ITEM && !self.value ? self.label : self.value; }
+- (id)accessibilityValue { if(self.kind==UI_AX_TOGGLE)return @((self.state&32)!=0);return self.kind == UI_AX_ITEM && !self.value ? self.label : self.value; }
+- (BOOL)isAccessibilitySelected { return (self.state & (16|32)) != 0; }
 - (BOOL)isAccessibilityEnabled { return self.enabled; }
 - (BOOL)isAccessibilityElement { return YES; }
 - (id)accessibilityParent { UiHost *h = self.host; return h && h->view ? h->view : nil; }
@@ -393,14 +400,16 @@ static int ui_ax_tap(UiHost *h, NSString *ident);
 - (BOOL)isAccessibilityFocused { UiHost *h = self.host; return h && [h->ax_focus isEqualToString:self.ident]; }
 - (void)setAccessibilityFocused:(BOOL)on { UiHost *h = self.host; if (h && on) { h->ax_focus = [self.ident copy]; h->ax_ring = 0; h->stale = 1; } }
 - (BOOL)accessibilityPerformPress {
-  if (self.kind == UI_AX_REGION || self.kind == UI_AX_ITEM || !self.enabled) return NO;
+  if (self.kind == UI_AX_REGION || self.kind == UI_AX_ITEM || self.kind == UI_AX_TEXT || self.kind == UI_AX_HEADING || self.kind == UI_AX_IMAGE || self.kind == UI_AX_PROGRESS || self.kind == UI_AX_NOTICE || !self.enabled) return NO;
   return ui_ax_tap(self.host, self.ident) != 0;
 }
 - (NSArray *)accessibilityCustomActions { return nil; }
 @end
 
 static int ui_ax_tap(UiHost *h, NSString *ident) {
-  if (!h || !h->app.drive || !ident.length) return 0;
+  if (!h || !ident.length) return 0;
+  if (h->app.activate) {int pressed=h->app.activate(h->app.user,ident.UTF8String);if(pressed)h->stale=1;return pressed;}
+  if (!h->app.drive) return 0;
   char op[128], out[512];
   snprintf(op, sizeof op, "tap %s", ident.UTF8String);
   int n = h->app.drive(h->app.user, op, out, (int)sizeof out);
@@ -408,9 +417,43 @@ static int ui_ax_tap(UiHost *h, NSString *ident) {
   h->stale = 1;
   return !(n > 0 && !strncmp(out, "no row", 6));   // the chat's answer when the id is gone
 }
+// Compiled surfaces expose the committed table directly. The string-tree reader
+// below remains for older recovery shells until their consumers move.
+static NSArray *ui_ax_committed(UiHost *h) {
+  int count=h->app.elements(h->app.user);
+  if (count<0 || (uint32_t)count>h->app.access_capacity) return h->ax_rows ?: @[];
+  if (!h->ax_by_id) h->ax_by_id=[NSMutableDictionary dictionary];
+  NSMutableSet *checked=[NSMutableSet set];
+  // Preflight before mutating retained platform objects: a bad source keeps the prior generation.
+  for (int i=0;i<count;i++) {
+    UiElement row={0};if(!h->app.element(h->app.user,i,&row))continue;
+    row.id[sizeof row.id-1]=0;row.label[sizeof row.label-1]=0;row.value[sizeof row.value-1]=0;
+    NSString *id=[NSString stringWithUTF8String:row.id];
+    if(!id.length || row.role<0 || row.role>UI_AX_NOTICE || ![NSString stringWithUTF8String:row.label] || ![NSString stringWithUTF8String:row.value] || [checked containsObject:id])return h->ax_rows ?: @[];
+    [checked addObject:id];
+  }
+  NSMutableArray *rows=[NSMutableArray array];NSMutableSet *ids=[NSMutableSet set];
+  for (int i=0;i<count;i++) {
+    UiElement row={0};if (!h->app.element(h->app.user,i,&row)) continue;
+    if (!(row.box[2]>0 && row.box[3]>0) || row.role<0 || row.role>UI_AX_NOTICE || row.role==UI_AX_REGION) continue;
+    // Force SDK string bounds even if a foreign caller breaks its output contract.
+    row.id[sizeof row.id-1]=0;row.label[sizeof row.label-1]=0;row.value[sizeof row.value-1]=0;
+    NSString *ident=[NSString stringWithUTF8String:row.id],*label=[NSString stringWithUTF8String:row.label],*value=[NSString stringWithUTF8String:row.value];
+    if (!ident.length || !label || !value || [ids containsObject:ident]) return h->ax_rows ?: @[];
+    [ids addObject:ident];
+    UiAxElement *el=h->ax_by_id[ident];if (!el) {el=[UiAxElement new];el.host=h;el.ident=ident;h->ax_by_id[ident]=el;}
+    el.kind=row.role;el.state=row.state;el.enabled=(row.state&1)==0;el.label=label;el.value=value.length ? value:nil;
+    el.box=NSMakeRect(row.box[0],row.box[1],row.box[2],row.box[3]);[rows addObject:el];
+  }
+  for (NSString *ident in h->ax_by_id.allKeys) if (![ids containsObject:ident]) {((UiAxElement *)h->ax_by_id[ident]).host=NULL;[h->ax_by_id removeObjectForKey:ident];}
+  if (h->ax_focus && !h->ax_by_id[h->ax_focus]) h->ax_focus=nil;
+  h->ax_rows=rows;return rows;
+}
 // The app's table now, as elements (the same objects for the same ids).
 static NSArray *ui_ax_children(UiHost *h) {
-  if (!h || !h->app.drive) return @[];
+  if (!h) return @[];
+  if (h->app.elements && h->app.element && h->app.access_capacity) return ui_ax_committed(h);
+  if (!h->app.drive) return @[];
   static char tree[1 << 16];
   int n = h->app.drive(h->app.user, "tree", tree, (int)sizeof tree - 1);
   if (n < 0) return @[];
@@ -461,7 +504,11 @@ static id ui_ax_at(UiHost *h, NSPoint screen) {
 static id ui_ax_focused(UiHost *h) { return h && h->ax_focus ? h->ax_by_id[h->ax_focus] : nil; }
 // Where the focused row is drawn now (logical px), from the app's table: the ring follows a row that moves.
 static int ui_ax_box(UiHost *h, NSRect *box) {
-  if (!h || !h->ax_focus || !h->app.drive) return 0;
+  if (!h || !h->ax_focus) return 0;
+  if (h->app.elements && h->app.element) {
+    (void)ui_ax_children(h);UiAxElement *el=h->ax_by_id[h->ax_focus];if(!el)return 0;*box=el.box;return 1;
+  }
+  if (!h->app.drive) return 0;
   static char tree[1 << 16];
   int n = h->app.drive(h->app.user, "tree", tree, (int)sizeof tree - 1);
   if (n <= 0) return 0;
@@ -484,7 +531,7 @@ static int ui_ax_box(UiHost *h, NSRect *box) {
 // order, wrapping. A field gets the keyboard (its tap). The id it moved to, or nil.
 static NSString *ui_ax_move(UiHost *h, int back) {
   NSMutableArray *stops = [NSMutableArray array];
-  for (UiAxElement *el in ui_ax_children(h)) if (el.enabled && el.kind != UI_AX_REGION && el.kind != UI_AX_ITEM) [stops addObject:el];
+  for (UiAxElement *el in ui_ax_children(h)) if (el.enabled && (el.kind==UI_AX_BUTTON || el.kind==UI_AX_ROW || el.kind==UI_AX_TAB || el.kind==UI_AX_FIELD || el.kind==UI_AX_TOGGLE || el.kind==UI_AX_SLIDER || el.kind==UI_AX_LINK)) [stops addObject:el];
   if (!stops.count) return nil;
   NSUInteger at = NSNotFound;
   for (NSUInteger i = 0; i < stops.count; i++) if ([((UiAxElement *)stops[i]).ident isEqualToString:h->ax_focus]) at = i;

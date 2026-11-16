@@ -61,6 +61,19 @@ static int oc_on_drive(void *user, const char *op, char *out, int cap) {
   return (int)chat_drive(oc_state(c), oc_string(op), (coax_v_u8){(uint8_t *)out, cap});
 }
 
+static int oc_access_count(void *user) {return (int)chat_rows(oc_state(user));}
+static int oc_access_read(void *user,int row,UiElement *out) {
+  Chat *c=user;float facts[8];memset(out,0,sizeof *out);
+  if (!chat_row(oc_state(c),row,(coax_v_f32){facts,8})) return 0;
+  if (!(facts[2]>0 && facts[3]>0)) return 0;
+  memcpy(out->box,facts,sizeof out->box);out->role=(int)facts[4];out->state=(int)facts[5];out->parent=(int)facts[6];out->focus=(int)facts[7];
+  int n=(int)chat_row_id(oc_state(c),row,(coax_v_u8){(uint8_t *)out->id,sizeof out->id-1});if(n<1)return 0;out->id[n]=0;
+  n=(int)chat_row_label(oc_state(c),row,(coax_v_u8){(uint8_t *)out->label,sizeof out->label-1});if(n<0)return 0;out->label[n]=0;
+  n=(int)chat_row_value(oc_state(c),row,(coax_v_u8){(uint8_t *)out->value,sizeof out->value-1});if(n<0)return 0;out->value[n]=0;
+  return 1;
+}
+static int oc_access_press(void *user,const char *id) {Chat *c=user;int pressed=chat_activate(oc_state(c),oc_string(id));if(pressed)oc_woke(c);return pressed;}
+
 void *oc_open(const char *resources) {
   Chat *c = calloc(1, sizeof *c);
   if (!c) return NULL;
@@ -71,7 +84,8 @@ void *oc_open(const char *resources) {
   if (!c->s) { free(c); return NULL; }
   a->atlas = c->s->atlas.e; a->max_vertices = (uint32_t)chat_max_vertices();
   UiApp app = {.title = "OpenAgents", .width = 402, .height = 874, .max_vertices = a->max_vertices, .shader = shader, .user = c,
-               .frame = oc_on_frame, .pointer = oc_on_pointer, .drive = oc_on_drive};
+               .frame = oc_on_frame, .pointer = oc_on_pointer, .drive = oc_on_drive,
+               .access_capacity=(uint32_t)chat_access_capacity(),.elements=oc_access_count,.element=oc_access_read,.activate=oc_access_press};
   a->host = ui_open(&app, 0);
   if (!a->host) { free(c->s); free(c); return NULL; }
   a->dpr = ui_dpr(a->host); if (a->dpr < 1) a->dpr = 1;
@@ -183,7 +197,12 @@ int oc_drive_start(void *chat, const char *where, const char *token, float w, fl
   if (!c->drive) return 0;
   oa_drive_open((coax_v_t_OaDrive){c->drive, 1}, oc_state(c), w, h, dpr);
   oc_driven = c;
+#ifdef OPENAGENTS_PHONE_DRIVE
   if (!phone_drive_start(where, token, oc_drive_answer, oc_drive_step)) { oc_driven = NULL; free(c->drive); c->drive = NULL; return 0; }
+#else
+  // Desktop surfaces use the shared host's driver; they do not link the iPhone socket adapter.
+  oc_driven=NULL;free(c->drive);c->drive=NULL;return 0;
+#endif
   return 1;
 }
 int oc_env_save(void *chat, char *out, int cap) { Chat *c = chat; return c && cap > 0 ? oc_bytes(chat_env_save(oc_state(c), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap) : 0; }

@@ -565,6 +565,7 @@ chat_style :: (out: [] f32) -> bool #export_c #effects(all) {
 // Whether the next frame differs with no input: kit motion.
 chat_moving :: (s: [] ChatPage) -> bool #export_c #effects(all) { return s.count > 0 && (!s[0].ready || s[0].again || !s[0].reduced && s[0].moving); }
 chat_refused :: (s: [] ChatPage) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return s[0].refused; }
+chat_access_capacity :: ()->int #export_c #effects(all) {return CH_P_ROWS;}
 chat_max_vertices :: () -> int #export_c #effects(all) { return CH_MAX_VERTICES; }
 chat_scale :: () -> f32 #export_c #effects(all) { return ARCADE_PHONE_SCALE; }
 // The text size the person chose against the default (the host's Dynamic Type), kept to 1 to

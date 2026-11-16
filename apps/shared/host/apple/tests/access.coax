@@ -1,0 +1,12 @@
+// Actual Apple SDK qualification; no window, menu, sound or account is opened.
+#import "Basic";
+#load "../../../../../coax/lib/sys/native-check.coax";
+tool_main :: ()->int #export_c #effects(all) {
+ dirb:[1024]u8;dir:=fs_temp("oa-access-",dirb[..]);if dir.count<1 {return 2;}
+ shaderb:[1200]u8;binb:[1200]u8;metal_path:=fs_join(dir,"kit.metal",shaderb[..]);binary:=fs_join(dir,"access",binb[..]);out:[65536]u8;
+ gen:=[9]string.["coax/bin/coax","metal","components/backend/gpu-shader.coax","--vertex","chat_fx_vs","--fragment","chat_fx_fs","-o",metal_path];
+ if nc_run(gen[..],60,out[..])<0 {return 1;}
+ cc:=[19]string.["xcrun","clang","-std=gnu11","-O1","-fobjc-arc","apps/shared/host/apple/tests/access.m","apps/shared/host/apple/ui-host.m","-framework","AppKit","-framework","Metal","-framework","QuartzCore","-framework","ImageIO","-framework","UniformTypeIdentifiers","-o",binary];
+ if nc_run(cc[..],120,out[..])<0 {return 1;}
+ run:=[2]string.[binary,metal_path];n:=nc_run(run[..],60,out[..]);if n<0 {return 1;}print("%",cast(string)out[0..<n]);_:=fs_remove(dir);return 0;
+}

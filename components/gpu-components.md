@@ -655,3 +655,21 @@ out only visible rows, with one-line titles normalized by the shared Unicode
 text helper. The sidebar slides at its full width, so animation never changes
 row wrapping. Paired-computer session history is still a separate G4 consumer;
 this list is explicitly named Account chats.
+
+### Desktop accessibility foundation (2026-11-16)
+
+The Apple GPU host accepts a typed `UiElement` source, copied from the
+surface's committed rows. The phone page's Mac preview uses it for all
+fourteen semantic roles, state, clipped geometry and activation by stable
+ID. Invalid or over-capacity input retains the previous accessible frame.
+Tab and Space use the same rows and actions; a focused row's ring follows
+its committed bounds. The older recovery client's string-tree reader is
+retained only for clients that have not installed the typed source.
+
+`apps/shared/host/apple/tests/access.coax` qualifies the real AppKit bridge
+offscreen: roles, private-field metadata, disabled actions, direct
+activation, focus, capacity refusal and retirement. The phone page's preview
+also drives Settings and reads its actual accessibility rows. This is a
+host foundation, not completion of G6: the desktop environment application
+still uses its old projection, Linux still needs AT-SPI, and physical screen
+reader acceptance remains open.

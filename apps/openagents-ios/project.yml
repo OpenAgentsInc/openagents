@@ -28,7 +28,7 @@ targets:
       - DevGallery.swift
       # The shared component carrier with the app's pages: the chat page, no gallery page.
       - path: ../../components/gallery/linux/main.c
-        compilerFlags: "-DCOMPONENTS_EMBEDDED=1 -DCOMPONENTS_NO_GALLERY=1 -DCOMPONENTS_CHAT=1 -IGenerated -I../shared/host/linux"
+        compilerFlags: "-DCOMPONENTS_EMBEDDED=1 -DCOMPONENTS_NO_GALLERY=1 -DCOMPONENTS_CHAT=1 -DOPENAGENTS_PHONE_DRIVE=1 -IGenerated -I../shared/host/linux"
       - ComponentsHost.m
       # coax drive on the real app (debug builds start it on -OADrive; apps/shared/app/cases/INTEGRATION.md).
       - ../shared/host/apple/phone-drive.c

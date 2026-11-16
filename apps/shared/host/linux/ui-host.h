@@ -19,6 +19,15 @@
 
 typedef struct UiHost UiHost;
 
+// One committed component semantic row, copied into SDK-owned scratch. Roles and
+// state bits are components/core/elements.coax's; bounds are visible window points.
+// No platform bridge parses a second tree when this source is installed.
+typedef struct {
+  char id[65], label[4097], value[257];
+  float box[4];
+  int role, state, parent, focus;
+} UiElement;
+
 typedef struct {
   const char *title, *app_id;
   uint32_t width, height;         // the window's first size, in pixels
@@ -84,6 +93,10 @@ typedef struct {
   float ring[4];
   // An explicitly composited native component island; ordinary hosts stay opaque.
   int transparent;
+  uint32_t access_capacity;
+  int (*elements)(void *user);
+  int (*element)(void *user, int row, UiElement *out);
+  int (*activate)(void *user, const char *id);
 } UiApp;
 
 // The input method's view of the text box (UTF-16 units). which: 0 selection start, 1 its end,

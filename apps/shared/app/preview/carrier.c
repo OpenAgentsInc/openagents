@@ -110,13 +110,15 @@ int main(int argc, char **argv) {
   if (!p->s) return 1;
   a->atlas = PAGE_ATLAS(p); a->max_vertices = PAGE_MAX_VERTICES();
   UiApp app = {.title = "OpenAgents preview", .app_id = "com.openagents.preview", .width = pw, .height = ph, .max_vertices = a->max_vertices, .shader = shader,
-               .user = p, .frame = PAGE_FRAME, .pointer = PAGE_POINTER, .drive = PAGE_DRIVE};
+               .user = p, .frame = PAGE_FRAME, .pointer = PAGE_POINTER, .drive = PAGE_DRIVE,
+               .access_capacity=(uint32_t)chat_access_capacity(),.elements=oc_access_count,.element=oc_access_read,.activate=oc_access_press};
   a->host = ui_open(&app, !window);
   if (!a->host) return 1;
   // large text is drawn as the phone's Display Zoom draws it: fewer points across the same pixels
   if (!window) ui_set_dpr(a->host, k * zoom);
   a->dpr = ui_dpr(a->host) * PAGE_SCALE();
   if (!atlas_setup(a)) return 1;
+  void *core=oa_core_open();if(!core)return 1;oc_attach(p,core,"");
   Pv v = {.p = p, .host = a->host, .w = (uint32_t)(pw * k + 0.5f), .h = (uint32_t)(ph * k + 0.5f), .dpr = k};
   // the window's facts are in points of the surface, which the zoom makes larger
   PAGE_ENV(p, top / zoom, bottom / zoom, kb / zoom, kb > 0, 0, pv_flag(argc, argv, "--reduced"));
@@ -150,6 +152,6 @@ int main(int argc, char **argv) {
     }
     if (PAGE_REFUSED(p)) { fprintf(stderr, "Preview: %d frames passed the surface's declared capacity\n", PAGE_REFUSED(p)); status = 1; }
   }
-  gallery_free(a);
+  oa_core_close(core);gallery_free(a);
   return status;
 }
