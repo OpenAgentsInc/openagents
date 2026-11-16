@@ -114,6 +114,7 @@ SpGame :: struct {
   kit: [1] KsMarks;           // where g_world drew each kit slot's blockout (kits.coax)
   at: SpPlaces;               // the landmarks the game reads, from them
   gray: bool;                 // graybox (G): the world in grays, orange, yellow and cyan kept; outlives a reset
+  jam: bool;                  // the jam build's world (jam/jam-world.coax, #13653): the imported levels stand for the drawn world; outlives a reset
   mode: int; zone: int; phase: int; t: f32;
   px: f32; pz: f32; yaw: f32; pitch: f32; stride: f32;
   face_off: f32;               // her body's turn from the view's yaw: she turns to face the way she walks (g_face)
@@ -316,6 +317,7 @@ g_respawn :: (g: [] SpGame) {
 }
 g_reset :: (g: [] SpGame) {
   gray := g[0].gray; zoom := g[0].zoom; calm := g[0].calm;   // the graybox toggle and the wheel are the viewer's, not the run's
+  jam := g[0].jam;   // and the jam world is the page's
   hide: [TK_KINDS] bool; for k: 0..<TK_KINDS { hide[k] = g[0].hide[k]; }   // and what a host draws is the host's
   hview := g[0].hview; hview_on := g[0].hview_on; haim := g[0].haim; haim_on := g[0].haim_on;   // and so is the view it places
   tables := g[0].c[0];   // the content tables are read once
@@ -329,7 +331,7 @@ g_reset :: (g: [] SpGame) {
   g[0].snd[0] = sound; g[0].snd[0].ready = false;
   g[0].view = view; g[0].shown = shown; g[0].unseen = unseen;
   g[0].imp[0] = imports;
-  g[0].gray = gray; g[0].zoom = zoom; g[0].calm = calm;
+  g[0].gray = gray; g[0].zoom = zoom; g[0].calm = calm; g[0].jam = jam;
   if tables.ok { g[0].c[0] = tables; } else { _ := sc_load(g[0].c[..], SC_SHIPPED); }
   _ := g_places(g);
   g[0].layer[0] = layer;
