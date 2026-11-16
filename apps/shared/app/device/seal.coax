@@ -21,6 +21,7 @@
 // the computer's code, as `coder host rpc` reports it.
 //   coax/bin/coax test apps/shared/app/device/seal.coax
 #load "../../../../coax/lib/agent/environment/host-wire.coax";
+#load "../../../../coax/lib/agent/accounts/wire.coax";
 
 DV_PAIR :: 1;     // browser.request: arg is the label the computer shows
 DV_STATUS :: 2;   // browser.status: arg is the pairing request's id
@@ -30,7 +31,7 @@ DV_EVENT_MAX :: 131072;
 
 DvWork :: struct {
   w: [1] HbWork; body: [HB_BODY_MAX] u8; arena: [8192] u8; params: [1] EaRequest;
-  op: int; request: [64] u8; event: [64] u8; method: [32] u8; nm: int; browser: [64] u8; sealed: bool;
+  provider:bool;command:[32]u8;nc:int;op: int; request: [64] u8; event: [64] u8; method: [32] u8; nm: int; browser: [64] u8; sealed: bool;
 }
 
 dv_hex :: (s: string) -> bool { return hb_hex64(s); }
@@ -48,7 +49,7 @@ dv_public :: (secret: [] u8, out: [] u8) -> int #export_c #effects(all) {
 // The request's identity stays in x for dv_filter and dv_open.
 dv_seal :: (x: [] DvWork, op: int, secret: [] u8, host: string, relay: string, arg: string, epoch: int, params: string, now: int, random: [] u8, out: [] u8) -> int #export_c #effects(all) {
   if x.count < 1 || secret.count != 32 || random.count < DV_RANDOM || !dv_hex(host) || now <= 0 { return -1; }
-  x[0].sealed = false; x[0].op = op; x[0].nm = 0;
+  x[0].sealed = false; x[0].op = op; x[0].nm = 0;x[0].provider=false;x[0].nc=0;
   hx: [32] u8; bx: [32] u8;
   if !hb_unhex(host, hx[..]) || !hb_public(secret, bx[..]) || !hb_hex(bx[..], x[0].browser[..]) { return -1; }
   if !hb_hex(random[0..<32], x[0].request[..]) { return -1; }
@@ -62,15 +63,21 @@ dv_seal :: (x: [] DvWork, op: int, secret: [] u8, host: string, relay: string, a
     if hb_request_check(q) != HB_OK { return -1; }
     n = hb_request_seal(q, secret, hx[..], random[32..<64], random[64..<96], now, x[0].w[..], out);
   } else if op == DV_RPC {
-    if !dv_hex(arg) || epoch < 0 || !ea_read(params, x[0].params[..]) { return -1; }
-    p := x[0].params[0];
-    x[0].nm = ea_copy(x[0].method[..], cast(string) p.method[0..<p.nm]);
+    if !dv_hex(arg) || epoch < 0 { return -1; }
+    if ea_read(params,x[0].params[..]) {
+      p:=x[0].params[0];x[0].nm=ea_copy(x[0].method[..],cast(string)p.method[0..<p.nm]);
+    } else {
+      p:[1]PaRequest;if !pa_request_read(params,p[..]) {return -1;}
+      x[0].provider=true;x[0].nm=pa_copy(x[0].method[..],cast(string)p[0].method[0..<p[0].nm]);x[0].nc=pa_copy(x[0].command[..],cast(string)p[0].command[0..<p[0].nc]);
+      for i:0..<p[0].code.count {p[0].code[i]=0;}
+    }
     if x[0].nm < 1 { x[0].nm = 0; return -1; }
     q := HbRpcRequest.{request = request, host = host, grant = arg, relay = relay, epoch = epoch, issued_at = now, expires_at = now + HB_WINDOW,
       method = cast(string) x[0].method[0..<x[0].nm], params = params};
     b := hb_rpc_write(q, x[0].body[..]);
     if b < 1 { return -1; }
     n = hb_seal(cast(string) x[0].body[0..<b], HB_REQUEST_SCHEMA, secret, hx[..], request, random[32..<64], random[64..<96], now, x[0].w[..], out);
+    for i:0..<b {x[0].body[i]=0;}
   }
   if n < 1 { return -1; }
   // the event's own id: the reply names it
@@ -155,6 +162,9 @@ dv_open :: (x: [] DvWork, secret: [] u8, host: string, event: string, now: int, 
   // a signed, correlated refusal is a result, not a lost reply
   refusal: [1] HbReply; arena: [4096] u8; text := [1] HbText.[HbText.{buf = arena[..]}];
   if hb_reply_read(body, refusal[..], text[..]) != HB_OK || refusal[0].ok || refusal[0].host != host || refusal[0].request != request || refusal[0].request_event != eid || refusal[0].expires_at < now { return 0; }
+  if x[0].provider {
+    v:[1]PaView;_=pa_copy(v[0].host[..],host);v[0].nm=pa_copy(v[0].method[..],method);v[0].nc=pa_copy(v[0].command[..],cast(string)x[0].command[0..<x[0].nc]);v[0].ne=pa_copy(v[0].error[..],ifx refusal[0].code.count<=40 then refusal[0].code else "refused");return pa_view_write(v[..],out);
+  }
   v: [1] EaView;
   for c, i: host { v[0].host[i] = c; } v[0].nh = 64;
   v[0].nm = ea_copy(v[0].method[..], method);

@@ -1,0 +1,114 @@
+// GPU Usage uses the existing provider account protocol. This is public
+// metadata only; private input and exact pending wire bytes belong to the SDK.
+#load "../core/core.coax";
+#load "../../provider-account-text.coax";
+#load "flow-checks.coax" #test;
+US_CATALOG :: 1; US_RECOVER :: 2; US_IDS :: 3; US_CALL :: 4;
+UsageScreen :: struct {
+ open:bool;visible:bool;signed_in:bool;loaded:bool;failed:bool;op:int;purpose:int;generation:int;next:int;index:int;catalog_due:int;
+ catalog:[1]EaCatalog;views:[64]PaView;states:[64]int;recovered:[64]bool;via_account:[64]bool;revision:int= -1;
+ host:[64]u8;current:[1]PaRequest;intent:[1]PaRequest;intent_host:[64]u8;pending:bool;ready:bool;unknown:bool;retry:bool;
+ flow:[1]PaLogin;flow_host:[64]u8;flow_due:int;form:bool;form_host:[64]u8;account:[32]u8;na:int;label:[80]u8;nl:int;code_ready:bool;
+ note:[256]u8;nn:int;
+}
+us_note :: (s:[]UsageScreen,text:string) {s[0].nn=pa_copy(s[0].note[..],text);}
+us_running :: (s:[]UsageScreen)->bool {state:=cast(string)s[0].flow[0].state[0..<s[0].flow[0].ns];return state=="starting" || state=="awaiting_code" || state=="verifying";}
+us_find :: (s:[]UsageScreen,host:string)->int {for i:0..<s[0].catalog[0].n {if cast(string)s[0].catalog[0].entries[i].host[..]==host {return i;}}return -1;}
+us_merge :: (s:[]UsageScreen,c:[]AppCore) {
+ for i:0..<app_device_count(c) {host:=app_device_host(c,i);if us_find(s,host)>=0 || s[0].catalog[0].n>=64 {continue;}
+  n:=s[0].catalog[0].n;_=ea_copy(s[0].catalog[0].entries[n].host[..],host);s[0].catalog[0].entries[n].nl=ea_copy(s[0].catalog[0].entries[n].label[..],app_device_name(c,i));s[0].catalog[0].n+=1;
+ }
+ s[0].revision=app_device_revision(c);
+}
+us_intent :: (s:[]UsageScreen,host:string,method:string,account:string)->bool {
+ if pa_right(method)!=1 || s[0].pending || !us_host(host) || us_find(s,host)<0 {return false;}
+ if method=="CompleteAccountLogin" && !s[0].code_ready {return false;}
+ q:=s[0].intent[..];q[0]=PaRequest.{};q[0].nm=pa_copy(q[0].method[..],method);q[0].na=pa_copy(q[0].account[..],account);
+ if method=="BeginAccountLogin" {q[0].nn=pa_copy(q[0].label[..],cast(string)s[0].label[0..<s[0].nl]);}
+ if method=="CompleteAccountLogin" || method=="CancelAccountLogin" {q[0].nl=pa_copy(q[0].login[..],cast(string)s[0].flow[0].id[0..<s[0].flow[0].ni]);}
+ if method=="CompleteAccountLogin" {q[0].nb=pa_copy(q[0].code[..],US_PRIVATE);}
+ _=pa_copy(s[0].intent_host[..],host);s[0].pending=true;s[0].ready=false;s[0].unknown=false;s[0].retry=false;s[0].nn=0;return true;
+}
+us_send :: (s:[]UsageScreen,c:[]AppCore,host:string,q:[]PaRequest)->bool {
+ raw:[8192]u8;n:=pa_request_write(q,raw[..]);if n<1 {us_note(s,"Invalid account request");return false;}
+ i:=us_find(s,host);if i<0 {return false;}
+ op:=app_guest_provider(c,US_CALL,host,cast(string)raw[0..<n],s[0].via_account[i],false);if op==0 {return false;}
+ s[0].op=op;s[0].purpose=US_CALL;_=pa_copy(s[0].host[..],host);s[0].current[0]=q[0];return true;
+}
+us_sync :: (s:[]UsageScreen,c:[]AppCore,visible:bool) {
+ signed:=c[0].auth==AUTH_IN;
+ if signed!=s[0].signed_in {was:=s[0].open;_=app_guest_cancel(c,OWN_USAGE);s[0]=UsageScreen.{};s[0].signed_in=signed;s[0].open=was;}
+ if s[0].op>0 && s[0].generation!=fx_generation(c[0].out[..],OWN_USAGE) {s[0].op=0;s[0].purpose=0;}
+ s[0].visible=visible && s[0].open && c[0].foreground;
+ if !s[0].visible {
+  if s[0].op>0 && (s[0].purpose!=US_CALL || !s[0].pending) {_=app_guest_cancel(c,OWN_USAGE);s[0].op=0;s[0].purpose=0;}
+  _=app_guest_due(c,OWN_USAGE,-1);return;
+ }
+ if s[0].op>0 {return;}
+ if !s[0].loaded || signed && !s[0].pending && !s[0].form && !us_running(s) && c[0].mono_ms>=s[0].catalog_due {
+  if signed {s[0].op=app_guest_http(c,OWN_USAGE,US_CATALOG,UP_GET,"/api/chat/environments/v1","");s[0].purpose=US_CATALOG;}
+  else {s[0].loaded=true;us_merge(s,c);}
+ } else if s[0].pending {
+  if !s[0].ready {s[0].op=app_provider_ids(c);s[0].purpose=US_IDS;}
+  else if !s[0].unknown || s[0].retry {s[0].retry=false;_=us_send(s,c,cast(string)s[0].intent_host[..],s[0].intent[..]);}
+ } else {
+  if s[0].revision!=app_device_revision(c) {us_merge(s,c);}
+  if us_running(s) && c[0].mono_ms>=s[0].flow_due {
+   q:[1]PaRequest;q[0].nm=pa_copy(q[0].method[..],"ReadAccountLogin");q[0].nl=pa_copy(q[0].login[..],cast(string)s[0].flow[0].id[0..<s[0].flow[0].ni]);_=us_send(s,c,cast(string)s[0].flow_host[..],q[..]);
+  } else if c[0].mono_ms>=s[0].next && s[0].catalog[0].n>0 {
+   if s[0].index>=s[0].catalog[0].n {s[0].index=0;s[0].next=c[0].mono_ms+30000;}
+   else {i:=s[0].index;host:=cast(string)s[0].catalog[0].entries[i].host[..];
+    if !s[0].recovered[i] {s[0].op=app_guest_provider(c,US_RECOVER,host,"",s[0].via_account[i],true);s[0].purpose=US_RECOVER;_=pa_copy(s[0].host[..],host);}
+    else {q:[1]PaRequest;q[0].nm=pa_copy(q[0].method[..],"ListAccounts");q[0].refresh=true;if us_send(s,c,host,q[..]) {s[0].index+=1;}}
+   }
+  }
+ }
+ if s[0].op>0 {s[0].generation=fx_generation(c[0].out[..],OWN_USAGE);_=app_guest_due(c,OWN_USAGE,-1);}
+ else {
+  due:=ifx s[0].pending then (ifx s[0].unknown && !s[0].retry then -1 else c[0].mono_ms+1000) else ifx s[0].catalog[0].n==0 then -1 else ifx us_running(s) && s[0].flow_due<s[0].next then s[0].flow_due else s[0].next;
+  if due>=0 && due<=c[0].mono_ms {due=c[0].mono_ms+1000;}_=app_guest_due(c,OWN_USAGE,due);
+ }
+}
+us_guest :: (s:[]UsageScreen,c:[]AppCore,raw:string)->bool {
+ g:=c[0].guest;if !g.waiting || g.owner!=OWN_USAGE {return false;}
+ if g.op!=s[0].op {app_guest_done(c);return true;}what:=s[0].purpose;s[0].op=0;s[0].purpose=0;
+ ok:=g.outcome==FXO_DONE && g.status==200;
+ if what==US_CATALOG {
+  candidate:[1]EaCatalog;s[0].failed= !ok || !ea_catalog_read(raw,candidate[..]);
+  if s[0].failed {us_note(s,"Some computers are unavailable");}
+  else {
+   old:[1]EaCatalog;old[0]=s[0].catalog[0];views:[64]PaView;states:[64]int;recovered:[64]bool;routes:=s[0].via_account;
+   s[0].catalog[0]=EaCatalog.{};
+   for j:0..<candidate[0].n {entry:=candidate[0].entries[j];host:=cast(string)entry.host[..];if us_find(s,host)>=0 {continue;}i:=s[0].catalog[0].n;s[0].catalog[0].entries[i]=entry;s[0].catalog[0].n+=1;}
+   for i:0..<s[0].catalog[0].n {for j:0..<old[0].n {if cast(string)s[0].catalog[0].entries[i].host[..]==cast(string)old[0].entries[j].host[..] {views[i]=s[0].views[j];states[i]=s[0].states[j];recovered[i]=s[0].recovered[j] && routes[j];}}}
+   s[0].views=views;s[0].states=states;s[0].recovered=recovered;for i:0..<64 {s[0].via_account[i]=i<s[0].catalog[0].n;}
+   s[0].index=0;s[0].next=c[0].mono_ms;
+  }
+  s[0].loaded=true;s[0].catalog_due=c[0].mono_ms+60000;us_merge(s,c);
+ } else if what==US_IDS {
+  q:=s[0].intent[..];if g.outcome==FXO_DONE && tc_hex32(raw) && c[0].wall_ms>0 {q[0].nc=pa_copy(q[0].command[..],raw);q[0].issued=c[0].wall_ms;q[0].expires=ea_deadline(q[0].issued);s[0].ready=pa_request_valid(q);}
+  if !s[0].ready {s[0].pending=false;us_note(s,"Could not prepare account change");}
+ } else if what==US_RECOVER {
+  i:=us_find(s,cast(string)s[0].host[..]);if i>=0 {s[0].recovered[i]=ok;}
+  if ok && raw.count>0 {
+   q:[1]PaRequest;if us_metadata(raw) && pa_request_read(raw,q[..]) && pa_right(cast(string)q[0].method[0..<q[0].nm])==1 {
+    s[0].intent[0]=q[0];s[0].intent_host=s[0].host;s[0].pending=true;s[0].ready=true;s[0].unknown=true;us_note(s,"Account change unconfirmed");
+   } else {us_note(s,"Saved account change is unavailable");s[0].next=c[0].mono_ms+30000;}
+  } else if !ok {if i>=0 {s[0].states[i]=3;}s[0].index+=1;}
+ } else if what==US_CALL {
+  q:=s[0].current[..];mutation:=pa_right(cast(string)q[0].method[0..<q[0].nm])==1;v:[1]PaView;
+  ok=ok && pa_view_read(raw,v[..]);if ok {ok=cast(string)v[0].host[..]==cast(string)s[0].host[..] && cast(string)v[0].method[0..<v[0].nm]==cast(string)q[0].method[0..<q[0].nm] && cast(string)v[0].command[0..<v[0].nc]==cast(string)q[0].command[0..<q[0].nc];}
+  i:=us_find(s,cast(string)s[0].host[..]);
+  if ok {
+   if i>=0 {s[0].views[i]=v[0];s[0].states[i]=2;}
+   if v[0].login.ni>0 {s[0].flow[0]=v[0].login;s[0].flow_host=s[0].host;}
+   s[0].flow_due=c[0].mono_ms+3000;
+   if v[0].ne>0 {us_note(s,pu_error(cast(string)v[0].error[0..<v[0].ne]));}else {s[0].nn=0;}
+   if mutation {s[0].pending=false;s[0].ready=false;s[0].unknown=false;s[0].code_ready=false;s[0].form=false;s[0].intent[0]=PaRequest.{};s[0].index=0;s[0].next=c[0].mono_ms;}
+  } else {
+   if mutation {s[0].unknown=true;us_note(s,"Account change unconfirmed");}
+   else {if i>=0 {s[0].states[i]=3;}s[0].flow_due=c[0].mono_ms+3000;}
+  }
+ }
+ app_guest_done(c);return true;
+}

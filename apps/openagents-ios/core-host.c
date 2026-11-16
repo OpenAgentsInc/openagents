@@ -77,3 +77,14 @@ int64_t oa_device_auth(const uint8_t secret[32], const char *relay, const uint8_
 int64_t oa_device_open(void *work, const uint8_t secret[32], const char *host, const uint8_t *event, int64_t event_n, int64_t now, uint8_t *out, int64_t cap) {
   return dv_open(oa_work(work), oa_in(secret, 32), oa_cstr(host), oa_bytes((const char *)event, event_n), now, oa_out(out, cap));
 }
+
+int ou_effect(int32_t mode,const char *host,const uint8_t *raw,int32_t n) {return us_effect(mode,oa_cstr(host),oa_bytes((const char *)raw,n));}
+int ou_http(int32_t method,const char *path,int32_t bytes) {return us_http(method,oa_cstr(path),bytes);}
+int32_t ou_mutation(const uint8_t *raw,int32_t n) {return (int32_t)us_mutation(oa_bytes((const char *)raw,n));}
+int32_t ou_pending(const uint8_t *raw,int32_t n,uint8_t *out,int32_t cap) {return (int32_t)us_pending_public(oa_bytes((const char *)raw,n),oa_out(out,cap));}
+int32_t ou_request(const uint8_t *raw,int32_t n,const uint8_t *kept,int32_t kn,const char *input,uint8_t *out,int32_t cap) {return (int32_t)us_private_request(oa_bytes((const char *)raw,n),oa_bytes((const char *)kept,kn),oa_cstr(input),oa_out(out,cap));}
+int32_t ou_reply(const char *host,const uint8_t *metadata,int32_t mn,const uint8_t *raw,int32_t n,uint8_t *out,int32_t cap) {return (int32_t)us_reply(oa_cstr(host),oa_bytes((const char *)metadata,mn),oa_bytes((const char *)raw,n),oa_out(out,cap));}
+
+int ou_input(const uint8_t *raw,int32_t n) {return us_private_input(oa_bytes((const char *)raw,n));}
+
+int ou_settled(const uint8_t *raw,int32_t n) {return us_settled(oa_bytes((const char *)raw,n));}

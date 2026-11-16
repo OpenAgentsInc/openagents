@@ -1,0 +1,27 @@
+// Public effect metadata uses the existing provider request shape. The marker
+// is never sent: the SDK replaces it with its private editor's code, or the
+// exact retained request. No provider token enters the application core.
+#load "../../../../coax/lib/agent/accounts/wire.coax";
+#authority;
+US_PRIVATE :: "__native_private_code__";
+us_host :: (host:string)->bool #effects(all) {return ea_id(host,64);}
+us_metadata :: (raw:string)->bool #effects(all) {
+ q:[1]PaRequest;if !pa_request_read(raw,q[..]) {return false;}
+ return q[0].nb==0 || cast(string)q[0].code[0..<q[0].nb]==US_PRIVATE;
+}
+// 0 paired/local call, 1 account call; 2/3 read their protected pending command.
+us_effect :: (mode:int,host:string,raw:string)->bool #export_c #effects(all) {
+ if mode<0 || mode>3 || !us_host(host) {return false;}
+ return ifx mode>=2 then raw.count==0 else us_metadata(raw);
+}
+#test "provider effects admit only declared transport modes, canonical hosts and private-free metadata" {
+ h:="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+ q:[1]PaRequest;q[0].nm=pa_copy(q[0].method[..],"ListAccounts");b:[8192]u8;n:=pa_request_write(q[..],b[..]);#assert n>0;
+ for m:[2]int.[0,1] {#assert us_effect(m,h,cast(string)b[0..<n]);}
+ for m:[2]int.[2,3] {#assert us_effect(m,h,"") && !us_effect(m,h,cast(string)b[0..<n]);}
+ #assert !us_effect(-1,h,"") && !us_effect(4,h,"") && !us_effect(0,h,"") && !us_effect(0,h,"{}");
+ #assert !us_effect(2,"","") && !us_effect(2,"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","");
+ q[0].nm=pa_copy(q[0].method[..],"CompleteAccountLogin");q[0].nl=pa_copy(q[0].login[..],"11111111111111111111111111111111");q[0].nc=pa_copy(q[0].command[..],"22222222222222222222222222222222");q[0].issued=1;q[0].expires=300001;
+ q[0].nb=pa_copy(q[0].code[..],US_PRIVATE);n=pa_request_write(q[..],b[..]);#assert n>0 && us_metadata(cast(string)b[0..<n]);
+ q[0].nb=pa_copy(q[0].code[..],"private-code#state");n=pa_request_write(q[..],b[..]);#assert n>0 && !us_metadata(cast(string)b[0..<n]);
+}

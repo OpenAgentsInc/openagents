@@ -210,3 +210,51 @@ while logged out, Settings/login Back and native email typing. Its result is
 `/tmp/oa-gpu-project-ui-1401-launch-domain.xcresult`.
 
 ![Projects in the GPU drawer](sidebar-projects-1401.png)
+
+## GPU Usage and account connection (1402)
+
+Settings → Usage is a shared GPU page with provider-reported usage windows,
+multiple Claude accounts, Connect, the existing browser/code login flow and
+Default for new conversations. Tokens remain on the computer. Account-listed
+hosts use the existing account gateway; paired/local-only hosts keep their
+explicit provider enablement and grant scope. Ordinary chat pairing does not
+silently grant account management.
+
+The authorization code is entered only in the native secure editor. The public
+core, semantic rows and driver contain a marker and presence facts only. Before
+sending a mutation the SDK retains the exact existing PaRequest in protected
+storage. Reopening recovers public metadata; an explicit Check replays the same
+command and code. A correlated-but-unknown receipt keeps ownership. Nostr and
+Claude fields and pending stores have distinct owners/namespaces.
+
+Validation for this change:
+
+- Shared model/view: 822 checks passed. Core changed-procedure gate: 202 mutants
+  killed, zero survivors. Provider SDK gate: 127 mutants, 115 killed, twelve
+  proved equivalents for opaque stack erasure/unreachable decoder branches,
+  zero survivors. Public/private editor admission: 15 mutants killed. Local
+  profile selection/correlation: 37 mutants, 28 killed, nine equivalent opaque
+  erasure/unreachable branches, zero survivors.
+- Actual GPU Usage page passes debug/release and ASan/UBSan: regular Settings
+  navigation, public/private field separation, large type, keyboard reveal,
+  drawer destinations and exact scroll geometry through 512 account cards.
+  Nostr Settings' actual compiled-page normal/sanitized checks also pass.
+- Fourteen standalone SDK tests pass, including Nostr backup/restore, private
+  files and Claude code substitution, storage-before-send, missing input,
+  malformed/unknown receipts and same-byte retry after reopening. The hidden
+  Mac SDK editor/accessibility qualification passes.
+- The real UIKit test passes repeated sidebar taps, Projects, email typing,
+  login Back, Usage opening/Back and returning to the sidebar. Result:
+  `/tmp/oa-gpu-usage-ui-1402.xcresult`. No owner login or private key is used.
+- A real isolated owner-only Unix socket passes disabled-provider refusal,
+  enabled provider dispatch with command correlation and the unchanged chat
+  profile. It starts no provider login or agent turn. Command:
+  `TMPDIR=/tmp coax/web/tool.sh coder/tui/local-provider-smoke.coax`.
+- Components, tools, wire and layer checks pass without an allowlist increase.
+
+The local socket extension is built/tested in source. The owner's installed
+resident daemons were not restarted or replaced during this change. This is
+not production desktop adoption. G3 composition, the world library, Project
+file attachments, desktop default migration and physical-phone acceptance
+remain open under #13645. The owner asked to stop after this Usage release;
+resume only on further instruction.

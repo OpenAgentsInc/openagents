@@ -36,6 +36,7 @@
 #load "../shared/app/history/index.coax";
 #load "../shared/app/history/devices.coax";
 #load "../shared/app/projects/view.coax";
+#load "../shared/app/usage/view.coax";
 #load "../shared/app/fields.coax";
 #load "../../components/app/identity.coax";
 #load "../../components/core/edit.coax";
@@ -83,7 +84,7 @@ ChatPage :: struct {
   env: [1] EnvSelect; eb: [1] EsBridge; picker: EsPickerSize;
   // the shared app core the host attaches, and the login flow over it
   core: [] AppCore; lb: [1] LoginBridge; lf: [1] LoginFlow;
-  identity: [1] IdentitySettings;
+  identity: [1] IdentitySettings;usage:[1]UsageScreen;
   history:[1]ChatIndex;history_content:f32;history_viewport:f32;
   devices:[1]DeviceHistory;
   section:int;projects:[1]ProjectScreen;section_content:f32;section_viewport:f32;
@@ -131,6 +132,7 @@ ch_step :: (s: [] ChatPage) {
   iks_sync(s[0].identity[..],s[0].core);
   hi_sync(s[0].history[..],s[0].core,s[0].drawer);
   dh_sync(s[0].devices[..],s[0].core,s[0].drawer);
+  us_sync(s[0].usage[..],s[0].core,s[0].usage[0].open && !s[0].drawer && !s[0].lf[0].open);
   ps_sync(s[0].projects[..],s[0].core,s[0].section==1 && !s[0].drawer && !s[0].lf[0].open && !s[0].identity[0].open);
 }
 // One scroll window for computer groups and account chats; each title is one
@@ -204,6 +206,14 @@ ch_layout :: (s: [] ChatPage, f: [] UiFrame, w: f32, h: f32) {
   bottom := h - under / u - 6 / u;
   nav_y := top + 4 / u;
   s[0].again=false;
+  if s[0].usage[0].open {
+    s[0].menu_side=0;nav:=k.app.icon_button;
+    _:=app_icon_button(f,"usage.back",16/u,nav_y,ICON_BACK,"Back to Settings",APP_BUTTON_QUIET,0,US_ACTION);
+    tw:=measure_width(f[0].m,k.title.face,"Usage");_=app_text(f,"usage.title",(w-tw)/2,nav_y+(nav-k.title.line)/2,tw,APP_TEXT_TITLE,"Usage");
+    area_top:=nav_y+nav+k.app.gap;key:=uiframe_key(f,"section.viewport");offset:=keyed_scroll(f[0].keyed,key);s[0].section_viewport=bottom-area_top;
+    uiframe_clip(f,0,area_top,w,bottom);s[0].section_content=us_view(s[0].usage[..],f,16/u,area_top-offset,w-32/u,area_top,bottom,ch_focus(s));
+    ch_reveal(s,f,key,area_top,bottom,s[0].section_content,offset);uiframe_unclip(f);return;
+  }
   if s[0].identity[0].open {
     s[0].menu_side=0;
     key:=uiframe_key(f,"settings.viewport");offset:=keyed_scroll(f[0].keyed,key);
@@ -219,6 +229,10 @@ ch_layout :: (s: [] ChatPage, f: [] UiFrame, w: f32, h: f32) {
       yy+=app_text(f,"settings.title",16/u,yy,w-32/u,APP_TEXT_TITLE,"Settings")+k.app.gap;
       _:=app_button(f,"settings.login",16/u,yy,w-32/u,-1,"Log in",APP_BUTTON_PRIMARY,0,CH_HIT_LOGIN);
       s[0].settings_content=yy-nav_y+k.control_h;
+    }
+    if s[0].identity[0].confirm==0 && !s[0].identity[0].backup {
+      yy:=nav_y-offset+s[0].settings_content+k.app.gap;
+      s[0].settings_content+=k.app.gap+app_button(f,"usage.open",16/u,yy,w-32/u,-1,"Usage",APP_BUTTON_DEFAULT,0,US_OPEN);
     }
     ch_reveal(s,f,key,nav_y,bottom,s[0].settings_content,offset);uiframe_unclip(f);
     return;
@@ -332,6 +346,8 @@ ch_login_close :: (s: [] ChatPage) -> bool {
   return done || !l[0].open;
 }
 ch_stamp :: (s: [] ChatPage) -> int { return surface_stamp(ch_live(s)); }
+// A drawer destination leaves Settings, including its nested Usage page.
+ch_main :: (s:[]ChatPage) {s[0].usage[0].open=false;s[0].usage[0].code_ready=false;s[0].identity[0].open=false;s[0].identity[0].backup=false;s[0].identity[0].confirm=0;}
 // A press on a committed row. Send does nothing yet.
 ch_press :: (s: [] ChatPage, row: int) -> bool {
   sf := ch_live(s); act := surface_action(sf, row); l := s[0].lf[..];
@@ -341,7 +357,7 @@ ch_press :: (s: [] ChatPage, row: int) -> bool {
   if !elt_visible(t[..],row).visible && !(s[0].native && ch_picking(s) && ch_env_row(surface_id(sf,row))) {return false;}
   if elt_ok(t[..], row) && t[0].rows[row].role == EL_FIELD && act != 0 { ch_set_focus(s, surface_id(sf, row)); }
   if act==410 || act==411 {
-    if ps_blocked(s[0].projects[..]) {return false;}s[0].section=ifx act==411 then 1 else 0;
+    if ps_blocked(s[0].projects[..]) {return false;}ch_main(s);s[0].section=ifx act==411 then 1 else 0;
     if s[0].section==1 {ps_open(s[0].projects[..]);}else {s[0].projects[0].open=false;}
     s[0].drawer=false;ch_set_focus(s,"");ch_step(s);return true;
   }
@@ -355,7 +371,7 @@ ch_press :: (s: [] ChatPage, row: int) -> bool {
     if s[0].core.count<1 || app_navigation_blocked(s[0].core) {return false;}
     id:=surface_id(sf,row);if !ct_id(id,"cnv_",32) {return false;}
     _:=app_dispatch(s[0].core,AppEvent.{kind=EV_ACTION,code=ACT_ENVIRONMENT,more="Default",mono_ms=ch_now(s),wall_ms=s[0].core[0].wall_ms});
-    opened:=app_dispatch(s[0].core,AppEvent.{kind=EV_ACTION,code=ACT_OPEN,text=id,mono_ms=ch_now(s),wall_ms=s[0].core[0].wall_ms});if opened<1 {return false;}s[0].section=0;s[0].drawer=false;ch_set_focus(s,"");ch_step(s);return true;
+    opened:=app_dispatch(s[0].core,AppEvent.{kind=EV_ACTION,code=ACT_OPEN,text=id,mono_ms=ch_now(s),wall_ms=s[0].core[0].wall_ms});if opened<1 {return false;}ch_main(s);s[0].section=0;s[0].drawer=false;ch_set_focus(s,"");ch_step(s);return true;
   }
   if act==343 {
     c:=s[0].core;if c.count<1 || app_navigation_blocked(c) {return false;}
@@ -363,7 +379,7 @@ ch_press :: (s: [] ChatPage, row: int) -> bool {
     for i:0..<h[0].nav[0].n {if dh_row_id(h,i,buf[..])!=id {continue;}r:=h[0].nav[0].rows[i];entry:=h[0].nav[0].browser[0].catalog[0].entries[r.host];key:[193]u8;
       for j:0..<64 {key[j]=entry.host[j];}key[64]='\t';for j:0..<r.session.ni {key[65+j]=r.session.id[j];}
       opened:=app_dispatch(c,AppEvent.{kind=EV_ACTION,code=ACT_DEVICE_REJOIN,text=cast(string)key[0..<65+r.session.ni],mono_ms=ch_now(s),wall_ms=c[0].wall_ms});if opened<1 {return false;}
-      s[0].section=0;s[0].drawer=false;ch_set_focus(s,"");ch_step(s);return true;
+      ch_main(s);s[0].section=0;s[0].drawer=false;ch_set_focus(s,"");ch_step(s);return true;
     }return false;
   }
   if act==344 {
@@ -373,7 +389,12 @@ ch_press :: (s: [] ChatPage, row: int) -> bool {
   }
   if act==342 {done:=hi_first(s[0].history[..],s[0].core);if done {chat_scroll_to(s,0);}ch_step(s);return done;}
   if act==341 {done:=hi_more(s[0].history[..],s[0].core);ch_step(s);return done;}
-  if act==211 {s[0].drawer=false;s[0].identity[0].open=true;if s[0].identity[0].op==0 {s[0].identity[0].loaded=false;s[0].identity[0].note_n=0;}ch_set_focus(s,"");ch_step(s);return true;}
+  if act==211 {s[0].usage[0].open=false;s[0].drawer=false;s[0].identity[0].open=true;if s[0].identity[0].op==0 {s[0].identity[0].loaded=false;s[0].identity[0].note_n=0;}ch_set_focus(s,"");ch_step(s);return true;}
+  if act==US_OPEN {s[0].usage[0].open=true;ch_set_focus(s,"");keyed_scroll_set(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"section.viewport"),0);ch_step(s);return true;}
+  if act==US_FIELD {return surface_id(sf,row)=="usage.label" || surface_id(sf,row)=="usage.code";}
+  if act==US_ACTION {
+    done:=us_press(s[0].usage[..],s[0].core,surface_id(sf,row));if done {ch_set_focus(s,"");ch_step(s);}return done;
+  }
   if act==IKS_SECRET {ch_set_focus(s,"identity.secret");return true;}
   if (act>=IKS_BACK && act<=IKS_CANCEL) || (act>=302 && act<=306) {
     if s[0].core.count<1 {return false;}
@@ -402,8 +423,8 @@ ch_press :: (s: [] ChatPage, row: int) -> bool {
   if act == CH_HIT_NEW {
     c := s[0].core; if c.count < 1 { return false; }
     if ps_blocked(s[0].projects[..]) {return false;}
-    _ := app_dispatch(c, AppEvent.{kind = EV_ACTION, code = ACT_NEW, mono_ms = c[0].mono_ms, wall_ms = c[0].wall_ms});
-    s[0].section=0;s[0].drawer = false; ch_step(s); return true;
+    if app_dispatch(c, AppEvent.{kind = EV_ACTION, code = ACT_NEW, mono_ms = c[0].mono_ms, wall_ms = c[0].wall_ms})!=APP_OK {return false;}
+    ch_main(s);s[0].section=0;s[0].drawer = false; ch_step(s); return true;
   }
   if act >= LF_ACT_EMAIL && act <= LF_ACT_CANCEL {
     done := lf_press(l, act); ch_step(s);
@@ -524,7 +545,7 @@ chat_step :: (s: [] ChatPage) #export_c #effects(all) { if s.count > 0 && s[0].r
 // the guest is let go. Then the flow and the chips follow.
 chat_guest :: (s: [] ChatPage, body: string) #export_c #effects(all) {
   if s.count < 1 || s[0].core.count < 1 { return; }
-  if !ps_guest(s[0].projects[..],s[0].core,body) && !iks_guest(s[0].identity[..],s[0].core,body) && !hi_guest(s[0].history[..],s[0].core,body) && !dh_guest(s[0].devices[..],s[0].core,body) && !es_bridge_guest(s[0].core, s[0].eb[..], s[0].env[..], body, ch_now(s)) { app_guest_done(s[0].core); }
+  if !us_guest(s[0].usage[..],s[0].core,body) && !ps_guest(s[0].projects[..],s[0].core,body) && !iks_guest(s[0].identity[..],s[0].core,body) && !hi_guest(s[0].history[..],s[0].core,body) && !dh_guest(s[0].devices[..],s[0].core,body) && !es_bridge_guest(s[0].core, s[0].eb[..], s[0].env[..], body, ch_now(s)) { app_guest_done(s[0].core); }
   if s[0].history[0].changed {s[0].history[0].changed=false;keyed_scroll_set(s[0].keyed[1..<2],keyed_find(s[0].keyed[1..<2],"history.viewport"),0);}
   ch_step(s);
 }
@@ -561,16 +582,18 @@ chat_field_text_box :: (s:[]ChatPage,out:[]f32)->bool #export_c #effects(all) {
 // A login field's value, and its whole value after an edit (false: not taken; show the flow's again).
 chat_field_text :: (s: [] ChatPage, out: [] u8) -> int #export_c #effects(all) {
   if s.count < 1 { return 0; } f := ch_login_field(ch_focus(s)); l := s[0].lf[..];
+  if s[0].usage[0].open && ch_focus(s)=="usage.label" {return ch_out(out,cast(string)s[0].usage[0].label[0..<s[0].usage[0].nl]);}
   return ch_out(out, ifx f == LF_FIELD_EMAIL then lf_email(l) else ifx f == LF_FIELD_CODE then lf_code(l) else ps_field(s[0].projects[..],ch_focus(s)));
 }
 chat_set_field :: (s: [] ChatPage, text: string) -> bool #export_c #effects(all) {
   if s.count < 1 { return false; } f := ch_login_field(ch_focus(s));
+  if s[0].usage[0].open && ch_focus(s)=="usage.label" {n:=pa_copy(s[0].usage[0].label[..],text);if n<0 {return false;}s[0].usage[0].nl=n;return true;}
   if s[0].section==1 && ps_editing(ch_focus(s)) {return ps_edit(s[0].projects[..],ch_focus(s),text);}
   return f != LF_FIELD_NONE && lf_set(s[0].lf[..], f, text);
 }
 // Return in a login field: the card's step action.
 chat_submit :: (s: [] ChatPage) -> bool #export_c #effects(all) {
-  if s.count>0 && ps_editing(ch_focus(s)) {ch_set_focus(s,"");return true;}
+  if s.count>0 && (ps_editing(ch_focus(s)) || ch_focus(s)=="usage.label") {ch_set_focus(s,"");return true;}
   if s.count < 1 || ch_login_field(ch_focus(s)) == LF_FIELD_NONE { return false; }
   done := lf_submit(s[0].lf[..]); ch_step(s); return done;
 }
@@ -582,14 +605,17 @@ chat_field_kind :: (s:[]ChatPage)->int #export_c #effects(all) {
 // The platform editor gave up the keyboard by itself (the keyboard's own dismissal).
 chat_blur :: (s: [] ChatPage) #export_c #effects(all) { if s.count > 0 { ch_set_focus(s, ""); } }
 // A presence fact, never private text. The platform editor owns the private bytes.
-chat_secret_ready :: (s:[]ChatPage,ready:bool) #export_c #effects(all) {if s.count>0 {s[0].identity[0].secret_ready=ready;}}
+chat_secret_ready :: (s:[]ChatPage,ready:bool) #export_c #effects(all) {if s.count>0 {if s[0].usage[0].open {s[0].usage[0].code_ready=ready;}else {s[0].identity[0].secret_ready=ready;}}}
 chat_private_mode :: (s:[]ChatPage)->int #export_c #effects(all) {
- if s.count<1 || !s[0].identity[0].open {return 0;}
+ if s.count<1 {return 0;}
+ if s[0].usage[0].open {return ifx cast(string)s[0].usage[0].flow[0].state[0..<s[0].usage[0].flow[0].ns]=="awaiting_code" then 3 else 0;}
+ if !s[0].identity[0].open {return 0;}
  v:=s[0].identity[0];return ifx v.backup then 2 else ifx v.confirm==IKS_RESTORE then 1 else 0;
 }
 ch_scroll_offset :: (s:[]ChatPage)->f32 {
  if s[0].drawer {return keyed_scroll(s[0].keyed[1..<2],keyed_find(s[0].keyed[1..<2],"history.viewport"));}
  if s[0].lf[0].open {return keyed_scroll(s[0].keyed[1..<2],keyed_find(s[0].keyed[1..<2],"login.viewport"));}
+ if s[0].usage[0].open {return keyed_scroll(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"section.viewport"));}
  if s[0].identity[0].open {return keyed_scroll(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"settings.viewport"));}
  if s[0].section>0 {return keyed_scroll(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"section.viewport"));}
  return s[0].view[0].list[0].top;
@@ -597,6 +623,7 @@ ch_scroll_offset :: (s:[]ChatPage)->f32 {
 ch_scroll_max :: (s:[]ChatPage)->f32 {
  if s[0].drawer {return scroll_max(s[0].history_content,s[0].history_viewport);}
  if s[0].lf[0].open {return scroll_max(s[0].login_content,s[0].login_viewport);}
+ if s[0].usage[0].open {return scroll_max(s[0].section_content,s[0].section_viewport);}
  if s[0].identity[0].open {return scroll_max(s[0].settings_content,s[0].settings_viewport);}
  if s[0].section>0 {return scroll_max(s[0].section_content,s[0].section_viewport);}
  l:=s[0].view[0].list[0];return scroll_max(l.content,l.viewport);
@@ -606,6 +633,7 @@ chat_scroll_to :: (s:[]ChatPage,offset:f32) #export_c #effects(all) {
  value:=ifx offset<0 then 0.0f32 else ifx offset>ch_scroll_max(s) then ch_scroll_max(s) else offset;
  if s[0].drawer {keyed_scroll_set(s[0].keyed[1..<2],keyed_find(s[0].keyed[1..<2],"history.viewport"),value);}
  else if s[0].lf[0].open {keyed_scroll_set(s[0].keyed[1..<2],keyed_find(s[0].keyed[1..<2],"login.viewport"),value);}
+ else if s[0].usage[0].open {keyed_scroll_set(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"section.viewport"),value);}
  else if s[0].identity[0].open {keyed_scroll_set(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"settings.viewport"),value);}
  else if s[0].section>0 {keyed_scroll_set(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"section.viewport"),value);}
  else {view_scroll(s[0].view[..],value-ch_scroll_offset(s));}

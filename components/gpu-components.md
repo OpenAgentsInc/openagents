@@ -458,7 +458,7 @@ does not start the next one's removals.
 | G1 (in progress; composer 2026-11-15; VoiceOver bridge, large text and one editing authority 2026-11-16) | The iOS app as one compiled page: the chat page (composer first, then chat logic, transcript and the login card) on the kit, with the text-editor overlay and the VoiceOver bridge. No JavaScript, no Updates, no UIKit control projection (see [The iOS app](#the-ios-app-grown-screen-by-screen)) | The app links no JavaScriptCore or WebKit and holds no `.js`, `.wasm` or `.html`; typing, sending, stopping, scrolling and login work against the account fixture; a still page presents no frames |
 | G2 (Settings, account history and platform scroll driver built 2026-11-16; physical scroll qualification pending) | The next screens of the iOS app, one at a time, each on the kit: the sidebar with chat history, then Settings, with the scroll driver | Each screen has no UIKit controls; large text lays out; scrolling feels native on a physical phone |
 | G3 (nested clips and per-primitive alpha built; composited group opacity, images, transforms and blur remain) | Backend gaps the chat needs: images, nested clips, transforms, group opacity, blur | Each has a gallery specimen and a generated-shader check on Metal and WebGPU |
-| G4 (Projects built; other screens remain) | The rest of iOS, screen by screen: Projects, Usage, environment and repository choice, the world library | Each screen passes its acceptance case on a physical phone, and the transcript workloads under [Measurements](#measurements) are recorded |
+| G4 (Projects and Usage built; other screens remain) | The rest of iOS, screen by screen: Projects, Usage, environment and repository choice, the world library | Each screen passes its acceptance case on a physical phone, and the transcript workloads under [Measurements](#measurements) are recorded |
 | G6 | Desktop on Mac and Linux: move the native environment client's screens from AppKit and GTK controls onto the kit, on the shared AppKit/Metal and Wayland/Vulkan hosts the recovery shell already uses; then delete those projections | Login, history and chat run on both desktops through the kit, with real text entry, keyboard focus and a screen reader |
 | G7 | Android on the existing Vulkan host | Real input method, TalkBack and device evidence before any parity claim |
 
@@ -774,6 +774,23 @@ streams line-wrapper chunks through a visible window, so a 64 KiB source is
 not silently cut to a preview. Semantic action IDs fit the shared ID capacity
 and preserve the full server ID; titles stay on one line.
 
-Projects does not complete G4: provider Usage and the world library still
-need their compiled-page adoption. File attachments and physical phone
+Projects does not complete G4. Usage now has its compiled-page adoption
+(below); the world library remains. File attachments and physical phone
 qualification remain explicit. G3 and the desktop default gates remain open.
+
+### Usage on the compiled page (2026-11-16)
+
+`apps/shared/app/usage/` draws provider accounts and reported usage windows with
+shared GPU rows, progress bars, fields and actions. Its Settings entry is a
+regular page. Connect, browser authorization, secure code completion, multiple
+accounts, default selection and exact pending-command recovery reuse the
+existing provider protocol. Account-listed hosts retain the account gateway;
+local/paired hosts retain their own admission. The authorization code lives
+only in the platform SDK and protected pending storage, not public Coax state.
+
+Visible reads use scheduled wakes; hidden pages do not poll. Stable hashed IDs
+follow host/account identities, and only visible account cards are realized.
+The 512-account fixture checks exact content height after scrolling. UIKit,
+AppKit and shared native normal/sanitized qualifications are recorded in the
+[verification log](../docs/verification/gpu-native-13645/README.md). This does
+not complete G3, physical-phone G4 acceptance or production desktop adoption.

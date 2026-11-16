@@ -1,0 +1,27 @@
+#test "Usage sends private-free metadata, preserves an unknown command, and rejects a mismatched result" {
+ c:[1]AppCore;app_init(c[..]);c[0].auth=AUTH_IN;c[0].wall_ms=1700000000000;
+ s:[1]UsageScreen;s[0].signed_in=true;s[0].loaded=true;s[0].catalog_due=60000;s[0].open=true;s[0].catalog[0].n=1;h:="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";_=pa_copy(s[0].catalog[0].entries[0].host[..],h);s[0].recovered[0]=true;s[0].via_account[0]=true;s[0].form=true;
+ #assert us_intent(s[..],h,"BeginAccountLogin","");us_sync(s[..],c[..],true);#assert s[0].purpose==US_IDS && s[0].op>0;
+ op:=s[0].op;#assert fx_take(c[0].out[..],op);c[0].guest=AppGuest.{waiting=true,owner=OWN_USAGE,op=op,outcome=FXO_DONE};#assert us_guest(s[..],c[..],"11111111111111111111111111111111");
+ us_sync(s[..],c[..],true);op=s[0].op;at:=fx_find(c[0].out[..],op);#assert at>=0 && c[0].out[0].slots[at].kind==FX_PROVIDER && c[0].out[0].slots[at].method==1;
+ raw:[8192]u8;n:=pa_copy(raw[..],fx_body(c[0].out[..],at));#assert n>0 && us_metadata(cast(string)raw[0..<n]);
+ #assert fx_take(c[0].out[..],op);c[0].guest=AppGuest.{waiting=true,owner=OWN_USAGE,op=op,outcome=FXO_UNKNOWN};#assert us_guest(s[..],c[..],"") && s[0].unknown && s[0].pending;
+ us_sync(s[..],c[..],true);#assert s[0].op==0 && !us_intent(s[..],h,"SelectAccount","system");s[0].retry=true;us_sync(s[..],c[..],true);op=s[0].op;at=fx_find(c[0].out[..],op);#assert at>=0 && fx_body(c[0].out[..],at)==cast(string)raw[0..<n];
+ #assert fx_take(c[0].out[..],op);c[0].guest=AppGuest.{waiting=true,owner=OWN_USAGE,op=op,outcome=FXO_DONE,status=200};#assert us_guest(s[..],c[..],"{}") && s[0].pending && s[0].unknown;
+}
+#test "Usage cancellation belongs to its own owner and background has no timer" {
+ c:[1]AppCore;app_init(c[..]);c[0].auth=AUTH_IN;s:[1]UsageScreen;s[0].open=true;us_sync(s[..],c[..],true);#assert s[0].op>0;
+ other:=fx_request(c[0].out[..],OWN_SCREEN,FX_IDS,1,0,"","","",0,0);#assert other>0;
+ us_sync(s[..],c[..],false);#assert s[0].op==0 && fx_find(c[0].out[..],other)>=0 && c[0].guest_due[OWN_USAGE]==0;
+}
+
+#test "a recovered private completion remains public-only and a known correlated reply settles it" {
+ c:[1]AppCore;app_init(c[..]);c[0].auth=AUTH_IN;s:[1]UsageScreen;s[0].signed_in=true;s[0].loaded=true;s[0].catalog_due=60000;s[0].open=true;s[0].catalog[0].n=1;s[0].via_account[0]=true;
+ h:="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";_=pa_copy(s[0].catalog[0].entries[0].host[..],h);
+ us_sync(s[..],c[..],true);op:=s[0].op;#assert s[0].purpose==US_RECOVER && op>0 && fx_take(c[0].out[..],op);
+ q:[1]PaRequest;q[0].nm=pa_copy(q[0].method[..],"CompleteAccountLogin");q[0].nl=pa_copy(q[0].login[..],"11111111111111111111111111111111");q[0].nc=pa_copy(q[0].command[..],"22222222222222222222222222222222");q[0].issued=1;q[0].expires=300001;q[0].nb=pa_copy(q[0].code[..],US_PRIVATE);raw:[8192]u8;n:=pa_request_write(q[..],raw[..]);#assert n>0;
+ c[0].guest=AppGuest.{waiting=true,owner=OWN_USAGE,op=op,outcome=FXO_DONE,status=200};#assert us_guest(s[..],c[..],cast(string)raw[0..<n]) && s[0].pending && s[0].unknown && s[0].ready;
+ us_sync(s[..],c[..],true);#assert s[0].op==0;s[0].retry=true;us_sync(s[..],c[..],true);op=s[0].op;#assert op>0 && fx_take(c[0].out[..],op);
+ v:[1]PaView;_=pa_copy(v[0].host[..],h);v[0].method=q[0].method;v[0].nm=q[0].nm;v[0].command=q[0].command;v[0].nc=q[0].nc;body:[32768]u8;n=pa_view_write(v[..],body[..]);#assert n>0;
+ c[0].guest=AppGuest.{waiting=true,owner=OWN_USAGE,op=op,outcome=FXO_DONE,status=200};#assert us_guest(s[..],c[..],cast(string)body[0..<n]) && !s[0].pending && !s[0].unknown && !s[0].code_ready;
+}

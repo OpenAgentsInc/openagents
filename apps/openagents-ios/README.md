@@ -56,7 +56,8 @@ coax/remote/remote.sh run -- coax/bin/coax test apps/openagents-ios/editor.coax 
 ```
 
 `OpenAgentsSidebar` runs `UITests/SidebarTests.swift` against the actual
-UIKit control and GPU drawer: repeated open/close, Settings and login Back.
+UIKit control and GPU drawer: repeated open/close, regular Projects, Settings,
+login Back and Usage navigation.
 Use an isolated simulator and override `OA_IOS_BUNDLE_ID` for the test app,
 so its Keychain and preferences stay separate from an installed account.
 The test uses a local unreachable API origin and sends no login request.
@@ -126,3 +127,17 @@ The page qualifiers run normal and ASan/UBSan builds against the actual compiled
 page. They check drawer navigation, single/multiline fields, native editor
 rectangles, pinned save ownership, large type, keyboard reveal and settled
 motion. These fixtures do not replace a physical-phone ceremony.
+
+## GPU Usage (1402)
+
+Settings → Usage shows the provider-reported windows for connected Claude
+accounts. Connect starts Claude Code's existing browser/code flow on the chosen
+computer; the native secure field holds the pasted authorization code. Default
+chooses the account for new conversations. Existing conversations keep their
+bound account. Reads sync automatically; Check account change is an explicit
+replay of an unresolved command, not a refresh control.
+
+The shared flow and view are `apps/shared/app/usage/`; `AppProvider.swift` owns
+protected SDK storage and carriage, using the existing account API/device
+service. Tokens remain on the computer. Direct paired/local account control
+retains explicit provider enablement and its exact existing grant scope.

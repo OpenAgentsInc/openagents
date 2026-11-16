@@ -353,6 +353,17 @@ app_guest_device :: (c:[]AppCore,owner:int,purpose:int,host:string,body:string)-
  q:[1]EaRequest;if !ea_read(body,q[..]) || ea_right(cast(string)q[0].method[0..<q[0].nm])!=0 {return 0;}
  return fx_request(c[0].out[..],owner,FX_DEVICE_CALL,purpose,0,"",host,body,0,TC_HTTP_TIMEOUT_MS);
 }
+// Provider metadata never contains an authorization code. The SDK replaces the
+// private marker and retains exact wire bytes before any account mutation.
+app_guest_provider :: (c:[]AppCore,purpose:int,host:string,body:string,account_transport:bool,recover:bool)->int {
+ paired:= !account_transport;
+ if (paired && dl_find(c,host)<0) || (!paired && c[0].auth!=AUTH_IN) {return 0;}
+ return fx_request(c[0].out[..],OWN_USAGE,FX_PROVIDER,purpose,ifx recover then (ifx paired then 2 else 3) else (ifx paired then 0 else 1),"",host,body,0,30000);
+}
+app_provider_ids :: (c:[]AppCore)->int {
+ if c[0].auth!=AUTH_IN && app_device_count(c)==0 {return 0;}
+ return fx_request(c[0].out[..],OWN_USAGE,FX_IDS,3,0,"","","",0,0);
+}
 // Closed custody request. Only its action and public expected key cross the core.
 app_guest_identity :: (c:[]AppCore,owner:int,purpose:int,action:string,pubkey:string)->int {
  if c[0].auth!=AUTH_IN || !app_guest_owner(owner) {return 0;}

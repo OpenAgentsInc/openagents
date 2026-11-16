@@ -160,3 +160,20 @@ durability, the API's delivered-email/account isolation tests, generated
 Wasm/JavaScript frame parity, native UIKit reducer/composer tests and actual
 Claude replies on both computers. See the release verification record for
 the exact deployed build and remaining owner checks.
+
+### Compiled client provider Usage adapter (2026-11-16)
+
+The protected local Unix transport additionally accepts the already published
+`openagents.environment.accounts.request.v1` profile and returns its existing
+`accounts.view.v1`. Runtime v1alpha1 and HOST envelopes keep their identities
+and shapes. Kernel peer authentication, explicit provider enablement and exact
+configured device/grant binding precede dispatch. Provider requests and replies
+use `coax/lib/agent/accounts/wire.coax`; `local-request.coax` selects between
+those existing profiles, without a new envelope or second codec.
+
+The compiled GUI uses an internal FX_PROVIDER boundary with private-free request
+metadata. An authorization-code marker is replaced exclusively inside the SDK,
+never transmitted. The exact existing request is retained in protected storage
+before a mutation. Reopening exposes only its public metadata for an explicit
+same-command retry; a correlated but unknown receipt cannot release ownership.
+This internal ABI is not a change to any published Runtime or provider profile.

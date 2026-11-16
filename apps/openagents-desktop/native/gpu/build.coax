@@ -17,7 +17,7 @@ tool_main :: ()->int #export_c #effects(all) {
  }
  a:[1]Args;for f:[11]string.["xcrun","swiftc","-O","-swift-version","5","-parse-as-library","-target","arm64-apple-macos14.0","-import-objc-header","apps/openagents-desktop/native/gpu/Bridge.h","apps/openagents-desktop/native/gpu/App.swift"] {gb_add(a[..],f);}
  gb_add(a[..],"apps/openagents-desktop/native/gpu/Window.swift");
- for source:[13]string.["AppCoreC","AppRuntime","AppHTTP","AppAccount","AppIdentity","KitPasskey","AppWake","AppEffects","AppCoreBridge","AppDeviceLink","KitEditorMac","AppPrivateFiles","AppMacDevice"] {
+ for source:[14]string.["AppCoreC","AppRuntime","AppHTTP","AppAccount","AppIdentity","AppProvider","KitPasskey","AppWake","AppEffects","AppCoreBridge","AppDeviceLink","KitEditorMac","AppPrivateFiles","AppMacDevice"] {
   path:[1024]u8;n:=0;for c:"apps/shared/native/" {path[n]=c;n+=1;}for c:source {path[n]=c;n+=1;}for c:".swift" {path[n]=c;n+=1;}gb_add(a[..],cast(string)path[0..<n]);
  }
  for source:[5]string.["apps/shared/host/apple/AppAuth.swift","apps/shared/host/apple/DeviceKey.swift","apps/openagents-desktop/build/gpu/gallery.o","apps/openagents-desktop/build/gpu/host.o","apps/openagents-desktop/build/gpu/carrier.o"] {gb_add(a[..],source);}

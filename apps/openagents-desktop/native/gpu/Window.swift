@@ -33,8 +33,10 @@ import QuartzCore
         secret.isBordered = false; secret.drawsBackground = false; secret.textColor = editor.textColor; secret.font = editor.font; secret.delegate = self; secret.contentType = .password
         secret.setAccessibilityLabel("Private key"); secret.setAccessibilityIdentifier("identity.secret")
         identity.anchor = { [weak self] in self?.window }
-        identity.input = { [weak self] in self?.secret.stringValue ?? "" }
-        identity.clearInput = { [weak self] in self?.secret.stringValue = ""; self?.backup.string = "" }
+        identity.input = { [weak self] in guard let self,self.activeID=="identity.secret" else {return ""};return self.secret.stringValue }
+        identity.clearInput = { [weak self] in guard let self else {return};if self.activeID=="identity.secret" {self.secret.stringValue=""};self.backup.string="" }
+        runtime.provider.input = { [weak self] in guard let self,self.activeID=="usage.code" else {return ""};return self.secret.stringValue }
+        runtime.provider.clearInput = { [weak self] in guard let self,self.activeID=="usage.code" else {return};self.secret.stringValue="";oc_secret_ready(owner,0) }
         editor.committed = { [weak self] text in self?.commit(text) }
         editor.command = { [weak self] selector in self?.command(selector) ?? false }
         oc_attach(owner, runtime.core.raw, held.email)
@@ -81,11 +83,12 @@ import QuartzCore
         let next: NSView?
         if id == "chat.composer" { next = editor; editor.contentType = nil }
         else if oc_field_kind(owner) >= 0 && oc_field_kind(owner) != 3 { next = editor; editor.contentType = oc_field_kind(owner) == 2 ? .oneTimeCode : oc_field_kind(owner) == 1 ? .emailAddress : nil }
-        else if id == "identity.secret" { next = mode == 2 ? backup : secret }
+        else if oc_field_kind(owner)==3 { next = mode == 2 ? backup : secret }
         else { next = nil }
         if active !== next || activeID != id {
             editor.discardComposition()
             if active != nil { window.makeFirstResponder(canvas); active?.removeFromSuperview() }
+            if active === secret || next === secret {secret.stringValue=""}
             active = next; activeID = id
             if let next { canvas.addSubview(next); next.setAccessibilityIdentifier(id); next.setAccessibilityLabel(semanticLabel(id)) }
         }
@@ -115,7 +118,7 @@ import QuartzCore
         return false
     }
     func controlTextDidChange(_ notification: Notification) { guard active === secret else { return }; oc_secret_ready(owner, secret.stringValue.isEmpty ? 0 : 1); wake() }
-    private func clearPrivate() { identity.clear(); oc_secret_ready(owner, 0); if activeID == "identity.secret" { oc_blur(owner) }; wake() }
+    private func clearPrivate() { identity.clear(); runtime.provider.clear(); secret.stringValue=""; oc_secret_ready(owner, 0); if oc_field_kind(owner)==3 { oc_blur(owner) }; wake() }
     private func keep(force: Bool = false) {
         let next = AppViewState(email: read(oc_draft, cap: 600), rejoin: runtime.core.keep(), environment: read(oc_env_save, cap: 8192))
         guard next != saved, force || next != attempted else { return }

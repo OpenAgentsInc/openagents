@@ -1732,3 +1732,17 @@ Nostr identity, public-key Copy and the passkey-protected Backup/Rotate/Restore
 flow; use a disposable identity for replacement tests. These physical-phone
 and system passkey ceremonies remain owner checks. The broader GPU epic is
 still open for the remaining screens, composition and desktop adoption.
+
+## GPU Usage on iPhone (#13645, build 1402)
+
+- [ ] After 1402 is available in Owner TestFlight, open Settings → Usage and
+      check the connected computers and provider-reported weekly/5h windows.
+      Connect a disposable additional Claude account, complete its browser/code
+      flow, then set Default and verify a new chat uses it. Existing chats keep
+      their bound account. Check background/resume and a connection interruption;
+      Check account change must retain the original operation.
+- [ ] Verify Nostr public-key Copy and system passkey/biometric Backup on the
+      physical phone. Rotate/Restore only a disposable identity if you intend
+      to replace it. Never send a private key or authorization code in chat or
+      a screenshot. SDK/compiled-page tests pass; these physical ceremonies,
+      VoiceOver and phone appearance remain owner checks.

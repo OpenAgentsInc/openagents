@@ -56,4 +56,13 @@ int64_t oa_device_event_id(void *work, uint8_t out[64]);
 int64_t oa_device_auth(const uint8_t secret[32], const char *relay, const uint8_t *challenge, int64_t challenge_n, int64_t now, const uint8_t aux[32], uint8_t *out, int64_t cap);
 // An event the relay delivered: the answer's bytes in out, 0 when it is not this request's answer, -1 on error.
 int64_t oa_device_open(void *work, const uint8_t secret[32], const char *host, const uint8_t *event, int64_t event_n, int64_t now, uint8_t *out, int64_t cap);
+// Private provider SDK; no secret bytes cross oa_core_*.
+int ou_effect(int32_t mode,const char *host,const uint8_t *raw,int32_t n);
+int ou_http(int32_t method,const char *path,int32_t bytes);
+int ou_settled(const uint8_t *raw,int32_t n);
+int ou_input(const uint8_t *raw,int32_t n);
+int32_t ou_mutation(const uint8_t *raw,int32_t n);
+int32_t ou_pending(const uint8_t *raw,int32_t n,uint8_t *out,int32_t cap);
+int32_t ou_request(const uint8_t *raw,int32_t n,const uint8_t *kept,int32_t kn,const char *input,uint8_t *out,int32_t cap);
+int32_t ou_reply(const char *host,const uint8_t *metadata,int32_t mn,const uint8_t *raw,int32_t n,uint8_t *out,int32_t cap);
 #endif

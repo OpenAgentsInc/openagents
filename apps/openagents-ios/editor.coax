@@ -50,10 +50,10 @@ ChEditor :: struct {edit:[1]UiEditor;id:[EL_ID]u8;ni:int;epoch:u64=1;box:[4]f32;
 // calloc does not run Coax field defaults; every SDK allocation calls this.
 che_open :: (e:[]ChEditor) #export_c #effects(all) {if e.count>0 {e[0]=ChEditor.{};}}
 che_owner :: (e:[]ChEditor)->u64 #export_c #effects(all) {return ifx e.count>0 then ue_owner(e[0].edit[..]) else 0;}
-che_text :: (s:[]ChatPage)->string {return ifx ch_focus(s)==VIEW_COMPOSER_ID then ch_draft(s) else ifx ch_focus(s)=="login.email" then lf_email(s[0].lf[..]) else ifx ch_focus(s)=="login.code" then lf_code(s[0].lf[..]) else ps_field(s[0].projects[..],ch_focus(s));}
+che_text :: (s:[]ChatPage)->string {return ifx ch_focus(s)==VIEW_COMPOSER_ID then ch_draft(s) else ifx ch_focus(s)=="login.email" then lf_email(s[0].lf[..]) else ifx ch_focus(s)=="login.code" then lf_code(s[0].lf[..]) else ifx ch_focus(s)=="usage.label" then cast(string)s[0].usage[0].label[0..<s[0].usage[0].nl] else ps_field(s[0].projects[..],ch_focus(s));}
 che_sync :: (e:[]ChEditor,s:[]ChatPage)->bool #export_c #effects(all) {
  if e.count<1 || s.count<1 || !s[0].ready {return false;}
- id:=ch_focus(s);active:=id==VIEW_COMPOSER_ID || ch_login_field(id)!=LF_FIELD_NONE || ps_editing(id);
+ id:=ch_focus(s);active:=app_public_input(id);
  if !active {if e[0].ni>0 {ue_close(e[0].edit[..]);e[0].ni=0;}return false;}
  text:=che_text(s);
  if id!=cast(string)e[0].id[0..<e[0].ni] || ue_value(e[0].edit[..])!=text {

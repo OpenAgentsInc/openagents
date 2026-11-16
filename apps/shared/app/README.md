@@ -19,6 +19,8 @@ not yet replaced the desktop environment client or its protected local adapter.
 | `login/` | `claude-login-flow` | The login flow and its card |
 | `view/` | `claude-chat-view` | The chat page |
 | `history/` | `gpu-native-identity` | Saved account chats through the existing index codec, visible-only GPU rows, sleeping automatic sync |
+| `usage/` | `gpu-native-identity` | Shared GPU provider Usage, multiple Claude accounts, native private login input and exact pending request recovery |
+| `projects/` | `gpu-native-identity` | GPU Projects and saved Project chats through the existing canonical API |
 | `settings/` | `gpu-native-identity` | Public Nostr identity state; private custody stays in the native SDK |
 | `environment/` | `claude-env-select` | Environment and repository selection |
 | `cases/` | `claude-drive-cases` | `coax drive` cases and fake services |
@@ -150,3 +152,21 @@ Updates and Nostr rows.
 ```sh
 coax/remote/remote.sh run -- coax/bin/coax test apps/shared/app/core/core.coax --library --traversal 1000000000
 ```
+
+### Provider Usage
+
+Sidebar → Settings → Usage lists account-connected computers and paired/local
+computers. Existing account gateway scopes and explicit provider enablement
+still apply; ordinary chat pairing does not grant provider-account control.
+The shared GPU page uses the existing `PaRequest`/`PaView` codecs and the one
+kit's rows, fields and progress bars. It sleeps while hidden and automatically
+reads visible usage, login progress and the computer catalog.
+
+`FX_PROVIDER` is a private-free in-process effect. Account-listed computers use
+the existing account API; paired/local-only entries use the existing device
+service. Native SDK code obtains the authorization code only from its active
+secure editor, stores the exact existing request in protected storage before
+sending, and returns canonical public fields. A lost reply or unknown receipt
+retains that same request across reopening; Check replays the original command.
+Nostr backup/restore and Claude authorization have distinct editor owners and
+storage namespaces. Neither code nor key enters public state or `coax drive`.

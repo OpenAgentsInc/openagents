@@ -6,9 +6,9 @@ APP_FIELD_PRIVATE :: 3; APP_FIELD_MULTILINE :: 4;
 app_field_kind :: (id:string)->int #effects(all) {
  if id=="login.email" {return APP_FIELD_EMAIL;}
  if id=="login.code" {return APP_FIELD_CODE;}
- if id=="identity.secret" {return APP_FIELD_PRIVATE;}
+ if id=="identity.secret" || id=="usage.code" {return APP_FIELD_PRIVATE;}
  if id=="project.text" || id=="project.description" {return APP_FIELD_MULTILINE;}
- if id=="project.name" || id=="project.knowledge.title" {return APP_FIELD_PLAIN;}
+ if id=="project.name" || id=="project.knowledge.title" || id=="usage.label" {return APP_FIELD_PLAIN;}
  return -1;
 }
 app_public_input :: (id:string)->bool #effects(all) {
@@ -16,8 +16,8 @@ app_public_input :: (id:string)->bool #effects(all) {
  kind:=app_field_kind(id);return kind>=0 && kind!=APP_FIELD_PRIVATE;
 }
 #test "each declared editor retains its host kind and only public text may enter the drive editor" {
- ids:=[8]string.["login.email","login.code","identity.secret","project.text","project.description","project.name","project.knowledge.title","chat.composer"];
- kinds:=[8]int.[1,2,3,4,4,0,0,-1];
- for id,i:ids {#assert app_field_kind(id)==kinds[i] && app_public_input(id)==(i!=2);}
+ ids:=[10]string.["login.email","login.code","identity.secret","project.text","project.description","project.name","project.knowledge.title","chat.composer","usage.code","usage.label"];
+ kinds:=[10]int.[1,2,3,4,4,0,0,-1,3,0];
+ for id,i:ids {#assert app_field_kind(id)==kinds[i] && app_public_input(id)==(i!=2 && i!=8);}
  for id:[10]string.["","login","Login.email","identity.secret.extra","project.unknown","other.composer","chat.composer.extra","project.Name","project.text/","project.knowledge"] {#assert app_field_kind(id)== -1 && !app_public_input(id);}
 }

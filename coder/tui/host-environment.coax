@@ -2,6 +2,7 @@
 // HOST owns carriage/admission. The shared engine and reader own Claude wire
 // and native history. No transcript text is ever interpreted as an operation.
 #load "../../coax/lib/agent/environment/host-wire.coax";
+#load "../../coax/lib/agent/environment/local-request.coax";
 #load "../../coax/lib/agent/engine/engine.coax";
 #load "../../coax/lib/agent/observe/claude-files.coax";
 #load "../../coax/lib/agent/environment/history.coax";
@@ -43,23 +44,34 @@ es_local_tick :: (h:[]HsHost,listener:int) #effects(all) {
     got:=cxsock_read(connection,50);if got== -2 {continue;}if got<0 {break;}
     for i:0..<got {c:=cxsock_byte(connection,i);if c==10 {done=true;break;}if n>=input.count {return;}input[n]=cast(u8)c;n+=1;}
   }
-  q:[1]EaRequest;if !done || !ea_read(cast(string)input[0..<n],q[..]) {return;}
-  v:[1]EaView;c:=h[0].environment[0].configuration[..];
-  if !es_load_configuration(h[0].environment[..]) {return;}
-  es_dispatch(h,q[..],cast(string)c[0].device[..],cast(string)c[0].grant[..],v[..]);
-  out:[HB_BODY_MAX]u8;made:=ea_view_write(v[..],out[..]);if made<1 {return;}
+  defer {for i:0..<input.count {input[i]=0;}}
+  if !done {return;}raw:=cast(string)input[0..<n];kind:=ea_local_kind(raw);if kind==0 {return;}
+  c:=h[0].environment[0].configuration[..];if !es_load_configuration(h[0].environment[..]) {return;}
+  out:[HB_BODY_MAX]u8;made:= -1;
+  if kind==1 {q:[1]EaRequest;if !ea_read(raw,q[..]) {return;}v:[1]EaView;es_dispatch(h,q[..],cast(string)c[0].device[..],cast(string)c[0].grant[..],v[..]);made=ea_view_write(v[..],out[..]);}
+  else {
+    q:[1]PaRequest;if !pa_request_read(raw,q[..]) {return;}defer {for i:0..<q[0].code.count {q[0].code[i]=0;}}
+    enabled:=pa_load(h[0].providers[..]);s:=h[0].providers[0].native[0].store[..];v:[1]PaView;
+    // The kernel authenticated this local user; explicit provider enablement
+    // and the exact configured device/grant remain mandatory.
+    if pa_scope(true,enabled,cast(string)s[0].device[..]==cast(string)c[0].device[..],cast(string)s[0].grant[..]==cast(string)c[0].grant[..],true,pa_right(cast(string)q[0].method[0..<q[0].nm])) {pa_dispatch(h,q[..],v[..]);}
+    else {pa_snapshot(h,q[..],v[..]);pa_fail(v[..],"forbidden");}
+    made=pa_view_write(v[..],out[..]);
+  }
+  if made<1 {return;}
   for i:0..<made {_ = cxsock_write(connection,cast(int)out[i]);}_ = cxsock_write(connection,10);_ = cxsock_flush(connection,2000);
 }
 es_local_call :: (args:[]Args)->int #effects(all) {
-  data:[24576]u8;n:=fs_read(args_value(args,"--request-file",""),data[..]);q:[1]EaRequest;
-  if n<1 || !ea_read(cast(string)data[0..<n],q[..]) {return 2;}
+  data:[24576]u8;n:=fs_read(args_value(args,"--request-file",""),data[..]);
+  defer {for i:0..<data.count {data[i]=0;}}
+  if n<1 || ea_local_kind(cast(string)data[0..<n])==0 {return 2;}
   path:[1400]u8;p:=es_path("service.sock",path[..]);for c:p {_ = cxsock_host_push(cast(int)c);}
   connection:=cxsock_connect_unix(2000);if connection<0 {return 3;}defer {_ = cxsock_close(connection);}
   if cxsock_peer_self(connection)!=1 {return 3;}
   for i:0..<n {_ = cxsock_write(connection,cast(int)data[i]);}_ = cxsock_write(connection,10);if cxsock_flush(connection,2000)<0 {return 3;}
   out:[HB_BODY_MAX]u8;at:=0;deadline:=cxsock_now_ms()+10000;
   while cxsock_now_ms()<deadline {got:=cxsock_read(connection,500);if got== -2 {continue;}if got<0 {return 3;}
-    for i:0..<got {c:=cxsock_byte(connection,i);if c==10 {v:[1]EaView;if !ea_view_read(cast(string)out[0..<at],v[..]) {return 3;}hs_outln(cast(string)out[0..<at]);return 0;}if at>=out.count {return 3;}out[at]=cast(u8)c;at+=1;}
+    for i:0..<got {c:=cxsock_byte(connection,i);if c==10 {if !ea_local_answer(cast(string)data[0..<n],cast(string)out[0..<at]) {return 3;}hs_outln(cast(string)out[0..<at]);return 0;}if at>=out.count {return 3;}out[at]=cast(u8)c;at+=1;}
   }return 3;
 }
 

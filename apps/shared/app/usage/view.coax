@@ -1,0 +1,82 @@
+// One GPU Usage presentation for every compiled host; the existing component
+// kit owns fields, rows, clipping, bars and semantics.
+#load "flow.coax";
+#load "../../app-navigation.coax";
+#load "../../../../components/app/base.coax";
+US_ACTION :: 501; US_FIELD :: 502; US_OPEN :: 503;
+us_key :: (host:string,part:string,out:[]u8)->string {id:=nav_session_id(host,part,out);if id.count==47 {out[0]='u';out[1]='s';}return id;}
+us_window_label :: (key:string)->string {return ifx key=="five_hour" then "5h" else ifx key=="seven_day_sonnet" then "Weekly · Sonnet" else ifx key=="seven_day_opus" then "Weekly · Opus" else ifx key=="seven_day" then "Weekly" else key;}
+us_view :: (s:[]UsageScreen,f:[]UiFrame,x:f32,origin:f32,w:f32,top:f32,bottom:f32,focus:string)->f32 {
+ y:=0.0f32;k:=f[0].skin;gap:=k.app.gap;off:=ifx s[0].pending then EL_S_DISABLED else 0;
+ if s[0].nn>0 {y+=app_notice(f,"usage.note",x,origin+y,w,cast(string)s[0].note[0..<s[0].nn],APP_NOTICE_ERROR)+gap;}
+ if s[0].unknown {y+=app_button(f,"usage.retry",x,origin+y,w,-1,"Check account change",APP_BUTTON_PRIMARY,ifx s[0].op>0 then EL_S_DISABLED else 0,US_ACTION)+gap;}
+ if s[0].form {
+  y+=app_field(f,"usage.label",x,origin+y,w,"Account name",cast(string)s[0].label[0..<s[0].nl],"Work, Personal…",false,focus=="usage.label","",off,US_FIELD)+gap;
+  y+=app_button(f,"usage.begin",x,origin+y,w,-1,"Connect Claude",APP_BUTTON_PRIMARY,off,US_ACTION)+gap;
+  y+=app_button(f,"usage.form.close",x,origin+y,w,-1,"Cancel",APP_BUTTON_QUIET,off,US_ACTION)+gap;
+ }
+ flow:=s[0].flow[0];state:=cast(string)flow.state[0..<flow.ns];
+ if flow.ni>0 {
+  y+=app_text(f,"usage.login.state",x,origin+y,w,APP_TEXT_BODY,ifx state=="completed" then "Connected" else ifx state=="awaiting_code" then "Claude sign-in" else ifx state=="starting" then "Starting…" else ifx state=="verifying" then "Verifying…" else ifx state=="cancelled" then "Cancelled" else "Reconnect to Claude")+gap;
+  if state=="awaiting_code" {
+   y+=app_button(f,"usage.authorize",x,origin+y,w,-1,"Open Claude",APP_BUTTON_DEFAULT,0,US_ACTION)+gap;
+   y+=app_field(f,"usage.code",x,origin+y,w,"Authorization code","","Paste code",true,focus=="usage.code","",off,US_FIELD)+gap;
+   y+=app_button(f,"usage.complete",x,origin+y,w,-1,"Sign in",APP_BUTTON_PRIMARY,off | (ifx !s[0].code_ready then EL_S_DISABLED else 0),US_ACTION)+gap;
+  }
+  if us_running(s) {y+=app_button(f,"usage.cancel",x,origin+y,w,-1,"Cancel sign-in",APP_BUTTON_QUIET,off,US_ACTION)+gap;}
+ }
+ if !s[0].loaded {return y+app_text(f,"usage.loading",x,origin+y,w,APP_TEXT_BODY,"Loading…");}
+ if s[0].catalog[0].n==0 {return y+app_text(f,"usage.empty",x,origin+y,w,APP_TEXT_BODY,"Connect a computer to see usage");}
+ for host:0..<s[0].catalog[0].n {
+  e:=s[0].catalog[0].entries[host];key:=cast(string)e.host[..];id:[64]u8;
+  if origin+y+k.title.line>top && origin+y<bottom {_=app_text(f,us_key(key,"heading",id[..]),x,origin+y,w,APP_TEXT_TITLE,app_fit(f,k.title.face,sheet_single_line(f[0].sheet,cast(string)s[0].catalog[0].entries[host].label[0..<e.nl]),w));}y+=k.title.line+gap;
+  v:=s[0].views[host];
+  if s[0].states[host]!=2 || v.ne>0 {
+   if origin+y+k.body.line>top && origin+y<bottom {_:=app_text(f,us_key(key,"status",id[..]),x,origin+y,w,APP_TEXT_CAPTION,ifx s[0].states[host]==3 then "Unavailable" else ifx v.ne>0 then pu_error(cast(string)v.error[0..<v.ne]) else "Checking…");}y+=k.body.line+gap;
+  }
+  for i:0..<v.n {
+   a:=v.accounts[i];account:=cast(string)a.id[0..<a.ni];h:=k.body.line+k.small.line+2*gap+cast(f32)a.nw*(k.small.line+k.app.gap_small+k.bar_h+2*gap+k.small.line);if a.nw==0 {h+=k.small.line+gap;}
+   if !a.selected {h+=k.control_h+gap;}if account!="system" {h+=k.control_h+gap;}
+   if origin+y+h>top && origin+y<bottom {
+    part:[128]u8;
+    _:=app_text(f,us_key(key,pu_cat(part[..],account,".title"),id[..]),x,origin+y,w,APP_TEXT_BODY,app_fit(f,k.body.face,sheet_single_line(f[0].sheet,ifx a.ne>0 then cast(string)s[0].views[host].accounts[i].email[0..<a.ne] else cast(string)s[0].views[host].accounts[i].label[0..<a.nl]),w));yy:=y+k.body.line+gap;
+    yy+=app_text(f,us_key(key,pu_cat(part[..],account,".state"),id[..]),x,origin+yy,w,APP_TEXT_CAPTION,ifx a.stale then "Stale reading" else ifx a.selected then "Default" else cast(string)s[0].views[host].accounts[i].plan[0..<a.np])+gap;
+    if a.nw==0 {yy+=app_text(f,us_key(key,pu_cat(part[..],account,".unknown"),id[..]),x,origin+yy,w,APP_TEXT_CAPTION,ifx cast(string)a.state[0..<a.ns]=="checking" then "Checking usage…" else "Usage unavailable")+gap;}
+    for j:0..<a.nw {
+     window:=a.windows[j];suffix:[96]u8;base:=pu_cat(suffix[..],account,cast(string)window.id[0..<window.ni]);left:[96]u8;label:[128]u8;
+     words:=pu_cat(label[..],us_window_label(cast(string)window.id[0..<window.ni])," remaining");
+     yy+=app_progress(f,us_key(key,base,id[..]),x,origin+yy,w,sheet_pool(f[0].sheet,words),cast(f32)(10000-window.used)/10000)+gap;
+     if window.nr>0 {
+      reset_words:=sheet_single_line(f[0].sheet,pu_cat(label[..],"Resets ",cast(string)s[0].views[host].accounts[i].windows[j].reset[0..<window.nr]));
+      reset_id:=us_key(key,pu_cat(part[..],base,".reset"),id[..]);
+      _=app_text(f,reset_id,x,origin+yy,w,APP_TEXT_CAPTION,app_fit(f,k.small.face,reset_words,w));
+     }yy+=k.small.line+gap;
+    }
+    if !a.selected {yy+=app_button(f,us_key(key,pu_cat(part[..],account,".select"),id[..]),x,origin+yy,w,-1,"Default",APP_BUTTON_QUIET,off | (ifx cast(string)a.state[0..<a.ns]!="connected" then EL_S_DISABLED else 0),US_ACTION)+gap;}
+    if account!="system" {yy+=app_button(f,us_key(key,pu_cat(part[..],account,".login"),id[..]),x,origin+yy,w,-1,"Sign in",APP_BUTTON_QUIET,off,US_ACTION)+gap;}
+
+   }
+   y+=h;
+  }
+  if origin+y+k.control_h>top && origin+y<bottom {_:=app_button(f,us_key(key,"add",id[..]),x,origin+y,w,-1,"Connect",APP_BUTTON_DEFAULT,off | (ifx us_running(s) || !s[0].recovered[host] then EL_S_DISABLED else 0),US_ACTION);}y+=k.control_h+2*gap;
+ }
+ return y;
+}
+us_press :: (s:[]UsageScreen,c:[]AppCore,id:string)->bool {
+ if id=="usage.back" {s[0].open=false;s[0].code_ready=false;return true;}
+ if id=="usage.retry" {if !s[0].unknown || s[0].op>0 {return false;}s[0].retry=true;return true;}
+ if id=="usage.authorize" {url:=cast(string)s[0].flow[0].url[0..<s[0].flow[0].nu];return pa_authorize(url) && fx_request(c[0].out[..],OWN_PAGE,FX_LINK,0,0,"","",url,0,0)>0;}
+ if s[0].pending {return false;}
+ if id=="usage.form.close" {s[0].form=false;return true;}
+ if id=="usage.begin" {return us_intent(s,cast(string)s[0].form_host[..],"BeginAccountLogin",cast(string)s[0].account[0..<s[0].na]);}
+ if id=="usage.complete" || id=="usage.cancel" {return us_intent(s,cast(string)s[0].flow_host[..],ifx id=="usage.complete" then "CompleteAccountLogin" else "CancelAccountLogin","");}
+ for host:0..<s[0].catalog[0].n {
+  key:=cast(string)s[0].catalog[0].entries[host].host[..];out:[64]u8;
+  if id==us_key(key,"add",out[..]) {if us_running(s) || !s[0].recovered[host] {return false;}s[0].form=true;s[0].form_host=s[0].catalog[0].entries[host].host;s[0].na=0;s[0].nl=0;return true;}
+  for i:0..<s[0].views[host].n {
+   a:=s[0].views[host].accounts[i];account:=cast(string)a.id[0..<a.ni];part:[128]u8;
+   if id==us_key(key,pu_cat(part[..],account,".select"),out[..]) {if app_navigation_blocked(c) {return false;}return us_intent(s,key,"SelectAccount",account);}
+   if id==us_key(key,pu_cat(part[..],account,".login"),out[..]) {if account=="system" || us_running(s) {return false;}s[0].form=true;s[0].form_host=s[0].catalog[0].entries[host].host;s[0].na=pa_copy(s[0].account[..],account);s[0].nl=pa_copy(s[0].label[..],cast(string)a.label[0..<a.nl]);return true;}
+  }
+ }return false;
+}

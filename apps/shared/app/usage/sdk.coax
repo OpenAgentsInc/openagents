@@ -1,0 +1,93 @@
+// Stateless private-SDK codec. Private request bytes stay in protected SDK
+// storage and transport; only the canonical public marker leaves this file.
+#load "sdk-policy.coax";
+#authority;
+us_pending_public :: (raw:string,out:[]u8)->int #export_c #effects(all) {
+ q:[1]PaRequest;defer {for i:0..<q[0].code.count {q[0].code[i]=0;}} // mutant: equivalent — private stack erasure has no escaping record; the encoded public result is its only observable output
+ if !pa_request_read(raw,q[..]) || pa_right(cast(string)q[0].method[0..<q[0].nm])!=1 {return -1;}
+ if cast(string)q[0].method[0..<q[0].nm]=="CompleteAccountLogin" {q[0].nb=pa_copy(q[0].code[..],US_PRIVATE);}
+ return pa_request_write(q[..],out);
+}
+us_private_request :: (metadata:string,kept:string,input:string,out:[]u8)->int #export_c #effects(all) {
+ if !us_metadata(metadata) {return -1;}
+ if kept.count>0 {
+  canonical:[8192]u8;n:=us_pending_public(kept,canonical[..]);
+  if n<1 {return -1;} // mutant: equivalent — the writer returns -1 or a whole request larger than its schema name; successful lengths 0 and 1 cannot occur
+  if cast(string)canonical[0..<n]!=metadata || kept.count>out.count {return -1;}
+  for c,i:kept {out[i]=c;}return kept.count;
+ }
+ q:[1]PaRequest;defer {for i:0..<q[0].code.count {q[0].code[i]=0;}} // mutant: equivalent — only private stack erasure; no record escapes
+ if !pa_request_read(metadata,q[..]) {return -1;} // mutant: equivalent — us_metadata already requires this same strict decoder to succeed
+ if q[0].nb>0 { // mutant: equivalent — > 1 is the same admitted set: code is empty or the 23-byte private marker, never one byte
+  if !pa_code(input) || input==US_PRIVATE {return -1;}
+  q[0].nb=pa_copy(q[0].code[..],input);
+ }
+ return pa_request_write(q[..],out);
+}
+us_reply :: (host:string,metadata:string,raw:string,out:[]u8)->int #export_c #effects(all) {
+ q:[1]PaRequest;v:[1]PaView;
+ if !us_host(host) || !us_metadata(metadata) || !pa_request_read(metadata,q[..]) || !pa_view_read(raw,v[..]) {return -1;}
+ if cast(string)v[0].host[..]!=host || cast(string)v[0].method[0..<v[0].nm]!=cast(string)q[0].method[0..<q[0].nm] || cast(string)v[0].command[0..<v[0].nc]!=cast(string)q[0].command[0..<q[0].nc] {return -1;}
+ return pa_view_write(v[..],out);
+}
+#test "a private code is substituted once, exact retry refuses changed metadata, and pending recovery is private-free" {
+ q:[1]PaRequest;q[0].nm=pa_copy(q[0].method[..],"CompleteAccountLogin");q[0].nl=pa_copy(q[0].login[..],"11111111111111111111111111111111");q[0].nc=pa_copy(q[0].command[..],"22222222222222222222222222222222");q[0].issued=1;q[0].expires=300001;q[0].nb=pa_copy(q[0].code[..],US_PRIVATE);
+ b:[8192]u8;private:[8192]u8;public:[8192]u8;retry:[8192]u8;n:=pa_request_write(q[..],b[..]);#assert n>0;
+ size:=us_private_request(cast(string)b[0..<n],"","fixture-code#state",private[..]);#assert size>0 && pa_request_read(cast(string)private[0..<size],q[..]) && cast(string)q[0].code[0..<q[0].nb]=="fixture-code#state";
+ #assert us_private_request(cast(string)b[0..<n],"","",retry[..])<0;
+ pn:=us_pending_public(cast(string)private[0..<size],public[..]);#assert pn==n && cast(string)public[0..<pn]==cast(string)b[0..<n];
+ #assert us_private_request(cast(string)b[0..<n],cast(string)private[0..<size],"different-code",retry[..])==size && cast(string)retry[0..<size]==cast(string)private[0..<size];
+ q[0].nb=pa_copy(q[0].code[..],US_PRIVATE);q[0].command[0]='3';pn=pa_request_write(q[..],public[..]);#assert us_private_request(cast(string)public[0..<pn],cast(string)private[0..<size],"",retry[..])<0;
+}
+#test "only a complete correlated public provider view can settle a request" {
+ host:="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";q:[1]PaRequest;q[0].nm=pa_copy(q[0].method[..],"ListAccounts");b:[8192]u8;n:=pa_request_write(q[..],b[..]);v:[1]PaView;_=pa_copy(v[0].host[..],host);v[0].nm=pa_copy(v[0].method[..],"ListAccounts");raw:[32768]u8;out:[32768]u8;rn:=pa_view_write(v[..],raw[..]);
+ #assert us_reply(host,cast(string)b[0..<n],cast(string)raw[0..<rn],out[..])>0;
+ #assert us_reply(host,cast(string)b[0..<n],"{}",out[..])<0;
+ v[0].host[0]='b';rn=pa_view_write(v[..],raw[..]);#assert us_reply(host,cast(string)b[0..<n],cast(string)raw[0..<rn],out[..])<0;
+}
+
+us_mutation :: (raw:string)->int #export_c #effects(all) {
+ q:[1]PaRequest;if !pa_request_read(raw,q[..]) {return -1;}return pa_right(cast(string)q[0].method[0..<q[0].nm]);
+}
+us_http :: (method:int,path:string,bytes:int)->bool #export_c #effects(all) {
+ prefix:="/api/chat/environment/accounts/v1?host=";
+ return method==2 && bytes>0 && bytes<=8192 && path.count==prefix.count+64 && path[0..<prefix.count]==prefix && us_host(path[prefix.count..<path.count]);
+}
+
+us_private_input :: (raw:string)->bool #export_c #effects(all) {
+ q:[1]PaRequest;return pa_request_read(raw,q[..]) && q[0].nb>0;
+}
+
+// Correlation is not proof of a known outcome. A host's retained-but-unknown
+// receipt cannot release the client's original private command.
+us_settled :: (raw:string)->bool #export_c #effects(all) {
+ v:[1]PaView;if !pa_view_read(raw,v[..]) {return false;}
+ error:=cast(string)v[0].error[0..<v[0].ne];return error!="unknown" && error!="login_unknown" && error!="idempotency_conflict";
+}
+#test "an unknown provider receipt cannot settle private replay ownership" {
+ v:[1]PaView;_=pa_copy(v[0].host[..],"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");v[0].nm=pa_copy(v[0].method[..],"ListAccounts");b:[32768]u8;n:=pa_view_write(v[..],b[..]);#assert n>0 && us_settled(cast(string)b[0..<n]);
+ for code:[3]string.["unknown","login_unknown","idempotency_conflict"] {v[0].ne=pa_copy(v[0].error[..],code);n=pa_view_write(v[..],b[..]);#assert n>0 && !us_settled(cast(string)b[0..<n]);}
+}
+
+#test "SDK refusal and exact output capacities keep missing input and stale private data from transport" {
+ q:[1]PaRequest;q[0].nm=pa_copy(q[0].method[..],"ListAccounts");b:[8192]u8;out:[8192]u8;n:=pa_request_write(q[..],b[..]);#assert n>0;
+ #assert us_pending_public(cast(string)b[0..<n],out[..])== -1 && us_pending_public("{}",out[..])== -1;
+ #assert us_private_request("{}","","",out[..])== -1;
+ #assert us_private_request(cast(string)b[0..<n],"x","",out[..])== -1;
+ #assert us_private_request(cast(string)b[0..<n],"","",out[0..<n])==n;
+ #assert us_mutation(cast(string)b[0..<n])==0 && us_mutation("{}")== -1 && !us_private_input(cast(string)b[0..<n]) && !us_private_input("{}");
+ q[0].nm=pa_copy(q[0].method[..],"CompleteAccountLogin");q[0].nl=pa_copy(q[0].login[..],"11111111111111111111111111111111");q[0].nc=pa_copy(q[0].command[..],"22222222222222222222222222222222");q[0].issued=1;q[0].expires=300001;q[0].nb=pa_copy(q[0].code[..],US_PRIVATE);n=pa_request_write(q[..],b[..]);#assert n>0 && us_private_input(cast(string)b[0..<n]) && us_mutation(cast(string)b[0..<n])==1;
+ #assert us_private_request(cast(string)b[0..<n],"",US_PRIVATE,out[..])== -1;
+ private:[8192]u8;pn:=us_private_request(cast(string)b[0..<n],"","a",private[..]);#assert pn>0;
+ #assert us_private_request(cast(string)b[0..<n],cast(string)private[0..<pn],"",out[0..<pn])==pn;
+ #assert us_private_request(cast(string)b[0..<n],cast(string)private[0..<pn],"",out[0..<pn-1])== -1;
+ #assert us_private_request(cast(string)b[0..<n],"{}","a",out[..])== -1;
+ #assert !us_settled("{}");
+ v:[1]PaView;h:="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";_=pa_copy(v[0].host[..],h);v[0].method=q[0].method;v[0].nm=q[0].nm;v[0].command=q[0].command;v[0].nc=q[0].nc;body:[32768]u8;vn:=pa_view_write(v[..],body[..]);
+ q[0].nb=pa_copy(q[0].code[..],"a");n=pa_request_write(q[..],b[..]);#assert n>0 && vn>0 && us_private_input(cast(string)b[0..<n]) && us_reply(h,cast(string)b[0..<n],cast(string)body[0..<vn],out[..])== -1;
+}
+#test "the private SDK reuses only the exact account API route and its bounded body" {
+ path:="/api/chat/environment/accounts/v1?host=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+ #assert us_http(2,path,1) && us_http(2,path,8192) && !us_http(2,path,8193) && !us_http(2,path,0) && !us_http(2,path,-1);
+ #assert !us_http(1,path,1) && !us_http(3,path,1) && !us_http(2,"/api/chat/environment/accounts/v1?host=bad",1) && !us_http(2,"https://evil/api/chat/environment/accounts/v1",1);
+}

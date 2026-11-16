@@ -7,7 +7,7 @@ settings:
   base:
     DEVELOPMENT_TEAM: HQWSG26L43
     MARKETING_VERSION: "1.0.0"
-    CURRENT_PROJECT_VERSION: "1401"
+    CURRENT_PROJECT_VERSION: "1402"
     OA_IOS_BUNDLE_ID: com.openagents.app
     SWIFT_VERSION: "5.0"
     IPHONEOS_DEPLOYMENT_TARGET: "18.0"
@@ -46,6 +46,7 @@ targets:
       - ../shared/native/AppHTTP.swift
       - ../shared/native/AppAccount.swift
       - ../shared/native/AppIdentity.swift
+      - ../shared/native/AppProvider.swift
       - ../shared/native/KitPasskey.swift
       - ../shared/native/AppWake.swift
       - ../shared/native/AppEffects.swift

@@ -1,0 +1,3 @@
+// GPU Usage actual-page native qualification; policy is gated separately.
+// coax test coax/native/usage-screen-check.coax --native-link ../../apps/shared/app/usage/screen-native.coax
+#import "Basic";

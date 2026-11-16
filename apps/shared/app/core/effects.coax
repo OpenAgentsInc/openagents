@@ -26,6 +26,7 @@
 //   coax/bin/coax test apps/shared/app/core/effects.coax --library
 #load "../../../../coax/lib/json/shape.coax";
 #load "url-policy.coax";
+#load "../usage/sdk-policy.coax";
 
 // What the host is asked to do (the service table; host.coax documents each shape).
 FX_HTTP :: 1;          // method, path, body, response limit, timeout
@@ -41,7 +42,8 @@ FX_DEVICE_LIST :: 10;  // the computers this phone is paired with (apps/shared/a
 FX_DEVICE_PAIR :: 11;  // body: a pairing link the person opened
 FX_DEVICE_CALL :: 12;  // text: a paired computer's key; body: its environment request
 FX_IDENTITY :: 13;    // private SDK action, public expected key only
-FX_KINDS :: 13;
+FX_PROVIDER :: 14;    // private-free PaRequest metadata; SDK owns OAuth input/replay
+FX_KINDS :: 14;
 
 // A held request.
 FX_FREE :: 0; FX_QUEUED :: 1; FX_PENDING :: 2; FX_CANCELLED :: 3;
@@ -61,7 +63,7 @@ FXC_NONE :: 0;         // no such pending operation (a duplicate, or never issue
 FXC_DELIVER :: 1;      // live: hand the result to the owner
 FXC_DROPPED :: 2;      // fenced: the owner was cancelled or retired; the reservation is released
 
-FX_MAX :: 8; FX_OWNERS :: 9; FX_RECENT :: 16;
+FX_MAX :: 8; FX_OWNERS :: 10; FX_RECENT :: 16;
 FX_TEXT :: 512; FX_PAYLOAD :: 270336;
 FX_OP_MAX :: 2147483647; FX_GENERATION_MAX :: 2147483647;
 
@@ -107,7 +109,7 @@ fx_rollback :: (o: [] FxOutbox, m: FxMark) {
   o[0].next_op = m.next_op; o[0].payload_n = m.payload_n;
 }
 
-fx_text_kind :: (kind: int) -> bool { return kind == FX_AUTH_EMAIL || kind == FX_AUTH_VERIFY || kind == FX_DEVICE_CALL || kind == FX_IDENTITY; }
+fx_text_kind :: (kind: int) -> bool { return kind == FX_AUTH_EMAIL || kind == FX_AUTH_VERIFY || kind == FX_DEVICE_CALL || kind == FX_IDENTITY || kind==FX_PROVIDER; }
 // Admit one request. Returns its operation ID, or 0 and changes nothing: an unknown kind or owner,
 // a retired owner or outbox, a request the installed policy refuses, or no room.
 fx_request :: (o: [] FxOutbox, owner: int, kind: int, purpose: int, method: int, path: string, text: string, body: string, limit: int, timeout_ms: int) -> int {
@@ -116,12 +118,13 @@ fx_request :: (o: [] FxOutbox, owner: int, kind: int, purpose: int, method: int,
   if kind == FX_HTTP {
     if !up_http(method, path, body.count) || limit < 1 || limit > UP_RESPONSE_MAX || timeout_ms < 1 { return 0; }
   } else {
-    if method != 0 || path.count != 0 || limit != 0 { return 0; }
+    if (method != 0 && kind!=FX_PROVIDER) || path.count != 0 || limit != 0 { return 0; }
     if kind == FX_CLIPBOARD { if !up_copy(body.count) { return 0; } }
     else if kind == FX_LINK { if !up_link(body) { return 0; } }
     else if kind == FX_DEVICE_PAIR { if !up_device_link(body) { return 0; } }
     else if kind == FX_DEVICE_CALL { if !up_device_call(text, body) { return 0; } }
     else if kind == FX_IDENTITY { if !up_identity(text,body) {return 0;} }
+    else if kind==FX_PROVIDER {if !us_effect(method,text,body) {return 0;}}
     else if body.count != 0 { return 0; }
   }
   if o[0].payload_n + body.count > FX_PAYLOAD { return 0; }

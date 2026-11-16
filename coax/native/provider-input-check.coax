@@ -1,0 +1,3 @@
+// Private-free provider effect admission and the SDK's existing wire codecs.
+// coax test coax/native/provider-input-check.coax --library
+#load "../../apps/shared/app/usage/sdk.coax";

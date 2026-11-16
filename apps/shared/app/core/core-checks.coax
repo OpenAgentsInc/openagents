@@ -132,7 +132,7 @@ ckt_login :: (c: [] AppCore) -> bool {
 }
 #test "guest owner boundaries, closed request fields and sleeping deadlines are exact" {
  a:[1]AppCore;c:=a[..];#assert ckt_login(c);
- yes:=[5]int.[3,4,5,6,8];no:=[7]int.[-1,0,1,2,7,9,10];
+ yes:=[6]int.[3,4,5,6,8,9];no:=[7]int.[-1,0,1,2,7,10,11];
  for owner:yes {#assert app_guest_owner(owner);}
  for owner:no {#assert !app_guest_owner(owner) && app_guest_http(c,owner,9,UP_GET,"/api/chat/x","")==0 && app_guest_identity(c,owner,9,"read","")==0 && app_guest_ids(c,owner,9)==0 && !app_guest_due(c,owner,1);}
  op:=app_guest_http(c,OWN_SCREEN,19,UP_GET,"/api/chat/x","");#assert op>0 && ckt_field(c,op,APP_HOST_TIMEOUT)==60000;
@@ -152,12 +152,12 @@ ckt_login :: (c: [] AppCore) -> bool {
  page:=fx_request(c[0].out[..],OWN_PAGE,FX_CLIPBOARD,1,0,"","","fixture",0,0);#assert page>0;
  gp:=fx_generation(c[0].out[..],OWN_PAGE);
  device:=fx_request(c[0].out[..],OWN_DEVICE,FX_DEVICE_LIST,1,0,"","","",0,0);#assert device>0;gd:=fx_generation(c[0].out[..],OWN_DEVICE);
- for owner:[5]int.[3,4,5,6,8] {#assert app_guest_due(c,owner,999);}
+ for owner:[6]int.[3,4,5,6,8,9] {#assert app_guest_due(c,owner,999);}
  c[0].dirty=0;app_say(c,"stale");c[0].dirty=0;app_logged_out(c,"Signed out");
  #assert c[0].auth==AUTH_OUT && c[0].login==LOGIN_IDLE && c[0].rejoin_n==0 && !c[0].guest.waiting;
  #assert app_environment(c)=="" && app_repository(c)=="" && app_note(c)=="Signed out" && c[0].dirty==SURF_ALL;
  #assert fx_generation(c[0].out[..],OWN_PAGE)>gp && fx_generation(c[0].out[..],OWN_DEVICE)==gd;
- for owner:[5]int.[3,4,5,6,8] {#assert c[0].guest_due[owner]==0;}
+ for owner:[6]int.[3,4,5,6,8,9] {#assert c[0].guest_due[owner]==0;}
 }
 #test "a launch with a saved conversation rejoins it after login" {
   buf: [4096] u8;
@@ -196,4 +196,23 @@ ckt_login :: (c: [] AppCore) -> bool {
   #assert app_draft_keep(c, "cnv_0123456789abcdef0123456789abcdef", "saved") && app_host_action(c, 3, 1, ACT_DRAFT, false, "new", "") == APP_OK;
   #assert app_host_action(c, 4, 1, ACT_LOGOUT, false, "", "") == APP_OK;
   #assert app_draft(c) == "new" && app_draft_of(c, "cnv_0123456789abcdef0123456789abcdef") == "";
+}
+
+#test "provider requests preserve transport mode and private-free metadata under their own owner" {
+ c:[1]AppCore;d:[1]DeviceLane;app_init(c[..]);#assert app_device_attach(c[..],d[..]);h:="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+ q:[1]PaRequest;q[0].nm=pa_copy(q[0].method[..],"ListAccounts");raw:[8192]u8;n:=pa_request_write(q[..],raw[..]);#assert n>0;
+ #assert app_guest_provider(c[..],7,h,cast(string)raw[0..<n],true,false)==0 && app_provider_ids(c[..])==0;
+ c[0].auth=AUTH_IN;
+ op:=app_guest_provider(c[..],7,h,cast(string)raw[0..<n],true,false);#assert op>0;
+ at:=fx_find(c[0].out[..],op);r:=c[0].out[0].slots[at];#assert r.kind==FX_PROVIDER && r.owner==OWN_USAGE && r.method==1 && r.purpose==7 && r.timeout_ms==30000 && r.path_n==0 && r.limit==0 && cast(string)r.text[0..<r.text_n]==h && fx_body(c[0].out[..],at)==cast(string)raw[0..<n];
+ #assert app_guest_provider(c[..],8,h,"",true,true)>0 && app_provider_ids(c[..])>0;
+ _=app_guest_cancel(c[..],OWN_USAGE);c[0].auth=AUTH_OUT;d[0].np=1;_=pa_copy(d[0].paired[0].host[..],h);
+ op=app_guest_provider(c[..],9,h,cast(string)raw[0..<n],false,false);#assert op>0 && c[0].out[0].slots[fx_find(c[0].out[..],op)].method==0;
+ op=app_guest_provider(c[..],10,h,"",false,true);#assert op>0 && c[0].out[0].slots[fx_find(c[0].out[..],op)].method==2 && app_provider_ids(c[..])>0;
+ #assert app_guest_provider(c[..],1,"bad","",false,true)==0;
+}
+
+#test "provider IDs have the exact service and no unused arguments" {
+ c:[1]AppCore;app_init(c[..]);c[0].auth=AUTH_IN;op:=app_provider_ids(c[..]);#assert op>0;
+ r:=c[0].out[0].slots[fx_find(c[0].out[..],op)];#assert r.owner==OWN_USAGE && r.kind==FX_IDS && r.purpose==3 && r.method==0 && r.limit==0 && r.timeout_ms==0 && r.path_n==0 && r.text_n==0 && r.body_n==0;
 }

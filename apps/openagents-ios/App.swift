@@ -53,10 +53,12 @@ import UIKit
         services=AppServices()
         if let services {
             services.identity.anchor={ [weak self] in self?.view.window }
-            services.identity.input={ [weak self] in self?.field.text ?? "" }
+            services.identity.input={ [weak self] in guard let self,self.field.accessibilityIdentifier=="identity.secret" else {return ""};return self.field.text ?? "" }
             services.identity.clearInput={ [weak self] in
-                guard let self else {return};if self.field.kind == .secret {self.field.text=""};oc_secret_ready(owner,0)
+                guard let self else {return};if self.field.accessibilityIdentifier=="identity.secret" {self.field.text="";oc_secret_ready(owner,0)}
             }
+            services.provider.input={ [weak self] in guard let self,self.field.accessibilityIdentifier=="usage.code" else {return ""};return self.field.text ?? "" }
+            services.provider.clearInput={ [weak self] in guard let self,self.field.accessibilityIdentifier=="usage.code" else {return};self.field.text="";oc_secret_ready(owner,0) }
             services.bridge.changed={ [weak self] in self?.wake() }
             oc_attach(owner,services.core.raw,AppServices.keptDraft)
             oc_env_restore(owner,AppServices.keptEnvironment)
@@ -184,7 +186,7 @@ import UIKit
         // the chips' choices, kept for the next launch
         if let owner {var bytes=[CChar](repeating:0,count:8192);_ = oc_env_save(owner,&bytes,Int32(bytes.count));AppServices.keepEnvironment(String(cString:bytes))}
     }
-    @objc private func clearPrivate() {services?.identity.clear();field.text="";if let owner {oc_secret_ready(owner,0);if focusID()=="identity.secret" {oc_blur(owner)}};wake()}
+    @objc private func clearPrivate() {services?.identity.clear();services?.provider.clear();field.text="";if let owner {oc_secret_ready(owner,0);if oc_field_kind(owner)==3 {oc_blur(owner)}};wake()}
     @objc private func captureChanged() {if UIScreen.main.isCaptured {clearPrivate()};wake()}
     fileprivate func step() {
         guard let owner else {return}
@@ -264,7 +266,7 @@ import UIKit
         let privateMode=oc_private_mode(owner)
         if privateMode==0 {if field.kind == .secret {field.text="";oc_secret_ready(owner,0)};services?.identity.hideBackup()}
         if editorFieldID != id {
-            if id=="identity.secret" && field.kind != .secret {field.text=""}
+            if kind==3 || field.kind == .secret {field.text=""}
             editorFieldID=id
         }
         if id=="chat.composer" || kind==4 {
@@ -277,7 +279,7 @@ import UIKit
             return
         }
         if editor.isFirstResponder {_ = editor.resignFirstResponder()};editor.removeFromSuperview()
-        let privateField=id=="identity.secret"
+        let privateField=kind==3
         guard kind>=0 else {if field.isFirstResponder {_ = field.resignFirstResponder()};field.removeFromSuperview();if oc_private_mode(owner)==0 {field.text="";services?.identity.hideBackup()};return}
         var b=[Float](repeating:0,count:4)
         guard oc_field_text_box(owner,&b) != 0 else {field.isHidden=true;return}
@@ -287,7 +289,7 @@ import UIKit
         field.isHidden=privateField && UIScreen.main.isCaptured
         if field.frame != frame {field.frame=frame}
         field.accessibilityIdentifier=id
-        field.configure(KitFieldKind(rawValue:kind) ?? .plain,placeholder:privateField ? "nsec or hex":kind==2 ? "000000":kind==1 ? "you@example.com":"")
+        field.configure(KitFieldKind(rawValue:kind) ?? .plain,placeholder:privateField ? (id=="usage.code" ? "Paste code":"nsec or hex"):kind==2 ? "000000":kind==1 ? "you@example.com":"")
         if privateField {
             field.isSecureTextEntry=oc_private_mode(owner) != 2
             if oc_private_mode(owner)==2 {field.text=UIScreen.main.isCaptured ? "":services?.identity.backup ?? ""}
@@ -308,11 +310,11 @@ import UIKit
     @objc private func fieldChanged() {
         // an input method's provisional text stays the platform's until it is committed (one editing authority)
         guard let owner,field.markedTextRange==nil,field.accessibilityIdentifier==focusID() else {return}
-        if focusID()=="identity.secret" {oc_secret_ready(owner,(field.text ?? "").isEmpty ? 0:1);wake();return}
+        if oc_field_kind(owner)==3 {oc_secret_ready(owner,(field.text ?? "").isEmpty ? 0:1);wake();return}
         if oc_set_field(owner,field.text ?? "")==0 {var bytes=[CChar](repeating:0,count:512);_ = oc_field_text(owner,&bytes,Int32(bytes.count));field.text=String(cString:bytes)}
         wake()
     }
-    func textFieldShouldReturn(_ textField:UITextField)->Bool {guard textField.accessibilityIdentifier==focusID() else {return false};if let owner {if focusID()=="identity.secret" {_ = field.resignFirstResponder();oc_blur(owner)}else {_ = oc_submit(owner)}};wake();return false}
+    func textFieldShouldReturn(_ textField:UITextField)->Bool {guard textField.accessibilityIdentifier==focusID() else {return false};if let owner {if oc_field_kind(owner)==3 {_ = field.resignFirstResponder();oc_blur(owner)}else {_ = oc_submit(owner)}};wake();return false}
     func textField(_ textField:UITextField,shouldChangeCharactersIn range:NSRange,replacementString string:String)->Bool {guard let owner else {return false};return focusID() != "identity.secret" || oc_private_mode(owner) != 2}
     func textFieldDidEndEditing(_ textField:UITextField) {if let owner,textField.accessibilityIdentifier==focusID(),oc_field_kind(owner)>=0,oc_field_kind(owner) != 4 {oc_blur(owner)};wake()}
     @discardableResult private func focus()->Bool {attachEditor();let took=editor.becomeFirstResponder();wake();return took}

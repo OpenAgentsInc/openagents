@@ -1,0 +1,36 @@
+// Actual page/semantics/editor qualification, normal and sanitized.
+#import "Basic";
+#load "../../../openagents-ios/chat.coax";
+usn_setup :: (s:[]ChatPage,c:[]AppCore,o:[]ChOut) {
+ app_init(c);c[0].auth=AUTH_OUT;ch_test_atlas(s[0].atlas[..]);chat_attach(s,c,"");chat_step(s);s[0].identity[0].open=true;_=ch_test_frame(s,o);
+ #assert chat_activate(s,"usage.open");_=ch_test_frame(s,o);#assert ch_test_has(s,"usage.title") && ch_test_has(s,"usage.back") && s[0].usage[0].open && chat_layer(s)==0;
+ u:=s[0].usage[..];u[0].loaded=true;u[0].catalog[0].n=1;_=pa_copy(u[0].catalog[0].entries[0].host[..],"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");u[0].catalog[0].entries[0].nl=pa_copy(u[0].catalog[0].entries[0].label[..],"Computer");u[0].recovered[0]=true;u[0].index=1;u[0].next=30000;
+}
+usn_fields :: () {
+ s:[1]ChatPage;c:[1]AppCore;o:[1]ChOut;usn_setup(s[..],c[..],o[..]);u:=s[0].usage[..];u[0].form=true;u[0].form_host=u[0].catalog[0].entries[0].host;
+ _=ch_test_frame(s[..],o[..]);#assert chat_activate(s[..],"usage.label") && chat_set_field(s[..],"Work");out:[256]u8;#assert chat_field_text(s[..],out[..])==4 && cast(string)out[0..<4]=="Work";
+ #assert chat_submit(s[..]) && ch_focus(s[..])=="";#assert chat_activate(s[..],"usage.form.close");
+ u[0].flow[0].ni=pa_copy(u[0].flow[0].id[..],"11111111111111111111111111111111");u[0].flow[0].ns=pa_copy(u[0].flow[0].state[..],"awaiting_code");u[0].flow_due=30000;
+ _=ch_test_frame(s[..],o[..]);#assert chat_activate(s[..],"usage.code");_=ch_test_frame(s[..],o[..]);#assert chat_field_kind(s[..])==3 && chat_private_mode(s[..])==3 && !chat_set_field(s[..],"not-public");
+ t:=[1]ElTable.[ch_rows(s[..])];i:=elt_find(t[..],"usage.code");#assert i>=0 && elt_value_of(t[..],i)=="" && chat_field_text(s[..],out[..])==0;
+ chat_secret_ready(s[..],true);#assert u[0].code_ready && !s[0].identity[0].secret_ready;
+ _=chat_text_zoom(s[..],CH_ZOOM_MAX);chat_env(s[..],59,34,336,true,0,true);_=ch_test_frame(s[..],o[..]);_=ch_test_frame(s[..],o[..]);
+ #assert chat_row_visible(s[..],surface_find(ch_live(s[..]),"usage.code")) && chat_refused(s[..])==0;
+ chat_blur(s[..]);chat_scroll_to(s[..],0);_=ch_test_frame(s[..],o[..]);#assert chat_activate(s[..],"usage.back");_=ch_test_frame(s[..],o[..]);#assert !u[0].open && chat_private_mode(s[..])==0 && ch_test_has(s[..],"settings.back");
+ s[0].drawer=true;chat_step(s[..]);_=ch_test_frame(s[..],o[..]);#assert chat_activate(s[..],"drawer.projects");_=ch_test_frame(s[..],o[..]);#assert s[0].section==1 && !s[0].identity[0].open && !s[0].usage[0].open;
+}
+usn_library :: () {
+ s:[1]ChatPage;c:[1]AppCore;o:[1]ChOut;usn_setup(s[..],c[..],o[..]);u:=s[0].usage[..];u[0].catalog[0].n=64;
+ for host:0..<64 {u[0].states[host]=2;v:=u[0].views[host..<host+1];v[0].n=8;for i:0..<8 {a:=v[0].accounts[i..<i+1];a[0].ni=pa_copy(a[0].id[..],"11111111111111111111111111111111");a[0].nl=pa_copy(a[0].label[..],"Fixture");a[0].nw=1;a[0].windows[0].ni=pa_copy(a[0].windows[0].id[..],"seven_day");a[0].windows[0].used=3500;}}
+ // Give every fixture its real identity so visible rows never collide.
+ for host:1..<64 {u[0].catalog[0].entries[host]=u[0].catalog[0].entries[0];u[0].catalog[0].entries[host].host[0]="0123456789abcdef"[host/16];u[0].catalog[0].entries[host].host[1]="0123456789abcdef"[host%16];}
+ for host:0..<64 {for i:0..<8 {u[0].views[host].accounts[i].id[0]="0123456789abcdef"[i];}}
+ _=ch_test_frame(s[..],o[..]);height:=s[0].section_content;#assert height>50000 && chat_refused(s[..])==0 && ch_rows(s[..]).n<96;
+ chat_scroll_to(s[..],5000);_=ch_test_frame(s[..],o[..]);#assert s[0].section_content==height && chat_refused(s[..])==0 && ch_rows(s[..]).n<96;
+ chat_scroll_to(s[..],ch_scroll_max(s[..]));_=ch_test_frame(s[..],o[..]);#assert s[0].section_content==height && chat_refused(s[..])==0;
+}
+native_check :: (i:int,run:bool)->int #export_c #effects(all) {
+ if i==0 {if run {usn_fields();}else {print("GPU Usage, private-free fields, keyboard reveal and Settings return");}}
+ if i==1 {if run {usn_library();}else {print("512-account bounded Usage realization and stable scroll geometry");}}
+ return 2;
+}

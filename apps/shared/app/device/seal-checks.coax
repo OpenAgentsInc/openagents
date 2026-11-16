@@ -77,3 +77,16 @@ dvt_reply :: (rp: HbReply, out: [] u8) -> int {
   nodes: [64] JvNode; d: [1] Jv; #assert jv_parse(d[..], cast(string) out[0..<n], nodes[..]);
   #assert jv_int(d[0], jv_get(d[0], 0, "kind"), 0) == 22242 && jv_raw(d[0], jv_get(d[0], 0, "pubkey")) == HBT_BROWSER_X;
 }
+
+#test "provider RPC reuses HOST carriage, erases its private body, and binds a signed refusal to the original command" {
+ x:[1]DvWork;sk:[32]u8;r:[DV_RANDOM]u8;ev:[DV_EVENT_MAX]u8;secret:=dvt_key(HBT_BROWSER_SECRET,sk[..]);
+ q:[1]PaRequest;q[0].nm=pa_copy(q[0].method[..],"CompleteAccountLogin");q[0].nl=pa_copy(q[0].login[..],"11111111111111111111111111111111");q[0].nc=pa_copy(q[0].command[..],"22222222222222222222222222222222");q[0].issued=1;q[0].expires=300001;q[0].nb=pa_copy(q[0].code[..],"fixture-code#state");pb:[8192]u8;pn:=pa_request_write(q[..],pb[..]);#assert pn>0;
+ n:=dv_seal(x[..],DV_RPC,secret,HBT_HOST_X,"wss://relay.openagents.com",HBT_GRANT,3,cast(string)pb[0..<pn],HBT_T0,dvt_random(2,r[..]),ev[..]);#assert n>0 && x[0].provider && x[0].nc==32;
+ for c:x[0].body {#assert c==0;}
+ hs:[32]u8;hx:[32]u8;w:[1]HbWork;body:[HB_BODY_MAX]u8;o:=hb_open(cast(string)ev[0..<n],dvt_key(HBT_HOST_SECRET,hs[..]),dvt_key(HBT_HOST_X,hx[..]),HB_REQUEST_SCHEMA,w[..],body[..]);#assert o.error==HB_OK;
+ arena:[8192]u8;a:=[1]HbText.[HbText.{buf=arena[..]}];rpc:[1]HbRpcRequest;request:[1]PaRequest;
+ #assert hb_rpc_read(cast(string)body[0..<o.body_n],rpc[..],a[..]) && rpc[0].method=="CompleteAccountLogin" && pa_request_read(rpc[0].params,request[..]) && cast(string)request[0].code[0..<request[0].nb]=="fixture-code#state";
+ rf:=HbReply.{request=cast(string)x[0].request[..],request_event=cast(string)x[0].event[..],host=HBT_HOST_X,issued_at=HBT_T0,expires_at=HBT_T0+60,ok=false,code="forbidden"};re:[DV_EVENT_MAX]u8;rn:=dvt_reply(rf,re[..]);#assert rn>0;
+ out:[32768]u8;vn:=dv_open(x[..],secret,HBT_HOST_X,cast(string)re[0..<rn],HBT_T0+1,out[..]);v:[1]PaView;
+ #assert vn>0 && pa_view_read(cast(string)out[0..<vn],v[..]) && cast(string)v[0].method[0..<v[0].nm]=="CompleteAccountLogin" && cast(string)v[0].command[..]==cast(string)q[0].command[..] && cast(string)v[0].error[0..<v[0].ne]=="forbidden";
+}
