@@ -89,7 +89,8 @@ final class MemoryTokens: TokenStore, @unchecked Sendable {
 }
 
 @MainActor final class Platform: AppPlatform {
-    var copied: [String] = [], opened: [String] = []
+    var copied: [String] = [], opened: [String] = [], shared: [String] = []
+    func share(_ text: String, done: @escaping (AppCompletion.State) -> Void) {shared.append(text);done(.cancelled)}
     func copy(_ text: String) -> Bool { copied.append(text); return true }
     func open(_ link: String, done: @escaping (Bool) -> Void) { opened.append(link); done(link.hasPrefix("https://")) }
 }
@@ -168,6 +169,10 @@ final class MemoryTokens: TokenStore, @unchecked Sendable {
         expect(by[5]?.outcome == 5, "an unknown kind is unsupported")
         expect(by[7]?.outcome == 1 && by[7]?.flag == true, "the email step")
         expect(!core.done.contains { $0.text.contains("pend_secret") || $0.more.contains("pend_secret") }, "the email attempt crossed into the core")
+
+        core.done=[];core.queued=[.init(op:15,fields:FakeCore.fields(15,3),body:"Public excerpt")]
+        bridge.heard();await settle("the cancelled share chooser") {core.done.count==1}
+        expect(core.done[0].outcome==4 && platform.shared==["Public excerpt"] && platform.copied==["copied"],"share uses its own native effect and propagates cancellation")
 
         // A wrong code: the server's words come back as the result's text.
         core.done = []; core.queued = [.init(op: 8, fields: FakeCore.fields(4, 3), text: "000000")]

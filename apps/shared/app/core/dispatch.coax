@@ -47,6 +47,7 @@ ACT_COPY :: 17;        // text: what to copy
 ACT_LINK :: 18;        // text: the URL to open
 ACT_DEVICE_PAIR :: 19; // text: a pairing link the person opened (openagents://pair?...)
 ACT_DEVICE_REJOIN :: 20; // text: "host TAB session" kept at the last background (app_device_keep), or ""
+ACT_SHARE :: 22;       // explicit share of text through the system chooser, never automatic upload
 ACT_PROJECT_NEW :: 21; // text: canonical project ID; value: the read project revision (in-process page action)
 
 // What app_dispatch answers.
@@ -225,9 +226,9 @@ app_action :: (c: [] AppCore, e: AppEvent) -> int {
     if !app_account_request(c, FX_AUTH_LOGOUT, "", "") { return APP_R_RETIRED; }
     app_logged_out(c, ""); return APP_OK;
   }
-  if a == ACT_COPY || a == ACT_LINK {
-    kind := ifx a == ACT_COPY then FX_CLIPBOARD else FX_LINK;
-    if e.text.count < 1 || (a == ACT_COPY && !up_copy(e.text.count)) || (a == ACT_LINK && !up_link(e.text)) { return APP_R_INVALID; }
+  if a == ACT_COPY || a == ACT_LINK || a==ACT_SHARE {
+    kind := ifx a == ACT_COPY then FX_CLIPBOARD else ifx a==ACT_SHARE then FX_SHARE else FX_LINK;
+    if e.text.count < 1 || ((a == ACT_COPY || a==ACT_SHARE) && !up_copy(e.text.count)) || (a == ACT_LINK && !up_link(e.text)) { return APP_R_INVALID; }
     if fx_request(c[0].out[..], OWN_PAGE, kind, kind, 0, "", "", e.text, 0, 0) == 0 { return APP_R_FULL; }
     return APP_OK;
   }
@@ -272,7 +273,7 @@ app_done :: (c: [] AppCore, e: AppEvent) -> int {
   }
   if owner == OWN_DEVICE { dl_done(c, e.op, purpose, e); return APP_OK; }
   if owner == OWN_PAGE {
-    if e.outcome != FXO_DONE { app_say(c, ifx kind == FX_CLIPBOARD then "We could not copy that." else "We could not open that link."); }
+    if e.outcome != FXO_DONE && !(kind==FX_SHARE && e.outcome==FXO_CANCELLED) { app_say(c, ifx kind == FX_CLIPBOARD then "Couldn’t copy." else ifx kind==FX_SHARE then "Sharing unavailable." else "Couldn’t open link."); }
     return APP_OK;
   }
   // an account request the service no longer accepts: the session is over

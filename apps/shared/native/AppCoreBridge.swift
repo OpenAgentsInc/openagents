@@ -32,7 +32,7 @@ import Foundation
 }
 
 /// effects.coax FX_ kinds.
-enum AppCoreKind: Int64 { case http = 1, authState = 2, authEmail = 3, authVerify = 4, authLogout = 5, ids = 6, clipboard = 7, link = 8, authCancel = 9, deviceList = 10, devicePair = 11, deviceCall = 12, identity = 13, provider = 14 }
+enum AppCoreKind: Int64 { case http = 1, authState = 2, authEmail = 3, authVerify = 4, authLogout = 5, ids = 6, clipboard = 7, link = 8, authCancel = 9, deviceList = 10, devicePair = 11, deviceCall = 12, identity = 13, provider = 14, share = 15 }
 /// host.coax APP_HOST_ fields, in order.
 enum AppCoreField: Int { case kind = 0, generation, method, limit, timeout, owner; static let count = 6 }
 /// url-policy.coax UP_ methods and dispatch.coax LIFE_ codes.
@@ -87,6 +87,7 @@ enum AppCoreCode { static let get: Int64 = 1, post: Int64 = 2; static let foregr
         case .authCancel: return .authEmailCancel
         case .authLogout: return .authLogout
         case .ids: return .identities
+        case .share: return words(core.body(op)).map { .share($0) }
         case .clipboard: return words(core.body(op)).map { .clipboard($0) }
         case .link: return words(core.body(op)).map { .link($0) }
         case .deviceList: return .deviceList

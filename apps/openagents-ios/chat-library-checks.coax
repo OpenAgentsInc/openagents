@@ -1,0 +1,30 @@
+// Synthetic public histories only; no account, relay or Git operation runs.
+#test "conversation pin rename archive and restore use stable saved identity and preserve the draft" #steps 2000000000 {
+ s:[1]ChatPage;c:[1]AppCore;o:[1]ChOut;app_init(c[..]);c[0].auth=AUTH_IN;c[0].foreground=false;
+ ch_test_atlas(s[0].atlas[..]);chat_attach(s[..],c[..],"");c[0].chat[0].id_n=el_copy(c[0].chat[0].id[..],"cnv_0123456789abcdef0123456789abcdef");c[0].chat[0].loaded=true;
+ _:=chat_set_text(s[..],"Keep this draft");_=ch_test_frame(s[..],o[..]);#assert chat_activate(s[..],"chat.options");_=ch_test_frame(s[..],o[..]);#assert ch_test_tap(s[..],"thread.pin");
+ #assert s[0].library[0].n==1 && s[0].library[0].rows[0].pinned && ch_draft(s[..])=="Keep this draft";
+ _=ch_test_frame(s[..],o[..]);#assert chat_activate(s[..],"chat.options");_=ch_test_frame(s[..],o[..]);#assert ch_test_tap(s[..],"thread.rename.open");_=ch_test_frame(s[..],o[..]);
+ chat_env(s[..],59,34,320,true,0,true);_=chat_frame(s[..],o[0].v[..],1206,2622,3,0);rect:[4]f32;facts:[8]f32;
+ #assert chat_field_box(s[..],rect[..]) && rect[1]+rect[3]<=554;#assert chat_row(s[..],surface_find(ch_live(s[..]),"thread.done"),facts[..]) && facts[1]+facts[3]<=554;
+ #assert chat_field_kind(s[..])==APP_FIELD_PLAIN && chat_set_field(s[..],"Garden plans") && chat_submit(s[..]);_=ch_test_frame(s[..],o[..]);#assert ch_conversation_title(s[..])=="Garden plans" && ch_draft(s[..])=="Keep this draft";
+ #assert chat_activate(s[..],"chat.options");_=ch_test_frame(s[..],o[..]);#assert ch_test_tap(s[..],"thread.archive");_=ch_test_frame(s[..],o[..]);#assert s[0].section==2 && s[0].library[0].rows[0].archived;
+ #assert chat_activate(s[..],"history.filter");_=ch_test_frame(s[..],o[..]);#assert ch_test_tap(s[..],"history.filter.pinned");_=ch_test_frame(s[..],o[..]);#assert s[0].library_filter==1 && ch_test_has(s[..],"library.empty");
+ #assert chat_activate(s[..],"history.filter");_=ch_test_frame(s[..],o[..]);#assert ch_test_tap(s[..],"history.filter.archived");_=ch_test_frame(s[..],o[..]);#assert s[0].library_filter==2 && ch_test_has(s[..],"cnv_0123456789abcdef0123456789abcdef");
+ // Return to the same saved chat without dispatching a network write in this fixture.
+ s[0].section=0;_=ch_test_frame(s[..],o[..]);#assert ch_test_has(s[..],"chat.restore") && !ch_test_has(s[..],VIEW_COMPOSER_ID);
+ #assert ch_test_tap(s[..],"chat.restore");_=ch_test_frame(s[..],o[..]);#assert !s[0].library[0].rows[0].archived && ch_test_has(s[..],VIEW_COMPOSER_ID) && ch_draft(s[..])=="Keep this draft";
+}
+#test "library partition restore clears the prior account's menu and aliases" #steps 2000000000 {
+ s:[1]ChatPage;o:[1]ChOut;ch_test_atlas(s[0].atlas[..]);_=ch_test_frame(s[..],o[..]);
+ #assert chlib_change(s[0].library[..],"account/cnv_0123456789abcdef0123456789abcdef","Private alias",3);s[0].rename=true;s[0].thread_menu=true;
+ #assert chat_library_restore(s[..],"") && s[0].library[0].n==0 && !s[0].rename && !s[0].thread_menu;
+ s[0].rename=true;s[0].thread_menu=true;#assert !chat_library_restore(s[..],"broken") && s[0].library[0].n==0 && !s[0].rename && !s[0].thread_menu;
+}
+#test "workspace shortcuts cannot route hosted or observed chats and never send or overwrite a draft" #steps 2000000000 {
+ s:[1]ChatPage;c:[1]AppCore;d:[1]DeviceLane;app_init(c[..]);#assert app_device_attach(c[..],d[..]);chat_attach(s[..],c[..],"");
+ #assert !ch_workspace_ready(s[..]);d[0].on=true;_=el_copy(d[0].host[..],"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+ #assert ch_workspace_ready(s[..]);before:=fx_held(c[0].out[..]);#assert chat_set_text(s[..],ews_prompt(0)) && fx_held(c[0].out[..])==before && !ch_workspace_ready(s[..]);
+ #assert ch_draft(s[..])==ews_prompt(0);_=chat_set_text(s[..],"");d[0].e[0].ns=3;_=el_copy(d[0].e[0].session[..],"one");d[0].e[0].view[0].ns=1;d[0].e[0].view[0].sessions[0].ni=el_copy(d[0].e[0].view[0].sessions[0].id[..],"one");
+ #assert !ch_workspace_ready(s[..]);
+}

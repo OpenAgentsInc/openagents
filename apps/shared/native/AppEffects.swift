@@ -37,6 +37,7 @@ enum AppCall {
     case identities
     /// Write text to the clipboard. The app asks only on an explicit action.
     case clipboard(String)
+    case share(String)
     /// Open a link outside the app. The app asks only on an explicit action.
     case link(String)
     /// The computers this phone is paired with, with no account (AppDeviceService).
@@ -87,7 +88,11 @@ struct AppCompletion: Equatable {
 /// The effects that need the platform's UI framework.
 @MainActor protocol AppPlatform: AnyObject {
     func copy(_ text: String) -> Bool
+    func share(_ text: String, done: @escaping (AppCompletion.State) -> Void)
     func open(_ link: String, done: @escaping (Bool) -> Void)
+}
+extension AppPlatform {
+    func share(_ text: String, done: @escaping (AppCompletion.State) -> Void) { done(.unsupported) }
 }
 /// Closed custody effects. Only public metadata or a static refusal returns to the app core.
 @MainActor protocol AppIdentityService: AnyObject {
@@ -165,6 +170,9 @@ struct AppCompletion: Equatable {
         case .identities:
             guard let random = AppWake.randomHex(32) else { finish(op, generation, .failed, 0, Data()); return }
             done(["command_id": String(random.prefix(32)), "session_id": String(random.suffix(32)), "now_ms": AppWake.wallMs()])
+        case .share(let text):
+            guard let platform else { finish(op, generation, .unsupported, 0, Data()); return }
+            platform.share(text) { [weak self] state in self?.finish(op, generation, state, 0, Data()) }
         case .clipboard(let text):
             if platform?.copy(text) == true { done() } else { finish(op, generation, .failed, 0, Data()) }
         case .link(let link):

@@ -50,6 +50,7 @@ import UIKit
         self.owner=owner
         services=AppServices()
         if let services {
+            services.presentation={ [weak self] in self }
             services.identity.anchor={ [weak self] in self?.view.window }
             services.identity.input={ [weak self] in guard let self,self.field.accessibilityIdentifier=="identity.secret" else {return ""};return self.field.text ?? "" }
             services.identity.clearInput={ [weak self] in
@@ -191,11 +192,12 @@ import UIKit
         let insets=view.safeAreaInsets,composing=editor.isFirstResponder,editing=composing||field.isFirstResponder
         oc_env(owner,Float(insets.top),Float(insets.bottom),Float(keyboard),editing ? 1:0,composing ? Float(editor.textHeight(width:editor.bounds.width)):0,(UIAccessibility.isReduceMotionEnabled || UserDefaults.standard.bool(forKey:"OAReduceMotion")) ? 1:0)
         oc_transparency(owner,UIAccessibility.isReduceTransparencyEnabled ? 1:0)
+        restoreLibraryPartition()
         oc_frame(owner)
         syncScroll()
         services?.pump()
         if oc_action(owner)==1 {_ = focus()}
-        followFocus();placeEditor();access?.refresh();keepDraft()
+        followFocus();placeEditor();access?.refresh();keepDraft();keepLibrary()
         #if DEBUG
         dumpAccess()
         #endif
@@ -296,6 +298,36 @@ import UIKit
         }
         if !field.isFirstResponder,!field.becomeFirstResponder() {oc_blur(owner)}
     }
+    private var libraryPartition:String?
+    private var libraryRevision:Int32 = -1
+    private func restoreLibraryPartition() {
+        guard let owner else {return}
+        let partition=AppAuth.shared.tokens.map {$0.account.isEmpty ? "unidentified:"+AppAuth.shared.sessionOwner.uuidString : "account:"+$0.account} ?? "guest"
+        guard partition != libraryPartition else {return}
+        libraryPartition=partition
+        #if DEBUG
+        // XCTest launch arguments truncate multiline defaults. Install public test
+        // bytes through the SDK, then exercise the normal persisted Coax codec.
+        if partition=="guest",let encoded=ProcessInfo.processInfo.environment["OA_CHAT_LIBRARY_FIXTURE"],let data=Data(base64Encoded:encoded),let text=String(data:data,encoding:.utf8) {
+            UserDefaults.standard.set(text,forKey:"openagents.chat-library."+partition)
+        }
+        #endif
+        let raw=UserDefaults.standard.string(forKey:"openagents.chat-library."+partition) ?? ""
+        let accepted=oc_library_restore(owner,raw)
+        #if DEBUG
+        if UserDefaults.standard.bool(forKey:"OALibraryTrace") {NSLog("OA-LIB bytes=%d accepted=%d guest=%d",raw.utf8.count,accepted,partition=="guest" ? 1:0)}
+        #endif
+        libraryRevision=oc_library_revision(owner)
+    }
+    private func keepLibrary() {
+        guard let owner,let partition=libraryPartition else {return}
+        let revision=oc_library_revision(owner);guard revision != libraryRevision else {return}
+        var bytes=[CChar](repeating:0,count:49153)
+        guard oc_library_save(owner,&bytes,Int32(bytes.count))>=0 else {return}
+        UserDefaults.standard.set(String(cString:bytes),forKey:"openagents.chat-library."+partition)
+        libraryRevision=revision
+    }
+
     private func keepDraft() {
         guard let owner else {return}
         let rev=oc_draft_rev(owner)

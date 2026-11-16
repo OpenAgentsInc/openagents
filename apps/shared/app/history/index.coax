@@ -1,10 +1,13 @@
 // Saved account conversations. The existing index codec and app core own all wire/auth behavior.
 #load "../core/core.coax";
+#load "../../../../coax/lib/agent/chat-library.coax";
+#load "../../../../components/core/text.coax";
 HI_OWNER :: 5; HI_INTERVAL :: 15000;
-ChatIndex :: struct {page:[1]CtIndex; signed_in:bool;visible:bool;loaded:bool;note:bool;op:int;next:int;cursor:[36]u8;cursor_n:int;sent:[36]u8;sent_n:int;changed:bool;}
+ChatIndex :: struct {page:[1]CtIndex;found:[1]CtIndex;held:[1]CtIndex;held_at:int;query:[128]u8;nq:int;scan:bool;scan_done:bool;scan_limit:bool;scan_pages:int;scan_cursor:[36]u8;scan_n:int;library:[]ChatLibrary; signed_in:bool;visible:bool;loaded:bool;note:bool;op:int;next:int;cursor:[36]u8;cursor_n:int;sent:[36]u8;sent_n:int;changed:bool;}
 hi_read :: (h:[]ChatIndex,c:[]AppCore,more:bool)->bool {
  b:[256]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_raw(o[..],"/api/chat/conversations/v2alpha1?project_id=&cursor=");
  h[0].sent_n=ifx more then h[0].page[0].next_n else h[0].cursor_n;for i:0..<h[0].sent_n {h[0].sent[i]=ifx more then h[0].page[0].next[i] else h[0].cursor[i];}
+ if h[0].nq>0 {h[0].sent_n=h[0].scan_n;h[0].sent=h[0].scan_cursor;}
  jo_raw(o[..],cast(string)h[0].sent[0..<h[0].sent_n]);
  op:=app_guest_http(c,HI_OWNER,1,UP_GET,jo_text(o[..]),"");if op==0 {h[0].next=c[0].mono_ms+1000;return false;}
  h[0].op=op;_:=app_guest_due(c,HI_OWNER,-1);return true;
@@ -16,23 +19,59 @@ hi_sync :: (h:[]ChatIndex,c:[]AppCore,visible:bool) {
   h[0].visible=false;_:=app_guest_due(c,HI_OWNER,-1);return;
  }
  if !h[0].visible {h[0].next=c[0].mono_ms;h[0].visible=true;}
- if h[0].op==0 && c[0].mono_ms>=h[0].next {_:=hi_read(h,c,false);}
- _:=app_guest_due(c,HI_OWNER,ifx h[0].op==0 then h[0].next else -1);
+ if h[0].op==0 && (h[0].nq==0 || h[0].scan) && c[0].mono_ms>=h[0].next {_:=hi_read(h,c,false);}
+ _:=app_guest_due(c,HI_OWNER,ifx h[0].op==0 && (h[0].nq==0 || h[0].scan) then h[0].next else -1);
 }
 hi_guest :: (h:[]ChatIndex,c:[]AppCore,raw:string)->bool {
  g:=c[0].guest;if !g.waiting || g.owner!=HI_OWNER {return false;}
  if g.op==h[0].op {
   h[0].op=0;next:[1]CtIndex;ok:=g.outcome==FXO_DONE && g.status==200 && ctr_index_read(raw,next[..]);
+  if h[0].nq>0 {h[0].note=!ok;h[0].scan=!ok;if ok {h[0].held[0]=next[0];h[0].held_at=0;h[0].scan_pages+=1;hi_scan_fill(h);}h[0].next=c[0].mono_ms+(ifx ok then 0 else HI_INTERVAL);app_guest_done(c);return true;}
   h[0].note=!ok;if ok {h[0].page[0]=next[0];h[0].loaded=true;h[0].changed=cast(string)h[0].cursor[0..<h[0].cursor_n]!=cast(string)h[0].sent[0..<h[0].sent_n];h[0].cursor_n=h[0].sent_n;for i:0..<h[0].cursor_n {h[0].cursor[i]=h[0].sent[i];}}
   h[0].next=c[0].mono_ms+HI_INTERVAL;
  }
  app_guest_done(c);return true;
 }
 hi_more :: (h:[]ChatIndex,c:[]AppCore)->bool {
+ if h[0].nq>0 {if h[0].op>0 || h[0].scan || h[0].scan_done || h[0].scan_limit {return false;}h[0].found[0]=CtIndex.{};hi_scan_fill(h);h[0].next=c[0].mono_ms;hi_sync(h,c,h[0].visible);return true;}
  return h[0].visible && h[0].op==0 && h[0].page[0].next_n>0 && hi_read(h,c,true);
 }
 
 hi_first :: (h:[]ChatIndex,c:[]AppCore)->bool {
  if !h[0].visible || h[0].op!=0 || h[0].cursor_n==0 {return false;}
  h[0].cursor_n=0;return hi_read(h,c,false);
+}
+
+// Search scans existing index pages, without creating an unversioned wire filter.
+// It retains an unfinished source page, so a 60-result window never loses a match.
+hi_query :: (h:[]ChatIndex,c:[]AppCore,query:string,l:[]ChatLibrary) {
+ logged:=c[0].auth==AUTH_IN;if logged!=h[0].signed_in {h[0]=ChatIndex.{};h[0].signed_in=logged;}
+ h[0].library=l;if cast(string)h[0].query[0..<h[0].nq]==query {return;}
+ if h[0].op>0 {_:=app_guest_cancel(c,HI_OWNER);h[0].op=0;}
+ h[0].nq=js_copy(h[0].query[..],query);h[0].found[0]=CtIndex.{};h[0].held[0]=CtIndex.{};h[0].held_at=0;h[0].scan_n=0;h[0].scan_pages=0;h[0].scan=query.count>0;h[0].scan_done=false;h[0].scan_limit=false;h[0].note=false;h[0].next=c[0].mono_ms;
+}
+hi_scan_fill :: (h:[]ChatIndex) {
+ while h[0].held_at<h[0].held[0].n && h[0].found[0].n<60 {
+  r:=h[0].held[0].items[h[0].held_at];h[0].held_at+=1;key:[CHLIB_KEY]u8;target:=chlib_account_key(cast(string)r.id[..],key[..]);title:=chlib_label(h[0].library,target,cast(string)r.title[0..<r.title_n]);
+  if !text_contains_ascii(title,cast(string)h[0].query[0..<h[0].nq]) {continue;}
+  duplicate:=false;for i:0..<h[0].found[0].n {if cast(string)h[0].found[0].items[i].id[..]==cast(string)r.id[..] {duplicate=true;}}if !duplicate {h[0].found[0].items[h[0].found[0].n]=r;h[0].found[0].n+=1;}
+ }
+ h[0].scan=false;h[0].scan_done=h[0].held_at==h[0].held[0].n && h[0].held[0].next_n==0;
+ if !h[0].scan_done && h[0].held_at==h[0].held[0].n {
+  if h[0].scan_pages>=1000 || h[0].held[0].next_n==h[0].sent_n && cast(string)h[0].held[0].next[0..<h[0].held[0].next_n]==cast(string)h[0].sent[0..<h[0].sent_n] {h[0].scan_limit=true;return;}
+  h[0].scan_n=h[0].held[0].next_n;h[0].scan_cursor=h[0].held[0].next;h[0].scan=h[0].found[0].n<60;
+ }
+}
+
+#test "title search continues beyond nonmatching pages and retains the rest of a full result window" {
+ h:[1]ChatIndex;h[0].nq=js_copy(h[0].query[..],"needle");h[0].held[0].n=2;
+ h[0].held[0].items[0].title_n=js_copy(h[0].held[0].items[0].title[..],"other");h[0].held[0].items[1].title_n=js_copy(h[0].held[0].items[1].title[..],"NEEDLE");
+ h[0].held[0].next_n=js_copy(h[0].held[0].next[..],"cnv_0123456789abcdef0123456789abcdef");hi_scan_fill(h[..]);#assert h[0].found[0].n==1 && h[0].scan && !h[0].scan_done;
+ h[0].found[0].n=59;h[0].held_at=0;h[0].held[0].n=2;for i:0..<2 {h[0].held[0].items[i].title_n=js_copy(h[0].held[0].items[i].title[..],"needle");_=js_copy(h[0].held[0].items[i].id[..],"cnv_1123456789abcdef0123456789abcdef");h[0].held[0].items[i].id[4]=cast(u8)('a'+i);}
+ h[0].held[0].next_n=0;hi_scan_fill(h[..]);#assert h[0].found[0].n==60 && h[0].held_at==1 && !h[0].scan_done && !h[0].scan;
+ h[0].found[0]=CtIndex.{};hi_scan_fill(h[..]);#assert h[0].found[0].n==1 && h[0].scan_done;
+}
+#test "nonadvancing search cursors terminate with an explicit incomplete limit" {
+ h:[1]ChatIndex;h[0].sent_n=36;_=js_copy(h[0].sent[..],"cnv_0123456789abcdef0123456789abcdef"); // only equality matters to this scan rule
+ h[0].held[0].next_n=36;h[0].held[0].next=h[0].sent;hi_scan_fill(h[..]);#assert h[0].scan_limit && !h[0].scan_done && !h[0].scan;
 }

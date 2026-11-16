@@ -74,6 +74,9 @@ int oc_drive_start(void *chat, const char *where, const char *token, float w, fl
 // The host's own turn after each driven operation (the keyboard a tap asked for, the editor's text), so
 // the next operation sees it, as a person's next touch would.
 void oc_on_drive_op(void *chat, void (*after)(void *context), void *context);
+int oc_library_save(void *chat, char *out, int cap);
+int oc_library_revision(void *chat);
+int oc_library_restore(void *chat, const char *text);
 int oc_env_save(void *chat, char *out, int cap);
 void oc_env_restore(void *chat, const char *text);
 void oc_step(void *chat);

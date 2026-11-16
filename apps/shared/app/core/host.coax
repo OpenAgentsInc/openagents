@@ -38,6 +38,7 @@
 // | FX_IDS          | - (command and reader IDs)                | text, more: two fresh random 128-bit IDs |
 // |                 |                                           | as 32 lowercase hex; value: wall ms      |
 // | FX_CLIPBOARD    | body: the text to write                   | -                                        |
+// | FX_SHARE        | body: bounded text the person chose       | done: activity completed; cancelled: dismissed      |
 // | FX_LINK         | body: an http(s) URL, opened with no      | -                                        |
 // |                 | account headers                           |                                          |
 // | FX_DEVICE_LIST  | - (the computers this phone is paired     | text: one computer a line, its key (64   |

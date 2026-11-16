@@ -24,6 +24,25 @@ final class SidebarTests:XCTestCase {
         app.buttons["thread.computer"].tap();XCTAssertTrue(app.buttons["env.close"].waitForExistence(timeout:10));app.buttons["env.close"].tap()
         XCTAssertTrue(options.waitForExistence(timeout:10));XCTAssertEqual(composer.value as? String,"A local draft")
     }
+    @MainActor func testGPUConversationLibraryFilters() {
+        let app=XCUIApplication()
+        let library="openagents.chat.library.local.v1\naccount/cnv_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\t1\tPinned fixture\naccount/cnv_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\t2\tArchived fixture\n"
+        app.launchArguments=["-OAAPIOrigin","http://127.0.0.1:9","-OAReduceMotion","YES","-OALibraryTrace","YES"]
+        app.launchEnvironment["OA_CHAT_LIBRARY_FIXTURE"]=Data(library.utf8).base64EncodedString()
+        app.launch();let options=app.buttons["chat.options"];XCTAssertTrue(options.waitForExistence(timeout:20));options.tap();app.buttons["thread.recents"].tap()
+        let filter=app.buttons["history.filter"];XCTAssertTrue(filter.waitForExistence(timeout:10));filter.tap()
+        let pinned=app.buttons["history.filter.pinned"];XCTAssertTrue(pinned.waitForExistence(timeout:10));pinned.tap()
+        let first=app.buttons["cnv_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"];XCTAssertTrue(first.waitForExistence(timeout:10));XCTAssertEqual(first.label,"Pinned fixture")
+        XCTAssertFalse(app.buttons["cnv_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"].exists)
+        filter.tap();let archived=app.buttons["history.filter.archived"];XCTAssertTrue(archived.waitForExistence(timeout:10));archived.tap()
+        let second=app.buttons["cnv_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"];XCTAssertTrue(second.waitForExistence(timeout:10));XCTAssertEqual(second.label,"Archived fixture")
+        XCTAssertFalse(first.exists)
+        let picture=XCTAttachment(screenshot:app.screenshot());picture.name="Native GPU archived library filter";picture.lifetime = .keepAlways;add(picture)
+        app.terminate();app.launchEnvironment.removeValue(forKey:"OA_CHAT_LIBRARY_FIXTURE");app.launch()
+        XCTAssertTrue(options.waitForExistence(timeout:20));options.tap();app.buttons["thread.recents"].tap();filter.tap();app.buttons["history.filter.archived"].tap()
+        XCTAssertTrue(second.waitForExistence(timeout:10));XCTAssertEqual(second.label,"Archived fixture")
+    }
+
     @MainActor func testNativeTapOpensAndClosesSidebarAndSettingsLoginBack() {
         let app=XCUIApplication()
         // Foundation's launch-argument domain overrides only this fixture's

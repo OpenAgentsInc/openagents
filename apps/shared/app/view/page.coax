@@ -67,6 +67,7 @@ ViewLayout :: struct {
   chips_h: f32;               // the chip row's height over the composer (0: no chips)
   editing: bool;              // the platform editor holds the keyboard over the composer's text
   editor_h: f32;              // its text height, layout units
+  archived:bool;restore_action:int; // local library presentation; never execution authority
   unit: f32;                  // points a layout unit (the composer's layout is in points)
 }
 ViewOut :: struct {
@@ -296,7 +297,8 @@ view_page :: (f: [] UiFrame, v: [] ChatView, c: [] AppCore, lay: ViewLayout) -> 
   look := AppComposer.{placeholder = VIEW_PLACEHOLDER, text = view_draft_of(c), state = view_composer_state(d, facts), editing = lay.editing, editor_h = lay.editor_h, unit = lay.unit};
   pad := ifx s.chat.enabled then s.chat.inset else a.gap * 2;
   out.readonly=facts.readonly;
-  if s.chat.enabled && facts.readonly {out.composer.height=s.control_h;_=app_notice(f,"chat.readonly",lay.x+pad,lay.bottom-s.control_h,lay.w-2*pad,"Read-only session",APP_NOTICE_INFO);}
+  if s.chat.enabled && lay.archived && facts.stop==VIEW_STOP_NONE && facts.permit==VIEW_PERMIT_NONE {out.readonly=true;out.composer.height=s.control_h;_=app_button(f,"chat.restore",lay.x+pad,lay.bottom-s.control_h,lay.w-2*pad,ICON_ARCHIVE,"Archived · Restore",APP_BUTTON_QUIET,0,lay.restore_action);}
+  else if s.chat.enabled && facts.readonly {out.composer.height=s.control_h;_=app_notice(f,"chat.readonly",lay.x+pad,lay.bottom-s.control_h,lay.w-2*pad,"Read-only session",APP_NOTICE_INFO);}
   else {out.composer = app_composer(f, VIEW_COMPOSER_ID, VIEW_SEND_ID, lay.x + pad, lay.bottom, lay.w - 2 * pad, look, VIEW_A_FIELD, VIEW_A_SEND);}
   out.composer_y = lay.bottom - out.composer.height;
   out.chips_x = lay.x + pad; out.chips_w = lay.w - 2 * pad;

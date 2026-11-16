@@ -330,6 +330,9 @@ int oc_drive_start(void *chat, const char *where, const char *token, float w, fl
 #endif
   return 1;
 }
+int oc_library_save(void *chat,char *out,int cap) {Chat *c=chat;if (!c || cap<1) return -1;int64_t n=chat_library_save(oc_state(c),(coax_v_u8){(uint8_t *)out,cap-1});return n<0 ? -1 : oc_bytes(n,out,cap);}
+int oc_library_restore(void *chat,const char *text) {Chat *c=chat;if (!c) return 0;int ok=chat_library_restore(oc_state(c),oc_string(text));oc_changed(c);return ok;}
+int oc_library_revision(void *chat) {Chat *c=chat;return c ? (int)chat_library_revision(oc_state(c)) : -1;}
 int oc_env_save(void *chat, char *out, int cap) { Chat *c = chat; return c && cap > 0 ? oc_bytes(chat_env_save(oc_state(c), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap) : 0; }
 void oc_env_restore(void *chat, const char *text) { Chat *c = chat; if (c) { chat_env_restore(oc_state(c), oc_string(text)); oc_changed(c); } }
 void oc_step(void *chat) { Chat *c = chat; if (c) { chat_step(oc_state(c)); oc_changed(c); } }

@@ -1,0 +1,18 @@
+// Agent-assisted repository actions on the existing selected execution owner.
+// These are editable draft requests, not Git RPCs or a claim of a selected branch.
+#test "workspace actions are closed, nonempty draft requests and unknown actions have no fallback" {
+ for i:0..<6 {#assert ews_label(i).count>0 && ews_prompt(i).count>20;}
+ #assert ews_prompt(-1)=="" && ews_prompt(6)=="" && ews_label(6)=="";
+}
+ews_label :: (i:int)->string {
+ if i==0 {return "Changes";}if i==1 {return "Branches";}if i==2 {return "Switch branch";}if i==3 {return "Pull request";}if i==4 {return "New worktree";}if i==5 {return "Remove worktree";}return "";
+}
+ews_prompt :: (i:int)->string {
+ if i==0 {return "In this conversation's approved workspace, show the repository, current branch, git status and a concise summary of uncommitted changes. Read only; do not change files or publish anything.";}
+ if i==1 {return "In this conversation's approved workspace, list the local and remote branches, show the current branch, and summarize the latest commit on each relevant branch. Read only; do not switch branches or fetch without asking.";}
+ if i==2 {return "Help me switch branches in this conversation's approved repository. First inspect the current branch and working tree, list available branches, and ask me which branch to use. Preserve all uncommitted work. Do not switch, reset or stash until I confirm the target and disposition of any changes.";}
+ if i==3 {return "Help me prepare a GitHub pull request for this conversation's approved repository using this computer's existing GitHub authentication. Inspect the branch, changes and existing pull requests. Show me the proposed base, title and body, or the existing PR link. Ask for confirmation before pushing or creating/updating a pull request. Never display credentials.";}
+ if i==4 {return "Help me create a separate Git worktree for this conversation's approved repository. Inspect existing worktrees, then ask me for the branch and location. Confirm the exact plan before creating anything. Preserve existing worktrees and uncommitted changes. Do not change this session's approved workspace or claim it has switched automatically.";}
+ if i==5 {return "Help me remove an unused Git worktree belonging to this conversation's approved repository. List worktrees and their dirty/busy status first. Ask me which exact worktree and require confirmation before removing it. Refuse to remove dirty or active worktrees, never force removal, and never delete a branch without separate approval.";}
+ return "";
+}

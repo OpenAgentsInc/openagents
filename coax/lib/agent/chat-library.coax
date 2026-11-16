@@ -1,0 +1,71 @@
+// Public presentation preferences, never a session grant or a transcript store.
+// The platform selects a separate partition for each account (and for guests).
+#authority;
+#load "../json/shape.coax";
+CHLIB_MAX :: 128; CHLIB_KEY :: 200; CHLIB_TITLE :: 160; CHLIB_BYTES :: 49152;
+ClEntry :: struct {key:[CHLIB_KEY]u8;nk:int;title:[CHLIB_TITLE]u8;nt:int;pinned:bool;archived:bool;}
+ChatLibrary :: struct {rows:[CHLIB_MAX]ClEntry;n:int;revision:int;}
+#test "library identity includes the lane and entire computer key; edits preserve flags" {
+ l:[1]ChatLibrary;a:="account/cnv_0123456789abcdef0123456789abcdef";b:="device/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/session-one";
+ #assert chlib_change(l[..],a,"Garden",1) && chlib_change(l[..],b,"Garden",2);
+ #assert chlib_find(l[..],a)==0 && chlib_find(l[..],b)==1 && l[0].rows[0].pinned && !l[0].rows[0].archived;
+ #assert chlib_change(l[..],a,"New title",3) && l[0].rows[0].pinned && l[0].rows[0].archived;
+ #assert chlib_change(l[..],a,chlib_label(l[..],a,""),1) && chlib_label(l[..],a,"")=="New title";
+ #assert chlib_change(l[..],a,"",0) && chlib_find(l[..],a)== -1 && l[0].n==1;
+ #assert !chlib_change(l[..],"account/x","bad",0) && !chlib_change(l[..],a,"bad\nname",0);
+}
+#test "library codec restores atomically, refuses duplicate identity and never evicts a full store" {
+ l:[1]ChatLibrary;key:="account/cnv_0123456789abcdef0123456789abcdef";#assert chlib_change(l[..],key,"Élan 🌲",3);
+ raw:[CHLIB_BYTES]u8;n:=chlib_write(l[..],raw[..]);#assert n>0;r:[1]ChatLibrary;#assert chlib_read(r[..],cast(string)raw[0..<n]) && r[0].n==1 && r[0].rows[0].archived && r[0].rows[0].nt==10;
+ #assert !chlib_read(r[..],"openagents.chat.library.local.v1\naccount/no\t0\tbad\n") && r[0].n==1;
+ #assert !chlib_read(r[..],"openagents.chat.library.local.v1\naccount/cnv_0123456789abcdef0123456789abcdef\t0\tA\naccount/cnv_0123456789abcdef0123456789abcdef\t1\tB\n") && r[0].n==1;
+ #assert !chlib_read(r[..],"wrong\n") && chlib_write(l[..],raw[0..<5])== -1;
+ l[0].n=CHLIB_MAX;#assert !chlib_change(l[..],"account/cnv_1123456789abcdef0123456789abcdef","new",0) && l[0].n==CHLIB_MAX;
+}
+chlib_key :: (key:string)->bool #effects(all) {
+ if key.count>CHLIB_KEY {return false;}
+ if key.count==44 && key[0..<12]=="account/cnv_" {for c:key[12..<44] {if !(c>='0' && c<='9' || c>='a' && c<='f') {return false;}}return true;}
+ if key.count<73 || key[0..<7]!="device/" || key[71]!='/' {return false;}
+ for c:key[7..<71] {if !(c>='0' && c<='9' || c>='a' && c<='f') {return false;}}
+ for c:key[72..<key.count] {if !(c>='a' && c<='z' || c>='A' && c<='Z' || c>='0' && c<='9' || c=='-' || c=='_' || c=='.') {return false;}}
+ return true;
+}
+chlib_title :: (title:string)->bool #effects(all) {if !js_utf8(title) || title.count>CHLIB_TITLE {return false;}for c:title {if c<32 || c==127 {return false;}}return true;}
+chlib_find :: (l:[]ChatLibrary,key:string)->int #effects(all) {if l.count<1 {return -1;}for i:0..<l[0].n {if cast(string)l[0].rows[i].key[0..<l[0].rows[i].nk]==key {return i;}}return -1;}
+chlib_flags :: (l:[]ChatLibrary,key:string)->int #effects(all) {i:=chlib_find(l,key);if i<0 {return 0;}return (ifx l[0].rows[i].pinned then 1 else 0)+(ifx l[0].rows[i].archived then 2 else 0);}
+chlib_label :: (l:[]ChatLibrary,key:string,fallback:string)->string #effects(all) {i:=chlib_find(l,key);return ifx i>=0 && l[0].rows[i].nt>0 then cast(string)l[0].rows[i].title[0..<l[0].rows[i].nt] else fallback;}
+chlib_change :: (l:[]ChatLibrary,key:string,title:string,flags:int)->bool #effects(all) {
+ if !chlib_key(key) || !chlib_title(title) || flags<0 || flags>3 {return false;}i:=chlib_find(l,key);
+ if title.count==0 && flags==0 {if i>=0 {for j:i+1..<l[0].n {l[0].rows[j-1]=l[0].rows[j];}l[0].n-=1;l[0].rows[l[0].n]=ClEntry.{};l[0].revision+=1;}return true;}
+ if i<0 {if l[0].n==CHLIB_MAX {return false;}i=l[0].n;l[0].n+=1;}
+ next:ClEntry;next.pinned=(flags&1)!=0;next.archived=(flags&2)!=0;next.nk=js_copy(next.key[..],key);next.nt=js_copy(next.title[..],title);l[0].rows[i]=next;l[0].revision+=1;return true;
+}
+chlib_write :: (l:[]ChatLibrary,out:[]u8)->int #effects(all) {
+ need:=33;for i:0..<l[0].n {need+=l[0].rows[i].nk+l[0].rows[i].nt+4;}if out.count<need {return -1;}
+ n:=js_copy(out,"openagents.chat.library.local.v1\n");for i:0..<l[0].n {r:=l[0].rows[i];for c:r.key[0..<r.nk] {out[n]=c;n+=1;}out[n]='\t';out[n+1]=cast(u8)('0'+(ifx r.pinned then 1 else 0)+(ifx r.archived then 2 else 0));out[n+2]='\t';n+=3;for c:r.title[0..<r.nt] {out[n]=c;n+=1;}out[n]='\n';n+=1;}return n;
+}
+chlib_read :: (l:[]ChatLibrary,raw:string)->bool #effects(all) {
+ if raw.count==0 {l[0]=ChatLibrary.{};return true;}
+ if raw.count>CHLIB_BYTES {return false;} // mutant: equivalent — the surviving >= and limit+1 boundaries already fail: 128 rows of at most 200+160+4 bytes plus the 33-byte header admit at most 46625 bytes
+ if raw.count<33 || raw[0..<33]!="openagents.chat.library.local.v1\n" {return false;}
+ next:[1]ChatLibrary;at:=33;
+ while at<raw.count {
+  end:=at;while end<raw.count && raw[end]!='\n' {end+=1;}
+  if end==raw.count {return false;}
+  tab:=at;
+  while tab<end && raw[tab]!='\t' {tab+=1;} // mutant: equivalent — < to <= only inspects the terminating LF when no TAB exists; the following delimiter-size check still refuses that row
+  if tab+3>end || raw[tab+2]!='\t' {return false;}
+  if raw[tab+1]<'0' {return false;}
+  if raw[tab+1]>'3' {return false;} // mutant: equivalent — loosening this upper bound or reading the following TAB is redundant: chlib_change independently refuses decoded flags above 3
+  key:=cast(string)raw[at..<tab];title:=cast(string)raw[tab+3..<end];
+  if title.count==0 && raw[tab+1]=='0' {return false;}
+  if chlib_find(next[..],key)>=0 || !chlib_change(next[..],key,title,cast(int)raw[tab+1]-48) {return false;}
+  at=end+1;
+ }
+ next[0].revision=0;l[0]=next[0];return true;
+}
+
+chlib_account_key :: (id:string,out:[]u8)->string #effects(all) {if id.count!=36 || out.count<44 {return "";}_:=js_copy(out,"account/");for c,i:id {out[8+i]=c;}return cast(string)out[0..<44];}
+chlib_device_key :: (host:string,id:string,out:[]u8)->string #effects(all) {if host.count!=64 || id.count<1 || 72+id.count>out.count {return "";}_:=js_copy(out,"device/");for c,i:host {out[7+i]=c;}out[71]='/';for c,i:id {out[72+i]=c;}return cast(string)out[0..<72+id.count];}
+
+#load "chat-library-checks.coax" #test;

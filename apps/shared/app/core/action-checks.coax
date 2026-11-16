@@ -79,10 +79,11 @@ ac_account_request :: (c:[]AppCore,kind:int,text:string) {
  d[0].pending=1;#assert ac_do(c[..],ACT_ENVIRONMENT,"other","",false)==APP_R_BLOCKED && ac_do(c[..],ACT_ENVIRONMENT,"one","Name",false)==APP_OK;
 }
 #test "copy and links issue exactly the admitted platform request, or refuse without publishing" {
- for code:[2]int.[ACT_COPY,ACT_LINK] {c:[1]AppCore;ac_reset(c[..]);text:=ifx code==ACT_COPY then "x" else "https://example.test/";
-  #assert ac_do(c[..],code,text,"",false)==APP_OK;op:=fx_next(c[0].out[..]);at:=fx_find(c[0].out[..],op);r:=c[0].out[0].slots[at];kind:=ifx code==ACT_COPY then FX_CLIPBOARD else FX_LINK;
+ for code:[3]int.[ACT_COPY,ACT_LINK,ACT_SHARE] {c:[1]AppCore;ac_reset(c[..]);text:=ifx code==ACT_COPY || code==ACT_SHARE then "x" else "https://example.test/";
+  #assert ac_do(c[..],code,text,"",false)==APP_OK;op:=fx_next(c[0].out[..]);at:=fx_find(c[0].out[..],op);r:=c[0].out[0].slots[at];kind:=ifx code==ACT_COPY then FX_CLIPBOARD else ifx code==ACT_SHARE then FX_SHARE else FX_LINK;
   #assert r.owner==OWN_PAGE && r.kind==kind && r.purpose==kind && r.method==0 && r.path_n==0 && r.text_n==0 && r.limit==0 && r.timeout_ms==0 && fx_body(c[0].out[..],at)==text;
   #assert ac_do(c[..],code,"","",false)==APP_R_INVALID;
+  if code==ACT_SHARE {#assert fx_take(c[0].out[..],op);#assert app_dispatch(c[..],AppEvent.{kind=EV_DONE,op=op,generation=fx_generation(c[0].out[..],OWN_PAGE),outcome=FXO_CANCELLED})==APP_OK && app_note(c[..])=="" && fx_held(c[0].out[..])==0;}
   ac_reset(c[..]);ac_full(c[..]);#assert ac_do(c[..],code,text,"",false)==APP_R_FULL;
  }
  c:[1]AppCore;ac_reset(c[..]);big:[UP_COPY_MAX+1]u8;#assert ac_do(c[..],ACT_COPY,cast(string)big[..],"",false)==APP_R_INVALID && ac_do(c[..],ACT_LINK,"javascript:x","",false)==APP_R_INVALID;

@@ -11,6 +11,7 @@ import UIKit
     let bridge: AppCoreBridge
     private let runtime: AppRuntime
     private let device = AppDevice()
+    var presentation: (() -> UIViewController?)? {get {device.presentation} set {device.presentation=newValue}}
     var provider:AppProviderNative {runtime.provider}
     let identity: AppIdentityNative
     /// The conversation to rejoin, kept across launches (an ID, never a token).

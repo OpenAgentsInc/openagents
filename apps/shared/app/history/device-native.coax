@@ -46,9 +46,22 @@ dh_fences :: () {
  dh_sync(h[..],c[..],true);old:=h[0].op;#assert old>0;app_logged_out(c[..],"");dh_sync(h[..],c[..],true);
  #assert h[0].op>0 && h[0].op!=old; // a fenced account generation cannot wedge device history
 }
+dh_search_pages :: () {
+ c:[1]AppCore;d:[1]DeviceLane;h:[1]DeviceHistory;lib:[1]ChatLibrary;app_init(c[..]);#assert app_device_attach(c[..],d[..]);c[0].foreground=true;
+ a:="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";dl_list_read(c[..],"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\tMac\n");
+ dh_query(h[..],c[..],"line",lib[..]);dh_sync(h[..],c[..],true);dh_answer(h[..],c[..],a,"one","123");dh_sync(h[..],c[..],true);
+ #assert h[0].op>0 && h[0].nav[0].next==0 && h[0].page_n[0]==3;dh_answer(h[..],c[..],a,"two","");dh_sync(h[..],c[..],true);
+ #assert h[0].nav[0].n==2 && h[0].nav[0].next==1 && h[0].nav[0].groups[0].complete && h[0].op==0 && c[0].guest_due[DH_OWNER]==0;
+ dh_query(h[..],c[..],"retry",lib[..]);dh_sync(h[..],c[..],true);bad:=h[0].op;bg:=fx_generation(c[0].out[..],DH_OWNER);#assert fx_take(c[0].out[..],bad);
+ #assert app_dispatch(c[..],AppEvent.{kind=EV_DONE,op=bad,generation=bg,outcome=FXO_DONE,status=503,text="{}"})==APP_GUEST;#assert dh_guest(h[..],c[..],"{}");dh_sync(h[..],c[..],true);#assert h[0].op==0 && c[0].guest_due[DH_OWNER]==DH_INTERVAL;
+ c[0].mono_ms=DH_INTERVAL;dh_sync(h[..],c[..],true);#assert h[0].op>0;
+ dh_query(h[..],c[..],"another",lib[..]);dh_sync(h[..],c[..],true);old:=h[0].op;gen:=fx_generation(c[0].out[..],DH_OWNER);#assert fx_take(c[0].out[..],old);
+ dh_query(h[..],c[..],"new query",lib[..]);#assert app_dispatch(c[..],AppEvent.{kind=EV_DONE,op=old,generation=gen,outcome=FXO_DONE,status=200,text="{}",mono_ms=c[0].mono_ms,wall_ms=c[0].wall_ms})==APP_R_LATE && h[0].nav[0].n==0;
+}
 native_check :: (i:int,run:bool)->int #export_c #effects(all) {
  if i==0 {if run {dh_checks();}else {print("paired history serializes reads without login, survives reorder and fences late replies");}}
  if i==1 {if run {dh_pages();}else {print("paired history preserves earlier pages across automatic refresh");}}
  if i==2 {if run {dh_fences();}else {print("paired history rejects writes, deduplicates hosts and recovers from account fencing");}}
- return 3;
+ if i==3 {if run {dh_search_pages();}else {print("computer title search scans pages and cancels stale queries");}}
+ return 4;
 }

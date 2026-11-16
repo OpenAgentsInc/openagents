@@ -1,0 +1,8 @@
+{
+  "schema":"openagents.chat.library.local.v1",
+  "transport":"Local UTF-8 preference file, private per account and installation; not a session capability",
+  "format":"Literal schema plus LF, then 0..128 rows key TAB flags TAB title LF. No other controls in title. Default rows (flags 0 and empty title), duplicate keys and malformed/truncated records refuse the entire restore.",
+  "fields":{"key":"account/cnv_ plus 32 lowercase hex, or device/ plus 64 lowercase hex plus / plus 1..128 session identity characters [A-Za-z0-9_.-]; at most 200 bytes","flags":"one digit 0..3: bit 0 pinned, bit 1 archived","title":"0..160 UTF-8 bytes, empty uses upstream title"},
+  "limits":"49152 bytes; full store refuses new identity without evicting existing preferences. No transcript, credentials, path, host grant or private key.",
+  "semantics":"Archive hides from ordinary recents; it never deletes history or stops a running agent. Rename is a local display alias. Platform partitions by authenticated account ID; guests use their own partition. No automatic upload or public link."
+}

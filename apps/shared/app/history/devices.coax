@@ -1,9 +1,11 @@
 // Paired/local history uses the shared read-only navigation cache. It never
 // borrows or replaces the active conversation's EnvironmentApp.
 #load "../core/core.coax";
+#load "../../../../coax/lib/agent/chat-library.coax";
+#load "../../../../components/core/text.coax";
 #load "../../app-navigation.coax";
 DH_OWNER :: 6; DH_INTERVAL :: 15000;
-DeviceHistory :: struct {nav:[1]AppNavigation;revision:int= -1;visible:bool;op:int;generation:int;next:int;host:int;pages:[16][128]u8;page_n:[16]int;}
+DeviceHistory :: struct {query:[128]u8;nq:int;scan_limit:bool;scan_pages:int;retry_at:int;library:[]ChatLibrary;nav:[1]AppNavigation;revision:int= -1;visible:bool;op:int;generation:int;next:int;host:int;pages:[16][128]u8;page_n:[16]int;}
 dh_row_id :: (h:[]DeviceHistory,i:int,out:[]u8)->string {return nav_row_id(h[0].nav[..],i,out);}
 dh_catalog :: (h:[]DeviceHistory,c:[]AppCore) {
  if h[0].revision==app_device_revision(c) {return;}
@@ -31,6 +33,13 @@ dh_sync :: (h:[]DeviceHistory,c:[]AppCore,visible:bool) {
   h[0].visible=false;b[0].flight=false;b[0].action=0;_:=app_guest_due(c,DH_OWNER,-1);return;
  }
  if !h[0].visible {h[0].visible=true;n[0].next=0;h[0].next=c[0].mono_ms;}
+ if h[0].nq>0 && h[0].op==0 && (h[0].scan_limit || n[0].next>=b[0].catalog[0].n) {
+  failed:= -1;for i:0..<b[0].catalog[0].n {if n[0].groups[i].failed && failed<0 {failed=i;}}
+  if h[0].scan_limit || failed<0 {_:=app_guest_due(c,DH_OWNER,-1);return;}
+  if h[0].retry_at==0 {h[0].retry_at=c[0].mono_ms+DH_INTERVAL;}
+  if c[0].mono_ms<h[0].retry_at {_:=app_guest_due(c,DH_OWNER,h[0].retry_at);return;}
+  h[0].retry_at=0;n[0].next=failed;h[0].next=c[0].mono_ms;
+ }
  if h[0].op==0 && c[0].mono_ms>=h[0].next {
   if n[0].next>=b[0].catalog[0].n {n[0].next=0;h[0].next=c[0].mono_ms+DH_INTERVAL;}
   else {host:=n[0].next;_:=dh_read(h,c,host,cast(string)h[0].pages[host][0..<h[0].page_n[host]]);}
@@ -39,10 +48,28 @@ dh_sync :: (h:[]DeviceHistory,c:[]AppCore,visible:bool) {
 }
 dh_guest :: (h:[]DeviceHistory,c:[]AppCore,raw:string)->bool {
  g:=c[0].guest;if !g.waiting || g.owner!=DH_OWNER {return false;}
- if g.op==h[0].op {h[0].op=0;n:=h[0].nav[..];nav_reply(n,g.status,raw,g.outcome!=FXO_DONE);n[0].browser[0].action=0;n[0].browser[0].timer=false;h[0].next=c[0].mono_ms;}
+ if g.op==h[0].op {h[0].op=0;n:=h[0].nav[..];b:=n[0].browser[..];
+  if h[0].nq==0 {nav_reply(n,g.status,raw,g.outcome!=FXO_DONE);}else {
+   host:=b[0].selected;before:=b[0].request[0].before;eu_reply(b,4,g.status,raw,g.outcome!=FXO_DONE);v:=b[0].view[..];
+   if b[0].uncertain || v[0].ne>0 {n[0].groups[host].loaded=true;n[0].groups[host].failed=true;n[0].next=host+1;}
+   else {to:=0;for i:0..<v[0].ns {r:=v[0].sessions[i];key:[CHLIB_KEY]u8;target:=chlib_device_key(cast(string)b[0].catalog[0].entries[host].host[..],cast(string)r.id[0..<r.ni],key[..]);title:=chlib_label(h[0].library,target,cast(string)r.title[0..<r.nt]);if text_contains_ascii(title,cast(string)h[0].query[0..<h[0].nq]) {v[0].sessions[to]=r;to+=1;}}
+    v[0].ns=to;nav_accept(n,before);h[0].scan_pages+=1;group:=n[0].groups[host];
+    if n[0].n>=NAV_THREADS || h[0].scan_pages>=1000 {h[0].scan_limit=true;n[0].next=b[0].catalog[0].n;}
+    else if group.nc>0 {cursor:=cast(string)group.cursor[0..<group.nc];was:=cast(string)h[0].pages[host][0..<h[0].page_n[host]];if cursor==was {n[0].groups[host].failed=true;n[0].next=host+1;}else {h[0].page_n[host]=ea_copy(h[0].pages[host][..],cursor);n[0].next=host;}}
+    else {if !group.complete {n[0].groups[host].failed=true;}n[0].next=host+1;}
+   }
+  }
+  b[0].action=0;b[0].timer=false;h[0].next=c[0].mono_ms;
+ }
  app_guest_done(c);return true;
 }
 dh_more :: (h:[]DeviceHistory,c:[]AppCore,host:int)->bool {
  if host<0 || host>=h[0].nav[0].browser[0].catalog[0].n {return false;}
  g:=h[0].nav[0].groups[host];return g.nc>0 && dh_read(h,c,host,cast(string)g.cursor[0..<g.nc]);
+}
+
+dh_query :: (h:[]DeviceHistory,c:[]AppCore,query:string,l:[]ChatLibrary) {
+ h[0].library=l;if cast(string)h[0].query[0..<h[0].nq]==query {return;}
+ if h[0].op>0 {_:=app_guest_cancel(c,DH_OWNER);h[0].op=0;}
+ h[0].nq=js_copy(h[0].query[..],query);h[0].scan_limit=false;h[0].scan_pages=0;h[0].retry_at=0;h[0].nav[0].n=0;h[0].nav[0].next=0;for i:0..<64 {h[0].nav[0].groups[i]=NavGroup.{};}for i:0..<16 {h[0].page_n[i]=0;}h[0].next=c[0].mono_ms;h[0].nav[0].browser[0].flight=false;h[0].nav[0].browser[0].action=0;
 }

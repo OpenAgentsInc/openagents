@@ -61,9 +61,18 @@ picker are GPU components; the removed `GlassChrome.swift` projection is no
 longer part of the product. UIKit supplies active text entry, accessibility,
 scroll physics and system credential ceremonies.
 
-Conversation options open Recents (with search over loaded account/device
-history), choose a computer, copy the loaded conversation or start a new
-chat. The centered session pill opens details and provider Usage. Adjacent
+Conversation options provide Share excerpt, Copy messages, Pin, Rename,
+Archive/Restore and feedback. Recents has All/Pinned/Archived filters and
+paged title search across account and connected-computer history. Library
+preferences stay on this installation, partitioned by account; they do not
+change or delete the source transcript. Workspace actions on a connected
+computer prepare editable Claude requests for changes, branches, pull
+requests and worktrees. They require Send and retain the computer's existing
+permissions and GitHub authentication. They are agent-assisted actions,
+not direct branch selectors or hosted-runner provisioning.
+
+Empty-chat options open Recents or the computer picker; the drawer owns
+navigation and New chat. The centered session pill opens details and provider Usage. Adjacent
 tool calls collapse into activity summaries, with individually expandable
 inputs/results. Replies expose Copy alongside the existing fenced-code Copy.
 Observed native sessions have a fixed read-only notice instead of a composer.

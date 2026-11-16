@@ -1,0 +1,63 @@
+#forall "library key alphabets include every endpoint and refuse every other byte" byte:0..<256 {
+ a:[44]u8;_=js_copy(a[..],"account/cnv_0123456789abcdef0123456789abcdef");
+ hex:=false;for c:"0123456789abcdef" {if cast(int)c==byte {hex=true;}}
+ for pos:[2]int.[12,43] {old:=a[pos];a[pos]=cast(u8)byte;#assert chlib_key(cast(string)a[..])==hex;a[pos]=old;}
+ d:[200]u8;for i:0..<200 {d[i]='a';}_:=js_copy(d[..],"device/");d[71]='/';
+ for pos:[2]int.[7,70] {d[pos]=cast(u8)byte;#assert chlib_key(cast(string)d[..])==hex;d[pos]='a';}
+ session:=false;for c:"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_." {if cast(int)c==byte {session=true;}}
+ for pos:[2]int.[72,199] {d[pos]=cast(u8)byte;#assert chlib_key(cast(string)d[..])==session;d[pos]='a';}
+}
+#test "library key bounds and constructors preserve full identity without writing refused output" {
+ d:[201]u8;for i:0..<201 {d[i]='a';}_:=js_copy(d[..],"device/");d[71]='/';
+ #assert !chlib_key(cast(string)d[0..<72]) && chlib_key(cast(string)d[0..<73]) && chlib_key(cast(string)d[0..<200]) && !chlib_key(cast(string)d[..]);
+ for s:[8]string.["","account/","account/cnv_","ACCOUNT/cnv_0123456789abcdef0123456789abcdef","account/xxx_0123456789abcdef0123456789abcdef","devicex/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/a","device/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-a","device/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/"] {#assert !chlib_key(s);}
+ id:="cnv_0123456789abcdef0123456789abcdef";out:[201]u8;out[0]=77;
+ #assert chlib_account_key(id,out[0..<43])=="" && out[0]==77 && chlib_account_key("short",out[..])=="";
+ #assert chlib_account_key(id,out[0..<44])=="account/cnv_0123456789abcdef0123456789abcdef";
+ host:="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+ #assert chlib_device_key(host,"a",out[0..<73])=="device/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef/a";
+ out[0]=77;#assert chlib_device_key(host,"a",out[0..<72])=="" && out[0]==77;
+ #assert chlib_device_key("short","a",out[..])=="" && chlib_device_key(host,"",out[..])=="";
+ sid:[128]u8;for i:0..<128 {sid[i]='Z';}#assert chlib_device_key(host,cast(string)sid[..],out[0..<200]).count==200;
+}
+#forall "library titles admit printable ASCII and refuse control or invalid UTF8 bytes" byte:0..<256 {
+ b:=[1]u8.[cast(u8)byte];#assert chlib_title(cast(string)b[..])==(byte>=32 && byte<=126);
+}
+#test "library title byte limits, missing lookups, every flag and no-op removal" {
+ l:[1]ChatLibrary;k:="account/cnv_0123456789abcdef0123456789abcdef";
+ #assert chlib_find(l[0..<0],k)== -1 && chlib_flags(l[0..<0],k)==0 && chlib_label(l[0..<0],k,"fallback")=="fallback";
+ b:[161]u8;for i:0..<161 {b[i]='x';}#assert chlib_title(cast(string)b[0..<160]) && !chlib_title(cast(string)b[..]) && chlib_title("");
+ #assert !chlib_change(l[..],k,"x",-1) && !chlib_change(l[..],k,"x",4) && l[0].revision==0 && l[0].n==0;
+ #assert chlib_change(l[..],k,"",0) && l[0].n==0 && l[0].revision==0;
+ for flag:0..<4 {#assert chlib_change(l[..],k,"x",flag) && chlib_flags(l[..],k)==flag && chlib_label(l[..],k,"fallback")=="x" && l[0].n==1 && l[0].revision==flag+1;}
+ #assert chlib_change(l[..],k,"",1) && chlib_flags(l[..],k)==1 && chlib_label(l[..],k,"fallback")=="fallback";
+ #assert chlib_change(l[..],k,"",0) && l[0].n==0 && l[0].revision==6 && l[0].rows[0].nk==0;
+}
+#test "library codec has exact golden bytes and every truncated or malformed record refuses atomically" {
+ l:[1]ChatLibrary;r:[1]ChatLibrary;k:="account/cnv_0123456789abcdef0123456789abcdef";
+ golden:="openagents.chat.library.local.v1\naccount/cnv_0123456789abcdef0123456789abcdef\t3\tÉlan 🌲\n";
+ #assert chlib_change(l[..],k,"Élan 🌲",3);out:[CHLIB_BYTES]u8;n:=chlib_write(l[..],out[..]);#assert n==golden.count && cast(string)out[0..<n]==golden;
+ out[0]=77;#assert chlib_write(l[..],out[0..<n-1])== -1 && out[0]==77;#assert chlib_write(l[..],out[0..<n])==n;
+ for cut:1..<golden.count {if cut==33 {continue;}#assert !chlib_read(r[..],cast(string)golden[0..<cut]) && r[0].n==0;}
+ #assert chlib_read(r[..],golden) && r[0].revision==0 && chlib_flags(r[..],k)==3 && chlib_label(r[..],k,"")=="Élan 🌲";
+ for raw:[7]string.["openagents.chat.library.local.v1\naccount/cnv_0123456789abcdef0123456789abcdef\t4\tx\n","openagents.chat.library.local.v1\naccount/cnv_0123456789abcdef0123456789abcdef\t/\tx\n","openagents.chat.library.local.v1\naccount/cnv_0123456789abcdef0123456789abcdef\t0x\n","openagents.chat.library.local.v1\naccount/cnv_0123456789abcdef0123456789abcdef\t\n","openagents.chat.library.local.v1\naccount/cnv_0123456789abcdef0123456789abcdef\t0\tx\ty\n","openagents.chat.library.local.v1\n\n","openagents.chat.library.local.v1\naccount/cnv_0123456789abcdef0123456789abcdef\t0\t\n"] {#assert !chlib_read(r[..],raw) && r[0].n==1 && chlib_label(r[..],k,"")=="Élan 🌲";}
+ big:[CHLIB_BYTES+1]u8;for i:0..<big.count {big[i]='x';}#assert !chlib_read(r[..],cast(string)big[..]) && r[0].n==1;
+ #assert chlib_read(r[..],"openagents.chat.library.local.v1\n") && r[0].n==0;#assert chlib_change(r[..],k,"x",1) && chlib_read(r[..],"") && r[0].n==0 && r[0].revision==0;
+}
+#test "a full library updates in place, removes a middle row, and reuses capacity without eviction" {
+ l:[1]ChatLibrary;r:[1]ChatLibrary;key:[44]u8;_=js_copy(key[..],"account/cnv_00000000000000000000000000000000");hex:="0123456789abcdef";
+ for i:0..<128 {key[42]=hex[i/16];key[43]=hex[i%16];#assert chlib_change(l[..],cast(string)key[..],"x",i%4);}
+ #assert l[0].n==128 && l[0].revision==128;#assert chlib_change(l[..],cast(string)key[..],"last",3) && l[0].n==128 && chlib_label(l[..],cast(string)key[..],"")=="last";
+ key[42]='f';key[43]='f';#assert !chlib_change(l[..],cast(string)key[..],"extra",3) && l[0].n==128;
+ key[42]='0';key[43]='1';#assert chlib_change(l[..],cast(string)key[..],"",0) && l[0].n==127 && chlib_find(l[..],cast(string)key[..])== -1;
+ #assert l[0].rows[1].key[43]=='2' && l[0].rows[127].nk==0;
+ key[42]='f';key[43]='f';#assert chlib_change(l[..],cast(string)key[..],"extra",3) && l[0].n==128 && chlib_find(l[..],cast(string)key[..])==127;
+ out:[CHLIB_BYTES]u8;n:=chlib_write(l[..],out[..]);#assert n>0 && chlib_read(r[..],cast(string)out[0..<n]) && r[0].n==128 && r[0].revision==0 && chlib_flags(r[..],cast(string)key[..])==3;
+}
+#test "every flag has exact bytes and an odd-length device identity with an empty alias round trips" {
+ host:="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";key:[200]u8;k:=chlib_device_key(host,"-",key[..]);#assert k.count==73 && chlib_key(k);
+ for flag:0..<4 {l:[1]ChatLibrary;r:[1]ChatLibrary;title:=ifx flag==0 then "x" else "";#assert chlib_change(l[..],k,title,flag);
+  raw:[1024]u8;n:=chlib_write(l[..],raw[..]);#assert n==33+73+4+title.count && raw[107]==cast(u8)(48+flag);
+  #assert chlib_read(r[..],cast(string)raw[0..<n]) && r[0].n==1 && chlib_flags(r[..],k)==flag && chlib_label(r[..],k,"fallback")== (ifx flag==0 then "x" else "fallback");
+ }
+}

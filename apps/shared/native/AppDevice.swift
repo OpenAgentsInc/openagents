@@ -27,6 +27,17 @@ import UIKit
 
     func copy(_ text: String) -> Bool { UIPasteboard.general.string = text; return true }
 
+    /// Only an explicit Coax effect presents this system chooser. No automatic recipient.
+    var presentation: (() -> UIViewController?)?
+    func share(_ text: String, done: @escaping (AppCompletion.State) -> Void) {
+        guard let presenter=presentation?(), presenter.presentedViewController == nil else {done(.failed);return}
+        let sheet=UIActivityViewController(activityItems:[text], applicationActivities:nil)
+        sheet.popoverPresentationController?.sourceView=presenter.view
+        sheet.popoverPresentationController?.sourceRect=CGRect(x:presenter.view.bounds.midX,y:presenter.view.bounds.maxY-44,width:1,height:1)
+        sheet.completionWithItemsHandler={_,sent,_,error in DispatchQueue.main.async {done(error != nil ? .failed : sent ? .done : .cancelled)}}
+        presenter.present(sheet,animated:true)
+    }
+
     /// Opens a web link in the person's browser. Anything that is not http or https is refused
     /// here too, whatever the app's own link rule admitted.
     func open(_ link: String, done: @escaping (Bool) -> Void) {
