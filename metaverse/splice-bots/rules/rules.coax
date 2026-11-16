@@ -52,6 +52,7 @@
 #load "aim.coax";
 #load "chase.coax";
 #load "camera-boom.coax";
+#load "drive-camera.coax";
 
 #load "data-checks.coax" #test;
 #load "robot-payload-checks.coax" #test;
@@ -90,3 +91,4 @@
 #load "chase-checks.coax" #test;
 #load "chest-checks.coax" #test;
 #load "camera-boom-checks.coax" #test;
+#load "drive-camera-checks.coax" #test;

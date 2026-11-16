@@ -1,0 +1,106 @@
+// Parity checks for drive-camera.coax: SpliceTests/Rules/SpliceDriveCameraTests.cpp.
+// PoseFollowsCab and LagsAsThePrototypeSays also drive the game's camera manager (ASpliceCameraManager,
+// SpliceGame/Private/SpliceCameraManager.cpp:101-127). Its StepFrame and StepDriveFrame are only rules in a
+// row (boom step, follow, tick, mix, seen; or the drive view, tick, mix, seen), so those two frames are
+// written out here as dcam_step_frame and dcam_step_drive_frame and the tests are ported whole.
+// StripShowsOnlyWhileDriving and SpeedChangeUpdatesStripOnce test the HUD model (FSpliceHudModel in
+// SpliceGame: shown or hidden, its change events, the forward/reverse arrow), which is UI, not rules. Their
+// rule parts, the strip's numbers (TOP 86 KM/H, 36 and 14 km/h, the same km/h for 10 and 10.05 m/s, FULL
+// SPEED past 97 %), are checked under the same names; the shown state, the event counts and the direction
+// are not ported.
+// rules.coax loads this file with `#load ... #test;`.
+
+DCAM_DT :: 0.016666666666666666;
+dcam_cab :: (x: f64, z: f64, yaw: f64, speed: f64) -> SrDriveSubject { return SrDriveSubject.{x = x, z = z, yaw = yaw, speed = speed}; }
+dcam_near3 :: (a: D3, b: D3, tol: f64) -> bool { return abs(a.x - b.x) <= tol && abs(a.y - b.y) <= tol && abs(a.z - b.z) <= tol; }   // FVector::Equals
+// The manager's state: the boom and the mix, with their tunings.
+DcamMgr :: struct { t: SrCamTuning; dt: SrDriveCamTuning; boom: SrCamState; mix: SrCamMixState; }
+// ASpliceCameraManager::StepFrame: on foot.
+dcam_step_frame :: (m: [] DcamMgr, w: SrCamWorld, her: SrCamSubject, in0: SrCamTickInputs, dt: f64) -> SrCamView {
+  in := in0;
+  in.put_somewhere_new = sr_cam_is_cut(m[0].t, m[0].boom, her);   // cm_step's cut test, before the step
+  m[0].boom = sr_cam_step(m[0].t, w, m[0].boom, her, dt);
+  raw := sr_cam_follow(m[0].t, w, m[0].boom, her);
+  in.raw_eye = raw.eye;
+  m[0].mix = sr_cam_tick(m[0].t, m[0].mix, in, dt);
+  v := sr_cam_mix(m[0].t, m[0].mix, raw, in.calm);
+  m[0].mix = sr_cam_seen(m[0].mix, v);
+  return v;
+}
+// ASpliceCameraManager::StepDriveFrame: the drive eye, src 1 so the tick blends from the last view drawn.
+dcam_step_drive_frame :: (m: [] DcamMgr, cab: SrDriveSubject, in0: SrCamTickInputs, dt: f64) -> SrCamView {
+  raw := sr_drive_cam_view(m[0].dt, cab);
+  in := in0;
+  in.src = 1; in.raw_eye = raw.eye; in.on_foot = false; in.riding = false; in.driving = true;
+  in.drive_speed_share = sr_drive_cam_speed_share(m[0].dt, cab.speed);
+  m[0].mix = sr_cam_tick(m[0].t, m[0].mix, in, dt);
+  v := sr_cam_mix(m[0].t, m[0].mix, raw, in.calm);
+  m[0].mix = sr_cam_seen(m[0].mix, v);
+  return v;
+}
+
+#test "Splice.Rules.DriveCamera.PoseFollowsCab" {
+  t: SrDriveCamTuning;
+  // Heading +Z: 13 m behind, 5.6 m up, looking at a point 8 m ahead and 1.4 m up (drive.coax:543).
+  v := sr_drive_cam_view(t, dcam_cab(10.0, 20.0, 0.0, 0.0));
+  #assert dcam_near3(v.eye, d3(10.0, 5.6, 7.0), 0.0001) && dcam_near3(v.at, d3(10.0, 1.4, 28.0), 0.0001) && v.fov == 0.8;
+  // The cab turns a quarter: the camera swings behind it, heading +X.
+  v = sr_drive_cam_view(t, dcam_cab(10.0, 20.0, PI_D / 2.0, 0.0));
+  #assert dcam_near3(v.eye, d3(-3.0, 5.6, 20.0), 0.001) && dcam_near3(v.at, d3(18.0, 1.4, 20.0), 0.001);
+  // On a rise the view rises with the road and the pitch (4.2 m over 21 m) does not change.
+  up := dcam_cab(0.0, 0.0, 0.0, 0.0); up.ground = 3.0;
+  a := sr_drive_cam_view(t, dcam_cab(0.0, 0.0, 0.0, 0.0)); b := sr_drive_cam_view(t, up);
+  #assert abs(b.eye.y - a.eye.y - 3.0) <= 0.0001 && abs((b.eye.y - b.at.y) - (a.eye.y - a.at.y)) <= 0.0001;
+  // The manager's drive frame follows the cab at once, including a turn (the prototype's camera has no spring).
+  m := [1] DcamMgr.[DcamMgr.{}];
+  drawn: SrCamView;
+  for i: 0..<90 { drawn = dcam_step_drive_frame(m[..], dcam_cab(10.0, 20.0, 0.0, 0.0), SrCamTickInputs.{}, DCAM_DT); }
+  #assert dcam_near3(drawn.eye, sr_drive_cam_view(t, dcam_cab(10.0, 20.0, 0.0, 0.0)).eye, 0.001);
+  drawn = dcam_step_drive_frame(m[..], dcam_cab(10.0, 20.0, PI_D / 2.0, 0.0), SrCamTickInputs.{}, DCAM_DT);
+  #assert dcam_near3(drawn.eye, sr_drive_cam_view(t, dcam_cab(10.0, 20.0, PI_D / 2.0, 0.0)).eye, 0.001);
+}
+
+#test "Splice.Rules.DriveCamera.LagsAsThePrototypeSays" {
+  t: SrDriveCamTuning;
+  m := [1] DcamMgr.[DcamMgr.{}]; ct := m[0].t;
+  world: SrCamWorld;   // open ground: nothing blocks the eye above Y 0
+  // On foot at the origin, a few frames: the last view drawn.
+  her := SrCamSubject.{pitch = 0.3};
+  foot: SrCamView;
+  for i: 0..<30 { foot = dcam_step_frame(m[..], world, her, SrCamTickInputs.{}, DCAM_DT); }
+  // She gets in. The drive camera eases in from that view over CM_BLEND (0.6 s), not a jump (camera.coax:409).
+  rover := dcam_cab(0.0, 0.0, 0.0, 0.0);
+  goal := sr_drive_cam_view(t, rover).eye;
+  gap := d3_dist(goal, foot.eye);
+  #assert gap > 1.0 && gap < ct.blend_far;
+  v := dcam_step_drive_frame(m[..], rover, SrCamTickInputs.{}, DCAM_DT);
+  #assert d3_dist(v.eye, foot.eye) < 0.1 * gap;   // first frame is still near the last view
+  for i: 0..<17 { v = dcam_step_drive_frame(m[..], rover, SrCamTickInputs.{}, DCAM_DT); }   // about 0.3 s in
+  mid := d3_dist(v.eye, goal);
+  #assert mid > 0.2 * gap && mid < 0.8 * gap;
+  for i: 0..<30 { v = dcam_step_drive_frame(m[..], rover, SrCamTickInputs.{}, DCAM_DT); }
+  #assert dcam_near3(v.eye, goal, 0.001);   // after CM_BLEND it is the drive eye
+  // The speed's widening eases over CM_FOV_TIME up to CM_DRIVE_FOV at the top speed (camera.coax:420).
+  fast := dcam_cab(0.0, 0.0, 0.0, t.top_speed);
+  v = dcam_step_drive_frame(m[..], fast, SrCamTickInputs.{}, DCAM_DT);
+  #assert v.fov > t.fov && v.fov < t.fov + 0.3 * ct.drive_fov;
+  for i: 0..<120 { v = dcam_step_drive_frame(m[..], fast, SrCamTickInputs.{}, DCAM_DT); }
+  #assert abs(v.fov - (t.fov + ct.drive_fov)) <= 0.005;
+  // Backing up widens as much as driving: it reads the speed's size.
+  #assert abs(sr_drive_cam_speed_share(t, -12.0) - 0.5) <= 0.0001;
+}
+
+// Rule parts only (see the header): the strip's top line.
+#test "Splice.Rules.DriveCamera.StripShowsOnlyWhileDriving" {
+  t: SrDriveCamTuning;
+  #assert sr_drive_cam_top_kmh(t) == 86;   // TOP 86 KM/H
+}
+
+// Rule parts only (see the header): the strip's km/h and FULL SPEED.
+#test "Splice.Rules.DriveCamera.SpeedChangeUpdatesStripOnce" {
+  t: SrDriveCamTuning;
+  #assert sr_drive_cam_speed_kmh(t, 10.0) == 36 && !sr_drive_cam_is_full_speed(t, 10.0);
+  #assert sr_drive_cam_speed_kmh(t, 10.05) == 36;   // 36.18 km/h rounds to the same 36: no update
+  #assert sr_drive_cam_speed_kmh(t, 23.9) == 86 && sr_drive_cam_is_full_speed(t, 23.9);   // past 97 % of 24
+  #assert sr_drive_cam_speed_kmh(t, -4.0) == 14;   // reversing reads the speed's size
+}

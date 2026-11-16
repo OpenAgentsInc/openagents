@@ -1,0 +1,41 @@
+// Splice Bots rules: the drive camera and the drive strip's numbers (SpliceDriveCamera.h, package V-03;
+// GDD 04 UE-CAM-03, Drive: 13 m out, and UE-VEH-10, the strip shows km/h with TOP 86 KM/H under it). The C++
+// was ported from the prototype's drive.coax dv_camera (:541) and dv_overlay (:656); dv_camera reads the
+// whole game, so no prototype function computes sr_drive_cam_view on its own. camera-boom.coax has the
+// drive's widening (drive_fov), its mix and blend, but no drive eye, so the eye is here.
+// The prototype's drive camera is rigid: behind the cab on its heading and above it, looking down the road
+// ahead, with no spring of its own. What lags is the camera mix: a change of camera eases over the blend from
+// the last view drawn, and the speed's widening eases over fov_time. The cab's pitch is not followed.
+// Frame: camera-boom.coax's, in metres. X and Z are the ground plane, Y is up. Yaw 0 faces +Z.
+#load "camera-boom.coax";
+
+SrDriveCamTuning :: struct {
+  back: f64 = 13.0;        // drive.coax:543, m behind the cab
+  up: f64 = 5.6;           // drive.coax:543, m the eye is over the road
+  look_ahead: f64 = 8.0;   // drive.coax:543, m ahead of the cab the camera looks
+  look_height: f64 = 1.4;  // drive.coax:543, m over the road at that point
+  fov: f64 = 0.8;          // drive.coax:543, radians (the mix's widening is added on top)
+  top_speed: f64 = 24.0;   // drive.coax:324 DV_TOP, m/s
+  full_share: f64 = 0.97;  // drive.coax:663, past this share of the top the strip says FULL SPEED
+  kmh_per_mps: f64 = 3.6;  // drive.coax:663 and :665
+}
+// The cab, as the camera reads it.
+SrDriveSubject :: struct {
+  x: f64; z: f64;
+  ground: f64;   // m, the road under the cab (the rule frame's Y)
+  yaw: f64;      // the cab's heading
+  speed: f64;    // m/s along the heading, negative backing up
+}
+// drive.coax:541 dv_camera, relative to the road under the cab.
+sr_drive_cam_view :: (t: SrDriveCamTuning, cab: SrDriveSubject) -> SrCamView {
+  fx := sin(cab.yaw); fz := cos(cab.yaw);
+  return SrCamView.{eye = d3(cab.x - fx * t.back, cab.ground + t.up, cab.z - fz * t.back), at = d3(cab.x + fx * t.look_ahead, cab.ground + t.look_height, cab.z + fz * t.look_ahead), fov = t.fov};
+}
+// camera.coax:420: |speed| / DV_TOP, 0 to 1 (the widening's input).
+sr_drive_cam_speed_share :: (t: SrDriveCamTuning, speed: f64) -> f64 { return ifx t.top_speed > 0.0 then fclamp(abs(speed) / t.top_speed, 0.0, 1.0) else 0.0; }
+// drive.coax:663: the strip's km/h, |speed| * 3.6 rounded.
+sr_drive_cam_speed_kmh :: (t: SrDriveCamTuning, speed: f64) -> int { return cast(int) floor(abs(speed) * t.kmh_per_mps + 0.5); }
+// drive.coax:665: the line under it reads TOP 86 KM/H, the top in km/h rounded.
+sr_drive_cam_top_kmh :: (t: SrDriveCamTuning) -> int { return cast(int) floor(t.top_speed * t.kmh_per_mps + 0.5); }
+// drive.coax:663: |speed| past 97 % of the top reads FULL SPEED.
+sr_drive_cam_is_full_speed :: (t: SrDriveCamTuning, speed: f64) -> bool { return abs(speed) > t.top_speed * t.full_share; }

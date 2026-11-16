@@ -1,12 +1,6 @@
 // Parity checks for robot-pose.coax: SpliceTests/Rules/SpliceRobotPoseTests.cpp, every test ported. The
-// boss's leads and impacts come from boss.coax. SpliceChase is not ported yet: the raider's cases use its
-// values as literals (TelegraphLeadSeconds 0.80 s then 0.65 s, Impact 0.12 s; SpliceChase.h); a chase port
-// should swap them for its calls.
+// leads and impacts come from the rules: boss.coax for the dinosaur, chase.coax for the raider's claws.
 // rules.coax loads this file with `#load ... #test;`.
-
-RP_CHASE_LEAD_FIRST :: 0.8;    // SpliceChase::TelegraphLeadSeconds(0)
-RP_CHASE_LEAD_SECOND :: 0.65;  // SpliceChase::TelegraphLeadSeconds(1)
-RP_CHASE_IMPACT :: 0.12;       // FSpliceChaseTuning::Impact
 
 // An input that puts the robot in state.
 rp_input_for :: (state: int, t: SrRobotPoseTuning) -> SrRobotPoseInput {
@@ -44,17 +38,17 @@ rp_input_for :: (state: int, t: SrRobotPoseTuning) -> SrRobotPoseInput {
 
 RpCase :: struct { body: int; lead: f64; variant: int; strike: f64; }
 #test "Splice.Rules.RobotPose.TelegraphStartsAtEventAndLastsLead" {
-  bt: SrBossTuning;
+  bt: SrBossTuning; ct: SrChaseTuning;
   cases := [7] RpCase.[
     RpCase.{body = SR_RP_DINOSAUR, lead = sr_boss_telegraph_lead_seconds(SR_BOSS_ATTACK_SWEEP, bt), variant = SR_BOSS_ATTACK_SWEEP, strike = bt.sweep_impact},
     RpCase.{body = SR_RP_DINOSAUR, lead = sr_boss_telegraph_lead_seconds(SR_BOSS_ATTACK_CHARGE, bt), variant = SR_BOSS_ATTACK_CHARGE, strike = bt.charge_rush},
     RpCase.{body = SR_RP_DINOSAUR, lead = sr_boss_telegraph_lead_seconds(SR_BOSS_ATTACK_BITE, bt), variant = SR_BOSS_ATTACK_BITE, strike = bt.bite_impact},
-    RpCase.{body = SR_RP_RAIDER_MECH, lead = RP_CHASE_LEAD_FIRST, variant = 0, strike = RP_CHASE_IMPACT},
-    RpCase.{body = SR_RP_RAIDER_MECH, lead = RP_CHASE_LEAD_SECOND, variant = 1, strike = RP_CHASE_IMPACT},
+    RpCase.{body = SR_RP_RAIDER_MECH, lead = sr_chase_telegraph_lead_seconds(0, ct), variant = 0, strike = ct.impact},
+    RpCase.{body = SR_RP_RAIDER_MECH, lead = sr_chase_telegraph_lead_seconds(1, ct), variant = 1, strike = ct.impact},
     RpCase.{body = SR_RP_IMPERIAL, lead = SR_RP_IMPERIAL_BLOW_LEAD_SECONDS, variant = 0, strike = SR_RP_IMPERIAL_BLOW_IMPACT_SECONDS},
     RpCase.{body = SR_RP_DRILL_MECH, lead = SR_RP_DRILL_WIND_UP_SECONDS, variant = 0, strike = 0.0}];
   #assert abs(sr_boss_telegraph_lead_seconds(SR_BOSS_ATTACK_SWEEP, bt) - 1.2) <= 0.0001;
-  #assert abs(RP_CHASE_LEAD_FIRST - 0.8) <= 0.0001;
+  #assert abs(sr_chase_telegraph_lead_seconds(0, ct) - 0.8) <= 0.0001;
   #assert abs(SR_RP_IMPERIAL_BLOW_LEAD_SECONDS - 0.7) <= 0.0001;
   dt := 1.0 / 120.0;
   for c: cases {
