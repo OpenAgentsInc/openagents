@@ -231,6 +231,21 @@ keyed_test_frame :: (s: [] KeyedStore, ids: [] string, dt: f32) -> int {
   keyed_begin(s, 0.05, false); k := keyed_see(s, "row.a");
   v := keyed_entry(s, k, 1, AM_LINEAR); #assert keyed_entry(s, k, 1, AM_LINEAR) == v && abs(v - 0.15) < 0.00001 && !keyed_fresh(s, k);
 }
+#forall "state follows its id through every order of three ids" order: 0..<6, round: 0..<3 {
+  rows: [3] Keyed; st := [1] KeyedStore.[KeyedStore.{rows = rows[..]}]; s := st[..];
+  names := [3] string.["a", "b", "c"];
+  first := names; #assert keyed_test_frame(s, first[..], 0.01) == 0;
+  for i: 0..<3 { keyed_scroll_set(s, keyed_find(s, names[i]), cast(f32) (i + 1) * 10); }
+  // the order-th permutation of a, b, c, seen for `round` + 1 frames
+  x := order / 2; y := ifx order % 2 == 0 then (x + 1) % 3 else (x + 2) % 3; z := 3 - x - y;
+  perm := [3] string.[names[x], names[y], names[z]];
+  for n: 0..<round + 1 { #assert keyed_test_frame(s, perm[..], 0.01) == 0; }
+  for i: 0..<3 {
+    k := keyed_find(s, names[i]);
+    #assert k >= 0 && keyed_scroll(s, k) == cast(f32) (i + 1) * 10 && abs(s[0].rows[k].entry[0].value - cast(f32) (round + 2) * 0.01) < 0.00001;
+  }
+  #assert s[0].live == 3 && s[0].refused == 0 && s[0].retired == 0;
+}
 #test "an id not seen in a frame retires and starts fresh when it returns" {
   rows: [4] Keyed; st := [1] KeyedStore.[KeyedStore.{rows = rows[..]}]; s := st[..];
   ab := [2] string.["a", "b"]; only_b := [1] string.["b"];

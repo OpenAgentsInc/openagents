@@ -62,6 +62,7 @@ components/
   backend/         display list to a target: gpu.coax, gpu-shader.coax, terminal.coax
   kit/             the components themselves (markdown; controls: panel, button,
                    toggle, slider, tabs, list, bar; hud: the game HUD set)
+                   frame.coax: the frame context a component call receives (GitHub #13645)
   gallery/         page.coax, the /components page (hud-cards.coax: its HUD cards);
                    linux.coax and linux/ (the same
                    page as a Linux program, for pictures); md-term.coax (Markdown
@@ -124,8 +125,18 @@ which colour a component wears is its skin's to say.
   (`zeron/desk.coax` `dsk_elements`). `coax drive`'s `tree` prints it in the
   layout trace's format (`ID ROLE "LABEL" at X Y size WxH`, logical px), and
   `tap ID`, `type ID TEXT` and `drag ID DX,DY` press a row by its id, so a
-  check names what it presses and never a coordinate. Focus order and
-  accessibility do not read it yet.
+  check names what it presses and never a coordinate. Since GitHub #13645
+  (stage G0) it is the one semantic table of a presentation surface: a row
+  also carries its state, value, parent, action, focus order and clip, and
+  a surface declares its own capacity (`ElTable` over the caller's rows;
+  the 192-row `Elements` keeps working). Hit testing (`elt_hit`), keyboard
+  focus (`elt_focus_step`) and an accessibility bridge read the same rows
+  `tree` prints. See [gpu-components.md](gpu-components.md#one-semantic-table).
+- **Keyed state** (`core/keyed.coax`, GitHub #13645): state that outlives a
+  frame, owned by a component's stable id with a declared capacity: entry
+  and press motion, a spring, a scroll offset, expanded or collapsed. An id
+  not seen in a frame retires; a duplicate id or a full store is refused
+  and counted.
 - **Actions**: a component never calls the host. It writes what it wants
   (send, stop, open a file picker, copy) to an outbox, and the app takes it.
 

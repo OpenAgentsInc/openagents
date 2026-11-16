@@ -1,7 +1,8 @@
 # GPU components on native: one kit, one display list
 
-Written 2026-11-15. Status: specification. Nothing in this document is
-implemented by this change. Tracked in
+Written 2026-11-15. Status: specification, with stage G0 built (the frame
+context, the keyed state store, the semantic table and the surface commit;
+see [Stages](#stages)). Tracked in
 [#13645](https://github.com/OpenAgentsInc/openagents/issues/13645).
 
 This document decides how native Coax Native apps draw their components. It
@@ -106,9 +107,57 @@ needs only its ID, its inputs and its position. The context holds:
 - the input snapshot: pointer, pressed ID, focused ID, hovered ID;
 - the frame clock and the reduced-motion and reduced-transparency facts.
 
-Existing `kit/controls.coax` signatures keep working through adapters while
-callers move. The exact struct and procedure names are fixed by the first
-implementation change, not by this document.
+The context is `UiFrame` in `kit/frame.coax`. It lives in `kit/`, not
+`core/`, because it names the sheet (`paint/`) and the skin (`skin/`), and a
+layer loads only the layers before it. What it refers to stays in its own
+layer, and the context is a set of views over those, made new each frame:
+
+| Piece | Type | File |
+| --- | --- | --- |
+| Frame context, input snapshot | `UiFrame`, `UiInput` | `kit/frame.coax` |
+| Committed surface: display list, hit regions and rows as one generation | `UiSurface` | `paint/surface.coax` |
+| Semantic table | `ElTable`, `El` | `core/elements.coax` |
+| Keyed state store | `KeyedStore`, `Keyed` | `core/keyed.coax` |
+| Motion times | `UiMotion` (`skin.motion`) | `skin/skin.coax` |
+
+One frame on a surface:
+
+```jai
+// The caller declares the capacities: two sheets and two row arrays (one
+// per generation), and the keyed rows.
+sf := [1] UiSurface.[surface_over(sheet_a, rows_a[..], sheet_b, rows_b[..])];
+ks := [1] KeyedStore.[KeyedStore.{rows = keyed_rows[..]}];
+
+f: [1] UiFrame;
+in := uiinput(pointer_x, pointer_y, true, pointer_down, pressed_id, focused_id);
+uiframe_begin(f[..], sf[..], ks[..], measure, skin, in, clock, dt, reduced_motion, reduced_transparency);
+inside := ctx_panel(f[..], "login", x, y, w, h, "Log in");
+w := ctx_button(f[..], "login.send", inside.x, inside.y, "Send code", true, 0, ACT_SEND);
+k := uiframe_key(f[..], "login.send");            // keyed state for this id, or -1
+p := uiframe_press(f[..], k, "login.send");       // 0 to 1 while pressed
+ctx_panel_end(f[..]);
+if uiframe_end(f[..], sf[..]) { /* gpu_draw surface_sheet(sf[..]) */ }
+
+// A press is routed through the committed rows.
+row := surface_hit(sf[..], tap_x, tap_y);
+id := surface_id(sf[..], row); action := surface_action(sf[..], row);
+```
+
+A component that is not one of the controls records itself with
+`uiframe_row(f, id, role, label, x, y, w, h, state, action)`: its semantic
+row and, for a role a person presses or types into, its hit region over the
+same box. `uiframe_clip` and `uiframe_unclip` cut paint and presses
+together; `uiframe_open` and `uiframe_close` nest rows under a parent.
+
+Existing `kit/controls.coax` signatures keep working unchanged. Each of
+panel, button, toggle, slider, tabs, list and bar has a context form
+(`ctx_panel`, `ctx_button`, `ctx_toggle`, `ctx_slider`, `ctx_tabs`,
+`ctx_list`, `ctx_bar`) that takes a stable ID in place of a hit kind and
+number, paints through the existing procedure, and records the row and the
+hit. A check holds the two forms to the same primitives in every skin. A
+caller that has only a sheet, a measure and a skin makes a context with
+`uiframe_over(sheet, measure, skin)`: the same components paint and nothing
+is recorded.
 
 ### Identity and keyed state
 
@@ -126,6 +175,16 @@ state from one ID to another.
 A duplicate ID or a full store refuses that component's keyed state and
 counts the refusal. It never silently shares another component's state.
 
+The store is `KeyedStore` in `core/keyed.coax`, over rows the caller
+declares. `keyed_begin` starts a frame, `keyed_see(store, id)` returns the
+ID's row or -1 when refused, and `keyed_end` retires every ID not seen.
+`keyed_entry`, `keyed_press`, `keyed_spring`, `keyed_scroll`, `keyed_open`
+and `keyed_slot` read a row; each takes -1 and answers as a stateless
+component would, so a refusal degrades motion and never correctness. The
+refusals are `refused_full`, `refused_duplicate` and `refused`.
+`native/scene.coax` keeps its own integer-keyed store for now; moving it
+onto `KeyedStore` is follow-up work.
+
 ### One semantic table
 
 `core/elements.coax` becomes the one semantic table for a presentation
@@ -141,6 +200,19 @@ use the same committed rows:
 The tree's roles and attributes (`AT_LABEL`, `AT_ROLE`, `AT_EXPANDED`,
 `AT_PRESSED`, `AT_DISABLED`, `AT_CURRENT`, `AT_LIVE`) map onto semantic
 rows, so one description serves DOM attributes and native accessibility.
+
+The table is `ElTable` over rows the caller declares (`elt_over`,
+`elt_begin`, `elt_row`). A row's state is `EL_S_*` bits (disabled, busy,
+pressed, expanded, current, checked, focused, live); `elt_value`,
+`elt_action`, `elt_focus` and `elt_focusable` set the rest, and `elt_open`
+and `elt_clip` give following rows their parent and clip. The readers'
+lookups are `elt_hit` (the topmost row under a point, honouring nested
+clips), `elt_focus_step` (next or previous in focus order), `elt_find`, and
+for a bridge the rows in order with `elt_visible` and `elt_parent`.
+`elt_tree` prints `coax drive`'s `tree` lines; `elt_detail` adds state,
+value, action, focus place and parent. The fixed 192-row `Elements` and its
+`el_*` procedures keep working for the callers that hold one, with the same
+`tree` output.
 
 ## The frame
 
@@ -161,6 +233,18 @@ input, timer or completion
 - If a list, pool or table overflows, the frame counts what was lost. An
   overflow must not drop a label or leave an invisible active hit target;
   the surface refuses the frame and keeps the last committed one.
+
+`UiSurface` (`paint/surface.coax`) is the commit. It holds two generations
+over the caller's arrays. `surface_begin` empties the back one for the
+frame to fill, and `surface_commit` makes it the committed one, so readers
+(`surface_sheet`, `surface_rows`, `surface_hit`) see the old set or the new
+set, during a frame as well as between frames. A frame that lost anything
+is refused: `surface_commit` returns false, counts it in `refused`, `lost`
+and `last`, and the committed generation stays. Lost means anything the
+sheet counted (`Sheet.lost`), any row or nesting the table counted, or a
+display list left full, since a component that appends to a list itself is
+not counted by the sheet. Declare each list one longer than its largest
+frame needs. `keyed_moving` says whether motion alone needs another frame.
 
 ## State and invalidation
 
@@ -288,7 +372,7 @@ does not start the next one's removals.
 
 | Stage | Work | Exit condition |
 | --- | --- | --- |
-| G0 | The frame context, keyed state store and semantic table in `core/`, with adapters for existing callers | Existing gallery and chat pictures unchanged; checks for identity, retirement and refusal |
+| G0 (built 2026-11-15) | The frame context (`kit/frame.coax`), keyed state store (`core/keyed.coax`), semantic table (`core/elements.coax`) and surface commit (`paint/surface.coax`), with adapters for existing callers | Existing gallery and chat pictures unchanged; checks for identity, retirement and refusal |
 | G1 | The iOS login screen, in the installed compiled runtime that already hosts the component gallery: email-code login drawn by the kit over a live GPU scene (see [The first screen](#the-first-screen-login)). Includes the text-field overlay and the VoiceOver bridge | The screen has no UIKit controls except the focused field's editor; login works with the keyboard, an input method, one-time-code AutoFill and VoiceOver on a physical phone; the scene holds the frame-rate objective while typing |
 | G2 | Settings, with the scroll driver | The screen has no UIKit controls; large text lays out; scrolling feels native |
 | G3 | Backend gaps the chat needs: images, nested clips, transforms, group opacity, blur | Each has a gallery specimen and a generated-shader check on Metal and WebGPU |
@@ -357,6 +441,14 @@ realized list rows, images and render targets. The current fixed values
 declarations sized from the first migrated screens. Refusals are counted
 and visible to `coax drive`.
 
+Since G0, semantic rows, keyed state entries and a surface's primitives,
+text runs, lines, hits and pooled bytes are the caller's arrays, so each
+surface declares them. `uiframe_counts` writes a surface's and a store's
+counts and refusals as text; a host's drive operation that prints it is
+follow-up work. `EL_MAX` remains only as the size of the older `Elements`,
+and `ARCADE_NODES` and `ARCADE_PRIMS` remain until `native/scene.coax`
+moves onto the keyed store and a surface.
+
 ## Measurements
 
 No performance result exists for this design. Record these before a stage
@@ -389,8 +481,11 @@ supported phone and 120 Hz where the device offers it, as in
 
 ## Decisions still open
 
-- The frame context's exact shape and the adapter plan for existing
-  `kit/controls.coax` callers (G0).
+- Decided in G0: the frame context is `UiFrame` in `kit/frame.coax`.
+  Existing `kit/controls.coax` procedures stay as the painters, each control
+  gains a `ctx_*` form that takes the context, and `uiframe_over` makes a
+  context for callers that hold only a sheet, a measure and a skin. See
+  [Frame context](#frame-context).
 - Whether the iOS scroll driver is an invisible platform scroll view or
   Coax physics tuned to match (G2; default: the platform's).
 - How a migrated screen and a not-yet-migrated screen share app state
@@ -409,5 +504,7 @@ supported phone and 120 Hz where the device offers it, as in
 - [Reuse](../docs/reuse.md): where each shared piece lives.
 - Code: [display list](paint/list.coax), [sheet](paint/sheet.coax),
   [GPU backend](backend/gpu.coax), [element table](core/elements.coax),
+  [keyed state](core/keyed.coax), [surface](paint/surface.coax),
+  [frame context](kit/frame.coax),
   [tree](core/tree.coax), [controls](kit/controls.coax),
   [frames](kit/frames.coax), [native scene](native/scene.coax).

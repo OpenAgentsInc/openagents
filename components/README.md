@@ -11,6 +11,10 @@ a second set of native-only components.
 | Need | Read |
 | --- | --- |
 | Keyed tree, semantic elements and actions | `core/tree.coax`, `core/elements.coax`, `kit/frames.coax` |
+| A GPU-drawn component's frame context: sheet, measure, skin, semantic table, keyed state, input, clock | `kit/frame.coax` (`UiFrame`, `uiframe_begin`, `uiframe_row`, `uiframe_end`); see [gpu-components.md](gpu-components.md#frame-context) |
+| Semantic rows for hit tests, focus order, accessibility and `coax drive`, with a per-surface capacity | `core/elements.coax` (`ElTable`, `elt_row`, `elt_hit`, `elt_focus_step`, `elt_tree`) |
+| State kept by a component's stable ID across frames: entry and press motion, a spring, scroll offset, expanded or collapsed | `core/keyed.coax` (`KeyedStore`, `keyed_see`) |
+| Display list, hit regions and semantic rows committed as one generation; overflow refused and counted | `paint/surface.coax` (`UiSurface`, `surface_begin`, `surface_commit`) |
 | Text editing, Markdown, syntax | `core/edit.coax`, `core/markdown.coax`, `core/syntax.coax` |
 | Layout and text measurement/wrapping | `layout/flex.coax`, `layout/measure.coax`, `layout/text.coax`, `layout/font.coax` |
 | Paint primitives, selectable text and hit regions | `paint/list.coax`, `paint/sheet.coax` |
@@ -20,7 +24,7 @@ a second set of native-only components.
 | Measured native controls painted in one shared GPU scene | `native/scene.coax`, `native/apple.{c,h}`, `skin/arcade.coax`; SDK projection: `apps/shared/native/NativeArcade.swift` |
 | Shared easing, timelines and effects | `core/arwes/motion.coax`, `core/arwes/fx.coax` |
 | Real bounded line series/response plots | `kit/plot.coax`; twelve-float world HUD adapter: `metaverse-engine/ui/plot.coax` |
-| Display-list controls, Markdown and game HUD | `kit/controls.coax`, `kit/markdown.coax`, `kit/hud.coax` |
+| Display-list controls, Markdown and game HUD | `kit/controls.coax` (and its `ctx_*` forms on the frame context), `kit/markdown.coax`, `kit/hud.coax` |
 | Tree-based forms, chat and settings | `kit/frames.coax`, `kit/settings.coax`, `kit/dock.coax`, `kit/work.coax` |
 | GPU drawing and shader math | `backend/gpu.coax`, `backend/gpu-shader.coax` |
 | Browser tree output or terminal drawing | `backend/dom.coax`, `backend/terminal.coax` |
