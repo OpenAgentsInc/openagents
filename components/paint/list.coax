@@ -62,6 +62,21 @@ prim_put :: (list: [] Prim, n: int, p: Prim) -> int {
   list[n] = p;
   return n + 1;
 }
+#test "display-list group preflight refuses unmatched, crossed and over-budget scopes" {
+ p:[8]Prim;n:=prim_clip(p[..],0,0,0,10,10);n=prim_alpha(p[..],n,0.5);n=prim_unalpha(p[..],n);n=prim_unclip(p[..],n);
+ #assert prim_groups_valid(p[0..<n],2) && !prim_groups_valid(p[0..<n],1) && !prim_groups_valid(p[0..<n-1],2);
+ p[2].kind=PRIM_CLIP;p[3].kind=PRIM_ALPHA;#assert !prim_groups_valid(p[0..<n],2);
+ #assert !prim_groups_valid(p[2..<3],2) && prim_groups_valid(p[0..<0],0);
+}
+// One structural stack for clips and opacity. A frame must end each scope
+// in reverse order before any renderer or hit table publishes it.
+prim_groups_valid :: (list:[]Prim,limit:int)->bool {
+ if limit<0 || limit>64 {return false;}stack:[64]int;depth:=0;
+ for p:list {if p.kind!=PRIM_CLIP && p.kind!=PRIM_ALPHA {continue;}
+  if p.on {if depth>=limit {return false;}stack[depth]=p.kind;depth+=1;}
+  else {if depth==0 || stack[depth-1]!=p.kind {return false;}depth-=1;}
+ }return depth==0;
+}
 
 prim_box :: (list: [] Prim, n: int, x: f32, y: f32, w: f32, h: f32, radius: f32, border: f32, fill: Rgba, edge: Rgba) -> int {
   return prim_put(list, n, Prim.{kind = PRIM_BOX, x = x, y = y, w = w, h = h, radius = radius, border = border, fill = fill, edge = edge, id = -1, line = -1});

@@ -24,6 +24,7 @@
 
 #load "../layout/font.coax";
 #load "../paint/list.coax";
+#load "../core/elements.coax";
 
 GP_VERTEX_FLOATS :: 28;
 GP_QUAD :: 0.0; GP_SHADOW :: 1.0; GP_SPRITE :: 2.0; GP_COLOR_SPRITE :: 3.0; GP_ELBOW :: 4.0; GP_GRADIENT :: 5.0; GP_INSET :: 6.0; GP_SEGMENT :: 7.0;
@@ -437,7 +438,22 @@ gpu_draws :: (p: Prim) -> bool {
 // after the offset) are written, and inside a clip only those that start
 // before its right edge; pass -PRIM_OPEN and PRIM_OPEN to draw them all. Text
 // reads its face's cells from the atlas. Returns the vertex count so far.
-GP_CLIP_DEPTH :: 8;   // clips inside clips a list may nest
+#test "all semantic clip levels restore their parent masks and overflow never opens the mask" {
+ list:[100]Prim;n:=0;white:=rgba(1,1,1,1);a:[1]Atlas;out:[1008]f32;
+ for i:0..<EL_DEPTH {n=prim_clip(list[..],n,cast(f32)i,cast(f32)i,100-cast(f32)i,100-cast(f32)i);}
+ n=prim_fill(list[..],n,0,0,100,100,0,white);n=prim_clip(list[..],n,0,0,200,200);n=prim_fill(list[..],n,0,0,100,100,0,white);
+ n=prim_unclip(list[..],n);n=prim_fill(list[..],n,0,0,100,100,0,white);n=prim_unclip(list[..],n);n=prim_fill(list[..],n,0,0,100,100,0,white);
+ v:=gpu_draw(out[..],0,a[..],1,list[0..<n],0,0,-100,200);
+ #assert v==18 && out[20]==15 && out[22]==85 && out[6*28+20]==15 && out[6*28+22]==85 && out[12*28+20]==14 && out[12*28+22]==86;
+}
+#test "opacity overflow suppresses its subtree and returns to the exact retained outer opacity" {
+ list:[100]Prim;n:=0;a:[1]Atlas;out:[504]f32;
+ for i:0..<EL_DEPTH {n=prim_alpha(list[..],n,0.5);}
+ n=prim_alpha(list[..],n,0.5);n=prim_fill(list[..],n,0,0,10,10,0,rgba(1,1,1,1));n=prim_unalpha(list[..],n);n=prim_fill(list[..],n,0,0,10,10,0,rgba(1,1,1,1));
+ n=prim_unalpha(list[..],n);n=prim_fill(list[..],n,0,0,10,10,0,rgba(1,1,1,1));
+ #assert gpu_draw(out[..],0,a[..],1,list[0..<n],0,0,-100,200)==12 && out[15]==1.0f32/65536 && out[6*28+15]==1.0f32/32768;
+}
+GP_CLIP_DEPTH :: EL_DEPTH;   // paint and semantic masks have the same nesting budget
 gpu_draw :: (out: [] f32, at: int, a: [] Atlas, d: f32, list: [] Prim, ox: f32, oy: f32, y0: f32, y1: f32) -> int {
   v := at;
   clip := false; cl: f32 = 0; ct: f32 = 0; cr: f32 = 0; cb: f32 = 0;
@@ -451,7 +467,8 @@ gpu_draw :: (out: [] f32, at: int, a: [] Atlas, d: f32, list: [] Prim, ox: f32, 
     p := list[k];
     if p.kind == PRIM_CLIP {
       if p.on {
-        if depth < GP_CLIP_DEPTH { son[depth] = clip; sl[depth] = cl; st[depth] = ct; sr[depth] = cr; sb[depth] = cb; }
+        if depth >= GP_CLIP_DEPTH {depth+=1;continue;}
+        son[depth] = clip; sl[depth] = cl; st[depth] = ct; sr[depth] = cr; sb[depth] = cb;
         depth += 1;
         if clip {
           if p.x > cl { cl = p.x; } if p.y > ct { ct = p.y; } if p.a < cr { cr = p.a; } if p.b < cb { cb = p.b; }
@@ -459,16 +476,17 @@ gpu_draw :: (out: [] f32, at: int, a: [] Atlas, d: f32, list: [] Prim, ox: f32, 
         clip = true;
       } else if depth > 0 {
         depth -= 1;
-        if depth < GP_CLIP_DEPTH { clip = son[depth]; cl = sl[depth]; ct = st[depth]; cr = sr[depth]; cb = sb[depth]; } else { clip = false; }
+        if depth < GP_CLIP_DEPTH { clip = son[depth]; cl = sl[depth]; ct = st[depth]; cr = sr[depth]; cb = sb[depth]; }
       } else { clip = false; }
       continue;
     }
     if p.kind == PRIM_FADE { fade = p.on; ft = p.y; fa = p.a; fb = p.b; fc = p.c; continue; }
     if p.kind == PRIM_ALPHA {
-      if p.on { if gdepth < GP_CLIP_DEPTH { gs[gdepth] = ga; } gdepth += 1; ga *= p.a; }
-      else if gdepth > 0 { gdepth -= 1; ga = ifx gdepth < GP_CLIP_DEPTH then gs[gdepth] else 1.0f32; if gdepth == 0 { ga = 1; } }
+      if p.on { if gdepth < GP_CLIP_DEPTH { gs[gdepth] = ga;ga *= p.a; } gdepth += 1; }
+      else if gdepth > 0 { gdepth -= 1; if gdepth < GP_CLIP_DEPTH {ga=gs[gdepth];} }
       continue;
     }
+    if depth>GP_CLIP_DEPTH || gdepth>GP_CLIP_DEPTH {continue;}
     if ga <= 0 { continue; }
     x := p.x + ox; y := p.y + oy;
     if y > y1 || y + prim_extent(p) < y0 { continue; }

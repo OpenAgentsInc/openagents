@@ -75,6 +75,8 @@ surface_loss :: (s: [] UiSurface) -> UiSurfaceLoss {
   b := 1 - s[0].front; sh := s[0].sheet[b];
   l: UiSurfaceLoss;
   l.sheet = sh.lost;
+  if sh.nu>=0 && sh.nu<=sh.under.count && !prim_groups_valid(sh.under[0..<sh.nu],EL_DEPTH) {l.sheet+=1;}
+  if sh.no>=0 && sh.no<=sh.over.count && !prim_groups_valid(sh.over[0..<sh.no],EL_DEPTH) {l.sheet+=1;}
   if sh.under.count > 0 && sh.nu >= sh.under.count { l.under = 1; }
   if sh.over.count > 0 && sh.no >= sh.over.count { l.over = 1; }
   l.rows = s[0].rows[b].lost;
@@ -185,6 +187,13 @@ surface_counts :: (s: [] UiSurface, out: [] u8) -> int {
 }
 
 // ---------------------------------------------------------------- checks
+
+#test "an unmatched paint scope refuses the whole generation, including its new hits" {
+ st:[1]SurfaceStore;sf:=[1]UiSurface.[surface_test(st[..])];s:=sf[..];#assert surface_test_frame(s,"kept",0,1,1);
+ b:=surface_begin(s);sh:=s[0].sheet[b..<b+1];sheet_under(sh,prim_clip(sh[0].under,sh[0].nu,0,0,1,1));
+ _:=elt_row(s[0].rows[b..<b+1],"uncommitted",EL_BUTTON,"",0,0,1,1);
+ #assert !surface_commit(s) && surface_find(s,"kept.1")>=0 && surface_find(s,"uncommitted")<0 && s[0].generation==1;
+}
 
 // A small surface over a test's own arrays: 4 primitives, 4 runs of text, 2 hits and 3 rows a generation.
 SurfaceStore :: struct {

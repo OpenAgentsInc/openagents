@@ -398,7 +398,7 @@ from the sheet's selectable lines; copy goes through the action outbox.
 | Need | Status | Why |
 | --- | --- | --- |
 | Images (`PRIM_IMAGE`; `gpu_draws` returns false for it today) | Not started. No iOS screen shows an image yet: avatars are initials | Avatars, attachments, pictures in messages |
-| Nested clips | Done | Scroll areas inside panels |
+| Nested clips | Built through the semantic table's 16-level budget. Overflow suppresses the subtree; surface commit refuses unbalanced, crossed or over-budget clip/opacity scopes | Scroll areas inside panels |
 | Affine transforms | Not started. The sidebar and covers move by offset (`prim_move`), which is all they need | Drawers and sheets that scale or rotate |
 | Group opacity | Done: `PRIM_ALPHA` (`prim_alpha`, `prim_unalpha`, nested) and `prim_opacity`; `app_enter` fades a message in as it rises. Each primitive takes the opacity; overlaps inside a group are not composited as one layer, which needs a render target | Enter and exit of whole components |
 | Blur and composition | Not started. On iOS the blurred controls are Liquid Glass system views | Menus and sheets over content |
