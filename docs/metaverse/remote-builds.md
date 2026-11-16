@@ -4,9 +4,11 @@ Issue: [#13077](https://github.com/OpenAgentsInc/openagents/issues/13077).
 Code: `coax/remote/remote.sh` (the caller), `coax/remote/host-job.sh` (one job
 on a host), `coax/remote/host-startup.sh` (a host's startup script).
 
-Heavy Coax work runs on a build host in Google Cloud instead of the Mac. The
-Mac's two build slots (`~/.openagents/build-slots/heavy.sh`) run a job only
-when the caller asks with `--local` (#13472).
+On the Mac, `remote.sh run` runs heavy Coax work here first, in the
+caller's checkout and one of the Mac's two build slots, and sends it to a
+build host in Google Cloud only when the Mac is under heavy load (owner,
+2026-11-16, #13645; [Here first](#here-first-a-host-under-load)). Off a Mac,
+and for `--commit` jobs, it always uses a host.
 
 ```sh
 coax/remote/remote.sh run -- coax/web/wasm.sh apps/openagents-web/old/experimental/fivelab.coax \
@@ -14,7 +16,8 @@ coax/remote/remote.sh run -- coax/web/wasm.sh apps/openagents-web/old/experiment
   apps/openagents-web/everglade-step.coax metaverse-engine/core/sticks.coax
 coax/remote/remote.sh run -- coax/bin/coax test apps/openagents-web/old/experimental/fivelab.coax
 coax/remote/remote.sh status        # hosts, free slots, spend, and whether the pool is on
-coax/remote/remote.sh run --local -- CMD   # on this computer's slots, on purpose
+coax/remote/remote.sh run --local -- CMD   # on this computer's slots, on purpose (waits for a slot)
+OA_REMOTE=1 coax/remote/remote.sh run -- CMD   # on a host, whatever the Mac's load
 ```
 
 Or keep calling `heavy.sh` and set `OA_HEAVY_REMOTE=1`: heavy.sh then sends
@@ -449,13 +452,96 @@ there.
 `remote.sh down` stops every host; `remote.sh delete` deletes them and their
 disks.
 
+## Here first, a host under load
+
+Issue: [#13645](https://github.com/OpenAgentsInc/openagents/issues/13645).
+The owner's rule since 2026-11-16: "Make the remote host a backup only if this
+system comes under heavy load. Otherwise, keep it here."
+
+On a Mac, `remote.sh run -- CMD` (no `--commit`) reads four signals once, at
+the call's start (`busy_here` in `remote.sh`), and runs CMD here unless one
+says the Mac is busy:
+
+| Signal | Busy when | Setting |
+| --- | --- | --- |
+| 1-minute load average a core | over 0.75 | `OA_LOCAL_MAX_LOAD` |
+| Free memory (`memory_pressure -Q`) | under 15% | `OA_LOCAL_MIN_FREE_MEM` |
+| The open-file table (`kern.num_files` of `kern.maxfiles`) | 50% full or more, where fd-guard starts logging (the table filled on 2026-11-07) | `OA_LOCAL_MAX_FILES` |
+| Heavy jobs here | both of `~/.openagents/build-slots`' slots held | `OA_LOCAL_SLOTS` (2) |
+
+A job that runs here takes a free slot without waiting (the slots
+`heavy.sh` uses, so the Mac never runs more than two heavy jobs), runs CMD in
+the caller's directory with `OA_REMOTE=0` (a nested call stays here), and
+exits with CMD's status. Nothing is snapshotted, sent or brought back: the
+files CMD writes are already in the checkout. A checkout without
+`coax/bin/coax` goes to a host (`coax/build.sh` installs one). Every call
+prints one line saying where it ran and why:
+
+```
+remote: here, slot 1 of 2 (load 4.15 on 18 cores, memory 71% free, files 2% of the table)
+remote: on a build host: this computer is busy: load 15.8 on 18 cores is over 0.75 a core
+remote: on a build host: this computer's 2 heavy slots are all held
+remote: on a build host: OA_REMOTE=1
+```
+
+- `OA_REMOTE=1`: always a host. The API suite (Postgres, ASan, 16 minutes)
+  still runs only on a host, so its commands below set it.
+- `OA_REMOTE=0` or `--local`: always here, waiting for a slot through
+  `heavy.sh`, as before.
+- `OA_REMOTE_AUTO=0`: the old default, a host always. It is the default off a
+  Mac (coderos, the hosts themselves). `OA_REMOTE_HOST` and
+  `OA_REMOTE_DRY_RUN` also mean a host.
+
+`coax/remote/test-remote.sh` checks that an idle computer runs the command
+here in a slot and says so, that the command's own status comes back (75
+included, which is also `lockf`'s busy status), and that load past the limit
+or held slots send it to a host with the reason.
+
+Measured on 2026-11-16 on the owner's Mac (18 cores, load 4 to 7 from other
+agents), `apps/openagents-ios/generate.sh` after a comment appended to
+`apps/openagents-ios/chat.coax` (the compile is warm in the resident compiler,
+`coax serve`):
+
+| | Edit to generated C and Metal |
+| --- | --- |
+| Before: on `oa-build-10` | 8.7 to 10 s (setup 5 s, command 0 to 1 s) |
+| Here | 0.17 to 0.45 s |
+| `OA_REMOTE=1`, with the faster host path below | 2.5 to 3.7 s (the Mac at load 10 to 15) |
+
+### A faster job on a host
+
+What a small repeat job spent on a host, traced on 2026-11-16 (oa-build-10):
+`coax/published.sh name` 2.1 s and `provenance.sh verify` inside `nix shell`
+2.4 s (both hash every compiler input, one process a file), `git fetch origin
+main` 0.25 s, the bundle 0.27 s; and on the Mac five SSH round trips (ready,
+free slots, send, run, files, timings) at about 65 ms to us-central1.
+
+- **The slot's compiler check is kept.** A slot remembers the last check that
+  passed under a key of everything it reads: the Git ids of the compiler's
+  input directories and files at the job's commit, with no untracked, ignored
+  or changed file among them, the nixpkgs pin, the toolchain, the environment
+  `fingerprint()` names, the slot's fingerprint record, and the installed
+  files' inode, size and time. The same key skips both steps (the job's line
+  says `compiler as the slot's last job`); anything else checks as before, and
+  `OA_REMOTE_FRESH_COMPILER=1` drops the key.
+- **main is fetched when the bundle needs it** or after 2 minutes: a bundle is
+  cut against the caller's `origin/main`, so a newer main there still makes
+  the host fetch it.
+- **Fewer round trips.** The cached host's readiness and free slots are one
+  SSH call, the send and the run one, and the files and timings one.
+
+The setup went from 4 to 5 s to 0 to 1 s a job; the job from 8.7 s to 2.5 to
+3.7 s on a loaded Mac. What is left is the snapshot (`git add -A` into a
+scratch index and a bundle), the cache token and the round trips.
+
 ## When the Mac runs the job
 
-Only when the caller asks (#13472). `remote.sh run` runs the command through
-`heavy.sh` (or directly, with no heavy.sh) when `--local` or `OA_REMOTE=0` is
-given, and never otherwise. Until 2026-11-13 a tripped spend cap or a host
-that could not start moved every agent's builds onto the Mac without a word
-(docs/audits/2026-11-13-build-hosts.md).
+`--local`, `OA_REMOTE=0`, or (on a Mac) a Mac that is not busy, above. With
+`--local` or `OA_REMOTE=0` the command runs through `heavy.sh` (or directly,
+with no heavy.sh). Until 2026-11-13 a tripped spend cap or a host that could
+not start moved every agent's builds onto the Mac without a word
+(docs/audits/2026-11-13-build-hosts.md); that still never happens: a job that
+the Mac's load sent to a host stops when no host can take it.
 
 When no host can take the job, the call exits 97 with one line that names the
 cause and the fix:
@@ -940,9 +1026,9 @@ the signer, the runner and the API, and runs every route's tests. Run it on a
 host:
 
 ```sh
-coax/remote/remote.sh run -- coax/web/api/test.sh             # the whole suite
-coax/remote/remote.sh run -- coax/web/api/test.sh --part 1/2  # and --part 2/2 in a second call at once
-coax/remote/remote.sh run -- env API_TESTS_ONLY=auth_checks.coax coax/web/api/test.sh   # one tests/ file or test_X.py
+OA_REMOTE=1 coax/remote/remote.sh run -- coax/web/api/test.sh             # the whole suite
+OA_REMOTE=1 coax/remote/remote.sh run -- coax/web/api/test.sh --part 1/2  # and --part 2/2 in a second call at once
+OA_REMOTE=1 coax/remote/remote.sh run -- env API_TESTS_ONLY=auth_checks.coax coax/web/api/test.sh   # one tests/ file or test_X.py
 ```
 
 Each run makes its own Postgres cluster (`initdb` in a temporary directory,

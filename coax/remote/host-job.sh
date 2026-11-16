@@ -120,8 +120,14 @@ fi
 (
   flock 8
   cd ~/oa || exit 1
-  git fetch -q origin main || exit 1
-  git fetch -q "$in/bundle" "+refs/oa-remote/*:refs/oa-remote/*" || exit 1
+  # main when it was last fetched over 2 minutes ago, or when the bundle needs
+  # commits this clone lacks (#13645: 0.25 s a job saved; a bundle is cut
+  # against the caller's origin/main, so a newer main there still fetches it).
+  if [[ -z "$(find .oa-main-fetched -mmin -2 2> /dev/null)" ]] || ! git fetch -q "$in/bundle" "+refs/oa-remote/*:refs/oa-remote/*" 2> /dev/null; then
+    git fetch -q origin main || exit 1
+    touch .oa-main-fetched
+    git fetch -q "$in/bundle" "+refs/oa-remote/*:refs/oa-remote/*" || exit 1
+  fi
   if [[ ! -d "$tree/.git" && ! -f "$tree/.git" ]]; then
     git worktree add -q --detach "$tree" "$commit" || exit 1
   fi
@@ -143,7 +149,6 @@ rm -rf "$in"
 # The compiler: coax/build.sh installs the published Linux build for this
 # tree's compiler sources (or bootstraps one), once per source fingerprint.
 cd "$tree" || infra "no tree"
-fingerprint="$(coax/published.sh name "$tree" 2> /dev/null || echo unknown)"
 compiler_line=""
 # The Linux release toolchain (publish-host.sh): static GCC for musl from
 # nixpkgs. The fingerprint names the toolchain too, so it is taken in it.
@@ -159,9 +164,39 @@ slot_compiler_ok() {
   [[ -x coax/bin/coax && "$(cat ~/slots/$slot/compiler 2> /dev/null)" == "$fingerprint" ]] || return 1
   "${toolchain[@]}" coax/provenance.sh verify "$tree" coax/bin/coax coax/bin/provenance-check coax/bin/provenance.record > /dev/null 2>&1
 }
+# The slot's last check, kept (#13645): published.sh name and provenance.sh
+# verify hash every compiler input one process a file, inside nix shell, about
+# 4.5 s of every job. The check is skipped when nothing it reads can differ
+# from the last time it passed in this slot: the Git ids of every input
+# fingerprint() reads, with no untracked, ignored or changed file among them,
+# the nixpkgs pin, the toolchain and the environment fingerprint() names, and
+# the installed files' inode, size and time. Anything else checks as before.
+compiler_memo() {
+  local dirs=(coax/src coax/bootstrap coax/lib/compiler coax/lib/proto)
+  local files=(coax/build.sh coax/bootstrap-build.sh coax/bootstrap-mutation-shards.sh coax/mutation-gate.sh coax/check-proto-cap.sh
+               coax/provenance.sh coax/provenance-bridge.c coax/release.coax coax/release-model.coax coax/changelog.coax
+               coax/changelog-model.coax coax/changelog-bridge.c coax/lib/crypto/sha256-kernel.coax scripts/coax-release.sh)
+  [[ -z "$(git ls-files -o -- "${dirs[@]}" "${files[@]}" 2> /dev/null | head -1)" ]] || return 1
+  git diff --quiet HEAD -- "${dirs[@]}" "${files[@]}" 2> /dev/null || return 1
+  { echo coax-remote-compiler-memo-1
+    git rev-parse "${dirs[@]/#/HEAD:}" || return 1
+    git ls-tree HEAD -- "${files[@]}" || return 1
+    echo "$pin"; printf '%s\n' "${toolchain[@]}"
+    for v in COAX_LDFLAGS COAX_HOST_TARGET SDKROOT MACOSX_DEPLOYMENT_TARGET IPHONEOS_DEPLOYMENT_TARGET DEVELOPER_DIR CPATH C_INCLUDE_PATH CPLUS_INCLUDE_PATH LIBRARY_PATH; do printf '%s=%s\n' "$v" "${!v-}"; done
+    cat ~/slots/$slot/compiler 2> /dev/null
+    stat -c '%n %i %s %Y' coax/bin/coax coax/bin/provenance-check coax/bin/provenance.record || return 1
+  } 2> /dev/null | sha256sum | cut -c1-64
+}
+memo_file=~/slots/$slot/compiler.memo
 # OA_REMOTE_FRESH_COMPILER=1: the caller's retry of a check the host could not
 # judge (after.sh, #13256): the slot's compiler is installed again first.
-[[ "${OA_REMOTE_FRESH_COMPILER:-0}" != 1 ]] || rm -f ~/slots/$slot/compiler
+[[ "${OA_REMOTE_FRESH_COMPILER:-0}" != 1 ]] || rm -f ~/slots/$slot/compiler "$memo_file"
+memo="$(compiler_memo)" || memo=""
+if [[ -n "$memo" && "$(cat "$memo_file" 2> /dev/null)" == "$memo" ]]; then
+  compiler_line="compiler as the slot's last job"
+else
+rm -f "$memo_file"
+fingerprint="$(coax/published.sh name "$tree" 2> /dev/null || echo unknown)"
 if ! slot_compiler_ok; then
   # A compiler another host built for these sources (#13119): build.sh's
   # cache entry (~/.cache/coax-release/FINGERPRINT), from the shared bucket
@@ -195,6 +230,8 @@ if ! slot_compiler_ok; then
         "$tool" put "$compiler_object" ~/slots/$slot/compiler-out.tgz; rm -f ~/slots/$slot/compiler-out.tgz ) > /dev/null 2>&1 &
     compiler_line="compiler built here, shared"
   fi
+fi
+memo="$(compiler_memo)" && [[ -n "$memo" ]] && echo "$memo" > "$memo_file"
 fi
 ready=$(date +%s)
 # Paths in the command that named the caller's checkout (@ROOT@) name this one.

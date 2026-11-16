@@ -4,13 +4,15 @@
 # and the Mac's build slots (~/.openagents/build-slots/heavy.sh) with --local.
 #
 #   coax/remote/remote.sh run [--local] -- CMD [ARGS...]
-#                              run CMD from this directory of this checkout on a
+#                              on a Mac: run CMD here, in a free build slot, unless
+#                              this computer is busy (busy_here, #13645), else on a
 #                              host: the checkout's commit and its uncommitted
 #                              changes (untracked files too) go there, and the
 #                              files CMD writes come back. With no host it stops
 #                              (exit 97) with one line naming the cause and the
-#                              fix; it runs on this computer only with --local
-#                              (#13472). --no-fallback is accepted and changes nothing.
+#                              fix. --local or OA_REMOTE=0: here always (waiting
+#                              for a slot); OA_REMOTE=1: a host always. One line
+#                              says where it ran and why. --no-fallback changes nothing.
 #   coax/remote/remote.sh run --commit REV [--out DIR] -- CMD ...
 #                              run CMD from the root of commit REV instead (the
 #                              green-main pipeline's checks): no snapshot, and
@@ -23,6 +25,11 @@
 #
 # Settings (environment):
 #   OA_REMOTE=0                  never use a host: run on this computer's slots (as --local)
+#   OA_REMOTE=1                  always use a host
+#   OA_REMOTE_AUTO               1: here first, a host under load (the default on a Mac); 0: a host
+#                                always (the default elsewhere). OA_LOCAL_MAX_LOAD (0.75 a core),
+#                                OA_LOCAL_MIN_FREE_MEM (15%), OA_LOCAL_MAX_FILES (50%) and
+#                                OA_LOCAL_SLOTS (2) set what "under load" is
 #   OA_REMOTE_DAILY_USD          the most the hosts may cost over 24 hours (default: what
 #                                OA_REMOTE_MAX_HOSTS hosts cost running all day, so the host
 #                                count is the one control)
@@ -236,9 +243,10 @@ cached_host() {
   local name ip free
   [[ -f "$state/host" ]] && read -r name ip < "$state/host" || return 1
   [[ "$name" != "${OA_REMOTE_AVOID:-}" ]] || return 1
-  [[ -n "$ip" ]] && ready "$name" "$ip" || return 1
-  free="$(free_slots "$name" "$ip")"
-  (( free > 0 )) || return 1
+  [[ -n "$ip" ]] || return 1
+  # ready and free_slots in one round trip (#13645).
+  free="$(ssh_to "$name" "$ip" "test -f /var/lib/oa-remote-ready && touch ~/busy && { n=0; for s in \$(seq $first_slot $slots); do mkdir -p ~/slots/\$s; flock -n ~/slots/\$s/lock true && n=\$((n + 1)); done; echo \$n; }" < /dev/null 2> /dev/null)" || return 1
+  (( ${free:-0} > 0 )) || return 1
   echo "$name $ip"
 }
 
@@ -248,6 +256,62 @@ local_run() {   # the Mac's own slots
   export OA_REMOTE=0
   if [[ -x "$HOME/.openagents/build-slots/heavy.sh" ]]; then exec "$HOME/.openagents/build-slots/heavy.sh" "$@"; fi
   exec "$@"
+}
+
+# Here first, a host only under load (owner, 2026-11-16, #13645). On a Mac,
+# `run` without --commit runs the command in the caller's checkout, in one of
+# this computer's build slots, unless one of these says the Mac is busy; then
+# it goes to a host. Each is read once, at the call's start:
+#   OA_LOCAL_MAX_LOAD      the 1-minute load average a core (default 0.75)
+#   OA_LOCAL_MIN_FREE_MEM  the free memory, in percent (default 15; memory_pressure -Q)
+#   OA_LOCAL_MAX_FILES     the system's open-file table, in percent full (default 50, where
+#                          fd-guard starts logging; the table filled on 2026-11-07)
+#   OA_LOCAL_SLOTS         heavy jobs here at once (default 2, heavy.sh's slots): a job that
+#                          finds them all held goes to a host instead of waiting
+# OA_REMOTE=1 always uses a host; OA_REMOTE=0 or --local always runs here (and
+# waits for a slot). OA_REMOTE_AUTO=0 restores the old default (a host always);
+# it is the default off a Mac. OA_REMOTE_HOST and OA_REMOTE_DRY_RUN use a host.
+busy_here() {   # returns 0 with busy_why set when this computer should not take a heavy job now; else 1, with here_state
+  local cores load files maxf free
+  cores="$(sysctl -n hw.ncpu 2> /dev/null || nproc 2> /dev/null || echo 1)"
+  load="$(sysctl -n vm.loadavg 2> /dev/null | awk '{ print $2 }')"
+  [[ -n "$load" ]] || load="$(cut -d' ' -f1 /proc/loadavg 2> /dev/null)"
+  if [[ -n "$load" ]] && awk -v l="$load" -v c="$cores" -v m="${OA_LOCAL_MAX_LOAD:-0.75}" 'BEGIN { exit !(l / c > m) }'; then
+    busy_why="load $load on $cores cores is over ${OA_LOCAL_MAX_LOAD:-0.75} a core"; return 0
+  fi
+  free="$(memory_pressure -Q 2> /dev/null | awk -F': *' '/free percentage/ { sub("%", "", $2); print $2 }')"
+  [[ -n "$free" ]] || free="$(awk '/^MemTotal/ { t = $2 } /^MemAvailable/ { a = $2 } END { if (t) printf "%d", a * 100 / t }' /proc/meminfo 2> /dev/null)"
+  if [[ -n "$free" ]] && (( free < ${OA_LOCAL_MIN_FREE_MEM:-15} )); then
+    busy_why="memory is ${free}% free, under ${OA_LOCAL_MIN_FREE_MEM:-15}%"; return 0
+  fi
+  files="$(sysctl -n kern.num_files 2> /dev/null)"; maxf="$(sysctl -n kern.maxfiles 2> /dev/null)"
+  [[ -n "$files" ]] || read -r files _ maxf < /proc/sys/fs/file-nr 2> /dev/null
+  if [[ -n "$files" && -n "$maxf" ]] && (( maxf > 0 && files * 100 / maxf >= ${OA_LOCAL_MAX_FILES:-50} )); then
+    busy_why="the open-file table is $(( files * 100 / maxf ))% full ($files of $maxf), over ${OA_LOCAL_MAX_FILES:-50}%"; return 0
+  fi
+  here_state="load $load on $cores cores, memory ${free:-?}% free, files $(( ${files:-0} * 100 / ${maxf:-1} ))% of the table"
+  return 1
+}
+here_run() {   # CMD...: runs it here in a free slot and exits with its status; returns (reason in remote_why) to use a host
+  local slots_dir="$HOME/.openagents/build-slots" s n="${OA_LOCAL_SLOTS:-2}" started rc
+  local busy_why=""
+  if busy_here; then remote_why="this computer is busy: $busy_why"; return 0; fi
+  if [[ ! -x "$(git rev-parse --show-toplevel 2> /dev/null)/coax/bin/coax" ]]; then
+    remote_why="this checkout has no compiler (coax/build.sh installs one)"; return 0
+  fi
+  mkdir -p "$slots_dir"
+  started="$(mktemp "${TMPDIR:-/tmp}/oa-here.XXXXXXXX")" && rm -f "$started" || { remote_why="no scratch file here"; return 0; }
+  for (( s = 1; s <= n; s++ )); do
+    # The slot's lock runs a wrapper that marks the start, so a busy slot (lockf 75,
+    # flock 1) is told apart from the command's own exit status.
+    local wrap=(env OA_REMOTE=0 OA_LOCAL_SLOT="$s" bash -c ': > "$1"; echo "$2" >&2; shift 2; exec "$@"' _ "$started"
+                "remote: here, slot $s of $n ($here_state)")
+    if command -v lockf > /dev/null; then lockf -s -t 0 "$slots_dir/slot-$s" "${wrap[@]}" "$@"; rc=$?
+    else flock -n "$slots_dir/slot-$s" "${wrap[@]}" "$@"; rc=$?; fi
+    if [[ -e "$started" ]]; then rm -f "$started"; exit "$rc"; fi
+  done
+  remote_why="this computer's $n heavy slots are all held"
+  return 0
 }
 
 # What one call made, removed: its scratch folder, its bundle's ref and its
@@ -277,6 +341,15 @@ run() {
   # This computer runs the command only when asked (#13472): a commit's own
   # files only run on a host (the Mac's slots would need a checkout of it).
   if [[ -z "$at_commit" ]] && [[ "$force_local" == 1 || "${OA_REMOTE:-}" == 0 ]]; then local_run "" "$@"; fi
+  # Here first, a host only when this computer is busy (#13645; busy_here).
+  local remote_why="OA_REMOTE=1" auto=0 here_state=""
+  [[ "$(uname -s)" == Darwin ]] && auto=1
+  if [[ -n "$at_commit" ]]; then remote_why="a commit's own files run on a host"
+  elif [[ "${OA_REMOTE:-}" != 1 && "${OA_REMOTE_AUTO:-$auto}" == 1 && -z "${OA_REMOTE_HOST:-}" && "${OA_REMOTE_DRY_RUN:-}" != 1 ]]; then
+    here_run "$@"
+  elif [[ "${OA_REMOTE:-}" != 1 ]]; then remote_why="hosts by default here (OA_REMOTE_AUTO=0, OA_REMOTE_HOST or not a Mac)"
+  fi
+  say "on a build host: $remote_why"
   fail() {   # why CMD...: one line, the cause and the fix, and exit 97; never this computer
     local why="$1"; shift
     cleanup
@@ -368,8 +441,6 @@ run() {
     elif (( attempt == 1 )); then host="$(cached_host || lock "$state/acquire.lock" "$0" _acquire)"
     else host="$(lock "$state/acquire.lock" "$0" _acquire)"; fi || fail "the pool is off: no build host could start or be made (spot capacity, or gcloud). Fix: coax/remote/remote.sh status and coax/remote/remote.sh up; or run here with --local" "$@"
     read -r name ip <<< "$host"; [[ -n "${OA_REMOTE_HOST:-}" ]] || echo "$name $ip" > "$state/host"
-    (cd "$tmp" && COPYFILE_DISABLE=1 tar --no-xattrs -cf - spec bundle host-job.sh shared-cache.sh nixpkgs.rev) | ssh_to "$name" "$ip" "mkdir -p ~/inbox/$inbox && tar --warning=no-unknown-keyword -xf - -C ~/inbox/$inbox && touch ~/busy" \
-      || fail "could not send the job to $name. Fix: coax/remote/remote.sh status; run it again" "$@"
     sent=$(now)
     # Every host full: look again every 10 s for the first slot any host frees,
     # for up to OA_REMOTE_WAIT seconds (default 1800), then wait on this host.
@@ -388,8 +459,16 @@ run() {
         done ) > /dev/null 2>&1 &
       refresher=$!
     fi
-    ssh_to "$name" "$ip" "OA_REMOTE_SLOTS=$slots OA_REMOTE_SLOT_FIRST=$first_slot OA_REMOTE_NO_WAIT=$nowait OA_REMOTE_TIMEOUT=${OA_REMOTE_TIMEOUT:-0} OA_REMOTE_FRESH_COMPILER=${OA_REMOTE_FRESH_COMPILER:-0} bash ~/inbox/$inbox/host-job.sh run $inbox" < /dev/null
+    # The job's files and its run in one round trip (#13645): exit 97 from the
+    # unpack is "could not send", as before; the command's stdin is /dev/null.
+    (cd "$tmp" && COPYFILE_DISABLE=1 tar --no-xattrs -cf - spec bundle host-job.sh shared-cache.sh nixpkgs.rev) |
+      ssh_to "$name" "$ip" "{ mkdir -p ~/inbox/$inbox && tar --warning=no-unknown-keyword -xf - -C ~/inbox/$inbox && touch ~/busy; } || exit 95
+        OA_REMOTE_SLOTS=$slots OA_REMOTE_SLOT_FIRST=$first_slot OA_REMOTE_NO_WAIT=$nowait OA_REMOTE_TIMEOUT=${OA_REMOTE_TIMEOUT:-0} OA_REMOTE_FRESH_COMPILER=${OA_REMOTE_FRESH_COMPILER:-0} bash ~/inbox/$inbox/host-job.sh run $inbox < /dev/null"
     status=$?
+    if [[ $status == 95 ]] && ! ssh_to "$name" "$ip" "grep -qx 95 ~/results/$job/status" < /dev/null 2> /dev/null; then
+      [[ -z "$refresher" ]] || { pkill -P "$refresher" 2> /dev/null; kill "$refresher" 2> /dev/null; refresher=""; }
+      fail "could not send the job to $name. Fix: coax/remote/remote.sh status; run it again" "$@"
+    fi
     # Its sleep too: an orphaned sleep keeps the caller's descriptors, and with
     # them a lock such as after.sh's (#13102).
     [[ -z "$refresher" ]] || { pkill -P "$refresher" 2> /dev/null; kill "$refresher" 2> /dev/null; wait "$refresher" 2> /dev/null; refresher=""; }
@@ -406,15 +485,19 @@ run() {
   # The files the command wrote, into this checkout.
   local dest="$root"
   [[ -z "$at_commit" ]] || dest="$out_dir"
+  # The files and the job's timings in one round trip (#13645): the timings on stderr.
+  local back=""
   if [[ -n "$dest" ]]; then
     mkdir -p "$dest"
-    ssh_to "$name" "$ip" "cat ~/results/$job/files.tar" < /dev/null | tar -xf - -C "$dest" 2> /dev/null \
+    ssh_to "$name" "$ip" "head -1 ~/results/$job/times >&2; cat ~/results/$job/files.tar" < /dev/null 2> "$tmp/times" | tar -xf - -C "$dest" 2> /dev/null \
       || say "could not bring the files back from $name"
+    back="$(head -1 "$tmp/times" 2> /dev/null)"
+  else
+    back="$(ssh_to "$name" "$ip" "cat ~/results/$job/times" < /dev/null 2> /dev/null)"
   fi
-  local back; back="$(ssh_to "$name" "$ip" "cat ~/results/$job/times" < /dev/null 2> /dev/null)"
   local total=$(( $(now) - started ))
   record job "$name" "$total" "status $status: $*"
-  say "$name: $total s in all (snapshot and send $((sent - started)) s, $bundle_kb KB; ${back:-no timings}); about \$$(awk -v s="$total" -v r="$rate" 'BEGIN { printf "%.3f", s / 3600 * r }')"
+  say "$name: $total s in all (snapshot and host pick $((sent - started)) s, sent $bundle_kb KB; ${back:-no timings}); about \$$(awk -v s="$total" -v r="$rate" 'BEGIN { printf "%.3f", s / 3600 * r }')"
   exit "$status"
 }
 
@@ -436,5 +519,5 @@ case "${1:-}" in
   delete) hosts | while read -r name zone status ip; do
             gcloud compute instances delete "$name" --zone "$zone" --project "$project" --quiet > /dev/null && echo "deleted $name"
           done; rm -f "$state/host" ;;
-  *) sed -n '2,43p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
+  *) sed -n '2,/^set -uo/p' "$0" | grep '^#' | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
 esac

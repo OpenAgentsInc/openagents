@@ -25,6 +25,8 @@ repo="$w/repo"; mkdir -p "$repo/coax/remote" "$repo/a/build-remote/old" "$repo/b
 cp "$here/remote.sh" "$here/host-job.sh" "$here/shared-cache.sh" "$repo/coax/remote/"
 (cd "$repo" && git init -q && git -c user.name=t -c user.email=t@t add -A && git -c user.name=t -c user.email=t@t commit -qm base && git update-ref refs/remotes/origin/main HEAD) || exit 2
 echo new > "$repo/a/untracked.txt"
+# A compiler in the checkout: a call runs here only where there is one (#13645).
+mkdir -p "$repo/coax/bin" && printf '#!/bin/sh\n' > "$repo/coax/bin/coax" && chmod +x "$repo/coax/bin/coax"
 echo junk > "$repo/build-remote/oa-remote.x/bundle"; echo junk > "$repo/a/build-remote/old/bundle"
 # The state folder with a key already made, a fake gcloud that waits until it is
 # stopped, and a HOME with no build slots (the fallback runs the command itself).
@@ -61,17 +63,33 @@ else bad "dry run: status $s: $out"; fi
 clean "a dry run"
 
 # 2. Failure: never this computer unless asked (#13472).
-OA_REMOTE_DAILY_USD=0 call run --no-fallback -- true > /dev/null 2>&1; s=$?
+OA_REMOTE=1 OA_REMOTE_DAILY_USD=0 call run --no-fallback -- true > /dev/null 2>&1; s=$?
 [[ $s == 97 ]] && ok "over budget with --no-fallback exits 97" || bad "over budget with --no-fallback: status $s"
 clean "a failed call"
-out="$(OA_REMOTE_DAILY_USD=0 call run -- touch "$w/ran-here" 2>&1)"; s=$?
+out="$(OA_REMOTE=1 OA_REMOTE_DAILY_USD=0 call run -- touch "$w/ran-here" 2>&1)"; s=$?
 [[ $s == 97 && ! -e "$w/ran-here" ]] && ok "over budget stops with 97 and doesn't run here" || bad "over budget without --local: status $s"
-[[ "$(wc -l <<< "$out" | tr -d ' ')" == 1 ]] && grep -q '^remote: the pool is off: the cap: .*Fix: coax/remote/remote.sh status' <<< "$out" \
-  && ok "it says so in one line, with the cause and the fix" || bad "the line: $out"
+[[ "$(wc -l <<< "$out" | tr -d ' ')" == 2 ]] && grep -qx 'remote: on a build host: OA_REMOTE=1' <<< "$out" &&
+  grep -q '^remote: the pool is off: the cap: .*Fix: coax/remote/remote.sh status' <<< "$out" \
+  && ok "it says where and why, then the cause and the fix in one line" || bad "the line: $out"
 clean "a call that stopped"
 OA_REMOTE_DAILY_USD=0 call run --local -- touch "$w/ran-here" > /dev/null 2>&1; s=$?
 [[ $s == 0 && -e "$w/ran-here" ]] && ok "--local runs it here" || bad "--local: status $s"
 clean "a call run here"
+# Here first, a host only under load (#13645). The limits are set so this
+# computer's own load can't change which way a case goes.
+idle=(OA_LOCAL_MAX_LOAD=100000 OA_LOCAL_MIN_FREE_MEM=0 OA_LOCAL_MAX_FILES=101)
+out="$(env "${idle[@]}" OA_REMOTE_AUTO=1 OA_REMOTE_DAILY_USD=0 bash -c 'cd "$1/a" && TMPDIR="$2" bash "$1/coax/remote/remote.sh" run -- touch "$3/auto-here"' _ "$repo" "$tmp" "$w" 2>&1)"; s=$?
+[[ $s == 0 && -e "$w/auto-here" ]] && grep -q '^remote: here, slot 1 of 2 (load ' <<< "$out" \
+  && ok "an idle computer runs it here, in a slot, and says so" || bad "here first: status $s: $out"
+env "${idle[@]}" OA_REMOTE_AUTO=1 OA_REMOTE_DAILY_USD=0 bash -c 'cd "$1/a" && TMPDIR="$2" bash "$1/coax/remote/remote.sh" run -- sh -c "exit 75"' _ "$repo" "$tmp" > /dev/null 2>&1; s=$?
+[[ $s == 75 ]] && ok "the command's own status comes back, even lockf's busy one" || bad "status 75 came back as $s"
+out="$(OA_REMOTE_AUTO=1 OA_LOCAL_MAX_LOAD=-1 OA_REMOTE_DAILY_USD=0 call run -- touch "$w/busy-here" 2>&1)"; s=$?
+[[ $s == 97 && ! -e "$w/busy-here" ]] && grep -q '^remote: on a build host: this computer is busy: load ' <<< "$out" \
+  && ok "a busy computer sends it to a host and says why" || bad "busy: status $s: $out"
+out="$(OA_LOCAL_MAX_LOAD=100000 OA_LOCAL_MIN_FREE_MEM=0 OA_LOCAL_MAX_FILES=101 OA_REMOTE_AUTO=1 OA_LOCAL_SLOTS=0 OA_REMOTE_DAILY_USD=0 call run -- touch "$w/full-here" 2>&1)"; s=$?
+[[ $s == 97 && ! -e "$w/full-here" ]] && grep -q "^remote: on a build host: this computer's 0 heavy slots are all held" <<< "$out" \
+  && ok "held slots send it to a host" || bad "slots held: status $s: $out"
+clean "calls that chose where to run"
 
 # 3. Interrupted while it waits for a host: the scratch folder goes with it.
 interrupt() {   # signal status

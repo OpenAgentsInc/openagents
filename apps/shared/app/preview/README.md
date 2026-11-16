@@ -47,7 +47,7 @@ the picture to compare.
 ## What runs, and when
 
 - **Generate** (Coax to C and Coax to Metal) is `apps/openagents-ios/generate.sh`,
-  one build-host job. It runs only when the SHA-256 over every source `coax deps`
+  one `remote.sh run` job: on the Mac unless it is busy (docs/metaverse/remote-builds.md, "Here first"). It runs only when the SHA-256 over every source `coax deps`
   names, `generate.sh` and the compiler's digest differs from
   `apps/openagents-ios/Generated/.inputs`. All three loops share that stamp, so
   a shot after a simulator build (or the other way round) does not generate
@@ -110,6 +110,7 @@ Where the time goes in an edit:
 | Step | Time |
 | --- | --- |
 | Generate, one build-host job | 7.6 to 7.8 s, of which the compile itself is about 1 s; the host's checkout and compiler setup is 5 s and sending the snapshot 1 to 2 s |
+| Generate since #13645 (same day): on the Mac when it is not busy | 0.17 to 0.45 s; on a host when it is, 2.5 to 3.7 s |
 | Preview compile on the Mac (the generated library) | 0.9 s |
 | Preview draw | 0.3 to 0.5 s |
 | `xcodebuild`, incremental | 2.9 s (1.1 s with nothing to compile) |

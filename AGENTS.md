@@ -131,21 +131,25 @@ and the five costliest pitfalls. `coax vocab NAME` prints what a library
 name, keyword, error code or foreign spelling is.
 
 Heavy commands (wasm.sh, build.sh, `coax test` of a big unit, test suites)
-run on a remote build host, not the Mac: prefix them with
-`coax/remote/remote.sh run --` (or set `OA_HEAVY_REMOTE=1` for heavy.sh). It
-sends the checkout's commit and uncommitted changes, streams the output, and
-brings the written files back. With no host it stops with one line naming the
-cause and the fix (`remote.sh status`); it runs on the Mac only with
-`--local` (docs/metaverse/remote-builds.md).
+go through `coax/remote/remote.sh run --` (or set `OA_HEAVY_REMOTE=1` for
+heavy.sh). On the Mac it runs the command here, in the caller's checkout and
+one of the Mac's two build slots, and sends it to a remote build host only
+when the Mac is under heavy load: load over 0.75 a core, memory under 15%
+free, the open-file table 50% full, or both slots held (owner, 2026-11-16).
+Each call prints one line saying where it ran and why. `OA_REMOTE=1` always
+uses a host, `OA_REMOTE=0` or `--local` always runs here. On a host it sends
+the checkout's commit and uncommitted changes, streams the output, and brings
+the written files back; with no host it stops with one line naming the cause
+and the fix (`remote.sh status`) (docs/metaverse/remote-builds.md).
 
-The API suite (`coax/web/api/test.sh`: Postgres, ASan, every route) is one of
-them. Never run it on the Mac; run it on a host, whole or in two parts side
-by side (docs/metaverse/remote-builds.md, "The API suite"):
+The API suite (`coax/web/api/test.sh`: Postgres, ASan, every route) still
+never runs on the Mac: run it on a host with `OA_REMOTE=1`, whole or in two
+parts side by side (docs/metaverse/remote-builds.md, "The API suite"):
 
 ```sh
-coax/remote/remote.sh run -- coax/web/api/test.sh            # the whole suite, about 16 minutes
-coax/remote/remote.sh run -- coax/web/api/test.sh --part 1/2 # and 2/2 in a second call at once: 13 minutes
-coax/remote/remote.sh run -- env API_TESTS_ONLY=auth_checks.coax coax/web/api/test.sh  # only that tests/ file (or test_X.py)
+OA_REMOTE=1 coax/remote/remote.sh run -- coax/web/api/test.sh            # the whole suite, about 16 minutes
+OA_REMOTE=1 coax/remote/remote.sh run -- coax/web/api/test.sh --part 1/2 # and 2/2 in a second call at once: 13 minutes
+OA_REMOTE=1 coax/remote/remote.sh run -- env API_TESTS_ONLY=auth_checks.coax coax/web/api/test.sh  # only that tests/ file (or test_X.py)
 ```
 
 To serve or drive pages in a fresh worktree, fetch main's built pages
@@ -155,7 +159,7 @@ module you changed with `wasm.sh`. Don't run a full
 
 ```sh
 coax/remote/pages.sh origin/main                       # main's built pages into this worktree (never a full build.sh)
-coax/remote/remote.sh run -- coax/bin/coax test FILE   # any command below, on a build host
+coax/remote/remote.sh run -- coax/bin/coax test FILE   # any command below: here, or on a host when the Mac is busy
 coax/build.sh test                          # compiler (from ~/.cache/coax-release, else the published build for this platform, else a bootstrap) + every Coax suite (over 15 minutes: use parts)
 coax/tests/run.sh --part I/8                # after coax/build.sh: one eighth of the Coax suites (1/8 ... 8/8, each under 15 minutes)
 coax/tests/run.sh --only UNIT...            # just those suites (--list names them)
