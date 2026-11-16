@@ -1,0 +1,36 @@
+// Splice Bots rules: the edit bay's core reader (SpliceCoreReader.h, C-08; GDD 04 UE-CRAFT-06, -10,
+// UE-CIN-01; GDD 01 GAME-STORY-14). The splice rules refuse the core as not a card, so it has its own
+// rule. Reading consumes the one core from her container (INFERRED in the C++). The station applies it
+// and tells the ending.
+#load "splice.coax";
+
+SR_CORE_READ_OK :: 0; SR_CORE_READ_EMPTY :: 1; SR_CORE_READ_NOT_THE_CORE :: 2; SR_CORE_READ_CORE_NOT_PRESENT :: 3;
+SrCoreReadResult :: struct { read: bool; refusal: int; consumed_slot: int = -1; }
+
+// UE-CRAFT-10: SPLICE CORE is lit while the reader slot holds the experimental core.
+sr_core_reader_is_lit :: (slot_item: string) -> bool { return slot_item != "" && slot_item == ITEM_EXPERIMENTAL_CORE; }
+// Pressing SPLICE CORE: a slot item, the core, one in her container (the first slot holding it is
+// taken one from). On refusal nothing changes.
+sr_core_reader_read :: (slot_item: string, c: [] SrContainer) -> SrCoreReadResult {
+  r: SrCoreReadResult;
+  if slot_item == "" { r.refusal = SR_CORE_READ_EMPTY; return r; }
+  if !sr_core_reader_is_lit(slot_item) { r.refusal = SR_CORE_READ_NOT_THE_CORE; return r; }
+  for i: 0..<c[0].size {
+    s := c[0].slots[i];
+    if !sr_item_empty(s) && s.item == slot_item {
+      c[0].slots[i].count -= 1;
+      if c[0].slots[i].count <= 0 { c[0].slots[i] = SrItemStack.{}; }
+      r.read = true; r.consumed_slot = i; return r;
+    }
+  }
+  r.refusal = SR_CORE_READ_CORE_NOT_PRESENT;
+  return r;
+}
+// The read as the splice result the ending reads: spliced on a read with the robot unchanged; a refusal
+// is not a card (empty, not the core) or card not present.
+sr_core_read_as_splice :: (read: SrCoreReadResult, robot: SrRobotState) -> SrSpliceResult {
+  s := SrSpliceResult.{spliced = read.read, consumed_slot = read.consumed_slot};
+  if read.read { s.new_robot = robot; }
+  else { s.refusal = ifx read.refusal == SR_CORE_READ_CORE_NOT_PRESENT then SR_SPLICE_CARD_NOT_PRESENT else SR_SPLICE_NOT_A_CARD; }
+  return s;
+}

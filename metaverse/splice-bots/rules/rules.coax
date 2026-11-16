@@ -32,6 +32,11 @@
 #load "sight.coax";
 #load "exit-tuning.coax";
 #load "night-exit.coax";
+#load "core-reader.coax";
+#load "rock-wall.coax";
+#load "jetpack.coax";
+#load "card-queue.coax";
+#load "enemy-plan.coax";
 
 #load "data-checks.coax" #test;
 #load "robot-payload-checks.coax" #test;
@@ -52,3 +57,5 @@
 #load "flow-checks.coax" #test;
 #load "beat-checks.coax" #test;
 #load "night-exit-checks.coax" #test;
+#load "encounter-checks.coax" #test;
+#load "card-enemy-checks.coax" #test;

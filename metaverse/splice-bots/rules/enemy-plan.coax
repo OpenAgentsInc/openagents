@@ -1,0 +1,57 @@
+// Splice Bots rules: the enemy plan interpreter (SpliceEnemyPlan.h, B-05; GDD 04 5.4 UE-AI-20 a foe's
+// routine is data, UE-AI-26 telegraph before an attack, UE-AI-29 powered down stays where it fell).
+// The caller owns the state and feeds the inputs each tick.
+
+// ESpliceEnemyStepKind.
+SR_ENEMY_PATROL :: 0; SR_ENEMY_IDLE :: 1; SR_ENEMY_CHASE :: 2; SR_ENEMY_TELEGRAPH :: 3; SR_ENEMY_ATTACK :: 4; SR_ENEMY_POWERED_DOWN :: 5;
+// duration > 0 ends the step after that many seconds; <= 0 only when the caller reports step_done.
+SrEnemyPlanStep :: struct { kind: int = SR_ENEMY_IDLE; duration: f32; route_index: int = -1; }
+SR_ENEMY_PLAN_MAX :: 16;
+// Steps run in order and loop. on_see_her_step: where a Patrol or Idle step jumps when she is seen.
+SrEnemyPlan :: struct { n: int; steps: [SR_ENEMY_PLAN_MAX] SrEnemyPlanStep; on_see_her_step: int = -1; }
+sr_enemy_plan_add :: (p: [] SrEnemyPlan, s: SrEnemyPlanStep) { if p[0].n < SR_ENEMY_PLAN_MAX { p[0].steps[p[0].n] = s; p[0].n += 1; } }
+SrEnemyPlanState :: struct { step_index: int; time_in_step: f32; stopped: bool; }
+SrEnemyPlanInputs :: struct { dt: f32; powered_down: bool; sees_her: bool; step_done: bool; }
+SrEnemyAction :: struct { kind: int = SR_ENEMY_IDLE; step_index: int = -1; route_index: int = -1; step_changed: bool; }
+SrEnemyPlanResult :: struct { state: SrEnemyPlanState; action: SrEnemyAction; }
+
+sr_enemy_make_action :: (p: SrEnemyPlan, i: int, changed: bool) -> SrEnemyAction {
+  a := SrEnemyAction.{step_index = i, step_changed = changed};
+  if i >= 0 && i < p.n { a.kind = p.steps[i].kind; a.route_index = p.steps[i].route_index; }
+  return a;
+}
+sr_enemy_stopped :: (s: SrEnemyPlanState, i: int) -> SrEnemyPlanResult {
+  r := SrEnemyPlanResult.{state = s};
+  r.state.step_index = i; r.state.stopped = true;
+  r.action = SrEnemyAction.{kind = SR_ENEMY_POWERED_DOWN, step_index = i, step_changed = !s.stopped};
+  return r;
+}
+sr_enemy_enter :: (p: SrEnemyPlan, s: SrEnemyPlanState, i: int) -> SrEnemyPlanResult {
+  if p.steps[i].kind == SR_ENEMY_POWERED_DOWN { return sr_enemy_stopped(s, i); }
+  r := SrEnemyPlanResult.{state = s};
+  r.state.step_index = i; r.state.time_in_step = 0.0;
+  r.action = sr_enemy_make_action(p, i, true);
+  return r;
+}
+// One tick: powered down stops for good; an empty plan idles; seeing her on Patrol or Idle jumps to
+// on_see_her_step; else the step ends by time or step_done and the next begins, looping.
+sr_enemy_plan_advance :: (p: SrEnemyPlan, s: SrEnemyPlanState, inp: SrEnemyPlanInputs) -> SrEnemyPlanResult {
+  if s.stopped || inp.powered_down { return sr_enemy_stopped(s, s.step_index); }
+  if p.n == 0 { return SrEnemyPlanResult.{state = s}; }
+  i := ifx s.step_index >= 0 && s.step_index < p.n then s.step_index else 0;
+  step := p.steps[i];
+  if step.kind == SR_ENEMY_POWERED_DOWN { return sr_enemy_stopped(s, i); }
+  can_react := step.kind == SR_ENEMY_PATROL || step.kind == SR_ENEMY_IDLE;
+  if inp.sees_her && can_react && p.on_see_her_step >= 0 && p.on_see_her_step < p.n && p.on_see_her_step != i { return sr_enemy_enter(p, s, p.on_see_her_step); }
+  t := s.time_in_step + (ifx inp.dt > 0.0 then inp.dt else 0.0);
+  if inp.step_done || (step.duration > 0.0 && t >= step.duration) { return sr_enemy_enter(p, s, (i + 1) % p.n); }
+  r := SrEnemyPlanResult.{state = s};
+  r.state.step_index = i; r.state.time_in_step = t;
+  r.action = sr_enemy_make_action(p, i, i != s.step_index);
+  return r;
+}
+sr_enemy_current_action :: (p: SrEnemyPlan, s: SrEnemyPlanState) -> SrEnemyAction {
+  if s.stopped { return SrEnemyAction.{kind = SR_ENEMY_POWERED_DOWN, step_index = s.step_index}; }
+  if p.n == 0 { return SrEnemyAction.{}; }
+  return sr_enemy_make_action(p, ifx s.step_index >= 0 && s.step_index < p.n then s.step_index else 0, false);
+}

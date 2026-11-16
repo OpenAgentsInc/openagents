@@ -1,0 +1,108 @@
+// Parity checks for card-queue.coax, sight.coax and enemy-plan.coax: SpliceCardQueueTests.cpp and
+// SpliceEnemyTests.cpp. rules.coax loads this file with `#load ... #test;`.
+
+cq_card :: (id: string, lane: int, priority: int, once: bool) -> SrCardRequest { return SrCardRequest.{card_id = id, lane = lane, priority = priority, once = once}; }
+#test "Splice.Rules.CardQueue.FifoWithinLane" {
+  q: [1] SrCardQueue;
+  #assert sr_card_enqueue(q[..], cq_card("A", SR_LANE_TUTORIAL, 0, true)) && sr_card_enqueue(q[..], cq_card("B", SR_LANE_TUTORIAL, 0, true)) && sr_card_enqueue(q[..], cq_card("C", SR_LANE_TUTORIAL, 0, true));
+  #assert sr_card_peek(q[0], SR_LANE_TUTORIAL).card.card_id == "A" && sr_card_num(q[0], SR_LANE_TUTORIAL) == 3;
+  #assert sr_card_dequeue(q[..], SR_LANE_TUTORIAL).card.card_id == "A" && sr_card_dequeue(q[..], SR_LANE_TUTORIAL).card.card_id == "B" && sr_card_dequeue(q[..], SR_LANE_TUTORIAL).card.card_id == "C";
+  #assert sr_card_lane_empty(q[0], SR_LANE_TUTORIAL);
+}
+#test "Splice.Rules.CardQueue.HigherPriorityFirstEqualInOrder" {
+  q: [1] SrCardQueue;
+  _ = sr_card_enqueue(q[..], cq_card("Low1", SR_LANE_ITEM, 0, true)); _ = sr_card_enqueue(q[..], cq_card("High", SR_LANE_ITEM, 5, true)); _ = sr_card_enqueue(q[..], cq_card("Low2", SR_LANE_ITEM, 0, true));
+  #assert sr_card_dequeue(q[..], SR_LANE_ITEM).card.card_id == "High" && sr_card_dequeue(q[..], SR_LANE_ITEM).card.card_id == "Low1" && sr_card_dequeue(q[..], SR_LANE_ITEM).card.card_id == "Low2";
+}
+#test "Splice.Rules.CardQueue.LanesAreIndependent" {
+  q: [1] SrCardQueue;
+  _ = sr_card_enqueue(q[..], cq_card("T", SR_LANE_TUTORIAL, 0, true)); _ = sr_card_enqueue(q[..], cq_card("N", SR_LANE_ITEM, 0, true)); _ = sr_card_enqueue(q[..], cq_card("S", SR_LANE_SNIPER, 0, true));
+  #assert sr_card_num(q[0], SR_LANE_TUTORIAL) + sr_card_num(q[0], SR_LANE_ITEM) + sr_card_num(q[0], SR_LANE_SNIPER) == 3;
+  #assert sr_card_dequeue(q[..], SR_LANE_SNIPER).card.card_id == "S" && sr_card_lane_empty(q[0], SR_LANE_SNIPER);
+  #assert sr_card_num(q[0], SR_LANE_TUTORIAL) == 1 && sr_card_num(q[0], SR_LANE_ITEM) == 1 && sr_card_peek(q[0], SR_LANE_ITEM).card.card_id == "N";
+}
+#test "Splice.Rules.CardQueue.OneShotRepeatRefused" {
+  q: [1] SrCardQueue; c := cq_card("CARD_T01", SR_LANE_TUTORIAL, 0, true);
+  #assert sr_card_enqueue(q[..], c) && !sr_card_enqueue(q[..], c) && sr_card_num(q[0], SR_LANE_TUTORIAL) == 1;
+  _ = sr_card_dequeue(q[..], SR_LANE_TUTORIAL);
+  #assert sr_card_has_played(q[0], c.card_id) && sr_card_is_repeat(q[0], c) && !sr_card_enqueue(q[..], c) && sr_card_lane_empty(q[0], SR_LANE_TUTORIAL);
+  sr_card_forget_played(q[..], c.card_id);
+  #assert sr_card_enqueue(q[..], c);
+  again := cq_card("CARD_AGAIN", SR_LANE_SNIPER, 0, false);
+  #assert sr_card_enqueue(q[..], again);
+  _ = sr_card_dequeue(q[..], SR_LANE_SNIPER);
+  #assert sr_card_enqueue(q[..], again);
+}
+#test "Splice.Rules.CardQueue.EmptyDequeueReturnsNothing" {
+  q: [1] SrCardQueue;
+  #assert !sr_card_dequeue(q[..], SR_LANE_TUTORIAL).found && !sr_card_dequeue(q[..], SR_LANE_ITEM).found && !sr_card_dequeue(q[..], SR_LANE_SNIPER).found;
+  #assert !sr_card_peek(q[0], SR_LANE_SNIPER).found && sr_card_num(q[0], SR_LANE_ITEM) == 0 && !sr_card_enqueue(q[..], SrCardRequest.{});
+}
+
+#test "Splice.Rules.Enemy.SightRadiusPerLevel" {
+  #assert sr_sight_radius_for_heat(SR_HEAT_LOW) == 6.0 && sr_sight_radius_for_heat(SR_HEAT_MEDIUM) == 18.0 && sr_sight_radius_for_heat(SR_HEAT_HIGH) == 40.0;
+  #assert sr_sight_radius_for_heat(sr_heat_level(3)) == 6.0 && sr_sight_radius_for_heat(sr_heat_level(4)) == 18.0 && sr_sight_radius_for_heat(sr_heat_level(8)) == 40.0;
+}
+#test "Splice.Rules.Enemy.SightModifiers" {
+  #assert sr_sight_radius(SR_HEAT_HIGH, true, true) == 20.0 && sr_sight_radius(SR_HEAT_HIGH, false, false) == 6.0 && sr_lose_sight_radius(SR_HEAT_MEDIUM, true, false) == 22.5;
+}
+#test "Splice.Rules.Enemy.SeenInsideRadius" {
+  for lv: 0..<3 { r := sr_sight_radius_for_heat(lv); #assert sr_can_see(0.0, lv, true, false) && sr_can_see(r - 0.01, lv, true, false) && sr_can_see(r, lv, true, false); }
+}
+#test "Splice.Rules.Enemy.NotSeenOutsideRadius" {
+  for lv: 0..<3 { r := sr_sight_radius_for_heat(lv); #assert !sr_can_see(r + 0.01, lv, true, false) && !sr_can_see(r * 3.0, lv, true, false); }
+  #assert !sr_can_see(10.0, SR_HEAT_LOW, true, false) && sr_can_see(10.0, SR_HEAT_MEDIUM, true, false);
+  #assert !sr_can_see(25.0, SR_HEAT_HIGH, true, true) && !sr_can_see(10.0, SR_HEAT_HIGH, false, false);
+}
+ep_tick :: (dt: f32) -> SrEnemyPlanInputs { return SrEnemyPlanInputs.{dt = dt}; }
+#test "Splice.Rules.Enemy.PlanRunsInOrderAndLoops" {
+  p: [1] SrEnemyPlan;
+  sr_enemy_plan_add(p[..], SrEnemyPlanStep.{kind = SR_ENEMY_PATROL, duration = 1.0}); sr_enemy_plan_add(p[..], SrEnemyPlanStep.{kind = SR_ENEMY_IDLE, duration = 1.0});
+  sr_enemy_plan_add(p[..], SrEnemyPlanStep.{kind = SR_ENEMY_CHASE}); sr_enemy_plan_add(p[..], SrEnemyPlanStep.{kind = SR_ENEMY_TELEGRAPH, duration = 1.0});
+  sr_enemy_plan_add(p[..], SrEnemyPlanStep.{kind = SR_ENEMY_ATTACK, duration = 1.0});
+  s: SrEnemyPlanState;
+  #assert sr_enemy_current_action(p[0], s).kind == SR_ENEMY_PATROL;
+  r := sr_enemy_plan_advance(p[0], s, ep_tick(0.5));
+  #assert r.action.kind == SR_ENEMY_PATROL && !r.action.step_changed;
+  r = sr_enemy_plan_advance(p[0], r.state, ep_tick(0.5));
+  #assert r.action.kind == SR_ENEMY_IDLE && r.action.step_changed;
+  r = sr_enemy_plan_advance(p[0], r.state, ep_tick(1.0));
+  #assert r.action.kind == SR_ENEMY_CHASE;
+  r = sr_enemy_plan_advance(p[0], r.state, ep_tick(100.0));
+  #assert r.action.kind == SR_ENEMY_CHASE;
+  r = sr_enemy_plan_advance(p[0], r.state, SrEnemyPlanInputs.{step_done = true});
+  #assert r.action.kind == SR_ENEMY_TELEGRAPH;
+  r = sr_enemy_plan_advance(p[0], r.state, ep_tick(1.0));
+  #assert r.action.kind == SR_ENEMY_ATTACK;
+  r = sr_enemy_plan_advance(p[0], r.state, ep_tick(1.0));
+  #assert r.action.kind == SR_ENEMY_PATROL && r.state.step_index == 0;
+}
+#test "Splice.Rules.Enemy.PlanSeeHerReacts" {
+  p: [1] SrEnemyPlan;
+  sr_enemy_plan_add(p[..], SrEnemyPlanStep.{kind = SR_ENEMY_PATROL, duration = 5.0}); sr_enemy_plan_add(p[..], SrEnemyPlanStep.{kind = SR_ENEMY_CHASE});
+  p[0].on_see_her_step = 1;
+  inp := SrEnemyPlanInputs.{dt = 0.1, sees_her = true};
+  r := sr_enemy_plan_advance(p[0], SrEnemyPlanState.{}, inp);
+  #assert r.action.kind == SR_ENEMY_CHASE;
+  r2 := sr_enemy_plan_advance(p[0], r.state, inp);
+  #assert r2.action.kind == SR_ENEMY_CHASE && !r2.action.step_changed;
+}
+#test "Splice.Rules.Enemy.PoweredDownStopsPlan" {
+  p: [1] SrEnemyPlan;
+  sr_enemy_plan_add(p[..], SrEnemyPlanStep.{kind = SR_ENEMY_PATROL, duration = 1.0}); sr_enemy_plan_add(p[..], SrEnemyPlanStep.{kind = SR_ENEMY_ATTACK, duration = 1.0});
+  r := sr_enemy_plan_advance(p[0], SrEnemyPlanState.{}, SrEnemyPlanInputs.{dt = 0.1, powered_down = true});
+  #assert r.action.kind == SR_ENEMY_POWERED_DOWN && r.state.stopped && r.action.step_changed;
+  for i: 0..<5 { r = sr_enemy_plan_advance(p[0], r.state, SrEnemyPlanInputs.{dt = 1.0, step_done = true, sees_her = true}); }
+  #assert r.action.kind == SR_ENEMY_POWERED_DOWN && !r.action.step_changed && r.state.step_index == 0;
+  p2: [1] SrEnemyPlan;
+  sr_enemy_plan_add(p2[..], SrEnemyPlanStep.{kind = SR_ENEMY_IDLE, duration = 1.0}); sr_enemy_plan_add(p2[..], SrEnemyPlanStep.{kind = SR_ENEMY_POWERED_DOWN});
+  sr_enemy_plan_add(p2[..], SrEnemyPlanStep.{kind = SR_ENEMY_PATROL, duration = 1.0});
+  r = sr_enemy_plan_advance(p2[0], SrEnemyPlanState.{}, ep_tick(1.0));
+  #assert r.state.stopped;
+  r = sr_enemy_plan_advance(p2[0], r.state, ep_tick(10.0));
+  #assert r.action.kind == SR_ENEMY_POWERED_DOWN;
+}
+#test "Splice.Rules.Enemy.EmptyPlanIdles" {
+  p: SrEnemyPlan;
+  #assert sr_enemy_plan_advance(p, SrEnemyPlanState.{}, ep_tick(1.0)).action.kind == SR_ENEMY_IDLE;
+}

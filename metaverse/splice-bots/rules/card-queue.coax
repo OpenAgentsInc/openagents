@@ -1,0 +1,86 @@
+// Splice Bots rules: the card request and trigger row (SpliceCardRequest.h, C-03) and the card queues
+// (SpliceCardQueue.h, R-10; GDD 04 9.5 UE-CARDUI-02..05, -08, UE-FW-15). Three lanes, a queue each,
+// higher priority first, equal in order; cards never pause, so the queue is data only. Lane names are
+// card_triggers.csv's lane column.
+
+// ESpliceCardLane, ESpliceCardKind, ESpliceCardPortrait.
+SR_LANE_TUTORIAL :: 0; SR_LANE_ITEM :: 1; SR_LANE_SNIPER :: 2; SR_LANE_COUNT :: 3;
+SR_CARD_KIND_TUTORIAL :: 0; SR_CARD_KIND_SNIPER_SAYS :: 1; SR_CARD_KIND_ITEM :: 2; SR_CARD_KIND_RECIPE :: 3;
+SR_PORTRAIT_NONE :: 0; SR_PORTRAIT_SNIPER :: 1; SR_PORTRAIT_RAIDER_CHIEF :: 2;
+
+// One row of card_triggers.csv plus the UE-CARDUI-02 columns the CSV does not have yet.
+SrCardTriggerRow :: struct {
+  id: string; trigger: string; card_kind: int; lane: int; text_key: string; source_section: string;
+  event_tag: string; condition_tag: string; glyph_action: string; completes_on_event: string;
+  portrait: int; chirp_set: string; priority: int; once: bool = true;
+}
+// What one lane is asked to show (UE-CARDUI-03).
+SrCardRequest :: struct {
+  card_id: string;           // trigger row id, or the item id for a new item card
+  lane: int; kind: int; text_key: string; glyph_action: string;
+  completes_on_event: string; // tutorial: leaves on this event or the timeout
+  item_id: string;           // new item card (UE-CARDUI-05)
+  portrait: int; chirp_set: string;
+  radio: bool;               // she is away from Sniper (UE-CARDUI-08)
+  priority: int;             // higher first; equal in order
+  once: bool = true;
+}
+sr_card_lane_name :: (lane: int) -> string { return ifx lane == SR_LANE_ITEM then "Item" else ifx lane == SR_LANE_SNIPER then "Sniper" else "Tutorial"; }
+
+SR_CARD_LANE_MAX :: 32;
+SR_CARD_PLAYED_MAX :: 128;
+SrCardLane :: struct { n: int; v: [SR_CARD_LANE_MAX] SrCardRequest; }
+SrCardQueue :: struct { lanes: [SR_LANE_COUNT] SrCardLane; played_n: int; played: [SR_CARD_PLAYED_MAX] string; }
+// Peek and dequeue answer: found false on an empty lane (the C++ unset TOptional).
+SrCardTake :: struct { found: bool; card: SrCardRequest; }
+
+sr_card_lane_index :: (lane: int) -> int { return ifx lane >= 0 && lane < SR_LANE_COUNT then lane else 0; }
+sr_card_next_index :: (q: SrCardQueue, lane: int) -> int {
+  l := q.lanes[sr_card_lane_index(lane)]; best := -1;
+  for i: 0..<l.n { if best < 0 || l.v[i].priority > l.v[best].priority { best = i; } }   // strictly greater: equal keeps order
+  return best;
+}
+sr_card_has_played :: (q: SrCardQueue, card_id: string) -> bool { for k: 0..<q.played_n { if q.played[k] == card_id { return true; } } return false; }
+// A one-shot card already played or waiting in any lane.
+sr_card_is_repeat :: (q: SrCardQueue, r: SrCardRequest) -> bool {
+  if !r.once { return false; }
+  if sr_card_has_played(q, r.card_id) { return true; }
+  for l: 0..<SR_LANE_COUNT { for k: 0..<q.lanes[l].n { if q.lanes[l].v[k].card_id == r.card_id { return true; } } }
+  return false;
+}
+// False and nothing added for an empty id, a one-shot repeat or a full lane.
+sr_card_enqueue :: (q: [] SrCardQueue, r: SrCardRequest) -> bool {
+  if r.card_id == "" || sr_card_is_repeat(q[0], r) { return false; }
+  li := sr_card_lane_index(r.lane);
+  if q[0].lanes[li].n >= SR_CARD_LANE_MAX { return false; }
+  q[0].lanes[li].v[q[0].lanes[li].n] = r; q[0].lanes[li].n += 1;
+  return true;
+}
+sr_card_peek :: (q: SrCardQueue, lane: int) -> SrCardTake {
+  i := sr_card_next_index(q, lane);
+  if i < 0 { return SrCardTake.{}; }
+  return SrCardTake.{found = true, card = q.lanes[sr_card_lane_index(lane)].v[i]};
+}
+// Takes the next of a lane and marks it played.
+sr_card_dequeue :: (q: [] SrCardQueue, lane: int) -> SrCardTake {
+  i := sr_card_next_index(q[0], lane);
+  if i < 0 { return SrCardTake.{}; }
+  li := sr_card_lane_index(lane);
+  card := q[0].lanes[li].v[i];
+  for k: i..<q[0].lanes[li].n - 1 { q[0].lanes[li].v[k] = q[0].lanes[li].v[k + 1]; }
+  q[0].lanes[li].n -= 1; q[0].lanes[li].v[q[0].lanes[li].n] = SrCardRequest.{};
+  if !sr_card_has_played(q[0], card.card_id) && q[0].played_n < SR_CARD_PLAYED_MAX { q[0].played[q[0].played_n] = card.card_id; q[0].played_n += 1; }
+  return SrCardTake.{found = true, card = card};
+}
+sr_card_num :: (q: SrCardQueue, lane: int) -> int { return q.lanes[sr_card_lane_index(lane)].n; }
+sr_card_lane_empty :: (q: SrCardQueue, lane: int) -> bool { return sr_card_num(q, lane) == 0; }
+// A timed-out tutorial card may show once more (UE-CARDUI-04).
+sr_card_forget_played :: (q: [] SrCardQueue, card_id: string) {
+  k := 0;
+  while k < q[0].played_n {
+    if q[0].played[k] == card_id { for j: k..<q[0].played_n - 1 { q[0].played[j] = q[0].played[j + 1]; } q[0].played_n -= 1; q[0].played[q[0].played_n] = ""; }
+    else { k += 1; }
+  }
+}
+// A new run (UE-CARDUI-06): drop every waiting request and every played record.
+sr_card_reset :: (q: [] SrCardQueue) { q[0] = SrCardQueue.{}; }

@@ -1,0 +1,56 @@
+// Splice Bots rules: the jetpack (SpliceJetpack.h, 15 Nov 2026): jump, double jump, then press or hold
+// jump again in the air. It fires only once her air jump is spent. Units are cm and seconds, as her
+// movement uses.
+#load "../../../metaverse-engine/core/math-d.coax";
+
+SrJetpackTuning :: struct {
+  fuel_max: f32 = 100.0;
+  cells: int = 3;
+  burn_per_sec: f32 = 28.0;          // ~3.6 s on a full tank
+  recharge_per_sec: f32 = 50.0;
+  recharge_delay: f32 = 0.35;        // s on the ground before it refills
+  min_fuel_to_start: f32 = 12.0;
+  thrust_up: f32 = 4300.0;           // cm/s^2 (gravity rising is 3200)
+  max_climb: f32 = 650.0;
+  max_sink_while_firing: f32 = 250.0;
+  fly_accel: f32 = 2400.0;
+  fly_max_speed: f32 = 1500.0;       // she runs at 690
+  fly_pitch_deg: f32 = 28.0;
+}
+SrJetpackState :: struct { fuel: f32 = 100.0; firing: bool; ground_time: f32; }
+SrJetpackInput :: struct { owned: bool; jump_held: bool; on_ground: bool = true; air_jumps_spent: bool; blocked: bool; }
+
+sr_jetpack_step :: (s: SrJetpackState, inp: SrJetpackInput, t: SrJetpackTuning, dt: f32) -> SrJetpackState {
+  n := s;
+  can := inp.owned && !inp.blocked && inp.jump_held && !inp.on_ground && inp.air_jumps_spent && s.fuel > 0.0;
+  n.firing = can && (s.firing || s.fuel >= t.min_fuel_to_start);
+  if n.firing {
+    f := s.fuel - t.burn_per_sec * dt; n.fuel = ifx f > 0.0 then f else 0.0;
+    if n.fuel <= 0.0 { n.firing = false; }
+  }
+  n.ground_time = ifx inp.on_ground then s.ground_time + dt else 0.0;
+  if inp.on_ground && n.ground_time >= t.recharge_delay { f := n.fuel + t.recharge_per_sec * dt; n.fuel = ifx f < t.fuel_max then f else t.fuel_max; }
+  return n;
+}
+// Lit cells, 0..cells (a partly full cell counts as lit).
+sr_jetpack_cells_lit :: (s: SrJetpackState, t: SrJetpackTuning) -> int {
+  if s.fuel <= 0.0 || t.cells <= 0 { return 0; }
+  per := t.fuel_max / cast(f32) t.cells;
+  c := cast(int) -floor(-cast(f64) (s.fuel / per - 0.0001));
+  return ifx c < 1 then 1 else ifx c > t.cells then t.cells else c;
+}
+// Her vertical speed after a firing step (gravity is the movement's own step): capped climb, a fall caught.
+sr_jetpack_vertical_after :: (vz: f32, gravity_z: f32, t: SrJetpackTuning, dt: f32) -> f32 {
+  v := vz + t.thrust_up * dt;
+  if v > t.max_climb { v = t.max_climb; }
+  return ifx v > -t.max_sink_while_firing then v else -t.max_sink_while_firing;
+}
+// Her ground velocity after a firing step: pushed along the input, capped at fly_max_speed.
+sr_jetpack_fly_after :: (vel: D2, input_dir: D2, t: SrJetpackTuning, dt: f32) -> D2 {
+  il := d2_len(input_dir);
+  unit := ifx il > 0.00000001 then d2_scale(input_dir, 1.0 / il) else d2(0.0, 0.0);
+  v := d2_add(vel, d2_scale(unit, (ifx il < 1.0 then il else 1.0) * cast(f64) (t.fly_accel * dt)));
+  sp := d2_len(v);
+  if sp > cast(f64) t.fly_max_speed { v = d2_scale(v, cast(f64) t.fly_max_speed / sp); }
+  return v;
+}

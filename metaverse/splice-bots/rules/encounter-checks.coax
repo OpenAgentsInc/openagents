@@ -1,0 +1,91 @@
+// Parity checks for core-reader.coax, rock-wall.coax and jetpack.coax: SpliceRockWallTests.cpp,
+// SpliceJetpackTests.cpp, and the rule half of SpliceWiring3Tests.cpp CoreReaderStartsEnding (its
+// second half spawns the edit bay in a world). rules.coax loads this file with `#load ... #test;`.
+
+#test "Splice.Wiring3.CoreReaderStartsEnding" {
+  #assert sr_core_reader_is_lit(ITEM_EXPERIMENTAL_CORE) && !sr_core_reader_is_lit(ITEM_BATTERY);
+  c := [1] SrContainer.[sr_make_container(3)];
+  #assert sr_core_reader_read(ITEM_EXPERIMENTAL_CORE, c[..]).refusal == SR_CORE_READ_CORE_NOT_PRESENT;
+  c[0].slots[2] = SrItemStack.{item = ITEM_EXPERIMENTAL_CORE, count = 1};
+  #assert sr_core_reader_read("", c[..]).refusal == SR_CORE_READ_EMPTY;
+  #assert sr_core_reader_read(ITEM_DRILL_CARD, c[..]).refusal == SR_CORE_READ_NOT_THE_CORE;
+  read := sr_core_reader_read(ITEM_EXPERIMENTAL_CORE, c[..]);
+  #assert read.read && read.consumed_slot == 2 && sr_item_empty(c[0].slots[2]);
+  robot: SrRobotState;
+  s := sr_core_read_as_splice(read, robot);
+  #assert s.spliced && s.consumed_slot == 2;
+  #assert sr_core_read_as_splice(SrCoreReadResult.{refusal = SR_CORE_READ_EMPTY}, robot).refusal == SR_SPLICE_NOT_A_CARD;
+  #assert sr_core_read_as_splice(SrCoreReadResult.{refusal = SR_CORE_READ_CORE_NOT_PRESENT}, robot).refusal == SR_SPLICE_CARD_NOT_PRESENT;
+}
+
+#test "Splice.Rules.RockWall.drilling breaks chunks in order" {
+  order := [4] int.[3, 1, 0, 2];
+  w := [1] SrRockWall.[sr_rock_wall_init_with_order(4, 1.0, 1.0, order[..], 4)];
+  broken: [8] int; bn := [1] int.[0];
+  #assert sr_rock_wall_apply(w[..], SR_WALL_HIT_DRILL, 0.5, broken[..], bn[..]) == 0;
+  #assert sr_rock_wall_apply(w[..], SR_WALL_HIT_DRILL, 0.5, broken[..], bn[..]) == 1 && bn[0] == 1 && broken[0] == 3;
+  #assert !sr_rock_wall_chunk_broken(w[0], 0);
+  #assert sr_rock_wall_apply(w[..], SR_WALL_HIT_DRILL, 2.0, broken[..], bn[..]) == 2 && bn[0] == 3 && broken[1] == 1 && broken[2] == 0;
+  #assert sr_rock_wall_num_broken(w[0]) == 3;
+}
+#test "Splice.Rules.RockWall.non-drill attacks do not break it" {
+  w := [1] SrRockWall.[sr_rock_wall_init(SR_WALL_DEFAULT_CHUNKS, SR_WALL_DEFAULT_CHUNK_HEALTH, SR_WALL_DRILL_DPS)];
+  broken: [32] int; bn := [1] int.[0];
+  #assert sr_rock_wall_apply(w[..], SR_WALL_HIT_ATTACK, 1000.0, broken[..], bn[..]) == 0 && sr_rock_wall_num_broken(w[0]) == 0 && bn[0] == 0;
+  #assert sr_rock_wall_progress(w[0]) == 0.0 && !sr_rock_wall_is_open(w[0]);
+  #assert sr_rock_wall_apply(w[..], SR_WALL_HIT_DRILL, 0.0, broken[..], bn[..]) == 0;
+}
+#test "Splice.Rules.RockWall.the opening appears after the last required chunk" {
+  order := [5] int.[4, 2, 0, 1, 3];
+  w := [1] SrRockWall.[sr_rock_wall_init_with_order(5, 1.0, 1.0, order[..], 3)];
+  broken: [8] int; bn := [1] int.[0];
+  _ = sr_rock_wall_apply(w[..], SR_WALL_HIT_DRILL, 2.0, broken[..], bn[..]);
+  #assert !sr_rock_wall_is_open(w[0]);
+  _ = sr_rock_wall_apply(w[..], SR_WALL_HIT_DRILL, 1.0, broken[..], bn[..]);
+  #assert sr_rock_wall_is_open(w[0]) && sr_rock_wall_num_broken(w[0]) == 3 && sr_rock_wall_progress(w[0]) == 1.0;
+}
+#test "Splice.Rules.RockWall.Digger's 2.4 s opens the default wall" {
+  w := [1] SrRockWall.[sr_rock_wall_init(SR_WALL_DEFAULT_CHUNKS, SR_WALL_DEFAULT_CHUNK_HEALTH, SR_WALL_DRILL_DPS)];
+  broken: [32] int; bn := [1] int.[0];
+  for i: 0..<27 { _ = sr_rock_wall_apply(w[..], SR_WALL_HIT_DRILL, 1.0 / 12.0, broken[..], bn[..]); }
+  #assert !sr_rock_wall_is_open(w[0]) && sr_rock_wall_progress(w[0]) > 0.9 && sr_rock_wall_progress(w[0]) < 1.0;
+  _ = sr_rock_wall_apply(w[..], SR_WALL_HIT_DRILL, 0.2, broken[..], bn[..]);
+  #assert sr_rock_wall_is_open(w[0]) && bn[0] == SR_WALL_DEFAULT_CHUNKS;
+}
+
+jt_air :: (held: bool) -> SrJetpackInput { return SrJetpackInput.{owned = true, jump_held = held, on_ground = false, air_jumps_spent = true}; }
+#test "Splice.Rules.Jetpack.FiresOnlyAfterTheDoubleJump" {
+  t: SrJetpackTuning; s: SrJetpackState;
+  i := jt_air(true); i.air_jumps_spent = false;
+  #assert !sr_jetpack_step(s, i, t, 0.1).firing;
+  i = jt_air(true); i.on_ground = true;
+  #assert !sr_jetpack_step(s, i, t, 0.1).firing;
+  i = jt_air(true); i.owned = false;
+  #assert !sr_jetpack_step(s, i, t, 0.1).firing;
+  i = jt_air(true); i.blocked = true;
+  #assert !sr_jetpack_step(s, i, t, 0.1).firing;
+  #assert sr_jetpack_step(s, jt_air(true), t, 0.1).firing && !sr_jetpack_step(s, jt_air(false), t, 0.1).firing;
+}
+#test "Splice.Rules.Jetpack.BurnsThenRefillsOnTheGround" {
+  t: SrJetpackTuning; s: SrJetpackState; fired : f32 = 0.0;
+  i := 0;
+  while i < 600 && (i == 0 || s.firing) { s = sr_jetpack_step(s, jt_air(true), t, 1.0 / 60.0); if s.firing { fired += 1.0 / 60.0; } i += 1; }
+  #assert abs(fired - t.fuel_max / t.burn_per_sec) <= 0.1;
+  #assert sr_jetpack_cells_lit(s, t) == 0 && !sr_jetpack_step(s, jt_air(true), t, 0.1).firing;
+  g := jt_air(false); g.on_ground = true;
+  s = sr_jetpack_step(s, g, t, 0.2);
+  #assert s.fuel == 0.0;
+  for k: 0..<300 { s = sr_jetpack_step(s, g, t, 1.0 / 60.0); }
+  #assert s.fuel == t.fuel_max && sr_jetpack_cells_lit(s, t) == 3;
+  s.fuel = t.min_fuel_to_start - 1.0;
+  #assert !sr_jetpack_step(s, jt_air(true), t, 0.01).firing;
+}
+#test "Splice.Rules.Jetpack.ClimbsCatchesAFallAndFlies" {
+  t: SrJetpackTuning;
+  #assert sr_jetpack_vertical_after(0.0, -3200.0, t, 0.1) > 0.0;
+  #assert sr_jetpack_vertical_after(10000.0, -3200.0, t, 0.1) == t.max_climb;
+  #assert sr_jetpack_vertical_after(-2000.0, -3200.0, t, 0.01) == -t.max_sink_while_firing;
+  v := d2(0.0, 0.0);
+  for k: 0..<120 { v = sr_jetpack_fly_after(v, d2(1.0, 0.0), t, 1.0 / 60.0); }
+  #assert abs(v.x - cast(f64) t.fly_max_speed) <= 1.0 && v.x > 690.0;
+}
