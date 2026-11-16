@@ -76,7 +76,7 @@ glb_from_cel :: (buf: [] u32, parts: [] GlbPart, out: [] u8) -> int #effects(all
       if v == 0 || x > hi3[c] { hi3[c] = x; }
     } }
     for a: 0..<3 {
-      jo_obj(o[..]); jo_key(o[..], "bufferView"); jo_int(o[..], a); jo_key(o[..], "byteOffset"); jo_int(o[..], first * GLB_VERTEX_BYTES);
+      jo_obj(o[..]); jo_key(o[..], "bufferView"); jo_int(o[..], 0); jo_key(o[..], "byteOffset"); jo_int(o[..], first * GLB_VERTEX_BYTES + (ifx a == 0 then 0 else ifx a == 1 then 12 else 24));
       jo_key(o[..], "componentType"); jo_int(o[..], ifx a == 2 then 5121 else 5126); jo_key(o[..], "count"); jo_int(o[..], p.count);
       jo_key(o[..], "type"); jo_str(o[..], ifx a == 2 then "VEC4" else "VEC3");
       if a == 2 { jo_key(o[..], "normalized"); jo_bool(o[..], true); }
@@ -89,14 +89,13 @@ glb_from_cel :: (buf: [] u32, parts: [] GlbPart, out: [] u8) -> int #effects(all
     first += p.count;
   }
   jo_end(o[..]);
-  // One interleaved view an attribute: the same bytes and stride, each starting at its own offset.
+  // One view over the whole interleaved block (offset 0, every vertex's bytes, its stride); each
+  // attribute's offset within a vertex is its accessor's byteOffset. One view an attribute, each starting
+  // at its own offset, is legal glTF, but three.js and most loaders refuse it ("Invalid typed array length").
   jo_key(o[..], "bufferViews"); jo_arr(o[..]);
-  for a: 0..<3 {
-    off := ifx a == 0 then 0 else ifx a == 1 then 12 else 24;
-    jo_obj(o[..]); jo_key(o[..], "buffer"); jo_int(o[..], 0); jo_key(o[..], "byteOffset"); jo_int(o[..], off);
-    jo_key(o[..], "byteLength"); jo_int(o[..], bin_bytes - off); jo_key(o[..], "byteStride"); jo_int(o[..], GLB_VERTEX_BYTES); jo_key(o[..], "target"); jo_int(o[..], 34962);
-    jo_end(o[..]);
-  }
+  jo_obj(o[..]); jo_key(o[..], "buffer"); jo_int(o[..], 0); jo_key(o[..], "byteOffset"); jo_int(o[..], 0);
+  jo_key(o[..], "byteLength"); jo_int(o[..], bin_bytes); jo_key(o[..], "byteStride"); jo_int(o[..], GLB_VERTEX_BYTES); jo_key(o[..], "target"); jo_int(o[..], 34962);
+  jo_end(o[..]);
   jo_end(o[..]);
   jo_key(o[..], "buffers"); jo_arr(o[..]); jo_obj(o[..]); jo_key(o[..], "byteLength"); jo_int(o[..], bin_bytes); jo_end(o[..]); jo_end(o[..]);
   jo_end(o[..]);
@@ -362,6 +361,25 @@ glb_meshes :: (buf: [] u32, vertices: int, keys: [] int, distinct: [] int, parts
   json_n := cast(int) out[12] + cast(int) out[13] * 256;
   #assert n == 12 + 8 + json_n + 8 + 36 * GLB_VERTEX_BYTES;
   #assert out[20] == '{';
+}
+#test "the interleaved vertices are one view of the whole block, the attributes' offsets in their accessors" {
+  buf: [72 * VERTEX_WORDS] u32; p: [1] Pen; pen_set(p[..], 1, MAT_FLAT, 1, 0, 0);
+  box(buf[..], p[..], frame_at(v3(0, 0.5, 0), 0), 0.5, 0.5, 0.5); box(buf[..], p[..], frame_at(v3(3, 0.5, 0), 0), 0.5, 0.5, 0.5);
+  parts := [2] GlbPart.[GlbPart.{name = "a", first = 0, count = 36}, GlbPart.{name = "b", first = 36, count = 36}];
+  out: [16384] u8; n := glb_from_cel(buf[..], parts[..], out[..]); #assert n > 0;
+  json_n := cast(int) out[12] + cast(int) out[13] * 256;
+  nodes: [512] JvNode; d: [1] Jv; #assert jv_parse(d[..], cast(string) out[20..<20 + json_n], nodes[..]);
+  views := jv_get(d[0], 0, "bufferViews"); #assert jv_len(d[0], views) == 1;
+  v := jv_at(d[0], views, 0);
+  #assert jv_int(d[0], jv_get(d[0], v, "byteOffset"), -1) == 0 && jv_int(d[0], jv_get(d[0], v, "byteLength"), -1) == 72 * GLB_VERTEX_BYTES && jv_int(d[0], jv_get(d[0], v, "byteStride"), -1) == GLB_VERTEX_BYTES;
+  acc := jv_get(d[0], 0, "accessors"); #assert jv_len(d[0], acc) == 6;
+  want := [6] int.[0, 12, 24, 36 * 28, 36 * 28 + 12, 36 * 28 + 24];
+  for k: 0..<6 {
+    a := jv_at(d[0], acc, k);
+    #assert jv_int(d[0], jv_get(d[0], a, "bufferView"), -1) == 0 && jv_int(d[0], jv_get(d[0], a, "byteOffset"), -1) == want[k];
+    // every accessor's last element ends inside the view
+    #assert want[k] + 35 * GLB_VERTEX_BYTES + (ifx k % 3 == 2 then 4 else 12) <= 72 * GLB_VERTEX_BYTES;
+  }
 }
 #test "a part that is not whole triangles is refused" {
   buf: [36 * VERTEX_WORDS] u32; out: [4096] u8;
