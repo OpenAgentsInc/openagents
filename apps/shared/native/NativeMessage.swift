@@ -68,13 +68,13 @@ extension NativeElement {
 @MainActor private final class NativeCode:UIView {
     let text:NativeRichText
     let language=UILabel(),copy=NativeButton(.icon),scroll=UIScrollView()
-    private let panel=NativeFrameView(role:NativeSkin.names.panel)
+    private let panel=NativeFrameView(role:NativeSkin.names.panel),rule=NativeRuleView()
     init(_ node:NativeElement,press:@escaping(String)->Void) {
         let pre=node.children.first {$0.role=="pre"} ?? NativeElement(id:node.id+".pre",role:"pre",label:"")
         text=NativeRichText(pre,code:true);super.init(frame:.zero)
-        let skin=nt_skin();addSubview(panel);clipsToBounds=true
+        let skin=nt_skin();panel.arcadePaint.kind=8;addSubview(panel);addSubview(rule);clipsToBounds=true
         let header=node.children.first {$0.hasClass("code-h")}
-        language.text=header?.children.first {$0.role=="span"}?.textContent ?? "text";language.attributedText=NativeSkin.label(language.text ?? "",ink:skin.muted)
+        language.text=header?.children.first {$0.role=="span"}?.textContent ?? "text";language.font=NativeTypography.font(13,code:true);language.textColor=NativeSkin.color(skin.muted)
         language.accessibilityIdentifier=node.id+".language"
         if let action=header?.children.first(where:{$0.role=="button"}) {
             copy.accessibilityIdentifier=action.id;copy.show(action.attrs["aria-label"] ?? action.textContent,symbol:action.textContent=="Copied" ? "checkmark":"doc.on.doc")
@@ -85,7 +85,7 @@ extension NativeElement {
     }
     required init?(coder:NSCoder) {fatalError()}
     func arrange(_ width:CGFloat)->CGFloat {
-        language.frame=CGRect(x:12,y:0,width:max(1,width-68),height:40);copy.frame=CGRect(x:width-46,y:0,width:44,height:40)
+        language.frame=CGRect(x:14,y:0,width:max(1,width-68),height:40);copy.frame=CGRect(x:width-46,y:0,width:44,height:40);rule.frame=CGRect(x:0,y:39,width:width,height:1)
         let inner=max(1,width-24),natural=ceil(text.attributedText.size().width)+1,w=max(inner,natural),h=text.height(w)
         text.frame=CGRect(x:0,y:0,width:w,height:h);scroll.frame=CGRect(x:12,y:40,width:inner,height:h+8);scroll.contentSize=CGSize(width:w,height:h)
         panel.frame=CGRect(x:0,y:0,width:width,height:48+h)

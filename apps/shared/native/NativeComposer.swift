@@ -8,7 +8,7 @@ import CoreText
 @MainActor final class NativeComposer:UIView,UITextViewDelegate {
     let editor=UITextView()
     let placeholder=UILabel(),send=NativeButton(.action)
-    private let model=UILabel()
+    private let model=UILabel(),modelSurface=NativeFrameView(role:NativeSkin.names.panel)
     // The kit's composer frame: the skin's panel, its brackets bright while it holds the keyboard.
     private let panel=NativeFrameView(role:NativeSkin.names.panel)
     var changed:((String)->Void)?,press:((String)->Void)?
@@ -20,7 +20,8 @@ import CoreText
         _=NativeTypography.registered
         let t=NativeSkin.tokens
         addSubview(panel)
-        for v in [editor,placeholder,model,send] {addSubview(v)}
+        for v in [editor,placeholder,modelSurface,model,send] {addSubview(v)}
+        modelSurface.arcadePaint.kind=8;modelSurface.arcadePaint.background=t.raised;modelSurface.arcadePaint.line=t.raised;model.accessibilityIdentifier="composer.model"
         model.font=NativeTypography.font(13);model.textColor=NativeSkin.color(t.ink_muted);model.numberOfLines=1;model.lineBreakMode = .byTruncatingTail;model.isAccessibilityElement=true
         editor.backgroundColor = .clear;editor.textColor=NativeSkin.color(t.ink);editor.tintColor=NativeSkin.color(t.ink);editor.keyboardAppearance = .dark
         editor.font=UIFontMetrics(forTextStyle:.body).scaledFont(for:UIFont(name:"DMSans-Regular",size:16) ?? .systemFont(ofSize:16))
@@ -41,14 +42,14 @@ import CoreText
     func render(_ e:NativeElement) {
         guard let field=e.children.first(where:{$0.role=="field"}),let action=e.children.last(where:{$0.role=="button"}) else{return}
         fieldID=field.id;sendID=action.id
-        model.text=e.attrs["title"];model.accessibilityLabel=model.text;model.isHidden=(model.text ?? "").isEmpty
+        model.text=e.attrs["title"];model.accessibilityLabel=model.text;model.isHidden=(model.text ?? "").isEmpty;modelSurface.isHidden=model.isHidden
         editor.accessibilityIdentifier=field.id;editor.accessibilityLabel=field.label;placeholder.text=field.label
         // Do not replace the buffer on a frame/keystroke: selection and marked
         // text survive. A Coax clear/load is a deliberate controlled-value edit.
         if editor.text != field.value && editor.markedTextRange==nil {editor.attributedText=NSAttributedString(string:field.value,attributes:editor.typingAttributes)}
         // A pending turn locks edits without resigning the platform editor and
         // collapsing the keyboard between send, acknowledgement and reply.
-        editingAllowed = !field.disabled;active=action.label=="Stop";enabled = !action.disabled
+        editingAllowed = !field.disabled;active=action.label.hasPrefix("Stop");enabled = !action.disabled
         send.show(active ? "Stop generating":"Send message",symbol:active ? "stop.fill":"arrow.up");send.accessibilityIdentifier=action.id;send.isEnabled=enabled
         setNeedsLayout();invalidateIntrinsicContentSize()
     }
@@ -68,7 +69,9 @@ import CoreText
         editor.isScrollEnabled=measured+12>g.editor_h+1
         placeholder.frame=CGRect(x:editor.frame.minX,y:editor.frame.minY+6,width:editor.frame.width,height:23*scale);placeholder.isHidden = !editor.text.isEmpty
         send.frame=CGRect(x:g.send_x,y:g.toolbar_y,width:44,height:44)
-        model.frame=CGRect(x:14,y:g.toolbar_y,width:max(0,CGFloat(g.send_x)-24),height:44)
+        let modelWidth=min(max(0,CGFloat(g.send_x)-24),ceil(model.sizeThatFits(CGSize(width:w,height:44)).width)+24)
+        modelSurface.frame=CGRect(x:10,y:CGFloat(g.toolbar_y)+5,width:modelWidth,height:34)
+        model.frame=CGRect(x:22,y:g.toolbar_y,width:max(0,modelWidth-24),height:44)
     }
     func textViewDidBeginEditing(_ textView:UITextView) {setNeedsLayout()}
     func textViewDidEndEditing(_ textView:UITextView) {setNeedsLayout()}

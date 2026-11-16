@@ -32,7 +32,7 @@ import UIKit
         let tools=p.elements().filter {$0.role=="tool"};XCTAssertEqual(tools.count,2)
         let e=try XCTUnwrap(tools.first),tool=try XCTUnwrap(surface.controls[e.id] as? NativeTool)
         XCTAssertTrue(p.elements().contains {$0.id=="env.model"});XCTAssertTrue(p.elements().contains {$0.id=="env.effort"})
-        XCTAssertEqual(tool.frame.height,28,accuracy:1);XCTAssertFalse(descendants(tool).contains {$0 is NativeRichText})
+        XCTAssertEqual(tool.frame.height,36,accuracy:1);XCTAssertFalse(descendants(tool).contains {$0 is NativeRichText})
         let action=try XCTUnwrap(tool.header.accessibilityIdentifier);try p.input(action);try p.frame();surface.render(p.elements());surface.view.layoutIfNeeded()
         let text=try XCTUnwrap(descendants(tool).compactMap {$0 as? NativeRichText}.first)
         XCTAssertEqual(text.text,output);XCTAssertTrue(text.isSelectable);XCTAssertFalse(text.isEditable)
@@ -50,8 +50,8 @@ import UIKit
         try p.input(action);try p.frame()
         XCTAssertEqual(p.elements().first {$0.id==e.id}?.children.first {$0.role=="button"}?.attrs["aria-expanded"],"false")
         surface.render(p.elements());XCTAssertEqual(tool.header.accessibilityValue,"Collapsed")
-        XCTAssertEqual(tool.constraints.first {$0.firstAttribute == .height}?.constant,28)
-        surface.view.layoutIfNeeded();XCTAssertEqual(tool.frame.height,28,accuracy:1)
+        XCTAssertEqual(tool.constraints.first {$0.firstAttribute == .height}?.constant,36)
+        surface.view.layoutIfNeeded();XCTAssertEqual(tool.frame.height,36,accuracy:1)
     }
     func testRefreshLivesInTheHeaderWithoutAFlashingDisabledButton()throws {
         let (p,view)=try loaded(),surface=NativeControls();surface.view.frame=CGRect(x:0,y:0,width:402,height:874);surface.render(p.elements());surface.view.layoutIfNeeded()

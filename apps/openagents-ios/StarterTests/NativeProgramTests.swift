@@ -216,6 +216,19 @@ import CryptoKit
         XCTAssertEqual(composer.intrinsicContentSize.height,162,accuracy:1);XCTAssertTrue(editor.isScrollEnabled)
     }
 
+    func testComposerModelPillAndStopWaitingUseRealState() throws {
+        let composer=NativeComposer();composer.frame=CGRect(x:0,y:0,width:378,height:94)
+        let field=NativeElement(id:"draft",role:"field",label:"Message",value:"")
+        let stop=NativeElement(id:"send",role:"button",label:"Stop waiting")
+        composer.render(NativeElement(id:"frame",role:"composer",label:"Message",children:[field,stop],attrs:["title":"Example model"]))
+        composer.layoutIfNeeded()
+        let model=try XCTUnwrap(composer.subviews.first {$0.accessibilityIdentifier=="composer.model"} as? UILabel)
+        XCTAssertEqual(model.text,"Example model");XCTAssertFalse(model.isHidden)
+        XCTAssertEqual(composer.send.symbol,"stop.fill");XCTAssertLessThan(model.frame.maxX,composer.send.frame.minX)
+        composer.render(NativeElement(id:"frame",role:"composer",label:"Message",children:[field,stop]))
+        XCTAssertTrue(model.isHidden)
+    }
+
     func testEnvironmentTargetsAndUncertainCommandsUseTheGeneratedNativeProgram()throws {
         let directory=try XCTUnwrap(Bundle.main.url(forResource:"Starter",withExtension:nil))
         let p=try NativeProgram(directory:directory,module:"app")

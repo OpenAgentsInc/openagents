@@ -10,11 +10,11 @@ import UIKit
     private let body=UIView(),copy=NativeButton(.icon),backing=NativeFrameView(role:NativeSkin.names.panel)
     private var texts:[NativeRichText]=[]
     private var record:NativeElement?,detail:NativeElement?
-    private lazy var heightConstraint=heightAnchor.constraint(equalToConstant:28)
+    private lazy var heightConstraint=heightAnchor.constraint(equalToConstant:36)
     override init(frame:CGRect) {
         super.init(frame:frame);heightConstraint.isActive=true;header.ruled=false
         addSubview(header);for v in [icon,label,chevron] {header.addSubview(v);v.isUserInteractionEnabled=false}
-        addSubview(backing);addSubview(scroll);scroll.addSubview(body);body.addSubview(copy)
+        backing.arcadePaint.kind=8;addSubview(backing);addSubview(scroll);scroll.addSubview(body);body.addSubview(copy)
         label.numberOfLines=1;label.lineBreakMode = .byTruncatingTail;label.adjustsFontForContentSizeCategory=true
         scroll.backgroundColor = .clear
         scroll.keyboardDismissMode = .interactive;scroll.showsVerticalScrollIndicator=true
@@ -34,7 +34,7 @@ import UIKit
         let names=["Bash":"terminal","Read":"doc.text","Edit":"pencil","MultiEdit":"pencil","Write":"square.and.pencil","Grep":"text.magnifyingglass","Glob":"folder","WebFetch":"globe","WebSearch":"magnifyingglass","Agent":"person.2","Task":"person.2","TodoWrite":"checklist"]
         icon.image=UIImage(systemName:names[what] ?? "wrench.and.screwdriver",withConfiguration:UIImage.SymbolConfiguration(pointSize:nt_work().icon,weight:.medium))
         icon.tintColor=label.textColor
-        chevron.image=UIImage(systemName:open ? "chevron.up":"chevron.down",withConfiguration:UIImage.SymbolConfiguration(pointSize:nt_work().chevron,weight:.medium));chevron.tintColor=label.textColor
+        chevron.image=UIImage(systemName:open ? "chevron.down":"chevron.right",withConfiguration:UIImage.SymbolConfiguration(pointSize:nt_work().chevron,weight:.medium));chevron.tintColor=label.textColor
         let next=e.children.first {$0.hasClass("tool-b")};scroll.isHidden = !open;backing.isHidden = !open
         if detail != next {
             detail=next;for t in texts {t.removeFromSuperview()};texts=[]

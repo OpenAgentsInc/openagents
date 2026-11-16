@@ -1,0 +1,1 @@
+Chat now has a clearer model indicator, refined tool rows and rounded code blocks; stop controls better reflect waiting turns.
