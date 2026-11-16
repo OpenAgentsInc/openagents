@@ -1,0 +1,190 @@
+// An indexed glTF 2.0 binary of one mesh: shared vertex attributes (positions, normals, up to two
+// texture coordinate sets, colours) and one primitive per material slot, each a run of indices
+// into them. The Unreal importer's cooked route writes its static meshes with it
+// (metaverse-engine/import/unreal/BUNDLE.md, "Mesh files are glTF 2.0 binary"); a skin, when
+// given, adds joints, weights, the skeleton's nodes and its inverse bind matrices.
+// Vertices arrive in glTF's frame (metres, y up, right-handed); this file converts nothing.
+//   coax/bin/coax test metaverse-engine/export/glb-mesh.coax
+#load "glb-write.coax";
+
+GlbPrim :: struct { first: int; count: int; material: int; }
+GlbBone :: struct { name: string; parent: int; t: [3] f32; r: [4] f32; s: [3] f32; inverse_bind: [16] f32; }
+GlbMesh :: struct {
+  name: string; vertices: int;
+  pos: [] f32; nrm: [] f32; uv0: [] f32; uv1: [] f32; col: [] u8;   // 3, 3, 2, 2 floats and 4 bytes (RGBA) a vertex; an empty view leaves one out
+  idx: [] u32; prims: [] GlbPrim; materials: [] string;
+  joints: [] u16; weights: [] f32; bones: [] GlbBone;               // 4 each a vertex, and the skeleton; empty for a static mesh
+}
+
+GLB_TYPES :: [7] string.["VEC3", "VEC3", "VEC2", "VEC2", "VEC4", "VEC4", "VEC4"];
+GLB_COMPONENTS :: [7] int.[5126, 5126, 5126, 5126, 5121, 5123, 5126];
+glb_pad4 :: (n: int) -> int #effects(all) { return (n + 3) / 4 * 4; }
+
+// The binary's buffer views, in this order: 0 position, 1 normal, 2 uv0, 3 uv1, 4 colour, 5 joints,
+// 6 weights (the attribute accessors 0..6 use the view of their own number), 7 indices, 8 inverse binds.
+GlbView :: struct { off: int; len: int; }
+GLB_VIEWS :: 9;
+glb_mesh_views :: (m: GlbMesh, views: [] GlbView) -> int #effects(all) {
+  at := 0;
+  lens := [GLB_VIEWS] int.[m.pos.count * 4, m.nrm.count * 4, m.uv0.count * 4, m.uv1.count * 4, m.col.count, m.joints.count * 2, m.weights.count * 4, m.idx.count * 4, m.bones.count * 64];
+  for l, k: lens { views[k] = GlbView.{off = at, len = l}; at += glb_pad4(l); }
+  return at;
+}
+
+// The glTF binary into out: its size, or -1 when an attribute's length is wrong, an index is out
+// of range, a primitive leaves the index list, or it does not fit.
+glb_mesh :: (m: GlbMesh, out: [] u8) -> int #effects(all) {
+  n := m.vertices;
+  if n <= 0 || m.pos.count != 3 * n { return -1; }
+  if (m.nrm.count != 0 && m.nrm.count != 3 * n) || (m.uv0.count != 0 && m.uv0.count != 2 * n) || (m.uv1.count != 0 && m.uv1.count != 2 * n) || (m.col.count != 0 && m.col.count != 4 * n) { return -1; }
+  skinned := m.bones.count > 0;
+  if skinned && (m.joints.count != 4 * n || m.weights.count != 4 * n) { return -1; }
+  for v: m.idx { if cast(int) v >= n { return -1; } }
+  for j: m.joints { if cast(int) j >= m.bones.count { return -1; } }
+  for p: m.prims { if p.first < 0 || p.count < 3 || p.count % 3 != 0 || p.first + p.count > m.idx.count || p.material < 0 || p.material >= m.materials.count { return -1; } }
+  for b, k: m.bones { if b.parent >= k || b.parent < -1 { return -1; } }
+  views: [GLB_VIEWS] GlbView; bin_bytes := glb_mesh_views(m, views[..]);
+  json: [262144] u8; o: [1] Jo; jo_start(o[..], json[..]);
+  jo_obj(o[..]);
+  jo_key(o[..], "asset"); jo_obj(o[..]); jo_key(o[..], "version"); jo_str(o[..], "2.0"); jo_key(o[..], "generator"); jo_str(o[..], "metaverse-engine/export/glb-mesh.coax"); jo_end(o[..]);
+  jo_key(o[..], "scene"); jo_int(o[..], 0);
+  // nodes: the mesh's node first, then the skeleton's
+  jo_key(o[..], "scenes"); jo_arr(o[..]); jo_obj(o[..]); jo_key(o[..], "nodes"); jo_arr(o[..]); jo_int(o[..], 0);
+  for b, k: m.bones { if b.parent < 0 { jo_int(o[..], 1 + k); } }
+  jo_end(o[..]); jo_end(o[..]); jo_end(o[..]);
+  jo_key(o[..], "nodes"); jo_arr(o[..]);
+  jo_obj(o[..]); jo_key(o[..], "name"); jo_str(o[..], m.name); jo_key(o[..], "mesh"); jo_int(o[..], 0); if skinned { jo_key(o[..], "skin"); jo_int(o[..], 0); } jo_end(o[..]);
+  for b, k: m.bones {
+    jo_obj(o[..]); jo_key(o[..], "name"); jo_str(o[..], b.name);
+    kids := 0; for c: m.bones { if c.parent == k { kids += 1; } }
+    if kids > 0 { jo_key(o[..], "children"); jo_arr(o[..]); for c, ci: m.bones { if c.parent == k { jo_int(o[..], 1 + ci); } } jo_end(o[..]); }
+    jo_key(o[..], "translation"); jo_arr(o[..]); for c: 0..<3 { glb_num(o[..], b.t[c]); } jo_end(o[..]);
+    jo_key(o[..], "rotation"); jo_arr(o[..]); for c: 0..<4 { glb_num(o[..], b.r[c]); } jo_end(o[..]);
+    jo_key(o[..], "scale"); jo_arr(o[..]); for c: 0..<3 { glb_num(o[..], b.s[c]); } jo_end(o[..]);
+    jo_end(o[..]);
+  }
+  jo_end(o[..]);
+  if skinned {
+    jo_key(o[..], "skins"); jo_arr(o[..]); jo_obj(o[..]);
+    jo_key(o[..], "joints"); jo_arr(o[..]); for b, k: m.bones { jo_int(o[..], 1 + k); } jo_end(o[..]);
+    jo_key(o[..], "inverseBindMatrices"); jo_int(o[..], 7 + m.prims.count);
+    jo_end(o[..]); jo_end(o[..]);
+  }
+  jo_key(o[..], "materials"); jo_arr(o[..]); for s: m.materials { jo_obj(o[..]); jo_key(o[..], "name"); jo_str(o[..], s); jo_end(o[..]); } jo_end(o[..]);
+  // accessors: 0 position, 1 normal, 2 uv0, 3 uv1, 4 colour, 5 joints, 6 weights, 7.. a primitive's indices, then the inverse binds
+  jo_key(o[..], "meshes"); jo_arr(o[..]); jo_obj(o[..]); jo_key(o[..], "name"); jo_str(o[..], m.name);
+  jo_key(o[..], "primitives"); jo_arr(o[..]);
+  for p, k: m.prims {
+    jo_obj(o[..]); jo_key(o[..], "attributes"); jo_obj(o[..]);
+    jo_key(o[..], "POSITION"); jo_int(o[..], 0);
+    if m.nrm.count > 0 { jo_key(o[..], "NORMAL"); jo_int(o[..], 1); }
+    if m.uv0.count > 0 { jo_key(o[..], "TEXCOORD_0"); jo_int(o[..], 2); }
+    if m.uv1.count > 0 { jo_key(o[..], "TEXCOORD_1"); jo_int(o[..], 3); }
+    if m.col.count > 0 { jo_key(o[..], "COLOR_0"); jo_int(o[..], 4); }
+    if skinned { jo_key(o[..], "JOINTS_0"); jo_int(o[..], 5); jo_key(o[..], "WEIGHTS_0"); jo_int(o[..], 6); }
+    jo_end(o[..]);
+    jo_key(o[..], "indices"); jo_int(o[..], 7 + k); jo_key(o[..], "material"); jo_int(o[..], p.material); jo_key(o[..], "mode"); jo_int(o[..], 4);
+    jo_end(o[..]);
+  }
+  jo_end(o[..]); jo_end(o[..]); jo_end(o[..]);
+  lo: [3] f32; hi: [3] f32;
+  for v: 0..<n { for c: 0..<3 { x := m.pos[3 * v + c]; if v == 0 || x < lo[c] { lo[c] = x; } if v == 0 || x > hi[c] { hi[c] = x; } } }
+  jo_key(o[..], "accessors"); jo_arr(o[..]);
+  for a: 0..<7 {
+    // an accessor for an absent attribute still stands (unreferenced) so the numbering holds
+    present := views[a].len > 0;
+    jo_obj(o[..]);
+    if present { jo_key(o[..], "bufferView"); jo_int(o[..], a); }
+    jo_key(o[..], "componentType"); jo_int(o[..], GLB_COMPONENTS[a]);
+    jo_key(o[..], "count"); jo_int(o[..], ifx present then n else 1);
+    jo_key(o[..], "type"); jo_str(o[..], GLB_TYPES[a]);
+    if a == 4 { jo_key(o[..], "normalized"); jo_bool(o[..], true); }
+    if a == 0 {
+      jo_key(o[..], "min"); jo_arr(o[..]); for c: 0..<3 { glb_num(o[..], lo[c]); } jo_end(o[..]);
+      jo_key(o[..], "max"); jo_arr(o[..]); for c: 0..<3 { glb_num(o[..], hi[c]); } jo_end(o[..]);
+    }
+    jo_end(o[..]);
+  }
+  for p: m.prims {
+    jo_obj(o[..]); jo_key(o[..], "bufferView"); jo_int(o[..], 7); jo_key(o[..], "byteOffset"); jo_int(o[..], p.first * 4);
+    jo_key(o[..], "componentType"); jo_int(o[..], 5125); jo_key(o[..], "count"); jo_int(o[..], p.count); jo_key(o[..], "type"); jo_str(o[..], "SCALAR");
+    jo_end(o[..]);
+  }
+  if skinned {
+    jo_obj(o[..]); jo_key(o[..], "bufferView"); jo_int(o[..], 8); jo_key(o[..], "componentType"); jo_int(o[..], 5126);
+    jo_key(o[..], "count"); jo_int(o[..], m.bones.count); jo_key(o[..], "type"); jo_str(o[..], "MAT4"); jo_end(o[..]);
+  }
+  jo_end(o[..]);
+  jo_key(o[..], "bufferViews"); jo_arr(o[..]);
+  for g, k: views {
+    jo_obj(o[..]); jo_key(o[..], "buffer"); jo_int(o[..], 0); jo_key(o[..], "byteOffset"); jo_int(o[..], g.off);
+    jo_key(o[..], "byteLength"); jo_int(o[..], ifx g.len > 0 then g.len else 4);
+    if k < 7 { jo_key(o[..], "target"); jo_int(o[..], 34962); } else if k == 7 { jo_key(o[..], "target"); jo_int(o[..], 34963); }
+    jo_end(o[..]);
+  }
+  jo_end(o[..]);
+  jo_key(o[..], "buffers"); jo_arr(o[..]); jo_obj(o[..]); jo_key(o[..], "byteLength"); jo_int(o[..], ifx bin_bytes > 0 then bin_bytes else 4); jo_end(o[..]); jo_end(o[..]);
+  jo_end(o[..]);
+  if o[0].bad { return -1; }
+  json_n := o[0].n; json_pad := (4 - json_n % 4) % 4;
+  bin_total := ifx bin_bytes > 0 then bin_bytes else 4;
+  total := 12 + 8 + json_n + json_pad + 8 + bin_total;
+  if total > out.count { return -1; }
+  glb_u32(out, 0, 0x46546C67); glb_u32(out, 4, 2); glb_u32(out, 8, cast,trunc(u32) total);
+  glb_u32(out, 12, cast,trunc(u32) (json_n + json_pad)); glb_u32(out, 16, 0x4E4F534A);
+  at := 20;
+  for k: 0..<json_n { out[at + k] = json[k]; }
+  for k: 0..<json_pad { out[at + json_n + k] = ' '; }
+  at += json_n + json_pad;
+  glb_u32(out, at, cast,trunc(u32) bin_total); glb_u32(out, at + 4, 0x004E4942); at += 8;
+  for k: 0..<bin_total { out[at + k] = 0; }
+  for v, k: m.pos { glb_u32(out, at + views[0].off + 4 * k, f32_bits(v)); }
+  for v, k: m.nrm { glb_u32(out, at + views[1].off + 4 * k, f32_bits(v)); }
+  for v, k: m.uv0 { glb_u32(out, at + views[2].off + 4 * k, f32_bits(v)); }
+  for v, k: m.uv1 { glb_u32(out, at + views[3].off + 4 * k, f32_bits(v)); }
+  for v, k: m.col { out[at + views[4].off + k] = v; }
+  for v, k: m.idx { glb_u32(out, at + views[7].off + 4 * k, v); }
+  for v, k: m.joints { out[at + views[5].off + 2 * k] = cast,trunc(u8) (v & 255); out[at + views[5].off + 2 * k + 1] = cast,trunc(u8) (v >> 8); }
+  for v, k: m.weights { glb_u32(out, at + views[6].off + 4 * k, f32_bits(v)); }
+  for b, k: m.bones { for c: 0..<16 { glb_u32(out, at + views[8].off + 64 * k + 4 * c, f32_bits(b.inverse_bind[c])); } }
+  return total;
+}
+
+#test "an indexed triangle pair becomes a glTF binary with one primitive a slot" {
+  pos := [12] f32.[0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0];
+  nrm := [12] f32.[0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1];
+  uv := [8] f32.[0, 0, 1, 0, 1, 1, 0, 1];
+  idx := [6] u32.[0, 1, 2, 0, 2, 3];
+  prims := [2] GlbPrim.[GlbPrim.{first = 0, count = 3, material = 0}, GlbPrim.{first = 3, count = 3, material = 1}];
+  mats := [2] string.["A", "B"];
+  m: GlbMesh; m.name = "quad"; m.vertices = 4; m.pos = pos[..]; m.nrm = nrm[..]; m.uv0 = uv[..]; m.idx = idx[..]; m.prims = prims[..]; m.materials = mats[..];
+  out: [8192] u8;
+  n := glb_mesh(m, out[..]);
+  #assert n > 0 && n % 4 == 0;
+  #assert out[0] == 'g' && out[1] == 'l' && out[2] == 'T' && out[3] == 'F';
+  json_n := cast(int) out[12] | (cast(int) out[13] << 8);
+  text := cast(string) out[20..<20 + json_n];
+  d: [1] Jv; nodes: [2048] JvNode;
+  #assert jv_parse(d[..], text, nodes[..]);
+  prim := jv_path(d[0], 0, "meshes[0].primitives");
+  #assert jv_len(d[0], prim) == 2;
+  #assert jv_int(d[0], jv_path(d[0], 0, "meshes[0].primitives[1].material"), -1) == 1;
+  #assert jv_int(d[0], jv_path(d[0], 0, "accessors[8].byteOffset"), -1) == 12;
+  // the binary: positions 48 bytes, normals 48, uv 32, then the indices 0 1 2 0 2 3
+  bin := 20 + json_n + 8;
+  #assert out[bin + 128] == 0 && out[bin + 128 + 4] == 1 && out[bin + 128 + 12] == 0 && out[bin + 128 + 16] == 2;
+  #assert jv_int(d[0], jv_path(d[0], 0, "bufferViews[7].byteOffset"), -1) == 128;
+}
+#test "an index past the vertices, or a primitive past the indices, is refused" {
+  pos := [9] f32.[0, 0, 0, 1, 0, 0, 1, 1, 0];
+  bad := [3] u32.[0, 1, 3];
+  prims := [1] GlbPrim.[GlbPrim.{first = 0, count = 3, material = 0}];
+  mats := [1] string.["A"];
+  m: GlbMesh; m.name = "tri"; m.vertices = 3; m.pos = pos[..]; m.idx = bad[..]; m.prims = prims[..]; m.materials = mats[..];
+  out: [8192] u8;
+  #assert glb_mesh(m, out[..]) == -1;
+  good := [3] u32.[0, 1, 2]; m.idx = good[..];
+  #assert glb_mesh(m, out[..]) > 0;
+  long := [1] GlbPrim.[GlbPrim.{first = 0, count = 6, material = 0}]; m.prims = long[..];
+  #assert glb_mesh(m, out[..]) == -1;
+}
