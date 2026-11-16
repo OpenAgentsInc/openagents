@@ -1746,3 +1746,16 @@ still open for the remaining screens, composition and desktop adoption.
       to replace it. Never send a private key or authorization code in chat or
       a screenshot. SDK/compiled-page tests pass; these physical ceremonies,
       VoiceOver and phone appearance remain owner checks.
+
+## GPU composition on iPhone (#13645, build 1403)
+
+- [ ] When **1403** becomes available in Owner TestFlight, open
+      **Settings → Renderer**. Check the image, moving translucent group,
+      transformed Tap button, blur with a sharp button and source blur.
+      Test Back, background/resume, VoiceOver, Reduce Motion and Reduce
+      Transparency. Metal, WebGPU, Linux Lavapipe and actual UIKit tap tests
+      pass; physical-phone appearance remains an owner check.
+- [ ] Check existing login, chats, Projects and Usage. Verify Nostr public-key
+      Copy and passkey/biometric Backup. Rotate/Restore only a disposable
+      identity when you intend to replace it; never share its private key.
+      [Delivery and evidence](docs/audits/2026-11-16-gpu-composition-1403.md).
