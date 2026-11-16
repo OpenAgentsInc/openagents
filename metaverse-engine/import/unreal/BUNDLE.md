@@ -34,7 +34,8 @@ a bundle, and a bundle from each route for the same build must agree
   `/Game/SpliceBots/Things/SM_Garage.SM_Garage`. An id is unique within its
   list and is how every list refers to every other. A data-route id is the
   file's path under the build's data folder, without its extension, for
-  example `/Data/audio/wav/ui-move`.
+  example `/Data/audio/wav/ui-move`; a project configuration file's is its
+  path under the project, for example `/Config/DefaultSpliceTuning`.
 - **Every file is listed** in `files` with its SHA-256 and size. A file on
   disk that is not listed, or listed and missing, fails the bundle.
 - **Sorted.** Every list is sorted by id (placements by map, then name), so
@@ -53,7 +54,7 @@ NAME.aimport/
   textures/     NNNN.png          8-bit PNG; 16-bit for height or HDR sources
   sounds/       NNNN.wav          PCM
   landscape/    MAP-NNNN.r16      heights, little-endian u16, plus .json beside
-  tables/       NNNN.csv|json     a data route's tables, byte for byte
+  tables/       NNNN.csv|json|ini a data route's tables, byte for byte
   skipped.json
 ```
 
@@ -278,9 +279,11 @@ picks colour or data layer from it and from how materials use the texture.
   "rows": 157, "origin": "project" }
 ```
 
-A table the game reads at run time, carried byte for byte. `format` is `csv`
-or `json`; `rows` is a CSV's records after its header (quoted fields may
-hold line breaks), or 1 for a JSON file. The consumer carries each one line
+A table the game reads at run time, carried byte for byte. `format` is `csv`,
+`json` or `ini`; `rows` is a CSV's records after its header (quoted fields may
+hold line breaks), 1 for a JSON file, or an ini file's `key=value` lines (not
+its `[section]`, `;` or `#` comment, or blank lines). An ini table's id is its
+path under the project, for example `/Config/DefaultSpliceTuning`. The consumer carries each one line
 for line in the pack's catalog.
 
 ## 4. `skipped.json`

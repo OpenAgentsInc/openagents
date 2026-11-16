@@ -2,7 +2,10 @@
 // The Splice Bots jam data import's acceptance (the importer's spec, section 8 step 1): the pack
 // unreal-level-import wrote from the jam build's Data folder, checked against that folder's own CSVs.
 //
-//   coax/web/tool.sh metaverse/splice-bots/tools/jam-data-check.coax DATA_DIR PACK
+//   coax/web/tool.sh metaverse/splice-bots/tools/jam-data-check.coax DATA_DIR PACK [--source SRC_DIR]
+//
+// With --source (the bundle was made with jam-data-bundle's --source), a /Data table may be the source
+// project's copy instead of the build's, and each /Config table is the source's Config/NAME.ini.
 //
 //   - every level_layout.csv row is in the pack once, per level and per kind: a box (wall, platform, ramp,
 //     floor, bay) as a drawn instance and a collider, a marker as a named spot, a light as a light; a
@@ -132,9 +135,24 @@ jdc_pad :: (t: [] u8, at: int, s: string, width: int) -> int #effects(all) {
   n := at; for k: s.count..<width { t[n] = ' '; n += 1; } for c: s { t[n] = c; n += 1; } return n;
 }
 
+// Table k's X lines (the lines after its table line) against the file at path, line for line.
+jdc_table_same :: (j: [] Jdc, k: int, lines: int, path: string, text: [] u8) -> bool #effects(all) {
+  fsz := fs_size(path);
+  if fsz < 0 || fsz > text.count || fs_read(path, text[0..<fsz]) != fsz { return false; }
+  t := cast(string) text[0..<fsz]; ta := 0; got := 0; x := k + 1;
+  while ta < t.count {
+    fl := uf_line(t, ta); ta = fl.next; got += 1;
+    xl := ifx x < j[0].n then jdc_line(j, x) else "";
+    sp := 0; spaces := 0; for c, i: xl { if c == ' ' { spaces += 1; if spaces == 2 { sp = i + 1; break; } } }
+    if xl.count < 2 || xl[0..<2] != "X " || xl[sp..<xl.count] != fl.text { return false; }
+    x += 1;
+  }
+  return got == lines;
+}
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
-  if !args_load(a[..]) || args_count(a[..]) != 2 { print("usage: jam-data-check DATA_DIR PACK\n"); return 2; }
+  if !args_load(a[..]) || !(args_count(a[..]) == 2 || (args_count(a[..]) == 4 && args_at(a[..], 2) == "--source")) { print("usage: jam-data-check DATA_DIR PACK [--source SRC_DIR]\n"); return 2; }
+  src := ifx args_count(a[..]) == 4 then args_at(a[..], 3) else "";
   data := args_at(a[..], 0);
   pack_b: [268435456] u8; pn := fs_size(args_at(a[..], 1));
   if pn < 0 || pn > pack_b.count || fs_read(args_at(a[..], 1), pack_b[0..<pn]) != pn { tool_errln("jam-data-check: could not read the pack"); return 1; }
@@ -188,25 +206,19 @@ tool_main :: () -> int #export_c #effects(all) {
   wl: [1] FsList; wn := 0; wav := fs_join(data, "audio/wav", pb[..]);
   if fs_list(wav, wl[..]) >= 0 { for k: 0..<wl[0].n { e := fs_entry(wl[..], k); if e.count > 4 && e[e.count - 4..<e.count] == ".wav" { wn += 1; } } }
   sounds := jdc_count_kind(j, "S"); layers := jdc_count_kind(j, "T");
-  icons := -1; tables := 0; table_bad := 0;
+  icons := -1; tables := 0; table_bad := 0; from_source := 0;
   for k: 0..<j[0].n {
     l := jdc_line(j, k); if pack_field(l, 0) != "table" { continue; }
     tables += 1;
     id := pack_field(l, 2); fmt := pack_field(l, 3); lines := cast(int) jdc_num(l, 5);
-    if id.count < 7 || id[0..<6] != "/Data/" { table_bad += 1; continue; }
-    rel: [512] u8; rn := 0; for c: id[6..<id.count] { rel[rn] = c; rn += 1; } rel[rn] = '.'; rn += 1; for c: fmt { rel[rn] = c; rn += 1; }
-    fp := fs_join(data, cast(string) rel[0..<rn], pb[..]); fsz := fs_size(fp);
-    if fsz < 0 || fsz > text.count || fs_read(fp, text[0..<fsz]) != fsz { tool_err("jam-data-check: no file for table "); tool_errln(id); table_bad += 1; continue; }
-    t := cast(string) text[0..<fsz]; ta := 0; got := 0; same := true; x := k + 1;
-    while ta < t.count {
-      fl := uf_line(t, ta); ta = fl.next; got += 1;
-      // the X lines that follow carry the file's lines in order
-      want_pre := "X "; xl := ifx x < j[0].n then jdc_line(j, x) else "";
-      sp := 0; spaces := 0; for c, i: xl { if c == ' ' { spaces += 1; if spaces == 2 { sp = i + 1; break; } } }
-      if xl.count < 2 || xl[0..<2] != want_pre || xl[sp..<xl.count] != fl.text { same = false; }
-      x += 1;
-    }
-    if got != lines || !same { tool_err("jam-data-check: table "); tool_err(id); tool_errln(" is not carried line for line"); table_bad += 1; }
+    config := id.count > 8 && id[0..<8] == "/Config/";
+    if !(id.count >= 7 && id[0..<6] == "/Data/") && !(config && src.count > 0) { table_bad += 1; continue; }
+    rel: [512] u8; rn := 0; for c: id[ifx config then 8 else 6..<id.count] { rel[rn] = c; rn += 1; } rel[rn] = '.'; rn += 1; for c: fmt { rel[rn] = c; rn += 1; }
+    sb: [4096] u8; sp2: [4096] u8;
+    first := ifx config then fs_join(src, "Config", sb[..]) else data;
+    ok := jdc_table_same(j, k, lines, fs_join(first, cast(string) rel[0..<rn], pb[..]), text[..]);
+    if !ok && !config && src.count > 0 { ok = jdc_table_same(j, k, lines, fs_join(fs_join(src, "Data", sb[..]), cast(string) rel[0..<rn], sp2[..]), text[..]); if ok { from_source += 1; } }
+    if !ok { tool_err("jam-data-check: table "); tool_err(id); tool_errln(" is not carried line for line"); table_bad += 1; }
     if id == "/Data/icons/icons" { icons = cast(int) jdc_num(l, 4); }
   }
   // ---- the table
@@ -224,7 +236,7 @@ tool_main :: () -> int #export_c #effects(all) {
   } }
   print("%", cast(string) out[0..<n]);
   print("all levels: % rows, % carried, % not stated, % mismatched; the worst difference % m (tolerance % m)\n", totals.rows, totals.found, totals.unstated, totals.wrong, j[0].worst, JDC_TOLERANCE);
-  print("sounds: % WAVs in audio/wav, % in the pack; icons: % rows in icons/icons.csv, % colour layers; tables: % carried, % not line for line\n", wn, sounds, icons, layers, tables, table_bad);
+  print("sounds: % WAVs in audio/wav, % in the pack; icons: % rows in icons/icons.csv, % colour layers; tables: % carried (% of /Data from the source), % not line for line\n", wn, sounds, icons, layers, tables, from_source, table_bad);
   if wn != sounds || wn != 9 || icons != layers || table_bad != 0 { j[0].bad += 1; }
   if j[0].bad > 0 { tool_err("jam-data-check: "); tool_errln("refused: see above"); return 1; }
   print("jam-data-check: the pack matches the CSVs\n");

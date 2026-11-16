@@ -4,7 +4,12 @@
 // (metaverse-engine/import/unreal/BUNDLE.md), so the importer runs end to end before an editor
 // bundle exists. It reads no Unreal package; what it writes is what the data states, and nothing more.
 //
-//   coax/web/tool.sh metaverse/splice-bots/tools/jam-data-bundle.coax DATA_DIR PLAN.json NEW.aimport
+//   coax/web/tool.sh metaverse/splice-bots/tools/jam-data-bundle.coax DATA_DIR PLAN.json NEW.aimport [--source SRC_DIR]
+//
+// --source SRC_DIR is the source project at the plan's revision (its Data/ and Config/, for example
+// `git archive REV Data Config` unpacked): each table the build has is read from SRC_DIR/Data instead,
+// except a pinned one (the build's copy wins), so rows the build predates are carried; and each
+// SRC_DIR/Config/*.ini is a table /Config/NAME of format ini.
 //
 // DATA_DIR is the build's Data folder (~/.openagents/unreal/splice-bots-jam/build/SPLICEBOTS/Data);
 // PLAN is metaverse/splice-bots/tools/jam-data.plan.json, admitted whole first (plan.coax). The plan pins
@@ -56,7 +61,7 @@ Jdb :: struct {
   files: int; file: [JDB_FILES] JdbFile;
   meshes: int; mesh: [80] JdbAsset; textures: int; texture: [64] JdbAsset; sounds: int; sound: [32] JdbAsset;
   skips: int; skip: [512] JdbSkip;
-  tables: int; table: [64] JdbAsset; table_rel: [64] [1] JdbText;   // table: n = rows, m = 1 for JSON
+  tables: int; table: [64] JdbAsset; table_rel: [64] [1] JdbText;   // table: n = rows, m = 1 for JSON, 2 for ini (under Config/)
   kinds_used: [8] bool;
 }
 
@@ -317,7 +322,7 @@ jdb_manifest :: (j: [] Jdb, plan_sha: string, o: [] Jo) #effects(all) {
   jo_key(o, "tables"); jo_arr(o);
   for k: 0..<j[0].tables {
     t := j[0].table[k]; jo_obj(o); jdb_id(o, "id", jdb_t(j[0].table[k].id[..])); jdb_id(o, "file", jdb_t(j[0].file[t.file].path[..]));
-    jdb_id(o, "format", ifx t.m == 1 then "json" else "csv"); jo_key(o, "rows"); jo_int(o, t.n); jdb_id(o, "origin", "project");
+    jdb_id(o, "format", ifx t.m == 1 then "json" else ifx t.m == 2 then "ini" else "csv"); jo_key(o, "rows"); jo_int(o, t.n); jdb_id(o, "origin", "project");
     jo_end(o);
   }
   jo_end(o);
@@ -411,10 +416,40 @@ jdb_leftovers :: (j: [] Jdb, data: string, rel: string, depth: int) #effects(all
   }
 }
 
+// An ini file's rows: its key=value lines (not a [section], a ; or # comment, or a blank line).
+jdb_ini_rows :: (t: string) -> int {
+  n := 0; at := 0;
+  while at < t.count {
+    l := uf_line(t, at); at = l.next; first: u8 = 0; eq := false;
+    for c: l.text { if first == 0 && c != ' ' && c != '\t' && c != '\r' { first = c; } if c == '=' { eq = true; } }
+    if first != 0 && first != '[' && first != ';' && first != '#' && eq { n += 1; }
+  }
+  return n;
+}
+#test "an ini's rows are its key=value lines" { #assert jdb_ini_rows("; c\n[/Script/X]\nA=1\n\n  B = 2\r\n# d\n") == 2 && jdb_ini_rows("") == 0; }
+// True when the plan pins the table file at rel (the build's copy wins).
+jdb_pinned :: (plan: [] UpPlan, rel: string) -> bool #effects(all) { for k: 0..<plan[0].pins { if up_text(plan[0].pin[k].file[..]) == rel { return true; } } return false; }
+// SRC/Config's .ini files as tables /Config/NAME (m 2).
+jdb_configs :: (j: [] Jdb, src: string) -> bool #effects(all) {
+  l: [1] FsList; cb: [4096] u8; names: [128] [1] JdbText;
+  n := jdb_names(jdb_path(src, "Config", cb[..]), ".ini", l[..], names[..]);
+  if n < 0 { return false; }
+  for k: 0..<n {
+    if j[0].tables >= 64 { return false; }
+    t := j[0].tables; rb: [512] u8; ib: [512] u8;
+    jdb_set(j[0].table_rel[t][..], jdb_prefixed(jdb_t(names[k][..]), ".ini", rb[..]));
+    jdb_set(j[0].table[t].id[..], jdb_prefixed("/Config/", jdb_t(names[k][..]), ib[..]));
+    j[0].table[t].m = 2; j[0].tables += 1;
+  }
+  return true;
+}
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
-  if !args_load(a[..]) || args_count(a[..]) != 3 { print("usage: jam-data-bundle DATA_DIR PLAN.json NEW.aimport\n"); return 2; }
+  ok_args := args_load(a[..]) && (args_count(a[..]) == 3 || (args_count(a[..]) == 5 && args_at(a[..], 3) == "--source"));
+  if !ok_args { print("usage: jam-data-bundle DATA_DIR PLAN.json NEW.aimport [--source SRC_DIR]\n"); return 2; }
   data := args_at(a[..], 0); plan_path := args_at(a[..], 1); out := args_at(a[..], 2);
+  src := ifx args_count(a[..]) == 5 then args_at(a[..], 4) else "";
+  if src.count > 0 && fs_kind(src) != 2 { return jdb_fail("the source folder can't be read"); }
   if fs_exists(out) { return jdb_fail("the bundle folder already exists; name a new one"); }
   pt: [65536] u8; pn := fs_read(plan_path, pt[..]);
   plan: [1] UpPlan;
@@ -483,14 +518,17 @@ tool_main :: () -> int #export_c #effects(all) {
   }
   // Tables, in id order, then textures: the files stay sorted by path.
   jdb_leftovers(j[..], data, "", 0);
+  if src.count > 0 && !jdb_configs(j[..], src) { return jdb_fail("could not list the source's Config/ (or more tables than a bundle holds)"); }
   for ta: 1..<j[0].tables { k := ta; while k > 0 && jdb_cmp(jdb_t(j[0].table[k - 1].id[..]), jdb_t(j[0].table[k].id[..])) > 0 {
     s := j[0].table[k]; j[0].table[k] = j[0].table[k - 1]; j[0].table[k - 1] = s; r := j[0].table_rel[k]; j[0].table_rel[k] = j[0].table_rel[k - 1]; j[0].table_rel[k - 1] = r; k -= 1; } }
   for k: 0..<j[0].tables {
     tb2: [4096] u8; fb: [32] u8;
-    n := fs_read(jdb_path(data, jdb_t(j[0].table_rel[k][..]), tb2[..]), scratch[..]);
-    if n < 0 { tool_err("jam-data-bundle: could not read "); tool_errln(jdb_t(j[0].table_rel[k][..])); return 1; }
-    j[0].table[k].n = ifx j[0].table[k].m == 1 then 1 else jdb_records(cast(string) scratch[0..<n]);
-    j[0].table[k].file = jdb_write(j[..], temp, jdb_numbered("tables", k, ifx j[0].table[k].m == 1 then ".json" else ".csv", fb[..]), scratch[0..<n]);
+    rel := jdb_t(j[0].table_rel[k][..]); sb: [4096] u8;
+    from := ifx j[0].table[k].m == 2 then jdb_path(src, "Config", sb[..]) else ifx src.count > 0 && !jdb_pinned(plan[..], rel) then jdb_path(src, "Data", sb[..]) else data;
+    n := fs_read(jdb_path(from, rel, tb2[..]), scratch[..]);
+    if n < 0 { tool_err("jam-data-bundle: could not read "); tool_errln(rel); return 1; }
+    j[0].table[k].n = ifx j[0].table[k].m == 1 then 1 else ifx j[0].table[k].m == 2 then jdb_ini_rows(cast(string) scratch[0..<n]) else jdb_records(cast(string) scratch[0..<n]);
+    j[0].table[k].file = jdb_write(j[..], temp, jdb_numbered("tables", k, ifx j[0].table[k].m == 1 then ".json" else ifx j[0].table[k].m == 2 then ".ini" else ".csv", fb[..]), scratch[0..<n]);
     if j[0].table[k].file < 0 { return jdb_fail("could not write a table"); }
   }
   ib2: [4096] u8; pngs := jdb_names(jdb_path(data, "icons", ib2[..]), ".png", l[..], names[..]);

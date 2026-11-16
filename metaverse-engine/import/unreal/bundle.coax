@@ -83,7 +83,7 @@ ab_hex :: (s: string, n: int) -> bool #effects(all) {
 // no escapes, no control bytes, no "..".
 ab_id_ok :: (s: string) -> bool #effects(all) {
   if s.count < 7 || s.count > AB_ID || s[0] != '/' { return false; }
-  root := s[0..<6] == "/Game/" || s[0..<6] == "/Data/" || (s.count >= 8 && s[0..<8] == "/Engine/");
+  root := s[0..<6] == "/Game/" || s[0..<6] == "/Data/" || (s.count >= 8 && (s[0..<8] == "/Engine/" || s[0..<8] == "/Config/"));
   if !root { return false; }
   for c, k: s {
     if c < 32 || c == 127 || c == '\\' || c == '"' { return false; }
@@ -322,7 +322,7 @@ ab_admit :: (text: string, d: [] Jv, nodes: [] JvNode, at: [] int, out: [] AbBun
   for k: 0..<b[0].tables.count {
     r := ab_row(b, b[0].tables, k); id := ab_id(dd, r);
     if !ab_keys(dd, r, "id|file|format|rows|origin", "id|file|format|rows|origin") { return ab_fail(f, AB_KEY, "tables", k, id); }
-    if !ab_word(dd, jv_get(dd, r, "format"), "csv|json") || !ab_int(dd, jv_get(dd, r, "rows"), 0, 10000000) || !ab_origin(dd, r) { return ab_fail(f, AB_FORM, "tables", k, id); }
+    if !ab_word(dd, jv_get(dd, r, "format"), "csv|json|ini") || !ab_int(dd, jv_get(dd, r, "rows"), 0, 10000000) || !ab_origin(dd, r) { return ab_fail(f, AB_FORM, "tables", k, id); }
     if !ab_file_ref(b, jv_get(dd, r, "file")) { return ab_fail(f, AB_REFERENCE, "tables", k, id); }
   }
   for k: 0..<b[0].sounds.count {

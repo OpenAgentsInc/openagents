@@ -79,11 +79,12 @@ up_title_ok :: (s: string) -> bool #effects(all) {
   for c: s { if c < 32 || c == 127 { return false; } }
   return true;
 }
-// An asset path or folder: /Game/, /Engine/ or, for a build's loose data, /Data/; then letters,
+// An asset path or folder: /Game/, /Engine/ or, for a build's loose data and its project's configuration,
+// /Data/ and /Config/; then letters,
 // digits, _ - . / and spaces, no "..", no "//", no trailing space.
 up_asset_ok :: (s: string) -> bool #effects(all) {
   if s.count < 6 || s.count > UP_PATH { return false; }
-  root := s[0..<6] == "/Game/" || s[0..<6] == "/Data/" || (s.count >= 8 && s[0..<8] == "/Engine/");
+  root := s[0..<6] == "/Game/" || s[0..<6] == "/Data/" || (s.count >= 8 && (s[0..<8] == "/Engine/" || s[0..<8] == "/Config/"));
   if !root || s[s.count - 1] == ' ' { return false; }
   for c, k: s {
     plain := (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '-' || c == '.' || c == '/' || c == ' ';
@@ -237,6 +238,7 @@ up_test :: (from: string, to: string) -> int #effects(all) { b: [4096] u8; p: [1
   #assert up_licence(p[..], "/Data/graybox/wall") == UP_PROJECT && up_licence(p[..], "/Engine/BasicShapes/Cube.Cube") == UP_ENGINE;
   #assert up_licence(p[..], "/Game/Other/SM_X.SM_X") == UP_REFUSED && up_licence(p[..], "/Data/MetaHumans/Ada/x") == UP_REFUSED;
   #assert up_licence(p[..], "/Game/MetaHumans/Ada/SK_Ada.SK_Ada") == UP_REFUSED && up_folder(p[..], "/Game/Other") == -1;
+  #assert up_licence(p[..], "/Config/DefaultSpliceTuning") == UP_REFUSED;   // a root the plan doesn't name
   #assert up_volume_admitted(p[..], "BlockingVolume_3") && !up_volume_admitted(p[..], "BlockingVolume_4");
 }
 #test "each rule of the profile refuses the whole plan and names its fault" {

@@ -39,6 +39,10 @@ abt :: (from: string, to: string) -> int #effects(all) { f: [1] AbFault; return 
   why: [256] u8; f[0] = AbFault.{}; _ = ab_fail(f[..], AB_REFERENCE, "meshes", 3, "/Game/X");
   #assert ab_why(f[..], why[..]) == "meshes, row 3 (/Game/X): a reference that names nothing in the bundle";
 }
+#test "ids are rooted at the project, its data, its configuration or the engine" {
+  #assert ab_id_ok("/Config/DefaultSpliceTuning") && ab_id_ok("/Data/items") && ab_id_ok("/Game/A.A") && ab_id_ok("/Engine/BasicShapes/Cube.Cube");
+  #assert !ab_id_ok("/Configs/x") && !ab_id_ok("/Other/x") && !ab_id_ok("Config/x");
+}
 #test "each rule refuses the whole bundle and names its first fault" {
   f: [1] AbFault;
   #assert abt("'aimport': 1", "'aimport': 2") == AB_VERSION;

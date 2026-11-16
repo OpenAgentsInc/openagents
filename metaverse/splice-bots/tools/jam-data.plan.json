@@ -5,10 +5,11 @@
   "profile": "level",
   "route": "data",
   "project": "/SPLICEBOTS/Data",
-  "revision": "70c5badcd169ed2c2eb18774dc91da78e4e7129f",
+  "revision": "8a58f752ebf6d684fe1f66a5178e2097c7df0687",
   "maps": ["/Data/level_layout/farm", "/Data/level_layout/lab", "/Data/level_layout/plain", "/Data/level_layout/ring"],
   "take": "map",
   "folders": [
+    {"path": "/Config/", "licence": "project"},
     {"path": "/Data/", "licence": "project"},
     {"path": "/Engine/", "licence": "engine"}
   ],
