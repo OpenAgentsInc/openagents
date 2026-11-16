@@ -1779,3 +1779,19 @@ group. Install it from that group; the handoff records the delivery and checks.
       Existing Nostr key custody and account services remain; test system
       Backup/Rotate/Restore only with an identity you intend to use or replace.
       Never share a private key. [Screenshots and qualification](docs/audits/2026-11-16-claude-gpu-chat-1404.md).
+
+
+## Claude conversation library on iPhone (build 1406)
+
+**1406 is VALID, IN_BETA_TESTING and verified in Owner TestFlight.**
+1405 is superseded.
+[Release and qualification](docs/audits/2026-11-16-claude-chat-library-1405.md).
+
+- [ ] Install 1406 from Owner TestFlight. In a connected chat,
+      check Pin, Rename, Archive and Restore, including Save above the keyboard.
+      Preferences are local to this installation and separated by account.
+- [ ] Recents → All/Pinned/Archived; search for an older chat title.
+- [ ] Workspace → Branches prepares a draft. Review and Send to use the
+      selected computer; existing Claude permissions and GitHub auth apply.
+- [ ] Share excerpt → verify the chooser and Cancel; check VoiceOver and
+      largest text. Model/effort, attachments and mic remain hidden.

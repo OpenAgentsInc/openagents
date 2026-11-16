@@ -103,7 +103,39 @@ caught per-frame Keychain reads in partition selection. The follow-up caches
 that selection and rereads only on launch, foreground and account-session
 changes, with session notifications delivered on the main thread. The final UIKit library case passes in 20.222 s, including background/resume and a cold restart.
 
-**1406 supersedes 1405**; 1405 is not assigned to Owner. Version `1.0.0`,
+**1406 supersedes 1405**; this release assigns 1406 to Owner. Version `1.0.0`,
 bundle `com.openagents.app`, signing identity and existing Keychain records
-remain. Final receipt, frozen source and Owner TestFlight membership follow
-when the revised archive/upload finishes.
+remain. Final source is `23ac24d1feeb25d5491e76f7c33a05bc6833cc08`, landed on
+main with passing pre-push gates. Build **1406** archived/exported from that
+frozen source and Apple accepted it at **2026-11-16 13:10:57 CST**, delivery
+`d9fd5733-8b8d-4d20-ba4c-bd8526208e6c`. The actual archive identifies
+`com.openagents.app`, `1.0.0`, `1406`; package audit passes with no WebKit,
+JavaScriptCore, JavaScript, Wasm or HTML.
+
+IPA SHA-256: `1f63ba8ee8f932414265339118f55e35a5713ba0358c3bd011068ce0cd73d35c`.
+Arm64 dSYM: `EA991B39-F77E-3EC5-B09E-C6C903FE4CD6`, preserved at
+`gs://openagentsgemini-oa-symbols/app/ea991b39f77e3ec5b09ec6c903fe4cd6.dSYM.zip`.
+Compiler fingerprint `6c6b10ed0a8e`, binary SHA-256
+`7747b31e74841bc6c170e89aafb741ed59392beb22e730378318f8b118954f1e`.
+Archive and IPA: `/tmp/oa-chat-gaps-1406-frozen`; release log:
+`/tmp/oa-chat-gaps-1406-release.log`. The final UIKit result is
+`/tmp/oa-chat-gaps-ui-tests/Logs/Test/Test-OpenAgentsSidebar-2026.11.16_13-04-26--0600.xcresult`.
+The disposable simulator was shut down and removed after testing.
+
+**1406 is VALID, IN_BETA_TESTING and verified in Owner TestFlight**
+(2026-11-16). The Owner group does not automatically receive all builds;
+this exact build was explicitly assigned and membership verified with:
+
+```sh
+python3 apps/openagents-ios/tools/app_store.py status --build 1406
+python3 apps/openagents-ios/tools/app_store.py testflight --build 1406 --group Owner --notes-file /tmp/oa-chat-gaps-1406-notes.txt
+```
+
+Generated Coax C/header files are retained beside both archives under
+`coax-generated/` before removing the frozen release worktrees.
+Documentation and cleanup continued during processing.
+
+No full-repository `main-green` claim is made: the global after-landing
+watcher reports it has been stopped since 2026-11-15; its red list has zero
+open entries. The explicit app/UI tests, native search qualifications,
+mutation checks and passing pre-push gates above qualify this app release.
