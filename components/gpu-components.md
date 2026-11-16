@@ -292,6 +292,16 @@ time. The platform owns the active composition; `core/edit.coax` owns the
 buffer and receives complete typed edits. Never draw two carets or the same
 glyphs twice.
 
+On iOS the composer and every login field send the page committed text
+only: while `markedTextRange` is set (an input method's provisional text),
+the platform editor keeps it and the page keeps the last committed value.
+The email field carries `textContentType = .emailAddress` and the code field
+`.oneTimeCode`, so AutoFill can offer the address and the code. Paste is the
+platform editor's own. Debug builds play edits through the editor that
+holds the keyboard with `-OAEdit`, for example
+`-OAEdit "press:chat.composer|type:Fix|mark:に|commit:日本|paste:Go |print"`,
+and print what the editor and the page each hold on `OA-EDIT` lines.
+
 Secure fields, one-time-code AutoFill and password AutoFill use the
 platform's own field for the whole edit, styled from the skin's exports.
 
@@ -328,6 +338,44 @@ virtual nodes on Android and AT-SPI on Linux. The GPU view itself is hidden
 from accessibility. Activating an element dispatches the same action as a
 tap. A virtualized list can realize a row that accessibility requests.
 
+On iOS one bridge, `apps/shared/native/KitAccess.swift`, does this for any
+surface that conforms to `KitAccessSource` (a stamp, the live layer, the row
+count, one row, and a press by row ID). The chat page and the dev gallery
+use it:
+
+```swift
+access = KitAccess(container: view, source: self)
+access.stand = { row in row.id == "nav.menu" ? .view(glass.menu) : .own }
+access.refresh()   // after each frame; rebuilds only when the stamp or layer changes
+```
+
+- Each committed row that is not a region, hidden or empty becomes one
+  element. Traits come from its role and state bits; the value carries
+  Expanded or Collapsed, Checked, and In progress.
+- Reading order is top to bottom in 4-point bands, then left to right.
+- A row's label is capped at `EL_LABEL` bytes. Its whole spoken text, such
+  as a whole reply, is kept in the generation's sheet pool with
+  `uiframe_say` (up to `UIFRAME_SAY` bytes) and read with `surface_say`.
+- A row marked `EL_S_LIVE` (an agent's reply) is announced once it is not
+  busy and has been still for 0.8 s, and only the part added since the last
+  announcement. Rows present when the page first reads, and history that
+  arrives at once, are not announced.
+- Three-finger scroll pages the scroll area by 0.8 of its height. The escape
+  gesture closes the cover: the environment page, the login page, then the
+  sidebar.
+- A row that a system view stands for (Liquid Glass, the platform editor)
+  is that view's element, not a second one.
+- Large text: the Dynamic Type size sets the page's text zoom
+  (`chat_text_zoom`, 1 to 1.6), and the whole page lays out and draws
+  larger. The host rebuilds the glyph atlas at the new scale and steps the
+  zoom down until it fits in 8192 by 8192. Past what four subpixel offsets
+  fit, a body face keeps one (`Atlas.sub`). On a 3x phone the largest
+  accessibility size draws at 1.35 today.
+
+Debug builds print the elements with `-OAAccessDump YES` (between
+`OA-ACCESS-BEGIN` and `OA-ACCESS-END`, plus `OA-ANNOUNCE` and
+`OA-TEXT-SIZE` lines) when launched with `xcrun simctl launch --console-pty`.
+
 ### Scrolling
 
 Coax owns the scroll offset as keyed state, and `core/scroll.coax` owns the
@@ -347,12 +395,13 @@ from the sheet's selectable lines; copy goes through the action outbox.
 
 `rendering.md` lists the drawing gaps. The ones this migration needs first:
 
-| Need | Why |
-| --- | --- |
-| Images (`PRIM_IMAGE`; `gpu_draws` returns false for it today) | Avatars, attachments, pictures in messages |
-| Nested clips and affine transforms | Scroll areas inside panels; drawers and sheets |
-| Group opacity | Enter and exit of whole components |
-| Blur and composition | Menus and sheets over content |
+| Need | Status | Why |
+| --- | --- | --- |
+| Images (`PRIM_IMAGE`; `gpu_draws` returns false for it today) | Not started. No iOS screen shows an image yet: avatars are initials | Avatars, attachments, pictures in messages |
+| Nested clips | Done | Scroll areas inside panels |
+| Affine transforms | Not started. The sidebar and covers move by offset (`prim_move`), which is all they need | Drawers and sheets that scale or rotate |
+| Group opacity | Done: `PRIM_ALPHA` (`prim_alpha`, `prim_unalpha`, nested) and `prim_opacity`; `app_enter` fades a message in as it rises. Each primitive takes the opacity; overlaps inside a group are not composited as one layer, which needs a render target | Enter and exit of whole components |
+| Blur and composition | Not started. On iOS the blurred controls are Liquid Glass system views | Menus and sheets over content |
 
 A new primitive is added to `paint/list.coax` once, then to each backend.
 The one shader source in Coax stays the only source of primitive math.
@@ -406,9 +455,9 @@ does not start the next one's removals.
 | Stage | Work | Exit condition |
 | --- | --- | --- |
 | G0 (built 2026-11-15) | The frame context (`kit/frame.coax`), keyed state store (`core/keyed.coax`), semantic table (`core/elements.coax`) and surface commit (`paint/surface.coax`), with adapters for existing callers | Existing gallery and chat pictures unchanged; checks for identity, retirement and refusal |
-| G1 (in progress; composer built 2026-11-15) | The iOS app as one compiled page: the chat page (composer first, then chat logic, transcript and the login card) on the kit, with the text-editor overlay and the VoiceOver bridge. No JavaScript, no Updates, no UIKit control projection (see [The iOS app](#the-ios-app-grown-screen-by-screen)) | The app links no JavaScriptCore or WebKit and holds no `.js`, `.wasm` or `.html`; typing, sending, stopping, scrolling and login work against the account fixture; a still page presents no frames |
+| G1 (in progress; composer 2026-11-15; VoiceOver bridge, large text and one editing authority 2026-11-16) | The iOS app as one compiled page: the chat page (composer first, then chat logic, transcript and the login card) on the kit, with the text-editor overlay and the VoiceOver bridge. No JavaScript, no Updates, no UIKit control projection (see [The iOS app](#the-ios-app-grown-screen-by-screen)) | The app links no JavaScriptCore or WebKit and holds no `.js`, `.wasm` or `.html`; typing, sending, stopping, scrolling and login work against the account fixture; a still page presents no frames |
 | G2 | The next screens of the iOS app, one at a time, each on the kit: the sidebar with chat history, then Settings, with the scroll driver | Each screen has no UIKit controls; large text lays out; scrolling feels native on a physical phone |
-| G3 | Backend gaps the chat needs: images, nested clips, transforms, group opacity, blur | Each has a gallery specimen and a generated-shader check on Metal and WebGPU |
+| G3 (nested clips and group opacity done; images, transforms and blur not started) | Backend gaps the chat needs: images, nested clips, transforms, group opacity, blur | Each has a gallery specimen and a generated-shader check on Metal and WebGPU |
 | G4 | The rest of iOS, screen by screen: Projects, Usage, environment and repository choice, the world library | Each screen passes its acceptance case on a physical phone, and the transcript workloads under [Measurements](#measurements) are recorded |
 | G6 | Desktop on Mac and Linux: move the native environment client's screens from AppKit and GTK controls onto the kit, on the shared AppKit/Metal and Wayland/Vulkan hosts the recovery shell already uses; then delete those projections | Login, history and chat run on both desktops through the kit, with real text entry, keyboard focus and a screen reader |
 | G7 | Android on the existing Vulkan host | Real input method, TalkBack and device evidence before any parity claim |
@@ -462,8 +511,26 @@ the desktop client's program. It lives in `apps/openagents-desktop/home`
 and `apps/openagents-desktop/extras`, and `coax/native/generate.sh` now
 generates only what the desktop build uses.
 
-Not checked: a physical phone, VoiceOver by hand, an input method,
-dictation, large text sizes and iPad layouts.
+Status, 2026-11-16: the chat page, the sidebar, the login page and the dev
+gallery read with VoiceOver through `KitAccess`, scale with large text, and
+take text through one editing authority (see [Accessibility](#accessibility)
+and [Text entry](#text-entry)). The login page's Back is a Liquid Glass
+button where the menu button stands. The iOS target compiles no tree-kit
+procedure and no UIKit control projection. `apps/shared/environment-app.coax`
+still loads `components/kit/frames.coax` through
+`apps/shared/app/view/model.coax`, but nothing on the iOS path calls it, so
+the generated C has none of it. The only UIKit views are the two
+could-not-start labels, the composer's placeholder, the platform editors and
+the Liquid Glass controls.
+
+Not checked: a physical phone, VoiceOver by hand on a device, a real input
+method's candidate window (the check drives `setMarkedText`), dictation,
+AutoFill offering a real address or code, and iPad layouts.
+
+Left for iOS: images, transforms and blur in the backend when a screen needs
+them; dropping the `kit/frames.coax` load from the shared app model once the
+desktop client stops using `eu_render`; a drive case that reads the
+accessibility rows.
 
 ## Bounds
 
