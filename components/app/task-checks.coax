@@ -1,0 +1,172 @@
+// Checks for the app set's task components (task.coax).
+#load "checks-kit.coax";
+
+APP_TEST_LONG :: "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n15\n16\n17\n18\n19\n20";
+
+#test "app task: every task state has its words, a live row and a mark; Stop asked for never reads as stopped" {
+  t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..];
+  task := AppTask.{computer = "Mac Studio", engine = "Codex", model = "GPT-6.1 Sol", effort = "high"};
+  ids := [APP_TASK_STATES] string.["s.0", "s.1", "s.2", "s.3", "s.4", "s.5", "s.6"];
+  words := [APP_TASK_STATES] string.["Waiting to start", "Working", "Needs your approval", "Done", "Failed", "Stopped", "Outcome unknown"];
+  app_test_begin(t[..], "", "", true);
+  h := app_task_header(f, "head", 0, 0, 300, task);
+  for k: 0..<APP_TASK_STATES { task.state = k; task.detail = ifx k == APP_TASK_FAILED then "The engine stopped answering" else ""; _ := app_task_state(f, ids[k], 0, 20 + cast(f32) k * 30, 300, task); }
+  task.state = APP_TASK_RUNNING; task.stopping = true; task.detail = "";
+  _ := app_task_state(f, "s.stop", 0, 300, 300, task);
+  task.state = APP_TASK_CANCELED;
+  _ := app_task_state(f, "s.stopped", 0, 330, 300, task);
+  #assert app_test_end(t[..]) && h > 0 && app_test_label(t[..], "head") == "Mac Studio · Codex · GPT-6.1 Sol · high";
+  for k: 0..<APP_TASK_STATES { #assert app_test_label(t[..], ids[k]) == words[k] && app_test_has(t[..], ids[k], EL_S_LIVE) && app_test_row(t[..], ids[k]).role == EL_TEXT; }
+  #assert app_test_has(t[..], "s.0", EL_S_BUSY) && app_test_has(t[..], "s.1", EL_S_BUSY) && !app_test_has(t[..], "s.2", EL_S_BUSY) && !app_test_has(t[..], "s.3", EL_S_BUSY) && !app_test_has(t[..], "s.6", EL_S_BUSY);
+  #assert app_test_value(t[..], "s.4") == "The engine stopped answering" && app_test_label(t[..], "s.stop") == "Stopping…" && app_test_has(t[..], "s.stop", EL_S_BUSY) && app_test_label(t[..], "s.stopped") == "Stopped";
+  // an empty part is left out of the header
+  task.effort = ""; task.engine = "";
+  app_test_begin(t[..], "", "", true);
+  _ := app_task_header(f, "head", 0, 0, 300, task);
+  #assert app_test_end(t[..]) && app_test_label(t[..], "head") == "Mac Studio · GPT-6.1 Sol";
+}
+
+#test "app task: a tool row opens onto its input and result, pages a long result and counts its lines; reduced motion opens it at once" {
+  t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..];
+  tool := AppTool.{icon = 4, title = "Ran a command", arg = "coax test components/app/base.coax", state = APP_TOOL_DONE, input = "coax test components/app/base.coax", output = APP_TEST_LONG};
+  app_test_begin(t[..], "", "", true);
+  closed := app_tool(f, "tool.1", 0, 0, 300, tool, false, 9);
+  #assert app_test_end(t[..]) && closed == arcade_phone_skin().app.tool_h;
+  #assert app_test_row(t[..], "tool.1").role == EL_BUTTON && app_test_has(t[..], "tool.1", EL_S_EXPANDS) && !app_test_has(t[..], "tool.1", EL_S_EXPANDED) && app_test_pressable(t[..], "tool.1") && app_test_find(t[..], "tool.1.result") < 0;
+  #assert app_test_value(t[..], "tool.1") == "coax test components/app/base.coax";
+  // a press on it opens it: with reduced motion it is fully open in the next frame
+  #assert app_tool_press(t[0].ks[..], "tool.1", "tool.1") && !app_tool_press(t[0].ks[..], "tool.1", "tool.2") && !app_tool_press(t[0].ks[..], "tool.9", "tool.9");
+  app_test_begin(t[..], "", "", true);
+  open := app_tool(f, "tool.1", 0, 0, 300, tool, false, 9);
+  #assert app_test_end(t[..]) && open > closed + 8 * arcade_phone_skin().mono_small.line && app_test_has(t[..], "tool.1", EL_S_EXPANDED);
+  #assert app_test_find(t[..], "tool.1.input") >= 0 && app_test_find(t[..], "tool.1.result") >= 0 && app_test_texts(t[..], "Page 1 of 3 · 20 lines") == 1;
+  #assert app_test_texts(t[..], "8") == 1 && app_test_texts(t[..], "9") == 0 && !app_test_pressable(t[..], "tool.1.result.prev") && app_test_pressable(t[..], "tool.1.result.next") && app_test_find(t[..], "tool.1.input.next") < 0;
+  // Next turns the page; a page past the end is held at the last
+  #assert app_tool_press(t[0].ks[..], "tool.1", "tool.1.result.next");
+  app_test_begin(t[..], "", "", true);
+  _ := app_tool(f, "tool.1", 0, 0, 300, tool, false, 9);
+  #assert app_test_end(t[..]) && app_test_texts(t[..], "Page 2 of 3 · 20 lines") == 1 && app_test_texts(t[..], "9") == 1 && app_test_texts(t[..], "8") == 0 && app_test_pressable(t[..], "tool.1.result.prev");
+  for q: 0..<5 { _ := app_tool_press(t[0].ks[..], "tool.1", "tool.1.result.next"); }
+  app_test_begin(t[..], "", "", true);
+  last := app_tool(f, "tool.1", 0, 0, 300, tool, false, 9);
+  #assert app_test_end(t[..]) && app_test_texts(t[..], "Page 3 of 3 · 20 lines") == 1 && app_test_texts(t[..], "20") == 1 && !app_test_pressable(t[..], "tool.1.result.next") && last < open;
+}
+
+#test "app task: a tool row's states say running, waiting and failed; it opens on a spring and its body is cut to what is revealed" {
+  t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..];
+  tools := [4] AppTool.[AppTool.{icon = 5, title = "Read", arg = "chat.coax", state = APP_TOOL_PENDING, input = "path: chat.coax"},
+    AppTool.{icon = 4, title = "Ran a command", arg = "ls", state = APP_TOOL_RUNNING, input = "ls"},
+    AppTool.{icon = 6, title = "Edited", arg = "base.coax", state = APP_TOOL_DONE, input = "path: base.coax", output = "1 change"},
+    AppTool.{icon = 4, title = "Ran a command", arg = "false", state = APP_TOOL_FAILED, input = "false", output = "exit 1"}];
+  ids := [4] string.["t.a", "t.b", "t.c", "t.d"];
+  app_test_begin(t[..], "", "", false);
+  for k: 0..<4 { _ := app_tool(f, ids[k], 0, cast(f32) k * 50, 300, tools[k], false, 9); }
+  #assert app_test_end(t[..]) && app_test_has(t[..], "t.b", EL_S_BUSY) && !app_test_has(t[..], "t.a", EL_S_BUSY) && app_test_texts(t[..], "Waiting") == 1 && app_test_texts(t[..], "Failed") == 1 && app_test_prims(t[..], PRIM_ARC) == 2;
+  _ := app_tool_press(t[0].ks[..], "t.d", "t.d");
+  app_test_begin(t[..], "", "", false);
+  part := app_tool(f, "t.d", 0, 150, 300, tools[3], false, 9);
+  moving := uiframe_moving(f);
+  #assert app_test_end(t[..]) && moving && part > arcade_phone_skin().app.tool_h && app_test_texts(t[..], "Error") == 1;
+  // the result's row is cut to the reveal: its visible box ends where the row does
+  tb := [1] ElTable.[surface_rows(t[0].sf[..])]; box := elt_visible(tb[..], app_test_find(t[..], "t.d.result"));
+  #assert !box.visible || box.y + box.h <= 150 + part + 0.01;
+  whole := part;
+  for q: 0..<120 { app_test_begin(t[..], "", "", false); whole = app_tool(f, "t.d", 0, 150, 300, tools[3], false, 9); moving = uiframe_moving(f); #assert app_test_end(t[..]); }
+  #assert whole > part && !moving;
+}
+
+#test "app task: a tool group opens onto its calls, and a call's open state follows its id when the calls are reordered" {
+  t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..];
+  tools := [3] AppTool.[AppTool.{icon = 5, title = "Read", arg = "a.coax", state = APP_TOOL_DONE, input = "a", output = "A"},
+    AppTool.{icon = 5, title = "Read", arg = "b.coax", state = APP_TOOL_DONE, input = "b", output = "B"},
+    AppTool.{icon = 5, title = "Read", arg = "c.coax", state = APP_TOOL_RUNNING, input = "c"}];
+  ids := [3] string.["g.a", "g.b", "g.c"];
+  app_test_begin(t[..], "", "", true);
+  closed := app_tool_group(f, "g", 0, 0, 300, "Read 3 files", ids[..], tools[..], false, 9);
+  #assert app_test_end(t[..]) && app_test_find(t[..], "g.a") < 0 && app_test_value(t[..], "g") == "3 calls" && app_test_has(t[..], "g", EL_S_BUSY | EL_S_EXPANDS) && app_test_pressable(t[..], "g");
+  #assert app_tool_press(t[0].ks[..], "g", "g");
+  app_test_begin(t[..], "", "", true);
+  open := app_tool_group(f, "g", 0, 0, 300, "Read 3 files", ids[..], tools[..], false, 9);
+  #assert app_test_end(t[..]) && open > closed && app_test_has(t[..], "g", EL_S_EXPANDED) && app_test_row(t[..], "g.b").parent == app_test_find(t[..], "g") && app_test_pressable(t[..], "g.c");
+  // g.b opens; then the list is reversed: g.b is still the open one, wherever it is
+  #assert app_tool_press(t[0].ks[..], "g.b", "g.b");
+  app_test_begin(t[..], "", "", true);
+  _ := app_tool_group(f, "g", 0, 0, 300, "Read 3 files", ids[..], tools[..], false, 9);
+  #assert app_test_end(t[..]) && app_test_has(t[..], "g.b", EL_S_EXPANDED) && !app_test_has(t[..], "g.a", EL_S_EXPANDED);
+  back := [3] string.["g.c", "g.b", "g.a"]; turned := [3] AppTool.[tools[2], tools[1], tools[0]];
+  app_test_begin(t[..], "", "", true);
+  _ := app_tool_group(f, "g", 0, 0, 300, "Read 3 files", back[..], turned[..], false, 9);
+  #assert app_test_end(t[..]) && app_test_has(t[..], "g.b", EL_S_EXPANDED) && !app_test_has(t[..], "g.a", EL_S_EXPANDED) && !app_test_has(t[..], "g.c", EL_S_EXPANDED);
+  #assert app_test_row(t[..], "g.c").y < app_test_row(t[..], "g.b").y && app_test_row(t[..], "g.b").y < app_test_row(t[..], "g.a").y && app_test_texts(t[..], "B") == 1 && t[0].ks[0].refused == 0;
+}
+
+#test "app task: opening a tool row above keeps the anchored row where it is on screen" {
+  t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..];
+  tools := [2] AppTool.[AppTool.{icon = 5, title = "Read", arg = "a.coax", state = APP_TOOL_DONE, input = "a", output = APP_TEST_LONG},
+    AppTool.{icon = 5, title = "Read", arg = "b.coax", state = APP_TOOL_DONE, input = "b", output = "B"}];
+  anchor: [1] AppAnchor; scroll: f32 = 30;
+  app_test_begin(t[..], "", "", false);
+  h := app_tool(f, "t.a", 0, 0, 300, tools[0], false, 9);
+  _ := app_tool(f, "t.b", 0, h + 4, 300, tools[1], false, 9);
+  #assert app_test_end(t[..]);
+  // the second row is what the person looks at: it is anchored, then the first opens over many frames
+  app_anchor_take(anchor[..], surface_rows(t[0].sf[..]), "t.b", scroll);
+  was := app_test_row(t[..], "t.b").y - scroll;
+  _ := app_tool_press(t[0].ks[..], "t.a", "t.a");
+  for q: 0..<120 {
+    app_test_begin(t[..], "", "", false);
+    h = app_tool(f, "t.a", 0, 0, 300, tools[0], false, 9);
+    _ := app_tool(f, "t.b", 0, h + 4, 300, tools[1], false, 9);
+    #assert app_test_end(t[..]);
+    scroll = app_anchor_scroll(anchor[..], surface_rows(t[0].sf[..]), scroll);
+    #assert abs(app_test_row(t[..], "t.b").y - scroll - was) < 0.01;
+  }
+  #assert scroll > 30 + 8 * arcade_phone_skin().mono_small.line && h > 100;
+  // an anchor whose row is gone leaves the scroll alone
+  app_anchor_take(anchor[..], surface_rows(t[0].sf[..]), "t.gone", scroll);
+  #assert app_anchor_scroll(anchor[..], surface_rows(t[0].sf[..]), 12) == 12;
+}
+
+#test "app task: a permission prompt's states: held offers Deny and Allow, sending rests them, an answer or an expiry has no actions" {
+  t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..];
+  p := AppPermission.{title = "Run this command?", detail = "rm -rf build/", state = APP_PERMISSION_HELD, can_allow = true};
+  app_test_begin(t[..], "", "", true);
+  h := app_permission(f, "ask", 0, 0, 300, p, 11, 12);
+  #assert app_test_end(t[..]) && app_test_row(t[..], "ask").role == EL_REGION && app_test_row(t[..], "ask").h == h && app_test_has(t[..], "ask", EL_S_LIVE);
+  #assert app_test_pressable(t[..], "ask.allow") && app_test_row(t[..], "ask.allow").action == 11 && app_test_pressable(t[..], "ask.deny") && app_test_row(t[..], "ask.deny").action == 12;
+  #assert app_test_label(t[..], "ask.detail") == "rm -rf build/" && app_test_row(t[..], "ask.deny").parent == app_test_find(t[..], "ask") && app_test_find(t[..], "ask.note") < 0;
+  // Allow waits for the whole request: Deny stays
+  p.can_allow = false;
+  app_test_begin(t[..], "", "", true);
+  _ := app_permission(f, "ask", 0, 0, 300, p, 11, 12);
+  #assert app_test_end(t[..]) && !app_test_pressable(t[..], "ask.allow") && app_test_pressable(t[..], "ask.deny") && app_test_find(t[..], "ask.note") >= 0;
+  p.can_allow = true; p.state = APP_PERMISSION_SENDING; p.allow = true;
+  app_test_begin(t[..], "", "", true);
+  _ := app_permission(f, "ask", 0, 0, 300, p, 11, 12);
+  #assert app_test_end(t[..]) && app_test_has(t[..], "ask.allow", EL_S_BUSY) && !app_test_pressable(t[..], "ask.allow") && !app_test_pressable(t[..], "ask.deny");
+  p.state = APP_PERMISSION_UNCERTAIN;
+  app_test_begin(t[..], "", "", true);
+  _ := app_permission(f, "ask", 0, 0, 300, p, 11, 12);
+  #assert app_test_end(t[..]) && app_test_pressable(t[..], "ask.retry") && app_test_row(t[..], "ask.retry").action == 11 && app_test_find(t[..], "ask.allow") < 0 && app_test_label(t[..], "ask.note") == "We could not confirm your answer.";
+  said := [3] string.["Allowed", "Denied", "This request ended before it was answered."];
+  for k: 0..<3 {
+    p.state = APP_PERMISSION_ALLOWED + k;
+    app_test_begin(t[..], "", "", true);
+    _ := app_permission(f, "ask", 0, 0, 300, p, 11, 12);
+    #assert app_test_end(t[..]) && app_test_label(t[..], "ask.note") == said[k] && app_test_find(t[..], "ask.allow") < 0 && app_test_find(t[..], "ask.deny") < 0 && app_test_find(t[..], "ask.retry") < 0 && app_test_hits(t[..]) == 0;
+  }
+}
+
+#test "app task: the result line and the connection banner say what the app knows" {
+  t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..];
+  buf: [64] u8;
+  #assert cast(string) buf[0..<app_duration(buf[..], 0, 48)] == "48 s" && cast(string) buf[0..<app_duration(buf[..], 0, 134)] == "2 min 14 s" && cast(string) buf[0..<app_duration(buf[..], 0, 3900)] == "1 h 5 min";
+  #assert app_lines("") == 0 && app_lines("a") == 1 && app_lines("a\nb\n") == 2 && app_line("a\nb", 1) == "b" && app_pages(APP_TEST_LONG, 8) == 3 && app_pages("a", 8) == 1;
+  app_test_begin(t[..], "", "", true);
+  _ := app_task_result(f, "r.1", 0, 0, 400, AppTaskResult.{seconds = 134, tools = 12, failed = 1, cents = 42});
+  _ := app_task_result(f, "r.2", 0, 20, 400, AppTaskResult.{seconds = 48, tools = 1, cents = -1});
+  _ := app_banner(f, "b.1", 0, 60, 300, APP_BANNER_RECONNECTING, 13);
+  _ := app_banner(f, "b.2", 0, 120, 300, APP_BANNER_OFFLINE, 13);
+  #assert app_test_end(t[..]) && app_test_label(t[..], "r.1") == "Finished in 2 min 14 s · 12 tool calls · 1 failed · $0.42" && app_test_label(t[..], "r.2") == "Finished in 48 s · 1 tool call";
+  #assert app_test_has(t[..], "b.1", EL_S_LIVE | EL_S_BUSY) && app_test_label(t[..], "b.2") == "You are offline." && app_test_pressable(t[..], "b.2.retry") && app_test_row(t[..], "b.2.retry").action == 13 && app_test_find(t[..], "b.1.retry") < 0;
+}

@@ -262,6 +262,34 @@ ctx_all_before :: (sh: [] Sheet, m: TextMeasure, s: UiSkin) {
   out: [256] u8; n := uiframe_counts(sf[..], ks[..], out[..]);
   #assert cast(string) out[0..<n] == "generation 3 refused 0 lost 0 prims 1/128 text 1/128 hits 1/32 rows 1/24\nkeyed 0/8 refused 1 (full 0, duplicate 0 this frame) retired 1\n";
 }
+// One frame of the focus check: a field, a disabled field and a button; returns who has the keyboard.
+ctx_focus_frame :: (f: [] UiFrame, sf: [] UiSurface, ks: [] KeyedStore, m: TextMeasure, s: UiSkin, in: UiInput) -> string {
+  uiframe_begin(f, sf, ks, m, s, in, 0, 0.016, true, false);
+  _ = uiframe_row(f, "email", EL_FIELD, "Email", 10, 10, 200, 40, 0, 1);
+  _ = uiframe_row(f, "locked", EL_FIELD, "Locked", 10, 60, 200, 40, EL_S_DISABLED, 0);
+  _ = ctx_button(f, "send", 10, 110, "Send", true, 0, 2);
+  focus := uiframe_focus(f);
+  #assert uiframe_end(f, sf);
+  return focus;
+}
+#test "focus follows a press: a press on a text field takes the keyboard, a press anywhere else gives it up" {
+  st: [1] CtxStore; a: [1] Atlas; text_test_atlas(a[..]); s := zeron_skin(); m := measure_font(a[..]);
+  sf := [1] UiSurface.[ctx_surface(st[..])]; ks := [1] KeyedStore.[KeyedStore.{rows = st[0].keyed[..]}]; f: [1] UiFrame;
+  // before anything is committed, the app's focus stands
+  #assert ctx_focus_frame(f[..], sf[..], ks[..], m, s, uiinput(0, 0, false, false, "", "email")) == "email" && !uiframe_focus_moved(f[..]) && uiframe_keyboard(f[..]);
+  // a press on the field it already has changes nothing; a press on nothing takes the keyboard away
+  #assert ctx_focus_frame(f[..], sf[..], ks[..], m, s, uiinput(20, 20, true, true, "email", "email")) == "email" && !uiframe_focus_moved(f[..]);
+  #assert ctx_focus_frame(f[..], sf[..], ks[..], m, s, uiinput(300, 300, true, true, "", "email")) == "" && uiframe_focus_moved(f[..]) && !uiframe_keyboard(f[..]);
+  // the field's row is no longer focused in the frame the press lands
+  t := [1] ElTable.[surface_rows(sf[..])]; #assert !elt_has(t[..], elt_find(t[..], "email"), EL_S_FOCUSED);
+  // a press on the field gives it the keyboard; a press on a button takes it away; a disabled field never takes it
+  #assert ctx_focus_frame(f[..], sf[..], ks[..], m, s, uiinput(20, 20, true, true, "email", "")) == "email" && uiframe_focus_moved(f[..]);
+  #assert ctx_focus_frame(f[..], sf[..], ks[..], m, s, uiinput(20, 120, true, true, "send", "email")) == "" && uiframe_focus_moved(f[..]);
+  #assert ctx_focus_frame(f[..], sf[..], ks[..], m, s, uiinput(20, 70, true, true, "locked", "")) == "" && !uiframe_focus_moved(f[..]);
+  // a control the keyboard stepped to keeps focus through a press elsewhere; a lifted pointer changes nothing
+  #assert ctx_focus_frame(f[..], sf[..], ks[..], m, s, uiinput(300, 300, true, true, "", "send")) == "send" && !uiframe_focus_moved(f[..]);
+  #assert ctx_focus_frame(f[..], sf[..], ks[..], m, s, uiinput(300, 300, false, false, "", "email")) == "email" && !uiframe_focus_moved(f[..]);
+}
 #test "a frame that overflows its surface is refused whole; a clip cuts paint and presses together" {
   st: [1] CtxStore; a: [1] Atlas; text_test_atlas(a[..]); s := zeron_skin(); m := measure_font(a[..]);
   sf := [1] UiSurface.[ctx_surface(st[..])]; ks := [1] KeyedStore.[KeyedStore.{rows = st[0].keyed[..]}]; f: [1] UiFrame;

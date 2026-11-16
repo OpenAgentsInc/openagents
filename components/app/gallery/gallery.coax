@@ -1,0 +1,423 @@
+// The app set's gallery (components/app/README.md; GitHub #13645): every
+// component of components/app/ on one scrolling page, with example data,
+// in the phone skin. It is what the iOS app's dev menu opens
+// (components/app/INTEGRATION.md). Nothing here is connected: a press
+// changes only the gallery's own example state (a switch turns, a tool row
+// opens, Allow answers the prompt, Send turns to Stop), so each component
+// can be seen in its states.
+//
+// It shows the focus rule too (kit/frame.coax uiframe_press_focus): a press
+// on a field gives it the keyboard, a press anywhere else takes it away, and
+// the line under the fields says which field has it.
+//
+// The host calls it as it calls the chat page (apps/openagents-ios/chat.coax):
+// appgallery_env with the window's facts, appgallery_frame for the vertices,
+// appgallery_pointer for each touch (a drag scrolls), appgallery_action for
+// what the gallery asks of the host (1: close the dev menu).
+//   coax/bin/coax test components/app/gallery/gallery.coax
+
+#load "../task.coax";
+#load "../account.coax";
+#load "../nav.coax";
+#load "../../skin/arcade.coax";
+#load "../../backend/gpu.coax";
+
+AG_MAX_VERTICES :: 120000;
+// A generation's declared capacity: primitives, runs of text, selectable lines, hits, pooled bytes, semantic rows; then keyed ids.
+AG_UNDER :: 2048; AG_OVER :: 4096; AG_LINES :: 1024; AG_HITS :: 256; AG_POOL :: 32768; AG_ROWS :: 384; AG_KEYED :: 192;
+AG_DRAG :: 8;               // layout units a touch moves before it scrolls instead of pressing
+AG_PAD :: 16;               // the page's side margin
+AG_HEAD :: 52;              // the fixed header's height under the safe area
+
+// What the gallery asks of its host (appgallery_action).
+AG_ASK_NONE :: 0; AG_ASK_CLOSE :: 1;
+
+// The gallery's own actions: what a press on each example does.
+AG_CLOSE :: 1; AG_FIELD :: 2; AG_BUTTON :: 3; AG_SWITCH :: 4; AG_CHIP :: 5; AG_MENU :: 6; AG_COPY :: 7; AG_TOOL :: 8;
+AG_ALLOW :: 9; AG_DENY :: 10; AG_LOGIN_SUBMIT :: 11; AG_LOGIN_BACK :: 12; AG_NAV :: 13; AG_SIDE :: 14; AG_SEND :: 15;
+AG_RETRY :: 16; AG_PICK :: 17; AG_LOGIN :: 18;
+
+AG_MARKDOWN :: "## Plan\n\nThe composer test fails because **Send** stays enabled with an empty draft. I will:\n\n1. Read `composer.coax`\n2. Fix the check\n- [x] Found the cause\n- [ ] Run the checks\n\n> The shared composer keeps its own height.\n\n```rust\nfn enabled(text: &str) -> bool {\n    !text.trim().is_empty()\n}\n```\n\n| Check | Result |\n| --- | --- |\n| composer | failed |\n| send | passed |";
+AG_LONG_OUTPUT :: "running 18 checks\nok composer: grows to four lines\nok composer: Stop while a reply runs\nok composer: locked while sending\nFAIL composer: Send rests with no text\nok chips: share the row\nok chips: cut a long value\nok message: bubble at the right edge\nok message: Markdown\nok code: Copy is a row\nok typing: three dots\nok empty: centred\nok retry: busy\nok jump: rises in\nok meta: centred\n17 passed, 1 failed";
+
+AgGeneration :: struct { under: [AG_UNDER] Prim; over: [AG_OVER] Prim; lines: [AG_LINES] SheetLine; hits: [AG_HITS] SheetHit; pool: [AG_POOL] u8; rows: [AG_ROWS] El; }
+AppGallery :: struct {
+  ready: bool; time: f32; d: f32;
+  atlas: [1] Atlas;
+  gen: [2] AgGeneration; surface: [1] UiSurface;
+  keys: [AG_KEYED] Keyed; keyed: [1] KeyedStore;
+  doc: [1] MdDoc; blocks: int;
+  // the window's facts, in points
+  safe_top: f32; safe_bottom: f32; reduced: bool;
+  // the touch: where it went down, whether it became a drag, the id it began on
+  px: f32; py: f32; down_y: f32; touching: bool; dragging: bool; pressed: [EL_ID] u8; pressed_n: int;
+  focused: [EL_ID] u8; focused_n: int;         // the field with the keyboard (kit/frame.coax's focus rule keeps it)
+  scroll: f32; content: f32; view: f32;
+  ask: int; refused: int; stamp: int;
+  // the example state a press changes
+  switch_on: bool; chip: int; pick: int; copied: int; answered: int; nav_open: bool; side: int;
+  running: bool; login_code: bool; offline: bool; presses: int;
+}
+
+ag_init :: (s: [] AppGallery) {
+  s[0].ready = true;
+  g := s[0].gen[..];
+  s[0].surface[0] = surface_over(
+    Sheet.{under = g[0].under[..], over = g[0].over[..], lines = g[0].lines[..], hits = g[0].hits[..], pool = g[0].pool[..]}, g[0].rows[..],
+    Sheet.{under = g[1].under[..], over = g[1].over[..], lines = g[1].lines[..], hits = g[1].hits[..], pool = g[1].pool[..]}, g[1].rows[..]);
+  s[0].keyed[0] = KeyedStore.{rows = s[0].keys[..]};
+  s[0].blocks = md_parse(s[0].doc[..], AG_MARKDOWN, 0);
+  s[0].switch_on = true; s[0].copied = -1; s[0].answered = -1; s[0].side = 0;
+}
+ag_focus :: (s: [] AppGallery) -> string { return cast(string) s[0].focused[0..<s[0].focused_n]; }
+ag_out :: (out: [] u8, text: string) -> int {
+  n := 0;
+  for c: text { if n >= out.count { break; } out[n] = c; n += 1; }
+  return n;
+}
+ag_rows :: (s: [] AppGallery) -> ElTable { return surface_rows(s[0].surface[..]); }
+
+// ---------------------------------------------------------------- the page
+
+// A section's heading, with room above it. Returns its height.
+ag_section :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, title: string) -> f32 {
+  return 28 + app_text(f, id, x, y + 28, w, APP_TEXT_TITLE, title) + 12;
+}
+// A caption naming the example under it. Returns its height.
+ag_caption :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, text: string) -> f32 {
+  return app_text(f, id, x, y, w, APP_TEXT_CAPTION, text) + 6;
+}
+
+ag_basics :: (s: [] AppGallery, f: [] UiFrame, x: f32, top: f32, w: f32) -> f32 {
+  k := f[0].skin; a := k.app; y := top; half := (w - a.gap) / 2;
+  y += ag_section(f, "g.basics", x, y, w, "Basics");
+  y += ag_caption(f, "g.c.buttons", x, y, w, "Buttons: primary, default, quiet, destructive, busy and disabled");
+  y += app_button(f, "g.primary", x, y, w, -1, "Send code", APP_BUTTON_PRIMARY, 0, AG_BUTTON) + a.gap;
+  _ := app_button(f, "g.default", x, y, half, ICON_COPY, "Copy link", APP_BUTTON_DEFAULT, 0, AG_BUTTON);
+  y += app_button(f, "g.quiet", x + half + a.gap, y, half, -1, "Not now", APP_BUTTON_QUIET, 0, AG_BUTTON) + a.gap;
+  y += app_button(f, "g.destructive", x, y, w, -1, "Delete this chat", APP_BUTTON_DESTRUCTIVE, 0, AG_BUTTON) + a.gap;
+  _ := app_button(f, "g.busy", x, y, half, -1, "Sending…", APP_BUTTON_PRIMARY, EL_S_BUSY, AG_BUTTON);
+  y += app_button(f, "g.off", x + half + a.gap, y, half, -1, "Unavailable", APP_BUTTON_DEFAULT, EL_S_DISABLED, AG_BUTTON) + a.gap;
+  pressed := app_number(f, s[0].presses, ifx s[0].presses == 1 then " press" else " presses");
+  y += ag_caption(f, "g.c.presses", x, y, w, pressed);
+  y += ag_caption(f, "g.c.icons", x, y, w, "Icon buttons: resting, on and busy");
+  pen := x;
+  pen += app_icon_button(f, "g.icon.copy", pen, y, ICON_COPY, "Copy", APP_BUTTON_DEFAULT, 0, AG_BUTTON) + a.gap;
+  pen += app_icon_button(f, "g.icon.on", pen, y, ICON_TERMINAL, "Terminal", APP_BUTTON_DEFAULT, ifx s[0].switch_on then EL_S_CURRENT else 0, AG_SWITCH) + a.gap;
+  pen += app_icon_button(f, "g.icon.busy", pen, y, ICON_STOP, "Stop", APP_BUTTON_DEFAULT, EL_S_BUSY, AG_BUTTON) + a.gap;
+  y += a.icon_button + a.gap;
+  y += ag_caption(f, "g.c.chips", x, y, w, "Chips: the selected one is filled; a long value is cut");
+  names := [3] string.["Cloud", "This Mac", "A computer with a very long name"];
+  ids := [3] string.["g.chip.0", "g.chip.1", "g.chip.2"];
+  pen = x;
+  for i: 0..<3 {
+    room := x + w - pen; if room < 40 { break; }
+    pen += app_chip(f, ids[i], pen, y, room, ICON_GLOBAL, "Computer", names[i], ifx i == s[0].chip then EL_S_CURRENT else 0, AG_CHIP) + a.gap;
+  }
+  y += k.cmp.chip_h + a.gap;
+  y += ag_caption(f, "g.c.fields", x, y, w, "Fields: plain, secure, with an error, and disabled");
+  y += app_field(f, "g.email", x, y, w, "Email address", "ada@example.com", "you@example.com", false, false, "", 0, AG_FIELD) + a.gap;
+  y += app_field(f, "g.code", x, y, w, "Email code", "482913", "6-digit code", true, false, "", 0, AG_FIELD) + a.gap;
+  y += app_field(f, "g.bad", x, y, w, "Email address", "ada@", "you@example.com", false, false, "Enter a full email address.", 0, AG_FIELD) + a.gap;
+  y += app_field(f, "g.locked", x, y, w, "Email address", "ada@example.com", "", false, false, "", EL_S_DISABLED, AG_FIELD) + a.gap;
+  // the focus rule: a press on a field takes the keyboard, a press anywhere else gives it up
+  holder := ag_focus(s);
+  words := ifx holder == "g.email" then "The email field has the keyboard. Tap outside it to hide the keyboard."
+    else ifx holder == "g.code" then "The code field has the keyboard. Tap outside it to hide the keyboard."
+    else ifx holder == "g.bad" then "The third field has the keyboard. Tap outside it to hide the keyboard."
+    else ifx holder.count > 0 then "A field has the keyboard. Tap outside it to hide the keyboard."
+    else "No field has the keyboard. Tap a field to give it the keyboard.";
+  y += ag_caption(f, "g.c.focus", x, y, w, words) + a.gap;
+  y += ag_caption(f, "g.c.notices", x, y, w, "Notices and a divider");
+  y += app_notice(f, "g.notice", x, y, w, "We emailed a code to ada@example.com.", APP_NOTICE_INFO) + a.gap;
+  y += app_notice(f, "g.notice.error", x, y, w, "We could not reach the server. Check your connection.", APP_NOTICE_ERROR) + a.gap;
+  y += app_divider(f, x, y, w) + a.gap;
+  y += ag_caption(f, "g.c.switch", x, y, w, "Switch, progress and rings");
+  y += app_switch(f, "g.switch", x, y, w, "Show tool calls", s[0].switch_on, 0, AG_SWITCH) + a.gap;
+  y += app_progress(f, "g.progress", x, y, w, "Uploading the log", 0.64) + a.gap;
+  _ := app_ring(f, "g.ring", x, y, "Indexing", 0.4);
+  _ := app_ring(f, "g.ring.busy", x + a.ring + a.gap, y, "Loading", -1);
+  y += a.ring + a.gap;
+  // a sheet holding a menu: the picked row has the check
+  y += ag_caption(f, "g.c.menu", x, y, w, "A sheet with a menu");
+  menu := [3] string.["Codex", "Claude Code", "Ask each time"];
+  details := [3] string.["Runs on your computer", "Runs on your computer", ""];
+  mids := [3] string.["g.menu.0", "g.menu.1", "g.menu.2"];
+  row_h := 2 * k.control_pad + k.body.line + k.small.line; if row_h < k.control_h { row_h = k.control_h; }
+  sheet_h := 2 * a.grabber_top + a.grabber_h + 3 * row_h + a.card_pad;
+  inside := app_sheet(f, "g.sheet", x, y, w, sheet_h, "Engine");
+  my := inside.y;
+  for i: 0..<3 { my += app_menu_row(f, mids[i], x, my, w, menu[i], details[i], ifx i == s[0].pick then EL_S_CURRENT else 0, AG_PICK); }
+  app_card_end(f);
+  y += sheet_h + a.gap;
+  return y - top;
+}
+
+ag_chat :: (s: [] AppGallery, f: [] UiFrame, x: f32, top: f32, w: f32) -> f32 {
+  k := f[0].skin; a := k.app; y := top;
+  y += ag_section(f, "g.chat", x, y, w, "Chat");
+  y += app_meta(f, "g.today", x, y, w, "Today", true) + a.gap;
+  y += app_message_user(f, "g.msg.user", x, y, w, "The composer check fails on main. Can you find out why and fix it?") + a.gap;
+  y += app_meta(f, "g.msg.meta", x, y, w, "Codex · gpt-6.1 · 9:41", false) + a.gap_small;
+  y += app_message_agent(f, "g.msg.agent", x, y, w, s[0].doc[..], s[0].blocks, s[0].copied, AG_COPY) + a.gap;
+  y += app_code(f, "g.code.block", x, y, w, "sh", "coax/bin/coax test components/kit/composer.coax", s[0].copied == 100, AG_COPY) + a.gap;
+  y += app_typing(f, "g.typing", x, y, "Writing a reply") + a.gap;
+  y += app_retry(f, "g.retry", x, y, w, "We could not send your message.", "Try again", 0, AG_RETRY) + a.gap;
+  y += app_empty(f, "g.empty", x, y, w, ICON_THOUGHT, "Start a conversation", "Ask for a change, a review or an answer.") + a.gap;
+  y += app_jump(f, "g.jump", x + w / 2, y, "Jump to latest", 0, AG_BUTTON) + a.gap;
+  y += ag_caption(f, "g.c.composer", x, y, w, "The composer: Send turns to Stop while a reply runs");
+  y += ag_composer(s, f, "g.composer", x, y, w, ifx s[0].running then APP_COMPOSER_RUNNING else APP_COMPOSER_READY, "Fix the failing check");
+  y += ag_composer(s, f, "g.composer.off", x, y, w, APP_COMPOSER_SENDING, "Sending this message");
+  return y - top;
+}
+// A composer with its chips, laid from its top at y. Returns its height.
+ag_composer :: (s: [] AppGallery, f: [] UiFrame, id: string, x: f32, y: f32, w: f32, state: int, text: string) -> f32 {
+  k := f[0].skin; a := k.app;
+  c := AppComposer.{placeholder = "Message", text = text, model = "gpt-6.1", state = state, unit = ARCADE_PHONE_SCALE};
+  look := ComposerLook.{placeholder = c.placeholder, text = c.text, model = c.model, unit = c.unit};
+  hb := composer_box(f[0].m, k, w, look).height;
+  eid: [EL_ID] u8; rid: [EL_ID] u8; sid: [EL_ID] u8;
+  _ := app_composer_chips(f, app_id(eid[..], id, ".env"), app_id(rid[..], id, ".repo"), x, y, w, ICON_GLOBAL, "Cloud", ICON_FOLDER, "OpenAgentsInc/openagents",
+    ifx state == APP_COMPOSER_READY then 0 else EL_S_DISABLED, AG_CHIP, AG_CHIP);
+  top := y + k.cmp.chip_h + a.gap;
+  box := app_composer(f, id, app_id(sid[..], id, ".send"), x, top + hb, w, c, AG_FIELD, AG_SEND);
+  return k.cmp.chip_h + a.gap + box.height + a.gap;
+}
+
+ag_task :: (s: [] AppGallery, f: [] UiFrame, x: f32, top: f32, w: f32) -> f32 {
+  k := f[0].skin; a := k.app; y := top;
+  y += ag_section(f, "g.task", x, y, w, "Task");
+  t := AppTask.{computer = "Studio Mac", engine = "Codex", model = "gpt-6.1", effort = "High", state = APP_TASK_RUNNING};
+  y += app_task_header(f, "g.task.head", x, y, w, t) + a.gap_small;
+  y += ag_caption(f, "g.c.states", x, y, w, "State lines");
+  states := [7] int.[APP_TASK_QUEUED, APP_TASK_RUNNING, APP_TASK_WAITING, APP_TASK_COMPLETED, APP_TASK_FAILED, APP_TASK_CANCELED, APP_TASK_UNKNOWN];
+  sids := [8] string.["g.state.0", "g.state.1", "g.state.2", "g.state.3", "g.state.4", "g.state.5", "g.state.6", "g.state.7"];
+  for i: 0..<7 {
+    t.state = states[i]; t.detail = ifx states[i] == APP_TASK_FAILED then "The computer went offline." else "";
+    y += app_task_state(f, sids[i], x, y, w, t) + a.gap_small;
+  }
+  t.state = APP_TASK_RUNNING; t.stopping = true; t.detail = "";
+  y += app_task_state(f, sids[7], x, y, w, t) + a.gap;
+  y += ag_caption(f, "g.c.tools", x, y, w, "Tool calls: tap one to open its input and result");
+  tools := [3] AppTool.[
+    AppTool.{icon = ICON_DOCUMENT, title = "Read", arg = "components/kit/composer.coax", state = APP_TOOL_DONE, input = "path: components/kit/composer.coax", output = "282 lines"},
+    AppTool.{icon = ICON_TERMINAL, title = "Ran a command", arg = "coax test components/app/chat.coax", state = APP_TOOL_DONE, input = "coax/bin/coax test components/app/chat.coax", output = AG_LONG_OUTPUT},
+    AppTool.{icon = ICON_PEN, title = "Edited", arg = "components/kit/composer.coax", state = APP_TOOL_FAILED, input = "path: components/kit/composer.coax", output = "The file changed since it was read."}];
+  y += app_tool(f, "g.tool.read", x, y, w, tools[0], false, AG_TOOL) + a.gap;
+  y += app_tool(f, "g.tool.run", x, y, w, tools[1], false, AG_TOOL) + a.gap;
+  y += app_tool(f, "g.tool.edit", x, y, w, tools[2], false, AG_TOOL) + a.gap;
+  y += app_tool(f, "g.tool.wait", x, y, w, AppTool.{icon = ICON_TERMINAL, title = "Run a command", arg = "git push", state = APP_TOOL_PENDING, input = "git push origin HEAD:main"}, false, AG_TOOL) + a.gap;
+  y += app_tool(f, "g.tool.busy", x, y, w, AppTool.{icon = ICON_MAGNIFER, title = "Searching", arg = "uiframe_focus", state = APP_TOOL_RUNNING, input = "pattern: uiframe_focus"}, false, AG_TOOL) + a.gap;
+  gids := [3] string.["g.group.0", "g.group.1", "g.group.2"];
+  group := [3] AppTool.[tools[0],
+    AppTool.{icon = ICON_DOCUMENT, title = "Read", arg = "components/kit/frame.coax", state = APP_TOOL_DONE, input = "path: components/kit/frame.coax", output = "201 lines"},
+    AppTool.{icon = ICON_DOCUMENT, title = "Read", arg = "components/app/chat.coax", state = APP_TOOL_DONE, input = "path: components/app/chat.coax", output = "241 lines"}];
+  y += app_tool_group(f, "g.group", x, y, w, "Read 3 files", gids[..], group[..], false, AG_TOOL) + a.gap;
+  y += ag_caption(f, "g.c.permission", x, y, w, "A permission prompt: Allow or Deny answers it");
+  p := AppPermission.{title = "Run this command?", detail = "git push origin HEAD:main", state = APP_PERMISSION_HELD, can_allow = true};
+  if s[0].answered >= 0 { p.state = ifx s[0].answered == 1 then APP_PERMISSION_ALLOWED else APP_PERMISSION_DENIED; p.allow = s[0].answered == 1; }
+  y += app_permission(f, "g.ask", x, y, w, p, AG_ALLOW, AG_DENY) + a.gap;
+  y += app_permission(f, "g.ask.sending", x, y, w, AppPermission.{title = "Edit this file?", detail = "components/kit/composer.coax", state = APP_PERMISSION_SENDING, allow = true, can_allow = true}, AG_ALLOW, AG_DENY) + a.gap;
+  y += app_permission(f, "g.ask.unsure", x, y, w, AppPermission.{title = "Delete this branch?", detail = "fix-composer", state = APP_PERMISSION_UNCERTAIN, allow = true, can_allow = true}, AG_ALLOW, AG_DENY) + a.gap;
+  y += app_task_result(f, "g.result", x, y, w, AppTaskResult.{seconds = 134, tools = 12, failed = 1, cents = 42}) + a.gap;
+  y += ag_caption(f, "g.c.banner", x, y, w, "The connection banner: Try again turns it back to reconnecting");
+  y += app_banner(f, "g.banner", x, y, w, ifx s[0].offline then APP_BANNER_OFFLINE else APP_BANNER_RECONNECTING, AG_RETRY) + a.gap;
+  y += ag_caption(f, "g.c.stop", x, y, w, "Stop while a reply runs");
+  y += ag_composer(s, f, "g.composer.stop", x, y, w, APP_COMPOSER_RUNNING, "");
+  return y - top;
+}
+
+ag_account :: (s: [] AppGallery, f: [] UiFrame, x: f32, top: f32, w: f32) -> f32 {
+  k := f[0].skin; a := k.app; y := top;
+  y += ag_section(f, "g.account", x, y, w, "Account");
+  y += ag_caption(f, "g.c.login", x, y, w, "The login card: Send code moves to the code step");
+  l := AppLogin.{step = ifx s[0].login_code then APP_LOGIN_CODE else APP_LOGIN_EMAIL, email = "ada@example.com", code = "482913"};
+  y += app_login(f, "g.login", x, y, w, l, AppLoginActions.{field = AG_FIELD, submit = AG_LOGIN_SUBMIT, back = AG_LOGIN_BACK, resend = AG_BUTTON}) + a.gap;
+  y += app_login(f, "g.login.error", x, y, w, AppLogin.{step = APP_LOGIN_CODE, email = "ada@example.com", code = "4829", error = "That code is not right. Check the email and try again."},
+    AppLoginActions.{field = AG_FIELD, submit = AG_BUTTON, back = AG_BUTTON, resend = AG_BUTTON}) + a.gap;
+  y += app_login(f, "g.login.busy", x, y, w, AppLogin.{step = APP_LOGIN_EMAIL, email = "ada@example.com", busy = true}, AppLoginActions.{field = AG_FIELD, submit = AG_BUTTON}) + a.gap;
+  y += app_logged_out(f, "g.logged.out", x, y, w, "Log in to run tasks on your computers.", AG_LOGIN) + a.gap;
+  return y - top;
+}
+
+ag_navigation :: (s: [] AppGallery, f: [] UiFrame, x: f32, top: f32, w: f32) -> f32 {
+  k := f[0].skin; a := k.app; y := top;
+  y += ag_section(f, "g.nav", x, y, w, "Navigation");
+  y += ag_caption(f, "g.c.nav", x, y, w, "The floating navigation button and the sidebar's history");
+  y += app_nav_button(f, "g.nav.button", x, y, s[0].nav_open, 0, AG_NAV) + a.gap;
+  rows := [4] AppSideRow.[AppSideRow.{id = "g.side.0", title = "Fix the failing composer check", detail = "Codex · 2 min ago"},
+    AppSideRow.{id = "g.side.1", title = "Why the build ran out of memory", detail = "", state = EL_S_BUSY},
+    AppSideRow.{id = "g.side.2", title = "Draft the release notes for the week of November 9", detail = "Claude Code · Yesterday"},
+    AppSideRow.{id = "g.side.3", title = "Review the login card", detail = ""}];
+  for i: 0..<4 { if i == s[0].side { rows[i].state |= EL_S_CURRENT; } }
+  y += app_side_list(f, "g.side.today", x, y, w, "Today", rows[0..<2], AG_SIDE);
+  y += app_side_list(f, "g.side.earlier", x, y, w, "Earlier", rows[2..<4], AG_SIDE) + a.gap;
+  y += ag_section(f, "g.env", x, y, w, "Environment and repository");
+  y += ag_caption(f, "g.c.env", x, y, w, "The chips over the composer; a long repository is cut");
+  y += app_composer_chips(f, "g.env.chip", "g.repo.chip", x, y, w, ICON_GLOBAL, "Studio Mac", ICON_FOLDER, "OpenAgentsInc/a-repository-with-a-long-name", 0, AG_CHIP, AG_CHIP) + a.gap;
+  y += app_composer_chips(f, "g.env.only", "", x, y, w, ICON_GLOBAL, "Cloud", -1, "", 0, AG_CHIP, 0) + a.gap;
+  y += app_composer_chips(f, "g.env.off", "g.repo.off", x, y, w, ICON_GLOBAL, "Cloud", ICON_FOLDER, "OpenAgentsInc/openagents", EL_S_DISABLED, AG_CHIP, AG_CHIP) + a.gap;
+  return y - top;
+}
+
+ag_layout :: (s: [] AppGallery, f: [] UiFrame, w: f32, h: f32) {
+  k := f[0].skin;
+  x: f32 = AG_PAD; cw := w - 2 * AG_PAD;
+  head := s[0].safe_top / ARCADE_PHONE_SCALE + AG_HEAD;
+  y := head - s[0].scroll;
+  y += ag_basics(s, f, x, y, cw);
+  y += ag_chat(s, f, x, y, cw);
+  y += ag_task(s, f, x, y, cw);
+  y += ag_account(s, f, x, y, cw);
+  y += ag_navigation(s, f, x, y, cw);
+  y += 24 + s[0].safe_bottom / ARCADE_PHONE_SCALE;
+  s[0].content = y + s[0].scroll - head; s[0].view = h - head;
+  // the fixed header, over what scrolls: its region row is on top, so a press on it reaches nothing under it
+  _ := uiframe_semantic(f, "g.header", EL_REGION, "Components", 0, 0, w, head, 0, 0);
+  sheet_fill(f[0].sheet, 0, 0, w, head, 0, k.canvas);
+  sheet_rule(f[0].sheet, 0, head - k.border, w, k.border, k.menu_divider);
+  ty := head - AG_HEAD;
+  _ := app_text(f, "g.title", x, ty + (AG_HEAD - k.title.line) / 2, cw / 2, APP_TEXT_TITLE, "Components");
+  cl := app_button_width(f, -1, "Close");
+  _ := app_button(f, "g.close", x + cw - cl, ty + (AG_HEAD - k.control_h) / 2, cl, -1, "Close", APP_BUTTON_QUIET, 0, AG_CLOSE);
+}
+ag_clamp :: (s: [] AppGallery) {
+  most := s[0].content - s[0].view;
+  if s[0].scroll > most { s[0].scroll = most; }
+  if s[0].scroll < 0 { s[0].scroll = 0; }
+}
+ag_stamp :: (s: [] AppGallery) -> int {
+  t := [1] ElTable.[ag_rows(s)];
+  st := 17;
+  for i: 0..<t[0].n {
+    r := t[0].rows[i];
+    for c: elt_id(t[..], i) { st = (st * 31 + cast(int) c) & 0x3fffffff; }
+    st = (st * 31 + r.state + 7 * el_round(r.y)) & 0x3fffffff;
+  }
+  return st;
+}
+// The block number in a code block's Copy id ("g.msg.agent.code.6.copy" is 6; another code block is 100).
+ag_code_block :: (id: string) -> int {
+  head := "g.msg.agent.code.";
+  if id.count <= head.count || cast(string) id[0..<head.count] != head { return 100; }
+  n := 0; i := head.count;
+  while i < id.count && id[i] >= '0' && id[i] <= '9' { n = n * 10 + cast(int) (id[i] - '0'); i += 1; }
+  return n;
+}
+// A press on a committed row: the gallery's example state changes. Returns whether it did anything.
+ag_press :: (s: [] AppGallery, row: int) -> bool {
+  act := surface_action(s[0].surface[..], row); id := surface_id(s[0].surface[..], row);
+  if act == AG_CLOSE { s[0].ask = AG_ASK_CLOSE; return true; }
+  if act == AG_FIELD { return true; }   // the focus rule gave it the keyboard
+  if act == AG_BUTTON { s[0].presses += 1; return true; }
+  if act == AG_SWITCH { s[0].switch_on = !s[0].switch_on; return true; }
+  if act == AG_CHIP {
+    if id.count == 8 && cast(string) id[0..<7] == "g.chip." { s[0].chip = cast(int) (id[7] - '0'); }
+    return true;
+  }
+  if act == AG_PICK { if id.count == 8 { s[0].pick = cast(int) (id[7] - '0'); } return true; }
+  if act == AG_COPY { b := ag_code_block(id); s[0].copied = ifx s[0].copied == b then -1 else b; return true; }
+  if act == AG_TOOL {
+    tools := [9] string.["g.tool.read", "g.tool.run", "g.tool.edit", "g.tool.wait", "g.tool.busy", "g.group", "g.group.0", "g.group.1", "g.group.2"];
+    for t: tools { if app_tool_press(s[0].keyed[..], t, id) { return true; } }
+    return false;
+  }
+  if act == AG_ALLOW || act == AG_DENY {
+    if id.count > 6 && cast(string) id[0..<6] == "g.ask." { s[0].answered = ifx s[0].answered >= 0 then -1 else ifx act == AG_ALLOW then 1 else 0; }
+    return true;
+  }
+  if act == AG_LOGIN_SUBMIT { s[0].login_code = true; return true; }
+  if act == AG_LOGIN_BACK { s[0].login_code = false; return true; }
+  if act == AG_LOGIN { s[0].presses += 1; return true; }
+  if act == AG_NAV { s[0].nav_open = !s[0].nav_open; return true; }
+  if act == AG_SIDE { if id.count == 8 { s[0].side = cast(int) (id[7] - '0'); } return true; }
+  if act == AG_SEND { s[0].running = !s[0].running; return true; }
+  if act == AG_RETRY { s[0].offline = !s[0].offline; return true; }
+  return false;
+}
+
+// ---------------------------------------------------------------- the host's calls
+
+// The window's facts in points and reduced motion.
+appgallery_env :: (s: [] AppGallery, safe_top: f32, safe_bottom: f32, reduced: bool) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].safe_top = ifx safe_top > 0 then safe_top else 0.0f32; s[0].safe_bottom = ifx safe_bottom > 0 then safe_bottom else 0.0f32; s[0].reduced = reduced;
+}
+// One frame of width by height device pixels. Returns the vertex count.
+appgallery_frame :: (s: [] AppGallery, out: [] f32, width: f32, height: f32, dpr: f32, dt: f32) -> int #export_c #effects(all) {
+  if s.count < 1 || width < 1 || height < 1 { return 0; }
+  if !s[0].ready { ag_init(s); }
+  a := s[0].atlas[..];
+  d := (ifx dpr < 1 then 1.0f32 else dpr) * ARCADE_PHONE_SCALE;
+  w := width / d; h := height / d;
+  s[0].d = d;
+  t := ifx dt < 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
+  if !s[0].reduced { s[0].time += t; }
+  a[0].frame += 1;
+  k := arcade_phone_skin();
+  v := paint_quad(out, 0, d, 0, 0, w, h, 0, 0, k.canvas, k.canvas);
+  if !a[0].ready { return v; }
+  f: [1] UiFrame;
+  input := uiinput(s[0].px, s[0].py, s[0].touching, s[0].touching && !s[0].dragging, cast(string) s[0].pressed[0..<s[0].pressed_n], ag_focus(s));
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_font(a), k, input, s[0].time, t, s[0].reduced, false);
+  // the focus rule (kit/frame.coax): the gallery keeps who has the keyboard after this frame's press
+  s[0].focused_n = el_copy(s[0].focused[..], uiframe_focus(f[..]));
+  ag_layout(s, f[..], w, h);
+  if !uiframe_end(f[..], s[0].surface[..]) { s[0].refused += 1; }
+  ag_clamp(s);
+  s[0].stamp = ag_stamp(s);
+  sh := surface_sheet(s[0].surface[..]);
+  v = gpu_draw(out, v, a, d, sh.under[0..<sh.nu], 0, 0, -8, h + 8);
+  v = gpu_draw(out, v, a, d, sh.over[0..<sh.no], 0, 0, -8, h + 8);
+  gpu_monochrome(out, v);
+  return v;
+}
+// A touch, in device pixels: phase 0 down, 1 moved, 2 up, 3 cancelled. A touch that moves
+// scrolls the page and presses nothing; one that lifts where it began presses that row.
+appgallery_pointer :: (s: [] AppGallery, x: f32, y: f32, phase: int) -> bool #export_c #effects(all) {
+  if s.count < 1 || !(s[0].d > 0) { return false; }
+  ux := x / s[0].d; uy := y / s[0].d;
+  row := surface_hit(s[0].surface[..], ux, uy);
+  id := surface_id(s[0].surface[..], row);
+  was := cast(string) s[0].pressed[0..<s[0].pressed_n];
+  last := s[0].py;
+  s[0].px = ux; s[0].py = uy;
+  if phase == 0 {
+    s[0].touching = true; s[0].dragging = false; s[0].down_y = uy;
+    s[0].pressed_n = ifx surface_action(s[0].surface[..], row) != 0 then el_copy(s[0].pressed[..], id) else 0;
+    // the focus rule at once, so a tap that begins and ends between two frames still moves the keyboard
+    ins := [1] UiInput.[uiinput(ux, uy, true, true, cast(string) s[0].pressed[0..<s[0].pressed_n], ag_focus(s))];
+    if uiframe_press_focus(s[0].surface[..], ins[..]) { s[0].focused_n = el_copy(s[0].focused[..], cast(string) ins[0].focused[0..<ins[0].focused_n]); }
+    return true;
+  }
+  if phase == 1 {
+    if !s[0].dragging && abs(uy - s[0].down_y) > AG_DRAG { s[0].dragging = true; s[0].pressed_n = 0; }
+    if s[0].dragging { s[0].scroll -= uy - last; ag_clamp(s); }
+    else if was != id { s[0].pressed_n = 0; }
+    return true;
+  }
+  held := s[0].pressed_n > 0 && was == id && !s[0].dragging;
+  s[0].touching = false; s[0].dragging = false; s[0].pressed_n = 0;
+  return phase == 2 && held && ag_press(s, row);
+}
+// What the gallery asks of the host, once: 0 nothing, 1 close the dev menu.
+appgallery_action :: (s: [] AppGallery) -> int #export_c #effects(all) { if s.count < 1 { return 0; } ask := s[0].ask; s[0].ask = AG_ASK_NONE; return ask; }
+// Whether a field has the keyboard (the gallery has no platform editor: it draws its own caret).
+appgallery_keyboard :: (s: [] AppGallery) -> bool #export_c #effects(all) { return s.count > 0 && s[0].focused_n > 0; }
+// The gallery always has something turning (busy marks, a caret), so it asks for frames unless motion is reduced.
+appgallery_moving :: (s: [] AppGallery) -> bool #export_c #effects(all) { return s.count > 0 && (!s[0].ready || !s[0].reduced); }
+appgallery_refused :: (s: [] AppGallery) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return s[0].refused; }
+appgallery_max_vertices :: () -> int #export_c #effects(all) { return AG_MAX_VERTICES; }
+appgallery_scale :: () -> f32 #export_c #effects(all) { return ARCADE_PHONE_SCALE; }
+appgallery_rows_stamp :: (s: [] AppGallery) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return s[0].stamp; }
+// Activating a row by id does what a tap does (VoiceOver, coax drive).
+appgallery_activate :: (s: [] AppGallery, id: string) -> bool #export_c #effects(all) { if s.count < 1 { return false; } return ag_press(s, surface_find(s[0].surface[..], id)); }
+// coax drive: `tree` and `counts` over the committed rows. The answer's length, or -1.
+appgallery_drive :: (s: [] AppGallery, op: string, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 { return -1; }
+  if op == "tree" { return surface_tree(s[0].surface[..], out); }
+  if op == "counts" { return uiframe_counts(s[0].surface[..], s[0].keyed[..], out); }
+  return -1;
+}
+
+#load "gallery-checks.coax" #test;

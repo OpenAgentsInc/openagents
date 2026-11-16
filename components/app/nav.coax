@@ -1,0 +1,73 @@
+// The app set's navigation components (components/app/README.md; GitHub
+// #13645): the floating navigation button, and the sidebar's history list: a
+// section head and rows that can be current, busy and carry a second line.
+//
+// The navigation button's icon is Apps SDK UI's sidebar-left (the skin's
+// app.icon_nav; components/icons/NOTICE).
+//   coax/bin/coax test components/app/nav.coax
+
+#load "base.coax";
+
+// The floating navigation button at (x, y): a round button with the skin's
+// lift under it that opens the sidebar. `open` says the sidebar is shown: its
+// row says expanded and its label says what a press does. Returns the
+// target's side.
+app_nav_button :: (f: [] UiFrame, id: string, x: f32, y: f32, open: bool, state: int, action: int) -> f32 {
+  s := f[0].skin; a := s.app; sh := f[0].sheet; side := a.nav; off := (state & EL_S_DISABLED) != 0;
+  k := uiframe_key(f, id);
+  row := uiframe_semantic(f, id, EL_BUTTON, ifx open then "Close sidebar" else "Open sidebar", x, y, side, side, state | EL_S_EXPANDS | (ifx open then EL_S_EXPANDED else 0), ifx off then 0 else action);
+  sheet_under(sh, uiskin_float(sh[0].under, sh[0].nu, s, x, y, side, side, side / 2));
+  ink := app_ground(f, id, k, x, y, side, side, side / 2, APP_BUTTON_DEFAULT, off);
+  sheet_icon(sh, a.icon_nav, x + (side - a.nav_icon) / 2, y + (side - a.nav_icon) / 2, a.nav_icon, ink);
+  if !off { sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, side, side); }
+  return side;
+}
+// A section head in the sidebar at (x, y), w wide: small, quiet words over
+// the rows they name ("Today"). Returns its height.
+app_side_head :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, title: string) -> f32 {
+  s := f[0].skin; a := s.app;
+  _ := sheet_text(f[0].sheet, f[0].m, -1, x + a.side_pad, y + a.side_head - s.small.line - a.gap_small, s.small.line, s.small.face, s.faint, app_fit(f, s.small.face, title, w - 2 * a.side_pad));
+  _ := uiframe_semantic(f, id, EL_HEADING, title, x, y, w, a.side_head, 0, 0);
+  return a.side_head;
+}
+// A history row in the sidebar at (x, y), w wide: a title cut with an
+// ellipsis and, when it has one, a second line under it (a time, a model).
+// EL_S_CURRENT is the chat that is shown, on a lit ground; EL_S_BUSY shows the
+// activity mark at its right edge (a reply runs there). It is washed while
+// held. Returns its height.
+app_side_row :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, title: string, detail: string, state: int, action: int) -> f32 {
+  s := f[0].skin; a := s.app; sh := f[0].sheet; m := f[0].m;
+  current := (state & EL_S_CURRENT) != 0; busy := (state & EL_S_BUSY) != 0; off := (state & EL_S_DISABLED) != 0;
+  h := ifx detail.count > 0 then a.side_row_two else a.side_row;
+  k := uiframe_key(f, id);
+  p := ifx off then 0.0f32 else uiframe_press(f, k, id);
+  if current { sheet_fill(sh, x + a.row_inset, y, w - 2 * a.row_inset, h, a.row_radius, s.raised); }
+  if p > 0 { sheet_fill(sh, x + a.row_inset, y, w - 2 * a.row_inset, h, a.row_radius, opacity(s.hover, p)); }
+  row := uiframe_semantic(f, id, EL_ROW, title, x, y, w, h, state, ifx off then 0 else action);
+  elt_value(f[0].rows, row, detail);
+  room := w - 2 * a.side_pad - (ifx busy then a.icon + a.gap else 0.0f32);
+  lines := s.body.line + (ifx detail.count > 0 then s.small.line else 0.0f32); ty := y + (h - lines) / 2;
+  _ := sheet_text(sh, m, -1, x + a.side_pad, ty, s.body.line, s.body.face, ifx off then s.faint else ifx current then s.ink else s.muted, app_fit(f, s.body.face, title, room));
+  if detail.count > 0 { _ := sheet_text(sh, m, -1, x + a.side_pad, ty + s.body.line, s.small.line, s.small.face, s.faint, app_fit(f, s.small.face, detail, room)); }
+  if busy { activity(sh, s, x + w - a.side_pad - a.icon, y + (h - a.icon) / 2, a.icon, f[0].clock, f[0].reduced_motion); }
+  if !off { sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, w, h); }
+  return h;
+}
+// One row of a history list.
+AppSideRow :: struct {
+  id: string;                 // its stable id (the chat's, never its place in the list)
+  title: string;
+  detail: string;             // its second line ("": none)
+  state: int;                 // EL_S_CURRENT, EL_S_BUSY
+}
+// A section of the sidebar at (x, y), w wide: its head (head_id, "" for no
+// head) and its rows, each under its own id, so a row keeps its state when
+// the list is reordered. Every row dispatches `action`. Returns its height.
+app_side_list :: (f: [] UiFrame, head_id: string, x: f32, y: f32, w: f32, head: string, rows: [] AppSideRow, action: int) -> f32 {
+  h: f32 = 0;
+  if head.count > 0 { h += app_side_head(f, head_id, x, y, w, head); }
+  for r: rows { h += app_side_row(f, r.id, x, y + h, w, r.title, r.detail, r.state, action); }
+  return h;
+}
+
+#load "nav-checks.coax" #test;

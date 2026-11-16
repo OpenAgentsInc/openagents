@@ -1,0 +1,241 @@
+// The app set's chat components (components/app/README.md; GitHub #13645):
+// the composer with the chips over it, a person's message, an agent's
+// message in Markdown, a code block with its language and Copy, the typing
+// mark, the empty conversation, an error with Try again, the jump to the
+// latest message and a date or meta line.
+//
+// They follow base.coax's contract: one procedure a component on the frame
+// context, the skin's roles and app measures, a semantic row and a hit region
+// under a stable id, motion from the keyed store. A message rises into place
+// when its id first appears. A component takes plain inputs; nothing here
+// knows a conversation, a task or a service.
+//   coax/bin/coax test components/app/chat.coax
+
+#load "base.coax";
+#load "../kit/composer.coax";
+#load "../kit/markdown.coax";
+
+APP_WRAP_LINES :: 64;       // rows one message or one notice wraps into
+APP_DOTS :: 3;              // the typing mark's dots
+
+// Wrapped text centred in (x, w), each row on its own. Returns its height.
+app_centred :: (f: [] UiFrame, t: UiType, color: Rgba, x: f32, y: f32, w: f32, text: string) -> f32 {
+  m := f[0].m; rows: [APP_WRAP_LINES] TextLine;
+  n := text_wrap_lines(m, TextFaces.{plain = t.face, bold = t.face, code = t.face}, text, ifx w > 1 then w else 1.0f32, rows[..]);
+  for i: 0..<n {
+    part := cast(string) text[rows[i].from..<rows[i].to];
+    _ := sheet_text(f[0].sheet, m, -1, x + (w - measure_width(m, t.face, part)) / 2, y + cast(f32) i * t.line, t.line, t.face, color, part);
+  }
+  return cast(f32) n * t.line;
+}
+
+// ---------------------------------------------------------------- composer
+
+APP_COMPOSER_READY :: 0;      // the text can be edited; Send can be pressed once there is text
+APP_COMPOSER_SENDING :: 1;    // a message is being sent: the text is locked and the action rests
+APP_COMPOSER_RUNNING :: 2;    // a reply runs: the action is Stop
+APP_COMPOSER_OFF :: 3;        // it can't be used now (logged out, no connection)
+
+// What a composer shows. The caller holds the draft.
+AppComposer :: struct {
+  placeholder: string;
+  text: string;
+  model: string;              // the model's chip in the action row ("": none)
+  state: int;                 // APP_COMPOSER_*
+  editing: bool;              // the platform's editor is over the text and draws it
+  editor_h: f32;              // the editor's own text height, layout units (while editing; 0: wrap here)
+  unit: f32;                  // points a layout unit (the shared composer layout is in points; 0: 1)
+}
+// A composer docked by its bottom edge at `bottom`, w wide (kit/composer.coax's
+// composer, with the app's states). Its rows are the field (id, the draft as
+// its value), the action (send_id: Send, or Stop while a reply runs) and the
+// model (id + ".model"). It grows with its text to the layout's four-line cap
+// on a spring. Returns its box at the height it is drawn at.
+app_composer :: (f: [] UiFrame, id: string, send_id: string, x: f32, bottom: f32, w: f32, c: AppComposer, field_action: int, send_action: int) -> ComposerBox {
+  locked := c.state == APP_COMPOSER_SENDING || c.state == APP_COMPOSER_OFF;
+  look := ComposerLook.{placeholder = c.placeholder, text = c.text, model = c.model, editing = c.editing && !locked, editor_h = c.editor_h, unit = c.unit,
+    stop = c.state == APP_COMPOSER_RUNNING, locked = locked,
+    enabled = c.state == APP_COMPOSER_RUNNING || (c.state == APP_COMPOSER_READY && c.text.count > 0)};
+  return ctx_composer(f, id, send_id, x, bottom, w, look, ifx locked then 0 else field_action, ifx look.enabled then send_action else 0);
+}
+// The chips over a composer at (x, y), in w: where the next message runs
+// (env_id) and its repository (repo_id; "" for no repository chip), each
+// with its icon (-1: none). The environment takes at most half the row and
+// the repository the rest; a longer value is cut with an ellipsis and its row
+// keeps the whole. `state` applies to both (EL_S_DISABLED while a reply runs).
+// Returns the row's height.
+app_composer_chips :: (f: [] UiFrame, env_id: string, repo_id: string, x: f32, y: f32, w: f32, env_icon: int, env: string, repo_icon: int, repo: string, state: int, env_action: int, repo_action: int) -> f32 {
+  s := f[0].skin; gap := s.app.gap;
+  ew := app_chip(f, env_id, x, y, ifx repo.count > 0 then (w - gap) / 2 else w, env_icon, "Environment", env, state, env_action);
+  if repo.count > 0 { _ := app_chip(f, repo_id, x + ew + gap, y, w - ew - gap, repo_icon, "Repository", repo, state, repo_action); }
+  return s.cmp.chip_h;
+}
+
+// ---------------------------------------------------------------- messages
+
+// A person's message at (x, y), in a column w wide: its text wrapped in a
+// bubble at the column's right edge, as wide as its longest row and at most
+// the skin's share of the column. Its rows of text are selectable. Returns its height.
+app_message_user :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, text: string) -> f32 {
+  s := f[0].skin; a := s.app; sh := f[0].sheet; m := f[0].m; line := s.md.line;
+  k := uiframe_key(f, id); from := app_mark(f);
+  room := w * a.bubble_share - 2 * a.bubble_pad_x;
+  rows: [APP_WRAP_LINES] TextLine;
+  n := text_wrap_lines(m, uiskin_faces(s), text, ifx room > 1 then room else 1.0f32, rows[..]);
+  widest: f32 = 0;
+  for i: 0..<n { rw := measure_width(m, s.body.face, cast(string) text[rows[i].from..<rows[i].to]); if rw > widest { widest = rw; } }
+  bw := ceil(widest) + 2 * a.bubble_pad_x; h := cast(f32) n * line + 2 * a.bubble_pad_y; bx := x + w - bw;
+  _ := uiframe_semantic(f, id, EL_TEXT, text, bx, y, bw, h, 0, 0);
+  sheet_fill(sh, bx, y, bw, h, a.bubble_radius, s.raised);
+  for i: 0..<n {
+    hard := rows[i].to >= text.count || text[rows[i].to] == '\n';
+    _ := sheet_plain(sh, m, bx + a.bubble_pad_x, y + a.bubble_pad_y + cast(f32) i * line, line, s.body.face, s.ink, cast(string) text[rows[i].from..<rows[i].to], hard);
+  }
+  app_enter(f, k, from);
+  return h;
+}
+// A code block at (x, y), w wide: a header with the language and Copy, then
+// the lines in the mono face. Copy is a row of its own (id + ".copy") that
+// dispatches `action`; `copied` says the app has copied it, and the action
+// reads Copied. Rust-like languages are highlighted in the skin's syntax
+// roles. A line wider than the block is cut with an ellipsis. Returns its height.
+app_code :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, lang: string, code: string, copied: bool, action: int) -> f32 {
+  s := f[0].skin; a := s.app; sh := f[0].sheet; m := f[0].m; line := s.md.block_line;
+  nl := 1;
+  for i: 0..<code.count { if code[i] == '\n' && i + 1 < code.count { nl += 1; } }
+  h := a.code_head + 2 * a.code_pad + cast(f32) nl * line;
+  uiframe_open(f, uiframe_semantic(f, id, EL_REGION, ifx lang.count > 0 then lang else "Code", x, y, w, h, 0, 0));
+  _ := sheet_box(sh, x, y, w, h, a.code_radius, s.border, s.surface, s.hover);
+  sheet_rule(sh, x + s.border, y + a.code_head, w - 2 * s.border, s.border, s.menu_divider);
+  _ := sheet_text(sh, m, -1, x + a.code_pad, y + (a.code_head - s.small.line) / 2, s.small.line, s.small.face, s.muted, lang);
+  cid: [EL_ID] u8; word := ifx copied then "Copied" else "Copy";
+  cw := form_link_width(m, s, word);
+  _ := ctx_link(f, app_id(cid[..], id, ".copy"), x + w - cw - a.code_copy_pad + s.space, y + (a.code_head - s.control_h) / 2, word, ifx copied then "Copied" else "Copy code", 0, action);
+  colored := lang == "rust" || lang == "coax" || lang == "jai" || lang == "c" || lang == "swift";
+  top := y + a.code_head + a.code_pad;
+  // a line wider than the block is cut with an ellipsis, not clipped: the
+  // block may sit in a scroll area or a tool's reveal, which hold the one clip
+  room := w - 2 * a.code_pad;
+  runs: [128] MdRun;
+  i := 0; row := 0;
+  while i < code.count {
+    j := i; while j < code.count && code[j] != '\n' { j += 1; }
+    part := cast(string) code[i..<j]; ly := top + cast(f32) row * line;
+    fits := measure_width(m, s.mono.face, part) <= room;
+    if colored && fits { markdown_syntax_line(sh, m, s, part, runs[..], x + a.code_pad, ly, line, s.mono.face, s.ink); }
+    else { _ := sheet_plain(sh, m, x + a.code_pad, ly, line, s.mono.face, s.ink, ifx fits then part else app_fit(f, s.mono.face, part, room), true); }
+    row += 1; i = j + 1;
+  }
+  uiframe_close(f);
+  return h;
+}
+// An agent's message at (x, y), w wide: the blocks of a parsed Markdown
+// document (core/markdown.coax md_parse; `blocks` is what it returned),
+// painted by the one Markdown component (kit/markdown.coax): headings,
+// emphasis, lists, task lists, links, quotes and tables. A fenced block is an
+// app_code under id + ".code.N", whose Copy dispatches `copy_action`;
+// `copied` is the block the app has copied (-1: none). A rule is a divider.
+// Returns its height.
+app_message_agent :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, doc: [] MdDoc, blocks: int, copied: int, copy_action: int) -> f32 {
+  s := f[0].skin; sh := f[0].sheet; m := f[0].m;
+  k := uiframe_key(f, id); from := app_mark(f);
+  row := uiframe_semantic(f, id, EL_TEXT, ifx blocks > 0 then md_block_text(doc, 0) else "", x, y, w, s.md.line, 0, 0);
+  uiframe_open(f, row);
+  h: f32 = 0;
+  for b: 0..<blocks {
+    if b > 0 { h += s.md.block_gap; }
+    kind := doc[0].blocks[b].kind;
+    if kind == MB_CODE {
+      part: [EL_ID] u8; cid: [EL_ID] u8;
+      n := el_copy(part[..], ".code."); n = text_put_int(part[..], n, b);
+      h += app_code(f, app_id(cid[..], id, cast(string) part[0..<n]), x, y + h, w, md_lang(doc, b), md_block_text(doc, b), copied == b, copy_action);
+    } else if kind == MB_RULE { h += app_divider(f, x, y + h, w); }
+    else { h += markdown_block(sh, m, s, doc, b, x, y + h, w); }
+  }
+  uiframe_close(f);
+  if row >= 0 && h > 0 { f[0].rows[0].rows[row].h = h; }
+  app_enter(f, k, from);
+  return h;
+}
+// The typing mark at (x, y): three dots that brighten in turn on the frame's
+// clock while a reply is being written. Reduced motion shows them still.
+// `label` says what is happening, for its live row. Returns its height.
+app_typing :: (f: [] UiFrame, id: string, x: f32, y: f32, label: string) -> f32 {
+  s := f[0].skin; a := s.app; h := s.md.line; count := APP_DOTS;
+  w := cast(f32) count * a.dot + cast(f32) (count - 1) * a.dot_gap;
+  _ := uiframe_semantic(f, id, EL_PROGRESS, label, x, y, w, h, EL_S_BUSY | EL_S_LIVE, 0);
+  for i: 0..<count {
+    lit: f32 = 1;
+    if !f[0].reduced_motion {
+      v := f[0].clock / a.dot_period - cast(f32) i / cast(f32) count;
+      t := v - floor(v);
+      wave := ifx t < 0.5 then 2 * t else 2 - 2 * t;
+      lit = a.dot_dim + (1 - a.dot_dim) * wave;
+    }
+    sheet_fill(f[0].sheet, x + cast(f32) i * (a.dot + a.dot_gap), y + (h - a.dot) / 2, a.dot, a.dot, a.dot / 2, opacity(s.muted, lit));
+  }
+  return h;
+}
+// The empty conversation at (x, y), centred in w: an icon in a well, a title
+// and a line or two under it. Returns its height.
+app_empty :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, icon: int, title: string, detail: string) -> f32 {
+  s := f[0].skin; a := s.app; side := s.control_h; mark := a.icon;
+  sheet_fill(f[0].sheet, x + (w - side) / 2, y, side, side, side / 2, s.raised);
+  sheet_icon(f[0].sheet, icon, x + (w - mark) / 2, y + (side - mark) / 2, mark, s.muted);
+  h := side + s.space;
+  th := app_centred(f, s.title, s.ink, x, y + h, w, title);
+  _ := uiframe_semantic(f, id, EL_HEADING, title, x, y + h, w, th, 0, 0);
+  h += th + a.gap_small;
+  if detail.count > 0 {
+    did: [EL_ID] u8;
+    dh := app_centred(f, s.body, s.muted, x, y + h, w, detail);
+    _ := uiframe_semantic(f, app_id(did[..], id, ".detail"), EL_TEXT, detail, x, y + h, w, dh, 0, 0);
+    h += dh;
+  }
+  return h;
+}
+// An error line with its retry at (x, y), w wide: the skin's failure mark,
+// what went wrong (a live notice row under id), and a quiet action at the
+// right edge (id + ".retry", "" for none) that dispatches `action`. EL_S_BUSY
+// rests the action while the retry runs. Returns its height.
+app_retry :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, text: string, retry: string, state: int, action: int) -> f32 {
+  s := f[0].skin; a := s.app; sh := f[0].sheet; m := f[0].m;
+  busy := (state & (EL_S_BUSY | EL_S_DISABLED)) != 0;
+  lw := ifx retry.count > 0 then form_link_width(m, s, retry) else 0.0f32;
+  lead := a.notice_icon + a.gap;
+  rows: [APP_WRAP_LINES] TextLine;
+  n := text_wrap_lines(m, uiskin_faces(s), text, ifx w - lead - lw > 1 then w - lead - lw else 1.0f32, rows[..]);
+  th := cast(f32) n * s.body.line; h := ifx th > s.control_h then th else s.control_h; ty := y + (h - th) / 2;
+  sheet_icon(sh, a.icon_alert, x, ty + (s.body.line - a.notice_icon) / 2, a.notice_icon, s.ink);
+  for i: 0..<n { _ := sheet_text(sh, m, -1, x + lead, ty + cast(f32) i * s.body.line, s.body.line, s.body.face, s.ink, cast(string) text[rows[i].from..<rows[i].to]); }
+  _ := uiframe_semantic(f, id, EL_NOTICE, text, x, ty, w - lw, th, EL_S_LIVE, 0);
+  if retry.count > 0 {
+    rid: [EL_ID] u8;
+    _ := ctx_link(f, app_id(rid[..], id, ".retry"), x + w - lw, y + (h - s.control_h) / 2, retry, "", ifx busy then EL_S_DISABLED else 0, ifx busy then 0 else action);
+  }
+  return h;
+}
+// The jump to the latest message: a round button centred on cx, with the
+// skin's lift under it, that rises in when its id first appears. `label` is
+// what it does ("Jump to latest"). Returns the target's side.
+app_jump :: (f: [] UiFrame, id: string, cx: f32, y: f32, label: string, state: int, action: int) -> f32 {
+  s := f[0].skin; a := s.app; sh := f[0].sheet; side := a.icon_button; well := a.icon_well; x := cx - side / 2; inset := (side - well) / 2;
+  mid: [EL_ID] u8;
+  k := uiframe_key(f, app_id(mid[..], id, ".in")); from := app_mark(f);
+  sheet_under(sh, uiskin_float(sh[0].under, sh[0].nu, s, x + inset, y + inset, well, well, well / 2));
+  _ := app_icon_button(f, id, x, y, s.icon_chevron, label, APP_BUTTON_DEFAULT, state, action);
+  app_enter(f, k, from);
+  return side;
+}
+// A date or meta line at (x, y), w wide: small, quiet words, centred (a
+// date between messages) or at the left (a message's time and model).
+// Returns its height.
+app_meta :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, text: string, centred: bool) -> f32 {
+  s := f[0].skin; m := f[0].m; shown := app_fit(f, s.small.face, text, w);
+  tx := ifx centred then x + (w - measure_width(m, s.small.face, shown)) / 2 else x;
+  _ := sheet_text(f[0].sheet, m, -1, tx, y, s.small.line, s.small.face, s.faint, shown);
+  _ := uiframe_semantic(f, id, EL_TEXT, text, x, y, w, s.small.line, 0, 0);
+  return s.small.line;
+}
+
+#load "chat-checks.coax" #test;

@@ -1,0 +1,376 @@
+// The app set's basics (components/app/README.md; components/gpu-components.md;
+// GitHub #13645): text styles, buttons, the icon button, the chip, the field,
+// the notice, the divider, the card and sheet grounds, menu rows, the switch,
+// the progress bar and the rings. The native apps' screens are built from
+// these and from the files beside this one (chat.coax, task.coax,
+// account.coax, nav.coax).
+//
+// Every component is one procedure on the frame context (kit/frame.coax). It
+// takes the frame, a stable id, its inputs and a position and width. It paints
+// in the skin's roles and the skin's app measures (skin.app, UiApp), records
+// its semantic row and its hit region, keeps what outlives a frame in the
+// keyed store under its id, and moves with the kit's motion, which reduced
+// motion settles at once. It never calls a host and never changes app state:
+// a press reaches the app as the row's action.
+//
+// `state` is the component's own EL_S_* bits (core/elements.coax):
+// EL_S_DISABLED, EL_S_BUSY, EL_S_CURRENT. The frame adds focused and pressed
+// from its input. A disabled or busy part keeps its row, with no action and
+// no hit, so a press on it dispatches nothing.
+//
+// Text a component makes up (a cut label, a percentage) is kept in the
+// sheet's pool, so a surface declares pool bytes for it.
+//   coax/bin/coax test components/app/base.coax
+
+#load "../kit/form.coax";
+#load "../kit/chip.coax";
+
+// ---------------------------------------------------------------- shared helpers
+
+// Where the sheet stands before a component paints, so its paint can be moved once it is laid out.
+AppMark :: struct { nu: int; no: int; }
+app_mark :: (f: [] UiFrame) -> AppMark { return AppMark.{nu = f[0].sheet[0].nu, no = f[0].sheet[0].no}; }
+// Entry motion: what was painted since `from` rises into place over the skin's
+// enter time, from the frame keyed row k appeared. Rows and hits stay where
+// the component ends up. With reduced motion, or without a keyed row, nothing moves.
+app_enter :: (f: [] UiFrame, k: int, from: AppMark) {
+  e := uiframe_entry(f, k);
+  if e >= 1 { return; }
+  dy := (1 - e) * f[0].skin.app.rise;
+  prim_move(f[0].sheet[0].under, from.nu, f[0].sheet[0].nu, 0, dy);
+  prim_move(f[0].sheet[0].over, from.no, f[0].sheet[0].no, 0, dy);
+}
+// Text cut to a width: the text itself when it fits, else its longest start
+// that fits with an ellipsis after it, kept in the sheet's pool.
+app_fit :: (f: [] UiFrame, face: int, text: string, w: f32) -> string {
+  m := f[0].m;
+  if measure_width(m, face, text) <= w { return text; }
+  buf: [EL_LABEL * 2] u8; dots := "…";
+  best := 0; i := 0;
+  while i < text.count && i + dots.count < buf.count {
+    j := i + 1; while j < text.count && (text[j] & 0xC0) == 0x80 { j += 1; }   // not a size
+    n := 0;
+    for q: 0..<j { buf[n] = text[q]; n += 1; }
+    for c: dots { buf[n] = c; n += 1; }
+    if measure_width(m, face, cast(string) buf[0..<n]) > w { break; }
+    best = j; i = j;
+  }
+  z := 0;
+  for q: 0..<best { buf[z] = text[q]; z += 1; }
+  for c: dots { buf[z] = c; z += 1; }
+  return sheet_pool(f[0].sheet, cast(string) buf[0..<z]);
+}
+// An id made of a component's id and a part's name ("task.tool.3" + ".copy").
+app_id :: (out: [] u8, id: string, part: string) -> string {
+  n := el_copy(out, id);
+  for c: part { if n >= out.count { break; } out[n] = c; n += 1; }
+  return cast(string) out[0..<n];
+}
+// A whole number as text in the sheet's pool, with what follows it ("64" + "%").
+app_number :: (f: [] UiFrame, v: int, after: string) -> string {
+  buf: [EL_LABEL] u8;
+  n := text_put_int(buf[..], 0, v);
+  for c: after { if n < buf.count { buf[n] = c; n += 1; } }
+  return sheet_pool(f[0].sheet, cast(string) buf[0..<n]);
+}
+// The skin with its inks at rest for a part that can't be used.
+app_off_skin :: (s: UiSkin) -> UiSkin {
+  k := s; k.ink = s.faint; k.muted = s.faint; k.accent = s.faint;
+  return k;
+}
+
+// Scroll anchoring: a scrolling screen keeps one row where it is on screen
+// while rows above it, or the row itself, change height (a tool row opens).
+// Before the change the screen takes the row under the press, or the first
+// row in view; after the next layout it asks for the scroll that puts the
+// row back, and takes the anchor again while the change is still moving.
+AppAnchor :: struct { id: [EL_ID] u8; n: int; top: f32; }   // the row's id, and its top on screen (its y less the scroll)
+app_anchor_take :: (a: [] AppAnchor, rows: ElTable, id: string, scroll: f32) {
+  t := [1] ElTable.[rows];
+  i := elt_find(t[..], id);
+  if i < 0 { a[0].n = 0; return; }
+  a[0].n = el_copy(a[0].id[..], id); a[0].top = t[0].rows[i].y - scroll;
+}
+// The scroll that keeps the anchored row where it was (`scroll` itself when there is no anchor or its row is gone).
+app_anchor_scroll :: (a: [] AppAnchor, rows: ElTable, scroll: f32) -> f32 {
+  if a[0].n == 0 { return scroll; }
+  t := [1] ElTable.[rows];
+  i := elt_find(t[..], cast(string) a[0].id[0..<a[0].n]);
+  if i < 0 { return scroll; }
+  return t[0].rows[i].y - a[0].top;
+}
+
+// ---------------------------------------------------------------- text styles
+
+APP_TEXT_TITLE :: 0; APP_TEXT_BODY :: 1; APP_TEXT_CAPTION :: 2; APP_TEXT_CODE :: 3;
+
+app_type :: (s: UiSkin, style: int) -> UiType {
+  if style == APP_TEXT_TITLE { return s.title; }
+  if style == APP_TEXT_CAPTION { return s.small; }
+  if style == APP_TEXT_CODE { return s.mono; }
+  return s.body;
+}
+// Wrapped text in a style at (x, y), w wide: a title (a heading row), body,
+// a caption (muted) or code. Returns its height.
+app_text :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, style: int, text: string) -> f32 {
+  s := f[0].skin; t := app_type(s, style);
+  h := control_copy(f[0].sheet, f[0].m, t, ifx style == APP_TEXT_CAPTION then s.muted else s.ink, x, y, w, text);
+  _ := uiframe_semantic(f, id, ifx style == APP_TEXT_TITLE then EL_HEADING else EL_TEXT, text, x, y, w, h, 0, 0);
+  return h;
+}
+
+// ---------------------------------------------------------------- buttons
+
+APP_BUTTON_DEFAULT :: 0;        // an outlined ground
+APP_BUTTON_PRIMARY :: 1;        // filled: the one action a screen is for
+APP_BUTTON_QUIET :: 2;          // words only, washed while held
+APP_BUTTON_DESTRUCTIVE :: 3;    // a bright outline that fills while held; its words say what it removes
+
+// A button's ground for its kind, lit by its press (keyed row k). Returns the ink its content is drawn in.
+app_ground :: (f: [] UiFrame, id: string, k: int, x: f32, y: f32, w: f32, h: f32, radius: f32, kind: int, off: bool) -> Rgba {
+  s := f[0].skin; a := s.app; sh := f[0].sheet;
+  p := ifx off then 0.0f32 else uiframe_press(f, k, id);
+  if kind == APP_BUTTON_PRIMARY {
+    if off { sheet_fill(sh, x, y, w, h, radius, s.hover); return s.faint; }
+    sheet_fill(sh, x, y, w, h, radius, opacity(s.accent, a.primary_rest + (1 - a.primary_rest) * p));
+    return s.on_accent;
+  }
+  if kind == APP_BUTTON_DESTRUCTIVE {
+    _ := sheet_box(sh, x, y, w, h, radius, s.border, opacity(s.accent, p), ifx off then s.faint else s.accent);
+    return ifx off then s.faint else ifx p > 0.5 then s.on_accent else s.ink;
+  }
+  if kind == APP_BUTTON_QUIET {
+    if p > 0 {
+      r := ifx radius > a.quiet_h / 2 then a.quiet_h / 2 else radius;
+      sheet_fill(sh, x, y + (h - a.quiet_h) / 2, w, a.quiet_h, r, opacity(s.hover, p));
+    }
+    return ifx off then s.faint else ifx p > 0 then s.ink else s.muted;
+  }
+  _ := sheet_box(sh, x, y, w, h, radius, s.border, s.raised, ifx off then s.hover else s.field_edge);
+  if p > 0 { _ := sheet_box(sh, x, y, w, h, radius, s.border, opacity(s.hover, p), s.field_edge); }
+  return ifx off then s.faint else s.ink;
+}
+// A button's width for its content: its icon (-1: none), its label and the control's padding.
+app_button_width :: (f: [] UiFrame, icon: int, label: string) -> f32 {
+  s := f[0].skin;
+  return ceil(measure_width(f[0].m, s.label.face, label)) + 2 * s.control_pad + (ifx icon >= 0 then s.app.icon + s.app.gap else 0.0f32);
+}
+// A button at (x, y), w wide: its icon (-1: none) and its label centred, in
+// one of the APP_BUTTON_* kinds. It is lit while held. EL_S_BUSY shows the
+// activity mark before the label and disables it; EL_S_DISABLED rests it with
+// faint ink. A label wider than the button is cut with an ellipsis. Returns its height.
+app_button :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, icon: int, label: string, kind: int, state: int, action: int) -> f32 {
+  s := f[0].skin; a := s.app; m := f[0].m; sh := f[0].sheet; h := s.control_h;
+  busy := (state & EL_S_BUSY) != 0; off := busy || (state & EL_S_DISABLED) != 0;
+  k := uiframe_key(f, id);
+  row := uiframe_semantic(f, id, EL_BUTTON, label, x, y, w, h, state | (ifx busy then EL_S_DISABLED else 0), ifx off then 0 else action);
+  ink := app_ground(f, id, k, x, y, w, h, s.radius_control, kind, off);
+  lead := ifx busy then s.label.line + a.gap else ifx icon >= 0 then a.icon + a.gap else 0.0f32;
+  shown := app_fit(f, s.label.face, label, w - 2 * a.gap - lead);
+  lw := measure_width(m, s.label.face, shown);
+  tx := x + (w - lw - lead) / 2; ly := y + (h - s.label.line) / 2;
+  if busy { activity(sh, s, tx, ly, s.label.line, f[0].clock, f[0].reduced_motion); }
+  else if icon >= 0 { sheet_icon(sh, icon, tx, y + (h - a.icon) / 2, a.icon, ink); }
+  _ := sheet_text(sh, m, -1, tx + lead, ly, s.label.line, s.label.face, ifx busy then s.muted else ink, shown);
+  if !off { sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, w, h); }
+  return h;
+}
+// An icon button at (x, y): a round ground inside a square target the skin
+// sizes for a finger. `label` is what it does, for its row. EL_S_CURRENT keeps
+// it lit (a toggle that is on). Returns the target's side.
+app_icon_button :: (f: [] UiFrame, id: string, x: f32, y: f32, icon: int, label: string, kind: int, state: int, action: int) -> f32 {
+  s := f[0].skin; a := s.app; sh := f[0].sheet; side := a.icon_button; well := a.icon_well; inset := (side - well) / 2;
+  busy := (state & EL_S_BUSY) != 0; off := busy || (state & EL_S_DISABLED) != 0; on := (state & EL_S_CURRENT) != 0;
+  k := uiframe_key(f, id);
+  row := uiframe_semantic(f, id, EL_BUTTON, label, x, y, side, side, state | (ifx busy then EL_S_DISABLED else 0) | (ifx on then EL_S_PRESSED | EL_S_TOGGLES else 0), ifx off then 0 else action);
+  ink := app_ground(f, id, k, x + inset, y + inset, well, well, well / 2, ifx on && !off then APP_BUTTON_PRIMARY else kind, off);
+  if busy { activity(sh, s, x + (side - a.icon) / 2, y + (side - a.icon) / 2, a.icon, f[0].clock, f[0].reduced_motion); }
+  else { sheet_icon(sh, icon, x + (side - a.icon) / 2, y + (side - a.icon) / 2, a.icon, ink); }
+  if !off { sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, side, side); }
+  return side;
+}
+
+// ---------------------------------------------------------------- chip
+
+// A chip's width for its value at most `most` wide (0: as wide as its value).
+app_chip_width :: (f: [] UiFrame, icon: int, value: string, most: f32) -> f32 {
+  w := chip_width(f[0].m, f[0].skin, icon, value);
+  return ifx most > 0 && w > most then most else w;
+}
+// A chip at (x, y): a pill holding an icon (-1: none) and a value. `label`
+// is what it chooses, for its row; the row's value is what is chosen.
+// EL_S_CURRENT is the selected chip, filled; EL_S_DISABLED keeps its value and
+// takes no press. A value wider than `most` (0: no limit) is cut with an
+// ellipsis; the row keeps the whole value. Its measures are the skin's chip
+// measures, as kit/chip.coax's. Returns its width.
+app_chip :: (f: [] UiFrame, id: string, x: f32, y: f32, most: f32, icon: int, label: string, value: string, state: int, action: int) -> f32 {
+  s := f[0].skin; c := s.cmp; sh := f[0].sheet; m := f[0].m;
+  off := (state & EL_S_DISABLED) != 0; on := (state & EL_S_CURRENT) != 0;
+  w := app_chip_width(f, icon, value, most);
+  lead := ifx icon >= 0 then c.chip_icon + c.chip_gap else 0.0f32;
+  shown := app_fit(f, s.small.face, value, w - 2 * c.chip_pad - lead);
+  k := uiframe_key(f, id);
+  p := ifx off then 0.0f32 else uiframe_press(f, k, id);
+  row := uiframe_semantic(f, id, EL_BUTTON, label, x, y, w, c.chip_h, state, ifx off then 0 else action);
+  elt_value(f[0].rows, row, value);
+  if on { sheet_fill(sh, x, y, w, c.chip_h, c.chip_radius, ifx off then s.hover else s.accent); }
+  else {
+    _ := sheet_box(sh, x, y, w, c.chip_h, c.chip_radius, s.border, s.raised, s.hairline);
+    if p > 0 { _ := sheet_box(sh, x, y, w, c.chip_h, c.chip_radius, s.border, opacity(s.hover, p), s.hairline); }
+  }
+  ink := ifx off then s.faint else ifx on then s.on_accent else ifx p > 0 then s.ink else s.muted;
+  tx := x + c.chip_pad;
+  if icon >= 0 { sheet_icon(sh, icon, tx, y + (c.chip_h - c.chip_icon) / 2, c.chip_icon, ink); tx += lead; }
+  _ := sheet_text(sh, m, -1, tx, y + (c.chip_h - s.small.line) / 2, s.small.line, s.small.face, ink, shown);
+  if !off { sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, w, c.chip_h); }
+  return w;
+}
+
+// ---------------------------------------------------------------- field
+
+// What a secure field shows for its text: a dot a character, in the sheet's pool.
+app_dots :: (f: [] UiFrame, text: string) -> string {
+  buf: [EL_VALUE * 2] u8; dot := "•"; n := 0;
+  for c: text {
+    if (c & 0xC0) == 0x80 { continue; }   // not a size
+    if n + dot.count > buf.count { break; }
+    for d: dot { buf[n] = d; n += 1; }
+  }
+  return sheet_pool(f[0].sheet, cast(string) buf[0..<n]);
+}
+// A one-line field at (x, y), w wide (kit/form.coax's field, with the app's
+// states). `label` names it for its row; the caller holds `text`. It is lit
+// and shows a caret while its id has the keyboard; `editing` says the
+// platform's editor is over it and draws the text and the caret. `secure`
+// shows a dot a character and keeps the text out of its row. `error` is a
+// failure to show under it ("": none): its edge brightens and the words
+// follow as a live notice. EL_S_DISABLED dims it. Returns its height with its error.
+app_field :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, label: string, text: string, placeholder: string, secure: bool, editing: bool, error: string, state: int, action: int) -> f32 {
+  s := f[0].skin; a := s.app; sh := f[0].sheet; off := (state & EL_S_DISABLED) != 0;
+  shown := ifx secure then app_dots(f, text) else text;
+  hits := sh[0].nh;
+  h := ctx_field(f, id, x, y, w, label, shown, placeholder, editing, state, ifx off then 0 else action);
+  if off { sh[0].nh = hits; }
+  if error.count > 0 { _ := sheet_box(sh, x, y, w, h, s.chrome.field_radius, 2 * s.border, s.clear, s.accent); }
+  if uiframe_focused(f, id) && !editing && !off {
+    lit := f[0].reduced_motion || (cast(int) (f[0].clock / a.caret_blink)) % 2 == 0;
+    cx := x + s.chrome.field_pad + measure_width(f[0].m, s.body.face, shown);
+    if cx > x + w - s.chrome.field_pad { cx = x + w - s.chrome.field_pad; }
+    if lit { sheet_rule(sh, cx, y + (h - s.body.line) / 2, a.caret, s.body.line, s.accent); }
+  }
+  if error.count > 0 {
+    eid: [EL_ID] u8;
+    h += a.gap_small;
+    h += ctx_notice(f, app_id(eid[..], id, ".error"), x, y + h, w, error, true);
+  }
+  return h;
+}
+
+// ---------------------------------------------------------------- notice, divider, grounds
+
+APP_NOTICE_INFO :: 0; APP_NOTICE_ERROR :: 1;
+
+// A notice at (x, y), w wide: wrapped words on a quiet ground. An error has
+// the skin's failure mark before it and brighter ink and edge (the mono skin
+// shows state by brightness and line, never hue). Its row is live, so a
+// change to it is announced. Returns its height (0 and no row for no text).
+app_notice :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, text: string, kind: int) -> f32 {
+  if text.count == 0 { return 0; }
+  s := f[0].skin; a := s.app; sh := f[0].sheet; failure := kind == APP_NOTICE_ERROR;
+  ground := sheet_box(sh, x, y, w, 0, a.notice_radius, s.border, s.surface, ifx failure then s.field_edge else s.hover);
+  lead := ifx failure then a.notice_icon + a.gap else 0.0f32;
+  if failure { sheet_icon(sh, a.icon_alert, x + a.notice_pad, y + a.notice_pad + (s.body.line - a.notice_icon) / 2, a.notice_icon, s.ink); }
+  h := 2 * a.notice_pad + control_copy(sh, f[0].m, s.body, ifx failure then s.ink else s.muted, x + a.notice_pad + lead, y + a.notice_pad, w - 2 * a.notice_pad - lead, text);
+  if ground >= 0 { sh[0].under[ground].h = h; }
+  _ := uiframe_semantic(f, id, EL_NOTICE, text, x, y, w, h, EL_S_LIVE, 0);
+  return h;
+}
+// A divider at (x, y), w wide. Returns its height.
+app_divider :: (f: [] UiFrame, x: f32, y: f32, w: f32) -> f32 {
+  s := f[0].skin;
+  sheet_rule(f[0].sheet, x, y, w, s.border, s.menu_divider);
+  return s.border;
+}
+// A card's ground: a region row and a rounded surface over (x, y, w, h).
+// Rows recorded until app_card_end are its children. Returns where its
+// content starts and how wide it is.
+app_card :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, h: f32, label: string) -> PanelInside {
+  s := f[0].skin; a := s.app;
+  uiframe_open(f, uiframe_semantic(f, id, EL_REGION, label, x, y, w, h, 0, 0));
+  _ := sheet_box(f[0].sheet, x, y, w, h, a.card_radius, s.border, s.surface, s.hover);
+  return PanelInside.{x = x + a.card_pad, y = y + a.card_pad, w = w - 2 * a.card_pad};
+}
+app_card_end :: (f: [] UiFrame) { uiframe_close(f); }
+// A sheet's ground: a card that floats over a screen, with the skin's lift
+// under it and a grabber at its top. Rows recorded until app_card_end are its children.
+app_sheet :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, h: f32, label: string) -> PanelInside {
+  s := f[0].skin; a := s.app; sh := f[0].sheet;
+  uiframe_open(f, uiframe_semantic(f, id, EL_REGION, label, x, y, w, h, 0, 0));
+  sheet_under(sh, uiskin_float(sh[0].under, sh[0].nu, s, x, y, w, h, a.sheet_radius));
+  _ := sheet_box(sh, x, y, w, h, a.sheet_radius, s.border, s.raised, s.hover);
+  sheet_fill(sh, x + (w - a.grabber_w) / 2, y + a.grabber_top, a.grabber_w, a.grabber_h, a.grabber_h / 2, s.faint);
+  top := 2 * a.grabber_top + a.grabber_h;
+  return PanelInside.{x = x + a.card_pad, y = y + top, w = w - 2 * a.card_pad};
+}
+
+// ---------------------------------------------------------------- menu rows, switch, progress
+
+// A menu or picker row at (x, y), w wide (kit/controls.coax's choice row):
+// a title, a line of detail under it ("": none) and the skin's check when it
+// is the current one (EL_S_CURRENT), on a lit ground. It is washed while
+// held; EL_S_DISABLED dims it and takes no press. Returns its height.
+app_menu_row :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, title: string, detail: string, state: int, action: int) -> f32 {
+  s := f[0].skin; a := s.app; sh := f[0].sheet;
+  off := (state & EL_S_DISABLED) != 0; current := (state & EL_S_CURRENT) != 0;
+  k := uiframe_key(f, id);
+  p := ifx off then 0.0f32 else uiframe_press(f, k, id);
+  ground := -1;
+  if current || p > 0 { ground = sheet_box(sh, x + a.row_inset, y, w - 2 * a.row_inset, 0, a.row_radius, 0, ifx current then s.raised else opacity(s.hover, p), s.clear); }
+  row := uiframe_semantic(f, id, EL_ROW, title, x, y, w, s.control_h, state, ifx off then 0 else action);
+  elt_value(f[0].rows, row, detail);
+  hits := sh[0].nh;
+  h := choice_row(sh, f[0].m, ifx off then app_off_skin(s) else s, x, y, w, title, detail, current, s.icon_check, UIFRAME_HIT, row, 0);
+  if off { sh[0].nh = hits; }
+  if ground >= 0 { sh[0].under[ground].h = h; }
+  if row >= 0 { f[0].rows[0].rows[row].h = h; }
+  return h;
+}
+// A switch at (x, y), w wide: its label, then the track at the right edge
+// with its knob following `on` on a spring. The whole row is its target.
+// Returns its height.
+app_switch :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, label: string, on: bool, state: int, action: int) -> f32 {
+  s := f[0].skin; a := s.app; sh := f[0].sheet; h := s.control_h; off := (state & EL_S_DISABLED) != 0;
+  k := uiframe_key(f, id);
+  t := uiframe_spring(f, k, ifx on then 1.0f32 else 0.0f32);
+  row := uiframe_semantic(f, id, EL_TOGGLE, label, x, y, w, h, state | EL_S_CHECKS | (ifx on then EL_S_CHECKED else 0), ifx off then 0 else action);
+  shown := app_fit(f, s.body.face, label, w - a.switch_w - a.gap);
+  _ := sheet_text(sh, f[0].m, -1, x, y + (h - s.body.line) / 2, s.body.line, s.body.face, ifx off then s.faint else s.ink, shown);
+  animated_switch(sh, ifx off then app_off_skin(s) else s, x + w - a.switch_w, y + (h - a.switch_h) / 2, a.switch_w, a.switch_h, t);
+  if !off { sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, w, h); }
+  return h;
+}
+// A progress bar at (x, y), w wide: what it measures and its percentage over
+// the bar (kit/controls.coax's bar). `share` is 0 to 1. Returns its height.
+app_progress :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, label: string, share: f32) -> f32 {
+  s := f[0].skin; a := s.app; sh := f[0].sheet; m := f[0].m;
+  part := am_unit(share);
+  pct := app_number(f, cast(int) (part * 100 + 0.5), "%");   // not a size
+  pw := measure_width(m, s.small.face, pct);
+  _ := sheet_text(sh, m, -1, x, y, s.small.line, s.small.face, s.muted, app_fit(f, s.small.face, label, w - pw - a.gap));
+  _ := sheet_text(sh, m, -1, x + w - pw, y, s.small.line, s.small.face, s.muted, pct);
+  h := s.small.line + a.gap_small;
+  h += ctx_bar(f, id, x, y + h, w, label, part, s.accent);
+  return h;
+}
+// A ring at (x, y): progress to `share` (0 to 1), or the activity mark turning
+// on the frame's clock when share is under 0 (its row says busy; reduced
+// motion holds it still). `label` is what it measures. Returns its side.
+app_ring :: (f: [] UiFrame, id: string, x: f32, y: f32, label: string, share: f32) -> f32 {
+  s := f[0].skin; side := s.app.ring; busy := share < 0;
+  row := uiframe_semantic(f, id, EL_PROGRESS, label, x, y, side, side, ifx busy then EL_S_BUSY else 0, 0);
+  if busy { activity(f[0].sheet, s, x, y, side, f[0].clock, f[0].reduced_motion); }
+  else { elt_value_share(f[0].rows, row, share); progress_ring(f[0].sheet, s, x, y, side, share); }
+  return side;
+}
+
+#load "base-checks.coax" #test;

@@ -1,0 +1,49 @@
+# The app set
+
+GitHub #13645 (for #13620). The components the native apps' screens are
+built from, drawn on the GPU by the shared kit. Each is one procedure on the
+frame context (`components/kit/frame.coax`): it takes the frame, a stable
+ID, plain inputs and a position, paints in the skin's roles and measures
+(`skin.app`, `UiApp` in `components/skin/skin.coax`), records its semantic
+row and hit region under its ID, keeps what outlives a frame in the keyed
+store, and moves with the kit's motion. A component never calls a host and
+never changes app state: a press reaches the app as the row's action.
+
+| File | Components |
+| --- | --- |
+| `base.coax` | text styles (`app_text`), buttons (`app_button`: default, primary, quiet, destructive; busy and disabled), `app_icon_button`, `app_chip`, `app_field` (plain, secure, error, disabled), `app_notice`, `app_divider`, `app_card`, `app_sheet`, `app_menu_row`, `app_switch`, `app_progress`, `app_ring`; helpers `app_fit`, `app_id`, scroll anchoring (`app_anchor_take`, `app_anchor_scroll`) |
+| `chat.coax` | `app_composer` (Send, Stop while a reply runs, locked), `app_composer_chips` (environment and repository), `app_message_user`, `app_message_agent` (Markdown through `kit/markdown.coax`), `app_code` (language and Copy), `app_typing`, `app_empty`, `app_retry`, `app_jump`, `app_meta` |
+| `task.coax` | `app_task_header`, `app_task_state`, `app_tool` (opens onto paged input and result), `app_tool_group`, `app_tool_press`, `app_permission` (Deny, Allow, sending, uncertain, answered, expired), `app_task_result`, `app_banner` (reconnecting, offline) |
+| `account.coax` | `app_login` (email step, code step, busy, error), `app_logged_out` |
+| `nav.coax` | `app_nav_button`, `app_side_head`, `app_side_row`, `app_side_list` |
+| `gallery/gallery.coax` | every component above on one scrolling page, with example data; the iOS dev menu opens it |
+
+One call:
+
+```jai
+h := app_button(f, "login.submit", x, y, w, -1, "Send code", APP_BUTTON_PRIMARY, 0, ACT_SEND);
+y += app_tool(f, tool_id, x, y + h, w, AppTool.{icon = ICON_TERMINAL, title = "Ran a command", arg = "ls", state = APP_TOOL_DONE, input = "ls", output = "a\nb"}, false, ACT_TOOL);
+// on a press: if app_tool_press(keyed, tool_id, pressed_id) { /* the row opened or turned a page */ }
+```
+
+Rules the set keeps:
+
+- The inputs are plain records (`AppTask`, `AppTool`, `AppPermission`,
+  `AppLogin`, `AppComposer`, `AppSideRow`); a screen copies what it shows
+  into them. Nothing here loads the task protocol, a service or app state.
+- The mono skin shows state by brightness and line, never hue.
+- Text a component makes up (a cut label, a count) is kept in the sheet's
+  pool, so a surface declares pool bytes for it.
+- One clip at a time: a tool row's reveal holds it, so a code block and a
+  long line are cut with an ellipsis, not clipped.
+- Focus follows a press (`kit/frame.coax`): a press on a field takes the
+  keyboard, any other press gives it up.
+
+Another area that needs a component the set lacks adds it as a new file
+here with its area's prefix (`view-*.coax`, `login-*.coax`, `env-*.coax`).
+
+Checks: `coax/bin/coax test components/app/task.coax` (it loads chat and
+base), `account.coax`, `nav.coax`, `gallery/gallery.coax`; and
+`coax/web/tool.sh components-check`. Run them on a build host
+(`coax/remote/remote.sh run -- ...`). How a host shows the gallery is in
+[INTEGRATION.md](INTEGRATION.md).

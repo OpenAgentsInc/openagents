@@ -162,6 +162,11 @@ caller that has only a sheet, a measure and a skin makes a context with
 `uiframe_over(sheet, measure, skin)`: the same components paint and nothing
 is recorded.
 
+The app set (`components/app/`, [README](app/README.md)) is built on the
+frame context: the basics, chat, task, account and navigation components
+the native apps' screens use, with a gallery of all of them
+(`components/app/gallery/gallery.coax`).
+
 ### Identity and keyed state
 
 Every component call has a stable ID built from its part and its name
@@ -289,6 +294,17 @@ glyphs twice.
 
 Secure fields, one-time-code AutoFill and password AutoFill use the
 platform's own field for the whole edit, styled from the skin's exports.
+
+Focus follows a press. A press that begins on a text field (a row with role
+`EL_FIELD` that is not disabled) gives that field the keyboard; a press
+anywhere else, on another control or on nothing, takes the keyboard from
+the text field that has it. `uiframe_begin` applies the rule, so every
+screen built on the frame gets it: after `uiframe_begin` the app keeps
+`uiframe_focus(f)` as its focused ID, `uiframe_focus_moved(f)` says this
+press moved it, and the host hides the keyboard while `uiframe_keyboard(f)`
+is false. A host whose tap can begin and end between two frames also calls
+`uiframe_press_focus(surface, input)` at touch down. Focus on a control the
+keyboard stepped to is not a text field's, and a press elsewhere leaves it.
 
 ### Accessibility
 

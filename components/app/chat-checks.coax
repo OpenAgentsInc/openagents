@@ -1,0 +1,105 @@
+// Checks for the app set's chat components (chat.coax).
+#load "checks-kit.coax";
+
+APP_TEST_MD :: "## Plan\n\nRead the **composer** and *fix* [the test](https://example.com).\n\n- one\n- [x] done\n- [ ] open\n\n> A quote.\n\n```rust\nfn main() {}\nlet x = 1;\n```\n\n| A | B |\n| --- | --- |\n| 1 | 2 |";
+
+#test "app chat: the composer's states map to its rows: Send rests with no text, Stop while a reply runs, locked while sending or off" {
+  t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..];
+  c := AppComposer.{placeholder = "Message", unit = ARCADE_PHONE_SCALE};   // the phone's points, where the four-line cap is set
+  app_test_begin(t[..], "", "", true);
+  box := app_composer(f, "c", "c.send", 0, 400, 378, c, 1, 2);
+  #assert app_test_end(t[..]) && box.height > 0 && app_test_label(t[..], "c.send") == "Send message" && app_test_has(t[..], "c.send", EL_S_DISABLED) && app_test_row(t[..], "c.send").action == 0 && app_test_pressable(t[..], "c");
+  c.text = "Fix the failing check";
+  app_test_begin(t[..], "", "", true);
+  _ := app_composer(f, "c", "c.send", 0, 400, 378, c, 1, 2);
+  #assert app_test_end(t[..]) && app_test_pressable(t[..], "c.send") && app_test_value(t[..], "c") == "Fix the failing check";
+  // four lines is the cap: eight lines are no taller
+  c.text = "1\n2\n3\n4";
+  app_test_begin(t[..], "", "", true);
+  four := app_composer(f, "c", "c.send", 0, 400, 378, c, 1, 2);
+  #assert app_test_end(t[..]);
+  c.text = "1\n2\n3\n4\n5\n6\n7\n8";
+  app_test_begin(t[..], "", "", true);
+  eight := app_composer(f, "c", "c.send", 0, 400, 378, c, 1, 2);
+  #assert app_test_end(t[..]) && abs(eight.height - four.height) < 0.01 && four.height > box.height && eight.lines == 8;
+  c.text = "Fix it"; c.state = APP_COMPOSER_SENDING;
+  app_test_begin(t[..], "", "", true);
+  _ := app_composer(f, "c", "c.send", 0, 400, 378, c, 1, 2);
+  #assert app_test_end(t[..]) && app_test_has(t[..], "c", EL_S_DISABLED) && app_test_has(t[..], "c.send", EL_S_DISABLED) && !app_test_pressable(t[..], "c.send") && !app_test_pressable(t[..], "c");
+  c.state = APP_COMPOSER_RUNNING; c.text = "";
+  app_test_begin(t[..], "", "", true);
+  _ := app_composer(f, "c", "c.send", 0, 400, 378, c, 1, 2);
+  #assert app_test_end(t[..]) && app_test_label(t[..], "c.send") == "Stop generating" && app_test_pressable(t[..], "c.send") && app_test_pressable(t[..], "c");
+  c.state = APP_COMPOSER_OFF;
+  app_test_begin(t[..], "", "", true);
+  _ := app_composer(f, "c", "c.send", 0, 400, 378, c, 1, 2);
+  #assert app_test_end(t[..]) && !app_test_pressable(t[..], "c.send") && !app_test_pressable(t[..], "c");
+}
+
+#test "app chat: the chips over the composer share the row, and a long repository is cut while its row keeps the whole" {
+  t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..];
+  app_test_begin(t[..], "", "", true);
+  h := app_composer_chips(f, "c.env", "c.repo", 10, 0, 120, 8, "This Mac", 15, "OpenAgentsInc/openagents-with-a-long-name", 0, 3, 4);
+  _ := app_composer_chips(f, "d.env", "d.repo", 10, 60, 120, 8, "This Mac", 15, "", EL_S_DISABLED, 3, 4);
+  #assert app_test_end(t[..]) && h == arcade_phone_skin().cmp.chip_h;
+  e := app_test_row(t[..], "c.env"); r := app_test_row(t[..], "c.repo");
+  #assert e.x == 10 && r.x > e.x + e.w && r.x + r.w <= 130 + 0.01 && app_test_label(t[..], "c.repo") == "Repository" && app_test_value(t[..], "c.repo") == "OpenAgentsInc/openagents-with-a-long-name";
+  #assert app_test_pressable(t[..], "c.env") && app_test_pressable(t[..], "c.repo") && app_test_find(t[..], "d.repo") < 0 && !app_test_pressable(t[..], "d.env");
+}
+
+#test "app chat: a person's message is a bubble at the right edge; an agent's message paints Markdown, with a code block whose Copy is a row" {
+  t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..];
+  doc: [1] MdDoc; blocks := md_parse(doc[..], APP_TEST_MD, 0);
+  app_test_begin(t[..], "", "", true);
+  h := app_message_user(f, "m.1", 0, 0, 300, "Fix the failing check");
+  g := app_message_agent(f, "m.2", 0, h + 10, 300, doc[..], blocks, -1, 7);
+  #assert app_test_end(t[..]) && h > 0 && g > 100 && blocks >= 5;
+  u := app_test_row(t[..], "m.1");
+  #assert u.role == EL_TEXT && u.x + u.w == 300 && u.w < 300 && app_test_label(t[..], "m.1") == "Fix the failing check" && app_test_texts(t[..], "Fix the failing check") == 1;
+  #assert app_test_row(t[..], "m.2").h == g && app_test_label(t[..], "m.2") == "Plan";
+  copy := app_test_row(t[..], "m.2.code.4.copy");
+  #assert copy.role == EL_BUTTON && copy.action == 7 && app_test_label(t[..], "m.2.code.4.copy") == "Copy code" && app_test_pressable(t[..], "m.2.code.4.copy") && app_test_label(t[..], "m.2.code.4") == "rust";
+  #assert app_test_texts(t[..], "Copy") == 1 && app_test_texts(t[..], "rust") == 1 && surface_sheet(t[0].sf[..]).nl >= 8;
+  // the copied block says so
+  app_test_begin(t[..], "", "", true);
+  _ := app_message_agent(f, "m.2", 0, 0, 300, doc[..], blocks, 4, 7);
+  #assert app_test_end(t[..]) && app_test_texts(t[..], "Copied") == 1 && app_test_label(t[..], "m.2.code.4.copy") == "Copied";
+}
+
+#test "app chat: a message rises in when its id appears and is in place at once with reduced motion" {
+  t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..];
+  app_test_begin(t[..], "", "", false);
+  _ := app_message_user(f, "m.1", 0, 100, 300, "Hello");
+  moving := uiframe_moving(f);
+  #assert app_test_end(t[..]) && moving;
+  sh := surface_sheet(t[0].sf[..]);
+  #assert sh.under[0].y > 100 && app_test_row(t[..], "m.1").y == 100;       // the paint is on its way; the row is where it ends
+  for q: 0..<60 { app_test_begin(t[..], "", "", false); _ := app_message_user(f, "m.1", 0, 100, 300, "Hello"); moving = uiframe_moving(f); #assert app_test_end(t[..]); }
+  sh = surface_sheet(t[0].sf[..]);
+  #assert sh.under[0].y == 100 && !moving;
+  app_test_begin(t[..], "", "", true);
+  _ := app_message_user(f, "m.9", 0, 100, 300, "Hello");
+  #assert app_test_end(t[..]);
+  sh = surface_sheet(t[0].sf[..]);
+  #assert sh.under[0].y == 100;
+}
+
+#test "app chat: typing, the empty conversation, an error with its retry, the jump and a meta line record their rows" {
+  t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..];
+  app_test_begin(t[..], "", "", true);
+  _ := app_typing(f, "typing", 0, 0, "Writing a reply");
+  _ := app_empty(f, "empty", 0, 40, 300, 9, "Start a conversation", "Ask for a change, a review or an answer.");
+  e := app_retry(f, "err", 0, 200, 300, "We could not send your message.", "Try again", 0, 5);
+  _ := app_retry(f, "err2", 0, 260, 300, "We could not send your message.", "Try again", EL_S_BUSY, 5);
+  _ := app_jump(f, "jump", 150, 320, "Jump to latest", 0, 6);
+  _ := app_meta(f, "date", 0, 380, 300, "Monday, November 16", true);
+  _ := app_code(f, "code", 0, 420, 300, "sh", "ls -la\ncoax test", false, 8);
+  #assert app_test_end(t[..]) && e >= 44;
+  #assert app_test_has(t[..], "typing", EL_S_BUSY | EL_S_LIVE) && app_test_row(t[..], "empty").role == EL_HEADING && app_test_label(t[..], "empty.detail") == "Ask for a change, a review or an answer.";
+  #assert app_test_row(t[..], "err").role == EL_NOTICE && app_test_has(t[..], "err", EL_S_LIVE) && app_test_pressable(t[..], "err.retry") && app_test_row(t[..], "err.retry").action == 5 && !app_test_pressable(t[..], "err2.retry");
+  #assert app_test_pressable(t[..], "jump") && app_test_label(t[..], "jump") == "Jump to latest" && app_test_row(t[..], "jump").w == 44 && app_test_row(t[..], "date").role == EL_TEXT;
+  #assert app_test_texts(t[..], "ls -la") == 1 && app_test_texts(t[..], "coax test") == 1 && app_test_pressable(t[..], "code.copy");
+  // three dots, still under reduced motion: each at full strength
+  sh := surface_sheet(t[0].sf[..]); s := arcade_phone_skin();
+  #assert sh.under[0].fill.a == s.muted.a && sh.under[2].fill.a == s.muted.a && sh.under[2].w == s.app.dot;
+}

@@ -1,0 +1,30 @@
+// Checks for the app set's navigation components (nav.coax).
+#load "checks-kit.coax";
+
+#test "app nav: the navigation button says what a press does; history rows are current, busy and two-line, and keep their state by id when reordered" {
+  t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..]; s := arcade_phone_skin();
+  rows := [3] AppSideRow.[AppSideRow.{id = "chat.a1", title = "Fix the failing check", detail = "Codex · 2 min ago", state = EL_S_CURRENT},
+    AppSideRow.{id = "chat.b2", title = "Why the build ran out of memory", detail = "", state = EL_S_BUSY},
+    AppSideRow.{id = "chat.c3", title = "Draft the release notes for the week of November 9", detail = "Claude Code · Yesterday"}];
+  app_test_begin(t[..], "chat.b2", "", false);
+  side := app_nav_button(f, "nav", 10, 0, false, 0, 1);
+  h := app_side_list(f, "side.today", 0, 60, 60, "Today", rows[..], 2);
+  #assert app_test_end(t[..]) && side == s.app.nav && h == s.app.side_head + 2 * s.app.side_row_two + s.app.side_row;
+  #assert app_test_label(t[..], "nav") == "Open sidebar" && app_test_has(t[..], "nav", EL_S_EXPANDS) && !app_test_has(t[..], "nav", EL_S_EXPANDED) && app_test_pressable(t[..], "nav") && app_test_prims(t[..], PRIM_ICON) == 1;
+  #assert app_test_row(t[..], "side.today").role == EL_HEADING && app_test_row(t[..], "chat.a1").role == EL_ROW && app_test_has(t[..], "chat.a1", EL_S_CURRENT) && app_test_value(t[..], "chat.a1") == "Codex · 2 min ago";
+  #assert app_test_has(t[..], "chat.b2", EL_S_BUSY | EL_S_PRESSED) && app_test_pressable(t[..], "chat.c3") && app_test_row(t[..], "chat.c3").action == 2 && app_test_prims(t[..], PRIM_ARC) == 2;
+  // the long title is cut to the row (a cell a character: 32 of room); its row keeps what fits a label
+  #assert app_test_texts(t[..], "Draft the release notes for the week of November 9") == 0;
+  // chat.b2 is held: its press is under way. The list is reordered while it is: the motion stays with chat.b2
+  k := keyed_find(t[0].ks[..], "chat.b2"); lit := t[0].keys[k].press[0].value;
+  #assert lit > 0 && t[0].keys[keyed_find(t[0].ks[..], "chat.a1")].press[0].value == 0;
+  back := [3] AppSideRow.[rows[2], rows[1], rows[0]];
+  app_test_begin(t[..], "chat.b2", "", false);
+  _ := app_side_list(f, "side.today", 0, 60, 60, "Today", back[..], 2);
+  #assert app_test_end(t[..]) && t[0].keys[keyed_find(t[0].ks[..], "chat.b2")].press[0].value > lit && t[0].keys[keyed_find(t[0].ks[..], "chat.c3")].press[0].value == 0 && t[0].ks[0].refused == 0;
+  #assert app_test_row(t[..], "chat.c3").y < app_test_row(t[..], "chat.b2").y && app_test_row(t[..], "chat.b2").y < app_test_row(t[..], "chat.a1").y;
+  // the open sidebar's button
+  app_test_begin(t[..], "", "", true);
+  _ := app_nav_button(f, "nav", 10, 0, true, 0, 1);
+  #assert app_test_end(t[..]) && app_test_label(t[..], "nav") == "Close sidebar" && app_test_has(t[..], "nav", EL_S_EXPANDED);
+}

@@ -1,0 +1,77 @@
+// Checks for the app set's gallery (gallery.coax): every section draws in
+// one committed frame, a tap reaches its example, a drag scrolls, and the
+// focus rule moves the keyboard.
+
+AgOut :: struct { v: [AG_MAX_VERTICES * GP_VERTEX_FLOATS] f32; }
+ag_test_atlas :: (a: [] Atlas) { text_test_atlas(a); gp_set_atlas(a, 4096, 4096, 2); }
+// A 402 by 874 point phone at 3x with reduced motion (one frame settles).
+ag_test_frame :: (s: [] AppGallery, o: [] AgOut) -> int { appgallery_env(s, 59, 34, true); return appgallery_frame(s, o[0].v[..], 1206, 2622, 3, 0.5); }
+ag_test_row :: (s: [] AppGallery, id: string) -> El { i := surface_find(s[0].surface[..], id); r: El; if i < 0 { return r; } return ag_rows(s).rows[i]; }
+// A tap at the middle of an id's committed row, in device pixels: down, a frame, up.
+ag_test_tap :: (s: [] AppGallery, o: [] AgOut, id: string) -> bool {
+  r := ag_test_row(s, id); if r.id_n == 0 { return false; }
+  x := (r.x + r.w / 2) * s[0].d; y := (r.y + r.h / 2) * s[0].d;
+  _ := appgallery_pointer(s, x, y, 0);
+  _ := ag_test_frame(s, o);
+  return appgallery_pointer(s, x, y, 2);
+}
+// Scrolls until an id's row is on screen below the header.
+ag_test_show :: (s: [] AppGallery, o: [] AgOut, id: string) {
+  r := ag_test_row(s, id);
+  s[0].scroll += r.y - 200; ag_clamp(s);
+  _ := ag_test_frame(s, o);
+}
+
+#test "app gallery: every section draws in one committed frame, and Close asks the host to close it" #steps 2000000000 {
+  s: [1] AppGallery; o: [1] AgOut; ag_test_atlas(s[0].atlas[..]);
+  n := ag_test_frame(s[..], o[..]);
+  #assert n > 0 && appgallery_refused(s[..]) == 0;
+  ids := [12] string.["g.basics", "g.chat", "g.task", "g.account", "g.nav", "g.env", "g.email", "g.composer", "g.tool.run", "g.ask", "g.login", "g.nav.button"];
+  for id: ids { #assert surface_find(s[0].surface[..], id) >= 0; }
+  #assert s[0].content > s[0].view && ag_test_row(s[..], "g.header").role == EL_REGION;
+  #assert ag_test_tap(s[..], o[..], "g.close") && appgallery_action(s[..]) == AG_ASK_CLOSE && appgallery_action(s[..]) == AG_ASK_NONE;
+}
+#test "app gallery: a tap on a field gives it the keyboard and a tap anywhere else takes it away" #steps 2000000000 {
+  s: [1] AppGallery; o: [1] AgOut; ag_test_atlas(s[0].atlas[..]);
+  _ := ag_test_frame(s[..], o[..]);
+  ag_test_show(s[..], o[..], "g.email");
+  #assert !appgallery_keyboard(s[..]);
+  #assert ag_test_tap(s[..], o[..], "g.email") && appgallery_keyboard(s[..]) && ag_focus(s[..]) == "g.email";
+  _ := ag_test_frame(s[..], o[..]);
+  t := [1] ElTable.[ag_rows(s[..])]; #assert elt_has(t[..], elt_find(t[..], "g.email"), EL_S_FOCUSED);
+  // another field takes it; a disabled one does not
+  #assert ag_test_tap(s[..], o[..], "g.code") && ag_focus(s[..]) == "g.code";
+  _ := ag_test_tap(s[..], o[..], "g.locked");
+  #assert !appgallery_keyboard(s[..]);
+  // a tap on text, on a button, on nothing: each hides the keyboard
+  _ := ag_test_tap(s[..], o[..], "g.code");
+  r := ag_test_row(s[..], "g.c.fields"); x := (r.x + r.w / 2) * s[0].d; y := (r.y + r.h / 2) * s[0].d;
+  _ := appgallery_pointer(s[..], x, y, 0); _ := appgallery_pointer(s[..], x, y, 2);
+  #assert !appgallery_keyboard(s[..]);
+  _ := ag_test_tap(s[..], o[..], "g.email");
+  #assert ag_test_tap(s[..], o[..], "g.primary") && !appgallery_keyboard(s[..]) && s[0].presses == 1;
+}
+#test "app gallery: examples answer their taps, and a drag scrolls without pressing" #steps 2000000000 {
+  s: [1] AppGallery; o: [1] AgOut; ag_test_atlas(s[0].atlas[..]);
+  _ := ag_test_frame(s[..], o[..]);
+  ag_test_show(s[..], o[..], "g.switch");
+  #assert ag_test_tap(s[..], o[..], "g.switch") && !s[0].switch_on;
+  ag_test_show(s[..], o[..], "g.tool.run");
+  closed := ag_test_row(s[..], "g.tool.edit").y;
+  #assert ag_test_tap(s[..], o[..], "g.tool.run");
+  _ := ag_test_frame(s[..], o[..]);
+  #assert ag_test_row(s[..], "g.tool.edit").y > closed && surface_find(s[0].surface[..], "g.tool.run.result") >= 0;
+  ag_test_show(s[..], o[..], "g.ask");
+  #assert ag_test_tap(s[..], o[..], "g.ask.allow") && s[0].answered == 1;
+  _ := ag_test_frame(s[..], o[..]);
+  #assert surface_find(s[0].surface[..], "g.ask.allow") < 0;
+  ag_test_show(s[..], o[..], "g.login");
+  #assert ag_test_tap(s[..], o[..], "g.login.submit") && s[0].login_code;
+  _ := ag_test_frame(s[..], o[..]);
+  #assert surface_find(s[0].surface[..], "g.login.code") >= 0;
+  // a drag of 100 units scrolls 100 units and presses nothing
+  before := s[0].scroll; presses := s[0].presses;
+  r := ag_test_row(s[..], "g.login.submit"); x := (r.x + r.w / 2) * s[0].d; y := (r.y + r.h / 2) * s[0].d;
+  _ := appgallery_pointer(s[..], x, y, 0); _ := appgallery_pointer(s[..], x, y - 100 * s[0].d, 1);
+  #assert !appgallery_pointer(s[..], x, y - 100 * s[0].d, 2) && abs(s[0].scroll - before - 100) < 0.01 && s[0].presses == presses && s[0].login_code;
+}

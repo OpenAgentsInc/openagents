@@ -40,14 +40,16 @@ ICON_GALLERY :: 22; ICON_FILE_TEXT :: 23; ICON_FILE :: 24; ICON_CHECK :: 25; ICO
 ICON_CHEVRON_10 :: 27; ICON_CLAUDE_14 :: 28; ICON_MAGNIFER_14 :: 29;
 // the Codex mode's mark (icons.rs OPENAI_MARK, monochrome): the chip's, the picker's
 ICON_OPENAI :: 30; ICON_OPENAI_14 :: 31;
-ICON_COUNT :: 32;
-ICON_NAMES :: [32] string.["paperclip", "arrow-up", "claude-mark", "alt-arrow-down", "terminal", "document", "pen",
+// the app set's navigation button (components/app/nav.coax): Apps SDK UI's sidebar-left (components/icons/NOTICE)
+ICON_SIDEBAR :: 32;
+ICON_COUNT :: 33;
+ICON_NAMES :: [33] string.["paperclip", "arrow-up", "claude-mark", "alt-arrow-down", "terminal", "document", "pen",
                            "magnifer", "global", "chat-round-line", "copy", "wrap-text", "file-rust", "alt-arrow-right",
                            "document-add", "folder-with-files", "checklist", "bot", "widget", "danger-triangle", "stop", "psionic-mark",
                            "gallery", "file-text", "file-document", "check", "alt-arrow-left",
-                           "alt-arrow-right", "claude-mark", "magnifer", "openai-mark", "openai-mark"];
-ICON_SIZES :: [32] f32.[18, 14, 16, 14, 16, 16, 16, 16, 16, 16, 12, 13, 14, 14, 16, 16, 16, 16, 16, 12, 11, 16,
-                        14, 14, 14, 14, 14, 10, 14, 14, 16, 14];
+                           "alt-arrow-right", "claude-mark", "magnifer", "openai-mark", "openai-mark", "sidebar-left"];
+ICON_SIZES :: [33] f32.[18, 14, 16, 14, 16, 16, 16, 16, 16, 16, 12, 13, 14, 14, 16, 16, 16, 16, 16, 12, 11, 16,
+                        14, 14, 14, 14, 14, 10, 14, 14, 16, 14, 20];
 
 // Zeron Dark, opaque (builtins.rs zeron_dark and theme.rs's derived roles).
 Theme :: struct {
@@ -372,6 +374,7 @@ zeron_skin :: () -> UiSkin {
   for k: 0..<3 { s.spinner[k] = hex(tints[k], 1); }
   s.tr = zeron_transcript(); s.cmp = zeron_composer(); s.menus = zeron_menus(); s.desk = zeron_desk(); s.chrome = zeron_chrome();
   s.lifted = UiFloat.{dy = [2] f32.[10, 4], blur = [2] f32.[15, 6], spread = [2] f32.[-3, -4]};   // Tailwind's shadow-lg
+  s.app.icon_alert = ICON_DANGER; s.app.icon_nav = ICON_SIDEBAR; s.app.icon_disclose = ICON_CHEVRON_RIGHT;   // the app set's marks (components/app/)
   // the composer and its menus (composer.rs, pickers.rs, glass.rs)
   s.doc_tint = rgba(0.796, 0.835, 0.882, 1);   // the file theme's dark tint, #CBD5E1
   s.clear = rgba(0, 0, 0, 0);

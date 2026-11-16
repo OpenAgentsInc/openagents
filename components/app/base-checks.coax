@@ -1,0 +1,108 @@
+// Checks for the app set's basics (base.coax).
+#load "checks-kit.coax";
+
+#test "app basics: a button records its row and hit in each kind; busy and disabled keep the row and take no press" {
+  t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..];
+  app_test_begin(t[..], "b.default", "", true);
+  h := app_button(f, "b.primary", 0, 0, 120, -1, "Send code", APP_BUTTON_PRIMARY, 0, 1);
+  _ := app_button(f, "b.default", 0, 50, 120, 3, "Open", APP_BUTTON_DEFAULT, 0, 2);
+  _ := app_button(f, "b.quiet", 0, 100, 120, -1, "Not now", APP_BUTTON_QUIET, 0, 3);
+  _ := app_button(f, "b.delete", 0, 150, 120, -1, "Delete chat", APP_BUTTON_DESTRUCTIVE, 0, 4);
+  _ := app_button(f, "b.busy", 0, 200, 120, -1, "Sending", APP_BUTTON_PRIMARY, EL_S_BUSY, 5);
+  _ := app_button(f, "b.off", 0, 250, 120, -1, "Send code", APP_BUTTON_PRIMARY, EL_S_DISABLED, 6);
+  side := app_icon_button(f, "b.icon", 0, 300, 3, "Open menu", APP_BUTTON_QUIET, 0, 7);
+  #assert app_test_end(t[..]) && h == 44 && side == 44;
+  #assert app_test_row(t[..], "b.primary").role == EL_BUTTON && app_test_row(t[..], "b.primary").action == 1 && app_test_label(t[..], "b.icon") == "Open menu";
+  #assert app_test_pressable(t[..], "b.primary") && app_test_pressable(t[..], "b.default") && app_test_pressable(t[..], "b.quiet") && app_test_pressable(t[..], "b.delete") && app_test_pressable(t[..], "b.icon");
+  #assert app_test_has(t[..], "b.default", EL_S_PRESSED) && app_test_has(t[..], "b.busy", EL_S_BUSY | EL_S_DISABLED) && app_test_has(t[..], "b.off", EL_S_DISABLED);
+  // seven rows, five hits: the busy and the disabled button keep their rows and leave no hit
+  #assert surface_rows(t[0].sf[..]).n == 7 && app_test_hits(t[..]) == 5 && app_test_prims(t[..], PRIM_ARC) == 2 && app_test_prims(t[..], PRIM_ICON) == 2;
+}
+
+#test "app basics: a chip carries what it chooses and what is chosen, fills when selected and cuts a long value" {
+  t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..];
+  app_test_begin(t[..], "", "", true);
+  w := app_chip(f, "c.env", 0, 0, 0, 8, "Environment", "Default", 0, 1);
+  on := app_chip(f, "c.repo", 100, 0, 0, 15, "Repository", "openagents", EL_S_CURRENT, 2);
+  cut := app_chip(f, "c.long", 0, 40, 60, -1, "Repository", "OpenAgentsInc/openagents-with-a-long-name", 0, 3);
+  _ := app_chip(f, "c.off", 0, 80, 0, -1, "Repository", "No repository", EL_S_DISABLED, 4);
+  #assert app_test_end(t[..]) && w == chip_width(measure_cells(), arcade_phone_skin(), 8, "Default") && cut == 60 && on > 0;
+  #assert app_test_value(t[..], "c.env") == "Default" && app_test_label(t[..], "c.env") == "Environment" && app_test_has(t[..], "c.repo", EL_S_CURRENT);
+  // the row keeps the whole value (to the table's length); the paint is the cut one
+  #assert app_test_texts(t[..], "OpenAgentsInc/openagents-with-a-long-name") == 0 && app_test_texts(t[..], "Default") == 1 && app_test_row(t[..], "c.long").w == 60;
+  #assert app_test_pressable(t[..], "c.env") && app_test_hits(t[..]) == 3 && app_test_has(t[..], "c.off", EL_S_DISABLED);
+  s := arcade_phone_skin(); sh := surface_sheet(t[0].sf[..]); filled := 0;
+  for i: 0..<sh.nu { if sh.under[i].kind == PRIM_BOX && sh.under[i].fill.r == s.accent.r && sh.under[i].fill.a == 1 { filled += 1; } }
+  #assert filled == 1;
+}
+
+#test "app basics: a field shows its text, dots when secure, a caret with the keyboard and its error as a live notice" {
+  t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..];
+  app_test_begin(t[..], "", "f.email", true);
+  h := app_field(f, "f.empty", 0, 0, 200, "Email address", "", "you@example.com", false, false, "", 0, 1);
+  _ := app_field(f, "f.email", 0, 60, 200, "Email address", "ada@example.com", "you@example.com", false, false, "", 0, 2);
+  _ := app_field(f, "f.code", 0, 120, 200, "Password", "abc", "", true, false, "", 0, 3);
+  e := app_field(f, "f.bad", 0, 180, 200, "Email code", "12", "6 digits", false, false, "That code is not right.", 0, 4);
+  _ := app_field(f, "f.off", 0, 300, 200, "Email address", "ada@example.com", "", false, false, "", EL_S_DISABLED, 5);
+  #assert app_test_end(t[..]) && h == 44 && e > 44;
+  #assert app_test_texts(t[..], "you@example.com") == 1 && app_test_texts(t[..], "ada@example.com") == 2 && app_test_texts(t[..], "abc") == 0 && app_test_texts(t[..], "•••") == 1;
+  #assert app_test_value(t[..], "f.email") == "ada@example.com" && app_test_value(t[..], "f.code") == "•••" && app_test_has(t[..], "f.email", EL_S_FOCUSED);
+  #assert app_test_row(t[..], "f.bad.error").role == EL_NOTICE && app_test_has(t[..], "f.bad.error", EL_S_LIVE) && app_test_label(t[..], "f.bad.error") == "That code is not right.";
+  // the focused field has the one caret; the disabled field keeps its row and takes no press
+  #assert app_test_prims(t[..], PRIM_BOX) >= 6 && app_test_pressable(t[..], "f.empty") && app_test_has(t[..], "f.off", EL_S_DISABLED) && app_test_hits(t[..]) == 4;
+}
+
+#test "app basics: a notice is live, a menu row marks the current one, a switch follows its spring and reduced motion ends it" {
+  t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..];
+  app_test_begin(t[..], "", "", false);
+  #assert app_notice(f, "n.none", 0, 0, 200, "", APP_NOTICE_INFO) == 0;
+  n := app_notice(f, "n.info", 0, 0, 200, "We sent a code to your email.", APP_NOTICE_INFO);
+  _ := app_notice(f, "n.error", 0, 80, 200, "We could not reach the server.", APP_NOTICE_ERROR);
+  r := app_menu_row(f, "m.a", 0, 160, 200, "This Mac", "Codex", EL_S_CURRENT, 1);
+  _ := app_menu_row(f, "m.b", 0, 240, 200, "Cloud computer", "", 0, 1);
+  _ := app_menu_row(f, "m.c", 0, 320, 200, "Old laptop", "Offline", EL_S_DISABLED, 1);
+  _ := app_switch(f, "s.on", 0, 400, 200, "Reduce motion", false, 0, 2);
+  _ := app_progress(f, "p.bar", 0, 460, 200, "Upload", 0.64);
+  _ := app_ring(f, "p.ring", 0, 500, "Upload", 0.5);
+  _ := app_ring(f, "p.busy", 40, 500, "Working", -1);
+  _ := app_divider(f, 0, 540, 200);
+  #assert app_test_end(t[..]) && n > 24 && r >= 44;
+  #assert app_test_has(t[..], "n.info", EL_S_LIVE) && app_test_row(t[..], "n.error").role == EL_NOTICE && app_test_find(t[..], "n.none") < 0;
+  #assert app_test_has(t[..], "m.a", EL_S_CURRENT) && app_test_value(t[..], "m.a") == "Codex" && app_test_row(t[..], "m.a").h == r && app_test_pressable(t[..], "m.b") && !app_test_pressable(t[..], "m.c");
+  #assert app_test_row(t[..], "s.on").role == EL_TOGGLE && app_test_has(t[..], "s.on", EL_S_CHECKS) && !app_test_has(t[..], "s.on", EL_S_CHECKED);
+  #assert app_test_value(t[..], "p.bar") == "64%" && app_test_texts(t[..], "64%") == 1 && app_test_has(t[..], "p.busy", EL_S_BUSY) && app_test_prims(t[..], PRIM_ICON) == 2;
+  // the switch turns on: its knob is between its ends a frame later, and at its end with reduced motion
+  app_test_begin(t[..], "", "", false);
+  _ := app_switch(f, "s.on", 0, 400, 200, "Reduce motion", true, 0, 2);
+  moving := uiframe_moving(f);
+  #assert app_test_end(t[..]) && moving && app_test_has(t[..], "s.on", EL_S_CHECKED);
+  sh := surface_sheet(t[0].sf[..]); knob := sh.under[sh.nu - 1].x;
+  app_test_begin(t[..], "", "", true);
+  _ := app_switch(f, "s.on", 0, 400, 200, "Reduce motion", true, 0, 2);
+  moving = uiframe_moving(f);
+  #assert app_test_end(t[..]) && !moving;
+  sh = surface_sheet(t[0].sf[..]);
+  #assert sh.under[sh.nu - 1].x > knob && sh.under[sh.nu - 1].x == 200 - 28 + 3;
+}
+
+#test "app basics: text styles record a heading or text, a cut label ends in an ellipsis, and a full pool is counted" {
+  t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..];
+  app_test_begin(t[..], "", "", true);
+  _ := app_text(f, "t.title", 0, 0, 200, APP_TEXT_TITLE, "New chat");
+  h := app_text(f, "t.body", 0, 30, 10, APP_TEXT_BODY, "one two three");
+  _ := app_text(f, "t.cap", 0, 120, 200, APP_TEXT_CAPTION, "Today");
+  #assert app_fit(f, 0, "short", 10) == "short" && app_fit(f, 0, "a long label", 6) == "a lon…";
+  in := app_card(f, "card", 0, 200, 200, 100, "Details");
+  _ := app_text(f, "card.text", in.x, in.y, in.w, APP_TEXT_BODY, "Inside");
+  app_card_end(f);
+  #assert app_test_end(t[..]) && h > arcade_phone_skin().body.line;
+  #assert app_test_row(t[..], "t.title").role == EL_HEADING && app_test_row(t[..], "t.body").role == EL_TEXT && app_test_row(t[..], "card").role == EL_REGION;
+  #assert app_test_row(t[..], "card.text").parent == app_test_find(t[..], "card");
+  // a surface with no pool refuses the frame that needed one: nothing is cut in silence
+  under: [8] Prim; over: [8] Prim; rows_a: [4] El; rows_b: [4] El;
+  sf := [1] UiSurface.[surface_over(Sheet.{under = under[..], over = over[..]}, rows_a[..], Sheet.{under = under[..], over = over[..]}, rows_b[..])];
+  none: [1] KeyedStore; g: [1] UiFrame;
+  uiframe_begin(g[..], sf[..], none[0..<0], measure_cells(), arcade_phone_skin(), uiinput(0, 0, false, false, "", ""), 0, 0.016, true, false);
+  _ := app_fit(g[..], 0, "a long label", 6);
+  #assert !uiframe_end(g[..], sf[..]) && sf[0].refused == 1;
+}

@@ -1,0 +1,398 @@
+// The app set's task components (components/app/README.md; GitHub #13645):
+// what a chat shows of the task that runs a turn on a computer. A header
+// line (computer, engine, model, effort), a state line, a tool call row that
+// opens onto its input and result in pages, a group of tool calls, a
+// permission prompt, a result line and the connection banner.
+//
+// The inputs are plain records declared here. Their states mirror the task
+// protocol's (docs/protocol/chat-task-v1alpha1.md and coax/lib/agent/
+// environment/task-policy.coax XT_*: queued, running, waiting, completed,
+// failed, canceled, unknown, and Stop asked for) and the session record's
+// tool parts (coax/lib/agent/session/session.coax). This file loads none of
+// that: a screen copies what it shows into these records.
+//
+// What is open, and which page of a long input or result is shown, is keyed
+// state under the row's id. A press reaches the app as the row's action; the
+// app passes the pressed id to app_tool_press, which changes that state.
+//   coax/bin/coax test components/app/task.coax
+
+#load "chat.coax";
+
+// ---------------------------------------------------------------- the task's lines
+
+APP_TASK_QUEUED :: 0; APP_TASK_RUNNING :: 1; APP_TASK_WAITING :: 2; APP_TASK_COMPLETED :: 3; APP_TASK_FAILED :: 4; APP_TASK_CANCELED :: 5; APP_TASK_UNKNOWN :: 6;
+APP_TASK_STATES :: 7;
+
+// What a chat shows of a turn's task.
+AppTask :: struct {
+  computer: string;           // the computer's name as the person knows it
+  engine: string;             // Codex, Claude Code
+  model: string; effort: string;
+  state: int;                 // APP_TASK_*
+  stopping: bool;             // Stop was asked for and no outcome is confirmed yet
+  detail: string;             // why, in words ("": none): a failure's reason
+}
+app_task_ended :: (state: int) -> bool { return state == APP_TASK_COMPLETED || state == APP_TASK_FAILED || state == APP_TASK_CANCELED; }
+// A task's state in words. Stop asked for on a task that has not ended reads as stopping, never as stopped.
+app_task_words :: (t: AppTask) -> string {
+  words := [APP_TASK_STATES] string.["Waiting to start", "Working", "Needs your approval", "Done", "Failed", "Stopped", "Outcome unknown"];
+  if t.stopping && !app_task_ended(t.state) { return "Stopping…"; }
+  return ifx t.state >= 0 && t.state < APP_TASK_STATES then words[t.state] else words[APP_TASK_UNKNOWN];
+}
+// The task's header line at (x, y), w wide: computer, engine, model and
+// effort, a dot between, cut with an ellipsis. Parts that are empty are left
+// out. Returns its height.
+app_task_header :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, t: AppTask) -> f32 {
+  s := f[0].skin;
+  parts := [4] string.[t.computer, t.engine, t.model, t.effort];
+  buf: [EL_LABEL * 4] u8; n := 0;
+  for part: parts {
+    if part.count == 0 { continue; }
+    if n > 0 { n = el_put(buf[..], n, " · "); }
+    n = el_put(buf[..], n, part);
+  }
+  line := sheet_pool(f[0].sheet, cast(string) buf[0..<n]);
+  _ := sheet_text(f[0].sheet, f[0].m, -1, x, y, s.small.line, s.small.face, s.muted, app_fit(f, s.small.face, line, w));
+  _ := uiframe_semantic(f, id, EL_TEXT, line, x, y, w, s.small.line, 0, 0);
+  return s.small.line;
+}
+// The task's state line at (x, y), w wide: a mark, the state in words and
+// its detail. The mark is the activity ring while it waits to start, runs or
+// stops, a bright dot when it needs an answer, the skin's check when done,
+// its failure mark when failed, a square when stopped and an empty ring when
+// the outcome is unknown. Its row is live, and busy while the ring turns.
+// Returns its height.
+app_task_state :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, t: AppTask) -> f32 {
+  s := f[0].skin; a := s.app; sh := f[0].sheet; m := f[0].m; h := s.md.line; mark := a.icon;
+  words := app_task_words(t);
+  turning := !app_task_ended(t.state) && (t.stopping || t.state == APP_TASK_QUEUED || t.state == APP_TASK_RUNNING);
+  my := y + (h - mark) / 2; dot := a.state_dot;
+  if turning { activity(sh, s, x, my, mark, f[0].clock, f[0].reduced_motion); }
+  else if t.state == APP_TASK_WAITING { sheet_fill(sh, x + (mark - dot) / 2, y + (h - dot) / 2, dot, dot, dot / 2, s.accent); }
+  else if t.state == APP_TASK_COMPLETED { sheet_icon(sh, s.icon_check, x, my, mark, s.ink); }
+  else if t.state == APP_TASK_FAILED { sheet_icon(sh, a.icon_alert, x, my, mark, s.ink); }
+  else if t.state == APP_TASK_CANCELED { sheet_fill(sh, x + (mark - dot) / 2, y + (h - dot) / 2, dot, dot, s.border, s.muted); }
+  else { _ := sheet_box(sh, x + (mark - dot) / 2, y + (h - dot) / 2, dot, dot, dot / 2, s.border, s.clear, s.muted); }
+  tx := x + mark + a.gap;
+  ww := sheet_text(sh, m, -1, tx, y, h, s.strong.face, s.ink, words);
+  if t.detail.count > 0 { _ := sheet_text(sh, m, -1, tx + ww + a.gap, y, h, s.body.face, s.muted, app_fit(f, s.body.face, t.detail, w - (tx - x) - ww - a.gap)); }
+  row := uiframe_semantic(f, id, EL_TEXT, words, x, y, w, h, EL_S_LIVE | (ifx turning then EL_S_BUSY else 0), 0);
+  elt_value(f[0].rows, row, t.detail);
+  return h;
+}
+
+// ---------------------------------------------------------------- tool calls
+
+APP_TOOL_PENDING :: 0;      // asked for, not started
+APP_TOOL_RUNNING :: 1;
+APP_TOOL_DONE :: 2;
+APP_TOOL_FAILED :: 3;       // it answered with an error
+
+APP_TOOL_OPEN :: 0; APP_TOOL_INPUT_PAGE :: 1; APP_TOOL_RESULT_PAGE :: 2;   // not sizes: the keyed slots a tool row keeps
+
+// One tool call.
+AppTool :: struct {
+  icon: int;                  // the call's kind, as a slot in the target's icons (-1: none)
+  title: string;              // what it did, in words: Read, Ran a command
+  arg: string;                // the argument that matters: a path, a command
+  state: int;                 // APP_TOOL_*
+  input: string;              // what it sent
+  output: string;             // what came back ("" while it runs)
+}
+// How many lines text has (a last line with no newline counts), and line k's bytes.
+app_lines :: (text: string) -> int {
+  n := 0;
+  for c: text { if c == '\n' { n += 1; } }
+  return ifx text.count > 0 && text[text.count - 1] != '\n' then n + 1 else n;
+}
+app_line :: (text: string, k: int) -> string {
+  i := 0; at := 0;
+  while i <= text.count {
+    j := i; while j < text.count && text[j] != '\n' { j += 1; }
+    if at == k { return cast(string) text[i..<j]; }
+    at += 1; i = j + 1;
+  }
+  return "";
+}
+// How many pages text takes at `per` lines a page (at least one).
+app_pages :: (text: string, per: int) -> int {
+  n := app_lines(text);
+  if per < 1 || n <= per { return 1; }
+  return (n + per - 1) / per;
+}
+// A press on a tool row, a tool group or one of a tool row's pagers changes
+// what is open and which page is shown: the app calls this with the id of the
+// tool (or group) and the id that was pressed. `id.input.prev`,
+// `id.input.next`, `id.result.prev` and `id.result.next` turn a page; the id
+// itself opens or closes the row. Returns whether the press was one of these.
+app_tool_press :: (keyed: [] KeyedStore, id: string, pressed: string) -> bool {
+  k := keyed_find(keyed, id);
+  if k < 0 || pressed.count < id.count || cast(string) pressed[0..<id.count] != id { return false; }
+  part := cast(string) pressed[id.count..<pressed.count];
+  if part == "" { keyed_slot_set(keyed, k, APP_TOOL_OPEN, ifx keyed_slot(keyed, k, APP_TOOL_OPEN) > 0 then 0.0f32 else 1.0f32); return true; }
+  slot := ifx part == ".input.prev" || part == ".input.next" then APP_TOOL_INPUT_PAGE else ifx part == ".result.prev" || part == ".result.next" then APP_TOOL_RESULT_PAGE else -1;
+  if slot < 0 { return false; }
+  back := part == ".input.prev" || part == ".result.prev";
+  page := keyed_slot(keyed, k, slot) + (ifx back then -1.0f32 else 1.0f32);
+  keyed_slot_set(keyed, k, slot, ifx page < 0 then 0.0f32 else page);
+  return true;
+}
+// Whether a tool row or group is open: what a person set, else `initial`.
+// A fresh row takes `initial`, so a row that starts open is open in its first frame.
+app_tool_is_open :: (f: [] UiFrame, k: int, initial: bool) -> bool {
+  if !keyed_ok(f[0].keyed, k) { return initial; }
+  if keyed_fresh(f[0].keyed, k) { keyed_slot_set(f[0].keyed, k, APP_TOOL_OPEN, ifx initial then 1.0f32 else 0.0f32); }
+  return keyed_slot(f[0].keyed, k, APP_TOOL_OPEN) > 0;
+}
+// One part of an open tool row at (x, y), w wide: a caption, a page of the
+// text's lines in the small mono face (each cut with an ellipsis at the row's width), and when
+// the text has more than one page, the pager: Previous, "Page 2 of 5 · 37
+// lines", Next. The page is keyed slot `slot` of row k, held inside the
+// pages there are. Returns its height.
+app_tool_part :: (f: [] UiFrame, id: string, k: int, slot: int, part: string, caption: string, x: f32, y: f32, w: f32, text: string, action: int) -> f32 {
+  s := f[0].skin; a := s.app; sh := f[0].sheet; m := f[0].m; line := s.mono_small.line;
+  per := cast(int) a.tool_page_lines; total := app_lines(text); pages := app_pages(text, per);
+  page := cast(int) keyed_slot(f[0].keyed, k, slot);
+  if page > pages - 1 { page = pages - 1; keyed_slot_set(f[0].keyed, k, slot, cast(f32) page); }
+  _ := sheet_text(sh, m, -1, x, y, s.small.line, s.small.face, s.faint, caption);
+  h := s.small.line + a.gap_small;
+  first := page * per; last := ifx first + per < total then first + per else total;
+  tid: [EL_ID] u8; pid: [EL_ID] u8;
+  shown := ifx last > first then last - first else 1;
+  _ := uiframe_semantic(f, app_id(tid[..], id, part), EL_TEXT, caption, x, y, w, h + cast(f32) shown * line, 0, 0);
+  // a line wider than the row is cut with an ellipsis (the reveal's clip is the one clip the backend holds)
+  for q: first..<last { _ := sheet_plain(sh, m, x, y + h + cast(f32) (q - first) * line, line, s.mono_small.face, s.ink, app_fit(f, s.mono_small.face, app_line(text, q), w), true); }
+  h += cast(f32) shown * line;
+  if pages > 1 {
+    // "Page 2 of 5 · 37 lines", between Previous and Next
+    buf: [EL_LABEL] u8;
+    n := el_put(buf[..], 0, "Page "); n = el_put_i(buf[..], n, page + 1); n = el_put(buf[..], n, " of "); n = el_put_i(buf[..], n, pages);
+    n = el_put(buf[..], n, " · "); n = el_put_i(buf[..], n, total); n = el_put(buf[..], n, " lines");
+    words := sheet_pool(sh, cast(string) buf[0..<n]);
+    py := y + h; ph := a.pager_h; ly := py + (ph - s.control_h) / 2;
+    pw := form_link_width(m, s, "Previous"); nw := form_link_width(m, s, "Next");
+    name := app_id(pid[..], id, part);
+    prev: [EL_ID] u8; next: [EL_ID] u8;
+    _ := ctx_link(f, app_id(prev[..], name, ".prev"), x - s.space, ly, "Previous", "Previous page", ifx page > 0 then 0 else EL_S_DISABLED, ifx page > 0 then action else 0);
+    _ := sheet_text(sh, m, -1, x + (w - measure_width(m, s.small.face, words)) / 2, py + (ph - s.small.line) / 2, s.small.line, s.small.face, s.muted, words);
+    _ := ctx_link(f, app_id(next[..], name, ".next"), x + w - nw + s.space, ly, "Next", "Next page", ifx page < pages - 1 then 0 else EL_S_DISABLED, ifx page < pages - 1 then action else 0);
+    h += ph;
+  }
+  return h;
+}
+// A tool call row at (x, y), w wide: its icon, what it did, its argument,
+// how it stands and a mark that it opens. A press dispatches `action` under
+// its id; the app passes the pressed id to app_tool_press, and the row opens
+// onto its input and its result on a spring (at once with reduced motion). A
+// running call shows the activity mark, a failed one says Failed. `open`
+// says whether it starts open. Returns its height this frame.
+app_tool :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, t: AppTool, open: bool, action: int) -> f32 {
+  s := f[0].skin; a := s.app; sh := f[0].sheet; m := f[0].m; head := a.tool_h;
+  k := uiframe_key(f, id);
+  is_open := app_tool_is_open(f, k, open);
+  shown := uiframe_spring(f, k, ifx is_open then 1.0f32 else 0.0f32);
+  p := uiframe_press(f, k, id);
+  ground := sheet_box(sh, x, y, w, head, a.tool_radius, s.border, s.surface, s.hover);
+  if p > 0 { sheet_fill(sh, x, y, w, head, a.tool_radius, opacity(s.hover, p)); }
+  words := ifx t.state == APP_TOOL_FAILED then "Failed" else ifx t.state == APP_TOOL_PENDING then "Waiting" else "";
+  row := uiframe_semantic(f, id, EL_BUTTON, t.title, x, y, w, head,
+    EL_S_EXPANDS | (ifx is_open then EL_S_EXPANDED else 0) | (ifx t.state == APP_TOOL_RUNNING then EL_S_BUSY else 0), action);
+  elt_value(f[0].rows, row, t.arg);
+  sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, w, head);
+  // the header: icon, title, argument, state, chevron
+  pen := x + a.tool_pad; mid := y + head / 2;
+  if t.icon >= 0 { sheet_icon(sh, t.icon, pen, mid - a.tool_icon / 2, a.tool_icon, s.muted); pen += a.tool_icon + a.gap; }
+  pen += sheet_text(sh, m, -1, pen, mid - s.tool.line / 2, s.tool.line, s.tool.face, s.ink, t.title) + a.gap;
+  right := x + w - a.tool_pad - a.tool_chevron;
+  sheet_icon(sh, ifx is_open then s.icon_chevron else a.icon_disclose, right, mid - a.tool_chevron / 2, a.tool_chevron, s.faint);
+  right -= a.gap;
+  if t.state == APP_TOOL_RUNNING { right -= a.tool_icon; activity(sh, s, right, mid - a.tool_icon / 2, a.tool_icon, f[0].clock, f[0].reduced_motion); right -= a.gap; }
+  else if words.count > 0 {
+    ww := measure_width(m, s.small.face, words); right -= ww;
+    _ := sheet_text(sh, m, -1, right, mid - s.small.line / 2, s.small.line, s.small.face, ifx t.state == APP_TOOL_FAILED then s.ink else s.faint, words);
+    right -= a.gap;
+  }
+  if right > pen { _ := sheet_text(sh, m, -1, pen, mid - s.mono_small.line / 2, s.mono_small.line, s.mono_small.face, s.muted, app_fit(f, s.mono_small.face, t.arg, right - pen)); }
+  if !(shown > 0) { return head; }
+  // the body, revealed: its input, then its result
+  bx := x + a.tool_pad; bw := w - 2 * a.tool_pad; top := y + head;
+  uiframe_clip(f, x, top, x + w, top + PRIM_OPEN);
+  clip_under := sh[0].nu - 1; clip_over := sh[0].no - 1;
+  bh := a.tool_body_pad;
+  bh += app_tool_part(f, id, k, APP_TOOL_INPUT_PAGE, ".input", "Input", bx, top + bh, bw, t.input, action);
+  if t.output.count > 0 || t.state == APP_TOOL_DONE || t.state == APP_TOOL_FAILED {
+    bh += a.gap;
+    bh += app_tool_part(f, id, k, APP_TOOL_RESULT_PAGE, ".result", ifx t.state == APP_TOOL_FAILED then "Error" else "Result", bx, top + bh, bw, ifx t.output.count > 0 then t.output else "No output", action);
+  }
+  bh += a.tool_body_pad;
+  uiframe_unclip(f);
+  // the clip's bottom is where the reveal stands now
+  bottom := top + bh * am_unit(shown);
+  if clip_under >= 0 && sh[0].under[clip_under].kind == PRIM_CLIP { sh[0].under[clip_under].b = bottom; }
+  if clip_over >= 0 && sh[0].over[clip_over].kind == PRIM_CLIP { sh[0].over[clip_over].b = bottom; }
+  if row >= 0 {
+    for i: row + 1..<f[0].rows[0].n { if f[0].rows[0].rows[i].clipped && f[0].rows[0].rows[i].cb > bottom { f[0].rows[0].rows[i].cb = bottom; } }
+  }
+  if ground >= 0 { sh[0].under[ground].h = head + bh * am_unit(shown); }
+  return head + bh * am_unit(shown);
+}
+// A group of tool calls at (x, y), w wide: a header with what they were
+// ("Read 3 files") and how many, that opens onto the calls behind a rail.
+// ids[k] is call k's id. A press on the header dispatches `action` under the
+// group's id, and app_tool_press opens or closes it. `open` says whether it
+// starts open. Returns its height this frame.
+app_tool_group :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, title: string, ids: [] string, tools: [] AppTool, open: bool, action: int) -> f32 {
+  s := f[0].skin; a := s.app; sh := f[0].sheet; m := f[0].m; head := a.tool_h;
+  k := uiframe_key(f, id);
+  is_open := app_tool_is_open(f, k, open);
+  p := uiframe_press(f, k, id);
+  n := ifx ids.count < tools.count then ids.count else tools.count;
+  running := false;
+  for i: 0..<n { if tools[i].state == APP_TOOL_RUNNING { running = true; } }
+  if p > 0 { sheet_fill(sh, x, y, w, head, a.tool_radius, opacity(s.hover, p)); }
+  row := uiframe_semantic(f, id, EL_BUTTON, title, x, y, w, head, EL_S_EXPANDS | (ifx is_open then EL_S_EXPANDED else 0) | (ifx running then EL_S_BUSY else 0), action);
+  elt_value(f[0].rows, row, app_number(f, n, ifx n == 1 then " call" else " calls"));
+  sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, w, head);
+  mid := y + head / 2;
+  sheet_icon(sh, ifx is_open then s.icon_chevron else a.icon_disclose, x, mid - a.tool_chevron / 2, a.tool_chevron, s.muted);
+  tw := sheet_text(sh, m, -1, x + a.tool_chevron + a.gap, mid - s.tool.line / 2, s.tool.line, s.tool.face, s.ink, title);
+  _ := sheet_text(sh, m, -1, x + a.tool_chevron + 2 * a.gap + tw, mid - s.small.line / 2, s.small.line, s.small.face, s.faint, app_number(f, n, ifx n == 1 then " call" else " calls"));
+  if running { activity(sh, s, x + w - a.tool_icon, mid - a.tool_icon / 2, a.tool_icon, f[0].clock, f[0].reduced_motion); }
+  if !is_open { return head; }
+  h := head;
+  uiframe_open(f, row);
+  for i: 0..<n { h += app_tool(f, ids[i], x + a.group_inset, y + h, w - a.group_inset, tools[i], false, action) + a.gap_small; }
+  uiframe_close(f);
+  sheet_rule(sh, x + a.tool_chevron / 2, y + head, a.group_rail, h - head - a.gap_small, s.hover);
+  return h;
+}
+
+// ---------------------------------------------------------------- permission
+
+APP_PERMISSION_HELD :: 0;         // it waits for the person's answer
+APP_PERMISSION_SENDING :: 1;      // an answer is on its way
+APP_PERMISSION_ALLOWED :: 2;
+APP_PERMISSION_DENIED :: 3;
+APP_PERMISSION_EXPIRED :: 4;      // it ended before an answer reached it
+APP_PERMISSION_UNCERTAIN :: 5;    // an answer was sent and no reply came: it may have been taken
+
+// What a tool call asks before it runs.
+AppPermission :: struct {
+  title: string;              // what is asked, in words: "Run this command?"
+  detail: string;             // the command, the path
+  state: int;                 // APP_PERMISSION_*
+  allow: bool;                // the answer sent, while sending, uncertain or answered
+  can_allow: bool;            // Allow can be pressed (the app has read what is asked in full)
+}
+// A permission prompt at (x, y), w wide: what is asked, the command or path
+// in the mono face, and Deny and Allow (id + ".deny", id + ".allow"), which
+// dispatch deny_action and allow_action. While an answer is on its way the
+// chosen action is busy and the other rests. An uncertain answer says so and
+// offers Try again (id + ".retry", the same action as the answer sent). An
+// answered or expired prompt says what happened and has no actions. Its
+// region row is live. Returns its height.
+app_permission :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, p: AppPermission, allow_action: int, deny_action: int) -> f32 {
+  s := f[0].skin; a := s.app; sh := f[0].sheet; m := f[0].m; pad := a.card_pad;
+  k := uiframe_key(f, id); from := app_mark(f);
+  row := uiframe_semantic(f, id, EL_REGION, p.title, x, y, w, pad, EL_S_LIVE, 0);
+  uiframe_open(f, row);
+  ground := sheet_box(sh, x, y, w, 0, a.card_radius, s.border, s.surface, ifx p.state == APP_PERMISSION_HELD then s.field_edge else s.hover);
+  ix := x + pad; iw := w - 2 * pad; h := pad;
+  tid: [EL_ID] u8; did: [EL_ID] u8; nid: [EL_ID] u8; aid: [EL_ID] u8; bid: [EL_ID] u8;
+  h += app_text(f, app_id(tid[..], id, ".title"), ix, y + h, iw, APP_TEXT_BODY, p.title) + a.gap;
+  if p.detail.count > 0 {
+    // the command or path, wrapped in the mono face on a ground of its own
+    box := sheet_box(sh, ix, y + h, iw, 0, a.row_radius, 0, s.raised, s.clear);
+    dh := control_copy(sh, m, s.mono_small, s.ink, ix + a.notice_pad, y + h + a.gap, iw - 2 * a.notice_pad, p.detail) + 2 * a.gap;
+    if box >= 0 { sh[0].under[box].h = dh; }
+    _ := uiframe_semantic(f, app_id(did[..], id, ".detail"), EL_TEXT, p.detail, ix, y + h, iw, dh, 0, 0);
+    h += dh + a.gap;
+  }
+  said := ifx p.state == APP_PERMISSION_ALLOWED then "Allowed" else ifx p.state == APP_PERMISSION_DENIED then "Denied" else ifx p.state == APP_PERMISSION_EXPIRED then "This request ended before it was answered."
+    else ifx p.state == APP_PERMISSION_UNCERTAIN then "We could not confirm your answer." else ifx !p.can_allow && p.state == APP_PERMISSION_HELD then "Allow is ready once the full request has loaded." else "";
+  if said.count > 0 { h += app_text(f, app_id(nid[..], id, ".note"), ix, y + h, iw, APP_TEXT_CAPTION, said) + a.gap; }
+  half := (iw - a.gap) / 2;
+  if p.state == APP_PERMISSION_HELD || p.state == APP_PERMISSION_SENDING {
+    sending := p.state == APP_PERMISSION_SENDING;
+    deny := ifx sending then (ifx p.allow then EL_S_DISABLED else EL_S_BUSY) else 0;
+    allow := ifx sending then (ifx p.allow then EL_S_BUSY else EL_S_DISABLED) else ifx p.can_allow then 0 else EL_S_DISABLED;
+    _ := app_button(f, app_id(bid[..], id, ".deny"), ix, y + h, half, -1, "Deny", APP_BUTTON_DEFAULT, deny, deny_action);
+    h += app_button(f, app_id(aid[..], id, ".allow"), ix + half + a.gap, y + h, half, -1, "Allow", APP_BUTTON_PRIMARY, allow, allow_action) + a.gap;
+  } else if p.state == APP_PERMISSION_UNCERTAIN {
+    h += app_button(f, app_id(aid[..], id, ".retry"), ix, y + h, iw, -1, "Try again", APP_BUTTON_DEFAULT, 0, ifx p.allow then allow_action else deny_action) + a.gap;
+  }
+  h += pad - a.gap;
+  uiframe_close(f);
+  if ground >= 0 { sh[0].under[ground].h = h; }
+  if row >= 0 { f[0].rows[0].rows[row].h = h; }
+  app_enter(f, k, from);
+  return h;
+}
+
+// ---------------------------------------------------------------- result and connection
+
+// What a finished turn reports. The task protocol carries the turn's time
+// and cost and the session record its tool calls; it carries no count of
+// files changed or tests run, so this has none.
+AppTaskResult :: struct {
+  seconds: int;               // how long the turn took
+  tools: int;                 // tool calls made
+  failed: int;                // of them, how many failed
+  cents: int;                 // what it cost, in cents (under 0: not known)
+}
+// Seconds as words into out: "48 s", "2 min 14 s", "1 h 5 min". Returns the count written.
+app_duration :: (out: [] u8, at: int, seconds: int) -> int {
+  n := at; v := ifx seconds < 0 then 0 else seconds;
+  minute := 60; hour := 3600;   // not sizes
+  if v >= hour { n = el_put_i(out, n, v / hour); n = el_put(out, n, " h "); n = el_put_i(out, n, (v % hour) / minute); return el_put(out, n, " min"); }
+  if v >= minute { n = el_put_i(out, n, v / minute); n = el_put(out, n, " min "); }
+  n = el_put_i(out, n, v % minute);
+  return el_put(out, n, " s");
+}
+// A finished turn's result line at (x, y), w wide: "Finished in 2 min 14 s
+// · 12 tool calls · 1 failed · $0.42", cut with an ellipsis. Returns its height.
+app_task_result :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, r: AppTaskResult) -> f32 {
+  s := f[0].skin; buf: [EL_LABEL * 2] u8; cent := 100;   // not a size
+  n := el_put(buf[..], 0, "Finished in "); n = app_duration(buf[..], n, r.seconds);
+  if r.tools > 0 { n = el_put(buf[..], n, " · "); n = el_put_i(buf[..], n, r.tools); n = el_put(buf[..], n, ifx r.tools == 1 then " tool call" else " tool calls"); }
+  if r.failed > 0 { n = el_put(buf[..], n, " · "); n = el_put_i(buf[..], n, r.failed); n = el_put(buf[..], n, " failed"); }
+  if r.cents >= 0 {
+    n = el_put(buf[..], n, " · $"); n = el_put_i(buf[..], n, r.cents / cent); n = el_put(buf[..], n, ".");
+    if r.cents % cent < 10 { n = el_put(buf[..], n, "0"); }   // not a size
+    n = el_put_i(buf[..], n, r.cents % cent);
+  }
+  line := sheet_pool(f[0].sheet, cast(string) buf[0..<n]);
+  _ := sheet_text(f[0].sheet, f[0].m, -1, x, y, s.small.line, s.small.face, s.muted, app_fit(f, s.small.face, line, w));
+  _ := uiframe_semantic(f, id, EL_TEXT, line, x, y, w, s.small.line, 0, 0);
+  return s.small.line;
+}
+
+APP_BANNER_RECONNECTING :: 0; APP_BANNER_OFFLINE :: 1;
+
+// The connection banner at (x, y), centred in w: a pill that says the app is
+// reconnecting (with the activity mark) or offline (with the failure mark and
+// Try again, id + ".retry", which dispatches `action`). Its row is live. It
+// rises in when its id first appears. Returns its height.
+app_banner :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, kind: int, action: int) -> f32 {
+  s := f[0].skin; a := s.app; sh := f[0].sheet; m := f[0].m; h := a.banner_h; offline := kind == APP_BANNER_OFFLINE;
+  words := ifx offline then "You are offline." else "Reconnecting…";
+  k := uiframe_key(f, id); from := app_mark(f);
+  lw := ifx offline then form_link_width(m, s, "Try again") else 0.0f32;
+  tw := measure_width(m, s.small.face, words);
+  bw := a.side_pad + a.notice_icon + a.gap + tw + (ifx offline then lw else a.side_pad);
+  bx := x + (w - bw) / 2;
+  sheet_under(sh, uiskin_float(sh[0].under, sh[0].nu, s, bx, y, bw, h, a.banner_radius));
+  _ := sheet_box(sh, bx, y, bw, h, a.banner_radius, s.border, s.raised, s.field_edge);
+  _ := uiframe_semantic(f, id, EL_NOTICE, words, bx, y, bw - lw, h, EL_S_LIVE | (ifx offline then 0 else EL_S_BUSY), 0);
+  mx := bx + a.side_pad; my := y + (h - a.notice_icon) / 2;
+  if offline { sheet_icon(sh, a.icon_alert, mx, my, a.notice_icon, s.ink); } else { activity(sh, s, mx, my, a.notice_icon, f[0].clock, f[0].reduced_motion); }
+  _ := sheet_text(sh, m, -1, mx + a.notice_icon + a.gap, y + (h - s.small.line) / 2, s.small.line, s.small.face, s.ink, words);
+  if offline {
+    rid: [EL_ID] u8;
+    _ := ctx_link(f, app_id(rid[..], id, ".retry"), bx + bw - lw, y + (h - s.control_h) / 2, "Try again", "", 0, action);
+  }
+  app_enter(f, k, from);
+  return h;
+}
+
+#load "task-checks.coax" #test;

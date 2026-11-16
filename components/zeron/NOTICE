@@ -44,3 +44,7 @@ Third-party material in the Zeron-fork UI (zeron/, ../backend/gpu-shader.coax, f
 5. icons/file-rust.svg: from miguelsolorio/vscode-symbols (commit 296ef1b6) as Zeron bundles
    it (crates/ui/assets/file-icons). MIT License, Copyright (c) 2020-22 Miguel Solorio:
    the permission notice is the same as in 1 above.
+
+6. icons/sidebar-left.svg: Apps SDK UI (https://github.com/openai/apps-sdk-ui), MIT License,
+   Copyright (c) 2025 OpenAI; the same file as ../icons/apps-sdk/sidebar-left.svg (see
+   ../icons/NOTICE). The permission notice is the same as in 1 above.

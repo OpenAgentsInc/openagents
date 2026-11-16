@@ -20,6 +20,11 @@
 //   w := ctx_button(f[..], "login.send", x, y, "Send code", true, 0, ACT_SEND);   // kit/controls.coax
 //   if uiframe_end(f[..], surface) { ... gpu_draw surface_sheet(surface) ... }    // false: refused, the last frame stays
 //
+// Focus follows a press: a press on a text field gives it the keyboard, and
+// a press anywhere else takes the keyboard away (uiframe_press_focus). After
+// uiframe_begin the app keeps uiframe_focus(f) as its focused id, and the
+// host hides the keyboard when uiframe_keyboard(f) is false.
+//
 // A press is routed through the committed rows: surface_hit(surface, x, y)
 // gives the row, surface_id and surface_action say what it is. The hit a
 // context-taking component leaves on the sheet has kind UIFRAME_HIT, and
@@ -67,6 +72,7 @@ UiFrame :: struct {
   dt: f32;                     // seconds since the frame before
   reduced_motion: bool;        // motion settles at once
   reduced_transparency: bool;  // a component paints an opaque ground where it would blur or wash
+  focus_moved: bool;           // this frame's press moved the keyboard (uiframe_focus_moved)
 }
 
 // A context over a sheet, a measure and a skin alone: no rows, no keyed
@@ -78,13 +84,47 @@ uiframe_over :: (sh: [] Sheet, m: TextMeasure, s: UiSkin) -> UiFrame {
 // the frame's sheet and table, the keyed store starts its frame, and the
 // hovered id is read from the rows committed last (the ones on screen).
 uiframe_begin :: (f: [] UiFrame, surface: [] UiSurface, keyed: [] KeyedStore, m: TextMeasure, s: UiSkin, input: UiInput, clock: f32, dt: f32, reduced_motion: bool, reduced_transparency: bool) {
-  in := input;
-  in.hovered_n = 0;
-  if in.present { in.hovered_n = el_copy(in.hovered[..], surface_id(surface, surface_hit(surface, in.x, in.y))); }
+  ins := [1] UiInput.[input];
+  ins[0].hovered_n = 0;
+  if ins[0].present { ins[0].hovered_n = el_copy(ins[0].hovered[..], surface_id(surface, surface_hit(surface, ins[0].x, ins[0].y))); }
+  moved := uiframe_press_focus(surface, ins[..]);
+  in := ins[0];
   b := surface_begin(surface);
   keyed_begin(keyed, dt, reduced_motion);
   f[0] = UiFrame.{sheet = surface[0].sheet[b..<b + 1], rows = surface[0].rows[b..<b + 1], keyed = keyed, m = m, skin = s, input = in,
-    clock = clock, dt = dt, reduced_motion = reduced_motion, reduced_transparency = reduced_transparency};
+    clock = clock, dt = dt, reduced_motion = reduced_motion, reduced_transparency = reduced_transparency, focus_moved = moved};
+}
+// Focus follows a press (owner rule, GitHub #13645): a press that began on a
+// text field (a committed row with role EL_FIELD that is not disabled) gives
+// that field the keyboard; a press anywhere else, on another control or on
+// nothing, takes the keyboard from the text field that has it, so the host
+// hides the keyboard. Focus on a control that is not a field (one the
+// keyboard stepped to) is left as it is. Every screen built on the frame gets
+// this from uiframe_begin; the app reads the result with uiframe_focus and
+// keeps it as its focused id. Returns whether the press moved the keyboard.
+// Without a press, focus stays as the app set it. A host whose tap can begin
+// and end between two frames calls this too, at touch down, with the input
+// it has then, so no tap misses the rule.
+uiframe_press_focus :: (surface: [] UiSurface, in: [] UiInput) -> bool {
+  if !in[0].down { return false; }
+  if in[0].pressed_n > 0 {
+    id := cast(string) in[0].pressed[0..<in[0].pressed_n];
+    if uiframe_text_field(surface, id) {
+      if in[0].focused_n > 0 && cast(string) in[0].focused[0..<in[0].focused_n] == id { return false; }
+      in[0].focused_n = el_copy(in[0].focused[..], id);
+      return true;
+    }
+  }
+  if in[0].focused_n == 0 || !uiframe_text_field(surface, cast(string) in[0].focused[0..<in[0].focused_n]) { return false; }
+  in[0].focused_n = 0;
+  return true;
+}
+// Whether a committed row is a text field that takes the keyboard.
+uiframe_text_field :: (surface: [] UiSurface, id: string) -> bool {
+  i := surface_find(surface, id);
+  if i < 0 { return false; }
+  r := surface_rows(surface).rows[i];
+  return r.role == EL_FIELD && (r.state & EL_S_DISABLED) == 0;
 }
 // The frame ends: ids not seen retire from the keyed store, and the surface
 // commits the display list, hit regions and rows together. False: the frame
@@ -98,6 +138,13 @@ uiframe_end :: (f: [] UiFrame, surface: [] UiSurface) -> bool {
 
 uiframe_pressed :: (f: [] UiFrame, id: string) -> bool { return f[0].input.down && f[0].input.pressed_n > 0 && cast(string) f[0].input.pressed[0..<f[0].input.pressed_n] == id; }
 uiframe_focused :: (f: [] UiFrame, id: string) -> bool { return f[0].input.focused_n > 0 && cast(string) f[0].input.focused[0..<f[0].input.focused_n] == id; }
+// The id that has the keyboard this frame ("": none, and the host hides the
+// keyboard), after the press focus rule in uiframe_begin. The app keeps it.
+uiframe_focus :: (f: [] UiFrame) -> string { return cast(string) f[0].input.focused[0..<f[0].input.focused_n]; }
+// Whether this frame's press moved the keyboard: to a field, or away from every field.
+uiframe_focus_moved :: (f: [] UiFrame) -> bool { return f[0].focus_moved; }
+// Whether a text field has the keyboard (the host shows it while this holds).
+uiframe_keyboard :: (f: [] UiFrame) -> bool { return f[0].input.focused_n > 0; }
 uiframe_hovered :: (f: [] UiFrame, id: string) -> bool { return f[0].input.hovered_n > 0 && cast(string) f[0].input.hovered[0..<f[0].input.hovered_n] == id; }
 // How a control's ground looks this frame (skin/skin.coax): the primary
 // action, lit under the pointer or a press, or resting.

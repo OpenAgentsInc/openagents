@@ -1,0 +1,40 @@
+// Checks for the app set's account components (account.coax).
+#load "checks-kit.coax";
+
+#test "app account: the login card's email step and code step, busy and with an error" {
+  t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..];
+  act := AppLoginActions.{field = 1, submit = 2, back = 3, resend = 4};
+  l := AppLogin.{step = APP_LOGIN_EMAIL};
+  app_test_begin(t[..], "", "", true);
+  h := app_login(f, "login", 0, 0, 320, l, act);
+  #assert app_test_end(t[..]) && app_test_row(t[..], "login").h == h && app_test_row(t[..], "login").role == EL_REGION && app_test_label(t[..], "login.title") == "Log in";
+  // no address yet: Send code rests; the field asks for the keyboard
+  #assert app_test_pressable(t[..], "login.email") && app_test_row(t[..], "login.email").action == 1 && !app_test_pressable(t[..], "login.submit") && app_test_label(t[..], "login.submit") == "Send code";
+  #assert app_test_row(t[..], "login.email").parent == app_test_find(t[..], "login") && app_test_find(t[..], "login.back") < 0;
+  l.email = "ada@example.com";
+  app_test_begin(t[..], "", "login.email", true);
+  _ := app_login(f, "login", 0, 0, 320, l, act);
+  #assert app_test_end(t[..]) && app_test_pressable(t[..], "login.submit") && app_test_row(t[..], "login.submit").action == 2 && app_test_has(t[..], "login.email", EL_S_FOCUSED) && app_test_value(t[..], "login.email") == "ada@example.com";
+  l.busy = true;
+  app_test_begin(t[..], "", "", true);
+  _ := app_login(f, "login", 0, 0, 320, l, act);
+  #assert app_test_end(t[..]) && app_test_has(t[..], "login.submit", EL_S_BUSY) && app_test_label(t[..], "login.submit") == "Sending code…" && !app_test_pressable(t[..], "login.submit") && !app_test_pressable(t[..], "login.email");
+  // the code step, with a wrong code
+  l = AppLogin.{step = APP_LOGIN_CODE, email = "ada@example.com", code = "123456", error = "That code is not right. Try again."};
+  app_test_begin(t[..], "", "", true);
+  e := app_login(f, "login", 0, 0, 320, l, act);
+  #assert app_test_end(t[..]) && e > h && app_test_label(t[..], "login.title") == "Enter your code" && app_test_label(t[..], "login.detail") == "ada@example.com" && app_test_value(t[..], "login.code") == "123456";
+  #assert app_test_row(t[..], "login.code.error").role == EL_NOTICE && app_test_has(t[..], "login.code.error", EL_S_LIVE) && app_test_pressable(t[..], "login.submit") && app_test_label(t[..], "login.submit") == "Log in";
+  #assert app_test_pressable(t[..], "login.back") && app_test_row(t[..], "login.back").action == 3 && app_test_pressable(t[..], "login.resend") && app_test_row(t[..], "login.resend").action == 4;
+  l.busy = true; l.error = "";
+  app_test_begin(t[..], "", "", true);
+  _ := app_login(f, "login", 0, 0, 320, l, act);
+  #assert app_test_end(t[..]) && app_test_label(t[..], "login.submit") == "Logging in…" && !app_test_pressable(t[..], "login.back") && !app_test_pressable(t[..], "login.resend") && !app_test_pressable(t[..], "login.code");
+}
+
+#test "app account: the logged-out notice says why and offers Log in" {
+  t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..];
+  app_test_begin(t[..], "", "", true);
+  h := app_logged_out(f, "out", 0, 0, 320, "You are logged out. Log in to send messages.", 5);
+  #assert app_test_end(t[..]) && h > 44 && app_test_row(t[..], "out").role == EL_NOTICE && app_test_pressable(t[..], "out.login") && app_test_label(t[..], "out.login") == "Log in" && app_test_row(t[..], "out.login").action == 5;
+}

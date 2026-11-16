@@ -1,0 +1,46 @@
+// What the app set's checks share (components/app/*-checks.coax): a surface
+// with its two generations, a keyed store and a frame in the phone skin,
+// measured in cells (a character is one unit wide), with reduced motion on
+// or off.
+#load "../skin/arcade.coax";
+#load "../kit/frame.coax";
+
+AppTestGen :: struct { under: [768] Prim; over: [768] Prim; lines: [256] SheetLine; hits: [96] SheetHit; pool: [8192] u8; rows: [128] El; }
+AppTest :: struct { gen: [2] AppTestGen; sf: [1] UiSurface; ks: [1] KeyedStore; keys: [128] Keyed; f: [1] UiFrame; }
+
+app_test_init :: (t: [] AppTest) {
+  g := t[0].gen[..];
+  t[0].sf[0] = surface_over(
+    Sheet.{under = g[0].under[..], over = g[0].over[..], lines = g[0].lines[..], hits = g[0].hits[..], pool = g[0].pool[..]}, g[0].rows[..],
+    Sheet.{under = g[1].under[..], over = g[1].over[..], lines = g[1].lines[..], hits = g[1].hits[..], pool = g[1].pool[..]}, g[1].rows[..]);
+  t[0].ks[0] = KeyedStore.{rows = t[0].keys[..]};
+}
+// A frame begins: `pressed` is the id held ("" none), `focused` the id with the keyboard.
+app_test_begin :: (t: [] AppTest, pressed: string, focused: string, reduced: bool) {
+  uiframe_begin(t[0].f[..], t[0].sf[..], t[0].ks[..], measure_cells(), arcade_phone_skin(), uiinput(0, 0, pressed.count > 0, pressed.count > 0, pressed, focused), 0, 0.016, reduced, false);
+}
+app_test_end :: (t: [] AppTest) -> bool { return uiframe_end(t[0].f[..], t[0].sf[..]); }
+// The committed row of an id (-1: none), and that row.
+app_test_find :: (t: [] AppTest, id: string) -> int { return surface_find(t[0].sf[..], id); }
+app_test_row :: (t: [] AppTest, id: string) -> El { i := app_test_find(t, id); r: El; if i < 0 { return r; } return surface_rows(t[0].sf[..]).rows[i]; }
+app_test_has :: (t: [] AppTest, id: string, state: int) -> bool { i := app_test_find(t, id); return i >= 0 && (surface_rows(t[0].sf[..]).rows[i].state & state) == state; }
+app_test_label :: (t: [] AppTest, id: string) -> string { tb := [1] ElTable.[surface_rows(t[0].sf[..])]; return elt_label(tb[..], app_test_find(t, id)); }
+app_test_value :: (t: [] AppTest, id: string) -> string { tb := [1] ElTable.[surface_rows(t[0].sf[..])]; return elt_value_of(tb[..], app_test_find(t, id)); }
+// Whether a press at the middle of an id's committed row reaches that id and dispatches an action.
+app_test_pressable :: (t: [] AppTest, id: string) -> bool {
+  r := app_test_row(t, id);
+  return r.id_n > 0 && r.action != 0 && surface_id(t[0].sf[..], surface_hit(t[0].sf[..], r.x + r.w / 2, r.y + r.h / 2)) == id;
+}
+// How many committed runs of text read exactly `text`, and how many hits the committed sheet holds.
+app_test_texts :: (t: [] AppTest, text: string) -> int {
+  sh := surface_sheet(t[0].sf[..]); n := 0;
+  for i: 0..<sh.no { if sh.over[i].kind == PRIM_TEXT && sh.over[i].text == text { n += 1; } }
+  return n;
+}
+app_test_hits :: (t: [] AppTest) -> int { return surface_sheet(t[0].sf[..]).nh; }
+// How many committed primitives under the text are of a kind.
+app_test_prims :: (t: [] AppTest, kind: int) -> int {
+  sh := surface_sheet(t[0].sf[..]); n := 0;
+  for i: 0..<sh.nu { if sh.under[i].kind == kind { n += 1; } }
+  return n;
+}

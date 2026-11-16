@@ -203,9 +203,42 @@ UiAnimated :: struct {
 // scene has used since build 1087). Keyed components read them through the
 // frame context (kit/frame.coax).
 UiMotion :: struct { enter: f32 = 0.2; press: f32 = 0.1; focus: f32 = 0.2; menu: f32 = 0.3; }
+// The app set's measures (components/app/; GitHub #13645): the components the
+// native apps' screens are built from. Sizes are layout units; a skin may
+// override any of them. A `_wash` or `_ink` is a role's strength, 0 to 1.
+UiApp :: struct {
+  gap: f32 = 8; gap_small: f32 = 4;                    // between a component's parts
+  rise: f32 = 8;                                       // how far a component rises as it enters
+  icon: f32 = 16;                                      // an icon beside a label
+  icon_button: f32 = 44; icon_well: f32 = 34;          // an icon button's target, and the ground it shows
+  primary_rest: f32 = 0.9;                             // a primary button's fill at rest (1 while held)
+  quiet_h: f32 = 34;                                   // a quiet button's ground inside its target
+  caret: f32 = 1.5; caret_blink: f32 = 0.55;           // a field's caret, and seconds a blink phase
+  notice_pad: f32 = 12; notice_radius: f32 = 14; notice_icon: f32 = 14;
+  card_radius: f32 = 18; card_pad: f32 = 16;
+  sheet_radius: f32 = 22; grabber_w: f32 = 36; grabber_h: f32 = 4; grabber_top: f32 = 8;
+  row_radius: f32 = 12; row_inset: f32 = 4;            // a menu or history row's ground, inset from its target
+  switch_w: f32 = 48; switch_h: f32 = 28;
+  ring: f32 = 22;
+  bubble_radius: f32 = 18; bubble_pad_x: f32 = 14; bubble_pad_y: f32 = 9; bubble_share: f32 = 0.84;
+  code_radius: f32 = 12; code_head: f32 = 34; code_pad: f32 = 12; code_copy_pad: f32 = 10;
+  dot: f32 = 6; dot_gap: f32 = 5; dot_period: f32 = 1.2; dot_dim: f32 = 0.3;
+  jump: f32 = 38; jump_icon: f32 = 16;
+  state_dot: f32 = 8;
+  tool_h: f32 = 40; tool_pad: f32 = 12; tool_radius: f32 = 12; tool_icon: f32 = 14; tool_chevron: f32 = 12;
+  tool_body_pad: f32 = 10; tool_page_lines: f32 = 8;   // lines of input or result a page shows
+  pager_h: f32 = 32;
+  group_rail: f32 = 1.5; group_inset: f32 = 14;        // a tool group's rail, and its rows' inset past it
+  banner_h: f32 = 36; banner_radius: f32 = 18;
+  nav: f32 = 44; nav_icon: f32 = 20;
+  side_row: f32 = 44; side_row_two: f32 = 58; side_head: f32 = 30; side_pad: f32 = 14;
+  off_ink: f32 = 0.45;                                 // a disabled part's ink strength
+  icon_alert: int = -1; icon_nav: int = -1; icon_disclose: int = -1;   // slots in the target's icons: a failure's mark, the navigation button's, a row that opens (-1: the skin has none)
+}
 UiSkin :: struct {
  animated:UiAnimated;
  motion:UiMotion;
+ app:UiApp;
   id: int; name: string;
   // colour roles
   canvas: Rgba;             // the window behind everything
