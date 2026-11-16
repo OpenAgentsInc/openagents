@@ -5,7 +5,9 @@ final class SidebarTests:XCTestCase {
     override func setUpWithError() throws {continueAfterFailure=false}
     @MainActor func testNativeTapOpensAndClosesSidebarAndSettingsLoginBack() {
         let app=XCUIApplication()
-        app.launchArguments=["-OAAPIOrigin","http://127.0.0.1:9"]
+        // Foundation's launch-argument domain overrides only this fixture's
+        // saved email. Repeated runs start empty without editing app storage.
+        app.launchArguments=["-OAAPIOrigin","http://127.0.0.1:9","-openagents.login-draft",""]
         app.launch()
         let menu=app.buttons["nav.menu"],settings=app.buttons["drawer.settings"]
         XCTAssertTrue(menu.waitForExistence(timeout:20))
@@ -29,10 +31,7 @@ final class SidebarTests:XCTestCase {
         XCTAssertTrue(back.waitForExistence(timeout:10))
         let email=app.textFields["login.email"]
         XCTAssertTrue(email.waitForExistence(timeout:10));email.tap()
-        if let held=email.value as? String {
-            email.typeText(String(repeating:XCUIKeyboardKey.rightArrow.rawValue,count:held.count))
-            email.typeText(String(repeating:XCUIKeyboardKey.delete.rawValue,count:held.count))
-        }
+        XCTAssertTrue((email.value as? String ?? "").isEmpty || email.value as? String == "you@example.com")
         email.typeText("fixture@example.test")
         XCTAssertEqual(email.value as? String,"fixture@example.test")
         back.tap()
