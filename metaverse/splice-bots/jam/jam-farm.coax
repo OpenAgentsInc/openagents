@@ -26,9 +26,9 @@ SJX_FARM_SPEED :: 1.5f32; SJX_FARM_BLOW :: 3.2f32; SJX_FARM_REACH :: 1.6f32;
 SJX_FOLLOW :: 6.5f32;           // m/s her taken robots keep up at (straight-line steering until a navmesh)
 // What the rules last said (sjx_say): a pickup, a refusal, a verb done.
 SJX_NONE :: 0; SJX_ITEM :: 1; SJX_FULL :: 2; SJX_CREW :: 3; SJX_ZERO :: 4; SJX_BATTERY :: 5; SJX_HARVESTED :: 6;
-SJX_FED :: 7; SJX_TAKEN :: 8; SJX_STAY :: 9; SJX_FOLLOWS :: 10; SJX_DOWN :: 11; SJX_NOT_READY :: 12; SJX_HIT :: 13;
-SJX_SAYS :: [14] string.["", "", "FULL", "3 ROBOTS MAX", "BRING IT TO 0 FIRST", "+1 BATTERY", "HARVESTED", "FED +40%", "TAKEN: IT'S YOURS",
-  "CREW: STAY", "CREW: FOLLOW", "POWERED DOWN: HOLD TO HARVEST", "NOT CHARGED YET", "HIT"];
+SJX_FED :: 7; SJX_TAKEN :: 8; SJX_STAY :: 9; SJX_FOLLOWS :: 10; SJX_DOWN :: 11; SJX_NOT_READY :: 12; SJX_HIT :: 13; SJX_BITE :: 14;
+SJX_SAYS :: [15] string.["", "", "FULL", "3 ROBOTS MAX", "BRING IT TO 0 FIRST", "+1 BATTERY", "HARVESTED", "FED +40%", "TAKEN: IT'S YOURS",
+  "CREW: STAY", "CREW: FOLLOW", "POWERED DOWN: HOLD TO HARVEST", "NOT CHARGED YET", "HIT", "IT WINDS UP A BITE: MOVE"];
 SjxBot :: struct {
   actor: int;                 // the jam actor that draws it
   x: f32; z: f32; y: f32; yaw: f32;
@@ -48,7 +48,8 @@ SjRules :: struct {
   dig_stay: bool;             // Digger stays (G)
   heat: int; level: int;      // the jam's Heat and its level
   said: int; said_item: string; said_t: f32;
-  story: [1] SjStory;         // the farm's story cards (jam/jam-story.coax)
+  story: [1] SjStory;
+  bite: [1] SjBite;           // the boss's bite (jam/jam-boss.coax)         // the farm's story cards (jam/jam-story.coax)
   button: int;                // the pointer's button now: 0 left (Attack), 2 right (Use), as the jam binds them
 }
 
@@ -335,6 +336,7 @@ sjx_step :: (g: [] SpGame, dt: f32) {
   if g[0].jam && !g[0].jx[0].ok { sjx_reset(g); }   // a page that bound the jam world after the run began
   if !sjx_on(g) { return; }
   sjs_step(g, dt);   // the story's cards (jam/jam-story.coax)
+  sjb_step(g, dt);   // the boss's bite (jam/jam-boss.coax)
   x := g[0].jx[..];
   x[0].hit_t += dt;
   if x[0].said_t > 0 { x[0].said_t -= dt; if x[0].said_t <= 0 { x[0].said = SJX_NONE; } }
@@ -386,7 +388,8 @@ sjx_step :: (g: [] SpGame, dt: f32) {
 // For a page check (splice-bots.coax splice_world_fact): 16 the jam's hotbar is up, 17 the slot picked,
 // 18 batteries she carries, 19 robots harvested, 20 and 21 the first charge point's x and z (cm), 22 what the
 // rules last said (SJX_*), 23 what a left click would act on (SJX_T_*), 24 the Data tables' bytes, 25 the
-// story's clock (s), 26 cards played plus 100 per tutorial card waiting.
+// story's clock (s), 26 cards played plus 100 per tutorial card waiting, 27 the boss's bites, 28 its health
+// at most, 29 and 30 its jaw's x and z (cm).
 sjx_fact :: (g: [] SpGame, k: int) -> int {
   if !sjx_on(g) { return -1; }
   x := g[0].jx[0];
@@ -396,6 +399,8 @@ sjx_fact :: (g: [] SpGame, k: int) -> int {
   if k == 19 { return x.harvests; }
   if k == 22 { return x.said; } if k == 23 { return sjx_target(g, SJX_ATTACK_REACH, false).kind; }
   if k == 24 { return g[0].jd.count; } if k == 25 { return cast(int) x.story[0].clock; } if k == 26 { return x.story[0].q[0].played_n + sr_card_num(x.story[0].q[0], 0) * 100; }
+  if k == 27 { return x.bite[0].bites; } if k == 28 { return cast(int) g[0].bt[0].bots[SB_BOSS].vit.most; }
+  if k == 29 || k == 30 { h := sjb_head(g); return we_cm(ifx k == 29 then h.x else h.z); }
   if (k == 20 || k == 21) && x.charge_n > 0 { a := g[0].jr[0].actors[x.charge_actor[0]]; return we_cm(ifx k == 20 then a.x else a.z); }
   return -1;
 }

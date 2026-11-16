@@ -6,7 +6,7 @@
 // readings and exits 0 when the run starts at the jam farm's player start, W walks her, S brings her
 // back, Space lifts her, 3 picks the jam hotbar's third slot and a left click at a charge point takes its
 // battery (jam/jam-farm.coax); with the tables pack, the story's cards show (jam/jam-story.coax). OUT is the
-// screen at the end.
+// screen at the end. Then the boss's fight, staged: its health is 120 and it bites her at its jaw.
 //
 // Why a page check needs focus emulation: a headless page has no focus, and the host lets go of every
 // held key when the page has no focus (host.js hostLifeEvent: a blur clears the game's keys, so W pressed
@@ -80,7 +80,11 @@ tool_main :: () -> int #export_c #effects(all) {
   jk_eval(c[..], "J.tables=coaxial.fieldProbe(24);J.cards=coaxial.fieldProbe(26);1");
   png: [16777216] u8; pngn := cdp_screenshot(c[..], png[..]);
   if pngn > 0 { _ := fs_write(args_at(a[..], 1), cast(string) png[0..<pngn]); }
-  vn := media_value(c[..], "(()=>{const d=(p,q)=>Math.hypot(p[0]-q[0],p[1]-q[1]);J.walk_cm=Math.round(d(J.start,J.walked));J.back_cm=Math.round(d(J.walked,J.back));J.jump_cm=J.peak-J.start[2];J.ok=J.focus&&Math.hypot(J.start[0]+84000,J.start[1]+13600)<300&&J.walk_cm>300&&J.back_cm>150&&J.jump_cm>50&&J.hotbar===1&&J.slot===2&&J.battery===1&&(J.tables<=0||J.cards>0);return JSON.stringify(J)})()", value[..]);
+  // the boss (jam/jam-boss.coax): its fight staged (640 "35"), she stands at its jaw and it bites; its health is 120
+  jk_eval(c[..], "coaxial.send(640,'35');1"); proc_sleep(500);
+  for k: 0..<20 { jk_eval(c[..], "coaxial.send(611,`${coaxial.fieldProbe(29)+100} ${coaxial.fieldProbe(30)}`);1"); proc_sleep(250); }
+  jk_eval(c[..], "J.boss=coaxial.fieldProbe(28);J.bites=coaxial.fieldProbe(27);1");
+  vn := media_value(c[..], "(()=>{const d=(p,q)=>Math.hypot(p[0]-q[0],p[1]-q[1]);J.walk_cm=Math.round(d(J.start,J.walked));J.back_cm=Math.round(d(J.walked,J.back));J.jump_cm=J.peak-J.start[2];J.ok=J.focus&&Math.hypot(J.start[0]+84000,J.start[1]+13600)<300&&J.walk_cm>300&&J.back_cm>150&&J.jump_cm>50&&J.hotbar===1&&J.slot===2&&J.battery===1&&(J.tables<=0||J.cards>0)&&J.boss===120&&J.bites>0;return JSON.stringify(J)})()", value[..]);
   cdp_close(c[..]);
   if vn < 0 { return 5; }
   result := cast(string) value[0..<vn]; print("%\n", result);

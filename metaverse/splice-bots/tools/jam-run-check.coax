@@ -182,6 +182,7 @@ tool_main :: () -> int #export_c #effects(all) {
   r = g_run_to_garage(g[..]);
   if r == 0 { r = sp_keys_play(g[..]); }
   jrc_line("the garage's door to the boss with the keys", r);
+  print("  the boss: % health; it bit % times and hit her % (jam/jam-boss.coax)\n", g[0].bt[0].bots[SB_BOSS].vit.most, g[0].jx[0].bite[0].bites, g[0].jx[0].bite[0].hits);
   if r != 0 { print("  she stopped at (%, %), zone %\n", g[0].px, g[0].pz, g[0].zone); }
   failed = failed || r != 0;
   // the jam's farm rules with the keys and the mouse

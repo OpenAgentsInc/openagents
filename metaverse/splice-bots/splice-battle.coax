@@ -64,7 +64,7 @@ SB_SWEEP_HIT :: 3; SB_CHARGE_HIT :: 6;
 // stun and it sweeps and charges between, and F no longer holds an opening longer: it lasts through both phases.
 SB_BOSS_GUARD :: 4.0f32;
 SB_BOSS_HP :: 70;
-sb_boss_bot :: () -> BbBot { b := bb_bot(SB_BOSS, SB_BOSS_HP, 120, 10); b.guard = deed_tick(SB_BOSS_GUARD); return b; }
+sb_boss_bot :: (hp: int) -> BbBot { b := bb_bot(SB_BOSS, hp, 120, 10); b.guard = deed_tick(SB_BOSS_GUARD); return b; }
 SB_RESTORED :: 3.0f32;      // seconds SCENE RESTORED holds before the mission's teaser
 // The boss's size (#13552; the metrics room shows it): nose to tail, and so its scale and height, and how
 // near its middle its collider keeps a walker. Every weak point stays in F's reach from outside it.
@@ -186,7 +186,7 @@ sb_reset :: (g: [] SpGame) {
   t[0].bots[SB_MECH] = bb_bot(SB_MECH, 45, 100, 12);
   t[0].bots[SB_SNIPER] = bb_bot(SB_SNIPER, 24, 80, 10);
   t[0].bots[SB_RAIDER] = bb_bot(SB_RAIDER, 16, 60, 8);
-  t[0].bots[SB_BOSS] = sb_boss_bot();
+  t[0].bots[SB_BOSS] = sb_boss_bot(sjx_boss_hp(g));   // the jam's 120 in the jam world (jam/jam-boss.coax)
   // in the empty section's bay (C1), facing the field; without a row, the middle of that bay
   h := ga_bay_at(g, GA_EMPTY); m := sb_mark(g, LM_MECH, h.x, h.z); t[0].mech_x = m.x; t[0].mech_z = m.z;
   t[0].mech_yaw = atan2(g[0].at.gar_x - m.x, g[0].at.gar_z - m.z);
@@ -869,7 +869,7 @@ sb_respawn :: (g: [] SpGame) {
   t := g[0].bt[..];
   sb_finish(g);
   g[0].ak[0] = SpAttacks.{}; t[0].wind = 0; t[0].rush = 0; t[0].daze = 0;
-  t[0].bots[SB_BOSS] = sb_boss_bot(); sb_dino_home(g);
+  t[0].bots[SB_BOSS] = sb_boss_bot(sjx_boss_hp(g)); sb_dino_home(g);
   for i: 0..<3 { g[0].stun[i] = 0; }
   bb_repair(t[0].bots[SB_MECH..<SB_MECH + 1]); bb_repair(t[0].bots[SB_SNIPER..<SB_SNIPER + 1]);
   if g[0].wall_gone && !g[0].boss_down { t[0].mech_core = true; t[0].mech_x = 2.5; t[0].mech_z = g[0].at.wall_z + 3; }

@@ -1,0 +1,33 @@
+// The jam's boss in the jam world (GitHub #13653; rules/boss.coax, the jam's SpliceBoss): health 120 (robots.csv
+// BOSS_HP; the prototype's SB_BOSS_HP is 70) and its bite, a telegraph timeline aimed at her (UE-AI-26):
+// while the fight is on and she is within the bite's reach of its head, every bite_every seconds it winds up
+// (bite_wind), locks the spot she stands on (bite_lock), and bites (bite_impact): she is hurt when she is
+// still within bite_ring of the locked spot. Then it recovers (bite_recovery). Her health in this game is
+// hearts, so a bite costs one (g_hurt). The numbers are SrBossTuning's.
+//   coax/bin/coax test metaverse/splice-bots/splice-bots.coax --only "jam boss"
+
+SJB_NONE :: 0; SJB_WIND :: 1; SJB_LOCK :: 2; SJB_RECOVER :: 3;
+SjBite :: struct { beat: int; t: f32; since: f32 = 99; x: f32; z: f32; bites: int; hits: int; }
+
+sjx_boss_hp :: (g: [] SpGame) -> int { b: SrBossTuning; return ifx g[0].jam then cast(int) b.health_max else SB_BOSS_HP; }
+// Where its jaw is: the nose of the dinosaur (splice-battle.coax).
+sjb_head :: (g: [] SpGame) -> Point { return fp(sb_dino_frame(g), 0, 0, SB_BOSS_NOSE); }
+sjb_on :: (g: [] SpGame) -> bool { return sjx_on(g) && g[0].bt[0].kind == SBF_BOSS && !g[0].boss_down && g[0].mode == M_PLAY; }
+
+sjb_step :: (g: [] SpGame, dt: f32) {
+  b := g[0].jx[0].bite[..]; tu: SrBossTuning;
+  if !sjb_on(g) { b[0] = SjBite.{bites = b[0].bites, hits = b[0].hits}; return; }
+  b[0].since += dt; b[0].t += dt;
+  h := sjb_head(g); near := dist2(g[0].px, g[0].pz, h.x, h.z) < cast(f32) tu.bite_reach;
+  if b[0].beat == SJB_NONE {
+    if near && b[0].since >= cast(f32) tu.bite_every { b[0].beat = SJB_WIND; b[0].t = 0; b[0].since = 0; sjx_say(g, SJX_BITE, ""); }
+  } else if b[0].beat == SJB_WIND {
+    if b[0].t >= cast(f32) tu.bite_wind { b[0].beat = SJB_LOCK; b[0].t = 0; b[0].x = g[0].px; b[0].z = g[0].pz; }   // the spot she stands on, locked
+  } else if b[0].beat == SJB_LOCK {
+    if b[0].t >= cast(f32) (tu.bite_lock + tu.bite_impact) {
+      b[0].bites += 1;
+      if dist2(g[0].px, g[0].pz, b[0].x, b[0].z) < cast(f32) tu.bite_ring { b[0].hits += 1; g_hurt(g); }
+      b[0].beat = SJB_RECOVER; b[0].t = 0;
+    }
+  } else if b[0].t >= cast(f32) tu.bite_recovery { b[0].beat = SJB_NONE; b[0].t = 0; }
+}

@@ -42,4 +42,5 @@ sjx_board_tune :: (super: bool) -> MountTune {
 }
 
 #load "jam-farm.coax";
+#load "jam-boss.coax";    // the boss's health and its bite
 #load "jam-story.coax";   // the farm's story cards and objective lines, words from the data pack   // what she carries and does with it: the inventory, clicks, charge points, the farm robot, her crew, Heat

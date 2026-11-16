@@ -151,3 +151,23 @@ SJR_DATA :: "table 0 /Data/card_triggers csv 5 6\nX 0 id,trigger,card_kind,lane,
   sjr_at(g[..], -770, -160, 0); g[0].px = -500; g[0].pz = 763; g_step(g[..], 0.02);   // out and back in: again
   g_say(g[..], MSG_NO_DRILL); g_step(g[..], 0.02); #assert sjs_now(g[..], SR_LANE_SNIPER) != "";
 }
+#test "jam boss: health 120 in the jam world, 70 in the prototype's, and the bite winds up, locks her spot and lands only if she stays" #steps 4000000000 #traversal 2000000000 {
+  g0 := [1] SpGame.[SpGame.{}]; g_reset(g0[..]); #assert sjx_boss_hp(g0[..]) == SB_BOSS_HP;
+  s := [1] SjStore.[SjStore.{}]; g := [1] SpGame.[SpGame.{}];
+  sjr_start(g[..], s[..]);
+  sb_stage_lab(g[..], 35);
+  #assert sjx_on(g[..]) && sjb_on(g[..]) && g[0].bt[0].bots[SB_BOSS].vit.hp == 120;
+  // she stands at its jaw: it winds up within bite_every, and the bite lands on her
+  tu: SrBossTuning; stayed := false; dodged := false;
+  for i: 0..<600 {
+    b := g[0].jx[0].bite[0]; h := sjb_head(g[..]);
+    if b.beat != SJB_LOCK { g[0].px = h.x + 1; g[0].pz = h.z; }   // at the jaw until it locks her spot
+    if b.bites == 1 && !stayed { stayed = true; #assert b.hits == 1; }
+    // the second: she steps 3 m off the locked spot before it lands
+    if b.bites == 1 && b.beat == SJB_LOCK { g[0].px = b.x + 3; g[0].pz = b.z; }
+    if b.bites == 2 { dodged = b.hits == 1; break; }
+    g[0].hit_cool = 0; g[0].hearts = T_HEARTS;   // no cut banner while it is checked
+    g_step(g[..], 0.02);
+  }
+  #assert stayed && dodged;
+}
