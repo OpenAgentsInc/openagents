@@ -247,8 +247,8 @@ ChatWeb :: struct {
   // running and which of its requests, its answer so far, and every answer for the next ask
   hstep: int; hmodel: int;
   hcalls: [CH_CALLS] ChCall; hn: int; hat: int; hpart: int; hfailed: bool;
-  hout: [CH_RESULT] u8; hout_n: int;
-  hres: [CH_RESULTS] u8; hres_n: int;
+  hout: [CH_OUTPUT] u8; hout_n: int;
+  hstep_state:[1]GwToolStep;hhistory:[1]GwToolConversation;hpool:[CH_HISTORY]u8;htext_at:int;
   live: bool;                        // the last message is an answer still coming
   status: int;                       // the stream's HTTP status once a piece has come
   cut: bool;                         // the answer passed CW_ANSWER: the rest was not kept
@@ -810,6 +810,7 @@ cw_clear :: (s: [] ChatWeb) {
   s[0].count = 0; s[0].pool_n = 0; s[0].total = 0; s[0].error_n = 0;
   s[0].live = false; s[0].lrun = false; s[0].echo = false; s[0].stop_due = false; s[0].turn = 0; s[0].conv = 0;
   s[0].goal_n = 0; s[0].opens_n = 0;
+  s[0].hhistory[0]=GwToolConversation.{};gwt_step_begin(s[0].hstep_state[..]);
 }
 // A new chat: nothing in it, on the model Settings keeps.
 cw_new_chat :: (s: [] ChatWeb) {
@@ -992,7 +993,7 @@ cw_complete :: (s: [] ChatWeb, model: int) -> bool {
   in_world := s[0].wwire_n > 0;
   first := s[0].count; bytes := 0;
   // a Gemini message's tools and what they answered go with it, so the conversation gets less room
-  most := ifx in_world then CW_PLAN_ASK else CW_ASK - s[0].hres_n;
+  most := ifx in_world then CW_PLAN_ASK else CW_ASK;
   while first > 0 && bytes + s[0].len[first - 1] <= most { first -= 1; bytes += s[0].len[first]; }
   if first == s[0].count && s[0].count > 0 { first = s[0].count - 1; }   // the message itself always goes
   messages: [CW_MESSAGES + 1] GwMessage; n := 0;
@@ -1019,33 +1020,35 @@ cw_complete :: (s: [] ChatWeb, model: int) -> bool {
     system := ifx s[0].nopened > 0 then wp_system_opened(s[0].world[..], cast(string) names_of[0..<on], scratch[..], prompt[..]) else wp_system(s[0].world[..], scratch[..], prompt[..]);
     req := GwRequest.{model = ids[model], system = system, messages = messages[0..<n], schema = wp_schema(schema[..]), schema_name = "world_turn", effort = "low", stream = false};
     bn := gw_chat_body(req, 0, body[..]);
-    if bn > 1 && s[0].nopened > 0 && body[bn - 1] == '}' {
+    if bn > 1 && s[0].nopened > 0 && body[bn - 1] == '}' { // mutant: equivalent (>= at one: gw_chat_body returns -1 or a complete JSON request longer than one byte)
       bn = json_raw(body[..], bn - 1, ",\"attachments\":{\"world\":"); bn = json_write_string(body[..], bn, wt_word(s[0].world[..]));
       bn = json_raw(body[..], bn, ",\"ids\":[");
       for k: 0..<s[0].nopened { if k > 0 { bn = json_raw(body[..], bn, ","); } bn = json_write_string(body[..], bn, cast(string) s[0].opened[k][..]); }
       bn = json_raw(body[..], bn, "]}}");
     }
-    return bn > 0 && req.system.count > 0 && req.schema.count > 0 && cw_go(s, CF_PLAN, "/api/chat/complete", cast(string) body[0..<bn]);
+    return bn > 0 && req.system.count > 0 && req.schema.count > 0 && cw_go(s, CF_PLAN, "/api/chat/complete", cast(string) body[0..<bn]); // mutant: equivalent (bn>=0 and bn>1: gw_chat_body returns -1 or complete JSON; schema count >1: wp_schema emits its fixed complete schema or an empty view, never one byte)
   }
   // our own tools (chat-hosted.coax): offered on every ask but a message's last, which answers from what they said
   s[0].hmodel = model;
-  answers: [CH_RESULTS + 256] u8;
-  if s[0].hres_n > 0 {
-    an := cw_put(answers[..], 0, CH_ANSWERS); an = cw_put(answers[..], an, cast(string) s[0].hres[0..<s[0].hres_n]);
-    if s[0].hstep >= CH_STEPS - 1 { an = cw_put(answers[..], an, CH_LAST); }
-    messages[n] = GwMessage.{role = "user", text = cast(string) answers[0..<an]}; n += 1;
+  if !s[0].hhistory[0].ready {
+    reserve:=(CH_STEPS-1)*(CH_CALLS+1);start:=ifx n>GW_TOOL_MESSAGES-reserve then n-(GW_TOOL_MESSAGES-reserve) else 0;
+    if !gwt_conversation_begin(s[0].hhistory[..],s[0].hpool[..],CH_STEPS-1,messages[start..<n]) {return false;}
   }
+  if s[0].hhistory[0].failed || s[0].hhistory[0].remaining!=0 {return false;}
   projects: [SS_WORLDS_MAX * 72] u8; pn := 0;
   for k: 0..<s[0].projects_n {
     if pn > 0 { pn = cw_put(projects[..], pn, ", "); }
     pn = cw_put(projects[..], pn, cast(string) s[0].projects[k].name[0..<s[0].projects[k].name_n]);
   }
   system: [CH_SYSTEM] u8; tools: [CH_TOOLS] u8;
-  req := GwRequest.{model = ids[model], system = ch_system(cast(string) projects[0..<pn], names[model], ids[model], system[..]), messages = messages[0..<n], effort = "low", stream = true,
+  instructions:=ch_system(cast(string)projects[0..<pn],names[model],ids[model],system[..]);
+  if s[0].hstep>=CH_STEPS-1 {sn:=json_raw(system[..],instructions.count,"\n");sn=json_raw(system[..],sn,CH_LAST);if sn<0 {return false;}instructions=cast(string)system[0..<sn];} // mutant: equivalent (sn<=0 and sn<1: a successful append includes the fixed nonempty CH_LAST text, so its length cannot be zero)
+  req := GwRequest.{model = ids[model], system = instructions, messages = gwt_conversation_messages(s[0].hhistory[..]), effort = "low", stream = true,
     tools = ifx s[0].hstep < CH_STEPS - 1 then ch_tools(tools[..]) else ""};
   body: [CW_REQUEST] u8;
   bn := gw_chat_body(req, 0, body[..]);
-  return bn > 0 && cw_go(s, CF_COMPLETE, "/api/chat/complete", cast(string) body[0..<bn]);
+  gwt_step_begin(s[0].hstep_state[..]);s[0].htext_at=ifx s[0].live && s[0].count>0 && s[0].who[s[0].count-1]==CW_AGENT then s[0].len[s[0].count-1] else 0;
+  return bn > 0 && cw_go(s, CF_COMPLETE, "/api/chat/complete", cast(string) body[0..<bn]); // mutant: equivalent (>=0: gw_chat_body returns -1 or complete nonempty JSON, never zero)
 }
 // A Claude message: a turn of the hosted agent, in this visit's conversation there (a new one the first time).
 cw_turn_send :: (s: [] ChatWeb, model: int, text: string) -> bool {
@@ -1078,7 +1081,7 @@ cw_send :: (s: [] ChatWeb) {
     cw_goal_note(s, said);
     // an agent on this machine: the message shows at once, and the session's log brings the rest
     cw_add(s, cast(string) s[0].draft[lo..<hi], CW_YOU, 0);
-    if !cw_local_send(s, model, cw_text(s, s[0].count - 1)) { s[0].count -= 1; s[0].total -= 1; s[0].pool_n = s[0].at[s[0].count]; return; }
+    if !cw_local_send(s, model, cw_text(s, s[0].count - 1)) { s[0].count -= 1; s[0].total -= 1; s[0].pool_n = s[0].at[s[0].count]; return; } // mutant: equivalent (rollback body: cw_send has already required CF_NONE, and cw_local_send changes no flight before cw_go; cw_go's only refusal is a pre-existing flight, so this defensive arm cannot run)
     s[0].echo = true; s[0].lrun = true; s[0].error_n = 0; s[0].sends += 1;
     s[0].csel_n = 0; s[0].watching = false;   // from here the session Coder runs is what is shown
     s[0].draft_n = 0; s[0].view = CW_CHAT; s[0].menu = false; s[0].amenu = false;
@@ -1087,8 +1090,12 @@ cw_send :: (s: [] ChatWeb) {
   }
   cw_add(s, cast(string) s[0].draft[lo..<hi], CW_YOU, CW_ANSWER);
   s[0].nopened = 0;   // a new message: a hosted turn may open attachments again
-  s[0].hstep = 0; s[0].hn = 0; s[0].hres_n = 0; s[0].tools_n = 0; s[0].ntools = 0;   // and a Gemini message starts with no tool calls
+  s[0].hstep = 0; s[0].hn = 0; s[0].hhistory[0]=GwToolConversation.{};s[0].tools_n = 0; s[0].ntools = 0; // mutant: equivalent (first tools_n/ntools clear to one: a successful send clears them again before publication; a refused send has no live reply and cannot present or consume this transient tool buffer)
   sent := ifx cw_claude_model(model) || model == CW_GEMINI_AGENT then cw_turn_send(s, model, cw_text(s, s[0].count - 1)) else cw_complete(s, model);
+  if !sent {
+    s[0].count-=1;s[0].total-=1;s[0].pool_n=s[0].at[s[0].count];
+    cw_say(s,"The message couldn't be prepared. Shorten it or start a new chat.");return;
+  }
   cw_add(s, "", CW_AGENT, CW_ANSWER);
   names := CW_MODEL_NAMES;
   k := s[0].count - 1;
@@ -1107,6 +1114,7 @@ cw_stop :: (s: [] ChatWeb) {
   if s[0].flight == CF_COMPLETE || s[0].flight == CF_PLAN || s[0].flight == CF_HCALL {
     s[0].stop = true; s[0].ask = false; s[0].flight = CF_NONE;
     s[0].hn = 0;
+    _=gwt_step_fail(s[0].hstep_state[..]);s[0].hhistory[0].failed=true;
     cw_tools_above(s);   // the tool calls it made so far stay, above what came of the answer
     s[0].live = false;
     return;
@@ -1125,14 +1133,15 @@ cw_event :: (s: [] ChatWeb, lines: string) {
     while e < lines.count && lines[e] != '\n' { e += 1; }
     ev := gw_sse_line(sse[..], cast(string) lines[at..<e]);
     if ev.ready {
+      if ev.truncated {_=gwt_step_fail(s[0].hstep_state[..]);cw_say(s,"A model event exceeded its buffer.");return;}
       scratch: [CW_EVENT] u8;
       ar: [1] ClArena; ar[0].buf = scratch[..];
-      out: [8] GwEvent;
+      out: [16] GwEvent;
       n := gw_chat_chunk(s[0].ps[..], ar[..], ev.data, out[..]);
       for k: 0..<n {
+        _=gwt_step_feed(s[0].hstep_state[..],out[k]);
         if out[k].kind == GW_EV_TEXT { cw_more(s, out[k].text); }
-        else if out[k].kind == GW_EV_TOOL { s[0].hn = ch_gather(s[0].hcalls[..], s[0].hn, out[k].status, out[k].text, out[k].reason); }
-        else if out[k].kind == GW_EV_REFUSED { cw_say(s, ifx out[k].reason.count > 0 then out[k].reason else "The model stopped before it finished."); }
+        else if out[k].kind == GW_EV_REFUSED { cw_say(s, ifx out[k].reason.count > 0 then out[k].reason else "The model stopped before it finished."); } // mutant: equivalent (gw_chat_chunk gives every refusal a nonempty reason, including its upstream-error fallback; >=0 selects the same string)
       }
     }
     at = e + 1;
@@ -1147,11 +1156,10 @@ cw_piece :: (s: [] ChatWeb, status: int, bytes: string) {
     return;
   }
   for c: bytes {
-    if c == '\r' { continue; }
-    if s[0].event_n >= CW_EVENT { s[0].event_n = 0; s[0].cut = true; }   // an event too long to read is skipped
+    if s[0].event_n >= CW_EVENT { s[0].event_n = 0; s[0].cut = true;_=gwt_step_fail(s[0].hstep_state[..]);}
     s[0].event[s[0].event_n] = c; s[0].event_n += 1;
     n := s[0].event_n;
-    if n >= 2 && s[0].event[n - 1] == '\n' && s[0].event[n - 2] == '\n' {
+    if n >= 2 && s[0].event[n - 1] == '\n' && (s[0].event[n - 2] == '\n' || (n>=3 && s[0].event[n-2]=='\r' && s[0].event[n-3]=='\n')) {
       cw_event(s, cast(string) s[0].event[0..<n - 1]);
       s[0].event_n = 0;
     }
@@ -1228,15 +1236,16 @@ cw_tools_above :: (s: [] ChatWeb) {
 // A Gemini message's tool calls, once the model's ask that made them has ended: each is read against its row and
 // shown as a call while it runs; one that can't run says why, to the model too. Then the first request goes.
 cw_hosted_calls :: (s: [] ChatWeb) {
-  num: [24] u8; idb: [32] u8;
+  said:="";if s[0].count>0 {text:=cw_text(s,s[0].count-1);if s[0].htext_at<=text.count {said=cast(string)text[s[0].htext_at..<text.count];}}
+  if !gwt_conversation_calls(s[0].hhistory[..],s[0].hstep_state[..],said) {cw_say(s,"The tool conversation reached its limit or reused a call ID.");s[0].live=false;return;}
+  s[0].hn=s[0].hstep_state[0].n;
   for i: 0..<s[0].hn {
     c := s[0].hcalls[i..<i + 1];
-    ok := ch_read(c);
-    id := tr_cat(idb[..], tr_join(num[..], "h", s[0].hstep * CH_CALLS + i), "");
-    n := cq_write(s[0].tools[..], s[0].tools_n, CqCall.{state = ifx ok then KW_RUN else KW_FAILED, t0 = cw_ms(s), ms = ifx ok then -1 else 0, name = ch_name(c), id = id,
-      input = ch_args(c), output = ifx ok then "" else c[0].why});
+    call:=gwt_step_call(s[0].hstep_state[..],i);ok:=ch_call(c,call);if ok {ok=ch_read(c);}
+    n := cq_write(s[0].tools[..], s[0].tools_n, CqCall.{state = ifx ok then KW_RUN else KW_FAILED, t0 = cw_ms(s), ms = ifx ok then -1 else 0, name = call.name, id = call.call_id,
+      input = call.input_json, output = ifx ok then "" else c[0].why});
     if n > 0 { s[0].tools_n = n; s[0].ntools += 1; }
-    if !ok { s[0].hres_n = ch_refused(s[0].hres[..], s[0].hres_n, c); }
+    if !ok {if !gwt_conversation_result(s[0].hhistory[..],GwToolResult.{call_id=call.call_id,output=c[0].why,is_error=true}) {s[0].hhistory[0].failed=true;}}
   }
   s[0].hat = 0; s[0].hpart = 0; s[0].hout_n = 0; s[0].hfailed = false;
   cw_hosted_next(s);
@@ -1248,13 +1257,13 @@ cw_hosted_next :: (s: [] ChatWeb) {
     c := s[0].hcalls[s[0].hat..<s[0].hat + 1];
     p := ch_path(c, s[0].hpart, path[..]);
     if p.count > 0 {
-      if !cw_go(s, CF_HCALL, p, "") { cw_say(s, "The tool call couldn't be sent. Send your message again."); s[0].live = false; }
+      if !cw_go(s, CF_HCALL, p, "") { cw_say(s, "The tool call couldn't be sent. Send your message again."); s[0].live = false; } // mutant: equivalent (the refusal body is unreachable: cw_end clears flight before the synchronous hosted-call/next chain, and no earlier branch starts another request)
       return;
     }
     if s[0].hpart > 0 { cw_hosted_answered(s); }   // its last request has answered
     s[0].hat += 1; s[0].hpart = 0; s[0].hout_n = 0; s[0].hfailed = false;
   }
-  s[0].hn = 0; s[0].hstep += 1;
+  s[0].hn = 0; s[0].hstep = s[0].hhistory[0].steps;
   s[0].working_n = 0;
   fresh: GwParse; s[0].ps[0] = fresh; s[0].event_n = 0; s[0].cut = false;
   if !cw_complete(s, s[0].hmodel) { cw_say(s, "What the tools answered is more than one message can carry. Ask about less at once."); cw_tools_above(s); s[0].live = false; }
@@ -1262,12 +1271,13 @@ cw_hosted_next :: (s: [] ChatWeb) {
 // A call's every request has answered: its call shows what came back, and a world it read brings that world's card.
 cw_hosted_answered :: (s: [] ChatWeb) {
   c := s[0].hcalls[s[0].hat..<s[0].hat + 1];
-  num: [24] u8; idb: [32] u8; nb: [128] u8;
+  nb: [128] u8;
   note := ch_note(c, nb[..]);
-  if note.count > 0 { s[0].hres_n = cw_put(s[0].hres[..], s[0].hres_n, note); s[0].hres_n = cw_put(s[0].hres[..], s[0].hres_n, "\n\n"); s[0].hout_n = cw_put(s[0].hout[..], s[0].hout_n, note); }
-  id := tr_cat(idb[..], tr_join(num[..], "h", (s[0].hstep * CH_CALLS) + s[0].hat), "");
+    if note.count > 0 {k:=json_raw(s[0].hout[..],s[0].hout_n,note);if k<0 {s[0].hfailed=true;}else {s[0].hout_n=k;}} // mutant: equivalent (k<1: append returns -1 or a complete nonempty command-table note longer than one byte)
+  id := ch_id(c);
+  if !gwt_conversation_result(s[0].hhistory[..],GwToolResult.{call_id=id,output=cast(string)s[0].hout[0..<s[0].hout_n],is_error=s[0].hfailed}) {s[0].hhistory[0].failed=true;}
   n := cq_answer(cast(string) s[0].tools[0..<s[0].tools_n], s[0].wbuf[..], id, cast(string) s[0].hout[0..<s[0].hout_n], s[0].hfailed, false, cw_ms(s));
-  if n > 0 && n <= CW_TOOLS { for i: 0..<n { s[0].tools[i] = s[0].wbuf[i]; } s[0].tools_n = n; }
+  if n > 0 && n <= CW_TOOLS { for i: 0..<n { s[0].tools[i] = s[0].wbuf[i]; } s[0].tools_n = n; } // mutant: equivalent (>=0, <CW_TOOLS and CW_TOOLS+1: cq_answer returns -1 or complete nonempty records strictly shorter than its CW_TOOLS output buffer)
   if !s[0].hfailed && ch_world(c) && s[0].wwire_n == 0 { s[0].card_due_n = cw_put(s[0].card_due[..], 0, ch_slug(c)); }
 }
 // A hosted turn's typed answer, in the editor: talk is the answer; an edit's steps show as the tools they are,
@@ -1364,9 +1374,11 @@ cw_end :: (s: [] ChatWeb, status: int) {
     else { s[0].note_n = cw_why(s, status, s[0].note[..]); }
   } else if kind == CF_COMPLETE {
     if !s[0].live { return; }
-    if s[0].event_n > 0 { cw_event(s, cast(string) s[0].event[0..<s[0].event_n]); s[0].event_n = 0; }
-    // the model called our tools: they run, and it is asked again with what they answered
-    if status == 200 && s[0].hn > 0 && s[0].error_n == 0 { cw_hosted_calls(s); return; }
+    complete:=status==200 && s[0].event_n==0 && !s[0].cut && s[0].error_n==0;
+    if complete && !s[0].hstep_state[0].done {last:[1]GwEvent;k:=gw_chat_end(s[0].ps[..],last[..]);if k>0 {_=gwt_step_feed(s[0].hstep_state[..],last[0]);}}
+    sealed:=gwt_step_end(s[0].hstep_state[..],complete);s[0].event_n=0;
+    if sealed && s[0].hstep_state[0].n>0 {cw_hosted_calls(s);return;}
+    if !sealed && status==200 && s[0].error_n==0 {cw_say(s,"The model response did not complete; no tool was started.");}
     s[0].hn = 0;
     cw_tools_above(s);
     s[0].live = false;
@@ -1379,9 +1391,8 @@ cw_end :: (s: [] ChatWeb, status: int) {
     // one request of a tool call answered: onto what the model is sent, and onto the call's own answer
     c := s[0].hcalls[s[0].hat..<s[0].hat + 1];
     path: [CH_PATH] u8;
-    s[0].hres_n = ch_result(s[0].hres[..], s[0].hres_n, c, ch_path(c, s[0].hpart, path[..]), status, body);
-    if s[0].hout_n > 0 { s[0].hout_n = cw_put(s[0].hout[..], s[0].hout_n, "\n"); }
-    s[0].hout_n = cw_put(s[0].hout[..], s[0].hout_n, ifx body.count > CH_RESULT then cast(string) body[0..<CH_RESULT] else body);
+    written:=ch_result(s[0].hout[..],s[0].hout_n,c,ch_path(c,s[0].hpart,path[..]),status,body);
+    if written<0 {s[0].hfailed=true;s[0].hout_n=cw_put(s[0].hout[..],0,"Tool output exceeded its result buffer.");}else {s[0].hout_n=written;} // mutant: equivalent (negative-result branch unreachable in the admitted table: at most two 4,096-byte bodies plus headers under 832 bytes each, notices and note fit CH_OUTPUT=12,288; successful lengths exceed one)
     if status != 200 { s[0].hfailed = true; }
     s[0].hpart += 1;
     cw_hosted_next(s);
@@ -1448,7 +1459,7 @@ cw_end :: (s: [] ChatWeb, status: int) {
     s[0].watching = again; s[0].watch_at = s[0].time;
     if !again { s[0].model = CW_HOSTED; s[0].csize = 0; }   // a message here goes on in Claude Code
   }
-  if s[0].send_due && (kind == CF_LIST || kind == CF_LOG || kind == CF_CLAUDE || kind == CF_IMPORT || kind == CF_ACCOUNT || kind == CF_AGENTS) { cw_send(s); } else if kind == CF_TURN {
+  if s[0].send_due && (kind == CF_LIST || kind == CF_LOG || kind == CF_CLAUDE || kind == CF_IMPORT || kind == CF_ACCOUNT || kind == CF_AGENTS || kind == CF_WHO || kind == CF_WORLDS || kind == CF_PROJECTS) { cw_send(s); } else if kind == CF_TURN {
     if status == 200 { cw_turn_read(s, body); }
     else if status != 0 { cw_fail(s, status); s[0].turn = 0; }   // with no answer at all, it is read again
   }
@@ -2080,7 +2091,7 @@ cw_test_labels :: (s: [] ChatWeb, k: int) -> string {
   #assert !s[0].live && cw_test_has(cast(string) s[0].error[0..<s[0].error_n], "still answering");
 }
 
-#test "the oldest messages go when there are too many, and the page says how many are not shown" {
+#test "the oldest messages go when there are too many, and the page says how many are not shown" #steps 200000000 #traversal 536870912 {
   h: [1] CwTest; s := h[0].s[..];
   cw_test_open(s, "{\"claude\":null}");
   for k: 0..<CW_MESSAGES {
@@ -2111,7 +2122,7 @@ cw_test_local :: (s: [] ChatWeb, sessions: string) {
 CW_T_CLAUDE :: "{\"live\":[{\"id\":\"7fe255eb-ec54-4f77-b7b3-64252ee8d7ff\",\"busy\":true},{\"id\":\"ffffffff-0000-4f77-b7b3-64252ee8d7ff\",\"busy\":false}],\"sessions\":[{\"session_id\":\"7fe255eb-ec54-4f77-b7b3-64252ee8d7ff\",\"path\":\"/p\",\"title\":\"Show notes\"},{\"session_id\":\"0bf9aebd-0000-4f77-b7b3-64252ee8d7ff\",\"title\":\"Everglade\"}]}";
 CW_T_SESSIONS :: "[{\"id\":\"20261112-042601-123\",\"engine\":\"claude\",\"state\":\"running\",\"turns\":1,\"steps\":4,\"started_us\":1,\"cwd\":\"/w\",\"task\":\"fix the build\\nand more\"},{\"id\":\"20261111-010101-001\",\"engine\":\"microcoder\",\"state\":\"finished\",\"turns\":2,\"steps\":9,\"started_us\":1,\"cwd\":\"/w\",\"task\":\"add a test\"}]";
 
-#test "where Coder answers, its sessions are listed beside the chat and its agents are in the menu; elsewhere neither shows" {
+#test "where Coder answers, its sessions are listed beside the chat and its agents are in the menu; elsewhere neither shows" #steps 200000000 #traversal 536870912 {
   ts: [1] CwTest; s := ts[0].s[..];
   cw_test_open(s, "{\"claude\":null}");
   for i: 0..<4 { b := coaxial_chatweb_frame(s, 0.1, true); }
@@ -2161,7 +2172,7 @@ CW_T_AGENTS :: "{\"agents\":[{\"engine\":\"claude\",\"ready\":true,\"why\":\"\"}
 // A Claude Code turn that sets twelve foe plans through our realm tools (#13481), as Coder's log has it: the
 // first piece ends with the last plan still running, the second answers it, replies and ends.
 
-#test "twelve foe plans in a row are one group named from the command table; a refusal says why; the finished turn is one line" {
+#test "twelve foe plans in a row are one group named from the command table; a refusal says why; the finished turn is one line" #steps 200000000 #traversal 536870912 {
   plans := "{\"kind\":\"session\",\"id\":\"x\",\"engine\":\"claude\"}\n{\"kind\":\"user\",\"text\":\"give the foes in splice their plans\"}\n{\"kind\":\"tool\",\"label\":\"ToolSearch\",\"tool\":\"tool\",\"name\":\"ToolSearch\",\"id\":\"t0\",\"input\":{\"query\":\"select:mcp__openagents__realm_world_plan\"}}\n{\"kind\":\"result\",\"text\":\"Found 1 tool\",\"error\":false,\"id\":\"t0\"}\n{\"kind\":\"tool\",\"label\":\"mcp__openagents__realm_world\",\"tool\":\"mcp\",\"name\":\"mcp__openagents__realm_world\",\"id\":\"t1\",\"input\":{\"slug\":\"splice\"}}\n{\"kind\":\"result\",\"text\":\"{\\\"ok\\\":true,\\\"slug\\\":\\\"splice\\\",\\\"things\\\":14}\",\"error\":false,\"id\":\"t1\"}\n{\"kind\":\"tool\",\"label\":\"mcp__openagents__realm_world_foes\",\"tool\":\"mcp\",\"name\":\"mcp__openagents__realm_world_foes\",\"id\":\"t2\",\"input\":{\"slug\":\"splice\"}}\n{\"kind\":\"result\",\"text\":\"{\\\"ok\\\":true,\\\"foes\\\":[1,2,3]}\",\"error\":false,\"id\":\"t2\"}\n{\"kind\":\"tool\",\"label\":\"mcp__openagents__realm_world_plan\",\"tool\":\"mcp\",\"name\":\"mcp__openagents__realm_world_plan\",\"id\":\"t3\",\"input\":{\"slug\":\"splice\",\"foe\":1,\"daytime\":\"dawn\",\"act\":\"patrol\"}}\n{\"kind\":\"result\",\"text\":\"{\\\"ok\\\":true,\\\"result\\\":{\\\"schema\\\":\\\"realm.result.v1\\\",\\\"state\\\":\\\"done\\\",\\\"verb\\\":\\\"world-plan\\\",\\\"realm\\\":\\\"splice\\\",\\\"effect\\\":\\\"write\\\",\\\"rev\\\":5,\\\"build\\\":[1,1,2,1],\\\"page\\\":\\\"/worlds/splice\\\",\\\"key\\\":\\\"k-1\\\"}}\",\"error\":false,\"id\":\"t3\"}\n{\"kind\":\"tool\",\"label\":\"mcp__openagents__realm_world_plan\",\"tool\":\"mcp\",\"name\":\"mcp__openagents__realm_world_plan\",\"id\":\"t4\",\"input\":{\"slug\":\"splice\",\"foe\":1,\"daytime\":\"day\",\"act\":\"guard\"}}\n{\"kind\":\"result\",\"text\":\"{\\\"ok\\\":true,\\\"result\\\":{\\\"schema\\\":\\\"realm.result.v1\\\",\\\"state\\\":\\\"done\\\",\\\"verb\\\":\\\"world-plan\\\",\\\"realm\\\":\\\"splice\\\",\\\"effect\\\":\\\"write\\\",\\\"rev\\\":5,\\\"build\\\":[1,1,2,1],\\\"page\\\":\\\"/worlds/splice\\\",\\\"key\\\":\\\"k-1\\\"}}\",\"error\":false,\"id\":\"t4\"}\n{\"kind\":\"tool\",\"label\":\"mcp__openagents__realm_world_plan\",\"tool\":\"mcp\",\"name\":\"mcp__openagents__realm_world_plan\",\"id\":\"t5\",\"input\":{\"slug\":\"splice\",\"foe\":1,\"daytime\":\"dusk\",\"act\":\"rest\"}}\n{\"kind\":\"result\",\"text\":\"{\\\"ok\\\":true,\\\"result\\\":{\\\"schema\\\":\\\"realm.result.v1\\\",\\\"state\\\":\\\"done\\\",\\\"verb\\\":\\\"world-plan\\\",\\\"realm\\\":\\\"splice\\\",\\\"effect\\\":\\\"write\\\",\\\"rev\\\":5,\\\"build\\\":[1,1,2,1],\\\"page\\\":\\\"/worlds/splice\\\",\\\"key\\\":\\\"k-1\\\"}}\",\"error\":false,\"id\":\"t5\"}\n{\"kind\":\"tool\",\"label\":\"mcp__openagents__realm_world_plan\",\"tool\":\"mcp\",\"name\":\"mcp__openagents__realm_world_plan\",\"id\":\"t6\",\"input\":{\"slug\":\"splice\",\"foe\":1,\"daytime\":\"night\",\"act\":\"hunt\"}}\n{\"kind\":\"result\",\"text\":\"{\\\"ok\\\":true,\\\"result\\\":{\\\"schema\\\":\\\"realm.result.v1\\\",\\\"state\\\":\\\"done\\\",\\\"verb\\\":\\\"world-plan\\\",\\\"realm\\\":\\\"splice\\\",\\\"effect\\\":\\\"write\\\",\\\"rev\\\":5,\\\"build\\\":[1,1,2,1],\\\"page\\\":\\\"/worlds/splice\\\",\\\"key\\\":\\\"k-1\\\"}}\",\"error\":false,\"id\":\"t6\"}\n{\"kind\":\"tool\",\"label\":\"mcp__openagents__realm_world_plan\",\"tool\":\"mcp\",\"name\":\"mcp__openagents__realm_world_plan\",\"id\":\"t7\",\"input\":{\"slug\":\"splice\",\"foe\":2,\"daytime\":\"dawn\",\"act\":\"patrol\"}}\n{\"kind\":\"result\",\"text\":\"{\\\"ok\\\":true,\\\"result\\\":{\\\"schema\\\":\\\"realm.result.v1\\\",\\\"state\\\":\\\"done\\\",\\\"verb\\\":\\\"world-plan\\\",\\\"realm\\\":\\\"splice\\\",\\\"effect\\\":\\\"write\\\",\\\"rev\\\":5,\\\"build\\\":[1,1,2,1],\\\"page\\\":\\\"/worlds/splice\\\",\\\"key\\\":\\\"k-1\\\"}}\",\"error\":false,\"id\":\"t7\"}\n{\"kind\":\"tool\",\"label\":\"mcp__openagents__realm_world_plan\",\"tool\":\"mcp\",\"name\":\"mcp__openagents__realm_world_plan\",\"id\":\"t8\",\"input\":{\"slug\":\"splice\",\"foe\":2,\"daytime\":\"day\",\"act\":\"guard\"}}\n{\"kind\":\"result\",\"text\":\"{\\\"ok\\\":true,\\\"result\\\":{\\\"schema\\\":\\\"realm.result.v1\\\",\\\"state\\\":\\\"done\\\",\\\"verb\\\":\\\"world-plan\\\",\\\"realm\\\":\\\"splice\\\",\\\"effect\\\":\\\"write\\\",\\\"rev\\\":5,\\\"build\\\":[1,1,2,1],\\\"page\\\":\\\"/worlds/splice\\\",\\\"key\\\":\\\"k-1\\\"}}\",\"error\":false,\"id\":\"t8\"}\n{\"kind\":\"tool\",\"label\":\"mcp__openagents__realm_world_plan\",\"tool\":\"mcp\",\"name\":\"mcp__openagents__realm_world_plan\",\"id\":\"t9\",\"input\":{\"slug\":\"splice\",\"foe\":2,\"daytime\":\"dusk\",\"act\":\"rest\"}}\n{\"kind\":\"result\",\"text\":\"{\\\"ok\\\":false,\\\"result\\\":{\\\"schema\\\":\\\"realm.result.v1\\\",\\\"state\\\":\\\"refused\\\",\\\"verb\\\":\\\"world-plan\\\",\\\"realm\\\":\\\"splice\\\",\\\"effect\\\":\\\"write\\\",\\\"rev\\\":5,\\\"build\\\":[1,1,2,1],\\\"page\\\":\\\"/worlds/splice\\\",\\\"key\\\":\\\"k-1\\\",\\\"code\\\":\\\"realm-authoring.diagnostic.edit-refused.v1\\\",\\\"retry\\\":false,\\\"words\\\":\\\"foe 2 has no route for the dusk patrol\\\",\\\"edit\\\":1}}\",\"error\":true,\"id\":\"t9\"}\n{\"kind\":\"tool\",\"label\":\"mcp__openagents__realm_world_plan\",\"tool\":\"mcp\",\"name\":\"mcp__openagents__realm_world_plan\",\"id\":\"t10\",\"input\":{\"slug\":\"splice\",\"foe\":2,\"daytime\":\"night\",\"act\":\"hunt\"}}\n{\"kind\":\"result\",\"text\":\"{\\\"ok\\\":true,\\\"result\\\":{\\\"schema\\\":\\\"realm.result.v1\\\",\\\"state\\\":\\\"done\\\",\\\"verb\\\":\\\"world-plan\\\",\\\"realm\\\":\\\"splice\\\",\\\"effect\\\":\\\"write\\\",\\\"rev\\\":5,\\\"build\\\":[1,1,2,1],\\\"page\\\":\\\"/worlds/splice\\\",\\\"key\\\":\\\"k-1\\\"}}\",\"error\":false,\"id\":\"t10\"}\n{\"kind\":\"tool\",\"label\":\"mcp__openagents__realm_world_plan\",\"tool\":\"mcp\",\"name\":\"mcp__openagents__realm_world_plan\",\"id\":\"t11\",\"input\":{\"slug\":\"splice\",\"foe\":3,\"daytime\":\"dawn\",\"act\":\"patrol\"}}\n{\"kind\":\"result\",\"text\":\"{\\\"ok\\\":true,\\\"result\\\":{\\\"schema\\\":\\\"realm.result.v1\\\",\\\"state\\\":\\\"done\\\",\\\"verb\\\":\\\"world-plan\\\",\\\"realm\\\":\\\"splice\\\",\\\"effect\\\":\\\"write\\\",\\\"rev\\\":5,\\\"build\\\":[1,1,2,1],\\\"page\\\":\\\"/worlds/splice\\\",\\\"key\\\":\\\"k-1\\\"}}\",\"error\":false,\"id\":\"t11\"}\n{\"kind\":\"tool\",\"label\":\"mcp__openagents__realm_world_plan\",\"tool\":\"mcp\",\"name\":\"mcp__openagents__realm_world_plan\",\"id\":\"t12\",\"input\":{\"slug\":\"splice\",\"foe\":3,\"daytime\":\"day\",\"act\":\"guard\"}}\n{\"kind\":\"result\",\"text\":\"{\\\"ok\\\":true,\\\"result\\\":{\\\"schema\\\":\\\"realm.result.v1\\\",\\\"state\\\":\\\"done\\\",\\\"verb\\\":\\\"world-plan\\\",\\\"realm\\\":\\\"splice\\\",\\\"effect\\\":\\\"write\\\",\\\"rev\\\":5,\\\"build\\\":[1,1,2,1],\\\"page\\\":\\\"/worlds/splice\\\",\\\"key\\\":\\\"k-1\\\"}}\",\"error\":false,\"id\":\"t12\"}\n{\"kind\":\"tool\",\"label\":\"mcp__openagents__realm_world_plan\",\"tool\":\"mcp\",\"name\":\"mcp__openagents__realm_world_plan\",\"id\":\"t13\",\"input\":{\"slug\":\"splice\",\"foe\":3,\"daytime\":\"dusk\",\"act\":\"rest\"}}\n{\"kind\":\"result\",\"text\":\"{\\\"ok\\\":true,\\\"result\\\":{\\\"schema\\\":\\\"realm.result.v1\\\",\\\"state\\\":\\\"done\\\",\\\"verb\\\":\\\"world-plan\\\",\\\"realm\\\":\\\"splice\\\",\\\"effect\\\":\\\"write\\\",\\\"rev\\\":5,\\\"build\\\":[1,1,2,1],\\\"page\\\":\\\"/worlds/splice\\\",\\\"key\\\":\\\"k-1\\\"}}\",\"error\":false,\"id\":\"t13\"}\n{\"kind\":\"tool\",\"label\":\"mcp__openagents__realm_world_plan\",\"tool\":\"mcp\",\"name\":\"mcp__openagents__realm_world_plan\",\"id\":\"t14\",\"input\":{\"slug\":\"splice\",\"foe\":3,\"daytime\":\"night\",\"act\":\"hunt\"}}\n";
   plans_end := "{\"kind\":\"result\",\"text\":\"{\\\"ok\\\":true,\\\"result\\\":{\\\"schema\\\":\\\"realm.result.v1\\\",\\\"state\\\":\\\"done\\\",\\\"verb\\\":\\\"world-plan\\\",\\\"realm\\\":\\\"splice\\\",\\\"effect\\\":\\\"write\\\",\\\"rev\\\":5,\\\"build\\\":[1,1,2,1],\\\"page\\\":\\\"/worlds/splice\\\",\\\"key\\\":\\\"k-1\\\"}}\",\"error\":false,\"id\":\"t14\"}\n{\"kind\":\"reply\",\"text\":\"Every foe in splice has a plan for each part of the day. Foe 2's dusk patrol was refused: it has no route yet.\"}\n{\"kind\":\"end\",\"ending\":\"finished\",\"ms\":5,\"steps\":15}\n";
   ts: [1] CwTest; s := ts[0].s[..]; piece: [12288] u8; num: [24] u8;
@@ -2213,14 +2224,15 @@ CW_T_AGENTS :: "{\"agents\":[{\"engine\":\"claude\",\"ready\":true,\"why\":\"\"}
   #assert tr_attr_of(t, tr_find(t, "m.1.w.grp"), AT_STATE) == "refused" && tr_find(t, "m.1.g.3") < 0 && tr_find(t, "m.2.md") > 0;
 }
 
-#test "a message to an agent on this machine starts a Coder session, and its log fills the transcript" {
+#test "a message to an agent on this machine starts a Coder session, and its log fills the transcript" #steps 200000000 #traversal 536870912 {
   ts: [1] CwTest; s := ts[0].s[..];
   cw_test_local(s, CW_T_SESSIONS);
   s[0].model = 7;
+  s[0].watching=true;s[0].csel_n=1;s[0].menu=true;s[0].amenu=true;s[0].error_n=1;
   cw_test_type(s, "composer", "fix it");
   cw_test_enter(s, "composer");
   #assert coaxial_chatweb_asking(s) && cw_test_door(s) == "/local/run" && cw_test_body(s) == "{\"task\":\"fix it\",\"engine\":\"claude\",\"model\":\"claude-haiku-5-5\"}";
-  #assert s[0].count == 1 && s[0].lrun && s[0].echo && !s[0].live;
+  #assert s[0].count == 1 && s[0].lrun && s[0].echo && !s[0].live && s[0].sends==1 && !s[0].watching && s[0].csel_n==0 && !s[0].menu && !s[0].amenu && s[0].error_n==0;
   cw_test_answer(s, 200, "20261112-050000-001\n");
   #assert cw_sel(s) == "20261112-050000-001" && s[0].log_next == 0;
   b := coaxial_chatweb_frame(s, 0.016, true);
@@ -2234,7 +2246,7 @@ CW_T_AGENTS :: "{\"agents\":[{\"engine\":\"claude\",\"ready\":true,\"why\":\"\"}
   #assert coaxial_chatweb_asking(s) && cw_test_door(s) == "/local/log?id=20261112-050000-001&after=0";
   cw_test_answer(s, 200, "{\"next\":300,\"size\":300}\n{\"kind\":\"session\",\"id\":\"x\",\"engine\":\"claude\"}\n{\"kind\":\"user\",\"text\":\"fix it\"}\n{\"kind\":\"tool\",\"label\":\"Bash(ls)\"}\n{\"kind\":\"result\",\"text\":\"a\"}\n{\"kind\":\"tool\",\"label\":\"Read(a.md)\\nmore\"}\n{\"kind\":\"diff\",\"path\":\"a.md\",\"adds\":1,\"dels\":0}\n");
   // the person's message is not shown twice, and the tool calls are one run
-  #assert s[0].count == 2 && s[0].who[1] == CW_TOOL && cw_test_labels(s, 1) == "Bash(ls)\nRead(a.md)\nEdit a.md" && s[0].lrun && s[0].log_next == 300 && !s[0].echo;
+  #assert s[0].count == 2 && s[0].who[1] == CW_TOOL && cw_test_labels(s, 1) == "Bash(ls)\nRead(a.md)\nEdit a.md" && s[0].lrun && s[0].log_next == 300 && s[0].log_miss==0 && !s[0].echo;
   b = coaxial_chatweb_frame(s, 0.016, true);
   t := s[0].tree[..];
   // a call with no answer yet is running, and the line under the transcript names it
@@ -2354,7 +2366,7 @@ CW_T_AGENTS :: "{\"agents\":[{\"engine\":\"claude\",\"ready\":true,\"why\":\"\"}
   #assert tr_find(t, "s.8") >= 0 && tr_find(t, "s.9") < 0 && tr_find(t, "s.13") < 0;   // eight that ended: 0, 2..8
 }
 
-#test "a Claude Code conversation chosen beside the chat is opened as a Coder session, and a message goes on in it" {
+#test "a Claude Code conversation chosen beside the chat is opened as a Coder session, and a message goes on in it" #steps 200000000 #traversal 536870912 {
   ts: [1] CwTest; s := ts[0].s[..];
   cw_test_local(s, CW_T_SESSIONS);
   t := s[0].tree[..];
@@ -2561,14 +2573,15 @@ cw_test_planned :: (s: [] ChatWeb, content: string) {
 #test "in the editor a Gemini turn may open attachments first: it says what it opened and is asked again with them" {
   h: [1] CwTest; s := h[0].s[..];
   cw_test_open(s, "{\"claude\":null}");
-  cw_test_world(s, "world.turn.v1 splice dev 7 0\nk 1001 Cargo crate\na 00112233445566aa image 4032348 RaiderGarage.png\nan The raiders' garage\nat garage,raiders\ne 1 1001 350 -1200 90\n");
+  cw_test_world(s, "world.turn.v1 splice dev 7 0\nk 1001 Cargo crate\na 00112233445566aa image 4032348 RaiderGarage.png\nan The raiders' garage\nat garage,raiders\na 11223344556677bb image 20 Garden.png\ne 1 1001 350 -1200 90\n");
+  s[0].pmodel=2;
   cw_test_type(s, "composer", "what does the garage look like?");
   cw_test_enter(s, "composer");
-  #assert cw_test_has(cw_test_body(s), "a 00112233445566aa image 4032348 RaiderGarage.png") && !cw_test_has(cw_test_body(s), "\"attachments\"");
-  cw_test_planned(s, "{\"route\":\"open\",\"say\":\"\",\"open\":[\"00112233445566aa\"],\"steps\":[]}");
+  #assert s[0].pmodel==0 && json_valid(cw_test_body(s)) && cw_test_has(cw_test_body(s), "a 00112233445566aa image 4032348 RaiderGarage.png") && !cw_test_has(cw_test_body(s), "\"attachments\"");
+  cw_test_planned(s, "{\"route\":\"open\",\"say\":\"\",\"open\":[\"00112233445566aa\",\"11223344556677bb\"],\"steps\":[]}");
   body := cw_test_body(s);
-  #assert s[0].flight == CF_PLAN && s[0].live && s[0].nopened == 1 && s[0].who[1] == CW_TOOL && cw_test_labels(s, 1) == "Open RaiderGarage.png";
-  #assert cw_test_has(body, ",\"attachments\":{\"world\":\"splice\",\"ids\":[\"00112233445566aa\"]}}") && cw_test_has(body, "You opened these attachments, and they come with the last message: RaiderGarage.png.");
+  #assert s[0].flight == CF_PLAN && s[0].live && s[0].nopened == 2 && s[0].who[1] == CW_TOOL && cw_test_labels(s, 1) == "Open RaiderGarage.png\nOpen Garden.png";
+  #assert json_valid(body) && cw_test_has(body, ",\"attachments\":{\"world\":\"splice\",\"ids\":[\"00112233445566aa\",\"11223344556677bb\"]}}") && cw_test_has(body, "You opened these attachments, and they come with the last message: RaiderGarage.png, Garden.png.");
   cw_test_planned(s, "{\"route\":\"talk\",\"say\":\"A low hangar of rusted panels.\",\"open\":[],\"steps\":[]}");
   #assert !s[0].live && s[0].count == 3 && cw_text(s, 2) == "A low hangar of rusted panels.";
   // asked to open again instead of answering: said, and nothing more is asked
@@ -2614,7 +2627,7 @@ cw_test_planned :: (s: [] ChatWeb, content: string) {
   #assert s[0].count == count;
 }
 
-#test "a Gemini message has our tools: a call runs through the API's route as the person, shows as a call, and the model answers from what it said" {
+#test "a Gemini message has our tools: a call runs through the API's route as the person, shows as a call, and the model answers from what it said" #steps 80000000 {
   h: [1] CwTest; s := h[0].s[..];
   cw_test_open(s, "{\"claude\":null}");
   cw_test_type(s, "composer", "what worlds do I have?");
@@ -2625,7 +2638,7 @@ cw_test_planned :: (s: [] ChatWeb, content: string) {
   #assert cw_test_has(body, "- realm_list: your realms, and the worlds you may edit as the side lists them") && cw_test_has(body, "the side lists them: Coax.");
   #assert !cw_test_has(body, "can't use tools") && !cw_test_has(body, "realm_world_place");
   // the model calls realm_list and realm_world, in pieces, and a tool we don't have
-  cw_test_answer(s, 200, "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"name\":\"realm_list\",\"arguments\":\"{}\"}},{\"index\":1,\"function\":{\"name\":\"realm_world\",\"arguments\":\"{\\\"slug\\\":\"}}]}}]}\n\ndata: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":1,\"function\":{\"arguments\":\"\\\"splice\\\"}\"}},{\"index\":2,\"function\":{\"name\":\"realm_world_place\",\"arguments\":\"{}\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n");
+  cw_test_answer(s, 200, "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"list\",\"function\":{\"name\":\"realm_list\",\"arguments\":\"{}\"}},{\"index\":1,\"id\":\"world\",\"function\":{\"name\":\"realm_world\",\"arguments\":\"{\\\"slug\\\":\"}}]}}]}\n\ndata: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":1,\"function\":{\"arguments\":\"\\\"splice\\\"}\"}},{\"index\":2,\"id\":\"write\",\"function\":{\"name\":\"realm_world_place\",\"arguments\":\"{}\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n");
   // each runs through its row's route, a request at a time, with the page's login
   #assert s[0].live && s[0].flight == CF_HCALL && cw_test_door(s) == "/api/worlds" && cw_test_body(s) == "" && s[0].ntools == 3;
   n := coaxial_chatweb_frame(s, 0.016, true);
@@ -2641,27 +2654,31 @@ cw_test_planned :: (s: [] ChatWeb, content: string) {
   // then the model is asked again with what they answered, and the tool it doesn't have says why
   body = cw_test_body(s);
   #assert s[0].flight == CF_COMPLETE && s[0].hstep == 1 && cw_test_has(body, "\"tools\":[");
-  #assert cw_test_has(body, "What our tools answered") && cw_test_has(body, "realm_list {}: GET /api/worlds answered HTTP 200\\nworld splice Splice Bots\\nworld garden Garden\\n");
-  #assert cw_test_has(body, "realm_world {\\\"slug\\\":\\\"splice\\\"}: GET /api/worlds/splice/card answered HTTP 200") && cw_test_has(body, "realm_world_place {}: not run: we have no such tool here");
+  #assert !cw_test_has(body, "What our tools answered") && cw_test_has(body, "\"role\":\"assistant\",\"content\":\"\",\"tool_calls\":[") && cw_test_has(body, "\"id\":\"list\",\"type\":\"function\"");
+  #assert cw_test_has(body, "\"role\":\"tool\",\"tool_call_id\":\"list\"") && cw_test_has(body, "GET /api/worlds answered HTTP 200\\nworld splice Splice Bots\\nworld garden Garden\\n");
+  #assert cw_test_has(body, "GET /api/worlds/splice/card answered HTTP 200") && cw_test_has(body, "\"tool_call_id\":\"write\",\"content\":\"we have no such tool here\"");
   cw_test_answer(s, 200, "data: {\"choices\":[{\"delta\":{\"content\":\"You have **Splice Bots** and **Garden**.\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n");
   n = coaxial_chatweb_frame(s, 0.016, true);
   // the calls go above the answer as a run, the line under it counts them, and the world read brings its card
-  #assert !s[0].live && s[0].error_n == 0 && s[0].count == 3 && s[0].who[1] == CW_TOOL && cw_text(s, 2) == "You have **Splice Bots** and **Garden**.";
+  #assert !s[0].live && s[0].hn==0 && s[0].error_n == 0 && s[0].count == 3 && s[0].who[1] == CW_TOOL && cw_text(s, 2) == "You have **Splice Bots** and **Garden**.";
   #assert cw_test_labels(s, 1) == "List your realms\nRead the world splice\nPlace a thing of kind ? at ?, ?";
   calls: [CQ_MOST] CqCall; k := cq_calls(cw_text(s, 1), calls[..]);
-  #assert k == 3 && calls[0].state == KW_DONE && calls[0].output == "world splice Splice Bots\nworld garden Garden\n\n{\"realms\":[]}" && calls[2].state == KW_FAILED;
+  #assert k == 3 && calls[0].id == "list" && calls[0].state == KW_DONE && cw_test_has(calls[0].output, "GET /api/worlds answered HTTP 200") && cw_test_has(calls[0].output, "world garden Garden") && calls[2].id == "write" && calls[2].state == KW_FAILED;
   #assert tr_text_of(t, tr_find(t, "m.2.meta")) == "Gemini 4 Hydrogen · 3 tools" && s[0].flight == CF_CARD && cw_test_door(s) == "/api/worlds/splice/card";
 }
 
-#test "a Gemini message's last ask has no tools, a refused route says so, and Stop keeps the calls made" {
+#test "a Gemini message's last ask has no tools, a refused route says so, and Stop keeps the calls made" #steps 80000000 {
   h: [1] CwTest; s := h[0].s[..];
   cw_test_open(s, "{\"claude\":null}");
   cw_test_type(s, "composer", "read the garden's document");
   cw_test_enter(s, "composer");
-  call := "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"name\":\"realm_doc\",\"arguments\":\"{\\\"slug\\\":\\\"garden\\\"}\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n";
+  call := "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"doc\",\"function\":{\"name\":\"realm_doc\",\"arguments\":\"{\\\"slug\\\":\\\"garden\\\"}\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n";
   for step: 0..<CH_STEPS - 1 {
     #assert cw_test_has(cw_test_body(s), "\"tools\":[");
-    cw_test_answer(s, 200, call);
+    raw:[1024]u8;id:[16]u8;k:=json_write_int(id[..],0,step);
+    at:=json_raw(raw[..],0,"data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":");at=json_write_string(raw[..],at,cast(string)id[0..<k]);
+    at=json_raw(raw[..],at,",\"function\":{\"name\":\"realm_doc\",\"arguments\":\"{\\\"slug\\\":\\\"garden\\\"}\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n");
+    #assert at>0;cw_test_answer(s,200,cast(string)raw[0..<at]);
     #assert cw_test_door(s) == "/api/playtest/realms/garden/doc";
     cw_test_answer(s, 404, "{\"error\":\"no such world\"}");
   }
@@ -2679,6 +2696,308 @@ cw_test_planned :: (s: [] ChatWeb, content: string) {
   #assert !s[0].live && s[0].flight == CF_NONE && s[0].who[s[0].count - 2] == CW_TOOL && coaxial_chatweb_stop(s);
 }
 
+#test "one hosted event retains all eight calls and their complete matching continuation" #steps 150000000 {
+ h:[1]CwTest;s:=h[0].s[..];cw_test_open(s,"{\"claude\":null}");cw_test_type(s,"composer","read eight notes");cw_test_enter(s,"composer");
+ raw:[8192]u8;o:[1]Jo;jo_start(o[..],raw[..]);jo_obj(o[..]);jo_key(o[..],"choices");jo_arr(o[..]);jo_obj(o[..]);jo_key(o[..],"delta");jo_obj(o[..]);jo_key(o[..],"tool_calls");jo_arr(o[..]);
+ for i:0..<GW_TOOL_CALLS {id:[16]u8;k:=json_write_int(id[..],0,i);jo_obj(o[..]);jo_key(o[..],"index");jo_int(o[..],i);jo_key(o[..],"id");jo_str(o[..],cast(string)id[0..<k]);jo_key(o[..],"function");jo_obj(o[..]);jo_key(o[..],"name");jo_str(o[..],"realm_doc");jo_key(o[..],"arguments");jo_str(o[..],"{\"slug\":\"garden\"}");jo_end(o[..]);jo_end(o[..]);}
+ jo_end(o[..]);jo_end(o[..]);jo_key(o[..],"finish_reason");jo_str(o[..],"tool_calls");jo_end(o[..]);jo_end(o[..]);jo_end(o[..]);#assert !o[0].bad;
+ wire:[8192]u8;n:=json_raw(wire[..],0,"data: ");n=json_raw(wire[..],n,jo_text(o[..]));n=json_raw(wire[..],n,"\n\ndata: [DONE]\n\n");#assert n>0;cw_test_answer(s,200,cast(string)wire[0..<n]);
+ #assert s[0].flight==CF_HCALL && s[0].ntools==8 && s[0].hhistory[0].remaining==8;
+ for i:0..<GW_TOOL_CALLS {#assert cw_test_door(s)=="/api/playtest/realms/garden/doc";cw_test_answer(s,200,"a note");}
+ body:=cw_test_body(s);m:=gwt_conversation_messages(s[0].hhistory[..]);#assert s[0].flight==CF_COMPLETE;#assert m.count==10 && gwt_history_valid(m);#assert cl_count(cl_raw(body,"messages"))==11;
+ for i:0..<GW_TOOL_CALLS {#assert m[1].calls[i].call_id==m[2+i].result.call_id && cw_test_has(m[2+i].result.output,"a note");}
+}
+
+#test "hosted calls wait for clean HTTP end and refuse malformed incomplete or late candidates" #steps 150000000 {
+  call:="data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"read\",\"function\":{\"name\":\"realm_list\",\"arguments\":\"{}\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n";
+  for mode:0..<6 {
+    h:[1]CwTest;s:=h[0].s[..];cw_test_open(s,"{\"claude\":null}");cw_test_type(s,"composer","list my worlds");cw_test_enter(s,"composer");
+    if mode==0 || mode==1 || mode==4 || mode==5 {cw_test_piece(s,200,call);}
+    else if mode==2 {cw_test_piece(s,200,"data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"name\":\"realm_list\",\"arguments\":\"{}\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n");}
+    else {cw_test_piece(s,200,"data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"read\",\"function\":{\"name\":\"realm_list\",\"arguments\":\"{\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n");}
+    #assert s[0].flight==CF_COMPLETE && s[0].ntools==0 && s[0].hhistory[0].steps==0;
+    if mode==4 {cw_test_piece(s,200,"data: {\"choices\":[{\"delta\":{\"content\":\"late\"}}]}\n\n");}
+    if mode==5 {cw_test_piece(s,200,"data: unfinished");}
+    coaxial_chatweb_event(s,CW_END,ifx mode==1 then 0 else 200,0);
+    if mode==0 {#assert s[0].live && s[0].flight==CF_HCALL && cw_test_door(s)=="/api/worlds" && s[0].hhistory[0].steps==1;}
+    else {#assert !s[0].live && s[0].flight!=CF_HCALL && s[0].hhistory[0].steps==0 && s[0].ntools==0 && s[0].error_n>0;}
+  }
+}
+
+#test "hosted schema errors are paired with native IDs without requesting a tool route" #steps 80000000 {
+  h:[1]CwTest;s:=h[0].s[..];cw_test_open(s,"{\"claude\":null}");cw_test_type(s,"composer","read a world");cw_test_enter(s,"composer");
+  cw_test_answer(s,200,"data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"bad\",\"function\":{\"name\":\"realm_world\",\"arguments\":\"{\\\"slug\\\":12}\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n");
+  body:=cw_test_body(s);#assert s[0].flight==CF_COMPLETE && cw_test_door(s)=="/api/chat/complete" && s[0].hhistory[0].remaining==0;
+  #assert cw_test_has(body,"\"tool_call_id\":\"bad\",\"content\":\"arguments do not match the offered schema\"") && s[0].hhistory[0].messages[2].result.is_error;
+  // A provider cannot reuse that ID to read a world in the next model step.
+  cw_test_answer(s,200,"data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"bad\",\"function\":{\"name\":\"realm_world\",\"arguments\":\"{\\\"slug\\\":\\\"garden\\\"}\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n");
+  #assert !s[0].live && s[0].flight!=CF_HCALL && s[0].hhistory[0].steps==1 && s[0].error_n>0;
+}
+
+#test "truncated SSE metadata poisons the candidate immediately and provider refusals retain exact reasons" #steps 80000000 {
+ h:[1]CwTest;s:=h[0].s[..];cw_test_open(s,"{\"claude\":null}");cw_test_type(s,"composer","read");cw_test_enter(s,"composer");
+ raw:[1024]u8;name:[65]u8;for i:0..<name.count {name[i]='a';}n:=json_raw(raw[..],0,"event: ");n=json_raw(raw[..],n,cast(string)name[..]);n=json_raw(raw[..],n,"\ndata: {}\n\n");#assert n>0;cw_test_piece(s,200,cast(string)raw[0..<n]);
+ #assert s[0].hstep_state[0].failed && cast(string)s[0].error[0..<s[0].error_n]=="A model event exceeded its buffer." && s[0].ntools==0;
+ for message:[2]string.["","x"] {
+  h2:[1]CwTest;t:=h2[0].s[..];cw_test_open(t,"{\"claude\":null}");cw_test_type(t,"composer","read");cw_test_enter(t,"composer");
+  n=json_raw(raw[..],0,"data: {\"error\":{\"message\":");n=json_write_string(raw[..],n,message);n=json_raw(raw[..],n,"}}\n\n");#assert n>0;cw_test_piece(t,200,cast(string)raw[0..<n]);
+  #assert cast(string)t[0].error[0..<t[0].error_n]==ifx message=="" then "the upstream failed" else "x";
+ }
+}
+
+#test "a request that exceeds its complete buffer preserves the draft and does not wait for a nonexistent stream" #steps 80000000 {
+ h:[1]CwTest;s:=h[0].s[..];cw_test_open(s,"{\"claude\":null}");quoted:[32768]u8;for i:0..<quoted.count {quoted[i]='"';}
+ cw_add(s,cast(string)quoted[..],CW_YOU,0);before:=s[0].pool_n;
+ cw_test_type(s,"composer","try again");cw_test_enter(s,"composer");
+ #assert !s[0].live && s[0].flight==CF_NONE && s[0].error_n>0 && s[0].draft_n==9 && s[0].count==1 && s[0].pool_n==before;
+ #assert !coaxial_chatweb_asking(s) && cw_test_has(cast(string)s[0].error[0..<s[0].error_n],"couldn't be prepared");
+}
+
+#test "a clean EOF seals tool finish without a provider DONE marker and retains this step's assistant text" #steps 80000000 {
+ h:[1]CwTest;s:=h[0].s[..];cw_test_open(s,"{\"claude\":null}");cw_test_type(s,"composer","list worlds");cw_test_enter(s,"composer");
+ cw_test_answer(s,200,"data: {\"choices\":[{\"delta\":{\"content\":\"Checking your worlds.\",\"tool_calls\":[{\"index\":0,\"id\":\"eof-list\",\"function\":{\"name\":\"realm_list\",\"arguments\":\"{}\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\n");
+ #assert s[0].flight==CF_HCALL && cw_test_door(s)=="/api/worlds" && s[0].hhistory[0].messages[1].text=="Checking your worlds.";
+ cw_test_answer(s,200,"world splice Splice\n");cw_test_answer(s,200,"{\"realms\":[]}");
+ body:=cw_test_body(s);#assert s[0].flight==CF_COMPLETE && cw_test_has(body,"\"role\":\"assistant\",\"content\":\"Checking your worlds.\",\"tool_calls\":[") && cw_test_has(body,"\"tool_call_id\":\"eof-list\"");
+ cw_test_answer(s,200,"data: {\"choices\":[{\"delta\":{\"content\":\"Checking again.\",\"tool_calls\":[{\"index\":0,\"id\":\"eof-again\",\"function\":{\"name\":\"realm_list\",\"arguments\":\"{}\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\n");
+ #assert s[0].flight==CF_HCALL && s[0].hhistory[0].messages[3].text=="Checking again.";
+ cw_test_answer(s,200,"world splice Splice\n");cw_test_answer(s,200,"{\"realms\":[]}");
+ cw_test_answer(s,200,"data: {\"choices\":[{\"delta\":{\"content\":\"One world.\"},\"finish_reason\":\"stop\"}]}\n\n");
+ #assert !s[0].live && s[0].error_n==0 && s[0].hn==0;
+}
+#test "tool continuation retains exact read output and editor notes as valid provider JSON" #steps 80000000 {
+ h:[1]CwTest;s:=h[0].s[..];cw_test_open(s,"{\"claude\":null}");cw_test_type(s,"composer","open splice");cw_test_enter(s,"composer");
+ #assert json_valid(cw_test_body(s));
+ cw_test_answer(s,200,"data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"open\",\"function\":{\"name\":\"realm_world_open\",\"arguments\":\"{\\\"slug\\\":\\\"splice\\\"}\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n");
+ pending:[CQ_MOST]CqCall;#assert s[0].flight==CF_HCALL && cq_calls(cast(string)s[0].tools[0..<s[0].tools_n],pending[..])==1 && pending[0].state==KW_RUN && pending[0].ms== -1;cw_test_answer(s,200,"world.card.v1 splice 1 2\nname Splice\n");
+ #assert s[0].flight==CF_COMPLETE && s[0].hn==0 && json_valid(cw_test_body(s)) && s[0].hhistory[0].messages[2].result.output=="realm_world_open {\"slug\":\"splice\"}: GET /api/worlds/splice/card answered HTTP 200\nworld.card.v1 splice 1 2\nname Splice\n\n\nthe editor: /worlds/splice?edit";
+ calls:[CQ_MOST]CqCall;n:=cq_calls(cast(string)s[0].tools[0..<s[0].tools_n],calls[..]);#assert n==1 && calls[0].id=="open" && calls[0].state==KW_DONE;
+}
+#test "a failed partial tool canceled mid-read cannot contaminate the next user turn" #steps 80000000 {
+ h:[1]CwTest;s:=h[0].s[..];cw_test_open(s,"{\"claude\":null}");cw_test_type(s,"composer","list");cw_test_enter(s,"composer");
+ cw_test_answer(s,200,"data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"first\",\"function\":{\"name\":\"realm_list\",\"arguments\":\"{}\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n");
+ cw_test_answer(s,500,"failed private read");#assert s[0].flight==CF_HCALL && s[0].hpart==1 && s[0].hfailed && s[0].hout_n>0;
+ cw_stop(s);cw_test_type(s,"composer","read garden");cw_test_enter(s,"composer");
+ cw_test_answer(s,200,"data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"next\",\"function\":{\"name\":\"realm_doc\",\"arguments\":\"{\\\"slug\\\":\\\"garden\\\"}\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n");
+ #assert s[0].flight==CF_HCALL && cw_test_door(s)=="/api/playtest/realms/garden/doc" && !s[0].hfailed && s[0].hout_n==0;
+ cw_test_answer(s,200,"new result");m:=gwt_conversation_messages(s[0].hhistory[..]);#assert s[0].flight==CF_COMPLETE && !m[m.count-1].result.is_error && !cw_test_has(m[m.count-1].result.output,"failed private read");
+}
+#test "a failed tool result does not mark the next successful call in the same batch as failed" #steps 80000000 {
+ h:[1]CwTest;s:=h[0].s[..];s[0].draft_n=cw_put(s[0].draft[..],0,"read");cw_send(s);
+ cw_test_answer(s,200,"data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"bad\",\"function\":{\"name\":\"realm_doc\",\"arguments\":\"{\\\"slug\\\":\\\"garden\\\"}\"}},{\"index\":1,\"id\":\"good\",\"function\":{\"name\":\"realm_doc\",\"arguments\":\"{\\\"slug\\\":\\\"splice\\\"}\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n");
+ cw_test_answer(s,404,"missing");cw_test_answer(s,200,"found");m:=gwt_conversation_messages(s[0].hhistory[..]);#assert s[0].flight==CF_COMPLETE && m.count==4 && m[2].result.is_error && !m[3].result.is_error && !cw_test_has(m[3].result.output,"missing");
+}
+#test "bounded tool presentation keeps valid records while all larger results reach model continuation" #steps 400000000 #traversal 536870912 {
+ h:[1]CwTest;s:=h[0].s[..];s[0].draft_n=cw_put(s[0].draft[..],0,"read");cw_send(s);result:[2500]u8;for i:0..<result.count {result[i]='r';}
+ for batch:0..<2 {
+  raw:[8192]u8;o:[1]Jo;jo_start(o[..],raw[..]);jo_obj(o[..]);jo_key(o[..],"choices");jo_arr(o[..]);jo_obj(o[..]);jo_key(o[..],"delta");jo_obj(o[..]);jo_key(o[..],"tool_calls");jo_arr(o[..]);
+  for i:0..<GW_TOOL_CALLS {id:[16]u8;k:=json_write_int(id[..],0,batch*8+i);jo_obj(o[..]);jo_key(o[..],"index");jo_int(o[..],i);jo_key(o[..],"id");jo_str(o[..],cast(string)id[0..<k]);jo_key(o[..],"function");jo_obj(o[..]);jo_key(o[..],"name");jo_str(o[..],"realm_doc");jo_key(o[..],"arguments");jo_str(o[..],"{\"slug\":\"garden\"}");jo_end(o[..]);jo_end(o[..]);}
+  jo_end(o[..]);jo_end(o[..]);jo_key(o[..],"finish_reason");jo_str(o[..],"tool_calls");jo_end(o[..]);jo_end(o[..]);jo_end(o[..]);#assert !o[0].bad;
+  wire:[8192]u8;n:=json_raw(wire[..],0,"data: ");n=json_raw(wire[..],n,jo_text(o[..]));n=json_raw(wire[..],n,"\n\ndata: [DONE]\n\n");cw_test_answer(s,200,cast(string)wire[0..<n]);
+  for i:0..<GW_TOOL_CALLS {#assert s[0].flight==CF_HCALL;cw_test_answer(s,200,cast(string)result[..]);}
+  calls:[CQ_MOST]CqCall;#assert s[0].flight==CF_COMPLETE && s[0].tools_n>0 && s[0].tools_n<CW_TOOLS && cq_calls(cast(string)s[0].tools[0..<s[0].tools_n],calls[..])==(batch+1)*8 && json_valid(cw_test_body(s));
+ }
+ m:=gwt_conversation_messages(s[0].hhistory[..]);#assert m.count==19 && m[18].result.call_id=="15" && cw_test_has(m[18].result.output,cast(string)result[..]);
+ cw_test_answer(s,200,"data: {\"choices\":[{\"delta\":{\"content\":\"Done\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n");
+ calls:[CQ_MOST]CqCall;#assert !s[0].live && s[0].error_n==0 && s[0].count==3 && cq_calls(cw_text(s,1),calls[..])==16 && cw_text(s,2)=="Done";
+}
+#test "a provider cannot execute a fourth tool batch after the last tool-free ask" #steps 100000000 {
+ h:[1]CwTest;s:=h[0].s[..];s[0].draft_n=cw_put(s[0].draft[..],0,"read");cw_send(s);
+ for step:0..<CH_STEPS {
+  raw:[1024]u8;id:[16]u8;k:=json_write_int(id[..],0,step);at:=json_raw(raw[..],0,"data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":");at=json_write_string(raw[..],at,cast(string)id[0..<k]);at=json_raw(raw[..],at,",\"function\":{\"name\":\"realm_doc\",\"arguments\":\"{\\\"slug\\\":\\\"garden\\\"}\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n");
+  cw_test_answer(s,200,cast(string)raw[0..<at]);
+  if step<CH_STEPS-1 {#assert s[0].flight==CF_HCALL;cw_test_answer(s,200,"read");}
+  else {#assert !s[0].live && s[0].flight==CF_NONE && s[0].error_n>0 && s[0].hhistory[0].steps==CH_STEPS-1;}
+ }
+}
+#test "new chats retire prior local and hosted task ownership and a new send retains only its own request state" #steps 80000000 {
+ h:[1]CwTest;s:=h[0].s[..];s[0].count=1;s[0].pool_n=10;s[0].total=17;s[0].live=true;s[0].lrun=true;s[0].echo=true;s[0].stop_due=true;s[0].turn=42;s[0].conv=43;s[0].hhistory[0].ready=true;s[0].goal_n=3;s[0].opens_n=2;s[0].hstep_state[0].failed=true;
+ cw_clear(s);#assert s[0].count==0 && s[0].pool_n==0 && s[0].total==0 && !s[0].live && !s[0].lrun && !s[0].echo && !s[0].stop_due && s[0].turn==0 && s[0].conv==0 && s[0].goal_n==0 && s[0].opens_n==0 && !s[0].hhistory[0].ready && !s[0].hstep_state[0].failed;
+ s[0].nopened=1;s[0].hstep=CH_STEPS-1;s[0].hn=3;s[0].tools_n=4;s[0].ntools=2;s[0].raw_n=3;s[0].working_n=4;s[0].menu=true;s[0].view=1;s[0].draft_n=cw_put(s[0].draft[..],0,"\n\r\t  hello \t\r\n");s[0].event_n=3;s[0].ps[0].finish=9;s[0].ps[0].np=1;s[0].turn=45;s[0].stopping=true;s[0].stop_sent=true;
+ cw_send(s);#assert cw_text(s,0)=="hello" && s[0].live && s[0].nopened==0 && s[0].tools_n==0 && s[0].ntools==0 && s[0].raw_n==0 && s[0].working_n==0 && !s[0].menu && s[0].view==CW_CHAT && s[0].draft_n==0 && s[0].turn==0 && !s[0].stopping && !s[0].stop_sent && s[0].event_n==0 && s[0].ps[0].finish==0 && s[0].ps[0].np==0;
+ #assert s[0].hn==0 && s[0].hstep==0 && cw_test_has(cw_test_body(s),"\"tools\":[");
+ cw_stop(s);#assert !s[0].live && !s[0].ask && s[0].hn==0 && s[0].hhistory[0].failed && s[0].hstep_state[0].failed;
+}
+#test "exact transcript capacity reserves a whole answer without dropping an extra prior message" #steps 200000000 #traversal 536870912 {
+ h:[1]CwTest;s:=h[0].s[..];text:[CW_ANSWER]u8;for i:0..<text.count {text[i]='x';}for i:0..<9 {cw_add(s,cast(string)text[..],CW_YOU,0);}cw_add(s,cast(string)text[0..<CW_DRAFT],CW_YOU,0);
+ #assert s[0].pool_n==CW_POOL-CW_DRAFT-CW_ANSWER && s[0].count==10;
+ s[0].draft_n=cw_put(s[0].draft[..],0,cast(string)text[0..<CW_DRAFT]);cw_send(s);
+ #assert s[0].live && s[0].count==12 && s[0].total==12 && s[0].pool_n==CW_POOL-CW_ANSWER && s[0].len[0]==CW_ANSWER;
+}
+#test "request history bounds select whole messages and omit visual tool and card rows" #steps 200000000 #traversal 536870912 {
+ for mode:0..<3 {
+  h:[1]CwTest;s:=h[0].s[..];big:[CW_ASK+2]u8;for i:0..<big.count {big[i]='x';}
+  if mode==0 {cw_add(s,cast(string)big[0..<CW_ASK],CW_YOU,0);cw_add(s,"L",CW_YOU,0);}
+  else if mode==1 {cw_add(s,cast(string)big[..],CW_YOU,0);}
+  else {cw_add(s,"visual card",CW_CARD,0);cw_add(s,"visual tools",CW_TOOL,0);cw_add(s,"L",CW_YOU,0);}
+  #assert cw_complete(s,0) && s[0].hhistory[0].n==1;
+  #assert s[0].hhistory[0].messages[0].text==(ifx mode==1 then cast(string)big[..] else "L");
+ }
+}
+#test "provider requests reserve three complete batches and retain the selected model and Project names" #steps 80000000 {
+ h:[1]CwTest;s:=h[0].s[..];for i:0..<CW_MESSAGES {id:[16]u8;o:[1]Jo;jo_start(o[..],id[..]);jo_put(o[..],"m");jo_int(o[..],i);cw_add(s,jo_text(o[..]),CW_YOU,0);}
+ s[0].hmodel=2;s[0].projects_n=2;s[0].projects[0].name_n=cw_put(s[0].projects[0].name[..],0,"Alpha");s[0].projects[1].name_n=cw_put(s[0].projects[1].name[..],0,"Beta");
+ #assert cw_complete(s,1) && s[0].hmodel==1 && s[0].hhistory[0].n==101 && s[0].hhistory[0].messages[0].text=="m27" && s[0].hhistory[0].messages[100].text=="m127" && json_valid(cw_test_body(s));
+ #assert cw_test_has(cw_test_body(s),"projects the person is in, as the side lists them: Alpha, Beta.");
+ s[0].flight=CF_NONE;s[0].hhistory[0].failed=true;#assert !cw_complete(s,1) && s[0].flight==CF_NONE;
+ s[0].hhistory[0].failed=false;s[0].hhistory[0].remaining=1;#assert !cw_complete(s,1) && s[0].flight==CF_NONE;
+}
+#test "world request encoding refuses a complete oversized context and keeps its smaller history bound" #steps 200000000 #traversal 536870912 {
+ h:[1]CwTest;s:=h[0].s[..];cw_test_world(s,CW_T_WORLD);quotes:[CW_PLAN_ASK]u8;for i:0..<quotes.count {quotes[i]='"';}
+ s[0].world[0].nf=WT_FILES;hex:="0123456789abcdef";
+ for i:0..<WT_FILES {
+  for k:0..<WT_FID {s[0].world[0].f_id[i][k]='a';}s[0].world[0].f_id[i][14]=hex[i/16];s[0].world[0].f_id[i][15]=hex[i%16];s[0].world[0].f_kind[i]=1;s[0].world[0].f_bytes[i]=20;
+  s[0].world[0].f_name_n[i]=cw_put(s[0].world[0].f_name[i][..],0,cast(string)quotes[0..<WT_FNAME]);s[0].world[0].f_note_n[i]=cw_put(s[0].world[0].f_note[i][..],0,cast(string)quotes[0..<WT_FNOTE]);s[0].world[0].f_tags_n[i]=cw_put(s[0].world[0].f_tags[i][..],0,cast(string)quotes[0..<WT_FTAGS]);
+ }
+ wire:[WT_BYTES]u8;whole:=wt_write(s[0].world[..],wire[..]);#assert whole.count>0;cw_test_world(s,whole);#assert s[0].world[0].ok && s[0].world[0].nf==WT_FILES;
+ cw_add(s,cast(string)quotes[..],CW_YOU,0);#assert !cw_complete(s,0) && s[0].flight==CF_NONE;
+ cw_clear(s);cw_test_world(s,CW_T_WORLD);plain:[CW_PLAN_ASK]u8;for i:0..<plain.count {plain[i]='x';}cw_add(s,cast(string)plain[..],CW_YOU,0);cw_add(s,"L",CW_YOU,0);
+ #assert cw_complete(s,0) && json_valid(cw_test_body(s)) && cl_count(cl_raw(cw_test_body(s),"messages"))==2 && cl_raw(cw_test_body(s),"messages.1.content")=="\"L\"";
+}
+#test "SSE empty separators are drained and exact buffer exhaustion poisons the candidate without a shifted prefix" #steps 80000000 {
+ h:[1]CwTest;s:=h[0].s[..];s[0].flight=CF_COMPLETE;gwt_step_begin(s[0].hstep_state[..]);
+ cw_piece(s,200,"\n\n");#assert s[0].event_n==0 && !s[0].cut;
+ s[0].event_n=CW_EVENT;cw_piece(s,200,"Z");#assert s[0].event_n==1 && s[0].event[0]=='Z' && s[0].cut && s[0].hstep_state[0].failed;
+}
+#test "CRLF framing stays valid while raw carriage returns inside JSON cannot repair a tool name" #steps 80000000 {
+ for mode:0..<2 {
+  h:[1]CwTest;s:=h[0].s[..];s[0].draft_n=cw_put(s[0].draft[..],0,"list");cw_send(s);
+  cw_test_answer(s,200,ifx mode==0 then "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"read\",\"function\":{\"name\":\"realm_list\",\"arguments\":\"{}\"}}]},\"finish_reason\":\"tool_calls\"}]}\r\n\r\ndata: [DONE]\r\n\r\n" else "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"read\",\"function\":{\"name\":\"realm_\rlist\",\"arguments\":\"{}\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n");
+  if mode==0 {#assert s[0].flight==CF_HCALL && cw_test_door(s)=="/api/worlds";}
+  else {#assert !s[0].live && s[0].flight==CF_NONE && s[0].error_n>0 && s[0].hhistory[0].steps==0;}
+ }
+}
+#test "a complete SSE event may occupy the exact buffer without reading its next byte" #steps 80000000 {
+ h:[1]CwTest;s:=h[0].s[..];s[0].flight=CF_COMPLETE;s[0].live=true;cw_add(s,"",CW_AGENT,0);gwt_step_begin(s[0].hstep_state[..]);
+ raw:[CW_EVENT]u8;prefix:="data: {\"choices\":[{\"delta\":{\"content\":\"";suffix:="\"},\"finish_reason\":\"stop\"}]}\n\n";
+ at:=json_raw(raw[..],0,prefix);while at<CW_EVENT-suffix.count {raw[at]='x';at+=1;}at=json_raw(raw[..],at,suffix);#assert at==CW_EVENT;
+ cw_piece(s,200,cast(string)raw[..]);#assert !s[0].cut && s[0].event_n==0 && s[0].len[0]==CW_EVENT-prefix.count-suffix.count;
+ cw_end(s,200);#assert !s[0].live && s[0].error_n==0;
+}
+#test "local request refusal retains the draft while exact short and maximum session IDs remain usable" #steps 80000000 #traversal 536870912 {
+ for mode:0..<6 {
+  h:[1]CwTest;s:=h[0].s[..];s[0].flight=CF_RUN;s[0].lrun=true;s[0].echo=true;
+  text:=ifx mode==0 then "" else ifx mode==1 then "9" else ifx mode==2 then "12345678901234567890123" else ifx mode==3 then "123456789012345678901234" else ifx mode==4 then "reason" else "x";
+  s[0].resp_n=cw_put(s[0].resp[..],0,text);cw_end(s,ifx mode>=4 then 500 else 200);
+  if mode==1 || mode==2 {#assert cw_sel(s)==text;}
+  else {#assert !s[0].lrun && !s[0].echo && s[0].error_n>0 && s[0].sel_n==0;}
+  if mode==5 {#assert s[0].error_n==1 && s[0].error[0]=='x';}
+ }
+ for mode:0..<4 {
+  h:[1]CwTest;s:=h[0].s[..];s[0].flight=CF_LSEND;cw_add(s,"retain me",CW_YOU,0);s[0].total=17;s[0].lrun=true;s[0].echo=true;
+  s[0].resp_n=cw_put(s[0].resp[..],0,ifx mode==0 then "" else ifx mode==1 then "{\"id\":\"\\u0031\"}" else ifx mode==2 then "{\"id\":\"12345678901234567890123\"}" else "{\"id\":\"123456789012345678901234\"}");cw_end(s,ifx mode==0 then 500 else 200);
+  if mode==0 || mode==3 {#assert s[0].count==0 && s[0].total==16 && s[0].pool_n==0 && s[0].draft_n==9 && cast(string)s[0].draft[0..<s[0].draft_n]=="retain me" && !s[0].lrun && !s[0].echo;}
+  else {#assert cw_sel(s)==(ifx mode==1 then "1" else "12345678901234567890123") && s[0].log_due;}
+ }
+}
+#test "imported session identities decode escapes and preserve an already selected conversation" #steps 80000000 {
+ for mode:0..<3 {
+  h:[1]CwTest;s:=h[0].s[..];s[0].flight=CF_IMPORT;s[0].sel_n=cw_put(s[0].sel[..],0,ifx mode==1 then "1" else "2");s[0].time=50;s[0].csize=3;
+  s[0].resp_n=cw_put(s[0].resp[..],0,ifx mode==2 then "{\"id\":\"12345678901234567890123\"}" else "{\"id\":\"\\u0031\"}");cw_end(s,200);
+  #assert s[0].error_n==0 && cw_sel(s)==(ifx mode==2 then "12345678901234567890123" else "1") && s[0].watch_at==50;
+  if mode==1 {#assert s[0].watching && s[0].csize==3 && s[0].model==0;}
+  else {#assert !s[0].watching && s[0].csize==0 && s[0].model==CW_HOSTED;}
+ }
+}
+#test "full-length local error bodies use the bounded fallback and rejected sends restore the field" #steps 80000000 {
+ for kind:[2]int.[CF_RUN,CF_LSEND] {
+  h:[1]CwTest;s:=h[0].s[..];cw_test_open(s,"{\"claude\":null}");s[0].flight=kind;s[0].lrun=true;s[0].echo=true;if kind==CF_LSEND {cw_add(s,"restore",CW_YOU,0);}
+  body:[CW_ERROR]u8;for i:0..<body.count {body[i]='r';}cw_test_answer(s,500,cast(string)body[..]);
+  #assert !s[0].lrun && !s[0].echo && cast(string)s[0].error[0..<s[0].error_n]==(ifx kind==CF_RUN then "Coder couldn't start that. Is it running on this computer?" else "Coder couldn't take that message.");
+  if kind==CF_LSEND {n:=coaxial_chatweb_frame(s,0.016,true);#assert s[0].draft_n==7 && dm_test_count(s[0].dom[..],n,DC_VALUE)==1;}
+ }
+}
+#test "busy turns cannot start another message and every background read defers it" #steps 80000000 #traversal 536870912 {
+ h:[1]CwTest;s:=h[0].s[..];s[0].live=true;s[0].turn=1;s[0].draft_n=cw_put(s[0].draft[..],0,"wait");cw_send(s);#assert s[0].flight==CF_NONE && s[0].count==0 && s[0].draft_n==4 && !s[0].send_due;
+ for kind:[9]int.[CF_LIST,CF_LOG,CF_CLAUDE,CF_IMPORT,CF_ACCOUNT,CF_AGENTS,CF_WHO,CF_WORLDS,CF_PROJECTS] {
+  f:[1]CwTest;a:=f[0].s[..];a[0].flight=kind;a[0].draft_n=cw_put(a[0].draft[..],0,"wait");cw_send(a);#assert a[0].send_due && a[0].count==0 && a[0].draft_n==4 && a[0].flight==kind;
+ }
+}
+#test "ordinary response collection records status and refuses one byte beyond its exact capacity" {
+ h:[1]CwTest;s:=h[0].s[..];s[0].flight=CF_RUN;s[0].resp_n=CW_RESP-1;cw_piece(s,500,"ab");#assert s[0].resp_n==CW_RESP && s[0].resp[CW_RESP-1]=='a' && s[0].status==500;
+}
+#test "new account credentials clear expired state and failed imports never change the selected session" #steps 80000000 {
+ h:[1]CwTest;s:=h[0].s[..];s[0].flight=CF_KEY;s[0].expired=true;cw_end(s,200);#assert !s[0].expired && cast(string)s[0].note[0..<s[0].note_n]=="Connected. Choose a Claude model in the menu beside the gear.";
+ s[0].flight=CF_UNKEY;s[0].claude=CA_TOKEN;s[0].last4_n=4;s[0].expired=true;cw_end(s,200);#assert s[0].claude==CA_NONE && s[0].last4_n==0 && !s[0].expired && cast(string)s[0].note[0..<s[0].note_n]=="Disconnected.";
+ for mode:0..<2 {
+  f:[1]CwTest;a:=f[0].s[..];a[0].flight=CF_IMPORT;a[0].sel_n=cw_put(a[0].sel[..],0,"old");a[0].csel_n=1;
+  a[0].resp_n=cw_put(a[0].resp[..],0,ifx mode==0 then "" else "{\"id\":\"new\"}");cw_end(a,ifx mode==0 then 200 else 500);#assert cw_sel(a)=="old" && a[0].csel_n==0 && a[0].error_n>0;
+ }
+}
+#test "request completion rejects partial turn IDs and retains the request observation clock" {
+ for mode:0..<3 {
+  h:[1]CwTest;s:=h[0].s[..];s[0].flight=CF_SEND;s[0].time=10;s[0].asked_at=3;
+  s[0].resp_n=cw_put(s[0].resp[..],0,ifx mode==0 then "{\"c\":1}" else ifx mode==1 then "{\"turn\":2}" else "{\"c\":1,\"turn\":2}");cw_end(s,200);
+  if mode<2 {#assert s[0].error_n>0 && s[0].conv==0 && s[0].turn==0;}
+  else {#assert s[0].conv==1 && s[0].turn==2 && s[0].asked_at==10;}
+ }
+}
+#test "failed account and Project reads clear private metadata and an upstream failure retires its hosted turn" {
+ h:[1]CwTest;s:=h[0].s[..];s[0].flight=CF_WHO;s[0].set[0].logged=true;s[0].set[0].admin=true;s[0].set[0].emails=2;s[0].set[0].nkeys=2;cw_end(s,500);
+ #assert s[0].me_n==0 && !s[0].set[0].logged && !s[0].set[0].admin && s[0].set[0].emails==0 && s[0].set[0].nkeys==0 && s[0].set[0].read;
+ s[0].flight=CF_WORLDS;s[0].worlds_n=2;cw_end(s,500);#assert s[0].worlds_n==0;
+ s[0].flight=CF_ACCOUNT;s[0].known=true;s[0].known_asked=false;cw_end(s,500);#assert !s[0].known && s[0].known_asked;
+ s[0].flight=CF_PROJECTS;s[0].projects_n=2;cw_end(s,500);#assert s[0].projects_n==0;
+ s[0].flight=CF_OUT;s[0].projects_n=2;s[0].worlds_n=2;s[0].me_n=1;cw_end(s,204);#assert s[0].projects_n==0 && s[0].worlds_n==0 && s[0].me_n==0;
+ s[0].flight=CF_TURN;s[0].turn=5;cw_end(s,500);#assert s[0].turn==0 && s[0].error_n>0;
+}
+#test "card reads require both a successful HTTP result and a complete valid card" {
+ for mode:0..<2 {
+  h:[1]CwTest;s:=h[0].s[..];s[0].flight=CF_CARD;s[0].resp_n=cw_put(s[0].resp[..],0,ifx mode==0 then "not a card" else "world.card.v1 splice 2 3\nname Splice\n");cw_end(s,ifx mode==0 then 200 else 404);#assert s[0].count==0;
+ }
+}
+#test "late completions cannot append calls answers or world plans after a chat was cleared" #steps 80000000 {
+ for kind:[3]int.[CF_COMPLETE,CF_HCALL,CF_PLAN] {
+  h:[1]CwTest;s:=h[0].s[..];s[0].flight=kind;s[0].resp_n=cw_put(s[0].resp[..],0,"bogus");cw_end(s,200);
+  #assert !s[0].live && s[0].flight==CF_NONE && s[0].count==0 && s[0].error_n==0 && s[0].tools_n==0 && s[0].planned_n==0;
+ }
+}
+#test "late hosted replies after clearing a chat cannot publish an answer tool result or editor plan" {
+ for kind:[3]int.[CF_COMPLETE,CF_HCALL,CF_PLAN] {
+  h:[1]CwTest;s:=h[0].s[..];s[0].flight=kind;s[0].resp_n=cw_put(s[0].resp[..],0,"old response");cw_end(s,200);#assert s[0].count==0 && s[0].error_n==0 && s[0].tools_n==0 && s[0].planned_n==0;
+ }
+}
+#test "complete empty answers differ from one-character text and one-character upstream refusals" #steps 80000000 {
+ for mode:0..<3 {
+  h:[1]CwTest;s:=h[0].s[..];cw_test_open(s,"{\"claude\":null}");cw_test_type(s,"composer","answer");cw_test_enter(s,"composer");
+  cw_test_answer(s,200,ifx mode==0 then "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n" else ifx mode==1 then "data: {\"choices\":[{\"delta\":{\"content\":\"x\"},\"finish_reason\":\"stop\"}]}\n\n" else "data: {\"error\":{\"message\":\"x\"}}\n\n");
+  #assert !s[0].live;
+  if mode==0 {#assert cast(string)s[0].error[0..<s[0].error_n]=="The model sent no answer.";}
+  else if mode==1 {#assert s[0].error_n==0 && cw_text(s,s[0].count-1)=="x";}
+  else {#assert s[0].error_n==1 && s[0].error[0]=='x';}
+ }
+}
+#test "an encoding refusal retires only the pending message and keeps earlier transcript identity" #steps 80000000 {
+ h:[1]CwTest;s:=h[0].s[..];cw_add(s,"Earlier",CW_YOU,0);s[0].total=17;big:[32768]u8;for i:0..<big.count {big[i]='"';}s[0].draft_n=cw_put(s[0].draft[..],0,cast(string)big[..]);
+ // A full prior quoted answer makes the complete request exceed 60 KiB even
+ // with the ordinary bounded composer; failure must preserve earlier rows.
+ cw_add(s,cast(string)big[0..<24000],CW_AGENT,0);before:=s[0].count;total:=s[0].total;pool:=s[0].pool_n;
+ cw_send(s);#assert !s[0].live && s[0].count==before && s[0].total==total && s[0].pool_n==pool && s[0].draft_n==CW_DRAFT && s[0].error_n>0;
+}
+#test "request completion keeps retry status, exact session IDs, refresh time and card replacement" #steps 80000000 {
+ h:[1]CwTest;s:=h[0].s[..];
+ s[0].flight=CF_LOG;s[0].log_miss=CW_LOG_WAIT;s[0].lrun=true;cw_end(s,500);
+ #assert s[0].log_miss==CW_LOG_WAIT && s[0].lrun && s[0].error_n==0;
+ s[0].flight=CF_LOG;cw_end(s,404);#assert !s[0].lrun && s[0].log_miss==CW_LOG_WAIT && s[0].error_n>0;
+ s[0].flight=CF_RUN;s[0].resp_n=cw_put(s[0].resp[..],0,"20261112-050000-001:\n");s[0].time=100;cw_end(s,200);
+ #assert cw_sel(s)=="20261112-050000-001" && s[0].list_at==100-CW_LIST_EVERY;
+ s[0].flight=CF_LSEND;s[0].resp_n=cw_put(s[0].resp[..],0,"{\"id\":\"2026\\u0031112-050000-001\"}");s[0].time=110;s[0].list_at=100;cw_end(s,200);
+ #assert s[0].log_due && s[0].list_at==110-CW_LIST_EVERY;
+ cw_add(s,"world.card.v1 splice 1 2\nname Old\n",CW_CARD,0);before:=s[0].count;total:=s[0].total;start:=s[0].at[before-1];
+ s[0].flight=CF_CARD;s[0].resp_n=cw_put(s[0].resp[..],0,"world.card.v1 splice 2 3\nname New\n");cw_end(s,200);
+ #assert s[0].count==before && s[0].total==total && s[0].pool_n==start+"world.card.v1 splice 2 3\nname New\n".count && cw_text(s,s[0].count-1)=="world.card.v1 splice 2 3\nname New\n";
+}
+#test "a queued message resumes after a failed background log read" #steps 80000000 {
+ h:[1]CwTest;s:=h[0].s[..];s[0].draft_n=cw_put(s[0].draft[..],0,"continue");s[0].send_due=true;s[0].flight=CF_LOG;
+ cw_end(s,500);#assert !s[0].send_due && s[0].live && s[0].flight==CF_COMPLETE && s[0].count==2 && cw_text(s,0)=="continue";
+}
+#test "queued text survives and resumes after identity world and Project reads" #steps 80000000 {
+ for kind:[3]int.[CF_WHO,CF_WORLDS,CF_PROJECTS] {
+  h:[1]CwTest;s:=h[0].s[..];s[0].draft_n=cw_put(s[0].draft[..],0,"continue");s[0].flight=kind;
+  cw_send(s);#assert s[0].send_due && s[0].draft_n==8 && s[0].count==0 && s[0].flight==kind;
+  cw_end(s,500);#assert !s[0].send_due && s[0].live && s[0].flight==CF_COMPLETE && cw_text(s,0)=="continue";
+ }
+}
 #test "a message sent in the page's first moment, while the account is still being read, goes when that read is back" {
   h: [1] CwTest; s := h[0].s[..];
   n := coaxial_chatweb_frame(s, 0.016, true);

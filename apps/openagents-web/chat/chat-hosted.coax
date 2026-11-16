@@ -17,9 +17,11 @@
 #load "../realm/realm-tools.coax";
 #load "../../../coax/lib/nostr/json.coax";
 #load "../../../coax/lib/agent/claude/fields.coax";   // cl_*: the JSON reader
+#load "../../../coax/lib/gateway/tool-arguments.coax";
+#load "../../../coax/lib/gateway/tool-conversation.coax";
 
 CH_STEPS :: 4;         // asks of the model for one message; the last one has no tools, so it answers
-CH_CALLS :: 8;         // calls one ask may make (more are left out, and the model is told)
+CH_CALLS :: GW_TOOL_CALLS; // a complete shared step; an excess refuses the whole response
 CH_NAME :: 64;         // bytes of a call's name
 CH_ARGS :: 512;        // bytes of its arguments' JSON
 CH_SLUG :: 48;         // a realm's or a world's ID (commands.coax rc_bound "slug")
@@ -27,6 +29,8 @@ CH_FID :: 16;          // an attachment's ID (rc_bound "fileid")
 CH_PATH :: 96;         // a request's path (the page's door holds 96 bytes)
 CH_RESULT :: 4096;     // bytes of one call's answer the model is sent
 CH_RESULTS :: 16384;   // and of every answer for one message
+CH_OUTPUT :: 12288;    // complete retained text for a tool's at most two route responses
+CH_HISTORY :: 262144;  // caller-owned shared history storage; the request has its own cap
 CH_TOOLS :: 8192;      // the tools' JSON
 CH_SYSTEM :: 8192;     // the instructions
 
@@ -97,10 +101,10 @@ ch_tools :: (out: [] u8) -> string {
     }
     n = json_raw(out, n, "},\"required\":[");
     for k: 0..<ch_props(r.props) { if k > 0 { n = json_raw(out, n, ","); } n = json_write_string(out, n, ch_prop(r.props, k)); }
-    n = json_raw(out, n, "]}}}");
+    n = json_raw(out, n, "],\"additionalProperties\":false}}}");
   }
   n = json_raw(out, n, "]");
-  return ifx n < 0 then "" else cast(string) out[0..<n];
+  return ifx n < 0 then "" else cast(string) out[0..<n]; // mutant: equivalent (the fixed nonempty catalog writes at least two JSON delimiters; n is negative or greater than zero)
 }
 
 // What the model is told: who it is, the tools it has (each row's name, properties and help), what it can't do,
@@ -124,9 +128,9 @@ ch_system :: (projects: string, model_name: string, model_id: string, out: [] u8
   return ifx n < 0 then "" else cast(string) out[0..<n];
 }
 
-// One call the model asked for, gathered from the stream's pieces (GW_EV_TOOL), then read.
+// One complete call from the shared owner, projected onto the existing table executor.
 ChCall :: struct {
-  index: int;
+  id:[GW_TOOL_ID]u8;id_n:int;
   name: [CH_NAME] u8; name_n: int;
   args: [CH_ARGS] u8; args_n: int;
   row: int;                          // its row in REALM_TOOLS once read, -1 for none
@@ -134,22 +138,13 @@ ChCall :: struct {
   fid: [CH_FID] u8; fid_n: int;
   why: string;                       // why it can't run, "" when it can
 }
-// A piece of a call into the calls so far: a new index starts a call (at most CH_CALLS), an index seen adds to it.
-// How many calls there are now.
-ch_gather :: (calls: [] ChCall, had: int, index: int, name: string, args: string) -> int {
-  n := had; k := -1;
-  for i: 0..<n { if calls[i].index == index { k = i; } }
-  if k < 0 {
-    if n >= calls.count { return n; }
-    k = n; calls[k] = ChCall.{index = index, row = -1};
-    n += 1;
-  }
-  for c: name { if calls[k].name_n < CH_NAME { calls[k].name[calls[k].name_n] = c; calls[k].name_n += 1; } }
-  for c: args { if calls[k].args_n < CH_ARGS { calls[k].args[calls[k].args_n] = c; calls[k].args_n += 1; } }
-  return n;
+ch_call :: (c:[]ChCall,call:GwToolCall)->bool {
+ c[0]=ChCall.{row= -1};if !gwt_call_valid(call) || call.name.count>CH_NAME || call.input_json.count>CH_ARGS {c[0].why="the complete tool call exceeds this executor's bounds";return false;}
+ c[0].id_n=js_copy(c[0].id[..],call.call_id);c[0].name_n=js_copy(c[0].name[..],call.name);c[0].args_n=js_copy(c[0].args[..],call.input_json);return true;
 }
+ch_id :: (c:[]ChCall)->string {return cast(string)c[0].id[0..<c[0].id_n];}
 ch_name :: (c: [] ChCall) -> string { return cast(string) c[0].name[0..<c[0].name_n]; }
-ch_args :: (c: [] ChCall) -> string { return ifx c[0].args_n == 0 then "{}" else cast(string) c[0].args[0..<c[0].args_n]; }
+ch_args :: (c: [] ChCall) -> string { return cast(string) c[0].args[0..<c[0].args_n]; }
 ch_slug :: (c: [] ChCall) -> string { return cast(string) c[0].slug[0..<c[0].slug_n]; }
 ch_fid :: (c: [] ChCall) -> string { return cast(string) c[0].fid[0..<c[0].fid_n]; }
 // A realm's or world's ID as the command table bounds it: 1 to 48 of a-z, 0-9 and -, a letter or digit first.
@@ -174,7 +169,7 @@ ch_read_args :: (c: [] ChCall) -> bool {
   c[0].row = ch_row(ch_name(c));
   if c[0].row < 0 { c[0].why = "we have no such tool here"; return false; }
   args := ch_args(c);
-  if !json_valid(args) || args[0] != '{' { c[0].why = "its arguments are not a JSON object"; return false; }
+  tools:[CH_TOOLS]u8;problem:=gwt_arguments(ch_tools(tools[..]),GwToolCall.{call_id=ch_id(c),name=ch_name(c),input_json=args});if problem!="" {c[0].why=problem;return false;}
   ar: [1] ClArena; scratch: [CH_ARGS] u8; ar[0].buf = scratch[..];
   props := REALM_TOOLS[c[0].row].props;
   if ch_prop_at(props, "slug") >= 0 {
@@ -183,7 +178,7 @@ ch_read_args :: (c: [] ChCall) -> bool {
     for b, i: s { c[0].slug[i] = b; }
     c[0].slug_n = s.count;
   }
-  if ch_prop_at(props, "fileid") >= 0 {
+  if ch_prop_at(props, "fileid") >= 0 { // mutant: equivalent (every current table row with fileid has slug|fileid, so its position is 1, never 0)
     f := cl_str(ar[..], args, "fileid");
     if !ch_fid_ok(f) { c[0].why = "fileid must be an attachment's 16 hex digits, as realm_files lists them"; return false; }
     for b, i: f { c[0].fid[i] = b; }
@@ -228,21 +223,21 @@ ch_world :: (c: [] ChCall) -> bool {
   return run == CH_WORLD || run == CH_OPEN;
 }
 // One request's answer onto the answers the model is sent: the call, the route and its status, then its body
-// (at most CH_RESULT bytes, cut on a character, and said so). Where it ends; at when nothing fits.
+// (at most CH_RESULT bytes, cut on a character, and said so). Negative on overflow.
 ch_result :: (out: [] u8, at: int, c: [] ChCall, path: string, status: int, body: string) -> int {
   head: [CH_NAME + CH_ARGS + CH_PATH + 64] u8;
   h := json_raw(head[..], 0, ch_name(c)); h = json_raw(head[..], h, " "); h = json_raw(head[..], h, ch_args(c));
   h = json_raw(head[..], h, ": GET "); h = json_raw(head[..], h, path); h = json_raw(head[..], h, " answered ");
   if status == 0 { h = json_raw(head[..], h, "nothing (not reached)"); } else { h = json_raw(head[..], h, "HTTP "); h = json_write_int(head[..], h, status); }
   h = json_raw(head[..], h, "\n");
-  if h < 0 { return at; }
-  cut := ifx body.count > CH_RESULT then CH_RESULT else body.count;
+  if h < 0 { return -1; } // mutant: equivalent (a successful header includes fixed nonempty literals; h is negative or greater than zero)
+  cut := ifx body.count > CH_RESULT then CH_RESULT else body.count; // mutant: equivalent (at body.count == CH_RESULT both branches select the identical cut length)
   while cut > 0 && cut < body.count && (body[cut] & 0xC0) == 0x80 { cut -= 1; }
   n := json_raw(out, at, cast(string) head[0..<h]);
   n = json_raw(out, n, cast(string) body[0..<cut]);
   if cut < body.count { n = json_raw(out, n, "\n[the rest is left out: it is longer than we read at once]"); }
   n = json_raw(out, n, "\n\n");
-  return ifx n < 0 then at else n;
+  return n;
 }
 // A call that can't run, onto the answers: its name and why.
 ch_refused :: (out: [] u8, at: int, c: [] ChCall) -> int {
@@ -250,7 +245,6 @@ ch_refused :: (out: [] u8, at: int, c: [] ChCall) -> int {
   n = json_raw(out, n, ": not run: "); n = json_raw(out, n, c[0].why); n = json_raw(out, n, "\n\n");
   return ifx n < 0 then at else n;
 }
-CH_ANSWERS :: "What our tools answered, a call and then its answer (we called them; the person did not write this):\n\n";
 CH_LAST :: "Answer now in words from what the tools answered; no more tools are offered for this message.";
 
 #test "the rows this page runs are the command table's reads with a route it can ask, and each needs only a slug or an attachment's ID" {
@@ -285,45 +279,61 @@ CH_LAST :: "Answer now in words from what the tools answered; no more tools are 
   #assert has_test(s, "the model answering is Gemini 4 Hydrogen (google/gemini-4-hydrogen) on Google's Vertex AI.") && !has_test(s, "realm_world_place");
   #assert !has_test(ch_system("", "a", "b", out[..]), "projects the person is in");
 }
-#test "a call's pieces gather by index; a call is read against its row; its requests are the row's routes" {
-  calls: [CH_CALLS] ChCall; n := 0;
-  n = ch_gather(calls[..], n, 0, "realm_world", "{\"slug\":");
-  n = ch_gather(calls[..], n, 1, "realm_list", "");
-  n = ch_gather(calls[..], n, 0, "", "\"splice\"}");
-  #assert n == 2 && ch_name(calls[0..<1]) == "realm_world" && ch_args(calls[0..<1]) == "{\"slug\":\"splice\"}" && ch_args(calls[1..<2]) == "{}";
-  #assert ch_read(calls[0..<1]) && ch_slug(calls[0..<1]) == "splice" && ch_read(calls[1..<2]);
-  pb: [CH_PATH] u8;
-  #assert ch_path(calls[0..<1], 0, pb[..]) == "/api/worlds/splice/card" && ch_path(calls[0..<1], 1, pb[..]) == "/api/worlds/splice/content?lane=dev" && ch_path(calls[0..<1], 2, pb[..]) == "";
-  #assert ch_path(calls[1..<2], 0, pb[..]) == "/api/worlds" && ch_path(calls[1..<2], 1, pb[..]) == "/api/playtest/realms/mine" && ch_path(calls[1..<2], 2, pb[..]) == "";
-  #assert ch_world(calls[0..<1]) && !ch_world(calls[1..<2]);
-  // a realm route is its row's own
-  d: [1] ChCall; d[0] = ChCall.{row = -1};
-  n = ch_gather(d[..], 0, 3, "realm_doc", "{\"slug\":\"garden\"}");
-  #assert ch_read(d[..]) && ch_path(d[0..<1], 0, pb[..]) == "/api/playtest/realms/garden/doc" && ch_path(d[0..<1], 1, pb[..]) == "";
-  f: [1] ChCall;
-  n = ch_gather(f[..], 0, 0, "realm_file_read", "{\"slug\":\"splice\",\"fileid\":\"0123456789abcdef\"}");
-  #assert ch_read(f[..]) && ch_path(f[0..<1], 0, pb[..]) == "/api/worlds/splice/files/0123456789abcdef";
-  o: [1] ChCall; nb: [128] u8;
-  n = ch_gather(o[..], 0, 0, "realm_world_open", "{\"slug\":\"splice\"}");
-  #assert ch_read(o[..]) && ch_path(o[0..<1], 0, pb[..]) == "/api/worlds/splice/card" && ch_note(o[0..<1], nb[..]) == "the editor: /worlds/splice?edit" && ch_note(calls[0..<1], nb[..]) == "";
-  // a tool it doesn't have, arguments that aren't an object, a slug or an ID out of bounds: each says why
-  b: [1] ChCall;
-  n = ch_gather(b[..], 0, 0, "realm_world_place", "{\"slug\":\"splice\"}");
-  #assert !ch_read(b[..]) && b[0].why == "we have no such tool here" && ch_path(b[0..<1], 0, pb[..]) == "";
-  for bad: [4] string.["{\"slug\":\"../x\"}", "{\"slug\":\"\"}", "[1]", "{\"slug\":"] {
-    e: [1] ChCall; n = ch_gather(e[..], 0, 0, "realm_files", bad);
-    #assert !ch_read(e[..]) && e[0].why.count > 0 && e[0].row == -1 && ch_path(e[..], 0, pb[..]) == "";
-  }
-  g: [1] ChCall;
-  n = ch_gather(g[..], 0, 0, "realm_file_read", "{\"slug\":\"splice\",\"fileid\":\"XYZ\"}");
-  #assert !ch_read(g[..]) && has_test(g[0].why, "16 hex digits");
-  // past CH_CALLS calls, the rest are left out
-  m: [2] ChCall; k := 0;
-  for i: 0..<3 { k = ch_gather(m[..], k, i, "realm_list", "{}"); }
-  #assert k == 2;
+#test "offered property descriptions and closed schemas retain the exact shared table metadata" {
+ out:[CH_TOOLS]u8;t:=ch_tools(out[..]);scratch:[2048]u8;ar:=[1]ClArena.[ClArena.{buf=scratch[..]}];
+ #assert has_test(t,"\"description\":\"the realm's or world's ID, as realm_list names it (such as splice)\"") && has_test(t,"\"description\":\"the attachment's ID, 16 hex digits, as realm_files lists it\"");
+ #assert cl_raw(t,"0.function.parameters.additionalProperties")=="false";
+ found:=false;for i:0..<cl_count(t) {one:=cl_json(t,cl_item(t,i));if cl_str(ar[..],one,"function.name")=="realm_file_read" {
+  found=true;#assert cl_str(ar[..],one,"function.parameters.properties.slug.description")=="the realm's or world's ID, as realm_list names it (such as splice)";
+  #assert cl_str(ar[..],one,"function.parameters.properties.fileid.description")=="the attachment's ID, 16 hex digits, as realm_files lists it";
+ }}#assert found;
+ for row:REALM_TOOLS {if ch_runner(row)!=CH_NONE && ch_prop_at(row.props,"fileid")>=0 {#assert ch_prop_at(row.props,"fileid")==1;}}
+}
+#test "executor projection accepts exact name and argument bounds and clears a prior successful route" {
+ c:[1]ChCall;name:[CH_NAME+1]u8;args:[CH_ARGS+1]u8;for i:0..<name.count {name[i]='a';}for i:0..<args.count {args[i]=' ';}args[0]='{';args[1]='}';
+ #assert ch_call(c[..],GwToolCall.{call_id="n",name=cast(string)name[0..<CH_NAME],input_json="{}"}) && ch_name(c[..]).count==CH_NAME;
+ #assert !ch_call(c[..],GwToolCall.{call_id="n",name=cast(string)name[..],input_json="{}"});
+ #assert ch_call(c[..],GwToolCall.{call_id="n",name="realm_list",input_json=cast(string)args[0..<CH_ARGS]}) && ch_args(c[..]).count==CH_ARGS && ch_read(c[..]);
+ #assert !ch_call(c[..],GwToolCall.{call_id="n",name="realm_list",input_json=cast(string)args[..]}) && c[0].row== -1 && c[0].id_n==0 && c[0].name_n==0 && c[0].args_n==0;
+ #assert ch_call(c[..],GwToolCall.{call_id="escaped",name="realm_file_read",input_json="{\"slug\":\"sp\\u006cice\",\"fileid\":\"\\u0030123456789abcdef\"}"});c[0].why="old refusal";
+ #assert ch_read(c[..]) && c[0].why=="" && ch_slug(c[..])=="splice" && ch_fid(c[..])=="0123456789abcdef";
+}
+
+#test "route result formatting preserves exact byte limits and complete UTF8 prefixes" #steps 80000000 {
+ c:[1]ChCall;#assert ch_call(c[..],GwToolCall.{call_id="r",name="realm_list",input_json="{}"});out:[CH_OUTPUT]u8;body:[CH_RESULT+5]u8;for i:0..<body.count {body[i]='a';}
+ header:="realm_list {}: GET /api/worlds answered HTTP 200\n";notice:="\n[the rest is left out: it is longer than we read at once]";
+ for length:[2]int.[CH_RESULT,CH_RESULT+1] {n:=ch_result(out[..],0,c[..],"/api/worlds",200,cast(string)body[0..<length]);#assert n==header.count+CH_RESULT+2+ifx length>CH_RESULT then notice.count else 0;#assert (has_test(cast(string)out[0..<n],notice))==(length>CH_RESULT);}
+ for width:2..<5 {for i:0..<body.count {body[i]='a';}at:=CH_RESULT-width+1;
+  if width==2 {body[at]=0xC3;body[at+1]=0xA9;}else if width==3 {body[at]=0xE2;body[at+1]=0x82;body[at+2]=0xAC;}else {body[at]=0xF0;body[at+1]=0x9F;body[at+2]=0x98;body[at+3]=0x80;}
+  n:=ch_result(out[..],0,c[..],"/api/worlds",200,cast(string)body[0..<CH_RESULT+1]);#assert n==header.count+at+notice.count+2 && js_utf8(cast(string)out[0..<n]);
+ }
+ // Defensive clipping also bounds a malformed all-continuation byte string.
+ for i:0..<body.count {body[i]=0x80;}n:=ch_result(out[..],0,c[..],"/api/worlds",200,cast(string)body[..]);#assert n==header.count+notice.count+2;
+ path:[1024]u8;for i:0..<path.count {path[i]='x';}#assert ch_result(out[..],0,c[..],cast(string)path[..],200,"x")== -1;
+}
+#test "complete shared calls retain native IDs and read only the existing table routes" #steps 200000000 #traversal 536870912 {
+ calls:[CH_CALLS]ChCall;
+ #assert ch_call(calls[0..<1],GwToolCall.{call_id="world",name="realm_world",input_json="{\"slug\":\"splice\"}"}) && ch_call(calls[1..<2],GwToolCall.{call_id="list",name="realm_list",input_json="{}"});
+ #assert ch_id(calls[0..<1])=="world" && ch_name(calls[0..<1])=="realm_world" && ch_args(calls[0..<1])=="{\"slug\":\"splice\"}";
+ #assert ch_read(calls[0..<1]) && ch_slug(calls[0..<1])=="splice" && ch_read(calls[1..<2]);
+ pb:[CH_PATH]u8;
+ #assert ch_path(calls[0..<1],0,pb[..])=="/api/worlds/splice/card" && ch_path(calls[0..<1],1,pb[..])=="/api/worlds/splice/content?lane=dev" && ch_path(calls[0..<1],2,pb[..])=="";
+ #assert ch_path(calls[1..<2],0,pb[..])=="/api/worlds" && ch_path(calls[1..<2],1,pb[..])=="/api/playtest/realms/mine" && ch_path(calls[1..<2],2,pb[..])=="";
+ #assert ch_world(calls[0..<1]) && !ch_world(calls[1..<2]);
+ c:[1]ChCall;nb:[128]u8;
+ #assert ch_call(c[..],GwToolCall.{call_id="doc",name="realm_doc",input_json="{\"slug\":\"garden\"}"}) && ch_read(c[..]) && ch_path(c[..],0,pb[..])=="/api/playtest/realms/garden/doc" && ch_path(c[..],1,pb[..])=="";
+ #assert ch_call(c[..],GwToolCall.{call_id="file",name="realm_file_read",input_json="{\"slug\":\"splice\",\"fileid\":\"0123456789abcdef\"}"}) && ch_read(c[..]) && ch_path(c[..],0,pb[..])=="/api/worlds/splice/files/0123456789abcdef";
+ #assert ch_call(c[..],GwToolCall.{call_id="open",name="realm_world_open",input_json="{\"slug\":\"splice\"}"}) && ch_read(c[..]) && ch_path(c[..],0,pb[..])=="/api/worlds/splice/card" && ch_note(c[..],nb[..])=="the editor: /worlds/splice?edit" && ch_note(calls[0..<1],nb[..])=="";
+ #assert ch_call(c[..],GwToolCall.{call_id="write",name="realm_world_place",input_json="{\"slug\":\"splice\"}"}) && !ch_read(c[..]) && c[0].why=="we have no such tool here" && ch_path(c[..],0,pb[..])=="";
+ for args:[6]string.["{\"slug\":\"../x\"}","{\"slug\":\"\"}","[1]","{\"slug\":","{\"slug\":\"splice\",\"extra\":true}","{}"] {
+  projected:=ch_call(c[..],GwToolCall.{call_id="bad",name="realm_files",input_json=args});
+  #assert (!projected || !ch_read(c[..])) && c[0].why.count>0 && c[0].row== -1 && ch_path(c[..],0,pb[..])=="";
+ }
+ #assert ch_call(c[..],GwToolCall.{call_id="bad-file",name="realm_file_read",input_json="{\"slug\":\"splice\",\"fileid\":\"XYZ\"}"}) && !ch_read(c[..]) && has_test(c[0].why,"16 hex digits");
+ #assert !ch_call(c[..],GwToolCall.{call_id="bad",name="realm_list",input_json="{\"a\":1,\"\\u0061\":2}"});
 }
 #test "an answer goes to the model with its call, its route and status, cut at its most and said so" {
-  c: [1] ChCall; n := ch_gather(c[..], 0, 0, "realm_list", "{}");
+  c:[1]ChCall;#assert ch_call(c[..],GwToolCall.{call_id="list",name="realm_list",input_json="{}"});
   #assert ch_read(c[..]);
   out: [CH_RESULTS] u8;
   m := ch_result(out[..], 0, c[..], "/api/worlds", 200, "world splice Splice Bots\n");
@@ -331,8 +341,8 @@ CH_LAST :: "Answer now in words from what the tools answered; no more tools are 
   big: [CH_RESULT + 10] u8; for i: 0..<big.count { big[i] = 'a'; }
   m2 := ch_result(out[..], m, c[..], "/api/playtest/realms/mine", 0, cast(string) big[..]);
   #assert has_test(cast(string) out[m..<m2], "answered nothing (not reached)") && has_test(cast(string) out[m..<m2], "[the rest is left out");
-  #assert ch_result(out[0..<10], 0, c[..], "/api/worlds", 200, "x") == 0;
-  b: [1] ChCall; n = ch_gather(b[..], 0, 0, "realm_nope", "{}");
+  #assert ch_result(out[0..<10], 0, c[..], "/api/worlds", 200, "x") < 0;
+  b:[1]ChCall;#assert ch_call(b[..],GwToolCall.{call_id="unknown",name="realm_nope",input_json="{}"});
   #assert !ch_read(b[..]);
   r := ch_refused(out[..], 0, b[..]);
   #assert cast(string) out[0..<r] == "realm_nope {}: not run: we have no such tool here\n\n";

@@ -207,7 +207,7 @@ cw_settings_event :: (s: [] ChatWeb, kind: int, id: string, length: int) -> bool
 
 // ---------------------------------------------------------------- checks
 
-#test "the gear, the side's foot and the section list open Settings in the shell, at each section's address" {
+#test "the gear, the side's foot and the section list open Settings in the shell, at each section's address" #steps 200000000 #traversal 536870912 {
   h: [1] CwTest; s := h[0].s[..];
   cw_test_open(s, "{\"claude\":null}");
   t := s[0].tree[..];
@@ -344,7 +344,7 @@ cw_settings_event :: (s: [] ChatWeb, kind: int, id: string, length: int) -> bool
   #assert !c[0].known && tr_find(c[0].tree[..], "claude.key") < 0 && cw_test_has(tr_text_of(c[0].tree[..], tr_find(c[0].tree[..], "claude.acct.a")), "Log in as an admin");
 }
 
-#test "Settings, This machine: Coder's agents ready or why not, only ready ones offered, and a switch this browser keeps" {
+#test "Settings, This machine: Coder's agents ready or why not, only ready ones offered, and a switch this browser keeps" #steps 200000000 #traversal 536870912 {
   ts: [1] CwTest; s := ts[0].s[..];
   cw_test_local(s, CW_T_SESSIONS);
   t := s[0].tree[..];

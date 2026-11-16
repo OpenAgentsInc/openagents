@@ -30,7 +30,7 @@ GW_TOOL_CALLS :: 8; GW_TOOL_HISTORY :: 64; GW_TOOL_MESSAGES :: 128;
  m[0]=GwMessage.{role="tool"};#assert gwt_history_rich(m[0..<1]) && !gwt_history_valid(m[0..<1]);
  repeated:=[4]GwMessage.[GwMessage.{role="assistant",calls=calls[..]},GwMessage.{role="tool",result=GwToolResult.{call_id="a"}},GwMessage.{role="assistant",calls=calls[..]},GwMessage.{role="tool",result=GwToolResult.{call_id="a"}}];#assert gwt_history_rich(repeated[0..<1]) && !gwt_history_valid(repeated[..]);
 }
-#test "gateway tools: history bounds all native calls and refuses malformed data before writing" {
+#test "gateway tools: history bounds all native calls and refuses malformed data before writing" #steps 200000000 #traversal 536870912 {
  calls:[65]GwToolCall;ids:[65][8]u8;messages:[129]GwMessage;out:[1]Jo;
  for i:0..<65 {jo_start(out[..],ids[i][..]);jo_int(out[..],i);calls[i]=GwToolCall.{call_id=jo_text(out[..]),name="read",input_json="{}"};}
  for count:[3]int.[8,64,65] {n:=0;at:=0;while at<count {end:=at+8;if end>count {end=count;}messages[n]=GwMessage.{role="assistant",calls=calls[at..<end]};n+=1;for i:at..<end {messages[n]=GwMessage.{role="tool",result=GwToolResult.{call_id=calls[i].call_id}};n+=1;}at=end;}#assert gwt_history_valid(messages[0..<n])==(count<=64);}

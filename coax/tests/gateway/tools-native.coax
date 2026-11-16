@@ -5,6 +5,8 @@
 #load "../../lib/gateway/chat.coax";
 #load "../../lib/gateway/tool-step.coax";
 #load "../../lib/gateway/completion.coax";
+#load "../../lib/gateway/tool-arguments.coax";
+#load "../../lib/gateway/tool-conversation.coax";
 
 #test "gateway tools: native fixture also passes the original evaluator" #steps 200000000 {
  #assert gwt_native_checks()==0;
@@ -47,5 +49,15 @@ gwt_native_checks :: ()->int #export_c #effects(all) {
  k=gwt_result_write(result,raw[..]);#assert k>0 && gwt_result_read(cast(string)raw[0..<k],answer[..],owned[..]) && answer[0].output.count==GW_TOOL_OUTPUT;
  result.output=cast(string)output[..];#assert gwt_result_write(result,raw[..])<0;
  for malformed:[3]string.["[]","{\"a\":1,\"\\u0061\":2}","{\"a\":\"\\ud800\"}"] {#assert !gwt_call_valid(GwToolCall.{call_id="a",name="read",input_json=malformed});}
+ // The same owned history and schema admission used by the existing browser executor.
+ catalog:="[{\"type\":\"function\",\"function\":{\"name\":\"read\",\"parameters\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"}},\"required\":[\"path\"],\"additionalProperties\":false},\"strict\":true}}]";
+ memory:[65536]u8;conversation:[1]GwToolConversation;base:=[1]GwMessage.[GwMessage.{role="user",text="Read a note"}];
+ #assert gwt_conversation_begin(conversation[..],memory[..],2,base[..]);gwt_step_begin(s[..]);
+ #assert gwt_step_feed(s[..],GwEvent.{kind=GW_EV_TOOL,call_id="native",text="read",reason="{\"path\":\"note.txt\"}"}) && gwt_step_feed(s[..],GwEvent.{kind=GW_EV_DONE,reason="tool_calls"}) && gwt_step_end(s[..],true);
+ #assert gwt_arguments(catalog,gwt_step_call(s[..],0))=="" && gwt_conversation_calls(conversation[..],s[..],"Checking");gwt_step_begin(s[..]);
+ #assert gwt_conversation_result(conversation[..],GwToolResult.{call_id="native",output="denied",is_error=true});
+ k=gw_chat_body(GwRequest.{model="m",messages=gwt_conversation_messages(conversation[..])},0,raw[..]);#assert k>0;request=cast(string)raw[0..<k];
+ #assert cl_raw(request,"messages.1.tool_calls.0.id")=="\"native\"" && cl_raw(request,"messages.2.tool_call_id")=="\"native\"" && cl_raw(request,"messages.2.content")=="\"denied\"" && conversation[0].messages[2].result.is_error;
+ #assert gwt_arguments(catalog,GwToolCall.{call_id="bad",name="read",input_json="{\"path\":12}"})=="arguments do not match the offered schema";
  return 0;
 }

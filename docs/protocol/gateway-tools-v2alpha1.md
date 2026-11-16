@@ -66,6 +66,44 @@ omit fields it does not extend. Request schemas must be JSON objects, and
 raw tool declarations must be arrays; these shape checks do not establish
 supported JSON Schema semantics or grant execution.
 
+`tool-arguments.coax` validates a call against the complete catalog actually
+offered by its executor, reusing the Responses schema owner. This supported
+profile has at most 32 uniquely named functions within a 1,024-node/64 KiB
+decoded-string catalog budget, with flat object parameters:
+string (including string enums), boolean, number and lexical int64 integer
+properties, required fields and `additionalProperties`. It retains the
+Responses owner's 16-property and 8,192-byte argument bounds. Unknown schema
+constructs refuse instead of being ignored. A supplied strict flag must be a
+boolean; true additionally requires closed properties and every property to
+be required. The entire catalog is checked before any selected call admits.
+This local validation does not promise that a provider honors strict output.
+
+`tool-conversation.coax` owns a caller-supplied byte pool, copies complete
+initial history, and retains assistant calls and matching tool results across
+step/parser resets. It exposes continuation history only when the entire
+current batch has settled. An identical result replay is inert; a conflicting
+or foreign result refuses. Reused lifetime call IDs, exhausted message/call/
+byte storage, invalid UTF-8 and a configurable 1–64-step bound refuse before
+another executable batch publishes. Imported completed history stays inert.
+
+The existing browser `chat-web.coax` read-only command-table executor consumes
+these shared owners. Its existing API routes and account authorization still
+decide what can be read. It keeps native call IDs in its visible call records
+and provider-native continuation; it no longer inserts tool output as a user
+message. Schema errors become paired error results without a tool HTTP
+request. The executor's narrower limits are 64 name bytes, 512 argument bytes,
+eight calls per batch and three tool-bearing model steps, followed by a final
+ask with no tools. Each route response retains at most 4,096 body bytes with
+an explicit truncation notice. Stop ends this browser-owned loop. This
+ephemeral history does not establish durable capture, reconnect or mobile
+adoption of the shared loop.
+
+The browser collector accepts LF and CRLF event boundaries while preserving
+carriage-return bytes inside provider JSON. Invalid JSON cannot become an
+executable call by removing bytes. Its 32,768-byte event bound includes the
+framing; an exact-sized complete event is admitted and overflow poisons the
+candidate before any tool route starts.
+
 This document describes an implementation in progress. The owned codecs and
 gateway transport alone do not establish the durable gateway executor, mobile
 adoption, strict schema support, real provider qualification or #13620 completion.

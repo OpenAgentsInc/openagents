@@ -1,0 +1,168 @@
+// Owned, bounded history for the existing executor's model/tool loop.
+// Calls here are inert records. The executor still admits arguments and grants.
+// coax/bin/coax test coax/lib/gateway/tool-conversation.coax --library
+#load "tool-step.coax";
+#authority;
+GwToolConversation :: struct {
+ messages:[GW_TOOL_MESSAGES]GwMessage;n:int;calls:[GW_TOOL_HISTORY]GwToolCall;nc:int;
+ pool:[]u8;used:int;steps:int;limit:int;ready:bool;failed:bool;
+ batch:int;results:int;pending:int;remaining:int;settled:[GW_TOOL_CALLS]bool;
+}
+
+#test "tool conversation owns initial text and records exact native calls and correlated error results" {
+ pool:[16384]u8;c:[1]GwToolConversation;text:=[1]u8.['Q'];base:=[1]GwMessage.[GwMessage.{role="user",text=cast(string)text[..]}];
+ #assert gwt_conversation_begin(c[..],pool[..],2,base[..]);text[0]='X';#assert gwt_conversation_messages(c[..])[0].text=="Q";
+ step:[1]GwToolStep;gwt_step_begin(step[..]);#assert gwt_step_feed(step[..],GwEvent.{kind=GW_EV_TOOL,call_id="call_a",text="read",reason="{}"}) && gwt_step_feed(step[..],GwEvent.{kind=GW_EV_DONE,reason="tool_calls"}) && gwt_step_end(step[..],true);
+ #assert gwt_conversation_calls(c[..],step[..],"Checking") && gwt_conversation_messages(c[..]).count==0 && c[0].remaining==1;
+ c[0].ready=false;#assert !gwt_conversation_result(c[..],GwToolResult.{call_id="call_a",output="ignored"});c[0].ready=true;c[0].failed=true;
+ #assert !gwt_conversation_result(c[..],GwToolResult.{call_id="call_a",output="ignored"});c[0].failed=false;
+ gwt_step_begin(step[..]);#assert c[0].calls[0].call_id=="call_a" && c[0].calls[0].input_json=="{}";
+ result:=GwToolResult.{call_id="call_a",output="not found",is_error=true};#assert gwt_conversation_result(c[..],result) && gwt_conversation_result(c[..],result);
+ m:=gwt_conversation_messages(c[..]);#assert m.count==3 && m[1].text=="Checking" && m[1].calls.count==1 && m[1].calls[0].call_id=="call_a" && m[2].result.is_error && m[2].result.output=="not found" && gwt_history_valid(m) && c[0].steps==1;
+ result.output="different";#assert !gwt_conversation_result(c[..],result) && gwt_conversation_messages(c[..])[2].result.output=="not found";
+ c[0].failed=true;#assert gwt_conversation_messages(c[..]).count==0;c[0].failed=false;
+}
+#test "parallel results settle in either order without accepting foreign or repeated outcomes" {
+ pool:[16384]u8;c:[1]GwToolConversation;base:[1]GwMessage;#assert gwt_conversation_begin(c[..],pool[..],1,base[0..<0]);step:[1]GwToolStep;gwt_step_begin(step[..]);
+ for id,i:[2]string.["a","b"] {#assert gwt_step_feed(step[..],GwEvent.{kind=GW_EV_TOOL,status=i,call_id=id,text="read",reason="{}"});}
+ #assert gwt_step_feed(step[..],GwEvent.{kind=GW_EV_DONE,reason="tool_calls"}) && gwt_step_end(step[..],true) && gwt_conversation_calls(c[..],step[..],"");
+ #assert !gwt_conversation_calls(c[..],step[..],"") && !gwt_conversation_result(c[..],GwToolResult.{call_id="foreign"});
+ #assert gwt_conversation_result(c[..],GwToolResult.{call_id="b",output="B"}) && c[0].remaining==1 && gwt_conversation_messages(c[..]).count==0;
+ #assert gwt_conversation_result(c[..],GwToolResult.{call_id="b",output="B"}) && c[0].remaining==1;
+ #assert gwt_conversation_result(c[..],GwToolResult.{call_id="a",output="A"}) && c[0].remaining==0;
+ m:=gwt_conversation_messages(c[..]);#assert m.count==3 && m[1].result.call_id=="a" && m[1].result.output=="A" && m[2].result.call_id=="b" && m[2].result.output=="B" && gwt_history_valid(m);
+ #assert !gwt_conversation_calls(c[..],step[..],"");
+}
+#test "conversation retains completed rich history but never releases its imported calls for execution" {
+ calls:=[1]GwToolCall.[GwToolCall.{call_id="old",name="read",input_json="{}"}];base:=[2]GwMessage.[GwMessage.{role="assistant",calls=calls[..]},GwMessage.{role="tool",result=GwToolResult.{call_id="old",output="old output"}}];pool:[16384]u8;c:[1]GwToolConversation;
+ #assert gwt_conversation_begin(c[..],pool[..],2,base[..]) && gwt_conversation_messages(c[..]).count==2 && c[0].pending==0 && !gwt_conversation_result(c[..],GwToolResult.{call_id="old",output="changed"});
+ #assert c[0].messages[0].role=="assistant" && c[0].messages[1].role=="tool" && c[0].messages[1].result.call_id=="old" && c[0].messages[1].result.output=="old output";
+ step:[1]GwToolStep;gwt_step_begin(step[..]);#assert gwt_step_feed(step[..],GwEvent.{kind=GW_EV_TOOL,call_id="old",text="read",reason="{}"}) && gwt_step_feed(step[..],GwEvent.{kind=GW_EV_DONE,reason="tool_calls"}) && gwt_step_end(step[..],true) && !gwt_conversation_calls(c[..],step[..],"");
+ #assert !gwt_conversation_begin(c[..],pool[..],1,base[0..<1]) && gwt_conversation_messages(c[..]).count==0;
+}
+#test "conversation admits exact pool capacity and fails closed on exhausted owned bytes" {
+ c:[1]GwToolConversation;pool:[128]u8;base:=[1]GwMessage.[GwMessage.{role="user",text="Q"}];#assert gwt_conversation_begin(c[..],pool[0..<1],1,base[..]) && !c[0].failed;
+ #assert !gwt_conversation_begin(c[..],pool[0..<0],1,base[..]) && c[0].failed && gwt_conversation_messages(c[..]).count==0;
+ for limit:[3]int.[0,GW_TOOL_HISTORY+1,-1] {#assert !gwt_conversation_begin(c[..],pool[..],limit,base[..]);}
+ #assert gwt_conversation_begin(c[..],pool[..],GW_TOOL_HISTORY,base[..]);step:[1]GwToolStep;gwt_step_begin(step[..]);#assert !gwt_conversation_calls(c[..],step[..],"");
+ #assert gwt_step_feed(step[..],GwEvent.{kind=GW_EV_TOOL,call_id="a",text="r",reason="{}"}) && gwt_step_feed(step[..],GwEvent.{kind=GW_EV_DONE,reason="tool_calls"}) && gwt_step_end(step[..],true);
+ #assert gwt_conversation_begin(c[..],pool[0..<5],1,base[..]) && gwt_conversation_calls(c[..],step[..],"") && c[0].used==5;
+ #assert !gwt_conversation_result(c[..],GwToolResult.{call_id="a",output="x"}) && c[0].failed && gwt_conversation_messages(c[..]).count==0;
+ #assert !gwt_conversation_calls(c[..],step[..],"");
+}
+#test "conversation bounds messages lifetime call IDs complete batches and valid UTF8" #steps 200000000 #traversal 536870912 {
+ c:[1]GwToolConversation;pool:[16384]u8;base:[GW_TOOL_MESSAGES]GwMessage;for i:0..<base.count {base[i]=GwMessage.{role="user"};}
+ #assert gwt_conversation_begin(c[..],pool[..],1,base[..]);step:[1]GwToolStep;gwt_step_begin(step[..]);#assert gwt_step_feed(step[..],GwEvent.{kind=GW_EV_TOOL,call_id="a",text="r",reason="{}"}) && gwt_step_feed(step[..],GwEvent.{kind=GW_EV_DONE,reason="tool_calls"}) && gwt_step_end(step[..],true);
+ #assert !gwt_conversation_calls(c[..],step[..],"");
+ #assert gwt_conversation_begin(c[..],pool[..],1,base[0..<GW_TOOL_MESSAGES-2]) && gwt_conversation_calls(c[..],step[..],"") && gwt_conversation_result(c[..],GwToolResult.{call_id="a"}) && gwt_conversation_messages(c[..]).count==GW_TOOL_MESSAGES;
+ bad:=[1]u8.[255];base[0].text=cast(string)bad[..];#assert !gwt_conversation_begin(c[..],pool[..],1,base[0..<1]);
+}
+
+#test "conversation preserves settled outcomes and checks each independent owner limit" {
+ c:[1]GwToolConversation;pool:[65536]u8;empty:[1]GwMessage;step:[1]GwToolStep;gwt_step_begin(step[..]);
+ #assert !gwt_conversation_result(c[..],GwToolResult.{call_id="a"}) && !gwt_conversation_calls(c[..],step[..],"") && gwt_conversation_messages(c[..]).count==0;
+ #assert gwt_conversation_begin(c[..],pool[..],1,empty[0..<0]);
+ for id:[2]string.["a","b"] {
+  gwt_step_begin(step[..]);#assert gwt_step_feed(step[..],GwEvent.{kind=GW_EV_TOOL,call_id=id,text="r",reason="{}"}) && gwt_step_feed(step[..],GwEvent.{kind=GW_EV_DONE,reason="tool_calls"}) && gwt_step_end(step[..],true);
+  if id=="a" {#assert gwt_conversation_calls(c[..],step[..],"");
+   #assert !gwt_conversation_result(c[..],GwToolResult.{call_id=""});bad:=[1]u8.[255];#assert !gwt_conversation_result(c[..],GwToolResult.{call_id="a",output=cast(string)bad[..]});
+   #assert gwt_conversation_result(c[..],GwToolResult.{call_id="a",output="",is_error=true}) && !gwt_conversation_result(c[..],GwToolResult.{call_id="a",output="",is_error=false});
+  }else {#assert !gwt_conversation_calls(c[..],step[..],"") && c[0].steps==1 && c[0].nc==1;}
+ }
+ #assert gwt_conversation_begin(c[..],pool[0..<3],1,empty[0..<0]) && !gwt_conversation_calls(c[..],step[..],"") && c[0].failed && gwt_conversation_messages(c[..]).count==0;
+ #assert !gwt_conversation_result(c[..],GwToolResult.{call_id="b"});
+ #assert gwt_conversation_begin(c[..],pool[..],2,empty[0..<0]);bad:=[1]u8.[255];#assert !gwt_conversation_calls(c[..],step[..],cast(string)bad[..]) && c[0].failed;
+}
+
+#test "completed imported history consumes every lifetime ID and both copy bounds remain exact" #steps 200000000 #traversal 536870912 {
+ c:[1]GwToolConversation;pool:[65536]u8;step:[1]GwToolStep;gwt_step_begin(step[..]);
+ #assert gwt_step_feed(step[..],GwEvent.{kind=GW_EV_TOOL,call_id="new",text="r",reason="{}"}) && gwt_step_feed(step[..],GwEvent.{kind=GW_EV_DONE,reason="tool_calls"}) && gwt_step_end(step[..],true);
+ // Eight completed batches consume all 64 lifetime IDs without filling 128 messages.
+ calls:[GW_TOOL_HISTORY]GwToolCall;base:[GW_TOOL_HISTORY+8]GwMessage;names:[GW_TOOL_HISTORY][4]u8;
+ at:=0;for batch:0..<8 {for j:0..<8 {i:=batch*8+j;n:=json_write_int(names[i][..],0,i);calls[i]=GwToolCall.{call_id=cast(string)names[i][0..<n],name="r",input_json="{}"};}
+  base[at]=GwMessage.{role="assistant",calls=calls[batch*8..<batch*8+8]};at+=1;for j:0..<8 {base[at]=GwMessage.{role="tool",result=GwToolResult.{call_id=calls[batch*8+j].call_id}};at+=1;}}
+ #assert at==72 && gwt_conversation_begin(c[..],pool[..],64,base[..]) && c[0].nc==64 && !gwt_conversation_calls(c[..],step[..],"");
+ // The copy helper refuses either fixed table independently before writing.
+ c[0].n=GW_TOOL_MESSAGES;#assert !gwt_conversation_copy(c[..],GwMessage.{role="user"});c[0].n=0;
+ #assert !gwt_conversation_copy(c[..],GwMessage.{role="assistant",calls=calls[0..<1]});
+}
+
+#test "the final full batch reaches exactly 64 owned calls and every result settles its own row" #steps 200000000 #traversal 536870912 {
+ c:[1]GwToolConversation;pool:[65536]u8;step:[1]GwToolStep;calls:[GW_TOOL_HISTORY]GwToolCall;base:[GW_TOOL_HISTORY+8]GwMessage;names:[GW_TOOL_HISTORY][4]u8;
+ at:=0;for batch:0..<8 {for j:0..<8 {i:=batch*8+j;n:=json_write_int(names[i][..],0,i);calls[i]=GwToolCall.{call_id=cast(string)names[i][0..<n],name="r",input_json="{}"};}
+  base[at]=GwMessage.{role="assistant",calls=calls[batch*8..<batch*8+8]};at+=1;for j:0..<8 {base[at]=GwMessage.{role="tool",result=GwToolResult.{call_id=calls[batch*8+j].call_id}};at+=1;}}
+ #assert gwt_conversation_begin(c[..],pool[..],64,base[0..<63]) && c[0].nc==56;
+ gwt_step_begin(step[..]);for i:0..<8 {#assert gwt_step_feed(step[..],GwEvent.{kind=GW_EV_TOOL,status=i,call_id=calls[56+i].call_id,text="r",reason="{}"});}
+ #assert !gwt_conversation_calls(c[..],step[..],"") && gwt_step_feed(step[..],GwEvent.{kind=GW_EV_DONE,reason="tool_calls"}) && gwt_step_end(step[..],true);
+ #assert gwt_conversation_calls(c[..],step[..],"") && c[0].nc==64 && c[0].batch==56 && c[0].pending==8 && c[0].remaining==8;
+ for i:0..<8 {#assert gwt_conversation_result(c[..],GwToolResult.{call_id=calls[56+i].call_id,output="done"});}
+ m:=gwt_conversation_messages(c[..]);#assert m.count==72 && c[0].results==64;
+ // Independent expected rows avoid revalidating the same large history with
+ // the product validator already used at import (and keep this check in the evaluator).
+ for batch:0..<8 {#assert m[batch*9].role=="assistant" && m[batch*9].calls.count==8;
+  for j:0..<8 {i:=batch*8+j;expected:=calls[i].call_id;#assert m[batch*9].calls[j].call_id==expected && m[batch*9].calls[j].name=="r" && m[batch*9].calls[j].input_json=="{}" && m[batch*9+1+j].role=="tool" && m[batch*9+1+j].result.call_id==expected;}}
+ for i:0..<8 {#assert m[64+i].role=="tool" && m[64+i].result.call_id==calls[56+i].call_id && m[64+i].result.output=="done";}
+}
+
+#test "failed initialization unpublished owners and consecutive batches retain their own outcomes" {
+ c:[1]GwToolConversation;pool:[16384]u8;empty:[1]GwMessage;step:[1]GwToolStep;gwt_step_begin(step[..]);
+ #assert gwt_step_feed(step[..],GwEvent.{kind=GW_EV_TOOL,call_id="a",text="r",reason="{}"}) && gwt_step_feed(step[..],GwEvent.{kind=GW_EV_DONE,reason="tool_calls"}) && gwt_step_end(step[..],true);
+ // Failed initialization can retain a private prefix, which must never publish.
+ plain:=[2]GwMessage.[GwMessage.{role="user",text="a"},GwMessage.{role="user",text="b"}];
+ #assert !gwt_conversation_begin(c[..],pool[0..<1],1,plain[..]) && c[0].n==1 && !c[0].ready && gwt_conversation_messages(c[..]).count==0;
+ // Check failed step and failed owner independently of empty/unsealed state.
+ #assert gwt_conversation_begin(c[..],pool[..],2,empty[0..<0]);step[0].failed=true;
+ #assert !gwt_conversation_calls(c[..],step[..],"");step[0].failed=false;c[0].failed=true;
+ #assert !gwt_conversation_calls(c[..],step[..],"") && !gwt_conversation_result(c[..],GwToolResult.{call_id="a"});
+ c[0].failed=false;c[0].ready=false;#assert !gwt_conversation_calls(c[..],step[..],"");c[0].ready=true;
+ // Every new batch clears all previous settled flags, including the final slot.
+ #assert gwt_conversation_begin(c[..],pool[..],3,empty[0..<0]);
+ gwt_step_begin(step[..]);#assert gwt_step_feed(step[..],GwEvent.{kind=GW_EV_TOOL,call_id="first",text="r",reason="{}"}) && gwt_step_feed(step[..],GwEvent.{kind=GW_EV_DONE,reason="tool_calls"}) && gwt_step_end(step[..],true) && gwt_conversation_calls(c[..],step[..],"") && gwt_conversation_result(c[..],GwToolResult.{call_id="first",output="old"});
+ gwt_step_begin(step[..]);#assert gwt_step_feed(step[..],GwEvent.{kind=GW_EV_TOOL,call_id="second",text="r",reason="{}"}) && gwt_step_feed(step[..],GwEvent.{kind=GW_EV_DONE,reason="tool_calls"}) && gwt_step_end(step[..],true) && gwt_conversation_calls(c[..],step[..],"") && gwt_conversation_result(c[..],GwToolResult.{call_id="second",output="new"});
+ #assert gwt_conversation_messages(c[..]).count==4 && c[0].messages[3].result.output=="new";
+ #assert gwt_conversation_begin(c[..],pool[..],3,empty[0..<0]);step[0].calls[0].input[0]='[';#assert !gwt_conversation_calls(c[..],step[..],"");step[0].calls[0].input[0]='{';
+}
+
+#test "conversation admission audits each refusal with all other guards satisfied" #steps 80000000 {
+ pool:[16384]u8;c:[1]GwToolConversation;base:=[1]GwMessage.[GwMessage.{role="user",text="Q"}];step:[1]GwToolStep;
+ for mode:0..<10 {
+  #assert gwt_conversation_begin(c[..],pool[..],2,base[..]);gwt_step_begin(step[..]);
+  #assert gwt_step_feed(step[..],GwEvent.{kind=GW_EV_TOOL,call_id="a",text="r",reason="{}"}) && gwt_step_feed(step[..],GwEvent.{kind=GW_EV_DONE,reason="tool_calls"}) && gwt_step_end(step[..],true);
+  if mode==0 {c[0].ready=false;}else if mode==1 {c[0].failed=true;}else if mode==2 {c[0].remaining=1;}
+  else if mode==3 {c[0].steps=2;}else if mode==4 {step[0].sealed=false;}else if mode==5 {step[0].failed=true;}
+  else if mode==6 {step[0].n=0;}else if mode==7 {step[0].n=9;}else if mode==8 {c[0].n=127;}else {c[0].nc=64;}
+  #assert !gwt_conversation_calls(c[..],step[..],"");
+ }
+}
+
+gwt_conversation_text :: (c:[]GwToolConversation,value:string)->string #effects(all) {
+ if !js_utf8(value) || value.count>c[0].pool.count-c[0].used {c[0].failed=true;return "";}at:=c[0].used;c[0].used+=js_copy(c[0].pool[at..<c[0].pool.count],value);return cast(string)c[0].pool[at..<c[0].used];
+}
+gwt_conversation_copy :: (c:[]GwToolConversation,m:GwMessage)->bool #effects(all) {
+ if c[0].n>=GW_TOOL_MESSAGES || m.calls.count>GW_TOOL_HISTORY-c[0].nc {return false;}start:=c[0].nc;
+ for call:m.calls {c[0].calls[c[0].nc]=GwToolCall.{call_id=gwt_conversation_text(c,call.call_id),name=gwt_conversation_text(c,call.name),input_json=gwt_conversation_text(c,call.input_json)};c[0].nc+=1;}
+ row:=GwMessage.{role=ifx m.role=="user" then "user" else ifx m.role=="assistant" then "assistant" else "tool",text=gwt_conversation_text(c,m.text),calls=c[0].calls[start..<c[0].nc]};
+ if m.role=="tool" {row.result=GwToolResult.{call_id=gwt_conversation_text(c,m.result.call_id),output=gwt_conversation_text(c,m.result.output),is_error=m.result.is_error};}
+ if c[0].failed {return false;}c[0].messages[c[0].n]=row;c[0].n+=1;return true;
+}
+gwt_conversation_begin :: (c:[]GwToolConversation,pool:[]u8,limit:int,base:[]GwMessage)->bool #effects(all) {
+ c[0]=GwToolConversation.{pool=pool,limit=limit};if limit<1 || limit>GW_TOOL_HISTORY || !gwt_history_valid(base) {return false;}
+ for m:base {if !gwt_conversation_copy(c,m) {return false;}}c[0].ready=true;return true;
+}
+gwt_conversation_messages :: (c:[]GwToolConversation)->[]GwMessage #effects(all) {return c[0].messages[0..<ifx c[0].ready && !c[0].failed && c[0].remaining==0 then c[0].n else 0];}
+gwt_conversation_calls :: (c:[]GwToolConversation,step:[]GwToolStep,text:string)->bool #effects(all) {
+ if !c[0].ready || c[0].failed || c[0].remaining!=0 || c[0].steps>=c[0].limit {return false;}
+ if !step[0].sealed || step[0].failed {return false;} // mutant: equivalent (gwt_step_call also returns an invalid empty call for either state; weakening this preflight cannot publish a call)
+ if step[0].n<1 || step[0].n>GW_TOOL_CALLS {return false;} // mutant: equivalent (raising 8 to 9 admits no additional step from gwt_step_end, whose typed storage has exactly eight physical calls)
+ if c[0].n+1+step[0].n>GW_TOOL_MESSAGES {return false;}
+ if c[0].nc+step[0].n>GW_TOOL_HISTORY {return false;} // mutant: equivalent (the copy helper separately refuses nc+n>64 before writing; widening this preflight or subtracting n still reaches that exact bound)
+ calls:[GW_TOOL_CALLS]GwToolCall;for i:0..<step[0].n {calls[i]=gwt_step_call(step,i);if !gwt_call_valid(calls[i]) {return false;}for j:0..<c[0].nc {if c[0].calls[j].call_id==calls[i].call_id {return false;}}}
+ start:=c[0].nc;if !gwt_conversation_copy(c,GwMessage.{role="assistant",text=text,calls=calls[0..<step[0].n]}) {return false;}
+ c[0].batch=start;c[0].results=c[0].n;c[0].pending=step[0].n;c[0].remaining=step[0].n;c[0].steps+=1;
+ for i:0..<step[0].n {c[0].settled[i]=false;c[0].messages[c[0].n]=GwMessage.{role="tool",result=GwToolResult.{call_id=c[0].calls[start+i].call_id}};c[0].n+=1;}return true;
+}
+gwt_conversation_result :: (c:[]GwToolConversation,result:GwToolResult)->bool #effects(all) {
+ if !c[0].ready || c[0].failed || !gwt_result_valid(result) {return false;}index:= -1;for i:0..<c[0].pending {if c[0].calls[c[0].batch+i].call_id==result.call_id {index=i;}}
+ if index<0 {return false;}row:=c[0].results+index;if c[0].settled[index] {return c[0].messages[row].result.output==result.output && c[0].messages[row].result.is_error==result.is_error;}
+ output:=gwt_conversation_text(c,result.output);if c[0].failed {return false;}c[0].messages[row].result.output=output;c[0].messages[row].result.is_error=result.is_error;c[0].settled[index]=true;c[0].remaining-=1;return true;
+}

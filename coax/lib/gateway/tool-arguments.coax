@@ -1,0 +1,82 @@
+// Admission against the exact offered function schemas, before any executor.
+// Reuses the Responses schema owner; its supported flat primitive profile is
+// explicit. This never grants a host, account, filesystem or tool permission.
+// coax/bin/coax test coax/lib/gateway/tool-arguments.coax --library
+#load "tool-wire.coax";
+#load "../../../psionic/lib/responses/schema.coax";
+#authority;
+GW_OFFER_TOOLS :: 32;
+
+#test "offered tools admit exact required primitive arguments and refuse foreign names" {
+ tools:="[{\"type\":\"function\",\"function\":{\"name\":\"read\",\"description\":\"Read a file\",\"parameters\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"}},\"required\":[\"path\"],\"additionalProperties\":false},\"strict\":true}}]";
+ call:=GwToolCall.{call_id="c",name="read",input_json="{\"path\":\"note.txt\"}"};#assert gwt_arguments(tools,call)=="";
+ call.name="other";#assert gwt_arguments(tools,call)=="tool was not offered";call.name="read";
+ for raw:[5]string.["{}","{\"path\":3}","{\"path\":\"a\",\"extra\":1}","{\"path\":\"a\",\"pa\\u0074h\":\"b\"}","[]"] {call.input_json=raw;#assert gwt_arguments(tools,call)!="";}
+ call.input_json="{}";call.call_id="";#assert gwt_arguments(tools,call)=="invalid tool call";
+}
+#test "offered tool admission refuses malformed lists declarations and unsupported schemas" {
+ call:=GwToolCall.{call_id="c",name="read",input_json="{}"};
+ for tools:[7]string.["","{","{}","null","[0]","[{\"type\":\"custom\",\"function\":{}}]","[{\"type\":\"function\",\"function\":{\"name\":\"read\",\"parameters\":{\"type\":\"object\",\"properties\":{\"x\":{\"type\":\"array\"}}}}}]"] {#assert gwt_arguments(tools,call)!="";}
+ #assert gwt_arguments("[]",call)=="tool was not offered";
+ for fn:[8]string.["{}","{\"name\":\"\",\"parameters\":{}}","{\"name\":\"read\",\"description\":1,\"parameters\":{}}","{\"name\":\"read\",\"strict\":null,\"parameters\":{}}","{\"name\":\"read\",\"strict\":1,\"parameters\":{}}","{\"name\":\"read\",\"extra\":true,\"parameters\":{}}","{\"name\":\"read\",\"parameters\":[]}","{\"name\":\"read\",\"parameters\":{\"type\":\"object\",\"properties\":{},\"minProperties\":1}}"] {
+  raw:[4096]u8;n:=json_raw(raw[..],0,"[{\"type\":\"function\",\"function\":");n=json_raw(raw[..],n,fn);n=json_raw(raw[..],n,"}]");#assert n>0 && gwt_arguments(cast(string)raw[0..<n],call)!="";
+ }
+}
+#test "strict promises require closed properties and every property required" {
+ call:=GwToolCall.{call_id="c",name="read",input_json="{}"};raw:[4096]u8;
+ for schema:[4]string.["{\"type\":\"object\",\"properties\":{}}","{\"type\":\"object\",\"properties\":{},\"additionalProperties\":true}","{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"}},\"required\":[],\"additionalProperties\":false}","{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"}},\"required\":[\"path\"]}"] {
+  n:=json_raw(raw[..],0,"[{\"type\":\"function\",\"function\":{\"name\":\"read\",\"strict\":true,\"parameters\":");n=json_raw(raw[..],n,schema);n=json_raw(raw[..],n,"}}]");#assert n>0 && gwt_arguments(cast(string)raw[0..<n],call)=="unsupported strict tool schema";
+ }
+ #assert gwt_arguments("[{\"type\":\"function\",\"function\":{\"name\":\"read\",\"strict\":false,\"parameters\":{\"type\":\"object\",\"properties\":{}}}}]",call)=="";
+}
+#test "every offered definition is validated before a selected call can run" {
+ call:=GwToolCall.{call_id="c",name="read",input_json="{}"};
+ for other:[3]string.["{\"type\":\"function\",\"function\":{\"name\":\"read\",\"parameters\":{\"type\":\"object\",\"properties\":{}}}}","{\"type\":\"function\",\"function\":{\"name\":\"r\\u0065ad\",\"parameters\":{\"type\":\"object\",\"properties\":{}}}}","{\"type\":\"function\",\"extra\":true,\"function\":{\"name\":\"other\",\"parameters\":{\"type\":\"object\",\"properties\":{}}}}"] {
+  raw:[4096]u8;n:=json_raw(raw[..],0,"[{\"type\":\"function\",\"function\":{\"name\":\"read\",\"parameters\":{\"type\":\"object\",\"properties\":{}}}},");n=json_raw(raw[..],n,other);n=json_raw(raw[..],n,"]");#assert n>0 && gwt_arguments(cast(string)raw[0..<n],call)!="";
+ }
+}
+#test "tool schema profile preserves enum boolean integer and number semantics" {
+ tools:="[{\"type\":\"function\",\"function\":{\"name\":\"typed\",\"parameters\":{\"type\":\"object\",\"properties\":{\"mode\":{\"type\":\"string\",\"enum\":[\"a\",\"b\"]},\"flag\":{\"type\":\"boolean\"},\"n\":{\"type\":\"integer\"},\"x\":{\"type\":\"number\"}},\"required\":[\"mode\",\"flag\",\"n\",\"x\"],\"additionalProperties\":false}}}]";
+ call:=GwToolCall.{call_id="c",name="typed",input_json="{\"mode\":\"a\",\"flag\":false,\"n\":1,\"x\":1.5}"};#assert gwt_arguments(tools,call)=="";
+ for args:[4]string.["{\"mode\":\"c\",\"flag\":false,\"n\":1,\"x\":1.5}","{\"mode\":\"a\",\"flag\":0,\"n\":1,\"x\":1.5}","{\"mode\":\"a\",\"flag\":false,\"n\":1.5,\"x\":1.5}","{\"mode\":\"a\",\"flag\":false,\"n\":1,\"x\":\"1\"}"] {call.input_json=args;#assert gwt_arguments(tools,call)=="arguments do not match the offered schema";}
+}
+#test "offered tool and argument bounds refuse whole candidates" {
+ raw:[16384]u8;o:[1]Jo;call:=GwToolCall.{call_id="c",name="0",input_json="{}"};
+ for count:[3]int.[1,GW_OFFER_TOOLS,GW_OFFER_TOOLS+1] {jo_start(o[..],raw[..]);jo_arr(o[..]);for i:0..<count {name:[16]u8;p:[1]Jo;jo_start(p[..],name[..]);jo_int(p[..],i);
+  jo_obj(o[..]);jo_key(o[..],"type");jo_str(o[..],"function");jo_key(o[..],"function");jo_obj(o[..]);jo_key(o[..],"name");jo_str(o[..],jo_text(p[..]));jo_key(o[..],"parameters");jo_raw(o[..],"{\"type\":\"object\",\"properties\":{}}");jo_end(o[..]);jo_end(o[..]);}jo_end(o[..]);#assert !o[0].bad && (gwt_arguments(jo_text(o[..]),call)=="")==(count<=GW_OFFER_TOOLS);}
+ tools:="[{\"type\":\"function\",\"function\":{\"name\":\"0\",\"parameters\":{\"type\":\"object\",\"properties\":{}}}}]";args:[8193]u8;args[0]='{';args[1]='}';for i:2..<args.count {args[i]=' ';}
+ call.input_json=cast(string)args[0..<8192];#assert gwt_arguments(tools,call)=="";call.input_json=cast(string)args[..];#assert gwt_arguments(tools,call)=="arguments exceed the tool schema profile";
+}
+
+#test "catalog errors and description bounds have exact outcomes independent of later schemas" {
+ call:=GwToolCall.{call_id="c",name="read",input_json="{}"};#assert gwt_arguments("{}",call)=="invalid offered tool list";
+ text:[1025]u8;for i:0..<text.count {text[i]='a';}raw:[4096]u8;o:[1]Jo;
+ for length:[3]int.[0,1024,1025] {jo_start(o[..],raw[..]);jo_arr(o[..]);jo_obj(o[..]);jo_key(o[..],"type");jo_str(o[..],"function");jo_key(o[..],"function");jo_obj(o[..]);jo_key(o[..],"name");jo_str(o[..],"read");jo_key(o[..],"description");jo_str(o[..],cast(string)text[0..<length]);jo_key(o[..],"parameters");jo_raw(o[..],"{\"type\":\"object\",\"properties\":{}}");jo_end(o[..]);jo_end(o[..]);jo_end(o[..]);#assert !o[0].bad;
+  #assert gwt_arguments(jo_text(o[..]),call)==ifx length<=1024 then "" else "invalid tool description";
+ }
+ #assert gwt_arguments("[{\"type\":\"function\",\"function\":{\"name\":\"read\",\"description\":1,\"parameters\":{\"type\":\"object\",\"properties\":{}}}}]",call)=="invalid tool description";
+}
+
+gwt_arguments :: (tools:string,call:GwToolCall)->string #effects(all) {
+ if !gwt_call_valid(call) {return "invalid tool call";}
+ nodes:[1024]RsNode;arena:[65536]u8;r:=rs_json(tools,nodes[..],arena[..]);if !r.ok || nodes[0].kind!=JSON_ARRAY {return "invalid offered tool list";}
+ names:[GW_OFFER_TOOLS]string;count:=0;found:= -1;i:=1;
+ while i<nodes[0].next {
+  if count>=GW_OFFER_TOOLS {return "too many offered tools";}
+  keys:=[2]string.["type","function"];if !rs_keys(nodes[..],i,keys[..]) || rs_string(nodes[..],rs_get(nodes[..],i,"type"))!="function" {return "unsupported tool declaration";}
+  fn:=rs_get(nodes[..],i,"function");fields:=[4]string.["name","description","parameters","strict"];if !rs_keys(nodes[..],fn,fields[..]) {return "invalid function declaration";}
+  name:=rs_string(nodes[..],rs_get(nodes[..],fn,"name"));if !gwt_id(name) {return "invalid offered tool name";}
+  for k:0..<count {if names[k]==name {return "duplicate offered tool name";}}names[count]=name;count+=1;
+  description:=rs_get(nodes[..],fn,"description");flag:=rs_get(nodes[..],fn,"strict");
+  if description>=0 && (nodes[description].kind!=JSON_STRING || nodes[description].text.count>1024) {return "invalid tool description";} // mutant: equivalent (a present function description is a descendant at index >=4; changing >=0 to >0 or >=1 cannot change presence)
+  if flag>=0 && nodes[flag].kind!=JSON_TRUE && nodes[flag].kind!=JSON_FALSE {return "invalid strict tool flag";} // mutant: equivalent (a present strict field is a function descendant at index >=4; >0 and >=1 preserve presence)
+  schema:=rs_get(nodes[..],fn,"parameters");if !rs_schema(nodes[..],schema) {return "unsupported tool schema";}
+  if flag>=0 && nodes[flag].kind==JSON_TRUE { // mutant: equivalent (a present strict field has index >=4; >0 and >=1 preserve presence)
+   ap:=rs_get(nodes[..],schema,"additionalProperties");if !rs_kind(nodes[..],ap,JSON_FALSE) {return "unsupported strict tool schema";}
+   props:=rs_get(nodes[..],schema,"properties");p:=props+1;while p<nodes[props].next {if !rs_required(nodes[..],schema,nodes[p].key) {return "unsupported strict tool schema";}p=nodes[p].next;}
+  }
+  if name==call.name {found=schema;}i=nodes[i].next;
+ }
+ if found<0 {return "tool was not offered";}if call.input_json.count>8192 {return "arguments exceed the tool schema profile";} // mutant: equivalent (found is -1 or a parameters descendant at index >=4; <=0 and <1 preserve absence)
+ args:[512]RsNode;decoded:[8192]u8;if !rs_arguments(nodes[..],found,call.input_json,args[..],decoded[..]) {return "arguments do not match the offered schema";}return "";
+}
