@@ -1,0 +1,100 @@
+// Owned native task view/control state. HTTP, entropy and storage remain host
+// effects. Captures use the same primary Session reader as the API and CLI.
+// coax/bin/coax test apps/shared/chat-task-app.coax --library --traversal 1000000000
+#load "../../coax/lib/agent/environment/task-client-policy.coax";
+#load "../../coax/lib/agent/environment/chat-capture.coax";
+#load "../../components/core/text.coax";
+#authority;
+NativeTaskApp :: struct {
+ turn:[36]u8;conversation:[36]u8;selected:bool;pane:bool;bound:bool;absent:bool;
+ binding:[8192]u8;binding_n:int;b:[1]ExBinding;binding_arena:[2048]u8;host_label:[256]u8;host_label_n:int;
+ status:[1]XtStatus;status_arena:[2048]u8;canonical:[8192]u8;canonical_n:int;has_status:bool;available:bool;
+ capture:[1]CtnCapture;shown:[1]Session;has_session:bool;reading:bool;pool_index:int;reader:[32]u8;has_reader:bool;captured:[8192]u8;captured_n:int;
+ preparing:bool;verb:string;expected_revision:int;held:[256]u8;held_n:int;command:[32]u8;body:[4096]u8;body_n:int;uncertain:bool;sent:bool;
+ need:int;elapsed:f32;now:int;yield_events:bool;note:[384]u8;note_n:int;part:int;input_page:int;output_page:int;
+}
+nta_pending :: (n:[]NativeTaskApp)->bool #effects(all) {return n[0].preparing || n[0].body_n>0;} // mutant: equivalent (body_n is zero or a complete primary TaskRequest, always longer than one byte)
+nta_note :: (n:[]NativeTaskApp,text:string) #effects(all) {n[0].note_n=js_copy(n[0].note[..],text);}
+nta_select :: (n:[]NativeTaskApp,turn:string,conversation:string)->bool #effects(all) {
+ if !ex_reference(turn,"trn_") || !ex_reference(conversation,"cnv_") {return false;}
+ if n[0].selected && cast(string)n[0].turn[..]==turn && cast(string)n[0].conversation[..]==conversation {return true;}
+ if nta_pending(n) {return false;}n[0]=NativeTaskApp.{selected=true,need=1};_=js_copy(n[0].turn[..],turn);_=js_copy(n[0].conversation[..],conversation);return true;
+}
+nta_adopt :: (n:[]NativeTaskApp,b:ExBinding,label:string)->bool #effects(all) {
+ if !n[0].selected || !ex_binding_valid(b) || b.turn!=cast(string)n[0].turn[..] || b.conversation!=cast(string)n[0].conversation[..] {return false;}
+ if n[0].bound {return ex_binding_same(n[0].b[0],b);}
+ size:=ex_binding_write(b,n[0].binding[..]);if size<1 || !ex_binding_read(cast(string)n[0].binding[0..<size],n[0].b[..],n[0].binding_arena[..]) {return false;} // mutant: equivalent (ex_binding_valid already admitted all bounded fields: its encoding is >2 bytes and fits 8 KiB; their decoded strings fit the owned 2 KiB arena)
+ n[0].binding_n=size;n[0].bound=true;n[0].absent=false;n[0].need=2;
+ n[0].host_label_n=js_copy(n[0].host_label[..],label);if n[0].host_label_n<1 {n[0].host_label_n=js_copy(n[0].host_label[..],n[0].b[0].host);}return true;
+}
+nta_observe :: (n:[]NativeTaskApp,raw:string,command:string)->bool #effects(all) {
+ v:[1]XtStatus;arena:[2048]u8;canonical:[8192]u8;if !n[0].bound {return false;}
+ size:=ctn_status(n[0].b[0],raw,command,cast(string)n[0].canonical[0..<n[0].canonical_n],v[..],arena[..],canonical[..]);if size<1 {return false;} // mutant: equivalent (ctn_status returns -1 or a complete primary TaskStatus, longer than two bytes)
+ n[0].canonical_n=js_copy(n[0].canonical[..],cast(string)canonical[0..<size]);n[0].has_status=xt_status_read(cast(string)n[0].canonical[0..<n[0].canonical_n],n[0].status[..],n[0].status_arena[..]);n[0].available=n[0].has_status;return n[0].has_status;
+}
+nta_permission :: (n:[]NativeTaskApp)->bool #effects(all) {return n[0].has_status && n[0].status[0].state==XT_WAITING && !n[0].status[0].stop;}
+nta_reviewable :: (n:[]NativeTaskApp)->bool #effects(all) {
+ return nta_permission(n) && n[0].available && n[0].has_session && !n[0].reading && n[0].shown[0].asking>=0 && n[0].captured_n>0 && cast(string)n[0].captured[0..<n[0].captured_n]==cast(string)n[0].canonical[0..<n[0].canonical_n]; // mutant: equivalent (captured_n boundary only: equality with the valid current canonical TaskStatus already implies >2 bytes; other permission conjuncts are independently checked)
+}
+nta_intent :: (n:[]NativeTaskApp,verb:string)->bool #effects(all) {
+ if !n[0].bound || !n[0].has_status || nta_pending(n) || xc_method(verb)=="" {return false;}
+ if verb=="stop" {if xt_terminal(n[0].status[0].state) {return false;}}
+ else if !nta_permission(n) || (verb=="approve" && !nta_reviewable(n)) {return false;}
+ n[0].verb=verb;n[0].preparing=true;n[0].uncertain=false;n[0].sent=false;n[0].expected_revision=ifx verb=="stop" then 0 else n[0].status[0].revision;
+ n[0].held_n=js_copy(n[0].held[..],ifx verb=="stop" then "" else n[0].status[0].interaction);return true;
+}
+nta_command :: (n:[]NativeTaskApp,raw:string)->bool #effects(all) {
+ if !n[0].preparing || n[0].body_n>0 {return false;} // mutant: equivalent (body_n is zero or a complete primary TaskRequest >1 byte)
+ d:[1]Jv;nodes:[16]JvNode;if !jv_parse(d[..],raw,nodes[..]) {return false;}
+ id:[32]u8;size:=js_string(d[0],jv_get(d[0],0,"command_id"),id[..]);now:=js_number(d[0],jv_get(d[0],0,"now_ms"));if size!=32 {return false;}
+ q:=XtRequest.{method=xc_method(n[0].verb),task=n[0].b[0].task,command=cast(string)id[..],revision=n[0].expected_revision,interaction=cast(string)n[0].held[0..<n[0].held_n],allow=n[0].verb=="approve",issued=now,expires=ea_deadline(now)};
+ size=xt_request_write(q,n[0].body[..]);if size<1 {return false;} // mutant: equivalent (the primary writer returns -1 or a complete TaskRequest >2 bytes)
+ n[0].body_n=size;_=js_copy(n[0].command[..],q.command);n[0].preparing=false;return true;
+}
+nta_sent :: (n:[]NativeTaskApp) #effects(all) {n[0].sent=true;}
+// Stop is independent of this permission intent. Retire only a command that
+// has never been offered to HTTP; an offered command keeps its original bytes.
+nta_hold_for_stop :: (n:[]NativeTaskApp) #effects(all) {
+ n[0].preparing=false;
+ if n[0].sent {if n[0].body_n>0 {n[0].uncertain=true;}} // mutant: equivalent (0 to 1 threshold only: body_n is zero or a complete primary TaskRequest longer than one byte)
+ else {n[0].body_n=0;n[0].verb="";n[0].uncertain=false;}
+}
+nta_control_reply :: (n:[]NativeTaskApp,raw:string)->bool #effects(all) {
+ if n[0].body_n<1 || !nta_observe(n,raw,cast(string)n[0].command[..]) {return false;} // mutant: equivalent (body_n is zero or a complete primary TaskRequest >2 bytes)
+ n[0].body_n=0;n[0].verb="";n[0].uncertain=false;n[0].need=2;return true;
+}
+nta_reconcile :: (n:[]NativeTaskApp)->bool #effects(all) {
+ if n[0].body_n<1 || !n[0].uncertain || !n[0].has_status {return false;} // mutant: equivalent (body_n boundary only: zero or a complete primary TaskRequest >2 bytes)
+ v:=n[0].status[0];
+ if !xt_terminal(v.state) && !(n[0].verb=="stop" && v.stop) && !(v.revision>n[0].expected_revision && (v.state!=XT_WAITING || v.interaction!=cast(string)n[0].held[0..<n[0].held_n])) {return false;} // mutant: equivalent (revision > to >= only: a changed permission at an equal revision is refused by nta_observe; unchanged held interaction cannot satisfy the final conjunct)
+ n[0].body_n=0;n[0].verb="";n[0].uncertain=false;return true;
+}
+nta_capture_begin :: (n:[]NativeTaskApp,raw:string,data:[]u8)->bool #effects(all) {
+ if !n[0].bound || nta_pending(n) {return false;}d:[1]Jv;nodes:[16]JvNode;if !jv_parse(d[..],raw,nodes[..]) {return false;}
+ read:[32]u8;reader:[32]u8;nr:=js_string(d[0],jv_get(d[0],0,"command_id"),read[..]);ns:=js_string(d[0],jv_get(d[0],0,"session_id"),reader[..]);now:=js_number(d[0],jv_get(d[0],0,"now_ms"));
+ if nr!=32 || ns!=32 || now<=0 || now>9007199254740991 {return false;}
+ if n[0].has_reader {_=js_copy(reader[..],cast(string)n[0].reader[..]);}
+ if !ctn_capture_init(n[0].capture[..],n[0].b[0],cast(string)reader[..],cast(string)read[..],data) {return false;}
+ _=js_copy(n[0].reader[..],cast(string)reader[..]);n[0].has_reader=true;n[0].reading=true;n[0].now=now;n[0].need=4;return true;
+}
+nta_capture_page :: (n:[]NativeTaskApp,raw:string)->bool #effects(all) {
+ if !n[0].reading {return false;}arena:[XH_ARENA]u8;return ctn_capture_page(n[0].capture[..],n[0].b[0],raw,n[0].now,arena[..]);
+}
+nta_publish :: (n:[]NativeTaskApp,pool:[]u8,decode:[]u8)->bool #effects(all) {
+ if !n[0].reading || !n[0].capture[0].client[0].done || !xh_client_session(n[0].capture[0].client[..],n[0].capture[0].session[..],pool,decode) {return false;}
+ raw:[8192]u8;size:=xt_status_write(n[0].capture[0].client[0].capture[0].status,raw[..]);if size<1 || !nta_observe(n,cast(string)raw[0..<size],"") {return false;} // mutant: equivalent (size boundaries only: primary TaskStatus is -1 or >2 bytes; observation still enforces the current revision)
+ n[0].shown[0]=n[0].capture[0].session[0];n[0].captured_n=js_copy(n[0].captured[..],cast(string)n[0].canonical[0..<n[0].canonical_n]);n[0].has_session=true;n[0].reading=false;n[0].pool_index=1-n[0].pool_index;n[0].need=0;n[0].elapsed=0;return true;
+}
+nta_path :: (n:[]NativeTaskApp,kind:int,out:[]u8)->string #effects(all) {
+ if kind<1 || kind>4 {return "";}
+ o:[1]Jo;jo_start(o[..],out);
+ if kind==1 {if !n[0].selected {return "";}jo_put(o[..],"/api/chat/turn-task/v1alpha1?id=");jo_put(o[..],cast(string)n[0].turn[..]);}
+ else {if !n[0].bound {return "";}if kind==4 {return xh_http_route(n[0].b[0].host,xh_client_request(n[0].capture[0].client[..]),out);}
+  jo_put(o[..],"/api/chat/task/v1alpha1?host=");jo_put(o[..],n[0].b[0].host);if kind==2 {jo_put(o[..],"&task=");jo_put(o[..],n[0].b[0].task);}}
+ return ifx o[0].bad then "" else jo_text(o[..]);
+}
+NTA_PAGE_BYTES :: 49152;
+nta_text_page :: (text:string,page:int)->string #effects(all) {
+ if page<0 || page>text.count/NTA_PAGE_BYTES {return "";}start:=text_byte_floor(text,page*NTA_PAGE_BYTES);end:=text.count;if (page+1)*NTA_PAGE_BYTES<end {end=text_byte_floor(text,(page+1)*NTA_PAGE_BYTES);}return cast(string)text[start..<end]; // mutant: equivalent (< to <= at exact end only: text_byte_floor(text,text.count) returns that same end)
+}
+#load "chat-task-checks.coax" #test;

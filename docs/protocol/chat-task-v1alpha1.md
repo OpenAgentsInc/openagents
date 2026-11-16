@@ -89,8 +89,44 @@ retain their actual native outcome. Missing provider usage remains unknown.
 An assistant projection beyond the saved chat byte limit fails explicitly;
 the full native transcript remains available.
 
-Capture assembly is currently bounded and restarts on a later worker claim;
-durable paging, renewal of an expired Stop command, installed mobile task/tool
-and permission controls, shared gateway tool continuation, real provider
-execution and end-to-end qualification remain part of #13620. This source
-implementation does not establish production rollout or installed execution.
+The mobile account/Project chat opens the saved association from **Run details**
+and shows its actual computer, engine, model, effort and task state. Reconnect
+reads that same task and never submits another Start. Tool activity uses the
+shared inert Session reader and shared tool/notice components. Input and output
+are selectable, copied in complete UTF-8 pages of at most 49,152 bytes, with
+explicit previous/next controls. Every tool retains its native call ID.
+
+The mobile reader keeps one private reader identity per selected task, a fresh
+capture read identity and the exact next byte offset. A transient page failure
+keeps that cursor; expired or invalid captures restart the read. All capture
+bytes and their whole digest must match before publication. Two caller-owned
+Session pools retain the previous valid history until a complete new history
+decodes. The existing 4 MiB capture bound refuses larger histories explicitly;
+it never approves from a successful prefix. Account reset clears the complete
+capture, decode and both publication buffers.
+
+Allow requires the current waiting status, current connection availability and
+a complete verified capture of that exact status with a pending permission.
+Deny and Stop remain available when history cannot be read. A permission reply
+pins its original task revision and interaction before requesting entropy. An
+unknown HTTP result retains the exact command bytes; explicit retry sends those
+bytes again. Read-only reconciliation clears the local intent only on an
+authoritative native outcome or advancement of that original interaction.
+Chat Stop retains its separate saved turn intent even while a permission reply
+is uncertain. It retires an approval/denial that has never been offered to HTTP
+and holds a delivered response for reconciliation, so a queued permission
+cannot be posted automatically after Stop. No local button press confirms
+cancellation.
+
+Foreground reads use the existing installed one-second wait service, including
+zero-delta frames, and pause under navigation, settings and backgrounding. The
+generated account program has a fixed 64 MiB memory allowance (including its
+8 MiB Wasm stack and approximately 34 MiB state) and a 16 MiB script admission
+cap. These limits are separate from native SDK allocations.
+
+Server capture assembly is currently bounded and restarts on a later worker
+claim; durable server paging, renewal of an expired Stop command, SDK catalog
+pagination/multiple accounts, shared gateway tool continuation, real provider
+execution and end-to-end qualification remain part of #13620. Native C and
+installed-interpreter fixtures do not establish production rollout or a real
+provider execution; that live qualification remains separate.

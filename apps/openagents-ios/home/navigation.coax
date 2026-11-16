@@ -83,7 +83,7 @@ na_nav_press :: (s:[]Starter,id:string)->bool {
  if !recognized {return false;}
  if e[0].flight && cast(string)e[0].request[0].method[0..<e[0].request[0].nm]=="ReadSession" && !e[0].uncertain {n[0].np=ea_copy(n[0].pending[..],id);return true;}
  if e[0].uncertain || e[0].random || e[0].flight || e[0].action!=0 && e[0].action!=12 {nav_note(n,"Wait for the current request, or reconnect before changing chats.");return true;}
- if s[0].flight!=0 {if s[0].purpose==70 || s[0].purpose==71 || s[0].purpose>=132 && s[0].purpose<=137 {n[0].np=ea_copy(n[0].pending[..],id);}else {nav_note(n,"Wait for the current turn before changing chats.");}return true;}
+ if s[0].flight!=0 {if s[0].purpose==70 || s[0].purpose==71 || s[0].purpose>=132 && s[0].purpose<=137 || s[0].purpose>=140 && s[0].purpose<=143 || s[0].purpose==146 {n[0].np=ea_copy(n[0].pending[..],id);}else {nav_note(n,"Wait for the current turn before changing chats.");}return true;}
  s[0].usage[0].active=false;na_nav_keep(s);s[0].project_thread_n=0;s[0].project_link_pending=false;
  if host>=0 {
   e[0]=EnvironmentApp.{};e[0].active=true;e[0].workspace=true;e[0].page=2;e[0].selected=host;e[0].catalog[0]=n[0].browser[0].catalog[0];e[0].offer[0]=n[0].groups[host].offer;s[0].page=4;

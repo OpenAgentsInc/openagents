@@ -1,4 +1,4 @@
-// CLI/mobile control intents use the resident's one request codec.
+// Shared native status admission and CLI/mobile intents use the primary codec.
 // coax/bin/coax test coax/lib/agent/environment/task-client-policy.coax --library
 #load "task-wire.coax";
 #authority;
@@ -19,10 +19,30 @@
  q.route="{}";#assert !xc_match(q,"stop",q.task,0,"","");
 }
 
+#test "native observations retain binding monotone revision and equal-revision bytes" {
+ b:=ex_test_binding();v:=XtStatus.{binding=b,state=XT_RUNNING,revision=1,updated=1000};raw:[8192]u8;canonical:[8192]u8;prior:[8192]u8;out:[1]XtStatus;arena:[2048]u8;
+ n:=xt_status_write(v,raw[..]);p:=ctn_status(b,cast(string)raw[0..<n],"","",out[..],arena[..],prior[..]);#assert p==n && cast(string)raw[0..<n]==cast(string)prior[0..<p];
+ v.command=b.command;v.replay=true;n=xt_status_write(v,raw[..]);#assert ctn_status(b,cast(string)raw[0..<n],b.command,cast(string)prior[0..<p],out[..],arena[..],canonical[..])==p && cast(string)canonical[0..<p]==cast(string)prior[0..<p];
+ #assert ctn_status(b,cast(string)raw[0..<n],"","",out[..],arena[..],canonical[..])<0 && ctn_status(b,"{}","","",out[..],arena[..],canonical[..])<0;
+ v.command="";v.replay=false;v.revision=2;n=xt_status_write(v,raw[..]);#assert ctn_status(b,cast(string)raw[0..<n],"",cast(string)prior[0..<p],out[..],arena[..],canonical[..])>0;
+ v.revision=1;v.updated=1001;n=xt_status_write(v,raw[..]);#assert ctn_status(b,cast(string)raw[0..<n],"",cast(string)prior[0..<p],out[..],arena[..],canonical[..])<0;
+ v.updated=1000;v.binding.model="other";n=xt_status_write(v,raw[..]);#assert ctn_status(b,cast(string)raw[0..<n],"","",out[..],arena[..],canonical[..])<0;
+ v.binding=b;v.revision=1;n=xt_status_write(v,raw[..]);#assert ctn_status(b,cast(string)raw[0..<n],"","",out[..],arena[..],canonical[0..<1])<0;
+ next:[8192]u8;old:=v;old.revision=2;on:=xt_status_write(old,next[..]);#assert ctn_status(b,cast(string)raw[0..<n],"",cast(string)next[0..<on],out[..],arena[..],canonical[..])<0;
+ v.revision=2;n=xt_status_write(v,raw[..]);old.revision=1;old.binding.model="other";on=xt_status_write(old,next[..]);#assert ctn_status(b,cast(string)raw[0..<n],"",cast(string)next[0..<on],out[..],arena[..],canonical[..])<0 && ctn_status(b,cast(string)raw[0..<n],"","{}",out[..],arena[..],canonical[..])<0;
+}
+
 xc_method :: (verb:string)->string #effects(all) {if verb=="stop" {return "StopTask";}if verb=="approve" || verb=="deny" {return "RespondTask";}return "";}
 xc_revision :: (raw:string)->int #effects(all) {
  v:[1]Jv;nodes:[2]JvNode;if !jv_parse(v[..],raw,nodes[..]) {return -1;}n:=js_number(v[0],0);return ifx n>0 && n<=9007199254740991 then n else -1;
 }
 xc_match :: (q:XtRequest,verb:string,task:string,revision:int,interaction:string,command:string)->bool #effects(all) {
  return xt_request_valid(q) && q.method==xc_method(verb) && q.task==task && q.revision==revision && q.interaction==interaction && q.allow==(verb=="approve") && (command=="" || command==q.command);
+}
+
+ctn_status :: (b:ExBinding,raw:string,command:string,prior:string,out:[]XtStatus,arena:[]u8,canonical:[]u8)->int #export_c #effects(all) {
+ if !xt_status_read(raw,out,arena) || !ex_binding_same(b,out[0].binding) || out[0].command!=command {return -1;}
+ v:=out[0];v.command="";v.replay=false;n:=xt_status_write(v,canonical);if n<1 {return -1;} // mutant: equivalent (< to <= and 1 to 2: a successful primary TaskStatus with its required Binding is always longer than two bytes; refusal is -1)
+ if prior!="" {old:[1]XtStatus;buf:[2048]u8;if !xt_status_read(prior,old[..],buf[..]) || !ex_binding_same(b,old[0].binding) || v.revision<old[0].revision || (v.revision==old[0].revision && cast(string)canonical[0..<n]!=prior) {return -1;}}
+ return n;
 }

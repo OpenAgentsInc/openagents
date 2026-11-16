@@ -103,3 +103,12 @@ xh_page_read :: (raw:string,out:[]XhPage,arena:[]u8)->bool #export_c #effects(al
  a:=[1]ExArena.[ExArena.{buf=arena}];p:=XhPage.{offset=js_number(d[0],jv_get(d[0],0,"offset")),next=js_number(d[0],jv_get(d[0],0,"next_offset")),text=ex_string(d[0],0,"text",a[..])};b:=jv_kind(d[0],jv_get(d[0],0,"complete"));c:[1]XhCapture;
  if a[0].bad || (b!=JV_TRUE && b!=JV_FALSE) || !xh_capture_read(jv_raw(d[0],jv_get(d[0],0,"capture")),c[..],arena[a[0].n..<arena.count]) {return false;}p.capture=c[0];p.complete=b==JV_TRUE;if !xh_page_valid(p) {return false;}out[0]=p;return true;
 }
+
+#test "HTTP capture routes retain every exact primary request field" {
+ q:=XhRequest.{task=EX_TEST_ID,reader=EX_TEST_ID,read="11111111111111111111111111111111",hash=EX_TEST_HASH,offset=17};out:[512]u8;path:=xh_http_route(EX_TEST_HASH,q,out[..]);
+ #assert path=="/api/chat/task/transcript/v1alpha1?host=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef&task=0123456789abcdef0123456789abcdef&reader=0123456789abcdef0123456789abcdef&read=11111111111111111111111111111111&sha256=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef&after=17";
+ #assert xh_http_route("bad",q,out[..])=="";q.task="bad";#assert xh_http_route(EX_TEST_HASH,q,out[..])=="";
+}
+xh_http_route :: (host:string,q:XhRequest,out:[]u8)->string {
+ if !ea_id(host,64) || !xh_request_valid(q) {return "";}o:[1]Jo;jo_start(o[..],out);jo_put(o[..],"/api/chat/task/transcript/v1alpha1?host=");jo_put(o[..],host);jo_put(o[..],"&task=");jo_put(o[..],q.task);jo_put(o[..],"&reader=");jo_put(o[..],q.reader);jo_put(o[..],"&read=");jo_put(o[..],q.read);jo_put(o[..],"&sha256=");jo_put(o[..],q.hash);jo_put(o[..],"&after=");jo_int(o[..],q.offset);return jo_text(o[..]);
+}

@@ -1,3 +1,4 @@
+#load "../../../components/core/text.coax";
 // Microcoder's state (docs/coder/microcoder.md, "The state"): what every
 // step's prompt is built from, rendered as one JSON object.
 //
@@ -99,11 +100,7 @@ mc_esc :: (out: [] u8, at: int, s: string) -> int {
 }
 
 // A UTF-8 boundary at or before i (never inside a character).
-mc_back :: (s: string, i: int) -> int {
-  k := i;
-  while k > 0 && k < s.count && (s[k] & 0xC0) == 0x80 { k -= 1; }
-  return k;
-}
+mc_back :: (s:string,i:int)->int {return text_byte_floor(s,i);}
 
 // text as a JSON string, cut to its first head and last tail bytes with a
 // line that says how much was left out.

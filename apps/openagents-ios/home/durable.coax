@@ -18,7 +18,8 @@ na_durable_prepare :: (s:[]Starter) {
 }
 na_durable_send :: (s:[]Starter) {
  d:=s[0].durable[..];if d[0].pending!=0 || d[0].preparing {na_note(s,"Check the saved request before sending another message.");return;}
- if dca_working(d) {d[0].want_stop=true;s[0].dirty=true;return;}
+ if dca_working(d) {nta_hold_for_stop(d[0].native[..]);d[0].want_stop=true;s[0].dirty=true;return;}
+ if nta_pending(d[0].native[..]) {na_note(s,"Reconcile the pending task control before sending another message.");return;}
  if s[0].flight!=0 || s[0].action!=0 || s[0].draft_n==0 {return;}
  if d[0].id_n>0 && !d[0].loaded {na_note(s,"Read the saved conversation before sending another message.");return;}
  d[0].submitted_n=js_copy(d[0].submitted[..],cast(string)s[0].draft[0..<s[0].draft_n]);if d[0].submitted_n<1 {na_note(s,"Messages can be at most 16,384 bytes.");return;}
@@ -35,19 +36,21 @@ na_durable_send :: (s:[]Starter) {
 }
 na_durable_turn :: (s:[]Starter) {d:=s[0].durable[..];if !d[0].has_view {return;}path:[256]u8;na_http(s,dca_path("turn",cast(string)d[0].view[0].turn[..],-1,path[..]),"",133);}
 na_durable_tick :: (s:[]Starter,dt:f32) {
- d:=s[0].durable[..];if dt>0 && dt<=30 {d[0].elapsed+=dt;}
+ d:=s[0].durable[..];if s[0].purpose!=146 && dt>0 && dt<=30 {d[0].elapsed+=dt;}na_task_clock(s,dt);
  if !s[0].workspace || !s[0].account_ready || s[0].flight!=0 || s[0].action!=0 || s[0].account_settings[0].active || s[0].usage[0].active || s[0].environments[0].flight {return;}
  if d[0].want_stop && dca_working(d) && !dca_blocked_write(d) {d[0].want_stop=false;d[0].pending=2;d[0].body_n=0;s[0].purpose=130;na_request(s,11,"");return;}
  nav:=s[0].navigation[..];
  if d[0].elapsed>=0.4 && s[0].durable_refresh && nav[0].open && !nav[0].rail && nav[0].started && !nav[0].refresh && nav[0].next>=nav[0].browser[0].catalog[0].n {s[0].durable_refresh=false;na_durable_index(s,false,false);return;}
  if d[0].elapsed>=0.4 && s[0].durable_project_refresh && s[0].page==11 && s[0].project[0].api_page==4 {s[0].durable_project_refresh=false;na_durable_index(s,true,false);return;}
- if !d[0].enabled || s[0].world_mode || s[0].page!=3 || s[0].navigation[0].open || d[0].pending!=0 || d[0].elapsed<0.4 {return;}
+ if !d[0].enabled || s[0].world_mode || s[0].page!=3 || s[0].navigation[0].open || d[0].pending!=0 {return;}
+ if na_task_tick(s) {return;}if d[0].elapsed<0.4 {na_task_wait(s);return;}
  d[0].elapsed=0;
- if dca_working(d) {path:[256]u8;na_http(s,dca_path("events",cast(string)d[0].view[0].turn[..],d[0].view[0].sequence,path[..]),"",134);}
+ if dca_working(d) {path:[256]u8;na_http(s,dca_path("events",cast(string)d[0].view[0].turn[..],d[0].view[0].sequence,path[..]),"",134);}else {na_task_wait(s);}
 }
 dca_blocked_write :: (d:[]DurableChat)->bool {return d[0].pending!=0;}
 na_durable_press :: (s:[]Starter,id:string)->bool {
  d:=s[0].durable[..];
+ if na_task_press(s,id) {return true;}
  if id=="rich.reconcile" {if s[0].flight==0 && d[0].pending!=0 && d[0].body_n>0 {na_durable_dispatch(s);}return true;}
  if id=="rich.reconnect" {if s[0].flight==0 {if d[0].has_view {na_durable_turn(s);}else {na_durable_history(s,d[0].history_after,false);}}return true;}
  if id=="chat.composer.send" && d[0].enabled && s[0].page==3 && !s[0].world_mode {na_durable_send(s);return true;}
@@ -78,6 +81,7 @@ na_durable_rows :: (s:[]Starter,t:[]Tree,u:[]Ui,project:bool) {
 na_durable_render :: (s:[]Starter,t:[]Tree,u:[]Ui) {
  d:=s[0].durable[..];h:=d[0].history[..];working:=dca_working(d);blocked:=dca_blocked(d);
  x:=tr_open(t,"chat.header",TG_HEADER,"");tr_attr(t,x,AT_ROLE,"toolbar");x=k_side_open(t,"nav.toggle","Show chats");x=k_text(t,u,"chat.name",TG_SPAN,"","OpenAgents");x=k_icon_button(t,"nav.new",IC_PLUS,"New chat");if d[0].project_n>0 || s[0].project_thread_n>0 {x=k_link(t,"project.chat.back","Project");}tr_close(t);
+ if d[0].native[0].pane {na_task_render(s,t,u);return;}
  x=tr_open(t,"chat.messages",TG_SECTION,"transcript");tr_attr(t,x,AT_STATE,ifx d[0].id_n>0 then dca_id(d) else "new");
  end:=d[0].window_end;if end>h[0].n {end=h[0].n;}tail:=end==h[0].n && h[0].next<0;
  m:[1]CtMessage;text:[131087]u8;costs:[32]int;has_user:=false;total:=0;
@@ -90,17 +94,19 @@ na_durable_render :: (s:[]Starter,t:[]Tree,u:[]Ui) {
  start:=end;while start>0 {if total+costs[start-1]>160000 {break;}start-=1;total+=costs[start];}d[0].window_start=start;
  if start>0 || d[0].page>0 {x=k_link(t,"rich.earlier","Earlier messages");}
  if !tail || start>0 || d[0].page>0 {x=k_link(t,"rich.latest","Latest messages");}
- for index:start..<end {if costs[index]==0 || !ctr_history_message(h,index,m[..],text[..]) {continue;}total-=costs[index];x=k_message_budget(t,u,cast(string)m[0].id[0..<m[0].id_n],m[0].assistant,s[0].markdown[..],cast(string)text[0..<m[0].bytes],total+16000,128);}
+ for index:start..<end {if costs[index]==0 || !ctr_history_message(h,index,m[..],text[..]) {continue;}total-=costs[index];x=k_message_budget(t,u,cast(string)m[0].id[0..<m[0].id_n],m[0].assistant,s[0].markdown[..],cast(string)text[0..<m[0].bytes],total+16000,128);if m[0].assistant && m[0].turn_n==36 {details:[96]u8;x=k_link(t,tr_cat(details[..],"native.details.",cast(string)m[0].turn[0..<m[0].turn_n]),"Run details");}}
  if pending_user {total-=d[0].submitted_n+512;x=k_message_budget(t,u,"rich.pending.user",false,s[0].markdown[..],cast(string)d[0].submitted[0..<d[0].submitted_n],total+16000,128);}
  if extra && d[0].view[0].bytes>0 {id:[64]u8;x=k_message_budget(t,u,tr_cat(id[..],cast(string)d[0].view[0].turn[..],".assistant"),true,s[0].markdown[..],ct_view_text(d[0].view[..]),16000,128);}
  if working {x=k_reply_open(t,"chat.thinking",true,d[0].view[0].bytes==0);x=k_text(t,u,"chat.thinking.text",TG_P,"",ifx d[0].view[0].stop_requested then "Stopping…" else ifx d[0].view[0].state==CT_QUEUED then "Queued…" else "Working…");tr_close(t);}
  tr_close(t);
- if d[0].model_n>0 {meta:[1536]u8;o:[1]Jo;jo_start(o[..],meta[..]);jo_put(o[..],cast(string)d[0].model[0..<d[0].model_n]);jo_put(o[..]," · ");jo_put(o[..],cast(string)d[0].effort[0..<d[0].effort_n]);jo_put(o[..]," · ");jo_put(o[..],ct_state_name(d[0].view[0].state));if d[0].view[0].nr>0 {jo_put(o[..]," · ");jo_put(o[..],ct_view_reason(d[0].view[..]));}x=k_meta(t,"rich.selection",jo_text(o[..]));}
+ if d[0].has_view {details:[96]u8;x=k_link(t,tr_cat(details[..],"native.details.",cast(string)d[0].view[0].turn[..]),"Run details");}
+ if d[0].native[0].bound && d[0].has_view && cast(string)d[0].native[0].turn[..]==cast(string)d[0].view[0].turn[..] {na_task_summary(s,t,u);x=k_link(t,"native.open","Task activity");}
+ if d[0].model_n>0 && !d[0].native[0].bound {meta:[1536]u8;o:[1]Jo;jo_start(o[..],meta[..]);jo_put(o[..],cast(string)d[0].model[0..<d[0].model_n]);jo_put(o[..]," · ");jo_put(o[..],cast(string)d[0].effort[0..<d[0].effort_n]);jo_put(o[..]," · ");jo_put(o[..],ct_state_name(d[0].view[0].state));if d[0].view[0].nr>0 {jo_put(o[..]," · ");jo_put(o[..],ct_view_reason(d[0].view[..]));}x=k_meta(t,"rich.selection",jo_text(o[..]));}
  if d[0].has_view && ct_terminal(d[0].view[0].state) {usage:=d[0].view[0].usage;values:=[5]int.[usage.input,usage.output,usage.cache_read,usage.cache_write,usage.reasoning];names:=[5]string.["Input","Output","Cache read","Cache write","Reasoning"];b:[256]u8;o:[1]Jo;jo_start(o[..],b[..]);for value,index:values {if index>0 {jo_put(o[..]," · ");}jo_put(o[..],names[index]);jo_put(o[..]," ");if value<0 {jo_put(o[..],"unknown");}else {jo_int(o[..],value);}}x=k_meta(t,"rich.usage",jo_text(o[..]));if d[0].view[0].ne>0 {x=k_meta(t,"rich.error",cast(string)d[0].view[0].error[0..<d[0].view[0].ne]);}}
  if d[0].uncertain {x=k_link(t,"rich.reconcile","Check saved result");}
  if d[0].id_n>0 {x=k_link(t,"rich.reconnect","Reconnect");}
  f:=k_composer_begin(t,u,"chat.composer","Message");if blocked {tr_attr(t,f,AT_DISABLED,"disabled");}
- k_composer_end(t,u,"chat.composer",ifx working then "Stop" else "Send",!blocked && (working || s[0].flight==0 && s[0].draft_n>0));
+ k_composer_end(t,u,"chat.composer",ifx working then "Stop" else "Send",(working && d[0].pending==0 && !d[0].preparing || !working && !blocked && s[0].flight==0 && s[0].draft_n>0));
 }
 na_durable_reply :: (s:[]Starter,op:int,status:int,raw:string,failed:bool)->bool {
  purpose:=s[0].purpose;if purpose<130 || purpose>137 || (op!=4 && !(op==11 && purpose==130)) {return false;}

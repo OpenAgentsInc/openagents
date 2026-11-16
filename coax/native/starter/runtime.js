@@ -1,6 +1,8 @@
 // Firm reason: 6 (JavaScriptCore SDK transport for compiler-generated Coax modules).
 // No DOM, WebKit, networking, tokens, timers or application rules live here.
-const cnMemory = {buffer: new ArrayBuffer(32 * 1024 * 1024)};
+// The account program retains complete verified native captures plus two
+// publication pools; its 34 MiB state and 8 MiB Wasm stack fit this fixed cap.
+const cnMemory = {buffer: new ArrayBuffer(64 * 1024 * 1024)};
 const cnRequests = [];
 const cnString = (ptr,len) => cnUTF8(Array.from(new Uint8Array(cnMemory.buffer,ptr,len)));
 const cnEffect = (op,url,n,body,k,step=0) => cnRequests.push([op,JSON.stringify({url:cnString(url,n),body:cnString(body,k),step})]);

@@ -1,9 +1,6 @@
 // Native transcript pages and verified exports use the shared client reducer,
 // session reader and account transport. No log field executes anything.
 #load "../../coax/lib/agent/environment/transcript-client.coax";
-ttcli_route :: (host:string,q:XhRequest,out:[]u8)->string {
- if !ea_id(host,64) || !xh_request_valid(q) {return "";}o:[1]Jo;jo_start(o[..],out);jo_put(o[..],"/api/chat/task/transcript/v1alpha1?host=");jo_put(o[..],host);jo_put(o[..],"&task=");jo_put(o[..],q.task);jo_put(o[..],"&reader=");jo_put(o[..],q.reader);jo_put(o[..],"&read=");jo_put(o[..],q.read);jo_put(o[..],"&sha256=");jo_put(o[..],q.hash);jo_put(o[..],"&after=");jo_int(o[..],q.offset);return jo_text(o[..]);
-}
 ttcli_reader :: (a:[]Args,profile:string,host:string,task:string,out:[]u8)->string {
  explicit:=args_value(a,"--reader-id","");if explicit!="" {return explicit;}
  // One default CLI viewer per local host/profile/API/task. Polling reuses its
@@ -20,14 +17,14 @@ ttcli_main :: (a:[]Args,r:[]Rep,profile:string,verb:string,host:string,task:stri
  if read=="" {if verb=="transcript-page" {return fail(r,EXIT_USAGE,"transcript-page requires --reader-id and --read-id to resume one capture");}random:[16]u8;if cxrand_draw(random[..],16)!=0 || !cli_hex(random[..],read_buf[..]) {return fail(r,EXIT_FAIL,"cannot make a transcript capture ID");}read=cast(string)read_buf[..];}
  if verb=="transcript-page" {
   body:[1024]u8;n:=xh_read_body(task,reader,read,args_value(a,"--sha256",""),args_value(a,"--after",""),body[..]);q:[1]XhRequest;qa:[256]u8;if n<1 || !xh_request_read(cast(string)body[0..<n],q[..],qa[..]) {return fail(r,EXIT_USAGE,"invalid transcript capture identity, digest or offset");}
-  path:[512]u8;out:[XH_PAGE_MAX]u8;res:=pcli_call(a,r,profile,"GET",ttcli_route(host,q[0],path[..]),"",75000,out[..]);if !api_ok(res) {return api_fail(r,res,cast(string)out[0..<res.n]);}
+  path:[512]u8;out:[XH_PAGE_MAX]u8;res:=pcli_call(a,r,profile,"GET",xh_http_route(host,q[0],path[..]),"",75000,out[..]);if !api_ok(res) {return api_fail(r,res,cast(string)out[0..<res.n]);}
   page:[1]XhPage;arena:[XH_ARENA]u8;if !xh_page_read(cast(string)out[0..<res.n],page[..],arena[..]) || !xh_reply(q[0],page[0],host,cxproc_wall_us()/1000) {return fail(r,EXIT_FAIL,"invalid transcript page; resume or start a fresh capture");}print("%\n",cast(string)out[0..<res.n]);return EXIT_OK;
  }
  file:=args_value(a,"--out","");if file=="" || file=="-" {return fail(r,EXIT_USAGE,"transcript requires --out FILE for the verified inert session log");}
  client:[1]XhClient;bytes:[XH_LOG_MAX]u8;if !xh_client_init(client[..],host,task,reader,read,bytes[..]) {return fail(r,EXIT_USAGE,"invalid transcript reader or capture ID");}
  path:[512]u8;out:[XH_PAGE_MAX]u8;arena:[XH_ARENA]u8;
  while !client[0].done {
-  q:=xh_client_request(client[..]);res:=pcli_call(a,r,profile,"GET",ttcli_route(host,q,path[..]),"",75000,out[..]);if !api_ok(res) {return api_fail(r,res,cast(string)out[0..<res.n]);}
+  q:=xh_client_request(client[..]);res:=pcli_call(a,r,profile,"GET",xh_http_route(host,q,path[..]),"",75000,out[..]);if !api_ok(res) {return api_fail(r,res,cast(string)out[0..<res.n]);}
   if !xh_client_page(client[..],cast(string)out[0..<res.n],cxproc_wall_us()/1000,arena[..]) {return fail(r,EXIT_FAIL,"transcript pages changed or failed whole-content verification; start a fresh capture");}
  }
  session:[1]Session;pool:[XH_LOG_MAX]u8;decode:[XH_LOG_MAX]u8;if !xh_client_session(client[..],session[..],pool[..],decode[..]) {return fail(r,EXIT_FAIL,"the complete transcript could not be decoded without loss; no export was written");}

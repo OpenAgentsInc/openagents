@@ -254,7 +254,11 @@ targets:
   OpenAgentsTests:
     type: bundle.unit-test
     platform: iOS
-    sources: [StarterTests, UnitTests/AppAuthTests.swift]
+    sources:
+      - StarterTests
+      - UnitTests/AppAuthTests.swift
+      - path: ../../coax/native/fixtures/chat-task-v1alpha1.payload.json
+        buildPhase: resources
     dependencies:
       - target: OpenAgents
     settings:

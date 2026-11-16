@@ -1,0 +1,3 @@
+// Shared native task client in the existing suite inventory.
+// coax/bin/coax test coax/native/chat-task-checks.coax --library --run-steps 250000000 --traversal 1000000000
+#load "../../apps/shared/chat-task-app.coax";

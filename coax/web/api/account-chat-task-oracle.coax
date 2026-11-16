@@ -8,6 +8,7 @@
 CtnOracle :: struct {checks:int;failed:int;}
 ctno_check :: (o:[]CtnOracle,ok:bool,name:string) #effects(all) {o[0].checks+=1;if !ok {o[0].failed+=1;}print("% %\n",ifx ok then "ok" else "FAIL",name);}
 tool_main :: ()->int #export_c #effects(all) {
+ args:[1]Args;if !args_load(args[..]) || (args_count(args[..])!=0 && (args_count(args[..])!=2 || args_at(args[..],0)!="--export-task")) {tool_errln("account-chat-task-oracle [--export-task FILE]");return 2;}
  check:[1]CtnOracle;descriptor:[65536]u8;dn:=fs_read("proto/descriptors/chat-task.pb",descriptor[..]);g:[1]PkDescriptor;
  if dn<1 || pk_load(g[..],cast(string)descriptor[0..<dn])!="" {return 2;}
  fixture:[CTT_MAX]u8;fn:=fs_read("proto/coder/chat-task-v1alpha1.json",fixture[..]);j:[1]Jv;nodes:[4096]JvNode;if fn<1 || !jv_parse(j[..],cast(string)fixture[0..<fn],nodes[..]) {return 2;}
@@ -39,5 +40,9 @@ tool_main :: ()->int #export_c #effects(all) {
  ctno_check(check[..],bn>0 && ctt_read(cast(string)bound[0..<ifx bn>0 then bn else 0],read[..],read_arena[..]) && read[0].binding.input_bytes==ni,"server binding composes the actual offered pair and complete admitted input");
  _=ctn_route_begin(h[..],1000,out[..]);unavailable:=rtr_mock(h[0].w[..],"fail=rate",0);ctno_check(check[..],ctn_route_finish(h[..],unavailable.status,unavailable.body)<0,"an unavailable preview fallback cannot authorize native execution");
  ctno_check(check[..],!ctn_init(h[..],"{}",1000) && !ctn_init(h[..],cast(string)input_wire[0..<ni],0),"invalid saved inputs and clocks refuse before routing");
- print("Native chat task oracle: % checks, % failed\n",check[0].checks,check[0].failed);return ifx check[0].failed==0 then 0 else 1;
+ print("Native chat task oracle: % checks, % failed\n",check[0].checks,check[0].failed);
+ // Native SDK fixtures must retain the report's exact independently hashed
+ // bytes. A Foundation dictionary round trip can reorder that signed object.
+ if check[0].failed==0 && args_count(args[..])==2 {if !fs_write(args_at(args[..],1),text) {return 1;}}
+ return ifx check[0].failed==0 then 0 else 1;
 }

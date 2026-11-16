@@ -1,0 +1,12 @@
+// Runtime protocol fixture uses the real generated protobuf mapper.
+#load "../web/api/account-chat-task-wire.coax";
+#load "../lib/agent/environment/execution-fixtures.coax";
+ntp_test_record :: (out:[]u8,mode:int)->int {
+ b:=ex_test_binding();q:[1]RtrRequest;q[0].n=1;s:=q[0].stations[0..<1];s[0].id="native-mac";s[0].name=ifx mode==1 then "" else "Actual Mac";s[0].os="macos";s[0].apple_builds=true;s[0].reported_at_ms=999;s[0].cores=8;s[0].memory_total_mb=8192;s[0].memory_free_mb=4096;s[0].disk_free_mb=10000;s[0].disk_floor_mb=1000;s[0].agents[1]=RtrAgent.{reported=true,installed=true,logged_in=true};
+ report:[RTR_REPORT_MAX]u8;nr:=rtr_report_write(q[..],0,b.host,report[..]);if nr<1 {return -1;}hash:[64]u8;_=S_hex(S_hash(cast(string)report[0..<nr]),hash[..]);b.report_hash=cast(string)hash[..];
+ if mode==2 {b.turn="trn_11111111111111111111111111111111";}if mode==3 {b.model="other";}
+ d:=[1]RtrDecision.[RtrDecision.{ok=true,station=ctt_station(b.host),engine=b.engine,effort=b.effort,difficulty=3,weight=0,needs="apple"}];decision:[RTR_DECISION_MAX]u8;nd:=rtr_decision_write(d[..],decision[..]);d[0].station=s[0].id;d[0].model=b.model;dispatch:[RTR_DECISION_MAX]u8;np:=rtr_decision_write(d[..],dispatch[..]);
+ o:=XoOffer.{host=b.host,workspace=b.workspace,probe=b.route,engine=b.engine,account=b.account,state=XO_READY,observed=999,expires=30999,n=1};o.models[0]=XoModel.{id=b.model,label="Actual native model",n=1};o.models[0].levels[0]=b.effort;
+ record:=CttTask.{binding=b,decision=cast(string)decision[0..<nd],report=cast(string)report[0..<nr],offer=o,enrollment=EX_TEST_HASH,reason="Exact actual native offer",dispatch=cast(string)dispatch[0..<np]};made:=ctt_write(record,out);
+ return made;
+}

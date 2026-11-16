@@ -6,7 +6,7 @@
 #load "../../lib/sys/fs.coax";
 #load "task-access-policy.coax";
 #load "account-chat-task-route.coax";
-#load "account-chat-task-capture.coax";
+#load "../../lib/agent/environment/chat-capture.coax";
 ea_payload_file :: (path:string,body:string)->bool #export_c #effects(all) {return fs_write(path,body);}
 ea_proxy :: (host:string,grant:string,epoch:string,relay:string,keyfile:string,input:string,program:string,out:[]u8)->int #export_c #effects(all) {
   return ea_proxy_named(host,grant,epoch,relay,keyfile,input,program,"rpc",out);

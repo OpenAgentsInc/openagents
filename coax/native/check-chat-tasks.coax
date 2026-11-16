@@ -1,0 +1,4 @@
+// Reuse the shared native qualifier and actual app/primary codecs. No account,
+// provider or relay is contacted by these ordinary and sanitized app checks.
+#load "../lib/sys/native-check.coax";
+tool_main :: ()->int #export_c #effects(all) {return nc_suite("coax/native/chat-task-integration.coax");}

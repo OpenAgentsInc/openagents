@@ -1,5 +1,5 @@
 // Projection through the sole inert Session reader and verified capture client.
-#load "../../lib/agent/environment/transcript-client.coax";
+#load "transcript-client.coax";
 CtnCapture :: struct {client:[1]XhClient;session:[1]Session;}
 #test "native chat text includes assistant text and preserves tool history in the shared Session" {
  s:[1]Session;pool:[1024]u8;out:[128]u8;s_init(s[..],pool[..]);s_user(s[..],"Private instructions");s_delta(s[..],P_TEXT,"Checking. ");s_delta(s[..],P_THINK,"Not public text");s_delta(s[..],P_TEXT,"Done.");

@@ -1,0 +1,161 @@
+// Primary codecs compose a real admitted report/offer; no credential or I/O.
+nta_test_bind :: (n:[]NativeTaskApp)->bool #effects(all) {
+ b:=ex_test_binding();return nta_select(n,b.turn,b.conversation) && nta_adopt(n,b,"Actual Mac");
+}
+nta_test_status :: (n:[]NativeTaskApp,state:int,revision:int,interaction:string,command:string)->bool #effects(all) {
+ v:=XtStatus.{binding=n[0].b[0],state=state,revision=revision,interaction=interaction,command=command,updated=1000,error=ifx state==XT_FAILED then "native_failed" else ifx state==XT_UNKNOWN then "native_unknown" else ""};raw:[8192]u8;size:=xt_status_write(v,raw[..]);return size>0 && nta_observe(n,cast(string)raw[0..<size],command); // mutant: equivalent (size threshold only: the primary writer returns -1 or a complete TaskStatus longer than one byte)
+}
+NTA_TEST_IDS :: "{\"command_id\":\"11111111111111111111111111111111\",\"session_id\":\"22222222222222222222222222222222\",\"now_ms\":1000}";
+nta_test_page :: (n:[]NativeTaskApp,text:string,state:int,revision:int,interaction:string,raw:[]u8)->int #effects(all) {
+ hash:[64]u8;_=S_hex(S_hash(text),hash[..]);q:=xh_client_request(n[0].capture[0].client[..]);return xh_page_write(XhPage.{capture=XhCapture.{reader=q.reader,read=q.read,status=XtStatus.{binding=n[0].b[0],state=state,revision=revision,interaction=interaction,updated=1000},hash=cast(string)hash[..],bytes=text.count,expires=31000},next=text.count,complete=true,text=text},raw);
+}
+#test "native task selection preserves an outstanding control and requires its owned exact association" {
+ n:[1]NativeTaskApp;path:[512]u8;#assert nta_path(n[..],1,path[..])=="" && nta_path(n[..],2,path[..])=="" && !nta_adopt(n[..],ex_test_binding(),"Actual Mac");
+ #assert !nta_select(n[..],"bad","bad") && !nta_select(n[..],"trn_0123456789abcdef0123456789abcdef","bad") && nta_test_bind(n[..]);
+ #assert n[0].bound && n[0].b[0].model=="gpt-6-astra" && n[0].b[0].effort=="high" && n[0].host_label_n>0;
+ b:=n[0].b[0];#assert nta_adopt(n[..],b,"Actual Mac");other_binding:=b;other_binding.model="other";#assert !nta_adopt(n[..],other_binding,"Actual Mac");
+ other_binding=b;other_binding.turn="trn_11111111111111111111111111111111";#assert !nta_adopt(n[..],other_binding,"Actual Mac");
+ other:[1]NativeTaskApp;#assert nta_select(other[..],cast(string)n[0].turn[..],cast(string)n[0].conversation[..]) && nta_adopt(other[..],b,"") && cast(string)other[0].host_label[0..<other[0].host_label_n]==EX_TEST_HASH;
+ #assert nta_path(n[..],0,path[..])=="" && nta_path(n[..],5,path[..])=="" && nta_path(n[..],2,path[..])=="/api/chat/task/v1alpha1?host=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef&task=0123456789abcdef0123456789abcdef";
+ #assert nta_path(n[..],1,path[..])=="/api/chat/turn-task/v1alpha1?id=trn_0123456789abcdef0123456789abcdef";
+ n[0].preparing=true;#assert nta_pending(n[..]) && !nta_select(n[..],"trn_11111111111111111111111111111111","cnv_0123456789abcdef0123456789abcdef");
+ #assert nta_select(n[..],"trn_0123456789abcdef0123456789abcdef","cnv_0123456789abcdef0123456789abcdef") && n[0].preparing;
+ n[0].preparing=false;#assert nta_select(n[..],"trn_11111111111111111111111111111111","cnv_0123456789abcdef0123456789abcdef") && !n[0].bound;
+}
+#test "uncertain native controls reconcile only when their original interaction has authoritatively advanced" {
+ n:[1]NativeTaskApp;#assert nta_test_bind(n[..]) && !nta_reconcile(n[..]) && nta_test_status(n[..],XT_WAITING,2,"held","") && nta_intent(n[..],"deny") && nta_command(n[..],NTA_TEST_IDS);
+ #assert !nta_reconcile(n[..]);n[0].uncertain=true;#assert !nta_reconcile(n[..]) && nta_test_status(n[..],XT_WAITING,3,"held","") && !nta_reconcile(n[..]);
+ #assert nta_test_status(n[..],XT_WAITING,4,"different","") && nta_reconcile(n[..]) && !nta_pending(n[..]);
+ #assert nta_intent(n[..],"stop") && nta_command(n[..],NTA_TEST_IDS);n[0].uncertain=true;n[0].status[0].stop=true;#assert nta_reconcile(n[..]) && !nta_pending(n[..]);nta_note(n[..],"Observed");#assert cast(string)n[0].note[0..<n[0].note_n]=="Observed";
+}
+#test "native controls retain the exact permission revision and bytes across changed observations and a lost reply" {
+ n:[1]NativeTaskApp;#assert nta_test_bind(n[..]) && !nta_intent(n[..],"start") && !nta_intent(n[..],"stop");
+ #assert nta_test_status(n[..],XT_WAITING,2,"held","") && nta_permission(n[..]) && !nta_reviewable(n[..]) && !nta_intent(n[..],"approve");
+ #assert nta_intent(n[..],"deny") && nta_pending(n[..]) && !nta_command(n[..],"{}") && !nta_command(n[..],"{\"command_id\":\"bad\",\"now_ms\":1000}");
+ #assert nta_test_status(n[..],XT_WAITING,3,"next","") && nta_command(n[..],NTA_TEST_IDS) && !nta_command(n[..],NTA_TEST_IDS) && !nta_intent(n[..],"stop");
+ q:[1]XtRequest;qa:[2048]u8;#assert xt_request_read(cast(string)n[0].body[0..<n[0].body_n],q[..],qa[..]) && xc_match(q[0],"deny",n[0].b[0].task,2,"held","11111111111111111111111111111111");
+ bytes:[4096]u8;size:=js_copy(bytes[..],cast(string)n[0].body[0..<n[0].body_n]);n[0].uncertain=true;#assert nta_pending(n[..]) && !nta_control_reply(n[..],"{}") && cast(string)n[0].body[0..<n[0].body_n]==cast(string)bytes[0..<size];
+ v:=XtStatus.{binding=n[0].b[0],state=XT_FAILED,revision=4,error="native_failed",updated=1000,command="11111111111111111111111111111111",replay=true};raw:[8192]u8;size=xt_status_write(v,raw[..]);#assert size>0 && nta_control_reply(n[..],cast(string)raw[0..<size]) && !nta_pending(n[..]) && !n[0].uncertain && n[0].status[0].state==XT_FAILED && !nta_intent(n[..],"stop");
+}
+#test "native capture approval needs a whole verified current permission and keeps the visible history on bad refresh" #steps 100000000 {
+ n:[1]NativeTaskApp;data:[8192]u8;pool:[8192]u8;next_pool:[8192]u8;decode:[8192]u8;raw:[XH_PAGE_MAX]u8;
+ #assert nta_test_bind(n[..]) && nta_test_status(n[..],XT_WAITING,2,"held","") && !nta_capture_begin(n[..],"{}",data[..]);
+ #assert nta_capture_begin(n[..],NTA_TEST_IDS,data[..]) && !nta_publish(n[..],pool[..],decode[..]) && !nta_capture_page(n[..],"{}");
+ s:[1]Session;source:[8192]u8;lines:[8192]u8;s_init(s[..],source[..]);s_user(s[..],"Private project instructions");sl_test_tool(s[..],"call-id",TK_EXEC,"echo test","shell","","","{\"command\":\"echo test\"}","",false);s_notice(s[..],N_ASK,"Allow echo test?");bytes:=sl_lines_checked(s[..],0,s[0].n,false,lines[..]);#assert bytes>0;
+ size:=nta_test_page(n[..],cast(string)lines[0..<bytes],XT_WAITING,2,"held",raw[..]);#assert size>0 && nta_capture_page(n[..],cast(string)raw[0..<size]) && !nta_reviewable(n[..]) && nta_publish(n[..],pool[..],decode[..]) && nta_reviewable(n[..]);
+ #assert n[0].shown[0].parts[1].kind==P_TOOL && n[0].shown[0].parts[1].id=="call-id" && n[0].shown[0].parts[1].input=="{\"command\":\"echo test\"}";
+ #assert nta_intent(n[..],"approve") && !nta_capture_begin(n[..],NTA_TEST_IDS,data[..]);n[0].preparing=false;n[0].verb="";
+ #assert nta_capture_begin(n[..],NTA_TEST_IDS,data[..]) && !nta_reviewable(n[..]);size=nta_test_page(n[..],"{bad}\n",XT_WAITING,2,"held",raw[..]);#assert size>0 && nta_capture_page(n[..],cast(string)raw[0..<size]) && !nta_publish(n[..],next_pool[..],decode[..]) && n[0].has_session && s_text_of(n[0].shown[..],2)=="Allow echo test?" && !nta_reviewable(n[..]);
+}
+#test "native task observation rejects changed binding old revision and conflicting equal revision" {
+ n:[1]NativeTaskApp;#assert !nta_observe(n[..],"{}","") && nta_test_bind(n[..]) && nta_test_status(n[..],XT_RUNNING,2,"","");
+ before:[8192]u8;size:=js_copy(before[..],cast(string)n[0].canonical[0..<n[0].canonical_n]);#assert !nta_test_status(n[..],XT_RUNNING,1,"","") && !nta_test_status(n[..],XT_WAITING,2,"held","") && cast(string)n[0].canonical[0..<n[0].canonical_n]==cast(string)before[0..<size];
+ #assert nta_intent(n[..],"stop") && nta_command(n[..],NTA_TEST_IDS);q:[1]XtRequest;arena:[2048]u8;#assert xt_request_read(cast(string)n[0].body[0..<n[0].body_n],q[..],arena[..]) && xc_match(q[0],"stop",n[0].b[0].task,0,"","");
+}
+#test "tool content pages are exact complete UTF8 spans without gaps or a misleading prefix" #steps 100000000 {
+ text:[NTA_PAGE_BYTES+6]u8;for i:0..<NTA_PAGE_BYTES-1 {text[i]='x';}at:=NTA_PAGE_BYTES-1;for c:"🌲Z" {text[at]=c;at+=1;}raw:=cast(string)text[0..<at];
+ a:=nta_text_page(raw,0);b:=nta_text_page(raw,1);#assert a.count==NTA_PAGE_BYTES-1 && b=="🌲Z" && a.count+b.count==raw.count && nta_text_page(raw,-1)=="" && nta_text_page(raw,2)=="" && nta_text_page("",0)=="";
+}
+#test "selecting a saved task schedules its association before native status and drops previous private view state" {
+ n:[1]NativeTaskApp;b:=ex_test_binding();#assert nta_select(n[..],b.turn,b.conversation) && n[0].selected && n[0].need==1 && cast(string)n[0].turn[..]==b.turn && cast(string)n[0].conversation[..]==b.conversation;
+ n[0].absent=true;#assert nta_adopt(n[..],b,"Actual Mac") && n[0].bound && !n[0].absent && n[0].need==2 && cast(string)n[0].host_label[0..<n[0].host_label_n]=="Actual Mac";
+ decoded:[1]ExBinding;arena:[2048]u8;#assert n[0].binding_n>0 && ex_binding_read(cast(string)n[0].binding[0..<n[0].binding_n],decoded[..],arena[..]) && ex_binding_same(decoded[0],b);
+ n[0].has_session=true;n[0].reading=true;n[0].note[0]='X';n[0].note_n=1;#assert nta_select(n[..],"trn_11111111111111111111111111111111",b.conversation) && !n[0].bound && !n[0].has_session && !n[0].reading && n[0].note[0]==0 && n[0].note_n==0 && n[0].need==1;
+ n[0].body_n=300;#assert !nta_select(n[..],b.turn,b.conversation);n[0].body_n=0;#assert nta_select(n[..],b.turn,b.conversation) && nta_adopt(n[..],b,"M") && cast(string)n[0].host_label[0..<n[0].host_label_n]=="M";
+}
+#test "a binding cannot be installed through missing selection invalid data or another conversation" {
+ b:=ex_test_binding();n:[1]NativeTaskApp;_=js_copy(n[0].turn[..],b.turn);_=js_copy(n[0].conversation[..],b.conversation);#assert !nta_adopt(n[..],b,"Mac");
+ #assert nta_select(n[..],b.turn,b.conversation);wrong:=b;wrong.host="bad";#assert !nta_adopt(n[..],wrong,"Mac") && !n[0].bound;wrong=b;wrong.conversation="cnv_11111111111111111111111111111111";#assert !nta_adopt(n[..],wrong,"Mac");
+ label:[257]u8;for i:0..<label.count {label[i]='x';}#assert nta_adopt(n[..],b,cast(string)label[..]) && cast(string)n[0].host_label[0..<n[0].host_label_n]==b.host;
+}
+#test "only a live held permission can be denied and terminal task observations remain read only" {
+ for state:XT_QUEUED..<XT_UNKNOWN+1 {
+  n:[1]NativeTaskApp;#assert nta_test_bind(n[..]) && nta_test_status(n[..],state,2,ifx state==XT_WAITING then "held" else "","");
+  #assert nta_permission(n[..])==(state==XT_WAITING) && !nta_reviewable(n[..]) && !nta_intent(n[..],"approve");
+  #assert nta_intent(n[..],"deny")== (state==XT_WAITING);n[0].preparing=false;n[0].verb="";
+  n[0].status[0].stop=true;#assert !nta_permission(n[..]) && !nta_intent(n[..],"deny");n[0].status[0].stop=false;
+  #assert nta_intent(n[..],"stop")== !xt_terminal(state);
+ }
+ n:[1]NativeTaskApp;#assert !nta_intent(n[..],"approve") && nta_test_bind(n[..]) && !nta_intent(n[..],"deny") && nta_test_status(n[..],XT_WAITING,2,"held","") && !nta_intent(n[..],"start");
+}
+#test "nonce loss cancellation duplicate delivery and invalid clocks cannot replace a retained control" {
+ n:[1]NativeTaskApp;#assert nta_test_bind(n[..]) && nta_test_status(n[..],XT_RUNNING,2,"","") && !nta_command(n[..],NTA_TEST_IDS);n[0].uncertain=true;
+ #assert nta_intent(n[..],"stop") && !n[0].uncertain && n[0].expected_revision==0 && n[0].held_n==0;
+ #assert !nta_command(n[..],"{bad}") && !nta_command(n[..],"{\"command_id\":\"11111111111111111111111111111111\",\"now_ms\":0}");
+ n[0].preparing=false;#assert !nta_command(n[..],NTA_TEST_IDS) && n[0].body_n==0;n[0].preparing=true;#assert nta_command(n[..],NTA_TEST_IDS) && !n[0].preparing;
+ bytes:[4096]u8;size:=js_copy(bytes[..],cast(string)n[0].body[0..<n[0].body_n]);n[0].preparing=true;#assert !nta_command(n[..],"{\"command_id\":\"33333333333333333333333333333333\",\"now_ms\":2000}") && cast(string)n[0].body[0..<n[0].body_n]==cast(string)bytes[0..<size];n[0].preparing=false;
+ raw:[8192]u8;count:=xt_status_write(XtStatus.{binding=n[0].b[0],state=XT_RUNNING,revision=3,updated=1000},raw[..]);#assert count>0 && !nta_control_reply(n[..],cast(string)raw[0..<count]) && nta_pending(n[..]);
+ count=xt_status_write(XtStatus.{binding=n[0].b[0],state=XT_CANCELED,revision=3,stop=true,updated=1000,command="11111111111111111111111111111111"},raw[..]);#assert count>0 && nta_control_reply(n[..],cast(string)raw[0..<count]) && !nta_pending(n[..]) && n[0].verb=="" && !n[0].uncertain && n[0].need==2;
+}
+#test "approval requires the current complete permission including a notice at index zero and current enrollment availability" #steps 100000000 {
+ n:[1]NativeTaskApp;data:[8192]u8;pool:[8192]u8;decode:[8192]u8;raw:[XH_PAGE_MAX]u8;#assert nta_test_bind(n[..]) && nta_test_status(n[..],XT_WAITING,2,"held","") && nta_capture_begin(n[..],NTA_TEST_IDS,data[..]);
+ text:="{\"kind\":\"ask\",\"text\":\"Review the full call\"}\n";size:=nta_test_page(n[..],text,XT_WAITING,2,"held",raw[..]);#assert size>0 && nta_capture_page(n[..],cast(string)raw[0..<size]) && nta_publish(n[..],pool[..],decode[..]) && n[0].shown[0].asking==0 && nta_reviewable(n[..]);
+ n[0].available=false;#assert !nta_reviewable(n[..]) && !nta_intent(n[..],"approve");n[0].available=true;n[0].has_session=false;#assert !nta_reviewable(n[..]);n[0].has_session=true;n[0].reading=true;#assert !nta_reviewable(n[..]);n[0].reading=false;n[0].shown[0].asking= -1;#assert !nta_reviewable(n[..]);n[0].shown[0].asking=0;
+ #assert nta_test_status(n[..],XT_WAITING,3,"another","") && !nta_reviewable(n[..]) && nta_intent(n[..],"deny");
+}
+#test "capture refresh keeps one viewer and advances the exact byte cursor without replacing the last good view with an old task revision" #steps 100000000 {
+ n:[1]NativeTaskApp;data:[8192]u8;pool:[8192]u8;other:[8192]u8;decode:[8192]u8;raw:[XH_PAGE_MAX]u8;path:[512]u8;#assert !nta_capture_begin(n[..],NTA_TEST_IDS,data[..]) && !nta_capture_page(n[..],"{}");
+ #assert nta_test_bind(n[..]) && nta_test_status(n[..],XT_RUNNING,1,"","") && !nta_capture_begin(n[..],"{bad}",data[..]);
+ for ids:[3]string.["{\"command_id\":\"bad\",\"session_id\":\"22222222222222222222222222222222\",\"now_ms\":1000}","{\"command_id\":\"11111111111111111111111111111111\",\"session_id\":\"bad\",\"now_ms\":1000}","{\"command_id\":\"11111111111111111111111111111111\",\"session_id\":\"22222222222222222222222222222222\",\"now_ms\":0}"] {#assert !nta_capture_begin(n[..],ids,data[..]);}
+ #assert nta_capture_begin(n[..],NTA_TEST_IDS,data[..]) && n[0].has_reader && n[0].now==1000 && n[0].need==4;
+ #assert nta_path(n[..],4,path[..])=="/api/chat/task/transcript/v1alpha1?host=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef&task=0123456789abcdef0123456789abcdef&reader=22222222222222222222222222222222&read=11111111111111111111111111111111&sha256=&after=0";
+ text:="{\"kind\":\"reply\",\"text\":\"First\"}\n";size:=nta_test_page(n[..],text,XT_RUNNING,1,"",raw[..]);#assert size>0 && nta_capture_page(n[..],cast(string)raw[0..<size]) && nta_publish(n[..],pool[..],decode[..]) && n[0].pool_index==1 && n[0].need==0 && n[0].elapsed==0 && s_text_of(n[0].shown[..],0)=="First";
+ n[0].preparing=true;#assert !nta_capture_begin(n[..],NTA_TEST_IDS,data[..]);n[0].preparing=false;
+ #assert nta_capture_begin(n[..],"{\"command_id\":\"33333333333333333333333333333333\",\"session_id\":\"44444444444444444444444444444444\",\"now_ms\":2000}",data[..]);q:=xh_client_request(n[0].capture[0].client[..]);#assert q.reader=="22222222222222222222222222222222" && q.read=="33333333333333333333333333333333" && n[0].has_session;
+ #assert nta_test_status(n[..],XT_RUNNING,2,"","");size=nta_test_page(n[..],text,XT_RUNNING,1,"",raw[..]);#assert size>0 && nta_capture_page(n[..],cast(string)raw[0..<size]) && !nta_publish(n[..],other[..],decode[..]) && s_text_of(n[0].shown[..],0)=="First";
+ #assert nta_path(n[..],3,path[..])=="/api/chat/task/v1alpha1?host=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+}
+#test "uncertain replies reconcile only a retained delivered command and clear its complete local intent" {
+ n:[1]NativeTaskApp;#assert nta_test_bind(n[..]) && nta_test_status(n[..],XT_WAITING,2,"held","");
+ // A delivered terminal observation without an outstanding command must not
+ // be confused with acknowledgment of an earlier button press.
+ #assert nta_test_status(n[..],XT_COMPLETED,3,"","");n[0].uncertain=true;#assert !nta_reconcile(n[..]);
+ n[0]=NativeTaskApp.{};#assert nta_test_bind(n[..]) && nta_test_status(n[..],XT_WAITING,2,"held","") && nta_intent(n[..],"deny") && nta_command(n[..],NTA_TEST_IDS);
+ n[0].status[0].stop=true;n[0].uncertain=true;#assert !nta_reconcile(n[..]);n[0].status[0].stop=false;
+ #assert nta_test_status(n[..],XT_COMPLETED,3,"","");n[0].uncertain=false;#assert !nta_reconcile(n[..]);n[0].uncertain=true;n[0].has_status=false;#assert !nta_reconcile(n[..]);n[0].has_status=true;
+ #assert nta_reconcile(n[..]) && n[0].body_n==0 && n[0].verb=="" && !n[0].uncertain;
+ #assert !nta_control_reply(n[..],"{}");
+}
+#test "successful native control acknowledgment schedules status even from an idle view" {
+ n:[1]NativeTaskApp;#assert nta_test_bind(n[..]) && nta_test_status(n[..],XT_RUNNING,2,"","") && nta_intent(n[..],"stop") && nta_command(n[..],NTA_TEST_IDS);
+ n[0].need=0;raw:[8192]u8;size:=xt_status_write(XtStatus.{binding=n[0].b[0],state=XT_CANCELED,stop=true,revision=3,updated=1000,command="11111111111111111111111111111111"},raw[..]);
+ #assert size>0 && nta_control_reply(n[..],cast(string)raw[0..<size]) && n[0].need==2;
+}
+#test "capture clocks admit exact safe endpoints and refuse either missing identity and oversized storage" {
+ n:[1]NativeTaskApp;data:[8192]u8;oversized:[XH_LOG_MAX+1]u8;#assert nta_test_bind(n[..]);
+ #assert !nta_capture_begin(n[..],"{\"command_id\":\"bad\",\"session_id\":\"bad\",\"now_ms\":1000}",data[..]);
+ #assert !nta_capture_begin(n[..],NTA_TEST_IDS,oversized[..]);
+ #assert nta_capture_begin(n[..],"{\"command_id\":\"11111111111111111111111111111111\",\"session_id\":\"22222222222222222222222222222222\",\"now_ms\":1}",data[..]) && n[0].now==1;
+ #assert !nta_capture_begin(n[..],"{\"command_id\":\"33333333333333333333333333333333\",\"session_id\":\"bad\",\"now_ms\":1000}",data[..]);
+ #assert nta_capture_begin(n[..],"{\"command_id\":\"11111111111111111111111111111111\",\"session_id\":\"22222222222222222222222222222222\",\"now_ms\":9007199254740991}",data[..]) && n[0].now==9007199254740991;
+ #assert !nta_capture_begin(n[..],"{\"command_id\":\"11111111111111111111111111111111\",\"session_id\":\"22222222222222222222222222222222\",\"now_ms\":9007199254740992}",data[..]);
+}
+#test "whole capture publication swaps two caller pools and refuses duplicate publication" #steps 100000000 {
+ n:[1]NativeTaskApp;data:[8192]u8;pool:[8192]u8;other:[8192]u8;decode:[8192]u8;raw:[XH_PAGE_MAX]u8;#assert nta_test_bind(n[..]) && nta_test_status(n[..],XT_RUNNING,1,"","");
+ for i:0..<2 {
+  #assert nta_capture_begin(n[..],NTA_TEST_IDS,data[..]);text:=ifx i==0 then "{\"kind\":\"reply\",\"text\":\"First\"}\n" else "{\"kind\":\"reply\",\"text\":\"Second\"}\n";size:=nta_test_page(n[..],text,XT_RUNNING,1,"",raw[..]);#assert size>0 && nta_capture_page(n[..],cast(string)raw[0..<size]);
+  n[0].elapsed=7;#assert nta_publish(n[..],ifx i==0 then pool[..] else other[..],decode[..]) && n[0].pool_index==1-i && n[0].elapsed==0;
+  #assert !nta_publish(n[..],data[..],decode[..]) && s_text_of(n[0].shown[..],0)==ifx i==0 then "First" else "Second";
+ }
+}
+#test "ASCII and Unicode page boundaries preserve exact fixed-size partitions and an exact final page" #steps 100000000 {
+ raw:[NTA_PAGE_BYTES*2+1]u8;for i:0..<raw.count {raw[i]='x';}raw[NTA_PAGE_BYTES]='A';raw[NTA_PAGE_BYTES*2]='Z';text:=cast(string)raw[..];
+ #assert nta_text_page(text,0).count==NTA_PAGE_BYTES && nta_text_page(text,0)[0]=='x';
+ a:=nta_text_page(text,1);#assert a.count==NTA_PAGE_BYTES && a[0]=='A' && nta_text_page(text,2)=="Z" && nta_text_page(text,3)=="";
+ #assert nta_text_page(cast(string)raw[0..<NTA_PAGE_BYTES],0).count==NTA_PAGE_BYTES && nta_text_page(cast(string)raw[0..<NTA_PAGE_BYTES],1)=="";
+}
+#test "the transcript fixture pins its original reader read deadline and byte span" {
+ n:[1]NativeTaskApp;data:[1024]u8;raw:[XH_PAGE_MAX]u8;page:[1]XhPage;arena:[XH_ARENA]u8;#assert nta_test_bind(n[..]) && nta_capture_begin(n[..],NTA_TEST_IDS,data[..]);
+ size:=nta_test_page(n[..],"x",XT_RUNNING,1,"",raw[..]);#assert size>0 && xh_page_read(cast(string)raw[0..<size],page[..],arena[..]);
+ #assert page[0].capture.expires==31000 && page[0].capture.reader=="22222222222222222222222222222222" && page[0].capture.read=="11111111111111111111111111111111" && page[0].offset==0 && page[0].next==1 && page[0].complete;
+}
+#test "Stop retires an unsent permission and holds a delivered response without forgetting its command" {
+ n:[1]NativeTaskApp;#assert nta_test_bind(n[..]) && nta_test_status(n[..],XT_WAITING,2,"held","") && nta_intent(n[..],"deny");
+ n[0].uncertain=true;nta_hold_for_stop(n[..]);#assert !n[0].preparing && !n[0].uncertain && !nta_pending(n[..]) && !nta_command(n[..],NTA_TEST_IDS);
+ #assert nta_intent(n[..],"deny") && nta_command(n[..],NTA_TEST_IDS);nta_hold_for_stop(n[..]);#assert !nta_pending(n[..]) && n[0].body_n==0 && n[0].verb=="" && !n[0].sent;
+ #assert nta_intent(n[..],"deny") && nta_command(n[..],NTA_TEST_IDS);saved:[4096]u8;size:=js_copy(saved[..],cast(string)n[0].body[0..<n[0].body_n]);nta_sent(n[..]);#assert n[0].sent;
+ nta_hold_for_stop(n[..]);#assert nta_pending(n[..]) && n[0].uncertain && n[0].verb=="deny" && cast(string)n[0].body[0..<n[0].body_n]==cast(string)saved[0..<size];
+ n[0].uncertain=false;nta_hold_for_stop(n[..]);#assert n[0].uncertain && n[0].sent;
+ n[0].body_n=0;n[0].uncertain=false;nta_hold_for_stop(n[..]);#assert !n[0].uncertain;
+ #assert nta_intent(n[..],"stop") && !n[0].sent;
+}

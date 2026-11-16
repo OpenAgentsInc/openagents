@@ -112,3 +112,18 @@ text_elapsed :: (buf: [] u8, secs: int) -> int {
   #assert cluster_len("🇯🇵🇺", 0) == 8;   // JP, then a lone U
   #assert cluster_len("\r\nx", 0) == 2 && cluster_len("日本", 0) == 3;
 }
+
+// UTF-8 byte boundary shared by tool pagination and Microcoder prompt cuts.
+#test "byte boundary preserves complete UTF8 points at every short cut" {
+ text:="aé🌲Z";expected:=[9]int.[0,1,1,3,3,3,3,7,8];for end:0..<9 {#assert text_byte_floor(text,end)==expected[end];}
+ #assert text_byte_floor("",0)==0 && text_byte_floor(text,-1)== -1 && text_byte_floor(text,9)==9;
+ leading:="é🌲Z";cuts:=[8]int.[0,0,2,2,2,2,6,7];for end:0..<cuts.count {#assert text_byte_floor(leading,end)==cuts[end];}
+ // This boundary helper also bounds a cut before an invalid leading byte;
+ // validation belongs to the caller and it must never walk below zero.
+ malformed:=[1]u8.[0x80];#assert text_byte_floor(cast(string)malformed[..],0)==0;
+}
+text_byte_floor :: (s: string, i: int) -> int {
+  k := i;
+  while k > 0 && k < s.count && (s[k] & 0xC0) == 0x80 { k -= 1; }
+  return k;
+}

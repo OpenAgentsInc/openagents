@@ -2,6 +2,7 @@
 // coax/bin/coax test coax/web/api/account-chat-task-worker-policy.coax --library --traversal 1000000000
 #load "account-chat-task-policy.coax";
 #load "../../lib/agent/environment/preparation-wire.coax";
+#load "../../lib/agent/environment/task-client-policy.coax";
 #authority;
 #test "native effects distinguish unstarted cancellation from uncertain dispatch" {
  #assert ctn_action(0,false,true,false,0,100,100)==1 && ctn_action(0,false,true,false,0,101,100)== -2;
@@ -36,18 +37,6 @@
  #assert n>0 && ctn_prep_read(cast(string)raw[0..<n],p[..],arena[..]) && p[0].total==4 && !ctn_prep_read("{}",p[..],arena[..]);
  #assert !ctn_prepared(b,v,b.command,-1) && !ctn_prepared(b,v,b.command,5);
 }
-#test "native observations retain binding monotone revision and equal-revision bytes" {
- b:=ex_test_binding();v:=XtStatus.{binding=b,state=XT_RUNNING,revision=1,updated=1000};raw:[8192]u8;canonical:[8192]u8;prior:[8192]u8;out:[1]XtStatus;arena:[2048]u8;
- n:=xt_status_write(v,raw[..]);p:=ctn_status(b,cast(string)raw[0..<n],"","",out[..],arena[..],prior[..]);#assert p==n && cast(string)raw[0..<n]==cast(string)prior[0..<p];
- v.command=b.command;v.replay=true;n=xt_status_write(v,raw[..]);#assert ctn_status(b,cast(string)raw[0..<n],b.command,cast(string)prior[0..<p],out[..],arena[..],canonical[..])==p && cast(string)canonical[0..<p]==cast(string)prior[0..<p];
- #assert ctn_status(b,cast(string)raw[0..<n],"","",out[..],arena[..],canonical[..])<0 && ctn_status(b,"{}","","",out[..],arena[..],canonical[..])<0;
- v.command="";v.replay=false;v.revision=2;n=xt_status_write(v,raw[..]);#assert ctn_status(b,cast(string)raw[0..<n],"",cast(string)prior[0..<p],out[..],arena[..],canonical[..])>0;
- v.revision=1;v.updated=1001;n=xt_status_write(v,raw[..]);#assert ctn_status(b,cast(string)raw[0..<n],"",cast(string)prior[0..<p],out[..],arena[..],canonical[..])<0;
- v.updated=1000;v.binding.model="other";n=xt_status_write(v,raw[..]);#assert ctn_status(b,cast(string)raw[0..<n],"","",out[..],arena[..],canonical[..])<0;
- v.binding=b;v.revision=1;n=xt_status_write(v,raw[..]);#assert ctn_status(b,cast(string)raw[0..<n],"","",out[..],arena[..],canonical[0..<1])<0;
- next:[8192]u8;old:=v;old.revision=2;on:=xt_status_write(old,next[..]);#assert ctn_status(b,cast(string)raw[0..<n],"",cast(string)next[0..<on],out[..],arena[..],canonical[..])<0;
- v.revision=2;n=xt_status_write(v,raw[..]);old.revision=1;old.binding.model="other";on=xt_status_write(old,next[..]);#assert ctn_status(b,cast(string)raw[0..<n],"",cast(string)next[0..<on],out[..],arena[..],canonical[..])<0 && ctn_status(b,cast(string)raw[0..<n],"","{}",out[..],arena[..],canonical[..])<0;
-}
 #test "native transcript projection enforces its actual saved text limit" #steps 50000000 {
  text:[131073]u8;out:[131073]u8;for i:0..<text.count {text[i]='x';}#assert ctn_delta("",cast(string)text[0..<131072],out[..])==131072 && ctn_delta("",cast(string)text[..],out[..])<0;
 }
@@ -79,9 +68,3 @@ ctn_chunk :: (b:ExBinding,raw:string,offset:int,out:[]u8)->int #export_c #effect
  return ex_chunk_write(ExChunk.{task=b.task,command=cast(string)command[..],hash=b.input_hash,total=b.input_bytes,offset=offset,text=cast(string)raw[offset..<offset+n],issued=b.issued,expires=b.expires},out);
 }
 ctn_prep_read :: (raw:string,out:[]ExPrepView,arena:[]u8)->bool #export_c #effects(all) {return exp_view_read(raw,out,arena);}
-ctn_status :: (b:ExBinding,raw:string,command:string,prior:string,out:[]XtStatus,arena:[]u8,canonical:[]u8)->int #export_c #effects(all) {
- if !xt_status_read(raw,out,arena) || !ex_binding_same(b,out[0].binding) || out[0].command!=command {return -1;}
- v:=out[0];v.command="";v.replay=false;n:=xt_status_write(v,canonical);if n<1 {return -1;} // mutant: equivalent (< to <= and 1 to 2: a successful primary TaskStatus with its required Binding is always longer than two bytes; refusal is -1)
- if prior!="" {old:[1]XtStatus;buf:[2048]u8;if !xt_status_read(prior,old[..],buf[..]) || !ex_binding_same(b,old[0].binding) || v.revision<old[0].revision || (v.revision==old[0].revision && cast(string)canonical[0..<n]!=prior) {return -1;}}
- return n;
-}

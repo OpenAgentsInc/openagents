@@ -1,0 +1,74 @@
+// Runtime generated-protobuf mapper and the actual mobile app transition/render
+// path. Pure task/control admission is separately mutation-qualified.
+#load "../../apps/openagents-ios/home/app.coax";
+#load "chat-task-fixtures-checks.coax";
+NTI_IDS :: "{\"command_id\":\"11111111111111111111111111111111\",\"session_id\":\"22222222222222222222222222222222\",\"now_ms\":1000}";
+nti_ready :: (s:[]Starter) {
+ s[0].ready=true;_=mono_frames(s[0].sets[..]);s[0].workspace=true;s[0].account_ready=true;s[0].page=3;d:=s[0].durable[..];d[0].enabled=true;d[0].loaded=true;d[0].id_n=js_copy(d[0].id[..],"cnv_0123456789abcdef0123456789abcdef");d[0].revision=1;
+ #assert ct_view_begin(d[0].view[..],dca_id(d),"trn_0123456789abcdef0123456789abcdef");d[0].has_view=true;e:=[1]CtEvent.[CtEvent.{conversation=dca_id(d),turn="trn_0123456789abcdef0123456789abcdef",sequence=1,kind=CT_STARTED,state=CT_RUNNING}];#assert ct_view_apply(d[0].view[..],e[..])==1;
+ #assert nta_select(d[0].native[..],cast(string)d[0].view[0].turn[..],dca_id(d));d[0].native[0].elapsed=2;
+}
+nti_status :: (s:[]Starter,state:int,revision:int,interaction:string,command:string,out:[]u8)->int {
+ return xt_status_write(XtStatus.{binding=s[0].durable[0].native[0].b[0],state=state,revision=revision,interaction=interaction,command=command,stop=state==XT_CANCELED,error=ifx state==XT_FAILED then "native_failed" else "",updated=1000},out);
+}
+nti_association :: (s:[]Starter) {
+ raw:[CTT_MAX]u8;size:=ntp_test_record(raw[..],0);#assert size>0;_=st_frame(s,0,true);#assert s[0].purpose==140 && s[0].action==4;st_done(s);na_reply(s,4,200,cast(string)raw[0..<size],false);#assert s[0].durable[0].native[0].bound;
+}
+nti_waiting :: (s:[]Starter) {
+ raw:[8192]u8;_=st_frame(s,0,true);#assert s[0].purpose==141;st_done(s);size:=nti_status(s,XT_WAITING,2,"held","",raw[..]);#assert size>0;na_reply(s,4,200,cast(string)raw[0..<size],false);
+}
+nti_capture :: (s:[]Starter,output:string) {
+ n:=s[0].durable[0].native[..];_=st_frame(s,0,true);#assert s[0].purpose==142;st_done(s);na_reply(s,11,0,NTI_IDS,false);#assert n[0].reading;
+ session:[1]Session;pool:[262144]u8;lines:[524288]u8;s_init(session[..],pool[..]);s_user(session[..],"Private Project instructions");sl_test_tool(session[..],"exact-call",TK_EXEC,"echo test","shell","","","{\"command\":\"echo test\"}",output,false);s_notice(session[..],N_ASK,"Allow this exact call?");size:=sl_lines_checked(session[..],0,session[0].n,false,lines[..]);#assert size>0;
+ hash:[64]u8;#assert S_hex(S_hash(cast(string)lines[0..<size]),hash[..]);at:=0;
+ while at<size {
+  _=st_frame(s,0,true);#assert s[0].purpose==143;st_done(s);q:=xh_client_request(n[0].capture[0].client[..]);end:=at+XH_CHUNK_MAX;if end>size {end=size;}
+  p:=XhPage.{capture=XhCapture.{reader=q.reader,read=q.read,status=n[0].status[0],hash=cast(string)hash[..],bytes=size,expires=31000},offset=at,next=end,complete=end==size,text=cast(string)lines[at..<end]};raw:[XH_PAGE_MAX]u8;count:=xh_page_write(p,raw[..]);#assert count>0;na_reply(s,4,200,cast(string)raw[0..<count],false);at=end;
+ }
+ #assert n[0].has_session && !n[0].reading && nta_reviewable(n);
+}
+nti_press :: (s:[]Starter,id:string) {index:=tr_find(s[0].tree[..],id);#assert index>=0;st_event(s,1,s[0].dom[0].of[index],0);}
+nti_0 :: () {
+ s:[1]Starter;nti_ready(s[..]);nti_association(s[..]);n:=s[0].durable[0].native[..];#assert n[0].b[0].model=="gpt-6-astra" && n[0].b[0].effort=="high" && cast(string)n[0].host_label[0..<n[0].host_label_n]=="Actual Mac";
+ raw:[CTT_MAX]u8;#assert !nta_binding(n,"{}");size:=ntp_test_record(raw[..],2);#assert size>0 && !nta_binding(n,cast(string)raw[0..<size]);size=ntp_test_record(raw[..],3);#assert size>0 && !nta_binding(n,cast(string)raw[0..<size]) && n[0].b[0].model=="gpt-6-astra";
+}
+nti_1 :: () {
+ s:[1]Starter;nti_ready(s[..]);nti_association(s[..]);nti_waiting(s[..]);n:=s[0].durable[0].native[..];#assert !nta_reviewable(n);nti_capture(s[..],"result");
+ _=st_frame(s[..],0,true);#assert s[0].purpose==146 && s[0].action==12;st_done(s[..]);
+ #assert !tr_has(s[0].tree[..],tr_find(s[0].tree[..],"native.approve"),AT_DISABLED);nti_press(s[..],"native.approve");#assert n[0].preparing;
+ na_reply(s[..],12,0,"{\"ready\":true}",false);
+ _=st_frame(s[..],0,true);#assert s[0].purpose==144;st_done(s[..]);na_reply(s[..],11,0,NTI_IDS,false);#assert n[0].body_n>0;
+ saved:[4096]u8;size:=js_copy(saved[..],cast(string)n[0].body[0..<n[0].body_n]);q:[1]XtRequest;arena:[2048]u8;#assert xt_request_read(cast(string)saved[0..<size],q[..],arena[..]) && xc_match(q[0],"approve",n[0].b[0].task,2,"held","11111111111111111111111111111111");
+ _=st_frame(s[..],0,true);#assert s[0].purpose==145 && s[0].action==4;st_done(s[..]);na_reply(s[..],4,0,"",true);#assert n[0].uncertain && nta_pending(n) && cast(string)n[0].body[0..<n[0].body_n]==cast(string)saved[0..<size];
+ #assert na_task_press(s[..],"native.stop") && s[0].durable[0].want_stop; // Stop has its independent saved turn intent.
+ s[0].durable[0].want_stop=false;#assert na_task_press(s[..],"native.retry");_=st_frame(s[..],0,true);#assert s[0].purpose==145 && cast(string)n[0].body[0..<n[0].body_n]==cast(string)saved[0..<size];st_done(s[..]);raw:[8192]u8;count:=nti_status(s[..],XT_COMPLETED,3,"","11111111111111111111111111111111",raw[..]);na_reply(s[..],4,200,cast(string)raw[0..<count],false);#assert !nta_pending(n) && n[0].status[0].state==XT_COMPLETED && !nta_permission(n);
+}
+nti_2 :: () {
+ s:[1]Starter;nti_ready(s[..]);nti_association(s[..]);nti_waiting(s[..]);n:=s[0].durable[0].native[..];large:[NTA_PAGE_BYTES+6]u8;for i:0..<NTA_PAGE_BYTES-1 {large[i]='x';}at:=NTA_PAGE_BYTES-1;for c:"🌲Z" {large[at]=c;at+=1;}nti_capture(s[..],cast(string)large[0..<at]);
+ #assert na_task_press(s[..],"native.open");n[0].part=1;_=st_frame(s[..],0,true);st_done(s[..]);out:=tr_find(s[0].tree[..],"native.activity.out");#assert out>=0 && tr_text_of(s[0].tree[..],out).count==NTA_PAGE_BYTES-1 && s[0].tree[0].lost==0;
+ #assert na_task_press(s[..],"native.output.next");s[0].dirty=true;_=st_frame(s[..],0,true);out=tr_find(s[0].tree[..],"native.activity.out");#assert out>=0 && tr_text_of(s[0].tree[..],out)=="🌲Z";
+ st_done(s[..]);#assert na_task_press(s[..],"native.activity.copy") && s[0].action==9;
+}
+nti_3 :: () {
+ s:[1]Starter;nti_ready(s[..]);s[0].durable[0].native[0].elapsed=0;_=st_frame(s[..],0,true);#assert s[0].purpose==146 && s[0].action==12;st_done(s[..]);
+ _=st_frame(s[..],0.5,true);_=st_frame(s[..],0.5,true);#assert s[0].durable[0].native[0].elapsed==0 && s[0].durable[0].elapsed==0;
+ na_reply(s[..],12,0,"{\"ready\":true}",false);#assert s[0].durable[0].native[0].elapsed==1 && s[0].durable[0].elapsed==1;_=st_frame(s[..],0,true);#assert s[0].purpose==134 && s[0].action==4;
+ st_done(s[..]);s[0].flight=0;s[0].purpose=0;s[0].navigation[0].open=true;s[0].durable[0].native[0].need=2;na_durable_tick(s[..],10);#assert s[0].action==0;
+ s[0].task_data[100]='D';s[0].task_pools[0][200]='P';s[0].task_pools[1][300]='Q';s[0].task_decode[400]='X';s[0].durable[0].native[0].body[0]='B';s[0].durable[0].native[0].body_n=1;na_history_clear(s[..]);#assert s[0].task_data[100]==0 && s[0].task_pools[0][200]==0 && s[0].task_pools[1][300]==0 && s[0].task_decode[400]==0 && s[0].durable[0].native[0].body[0]==0 && !s[0].durable[0].native[0].bound;
+}
+nti_4 :: () {
+ s:[1]Starter;nti_ready(s[..]);nti_association(s[..]);nti_waiting(s[..]);n:=s[0].durable[0].native[..];#assert na_task_press(s[..],"native.deny") && n[0].preparing;_=st_frame(s[..],0,true);#assert s[0].purpose==144;st_done(s[..]);na_reply(s[..],11,0,NTI_IDS,false);
+ q:[1]XtRequest;arena:[2048]u8;#assert xt_request_read(cast(string)n[0].body[0..<n[0].body_n],q[..],arena[..]) && xc_match(q[0],"deny",n[0].b[0].task,2,"held","");
+ // A Stop request is retained by Chat first and is not a local terminal state.
+ n[0].body_n=0;n[0].verb="";#assert na_task_press(s[..],"native.stop");na_durable_tick(s[..],0);#assert s[0].purpose==130 && s[0].action==11 && n[0].status[0].state==XT_WAITING;
+ st_done(s[..]);na_reply(s[..],11,0,NTI_IDS,false);#assert s[0].purpose==131;operation:[81]u8;turn:[36]u8;#assert ct_stop_read(cast(string)s[0].durable[0].body[0..<s[0].durable[0].body_n],operation[..],turn[..])>0 && cast(string)turn[..]==n[0].b[0].turn;
+}
+nti_5 :: () {
+ s:[1]Starter;nti_ready(s[..]);nti_association(s[..]);nti_waiting(s[..]);n:=s[0].durable[0].native[..];#assert na_task_press(s[..],"native.deny");_=st_frame(s[..],0,true);#assert s[0].purpose==144;st_done(s[..]);na_reply(s[..],11,0,NTI_IDS,false);#assert n[0].body_n>0 && !n[0].sent;
+ #assert na_task_press(s[..],"native.stop") && !nta_pending(n) && s[0].durable[0].want_stop;
+ _=st_frame(s[..],0,true);#assert s[0].purpose==130 && s[0].action==11;st_done(s[..]);na_reply(s[..],11,0,NTI_IDS,false);#assert s[0].purpose==131 && n[0].body_n==0;
+}
+native_check :: (i:int,run:bool)->int #export_c #effects(all) {
+ names:=[6]string.["actual owned native association and malformed/foreign binding refusal","mobile captured permissions and exact lost-control retry","whole UTF8 tool history paging and copy through shared components","zero-dt installed timer, background pause and private account clearing","denial and saved Stop preserve authoritative native outcomes","Stop retires prepared permission before any HTTP delivery"];
+ if i>=0 && i<names.count {if !run {print("%",names[i]);}else {if i==0 {nti_0();}if i==1 {nti_1();}if i==2 {nti_2();}if i==3 {nti_3();}if i==4 {nti_4();}if i==5 {nti_5();}}}return names.count;
+}

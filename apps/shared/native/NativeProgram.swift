@@ -19,7 +19,9 @@ import JavaScriptCore
         context.setObject(decode,forKeyedSubscript:"cnUTF8" as NSString)
         for path in ["tree-commands.js","build/\(module).js","runtime.js"] {
             let data=try Data(contentsOf:directory.appendingPathComponent(path))
-            guard data.count<=8388608,let script=String(data:data,encoding:.utf8) else {throw NativeFailure.refused("Invalid native program")}
+            // The account module includes the primary router/task protobuf
+            // readers. Keep a fixed bound above its generated 9 MiB program.
+            guard data.count<=16777216,let script=String(data:data,encoding:.utf8) else {throw NativeFailure.refused("Invalid native program")}
             context.evaluateScript(script,withSourceURL:URL(string:"coax-native:///\(path)"))
             if let failure {throw NativeFailure.refused(failure)}
         }

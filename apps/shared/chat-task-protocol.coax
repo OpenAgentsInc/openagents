@@ -1,0 +1,10 @@
+// Generated protobuf mapping runs at runtime. The shared pure reducer owns
+// selected-turn correlation, immutable binding and permission/control policy.
+#load "chat-task-app.coax";
+#load "../../coax/web/api/account-chat-task-wire.coax";
+nta_binding :: (n:[]NativeTaskApp,raw:string)->bool {
+ t:[1]CttTask;arena:[CTT_ARENA]u8;if !ctt_read(raw,t[..],arena[..]) {return false;}
+ report:[1]RtrRequest;nodes:[4096]JvNode;wire:[RTR_REPORT_MAX]u8;host:[64]u8;
+ label:="";if rtr_report_read(t[0].report,nodes[..],wire[..],report[..],0,host[..]) {label=report[0].stations[0].name;}
+ return nta_adopt(n,t[0].binding,label);
+}

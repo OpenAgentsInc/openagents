@@ -27,6 +27,7 @@ Starter :: struct {
   chats:[1]ChatHistory;selected:int= -1;
   thread:[1]AccountThread;draft:[16384]u8;draft_n:int;wire:[65536]u8;retry:bool;
   durable:[1]DurableChat;durable_index:[1]CtIndex;durable_project_index:[1]CtIndex;durable_refresh:bool;durable_project_refresh:bool;
+  task_data:[XH_LOG_MAX]u8;task_pools:[2][XH_LOG_MAX]u8;task_decode:[XH_LOG_MAX]u8;
   markdown:[1]MdDoc;copied:[96]u8;copied_n:int;text_busy:bool;
   environments:[1]EnvironmentApp;
   private_projects:[1]PrIndex;private_projects_failed:bool;project:[1]ProjectApp;project_thread:[64]u8;project_thread_n:int;project_link_pending:bool;
@@ -47,6 +48,7 @@ Starter :: struct {
 #load "sync.coax";
 #load "route.coax";
 #load "durable.coax";
+#load "native-task.coax";
 #load "feed.coax";
 na_copy :: (out:[]u8,text:string)->int {n:=ifx text.count<out.count then text.count else out.count;for i:0..<n {out[i]=text[i];}return n;}
 na_note :: (s:[]Starter,text:string) {s[0].note_n=na_copy(s[0].note[..],text);s[0].dirty=true;}
@@ -58,7 +60,7 @@ na_note :: (s:[]Starter,text:string) {s[0].note_n=na_copy(s[0].note[..],text);s[
 na_world :: (s:[]Starter,realm:string,path:string,edit:bool) {
  if s[0].flight!=0 {return;}n:=nwo_write(realm,path,edit,s[0].outbox[..]);if n<0 {na_note(s,"This world is unavailable.");return;}s[0].out_n=n;s[0].action=13;s[0].flight=13;s[0].dirty=true;
 }
-na_history_clear :: (s:[]Starter) {nfeed_clear(s[0].feed[..]);s[0].durable[0]=DurableChat.{};s[0].durable_index[0]=CtIndex.{};s[0].durable_project_index[0]=CtIndex.{};s[0].durable_refresh=false;s[0].durable_project_refresh=false;s[0].account_settings[0]=AccountSettingsApp.{};s[0].project[0]=ProjectApp.{};s[0].private_projects[0]=PrIndex.{};s[0].private_projects_failed=false;s[0].project_thread_n=0;s[0].project_link_pending=false;s[0].projects_n=0;s[0].projects_loaded=false;s[0].projects_failed=false;s[0].usage[0]=ProviderUsage.{};dm_value(s[0].dom[..],"usage.code","");dm_value(s[0].dom[..],"usage.label","");s[0].navigation[0]=AppNavigation.{};s[0].environments[0]=EnvironmentApp.{};empty:ChatHistory;s[0].chats[0]=empty;thread:AccountThread;s[0].thread[0]=thread;na_route_clear(s);for i:0..<s[0].draft.count {s[0].draft[i]=0;}s[0].draft_n=0;s[0].retry=false;dm_value(s[0].dom[..],"chat.composer","");}
+na_history_clear :: (s:[]Starter) {na_task_clear(s);nfeed_clear(s[0].feed[..]);s[0].durable[0]=DurableChat.{};s[0].durable_index[0]=CtIndex.{};s[0].durable_project_index[0]=CtIndex.{};s[0].durable_refresh=false;s[0].durable_project_refresh=false;s[0].account_settings[0]=AccountSettingsApp.{};s[0].project[0]=ProjectApp.{};s[0].private_projects[0]=PrIndex.{};s[0].private_projects_failed=false;s[0].project_thread_n=0;s[0].project_link_pending=false;s[0].projects_n=0;s[0].projects_loaded=false;s[0].projects_failed=false;s[0].usage[0]=ProviderUsage.{};dm_value(s[0].dom[..],"usage.code","");dm_value(s[0].dom[..],"usage.label","");s[0].navigation[0]=AppNavigation.{};s[0].environments[0]=EnvironmentApp.{};empty:ChatHistory;s[0].chats[0]=empty;thread:AccountThread;s[0].thread[0]=thread;na_route_clear(s);for i:0..<s[0].draft.count {s[0].draft[i]=0;}s[0].draft_n=0;s[0].retry=false;dm_value(s[0].dom[..],"chat.composer","");}
 na_secrets_clear :: (s:[]Starter) {
   for i:0..<s[0].email.count {s[0].email[i]=0;}s[0].email_n=0;
   dm_value(s[0].dom[..],"login.email","");
@@ -169,6 +171,7 @@ na_text_effect :: (s:[]Starter,link:bool,value:string,id:string) {
 na_reply :: (s:[]Starter,op:int,status:int,raw:string,failed:bool) {
   if op==NRR_OP {_:=nfeed_reply(s[0].feed[..],raw,failed);s[0].dirty=true;return;}
   if na_durable_reply(s,op,status,raw,failed) {na_nav_pending(s);return;}
+  if na_task_reply(s,op,status,raw,failed) {na_nav_pending(s);return;}
   background_read:=op==4 && s[0].sync_background;
   if background_read {na_nav_keep(s);s[0].sync_background=false;}
   if op==NAC_OP {

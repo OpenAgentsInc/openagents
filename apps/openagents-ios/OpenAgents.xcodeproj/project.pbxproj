@@ -54,6 +54,7 @@
 		4ABB8E0033250A5AD954D6A0 /* LookUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56E9C5471E75811CB4C59AC9 /* LookUITests.swift */; };
 		4CB209058C8426EE597A92F4 /* apple.c in Sources */ = {isa = PBXBuildFile; fileRef = FE8DA12149BB0A46C7D3204B /* apple.c */; settings = {COMPILER_FLAGS = "-IGenerated -I../shared/host/linux"; }; };
 		4D59620F5B373646C05FC2A4 /* NativeComposer-T3-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 12732C0F80796C53136B0DC3 /* NativeComposer-T3-LICENSE.txt */; };
+		506D4B8079312B8524F33707 /* chat-task-v1alpha1.payload.json in Resources */ = {isa = PBXBuildFile; fileRef = A38011ED364E08C81C558E63 /* chat-task-v1alpha1.payload.json */; };
 		514CF680606D1D6BE5BCB654 /* NativeDocuments.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1AA3819D538A01C3EBF524A /* NativeDocuments.swift */; };
 		559E7996A52A688D46F340D0 /* Deep.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92AE2C66797D94AFC4EAF484 /* Deep.swift */; };
 		55AC91DF997D5A13F8191302 /* NativeNavigationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F75A26BBCE628290F7BADC0 /* NativeNavigationTests.swift */; };
@@ -308,6 +309,7 @@
 		9DC4C63FE7746025804A2FA9 /* DeviceKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceKey.swift; sourceTree = "<group>"; };
 		9EE12087F6CBB97147B8BD05 /* NativeWorldTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeWorldTests.swift; sourceTree = "<group>"; };
 		A06EC60CB2CB2474370174C3 /* OpenagentsAppUnit.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = OpenagentsAppUnit.c; sourceTree = "<group>"; };
+		A38011ED364E08C81C558E63 /* chat-task-v1alpha1.payload.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "chat-task-v1alpha1.payload.json"; sourceTree = "<group>"; };
 		A76CCABCDB810512F41B3CB4 /* NativeWorldAssets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeWorldAssets.swift; sourceTree = "<group>"; };
 		AB5CDBC2AEE9079B64FC914A /* PhoneTurn.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneTurn.swift; sourceTree = "<group>"; };
 		ABE3F6DB32D91F73A83323E9 /* AppAnalytics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppAnalytics.swift; sourceTree = "<group>"; };
@@ -380,6 +382,15 @@
 			);
 			name = myrealm;
 			path = Generated/Worlds/myrealm;
+			sourceTree = "<group>";
+		};
+		17F55C3A9C4E75702332EF76 /* fixtures */ = {
+			isa = PBXGroup;
+			children = (
+				A38011ED364E08C81C558E63 /* chat-task-v1alpha1.payload.json */,
+			);
+			name = fixtures;
+			path = ../../coax/native/fixtures;
 			sourceTree = "<group>";
 		};
 		28D83DA525816205B067A26C /* microduck */ = {
@@ -700,6 +711,7 @@
 				AA7F4CD3989AEBEF7F73EE60 /* apple */,
 				80AB543A3ACB5F683CB189FA /* everglade */,
 				915D4404F5534B1D855E4317 /* everglade2 */,
+				17F55C3A9C4E75702332EF76 /* fixtures */,
 				89D0EDCD22386A706365DFDC /* fonts */,
 				5B366C12F710C7D176CACD52 /* Generated */,
 				CE39949D08373FFAF4241801 /* linux */,
@@ -972,6 +984,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				506D4B8079312B8524F33707 /* chat-task-v1alpha1.payload.json in Resources */,
 				07FD0B08B02E6555CF275536 /* nostr-inboxes.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

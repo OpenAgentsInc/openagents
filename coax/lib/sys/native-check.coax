@@ -9,16 +9,25 @@ nc_run :: (args:[]string,seconds:int,out:[]u8)->int {
   return r.out_n;
 }
 nc_qualify :: (source:string,entry:string)->int {
+  return nc_qualify_main(source,entry,false);
+}
+// Large native app states use the existing fork/thread suite driver, whose
+// owned large stack keeps one failed case from hiding the remaining cases.
+nc_suite :: (source:string)->int {return nc_qualify_main(source,"",true);}
+nc_qualify_main :: (source:string,entry:string,suite:bool)->int {
   path:[1024]u8;dir:=fs_temp("coax-native-check-",path[..]);#assert dir.count>0;
   cb:[1024]u8;exe:[1024]u8;cpath:=fs_join(dir,"check.c",cb[..]);binary:=fs_join(dir,"check",exe[..]);out:[16777216]u8;
   for mode:0..<2 {
     args:=[5]string.["coax/bin/coax","c",source,"--library","--release"];
     n:=nc_run(args[0..<4+mode],120,out[..]);if n<0 {return 1;}
     #assert fs_write(cpath,cast(string)out[0..<n]);
-    #assert fs_append(cpath,"\nint main(void) { return (int)") && fs_append(cpath,entry) && fs_append(cpath,"(); }\n");
+    if !suite {#assert fs_append(cpath,"\nint main(void) { return (int)") && fs_append(cpath,entry) && fs_append(cpath,"(); }\n");}
     for sanitized:0..<2 {
-      flags:=[12]string.["cc","-std=c11",ifx mode==0 then "-O0" else "-O2","-ffp-contract=off","-fno-fast-math",cpath,"-lm","-o",binary,"-g","-fsanitize=address,undefined","-fno-omit-frame-pointer"];
-      if nc_run(flags[0..<10+sanitized*2],120,out[..])<0 {return 1;}
+      flags:[14]string;count:=0;for arg:[6]string.["cc","-std=c11",ifx mode==0 then "-O0" else "-O2","-ffp-contract=off","-fno-fast-math",cpath] {flags[count]=arg;count+=1;}
+      if suite {flags[count]="coax/web/native-check.c";count+=1;flags[count]="-pthread";count+=1;}
+      for arg:[4]string.["-lm","-o",binary,"-g"] {flags[count]=arg;count+=1;}
+      if sanitized==1 {flags[count]="-fsanitize=address,undefined";count+=1;flags[count]="-fno-omit-frame-pointer";count+=1;}
+      if nc_run(flags[0..<count],120,out[..])<0 {return 1;}
       run:=[1]string.[binary];if nc_run(run[..],60,out[..])<0 {return 1;}
       print("native: mode %, sanitizers %: passed\n",mode,sanitized);
     }
