@@ -21,6 +21,7 @@
 		A09F60FB92403B2A4A5AEC6D /* AppCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2375370987EB21F55CB7A476 /* AppCore.swift */; };
 		AD751202F9DD8187E36837E4 /* ComponentsHost.m in Sources */ = {isa = PBXBuildFile; fileRef = C6F4AFFB9B751E6D6F603036 /* ComponentsHost.m */; };
 		C5085655B93C50F2344D1AFA /* AppEffects.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62F39B1A4B1714CD2CBBCE87 /* AppEffects.swift */; };
+		C77117B7CBCFC4CC0576E57C /* phone-drive.c in Sources */ = {isa = PBXBuildFile; fileRef = D53AE5A2D45A0A6B3D45B8D4 /* phone-drive.c */; };
 		C789B2E23521F07A4F8AA6D8 /* Components in Resources */ = {isa = PBXBuildFile; fileRef = 346439B2CDF1C4DE6F844825 /* Components */; };
 		D3B1BBC9420E21741699D348 /* DeviceKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DC4C63FE7746025804A2FA9 /* DeviceKey.swift */; };
 		FD7E4A9C679B91D89A1D3D7B /* AppHTTP.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C02A25433276C58798C0279 /* AppHTTP.swift */; };
@@ -43,6 +44,7 @@
 		9DC4C63FE7746025804A2FA9 /* DeviceKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceKey.swift; sourceTree = "<group>"; };
 		BF0AAC9508FA4369A9715A69 /* AppAuth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppAuth.swift; sourceTree = "<group>"; };
 		C6F4AFFB9B751E6D6F603036 /* ComponentsHost.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ComponentsHost.m; sourceTree = "<group>"; };
+		D53AE5A2D45A0A6B3D45B8D4 /* phone-drive.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "phone-drive.c"; sourceTree = "<group>"; };
 		F76D38DB61717639D91263A1 /* App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App.swift; sourceTree = "<group>"; };
 		FB0368202C3F17310FAA5C61 /* KitEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KitEditor.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -61,6 +63,7 @@
 			children = (
 				BF0AAC9508FA4369A9715A69 /* AppAuth.swift */,
 				9DC4C63FE7746025804A2FA9 /* DeviceKey.swift */,
+				D53AE5A2D45A0A6B3D45B8D4 /* phone-drive.c */,
 			);
 			name = apple;
 			path = ../shared/host/apple;
@@ -210,6 +213,7 @@
 				7113DF6985BD789F6BF1BDE7 /* KitEditor.swift in Sources */,
 				2DA485D5475D62C7827367D5 /* gallery.c in Sources */,
 				356C79ECD7093B4A053F18F7 /* main.c in Sources */,
+				C77117B7CBCFC4CC0576E57C /* phone-drive.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

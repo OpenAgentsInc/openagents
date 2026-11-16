@@ -71,6 +71,19 @@ import UIKit
     override func viewDidAppear(_ animated:Bool) {
         super.viewDidAppear(animated);wake()
         #if DEBUG
+        // Debug builds: `-OADrive SOCKET` (or `tcp:PORT` with `-OADriveToken TOKEN`) lets coax drive play
+        // the shared cases on this app (apps/shared/app/cases/INTEGRATION.md).
+        if let place=UserDefaults.standard.string(forKey:"OADrive"),!driveStarted,let owner {
+            driveStarted=true
+            let scale=Float(view.window?.screen.scale ?? UIScreen.main.scale)
+            let token=UserDefaults.standard.string(forKey:"OADriveToken") ?? ""
+            oc_on_drive_op(owner,{context in
+                guard let context else {return}
+                let screen=Unmanaged<ChatScreen>.fromOpaque(context).takeUnretainedValue()
+                MainActor.assumeIsolated {screen.step();screen.step()}   // the keyboard a tap asked for, then the page sees it
+            },Unmanaged.passUnretained(self).toOpaque())
+            if oc_drive_start(owner,place,token,Float(view.bounds.width)*scale,Float(view.bounds.height)*scale,scale)==0 {print("OpenAgents: coax drive could not listen on \(place)")}
+        }
         // Debug builds: `-OAPress nav.menu,drawer.scrim` presses those rows in turn after launch, as
         // VoiceOver would, so a screen can be reached and captured without a hand on the simulator.
         if let ids=UserDefaults.standard.string(forKey:"OAPress"),!pressedAtLaunch {
@@ -85,6 +98,7 @@ import UIKit
         #endif
     }
     #if DEBUG
+    private var driveStarted=false
     private var pressedAtLaunch=false
     #endif
     override func viewDidLayoutSubviews() {super.viewDidLayoutSubviews();wake()}

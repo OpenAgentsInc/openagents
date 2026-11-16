@@ -9,9 +9,38 @@
 // host ABI that core-host.c wraps.
 #load "../shared/app/core/core.coax";
 
-// A dispatch answered APP_GUEST: a guest screen's result waits for its owner. No guest screen is
-// loaded yet, so the root releases it; the environment picker's route goes here when it lands.
+// A dispatch answered APP_GUEST with no page to take it (core-host.c oa_core_on_guest: the chat page
+// routes the environment picker's reads itself): the root releases it.
 oa_root_guest :: (c: [] AppCore) #export_c #effects(all) { app_guest_done(c); }
+
+// coax drive's cases on the real app (apps/shared/app/cases/INTEGRATION.md, "In the iOS app"; debug
+// builds start it on -OADrive): each operation runs through the shared driver against the chat page,
+// and while the driver holds the clock a frame gets only the time it grants.
+#load "../shared/app/cases/chat-page.coax";
+OaDrive :: struct { r: [1] CpRun; d: [1] GdDrive; v: [CH_MAX_VERTICES * GP_VERTEX_FLOATS] f32; }
+// The session opens on the page, in a window w by h device pixels at dpr. The host plays its own part
+// (the keyboard), so the adapter does not.
+oa_drive_open :: (x: [] OaDrive, s: [] ChatPage, w: f32, h: f32, dpr: f32) #export_c #effects(all) {
+  if x.count < 1 || s.count < 1 { return; }
+  cp_open(x[0].r[..], s, x[0].v[..], x[0].d[..], s[0].core, "ios-simulator", 0, false);
+  cp_window(x[0].r[..], s, x[0].v[..], x[0].d[..], w, h, dpr);
+}
+// One operation's answer in out: its length.
+oa_drive_op :: (x: [] OaDrive, s: [] ChatPage, op: string, out: [] u8) -> int #export_c #effects(all) {
+  if x.count < 1 || s.count < 1 { return 0; }
+  if !cp_drive(x[0].r[..], s, x[0].v[..], x[0].d[..], op) { return el_put(out, 0, "the operation did not finish"); }
+  return el_put(out, 0, gd_answer(x[0].d[..]));
+}
+// The time the display's own frame gets: none but what the clock grants, while the driver holds it.
+oa_drive_dt :: (x: [] OaDrive, host_dt: f32) -> f32 #export_c #effects(all) {
+  if x.count < 1 { return host_dt; }
+  return gd_frame_dt(x[0].d[..], host_dt);
+}
+// One frame of the C driver's `clock +MS` (phone-drive.c), drawn off screen with that time.
+oa_drive_frame :: (x: [] OaDrive, s: [] ChatPage, dt: f32) #export_c #effects(all) {
+  if x.count < 1 || s.count < 1 { return; }
+  _ := chat_frame(s, x[0].v[..], x[0].r[0].w, x[0].r[0].h, x[0].r[0].dpr, dt);
+}
 
 // The dev menu (debug builds open it): every app component on example data (DevGallery.swift).
 #load "../../components/app/gallery/gallery.coax";

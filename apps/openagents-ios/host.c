@@ -4,6 +4,7 @@
 // code and the one generated library. It holds no behaviour.
 #include "host.h"
 #include "core-host.h"
+#include "../shared/host/apple/phone-drive.h"
 
 typedef struct {
   App app;
@@ -11,6 +12,8 @@ typedef struct {
   float safe_top, safe_bottom, keyboard, editor_height;
   int focused, reduced;
   int settle;     // frames still owed after a change (glyphs asked for in one frame are drawn in the next)
+  coax_t_OaDrive *drive;   // coax drive's session (debug builds, -OADrive), or NULL
+  void (*drove)(void *context); void *drove_context;   // the host's own turn after each operation
   void (*changed)(void *context); void *context;
 } Chat;
 
@@ -21,6 +24,7 @@ static void oc_woke(Chat *c) { oc_changed(c); if (c->changed) c->changed(c->cont
 
 static int oc_on_frame(void *user, float *vertices, float w, float h, float dpr, float dt) {
   Chat *c = user;
+  if (c->drive) dt = oa_drive_dt((coax_v_t_OaDrive){c->drive, 1}, dt);   // the driver holds the clock
   chat_env(oc_state(c), c->safe_top, c->safe_bottom, c->keyboard, c->focused != 0, c->editor_height, c->reduced != 0);
   int n = (int)chat_frame(oc_state(c), (coax_v_f32){vertices, (int64_t)c->app.max_vertices * coaxial_components_vertex_floats()}, w, h, dpr, dt);
   if (atlas_serve(&c->app)) oc_changed(c);
@@ -96,6 +100,7 @@ unsigned long long oc_presented(void *chat) { return chat ? ui_presented(((Chat 
 void oc_close(void *chat) {
   Chat *c = chat;
   if (!c) return;
+  free(c->drive);
   oa_core_on_guest(NULL, NULL);
   gallery_free(&c->app);
   free(c->s); free(c);
@@ -110,6 +115,31 @@ void oc_attach(void *chat, void *core, const char *kept) {
   if (!c || !core) return;
   chat_attach(oc_state(c), (coax_v_t_AppCore){core, 1}, oc_string(kept));
   oa_core_on_guest(oc_guest, c);
+}
+// coax drive (debug builds): phone-drive.c answers on the main thread, so these run there.
+static Chat *oc_driven;
+static int oc_drive_answer(const char *op, char *out, int cap) {
+  Chat *c = oc_driven;
+  if (!c || !c->drive || cap < 1) return -1;
+  int n = (int)oa_drive_op((coax_v_t_OaDrive){c->drive, 1}, oc_state(c), oc_string(op), (coax_v_u8){(uint8_t *)out, cap - 1});
+  out[n] = 0; oc_woke(c);
+  if (c->drove) c->drove(c->drove_context);
+  return n;
+}
+static void oc_drive_step(float dt) {
+  Chat *c = oc_driven;
+  if (c && c->drive) { oa_drive_frame((coax_v_t_OaDrive){c->drive, 1}, oc_state(c), dt); oc_woke(c); }
+}
+void oc_on_drive_op(void *chat, void (*after)(void *context), void *context) { Chat *c = chat; if (c) { c->drove = after; c->drove_context = context; } }
+int oc_drive_start(void *chat, const char *where, const char *token, float w, float h, float dpr) {
+  Chat *c = chat;
+  if (!c || c->drive || !where || !*where) return 0;
+  c->drive = calloc(1, sizeof *c->drive);
+  if (!c->drive) return 0;
+  oa_drive_open((coax_v_t_OaDrive){c->drive, 1}, oc_state(c), w, h, dpr);
+  oc_driven = c;
+  if (!phone_drive_start(where, token, oc_drive_answer, oc_drive_step)) { oc_driven = NULL; free(c->drive); c->drive = NULL; return 0; }
+  return 1;
 }
 int oc_env_save(void *chat, char *out, int cap) { Chat *c = chat; return c && cap > 0 ? oc_bytes(chat_env_save(oc_state(c), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap) : 0; }
 void oc_env_restore(void *chat, const char *text) { Chat *c = chat; if (c) { chat_env_restore(oc_state(c), oc_string(text)); oc_changed(c); } }

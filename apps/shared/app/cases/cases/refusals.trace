@@ -1,7 +1,7 @@
 > tap chat.nope
 no row chat.nope in the committed tree (tree lists them)
-> type chat.title hello
-chat.title is a heading, not a field: nothing was typed
+> type chat.empty hello
+chat.empty is a heading, not a field: nothing was typed
 > tap
 tap takes an id from the tree
 > clock +abc

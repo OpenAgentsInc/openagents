@@ -85,9 +85,9 @@ cr_play_core :: (r: [] CrRun, ops: string, a: CoApp, h: [] CoRun) {
 }
 // The case's operations against today's chat page in this process. The page, its vertices and the driver are the
 // caller's, so this procedure holds no large value of its own.
-cr_play_cpu :: (r: [] CrRun, ops: string, page: [] ChatPage, v: [] f32, d: [] GdDrive) {
+cr_play_cpu :: (r: [] CrRun, ops: string, page: [] ChatPage, v: [] f32, d: [] GdDrive, core: [] AppCore) {
   h: [1] CpRun;
-  cp_open(h[..], page, v, d, "cpu", 0, true);
+  cp_open(h[..], page, v, d, core, "cpu", 0, true);
   at := 0;
   while at < ops.count {
     e := at;
@@ -130,7 +130,7 @@ cr_case :: (r: [] CrRun, host: string, device: string, name: string, write: bool
   needs := cr_needs(ops);
   if needs.count > 0 { print("case %: waits on %\n", name, needs); return CR_WAITS; }
   r[0].got_n = 0;
-  if host == "cpu" && cr_chat_page(ops) { cr_play_cpu(r, ops, page, v, k[0].d[..]); }
+  if host == "cpu" && cr_chat_page(ops) { cr_play_cpu(r, ops, page, v, k[0].d[..], core); }
   else if host == "cpu" { cr_play_core(r, ops, co_t_app(k, core), k[0].r[..]); }
   else if !cr_play_simulator(r, device, name) { print("case % on %: %\n", name, host, cast(string) r[0].why[0..<r[0].why_n]); return CR_BROKEN; }
   got := cast(string) r[0].got[0..<r[0].got_n];

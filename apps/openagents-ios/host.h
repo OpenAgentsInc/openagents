@@ -37,6 +37,13 @@ int oc_activate(void *chat, const char *id);
 // Call once before the core's launch; oc_step after every call into the core.
 void oc_attach(void *chat, void *core, const char *kept);
 // The chips' choices per draft as plain text (0 when none), to keep across launches, and back.
+// coax drive's cases on the real app (debug builds, -OADrive SOCKET or tcp:PORT with a token): each
+// operation runs through the shared driver (apps/shared/app/cases), and while it holds the clock a frame
+// gets only the time it grants. w, h are the window in device pixels. 0 if it could not listen.
+int oc_drive_start(void *chat, const char *where, const char *token, float w, float h, float dpr);
+// The host's own turn after each driven operation (the keyboard a tap asked for, the editor's text), so
+// the next operation sees it, as a person's next touch would.
+void oc_on_drive_op(void *chat, void (*after)(void *context), void *context);
 int oc_env_save(void *chat, char *out, int cap);
 void oc_env_restore(void *chat, const char *text);
 void oc_step(void *chat);

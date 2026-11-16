@@ -111,9 +111,14 @@ Keep two rules, or the checker stops with E0381 ("storage or nesting budget exce
    display link's time.
 3. After a drive operation types into a field, sync the platform editor's text from the page.
 
-The simulator host does not play the task cases yet: the iOS app does not load the chat view
-(`apps/shared/app/view/`), and the C driver (`apps/shared/host/drive.c`) still owns the clock itself.
-`cpu` is the host that plays every case today.
+The iOS app does all three in debug builds (`oc_drive_start` in `apps/openagents-ios/host.c`, started
+from `App.swift`): each operation runs through `cp_drive` on the real chat page (the shared view on the
+app core), and after it the host takes its own turn, so the keyboard a tap asked for is up before the
+next operation. `composer` plays the same on the simulator up to its `clock settle`.
+
+What still differs: the C driver (`apps/shared/host/drive.c`) answers `clock +MS` and `clock settle`
+itself, stepping frames through `oc_drive_step`, so those lines read as the C driver writes them, not
+as the trace does. `cpu` is the host that plays every case to its end today.
 
 ## What waits
 

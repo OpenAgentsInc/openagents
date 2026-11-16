@@ -1,7 +1,7 @@
 # What the driver refuses, and how it says so. Nothing here reaches the app.
 # app: chat-page
 tap chat.nope
-type chat.title hello
+type chat.empty hello
 tap
 clock +abc
 clock until
