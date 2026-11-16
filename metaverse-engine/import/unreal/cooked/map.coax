@@ -1,0 +1,630 @@
+// A cooked map into the bundle's map row (BUNDLE.md 3.6): its levels' actors and their
+// components as placements, lights, spots and volumes at world transforms, the atmosphere's
+// numbers, and the sublevels and level instances it loads (their content folded into the same
+// lists, prefixed with the level's name so every name stays unique).
+//
+// Where things are in a cooked map: the world's package holds the world, its persistent level, and
+// the level's actors (exports whose outer is the level); an actor's components are exports whose
+// outer is the actor. A world-partition map keeps its actors in cell packages under
+// MAP/_Generated_/, read as the persistent level's. A streaming level object names a sublevel's
+// world and its transform; a level-instance actor names its world. A component's values are its
+// own, then its template's (a Blueprint's component template, in the Blueprint's package), then the
+// engine's defaults for that class (this file states the few it needs, from the engine's
+// constructors: CMAP_DEFAULTS below).
+//
+// Actors whose class is a Blueprint are carried through their components and get one "logic" row;
+// anything else not carried gets a row with its reason.
+#load "out.coax";
+
+CMAP_COMPONENTS :: 512; CMAP_DEPTH :: 4;
+CmapComp :: struct { e: int; t: int; roots: [CK_CHAIN] int; nroots: int; parent: int; rel: CkXf; world: CkXf; state: int; abs_loc: bool; abs_rot: bool; abs_scale: bool; }
+CmapStore :: struct { kids_pkg: int; first: [ZC_EXPORTS] int; next: [ZC_EXPORTS] int; comp: [CMAP_COMPONENTS] CmapComp; names: [65536] int; name_n: int; }
+CmapCtx :: struct { map: int; map_id: [512] u8; map_n: int; prefix: [256] u8; prefix_n: int; level: CkXf; depth: int; atmo: [65536] u8; atmo_n: int; streamed: [64] int; streamed_n: int; layer: [8] int; layer_n: int; }
+
+cmap_kids :: (k: [] Ck, ms: [] CmapStore, q: int) #effects(all) {
+  n := k[0].cat[0].pkg[q].export_n; ms[0].kids_pkg = q;
+  for i: 0..<n { ms[0].first[i] = -1; ms[0].next[i] = -1; }
+  for i: 0..<n {
+    i2 := n - 1 - i;   // build backwards so each list runs in export order
+    x := zc_export(k[0].cat, q, i2);
+    if zi_kind(x.outer) != ZI_EXPORT { continue; }
+    parent := cast(int) zi_value(x.outer);
+    if parent < 0 || parent >= n { continue; }
+    ms[0].next[i2] = ms[0].first[parent]; ms[0].first[parent] = i2;
+  }
+}
+
+ck_class_path :: (k: [] Ck, p: int, e: int, out: [] u8) -> string #effects(all) {
+  r := zc_resolve(k[0].cat, p, zc_export(k[0].cat, p, e).cls);
+  if r.kind == ZI_SCRIPT { v := sc_script(k[0].scr, r.script); if v >= 0 { return sc_script_path(k[0].sch, v / 2, false, out); } return "/Script/unknown"; }
+  return ck_ref_id(k, r, out);
+}
+
+// A name as the map's lists spell it: the level prefix (for a sublevel's content), then the parts.
+cmap_name :: (cx: [] CmapCtx, a: string, b: string, out: [] u8) -> string #effects(all) {
+  n := sc_put(out, 0, cast(string) cx[0].prefix[0..<cx[0].prefix_n]);
+  n = sc_put(out, n, a);
+  if b.count > 0 { n = sc_put(out, n, "/"); n = sc_put(out, n, b); }
+  return cast(string) out[0..<n];
+}
+cmap_skip :: (k: [] Ck, o: [] Co, cx: [] CmapCtx, actor: string, cls: string, component: string, reason: int, detail: string) #effects(all) {
+  ab: [512] u8; co_skip(o, cast(string) cx[0].map_id[0..<cx[0].map_n], cmap_name(cx, actor, "", ab[..]), cls, component, reason, detail);
+}
+
+// ---- values with the engine's defaults
+
+// The value at path in a component's chain, or -1 when nothing states it.
+cmap_at :: (k: [] Ck, c: CmapComp, path: string) -> int #effects(all) { return pv_find(k[0].x[..], c.roots[0..<c.nroots], path); }
+cmap_f :: (k: [] Ck, c: CmapComp, path: string, fallback: f64) -> f64 #effects(all) { return pv_f(k[0].x[..], cmap_at(k, c, path), fallback); }
+cmap_i :: (k: [] Ck, c: CmapComp, path: string, fallback: int) -> int #effects(all) { return pv_int(k[0].x[..], cmap_at(k, c, path), fallback); }
+
+// The component's relative transform and attachment, from its chain.
+cmap_relative :: (k: [] Ck, q: int, c: [] CmapComp) #effects(all) {
+  zero := CkV.{x = 0.0, y = 0.0, z = 0.0}; one := CkV.{x = 1.0, y = 1.0, z = 1.0};
+  c[0].rel = CkXf.{t = ck_vec(k, cmap_at(k, c[0], "RelativeLocation"), zero), q = ck_rot(k, cmap_at(k, c[0], "RelativeRotation")), s = ck_vec(k, cmap_at(k, c[0], "RelativeScale3D"), one)};
+  c[0].abs_loc = cmap_i(k, c[0], "bAbsoluteLocation", 0) != 0; c[0].abs_rot = cmap_i(k, c[0], "bAbsoluteRotation", 0) != 0; c[0].abs_scale = cmap_i(k, c[0], "bAbsoluteScale", 0) != 0;
+  c[0].parent = -1;
+  if c[0].nroots > 0 {
+    ref := ck_ref(k, pv_at(k[0].x[..], c[0].roots[0], "AttachParent"));
+    if ref.kind == ZI_EXPORT && ref.pkg == q { c[0].parent = ref.exp; }
+  }
+}
+// World transform of component i of the actor's list (parents resolved through the list; one
+// attached outside it hangs from the level's frame).
+cmap_world :: (comps: [] CmapComp, n: int, i: int, level: CkXf, depth: int) -> CkXf #effects(all) {
+  c := comps[i];
+  if c.state == 2 { return c.world; }
+  base := level;
+  if c.parent >= 0 && depth < 32 {
+    for j: 0..<n { if comps[j].e == c.parent && j != i { base = cmap_world(comps, n, j, level, depth + 1); break; } }
+  }
+  w := ck_xf_mul(base, c.rel);
+  if c.abs_loc { w.t = ck_xf_mul(level, c.rel).t; }
+  if c.abs_rot { w.q = ck_xf_mul(level, c.rel).q; }
+  if c.abs_scale { w.s = c.rel.s; }
+  comps[i].world = w; comps[i].state = 2;
+  return w;
+}
+
+// The collision a placement has for a walking player.
+CMAP_OVERLAP_PROFILES :: [6] string.["OverlapAll", "OverlapAllDynamic", "Trigger", "OverlapOnlyPawn", "UI", "OverlapAllDynamic"];
+cmap_collision :: (k: [] Ck, c: CmapComp, default_profile: string, default_use_mesh: bool) -> int #effects(all) {
+  x := k[0].x[..];
+  use_mesh := cmap_i(k, c, "bUseDefaultCollision", ifx default_use_mesh then 1 else 0) != 0;
+  if use_mesh { return 0; }   // the mesh's own body setup decides; Unreal's default for a mesh is BlockAll
+  pn: [128] u8; profile := pv_name(x, cmap_at(k, c, "BodyInstance.CollisionProfileName"), pn[..]);
+  if profile.count == 0 { profile = default_profile; }
+  enabled := cmap_i(k, c, "BodyInstance.CollisionEnabled", ifx profile == "NoCollision" then 0 else 3);
+  if profile == "NoCollision" || enabled == 0 || enabled == 2 { return 2; }   // physics-only collision does not stop a walker's queries
+  for op: CMAP_OVERLAP_PROFILES { if profile == op { return 1; } }
+  if profile == "Custom" {
+    arr := cmap_at(k, c, "BodyInstance.CollisionResponses.ResponseArray");
+    for i: 0..<pv_count(x, arr) {
+      it2 := pv_nth(x, arr, i); cb: [64] u8;
+      if pv_name(x, pv_at(x, it2, "Channel"), cb[..]) == "Pawn" {
+        r := pv_int(x, pv_at(x, it2, "Response"), 2);
+        return ifx r == 2 then 0 else ifx r == 1 then 1 else 2;
+      }
+    }
+  }
+  return 0;
+}
+
+// Name of a script class (without its U/A prefix) for rows.
+cmap_short :: (k: [] Ck, t: int) -> string #effects(all) { n := ck_type_name(k, t); return ifx n.count > 1 then n[1..<n.count] else n; }
+
+// Actor classes that are content, not behaviour (the editor route's list). Any other class, a
+// Blueprint's or a game's C++ class, is carried through its components and gets one "logic" row.
+CMAP_CONTENT :: [21] string.[
+  "/Script/Engine.StaticMeshActor", "/Script/Engine.SkeletalMeshActor", "/Script/Engine.Actor",
+  "/Script/Engine.DirectionalLight", "/Script/Engine.PointLight", "/Script/Engine.SpotLight", "/Script/Engine.RectLight",
+  "/Script/Engine.SkyLight", "/Script/Engine.SkyAtmosphere", "/Script/Engine.ExponentialHeightFog",
+  "/Script/Engine.VolumetricCloud", "/Script/Engine.PostProcessVolume", "/Script/Engine.PlayerStart",
+  "/Script/Engine.TargetPoint", "/Script/Engine.BlockingVolume", "/Script/Engine.TriggerVolume",
+  "/Script/Engine.LevelInstance", "/Script/Engine.WorldDataLayers", "/Script/Engine.WorldPartitionMiniMap",
+  "/Script/Engine.InstancedFoliageActor", "/Script/Engine.Note"];
+// Actors that are neither content nor game behaviour, and what they are.
+CMAP_ODD :: [7] string.["/Script/NavigationSystem.RecastNavMesh", "/Script/NavigationSystem.NavMeshBoundsVolume", "/Script/AIModule.NavLinkProxy",
+  "/Script/CinematicCamera.CineCameraActor", "/Script/Engine.CameraActor", "/Script/Engine.SceneCapture2D", "/Script/Engine.AmbientSound"];
+CMAP_ODD_WHY :: [7] string.["navigation mesh", "navigation bounds", "navigation link", "camera", "camera", "scene capture", "ambient sound"];
+CMAP_TAGS :: 64;
+CmapTags :: struct { s: [CMAP_TAGS] int; n: int; }
+
+// The actor's tags (its own, then its data layers' as datalayer:PATH), then the component's, as a
+// run of refs; tag_n is set to their count.
+cmap_tags :: (k: [] Ck, o: [] Co, at: [] CmapTags, cp: CmapComp, has_comp: bool, tag_n: [] int) -> int #effects(all) {
+  first := o[0].refs; n := 0;
+  for i: 0..<at[0].n { if co_ref(o, co_s(o, at[0].s[i])) { n += 1; } }
+  if has_comp {
+    x := k[0].x[..]; ct := cmap_at(k, cp, "ComponentTags");
+    for i: 0..<pv_count(x, ct) { tb: [256] u8; tg := pv_name(x, pv_nth(x, ct, i), tb[..]); if tg.count > 0 && co_ref(o, tg) { n += 1; } }
+  }
+  tag_n[0] = n;
+  return first;
+}
+
+// One actor of a level.
+cmap_actor :: (k: [] Ck, o: [] Co, ms: [] CmapStore, cx: [] CmapCtx, q: int, a: int, worlds: [] CkAt) #effects(all) {
+  ck_reset(k);   // each actor's values (and the templates it asks for) start a fresh value table
+  if ms[0].kids_pkg != q { cmap_kids(k, ms, q); }
+  x := k[0].x[..];
+  aname := zc_export_name(k[0].cat, q, a);
+  cb: [1024] u8; cls := ck_class_path(k, q, a, cb[..]);
+  acl := ck_class(k, q, a);
+  if !acl.bp && (acl.t < 0 || !ck_is(k, acl.t, "AActor")) {
+    if acl.t >= 0 && (ck_is(k, acl.t, "UModel") || ck_is(k, acl.t, "ULevel")) { return; }
+    db: [256] u8; cmap_skip(k, o, cx, aname, cls, "", CO_UNSUPPORTED, ck_cat("a level object that is not an actor: ", cmap_short(k, acl.t), db[..])); return;
+  }
+  if !acl.bp && ck_is(k, acl.t, "AWorldSettings") { return; }   // the level's settings, not content
+  if !acl.bp && ck_is(k, acl.t, "ALevelSequenceActor") { cmap_skip(k, o, cx, aname, cls, "", CO_SEQUENCER, ""); return; }
+  for oc, oi: CMAP_ODD {
+    if cls == oc { cmap_skip(k, o, cx, aname, cls, "", ifx oi == 6 then CO_AUDIO_GRAPH else CO_UNSUPPORTED, CMAP_ODD_WHY[oi]); return; }
+  }
+  content := false; for cc: CMAP_CONTENT { if cls == cc { content = true; } }
+  // the actor's own values (native classes only: a Blueprint class's layout is not in the schema)
+  actor_root := -1;
+  if !acl.bp {
+    r: [1] Zr; r[0] = ck_cursor(k, q, a, CK_MAIN);
+    actor_root = ck_props(k, r[..], q, acl.t);
+  }
+  hidden := actor_root >= 0 && pv_int(x, pv_at(x, actor_root, "bHidden"), 0) != 0;
+  at: [1] CmapTags; at[0].n = 0;
+  tags := ifx actor_root >= 0 then pv_at(x, actor_root, "Tags") else -1;
+  for i: 0..<pv_count(x, tags) {
+    tb: [256] u8; tg := pv_name(x, pv_nth(x, tags, i), tb[..]);
+    if tg.count > 0 && at[0].n < CMAP_TAGS { at[0].s[at[0].n] = co_add(o, tg); at[0].n += 1; }
+  }
+  for i: 0..<cx[0].layer_n { if at[0].n < CMAP_TAGS { at[0].s[at[0].n] = cx[0].layer[i]; at[0].n += 1; } }
+  // the components, by name (the editor route's order)
+  comps := ms[0].comp[..]; n := 0;
+  c := ms[0].first[a];
+  while c >= 0 && n < CMAP_COMPONENTS {
+    cc := ck_class(k, q, c);
+    if cc.t >= 0 && ck_is(k, cc.t, "UActorComponent") {
+      comps[n].e = c; comps[n].t = cc.t; comps[n].state = 0;
+      r: [1] Zr; r[0] = ck_cursor(k, q, c, CK_MAIN);
+      own := ck_props(k, r[..], q, cc.t);
+      comps[n].nroots = ck_chain(k, q, c, own, comps[n].roots[..]);
+      if own < 0 {
+        wb: [512] u8; wc: [800] u8; cmap_skip(k, o, cx, aname, cls, zc_export_name(k[0].cat, q, c), CO_UNSUPPORTED, ck_cat("the component's values are refused: ", ck_why(k, wb[..]), wc[..]));
+        c = ms[0].next[c]; continue;
+      }
+      cmap_relative(k, q, comps[n..<n + 1]);
+      n += 1;
+    } else if cc.bp || cc.t < 0 {
+      cpb: [512] u8; cpc: [800] u8; cmap_skip(k, o, cx, aname, cls, zc_export_name(k[0].cat, q, c), ifx cc.bp then CO_LOGIC else CO_UNSUPPORTED, ifx cc.bp then "" else ck_cat("a subobject whose class is not in the schema: ", ck_class_path(k, q, c, cpb[..]), cpc[..]));
+    }
+    c = ms[0].next[c];
+  }
+  for i: 1..<n { j := i; while j > 0 && ab_cmp(zc_export_name(k[0].cat, q, comps[j - 1].e), zc_export_name(k[0].cat, q, comps[j].e)) > 0 { t := comps[j]; comps[j] = comps[j - 1]; comps[j - 1] = t; j -= 1; } }
+  // the engine's constructor turns a spot light actor's light to point down (pitch -90) unless stated
+  if !acl.bp && ck_is(k, acl.t, "ASpotLight") {
+    for i: 0..<n { if ck_is(k, comps[i].t, "USpotLightComponent") && cmap_at(k, comps[i], "RelativeRotation") < 0 { comps[i].rel.q = ck_rotator(-90.0, 0.0, 0.0); } }
+  }
+  root := -1;
+  for i: 0..<n { if comps[i].parent < 0 && ck_is(k, comps[i].t, "USceneComponent") { root = i; break; } }
+  root_world := ifx root >= 0 then cmap_world(comps, n, root, cx[0].level, 0) else cx[0].level;
+  if !acl.bp && ck_is(k, acl.t, "ALevelInstance") {
+    wa := ifx actor_root >= 0 then pv_at(x, actor_root, "WorldAsset") else -1;
+    sb: [1024] u8; wid := ck_soft_id(k, wa, sb[..]);
+    if wid.count > 0 { cmap_stream(k, o, ms, cx, wid, aname, root_world, worlds); }
+    else { cmap_skip(k, o, cx, aname, cls, "", CO_UNSUPPORTED, "level instance without a world"); }
+    return;
+  }
+  // spots are the actor's: one per aethyr.NAME tag (named NAME), and a player start or target point
+  for i: 0..<at[0].n {
+    tg := co_s(o, at[0].s[i]);
+    if !sc_starts(tg, "aethyr.") || tg.count <= 7 { continue; }
+    tn: [1] int; tf := cmap_tags(k, o, at[..], comps[0], false, tn[..]);
+    cmap_spot(o, cx, tg[7..<tg.count], CO_TAG, root_world, tf, tn[0], false);
+  }
+  if !acl.bp && (ck_is(k, acl.t, "APlayerStart") || ck_is(k, acl.t, "ATargetPoint")) {
+    tn: [1] int; tf := cmap_tags(k, o, at[..], comps[0], false, tn[..]);
+    cmap_spot(o, cx, aname, ifx ck_is(k, acl.t, "APlayerStart") then CO_PLAYER_START else CO_TARGET, root_world, tf, tn[0], true);
+  }
+  if !acl.bp && (ck_is(k, acl.t, "ABlockingVolume") || ck_is(k, acl.t, "ATriggerVolume")) { cmap_volume(k, o, cx, q, aname, cls, comps[0..<n], root_world); return; }
+  if !acl.bp && ck_is(k, acl.t, "APostProcessVolume") {
+    if actor_root >= 0 && pv_int(x, pv_at(x, actor_root, "bUnbound"), 0) != 0 { cmap_atmo(k, cx, "post", pv_at(x, actor_root, "Settings")); }
+    else { cmap_skip(k, o, cx, aname, cls, "", CO_UNSUPPORTED, "bound post process volume"); }
+    return;
+  }
+  if !acl.bp && ck_is(k, acl.t, "AVolume") { cmap_skip(k, o, cx, aname, cls, "", CO_UNSUPPORTED, "volume"); return; }
+  if !acl.bp && ck_is(k, acl.t, "ALandscapeProxy") { cmap_skip(k, o, cx, aname, cls, "", CO_UNSUPPORTED, "landscape (no landscape reader yet)"); return; }
+  if !content { cmap_skip(k, o, cx, aname, cls, "", CO_LOGIC, ""); }
+  is_light_actor := !acl.bp && ck_is(k, acl.t, "ALight");
+  lights := 0; for i: 0..<n { if ck_is(k, comps[i].t, "ULightComponentBase") { lights += 1; } }
+  for i: 0..<n {
+    cp := comps[i]; ct := cp.t;
+    cname := zc_export_name(k[0].cat, q, cp.e);
+    if ck_is(k, ct, "ULightComponentBase") {
+      cmap_light(k, o, cx, aname, ifx lights == 1 then "" else cname, cp, cmap_world(comps, n, i, cx[0].level, 0), is_light_actor);
+      continue;
+    }
+    if ck_is(k, ct, "USkyAtmosphereComponent") { cmap_atmo(k, cx, "sky_atmosphere", cp.roots[0]); continue; }
+    if ck_is(k, ct, "UExponentialHeightFogComponent") { cmap_atmo(k, cx, "fog", cp.roots[0]); continue; }
+    if ck_is(k, ct, "UVolumetricCloudComponent") { cmap_atmo(k, cx, "cloud", cp.roots[0]); continue; }
+    if ck_is(k, ct, "UFXSystemComponent") { cmap_skip(k, o, cx, aname, cls, cname, CO_NIAGARA, ""); continue; }
+    if ck_is(k, ct, "UAudioComponent") { cmap_skip(k, o, cx, aname, cls, cname, CO_AUDIO_GRAPH, "audio component"); continue; }
+    if ck_is(k, ct, "UDecalComponent") { cmap_skip(k, o, cx, aname, cls, cname, CO_DECAL, ""); continue; }
+    if ck_is(k, ct, "UWidgetComponent") { cmap_skip(k, o, cx, aname, cls, cname, CO_WIDGET, ""); continue; }
+    if !ck_is(k, ct, "UPrimitiveComponent") { continue; }   // scene nodes, movement, input, game components: nothing to place
+    if ck_is(k, ct, "USplineMeshComponent") { cmap_skip(k, o, cx, aname, cls, cname, CO_UNSUPPORTED, "spline mesh (deformed along its spline)"); continue; }
+    db: [256] u8;
+    if ck_is(k, ct, "UStaticMeshComponent") {
+      mb: [1024] u8; mid := ck_ref_id(k, ck_ref(k, cmap_at(k, cp, "StaticMesh")), mb[..]);
+      if mid.count == 0 { cmap_skip(k, o, cx, aname, cls, cname, CO_UNSUPPORTED, "static mesh component without a mesh"); continue; }
+      w := cmap_world(comps, n, i, cx[0].level, 0);
+      if !ck_xf_finite(w) { cmap_skip(k, o, cx, aname, cls, cname, CO_UNSUPPORTED, "a transform that is not finite"); continue; }
+      sma := !acl.bp && ck_is(k, acl.t, "AStaticMeshActor") && cp.nroots <= 1;   // the actor's own native component: its defaults
+      comp_hidden := hidden || cmap_i(k, cp, "bHiddenInGame", 0) != 0 || cmap_i(k, cp, "bVisible", 1) == 0;
+      collision := cmap_collision(k, cp, ifx sma then "BlockAll" else "BlockAllDynamic", sma);
+      if comp_hidden && collision == 2 { cmap_skip(k, o, cx, aname, cls, cname, CO_HIDDEN, ""); continue; }
+      tn: [1] int; tf := cmap_tags(k, o, at[..], cp, true, tn[..]);
+      if ck_is(k, ct, "UInstancedStaticMeshComponent") {
+        // one placement per instance, at the component's transform times the instance's
+        r: [1] Zr; r[0] = ck_cursor(k, q, cp.e, CK_MAIN);
+        if ck_props(k, r[..], q, ct) < 0 { cmap_skip(k, o, cx, aname, cls, cname, CO_UNSUPPORTED, "instanced static mesh whose values are refused"); continue; }
+        count := cmap_instances(r[..]);
+        if count < 0 { cmap_skip(k, o, cx, aname, cls, cname, CO_UNSUPPORTED, "instanced static mesh whose instance data is not where this reader looks"); continue; }
+        for ii: 0..<count {
+          xf := cmap_matrix(r[..]);
+          iw := ck_xf_mul(w, xf);
+          if !ck_xf_finite(iw) { cmap_skip(k, o, cx, aname, cls, cname, CO_UNSUPPORTED, "an instance transform that is not finite"); continue; }
+          lb: [600] u8; ln := sc_put(lb[..], 0, cname); ln = sc_put(lb[..], ln, "#"); nb2: [24] u8; ln = sc_put(lb[..], ln, cot_int(ii, nb2[..]));
+          if !cmap_place(k, o, cx, aname, cls, cname, cast(string) lb[0..<ln], ii, mid, iw, cp, collision, !comp_hidden, tf, tn[0]) { return; }
+        }
+        continue;
+      }
+      if !cmap_place(k, o, cx, aname, cls, cname, cname, -1, mid, w, cp, collision, !comp_hidden, tf, tn[0]) { return; }
+      continue;
+    }
+    if ck_is(k, ct, "USkinnedMeshComponent") {
+      cmap_skip(k, o, cx, aname, cls, cname, CO_UNSUPPORTED, "skeletal mesh placement: this reader does not read skeletal meshes yet"); continue;
+    }
+    if ck_is(k, ct, "UBrushComponent") { continue; }
+    if ck_is(k, ct, "UShapeComponent") { cmap_skip(k, o, cx, aname, cls, cname, CO_UNSUPPORTED, ck_cat("shape component: ", cmap_short(k, ct), db[..])); continue; }
+    cmap_skip(k, o, cx, aname, cls, cname, CO_UNSUPPORTED, ck_cat("primitive component: ", cmap_short(k, ct), db[..]));
+  }
+}
+
+// An instanced static mesh after its properties: a few flags and the (empty) LOD data, then its
+// instances as a bulk array: the element size (128, a 4x4 matrix of doubles) and the count. The
+// reader looks for that pair in the first 64 bytes and leaves the cursor on the first matrix; the
+// count, or -1 when no such pair fits the bytes left.
+cmap_instances :: (r: [] Zr) -> int #effects(all) {
+  if !r[0].ok { return -1; }
+  start := r[0].at;
+  for off: 0..<16 {
+    at := start + off * 4;
+    if at + 8 > r[0].end { return -1; }
+    r[0].at = at;
+    size := zr_i32(r); count := zr_i32(r);
+    if size == 128 && count >= 0 && count <= CO_PLACEMENTS && count * 128 <= r[0].end - r[0].at { return count; }
+  }
+  r[0].at = start;
+  return -1;
+}
+// One instance matrix (Unreal's row-vector convention: rows 0-2 the scaled axes, row 3 the
+// translation) as a transform. A mirrored matrix keeps its mirror in scale x.
+cmap_matrix :: (r: [] Zr) -> CkXf #effects(all) {
+  m: [16] f64; for i: 0..<16 { m[i] = zr_f64(r); }
+  return cmap_matrix_xf(m[..]);
+}
+cmap_matrix_xf :: (m: [] f64) -> CkXf #effects(all) {
+  sx := sqrt(m[0] * m[0] + m[1] * m[1] + m[2] * m[2]); sy := sqrt(m[4] * m[4] + m[5] * m[5] + m[6] * m[6]); sz := sqrt(m[8] * m[8] + m[9] * m[9] + m[10] * m[10]);
+  det := m[0] * (m[5] * m[10] - m[6] * m[9]) - m[1] * (m[4] * m[10] - m[6] * m[8]) + m[2] * (m[4] * m[9] - m[5] * m[8]);
+  if det < 0.0 { sx = -sx; }
+  a: [9] f64;
+  for c: 0..<3 { a[c] = ifx sx != 0.0 then m[c] / sx else 0.0; a[3 + c] = ifx sy != 0.0 then m[4 + c] / sy else 0.0; a[6 + c] = ifx sz != 0.0 then m[8 + c] / sz else 0.0; }
+  // Unreal's FQuat(FMatrix): q.x pairs with M[1][2] - M[2][1], and so on
+  q: [4] f64;   // x y z w
+  tr := a[0] + a[4] + a[8];
+  if tr > 0.0 {
+    s := sqrt(tr + 1.0); q[3] = 0.5 * s; t := 0.5 / s;
+    q[0] = (a[5] - a[7]) * t; q[1] = (a[6] - a[2]) * t; q[2] = (a[1] - a[3]) * t;
+  } else {
+    i := 0; if a[4] > a[0] { i = 1; } if a[8] > a[i * 4] { i = 2; }
+    j := (i + 1) % 3; kk := (j + 1) % 3;
+    s := sqrt(a[i * 4] - a[j * 4] - a[kk * 4] + 1.0); q[i] = 0.5 * s; t := 0.5 / s;
+    q[3] = (a[j * 3 + kk] - a[kk * 3 + j]) * t; q[j] = (a[i * 3 + j] + a[j * 3 + i]) * t; q[kk] = (a[i * 3 + kk] + a[kk * 3 + i]) * t;
+  }
+  return CkXf.{t = CkV.{x = m[12], y = m[13], z = m[14]}, q = ck_qnorm(CkQ.{x = q[0], y = q[1], z = q[2], w = q[3]}), s = CkV.{x = sx, y = sy, z = sz}};
+}
+
+cmap_spot :: (o: [] Co, cx: [] CmapCtx, name: string, kind: int, w: CkXf, tf: int, tn: int, prefixed: bool) #effects(all) {
+  if o[0].spots >= CO_SPOTS { _ = co_full(o, "spots"); return; }
+  nb: [512] u8; nm := ifx prefixed then cmap_name(cx, name, "", nb[..]) else name;
+  for i: 0..<o[0].spots { if o[0].spot[i].map == cx[0].map && co_s(o, o[0].spot[i].name) == nm { return; } }   // a tag named twice: one spot
+  o[0].spot[o[0].spots] = CoSpot.{map = cx[0].map, name = co_add(o, nm), kind = kind, xf = w, tags = tf, tag_n = tn};
+  o[0].spots += 1;
+}
+
+cmap_place :: (k: [] Ck, o: [] Co, cx: [] CmapCtx, aname: string, cls: string, cname: string, label: string, instance: int, mid: string, w: CkXf, cp: CmapComp, collision: int, visible: bool, tags_first: int, tag_n: int) -> bool #effects(all) {
+  x := k[0].x[..];
+  if o[0].placements >= CO_PLACEMENTS { return co_full(o, "placements"); }
+  // materials: the mesh's slots, overridden where the component says
+  mats := o[0].refs; mat_n := 0;
+  row := -1; for i: 0..<o[0].meshes { if co_s(o, o[0].mesh[i].id) == mid { row = i; break; } }
+  over := cmap_at(k, cp, "OverrideMaterials");
+  slots := ifx row >= 0 then o[0].mesh[row].mat_n else pv_count(x, over);
+  for s: 0..<slots {
+    ob: [1024] u8; oid := ck_ref_id(k, ck_ref(k, pv_nth(x, over, s)), ob[..]);
+    id := ifx oid.count > 0 then oid else ifx row >= 0 then co_s(o, o[0].ref[o[0].mesh[row].mats + s]) else "";
+    if id.count == 0 { continue; }
+    if !co_ref(o, id) { return false; }
+    mat_n += 1;
+  }
+  ab: [512] u8; nb: [1024] u8;
+  o[0].place[o[0].placements] = CoPlace.{
+    map = cx[0].map, name = co_add(o, cmap_name(cx, aname, label, nb[..])), actor = co_add(o, cmap_name(cx, aname, "", ab[..])), actor_class = co_add(o, cls),
+    component = co_add(o, cname), instance = instance, skeletal = false, asset = co_add(o, mid), xf = w, mats = mats, mat_n = mat_n,
+    collision = collision, visible = visible,
+    cast_shadow = cmap_i(k, cp, "CastShadow", 1) != 0, tags = tags_first, tag_n = tag_n};
+  o[0].placements += 1;
+  return true;
+}
+
+cmap_light :: (k: [] Ck, o: [] Co, cx: [] CmapCtx, aname: string, cname: string, cp: CmapComp, w: CkXf, light_actor: bool) #effects(all) {
+  if o[0].lights >= CO_LIGHTS { _ = co_full(o, "lights"); return; }
+  x := k[0].x[..]; t := cp.t;
+  kind := ifx ck_is(k, t, "UDirectionalLightComponent") then CO_DIRECTIONAL else ifx ck_is(k, t, "USpotLightComponent") then CO_SPOT_LIGHT
+    else ifx ck_is(k, t, "URectLightComponent") then CO_RECT else ifx ck_is(k, t, "USkyLightComponent") then CO_SKY else CO_POINT;
+  // the engine's constructor defaults (CMAP_DEFAULTS): a light's intensity, units, radius and cone
+  intensity_default := ifx kind == CO_DIRECTIONAL then 10.0 else ifx kind == CO_SKY then 1.0 else 5000.0;
+  col := cmap_at(k, cp, "LightColor");
+  color := CkV.{x = 1.0, y = 1.0, z = 1.0};
+  if col >= 0 { color = CkV.{x = pv_f(x, pv_nth(x, col, 0), 255.0) / 255.0, y = pv_f(x, pv_nth(x, col, 1), 255.0) / 255.0, z = pv_f(x, pv_nth(x, col, 2), 255.0) / 255.0}; }
+  units := ifx kind == CO_DIRECTIONAL then 3 else ifx kind == CO_SKY then 0 else cmap_i(k, cp, "IntensityUnits", 1);   // a local light's default: candelas
+  if kind != CO_DIRECTIONAL && (units < 0 || units > 2) { units = 0; }
+  local := kind == CO_POINT || kind == CO_SPOT_LIGHT || kind == CO_RECT;
+  mobility := cmap_i(k, cp, "Mobility", ifx light_actor then 1 else ifx kind == CO_SKY then 1 else 2);
+  nb: [1024] u8;
+  o[0].light[o[0].lights] = CoLight.{map = cx[0].map, name = co_add(o, cmap_name(cx, aname, cname, nb[..])), kind = kind, xf = w, color = color,
+    intensity = cmap_f(k, cp, "Intensity", intensity_default), units = units, radius = ifx local then cmap_f(k, cp, "AttenuationRadius", 1000.0) else 0.0,
+    inner = ifx kind == CO_SPOT_LIGHT then cmap_f(k, cp, "InnerConeAngle", 0.0) else 0.0, outer = ifx kind == CO_SPOT_LIGHT then cmap_f(k, cp, "OuterConeAngle", 44.0) else 0.0,
+    shadows = cmap_i(k, cp, "CastShadows", 1) != 0, mobility = ifx mobility >= 0 && mobility <= 2 then mobility else 2};
+  o[0].lights += 1;
+  if kind == CO_SKY { cmap_atmo(k, cx, "sky", cp.roots[0]); }
+}
+
+// A blocking or trigger volume: its brush's convex pieces as boxes (each piece's bounding box in
+// the brush's frame), at the actor's transform.
+cmap_volume :: (k: [] Ck, o: [] Co, cx: [] CmapCtx, q: int, aname: string, cls: string, comps: [] CmapComp, w: CkXf) #effects(all) {
+  x := k[0].x[..];
+  if o[0].volumes >= CO_VOLUMES { _ = co_full(o, "volumes"); return; }
+  first := o[0].shapes; count := 0;
+  for cp: comps {
+    if !ck_is(k, cp.t, "UBrushComponent") { continue; }
+    ref := ck_ref(k, cmap_at(k, cp, "BrushBodySetup"));
+    if ref.kind != ZI_EXPORT || ref.pkg < 0 { continue; }
+    bt := ck_class(k, ref.pkg, ref.exp);
+    if bt.t < 0 { continue; }
+    r: [1] Zr; r[0] = ck_cursor(k, ref.pkg, ref.exp, CK_MAIN);
+    root := ck_props(k, r[..], ref.pkg, bt.t);
+    convex := pv_at(x, pv_at(x, root, "AggGeom"), "ConvexElems");
+    for i: 0..<pv_count(x, convex) {
+      verts := pv_at(x, pv_nth(x, convex, i), "VertexData");
+      lo := [3] f64.[1.0e30, 1.0e30, 1.0e30]; hi := [3] f64.[-1.0e30, -1.0e30, -1.0e30];
+      for v: 0..<pv_count(x, verts) {
+        p := ck_vec(k, pv_nth(x, verts, v), CkV.{x = 0.0, y = 0.0, z = 0.0}); pa := [3] f64.[p.x, p.y, p.z];
+        for c: 0..<3 { if pa[c] < lo[c] { lo[c] = pa[c]; } if pa[c] > hi[c] { hi[c] = pa[c]; } }
+      }
+      if pv_count(x, verts) == 0 || o[0].shapes >= CO_SHAPES { continue; }
+      o[0].shape[o[0].shapes] = CoShape.{kind = CO_BOX, c = CkV.{x = (lo[0] + hi[0]) / 2.0, y = (lo[1] + hi[1]) / 2.0, z = (lo[2] + hi[2]) / 2.0}, q = CkQ.{x = 0.0, y = 0.0, z = 0.0, w = 1.0},
+        e = CkV.{x = (hi[0] - lo[0]) / 2.0, y = (hi[1] - lo[1]) / 2.0, z = (hi[2] - lo[2]) / 2.0}};
+      o[0].shapes += 1; count += 1;
+    }
+  }
+  if count == 0 { cmap_skip(k, o, cx, aname, cls, "", CO_UNSUPPORTED, "a volume whose brush has no convex pieces in the cooked build"); return; }
+  nb: [1024] u8;
+  o[0].volume[o[0].volumes] = CoVolume.{map = cx[0].map, name = co_add(o, cmap_name(cx, aname, "", nb[..])), cls = co_add(o, cls), xf = w, shapes = first, shape_n = count};
+  o[0].volumes += 1;
+}
+
+// The atmosphere: the numbers a component (or a post-process settings struct) states, by
+// Unreal's property name, under key. Recorded, not applied (BUNDLE.md 3.6).
+cmap_atmo :: (k: [] Ck, cx: [] CmapCtx, key: string, node: int) #effects(all) {
+  x := k[0].x[..];
+  if node < 0 || cx[0].atmo_n > 60000 { return; }
+  b := cx[0].atmo[..]; n := cx[0].atmo_n;
+  // a key already written (a second fog) is not repeated
+  kb: [64] u8; kq := sc_put(kb[..], 0, "\""); kq = sc_put(kb[..], kq, key); kq = sc_put(kb[..], kq, "\":");
+  if sc_find(cast(string) b[0..<n], cast(string) kb[0..<kq], 0) >= 0 { return; }
+  n = sc_put(b, n, ifx n == 0 then "{" else ",");
+  n = sc_put(b, n, cast(string) kb[0..<kq]); n = sc_put(b, n, "{");
+  first := true;
+  c := k[0].pv[0].node[node].first;
+  while c >= 0 && n < 64000 {
+    nd := k[0].pv[0].node[c];
+    if nd.key >= 0 {
+      name := sc_s(k[0].sch, k[0].sch[0].prop[nd.key].name);
+      tb: [48] u8;
+      vb: [512] u8; vn := 0;
+      if nd.kind == PV_INT || nd.kind == PV_FLOAT { vn = sc_put(vb[..], 0, uf_num_text(pv_f(x, c, 0.0), tb[..])); }
+      else if nd.kind == PV_ZERO { vn = sc_put(vb[..], 0, "0"); }
+      else if nd.kind == PV_NUMS {
+        vn = sc_put(vb[..], 0, "[");
+        for i: 0..<nd.count { if i > 0 { vn = sc_put(vb[..], vn, ","); } vn = sc_put(vb[..], vn, uf_num_text(pv_f(x, pv_nth(x, c, i), 0.0), tb[..])); }
+        vn = sc_put(vb[..], vn, "]");
+      }
+      if vn > 0 && sc_ident(name, 0).count == name.count {
+        if !first { n = sc_put(b, n, ","); }
+        first = false;
+        n = sc_put(b, n, "\""); n = sc_put(b, n, name);
+        if nd.elem > 0 { n = sc_put(b, n, "_"); eb: [24] u8; n = sc_put(b, n, cot_int(nd.elem, eb[..])); }
+        n = sc_put(b, n, "\":"); n = sc_put(b, n, cast(string) vb[0..<vn]);
+      }
+    }
+    c = nd.next;
+  }
+  n = sc_put(b, n, "}");
+  cx[0].atmo_n = n;
+}
+cot_int :: (v: int, out: [] u8) -> string #effects(all) {
+  d: [24] u8; dn := 0; a := v; if a == 0 { d[0] = '0'; dn = 1; }
+  while a > 0 { d[dn] = cast,trunc(u8) (48 + a % 10); dn += 1; a /= 10; }
+  for i: 0..<dn { out[i] = d[dn - 1 - i]; }
+  return cast(string) out[0..<dn];
+}
+
+// A level of package q (its level export lv) into the map, at the context's level transform.
+cmap_level :: (k: [] Ck, o: [] Co, ms: [] CmapStore, cx: [] CmapCtx, q: int, lv: int, worlds: [] CkAt) #effects(all) {
+  if !ck_load(k, q, CK_MAIN) { cmap_skip(k, o, cx, "", "/Script/Engine.Level", "", CO_UNSUPPORTED, "the level's package could not be read"); return; }
+  cmap_kids(k, ms, q);
+  a := ms[0].first[lv];
+  while a >= 0 {
+    nxt := ms[0].next[a];
+    cmap_actor(k, o, ms, cx, q, a, worlds);
+    if o[0].full { return; }
+    if ms[0].kids_pkg != q { cmap_kids(k, ms, q); }   // a level instance's level was read in between
+    a = nxt;
+  }
+  // the level's streaming levels (sublevels it loads), from the world's package
+  for e: 0..<k[0].cat[0].pkg[q].export_n {
+    cl := ck_class(k, q, e);
+    if cl.t < 0 || !ck_is(k, cl.t, "ULevelStreaming") || ck_is(k, cl.t, "UWorldPartitionLevelStreamingDynamic") { continue; }   // a cell: read by cmap_map
+    r: [1] Zr; r[0] = ck_cursor(k, q, e, CK_MAIN);
+    root := ck_props(k, r[..], q, cl.t);
+    if root < 0 { continue; }
+    x := k[0].x[..];
+    sb: [1024] u8; wid := ck_soft_id(k, pv_at(x, root, "WorldAsset"), sb[..]);
+    lt := pv_at(x, root, "LevelTransform");
+    xf := ck_xf_id();
+    if lt >= 0 {
+      rq := pv_at(x, lt, "Rotation");
+      if rq >= 0 { xf.q = ck_qnorm(CkQ.{x = pv_f(x, pv_nth(x, rq, 0), 0.0), y = pv_f(x, pv_nth(x, rq, 1), 0.0), z = pv_f(x, pv_nth(x, rq, 2), 0.0), w = pv_f(x, pv_nth(x, rq, 3), 1.0)}); }
+      xf.t = ck_vec(k, pv_at(x, lt, "Translation"), xf.t); xf.s = ck_vec(k, pv_at(x, lt, "Scale3D"), xf.s);
+    }
+    if wid.count > 0 { cmap_stream(k, o, ms, cx, wid, "", ck_xf_mul(cx[0].level, xf), worlds); if !ck_load(k, q, CK_MAIN) { return; } }
+  }
+}
+// The level export of the world package q, or -1.
+cmap_level_of :: (k: [] Ck, q: int) -> int #effects(all) {
+  for e: 0..<k[0].cat[0].pkg[q].export_n { cl := ck_class(k, q, e); if cl.t >= 0 && ck_is(k, cl.t, "ULevel") { return e; } }
+  return -1;
+}
+// A sublevel or level instance: its world's content at transform xf, its id in streamed. Names in it
+// are prefixed the editor route's way: a sublevel's with its short name and '.', a level instance's
+// with the instance actor's (prefixed) name and '.'.
+cmap_stream :: (k: [] Ck, o: [] Co, ms: [] CmapStore, cx: [] CmapCtx, wid: string, instance: string, xf: CkXf, worlds: [] CkAt) #effects(all) {
+  dot := 0; while dot < wid.count && wid[dot] != '.' { dot += 1; }
+  pkg_name := wid[0..<dot];
+  if cx[0].streamed_n < 64 { cx[0].streamed[cx[0].streamed_n] = co_add(o, pkg_name); cx[0].streamed_n += 1; }
+  q := zc_pkg(k[0].cat, pkg_name);
+  if q < 0 { cmap_skip(k, o, cx, pkg_name, "/Script/Engine.World", "", CO_UNSUPPORTED, "a sublevel the build does not carry"); return; }
+  if cx[0].depth >= CMAP_DEPTH { cmap_skip(k, o, cx, pkg_name, "/Script/Engine.World", "", CO_UNSUPPORTED, "sublevels nested deeper than 4"); return; }
+  lv := cmap_level_of(k, q);
+  if lv < 0 { return; }
+  saved_level := cx[0].level; saved_prefix := cx[0].prefix; saved_n := cx[0].prefix_n;
+  if instance.count > 0 { cx[0].prefix_n = sc_put(cx[0].prefix[..], cx[0].prefix_n, instance); }
+  else { cx[0].prefix_n = sc_put(cx[0].prefix[..], 0, uce_short(pkg_name)); }   // a sublevel's actors are named by their own level only
+  cx[0].prefix_n = sc_put(cx[0].prefix[..], cx[0].prefix_n, ".");
+  cx[0].level = xf; cx[0].depth += 1;
+  cmap_level(k, o, ms, cx, q, lv, worlds);
+  cx[0].depth -= 1; cx[0].level = saved_level; cx[0].prefix = saved_prefix; cx[0].prefix_n = saved_n;
+}
+uce_short :: (path: string) -> string #effects(all) { b := path.count; while b > 0 && path[b - 1] != '/' { b -= 1; } return path[b..<path.count]; }
+
+// The data layers of the world-partition cell whose package is cell, from the map's package p: the
+// runtime cell whose streaming level loads that package names its layer instances, and each
+// instance names its layer asset. They ride on the cell's actors as datalayer:ID tags.
+cmap_cell_layers :: (k: [] Ck, o: [] Co, p: int, cell: string, cx: [] CmapCtx) #effects(all) {
+  cx[0].layer_n = 0;
+  ck_reset(k);
+  if !ck_load(k, p, CK_MAIN) { return; }
+  x := k[0].x[..];
+  for e: 0..<k[0].cat[0].pkg[p].export_n {
+    cl := ck_class(k, p, e);
+    if cl.t < 0 || !ck_is(k, cl.t, "UWorldPartitionRuntimeLevelStreamingCell") { continue; }
+    r: [1] Zr; r[0] = ck_cursor(k, p, e, CK_MAIN);
+    root := ck_props(k, r[..], p, cl.t);
+    ls := ck_ref(k, pv_at(x, root, "LevelStreaming"));
+    if ls.kind != ZI_EXPORT || ls.pkg != p { continue; }
+    lc := ck_class(k, p, ls.exp);
+    if lc.t < 0 { continue; }
+    r2: [1] Zr; r2[0] = ck_cursor(k, p, ls.exp, CK_MAIN);
+    lroot := ck_props(k, r2[..], p, lc.t);
+    wb: [1024] u8; wid := ck_soft_id(k, pv_at(x, lroot, "WorldAsset"), wb[..]);
+    dot := 0; while dot < wid.count && wid[dot] != '.' { dot += 1; }
+    if wid[0..<dot] != cell { continue; }
+    names := pv_at(x, pv_at(x, root, "DataLayers"), "DataLayers");
+    for i: 0..<pv_count(x, names) {
+      nb: [256] u8; dl := pv_name(x, pv_nth(x, names, i), nb[..]);
+      for d: 0..<k[0].cat[0].pkg[p].export_n {
+        if zc_export_name(k[0].cat, p, d) != dl { continue; }
+        dc := ck_class(k, p, d);
+        if dc.t < 0 { break; }
+        r3: [1] Zr; r3[0] = ck_cursor(k, p, d, CK_MAIN);
+        droot := ck_props(k, r3[..], p, dc.t);
+        ab: [1024] u8; aid := ck_ref_id(k, ck_ref(k, pv_at(x, droot, "DataLayerAsset")), ab[..]);
+        if aid.count > 0 && cx[0].layer_n < 8 { tb: [1100] u8; cx[0].layer[cx[0].layer_n] = co_add(o, ck_cat("datalayer:", aid, tb[..])); cx[0].layer_n += 1; }
+        break;
+      }
+    }
+    return;
+  }
+}
+
+// World export e of package p as a map; "" or why it is refused.
+cmap_map :: (k: [] Ck, o: [] Co, ms: [] CmapStore, p: int, e: int, worlds: [] CkAt, why: [] u8) -> string #effects(all) {
+  if o[0].maps >= CO_MAPS { return "more maps than a bundle holds (16)"; }
+  cx: [1] CmapCtx = ---;
+  name := ck_pkg_name(k, p);
+  cx[0].map_n = sc_put(cx[0].map_id[..], 0, name); cx[0].map = co_add(o, name);
+  cx[0].prefix_n = 0; cx[0].level = ck_xf_id(); cx[0].depth = 0; cx[0].atmo_n = 0; cx[0].streamed_n = 0; cx[0].layer_n = 0;
+  lv := cmap_level_of(k, p);
+  if lv < 0 { return "the world has no persistent level"; }
+  cmap_level(k, o, ms, cx[..], p, lv, worlds);
+  // a world-partition map's cells
+  cell_prefix: [600] u8; cn := sc_put(cell_prefix[..], 0, name); cn = sc_put(cell_prefix[..], cn, "/_Generated_/");
+  for q: 0..<k[0].cat[0].pkgs {
+    if !sc_starts(ck_pkg_name(k, q), cast(string) cell_prefix[0..<cn]) { continue; }
+    clv := cmap_level_of(k, q);
+    if clv < 0 { continue; }
+    cmap_cell_layers(k, o, p, ck_pkg_name(k, q), cx[..]);
+    cmap_level(k, o, ms, cx[..], q, clv, worlds);
+    cx[0].layer_n = 0;
+  }
+  if o[0].full { return ""; }
+  m := o[0].maps; o[0].maps += 1;
+  o[0].map[m] = CoMap.{id = cx[0].map, atmosphere = 0, streamed = o[0].refs, streamed_n = 0};
+  if cx[0].atmo_n > 0 { b := cx[0].atmo[..]; n := sc_put(b, cx[0].atmo_n, "}"); o[0].map[m].atmosphere = co_add(o, cast(string) b[0..<n]); }
+  // streamed: each world once, in name order
+  for i: 0..<cx[0].streamed_n {
+    s := co_s(o, cx[0].streamed[i]); dup := false;
+    for j: 0..<i { if co_s(o, cx[0].streamed[j]) == s { dup = true; } }
+    if !dup && co_ref(o, s) { o[0].map[m].streamed_n += 1; }
+  }
+  for a: 1..<o[0].map[m].streamed_n { j := a; while j > 0 && ab_cmp(co_s(o, o[0].ref[o[0].map[m].streamed + j - 1]), co_s(o, o[0].ref[o[0].map[m].streamed + j])) > 0 {
+    t := o[0].ref[o[0].map[m].streamed + j]; o[0].ref[o[0].map[m].streamed + j] = o[0].ref[o[0].map[m].streamed + j - 1]; o[0].ref[o[0].map[m].streamed + j - 1] = t; j -= 1; } }
+  _ = why;
+  return "";
+}
+
+#test "an instance matrix: a yaw of 90 with scale and translation comes back as Unreal's transform" {
+  q := ck_rotator(0.0, 90.0, 0.0);   // yaw 90: +X to +Y
+  // rows: the rotated, scaled axes (X axis scaled 2 is (0, 2, 0); Y scaled 3 is (-3, 0, 0); Z scaled 4)
+  m := [16] f64.[0.0, 2.0, 0.0, 0.0, -3.0, 0.0, 0.0, 0.0, 0.0, 0.0, 4.0, 0.0, 10.0, 20.0, 30.0, 1.0];
+  xf := cmap_matrix_xf(m[..]);
+  #assert ck_near(xf.s.x, 2.0) && ck_near(xf.s.y, 3.0) && ck_near(xf.s.z, 4.0) && ck_near(xf.t.y, 20.0);
+  #assert ck_near(xf.q.z, q.z) && ck_near(xf.q.w, q.w) && ck_near(xf.q.x, 0.0);
+  // the count and element size of the instance array are found past the flags before them
+  b := [12] u32.[0, 0, 1, 1, 128, 1, 0, 0, 0, 0, 0, 0];
+  bytes: [48 + 128] u8; for v, i: b { for c: 0..<4 { bytes[i * 4 + c] = cast,trunc(u8) (v >> cast(u32) (8 * c)); } }
+  r: [1] Zr; r[0] = Zr.{b = cast(string) bytes[..], at = 0, end = 24 + 128, ok = true};
+  #assert cmap_instances(r[..]) == 1 && r[0].at == 24;
+  r[0] = Zr.{b = cast(string) bytes[..], at = 0, end = 24 + 100, ok = true};
+  #assert cmap_instances(r[..]) == -1;   // the array runs past the bytes: refused
+}
+
+#test "a component's world transform walks its attach parents, and absolute flags stop the walk" {
+  comps: [3] CmapComp;
+  level := ck_xf_id(); level.t = CkV.{x = 1000.0, y = 0.0, z = 0.0};
+  comps[0] = CmapComp.{e = 10, parent = -1, rel = CkXf.{t = CkV.{x = 0.0, y = 100.0, z = 0.0}, q = ck_rotator(0.0, 90.0, 0.0), s = CkV.{x = 1.0, y = 1.0, z = 1.0}}};
+  comps[1] = CmapComp.{e = 11, parent = 10, rel = CkXf.{t = CkV.{x = 50.0, y = 0.0, z = 0.0}, q = CkQ.{x = 0.0, y = 0.0, z = 0.0, w = 1.0}, s = CkV.{x = 2.0, y = 2.0, z = 2.0}}};
+  comps[2] = CmapComp.{e = 12, parent = 11, abs_loc = true, rel = CkXf.{t = CkV.{x = 5.0, y = 5.0, z = 5.0}, q = CkQ.{x = 0.0, y = 0.0, z = 0.0, w = 1.0}, s = CkV.{x = 1.0, y = 1.0, z = 1.0}}};
+  w := cmap_world(comps[..], 3, 1, level, 0);
+  #assert ck_near(w.t.x, 1000.0) && ck_near(w.t.y, 150.0) && ck_near(w.s.x, 2.0);   // 50 forward of a parent turned 90: +Y
+  a := cmap_world(comps[..], 3, 2, level, 0);
+  #assert ck_near(a.t.x, 1005.0) && ck_near(a.t.y, 5.0);                              // absolute location: the level's frame only
+}

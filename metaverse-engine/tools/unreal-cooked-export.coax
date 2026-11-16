@@ -1,0 +1,206 @@
+// tool.sh: stack-gib 3
+// The Unreal importer's cooked route (the importer's spec, section 4.4): the packages that
+// `UnrealPak IoStore -FindAndExtract` unpacked from a shipped build, read into an import bundle of
+// route "cooked" (metaverse-engine/import/unreal/BUNDLE.md) with our own reader
+// (metaverse-engine/import/unreal/cooked/).
+//
+//   coax/web/tool.sh metaverse-engine/tools/unreal-cooked-export.coax EXTRACT_DIR NEW_OUT_DIR [ENGINE_SOURCE [PROJECT]]
+//
+// ENGINE_SOURCE is a UE source build of the same version with its editor built (default
+// ~/UnrealEngine-5.9/src): its generated files give the property layouts a cooked package leaves
+// out. PROJECT is the game's source project (default ~/games/SPLICEBOTS) for the game's own classes;
+// "" leaves it out. Both are read, never written, and nothing from them goes into the bundle.
+//
+// Every top-level asset gets a bundle row or a skipped.json row with its reason. A refused asset
+// is named with why; a map's actor whose class is a Blueprint is carried through its components and
+// gets one "logic" row. The bundle is written beside NEW_OUT_DIR (.partial) and renamed into place
+// only when whole. source.plan_sha256 is the SHA-256 of the statement this tool reads from: its
+// route, the extract's package names in order and the maps (there is no plan for a cooked build).
+//
+// It ends with the counts and the self-checks: every index inside its vertices, every mesh's
+// vertex bounds against the bounds Unreal states, every transform finite, every reference resolved
+// or skipped.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../import/unreal/cooked/mesh.coax";
+#load "../import/unreal/cooked/texture.coax";
+#load "../import/unreal/cooked/material.coax";
+#load "../import/unreal/cooked/other.coax";
+#load "../import/unreal/cooked/map.coax";
+
+UCE_MAIN :: 67108864; UCE_SIDE :: 67108864; UCE_BULK :: 67108864; UCE_NODES :: 1048576; UCE_POOL :: 16777216;
+UcePv :: struct { node: [UCE_NODES] PvNode; b: [UCE_POOL] u8; at: [262144] int; n: [262144] int; }
+UceBytes :: struct { main: [UCE_MAIN] u8; side: [UCE_SIDE] u8; bulk: [UCE_BULK] u8; }
+
+uce_fail :: (why: string) -> int #effects(all) { tool_err("unreal-cooked-export: "); tool_errln(why); return 1; }
+
+// The class's path as Unreal spells it (/Script/Engine.StaticMesh, or a Blueprint class's object path).
+uce_class_path :: (k: [] Ck, p: int, e: int, out: [] u8) -> string #effects(all) {
+  r := zc_resolve(k[0].cat, p, zc_export(k[0].cat, p, e).cls);
+  if r.kind == ZI_SCRIPT { v := sc_script(k[0].scr, r.script); if v >= 0 { return sc_script_path(k[0].sch, v / 2, false, out); } return "/Script/?"; }
+  return ck_ref_id(k, r, out);
+}
+
+UCE_MESH :: 1; UCE_TEXTURE :: 2; UCE_MATERIAL :: 3; UCE_SKELETON :: 4; UCE_SOUND :: 5; UCE_WORLD :: 6; UCE_SKIP :: 7;
+// What becomes of an asset of type t (bp: a Blueprint's class): its kind, and for a skip its reason.
+UceKind :: struct { kind: int; reason: int; detail: string; }
+uce_kind :: (k: [] Ck, t: int, bp: bool) -> UceKind #effects(all) {
+  if bp { return UceKind.{kind = UCE_SKIP, reason = CO_LOGIC, detail = ""}; }
+  if t < 0 { return UceKind.{kind = UCE_SKIP, reason = CO_UNSUPPORTED, detail = "its class is not in the engine's or the project's generated files"}; }
+  if ck_is(k, t, "UStaticMesh") { return UceKind.{kind = UCE_MESH}; }
+  if ck_is(k, t, "UTexture2D") && !ck_is(k, t, "UTexture2DArray") { return UceKind.{kind = UCE_TEXTURE}; }
+  if ck_is(k, t, "UMaterial") || ck_is(k, t, "UMaterialInstanceConstant") { return UceKind.{kind = UCE_MATERIAL}; }
+  if ck_is(k, t, "USkeleton") { return UceKind.{kind = UCE_SKELETON}; }
+  if ck_is(k, t, "USoundWave") { return UceKind.{kind = UCE_SOUND}; }
+  if ck_is(k, t, "UWorld") { return UceKind.{kind = UCE_WORLD}; }
+  if ck_is(k, t, "UNiagaraSystem") || ck_is(k, t, "UNiagaraEmitter") || ck_is(k, t, "UNiagaraParameterCollection") { return UceKind.{kind = UCE_SKIP, reason = CO_NIAGARA}; }
+  if ck_is(k, t, "ULevelSequence") || ck_is(k, t, "UMovieSceneSequence") { return UceKind.{kind = UCE_SKIP, reason = CO_SEQUENCER}; }
+  if ck_is(k, t, "USoundCue") || ck_is(k, t, "UMetaSoundSource") || ck_is(k, t, "UMetaSoundPatch") || ck_is(k, t, "USoundClass") || ck_is(k, t, "USoundSubmix")
+    || ck_is(k, t, "USoundMix") || ck_is(k, t, "USoundAttenuation") || ck_is(k, t, "USoundConcurrency") { return UceKind.{kind = UCE_SKIP, reason = CO_AUDIO_GRAPH}; }
+  if ck_is(k, t, "UWidgetBlueprintGeneratedClass") || ck_is(k, t, "UUserWidget") { return UceKind.{kind = UCE_SKIP, reason = CO_WIDGET}; }
+  if ck_is(k, t, "UBlueprintGeneratedClass") || ck_is(k, t, "UClass") { return UceKind.{kind = UCE_SKIP, reason = CO_LOGIC}; }
+  if ck_is(k, t, "USkeletalMesh") { return UceKind.{kind = UCE_SKIP, reason = CO_UNSUPPORTED, detail = "a skeletal mesh: this reader does not yet read skeletal render data (its skeleton is carried)"}; }
+  if ck_is(k, t, "UAnimSequenceBase") { return UceKind.{kind = UCE_SKIP, reason = CO_UNSUPPORTED, detail = "an animation: its keys are compressed (ACL), which this reader does not decode"}; }
+  return UceKind.{kind = UCE_SKIP, reason = CO_UNSUPPORTED, detail = "not level content the bundle carries"};
+}
+uce_ends :: (s: string, tail: string) -> bool #effects(all) { return s.count >= tail.count && s[s.count - tail.count..<s.count] == tail; }
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 2 || args_count(a[..]) > 4 { print("usage: unreal-cooked-export EXTRACT_DIR NEW_OUT_DIR [ENGINE_SOURCE [PROJECT]]\n"); return 2; }
+  extract := args_at(a[..], 0); out := args_at(a[..], 1);
+  hb: [4096] u8; home := proc_getenv("HOME", hb[..]);
+  eb: [4096] u8; engine := ifx args_count(a[..]) >= 3 then args_at(a[..], 2) else ck_cat(home, "/UnrealEngine-5.9/src", eb[..]);
+  gb: [4096] u8; project := ifx args_count(a[..]) >= 4 then args_at(a[..], 3) else ck_cat(home, "/games/SPLICEBOTS", gb[..]);
+  if fs_exists(out) { return uce_fail("the output folder already exists; name a new one"); }
+  tb: [4096] u8; temp := ck_cat(out, ".partial", tb[..]);
+  if fs_exists(temp) { return uce_fail("a half-written bundle is beside it (.partial); remove it first"); }
+  t0 := proc_now_ms();
+  // the packages, the schema, the script objects
+  cs: [1] ZcStore = ---; c: [1] Zcat; zc_init(c[..], cs[..]);
+  by: [1] UceBytes = ---;
+  w := zw_scan(c[..], extract, by[0].main[..]);
+  if w.packages == 0 { return uce_fail("no packages under EXTRACT_DIR"); }
+  if w.refused > 0 { tool_err("unreal-cooked-export: a package header is refused: "); tool_errln(cast(string) w.first_refused[0..<w.first_refused_n]); return 1; }
+  ss: [1] ScStore = ---; s: [1] Sch; sc_init(s[..], ss[..]);
+  if !sc_load(s[..], engine, project, by[0].main[..]) { return uce_fail("the engine source's generated files are not there (build its editor first)"); }
+  hs: [1] ScScriptStore = ---; h: [1] ScScript; sc_script_init(h[..], hs[..]); sc_index_scripts(s[..], h[..]);
+  vs: [1] UcePv = ---; v: [1] Pv; pv_init(v[..], vs[0].node[..], vs[0].b[..], vs[0].at[..], vs[0].n[..]);
+  k: [1] Ck = ---; ck_init(k[..], c[..], s[..], h[..], v[..], by[0].main[..], by[0].side[..], by[0].bulk[..]);
+  print("unreal-cooked-export: % packages, % exports; schema: % types from % files (% ms)\n", w.packages, c[0].exports, s[0].types, s[0].files, proc_now_ms() - t0);
+  // the bundle's folder
+  if !fs_mkdir_private(temp) { return uce_fail("could not make the bundle folder"); }
+  for d: [3] string.["meshes", "textures", "sounds"] { db: [4096] u8; if !fs_mkdir(fs_join(temp, d, db[..])) { return uce_fail("could not make a bundle folder"); } }
+  os: [1] CoStore = ---; o: [1] Co = ---; co_init(o[..], os[..], temp);
+  // the packages in name order, so the same build gives the same file numbers
+  order: [ZC_PKGS] int; tmp: [ZC_PKGS] int;
+  for p: 0..<c[0].pkgs { order[p] = p; }
+  uce_sort_pkgs(c[..], order[0..<c[0].pkgs], tmp[..]);
+  cm: [1] CmScratch = ---; cmr: [1] CmResult; ct: [1] CtScratch = ---; ctr: [1] CtResult;
+  memo: [1] CmaMemo; memo[0].n = 0; mres: [1] CmaResult;
+  worlds: [64] CkAt; world_n := 0;
+  counts: [8] int; refused := 0; worst_bounds := 0.0; worst_id: [512] u8; worst_n := 0;
+  for oi: 0..<c[0].pkgs {
+    p := order[oi];
+    pname := ck_pkg_name(k[..], p);
+    asset := ck_asset(k[..], p);
+    for e: 0..<c[0].pkg[p].export_n {
+      x := zc_export(c[..], p, e);
+      if zi_kind(x.outer) != ZI_NULL { continue; }
+      if asset >= 0 && e != asset { continue; }
+      if (x.oflags & 0x10) != 0 { continue; }   // a class's default object: part of its class's row
+      ck_reset(k[..]);
+      idb: [1024] u8; id := zc_path(c[..], p, e, idb[..]);
+      cpb: [1024] u8; cls_path := uce_class_path(k[..], p, e, cpb[..]);
+      cl := ck_class(k[..], p, e);
+      kind := uce_kind(k[..], cl.t, cl.bp);
+      if kind.kind != UCE_SKIP && !ab_id_ok(id) {
+        co_skip(o[..], "", id, cls_path, "", CO_UNSUPPORTED, CMA_PLUGIN_WHY); counts[UCE_SKIP] += 1; continue;
+      }
+      if kind.kind == UCE_WORLD {
+        if sc_find(pname, "/_Generated_/", 0) >= 0 { continue; }   // a world partition cell: read with its map
+        if sc_starts(pname, "/Engine/") { co_skip(o[..], "", id, cls_path, "", CO_UNSUPPORTED, "the engine's own map, not the game's"); continue; }
+        if world_n < 64 { worlds[world_n] = CkAt.{pkg = p, exp = e}; world_n += 1; }
+        continue;
+      }
+      ok := true; why := "";
+      if kind.kind == UCE_MESH {
+        ok = cm_mesh(k[..], o[..], p, e, o[0].meshes + 1, cm[..], cmr[..]); why = cast(string) cmr[0].why[0..<cmr[0].why_n];
+        if ok && cmr[0].bounds_off > worst_bounds { worst_bounds = cmr[0].bounds_off; worst_n = sc_put(worst_id[..], 0, id); }
+      } else if kind.kind == UCE_TEXTURE {
+        ok = ct_texture(k[..], o[..], p, e, o[0].textures + 1, ct[..], ctr[..]); why = cast(string) ctr[0].why[0..<ctr[0].why_n];
+      } else if kind.kind == UCE_MATERIAL {
+        mres[0].ok = true; mres[0].why_n = 0;
+        ok = cma_material(k[..], o[..], memo[..], p, e, 0, mres[..]) >= 0; why = cast(string) mres[0].why[0..<mres[0].why_n];
+      } else if kind.kind == UCE_SKELETON {
+        wb: [512] u8; why = cot_skeleton(k[..], o[..], p, e, wb[..]); ok = why.count == 0;
+      } else if kind.kind == UCE_SOUND {
+        db: [1024] u8; co_skip(o[..], "", id, cls_path, "", CO_UNSUPPORTED, cot_sound(k[..], p, e, db[..])); counts[UCE_SOUND] += 1; continue;
+      } else {
+        co_skip(o[..], "", id, cls_path, "", kind.reason, kind.detail); counts[UCE_SKIP] += 1; continue;
+      }
+      if ok { counts[kind.kind] += 1; }
+      else { refused += 1; db: [1024] u8; co_skip(o[..], "", id, cls_path, "", CO_UNSUPPORTED, ck_cat("refused: ", why, db[..])); }
+      if o[0].full { return uce_fail(ck_cat("a bundle table is full: ", cast(string) o[0].why[0..<o[0].why_n], tb[..])); }
+    }
+  }
+  print("unreal-cooked-export: assets: % meshes, % textures, % materials, % skeletons carried; % sounds and % other assets skipped; % refused (%) ms\n",
+    counts[UCE_MESH], counts[UCE_TEXTURE], o[0].materials, counts[UCE_SKELETON], counts[UCE_SOUND], counts[UCE_SKIP], refused, proc_now_ms() - t0);
+  // the maps
+  ms: [1] CmapStore = ---; ms[0].kids_pkg = -1;
+  for wi: 0..<world_n {
+    ck_reset(k[..]);
+    wb: [512] u8; why := cmap_map(k[..], o[..], ms[..], worlds[wi].pkg, worlds[wi].exp, worlds[0..<world_n], wb[..]);
+    idb: [1024] u8; id := zc_path(c[..], worlds[wi].pkg, worlds[wi].exp, idb[..]);
+    if why.count > 0 { db: [1024] u8; co_skip(o[..], ck_pkg_name(k[..], worlds[wi].pkg), "", "/Script/Engine.World", "", CO_UNSUPPORTED, ck_cat("map refused: ", why, db[..])); print("  map % refused: %\n", id, why); }
+    if o[0].full { return uce_fail(ck_cat("a bundle table is full: ", cast(string) o[0].why[0..<o[0].why_n], tb[..])); }
+  }
+  // close the references, then write
+  so: [1] CoSorted = ---;
+  pr: [1] CoPrune = ---; pruned := co_prune(o[..], pr[..]);
+  co_close(o[..], so[..]);
+  statement: [1048576] u8; sn := sc_put(statement[..], 0, "cooked\n");
+  for oi: 0..<c[0].pkgs { sn = sc_put(statement[..], sn, ck_pkg_name(k[..], order[oi])); sn = sc_put(statement[..], sn, "\n"); }
+  for m: 0..<o[0].maps { sn = sc_put(statement[..], sn, co_s(o[..], o[0].map[m].id)); sn = sc_put(statement[..], sn, "\n"); }
+  plan_sha: [64] u8; _ = uf_sha_hex(statement[0..<sn], plan_sha[..]);
+  text: [1] UceText = ---; j: [1] Jo; jo_start(j[..], text[0].b[..]);
+  pb: [256] u8; proj_name := uce_last(project);
+  co_manifest(o[..], so[..], CoSource.{project = ifx proj_name.count > 0 then proj_name else "unknown", engine = "5.9", plan_sha = cast(string) plan_sha[..]}, j[..]);
+  if j[0].bad { return uce_fail("the manifest did not fit"); }
+  mb: [4096] u8; if !fs_write(fs_join(temp, "manifest.json", mb[..]), jo_text(j[..])) { return uce_fail("could not write manifest.json"); }
+  manifest_bytes := j[0].n;
+  jo_start(j[..], text[0].b[..]); co_skipped(o[..], so[..], j[..]);
+  if j[0].bad || !fs_write(fs_join(temp, "skipped.json", mb[..]), jo_text(j[..])) { return uce_fail("could not write skipped.json"); }
+  if !fs_rename(temp, out) { return uce_fail("could not rename the bundle into place"); }
+  // the counts
+  placed := 0; for i: 0..<o[0].placements { if so[0].place_ok[i] { placed += 1; } }
+  print("unreal-cooked-export: % maps: % placements carried (% read), % lights, % spots, % volumes; % engine assets nothing uses dropped\n", o[0].maps, placed, o[0].placements, o[0].lights, o[0].spots, o[0].volumes, pruned);
+  print("unreal-cooked-export: % files, % skipped rows, manifest % bytes, % ms\n", o[0].files, o[0].skips, manifest_bytes, proc_now_ms() - t0);
+  print("unreal-cooked-export: self-check: the worst mesh's vertex bounds are % cm from its stated bounds (%)\n", worst_bounds, cast(string) worst_id[0..<worst_n]);
+  _ = pb;
+  return 0;
+}
+UceText :: struct { b: [134217728] u8; }
+uce_last :: (path: string) -> string #effects(all) {
+  e := path.count; while e > 0 && path[e - 1] == '/' { e -= 1; }
+  b := e; while b > 0 && path[b - 1] != '/' { b -= 1; }
+  return path[b..<e];
+}
+uce_sort_pkgs :: (c: [] Zcat, order: [] int, tmp: [] int) #effects(all) {
+  n := order.count; width := 1;
+  while width < n {
+    i := 0;
+    while i < n {
+      mid := ifx i + width < n then i + width else n; hi := ifx i + 2 * width < n then i + 2 * width else n;
+      x := i; y := mid; t := i;
+      while x < mid || y < hi {
+        if y >= hi || (x < mid && ab_cmp(zc_s(c, c[0].pkg[order[x]].name), zc_s(c, c[0].pkg[order[y]].name)) <= 0) { tmp[t] = order[x]; x += 1; } else { tmp[t] = order[y]; y += 1; }
+        t += 1;
+      }
+      i += 2 * width;
+    }
+    for q: 0..<n { order[q] = tmp[q]; }
+    width *= 2;
+  }
+}
