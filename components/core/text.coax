@@ -4,6 +4,7 @@
 // terminal measure the same clusters (components/layout/measure.coax).
 //   coax/bin/coax test components/core/text.coax
 
+#load "space.coax";
 #load "rune.coax";   // Rune
 
 // The code point at byte i of UTF-8 text; a malformed byte reads as itself.
@@ -126,4 +127,26 @@ text_byte_floor :: (s: string, i: int) -> int {
   k := i;
   while k > 0 && k < s.count && (s[k] & 0xC0) == 0x80 { k -= 1; }
   return k;
+}
+
+#test "a one-line label folds Unicode spaces and controls without splitting a grapheme" {
+ b:[64]u8;n:=text_single_line("  A\n\tB　C\r\n ",b[..]);#assert n==5 && cast(string)b[0..<n]=="A B C";
+ n=text_single_line("👩‍💻\t界",b[..]);#assert n>4 && cast(string)b[0..<n]=="👩‍💻 界";
+ b[0]=99;#assert text_single_line("👩‍💻",b[0..<3])<0 && b[0]==99;
+ #assert text_single_line("\n\t ",b[..])==0;
+}
+// One-line display labels share Unicode whitespace and grapheme rules with editing/layout.
+// Preflight preserves the output on overflow; the source remains the accessible full title.
+text_single_line :: (text:string,out:[]u8)->int {
+ result:=0;
+ for pass:0..<2 {i:=0;n:=0;gap:=false;
+  while i<text.count {
+   r:=rune_at(text,i);size:=cluster_len(text,i);
+   if rune_white_space(r.code) || r.code<32 || (r.code>=127 && r.code<160) {gap=n>0;i+=size;continue;}
+   if gap {if pass==1 {out[n]=' ';}n+=1;gap=false;}
+   if pass==1 {for k:0..<size {out[n+k]=text[i+k];}}n+=size;i+=size;
+  }
+  if pass==0 {if n>out.count {return -1;}result=n;}
+ }
+ return result;
 }

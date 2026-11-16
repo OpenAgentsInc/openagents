@@ -456,7 +456,7 @@ does not start the next one's removals.
 | --- | --- | --- |
 | G0 (built 2026-11-15) | The frame context (`kit/frame.coax`), keyed state store (`core/keyed.coax`), semantic table (`core/elements.coax`) and surface commit (`paint/surface.coax`), with adapters for existing callers | Existing gallery and chat pictures unchanged; checks for identity, retirement and refusal |
 | G1 (in progress; composer 2026-11-15; VoiceOver bridge, large text and one editing authority 2026-11-16) | The iOS app as one compiled page: the chat page (composer first, then chat logic, transcript and the login card) on the kit, with the text-editor overlay and the VoiceOver bridge. No JavaScript, no Updates, no UIKit control projection (see [The iOS app](#the-ios-app-grown-screen-by-screen)) | The app links no JavaScriptCore or WebKit and holds no `.js`, `.wasm` or `.html`; typing, sending, stopping, scrolling and login work against the account fixture; a still page presents no frames |
-| G2 (Settings and platform scroll driver built 2026-11-16; history and physical scroll qualification pending) | The next screens of the iOS app, one at a time, each on the kit: the sidebar with chat history, then Settings, with the scroll driver | Each screen has no UIKit controls; large text lays out; scrolling feels native on a physical phone |
+| G2 (Settings, account history and platform scroll driver built 2026-11-16; physical scroll qualification pending) | The next screens of the iOS app, one at a time, each on the kit: the sidebar with chat history, then Settings, with the scroll driver | Each screen has no UIKit controls; large text lays out; scrolling feels native on a physical phone |
 | G3 (nested clips and group opacity done; images, transforms and blur not started) | Backend gaps the chat needs: images, nested clips, transforms, group opacity, blur | Each has a gallery specimen and a generated-shader check on Metal and WebGPU |
 | G4 | The rest of iOS, screen by screen: Projects, Usage, environment and repository choice, the world library | Each screen passes its acceptance case on a physical phone, and the transcript workloads under [Measurements](#measurements) are recorded |
 | G6 | Desktop on Mac and Linux: move the native environment client's screens from AppKit and GTK controls onto the kit, on the shared AppKit/Metal and Wayland/Vulkan hosts the recovery shell already uses; then delete those projections | Login, history and chat run on both desktops through the kit, with real text entry, keyboard focus and a screen reader |
@@ -645,3 +645,13 @@ retry and secret-free discard. The real PostgreSQL API suite exercises key
 rotation/restoration, revision ABA refusal and cancellation of delayed
 commands. Physical passkey, VoiceOver and scrolling acceptance remains an
 owner check. This work does not claim that G3, G4, G6 or G7 is complete.
+
+The account history drawer now uses the existing conversations-v2alpha1
+index and the core's `ACT_OPEN`. `apps/shared/app/history/` schedules reads
+through the effect outbox while visible, with a single sleeping host timer;
+it cancels/fences reads on close or background. Failed reads retain the
+previous list. Paging refreshes its current cursor. `app_side_window` lays
+out only visible rows, with one-line titles normalized by the shared Unicode
+text helper. The sidebar slides at its full width, so animation never changes
+row wrapping. Paired-computer session history is still a separate G4 consumer;
+this list is explicitly named Account chats.

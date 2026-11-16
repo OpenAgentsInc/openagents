@@ -16,7 +16,7 @@ never changes app state: a press reaches the app as the row's action.
 | `task.coax` | `app_task_header`, `app_task_state`, `app_tool` (opens onto paged input and result), `app_tool_group`, `app_tool_press`, `app_permission` (Deny, Allow, sending, uncertain, answered, expired), `app_task_result`, `app_banner` (reconnecting, offline) |
 | `account.coax` | `app_logged_out_card`; the login card is the login flow's `lf_card` (`apps/shared/app/login/card.coax`), and the gallery shows it |
 | `identity.coax` | Public identity, copy, backup/rotate/restore confirmations, native private-field slot, unresolved-change retry/discard; no private bytes or account effects |
-| `nav.coax` | `app_nav_button`, `app_side_head`, `app_side_row`, `app_side_list` |
+| `nav.coax` | `app_nav_button`, `app_side_head`, `app_side_row`, `app_side_list`, `app_side_window` (virtualized, single-line history) |
 | `ioshost-sidebar.coax` | the phone sidebar that pushes the page: `app_sidebar`, `app_sidebar_shift`, `app_sidebar_ease`, `app_sidebar_head`, `app_sidebar_item`, `app_sidebar_rule`, `app_sidebar_new`, `app_sidebar_avatar`, `app_initials` |
 | `gallery/gallery.coax` | every component above on one scrolling page, with example data; the iOS dev menu opens it |
 

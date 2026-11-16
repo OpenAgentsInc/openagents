@@ -177,3 +177,9 @@ sheet_over :: (st: [] SheetStore) -> Sheet {
   #assert sheet_pool(sh[..], "3") == "" && sh[0].lost == 9 && sheet_pool(sh[..], "") == "" && sh[0].lost == 9;
   sheet_clip_right(sh[..], 10); sheet_unclip(sh[..]); #assert sh[0].lost == 13;
 }
+
+// A normalized one-line label kept in this generation's own pool.
+sheet_single_line :: (sh:[]Sheet,text:string)->string {
+ at:=sh[0].np;n:=text_single_line(text,sh[0].pool[at..<sh[0].pool.count]);
+ if n<0 {sh[0].lost+=1;return "";}sh[0].np+=n;return cast(string)sh[0].pool[at..<at+n];
+}

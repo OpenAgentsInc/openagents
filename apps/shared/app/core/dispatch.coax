@@ -80,7 +80,7 @@ app_logged_out :: (c: [] AppCore, words: string) {
   c[0].auth = AUTH_OUT; c[0].login = LOGIN_IDLE; c[0].rejoin_n = 0;
   tc_reset(c, "");
   for owner: OWN_PAGE..<OWN_GUEST_LAST + 1 { _ := fx_cancel(c[0].out[..], owner); }
-  c[0].guest = AppGuest.{};
+  c[0].guest = AppGuest.{};for owner:OWN_ENVIRONMENT..<OWN_GUEST_LAST+1 {c[0].guest_due[owner]=0;}
   // drafts of the account's saved conversations go; the new chat's draft is not the account's
   app_drafts_clear(c, true);
   c[0].environment[0] = AppSlot.{}; c[0].repository[0] = AppSlot.{};
@@ -342,26 +342,33 @@ app_guest_identity :: (c:[]AppCore,owner:int,purpose:int,action:string,pubkey:st
 // Fence a guest's requests (its screen closed): late results are dropped.
 app_guest_cancel :: (c: [] AppCore, owner: int) -> bool {
   if owner < OWN_ENVIRONMENT || owner > OWN_GUEST_LAST { return false; }
-  return fx_cancel(c[0].out[..], owner);
+  c[0].guest_due[owner]=0;return fx_cancel(c[0].out[..], owner);
 }
 // The root routed the waiting guest result (its body is the EV_DONE event's text). Until this is
 // called, the next event is refused as APP_R_INVALID, so a result is never overwritten.
 app_guest_done :: (c: [] AppCore) { c[0].guest = AppGuest.{}; }
 
+// A guest schedules one future action without keeping frames alive. -1 clears it.
+app_guest_due :: (c:[]AppCore,owner:int,at:int)->bool {
+ if owner<OWN_ENVIRONMENT || owner>OWN_GUEST_LAST {return false;}
+ c[0].guest_due[owner]=ifx at>0 then at else 0;return true;
+}
 // ---------------------------------------------------------------- busy and the next wake
 
 // Why the app is not idle: BUSY_ bits, 0 when it can sleep until the next input.
 app_busy :: (c: [] AppCore) -> int {
   o := c[0].out[..]; busy := 0;
   if fx_queued(o) > 0 || fx_outstanding(o) > 0 { busy = busy | BUSY_EFFECT; }
-  if tc_wake(c) >= 0 || dl_wake(c) >= 0 { busy = busy | BUSY_SCHEDULED; }
+  if app_next_wake(c) >= 0 { busy = busy | BUSY_SCHEDULED; }
   if c[0].dirty != 0 { busy = busy | BUSY_DIRTY; }
   return busy;
 }
 // The monotonic time (ms) of the next scheduled work, when the host sends EV_CLOCK; -1 for none.
 app_next_wake :: (c: [] AppCore) -> int {
   a := tc_wake(c); b := dl_wake(c);
-  return ifx a < 0 then b else ifx b < 0 then a else ifx a < b then a else b;
+  next:=ifx a < 0 then b else ifx b < 0 then a else ifx a < b then a else b;
+  if c[0].foreground {for owner:OWN_ENVIRONMENT..<OWN_GUEST_LAST+1 {due:=c[0].guest_due[owner];if due>0 && (next<0 || due<next) {next=due;}}}
+  return next;
 }
 // The surfaces that changed since they were last taken, and clear those in mask.
 app_dirty_take :: (c: [] AppCore, mask: int) -> int {

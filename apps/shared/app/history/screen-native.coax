@@ -1,0 +1,40 @@
+// Actual shared page + core, with disposable public account histories.
+#import "Basic";
+#load "../../../openagents-ios/chat.coax";
+hs_setup :: (s:[]ChatPage,c:[]AppCore,o:[]ChOut) {
+ app_init(c);c[0].auth=AUTH_IN;c[0].foreground=true;ch_test_atlas(s[0].atlas[..]);chat_attach(s,c,"");chat_step(s);
+ _:=ch_test_frame(s,o);#assert chat_activate(s,"nav.menu");_:=ch_test_frame(s,o);
+}
+hs_answer :: (s:[]ChatPage,c:[]AppCore,count:int) {
+ summaries:[60][512]u8;items:[60]string;ids:[60][36]u8;raw:[65536]u8;
+ for i:0..<count {
+  for j:0..<36 {ids[i][j]=ifx j<4 then "cnv_"[j] else 'a';}
+  ids[i][34]=cast(u8)('0'+i/10);ids[i][35]=cast(u8)('0'+i%10);
+  conv:=[1]CtConversation.[CtConversation.{id=cast(string)ids[i][..],title="A long\nconversation title that should stay on one line",revision=1,created=1,updated=2}];
+  n:=ctr_summary(conv[..],summaries[i][..]);#assert n>0;items[i]=cast(string)summaries[i][0..<n];
+ }
+ n:=ctr_index(items[0..<count],"",raw[..]);#assert n>0;
+ op:=s[0].history[0].op;gen:=fx_generation(c[0].out[..],HI_OWNER);#assert op>0 && fx_take(c[0].out[..],op);
+ #assert app_dispatch(c,AppEvent.{kind=EV_DONE,op=op,generation=gen,outcome=FXO_DONE,status=200,text=cast(string)raw[0..<n]})==APP_GUEST;
+ chat_guest(s,cast(string)raw[0..<n]);
+}
+hs_open :: () {
+ s:[1]ChatPage;c:[1]AppCore;o:[1]ChOut;hs_setup(s[..],c[..],o[..]);hs_answer(s[..],c[..],1);_:=ch_test_frame(s[..],o[..]);
+ id:="cnv_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa00";#assert surface_find(ch_live(s[..]),id)>=0 && chat_refused(s[..])==0;
+ #assert chat_activate(s[..],id) && !s[0].drawer && app_conversation(c[..])==id && c[0].flight>0;
+}
+hs_window :: () {
+ s:[1]ChatPage;c:[1]AppCore;o:[1]ChOut;hs_setup(s[..],c[..],o[..]);hs_answer(s[..],c[..],60);_:=ch_test_frame(s[..],o[..]);
+ #assert chat_rows(s[..])<35 && ch_scroll_max(s[..])>0 && chat_refused(s[..])==0;
+ id:="cnv_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa00";row:=surface_find(ch_live(s[..]),id);r:=ch_rows(s[..]).rows[row];width:=r.w;
+ s[0].share=0.25;s[0].reduced=false;_:=chat_frame(s[..],o[0].v[..],1206,2622,3,0);
+ row=surface_find(ch_live(s[..]),id);#assert row>=0 && ch_rows(s[..]).rows[row].w==width;
+ s[0].reduced=true;chat_scroll_to(s[..],ch_scroll_max(s[..]));_:=ch_test_frame(s[..],o[..]);
+ #assert !chat_activate(s[..],id) && chat_refused(s[..])==0 && !chat_moving(s[..]);
+ #assert chat_activate(s[..],"cnv_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa59");
+}
+native_check :: (i:int,run:bool)->int #export_c #effects(all) {
+ if i==0 {if run {hs_open();}else {print("GPU history opens the selected saved conversation through the real core");}}
+ if i==1 {if run {hs_window();}else {print("60 chats realize only visible rows, keep width through animation and sleep still");}}
+ return 2;
+}

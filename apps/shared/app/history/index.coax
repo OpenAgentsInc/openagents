@@ -1,0 +1,38 @@
+// Saved account conversations. The existing index codec and app core own all wire/auth behavior.
+#load "../core/core.coax";
+HI_OWNER :: 5; HI_INTERVAL :: 15000;
+ChatIndex :: struct {page:[1]CtIndex; signed_in:bool;visible:bool;loaded:bool;note:bool;op:int;next:int;cursor:[36]u8;cursor_n:int;sent:[36]u8;sent_n:int;changed:bool;}
+hi_read :: (h:[]ChatIndex,c:[]AppCore,more:bool)->bool {
+ b:[256]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_raw(o[..],"/api/chat/conversations/v2alpha1?project_id=&cursor=");
+ h[0].sent_n=ifx more then h[0].page[0].next_n else h[0].cursor_n;for i:0..<h[0].sent_n {h[0].sent[i]=ifx more then h[0].page[0].next[i] else h[0].cursor[i];}
+ jo_raw(o[..],cast(string)h[0].sent[0..<h[0].sent_n]);
+ op:=app_guest_http(c,HI_OWNER,1,UP_GET,jo_text(o[..]),"");if op==0 {h[0].next=c[0].mono_ms+1000;return false;}
+ h[0].op=op;_:=app_guest_due(c,HI_OWNER,-1);return true;
+}
+hi_sync :: (h:[]ChatIndex,c:[]AppCore,visible:bool) {
+ logged:=c[0].auth==AUTH_IN;if logged!=h[0].signed_in {h[0]=ChatIndex.{};h[0].signed_in=logged;}
+ if !visible || !logged || !c[0].foreground {
+  if h[0].op>0 {_:=app_guest_cancel(c,HI_OWNER);h[0].op=0;}
+  h[0].visible=false;_:=app_guest_due(c,HI_OWNER,-1);return;
+ }
+ if !h[0].visible {h[0].next=c[0].mono_ms;h[0].visible=true;}
+ if h[0].op==0 && c[0].mono_ms>=h[0].next {_:=hi_read(h,c,false);}
+ _:=app_guest_due(c,HI_OWNER,ifx h[0].op==0 then h[0].next else -1);
+}
+hi_guest :: (h:[]ChatIndex,c:[]AppCore,raw:string)->bool {
+ g:=c[0].guest;if !g.waiting || g.owner!=HI_OWNER {return false;}
+ if g.op==h[0].op {
+  h[0].op=0;next:[1]CtIndex;ok:=g.outcome==FXO_DONE && g.status==200 && ctr_index_read(raw,next[..]);
+  h[0].note=!ok;if ok {h[0].page[0]=next[0];h[0].loaded=true;h[0].changed=cast(string)h[0].cursor[0..<h[0].cursor_n]!=cast(string)h[0].sent[0..<h[0].sent_n];h[0].cursor_n=h[0].sent_n;for i:0..<h[0].cursor_n {h[0].cursor[i]=h[0].sent[i];}}
+  h[0].next=c[0].mono_ms+HI_INTERVAL;
+ }
+ app_guest_done(c);return true;
+}
+hi_more :: (h:[]ChatIndex,c:[]AppCore)->bool {
+ return h[0].visible && h[0].op==0 && h[0].page[0].next_n>0 && hi_read(h,c,true);
+}
+
+hi_first :: (h:[]ChatIndex,c:[]AppCore)->bool {
+ if !h[0].visible || h[0].op!=0 || h[0].cursor_n==0 {return false;}
+ h[0].cursor_n=0;return hi_read(h,c,false);
+}

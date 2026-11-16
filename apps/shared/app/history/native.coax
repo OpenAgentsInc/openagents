@@ -1,0 +1,47 @@
+// The real app state exceeds evaluator storage; qualify compiled C in both modes.
+#import "Basic";
+#load "index.coax";
+hi_answer :: (h:[]ChatIndex,c:[]AppCore,raw:string,status:int) {
+ op:=h[0].op;#assert op>0;gen:=fx_generation(c[0].out[..],HI_OWNER);#assert fx_take(c[0].out[..],op);
+ #assert app_dispatch(c,AppEvent.{kind=EV_DONE,op=op,generation=gen,outcome=FXO_DONE,status=status,text=raw,mono_ms=c[0].mono_ms,wall_ms=c[0].wall_ms})==APP_GUEST;
+ #assert hi_guest(h,c,raw);
+}
+hi_checks :: () {
+ c:[1]AppCore;app_init(c[..]);c[0].auth=AUTH_IN;c[0].foreground=true;h:[1]ChatIndex;
+ hi_sync(h[..],c[..],false);#assert h[0].op==0 && app_next_wake(c[..])<0;
+ hi_sync(h[..],c[..],true);first:=h[0].op;#assert first>0;hi_sync(h[..],c[..],true);#assert h[0].op==first;
+ b:[4096]u8;one:[1024]u8;conv:=[1]CtConversation.[CtConversation.{id="cnv_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",title="A long account conversation",revision=1,created=1,updated=2}];
+ n:=ctr_summary(conv[..],one[..]);items:=[1]string.[cast(string)one[0..<n]];n=ctr_index(items[..],"",b[..]);
+ hi_answer(h[..],c[..],cast(string)b[0..<n],200);#assert h[0].loaded && h[0].page[0].n==1;
+ hi_sync(h[..],c[..],true);#assert h[0].op==0 && c[0].guest_due[HI_OWNER]==HI_INTERVAL;
+ c[0].mono_ms=HI_INTERVAL;hi_sync(h[..],c[..],true);#assert h[0].op>0;
+ hi_answer(h[..],c[..],"{}",503);#assert h[0].page[0].n==1 && h[0].note;
+ hi_sync(h[..],c[..],false);#assert h[0].op==0 && c[0].guest_due[HI_OWNER]==0;
+ c[0].auth=AUTH_OUT;hi_sync(h[..],c[..],false);#assert !h[0].loaded && h[0].page[0].n==0;
+}
+hi_fences :: () {
+ c:[1]AppCore;app_init(c[..]);c[0].auth=AUTH_IN;c[0].foreground=true;h:[1]ChatIndex;
+ hi_sync(h[..],c[..],true);op:=h[0].op;gen:=fx_generation(c[0].out[..],HI_OWNER);#assert fx_take(c[0].out[..],op);
+ hi_sync(h[..],c[..],false);#assert h[0].op==0;
+ #assert app_dispatch(c[..],AppEvent.{kind=EV_DONE,op=op,generation=gen,outcome=FXO_DONE,status=200,text="{}"})==APP_R_LATE;
+ #assert !c[0].guest.waiting && !h[0].loaded;
+ #assert !app_guest_due(c[..],OWN_CHAT,10) && !app_guest_due(c[..],FX_OWNERS,10) && app_guest_due(c[..],HI_OWNER,900);
+ #assert app_next_wake(c[..])==900;c[0].foreground=false;#assert app_next_wake(c[..])<0;
+}
+hi_pages :: () {
+ c:[1]AppCore;app_init(c[..]);c[0].auth=AUTH_IN;c[0].foreground=true;h:[1]ChatIndex;hi_sync(h[..],c[..],true);
+ id:="cnv_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";cv:=[1]CtConversation.[CtConversation.{id=id,title="First",revision=1,created=1,updated=1}];row:[512]u8;raw:[4096]u8;
+ n:=ctr_summary(cv[..],row[..]);items:=[1]string.[cast(string)row[0..<n]];n=ctr_index(items[..],id,raw[..]);hi_answer(h[..],c[..],cast(string)raw[0..<n],200);
+ #assert hi_more(h[..],c[..]);n=ctr_index(items[..],"",raw[..]);hi_answer(h[..],c[..],cast(string)raw[0..<n],200);
+ #assert h[0].cursor_n==36 && cast(string)h[0].cursor[..]==id && h[0].changed;
+ c[0].mono_ms=HI_INTERVAL;hi_sync(h[..],c[..],true);at:=fx_find(c[0].out[..],h[0].op);
+ #assert at>=0 && cast(string)c[0].out[0].slots[at].path[0..<c[0].out[0].slots[at].path_n]=="/api/chat/conversations/v2alpha1?project_id=&cursor=cnv_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+ hi_answer(h[..],c[..],cast(string)raw[0..<n],200);#assert hi_first(h[..],c[..]);at=fx_find(c[0].out[..],h[0].op);
+ #assert at>=0 && h[0].cursor_n==0 && cast(string)c[0].out[0].slots[at].path[0..<c[0].out[0].slots[at].path_n]=="/api/chat/conversations/v2alpha1?project_id=&cursor=";
+}
+native_check :: (i:int,run:bool)->int #export_c #effects(all) {
+ if i==0 {if run {hi_checks();}else {print("history automatic reads, retained data on failure and account reset");}}
+ if i==1 {if run {hi_fences();}else {print("history close fences held replies and guest timers sleep in background");}}
+ if i==2 {if run {hi_pages();}else {print("history pagination refreshes its current page instead of jumping back");}}
+ return 3;
+}

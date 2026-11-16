@@ -1711,3 +1711,9 @@ Never send the private key in chat or a screenshot. Check VoiceOver, largest
 text and native momentum scrolling on the phone. Simulator/native checks
 cover the state/crypto/transport paths; these system ceremonies and physical
 appearance cannot be certified by those checks.
+
+Build 1395 is in the Owner TestFlight group; the identity API is deployed as
+`oa-api-00171-b4j` after staging and production migration/smoke checks. The
+next build adds the auto-synced Account chats drawer. Check opening a saved
+chat, paging, returning to Latest, and scrolling at large text sizes. The
+compiled fixtures exercise 60 chats and assert fixed widths during opening.

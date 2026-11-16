@@ -78,3 +78,9 @@ platform effects and protected pending-operation storage. Unknown changes
 must be retried exactly or explicitly discarded; a finished change stays.
 Run SDK checks with the `OpenAgentsIdentity` Xcode scheme on an isolated
 simulator. Never put real private keys in a drive case or screenshot.
+
+The history drawer reads automatically while visible and sleeps between
+reads. It realizes visible one-line rows only, keeps the full panel width
+through animation, and opens the chosen saved conversation through the
+shared core. More pages older chats; the up-arrow returns to Latest.
+Account history is separate from sessions running on a paired computer.

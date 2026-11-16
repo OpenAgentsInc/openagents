@@ -73,6 +73,7 @@ AppCore :: struct {
   note: [APP_NOTE] u8; note_n: int;
   dirty: int;
   guest: AppGuest;
+  guest_due: [FX_OWNERS] int; // monotonic deadlines, 0 none; guests use the same sleeping host timer
   // the conversation on the person's own computer, with no account (apps/shared/app/device/)
   device: [] DeviceLane;               // attached by the host (app_host_device); empty: none
   out: [1] FxOutbox;

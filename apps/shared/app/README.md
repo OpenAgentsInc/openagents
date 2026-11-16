@@ -11,6 +11,8 @@ and rejoin after relaunch.
 | `core/` | `claude-app-core` | State, dispatch, the effect outbox, the task client adapter, the host ABI |
 | `login/` | `claude-login-flow` | The login flow and its card |
 | `view/` | `claude-chat-view` | The chat page |
+| `history/` | `gpu-native-identity` | Saved account chats through the existing index codec, visible-only GPU rows, sleeping automatic sync |
+| `settings/` | `gpu-native-identity` | Public Nostr identity state; private custody stays in the native SDK |
 | `environment/` | `claude-env-select` | Environment and repository selection |
 | `cases/` | `claude-drive-cases` | `coax drive` cases and fake services |
 | `preview/` | `claude-dev-loop` | Running the app on the Mac without Xcode |
