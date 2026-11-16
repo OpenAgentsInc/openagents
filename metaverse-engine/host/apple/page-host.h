@@ -53,6 +53,7 @@
 // One frame of a view `points` in size at `scale` pixels a point. Returns the picture, drawn by
 // the time anything committed to the same queue afterwards reads it.
 - (id<MTLTexture>)frame:(CGSize)points scale:(CGFloat)scale dt:(float)dt wait:(BOOL)wait;
+// A non-waiting frame returns nil while the previous GPU frame still owns its buffers.
 // Draws the last picture over the whole of a pass whose colour is `format`.
 - (void)present:(id<MTLRenderCommandEncoder>)encoder format:(MTLPixelFormat)format;
 // Keys in the contract's codes (metaverse-engine/host/README.md): a character's code point, or a named key's

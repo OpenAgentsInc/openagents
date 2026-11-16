@@ -1078,6 +1078,9 @@ static void phPlanCompute(void *s, uint32_t kind, uint32_t runs) { (void)s; (voi
 static void phPlanMedia(void *s, int after) { AEPageHost *h = (__bridge AEPageHost *)s; if (!h->pf.flatDepth) [h drawMedia:h->planE over:after != 0 format:MTLPixelFormatBGRA8Unorm]; }
 - (id<MTLTexture>)frame:(CGSize)size scale:(CGFloat)scale dt:(float)dt wait:(BOOL)wait {
  if (closed) return screen;
+ // Interactive callers must not block the UI while the previous GPU frame owns shared buffers.
+ // The synchronous readback path still waits; no buffer is rewritten until completion.
+ if (!wait && last && last.status < MTLCommandBufferStatusCompleted) return nil;
  phCurrent = self;
  // The share of the device pixels a frame draws: the realm's own pixel budget, and the kept quality's cap.
  points = size;

@@ -76,6 +76,7 @@ private final class NativeWorldCancellation:@unchecked Sendable {
 
 @MainActor final class NativeWorldHost:UIViewController,MTKViewDelegate,UIAdaptivePresentationControllerDelegate {
     static let deep=Deep()
+    private static let cleanupDeep=Deep()
     private static let assets=NativeWorldAssets()
     let directory:URL,realm:String,path:String,editRequested:Bool
     let finished:()->Void
@@ -243,8 +244,9 @@ private final class NativeWorldCancellation:@unchecked Sendable {
     func draw(in view:MTKView) {
         guard !closed,let page,let drawable=view.currentDrawable,let pass=view.currentRenderPassDescriptor else {return}
         let now=CACurrentMediaTime(),dt=last==0 ? 0:Float(now-last);last=now
-        var model:Data?,owns=false;var current:Int32 = -1
-        Self.deep.run {_ = page.frame(view.bounds.size,scale:view.contentScaleFactor,dt:dt,wait:false);current=page.editorRevision();if current != revision {model=page.editorModel()};owns=page.editorOwned()}
+        var model:Data?,owns=false,rendered=false;var current:Int32 = -1
+        Self.deep.run {rendered = page.frame(view.bounds.size,scale:view.contentScaleFactor,dt:dt,wait:false) != nil;if rendered {current=page.editorRevision();if current != revision {model=page.editorModel()};owns=page.editorOwned()}}
+        guard rendered else {return}
         audio?.step(dt)
         var wantsText=false,wantsMotion=false;Self.deep.run {wantsText=page.wantsText();wantsMotion=page.wantsMotion()}
         if wantsText && !canvas.isFirstResponder {canvas.becomeFirstResponder()}else if !wantsText && canvas.isFirstResponder {canvas.resignFirstResponder()}
@@ -320,7 +322,9 @@ private final class NativeWorldCancellation:@unchecked Sendable {
     @objc private func foreground() {last=0;if let page {Self.deep.run {page.shown(true);page.assetsChanged()}};audio?.show(true);canvas?.isPaused=false}
     @objc private func leave() {close();dismiss(animated:true,completion:finished)}
     private func close() {
-        guard !closed else {return};closed=true;loading?.cancel();optional?.cancel();for task in mediaTasks.values {task.cancel()};mediaTasks=[:];canvas?.isPaused=true;turn.stop();audio?.audio.close();audio=nil;network.close();presentation?.waitUntilCompleted();if let page {Self.deep.run {page.close()}};page=nil;NotificationCenter.default.removeObserver(self)
+        guard !closed else {return};closed=true;loading?.cancel();optional?.cancel();for task in mediaTasks.values {task.cancel()};mediaTasks=[:];canvas?.isPaused=true;turn.stop();audio?.audio.close();audio=nil;network.close();let finalPresentation=presentation,finalPage=page,cleanup=Self.cleanupDeep;presentation=nil;page=nil
+        DispatchQueue.global(qos:.utility).async {finalPresentation?.waitUntilCompleted();if let finalPage {cleanup.run {finalPage.close()}}}
+        NotificationCenter.default.removeObserver(self)
     }
     func presentationControllerDidDismiss(_ presentationController:UIPresentationController) {if !closed {close();finished()}}
 }

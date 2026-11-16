@@ -57,6 +57,23 @@ import MetalKit
         c.store=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).path;c.path="/microduck";c.origin="https://openagents.com";c.realm="microduck";c.slot="microduck";c.offline=true;c.automated=true;c.touch=true;c.screen=size
         return c
     }
+    func testNonblockingWorldFrameSkipsAnUnfinishedGPUBuffer() throws {
+        let device=try XCTUnwrap(MTLCreateSystemDefaultDevice()),queue=try XCTUnwrap(device.makeCommandQueue())
+        let event=try XCTUnwrap(device.makeSharedEvent()),block=try XCTUnwrap(queue.makeCommandBuffer())
+        let repo=URL(fileURLWithPath:#filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let config=Self.microduckConfig(repo.appendingPathComponent("apps/openagents-ios/build/world-assets/microduck.pack"))
+        var page:AEPageHost?,why:NSString?
+        NativeWorldHost.deep.run {page=AEPageHost.open(config,device:device,queue:queue,why:&why)}
+        let viewer=try XCTUnwrap(page,"Microduck: \(why ?? "unknown")")
+        defer {event.signaledValue=1;NativeWorldHost.deep.run {viewer.close()}}
+        block.encodeWaitForEvent(event,value:1);block.commit()
+        DispatchQueue.global().asyncAfter(deadline:.now()+2) {event.signaledValue=1}
+        let size=CGSize(width:430,height:900)
+        NativeWorldHost.deep.run {_ = viewer.frame(size,scale:1,dt:0.016,wait:false)}
+        let start=Date();var second:MTLTexture?
+        NativeWorldHost.deep.run {second=viewer.frame(size,scale:1,dt:0.016,wait:false)}
+        XCTAssertNil(second);XCTAssertLessThan(Date().timeIntervalSince(start),1)
+    }
     func testMicroduckRendersActualGeometryOrbitPinchAndRefusesAnAlteredPack()throws {
         let device=try XCTUnwrap(MTLCreateSystemDefaultDevice()),queue=try XCTUnwrap(device.makeCommandQueue())
         let repo=URL(fileURLWithPath:#filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
