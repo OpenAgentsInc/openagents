@@ -1,0 +1,18 @@
+// The Linux SDK gate uses real ATK objects; no compositor, credentials or relay.
+#import "Basic";
+#load "../../../../../coax/lib/sys/native-check.coax";
+tool_main :: ()->int #export_c #effects(all) {
+ dirb:[1024]u8;dir:=fs_temp("oa-atk-",dirb[..]);if dir.count<1 {return 2;}
+ binb:[1200]u8;binary:=fs_join(dir,"access",binb[..]);out:[65536]u8;
+ // The SDK supplies its compiler/linker flags through pkg-config.
+ flags:[1]Args;if !args_add(flags[..],"pkg-config") || !args_add(flags[..],"--cflags") || !args_add(flags[..],"--libs") || !args_add(flags[..],"atk") {return 2;}
+ n:=nc_run(flags[0].v[0..<flags[0].n],30,out[..]);if n<0 {return 1;}
+ cc:[1]Args;for flag:[8]string.["cc","-std=gnu11","-O1","-Wall","-Wextra","-Werror","apps/shared/host/linux/tests/access.c","apps/shared/host/linux/access.c"] {#assert args_add(cc[..],flag);}
+ from:=0;for c,i:cast(string)out[0..<n] {if c==' ' || c=='\n' || c=='\t' {if i>from {#assert args_add(cc[..],cast(string)out[from..<i]);}from=i+1;}}
+ if from<n {#assert args_add(cc[..],cast(string)out[from..<n]);}#assert args_add(cc[..],"-o") && args_add(cc[..],binary);
+ for sanitized:0..<2 {
+  if sanitized==1 {#assert args_add(cc[..],"-fsanitize=address,undefined") && args_add(cc[..],"-fno-omit-frame-pointer");}
+  if nc_run(cc[0].v[0..<cc[0].n],90,out[..])<0 {return 1;}
+  run:=[1]string.[binary];n=nc_run(run[..],30,out[..]);if n<0 {return 1;}print("ATK sanitizers %: %\n",sanitized,cast(string)out[0..<n]);
+ }_:=fs_remove(dir);return 0;
+}

@@ -714,6 +714,12 @@ cover the original identity cases, file-backed unknown/restart/exact replay,
 atomic view state, existing-folder permissions, exclusive writes and symlink
 refusal. These checks do not replace a real passkey or screen-reader ceremony.
 
+Linux now has an [ATK SDK projection](../apps/shared/host/linux/ACCESSIBILITY.md)
+of the same committed rows. Its real SDK queries and retained-object
+retirement pass ordinary and ASan/UBSan/LSan checks on a Linux build host.
+AT-SPI registration, active text/focus and integration into the Vulkan app
+remain separate gates; G6 is still open.
+
 The desktop SDK now has `AppMacDevice`: asynchronous discovery and bounded
 process carriage through the installed `openagents-environment key` and
 `local-rpc --request-file` commands. The existing Coax CLI retains request and
