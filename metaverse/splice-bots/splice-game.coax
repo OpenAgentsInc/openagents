@@ -651,7 +651,7 @@ g_feet_y :: (g: [] SpGame) -> f32 {
 SP_CAM_RISE :: 0.35f32;
 g_cam_y :: (g: [] SpGame) -> f32 {
   y := g_feet_y(g);
-  if !g_airborne(g) || y <= g[0].air_from { return y; }
+  if !g_airborne(g) || y <= g[0].air_from || sjf_cam_follows(g) { return y; }   // a jetpack flight: all of it (jam/jam-fx.coax)
   return g[0].air_from + (y - g[0].air_from) * SP_CAM_RISE;
 }
 // In the air on a jump (or falling off a piece).
@@ -1027,7 +1027,7 @@ g_look :: (g: [] SpGame, dx: f32, dy: f32) {
 g_lock :: (g: [] SpGame, status: int) { d_lock(g, status); g[0].look_free = status != 1; }
 
 // A moment of the run to stand in (the page's message 640, "N"): for stills and checks of each beat.
-g_stage :: (g: [] SpGame, n: int) { g_stage_set(g, n); g_foes(g); if g[0].bot { g_bot_home(g); } sb_stage(g, n); dv_stage(g, n); cm_stage(g, n); bl_stage(g, n); mr_stage(g, n); d_stage(g, n); }
+g_stage :: (g: [] SpGame, n: int) { g_stage_set(g, n); g_foes(g); if g[0].bot { g_bot_home(g); } sb_stage(g, n); dv_stage(g, n); cm_stage(g, n); bl_stage(g, n); mr_stage(g, n); d_stage(g, n); sjf_stage(g, n); }
 g_stage_set :: (g: [] SpGame, n: int) {
   g_reset(g); g[0].mode = M_PLAY;
   if n == 0 { g[0].mode = M_TITLE; return; }

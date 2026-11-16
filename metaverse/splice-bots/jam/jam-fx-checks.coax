@@ -54,6 +54,8 @@ sjf_space :: (g: [] SpGame, down: bool, n: int) -> f32 {
   #assert sjf_fact(g[..], 43) == -80250 && sjf_fact(g[..], 44) == -10050 && sjf_fact(g[..], 40) == 0;
   g[0].px = -795; g[0].pz = -104;
   top := sjf_space(g[..], true, 8); top = hi(top, sjf_space(g[..], false, 6)); top = hi(top, sjf_space(g[..], true, 80));
+  _ = sjf_space(g[..], false, 100); _ = sjf_space(g[..], true, 12);
+  #assert g_airborne(g[..]) && g_cam_y(g[..]) < g_feet_y(g[..]) - 0.2;   // a plain jump: the camera rises a third
   #assert top > 1 && sjf_fact(g[..], 42) == 0;
   plain := top;
   _ = sjf_space(g[..], false, 100);
@@ -67,6 +69,8 @@ sjf_space :: (g: [] SpGame, down: bool, n: int) -> f32 {
   #assert sjf_fact(g[..], 42) == 1;
   top = sjf_space(g[..], true, 150);
   #assert top > plain + 3 && sjf_fact(g[..], 41) < 70;
+  // the camera follows her whole height while she flies (a jump's rise it follows a third of)
+  #assert g_airborne(g[..]) && g_feet_y(g[..]) > 5 && abs(g_cam_y(g[..]) - g_feet_y(g[..])) < 0.01;
   // let go: she falls and lands, and its fuel refills
   _ = sjf_space(g[..], false, 300);
   #assert sj_feet(g[..]) < 0.1 && sjf_fact(g[..], 42) == 0 && sjf_fact(g[..], 41) == 100;
@@ -116,4 +120,16 @@ sjf_heard :: (g: [] SpGame, o: [] u8) -> string { n := snd_text(g, o); return ca
   #assert g[0].snd[0].on[SND_DRIVE_MUSIC] && sjf_has(t, "~music-drive 0.320 0\n") && !sjf_has(t, "desert-music");
   // out of the jam world, the jam's sounds are off like the rest (SND_PLAYS)
   g[0].jam = false; #assert !snd_plays(g[..], SND_JET_IGNITE) && !snd_plays(g[..], SND_DRIVE_MUSIC) && snd_name(g[..], SND_PICKUP) == "pickup";
+}
+
+#test "jam fx: stage 70 hands her a battery with Digger hurt ahead of her, and the right button feeds him, with the jam's feed sound" #steps 3000000000 #traversal 1000000000 {
+  s := [1] SjStore.[SjStore.{}]; g := [1] SpGame.[SpGame.{}]; o: [4096] u8;
+  sjf_start(g[..], s[..]);
+  g_stage(g[..], SJF_STAGE_FEED); g_step(g[..], 0.02); _ = sjf_heard(g[..], o[..]);
+  #assert g[0].mode == M_PLAY && sjx_count(g[..], ITEM_BATTERY) == 1 && sjx_hold(g[..], ITEM_BATTERY);
+  hp := g[0].dr[0].hp.hp; #assert hp < g[0].dr[0].hp.most;
+  #assert sjx_target(g[..], SJX_USE_REACH, true).kind == SJX_T_DIGGER;
+  g[0].jx[0].button = 2; #assert g_pointer(g[..], 640, 360, 0); _ := g_pointer(g[..], 640, 360, 2); g[0].jx[0].button = 0;
+  #assert sjx_count(g[..], ITEM_BATTERY) == 0 && g[0].jx[0].said == SJX_FED && g[0].dr[0].hp.hp > hp;
+  #assert sjf_has(sjf_heard(g[..], o[..]), "battery-feed 0.450 0\n");
 }

@@ -28,6 +28,7 @@ SjFx :: struct {
   plume: f32;                          // the exhaust's throttle, eased (0 to 1)
   front_mode: int = -1; front_focus: int = -1;   // the menu the step saw last, and its focus (the ui sounds)
   pick_at: f32 = -1;                   // when a pickup's sound last played (a harvest's drops: one)
+  flown: bool;                         // it fired since she last stood: the camera follows her whole height
 }
 
 sjf_reset :: (g: [] SpGame) {
@@ -61,12 +62,27 @@ sjf_loc :: (g: [] SpGame, j: [] Jump, loc: LocomotionProfile, dt: f32) -> Locomo
   in := SrJetpackInput.{owned = sjf_owned(g), jump_held = j[0].presses.held, on_ground = j[0].on_ground, air_jumps_spent = j[0].air_used >= j[0].air_jumps,
     blocked = g[0].mode != M_PLAY || g_riding(g) || d_cursor(g)};
   f[0].jet = sr_jetpack_step(f[0].jet, in, f[0].jt, dt);
+  if j[0].on_ground { f[0].flown = false; } if f[0].jet.firing { f[0].flown = true; }
   if !f[0].jet.firing { return loc; }
   if !was { snd_play(g, SND_JET_IGNITE); }
   j[0].vy = sr_jetpack_vertical_after(j[0].vy * 100, 0, f[0].jt, dt) / 100;
   out := loc; out.fall_gravity_scale = 1;
   return out;
 }
+// A moment to stand in (g_stage; the page's message 640, jam-keys-check.coax): 70, in the jam world, her new
+// run's start with a battery in her hand and Digger at half health just ahead of her, for a feed with the
+// right button (jam/jam-farm.coax sjx_use).
+SJF_STAGE_FEED :: 70;
+sjf_stage :: (g: [] SpGame, n: int) {
+  if n != SJF_STAGE_FEED || !g[0].jam { return; }
+  g_stage_set(g, 1); g_foes(g); g[0].bot = true; g[0].pitch = 0;
+  if !sjx_give(g, sr_stack(ITEM_BATTERY, 1)) || !sjx_hold(g, ITEM_BATTERY) { return; }
+  g[0].dr[0].hp.hp = g[0].dr[0].hp.most * 0.5;
+  g[0].bot_x = g[0].px + sin(g[0].yaw) * 1.5; g[0].bot_z = g[0].pz + cos(g[0].yaw) * 1.5;
+}
+// Whether the camera follows her whole height (splice-game.coax g_cam_y): a flight climbs far past a jump's
+// third, so from its first thrust to her landing the view rises and falls with her, eased like any height.
+sjf_cam_follows :: (g: [] SpGame) -> bool { return sjf_on(g) && g[0].jf[0].flown && g_airborne(g); }
 // Her velocity in the air while it fires (feel.coax fl_walk): pushed along her keys, up to its flight speed.
 sjf_fly :: (g: [] SpGame, v: SourceVelocity, wx: f32, wz: f32, dt: f32) -> SourceVelocity {
   if !sjf_firing(g) || !g_airborne(g) { return v; }

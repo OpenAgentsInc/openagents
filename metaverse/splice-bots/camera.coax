@@ -78,7 +78,7 @@ cm_ease :: (cur: f32, vel: [] f32, dest: f32, dt: f32, time: f32) -> f32 {
 // Her height the camera follows: the jump's third, sinking as she sneaks, the board's hover.
 cm_foot_goal :: (g: [] SpGame) -> f32 {
   // with reduced motion it holds her take-off height through a jump, so a landing has nothing to settle
-  y := (ifx g[0].calm && g_airborne(g) then lo(g_feet_y(g), g[0].air_from) else g_cam_y(g)) - d_crouch(g);
+  y := (ifx g[0].calm && g_airborne(g) && !sjf_cam_follows(g) then lo(g_feet_y(g), g[0].air_from) else g_cam_y(g)) - d_crouch(g);
   if g_riding(g) { y += board_lift(g[0].board[0]); }
   return y;
 }
