@@ -18,6 +18,7 @@
 
 #load "../task.coax";
 #load "../account.coax";
+#load "../identity.coax";
 #load "../../../apps/shared/app/login/card.coax";   // the one login card (lf_card), shown with example state
 #load "../nav.coax";
 #load "../ioshost-sidebar.coax";
@@ -304,6 +305,11 @@ ag_sidebar :: (s: [] AppGallery, f: [] UiFrame, x: f32, top: f32, w: f32) -> f32
   return y + AG_SIDEBAR_H + a.gap - top;
 }
 
+ag_identity :: (f:[]UiFrame,x:f32,top:f32,w:f32)->f32 {
+ y:=top;y+=ag_section(f,"g.identity",x,y,w,"Account identity");
+ y+=app_identity(f,x,y,w,AppIdentity.{pubkey="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",managed=true},AppIdentityActions.{back=AG_BUTTON,back_icon=ICON_BACK,copy=AG_BUTTON,backup=AG_BUTTON,rotate=AG_BUTTON,restore=AG_BUTTON,confirm=AG_BUTTON,cancel=AG_BUTTON,secret=AG_FIELD,retry=AG_BUTTON,discard=AG_BUTTON});
+ return y-top;
+}
 ag_layout :: (s: [] AppGallery, f: [] UiFrame, w: f32, h: f32) {
   k := f[0].skin;
   x: f32 = AG_PAD; cw := w - 2 * AG_PAD;
@@ -315,6 +321,7 @@ ag_layout :: (s: [] AppGallery, f: [] UiFrame, w: f32, h: f32) {
   y += ag_chat(s, f, x, y, cw);
   y += ag_task(s, f, x, y, cw);
   y += ag_account(s, f, x, y, cw);
+  y += ag_identity(f,x,y,cw);
   y += ag_navigation(s, f, x, y, cw);
   uiframe_unclip(f);
   y += 24 + s[0].safe_bottom / ARCADE_PHONE_SCALE;

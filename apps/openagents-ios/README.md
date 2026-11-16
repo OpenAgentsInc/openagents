@@ -63,3 +63,18 @@ python3 apps/openagents-ios/tools/app_store.py status --build BUILD
 The version and build number are `MARKETING_VERSION` and
 `CURRENT_PROJECT_VERSION` in `project.yml`. The script reads App Store
 Connect credentials from `~/work/.secrets/appstoreconnect.env`.
+
+## Nostr identity
+
+Email login ensures an account-managed encrypted Nostr key. Sidebar →
+Settings shows its public key, Copy, Backup, Rotate and Restore. Private
+operations request system passkey verification; Backup also requests local
+device authentication. Restore accepts nsec or hex through the shared Coax
+codec. Wallet and independent login keys stay separate.
+
+`apps/shared/app/settings/` holds public state, the private SDK codec and
+native screen checks. `apps/shared/native/AppIdentity.swift` holds only
+platform effects and protected pending-operation storage. Unknown changes
+must be retried exactly or explicitly discarded; a finished change stays.
+Run SDK checks with the `OpenAgentsIdentity` Xcode scheme on an isolated
+simulator. Never put real private keys in a drive case or screenshot.

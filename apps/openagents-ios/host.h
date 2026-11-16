@@ -93,7 +93,6 @@ int oc_private_mode(void *chat);
 void oc_scroll_to(void *chat,float points);
 int oc_scroll_info(void *chat,float out[3]);
 void oc_native_scroll(void *chat,int on);
-void oc_type_scale(void *chat,float factor);
 int oc_row_visible(void *chat,int row);
 #endif
 

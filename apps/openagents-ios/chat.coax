@@ -48,7 +48,7 @@ CH_MOVE :: 8.0;     // layout units a touch travels before it scrolls instead of
 CH_ACT_NONE :: 0; CH_ACT_FOCUS :: 1;
 // The page's own actions start at 100: the login card's rows carry the flow's LF_ACT_ values (1 to 7).
 CH_HIT_TEXT :: 101; CH_HIT_SEND :: 102; CH_HIT_MENU :: 103; CH_HIT_SCRIM :: 104; CH_HIT_LOGIN :: 105; CH_HIT_LOGOUT :: 106; CH_HIT_NEW :: 107; CH_HIT_ENV :: 109; CH_HIT_REPO :: 110; CH_HIT_BACK :: 111;
-CH_ZOOM_MAX :: 1.6;  // the largest text size the page draws, against the default (the host's Dynamic Type)
+CH_ZOOM_MAX :: 2.5;  // the largest text size the page draws, against the default (the host's Dynamic Type)
 CH_SWIPE :: 30.0;   // layout units a swipe travels to close or open the drawer
 CH_EDGE :: 18.0;    // the left edge a swipe that opens the drawer starts in
 
@@ -177,9 +177,10 @@ ch_layout :: (s: [] ChatPage, f: [] UiFrame, w: f32, h: f32) {
     if s[0].core.count>0 && s[0].core[0].auth==AUTH_IN {
       v:=s[0].identity[..];
       s[0].settings_content=app_identity(f,16/u,nav_y-offset,w-32/u,AppIdentity.{pubkey=iks_pubkey(v),managed=v[0].source==2,busy=v[0].op!=0,confirm=ifx v[0].confirm>0 then v[0].confirm+300 else 0,secret_ready=v[0].secret_ready,backup=v[0].backup,unknown=v[0].unknown,note=iks_words(v)},
-        AppIdentityActions.{back=IKS_BACK,copy=IKS_COPY,backup=302,rotate=303,restore=304,confirm=IKS_CONFIRM,cancel=IKS_CANCEL,secret=IKS_SECRET,retry=305,discard=306});
+        AppIdentityActions.{back=IKS_BACK,back_icon=ICON_BACK,copy=IKS_COPY,backup=302,rotate=303,restore=304,confirm=IKS_CONFIRM,cancel=IKS_CANCEL,secret=IKS_SECRET,retry=305,discard=306});
     } else {
-      yy:=nav_y+app_button(f,"settings.back",16/u,nav_y,w-32/u,-1,"Back",APP_BUTTON_QUIET,0,IKS_BACK)+k.app.gap;
+      _:=app_icon_button(f,"settings.back",16/u,nav_y,ICON_BACK,"Back",APP_BUTTON_DEFAULT,0,IKS_BACK);
+      yy:=nav_y+k.app.icon_button+k.app.gap;
       yy+=app_text(f,"settings.title",16/u,yy,w-32/u,APP_TEXT_TITLE,"Settings")+k.app.gap;
       _:=app_button(f,"settings.login",16/u,yy,w-32/u,-1,"Log in",APP_BUTTON_PRIMARY,0,CH_HIT_LOGIN);
       s[0].settings_content=yy-nav_y+k.control_h;

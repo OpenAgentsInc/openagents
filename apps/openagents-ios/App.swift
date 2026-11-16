@@ -398,4 +398,3 @@ private final class GPUScrollDriver:UIScrollView {
         return super.gestureRecognizerShouldBegin(gestureRecognizer)
     }
 }
->>>>>>> 85c2e87256 (Restore managed Nostr identity settings on the compiled GPU app (#13645))

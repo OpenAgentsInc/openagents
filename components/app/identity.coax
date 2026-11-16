@@ -2,11 +2,12 @@
 #load "base.coax";
 AppIdentity :: struct { pubkey:string; busy:bool; managed:bool; confirm:int; secret_ready:bool; backup:bool; unknown:bool; note:string; }
 // Action numbers are supplied by the screen; the kit has no account or protocol dependency.
-AppIdentityActions :: struct { back:int; copy:int; backup:int; rotate:int; restore:int; confirm:int; cancel:int; secret:int; retry:int; discard:int; }
+AppIdentityActions :: struct { back:int; back_icon:int; copy:int; backup:int; rotate:int; restore:int; confirm:int; cancel:int; secret:int; retry:int; discard:int; }
 app_identity :: (f:[]UiFrame,x:f32,top:f32,w:f32,v:AppIdentity,a:AppIdentityActions)->f32 {
  k:=f[0].skin;gap:=k.app.gap;y:=top;start:=y;
- y+=app_button(f,"settings.back",x,y,w,-1,"Back",APP_BUTTON_QUIET,0,a.back)+gap;
- y+=app_text(f,"settings.title",x,y,w,APP_TEXT_TITLE,"Nostr keys")+gap;
+ _:=app_icon_button(f,"settings.back",x,y,a.back_icon,"Back",APP_BUTTON_DEFAULT,0,a.back);
+ title:=app_text(f,"settings.title",x+k.app.icon_button+gap,y,w-k.app.icon_button-gap,APP_TEXT_TITLE,"Nostr keys");
+ y+=(ifx title>k.app.icon_button then title else k.app.icon_button)+gap;
  off:=ifx v.busy then EL_S_DISABLED else 0;
  if v.pubkey.count==0 {
   if v.note.count>0 {y+=app_notice(f,"identity.note",x,y,w,v.note,APP_NOTICE_ERROR)+gap;y+=app_button(f,"identity.retry",x,y,w,-1,"Try again",APP_BUTTON_DEFAULT,off,a.retry);}

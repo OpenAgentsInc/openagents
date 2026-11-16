@@ -1700,3 +1700,14 @@ not a pending request for a key.
       Metal, browser cross-host numerical replay and cache tests pass; these
       phone ceremonies and accessibility checks remain unclaimed. See
       [the delivery and evidence](docs/verification/microduck-replay-13641/README.md).
+
+## GPU identity settings on iPhone (#13645, 2026-11-16)
+
+After the next TestFlight build: log in by email, open sidebar → Settings,
+copy the public key, and verify system passkey registration/step-up and
+local device authentication when showing Backup. Test Rotate, then Restore
+with a disposable identity only if you intend to replace the current key.
+Never send the private key in chat or a screenshot. Check VoiceOver, largest
+text and native momentum scrolling on the phone. Simulator/native checks
+cover the state/crypto/transport paths; these system ceremonies and physical
+appearance cannot be certified by those checks.

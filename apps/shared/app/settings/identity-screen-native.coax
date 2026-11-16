@@ -26,7 +26,7 @@ iks_screen_keys :: () {
 }
 iks_screen_large :: () {
  s:[1]ChatPage;c:[1]AppCore;o:[1]ChOut;iks_screen_setup(s[..],c[..],o[..]);
- chat_type_scale(s[..],2);_:=ch_test_frame(s[..],o[..]);_:=ch_test_frame(s[..],o[..]);
+ _:=chat_text_zoom(s[..],CH_ZOOM_MAX);chat_env(s[..],59,34,336,false,0,true);_:=ch_test_frame(s[..],o[..]);_:=ch_test_frame(s[..],o[..]);
  #assert ch_scroll_max(s[..])>0 && chat_refused(s[..])==0;
  chat_scroll_to(s[..],ch_scroll_max(s[..]));_:=ch_test_frame(s[..],o[..]);
  #assert !chat_activate(s[..],"settings.back"); // a clipped row is never an active invisible target

@@ -456,7 +456,7 @@ does not start the next one's removals.
 | --- | --- | --- |
 | G0 (built 2026-11-15) | The frame context (`kit/frame.coax`), keyed state store (`core/keyed.coax`), semantic table (`core/elements.coax`) and surface commit (`paint/surface.coax`), with adapters for existing callers | Existing gallery and chat pictures unchanged; checks for identity, retirement and refusal |
 | G1 (in progress; composer 2026-11-15; VoiceOver bridge, large text and one editing authority 2026-11-16) | The iOS app as one compiled page: the chat page (composer first, then chat logic, transcript and the login card) on the kit, with the text-editor overlay and the VoiceOver bridge. No JavaScript, no Updates, no UIKit control projection (see [The iOS app](#the-ios-app-grown-screen-by-screen)) | The app links no JavaScriptCore or WebKit and holds no `.js`, `.wasm` or `.html`; typing, sending, stopping, scrolling and login work against the account fixture; a still page presents no frames |
-| G2 | The next screens of the iOS app, one at a time, each on the kit: the sidebar with chat history, then Settings, with the scroll driver | Each screen has no UIKit controls; large text lays out; scrolling feels native on a physical phone |
+| G2 (Settings and platform scroll driver built 2026-11-16; history and physical scroll qualification pending) | The next screens of the iOS app, one at a time, each on the kit: the sidebar with chat history, then Settings, with the scroll driver | Each screen has no UIKit controls; large text lays out; scrolling feels native on a physical phone |
 | G3 (nested clips and group opacity done; images, transforms and blur not started) | Backend gaps the chat needs: images, nested clips, transforms, group opacity, blur | Each has a gallery specimen and a generated-shader check on Metal and WebGPU |
 | G4 | The rest of iOS, screen by screen: Projects, Usage, environment and repository choice, the world library | Each screen passes its acceptance case on a physical phone, and the transcript workloads under [Measurements](#measurements) are recorded |
 | G6 | Desktop on Mac and Linux: move the native environment client's screens from AppKit and GTK controls onto the kit, on the shared AppKit/Metal and Wayland/Vulkan hosts the recovery shell already uses; then delete those projections | Login, history and chat run on both desktops through the kit, with real text entry, keyboard focus and a screen reader |
@@ -586,8 +586,10 @@ supported phone and 120 Hz where the device offers it, as in
   gains a `ctx_*` form that takes the context, and `uiframe_over` makes a
   context for callers that hold only a sheet, a measure and a skin. See
   [Frame context](#frame-context).
-- Whether the iOS scroll driver is an invisible platform scroll view or
-  Coax physics tuned to match (G2; default: the platform's).
+- Decided in G2: an invisible `UIScrollView` drives native pan and
+  deceleration. Coax retains the keyed/list offset, draws all pixels and
+  clips paint, presses and accessibility together. Desktop still delivers
+  wheel/trackpad deltas.
 - How a migrated screen and a not-yet-migrated screen share app state
   beyond the session. G1 shares only the session, through `AppAuth` (see
   [Sharing the session](#sharing-the-session-with-the-javascript-runtime)).
@@ -609,3 +611,37 @@ supported phone and 120 Hz where the device offers it, as in
   [frame context](kit/frame.coax),
   [tree](core/tree.coax), [controls](kit/controls.coax),
   [frames](kit/frames.coax), [native scene](native/scene.coax).
+
+## Account identity on the compiled page (2026-11-16)
+
+Settings is a regular GPU page reached from the sidebar. Its reusable
+`components/app/identity.coax` draws the public key and confirmation states.
+`apps/shared/app/settings/identity.coax` owns public app state and requests a
+closed native custody effect. Every signed-in account reads identity-v1,
+which provisions older keyless accounts through the existing encrypted
+identity service. Existing linked identities retain their authentication
+meaning; a managed identity does not upgrade email login to L2.
+
+The active secure platform editor alone holds restore/backup text. No
+private text enters the component state, effect outbox, semantic rows or
+drive output. Fresh system passkey proof gates backup, rotation and restore;
+backup also requests local device authentication. Pending writes stay in
+device-only protected storage until exact replay or terminal discard settles
+them. The versioned change/state/cancel contracts are in
+[account-identity-change-v1](../docs/protocol/account-identity-change-v1.md).
+
+Settings and the full-page login use keyed scroll offsets and nested clips.
+The native scroll view supplies momentum; keyboard changes reveal the focused
+field. Large text uses the existing `chat_text_zoom` and shared editor
+restyling, bounded at 2.5 times the default. The public identity specimen is
+also in the app component gallery; it contains no connected service or secret.
+The platform does not project labels or buttons into UIKit.
+
+Qualification: the real compiled screen checks cover confirmation, empty
+private semantic values, large text, clipped targets, keyboard reveal and
+settled motion. Native SDK XCTest checks real compiled crypto with a
+controlled HTTP transport, protected-store refusal, account fencing, exact
+retry and secret-free discard. The real PostgreSQL API suite exercises key
+rotation/restoration, revision ABA refusal and cancellation of delayed
+commands. Physical passkey, VoiceOver and scrolling acceptance remains an
+owner check. This work does not claim that G3, G4, G6 or G7 is complete.

@@ -36,7 +36,6 @@ int oc_private_mode(void *chat) {Chat *c=chat;return c ? (int)chat_private_mode(
 void oc_scroll_to(void *chat,float points) {Chat *c=chat;if(c) {chat_scroll_to(oc_state(c),points/chat_ui_scale(oc_state(c)));oc_woke(c);}}
 int oc_scroll_info(void *chat,float out[3]) {Chat *c=chat;return c && chat_scroll_info(oc_state(c),(coax_v_f32){out,3});}
 void oc_native_scroll(void *chat,int on) {Chat *c=chat;if(c) chat_native_scroll(oc_state(c),on!=0);}
-void oc_type_scale(void *chat,float factor) {Chat *c=chat;if(c) chat_type_scale(oc_state(c),factor);}
 int oc_row_visible(void *chat,int row) {Chat *c=chat;return c && chat_row_visible(oc_state(c),row);}
 static void oc_changed(Chat *c) { c->settle = 3; }
 static void oc_woke(Chat *c) { oc_changed(c); if (c->changed) c->changed(c->context); }
