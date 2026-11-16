@@ -13,6 +13,9 @@
 #define CT_WIDTH 8192
 #define CT_FONTS 16
 #define CT_ICONS 64
+// Slots from here on are display faces (components/layout/font.coax GP_BODY_FONTS): ASCII at one
+// weight and one subpixel offset, and they do not size the glyph cache.
+#define CT_BODY_FONTS 12
 
 typedef struct { CTFontRef font; int cell, pen_x, pen_y, y0, cols, mono; CGFloat size; float header[7]; float *advance, *kern; } CtSlot;
 struct CtAtlas {
@@ -62,10 +65,12 @@ CtAtlas *ct_atlas_new(const CtApi *api, const char *resources, float dpr) {
     if (!cg) { ct_atlas_free(t); return NULL; }
     s->font = CTFontCreateWithGraphicsFont(cg, s->size, NULL, NULL);
     CGFontRelease(cg);
-    s->cell = (int)ceil(s->size * dpr * 2.4); s->cols = CT_WIDTH / s->cell;
-    s->pen_x = (int)round((double)s->cell * 0.2); s->pen_y = (int)round((double)s->cell * 0.7);
+    // a display face: one ASCII glyph at one offset in a tight cell (components/raster/atlas.coax RA_DISPLAY_EM)
+    int display = f >= CT_BODY_FONTS;
+    s->cell = (int)ceil(s->size * dpr * (display ? 1.1 : 2.4)); s->cols = CT_WIDTH / s->cell;
+    s->pen_x = (int)round((double)s->cell * (display ? 0.05 : 0.2)); s->pen_y = (int)round((double)s->cell * (display ? 0.8 : 0.7));
     s->y0 = y0; s->mono = weight == 3;
-    int cells = t->glyphs * 4 * 5;
+    int cells = f >= CT_BODY_FONTS ? t->glyphs : t->glyphs * 4 * 5;
     y0 += ((cells + s->cols - 1) / s->cols) * s->cell;
   }
   int icon_y = y0, icon_x = 0, row = 0;
@@ -77,7 +82,7 @@ CtAtlas *ct_atlas_new(const CtApi *api, const char *resources, float dpr) {
   }
   // the glyph cache's mono cells, sized for the largest font
   t->dyn_cell = 64;
-  for (int f = 0; f < t->nfonts; f++) if (f == 0 || t->slots[f].cell > t->dyn_cell) t->dyn_cell = t->slots[f].cell;
+  for (int f = 0; f < t->nfonts && f < CT_BODY_FONTS; f++) if (f == 0 || t->slots[f].cell > t->dyn_cell) t->dyn_cell = t->slots[f].cell;
   t->dyn_y0 = icon_y + row + 1; t->dyn_cols = CT_WIDTH / t->dyn_cell;
   t->height = t->dyn_y0 + ((2048 + t->dyn_cols - 1) / t->dyn_cols) * t->dyn_cell;
   t->color_cols = CT_WIDTH / t->dyn_cell;
@@ -119,9 +124,10 @@ CtAtlas *ct_atlas_new(const CtApi *api, const char *resources, float dpr) {
     }
     ct_quality(g);
     CTFontRef font = CTFontCreateCopyWithAttributes(s->font, s->size, NULL, NULL);
-    for (int level = 0; level < 5; level++) {
+    int levels = f >= CT_BODY_FONTS ? 1 : 5, variants = f >= CT_BODY_FONTS ? 1 : 4;
+    for (int level = 0; level < levels; level++) {
       ct_level(g, level);
-      for (int variant = 0; variant < 4; variant++)
+      for (int variant = 0; variant < variants; variant++)
         for (int i = 0; i < glyphs; i++) {
           int cell = (level * 4 + variant) * glyphs + i;
           int cx = (cell % s->cols) * s->cell, cy = s->y0 + (cell / s->cols) * s->cell;

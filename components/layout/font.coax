@@ -25,7 +25,12 @@
 GP_SUBPIXEL :: 4;           // gpui text_system.rs SUBPIXEL_VARIANTS_X
 GP_DILATIONS :: 5;          // gpui_macos glyph_dilation_for_color: levels 0..4
 GP_SVG_SCALE :: 2.0;        // gpui svg_renderer.rs SMOOTH_SVG_SCALE_FACTOR
-GP_FONTS :: 12;
+GP_FONTS :: 13;
+// The fonts before GP_BODY_FONTS are body faces; the ones from it on are display faces (a large
+// title). A display face's own area holds its ASCII glyphs at one subpixel offset and one weight,
+// and the glyph cache is sized from the body faces, so a large face costs the atlas little. A glyph
+// a display face does not hold draws from the cache in the largest body face, so text never breaks.
+GP_BODY_FONTS :: 12;
 GP_ICONS :: 40;
 
 // The glyphs the atlas holds, in order: ASCII 32..126, then these.
@@ -269,6 +274,14 @@ gp_chip_width :: (a: [] Atlas, font: int, k: int) -> f32 {
   return cast(f32) (GP_CHIP_LEAD + GP_CHIP_TRAIL) * a[0].fonts[font].advance[GP_NBSP] + text_width(a, font, gp_chip_label(a, k));
 }
 
+// Whether a font slot is a display face (GP_BODY_FONTS).
+gp_display :: (font: int) -> bool { return font >= GP_BODY_FONTS; }
+// The largest body face: what a display face's missing glyphs draw in.
+gp_body_largest :: (a: [] Atlas) -> int {
+  best := 0;
+  for k: 1..<GP_BODY_FONTS { if a[0].fonts[k].size > a[0].fonts[best].size { best = k; } }
+  return best;
+}
 gp_step :: (a: [] Atlas, font: int, text: string, i: int, prev: int) -> GpStep {
   n := cluster_len(text, i);
   r := rune_at(text, i);
@@ -280,7 +293,7 @@ gp_step :: (a: [] Atlas, font: int, text: string, i: int, prev: int) -> GpStep {
     return GpStep.{len = n, glyph = g, slot = -1, advance = k + a[0].fonts[font].advance[g]};
   }
   if r.code < 32 { return GpStep.{len = n, glyph = -1, slot = -1, advance = 0}; }   // controls draw nothing
-  s := dyn_slot(a, font, text, i, n);
+  s := dyn_slot(a, ifx gp_display(font) then gp_body_largest(a) else font, text, i, n);
   if s < 0 {
     q := glyph_of('?');
     return GpStep.{len = n, glyph = q, slot = -1, advance = a[0].fonts[font].advance[q]};

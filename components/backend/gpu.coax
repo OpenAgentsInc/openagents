@@ -351,6 +351,9 @@ paint_chip :: (out: [] f32, at: int, a: [] Atlas, d: f32, font: int, k: int, x: 
 paint_text :: (out: [] f32, at: int, a: [] Atlas, d: f32, font: int, text: string, x: f32, top: f32, line_height: f32, color: Rgba) -> int {
   if font < 0 || font >= GP_FONTS || !a[0].ready { return at; }
   baseline := top + (line_height - a[0].fonts[font].ascent - a[0].fonts[font].descent) / 2 + a[0].fonts[font].ascent;
+  // a display face holds its own glyphs at one weight and one subpixel offset (GP_BODY_FONTS); the
+  // cache's glyphs keep the dilation
+  display := gp_display(font);
   level := gp_level(a, color);
   v := at; pen := x; prev := -1; i := 0;
   sub := cast(f32) GP_SUBPIXEL;
@@ -366,7 +369,7 @@ paint_text :: (out: [] f32, at: int, a: [] Atlas, d: f32, font: int, text: strin
     if st.chip > 0 {
       v = paint_chip(out, v, a, d, font, st.chip - 1, pen, top, line_height, color);
     } else if st.glyph >= 0 && r.code != ' ' && r.code != 0xA0 {
-      cell := (level * GP_SUBPIXEL + variant) * GP_GLYPHS + st.glyph;
+      cell := ifx display then st.glyph else (level * GP_SUBPIXEL + variant) * GP_GLYPHS + st.glyph;
       tx := cast(f32) (cell % cols) * size;
       ty := a[0].fonts[font].y0 + cast(f32) (cell / cols) * size;
       v = paint_sprite(out, v, a, ox - a[0].fonts[font].pen_x, oy - a[0].fonts[font].pen_y, ox - a[0].fonts[font].pen_x + size, oy - a[0].fonts[font].pen_y + size, tx, ty, size, size, color);
@@ -551,6 +554,33 @@ gpu_draw :: (out: [] f32, at: int, a: [] Atlas, d: f32, list: [] Prim, ox: f32, 
   a[0].clusters[s].used = 0; a[0].frame = 2;
   t := dyn_slot(a[..], 0, "本", 0, 3);
   #assert t == s && dyn_find(a[..], 0, "日", 0, 3) == -1 && dyn_find(a[..], 0, "本", 0, 3) == t;
+}
+#test "a display face draws its ASCII from its own one-offset area; a non-ASCII title draws from the largest body face's cache" {
+  a: [1] Atlas;
+  a[0].ready = true; a[0].width = 1024; a[0].height = 1024; a[0].frame = 1;
+  a[0].dyn_size = 48; a[0].dyn_pen_x = 10; a[0].dyn_pen_y = 34; a[0].dyn_y0 = 512; a[0].dyn_cols = 20;
+  a[0].color_cols = 20; a[0].color_width = 1024; a[0].color_height = 256;
+  for k: 0..<GP_FONTS {
+    a[0].fonts[k].size = ifx k == 3 then 16.0f32 else ifx gp_display(k) then 24.0f32 else 12.0f32;
+    a[0].fonts[k].ascent = 13; a[0].fonts[k].descent = 3; a[0].fonts[k].cell = 48; a[0].fonts[k].cols = 20;
+    for g: 0..<GP_GLYPHS { a[0].fonts[k].advance[g] = 7; }
+  }
+  big := GP_FONTS - 1;
+  #assert gp_display(big) && !gp_display(GP_BODY_FONTS - 1) && gp_body_largest(a[..]) == 3;
+  out: [560] f32;
+  // ASCII: the glyph's own cell, at any subpixel offset and dilation
+  #assert paint_text(out[..], 0, a[..], 2, big, "O", 0.3, 0, 30, hex(0xffffff, 1)) == 6 && out[2] == GP_SPRITE;
+  // non-ASCII: measured and cached in the largest body face, never clipped or replaced
+  #assert text_width(a[..], big, "Café") == 21;            // é not measured yet
+  s := dyn_find(a[..], 3, "é", 0, 2);
+  #assert s >= 0 && dyn_find(a[..], big, "é", 0, 2) == -1;
+  a[0].clusters[s].advance = 8; a[0].clusters[s].state = 2;
+  #assert text_width(a[..], big, "Café") == 29;
+  _ := paint_text(out[..], 0, a[..], 2, big, "é", 0, 0, 30, hex(0xffffff, 1));
+  c := a[0].clusters[s].cell[gp_level(a[..], hex(0xffffff, 1)) * GP_SUBPIXEL] - 1;
+  #assert c >= 0 && a[0].cells[c].state == 1;
+  a[0].cells[c].state = 2;
+  #assert paint_text(out[..], 0, a[..], 2, big, "é", 0, 0, 30, hex(0xffffff, 1)) == 6 && out[2] == GP_SPRITE;
 }
 #test "a content mask narrows the vertices it covers" {
   out: [336] f32;

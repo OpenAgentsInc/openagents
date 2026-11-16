@@ -25,8 +25,10 @@ FONT_SMALL :: 8;            // Geist 11: a code block's language
 FONT_MENU :: 9;             // Geist Medium 13: menu rows
 FONT_MENU_SMALL :: 10;      // Geist Medium 11: a menu row's description
 FONT_SEARCH :: 11;          // Geist Medium 14: the model search (a ComposerInput)
-FONT_SIZES :: [12] f32.[14, 12, 12, 14, 14, 12.5, 12, 11, 11, 13, 11, 14];
-FONT_WEIGHTS :: [12] int.[0, 1, 0, 2, 3, 3, 3, 3, 0, 1, 1, 1];
+// The display faces (layout/font.coax GP_BODY_FONTS): ASCII only, the rest from the largest body face.
+FONT_DISPLAY :: 12;         // Geist SemiBold 24: a large title (the phone sidebar's)
+FONT_SIZES :: [13] f32.[14, 12, 12, 14, 14, 12.5, 12, 11, 11, 13, 11, 14, 24];
+FONT_WEIGHTS :: [13] int.[0, 1, 0, 2, 3, 3, 3, 3, 0, 1, 1, 1, 2];
 
 ICON_PAPERCLIP :: 0; ICON_ARROW_UP :: 1; ICON_CLAUDE :: 2;
 ICON_CHEVRON :: 3; ICON_TERMINAL :: 4; ICON_DOCUMENT :: 5; ICON_PEN :: 6; ICON_MAGNIFER :: 7;
@@ -345,6 +347,7 @@ zeron_skin :: () -> UiSkin {
     small = UiType.{face = FONT_SMALL, size = 11, line = 11 * PHI},
     label = UiType.{face = FONT_CHIP, size = 12, line = 12 * PHI},
     title = UiType.{face = FONT_BOLD, size = 14, line = MD_LINE_HEIGHT},
+    display = UiType.{face = FONT_DISPLAY, size = 24, line = 30},
     tool = UiType.{face = FONT_TOOL, size = 12, line = 12 * PHI},
     mono_small = UiType.{face = FONT_MONO_12, size = 12, line = 12 * PHI},
     mono_tiny = UiType.{face = FONT_MONO_11, size = 11, line = 11 * PHI},

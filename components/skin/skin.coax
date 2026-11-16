@@ -291,6 +291,7 @@ UiSkin :: struct {
   small: UiType;            // a caption: a code block's language, a timestamp
   label: UiType;            // a control's label: a button, a tab, a chip
   title: UiType;            // a panel's heading
+  display: UiType;          // a large title, in a display face (size 0: the skin has none; use title)
   tool: UiType;             // a tool row's text, a notice's
   mono_small: UiType;       // tool output, an invocation, a diff's lines
   mono_tiny: UiType;        // a diff's gutters and hunk headers

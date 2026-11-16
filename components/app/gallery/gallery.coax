@@ -279,7 +279,7 @@ ag_sidebar :: (s: [] AppGallery, f: [] UiFrame, x: f32, top: f32, w: f32) -> f32
   y += ag_section(f, "g.sidebar", x, y, w, "Sidebar");
   y += ag_caption(f, "g.c.sidebar", x, y, w, "The phone sidebar pushes the page right; example rows");
   // the page it pushed: a stand-in ground with the page's title
-  sheet_fill(f[0].sheet, x, y, w, AG_SIDEBAR_H, 0, k.canvas);
+  sheet_fill(f[0].sheet, x, y, w, AG_SIDEBAR_H, 0, app_sidebar_ground(k.canvas, 1));
   in := app_sidebar(f, "g.sb", "g.sb.scrim", x, y, w, AG_SIDEBAR_H, a.gap, 1, "Menu", AG_BUTTON);
   if in.w > 0 {
     cy := in.y;

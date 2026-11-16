@@ -270,7 +270,9 @@ chat_frame :: (s: [] ChatPage, out: [] f32, width: f32, height: f32, dpr: f32, d
   if !s[0].reduced { s[0].time += t; }
   a[0].frame += 1;
   k := arcade_phone_skin();
-  v := paint_quad(out, 0, d, 0, 0, w, h, 0, 0, k.canvas, k.canvas);
+  // the page's ground lightens while the sidebar pushes it, so it reads apart from the black panel
+  ground := app_sidebar_ground(k.canvas, s[0].share);
+  v := paint_quad(out, 0, d, 0, 0, w, h, 0, 0, ground, ground);
   if !a[0].ready { return v; }
   live := ch_layer(s);
   s[0].share = app_sidebar_ease(s[0].share, s[0].drawer, t, s[0].reduced);

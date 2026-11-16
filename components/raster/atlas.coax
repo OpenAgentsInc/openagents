@@ -23,6 +23,8 @@
 
 RA_WIDTH :: 4096;          // the atlas's narrowest width; ra_plan doubles it until the height fits
 RA_MAX_SIDE :: 8192;       // the largest texture side every host takes (the iOS simulator's; Vulkan promises 4096, Android GPUs 8192 or more)
+RA_DISPLAY_EM :: 1.1;       // a display face's cell, in its size: one ASCII glyph at one offset (Geist's ASCII ink spans
+                            // -0.01..0.96 em across and -0.17..0.8 em up), with its pen at 0.05 and 0.8 of the cell
 RA_CELL_EM :: 2.0;          // a glyph's cell, in its font's size (the Mac uses 2.4 for five dilations)
 RA_WEIGHTS :: 4;            // Geist, Geist Medium, Geist SemiBold, Geist Mono
 RA_COLOR_CELLS :: 256;      // GP_DYN_CELLS - GP_DYN_MONO
@@ -67,12 +69,14 @@ ra_plan_at :: (p: [] RaPlan, dpr: f32, sizes: [] f32, icon_sizes: [] f32, width:
   y := 0; largest := 1;
   for k: 0..<GP_FONTS {
     size := ifx k < sizes.count then sizes[k] else 14.0f32;
-    cell := ra_ceil(size * dpr * RA_CELL_EM);
+    // a display face holds one subpixel offset in a tight cell, and the glyph cache is sized from the body faces
+    display := gp_display(k);
+    cell := ra_ceil(size * dpr * (ifx display then RA_DISPLAY_EM else RA_CELL_EM));
     cols := width / cell;
-    cells := GP_GLYPHS * GP_SUBPIXEL;
-    p[0].slots[k] = RaSlot.{cell = cell, pen_x = ra_round(cast(f32) cell * 0.25), pen_y = ra_round(cast(f32) cell * 0.7), y0 = y, cols = cols};
+    cells := ifx display then GP_GLYPHS else GP_GLYPHS * GP_SUBPIXEL;
+    p[0].slots[k] = RaSlot.{cell = cell, pen_x = ra_round(cast(f32) cell * (ifx display then 0.05f32 else 0.25f32)), pen_y = ra_round(cast(f32) cell * (ifx display then 0.8f32 else 0.7f32)), y0 = y, cols = cols};
     y += ((cells + cols - 1) / cols) * cell;
-    if cell > largest { largest = cell; }
+    if !gp_display(k) && cell > largest { largest = cell; }
   }
   x := 0; row := 0;
   n := ifx icon_sizes.count < GP_ICONS then icon_sizes.count else GP_ICONS;
@@ -144,7 +148,7 @@ ra_font :: (a: [] Atlas, p: [] RaPlan, slot: int, f: TtfFont, size: f32, px: [] 
   }
   gp_set_font(a, slot, size, header[..], advance[..], kern[..]);
   scale := ra_scale(f, size, p[0].dpr);
-  for variant: 0..<GP_SUBPIXEL {
+  for variant: 0..<(ifx gp_display(slot) then 1 else GP_SUBPIXEL) {
     for g: 0..<GP_GLYPHS {
       cell := variant * GP_GLYPHS + g;
       if !ra_cell_begin(w[0].raster[..], s.cell, s.pen_x, s.pen_y) { return false; }
@@ -260,30 +264,39 @@ coaxial_ra_clean :: (p: [] RaPlan) #export_c #effects(all) { if p.count > 0 { p[
 
 // ---------------------------------------------------------------- checks
 
-#test "the plan stacks the fonts, then the icons, then the glyph cache, none over another" {
+#test "the plan stacks the fonts, then the icons, then the glyph cache, none over another; a display face holds one offset and does not size the cache" {
   p: [1] RaPlan;
-  sizes := [12] f32.[14, 12, 12, 14, 14, 12.5, 12, 11, 11, 13, 11, 14];
+  sizes := [13] f32.[14, 12, 12, 14, 14, 12.5, 12, 11, 11, 13, 11, 14, 24];
   icons := [3] f32.[18, 14, 16];
   #assert ra_plan(p[..], 1, sizes[..], icons[..]);
   #assert p[0].width == 4096 && p[0].slots[0].cell == 28 && p[0].slots[5].cell == 25 && p[0].slots[0].cols == 146;
   #assert p[0].slots[0].pen_x == 7 && p[0].slots[0].pen_y == 20;
   for k: 1..<GP_FONTS {
     prev := p[0].slots[k - 1];
-    rows := (GP_GLYPHS * GP_SUBPIXEL + prev.cols - 1) / prev.cols;
+    rows := ((ifx gp_display(k - 1) then GP_GLYPHS else GP_GLYPHS * GP_SUBPIXEL) + prev.cols - 1) / prev.cols;
     #assert p[0].slots[k].y0 == prev.y0 + rows * prev.cell;
   }
   last := p[0].slots[GP_FONTS - 1];
-  #assert p[0].tiles[0].y >= last.y0 + ((GP_GLYPHS * GP_SUBPIXEL + last.cols - 1) / last.cols) * last.cell;
+  #assert gp_display(GP_FONTS - 1) && last.cell == 27 && last.pen_x == 1 && last.pen_y == 22;
+  #assert p[0].tiles[0].y >= last.y0 + ((GP_GLYPHS + last.cols - 1) / last.cols) * last.cell;
   #assert p[0].tiles[0].size == 36 && p[0].tiles[1].x == 38 && p[0].tiles[1].size == 28 && p[0].tiles[2].x == 68;
   #assert p[0].dyn_cell == 28 && p[0].dyn_y0 > p[0].tiles[0].y + 36 && p[0].height == p[0].dyn_y0 + ((GP_DYN_MONO + 145) / 146) * 28;
   #assert p[0].color_height == ((256 + 145) / 146) * 28;
 }
-#test "a device scale of two doubles every cell and tile" {
+#test "the phone's fonts and icons with the display face fit the simulator's 8,192 at 3.6x (3x times the phone scale)" {
+  p: [1] RaPlan;
+  sizes := [13] f32.[14, 12, 12, 14, 14, 12.5, 12, 11, 11, 13, 11, 14, 24];
+  icons: [37] f32;
+  for i: 0..<icons.count { icons[i] = 20; }
+  #assert ra_plan(p[..], 3.6, sizes[..], icons[..]);
+  #assert p[0].width == 8192 && p[0].height <= RA_MAX_SIDE && p[0].dyn_cell == 101;
+}
+#test "a device scale of two doubles every body cell and tile" {
   p: [1] RaPlan; q: [1] RaPlan;
   sizes := [12] f32.[14, 12, 12, 14, 14, 12.5, 12, 11, 11, 13, 11, 14];
   icons := [2] f32.[18, 13];
   #assert ra_plan(p[..], 1, sizes[..], icons[..]) && ra_plan(q[..], 2, sizes[..], icons[..]);
-  for k: 0..<GP_FONTS { #assert q[0].slots[k].cell == 2 * p[0].slots[k].cell; }
+  for k: 0..<GP_BODY_FONTS { #assert q[0].slots[k].cell == 2 * p[0].slots[k].cell; }
   #assert q[0].tiles[0].size == 72 && q[0].tiles[1].size == 52 && q[0].dyn_cell == 56 && q[0].height > p[0].height;
 }
 #test "joiners and variation selectors take no room" {

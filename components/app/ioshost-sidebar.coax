@@ -22,13 +22,22 @@
 
 APP_SIDEBAR_MOST :: 360.0;     // the panel's widest, in layout units
 APP_SIDEBAR_SHARE :: 0.78;     // the panel's share of a narrow screen
-APP_SIDEBAR_DIM :: 0.5;        // how dark the page under it goes when fully open: half black over it
+APP_SIDEBAR_DIM :: 0.2;        // how much darker the page's content goes when fully open
+APP_SIDEBAR_PAGE :: 0.094;     // the pushed page's ground when fully open, a lighter dark grey (#181818) than the black panel
+APP_SIDEBAR_EDGE :: 0.2;       // the pushed page's left edge, a full-height line the skin's border wide (#333)
 APP_SIDEBAR_RATE :: 16.0;      // how fast the share follows its target, per second
 APP_SIDEBAR_ROW :: 48.0;       // an icon row's height
 APP_SIDEBAR_ICON :: 20.0;      // an icon row's icon
 
 // The panel's width on a screen w wide.
 app_sidebar_width :: (w: f32) -> f32 { d := w * APP_SIDEBAR_SHARE; return ifx d > APP_SIDEBAR_MOST then APP_SIDEBAR_MOST else d; }
+// The pushed page's ground at `share`: the page's canvas, lightening to APP_SIDEBAR_PAGE as the
+// sidebar opens, so the page reads apart from the black panel. The caller paints the page on it.
+app_sidebar_ground :: (canvas: Rgba, share: f32) -> Rgba {
+  t := ifx share < 0 then 0.0f32 else ifx share > 1 then 1.0f32 else share;
+  g: f32 = APP_SIDEBAR_PAGE;
+  return Rgba.{r = canvas.r + (g - canvas.r) * t, g = canvas.g + (g - canvas.g) * t, b = canvas.b + (g - canvas.b) * t, a = 1};
+}
 // How far the page moves right at `share`.
 app_sidebar_shift :: (w: f32, share: f32) -> f32 { return share * app_sidebar_width(w); }
 
@@ -55,8 +64,9 @@ app_sidebar :: (f: [] UiFrame, id: string, scrim_id: string, ox: f32, oy: f32, w
   // the page, pushed right and dimmed
   if rest > 0 {
     sheet_fill(sh, edge, oy, rest, h, 0, opacity(black, APP_SIDEBAR_DIM * share));
-    // the page's square left edge, a hairline, so the black panel and the dark page read apart
-    sheet_rule(sh, edge, oy, s.border, h, s.hairline);
+    // the page's square left edge, a full-height line, so the black panel and the page read apart
+    e := APP_SIDEBAR_EDGE * share;
+    sheet_rule(sh, edge, oy, s.border, h, Rgba.{r = e, g = e, b = e, a = 1});
     scrim := uiframe_semantic(f, scrim_id, EL_BUTTON, "Close menu", edge, oy, rest, h, 0, close);
     sheet_hit(sh, UIFRAME_HIT, scrim, 0, edge, oy, rest, h);
   }
@@ -69,13 +79,14 @@ app_sidebar :: (f: [] UiFrame, id: string, scrim_id: string, ox: f32, oy: f32, w
 }
 app_sidebar_end :: (f: [] UiFrame, inside: PanelInside) { if inside.w > 0 { uiframe_close(f); } }
 
-// The head at (x, y), w wide: the title, large and bold, at the left, and the
+// The head at (x, y), w wide: the title in the skin's display face (large and bold) at the left, and the
 // search button's slot at the right. The button shows only when search works
 // (search_action != 0); its slot is kept either way. Returns its height.
 app_sidebar_head :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, title: string, search_id: string, search_icon: int, search_action: int) -> f32 {
   s := f[0].skin; a := s.app; h := a.icon_button;
   room := w - h - a.gap;
-  _ := sheet_text(f[0].sheet, f[0].m, -1, x, y + (h - s.title.line) / 2, s.title.line, s.title.face, s.ink, app_fit(f, s.title.face, title, room));
+  t := ifx s.display.size > 0 then s.display else s.title;   // the large title, where the skin has one
+  _ := sheet_text(f[0].sheet, f[0].m, -1, x, y + (h - t.line) / 2, t.line, t.face, s.ink, app_fit(f, t.face, title, room));
   _ := uiframe_semantic(f, id, EL_HEADING, title, x, y, room, h, 0, 0);
   if search_action != 0 { _ := app_icon_button(f, search_id, x + w - h, y, search_icon, "Search", APP_BUTTON_DEFAULT, 0, search_action); }
   return h;
