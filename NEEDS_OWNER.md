@@ -1,5 +1,13 @@
 # Owner actions
 
+## Login and world viewer, build 1390 (2026-11-15)
+
+- [ ] Install TestFlight **1390** (verified in **Owner**) and inspect the
+      rounded sign-in and email-code controls, then open and close Microduck.
+      Native login and blocked-GPU tests passed. The simulator's Metal service
+      crashed during review; its controls stayed responsive after the change,
+      but continued rendering on a physical device needs checking.
+
 ## Private Nostr messages, build 1371 (2026-11-15)
 
 - [ ] Install **1371** (verified in TestFlight’s **Owner** group) and open the drawer’s
