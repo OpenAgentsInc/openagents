@@ -62,10 +62,15 @@ SDK assertions do not change that published shape. Normal and sanitizer
 runs pass. The new cursor admission procedure kills all 34 changed mutants.
 
 `coax/native/gpu-editor-check.coax` is an explicit suite root for the component
-checks (87 passing). The compiled-page check runs separately (933 passing). The web suite discoverer does not
+checks (114 passing). Its changed-procedure gate kills 748 of 775 mutants;
+27 surviving mutations have reviewed equivalence proofs beside the source,
+and no unclassified survivor remains. The compiled-page check runs separately
+(945 passing). The web suite discoverer does not
 select files directly under `components/` or the iOS folder; an empty suite
 selection is not evidence that those tests ran. The shared buffer now refuses
-oversized replace/mark operations before changing undo or redo. Coax tests
+oversized replace/mark operations before changing undo or redo. The active
+body reserves enough primitives for every wrapped line, selection, caret and
+clip scope instead of the short chat composer's fixed-height budget. Coax tests
 also cover selection, owner retirement, atomic capacity checks, horizontal
 single-line scrolling and cut only after clipboard acceptance.
 
@@ -73,6 +78,14 @@ An initial combined suite also pulled the app's unchanged authority closure
 into interpreted UI mutation; that run was stopped within ten minutes and
 is not cited as passing. Component checks and app checks now run separately;
 the changed Wayland admission procedure retains its own full mutation gate.
+
+The source was rebased onto the native sidebar hotfix (TestFlight 1400).
+The shared AppKit control check and ten identity/file/resident-carriage SDK
+checks pass on the rebuilt library. Fixed authored geometry fixtures retain
+the original three-skin composer goldens and add scrolling, selection,
+composition underlines, clip edges, blink and pointer bounds. The original
+transcript/menu frame tests remain unchanged; both also fail on unchanged
+main `f89f502554`, independently of this editor extraction.
 
 These controlled observations do not qualify a third-party compositor/IME,
 Orca's active text/selection support, a physical GPU's performance or live

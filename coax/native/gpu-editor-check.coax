@@ -3,4 +3,4 @@
 // so UI-only work does not pull its unchanged authority rules into mutation.
 // coax test coax/native/gpu-editor-check.coax --library
 #load "../../components/zeron/editor.coax";
-#load "../../components/zeron/composer-frames-checks.coax";
+#load "../../components/zeron/composer-frames-checks.coax" #test;

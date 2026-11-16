@@ -459,8 +459,12 @@ composer_body_layout :: (c: [] Composer, a: [] Atlas, x: f32, y: f32, w: f32, h:
   composer_wrap(c, a, ifx c[0].no_wrap then cast(f32)COMPOSER_UNBOUNDED else w); composer_body_scroll(c);
   if c[0].no_wrap {
     cursor:=x_in_row(c,a,0,c[0].ed[0].caret);most:=text_width(a,composer_face(c),typed(c))-w+composer_skin(c).cmp.caret;
-    if c[0].follow {if cursor<c[0].scroll_x {c[0].scroll_x=cursor;}else if cursor+composer_skin(c).cmp.caret>c[0].scroll_x+w {c[0].scroll_x=cursor+composer_skin(c).cmp.caret-w;}}
-    if c[0].scroll_x>most {c[0].scroll_x=most;}if c[0].scroll_x<0 {c[0].scroll_x=0;}
+    if c[0].follow {
+      if cursor<c[0].scroll_x {c[0].scroll_x=cursor;} // mutant: equivalent — at equality the assignment preserves the existing offset
+      else if cursor+composer_skin(c).cmp.caret>c[0].scroll_x+w {c[0].scroll_x=cursor+composer_skin(c).cmp.caret-w;} // mutant: equivalent — at equality the assigned offset equals the existing offset
+    }
+    if c[0].scroll_x>most {c[0].scroll_x=most;} // mutant: equivalent — at equality the clamp assigns the existing offset
+    if c[0].scroll_x<0 {c[0].scroll_x=0;} // mutant: equivalent — at equality the clamp assigns zero to zero
   }else {c[0].scroll_x=0;}
 }
 composer_body_scroll :: (c: [] Composer) {
@@ -468,13 +472,14 @@ composer_body_scroll :: (c: [] Composer) {
   lh := m.line;
   // the scroll keeps the caret's row in view (clamp_scroll)
   most := cast(f32) c[0].lines * lh - view_h;
-  if most < 0 { most = 0; }
+  if most < 0 { most = 0; } // mutant: equivalent — equality assigns zero to zero; omitting the negative clamp is also absorbed by the final scroll>=0 clamp
   if c[0].follow {
     ct := cast(f32) row_of(c, c[0].ed[0].caret, c[0].upstream) * lh;
-    if ct < c[0].scroll { c[0].scroll = ct; } else if ct + lh > c[0].scroll + view_h { c[0].scroll = ct + lh - view_h; }
+    if ct < c[0].scroll { c[0].scroll = ct; } // mutant: equivalent — at equality the assignment preserves the existing offset
+    else if ct + lh > c[0].scroll + view_h { c[0].scroll = ct + lh - view_h; } // mutant: equivalent — at equality the assigned offset equals the existing offset
   }
-  if c[0].scroll > most { c[0].scroll = most; }
-  if c[0].scroll < 0 { c[0].scroll = 0; }
+  if c[0].scroll > most { c[0].scroll = most; } // mutant: equivalent — equality assigns the existing offset
+  if c[0].scroll < 0 { c[0].scroll = 0; } // mutant: equivalent — equality assigns zero to zero
 }
 composer_body_prims :: (list: [] Prim, n: int, c: [] Composer, a: [] Atlas, split: [] int) -> int {
   sk := composer_skin(c); m := sk.cmp; lh := m.line;
@@ -485,7 +490,7 @@ composer_body_prims :: (list: [] Prim, n: int, c: [] Composer, a: [] Atlas, spli
   t := typed(c);
   top := c[0].text_y - c[0].scroll;
   lo := sel_lo(c); hi := sel_hi(c);
-  if c[0].ed[0].n > 0 && hi > lo {
+  if c[0].ed[0].n > 0 && hi > lo { // mutant: equivalent — an empty valid buffer has anchor==caret==0, so >=0 cannot paint a selection
     // selection_quads: the first row from the start to the right edge, whole middle rows, the last row to the end
     rs := row_of(c, lo, false); re := row_of(c, hi, true);
     sx := x_in_row(c, a, rs, lo); ex := x_in_row(c, a, re, hi);
@@ -554,8 +559,8 @@ composer_underline :: (out: [] f32, at: int, c: [] Composer, a: [] Atlas, d: f32
   for k: 0..<c[0].lines {
     ly := top + cast(f32) k * lh;
     if ly + lh < c[0].text_y - m.pad_top || ly > c[0].text_y + c[0].view_h { continue; }
-    ma := ifx c[0].ed[0].marked_at > c[0].line_at[k] then c[0].ed[0].marked_at else c[0].line_at[k];
-    mb := ifx c[0].ed[0].marked_end < c[0].line_end[k] then c[0].ed[0].marked_end else c[0].line_end[k];
+    ma := ifx c[0].ed[0].marked_at > c[0].line_at[k] then c[0].ed[0].marked_at else c[0].line_at[k]; // mutant: equivalent — at equality both max branches return the same byte offset
+    mb := ifx c[0].ed[0].marked_end < c[0].line_end[k] then c[0].ed[0].marked_end else c[0].line_end[k]; // mutant: equivalent — at equality both min branches return the same byte offset
     if mb > ma {
       ux := left + x_in_row(c, a, k, ma); uw := x_in_row(c, a, k, mb) - x_in_row(c, a, k, ma);
       uy := ly + (lh - fi - fd) / 2 + fi + fd * m.underline;

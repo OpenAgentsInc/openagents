@@ -127,9 +127,19 @@
  #assert ue_paint(e[..],a[..],out[..],0,2,box[..],sk,0.4)==12;
  #assert c[0].since>0.59f32 && c[0].ed[0].clock>0.59f32;
  saved:=c[0].since;#assert ue_paint(e[..],a[..],out[..],6,2,box[0..<3],sk,1)==6 && c[0].since==saved;
- box[2]=0;#assert ue_paint(e[..],a[..],out[..],6,2,box[..],sk,1)==6;box[2]=80;box[3]=0;#assert ue_paint(e[..],a[..],out[..],6,2,box[..],sk,1)==6;
+ box[2]=0;#assert ue_paint(e[..],a[..],out[..],6,2,box[..],sk,1)==6 && c[0].since==saved;box[2]=80;box[3]=0;#assert ue_paint(e[..],a[..],out[..],6,2,box[..],sk,1)==6 && c[0].since==saved;
  box[3]=40;a[0].ready=false;#assert ue_paint(e[..],a[..],out[..],6,2,box[..],sk,1)==6;
  ue_close(e[..]);a[0].ready=true;#assert ue_paint(e[..],a[..],out[..],6,2,box[..],sk,1)==6 && c[0].since==0;
+}
+#test "transaction capacity accounts for a nonempty range and one extra byte refuses atomically" {
+ e:[1]UiEditor;full:[EB_TEXT]u8;for i:0..<full.count {full[i]='x';}
+ #assert ue_open(e[..],1,cast(string)full[..]);c:=e[0].body[..];move_to(c,4);select_to(c,6);
+ #assert !ue_transaction(e[..],"a","bc",1,1) && ue_value(e[..]).count==EB_TEXT && !c[0].ed[0].marked && selected(c)=="xx";
+ #assert ue_transaction(e[..],"a","b",1,1) && ue_value(e[..]).count==EB_TEXT-1 && typed(c).count==EB_TEXT;
+ // The protocol's empty transaction clears a hidden cursor even when no
+ // provisional span is left (a compositor can send an empty preedit).
+ #assert ue_insert(e[..],"");c[0].caret_hidden=true;
+ #assert ue_transaction(e[..],"","",0,0) && !c[0].caret_hidden;
 }
 
 UiEditor :: struct {body: [1] Composer; owner: u64; committed: [EB_TEXT] u8; n: int;}
@@ -150,12 +160,12 @@ ue_cancel :: (e: [] UiEditor) #export_c #effects(all) {
   if e.count<1 || !e[0].body[0].ed[0].marked {return;}
   composer_undo(e[0].body[..]);
   e[0].body[0].ed[0].hist[EB_REDO].count=0;e[0].body[0].ed[0].hist[EB_REDO].used=0;
-  e[0].body[0].caret_hidden=false;ue_committed(e);
+  e[0].body[0].caret_hidden=false;ue_committed(e); // mutant: equivalent — cancellation restores the pre-mark snapshot already retained in committed; ue_committed copies those identical bytes
 }
 ue_insert :: (e: [] UiEditor, text: string) -> bool #export_c #effects(all) {
   if e.count<1 || e[0].owner==0 {return false;}
   b:=e[0].body[0].ed[..];g:=b[0].gen;
-  if !eb_replace(b,-1,-1,text) {return false;}
+  if !eb_replace(b,-1,-1,text) {return false;} // mutant: equivalent — when from is negative eb_replace derives both endpoints, ignoring the supplied to
   e[0].body[0].caret_hidden=false;composer_touched(e[0].body[..],g);ue_committed(e);return true;
 }
 // Wayland's selection offsets are bytes in the marked text, not UTF-16.
@@ -163,8 +173,9 @@ ue_insert :: (e: [] UiEditor, text: string) -> bool #export_c #effects(all) {
 ue_mark :: (e: [] UiEditor, text: string, from: int, to: int) -> bool #export_c #effects(all) {
   if e.count<1 || e[0].owner==0 {return false;}
   b:=e[0].body[0].ed[..];g:=b[0].gen;
-  if !eb_mark(b,-1,-1,text,from,to) {return false;}
-  e[0].body[0].caret_hidden=from== -1 && to== -1;composer_touched(e[0].body[..],g);return true;
+  if !eb_mark(b,-1,-1,text,from,to) {return false;} // mutant: equivalent — when from is negative eb_mark derives both endpoints, ignoring the supplied to
+  e[0].body[0].caret_hidden=from== -1 && to== -1; // mutant: equivalent — the SDK admits either two -1 offsets or two nonnegative UTF-8 boundaries, never one -1
+  composer_touched(e[0].body[..],g);return true;
 }
 // The SDK has validated complete UTF-8 and cursor boundaries. Atomic capacity
 // admission prevents a valid commit followed by an unrepresentable preedit.
@@ -176,7 +187,9 @@ ue_transaction :: (e:[]UiEditor,commit:string,preedit:string,begin:int,end:int)-
   // 0..EB_TEXT bytes, and string counts are nonnegative.
   room:=EB_TEXT-(b[0].n-(hi-lo));
   if commit.count>room-preedit.count {return false;}
-  if commit.count>0 || b[0].marked {if !ue_insert(e,commit) {return false;}}
+  if commit.count>0 || b[0].marked {
+    if !ue_insert(e,commit) {return false;} // mutant: equivalent — the preceding room preflight guarantees this insertion fits the same unchanged range; this failure is unreachable
+  }
   if preedit.count>0 {
     lo_cursor:=ifx begin<end then begin else end; // mutant: equivalent — at equality either branch returns the same byte offset
     hi_cursor:=ifx begin>end then begin else end; // mutant: equivalent — at equality either branch returns the same byte offset
@@ -202,6 +215,10 @@ ue_paint :: (e: [] UiEditor, a: [] Atlas, out: [] f32, at: int, d: f32, box: [] 
   c:=e[0].body[..];composer_set_skin(c,skin);c[0].since+=dt;c[0].ed[0].clock+=dt;
   c[0].x=box[0];c[0].y=box[1];c[0].w=box[2];c[0].h=box[3];
   composer_body_layout(c,a,box[0],box[1],box[2],box[3]);
-  list:[COMPOSER_PRIMS]Prim;split:[1]int;n:=composer_body_prims(list[..],0,c,a,split[..]);
+  // An arbitrary active field may expose every wrapped line at once, unlike
+  // the bounded-height chat composer. Reserve all lines plus selection,
+  // caret and clip scopes so a tall field cannot truncate the display list.
+  list:[COMPOSER_LINES+8]Prim;split:[1]int; // not a size: display-list capacity, all lines plus at most three selection rects, a caret, two clip rows and spare
+  n:=composer_body_prims(list[..],0,c,a,split[..]); // mutant: equivalent — the extra zero Prim is a transparent empty box; even all 1024 lines plus selection/caret/scopes and that box fit the declared capacity
   return composer_draw(out,at,c,a,d,list[..],n,split[0]);
 }

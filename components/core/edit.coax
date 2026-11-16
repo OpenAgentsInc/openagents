@@ -315,6 +315,10 @@ eb_splice :: (e: [] EditBuf, from: int, to: int, s: string) -> bool {
  }
  eb_set(e[..],"ab");g:=e[0].gen;#assert eb_mark(e[..],1,2,"",0,0) && eb_text(e[..])=="a" && !e[0].marked && e[0].gen==g+1;
 }
+#test "mark ends a live typing burst before further input" {
+ e:[1]EditBuf;eb_set(e[..],"a");#assert eb_insert(e[..],"b") && e[0].last_kind!=EB_EDIT_NONE;
+ #assert eb_mark(e[..],-1,-1,"x",0,1) && e[0].last_kind==EB_EDIT_NONE;
+}
 eb_replace :: (e: [] EditBuf, from_in: int, to_in: int, s: string) -> bool {
   from := from_in; to := to_in;
   if from < 0 {
@@ -323,7 +327,7 @@ eb_replace :: (e: [] EditBuf, from_in: int, to_in: int, s: string) -> bool {
   if !eb_fits(e, from, to, s) { return false; }
   // an IME commit is the tail of a composition whose snapshot was taken when it began
   if !e[0].marked { eb_record_edit(e, from, to, s); }
-  if !eb_splice(e, from, to, s) { return false; }
+  if !eb_splice(e, from, to, s) { return false; } // mutant: equivalent — eb_fits already admitted this exact range and size; recording history changes neither, so splice cannot fail
   e[0].anchor = from + s.count; e[0].caret = e[0].anchor;
   e[0].marked = false;
   e[0].gen += 1;
@@ -343,9 +347,9 @@ eb_mark :: (e: [] EditBuf, from_in: int, to_in: int, s: string, sel_from: int, s
     e[0].hist[EB_REDO].count = 0; e[0].hist[EB_REDO].used = 0;
     e[0].last_kind = EB_EDIT_NONE;
   }
-  if !eb_splice(e, from, to, s) { return false; }
+  if !eb_splice(e, from, to, s) { return false; } // mutant: equivalent — eb_fits already admitted this exact range and size; history changes neither, so splice cannot fail
   e[0].marked = s.count > 0; e[0].marked_at = from; e[0].marked_end = from + s.count;
-  if sel_from >= 0 && sel_from <= s.count && sel_to >= sel_from && sel_to <= s.count {
+  if sel_from >= 0 && sel_from <= s.count && sel_to >= sel_from && sel_to <= s.count { // mutant: equivalent — at sel_from==s.count the only accepted sel_to is s.count, identical to fallback's end caret
     e[0].anchor = from + sel_from; e[0].caret = from + sel_to;
   } else {
     e[0].anchor = from + s.count; e[0].caret = e[0].anchor;

@@ -4,6 +4,12 @@
 
 FC_PRIMS :: 4096;
 
+#test "frozen frame hash includes a nonzero text offset" {
+ p:[1]Prim;p[0].off=1;
+ // One metadata word 1000004, followed by eighteen zero float words.
+ #assert fc_hash(p[..],1,0)==784846122852;
+}
+
 // A list's prims hashed: every number in 1/65536ths, every text's bytes.
 fc_q :: (h: int, v: f32) -> int { return (h * 1000003 + cast(int) floor(v * 65536 + 0.5)) & 0xFFFFFFFFFF; }
 fc_hash :: (list: [] Prim, n: int, seed: int) -> int {

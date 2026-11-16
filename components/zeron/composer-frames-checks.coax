@@ -16,7 +16,8 @@ fc_composer :: (sk: UiSkin) -> int {
   n := composer_prims(list[..], 0, c[..], a[..], 292, 368, 736, split[..]);
   h := fc_hash(list[..], n, 2);
   composer_select_all(c[..]);
-  c[0].hover = CH_ACCESS; c[0].brand = ICON_OPENAI; c[0].model_label = "gpt-5.5"; c[0].effort_label = "High";
+  c[0].hover = CH_ACCESS; c[0].brand = ICON_OPENAI; c[0].model_label = "gpt-5.5";
+  c[0].effort_label = "High"; // mutant: equivalent — the empty label's fallback EFFORT_LABEL is already High
   n = composer_prims(list[..], 0, c[..], a[..], 292, 368, 736, split[..]);
   h = fc_hash(list[..], n, h);
   n = composer_docked_prims(list[..], 0, c[..], a[..], 292, 860, 736, split[..]);
@@ -32,4 +33,104 @@ fc_composer :: (sk: UiSkin) -> int {
 #test "frames: the composer in three skins" #steps 900000000 {
   want := FC_WANT;
   #assert fc_composer(uiskin(UISKIN_ZERON)) == want[1] && fc_composer(uiskin(UISKIN_EVERGLADE)) == want[4] && fc_composer(uiskin(UISKIN_VERSE)) == want[7];
+}
+
+// Fixed geometry fixtures extend the existing display-list oracle. Glyphs
+// advance exactly eight pixels; the expected lists are authored rectangles,
+// not a second layout, wrapping or text-editing implementation.
+#test "active body horizontal scroll, selection and caret keep the same input geometry" {
+ a:[1]Atlas;test_atlas(a[..]);c:[1]Composer;sk:=zeron_skin();sk.cmp.line=20;sk.cmp.pad_top=4;sk.cmp.caret=2;sk.cmp.caret_blink=0.5;
+ composer_set_skin(c[..],sk);composer_insert(c[..],"abcd");c[0].focused=true;c[0].no_wrap=true;
+ composer_body_layout(c[..],a[..],10,20,20,20);
+ #assert c[0].scroll_x==14 && c[0].scroll==0 && c[0].lines==1 && content_hit(c[..],a[..],10,20).at==2;
+ list:[32]Prim;want:[32]Prim;split:[1]int;n:=composer_body_prims(list[..],0,c[..],a[..],split[..]);
+ k:=prim_clip(want[..],0,10,20,30,40);k=prim_text(want[..],k,-4,20,0,20,sk.body.face,sk.ink,"abcd");
+ k=prim_fill(want[..],k,28,20,2,20,0,sk.accent);k=prim_unclip(want[..],k);
+ #assert n==4 && split[0]==2 && fc_hash(list[..],n,1)==fc_hash(want[..],k,1);
+ c[0].since=1.1;#assert composer_body_prims(list[..],0,c[..],a[..],split[..])==4;
+ c[0].since=0.6;#assert composer_body_prims(list[..],0,c[..],a[..],split[..])==3;
+ c[0].follow=false;c[0].scroll_x=100;composer_body_layout(c[..],a[..],10,20,20,20);#assert c[0].scroll_x==14;
+ c[0].scroll_x= -4;composer_body_layout(c[..],a[..],10,20,20,20);#assert c[0].scroll_x==0;
+ move_to(c[..],0);composer_body_layout(c[..],a[..],10,20,20,20);#assert c[0].scroll_x==0;
+ move_to(c[..],4);composer_body_layout(c[..],a[..],10,20,20,20);#assert c[0].scroll_x==14;
+ c[0].no_wrap=false;composer_body_layout(c[..],a[..],10,20,80,20);#assert c[0].scroll_x==0;
+ c[0].no_wrap=true;composer_insert(c[..],"ef");move_to(c[..],3);c[0].scroll_x=0;
+ composer_body_layout(c[..],a[..],10,20,20,20);#assert c[0].scroll_x==6;
+ move_to(c[..],2);c[0].scroll_x=10;composer_body_layout(c[..],a[..],10,20,20,20);#assert c[0].scroll_x==10;
+}
+#test "active body multiline selection and scroll use fixed authored rectangles" {
+ a:[1]Atlas;test_atlas(a[..]);c:[1]Composer;sk:=zeron_skin();sk.cmp.line=20;sk.cmp.pad_top=4;
+ composer_set_skin(c[..],sk);composer_insert(c[..],"ab\ncd\nef");c[0].focused=true;move_to(c[..],1);select_to(c[..],7);
+ composer_body_layout(c[..],a[..],10,20,40,40);#assert c[0].scroll==20 && c[0].lines==3;
+ #assert content_hit(c[..],a[..],18,20).at==4;
+ list:[32]Prim;want:[32]Prim;split:[1]int;n:=composer_body_prims(list[..],0,c[..],a[..],split[..]);
+ k:=prim_clip(want[..],0,10,16,50,60);
+ k=prim_fill(want[..],k,18,0,32,20,0,sk.selection);k=prim_fill(want[..],k,10,20,40,20,0,sk.selection);k=prim_fill(want[..],k,10,40,8,20,0,sk.selection);
+ k=prim_text(want[..],k,10,0,0,20,sk.body.face,sk.ink,"ab");k=prim_text(want[..],k,10,20,0,20,sk.body.face,sk.ink,"cd");k=prim_text(want[..],k,10,40,0,20,sk.body.face,sk.ink,"ef");k=prim_unclip(want[..],k);
+ #assert n==8 && split[0]==7 && fc_hash(list[..],n,1)==fc_hash(want[..],k,1);
+ move_to(c[..],4);composer_body_layout(c[..],a[..],10,20,40,60);#assert c[0].scroll==0;
+ c[0].follow=false;c[0].scroll=100;composer_body_layout(c[..],a[..],10,20,40,40);#assert c[0].scroll==20;
+ c[0].scroll= -4;composer_body_layout(c[..],a[..],10,20,40,40);#assert c[0].scroll==0;
+ c[0].scroll=20;move_to(c[..],0);composer_body_layout(c[..],a[..],10,20,40,40);#assert c[0].scroll==0;
+ move_to(c[..],8);composer_body_layout(c[..],a[..],10,20,40,20);#assert c[0].scroll==40;
+ n=composer_body_prims(list[..],0,c[..],a[..],split[..]);#assert n==5 && split[0]==3 && list[1].text=="cd" && list[1].y==0 && list[2].text=="ef" && list[2].y==20;
+ c[0].follow=false;c[0].scroll=1;n=composer_body_prims(list[..],0,c[..],a[..],split[..]);#assert list[0].y==20 && list[0].b==40;
+ c[0].scroll=44;_ = composer_body_prims(list[..],0,c[..],a[..],split[..]);#assert list[1].text=="cd";
+ // A selection ending at a hard break is entirely on its preceding row.
+ move_to(c[..],1);select_to(c[..],2);composer_body_layout(c[..],a[..],10,20,40,40);
+ n=composer_body_prims(list[..],0,c[..],a[..],split[..]);#assert list[1].x==18 && list[1].y==20 && list[1].w==8 && list[1].h==20;
+ move_to(c[..],4);select_to(c[..],5);composer_body_layout(c[..],a[..],10,20,40,40);
+ n=composer_body_prims(list[..],0,c[..],a[..],split[..]);#assert list[1].y==40;
+ move_to(c[..],4);select_to(c[..],7);composer_body_layout(c[..],a[..],10,20,40,40);
+ n=composer_body_prims(list[..],0,c[..],a[..],split[..]);#assert list[1].y==20;
+ // A soft wrap has two affinities at one byte; selection includes neither
+ // a spurious zero-width row at its end nor the row before its start.
+ eb_set(c[0].ed[..],"abcdef");move_to(c[..],2);select_to(c[..],4);composer_body_layout(c[..],a[..],10,20,16,60);
+ n=composer_body_prims(list[..],0,c[..],a[..],split[..]);#assert list[1].x==10 && list[1].y==40 && list[1].w==16 && list[1].h==20 && list[2].kind==PRIM_TEXT;
+ eb_set(c[0].ed[..],"a");composer_select_all(c[..]);composer_body_layout(c[..],a[..],10,20,40,40);
+ n=composer_body_prims(list[..],0,c[..],a[..],split[..]);#assert list[1].kind==PRIM_BOX && list[1].w==8;
+ move_to(c[..],1);composer_body_layout(c[..],a[..],10,20,40,40);#assert c[0].scroll==0;
+ // Caret-following on an interior row must not be masked by the final max.
+ eb_set(c[0].ed[..],"ab\ncd\nef");move_to(c[..],4);c[0].scroll=0;composer_body_layout(c[..],a[..],10,20,40,20);#assert c[0].scroll==20;
+ c[0].follow=false;c[0].scroll= -2;composer_body_layout(c[..],a[..],10,20,40,80);#assert c[0].scroll==0;
+ c[0].follow=false;c[0].scroll=1;composer_body_layout(c[..],a[..],10,20,40,19);n=composer_body_prims(list[..],0,c[..],a[..],split[..]);#assert list[2].text=="cd";
+ c[0].follow=false;c[0].scroll=41;composer_body_layout(c[..],a[..],10,20,40,19);n=composer_body_prims(list[..],0,c[..],a[..],split[..]);#assert list[1].text=="cd";
+ eb_set(c[0].ed[..],"ab\ncd\nef\ngh");move_to(c[..],4);select_to(c[..],10);c[0].scroll=0;composer_body_layout(c[..],a[..],10,20,40,80);
+ n=composer_body_prims(list[..],0,c[..],a[..],split[..]);#assert list[2].y==60 && list[2].h==20;
+}
+#test "active input method underlines are snapped and clipped on every visible row" {
+ a:[1]Atlas;test_atlas(a[..]);c:[1]Composer;sk:=zeron_skin();sk.cmp.line=20;sk.cmp.pad_top=4;sk.cmp.underline=0.5;
+ composer_set_skin(c[..],sk);composer_mark(c[..],-1,-1,"a",1,1);
+ composer_body_layout(c[..],a[..],10.25,20.25,40,20);out:[1000]f32;
+ n:=composer_underline(out[..],0,c[..],a[..],2);#assert n==6;
+ // ascent 13, descent 3: baseline = 20.25 + 2 + 13 + 1.5.
+ #assert out[0]==21 && out[1]==74 && out[GP_VERTEX_FLOATS]==37 && out[GP_VERTEX_FLOATS+1]==74;
+ #assert out[GP_VERTEX_FLOATS*2+1]==76 && out[GP_VERTEX_FLOATS*2+7]==2;
+ #assert out[GP_VERTEX_FLOATS*2+20]==20 && out[GP_VERTEX_FLOATS*2+21]==40;
+ composer_unmark(c[..]);#assert composer_underline(out[..],6,c[..],a[..],2)==6;
+ composer_select_all(c[..]);composer_mark(c[..],-1,-1,"ab\ncd\nef",0,0);
+ composer_body_layout(c[..],a[..],10,20,40,20);c[0].follow=false;c[0].scroll=40;
+ n=composer_underline(out[..],0,c[..],a[..],2);#assert n==12 && out[1]==33 && out[GP_VERTEX_FLOATS*6+1]==73;
+ c[0].scroll=1;n=composer_underline(out[..],0,c[..],a[..],2);#assert n==12;
+ c[0].no_wrap=true;composer_select_all(c[..]);composer_mark(c[..],-1,-1,"abcd",4,4);
+ composer_body_layout(c[..],a[..],10,20,20,20);#assert c[0].scroll_x==14;
+ n=composer_underline(out[..],0,c[..],a[..],2);#assert n==6 && out[0]== -8 && out[20]==20;
+ c[0].no_wrap=false;eb_set(c[0].ed[..],"abcd");move_to(c[..],1);select_to(c[..],3);composer_mark(c[..],-1,-1,"X",1,1);
+ composer_body_layout(c[..],a[..],10,20,40,20);n=composer_underline(out[..],0,c[..],a[..],2);#assert n==6 && out[0]==36 && out[GP_VERTEX_FLOATS]==52;
+ // At a row boundary the zero-width span emits no underline.
+ eb_set(c[0].ed[..],"abcd");move_to(c[..],0);composer_mark(c[..],-1,-1,"x\n",2,2);composer_body_layout(c[..],a[..],10,20,40,20);
+ n=composer_underline(out[..],0,c[..],a[..],2);#assert n==6;
+ c[0].follow=false;c[0].scroll=1;composer_body_layout(c[..],a[..],10,20,40,19);n=composer_underline(out[..],0,c[..],a[..],2);#assert out[21]==40;
+ // A partially visible underline retains the expanded top-padding clip.
+ eb_set(c[0].ed[..],"ab\ncd\nef");composer_select_all(c[..]);composer_mark(c[..],-1,-1,"ab\ncd\nef",0,0);
+ c[0].follow=false;c[0].scroll=20;composer_body_layout(c[..],a[..],10,20,40,40);n=composer_underline(out[..],0,c[..],a[..],2);#assert n==18 && out[21]==32 && out[23]==120;
+ composer_body_layout(c[..],a[..],10,20,40,20);c[0].scroll=44;n=composer_underline(out[..],0,c[..],a[..],2);#assert n==12;
+ c[0].scroll=0;n=composer_underline(out[..],0,c[..],a[..],2);#assert n==12;
+}
+#test "expanded legacy composer retains its pointer bounds and default chip on one-byte model labels" {
+ a:[1]Atlas;test_atlas(a[..]);c:[1]Composer;list:[COMPOSER_PRIMS]Prim;split:[1]int;
+ composer_insert(c[..],"one\ntwo");n:=composer_prims(list[..],0,c[..],a[..],10,20,300,split[..]);
+ #assert n>0 && c[0].x==10 && c[0].y==20 && c[0].w==300 && c[0].h>0;
+ c[0].docked=true;c[0].model_label="x";n=composer_prims(list[..],0,c[..],a[..],10,20,300,split[..]);
+ found:=false;effort:=false;for p:list[0..<n] {if p.kind==PRIM_TEXT && p.text=="x" {found=true;}if p.kind==PRIM_TEXT && p.text==EFFORT_LABEL {effort=true;}}#assert found && effort && c[0].chip_w[CH_ACCESS]>0;
 }
