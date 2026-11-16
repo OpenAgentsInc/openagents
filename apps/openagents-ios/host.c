@@ -3,6 +3,7 @@
 // (components/gallery/linux/main.c, COMPONENTS_CHAT), so it shares that file's App, its atlas
 // code and the one generated library. It holds no behaviour.
 #include "host.h"
+#include "core-host.h"
 
 typedef struct {
   App app;
@@ -95,14 +96,23 @@ unsigned long long oc_presented(void *chat) { return chat ? ui_presented(((Chat 
 void oc_close(void *chat) {
   Chat *c = chat;
   if (!c) return;
+  oa_core_on_guest(NULL, NULL);
   gallery_free(&c->app);
   free(c->s); free(c);
 }
 static int oc_bytes(int64_t n, char *out, int cap) { if (cap < 1) return 0; if (n < 0) n = 0; if (n > cap - 1) n = cap - 1; out[n] = 0; return (int)n; }
+static void oc_guest(void *chat, const uint8_t *body, int64_t n) {
+  Chat *c = chat;
+  if (c) { chat_guest(oc_state(c), (coax_string){body ? (const char *)body : "", body ? n : 0}); oc_changed(c); }
+}
 void oc_attach(void *chat, void *core, const char *kept) {
   Chat *c = chat;
-  if (c && core) chat_attach(oc_state(c), (coax_v_t_AppCore){core, 1}, oc_string(kept));
+  if (!c || !core) return;
+  chat_attach(oc_state(c), (coax_v_t_AppCore){core, 1}, oc_string(kept));
+  oa_core_on_guest(oc_guest, c);
 }
+int oc_env_save(void *chat, char *out, int cap) { Chat *c = chat; return c && cap > 0 ? oc_bytes(chat_env_save(oc_state(c), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap) : 0; }
+void oc_env_restore(void *chat, const char *text) { Chat *c = chat; if (c) { chat_env_restore(oc_state(c), oc_string(text)); oc_changed(c); } }
 void oc_step(void *chat) { Chat *c = chat; if (c) { chat_step(oc_state(c)); oc_changed(c); } }
 int oc_draft_rev(void *chat) { Chat *c = chat; return c ? (int)chat_draft_rev(oc_state(c)) : 0; }
 int oc_draft(void *chat, char *out, int cap) { Chat *c = chat; return c && cap > 0 ? oc_bytes(chat_draft(oc_state(c), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap) : 0; }

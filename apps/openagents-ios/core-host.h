@@ -29,5 +29,8 @@ int64_t oa_core_dirty_take(void *core, int64_t mask);
 // The conversation to rejoin at the next launch: its byte count (0 for none).
 int64_t oa_core_keep(void *core, uint8_t *out, int64_t cap);
 // The installed HTTP policy (url-policy.coax up_http): method 1 GET, 2 POST.
+// A dispatch that answers APP_GUEST hands the done event's text to this page hook (the environment
+// picker's reads); with none set, the root lets the guest go.
+void oa_core_on_guest(void (*hook)(void *context, const uint8_t *body, int64_t n), void *context);
 int oa_policy_http(int64_t method, const char *path, int64_t body_bytes);
 #endif

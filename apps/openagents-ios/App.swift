@@ -44,6 +44,7 @@ import UIKit
         if let services {
             services.bridge.changed={ [weak self] in self?.wake() }
             oc_attach(owner,services.core.raw,AppServices.keptDraft)
+            oc_env_restore(owner,AppServices.keptEnvironment)
             // after every call into the core: the login flow follows it, and the page draws what changed
             services.core.after={[weak self] in oc_step(owner);self?.wake()}
             services.launch()
@@ -101,7 +102,11 @@ import UIKit
         }
         display?.isPaused=false
     }
-    @objc private func background() {display?.invalidate();display=nil}
+    @objc private func background() {
+        display?.invalidate();display=nil
+        // the chips' choices, kept for the next launch
+        if let owner {var bytes=[CChar](repeating:0,count:8192);_ = oc_env_save(owner,&bytes,Int32(bytes.count));AppServices.keepEnvironment(String(cString:bytes))}
+    }
     fileprivate func step() {
         guard let owner else {return}
         // editing: a platform editor holds the keyboard over the focused field, and draws its text

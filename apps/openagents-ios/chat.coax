@@ -25,6 +25,8 @@
 #load "../../components/app/ioshost-sidebar.coax";
 #load "../shared/app/login/card.coax";
 #load "../shared/app/login/bridge.coax";
+#load "../shared/app/environment/bridge.coax";
+#load "../shared/app/environment/view.coax";
 #load "../../components/core/edit.coax";
 #load "../../components/skin/arcade.coax";
 #load "../../components/backend/gpu.coax";
@@ -38,7 +40,7 @@ CH_P_UNDER :: 2048; CH_P_OVER :: 8192; CH_P_LINES :: 4096; CH_P_HITS :: 256; CH_
 CH_MOVE :: 8.0;     // layout units a touch travels before it scrolls instead of pressing
 CH_ACT_NONE :: 0; CH_ACT_FOCUS :: 1;
 // The page's own actions start at 100: the login card's rows carry the flow's LF_ACT_ values (1 to 7).
-CH_HIT_TEXT :: 101; CH_HIT_SEND :: 102; CH_HIT_MENU :: 103; CH_HIT_SCRIM :: 104; CH_HIT_LOGIN :: 105; CH_HIT_LOGOUT :: 106; CH_HIT_NEW :: 107; CH_HIT_ACCOUNT :: 108;
+CH_HIT_TEXT :: 101; CH_HIT_SEND :: 102; CH_HIT_MENU :: 103; CH_HIT_SCRIM :: 104; CH_HIT_LOGIN :: 105; CH_HIT_LOGOUT :: 106; CH_HIT_NEW :: 107; CH_HIT_ACCOUNT :: 108; CH_HIT_ENV :: 109; CH_HIT_REPO :: 110;
 CH_SWIPE :: 30.0;   // layout units a swipe travels to close or open the drawer
 CH_EDGE :: 18.0;    // the left edge a swipe that opens the drawer starts in
 
@@ -66,6 +68,8 @@ ChatPage :: struct {
   drawer: bool; share: f32;
   account: bool;   // the account's Log out shows over the avatar
   initials: [4] u8; initials_n: int;
+  // the environment and repository chips over the composer, and their picker (apps/shared/app/environment/)
+  env: [1] EnvSelect; eb: [1] EsBridge; picker: EsPickerSize;
   // the shared app core the host attaches, and the login flow over it
   core: [] AppCore; lb: [1] LoginBridge; lf: [1] LoginFlow;
   action: int;
@@ -84,11 +88,20 @@ ch_init :: (s: [] ChatPage) {
   s[0].keyed[0] = KeyedStore.{rows = s[0].page_keys[..]};
   s[0].keyed[1] = KeyedStore.{rows = s[0].keys[..]};
   lf_begin(s[0].lf[..]);
+  s[0].env[0] = es_new();
 }
 ch_focus :: (s: [] ChatPage) -> string { return cast(string) s[0].focus[0..<s[0].focus_n]; }
 ch_login_field :: (id: string) -> int { return ifx id == "login.email" then LF_FIELD_EMAIL else ifx id == "login.code" then LF_FIELD_CODE else LF_FIELD_NONE; }
 // The flow over the core, after anything that may have moved either.
-ch_step :: (s: [] ChatPage) { if s[0].core.count > 0 { lfc_step(s[0].lb[..], s[0].lf[..], s[0].core); } }
+// The flow and the chips' choice over the core, after anything that may have moved either (never inside a dispatch).
+ch_step :: (s: [] ChatPage) {
+  if s[0].core.count < 1 { return; }
+  lfc_step(s[0].lb[..], s[0].lf[..], s[0].core);
+  es_bridge_sync(s[0].core, s[0].eb[..], s[0].env[..]);
+}
+// The picker is open.
+ch_picking :: (s: [] ChatPage) -> bool { return s[0].env[0].sheet != ES_SHEET_NONE; }
+ch_now :: (s: [] ChatPage) -> int { return ifx s[0].core.count > 0 then s[0].core[0].mono_ms else 0; }
 // The page's focus moved: the flow's field follows it.
 ch_set_focus :: (s: [] ChatPage, id: string) {
   s[0].focus_n = el_copy(s[0].focus[..], id);
@@ -117,13 +130,13 @@ ch_dispatch :: (s: [] ChatPage, what: int, text: string) -> bool {
   return true;
 }
 // The layer that takes presses and is read out: the cover while the drawer or the card shows, else the page.
-ch_layer :: (s: [] ChatPage) -> int { return ifx s[0].share > 0 || s[0].drawer || s[0].lf[0].open then 1 else 0; }
+ch_layer :: (s: [] ChatPage) -> int { return ifx s[0].share > 0 || s[0].drawer || s[0].lf[0].open || ch_picking(s) then 1 else 0; }
 ch_sf :: (s: [] ChatPage, layer: int) -> [] UiSurface { return s[0].surface[layer..<layer + 1]; }
 ch_live :: (s: [] ChatPage) -> [] UiSurface { return ch_sf(s, ch_layer(s)); }
 ch_rows :: (s: [] ChatPage) -> ElTable { return surface_rows(ch_live(s)); }
 
 ch_layout :: (s: [] ChatPage, f: [] UiFrame, w: f32, h: f32) {
-  a := f[0].skin.app;
+  k := f[0].skin; a := k.app;
   u: f32 = ARCADE_PHONE_SCALE;
   top := s[0].safe_top / u;
   // the composer docks over the keyboard (or the safe area); the transcript starts under the navigation button
@@ -132,17 +145,31 @@ ch_layout :: (s: [] ChatPage, f: [] UiFrame, w: f32, h: f32) {
   nav_y := top + 4 / u;
   s[0].again = false;
   if s[0].core.count > 0 {
-    lay := ViewLayout.{x = 0, top = nav_y + a.icon_button + a.gap, w = w, bottom = bottom, chips_h = 0,
+    // the chips show once logged in: logged out a press could only ask for a login, and Log in is hidden for now
+    chips := s[0].core[0].auth == AUTH_IN;
+    lay := ViewLayout.{x = 0, top = nav_y + a.icon_button + a.gap, w = w, bottom = bottom, chips_h = ifx chips then k.cmp.chip_h else 0.0f32,
       editing = s[0].focused && ch_focus(s) == VIEW_COMPOSER_ID, editor_h = s[0].editor_h / u, unit = u};
     out := view_page(f, s[0].view[..], s[0].core, lay);
     s[0].box = out.composer; s[0].again = out.again;
+    if chips {
+      e := es_chips(s[0].env[..]);
+      _ := app_composer_chips(f, "composer.environment", "composer.repo", out.chips_x, out.chips_y, out.chips_w, ICON_GLOBAL, e.environment, ICON_FOLDER, e.repository,
+        0, CH_HIT_ENV, ifx e.repository_on then CH_HIT_REPO else 0);
+    }
   }
   // the navigation button at the top left opens the drawer
   _ := app_nav_button(f, "nav.menu", 12 / u, nav_y, s[0].drawer, 0, CH_HIT_MENU);
 }
-// The cover: the login card over a dimmed page, and the drawer.
+// The cover: the chips' picker or the login card over a dimmed page, and the sidebar.
 ch_layout_cover :: (s: [] ChatPage, f: [] UiFrame, w: f32, h: f32) {
   k := f[0].skin; u: f32 = ARCADE_PHONE_SCALE; top := s[0].safe_top / u;
+  if ch_picking(s) {
+    // a press beside the picker closes it (es_press "env.scrim")
+    sheet_fill(f[0].sheet, 0, 0, w, h, 0, opacity(Rgba.{r = 0, g = 0, b = 0, a = 1}, APP_SIDEBAR_DIM));
+    _ := uiframe_semantic(f, "env.scrim", EL_BUTTON, "Close", 0, 0, w, h, 0, 0);
+    py := top + 56 / u; ph := h - s[0].safe_bottom / u - 12 / u - py;
+    s[0].picker = es_picker(f, s[0].env[..], 12 / u, py, w - 24 / u, ph, ICON_CHECK);
+  }
   l := s[0].lf[..];
   if l[0].open {
     sheet_fill(f[0].sheet, 0, 0, w, h, 0, opacity(Rgba.{r = 0, g = 0, b = 0, a = 1}, APP_SIDEBAR_DIM));
@@ -195,6 +222,12 @@ ch_press :: (s: [] ChatPage, row: int) -> bool {
     if p.kind == VIEW_P_FOCUS { ch_set_focus(s, VIEW_COMPOSER_ID); s[0].action = CH_ACT_FOCUS; return true; }
     if p.kind == VIEW_P_DISPATCH { return ch_dispatch(s, p.what, p.text); }
     return p.kind == VIEW_P_LOCAL;
+  }
+  // the chips and the picker's rows go by their ids (environment/select.coax es_press)
+  id := surface_id(sf, row);
+  if act == CH_HIT_ENV || act == CH_HIT_REPO || (ch_picking(s) && ch_env_row(id)) {
+    if !es_press(s[0].env[..], id, ch_now(s)) { return false; }
+    ch_step(s); return true;
   }
   if act == CH_HIT_MENU { s[0].drawer = !s[0].drawer; return true; }
   if act == CH_HIT_SCRIM { s[0].drawer = false; return true; }
@@ -278,7 +311,7 @@ chat_pointer :: (s: [] ChatPage, x: f32, y: f32, phase: int) -> bool #export_c #
   if phase == 0 {
     s[0].touching = true; s[0].down_x = ux; s[0].swiped = false;
     s[0].down_y = uy; s[0].last_y = uy; s[0].scrolling = false;
-    s[0].pressed_n = ifx surface_action(sf, row) != 0 then el_copy(s[0].pressed[..], id) else 0;
+    s[0].pressed_n = ifx surface_action(sf, row) != 0 || (ch_picking(s) && ch_env_row(id)) then el_copy(s[0].pressed[..], id) else 0;
     // the focus rule at once, so a tap that begins and ends between two frames still moves the keyboard
     ins := [1] UiInput.[uiinput(ux, uy, true, true, cast(string) s[0].pressed[0..<s[0].pressed_n], ch_focus(s))];
     if uiframe_press_focus(sf, ins[..]) { ch_set_focus(s, cast(string) ins[0].focused[0..<ins[0].focused_n]); }
@@ -288,11 +321,16 @@ chat_pointer :: (s: [] ChatPage, x: f32, y: f32, phase: int) -> bool #export_c #
     if was != id { s[0].pressed_n = 0; }
     // a swipe left closes the open drawer; a swipe right from the left edge opens it
     if !s[0].swiped && s[0].drawer && ux - s[0].down_x < -CH_SWIPE { s[0].drawer = false; s[0].swiped = true; s[0].pressed_n = 0; }
-    if !s[0].swiped && !s[0].drawer && !s[0].lf[0].open && s[0].down_x < CH_EDGE && ux - s[0].down_x > CH_SWIPE { s[0].drawer = true; s[0].swiped = true; s[0].pressed_n = 0; }
+    if !s[0].swiped && !s[0].drawer && !s[0].lf[0].open && !ch_picking(s) && s[0].down_x < CH_EDGE && ux - s[0].down_x > CH_SWIPE { s[0].drawer = true; s[0].swiped = true; s[0].pressed_n = 0; }
     // on the page, a touch that travels up or down scrolls the transcript (up: toward the latest message)
     if !s[0].swiped && ch_layer(s) == 0 && (s[0].scrolling || abs(uy - s[0].down_y) > CH_MOVE) {
       s[0].scrolling = true; s[0].pressed_n = 0;
       view_scroll(s[0].view[..], s[0].last_y - uy);
+    }
+    // in the picker, it scrolls the picker's list
+    if ch_picking(s) && (s[0].scrolling || abs(uy - s[0].down_y) > CH_MOVE) {
+      s[0].scrolling = true; s[0].pressed_n = 0;
+      es_scroll(s[0].env[..], s[0].last_y - uy, s[0].picker.content, s[0].picker.view);
     }
     s[0].last_y = uy;
     return true;
@@ -301,6 +339,8 @@ chat_pointer :: (s: [] ChatPage, x: f32, y: f32, phase: int) -> bool #export_c #
   s[0].touching = false; s[0].pressed_n = 0;
   return phase == 2 && held && ch_press(s, row);
 }
+// A row of the picker's ("env.*"): it carries no action number; es_press reads its id.
+ch_env_row :: (id: string) -> bool { return id.count > 4 && cast(string) id[0..<4] == "env."; }
 // The shared app core the host made, and the typed email it kept at the last save (lf_draft).
 // Call once, before the core's launch; then chat_step after every call into the core.
 chat_attach :: (s: [] ChatPage, c: [] AppCore, kept: string) #export_c #effects(all) {
@@ -309,6 +349,20 @@ chat_attach :: (s: [] ChatPage, c: [] AppCore, kept: string) #export_c #effects(
   s[0].core = c; _ := lf_restore(s[0].lf[..], kept);
 }
 chat_step :: (s: [] ChatPage) #export_c #effects(all) { if s.count > 0 && s[0].ready { ch_step(s); } }
+// The core answered APP_GUEST with this body (the done event's text): the picker's read first, else
+// the guest is let go. Then the flow and the chips follow.
+chat_guest :: (s: [] ChatPage, body: string) #export_c #effects(all) {
+  if s.count < 1 || s[0].core.count < 1 { return; }
+  if !es_bridge_guest(s[0].core, s[0].eb[..], s[0].env[..], body, ch_now(s)) { app_guest_done(s[0].core); }
+  ch_step(s);
+}
+// The chips' choices per draft, as plain text to keep across launches (es_save), and back (es_restore).
+chat_env_save :: (s: [] ChatPage, out: [] u8) -> int #export_c #effects(all) { if s.count < 1 || !s[0].ready { return 0; } return es_save(s[0].env[..], out); }
+chat_env_restore :: (s: [] ChatPage, text: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  if !s[0].ready { ch_init(s); }
+  _ := es_restore(s[0].env[..], text); ch_step(s);
+}
 // The login draft to keep: a number that changes when it does, and its bytes (0: forget it).
 chat_draft_rev :: (s: [] ChatPage) -> int #export_c #effects(all) { if s.count < 1 || !s[0].ready { return 0; } return lf_draft_rev(s[0].lf[..]); }
 chat_draft :: (s: [] ChatPage, out: [] u8) -> int #export_c #effects(all) { if s.count < 1 || !s[0].ready { return 0; } return lf_draft(s[0].lf[..], out); }
@@ -403,7 +457,9 @@ chat_drive :: (s: [] ChatPage, op: string, out: [] u8) -> int #export_c #effects
 
 // ---------------------------------------------------------------- checks
 
-ChOut :: struct { v: [CH_MAX_VERTICES * GP_VERTEX_FLOATS] f32; }
+// The checks' vertex buffer: room for these small pages, a quarter of the host's (compile-time storage is bounded).
+CH_TEST_VERTICES :: 40000;
+ChOut :: struct { v: [CH_TEST_VERTICES * GP_VERTEX_FLOATS] f32; }
 ch_test_atlas :: (a: [] Atlas) { text_test_atlas(a); gp_set_atlas(a, 4096, 4096, 2); }
 // A 402 by 874 point phone at 3x, logged in or not, reduced motion (one frame settles).
 ch_test_frame :: (s: [] ChatPage, o: [] ChOut) -> int { chat_env(s, 59, 34, 0, false, 0, true); return chat_frame(s, o[0].v[..], 1206, 2622, 3, 0.5); }
@@ -473,4 +529,27 @@ ch_test_has :: (s: [] ChatPage, id: string) -> bool { return surface_find(ch_sf(
   a: [1] ChOut; n = ch_test_frame(s[..], a[..]); m := ch_test_frame(s[..], o[..]);
   #assert n == m && !chat_moving(s[..]);
   for i: 0..<n { at := i * GP_VERTEX_FLOATS; #assert a[0].v[at + 12] == a[0].v[at + 13] && a[0].v[at + 13] == a[0].v[at + 14] && a[0].v[at] == o[0].v[at]; }
+}
+
+#test "chat page: logged in, the chips sit over the composer; a chip opens its picker, a row chooses and closes it, so do Done and a press beside it" #steps 2000000000 {
+  s: [1] ChatPage; o: [1] ChOut; ch_test_atlas(s[0].atlas[..]);
+  core: [1] AppCore; app_init(core[..]);
+  chat_attach(s[..], core[..], "");
+  _ := ch_test_frame(s[..], o[..]);
+  #assert !ch_test_has(s[..], "composer.environment");   // logged out: no chips
+  core[0].auth = AUTH_IN; chat_step(s[..]); _ := ch_test_frame(s[..], o[..]);
+  #assert ch_test_has(s[..], "composer.environment") && ch_test_has(s[..], "composer.repo") && ch_test_text(s[..], "Default") == 1;
+  // the repository chip takes no press while a request cannot carry a repository
+  #assert !ch_test_tap(s[..], "composer.repo") && !ch_picking(s[..]);
+  #assert ch_test_tap(s[..], "composer.environment") && ch_picking(s[..]); _ := ch_test_frame(s[..], o[..]);
+  #assert ch_test_has(s[..], "env.panel") && ch_test_has(s[..], "env.default") && ch_test_has(s[..], "env.close") && chat_refused(s[..]) == 0;
+  // choosing a row closes the picker; so does Done
+  #assert ch_test_tap(s[..], "env.default") && !ch_picking(s[..]); _ := ch_test_frame(s[..], o[..]);
+  #assert ch_test_tap(s[..], "composer.environment") && ch_picking(s[..]); _ := ch_test_frame(s[..], o[..]);
+  #assert ch_test_tap(s[..], "env.close") && !ch_picking(s[..]); _ := ch_test_frame(s[..], o[..]);
+  // a press beside the open picker closes it
+  #assert ch_test_tap(s[..], "composer.environment") && ch_picking(s[..]); _ := ch_test_frame(s[..], o[..]);
+  _ := chat_pointer(s[..], 600, 60, 0); _ := chat_pointer(s[..], 600, 60, 2);
+  #assert !ch_picking(s[..]);
+  saved: [256] u8; _ := chat_env_save(s[..], saved[..]);
 }

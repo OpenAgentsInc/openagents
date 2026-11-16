@@ -86,4 +86,11 @@ import UIKit
     static func keepDraft(_ bytes: String) {
         if bytes.isEmpty { UserDefaults.standard.removeObject(forKey: draftKey) } else { UserDefaults.standard.set(bytes, forKey: draftKey) }
     }
+    /// The chips' choice per draft (es_save: a computer's key and a repository's name per line), kept
+    /// between launches next to the drafts (no secret: app preferences).
+    private static let environmentKey = "openagents.environment"
+    static var keptEnvironment: String { UserDefaults.standard.string(forKey: environmentKey) ?? "" }
+    static func keepEnvironment(_ text: String) {
+        if text.isEmpty { UserDefaults.standard.removeObject(forKey: environmentKey) } else { UserDefaults.standard.set(text, forKey: environmentKey) }
+    }
 }

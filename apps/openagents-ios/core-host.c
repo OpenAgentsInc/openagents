@@ -6,7 +6,16 @@
 static coax_v_t_AppCore oa_core(void *core) { return (coax_v_t_AppCore){core, core ? 1 : 0}; }
 static coax_string oa_bytes(const char *p, int64_t n) { return (coax_string){p ? p : "", p ? n : 0}; }
 static coax_string oa_cstr(const char *p) { return oa_bytes(p, p ? (int64_t)strlen(p) : 0); }
-static int64_t oa_routed(void *core, int64_t answer) { if (answer == 2) oa_root_guest(oa_core(core)); return answer; }
+// The page that takes a guest result (oa_core_on_guest): the environment picker's reads. With none,
+// the root lets the guest go (oa_root_guest).
+static void (*oa_guest_hook)(void *context, const uint8_t *body, int64_t n);
+static void *oa_guest_context;
+void oa_core_on_guest(void (*hook)(void *context, const uint8_t *body, int64_t n), void *context) { oa_guest_hook = hook; oa_guest_context = context; }
+static int64_t oa_routed_body(void *core, int64_t answer, const uint8_t *body, int64_t n) {
+  if (answer == 2) { if (oa_guest_hook) oa_guest_hook(oa_guest_context, body, n); else oa_root_guest(oa_core(core)); }
+  return answer;
+}
+static int64_t oa_routed(void *core, int64_t answer) { return oa_routed_body(core, answer, NULL, 0); }
 
 void *oa_core_open(void) {
   coax_t_AppCore *c = calloc(1, sizeof *c);
@@ -29,8 +38,8 @@ int64_t oa_core_taken(void *core, int64_t mono, int64_t wall, int64_t op, int ac
 int64_t oa_core_cancel_next(void *core) { return app_host_cancel_next(oa_core(core)); }
 int64_t oa_core_done(void *core, int64_t mono, int64_t wall, int64_t op, int64_t generation, int64_t outcome, int64_t status, int flag,
                      const uint8_t *text, int64_t text_n, const uint8_t *more, int64_t more_n, int64_t value) {
-  return oa_routed(core, app_host_done(oa_core(core), mono, wall, op, generation, outcome, status, flag != 0, oa_bytes((const char *)text, text_n),
-                                       oa_bytes((const char *)more, more_n), value));
+  return oa_routed_body(core, app_host_done(oa_core(core), mono, wall, op, generation, outcome, status, flag != 0, oa_bytes((const char *)text, text_n),
+                                            oa_bytes((const char *)more, more_n), value), text, text_n);
 }
 int64_t oa_core_wake(void *core) { return app_host_wake(oa_core(core)); }
 int64_t oa_core_busy(void *core) { return app_host_busy(oa_core(core)); }

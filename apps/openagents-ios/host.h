@@ -36,6 +36,9 @@ int oc_activate(void *chat, const char *id);
 // The shared app core (core-host.h oa_core_open) and the typed login email kept at the last save.
 // Call once before the core's launch; oc_step after every call into the core.
 void oc_attach(void *chat, void *core, const char *kept);
+// The chips' choices per draft as plain text (0 when none), to keep across launches, and back.
+int oc_env_save(void *chat, char *out, int cap);
+void oc_env_restore(void *chat, const char *text);
 void oc_step(void *chat);
 // The login draft to keep: a number that changes when it does, and its bytes (0: forget it).
 int oc_draft_rev(void *chat);
