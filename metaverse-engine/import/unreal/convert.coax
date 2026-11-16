@@ -288,6 +288,13 @@ cv_material :: (b: [] AbBundle, row: int, layer_of: [] int, unmapped: [] int) ->
 // in the engine): its base colour is LIT, its shadow colour SHADE, and the realm lights it by the key.
 // Empty names: no pair.
 cv_material_toned :: (b: [] AbBundle, row: int, layer_of: [] int, unmapped: [] int, lit: string, shade: string) -> CvMat #effects(all) {
+  return cv_material_shaded(b, row, layer_of, unmapped, lit, shade, "");
+}
+// The same, with the master's own shade rule named too (--shade-auto SWITCH:SHARE:TINT): a two-tone material
+// whose scalar SWITCH is on takes its shadow colour from its lit colour as the master computes it,
+// LIT x SHARE x TINT / luma(TINT) (Splice Bots' M_SpliceMaster: ShadeAuto, ShadeShare, ShadeTint), not from
+// its SHADE vector, which the master then ignores. Empty: no rule.
+cv_material_shaded :: (b: [] AbBundle, row: int, layer_of: [] int, unmapped: [] int, lit: string, shade: string, auto: string) -> CvMat #effects(all) {
   d := b[0].d; m: CvMat; m.rgba = CV_DEFAULT;
   if ab_field(d, row, "origin") == "engine" { m.flags = CV_FALLBACK; return m; }   // substitute.coax: the engine's default
   vs := jv_get(d, row, "vectors"); found := false; lit_at := -1; shade_at := -1;
@@ -302,6 +309,7 @@ cv_material_toned :: (b: [] AbBundle, row: int, layer_of: [] int, unmapped: [] i
     lv := jv_get(d, jv_at(d, vs, lit_at), "value"); sv := jv_get(d, jv_at(d, vs, shade_at), "value");
     for c: 0..<4 { m.rgba[c] = cast(f32) ab_f(d, lv, c); } for c: 0..<3 { m.shade[c] = cast(f32) ab_f(d, sv, c); }
     m.flags |= CV_TWO_TONE; found = true;
+    cv_shade_auto(d, row, auto, m.rgba, m.shade[..]);
   }
   for k: 0..<jv_len(d, vs) {
     if k == lit_at || k == shade_at { continue; }
@@ -326,6 +334,27 @@ cv_material_toned :: (b: [] AbBundle, row: int, layer_of: [] int, unmapped: [] i
   if blend == "translucent" || blend == "additive" { m.flags |= CV_TRANSLUCENT; }
   if ab_field(d, row, "shading") == "unlit" && m.flags & CV_TWO_TONE == 0 { m.flags |= CV_UNLIT; }
   return m;
+}
+// The master's own shade, when the material turns it on (cv_material_shaded): auto is "SWITCH:SHARE:TINT".
+cv_shade_auto :: (d: Jv, row: int, auto: string, lit: [4] f32, out: [] f32) #effects(all) {
+  names: [3] string; n := 0; from := 0;
+  for at: 0..<auto.count + 1 { if at == auto.count || auto[at] == ':' { if n < 3 { names[n] = auto[from..<at]; } n += 1; from = at + 1; } }
+  if n != 3 { return; }
+  on := -1.0; share := -1.0; tint: [3] f64; has_tint := false;
+  ss := jv_get(d, row, "scalars");
+  for k: 0..<jv_len(d, ss) {
+    e := jv_at(d, ss, k); nm := ab_field(d, e, "name");
+    if nm == names[0] { on = ab_num(d, jv_get(d, e, "value")).value; } else if nm == names[1] { share = ab_num(d, jv_get(d, e, "value")).value; }
+  }
+  vs := jv_get(d, row, "vectors");
+  for k: 0..<jv_len(d, vs) {
+    e := jv_at(d, vs, k);
+    if ab_field(d, e, "name") == names[2] { v := jv_get(d, e, "value"); for c: 0..<3 { tint[c] = ab_f(d, v, c); } has_tint = true; }
+  }
+  if on <= 0.5 || share < 0 || !has_tint { return; }
+  luma := tint[0] * 0.2126 + tint[1] * 0.7152 + tint[2] * 0.0722;
+  if luma < 0.0001 { luma = 0.0001; }
+  for c: 0..<3 { out[c] = cast(f32) (cast(f64) lit[c] * share * tint[c] / luma); }
 }
 // How a texture is carried: 1 a colour layer, 2 a data layer, 0 refused (its use unknown, spec 5.4).
 // A texture a material uses as base colour, or a user-interface or default sRGB image, is colour;

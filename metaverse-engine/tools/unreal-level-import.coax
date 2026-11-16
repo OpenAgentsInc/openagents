@@ -2,10 +2,14 @@
 // The Unreal level importer's command (the importer's spec, section 4.3): an import bundle
 // (metaverse-engine/import/unreal/BUNDLE.md) into one private pack of an imported world.
 //
-//   coax/web/tool.sh metaverse-engine/tools/unreal-level-import.coax BUNDLE.aimport NEW_DIR [--plan PLAN.json] [--two-tone LIT=SHADE]
+//   coax/web/tool.sh metaverse-engine/tools/unreal-level-import.coax BUNDLE.aimport NEW_DIR [--plan PLAN.json] [--two-tone LIT=SHADE [--shade-auto SWITCH:SHARE:TINT]]
 //
 // --two-tone names a project's toon pair of vector parameters (Splice Bots' master: Lit=Shade): a material
 // with both is carried as two-tone (convert.coax cv_material_toned), not as an unlit or plain one.
+// --shade-auto names the master's own shade rule (Splice Bots: ShadeAuto:ShadeShare:ShadeTint): a two-tone
+// material with SWITCH on takes LIT x SHARE x TINT / luma(TINT) as its shadow colour, not its SHADE vector
+// (convert.coax cv_material_shaded). Without it, Sniper's MI_ThingMaster (Lit white, ShadeAuto 1) drew in
+// the master's unused default Shade (0.2, 0.2, 0.3): nearly black.
 //
 // It admits the bundle whole (bundle.coax: the manifest, every file's size and SHA-256 against the disk,
 // skipped.json), converts it (convert.coax), writes NEW_DIR/NAME.pack, reads the pack back with pack_read
@@ -168,7 +172,7 @@ im_count_line :: (t: [] CvText, name: string, c: CvCount) #effects(all) {
 
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
-  plan_arg := ""; tone_lit := ""; tone_shade := ""; args_ok := args_load(a[..]) && args_count(a[..]) >= 2 && args_count(a[..]) % 2 == 0;
+  plan_arg := ""; tone_lit := ""; tone_shade := ""; tone_auto := ""; args_ok := args_load(a[..]) && args_count(a[..]) >= 2 && args_count(a[..]) % 2 == 0;
   k_arg := 2;
   while args_ok && k_arg < args_count(a[..]) {
     flag := args_at(a[..], k_arg); val := args_at(a[..], k_arg + 1);
@@ -176,11 +180,12 @@ tool_main :: () -> int #export_c #effects(all) {
     else if flag == "--two-tone" && tone_lit.count == 0 {
       eq := -1; for ch, i: val { if ch == '=' && eq < 0 { eq = i; } }
       if eq <= 0 || eq == val.count - 1 { args_ok = false; } else { tone_lit = val[0..<eq]; tone_shade = val[eq + 1..<val.count]; }
-    } else { args_ok = false; }
+    } else if flag == "--shade-auto" && tone_auto.count == 0 { tone_auto = val; }
+    else { args_ok = false; }
     k_arg += 2;
   }
   if !args_ok {
-    print("usage: unreal-level-import BUNDLE.aimport NEW_DIR [--plan PLAN.json] [--two-tone LIT=SHADE]\n"); return 2;
+    print("usage: unreal-level-import BUNDLE.aimport NEW_DIR [--plan PLAN.json] [--two-tone LIT=SHADE [--shade-auto SWITCH:SHARE:TINT]]\n"); return 2;
   }
   bundle := args_at(a[..], 0); out_dir := args_at(a[..], 1);
   if fs_exists(out_dir) { return im_fail("the output folder already exists; name a new one"); }
@@ -281,7 +286,7 @@ tool_main :: () -> int #export_c #effects(all) {
   if b[0].materials.count > 4096 { return im_fail("more materials than the import holds"); }
   for k: 0..<b[0].materials.count {
     r := ab_row(b, b[0].materials, k); c[CV_MATERIALS].read += 1;
-    mats[k] = cv_material_toned(b, r, layer_of[..], im[0].unmapped[..], tone_lit, tone_shade);
+    mats[k] = cv_material_shaded(b, r, layer_of[..], im[0].unmapped[..], tone_lit, tone_shade, tone_auto);
     if ab_field(dd, r, "origin") == "engine" { c[CV_MATERIALS].substituted += 1; im_line(rep[..], "substituted ", ab_id(dd, r), " by the engine's default material"); }
     else { c[CV_MATERIALS].carried += 1; if mats[k].flags & CV_FALLBACK != 0 { im_line(rep[..], "fallback ", ab_id(dd, r), ": no base colour or texture the mapping knows, drawn plain"); } }
   }

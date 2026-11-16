@@ -70,3 +70,22 @@ cvt_geo :: (g: [] CvGeo, verts: [] u32, idx: [] u32, hash: [] int, sections: [] 
   #assert cv_text(t[..]) == "P 2 0 1.36 bank_L01_B1";
   fb: [16] u8; #assert cv_field("a b\tc", fb[..]) == "a_b_c";
 }
+#test "a toon master's material: its Lit and Shade pair, and its own shade rule when the material turns it on" {
+  text: [8192] u8; nodes: [2048] JvNode; d: [1] Jv; at: [1024] int; b: [1] AbBundle; f: [1] AbFault;
+  // Sniper's MI_ThingMaster as the jam bundle has it: Lit white, the master's default Shade, ShadeAuto on
+  toon := "'scalars': [{'name': 'ShadeAuto', 'value': 1.0}, {'name': 'ShadeShare', 'value': 0.62}], 'vectors': [{'name': 'Lit', 'value': [1, 1, 1, 1]}, {'name': 'Shade', 'value': [0.2, 0.2, 0.3, 1]}, {'name': 'ShadeTint', 'value': [0.62, 0.66, 1, 1]}]";
+  #assert ab_admit(abt_text("'scalars': [{'name': 'Roughness', 'value': 0.7}], 'vectors': [{'name': 'BaseColor', 'value': [0.5, 0.5, 0.5, 1]}]", toon, text[..]), d[..], nodes[..], at[..], b[..], f[..]) == AB_OK;
+  layer_of: [4] int; for k: 0..<4 { layer_of[k] = -1; } un: [1] int;
+  row := ab_row(b[..], b[0].materials, 0);
+  plain := cv_material_toned(b[..], row, layer_of[..], un[..], "Lit", "Shade");
+  #assert plain.flags & CV_TWO_TONE != 0 && plain.rgba[0] == 1 && plain.shade[0] == 0.2f32 && plain.shade[2] == 0.3f32;
+  auto := cv_material_shaded(b[..], row, layer_of[..], un[..], "Lit", "Shade", "ShadeAuto:ShadeShare:ShadeTint");
+  luma := 0.62 * 0.2126 + 0.66 * 0.7152 + 0.0722;
+  #assert abs(cast(f64) auto.shade[0] - 0.62 * 0.62 / luma) < 0.0001 && abs(cast(f64) auto.shade[2] - 0.62 / luma) < 0.0001;
+  // off: the Shade vector stands
+  off: [8192] u8; nodes2: [2048] JvNode; d2: [1] Jv; at2: [1024] int; b2: [1] AbBundle;
+  toon_off := "'scalars': [{'name': 'ShadeAuto', 'value': 0.0}, {'name': 'ShadeShare', 'value': 0.62}], 'vectors': [{'name': 'Lit', 'value': [1, 1, 1, 1]}, {'name': 'Shade', 'value': [0.2, 0.2, 0.3, 1]}, {'name': 'ShadeTint', 'value': [0.62, 0.66, 1, 1]}]";
+  #assert ab_admit(abt_text("'scalars': [{'name': 'Roughness', 'value': 0.7}], 'vectors': [{'name': 'BaseColor', 'value': [0.5, 0.5, 0.5, 1]}]", toon_off, off[..]), d2[..], nodes2[..], at2[..], b2[..], f[..]) == AB_OK;
+  kept := cv_material_shaded(b2[..], ab_row(b2[..], b2[0].materials, 0), layer_of[..], un[..], "Lit", "Shade", "ShadeAuto:ShadeShare:ShadeTint");
+  #assert kept.shade[0] == 0.2f32 && kept.shade[2] == 0.3f32;
+}
