@@ -12,7 +12,7 @@ carrier changes, edit these and nothing else.
 | `LP_GENERATE` | `apps/openagents-ios/generate.sh` | generating moves |
 | `LP_PAGE` | `-DCOMPONENTS_CHAT=1` | the page's macro in `host.c` changes |
 | `LP_BUNDLE`, `LP_SCHEME`, `LP_PROJECT`, `LP_PRODUCT` | `com.openagents.app`, `OpenAgents` | the Xcode project changes |
-| `LP_DEVICE` | `Coax Native Starter` | the simulator the iOS README names changes |
+| `LP_DEVICE`, `LP_DEVICE_SPARE`, `LP_DEVICE_SPARE2` | `Coax Native Starter`, `OpenAgents Dev`, `OpenAgents Dev 2` | the simulator the iOS README names changes |
 
 ## `carrier.c`, the block under "the page"
 

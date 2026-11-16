@@ -57,15 +57,35 @@ the picture to compare.
   object whose inputs changed, each by its own hash in `build/*.inputs`, and
   relinks only when an object changed.
 - **dev.sh** also hashes `project.yml` and the file names beside it, and runs
-  `xcodegen` only when they changed. `xcodebuild` builds into one derived-data
-  folder, `~/.openagents/ios-dev/derived`, shared by every worktree, through
-  `coax/remote/remote.sh run --local` (the Mac's build slot). It refuses to start
-  beside another `xcodebuild` or another `dev.sh`. The simulator is
-  `Coax Native Starter` (the one `apps/openagents-ios/README.md` names; it is
-  made when missing); `--device NAME` picks another. Then `simctl install`,
-  `simctl launch --terminate-running-process`, a settle of 1.5 s
-  (`--settle MS`) and `simctl io screenshot` (`--shot OUT.png`; default
-  `apps/openagents-ios/build/dev/screen.png`). No test suites run.
+  `xcodegen` only when they changed. `xcodebuild` builds incrementally through
+  `coax/remote/remote.sh run --local` (the Mac's build slot), into a
+  derived-data folder for each simulator under `~/.openagents/ios-dev/`, shared
+  by every worktree. It waits for another `xcodebuild` on the Mac to end before
+  it builds. Then `simctl install`, `simctl launch --terminate-running-process`,
+  a settle of 1.5 s (`--settle MS`) and `simctl io screenshot` (`--shot OUT.png`;
+  default `apps/openagents-ios/build/dev/screen.png`). No test suites run.
+
+### Which simulator dev.sh uses
+
+dev.sh uses the booted `Coax Native Starter` (the simulator
+`apps/openagents-ios/README.md` names) unless it is contested, then the spare
+`OpenAgents Dev`, then `OpenAgents Dev 2`. It makes a spare that is missing,
+boots it, and prints the one it used (`dev: simulator NAME (UDID)`). A
+simulator is contested when:
+
+- another dev.sh holds its lock, `~/.openagents/ios-dev/sim-NAME.lock`, which
+  each dev.sh holds until it ends;
+- an `xcodebuild` names it, or a `simctl install` or `launch` names it or, while
+  it is booted, `booted` (from `ps`; only the program counts, not a shell whose
+  script mentions one);
+- an app that is neither Apple's nor ours runs on it (`launchctl list` inside the
+  simulator);
+- our app runs on it and another worktree's dev.sh launched it in the last 15
+  minutes (`~/.openagents/ios-dev/sim-NAME.owner` holds the worktree and the
+  time of the last launch).
+
+`--sim NAME` (or `--device NAME`) takes that simulator only: it says why it is
+contested and uses it anyway, unless another dev.sh holds its lock.
 
 Every loop prints each step and its time.
 
@@ -80,7 +100,8 @@ the new screen.
 | Before: `build.sh`, then `simctl install`, `launch`, `screenshot` by hand, derived data warm | 14 s | 5 s |
 | Before, in a new worktree (derived data starts empty under `apps/openagents-ios/build`) | about 16 s (estimated: a cold `xcodebuild` is 5.3 s) | |
 | `dev.sh`, derived data warm | 12.7 s | 3.3 s |
-| `dev.sh`, first run (empty `~/.openagents/ios-dev/derived`) | 15.2 s | |
+| `dev.sh`, first run (empty derived data) | 15.2 s | |
+| `dev.sh` on the spare when the default is contested: boot 18 s the first time, then as above | | |
 | `shot.sh` | 9.1 s | 0.4 s |
 | `watch.sh`, a pass after a save that changes nothing generated | | 0.4 s |
 
