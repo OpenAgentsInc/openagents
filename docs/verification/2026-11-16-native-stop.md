@@ -88,3 +88,48 @@ Receipts use the `staging-late-stop-` prefix in the artifact directory; the
 capture remains in the private qualification workspace. The prior real patch,
 UIKit Allow/Deny/Stop, retry and cross-account observations remain recorded
 in [the staging qualification](2026-11-15-chat-native-staging.md).
+
+The final Mac CLI was emitted remotely from `71bd8b51c9`, linked against
+Apple's SDK and installed as the versioned shared
+`tasks-cli-71bd8b51c9` binary. Existing keys and login profiles were retained.
+It retried that original Stop command well after its five-minute issue window.
+The resident returned `canceled`, revision 12, with `replay: true`; the account
+turn remained `cancelled`. Receipts: `cli-final-portable.log`,
+`cli-final-macos.log`, `staging-final-cli-replay.json` and
+`staging-final-cli-turn.json`. No new native effect was dispatched.
+
+Automatic Claude account choice uses the existing provider-account observation
+and primary codec. The checked selection owner passes 128 checks and 125
+mutants: 122 killed, three reviewed equivalents and zero unresolved survivors
+(`native-matrix3/build/pipeline/only.log`). It refuses stale, future, unknown
+and exhausted quota and pins the exact chosen profile into the offer and
+binding without changing the computer's selected profile.
+
+The expanded HTTP fixture exposed two isolation faults: it retained accepted
+input stages past their ownership handoff, and it sampled routing time before
+creating the station report. Production already retires accepted stages.
+The five-task process reproduction fails at the fifth preparation before the
+fixture cleanup and passes all five afterward. The decision-reply reproduction
+fails three of 256 replies before the clock ordering fix and zero afterward.
+Receipts are `native-account-five-red2.log`,
+`native-account-five-green2.log`, `native-decision-clock-red.log` and
+`native-decision-clock-green.log`. The independent large-transcript case
+also retires its completed ephemeral fixture reader before the account case;
+the production four-reader grant budget and stored native source stay intact.
+
+The final selected API suite passes on immutable source
+`4f9d2a33168b065d6fce7776e45cf64184aaed9d`: 134 durable-chat HTTP/CLI checks,
+zero failures, plus its API policy/signing, 217-migration, route-golden and
+role checks (`task-account-api7.log`, 439 seconds on `oa-build-1`). It selects
+the fresh 35%-used Claude profile while the system profile is exhausted,
+retains that exact account through the held permission and its approval,
+then saves provider `anthropic` with state `completed`. Codex handoff,
+lost-reply replay, Deny/Stop, paged capture, grant replacement and
+cross-account checks pass in the same run. This is controlled process
+integration; the separately recorded staging Codex runs supply live provider
+and installed-app observations.
+
+Repository checks also pass: tools-check, wire-check, layer-check,
+everglade-parity, agent-reference and the 64-module shader-source check.
+This is targeted issue qualification, not a claim that the inactive main-green
+watcher has checked every repository suite.

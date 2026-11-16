@@ -23,6 +23,26 @@ replay changes nothing. The browser retains its read-only table, route/account
 authorization, explicit response truncation and three tool-bearing steps plus
 a final ask without tools.
 
+## Final browser qualification (2026-11-16)
+
+The 441-check source passes the complete page-root gate on immutable source
+`71bd8b51c9224d815946abb2d95bfa7d57c8d385`: 1,395 mutants, 1,320 killed,
+75 reviewed equivalents and zero survivors. All 32 bounded parts complete;
+the longest command takes 555 seconds. The compiler merges every receipt
+successfully (`gateway-final32-merge.log`), confirming the complete inventory
+and identical source/scope. No check falls back from the evaluator.
+
+The large Stop matrix was split into three independent checks, retaining the
+same inactive/repeated/live cases for model streams, world plans and tool
+reads. Each also passes directly in the evaluator at about 10.3 million steps
+(`gateway-split-stop-evaluator.log`). The final checks cover exact transcript
+capacity, restored composer text, successive whole outputs, current assistant
+offsets, local-session refresh, malformed initial history, world attachments
+and strict-schema advertisement. Equivalent sites name their invariants,
+including the unused legacy token-cap flag and closed command-table domains.
+The earlier incomplete/failed audits below remain historical evidence and
+are superseded by this complete gate.
+
 ## Observations
 
 Heavy qualification ran on the owned Linux pool. Counts overlap through imports.

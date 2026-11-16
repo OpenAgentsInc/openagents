@@ -51,7 +51,11 @@ nct_capture_case :: (t:[]Ap,c:[]Sc,project:string,message:string,root:string) {
   ap_check(t,"a fresh worker resumes the same capture and atomically retires the complete cache",ok && ap_sql(t,sb_text(q[..]),out[..])=="Checking native task. |0|true",cast(string)out[..]);
   command_path:[FS_PATH_MAX]u8;command:=fs_join(c[0].dir,"large-approve.json",command_path[..]);approve:=[10]string.["tasks","approve",EX_TEST_HASH,cast(string)tid[4..<36],"--rev","2","--interaction","native-request","--command-file",command];st=sc_cli(t,c,approve[..]);ap_check(t,"large task keeps its original held permission identity",st==0,sc_text(c));
   ok=nct_claim_run(t,tid,"large-terminal-first");sb_clear(q[..]);sb(q[..],"SELECT state FROM chat.turns_v2 WHERE id='");sb(q[..],tid);sb(q[..],"'");ap_check(t,"terminal native status waits for its whole terminal capture",ok && ap_sql(t,sb_text(q[..]),out[..])=="2",cast(string)out[..]);
-  ok=nct_claim_run(t,tid,"large-terminal-resume");sb_clear(q[..]);sb(q[..],"SELECT state||'|'||output FROM chat.turns_v2 WHERE id='");sb(q[..],tid);sb(q[..],"'");ap_check(t,"resumed terminal capture saves the exact final answer once",ok && ap_sql(t,sb_text(q[..]),out[..])=="3|Checking native task. Native task complete.",cast(string)out[..]);
+  ok=nct_claim_run(t,tid,"large-terminal-resume");sb_clear(q[..]);sb(q[..],"SELECT state||'|'||output FROM chat.turns_v2 WHERE id='");sb(q[..],tid);sb(q[..],"'");finished:=ok && ap_sql(t,sb_text(q[..]),out[..])=="3|Checking native task. Native task complete.";ap_check(t,"resumed terminal capture saves the exact final answer once",finished,cast(string)out[..]);
+  // This independent case has consumed its complete capture. Retire only its
+  // ephemeral fixture reader; keep the native transcript and the four-reader
+  // product budget, rather than occupying that budget for the next case.
+  captures:[FS_PATH_MAX]u8;reader:[FS_PATH_MAX]u8;if finished {ap_check(t,"the completed large-capture fixture retires its own ephemeral reader",fs_remove(xh_reader_dir(fs_join(root,"captures",captures[..]),EX_TEST_HASH,cast(string)tid[4..<36],reader[..])),"");}
  }
  _=fs_remove(toggle);
 }
