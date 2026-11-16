@@ -670,7 +670,7 @@ GlOut :: struct { v: [1400000] f32; }       // 50000 vertices
   // every control left its hit: per skin 2 buttons, 2 toggles, a slider, 3 tabs, 3 rows; the pixel skins' code block 2 more;
   // per HUD card 6 slots, 3 answers, 2 unit frames and 2 plates
   // and the ARWES section's controls and its licence link
-  #assert g[0].nh == 4 * 11 + 3 * 2 + HC_CARDS * 13 + GL_AW_CONTROLS + 1 + 5 + 6 + 5;
+  #assert g[0].nh == 4 * 11 + 3 * 2 + HC_CARDS * 13 + GL_AW_CONTROLS + 1 + 6 + 6 + 5;   // six section buttons (Reference)
 }
 #test "gallery: the terminal card is the terminal backend's grid: box glyphs, a bullet, the table's rule" #steps 200000000 {
   g: [1] GalleryState; o: [1] GlOut; u: [4] f32;
@@ -877,7 +877,7 @@ gl_touch :: (g:[]GalleryState,x:f32,y:f32,phase:int)->bool {
  #assert g[0].content_h>844;_:=gl_touch(g[..],200,600,0);_:=gl_touch(g[..],200,300,1);_:=gl_touch(g[..],200,300,2);#assert g[0].scroll==300 && g[0].section==0;
  g[0].scroll=0;h:=gl_test_hit(g[..],GL_HIT_SECTION,0,1);_:=gl_touch(g[..],h.x+2,h.y+2,0);_:=gl_touch(g[..],h.x+2,h.y+2,3);#assert g[0].section==0;
  _:=gl_touch(g[..],h.x+2,h.y+2,0);_:=gl_touch(g[..],h.x+2,h.y+2,2);#assert g[0].section==1;
- _:=gl_frame(g[..],o[0].v[..],u[..],390,844,1,0.016);#assert g[0].nh==16 && g[0].content_h<1400;
+ _:=gl_frame(g[..],o[0].v[..],u[..],390,844,1,0.016);#assert g[0].nh==17 && g[0].content_h<1400;
 }
 
 coaxial_components_section :: (g:[]GalleryState,section:int) #export_c #effects(all) {if g.count>0 && section>=0 && section<=5 {g[0].section=section;g[0].scroll=0;}}
