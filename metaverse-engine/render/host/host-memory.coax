@@ -1,7 +1,7 @@
 // Reserve an immutable payload after the observed Wasm arena. The platform
 // grows/copies only this admitted span; next is unchanged on every refusal.
 #module "metaverse.engine.render.host.memory";
-#load "../frame.coax";
+#load "../../../coax/lib/gpu/frame.coax";
 #authority;
 RENDER_HOST_MEMORY_BYTES :: 67108864;
 RenderHostStage :: struct {status:RenderFrameStatus;address:u64;next:u64;pages:u64;}

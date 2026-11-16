@@ -42,7 +42,8 @@
 
 PRIM_BOX :: 0; PRIM_SHADOW :: 1; PRIM_INSET :: 2; PRIM_GRADIENT :: 3; PRIM_ELBOW :: 4; PRIM_LINE :: 5; PRIM_RING :: 6; PRIM_ARC :: 7;
 PRIM_TEXT :: 8; PRIM_ICON :: 9; PRIM_IMAGE :: 10; PRIM_CLIP :: 11; PRIM_FADE :: 12; PRIM_POLY :: 13; PRIM_ALPHA :: 14;
-PRIM_KINDS :: 15;
+PRIM_LAYER :: 15;
+PRIM_KINDS :: 16;
 PRIM_OPEN :: 1000000.0;        // a clip edge this far out is no edge
 
 Prim :: struct {
@@ -54,6 +55,7 @@ Prim :: struct {
   id: int; on: bool;
   text: string;
   line: int; off: int;
+  matrix: [6] f32;             // layer affine: a,b,c,d,tx,ty; origin in logical pixels
   pts: [] f32;                // a polygon's points
 }
 
@@ -72,7 +74,7 @@ prim_put :: (list: [] Prim, n: int, p: Prim) -> int {
 // in reverse order before any renderer or hit table publishes it.
 prim_groups_valid :: (list:[]Prim,limit:int)->bool {
  if limit<0 || limit>64 {return false;}stack:[64]int;depth:=0;
- for p:list {if p.kind!=PRIM_CLIP && p.kind!=PRIM_ALPHA {continue;}
+ for p:list {if p.kind!=PRIM_CLIP && p.kind!=PRIM_ALPHA && p.kind!=PRIM_LAYER {continue;}
   if p.on {if depth>=limit {return false;}stack[depth]=p.kind;depth+=1;}
   else {if depth==0 || stack[depth-1]!=p.kind {return false;}depth-=1;}
  }return depth==0;
@@ -138,11 +140,24 @@ prim_alpha :: (list: [] Prim, n: int, alpha: f32) -> int {
   return prim_put(list, n, Prim.{kind = PRIM_ALPHA, a = o, on = true, id = -1, line = -1});
 }
 prim_unalpha :: (list: [] Prim, n: int) -> int { return prim_put(list, n, Prim.{kind = PRIM_ALPHA, id = -1, line = -1}); }
+// An isolated group. Children paint into a transparent target before the affine,
+// opacity and optional separable blur are applied. Unlike PRIM_ALPHA, overlaps
+// fade once. Bounds are the local canvas, not a clip; include the blur halo.
+// backdrop copies the parent's already-painted pixels before blurring them;
+// children of a backdrop group stay sharp. Requires the composition-v1 profile.
+prim_layer :: (list:[]Prim,n:int,matrix:[6]f32,alpha:f32,blur:f32,backdrop:bool)->int {
+ return prim_put(list,n,Prim.{kind=PRIM_LAYER,on=true,matrix=matrix,a=alpha,b=blur,c=ifx backdrop then 1.0f32 else 0.0f32,id=-1,line=-1});
+}
+prim_unlayer :: (list:[]Prim,n:int)->int {return prim_put(list,n,Prim.{kind=PRIM_LAYER,id=-1,line=-1});}
 // Primitives from..<to, already painted, at `alpha`: their colours' alpha scaled (what a part that
 // enters fades with, once it knows where its primitives end).
 prim_opacity :: (list: [] Prim, from: int, to: int, alpha: f32) {
   o := ifx alpha < 0 then 0.0f32 else ifx alpha > 1 then 1.0f32 else alpha;
-  for k: from..<to { if k >= 0 && k < list.count { list[k].fill.a *= o; list[k].edge.a *= o; } }
+  layers:=0;
+  for k:from..<to {if k<0 || k>=list.count {continue;}
+   if list[k].kind==PRIM_LAYER {if list[k].on {if layers==0 {list[k].a*=o;}layers+=1;}else if layers>0 {layers-=1;}continue;}
+   if layers==0 {list[k].fill.a*=o;list[k].edge.a*=o;}
+  }
 }
 // A filled polygon: pts holds its points as x, y pairs (at least three);
 // its bounds are theirs. pts is a view the list keeps, so it must outlive it.
@@ -162,9 +177,12 @@ prim_poly :: (list: [] Prim, n: int, pts: [] f32, fill: Rgba) -> int {
 // where a child it has already painted goes. A clip's and a fade's edges
 // move with them (an open edge stays open).
 prim_move :: (list: [] Prim, from: int, to: int, dx: f32, dy: f32) {
+  layers:=0;
   for k: from..<to {
     if k < 0 || k >= list.count { continue; }
     kind := list[k].kind;
+    if kind==PRIM_LAYER {if list[k].on {if layers==0 {list[k].matrix[4]+=dx;list[k].matrix[5]+=dy;}layers+=1;}else if layers>0 {layers-=1;}continue;}
+    if layers>0 {continue;}
     if kind == PRIM_CLIP {
       if !list[k].on { continue; }
       if list[k].x > -PRIM_OPEN { list[k].x += dx; }
@@ -254,4 +272,11 @@ prim_extent :: (p: Prim) -> f32 {
   #assert prim_poly(list[..], n, pts[0..<4], hex(0, 1)) == 1;        // two points: no polygon
   prim_move(list[..], 0, 1, 5, -5);
   #assert list[0].x == 15 && list[0].y == 15 && pts[0] == 15 && pts[7] == 35 && prim_extent(list[0]) == 40;
+}
+
+#test "moving and fading an isolated part affects its composite once and leaves local children untouched" {
+ p:[5]Prim;n:=prim_layer(p[..],0,[6]f32.[0,1,-1,0,20,0],0.8,0,false);n=prim_fill(p[..],n,1,2,8,8,0,rgba(1,1,1,1));n=prim_unlayer(p[..],n);n=prim_fill(p[..],n,30,40,8,8,0,rgba(1,1,1,1));
+ prim_move(p[..],0,n,3,4);prim_opacity(p[..],0,n,0.5);
+ #assert p[0].matrix[4]==23 && p[0].matrix[5]==4 && p[0].a==0.4 && p[1].x==1 && p[1].y==2 && p[1].fill.a==1;
+ #assert p[3].x==33 && p[3].y==44 && p[3].fill.a==0.5;
 }

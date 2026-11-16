@@ -1,4 +1,4 @@
-#load "../render/frame.coax";
+#load "../../coax/lib/gpu/frame.coax";
 #load "../../metaverse/grid-render.coax";
 #load "../../metaverse/grid.coax";
 render_begin :: (epoch:int,l:RfLimits)->RfFrame #export_c #effects(all) {return rf_begin(epoch,l);}

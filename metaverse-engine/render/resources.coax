@@ -2,10 +2,11 @@
 // objects and report actual allocation, upload and initialization observations.
 #module "metaverse.engine.render.resources";
 #authority;
+#load "../../coax/lib/gpu/formats.coax" as gpu_formats;
 #load "graph/passes.coax" as passes;
 #load "bindings.coax" as bindings;
-#load "frame.coax" as ranges;
-#load "types.coax" as target_limits;
+#load "../../coax/lib/gpu/frame.coax" as ranges;
+#load "../../coax/lib/gpu/types.coax" as target_limits;
 
 RenderResourceStatus :: enum u8 { invalid; ok; capacity; uninitialized; }
 RenderTextureFormat :: enum u8 { rgba8; bgra8; rgba16f; depth32; invalid; }
@@ -96,4 +97,12 @@ render_buffer_view :: (binding:bindings.RenderBinding,mode:RenderBufferMode,o:Re
 
 render_target_desc :: (target:passes.RenderTarget,w:int,h:int,coarse:bool,screen_format:RenderTextureFormat)->RenderTargetDescriptor #effects(all) {
  return render_target_desc_with_limit(target,w,h,coarse,screen_format,16384);
+}
+
+#test "published engine texture format codes match the generic ledger without changing their identity" {
+ #assert cast(int)RenderTextureFormat.rgba8==cast(int)gpu_formats.GpuTextureFormat.rgba8;
+ #assert cast(int)RenderTextureFormat.bgra8==cast(int)gpu_formats.GpuTextureFormat.bgra8;
+ #assert cast(int)RenderTextureFormat.rgba16f==cast(int)gpu_formats.GpuTextureFormat.rgba16f;
+ #assert cast(int)RenderTextureFormat.depth32==cast(int)gpu_formats.GpuTextureFormat.depth32;
+ #assert cast(int)RenderTextureFormat.invalid==cast(int)gpu_formats.GpuTextureFormat.invalid;
 }

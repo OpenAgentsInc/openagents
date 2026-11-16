@@ -3,7 +3,7 @@
 // these views; no GPU effects or output writes occur on refusal.
 #module "metaverse.engine.render.geometry";
 #load "catalog.coax";
-#load "frame.coax";
+#load "../../coax/lib/gpu/frame.coax";
 #authority;
 
 RENDER_GEOMETRY_DRAWS :: 4096;

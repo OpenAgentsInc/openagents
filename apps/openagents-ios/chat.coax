@@ -42,6 +42,8 @@
 #load "../../components/core/edit.coax";
 #load "../../components/skin/arcade.coax";
 #load "../../components/backend/gpu.coax";
+#load "../../components/app/renderer.coax";
+#load "../../coax/native/gpu-composition.coax";
 
 CH_MAX_VERTICES :: 160000;
 // The cover's declared capacity, a generation: primitives, runs of text, selectable lines, hits,
@@ -61,6 +63,8 @@ ChGeneration :: struct { under: [CH_UNDER] Prim; over: [CH_OVER] Prim; lines: [C
 ChPageGeneration :: struct { under: [CH_P_UNDER] Prim; over: [CH_P_OVER] Prim; lines: [CH_P_LINES] SheetLine; hits: [CH_P_HITS] SheetHit; pool: [CH_P_POOL] u8; rows: [CH_P_ROWS] El; }
 ChatPage :: struct {
   ready: bool; time: f32; d: f32;
+  renderer:bool;renderer_tapped:bool;frame_renderer:bool;shown_renderer:bool;renderer_error:bool;reduced_transparency:bool; render_plan:[1]UcPlan;render_list:[CH_P_UNDER+CH_P_OVER+1]Prim;
+  staged_front:[2]int;staged_generation:[2]int;candidate_front:[2]int;candidate_generation:[2]int;candidate_renderer:bool;render_staged:bool;
   atlas: [1] Atlas;
   // two layers, each a surface with its keyed store: 0 the page, 1 what covers it (the login card,
   // the drawer). A layer paints all of its sheet over the one below, so the page's words never
@@ -206,6 +210,14 @@ ch_layout :: (s: [] ChatPage, f: [] UiFrame, w: f32, h: f32) {
   bottom := h - under / u - 6 / u;
   nav_y := top + 4 / u;
   s[0].again=false;
+  if s[0].renderer {
+    s[0].menu_side=0;nav:=k.app.icon_button;
+    _:=app_icon_button(f,"renderer.back",16/u,nav_y,ICON_BACK,"Back to Settings",APP_BUTTON_QUIET,0,903);
+    tw:=measure_width(f[0].m,k.title.face,"Renderer");_=app_text(f,"renderer.title",(w-tw)/2,nav_y+(nav-k.title.line)/2,tw,APP_TEXT_TITLE,"Renderer");
+    area_top:=nav_y+nav+k.app.gap;key:=uiframe_key(f,"section.viewport");offset:=keyed_scroll(f[0].keyed,key);s[0].section_viewport=bottom-area_top;
+    uiframe_clip(f,0,area_top,w,bottom);s[0].section_content=app_renderer(f,20/u,area_top-offset,w-40/u,s[0].time,s[0].renderer_tapped);
+    ch_reveal(s,f,key,area_top,bottom,s[0].section_content,offset);uiframe_unclip(f);return;
+  }
   if s[0].usage[0].open {
     s[0].menu_side=0;nav:=k.app.icon_button;
     _:=app_icon_button(f,"usage.back",16/u,nav_y,ICON_BACK,"Back to Settings",APP_BUTTON_QUIET,0,US_ACTION);
@@ -233,6 +245,11 @@ ch_layout :: (s: [] ChatPage, f: [] UiFrame, w: f32, h: f32) {
     if s[0].identity[0].confirm==0 && !s[0].identity[0].backup {
       yy:=nav_y-offset+s[0].settings_content+k.app.gap;
       s[0].settings_content+=k.app.gap+app_button(f,"usage.open",16/u,yy,w-32/u,-1,"Usage",APP_BUTTON_DEFAULT,0,US_OPEN);
+    }
+    if s[0].identity[0].confirm==0 && !s[0].identity[0].backup {
+      yy:=nav_y-offset+s[0].settings_content+k.app.gap;
+      s[0].settings_content+=k.app.gap+app_button(f,"renderer.open",16/u,yy,w-32/u,-1,"Renderer",APP_BUTTON_DEFAULT,0,900);
+      if s[0].renderer_error {s[0].settings_content+=app_text(f,"renderer.unavailable",16/u,nav_y-offset+s[0].settings_content,w-32/u,APP_TEXT_CAPTION,"GPU resources unavailable");}
     }
     ch_reveal(s,f,key,nav_y,bottom,s[0].settings_content,offset);uiframe_unclip(f);
     return;
@@ -347,7 +364,7 @@ ch_login_close :: (s: [] ChatPage) -> bool {
 }
 ch_stamp :: (s: [] ChatPage) -> int { return surface_stamp(ch_live(s)); }
 // A drawer destination leaves Settings, including its nested Usage page.
-ch_main :: (s:[]ChatPage) {s[0].usage[0].open=false;s[0].usage[0].code_ready=false;s[0].identity[0].open=false;s[0].identity[0].backup=false;s[0].identity[0].confirm=0;}
+ch_main :: (s:[]ChatPage) {s[0].renderer=false;s[0].usage[0].open=false;s[0].usage[0].code_ready=false;s[0].identity[0].open=false;s[0].identity[0].backup=false;s[0].identity[0].confirm=0;}
 // A press on a committed row. Send does nothing yet.
 ch_press :: (s: [] ChatPage, row: int) -> bool {
   sf := ch_live(s); act := surface_action(sf, row); l := s[0].lf[..];
@@ -356,6 +373,9 @@ ch_press :: (s: [] ChatPage, row: int) -> bool {
   if !elt_ok(t[..],row) || (t[0].rows[row].state & EL_S_DISABLED)!=0 {return false;}
   if !elt_visible(t[..],row).visible && !(s[0].native && ch_picking(s) && ch_env_row(surface_id(sf,row))) {return false;}
   if elt_ok(t[..], row) && t[0].rows[row].role == EL_FIELD && act != 0 { ch_set_focus(s, surface_id(sf, row)); }
+  if act==900 {s[0].renderer_error=false;s[0].renderer=true;ch_set_focus(s,"");keyed_scroll_set(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"section.viewport"),0);return true;}
+  if act==903 {s[0].renderer=false;return true;}
+  if act==901 || act==902 {s[0].renderer_tapped=!s[0].renderer_tapped;return true;}
   if act==410 || act==411 {
     if ps_blocked(s[0].projects[..]) {return false;}ch_main(s);s[0].section=ifx act==411 then 1 else 0;
     if s[0].section==1 {ps_open(s[0].projects[..]);}else {s[0].projects[0].open=false;}
@@ -449,6 +469,8 @@ chat_env :: (s: [] ChatPage, safe_top: f32, safe_bottom: f32, keyboard: f32, foc
 chat_frame :: (s: [] ChatPage, out: [] f32, width: f32, height: f32, dpr: f32, dt: f32) -> int #export_c #effects(all) {
   if s.count < 1 || width < 1 || height < 1 { return 0; }
   if !s[0].ready { ch_init(s); }
+  s[0].render_staged=false;s[0].frame_renderer=s[0].renderer;
+  for i:0..<2 {s[0].staged_front[i]=s[0].surface[i].front;s[0].staged_generation[i]=s[0].surface[i].generation;}
   a := s[0].atlas[..];
   d := (ifx dpr < 1 then 1.0f32 else dpr) * ch_u(s);
   w := width / d; h := height / d;if w!=s[0].page_w {s[0].reveal_focus=true;}s[0].page_w = w;
@@ -472,21 +494,31 @@ chat_frame :: (s: [] ChatPage, out: [] f32, width: f32, height: f32, dpr: f32, d
     // only the layer that took the press sees it, so the focus rule runs once
     mine := layer == live;
     input := uiinput(s[0].px, s[0].py, mine && s[0].touching, mine && s[0].touching, ifx mine then cast(string) s[0].pressed[0..<s[0].pressed_n] else "", ch_focus(s));
-    uiframe_begin(f[..], ch_sf(s, layer), s[0].keyed[layer..<layer + 1], measure_font(a), k, input, s[0].time, t, s[0].reduced, false);
+    uiframe_begin(f[..], ch_sf(s, layer), s[0].keyed[layer..<layer + 1], measure_font(a), k, input, s[0].time, t, s[0].reduced, s[0].reduced_transparency);
     if mine && uiframe_focus(f[..]) != ch_focus(s) { ch_set_focus(s, uiframe_focus(f[..])); }
     if layer == 0 { ch_layout(s, f[..], w, h); } else { ch_layout_cover(s, f[..], w, h); }
     moving = moving || uiframe_moving(f[..]);
-    if !uiframe_end(f[..], ch_sf(s, layer)) { s[0].refused += 1; }
+    committed:=uiframe_end(f[..],ch_sf(s,layer));
+    if !committed {s[0].refused+=1;if s[0].renderer {s[0].render_plan[0].ok=false;s[0].render_staged=true;v=0;break;}}
     sh := surface_sheet(ch_sf(s, layer));
     // the page moves right with the sidebar
     ox := ifx layer == 0 then shift else 0.0f32;
+    if s[0].renderer && layer==0 {
+      n:=prim_fill(s[0].render_list[..],0,0,0,w,h,0,k.canvas);
+      for p:sh.under[0..<sh.nu] {n=prim_put(s[0].render_list[..],n,p);}
+      for p:sh.over[0..<sh.no] {n=prim_put(s[0].render_list[..],n,p);}
+      images:=[1]UcImage.[UcImage.{id=1,w=16,h=16}];s[0].render_staged=true;
+      if uc_build(s[0].render_plan[..],out,a,s[0].render_list[0..<n],images[..],cast(int)width,cast(int)height,d) {v=s[0].render_plan[0].v;} else {v=0;}
+      break;
+    }
     v = gpu_draw(out, v, a, d, sh.under[0..<sh.nu], ox, 0, -8, h + 8);
     v = gpu_draw(out, v, a, d, sh.over[0..<sh.no], ox, 0, -8, h + 8);
   }
-  s[0].moving = moving || s[0].again;
+  s[0].moving = moving || s[0].again || (s[0].renderer && !s[0].reduced);
   s[0].reveal_focus=false;
-  s[0].stamp = ch_stamp(s) + ch_layer(s);
   gpu_monochrome(out, v);
+  if s[0].render_staged {s[0].candidate_renderer=s[0].renderer;for i:0..<2 {s[0].candidate_front[i]=s[0].surface[i].front;s[0].candidate_generation[i]=s[0].surface[i].generation;s[0].surface[i].front=s[0].staged_front[i];s[0].surface[i].generation=s[0].staged_generation[i];}}
+  s[0].stamp=ch_stamp(s)+ch_layer(s);
   return v;
 }
 // A touch, in device pixels: phase 0 down, 1 moved, 2 up, 3 cancelled. A press is routed through the committed rows.
@@ -615,7 +647,7 @@ chat_private_mode :: (s:[]ChatPage)->int #export_c #effects(all) {
 ch_scroll_offset :: (s:[]ChatPage)->f32 {
  if s[0].drawer {return keyed_scroll(s[0].keyed[1..<2],keyed_find(s[0].keyed[1..<2],"history.viewport"));}
  if s[0].lf[0].open {return keyed_scroll(s[0].keyed[1..<2],keyed_find(s[0].keyed[1..<2],"login.viewport"));}
- if s[0].usage[0].open {return keyed_scroll(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"section.viewport"));}
+ if s[0].usage[0].open || s[0].renderer {return keyed_scroll(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"section.viewport"));}
  if s[0].identity[0].open {return keyed_scroll(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"settings.viewport"));}
  if s[0].section>0 {return keyed_scroll(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"section.viewport"));}
  return s[0].view[0].list[0].top;
@@ -623,7 +655,7 @@ ch_scroll_offset :: (s:[]ChatPage)->f32 {
 ch_scroll_max :: (s:[]ChatPage)->f32 {
  if s[0].drawer {return scroll_max(s[0].history_content,s[0].history_viewport);}
  if s[0].lf[0].open {return scroll_max(s[0].login_content,s[0].login_viewport);}
- if s[0].usage[0].open {return scroll_max(s[0].section_content,s[0].section_viewport);}
+ if s[0].usage[0].open || s[0].renderer {return scroll_max(s[0].section_content,s[0].section_viewport);}
  if s[0].identity[0].open {return scroll_max(s[0].settings_content,s[0].settings_viewport);}
  if s[0].section>0 {return scroll_max(s[0].section_content,s[0].section_viewport);}
  l:=s[0].view[0].list[0];return scroll_max(l.content,l.viewport);
@@ -633,7 +665,7 @@ chat_scroll_to :: (s:[]ChatPage,offset:f32) #export_c #effects(all) {
  value:=ifx offset<0 then 0.0f32 else ifx offset>ch_scroll_max(s) then ch_scroll_max(s) else offset;
  if s[0].drawer {keyed_scroll_set(s[0].keyed[1..<2],keyed_find(s[0].keyed[1..<2],"history.viewport"),value);}
  else if s[0].lf[0].open {keyed_scroll_set(s[0].keyed[1..<2],keyed_find(s[0].keyed[1..<2],"login.viewport"),value);}
- else if s[0].usage[0].open {keyed_scroll_set(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"section.viewport"),value);}
+ else if s[0].usage[0].open || s[0].renderer {keyed_scroll_set(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"section.viewport"),value);}
  else if s[0].identity[0].open {keyed_scroll_set(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"settings.viewport"),value);}
  else if s[0].section>0 {keyed_scroll_set(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"section.viewport"),value);}
  else {view_scroll(s[0].view[..],value-ch_scroll_offset(s));}
@@ -675,7 +707,7 @@ chat_style :: (out: [] f32) -> bool #export_c #effects(all) {
   return true;
 }
 // Whether the next frame differs with no input: kit motion.
-chat_moving :: (s: [] ChatPage) -> bool #export_c #effects(all) { return s.count > 0 && (!s[0].ready || s[0].again || !s[0].reduced && s[0].moving); }
+chat_moving :: (s: [] ChatPage) -> bool #export_c #effects(all) { return s.count > 0 && (!s[0].ready || s[0].render_staged || s[0].again || !s[0].reduced && s[0].moving); }
 chat_refused :: (s: [] ChatPage) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return s[0].refused; }
 chat_access_capacity :: ()->int #export_c #effects(all) {return CH_P_ROWS;}
 chat_max_vertices :: () -> int #export_c #effects(all) { return CH_MAX_VERTICES; }
@@ -933,3 +965,23 @@ ch_test_has :: (s: [] ChatPage, id: string) -> bool { return surface_find(ch_sf(
   v: [64] u8; #assert i >= 0 && (t[0].rows[i].state & EL_S_CHECKED) != 0 && chat_row_value(s[..], i, v[..]) > 0;
   #assert chat_activate(s[..], "env.default") && chat_sheet(s[..]) == ES_SHEET_NONE;
 }
+
+// Abort a staged composed surface when physical resources cannot be reserved.
+chat_render_commit :: (s:[]ChatPage,accepted:bool) #export_c #effects(all) {
+ if s.count<1 {return;}
+ if !s[0].render_staged {if accepted {s[0].shown_renderer=s[0].frame_renderer;}return;}
+ if accepted {for i:0..<2 {s[0].surface[i].front=s[0].candidate_front[i];s[0].surface[i].generation=s[0].candidate_generation[i];}s[0].shown_renderer=s[0].candidate_renderer;}
+ else {if s[0].renderer==s[0].candidate_renderer {s[0].renderer=s[0].shown_renderer;}s[0].renderer_error=true;s[0].again=true;s[0].refused+=1;}
+ s[0].render_staged=false;s[0].stamp=ch_stamp(s)+ch_layer(s);
+}
+#test "Settings renderer admits every GPU effect and abort keeps the last semantic generation" #steps 2000000000 {
+ s:[1]ChatPage;o:[1]ChOut;ch_test_atlas(s[0].atlas[..]);_:=ch_test_frame(s[..],o[..]);
+ #assert chat_activate(s[..],"nav.menu");_:=ch_test_frame(s[..],o[..]);#assert chat_activate(s[..],"drawer.settings");_:=ch_test_frame(s[..],o[..]);
+ prior_stamp:=chat_rows_stamp(s[..]);#assert chat_activate(s[..],"renderer.open");_:=ch_test_frame(s[..],o[..]);
+ #assert chat_rows_stamp(s[..])==prior_stamp;
+ #assert s[0].render_plan[0].ok && s[0].render_plan[0].targets==4 && !ch_test_has(s[..],"renderer.transformed");
+ old:=s[0].staged_generation[0];chat_render_commit(s[..],false);#assert s[0].surface[0].generation==old && !s[0].render_staged;
+ #assert !s[0].renderer && chat_activate(s[..],"renderer.open");_:=ch_test_frame(s[..],o[..]);chat_render_commit(s[..],true);#assert chat_rows_stamp(s[..])!=prior_stamp && ch_test_has(s[..],"renderer.transformed") && chat_activate(s[..],"renderer.back");_:=ch_test_frame(s[..],o[..]);#assert !s[0].renderer && ch_test_has(s[..],"renderer.open");
+}
+
+chat_transparency :: (s:[]ChatPage,reduced:bool) #export_c #effects(all) {if s.count>0 {s[0].reduced_transparency=reduced;}}

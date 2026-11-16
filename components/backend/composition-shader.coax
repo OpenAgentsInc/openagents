@@ -1,0 +1,43 @@
+// The composition-v1 entry points. Old 28-float primitives and the old entry
+// points retain their exact contract. New passes use premultiplied blending.
+#load "gpu-shader.coax";
+
+uc_vs :: (i:u32,j:u32,v:ChatZIn,u:[]f32)->ChatZV {return chat_fx_vs(i,j,v,u);}
+// Transparent border, bilinear sampling in texel-centre coordinates. No SDK
+// sampler state, hidden edge clamp or straight-alpha interpolation fringe.
+uc_texel :: (t:Tex2D,x:s32,y:s32,straight:bool)->V4 {
+ if x<0 || y<0 || x>=cast(s32)gpu_width(t) || y>=cast(s32)gpu_height(t) {return v4(0,0,0,0);}
+ c:=gpu_load(t,x,y,0);if straight {return v4(c.x*c.w,c.y*c.w,c.z*c.w,c.w);}return c;
+}
+uc_sample :: (t:Tex2D,uv:V2,straight:bool)->V4 {
+ x:=uv.x*cast(f32)gpu_width(t)-0.5f32;y:=uv.y*cast(f32)gpu_height(t)-0.5f32;
+ ix:=cast(s32)floor(x);iy:=cast(s32)floor(y);fx:=x-floor(x);fy:=y-floor(y);
+ a:=wg_mix_f4f4f(uc_texel(t,ix,iy,straight),uc_texel(t,ix+1,iy,straight),fx);
+ b:=wg_mix_f4f4f(uc_texel(t,ix,iy+1,straight),uc_texel(t,ix+1,iy+1,straight),fx);
+ return wg_mix_f4f4f(a,b,fy);
+}
+uc_fs :: (v:ChatZV,gpui_atlas:Tex2D,gpui_color:Tex2D,source:Tex2D)->V4 {
+ if v.kind_blur.x<7.5f32 {
+  c:=chat_fx_fs(v,gpui_atlas,gpui_color);return v4(c.x*c.w,c.y*c.w,c.z*c.w,c.w);
+ }
+ if v.pos.x<v.clip.x || v.pos.y<v.clip.y || v.pos.x>=v.clip.z || v.pos.y>=v.clip.w {gpu_discard();}
+ c:=v4(0,0,0,0);kind:=v.kind_blur.x;
+ if kind>8.5f32 && kind<10.5f32 {
+  radius:=clampf(v.kind_blur.y,1,32);sigma:=fmax(radius/3,0.333333f32);sum:f32=0;
+  // Fixed bounded kernel; one generated program on all three APIs. Weights
+  // normalise across the whole kernel, including transparent border samples.
+  for k:-32..<33 {
+   f:=cast(f32)k;if abs(f)>radius {continue;}weight:=exp(-(f*f)/(2*sigma*sigma));
+   uv:=v.uv;if kind<9.5f32 {uv.x+=f/cast(f32)gpu_width(source);} else {uv.y+=f/cast(f32)gpu_height(source);}
+   c=uc_add(c,uc_mul(uc_sample(source,uv,false),weight));sum+=weight;
+  }
+  c=uc_mul(c,1/sum);
+ } else {c=uc_sample(source,v.uv,kind>10.5f32);}
+ alpha:=v.fill.w;
+ if v.fade.y>0 {alpha*=saturate((v.pos.y-v.fade.x)/v.fade.y);}
+ if v.fade.w>0 {alpha*=saturate((v.fade.z-v.pos.y)/v.fade.w);}
+ return uc_mul(c,alpha);
+}
+
+uc_add :: (a:V4,b:V4)->V4 {return v4(a.x+b.x,a.y+b.y,a.z+b.z,a.w+b.w);}
+uc_mul :: (a:V4,b:f32)->V4 {return v4(a.x*b,a.y*b,a.z*b,a.w*b);}

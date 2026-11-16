@@ -397,11 +397,13 @@ from the sheet's selectable lines; copy goes through the action outbox.
 
 | Need | Status | Why |
 | --- | --- | --- |
-| Images (`PRIM_IMAGE`; `gpu_draws` returns false for it today) | Not started. No iOS screen shows an image yet: avatars are initials | Avatars, attachments, pictures in messages |
+| Images (`PRIM_IMAGE`) | Built in the opt-in `composition-v1` path: canonical straight RGBA8, premultiply before bilinear sampling, immutable image generations. The legacy flat path still refuses images | Avatars, attachments, pictures in messages |
 | Nested clips | Built through the semantic table's 16-level budget. Overflow suppresses the subtree; surface commit refuses unbalanced, crossed or over-budget clip/opacity scopes | Scroll areas inside panels |
-| Affine transforms | Not started. The sidebar and covers move by offset (`prim_move`), which is all they need | Drawers and sheets that scale or rotate |
-| Group opacity | Done: `PRIM_ALPHA` (`prim_alpha`, `prim_unalpha`, nested) and `prim_opacity`; `app_enter` fades a message in as it rises. Each primitive takes the opacity; overlaps inside a group are not composited as one layer, which needs a render target | Enter and exit of whole components |
-| Blur and composition | Not started. On iOS the blurred controls are Liquid Glass system views | Menus and sheets over content |
+| Affine transforms | Built for isolated groups through `uiframe_layer` / `prim_layer`; nested local clips, exact convex hit polygons and visible accessibility bounds. Active rotated/scaled editors and selectable text in layers explicitly refuse | Drawers and sheets that scale or rotate |
+| Group opacity | True isolated source-over opacity is built in `PRIM_LAYER`. `PRIM_ALPHA` retains its old per-primitive behavior for compatibility | Enter and exit of whole components |
+| Blur and composition | Built: owned offscreen targets, source blur, backdrop capture + separable Gaussian + sharp children, and generated Metal/WGSL/SPIR-V shaders. Settings → Renderer exercises the native path | Menus and sheets over content |
+
+The bounded opt-in path and qualification are described in [composition-v1](backend/composition.md). The existing app screens keep their flat path; adding an image or an isolated group requires `uc_build` and a composition-capable host. World texture borrowing remains G4 work.
 
 A new primitive is added to `paint/list.coax` once, then to each backend.
 The one shader source in Coax stays the only source of primitive math.

@@ -1,0 +1,18 @@
+// Pinned composition-v1 ABI oracle, against the one encoder and its profile.
+#import "Basic";
+#load "../gpu-composition.coax";
+#load "../../lib/json/json.coax";
+#load "../../lib/sys/fs.coax";
+tool_main :: ()->int #export_c #effects(all) {
+ bytes:[16384]u8;nodes:[512]JvNode;doc:[1]Jv;
+ n:=fs_read("proto/components/composition-v1.json",bytes[..]);if n<1 || !jv_parse(doc[..],cast(string)bytes[0..<n],nodes[..]) {return 1;}
+ if jv_raw(doc[0],jv_get(doc[0],0,"id"))!="openagents.components.composition.v1" {return 1;}
+ limits:=jv_get(doc[0],0,"limits");
+ if jv_int(doc[0],jv_get(doc[0],limits,"dimension"),0)!=UC_SIDE || jv_int(doc[0],jv_get(doc[0],limits,"targets"),0)!=UC_TARGETS || jv_int(doc[0],jv_get(doc[0],limits,"gpu_words"),0)!=UC_WORDS {return 1;}
+ p:[1]UcPlan;out:[168]f32;a:[1]Atlas;list:[1]Prim;images:[1]UcImage;
+ if !uc_build(p[..],out[..],a[..],list[0..<0],images[0..<0],4,3,1) {return 1;}
+ golden:=jv_get(doc[0],0,"golden_empty_frame_words");
+ for i:0..<16 {if p[0].ops[i]!=cast(f32)jv_int(doc[0],jv_at(doc[0],golden,i),-999) {return 1;}}
+ if p[0].n!=2 || p[0].v!=6 || p[0].targets!=1 || p[0].words!=180 {return 1;}
+ print("composition-v1: profile and exact empty-frame ABI agree\n");return 0;
+}

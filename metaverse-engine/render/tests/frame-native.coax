@@ -1,5 +1,5 @@
 // Test transport only: actual admission and decoding remain in frame.coax.
-#load "../frame.coax";
+#load "../../../coax/lib/gpu/frame.coax";
 engine_frame_admit :: (c:FrameCounts,l:RenderFrameLimits,d:RenderDirectDomains,u:[]RenderUpload,
   w:[]u32,domains:[]RenderDrawDomain,indices:[]u32)->RenderFrameResult #export_c #effects(all) {
   return render_frame_admit(c,l,d,u,w,domains,indices);

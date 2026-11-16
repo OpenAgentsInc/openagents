@@ -1,5 +1,5 @@
 #import "Basic";
-#load "frame.coax";
+#load "../../coax/lib/gpu/frame.coax";
 
 main :: () {
     resources:=[2]RfResource.[RfResource.{generation=5,kind=RF_COLOR,first=9,last=9},RfResource.{generation=2,kind=RF_UNIFORM,words=16,first=9,last=9}];

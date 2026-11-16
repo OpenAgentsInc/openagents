@@ -86,6 +86,13 @@ struct UiHost {
   float clip[4];   // ui_clip: where the components may draw, in pixels; w 0 for everywhere
   id<MTLLibrary> lib;
   id<MTLTexture> depth;
+  id<MTLRenderPipelineState> compose_pipe;
+  id<MTLTexture> compose_targets[16], images[16];
+  uint64_t image_generations[16];
+  UiComposition composition;
+  int composed;
+  id<MTLCommandBuffer> flight; // one immutable frame; reserve before calling the producer
+
   id<MTLDepthStencilState> flat;
 };
 
@@ -679,10 +686,10 @@ static id<MTLLibrary> ui_library(id<MTLDevice> dev, const char *path) {
   if (!lib) fprintf(stderr, "ui-host: no shader at %s (%s)\n", path, err ? err.localizedDescription.UTF8String : "unreadable");
   return lib;
 }
-static id<MTLRenderPipelineState> ui_pipeline(id<MTLDevice> dev, id<MTLLibrary> lib, int depth) {
+static id<MTLRenderPipelineState> ui_pipeline_named(id<MTLDevice> dev, id<MTLLibrary> lib, int depth, int compose) {
   MTLRenderPipelineDescriptor *p = [MTLRenderPipelineDescriptor new];
-  p.vertexFunction = [lib newFunctionWithName:@"chat_fx_vs"];
-  p.fragmentFunction = [lib newFunctionWithName:@"chat_fx_fs"];
+  p.vertexFunction = [lib newFunctionWithName:compose ? @"uc_vs" : @"chat_fx_vs"];
+  p.fragmentFunction = [lib newFunctionWithName:compose ? @"uc_fs" : @"chat_fx_fs"];
   if (!p.vertexFunction || !p.fragmentFunction) { fprintf(stderr, "ui-host: the shader has no chat_fx_vs and chat_fx_fs\n"); return nil; }
   MTLVertexDescriptor *v = [MTLVertexDescriptor new];
   for (int i = 0; i < 7; i++) { v.attributes[i].format = MTLVertexFormatFloat4; v.attributes[i].offset = 16 * i; v.attributes[i].bufferIndex = 30; }
@@ -692,13 +699,14 @@ static id<MTLRenderPipelineState> ui_pipeline(id<MTLDevice> dev, id<MTLLibrary> 
   MTLRenderPipelineColorAttachmentDescriptor *a = p.colorAttachments[0];
   a.pixelFormat = MTLPixelFormatBGRA8Unorm; a.blendingEnabled = YES;
   a.rgbBlendOperation = MTLBlendOperationAdd; a.alphaBlendOperation = MTLBlendOperationAdd;
-  a.sourceRGBBlendFactor = MTLBlendFactorSourceAlpha; a.sourceAlphaBlendFactor = MTLBlendFactorOne;
+  a.sourceRGBBlendFactor = compose ? MTLBlendFactorOne : MTLBlendFactorSourceAlpha; a.sourceAlphaBlendFactor = MTLBlendFactorOne;
   a.destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha; a.destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
   NSError *err = nil;
   id<MTLRenderPipelineState> s = [dev newRenderPipelineStateWithDescriptor:p error:&err];
   if (!s) fprintf(stderr, "ui-host: %s\n", err.localizedDescription.UTF8String);
   return s;
 }
+static id<MTLRenderPipelineState> ui_pipeline(id<MTLDevice> dev,id<MTLLibrary> lib,int depth) {return ui_pipeline_named(dev,lib,depth,0);}
 void ui_atlas(UiHost *h, const uint8_t *mono, uint32_t w, uint32_t rows, const uint8_t *color, uint32_t cw, uint32_t crows) {
   if (!h->mono || h->mono.width != w || h->mono.height != rows) {
     MTLTextureDescriptor *d = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatR8Unorm width:w height:rows mipmapped:NO];
@@ -729,6 +737,7 @@ static uint64_t ui_digest(const UiHost *h) {
   size_t n = (size_t)h->count * UI_VERTEX_BYTES / 8;
   uint64_t d = 0x9e3779b97f4a7c15ull ^ h->count ^ ((uint64_t)h->w << 32) ^ ((uint64_t)h->rows << 48);
   for (size_t i = 0; i < n; i++) { d ^= words[i]; d *= 0xff51afd7ed558ccdull; d ^= d >> 29; }
+  if(h->composed>0) {const uint32_t *ops=(const uint32_t*)h->composition.ops;for(size_t i=0;i<h->composition.count*8;i++){d^=ops[i];d*=0xff51afd7ed558ccdull;d^=d>>29;}}
   return d;
 }
 static void ui_fill(UiHost *h, float dt) {
@@ -807,6 +816,66 @@ static void ui_draw(UiHost *h, id<MTLTexture> into, id<MTLCommandBuffer> cmd) {
     [e drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:h->count];
   }
   [e endEncoding];
+}
+
+// Effects only: topology, limits, matrices and kernels are the admitted Coax
+// plan. No readback occurs in a frame. Retained CPU image bytes are replayed on
+// a new device/host by the same upload callback.
+static int ui_compose_prepare(UiHost *h) {
+  h->composed=h->app.composition ? h->app.composition(h->app.user,&h->composition):0;
+  if (!h->composed) {for(int i=0;i<16;i++){h->compose_targets[i]=nil;h->images[i]=nil;h->image_generations[i]=0;}return 1;}
+  if (h->composed<0 || h->layered || !h->mono || !h->color || !h->app.composition_shader) return 0;
+  if (!h->compose_pipe) {
+    UiApp spec=h->app;spec.shader=h->app.composition_shader;
+    id<MTLLibrary> lib=ui_library(h->dev,spec.shader);
+    if (!lib || !(h->compose_pipe=ui_pipeline_named(h->dev,lib,0,1))) return 0;
+  }
+  UiComposition p=h->composition;
+  if (!p.ops || !p.count || p.count>4096 || !p.targets || p.targets>16 || p.words>33554432 || h->w>4096 || h->rows>4096) return 0;
+  for (uint32_t i=0;i<p.targets;i++) {
+    if (!h->compose_targets[i] || h->compose_targets[i].width!=h->w || h->compose_targets[i].height!=h->rows) {
+      MTLTextureDescriptor *d=[MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm width:h->w height:h->rows mipmapped:NO];
+      d.usage=MTLTextureUsageRenderTarget|MTLTextureUsageShaderRead;d.storageMode=MTLStorageModePrivate;
+      h->compose_targets[i]=[h->dev newTextureWithDescriptor:d];if(!h->compose_targets[i])return 0;
+    }
+  }
+  for (uint32_t i=p.targets;i<16;i++) h->compose_targets[i]=nil;
+  int used[16]={0};
+  for (uint32_t op=0;op<p.count;op++) {
+    const float *r=p.ops+op*8;int dst=(int)r[0],src=(int)r[1];
+    if(dst< -1 || dst>=(int)p.targets || src< -1 || (src>=0 && src<64 && src>=(int)p.targets) || src>=80 || dst==src || r[2]<0 || r[3]<0 || (uint64_t)r[2]+(uint64_t)r[3]>h->count) return 0;
+    if(src>=64) {
+      int slot=src-64;used[slot]=1;UiImage image={0};if(!h->app.image || !h->app.image(h->app.user,slot,&image) || !image.rgba || !image.width || !image.height || image.width>4096 || image.height>4096)return 0;
+      if(!h->images[slot] || h->image_generations[slot]!=image.generation || h->images[slot].width!=image.width || h->images[slot].height!=image.height) {
+        MTLTextureDescriptor *d=[MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm width:image.width height:image.height mipmapped:NO];
+        d.usage=MTLTextureUsageShaderRead;id<MTLTexture> t=[h->dev newTextureWithDescriptor:d];if(!t)return 0;
+        [t replaceRegion:MTLRegionMake2D(0,0,image.width,image.height) mipmapLevel:0 withBytes:image.rgba bytesPerRow:image.width*4];h->images[slot]=t;h->image_generations[slot]=image.generation;h->stale=1;
+      }
+    }
+  }
+  for(int i=0;i<16;i++)if(!used[i]){h->images[i]=nil;h->image_generations[i]=0;}
+  return 1;
+}
+static void ui_compose_draw(UiHost *h,id<MTLTexture> into,id<MTLCommandBuffer> cmd) {
+  memcpy(h->verts.contents,h->frame,(size_t)h->count*UI_VERTEX_BYTES);
+  for(uint32_t i=0;i<h->composition.count;i++) {
+    const float *r=h->composition.ops+i*8;int dst=(int)r[0],src=(int)r[1];
+    id<MTLTexture> target=dst<0 ? into:h->compose_targets[dst];
+    MTLRenderPassDescriptor *rp=[MTLRenderPassDescriptor renderPassDescriptor];rp.colorAttachments[0].texture=target;
+    rp.colorAttachments[0].loadAction=r[4]!=0 ? MTLLoadActionClear:MTLLoadActionLoad;rp.colorAttachments[0].storeAction=MTLStoreActionStore;
+    rp.colorAttachments[0].clearColor=MTLClearColorMake(0,0,0,0);
+    id<MTLRenderCommandEncoder> e=[cmd renderCommandEncoderWithDescriptor:rp];
+    if(r[3]>0) {
+      float u[4]={(float)h->w,(float)h->rows,0,0};uint32_t lengths[29]={4};
+      [e setRenderPipelineState:h->compose_pipe];[e setVertexBuffer:h->verts offset:0 atIndex:30];
+      [e setVertexBytes:u length:sizeof u atIndex:0];[e setFragmentBytes:u length:sizeof u atIndex:0];
+      [e setVertexBytes:lengths length:sizeof lengths atIndex:29];[e setFragmentBytes:lengths length:sizeof lengths atIndex:29];
+      [e setFragmentTexture:h->mono atIndex:0];[e setFragmentTexture:h->color atIndex:1];
+      [e setFragmentTexture:src<0 ? h->color:src>=64 ? h->images[src-64]:h->compose_targets[src] atIndex:2];
+      [e drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:(NSUInteger)r[2] vertexCount:(NSUInteger)r[3]];
+    }
+    [e endEncoding];
+  }
 }
 
 // ---- the seat
@@ -1166,23 +1235,26 @@ int ui_frame(UiHost *h) {
     if (!w || !rows) return 1;
     if (w != h->w || rows != h->rows) { h->w = w; h->rows = rows; h->layer.contentsScale = h->dpr; h->layer.drawableSize = CGSizeMake(w, rows); h->stale = 1; }
     double now = ui_now();
-    float dt = (float)(now - h->last); h->last = now;
+    float dt = (float)(now - h->last);
     if (dt > 0.1f) dt = 0.1f;
+    if(h->flight && h->flight.status<MTLCommandBufferStatusCompleted)return 1;
+    if(h->flight){int ok=h->flight.status==MTLCommandBufferStatusCompleted;if(h->app.presented)h->app.presented(h->app.user,ok);if(!ok)h->stale=1;h->flight=nil;}
+    id<CAMetalDrawable> d=[h->layer nextDrawable];if(!d)return 1;
+    h->last=now;h->flight=nil;
     ui_fill(h, dt);
+    if(!ui_compose_prepare(h)){if(h->app.presented)h->app.presented(h->app.user,0);return 1;}
     uint64_t digest = ui_digest(h);
 #if TARGET_OS_OSX
     int moved = every || (h->layered && h->layer_of.changed(h->layer_of.user));
 #else
     int moved = h->layered && (!h->layer_of.changed || h->layer_of.changed(h->layer_of.user));
 #endif
-    if (!h->stale && !moved && digest == h->shown) return 1;
-    id<CAMetalDrawable> d = [h->layer nextDrawable];
-    if (!d) return 1;
+    if (!h->stale && !moved && digest == h->shown) {if(h->app.presented)h->app.presented(h->app.user,1);return 1;}
     h->shown = digest; h->stale = 0;
     id<MTLCommandBuffer> cmd = [h->queue commandBuffer];
-    ui_draw(h, d.texture, cmd);
+    if(h->composed)ui_compose_draw(h,d.texture,cmd);else ui_draw(h,d.texture,cmd);
     [cmd presentDrawable:d];
-    [cmd commit];
+    [cmd commit];h->flight=cmd;
     h->presented++;
   }
   return 1;
@@ -1197,13 +1269,21 @@ int ui_shot_frame(UiHost *h, uint32_t w, uint32_t rows, float dt) {
       h->target = [h->dev newTextureWithDescriptor:d];
       h->w = w; h->rows = rows;
     }
+    if(h->flight)[h->flight waitUntilCompleted];
     ui_fill(h, dt);
+    if(!ui_compose_prepare(h)){if(h->app.presented)h->app.presented(h->app.user,0);return 0;}
     id<MTLCommandBuffer> cmd = [h->queue commandBuffer];
-    ui_draw(h, h->target, cmd);
+    if(h->composed)ui_compose_draw(h,h->target,cmd);else ui_draw(h,h->target,cmd);
     [cmd commit];
     [cmd waitUntilCompleted];
+    if(h->app.presented)h->app.presented(h->app.user,cmd.status==MTLCommandBufferStatusCompleted);
   }
   return 1;
+}
+int ui_readback(UiHost*h,uint8_t*out,size_t capacity) {
+ if(!h->offscreen || !h->target || capacity<h->w*h->rows*4u)return 0;
+ [h->target getBytes:out bytesPerRow:h->w*4 fromRegion:MTLRegionMake2D(0,0,h->w,h->rows) mipmapLevel:0];
+ for(size_t i=0;i<h->w*h->rows;i++){uint8_t r=out[i*4];out[i*4]=out[i*4+2];out[i*4+2]=r;}return 1;
 }
 int ui_shot_write(UiHost *h, const char *png) {
   if (!h->target) return 0;
@@ -1228,6 +1308,8 @@ int ui_shot_write(UiHost *h, const char *png) {
 }
 void ui_close(UiHost *h) {
   if (!h) return;
+  if(h->flight){[h->flight waitUntilCompleted];if(h->app.presented)h->app.presented(h->app.user,h->flight.status==MTLCommandBufferStatusCompleted);}h->flight=nil;
+  for(int i=0;i<16;i++){h->compose_targets[i]=nil;h->images[i]=nil;}h->compose_pipe=nil;
   ui_drive_close(h);
   ui_hold_pointer(h, 0);
 #if TARGET_OS_OSX

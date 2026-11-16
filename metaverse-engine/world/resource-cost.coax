@@ -4,7 +4,7 @@
 #authority;
 #load "../core/assets.coax" as assets;
 #load "../render/host/host-layers.coax";
-#load "../render/registry.coax" as gpu;
+#load "../../coax/lib/gpu/registry.coax" as gpu;
 #load "../audio/host-wav.coax" as wav;
 #load "../physics/query.coax" as queries;
 #load "../core/space.coax" as points;

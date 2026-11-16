@@ -1,0 +1,27 @@
+// Shared 2D affine geometry, in y-down logical pixels. No SDK mathematics.
+Affine :: struct {a:f32=1;b:f32;c:f32;d:f32=1;tx:f32;ty:f32;}
+AffinePoint :: struct {x:f32;y:f32;}
+affine_point :: (m:Affine,x:f32,y:f32)->AffinePoint {
+ return AffinePoint.{x=m.a*x+m.c*y+m.tx,y=m.b*x+m.d*y+m.ty};
+}
+affine_then :: (child:Affine,parent:Affine)->Affine {
+ p:=affine_point(parent,child.tx,child.ty);
+ return Affine.{a=parent.a*child.a+parent.c*child.b,b=parent.b*child.a+parent.d*child.b,c=parent.a*child.c+parent.c*child.d,d=parent.b*child.c+parent.d*child.d,tx=p.x,ty=p.y};
+}
+affine_valid :: (m:Affine)->bool {
+ // Ordered comparisons reject NaN as well as infinities. Refuse singular and
+ // ill-conditioned transforms before any SDK creates a resource or hit box.
+ return abs(m.a)<=64 && abs(m.b)<=64 && abs(m.c)<=64 && abs(m.d)<=64 && abs(m.tx)<=1000000 && abs(m.ty)<=1000000 && abs(m.a*m.d-m.b*m.c)>=0.000001;
+}
+affine_inverse_point :: (m:Affine,x:f32,y:f32)->AffinePoint {
+ if !affine_valid(m) {return AffinePoint.{x=1000001,y=1000001};}
+ det:=m.a*m.d-m.b*m.c;local_x:=x-m.tx;local_y:=y-m.ty;
+ return AffinePoint.{x=(m.d*local_x-m.c*local_y)/det,y=(m.a*local_y-m.b*local_x)/det};
+}
+#test "nested affine composition and inverse hits preserve rotation, origin and reflection" {
+ a:=Affine.{a=0,b=1,c=-1,d=0,tx=30,ty=10};b:=Affine.{a=-2,d=3,tx=5,ty=7};
+ p:=affine_point(affine_then(a,b),2,4);q:=affine_point(a,2,4);q=affine_point(b,q.x,q.y);
+ #assert p.x==q.x && p.y==q.y;
+ p=affine_inverse_point(a,26,12);#assert p.x==2 && p.y==4;
+ #assert !affine_valid(Affine.{a=0,d=0}) && !affine_valid(Affine.{tx=1000001});
+}

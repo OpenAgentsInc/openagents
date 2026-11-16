@@ -1,7 +1,7 @@
 // A bounded frame program. The host performs these GPU effects in order; it
 // does not infer a graph from shader text or decide pass order itself.
 #module "metaverse.engine.render.passes";
-#load "../types.coax";
+#load "../../../coax/lib/gpu/types.coax";
 #authority;
 
 RENDER_OPS :: 256;

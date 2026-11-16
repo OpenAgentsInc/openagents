@@ -6,7 +6,7 @@
 #authority;
 #load "resource-manifest.coax";
 #load "../host/inbox-queue.coax";
-#load "../render/frame.coax" as frames;
+#load "../../coax/lib/gpu/frame.coax" as frames;
 
 RESOURCE_BUDGET_LINES :: 7;
 RESOURCE_BUDGET_TOTAL_MAX :: 1107296256; // existing 32 MiB inbox + 1 GiB GPU ceilings

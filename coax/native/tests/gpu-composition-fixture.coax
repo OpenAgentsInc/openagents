@@ -1,0 +1,25 @@
+// The same deterministic scene feeds Metal, WebGPU and Vulkan pixel oracles.
+#load "../gpu-composition.coax";
+UcFixture :: struct {plan:[1]UcPlan;atlas:[1]Atlas;prims:[64]Prim;image:[16]u8;mode:int;}
+uc_fixture :: (s:[]UcFixture,out:[]f32,w:int,h:int)->int #export_c #effects(all) {
+ p:=s[0].prims[..];n:=prim_fill(p,0,0,0,cast(f32)w,cast(f32)h,0,rgba(ifx s[0].mode==5 then 0.4f32 else 0.0f32,ifx s[0].mode==5 then 0.4f32 else 0.0f32,ifx s[0].mode==5 then 0.4f32 else 0.0f32,1));
+ if s[0].mode==0 || s[0].mode==5 {
+  n=prim_layer(p,n,[6]f32.[1,0,0,1,0,0],0.5,0,false);
+  n=prim_fill(p,n,8,8,24,24,0,rgba(1,1,1,ifx s[0].mode==5 then 0.5f32 else 1.0f32));n=prim_fill(p,n,20,8,24,24,0,rgba(1,1,1,ifx s[0].mode==5 then 0.5f32 else 1.0f32));n=prim_unlayer(p,n);
+ } else if s[0].mode==1 {
+  n=prim_layer(p,n,[6]f32.[0,1,-1,0,48,0],1,0,false);
+  n=prim_clip(p,n,8,8,24,24);n=prim_fill(p,n,0,0,40,40,4,rgba(1,1,1,1));n=prim_unclip(p,n);n=prim_unlayer(p,n);
+ } else if s[0].mode==2 {
+  n=prim_layer(p,n,[6]f32.[1,0,0,1,0,0],1,6,false);
+  n=prim_fill(p,n,24,24,16,16,0,rgba(1,1,1,1));n=prim_unlayer(p,n);
+ } else if s[0].mode==3 {
+  n=prim_fill(p,n,16,16,16,32,0,rgba(1,1,1,1));n=prim_layer(p,n,[6]f32.[1,0,0,1,0,0],1,6,true);
+  n=prim_fill(p,n,40,24,8,8,0,rgba(1,1,1,1));n=prim_unlayer(p,n);
+ } else {
+  s[0].image=[16]u8.[255,0,0,255,0,255,0,0,0,0,255,128,255,255,255,255];
+  n=prim_image(p,n,1,16,16,32,32);
+ }
+ images:=[1]UcImage.[UcImage.{id=1,w=2,h=2}];
+ if !uc_build(s[0].plan[..],out,s[0].atlas[..],p[0..<n],images[..],w,h,1) {return 0;}
+ return s[0].plan[0].v;
+}

@@ -1,0 +1,3 @@
+// Generic codes for GPU texture byte accounting; engine format compatibility is checked at its boundary.
+#module "coax.gpu.formats";
+GpuTextureFormat :: enum u8 { rgba8; bgra8; rgba16f; depth32; invalid; }

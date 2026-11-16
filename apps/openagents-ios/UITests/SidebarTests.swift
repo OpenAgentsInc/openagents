@@ -45,4 +45,15 @@ final class SidebarTests:XCTestCase {
         menu.tap();XCTAssertTrue(settings.waitForExistence(timeout:10))
         let picture=XCTAttachment(screenshot:app.screenshot());picture.name="Sidebar opened by a real UIKit tap";picture.lifetime = .keepAlways;add(picture)
     }
+    @MainActor func testRendererCompositionAndBack() {
+        let app=XCUIApplication();app.launchArguments=["-OAAPIOrigin","http://127.0.0.1:9","-OAReduceMotion","YES"]
+        app.launch();let menu=app.buttons["nav.menu"];XCTAssertTrue(menu.waitForExistence(timeout:20));menu.tap()
+        let settings=app.buttons["drawer.settings"];XCTAssertTrue(settings.waitForExistence(timeout:10));settings.tap()
+        let renderer=app.buttons["renderer.open"];XCTAssertTrue(renderer.waitForExistence(timeout:10));renderer.tap()
+        let transformed=app.buttons["renderer.transformed"];XCTAssertTrue(transformed.waitForExistence(timeout:15));transformed.tap();XCTAssertEqual(transformed.label,"Tapped")
+        XCTAssertTrue(app.buttons["renderer.sharp"].exists)
+        let picture=XCTAttachment(screenshot:app.screenshot());picture.name="Native GPU images affine isolated opacity and blur";picture.lifetime = .keepAlways;add(picture)
+        app.buttons["renderer.back"].tap();XCTAssertTrue(renderer.waitForExistence(timeout:10))
+    }
+
 }

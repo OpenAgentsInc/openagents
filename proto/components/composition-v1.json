@@ -1,0 +1,65 @@
+{
+  "id": "openagents.components.composition.v1",
+  "version": 1,
+  "kind": "in-process GPU frame profile",
+  "vertex": {
+    "stride_f32": 28,
+    "legacy_kinds": "0..7 unchanged",
+    "8": "premultiplied texture",
+    "9": "horizontal blur",
+    "10": "vertical blur",
+    "11": "canonical straight RGBA8 image"
+  },
+  "record": {
+    "stride_f32": 8,
+    "fields": [
+      "target",
+      "source",
+      "first",
+      "count",
+      "clear",
+      "width",
+      "height",
+      "reserved"
+    ],
+    "integer_fields": "all; finite exactly representable",
+    "target": "-1 output; 0..15 owned local viewport texture",
+    "source": "-1 atlases; 0..15 prior target; 64..79 immutable image slot",
+    "clear": "0 load; 1 transparent clear",
+    "reserved": 0
+  },
+  "limits": {
+    "dimension": 4096,
+    "targets": 16,
+    "images": 16,
+    "passes": 4096,
+    "depth": 16,
+    "blur_radius_device_pixels": 32,
+    "gpu_words": 33554432,
+    "unfinished_frames": 1,
+    "binding_sets": 64
+  },
+  "alpha": "existing straight-sRGB primitives premultiplied by shader; targets premultiplied RGBA8, source-over One/OneMinusSrcAlpha into non-sRGB targets; image texels premultiply before interpolation",
+  "ownership": "caller retains plan, vertices, atlas and canonical CPU image bytes; SDK reserves all objects before encoding; no feedback or prefix submission; slot generations retained until GPU completion; source images replay on device recreation",
+  "coordinate_space": "local y-down viewport at each isolated layer; affine applied to completed layer; outer clips at parent composite, child clips before transform; clip before source/backdrop capture; full viewport retains in-viewport blur halo",
+  "blur": "transparent border, normalized bounded separable Gaussian radius <=32; backdrop copies already-painted parent then blurs before sharp children",
+  "contract": "new profile; no changes to AFP1 or the legacy flat vertex/entry-point contract",
+  "golden_empty_frame_words": [
+    0,
+    -1,
+    0,
+    0,
+    1,
+    4,
+    3,
+    0,
+    -1,
+    0,
+    0,
+    6,
+    1,
+    4,
+    3,
+    0
+  ]
+}

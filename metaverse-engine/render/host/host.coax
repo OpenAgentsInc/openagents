@@ -13,7 +13,7 @@
 #load "host-uploads.coax";
 #load "../asset-profile.coax";
 #load "../resources.coax" as host_resources;
-#load "../registry.coax";
+#load "../../../coax/lib/gpu/registry.coax";
 
 RenderHostEntryBank :: struct {entries:[14]RenderPackageEntry;}
 RenderHostJsonBank :: struct {bytes:[RENDER_PACKAGE_JSON]u8;}

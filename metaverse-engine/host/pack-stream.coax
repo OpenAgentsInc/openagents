@@ -2,7 +2,7 @@
 // Page leases reuse hiq ownership: one unit is an actual 64KiB allocation page.
 #load "inbox-queue.coax";
 #load "../editor/pack.coax";
-#load "../render/frame.coax";
+#load "../../coax/lib/gpu/frame.coax";
 #authority;
 HOST_PACK_BYTES :: 67108864;
 HOST_PACK_PAGE :: 65536;

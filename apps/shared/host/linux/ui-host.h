@@ -28,6 +28,11 @@ typedef struct {
   int role, state, parent, focus;
 } UiElement;
 
+// composition-v1, produced and admitted by coax/native/gpu-composition.coax.
+// A borrowed immutable plan until submitted work completes. The adapter allocates
+// all targets before encoding and never executes a prefix on allocation failure.
+typedef struct { const float *ops; uint32_t count, targets, words; } UiComposition;
+typedef struct { const uint8_t *rgba; uint32_t width,height; uint64_t generation; } UiImage;
 typedef struct {
   const char *title, *app_id;
   uint32_t width, height;         // the window's first size, in pixels
@@ -106,6 +111,11 @@ typedef struct {
   void (*text_edit)(void*,const char*,size_t,const char*,size_t,int,int);
   void (*text_cancel)(void*);
   void (*text_paste)(void*,const char*,size_t);
+  const char *composition_shader;
+  int (*composition)(void *user,UiComposition *out); // 0 flat, 1 admitted, -1 refused
+  int (*image)(void *user,int slot,UiImage *out); // canonical straight RGBA8; retained for recovery
+  void (*presented)(void *user,int accepted); // commit/abort a staged composed surface
+
 } UiApp;
 
 // The input method's view of the text box (UTF-16 units). which: 0 selection start, 1 its end,
@@ -130,6 +140,8 @@ int ui_frame(UiHost *h);
 int ui_shot_frame(UiHost *h, uint32_t w, uint32_t rows, float dt);
 // The last offscreen frame as a PNG. 0 if it could not be written.
 int ui_shot_write(UiHost *h, const char *png);
+// Qualification readback, RGBA8; never used in an interactive frame.
+int ui_readback(UiHost *h,uint8_t *out,size_t capacity);
 // The device scale frames are drawn at (1 unless set).
 void ui_set_dpr(UiHost *h, float dpr);
 // The pointer's shape: 0 arrow, 1 text, 2 hand, 3 resize left and right, 4 crosshair.

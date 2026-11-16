@@ -235,6 +235,26 @@ on the GPU: no screenshot readback/upload loop per frame. Opacity/transform
 updates must not rerasterize static text. A display-list pool overflow cannot
 silently remove a label or leave an invisible active hit target.
 
+### Implemented composition profile (2026-11-16, #13645)
+
+[composition-v1](backend/composition.md) now supplies still images, affine
+isolated layers, true group opacity, source/backdrop blur and sharp lifted
+children. The planner and shader math are shared Coax. Metal, WebGPU and
+Vulkan consume the admitted pass records; legacy flat entry points retain
+their 28-float vertices and blending. The phone's Settings → Renderer uses
+this path with the same button/text/semantic kit as ordinary pages.
+
+The first bounded profile uses full local viewport targets (4096 per side,
+16 targets, 128 MiB of effect targets/images/vertices, one unfinished frame).
+The local viewport is the clip for each isolated canvas; its in-viewport
+blur halo survives until composition. Arbitrary off-canvas retained layers,
+external world textures/depth, animated-image decoding, radial/sweep gradients,
+and masked blur are separate capabilities, not claimed by this profile.
+Transformed active native editors and selectable text inside an isolated
+layer refuse until their selection/editor contract is implemented. Static
+glyphs retain the existing atlas; moving a texture does not rasterize them
+again. Reduced transparency disables sample blur and uses opaque groups.
+
 ## Native text and system integration
 
 Keep UIKit/AppKit and Android as platform hosts. Use `UITextInput`/existing

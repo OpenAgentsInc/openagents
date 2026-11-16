@@ -160,8 +160,8 @@ and the admitted pass plan.
 
 <!-- source: metaverse-engine/examples/admit-a-frame.coax example -->
 ```jai
-#load "../render/types.coax" as rt;
-#load "../render/frame.coax" as frame;
+#load "../../coax/lib/gpu/types.coax" as rt;
+#load "../../coax/lib/gpu/frame.coax" as frame;
 #load "../render/graph/passes.coax" as passes;
 #import "Basic";
 

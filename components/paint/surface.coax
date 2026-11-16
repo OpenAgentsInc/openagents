@@ -157,7 +157,8 @@ surface_stamp :: (s: [] UiSurface) -> int {
     for c: surface_say(s, i) { st = (st * 31 + cast(int) c) & 0x3fffffff; }
     for c: elt_value_of(t[..], i) { st = (st * 31 + cast(int) c) & 0x3fffffff; }
     st = (st * 31 + r.state) & 0x3fffffff;
-    st = (st * 31 + el_round(r.x) + 7 * el_round(r.y) + 13 * el_round(r.w) + 17 * el_round(r.h)) & 0x3fffffff;
+    b:=el_box(r);
+    st = (st * 31 + el_round(b.x) + 7 * el_round(b.y) + 13 * el_round(b.w) + 17 * el_round(b.h)) & 0x3fffffff;
   }
   return st;
 }

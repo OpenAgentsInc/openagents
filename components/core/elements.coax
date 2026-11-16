@@ -30,6 +30,8 @@
 // (with EL_S_CHECKS) and EL_S_LIVE; AT_FOCUS is EL_S_FOCUSED.
 //   coax/bin/coax test components/core/elements.coax
 
+#load "affine.coax";
+EL_POLY :: 80; // sixteen nested transformed rectangular clips
 EL_MAX :: 192;       // rows in an Elements (an ElTable's capacity is its caller's)
 EL_ID :: 48;         // bytes of an id
 EL_LABEL :: 64;      // bytes of a label
@@ -66,6 +68,7 @@ El :: struct {
   action: int;                         // the action a press dispatches (the app's numbers); 0: none
   focus: int;                          // its place in keyboard focus order, from 1; 0: the keyboard skips it
   clipped: bool; cl: f32; ct: f32; cr: f32; cb: f32;   // the clip it was recorded under: only that part can be pressed
+  polygon: [EL_POLY*2] f32; polygon_n:int; transformed:bool;
   say_at: int; say_n: int;             // the whole text a screen reader speaks, in its generation's sheet pool (kit/frame.coax uiframe_say); 0 bytes: the label
 }
 // What can be pressed or read of a row: its box cut by its clip.
@@ -137,6 +140,12 @@ el_rows_make :: (rows: [] El, n: int, id: string, role: int, label: string, x: f
 }
 // What can be pressed or read of a row.
 el_box :: (r: El) -> ElBox {
+  if r.transformed {
+   if r.polygon_n<3 {return ElBox.{};}
+   x0:=r.polygon[0];y0:=r.polygon[1];x1:=x0;y1:=y0;
+   for i:1..<r.polygon_n {x:=r.polygon[i*2];y:=r.polygon[i*2+1];if x<x0 {x0=x;}if y<y0 {y0=y;}if x>x1 {x1=x;}if y>y1 {y1=y;}}
+   return ElBox.{x=x0,y=y0,w=x1-x0,h=y1-y0,visible=x1>x0 && y1>y0};
+  }
   if !r.clipped { return ElBox.{x = r.x, y = r.y, w = r.w, h = r.h, visible = r.w > 0 && r.h > 0}; }
   x0 := ifx r.x > r.cl then r.x else r.cl; y0 := ifx r.y > r.ct then r.y else r.ct;
   x1 := ifx r.x + r.w < r.cr then r.x + r.w else r.cr; y1 := ifx r.y + r.h < r.cb then r.y + r.h else r.cb;
@@ -149,7 +158,7 @@ el_rows_hit :: (rows: [] El, n: int, x: f32, y: f32) -> int {
   i := n - 1;
   while i >= 0 {
     b := el_box(rows[i]);
-    if b.visible && x >= b.x && x < b.x + b.w && y >= b.y && y < b.y + b.h { return i; }
+    if b.visible && x >= b.x && x < b.x + b.w && y >= b.y && y < b.y + b.h && el_polygon_hit(rows[i],x,y) { return i; }
     i -= 1;
   }
   return -1;
@@ -300,7 +309,9 @@ elt_append :: (t: [] ElTable, from: [] ElTable, dx: f32, dy: f32) {
       if n.clipped { if n.cl > l { l = n.cl; } if n.ct > u { u = n.ct; } if n.cr < rr { rr = n.cr; } if n.cb < b { b = n.cb; } }
       n.clipped = true; n.cl = l; n.ct = u; n.cr = rr; n.cb = b;
     }
+    if r.transformed {n.transformed=true;n.polygon_n=r.polygon_n;n.polygon=r.polygon;for k:0..<n.polygon_n {n.polygon[k*2]+=dx;n.polygon[k*2+1]+=dy;}}
     t[0].rows[at] = n;
+    if n.transformed && n.clipped {part:=t[0].rows[at..<at+1];if !el_poly_cut(part,0,n.cl,true) || !el_poly_cut(part,1,n.ct,true) || !el_poly_cut(part,0,n.cr,false) || !el_poly_cut(part,1,n.cb,false) {t[0].lost+=1;}part[0].clipped=false;}
   }
   t[0].lost += from[0].lost;
 }
@@ -540,4 +551,46 @@ elt_detail :: (t: [] ElTable, out: [] u8) -> int {
   // the part's clip moved and cut by the open one: y 200..<215
   bx := elt_visible(t[..], m1); #assert bx.visible && bx.y == 200 && bx.h == 15 && !elt_visible(t[..], m2).visible && elt_hit(t[..], 250, 210) == m1 && elt_hit(t[..], 250, 220) == -1;
   #assert elt_focus_step(t[..], chip, false) == m1 && elt_focus_step(t[..], m1, false) == chip;
+}
+
+// Exact convex hit geometry; accessibility gets its enclosing visible box.
+el_polygon_hit :: (r:El,x:f32,y:f32)->bool {
+ if !r.transformed {return true;}if r.polygon_n<3 {return false;}sign:f32=0;
+ for i:0..<r.polygon_n {j:=(i+1)%r.polygon_n;cross:=(r.polygon[j*2]-r.polygon[i*2])*(y-r.polygon[i*2+1])-(r.polygon[j*2+1]-r.polygon[i*2+1])*(x-r.polygon[i*2]);
+  if abs(cross)>0.00001 {if sign*cross<0 {return false;}sign=cross;}}
+ return true;
+}
+el_poly_cut :: (r:[]El,axis:int,edge:f32,greater:bool)->bool {
+ if r[0].polygon_n==0 {return true;}temp:[EL_POLY*2]f32;n:=0;
+ for i:0..<r[0].polygon_n {j:=(i+r[0].polygon_n-1)%r[0].polygon_n;
+  a:=r[0].polygon[j*2+axis];b:=r[0].polygon[i*2+axis];ia:=ifx greater then a>=edge else a<=edge;ib:=ifx greater then b>=edge else b<=edge;
+  if ia!=ib {if n>=EL_POLY {return false;}t:=(edge-a)/(b-a);for k:0..<2 {temp[n*2+k]=r[0].polygon[j*2+k]+t*(r[0].polygon[i*2+k]-r[0].polygon[j*2+k]);}n+=1;}
+  if ib {if n>=EL_POLY {return false;}temp[n*2]=r[0].polygon[i*2];temp[n*2+1]=r[0].polygon[i*2+1];n+=1;}
+ }
+ r[0].polygon_n=n;for i:0..<n*2 {r[0].polygon[i]=temp[i];}return true;
+}
+elt_affine :: (t:[]ElTable,from:int,m:Affine,clip:bool,cl:f32,ct:f32,cr:f32,cb:f32) {
+ if t.count==0 {return;}if !affine_valid(m) {t[0].lost+=1;return;}
+ for i:from..<t[0].n {r:=t[0].rows[i..<i+1];
+  // Platform active editors cannot stand for a rotated/sheared/scaled field.
+  // Refuse that candidate instead of exposing a mismatched hit/editor frame.
+  if r[0].role==EL_FIELD && (m.a!=1 || m.b!=0 || m.c!=0 || m.d!=1) {t[0].lost+=1;continue;}
+  if !r[0].transformed {b:=el_box(r[0]);r[0].transformed=true;r[0].clipped=false;r[0].polygon_n=ifx b.visible then 4 else 0;
+   r[0].polygon[0]=b.x;r[0].polygon[1]=b.y;r[0].polygon[2]=b.x+b.w;r[0].polygon[3]=b.y;r[0].polygon[4]=b.x+b.w;r[0].polygon[5]=b.y+b.h;r[0].polygon[6]=b.x;r[0].polygon[7]=b.y+b.h;}
+  for k:0..<r[0].polygon_n {p:=affine_point(m,r[0].polygon[k*2],r[0].polygon[k*2+1]);r[0].polygon[k*2]=p.x;r[0].polygon[k*2+1]=p.y;}
+  if clip && (!el_poly_cut(r,0,cl,true) || !el_poly_cut(r,1,ct,true) || !el_poly_cut(r,0,cr,false) || !el_poly_cut(r,1,cb,false)) {t[0].lost+=1;}
+ }
+}
+#test "rotated semantic rows hit the polygon, not its bounding box, through a parent clip" {
+ rows:[2]El;t:=[1]ElTable.[elt_over(rows[..])];_:=elt_row(t[..],"tilted",EL_BUTTON,"Tilted",0,0,10,10);
+ elt_affine(t[..],0,Affine.{a=1,b=1,c=-1,d=1,tx=10},true,5,0,20,20);
+ #assert t[0].lost==0 && el_rows_hit(rows[..],1,10,10)==0 && el_rows_hit(rows[..],1,5,1)== -1 && el_rows_hit(rows[..],1,4,10)== -1;
+ b:=el_box(rows[0]);#assert b.x==5 && b.w==15 && b.h==20;
+}
+
+#test "appending a transformed part preserves its polygon and cuts it against the parent's clip" {
+ a:[2]El;b:[2]El;src:=[1]ElTable.[elt_over(a[..])];dst:=[1]ElTable.[elt_over(b[..])];_:=elt_row(src[..],"button",EL_BUTTON,"Button",0,0,10,10);
+ elt_affine(src[..],0,Affine.{a=1,b=1,c=-1,d=1,tx=10},false,0,0,0,0);elt_clip(dst[..],110,100,120,120);elt_append(dst[..],src[..],100,100);
+ #assert el_rows_hit(b[..],1,115,110)==0 && el_rows_hit(b[..],1,105,110)== -1 && el_rows_hit(b[..],1,119,101)== -1;
+ #assert el_box(b[0]).x==110 && dst[0].lost==0;
 }

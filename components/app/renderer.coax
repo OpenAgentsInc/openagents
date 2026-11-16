@@ -1,0 +1,36 @@
+// Interactive specimens of the shared compositor, usable by every app host.
+// The same display list is used by the native GPU and browser qualification.
+#load "base.coax";
+app_renderer :: (f:[]UiFrame,x:f32,y:f32,w:f32,clock:f32,tapped:bool)->f32 {
+ k:=f[0].skin;yy:=y;
+ yy+=app_text(f,"renderer.image.label",x,yy,w,APP_TEXT_CAPTION,"Image")+8;
+ sheet_over_n(f[0].sheet,prim_image(f[0].sheet[0].over,f[0].sheet[0].no,1,x,yy,w,80));
+ _:=uiframe_semantic(f,"renderer.image",EL_IMAGE,"RGBA image",x,yy,w,80,0,0);yy+=104;
+ yy+=app_text(f,"renderer.group.label",x,yy,w,APP_TEXT_CAPTION,"Group opacity + transform")+8;
+ angle:=ifx f[0].reduced_motion then 0.06f32 else sin(clock*0.8)*0.08f32;
+ cx:=x+w/2;cy:=yy+44;c:=cos(angle);s:=sin(angle);
+ uiframe_layer(f,[6]f32.[c,s,-s,c,cx-c*cx+s*cy,cy-s*cx-c*cy],0.55,0,false);
+ _:=sheet_box(f[0].sheet,x,yy,w*0.68,76,12,0,rgba(0.75,0.75,0.75,1),rgba(0,0,0,0));
+ _:=app_button(f,"renderer.transformed",x+w*0.28,yy+20,w*0.68,-1,ifx tapped then "Tapped" else "Tap",APP_BUTTON_PRIMARY,0,901);
+ uiframe_unlayer(f);yy+=104;
+ yy+=app_text(f,"renderer.blur.label",x,yy,w,APP_TEXT_CAPTION,"Blur + sharp child")+8;
+ // A local clip keeps backdrop blur inside its card; the child label is
+ // painted after the separable filter rather than being blurred with it.
+ uiframe_clip(f,x,yy,x+w,yy+82);
+ for i:0..<12 {_:=sheet_box(f[0].sheet,x+cast(f32)i*w/12,yy,w/24,82,0,0,rgba(0.65,0.65,0.65,1),rgba(0,0,0,0));}
+ uiframe_layer(f,[6]f32.[1,0,0,1,0,0],1,ifx f[0].reduced_transparency then 0.0f32 else 2.0f32,true);
+ _:=app_button(f,"renderer.sharp",x+16,yy+16,w-32,-1,"Sharp",APP_BUTTON_DEFAULT,0,902);
+ uiframe_unlayer(f);uiframe_unclip(f);yy+=104;
+ yy+=app_text(f,"renderer.source.label",x,yy,w,APP_TEXT_CAPTION,"Source blur")+8;
+ uiframe_layer(f,[6]f32.[1,0,0,1,0,0],0.8,ifx f[0].reduced_transparency then 0.0f32 else 2.0f32,false);
+ _:=sheet_box(f[0].sheet,x+24,yy+8,w-48,48,12,0,rgba(0.8,0.8,0.8,1),rgba(0,0,0,0));uiframe_unlayer(f);
+ return yy-y+80;
+}
+// A retained, authored RGBA checker with a transparent half. It is data,
+// generated once in Coax; canonical decoded still images use the same slot.
+renderer_image :: (out:[]u8)->int #export_c #effects(all) {
+ if out.count<16*16*4 {return 0;}
+ for y:0..<16 {for x:0..<16 {o:=(y*16+x)*4;c:=ifx (x/4+y/4)%2==0 then 235 else 90;
+  out[o]=cast(u8)c;out[o+1]=cast(u8)c;out[o+2]=cast(u8)c;out[o+3]=ifx x<8 then 255 else 96;}}
+ return 1024;
+}

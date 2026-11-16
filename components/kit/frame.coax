@@ -61,7 +61,10 @@ uiinput :: (x: f32, y: f32, present: bool, down: bool, pressed: string, focused:
   return i;
 }
 
+UiLayerScope :: struct {under:int;over:int;row:int;lines:int;clips:int;cl:[EL_DEPTH]f32;ct:[EL_DEPTH]f32;cr:[EL_DEPTH]f32;cb:[EL_DEPTH]f32;matrix:[6]f32;alpha:f32;blur:f32;backdrop:bool;}
 UiFrame :: struct {
+  layers:[EL_DEPTH]UiLayerScope; layer_depth:int;
+
   sheet: [] Sheet;             // one sheet: this frame's display list, lines, hits and pool
   rows: [] ElTable;            // one table: this frame's semantic rows (none: nothing is recorded)
   keyed: [] KeyedStore;        // one store: state kept by id across frames (none: components are stateless)
@@ -130,6 +133,7 @@ uiframe_text_field :: (surface: [] UiSurface, id: string) -> bool {
 // commits the display list, hit regions and rows together. False: the frame
 // overflowed and is refused; the generation committed before stays.
 uiframe_end :: (f: [] UiFrame, surface: [] UiSurface) -> bool {
+  if f[0].layer_depth!=0 {f[0].sheet[0].lost+=1;}
   _ = keyed_end(f[0].keyed);
   return surface_commit(surface);
 }
@@ -278,4 +282,29 @@ uiframe_counts :: (surface: [] UiSurface, keyed: [] KeyedStore, out: [] u8) -> i
   n = el_put(out, n, " (full "); n = el_put_i(out, n, keyed[0].refused_full); n = el_put(out, n, ", duplicate "); n = el_put_i(out, n, keyed[0].refused_duplicate);
   n = el_put(out, n, " this frame) retired "); n = el_put_i(out, n, keyed[0].retired);
   return el_put(out, n, "\n");
+}
+
+// Isolate a component's complete under+over paint together. Semantic rows
+// and clips follow the same affine at close. Transform about an origin by
+// supplying its translated affine; nested groups multiply in the compositor.
+uiframe_layer :: (f:[]UiFrame,m:[6]f32,alpha:f32,blur:f32,backdrop:bool) {
+ sh:=f[0].sheet;if f[0].layer_depth>=EL_DEPTH {sh[0].lost+=1;return;}
+ c:=0;r:=0;if f[0].rows.count>0 {c=f[0].rows[0].clips;r=f[0].rows[0].n;f[0].rows[0].clips=0;}
+ f[0].layers[f[0].layer_depth]=UiLayerScope.{under=sh[0].nu,over=sh[0].no,row=r,lines=sh[0].nl,clips=c,matrix=m,alpha=ifx f[0].reduced_transparency then 1.0f32 else alpha,blur=ifx f[0].reduced_transparency then 0.0f32 else blur,backdrop=backdrop};
+ if f[0].rows.count>0 {t:=f[0].rows;for i:0..<c {f[0].layers[f[0].layer_depth].cl[i]=t[0].cl[i];f[0].layers[f[0].layer_depth].ct[i]=t[0].ct[i];f[0].layers[f[0].layer_depth].cr[i]=t[0].cr[i];f[0].layers[f[0].layer_depth].cb[i]=t[0].cb[i];}}
+ f[0].layer_depth+=1;
+}
+uiframe_unlayer :: (f:[]UiFrame) {
+ sh:=f[0].sheet;if f[0].layer_depth==0 {sh[0].lost+=1;return;}
+ f[0].layer_depth-=1;l:=f[0].layers[f[0].layer_depth];nu:=sh[0].nu-l.under;no:=sh[0].no-l.over;
+ // Selectable text requires the selection overlay to share the transform;
+ // until that contract is supplied this combination refuses as one frame.
+ if sh[0].nl!=l.lines || sh[0].no+nu+2>=sh[0].over.count {sh[0].lost+=1;return;}
+ for rev:0..<no {i:=no-1-rev;sh[0].over[l.over+nu+1+i]=sh[0].over[l.over+i];}
+ _:=prim_layer(sh[0].over,l.over,l.matrix,l.alpha,l.blur,l.backdrop);
+ for i:0..<nu {sh[0].over[l.over+1+i]=sh[0].under[l.under+i];}
+ sh[0].nu=l.under;sh[0].no=prim_unlayer(sh[0].over,sh[0].no+nu+1);
+ if f[0].rows.count>0 {t:=f[0].rows;if t[0].clips!=0 {t[0].lost+=1;}t[0].clips=l.clips;for i:0..<l.clips {t[0].cl[i]=l.cl[i];t[0].ct[i]=l.ct[i];t[0].cr[i]=l.cr[i];t[0].cb[i]=l.cb[i];}c:=l.clips-1;
+  elt_affine(t,l.row,Affine.{a=l.matrix[0],b=l.matrix[1],c=l.matrix[2],d=l.matrix[3],tx=l.matrix[4],ty=l.matrix[5]},c>=0,ifx c>=0 then t[0].cl[c] else 0.0f32,ifx c>=0 then t[0].ct[c] else 0.0f32,ifx c>=0 then t[0].cr[c] else 0.0f32,ifx c>=0 then t[0].cb[c] else 0.0f32);
+ }
 }

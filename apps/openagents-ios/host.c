@@ -9,6 +9,8 @@
 
 typedef struct {
   App app;
+  unsigned char render_image[1024];
+  char composition_shader[PATH_MAX+32];
   coax_t_ChatPage *s;
   float safe_top, safe_bottom, keyboard, editor_height;
   int focused, reduced;
@@ -69,6 +71,13 @@ static int oc_on_frame(void *user, float *vertices, float w, float h, float dpr,
   if (c->settle > 0) c->settle--;
   return n < 0 ? 0 : n;
 }
+static int oc_composition(void *user,UiComposition *out) {
+ Chat*c=user;if(!c->s->renderer)return 0;
+ coax_t_UcPlan *p=c->s->render_plan.e;if(!p->ok)return -1;
+ *out=(UiComposition){p->ops.e,(uint32_t)p->n,(uint32_t)p->targets,(uint32_t)p->words};return 1;
+}
+static int oc_image(void *user,int slot,UiImage *out) {Chat*c=user;if(slot!=0)return 0;*out=(UiImage){c->render_image,16,16,1};return 1;}
+static void oc_render_accept(void *user,int accepted) {Chat*c=user;chat_render_commit(oc_state(c),accepted!=0);}
 static void oc_on_pointer(void *user, float x, float y, int phase, int clicks, int mods) {
   (void)clicks; (void)mods;
   Chat *c = user;
@@ -132,6 +141,14 @@ void *oc_open_window(const char *resources,int width,int height,int hidden) {
   "%s/components.spv",
 #endif
   resources);
+  snprintf(c->composition_shader,sizeof c->composition_shader,
+#ifdef __APPLE__
+  "%s/composition.metal",
+#else
+  "%s/composition.spv",
+#endif
+  resources);
+  renderer_image((coax_v_u8){c->render_image,sizeof c->render_image});
   c->s = calloc(1, sizeof *c->s);
   if (!c->s) { free(c); return NULL; }
 #ifndef __APPLE__
@@ -145,6 +162,7 @@ void *oc_open_window(const char *resources,int width,int height,int hidden) {
 #ifndef __APPLE__
   app.key=oc_sdk_key;app.text=oc_sdk_text;app.wants_text=oc_input_wants;app.text_rect=oc_input_rect;app.text_owner=oc_input_owner;app.text_edit=oc_sdk_edit;app.text_cancel=oc_input_cancel;app.text_paste=oc_sdk_paste;app.focus=oc_input_focus;
 #endif
+  app.composition_shader=c->composition_shader;app.composition=oc_composition;app.image=oc_image;app.presented=oc_render_accept;
   a->host = ui_open(&app,
 #ifdef __APPLE__
   0
@@ -195,6 +213,7 @@ int oc_shot_frame(void *chat,int width,int height,float dt) {return chat && widt
 int oc_shot_write(void *chat,const char *path) {return chat && path && ui_shot_write(((Chat *)chat)->app.host,path);}
 int oc_moving(void *chat) { Chat *c = chat; return c && (c->settle > 0 || chat_moving(oc_state(c))); }
 void oc_on_change(void *chat, void (*changed)(void *context), void *context) { Chat *c = chat; if (c) { c->changed = changed; c->context = context; } }
+void oc_transparency(void *chat,int reduced) {Chat*c=chat;if(c)chat_transparency(oc_state(c),reduced!=0);}
 void oc_env(void *chat, float safe_top, float safe_bottom, float keyboard, int focused, float editor_height, int reduced) {
   Chat *c = chat;
   if (!c) return;

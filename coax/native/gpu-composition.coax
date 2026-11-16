@@ -1,0 +1,177 @@
+// composition-v1: bounded, ordered render passes over the existing 28-float
+// vertices. This is the one planner for Metal, WebGPU and Vulkan adapters.
+// Passes are eight f32 words: target, source, first vertex, count, clear,
+// width, height, reserved(0). source -1 = glyph atlases, 0..15 = a prior
+// target, 64..79 = a canonical straight-RGBA image. target -1 = output.
+// Each target is the local viewport, so its complete blur halo survives
+// until the parent's clip. No SDK is permitted to reinterpret the plan.
+#load "../../components/backend/gpu.coax";
+#load "../../components/core/affine.coax";
+#load "gpu-composition-policy.coax";
+
+UcRect :: struct {x:f32;y:f32;r:f32;b:f32;on:bool;}
+UcImage :: struct {id:int;w:int;h:int;}
+UcPlan :: struct {ops:[UC_OPS*8]f32;n:int;v:int;targets:int;used:[UC_TARGETS]bool;bounds:[UC_TARGETS]UcRect;w:int;h:int;ok:bool;words:int;}
+UcState :: struct {target:int;clip:bool;cl:f32=-PRIM_OPEN;ct:f32=-PRIM_OPEN;cr:f32=PRIM_OPEN;cb:f32=PRIM_OPEN;alpha:f32=1;fade:Prim;}
+UcScope :: struct {state:UcState;kind:int;layer:Prim;}
+
+#test "group opacity is isolated after overlapping children; nested transforms compose by passes" {
+ p:[8]Prim;n:=prim_layer(p[..],0,[6]f32.[0,1,-1,0,20,0],0.5,0,false);
+ n=prim_fill(p[..],n,0,0,8,8,0,rgba(1,1,1,1));n=prim_fill(p[..],n,4,0,8,8,0,rgba(1,1,1,1));n=prim_unlayer(p[..],n);
+ a:[1]Atlas;out:[1008]f32;plan:[1]UcPlan;images:[1]UcImage;
+ #assert uc_build(plan[..],out[..],a[..],p[0..<n],images[0..<0],32,32,1);
+ #assert plan[0].targets==2 && plan[0].v==24;
+ #assert out[15]==1 && out[6*28+15]==1 && out[12*28+15]==0.5;
+ #assert out[12*28]==20 && out[12*28+1]==0 && out[13*28]==20 && out[13*28+1]==12;
+ #assert plan[0].ops[plan[0].n*8-8]== -1;
+}
+#test "blur uses two GPU passes and backdrop children are painted after both passes" {
+ p:[5]Prim;n:=prim_layer(p[..],0,[6]f32.[1,0,0,1,0,0],1,4,true);
+ n=prim_fill(p[..],n,3,3,4,4,0,rgba(1,1,1,1));n=prim_unlayer(p[..],n);
+ a:[1]Atlas;out:[1680]f32;plan:[1]UcPlan;images:[1]UcImage;
+ #assert uc_build(plan[..],out[..],a[..],p[0..<n],images[0..<0],16,16,1);
+ #assert plan[0].targets==4 && out[6*28+2]==9 && out[12*28+2]==10 && out[18*28+2]==0;
+}
+#test "image use requires an admitted extent and known immutable image id" {
+ p:[1]Prim;_:=prim_image(p[..],0,7,2,3,5,6);a:[1]Atlas;out:[336]f32;plan:[1]UcPlan;images:=[1]UcImage.[UcImage.{id=7,w=2,h=3}];
+ #assert uc_build(plan[..],out[..],a[..],p[..],images[..],16,16,1) && plan[0].ops[9]==64 && out[2]==11;
+ images[0].id=8;#assert !uc_build(plan[..],out[..],a[..],p[..],images[..],16,16,1) && !plan[0].ok;
+}
+#test "malformed groups, invalid transforms, blur and capacity refuse a whole frame" {
+ p:[2]Prim;a:[1]Atlas;out:[336]f32;plan:[1]UcPlan;images:[1]UcImage;
+ _:=prim_layer(p[..],0,[6]f32.[1,0,0,1,0,0],1,0,false);_:=prim_unlayer(p[..],1);
+ #assert !uc_build(plan[..],out[..],a[..],p[0..<1],images[0..<0],16,16,1);
+ p[0].matrix[0]=0;#assert !uc_build(plan[..],out[..],a[..],p[..],images[0..<0],16,16,1);
+ p[0].matrix[0]=1;p[0].b=33;#assert !uc_build(plan[..],out[..],a[..],p[..],images[0..<0],16,16,1);
+ p[0].b=0;#assert !uc_build(plan[..],out[0..<167],a[..],p[..],images[0..<0],16,16,1);
+ #assert !uc_build(plan[..],out[..],a[..],p[..],images[0..<0],4097,16,1);
+}
+
+uc_op :: (s:[]UcPlan,target:int,source:int,first:int,count:int,clear:bool)->bool {
+ if count>0 && !clear && s[0].n>0 {o:=(s[0].n-1)*8;
+  if s[0].ops[o]==cast(f32)target && s[0].ops[o+1]==cast(f32)source && s[0].ops[o+2]+s[0].ops[o+3]==cast(f32)first {s[0].ops[o+3]+=cast(f32)count;return true;}}
+ if s[0].n>=UC_OPS {return false;}o:=s[0].n*8;
+ s[0].ops[o]=cast(f32)target;s[0].ops[o+1]=cast(f32)source;s[0].ops[o+2]=cast(f32)first;s[0].ops[o+3]=cast(f32)count;s[0].ops[o+4]=ifx clear then 1.0f32 else 0.0f32;
+ s[0].ops[o+5]=cast(f32)s[0].w;s[0].ops[o+6]=cast(f32)s[0].h;s[0].ops[o+7]=0;s[0].n+=1;return true;
+}
+uc_target :: (s:[]UcPlan)->int {
+ for i:0..<UC_TARGETS {if !s[0].used[i] {s[0].used[i]=true;s[0].bounds[i]=UcRect.{};if i>=s[0].targets {s[0].targets=i+1;}return i;}}return -1;
+}
+uc_matrix :: (p:Prim,d:f32)->Affine {return Affine.{a=p.matrix[0],b=p.matrix[1],c=p.matrix[2],d=p.matrix[3],tx=p.matrix[4]*d,ty=p.matrix[5]*d};}
+uc_quad :: (s:[]UcPlan,out:[]f32,target:int,source:int,m:Affine,alpha:f32,kind:f32,blur:f32,clip:UcState,clear:bool)->bool {
+ first:=s[0].v;w:=cast(f32)s[0].w;h:=cast(f32)s[0].h;
+ rect:=s[0].bounds[source];if !rect.on {rect=UcRect.{x=0,y=0,r=w,b=h,on=true};}
+ if kind==9 {rect.x-=blur;rect.r+=blur;}if kind==10 {rect.y-=blur;rect.b+=blur;}
+ if rect.x<0 {rect.x=0;}if rect.y<0 {rect.y=0;}if rect.r>w {rect.r=w;}if rect.b>h {rect.b=h;}
+ if kind==8 && m.a==1 && m.b==0 && m.c==0 && m.d==1 && m.tx==0 && m.ty==0 && clip.clip {
+  if rect.x<clip.cl {rect.x=clip.cl;}if rect.y<clip.ct {rect.y=clip.ct;}if rect.r>clip.cr {rect.r=clip.cr;}if rect.b>clip.cb {rect.b=clip.cb;}
+ }
+ if rect.r<rect.x {rect.r=rect.x;}if rect.b<rect.y {rect.b=rect.y;}
+ xs:=[6]f32.[rect.x,rect.r,rect.r,rect.x,rect.r,rect.x];ys:=[6]f32.[rect.y,rect.y,rect.b,rect.y,rect.b,rect.b];
+ uv:[6]f32;vv:[6]f32;for i:0..<6 {uv[i]=xs[i]/w;vv[i]=ys[i]/h;p:=affine_point(m,xs[i],ys[i]);xs[i]=p.x;ys[i]=p.y;}
+ s[0].v=emit_six(out,first,xs,ys,uv,vv,kind,blur,0,0,w,h,0,0,rgba(1,1,1,alpha),rgba(0,0,0,0));
+ if s[0].v!=first+6 {return false;}
+ if clip.fade.on {gp_fade(out,first,s[0].v,1,clip.fade.y,clip.fade.a,clip.fade.b,clip.fade.c);}
+ if clip.clip {gp_clip_edges(out,first,s[0].v,1,clip.cl,clip.ct,clip.cr,clip.cb);}
+ uc_mark(s,out,target,first,s[0].v);return uc_op(s,target,source,first,6,clear);
+}
+uc_mark :: (s:[]UcPlan,out:[]f32,target:int,first:int,end:int) {
+ if target<0 || end<=first {return;}x:=out[first*28];y:=out[first*28+1];r:=x;b:=y;
+ for i:first..<end {o:=i*28;if out[o]<x {x=out[o];}if out[o+1]<y {y=out[o+1];}if out[o]>r {r=out[o];}if out[o+1]>b {b=out[o+1];}}
+ o:=first*28;if x<out[o+20] {x=out[o+20];}if y<out[o+21] {y=out[o+21];}if r>out[o+22] {r=out[o+22];}if b>out[o+23] {b=out[o+23];}
+ if x<0 {x=0;}if y<0 {y=0;}if r>cast(f32)s[0].w {r=cast(f32)s[0].w;}if b>cast(f32)s[0].h {b=cast(f32)s[0].h;}
+ if r<=x || b<=y {return;}prior:=s[0].bounds[target];if prior.on {if x>prior.x {x=prior.x;}if y>prior.y {y=prior.y;}if r<prior.r {r=prior.r;}if b<prior.b {b=prior.b;}}
+ s[0].bounds[target]=UcRect.{x=x,y=y,r=r,b=b,on=true};
+}
+uc_blur :: (s:[]UcPlan,out:[]f32,source:int,radius:f32)->int {
+ x:=uc_target(s);y:=uc_target(s);if x<0 || y<0 {return -1;}
+ if !uc_quad(s,out,x,source,Affine.{},1,9,radius,UcState.{},true) || !uc_quad(s,out,y,x,Affine.{},1,10,radius,UcState.{},true) {return -1;}
+ s[0].used[source]=false;s[0].used[x]=false;return y;
+}
+uc_build :: (s:[]UcPlan,out:[]f32,a:[]Atlas,list:[]Prim,images:[]UcImage,w:int,h:int,d:f32)->bool #effects(all) {
+ if s.count!=1 {return false;}s[0]=UcPlan.{w=w,h=h};
+ if !uc_extent(w,h) || !(d>0 && d<=8) || images.count>UC_IMAGES || !prim_groups_valid(list,GP_CLIP_DEPTH) {return false;}
+ r:[1]RenderRegistry;_:=rr_open(r[..],RrLimits.{slots=RR_SLOTS,words=UC_WORDS});
+ for i:0..<images.count {image:=images[i];if image.id<0 || uc_lease(r[..],image.w,image.h).status!=RrStatus.ok {return false;}for j:0..<i {if image.id==images[j].id {return false;}}}
+ root:=uc_target(s);if !uc_op(s,root,-1,0,0,true) {return false;}
+ state:=UcState.{target=root};stack:[GP_CLIP_DEPTH]UcScope;depth:=0;
+ for p:list {
+  if p.kind==PRIM_LAYER || p.kind==PRIM_CLIP || p.kind==PRIM_ALPHA {
+   if p.on {
+    stack[depth]=UcScope.{state=state,kind=p.kind,layer=p};depth+=1;
+    if p.kind==PRIM_LAYER {
+     if !affine_valid(uc_matrix(p,d)) || !(p.a>=0 && p.a<=1 && p.b>=0 && p.b*d<=32) {return false;}
+     target:=uc_target(s);if target<0 {return false;}
+     if p.c==1 {
+      capture:=state;capture.fade.on=false;capture.cl-=p.b*d;capture.ct-=p.b*d;capture.cr+=p.b*d;capture.cb+=p.b*d;
+      if !uc_quad(s,out,target,state.target,Affine.{},1,8,0,capture,true) {return false;}
+      if p.b>0 {target=uc_blur(s,out,target,p.b*d);if target<0 {return false;}}
+     } else if !uc_op(s,target,-1,0,0,true) {return false;}
+     state=UcState.{target=target};
+    } else if p.kind==PRIM_ALPHA {if !(p.a>=0 && p.a<=1) {return false;}state.alpha*=p.a;}
+    else {state.clip=true;if p.x*d>state.cl {state.cl=p.x*d;}if p.y*d>state.ct {state.ct=p.y*d;}if p.a*d<state.cr {state.cr=p.a*d;}if p.b*d<state.cb {state.cb=p.b*d;}}
+   } else {
+    depth-=1;prior:=stack[depth];source:=state.target;state=prior.state;
+    if p.kind==PRIM_LAYER {
+     lp:=prior.layer;if lp.b>0 && lp.c!=1 {source=uc_blur(s,out,source,lp.b*d);if source<0 {return false;}}
+     if !uc_quad(s,out,state.target,source,uc_matrix(lp,d),lp.a*state.alpha,8,0,state,false) {return false;}
+     s[0].used[source]=false;
+    }
+   }continue;
+  }
+  if p.kind==PRIM_FADE {state.fade=p;state.fade.y*=d;state.fade.a*=d;state.fade.b*=d;state.fade.c*=d;continue;}
+  first:=s[0].v;source:=-1;
+  if p.kind==PRIM_IMAGE {
+   if !(p.w>0 && p.h>0) {return false;}
+   slot:=-1;for i:0..<images.count {if images[i].id==p.id {slot=i;}}
+   if slot<0 {return false;}source=64+slot;
+   s[0].v=emit(out,first,p.x*d,p.y*d,(p.x+p.w)*d,(p.y+p.h)*d,11,0,0,0,0,0,0,0,0,0,1,1,rgba(1,1,1,1),rgba(0,0,0,0));
+   if s[0].v!=first+6 {return false;}
+  } else {
+   // A pessimistic six-vertex spare catches truncated primitives, including
+   // text and polygons: lower once into the remaining view, never publish
+   // a list that reached its declared vertex capacity.
+   bound:=6;if p.kind==PRIM_TEXT {bound=p.text.count*6;}if p.kind==PRIM_POLY {bound=p.pts.count*3;}if p.kind==PRIM_ARC {bound=384;}
+   if bound>(out.count/GP_VERTEX_FLOATS-first) {return false;}
+   one:=[1]Prim.[p];s[0].v=gpu_draw(out,first,a,d,one[..],0,0,-PRIM_OPEN,PRIM_OPEN);
+   if (s[0].v+6)*GP_VERTEX_FLOATS>out.count || p.kind<0 || p.kind>=PRIM_KINDS {return false;}
+  }
+  if state.clip {gp_clip_edges(out,first,s[0].v,1,state.cl,state.ct,state.cr,state.cb);}
+  if state.fade.on {gp_fade(out,first,s[0].v,1,state.fade.y,state.fade.a,state.fade.b,state.fade.c);}
+  if state.alpha<1 {gp_opacity(out,first,s[0].v,state.alpha);}
+  uc_mark(s,out,state.target,first,s[0].v);
+  if s[0].v>first && !uc_op(s,state.target,source,first,s[0].v-first,false) {return false;}
+ }
+ if !uc_quad(s,out,-1,0,Affine.{},1,8,0,UcState.{},true) {return false;}
+ keys:[64*3]f32;bindings:=0;
+ for i:0..<s[0].n {o:=i*8;found:=false;for j:0..<bindings {if keys[j*3]==s[0].ops[o] && keys[j*3+1]==s[0].ops[o+1] && keys[j*3+2]==s[0].ops[o+4] {found=true;}}
+  if !found {if bindings>=64 {return false;}keys[bindings*3]=s[0].ops[o];keys[bindings*3+1]=s[0].ops[o+1];keys[bindings*3+2]=s[0].ops[o+4];bindings+=1;}}
+
+ for i:0..<s[0].targets {if uc_lease(r[..],w,h).status!=RrStatus.ok {return false;}}
+ if rr_acquire(r[..],RR_VERTEX,out.count).status!=RrStatus.ok {return false;}
+ s[0].words=r[0].words;s[0].ok=true;return true;
+}
+
+#test "target and resident-byte exhaustion refuse without an admitted prefix" {
+ p:[32]Prim;n:=0;for i:0..<16 {n=prim_layer(p[..],n,[6]f32.[1,0,0,1,0,0],1,0,false);}for i:0..<16 {n=prim_unlayer(p[..],n);}
+ a:[1]Atlas;out:[5376]f32;s:[1]UcPlan;images:[1]UcImage;
+ #assert !uc_build(s[..],out[..],a[..],p[0..<n],images[0..<0],64,64,1) && !s[0].ok;
+ n=prim_layer(p[..],0,[6]f32.[1,0,0,1,0,0],1,0,false);n=prim_unlayer(p[..],n);
+ #assert !uc_build(s[..],out[..],a[..],p[0..<n],images[0..<0],4096,4096,1) && !s[0].ok;
+}
+
+#test "sequential sibling layers reuse completed scratch without feedback or unbounded residency" {
+ p:[48]Prim;n:=0;for i:0..<16 {n=prim_layer(p[..],n,[6]f32.[1,0,0,1,0,0],1,2,false);n=prim_unlayer(p[..],n);}
+ a:[1]Atlas;out:[6*49*28]f32;s:[1]UcPlan;images:[1]UcImage;
+ #assert uc_build(s[..],out[..],a[..],p[0..<n],images[0..<0],64,64,1) && s[0].targets==4;
+ #assert s[0].words==4*64*64+out.count;
+ for i:0..<s[0].n {#assert s[0].ops[i*8]!=s[0].ops[i*8+1];}
+}
+
+#test "blur draws only the source bounds and its halo; texture UVs retain their full-canvas meaning" {
+ p:[3]Prim;n:=prim_layer(p[..],0,[6]f32.[1,0,0,1,0,0],1,6,false);n=prim_fill(p[..],n,24,24,16,16,0,rgba(1,1,1,1));n=prim_unlayer(p[..],n);
+ a:[1]Atlas;out:[1008]f32;s:[1]UcPlan;images:[1]UcImage;
+ #assert uc_build(s[..],out[..],a[..],p[0..<n],images[0..<0],64,64,1);
+ #assert out[6*28]==18 && out[6*28+1]==24 && out[12*28]==18 && out[12*28+1]==18;
+ #assert out[12*28+10]==18.0f32/64 && out[12*28+11]==18.0f32/64;
+}

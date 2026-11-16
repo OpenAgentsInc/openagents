@@ -429,7 +429,7 @@ paint_arc :: (out:[]f32,at:int,d:f32,x:f32,y:f32,w:f32,h:f32,width:f32,start:f32
 // Arcs lower through the shared antialiased segment path. Images still need
 // an explicit texture owner; they are not admitted by this backend yet.
 gpu_draws :: (p: Prim) -> bool {
-  if p.kind == PRIM_IMAGE { return false; }
+  if p.kind == PRIM_IMAGE || p.kind == PRIM_LAYER { return false; }
   return p.kind >= 0 && p.kind < PRIM_KINDS;
 }
 

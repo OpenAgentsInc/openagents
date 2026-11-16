@@ -12,6 +12,11 @@ the app grows one screen at a time from this page.
 
 Bundle ID `com.openagents.app`, team `HQWSG26L43`, version 1.0.0.
 
+Settings → **Renderer** opens the shared GPU specimens: an RGBA image,
+a transformed group with isolated opacity, backdrop blur with a sharp button,
+and source blur. It is compiled Coax and Metal, with no WebView. The component
+contract and bounds are in [composition-v1](../../components/backend/composition.md).
+
 ## Files
 
 | File | What it is |

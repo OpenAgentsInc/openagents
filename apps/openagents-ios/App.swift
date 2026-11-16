@@ -94,6 +94,7 @@ import UIKit
         center.addObserver(self,selector:#selector(background),name:UIApplication.willResignActiveNotification,object:nil)
         center.addObserver(self,selector:#selector(wake),name:UIApplication.didBecomeActiveNotification,object:nil)
         center.addObserver(self,selector:#selector(wake),name:UIAccessibility.reduceMotionStatusDidChangeNotification,object:nil)
+        center.addObserver(self,selector:#selector(wake),name:UIAccessibility.reduceTransparencyStatusDidChangeNotification,object:nil)
         center.addObserver(self,selector:#selector(textSize),name:UIContentSizeCategory.didChangeNotification,object:nil)
         center.addObserver(self,selector:#selector(clearPrivate),name:UIApplication.didEnterBackgroundNotification,object:nil)
         center.addObserver(self,selector:#selector(captureChanged),name:UIScreen.capturedDidChangeNotification,object:nil)
@@ -192,7 +193,8 @@ import UIKit
         guard let owner else {return}
         // editing: a platform editor holds the keyboard over the focused field, and draws its text
         let insets=view.safeAreaInsets,composing=editor.isFirstResponder,editing=composing||field.isFirstResponder
-        oc_env(owner,Float(insets.top),Float(insets.bottom),Float(keyboard),editing ? 1:0,composing ? Float(editor.textHeight(width:editor.bounds.width)):0,UIAccessibility.isReduceMotionEnabled ? 1:0)
+        oc_env(owner,Float(insets.top),Float(insets.bottom),Float(keyboard),editing ? 1:0,composing ? Float(editor.textHeight(width:editor.bounds.width)):0,(UIAccessibility.isReduceMotionEnabled || UserDefaults.standard.bool(forKey:"OAReduceMotion")) ? 1:0)
+        oc_transparency(owner,UIAccessibility.isReduceTransparencyEnabled ? 1:0)
         oc_frame(owner)
         syncScroll()
         services?.pump()
