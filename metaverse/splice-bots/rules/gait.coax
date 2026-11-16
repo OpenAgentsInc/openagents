@@ -1,0 +1,190 @@
+// Splice Bots rules: Digger's four-legged gait (SpliceGait.h, package M-08): the stride's phase from the
+// ground he covers, how much he walks, each foot's place in the world, planted or swinging. The C++ was
+// ported from the prototype (read only): digger-gait.coax dg_gait (the phase moves with the ground covered,
+// a turn on the spot is steps too, the amount eases toward his speed) and digger.coax dg_pose (legs in
+// diagonal pairs, a foot planted DG_STANCE of the stride then swung forward lifted, smoothstep across the
+// swing; the body's bob). What the C++ changes from the prototype: the prototype turned the thigh by a fixed
+// angle, so a foot slid below a run. Here a foot is a place in the world, pinned where it lands for the whole
+// stance; only the swing moves it, and the game solves the leg to it (two-bone IK). The stride grows with
+// speed (1.1 m, the prototype's, at 4 m/s). No prototype function computes the same: dg_gait's stride is
+// fixed at 1.1 m and it has no feet.
+// Metres, seconds, radians. World axes: X and Y on the ground, Z up. Yaw 0 faces +X, +yaw turns toward +Y.
+// f64 throughout (the C++ keeps its scalars in f32 and its vectors in UE5's double FVector).
+#load "../../../metaverse-engine/core/math-d.coax";
+#load "night-exit.coax";   // sr_atan2_deg (FMath::Atan2)
+
+// ESpliceGaitLeg, in the prototype's order (digger-mesh.coax bones 4 to 7).
+SR_GAIT_FRONT_LEFT :: 0; SR_GAIT_FRONT_RIGHT :: 1; SR_GAIT_HIND_LEFT :: 2; SR_GAIT_HIND_RIGHT :: 3;
+SR_GAIT_NUM_LEGS :: 4;
+
+SrGaitTuning :: struct {
+  // ---- digger-gait.coax
+  turn_ease: f64 = 9.0;          // DG_TURN_EASE, /s his drawn heading follows his heading
+  turn_foot: f64 = 0.35;         // m a foot moves per radian he turns
+  amp_speed: f64 = 4.0;          // m/s at which the amount reaches 1
+  amp_rise: f64 = 4.0;           // /s easing up toward the wanted amount
+  amp_fall: f64 = 7.0;           // /s easing down (he stops crisper than he sets off)
+  jump_distance: f64 = 3.0;      // m: a move this long in one frame is a jump back to a checkpoint
+  max_dt: f64 = 0.5;             // s: a longer frame is a jump too
+  // ---- digger.coax dg_pose
+  stance: f64 = 0.62;            // DG_STANCE, the share of a stride a foot stays planted
+  bob_rest: f64 = 0.006;         // model units of the standing breath (x drawn_length)
+  bob_walk: f64 = 0.012;         // model units of the walking bob, |sin(phase)|
+  breath_rate: f64 = 2.2;        // rad/s of the standing breath
+  pitch_walk: f64 = 0.03;        // rad of the body's pitch, sin(2 phase)
+  drawn_length: f64 = 2.159;     // m per model unit: DG_LONG 2.54 at the game's draw scale 0.85
+  // ---- the stride (new in the C++)
+  stride_min: f64 = 0.55;        // m per whole gait when he barely moves
+  stride_per_speed: f64 = 0.1375;// m per m/s: 1.1 m at 4 m/s, the prototype's stride
+  stride_max: f64 = 1.4;         // m: the longest stride
+  lift_walk: f64 = 0.05;         // m a swinging foot rises at amount 0
+  lift_run: f64 = 0.13;          // m a swinging foot rises at amount 1
+  settle_speed: f64 = 0.05;      // m/s: slower than this and a foot still in the air finishes its step
+  settle_rate: f64 = 15.707963267948966;   // rad/s of phase while settling (2 PI x 2.5)
+  heading_speed: f64 = 0.2;      // m/s: below this the landing spot leans less far ahead
+  max_phase_step: f64 = 0.25;    // share of a stride the phase may move in one frame (so no swing is skipped)
+  reach_slack: f64 = 0.04;       // m past half a planted sweep from home at which a planted foot steps early
+  // ---- his legs (the game sets these from the mesh; these are the imported model at drawn_length)
+  hip_height: f64 = 0.82;        // m from the ground to the hips standing
+  leg_reach: f64 = 0.82;         // m from hip to foot with the leg straight
+  reach_use: f64 = 0.96;         // share of leg_reach a leg may stretch to
+}
+
+SrGaitFoot :: struct {
+  pos: D3;          // where the foot is, world metres (on the ground when planted)
+  lift_from: D3;    // where it left the ground
+  home: D3;         // where it would stand under him now
+  target: D3;       // where this swing will put it down
+  swing_from: f64;  // how far into the swing it was when it lifted (0..1)
+  swing: f64;       // how far through this swing it is (0..1)
+  phase: f64;       // the leg's share of the stride now, 0..1 (below stance: planted)
+  lift: f64;        // height above the ground this frame, m
+  planted: bool = true;
+  plants: int;      // touch-downs so far
+}
+SrGaitState :: struct {
+  started: bool;
+  last: D3;         // his ground point last frame
+  heading: D3;      // unit direction he is moving, or zero
+  time: f64;        // s, for the standing breath
+  walk: f64;        // the stride's phase, radians (dg_walk)
+  amp: f64;         // how much he walks, 0 standing to 1 at a run (dg_amp)
+  speed: f64;       // m/s, eased as amp is
+  stride: f64 = 0.55;
+  drawn_yaw: f64;   // his heading as drawn (dg_yaw)
+  bob: f64;         // m the body rises this frame (the breath and the walk's bob, less drop)
+  drop: f64;        // m the body sinks so a planted foot at either end of the stride is in reach
+  pitch: f64;       // rad the body pitches nose down this frame
+  settling: bool;
+  feet: [SR_GAIT_NUM_LEGS] SrGaitFoot;
+}
+
+sr_gait_clamp01 :: (v: f64) -> f64 { return fclamp(v, 0.0, 1.0); }
+sr_gait_wrap :: (a: f64) -> f64 { return sr_atan2_deg(sin(a), cos(a)) * PI_D / 180.0; }
+sr_gait_flat :: (v: D3) -> D3 { return d3(v.x, v.y, 0.0); }
+// Each leg's start in the stride (dg_pose: legs 0 and 3 at 0, legs 1 and 2 half a stride on).
+sr_gait_leg_offset :: (leg: int) -> f64 { return ifx leg == 0 || leg == 3 then 0.0 else PI_D; }
+// The leg's share of the stride, 0..1, at phase walk (dg_pose: fract((walk + offset) / TAU)).
+sr_gait_leg_phase :: (walk: f64, leg: int) -> f64 { v := (walk + sr_gait_leg_offset(leg)) / TAU_D; return v - floor(v); }
+sr_gait_stride_for :: (speed: f64, t: SrGaitTuning) -> f64 { return fclamp(t.stride_min + t.stride_per_speed * fmax(0.0, speed), t.stride_min, t.stride_max); }
+sr_gait_lift_for :: (amp: f64, t: SrGaitTuning) -> f64 { return t.lift_walk + (t.lift_run - t.lift_walk) * sr_gait_clamp01(amp); }
+// How far the body sinks for a stride, so a foot half a planted sweep ahead or behind is in reach (less the
+// walk's bob at its top, so the bob never pulls a planted foot out of reach).
+sr_gait_drop_for :: (stride: f64, t: SrGaitTuning) -> f64 {
+  half := 0.5 * t.stance * stride; reach := t.reach_use * t.leg_reach;
+  h := sqrt(fmax(reach * reach - half * half, 0.0)) - t.drawn_length * t.bob_walk;
+  return fmax(0.0, t.hip_height - h);
+}
+// A body-frame offset (x ahead, y right, z up) turned to yaw and put at base.
+sr_gait_body_to_world :: (base: D3, yaw: f64, offset: D3) -> D3 {
+  c := cos(yaw); s := sin(yaw);
+  return d3_add(base, d3(offset.x * c - offset.y * s, offset.x * s + offset.y * c, offset.z));
+}
+// Puts him at ground facing yaw, every foot planted at its home. homes: each foot's resting place in his body
+// frame (metres; z is ignored, feet stand on the ground).
+sr_gait_start :: (ground: D3, yaw: f64, homes: [] const D3, t: SrGaitTuning) -> SrGaitState {
+  s := SrGaitState.{started = true, last = ground, drawn_yaw = yaw};
+  // The first pair mid-stance (feet under the hips), so the first stride from standing is a whole one.
+  s.walk = 0.5 * t.stance * TAU_D;
+  s.stride = sr_gait_stride_for(0.0, t);
+  s.drop = sr_gait_drop_for(s.stride, t);
+  s.bob = -s.drop;
+  for i: 0..<SR_GAIT_NUM_LEGS {
+    h := sr_gait_body_to_world(ground, yaw, sr_gait_flat(homes[i]));
+    s.feet[i] = SrGaitFoot.{pos = h, lift_from = h, home = h, target = h, phase = sr_gait_leg_phase(s.walk, i)};
+  }
+  return s;
+}
+// One frame. ground: the point on the ground under him now; yaw: his heading now; dt: seconds since the
+// last frame. A planted foot's pos never changes while it stays planted.
+sr_gait_step :: (in: SrGaitState, ground: D3, yaw: f64, dt: f64, homes: [] const D3, t: SrGaitTuning) -> SrGaitState {
+  if !in.started { return sr_gait_start(ground, yaw, homes, t); }
+  delta := sr_gait_flat(d3_sub(ground, in.last));
+  d := d3_len(delta);
+  // digger-gait.coax: a jump back to the checkpoint is not a step
+  if dt <= 0.0 || dt > t.max_dt || d > t.jump_distance { r := sr_gait_start(ground, yaw, homes, t); r.time = in.time; return r; }
+  s := in; s.last = ground; s.time += dt;
+  // He turns toward his heading rather than snapping to it, and a turn on the spot is steps too.
+  turn := sr_gait_wrap(yaw - s.drawn_yaw) * sr_gait_clamp01(dt * t.turn_ease);
+  s.drawn_yaw = sr_gait_wrap(s.drawn_yaw + turn);
+  moved := d + abs(turn) * t.turn_foot;
+  pace := moved / dt;
+  // The amount eases toward his speed, and he stops crisper than he sets off.
+  want := sr_gait_clamp01(pace / t.amp_speed);
+  s.amp += (want - s.amp) * sr_gait_clamp01(dt * (ifx want < s.amp then t.amp_fall else t.amp_rise));
+  s.speed += (pace - s.speed) * sr_gait_clamp01(dt * (ifx pace < s.speed then t.amp_fall else t.amp_rise));
+  s.stride = sr_gait_stride_for(s.speed, t);
+  s.heading = d3_scale(delta, 1.0 / fmax(d, t.heading_speed * dt));
+  any_swing := false;
+  for k: 0..<SR_GAIT_NUM_LEGS { if !s.feet[k].planted { any_swing = true; } }
+  dphase := 0.0; s.settling = false;
+  if pace >= t.settle_speed { dphase = moved * TAU_D / s.stride; }   // digger-gait.coax: dg_walk += d * 2 PI / stride
+  else if any_swing { dphase = t.settle_rate * dt; s.settling = true; }   // stopped with a foot in the air: it finishes its step
+  dphase = fmin(dphase, t.max_phase_step * TAU_D);
+  s.walk += dphase;
+  if s.walk > TAU_D * 64.0 { s.walk -= TAU_D * 64.0; }
+  // dg_pose: the standing breath, the walk's bob; and the sink that keeps both ends of a stride in reach.
+  s.drop = sr_gait_drop_for(s.stride, t);
+  s.bob = t.drawn_length * ((1.0 - s.amp) * t.bob_rest * sin(s.time * t.breath_rate) + s.amp * t.bob_walk * abs(sin(s.walk))) - s.drop;
+  s.pitch = s.amp * t.pitch_walk * sin(s.walk * 2.0);
+  lead := 0.5 * t.stance * s.stride;
+  swing_rate := dphase / (TAU_D * (1.0 - t.stance));   // share of a whole swing this frame
+  for i: 0..<SR_GAIT_NUM_LEGS {
+    f := s.feet[i];
+    prev_u := f.phase;
+    u := sr_gait_leg_phase(s.walk, i);
+    f.phase = u;
+    f.home = sr_gait_body_to_world(ground, s.drawn_yaw, sr_gait_flat(homes[i]));
+    f.target = d3_add(f.home, d3_scale(s.heading, lead));
+    f.target.z = ground.z;
+    swinging := true;
+    if f.planted {
+      // Planted: the foot stays exactly where it landed until its share of the stride reaches the swing. A foot
+      // about to leave his reach steps early instead: a whole swing from where it is. It never slides.
+      due := u >= t.stance;
+      far := d3_dist(sr_gait_flat(f.pos), sr_gait_flat(f.home)) > lead + t.reach_slack;
+      if dphase > 0.0 && !s.settling && (due || far) {
+        f.planted = false; f.lift_from = f.pos;
+        f.swing_from = ifx due then sr_gait_clamp01((u - t.stance) / (1.0 - t.stance)) else 0.0;
+        f.swing = 0.0;
+      } else { f.lift = 0.0; swinging = false; }
+    } else {
+      f.swing += ifx f.swing_from >= 1.0 then 1.0 else swing_rate / (1.0 - f.swing_from);
+    }
+    if swinging {
+      // Swinging: forward to where this stride puts it down, lifted, smoothstep across the swing. A due swing
+      // ends as the leg's share of the stride comes round to 0, an early one after a whole swing.
+      if f.swing >= 1.0 - 0.0001 || u < prev_u {
+        f.pos = f.target; f.lift = 0.0; f.planted = true; f.plants += 1;
+      } else {
+        sw := sr_gait_clamp01(f.swing);
+        e := sw * sw * (3.0 - 2.0 * sw);
+        f.lift = sr_gait_lift_for(s.amp, t) * sin(PI_D * sw);
+        f.pos = d3_add(f.lift_from, d3_scale(d3_sub(f.target, f.lift_from), e));
+        f.pos.z += f.lift;
+      }
+    }
+    s.feet[i] = f;
+  }
+  return s;
+}

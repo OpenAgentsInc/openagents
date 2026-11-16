@@ -1,0 +1,158 @@
+// Parity checks for gait.coax: SpliceTests/Rules/SpliceGaitTests.cpp, every test ported. The C++ keeps
+// every frame in a TArray; here a recorder (GtRec) takes the frames one at a time and keeps what the
+// checks read (landings, liftoffs, planted drift, leg 0's planted flag per frame), with fixed caps.
+// rules.coax loads this file with `#load ... #test;`.
+
+GT_HZ :: 60.0;
+GT_WALK_SPEED :: 1.5;   // m/s, Digger closing on his slot
+GT_RUN_SPEED :: 7.5;    // m/s, robots.csv ROBOT_DIGGER move_speed (T_FOLLOW)
+GT_LIFTS_MAX :: 64;
+GT_FRAMES_MAX :: 600;
+// The ground under the imported model's hips at the game's size (digger_probe.json x 2.159 / 100).
+gt_homes :: () -> [4] D3 { return [4] D3.[d3(0.199, 0.303, 0.0), d3(0.204, -0.301, 0.0), d3(-0.631, 0.224, 0.0), d3(-0.637, -0.222, 0.0)]; }
+
+GtRec :: struct {
+  n: int;
+  has_prev: bool; prev: SrGaitState;
+  was: [4] bool; at: [4] D3; plants: [4] int; worst: f64;   // WorstPlantedDrift
+  lifts: [256] int; lift_n: [4] int;                       // Liftoffs, leg * GT_LIFTS_MAX + k
+  land_first: [4] D3; land_last: [4] D3; land_n: [4] int;  // MeanStep
+  planted0: [GT_FRAMES_MAX] bool;
+  off_ground: bool; ground_z: f64;                         // a planted foot off the ground at ground_z
+}
+gt_add :: (r: [] GtRec, s: SrGaitState) {
+  i := r[0].n;
+  for l: 0..<4 {
+    f := s.feet[l];
+    if f.planted && !r[0].was[l] { r[0].at[l] = f.pos; r[0].plants[l] += 1; }
+    if f.planted { r[0].worst = fmax(r[0].worst, d3_dist(f.pos, r[0].at[l])); if abs(f.pos.z - r[0].ground_z) > 0.0001 { r[0].off_ground = true; } }
+    r[0].was[l] = f.planted;
+    if r[0].has_prev {
+      pf := r[0].prev.feet[l];
+      if pf.planted && !f.planted && r[0].lift_n[l] < GT_LIFTS_MAX { r[0].lifts[l * GT_LIFTS_MAX + r[0].lift_n[l]] = i; r[0].lift_n[l] += 1; }
+      if !pf.planted && f.planted { if r[0].land_n[l] == 0 { r[0].land_first[l] = f.pos; } r[0].land_last[l] = f.pos; r[0].land_n[l] += 1; }
+    }
+  }
+  if i < GT_FRAMES_MAX { r[0].planted0[i] = s.feet[0].planted; }
+  r[0].prev = s; r[0].has_prev = true; r[0].n = i + 1;
+}
+gt_lift :: (r: GtRec, leg: int, k: int) -> int { return r.lifts[leg * GT_LIFTS_MAX + k]; }
+gt_mean_step :: (r: GtRec, leg: int) -> f64 { return ifx r.land_n[leg] < 2 then 0.0 else d3_dist(r.land_last[leg], r.land_first[leg]) / cast(f64) (r.land_n[leg] - 1); }
+// CheckPlanted: no planted foot moves, and every leg plants again and again.
+gt_planted_ok :: (r: GtRec) -> bool { return r.worst <= 0.00001 && r.plants[0] >= 3 && r.plants[1] >= 3 && r.plants[2] >= 3 && r.plants[3] >= 3; }
+// Runs him in a straight line along yaw at speed for seconds (a second's warm-up first), at 60 Hz.
+gt_run_straight :: (speed: f64, seconds: f64, yaw: f64, t: SrGaitTuning, out: [] GtRec) {
+  homes := gt_homes();
+  at := d3(3.0, -2.0, 0.25);
+  s := sr_gait_start(at, yaw, homes[..], t);
+  dir := d3(cos(yaw), sin(yaw), 0.0);
+  n := cast(int) floor((seconds + 1.0) * GT_HZ + 0.5);
+  out[0] = GtRec.{ground_z = 0.25};
+  for i: 0..<n {
+    at = d3_add(at, d3_scale(dir, speed / GT_HZ));
+    s = sr_gait_step(s, at, yaw, 1.0 / GT_HZ, homes[..], t);
+    if cast(f64) i >= GT_HZ { gt_add(out, s); }
+  }
+}
+gt_planted_straight :: (speed: f64, seconds: f64, yaw: f64, t: SrGaitTuning) -> bool { r: [1] GtRec; gt_run_straight(speed, seconds, yaw, t, r[..]); return gt_planted_ok(r[0]); }
+
+#test "Splice.Rules.Gait.PlantedFeetHoldAtWalk" {
+  t: SrGaitTuning;
+  #assert gt_planted_straight(GT_WALK_SPEED, 4.0, 0.0, t);   // walk east
+  #assert gt_planted_straight(GT_WALK_SPEED, 4.0, 2.3, t);   // walk north-west
+  // A planted foot is on the ground under him.
+  r: [1] GtRec; gt_run_straight(GT_WALK_SPEED, 2.0, 0.0, t, r[..]);
+  #assert !r[0].off_ground;
+}
+#test "Splice.Rules.Gait.PlantedFeetHoldAtRun" {
+  t: SrGaitTuning;
+  #assert gt_planted_straight(GT_RUN_SPEED, 4.0, 0.0, t);        // run east
+  #assert gt_planted_straight(GT_RUN_SPEED, 4.0, -PI_D / 2.0, t);  // run south
+  #assert gt_planted_straight(4.0, 4.0, 0.7, t);                 // trot 4 m/s
+  // Speeding up from a walk to a run and back down, and turning on the spot: still no slide.
+  homes := gt_homes();
+  s := sr_gait_start(D3_ZERO, 0.0, homes[..], t);
+  r: [1] GtRec; at := D3_ZERO; yaw := 0.0;
+  for i: 0..<(8 * 60) {
+    tm := cast(f64) i / GT_HZ;
+    speed := ifx tm < 4.0 then GT_WALK_SPEED + (GT_RUN_SPEED - GT_WALK_SPEED) * tm / 4.0 else ifx tm < 6.0 then GT_RUN_SPEED * (1.0 - (tm - 4.0) / 2.0) else 0.0;
+    if tm >= 6.0 { yaw += 2.0 / GT_HZ; }   // turning on the spot, 2 rad/s
+    at = d3_add(at, d3(speed / GT_HZ, 0.0, 0.0));
+    s = sr_gait_step(s, at, yaw, 1.0 / GT_HZ, homes[..], t);
+    gt_add(r[..], s);
+  }
+  #assert gt_planted_ok(r[0]);
+}
+#test "Splice.Rules.Gait.PhaseOrder" {
+  // dg_pose: front left with hind right, front right with hind left, the pairs half a stride apart.
+  w := 0.0;
+  while w < 4.0 * PI_D {
+    fl := sr_gait_leg_phase(w, 0); fr := sr_gait_leg_phase(w, 1); hl := sr_gait_leg_phase(w, 2); hr := sr_gait_leg_phase(w, 3);
+    #assert abs(fl - hr) <= 0.00001 && abs(fr - hl) <= 0.00001;
+    m := fr - fl + 1.0; m = m - floor(m);
+    #assert abs(m - 0.5) <= 0.0001;
+    w += 0.37;
+  }
+  // In motion: each pair lifts on the same frame; the other pair half a stride later; the first pair again a
+  // whole stride on. Each foot is planted the prototype's share of the stride.
+  t: SrGaitTuning;
+  speeds := [2] f64.[GT_WALK_SPEED, GT_RUN_SPEED];
+  for speed: speeds {
+    r: [1] GtRec; gt_run_straight(speed, 4.0, 0.0, t, r[..]);
+    #assert r[0].lift_n[0] >= 3 && r[0].lift_n[1] >= 3 && r[0].lift_n[2] >= 3 && r[0].lift_n[3] >= 3;
+    period := sr_gait_stride_for(speed, t) / speed * GT_HZ;   // frames a stride
+    for k: 0..<sr_mini(r[0].lift_n[0], r[0].lift_n[3]) { #assert abs(cast(f64) (gt_lift(r[0], 0, k) - gt_lift(r[0], 3, k))) <= 1.0; }
+    for k: 0..<sr_mini(r[0].lift_n[1], r[0].lift_n[2]) { #assert abs(cast(f64) (gt_lift(r[0], 1, k) - gt_lift(r[0], 2, k))) <= 1.0; }
+    fl0 := gt_lift(r[0], 0, 0); fl1 := gt_lift(r[0], 0, 1);
+    next_fr := -1;
+    for k: 0..<r[0].lift_n[1] { f := gt_lift(r[0], 1, k); if f > fl0 { next_fr = f; break; } }
+    #assert next_fr != -1 && abs(cast(f64) (next_fr - fl0) - period * 0.5) <= 1.5;   // FR lifts half a stride after FL
+    #assert abs(cast(f64) (fl1 - fl0) - period) <= 1.5;                              // FL lifts once a stride
+    down := 0;
+    for i: fl0..<fl1 { if r[0].planted0[i] { down += 1; } }
+    span := cast(f64) (fl1 - fl0);
+    #assert abs(cast(f64) down / span - t.stance) <= 0.02 + 1.0 / span;
+  }
+}
+#test "Splice.Rules.Gait.StrideGrowsWithSpeed" {
+  t: SrGaitTuning;
+  last := 0.0; speed := 0.0;
+  while speed <= 9.0 { l := sr_gait_stride_for(speed, t); #assert l >= last; last = l; speed += 0.5; }
+  #assert abs(sr_gait_stride_for(4.0, t) - 1.1) <= 0.0001;   // the prototype's stride at 4 m/s
+  // Measured from the feet: successive landing spots of one foot are one stride apart, longer at a run.
+  rw: [1] GtRec; gt_run_straight(GT_WALK_SPEED, 4.0, 0.0, t, rw[..]);
+  rr: [1] GtRec; gt_run_straight(GT_RUN_SPEED, 4.0, 0.0, t, rr[..]);
+  walk := gt_mean_step(rw[0], 0); run := gt_mean_step(rr[0], 0);
+  #assert abs(walk - sr_gait_stride_for(GT_WALK_SPEED, t)) <= 0.02;
+  #assert abs(run - sr_gait_stride_for(GT_RUN_SPEED, t)) <= 0.03;
+  #assert run > walk + 0.3;
+  // The swing lifts the foot higher at a run, and the body sinks enough for the stride's ends to be in reach.
+  #assert sr_gait_lift_for(1.0, t) > sr_gait_lift_for(0.2, t);
+  speeds := [2] f64.[GT_WALK_SPEED, GT_RUN_SPEED];
+  for sp: speeds {
+    l := sr_gait_stride_for(sp, t);
+    h := t.hip_height - sr_gait_drop_for(l, t);
+    half := 0.5 * t.stance * l;
+    #assert sqrt(h * h + half * half) <= t.leg_reach * t.reach_use + 0.0001;
+  }
+}
+#test "Splice.Rules.Gait.StopPlantsEveryFoot" {
+  // Stopping mid-stride: a foot in the air finishes its step, and then all four stand; a teleport re-plants.
+  t: SrGaitTuning; homes := gt_homes();
+  speeds := [2] f64.[GT_WALK_SPEED, GT_RUN_SPEED];
+  for speed: speeds {
+    frames := 61;
+    while frames < 100 {
+      s := sr_gait_start(D3_ZERO, 0.0, homes[..], t); at := D3_ZERO;
+      for i: 0..<frames { at.x += speed / GT_HZ; s = sr_gait_step(s, at, 0.0, 1.0 / GT_HZ, homes[..], t); }
+      for i: 0..<60 { s = sr_gait_step(s, at, 0.0, 1.0 / GT_HZ, homes[..], t); }
+      for f: s.feet { #assert f.planted; }
+      #assert s.amp < 0.05;
+      frames += 7;
+    }
+  }
+  s := sr_gait_start(D3_ZERO, 0.0, homes[..], t);
+  s = sr_gait_step(s, d3(0.1, 0.0, 0.0), 0.0, 1.0 / GT_HZ, homes[..], t);
+  s = sr_gait_step(s, d3(40.0, 5.0, 0.0), 1.0, 1.0 / GT_HZ, homes[..], t);
+  #assert d3_dist(s.feet[0].pos, sr_gait_body_to_world(d3(40.0, 5.0, 0.0), 1.0, homes[0])) <= 0.0001;
+}
