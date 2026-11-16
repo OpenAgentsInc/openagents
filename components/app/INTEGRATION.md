@@ -37,5 +37,21 @@ The gallery is a page of its own, called as the chat page is:
 | `appgallery_max_vertices()`, `appgallery_scale()` | the vertex buffer to give it, points a layout unit |
 | `appgallery_activate(s, id)`, `appgallery_drive(s, op, out)`, `appgallery_rows_stamp(s)`, `appgallery_refused(s)` | VoiceOver, `coax drive` (`tree`, `counts`) and health |
 
-The native side lives in the iOS app directory, owned by `claude-ios-host`;
-see `apps/openagents-ios/DevGallery.swift` and the steps in its header.
+Its native surface is `gallery/host.c` and `host.h` (`og_open`, `og_view`,
+`og_frame`, `og_moving`, `og_env`, `og_action`, `og_close`), on the shared
+component carrier as the chat page's `host.c` is. The dev menu that shows it
+is `apps/openagents-ios/DevGallery.swift` (debug builds only). It opens on
+the launch argument `-OADevGallery YES` (or `OA_DEV_GALLERY=1`), for example
+`xcrun simctl launch booted com.openagents.app -OADevGallery YES`, or on a
+three-finger double tap; Close dismisses it.
+
+To wire it into the iOS app (`apps/openagents-ios/`, owned by the iOS host),
+five one-line edits:
+
+| File | Line |
+| --- | --- |
+| `app.coax` | `#load "../../components/app/gallery/gallery.coax";` |
+| `host.c` | `#include "../../components/app/gallery/host.c"` (after the carrier's types, at the end) |
+| `Bridge.h` | `#include "../../components/app/gallery/host.h"` |
+| `project.yml` | `- DevGallery.swift` under the target's sources |
+| `App.swift` | `DevGallery.install(on:self)` at the end of `ChatScreen.viewDidLoad` |
