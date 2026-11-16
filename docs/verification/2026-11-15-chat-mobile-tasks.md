@@ -51,6 +51,19 @@ gate passes 283 checks and all 550 changed-procedure mutants: 525 killed,
 at their source sites; they concern complete primary-codec length boundaries
 and already-enforced monotone status constraints.
 
+The other selected suites also pass directly on the rebased source:
+
+| Entry | Checks | Changed-procedure mutants |
+| --- | --- | --- |
+| `task-client-policy.coax` | 157/157 | 25 killed, two reviewed equivalents, zero unresolved |
+| `transcript-wire.coax` | 168/168 | 16 killed, zero survivors |
+| `account-chat-task-worker-policy.coax` | 227/227 | 38 killed, two reviewed equivalents, zero unresolved |
+
+The normal push hook passes its other gates but reaches its 120-second limit
+on the combined Coax suite step. The direct results above and the separate
+283-check native client gate qualify those selected entries; the skipped
+hook step is not counted as a passing test. After-landing main status is separate.
+
 The actual generated protobuf mapper is a runtime boundary. Compile-time
 evaluation refuses its storage-overlap operation (E0404); that is not treated
 as a valid empty test result. The native qualifier instead compiles the actual
