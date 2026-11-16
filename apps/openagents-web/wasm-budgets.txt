@@ -412,8 +412,13 @@ splice-bots 1045000
 # /worlds/splice-bots-jam (unlisted): the same game with the jam world drawn (splice-jam.coax, jam/jam-draw.coax):
 # 1,036,848 bytes measured 2026-11-16 on a Mac. With the jam's farm rules (jam/jam-farm.coax, 1,062,206 bytes)
 # and its characters (jam/jam-cast.coax, jam/jam-chars.coax: her body and the raiders'), 1,075,441 bytes
-# measured 2026-11-16 on a Mac after the route walk landed; about 0.4% room.
-splice-jam 1080000
+# measured 2026-11-16 on a Mac after the route walk landed. With the Data tables and story cards (jam/jam-data.coax,
+# jam/jam-story.coax), 1,092,298 bytes measured 2026-11-16 on a Mac: 12,298 over 1,080,000. Nothing the page
+# compiles is unused: the prototype's own draws (plain, garage, farm) are its world when the private pack is
+# absent. The largest part is data[0] (233,195 bytes), of which the Digger's mesh stream (digger-mesh.coax,
+# 39,886 words, 159,544 bytes) is also in splice-bots; moving it to a shared runtime asset frees that much in
+# both modules. Until then: room for the jam's boss, night exit, chest, Microduck, jetpack and sounds, about 1.6%.
+splice-jam 1110000
 # /worlds on the frames set drawn by the browser (worlds-web.coax, beside the side): 91,057 bytes measured
 # 2026-11-13 on a Mac, about 9% room. It replaces realmlist (70,076 bytes and its 16,279-byte shader).
 worlds-web 100000
