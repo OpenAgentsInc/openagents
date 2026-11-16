@@ -90,6 +90,8 @@ d_way :: (g: [] SpGame, bx: f32, bz: f32, tx: f32, tz: f32) -> bool {
 d_route :: (g: [] SpGame, bx: f32, bz: f32, tx: f32, tz: f32) -> RouteSeen {
   if d_way(g, bx, bz, tx, tz) { return RouteSeen.{x = tx, z = tz, way = dist2(bx, bz, tx, tz), ok = true}; }
   if g[0].zone != Z_MINE || sp_in_room(g) { return RouteSeen.{x = tx, z = tz}; }
+  // in the jam world away from the solar farm's rows: round its walls, through its tunnel and doors (jam/jam-world.coax)
+  if g[0].jam && (bx > FF_SHOW_X || tx > FF_SHOW_X) { return sj_route(g, bx, bz, tx, tz, T_BOT_R, 0.75); }
   n: [FF_NODES * 2] f32; l: [FF_LINKS * 2] int; ff_aisles(n[..], l[..]);
   fs: [FF_NODES] bool; ts: [FF_NODES] bool;
   for k: 0..<FF_NODES { fs[k] = d_way(g, bx, bz, n[k * 2], n[k * 2 + 1]); ts[k] = d_way(g, n[k * 2], n[k * 2 + 1], tx, tz); }

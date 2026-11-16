@@ -308,7 +308,14 @@ jrc_route_walk :: (g: [] SpGame, s: [] SjStore, cat: string) -> bool #effects(al
   m := sjw_mech(g, s, w[..]);
   print("the drill mech's path, its bay to the barricade: % (%), % steps, never more than % m from her, % steps in a wall\n", m, ifx m == 0 then "the jam's walls hold it and it drills" else "failed", w[0].steps, cast(int) w[0].mech_far, w[0].mech_in);
   for i: 0..<lo_int(w[0].missed, SJW_MISSES) { o := i * 4; print("  a missed leg left her at (%, %) on the way to (%, %)\n", w[0].miss[o], w[0].miss[o + 1], w[0].miss[o + 2], w[0].miss[o + 3]); }
-  return bad || r != 0 || m != 0;
+  g_reset(g);
+  a := sjw_mech_ahead(g, s, w[..]);
+  print("the drill mech left % m behind in C1: % (%), it ended % m from her, % steps in a wall\n", cast(int) SJW_AHEAD, a, ifx a == 0 then "it finds C1's doorway and reaches her" else "failed", dist2(g[0].px, g[0].pz, g[0].bt[0].mech_x, g[0].bt[0].mech_z), w[0].mech_in);
+  g_reset(g);
+  b := sjw_digger(g, s, w[..]);
+  print("Digger through the tunnel, A1, C1's doorway and to the hallway: % (%), never more than % m from her, % legs left behind, % steps in a wall\n", b, ifx b == 0 then "he follows her round the jam's walls" else "failed", cast(int) w[0].bot_far, w[0].bot_lost, w[0].mech_in + w[0].bot_in);
+  for i: 0..<lo_int(w[0].missed, SJW_MISSES) { o := i * 4; print("  a missed leg left her at (%, %) on the way to (%, %)\n", w[0].miss[o], w[0].miss[o + 1], w[0].miss[o + 2], w[0].miss[o + 3]); }
+  return bad || r != 0 || m != 0 || a != 0 || b != 0;
 }
 // The name of map m's collider actor with this hash, from the catalog's col lines.
 jrc_actor :: (cat: string, m: int, actor: u32) -> string #effects(all) {

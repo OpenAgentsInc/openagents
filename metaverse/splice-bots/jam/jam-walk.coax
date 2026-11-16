@@ -36,6 +36,8 @@ SjWalk :: struct {
   miss: [SJW_MISSES * 4] f32;               // the first missed legs: where each left her, and its point
   mech: bool;                               // the drill mech follows her a step at a time (sjw_mech)
   mech_in: int; mech_far: f32;              // steps it ended in a jam collider, and its furthest from her (m)
+  digger: bool;                             // Digger follows her a step at a time (sjw_digger)
+  bot_in: int; bot_far: f32; bot_lost: int; // steps he ended in a jam collider, his furthest from her (m), legs he was left behind
 }
 SJW_STEP :: 0.1f32;      // m a step: 5 m/s at SJW_DT
 SJW_DT :: 0.02f32;
@@ -166,6 +168,11 @@ sjw_step :: (g: [] SpGame, s: [] SjStore, w: [] SjWalk, dx: f32, dz: f32) {
   g_collide(g); g_jump(g, SJW_DT);
   w[0].steps += 1;
   if w[0].mech { sjw_mech_step(g, w); }
+  if w[0].digger {
+    g_bot(g, SJW_DT);
+    if sj_solid(g, g[0].bot_x, g[0].bot_z, T_BOT_R - 0.05) { w[0].bot_in += 1; }
+    w[0].bot_far = hi(w[0].bot_far, dist2(g[0].px, g[0].pz, g[0].bot_x, g[0].bot_z));
+  }
   if dist2(g[0].px, g[0].pz, tx, tz) > SJW_EPS { sjw_note(w, sjw_blocker(g, s, tx, tz, feet, over), tx, tz); }
 }
 // Walk straight toward (tx, tz) until there, or until she makes no headway for a while: whether she got
@@ -342,6 +349,80 @@ sjw_mech :: (g: [] SpGame, s: [] SjStore, w: [] SjWalk) -> int {
   w[0].mech = false;
   if w[0].mech_in > 0 { return 1; }
   if !(t[0].drill_t > 0) { return 2; }
+  return ifx w[0].missed > 0 then 3 else 0;
+}
+// She gets SJW_AHEAD metres ahead of the drill mech, out of C1 by its doorway while it stands, then waits:
+// it finds the way out of the bay round the jam's walls (jam-world.coax sj_way) and comes up beside her.
+// 0, or what failed: 1 it ended a step in a jam collider, 2 it never reached her, 3 she missed a leg.
+SJW_AHEAD :: 30.0f32;    // m
+SJW_CATCH :: 2000;       // steps (40 s) she waits for it
+SJW_BESIDE :: 6.0f32;    // m: the mech this near her has reached her (its follow spot is about 3.6 m off)
+sjw_mech_ahead :: (g: [] SpGame, s: [] SjStore, w: [] SjWalk) -> int {
+  w[0] = SjWalk.{};
+  g[0].phase = PH_DUSK; g[0].rubble_gone = true; g[0].wall_gone = false; g[0].bot = true;
+  sb_reset(g);
+  t := g[0].bt[..]; t[0].mech_core = true; t[0].mech_used = true;
+  m0 := ga_at(g, ga_section_of(g, t[0].mech_x, t[0].mech_z), g[0].at.gar_r - 8);
+  d := hi(dist2(t[0].mech_x, t[0].mech_z, m0.x, m0.z), 0.001);
+  sjw_place(g, t[0].mech_x + (m0.x - t[0].mech_x) / d * 3, t[0].mech_z + (m0.z - t[0].mech_z) / d * 3);
+  _ := sjw_leg(g, s, w, m0.x, m0.z, true);   // out of the bay; the mech stays where it stood
+  // on along the bays' mouths until she is SJW_AHEAD from it: its straight way to her then crosses C1's wall
+  nb := ga_at(g, (ga_section_of(g, t[0].mech_x, t[0].mech_z) + 2) % GA_SECTIONS, g[0].at.gar_r - 8);
+  gx := nb.x; gz := nb.z;
+  for i: 0..<4000 {
+    if dist2(g[0].px, g[0].pz, t[0].mech_x, t[0].mech_z) >= SJW_AHEAD { break; }
+    e := dist2(g[0].px, g[0].pz, gx, gz); if e < SJW_ARRIVE { break; }
+    sjw_step(g, s, w, (gx - g[0].px) / e * SJW_STEP, (gz - g[0].pz) / e * SJW_STEP);
+  }
+  if dist2(g[0].px, g[0].pz, t[0].mech_x, t[0].mech_z) < SJW_AHEAD { w[0].missed += 1; }
+  w[0].mech = true;
+  for i: 0..<SJW_CATCH { if dist2(g[0].px, g[0].pz, t[0].mech_x, t[0].mech_z) < SJW_BESIDE { break; } sjw_step(g, s, w, 0, 0); }
+  w[0].mech = false;
+  if w[0].mech_in > 0 { return 1; }
+  if dist2(g[0].px, g[0].pz, t[0].mech_x, t[0].mech_z) >= SJW_BESIDE { return 2; }
+  return ifx w[0].missed > 0 then 3 else 0;
+}
+
+// ---- Digger's way
+// Digger follows her from the yard through the ring's tunnel, A1, across the field, in and out of C1 by its
+// doorway, and to the hallway's mouth, a step at a time (splice-game.coax g_bot: round the jam's walls by
+// digger-orders.coax d_route, jam-world.coax sj_route). At each leg's end she waits until he is beside her.
+// 0, or what failed: 1 he ended a step in a jam collider, 2 he was left behind at a leg's end, 3 she
+// missed a leg.
+SJW_BOT_NEAR :: 5.0f32;   // m: Digger this near her is beside her
+SJW_BOT_WAIT :: 600;      // steps (12 s) she waits at a leg's end
+sjw_digger_leg :: (g: [] SpGame, s: [] SjStore, w: [] SjWalk, x: f32, z: f32) {
+  _ := sjw_leg(g, s, w, x, z, true);
+  for i: 0..<SJW_BOT_WAIT { if dist2(g[0].px, g[0].pz, g[0].bot_x, g[0].bot_z) < SJW_BOT_NEAR { return; } sjw_step(g, s, w, 0, 0); }
+  w[0].bot_lost += 1;
+}
+sjw_digger :: (g: [] SpGame, s: [] SjStore, w: [] SjWalk) -> int {
+  w[0] = SjWalk.{};
+  g[0].phase = PH_DUSK; g[0].rubble_gone = true; g[0].wall_gone = false; g[0].bot = true;
+  g[0].bt[0].mech_x = 1000000; g[0].bt[0].mech_z = 1000000;
+  gx := g[0].at.gar_x; gz := g[0].at.gar_z; back := ga_back(g);
+  sjw_place(g, gx, gz + ga_yard_z(g) + 10); g_bot_home(g); w[0].digger = true;
+  sjw_digger_leg(g, s, w, gx, gz + back + 10);    // to the tunnel
+  sjw_digger_leg(g, s, w, gx, gz + back - 10);    // through it and A1
+  sjw_digger_leg(g, s, w, gx, gz);                // the field's middle
+  sb_reset(g); t := g[0].bt[0];
+  m0 := ga_at(g, ga_section_of(g, t.mech_x, t.mech_z), g[0].at.gar_r - 8);
+  g[0].bt[0].mech_x = 1000000; g[0].bt[0].mech_z = 1000000;
+  sjw_digger_leg(g, s, w, m0.x, m0.z);            // C1's mouth
+  sjw_digger_leg(g, s, w, t.mech_x, t.mech_z);    // into C1 by its doorway
+  // she stands in C1 off its doorway's line, and he is left outside its wall on her side, 12 m along the
+  // bays' mouths: straight at her he would only slide along the wall; he comes round by the doorway
+  ux := m0.x - gx; uz := m0.z - gz; ul := hi(dist2(ux, uz, 0, 0), 0.001); vx := -uz / ul; vz := ux / ul;
+  sjw_digger_leg(g, s, w, t.mech_x + vx * 6, t.mech_z + vz * 6);
+  g[0].bot_x = m0.x + vx * 12; g[0].bot_z = m0.z + vz * 12; g[0].bot_state = BOT_FOLLOW;
+  for i: 0..<SJW_BOT_WAIT * 2 { if dist2(g[0].px, g[0].pz, g[0].bot_x, g[0].bot_z) < SJW_BOT_NEAR { break; } sjw_step(g, s, w, 0, 0); }
+  if dist2(g[0].px, g[0].pz, g[0].bot_x, g[0].bot_z) >= SJW_BOT_NEAR { w[0].bot_lost += 1; }
+  sjw_digger_leg(g, s, w, m0.x, m0.z);            // and out
+  h := ga_at(g, GA_HALLWAY, g[0].at.gar_r - 8);
+  sjw_digger_leg(g, s, w, h.x, h.z);              // the hallway's mouth
+  w[0].digger = false;
+  if w[0].bot_in > 0 { return 1; }
+  if w[0].bot_lost > 0 { return 2; }
   return ifx w[0].missed > 0 then 3 else 0;
 }
 

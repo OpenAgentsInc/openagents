@@ -534,7 +534,9 @@ sb_mech_step :: (g: [] SpGame, dt: f32) {
     // at your left, its own width and a stride out, a little ahead (playtest 2: behind you it stood on
     // top of you and in the camera's way)
     h := cm_follow_spot(g, mx[0], mz[0], SB_MECH_R, SB_MECH_R + SB_MECH_GAP, SB_MECH_AHEAD);   // never between the camera and her (camera.coax)
-    w := ga_way(g, mx[0], mz[0], h.x, h.z, SB_MECH_R, SB_MECH_TOP); tx := w.x; tz := w.z;   // bay to bay through the piers' passages, and only those it fits (garage.coax)
+    w := ga_way(g, mx[0], mz[0], h.x, h.z, SB_MECH_R, SB_MECH_TOP);   // bay to bay through the piers' passages, and only those it fits (garage.coax)
+    if g[0].jam { w = sj_way(g, SJ_WAY_MECH, mx[0], mz[0], h.x, h.z, SB_MECH_R, 1.0, dt); }   // the jam world's way: round its walls, through C1's doorway (jam/jam-world.coax)
+    tx := w.x; tz := w.z;
     _ := sb_toward(mx[..], mz[..], my[..], tx, tz, SB_MECH_SPEED * cm_follow_pace(g, mx[0], mz[0], SB_MECH_R, clamp(dist2(mx[0], mz[0], tx, tz) / 3, 0.2, 1.6)), 0.3, dt);
     b := ga_body_push(g, mx[0], mz[0], SB_MECH_R); mx[0] = b.x; mz[0] = b.z;   // the back wall and the piers: it slides along them
     q := cm_keep_off(g, mx[0], mz[0], SB_MECH_R); mx[0] = q.x; mz[0] = q.z;

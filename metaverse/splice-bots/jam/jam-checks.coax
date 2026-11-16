@@ -164,6 +164,11 @@ sjt_route :: (g: [] SpGame, s: [] SjStore) {
   fl: [SP_FLOORS * STAND_FLOATS] f32; bk := ff_bank_at(0);
   n := sl_floors(g[..], bk.x, bk.z, fl[..]);
   g[0].jam = false; #assert sl_floors(g[..], bk.x, bk.z, fl[..]) == n + 1; g[0].jam = true;
+  // the way round: the tunnel's wall and the rock wall stand between (10, -36) and (10, -42); the steering
+  // service's window finds an open end of them, and the walk there is open
+  #assert !sj_line(g[..], 10, -36, 10, -42, T_BOT_R);
+  rt := sj_route(g[..], 10, -36, 10, -42, T_BOT_R, 0.75);
+  #assert rt.ok && (rt.x < -3.3 || rt.x > 20) && rt.z > -38 && sj_line(g[..], 10, -36, rt.x, rt.z, T_BOT_R);
   // the drill mech follows her from its bay to the barricade and drills it
   w := [1] SjWalk.[SjWalk.{}];
   g_reset(g[..]); #assert sjw_mech(g[..], s[..], w[..]) == 0 && w[0].mech_in == 0;

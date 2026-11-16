@@ -367,6 +367,55 @@ sj_body_push :: (g: [] SpGame, x: f32, z: f32, r: f32) -> Point {
 }
 // Whether a body of radius r can't stand at (x, z) in the jam world: its walls push it.
 sj_solid :: (g: [] SpGame, x: f32, z: f32, r: f32) -> bool { q := sj_body_push(g, x, z, r); return abs(q.x - x) + abs(q.z - z) > 0.0001; }
+
+// ---- the way round the jam world's walls
+// A body that follows her (the drill mech, Digger) goes round the jam world's walls by the engine's
+// steering service (metaverse-engine/ai/steer.coax): a window of cells laid over it and its goal, each cell
+// open where the body stands clear of the jam's walls and solids (sj_solid), searched, and pulled taut to
+// the furthest corner it can see. Through C1's doorway, the tunnel and the hallway's mouth, not the
+// prototype's bay passages.
+SJ_WAY_STEP :: 0.5f32;     // m between the checks along a straight way
+SJ_WAY_PLAN :: 0.5f32;     // s between plans
+SJ_WAY_KEEP :: 4.0f32;     // m the goal moves before a plan is made again sooner
+SJ_WAY_MECH :: 0; SJ_WAYS :: 1;
+SjWay :: struct { rt: RouteSeen; t: f32; gx: f32; gz: f32; }
+// Whether a body of radius r walks straight from (x, z) to (tx, tz) in the jam world, nothing in its way (a
+// body sliding along a wall touches it: SJ_WAY_SLACK less is asked).
+SJ_WAY_SLACK :: 0.05f32;
+sj_line :: (g: [] SpGame, x: f32, z: f32, tx: f32, tz: f32, r: f32) -> bool {
+  d := dist2(x, z, tx, tz); s := SJ_WAY_STEP;
+  while s < d { u := s / d; if sj_solid(g, x + (tx - x) * u, z + (tz - z) * u, r - SJ_WAY_SLACK) { return false; } s += SJ_WAY_STEP; }
+  return true;
+}
+// The way for a body of radius r from (x, z) to (tx, tz) round the jam world's walls, on a window of `cell`
+// metre cells: the point to walk toward now and the way's length; not ok when no way nearer opens.
+sj_route :: (g: [] SpGame, x: f32, z: f32, tx: f32, tz: f32, r: f32, cell: f32) -> RouteSeen {
+  if sj_line(g, x, z, tx, tz, r) { return RouteSeen.{x = tx, z = tz, way = dist2(x, z, tx, tz), ok = true}; }
+  t := NavTune.{body = r, cell = cell, span = cell * cast(f32) NAV_STEER_SIDE};
+  a := [1] NavAgent.[nav_agent(x, z, 1)]; a[0].tx = tx; a[0].tz = tz;
+  w: [1] NavWindow;
+  nav_window_place(w[..], t, a[0]);
+  for c: 0..<nav_window_cells(w[..]) { p := nav_window_spot(w[..], c); w[0].walk[c] = !sj_solid(g, p[0], p[1], r); }
+  nav_plan(a[..], t, w[..]);
+  if a[0].route == NavRoute.path { return RouteSeen.{x = a[0].aim_x, z = a[0].aim_z, way = dist2(x, z, a[0].aim_x, a[0].aim_z) + dist2(a[0].aim_x, a[0].aim_z, tx, tz), ok = true}; }
+  if a[0].route == NavRoute.direct { return RouteSeen.{x = tx, z = tz, way = dist2(x, z, tx, tz), ok = true}; }
+  return RouteSeen.{x = tx, z = tz, way = dist2(x, z, tx, tz)};
+}
+// Where a body (way k of g.jway) at (x, z) walks now toward (tx, tz): the goal while the straight way is
+// open, else its last plan's point, planned again every SJ_WAY_PLAN, at it, or when the goal moved on.
+sj_way :: (g: [] SpGame, k: int, x: f32, z: f32, gx: f32, gz: f32, r: f32, cell: f32, dt: f32) -> Point {
+  w := g[0].jway[k..<k + 1];
+  w[0].t -= dt;
+  if !sj_here(g) { return v3(gx, 0, gz); }
+  // a goal in a wall (a follow spot past the hallway's side) is asked as the nearest spot clear of it; while
+  // the way there is straight the body heads at the goal itself and the walls slide it (sj_body_push)
+  q := sj_body_push(g, gx, gz, r); tx := q.x; tz := q.z;
+  if sj_line(g, x, z, tx, tz, r) { w[0].t = 0; return v3(gx, 0, gz); }
+  if w[0].t <= 0 || dist2(x, z, w[0].rt.x, w[0].rt.z) < 0.6 || dist2(tx, tz, w[0].gx, w[0].gz) > SJ_WAY_KEEP {
+    w[0].rt = sj_route(g, x, z, tx, tz, r, cell); w[0].t = SJ_WAY_PLAN; w[0].gx = tx; w[0].gz = tz;
+  }
+  return v3(w[0].rt.x, 0, w[0].rt.z);
+}
 // ---- how the jam realm draws an actor (jam-draw.coax, the splice-jam page)
 // The game hides an actor or moves it each frame; every part of it in the jam's maps goes with it. An actor
 // is g[0].jr[0].actors[i] (its kind, route and middle as sj_read found them); the game calls these on g[0].jr[..].

@@ -124,6 +124,7 @@ SpGame :: struct {
   jam: bool;                  // the jam build's world (jam/jam-world.coax, #13653): the imported levels stand for the drawn world; outlives a reset
   jw: [SJ_MAPS] Colliders; jw_open: [SJ_MAPS] Colliders; jw_on: [SJ_MAPS] bool; jw_n: int;   // and its route maps' colliders, over the page's store (sj_bind); outlive a reset
   jr: [1] SjJam;              // and its route: the maps, their starts and the game actors (sj_read); outlives a reset
+  jway: [SJ_WAYS] SjWay;      // the drill mech's way round the jam world's walls (jam/jam-world.coax sj_way)
   jx: [1] SjRules;            // the jam's rules in the jam world: her inventory, the charge points, the farm robot, her crew, Heat (jam/jam-farm.coax)
   jd: string;                 // the jam's Data tables: the jam pack's catalog, kept by the page (jam/jam-data.coax); "" without it
   mode: int; zone: int; phase: int; t: f32;
@@ -2597,6 +2598,7 @@ sp_keys_dodge :: (g: [] SpGame) -> bool {
   return true;
 }
 // 0 when the keys alone take her from the garage's door to the boss's fall, else the beat that failed.
+SP_KEYS_WAIT :: 8.0f32;   // m from the nearest weak point she waits at in the boss fight
 sp_keys_play :: (g: [] SpGame) -> int {
   // to Sniper, parked by the quiet door: Tab is the edit bay there, Enter sends Digger at the raiders' rock wall
   k := [1] SpKeys.[SpKeys.{}];
@@ -2657,6 +2659,10 @@ sp_keys_play :: (g: [] SpGame) -> int {
         continue;
       }
     }
+    // closed: she keeps within SP_KEYS_WAIT of the nearest weak point, as a player would, so she is at it when
+    // they open (from the hallway's mouth she reached too few before the mech fell to the jam's 120-health boss)
+    nw := weak_at(g, 0); for w: 1..<3 { p := weak_at(g, w); if dist2(g[0].px, g[0].pz, p.x, p.z) < dist2(g[0].px, g[0].pz, nw.x, nw.z) { nw = p; } }
+    if dist2(g[0].px, g[0].pz, nw.x, nw.z) > SP_KEYS_WAIT { _ := sp_keys_toward(g, k[..], nw.x, nw.z, 0.05); continue; }
     sp_keys_free(g); g_step(g, 0.05);
   }
   sp_keys_free(g);
