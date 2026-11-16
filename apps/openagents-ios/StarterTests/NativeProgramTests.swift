@@ -207,13 +207,13 @@ import CryptoKit
         let editor=try XCTUnwrap(surface.controls["chat.composer"] as? UITextView)
         let composer=try XCTUnwrap(surface.controls["chat.composer.frame"] as? NativeComposer)
         composer.layoutIfNeeded()
-        XCTAssertEqual(composer.frame.width,378,accuracy:1);XCTAssertEqual(composer.intrinsicContentSize.height,48,accuracy:1)
+        XCTAssertEqual(composer.frame.width,378,accuracy:1);XCTAssertEqual(composer.intrinsicContentSize.height,94,accuracy:1)
         XCTAssertFalse(composer.send.isEnabled);XCTAssertEqual(editor.textContainer.lineFragmentPadding,0)
         try p.input("chat.composer","Hello");try p.frame();surface.render(p.elements());surface.view.layoutIfNeeded()
         XCTAssertTrue(editor === surface.controls["chat.composer"]);XCTAssertTrue(composer.send.isEnabled)
         editor.selectedRange=NSRange(location:2,length:1);surface.render(p.elements());XCTAssertEqual(editor.selectedRange,NSRange(location:2,length:1))
         try p.input("chat.composer","First line\nSecond line\nThird line\nFourth line\nFifth line");try p.frame();surface.render(p.elements());surface.view.layoutIfNeeded();composer.layoutIfNeeded()
-        XCTAssertEqual(composer.intrinsicContentSize.height,116,accuracy:1);XCTAssertTrue(editor.isScrollEnabled)
+        XCTAssertEqual(composer.intrinsicContentSize.height,162,accuracy:1);XCTAssertTrue(editor.isScrollEnabled)
     }
 
     func testEnvironmentTargetsAndUncertainCommandsUseTheGeneratedNativeProgram()throws {

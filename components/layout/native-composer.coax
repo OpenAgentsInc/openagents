@@ -1,17 +1,14 @@
 // T3 Code f313d0a6cb, ThreadComposer.tsx / ComposerToolbar.tsx (MIT).
 // Shared native layout. UIKit supplies measured text and executes these frames.
-#test "minimal composer gives the editor its width and keeps send beside every text height" {
-  a:=nc_layout(378,23,1,false);#assert a.height==48 && a.radius==27 && a.editor_x==14 && !a.expanded && a.editor_w==310;
-  b:=nc_layout(378,46,1,true);#assert b.expanded && b.editor_x==14 && b.height==70 && b.send_size==30;
-  c:=nc_layout(378,400,1,true);#assert c.editor_h==104 && c.height==116;
-  d:=nc_layout(320,23,2,true);#assert d.send_x==276 && d.editor_w==252 && d.height>=84;
+#test "composer keeps the editor above its action row and caps long drafts" {
+  a:=nc_layout(378,23,1,false);#assert a.height==94 && a.editor_x==14 && a.editor_w==350 && a.toolbar_y==46 && !a.expanded;
+  b:=nc_layout(378,46,1,true);#assert b.height==116 && b.editor_h==58 && b.toolbar_y==68 && b.expanded;
+  c:=nc_layout(378,400,1,true);#assert c.editor_h==104 && c.height==162 && c.toolbar_y==114;
+  d:=nc_layout(320,46,2,true);#assert d.send_x==272 && d.editor_w==292 && d.height>=104;
 }
 NativeComposerLayout :: struct {height:f64;radius:f64;editor_x:f64;editor_y:f64;editor_w:f64;editor_h:f64;toolbar_y:f64;send_x:f64;send_size:f64;expanded:bool;}
 nc_layout :: (width:f64,text_height:f64,scale:f64,has_text:bool)->NativeComposerLayout #export_c #effects(all) {
   s:=ifx scale>1 then scale else 1.0;line:=23*s;expanded:=has_text && text_height>line*1.5;
   h:=text_height+12;if h<36*s {h=36*s;}if h>line*4+12 {h=line*4+12;}
-  r:=NativeComposerLayout.{height=48,radius=27,editor_x=14,editor_y=6,editor_w=width-68,editor_h=36*s,toolbar_y=2,send_x=width-44,send_size=30,expanded=expanded};
-  if expanded {r.editor_h=h;r.height=h+12;r.toolbar_y=r.height-46;}
-  else if s>1 {r.height=36*s+12;}
-  return r;
+  return NativeComposerLayout.{height=h+58,radius=22,editor_x=14,editor_y=6,editor_w=width-28,editor_h=h,toolbar_y=h+10,send_x=width-48,send_size=44,expanded=expanded};
 }

@@ -5,12 +5,12 @@
 NativeChatSkin :: struct {body:f64;line:f64;code:f64;padding:f64;gap:f64;bubble_fraction:f64;ink:u32;strong:u32;muted:u32;link:u32;code_bg:u32;bubble:u32;border:u32;}
 #test "message text keeps its reading measures and takes its colours from the mono skin" {
   s:=nt_skin();t:=mono_native();
-  #assert s.body==16 && s.line==23 && s.code==14.4 && s.padding==12.25 && s.gap==8 && s.bubble_fraction==0.85;
+  #assert s.body==16 && s.line==23 && s.code==14.4 && s.padding==14 && s.gap==12 && s.bubble_fraction==0.85;
   #assert s.ink==t.ink && s.strong==t.ink_bright && s.muted==t.ink_muted && s.link==t.ink && s.code_bg==t.raised && s.bubble==t.surface && s.border==t.line_dim;
 }
 // A link is the text's own ink, underlined: the skin has no hue to mark it with.
 nt_skin :: ()->NativeChatSkin #export_c #effects(all) {
-  return NativeChatSkin.{body=16,line=23,code=14.4,padding=12.25,gap=8,bubble_fraction=0.85,ink=MONO_INK,strong=MONO_INK_BRIGHT,muted=MONO_INK_MUTED,link=MONO_INK,code_bg=MONO_RAISED,bubble=MONO_SURFACE,border=MONO_LINE_DIM};
+  return NativeChatSkin.{body=16,line=23,code=14.4,padding=14,gap=12,bubble_fraction=0.85,ink=MONO_INK,strong=MONO_INK_BRIGHT,muted=MONO_INK_MUTED,link=MONO_INK,code_bg=MONO_RAISED,bubble=MONO_SURFACE,border=MONO_LINE_DIM};
 }
 
 nt_heading :: (level:int)->f64 #export_c #effects(all) {sizes:=[7]f64.[16,21,19,17,16,15,14];return ifx level>=1 && level<=6 then sizes[level] else 16.0;}

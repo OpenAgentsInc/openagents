@@ -139,7 +139,7 @@ extension NativeElement {
         record=e;user=e.hasClass("msg-user");actions=[:]
         for view in blocks {view.removeFromSuperview()};blocks=[];copy?.removeFromSuperview();copy=nil;spinner?.removeFromSuperview();spinner=nil
         // What the person said stands in the skin's dim bubble frame; the answer is plain on the ground.
-        said.isHidden = !user
+        said.isHidden = !user;said.arcadePaint.kind=8
         func add(_ node:NativeElement,quote:Bool=false) {
             if node.hasClass("code") {let code=NativeCode(node) { [weak self] id in self?.press?(id) };bubble.addSubview(code);blocks.append(code);if let id=code.copy.accessibilityIdentifier {actions[id]=code.copy}}
             else if node.role=="table" {let table=NativeTable(node) { [weak self] id in self?.press?(id) };bubble.addSubview(table);blocks.append(table)}

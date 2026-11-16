@@ -8,6 +8,7 @@ import CoreText
 @MainActor final class NativeComposer:UIView,UITextViewDelegate {
     let editor=UITextView()
     let placeholder=UILabel(),send=NativeButton(.action)
+    private let model=UILabel()
     // The kit's composer frame: the skin's panel, its brackets bright while it holds the keyboard.
     private let panel=NativeFrameView(role:NativeSkin.names.panel)
     var changed:((String)->Void)?,press:((String)->Void)?
@@ -19,7 +20,8 @@ import CoreText
         _=NativeTypography.registered
         let t=NativeSkin.tokens
         addSubview(panel)
-        for v in [editor,placeholder,send] {addSubview(v)}
+        for v in [editor,placeholder,model,send] {addSubview(v)}
+        model.font=NativeTypography.font(13);model.textColor=NativeSkin.color(t.ink_muted);model.numberOfLines=1;model.lineBreakMode = .byTruncatingTail;model.isAccessibilityElement=true
         editor.backgroundColor = .clear;editor.textColor=NativeSkin.color(t.ink);editor.tintColor=NativeSkin.color(t.ink);editor.keyboardAppearance = .dark
         editor.font=UIFontMetrics(forTextStyle:.body).scaledFont(for:UIFont(name:"DMSans-Regular",size:16) ?? .systemFont(ofSize:16))
         editor.adjustsFontForContentSizeCategory=true;editor.delegate=self
@@ -39,6 +41,7 @@ import CoreText
     func render(_ e:NativeElement) {
         guard let field=e.children.first(where:{$0.role=="field"}),let action=e.children.last(where:{$0.role=="button"}) else{return}
         fieldID=field.id;sendID=action.id
+        model.text=e.attrs["title"];model.accessibilityLabel=model.text;model.isHidden=(model.text ?? "").isEmpty
         editor.accessibilityIdentifier=field.id;editor.accessibilityLabel=field.label;placeholder.text=field.label
         // Do not replace the buffer on a frame/keystroke: selection and marked
         // text survive. A Coax clear/load is a deliberate controlled-value edit.
@@ -53,18 +56,19 @@ import CoreText
     override func layoutSubviews() {
         super.layoutSubviews();let w=bounds.width;guard w>0 else{return}
         let scale=(editor.font?.pointSize ?? 16)/16
-        let inlineWidth=max(40,w-68)
+        let inlineWidth=max(40,w-28)
         let inline=editor.sizeThatFits(CGSize(width:inlineWidth,height:.greatestFiniteMagnitude)).height-12
         let expanded=inline>23*scale*1.5 && !editor.text.isEmpty
         let measured=expanded ? editor.sizeThatFits(CGSize(width:inlineWidth,height:.greatestFiniteMagnitude)).height-12:inline
         let g=nc_layout(w,expanded ? max(measured,46*scale):measured,scale,!editor.text.isEmpty)
         let next=CGFloat(g.height)
         if abs(next-height)>0.1 {height=next;invalidateIntrinsicContentSize();superview?.setNeedsLayout()}
-        panel.frame=CGRect(x:0,y:0,width:w,height:next);panel.surface(NativeSkin.names.panel,lit:editor.isFirstResponder);panel.arcadePaint.flags=2 | (editor.isFirstResponder ? 1:0)
+        panel.frame=CGRect(x:0,y:0,width:w,height:next);panel.surface(NativeSkin.names.panel,lit:editor.isFirstResponder);panel.arcadePaint.kind=8;panel.arcadePaint.flags=editor.isFirstResponder ? 1:0
         editor.frame=CGRect(x:g.editor_x,y:g.editor_y,width:g.editor_w,height:g.editor_h)
         editor.isScrollEnabled=measured+12>g.editor_h+1
         placeholder.frame=CGRect(x:editor.frame.minX,y:editor.frame.minY+6,width:editor.frame.width,height:23*scale);placeholder.isHidden = !editor.text.isEmpty
         send.frame=CGRect(x:g.send_x,y:g.toolbar_y,width:44,height:44)
+        model.frame=CGRect(x:14,y:g.toolbar_y,width:max(0,CGFloat(g.send_x)-24),height:44)
     }
     func textViewDidBeginEditing(_ textView:UITextView) {setNeedsLayout()}
     func textViewDidEndEditing(_ textView:UITextView) {setNeedsLayout()}
