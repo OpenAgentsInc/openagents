@@ -219,6 +219,11 @@ vpk3s() {
     "$here/../../coax/web/tool.sh" "$here/../../everglade/model/tools/rig-pack.coax" --into "$rigs" "$people.pack" "$here/build/fantasy-rigs.pack" people two-hand > /dev/null
     gzip -9 -n -c "$here/build/fantasy-rigs.pack" > "$people.rigs.pack.gz.new"
     mv "$people.rigs.pack.gz.new" "$people.rigs.pack.gz"; rm -f "$here/build/fantasy-rigs.pack"
+  else
+    # Kept, but touched: on a build host (coax/remote/remote.sh) only files newer than the job's start come
+    # back, and a slot keeps its ignored files between jobs, so a kept pack never reached the release
+    # and staging failed on it (2026-11-16).
+    touch "$people.rigs.pack.gz"
   fi
   # Block builds (GitHub #13305): Everglade's layers as GPU blocks with their mip chains, NAME.TAG.vpk3
   # beside the pack, one a format its blocks: asset lists; host.js loads the one this device's GPU takes.
