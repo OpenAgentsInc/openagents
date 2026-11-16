@@ -167,7 +167,13 @@ come from the engine's own clips instead.
 - `blend`: `opaque`, `masked`, `translucent`, `additive`.
 - `shading`: `default_lit`, `unlit`, `subsurface`, `other`.
 - Parameters are the instance's values after inheritance, so a reader
-  needs no parent chain.
+  needs no parent chain. A texture parameter with no texture set is left
+  out.
+- A root material names itself as `parent` and `root`. An instance whose
+  parent is a plugin's content (outside `/Game/` and `/Engine/`, for
+  example `/InterchangeAssets/`) is carried flattened: it names itself as
+  `parent` and `root`, its parameters as above, and its own bake. The
+  plugin's material gets a `skipped.json` row (`unsupported`).
 - `baked` maps `base_color`, `normal`, `orm`, `emissive` to texture ids the
   producer baked, when it baked any. Baked textures appear in `textures[]`
   like any other, with `"baked_from"` naming the material.
@@ -251,7 +257,16 @@ picks colour or data layer from it and from how materials use the texture.
   8-bit weight maps the size of the component.
 - `atmosphere`: the numbers of the sky light, sky atmosphere, height fog and
   the unbound post process volume, by Unreal's property name. Recorded,
-  not applied.
+  not applied. A producer may add keys beside `fog`, `sky` and `post`; the
+  editor route adds `all` (one `{kind, actor, values}` row per such actor,
+  when a map has more than one, as in a map with day, dusk and night data
+  layers) and `light_data_layers` (light name to its data layer paths).
+- Data layers: a placement's or spot's actor in a data layer carries the
+  tag `datalayer:PATH` for each, after its own tags.
+- Editor-only components (sprites, arrows, billboards) are not listed. A
+  hidden component that collides is listed with `visible: false`, so the
+  invisible-blocker rule can see it; one that doesn't collide gets a
+  `hidden` row in `skipped.json`.
 - `streamed`: sublevels and level instances the map loads. Their content is
   in the same map's lists, already at world transforms; this list only
   names where it came from.
@@ -279,11 +294,16 @@ Reasons: `logic` (Blueprint or C++ behaviour), `niagara`, `sequencer`,
 `audio_graph` (cues, MetaSounds), `widget`, `decal`, `hidden`, `unsupported`
 (anything else, with `detail` saying what).
 
+A row about an asset rather than a placed actor (a MetaSound, a Niagara
+system or a Blueprint class the project holds, a material that did not
+bake) has `map`, `actor` and `component` empty, and ends its `detail` with
+the asset's id.
+
 ## 5. Producers
 
 | Route | Code | Runs |
 |---|---|---|
-| Editor | `metaverse-engine/import/unreal/export_level.py`, driven by `metaverse-engine/tools/unreal-level-import.coax` | Headless `UnrealEditor-Cmd` on the source project, from a clean worktree at the plan's revision |
+| Editor | `metaverse-engine/import/unreal/export_level.py`, driven by `metaverse-engine/tools/unreal-level-export.coax PLAN.json PROJECT.uproject ENGINE_DIR NEW_DIR.aimport` | Headless `UnrealEditor-Cmd` (with a renderer, for material baking) on the source project, from a clean worktree at the plan's revision; the driver admits the bundle with `bundle.coax` before it reports success |
 | Cooked | `metaverse-engine/import/unreal/cooked/` | Over the folder `UnrealPak IoStore -FindAndExtract=BUILD.utoc -PackageFilter=* -OutPath=DIR` writes |
 | Data | a game's own, for example `metaverse/splice-bots/tools/jam-data-bundle.coax` | Over a build's loose data folder, with the plan; where the build's copy of a file differs from the revision's, the build's wins and the plan pins its SHA-256 |
 
