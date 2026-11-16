@@ -53,6 +53,7 @@ ga_round :: (c: Point, a: f32, r: f32, y: f32) -> Point { return v3(c.x + sin(a)
 // The lab's round wall: a body of radius r inside it stays r in front of the wall, except through the
 // hallway's mouth at its south. A body just past the wall is put back in; one further out is not the lab's.
 ga_lab_push :: (g: [] SpGame, x: f32, z: f32, r: f32) -> Point {
+  if g[0].jam { return v3(x, 0, z); }   // the jam world's ring and lab maps hold bodies instead (jam/jam-world.coax sj_push)
   c := ga_lab_mid(g); dx := x - c.x; dz := z - c.z; d := sqrt(dx * dx + dz * dz);
   edge := GA_LAB_R - r;
   if d <= edge || d > GA_LAB_R + GA_BACK * 2 + r { return v3(x, 0, z); }
@@ -168,6 +169,7 @@ ga_way :: (g: [] SpGame, x: f32, z: f32, tx: f32, tz: f32, r: f32, top: f32) -> 
 // lab's wall put it back in, as they do her, and a pier puts it out to its side, so it slides along
 // one. Where the passage between two bays is too small for it, ga_way stops it at the mouth.
 ga_body_push :: (g: [] SpGame, x: f32, z: f32, r: f32) -> Point {
+  if g[0].jam { return sj_body_push(g, x, z, r); }   // the jam world's walls, piers and solids (jam/jam-world.coax)
   q := ga_push(g, x, z, r); q = ga_lab_push(g, q.x, q.z, r);
   d := ga_reach(g, q.x, q.z);
   if d < g[0].at.gar_r - r || d > ga_back(g) || abs(d - ga_pass_r(g)) < GA_PASS - r { return q; }   // on the field, past the back wall, in a passage
@@ -195,6 +197,7 @@ ga_colliders :: (g: [] SpGame) {
 // The back wall behind the bays is round: a body of radius r inside the garage stays r in front of it,
 // except through the entry's tunnel and the hallway, which open in it. (x, z) as pushed back in.
 ga_push :: (g: [] SpGame, x: f32, z: f32, r: f32) -> Point {
+  if g[0].jam { return v3(x, 0, z); }   // the jam world's ring and lab maps hold bodies instead (jam/jam-world.coax sj_push)
   dx := x - g[0].at.gar_x; dz := z - g[0].at.gar_z; d := sqrt(dx * dx + dz * dz);
   edge := ga_back(g) - r;
   if d <= edge || d > ga_back(g) + GA_BACK * 2 + r { return v3(x, 0, z); }

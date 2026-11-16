@@ -285,7 +285,7 @@ sl_floors :: (g: [] SpGame, x: f32, z: f32, out: [] f32) -> int {
     stand_put_quad(out, k, ox, oz, dx * half * 2, dz * half * 2, dz * e.r * 2, -dx * e.r * 2, y0, 0, rise);
     k += 1;
   }
-  return ifx g[0].zone == Z_MINE then ff_floors(x, z, out, k) else k;   // and the solar farm's bank under you (farm.coax)
+  return ifx g[0].zone == Z_MINE && !g[0].jam then ff_floors(x, z, out, k) else k;   // and the solar farm's bank under you (farm.coax); the jam world's banks are its farm's (jam/jam-world.coax sj_floor)
 }
 // How far the segment a-b is from a box on the ground (0 when it touches or crosses it), by the
 // engine's box and segment rules.

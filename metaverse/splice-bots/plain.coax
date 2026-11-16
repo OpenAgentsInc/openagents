@@ -43,6 +43,7 @@ pl_ground :: (x: f32, z: f32) -> f32 {
 // berm from outside (the mine mouth's own walls hold the way in), and inside the plain's edge.
 pl_push :: (g: [] SpGame, x: f32, z: f32, r: f32) -> Point {
   q := v3(x, 0, z);
+  if g[0].jam { return q; }   // the jam world's plain and farm maps hold bodies instead (jam/jam-world.coax sj_push)
   if z < -350 { for i: 0..<PL_PEAKS { q = land_mound_push(pl_peak(i), q.x, q.z, r); } }   // the peaks are north of the garage
   dx := q.x - g[0].at.gar_x; dz := q.z - g[0].at.gar_z; d := sqrt(dx * dx + dz * dz);
   foot := ga_foot(g) + r;

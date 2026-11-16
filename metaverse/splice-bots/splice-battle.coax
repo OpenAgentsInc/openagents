@@ -802,12 +802,14 @@ sb_battle_step :: (g: [] SpGame, dt: f32) {
     bx := [1] f32.[g[0].bot_x]; bz := [1] f32.[g[0].bot_z]; by := [1] f32.[g[0].bot_yaw];
     _ := sb_toward(bx[..], bz[..], by[..], foe.x, foe.z, SB_BODY_SPEED, 2.2, dt);
     if t[0].foe == SB_BOSS { q := sb_boss_off(g, bx[0], bz[0], T_BOT_R); bx[0] = q.x; bz[0] = q.z; }   // he stops at its body and tail, never in them
+    w := sj_body_push(g, bx[0], bz[0], T_BOT_R); bx[0] = w.x; bz[0] = w.z;   // and at the jam world's walls (jam/jam-world.coax)
     g[0].bot_x = bx[0]; g[0].bot_z = bz[0]; g[0].bot_yaw = by[0];
   }
   if me == SB_MECH {
     mx := [1] f32.[t[0].mech_x]; mz := [1] f32.[t[0].mech_z]; my := [1] f32.[t[0].mech_yaw];
     _ := sb_toward(mx[..], mz[..], my[..], foe.x, foe.z, SB_BODY_SPEED, 4.2, dt);
     if t[0].foe == SB_BOSS { q := sb_boss_off(g, mx[0], mz[0], SB_MECH_R); mx[0] = q.x; mz[0] = q.z; }
+    w := sj_body_push(g, mx[0], mz[0], SB_MECH_R); mx[0] = w.x; mz[0] = w.z;   // and at the jam world's walls (jam/jam-world.coax)
     t[0].mech_x = mx[0]; t[0].mech_z = mz[0]; t[0].mech_yaw = my[0];
   }
   // your side fights on its own when you leave it be (#13505 playtest): past SB_AUTO without a move key,

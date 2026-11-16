@@ -69,6 +69,7 @@ d_pointed :: (g: [] SpGame) -> DPoint {
 d_solid :: (g: [] SpGame, x: f32, z: f32) -> bool {
   if g_inside(g, x, z) { return true; }
   if g[0].zone != Z_MINE || sp_in_room(g) || mr_in(x, z) { return false; }
+  if g[0].jam { return sj_solid(g, x, z, T_BOT_R); }   // the jam world's walls and solids (jam/jam-world.coax)
   q := ff_push(x, z, T_BOT_R); if q.x != x || q.z != z { return true; }
   q = pl_push(g, x, z, T_BOT_R); return q.x != x || q.z != z;
 }

@@ -353,7 +353,9 @@ dv_blocked :: (g: [] SpGame, x: f32, z: f32, yaw: f32) -> bool {
   n := 1 + cast(int) (dist2(e.ax, e.az, e.bx, e.bz) / e.r + 0.999);
   for i: 0..<n + 1 {
     u := cast(f32) i / cast(f32) n;
-    q := v3(e.ax + (e.bx - e.ax) * u, 0, e.az + (e.bz - e.az) * u); r := ff_push(q.x, q.z, e.r);
+    q := v3(e.ax + (e.bx - e.ax) * u, 0, e.az + (e.bz - e.az) * u);
+    if g[0].jam { if sj_solid(g, q.x, q.z, e.r) { return true; } continue; }   // the jam world's banks and walls (jam/jam-world.coax)
+    r := ff_push(q.x, q.z, e.r);
     if abs(r.x - q.x) + abs(r.z - q.z) > 0.0001 { return true; }
   }
   return false;

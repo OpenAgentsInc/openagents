@@ -241,7 +241,7 @@ g_layout :: (g: [] SpGame) {
   }
   g_wall(g, g[0].at.dance_x - 13.4, g[0].at.dance_x - 9.9, g[0].at.dance_z - 5.5, g[0].at.dance_z + 5.5, 0);   // the main stage (drawn apart)
   g_wall(g, g[0].at.crate_x - 0.9, g[0].at.crate_x + 0.9, g[0].at.crate_z - 0.7, g[0].at.crate_z + 0.7, 0); // the stash crate
-  g_wall(g, g[0].at.deck_x - 0.12, g[0].at.deck_x + 0.12, g[0].at.deck_z0 + RAMP, g[0].at.deck_z1 - RAMP, 0);   // the catwalk's rail, between its two ramps
+  if !g[0].jam { g_wall(g, g[0].at.deck_x - 0.12, g[0].at.deck_x + 0.12, g[0].at.deck_z0 + RAMP, g[0].at.deck_z1 - RAMP, 0); }   // the catwalk's rail, between its two ramps (the jam's bays have their own balconies)
   mr_walls(g);   // the metrics room (metrics.coax)
   dv_room_walls(g);   // the rover's cabin, closed all round (drive.coax)
   sl_build(g);   // the walls become colliders in the World (layer.coax), with the layer's placed pieces
@@ -432,16 +432,18 @@ g_collide :: (g: [] SpGame) {
 }
 g_inside :: (g: [] SpGame, x: f32, z: f32) -> bool {
   if g[0].zone == Z_VILLAGE && dist2(x, z, g[0].at.vil_x, g[0].at.vil_z) > g[0].at.vil_r - 0.5 && !(z > g[0].at.vil_z + 5 && abs(x - g[0].at.vil_x) < 1.5) { return true; }
+  if sj_here(g) && sj_solid(g, x, z, 0.3) { return true; }   // in the jam world's walls and solids (jam/jam-world.coax)
   if ga_push(g, x, z, 0.3).x != x || ga_push(g, x, z, 0.3).z != z { return true; }   // behind the garage's back wall
   if g[0].zone == Z_MINE && (ga_lab_push(g, x, z, 0.3).x != x || ga_lab_push(g, x, z, 0.3).z != z) { return true; }   // behind the lab's round wall
   return sl_inside(g, x, z, 0.3);
 }
 // The catwalk: a deck along the party's east wall, a ramp at each end.
-on_deck :: (g: [] SpGame, x: f32, z: f32) -> bool { return (x - g[0].at.deck_x) * deck_s(g) > -0.2 && z > g[0].at.deck_z0 && z < g[0].at.deck_z1; }
+on_deck :: (g: [] SpGame, x: f32, z: f32) -> bool { return !g[0].jam && (x - g[0].at.deck_x) * deck_s(g) > -0.2 && z > g[0].at.deck_z0 && z < g[0].at.deck_z1; }
 // The way the deck reaches from its rail: out from the field's middle (+1 on the east side, -1 on the west).
 DECK_W :: 4.0f32;   // m: the deck's width out from its rail, as drawn (its floor ended 12 m out, over bare floor)
 deck_s :: (g: [] SpGame) -> f32 { return ifx g[0].at.deck_x < g[0].at.gar_x then -1.0f32 else 1.0f32; }
 ground_y :: (g: [] SpGame, x: f32, z: f32) -> f32 {
+  if g[0].jam { return 0; }   // the jam world's ground, plain and balconies are its maps' floors (jam/jam-world.coax sj_floor)
   u := (x - g[0].at.deck_x) * deck_s(g);   // across the deck, out from its rail
   if z <= g[0].at.deck_z0 || z >= g[0].at.deck_z1 || u < -3 || u > DECK_W { return ifx g[0].jam then 0.0f32 else pl_ground(x, z); }   // the landmark rocks (plain.coax); the jam world's are its plain's
   if u >= 0 { return DECK_Y; }
@@ -511,7 +513,8 @@ g_bot :: (g: [] SpGame, dt: f32) {
       _ := d_apart_step(g, tx, tz, hi(T_FOLLOW, her) * cm_follow_pace(g, g[0].bot_x, g[0].bot_z, T_BOT_R, clamp(d / 1.5, 0.15, 1.6)) + hi(0, d - 12) * 3, dt);
     }
     q := cm_keep_off(g, g[0].bot_x, g[0].bot_z, T_BOT_R);
-    if g[0].zone == Z_MINE { q = ff_push(q.x, q.z, T_BOT_R); }   // pushed off her, never into a line of the farm
+    if g[0].zone == Z_MINE && !g[0].jam { q = ff_push(q.x, q.z, T_BOT_R); }   // pushed off her, never into a line of the farm
+    q = sj_body_push(g, q.x, q.z, T_BOT_R);   // nor into the jam world's walls and solids (jam/jam-world.coax)
     if g[0].zone == Z_MINE { q = sb_boss_off(g, q.x, q.z, T_BOT_R); }   // never in the boss's body or tail (splice-battle.coax)
     g[0].bot_x = q.x; g[0].bot_z = q.z;
     return;
@@ -556,6 +559,7 @@ T_FOE_R :: 0.45f32;   // m: a robot's body on the ground
 g_foe_walls :: (g: [] SpGame, i: int) {
   q := sl_push(g, g[0].fx[i], g[0].fz[i], T_FOE_R, true);
   q = ga_push(g, q.x, q.z, T_FOE_R);
+  q = sj_body_push(g, q.x, q.z, T_FOE_R);   // the jam world's walls and solids, as hers (jam/jam-world.coax)
   g[0].fx[i] = q.x; g[0].fz[i] = q.z;
 }
 // The bots' bodies on the ground, x, z, radius each: robot i at i (the ones in play, at the farm and the
@@ -1076,18 +1080,20 @@ g_world :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   kit_pen(p, 26, MAT_GLOW, t3(1.0, 0.72, 0.30));
   ball(buf, p, v3(g[0].at.post_x, 3.4, g[0].at.post_z), 0.3, 10);
   kit_crate(buf, p, frame_at(v3(g[0].at.crate_x, 0, g[0].at.crate_z), 0), 27, t3(0.70, 0.52, 0.36), INK(), GLOW(), 1.5);
-  kit_rocks(buf, p, 30, t3(0.52, 0.36, 0.34), 14, 70, 0, -17, 5, 8.2, 0.4, 1.1);
-  // the work bay's catwalk (section G1, due west): a deck along the bay, a ramp at each end, a rail between them
-  kit_pen(p, 32, MAT_WORLD, t3(0.48, 0.36, 0.44));
-  ds := deck_s(g);
-  block(buf, p, g[0].at.deck_x + 2 * ds, 0, (g[0].at.deck_z0 + g[0].at.deck_z1) * 0.5, 2, DECK_Y, (g[0].at.deck_z1 - g[0].at.deck_z0) * 0.5);
-  for i: 0..<2 {
-    z0 := ifx i == 0 then g[0].at.deck_z0 else g[0].at.deck_z1 - RAMP; z1 := z0 + RAMP;
-    land_face(buf, p, v3(g[0].at.deck_x - 3 * ds, 0.02, z0), v3(g[0].at.deck_x - 3 * ds, 0.02, z1), v3(g[0].at.deck_x, DECK_Y, z1), v3(g[0].at.deck_x, DECK_Y, z0));
+  if !g[0].jam {   // the scattered rocks and the work bay's catwalk: the jam world's ring has its own bays and balconies
+    kit_rocks(buf, p, 30, t3(0.52, 0.36, 0.34), 14, 70, 0, -17, 5, 8.2, 0.4, 1.1);
+    // the work bay's catwalk (section G1, due west): a deck along the bay, a ramp at each end, a rail between them
+    kit_pen(p, 32, MAT_WORLD, t3(0.48, 0.36, 0.44));
+    ds := deck_s(g);
+    block(buf, p, g[0].at.deck_x + 2 * ds, 0, (g[0].at.deck_z0 + g[0].at.deck_z1) * 0.5, 2, DECK_Y, (g[0].at.deck_z1 - g[0].at.deck_z0) * 0.5);
+    for i: 0..<2 {
+      z0 := ifx i == 0 then g[0].at.deck_z0 else g[0].at.deck_z1 - RAMP; z1 := z0 + RAMP;
+      land_face(buf, p, v3(g[0].at.deck_x - 3 * ds, 0.02, z0), v3(g[0].at.deck_x - 3 * ds, 0.02, z1), v3(g[0].at.deck_x, DECK_Y, z1), v3(g[0].at.deck_x, DECK_Y, z0));
+    }
+    kit_pen(p, 33, MAT_CLOTH, INK());
+    for i: 0..<7 { tube(buf, p, frame_at(v3(g[0].at.deck_x, DECK_Y, g[0].at.deck_z0 + RAMP + cast(f32) i * 2.0), 0), 1.0, 0.06, 0.06, 0.06, 0.06, 6, true); }
+    block(buf, p, g[0].at.deck_x, DECK_Y + 0.95, (g[0].at.deck_z0 + g[0].at.deck_z1) * 0.5, 0.05, 0.08, (g[0].at.deck_z1 - g[0].at.deck_z0) * 0.5 - RAMP);
   }
-  kit_pen(p, 33, MAT_CLOTH, INK());
-  for i: 0..<7 { tube(buf, p, frame_at(v3(g[0].at.deck_x, DECK_Y, g[0].at.deck_z0 + RAMP + cast(f32) i * 2.0), 0), 1.0, 0.06, 0.06, 0.06, 0.06, 6, true); }
-  block(buf, p, g[0].at.deck_x, DECK_Y + 0.95, (g[0].at.deck_z0 + g[0].at.deck_z1) * 0.5, 0.05, 0.08, (g[0].at.deck_z1 - g[0].at.deck_z0) * 0.5 - RAMP);
   // the rave in the middle of the field: the main stage on the floor's west side, the DJ's booth, speaker
   // stacks and a truss of lamps (dn: a place beside the dance floor)
   kit_pen(p, 35, MAT_CLOTH, t3(0.14, 0.11, 0.18));
@@ -1135,8 +1141,10 @@ g_world :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
 // objective's marker in the world; while the mech drills, its top rocks shake loose as the wall's do.
 g_blocked_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   wz := g[0].at.wall_z; t := g[0].t; d := g[0].bt[0].drill_t;
-  kit_pen(p, 92, MAT_WORLD, t3(0.40, 0.26, 0.20)); block(buf, p, 0, 0, wz - 0.6, GA_HALL + 0.4, 10, 0.4);   // packed behind it
-  g_rubble(g, buf, p, wz, 8, ifx d > 0 then 1 - d / SB_DRILL_TIME else -1.0f32, 1.5);
+  if !g[0].jam {   // the jam world's plugs are its own (jam/jam-world.coax); the beacon over them is the game's
+    kit_pen(p, 92, MAT_WORLD, t3(0.40, 0.26, 0.20)); block(buf, p, 0, 0, wz - 0.6, GA_HALL + 0.4, 10, 0.4);   // packed behind it
+    g_rubble(g, buf, p, wz, 8, ifx d > 0 then 1 - d / SB_DRILL_TIME else -1.0f32, 1.5);
+  }
   // the beacon: the objective, seen from anywhere in the ring once the mech has Digger's core
   if g[0].bt[0].mech_core {
     kit_pen(p, 89, MAT_GLOW, HEAT());
@@ -1257,7 +1265,8 @@ g_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   }
   d_live(g, buf, p);   // the better sensor (director.coax)
   // the rubble and the boss wall, until the Digger opens them
-  if !g[0].rubble_gone { g_rubble_live(g, buf, p); }
+  // (the jam world draws its own: its rock wall and the hallway's plugs, hidden as they open: jam/jam-world.coax sj_openings_set)
+  if !g[0].rubble_gone && !g[0].jam { g_rubble_live(g, buf, p); }
   if !g[0].wall_gone { g_blocked_live(g, buf, p); }
   ga_leds(g, buf, p);   // the garage's LEDs, on at night (garage.coax)
   if g[0].bot {
@@ -2336,7 +2345,7 @@ g_run_from_garage :: (g: [] SpGame) -> int {
   // into the garage: still dusk (night falls with the boss). Its bays: a cell in HA, a fight, the one blue piece in G2.
   g[0].px = 0; g[0].pz = -37; g_step(g, 0.02);
   if !(g[0].phase == PH_DUSK) { return 20; }
-  g[0].px = pick_x(g, PICK_CELL) + 1; g[0].pz = pick_z(g, PICK_CELL) - 1;
+  g[0].px = pick_x(g, PICK_CELL) + 1; g[0].pz = pick_z(g, PICK_CELL) - 1; g_bot_home(g);   // Digger comes too: the walls hold him (jam/jam-world.coax)
   for i: 0..<200 { g_step(g, 0.02); if g[0].cells == 1 { break; } }
   if !(g[0].cells == 1) { return 21; }
   // she sneaks in, and the garage at dusk is quiet: the raiders are out scavenging and the
@@ -2350,8 +2359,8 @@ g_run_from_garage :: (g: [] SpGame) -> int {
   // the drill mech: Digger's core in, it follows her to the blocked hallway and drills it down when it gets there
   g[0].px = g[0].bt[0].mech_x + 2; g[0].pz = g[0].bt[0].mech_z;
   if !(g_key(g, 'e', true) && g[0].bt[0].mech_core && hv_goal(g).name == "BLOCKED HALLWAY") { return 31; }
-  g[0].px = 1; g[0].pz = g[0].at.wall_z + 3;
-  for i: 0..<900 { g_step(g, 0.1); if g[0].bt[0].drill_t > 0 { break; } }   // it walks over from the empty section, and starts on its own
+  g[0].px = 1; g[0].pz = g[0].at.wall_z + 3; ms := sb_mech_spot(g); g[0].bt[0].mech_x = ms.x; g[0].bt[0].mech_z = ms.z;   // the mech came with her (the walk stood in for)
+  for i: 0..<900 { g_step(g, 0.1); if g[0].bt[0].drill_t > 0 { break; } }   // it starts on its own
   if !(g[0].bt[0].drill_t > 0) { return 32; }
   for i: 0..<400 { g_step(g, 0.02); }
   if !(g[0].wall_gone) { return 33; }

@@ -34,6 +34,8 @@ SjWalk :: struct {
   legs: int; missed: int;                   // legs that had to arrive, and those that didn't
   seen: [SJW_SEEN] SjwStop; ns: int; over: int;   // the blockers that stopped her, each once
   miss: [SJW_MISSES * 4] f32;               // the first missed legs: where each left her, and its point
+  mech: bool;                               // the drill mech follows her a step at a time (sjw_mech)
+  mech_in: int; mech_far: f32;              // steps it ended in a jam collider, and its furthest from her (m)
 }
 SJW_STEP :: 0.1f32;      // m a step: 5 m/s at SJW_DT
 SJW_DT :: 0.02f32;
@@ -163,6 +165,7 @@ sjw_step :: (g: [] SpGame, s: [] SjStore, w: [] SjWalk, dx: f32, dz: f32) {
   feet := sj_feet(g) + 0.05; over := g_feet_y(g) + FL_STEP;   // as g_collide asks them
   g_collide(g); g_jump(g, SJW_DT);
   w[0].steps += 1;
+  if w[0].mech { sjw_mech_step(g, w); }
   if dist2(g[0].px, g[0].pz, tx, tz) > SJW_EPS { sjw_note(w, sjw_blocker(g, s, tx, tz, feet, over), tx, tz); }
 }
 // Walk straight toward (tx, tz) until there, or until she makes no headway for a while: whether she got
@@ -304,6 +307,44 @@ sjw_lab :: (g: [] SpGame, s: [] SjStore, w: [] SjWalk) {
   _ = sjw_leg(g, s, w, h.x, h.z, true);                 // out to the ring
   _ = sjw_leg(g, s, w, g[0].at.gar_x, g[0].at.gar_z, true);
 }
+// ---- the drill mech's path
+// The drill mech with Digger's core in it, led as the run leads it (splice-game.coax sp_keys_play): from its
+// bay (C1) out of the bay's mouth, across the field to the hallway's mouth and down to the barricade, where
+// it drills on its own. It follows her a step at a time (splice-battle.coax sb_mech_step), and the jam
+// world's walls and solids hold it (garage.coax ga_body_push, jam-world.coax sj_body_push). 0, or what
+// failed: 1 it ended a step in a jam collider, 2 it never began drilling, 3 she missed a leg.
+SJW_MECH_WAIT :: 600;   // steps she stands at the barricade for the mech to come up and begin
+sjw_mech_step :: (g: [] SpGame, w: [] SjWalk) {
+  sb_mech_step(g, SJW_DT);
+  t := g[0].bt[0];
+  if sj_solid(g, t.mech_x, t.mech_z, SB_MECH_R - 0.05) { w[0].mech_in += 1; }
+  w[0].mech_far = hi(w[0].mech_far, dist2(g[0].px, g[0].pz, t.mech_x, t.mech_z));
+}
+sjw_mech :: (g: [] SpGame, s: [] SjStore, w: [] SjWalk) -> int {
+  w[0] = SjWalk.{};
+  g[0].phase = PH_DUSK; g[0].rubble_gone = true; g[0].wall_gone = false; g[0].bot = true;
+  sb_reset(g);
+  t := g[0].bt[..]; t[0].mech_core = true; t[0].mech_used = true;
+  m0 := ga_at(g, ga_section_of(g, t[0].mech_x, t[0].mech_z), g[0].at.gar_r - 8);   // the mouth of its bay
+  d := hi(dist2(t[0].mech_x, t[0].mech_z, m0.x, m0.z), 0.001);   // she stands by it on its mouth's side, as after the swap
+  sjw_place(g, t[0].mech_x + (m0.x - t[0].mech_x) / d * 3, t[0].mech_z + (m0.z - t[0].mech_z) / d * 3); w[0].mech = true;
+  _ := sjw_leg(g, s, w, m0.x, m0.z, true);
+  h := ga_at(g, GA_HALLWAY, g[0].at.gar_r - 8);
+  _ = sjw_leg(g, s, w, h.x, h.z, true);
+  // down the hallway until the mech begins drilling (it then goes to the barricade's face, ahead of her)
+  wz := g[0].at.wall_z + 3;
+  for i: 0..<cast(int) (dist2(g[0].px, g[0].pz, 0, wz) / SJW_STEP) * 2 + 100 {
+    e := dist2(g[0].px, g[0].pz, 0, wz);
+    if t[0].drill_t > 0 || e < SJW_ARRIVE { break; }
+    st := lo(SJW_STEP, e); sjw_step(g, s, w, -g[0].px / e * st, (wz - g[0].pz) / e * st);
+  }
+  for i: 0..<SJW_MECH_WAIT { if t[0].drill_t > 0 { break; } sjw_step(g, s, w, 0, 0); }
+  w[0].mech = false;
+  if w[0].mech_in > 0 { return 1; }
+  if !(t[0].drill_t > 0) { return 2; }
+  return ifx w[0].missed > 0 then 3 else 0;
+}
+
 sjw_scene :: (g: [] SpGame, s: [] SjStore, w: [] SjWalk, k: int) {
   w[0] = SjWalk.{};
   g[0].bt[0].mech_x = 1000000; g[0].bt[0].mech_z = 1000000;   // the drill mech away: its body is the game's, not the route's

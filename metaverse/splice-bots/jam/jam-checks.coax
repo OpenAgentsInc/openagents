@@ -79,7 +79,7 @@ SJT_CATALOG :: "world 1 jam-test\ntitle Jam test\nmap 0 /Game/SpliceBots/World/M
 // farm's first bank row stands, its block over the garage and a block over the lab (the jam's farm drew its
 // mountain there); the ring with the raiders' rock wall (two chunks) across the tunnel, a tunnel wall and a
 // box no P line draws; the lab with the hallway's three plugs.
-SJT_ROUTE :: "world 1 jam-route\nmap 0 /Game/SpliceBots/World/Maps/L_SolarFarm\nmap 1 /Game/World/Graybox/L_Ring\nmap 2 /Game/World/Graybox/L_Lab\nmat 0 0.5 0.5 0.5 1 -1 0\nM s0 0 36 0 -0.5 -0.5 -0.5 0.5 0.5 0.5\nspawn 0 -840 1 -136 0\nfall 0 -50\nspawn 1 0 1 -60 1.5707963\nfall 1 -50\nspawn 2 0 1 -383 1.5707963\nfall 2 -50\nP 0 0 0 -14 -3 0 0 0 1 -886.5 1.05 -183 21.4 0.5 1.2 StaticMeshActor_2/StaticMeshComponent0\nP 0 0 0 -14 -3 0 0 0 1 -895.5 0.5 -183.1 0.12 1 0.12 StaticMeshActor_13/StaticMeshComponent0\nP 0 0 0 -14 -3 0 0 0 1 -878.5 0.5 -183.1 0.12 1 0.12 StaticMeshActor_14/StaticMeshComponent0\nP 0 0 0 0 -3 0 0 0 1 0 6.5 -195 315 13 315 StaticMeshActor_1300/StaticMeshComponent0\nP 0 0 0 0 -7 0 0 0 1 0 40 -420 120 80 80 StaticMeshActor_1302/StaticMeshComponent0\nP 1 0 0 0 -1 0 0 0 1 -1.7 1.5 -39 3.4 3 2 SpliceRockWallActor_UAID_1/Chunk_00\nP 1 0 0 0 -1 0 0 0 1 1.7 1.5 -39 3.4 3 2 SpliceRockWallActor_UAID_1/Chunk_01\nP 1 0 0 0 -1 0 0 0 1 11.65 5.5 -38.8 16.7 11 2.4 StaticMeshActor_UAID_2/StaticMeshComponent0\nP 2 0 0 0 -6 0 0 0 1 0 5 -351 7.2 10 1.6 StaticMeshActor_UAID_D85ED3019F3BEC1403_1312274827/StaticMeshComponent0\nP 2 0 0 0 -6 0 0 0 1 0 5 -364 7.2 10 1.6 StaticMeshActor_UAID_D85ED3019F3BEC1403_1312275828/StaticMeshComponent0\nP 2 0 0 0 -6 0 0 0 1 0 5 -380.5 7.2 10 1.6 StaticMeshActor_UAID_D85ED3019F3BEC1403_1312276829/StaticMeshComponent0\ncol 0 hull 6 0.8 1.3 1 0 0 -875.8 -1 0 0 897.2 0 1 0 1.3 0 -1 0 -0.8 0 0 1 -182.4 0 0 -1 183.6 StaticMeshActor_2/StaticMeshComponent0\ncol 0 box -895.56 0 -183.16 -895.44 1 -183.04 StaticMeshActor_13/StaticMeshComponent0\ncol 0 box -878.56 0 -183.16 -878.44 1 -183.04 StaticMeshActor_14/StaticMeshComponent0\ncol 0 box -157.5 0 -352.5 157.5 13 -37.5 StaticMeshActor_1300/StaticMeshComponent0\ncol 0 box -60 0 -460 60 80 -380 StaticMeshActor_1302/StaticMeshComponent0\ncol 1 box -3.4 0 -40 0 3 -38 SpliceRockWallActor_UAID_1/Chunk_00\ncol 1 box 0 0 -40 3.4 3 -38 SpliceRockWallActor_UAID_1/Chunk_01\ncol 1 box 3.3 0 -40 20 11 -37.6 StaticMeshActor_UAID_2/StaticMeshComponent0\ncol 1 box 50 0 -101 52 3 -99 StaticMeshActor_UAID_99/StaticMeshComponent0\ncol 2 box -3.6 0 -351.8 3.6 10 -350.2 StaticMeshActor_UAID_D85ED3019F3BEC1403_1312274827/StaticMeshComponent0\ncol 2 box -3.6 0 -364.8 3.6 10 -363.2 StaticMeshActor_UAID_D85ED3019F3BEC1403_1312275828/StaticMeshComponent0\ncol 2 box -3.6 0 -381.3 3.6 10 -379.7 StaticMeshActor_UAID_D85ED3019F3BEC1403_1312276829/StaticMeshComponent0\n";
+SJT_ROUTE :: "world 1 jam-route\nmap 0 /Game/SpliceBots/World/Maps/L_SolarFarm\nmap 1 /Game/World/Graybox/L_Ring\nmap 2 /Game/World/Graybox/L_Lab\nmat 0 0.5 0.5 0.5 1 -1 0\nM s0 0 36 0 -0.5 -0.5 -0.5 0.5 0.5 0.5\nspawn 0 -840 1 -136 0\nfall 0 -50\nspawn 1 0 1 -60 1.5707963\nfall 1 -50\nspawn 2 0 1 -383 1.5707963\nfall 2 -50\nP 0 0 0 -14 -3 0 0 0 1 -886.5 1.05 -183 21.4 0.5 1.2 StaticMeshActor_2/StaticMeshComponent0\nP 0 0 0 -14 -3 0 0 0 1 -895.5 0.5 -183.1 0.12 1 0.12 StaticMeshActor_13/StaticMeshComponent0\nP 0 0 0 -14 -3 0 0 0 1 -878.5 0.5 -183.1 0.12 1 0.12 StaticMeshActor_14/StaticMeshComponent0\nP 0 0 0 0 -3 0 0 0 1 0 6.5 -195 315 13 315 StaticMeshActor_1300/StaticMeshComponent0\nP 0 0 0 0 -7 0 0 0 1 0 40 -420 120 80 80 StaticMeshActor_1309/StaticMeshComponent0\nP 1 0 0 0 -1 0 0 0 1 -1.7 1.5 -39 3.4 3 2 SpliceRockWallActor_UAID_1/Chunk_00\nP 1 0 0 0 -1 0 0 0 1 1.7 1.5 -39 3.4 3 2 SpliceRockWallActor_UAID_1/Chunk_01\nP 1 0 0 0 -1 0 0 0 1 11.65 5.5 -38.8 16.7 11 2.4 StaticMeshActor_UAID_2/StaticMeshComponent0\nP 2 0 0 0 -6 0 0 0 1 0 5 -351 7.2 10 1.6 StaticMeshActor_UAID_D85ED3019F3BEC1403_1312274827/StaticMeshComponent0\nP 2 0 0 0 -6 0 0 0 1 0 5 -364 7.2 10 1.6 StaticMeshActor_UAID_D85ED3019F3BEC1403_1312275828/StaticMeshComponent0\nP 2 0 0 0 -6 0 0 0 1 0 5 -380.5 7.2 10 1.6 StaticMeshActor_UAID_D85ED3019F3BEC1403_1312276829/StaticMeshComponent0\ncol 0 hull 6 0.8 1.3 1 0 0 -875.8 -1 0 0 897.2 0 1 0 1.3 0 -1 0 -0.8 0 0 1 -182.4 0 0 -1 183.6 StaticMeshActor_2/StaticMeshComponent0\ncol 0 box -895.56 0 -183.16 -895.44 1 -183.04 StaticMeshActor_13/StaticMeshComponent0\ncol 0 box -878.56 0 -183.16 -878.44 1 -183.04 StaticMeshActor_14/StaticMeshComponent0\ncol 0 box -157.5 0 -352.5 157.5 13 -37.5 StaticMeshActor_1300/StaticMeshComponent0\ncol 0 box -60 0 -460 60 80 -380 StaticMeshActor_1309/StaticMeshComponent0\ncol 1 box -3.4 0 -40 0 3 -38 SpliceRockWallActor_UAID_1/Chunk_00\ncol 1 box 0 0 -40 3.4 3 -38 SpliceRockWallActor_UAID_1/Chunk_01\ncol 1 box 3.3 0 -40 20 11 -37.6 StaticMeshActor_UAID_2/StaticMeshComponent0\ncol 1 box 50 0 -101 52 3 -99 StaticMeshActor_UAID_99/StaticMeshComponent0\ncol 2 box -3.6 0 -351.8 3.6 10 -350.2 StaticMeshActor_UAID_D85ED3019F3BEC1403_1312274827/StaticMeshComponent0\ncol 2 box -3.6 0 -364.8 3.6 10 -363.2 StaticMeshActor_UAID_D85ED3019F3BEC1403_1312275828/StaticMeshComponent0\ncol 2 box -3.6 0 -381.3 3.6 10 -379.7 StaticMeshActor_UAID_D85ED3019F3BEC1403_1312276829/StaticMeshComponent0\n";
 sjt_route :: (g: [] SpGame, s: [] SjStore) {
   #assert sj_load(s, SJT_ROUTE);
   g_reset(g); if g[0].layer[0].st[0].n == 0 { _ := spw_shipped(g); }
@@ -126,7 +126,7 @@ sjt_route :: (g: [] SpGame, s: [] SjStore) {
   for k: 0..<SJW_SCENES {
     g_reset(g[..]); sjw_scene(g[..], s[..], w[..], k);
     #assert w[0].steps > 100 && w[0].invisible == 0 && w[0].missed == 0 && w[0].over == 0;
-    if k == SJW_RING { #assert w[0].stops > 0; }   // the tunnel's wall
+    if k == SJW_FARM { #assert w[0].stops > 0; }   // the bank's posts and glass
   }
   // the ring's box no P line draws: walking into it is a stop nothing drawn explains
   g_reset(g[..]); w[0] = SjWalk.{}; g[0].rubble_gone = true;
@@ -146,4 +146,25 @@ sjt_route :: (g: [] SpGame, s: [] SjStore) {
   w := [1] SjWalk.[SjWalk.{}];
   #assert sjw_bank(g[..], s[..], w[..], FF_XW + FF_PITCH * 2.5, ff_line_z(2)) == 0;
   #assert abs(g_feet_y(g[..]) - 1.3) < 0.05 && w[0].invisible == 0;
+}
+#test "jam: robots, the drill mech and Digger stop at the jam world's walls; the prototype's own walls and floors are off" #steps 4000000000 #traversal 2000000000 {
+  s := [1] SjStore.[SjStore.{}]; g := [1] SpGame.[SpGame.{}];
+  sjt_route(g[..], s[..]);
+  g[0].mode = M_PLAY; g[0].zone = Z_MINE; g[0].rubble_gone = false;
+  // the rock wall across the tunnel (z -40 to -38) holds a robot, the drill mech and Digger, as it holds her
+  g[0].fx[5] = 0; g[0].fz[5] = -37.7; g_foe_walls(g[..], 5); #assert g[0].fz[5] > -37.6;
+  q := ga_body_push(g[..], 0, -37.7, SB_MECH_R); #assert q.z > -38 + SB_MECH_R - 0.01;
+  #assert g_inside(g[..], 0, -39) && d_solid(g[..], 0, -39) && !d_solid(g[..], 0, -30);
+  // the prototype's garage, lab and plain walls are gone: they push nothing in the jam world
+  b := ga_back(g[..]); x := g[0].at.gar_x + b - 0.1; z := g[0].at.gar_z;
+  q = ga_push(g[..], x, z, T_RADIUS); #assert q.x == x && q.z == z;
+  q = ga_lab_push(g[..], g[0].at.boss_x + GA_LAB_R, g[0].at.boss_z, T_RADIUS); #assert q.x == g[0].at.boss_x + GA_LAB_R;
+  q = pl_push(g[..], -170, -430, T_RADIUS); #assert q.x == -170 && q.z == -430;
+  // the prototype's bank tops are no floors in the jam world (its farm's glass is: sj_floor)
+  fl: [SP_FLOORS * STAND_FLOATS] f32; bk := ff_bank_at(0);
+  n := sl_floors(g[..], bk.x, bk.z, fl[..]);
+  g[0].jam = false; #assert sl_floors(g[..], bk.x, bk.z, fl[..]) == n + 1; g[0].jam = true;
+  // the drill mech follows her from its bay to the barricade and drills it
+  w := [1] SjWalk.[SjWalk.{}];
+  g_reset(g[..]); #assert sjw_mech(g[..], s[..], w[..]) == 0 && w[0].mech_in == 0;
 }

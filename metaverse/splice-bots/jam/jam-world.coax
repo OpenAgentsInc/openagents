@@ -35,16 +35,17 @@ SJ_CLASS :: [SJ_KINDS] string.["SpliceSniper", "SpliceDigger", "SpliceImperialSt
 // once what opens it has happened (sj_open). The raiders' rock wall (SJ_ROCK) opens with the rubble; the
 // actors below open as SJ_OPEN_WHEN says.
 SJ_SHUT :: 0; SJ_OPEN_RUBBLE :: 1; SJ_OPEN_WALL :: 2; SJ_OPEN_ALWAYS :: 3;   // what opens an actor's colliders
-SJ_OPENINGS :: 4;
-SJ_OPEN_ROUTE :: [SJ_OPENINGS] int.[SJ_FARM, SJ_LAB, SJ_LAB, SJ_LAB];
+SJ_OPENINGS :: 6;
+SJ_OPEN_ROUTE :: [SJ_OPENINGS] int.[SJ_FARM, SJ_FARM, SJ_FARM, SJ_LAB, SJ_LAB, SJ_LAB];
 SJ_OPEN_ACTOR :: [SJ_OPENINGS] string.[
   "StaticMeshActor_1300",                                  // the farm's 315 m block over the garage's spot, where the ring stands
+  "StaticMeshActor_1302", "StaticMeshActor_1303",          // the farm's two mountains over the lab and the ring's south, where the lab stands
   // the hallway's three plugs (the jam's hall_plug_1 to 3 at z -351, -364 and -380.5, Data/level_layout.csv),
   // which its drill mech drilled one after another: the game's one barricade (g.wall_gone)
   "StaticMeshActor_UAID_D85ED3019F3BEC1403_1312274827",
   "StaticMeshActor_UAID_D85ED3019F3BEC1403_1312275828",
   "StaticMeshActor_UAID_D85ED3019F3BEC1403_1312276829"];
-SJ_OPEN_WHEN :: [SJ_OPENINGS] int.[SJ_OPEN_ALWAYS, SJ_OPEN_WALL, SJ_OPEN_WALL, SJ_OPEN_WALL];
+SJ_OPEN_WHEN :: [SJ_OPENINGS] int.[SJ_OPEN_ALWAYS, SJ_OPEN_ALWAYS, SJ_OPEN_ALWAYS, SJ_OPEN_WALL, SJ_OPEN_WALL, SJ_OPEN_WALL];
 // What opens a route map's actor: the rock wall's rubble, an opening's SJ_OPEN_WHEN, or SJ_SHUT.
 sj_opens_of :: (route: int, actor: string, kind: int) -> int {
   if kind == SJ_ROCK { return SJ_OPEN_RUBBLE; }
@@ -314,7 +315,7 @@ sj_sealed :: (g: [] SpGame, x: f32, z: f32) -> bool {
   return ga_inside(g, x, z) || (z < g[0].at.gar_z - ga_back(g) + 0.5 && abs(x - g[0].at.gar_x) < GA_LAB_X + 8);
 }
 // Whether route map m's colliders hold her at (x, z): in a sealed area only the ring's and the lab's,
-// outside every route map's (the ring's walls from outside, the farm's mountain over the lab).
+// outside every route map's (the ring's walls from outside, the plain's rock).
 sj_walks :: (g: [] SpGame, m: int, x: f32, z: f32) -> bool {
   return g[0].jw_on[m] && (m == SJ_RING || m == SJ_LAB || !sj_sealed(g, x, z));
 }
@@ -356,6 +357,14 @@ sj_floor :: (g: [] SpGame, x: f32, z: f32, feet: f32, below: f32) -> f32 {
   return y;
 }
 
+// A body of radius r on the ground at (x, z) (a robot, the drill mech, Digger, Sniper's cars) out of the jam
+// world's walls, solids and bodies, as she is (sj_push from the jam floor under it). Off the jam world, (x, z).
+sj_body_push :: (g: [] SpGame, x: f32, z: f32, r: f32) -> Point {
+  if !sj_here(g) { return v3(x, 0, z); }
+  return sj_push(g, x, z, r, sj_floor(g, x, z, 0, 0) + 0.05);
+}
+// Whether a body of radius r can't stand at (x, z) in the jam world: its walls push it.
+sj_solid :: (g: [] SpGame, x: f32, z: f32, r: f32) -> bool { q := sj_body_push(g, x, z, r); return abs(q.x - x) + abs(q.z - z) > 0.0001; }
 // ---- how the jam realm draws an actor (jam-draw.coax, the splice-jam page)
 // The game hides an actor or moves it each frame; every part of it in the jam's maps goes with it. An actor
 // is g[0].jr[0].actors[i] (its kind, route and middle as sj_read found them); the game calls these on g[0].jr[..].

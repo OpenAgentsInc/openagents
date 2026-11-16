@@ -118,6 +118,7 @@ cm_dir :: (yaw: f32, rise: f32) -> Point { c := cos(rise); return v3(-sin(yaw) *
 cm_blocked :: (g: [] SpGame, x: f32, y: f32, z: f32, pad: f32, roof: f32) -> bool {
   if y < g_ground(g, x, z) + pad || y > roof - pad { return true; }
   if g[0].zone == Z_VILLAGE && g_inside(g, x, z) { return true; }
+  if sj_here(g) { q := sj_push(g, x, z, pad, y - 0.9); if q.x != x || q.z != z { return true; } }   // the jam world's walls and solids round it (jam/jam-world.coax)
   q := ga_push(g, x, z, pad); if q.x != x || q.z != z { return true; }
   if g[0].zone == Z_MINE { q = ga_lab_push(g, x, z, pad); if q.x != x || q.z != z { return true; } }   // the lab's round wall
   if g[0].zone == Z_MINE && y < ga_shell_near(g, x, z, pad) + pad { return true; }   // the garage's outer shell as drawn, cut round the yard
