@@ -1,0 +1,22 @@
+{
+  "actualWasm": true,
+  "renderedParts": 70,
+  "renderedCopies": 11,
+  "renderedIndices": 26294466,
+  "takeThreeCompleted": true,
+  "allJointLimits": true,
+  "walkDistance": 0.47850000858306885,
+  "endCamera": [
+    9.42477798461914,
+    0.2800000011920929,
+    4.800000190734863
+  ],
+  "centre": -1.7000000476837158,
+  "reveal": 1,
+  "partCopyIdentity": true,
+  "exactRestoredStand": true,
+  "hiddenClockHeld": true,
+  "resumeSkippedDelta": true,
+  "previousTakesRetained": true,
+  "resetRestoresSingleModel": true
+}

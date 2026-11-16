@@ -1,6 +1,7 @@
 // Research assembly viewer. Shared engine shader math and Filament strokes.
 #load "splash.coax";
 #load "../../../metaverse-engine/ui/primitive-shader.coax";
+#load "../../../metaverse-engine/anim/assembly-draw.coax";
 
 #test "Microduck unpacking preserves the engine's packed material colour" {
   c := md_colour(0x00332211);
@@ -8,6 +9,15 @@
   #assert abs(c.y - 34.0f32 / 255.0f32) < 0.00001f32 && abs(c.z - 0.2f32) < 0.00001f32;
 }
 md_colour :: (word: u32) -> V3 { return v3(cast(f32) (word & 255) / 255.0f32, cast(f32) ((word >> 8) & 255) / 255.0f32, cast(f32) ((word >> 16) & 255) / 255.0f32); }
+#test "all eleven GPU copies retain the selected part pose normal and material" {
+ u:[1600]f32;v:[12]u32;u[0]=1920;u[1]=1080;u[24]=1944;u[26]=960;u[27]=540;u[10]=5;u[22]= -1;u[12]=1;u[17]=1;
+ v[0]=f32_bits(1);v[1]=f32_bits(2);v[2]=f32_bits(3);v[4]=f32_bits(1);v[8]=0x00332211;
+ b:=64+7*16;u[b]=1;u[b+5]=1;u[b+10]=1;u[b+3]=0.5;u[28]= -0.34;
+ for copy:0..<11 {s:=md_scene_vs(0,assembly_draw_base(7)+cast(u32)copy,u[..],v[..]);
+  #assert abs(s.world.x-(1.5-cast(f32)copy*0.34))<0.000001 && s.world.y==2 && s.world.z==3;
+  #assert s.normal.x==0 && s.normal.y==1 && s.normal.z==0 && abs(s.colour.x-17.0f32/255)<0.000001;
+ }
+}
 md_vec :: (u: [] f32, at: int) -> V3 { return v3(u[at], u[at + 1], u[at + 2]); }
 md_bg_vs :: (i: u32, j: u32) -> V4 { return splash_bg_vs(i, j); }
 md_bg_fs :: (pos: V4, u: [] f32) -> V4 {
@@ -19,12 +29,13 @@ md_bg_fs :: (pos: V4, u: [] f32) -> V4 {
   if ray.y < -0.0001f32 {
     t := (-0.004f32 - eye.y) / ray.y;
     p := wg_add_f3f3(eye, wg_mul_f3f(ray, t));
-    radius := sqrt(p.x * p.x + p.z * p.z);
+    along := fmax(abs(p.x-u[32])-u[33],0.0f32);
+    radius := sqrt(along * along + p.z * p.z);
     grid := pow(fmax(abs(cos(p.x * 62.83185f32)), abs(cos(p.z * 62.83185f32))), 100.0f32);
     fade := exp(-radius * radius * 5.0f32);
     shadow := exp(-(p.x * p.x / 0.005f32 + p.z * p.z / 0.008f32));
     base = wg_add_f3f3(base, wg_mul_f3f(v3(0.08f32, 0.12f32, 0.14f32), fade * (0.32f32 + grid * 0.28f32) * (1.0f32 - 0.8f32 * shadow)));
-    ring := exp(-pow((radius - 0.22f32) * 900.0f32, 2.0f32));
+    ring := exp(-pow((radius - 0.22f32) * 900.0f32, 2.0f32))*(1.0f32-u[34]);
     base = wg_add_f3f3(base, wg_mul_f3f(v3(0.08f32, 0.29f32, 0.32f32), ring * 0.5f32));
   }
   return v4(base.x, base.y, base.z, 1.0f32);
@@ -34,8 +45,8 @@ md_scene_vs :: (i: u32, j: u32, u: [] f32, vertices: [] u32) -> MdSurface {
   at := cast(int) i * 12;
   rest := v3(f32_from_bits(vertices[at]), f32_from_bits(vertices[at + 1]), f32_from_bits(vertices[at + 2]));
   rest_normal := v3(f32_from_bits(vertices[at + 3]), f32_from_bits(vertices[at + 4]), f32_from_bits(vertices[at + 5]));
-  b:=64+cast(int)j*16;
-  p:=v3(wg_dot3(md_vec(u,b),rest)+u[b+3],wg_dot3(md_vec(u,b+4),rest)+u[b+7],wg_dot3(md_vec(u,b+8),rest)+u[b+11]);
+  b:=64+cast(int)assembly_draw_part(j)*16;
+  p:=v3(wg_dot3(md_vec(u,b),rest)+u[b+3]+cast(f32)assembly_draw_copy(j)*u[28],wg_dot3(md_vec(u,b+4),rest)+u[b+7],wg_dot3(md_vec(u,b+8),rest)+u[b+11]);
   normal:=v3(wg_dot3(md_vec(u,b),rest_normal),wg_dot3(md_vec(u,b+4),rest_normal),wg_dot3(md_vec(u,b+8),rest_normal));
   material:=md_colour(vertices[at+8]);if u[b+12]>0.5f32 {material=wg_add_f3f3(wg_mul_f3f(material,0.5f32),v3(0.5f32,0.5f32,0.5f32));}
   r := sub3(p, md_vec(u, 8)); z := wg_dot3(r, md_vec(u, 20));

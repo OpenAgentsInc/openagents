@@ -1,5 +1,8 @@
 # Microduck assembly film — #13643
 
+The latest [parade take three](take-3/README.md) pulls back to reveal the lead
+Microduck and ten followers walking in single file, in a 28-second 1080p60 film.
+
 The follow-up [cinematic take two](take-2/README.md) adds a full rising orbit,
 a reassembly push-in and a settled tracking walk, recorded in 1080p60.
 The original take and its evidence follow.

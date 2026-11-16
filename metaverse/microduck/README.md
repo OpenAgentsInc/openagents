@@ -32,6 +32,11 @@ a full rising orbit around the exploded parts, a push toward reassembly,
 then a settled tracking view for the walk. The original take stays available.
 [Recording and choreography](../../docs/verification/microduck-film-13643/take-2/README.md).
 
+**Animation → Assembly + eleven-duck parade** keeps that assembly orbit,
+then pulls back from a close walk to reveal ten followers in single file.
+The 28-second take shares one geometry upload and pose palette across all
+eleven GPU instances. [Recording and evidence](../../docs/verification/microduck-film-13643/take-3/README.md).
+
 ## Illustrative servo
 
 The floating menu now includes **Illustrative servo**: Baseline, Delayed

@@ -59,13 +59,22 @@
 }
 
 md_test_asset :: (s:[]Microduck) {a:[1]RigidAssembly;a[0]=assembly_fixture();a[0].source=md_source();b:[8192]u8;n:=assembly_catalogue_write(a[..],b[..]);s[0].admitted=true;md_asset(s,cast(string)b[0..<n]);}
+#test "one geometry palette is instanced eleven times only for the active parade" {
+ s:[1]Microduck;md_test_asset(s[..]);out:[MD_HUD_VERTICES*12]f32;u:[MD_UNIFORMS]f32;
+ s[0].film_copies=11;#assert md_frame(s[..],out[..],u[..],1920,1080,1)>0;
+ for i:0..<3 {#assert s[0].draws[i*4+2]==assembly_draw_base(cast(u32)i) && s[0].draws[i*4+3]==1;}
+ s[0].film=true;s[0].film_parade=true;s[0].film_reveal=1;s[0].film_centre= -1.7;
+ #assert md_frame(s[..],out[..],u[..],1920,1080,1)>0 && u[28]== -0.34f32 && u[33]==1.7f32;
+ for i:0..<3 {#assert s[0].draws[i*4+3]==11 && s[0].draws[i*4+1]==cast(u32)s[0].assembly[0].part[i].indices;}
+ s[0].film_copies=1;#assert md_frame(s[..],out[..],u[..],1920,1080,1)>0 && u[28]==0 && u[33]==0;
+}
 #test "the viewer poses selected joints and explosion preserves the admitted mechanical state" {
  s:[1]Microduck;md_test_asset(s[..]);#assert s[0].ready && s[0].assembly[0].parts==3;#assert md_key(s[..],1000) && s[0].joint==0 && s[0].selected==0;
  #assert md_key(s[..],43) && abs(s[0].angles[0]-0.0872664626)<0.000001;old:=s[0].angles;#assert md_key(s[..],120) && s[0].explosion==1 && s[0].angles[0]==old[0] && s[0].zoom==1.6;
  #assert md_key(s[..],120) && s[0].explosion==0 && s[0].zoom==0.74;#assert md_key(s[..],120);s[0].zoom=1.2;
  #assert !md_angle(s[..],0,3) && s[0].angles[0]==old[0];#assert md_key(s[..],2002) && s[0].selected==2 && s[0].joint== -1;#assert !md_key(s[..],43);
  #assert md_key(s[..],114) && s[0].explosion==0 && s[0].angles[0]==0 && s[0].angles[1]==0 && s[0].joint== -1 && s[0].selected== -1;
- b:[32768]u8;n:=md_menu(s[..],b[..]);#assert n>0;nodes:[4096]JvNode;d:[1]Jv;#assert jv_parse(d[..],cast(string)b[0..<n],nodes[..]);#assert jv_len(d[0],jv_get(d[0],0,"items"))==37;
+ b:[32768]u8;n:=md_menu(s[..],b[..]);#assert n>0;nodes:[4096]JvNode;d:[1]Jv;#assert jv_parse(d[..],cast(string)b[0..<n],nodes[..]);#assert jv_len(d[0],jv_get(d[0],0,"items"))==38;
  s[0].assembly[0].joints=32;s[0].assembly[0].parts=96;b[0]=77;#assert md_menu(s[..],b[..])== -1 && b[0]==77;
 }
 #test "actual workbench controls compose servo pose plots refusal and background admission" {

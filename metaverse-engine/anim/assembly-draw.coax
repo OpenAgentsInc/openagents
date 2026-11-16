@@ -1,0 +1,16 @@
+// Draw one rigid assembly palette repeatedly without copying its geometry.
+// One part owns sixteen consecutive instance IDs. Hosts issue the admitted
+// copy count there; CPU draw recipes and GPU palette lookup share this map.
+ASSEMBLY_DRAW_STRIDE :: 16;
+#test "assembly copies never select the adjacent part palette" {
+ #assert assembly_draw_base(7)==112 && assembly_draw_part(117)==7 && assembly_draw_copy(117)==5;
+ for part:0..<96 {for copy:0..<16 {
+  id:=assembly_draw_base(cast(u32)part)+cast(u32)copy;
+  #assert assembly_draw_part(id)==cast(u32)part && assembly_draw_copy(id)==cast(u32)copy;
+  #assert id<assembly_draw_base(cast(u32)(part+1));
+ }}
+ #assert assembly_draw_base(0)==0 && assembly_draw_part(1535)==95 && assembly_draw_copy(1535)==15;
+}
+assembly_draw_base :: (part:u32)->u32 {return part*16;}
+assembly_draw_part :: (instance:u32)->u32 {return instance/16;}
+assembly_draw_copy :: (instance:u32)->u32 {return instance%16;}

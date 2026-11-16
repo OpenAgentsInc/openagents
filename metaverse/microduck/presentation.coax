@@ -4,7 +4,28 @@
 #load "../../components/core/arwes/motion.coax";
 #load "../../metaverse-engine/anim/figure.coax" as film_figure;
 #load "../../metaverse-engine/anim/assembly.coax";
-MdFilmFrame :: struct {time:f32;explosion:f32;zoom:f32;walk:f32;blend:f32;phase:f32;origin:Point;yaw:f32;pitch:f32;}
+MdFilmFrame :: struct {time:f32;explosion:f32;zoom:f32;walk:f32;blend:f32;phase:f32;origin:Point;yaw:f32;pitch:f32;copies:int=1;centre:f32;reveal:f32;}
+MD_PARADE_GAP :: 0.34f32;
+#test "the parade reveals ten followers only after the close walking view" {
+ a:=mdf_parade(17.999);b:=mdf_parade(18);c:=mdf_parade(24);d:=mdf_parade(28);
+ #assert a.copies==1 && b.copies==11 && b.reveal==0 && b.centre==0;
+ #assert c.copies==11 && c.reveal==1 && abs(c.centre+1.7)<0.000001 && c.zoom==4.8f32;
+ #assert abs(c.yaw-AM_PI*3)<0.00001 && c.pitch==0.28f32;
+ #assert d.walk==15 && d.origin.x>c.origin.x && d.zoom==c.zoom && d.reveal==1;
+ #assert mdf_parade(13).explosion==0 && mdf_parade(13).walk==0 && mdf_parade(6.5).explosion==1;
+ #assert mdf_parade(100).time==25 && mdf_parade(-1).time==0 && mdf_parade(0.0/0.0).copies==1;
+}
+#test "the parade pullback stays continuous and all copies occupy one fixed spaced line" {
+ previous:=mdf_parade(0);
+ for i:1..<1681 {f:=mdf_parade(cast(f32)i/60);
+  #assert abs(f.yaw-previous.yaw)<0.025 && abs(f.zoom-previous.zoom)<0.03 && abs(f.centre-previous.centre)<0.012;
+  #assert f.zoom>0.67 && f.zoom<=4.8 && f.copies>=1 && f.copies<=11;
+  if i<=780 {#assert f.walk==0;}
+  previous=f;
+ }
+ for copy:0..<11 {#assert mdf_follower_x(copy)== -cast(f32)copy*MD_PARADE_GAP;}
+ #assert abs(mdf_follower_x(10)+3.4)<0.000001;
+}
 #test "the cinematic take orbits a full circle and restores the model before its walk" {
  a:=mdf_cinematic(0);b:=mdf_cinematic(6.5);c:=mdf_cinematic(13);
  #assert a.time==0 && a.explosion==0 && a.yaw==3.85f32;
@@ -40,10 +61,13 @@ mdf_sample :: (elapsed:f32)->MdFilmFrame {
  if t>1.2 && t<4.2 {e=ar_ease(AM_IN_OUT_CUBIC,(t-1.2)/3);}
  if t>=4.2 && t<=5.6 {e=1;}
  if t>5.6 && t<8.8 {e=1-ar_ease(AM_IN_OUT_CUBIC,(t-5.6)/3.2);}
- walk:=am_hi(0,t-10);blend:=ar_ease(AM_IN_OUT_SINE,walk);
+ return mdf_walking(MdFilmFrame.{time=t,explosion=e,zoom=0.74+0.86*e,yaw=3.85+0.30*ar_ease(AM_IN_OUT_SINE,t/18),pitch=0.24},am_hi(0,t-10));
+}
+mdf_walking :: (frame:MdFilmFrame,walk:f32)->MdFilmFrame {
+ f:=frame;blend:=ar_ease(AM_IN_OUT_SINE,walk);
  // Translation ramps with the same zero-slope entrance as the joint poses.
  distance:=0.033*(ifx walk<1 then (walk-sin(walk*AM_PI)/AM_PI)*0.5 else walk-0.5);
- return MdFilmFrame.{time=t,explosion=e,zoom=0.74+0.86*e,walk=walk,blend=blend,phase=film_figure.fract(walk*0.95),origin=v3(distance,0,0),yaw=3.85+0.30*ar_ease(AM_IN_OUT_SINE,t/18),pitch=0.24};
+ f.walk=walk;f.blend=blend;f.phase=film_figure.fract(walk*0.95);f.origin=v3(distance,0,0);return f;
 }
 // Take two stretches the existing assembly choreography to 13 seconds,
 // followed by the same eight-second walk. `time` stays in that original
@@ -60,6 +84,19 @@ mdf_cinematic :: (elapsed:f32)->MdFilmFrame {
  f.yaw=3.85+AM_PI*2*orbit-0.30*walk;f.pitch=0.15+0.35*crane;
  f.zoom=0.68+1.0*f.explosion+0.12*crane+0.06*walk;return f;
 }
+// Take three: finish the orbit, walk close, then reveal the single-file
+// procession from its side. Followers are admitted behind the lead while
+// the camera looks directly down the line, before the pullback exposes it.
+mdf_parade :: (elapsed:f32)->MdFilmFrame {
+ t:=am_lo(am_time(elapsed),28);f:=mdf_cinematic(t);if t<=13 {return f;}
+ f.time=t-3;f=mdf_walking(f,t-13);
+ align:=ar_ease(AM_IN_OUT_SINE,(t-13)/5);reveal:=ar_ease(AM_IN_OUT_SINE,(t-18)/6);
+ front:=AM_PI*3.5;start:=3.85+AM_PI*2;f.yaw=start+(front-start)*align+(AM_PI*3-front)*reveal;
+ f.pitch=0.15+0.13*reveal;
+ if t>=18 {f.copies=11;f.zoom=mdf_cinematic(18).zoom+(4.8-mdf_cinematic(18).zoom)*reveal;}
+ f.centre= -5*MD_PARADE_GAP*reveal;f.reveal=reveal;return f;
+}
+mdf_follower_x :: (copy:int)->f32 {return -cast(f32)copy*MD_PARADE_GAP;}
 mdf_angles :: (a:[]RigidAssembly,f:MdFilmFrame,out:[]f32)->bool {
  if a.count!=1 || a[0].joints!=14 || out.count<14 {return false;}
  for i:0..<14 {out[i]=a[0].joint[i].stand;}
