@@ -23,7 +23,7 @@ ES_B_SENT :: 16;   // reads in flight that the bridge remembers
 EsSent :: struct { op: int; generation: int; kind: int; }
 EsBridge :: struct {
   sent: [ES_B_SENT] EsSent; next: int;
-  key: [ES_KEY] u8; nk: int;            // the draft last made current
+  key: [ES_DRAFT_KEY] u8; nk: int;            // the draft last made current
   refused: int;                         // reads the core would not take
 }
 
@@ -45,14 +45,20 @@ es_bridge_sync :: (c: [] AppCore, b: [] EsBridge, s: [] EnvSelect) #effects(all)
   es_login(s, c[0].auth == AUTH_IN);
   // the current conversation's draft; a new chat that was saved keeps its choice
   key := app_conversation(c);
-  if key.count <= ES_KEY {
+  if key.count <= ES_DRAFT_KEY {
     was := cast(string) b[0].key[0..<b[0].nk];
     if was.count == 0 && key.count > 0 && es_draft_find(s, key) < 0 { es_draft_move(s, "", key); }
     es_draft(s, key);
     b[0].nk = es_copy(b[0].key[..], key);
   }
-  // the slots the core sends with a request
-  if s[0].in {
+  // the computers this phone is paired with (apps/shared/app/device/)
+  if es_paired_begin(s, app_device_revision(c), app_device_pairable(c)) {
+    for i: 0..<app_device_count(c) { _ := es_paired_add(s, app_device_host(c, i), app_device_name(c, i)); }
+    es_paired_end(s);
+  }
+  es_paired_note(s, app_device_pair_words(c));
+  // the slots the core sends with a request: a paired computer's needs no account
+  if s[0].in || s[0].paired[0].n > 0 || app_environment(c).count > 0 {
     ch := es_choice(s, key);
     host := ifx ch.manual then cast(string) ch.host[..] else "";
     name := cast(string) ch.name[0..<ch.nn];
@@ -60,7 +66,7 @@ es_bridge_sync :: (c: [] AppCore, b: [] EsBridge, s: [] EnvSelect) #effects(all)
       _ := app_dispatch(c, AppEvent.{kind = EV_ACTION, code = ACT_ENVIRONMENT, mono_ms = c[0].mono_ms, wall_ms = c[0].wall_ms, text = host, more = name});
     }
     repo := cast(string) ch.repo[0..<ch.nr];
-    if repo != app_repository(c) {
+    if s[0].in && repo != app_repository(c) {
       _ := app_dispatch(c, AppEvent.{kind = EV_ACTION, code = ACT_REPOSITORY, mono_ms = c[0].mono_ms, wall_ms = c[0].wall_ms, text = repo, more = es_repo_value(s)});
     }
   }

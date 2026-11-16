@@ -21,11 +21,19 @@
 //   - what went wrong: a failed or lost answer, a request whose outcome is
 //     unknown (with Try again), and the core's note.
 //
+// A conversation on the person's own computer (apps/shared/app/device/) is
+// the computer's own view of its session (EnvironmentApp): view_build_device
+// lists its messages and tool calls in the computer's order, the message on
+// its way while the computer does not have it yet, the typing mark while the
+// turn runs and nothing has answered it, the permission prompt and the state
+// line.
+//
 // The facts come in this file's own numbers (VIEW_SEND_* and the rest) so
 // that only core.coax names the app core's.
 //   coax/bin/coax test apps/shared/app/view/model.coax
 
 #load "../../durable-chat.coax";
+#load "../../environment-app.coax";
 #load "../../../../components/core/elements.coax";
 
 VIEW_ROWS :: 384;              // rows one page holds; more are counted in ViewModel.lost
@@ -43,6 +51,12 @@ VK_PERMISSION :: 7;   // the task waits for Allow or Deny; index: the part it as
 VK_TASK_STATE :: 8;   // the task's state line
 VK_TASK_RESULT :: 9;  // the ended task's time, calls and cost
 VK_NOTICE :: 10;      // something went wrong; text says what, act what its action does
+// a conversation on the person's own computer: index is the item in its view
+VK_DEVICE_MESSAGE :: 11;    // a message; assistant: the agent wrote it
+VK_DEVICE_TOOL :: 12;       // a tool call
+VK_DEVICE_SENT :: 13;       // the person's message on its way; text: the message
+VK_DEVICE_PERMISSION :: 14; // the computer asks Allow or Deny
+VK_DEVICE_STATE :: 15;      // the turn runs (or is stopping) on the computer
 
 // What a notice's action asks for.
 VIEW_DO_NONE :: 0;
@@ -63,6 +77,10 @@ ViewFacts :: struct {
   permit: int;          // VIEW_PERMIT_*
   allowing: bool;       // the answer on its way (or uncertain) is Allow
   note: string;         // what we tell the person about the last thing that went wrong ("": nothing)
+  device: bool;         // the conversation runs on a paired computer
+  send_unsure: bool;    // device: a message was sent and no answer came
+  reading: bool;        // device: a kept conversation is not read yet
+  sent: string;         // device: the message on its way ("": none)
 }
 
 // The words of the notices the model makes up.
@@ -224,6 +242,41 @@ view_build :: (vm: [] ViewModel, d: [] DurableChat, f: ViewFacts) {
   else if f.stop == VIEW_STOP_UNCERTAIN { view_notice(vm, "chat.unsure", VIEW_W_STOP_UNSURE, VIEW_DO_RETRY); }
   if f.note.count > 0 { view_notice(vm, "chat.note", f.note, ifx d[0].id_n > 0 then VIEW_DO_RECONNECT else VIEW_DO_NONE); }
   vm[0].rejoining = d[0].id_n > 0 && !d[0].loaded;
+  vm[0].empty = vm[0].n == 0 && !vm[0].rejoining;
+}
+
+// A device item's id: "dev." and its id on the computer, in the characters an element id takes.
+view_device_id :: (out: [] u8, e: [] EnvironmentApp, i: int) -> int {
+  m := e[0].view[0].items[i]; n := el_copy(out, "dev.");
+  for k: 0..<m.ni { if n >= out.count { break; } c := m.id[k]; ok := (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '-' || c == '_'; out[n] = ifx ok then c else '-'; n += 1; }
+  return n;
+}
+view_device_tool :: (e: [] EnvironmentApp, i: int) -> bool { m := e[0].view[0].items[i]; return m.nk > 0 || cast(string) m.role[0..<m.nr] == "tool"; }
+// Build the page's rows from the computer's view of the conversation.
+view_build_device :: (vm: [] ViewModel, e: [] EnvironmentApp, f: ViewFacts) {
+  vm[0].n = 0; vm[0].lost = 0; vm[0].saved_n = 0; vm[0].key_set = false;
+  v := e[0].view[..]; k := eu_current(e);
+  busy := k >= 0 && v[0].sessions[k].busy;
+  id: [EL_ID] u8; last_agent := false; sent_seen := false;
+  if k >= 0 || e[0].ns == 0 {
+    for i: 0..<v[0].ni {
+      m := v[0].items[i]; role := cast(string) m.role[0..<m.nr];
+      n := view_device_id(id[..], e, i);
+      if view_device_tool(e, i) { _ := view_add(vm, VK_DEVICE_TOOL, cast(string) id[0..<n], i, m.nt * 2 + (ifx m.complete then 1 else 0)); last_agent = true; continue; }
+      r := view_add(vm, VK_DEVICE_MESSAGE, cast(string) id[0..<n], i, m.nt * 2 + (ifx m.complete then 1 else 0));
+      if r >= 0 { vm[0].rows[r].assistant = role != "user"; }
+      last_agent = role != "user";
+      if role == "user" && f.sent.count > 0 && ea_item_text(v, i) == f.sent { sent_seen = true; }
+    }
+  }
+  if f.sent.count > 0 && !sent_seen { r := view_add(vm, VK_DEVICE_SENT, "dev.sent", -1, f.sent.count); if r >= 0 { vm[0].rows[r].text = f.sent; } }
+  if f.permit != VIEW_PERMIT_NONE { _ := view_add(vm, VK_DEVICE_PERMISSION, "dev.permission", -1, f.permit); }
+  if busy && !last_agent && f.permit == VIEW_PERMIT_NONE { _ := view_add(vm, VK_TYPING, "chat.typing", -1, 0); }
+  if busy { _ := view_add(vm, VK_DEVICE_STATE, "dev.state", -1, f.stop); }
+  if f.send_unsure { view_notice(vm, "chat.unsure", VIEW_W_SEND_UNSURE, VIEW_DO_RETRY); }
+  else if f.stop == VIEW_STOP_UNCERTAIN { view_notice(vm, "chat.unsure", VIEW_W_STOP_UNSURE, VIEW_DO_RETRY); }
+  if f.note.count > 0 { view_notice(vm, "chat.note", f.note, ifx f.send_unsure || f.stop == VIEW_STOP_UNCERTAIN then VIEW_DO_NONE else VIEW_DO_RECONNECT); }
+  vm[0].rejoining = f.reading;
   vm[0].empty = vm[0].n == 0 && !vm[0].rejoining;
 }
 

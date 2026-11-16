@@ -1,0 +1,149 @@
+// Checks of the device lane through the core's host ABI, with no account: the
+// paired list, choosing a paired computer, a send that becomes OpenSession
+// with its command identity, the reads that follow the turn, Stop, a lost
+// reply that is not sent again by itself, and rejoin after relaunch.
+//
+// A core with the lane attached is larger than `coax test`'s compile-time
+// bound (about 32M values), so these run as a native tool:
+//   coax/web/tool.sh apps/shared/app/device/lane-check.coax
+// tool.sh: run-steps 250000000
+// tool.sh: stack-gib 1
+#load "../core/core.coax";
+#load "seal.coax";
+#load "../../../../coax/lib/sys/tool.coax";
+cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
+lc_say :: (s: string) { ob: [4096] u8; n := 0; for b: s { if n < ob.count - 1 { ob[n] = b; n += 1; } } ob[n] = 10; n += 1; r := cxterm_write(ob[0..<n]); }
+
+LC_HOST :: "fb9347515b57c2c3a066baa42dc6920b24645539a4e32c11ed36c2e4789c265a";
+LC_SESSION :: "5193ca7c5e83b589ad2c9f2c139ac442";
+LC_CMD_A :: "a4a4e58c1174503285ad8cd5da6cc0f4"; LC_CMD_B :: "b4a4e58c1174503285ad8cd5da6cc0f4";
+LcRun :: struct { failed: int; passed: int; t: int; }
+lc_ok :: (r: [] LcRun, good: bool, what: string) { if good { r[0].passed += 1; } else { r[0].failed += 1; lc_say("FAIL "); lc_say(what); } }
+
+// The next request: its op and kind (0 when none).
+LcReq :: struct { op: int; kind: int; gen: int; text: [256] u8; tn: int; body: [24576] u8; bn: int; }
+lc_next :: (c: [] AppCore, q: [] LcReq) -> bool {
+  op := app_host_next(c); if op < 1 { q[0].op = 0; return false; }
+  f: [APP_HOST_FIELDS] int; if !app_host_request(c, op, f[..]) { return false; }
+  q[0].op = op; q[0].kind = f[APP_HOST_KIND]; q[0].gen = f[APP_HOST_GENERATION];
+  q[0].tn = app_host_text(c, op, q[0].text[..]); if q[0].tn < 0 { q[0].tn = 0; }
+  q[0].bn = app_host_body(c, op, q[0].body[..]); if q[0].bn < 0 { q[0].bn = 0; }
+  return true;
+}
+lc_body :: (q: [] LcReq) -> string { return cast(string) q[0].body[0..<q[0].bn]; }
+lc_has :: (s: string, part: string) -> bool {
+  if part.count > s.count { return false; }
+  for i: 0..<s.count - part.count + 1 { if cast(string) s[i..<i + part.count] == part { return true; } }
+  return false;
+}
+lc_done :: (c: [] AppCore, r: [] LcRun, q: [] LcReq, outcome: int, flag: bool, text: string, more: string, value: int) -> int {
+  r[0].t += 1;
+  if app_host_taken(c, r[0].t, 1000 + r[0].t, q[0].op, true) != APP_OK { return -2; }
+  return app_host_done(c, r[0].t, 1000 + r[0].t, q[0].op, q[0].gen, outcome, 0, flag, text, more, value);
+}
+// The computer's view for one method: a session (busy or not) and its items.
+lc_view :: (method: string, command: string, busy: bool, reply: string, asking: bool, out: [] u8) -> string {
+  v: [1] EaView; for b, i: LC_HOST { v[0].host[i] = b; } v[0].nh = 64; v[0].ok = true; v[0].complete = true;
+  v[0].nm = ea_copy(v[0].method[..], method);
+  if command.count > 0 { v[0].nq = ea_copy(v[0].command[..], command); v[0].nt = ea_copy(v[0].status[..], "accepted"); }
+  if method != "DescribeEnvironment" && method != "ListSessions" || busy {
+    s := v[0].sessions[0]; s.ni = ea_copy(s.id[..], LC_SESSION); s.nw = ea_copy(s.workspace[..], "default"); s.nt = ea_copy(s.title[..], "hello");
+    s.busy = busy; s.generation = 7; s.revision = 2; s.managed = true; s.nc = ea_copy(s.control[..], "available");
+    if asking { s.nr = ea_copy(s.interaction[..], "perm-1"); }
+    v[0].sessions[0] = s; v[0].ns = 1;
+    m := v[0].items[0]; m.ni = ea_copy(m.id[..], "0:0"); m.nr = ea_copy(m.role[..], "user"); m.text_at = ea_text_put(v[..], "hello"); m.nt = 5; m.complete = true; v[0].items[0] = m; v[0].ni = 1;
+    if reply.count > 0 { a := v[0].items[1]; a.ni = ea_copy(a.id[..], "0:1"); a.nr = ea_copy(a.role[..], "assistant"); a.text_at = ea_text_put(v[..], reply); a.nt = reply.count; a.complete = true; v[0].items[1] = a; v[0].ni = 2; }
+  }
+  n := ea_view_write(v[..], out); return ifx n > 0 then cast(string) out[0..<n] else "";
+}
+
+// A logged-out core with one paired computer chosen, its runtime read; returns false on any step that did not happen.
+lc_ready :: (c: [] AppCore, d: [] DeviceLane, r: [] LcRun, rejoin: string) -> bool {
+  q: [1] LcReq; vb: [65536] u8;
+  if !app_host_init(c) || !app_host_device(c, d) { return false; }
+  if app_host_launch(c, 1, 1000, rejoin) != APP_OK { return false; }
+  saw_list := false;
+  while lc_next(c, q[..]) {
+    if q[0].kind == FX_AUTH_STATE { if lc_done(c, r, q[..], FXO_DONE, false, "", "", 0) < 0 { return false; } }
+    else if q[0].kind == FX_DEVICE_LIST { saw_list = true; if lc_done(c, r, q[..], FXO_DONE, false, "fb9347515b57c2c3a066baa42dc6920b24645539a4e32c11ed36c2e4789c265a\tStudio Mac\n", "", 0) < 0 { return false; } }
+    else if q[0].kind == FX_DEVICE_CALL { break; }
+    else { return false; }
+  }
+  if !saw_list || c[0].auth != AUTH_OUT || app_device_count(c) != 1 || app_device_name(c, 0) != "Studio Mac" { return false; }
+  if rejoin.count == 0 {
+    if app_host_action(c, r[0].t + 1, 1100, ACT_ENVIRONMENT, false, LC_HOST, "Studio Mac") != APP_OK { return false; }
+    r[0].t += 1;
+    if !lc_next(c, q[..]) { return false; }
+  }
+  if !app_device_on(c) || q[0].kind != FX_DEVICE_CALL || cast(string) q[0].text[0..<q[0].tn] != LC_HOST || !lc_has(lc_body(q[..]), "\"DescribeEnvironment\"") { return false; }
+  if lc_done(c, r, q[..], FXO_DONE, false, lc_view("DescribeEnvironment", "", false, "", false, vb[..]), "", 0) != APP_OK { return false; }
+  if !lc_next(c, q[..]) || !lc_has(lc_body(q[..]), "\"ListSessions\"") { return false; }
+  return lc_done(c, r, q[..], FXO_DONE, false, lc_view("ListSessions", "", false, "", false, vb[..]), "", 0) == APP_OK;
+}
+
+lc_turn :: (r: [] LcRun) {
+  a: [1] AppCore; c := a[..]; dl: [1] DeviceLane; q: [1] LcReq; vb: [65536] u8;
+  lc_ok(r, lc_ready(c, dl[..], r, ""), "a paired computer is chosen and read with no account");
+  lc_ok(r, app_send_state(c) == SEND_EMPTY, "an empty draft cannot be sent");
+  lc_ok(r, app_host_action(c, r[0].t + 1, 1200, ACT_DRAFT, false, "hello", "") == APP_OK && app_send_state(c) == SEND_READY, "a draft is ready to send with no account");
+  r[0].t += 1;
+  lc_ok(r, app_host_action(c, r[0].t + 1, 1200, ACT_SEND, false, "", "") == APP_OK, "Send is admitted with no account");
+  r[0].t += 1;
+  lc_ok(r, app_device_sent(c) == "hello" && app_send_state(c) == SEND_WAIT, "the message shows as sending");
+  lc_ok(r, lc_next(c, q[..]) && q[0].kind == FX_IDS, "the send asks for its identities first");
+  lc_ok(r, lc_done(c, r, q[..], FXO_DONE, false, LC_CMD_A, LC_SESSION, 1794813765580) == APP_OK, "the identities are taken");
+  lc_ok(r, lc_next(c, q[..]) && q[0].kind == FX_DEVICE_CALL && lc_has(lc_body(q[..]), "\"OpenSession\"") && lc_has(lc_body(q[..]), LC_CMD_A) && lc_has(lc_body(q[..]), LC_SESSION) && lc_has(lc_body(q[..]), "\"hello\""), "the send is OpenSession with its command and session");
+  lc_ok(r, lc_done(c, r, q[..], FXO_DONE, false, lc_view("OpenSession", LC_CMD_A, true, "", false, vb[..]), "", 0) == APP_OK, "the computer's answer is taken");
+  lc_ok(r, app_send_state(c) == SEND_STOP && app_stop_state(c) == STOP_READY && app_draft(c).count == 0 && app_device_sent(c).count == 0, "the turn runs: Stop shows, the composer is empty");
+  e := app_device_env(c); lc_ok(r, e[0].view[0].ni == 1, "the transcript has the message");
+  // the turn is read again on a timer
+  w := app_host_wake(c); lc_ok(r, w > 0 && !lc_next(c, q[..]), "a read is scheduled, not sent at once");
+  lc_ok(r, app_host_clock(c, w, 5000) == APP_OK && lc_next(c, q[..]) && lc_has(lc_body(q[..]), "\"ReadSession\""), "the scheduled read is ReadSession");
+  r[0].t = w;
+  lc_ok(r, lc_done(c, r, q[..], FXO_DONE, false, lc_view("ReadSession", "", true, "Hi there", true, vb[..]), "", 0) == APP_OK && app_permission_state(c) == PERMIT_READY, "the reply text and the permission prompt arrive");
+  e = app_device_env(c); lc_ok(r, e[0].view[0].ni == 2 && ea_item_text(e[0].view[..], 1) == "Hi there", "the assistant text is in the transcript");
+  // Allow, then Stop
+  lc_ok(r, app_host_action(c, r[0].t + 1, 5100, ACT_ALLOW, false, "", "") == APP_OK, "Allow is admitted");
+  r[0].t += 1;
+  lc_ok(r, lc_next(c, q[..]) && q[0].kind == FX_IDS && lc_done(c, r, q[..], FXO_DONE, false, LC_CMD_B, LC_SESSION, 1794813766000) == APP_OK, "Allow gets its identity");
+  lc_ok(r, lc_next(c, q[..]) && lc_has(lc_body(q[..]), "\"RespondInteraction\"") && lc_has(lc_body(q[..]), "\"allow\":true") && lc_has(lc_body(q[..]), "perm-1"), "Allow is RespondInteraction for the prompt");
+  // the answer is lost: the outcome is unknown and nothing is sent again by itself
+  lc_ok(r, lc_done(c, r, q[..], FXO_UNKNOWN, false, "", "", 0) == APP_OK && app_permission_state(c) == PERMIT_UNCERTAIN, "a lost answer is unknown");
+  w = app_host_wake(c); if w > 0 { _ := app_host_clock(c, w, 9000); r[0].t = w; }
+  lc_ok(r, !lc_next(c, q[..]), "the unknown write is not sent again by itself");
+  lc_ok(r, app_host_action(c, r[0].t + 1, 9100, ACT_RETRY, false, "", "") == APP_OK, "Try again is admitted");
+  r[0].t += 1;
+  lc_ok(r, lc_next(c, q[..]) && lc_has(lc_body(q[..]), "\"RespondInteraction\"") && lc_has(lc_body(q[..]), LC_CMD_B), "Try again sends the same command");
+  lc_ok(r, lc_done(c, r, q[..], FXO_DONE, false, lc_view("RespondInteraction", LC_CMD_B, true, "Hi there", false, vb[..]), "", 0) == APP_OK && app_permission_state(c) == PERMIT_NONE, "the prompt is answered");
+  lc_ok(r, app_host_action(c, r[0].t + 1, 9200, ACT_STOP, false, "", "") == APP_OK, "Stop is admitted");
+  r[0].t += 1;
+  lc_ok(r, lc_next(c, q[..]) && q[0].kind == FX_IDS && lc_done(c, r, q[..], FXO_DONE, false, LC_CMD_A, LC_SESSION, 1794813767000) == APP_OK && lc_next(c, q[..]) && lc_has(lc_body(q[..]), "\"StopTurn\""), "Stop is StopTurn");
+  lc_ok(r, app_stop_state(c) == STOP_ASKED, "Stop shows as asked");
+  // the conversation is kept for the next launch, and no account request was made
+  kb: [256] u8; kn := app_host_keep(c, kb[..]);
+  lc_ok(r, cast(string) kb[0..<kn] == "fb9347515b57c2c3a066baa42dc6920b24645539a4e32c11ed36c2e4789c265a\t5193ca7c5e83b589ad2c9f2c139ac442", "the kept conversation names the computer and the session");
+  lc_ok(r, c[0].auth == AUTH_OUT, "the account stays logged out");
+}
+lc_rejoin :: (r: [] LcRun) {
+  a: [1] AppCore; c := a[..]; dl: [1] DeviceLane; q: [1] LcReq; vb: [65536] u8;
+  lc_ok(r, lc_ready(c, dl[..], r, "fb9347515b57c2c3a066baa42dc6920b24645539a4e32c11ed36c2e4789c265a\t5193ca7c5e83b589ad2c9f2c139ac442"), "a relaunch rejoins the kept computer");
+  w := app_host_wake(c);
+  lc_ok(r, w > 0 && app_host_clock(c, w, 2000) == APP_OK && lc_next(c, q[..]) && lc_has(lc_body(q[..]), "\"ReadSession\"") && lc_has(lc_body(q[..]), LC_SESSION), "the rejoined conversation is read");
+  r[0].t = w;
+  lc_ok(r, lc_done(c, r, q[..], FXO_DONE, false, lc_view("ReadSession", "", false, "Hi there", false, vb[..]), "", 0) == APP_OK && app_send_state(c) == SEND_EMPTY, "its transcript is back and the composer is free");
+  e := app_device_env(c); lc_ok(r, e[0].view[0].ni == 2, "both messages are back");
+}
+lc_unpaired :: (r: [] LcRun) {
+  // with no lane attached the core is as before: a logged-out send asks to log in
+  a: [1] AppCore; c := a[..];
+  lc_ok(r, app_host_init(c) && app_host_launch(c, 1, 1000, "") == APP_OK && !app_device_pairable(c) && app_device_count(c) == 0, "no lane, no paired computers");
+  lc_ok(r, app_host_launch(c, 2, 1000, "fb9347515b57c2c3a066baa42dc6920b24645539a4e32c11ed36c2e4789c265a\tnot an id!") < 0, "a kept device conversation that does not read is refused");
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  r: [1] LcRun;
+  lc_turn(r[..]); lc_rejoin(r[..]); lc_unpaired(r[..]);
+  b: [64] u8; n := 0;
+  lc_say(ifx r[0].failed == 0 then "device lane: all checks passed" else "device lane: checks failed");
+  return ifx r[0].failed == 0 then 0 else 1;
+}

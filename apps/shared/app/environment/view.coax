@@ -24,12 +24,14 @@ EsChips :: struct {
   environment: string; environment_on: bool;   // "Default" or a computer's name
   repository: string; repository_on: bool;     // a repository's name, or "No repository"
 }
-// The chips' facts. Logged out both take a press (it asks for login). The
-// repository chip takes none while a request cannot carry a repository.
+// The chips' facts. Logged out both take a press (it asks for login, or opens
+// the paired computers). The repository chip takes none while a request
+// cannot carry a repository, or while the draft runs on a paired computer.
 es_chips :: (s: [] EnvSelect) -> EsChips #effects(all) {
   return EsChips.{environment = es_env_value(s), environment_on = true,
-                  repository = es_repo_value(s), repository_on = !s[0].in || s[0].repo_ready};
+                  repository = es_repo_value(s), repository_on = es_chosen_paired(s) < 0 && (!s[0].in || s[0].repo_ready)};
 }
+ES_V_PAIR_HINT :: "To use your own computer, run openagents-environment pair --workspace FOLDER on it, then open the link it shows on this phone.";
 
 // How tall the picker's list is, and how much of it shows: the page passes
 // them to es_scroll with a drag.
@@ -51,10 +53,12 @@ es_v_choice :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, title: string
   return choice_row(f[0].sheet, f[0].m, k, x, y, w, title, detail, selected, check, UIFRAME_HIT, row, 0);
 }
 es_v_note :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, text: string) -> f32 #effects(all) {
-  k := f[0].skin;
-  _ := uiframe_semantic(f, id, EL_TEXT, text, x, y, w, k.control_h, 0, 0);
-  _ = control_copy(f[0].sheet, f[0].m, k.small, k.muted, x, y + (k.control_h - k.small.line) / 2, w, text);
-  return k.control_h;
+  k := f[0].skin; inset := (k.control_h - k.small.line) / 2;
+  // a note wraps; its row is as tall as its lines
+  t := control_copy(f[0].sheet, f[0].m, k.small, k.muted, x, y + inset, w, text);
+  h := ifx t + 2 * inset > k.control_h then t + 2 * inset else k.control_h;
+  _ := uiframe_semantic(f, id, EL_TEXT, text, x, y, w, h, 0, 0);
+  return h;
 }
 // What a computer's row says under its name.
 es_v_detail :: (s: [] EnvSelect, i: int) -> string #effects(all) { return es_reach_words(s[0].computers[i].reach); }
@@ -77,14 +81,22 @@ es_picker :: (f: [] UiFrame, s: [] EnvSelect, x: f32, y: f32, w: f32, h: f32, ch
   uiframe_clip(f, inside.x, top, inside.x + inside.w, bottom);
   cy := top - s[0].scroll;
   if env {
-    chosen := es_chosen(s);
-    cy += es_v_choice(f, "env.default", inside.x, cy, inside.w, "Default", "We choose where each task runs", chosen < 0, true, check);
+    chosen := es_chosen(s); paired := es_chosen_paired(s);
+    cy += es_v_choice(f, "env.default", inside.x, cy, inside.w, "Default", ifx s[0].in then "We choose where each task runs" else "Log in to let us choose", chosen < 0 && paired < 0, s[0].in, check);
     b: [ES_EL_ID] u8;
+    // the computers this phone is paired with: choosable with no account
+    for i: 0..<s[0].paired[0].n {
+      cy += es_v_choice(f, es_paired_id(i, b[..]), inside.x, cy, inside.w, es_paired_name(s, i), "Paired with this phone", i == paired, true, check);
+    }
+    if s[0].pair_nn > 0 { cy += es_v_note(f, "env.pair.note", inside.x, cy, inside.w, cast(string) s[0].pair_note[0..<s[0].pair_nn]); }
+    else if s[0].pairable && s[0].paired[0].n == 0 { cy += es_v_note(f, "env.pair.note", inside.x, cy, inside.w, ES_V_PAIR_HINT); }
     for i: 0..<s[0].catalog[0].n {
+      if es_paired_find(s, cast(string) s[0].catalog[0].entries[i].host[..]) >= 0 { continue; }
       on := s[0].manual_ready && s[0].computers[i].reach != ES_R_AWAY;
       cy += es_v_choice(f, es_computer_id(s, i, b[..]), inside.x, cy, inside.w, es_computer_name(s, i), es_v_detail(s, i), i == chosen, on, check);
     }
-    if s[0].catalog_state == ES_PENDING && s[0].catalog[0].n == 0 { cy += es_v_note(f, "env.note", inside.x, cy, inside.w, "Checking…"); }
+    if !s[0].in {}
+    else if s[0].catalog_state == ES_PENDING && s[0].catalog[0].n == 0 { cy += es_v_note(f, "env.note", inside.x, cy, inside.w, "Checking…"); }
     else if s[0].catalog_state == ES_FAILED { cy += es_v_note(f, "env.note", inside.x, cy, inside.w, "We couldn't read your computers."); }
     else if s[0].catalog_state == ES_UNKNOWN { cy += es_v_note(f, "env.note", inside.x, cy, inside.w, "We couldn't tell if your computers loaded. Refresh to try again."); }
     else if s[0].catalog[0].ok && s[0].catalog[0].n == 0 { cy += es_v_note(f, "env.note", inside.x, cy, inside.w, "No computers are connected to this account."); }

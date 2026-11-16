@@ -45,6 +45,8 @@ ACT_LOGIN_BACK :: 15;  // back from the code step to the email step
 ACT_LOGOUT :: 16;
 ACT_COPY :: 17;        // text: what to copy
 ACT_LINK :: 18;        // text: the URL to open
+ACT_DEVICE_PAIR :: 19; // text: a pairing link the person opened (openagents://pair?...)
+ACT_DEVICE_REJOIN :: 20; // text: "host TAB session" kept at the last background (app_device_keep), or ""
 
 // What app_dispatch answers.
 APP_OK :: 1;           // committed
@@ -108,6 +110,10 @@ app_login_words :: (c: [] AppCore, said: string, ours: string) {
 
 app_action :: (c: [] AppCore, e: AppEvent) -> int {
   d := c[0].chat[..]; n := d[0].native[..]; a := e.code;
+  // a conversation on the person's own computer needs no account
+  if app_device_on(c) && (a == ACT_SEND || a == ACT_STOP || a == ACT_ALLOW || a == ACT_DENY || a == ACT_RETRY || a == ACT_RECONNECT) { return dl_action(c, a); }
+  if a == ACT_DEVICE_PAIR { return dl_pair(c, e.text); }
+  if a == ACT_DEVICE_REJOIN { return dl_rejoin(c, e.text); }
   if a == ACT_DRAFT {
     if !app_draft_keep(c, app_conversation(c), e.text) { return APP_R_INVALID; }
     app_mark(c, SURF_COMPOSER); return APP_OK;
@@ -159,11 +165,14 @@ app_action :: (c: [] AppCore, e: AppEvent) -> int {
     tc_reset(c, e.text); app_say(c, ""); return APP_OK;
   }
   if a == ACT_NEW {
+    if app_device_on(c) { dl_new(c); app_say(c, ""); return APP_OK; }
     if dca_blocked(d) { return APP_R_BLOCKED; }
     tc_reset(c, ""); app_say(c, ""); return APP_OK;
   }
   if a == ACT_ENVIRONMENT || a == ACT_REPOSITORY {
     if !app_slot_set(ifx a == ACT_ENVIRONMENT then c[0].environment[..] else c[0].repository[..], e.text, e.more) { return APP_R_INVALID; }
+    // a paired computer runs the conversation itself; anything else is the account's
+    if a == ACT_ENVIRONMENT { dl_select(c, ifx dl_find(c, e.text) >= 0 then e.text else ""); }
     app_mark(c, SURF_ENVIRONMENT | SURF_COMPOSER); return APP_OK;
   }
   if a == ACT_LOGIN_SHOW {
@@ -249,6 +258,7 @@ app_done :: (c: [] AppCore, e: AppEvent) -> int {
     if e.op == c[0].account_op { app_account_done(c, kind, e); }
     return APP_OK;
   }
+  if owner == OWN_DEVICE { dl_done(c, e.op, purpose, e); return APP_OK; }
   if owner == OWN_PAGE {
     if e.outcome != FXO_DONE { app_say(c, ifx kind == FX_CLIPBOARD then "We could not copy that." else "We could not open that link."); }
     return APP_OK;
@@ -275,10 +285,16 @@ app_dispatch :: (c: [] AppCore, e: AppEvent) -> int {
     mono := c[0].mono_ms; wall := c[0].wall_ms;
     c[0].mono_ms = e.mono_ms; c[0].wall_ms = e.wall_ms;
     if e.kind == EV_LAUNCH {
-      if e.text.count > 0 && !ex_reference(e.text, "cnv_") { result = APP_R_INVALID; }
+      // a conversation on a paired computer is kept as "host TAB session" (app_device_keep)
+      device := e.text.count > 64 && e.text[64] == '\t';
+      if e.text.count > 0 && !device && !ex_reference(e.text, "cnv_") { result = APP_R_INVALID; }
+      else if device && !dl_rejoin_ok(e.text) { result = APP_R_INVALID; }
       else if c[0].account_op != 0 { result = APP_R_BLOCKED; }
       else if !app_account_request(c, FX_AUTH_STATE, "", "") { result = APP_R_FULL; }
-      else { c[0].rejoin_n = js_copy(c[0].rejoin[..], e.text); result = APP_OK; }
+      else {
+        if device { c[0].rejoin_n = 0; _ := dl_rejoin(c, e.text); } else { c[0].rejoin_n = js_copy(c[0].rejoin[..], e.text); }
+        dl_ask_list(c); result = APP_OK;
+      }
     }
     else if e.kind == EV_CLOCK { result = APP_OK; }
     else if e.kind == EV_LIFECYCLE {
@@ -302,7 +318,7 @@ app_dispatch :: (c: [] AppCore, e: AppEvent) -> int {
       }
     }
     else if e.kind == EV_DONE { result = app_done(c, e); }
-    if result > 0 { tc_step(c); } else { c[0].mono_ms = mono; c[0].wall_ms = wall; }
+    if result > 0 { tc_step(c); dl_step(c); } else { c[0].mono_ms = mono; c[0].wall_ms = wall; }
   }
   if result < 0 { c[0].refusals += 1; }
   c[0].in_dispatch = false;
@@ -333,12 +349,15 @@ app_guest_done :: (c: [] AppCore) { c[0].guest = AppGuest.{}; }
 app_busy :: (c: [] AppCore) -> int {
   o := c[0].out[..]; busy := 0;
   if fx_queued(o) > 0 || fx_outstanding(o) > 0 { busy = busy | BUSY_EFFECT; }
-  if tc_wake(c) >= 0 { busy = busy | BUSY_SCHEDULED; }
+  if tc_wake(c) >= 0 || dl_wake(c) >= 0 { busy = busy | BUSY_SCHEDULED; }
   if c[0].dirty != 0 { busy = busy | BUSY_DIRTY; }
   return busy;
 }
 // The monotonic time (ms) of the next scheduled work, when the host sends EV_CLOCK; -1 for none.
-app_next_wake :: (c: [] AppCore) -> int { return tc_wake(c); }
+app_next_wake :: (c: [] AppCore) -> int {
+  a := tc_wake(c); b := dl_wake(c);
+  return ifx a < 0 then b else ifx b < 0 then a else ifx a < b then a else b;
+}
 // The surfaces that changed since they were last taken, and clear those in mask.
 app_dirty_take :: (c: [] AppCore, mask: int) -> int {
   was := c[0].dirty & mask;

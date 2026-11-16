@@ -1,0 +1,357 @@
+// The conversation on the person's own computer (GitHub #13645, for #13620),
+// with no account: the core's device lane. The phone is paired with the
+// computer (seal.coax, `coder host pair`) and talks to its environment runtime
+// (docs/protocol/environment-runtime-v1alpha1.md) over the relay.
+//
+// The runtime's client rules are the shared EnvironmentApp reducer
+// (apps/shared/environment-app.coax), used as it is: one command identity per
+// write made once and kept across a lost reply, an unknown outcome never sent
+// again by itself, reads that follow a running turn, Stop and the permission
+// answer. This file only carries its requests through the core's outbox and
+// hands their results back:
+//
+//   EnvironmentApp asks          the core sends                   its result
+//   action 11 (identities)       FX_IDS                           eu_reply(11, ...)
+//   action 14 (a method)         FX_DEVICE_CALL to the computer   eu_reply(14, ...)
+//   action 12 (read again soon)  a wake DL_POLL_MS later          eu_reply(12, ...)
+//
+// The lane is its own record, which the host keeps beside the core and attaches with
+// app_host_device (an EnvironmentApp is about 1.6M bytes; the core record is near
+// coax test's 32M bound already). A core with no lane attached has no paired
+// computers and runs every conversation on the account, as before.
+//
+// The paired computers are the device service's list (FX_DEVICE_LIST); a
+// pairing link the person opened is FX_DEVICE_PAIR. Keys and grants stay in
+// the native service; the lane knows each computer's public key and name.
+//   coax/bin/coax test apps/shared/app/core/core.coax --library --traversal 1000000000 --run-steps 250000000
+#load "../../environment-app.coax";
+
+DL_PAIRED :: 16;
+DL_NAME :: 80;
+DL_POLL_MS :: 1500;            // a running turn is read again this often
+DL_REQUEST_MAX :: 24576;       // an environment request's bytes (ea_read's bound)
+DL_LINK_MAX :: 1024;           // a pairing link's bytes
+DL_PAIR_LINK :: "openagents://pair?";
+
+// What the lane asked the core for (its purpose in the outbox).
+DL_P_LIST :: 1; DL_P_PAIR :: 2; DL_P_IDS :: 11; DL_P_CALL :: 14;
+// Where a pairing the person opened is.
+DL_PAIR_NONE :: 0; DL_PAIR_ASKING :: 1; DL_PAIR_DONE :: 2; DL_PAIR_FAILED :: 3;
+
+DlComputer :: struct { host: [64] u8; name: [DL_NAME] u8; nn: int; }
+DeviceLane :: struct {
+  paired: [DL_PAIRED] DlComputer; np: int; listed: bool; list_rev: int; list_op: int;
+  pair_op: int; pair: int; pair_words: [160] u8; pair_wn: int;
+  on: bool; host: [64] u8;       // the conversation runs on this paired computer
+  e: [1] EnvironmentApp;
+  op: int; purpose: int;         // the environment request in flight
+  wake_at: int;                  // EnvironmentApp asked to read again at this time (0: no)
+  rejoin: [64 + 1 + 128] u8; rejoin_n: int;   // "host TAB session" waiting for the list
+  sent_text: [APP_DRAFT_BYTES] u8; sent_n: int;  // the message being sent, shown until the computer has it
+}
+
+dl_lane :: (c: [] AppCore) -> [] DeviceLane { return c[0].device; }
+dl_has :: (c: [] AppCore) -> bool { return c[0].device.count == 1; }
+// The host attaches the lane once, after app_host_init and before launch.
+app_device_attach :: (c: [] AppCore, d: [] DeviceLane) -> bool {
+  if d.count != 1 || dl_has(c) { return false; }
+  d[0] = DeviceLane.{}; c[0].device = d; return true;
+}
+dl_find :: (c: [] AppCore, host: string) -> int {
+  if !dl_has(c) || host.count != 64 { return -1; }
+  d := dl_lane(c);
+  for i: 0..<d[0].np { if cast(string) d[0].paired[i].host[..] == host { return i; } }
+  return -1;
+}
+// Whether the current conversation runs on a paired computer.
+app_device_on :: (c: [] AppCore) -> bool { return dl_has(c) && c[0].device[0].on; }
+app_device_env :: (c: [] AppCore) -> [] EnvironmentApp { return dl_env(c[0].device); }
+dl_env :: (d: [] DeviceLane) -> [] EnvironmentApp { return d[0].e[..]; }
+// The paired computers: count, and each one's key and name.
+app_device_count :: (c: [] AppCore) -> int { return ifx dl_has(c) then c[0].device[0].np else 0; }
+app_device_host :: (c: [] AppCore, i: int) -> string { if !dl_has(c) { return ""; } d := dl_lane(c); return ifx i >= 0 && i < d[0].np then cast(string) d[0].paired[i].host[..] else ""; }
+app_device_name :: (c: [] AppCore, i: int) -> string { if !dl_has(c) { return ""; } d := dl_lane(c); return ifx i >= 0 && i < d[0].np then cast(string) d[0].paired[i].name[0..<d[0].paired[i].nn] else ""; }
+// Changes whenever the list changes, for a view that copies it.
+app_device_revision :: (c: [] AppCore) -> int { return ifx dl_has(c) then c[0].device[0].list_rev else 0; }
+// Whether this host can pair the phone with a computer (it attached a lane).
+app_device_pairable :: (c: [] AppCore) -> bool { return dl_has(c); }
+// A pairing the person opened: DL_PAIR_*, and what to tell them.
+app_device_pairing :: (c: [] AppCore) -> int { return ifx dl_has(c) then c[0].device[0].pair else DL_PAIR_NONE; }
+app_device_pair_words :: (c: [] AppCore) -> string { if !dl_has(c) { return ""; } d := dl_lane(c); return cast(string) d[0].pair_words[0..<d[0].pair_wn]; }
+// The message being sent while the computer does not have it yet ("" when none).
+app_device_sent :: (c: [] AppCore) -> string { if !app_device_on(c) { return ""; } d := dl_lane(c); return cast(string) d[0].sent_text[0..<d[0].sent_n]; }
+
+dl_say_pair :: (c: [] AppCore, state: int, words: string) {
+  d := dl_lane(c); d[0].pair = state; n := js_copy(d[0].pair_words[..], words); d[0].pair_wn = ifx n < 0 then 0 else n;
+  app_mark(c, SURF_ENVIRONMENT | SURF_NOTE);
+}
+
+// ---------------------------------------------------------------- the list and pairing
+
+dl_ask_list :: (c: [] AppCore) {
+  if !dl_has(c) { return; }
+  d := dl_lane(c);
+  if d[0].list_op != 0 { return; }
+  d[0].list_op = fx_request(c[0].out[..], OWN_DEVICE, FX_DEVICE_LIST, DL_P_LIST, 0, "", "", "", 0, 0);
+}
+// The device service's list: one computer a line, "host TAB name". Lines that do not read are skipped.
+dl_list_read :: (c: [] AppCore, text: string) {
+  d := dl_lane(c); d[0].np = 0; from := 0;
+  for ch, i: text {
+    if ch != '\n' && i + 1 < text.count { continue; }
+    to := ifx ch == '\n' then i else i + 1;
+    line := cast(string) text[from..<to]; from = i + 1;
+    if line.count < 66 || line[64] != '\t' || d[0].np >= DL_PAIRED { continue; }
+    host := cast(string) line[0..<64]; name := cast(string) line[65..<line.count];
+    if !ea_id(host, 64) || name.count < 1 || name.count > DL_NAME || !dl_plain(name) { continue; }
+    k := d[0].np; for b, j: host { d[0].paired[k].host[j] = b; } d[0].paired[k].nn = js_copy(d[0].paired[k].name[..], name); d[0].np += 1;
+  }
+  d[0].listed = true; d[0].list_rev += 1;
+  // a computer no longer paired ends its conversation here
+  if d[0].on && dl_find(c, cast(string) d[0].host[..]) < 0 { dl_leave(c); }
+  dl_rejoin_now(c);
+  app_mark(c, SURF_ENVIRONMENT | SURF_COMPOSER | SURF_TRANSCRIPT);
+}
+// The person opened a pairing link.
+dl_pair :: (c: [] AppCore, link: string) -> int {
+  if !dl_has(c) { return APP_R_INVALID; }
+  d := dl_lane(c);
+  if !up_device_link(link) { return APP_R_INVALID; }
+  if d[0].pair_op != 0 { return APP_R_BLOCKED; }
+  op := fx_request(c[0].out[..], OWN_DEVICE, FX_DEVICE_PAIR, DL_P_PAIR, 0, "", "", link, 0, 0);
+  if op == 0 { return APP_R_FULL; }
+  d[0].pair_op = op; dl_say_pair(c, DL_PAIR_ASKING, "Asking your computer to pair. Its window shows the same code.");
+  return APP_OK;
+}
+
+// ---------------------------------------------------------------- the conversation
+
+// The conversation moves to paired computer `host` ("" leaves it). Its runtime is read first.
+dl_select :: (c: [] AppCore, host: string) {
+  if !dl_has(c) { return; }
+  d := dl_lane(c);
+  if host.count == 0 { if d[0].on { dl_leave(c); } return; }
+  if d[0].on && cast(string) d[0].host[..] == host { return; }
+  k := dl_find(c, host);
+  if k < 0 { if d[0].on { dl_leave(c); } return; }
+  dl_leave(c);
+  d[0].on = true; for b, j: host { d[0].host[j] = b; }
+  e := d[0].e[..]; eu_enter_local(e);
+  e[0].catalog[0].entries[0].host = d[0].paired[k].host;
+  e[0].catalog[0].entries[0].nl = ea_copy(e[0].catalog[0].entries[0].label[..], app_device_name(c, k));
+  app_mark(c, SURF_ALL);
+}
+// The conversation leaves its computer: what was asked is fenced, and late results are dropped.
+dl_leave :: (c: [] AppCore) {
+  if !dl_has(c) { return; }
+  d := dl_lane(c);
+  if d[0].op != 0 { _ := fx_cancel(c[0].out[..], OWN_DEVICE); d[0].op = 0; d[0].purpose = 0; d[0].list_op = 0; d[0].pair_op = 0; }
+  d[0].on = false; d[0].e[0] = EnvironmentApp.{}; d[0].wake_at = 0; d[0].sent_n = 0;
+  app_mark(c, SURF_TRANSCRIPT | SURF_COMPOSER | SURF_TASK);
+}
+// A new chat on the same computer.
+dl_new :: (c: [] AppCore) {
+  if !app_device_on(c) { return; }
+  d := dl_lane(c);
+  host: [64] u8; host = d[0].host; dl_leave(c); dl_select(c, cast(string) host[..]);
+}
+// "host TAB session", kept at the last background (app_device_keep): the conversation to read
+// again once the paired list says the computer is still paired.
+dl_rejoin_ok :: (text: string) -> bool {
+  return text.count >= 66 && text.count <= 64 + 1 + 128 && text[64] == '\t' && ea_id(cast(string) text[0..<64], 64) && dl_token(cast(string) text[65..<text.count]);
+}
+// A computer's name: printable, no control bytes.
+dl_plain :: (s: string) -> bool { for c: s { if c < 32 || c == 127 { return false; } } return true; }
+// A session id as the computer names it: letters, digits, '-', '_' and '.'.
+dl_token :: (s: string) -> bool {
+  if s.count < 1 || s.count > 128 { return false; }
+  for c: s { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '-' || c == '_' || c == '.') { return false; } }
+  return true;
+}
+dl_rejoin :: (c: [] AppCore, text: string) -> int {
+  if text.count == 0 { return APP_OK; }
+  if !dl_rejoin_ok(text) { return APP_R_INVALID; }
+  if !dl_has(c) { return APP_OK; }
+  d := dl_lane(c);
+  d[0].rejoin_n = js_copy(d[0].rejoin[..], text);
+  dl_rejoin_now(c);
+  return APP_OK;
+}
+dl_rejoin_now :: (c: [] AppCore) {
+  if !dl_has(c) { return; }
+  d := dl_lane(c);
+  if d[0].rejoin_n == 0 || !d[0].listed { return; }
+  text := cast(string) d[0].rejoin[0..<d[0].rejoin_n]; host := cast(string) text[0..<64]; session := cast(string) text[65..<text.count];
+  k := dl_find(c, host);
+  d[0].rejoin_n = 0;
+  if k < 0 { return; }
+  _ := app_slot_set(c[0].environment[..], host, app_device_name(c, k));
+  dl_select(c, host);
+  e := d[0].e[..];
+  // the runtime is read first (eu_enter_local); the conversation then opens on its page
+  e[0].ns = ea_copy(e[0].session[..], session); e[0].page = 2;
+}
+// What is kept for the next launch: "host TAB session" while a conversation runs on a computer.
+app_device_keep :: (c: [] AppCore, out: [] u8) -> int {
+  if !app_device_on(c) { return 0; }
+  d := dl_lane(c); e := d[0].e[..];
+  if e[0].ns == 0 || 65 + e[0].ns > out.count { return 0; }
+  for b, j: d[0].host { out[j] = b; } out[64] = '\t';
+  for j: 0..<e[0].ns { out[65 + j] = e[0].session[j]; }
+  return 65 + e[0].ns;
+}
+
+// The session the conversation shows, or -1.
+dl_current :: (c: [] AppCore) -> int { return eu_current(c[0].device[0].e[..]); }
+// Reads of the computer's view, on the reducer's own record.
+dl_e_busy :: (e: [] EnvironmentApp) -> bool { k := eu_current(e); if k < 0 { return false; } return e[0].view[0].sessions[k].busy; }
+dl_e_asking :: (e: [] EnvironmentApp) -> bool { k := eu_current(e); if k < 0 { return false; } return e[0].view[0].sessions[k].nr > 0; }
+dl_e_method :: (e: [] EnvironmentApp) -> string { return cast(string) e[0].request[0].method[0..<e[0].request[0].nm]; }
+dl_e_writing :: (e: [] EnvironmentApp) -> bool { return e[0].random || (e[0].flight && ea_right(dl_e_method(e)) > 0); }
+dl_e_unsure :: (e: [] EnvironmentApp) -> bool { return e[0].uncertain && ea_right(dl_e_method(e)) > 0; }
+dl_busy :: (c: [] AppCore) -> bool { return dl_e_busy(c[0].device[0].e[..]); }
+// Whether the computer waits for an answer to a permission prompt.
+dl_asking :: (c: [] AppCore) -> bool { return dl_e_asking(c[0].device[0].e[..]); }
+// A write waits for its identity, is on its way, or its outcome is unknown.
+dl_writing :: (c: [] AppCore) -> bool { return dl_e_writing(c[0].device[0].e[..]); }
+dl_unsure :: (c: [] AppCore) -> bool { return dl_e_unsure(c[0].device[0].e[..]); }
+dl_method :: (c: [] AppCore) -> string { return dl_e_method(c[0].device[0].e[..]); }
+
+dl_send_state :: (c: [] AppCore) -> int {
+  if dl_busy(c) { return SEND_STOP; }
+  if app_draft(c).count == 0 { return SEND_EMPTY; }
+  e := c[0].device[0].e[..];
+  if e[0].flight || e[0].random || e[0].uncertain || e[0].action != 0 || d_reading(c) { return SEND_WAIT; }
+  return SEND_READY;
+}
+// The runtime has not been read yet: nothing can be sent before the computer is known to answer.
+d_reading :: (c: [] AppCore) -> bool { e := c[0].device[0].e[..]; return cast(string) e[0].catalog[0].entries[0].host[..] != cast(string) e[0].view[0].host[..]; }
+dl_stop_state :: (c: [] AppCore) -> int {
+  if dl_method(c) == "StopTurn" {
+    if dl_unsure(c) { return STOP_UNCERTAIN; }
+    if dl_writing(c) { return STOP_ASKED; }
+  }
+  return ifx dl_busy(c) then STOP_READY else STOP_NONE;
+}
+dl_permission_state :: (c: [] AppCore) -> int {
+  if dl_method(c) == "RespondInteraction" {
+    if dl_unsure(c) { return PERMIT_UNCERTAIN; }
+    if dl_writing(c) { return PERMIT_SENT; }
+  }
+  return ifx dl_asking(c) then PERMIT_READY else PERMIT_NONE;
+}
+
+// The person's actions on a conversation that runs on a computer.
+dl_action :: (c: [] AppCore, a: int) -> int {
+  d := dl_lane(c); e := d[0].e[..];
+  if a == ACT_SEND {
+    s := dl_send_state(c);
+    if s == SEND_EMPTY { return APP_R_EMPTY; }
+    if s != SEND_READY { return APP_R_BLOCKED; }
+    text := app_draft(c);
+    if text.count > e[0].draft.count { return APP_R_INVALID; }
+    e[0].nd = ea_copy(e[0].draft[..], text);
+    eu_press(e, "env.composer.send");
+    if e[0].action != 11 { e[0].nd = 0; return APP_R_BLOCKED; }
+    d[0].sent_n = js_copy(d[0].sent_text[..], text);
+    app_say(c, ""); app_mark(c, SURF_TRANSCRIPT | SURF_COMPOSER); return APP_OK;
+  }
+  if a == ACT_STOP {
+    if !dl_busy(c) || dl_writing(c) || e[0].uncertain { return APP_R_BLOCKED; }
+    eu_press(e, "env.composer.send");
+    if e[0].action != 11 { return APP_R_BLOCKED; }
+    app_mark(c, SURF_COMPOSER | SURF_TASK); return APP_OK;
+  }
+  if a == ACT_ALLOW || a == ACT_DENY {
+    if !dl_asking(c) { return APP_R_BLOCKED; }
+    eu_press(e, ifx a == ACT_ALLOW then "env.allow" else "env.deny");
+    if e[0].action != 11 { return APP_R_BLOCKED; }
+    app_mark(c, SURF_TASK); return APP_OK;
+  }
+  if a == ACT_RETRY || a == ACT_RECONNECT {
+    // the same request again: its command identity and bytes are the ones kept
+    if e[0].flight || e[0].random || e[0].action != 0 { return APP_R_BLOCKED; }
+    eu_press(e, ifx e[0].uncertain then "env.reconnect" else "env.refresh");
+    app_say(c, ""); app_mark(c, SURF_TASK | SURF_COMPOSER); return APP_OK;
+  }
+  return APP_R_INVALID;
+}
+
+// After every admitted event: what EnvironmentApp asked for goes to the outbox (one request at a time),
+// and a read it scheduled waits for its time.
+dl_step :: (c: [] AppCore) {
+  if !app_device_on(c) { return; }
+  d := dl_lane(c); e := d[0].e[..];
+  now := c[0].mono_ms;
+  if e[0].action == 12 { e[0].action = 0; d[0].wake_at = now + DL_POLL_MS; }
+  if d[0].wake_at > 0 && now >= d[0].wake_at && d[0].op == 0 && c[0].foreground { d[0].wake_at = 0; eu_reply(e, 12, 0, "", false); }
+  if d[0].op != 0 { return; }
+  if e[0].action == 11 {
+    op := fx_request(c[0].out[..], OWN_DEVICE, FX_IDS, DL_P_IDS, 0, "", "", "", 0, 0);
+    if op != 0 { d[0].op = op; d[0].purpose = DL_P_IDS; e[0].action = 0; }
+  } else if e[0].action == 14 {
+    body := cast(string) e[0].body[0..<e[0].nb];
+    op := fx_request(c[0].out[..], OWN_DEVICE, FX_DEVICE_CALL, DL_P_CALL, 0, "", cast(string) d[0].host[..], body, 0, 0);
+    if op != 0 { d[0].op = op; d[0].purpose = DL_P_CALL; e[0].action = 0; }
+  }
+}
+// The time of the lane's next scheduled read, or -1.
+dl_wake :: (c: [] AppCore) -> int { if !app_device_on(c) { return -1; } d := dl_lane(c); return ifx d[0].wake_at > 0 && d[0].op == 0 && c[0].foreground then d[0].wake_at else -1; }
+
+dl_put_int :: (out: [] u8, at: int, v: int) -> int {
+  tmp: [24] u8; k := 0; x := ifx v < 0 then 0 else v;
+  while true { tmp[k] = cast(u8) ('0' + x % 10); k += 1; x /= 10; if x == 0 { break; } }
+  n := at; for i: 0..<k { if n < out.count { out[n] = tmp[k - 1 - i]; n += 1; } }
+  return n;
+}
+// An effect of the lane's ended.
+dl_done :: (c: [] AppCore, op: int, purpose: int, ev: AppEvent) {
+  if !dl_has(c) { return; }
+  d := dl_lane(c); e := d[0].e[..];
+  ok := ev.outcome == FXO_DONE;
+  if purpose == DL_P_LIST {
+    if op == d[0].list_op { d[0].list_op = 0; }
+    if ok { dl_list_read(c, ev.text); }
+    return;
+  }
+  if purpose == DL_P_PAIR {
+    if op == d[0].pair_op { d[0].pair_op = 0; }
+    if ok && ev.flag {
+      w: [160] u8; n := js_copy(w[..], "Paired with "); if n < 0 { n = 0; }
+      for b: ev.text { if n < 150 { w[n] = b; n += 1; } }
+      n = dl_cat(w[..], n, ". Choose it above the message box.");
+      dl_say_pair(c, DL_PAIR_DONE, cast(string) w[0..<ifx n > 0 then n else 0]);
+      dl_ask_list(c);
+    } else {
+      dl_say_pair(c, DL_PAIR_FAILED, ifx ev.text.count > 0 && ev.text.count < 160 then ev.text else "We could not pair with that computer. Run the pairing again on it and open the new link.");
+    }
+    return;
+  }
+  if op != d[0].op { return; }
+  d[0].op = 0; d[0].purpose = 0;
+  if purpose == DL_P_IDS {
+    if !ok || ev.text.count != 32 || ev.more.count != 32 { eu_reply(e, 11, 0, "", true); d[0].sent_n = 0; return; }
+    j: [160] u8; n := dl_cat(j[..], 0, "{\"command_id\":\""); n = dl_cat(j[..], n, ev.text); n = dl_cat(j[..], n, "\",\"session_id\":\""); n = dl_cat(j[..], n, ev.more);
+    n = dl_cat(j[..], n, "\",\"now_ms\":"); n = dl_put_int(j[..], n, ev.value); n = dl_cat(j[..], n, "}");
+    eu_reply(e, 11, 0, cast(string) j[0..<n], false);
+    if !e[0].flight && e[0].action == 0 { d[0].sent_n = 0; }
+  } else if purpose == DL_P_CALL {
+    method := dl_method(c);
+    // the device service answers with the computer's view, or no answer (FXO_UNKNOWN)
+    eu_reply(e, 14, ifx ok then 200 else 0, ev.text, !ok);
+    if e[0].nn > 0 { app_say(c, dl_words(cast(string) e[0].note[0..<e[0].nn])); } else { app_say(c, ""); }
+    // the computer has the message: the composer starts over
+    if (method == "OpenSession" || method == "SendMessage") && e[0].nd == 0 { _ := app_draft_keep(c, "", ""); d[0].sent_n = 0; }
+    if !ok && ev.outcome == FXO_FAILED && !e[0].uncertain { d[0].sent_n = 0; }
+  }
+  app_mark(c, SURF_TRANSCRIPT | SURF_COMPOSER | SURF_TASK);
+}
+// The reducer's notes in our words.
+dl_words :: (note: string) -> string {
+  if note == "Offline · command pending" { return "We could not confirm your computer got that. Try again sends the same request."; }
+  if note == "Offline" { return "We could not reach your computer. Check that it is on and online."; }
+  if note == "Connection revoked. Reconnect on desktop." { return "This phone is no longer paired with that computer. Pair it again."; }
+  if note == "Outcome unknown · not retried" { return "We could not tell if that ran. We did not send it again."; }
+  return note;
+}
+dl_cat :: (out: [] u8, at: int, s: string) -> int { n := at; for b: s { if n < out.count { out[n] = b; n += 1; } } return n; }

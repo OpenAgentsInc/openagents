@@ -12,6 +12,12 @@
 #load "model.coax";
 
 view_chat_of :: (c: [] AppCore) -> [] DurableChat { return app_chat(c); }
+// The paired computer's name, for the state line.
+view_device_name :: (c: [] AppCore) -> string {
+  h := app_environment(c); n := app_device_count(c);
+  for i: 0..<n { if app_device_host(c, i) == h { return app_device_name(c, i); } }
+  return "";
+}
 view_draft_of :: (c: [] AppCore) -> string { return app_draft(c); }
 
 view_facts :: (c: [] AppCore) -> ViewFacts {
@@ -22,6 +28,12 @@ view_facts :: (c: [] AppCore) -> ViewFacts {
   f.permit = ifx permit == PERMIT_READING then VIEW_PERMIT_READING else ifx permit == PERMIT_READY then VIEW_PERMIT_READY else ifx permit == PERMIT_SENT then VIEW_PERMIT_SENT else ifx permit == PERMIT_UNCERTAIN then VIEW_PERMIT_UNCERTAIN else VIEW_PERMIT_NONE;
   f.allowing = app_task(c)[0].verb == "approve";
   f.note = app_note(c);
+  if app_device_on(c) {
+    f.device = true; f.allowing = app_device_env(c)[0].request[0].allow;
+    f.send_unsure = dl_unsure(c) && (dl_method(c) == "OpenSession" || dl_method(c) == "SendMessage");
+    e := app_device_env(c); f.reading = e[0].ns > 0 && eu_current(e) < 0;
+    f.sent = app_device_sent(c);
+  }
   return f;
 }
 

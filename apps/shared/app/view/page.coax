@@ -82,6 +82,7 @@ ChatView :: struct {
   copy: [VIEW_COPY_BYTES] u8; copy_n: int;
   copied: [EL_ID] u8; copied_n: int; copied_block: int;   // the code block copied last ("": none)
   viewport: f32;
+  dev: [] EnvironmentApp; dev_name: string;   // this frame's conversation on a paired computer (empty: none)
 }
 
 view_init :: (v: [] ChatView) {
@@ -164,6 +165,31 @@ view_app_result :: (s: [] Session) -> AppTaskResult {
   return r;
 }
 
+// ---------------------------------------------------------------- a conversation on a paired computer
+
+// A message row's text: a saved one, the one in flight, or the computer's.
+view_row_text :: (v: [] ChatView, d: [] DurableChat, r: ViewRow) -> string {
+  if r.kind == VK_MESSAGE { return view_saved_text(v, d, r.index); }
+  if r.kind == VK_SENT { return cast(string) d[0].submitted[0..<d[0].submitted_n]; }
+  if r.kind == VK_DEVICE_SENT { return r.text; }
+  if r.kind == VK_DEVICE_MESSAGE { return ifx v[0].dev.count == 1 then ea_item_text(v[0].dev[0].view[..], r.index) else ""; }
+  return ct_view_text(d[0].view[..]);
+}
+// The computer's tool item: its name, the first line of what it reports as the argument, and the whole as its result.
+view_device_app_tool :: (e: [] EnvironmentApp, i: int) -> AppTool {
+  m := e[0].view[0].items[i]; text := ea_item_text(e[0].view[..], i);
+  first := text; for c, k: text { if c == '\n' { first = cast(string) text[0..<k]; break; } }
+  t := AppTool.{icon = -1, title = ifx m.nk > 0 then cast(string) e[0].view[0].items[i].tool[0..<m.nk] else "Used a tool", arg = first, output = text};
+  t.state = ifx m.complete then APP_TOOL_DONE else APP_TOOL_RUNNING;
+  return t;
+}
+view_device_permission :: (f: ViewFacts) -> AppPermission {
+  p := AppPermission.{title = "Allow this?", detail = "Your computer asks before it goes on."};
+  p.state = ifx f.permit == VIEW_PERMIT_SENT then APP_PERMISSION_SENDING else ifx f.permit == VIEW_PERMIT_UNCERTAIN then APP_PERMISSION_UNCERTAIN else APP_PERMISSION_HELD;
+  p.allow = f.allowing; p.can_allow = f.permit == VIEW_PERMIT_READY;
+  return p;
+}
+
 // ---------------------------------------------------------------- one row
 
 // Whether a tool row is open, read without marking it seen (for measuring).
@@ -177,9 +203,9 @@ view_row :: (f: [] UiFrame, v: [] ChatView, d: [] DurableChat, facts: ViewFacts,
   vm := v[0].model[..]; r := vm[0].rows[i]; id := view_row_id(vm, i);
   s := f[0].skin; sh := f[0].sheet; n := d[0].native[..]; ses := n[0].shown[..];
   from := sh[0].no; h: f32 = 0; gap := s.app.gap * 2;
-  if r.kind == VK_MESSAGE || r.kind == VK_SENT || r.kind == VK_REPLY {
-    text := ifx r.kind == VK_MESSAGE then view_saved_text(v, d, r.index) else ifx r.kind == VK_SENT then cast(string) d[0].submitted[0..<d[0].submitted_n] else ct_view_text(d[0].view[..]);
-    agent := r.kind == VK_REPLY || (r.kind == VK_MESSAGE && r.assistant);
+  if r.kind == VK_MESSAGE || r.kind == VK_SENT || r.kind == VK_REPLY || r.kind == VK_DEVICE_MESSAGE || r.kind == VK_DEVICE_SENT {
+    text := view_row_text(v, d, r);
+    agent := r.kind == VK_REPLY || ((r.kind == VK_MESSAGE || r.kind == VK_DEVICE_MESSAGE) && r.assistant);
     if agent {
       blocks := view_parse(v, text);
       copied := ifx v[0].copied_n > 0 && cast(string) v[0].copied[0..<v[0].copied_n] == id then v[0].copied_block else -1;
@@ -191,6 +217,12 @@ view_row :: (f: [] UiFrame, v: [] ChatView, d: [] DurableChat, facts: ViewFacts,
   else if r.kind == VK_PERMISSION { h = app_permission(f, id, x, y, w, view_app_permission(ses, r.index, facts, n[0].has_session), VIEW_A_ALLOW, VIEW_A_DENY); gap = s.app.gap; }
   else if r.kind == VK_TASK_STATE { h = app_task_state(f, id, x, y, w, view_app_task(d, facts)); gap = s.app.gap; }
   else if r.kind == VK_TASK_RESULT { h = app_task_result(f, id, x, y, w, view_app_result(ses)); }
+  else if r.kind == VK_DEVICE_TOOL && v[0].dev.count == 1 { h = app_tool(f, id, x, y, w, view_device_app_tool(v[0].dev, r.index), open, VIEW_A_TOOL); gap = s.app.gap; }
+  else if r.kind == VK_DEVICE_PERMISSION { h = app_permission(f, id, x, y, w, view_device_permission(facts), VIEW_A_ALLOW, VIEW_A_DENY); gap = s.app.gap; }
+  else if r.kind == VK_DEVICE_STATE {
+    t := AppTask.{computer = v[0].dev_name, engine = "Claude Code", state = APP_TASK_RUNNING, stopping = facts.stop == VIEW_STOP_ASKED || facts.stop == VIEW_STOP_SEEN};
+    h = app_task_state(f, id, x, y, w, t); gap = s.app.gap;
+  }
   else if r.kind == VK_NOTICE {
     if r.act == VIEW_DO_RETRY { h = app_retry(f, id, x, y, w, r.text, "Try again", 0, VIEW_A_RETRY); }
     else if r.act == VIEW_DO_RECONNECT { h = app_retry(f, id, x, y, w, r.text, "Reconnect", 0, VIEW_A_RECONNECT); }
@@ -213,6 +245,7 @@ view_measure :: (f: [] UiFrame, v: [] ChatView, d: [] DurableChat, facts: ViewFa
 
 view_composer_state :: (d: [] DurableChat, facts: ViewFacts) -> int {
   if facts.send == VIEW_SEND_STOP { return APP_COMPOSER_RUNNING; }
+  if facts.device { return ifx facts.sent.count > 0 && !facts.send_unsure then APP_COMPOSER_SENDING else APP_COMPOSER_READY; }
   if d[0].pending == 1 && !d[0].uncertain { return APP_COMPOSER_SENDING; }
   return APP_COMPOSER_READY;
 }
@@ -222,7 +255,8 @@ view_page :: (f: [] UiFrame, v: [] ChatView, c: [] AppCore, lay: ViewLayout) -> 
   view_init(v);
   s := f[0].skin; a := s.app; d := view_chat_of(c); l := v[0].list[..]; vm := v[0].model[..];
   facts := view_facts(c);
-  view_build(vm, d, facts);
+  view_attach_device(v, c);
+  if facts.device && v[0].dev.count == 1 { view_build_device(vm, v[0].dev, facts); } else { view_build(vm, d, facts); }
   out: ViewOut;
   // the composer docks at the bottom, the chip slot over it
   look := AppComposer.{placeholder = VIEW_PLACEHOLDER, text = view_draft_of(c), state = view_composer_state(d, facts), editing = lay.editing, editor_h = lay.editor_h, unit = lay.unit};
@@ -267,6 +301,10 @@ view_page :: (f: [] UiFrame, v: [] ChatView, c: [] AppCore, lay: ViewLayout) -> 
   return out;
 }
 
+// This frame's conversation on a paired computer, or none.
+view_attach_device :: (v: [] ChatView, c: [] AppCore) {
+  if app_device_on(c) { v[0].dev = app_device_env(c); v[0].dev_name = view_device_name(c); } else { v[0].dev = v[0].dev[0..<0]; v[0].dev_name = ""; }
+}
 // A scroll by dy layout units (positive: toward the latest message).
 view_scroll :: (v: [] ChatView, dy: f32) { view_init(v); vlist_scroll(v[0].list[..], dy); }
 
@@ -308,18 +346,19 @@ view_press :: (v: [] ChatView, c: [] AppCore, keyed: [] KeyedStore, pressed: str
   if action == VIEW_A_RECONNECT { return ViewPress.{kind = VIEW_P_DISPATCH, what = VIEW_C_RECONNECT}; }
   if action == VIEW_A_JUMP { vlist_jump(v[0].list[..]); return ViewPress.{kind = VIEW_P_LOCAL}; }
   if action == VIEW_A_TOOL {
-    i := view_owner(vm, pressed, VK_TOOL);
+    i := view_owner(vm, pressed, VK_TOOL); if i < 0 { i = view_owner(vm, pressed, VK_DEVICE_TOOL); }
     if i < 0 { return ViewPress.{}; }
     id := view_row_id(vm, i);
     vlist_pin(v[0].list[..], id);   // it stays where it is while it opens
     return ViewPress.{kind = ifx app_tool_press(keyed, id, pressed) then VIEW_P_LOCAL else VIEW_P_NONE};
   }
   if action == VIEW_A_COPY {
-    i := view_owner(vm, pressed, VK_MESSAGE); if i < 0 { i = view_owner(vm, pressed, VK_REPLY); }
+    view_attach_device(v, c);
+    i := view_owner(vm, pressed, VK_MESSAGE); if i < 0 { i = view_owner(vm, pressed, VK_REPLY); } if i < 0 { i = view_owner(vm, pressed, VK_DEVICE_MESSAGE); }
     b := view_code_block(pressed);
     if i < 0 || b < 0 { return ViewPress.{}; }
     d := view_chat_of(c); r := vm[0].rows[i];
-    text := ifx r.kind == VK_MESSAGE then view_saved_text(v, d, r.index) else ct_view_text(d[0].view[..]);
+    text := view_row_text(v, d, r);
     blocks := view_parse(v, text);
     if b >= blocks || v[0].doc[0].blocks[b].kind != MB_CODE { return ViewPress.{}; }
     v[0].copy_n = el_put(v[0].copy[..], 0, md_block_text(v[0].doc[..], b));

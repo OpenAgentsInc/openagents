@@ -40,6 +40,12 @@
 // | FX_CLIPBOARD    | body: the text to write                   | -                                        |
 // | FX_LINK         | body: an http(s) URL, opened with no      | -                                        |
 // |                 | account headers                           |                                          |
+// | FX_DEVICE_LIST  | - (the computers this phone is paired     | text: one computer a line, its key (64   |
+// |                 | with; apps/shared/app/device/)            | hex), TAB, its name                      |
+// | FX_DEVICE_PAIR  | body: an openagents://pair? link. The     | flag: paired; text: the computer's name, |
+// |                 | host keeps the device key and the grant   | or on failure words to show              |
+// | FX_DEVICE_CALL  | text: a paired computer's key; body: an   | text: the computer's environment view;   |
+// |                 | environment request (EaRequest JSON)      | FXO_UNKNOWN when no answer came          |
 //
 // Lifecycle facts arrive through app_host_lifecycle (LIFE_FOREGROUND,
 // LIFE_BACKGROUND). Wakes are not a service: the host reads app_host_wake.
@@ -54,6 +60,9 @@ APP_HOST_FIELDS :: 6;
 app_host_event :: (kind: int, mono_ms: int, wall_ms: int) -> AppEvent { return AppEvent.{kind = kind, mono_ms = mono_ms, wall_ms = wall_ms}; }
 
 app_host_init :: (c: [] AppCore) -> bool #export_c #effects(all) { if c.count < 1 { return false; } app_init(c); return true; }
+// The device lane (apps/shared/app/device/lane.coax): a record the host allocates beside the
+// core and keeps for the core's life. Attach it after app_host_init and before launch.
+app_host_device :: (c: [] AppCore, d: [] DeviceLane) -> bool #export_c #effects(all) { return c.count == 1 && app_device_attach(c, d); }
 // rejoin: the conversation ID the host kept from the last run (the value of app_host_keep), or "".
 app_host_launch :: (c: [] AppCore, mono_ms: int, wall_ms: int, rejoin: string) -> int #export_c #effects(all) {
   e := app_host_event(EV_LAUNCH, mono_ms, wall_ms); e.text = rejoin; return app_dispatch(c, e);
@@ -115,5 +124,7 @@ app_host_busy :: (c: [] AppCore) -> int #export_c #effects(all) { if c.count < 1
 app_host_dirty_take :: (c: [] AppCore, mask: int) -> int #export_c #effects(all) { if c.count < 1 { return 0; } return app_dirty_take(c, mask); }
 // The conversation to keep for the next launch's rejoin: its ID into out, the byte count (0 for none).
 app_host_keep :: (c: [] AppCore, out: [] u8) -> int #export_c #effects(all) {
-  if c.count < 1 { return 0; } n := app_host_copy(app_conversation(c), out); return ifx n < 0 then 0 else n;
+  if c.count < 1 { return 0; }
+  if app_device_on(c) { return app_device_keep(c, out); }
+  n := app_host_copy(app_conversation(c), out); return ifx n < 0 then 0 else n;
 }

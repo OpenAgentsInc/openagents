@@ -189,3 +189,25 @@ esc_ready :: (s: [] EnvSelect, manual: bool, repo: bool) #effects(all) {
   for i: 0..<ES_EFFECTS + 2 { es_refresh(s[..], 0); s[0].catalog_state = ES_IDLE; }
   #assert s[0].nout == ES_EFFECTS && s[0].lost == 2;
 }
+
+#test "a paired computer is chosen with no account, and logging out keeps it" {
+  s := [1] EnvSelect.[es_new()]; es_draft(s[..], "");
+  h := "fb9347515b57c2c3a066baa42dc6920b24645539a4e32c11ed36c2e4789c265a";
+  // logged out with nothing paired and no way to pair: a press asks for login
+  es_open_env(s[..], 1); #assert s[0].sheet == ES_SHEET_NONE && es_take_login(s[..]);
+  #assert es_paired_begin(s[..], 1, true) && es_paired_add(s[..], h, "Studio Mac") && !es_paired_add(s[..], h, "again") && !es_paired_add(s[..], "ab", "x");
+  es_paired_end(s[..]);
+  #assert !es_paired_begin(s[..], 1, true);   // the same revision changes nothing
+  es_open_env(s[..], 1); #assert s[0].sheet == ES_SHEET_ENV && !es_take_login(s[..]) && s[0].nout == 0;
+  // Default is the account's; the paired row is not
+  #assert es_press(s[..], "env.default", 2) && es_take_login(s[..]) && s[0].sheet == ES_SHEET_ENV;
+  #assert es_press(s[..], "env.device.0", 2) && s[0].sheet == ES_SHEET_NONE && es_env_value(s[..]) == "Studio Mac";
+  c := es_choice(s[..], ""); #assert c.manual && cast(string) c.host[..] == h && cast(string) c.name[0..<c.nn] == "Studio Mac" && c.nr == 0;
+  #assert es_chosen_paired(s[..]) == 0;
+  // log in and out: the paired list and the choice stay
+  es_login(s[..], true); es_login(s[..], false); es_draft(s[..], "");
+  #assert s[0].paired[0].n == 1 && es_env_value(s[..]) == "Studio Mac";
+  // the computer is unpaired: the draft runs where we choose
+  #assert es_paired_begin(s[..], 2, true); es_paired_end(s[..]);
+  #assert es_env_value(s[..]) == "Default" && !es_choice(s[..], "").manual;
+}

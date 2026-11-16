@@ -31,13 +31,20 @@
 //     is a person's.
 //   - Logging out clears every list and every choice.
 //   - Logged out, a press on a chip asks for login (es_take_login) and opens
-//     nothing.
+//     nothing, unless this phone can pair with its own computer.
+//
+// The computers this phone is paired with (apps/shared/app/device/) are a
+// second list beside the account's: es_paired_* keep it as the core reports
+// it. A paired computer needs no account, so its row is choosable logged out
+// and whether a request can carry a choice; logging out keeps the list and
+// the drafts that chose one of them. A computer in both lists shows once, as
+// the paired one.
 //   coax/bin/coax test apps/shared/app/environment/select-checks.coax
 
 #load "../../../../coax/lib/agent/environment/wire.coax";   // EaCatalog, ea_catalog_read
 
 ES_COMPUTERS :: 64;           // the catalog's bound
-ES_KEY :: 64;                 // bytes of a draft's key (a conversation id, or "" for a new chat)
+ES_DRAFT_KEY :: 64;                 // bytes of a draft's key (a conversation id, or "" for a new chat)
 ES_DRAFTS :: 16;              // drafts whose choice is kept; the one used longest ago goes first
 ES_EFFECTS :: 8;              // effects waiting for the core to take
 ES_PATH :: 160;
@@ -48,7 +55,7 @@ ES_REPO :: 96;                // bytes of a repository's name
 ES_STATION_REPOS :: 16;       // repositories one computer reports (the router's RTR_REPOS)
 ES_REPOS :: 64;               // repositories the picker lists
 ES_EL_ID :: 48;               // bytes of a row's id (components/core/elements.coax EL_ID)
-ES_SAVE :: ES_DRAFTS * (ES_KEY + 64 + ES_REPO + 8);   // bytes es_save can write
+ES_SAVE :: ES_DRAFTS * (ES_DRAFT_KEY + 64 + ES_REPO + 8);   // bytes es_save can write
 
 // A fetch, as the screen shows it.
 ES_IDLE :: 0; ES_PENDING :: 1; ES_DONE :: 2; ES_FAILED :: 3; ES_UNKNOWN :: 4;
@@ -76,7 +83,7 @@ EsComputer :: struct {
 EsStationFact :: struct { ok: bool; host: [64] u8; reported_at_ms: int; repos: [ES_STATION_REPOS] EsRepo; nr: int; }
 EsRepoList :: struct { entries: [ES_REPOS] EsRepo; n: int; }
 EsDraft :: struct {
-  key: [ES_KEY] u8; nk: int; held: bool; used: int;
+  key: [ES_DRAFT_KEY] u8; nk: int; held: bool; used: int;
   host: [64] u8; manual: bool;             // a chosen computer, or Default
   repo: [ES_REPO] u8; nr: int;             // nr 0: no repository
 }
@@ -96,6 +103,9 @@ EnvSelect :: struct {
   want_login: bool;
   // the account's computers
   catalog: [1] EaCatalog; computers: [ES_COMPUTERS] EsComputer;
+  // the computers this phone is paired with, with no account, and whether it can pair
+  paired: [1] EaCatalog; paired_rev: int = -1; pairable: bool;
+  pair_note: [160] u8; pair_nn: int;
   catalog_state: int; catalog_op: int; catalog_at_ms: int;
   shown: [1] EsRepoList;       // the repository picker's rows, kept here so the frame's text outlives it
   // drafts
@@ -131,7 +141,7 @@ es_draft_find :: (s: [] EnvSelect, key: string) -> int #effects(all) {
 // A row for key: the one it has, or a new one on Default with no repository.
 // When every row is held, the one used longest ago goes.
 es_draft_row :: (s: [] EnvSelect, key: string) -> int #effects(all) {
-  if key.count > ES_KEY { return -1; }
+  if key.count > ES_DRAFT_KEY { return -1; }
   s[0].tick += 1;
   i := es_draft_find(s, key);
   if i < 0 {
@@ -156,7 +166,7 @@ es_now :: (s: [] EnvSelect) -> int #effects(all) {
 // A draft's choice moves to a new key: a new chat that was given its conversation id.
 es_draft_move :: (s: [] EnvSelect, from: string, to: string) #effects(all) {
   i := es_draft_find(s, from);
-  if i < 0 || to.count > ES_KEY || from == to { return; }
+  if i < 0 || to.count > ES_DRAFT_KEY || from == to { return; }
   k := es_draft_find(s, to);
   if k >= 0 { s[0].drafts[k] = EsDraft.{}; if s[0].current == k { s[0].current = i; } }
   s[0].drafts[i].nk = es_copy(s[0].drafts[i].key[..], to);
@@ -189,7 +199,7 @@ es_restore_line :: (s: [] EnvSelect, line: string) -> bool #effects(all) {
   for c, i: line { if c == '\t' { if a < 0 { a = i; } else if b < 0 { b = i; } else { return false; } } }
   if a < 0 || b < 0 { return false; }
   key := cast(string) line[0..<a]; host := cast(string) line[a + 1..<b]; repo := cast(string) line[b + 1..<line.count];
-  if key.count > ES_KEY || repo.count > ES_REPO { return false; }
+  if key.count > ES_DRAFT_KEY || repo.count > ES_REPO { return false; }
   manual := host != "-";
   if manual && (host.count != 64 || !es_hex(host)) { return false; }
   if !manual && repo.count == 0 { return false; }
@@ -224,14 +234,32 @@ es_computer_name :: (s: [] EnvSelect, i: int) -> string #effects(all) {
   if i < 0 || i >= s[0].catalog[0].n { return ""; }
   return cast(string) s[0].catalog[0].entries[i].label[0..<s[0].catalog[0].entries[i].nl];
 }
-// The computer the current draft chose: its row in the catalog, or -1 for Default.
+// A paired computer's row, or -1.
+es_paired_find :: (s: [] EnvSelect, host: string) -> int #effects(all) {
+  if host.count != 64 { return -1; }
+  for i: 0..<s[0].paired[0].n { if cast(string) s[0].paired[0].entries[i].host[..] == host { return i; } }
+  return -1;
+}
+es_paired_name :: (s: [] EnvSelect, i: int) -> string #effects(all) {
+  if i < 0 || i >= s[0].paired[0].n { return ""; }
+  return cast(string) s[0].paired[0].entries[i].label[0..<s[0].paired[0].entries[i].nl];
+}
+// The computer the current draft chose: its row in the catalog, or -1 for Default or a paired one.
 es_chosen :: (s: [] EnvSelect) -> int #effects(all) {
   d := es_now(s);
-  if !s[0].manual_ready || !s[0].drafts[d].manual { return -1; }
+  if !s[0].manual_ready || !s[0].drafts[d].manual || es_paired_find(s, cast(string) s[0].drafts[d].host[..]) >= 0 { return -1; }
   return es_computer_find(s, cast(string) s[0].drafts[d].host[..]);
+}
+// The paired computer the current draft chose: its row in the paired list, or -1.
+es_chosen_paired :: (s: [] EnvSelect) -> int #effects(all) {
+  d := es_now(s);
+  if !s[0].drafts[d].manual { return -1; }
+  return es_paired_find(s, cast(string) s[0].drafts[d].host[..]);
 }
 // What the environment chip shows.
 es_env_value :: (s: [] EnvSelect) -> string #effects(all) {
+  p := es_chosen_paired(s);
+  if p >= 0 { return es_paired_name(s, p); }
   i := es_chosen(s);
   return ifx i >= 0 then es_computer_name(s, i) else "Default";
 }
@@ -256,7 +284,11 @@ es_reach_words :: (reach: int) -> string #effects(all) {
 es_choice :: (s: [] EnvSelect, key: string) -> EsChoice #effects(all) {
   c: EsChoice;
   d := es_draft_find(s, key);
-  if d < 0 || !s[0].in { return c; }
+  if d < 0 { return c; }
+  // a paired computer, with or without an account; it carries no repository
+  p := ifx s[0].drafts[d].manual then es_paired_find(s, cast(string) s[0].drafts[d].host[..]) else -1;
+  if p >= 0 { c.manual = true; c.host = s[0].drafts[d].host; c.nn = es_copy(c.name[..], es_paired_name(s, p)); return c; }
+  if !s[0].in { return c; }
   if s[0].manual_ready && s[0].drafts[d].manual {
     i := es_computer_find(s, cast(string) s[0].drafts[d].host[..]);
     if i >= 0 { c.manual = true; c.host = s[0].drafts[d].host; c.nn = es_copy(c.name[..], es_computer_name(s, i)); }
@@ -341,10 +373,41 @@ es_check_next :: (s: [] EnvSelect) #effects(all) {
 es_capabilities :: (s: [] EnvSelect, manual_ready: bool, repo_ready: bool) #effects(all) { s[0].manual_ready = manual_ready; s[0].repo_ready = repo_ready; }
 // Logging out: every list and every choice is cleared, what waited to be sent
 // is dropped, and answers still on their way belong to a generation that is over.
+// The paired computers and the drafts that chose one of them stay: they need no account.
 es_logout :: (s: [] EnvSelect) #effects(all) {
   keep := EnvSelect.{generation = s[0].generation + 1, next_op = s[0].next_op, manual_ready = s[0].manual_ready, repo_ready = s[0].repo_ready, lost = s[0].lost, current = -1};
+  keep.paired = s[0].paired; keep.paired_rev = s[0].paired_rev; keep.pairable = s[0].pairable; keep.pair_note = s[0].pair_note; keep.pair_nn = s[0].pair_nn;
+  for d: 0..<ES_DRAFTS {
+    w := s[0].drafts[d];
+    if w.held && w.manual && es_paired_find(s, cast(string) w.host[..]) >= 0 { w.nr = 0; keep.drafts[d] = w; keep.tick = s[0].tick; }
+  }
   s[0] = keep;
 }
+// The paired list as the core reports it: clear it, then add each computer.
+// A draft whose paired computer is gone runs where we choose.
+es_paired_begin :: (s: [] EnvSelect, revision: int, pairable: bool) -> bool #effects(all) {
+  s[0].pairable = pairable;
+  if revision == s[0].paired_rev { return false; }
+  s[0].paired_rev = revision; s[0].paired[0] = EaCatalog.{ok = true};
+  return true;
+}
+es_paired_add :: (s: [] EnvSelect, host: string, name: string) -> bool #effects(all) {
+  p := s[0].paired[..];
+  if p[0].n >= ES_COMPUTERS || !es_hex(host) || host.count != 64 || name.count < 1 || name.count > 80 || es_paired_find(s, host) >= 0 { return false; }
+  for b, i: host { p[0].entries[p[0].n].host[i] = b; }
+  p[0].entries[p[0].n].nl = es_copy(p[0].entries[p[0].n].label[..], name); p[0].n += 1;
+  return true;
+}
+es_paired_end :: (s: [] EnvSelect) #effects(all) {
+  for d: 0..<ES_DRAFTS {
+    w := s[0].drafts[d];
+    if w.held && w.manual && es_paired_find(s, cast(string) w.host[..]) < 0 && (!s[0].in || es_computer_find(s, cast(string) w.host[..]) < 0) { s[0].drafts[d].manual = false; }
+  }
+}
+// What the picker says about a pairing the person opened ("" when none).
+es_paired_note :: (s: [] EnvSelect, words: string) #effects(all) { n := es_copy(s[0].pair_note[..], words); s[0].pair_nn = ifx n < 0 then 0 else n; }
+// Whether the picker opens with no account: a paired computer, or this phone can pair.
+es_own :: (s: [] EnvSelect) -> bool #effects(all) { return s[0].pairable || s[0].paired[0].n > 0; }
 // The login fact, whenever the core learns it.
 es_login :: (s: [] EnvSelect, in: bool) #effects(all) {
   if in == s[0].in { return; }
@@ -358,8 +421,9 @@ es_close :: (s: [] EnvSelect) #effects(all) { s[0].sheet = ES_SHEET_NONE; s[0].s
 // A picker opens: the list is read again when it is old, and computers whose
 // answer is old are asked again.
 es_open :: (s: [] EnvSelect, sheet: int, now_ms: int) #effects(all) {
-  if !s[0].in { s[0].want_login = true; return; }
+  if !s[0].in && !(sheet == ES_SHEET_ENV && es_own(s)) { s[0].want_login = true; return; }
   s[0].sheet = sheet; s[0].scroll = 0;
+  if !s[0].in { return; }
   stale := !s[0].catalog[0].ok || now_ms - s[0].catalog_at_ms > ES_CATALOG_FRESH_MS;
   if s[0].catalog_state != ES_PENDING && s[0].catalog_state != ES_UNKNOWN && stale { es_fetch_catalog(s); }
   for i: 0..<s[0].catalog[0].n {
@@ -383,6 +447,8 @@ es_refresh :: (s: [] EnvSelect, now_ms: int) #effects(all) {
 }
 // The draft runs where we choose.
 es_choose_default :: (s: [] EnvSelect) #effects(all) {
+  // where we choose is the account's
+  if !s[0].in { s[0].want_login = true; return; }
   d := es_now(s);
   s[0].drafts[d].manual = false;
   es_close(s);
@@ -396,6 +462,15 @@ es_choose_computer :: (s: [] EnvSelect, i: int) -> bool #effects(all) {
   es_close(s);
   return true;
 }
+// The draft runs on paired computer i, with or without an account.
+es_choose_paired :: (s: [] EnvSelect, i: int) -> bool #effects(all) {
+  if i < 0 || i >= s[0].paired[0].n { return false; }
+  d := es_now(s);
+  s[0].drafts[d].manual = true; s[0].drafts[d].host = s[0].paired[0].entries[i].host; s[0].drafts[d].nr = 0;
+  es_close(s);
+  return true;
+}
+es_paired_id :: (i: int, out: [] u8) -> string #effects(all) { return es_index_id("env.device.", i, out); }
 // The draft works in repository i of the list on screen.
 es_choose_repo :: (s: [] EnvSelect, i: int) -> bool #effects(all) {
   if !s[0].in || !s[0].repo_ready || s[0].sheet != ES_SHEET_REPO { return false; }
@@ -451,6 +526,8 @@ es_press :: (s: [] EnvSelect, id: string, now_ms: int) -> bool #effects(all) {
   if id == "env.refresh" { es_refresh(s, now_ms); return true; }
   if s[0].sheet == ES_SHEET_ENV {
     if id == "env.default" { es_choose_default(s); return true; }
+    k := es_index_of(id, "env.device.");
+    if k >= 0 { return es_choose_paired(s, k); }
     for i: 0..<s[0].catalog[0].n { b: [ES_EL_ID] u8; if id == es_computer_id(s, i, b[..]) { return es_choose_computer(s, i); } }
     return false;
   }
@@ -481,7 +558,7 @@ es_catalog_done :: (s: [] EnvSelect, op: int, generation: int, outcome: int, sta
   }
   s[0].catalog[0] = c[0]; s[0].computers = was; s[0].catalog_at_ms = now_ms;
   // a draft whose computer is gone runs where we choose
-  for d: 0..<ES_DRAFTS { if s[0].drafts[d].held && s[0].drafts[d].manual && es_computer_find(s, cast(string) s[0].drafts[d].host[..]) < 0 { s[0].drafts[d].manual = false; } }
+  for d: 0..<ES_DRAFTS { if s[0].drafts[d].held && s[0].drafts[d].manual && es_computer_find(s, cast(string) s[0].drafts[d].host[..]) < 0 && es_paired_find(s, cast(string) s[0].drafts[d].host[..]) < 0 { s[0].drafts[d].manual = false; } }
   es_check_next(s);
   return true;
 }

@@ -4,6 +4,7 @@
 // ABI with the service table (host.coax). A root loads this file once.
 //   coax/bin/coax test apps/shared/app/core/core.coax --library --traversal 1000000000
 #load "state.coax";
+#load "../device/lane.coax";
 #load "task-client.coax";
 #load "dispatch.coax";
 #load "host.coax";

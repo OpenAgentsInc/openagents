@@ -149,8 +149,9 @@ ch_layout :: (s: [] ChatPage, f: [] UiFrame, w: f32, h: f32) {
   nav_y := top + 4 / u;
   s[0].again = false;
   if s[0].core.count > 0 {
-    // the chips show once logged in: logged out a press could only ask for a login, and Log in is hidden for now
-    chips := s[0].core[0].auth == AUTH_IN;
+    // the chips show once logged in, or whenever this phone can run on its own computer (a paired
+    // one, or one it can pair with): that needs no account. Logged out, only Default asks for a login.
+    chips := s[0].core[0].auth == AUTH_IN || app_device_pairable(s[0].core) || app_device_count(s[0].core) > 0;
     lay := ViewLayout.{x = 0, top = nav_y + a.icon_button + a.gap, w = w, bottom = bottom, chips_h = ifx chips then k.cmp.chip_h else 0.0f32,
       editing = s[0].focused && ch_focus(s) == VIEW_COMPOSER_ID, editor_h = s[0].editor_h / u, unit = u};
     out := view_page(f, s[0].view[..], s[0].core, lay);

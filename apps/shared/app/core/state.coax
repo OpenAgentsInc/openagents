@@ -22,7 +22,8 @@ OWN_ACCOUNT :: 0;      // login state and the login flow's requests
 OWN_CHAT :: 1;         // the current conversation and its task
 OWN_PAGE :: 2;         // copy and open-link, asked for by a tap
 OWN_ENVIRONMENT :: 3;  // guest: environment and repository reads
-OWN_GUEST_LAST :: 7;   // owners 3..7 are guests
+OWN_GUEST_LAST :: 6;   // owners 3..6 are guests
+OWN_DEVICE :: 7;       // the conversation on a paired computer, and the paired list (device/lane.coax); no account
 
 // Is an account logged in. Unknown until the host answers the first FX_AUTH_STATE.
 AUTH_UNKNOWN :: 0; AUTH_OUT :: 1; AUTH_IN :: 2;
@@ -72,6 +73,8 @@ AppCore :: struct {
   note: [APP_NOTE] u8; note_n: int;
   dirty: int;
   guest: AppGuest;
+  // the conversation on the person's own computer, with no account (apps/shared/app/device/)
+  device: [] DeviceLane;               // attached by the host (app_host_device); empty: none
   out: [1] FxOutbox;
   refusals: int;                      // events refused so far
 }
@@ -150,6 +153,7 @@ app_repository_label :: (c: [] AppCore) -> string { return cast(string) c[0].rep
 // is running, so the button stops it; SEND_READY.
 SEND_EMPTY :: 0; SEND_LOGIN :: 1; SEND_WAIT :: 2; SEND_STOP :: 3; SEND_READY :: 4;
 app_send_state :: (c: [] AppCore) -> int {
+  if app_device_on(c) { return dl_send_state(c); }
   d := c[0].chat[..];
   if c[0].auth == AUTH_IN && dca_working(d) { return SEND_STOP; }
   if app_draft(c).count == 0 { return SEND_EMPTY; }
@@ -162,6 +166,7 @@ app_send_state :: (c: [] AppCore) -> int {
 // again); STOP_SEEN the service has it and the reply is winding down.
 STOP_NONE :: 0; STOP_READY :: 1; STOP_ASKED :: 2; STOP_UNCERTAIN :: 3; STOP_SEEN :: 4;
 app_stop_state :: (c: [] AppCore) -> int {
+  if app_device_on(c) { return dl_stop_state(c); }
   d := c[0].chat[..]; n := d[0].native[..];
   if d[0].pending == 2 { return ifx d[0].uncertain then STOP_UNCERTAIN else STOP_ASKED; }
   if d[0].want_stop { return STOP_ASKED; }
@@ -175,6 +180,7 @@ app_stop_state :: (c: [] AppCore) -> int {
 // answer is on its way; PERMIT_UNCERTAIN we sent one and do not know that it arrived.
 PERMIT_NONE :: 0; PERMIT_READING :: 1; PERMIT_READY :: 2; PERMIT_SENT :: 3; PERMIT_UNCERTAIN :: 4;
 app_permission_state :: (c: [] AppCore) -> int {
+  if app_device_on(c) { return dl_permission_state(c); }
   n := c[0].chat[0].native[..];
   if n[0].verb != "stop" && nta_pending(n) { return ifx n[0].uncertain then PERMIT_UNCERTAIN else PERMIT_SENT; }
   if !nta_permission(n) { return PERMIT_NONE; }

@@ -60,5 +60,25 @@ up_http :: (method: int, path: string, body_bytes: int) -> bool #export_c #effec
 }
 // A link the person tapped: an HTTP(S) document, opened with no account headers.
 up_link :: (url: string) -> bool #export_c #effects(all) { return nt_link(url); }
+// A pairing link the person opened (coder host pair prints it): openagents://pair? and a bounded query.
+UP_DEVICE_LINK_MAX :: 1024; UP_DEVICE_CALL_MAX :: 24576;
+up_device_link :: (link: string) -> bool #export_c #effects(all) {
+  p := "openagents://pair?";
+  if link.count <= p.count || link.count > UP_DEVICE_LINK_MAX || cast(string) link[0..<p.count] != p { return false; }
+  for c: link { if c <= 32 || c >= 127 { return false; } }
+  return true;
+}
+// An environment request to a paired computer: its key (64 lowercase hex) and a bounded JSON body.
+// Which computers are paired, and the grant each holds, is the device service's.
+up_device_call :: (host: string, body: string) -> bool #export_c #effects(all) {
+  if host.count != 64 || body.count < 2 || body.count > UP_DEVICE_CALL_MAX || body[0] != '{' { return false; }
+  for c: host { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; } }
+  return true;
+}
+#test "a device request names a paired computer's key and a bounded body; a pairing link is ours" {
+  h := "fb9347515b57c2c3a066baa42dc6920b24645539a4e32c11ed36c2e4789c265a";
+  #assert up_device_call(h, "{}") && !up_device_call("FB93", "{}") && !up_device_call(h, "") && !up_device_call(h, "[]");
+  #assert up_device_link("openagents://pair?host=a&code=B") && !up_device_link("openagents://pair?") && !up_device_link("https://pair?x") && !up_device_link("openagents://pair?a b");
+}
 // A copy the person asked for; the app never reads the clipboard.
 up_copy :: (bytes: int) -> bool #export_c #effects(all) { return nt_copy_admit(2, bytes); }
