@@ -5,7 +5,7 @@
 #authority;
 
 cna_test_view :: ()->PaView #effects(all) {
- v:=PaView.{};v.n=1;_=pa_copy(v.host[..],"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");v.nm=pa_copy(v.method[..],"ListAccounts");a:=v.accounts[0..<1];a[0].ni=pa_copy(a[0].id[..],"system");a[0].ns=pa_copy(a[0].state[..],"connected");a[0].nw=1;a[0].windows[0].ni=pa_copy(a[0].windows[0].id[..],"seven_day");a[0].windows[0].used=2500;a[0].observed=1000;return v;
+ v:=PaView.{};v.n=1;_=pa_copy(v.host[..],"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");v.nm=pa_copy(v.method[..],"ListAccounts");a:=v.accounts[0..<1];a[0].ni=pa_copy(a[0].id[..],"system");a[0].ns=pa_copy(a[0].state[..],"connected");a[0].nw=1;a[0].windows[0].ni=pa_copy(a[0].windows[0].id[..],"seven_day");a[0].windows[0].used=2500;a[0].observed=1000;return v; // mutant: equivalent (widening the local view's upper bound to two still writes only its first element)
 }
 #test "automatic native account choice admits fresh capacity and preserves the chosen exact ID" {
  v:=[1]PaView.[cna_test_view()];host:=cast(string)v[0].host[..];b:[32]u8;raw:[24576]u8;
@@ -28,12 +28,27 @@ cna_test_view :: ()->PaView #effects(all) {
  for used:[3]int.[0,9999,10000] {v[0].accounts[0].windows[0].used=used;#assert (cna_pick(v[..],cast(string)v[0].host[..],1000)==0)==(used<10000);}
  v[0].accounts[0].windows[0].used=0;v[0].accounts[0].nw=2;v[0].accounts[0].windows[1].used=10000;#assert cna_pick(v[..],cast(string)v[0].host[..],1000)== -1;
 }
+#test "native account ordering preserves lesser load before selected-profile ties" {
+ v:=[1]PaView.[cna_test_view()];a:=v[0].accounts[0];#assert v[0].n==1 && a.nw==1 && a.windows[0].ni==9 && cast(string)a.windows[0].id[0..<9]=="seven_day" && a.windows[0].used==2500;
+ host:=cast(string)v[0].host[..];v[0].accounts[0].observed=1;#assert cna_pick(v[..],host,1)==0;
+ v[0].n=2;v[0].accounts[1]=v[0].accounts[0];
+ for selected:0..<4 {for used:[3]int.[0,2500,2501] {v[0].accounts[0].windows[0].used=2500;v[0].accounts[0].selected=(selected&1)!=0;v[0].accounts[1].selected=(selected&2)!=0;v[0].accounts[1].windows[0].used=used;
+  expected:=ifx used<2500 || (used==2500 && selected==2) then 1 else 0;#assert cna_pick(v[..],host,1)==expected;
+ }}
+ v[0].accounts[0].windows[0].used=1;v[0].accounts[1].windows[0].used=0;v[0].accounts[0].selected=true;v[0].accounts[1].selected=false;#assert cna_pick(v[..],host,1)==1;
+ v[0].n=1;v[0].accounts[0].stale=true;raw:[24576]u8;b:[32]u8;n:=pa_view_write(v[..],raw[..]);#assert ctn_account_pick(cast(string)raw[0..<n],host,1,b[..])== -1;
+}
+#test "only an owned checking account permits a bounded observation retry" {
+ v:=[1]PaView.[cna_test_view()];raw:[24576]u8;host:=cast(string)v[0].host[..];n:=pa_view_write(v[..],raw[..]);#assert !ctn_account_pending(cast(string)raw[0..<n],host);
+ v[0].accounts[0].ns=pa_copy(v[0].accounts[0].state[..],"checking");n=pa_view_write(v[..],raw[..]);#assert ctn_account_pending(cast(string)raw[0..<n],host) && !ctn_account_pending(cast(string)raw[0..<n],"other");
+ v[0].ne=pa_copy(v[0].error[..],"forbidden");n=pa_view_write(v[..],raw[..]);#assert !ctn_account_pending(cast(string)raw[0..<n],host) && !ctn_account_pending("{}",host);
+}
 
 cna_pick :: (v:[]PaView,host:string,now:int)->int #effects(all) {
  if now<1 || cast(string)v[0].host[..]!=host || cast(string)v[0].method[0..<v[0].nm]!="ListAccounts" || v[0].ne!=0 || v[0].nc!=0 {return -1;}
- chosen:= -1;best:=10000;
+ chosen:= -1;best:=10000; // mutant: equivalent (the first valid candidate is admitted by chosen<0, independent of the initial best value)
  for i:0..<v[0].n {a:=v[0].accounts[i];if cast(string)a.state[0..<a.ns]!="connected" || a.stale || a.ner!=0 || a.nw==0 || a.observed<1 || a.observed>now || now-a.observed>300000 {continue;}
-  used:=0;valid:=true;for k:0..<a.nw {u:=a.windows[k].used;if u<0 || u>=10000 {valid=false;}if u>used {used=u;}}
+  used:=0;valid:=true;for k:0..<a.nw {u:=a.windows[k].used;if u<0 || u>=10000 {valid=false;}if u>used {used=u;}} // mutant: equivalent (assigning an equal maximum leaves used unchanged)
   if !valid {continue;}
   if chosen<0 || used<best || (used==best && a.selected && !v[0].accounts[chosen].selected) {chosen=i;best=used;}
  }
@@ -41,4 +56,8 @@ cna_pick :: (v:[]PaView,host:string,now:int)->int #effects(all) {
 }
 ctn_account_pick :: (raw:string,host:string,now:int,out:[]u8)->int #export_c #effects(all) {
  v:[1]PaView;if !pa_view_read(raw,v[..]) {return -1;}i:=cna_pick(v[..],host,now);if i<0 {return -1;}a:=v[0].accounts[i];return pa_copy(out,cast(string)a.id[0..<a.ni]);
+}
+ctn_account_pending :: (raw:string,host:string)->bool #export_c #effects(all) {
+ v:[1]PaView;if !pa_view_read(raw,v[..]) || cast(string)v[0].host[..]!=host || v[0].ne!=0 || cast(string)v[0].method[0..<v[0].nm]!="ListAccounts" || v[0].nc!=0 {return false;}
+ for i:0..<v[0].n {a:=v[0].accounts[i];if cast(string)a.state[0..<a.ns]=="checking" {return true;}}return false;
 }

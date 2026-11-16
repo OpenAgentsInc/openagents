@@ -60,8 +60,15 @@ The durable runner now produces this association for an ordinary chat selected
 for native work. It obtains current signed reports, uses the shared typed
 router, reads the selected engine's actual SDK offer, resolves an offered
 model/effort pair and saves the association before Prepare, input upload or
-Start. The first consumer uses the selected engine's `system` account;
-multi-account selection remains required work. Native Codex catalog discovery
+Start. Claude account selection reuses the enrolled computer's existing
+provider-account service. Only connected accounts with fresh observed quota
+and capacity in every reported window are eligible; unknown, stale, future
+and exhausted observations refuse. The account with the lowest maximum
+reported usage percentage is preferred, with the person's selected profile
+breaking ties. Checking observations receive bounded retries. This does not
+change the computer's selected account or start a login. Its exact account ID
+is pinned into the SDK offer and Binding. Codex currently has its one
+supported `system` account. Native Codex catalog discovery
 follows all pages within the [offer profile's bounds](engine-offer-v1alpha1.md)
 before publishing a usable observation.
 Router preview fallbacks cannot authorize execution.
@@ -128,10 +135,17 @@ cap. These limits are separate from native SDK allocations.
 
 Server capture assembly resumes the same admitted primary pages across worker
 claims. Stop can renew only after expiry refusal and fresh reconciliation, as
-specified below. Multiple accounts, shared gateway tool continuation, real
-provider execution and end-to-end qualification remain part of #13620. Native C and
-installed-interpreter fixtures do not establish production rollout or a real
-provider execution; that live qualification remains separate.
+specified below. Shared gateway tool continuation is described separately in
+[the tool contract](gateway-tools-v2alpha1.md). Real provider execution,
+installed phone/CLI controls and their exact staging receipts are recorded
+in [the native qualification](../verification/2026-11-15-chat-native-staging.md)
+and [Stop reconciliation](../verification/2026-11-16-native-stop.md).
+Controlled fixtures alone do not establish production rollout.
+
+The owner assigned wiring into the replacement compiled iOS carrier to
+#13645 on 2026-11-16. The mobile observations above describe its previous
+carrier. The shared reducers and account endpoints remain the integration
+contract; see [the handoff](../apps/13645-native-tasks-handoff.md).
 
 ## Server recovery storage
 

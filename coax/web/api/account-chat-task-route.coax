@@ -3,6 +3,7 @@
 #load "account-chat-task-worker-policy.coax";
 #load "account-chat-task-wire.coax";
 #load "../../lib/agent/router/native-choice.coax";
+#load "../../lib/agent/router/native-account.coax";
 #load "../../lib/agent/router/decide.coax";
 CTN_REPORTS :: 16;
 CtnRouter :: struct {

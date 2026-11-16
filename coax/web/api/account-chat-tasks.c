@@ -23,10 +23,13 @@ static bool native_scope(native_turn *n,native_connection *c){
  PGconn *db=model_db(&n->m);if(!db)return false;const char *v[]={n->m.account,c->host};PGresult *r=PQexecParams(db,"SELECT host_pubkey,grant_id,epoch,relay,display_name,(SELECT count(*) FROM chat.environment_connections_v1 x WHERE x.host_pubkey=c.host_pubkey AND x.grant_id=c.grant_id) FROM chat.environment_connections_v1 c WHERE account=$1 AND host_pubkey=$2",2,NULL,v,NULL,NULL,0);
  native_connection current={0};bool ok=tuples(r)&&PQntuples(r)==1&&native_connection_read(&current,r,0)&&ctn_scope(true,number(r,0,5),ts(c->digest),ts(current.digest));PQclear(r);return ok;
 }
-static int64_t native_rpc(native_turn *n,coax_string body,unsigned char *out,size_t cap,bool write){
+static int64_t native_exchange(native_turn *n,coax_string body,unsigned char *out,size_t cap,bool write,bool accounts){
  if(api_now_ms()>=n->deadline){return -3000;}if(!native_guard(n,write)||!native_scope(n,&n->connection))return -2004;if(!ctn_effect(write,n->stop))return -2008;
  const char *key=getenv("OA_ENV_BROKER_KEY_FILE"),*program=getenv("OA_ENV_BROKER_PROGRAM");if(!key||!*key||!ea_payload_file(ts(n->file),body))return -5000;
- native_connection *c=&n->connection;return environment_task_proxy(ts(c->host),ts(c->grant),ts(c->epoch),ts(c->relay),ts(key),ts(n->file),ts(program&&*program?program:"/usr/local/bin/environment-host"),tb(out,cap));
+ native_connection *c=&n->connection;return (accounts?environment_accounts_proxy:environment_task_proxy)(ts(c->host),ts(c->grant),ts(c->epoch),ts(c->relay),ts(key),ts(n->file),ts(program&&*program?program:"/usr/local/bin/environment-host"),tb(out,cap));
+}
+static int64_t native_rpc(native_turn *n,coax_string body,unsigned char *out,size_t cap,bool write){
+ return native_exchange(n,body,out,cap,write,false);
 }
 static long native_decide(coax_string body,char **answer,size_t *count){
  const char *key=getenv("OA_GEMINI_DECISIONS_KEY"),*url=getenv("OA_ROUTER_DECISIONS_URL");*answer=NULL;*count=0;if(!key||!*key||strlen(key)>256)return 0;
@@ -70,8 +73,19 @@ static int native_preflight(native_turn *n,const char *conversation){
  }
  size=ctn_route_begin((coax_v_t_CtnRouter){h,1},(int64_t)api_now_ms(),tb(body,262144));if(size<1)goto done;
  status=native_decide(tn(body,size),&answer,&count);int row=(int)ctn_route_finish((coax_v_t_CtnRouter){h,1},status,tn(answer?answer:"",count));free(answer);if(row<0)goto done;n->connection=connections[map[row]];
+ char provider_account[33]="system";
+ if(h->d.e[0].engine.count==6&&!memcmp(h->d.e[0].engine.data,"claude",6)){
+  size=pa_list_body(true,tb(body,262144));if(size<1)goto done;bool ready=false;
+  for(int attempt=0;attempt<32&&api_now_ms()<deadline;attempt++){
+   int64_t got=native_exchange(n,tn(body,size),out,98304,true,true);if(got<1)goto done;
+   int64_t na=ctn_account_pick(tn(out,got),ts(n->connection.host),(int64_t)api_now_ms(),tb(provider_account,32));
+   if(na>0&&na<=32){provider_account[na]=0;ready=true;break;}
+   if(!ctn_account_pending(tn(out,got),ts(n->connection.host)))goto done;
+  }
+  if(!ready)goto done;
+ }
  char probe[37],command[37];if(!api_object_id(probe,"cmd_")||!api_object_id(command,"cmd_"))goto done;
- coax_t_XoRequest oq={.probe=tn(probe+4,32),.engine=h->d.e[0].engine,.account=ts("system")};size=xo_request_write(oq,tb(body,262144));if(size<1)goto done;
+ coax_t_XoRequest oq={.probe=tn(probe+4,32),.engine=h->d.e[0].engine,.account=ts(provider_account)};size=xo_request_write(oq,tb(body,262144));if(size<1)goto done;
  for(int attempt=0;attempt<32&&api_now_ms()<deadline;attempt++){
   int64_t got=native_rpc(n,tn(body,size),out,98304,true);coax_t_XoOffer offer;unsigned char arena[16384];
   if(got<1||!xo_read(tn(out,got),(coax_v_t_XoOffer){&offer,1},tb(arena,sizeof arena))||!xo_reply(oq,offer,ts(n->connection.host),(int64_t)api_now_ms()))goto done;

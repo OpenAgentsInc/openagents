@@ -1,6 +1,6 @@
 # Hosted tool continuation and argument admission
 
-Checkpoint for #13620. The existing browser command-table executor now consumes
+The browser portion of #13620 uses the existing command-table executor, which consumes
 the shared gateway step and owned conversation history. Its API routes remain
 the executor; no additional runner or parser is introduced. Published call and
 result fields retain their identities. See the additive implementation section
@@ -168,13 +168,28 @@ descendant JSON indices that cannot be zero, duplicate copy-helper capacity
 checks, the call getter's refusal of unsealed/failed steps, and the upstream
 step owner's eight physical slots. They are documented at the exact sites.
 
-## Remaining issue scope
+## Surface boundaries
 
-This browser history is ephemeral. It does not establish a durable shared
-executor, adoption by the account/mobile chat, provider-account qualification
-or a staging coding task with an expected patch and test result. Native mobile
-controls already exist; durable server capture paging and reconciled expired
-Stop recovery are now separately qualified in
-[the recovery checkpoint](2026-11-15-chat-native-recovery.md). #13620's
-end-to-end acceptance boxes stay open. This checkpoint includes no production
-deployment or TestFlight upload.
+The browser gateway history is owned by its current page. Native account and
+Project coding tasks use the existing SDK runner, whose durable structured
+capture retains tool-call IDs, arguments, results and permission identities.
+Their real patch/test, mobile controls, reconnect and CLI observations are in
+[the staging qualification](2026-11-15-chat-native-staging.md) and
+[the final Stop qualification](2026-11-16-native-stop.md).
+
+The account v2 hosted text stream continues to reject unsupported rich tool
+continuations explicitly. This change does not introduce another executor
+behind that stream. Native tasks expose their complete capture through the
+existing account Task/Transcript endpoints and CLI. The owner assigned wiring
+those shared reducers and endpoints into the replacement compiled phone
+screen to #13645; see [the handoff](../apps/13645-native-tasks-handoff.md).
+The earlier installed UIKit observations do not qualify that new screen.
+
+The final rebuilt browser module is 354,896 bytes. All seven controlled
+headless scenarios pass on that module: CRLF, strict argument refusal, cut
+transport, Stop before EOF, eight paired calls, malformed CR and the exact
+32,768-byte SSE event. Their `gateway-final-` receipts retain native IDs,
+whole request bodies and same-origin credentials. Screenshot review confirms
+the visible failed schema row, completed eight-tool row and final model
+answers. These are actual Wasm/DOM/HTTP-host observations with controlled
+responses, not live provider inference.

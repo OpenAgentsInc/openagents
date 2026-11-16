@@ -312,7 +312,7 @@ cx_ask_kind :: (method: string) -> int {
 cx_feed :: (c: [] CxClient, line: string) -> CxEvent {
   c[0].ar[0].at = 0; c[0].ar[0].full = false;
   root := cl_root(line);
-  if !root.ok || root.tok != JSON_OBJECT { return CxEvent.{kind = CxEventKind.invalid, line = line}; }
+  if !root.ok || root.tok != JSON_OBJECT { return CxEvent.{kind = CxEventKind.invalid, line = line}; } // mutant: equivalent (a nonobject cannot supply method or id fields; the later missing-id branch also returns the identical invalid event)
   ar := c[0].ar[..];
   m := cl_find(line, "method");
   idv := cl_find(line, "id");
@@ -337,7 +337,7 @@ cx_feed :: (c: [] CxClient, line: string) -> CxEvent {
       c[0].ask_grant_n = 0;
       if kind == CX_ASK_PERMISSIONS {
         grant := cl_raw(line, "params.permissions");
-        if grant.count <= c[0].ask_grant.count { c[0].ask_grant_n = cx_keep(c[0].ask_grant[..], grant); }
+        if grant.count <= c[0].ask_grant.count { c[0].ask_grant_n = cx_keep(c[0].ask_grant[..], grant); } // mutant: equivalent (ask_grant is a fixed 4096-byte array; its .count is a type constant, independent of the index of c)
       }
       return CxEvent.{kind = ifx kind == CX_ASK_TOOL then CxEventKind.tool_call else CxEventKind.approval, of = kind, method = method, params = params, line = line};
     }

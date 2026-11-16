@@ -168,3 +168,45 @@ cx_test_replay :: (c: [] CxClient, lines: [] string, approve: [] bool, models: b
   ev = cx_feed(c[..], "{\"id\":1,\"error\":{\"code\":-32600,\"message\":\"bad\"}}");
   #assert ev.kind == CxEventKind.failed && cx_error(c[..]) == "initialize: bad" && c[0].completed;
 }
+
+#test "RPC dispatch resets borrowed decoding and distinguishes notification request and reply" {
+ c:[1]CxClient;b:[1]CxTest;cx_test_client(c[..],b[..]);c[0].ar[0].at=900;c[0].ar[0].full=true;
+ ev:=cx_feed(c[..],"{\"method\":\"x\\u0079\",\"params\":{\"a\":1}}");#assert ev.kind==CxEventKind.notification && ev.method=="xy" && ev.params=="{\"a\":1}" && !c[0].ar[0].full && c[0].ar[0].at==2;
+ for raw:[5]string.["null","[]","1","{bad}","{\"id\":\"wrong\",\"result\":{}}"] {#assert cx_feed(c[..],raw).kind==CxEventKind.invalid;}
+ c[0].turn_n=cx_keep(c[0].turn[..],"kept");ev=cx_feed(c[..],"{\"method\":\"turn/started\",\"params\":{\"turn\":{\"id\":\"next\"}}}");#assert ev.kind==CxEventKind.notification && cx_turn_id(c[..])=="next";
+ _=cx_feed(c[..],"{\"method\":\"turn/started\",\"params\":{\"turn\":{\"id\":\"\"}}}");#assert cx_turn_id(c[..])=="next";
+ _=cx_feed(c[..],"{\"method\":\"other\",\"params\":{\"turn\":{\"id\":\"foreign\"}}}");#assert cx_turn_id(c[..])=="next";
+ for method:[3]string.["item/tool/requestUserInput","mcpServer/elicitation/request","unknown"] {
+  cx_outbox_clear(c[..]);raw:[256]u8;o:[1]Jo;jo_start(o[..],raw[..]);jo_put(o[..],"{\"id\":17,\"method\":");jo_str(o[..],method);jo_put(o[..],",\"params\":{}}");ev=cx_feed(c[..],jo_text(o[..]));
+  #assert ev.kind==CxEventKind.none && ev.method==method;
+  expected:=ifx method=="item/tool/requestUserInput" then "{\"jsonrpc\":\"2.0\",\"id\":17,\"result\":{\"answers\":{}}}\n" else ifx method=="mcpServer/elicitation/request" then "{\"jsonrpc\":\"2.0\",\"id\":17,\"result\":{\"action\":\"decline\"}}\n" else "{\"jsonrpc\":\"2.0\",\"id\":17,\"error\":{\"code\":-32601,\"message\":\"unsupported method: unknown\"}}\n";
+  #assert cx_outbox(c[..])==expected;
+ }
+}
+#test "RPC approval IDs have exact bounds and each new request retires a prior grant" {
+ c:[1]CxClient;b:[1]CxTest;cx_test_client(c[..],b[..]);id:[127]u8;for i:0..<id.count {id[i]='a';}raw:[1024]u8;o:[1]Jo;
+ for n:[3]int.[125,126,127] {cx_outbox_clear(c[..]);jo_start(o[..],raw[..]);jo_put(o[..],"{\"method\":\"item/permissions/requestApproval\",\"id\":");jo_str(o[..],cast(string)id[0..<n]);jo_put(o[..],",\"params\":{\"permissions\":{\"network\":true}}}");ev:=cx_feed(c[..],jo_text(o[..]));
+  if n<=126 {#assert ev.kind==CxEventKind.approval && c[0].asking==CX_ASK_PERMISSIONS && c[0].ask_id_n==n+2 && c[0].ask_grant_n==16 && cast(string)c[0].ask_grant[0..<16]=="{\"network\":true}";}
+  else {#assert ev.kind==CxEventKind.none && cl_raw(cx_outbox(c[..]),"error.code")=="-32000" && cl_str(c[0].ar[..],cx_outbox(c[..]),"error.message")=="request id too long";}
+ }
+ c[0].ask_grant_n=999;_=cx_feed(c[..],"{\"method\":\"item/fileChange/requestApproval\",\"id\":7,\"params\":{}}");#assert c[0].asking==CX_ASK_PATCH && c[0].ask_grant_n==0 && c[0].ask_id_n==1 && c[0].ask_id[0]=='7';
+}
+#test "RPC answers publish native IDs only for their matching request kinds" {
+ c:[1]CxClient;b:[1]CxTest;cx_test_client(c[..],b[..]);none:[1]string;
+ _=cx_initialize(c[..],"a","b","c");#assert c[0].init_wait;cx_outbox_clear(c[..]);ev:=cx_feed(c[..],"{\"id\":1,\"result\":{\"userAgent\":\"sdk\"}}");#assert ev.kind==CxEventKind.initialized && c[0].initialized && !c[0].init_wait && cx_user_agent(c[..])=="sdk" && cx_outbox(c[..])=="{\"jsonrpc\":\"2.0\",\"method\":\"initialized\"}\n";
+ for kind:[3]int.[CX_THREAD_START,CX_THREAD_RESUME,CX_TURN_START] {
+  c[0].thread_n=cx_keep(c[0].thread[..],"prior-thread");c[0].turn_n=cx_keep(c[0].turn[..],"prior-turn");id:=cx_open(c[..],kind,"probe");raw:[512]u8;o:[1]Jo;jo_start(o[..],raw[..]);jo_put(o[..],"{\"id\":");jo_int(o[..],id);jo_put(o[..],",\"result\":{\"thread\":{\"id\":\"thread\"},\"turn\":{\"id\":\"turn\"}}}");ev=cx_feed(c[..],jo_text(o[..]));
+  #assert ev.kind==CxEventKind.answered && ev.of==kind && ev.request_id==id && cx_thread_id(c[..])==ifx kind==CX_TURN_START then "prior-thread" else "thread";
+  #assert cx_turn_id(c[..])==ifx kind==CX_TURN_START then "turn" else "prior-turn";
+ }
+ id:=cx_request(c[..],"any","{}");raw:[256]u8;o:[1]Jo;jo_start(o[..],raw[..]);jo_put(o[..],"{\"id\":");jo_int(o[..],id);jo_put(o[..],",\"method\":false,\"error\":null,\"result\":{\"thread\":{\"id\":\"foreign\"}}}");ev=cx_feed(c[..],jo_text(o[..]));#assert ev.kind==CxEventKind.answered && ev.request_id==id && ev.of==CX_OTHER && cx_thread_id(c[..])=="prior-thread";
+ #assert cx_feed(c[..],"{\"id\":999,\"error\":{\"message\":\"foreign\"}}").kind==CxEventKind.none;
+}
+#test "RPC native identifiers preserve an empty update and admit a one-byte identifier" {
+ for kind:[3]int.[CX_THREAD_START,CX_THREAD_RESUME,CX_TURN_START] {for value:[2]string.["","t"] {
+  c:[1]CxClient;b:[1]CxTest;cx_test_client(c[..],b[..]);c[0].thread_n=cx_keep(c[0].thread[..],"prior");c[0].turn_n=cx_keep(c[0].turn[..],"prior");_=cx_open(c[..],kind,"probe");raw:[256]u8;o:[1]Jo;jo_start(o[..],raw[..]);jo_put(o[..],"{\"id\":1,\"result\":{\"");jo_put(o[..],ifx kind==CX_TURN_START then "turn" else "thread");jo_put(o[..],"\":{\"id\":");jo_str(o[..],value);jo_put(o[..],"}}}");_=cx_feed(c[..],jo_text(o[..]));
+  #assert (ifx kind==CX_TURN_START then cx_turn_id(c[..]) else cx_thread_id(c[..]))==ifx value=="" then "prior" else "t";
+ }}
+ c:[1]CxClient;b:[1]CxTest;cx_test_client(c[..],b[..]);_=cx_feed(c[..],"{\"method\":\"turn/started\",\"params\":{\"turn\":{\"id\":\"t\"}}}");#assert cx_turn_id(c[..])=="t";
+ raw:[4608]u8;o:[1]Jo;for n:[3]int.[4095,4096,4097] {jo_start(o[..],raw[..]);jo_put(o[..],"{\"id\":1,\"method\":\"item/permissions/requestApproval\",\"params\":{\"permissions\":{\"a\":\"");for i:0..<n-8 {jo_put(o[..],"x");}jo_put(o[..],"\"}}}");_=cx_feed(c[..],jo_text(o[..]));#assert c[0].ask_grant_n==ifx n<=4096 then n else 0;}
+}

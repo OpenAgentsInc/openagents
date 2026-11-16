@@ -51,3 +51,40 @@ Main subsequently replaces the iOS carrier in #13645. The owner explicitly
 assigned wiring into that new screen to #13645 on 2026-11-16. These installed
 phone receipts qualify the previous carrier and the shared server/resident
 contract; they do not claim the replacement screen already runs task UI.
+
+The final reducer also declines permissions arriving after Stop, including a
+prompt that arrives while the owning turn is being reconciled. Stop before a
+turn ID, a new turn ID during reconciliation, transport diagnostics, missing
+turns and terminal races have separate state-matrix checks. The regression
+fails before the late-permission guard (`native-late-approval-red.log`).
+
+The final changed-procedure gates on immutable source
+`7ff610d19021b94025773d9864acd19d94119e19` and its unchanged engine dependencies:
+
+| Owner | Checks | Mutants | Killed | Reviewed equivalents | Unresolved |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Primary Codex client (`native-matrix5`) | 129 | 196 | 183 | 13 | 0 |
+| Transport outcome (`native-matrix6`) | 27 | 6 | 6 | 0 | 0 |
+| Codex engine (`native-final-engine`) | 201 | 644 | 625 | 19 | 0 |
+
+The primary receipt's earlier 68-site gate remains valid; its source did not
+change. Counts overlap through imports. Reviewed equivalents are documented
+at their sites, including native object-end tokens that cannot be field
+values and later validators that reject the same malformed identity.
+
+After remote C emission and Mac SDK linking, the isolated staging resident
+ran task `0a85eca5df928f0ba4eff20256b146d3` on native session
+`01a1e332-f5e3-7450-97a8-94215483c420`. The installed CLI denied permission
+at revision 8, then requested Stop while the model was running. Stop's reply
+truthfully reported `running`, revision 11, with cancellation requested.
+Subsequent native observation confirmed `canceled`, revision 12, with no held
+interaction or error. The account turn separately saved `cancelled`.
+Neither requested file exists. This live observation does not assert that a
+late prompt actually occurred; the deterministic regression covers that race.
+
+The verified complete capture is 1,092 bytes, SHA-256
+`a373dc33bf7205f55024b1c89789d17ebd2bd26333715ce57e6a37e7304778c9`.
+Receipts use the `staging-late-stop-` prefix in the artifact directory; the
+capture remains in the private qualification workspace. The prior real patch,
+UIKit Allow/Deny/Stop, retry and cross-account observations remain recorded
+in [the staging qualification](2026-11-15-chat-native-staging.md).

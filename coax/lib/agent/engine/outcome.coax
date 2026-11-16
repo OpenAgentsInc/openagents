@@ -35,3 +35,12 @@ cxe_result_outcome :: (status:string,has_error:bool)->int #effects(all) {
  if status=="interrupted" {return S_END_CANCELED;}if has_error || status=="failed" {return S_END_FAILED;}
  return ifx status=="completed" then S_END_SUCCESS else S_END_UNKNOWN;
 }
+
+#test "transport failures retain even one stderr byte before native or fallback diagnostics" {
+ #assert e_transport_error("native","stderr","fallback")=="stderr" && e_transport_error("native","s","fallback")=="s";
+ #assert e_transport_error("native","","fallback")=="native" && e_transport_error("n","","fallback")=="n";
+ #assert e_transport_error("","","fallback")=="fallback";
+}
+e_transport_error :: (native:string,stderr:string,fallback:string)->string #effects(all) {
+ if stderr.count>0 {return stderr;}if native.count>0 {return native;}return fallback;
+}

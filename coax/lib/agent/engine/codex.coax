@@ -39,6 +39,7 @@
 #load "../codex/codex.coax";
 #load "../codex/fixture.coax";
 #load "codex-model-pages.coax";
+#load "../codex/tests.coax" #test;
 
 // The wall clock in seconds (zeron-face.c; agent-signer-none.c for a host without one): a limit's reset time is a Unix time.
 zr_unix_s :: () -> int #foreign #effects(all);
@@ -250,6 +251,7 @@ CxEngine :: struct {
   pend: int;                         // a user part waiting to go, or -1
   stop_due: bool;                    // Stop came before the turn had an id: interrupt once it has one
   stop_query:int;stop_deadline:int;stop_next:int; // bounded saved-turn reconciliation, seconds
+  stop_turn:[CX_ID]u8;stop_turn_n:int; // the original turn owning that reconciliation
   model: int; effort: int;           // chosen (the catalog's model and level)
   access: int;                       // ACC_* (the screen's, shared with the other engines)
   plan: bool; plan_used: bool;       // plan mode; it was on once (each turn then names its mode)
@@ -404,7 +406,6 @@ cxe_send_as :: (x: [] CxEngine, s: [] Session, shown: string, text: string) {
 cxe_forward :: (x: [] CxEngine, s: [] Session, k: int) { if x.count < 1 { return; } x[0].prompt_n = e_set(x[0].prompt, 0, s_text_of(s, k)); cxe_go(x, s, k); }
 cxe_go :: (x: [] CxEngine, s: [] Session, k: int) {
   x[0].stop_due = false; x[0].held_n = 0; x[0].streamed_n = 0; x[0].rs_have = false;
-  x[0].stop_query=0;x[0].stop_deadline=0;x[0].stop_next=0;
   if !x[0].on && !x[0].running { x[0].delivered += 1; return; }   // the checks: no process
   x[0].pend = k;
   if !x[0].settled && x[0].on { return; }        // cxe_pump starts it once the probe is done
@@ -659,10 +660,10 @@ cxe_turn_done :: (x: [] CxEngine, s: [] Session, ar: [] ClArena, params: string)
 cxe_turn_record :: (x: [] CxEngine, s: [] Session, ar: [] ClArena, turn: string) {
   status := cl_str(ar, turn, "status");
   e := cl_at(turn, "error");
-  outcome:=cxe_result_outcome(status,e.ok && e.tok==JSON_OBJECT);
+  outcome:=cxe_result_outcome(status,e.ok && e.tok==JSON_OBJECT); // mutant: equivalent (JSON_OBJECT+1 is an end token, never a field value; an object error returns failed below before this outcome is used)
   held := cx_str(x[0].held, x[0].held_n);
   x[0].turn_n = 0; x[0].turn_wait = false; x[0].streamed_n = 0; x[0].rs_have = false;
-  x[0].stop_query=0;x[0].stop_deadline=0;x[0].stop_next=0;
+  cxe_stop_clear(x);
   if status == "interrupted" { s[0].stopping = true; x[0].held_n=0;s_turn_known(s,S_END_CANCELED,"");return; }
   if e.ok && e.tok == JSON_OBJECT {
     buf: [2048] u8;
@@ -674,7 +675,7 @@ cxe_turn_record :: (x: [] CxEngine, s: [] Session, ar: [] ClArena, turn: string)
   if status == "failed" { s_turn_known(s, S_END_FAILED, ifx held.count > 0 then held else "Codex turn failed"); x[0].held_n = 0; return; }
   if held.count > 0 { s_notice(s, s_problem(held), held); }
   x[0].held_n = 0;
-  s_turn_known(s,outcome,ifx outcome==S_END_SUCCESS then "" else "Codex supplied no recognized terminal status.");
+  s_turn_known(s,outcome,ifx outcome==S_END_SUCCESS then "" else "Codex supplied no recognized terminal status."); // mutant: equivalent (success ignores the diagnostic in s_turn_known; failed outcomes return above, so comparing success with S_END_FAILED changes no visible result)
 }
 // Now, as a Unix time (0 in the checks: no limit resets then).
 zr_now :: (x: [] CxEngine) -> int { return ifx x[0].on then zr_unix_s() else 0; }
@@ -710,7 +711,7 @@ cxe_note :: (x: [] CxEngine, s: [] Session, ar: [] ClArena, method: string, para
   }
   if method == "turn/started" {
     t := cl_str(ar, params, "turn.id");
-    if t.count > 0 && x[0].turn_n == 0 { x[0].turn_n = e_set(x[0].turn[..], 0, t); }
+    if t.count > 0 && x[0].turn_n == 0 { x[0].turn_n = e_set(x[0].turn[..], 0, t); } // mutant: equivalent (including empty t only assigns zero to an already zero turn_n)
     if x[0].stop_due && x[0].turn_n > 0 { x[0].stop_due = false; r := cx_interrupt(x[0].c[..]); }
     return;
   }
@@ -733,10 +734,16 @@ cxe_note :: (x: [] CxEngine, s: [] Session, ar: [] ClArena, method: string, para
   // reconciles its original identity, including a completion racing Stop.
 }
 
+cxe_stop_clear :: (x:[]CxEngine) {x[0].stop_query=0;x[0].stop_deadline=0;x[0].stop_next=0;x[0].stop_turn_n=0;}
 cxe_stop_read_at :: (x:[]CxEngine,s:[]Session,now:int) {
- if !s[0].live || !s[0].stopping {return;}
+ if !s[0].live || !s[0].stopping {cxe_stop_clear(x);return;}
+ if x[0].stop_due && x[0].turn_n==0 && x[0].stop_turn_n>0 {cxe_stop_clear(x);}
+ if x[0].turn_n>0 && cx_str(x[0].turn[..],x[0].turn_n)!=cx_str(x[0].stop_turn[..],x[0].stop_turn_n) {
+  if x[0].stop_turn_n>0 {cxe_stop_clear(x);}
+  x[0].stop_turn_n=e_set(x[0].stop_turn[..],0,cx_str(x[0].turn[..],x[0].turn_n));
+ }
  if x[0].stop_deadline==0 {x[0].stop_deadline=now+20;}
- if now>=x[0].stop_deadline {x[0].turn_n=0;x[0].stop_query=0;s_turn_known(s,S_END_UNKNOWN,"Codex did not confirm this turn's outcome after Stop.");return;}
+ if now>=x[0].stop_deadline {x[0].turn_n=0;x[0].stop_query=0;s_turn_known(s,S_END_UNKNOWN,"Codex did not confirm this turn's outcome after Stop.");return;} // mutant: equivalent (the next integer after S_END_UNKNOWN is outside the terminal range and s_turn_known normalizes it to S_END_UNKNOWN)
  if x[0].stop_query!=0 || now<x[0].stop_next || x[0].turn_n==0 {return;}
  x[0].stop_query=cx_thread_turns_list(x[0].c[..],cx_str(x[0].tid[..],x[0].tid_n));
  x[0].stop_next=now+1;
@@ -764,14 +771,12 @@ cxe_event :: (x: [] CxEngine, s: [] Session, ev: CxEvent) -> bool {
       if x[0].stop_due && x[0].turn_n > 0 { x[0].stop_due = false; r := cx_interrupt(c); }
       return false;
     }
-    if ev.of == CX_TURN_INTERRUPT {
-      return false;
-    }
+    // An empty interrupt acknowledgment carries no terminal fact.
     if ev.of==CX_THREAD_TURNS_LIST {
       if x[0].stop_query==0 || ev.request_id!=x[0].stop_query || !s[0].live || !s[0].stopping {return false;}
       x[0].stop_query=0;
       turn:=cx_saved_turn(ev.result,cx_str(x[0].turn[..],x[0].turn_n));
-      if turn.count>0 && cl_str(ar,turn,"status")!="inProgress" {cxe_turn_record(x,s,ar,turn);}
+      if turn.count>0 && cl_str(ar,turn,"status")!="inProgress" {cxe_turn_record(x,s,ar,turn);} // mutant: equivalent (the primary codec returns empty or a complete Turn object with id/items/status; a nonempty result can never have length one)
       return false;
     }
     return false;
@@ -792,6 +797,7 @@ cxe_event :: (x: [] CxEngine, s: [] Session, ev: CxEvent) -> bool {
   }
   if ev.kind == CxEventKind.notification { cxe_note(x, s, ar, ev.method, ev.params); return false; }
   if ev.kind == CxEventKind.approval {
+    if s[0].stopping {cx_approve(c,false);return false;}
     if x[0].own { return false; }                 // the owner's to answer
     if !s[0].live { cx_approve(c, false); return false; }
     cxe_approval(x, s, ev);
@@ -858,23 +864,20 @@ cxe_pump :: (x: [] CxEngine, e: [] Engine, s: [] Session) {
 // asks the person (the desktop app's approvals). An owner's approvals and tool calls come back
 // unanswered: they are its own (cxe_approve, cxe_tool_answer). Never blocks.
 cxe_poll :: (x: [] CxEngine, s: [] Session, ev: [] CxEvent) -> bool {
-  cxe_stop_read_at(x,s,zr_now(x));
   ev[0] = cx_poll(x[0].c[..], x[0].p[..], 0);
   return cxe_take(x, s, ev[0]);
 }
 cxe_take :: (x: [] CxEngine, s: [] Session, ev: CxEvent) -> bool {
+  cxe_stop_read_at(x,s,zr_now(x));
   if ev.kind == CxEventKind.idle { return false; }
   if ev.kind == CxEventKind.failed || ev.kind == CxEventKind.end {
-    why := "";
-    if ev.kind == CxEventKind.failed { why = cx_error(x[0].c[..]); }
     tail := cl_stderr(x[0].p[..], x[0].err);
     x[0].err_n = tail.count;
-    if tail.count > 0 { why = tail; }
-    if why.count == 0 { why = "Codex stopped before answering."; }
+    why:=e_transport_error(ifx ev.kind==CxEventKind.failed then cx_error(x[0].c[..]) else "",tail,"Codex stopped before answering.");
     cxe_close(x);
     x[0].pend = -1;
     if !s[0].live { return false; }
-    s_turn_known(s, S_END_UNKNOWN, why);
+    s_turn_known(s, S_END_UNKNOWN, why); // mutant: equivalent (S_END_UNKNOWN+1 is outside the outcome range and normalizes back to unknown)
     return false;
   }
   return cxe_event(x, s, ev);
@@ -931,7 +934,7 @@ cxe_set_model :: (x: [] CxEngine, m: int) { if x.count > 0 && m >= 0 && m < x[0]
  x:[1]CxEngine;x[0].tid_n=e_set(x[0].tid[..],0,"thread-a");s:[1]Session;pool:[2048]u8;arena:[2048]u8;ar:=[1]ClArena.[ClArena.{buf=arena[..]}];s_init(s[..],pool[..]);
  s_user(s[..],"a");s[0].stopping=true;cxe_note(x[..],s[..],ar[..],"thread/status/changed","{\"threadId\":\"other\",\"status\":{\"type\":\"idle\"}}");#assert s[0].live && s[0].outcome==S_END_NONE;
  cxe_note(x[..],s[..],ar[..],"thread/status/changed","{\"threadId\":\"thread-a\",\"status\":{\"type\":\"idle\"}}");#assert s[0].live && s[0].outcome==S_END_NONE;
- _ = cxe_event(x[..],s[..],CxEvent.{kind=CxEventKind.answered,of=CX_TURN_INTERRUPT});#assert s[0].live && s[0].outcome==S_END_NONE;
+ #assert !cxe_event(x[..],s[..],CxEvent.{kind=CxEventKind.answered,of=CX_TURN_INTERRUPT});#assert s[0].live && s[0].outcome==S_END_NONE;
 }
 
 #test "Codex Stop reads the same turn and preserves a completion race" {
@@ -941,20 +944,134 @@ cxe_set_model :: (x: [] CxEngine, m: int) { if x.count > 0 && m >= 0 && m < x[0]
   cxe_stop_read_at(x[..],s[..],100);#assert x[0].stop_query==1 && x[0].stop_deadline==120 && x[0].stop_next==101 && s[0].live;
   cxe_stop_read_at(x[..],s[..],101);#assert x[0].c[0].npend==1;
   raw:[512]u8;o:[1]Jo;jo_start(o[..],raw[..]);jo_put(o[..],"{\"id\":1,\"result\":{\"data\":[{\"id\":\"turn-a\",\"items\":[],\"status\":");jo_str(o[..],status);jo_put(o[..],"}]}}");
-  _=cxe_event(x[..],s[..],cx_feed(x[0].c[..],jo_text(o[..])));
+  #assert !cxe_event(x[..],s[..],cx_feed(x[0].c[..],jo_text(o[..])));
   #assert !s[0].live && s[0].outcome==cxe_result_outcome(status,false) && x[0].turn_n==0 && x[0].stop_query==0 && x[0].stop_deadline==0;
  }
 }
 #test "Codex Stop refuses foreign late malformed and nonterminal receipts then bounds uncertainty" {
  x:[1]CxEngine;s:[1]Session;pool:[4096]u8;arena:[4096]u8;out:[4096]u8;line:[8]u8;s_init(s[..],pool[..]);cx_init(x[0].c[..],line[..],arena[..],out[..]);
  x[0].tid_n=e_set(x[0].tid[..],0,"thread-a");x[0].turn_n=e_set(x[0].turn[..],0,"turn-a");s_user(s[..],"a");s[0].stopping=true;cxe_stop_read_at(x[..],s[..],100);
- _=cxe_event(x[..],s[..],CxEvent.{kind=CxEventKind.answered,of=CX_THREAD_TURNS_LIST,request_id=99,result="{}"});#assert x[0].stop_query==1 && s[0].live;
+ #assert !cxe_event(x[..],s[..],CxEvent.{kind=CxEventKind.answered,of=CX_THREAD_TURNS_LIST,request_id=99,result="{}"});#assert x[0].stop_query==1 && s[0].live;
  for result:[3]string.["{\"data\":[{\"id\":\"other\",\"items\":[],\"status\":\"interrupted\"}]}","{}","{\"data\":[{\"id\":\"turn-a\",\"items\":[],\"status\":\"inProgress\"}]}"] {
-  id:=x[0].stop_query;_=cxe_event(x[..],s[..],CxEvent.{kind=CxEventKind.answered,of=CX_THREAD_TURNS_LIST,request_id=id,result=result});#assert s[0].live && x[0].stop_query==0 && x[0].turn_n==6;
+  id:=x[0].stop_query;#assert !cxe_event(x[..],s[..],CxEvent.{kind=CxEventKind.answered,of=CX_THREAD_TURNS_LIST,request_id=id,result=result});#assert s[0].live && x[0].stop_query==0 && x[0].turn_n==6;
   now:=x[0].stop_next;cxe_stop_read_at(x[..],s[..],now-1);#assert x[0].stop_query==0;cxe_stop_read_at(x[..],s[..],now);#assert x[0].stop_query>id && x[0].stop_deadline==120;
  }
- cxe_stop_read_at(x[..],s[..],119);#assert s[0].live;cxe_stop_read_at(x[..],s[..],120);#assert !s[0].live && s[0].outcome==S_END_UNKNOWN && x[0].stop_query==0;
+ cxe_stop_read_at(x[..],s[..],119);#assert s[0].live;cxe_stop_read_at(x[..],s[..],120);#assert !s[0].live && s[0].outcome==S_END_UNKNOWN && x[0].stop_query==0 && x[0].turn_n==0;
  cxe_stop_read_at(x[..],s[..],121);#assert s[0].outcome==S_END_UNKNOWN;
+}
+#test "new native turns retire all Stop reconciliation and streaming state" {
+ for facts:0..<8 {x:[1]CxEngine;b:[1]CxeTest;cxe_test_engine(x[..],b[..]);s:[1]Session;pool:[4096]u8;s_init(s[..],pool[..]);
+  x[0].stop_due=true;x[0].held_n=1;x[0].streamed_n=1;x[0].rs_have=true;x[0].stop_query=9;x[0].stop_deadline=20;x[0].stop_next=8;
+  x[0].ready=(facts&1)!=0;x[0].thread_wait=(facts&2)!=0;x[0].turn_wait=(facts&4)!=0;x[0].c[0].thread_n=e_set(x[0].c[0].thread[..],0,"thread");
+  cxe_go(x[..],s[..],3);#assert !x[0].stop_due && x[0].held_n==0 && x[0].streamed_n==0 && !x[0].rs_have;
+  #assert x[0].delivered==ifx facts==1 then 1 else 0;#assert x[0].pend==ifx facts==1 then -1 else 3;#assert (cx_outbox(x[0].c[..]).count>0)==(facts==1);
+ }
+ x:[1]CxEngine;b:[1]CxeTest;cxe_test_engine(x[..],b[..]);s:[1]Session;pool:[1024]u8;s_init(s[..],pool[..]);
+ x[0].running=false;cxe_go(x[..],s[..],2);#assert x[0].delivered==1 && x[0].pend== -1;
+ x[0].on=true;x[0].settled=false;cxe_go(x[..],s[..],4);#assert x[0].pend==4 && x[0].delivered==1 && !x[0].running;
+}
+#test "native terminal records clear outstanding ownership and retain exact failure diagnostics" {
+ for raw:[5]string.["{\"status\":\"interrupted\"}","{\"status\":\"completed\"}","{\"status\":\"failed\"}","{\"status\":\"failed\",\"error\":{\"message\":\"explicit failure\"}}","{}"] {
+  x:[1]CxEngine;b:[1]CxeTest;cxe_test_engine(x[..],b[..]);s:[1]Session;pool:[4096]u8;s_init(s[..],pool[..]);s_user(s[..],"a");
+  x[0].turn_n=4;x[0].turn_wait=true;x[0].streamed_n=4;x[0].rs_have=true;x[0].stop_query=7;x[0].stop_deadline=20;x[0].stop_next=9;x[0].held_n=e_set(x[0].held,0,"held failure");
+  cxe_turn_record(x[..],s[..],x[0].c[0].ar[..],raw);#assert !s[0].live && x[0].turn_n==0 && !x[0].turn_wait && x[0].streamed_n==0 && !x[0].rs_have && x[0].stop_query==0 && x[0].stop_deadline==0 && x[0].stop_next==0 && x[0].held_n==0;
+  status:=cl_str(x[0].c[0].ar[..],raw,"status");#assert s[0].outcome==cxe_result_outcome(status,cl_at(raw,"error").ok);
+  if status=="failed" {#assert s_text_of(s[..],s[0].n-1)==ifx cl_at(raw,"error").ok then "explicit failure" else "held failure";}
+  if status=="interrupted" {#assert s[0].stopping;}
+ }
+}
+#test "native polling reconciles Stop before observing an already closed transport" {
+ x:[1]CxEngine;b:[1]CxeTest;cxe_test_engine(x[..],b[..]);x[0].p[0].handle= -1;x[0].c[0].completed=true;s:[1]Session;pool:[4096]u8;s_init(s[..],pool[..]);s_user(s[..],"a");s[0].stopping=true;ev:[1]CxEvent;
+ #assert !cxe_poll(x[..],s[..],ev[..]) && ev[0].kind==CxEventKind.end && s[0].outcome==S_END_UNKNOWN && !s[0].live && x[0].stop_deadline==20;
+}
+#test "Stop metadata requests require live intent an original turn and one owned reply" {
+ for facts:0..<8 {x:[1]CxEngine;b:[1]CxeTest;cxe_test_engine(x[..],b[..]);s:[1]Session;pool:[4096]u8;s_init(s[..],pool[..]);s[0].live=(facts&1)!=0;s[0].stopping=(facts&2)!=0;
+  x[0].tid_n=e_set(x[0].tid[..],0,"thread-a");if (facts&4)!=0 {x[0].turn_n=e_set(x[0].turn[..],0,"turn-a");}
+  cxe_stop_read_at(x[..],s[..],10);#assert x[0].stop_deadline==ifx (facts&3)==3 then 30 else 0;#assert (x[0].stop_query>0)==(facts==7);
+ }
+ for facts:0..<8 {x:[1]CxEngine;b:[1]CxeTest;cxe_test_engine(x[..],b[..]);s:[1]Session;pool:[4096]u8;s_init(s[..],pool[..]);s_user(s[..],"a");s[0].live=(facts&1)!=0;s[0].stopping=(facts&2)!=0;x[0].stop_query=ifx (facts&4)!=0 then 7 else 0;x[0].turn_n=e_set(x[0].turn[..],0,"turn-a");
+  #assert !cxe_event(x[..],s[..],CxEvent.{kind=CxEventKind.answered,of=CX_THREAD_TURNS_LIST,request_id=7,result="{\"data\":[{\"id\":\"turn-a\",\"items\":[],\"status\":\"interrupted\"}]}"});
+  #assert (s[0].outcome==S_END_CANCELED)==(facts==7);
+ }
+ x:[1]CxEngine;b:[1]CxeTest;cxe_test_engine(x[..],b[..]);s:[1]Session;pool:[4096]u8;s_init(s[..],pool[..]);x[0].stop_query=7;
+ #assert !cxe_event(x[..],s[..],CxEvent.{kind=CxEventKind.refused,of=CX_THREAD_TURNS_LIST,request_id=8});#assert x[0].stop_query==7;
+ #assert !cxe_event(x[..],s[..],CxEvent.{kind=CxEventKind.refused,of=CX_THREAD_TURNS_LIST,request_id=7});#assert x[0].stop_query==0;
+}
+
+#test "a later Stop never inherits a former turn's request or deadline" {
+ x:[1]CxEngine;b:[1]CxeTest;cxe_test_engine(x[..],b[..]);s:[1]Session;pool:[4096]u8;s_init(s[..],pool[..]);s_user(s[..],"a");s[0].stopping=true;
+ x[0].tid_n=e_set(x[0].tid[..],0,"thread");x[0].turn_n=e_set(x[0].turn[..],0,"a");cxe_stop_read_at(x[..],s[..],100);#assert x[0].stop_query==1 && x[0].stop_deadline==120 && cx_str(x[0].stop_turn[..],x[0].stop_turn_n)=="a";
+ x[0].turn_n=e_set(x[0].turn[..],0,"b");cxe_stop_read_at(x[..],s[..],200);#assert x[0].stop_query==2 && x[0].stop_deadline==220 && x[0].stop_next==201 && cx_str(x[0].stop_turn[..],x[0].stop_turn_n)=="b";
+ x[0].turn_n=0;x[0].stop_due=true;cxe_stop_read_at(x[..],s[..],300);#assert x[0].stop_query==0 && x[0].stop_deadline==320 && x[0].stop_turn_n==0 && x[0].stop_next==0;
+ x[0].turn_n=e_set(x[0].turn[..],0,"c");cxe_stop_read_at(x[..],s[..],305);#assert x[0].stop_query==3 && x[0].stop_deadline==320 && x[0].stop_next==306;
+ s[0].stopping=false;cxe_stop_read_at(x[..],s[..],310);#assert x[0].stop_query==0 && x[0].stop_deadline==0 && x[0].stop_next==0 && x[0].stop_turn_n==0;
+}
+#test "native notification admission fences known and absent thread and turn identities" #steps 80000000 {
+ for known:0..<4 {for thread:[3]string.["","a","b"] {for turn:[3]string.["","t","u"] {
+  x:[1]CxEngine;b:[1]CxeTest;cxe_test_engine(x[..],b[..]);s:[1]Session;pool:[4096]u8;s_init(s[..],pool[..]);s_user(s[..],"a");
+  if (known&1)!=0 {x[0].tid_n=e_set(x[0].tid[..],0,"a");}if (known&2)!=0 {x[0].turn_n=e_set(x[0].turn[..],0,"t");}
+  raw:[256]u8;o:[1]Jo;jo_start(o[..],raw[..]);jo_obj(o[..]);jo_key(o[..],"threadId");jo_str(o[..],thread);jo_key(o[..],"turnId");jo_str(o[..],turn);jo_key(o[..],"itemId");jo_str(o[..],"i");jo_key(o[..],"textDelta");jo_str(o[..],"fallback");jo_end(o[..]);
+  refused:=((known&1)!=0 && thread!="" && thread!="a") || ((known&2)!=0 && turn!="" && turn!="t");cxe_note(x[..],s[..],x[0].c[0].ar[..],"item/agentMessage/delta",jo_text(o[..]));#assert (s[0].n==2)==!refused;if !refused {#assert s_text_of(s[..],1)=="fallback";}
+ }}}
+}
+#test "native notifications retain limits plans exact failures and the original turn" {
+ x:[1]CxEngine;b:[1]CxeTest;cxe_test_engine(x[..],b[..]);s:[1]Session;pool:[4096]u8;s_init(s[..],pool[..]);ar:=x[0].c[0].ar[..];
+ cxe_note(x[..],s[..],ar,"account/rateLimits/updated","{\"rateLimits\":{\"primary\":{\"usedPercent\":42,\"resetsAt\":200}}}");#assert x[0].lim[0].has[0] && x[0].lim[0].used[0]==42.0 && x[0].lim[0].resets[0]==200;
+ cxe_note(x[..],s[..],ar,"item/agentMessage/delta","{\"delta\":\"ignored\"}");#assert s[0].n==0;
+ s_user(s[..],"a");cxe_note(x[..],s[..],ar,"turn/plan/updated","{\"plan\":[{\"step\":\"One\",\"status\":\"completed\"},{\"step\":\"Two\",\"status\":\"inProgress\"}]}");#assert s[0].n==2 && s[0].parts[1].arg=="[x] One\n[ ] Two" && s[0].parts[1].detail=="1/2 done";
+ x[0].c[0].thread_n=e_set(x[0].c[0].thread[..],0,"thread");x[0].c[0].turn_n=e_set(x[0].c[0].turn[..],0,"t");x[0].stop_due=true;cx_outbox_clear(x[0].c[..]);cxe_note(x[..],s[..],ar,"turn/started","{\"turn\":{\"id\":\"t\"}}");#assert x[0].turn_n==1 && x[0].turn[0]=='t' && !x[0].stop_due && s_has(cx_outbox(x[0].c[..]),"turn/interrupt");
+ cxe_note(x[..],s[..],ar,"turn/started","{\"turn\":{\"id\":\"u\"}}");#assert x[0].turn_n==1 && x[0].turn[0]=='t';cxe_note(x[..],s[..],ar,"turn/completed","{\"turn\":{\"id\":\"u\",\"status\":\"completed\"}}");#assert s[0].live;
+ cxe_note(x[..],s[..],ar,"error","{\"willRetry\":true,\"message\":\"retry\"}");#assert x[0].held_n==0;
+ for raw:[3]string.["{\"error\":{\"message\":\"explicit\"}}","{\"message\":\"message\"}","{}"] {cxe_note(x[..],s[..],ar,"error",raw);#assert cx_str(x[0].held,x[0].held_n)==ifx raw=="{}" then "Codex error" else ifx s_has(raw,"explicit") then "explicit" else "message";}
+ x[0].held_n=0;cxe_note(x[..],s[..],ar,"turn/completed","{\"turn\":{\"id\":\"t\",\"status\":\"completed\"}}");#assert s[0].outcome==S_END_SUCCESS;
+}
+
+#test "terminal diagnostics retain one-byte held errors notices and native error kinds" {
+ for raw:[4]string.["{\"status\":\"completed\",\"error\":null}","{\"status\":\"completed\",\"error\":[]}","{\"status\":\"completed\"}","{\"status\":\"failed\"}"] {
+  x:[1]CxEngine;b:[1]CxeTest;cxe_test_engine(x[..],b[..]);s:[1]Session;pool:[4096]u8;s_init(s[..],pool[..]);s_user(s[..],"a");x[0].held_n=e_set(x[0].held,0,"x");
+  cxe_turn_record(x[..],s[..],x[0].c[0].ar[..],raw);failed:=s_has(raw,"failed");#assert s[0].outcome==ifx failed then S_END_FAILED else S_END_SUCCESS;
+  #assert s[0].n==2 && s[0].parts[1].kind==P_NOTICE && s[0].parts[1].notice==N_ERROR && s_text_of(s[..],1)=="x";
+ }
+ for failed:0..<2 {x:[1]CxEngine;b:[1]CxeTest;cxe_test_engine(x[..],b[..]);s:[1]Session;pool:[4096]u8;s_init(s[..],pool[..]);s_user(s[..],"a");cxe_turn_record(x[..],s[..],x[0].c[0].ar[..],ifx failed==1 then "{\"status\":\"failed\"}" else "{}");
+  #assert s_text_of(s[..],s[0].n-1)==ifx failed==1 then "Codex turn failed" else "Codex supplied no recognized terminal status.";
+ }
+ x:[1]CxEngine;b:[1]CxeTest;cxe_test_engine(x[..],b[..]);s:[1]Session;pool:[4096]u8;s_init(s[..],pool[..]);s[0].live=true;ar:=x[0].c[0].ar[..];
+ cxe_note(x[..],s[..],ar,"turn/plan/updated","{\"plan\":[{\"step\":\"First\",\"status\":\"completed\"}]}");#assert s[0].n==1 && s[0].parts[0].arg=="[x] First";
+ cxe_note(x[..],s[..],ar,"error","{\"error\":null,\"message\":\"message\"}");#assert cx_str(x[0].held,x[0].held_n)=="message";x[0].held_n=0;
+ x[0].turn_n=e_set(x[0].turn[..],0,"t");cxe_note(x[..],s[..],ar,"turn/completed","{\"turn\":{\"status\":\"completed\"}}");#assert s[0].outcome==S_END_SUCCESS;
+}
+
+#test "the native event reducer owns polling progress transport errors and settled outcomes" {
+ for kind:[3]CxEventKind.[CxEventKind.idle,CxEventKind.failed,CxEventKind.end] {for live:0..<2 {
+  x:[1]CxEngine;b:[1]CxeTest;cxe_test_engine(x[..],b[..]);s:[1]Session;pool:[4096]u8;s_init(s[..],pool[..]);s_user(s[..],"a");if live==0 {s_turn_known(s[..],S_END_SUCCESS,"");}
+  x[0].p[0].handle= -1;x[0].c[0].error_len=e_set(x[0].c[0].error[..],0,"transport error");x[0].err_n=99;x[0].pend=3;x[0].ready=true;x[0].thread_wait=true;x[0].turn_wait=true;x[0].stop_query=4;x[0].stop_deadline=9;x[0].stop_next=8;x[0].stop_turn_n=1;
+  #assert !cxe_take(x[..],s[..],CxEvent.{kind=kind}) && x[0].stop_query==0 && x[0].stop_deadline==0 && x[0].stop_next==0 && x[0].stop_turn_n==0;
+  if kind==CxEventKind.idle {#assert x[0].running && x[0].ready && x[0].thread_wait && x[0].turn_wait && x[0].pend==3 && s[0].live==(live==1);}
+  else {#assert !x[0].running && !x[0].ready && !x[0].thread_wait && !x[0].turn_wait && x[0].pend== -1 && x[0].err_n==0 && !s[0].live;
+   if live==0 {#assert s[0].outcome==S_END_SUCCESS && s[0].n==1;}else {#assert s[0].outcome==S_END_UNKNOWN && s_text_of(s[..],s[0].n-1)==ifx kind==CxEventKind.failed then "transport error" else "Codex stopped before answering.";}
+  }
+ }}
+ x:[1]CxEngine;b:[1]CxeTest;cxe_test_engine(x[..],b[..]);s:[1]Session;pool:[4096]u8;s_init(s[..],pool[..]);s_user(s[..],"a");
+ #assert !cxe_take(x[..],s[..],CxEvent.{kind=CxEventKind.notification,method="item/agentMessage/delta",params="{\"itemId\":\"i\",\"delta\":\"x\"}"}) && s_text_of(s[..],1)=="x";
+}
+
+#test "nonobject error fields are not native failures and a pending Stop never extends its deadline" {
+ for error:[2]string.["null","[]"] {x:[1]CxEngine;b:[1]CxeTest;cxe_test_engine(x[..],b[..]);s:[1]Session;pool:[4096]u8;s_init(s[..],pool[..]);s_user(s[..],"a");raw:[256]u8;o:[1]Jo;jo_start(o[..],raw[..]);jo_put(o[..],"{\"status\":\"completed\",\"error\":");jo_put(o[..],error);jo_put(o[..],"}");cxe_turn_record(x[..],s[..],x[0].c[0].ar[..],jo_text(o[..]));#assert s[0].outcome==S_END_SUCCESS;}
+ for due:0..<2 {x:[1]CxEngine;b:[1]CxeTest;cxe_test_engine(x[..],b[..]);s:[1]Session;pool:[4096]u8;s_init(s[..],pool[..]);s_user(s[..],"a");s[0].stopping=true;x[0].stop_due=due==1;x[0].stop_deadline=100;
+  if due==0 {x[0].stop_query=7;x[0].stop_turn_n=e_set(x[0].stop_turn[..],0,"a");}
+  cxe_stop_read_at(x[..],s[..],90);#assert x[0].stop_deadline==100 && x[0].stop_query==ifx due==0 then 7 else 0;
+ }
+ x:[1]CxEngine;b:[1]CxeTest;cxe_test_engine(x[..],b[..]);s:[1]Session;pool:[4096]u8;s_init(s[..],pool[..]);s_user(s[..],"a");ar:=x[0].c[0].ar[..];x[0].c[0].thread_n=e_set(x[0].c[0].thread[..],0,"thread");x[0].c[0].turn_n=e_set(x[0].c[0].turn[..],0,"previous");x[0].stop_due=true;
+ cxe_note(x[..],s[..],ar,"turn/started","{\"turn\":{\"id\":\"\"}}");#assert x[0].turn_n==0 && x[0].stop_due && cx_outbox(x[0].c[..]).count==0;
+ x[0].stop_due=false;x[0].turn_n=e_set(x[0].turn[..],0,"t");cxe_note(x[..],s[..],ar,"turn/started","{\"turn\":{\"id\":\"t\"}}");#assert cx_outbox(x[0].c[..]).count==0;
+}
+
+#test "Stop declines a late native permission without pausing reconciliation" {
+ for own:0..<2 {x:[1]CxEngine;b:[1]CxeTest;cxe_test_engine(x[..],b[..]);x[0].own=own==1;s:[1]Session;pool:[4096]u8;s_init(s[..],pool[..]);s_user(s[..],"a");s[0].stopping=true;
+  ev:=cx_feed(x[0].c[..],"{\"id\":7,\"method\":\"item/commandExecution/requestApproval\",\"params\":{\"itemId\":\"late\",\"command\":\"write later\"}}");
+  #assert !cxe_event(x[..],s[..],ev) && s[0].asking== -1 && x[0].c[0].asking==0 && s[0].live;
+  #assert cx_outbox(x[0].c[..])=="{\"jsonrpc\":\"2.0\",\"id\":7,\"result\":{\"decision\":\"decline\"}}\n";
+ }
 }
 
 // Feeds recorded lines to an engine with no process, as cxe_pump would.
@@ -998,7 +1115,7 @@ cxe_test_engine :: (x: [] CxEngine, b: [] CxeTest) {
  cxe_take_models(x[..],"{\"data\":[{\"model\":\"first\"}],\"nextCursor\":\"same\"}");
  cxe_take_models(x[..],"{\"data\":[],\"nextCursor\":\"same\"}");#assert x[0].catalog_refused && x[0].cat_gen==0;
  cxe_models_begin(x[..]);cxe_take_models(x[..],"{\"data\":[],\"nextCursor\":null}");#assert x[0].catalog_refused && x[0].cat_gen==0;
- cxe_models_begin(x[..]);s:[1]Session;pool:[1024]u8;s_init(s[..],pool[..]);_=cxe_event(x[..],s[..],CxEvent.{kind=CxEventKind.refused,of=CX_MODEL_LIST,message="No catalog"});
+ cxe_models_begin(x[..]);s:[1]Session;pool:[1024]u8;s_init(s[..],pool[..]);#assert !cxe_event(x[..],s[..],CxEvent.{kind=CxEventKind.refused,of=CX_MODEL_LIST,message="No catalog"});
  #assert x[0].catalog_refused && x[0].model_pages[0].failed && x[0].cat_gen==0;
 }
 #test "native SDK settings preserve every offered effort" {

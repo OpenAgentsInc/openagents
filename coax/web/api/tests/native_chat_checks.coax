@@ -3,10 +3,10 @@
 #load "../account-chat-task-route.coax";
 #load "../account-chat-native-fixture.coax";
 #load "../../../lib/agent/environment/execution-fixtures.coax";
-nct_answer :: (out:[]u8)->int #effects(all) {
- input:[1]ExInput;ex_test_input(input[..]);raw:[8192]u8;report:[RTR_REPORT_MAX]u8;h:[1]CtnRouter;body:[32768]u8;now:=cxproc_wall_us()/1000;n:=ex_input_write(input[..],raw[..]);r:=ncf_station(EX_TEST_HASH,report[..]);
+nct_answer :: (out:[]u8,claude:bool)->int #effects(all) {
+ input:[1]ExInput;ex_test_input(input[..]);raw:[8192]u8;report:[RTR_REPORT_MAX]u8;h:[1]CtnRouter;body:[32768]u8;n:=ex_input_write(input[..],raw[..]);r:=ncf_station(EX_TEST_HASH,report[..]);now:=cxproc_wall_us()/1000;
  if n<1 || r<1 || !ctn_init(h[..],cast(string)raw[0..<n],now) || !ctn_report_add(h[..],EX_TEST_HASH,"Native fixture Mac",cast(string)report[0..<r]) || ctn_route_begin(h[..],now,body[..])<1 {return -1;}
- answer:=rtr_mock(h[0].w[..],"engine=codex,difficulty=3,effort=high,weight=0,needs=apple,named_station=none,named_engine=none,named_depth=none",0);j:[1]Jv;nodes:[1024]JvNode;if answer.status!=200 || !jv_parse(j[..],answer.body,nodes[..]) {return -1;}
+ answer:=rtr_mock(h[0].w[..],ifx claude then "engine=claude,difficulty=3,effort=high,weight=0,needs=apple,named_station=none,named_engine=none,named_depth=none" else "engine=codex,difficulty=3,effort=high,weight=0,needs=apple,named_station=none,named_engine=none,named_depth=none",0);j:[1]Jv;nodes:[1024]JvNode;if answer.status!=200 || !jv_parse(j[..],answer.body,nodes[..]) {return -1;}
  o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"answers");jo_obj(o[..]);a:=jv_get(j[0],0,"answers");for i:0..<jv_len(j[0],a) {at:=jv_at(j[0],a,i);jo_key(o[..],jv_key(j[0],at));jv_write(j[0],at,o[..]);}
  jo_key(o[..],"native_work");jo_raw(o[..],"{\"type\":\"noul\",\"noul\":1,\"confidence\":1}");jo_key(o[..],"native_model");jo_raw(o[..],"{\"type\":\"choice\",\"choice\":\"m00e01\",\"confidence\":1,\"probabilities\":{\"m00e00\":0,\"m00e01\":1}}");jo_end(o[..]);jo_end(o[..]);return ex_encoded(o[..]);
 }
@@ -55,6 +55,18 @@ nct_capture_case :: (t:[]Ap,c:[]Sc,project:string,message:string,root:string) {
  }
  _=fs_remove(toggle);
 }
+nct_account_case :: (t:[]Ap,c:[]Sc,project:string,message:string) {
+ start:=[10]string.["chat","new","--project",project,"--project-rev","1","--file",message,"--operation-id","native-account-choice"];st:=sc_cli(t,c,start[..]);control:[1]CtControl;arena:[72]u8;turn:[36]u8;ok:=st==0 && ctr_control_read(sc_text(c),control[..],arena[..]);if ok {_=js_copy(turn[..],control[0].turn);}tid:=cast(string)turn[..];
+ ap_check(t,"account selection starts with a separately admitted native turn",ok,sc_text(c));if !ok {return;}
+ ap_check(t,"native account preflight uses the existing provider account process",nct_claim_run(t,tid,"account-start") && nct_claim_run(t,tid,"account-observe"),ap_body(t));
+ inspect:=[3]string.["chat","task",tid];st=sc_cli(t,c,inspect[..]);task:[1]CttTask;ta:[CTT_ARENA]u8;ok=st==0 && ctt_read(sc_text(c),task[..],ta[..]);
+ ap_check(t,"the saved binding selects the fresh Claude profile while system quota is exhausted",ok && task[0].binding.engine=="claude" && task[0].binding.account==EX_TEST_ID && task[0].offer.account==EX_TEST_ID,sc_text(c));if !ok {return;}
+ show:=[4]string.["tasks","show",EX_TEST_HASH,cast(string)tid[4..<36]];st=sc_cli(t,c,show[..]);v:[1]XtStatus;va:[2048]u8;ap_check(t,"the selected Claude profile owns the actual held native task",st==0 && xt_status_read(sc_text(c),v[..],va[..]) && v[0].state==XT_WAITING && v[0].binding.account==EX_TEST_ID,sc_text(c));
+ path:[FS_PATH_MAX]u8;command:=fs_join(c[0].dir,"account-approve.json",path[..]);approve:=[10]string.["tasks","approve",EX_TEST_HASH,cast(string)tid[4..<36],"--rev","2","--interaction","native-request","--command-file",command];st=sc_cli(t,c,approve[..]);
+ ap_check(t,"the selected Claude profile remains pinned through its permission and result",st==0 && nct_claim_run(t,tid,"account-result"),sc_text(c));
+ if st!=0 {env:[4096]u8;trace:[8192]u8;ab:[FS_PATH_MAX]u8;file:=fs_join(fs_dir(ap_env(t,"API_BIN")),"native-audit",ab[..]);n:=fs_read(file,trace[..]);if n>0 {print("native fixture trace: %\n",cast(string)trace[0..<n]);}}
+ q:[1]Sb;sb(q[..],"SELECT provider||'|'||state::text FROM chat.turns_v2 WHERE id='");sb(q[..],tid);sb(q[..],"'");out:[64]u8;ap_check(t,"the saved turn reports the actual Claude provider and completion",ap_sql(t,sb_text(q[..]),out[..])=="anthropic|3",cast(string)out[..]);
+}
 nct_checks :: (parent:[]Ap,stranger:string) {
  local:[1]Ap;if !ap_open(local[..]) {return;}t:=local[..];port:=ap_whole(ap_env(t,"WAKE_PORT"))+4;url:[1]Sb;sb(url[..],"http://127.0.0.1:");sb_int(url[..],port);t[0].api=sb_text(url[..]);
  dirbuf:[FS_PATH_MAX]u8;dir:=fs_temp("native-decisions",dirbuf[..]);dp:[32]u8;digits:[1]Jo;jo_start(digits[..],dp[..]);jo_int(digits[..],port+1);server:=ac_server_port(t,"coax/web/api/tests/durable_chat_checks.coax",dir,"native-decisions",jo_text(digits[..]));
@@ -82,6 +94,8 @@ nct_checks :: (parent:[]Ap,stranger:string) {
     n=fs_read(fs_join(directory,"controls",path[..]),effect[..]);ap_check(t,"the native process records exactly one approval effect across retries",n==8 && cast(string)effect[0..<n]=="control\n","");
     nct_control_case(t,c[..],project,message,"stop");nct_control_case(t,c[..],project,message,"deny");
     nct_capture_case(t,c[..],project,message,directory);
+    ac_mail_stop(server,dir);server=ifx fs_mkdir_private(dir) then ac_server_port(t,"coax/web/api/tests/durable_chat_checks.coax",dir,"native-decisions-claude",jo_text(digits[..])) else -1;
+    ap_check(t,"the account case starts a separate typed Claude decision fixture",server>=0,"");if server>=0 {nct_account_case(t,c[..],project,message);}
     sb_clear(q[..]);sb(q[..],"UPDATE chat.environment_connections_v1 SET relay='wss://replacement.invalid' WHERE account='");sb(q[..],owner);sb(q[..],"'");ap_do(t,sb_text(q[..]));st=sc_cli(t,c[..],show[..]);ap_check(t,"a replacement enrollment cannot inspect an earlier native task",st!=0 && ap_has(sc_text(c[..]),"404"),sc_text(c[..]));
     original_turn:[36]u8;o:[1]Jo;jo_start(o[..],original_turn[..]);jo_put(o[..],"trn_");jo_put(o[..],native_id);inspect[2]=jo_text(o[..]);st=sc_cli(t,c[..],inspect[..]);ap_check(t,"the owner retains immutable association history after enrollment replacement",st==0 && ctt_read(sc_text(c[..]),task[..],ta[..]),sc_text(c[..]));
    }
