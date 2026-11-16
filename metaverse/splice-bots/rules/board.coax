@@ -1,0 +1,229 @@
+// Splice Bots rules: the hoverboard's ride, speed, sprint, carve, hop and the hover height over the ground,
+// as a pure step (SpliceBoard.h, package P-05; GDD 04 UE-BOARD-01, a port of the ride maths in
+// metaverse-engine/action/hoverboard.coax; numbers the prototype does not state are INFERRED in the C++).
+// GDD 04 UE-BOARD-05: W and S speed up and slow, A and D carve, Space hops, sprint goes faster.
+// Units: metres, seconds, degrees for the heading. Yaw follows Unreal: 0 faces +x, 90 faces +y; carve +1
+// (D) turns towards +yaw. location.z is the deck's underside; it hovers hover_height over the ground.
+//
+// The C++ asks the ground through a callback (FSpliceBoardGround). Coax has no procedure values, so a
+// sub-step is split: sr_board_sub_probe says where to look (the new spot, and the old spot for a step
+// taken back), the caller samples the ground there, and sr_board_sub_finish ends the sub-step.
+// sr_board_substeps gives the C++ Step's sub-step count and size. Getting on is split the same way
+// (sr_board_mount_probe, sr_board_mount). sr_board_step_bands and sr_board_mount_bands run the whole
+// thing over a ground made of bands along x (SrBoardGround), for the checks and simple callers.
+// Floats are f64 throughout (the C++ mixes float state and double locations).
+#load "../../../metaverse-engine/core/math-d.coax";
+#load "item-types.coax";
+
+SR_BOARD_ITEM_ID :: ITEM_HOVERBOARD;   // items.csv ITEM_HOVERBOARD, tool, stack 1
+SR_BOARD_STEPS_PER_SECOND :: 120.0;    // sub-steps of at most 1/120 s (the same clock as SpliceCab)
+SR_BOARD_MAX_SUB_STEPS :: 12;
+
+SrBoardTuning :: struct {
+  casual_speed: f64 = 22.0;   // UE-BOARD-05 7 m/s; 15 Nov second playtest ("accelerate slowly to go way faster"): 22
+  sprint_speed: f64 = 40.0;   // UE-BOARD-05 22 m/s; 15 Nov second playtest: 40
+  accel: f64 = 5.0;           // INFERRED, m/s^2 towards the asked speed (a slow build, by design)
+  brake: f64 = 14.0;          // INFERRED, m/s^2 with S held. No reverse
+  coast: f64 = 3.0;           // INFERRED, m/s^2 with nothing held, or above the asked speed
+  carve_rate_deg: f64 = 72.0; // INFERRED, deg/s at full A or D (15 Nov: about half the old 143)
+  carve_ramp_time: f64 = 0.3; // 15 Nov, s to build from straight to full carve (sr_board_smooth_carve)
+  carve_release_time: f64 = 0.15;   // 15 Nov, s back to straight
+  hover_height: f64 = 0.3;    // INFERRED, m from the ground to the deck's underside
+  hover_time: f64 = 0.15;     // camera.coax CM_FOOT_TIME: the deck eases to a new ground height over this
+  gravity: f64 = 30.0;        // feel.coax FL_GRAVITY
+  hop_speed: f64 = 6.5;       // 15 Nov, the ollie: 0.7 m, 0.43 s in the air on the flat
+  slope_max_deg: f64 = 55.0;  // 15 Nov, the steepest slope the deck follows at once
+  slope_rate_time: f64 = 0.05;      // 15 Nov, s for the climb rate to follow the slope under it
+  spin_rate_deg: f64 = 900.0; // 15 Nov, the trick spin: a 360 in 0.4 s (cosmetic)
+  max_step_up: f64 = 0.5;     // INFERRED, ground more than this above the deck's underside is a wall
+  air_slack: f64 = 0.05;      // INFERRED, m above hover height before it counts as in the air
+  lean_rate: f64 = 8.0;       // INFERRED, /s, the lean (cosmetic, -1..1) follows the carve
+}
+SrBoardInput :: struct {
+  throttle: f64;   // W - S, or the left stick's y: -1..1
+  carve: f64;      // D - A, or the left stick's x: -1..1
+  sprint: bool;
+  hop: bool;       // Space, held: a hop on the press when on the ground
+  trick: bool;     // 15 Nov, R or the pad's X, held: a 360 spin on the press in the air
+}
+SrBoardState :: struct {
+  location: D3;           // m: x, y on the ground plane, z the deck's underside
+  yaw_deg: f64;
+  speed: f64;             // m/s along the heading, >= 0
+  vertical_speed: f64;    // m/s, up positive
+  airborne: bool;         // in a hop or falling: no stepping off (ride.coax sr_ride_can_exit)
+  blocked: bool;          // the last step was taken back (a wall, or a step too tall)
+  hop_held: bool;
+  lean: f64;              // -1..1, follows the carve
+  trick_held: bool;
+  spinning: bool;
+  spin_deg: f64;          // 0..360 into the spin
+  spin_dir: f64 = 1.0;    // +1 towards +yaw, -1 the other way (the carve held at the press picks it)
+  tricks: int;            // spins finished
+}
+// The ground's answer at a probe point: set false is nothing below (the board falls).
+SrBoardGroundHit :: struct { set: bool; z: f64; }
+sr_board_ground_hit :: (z: f64) -> SrBoardGroundHit { return SrBoardGroundHit.{set = true, z = z}; }
+// Where one sub-step looks: `ahead` is the new spot, `back` the spot it stands on (used if the move is taken back).
+SrBoardProbe :: struct { ahead: D3; back: D3; }
+
+sr_board_clamp :: (v: f64, lo: f64, hi: f64) -> f64 { return fclamp(v, lo, hi); }
+// FMath::UnwindDegrees.
+sr_board_unwind_deg :: (a: f64) -> f64 { r := a; while r > 180.0 { r -= 360.0; } while r < -180.0 { r += 360.0; } return r; }
+// The heading as a unit vector on the ground plane.
+sr_board_forward :: (yaw_deg: f64) -> D3 { r := yaw_deg * PI_D / 180.0; return d3(cos(r), sin(r), 0.0); }
+
+// 15 Nov: the carve moved from current towards wanted (-1..1) at no more than 1/carve_ramp_time a second
+// while it grows, 1/carve_release_time while it falls back towards straight or reverses.
+sr_board_smooth_carve :: (t: SrBoardTuning, current: f64, wanted: f64, dt: f64) -> f64 {
+  from := sr_board_clamp(current, -1.0, 1.0); to := sr_board_clamp(wanted, -1.0, 1.0); h := fmax(dt, 0.0);
+  build := abs(to) > abs(from) && from * to >= 0.0;
+  time := ifx build then t.carve_ramp_time else t.carve_release_time;
+  if time <= 0.0 { return to; }
+  step := h / time;
+  return from + sr_board_clamp(to - from, -step, step);
+}
+// The speed asked for: sprint (with W) 40, W 22, else 0; scaled by the stick.
+sr_board_target_speed :: (t: SrBoardTuning, inp: SrBoardInput) -> f64 {
+  w := sr_board_clamp(inp.throttle, -1.0, 1.0);
+  if w <= 0.0 { return 0.0; }
+  return (ifx inp.sprint then t.sprint_speed else t.casual_speed) * w;
+}
+// The speed after dt: up at accel towards the asked speed, down at brake (S) or coast. Never below 0.
+sr_board_step_speed :: (t: SrBoardTuning, speed: f64, inp: SrBoardInput, dt: f64) -> f64 {
+  h := fmax(dt, 0.0); want := sr_board_target_speed(t, inp); v := fmax(speed, 0.0);
+  if v < want { v = fmin(want, v + t.accel * h); }
+  else if v > want {
+    slow := ifx inp.throttle < 0.0 then t.brake * fmin(-inp.throttle, 1.0) else t.coast;
+    v = fmax(want, v - fmax(slow, t.coast) * h);
+  }
+  return fmax(v, 0.0);
+}
+
+// Getting on: look down from her feet plus max_step_up.
+sr_board_mount_probe :: (t: SrBoardTuning, feet: D3) -> D3 { return d3(feet.x, feet.y, feet.z + t.max_step_up); }
+// The board starts where she stands, at her speed along her heading (never from a dead stop), capped at
+// the casual speed, its deck at hover height over the ground (or her feet with nothing below).
+sr_board_mount :: (t: SrBoardTuning, feet: D3, yaw_deg: f64, her_forward_speed: f64, g: SrBoardGroundHit) -> SrBoardState {
+  s: SrBoardState;
+  s.yaw_deg = sr_board_unwind_deg(yaw_deg);
+  s.speed = sr_board_clamp(her_forward_speed, 0.0, t.casual_speed);
+  s.location = d3(feet.x, feet.y, (ifx g.set then g.z else feet.z) + t.hover_height);
+  return s;
+}
+
+// The C++ Step's sub-steps for dt: count (1..12, at most 1/120 s each; 0 when dt <= 0) and size.
+sr_board_substeps :: (dt: f64) -> int {
+  if dt <= 0.0 { return 0; }
+  n := cast(int) (-floor(-(dt * SR_BOARD_STEPS_PER_SECOND)));
+  return ifx n < 1 then 1 else ifx n > SR_BOARD_MAX_SUB_STEPS then SR_BOARD_MAX_SUB_STEPS else n;
+}
+// The first half of a sub-step: carve, speed, lean, hop, trick, and where the move would take it.
+// Look down from the top of the tallest step it may climb over the ground it rides on.
+sr_board_sub_begin :: (t: SrBoardTuning, s: SrBoardState, inp: SrBoardInput, h: f64) -> SrBoardState {
+  n := s; n.blocked = false;
+  carve := sr_board_clamp(inp.carve, -1.0, 1.0);
+  n.yaw_deg = sr_board_unwind_deg(s.yaw_deg + carve * t.carve_rate_deg * h);
+  n.speed = sr_board_step_speed(t, s.speed, inp, h);
+  n.lean = s.lean + (carve - s.lean) * fmin(1.0, t.lean_rate * h);
+  // A hop on the press of Space, from the ground only (15 Nov: off a rising slope it keeps the climb too).
+  press := inp.hop && !s.hop_held; n.hop_held = inp.hop;
+  if press && !s.airborne { n.vertical_speed = t.hop_speed + fmax(0.0, s.vertical_speed); n.airborne = true; }
+  // 15 Nov: the trick, a 360 spin on the press in the air. It finishes even after landing.
+  trick_press := inp.trick && !s.trick_held; n.trick_held = inp.trick;
+  if trick_press && s.airborne && !s.spinning { n.spinning = true; n.spin_deg = 0.0; n.spin_dir = ifx carve < 0.0 then -1.0 else 1.0; }
+  if n.spinning {
+    n.spin_deg += t.spin_rate_deg * h;
+    if n.spin_deg >= 360.0 { n.spin_deg = 0.0; n.spinning = false; n.tricks += 1; }
+  }
+  return n;
+}
+sr_board_sub_probe :: (t: SrBoardTuning, s: SrBoardState, inp: SrBoardInput, h: f64) -> SrBoardProbe {
+  n := sr_board_sub_begin(t, s, inp, h);
+  fwd := sr_board_forward(n.yaw_deg);
+  look := s.location.z - t.hover_height + t.max_step_up + 0.01;
+  return SrBoardProbe.{ahead = d3(s.location.x + fwd.x * n.speed * h, s.location.y + fwd.y * n.speed * h, look), back = d3(s.location.x, s.location.y, look)};
+}
+// The second half: ahead and back are the ground at the probe's two points. A step too tall is a wall:
+// the move is taken back and the speed goes into it. Over ground the deck follows a slope at once, eases
+// over a step, and never ends below the ground; past a ledge or after a hop it falls at gravity.
+sr_board_sub_finish :: (t: SrBoardTuning, s: SrBoardState, inp: SrBoardInput, h: f64, ahead: SrBoardGroundHit, back: SrBoardGroundHit) -> SrBoardState {
+  n := sr_board_sub_begin(t, s, inp, h);
+  p := sr_board_sub_probe(t, s, inp, h);
+  g := ahead;
+  ref := s.location.z - t.hover_height;   // the ground it rides on (or would, in the air)
+  if g.set && g.z - ref > t.max_step_up {
+    n.blocked = true; n.speed = 0.0;   // its speed goes into the wall
+    g = back;
+  } else {
+    n.location.x = p.ahead.x; n.location.y = p.ahead.y;
+  }
+  z := s.location.z;
+  if !g.set {
+    // Nothing below: it falls.
+    n.vertical_speed -= t.gravity * h; z += n.vertical_speed * h; n.airborne = true;
+  } else {
+    floor_z := g.z; want := floor_z + t.hover_height;
+    // 15 Nov: how far a slope the deck follows can move it in this sub-step.
+    sr := t.slope_max_deg * PI_D / 180.0;
+    follow := n.speed * h * (sin(sr) / cos(sr)) + 0.02;
+    slope_k := ifx t.slope_rate_time > 0.0 then fmin(1.0, h / t.slope_rate_time) else 1.0;
+    if !n.airborne && z > want + t.air_slack + follow {
+      // Off a ledge: it falls from where it was, with the climb it had (off a ramp's lip it flies).
+      n.airborne = true; n.vertical_speed = s.vertical_speed;
+    }
+    if n.airborne {
+      n.vertical_speed -= t.gravity * h; z += n.vertical_speed * h;
+      if z <= want && n.vertical_speed <= 0.0 { z = want; n.vertical_speed = 0.0; n.airborne = false; }
+    } else {
+      rise := want - z;
+      if abs(rise) <= follow {
+        // A slope: the deck follows it at once; its climb rate is kept for the lip and the ollie.
+        z = want; n.vertical_speed = s.vertical_speed + (rise / h - s.vertical_speed) * slope_k;
+      } else {
+        // A step: the hover eases to the height over hover_time; never into the ground.
+        k := ifx t.hover_time > 0.0 then fmin(1.0, h / t.hover_time) else 1.0;
+        z += (want - z) * k; n.vertical_speed = s.vertical_speed * (1.0 - slope_k);
+      }
+    }
+    z = fmax(z, floor_z);
+  }
+  n.location.z = z;
+  return n;
+}
+
+// A ground made of bands along x, for the checks and simple callers: band k covers x >= from_x[k] up to
+// the next band; its height is base + slope * (x - from_x). A band with no ground (`none`) is a drop.
+// x below the first band is the first band. The height does not depend on the probe's z.
+SR_BOARD_BANDS_MAX :: 8;
+SrBoardBand :: struct { from_x: f64; base: f64; slope: f64; none: bool; }
+SrBoardGround :: struct { n: int; bands: [SR_BOARD_BANDS_MAX] SrBoardBand; }
+sr_board_ground_add :: (g: [] SrBoardGround, from_x: f64, base: f64, slope: f64) {
+  if g[0].n >= SR_BOARD_BANDS_MAX { return; }
+  g[0].bands[g[0].n] = SrBoardBand.{from_x = from_x, base = base, slope = slope}; g[0].n += 1;
+}
+sr_board_ground_at :: (g: SrBoardGround, at: D3) -> SrBoardGroundHit {
+  if g.n == 0 { return SrBoardGroundHit.{}; }
+  k := 0;
+  for i: 1..<g.n { if at.x >= g.bands[i].from_x { k = i; } }
+  b := g.bands[k];
+  if b.none { return SrBoardGroundHit.{}; }
+  return sr_board_ground_hit(b.base + b.slope * (at.x - b.from_x));
+}
+sr_board_mount_bands :: (t: SrBoardTuning, feet: D3, yaw_deg: f64, her_forward_speed: f64, g: SrBoardGround) -> SrBoardState {
+  return sr_board_mount(t, feet, yaw_deg, her_forward_speed, sr_board_ground_at(g, sr_board_mount_probe(t, feet)));
+}
+// One step of dt (the C++ Step): sub-steps of at most 1/120 s; blocked if any sub-step was.
+sr_board_step_bands :: (t: SrBoardTuning, s: SrBoardState, inp: SrBoardInput, dt: f64, g: SrBoardGround) -> SrBoardState {
+  num := sr_board_substeps(dt);
+  if num == 0 { return s; }
+  h := dt / cast(f64) num;
+  n := s; blocked := false;
+  for i: 0..<num {
+    p := sr_board_sub_probe(t, n, inp, h);
+    n = sr_board_sub_finish(t, n, inp, h, sr_board_ground_at(g, p.ahead), sr_board_ground_at(g, p.back));
+    if n.blocked { blocked = true; }
+  }
+  n.blocked = blocked;
+  return n;
+}

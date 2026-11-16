@@ -1,0 +1,171 @@
+// Parity checks for board.coax: SpliceTests/Rules/SpliceBoardTests.cpp. The C++ test's ground lambdas
+// are band grounds (SrBoardGround). A C++ TestEqual on floats has a 1e-4 tolerance (KINDA_SMALL_NUMBER);
+// the checks use the same. Not ported, they need the engine (a UWorld, her pawn and controller,
+// ASpliceHoverboard, USpliceRideComponent and USpliceInventoryComponent): GetOnThenShiftOffReturnsHerOnFoot
+// and ItemNotSpentByRiding. The ride rules they lean on are ride.coax's, checked in ride-checks.coax.
+// rules.coax loads this file with `#load ... #test;`.
+
+BD_DT :: 1.0 / 60.0;
+BD_EPS :: 0.0001;
+bd_go :: (throttle: f64, sprint: bool, carve: f64) -> SrBoardInput { return SrBoardInput.{throttle = throttle, sprint = sprint, carve = carve}; }
+bd_flat :: () -> SrBoardGround { g := [1] SrBoardGround.[SrBoardGround.{}]; sr_board_ground_add(g[..], -1000000.0, 0.0, 0.0); return g[0]; }
+bd_run :: (t: SrBoardTuning, s: SrBoardState, inp: SrBoardInput, seconds: f64, g: SrBoardGround) -> SrBoardState {
+  n := cast(int) floor(seconds / BD_DT + 0.5);
+  o := s;
+  for i: 0..<n { o = sr_board_step_bands(t, o, inp, BD_DT, g); }
+  return o;
+}
+bd_ceil :: (x: f64) -> int { return cast(int) (-floor(-x)); }
+
+#test "Splice.Rules.Board.RidingReachesBoardSpeed" {
+  t: SrBoardTuning; flat := bd_flat();
+  #assert t.casual_speed == 22.0;
+  casual := t.casual_speed;
+  // Stepping on at her walk (5.6 m/s): the board rolls off at her speed, never from a dead stop.
+  s := sr_board_mount_bands(t, d3(0.0, 0.0, 0.0), 0.0, 5.6, flat);
+  #assert near_d(s.speed, 5.6, BD_EPS) && near_d(s.location.z, t.hover_height, 0.000001);
+  early := bd_run(t, s, bd_go(1.0, false, 0.0), 1.0, flat);
+  #assert early.speed < casual - 5.0;
+  s = bd_run(t, s, bd_go(1.0, false, 0.0), (casual - 5.6) / t.accel + 0.1, flat);
+  #assert abs(s.speed - casual) < 0.01;
+  s = bd_run(t, s, bd_go(1.0, false, 0.0), 3.0, flat);
+  #assert near_d(s.speed, casual, BD_EPS);
+  #assert s.location.x > 25.0 && abs(s.location.y) < 0.001;
+  // From a stop too.
+  still := sr_board_mount_bands(t, d3(0.0, 0.0, 0.0), 90.0, 0.0, flat);
+  still = bd_run(t, still, bd_go(1.0, false, 0.0), casual / t.accel + 0.2, flat);
+  #assert near_d(still.speed, casual, BD_EPS);
+  #assert still.location.y > 8.0 && abs(still.location.x) < 0.001;
+  // Let go: it coasts down; S slows to a stop and never backs up.
+  coast := bd_run(t, s, bd_go(0.0, false, 0.0), 1.0, flat);
+  #assert coast.speed < casual && coast.speed > 0.0;
+  brake := bd_run(t, s, bd_go(-1.0, false, 0.0), 2.0, flat);
+  #assert near_d(brake.speed, 0.0, BD_EPS);
+  // D turns towards +yaw at the carve rate, and the lean follows.
+  carve := bd_run(t, s, bd_go(1.0, false, 1.0), 0.5, flat);
+  #assert near_d(carve.yaw_deg, t.carve_rate_deg * 0.5, 0.5);
+  #assert carve.lean > 0.9 && near_d(carve.speed, casual, BD_EPS);
+}
+
+#test "Splice.Rules.Board.SprintGoesFaster" {
+  t: SrBoardTuning; flat := bd_flat();
+  #assert t.sprint_speed == 40.0;
+  casual := t.casual_speed; fast := t.sprint_speed;
+  #assert near_d(sr_board_target_speed(t, bd_go(1.0, false, 0.0)), casual, BD_EPS);
+  #assert near_d(sr_board_target_speed(t, bd_go(1.0, true, 0.0)), fast, BD_EPS);
+  #assert sr_board_target_speed(t, bd_go(0.0, true, 0.0)) == 0.0;
+  s := bd_run(t, sr_board_mount_bands(t, d3(0.0, 0.0, 0.0), 0.0, 0.0, flat), bd_go(1.0, false, 0.0), t.casual_speed / t.accel + 0.2, flat);
+  #assert near_d(s.speed, casual, BD_EPS);
+  // Fast, past 15 m/s within 2.5 s (the prototype's check).
+  top := 0.0; f := s;
+  for i: 0..<150 { f = sr_board_step_bands(t, f, bd_go(1.0, true, 0.0), BD_DT, flat); top = fmax(top, f.speed); }
+  #assert top > 15.0;
+  f = bd_run(t, f, bd_go(1.0, true, 0.0), 3.0, flat);
+  #assert near_d(f.speed, fast, BD_EPS) && f.speed > s.speed;
+  x0 := f.location.x;
+  f = bd_run(t, f, bd_go(1.0, true, 0.0), 1.0, flat);
+  #assert near_d(f.location.x - x0, fast, 0.05);
+  // Sprint released go: back down to casual, not below.
+  f = bd_run(t, f, bd_go(1.0, false, 0.0), 10.0, flat);
+  #assert near_d(f.speed, casual, BD_EPS);
+}
+
+#test "Splice.Rules.Board.CarveBuildsUpGently" {
+  t: SrBoardTuning; flat := bd_flat();
+  #assert t.carve_rate_deg <= 80.0 && t.carve_rate_deg >= 50.0;
+  c := sr_board_smooth_carve(t, 0.0, 1.0, BD_DT);
+  #assert c > 0.0 && c < 0.1;
+  held := 0.0;
+  for i: 0..<bd_ceil(t.carve_ramp_time / BD_DT) + 2 { held = sr_board_smooth_carve(t, held, 1.0, BD_DT); }
+  #assert near_d(held, 1.0, BD_EPS) && near_d(sr_board_smooth_carve(t, 1.0, 1.0, BD_DT), 1.0, BD_EPS);
+  released := 1.0;
+  for i: 0..<bd_ceil(t.carve_release_time / BD_DT) + 2 { released = sr_board_smooth_carve(t, released, 0.0, BD_DT); }
+  #assert near_d(released, 0.0, BD_EPS) && sr_board_smooth_carve(t, 1.0, -1.0, BD_DT) > 0.8;
+  half := 0.0;
+  for i: 0..<60 { half = sr_board_smooth_carve(t, half, 0.5, BD_DT); }
+  #assert near_d(half, 0.5, BD_EPS);
+  // A 0.1 s tap of D turns the board far less than the old instant carve did (143.24 deg/s for 0.1 s).
+  s := sr_board_mount_bands(t, d3(0.0, 0.0, 0.0), 0.0, 7.0, flat);
+  now := 0.0;
+  for i: 0..<6 { now = sr_board_smooth_carve(t, now, 1.0, BD_DT); s = sr_board_step_bands(t, s, bd_go(1.0, false, now), BD_DT, flat); }
+  #assert abs(s.yaw_deg) < 5.0 && s.yaw_deg > 0.0;
+}
+
+BD_TAN30 :: 0.5773502691896257;
+bd_ramp_height :: (x: f64) -> f64 { return ifx x >= 10.0 && x < 14.0 then (x - 10.0) * BD_TAN30 else 0.0; }
+#test "Splice.Rules.Board.RampLaunchesAndLandsRolling" {
+  t: SrBoardTuning;
+  // Flat to 10 m, a 30 degree kicker to 14 m (2.31 m tall), then flat ground again at 0.
+  g := [1] SrBoardGround.[SrBoardGround.{}];
+  sr_board_ground_add(g[..], -1000000.0, 0.0, 0.0); sr_board_ground_add(g[..], 10.0, 0.0, BD_TAN30); sr_board_ground_add(g[..], 14.0, 0.0, 0.0);
+  s := sr_board_mount_bands(t, d3(0.0, 0.0, 0.0), 0.0, t.casual_speed, g[0]);
+  worst := 0.0; peak := 0.0; flew := false; landed := false; landing_speed := 0.0;
+  for i: 0..<240 {
+    was_air := s.airborne;
+    s = sr_board_step_bands(t, s, bd_go(1.0, false, 0.0), BD_DT, g[0]);
+    x := s.location.x;
+    if x > 10.5 && x < 13.8 && !s.airborne { worst = fmax(worst, abs(s.location.z - bd_ramp_height(x) - t.hover_height)); }
+    if x >= 14.0 && s.airborne { flew = true; peak = fmax(peak, s.location.z); }
+    if flew && was_air && !s.airborne && !landed { landed = true; landing_speed = s.speed; }
+  }
+  #assert worst < 0.02;
+  #assert flew && peak > 4.0 * BD_TAN30 + t.hover_height + 0.2;
+  #assert landed && !s.airborne;
+  #assert landing_speed > t.casual_speed * 0.9 && !s.blocked;
+  #assert near_d(s.location.z, t.hover_height, 0.01);
+}
+
+#test "Splice.Rules.Board.OllieThenSpin" {
+  t: SrBoardTuning; flat := bd_flat();
+  s := sr_board_mount_bands(t, d3(0.0, 0.0, 0.0), 0.0, t.casual_speed, flat);
+  trick := bd_go(1.0, false, 0.0); trick.trick = true;
+  s = sr_board_step_bands(t, s, trick, BD_DT, flat);
+  #assert !s.spinning;
+  s = sr_board_step_bands(t, s, bd_go(1.0, false, 0.0), BD_DT, flat);
+  ollie := bd_go(1.0, false, 0.0); ollie.hop = true;
+  s = sr_board_step_bands(t, s, ollie, BD_DT, flat);
+  #assert s.airborne && s.vertical_speed > 5.0;
+  s = sr_board_step_bands(t, s, trick, BD_DT, flat);
+  #assert s.spinning && s.spin_deg > 0.0;
+  heading := s.yaw_deg; peak := 0.0;
+  for i: 0..<60 { s = sr_board_step_bands(t, s, trick, BD_DT, flat); peak = fmax(peak, s.location.z); }
+  #assert peak > t.hover_height + 0.6;
+  #assert s.tricks == 1 && !s.spinning;
+  #assert near_d(s.yaw_deg, heading, 0.01) && !s.airborne;
+  #assert near_d(s.speed, t.casual_speed, BD_EPS);
+}
+
+bd_stepped_height :: (x: f64) -> f64 { return ifx x < 10.0 then 0.0 else ifx x < 20.0 then 0.3 else ifx x < 30.0 then -0.4 else ifx x < 50.0 then 0.0 else 1.4; }
+#test "Splice.Rules.Board.HoverHoldsOverSteppedGround" {
+  t: SrBoardTuning; flat := bd_flat();
+  // Flat, a 0.3 m step up, a 0.7 m step down, a 0.4 m step up, then a 1.4 m wall at 50 m.
+  g := [1] SrBoardGround.[SrBoardGround.{}];
+  sr_board_ground_add(g[..], -1000000.0, 0.0, 0.0); sr_board_ground_add(g[..], 10.0, 0.3, 0.0); sr_board_ground_add(g[..], 20.0, -0.4, 0.0);
+  sr_board_ground_add(g[..], 30.0, 0.0, 0.0); sr_board_ground_add(g[..], 50.0, 1.4, 0.0);
+  s := sr_board_mount_bands(t, d3(0.0, 0.0, 0.0), 0.0, 7.0, g[0]);
+  never_in_ground := true; saw_air := false; worst := 0.0;
+  for i: 0..<720 {
+    s = sr_board_step_bands(t, s, bd_go(1.0, false, 0.0), BD_DT, g[0]);
+    gz := bd_stepped_height(s.location.x);
+    if s.location.z < gz - 0.000001 { never_in_ground = false; }
+    if s.airborne { saw_air = true; }
+    // 4 m after each step the deck is back at its hover height.
+    x := s.location.x;
+    settled := (x > 4.0 && x < 9.9) || (x > 14.0 && x < 19.9) || (x > 24.0 && x < 29.9) || (x > 34.0 && x < 49.0);
+    if settled { worst = fmax(worst, abs(s.location.z - gz - t.hover_height)); }
+  }
+  #assert never_in_ground && worst < 0.01;
+  #assert saw_air && !s.airborne;
+  #assert s.location.x > 45.0;
+  #assert s.location.x < 50.0 && s.speed < t.casual_speed;
+  #assert near_d(s.location.z, t.hover_height, 0.01);
+  // Space hops: in the air, then back down at hover height; holding Space does not hop again.
+  h := sr_board_mount_bands(t, d3(0.0, 0.0, 0.0), 0.0, 0.0, flat);
+  hop := bd_go(0.0, false, 0.0); hop.hop = true;
+  h = sr_board_step_bands(t, h, hop, BD_DT, flat);
+  #assert h.airborne && h.vertical_speed > 0.0;
+  peak := 0.0;
+  for i: 0..<60 { h = sr_board_step_bands(t, h, hop, BD_DT, flat); peak = fmax(peak, h.location.z); }
+  #assert peak > t.hover_height + 0.2 && !h.airborne;
+  #assert near_d(h.location.z, t.hover_height, 0.01);
+}
