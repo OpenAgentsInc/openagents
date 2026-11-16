@@ -6,15 +6,15 @@
 ## Premise
 
 Every client in this book was built a chapter at a time, and each part's
-cases ran on the web and the iPhone as they were written. This chapter
-collects those cases into one conformance run and runs it on every host the
-book names, so a host qualifies on evidence and not on a claim.
+cases ran on the iPhone as they were written, and on each other host once
+chapters 10 and 11 added it. This chapter collects those cases into one
+conformance run and runs it on every host the book names, so a host qualifies on evidence and not on a claim.
 
 ## Draft
 
-Chapter 1 made a rule: no surface has its own agent logic. Chapter 6 made it
-testable: one acceptance case, written as `coax drive` operations, gives the
-same trace on two hosts. Since then every chapter that teaches code has added
+Chapter 10 states the rule: no surface has its own agent logic. Chapter 6
+made it testable: one acceptance case, written as `coax drive` operations,
+gives one trace, and every host that runs it must give the same one. Since then every chapter that teaches code has added
 cases. This chapter is not a new client. It is the run that keeps all the
 clients honest.
 
@@ -26,8 +26,8 @@ each case, each host, pass, fail or refused, with the build each ran on.
 
 The hosts are the targets in [CONTRACT.md](CONTRACT.md#targets): the web,
 the iPhone simulator and device, the Android emulator and device, and the
-desktop hosts. Android comes next after the web and the iPhone. It reuses the
-existing Android adapters in
+desktop hosts. Android comes after the iPhone and the desktop (chapter
+10). It reuses the existing Android adapters in
 [`apps/shared/host/android`](../../apps/shared/host/android) and the same
 cases; it does not claim a finished OpenAgents Android app until those cases
 pass there. The terminal is a host with declared omissions: it shows text and
@@ -50,8 +50,8 @@ A plan for what this chapter ships once the draft is approved:
 
 - One conformance run over every case in the book, per host, with its result
   table.
-- Android qualified against the first milestone's cases (chapter 11) on the
-  existing Android adapters.
+- Android qualified against chapter 6's case on the existing Android
+  adapters.
 - Device cases for keyboard, accessibility, lifecycle and SDK checks, with
   their evidence recorded per target.
 

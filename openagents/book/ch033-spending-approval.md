@@ -34,7 +34,7 @@ set is shown wherever the agent's spending appears.
 
 The cap check exists today. An agent's grant carries sats a day and sats a
 payment. You approve it after a fresh strong login, and the agent can never
-raise its own cap (chapter 8).
+raise its own cap (chapter 5).
 
 An agent's wallet is separate from yours. Its key is its own, and what it can
 lose is what you put in it.
@@ -62,7 +62,7 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 
 | Record | Schema | Carriage | Today |
 | --- | --- | --- | --- |
-| An agent's allowance | `openagents.account.v1alpha1` `Grant` with `SpendCaps`: sats a day and sats a payment ([`agents.proto`](../../proto/openagents/account/v1alpha1/agents.proto)) | HTTP, as binary protobuf | In use for the cap check at `POST /api/agent/spend` ([chapter 8](ch008-accounts-and-login.md)). The approval step that uses it is this chapter's plan |
+| An agent's allowance | `openagents.account.v1alpha1` `Grant` with `SpendCaps`: sats a day and sats a payment ([`agents.proto`](../../proto/openagents/account/v1alpha1/agents.proto)) | HTTP, as binary protobuf | In use for the cap check at `POST /api/agent/spend` ([chapter 5](ch005-logging-in-when-a-send-needs-it.md)). The approval step that uses it is this chapter's plan |
 | A spend request and its receipt | `openagents.payment.v1` `SpendRequest`, `SpendReceipt` ([spec 26.5](../../docs/protocol/openagents-protocol-spec.md#265-openagentspaymentv1)) | Nostr: private records in a kind 3188 envelope (NIP-HOST) | Spec sketch; no `.proto` file |
 | Approval of one payment | `openagents.policy.v1` `ApprovalRequest`, `ApprovalDecision` ([spec 19.2](../../docs/protocol/openagents-protocol-spec.md#192-openagentspolicyv1)) | With the plan's stream | Spec sketch; no `.proto` file |
 

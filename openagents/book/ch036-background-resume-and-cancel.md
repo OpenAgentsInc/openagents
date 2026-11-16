@@ -34,7 +34,7 @@ Stop cancels it, and Stop goes to the owner, which ends the turn and records
 that it was cancelled.
 
 Cancellation has one rule everywhere: a cancelled operation can't change the
-screen, and its late answer is dropped (chapter 5). A payment is the strict
+screen, and its late answer is dropped (chapter 4). A payment is the strict
 case. Once a payment is sent, cancelling the screen can't take it back; the
 app shows its real outcome, including "unknown", and never sends again on
 its own.

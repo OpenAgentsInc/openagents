@@ -68,7 +68,7 @@ A plan for what this chapter ships once the draft is approved:
 - The existing wallet as a member: receive, send, balance and history, with
   amounts as whole sats, over the rules in `pay/`.
 - The wallet commands in the command line, and the same wallet screens on
-  the web, sharing the iPhone app's actions (chapters 2 to 6).
+  the web, sharing the iPhone app's actions (chapters 2 and 11).
 - A test wallet on a test network, so every later chapter can run payments
   without real money.
 It builds on what exists today:

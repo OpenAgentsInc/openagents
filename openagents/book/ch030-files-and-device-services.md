@@ -26,7 +26,7 @@ the app never draws an imitation of them.
 Each service has one owner for its rules. Reading a file into a message uses
 the existing text and codec modules. Copying a reply uses the transcript's
 Copy. A notification that a long task finished opens the conversation through
-the same route as a tap (chapter 4). A capability the device lacks gives an
+the same route as a tap (chapter 7). A capability the device lacks gives an
 explicit refusal, never a silent success.
 
 Tests use fakes. A fake picker returns a fixture file and a fake share sheet

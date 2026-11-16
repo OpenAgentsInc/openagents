@@ -5,10 +5,10 @@
 
 ## Premise
 
-Chapter 11 left a conversation screen on the web and the iPhone that
-answers from fixtures. This chapter puts the first real agent behind it: one
-loop that reads a message, calls one model, streams the reply and writes both
-to a log. Every later chapter adds one thing to this loop and says how to tell
+Chapter 4 left the chat page on the iPhone answering from a fake service,
+and chapter 6 runs its case. This chapter puts the first real agent behind
+it: one loop that reads a message, calls one model, streams the reply and
+writes both to a log. Every later chapter adds one thing to this loop and says how to tell
 whether it helped.
 
 ## Draft
@@ -42,8 +42,8 @@ A plan for what this chapter ships once the draft is approved:
 
 - A loop in Coax: one message in, one model call through the gateway, one
   reply out, and a log line for each.
-- The loop answers chapter 11's conversation screen in place of the fixture
-  replies, through the same actions, so the web and iPhone cases still pass.
+- The loop answers chapter 4's chat page in place of the fake service's
+  replies, through the same actions, so chapter 6's case still passes.
 - A `chat` verb in the `openagents` command line that runs the loop from a
   terminal. This is a plan; the verb's name is the owner's to set.
 - A fixture run with a recorded model reply, so the loop's checks run with no
@@ -65,16 +65,16 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 
 - **Source:** the loop in `openagents/agent/loop.coax`, run against a fake
   gateway that replays one recorded model reply. No network is used.
-- **Trace:** chapter 11's first-milestone case, with the loop in place of
-  the fixture replies: `type composer.input hello`, `tap composer.send`,
+- **Trace:** chapter 6's case, with the loop in place of the fake
+  service's replies: `type composer.input hello`, `tap composer.send`,
   then `state transcript` prints `you: hello` and the recorded reply,
   byte for byte. `logs` prints one line for the message and one for the
   reply.
 - **Refusal:** the fake gateway answers the model call with an error. No
   reply part appears, the transcript ends with `notice: model call
   failed`, and `logs` records the failed call.
-- **Independent check:** chapter 11's cases pass unchanged on cpu, web and
-  ios-simulator, and the session record's own checks
+- **Independent check:** chapter 6's case passes unchanged on every target
+  it names, and the session record's own checks
   (`coax/bin/coax test coax/lib/agent/session/session.coax`) still pass.
   The logged reply matches the fixture's reply, written by hand.
 

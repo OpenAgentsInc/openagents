@@ -35,7 +35,7 @@ A reconnect is a resume. The app asks the service for what changed since the
 last record it saw, numbered by the server, and applies it in order. It
 resends only what the service never acknowledged, with the same operation
 IDs, so a message is stored once however often the network drops (chapter
-9). A turn that was running when the connection dropped keeps running where
+4). A turn that was running when the connection dropped keeps running where
 its execution owner is; the app shows its record and does not start it again
 (chapter 37).
 

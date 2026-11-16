@@ -34,7 +34,7 @@ owner goes away mid-task, the record says so, and the task waits for you to
 resume it somewhere, with the owner named.
 
 This rule keeps three things apart that are easy to blur. The app's code is
-shared on every device (chapter 1). Your conversations are shared data
+shared on every device (chapter 10). Your conversations are shared data
 (chapter 35). Running a task happens in one place. The session record and
 journal in [`coax/lib/agent/`](../../coax/lib/agent) already write what a
 run did; this chapter adds who runs it.

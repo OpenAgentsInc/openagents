@@ -34,7 +34,7 @@ What changed is the engine. The OpenAgents Metaverse Engine is written in Coax, 
 web first so that a realm is a link you can share. Its own book builds it, and
 Building Everglade builds a whole game on it.
 
-In this book the Metaverse is a surface in the sense of chapter 1. It links the
+In this book the Metaverse is a surface in the sense of chapter 10. It links the
 same runtime. The agent you talk to in the world is the one you talk to in
 chat, in the same conversation, with the same members, grants and wallet. A
 panel in the world and a page on the web show the same records.
@@ -80,8 +80,8 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 - **Independent check:** the realm session's frames are compared with the
   bytes listed in
   [`everglade-session-v7.json`](../../proto/verse/everglade-session-v7.json),
-  and the chat side gives the transcript that the existing
-  [`first-milestone`](../examples/cases/first-milestone.trace) case expects.
+  and the chat side gives the transcript that chapter 6's case
+  expects.
 
 Planned paths: none. The Metaverse surface is a realm route in
 [`apps/openagents-web`](../../apps/openagents-web) over

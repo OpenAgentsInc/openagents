@@ -6,7 +6,7 @@
 
 ## Premise
 
-Chapter 1 promises one conversation on every surface. This chapter builds what
+Chapter 10 promises one conversation on every surface. This chapter builds what
 moves it: your settings, characters, saves and chats follow your account from
 one device to the next.
 

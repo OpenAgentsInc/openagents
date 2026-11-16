@@ -23,7 +23,7 @@ On our service, your identity is an account. It is an opaque id in our own
 database, and the ways you prove you are that account attach to it: an email
 address, a Nostr key, a passkey. Any combination works, and a Nostr key alone
 is enough. We keep the user table ourselves. No outside login provider holds a
-copy, there are no passwords, and we never collect a phone number. Chapter 8
+copy, there are no passwords, and we never collect a phone number. Chapter 5
 builds the account.
 
 [Episode 207](../../docs/transcripts/207.md) is the first design: a seed
@@ -76,7 +76,7 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 | Record | Schema | Carriage | Today |
 | --- | --- | --- | --- |
 | Account and its authenticators | `openagents.account.v1`, `openagents.credential.v1` ([spec 15.1](../../docs/protocol/openagents-protocol-spec.md#151-openagentsaccountv1), [spec 15.2](../../docs/protocol/openagents-protocol-spec.md#152-openagentscredentialv1)) | HTTP | The login is built with hand-written JSON ([docs/auth](../../docs/auth/README.md)). The spec's sketch predates it; the [protocol review](../../docs/protocol/2026-11-11-protocol-review.md) orders its rewrite |
-| Agent account, key and grant | `openagents.account.v1alpha1` ([`agents.proto`](../../proto/openagents/account/v1alpha1/agents.proto)) | HTTP, as binary protobuf | In use ([chapter 8](ch008-accounts-and-login.md)) |
+| Agent account, key and grant | `openagents.account.v1alpha1` ([`agents.proto`](../../proto/openagents/account/v1alpha1/agents.proto)) | HTTP, as binary protobuf | In use ([chapter 5](ch005-logging-in-when-a-send-needs-it.md)) |
 | A key's name and its owner | `openagents.identity.v1` `KeyIdentity`, `OwnerAttestation` ([spec 15.4](../../docs/protocol/openagents-protocol-spec.md#154-openagentsidentityv1)) | Nostr: kind 0, NIP-05, and an `auth` tag (NIP-OA) | Spec sketch; no `.proto` file. `coax/lib/nostr/nip05.coax` and `coax/lib/nostr/nipoa.coax` handle the events |
 
 ### The chapter's check
@@ -98,7 +98,7 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
   [`coax/tests/nostr/nipoa_reference.py`](../../coax/tests/nostr/nipoa_reference.py).
 
 Planned paths: none. Identity extends the login in
-[`coax/web/api/`](../../coax/web/api) (chapter 8) and the keys in
+[`coax/web/api/`](../../coax/web/api) (chapter 5) and the keys in
 [`coax/lib/nostr/`](../../coax/lib/nostr).
 
 ## Sources

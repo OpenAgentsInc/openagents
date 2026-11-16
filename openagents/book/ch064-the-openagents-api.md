@@ -24,7 +24,7 @@ So there is one API, over HTTP and WebSocket. A request carries a message and
 its context. The reply streams what the runtime produces: the route, the plan,
 any approval to ask the person for, each step and the result. A session, an
 agent's API key or a signed request identifies the caller, and an agent's key
-carries its grant (chapter 8). Limits are published. The API is described in
+carries its grant (chapter 5). Limits are published. The API is described in
 a machine-readable file, so a partner's coding agent can write the client.
 
 The bodies come from the same schema as the events. A request and each item in
@@ -43,8 +43,8 @@ Today most of the site's routes write their own JSON. The [compliance
 plan](../../docs/protocol/2026-11-11-compliance-plan.md) orders the move onto
 the envelope.
 
-The rule that keeps the API honest is that our own apps use it. Chapter 1's
-hosted runtime is behind it. There is no private API with more in it.
+The rule that keeps the API honest is that our own apps use it. Chapter 4's
+chat service is behind it. There is no private API with more in it.
 
 Money flows through as it does everywhere else. A partner's users can make
 paid calls, plugin authors are paid from them, and the partner can add members

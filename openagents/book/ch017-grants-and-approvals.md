@@ -31,7 +31,7 @@ on the device that holds them.
 
 An agent that acts for you has its own key and a grant you approve: scopes,
 spend caps in sats and an expiry. An agent can never widen its own grant. That
-grant is the first record in this book whose schema is in use (chapter 8).
+grant is the first record in this book whose schema is in use (chapter 5).
 
 [Episode 250](../../docs/transcripts/250.md) is the reason for this chapter.
 Agents invented commands and reported the wrong model, and the fix was typed
@@ -62,7 +62,7 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 | --- | --- | --- | --- |
 | A member's grant | `openagents.capability.v1` `Grant` ([spec 19.3](../../docs/protocol/openagents-protocol-spec.md#193-openagentscapabilityv1)) | Nostr: a private record in a kind 3188 envelope (NIP-CAP) | Spec sketch; no `.proto` file. `coax/lib/nostr/cap` handles the NIP's JSON |
 | Approval of one action | `openagents.policy.v1` `ApprovalRequest`, `ApprovalDecision` ([spec 19.2](../../docs/protocol/openagents-protocol-spec.md#192-openagentspolicyv1)) | Nostr: a private record in a kind 3188 envelope (NIP-POL) | Spec sketch; no `.proto` file |
-| What an agent may do in its owner's name | `openagents.account.v1alpha1` `GrantRequest`, `Grant` ([`agents.proto`](../../proto/openagents/account/v1alpha1/agents.proto)) | HTTP, as binary protobuf | In use: the generated codec `coax/web/api/agent-wire.coax` ([chapter 8](ch008-accounts-and-login.md)) |
+| What an agent may do in its owner's name | `openagents.account.v1alpha1` `GrantRequest`, `Grant` ([`agents.proto`](../../proto/openagents/account/v1alpha1/agents.proto)) | HTTP, as binary protobuf | In use: the generated codec `coax/web/api/agent-wire.coax` ([chapter 5](ch005-logging-in-when-a-send-needs-it.md)) |
 
 ### The chapter's check
 
@@ -77,7 +77,7 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
   refusal result with its reason, such as `refused: no grant for
   files.write`, and the file is not written. A paired phone that asks to
   widen the owner's policy gets the same kind of refusal.
-- **Independent check:** chapter 8's existing checks on the agent grant
+- **Independent check:** chapter 5's existing checks on the agent grant
   codec, `coax/web/api/agent-wire.coax`, show an agent can't widen its own
   grant. The approval step's text in `tree` is the same on web and on the
   iPhone simulator.
