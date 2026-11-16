@@ -1,0 +1,27 @@
+// Splice Bots rules: charge points, where batteries grow (SpliceChargePoint.h, package S-05; GDD 02
+// 25.9, 25.12 CHARGE_REGROW; GDD 04 6.8 UE-CHG-01, -02). Feeding the battery is sr_try_feed_battery.
+#load "item-types.coax";
+
+// ESpliceChargeState: Ready glows and harvests; Empty regrows; Occupied has an Imperial robot plugged in.
+SR_CHARGE_READY :: 0; SR_CHARGE_EMPTY :: 1; SR_CHARGE_OCCUPIED :: 2;
+// ESpliceChargeResult.
+SR_CHARGE_HARVESTED :: 0; SR_CHARGE_REFUSED_NOT_READY :: 1;
+SR_DEFAULT_CHARGE_REGROW_SECONDS :: 180.0;   // INFERRED ("a few minutes")
+
+SrChargePoint :: struct { state: int = SR_CHARGE_READY; regrow_seconds: f32 = SR_DEFAULT_CHARGE_REGROW_SECONDS; seconds_left: f32; }
+sr_charge_ready :: (p: SrChargePoint) -> bool { return p.state == SR_CHARGE_READY; }
+SrChargeHarvest :: struct { result: int; battery: SrItemStack; }
+// Ready: one battery, Empty, the timer at regrow_seconds. Otherwise refused, unchanged.
+sr_charge_harvest :: (p: [] SrChargePoint) -> SrChargeHarvest {
+  if p[0].state != SR_CHARGE_READY { return SrChargeHarvest.{result = SR_CHARGE_REFUSED_NOT_READY}; }
+  p[0].state = SR_CHARGE_EMPTY; p[0].seconds_left = p[0].regrow_seconds;
+  return SrChargeHarvest.{result = SR_CHARGE_HARVESTED, battery = sr_item(ITEM_BATTERY, 1)};
+}
+// Counts an Empty point down; at 0 it is Ready. dt <= 0 is ignored.
+sr_charge_tick :: (p: [] SrChargePoint, dt: f32) {
+  if p[0].state != SR_CHARGE_EMPTY || dt <= 0.0 { return; }
+  p[0].seconds_left -= dt;
+  if p[0].seconds_left <= 0.0 { p[0].seconds_left = 0.0; p[0].state = SR_CHARGE_READY; }
+}
+// The plugged-in robot leaves or is brought to 0: Occupied is Ready at once.
+sr_charge_release :: (p: [] SrChargePoint) { if p[0].state == SR_CHARGE_OCCUPIED { p[0].state = SR_CHARGE_READY; p[0].seconds_left = 0.0; } }

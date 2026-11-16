@@ -1,0 +1,11 @@
+// Splice Bots rules: the sluggish recharging Imperial robot (SpliceRecharge.h, package B-07; GDD 04
+// 5.4 UE-AI-29b, UE-CHG-03; GDD 02 section 16). Its sight while recharging is the Sight rules'.
+
+SR_RECHARGING_SPEED_FACTOR :: 0.5;   // INFERRED: move speed and attack rate halved
+SR_RECHARGE_BELOW_FRACTION :: 1.0;   // INFERRED: recharge until full
+sr_speed_factor_while_recharging :: (recharging: bool) -> f32 { return ifx recharging then SR_RECHARGING_SPEED_FACTOR else 1.0; }
+sr_clamp01 :: (v: f32) -> f32 { return ifx v < 0.0 then 0.0 else ifx v > 1.0 then 1.0 else v; }
+// Health or energy (fractions of their maximum, clamped to 0..1) below the threshold.
+sr_should_recharge :: (health_fraction: f32, energy_fraction: f32) -> bool {
+  return sr_clamp01(health_fraction) < SR_RECHARGE_BELOW_FRACTION || sr_clamp01(energy_fraction) < SR_RECHARGE_BELOW_FRACTION;
+}

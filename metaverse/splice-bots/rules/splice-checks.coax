@@ -1,0 +1,56 @@
+// Parity checks for splice.coax: SpliceTests/Rules/SpliceSpliceTests.cpp, and the "through the real
+// splice action" halves of SpliceCardEffectsTests.cpp. Uses ce_robot from card-effects-checks.coax.
+// rules.coax loads this file with `#load ... #test;`.
+
+sp_her_cards :: (a: string, b: string) -> [1] SrContainer {
+  c := [1] SrContainer.[sr_make_container(4)];
+  if a != "" { c[0].slots[0] = sr_item(a, 1); }
+  if b != "" { c[0].slots[1] = sr_item(b, 1); }
+  return c;
+}
+sp_knows :: (id: string) -> SrLearned { l := [1] SrLearned.[SrLearned.{}]; if id != "" { _ = sr_learn(l[..], id); } return l[0]; }
+
+#test "Splice.Rules.Splice.DrillOntoDigger" {
+  inv := sp_her_cards(ITEM_DRILL_CARD, "");
+  r := sr_splice(ce_robot(ROBOT_DIGGER, 2), ITEM_DRILL_CARD, inv[..], sp_knows(ITEM_DRILL_CARD), true);
+  #assert r.spliced && r.refusal == SR_SPLICE_OK && r.card_slot == 0 && r.new_robot.cards.slots[0].item == ITEM_DRILL_CARD && r.new_robot.robot_id == ROBOT_DIGGER;
+}
+#test "Splice.Rules.Splice.JumpOntoDiggerOnly" {
+  d := ce_robot(ROBOT_DIGGER, 2); d.cards.slots[0] = sr_stack(ITEM_DRILL_CARD, 1);
+  inv := sp_her_cards(ITEM_JUMP_CARD, "");
+  ok := sr_splice(d, ITEM_JUMP_CARD, inv[..], sp_knows(ITEM_JUMP_CARD), true);
+  #assert ok.spliced && ok.card_slot == 1 && ok.new_robot.cards.slots[0].item == ITEM_DRILL_CARD;
+  inv2 := sp_her_cards(ITEM_JUMP_CARD, "");
+  no := sr_splice(ce_robot(ROBOT_DRILL_MECH, 2), ITEM_JUMP_CARD, inv2[..], sp_knows(ITEM_JUMP_CARD), true);
+  #assert !no.spliced && no.refusal == SR_SPLICE_WRONG_ROBOT && inv2[0].slots[0].item == ITEM_JUMP_CARD;
+}
+#test "Splice.Rules.Splice.RefusesWhenCardNotLearned" {
+  inv := sp_her_cards(ITEM_DRILL_CARD, "");
+  r := sr_splice(ce_robot(ROBOT_DIGGER, 2), ITEM_DRILL_CARD, inv[..], sp_knows(""), true);
+  #assert !r.spliced && r.refusal == SR_SPLICE_NOT_LEARNED && inv[0].slots[0].count == 1;
+}
+#test "Splice.Rules.Splice.ConsumesCardOnce" {
+  inv := sp_her_cards(ITEM_DRILL_CARD, ITEM_DRILL_CARD);
+  r := sr_splice(ce_robot(ROBOT_DIGGER, 2), ITEM_DRILL_CARD, inv[..], sp_knows(ITEM_DRILL_CARD), true);
+  #assert r.spliced && sr_count_item(inv[0], ITEM_DRILL_CARD) == 1 && r.consumed_slot == 0 && sr_item_empty(inv[0].slots[0]);
+}
+#test "Splice.Rules.Splice.RefusesNotDockedMissingOrFull" {
+  l := sp_knows(ITEM_DRILL_CARD);
+  inv := sp_her_cards(ITEM_DRILL_CARD, "");
+  #assert sr_splice(ce_robot(ROBOT_DIGGER, 2), ITEM_DRILL_CARD, inv[..], l, false).refusal == SR_SPLICE_NOT_DOCKED;
+  empty := sp_her_cards("", "");
+  #assert sr_splice(ce_robot(ROBOT_DIGGER, 2), ITEM_DRILL_CARD, empty[..], l, true).refusal == SR_SPLICE_CARD_NOT_PRESENT;
+  #assert sr_splice(ce_robot(ROBOT_DIGGER, 0), ITEM_DRILL_CARD, inv[..], l, true).refusal == SR_SPLICE_SLOT_FULL;
+  #assert inv[0].slots[0].count == 1;
+  #assert sr_splice(ce_robot(ROBOT_DIGGER, 2), ITEM_BATTERY, inv[..], l, true).refusal == SR_SPLICE_NOT_A_CARD;
+}
+#test "Splice.Rules.CardEffects.DiggerJumpsOnlyWithJumpCard (through the splice)" {
+  inv := sp_her_cards(ITEM_JUMP_CARD, "");
+  r := sr_splice(ce_robot(ROBOT_DIGGER, 2), ITEM_JUMP_CARD, inv[..], sp_knows(ITEM_JUMP_CARD), true);
+  #assert r.spliced && sr_can_digger_jump(r.new_robot);
+}
+#test "Splice.Rules.CardEffects.OtherRobotNeverJumpsFromCard (through the splice)" {
+  inv := sp_her_cards(ITEM_JUMP_CARD, "");
+  s := sr_splice(ce_robot(ROBOT_IMPERIAL, 2), ITEM_JUMP_CARD, inv[..], sp_knows(ITEM_JUMP_CARD), true);
+  #assert !s.spliced && s.refusal == SR_SPLICE_WRONG_ROBOT;
+}

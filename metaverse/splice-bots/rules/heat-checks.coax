@@ -1,0 +1,24 @@
+// Parity checks for heat.coax: SpliceTests/Rules/SpliceHeatTests.cpp.
+// rules.coax loads this file with `#load ... #test;`.
+
+#test "Splice.Rules.Heat.BannedPiece" { #assert sr_heat_sum(SrHeatInputs.{banned_pieces = 1}) == 1 && sr_heat_sum(SrHeatInputs.{banned_pieces = 4}) == 4; }
+#test "Splice.Rules.Heat.Digger" { #assert sr_heat_sum(SrHeatInputs.{diggers = 1}) == 1; }
+#test "Splice.Rules.Heat.DrillMech" { #assert sr_heat_sum(SrHeatInputs.{drill_mechs = 1}) == 3; }
+#test "Splice.Rules.Heat.Dinosaur" { #assert sr_heat_sum(SrHeatInputs.{dinosaurs = 1}) == 5; }
+#test "Splice.Rules.Heat.SneakingIsNotHeat" { #assert sr_heat_sum(SrHeatInputs.{}) == 0 && sr_heat_level(0) == SR_HEAT_LOW; }
+#test "Splice.Rules.Heat.LevelLow" { #assert sr_heat_level(0) == SR_HEAT_LOW && sr_heat_level(3) == SR_HEAT_LOW && sr_reinforcements_per_alert(SR_HEAT_LOW) == 0; }
+#test "Splice.Rules.Heat.LevelMedium" { #assert sr_heat_level(4) == SR_HEAT_MEDIUM && sr_heat_level(7) == SR_HEAT_MEDIUM && sr_reinforcements_per_alert(SR_HEAT_MEDIUM) == 0; }
+#test "Splice.Rules.Heat.LevelHigh" {
+  #assert sr_heat_level(8) == SR_HEAT_HIGH && sr_heat_level(40) == SR_HEAT_HIGH && sr_reinforcements_per_alert(SR_HEAT_HIGH) == 1;
+  #assert sr_reinforcements_to_call(SR_HEAT_HIGH, 0) == 1 && sr_reinforcements_to_call(SR_HEAT_HIGH, 2) == 1;
+  #assert sr_reinforcements_to_call(SR_HEAT_HIGH, 3) == 0 && sr_reinforcements_to_call(SR_HEAT_HIGH, 5) == 0 && sr_reinforcements_to_call(SR_HEAT_MEDIUM, 0) == 0;
+}
+#test "Splice.Rules.Heat.SumCombined" {
+  #assert sr_heat_sum(SrHeatInputs.{diggers = 1, drill_mechs = 1}) == 4;
+  #assert sr_heat_sum(SrHeatInputs.{drill_mechs = 1, dinosaurs = 1}) == 8;
+  #assert sr_heat_sum(SrHeatInputs.{diggers = 1, drill_mechs = 1, dinosaurs = 1, banned_pieces = 2}) == 11;
+}
+#test "Splice.Rules.CardEffects.BannedPieceHeatComesFromHeatRules" {
+  #assert sr_banned_piece_heat(1) == SR_HEAT_PER_BANNED_PIECE && sr_banned_piece_heat(3) == 3 * SR_HEAT_PER_BANNED_PIECE;
+  #assert sr_banned_piece_heat(0) == 0 && sr_banned_piece_heat(-2) == 0 && sr_banned_piece_heat(2) == sr_heat_sum(SrHeatInputs.{banned_pieces = 2});
+}

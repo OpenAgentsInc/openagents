@@ -1,0 +1,61 @@
+// Parity checks for charge-point.coax and recharge.coax: SpliceTests/Rules/SpliceChargePointTests.cpp
+// and SpliceRechargeTests.cpp. rules.coax loads this file with `#load ... #test;`.
+
+#test "Splice.Rules.ChargePoint.harvest when grown yields one battery" {
+  p: [1] SrChargePoint;
+  #assert sr_charge_ready(p[0]);
+  h := sr_charge_harvest(p[..]);
+  #assert h.result == SR_CHARGE_HARVESTED && h.battery.count == 1 && h.battery.item == ITEM_BATTERY && !sr_charge_ready(p[0]);
+}
+#test "Splice.Rules.ChargePoint.harvest again at once is refused" {
+  p: [1] SrChargePoint; _ = sr_charge_harvest(p[..]);
+  second := sr_charge_harvest(p[..]);
+  #assert second.result == SR_CHARGE_REFUSED_NOT_READY && sr_item_empty(second.battery);
+}
+#test "Splice.Rules.ChargePoint.after the regrow time it yields again" {
+  p: [1] SrChargePoint; _ = sr_charge_harvest(p[..]);
+  sr_charge_tick(p[..], SR_DEFAULT_CHARGE_REGROW_SECONDS - 1.0);
+  #assert !sr_charge_ready(p[0]);
+  sr_charge_tick(p[..], 1.0);
+  #assert sr_charge_ready(p[0]);
+  again := sr_charge_harvest(p[..]);
+  #assert again.result == SR_CHARGE_HARVESTED && again.battery.count == 1;
+}
+#test "Splice.Rules.ChargePoint.feeding the battery refills a robot by the R-07 rule" {
+  p: [1] SrChargePoint; b := sr_charge_harvest(p[..]);
+  #assert b.battery.count == 1;
+  v := [1] SrVitals.[sr_apply_damage(sr_make_vitals(10.0, 10.0), 8.0)];
+  #assert sr_try_spend_move_energy(v[..], 10.0);
+  #assert sr_try_feed_battery(v[..], SR_DEFAULT_BATTERY_HEALTH_SHARE) == SR_FEED_FED && v[0].health == 6.0 && v[0].move_energy == 10.0;
+}
+#test "Splice.Rules.ChargePoint.a full robot refuses the battery" {
+  v := [1] SrVitals.[sr_make_vitals(10.0, 10.0)];
+  #assert sr_try_feed_battery(v[..], SR_DEFAULT_BATTERY_HEALTH_SHARE) == SR_FEED_REFUSED_FULL && v[0].health == 10.0 && v[0].move_energy == 10.0;
+}
+#test "Splice.Rules.ChargePoint.release makes an occupied point ready" {
+  p := [1] SrChargePoint.[SrChargePoint.{state = SR_CHARGE_OCCUPIED}];
+  #assert sr_charge_harvest(p[..]).result == SR_CHARGE_REFUSED_NOT_READY;
+  sr_charge_release(p[..]);
+  #assert sr_charge_ready(p[0]);
+}
+
+#test "Splice.Rules.Recharge.FactorOnlyWhileRecharging" {
+  #assert sr_speed_factor_while_recharging(false) == 1.0 && sr_speed_factor_while_recharging(true) == 0.5;
+  #assert 3.0 * sr_speed_factor_while_recharging(true) == 1.5;
+}
+#test "Splice.Rules.Recharge.StopsAtFull" {
+  #assert sr_should_recharge(12.0 / 20.0, 1.0) && sr_should_recharge(1.0, 0.3);
+  #assert !sr_should_recharge(1.0, 1.0) && !sr_should_recharge(1.5, 2.0);
+}
+#test "Splice.Rules.Recharge.FirstFightWinnable" {
+  interval : f32 = 1.6 / sr_speed_factor_while_recharging(true);
+  #assert interval == 3.2;
+  robot := sr_make_vitals(20.0, 20.0); robot.health = 12.0;
+  digger := sr_make_vitals(10.0, 10.0);
+  time : f32 = 0.0; next_digger : f32 = 0.0; next_robot : f32 = 0.7;
+  while !robot.powered_down && !digger.powered_down && time < 60.0 {
+    if next_digger <= next_robot { time = next_digger; robot = sr_apply_damage(robot, 2.0); next_digger += 1.6; }
+    else { time = next_robot; digger = sr_apply_damage(digger, 2.0); next_robot += interval; }
+  }
+  #assert robot.powered_down && !digger.powered_down && digger.health > 0.0;
+}

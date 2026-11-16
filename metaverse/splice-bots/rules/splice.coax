@@ -1,0 +1,55 @@
+// Splice Bots rules: the splice action, a software card onto a robot (SpliceSplice.h, package S-07;
+// GDD 04 6.5 UE-CRAFT-06 to -08, decision 30, UE-CARD-01; addendum 2026-11-14 section 4 and Defaults).
+// A card is not a recipe: splicing takes one card from her container and gives a new robot payload
+// with the card in its strip. The caller stores new_robot back (the live robot, or sr_pack_robot).
+#load "recipes.coax";
+
+// ESpliceSpliceRefusal.
+SR_SPLICE_OK :: 0; SR_SPLICE_NOT_A_CARD :: 1; SR_SPLICE_NOT_DOCKED :: 2; SR_SPLICE_NOT_LEARNED :: 3;
+SR_SPLICE_WRONG_ROBOT :: 4; SR_SPLICE_CARD_NOT_PRESENT :: 5; SR_SPLICE_SLOT_FULL :: 6;
+
+// FSpliceCardRule: which robots a card fits ("" in allowed = any robot) and the tag it grants.
+SrCardRule :: struct { card: string; granted_tag: string; allowed_robot: string; }
+SR_SLICE_CARDS :: [3] SrCardRule.[
+  SrCardRule.{card = ITEM_DRILL_CARD, granted_tag = "Card.Drill"},                                // breaks rock
+  SrCardRule.{card = ITEM_JUMP_CARD, granted_tag = "Card.Jump", allowed_robot = ROBOT_DIGGER},    // Digger only
+  SrCardRule.{card = ITEM_SENSOR_CARD, granted_tag = "Card.Sensor"},                              // doubles pickup range
+];
+SrCardFind :: struct { found: bool; rule: SrCardRule; }
+sr_find_card :: (id: string) -> SrCardFind {
+  for r: SR_SLICE_CARDS { if id != "" && r.card == id { return SrCardFind.{found = true, rule = r}; } }
+  return SrCardFind.{};
+}
+sr_card_fits_robot :: (rule: SrCardRule, robot: SrRobotState) -> bool { return rule.allowed_robot == "" || rule.allowed_robot == robot.robot_id; }
+// The first empty card slot that takes a card (filter 0 or the card bit), or -1.
+sr_find_free_card_slot :: (robot: SrRobotState) -> int {
+  for k: 0..<robot.cards.size {
+    f := robot.cards.filter[k];
+    if sr_stack_empty(robot.cards.slots[k]) && (f == 0 || (f & sr_filter_bit(SR_CAT_CARD)) != 0) { return k; }
+  }
+  return -1;
+}
+sr_find_card_in_container :: (c: SrContainer, id: string) -> int {
+  for k: 0..<c.size { s := c.slots[k]; if !sr_item_empty(s) && s.item == id { return k; } }
+  return -1;
+}
+SrSpliceResult :: struct { spliced: bool; refusal: int; new_robot: SrRobotState; card_slot: int = -1; consumed_slot: int = -1; }
+// SPLICE. Checks in order: a card, docked, learned, fits the robot, present, a free card slot. On
+// success one card leaves c[0] and new_robot carries it; on a refusal nothing changes.
+sr_splice :: (robot: SrRobotState, card: string, c: [] SrContainer, learned: SrLearned, docked: bool) -> SrSpliceResult {
+  r: SrSpliceResult;
+  rule := sr_find_card(card);
+  if !rule.found { r.refusal = SR_SPLICE_NOT_A_CARD; return r; }
+  if !docked { r.refusal = SR_SPLICE_NOT_DOCKED; return r; }
+  if !sr_knows(learned, card) { r.refusal = SR_SPLICE_NOT_LEARNED; return r; }
+  if !sr_card_fits_robot(rule.rule, robot) { r.refusal = SR_SPLICE_WRONG_ROBOT; return r; }
+  if sr_count_item(c[0], card) < 1 { r.refusal = SR_SPLICE_CARD_NOT_PRESENT; return r; }
+  slot := sr_find_free_card_slot(robot);
+  if slot < 0 { r.refusal = SR_SPLICE_SLOT_FULL; return r; }
+  from := sr_find_card_in_container(c[0], card);
+  c[0].slots[from].count -= 1;
+  if c[0].slots[from].count <= 0 { c[0].slots[from] = SrItemStack.{}; }
+  r.new_robot = robot; r.new_robot.cards.slots[slot] = sr_stack(card, 1);
+  r.spliced = true; r.card_slot = slot; r.consumed_slot = from;
+  return r;
+}

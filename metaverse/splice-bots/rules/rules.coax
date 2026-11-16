@@ -18,6 +18,10 @@
 #load "vitals.coax";
 #load "card-effects.coax";
 #load "companion.coax";
+#load "heat.coax";
+#load "splice.coax";
+#load "charge-point.coax";
+#load "recharge.coax";
 
 #load "data-checks.coax" #test;
 #load "robot-payload-checks.coax" #test;
@@ -29,3 +33,6 @@
 #load "vitals-checks.coax" #test;
 #load "card-effects-checks.coax" #test;
 #load "companion-checks.coax" #test;
+#load "heat-checks.coax" #test;
+#load "splice-checks.coax" #test;
+#load "charge-point-checks.coax" #test;

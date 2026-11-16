@@ -1,0 +1,35 @@
+// Splice Bots rules: Heat, how loud her crew and cargo are to the Imperial side (SpliceHeat.h; GDD 04
+// 6.3, UE-HEAT). Sneaking adds nothing; only what she carries and leads counts.
+
+SrHeatInputs :: struct { banned_pieces: int; diggers: int; drill_mechs: int; dinosaurs: int; imperial_robots: int; }
+// ESpliceHeatLevel: Low 0 to 3, Medium 4 to 7, High 8 and up.
+SR_HEAT_LOW :: 0; SR_HEAT_MEDIUM :: 1; SR_HEAT_HIGH :: 2;
+
+SR_HEAT_PER_BANNED_PIECE :: 1;
+SR_HEAT_PER_DIGGER :: 1;
+SR_HEAT_PER_DRILL_MECH :: 3;
+SR_HEAT_PER_DINOSAUR :: 5;
+SR_HEAT_PER_IMPERIAL_ROBOT :: 0;
+SR_HEAT_MEDIUM_FROM :: 4;
+SR_HEAT_HIGH_FROM :: 8;
+SR_HEAT_CALLS_PER_ALERT_AT_HIGH :: 1;
+SR_HEAT_CALL_MAX :: 3;   // reinforcements one area calls, at most
+
+sr_maxi :: (a: int, b: int) -> int { return ifx a > b then a else b; }
+sr_mini :: (a: int, b: int) -> int { return ifx a < b then a else b; }
+// Negative counts are 0.
+sr_heat_sum :: (in: SrHeatInputs) -> int {
+  return sr_maxi(0, sr_maxi(0, in.banned_pieces) * SR_HEAT_PER_BANNED_PIECE + sr_maxi(0, in.diggers) * SR_HEAT_PER_DIGGER
+    + sr_maxi(0, in.drill_mechs) * SR_HEAT_PER_DRILL_MECH + sr_maxi(0, in.dinosaurs) * SR_HEAT_PER_DINOSAUR
+    + sr_maxi(0, in.imperial_robots) * SR_HEAT_PER_IMPERIAL_ROBOT);
+}
+sr_heat_level :: (heat: int) -> int {
+  if heat >= SR_HEAT_HIGH_FROM { return SR_HEAT_HIGH; }
+  if heat >= SR_HEAT_MEDIUM_FROM { return SR_HEAT_MEDIUM; }
+  return SR_HEAT_LOW;
+}
+sr_reinforcements_per_alert :: (level: int) -> int { return ifx level == SR_HEAT_HIGH then SR_HEAT_CALLS_PER_ALERT_AT_HIGH else 0; }
+// One alert's calls, never past SR_HEAT_CALL_MAX in the area.
+sr_reinforcements_to_call :: (level: int, already_called: int) -> int {
+  return sr_mini(sr_reinforcements_per_alert(level), sr_maxi(0, SR_HEAT_CALL_MAX - sr_maxi(0, already_called)));
+}
