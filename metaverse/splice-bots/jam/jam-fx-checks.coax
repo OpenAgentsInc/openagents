@@ -71,3 +71,49 @@ sjf_space :: (g: [] SpGame, down: bool, n: int) -> f32 {
   _ = sjf_space(g[..], false, 300);
   #assert sj_feet(g[..]) < 0.1 && sjf_fact(g[..], 42) == 0 && sjf_fact(g[..], 41) == 100;
 }
+
+sjf_has :: (t: string, w: string) -> bool { if w.count > t.count { return false; } for k: 0..<t.count - w.count + 1 { if t[k..<k + w.count] == w { return true; } } return false; }
+sjf_heard :: (g: [] SpGame, o: [] u8) -> string { n := snd_text(g, o); return cast(string) o[0..<n]; }
+
+#test "jam fx: the jam's own sounds play by their names in the jam world: its menus, a pickup, the jetpack, a robot fed, Sniper's drive; the game's own stay quiet there" #steps 3000000000 #traversal 1000000000 {
+  s := [1] SjStore.[SjStore.{}]; g := [1] SpGame.[SpGame.{}]; o: [8192] u8; heard: [8192] u8; hn := 0;
+  #assert sj_load(s[..], SJF_CATALOG);
+  g_reset(g[..]); if g[0].layer[0].st[0].n == 0 { _ := spw_shipped(g[..]); }
+  sj_bind(g[..], s[..]); g_reset(g[..]);
+  g_step(g[..], 0.02); _ = sjf_heard(g[..], o[..]);
+  // the title's menu: the focus down and up, the credits and back, a new run's crew screen, and play
+  _ = g_key(g[..], -7, true); g_step(g[..], 0.02);
+  _ = g_key(g[..], -6, true); g_step(g[..], 0.02);
+  t := sjf_heard(g[..], o[..]); for c: t { heard[hn] = c; hn += 1; }
+  #assert g[0].snd[0].fired[SND_UI_MOVE] == 2;
+  _ = g_key(g[..], -2, true); g_step(g[..], 0.02);
+  #assert g[0].mode == M_CREW;
+  _ = g_key(g[..], -1, true); g_step(g[..], 0.02);
+  #assert g[0].mode == M_TITLE && g[0].snd[0].fired[SND_UI_BACK] == 1;
+  _ = g_key(g[..], -2, true); g_step(g[..], 0.02);
+  _ = g_key(g[..], -2, true); g_step(g[..], 0.02);
+  #assert g[0].mode == M_PLAY && g[0].snd[0].fired[SND_UI_SELECT] == 3;
+  t = sjf_heard(g[..], o[..]); for c: t { heard[hn] = c; hn += 1; }
+  all := cast(string) heard[0..<hn];
+  #assert sjf_has(all, "ui-move 0.350 0\n") && sjf_has(all, "ui-select 0.380 0\n") && sjf_has(all, "ui-back 0.380 0\n");
+  // the jetpack where it lies: the jam's pickup sound
+  g[0].px = -802.5; g[0].pz = -100.5; for i: 0..<5 { g_step(g[..], 0.02); }
+  t = sjf_heard(g[..], o[..]);
+  #assert sjf_fact(g[..], 40) == 1 && sjf_has(t, "sfx-pickup 0.450 0\n") && !sjf_has(t, "\npickup") && t[0] != 'p';
+  // jump, double jump, hold: it ignites and its loop plays while it fires; let go and the loop goes quiet
+  _ = sjf_space(g[..], true, 8); _ = sjf_space(g[..], false, 6); _ = sjf_space(g[..], true, 20);
+  t = sjf_heard(g[..], o[..]);
+  #assert g[0].snd[0].fired[SND_JET_IGNITE] == 1 && sjf_has(t, "jetpack-ignite 0.450 0\n") && sjf_has(t, "~jetpack-loop 0.320 0\n");
+  _ = sjf_space(g[..], false, 200); g[0].snd[0].beds_due = true;
+  t = sjf_heard(g[..], o[..]);
+  #assert sjf_has(t, "~jetpack-loop 0.000 0\n") && !sjf_has(t, "footstep") && !sjf_has(t, "land ");
+  // a robot fed (jam/jam-farm.coax sjx_say): its battery sound
+  sjx_say(g[..], SJX_FED, ""); t = sjf_heard(g[..], o[..]);
+  #assert sjf_has(t, "battery-feed 0.450 0\n");
+  // Sniper's drive: the jam's drive music, and not the game's desert music
+  g[0].mode = M_DRIVE; g_step(g[..], 0.02); g[0].snd[0].beds_due = true;
+  t = sjf_heard(g[..], o[..]);
+  #assert g[0].snd[0].on[SND_DRIVE_MUSIC] && sjf_has(t, "~music-drive 0.320 0\n") && !sjf_has(t, "desert-music");
+  // out of the jam world, the jam's sounds are off like the rest (SND_PLAYS)
+  g[0].jam = false; #assert !snd_plays(g[..], SND_JET_IGNITE) && !snd_plays(g[..], SND_DRIVE_MUSIC) && snd_name(g[..], SND_PICKUP) == "pickup";
+}

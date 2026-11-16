@@ -83,13 +83,16 @@ tool_main :: () -> int #export_c #effects(all) {
   if pngn > 0 { _ := fs_write(args_at(a[..], 1), cast(string) png[0..<pngn]); }
   // the jetpack (jam/jam-fx.coax): she stands where it lies and takes it; Space, Space again, then held 1.5 s: it
   // fires and lifts her (her feet's highest), burning fuel; let go, she lands and it refills
+  // and its sounds (sound.coax, private:splice-bots-jam-sounds@catalog): the page's own audio started, as a
+  // person's first key does, and what it played read back by name (coaxial.audio.heard and beds, dev pages)
+  jk_eval(c[..], "coaxial.audio.start();J.heard0=coaxial.audio.heard().length;1");
   jk_eval(c[..], "coaxial.send(611,`${coaxial.fieldProbe(43)} ${coaxial.fieldProbe(44)} 0 0`);1"); proc_sleep(600);
   jk_eval(c[..], "J.jet=coaxial.fieldProbe(40);J.jet_ground=coaxial.fieldProbe(14);J.jet_peak=J.jet_ground;J.jet_fired=0;J.jet_fuel=100;1");
   jk_key(c[..], " ", "Space", 32, true); proc_sleep(160); jk_key(c[..], " ", "Space", 32, false); proc_sleep(120);
   jk_key(c[..], " ", "Space", 32, true);
   for k: 0..<30 { proc_sleep(50); jk_eval(c[..], "J.jet_peak=Math.max(J.jet_peak,coaxial.fieldProbe(14));J.jet_fired=Math.max(J.jet_fired,coaxial.fieldProbe(42));J.jet_fuel=Math.min(J.jet_fuel,coaxial.fieldProbe(41));1"); }
   jk_key(c[..], " ", "Space", 32, false); proc_sleep(5000);
-  jk_eval(c[..], "J.jet_cm=J.jet_peak-J.jet_ground;J.jet_refilled=coaxial.fieldProbe(41);1");
+  jk_eval(c[..], "J.jet_cm=J.jet_peak-J.jet_ground;J.jet_refilled=coaxial.fieldProbe(41);J.sounds=[...new Set(coaxial.audio.heard().slice(J.heard0).map(l=>l.split(' ')[0]))];J.beds=coaxial.audio.beds().map(l=>l.split(' ')[0]);delete J.heard0;1");
   // the boss (jam/jam-boss.coax): its fight staged (640 "35"), she stands at its jaw and it bites; its health is 120
   jk_eval(c[..], "coaxial.send(640,'35');1"); proc_sleep(500);
   for k: 0..<20 { jk_eval(c[..], "coaxial.send(611,`${coaxial.fieldProbe(29)+100} ${coaxial.fieldProbe(30)}`);1"); proc_sleep(250); }
@@ -103,7 +106,7 @@ tool_main :: () -> int #export_c #effects(all) {
   for ch: out[0..<out.count - 4] { xp[sn] = ch; sn += 1; } for ch: "-exit.png" { xp[sn] = ch; sn += 1; }
   pngn = cdp_screenshot(c[..], png[..]);
   if pngn > 0 && out.count > 4 { _ := fs_write(cast(string) xp[0..<sn], cast(string) png[0..<pngn]); }
-  vn := media_value(c[..], "(()=>{const d=(p,q)=>Math.hypot(p[0]-q[0],p[1]-q[1]);J.walk_cm=Math.round(d(J.start,J.walked));J.back_cm=Math.round(d(J.walked,J.back));J.jump_cm=J.peak-J.start[2];J.ok=J.focus&&Math.hypot(J.start[0]+84000,J.start[1]+13600)<300&&J.walk_cm>300&&J.back_cm>150&&J.jump_cm>50&&J.hotbar===1&&J.slot===2&&J.battery===1&&(J.tables<=0||J.cards>0)&&J.boss===120&&J.bites>0&&J.jet===1&&J.jet_fired===1&&J.jet_cm>400&&J.jet_fuel<80&&J.jet_refilled===100&&J.exit===1&&J.exit_robots>=6;return JSON.stringify(J)})()", value[..]);
+  vn := media_value(c[..], "(()=>{const d=(p,q)=>Math.hypot(p[0]-q[0],p[1]-q[1]);J.walk_cm=Math.round(d(J.start,J.walked));J.back_cm=Math.round(d(J.walked,J.back));J.jump_cm=J.peak-J.start[2];J.ok=J.focus&&Math.hypot(J.start[0]+84000,J.start[1]+13600)<300&&J.walk_cm>300&&J.back_cm>150&&J.jump_cm>50&&J.hotbar===1&&J.slot===2&&J.battery===1&&(J.tables<=0||J.cards>0)&&J.boss===120&&J.bites>0&&J.jet===1&&J.jet_fired===1&&J.jet_cm>400&&J.jet_fuel<80&&J.jet_refilled===100&&J.sounds.includes('sfx-pickup')&&J.sounds.includes('jetpack-ignite')&&J.beds.includes('jetpack-loop')&&J.exit===1&&J.exit_robots>=6;return JSON.stringify(J)})()", value[..]);
   cdp_close(c[..]);
   if vn < 0 { return 5; }
   result := cast(string) value[0..<vn]; print("%\n", result);

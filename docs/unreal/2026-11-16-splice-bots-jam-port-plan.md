@@ -132,7 +132,7 @@ different in the jam; the jam wins. **Missing**: not in the prototype.
 | Desk refusal | "Not without a drill. Find the DRILL card first." | none | Missing |
 | Checkpoint and continue | Leaving Sniper takes a checkpoint; continue restores her place and inventory | Sniper is the checkpoint; the run is kept in this browser | Have |
 | Ending | 15 s memory with three captions, SCENE RESTORED, the teaser, RESTART | The same | Have |
-| Sound and music | Many effects missing in the jam; four music tracks (title, cabin, desert, rave) | 25 sounds, all off for now | Have the system; the jam's sounds go in the private pack |
+| Sound and music | Many effects missing in the jam; four music tracks (title, cabin, desert, rave) | 25 sounds, all off for now | Done: the jam's 10 sounds play in the jam world from `private:splice-bots-jam-sounds@catalog` |
 
 ## Order of work
 
@@ -203,6 +203,20 @@ Each batch is pushed to `main` green, with its checks, and commented on #13653.
   double jump, then hold Space: 100 fuel in 3 cells burns at 28 a second, thrust climbs up to 6.5 m/s with plain
   gravity, and she flies along her keys up to 15 m/s. Fuel refills on the ground. The HUD shows JET and its cells,
   and HOLD SPACE  JETPACK when it can fire. `jam-run-check` and `jam-keys-check` both fly it with the keys.
+- The jam's sounds and music play in the jam world (`sound.coax`, `jam/jam-fx.coax`). Each row of the game's sound
+  table can name a jam sound; in the jam world those rows play the jam's sound by that name and the rest stay
+  quiet. The jam's own moments are new rows: a battery fed, the jetpack's ignition and loop, the menus' move,
+  select and back, and the boss, drive and memory music. The sounds are a private pack of sounds only, loaded
+  as `private:splice-bots-jam-sounds@catalog`, so nothing of it goes to the GPU. To build it, run:
+
+  ```
+  coax/web/tool.sh metaverse/splice-bots/tools/jam-sounds-pack.coax \
+    ~/.openagents/unreal/splice-bots-jam/import-data/splice-bots-jam.pack \
+    ~/.openagents/unreal/splice-bots-jam/import-editor-shade/splice-bots-jam-editor.pack \
+    ~/.openagents/verse/private-build/web/splice-bots-jam-sounds.pack
+  ```
+
+  To upload it, run `coax/web/tool.sh metaverse/tools/humans/upload_packs.coax splice-bots-jam-sounds`.
 
 ## Acceptance
 

@@ -30,10 +30,11 @@ tool_main :: () -> int #export_c #effects(all) {
   realms: [1048576] u8; rn := fs_read(REALMS_JSON, realms[..]);
   text := cast(string) realms[0..<ifx rn < 0 then 0 else rn];
   mix: [SND_MAX_FRAMES] int; out: [WAV_HEADER + 2 * SND_MAX_FRAMES] u8; path: [512] u8; want: [256] u8;
-  bad := 0;
+  bad := 0; files := 0;
   for id: 0..<SND_COUNT {
     row := SND_ROWS[id];
-    p := fs_join(SOUNDS_DIR, row.file, path[..]);
+    if row.file == "" { continue; }   // the jam world's own: no placeholder (tools/jam-sounds-pack.coax)
+    files += 1; p := fs_join(SOUNDS_DIR, row.file, path[..]);
     if mode == "--write" && !fs_exists(p) {
       r := snd_render(id, mix[..], out[..]);
       if !r.ok || !fs_write(p, cast(string) out[0..<r.bytes]) { print("sounds: could not write %\n", p); return 1; }
@@ -44,7 +45,7 @@ tool_main :: () -> int #export_c #effects(all) {
     if !sounds_has(text, cast(string) want[0..<n]) { print("sounds: % does not list %\n", REALMS_JSON, cast(string) want[0..<n]); bad += 1; }
   }
   if bad > 0 { return 1; }
-  print("sounds: % sounds, each a file listed in %\n", SND_COUNT, REALMS_JSON);
+  print("sounds: % sounds, each a file listed in %; % more are the jam world's alone\n", files, REALMS_JSON, SND_COUNT - files);
   return 0;
 }
 sounds_has :: (text: string, part: string) -> bool {

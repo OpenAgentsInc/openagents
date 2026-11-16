@@ -1,0 +1,76 @@
+// tool.sh: stack-gib 1
+// The jam's sounds and music as one private pack of sounds only (GitHub #13653; sound.coax plays them in the jam
+// world by these names): every sound entry of the packs unreal-level-import wrote from the jam (the data pack's
+// battery feed, jetpack, ui sounds and three music loops; the editor pack's pickup), each named without the
+// import's "-N" ending. The pack's vertices and indices are empty and it has no layers: the page loads it as
+// private:splice-bots-jam-sounds@catalog (coax/web/host.js), its catalog and its sounds, and nothing of it goes
+// to the GPU.
+//
+//   coax/web/tool.sh metaverse/splice-bots/tools/jam-sounds-pack.coax PACK... OUT.pack
+//
+// The PACKs are ~/.openagents/unreal/splice-bots-jam/import-data/splice-bots-jam.pack and
+// ~/.openagents/unreal/splice-bots-jam/import-editor-shade/splice-bots-jam-editor.pack; OUT is
+// ~/.openagents/verse/private-build/web/splice-bots-jam-sounds.pack, which coax/web/serve.c serves at
+// /private/splice-bots-jam-sounds.pack on a local address and metaverse/tools/humans/upload_packs.coax
+// splice-bots-jam-sounds puts behind openagents.com's broker. The sounds are the jam's: read here, never
+// committed; the pack is written outside the repository.
+#import "Basic";
+#load "../../../metaverse-engine/editor/pack.coax";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/fs.coax";
+#load "../../../coax/lib/sys/args.coax";
+
+JSP_IN :: 80000000; JSP_SOUNDS :: 16000000; JSP_BUDGET :: 16000000; JSP_MAX :: 32;
+
+jsp_put :: (out: [] u8, at: int, t: string) -> int { for c, k: t { out[at + k] = c; } return at + t.count; }
+jsp_int :: (out: [] u8, at: int, v: int) -> int { b: [24] u8; n := 0; x := v; if x == 0 { b[0] = '0'; n = 1; } while x > 0 { b[n] = cast(u8) ('0' + x % 10); x /= 10; n += 1; } for k: 0..<n { out[at + k] = b[n - 1 - k]; } return at + n; }
+// "music-boss-3" is "music-boss": the import's number dropped
+jsp_name :: (n: string) -> string {
+  e := n.count; while e > 0 && n[e - 1] >= '0' && n[e - 1] <= '9' { e -= 1; }
+  if e < n.count && e > 1 && n[e - 1] == '-' { return n[0..<e - 1]; }
+  return n;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 2 { tool_errln("usage: jam-sounds-pack PACK... OUT.pack"); return 2; }
+  outp := args_at(a[..], args_count(a[..]) - 1);
+  src: [JSP_IN] u8; bytes: [JSP_SOUNDS] u8; bn := 0;
+  names: [JSP_MAX * 32] u8; nn := 0; at_name: [JSP_MAX] int; len_name: [JSP_MAX] int; at_b: [JSP_MAX] int; len_b: [JSP_MAX] int; count := 0;
+  for i: 0..<args_count(a[..]) - 1 {
+    inp := args_at(a[..], i);
+    n := fs_read(inp, src[..]);
+    if n <= 0 { tool_err("jam-sounds-pack: cannot read "); tool_errln(inp); return 1; }
+    p := cast(string) src[0..<n]; r: [1] PackRead;
+    if !pack_read(p, r[..]) { tool_err("jam-sounds-pack: a pack is refused: "); tool_errln(r[0].why); return 1; }
+    for k: 0..<r[0].count {
+      e := r[0].entries[k];
+      if e.kind != PACK_SOUND { continue; }
+      name := jsp_name(e.name); data := pack_bytes(p, r[..], k);
+      if count >= JSP_MAX || bn + data.count > JSP_SOUNDS { tool_errln("jam-sounds-pack: too many sounds"); return 1; }
+      at_name[count] = nn; len_name[count] = name.count; nn = jsp_put(names[..], nn, name);
+      at_b[count] = bn; len_b[count] = data.count; bn = jsp_put(bytes[..], bn, data);
+      print("  %: % bytes, from %\n", name, data.count, e.name);
+      count += 1;
+    }
+  }
+  if count == 0 { tool_errln("jam-sounds-pack: the packs have no sounds"); return 1; }
+  // the catalog states the pack's size: write it until the size it states is the size it is
+  catalog: [8192] u8; cn := 0; total := 0; s: [3 + JSP_MAX] PackSource;
+  for pass: 0..<5 {
+    cn = jsp_put(catalog[..], 0, "pack splice-bots-jam-sounds\nbudget "); cn = jsp_int(catalog[..], cn, JSP_BUDGET);
+    cn = jsp_put(catalog[..], cn, "\nbytes "); cn = jsp_int(catalog[..], cn, total);
+    cn = jsp_put(catalog[..], cn, "\nL 0 Splice Bots jam sounds|private, the owner's|https://openagents.com/worlds/splice-bots-jam\n");
+    for k: 0..<count { cn = jsp_put(catalog[..], cn, "S "); cn = jsp_put(catalog[..], cn, cast(string) names[at_name[k]..<at_name[k] + len_name[k]]); cn = jsp_put(catalog[..], cn, " 0\n"); }
+    s[0] = PackSource.{kind = PACK_CATALOG, licence = PACK_MANY, name = "catalog", data = cast(string) catalog[0..<cn]};
+    s[1] = PackSource.{kind = PACK_VERTICES, licence = PACK_MANY, name = "vertices", data = ""};
+    s[2] = PackSource.{kind = PACK_INDICES, licence = PACK_MANY, name = "indices", data = ""};
+    for k: 0..<count { s[3 + k] = PackSource.{kind = PACK_SOUND, licence = 0, name = cast(string) names[at_name[k]..<at_name[k] + len_name[k]], data = cast(string) bytes[at_b[k]..<at_b[k] + len_b[k]]}; }
+    total = pack_size(s[0..<3 + count]);
+  }
+  out: [JSP_BUDGET] u8; size := pack_write(s[0..<3 + count], JSP_BUDGET, out[..]); back: [1] PackRead;
+  if size < 1 || !pack_read(cast(string) out[0..<size], back[..]) { tool_err("jam-sounds-pack: the pack is refused: "); tool_errln(back[0].why); return 1; }
+  if !fs_write(outp, cast(string) out[0..<size]) { tool_err("jam-sounds-pack: cannot write "); tool_errln(outp); return 1; }
+  print("splice-bots-jam-sounds: % sounds, % bytes: %\n", count, size, outp);
+  return 0;
+}

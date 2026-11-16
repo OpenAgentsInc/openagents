@@ -26,10 +26,13 @@ SjFx :: struct {
   jet: SrJetpackState; jt: SrJetpackTuning;
   lying: bool; lx: f32; lz: f32;      // the jetpack where it lies, until she takes it
   plume: f32;                          // the exhaust's throttle, eased (0 to 1)
+  front_mode: int = -1; front_focus: int = -1;   // the menu the step saw last, and its focus (the ui sounds)
+  pick_at: f32 = -1;                   // when a pickup's sound last played (a harvest's drops: one)
 }
 
 sjf_reset :: (g: [] SpGame) {
-  f := g[0].jf[..]; f[0] = SjFx.{};
+  f := g[0].jf[..]; mode := f[0].front_mode; focus := f[0].front_focus;
+  f[0] = SjFx.{}; f[0].front_mode = mode; f[0].front_focus = focus;   // a new run from the menus: its select still sounds
   if !g[0].jam { return; }
   f[0].ok = true;
   sp := g[0].jr[0].spawn[SJ_FARM];
@@ -54,11 +57,12 @@ sjf_pick_near :: (g: [] SpGame, a: SjActor) -> bool {
 // while it fires its thrust lifts her and her fall is plain gravity (the jam tunes the thrust against it).
 sjf_loc :: (g: [] SpGame, j: [] Jump, loc: LocomotionProfile, dt: f32) -> LocomotionProfile {
   if !sjf_on(g) { return loc; }
-  f := g[0].jf[..];
+  f := g[0].jf[..]; was := f[0].jet.firing;
   in := SrJetpackInput.{owned = sjf_owned(g), jump_held = j[0].presses.held, on_ground = j[0].on_ground, air_jumps_spent = j[0].air_used >= j[0].air_jumps,
     blocked = g[0].mode != M_PLAY || g_riding(g) || d_cursor(g)};
   f[0].jet = sr_jetpack_step(f[0].jet, in, f[0].jt, dt);
   if !f[0].jet.firing { return loc; }
+  if !was { snd_play(g, SND_JET_IGNITE); }
   j[0].vy = sr_jetpack_vertical_after(j[0].vy * 100, 0, f[0].jt, dt) / 100;
   out := loc; out.fall_gravity_scale = 1;
   return out;
@@ -130,6 +134,43 @@ sjf_hud :: (g: [] SpGame, out: [] f32, at: int, q: Ui) -> int {
   }
   if sjf_ready(g) { n = hv_mid(out, n, F_TITLE, "HOLD SPACE  JETPACK", q.w * 0.5, q.h * 0.5 + 56 * k, 9 * k, HV_ORANGE(), 1); }
   return n;
+}
+
+// ---- the jam's sounds (sound.coax): the moments that only the jam world has
+// What the jam's rules said (jam-farm.coax sjx_say): an item into her inventory, a robot fed.
+sjf_said :: (g: [] SpGame, what: int) {
+  if !g[0].jam { return; }
+  if what == SJX_FED { snd_play(g, SND_FEED); return; }
+  if what != SJX_ITEM { return; }
+  f := g[0].jf[..]; s := g[0].snd[0];
+  if f[0].pick_at >= 0 && s.t - f[0].pick_at < SND_HIT_GAP { return; }   // a harvest's drops: one sound
+  f[0].pick_at = s.t; snd_play(g, SND_PICKUP);
+}
+// The menus (front.coax): the focus moving, a screen chosen, or going back to the title (the jam's ui sounds).
+sjf_focus :: (g: [] SpGame) -> int {
+  f := g[0].fr[0];
+  return ifx g[0].mode == M_TITLE then scr_focused(f.menu[..]) else ifx g[0].mode == M_CREW then scr_focused(f.rows[..]) else -1;
+}
+sjf_menu_sounds :: (g: [] SpGame) {
+  if !g[0].jam { return; }
+  f := g[0].jf[..]; m := g[0].mode; at := sjf_focus(g);
+  if m != f[0].front_mode {
+    was := f[0].front_mode;
+    if m == M_TITLE && (was == M_CREW || was == M_CREDITS) { snd_play(g, SND_UI_BACK); }
+    else if was == M_TITLE || was == M_CREW { snd_play(g, SND_UI_SELECT); }
+  } else if fr_front(g) && at != f[0].front_focus && at >= 0 { snd_play(g, SND_UI_MOVE); }
+  f[0].front_mode = m; f[0].front_focus = at;
+}
+// The jam world's beds (sound.coax snd_want): the jetpack's loop while it fires, the boss's music in its
+// fight, the drive's music at Sniper's wheel, the memory's over the core's memory and the scene restored.
+sjf_want :: (g: [] SpGame, id: int) -> bool {
+  if !g[0].jam { return false; }
+  m := g[0].mode;
+  if id == SND_JET_LOOP { return m == M_PLAY && sjf_firing(g); }
+  if id == SND_BOSS_MUSIC { return m == M_PLAY && g[0].bt[0].kind == SBF_BOSS; }
+  if id == SND_DRIVE_MUSIC { return m == M_DRIVE; }
+  if id == SND_MEMORY_MUSIC { return m == M_MEMORY || m == M_RESTORED; }
+  return false;
 }
 
 // For a page check (splice-bots.coax splice_world_fact): 40 she owns the jetpack, 41 its fuel, 42 it fires, 43 and

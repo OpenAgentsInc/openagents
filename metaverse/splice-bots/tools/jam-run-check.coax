@@ -14,7 +14,9 @@
 //   - the jump course with real keys (jrc_course, jam/jam-fx.coax): up P1 to P3 for its battery and banned
 //     piece, and up the Greek quarter's village;
 //   - the jetpack with real keys (jrc_jetpack, jam/jam-fx.coax): taken where it lies, fired with jump, double
-//     jump, hold, and refilled on landing.
+//     jump, hold, and refilled on landing, with its pickup, ignition and loop sounds;
+//   - the jam's own sounds over the whole run (jrc_sounds, sound.coax): the drive's, the boss's and the
+//     memory's music, by the names the page plays them by.
 //
 //   coax/web/tool.sh metaverse/splice-bots/tools/jam-run-check.coax PACK [CHARS] [--tables TABLES]
 //
@@ -198,10 +200,20 @@ jrc_space :: (g: [] SpGame, down: bool, secs: f32) -> f32 {
   for i: 0..<cast(int) (secs / 0.02) { g_step(g, 0.02); top = hi(top, sj_feet(g)); }
   return top;
 }
+// ---- the jam's sounds (sound.coax, jam/jam-fx.coax): which of the jam's own played over a run, by the names
+// the page plays them by. 0 when each of `want` played, else 1.
+jrc_sounds :: (g: [] SpGame, what: string, want: [] int) -> int {
+  print("  %:", what);
+  for id: 0..<SND_COUNT { if SND_ROWS[id].jam != "" && g[0].snd[0].fired[id] > 0 { print(" % x%", snd_name(g, id), g[0].snd[0].fired[id]); } }
+  print("\n");
+  for id: want { if g[0].snd[0].fired[id] == 0 { print("  % never played\n", snd_name(g, id)); return 1; } }
+  return 0;
+}
 jrc_jetpack :: (g: [] SpGame) -> int {
   g_reset(g);
   if !(g_key(g, -2, true) && g_key(g, -2, true) && g[0].mode == M_PLAY && sjx_on(g)) { return 1; }
   if sjf_fact(g, 43) == -1 || sjf_fact(g, 40) != 0 { return 2; }
+  for id: 0..<SND_COUNT { g[0].snd[0].fired[id] = 0; }   // its own sounds, counted from here
   lx := cast(f32) sjf_fact(g, 43) / 100; lz := cast(f32) sjf_fact(g, 44) / 100;
   print("the jetpack lies at (%, %), % m from her start\n", lx, lz, dist2(g[0].px, g[0].pz, lx, lz));
   _ := jrc_walk(g, lx, lz, 0.5, 15);
@@ -209,12 +221,14 @@ jrc_jetpack :: (g: [] SpGame) -> int {
   ground := sj_feet(g);
   plain := jrc_space(g, true, 0.16); plain = hi(plain, jrc_space(g, false, 0.12)); plain = hi(plain, jrc_space(g, true, 0.04));
   if sjf_fact(g, 42) != 1 { return 4; }
-  top := jrc_space(g, true, 2.5); fuel := sjf_fact(g, 41);
+  top := jrc_space(g, true, 2.5); fuel := sjf_fact(g, 41); loop := g[0].snd[0].on[SND_JET_LOOP];
   print("  jump, double jump, hold Space: her feet % m up (% m at the double jump), fuel % of 100\n", top - ground, plain - ground, fuel);
   if top - ground < 5 || fuel > 60 { return 5; }
   _ = jrc_space(g, false, 6);
   print("  landed: her feet % m up, fuel % of 100\n", sj_feet(g) - ground, sjf_fact(g, 41));
   if sjf_fact(g, 42) != 0 || sjf_fact(g, 41) != 100 { return 6; }
+  heard := [3] int.[SND_PICKUP, SND_JET_IGNITE, SND_JET_LOOP];
+  if !loop || g[0].snd[0].on[SND_JET_LOOP] || jrc_sounds(g, "its sounds", heard[..]) != 0 { return 7; }
   return 0;
 }
 
@@ -304,6 +318,9 @@ tool_main :: () -> int #export_c #effects(all) {
   g := [1] SpGame.[SpGame.{}]; g_reset(g[..]); _ := spw_shipped(g[..]);
   sj_bind(g[..], s[..]);
   r := g_play_run(g[..]); jrc_line("the whole run", r); failed = failed || r != 0;
+  run_sounds := [3] int.[SND_DRIVE_MUSIC, SND_BOSS_MUSIC, SND_MEMORY_MUSIC];
+  r = jrc_sounds(g[..], "the whole run's jam sounds", run_sounds[..]);
+  jrc_line("the jam's sounds over the whole run: the drive, the boss, the memory", r); failed = failed || r != 0;
   if r != 0 { print("  she stopped at (%, %), zone %, phase %\n", g[0].px, g[0].pz, g[0].zone, g[0].phase); }
   // the farm's start to Sniper's door with the keys
   g_reset(g[..]);

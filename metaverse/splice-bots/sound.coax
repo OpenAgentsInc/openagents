@@ -9,6 +9,10 @@
 // is a recipe below rendered by the Metaverse Engine's synthesizer (metaverse-engine/audio/sfx.coax)
 // with tools/sounds.coax. A real sound replaces a file by its name; nothing else changes.
 //
+// In the jam world (g[0].jam) a row with a `jam` name plays the jam's own sound by that name
+// (private:splice-bots-jam-sounds@catalog, tools/jam-sounds-pack.coax), and the rest stay quiet. Rows
+// with no file are the jam world's alone; jam/jam-fx.coax plays their moments.
+//
 // The moments: a message the game says (g_say, through g_event) plays its sound (snd_for_message);
 // the edit bay opening and a slot taking a part call snd_play; the rest the step watches
 // (snd_tick, first thing in g_step): a door in or out of the rover, a robot turning on you, a drill
@@ -21,17 +25,22 @@ SND_SLOT_CLICK :: 6; SND_FILM_WHIR :: 7; SND_ROVER_DOOR :: 8; SND_ROBOT_ALERT ::
 SND_BOSS_WAKE :: 11; SND_BOSS_CHARGE :: 12; SND_BOSS_REEL :: 13; SND_BOSS_FALL :: 14;
 SND_STEP :: 15; SND_LAND :: 16;   // her feet (feel.coax): each footfall of her stride (counted, never logged: there are hundreds), and a landing
 SND_ATTACK_WIND :: 17; SND_ATTACK_MISS :: 18;   // a foe winds up a blow; a blow that missed her (splice-battle.coax, #13552)
-SND_HOVER_CASUAL :: 19; SND_HOVER_FAST :: 20; SND_ROVER_LOFI :: 21; SND_DESERT_MUSIC :: 22; SND_RAVE :: 23;
-SND_COUNT :: 24;
+SND_FEED :: 19; SND_JET_IGNITE :: 20; SND_UI_MOVE :: 21; SND_UI_SELECT :: 22; SND_UI_BACK :: 23;   // the jam world's own (jam/jam-fx.coax)
+SND_HOVER_CASUAL :: 24; SND_HOVER_FAST :: 25; SND_ROVER_LOFI :: 26; SND_DESERT_MUSIC :: 27; SND_RAVE :: 28;
+SND_JET_LOOP :: 29; SND_BOSS_MUSIC :: 30; SND_DRIVE_MUSIC :: 31; SND_MEMORY_MUSIC :: 32;   // the jam world's own beds
+SND_COUNT :: 33;
 SND_FIRST_BED :: SND_HOVER_CASUAL;   // from here on each sound is a loop: a bed that plays while its place holds
 SND_EVENT_BASE :: 200;               // a sound's event for a native host: SND_EVENT_BASE + id (below 100 a message, 100 on the game's own)
 
 // The sound table: the event's name (the page plays it by this name; a native host's overrides row is
 // event.NAME), its file under apps/openagents-web/realms/splice-bots/assets/sounds/, and its level in
 // thousandths.
-SndRow :: struct { name: string; file: string; gain: int; }
+// A row: its name, its placeholder file (none for a sound only the jam world plays), its level, and the name of
+// the jam's own sound that plays for it in the jam world (private:splice-bots-jam-sounds@catalog,
+// tools/jam-sounds-pack.coax), or none.
+SndRow :: struct { name: string; file: string; gain: int; jam: string; }
 SND_ROWS :: [SND_COUNT] SndRow.[
-  SndRow.{name = "pickup", file = "pickup.wav", gain = 450},               // a part, a card or a battery cell picked up
+  SndRow.{name = "pickup", file = "pickup.wav", gain = 450, jam = "sfx-pickup"},             // a part, a card or a battery cell picked up
   SndRow.{name = "drill", file = "drill.wav", gain = 450},                 // a drill card's bit meets the rubble (g_bot); the drill mech starts on the hallway
   SndRow.{name = "glitch", file = "glitch.wav", gain = 400},               // a bad cut; the core's memory flickering in
   SndRow.{name = "success", file = "success.wav", gain = 450},             // the rubble opens, the hallway breaks, a fight won, the scene restored
@@ -50,11 +59,20 @@ SND_ROWS :: [SND_COUNT] SndRow.[
   SndRow.{name = "land", file = "land.wav", gain = 300},                   // a landing from a jump or a fall, louder the harder it is
   SndRow.{name = "attack-wind", file = "attack-wind.wav", gain = 420},     // a foe winds up a blow, heard from where it stands
   SndRow.{name = "attack-miss", file = "attack-miss.wav", gain = 380},     // a blow that missed her: a whoosh past
+  SndRow.{name = "battery-feed", file = "", gain = 450, jam = "battery-feed"},       // jam: a battery fed to a robot
+  SndRow.{name = "jetpack-ignite", file = "", gain = 450, jam = "jetpack-ignite"},   // jam: the jetpack fires
+  SndRow.{name = "ui-move", file = "", gain = 350, jam = "ui-move"},                 // jam: a menu's focus moves
+  SndRow.{name = "ui-select", file = "", gain = 380, jam = "ui-select"},             // jam: a menu's screen chosen
+  SndRow.{name = "ui-back", file = "", gain = 380, jam = "ui-back"},                 // jam: back to the title
   SndRow.{name = "hover-casual", file = "hover-casual.wav", gain = 220},   // loop: the hoverboard at its casual speed
   SndRow.{name = "hover-fast", file = "hover-fast.wav", gain = 300},       // loop: the hoverboard fast (Q while on it), or super fast
   SndRow.{name = "rover-lofi", file = "rover-lofi.wav", gain = 300},       // loop: inside the rover (its room, the edit bay)
   SndRow.{name = "desert-music", file = "desert-music.wav", gain = 320},   // loop: vaporwave on the drive and in the desert
-  SndRow.{name = "rave-loop", file = "rave-loop.wav", gain = 380}          // loop: trance with chanting in the garage at night (the rave)
+  SndRow.{name = "rave-loop", file = "rave-loop.wav", gain = 380},         // loop: trance with chanting in the garage at night (the rave)
+  SndRow.{name = "jetpack-loop", file = "", gain = 320, jam = "jetpack-loop"},       // jam loop: the jetpack while it fires
+  SndRow.{name = "music-boss", file = "", gain = 320, jam = "music-boss"},           // jam loop: the boss's fight
+  SndRow.{name = "music-drive", file = "", gain = 320, jam = "music-drive"},         // jam loop: Sniper on the drive
+  SndRow.{name = "music-memory", file = "", gain = 320, jam = "music-memory"}        // jam loop: the core's memory, the scene restored
 ];
 SND_DIR :: "/realms/splice-bots/assets/sounds/";
 
@@ -64,8 +82,12 @@ SND_DIR :: "/realms/splice-bots/assets/sounds/";
 SND_PLAYS :: [SND_COUNT] bool.[
   false, false, false, false, false, false, false, false, false, false,   // pickup .. raider-mech
   false, false, false, false, false, false, false, false, false,          // boss-wake .. attack-miss
-  false, false, false, false, false                                       // hover-casual .. rave-loop
+  false, false, false, false, false,                                      // battery-feed .. ui-back
+  false, false, false, false, false,                                      // hover-casual .. rave-loop
+  false, false, false, false                                              // jetpack-loop .. music-memory
 ];
+// In the jam world a row with a jam sound plays it, whatever its switch, and the rest stay quiet: the jam's sounds
+// are its own (private:splice-bots-jam-sounds@catalog), and a row without one has none there.
 
 snd_id :: (name: string) -> int { for i: 0..<SND_COUNT { if SND_ROWS[i].name == name { return i; } } return -1; }
 snd_loop :: (id: int) -> bool { return id >= SND_FIRST_BED; }
@@ -102,7 +124,12 @@ SpSound :: struct {
 }
 
 // Whether sound `id` reaches the page and a native host now.
-snd_plays :: (g: [] SpGame, id: int) -> bool { return g[0].snd[0].all_on || SND_PLAYS[id]; }
+snd_plays :: (g: [] SpGame, id: int) -> bool {
+  if g[0].snd[0].all_on { return true; }
+  return ifx g[0].jam then SND_ROWS[id].jam != "" else SND_PLAYS[id];
+}
+// The name the page and a native host play it by: the jam's own in the jam world.
+snd_name :: (g: [] SpGame, id: int) -> string { r := SND_ROWS[id]; return ifx g[0].jam && r.jam != "" then r.jam else r.name; }
 snd_note :: (g: [] SpGame, id: int) {
   s := g[0].snd[..];
   s[0].fired[id] += 1;
@@ -145,13 +172,14 @@ snd_want :: (g: [] SpGame, id: int) -> bool {
   if id == SND_RAVE { return rave; }
   if id == SND_HOVER_CASUAL { return riding && !g[0].board[0].fast; }
   if id == SND_HOVER_FAST { return riding && g[0].board[0].fast; }
-  return false;
+  return sjf_want(g, id);   // the jam world's beds (jam/jam-fx.coax)
 }
 
 // First thing in a step: what changed since the last one, and the beds for where you are now.
 snd_tick :: (g: [] SpGame, dt: f32) {
   s := g[0].snd[..];
   s[0].t += dt;
+  sjf_menu_sounds(g);   // the jam's menu sounds (jam/jam-fx.coax)
   front := fr_front(g);
   if !front && s[0].ready {
     aboard := snd_aboard(g);
@@ -190,21 +218,21 @@ snd_bay :: (g: [] SpGame) {
 // for each bed the page has heard of (gain 0 when it is not wanted now). Emptied as it is read.
 snd_text :: (g: [] SpGame, out: [] u8) -> int {
   s := g[0].snd[..]; n := 0;
-  for k: 0..<s[0].q_n { n = snd_line(out, n, "", s[0].q[k], SND_ROWS[s[0].q[k]].gain, s[0].qpan[k]); }
+  for k: 0..<s[0].q_n { n = snd_line(out, n, "", snd_name(g, s[0].q[k]), SND_ROWS[s[0].q[k]].gain, s[0].qpan[k]); }
   s[0].q_n = 0;
   if s[0].beds_due {
     for id: SND_FIRST_BED..<SND_COUNT {
       if !snd_plays(g, id) || (!s[0].on[id] && !s[0].heard[id]) { continue; }
       s[0].heard[id] = true;
-      n = snd_line(out, n, "~", id, ifx s[0].on[id] then SND_ROWS[id].gain else 0, 0);
+      n = snd_line(out, n, "~", snd_name(g, id), ifx s[0].on[id] then SND_ROWS[id].gain else 0, 0);
     }
     s[0].beds_due = false; s[0].beds_at = s[0].t;
   }
   return n;
 }
-snd_line :: (out: [] u8, at: int, lead: string, id: int, gain: int, pan: f32) -> int {
+snd_line :: (out: [] u8, at: int, lead: string, name: string, gain: int, pan: f32) -> int {
   if at + 52 > out.count { return at; }
-  n := tput(out, at, lead); n = tput(out, n, SND_ROWS[id].name); n = tput(out, n, " 0.");
+  n := tput(out, at, lead); n = tput(out, n, name); n = tput(out, n, " 0.");
   if gain < 100 { n = tput(out, n, "0"); } if gain < 10 { n = tput(out, n, "0"); }
   n = tput_int(out, n, gain);
   // the pan in hundredths: " 0" centred, else " 0.62" or " -0.62"
@@ -333,6 +361,7 @@ snd_render :: (id: int, mix: [] int, out: [] u8) -> SfxRender {
   for i: 0..<SND_COUNT {
     r := SND_ROWS[i];
     #assert snd_id(r.name) == i && r.gain > 0 && r.gain < 1000;
+    if r.file == "" { #assert r.jam != ""; continue; }
     #assert r.file.count == r.name.count + 4 && r.file[0..<r.name.count] == r.name && r.file[r.name.count..<r.file.count] == ".wav";
     s := snd_recipe(i);
     #assert s.n > 0 && s.ms > 0 && s.ms + s.loop <= SND_MAX_MS && (s.loop > 0) == snd_loop(i);
@@ -342,6 +371,7 @@ snd_render :: (id: int, mix: [] int, out: [] u8) -> SfxRender {
 #test "each placeholder renders loud WAV bytes, the same each time, and small" #steps 900000000 {
   mix: [SND_MAX_FRAMES] int; a: [WAV_HEADER + 2 * SND_MAX_FRAMES] u8; b: [WAV_HEADER + 2 * SND_MAX_FRAMES] u8;
   for id: 0..<SND_COUNT {
+    if SND_ROWS[id].file == "" { continue; }
     r := snd_render(id, mix[..], a[..]);
     #assert r.ok && r.peak > 0 && r.bytes <= 32000;
     q := snd_render(id, mix[..], b[..]);

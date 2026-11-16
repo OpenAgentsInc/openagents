@@ -512,6 +512,12 @@ Every sound is off for now. `SND_PLAYS` in `sound.coax` is the switch for each r
 sound from the page and from a native host's event, while its moment still runs and is logged for
 the checks. Turn a row on to plug its sound back in.
 
+In the jam world (`/worlds/splice-bots-jam`) the switches give way to the jam's own sounds. A row with a
+`jam` name plays that sound from `private:splice-bots-jam-sounds@catalog`, and every other row stays quiet
+there. The jam's rows are the pickup (`sfx-pickup`), a battery fed to a robot, the jetpack's ignition and
+loop, the menus' move, select and back, and three music loops: the boss's fight, Sniper's drive, and the
+core's memory and SCENE RESTORED. `tools/jam-sounds-pack.coax` builds that pack from the jam's import.
+
 | Sound | When it plays |
 | --- | --- |
 | `pickup` | A part, a card or a battery cell picked up |

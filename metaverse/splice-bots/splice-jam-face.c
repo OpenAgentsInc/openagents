@@ -4,7 +4,8 @@
 // The private pack's four parts are the page's assets 0 to 3 (catalog, vertices, indices, layers),
 // all optional: without them the game plays in its own world. The characters pack's four are assets 4
 // to 7 (jam/jam-chars.coax): without them the game draws its own bodies. The tables pack is asset 8, its
-// catalog only (jam/jam-data.coax): without it the rules use their built-in defaults. Two stores follow Splice's
+// catalog only (jam/jam-data.coax): without it the rules use their built-in defaults. The sounds pack is asset 9:
+// the page plays its sounds by name (coax/web/host.js, sound.coax) and the game takes none of it. Two stores follow Splice's
 // four: the jam's rows (store 4, written once the catalog is read) and its game actors, then the
 // bodies' slots (store 5, every frame).
 #define SPLICE_FACE_JAM 1

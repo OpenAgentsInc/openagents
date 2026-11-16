@@ -142,7 +142,7 @@ sjx_reset :: (g: [] SpGame) {
   sjx_heat(g);
 }
 sjx_on :: (g: [] SpGame) -> bool { return g[0].jam && g[0].jx[0].ok; }
-sjx_say :: (g: [] SpGame, what: int, item: string) { g[0].jx[0].said = what; g[0].jx[0].said_item = item; g[0].jx[0].said_t = 2.5; }
+sjx_say :: (g: [] SpGame, what: int, item: string) { g[0].jx[0].said = what; g[0].jx[0].said_item = item; g[0].jx[0].said_t = 2.5; sjf_said(g, what); }
 // What she holds: the hotbar slot picked, and what is in it.
 sjx_held :: (g: [] SpGame) -> SrItemStack { x := g[0].jx[0]; return x.inv[0].main[0].slots[x.inv[0].selected]; }
 sjx_count :: (g: [] SpGame, id: string) -> int {
