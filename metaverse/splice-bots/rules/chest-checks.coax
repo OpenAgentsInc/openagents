@@ -1,0 +1,85 @@
+// Parity checks for the chest in Sniper (package S-10): SpliceTests/Rules/SpliceChestTests.cpp. The chest
+// is the game's USpliceInventoryComponent over the inventory rules; like the C++ test, each check makes
+// the inventory.coax call the component routes to (transfer, can add), and robot bodies are packed and
+// unpacked with robot-payload.coax. There is no chest module: the chest is a 27-slot container.
+// Not ported: HasTwentySevenSlots' reads of ASpliceChest's default object (its storage component and
+// that component's SlotCount, through reflection), which need the engine; its CHEST_SLOTS and container
+// asserts are ported. rules.coax loads this file with `#load ... #test;`.
+
+cc_her :: () -> SrInventory {
+  inv := sr_make_inventory();
+  d := [1] SrItemDefs.[inv.defs];
+  _ = sr_defs_add(d[..], sr_def(ITEM_BODY_DIGGER, SR_CAT_ROBOT_BODY, 1));
+  _ = sr_defs_add(d[..], sr_def(ITEM_SCRAP_PART, SR_CAT_PART, 64));
+  _ = sr_defs_add(d[..], sr_def(ITEM_SMALL_CORE, SR_CAT_CORE, 1));
+  inv.defs = d[0];
+  return inv;
+}
+cc_robot :: () -> SrRobotState {
+  r := SrRobotState.{robot_id = "digger", name = "Digger", health = 3.0, health_max = 10.0, move_energy = 4.5};
+  r.parts = sr_make_kit(3); r.parts.slots[0] = sr_stack(ITEM_SCRAP_PART, 1); r.parts.slots[2] = sr_stack(ITEM_SCRAP_PART, 1);
+  r.cards = sr_make_kit(2); r.cards.slots[0] = sr_stack("ITEM_CARD_DRILL", 1); r.cards.slots[1] = sr_stack("ITEM_CARD_JUMP", 1);
+  return r;
+}
+cc_body :: () -> SrItemStack { return sr_pack_robot(ITEM_BODY_DIGGER, cc_robot()).body; }
+cc_same_kit :: (a: SrKit, b: SrKit) -> bool {
+  if a.size != b.size { return false; }
+  for k: 0..<a.size { if a.slots[k].item != b.slots[k].item || a.slots[k].count != b.slots[k].count { return false; } }
+  return true;
+}
+cc_same_parts :: (a: SrRobotState, b: SrRobotState) -> bool {
+  return a.robot_id == b.robot_id && a.name == b.name && cc_same_kit(a.parts, b.parts) && cc_same_kit(a.cards, b.cards)
+    && a.health == b.health && a.health_max == b.health_max && a.move_energy == b.move_energy;
+}
+
+#test "Splice.Rules.Chest.HasTwentySevenSlots" {
+  #assert SR_CHEST_SLOTS == 27;
+  chest := sr_make_container(SR_CHEST_SLOTS);
+  #assert chest.size == 27;
+}
+
+#test "Splice.Rules.Chest.RobotBodyRoundTripKeepsPayload" {
+  inv := [1] SrInventory.[cc_her()]; m := inv[0].main[..]; d := inv[0].defs;
+  chest := [1] SrContainer.[sr_make_container(SR_CHEST_SLOTS)];
+  before := cc_robot();
+  m[0].slots[10] = cc_body();
+  #assert sr_is_robot_body(m[0].slots[10]);
+  // Into the chest.
+  into := sr_inv_transfer(d, m, 10, chest[..], -1);
+  #assert into.ok && into.moved == 1 && sr_item_empty(m[0].slots[10]);
+  #assert sr_count_used(chest[0]) == 1 && sr_is_robot_body(chest[0].slots[0]) && sr_item_has_payload(chest[0].slots[0]);
+  stored: [1] SrRobotState;
+  #assert sr_unpack_robot(chest[0].slots[0], stored[..]) && cc_same_parts(before, stored[0]);
+  // And back into her inventory.
+  out := sr_inv_transfer(d, chest[..], 0, m, -1);
+  #assert out.ok && sr_item_empty(chest[0].slots[0]);
+  #assert sr_count_used(m[0]) == 1 && m[0].slots[0].item == ITEM_BODY_DIGGER && m[0].slots[0].count == 1;
+  back: [1] SrRobotState;
+  #assert sr_unpack_robot(m[0].slots[0], back[..]) && cc_same_parts(before, back[0]);
+  #assert !sr_body_has_core(m[0].slots[0]);
+}
+
+#test "Splice.Rules.Chest.FullChestRefusesBody" {
+  inv := [1] SrInventory.[cc_her()]; m := inv[0].main[..]; d := inv[0].defs;
+  chest := [1] SrContainer.[sr_make_container(SR_CHEST_SLOTS)];
+  for k: 0..<SR_CHEST_SLOTS { chest[0].slots[k] = sr_item(ITEM_SMALL_CORE, 1); }   // stack size 1: nothing merges
+  m[0].slots[10] = cc_body();
+  #assert !sr_inv_can_add(d, chest[0], m[0].slots[10]);
+  r := sr_inv_transfer(d, m, 10, chest[..], -1);
+  #assert !r.ok && r.refusal == SR_REFUSE_FULL && r.moved == 0;
+  #assert m[0].slots[10].item == ITEM_BODY_DIGGER && sr_item_has_payload(m[0].slots[10]);
+  #assert sr_count_used(chest[0]) == 27 && !sr_is_robot_body(chest[0].slots[26]);
+}
+
+#test "Splice.Rules.Chest.BodiesInChestDoNotCountTowardCrew" {
+  inv := [1] SrInventory.[cc_her()]; m := inv[0].main[..]; d := inv[0].defs;
+  chest := [1] SrContainer.[sr_make_container(SR_CHEST_SLOTS)];
+  // Three bodies go into the chest, one at a time.
+  moved := 0;
+  for k: 0..<3 { m[0].slots[k] = cc_body(); if sr_inv_transfer(d, m, k, chest[..], -1).ok { moved += 1; } }
+  #assert moved == 3 && sr_count_used(chest[0]) == 3;
+  // Her grid and hotbar hold none, so the crew check is open.
+  grid := sr_make_container(SR_GRID_SLOTS); hotbar := sr_make_container(SR_HOTBAR_SLOTS); cursor: SrItemStack;
+  #assert sr_crew_count(0, grid, hotbar, cursor) == 0;
+  #assert sr_try_add_to_crew(0, grid, hotbar, cursor, false) == SR_REFUSE_NONE;
+}

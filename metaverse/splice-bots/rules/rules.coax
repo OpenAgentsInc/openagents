@@ -87,3 +87,4 @@
 #load "tracks-checks.coax" #test;
 #load "aim-checks.coax" #test;
 #load "chase-checks.coax" #test;
+#load "chest-checks.coax" #test;
