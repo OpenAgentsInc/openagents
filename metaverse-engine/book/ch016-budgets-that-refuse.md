@@ -352,7 +352,7 @@ tenth, rounded up to 64 KiB.
 | The characters realm (`characters.coax`) | 24,000 | 4,368 | 6,000 | 0 | 1,680,992 | 1,900,544 |
 | Everglade (`everglade.coax`) | 30,000 | 4,152 | 6,000 | 0 | 3,897,968 | 4,325,376 |
 | The drop realm (`droprealm.coax`) | 24,000 | 3,438 | 5,000 | 0 | 1,543,960 | 1,703,936 |
-| Orbit League (`orbitleague.coax`) | 24,000 | 3,294 | 5,000 | 0 | 1,840,064 | 2,031,616 |
+| Orbit League (`orbitleague.coax`) | 24,000 | 3,294 | 5,000 | 0 | 1,840,064 | 2,097,152 |
 | The Garden (`garden.coax`) | 12,000 | 2,838 | 4,000 | 5 | 827,936 | 917,504 |
 | The realm builder (`builder.coax`) | 30,000 | 1,878 | 3,000 | 0 | 1,929,928 | 2,162,688 |
 | Ice Cream Man (`icecream.coax`) | 16,000 | 1,812 | 3,000 | 0 | 1,060,928 | 1,179,648 |

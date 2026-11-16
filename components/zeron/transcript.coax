@@ -945,7 +945,7 @@ t_cursor :: (t: [] Transcript, x: f32, y: f32) -> int {
 
 t_test_setup :: (t: [] Transcript, a: [] Atlas) {
   md_test_atlas(a);
-  for k: 0..<ICON_COUNT + 1 { a[0].icons[k] = GpIcon.{x = 0, y = 0, w = 36, h = 36}; }
+  for k: 0..<GP_ICONS { a[0].icons[k] = GpIcon.{x = 0, y = 0, w = 36, h = 36}; }
   t_demo(t);
   t[0].view_h = 880;
   t_layout(t, a, zeron_dark(), 292, 736, 113 + 24 + 8);

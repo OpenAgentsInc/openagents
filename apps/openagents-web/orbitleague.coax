@@ -2678,7 +2678,8 @@ lag_frame :: (room: [] OrbitLeague, c: [] OrbitLeague, cars: [] RigidBody, echo:
 // ---------------------------------------------------------------------------------------------
 // The frame budget (metaverse-engine/core/budget.coax, book chapter 16): what one frame of Orbit League may use.
 // The vertex limit is under the vertex buffer, so a frame its writers clip fails the check.
-ORBITLEAGUE_BUDGET :: FrameBudget.{steps = 8, vertices = 5000, draws = 0, bytes = 2031616};
+// bytes: 32 wasm pages (2026-11-16: the shared state outgrew 31 by under 64 KB; the arena is whole pages)
+ORBITLEAGUE_BUDGET :: FrameBudget.{steps = 8, vertices = 5000, draws = 0, bytes = 2097152};
 
 // A match from its kickoff: three frames at each budget screen, the last one 0.1 s long. Book
 // chapter 16 gives the peaks of 120 frames at each screen, measured natively.
