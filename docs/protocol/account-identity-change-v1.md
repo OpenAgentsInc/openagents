@@ -51,5 +51,5 @@ backup; it never upgrades an email session by merely knowing a managed key.
 Settings shows the public identity, Copy, Backup, Rotate and Restore. Rotate
 and Restore require a separate confirmation explaining identity replacement.
 Private text is confined to the active secure platform editor, is masked,
-clears on dismissal/background and is covered during screen capture. Private
+clears when the confirmation closes or the app backgrounds and is covered during screen capture. Private
 clipboard writes expire and are local-only. Cancelling changes no key.

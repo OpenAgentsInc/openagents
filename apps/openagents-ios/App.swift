@@ -251,7 +251,14 @@ import UIKit
     private func followFocus() {
         guard let owner else {return}
         let id=focusID()
-        if editorFieldID != id {if id=="identity.secret" || editorFieldID=="identity.secret" {field.text=""};editorFieldID=id}
+        // A touch-down outside the field dismisses the keyboard before touch-up confirms.
+        // Keep restore input in this secure editor while Coax still owns that confirmation.
+        let privateMode=oc_private_mode(owner)
+        if field.kind == .secret && privateMode==0 {field.text="";oc_secret_ready(owner,0)}
+        if editorFieldID != id {
+            if id=="identity.secret" && field.kind != .secret {field.text=""}
+            editorFieldID=id
+        }
         if id != "chat.composer",editor.isFirstResponder {_ = editor.resignFirstResponder()}
         let privateField=id=="identity.secret"
         guard id.hasPrefix("login.") || privateField else {if field.isFirstResponder {_ = field.resignFirstResponder()};field.removeFromSuperview();if oc_private_mode(owner)==0 {field.text="";services?.identity.hideBackup()};return}

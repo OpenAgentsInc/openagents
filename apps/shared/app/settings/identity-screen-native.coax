@@ -21,7 +21,11 @@ iks_screen_keys :: () {
  out:[8192]u8;n:=chat_drive(s[..],"tree",out[..]);#assert n>0;
  // The portable field's value is empty: only its public label is in the tree.
  t:=[1]ElTable.[ch_rows(s[..])];field:=elt_find(t[..],"identity.secret");#assert field>=0 && elt_value_of(t[..],field)=="";
- chat_secret_ready(s[..],true);_:=ch_test_frame(s[..],o[..]);#assert chat_activate(s[..],"identity.confirm");
+ chat_secret_ready(s[..],true);_:=ch_test_frame(s[..],o[..]);
+ t[0]=ch_rows(s[..]);confirm:=elt_find(t[..],"identity.confirm");r:=t[0].rows[confirm];
+ #assert chat_pointer(s[..],(r.x+r.w/2)*s[0].d,(r.y+r.h/2)*s[0].d,0);
+ _:=ch_test_frame(s[..],o[..]);#assert ch_focus(s[..])=="" && chat_private_mode(s[..])==1 && s[0].identity[0].secret_ready;
+ #assert chat_pointer(s[..],(r.x+r.w/2)*s[0].d,(r.y+r.h/2)*s[0].d,2);
  op:=s[0].identity[0].op;at:=fx_find(c[0].out[..],op);#assert at>=0 && fx_body(c[0].out[..],at)==AIW_G;
 }
 iks_screen_large :: () {
