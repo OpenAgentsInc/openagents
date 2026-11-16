@@ -1,6 +1,6 @@
 # Claude-reference GPU chat — build 1404
 
-Follow-up: [conversation library and connected-workspace actions, build 1405](2026-11-16-claude-chat-library-1405.md).
+Follow-up: [conversation library and connected-workspace actions, build 1406](2026-11-16-claude-chat-library-1405.md).
 
 Source landed on `main` as
 [`64ce5bd43f`](https://github.com/OpenAgentsInc/openagents/commit/64ce5bd43f4987925439b322d7c6ff66f4c41f8b).

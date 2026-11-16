@@ -1,4 +1,4 @@
-# Claude chat follow-up — build 1405
+# Claude chat follow-up — builds 1405–1406
 
 This extends [1404's audit](2026-11-16-claude-gpu-chat-1404.md) against the
 [Claude iOS captures](../research/claude-ios/screen-index.md). The owner keeps
@@ -58,7 +58,7 @@ organization flow exposed aliasing during a flag update; staging the record
 fixed it. The focused organization rerun passes. A subsequent shared-footer
 regression brings the linked inventory to **1,503 checks** (1,510 after the additional codec boundary checks); it verifies that
 an archive never hides an active Stop control. The rename regression also verifies that its editor and Save button sit above the keyboard. Final conversation selection:
-**20 passed**. The library codec passes 101 checks; library partition and the selected field/view gate pass.
+**20 passed**. The library codec passes 101 checks; library partition checks pass. The generic field/view selector has no registered suites; the explicit app and field runs supply their verification.
 The changed editor authority kills **17 mutants, zero survivors**. The new library authority qualifies **371 mutants: 366 killed, zero survivors, five marked equivalents**. Those five retain byte-count and delimiter/digit guards already enforced by the admitted record bounds and flag policy; the inline reasons identify them.
 
 Account and computer search each pass four native cases in optimized mode,
@@ -94,6 +94,16 @@ messages, not the owner's private Claude captures.
 
 ## Release
 
-Build **1405**, `com.openagents.app`, version `1.0.0`, is reserved for this
-change. Release receipt, frozen source and Owner TestFlight membership will
-be recorded here after the archive/upload commands complete.
+Feature source landed as `16947a2a7a42098fc7379ff291fdc05205133194`.
+Its pre-push gates pass, including the shared library suite on a build host.
+
+Build 1405 archived and uploaded successfully at 2026-11-16 13:01:34 CST,
+delivery `3d2146e6-5647-4312-8901-0c8c42b39e78`. A final performance review
+caught per-frame Keychain reads in partition selection. The follow-up caches
+that selection and rereads only on launch, foreground and account-session
+changes, with session notifications delivered on the main thread. The final UIKit library case passes in 20.222 s, including background/resume and a cold restart.
+
+**1406 supersedes 1405**; 1405 is not assigned to Owner. Version `1.0.0`,
+bundle `com.openagents.app`, signing identity and existing Keychain records
+remain. Final receipt, frozen source and Owner TestFlight membership follow
+when the revised archive/upload finishes.

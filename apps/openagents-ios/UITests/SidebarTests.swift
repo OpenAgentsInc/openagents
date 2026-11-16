@@ -38,6 +38,7 @@ final class SidebarTests:XCTestCase {
         let second=app.buttons["cnv_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"];XCTAssertTrue(second.waitForExistence(timeout:10));XCTAssertEqual(second.label,"Archived fixture")
         XCTAssertFalse(first.exists)
         let picture=XCTAttachment(screenshot:app.screenshot());picture.name="Native GPU archived library filter";picture.lifetime = .keepAlways;add(picture)
+        XCUIDevice.shared.press(.home);app.activate();XCTAssertTrue(second.waitForExistence(timeout:10));XCTAssertEqual(second.label,"Archived fixture")
         app.terminate();app.launchEnvironment.removeValue(forKey:"OA_CHAT_LIBRARY_FIXTURE");app.launch()
         XCTAssertTrue(options.waitForExistence(timeout:20));options.tap();app.buttons["thread.recents"].tap();filter.tap();app.buttons["history.filter.archived"].tap()
         XCTAssertTrue(second.waitForExistence(timeout:10));XCTAssertEqual(second.label,"Archived fixture")

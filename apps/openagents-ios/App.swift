@@ -38,6 +38,8 @@ import UIKit
     private lazy var field:FieldEditor=FieldEditor(style:style())
     /// The shared app core and the native services it asks for.
     private var services:AppServices?
+    private var libraryWatch:NSObjectProtocol?
+    deinit {if let libraryWatch {NotificationCenter.default.removeObserver(libraryWatch)}}
     private lazy var editor:ComposerEditor=ComposerEditor(style:style())
 
     override func viewDidLoad() {
@@ -90,7 +92,8 @@ import UIKit
         center.addObserver(self,selector:#selector(keyboardMoved(_:)),name:UIResponder.keyboardWillChangeFrameNotification,object:nil)
         center.addObserver(self,selector:#selector(keyboardHid),name:UIResponder.keyboardWillHideNotification,object:nil)
         center.addObserver(self,selector:#selector(background),name:UIApplication.willResignActiveNotification,object:nil)
-        center.addObserver(self,selector:#selector(wake),name:UIApplication.didBecomeActiveNotification,object:nil)
+        center.addObserver(self,selector:#selector(accountLibraryChanged),name:UIApplication.didBecomeActiveNotification,object:nil)
+        libraryWatch=center.addObserver(forName:AppAuth.didChangeSession,object:nil,queue:.main) { [weak self] _ in MainActor.assumeIsolated {self?.accountLibraryChanged()} }
         center.addObserver(self,selector:#selector(wake),name:UIAccessibility.reduceMotionStatusDidChangeNotification,object:nil)
         center.addObserver(self,selector:#selector(wake),name:UIAccessibility.reduceTransparencyStatusDidChangeNotification,object:nil)
         center.addObserver(self,selector:#selector(textSize),name:UIContentSizeCategory.didChangeNotification,object:nil)
@@ -299,9 +302,12 @@ import UIKit
         if !field.isFirstResponder,!field.becomeFirstResponder() {oc_blur(owner)}
     }
     private var libraryPartition:String?
+    private var libraryNeedsRestore=true
+    @objc private func accountLibraryChanged() {libraryNeedsRestore=true;wake()}
     private var libraryRevision:Int32 = -1
     private func restoreLibraryPartition() {
-        guard let owner else {return}
+        guard let owner,libraryNeedsRestore else {return}
+        libraryNeedsRestore=false
         let partition=AppAuth.shared.tokens.map {$0.account.isEmpty ? "unidentified:"+AppAuth.shared.sessionOwner.uuidString : "account:"+$0.account} ?? "guest"
         guard partition != libraryPartition else {return}
         libraryPartition=partition
