@@ -237,6 +237,8 @@ mono_css :: (out: [] u8) -> int {
   n = mc(out, n, ".sec>.side{position:relative;z-index:auto;height:460px;border:1px solid var(--line-dim)}");
   n = mc(out, n, ".ib[data-state=side]{position:fixed;left:10px;top:10px;z-index:4}");
   n = mc(out, n, ".ib[data-state=full]{position:fixed;right:10px;top:10px;z-index:4}");
+  // a page's own menu button (k_menu_button): the top right too, left of a play page's Fullscreen when both are there
+  n = mc(out, n, ".ib[data-state=menu]{position:fixed;right:10px;top:10px;z-index:4}body:has(.ib[data-state=full]) .ib[data-state=menu]{right:52px}");
   // a place: an icon beside its name, a link
   n = mc(out, n, ".row-i{flex-direction:row;align-items:center;gap:10px;text-decoration:none;box-sizing:border-box}.row.row-i>.ic{position:static;width:16px;height:16px;margin:0;color:inherit;animation:none}.row-i:hover,.row-i:focus-visible{color:#fff;outline:none}");
   // a fold (k_fold): a heading of the side that opens and shuts its rows, a chevron at its end and a + beside it

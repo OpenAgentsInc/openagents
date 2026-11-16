@@ -1,0 +1,238 @@
+// A page's inspection menu (docs/protocol/view-menu-v1.md; the Microduck viewer's View, Pose, Joints, Parts,
+// Animation, Illustrative servo and Saved runs): the page's recipe as the kit's menu button over the canvas and a
+// pane of rows, one fold a group. coax/web/host.js opens it for any engine page that exports the recipe, reads the
+// recipe (the page's JSON), and tells this module its values as lines (event 6):
+//   TITLE
+//   GROUP \t LABEL \t KEY \t CURRENT(0|1) \t KEEP_OPEN(0|1)      (one line an item, at most 128)
+// The page stays the owner of every choice. A press on a row is an action for the host (VM_PRESS, the key in
+// digits): the host presses and releases that key on the page and tells this module the recipe again. The menu
+// button asks for the recipe as it opens (VM_FRESH), so what it shows is never the page's old state.
+//
+// It has no look of its own: every node is a kit component (components/kit/frames.coax and dock.coax), the
+// stylesheet is the mono skin's, and this file names no colour, face or size (coax/web/tool.sh editor-skin-check).
+//   coax/bin/coax test apps/openagents-web/view-menu.coax
+#load "../../components/kit/dock.coax";
+#load "../../components/backend/dom.coax";
+
+VM_INBOX :: 40960;       // 128 items of two 127-byte names and their numbers, and the title
+VM_ITEMS :: 128;
+VM_CSS :: 32768;
+VM_CLICK :: 1; VM_MODEL :: 6;
+VM_PRESS :: 1;           // the host's action: press and release the key in the body
+VM_FRESH :: 2;           // the host's action: tell the recipe again (the menu opens)
+
+VmItem :: struct { group: int; at: int; n: int; key: int; current: bool; keep: bool; }
+
+ViewMenu :: struct {
+  ready: bool; time: f32; dirty: bool; animating: bool;
+  open: bool;                               // the pane is out
+  fold: int;                                // the group whose rows show (-1: none)
+  fold_name: [128] u8; fold_n: int;         // its name, so a new recipe keeps it open
+  text: [VM_INBOX] u8; text_n: int;         // the recipe's lines, kept
+  title_n: int;
+  items: [VM_ITEMS] VmItem; nitems: int;
+  groups: [VM_ITEMS] int; group_n: [VM_ITEMS] int; ngroups: int;   // each group's name in text
+  act: [24] u8; act_n: int; act_kind: int;
+  inbox: [VM_INBOX] u8;
+  sets: [MF_COUNT] AfSettings;
+  css: [VM_CSS] u8;
+  ui: [1] Ui;
+  tree: [1] Tree;
+  dom: [1] Dom;
+}
+
+vm_text :: (s: [] ViewMenu, at: int, n: int) -> string { return cast(string) s[0].text[at..<at + n]; }
+
+// The host's lines: the title, then the items. A line that is not an item is passed over.
+vm_model :: (s: [] ViewMenu, length: int) {
+  n := ifx length < 0 then 0 else ifx length > VM_INBOX then VM_INBOX else length;
+  for i: 0..<n { s[0].text[i] = s[0].inbox[i]; }
+  s[0].text_n = n; s[0].nitems = 0; s[0].ngroups = 0; s[0].title_n = 0; s[0].fold = -1;
+  i := 0;
+  while i < n && s[0].text[i] != '\n' { i += 1; }
+  s[0].title_n = i;
+  i += 1;
+  while i < n && s[0].nitems < VM_ITEMS {
+    // the line's five fields, split at tabs
+    f: [5] int; fe: [5] int; k := 0;
+    f[0] = i;
+    while i < n && s[0].text[i] != '\n' {
+      if s[0].text[i] == '\t' { if k < 4 { fe[k] = i; k += 1; f[k] = i + 1; } }
+      i += 1;
+    }
+    end := i; i += 1;
+    if k != 4 { continue; }
+    fe[4] = end;
+    key := 0; ok := fe[2] > f[2];
+    for j: f[2]..<fe[2] {
+      c := s[0].text[j];
+      if c < '0' || c > '9' || key > 214748364 { ok = false; } else { key = key * 10 + cast(int) (c - '0'); }
+    }
+    if !ok || key < 1 || key > 2147483647 || fe[1] <= f[1] { continue; }
+    group := vm_text(s, f[0], fe[0] - f[0]);
+    g := -1;
+    for h: 0..<s[0].ngroups { if vm_text(s, s[0].groups[h], s[0].group_n[h]) == group { g = h; } }
+    if g < 0 {
+      g = s[0].ngroups; s[0].ngroups += 1;
+      s[0].groups[g] = f[0]; s[0].group_n[g] = fe[0] - f[0];
+      if group == cast(string) s[0].fold_name[0..<s[0].fold_n] { s[0].fold = g; }
+    }
+    m: VmItem;
+    m.group = g; m.at = f[1]; m.n = fe[1] - f[1]; m.key = key;
+    m.current = fe[3] > f[3] && s[0].text[f[3]] == '1';
+    m.keep = fe[4] > f[4] && s[0].text[f[4]] == '1';
+    s[0].items[s[0].nitems] = m; s[0].nitems += 1;
+  }
+}
+
+vm_build :: (s: [] ViewMenu) {
+  t := s[0].tree[..]; u := s[0].ui[..];
+  buf: [UI_ID] u8;
+  tr_begin(t);
+  if s[0].nitems < 1 { return; }   // a page with no recipe has no menu
+  title := ifx s[0].title_n > 0 then vm_text(s, 0, s[0].title_n) else "Viewer menu";
+  if !s[0].open { b := k_menu_button(t, "vm.open", title, false); return; }
+  dock := k_dock(t, "vm", true);
+  pane := k_pane(t, u, "vm.p", DK_RIGHT, title);
+  c := k_button(t, u, "vm.close", "Close", BS_PLAIN);
+  for g: 0..<s[0].ngroups {
+    open := s[0].fold == g;
+    name := vm_text(s, s[0].groups[g], s[0].group_n[g]);
+    h := k_icon_row(t, u, tr_join(buf[..], "vm.g.", g), ifx open then IC_CHEVRON_DOWN else IC_CHEVRON_RIGHT, ifx name.count > 0 then name else "Other", false);
+    tr_attr(t, h, AT_EXPANDED, ifx open then "true" else "false");
+    if !open { continue; }
+    for i: 0..<s[0].nitems {
+      m := s[0].items[i];
+      if m.group != g { continue; }
+      r := k_row(t, u, tr_join(buf[..], "vm.k.", i), vm_text(s, m.at, m.n), "", m.current);
+      tr_attr(t, r, AT_PRESSED, ifx m.current then "true" else "false");
+    }
+  }
+  k_pane_end(t);
+  tr_close(t);
+}
+
+vm_say :: (s: [] ViewMenu, kind: int, key: int) {
+  s[0].act_kind = kind; s[0].act_n = 0;
+  if kind != VM_PRESS { return; }
+  digits: [12] u8; d := 0; x := key;
+  while x > 0 && d < 12 { digits[d] = cast(u8) ('0' + x % 10); x /= 10; d += 1; }
+  while d > 0 { d -= 1; s[0].act[s[0].act_n] = digits[d]; s[0].act_n += 1; }
+}
+
+vm_click :: (s: [] ViewMenu, id: string) {
+  buf: [UI_ID] u8;
+  if id == "vm.open" { s[0].open = true; vm_say(s, VM_FRESH, 0); return; }
+  if id == "vm.close" { s[0].open = false; return; }
+  if !s[0].open { return; }
+  for g: 0..<s[0].ngroups {
+    if id != tr_join(buf[..], "vm.g.", g) { continue; }
+    if s[0].fold == g { s[0].fold = -1; s[0].fold_n = 0; return; }
+    s[0].fold = g; s[0].fold_n = 0;
+    for c: vm_text(s, s[0].groups[g], s[0].group_n[g]) { if s[0].fold_n < 128 { s[0].fold_name[s[0].fold_n] = c; s[0].fold_n += 1; } }
+    return;
+  }
+  for i: 0..<s[0].nitems {
+    if id != tr_join(buf[..], "vm.k.", i) { continue; }
+    m := s[0].items[i];
+    if !m.keep { s[0].open = false; }
+    vm_say(s, VM_PRESS, m.key);
+    return;
+  }
+}
+
+// ---------------------------------------------------------------- the face's calls
+
+coaxial_viewmenu_frame :: (s: [] ViewMenu, dt: f32, reduced: bool) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  if !s[0].ready { _ := mono_frames(s[0].sets[..]); s[0].ready = true; s[0].dirty = true; s[0].fold = -1; }
+  step := ifx dt < 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
+  s[0].time += step;
+  if !s[0].dirty && !s[0].animating { return 0; }
+  d := s[0].dom[..];
+  if !d[0].styled {
+    n := mono_dock_css(s[0].css[..], mono_css(s[0].css[..]));
+    dm_style(d, cast(string) s[0].css[0..<n]);
+  }
+  ui_begin(s[0].ui[..], s[0].time, reduced);
+  vm_build(s);
+  ui_end(s[0].ui[..]);
+  s[0].animating = s[0].ui[0].busy;
+  s[0].dirty = false;
+  bytes := dm_flush(d, s[0].tree[..], s[0].sets[..]);
+  if d[0].overflow { dm_reset(d); s[0].dirty = true; return -1; }
+  return bytes;
+}
+coaxial_viewmenu_busy :: (s: [] ViewMenu) -> bool #export_c #effects(all) { return s.count > 0 && (s[0].dirty || s[0].animating); }
+// A press (1) on the node in this slot; or the host's lines of the page's recipe (6), in the inbox.
+coaxial_viewmenu_event :: (s: [] ViewMenu, kind: int, slot: int, length: int) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].dirty = true;
+  if kind == VM_MODEL { vm_model(s, length); return; }
+  id := dm_slot_id(s[0].dom[..], slot);
+  if id.count > 0 && kind == VM_CLICK { vm_click(s, id); }
+}
+coaxial_viewmenu_size :: (s: [] ViewMenu, slot: int, w: f32, h: f32) #export_c #effects(all) {
+  if s.count > 0 && dm_size(s[0].dom[..], slot, w, h) { s[0].dirty = true; }
+}
+coaxial_viewmenu_inbox_cap :: () -> int #export_c #effects(all) { return VM_INBOX; }
+// The action that waits for the host: its kind (0: none) and its bytes; done takes it away.
+coaxial_viewmenu_act_kind :: (s: [] ViewMenu) -> int #export_c #effects(all) { return ifx s.count > 0 then s[0].act_kind else 0; }
+coaxial_viewmenu_act_len :: (s: [] ViewMenu) -> int #export_c #effects(all) { return ifx s.count > 0 then s[0].act_n else 0; }
+coaxial_viewmenu_act_done :: (s: [] ViewMenu) #export_c #effects(all) { if s.count > 0 { s[0].act_kind = 0; s[0].act_n = 0; } }
+
+// ---------------------------------------------------------------- checks
+
+VmTest :: struct { s: [1] ViewMenu; }
+
+vm_tell :: (s: [] ViewMenu, lines: string) {
+  for i: 0..<lines.count { s[0].inbox[i] = lines[i]; }
+  coaxial_viewmenu_event(s, VM_MODEL, 0, lines.count);
+}
+vm_press :: (s: [] ViewMenu, id: string) { coaxial_viewmenu_event(s, VM_CLICK, dm_find(s[0].dom[..], id), 0); _ := coaxial_viewmenu_frame(s, 0.016, true); }
+
+#test "no recipe, no menu; a recipe is the kit's menu button, and opening it asks for the recipe again" {
+  h: [1] VmTest; s := h[0].s[..]; t := s[0].tree[..];
+  _ := coaxial_viewmenu_frame(s, 0.016, true);
+  #assert tr_find(t, "vm.open") < 0;
+  vm_tell(s, "Microduck\nView\tReset view\t114\t0\t0\nPose\tIncrease\t43\t0\t1\nPose\tRest\t48\t1\t0\nbroken line\n\tno group\t7\t0\t0\n");
+  _ = coaxial_viewmenu_frame(s, 0.016, true);
+  #assert s[0].nitems == 4 && s[0].ngroups == 3;
+  b := tr_find(t, "vm.open");
+  #assert b >= 0 && t[0].nodes[b].tag == TG_BUTTON && tr_class(t, b) == "ib" && tr_attr_of(t, b, AT_STATE) == "menu" && tr_attr_of(t, b, AT_LABEL) == "Microduck";
+  vm_press(s, "vm.open");
+  #assert coaxial_viewmenu_act_kind(s) == VM_FRESH;
+  coaxial_viewmenu_act_done(s);
+  #assert tr_find(t, "vm.open") < 0 && tr_find(t, "vm.p") >= 0 && tr_find(t, "vm.close") >= 0;
+  #assert tr_find(t, "vm.g.0") >= 0 && tr_find(t, "vm.k.0") < 0;   // folds start shut
+  #assert tr_text_of(t, tr_find(t, "vm.g.2.t")) == "Other";
+}
+
+#test "a fold opens its rows; a row presses its key and shuts the menu unless it keeps it open; a new recipe keeps the fold" {
+  h: [1] VmTest; s := h[0].s[..]; t := s[0].tree[..];
+  lines := "Microduck\nView\tReset view\t114\t0\t0\nPose\tIncrease\t43\t0\t1\nPose\tRest\t48\t1\t0\n";
+  vm_tell(s, lines);
+  _ := coaxial_viewmenu_frame(s, 0.016, true);
+  vm_press(s, "vm.open"); coaxial_viewmenu_act_done(s);
+  vm_press(s, "vm.g.1");
+  #assert tr_attr_of(t, tr_find(t, "vm.g.1"), AT_EXPANDED) == "true";
+  #assert tr_find(t, "vm.k.1") >= 0 && tr_find(t, "vm.k.2") >= 0 && tr_find(t, "vm.k.0") < 0;
+  #assert tr_attr_of(t, tr_find(t, "vm.k.2"), AT_CURRENT) == "true" && tr_attr_of(t, tr_find(t, "vm.k.1"), AT_PRESSED) == "false";
+  vm_press(s, "vm.k.1");
+  #assert coaxial_viewmenu_act_kind(s) == VM_PRESS && cast(string) s[0].act[0..<coaxial_viewmenu_act_len(s)] == "43";
+  coaxial_viewmenu_act_done(s);
+  #assert s[0].open;
+  vm_tell(s, "Microduck\nView\tReset view\t114\t0\t0\nPose\tIncrease\t43\t1\t1\nPose\tRest\t48\t0\t0\n");
+  _ = coaxial_viewmenu_frame(s, 0.016, true);
+  #assert s[0].fold == 1 && tr_attr_of(t, tr_find(t, "vm.k.1"), AT_CURRENT) == "true";
+  vm_press(s, "vm.k.2");
+  #assert cast(string) s[0].act[0..<coaxial_viewmenu_act_len(s)] == "48" && !s[0].open && tr_find(t, "vm.open") >= 0;
+  coaxial_viewmenu_act_done(s);
+  vm_press(s, "vm.open"); coaxial_viewmenu_act_done(s);
+  vm_press(s, "vm.close");
+  #assert !s[0].open && coaxial_viewmenu_act_kind(s) == 0;
+  css := cast(string) s[0].css[..];
+  found := false;
+  for i: 0..<css.count - 20 { if cast(string) css[i..<i + 20] == ".ib[data-state=menu]" { found = true; } }
+  #assert found;
+}

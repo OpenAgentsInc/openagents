@@ -3955,34 +3955,57 @@ function send(kind, text = "") {
   }
   after(false);
 }
-// Optional Coax inspection recipe. Browser controls only project the producer's
-// labels/keys; this host owns no model selection or experiment behavior.
-let viewMenuRoot;
+// Optional Coax inspection recipe (docs/protocol/view-menu-v1.md; the Microduck viewer's View, Pose, Joints, Parts,
+// servo and saved-runs controls). The menu is a module of its own (apps/openagents-web/view-menu.coax), drawn by
+// dom-host.js from the kit's menu button and rows: this host only reads the page's recipe, tells the module its
+// values as lines, and presses the key a row names. The producer owns every choice; the host holds no model state.
+const VIEW_MENU = "view-menu";
+let viewMenuAsked = false;
 function viewMenuOpen() {
-  viewMenuRoot?.remove();viewMenuRoot=null;
-  if (!engine?.exports.coaxial_view_menu_len_v1 || !engine?.exports.coaxial_view_menu_v1) return;
-  const root=document.createElement("div"),trigger=document.createElement("button"),dialog=document.createElement("dialog");viewMenuRoot=root;
-  root.style.cssText="position:fixed;top:max(12px,env(safe-area-inset-top));right:max(12px,env(safe-area-inset-right));z-index:40;color:#eee;font:14px ui-monospace,monospace";
-  const style=document.createElement("style");style.textContent=".coax-view-menu button{min-height:44px;padding:8px 14px;border:1px solid #555;background:#171717;color:#eee;font:inherit;border-radius:8px;cursor:pointer}.coax-view-menu dialog{background:#111;color:#eee;border:1px solid #555;border-radius:12px;max-width:min(340px,85vw);max-height:75dvh;overflow:auto;font:inherit}.coax-view-menu dialog button{display:block;width:100%;text-align:left;margin:6px 0}.coax-view-menu summary{padding:14px 4px;cursor:pointer}.coax-view-menu dialog::backdrop{background:#0008}";
-  root.className="coax-view-menu";root.append(style,trigger,dialog);document.body.append(root);trigger.textContent="☰";trigger.ariaLabel="Viewer menu";
-  function render() {
-    const x=engine?.exports,n=x?.coaxial_view_menu_len_v1?.(arena.state)??0;
-    if (!n || n>32768) return;
-    const at=x.coaxial_view_menu_v1(arena.state);if (!at || at+n>memory.buffer.byteLength) return;
-    let recipe;try {recipe=JSON.parse(new TextDecoder().decode(new Uint8Array(memory.buffer,at,n).slice()));}catch{return;}
-    if (typeof recipe.schema!=="string" || !Array.isArray(recipe.items) || recipe.items.length>128) return;
-    const opened=new Set([...dialog.querySelectorAll("details[open]")].map(d=>d.dataset.group));dialog.replaceChildren();
-    const close=document.createElement("button");close.textContent="Close";close.onclick=()=>dialog.close();dialog.append(close);
-    const groups=new Map();
-    for (const row of recipe.items) {
-      if (typeof row.label!=="string" || typeof row.group!=="string" || !Number.isInteger(row.key) || row.key<1 || row.key>2147483647) continue;
-      let group=groups.get(row.group);
-      if (!group) {group=document.createElement("details");group.dataset.group=row.group;group.open=opened.has(row.group);const summary=document.createElement("summary");summary.textContent=row.group;group.append(summary);dialog.append(group);groups.set(row.group,group);}
-      const button=document.createElement("button");button.textContent=row.label;button.setAttribute("aria-pressed",String(row.current));button.dataset.key=String(row.key);
-      button.onclick=()=>{call("coaxial_key",row.key,0);call("coaxial_key_up",row.key,0);after(true);if(row.keep_open)render();else dialog.close();};group.append(button);
-    }
+  const has = !!(engine?.exports.coaxial_view_menu_len_v1 && engine?.exports.coaxial_view_menu_v1);
+  if (viewMenuAsked) { viewMenuTell(); return; }   // a new engine: its recipe, or none (the menu goes)
+  if (!has) return;
+  viewMenuAsked = true;
+  const root = document.createElement("div"); // view menu
+  root.id = "coaxial-view-menu";
+  document.body.appendChild(root);
+  const hook = () => { const menu = globalThis.coaxialDoms?.[VIEW_MENU]; if (menu) { menu.after ||= viewMenuActs; viewMenuTell(); } else requestAnimationFrame(hook); };
+  import(`/coaxial/dom-host.js?app=${VIEW_MENU}&root=${root.id}`).then(hook).catch((error) => { console.error(error); });
+}
+// The recipe as the module reads it: the title, then one line an item (group, label, key, current, keep_open, by tabs).
+function viewMenuLines() {
+  const x = engine?.exports, n = x?.coaxial_view_menu_len_v1?.(arena.state) ?? 0;
+  if (!n || n > 32768) return "";
+  const at = x.coaxial_view_menu_v1(arena.state); if (!at || at + n > memory.buffer.byteLength) return "";
+  let recipe; try { recipe = JSON.parse(new TextDecoder().decode(new Uint8Array(memory.buffer, at, n).slice())); } catch { return ""; }
+  if (typeof recipe.schema !== "string" || !Array.isArray(recipe.items) || recipe.items.length > 128) return "";
+  const word = (v) => typeof v === "string" && /^[\x20-\x7e]{0,127}$/.test(v);
+  const lines = [word(recipe.title) ? recipe.title : ""];
+  for (const row of recipe.items) {
+    if (!word(row.label) || !row.label || !word(row.group) || !Number.isInteger(row.key) || row.key < 1 || row.key > 2147483647) continue;
+    lines.push([row.group, row.label, row.key, row.current ? 1 : 0, row.keep_open ? 1 : 0].join("\t"));
   }
-  trigger.onclick=()=>{render();dialog.showModal();};
+  return lines.length > 1 ? lines.join("\n") + "\n" : "";
+}
+function viewMenuTell() {
+  const menu = globalThis.coaxialDoms?.[VIEW_MENU];
+  if (menu) menu.send(6, 0, viewMenuLines());
+}
+function viewMenuActs() {
+  const menu = globalThis.coaxialDoms?.[VIEW_MENU];
+  if (!menu) return;
+  const mx = menu.exports(), st = menu.state();
+  for (let kind; (kind = mx.dom_act_kind(st)); ) {
+    const body = new TextDecoder().decode(new Uint8Array(menu.memory().buffer, mx.dom_act(st), mx.dom_act_len(st)).slice());
+    mx.dom_act_done(st);
+    if (kind === 1 && /^[1-9][0-9]{0,9}$/.test(body) && Number(body) <= 2147483647) {
+      const key = Number(body);
+      call("coaxial_key", key, 0); call("coaxial_key_up", key, 0); after(true);
+      // the pressed row gives focus back, so the page's own keys reach it again
+      if (document.activeElement?.closest?.("#coaxial-view-menu")) document.activeElement.blur();
+      queueMicrotask(viewMenuTell);   // what the press changed: the module shows it if the menu stays open
+    } else if (kind === 2) queueMicrotask(viewMenuTell);   // opening: the page's state now
+  }
 }
 globalThis.coaxial = { send, ready: false, sceneReady: false, loadMarks: () => loadMarks.map((row) => row.slice()), cellLog: () => cellLog.map((row) => row.slice()), facts: () => pageFacts(), probe: () => engine?.exports.coaxial_probe?.(arena.state) ?? 0,
   roomTrace:()=>({active:sockets.flatMap(ws=>ws?.__roomTrace?[ws.__roomTrace.snapshot()]:[]),retired:roomTraceRetired.map(x=>x.snapshot()),error:globalThis.coaxial.roomTraceError||null}),
@@ -4314,7 +4337,7 @@ async function documentEffect(text) {
     if(q.op==="share"){
       const raw=atob(q.data),bytes=Uint8Array.from(raw,c=>c.charCodeAt(0));
       const url=URL.createObjectURL(new Blob([bytes],{type:"application/octet-stream"}));
-      const link=document.createElement("a");link.href=url;link.download=q.name;link.click();
+      const link=document.createElement("a");link.href=url;link.download=q.name;link.click();   // file save
       setTimeout(()=>URL.revokeObjectURL(url),30000);reply(0);
     }else if(q.op==="open"){
       const input=document.createElement("input");input.type="file";input.accept=".oarun,application/octet-stream";

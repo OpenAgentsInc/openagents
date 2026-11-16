@@ -713,6 +713,13 @@ k_fullscreen :: (t: [] Tree, id: string, on: bool) -> int {
   tr_attr(t, i, AT_STATE, "full");
   return i;
 }
+// Menu button: a button at the top right of a page's canvas that opens the page's own menu (a viewer's controls),
+// and says whether it is open. It stands left of a play page's Fullscreen when both are there.
+k_menu_button :: (t: [] Tree, id: string, label: string, open: bool) -> int {
+  i := k_icon_button(t, id, IC_MENU, label);
+  tr_attr(t, i, AT_STATE, "menu"); tr_attr(t, i, AT_EXPANDED, ifx open then "true" else "false");
+  return i;
+}
 // Drop: a place a file is dropped on, or picked from: a press opens the browser's picker, which
 // offers the kinds `accept` names (".glb,.png"). It says what to do and, under it, what it takes.
 // The host tells the page a file's name and size, and the page says what becomes of it

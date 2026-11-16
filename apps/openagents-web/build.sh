@@ -382,6 +382,9 @@ range_pane=$!
 # A game page's own bar: the Fullscreen button over a plain play page's canvas, in the frames set (play-bar.coax; coax/web/host.js opens it).
 timed play-bar "$here/../../coax/web/wasm.sh" "$here/play-bar.coax" "$here/play-bar-face.c" "$here/build/play-bar.wasm" &
 play_bar=$!
+# A page's inspection menu over its canvas (docs/protocol/view-menu-v1.md; the Microduck viewer's): the kit's menu button and a pane of rows (view-menu.coax; coax/web/host.js opens it).
+timed view-menu "$here/../../coax/web/wasm.sh" "$here/view-menu.coax" "$here/view-menu-face.c" "$here/build/view-menu.wasm" &
+view_menu=$!
 # The page's script module: a world's realm scripts, interpreted beside the realm's engine (script-host.coax, coax/web/host.js "A realm's scripts", #13467).
 timed script-host "$here/../../coax/web/wasm.sh" "$here/script-host.coax" "$here/script-host-face.c" "$here/build/script-host.wasm" &
 script_host=$!
@@ -648,6 +651,7 @@ wait "$splicejam"
 wait "$crew"
 wait "$crew_pane"; wait "$range_pane"
 wait "$play_bar"
+wait "$view_menu"
 wait "$script_host"
 wait "$changelog"
 

@@ -47,14 +47,16 @@ done < <(find "$app" -name '*.html' -not -path '*/build/*' -not -path '*/node_mo
 # is a Coax module drawn by dom-host.js from the /chat components, on ?edit for a dev server
 # or an admin only), a page's own pane's empty mount (host.js paneOpen, #13462: drawn the same way,
 # from the kit), a play page's bar's empty mount (host.js playBarOpen: play-bar.coax, drawn the same way
-# from the kit's Fullscreen button), the
+# from the kit's Fullscreen button), a page's inspection menu's empty mount (host.js viewMenuOpen: view-menu.coax,
+# drawn the same way from the kit's menu button and rows), the browser's save of a file the page hands it
+# (host.js documentEffect: an anchor never put in the document, clicked once to download; nothing is drawn), the
 # loading screen (loader.js), the zone frame (zone-host.js: another Coaxial
 # page opened in place, which draws everything in Coax itself) and the app shell's empty mount (shell.js: the
 # chat's module, drawn by dom-host.js from the kit, takes the page), each line marked.
 for f in "$here/host.js" "$here/render.js" "$here/loader.js" "$here/zone-host.js" "$here/drop.js" "$here/shell.js" "$here"/unlock/*.ts; do
   [[ -e "$f" ]] || continue
   case "$f" in *.test.ts) continue ;; esac
-  marked='// (dev only|keyboard field|accessible layer|text fallback|editor shell|page pane|play bar)$'
+  marked='// (dev only|keyboard field|accessible layer|text fallback|editor shell|page pane|play bar|view menu|file save)$'
   [[ "$(basename "$f")" == host.js ]] || marked='^$'
   [[ "$(basename "$f")" == loader.js ]] && marked='// loading screen$'
   [[ "$(basename "$f")" == zone-host.js ]] && marked='// zone frame$'
