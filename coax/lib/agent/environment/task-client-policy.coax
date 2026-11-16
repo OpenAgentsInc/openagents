@@ -36,7 +36,7 @@ xc_method :: (verb:string)->string #effects(all) {if verb=="stop" {return "StopT
 xc_revision :: (raw:string)->int #effects(all) {
  v:[1]Jv;nodes:[2]JvNode;if !jv_parse(v[..],raw,nodes[..]) {return -1;}n:=js_number(v[0],0);return ifx n>0 && n<=9007199254740991 then n else -1;
 }
-xc_match :: (q:XtRequest,verb:string,task:string,revision:int,interaction:string,command:string)->bool #effects(all) {
+xc_match :: (q:XtRequest,verb:string,task:string,revision:int,interaction:string,command:string)->bool #export_c #effects(all) {
  return xt_request_valid(q) && q.method==xc_method(verb) && q.task==task && q.revision==revision && q.interaction==interaction && q.allow==(verb=="approve") && (command=="" || command==q.command);
 }
 

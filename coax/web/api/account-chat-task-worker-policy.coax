@@ -46,6 +46,41 @@
  #assert ctn_effect(false,true) && ctn_effect(true,false) && !ctn_effect(true,true);
  out:[16]u8;#assert ctn_delta("aé","aéZ",out[..])==1 && out[0]=='Z' && ctn_delta("aé","aé",out[..])==0 && ctn_delta("long","x",out[..])<0 && ctn_delta("bad","other",out[..])<0 && ctn_delta("","more",out[0..<3])<0;
 }
+#test "Stop renewal requires an exact expired retry and a fresh unstopped native observation" {
+ b:=ex_test_binding();s:=XtStatus.{binding=b,state=XT_RUNNING,revision=1,updated=1};view:[8192]u8;raw:[1024]u8;arena:[2048]u8;q:[1]XtRequest;
+ v:=xt_status_write(s,view[..]);n:=ctn_stop_request(b,1,raw[..]);#assert n>0 && xt_request_read(cast(string)raw[0..<n],q[..],arena[..]) && q[0].method=="StopTask" && q[0].task==b.task && q[0].issued==1 && q[0].expires==300001;
+ #assert ctn_stop_action(b,"",cast(string)view[0..<v],1,0)==1;
+ #assert ctn_stop_action(b,cast(string)raw[0..<n],cast(string)view[0..<v],300001,-2005)==2;
+ #assert ctn_stop_action(b,cast(string)raw[0..<n],cast(string)view[0..<v],300002,-2005)==1;
+ for result:[5]int.[0,-3000,-2003,-2004,-2006] {#assert ctn_stop_action(b,cast(string)raw[0..<n],cast(string)view[0..<v],300002,result)==2;}
+ s.stop=true;v=xt_status_write(s,view[..]);#assert ctn_stop_action(b,cast(string)raw[0..<n],cast(string)view[0..<v],300002,-2005)==0;
+ for state:XT_COMPLETED..<XT_UNKNOWN+1 {s.state=state;s.stop=false;s.error=ifx state==XT_FAILED || state==XT_UNKNOWN then "native_failed" else "";v=xt_status_write(s,view[..]);#assert v>0 && ctn_stop_action(b,cast(string)raw[0..<n],cast(string)view[0..<v],300002,-2005)==0;}
+}
+#test "Stop renewal refuses foreign malformed and non-observation records and uses bounded windows" {
+ b:=ex_test_binding();s:=XtStatus.{binding=b,state=XT_RUNNING,revision=1,updated=1};view:[8192]u8;raw:[1024]u8;again:[1024]u8;v:=xt_status_write(s,view[..]);n:=ctn_stop_request(b,1,raw[..]);
+ #assert ctn_stop_action(b,"{}",cast(string)view[0..<v],2,0)<0 && ctn_stop_action(b,"","{}",2,0)<0 && ctn_stop_action(b,"",cast(string)view[0..<v],0,0)<0;
+ q:=XtRequest.{method="RespondTask",task=b.task,command=EX_TEST_ID,revision=1,interaction="held",issued=1,expires=300001};m:=xt_request_write(q,again[..]);#assert m>0 && ctn_stop_action(b,cast(string)again[0..<m],cast(string)view[0..<v],300002,-2005)<0;
+ q.method="StopTask";q.revision=0;q.interaction="";q.task="11111111111111111111111111111111";m=xt_request_write(q,again[..]);#assert m>0 && ctn_stop_action(b,cast(string)again[0..<m],cast(string)view[0..<v],300002,-2005)<0;
+ s.binding.model="other";v=xt_status_write(s,view[..]);#assert ctn_stop_action(b,cast(string)raw[0..<n],cast(string)view[0..<v],300002,-2005)<0;s.binding=b;
+ s.command=b.command;v=xt_status_write(s,view[..]);#assert ctn_stop_action(b,"",cast(string)view[0..<v],1,0)<0;s.command="";s.replay=true;v=xt_status_write(s,view[..]);#assert ctn_stop_action(b,"",cast(string)view[0..<v],1,0)<0;
+ m=ctn_stop_request(b,300002,again[..]);#assert m>0 && cast(string)again[0..<m]!=cast(string)raw[0..<n];
+ #assert ctn_stop_request(b,0,raw[..])== -1 && ctn_stop_request(b,9007199254740991,raw[..])== -1 && ctn_stop_request(b,1,raw[0..<1])== -1;
+ #assert ctn_stop_request(b,9007199254440991,raw[..])>0 && ctn_stop_request(b,9007199254440992,raw[..])== -1;
+ bad:=b;bad.task="bad";#assert ctn_stop_request(bad,1,raw[..])== -1;bad=b;bad.model="";#assert ctn_stop_request(bad,1,raw[..])== -1;
+}
+// 0: already stopped/terminal; 1: retain a new Stop; 2: retry retained bytes.
+// The broker's exit 5 is a signed expired/stale refusal. StopTask's owner emits
+// it only before accepting an unretained expired command, never on lost I/O.
+ctn_stop_action :: (b:ExBinding,raw:string,current:string,now:int,refused:int)->int #export_c #effects(all) {
+ s:[1]XtStatus;arena:[2048]u8;if now<=0 || !xt_status_read(current,s[..],arena[..]) || !ex_binding_same(b,s[0].binding) || s[0].command!="" || s[0].replay {return -1;}
+ if xt_terminal(s[0].state) || s[0].stop {return 0;}if raw=="" {return 1;}
+ q:[1]XtRequest;qa:[2048]u8;if !xt_request_read(raw,q[..],qa[..]) || !xc_match(q[0],"stop",b.task,0,"","") {return -1;}
+ return ifx refused== -2005 && now>q[0].expires then 1 else 2;
+}
+ctn_stop_request :: (b:ExBinding,now:int,out:[]u8)->int #export_c #effects(all) {
+ if !ex_binding_valid(b) || now<=0 || now>9007199254440991 {return -1;}command:[32]u8;if !ctn_command(b.task,"stop",now,command[..]) {return -1;} // mutant: equivalent (now<0 at zero and upper bound +1 are independently refused by TaskRequest; the internal command failure is unreachable for the validated task, literal kind, positive int and exact 32-byte buffer)
+ return xt_request_write(XtRequest.{method="StopTask",task=b.task,command=cast(string)command[..],issued=now,expires=now+300000},out);
+}
 ctn_effect :: (write:bool,stop:bool)->bool #export_c #effects(all) {return !write || !stop;}
 ctn_delta :: (saved:string,next:string,out:[]u8)->int #export_c #effects(all) {if saved.count>next.count || cast(string)next[0..<saved.count]!=saved || !ex_text_valid(next,131072) {return -1;}return js_copy(out,cast(string)next[saved.count..<next.count]);} // mutant: equivalent (131072 to 131073: ex_text_valid calls js_utf8, whose independent 131072-byte arena refuses every larger value)
 ctn_provider :: (engine:string)->string #export_c #effects(all) {return ifx engine=="claude" then "anthropic" else ifx engine=="codex" then "openai" else "";}

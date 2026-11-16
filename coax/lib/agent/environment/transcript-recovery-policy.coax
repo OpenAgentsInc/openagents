@@ -1,0 +1,52 @@
+// Durable consumers retain primary request/page bytes, never serialized pointers.
+// coax/bin/coax test coax/lib/agent/environment/transcript-recovery-policy.coax --library
+#load "chat-capture.coax";
+#authority;
+XHR_PAGES :: 512; XHR_CLAIM_PAGES :: 8;
+
+#test "recovery starts only from a fresh primary request for the exact task reader" {
+ b:=ex_test_binding();q:=XhRequest.{task=b.task,reader=b.task,read="11111111111111111111111111111111"};raw:[1024]u8;data:[1024]u8;c:[1]CtnCapture;n:=xh_request_write(q,raw[..]);
+ #assert n>0 && xhr_begin(c[..],b,cast(string)raw[0..<n],data[..]) && xhr_continuable(c[..],1) && c[0].client[0].n==0;
+ #assert !xhr_begin(c[..],b,"{}",data[..]);q.reader=q.read;n=xh_request_write(q,raw[..]);#assert !xhr_begin(c[..],b,cast(string)raw[0..<n],data[..]);
+ q.reader=b.task;q.task=q.read;n=xh_request_write(q,raw[..]);#assert !xhr_begin(c[..],b,cast(string)raw[0..<n],data[..]);q.task=b.task;q.hash=EX_TEST_HASH;q.offset=1;n=xh_request_write(q,raw[..]);#assert !xhr_begin(c[..],b,cast(string)raw[0..<n],data[..]);
+ q.hash="";q.offset=0;n=xh_request_write(q,raw[..]);bad:=b;bad.model="";#assert !xhr_begin(c[..],bad,cast(string)raw[0..<n],data[..]);
+ #assert xhr_page_room(0) && xhr_page_room(511) && !xhr_page_room(-1) && !xhr_page_room(512);
+ #assert xhr_claim_room(0) && xhr_claim_room(7) && !xhr_claim_room(-1) && !xhr_claim_room(8);
+ #assert !xhr_continuable(c[..],0);c[0].client[0].on=false;#assert !xhr_continuable(c[..],1);
+}
+#test "cached pages replay at their original admission time and resume only a live exact lease" #steps 100000000 {
+ b:=ex_test_binding();q:=XhRequest.{task=b.task,reader=b.task,read=EX_TEST_ID};req:[1024]u8;nr:=xh_request_write(q,req[..]);c:[1]CtnCapture;restarted:[1]CtnCapture;a:[1024]u8;z:[1024]u8;
+ #assert xhr_begin(c[..],b,cast(string)req[0..<nr],a[..]) && xhr_begin(restarted[..],b,cast(string)req[0..<nr],z[..]);
+ text:="{\"kind\":\"user\",\"text\":\"hello\"}\n";hash:[64]u8;#assert S_hex(S_hash(text),hash[..]);
+ p:=XhPage.{capture=XhCapture.{reader=b.task,read=EX_TEST_ID,status=XtStatus.{binding=b,state=XT_RUNNING,revision=1,updated=1},hash=cast(string)hash[..],bytes=text.count,expires=100},next=10,text=text[0..<10]};raw:[XH_PAGE_MAX]u8;arena:[XH_ARENA]u8;n:=xh_page_write(p,raw[..]);
+ #assert n>0 && xhr_restore(c[..],b,cast(string)raw[0..<n],1,101,arena[..]) && !xhr_continuable(c[..],101) && xhr_continuable(c[..],100);
+ #assert !xhr_restore(restarted[..],b,cast(string)raw[0..<n],0,101,arena[..]) && !xhr_restore(restarted[..],b,cast(string)raw[0..<n],2,1,arena[..]) && !xhr_restore(restarted[..],b,cast(string)raw[0..<n],101,102,arena[..]);
+ #assert xhr_restore(restarted[..],b,cast(string)raw[0..<n],1,1,arena[..]);
+ #assert xhr_restore(restarted[..],b,cast(string)raw[0..<n],1,90,arena[..]) && restarted[0].client[0].n==10;
+ next:[1024]u8;nn:=ctn_capture_request(restarted[..],next[..]);got:[1]XhRequest;qa:[256]u8;#assert nn>0 && xh_request_read(cast(string)next[0..<nn],got[..],qa[..]) && got[0].offset==10 && got[0].hash==cast(string)hash[..] && got[0].read==EX_TEST_ID;
+ p.offset=10;p.next=text.count;p.text=text[10..<text.count];p.complete=true;p.capture.expires=120;n=xh_page_write(p,raw[..]);
+ #assert xhr_restore(restarted[..],b,cast(string)raw[0..<n],91,130,arena[..]) && restarted[0].client[0].done && cast(string)restarted[0].client[0].data[0..<restarted[0].client[0].n]==text;
+ s:=XtStatus.{binding=b,state=XT_RUNNING,revision=1,updated=1};status:[8192]u8;ns:=xt_status_write(s,status[..]);#assert xhr_publishable(restarted[..],b,cast(string)status[0..<ns]);
+ s.state=XT_COMPLETED;s.revision=2;ns=xt_status_write(s,status[..]);#assert !xhr_publishable(restarted[..],b,cast(string)status[0..<ns]);
+ restarted[0].client[0].capture[0].status=s;#assert xhr_publishable(restarted[..],b,cast(string)status[0..<ns]);s.revision=3;ns=xt_status_write(s,status[..]);#assert !xhr_publishable(restarted[..],b,cast(string)status[0..<ns]);
+ s.revision=2;s.state=XT_FAILED;s.error="native_failed";ns=xt_status_write(s,status[..]);#assert !xhr_publishable(restarted[..],b,cast(string)status[0..<ns]);
+ #assert !xhr_publishable(c[..],b,cast(string)status[0..<ns]) && !xhr_publishable(restarted[..],b,"{}");
+ s.state=XT_RUNNING;s.error="";s.binding.model="other";ns=xt_status_write(s,status[..]);#assert !xhr_publishable(restarted[..],b,cast(string)status[0..<ns]);s.binding=b;s.command=b.command;ns=xt_status_write(s,status[..]);#assert !xhr_publishable(restarted[..],b,cast(string)status[0..<ns]);s.command="";s.replay=true;ns=xt_status_write(s,status[..]);#assert !xhr_publishable(restarted[..],b,cast(string)status[0..<ns]);
+}
+
+xhr_begin :: (c:[]CtnCapture,b:ExBinding,request:string,data:[]u8)->bool #export_c #effects(all) {
+ q:[1]XhRequest;arena:[256]u8;if !ex_binding_valid(b) || !xh_request_read(request,q[..],arena[..]) || !xh_fresh(q[0]) || q[0].task!=b.task || q[0].reader!=b.task {return false;}
+ return ctn_capture_init(c,b,q[0].reader,q[0].read,data);
+}
+xhr_restore :: (c:[]CtnCapture,b:ExBinding,raw:string,accepted:int,now:int,arena:[]u8)->bool #export_c #effects(all) {
+ return accepted>0 && accepted<=now && ctn_capture_page(c,b,raw,accepted,arena); // mutant: equivalent (> to >= at zero: the primary page/capture reader independently requires its acceptance time to be positive)
+}
+xhr_continuable :: (c:[]CtnCapture,now:int)->bool #export_c #effects(all) {
+ return now>0 && c[0].client[0].on && (!c[0].client[0].has || now<=c[0].client[0].capture[0].expires);
+}
+xhr_page_room :: (count:int)->bool #export_c #effects(all) {return count>=0 && count<XHR_PAGES;}
+xhr_claim_room :: (count:int)->bool #export_c #effects(all) {return count>=0 && count<XHR_CLAIM_PAGES;}
+xhr_publishable :: (c:[]CtnCapture,b:ExBinding,current:string)->bool #export_c #effects(all) {
+ s:[1]XtStatus;arena:[2048]u8;if !c[0].client[0].done || !xt_status_read(current,s[..],arena[..]) || !ex_binding_same(b,s[0].binding) || s[0].command!="" || s[0].replay {return false;}
+ old:=c[0].client[0].capture[0].status;return !xt_terminal(s[0].state) || (old.state==s[0].state && old.revision>=s[0].revision);
+}

@@ -126,9 +126,35 @@ generated account program has a fixed 64 MiB memory allowance (including its
 8 MiB Wasm stack and approximately 34 MiB state) and a 16 MiB script admission
 cap. These limits are separate from native SDK allocations.
 
-Server capture assembly is currently bounded and restarts on a later worker
-claim; durable server paging, renewal of an expired Stop command, multiple
-accounts, shared gateway tool continuation, real provider
-execution and end-to-end qualification remain part of #13620. Native C and
+Server capture assembly resumes the same admitted primary pages across worker
+claims. Stop can renew only after expiry refusal and fresh reconciliation, as
+specified below. Multiple accounts, shared gateway tool continuation, real
+provider execution and end-to-end qualification remain part of #13620. Native C and
 installed-interpreter fixtures do not establish production rollout or a real
 provider execution; that live qualification remains separate.
+
+## Server recovery storage
+
+The durable capture consumer retains the existing primary `TranscriptRequest`
+in `chat.turn_tasks_v1.capture_json` before requesting a capture. Each admitted
+primary `TranscriptPage` is retained verbatim in `chat.task_capture_pages_v1`,
+ordered by a server page ordinal, alongside its original acceptance time. No
+new transcript envelope or codec is introduced. Reassembly uses the same
+`XhClient`, complete binding, capture identity, contiguous byte offsets and
+whole digest as the live reader. Cached pages are inert observations; their
+original acceptance time permits replay after a worker restart. A further
+native page still requires a live capture lease and the current account,
+enrollment and native grant. Expired partial captures restart under the same
+per-task reader and a fresh read identity; prefixes from different captures
+are never joined. Storage is bounded by 512 pages and the existing 4 MiB
+complete-log limit. Each claim reads at most eight new pages before yielding.
+
+Stop requests retain their original primary `TaskRequest` bytes in
+`chat.task_stop_commands_v1` before dispatch. An uncertain response retries the
+same command. A replacement command is permitted only after an exact retry is
+refused as expired, the API's original command window has expired, and a fresh
+native observation still shows a nonterminal task without retained Stop.
+Confirmed Stop and terminal tasks issue no replacement. Prior attempts remain
+retained; renewing Stop never changes the task, Start, binding or permission
+intent. Both tables are private to the owning account and follow its existing
+turn deletion/export lifecycle.

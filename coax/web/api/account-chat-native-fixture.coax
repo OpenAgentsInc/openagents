@@ -11,11 +11,12 @@ ncf_station :: (host:string,out:[]u8)->int #effects(all) {
  q:[1]RtrRequest;q[0].n=1;s:=q[0].stations[0..<1];s[0].id="fixture-mac";s[0].name="Native fixture Mac";s[0].os="macos";s[0].cores=8;s[0].memory_total_mb=16384;s[0].memory_free_mb=4096;s[0].disk_free_mb=90000;s[0].disk_floor_mb=1000;s[0].apple_builds=true;s[0].reported_at_ms=cxproc_wall_us()/1000;
  for k:0..<2 {s[0].agents[k]=RtrAgent.{reported=true,installed=true,logged_in=true};}return rtr_report_write(q[..],0,host,out);
 }
-ncf_log :: (path:string,input:string,state:int)->bool #effects(all) {
- s:[1]Session;pool:[131072]u8;s_init(s[..],pool[..]);s_user(s[..],input);s_delta(s[..],P_TEXT,"Checking native task. ");
+ncf_log :: (path:string,input:string,state:int,large:bool)->bool #effects(all) {
+ s:[1]Session;pool:[524288]u8;s_init(s[..],pool[..]);s_user(s[..],input);s_delta(s[..],P_TEXT,"Checking native task. ");
+ if large {body:[16384]u8;for i:0..<body.count {body[i]='x';}for i:0..<10 {id:[32]u8;o:[1]Jo;jo_start(o[..],id[..]);jo_put(o[..],"bulk-");jo_int(o[..],i);sl_test_tool(s[..],jo_text(o[..]),TK_READ,"fixture.txt","","","","{}",cast(string)body[..],false);}}
  sl_test_tool(s[..],"native-tool",TK_EXEC,"fixture command","shell","","","{\"command\":\"fixture\"}",ifx state==XT_COMPLETED then "Fixture write completed" else "",false);
  if state==XT_WAITING {s_notice(s[..],N_ASK,"Allow the fixture command?");}if state==XT_COMPLETED {s_delta(s[..],P_TEXT,"Native task complete.");}
- out:[262144]u8;n:=sl_lines_checked(s[..],0,s[0].n,false,out[..]);return n>0 && fs_replace_durable(path,cast(string)out[0..<n]);
+ out:[1048576]u8;n:=sl_lines_checked(s[..],0,s[0].n,false,out[..]);return n>0 && fs_replace_durable(path,cast(string)out[0..<n]);
 }
 ncf_rpc :: (args:[]Args)->int #effects(all) {
  env:[4096]u8;root_buf:[FS_PATH_MAX]u8;host_buf:[FS_PATH_MAX]u8;prep_buf:[FS_PATH_MAX]u8;tasks_buf:[FS_PATH_MAX]u8;report_buf:[FS_PATH_MAX]u8;
@@ -37,16 +38,16 @@ ncf_rpc :: (args:[]Args)->int #effects(all) {
  if q[0].method=="StartTask" && match==0 {
   bb:[8192]u8;ba:[2048]u8;stage:[FS_PATH_MAX]u8;f:[FS_PATH_MAX]u8;bn:=fs_read(fs_join(exp_task_dir(prep,grant,q[0].task,stage[..]),"binding.json",f[..]),bb[..]);if bn<1 || !ex_binding_read(cast(string)bb[0..<bn],b[..],ba[..]) {return 3;}
   error=xt_store_start(tasks,prep,grant,b[0],q[0],raw,cxproc_wall_us()/1000,status[..]);if error!="" {return exp_refusal_status(error);}status[0].state=XT_WAITING;status[0].revision=2;status[0].interaction="native-request";status[0].native="fixture-native-session";
-  input:[EX_INPUT_MAX]u8;ni:=fs_read(source,input[..]);if ni<1 || !ncf_log(transcript_path,cast(string)input[0..<ni],XT_WAITING) || !xt_status_save(directory,status[0]) {return 3;}
+  input:[EX_INPUT_MAX]u8;large_path:[FS_PATH_MAX]u8;ni:=fs_read(source,input[..]);if ni<1 || !ncf_log(transcript_path,cast(string)input[0..<ni],XT_WAITING,fs_exists(fs_join(root,"large-capture",large_path[..]))) || !xt_status_save(directory,status[0]) {return 3;}
   effect:[FS_PATH_MAX]u8;if !fs_append_durable(fs_join(root,"starts",effect[..]),"start\n") {return 3;}
   // Lose the first reply after durable ownership/effect publication.
   return 3;
  }
  error=xt_status_load(tasks,grant,q[0].task,status[..],sa[..]);if error!="" {return exp_refusal_status(error);}
  if q[0].method!="ReadTask" && q[0].method!="StartTask" && match==0 {
-  verdict:=xt_control(0,q[0].method,status[0].state,q[0].revision,status[0].revision,q[0].interaction==status[0].interaction,status[0].stop,q[0].issued,q[0].expires,cxproc_wall_us()/1000);if verdict<0 {return 6;}
+  verdict:=xt_control(0,q[0].method,status[0].state,q[0].revision,status[0].revision,q[0].interaction==status[0].interaction,status[0].stop,q[0].issued,q[0].expires,cxproc_wall_us()/1000);if verdict<0 {return ifx verdict== -2 then 5 else 6;}
   error=xt_store_control(tasks,grant,q[0],raw);if error!="" {return exp_refusal_status(error);}status[0].state=ifx q[0].method=="StopTask" then XT_CANCELED else ifx q[0].allow then XT_COMPLETED else XT_FAILED;status[0].error=ifx status[0].state==XT_FAILED then "native_failed" else "";status[0].stop=q[0].method=="StopTask";status[0].revision+=1;status[0].interaction="";status[0].updated=cxproc_wall_us()/1000;
-  input:[EX_INPUT_MAX]u8;ni:=fs_read(source,input[..]);if ni<1 || !ncf_log(transcript_path,cast(string)input[0..<ni],status[0].state) || !xt_status_save(directory,status[0]) {return 3;}
+  input:[EX_INPUT_MAX]u8;large_path:[FS_PATH_MAX]u8;ni:=fs_read(source,input[..]);if ni<1 || !ncf_log(transcript_path,cast(string)input[0..<ni],status[0].state,fs_exists(fs_join(root,"large-capture",large_path[..]))) || !xt_status_save(directory,status[0]) {return 3;}
   effect:[FS_PATH_MAX]u8;if !fs_append_durable(fs_join(root,"controls",effect[..]),"control\n") {return 3;}
  }
  if transcript {captures:[FS_PATH_MAX]u8;page:[1]XhPage;strings:[XH_ARENA]u8;text:[XH_CHUNK_MAX+4]u8;error=xh_store_page(fs_join(root,"captures",captures[..]),grant,tq[0],status[0],transcript_path,cxproc_wall_us()/1000,page[..],strings[..],text[..]);if error!="" {return exp_refusal_status(error);}made:=xh_page_write(page[0],out[..]);if made<1 {return 2;}print("%\n",cast(string)out[0..<made]);return 0;}

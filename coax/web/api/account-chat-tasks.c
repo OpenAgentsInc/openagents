@@ -84,10 +84,18 @@ static int native_preflight(native_turn *n,const char *conversation){
  }
  done:free(h);free(intent);free(select);free(body);free(out);return result;
 }
+static bool native_stop_store(PGconn *db,native_turn *n,const char *record,const char *now){
+ if(!record||!*record)return true;
+ coax_t_XtRequest q;unsigned char arena[2048];char command[33]={0};
+ if(!xt_request_read(ts(record),(coax_v_t_XtRequest){&q,1},tb(arena,sizeof arena))||!xc_match(q,ts("stop"),n->task.binding.task,0,ts(""),ts(""))||!copy_string(command,sizeof command,q.command))return false;
+ const char *v[]={n->m.account,n->m.turn,command,record,now};
+ PGresult *r=PQexecParams(db,"INSERT INTO chat.task_stop_commands_v1(account,turn,command,record,created_ms) VALUES($1,$2,$3,$4,$5::bigint) ON CONFLICT(account,turn,command) DO UPDATE SET record=chat.task_stop_commands_v1.record WHERE chat.task_stop_commands_v1.record=EXCLUDED.record RETURNING command",5,NULL,v,NULL,NULL,0);
+ bool ok=tuples(r)&&PQntuples(r)==1;PQclear(r);return ok;
+}
 static bool native_store(native_turn *n,int phase,const char *status,const char *stop){
  PGconn *db=model_db(&n->m);if(!native_guard(n,false)||!exec_sql(db,"BEGIN",0,NULL))return false;PGresult *r=turn_row(db,n->m.account,n->m.turn,true);
  bool ok=model_matches(&n->m,r)&&number(r,0,3)==RUNNING;if(ok){n->stop=PQgetvalue(r,0,4)[0]=='t';}if(ok&&phase==1&&n->phase==0&&n->stop)ok=false;
- char p[32],ms[32];num(p,phase);num(ms,(long long)api_now_ms());const char *v[]={n->m.account,n->m.turn,p,status,stop,ms};if(ok)ok=exec_sql(db,"UPDATE chat.turn_tasks_v1 SET phase=$3::int,status_json=nullif($4,''),stop_json=nullif($5,''),updated_ms=$6::bigint WHERE account=$1 AND turn=$2",6,v);
+ char p[32],ms[32];num(p,phase);num(ms,(long long)api_now_ms());const char *v[]={n->m.account,n->m.turn,p,status,stop,ms};if(ok)ok=native_stop_store(db,n,n->stop_record,ms)&&native_stop_store(db,n,stop,ms)&&exec_sql(db,"UPDATE chat.turn_tasks_v1 SET phase=$3::int,status_json=nullif($4,''),stop_json=nullif($5,''),updated_ms=$6::bigint WHERE account=$1 AND turn=$2",6,v);
  char *next_status=ok?strdup(status):NULL,*next_stop=ok?strdup(stop):NULL;ok=ok&&next_status&&next_stop;
  PQclear(r);if(ok&&exec_sql(db,"COMMIT",0,NULL)){n->phase=phase;free(n->prior);free(n->stop_record);n->prior=next_status;n->stop_record=next_stop;return true;}free(next_status);free(next_stop);exec_sql(db,"ROLLBACK",0,NULL);return false;
 }
@@ -97,16 +105,48 @@ static bool native_observe(native_turn *n,const unsigned char *raw,int64_t size,
  // status is retained. Re-read into caller-owned storage before using strings.
  return native_store(n,2,(char *)canonical,n->stop_record);
 }
+static bool native_capture_reset(native_turn *n,const char *request){
+ PGconn *db=model_db(&n->m);if(!native_guard(n,false)||!exec_sql(db,"BEGIN",0,NULL))return false;
+ PGresult *r=turn_row(db,n->m.account,n->m.turn,true);const char *v[]={n->m.account,n->m.turn,request};
+ bool ok=model_matches(&n->m,r)&&number(r,0,3)==RUNNING&&exec_sql(db,"DELETE FROM chat.task_capture_pages_v1 WHERE account=$1 AND turn=$2",2,v)&&exec_sql(db,"UPDATE chat.turn_tasks_v1 SET capture_json=$3 WHERE account=$1 AND turn=$2",3,v);
+ PQclear(r);if(ok&&exec_sql(db,"COMMIT",0,NULL))return true;exec_sql(db,"ROLLBACK",0,NULL);return false;
+}
+static bool native_capture_store(native_turn *n,int page,const unsigned char *raw,int64_t size,long long accepted){
+ PGconn *db=model_db(&n->m);if(!xhr_page_room(page)||!native_guard(n,false)||!exec_sql(db,"BEGIN",0,NULL))return false;
+ PGresult *r=turn_row(db,n->m.account,n->m.turn,true);char ordinal[32],ms[32];num(ordinal,page);num(ms,accepted);char *record=strndup((const char *)raw,(size_t)size);
+ const char *v[]={n->m.account,n->m.turn,ordinal,record,ms};bool ok=record&&model_matches(&n->m,r)&&number(r,0,3)==RUNNING&&exec_sql(db,"INSERT INTO chat.task_capture_pages_v1(account,turn,page,record,accepted_ms) VALUES($1,$2,$3::int,$4,$5::bigint)",5,v);
+ PQclear(r);free(record);if(ok&&exec_sql(db,"COMMIT",0,NULL))return true;exec_sql(db,"ROLLBACK",0,NULL);return false;
+}
 static bool native_capture(native_turn *n){
  coax_t_CtnCapture *c=calloc(1,sizeof *c);unsigned char *data=malloc(4194304),*pool=malloc(4194304),*decode=malloc(4194304),*text=malloc(131073),*delta=malloc(131073);bool ok=false;
- unsigned char request[1024],reply_bytes[47104],page_arena[20480];char reader[37],read[37];
- if(!c||!data||!pool||!decode||!text||!delta||!api_object_id(reader,"cmd_")||!api_object_id(read,"cmd_")||!ctn_capture_init((coax_v_t_CtnCapture){c,1},n->task.binding,tn(reader+4,32),tn(read+4,32),tb(data,4194304)))goto done;
- for(int page=0;page<256&&!c->client.e[0].done;page++){int64_t size=ctn_capture_request((coax_v_t_CtnCapture){c,1},tb(request,sizeof request));int64_t got=size>0?native_rpc(n,tn(request,size),reply_bytes,sizeof reply_bytes,false):-1;
-  if(got<1||!ctn_capture_page((coax_v_t_CtnCapture){c,1},n->task.binding,tn(reply_bytes,got),(int64_t)api_now_ms(),tb(page_arena,sizeof page_arena)))goto done;
+ unsigned char request[1025],reply_bytes[47104],page_arena[20480];char read[37];int pages=0;
+ if(!c||!data||!pool||!decode||!text||!delta||!native_guard(n,false)||!native_scope(n,&n->connection))goto done;
+ const char *v[]={n->m.account,n->m.turn};PGresult *r=PQexecParams(model_db(&n->m),"SELECT coalesce(capture_json,'') FROM chat.turn_tasks_v1 WHERE account=$1 AND turn=$2",2,NULL,v,NULL,NULL,0);
+ bool loaded=tuples(r)&&PQntuples(r)==1;int64_t initial=loaded?(int64_t)strlen(PQgetvalue(r,0,0)):-1;
+ if(initial>0)loaded=xhr_begin((coax_v_t_CtnCapture){c,1},n->task.binding,ts(PQgetvalue(r,0,0)),tb(data,4194304));PQclear(r);if(!loaded)goto reset;
+ if(initial==0){
+  if(!api_object_id(read,"cmd_"))goto done;coax_t_XhRequest q={.task=n->task.binding.task,.reader=n->task.binding.task,.read=tn(read+4,32)};
+  int64_t size=xh_request_write(q,tb(request,sizeof request-1));if(size<1)goto done;request[size]=0;
+  if(!native_capture_reset(n,(char *)request)||!xhr_begin((coax_v_t_CtnCapture){c,1},n->task.binding,tn(request,size),tb(data,4194304)))goto done;
+ }else {
+  r=PQexecParams(model_db(&n->m),"SELECT page,record,accepted_ms FROM chat.task_capture_pages_v1 WHERE account=$1 AND turn=$2 ORDER BY page LIMIT 513",2,NULL,v,NULL,NULL,0);
+  loaded=tuples(r);if(loaded){pages=PQntuples(r);for(int i=0;i<pages;i++)if(!xhr_page_room(i)||number(r,i,0)!=i||!xhr_restore((coax_v_t_CtnCapture){c,1},n->task.binding,ts(PQgetvalue(r,i,1)),number(r,i,2),(int64_t)api_now_ms(),tb(page_arena,sizeof page_arena))){loaded=false;break;}}
+  PQclear(r);if(!loaded)goto reset;
  }
- if(!c->client.e[0].done){goto done;}int64_t size=ctn_capture_text((coax_v_t_CtnCapture){c,1},tb(pool,4194304),tb(decode,4194304),tb(text,131072));if(size== -2){native_finish(n,2,"Native reply exceeded the saved chat byte limit; the full task transcript remains available");goto done;}if(size<0)goto done;
- PGresult *r=turn_row(model_db(&n->m),n->m.account,n->m.turn,false);int64_t change=model_matches(&n->m,r)?ctn_delta(ts(PQgetvalue(r,0,6)),tn(text,size),tb(delta,131072)):-1;PQclear(r);if(change<0)goto done;
- if(change>0&&!n->stop&&!model_emit(&n->m,TEXT,tn(delta,change),ts(""),ts(""),false)){goto done;}ok=true;
+ if(!c->client.e[0].done&&!xhr_continuable((coax_v_t_CtnCapture){c,1},(int64_t)api_now_ms()))goto reset;
+ for(int taken=0;!c->client.e[0].done&&xhr_claim_room(taken);taken++,pages++){
+  if(!xhr_page_room(pages))goto reset;int64_t size=ctn_capture_request((coax_v_t_CtnCapture){c,1},tb(request,sizeof request-1));int64_t got=size>0?native_rpc(n,tn(request,size),reply_bytes,sizeof reply_bytes,false):-1;long long accepted=(long long)api_now_ms();
+  if(got== -2005)goto reset;if(got<1)goto done;
+  if(!ctn_capture_page((coax_v_t_CtnCapture){c,1},n->task.binding,tn(reply_bytes,got),accepted,tb(page_arena,sizeof page_arena)))goto reset;
+  if(!native_capture_store(n,pages,reply_bytes,got,accepted))goto done;
+ }
+ if(!c->client.e[0].done)goto done;
+ if(!xhr_publishable((coax_v_t_CtnCapture){c,1},n->task.binding,ts(n->prior)))goto reset;
+ int64_t size=ctn_capture_text((coax_v_t_CtnCapture){c,1},tb(pool,4194304),tb(decode,4194304),tb(text,131072));if(size== -2){native_finish(n,2,"Native reply exceeded the saved chat byte limit; the full task transcript remains available");goto done;}if(size<0)goto done;
+ if(!native_guard(n,false)||!native_scope(n,&n->connection))goto done;
+ r=turn_row(model_db(&n->m),n->m.account,n->m.turn,false);int64_t change=model_matches(&n->m,r)?ctn_delta(ts(PQgetvalue(r,0,6)),tn(text,size),tb(delta,131072)):-1;PQclear(r);if(change<0)goto done;
+ if(change>0&&!n->stop&&!model_emit(&n->m,TEXT,tn(delta,change),ts(""),ts(""),false)){goto done;}ok=native_capture_reset(n,NULL);goto done;
+ reset:(void)native_capture_reset(n,NULL);
  done:free(c);free(data);free(pool);free(decode);free(text);free(delta);return ok;
 }
 static void native_cycle(native_turn *n){
@@ -128,10 +168,22 @@ static void native_cycle(native_turn *n){
   if(got>0)observed=native_observe(n,out,got,b.command,&status);else if(got== -2008&&prepared_here)native_finish(n,3,"");else if(got== -2004||got== -2005||got== -2006)native_finish(n,4,"Native Start was refused; reconcile the retained task");if(!observed)return;
  }
  if(observed&&n->stop&&ctn_outcome(status.state)==0){
-  if(!*n->stop_record){char command[33]={0};long long now=(long long)api_now_ms();if(!ctn_command(b.task,ts("stop"),now,tb(command,32)))return;
-   coax_t_XtRequest q={.method=ts("StopTask"),.task=b.task,.command=ts(command),.issued=now,.expires=ctw_claim_end(now)};size=xt_request_write(q,tb(body,sizeof body-1));if(size<1)return;body[size]=0;if(!native_store(n,n->phase,n->prior,(char *)body))return;
+  int action=(int)ctn_stop_action(b,ts(n->stop_record),ts(n->prior),(int64_t)api_now_ms(),0);
+  if(action<0)return;
+  if(action==1){size=ctn_stop_request(b,(int64_t)api_now_ms(),tb(body,sizeof body-1));if(size<1)return;body[size]=0;if(!native_store(n,n->phase,n->prior,(char *)body))return;
   }
-  coax_t_XtRequest q;unsigned char qa[2048];if(!xt_request_read(ts(n->stop_record),(coax_v_t_XtRequest){&q,1},tb(qa,sizeof qa)))return;got=native_rpc(n,ts(n->stop_record),out,sizeof out,false);if(got>0)observed=native_observe(n,out,got,q.command,&status);
+  if(action!=0){coax_t_XtRequest q;unsigned char qa[2048];if(!xt_request_read(ts(n->stop_record),(coax_v_t_XtRequest){&q,1},tb(qa,sizeof qa)))return;got=native_rpc(n,ts(n->stop_record),out,sizeof out,false);
+   if(got>0)observed=native_observe(n,out,got,q.command,&status);
+   else if(got== -2005){
+    // Retry expired bytes first: a retained native receipt would reconcile even
+    // after expiry. Only a refusal plus a new Read may license replacement.
+    size=ta_read(b.task,tb(body,sizeof body));int64_t fresh=size>0?native_rpc(n,tn(body,size),out,sizeof out,false):-1;
+    observed=fresh>0&&native_observe(n,out,fresh,ts(""),&status);
+    if(observed&&ctn_stop_action(b,ts(n->stop_record),ts(n->prior),(int64_t)api_now_ms(),-2005)==1){
+     size=ctn_stop_request(b,(int64_t)api_now_ms(),tb(body,sizeof body-1));if(size<1)return;body[size]=0;if(!native_store(n,n->phase,n->prior,(char *)body))return;
+    }
+   }
+  }
  }
  if(observed){int outcome=(int)ctn_outcome(status.state);bool captured=native_capture(n);if(outcome!=0){
    if(outcome==1){if(!captured)return;native_finish(n,1,"");}else native_finish(n,outcome,outcome==2?"Native task failed":outcome==4?"Native task outcome is unknown":"");

@@ -20755,6 +20755,32 @@ CREATE TABLE chat.project_threads_v1 (
 
 
 --
+-- Name: task_capture_pages_v1; Type: TABLE; Schema: chat; Owner: -
+--
+
+CREATE TABLE chat.task_capture_pages_v1 (
+    account text NOT NULL,
+    turn text NOT NULL,
+    page integer NOT NULL,
+    record text NOT NULL,
+    accepted_ms bigint NOT NULL
+);
+
+
+--
+-- Name: task_stop_commands_v1; Type: TABLE; Schema: chat; Owner: -
+--
+
+CREATE TABLE chat.task_stop_commands_v1 (
+    account text NOT NULL,
+    turn text NOT NULL,
+    command text NOT NULL,
+    record text NOT NULL,
+    created_ms bigint NOT NULL
+);
+
+
+--
 -- Name: turn_claims_v2; Type: TABLE; Schema: chat; Owner: -
 --
 
@@ -20807,7 +20833,8 @@ CREATE TABLE chat.turn_tasks_v1 (
     stop_json text,
     poll_after_ms bigint DEFAULT 0 NOT NULL,
     created_ms bigint NOT NULL,
-    updated_ms bigint NOT NULL
+    updated_ms bigint NOT NULL,
+    capture_json text
 );
 
 
@@ -24448,6 +24475,22 @@ ALTER TABLE ONLY chat.project_threads_v1
 
 
 --
+-- Name: task_capture_pages_v1 task_capture_pages_v1_pkey; Type: CONSTRAINT; Schema: chat; Owner: -
+--
+
+ALTER TABLE ONLY chat.task_capture_pages_v1
+    ADD CONSTRAINT task_capture_pages_v1_pkey PRIMARY KEY (account, turn, page);
+
+
+--
+-- Name: task_stop_commands_v1 task_stop_commands_v1_pkey; Type: CONSTRAINT; Schema: chat; Owner: -
+--
+
+ALTER TABLE ONLY chat.task_stop_commands_v1
+    ADD CONSTRAINT task_stop_commands_v1_pkey PRIMARY KEY (account, turn, command);
+
+
+--
 -- Name: turn_claims_v2 turn_claims_v2_pkey; Type: CONSTRAINT; Schema: chat; Owner: -
 --
 
@@ -27311,6 +27354,22 @@ ALTER TABLE ONLY chat.events
 
 ALTER TABLE ONLY chat.project_threads_v1
     ADD CONSTRAINT project_threads_v1_account_thread_fkey FOREIGN KEY (account, thread) REFERENCES chat.account_threads_v1(account, id) ON UPDATE CASCADE ON DELETE CASCADE;
+
+
+--
+-- Name: task_capture_pages_v1 task_capture_pages_v1_account_turn_fkey; Type: FK CONSTRAINT; Schema: chat; Owner: -
+--
+
+ALTER TABLE ONLY chat.task_capture_pages_v1
+    ADD CONSTRAINT task_capture_pages_v1_account_turn_fkey FOREIGN KEY (account, turn) REFERENCES chat.turn_tasks_v1(account, turn) ON UPDATE CASCADE ON DELETE CASCADE;
+
+
+--
+-- Name: task_stop_commands_v1 task_stop_commands_v1_account_turn_fkey; Type: FK CONSTRAINT; Schema: chat; Owner: -
+--
+
+ALTER TABLE ONLY chat.task_stop_commands_v1
+    ADD CONSTRAINT task_stop_commands_v1_account_turn_fkey FOREIGN KEY (account, turn) REFERENCES chat.turn_tasks_v1(account, turn) ON UPDATE CASCADE ON DELETE CASCADE;
 
 
 --
