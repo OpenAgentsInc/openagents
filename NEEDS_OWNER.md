@@ -1703,7 +1703,7 @@ not a pending request for a key.
 
 ## GPU identity settings on iPhone (#13645, 2026-11-16)
 
-Install **1398** when available: log in by email, open sidebar → Settings,
+Install **1400** when available: log in by email, open sidebar → Settings,
 copy the public key, and verify system passkey registration/step-up and
 local device authentication when showing Backup. Test Rotate, then Restore
 with a disposable identity only if you intend to replace the current key.
@@ -1712,8 +1712,9 @@ text and native momentum scrolling on the phone. Simulator/native checks
 cover the state/crypto/transport paths; these system ceremonies and physical
 appearance cannot be certified by those checks.
 
-Build 1398 is verified in the Owner TestFlight group; it adds computer-chat
-history to that same drawer. Check each paired computer's sessions, opening
+Build 1399 is verified in the Owner TestFlight group. Build 1400 fixes the
+native sidebar tap, its accessibility entry while open, and Back from
+Settings → Log in; the actual UIKit tap test passes. Check each paired computer's sessions, opening
 one, loading More, and reopening the drawer during a running turn. The identity API is
 `oa-api-00171-b4j` after staging and production migration/smoke checks. It
 includes the auto-synced Account chats drawer and main's reconnect/rejoin fix. Check opening a saved

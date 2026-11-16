@@ -53,6 +53,12 @@ apps/openagents-ios/check.sh
 coax/remote/remote.sh run -- coax/bin/coax test apps/openagents-ios/chat.coax
 ```
 
+`OpenAgentsSidebar` runs `UITests/SidebarTests.swift` against the actual
+UIKit control and GPU drawer: repeated open/close, Settings and login Back.
+Use an isolated simulator and override `OA_IOS_BUNDLE_ID` for the test app,
+so its Keychain and preferences stay separate from an installed account.
+The test uses a local unreachable API origin and sends no login request.
+
 ## Release
 
 ```sh

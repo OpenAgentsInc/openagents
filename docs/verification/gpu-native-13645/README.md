@@ -40,6 +40,31 @@ use the shared, checked `nc_flags` argv reader, with no shell interpretation.
 
 ## Accessibility and Apple SDKs
 
+### iOS 1400: native sidebar activation
+
+The floating control was a bare `UIControl` wired to
+`primaryActionTriggered`; a finger tap did not produce that action. It is
+now a `UIButton`, retaining the same glass appearance. The open drawer also
+records the visible control in its live semantic table, so the accessibility
+bridge retains the actual button while the drawer is open. Login opened from
+Settings now obtains Back's frame from its committed row even when the
+underlying Settings page has no sidebar control.
+
+The new Coax Back regression fails on the previous implementation. All 907
+app checks pass after the fix. An actual XCUITest on an isolated iPhone 17 Pro
+simulator taps the native menu, opens/closes it repeatedly, visits Settings,
+opens login, taps Back and returns home. It passes with no failures; this
+tests the UIKit event path rather than calling `oc_activate` directly.
+
+![Sidebar opened by a real UIKit tap](sidebar-1400.png)
+
+Screenshot SHA-256:
+`d493169869348d0bba4a00ab36ba8853917bb97e13d572265e5b53f3c1dc227c`.
+The isolated app has no account or paired computers. Archive, package gate
+and export pass; upload accepted with delivery
+`13f947a0-90bb-4ad9-9a0a-74eb32fa818c`. The dSYM is retained as
+`a65283d9d69a321586bfaf7cafba90dc`. Apple processing is separate.
+
 The Linux [ATK/AT-SPI record](../../../apps/shared/host/linux/ACCESSIBILITY.md)
 covers retained roles/states/text/actions, atomic refusal, structural and
 state notifications, retirement and a separate actual D-Bus reader. Its

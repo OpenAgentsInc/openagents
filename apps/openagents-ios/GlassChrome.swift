@@ -12,7 +12,9 @@ import UIKit
 
 /// A round button at the top left: native Liquid Glass on iOS 26 and later, a material blur before.
 /// The menu button names the sidebar's state; Back (`back: true`) says Back.
-@MainActor final class GlassMenuButton: UIControl {
+// UIButton supplies real touch, keyboard and accessibility primary activation.
+// A bare UIControl does not turn a finger tap into primaryActionTriggered.
+@MainActor final class GlassMenuButton: UIButton {
     private let glyph = UIImageView()
     private var ground: UIVisualEffectView
     private let back: Bool

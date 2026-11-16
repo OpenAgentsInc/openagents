@@ -279,6 +279,9 @@ ch_layout_cover :: (s: [] ChatPage, f: [] UiFrame, w: f32, h: f32) {
     _ := app_sidebar_new(f, "drawer.new", in.x, by, ICON_COMPOSE, "New chat", CH_HIT_NEW);
     app_sidebar_end(f, in);
   }
+  // The floating control remains visible over the pushed page. Keep it in
+  // the live cover's semantics too, so accessibility can reach and close it.
+  if s[0].drawer && s[0].menu_side>0 {ch_menu_row(s,f,s[0].menu_x+app_sidebar_shift(w,s[0].share),s[0].menu_y);}
 }
 // The login page: the whole screen over the chat, its Back button where the menu button was, and the
 // login flow's form under it. It holds every press while it shows.
@@ -613,8 +616,15 @@ chat_native :: (s: [] ChatPage, on: bool) #export_c #effects(all) { if s.count >
 // The menu button: x, y, side, the page's push to the right while the sidebar opens (points), then
 // 1 when the sidebar is open and 1 when it hides (the login card covers the page).
 chat_menu :: (s: [] ChatPage, out: [] f32) -> bool #export_c #effects(all) {
-  if s.count < 1 || out.count < 6 || !(s[0].menu_side > 0) { return false; }
+  if s.count < 1 || out.count < 6 { return false; }
   u := ch_u(s);
+  // Settings has no sidebar control (menu_side == 0), but opening its login
+  // page still needs the native Back button. Read that committed row directly.
+  if s[0].lf[0].open {
+    t:=[1]ElTable.[ch_rows(s)];i:=elt_find(t[..],"login.back");if i<0 || !elt_visible(t[..],i).visible {return false;}
+    r:=t[0].rows[i];out[0]=r.x*u;out[1]=r.y*u;out[2]=r.w*u;out[3]=0;out[4]=0;out[5]=1;return true;
+  }
+  if !(s[0].menu_side > 0) {return false;}
   out[0] = s[0].menu_x * u; out[1] = s[0].menu_y * u; out[2] = s[0].menu_side * u;
   out[3] = app_sidebar_shift(s[0].page_w, s[0].share) * u;
   out[4] = ifx s[0].drawer then 1.0f32 else 0.0f32; out[5] = ifx s[0].lf[0].open then 1.0f32 else 0.0f32;
@@ -810,6 +820,15 @@ ch_test_has :: (s: [] ChatPage, id: string) -> bool { return surface_find(ch_sf(
   m: [6] f32; #assert chat_menu(s[..], m[..]) && m[5] == 1;
   #assert chat_activate(s[..], "login.back") && !s[0].lf[0].open && chat_layer(s[..]) == 0;
 }
+#test "system Back survives opening login from Settings, where the sidebar button is absent" #steps 2000000000 {
+ s:[1]ChatPage;o:[1]ChOut;ch_test_atlas(s[0].atlas[..]);chat_native(s[..],true);_:=ch_test_frame(s[..],o[..]);lf_t_out(s[0].lf[..]);
+ #assert chat_activate(s[..],"nav.menu");_:=ch_test_frame(s[..],o[..]);#assert chat_activate(s[..],"drawer.settings");_:=ch_test_frame(s[..],o[..]);
+ m:[6]f32;#assert !chat_menu(s[..],m[..]) && ch_test_has(s[..],"settings.back");
+ #assert chat_activate(s[..],"settings.login");_:=ch_test_frame(s[..],o[..]);
+ #assert chat_menu(s[..],m[..]) && m[5]==1 && m[2]>30 && m[3]==0;
+ b:[4]f32;#assert chat_find(s[..],"login.back",b[..]) && m[0]==b[0] && m[1]==b[1] && m[2]==b[2];
+ #assert chat_activate(s[..],"login.back");_:=ch_test_frame(s[..],o[..]);#assert !chat_menu(s[..],m[..]) && ch_test_has(s[..],"settings.back");
+}
 
 #test "chat page, system controls: the menu button and the picker keep their rows and hits, and paint nothing; the host reads the picker's rows and the chip it points at" #steps 2000000000 {
   s: [1] ChatPage; o: [1] ChOut; ch_test_atlas(s[0].atlas[..]);
@@ -821,6 +840,8 @@ ch_test_has :: (s: [] ChatPage, id: string) -> bool { return surface_find(ch_sf(
   m: [6] f32; #assert chat_menu(s[..], m[..]) && m[2] > 30 && m[3] == 0 && m[4] == 0;
   #assert ch_test_tap(s[..], "nav.menu") && s[0].drawer; _ := ch_test_frame(s[..], o[..]); _ := ch_test_frame(s[..], o[..]);
   #assert chat_menu(s[..], m[..]) && m[3] > 100 && m[4] == 1;
+  #assert surface_find(ch_live(s[..]),"nav.menu")>=0 && chat_activate(s[..],"nav.menu") && !s[0].drawer;
+  _:=ch_test_frame(s[..],o[..]);#assert chat_activate(s[..],"nav.menu");_:=ch_test_frame(s[..],o[..]);
   #assert chat_activate(s[..], "drawer.scrim") && !s[0].drawer; _ := ch_test_frame(s[..], o[..]);
   core[0].auth = AUTH_IN; chat_step(s[..]); _ := ch_test_frame(s[..], o[..]);
   #assert chat_activate(s[..], "composer.environment") && chat_sheet(s[..]) == ES_SHEET_ENV;

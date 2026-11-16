@@ -26,6 +26,7 @@
 		A09F60FB92403B2A4A5AEC6D /* AppCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2375370987EB21F55CB7A476 /* AppCore.swift */; };
 		AD751202F9DD8187E36837E4 /* ComponentsHost.m in Sources */ = {isa = PBXBuildFile; fileRef = C6F4AFFB9B751E6D6F603036 /* ComponentsHost.m */; };
 		B0F7117A6675BF891B1CB0FB /* AppDeviceLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5917C68CA930E40796E53DAF /* AppDeviceLink.swift */; };
+		B61823AB74CF8C1851C01744 /* SidebarTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D8DA13526DFAEC039E7C83B /* SidebarTests.swift */; };
 		C5085655B93C50F2344D1AFA /* AppEffects.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62F39B1A4B1714CD2CBBCE87 /* AppEffects.swift */; };
 		C77117B7CBCFC4CC0576E57C /* phone-drive.c in Sources */ = {isa = PBXBuildFile; fileRef = D53AE5A2D45A0A6B3D45B8D4 /* phone-drive.c */; };
 		C789B2E23521F07A4F8AA6D8 /* Components in Resources */ = {isa = PBXBuildFile; fileRef = 346439B2CDF1C4DE6F844825 /* Components */; };
@@ -36,6 +37,13 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		46FF79D5DB3FF45C39EE075A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = D73FDB66A38EC188DC701EB0 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 037A81F78D877520A602A5C1;
+			remoteInfo = OpenAgents;
+		};
 		735D333EC7D2837AD99EA0EE /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = D73FDB66A38EC188DC701EB0 /* Project object */;
@@ -54,7 +62,9 @@
 		346439B2CDF1C4DE6F844825 /* Components */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Components; path = Generated/Components; sourceTree = SOURCE_ROOT; };
 		550581B2872EB638FBFB4619 /* gallery.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = gallery.c; sourceTree = "<group>"; };
 		5917C68CA930E40796E53DAF /* AppDeviceLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDeviceLink.swift; sourceTree = "<group>"; };
+		5D8DA13526DFAEC039E7C83B /* SidebarTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarTests.swift; sourceTree = "<group>"; };
 		622F619CBCEF6832010BC386 /* AppCoreC.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppCoreC.swift; sourceTree = "<group>"; };
+		62E49DA00EF0AD739FE0E712 /* OpenAgentsSidebarUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = OpenAgentsSidebarUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		62F39B1A4B1714CD2CBBCE87 /* AppEffects.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppEffects.swift; sourceTree = "<group>"; };
 		776F82566A59AA4CF6654437 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		77B22B57F0B9827AF4F47864 /* AppCoreBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppCoreBridge.swift; sourceTree = "<group>"; };
@@ -77,6 +87,14 @@
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
+		590F600B15BC35D82ABFEEAB /* UITests */ = {
+			isa = PBXGroup;
+			children = (
+				5D8DA13526DFAEC039E7C83B /* SidebarTests.swift */,
+			);
+			path = UITests;
+			sourceTree = "<group>";
+		};
 		5B366C12F710C7D176CACD52 /* Generated */ = {
 			isa = PBXGroup;
 			children = (
@@ -109,6 +127,7 @@
 			children = (
 				8229C5D27BC40A99010E48D9 /* OpenAgents.app */,
 				1BC84CE3F51AA793BB6BBA56 /* OpenAgentsIdentityTests.xctest */,
+				62E49DA00EF0AD739FE0E712 /* OpenAgentsSidebarUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -166,6 +185,7 @@
 				ABD48D4B1B28A57624675E53 /* native */,
 				EBA77022E6429671290CDE34 /* OpenAgents */,
 				956B19516518C8B6A6AB7CBA /* Tests */,
+				590F600B15BC35D82ABFEEAB /* UITests */,
 				A399D11B8F0035506E68EDB0 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -190,6 +210,24 @@
 			productName = OpenAgents;
 			productReference = 8229C5D27BC40A99010E48D9 /* OpenAgents.app */;
 			productType = "com.apple.product-type.application";
+		};
+		AD2B1A689DAC28BB854319A5 /* OpenAgentsSidebarUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1469201A5E009B043C33D4AA /* Build configuration list for PBXNativeTarget "OpenAgentsSidebarUITests" */;
+			buildPhases = (
+				0AAB6E31F265CACEB5275F83 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				796D3F3D6C32E8EFC1DF26C4 /* PBXTargetDependency */,
+			);
+			name = OpenAgentsSidebarUITests;
+			packageProductDependencies = (
+			);
+			productName = OpenAgentsSidebarUITests;
+			productReference = 62E49DA00EF0AD739FE0E712 /* OpenAgentsSidebarUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
 		};
 		F7AF3A2684E8BEE2B21853FD /* OpenAgentsIdentityTests */ = {
 			isa = PBXNativeTarget;
@@ -222,6 +260,11 @@
 						DevelopmentTeam = HQWSG26L43;
 						ProvisioningStyle = Automatic;
 					};
+					AD2B1A689DAC28BB854319A5 = {
+						DevelopmentTeam = HQWSG26L43;
+						ProvisioningStyle = Automatic;
+						TestTargetID = 037A81F78D877520A602A5C1;
+					};
 					F7AF3A2684E8BEE2B21853FD = {
 						DevelopmentTeam = HQWSG26L43;
 						ProvisioningStyle = Automatic;
@@ -244,6 +287,7 @@
 			targets = (
 				037A81F78D877520A602A5C1 /* OpenAgents */,
 				F7AF3A2684E8BEE2B21853FD /* OpenAgentsIdentityTests */,
+				AD2B1A689DAC28BB854319A5 /* OpenAgentsSidebarUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -261,6 +305,14 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		0AAB6E31F265CACEB5275F83 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B61823AB74CF8C1851C01744 /* SidebarTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		3021F9601449A7901737DC0B /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -302,6 +354,11 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		796D3F3D6C32E8EFC1DF26C4 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 037A81F78D877520A602A5C1 /* OpenAgents */;
+			targetProxy = 46FF79D5DB3FF45C39EE075A /* PBXContainerItemProxy */;
+		};
 		D2A18BD5F14F6B757E4E5BB8 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 037A81F78D877520A602A5C1 /* OpenAgents */;
@@ -310,6 +367,23 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		3B964C3C00CA5E55B7E6675D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.openagents.app.sidebar-ui-tests";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = OpenAgents;
+			};
+			name = Release;
+		};
 		65B71FE1D64AD5C6482CDC4A /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -393,7 +467,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1399;
+				CURRENT_PROJECT_VERSION = 1400;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = HQWSG26L43;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -486,7 +560,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1399;
+				CURRENT_PROJECT_VERSION = 1400;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = HQWSG26L43;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -537,9 +611,35 @@
 			};
 			name = Release;
 		};
+		EAE2B2A9324EC9D5EA4687C9 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.openagents.app.sidebar-ui-tests";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = OpenAgents;
+			};
+			name = Debug;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		1469201A5E009B043C33D4AA /* Build configuration list for PBXNativeTarget "OpenAgentsSidebarUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				EAE2B2A9324EC9D5EA4687C9 /* Debug */,
+				3B964C3C00CA5E55B7E6675D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 		253E4EC9238928672F45C092 /* Build configuration list for PBXNativeTarget "OpenAgents" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
