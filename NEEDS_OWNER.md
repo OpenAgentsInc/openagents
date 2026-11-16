@@ -1,5 +1,12 @@
 # Owner actions
 
+## Reference picker and empty-state molecules, build 1340 (2026-11-15)
+
+- [ ] Install TestFlight **1340** (verified in **Owner**), open **Settings →
+      Components → Gallery options → Reference**, and inspect the segmented
+      actions, repository choices, empty state and usage card. Shared component
+      and simulator gallery checks passed; compare appearance and touch on the phone.
+
 ## Reference account and file molecules, build 1320 (2026-11-15)
 
 - [ ] Install TestFlight **1320** (verified in **Owner**), open **Settings →
