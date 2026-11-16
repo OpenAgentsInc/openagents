@@ -3975,17 +3975,18 @@ function viewMenuOpen() {
 // The recipe as the module reads it: the title, then one line an item (group, label, key, current, keep_open, by tabs).
 function viewMenuLines() {
   const x = engine?.exports, n = x?.coaxial_view_menu_len_v1?.(arena.state) ?? 0;
-  if (!n || n > 32768) return "";
-  const at = x.coaxial_view_menu_v1(arena.state); if (!at || at + n > memory.buffer.byteLength) return "";
-  let recipe; try { recipe = JSON.parse(new TextDecoder().decode(new Uint8Array(memory.buffer, at, n).slice())); } catch { return ""; }
-  if (typeof recipe.schema !== "string" || !Array.isArray(recipe.items) || recipe.items.length > 128) return "";
+  if (!x?.coaxial_view_menu_v1) return "";   // no menu on this page
+  if (!n || n > 32768) return "Viewer menu\n";   // a menu whose recipe isn't written yet: opening asks again
+  const at = x.coaxial_view_menu_v1(arena.state); if (!at || at + n > memory.buffer.byteLength) return "Viewer menu\n";
+  let recipe; try { recipe = JSON.parse(new TextDecoder().decode(new Uint8Array(memory.buffer, at, n).slice())); } catch { return "Viewer menu\n"; }
+  if (typeof recipe.schema !== "string" || !Array.isArray(recipe.items) || recipe.items.length > 128) return "Viewer menu\n";
   const word = (v) => typeof v === "string" && /^[\x20-\x7e]{0,127}$/.test(v);
-  const lines = [word(recipe.title) ? recipe.title : ""];
+  const lines = [word(recipe.title) && recipe.title ? recipe.title : "Viewer menu"];
   for (const row of recipe.items) {
     if (!word(row.label) || !row.label || !word(row.group) || !Number.isInteger(row.key) || row.key < 1 || row.key > 2147483647) continue;
     lines.push([row.group, row.label, row.key, row.current ? 1 : 0, row.keep_open ? 1 : 0].join("\t"));
   }
-  return lines.length > 1 ? lines.join("\n") + "\n" : "";
+  return lines.join("\n") + "\n";
 }
 function viewMenuTell() {
   const menu = globalThis.coaxialDoms?.[VIEW_MENU];

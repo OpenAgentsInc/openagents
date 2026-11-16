@@ -94,7 +94,7 @@ range-pane 90000
 # 85,120 bytes measured 2026-11-13 on a build host; about 10% room.
 play-bar 94000
 # A page's inspection menu (view-menu.coax): the kit's menu button and a pane of rows, the mono skin's and dock's stylesheets and the browser backend:
-# 101,024 bytes measured 2026-11-16 on a Mac (clang); about 10% room.
+# 101,358 bytes measured 2026-11-16 on a Mac (clang); about 10% room.
 view-menu 111000
 # The page's script module (script-host.coax, #13467): the module check, the interpreter, the host and the loader. 79,438 bytes measured with the script list's codec (Mac, clang 23); about 10% room.
 script-host 88000
