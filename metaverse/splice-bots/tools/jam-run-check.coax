@@ -90,7 +90,7 @@ tool_main :: () -> int #export_c #effects(all) {
     print("%: % boxes, % solids, % floors, % over the arrays, %\n", SJ_MAP_IDS[r], c.nw, c.nh, c.nf, c.over, ifx j.spawn[r].ok then "a player start" else "no player start");
   }
   for k: 0..<SJ_KINDS { print("% %\n", SJ_CLASS[k], j.count[k]); }
-  print("stand-ins for the garage left out: %\n", s[0].stand_ins);
+  print("colliders of walls always open left out (the farm's block over the garage): %; gates of a second kind on one map: %\n", s[0].stand_ins, s[0].mixed);
   failed := false;
   // the whole run
   g := [1] SpGame.[SpGame.{}]; g_reset(g[..]); _ := spw_shipped(g[..]);
@@ -115,5 +115,41 @@ tool_main :: () -> int #export_c #effects(all) {
   failed = failed || r != 0;
   // the jam's farm rules with the keys and the mouse
   r = jrc_farm_rules(g[..]); jrc_line("the farm's rules: a charge point, the farm robot down and harvested", r); failed = failed || r != 0;
+  // the route walk (jam/jam-walk.coax): every stop explained by a collider the realm draws
+  failed = jrc_route_walk(g[..], s[..], cat) || failed;
   return ifx failed then 1 else 0;
+}
+// The route walk scene by scene, and a solar bank stood against and on: whether anything failed.
+jrc_route_walk :: (g: [] SpGame, s: [] SjStore, cat: string) -> bool #effects(all) {
+  bad := false; w := [1] SjWalk.[SjWalk.{}];
+  for k: 0..<SJW_SCENES {
+    g_reset(g);
+    sjw_scene(g, s, w[..], k);
+    print("the route walk, %: % steps, % stops by % blockers, % invisible, % of % legs missed\n", SJW_SCENE_NAMES[k], w[0].steps, w[0].stops, w[0].ns, w[0].invisible, w[0].missed, w[0].legs);
+    for i: 0..<w[0].ns {
+      b := w[0].seen[i];
+      if b.drawn { continue; }
+      print("  invisible: % at (%, %), % steps: ", ifx b.what == SJW_JAM then "a route map's collider" else ifx b.what == SJW_GAME then "a game collider" else "nothing found", b.x, b.z, b.hits);
+      if b.what == SJW_JAM { print("% % % %\n", SJ_MAP_IDS[b.map], b.shape, b.index, jrc_actor(cat, s[0].jam[0].map[b.map], b.actor)); } else { print("kind % row %\n", b.kind, b.index); }
+    }
+    for i: 0..<lo_int(w[0].missed, SJW_MISSES) { o := i * 4; print("  a missed leg left her at (%, %) on the way to (%, %)\n", w[0].miss[o], w[0].miss[o + 1], w[0].miss[o + 2], w[0].miss[o + 3]); }
+    for i: 0..<w[0].ns { b := w[0].seen[i]; if b.drawn && b.what == SJW_JAM && b.hits > 200 { print("  drawn: %, % steps from (%, %)\n", jrc_actor(cat, s[0].jam[0].map[b.map], b.actor), b.hits, b.x, b.z); } }
+    bad = bad || w[0].invisible > 0 || w[0].missed > 0 || w[0].over > 0;
+  }
+  g_reset(g); w[0] = SjWalk.{};
+  r := sjw_bank(g, s, w[..], FF_XW + FF_PITCH * 2.5, ff_line_z(2));
+  print("a solar bank: % (%)\n", r, ifx r == 0 then "its posts and glass stop her, she lands on its glass and stands there" else "failed");
+  return bad || r != 0;
+}
+// The name of map m's collider actor with this hash, from the catalog's col lines.
+jrc_actor :: (cat: string, m: int, actor: u32) -> string #effects(all) {
+  from := 0;
+  for at: 0..<cat.count + 1 {
+    if at < cat.count && cat[at] != '\n' { continue; }
+    line := cat[from..<at]; from = at + 1;
+    if iw_field(line, 0) != "col" || cast(int) sj_num(iw_field(line, 1)) != m { continue; }
+    name := iw_actor_name(iw_field(line, iw_fields(line) - 1));
+    if iw_hash(name) == actor { return name; }
+  }
+  return "(none)";
 }

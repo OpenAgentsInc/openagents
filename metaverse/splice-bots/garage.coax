@@ -181,6 +181,7 @@ ga_body_push :: (g: [] SpGame, x: f32, z: f32, r: f32) -> Point {
 // The piers between the bays, each from the field's edge to the back wall in two halves (so no part
 // reaches further than a cell's half diagonal): World entities, so an edit can't stand a piece in one.
 ga_colliders :: (g: [] SpGame) {
+  if g[0].jam { return; }   // the jam world's ring map has its own piers (jam/jam-world.coax)
   rf := g[0].at.gar_r; rb := ga_back(g); h := ga_span() * 0.5;
   for k: 0..<GA_SECTIONS {
     // each part a stadium whose round ends reach GA_PIER past its line: the field's edge, and the passage's two sides

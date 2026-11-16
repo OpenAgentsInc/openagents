@@ -1,0 +1,337 @@
+// The route walk (GitHub #13653): she walks the jam world's route, scene by scene (the farm, the plain,
+// the ring, the lab), and round its landmarks, and every place she is stopped is explained by something
+// the realm draws. Zero invisible blockers is the rule (no-invisible-blockers: if she can see it she can
+// walk to it, and what stops her is what she sees).
+//
+// A step moves her toward a point and the game's own collision (splice-game.coax g_collide, g_jump) puts
+// her where she ends up; a stop is a step that ended away from where she stepped. What stopped her is
+// found by asking each collider alone at the place she stepped to (sjw_blocker), the one that pushes
+// most, and it has to be one the realm draws:
+//   - a route map's collider (jam-world.coax sj_push) whose actor has an instance on its map, the same
+//     actor name (iw_actor_name, as IwInst.actor) on a P line of the catalog, that the realm draws now:
+//     not a sky dome, not an opening that is open, not a game actor the game draws itself;
+//   - one of the game's own colliders in its World (layer.coax): its placed pieces, the rubble and the
+//     barricade, the boss, its walls; all drawn (g_world and the layer's draws), except the garage's
+//     piers, which only ga_draw draws, and which the jam world leaves out;
+//   - the drill mech's body.
+// Anything else is an invisible blocker. A leg of the route that has to arrive and doesn't is a miss.
+//   coax/bin/coax test metaverse/splice-bots/splice-bots.coax --only jam
+// The real pack's walk: metaverse/splice-bots/tools/jam-run-check.coax.
+
+SJW_JAM :: 1; SJW_GAME :: 2; SJW_MECH :: 3; SJW_UNKNOWN :: 4;   // what stopped her
+SJW_BOX :: 0; SJW_HULL :: 1; SJW_BODY :: 2;                       // a route map's collider's shape
+SjwStop :: struct {
+  what: int;                  // SJW_
+  map: int; shape: int; index: int; actor: u32;   // a route map's collider: its map, shape, index in its array, actor
+  slot: int; kind: int;       // a game World collider: its slot and kind (layer.coax SK_)
+  drawn: bool;
+  x: f32; z: f32;             // where she stepped to the first time it stopped her
+  hits: int;                  // the steps it stopped her
+}
+SJW_SEEN :: 256; SJW_MISSES :: 8;
+SjWalk :: struct {
+  steps: int; stops: int; invisible: int;   // steps, stops and the stops nothing drawn explains
+  legs: int; missed: int;                   // legs that had to arrive, and those that didn't
+  seen: [SJW_SEEN] SjwStop; ns: int; over: int;   // the blockers that stopped her, each once
+  miss: [SJW_MISSES * 4] f32;               // the first missed legs: where each left her, and its point
+}
+SJW_STEP :: 0.1f32;      // m a step: 5 m/s at SJW_DT
+SJW_DT :: 0.02f32;
+SJW_EPS :: 0.002f32;     // m: moved off where she stepped by more than this is a stop
+SJW_ARRIVE :: 0.6f32;    // m from a leg's point: there
+SJW_REACH :: 0.01f32;    // m: a collider within her radius and this of where she stepped is asked
+
+// ---- what draws a collider
+
+// Whether the realm draws route map r's actor (its name's hash): an instance of it on the map, not a sky
+// dome (jam-draw.coax sjd_sky), and not hidden: an opening that is open, or a game actor the game draws itself.
+SJW_SKY :: 1000.0f32;    // jam-draw.coax SJD_SKY
+sjw_drawn :: (g: [] SpGame, s: [] SjStore, r: int, actor: u32) -> bool {
+  if actor == 0 || r < 0 || r >= SJ_MAPS { return false; }
+  j := g[0].jr[..];
+  for i: 0..<j[0].n {
+    a := j[0].actors[i];
+    if a.route != r || a.hash != actor { continue; }
+    if sj_game_draws(a.kind) || (a.opens != SJ_SHUT && sj_open(g, a.opens)) { return false; }
+  }
+  w := s[0].world[..]; m := j[0].map[r];
+  for k: 0..<w[0].ni {
+    p := w[0].inst[k];
+    if p.map == m && p.actor == actor && !(abs(p.s[0]) > SJW_SKY && abs(p.s[1]) > SJW_SKY && abs(p.s[2]) > SJW_SKY) { return true; }
+  }
+  return false;
+}
+// Whether a game World slot is drawn in the jam world: every one but the garage's piers (garage.coax
+// ga_colliders, drawn only by ga_draw).
+sjw_slot_drawn :: (kind: int, row: int) -> bool { return !(kind == SK_WALL && row >= GA_ROW && row < GA_ROW + GA_SECTIONS * 3); }
+
+// ---- what stopped her
+
+// How far one collider alone pushes a walker r round with her feet at `feet` at (x, z).
+sjw_push :: (c: Colliders, r: f32, x: f32, z: f32, feet: f32) -> f32 {
+  prof := CollideProfile.{radius = r};
+  st := CollideState.{feet = world_point(x, feet, z), velocity = world_point(0, 0, 0)};
+  b := collide_bodies(c, prof, st, 0, 0); h := collide_hulls(c, prof, b.state); e := collide_walls(c, prof, h.state);
+  return dist2(e.feet.x, e.feet.z, x, z);
+}
+// The route maps' collider that pushes her most at (x, z), each asked alone: what = SJW_JAM, or 0 for none.
+sjw_jam_blocker :: (g: [] SpGame, s: [] SjStore, x: f32, z: f32, feet: f32) -> SjwStop {
+  out: SjwStop; best := 0.0f32; r := T_RADIUS + SJW_REACH;
+  for m: 0..<g[0].jw_n {
+    if !sj_walks(g, m, x, z) { continue; }
+    c := sj_cols(g, m); cs := s[0].cols[m];
+    for i: 0..<query_boxes(c) {
+      d := sjw_push(Colliders.{ground_enabled = false, boxes = c.boxes[i * 6..<i * 6 + 6]}, r, x, z, feet);
+      if d > best { best = d; out = SjwStop.{what = SJW_JAM, map = m, shape = SJW_BOX, index = i, actor = cs.wall_actor[i]}; }
+    }
+    at := 0; i := 0;
+    while at < c.hulls.count {
+      n := 3 + cast(int) c.hulls[at] * 4;
+      if at + n > c.hulls.count { break; }
+      d := sjw_push(Colliders.{ground_enabled = false, hulls = c.hulls[at..<at + n]}, r, x, z, feet);
+      if d > best { best = d; out = SjwStop.{what = SJW_JAM, map = m, shape = SJW_HULL, index = i, actor = cs.hull_actor[i]}; }
+      at += n; i += 1;
+    }
+    for k: 0..<query_capsules(c) {
+      d := sjw_push(Colliders.{ground_enabled = false, capsules = c.capsules[k * 7..<k * 7 + 7]}, r, x, z, feet);
+      if d > best { best = d; out = SjwStop.{what = SJW_JAM, map = m, shape = SJW_BODY, index = k, actor = cs.body_actor[k]}; }
+    }
+  }
+  return out;
+}
+// The game World's slot that pushes her most at (x, z), each asked alone, as layer.coax sl_push_over shapes
+// it: what = SJW_GAME, or 0 for none.
+sjw_game_blocker :: (g: [] SpGame, x: f32, z: f32, feet: f32) -> SjwStop {
+  out: SjwStop; best := 0.0f32; r := T_RADIUS + SJW_REACH;
+  ids: [SL_NEAR] int; n := sl_near(g, x, z, r, ids[..]);
+  for i: 0..<n {
+    s := ids[i];
+    if !sl_solid(g, s, false) || sl_under(g, s, feet) { continue; }
+    d := 0.0f32;
+    if g[0].ws[0].shape[s] == SH_BOX {
+      cx := g[0].ws[0].ox[s]; cz := g[0].ws[0].oz[s]; ex := g[0].ws[0].ex[s]; ez := g[0].ws[0].ez[s];
+      b := [QUERY_BOX] f32.[cx - ex, 0, cz - ez, cx + ex, SL_TOP, cz + ez];
+      d = sjw_push(Colliders.{ground_enabled = false, boxes = b[..]}, r, x, z, 0);
+    } else {
+      e := sl_seg(g, s);
+      c := [QUERY_CAPSULE] f32.[e.ax, SL_MID, e.az, e.bx, SL_MID, e.bz, e.r];
+      d = sjw_push(Colliders.{ground_enabled = false, capsules = c[..]}, r, x, z, 0);
+    }
+    if d > best { best = d; out = SjwStop.{what = SJW_GAME, slot = s, kind = sl_i(g, WI_KIND, s), index = sl_i(g, WI_ROW, s)}; }
+  }
+  return out;
+}
+// What stopped her stepping to (x, z), her feet at `feet` (the jam world's) and `over` (the game's pieces'):
+// a route map's collider, a game World collider, the drill mech's body, or nothing found (SJW_UNKNOWN).
+sjw_blocker :: (g: [] SpGame, s: [] SjStore, x: f32, z: f32, feet: f32, over: f32) -> SjwStop {
+  b := sjw_jam_blocker(g, s, x, z, feet);
+  if b.what == SJW_JAM { b.drawn = sjw_drawn(g, s, b.map, b.actor); return b; }
+  b = sjw_game_blocker(g, x, z, over);
+  if b.what == SJW_GAME { b.drawn = sjw_slot_drawn(b.kind, b.index); return b; }
+  t := g[0].bt[0];
+  if g[0].zone == Z_MINE && dist2(x, z, t.mech_x, t.mech_z) < SB_MECH_R + T_RADIUS + SJW_REACH { return SjwStop.{what = SJW_MECH, drawn = true}; }
+  return SjwStop.{what = SJW_UNKNOWN};
+}
+sjw_same :: (a: SjwStop, b: SjwStop) -> bool {
+  if a.what != b.what { return false; }
+  if a.what == SJW_JAM { return a.map == b.map && a.shape == b.shape && a.index == b.index; }
+  if a.what == SJW_GAME { return a.slot == b.slot; }
+  return true;
+}
+sjw_note :: (w: [] SjWalk, b: SjwStop, x: f32, z: f32) {
+  w[0].stops += 1;
+  if !b.drawn { w[0].invisible += 1; }
+  for i: 0..<w[0].ns { if sjw_same(w[0].seen[i], b) { w[0].seen[i].hits += 1; return; } }
+  if w[0].ns >= SJW_SEEN { w[0].over += 1; return; }
+  e := b; e.x = x; e.z = z; e.hits = 1;
+  w[0].seen[w[0].ns] = e; w[0].ns += 1;
+}
+
+// ---- walking
+
+// She stands at (x, z) on whatever floor is there, in play on the mine's surface.
+sjw_place :: (g: [] SpGame, x: f32, z: f32) {
+  g[0].mode = M_PLAY; g[0].zone = Z_MINE;
+  g[0].px = x; g[0].pz = z; g[0].air_x = x + 100;   // the jump starts again where she stands (g_jump)
+  g_jump(g, SJW_DT);
+}
+// One step by (dx, dz): the game's collision and floors take her where she ends up; a stop is noted.
+sjw_step :: (g: [] SpGame, s: [] SjStore, w: [] SjWalk, dx: f32, dz: f32) {
+  tx := g[0].px + dx; tz := g[0].pz + dz;
+  if dx * dx + dz * dz > 0.000001 { g[0].yaw = atan2(dx, dz); }
+  g[0].px = tx; g[0].pz = tz;
+  feet := sj_feet(g) + 0.05; over := g_feet_y(g) + FL_STEP;   // as g_collide asks them
+  g_collide(g); g_jump(g, SJW_DT);
+  w[0].steps += 1;
+  if dist2(g[0].px, g[0].pz, tx, tz) > SJW_EPS { sjw_note(w, sjw_blocker(g, s, tx, tz, feet, over), tx, tz); }
+}
+// Walk straight toward (tx, tz) until there, or until she makes no headway for a while: whether she got
+// there. A leg that `must` arrive and doesn't is a miss.
+sjw_leg :: (g: [] SpGame, s: [] SjStore, w: [] SjWalk, tx: f32, tz: f32, must: bool) -> bool {
+  if must { w[0].legs += 1; }
+  best := dist2(g[0].px, g[0].pz, tx, tz); still := 0;
+  limit := cast(int) (best / SJW_STEP) * 2 + 100;
+  for i: 0..<limit {
+    d := dist2(g[0].px, g[0].pz, tx, tz);
+    if d < SJW_ARRIVE { return true; }
+    st := lo(SJW_STEP, d);
+    sjw_step(g, s, w, (tx - g[0].px) / d * st, (tz - g[0].pz) / d * st);
+    nd := dist2(g[0].px, g[0].pz, tx, tz);
+    if nd < best - 0.05 { best = nd; still = 0; } else { still += 1; }
+    if still > 40 { break; }
+  }
+  if dist2(g[0].px, g[0].pz, tx, tz) < SJW_ARRIVE { return true; }
+  if must {
+    if w[0].missed < SJW_MISSES { o := w[0].missed * 4; w[0].miss[o] = g[0].px; w[0].miss[o + 1] = g[0].pz; w[0].miss[o + 2] = tx; w[0].miss[o + 3] = tz; }
+    w[0].missed += 1;
+  }
+  return false;
+}
+// Round a landmark at (cx, cz): placed `rad` out to its south, then walked round it in n legs.
+sjw_round :: (g: [] SpGame, s: [] SjStore, w: [] SjWalk, cx: f32, cz: f32, rad: f32, n: int) {
+  sjw_place(g, cx, cz + rad);
+  for k: 1..<n + 1 { a := TAU * cast(f32) k / cast(f32) n; _ := sjw_leg(g, s, w, cx + sin(a) * rad, cz + cos(a) * rad, false); }
+}
+// Up to each of route map r's game actors from `rad` metres south of it, and round it.
+sjw_actors :: (g: [] SpGame, s: [] SjStore, w: [] SjWalk, r: int, rad: f32) {
+  j := g[0].jr[..];
+  for i: 0..<j[0].n {
+    a := j[0].actors[i];
+    if a.route != r || sj_game_draws(a.kind) || a.kind == SJ_CROWD || (a.opens != SJ_SHUT && sj_open(g, a.opens)) { continue; }
+    sjw_place(g, a.x, a.z + rad + 2); _ := sjw_leg(g, s, w, a.x, a.z, false);
+    sjw_round(g, s, w, a.x, a.z, rad, 8);
+  }
+}
+
+// Round each of route map r's standing solids in its scene (sealed: the ring's and lab's, else outside them):
+// every box that stands from under her waist to over her head, between half a metre and 40 m across,
+// walked round 1.5 m out from its corners.
+SJW_SOLID_LO :: 0.5f32; SJW_SOLID_HI :: 40.0f32;
+sjw_solids :: (g: [] SpGame, s: [] SjStore, w: [] SjWalk, r: int, sealed: bool) {
+  if !g[0].jw_on[r] { return; }
+  c := sj_cols(g, r);
+  for i: 0..<query_boxes(c) {
+    b := c.boxes[i * 6..<i * 6 + 6];
+    ex := (b[3] - b[0]) * 0.5; ez := (b[5] - b[2]) * 0.5; big := hi(ex, ez) * 2;
+    cx := (b[0] + b[3]) * 0.5; cz := (b[2] + b[5]) * 0.5;
+    if b[1] > 1 || b[4] < 1.9 || big < SJW_SOLID_LO || big > SJW_SOLID_HI || sj_sealed(g, cx, cz) != sealed { continue; }
+    sjw_round(g, s, w, cx, cz, sqrt(ex * ex + ez * ez) + 1.5, 8);
+  }
+}
+
+// ---- the route, scene by scene
+SJW_FARM :: 0; SJW_PLAIN :: 1; SJW_RING :: 2; SJW_LAB :: 3; SJW_SCENES :: 4;
+SJW_SCENE_NAMES :: [SJW_SCENES] string.["the farm", "the plain", "the ring", "the lab"];
+
+// The farm by day: from its player start along each aisle of the solar rows and back, across the rows (the
+// banks stop her), up to and round its game actors.
+sjw_farm :: (g: [] SpGame, s: [] SjStore, w: [] SjWalk) {
+  g[0].phase = PH_DAY; g[0].rubble_gone = false; g[0].wall_gone = false;
+  sp := g[0].jr[0].spawn[SJ_FARM];
+  if sp.ok { sjw_place(g, sp.x, sp.z); _ := sjw_leg(g, s, w, FF_XW - FF_END, sp.z, false); }   // west along the start's aisle
+  sjw_place(g, FF_XW - FF_END, ff_aisle_z(0));
+  for a: 0..<FF_AISLES {   // each aisle east and back; their west ends are joined past the rows' end
+    _ := sjw_leg(g, s, w, FF_XW - FF_END, ff_aisle_z(a), true);
+    _ = sjw_leg(g, s, w, ff_x1() + FF_END, ff_aisle_z(a), true);
+    _ = sjw_leg(g, s, w, FF_XW - FF_END, ff_aisle_z(a), true);
+  }
+  for k: 0..<FF_RUN {   // across the rows, north to south, at each bank's middle
+    x := FF_XW + (cast(f32) k + 0.5) * FF_PITCH;
+    for a: 0..<FF_ROWS { sjw_place(g, x, ff_aisle_z(a)); _ := sjw_leg(g, s, w, x, ff_aisle_z(a + 1), false); }
+  }
+  sjw_actors(g, s, w, SJ_FARM, 3);
+  sjw_solids(g, s, w, SJ_FARM, false);
+}
+// The plain: from the farm's east end across to the garage's yard, and up to each landmark rock.
+sjw_plain :: (g: [] SpGame, s: [] SjStore, w: [] SjWalk) {
+  g[0].phase = PH_DAY; g[0].rubble_gone = false;
+  sjw_place(g, ff_x1() + 30, ff_aisle_z(0));
+  sp := g[0].jr[0].spawn[SJ_PLAIN];
+  if sp.ok { _ := sjw_leg(g, s, w, sp.x, sp.z, true); }
+  yard := v3(g[0].at.gar_x, 0, g[0].at.gar_z + ga_yard_z(g) + 10);
+  _ := sjw_leg(g, s, w, yard.x, yard.z, true);
+  for i: 0..<PL_ROCKS {   // the prototype's landmark rocks stand where the plain's do
+    rk := pl_rock(i); cx := 0.0f32; cz := 0.0f32;
+    for k: 0..<5 { cx += rk[k * 2] * 0.2; cz += rk[k * 2 + 1] * 0.2; }
+    sjw_place(g, cx, cz + 60); _ = sjw_leg(g, s, w, cx, cz, false);
+  }
+  sjw_actors(g, s, w, SJ_PLAIN, 3);
+  sjw_solids(g, s, w, SJ_PLAIN, false);
+}
+// The ring at dusk with the rock wall drilled: in from the yard by the tunnel to the field's middle, to
+// each section's mouth and into its bay, round its game actors, to the hallway's mouth, and out again by the tunnel.
+sjw_ring :: (g: [] SpGame, s: [] SjStore, w: [] SjWalk) {
+  g[0].phase = PH_DUSK; g[0].rubble_gone = true; g[0].wall_gone = false;
+  gx := g[0].at.gar_x; gz := g[0].at.gar_z; back := ga_back(g);
+  sjw_place(g, gx, gz + ga_yard_z(g) + 10);
+  _ := sjw_leg(g, s, w, gx, gz + back + 10, true);    // the tunnel
+  _ = sjw_leg(g, s, w, gx, gz + back - 10, true);     // through A1
+  _ = sjw_leg(g, s, w, gx, gz, true);                 // the field's middle
+  for k: 0..<GA_SECTIONS {
+    m := ga_at(g, k, g[0].at.gar_r - 4);
+    _ = sjw_leg(g, s, w, m.x, m.z, true);
+    b := ga_bay_at(g, k);
+    _ = sjw_leg(g, s, w, b.x, b.z, false);
+    _ = sjw_leg(g, s, w, m.x, m.z, false);
+  }
+  sjw_actors(g, s, w, SJ_RING, 2);
+  sjw_solids(g, s, w, SJ_RING, true);
+  sjw_round(g, s, w, gx, gz, g[0].at.gar_r + 3, GA_SECTIONS * 4);   // round the field along the bays' mouths, through the piers
+  sjw_place(g, gx, gz);
+  h := ga_at(g, GA_HALLWAY, back - 3);
+  _ = sjw_leg(g, s, w, h.x, h.z, true);                // the hallway's mouth
+  _ = sjw_leg(g, s, w, gx, gz, true);
+  _ = sjw_leg(g, s, w, gx, gz + back - 10, true);
+  _ = sjw_leg(g, s, w, gx, gz + ga_yard_z(g) + 10, true);   // out by the tunnel to the yard
+}
+// The lab at night with the barricade drilled: from the ring's hallway mouth down the hallway into the lab,
+// round it and onto the boss's platform, and back out to the ring.
+sjw_lab :: (g: [] SpGame, s: [] SjStore, w: [] SjWalk) {
+  g[0].phase = PH_NIGHT; g[0].rubble_gone = true; g[0].wall_gone = true;
+  gx := g[0].at.gar_x; c := ga_lab_mid(g); mouth := ga_lab_mouth(g);
+  h := ga_at(g, GA_HALLWAY, ga_back(g) - 3);
+  sjw_place(g, h.x, h.z);
+  _ := sjw_leg(g, s, w, gx, mouth + 10, true);          // down the hallway
+  _ = sjw_leg(g, s, w, gx, mouth - 4, true);            // into the lab
+  sjw_round(g, s, w, c.x, c.z, GA_LAB_R - 4, 12);
+  sjw_place(g, gx, mouth - 4);
+  _ = sjw_leg(g, s, w, c.x + SB_BOSS_BODY + 2, c.z, true);   // onto the boss's platform, beside the boss
+  sjw_actors(g, s, w, SJ_LAB, 2);
+  sjw_solids(g, s, w, SJ_LAB, true);
+  sjw_round(g, s, w, c.x, c.z, GA_LAB_R - 0.3, 24);   // along the lab's round wall
+  sjw_place(g, gx, mouth - 4);
+  _ = sjw_leg(g, s, w, gx, mouth + 10, true);
+  _ = sjw_leg(g, s, w, h.x, h.z, true);                 // out to the ring
+  _ = sjw_leg(g, s, w, g[0].at.gar_x, g[0].at.gar_z, true);
+}
+sjw_scene :: (g: [] SpGame, s: [] SjStore, w: [] SjWalk, k: int) {
+  w[0] = SjWalk.{};
+  g[0].bt[0].mech_x = 1000000; g[0].bt[0].mech_z = 1000000;   // the drill mech away: its body is the game's, not the route's
+  if k == SJW_FARM { sjw_farm(g, s, w); }
+  if k == SJW_PLAIN { sjw_plain(g, s, w); }
+  if k == SJW_RING { sjw_ring(g, s, w); }
+  if k == SJW_LAB { sjw_lab(g, s, w); }
+}
+
+// ---- the solar banks
+// A bank of the farm's rows (its middle at (x, lz), farm.coax ff_bank_at) as drawn: she walks north at it
+// from the aisle and it stops her, a drawn stop (its posts, its glass at her chest); then with Space,
+// walking on, she lands on its glass and stands there, her feet on the glass's top. 0, or what failed:
+// 1 she walked into the bank, 2 nothing drawn stopped her, 3 she is not on its top, 4 she stood off the glass.
+sjw_bank :: (g: [] SpGame, s: [] SjStore, w: [] SjWalk, x: f32, lz: f32) -> int {
+  g[0].phase = PH_DAY;
+  sjw_place(g, x, lz + 2.5);
+  before := w[0].stops; bad := w[0].invisible;
+  for i: 0..<40 { sjw_step(g, s, w, 0, -SJW_STEP); }
+  if g[0].pz < lz + FF_HZ + T_RADIUS - 0.1 { return 1; }
+  if w[0].stops == before || w[0].invisible != bad { return 2; }
+  g_jump_key(g, true);
+  for i: 0..<80 {
+    if g[0].pz > lz + 0.1 { sjw_step(g, s, w, 0, -SJW_STEP * 0.6); } else { sjw_step(g, s, w, 0, 0); }
+    if i == 4 { g_jump_key(g, false); }
+  }
+  feet := g_feet_y(g); top := sj_floor(g, g[0].px, g[0].pz, 10, -1);
+  if top < 0.6 || abs(g[0].pz - lz) > FF_HZ { return 3; }
+  if abs(feet - top) > 0.08 { return 4; }
+  return 0;
+}

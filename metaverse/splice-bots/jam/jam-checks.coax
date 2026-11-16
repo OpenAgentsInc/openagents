@@ -73,3 +73,77 @@ SJT_CATALOG :: "world 1 jam-test\ntitle Jam test\nmap 0 /Game/SpliceBots/World/M
   sj_bind(g[..], s[..]);
   #assert g_play_run(g[..]) == 0;
 }
+
+// The route's sealed maps and the route walk (jam-world.coax sj_sealed, sj_open; jam-walk.coax), on a small
+// catalog written here: the farm with a solar bank (its glass a solid at her chest, two posts) where the
+// farm's first bank row stands, its block over the garage and a block over the lab (the jam's farm drew its
+// mountain there); the ring with the raiders' rock wall (two chunks) across the tunnel, a tunnel wall and a
+// box no P line draws; the lab with the hallway's three plugs.
+SJT_ROUTE :: "world 1 jam-route\nmap 0 /Game/SpliceBots/World/Maps/L_SolarFarm\nmap 1 /Game/World/Graybox/L_Ring\nmap 2 /Game/World/Graybox/L_Lab\nmat 0 0.5 0.5 0.5 1 -1 0\nM s0 0 36 0 -0.5 -0.5 -0.5 0.5 0.5 0.5\nspawn 0 -840 1 -136 0\nfall 0 -50\nspawn 1 0 1 -60 1.5707963\nfall 1 -50\nspawn 2 0 1 -383 1.5707963\nfall 2 -50\nP 0 0 0 -14 -3 0 0 0 1 -886.5 1.05 -183 21.4 0.5 1.2 StaticMeshActor_2/StaticMeshComponent0\nP 0 0 0 -14 -3 0 0 0 1 -895.5 0.5 -183.1 0.12 1 0.12 StaticMeshActor_13/StaticMeshComponent0\nP 0 0 0 -14 -3 0 0 0 1 -878.5 0.5 -183.1 0.12 1 0.12 StaticMeshActor_14/StaticMeshComponent0\nP 0 0 0 0 -3 0 0 0 1 0 6.5 -195 315 13 315 StaticMeshActor_1300/StaticMeshComponent0\nP 0 0 0 0 -7 0 0 0 1 0 40 -420 120 80 80 StaticMeshActor_1302/StaticMeshComponent0\nP 1 0 0 0 -1 0 0 0 1 -1.7 1.5 -39 3.4 3 2 SpliceRockWallActor_UAID_1/Chunk_00\nP 1 0 0 0 -1 0 0 0 1 1.7 1.5 -39 3.4 3 2 SpliceRockWallActor_UAID_1/Chunk_01\nP 1 0 0 0 -1 0 0 0 1 11.65 5.5 -38.8 16.7 11 2.4 StaticMeshActor_UAID_2/StaticMeshComponent0\nP 2 0 0 0 -6 0 0 0 1 0 5 -351 7.2 10 1.6 StaticMeshActor_UAID_D85ED3019F3BEC1403_1312274827/StaticMeshComponent0\nP 2 0 0 0 -6 0 0 0 1 0 5 -364 7.2 10 1.6 StaticMeshActor_UAID_D85ED3019F3BEC1403_1312275828/StaticMeshComponent0\nP 2 0 0 0 -6 0 0 0 1 0 5 -380.5 7.2 10 1.6 StaticMeshActor_UAID_D85ED3019F3BEC1403_1312276829/StaticMeshComponent0\ncol 0 hull 6 0.8 1.3 1 0 0 -875.8 -1 0 0 897.2 0 1 0 1.3 0 -1 0 -0.8 0 0 1 -182.4 0 0 -1 183.6 StaticMeshActor_2/StaticMeshComponent0\ncol 0 box -895.56 0 -183.16 -895.44 1 -183.04 StaticMeshActor_13/StaticMeshComponent0\ncol 0 box -878.56 0 -183.16 -878.44 1 -183.04 StaticMeshActor_14/StaticMeshComponent0\ncol 0 box -157.5 0 -352.5 157.5 13 -37.5 StaticMeshActor_1300/StaticMeshComponent0\ncol 0 box -60 0 -460 60 80 -380 StaticMeshActor_1302/StaticMeshComponent0\ncol 1 box -3.4 0 -40 0 3 -38 SpliceRockWallActor_UAID_1/Chunk_00\ncol 1 box 0 0 -40 3.4 3 -38 SpliceRockWallActor_UAID_1/Chunk_01\ncol 1 box 3.3 0 -40 20 11 -37.6 StaticMeshActor_UAID_2/StaticMeshComponent0\ncol 1 box 50 0 -101 52 3 -99 StaticMeshActor_UAID_99/StaticMeshComponent0\ncol 2 box -3.6 0 -351.8 3.6 10 -350.2 StaticMeshActor_UAID_D85ED3019F3BEC1403_1312274827/StaticMeshComponent0\ncol 2 box -3.6 0 -364.8 3.6 10 -363.2 StaticMeshActor_UAID_D85ED3019F3BEC1403_1312275828/StaticMeshComponent0\ncol 2 box -3.6 0 -381.3 3.6 10 -379.7 StaticMeshActor_UAID_D85ED3019F3BEC1403_1312276829/StaticMeshComponent0\n";
+sjt_route :: (g: [] SpGame, s: [] SjStore) {
+  #assert sj_load(s, SJT_ROUTE);
+  g_reset(g); if g[0].layer[0].st[0].n == 0 { _ := spw_shipped(g); }
+  sj_bind(g, s);
+}
+#test "jam: the ring and the lab are sealed areas, and their walls open by name as the run opens them" #steps 2000000000 #traversal 1000000000 {
+  s := [1] SjStore.[SjStore.{}]; g := [1] SpGame.[SpGame.{}];
+  sjt_route(g[..], s[..]);
+  // the farm's block over the garage is always open: its collider goes; the rock wall opens with the rubble, the plugs with the barricade
+  #assert s[0].stand_ins == 1 && s[0].mixed == 0 && g[0].jw_on[SJ_RING] && g[0].jw_on[SJ_LAB];
+  #assert s[0].gates[SJ_RING] == 2 && s[0].jam[0].opens[SJ_RING] == SJ_OPEN_RUBBLE && s[0].gates[SJ_LAB] == 3 && s[0].jam[0].opens[SJ_LAB] == SJ_OPEN_WALL;
+  // the game's own walls the jam's maps stand for are gone: the tunnel's, the hallway's, the piers
+  for i: 0..<g[0].wall_n { #assert g[0].walls[i * 5 + 3] > -2 || g[0].walls[i * 5 + 2] < -1000 || g[0].walls[i * 5 + 4] < 1; }
+  g[0].mode = M_PLAY; g[0].zone = Z_MINE;
+  // the tunnel: the rock wall stops her until it is drilled, then she walks through into the garage
+  g[0].px = 0; g[0].pz = -36; g_collide(g[..]); g[0].pz = -37.7; g_collide(g[..]);
+  #assert g[0].pz > -37.6;
+  g[0].rubble_gone = true; g[0].pz = -39; g_collide(g[..]);
+  #assert abs(g[0].pz + 39) < 0.001;
+  // inside the garage the farm's colliders don't hold her; outside they do (its block over the lab)
+  #assert sj_sealed(g[..], 0, -100) && sj_sealed(g[..], 0, -400) && !sj_sealed(g[..], 0, -30) && !sj_sealed(g[..], -840, -136);
+  #assert !sj_walks(g[..], SJ_FARM, 0, -400) && sj_walks(g[..], SJ_LAB, 0, -400) && sj_walks(g[..], SJ_FARM, 100, -470);
+  q := sj_push(g[..], 0, -400, T_RADIUS, 0.05); #assert q.x == 0 && q.z == -400;
+  q = sj_push(g[..], 60.2, -420, T_RADIUS, 0.05); #assert q.x > 60.4;   // from outside its block stops her
+  // the hallway: the plugs stop her until the barricade is drilled, then she walks down it into the lab
+  q = sj_push(g[..], 0, -350.0, T_RADIUS, 0.05); #assert q.z > -349.8;
+  g[0].wall_gone = true;
+  for z: [3] f32.[-351, -364, -380.5] { q = sj_push(g[..], 0, z, T_RADIUS, 0.05); #assert q.z == z; }
+  // and the realm stops drawing what opened: the rock wall, the plugs, the block over the garage; the lab's block over it stays
+  sj_openings_set(g[..]);
+  j := g[0].jr[..]; open := 0;
+  for i: 0..<j[0].n {
+    a := j[0].actors[i];
+    if a.kind == SJ_ROCK || a.kind == SJ_OPENING { #assert a.hidden; open += 1; }
+  }
+  #assert open == 5 && j[0].count[SJ_OPENING] == 4;
+  g[0].wall_gone = false; sj_openings_set(g[..]);
+  #assert !j[0].actors[sj_nth(j, SJ_OPENING, SJ_LAB, 0)].hidden && j[0].actors[sj_nth(j, SJ_OPENING, SJ_FARM, 0)].hidden;
+}
+#test "jam: the route walk explains every stop by a drawn collider, and finds one nothing draws" #steps 4000000000 #traversal 2000000000 {
+  s := [1] SjStore.[SjStore.{}]; g := [1] SpGame.[SpGame.{}];
+  sjt_route(g[..], s[..]);
+  w := [1] SjWalk.[SjWalk.{}];
+  for k: 0..<SJW_SCENES {
+    g_reset(g[..]); sjw_scene(g[..], s[..], w[..], k);
+    #assert w[0].steps > 100 && w[0].invisible == 0 && w[0].missed == 0 && w[0].over == 0;
+    if k == SJW_RING { #assert w[0].stops > 0; }   // the tunnel's wall
+  }
+  // the ring's box no P line draws: walking into it is a stop nothing drawn explains
+  g_reset(g[..]); w[0] = SjWalk.{}; g[0].rubble_gone = true;
+  sjw_place(g[..], 51, -96);
+  #assert !sjw_leg(g[..], s[..], w[..], 51, -104, true);
+  #assert w[0].invisible > 0 && w[0].missed == 1 && w[0].ns == 1 && w[0].seen[0].what == SJW_JAM && w[0].seen[0].map == SJ_RING && !w[0].seen[0].drawn;
+  #assert w[0].seen[0].actor == iw_hash("StaticMeshActor_UAID_99");
+  // the tunnel's wall is drawn: a stop it explains
+  g_reset(g[..]); w[0] = SjWalk.{};
+  sjw_place(g[..], 10, -34);
+  _ := sjw_leg(g[..], s[..], w[..], 10, -42, false);
+  #assert w[0].stops > 0 && w[0].invisible == 0 && w[0].seen[0].drawn && w[0].seen[0].actor == iw_hash("StaticMeshActor_UAID_2");
+}
+#test "jam: a solar bank stops her at its posts and glass, and she jumps onto its glass and stands there" #steps 2000000000 #traversal 1000000000 {
+  s := [1] SjStore.[SjStore.{}]; g := [1] SpGame.[SpGame.{}];
+  sjt_route(g[..], s[..]);
+  w := [1] SjWalk.[SjWalk.{}];
+  #assert sjw_bank(g[..], s[..], w[..], FF_XW + FF_PITCH * 2.5, ff_line_z(2)) == 0;
+  #assert abs(g_feet_y(g[..]) - 1.3) < 0.05 && w[0].invisible == 0;
+}

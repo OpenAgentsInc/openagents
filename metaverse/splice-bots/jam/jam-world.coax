@@ -16,11 +16,39 @@
 #load "../../../metaverse-engine/world/imported-read.coax";
 
 SJ_FARM :: 0; SJ_PLAIN :: 1; SJ_RING :: 2; SJ_LAB :: 3; SJ_MAPS :: 4;
-SJ_WALKED :: [SJ_MAPS] bool.[true, true, false, false];   // whose colliders she walks against (sj_bind)
+SJ_WALKED :: [SJ_MAPS] bool.[true, true, true, true];   // whose colliders she walks against (sj_bind)
 SJ_MAP_IDS :: [SJ_MAPS] string.["/Game/SpliceBots/World/Maps/L_SolarFarm", "/Game/World/Graybox/L_Plain", "/Game/World/Graybox/L_Ring", "/Game/World/Graybox/L_Lab"];
-// The game actors the game reads, by their Unreal class (the jam's SpliceGame module).
-SJ_SNIPER :: 0; SJ_DIGGER :: 1; SJ_IMPERIAL :: 2; SJ_PICKUP :: 3; SJ_CHARGE :: 4; SJ_CRATE :: 5; SJ_ROCK :: 6; SJ_RAIDER :: 7; SJ_CROWD :: 8; SJ_KINDS :: 9;
-SJ_CLASS :: [SJ_KINDS] string.["SpliceSniper", "SpliceDigger", "SpliceImperialStandIn", "SpliceFarmPickup", "SpliceFarmChargePoint", "SpliceFarmCrate", "SpliceRockWallActor", "SpliceRaveRaider", "SpliceCrowd"];
+// The game actors the game reads, by their Unreal class (the jam's SpliceGame module). SJ_OPENING is no
+// class: an actor SJ_OPEN_ACTOR names.
+SJ_SNIPER :: 0; SJ_DIGGER :: 1; SJ_IMPERIAL :: 2; SJ_PICKUP :: 3; SJ_CHARGE :: 4; SJ_CRATE :: 5; SJ_ROCK :: 6; SJ_RAIDER :: 7; SJ_CROWD :: 8; SJ_OPENING :: 9; SJ_KINDS :: 10;
+SJ_CLASS :: [SJ_KINDS] string.["SpliceSniper", "SpliceDigger", "SpliceImperialStandIn", "SpliceFarmPickup", "SpliceFarmChargePoint", "SpliceFarmCrate", "SpliceRockWallActor", "SpliceRaveRaider", "SpliceCrowd", "opening"];
+
+// ---- the sealed maps, opened for one world
+// The jam loaded the ring and the lab each as its own sealed map. Here they are two sealed areas of one
+// world (sj_sealed): in the garage (ga_inside) and in the hallway and lab past its back wall she walks only
+// the ring's and the lab's colliders, and outside them every route map's. She goes in and out the game's
+// own ways: the tunnel past the raiders' rock wall, and the hallway past the barricade.
+// Where the one world walks through a wall the jam's maps close, that wall opens, by its actor's name (as
+// the catalog's col and P lines give it, iw_actor_name): its colliders go, and the realm stops drawing it,
+// once what opens it has happened (sj_open). The raiders' rock wall (SJ_ROCK) opens with the rubble; the
+// actors below open as SJ_OPEN_WHEN says.
+SJ_SHUT :: 0; SJ_OPEN_RUBBLE :: 1; SJ_OPEN_WALL :: 2; SJ_OPEN_ALWAYS :: 3;   // what opens an actor's colliders
+SJ_OPENINGS :: 4;
+SJ_OPEN_ROUTE :: [SJ_OPENINGS] int.[SJ_FARM, SJ_LAB, SJ_LAB, SJ_LAB];
+SJ_OPEN_ACTOR :: [SJ_OPENINGS] string.[
+  "StaticMeshActor_1300",                                  // the farm's 315 m block over the garage's spot, where the ring stands
+  // the hallway's three plugs (the jam's hall_plug_1 to 3 at z -351, -364 and -380.5, Data/level_layout.csv),
+  // which its drill mech drilled one after another: the game's one barricade (g.wall_gone)
+  "StaticMeshActor_UAID_D85ED3019F3BEC1403_1312274827",
+  "StaticMeshActor_UAID_D85ED3019F3BEC1403_1312275828",
+  "StaticMeshActor_UAID_D85ED3019F3BEC1403_1312276829"];
+SJ_OPEN_WHEN :: [SJ_OPENINGS] int.[SJ_OPEN_ALWAYS, SJ_OPEN_WALL, SJ_OPEN_WALL, SJ_OPEN_WALL];
+// What opens a route map's actor: the rock wall's rubble, an opening's SJ_OPEN_WHEN, or SJ_SHUT.
+sj_opens_of :: (route: int, actor: string, kind: int) -> int {
+  if kind == SJ_ROCK { return SJ_OPEN_RUBBLE; }
+  for k: 0..<SJ_OPENINGS { if SJ_OPEN_ROUTE[k] == route && SJ_OPEN_ACTOR[k] == actor { return SJ_OPEN_WHEN[k]; } }
+  return SJ_SHUT;
+}
 SJ_ACTORS :: 512;
 SJ_NAME :: 64;
 SjActor :: struct {
@@ -28,6 +56,8 @@ SjActor :: struct {
   x: f32; y: f32; z: f32; yaw: f32; // its parts' middle, metres, and its first part's yaw (radians about +y from +z toward +x)
   parts: int;
   name: [SJ_NAME] u8; name_n: int;  // its Unreal actor name, without the sublevel
+  hash: u32;                        // the name as iw_hash: IwInst.actor and IwColliders' actors
+  opens: int;                       // what opens its colliders and hides it (SJ_OPEN_), or SJ_SHUT
   // how the jam realm draws it now (sj_actor_set; jam-draw.coax): hidden, or moved (its middle at
   // (mx, my, mz), turned myaw radians about +y from how the catalog placed it)
   hidden: bool; moved: bool; mx: f32; my: f32; mz: f32; myaw: f32;
@@ -39,14 +69,15 @@ SjJam :: struct {
   spawn: [SJ_MAPS] SjSpawn;         // each route map's player start
   actors: [SJ_ACTORS] SjActor; n: int; over: int;
   count: [SJ_KINDS] int;
-  // The gates: a route map's colliders that open as the run goes (the raiders' rock wall, which Digger drills):
-  // each map's boxes in the catalog's order, whether a gate's, as far as SJ_GATE_BOXES boxes.
-  gate: [SJ_MAPS * SJ_GATE_BOXES] bool; boxes: [SJ_MAPS] int;
+  // The gates: each route map's boxes that open as the run goes (the rock wall, the barricade) stand last in
+  // its colliders (sj_gates_last); what opens them, one thing a map (SJ_OPEN_RUBBLE, SJ_OPEN_WALL or SJ_SHUT).
+  opens: [SJ_MAPS] int;
 }
-SJ_GATE_BOXES :: 4096;   // imported.coax IW_WALLS: a map's boxes
-// What a page keeps for the jam world.
-SjStore :: struct { world: [1] IwWorld; cols: [SJ_MAPS] IwColliders; gates: [SJ_MAPS] int; stand_ins: int; jam: [1] SjJam; }
-SJ_STAND_IN :: 50.0f32;   // m: a block this wide over the garage's spot stands in for the garage (sj_gates_last)
+// What a page keeps for the jam world: the world read whole, each route map's colliders and how many of its
+// boxes are gates (last), the colliders left out because they are always open (stand_ins), gate boxes that
+// stay shut because their map's gates already open with something else (mixed: none on the jam's maps),
+// and the route.
+SjStore :: struct { world: [1] IwWorld; cols: [SJ_MAPS] IwColliders; gates: [SJ_MAPS] int; stand_ins: int; mixed: int; jam: [1] SjJam; }
 
 sj_starts :: (s: string, p: string) -> bool { return s.count >= p.count && s[0..<p.count] == p; }
 // A placement name's actor: the part before '/', without a sublevel's "L_Name." in front.
@@ -58,7 +89,7 @@ sj_actor_name :: (name: string) -> string {
 }
 // The kind of an actor name, or -1: its class and then '_' (SpliceFarmPickup_10).
 sj_kind_of :: (actor: string) -> int {
-  for k: 0..<SJ_KINDS { c := SJ_CLASS[k]; if actor.count > c.count && sj_starts(actor, c) && actor[c.count] == '_' { return k; } }
+  for k: 0..<SJ_KINDS { c := SJ_CLASS[k]; if k != SJ_OPENING && actor.count > c.count && sj_starts(actor, c) && actor[c.count] == '_' { return k; } }
   return -1;
 }
 sj_route_of :: (id: string) -> int { for k: 0..<SJ_MAPS { if id == SJ_MAP_IDS[k] { return k; } } return -1; }
@@ -95,15 +126,11 @@ sj_read :: (j: [] SjJam, catalog: string) -> bool {
     if head == "spawn" {
       r := sj_route_of_map(j, cast(int) sj_num(iw_field(line, 1)));
       if r >= 0 { j[0].spawn[r] = SjSpawn.{x = sj_num(iw_field(line, 2)), y = sj_num(iw_field(line, 3)), z = sj_num(iw_field(line, 4)), yaw = sj_num(iw_field(line, 5)), ok = true}; }
-    } else if head == "col" && iw_field(line, 2) == "box" {
-      r := sj_route_of_map(j, cast(int) sj_num(iw_field(line, 1)));
-      if r < 0 || j[0].boxes[r] >= SJ_GATE_BOXES { continue; }
-      j[0].gate[r * SJ_GATE_BOXES + j[0].boxes[r]] = sj_kind_of(sj_actor_name(iw_field(line, iw_fields(line) - 1))) == SJ_ROCK;
-      j[0].boxes[r] += 1;
     } else if head == "P" && iw_fields(line) >= 17 {
       r := sj_route_of_map(j, cast(int) sj_num(iw_field(line, 1)));
       if r < 0 { continue; }
       actor := sj_actor_name(iw_field(line, 16)); kind := sj_kind_of(actor);
+      if kind < 0 && sj_opens_of(r, actor, kind) != SJ_SHUT { kind = SJ_OPENING; }
       if kind < 0 { continue; }
       x := sj_num(iw_field(line, 10)); y := sj_num(iw_field(line, 11)); z := sj_num(iw_field(line, 12));
       sj_add(j, kind, r, actor, x, y, z, sj_yaw(sj_num(iw_field(line, 6)), sj_num(iw_field(line, 7)), sj_num(iw_field(line, 8)), sj_num(iw_field(line, 9))));
@@ -121,7 +148,7 @@ sj_add :: (j: [] SjJam, kind: int, r: int, actor: string, x: f32, y: f32, z: f32
     if a.route == r && cast(string) a.name[0..<a.name_n] == actor { j[0].actors[i].x += x; j[0].actors[i].y += y; j[0].actors[i].z += z; j[0].actors[i].parts += 1; return; }
   }
   if j[0].n >= SJ_ACTORS || actor.count > SJ_NAME { j[0].over += 1; return; }
-  e := SjActor.{kind = kind, route = r, x = x, y = y, z = z, yaw = yaw, parts = 1};
+  e := SjActor.{kind = kind, route = r, x = x, y = y, z = z, yaw = yaw, parts = 1, hash = iw_hash(actor), opens = sj_opens_of(r, actor, kind)};
   for c, i: actor { e.name[i] = c; } e.name_n = actor.count;
   j[0].actors[j[0].n] = e; j[0].n += 1; j[0].count[kind] += 1;
 }
@@ -147,27 +174,66 @@ sj_load :: (s: [] SjStore, catalog: string) -> bool {
   return true;
 }
 
-// A map's gate boxes moved after its other boxes (in order), so the colliders with a gate open are the
-// boxes before them; their count is s.gates[r]. A map's stand-in for the garage goes: a block over the
-// garage's spot (the farm map's 315 m block, StaticMeshActor_1300), where the game's garage stands.
+// What opens route map r's actor whose name hashes to `hash` (a collider's): its SjActor's opens, an
+// opening's whether or not it is drawn, or SJ_SHUT.
+sj_opens_hash :: (j: [] SjJam, r: int, hash: u32) -> int {
+  if hash == 0 { return SJ_SHUT; }
+  for i: 0..<j[0].n { a := j[0].actors[i]; if a.route == r && a.hash == hash { return a.opens; } }
+  for k: 0..<SJ_OPENINGS { if SJ_OPEN_ROUTE[k] == r && iw_hash(SJ_OPEN_ACTOR[k]) == hash { return SJ_OPEN_WHEN[k]; } }
+  return SJ_SHUT;
+}
+// A map's colliders as the one world walks them. An always open actor's go, whatever their shape
+// (s.stand_ins counts them). Its gate boxes move after its other boxes, in order and with their actors, so
+// the colliders with its gates open are the boxes before them: their count is s.gates[r], what opens them
+// s.jam.opens[r].
+SJ_GATES :: 64;   // gate boxes a map at most (the rock wall has 20)
 sj_gates_last :: (s: [] SjStore, r: int) {
   c := s[0].cols[r..<r + 1]; j := s[0].jam[..];
-  keep := 0; gates: [64 * 6] f32; ng := 0;
+  keep := 0; gates: [SJ_GATES * 6] f32; gact: [SJ_GATES] u32; ng := 0;
   for i: 0..<c[0].nw {
-    b := c[0].walls[i * 6..<i * 6 + 6];
-    if b[0] < GA_X && b[3] > GA_X && b[2] < GA_Z && b[5] > GA_Z && b[3] - b[0] > SJ_STAND_IN && b[4] > 1 { s[0].stand_ins += 1; continue; }
-    if i < j[0].boxes[r] && j[0].gate[r * SJ_GATE_BOXES + i] && ng < 64 { for k: 0..<6 { gates[ng * 6 + k] = c[0].walls[i * 6 + k]; } ng += 1; continue; }
-    if keep != i { for k: 0..<6 { c[0].walls[keep * 6 + k] = c[0].walls[i * 6 + k]; } }
+    a := c[0].wall_actor[i]; w := sj_opens_hash(j, r, a);
+    if w == SJ_OPEN_ALWAYS { s[0].stand_ins += 1; continue; }
+    if w != SJ_SHUT && ng < SJ_GATES && (j[0].opens[r] == SJ_SHUT || j[0].opens[r] == w) {
+      j[0].opens[r] = w; for k: 0..<6 { gates[ng * 6 + k] = c[0].walls[i * 6 + k]; } gact[ng] = a; ng += 1; continue;
+    }
+    if w != SJ_SHUT { s[0].mixed += 1; }   // stays shut
+    if keep != i { for k: 0..<6 { c[0].walls[keep * 6 + k] = c[0].walls[i * 6 + k]; } c[0].wall_actor[keep] = a; }
     keep += 1;
   }
-  for g: 0..<ng { for k: 0..<6 { c[0].walls[(keep + g) * 6 + k] = gates[g * 6 + k]; } }
+  for k: 0..<ng { for e: 0..<6 { c[0].walls[(keep + k) * 6 + e] = gates[k * 6 + e]; } c[0].wall_actor[keep + k] = gact[k]; }
   c[0].nw = keep + ng; s[0].gates[r] = ng;
+  // an always open actor's solids, floors and bodies
+  hk := 0; wk := 0; at := 0;
+  for i: 0..<c[0].nh {
+    n := 3 + cast(int) c[0].hulls[at] * 4; a := c[0].hull_actor[i];
+    if sj_opens_hash(j, r, a) == SJ_OPEN_ALWAYS { s[0].stand_ins += 1; at += n; continue; }
+    if wk != at { for k: 0..<n { c[0].hulls[wk + k] = c[0].hulls[at + k]; } }
+    c[0].hull_actor[hk] = a; hk += 1; wk += n; at += n;
+  }
+  c[0].nh = hk; c[0].hull_words = wk;
+  fk := 0;
+  for i: 0..<c[0].nf {
+    a := c[0].floor_actor[i];
+    if sj_opens_hash(j, r, a) == SJ_OPEN_ALWAYS { s[0].stand_ins += 1; continue; }
+    if fk != i { for k: 0..<STAND_FLOATS { c[0].floors[fk * STAND_FLOATS + k] = c[0].floors[i * STAND_FLOATS + k]; } c[0].floor_actor[fk] = a; }
+    fk += 1;
+  }
+  c[0].nf = fk;
+  bk := 0;
+  for i: 0..<c[0].nb {
+    a := c[0].body_actor[i];
+    if sj_opens_hash(j, r, a) == SJ_OPEN_ALWAYS { s[0].stand_ins += 1; continue; }
+    if bk != i { for k: 0..<7 { c[0].bodies[bk * 7 + k] = c[0].bodies[i * 7 + k]; } c[0].body_actor[bk] = a; }
+    bk += 1;
+  }
+  c[0].nb = bk;
 }
 
 // ---- the game in the jam world
 
 // The game plays in the jam world: g keeps the engine's Colliders over the store's arrays (the store must stay
-// put) and the route; the run's landmarks come from it at each reset (sj_places, from g_places).
+// put) and the route; the run's landmarks come from it at each reset (sj_places, from g_places). The game's
+// own walls the jam's maps stand for go (splice-game.coax g_layout, garage.coax ga_colliders).
 sj_bind :: (g: [] SpGame, s: [] SjStore) {
   g[0].jam = s[0].jam[0].ok;
   g[0].jw_n = 0;
@@ -177,9 +243,6 @@ sj_bind :: (g: [] SpGame, s: [] SjStore) {
     g[0].jw[r] = ifx m >= 0 then Colliders.{ground = -1000000, ground_enabled = false, boxes = c[0].walls[0..<c[0].nw * 6], floors = c[0].floors[0..<c[0].nf * STAND_FLOATS],
       hulls = c[0].hulls[0..<c[0].hull_words], capsules = c[0].bodies[0..<c[0].nb * 7]} else Colliders.{};
     g[0].jw_open[r] = g[0].jw[r]; g[0].jw_open[r].boxes = ifx m >= 0 then c[0].walls[0..<(c[0].nw - s[0].gates[r]) * 6] else c[0].walls[0..<0];
-    // The ring's and the lab's colliders wait: the jam loaded each as its own sealed map, so their walls close
-    // the ways the one world walks between them (the garage's quiet door, the chamber's way out); until the
-    // game's garage and chamber are the imported ones, garage.coax's walls stand for them.
     g[0].jw_on[r] = m >= 0 && SJ_WALKED[r];
   }
   g[0].jw_n = SJ_MAPS;
@@ -189,6 +252,7 @@ sj_bind :: (g: [] SpGame, s: [] SjStore) {
   k := flw_first(g[0].c[0].starts[..], g[0].c[0].start_n);
   fresh := k >= 0 && g[0].mode == M_PLAY && g[0].zone == Z_MINE && dist2(g[0].px, g[0].pz, sc_m(g[0].c[0].starts[k].x), sc_m(g[0].c[0].starts[k].z)) < 0.5;
   _ := g_places(g);
+  g_layout(g);
   if fresh { _ = sj_begin(g); g_keep(g); }
 }
 // The landmarks the jam world moves: where a run starts (the farm's player start). The rest of the jam's
@@ -207,32 +271,55 @@ sj_begin :: (g: [] SpGame) -> bool {
   g[0].px = sp.x; g[0].pz = sp.z; g[0].yaw = sp.yaw; g[0].pitch = 0; g_bot_home(g);
   return true;
 }
-// Whether she walks the jam world's colliders: on the mine's surface, not in a room and not under the
-// garage's dome, whose floor dips below the plain's ground (garage.coax walls the garage until it is the ring's).
-sj_here :: (g: [] SpGame) -> bool { return g[0].jam && g[0].zone == Z_MINE && !sp_in_room(g) && !ga_inside(g, g[0].px, g[0].pz); }
+// Whether she walks the jam world's colliders: on the mine's surface and not in a room.
+sj_here :: (g: [] SpGame) -> bool { return g[0].jam && g[0].zone == Z_MINE && !sp_in_room(g); }
+// Whether what opens an actor has happened: Digger drilled the rubble, or the barricade.
+sj_open :: (g: [] SpGame, when: int) -> bool {
+  return when == SJ_OPEN_ALWAYS || (when == SJ_OPEN_RUBBLE && g[0].rubble_gone) || (when == SJ_OPEN_WALL && g[0].wall_gone);
+}
+// The sealed areas: in the garage, or in the hallway past its back wall and the lab past that (the lab
+// map's rock either side of the hallway reaches GA_LAB_X + 8 out).
+sj_sealed :: (g: [] SpGame, x: f32, z: f32) -> bool {
+  return ga_inside(g, x, z) || (z < g[0].at.gar_z - ga_back(g) + 0.5 && abs(x - g[0].at.gar_x) < GA_LAB_X + 8);
+}
+// Whether route map m's colliders hold her at (x, z): in a sealed area only the ring's and the lab's,
+// outside every route map's (the ring's walls from outside, the farm's mountain over the lab).
+sj_walks :: (g: [] SpGame, m: int, x: f32, z: f32) -> bool {
+  return g[0].jw_on[m] && (m == SJ_RING || m == SJ_LAB || !sj_sealed(g, x, z));
+}
+// Route map m's colliders now: with its gates open once what opens them has happened.
+sj_cols :: (g: [] SpGame, m: int) -> Colliders { return ifx sj_open(g, g[0].jr[0].opens[m]) then g[0].jw_open[m] else g[0].jw[m]; }
 // Her feet's height in the jam world: the drawn feet, or the jam floor under her when that is higher (the
 // prototype's ground dips where the jam's is level, and the jam's ground is no wall to her).
 sj_feet :: (g: [] SpGame) -> f32 { f := g_feet_y(g); return sj_floor(g, g[0].px, g[0].pz, f, f); }
-// Out of the jam world's walls and solids: her circle at her feet's height, pushed by each route map's.
+// Out of the jam world's walls, solids and bodies: her circle and height at her feet, pushed by each route
+// map's that holds her there (sj_walks), as the engine's walker pushes (physics/collide.coax collide_move:
+// bodies, then solids, then walls, again while a body or a solid pushed).
+SJ_PASSES :: 3;
 sj_push :: (g: [] SpGame, x: f32, z: f32, r: f32, feet: f32) -> Point {
   p := v3(x, 0, z);
   if !g[0].jam { return p; }
   prof := CollideProfile.{radius = r};
   for m: 0..<g[0].jw_n {
-    if !g[0].jw_on[m] { continue; }
-    st := collide_walls(ifx g[0].rubble_gone then g[0].jw_open[m] else g[0].jw[m], prof, CollideState.{feet = world_point(p.x, feet, p.z), velocity = world_point(0, 0, 0)});
+    if !sj_walks(g, m, x, z) { continue; }
+    c := sj_cols(g, m);
+    st := CollideState.{feet = world_point(p.x, feet, p.z), velocity = world_point(0, 0, 0)};
+    for pass: 0..<SJ_PASSES {
+      b := collide_bodies(c, prof, st, 0, 0); h := collide_hulls(c, prof, b.state); st = collide_walls(c, prof, h.state);
+      if !b.pushed && !h.pushed { break; }
+    }
     p = v3(st.feet.x, 0, st.feet.z);
   }
   return p;
 }
 // The highest jam floor under (x, z) no more than a step above her feet (a box's or a solid's top, a floor),
-// or `below` when there is none higher: the farm's ground, a plateau's top, a ramp.
+// or `below` when there is none higher: the farm's ground, a plateau's top, a ramp, a solar bank's glass.
 sj_floor :: (g: [] SpGame, x: f32, z: f32, feet: f32, below: f32) -> f32 {
   y := below;
   if !g[0].jam { return y; }
   for m: 0..<g[0].jw_n {
-    if !g[0].jw_on[m] { continue; }
-    h := query_ground(ifx g[0].rubble_gone then g[0].jw_open[m] else g[0].jw[m], x, z, feet + QUERY_STEP_UP, T_RADIUS);
+    if !sj_walks(g, m, x, z) { continue; }
+    h := query_ground(sj_cols(g, m), x, z, feet + QUERY_STEP_UP, T_RADIUS);
     if h.y > y && h.y < 1000000 { y = h.y; }
   }
   return y;
@@ -249,5 +336,18 @@ sj_actor_set :: (j: [] SjJam, i: int, shown: bool, x: f32, y: f32, z: f32, yaw: 
   a := j[0].actors[i];
   a.hidden = !shown; a.moved = x != a.x || y != a.y || z != a.z || yaw != 0; a.mx = x; a.my = y; a.mz = z; a.myaw = yaw;
   j[0].actors[i] = a;
+}
+// The game draws its own Sniper, Digger, Imperial robots and raiders, so the jam's of those kinds are hidden.
+sj_game_draws :: (kind: int) -> bool { return kind == SJ_SNIPER || kind == SJ_DIGGER || kind == SJ_IMPERIAL || kind == SJ_RAIDER; }
+// The walls that open (the rock wall, the openings): each hidden once what opens it has happened, where the
+// catalog placed it until then. The game calls this each frame on g[0].jr.
+sj_openings_set :: (g: [] SpGame) {
+  j := g[0].jr[..];
+  for i: 0..<j[0].n {
+    a := j[0].actors[i];
+    if a.opens == SJ_SHUT { continue; }
+    shut := !sj_open(g, a.opens);
+    if a.hidden == shut || a.moved { sj_actor_set(j, i, shut, a.x, a.y, a.z, 0); }
+  }
 }
 sj_actor_reset :: (j: [] SjJam, i: int) { if i >= 0 && i < j[0].n { j[0].actors[i].hidden = false; j[0].actors[i].moved = false; } }

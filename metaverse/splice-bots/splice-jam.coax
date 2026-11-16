@@ -27,7 +27,7 @@ splice_jam_catalog :: (s: [] SpliceJam, store: [] SjStore, text: string, rows: [
     j := store[0].jam[..];
     for i: 0..<j[0].n {
       k := j[0].actors[i].kind;
-      if k == SJ_SNIPER || k == SJ_DIGGER || k == SJ_IMPERIAL || k == SJ_RAIDER { sj_actor_set(j, i, false, 0, 0, 0, 0); }
+      if sj_game_draws(k) { sj_actor_set(j, i, false, 0, 0, 0, 0); }
     }
   }
   sj_bind(s[0].page[0].game[..], store);
@@ -37,8 +37,9 @@ splice_jam_catalog :: (s: [] SpliceJam, store: [] SjStore, text: string, rows: [
 splice_jam_asset :: (s: [] SpliceJam, index: int, bytes: int) #export_c #effects(all) { sjd_asset(s[0].jam[..], index, bytes); }
 
 // The frame: Splice's (the game steps, writes what moves and draws its interface), then the jam's draws
-// after its own and the game actors' rows. The rock wall goes once Digger has drilled it (its colliders
-// open then: jam-world.coax sj_push).
+// after its own and the game actors' rows. The rock wall goes once Digger has drilled it, the barricade
+// once the drill mech has, and the walls the one world walks through from the start (their colliders
+// open then: jam-world.coax sj_openings_set, sj_push).
 splice_jam_frame :: (s: [] SpliceJam, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool,
                      world: [] u32, live: [] u32, pieces: [] u32, places: [] u32, style: [] f32, actors: [] f32) -> int #export_c #effects(all) {
   if s.count < 1 { return 0; }
@@ -48,12 +49,8 @@ splice_jam_frame :: (s: [] SpliceJam, out: [] f32, u: [] f32, width: f32, height
   m := splice_draw_count(p);
   for k: 0..<m * 4 { s[0].draws[k] = p[0].draws[k]; }
   s[0].draw_n = ifx m > 0 && g[0].jam then sjd_draws(s[0].jam[..], s[0].draws[..], m) else m;
-  j := g[0].jr[..];
-  for i: 0..<j[0].n {
-    a := j[0].actors[i];
-    if a.kind == SJ_ROCK && a.hidden != g[0].rubble_gone { sj_actor_set(j, i, !g[0].rubble_gone, a.x, a.y, a.z, 0); }
-  }
-  _ := sjd_actor_rows(j, actors);
+  sj_openings_set(g);   // the rock wall, the barricade and the walls the one world walks through (jam-world.coax)
+  _ := sjd_actor_rows(g[0].jr[..], actors);
   return n;
 }
 splice_jam_draw_count :: (s: [] SpliceJam) -> int #export_c #effects(all) { return s[0].draw_n; }

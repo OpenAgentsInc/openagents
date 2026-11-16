@@ -26,7 +26,8 @@ IwInst :: struct { map: int; section: int; mat: int; q: [4] f32; t: [3] f32; s: 
 IwLight :: struct { at: [3] f32; rgb: [3] f32; intensity: f32; range: f32; }
 IwSpot :: struct { map: int; kind: int; at: [3] f32; yaw: f32; name: [32] u8; name_n: int; }
 IW_SPOT_START :: 0; IW_SPOT_TAG :: 1; IW_SPOT_TARGET :: 2;
-IwShape :: struct { map: int; kind: int; at: int; n: int; }   // its n numbers at `at` in the world's pool
+// actor: the col line's actor (iw_actor_name, as iw_hash), so a realm finds what draws a collider (IwInst.actor)
+IwShape :: struct { map: int; kind: int; at: int; n: int; actor: u32; }   // its n numbers at `at` in the world's pool
 IW_BOX :: 0; IW_HULL :: 1; IW_FLOOR :: 2; IW_CAPSULE :: 3;
 IwMap :: struct {
   id: [96] u8; id_n: int;
@@ -171,7 +172,7 @@ iw_admit :: (w: [] IwWorld, text: string) -> bool #effects(all) {
       else { return iw_refuse(w, "a collider of a kind the engine doesn't have"); }
       if n != 4 + need { return iw_refuse(w, "a collider of the wrong form"); }
       if w[0].pool_n + need > IW_POOL { return iw_refuse(w, "more collider numbers than a world holds"); }
-      sh.at = w[0].pool_n; for c: 0..<need { w[0].pool[sh.at + c] = iw_f(l, 3 + c); } sh.n = need; w[0].pool_n += need; w[0].shapes[w[0].nshape] = sh; w[0].nshape += 1;
+      sh.at = w[0].pool_n; for c: 0..<need { w[0].pool[sh.at + c] = iw_f(l, 3 + c); } sh.n = need; sh.actor = iw_hash(iw_actor_name(iw_field(l[0].line, n - 1))); w[0].pool_n += need; w[0].shapes[w[0].nshape] = sh; w[0].nshape += 1;
     }
     if l[0].bad { return iw_refuse(w, "a number out of its form"); }
   }
@@ -248,6 +249,8 @@ iw_object :: (w: [] IwWorld, k: int, objects: [] f32, o: int) #effects(all) {
 IwColliders :: struct {
   walls: [IW_WALLS * 6] f32; floors: [IW_FLOORS * STAND_FLOATS] f32; hulls: [IW_HULLS * IW_HULL_WORDS] f32; bodies: [IW_BODIES * 7] f32;
   nw: int; nf: int; nh: int; hull_words: int; nb: int; over: int;
+  // each collider's actor (IwShape.actor), in the arrays' order: a box's, a floor's, a hull's, a body's
+  wall_actor: [IW_WALLS] u32; floor_actor: [IW_FLOORS] u32; hull_actor: [IW_HULLS] u32; body_actor: [IW_BODIES] u32;
 }
 // Map `map`'s colliders into c (what is over its arrays is counted in c.over, never silently dropped).
 iw_colliders :: (w: [] IwWorld, map: int, c: [] IwColliders) #effects(all) {
@@ -258,16 +261,16 @@ iw_colliders :: (w: [] IwWorld, map: int, c: [] IwColliders) #effects(all) {
     nums := w[0].pool[sh.at..<sh.at + sh.n];
     if sh.kind == IW_BOX {
       if c[0].nw >= IW_WALLS { c[0].over += 1; continue; }
-      for j: 0..<6 { c[0].walls[c[0].nw * 6 + j] = nums[j]; } c[0].nw += 1;
+      for j: 0..<6 { c[0].walls[c[0].nw * 6 + j] = nums[j]; } c[0].wall_actor[c[0].nw] = sh.actor; c[0].nw += 1;
     } else if sh.kind == IW_FLOOR {
       if c[0].nf >= IW_FLOORS { c[0].over += 1; continue; }
-      stand_put_quad(c[0].floors[..], c[0].nf, nums[0], nums[1], nums[2], nums[3], nums[4], nums[5], nums[6], nums[7], nums[8]); c[0].nf += 1;
+      stand_put_quad(c[0].floors[..], c[0].nf, nums[0], nums[1], nums[2], nums[3], nums[4], nums[5], nums[6], nums[7], nums[8]); c[0].floor_actor[c[0].nf] = sh.actor; c[0].nf += 1;
     } else if sh.kind == IW_CAPSULE {
       if c[0].nb >= IW_BODIES { c[0].over += 1; continue; }
-      for j: 0..<7 { c[0].bodies[c[0].nb * 7 + j] = nums[j]; } c[0].nb += 1;
+      for j: 0..<7 { c[0].bodies[c[0].nb * 7 + j] = nums[j]; } c[0].body_actor[c[0].nb] = sh.actor; c[0].nb += 1;
     } else {
       if c[0].nh >= IW_HULLS || c[0].hull_words + sh.n > c[0].hulls.count { c[0].over += 1; continue; }
-      for j: 0..<sh.n { c[0].hulls[c[0].hull_words + j] = nums[j]; } c[0].hull_words += sh.n; c[0].nh += 1;
+      for j: 0..<sh.n { c[0].hulls[c[0].hull_words + j] = nums[j]; } c[0].hull_words += sh.n; c[0].hull_actor[c[0].nh] = sh.actor; c[0].nh += 1;
     }
   }
 }
