@@ -1,0 +1,59 @@
+// Codex's metadata-only latest turn receipt. The primary Codex codec owns
+// this external shape; a Stop acknowledgment is not a terminal receipt.
+#load "../../json/shape.coax";
+#authority;
+
+#test "saved Codex receipts bind the exact turn and recognize only native statuses" {
+ for status:[4]string.["completed","interrupted","failed","inProgress"] {
+  b:[512]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_put(o[..],"{\"data\":[{\"id\":\"turn-a\",\"items\":[],\"itemsView\":\"notLoaded\",\"status\":");jo_str(o[..],status);jo_put(o[..],"}],\"nextCursor\":null,\"backwardsCursor\":\"opaque\"}");
+  #assert cx_saved_turn(jo_text(o[..]),"turn-a").count>0 && cx_saved_turn(jo_text(o[..]),"other")=="";
+ }
+ #assert cx_saved_turn("{\"data\":[{\"id\":\"t\",\"items\":[],\"status\":\"interrupted\",\"error\":null,\"startedAt\":1,\"completedAt\":2,\"durationMs\":3,\"rootTurnId\":null}]}","t").count>0;
+ #assert cx_saved_turn("{\"data\":[{\"id\":\"t\",\"items\":[],\"status\":\"failed\",\"error\":{\"message\":\"failure\"}}]}","t").count>0;
+}
+#test "malformed duplicate foreign and loaded Codex receipts cannot settle Stop" {
+ for raw:[18]string.["{}","{bad}","{\"data\":null}","{\"data\":[]}","{\"data\":[{},{}]}","{\"data\":[{}]}",
+ "{\"data\":[{\"id\":\"t\",\"items\":[],\"status\":\"future\"}]}",
+ "{\"data\":[{\"id\":\"t\",\"items\":[],\"status\":\"completed\",\"status\":\"interrupted\"}]}",
+ "{\"data\":[{\"id\":\"t\",\"items\":[],\"status\":\"interrupted\",\"extra\":1}]}",
+ "{\"data\":[{\"id\":\"t\",\"items\":[],\"status\":\"interrupted\",\"itemsView\":\"full\"}]}",
+ "{\"data\":[{\"id\":\"t\",\"items\":[{}],\"status\":\"interrupted\"}]}",
+ "{\"data\":[{\"id\":\"t\",\"status\":\"interrupted\"}]}",
+ "{\"data\":[{\"id\":\"t\",\"items\":[],\"status\":\"interrupted\",\"error\":false}]}",
+ "{\"data\":[{\"id\":\"t\",\"items\":[],\"status\":\"interrupted\"}],\"nextCursor\":false}",
+ "{\"data\":[{\"id\":\"t\",\"items\":[],\"status\":\"interrupted\"}],\"backwardsCursor\":1}",
+ "{\"data\":[{\"id\":\"t\",\"items\":[],\"status\":\"interrupted\"}],\"other\":null}",
+ "{\"data\":[{\"id\":\"t\",\"items\":[],\"status\":\"interrupted\"}],\"data\":[]}",
+ "{\"data\":[{\"id\":\"t\",\"items\":[],\"\\u0073tatus\":\"interrupted\"}]}"] {#assert cx_saved_turn(raw,"t")=="";}
+ #assert cx_saved_turn("{\"data\":[{\"id\":\"\",\"items\":[],\"status\":\"interrupted\"}]}","")=="";
+ #assert cx_saved_turn("{\"data\":{\"one\":{\"id\":\"t\",\"items\":[],\"status\":\"interrupted\"}}}","t")=="";
+ #assert cx_saved_turn("{\"data\":[{\"id\":\"t\",\"items\":[],\"status\":\"interrupted\",\"threadId\":\"other\"}]}","t")=="";
+}
+#test "saved turn identity and whole receipt byte bounds are exact" {
+ id:[129]u8;for i:0..<id.count {id[i]='a';}b:[8193]u8;o:[1]Jo;
+ for n:[2]int.[128,129] {jo_start(o[..],b[..]);jo_put(o[..],"{\"data\":[{\"id\":");jo_str(o[..],cast(string)id[0..<n]);jo_put(o[..],",\"items\":[],\"status\":\"interrupted\"}]}");
+  #assert (cx_saved_turn(jo_text(o[..]),cast(string)id[0..<n]).count>0)==(n==128);
+ }
+ jo_start(o[..],b[..]);jo_put(o[..],"{\"data\":[{\"id\":\"t\",\"items\":[],\"status\":\"interrupted\"}]}");for i:o[0].n..<b.count {b[i]=' ';}
+ #assert cx_saved_turn(cast(string)b[0..<8192],"t").count>0 && cx_saved_turn(cast(string)b[..],"t")=="";
+}
+
+// A borrowed Turn, or empty on refusal. The request names one thread and
+// asks for exactly one latest turn with no item bodies. Never search a
+// prefix/history or infer cancellation from prose or another turn's status.
+cx_saved_turn :: (raw:string,expected:string)->string #effects(all) {
+ if expected.count==0 || expected.count>128 || raw.count>8192 {return "";} // mutant: equivalent (raising the identity cap to 129 still cannot match js_string's 128-byte destination)
+ d:[1]Jv;nodes:[128]JvNode;if !js_utf8(raw) || !jv_parse(d[..],raw,nodes[..]) {return "";}v:=d[0];
+ keys:=[3]string.["data","nextCursor","backwardsCursor"];if !js_fields(v,0,keys[..]) {return "";}
+ for key:keys[1..<3] {at:=jv_get(v,0,key);if at>=0 && jv_kind(v,at)!=JV_NULL && jv_kind(v,at)!=JV_STRING {return "";}} // mutant: equivalent (an object member is never root node zero, so >=0 and >0 admit the same members)
+ data:=jv_get(v,0,"data");if jv_kind(v,data)!=JV_ARRAY || jv_len(v,data)!=1 {return "";}t:=jv_at(v,data,0);
+ fields:=[9]string.["id","items","itemsView","status","error","startedAt","completedAt","durationMs","rootTurnId"];
+ if !js_fields(v,t,fields[..]) {return "";}
+ b:[128]u8;n:=js_string(v,jv_get(v,t,"id"),b[..]);if n<0 || cast(string)b[0..<n]!=expected {return "";} // mutant: equivalent (an empty decoded id cannot equal the required nonempty expected id)
+ items:=jv_get(v,t,"items");if jv_kind(v,items)!=JV_ARRAY || jv_len(v,items)!=0 {return "";}
+ view:=jv_get(v,t,"itemsView");if view>=0 && jv_raw(v,view)!="notLoaded" {return "";} // mutant: equivalent (this member is never root node zero)
+ err:=jv_get(v,t,"error");if err>=0 && jv_kind(v,err)!=JV_NULL && jv_kind(v,err)!=JV_OBJECT {return "";} // mutant: equivalent (this member is never root node zero)
+ n=js_string(v,jv_get(v,t,"status"),b[..]);if n<0 {return "";}status:=cast(string)b[0..<n]; // mutant: equivalent (an empty decoded status is rejected by the recognized-status check)
+ if status!="completed" && status!="interrupted" && status!="failed" && status!="inProgress" {return "";}
+ return raw[v.nodes[t].from..<v.nodes[t].to];
+}

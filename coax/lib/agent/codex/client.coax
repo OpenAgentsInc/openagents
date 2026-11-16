@@ -19,13 +19,14 @@
 // and is valid until the next cx_feed.
 
 #load "../claude/transport.coax";
+#load "turn-receipt.coax";
 
 CX_PENDING :: 16;
 CX_ID :: 128;
 
 // What a request the client sent was (an answer's ev.of).
 CX_INITIALIZE :: 1; CX_THREAD_START :: 2; CX_THREAD_RESUME :: 3; CX_TURN_START :: 4;
-CX_TURN_INTERRUPT :: 5; CX_MODEL_LIST :: 6; CX_OTHER :: 7;
+CX_TURN_INTERRUPT :: 5; CX_MODEL_LIST :: 6; CX_OTHER :: 7; CX_THREAD_TURNS_LIST :: 8;
 // What an approval asks (ev.of on an approval): a command, a file change, more permissions.
 CX_ASK_EXEC :: 1; CX_ASK_PATCH :: 2; CX_ASK_PERMISSIONS :: 3; CX_ASK_EXEC_V1 :: 4; CX_ASK_PATCH_V1 :: 5;
 CX_ASK_TOOL :: 6;
@@ -52,6 +53,7 @@ CxEventKind :: enum u8 {
 CxEvent :: struct {
   kind: CxEventKind;
   of: int;
+  request_id: int;             // the exact numeric request answered/refused
   method: string;
   params: string;
   result: string;
@@ -225,6 +227,13 @@ cx_interrupt :: (c: [] CxClient) -> int {
   return id;
 }
 // model/list, one page (cursor "" for the first): visible models only.
+cx_thread_turns_list :: (c: [] CxClient, thread: string) -> int {
+  if thread.count==0 || c[0].npend>=CX_PENDING {return 0;}
+  id:=cx_open(c,CX_THREAD_TURNS_LIST,"thread/turns/list");o:=c[0].out[..];
+  cl_put(o,"{\"threadId\":");cl_put_string(o,thread);
+  cl_put(o,",\"limit\":1,\"sortDirection\":\"desc\",\"itemsView\":\"notLoaded\"}");cx_close(c);return id;
+}
+// model/list, one page (cursor "" for the first): visible models only.
 cx_model_list :: (c: [] CxClient, cursor: string) -> int {
   id := cx_open(c, CX_MODEL_LIST, "model/list");
   o := c[0].out[..];
@@ -339,13 +348,14 @@ cx_feed :: (c: [] CxClient, line: string) -> CxEvent {
     return CxEvent.{kind = CxEventKind.none, method = method, line = line};
   }
   if !idv.ok || idv.tok != JSON_NUMBER { return CxEvent.{kind = CxEventKind.invalid, line = line}; }
-  of := cx_take_pending(c, json_int(line[idv.from..<idv.to]).value);
+  request_id := json_int(line[idv.from..<idv.to]).value;
+  of := cx_take_pending(c, request_id);
   e := cl_find(line, "error");
   if e.ok && e.tok == JSON_OBJECT {
     msg := cl_text(ar, line, cl_member(line, e, "message"));
     if of == CX_INITIALIZE { return cx_fail(c, "initialize: ", msg); }
     if of == 0 { return CxEvent.{kind = CxEventKind.none, line = line}; }
-    return CxEvent.{kind = CxEventKind.refused, of = of, message = msg, line = line};
+    return CxEvent.{kind = CxEventKind.refused, of = of, request_id=request_id, message = msg, line = line};
   }
   r := cl_find(line, "result");
   result := cl_json(line, r);
@@ -364,5 +374,5 @@ cx_feed :: (c: [] CxClient, line: string) -> CxEvent {
     if t.count > 0 { c[0].turn_n = cx_keep(c[0].turn[..], t); }
   }
   if of == 0 { return CxEvent.{kind = CxEventKind.none, line = line}; }
-  return CxEvent.{kind = CxEventKind.answered, of = of, result = result, line = line};
+  return CxEvent.{kind = CxEventKind.answered, of = of, request_id=request_id, result = result, line = line};
 }

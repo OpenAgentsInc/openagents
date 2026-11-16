@@ -46,8 +46,13 @@ Zeron's Codex harness sends (`~/work/zeron/crates/harness/src/codex/mod.rs`,
   and `success`; unanswered calls fail before the next poll. Coder uses
   this for its registered read-only Claude session reader. The 0.163.0
   installed schema and a fresh live Coder Codex chat verify the contract.
-- On 0.163.0 an interrupted turn sends no `turn/completed`: the answer to
-  `turn/interrupt` (and `thread/status/changed` to idle) ends it.
+- On 0.163.0 an interrupted turn may send no `turn/completed`. Neither the
+  empty `turn/interrupt` acknowledgment nor an idle thread confirms an
+  outcome. Stop reads `thread/turns/list` (one latest turn, descending,
+  `itemsView: notLoaded`), binding the exact request and original turn ID.
+  Only the matching saved native status settles it. A completion racing
+  Stop stays completed; an unconfirmed outcome becomes unknown after 20
+  seconds. Unsupported, malformed and foreign reads never imply canceled.
 
 ## Process
 

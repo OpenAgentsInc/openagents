@@ -223,12 +223,21 @@ are rechecked immediately before sending the native prompt.
 | `state` | `queued`, `running`, `waiting`, `completed`, `failed`, `canceled` or `unknown` |
 | `revision` | Positive observation revision through 2^53−1 |
 | `stop_requested` | Retained Stop intent; independently true or false for any outcome |
+
 | `native_session_id` | Actual SDK session/thread identity, at most 128 UTF-8 bytes; empty until observed |
 | `interaction_id` | Exact held native permission ID, 1–256 UTF-8 bytes iff waiting; otherwise empty |
 | `error_code` | Nonempty iff failed/unknown; closed codes below |
 | `updated_at_ms` | Positive last observation time through 2^53−1 |
 | `command_id` | This write's 32-hex ID; empty on Read and in the private record |
 | `replay` | True only when observing an already committed exact command; false in the private record |
+
+The Codex owner does not settle a task from an empty interrupt acknowledgment
+or a thread becoming idle. It reconciles the original native turn against
+Codex's saved metadata through the existing primary codec. A matching saved
+`interrupted` status confirms cancellation; a completion racing Stop remains
+completed. Malformed, missing, foreign or unsupported receipts leave the
+outcome uncertain, with a bounded 20-second reconciliation window. This
+changes no published field or status identity.
 
 Error codes are `engine_lost`, `login_required`, `engine_unavailable`,
 `model_unavailable`, `record_limit`, `storage_unavailable`, `expired`,

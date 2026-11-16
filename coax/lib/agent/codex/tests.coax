@@ -12,6 +12,19 @@ CxTest :: struct { line: [8] u8; arena: [65536] u8; out: [16384] u8; }
 
 cx_test_client :: (c: [] CxClient, b: [] CxTest) { cx_init(c, b[0].line[..], b[0].arena[..], b[0].out[..]); }
 
+#test "Stop reads bounded native turn metadata with the exact request identity" {
+ c:[1]CxClient;b:[1]CxTest;cx_test_client(c[..],b[..]);
+ #assert cx_thread_turns_list(c[..],"")==0 && c[0].npend==0;
+ #assert cx_thread_turns_list(c[..],"thread-a")==1;
+ #assert cx_outbox(c[..])=="{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"thread/turns/list\",\"params\":{\"threadId\":\"thread-a\",\"limit\":1,\"sortDirection\":\"desc\",\"itemsView\":\"notLoaded\"}}\n";
+ #assert cx_feed(c[..],"{\"id\":2,\"result\":{\"data\":[]}}").kind==CxEventKind.none && c[0].npend==1;
+ ev:=cx_feed(c[..],"{\"id\":1,\"result\":{\"data\":[]}}");#assert ev.kind==CxEventKind.answered && ev.of==CX_THREAD_TURNS_LIST && ev.request_id==1 && c[0].npend==0;
+ #assert cx_feed(c[..],"{\"id\":1,\"result\":{\"data\":[]}}").kind==CxEventKind.none;
+ #assert cx_thread_turns_list(c[..],"thread-a")==2;
+ ev=cx_feed(c[..],"{\"id\":2,\"error\":{\"code\":-32601,\"message\":\"unsupported\"}}");#assert ev.kind==CxEventKind.refused && ev.of==CX_THREAD_TURNS_LIST && ev.request_id==2;
+ c[0].npend=CX_PENDING;#assert cx_thread_turns_list(c[..],"thread-a")==0;
+}
+
 #test "the requests are the JSON-RPC Zeron's harness sends" {
   c: [1] CxClient; b: [1] CxTest; cx_test_client(c[..], b[..]);
   #assert cx_initialize(c[..], "openagents-desktop", "OpenAgents", "0.1.0") == 1;

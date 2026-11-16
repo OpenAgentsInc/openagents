@@ -249,6 +249,7 @@ CxEngine :: struct {
   turn_wait: bool;                   // turn/start went unanswered
   pend: int;                         // a user part waiting to go, or -1
   stop_due: bool;                    // Stop came before the turn had an id: interrupt once it has one
+  stop_query:int;stop_deadline:int;stop_next:int; // bounded saved-turn reconciliation, seconds
   model: int; effort: int;           // chosen (the catalog's model and level)
   access: int;                       // ACC_* (the screen's, shared with the other engines)
   plan: bool; plan_used: bool;       // plan mode; it was on once (each turn then names its mode)
@@ -403,6 +404,7 @@ cxe_send_as :: (x: [] CxEngine, s: [] Session, shown: string, text: string) {
 cxe_forward :: (x: [] CxEngine, s: [] Session, k: int) { if x.count < 1 { return; } x[0].prompt_n = e_set(x[0].prompt, 0, s_text_of(s, k)); cxe_go(x, s, k); }
 cxe_go :: (x: [] CxEngine, s: [] Session, k: int) {
   x[0].stop_due = false; x[0].held_n = 0; x[0].streamed_n = 0; x[0].rs_have = false;
+  x[0].stop_query=0;x[0].stop_deadline=0;x[0].stop_next=0;
   if !x[0].on && !x[0].running { x[0].delivered += 1; return; }   // the checks: no process
   x[0].pend = k;
   if !x[0].settled && x[0].on { return; }        // cxe_pump starts it once the probe is done
@@ -652,15 +654,19 @@ cxe_item :: (x: [] CxEngine, s: [] Session, ar: [] ClArena, done: bool, item: st
 // its error, a failure without one (the held error), or done (a held error
 // then stands alone).
 cxe_turn_done :: (x: [] CxEngine, s: [] Session, ar: [] ClArena, params: string) {
-  status := cl_str(ar, params, "turn.status");
-  e := cl_at(params, "turn.error");
+  cxe_turn_record(x,s,ar,cl_raw(params,"turn"));
+}
+cxe_turn_record :: (x: [] CxEngine, s: [] Session, ar: [] ClArena, turn: string) {
+  status := cl_str(ar, turn, "status");
+  e := cl_at(turn, "error");
   outcome:=cxe_result_outcome(status,e.ok && e.tok==JSON_OBJECT);
   held := cx_str(x[0].held, x[0].held_n);
   x[0].turn_n = 0; x[0].turn_wait = false; x[0].streamed_n = 0; x[0].rs_have = false;
+  x[0].stop_query=0;x[0].stop_deadline=0;x[0].stop_next=0;
   if status == "interrupted" { s[0].stopping = true; x[0].held_n=0;s_turn_known(s,S_END_CANCELED,"");return; }
   if e.ok && e.tok == JSON_OBJECT {
     buf: [2048] u8;
-    text := codex_error_text(buf[..], ar, cl_json(params, e), x[0].lim[0], zr_now(x));
+    text := codex_error_text(buf[..], ar, cl_json(turn, e), x[0].lim[0], zr_now(x));
     x[0].held_n = 0;
     s_turn_known(s, S_END_FAILED, text);
     return;
@@ -723,11 +729,17 @@ cxe_note :: (x: [] CxEngine, s: [] Session, ar: [] ClArena, method: string, para
     x[0].held_n = e_set(x[0].held, 0, text);
     return;
   }
-  // after an interrupt the server only says the thread is idle (0.163: no turn/completed)
-  if method == "thread/status/changed" && s[0].stopping && cl_str(ar, params, "status.type") == "idle" {
-    x[0].turn_n = 0; x[0].turn_wait = false;
-    s_turn_known(s, S_END_UNKNOWN, "");
-  }
+  // An idle thread is not a receipt for this turn. Stop's bounded read
+  // reconciles its original identity, including a completion racing Stop.
+}
+
+cxe_stop_read_at :: (x:[]CxEngine,s:[]Session,now:int) {
+ if !s[0].live || !s[0].stopping {return;}
+ if x[0].stop_deadline==0 {x[0].stop_deadline=now+20;}
+ if now>=x[0].stop_deadline {x[0].turn_n=0;x[0].stop_query=0;s_turn_known(s,S_END_UNKNOWN,"Codex did not confirm this turn's outcome after Stop.");return;}
+ if x[0].stop_query!=0 || now<x[0].stop_next || x[0].turn_n==0 {return;}
+ x[0].stop_query=cx_thread_turns_list(x[0].c[..],cx_str(x[0].tid[..],x[0].tid_n));
+ x[0].stop_next=now+1;
 }
 
 // One event from the client. Whether the pump must wait (an approval asks the person).
@@ -753,9 +765,13 @@ cxe_event :: (x: [] CxEngine, s: [] Session, ev: CxEvent) -> bool {
       return false;
     }
     if ev.of == CX_TURN_INTERRUPT {
-      // The empty acknowledgement alone cannot distinguish interruption
-      // from a completion racing Stop. Keep that uncertainty as an outcome.
-      if s[0].live && s[0].stopping { x[0].turn_n = 0; s_turn_known(s, S_END_UNKNOWN, ""); } // mutant: equivalent (S_END_UNKNOWN + 1 is normalized back to S_END_UNKNOWN by s_turn_known)
+      return false;
+    }
+    if ev.of==CX_THREAD_TURNS_LIST {
+      if x[0].stop_query==0 || ev.request_id!=x[0].stop_query || !s[0].live || !s[0].stopping {return false;}
+      x[0].stop_query=0;
+      turn:=cx_saved_turn(ev.result,cx_str(x[0].turn[..],x[0].turn_n));
+      if turn.count>0 && cl_str(ar,turn,"status")!="inProgress" {cxe_turn_record(x,s,ar,turn);}
       return false;
     }
     return false;
@@ -763,6 +779,7 @@ cxe_event :: (x: [] CxEngine, s: [] Session, ev: CxEvent) -> bool {
   if ev.kind == CxEventKind.refused {
     if ev.of == CX_MODEL_LIST {if x[0].strict_models {cdmp_fail(x[0].model_pages[..]);x[0].catalog_refused=true;}return false;}
     if ev.of == CX_TURN_INTERRUPT { return false; }
+    if ev.of==CX_THREAD_TURNS_LIST {if ev.request_id==x[0].stop_query {x[0].stop_query=0;}return false;}
     if ev.of == CX_THREAD_RESUME {
       // the thread is gone (another Codex home, say): a new one
       x[0].thread_wait = false; x[0].tid_n = 0;
@@ -841,6 +858,7 @@ cxe_pump :: (x: [] CxEngine, e: [] Engine, s: [] Session) {
 // asks the person (the desktop app's approvals). An owner's approvals and tool calls come back
 // unanswered: they are its own (cxe_approve, cxe_tool_answer). Never blocks.
 cxe_poll :: (x: [] CxEngine, s: [] Session, ev: [] CxEvent) -> bool {
+  cxe_stop_read_at(x,s,zr_now(x));
   ev[0] = cx_poll(x[0].c[..], x[0].p[..], 0);
   return cxe_take(x, s, ev[0]);
 }
@@ -909,11 +927,34 @@ cxe_set_model :: (x: [] CxEngine, m: int) { if x.count > 0 && m >= 0 && m < x[0]
  s_user(s[..],"b");s[0].stopping=true;_ = cxe_take(x[..],s[..],CxEvent.{kind=CxEventKind.end});#assert s[0].outcome==S_END_UNKNOWN;
  s_user(s[..],"c");s_turn_known(s[..],S_END_SUCCESS,"");_ = cxe_take(x[..],s[..],CxEvent.{kind=CxEventKind.end});#assert s[0].outcome==S_END_SUCCESS;
 }
-#test "Codex an idle notification or interrupt acknowledgement keeps uncertain outcome and foreign threads cannot settle this turn" {
+#test "Codex Stop acknowledgements retain the live turn until an authoritative receipt" {
  x:[1]CxEngine;x[0].tid_n=e_set(x[0].tid[..],0,"thread-a");s:[1]Session;pool:[2048]u8;arena:[2048]u8;ar:=[1]ClArena.[ClArena.{buf=arena[..]}];s_init(s[..],pool[..]);
  s_user(s[..],"a");s[0].stopping=true;cxe_note(x[..],s[..],ar[..],"thread/status/changed","{\"threadId\":\"other\",\"status\":{\"type\":\"idle\"}}");#assert s[0].live && s[0].outcome==S_END_NONE;
- cxe_note(x[..],s[..],ar[..],"thread/status/changed","{\"threadId\":\"thread-a\",\"status\":{\"type\":\"idle\"}}");#assert !s[0].live && s[0].outcome==S_END_UNKNOWN;
- s_user(s[..],"b");s[0].stopping=true;_ = cxe_event(x[..],s[..],CxEvent.{kind=CxEventKind.answered,of=CX_TURN_INTERRUPT});#assert s[0].outcome==S_END_UNKNOWN;
+ cxe_note(x[..],s[..],ar[..],"thread/status/changed","{\"threadId\":\"thread-a\",\"status\":{\"type\":\"idle\"}}");#assert s[0].live && s[0].outcome==S_END_NONE;
+ _ = cxe_event(x[..],s[..],CxEvent.{kind=CxEventKind.answered,of=CX_TURN_INTERRUPT});#assert s[0].live && s[0].outcome==S_END_NONE;
+}
+
+#test "Codex Stop reads the same turn and preserves a completion race" {
+ for status:[3]string.["interrupted","completed","failed"] {
+  x:[1]CxEngine;s:[1]Session;pool:[4096]u8;arena:[4096]u8;out:[4096]u8;line:[8]u8;s_init(s[..],pool[..]);cx_init(x[0].c[..],line[..],arena[..],out[..]);
+  x[0].tid_n=e_set(x[0].tid[..],0,"thread-a");x[0].turn_n=e_set(x[0].turn[..],0,"turn-a");s_user(s[..],"a");s[0].stopping=true;
+  cxe_stop_read_at(x[..],s[..],100);#assert x[0].stop_query==1 && x[0].stop_deadline==120 && x[0].stop_next==101 && s[0].live;
+  cxe_stop_read_at(x[..],s[..],101);#assert x[0].c[0].npend==1;
+  raw:[512]u8;o:[1]Jo;jo_start(o[..],raw[..]);jo_put(o[..],"{\"id\":1,\"result\":{\"data\":[{\"id\":\"turn-a\",\"items\":[],\"status\":");jo_str(o[..],status);jo_put(o[..],"}]}}");
+  _=cxe_event(x[..],s[..],cx_feed(x[0].c[..],jo_text(o[..])));
+  #assert !s[0].live && s[0].outcome==cxe_result_outcome(status,false) && x[0].turn_n==0 && x[0].stop_query==0 && x[0].stop_deadline==0;
+ }
+}
+#test "Codex Stop refuses foreign late malformed and nonterminal receipts then bounds uncertainty" {
+ x:[1]CxEngine;s:[1]Session;pool:[4096]u8;arena:[4096]u8;out:[4096]u8;line:[8]u8;s_init(s[..],pool[..]);cx_init(x[0].c[..],line[..],arena[..],out[..]);
+ x[0].tid_n=e_set(x[0].tid[..],0,"thread-a");x[0].turn_n=e_set(x[0].turn[..],0,"turn-a");s_user(s[..],"a");s[0].stopping=true;cxe_stop_read_at(x[..],s[..],100);
+ _=cxe_event(x[..],s[..],CxEvent.{kind=CxEventKind.answered,of=CX_THREAD_TURNS_LIST,request_id=99,result="{}"});#assert x[0].stop_query==1 && s[0].live;
+ for result:[3]string.["{\"data\":[{\"id\":\"other\",\"items\":[],\"status\":\"interrupted\"}]}","{}","{\"data\":[{\"id\":\"turn-a\",\"items\":[],\"status\":\"inProgress\"}]}"] {
+  id:=x[0].stop_query;_=cxe_event(x[..],s[..],CxEvent.{kind=CxEventKind.answered,of=CX_THREAD_TURNS_LIST,request_id=id,result=result});#assert s[0].live && x[0].stop_query==0 && x[0].turn_n==6;
+  now:=x[0].stop_next;cxe_stop_read_at(x[..],s[..],now-1);#assert x[0].stop_query==0;cxe_stop_read_at(x[..],s[..],now);#assert x[0].stop_query>id && x[0].stop_deadline==120;
+ }
+ cxe_stop_read_at(x[..],s[..],119);#assert s[0].live;cxe_stop_read_at(x[..],s[..],120);#assert !s[0].live && s[0].outcome==S_END_UNKNOWN && x[0].stop_query==0;
+ cxe_stop_read_at(x[..],s[..],121);#assert s[0].outcome==S_END_UNKNOWN;
 }
 
 // Feeds recorded lines to an engine with no process, as cxe_pump would.
@@ -1038,8 +1079,8 @@ cxe_test_engine :: (x: [] CxEngine, b: [] CxeTest) {
  #assert !cxe_event(x[..],s[..],CxEvent.{kind=CxEventKind.answered,of=CX_OTHER}) && !cxe_event(x[..],s[..],CxEvent.{kind=CxEventKind.none});
  for method:[2]int.[CX_MODEL_LIST,CX_TURN_INTERRUPT] {x[0].strict_models=false;x[0].thread_wait=true;x[0].turn_wait=true;#assert !cxe_event(x[..],s[..],CxEvent.{kind=CxEventKind.refused,of=method}) && x[0].thread_wait && x[0].turn_wait && !x[0].catalog_refused;}
  for facts:0..<4 {s_init(s[..],pool[..]);s[0].live=(facts&1)!=0;s[0].stopping=(facts&2)!=0;x[0].turn_n=4;
-  #assert !cxe_event(x[..],s[..],CxEvent.{kind=CxEventKind.answered,of=CX_TURN_INTERRUPT}) && x[0].turn_n==ifx facts==3 then 0 else 4;
-  #assert s[0].outcome==ifx facts==3 then S_END_UNKNOWN else S_END_NONE;
+  #assert !cxe_event(x[..],s[..],CxEvent.{kind=CxEventKind.answered,of=CX_TURN_INTERRUPT}) && x[0].turn_n==4;
+  #assert s[0].outcome==S_END_NONE;
  }
  for live:0..<2 {s_init(s[..],pool[..]);s[0].live=live==1;s[0].stopping=false;x[0].thread_wait=true;x[0].turn_wait=true;x[0].pend=0;
   #assert !cxe_event(x[..],s[..],CxEvent.{kind=CxEventKind.refused,of=CX_TURN_START,message="rejected"}) && !x[0].thread_wait && !x[0].turn_wait && x[0].pend== -1 && !s[0].live;
