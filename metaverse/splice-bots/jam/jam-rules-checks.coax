@@ -1,0 +1,121 @@
+// The jam's rules on the game (jam-rules.coax, jam-farm.coax; #13653), on a small catalog written here: the
+// farm with a player start, two pickups, two charge points and two Imperial stand-ins, named as the jam's are.
+// No game content is in it; the real pack's runs are metaverse/splice-bots/tools/jam-run-check.coax's.
+// splice-game.coax loads this file with `#load ... #test;`.
+//   coax/bin/coax test metaverse/splice-bots/splice-bots.coax --only "jam rules"
+SJR_CATALOG :: "world 1 jam-rules-test\ntitle Jam rules test\nmap 0 /Game/SpliceBots/World/Maps/L_SolarFarm\nmat 0 0.5 0.5 0.5 1 -1 0\nM s0 0 36 0 -0.5 -0.5 -0.5 0.5 0.5 0.5\nspawn 0 -800 0 -105 3.1415927\nfall 0 -50\nP 0 0 0 -13 -2 0 0 0 1 -790 0 -105 1 1 1 SpliceFarmPickup_1/Mesh\nP 0 0 0 -13 -2 0 0 0 1 -790 0 -115 1 1 1 SpliceFarmPickup_2/Mesh\nP 0 0 0 -13 -2 0 0 0 1 -810 0 -105 1 1 1 SpliceFarmChargePoint_1/Post\nP 0 0 0 -13 -2 0 0 0 1 -780 0 -125 1 1 1 SpliceFarmChargePoint_2/Post\nP 0 0 0 -13 -2 0 0 0 1 -800 0 -95 1 2 1 SpliceImperialStandIn_1/Body\nP 0 0 0 -13 -2 0 0 0 1 -800 0 -85 1 2 1 SpliceImperialStandIn_2/Body\n";
+
+// A run in the test farm, in play at its player start (Digger beside her).
+sjr_start :: (g: [] SpGame, s: [] SjStore) {
+  #assert sj_load(s, SJR_CATALOG);
+  g_reset(g); if g[0].layer[0].st[0].n == 0 { _ := spw_shipped(g); }
+  sj_bind(g, s); g_reset(g);
+  #assert g_key(g, -2, true) && g_key(g, -2, true) && g[0].mode == M_PLAY && sjx_on(g);
+}
+sjr_at :: (g: [] SpGame, x: f32, z: f32, deg: f32) { g[0].px = x; g[0].pz = z; g[0].yaw = deg * PI / 180; g_step(g, 0.02); }
+sjr_steps :: (g: [] SpGame, secs: f32) { for i: 0..<cast(int) (secs / 0.02) { g_step(g, 0.02); } }
+sjr_click :: (g: [] SpGame) -> bool { r := g_pointer(g, 640, 360, 0); _ := g_pointer(g, 640, 360, 2); return r; }
+
+#test "jam rules: her walk, sneak, sprint and jump are the jam's in the jam world" #steps 2000000000 #traversal 1000000000 {
+  s := [1] SjStore.[SjStore.{}]; g := [1] SpGame.[SpGame.{}];
+  sjr_start(g[..], s[..]);
+  t: SrWalkTuning;
+  sjr_at(g[..], -760, -160, 0); g[0].dr[0].st = Stance.{};
+  _ := g_key(g[..], 'w', true); sjr_steps(g[..], 1); speed := g[0].fl[0].speed; _ = g_key(g[..], 'w', false);
+  #assert abs(speed - 6.9) < 0.05 && abs(sjx_walk_speed(g[..]) - t.walk_speed) < 0.001;
+  g[0].dr[0].st = stance_sneak(g[0].dr[0].st, true); #assert abs(sjx_walk_speed(g[..]) - 2.52) < 0.01;
+  g[0].dr[0].st = Stance.{}; g[0].dr[0].st = stance_hold(g[0].dr[0].st, true); #assert abs(sjx_walk_speed(g[..]) - 6.9 * 1.5) < 0.01;
+  g[0].dr[0].st = Stance.{};
+  // a jump: 10.6 m/s up under 32 m/s^2 tops out near 1.67 m, and comes down sooner than it went up
+  sjr_at(g[..], -760, -160, 0); sjr_steps(g[..], 0.2);
+  _ = g_key(g[..], ' ', true); top := 0.0f32; up := 0; down := 0; rising := true; last := 0.0f32;
+  for i: 0..<100 { g_step(g[..], 0.02); y := g_feet_y(g[..]); if y > top { top = y; } if y < last { rising = false; } if g_airborne(g[..]) { if rising { up += 1; } else { down += 1; } } last = y; }
+  _ = g_key(g[..], ' ', false);
+  #assert top > 1.6 && top < 1.8 && down < up;
+  // the board: the jam's speeds and ollie
+  b := sjx_board_tune(false); #assert abs(b.walk - 22) < 0.01 && abs(b.gallop - 40) < 0.01 && abs(b.jump_v - 6.5) < 0.01;
+}
+#test "jam rules: the prototype's world keeps the prototype's walk and jump" #steps 1000000000 {
+  g := [1] SpGame.[SpGame.{}]; g_reset(g[..]);
+  #assert !sjx_on(g[..]) && sjx_walk_speed(g[..]) == T_WALK * d_pace(g[..]) && fl_loc_of(g[..]).jump_speed == FL_JUMP && fl_loc_of(g[..]).fall_gravity_scale == 1;
+  #assert sjx_feel(g[..]).accel == FL_ACCEL;
+}
+#test "jam rules: pickups go into her 9 + 27 inventory, a charge point gives a battery and regrows in 180 s" #steps 2000000000 #traversal 1000000000 {
+  s := [1] SjStore.[SjStore.{}]; g := [1] SpGame.[SpGame.{}];
+  sjr_start(g[..], s[..]);
+  x := g[0].jx[0];
+  #assert x.inv[0].main[0].size == SR_HOTBAR_SLOTS + SR_GRID_SLOTS && x.chest[0].size == SR_CHEST_SLOTS && x.pick_n == 2 && x.charge_n == 2 && x.bot_n == 2;
+  // Digger's sensor takes the near pickup; the far one waits until she walks to it
+  g[0].bot = false; sjr_at(g[..], -791, -105, 90);
+  #assert sjx_count(g[..], ITEM_SCRAP_PART) == 1 && g[0].jx[0].pick_taken[0] && !g[0].jx[0].pick_taken[1] && g[0].jr[0].actors[g[0].jx[0].pick_actor[0]].hidden;
+  // the charge point west of her: a left click takes its battery; a second waits; 180 s later it is there again
+  sjr_at(g[..], -808, -105, -90);
+  #assert sjr_click(g[..]) && sjx_count(g[..], ITEM_BATTERY) == 1 && g[0].jx[0].said == SJX_BATTERY;
+  #assert sjr_click(g[..]) && sjx_count(g[..], ITEM_BATTERY) == 1 && g[0].jx[0].said == SJX_NOT_READY;
+  sjr_steps(g[..], 181);
+  #assert sjr_click(g[..]) && sjx_count(g[..], ITEM_BATTERY) == 2;
+  // 2 on the hotbar picks its second slot
+  _ := g_key(g[..], '2', true); _ = g_key(g[..], '2', false); #assert g[0].jx[0].inv[0].selected == 1;
+}
+#test "jam rules: the farm robot is beaten, harvested with a 1 s hold, and a core takes the other; her crew follows, stays and is fed" #steps 4000000000 #traversal 2000000000 {
+  s := [1] SjStore.[SjStore.{}]; g := [1] SpGame.[SpGame.{}];
+  sjr_start(g[..], s[..]);
+  g[0].bot = false; sjx_heat(g[..]);   // the crew is the robots she takes (Digger counts once he is with her)
+  // the first robot, north of her: idle until hit, 12 hits to bring it down (0.35 s apart)
+  sjr_at(g[..], -800, -97.5, 0);
+  b0 := g[0].jx[0].bots[0]; #assert !b0.hostile && b0.robot.state.health == SJX_FARM_HP;
+  hits := 0;
+  for i: 0..<40 { if g[0].jx[0].bots[0].robot.powered_down { break; } _ := sjr_click(g[..]); sjr_steps(g[..], 0.4); hits += 1; g[0].px = -800; g[0].pz = -97.5; }
+  #assert g[0].jx[0].bots[0].robot.powered_down && hits == 12;
+  // a click alone does not harvest it; held a second, it does: its core, 3 Imperial parts, and it is gone
+  #assert sjr_click(g[..]) && !g[0].jx[0].bots[0].harvested;
+  #assert g_pointer(g[..], 640, 360, 0); sjr_steps(g[..], 1.1); _ := g_pointer(g[..], 640, 360, 2);
+  #assert g[0].jx[0].bots[0].harvested && sjx_count(g[..], ITEM_SMALL_CORE) == 1 && sjx_count(g[..], ITEM_IMPERIAL_PART) == 3 && sjx_count(g[..], ITEM_BANNED_PIECE) == 0;
+  #assert g[0].jr[0].actors[g[0].jx[0].bots[0].actor].hidden && g[0].jx[0].harvests == 1;
+  // the second: brought to 0, then E with the core held takes it: hers at 20 % of 20
+  g[0].jx[0].bots[1].robot.state.health = 1;
+  sjr_at(g[..], -800, -87.5, 0);
+  _ = sjr_click(g[..]); #assert g[0].jx[0].bots[1].robot.powered_down;
+  #assert sjx_hold(g[..], ITEM_SMALL_CORE) && g_key(g[..], 'e', true);
+  b1 := g[0].jx[0].bots[1];
+  #assert b1.robot.owner == SR_OWNER_HER;
+  #assert !b1.robot.powered_down;
+  #assert abs(b1.robot.state.health - 4) < 0.001;
+  #assert sjx_count(g[..], ITEM_SMALL_CORE) == 1;   // her core in, its own popped out (sr_take_control)
+  #assert sjx_crew(g[..]) == 1;
+  // she walks off south: it follows into its slot beside her
+  sjr_at(g[..], -800, -110, 180); sjr_steps(g[..], 4);
+  b1 = g[0].jx[0].bots[1]; #assert dist2(b1.x, b1.z, g[0].px, g[0].pz) < 2.5;
+  // G: it stays where it is while she walks on; G again and it follows
+  _ = g_key(g[..], 'g', true); #assert g[0].jx[0].bots[1].robot.mode == SR_MODE_STAY && g[0].jx[0].dig_stay;
+  at_x := g[0].jx[0].bots[1].x; at_z := g[0].jx[0].bots[1].z;
+  sjr_at(g[..], -800, -125, 180); sjr_steps(g[..], 2);
+  #assert dist2(g[0].jx[0].bots[1].x, g[0].jx[0].bots[1].z, at_x, at_z) < 0.01;
+  _ = g_key(g[..], 'g', true); sjr_steps(g[..], 4);
+  #assert g[0].jx[0].bots[1].robot.mode == SR_MODE_FOLLOW && dist2(g[0].jx[0].bots[1].x, g[0].jx[0].bots[1].z, g[0].px, g[0].pz) < 2.5;
+  // a battery from the far charge point feeds it 40 % of 20
+  sjr_at(g[..], -780, -123, 180);
+  #assert g[0].mode == M_PLAY;
+  #assert abs(g[0].px + 780) < 0.3 && abs(g[0].pz + 123) < 0.3;
+  #assert sjx_target(g[..], SJX_ATTACK_REACH, false).kind == SJX_T_CHARGE;
+  _ = sjr_click(g[..]); #assert sjx_count(g[..], ITEM_BATTERY) == 1;
+  sjr_steps(g[..], 5);   // it catches up
+  #assert sjx_hold(g[..], ITEM_BATTERY);
+  g[0].yaw = atan2(g[0].jx[0].bots[1].x - g[0].px, g[0].jx[0].bots[1].z - g[0].pz);
+  #assert sjx_target(g[..], SJX_USE_REACH, true).kind == SJX_T_BOT;
+  #assert sr_resolve_right_click(sjx_input(g[..], sjx_target(g[..], SJX_USE_REACH, true))).verb == SR_VERB_FEED;
+  #assert g_key(g[..], 'e', true);
+  #assert abs(g[0].jx[0].bots[1].robot.state.health - 12) < 0.001;
+  #assert sjx_count(g[..], ITEM_BATTERY) == 0 && g[0].jx[0].said == SJX_FED;
+}
+#test "jam rules: Heat's levels come from what she carries: Low below 4, Medium to 7, High from 8" #steps 1000000000 #traversal 1000000000 {
+  s := [1] SjStore.[SjStore.{}]; g := [1] SpGame.[SpGame.{}];
+  sjr_start(g[..], s[..]);
+  #assert g[0].jx[0].heat == 1 && g[0].jx[0].level == SR_HEAT_LOW;   // Digger
+  #assert sjx_give(g[..], sr_stack(ITEM_BANNED_PIECE, 1)) && sjx_give(g[..], sr_stack(ITEM_BANNED_PIECE, 1)) && sjx_give(g[..], sr_stack(ITEM_BANNED_PIECE, 1));
+  sjx_heat(g[..]); #assert g[0].jx[0].heat == 4 && g[0].jx[0].level == SR_HEAT_MEDIUM;
+  for i: 0..<4 { _ := sjx_give(g[..], sr_stack(ITEM_BANNED_PIECE, 1)); }
+  sjx_heat(g[..]); #assert g[0].jx[0].heat == 8 && g[0].jx[0].level == SR_HEAT_HIGH;
+  // the prototype's world has none of it
+  g2 := [1] SpGame.[SpGame.{}]; g_reset(g2[..]); #assert !sjx_on(g2[..]) && !sjx_pointer(g2[..], 0) && sjx_key(g2[..], 'g', true) == 0;
+}

@@ -9,6 +9,7 @@ LOCOMOTION_LIMIT :: 1000.0;
 LocomotionProfile :: struct {
   walk_speed: f32 = 3.5; run_speed: f32 = 7.5;
   gravity: f32 = 24; jump_speed: f32 = 7.5;
+  fall_gravity_scale: f32 = 1;   // gravity times this from the top of a jump on (1: the same both ways)
   acceleration: f32 = 60; turn_rate: f32 = 10;
   ride_height: f32 = 0.4; step_smooth: f32 = 10;
   slide_grip: f32 = 0.1; sink_limit: f32 = 0.05;

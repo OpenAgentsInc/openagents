@@ -1,0 +1,372 @@
+// The jam's rules for what she carries and what she does with it (GitHub #13653), on the SpliceRules port.
+// jam-rules.coax loads this file; the game calls sjx_reset, sjx_step, sjx_key, sjx_pointer and sjx_hud in
+// the jam world, and nothing here acts outside it.
+//
+//   Inventory    9 hotbar slots and a 27-slot grid (SrInventory), the cabin's chest 27 (SrContainer). 1 to 9
+//                pick the hotbar slot she holds. The jam's pickups (SpliceFarmPickup) go into it when she or
+//                Digger comes near, as the prototype's parts go to Digger.
+//   Left click   the jam's Attack (sr_resolve_left_click on what she faces): hits a robot that is not hers
+//                (1 a hit, 0.35 s apart, 3 m), takes a battery from a glowing charge point (SpliceFarmChargePoint;
+//                it regrows in 180 s), and held 1 s on a powered-down robot harvests it (sr_harvest: its core,
+//                3 Imperial parts, a banned piece every third harvest).
+//   E            the jam's Use (sr_resolve_right_click, 4.5 m) with the held item: a battery feeds her robot
+//                (+40 %), a core takes a robot at 0 (hers at 20 %, at most 3 in her crew). Else the game's E.
+//   G            her crew stays or follows (sr_crew_toggle_mode): Digger and the robots she took.
+//   Farm robot   the jam's Imperial stand-in: 12 of 20 health, idle until hit, then 1.5 m/s at her with a
+//                blow every 3.2 s within 1.6 m (a heart).
+//   Heat         Low below 4, Medium 4 to 7, High 8+ (sr_heat_sum: the banned pieces she carries, Digger).
+SJX_PICKS :: 16; SJX_CHARGES :: 16; SJX_BOTS :: 4;
+SJX_HER_HIT :: 1.0f32;          // UE-INT-08 HerHitDamage
+SJX_HIT_COOL :: 0.35f32;        // s between her hits
+SJX_ATTACK_REACH :: 3.0f32;     // m: SpliceAim AttackReachMetres
+SJX_USE_REACH :: 4.5f32;        // m: SpliceAim UseReachMetres
+SJX_PICK_REACH :: 1.6f32;       // m: she takes a pickup this near (Digger takes one in his sensor's range)
+SJX_FARM_HP :: 12.0f32; SJX_FARM_HP_MAX :: 20.0f32;   // the sluggish farm robot: 12 of 20
+SJX_FARM_SPEED :: 1.5f32; SJX_FARM_BLOW :: 3.2f32; SJX_FARM_REACH :: 1.6f32;
+SJX_FOLLOW :: 6.5f32;           // m/s her taken robots keep up at (straight-line steering until a navmesh)
+// What the rules last said (sjx_say): a pickup, a refusal, a verb done.
+SJX_NONE :: 0; SJX_ITEM :: 1; SJX_FULL :: 2; SJX_CREW :: 3; SJX_ZERO :: 4; SJX_BATTERY :: 5; SJX_HARVESTED :: 6;
+SJX_FED :: 7; SJX_TAKEN :: 8; SJX_STAY :: 9; SJX_FOLLOWS :: 10; SJX_DOWN :: 11; SJX_NOT_READY :: 12; SJX_HIT :: 13;
+SJX_SAYS :: [14] string.["", "", "FULL", "3 ROBOTS MAX", "BRING IT TO 0 FIRST", "+1 BATTERY", "HARVESTED", "FED +40%", "TAKEN: IT'S YOURS",
+  "CREW: STAY", "CREW: FOLLOW", "POWERED DOWN: HOLD TO HARVEST", "NOT CHARGED YET", "HIT"];
+SjxBot :: struct {
+  actor: int;                 // the jam actor that draws it
+  x: f32; z: f32; y: f32; yaw: f32;
+  robot: SrSocketRobot;       // its socket: core, owner, health, powered down, mode
+  hostile: bool; harvested: bool; blow_t: f32;
+}
+SjRules :: struct {
+  ok: bool;
+  inv: [1] SrInventory;
+  chest: [1] SrContainer;
+  pick_actor: [SJX_PICKS] int; pick_item: [SJX_PICKS] string; pick_taken: [SJX_PICKS] bool; pick_n: int;
+  charge_actor: [SJX_CHARGES] int; charge: [SJX_CHARGES] SrChargePoint; charge_n: int;
+  bots: [SJX_BOTS] SjxBot; bot_n: int;
+  harvests: int;              // robots harvested so far (a banned piece every third)
+  down: bool; held: f32; hold_bot: int = -1;   // the left button: down, for how long, the robot a harvest is held on
+  hit_t: f32 = 1;             // s since her last hit
+  dig_stay: bool;             // Digger stays (G)
+  heat: int; level: int;      // the jam's Heat and its level
+  said: int; said_item: string; said_t: f32;
+}
+
+// The item table the rules read: the slice's items, their categories and stacks (UE-STOW-01: parts 64,
+// batteries 16, everything else one to a slot).
+sjx_defs :: () -> SrItemDefs {
+  d := [1] SrItemDefs.[SrItemDefs.{}];
+  parts := [3] string.[ITEM_SCRAP_PART, ITEM_IMPERIAL_PART, ITEM_RAIDER_MECH_PART];
+  for p: parts { _ := sr_defs_add(d[..], sr_def(p, SR_CAT_PART, 64)); }
+  _ = sr_defs_add(d[..], sr_def(ITEM_DRILL_HARDWARE, SR_CAT_PART, 1));
+  _ = sr_defs_add(d[..], sr_def(ITEM_BANNED_PIECE, SR_CAT_PART, 1)); d[0].rows[d[0].n - 1].banned = true;
+  _ = sr_defs_add(d[..], sr_def(ITEM_BATTERY, SR_CAT_CONSUMABLE, 16));
+  cores := [3] string.[ITEM_SMALL_CORE, ITEM_LARGE_CORE, ITEM_EXPERIMENTAL_CORE];
+  for c: cores { _ = sr_defs_add(d[..], sr_def(c, SR_CAT_CORE, 1)); }
+  cards := [3] string.[ITEM_DRILL_CARD, ITEM_JUMP_CARD, ITEM_SENSOR_CARD];
+  for c: cards { _ = sr_defs_add(d[..], sr_def(c, SR_CAT_CARD, 1)); }
+  bodies := [5] string.[ITEM_BODY_DIGGER, ITEM_BODY_DRILL_MECH, ITEM_BODY_DINOSAUR, ITEM_BODY_IMPERIAL_ROBOT, ITEM_BODY_MICRODUCK];
+  for b: bodies { _ = sr_defs_add(d[..], sr_def(b, SR_CAT_ROBOT_BODY, 1)); }
+  _ = sr_defs_add(d[..], sr_def(ITEM_HOVERBOARD, SR_CAT_TOOL, 1));
+  _ = sr_defs_add(d[..], sr_def(ITEM_JETPACK, SR_CAT_TOOL, 1));
+  return d[0];
+}
+// An item id as the HUD names it: ITEM_SCRAP_PART is SCRAP PART.
+sjx_item_name :: (id: string, buf: [] u8) -> string {
+  from := ifx id.count > 5 && id[0..<5] == "ITEM_" then 5 else 0; n := 0;
+  for i: from..<id.count { if n >= buf.count { break; } buf[n] = ifx id[i] == '_' then cast(u8) ' ' else id[i]; n += 1; }
+  return cast(string) buf[0..<n];
+}
+
+// A run's rules from the jam world's actors (at g_reset and sj_bind): the farm's pickups, charge points and
+// Imperial robot. Off outside the jam world.
+sjx_reset :: (g: [] SpGame) {
+  x := g[0].jx[..]; x[0] = SjRules.{};
+  if !g[0].jam { return; }
+  x[0].ok = true;
+  x[0].inv[0] = sr_make_inventory(); x[0].inv[0].defs = sjx_defs();
+  x[0].chest[0] = sr_make_container(SR_CHEST_SLOTS);
+  j := g[0].jr[..];
+  for i: 0..<j[0].n {
+    a := j[0].actors[i];
+    if a.route != SJ_FARM { continue; }
+    if a.kind == SJ_PICKUP && x[0].pick_n < SJX_PICKS { k := x[0].pick_n; x[0].pick_actor[k] = i; x[0].pick_item[k] = ITEM_SCRAP_PART; x[0].pick_n += 1; sj_actor_reset(j, i); }
+    if a.kind == SJ_CHARGE && x[0].charge_n < SJX_CHARGES { k := x[0].charge_n; x[0].charge_actor[k] = i; x[0].charge[k] = SrChargePoint.{}; x[0].charge_n += 1; }
+    if a.kind == SJ_IMPERIAL && x[0].bot_n < SJX_BOTS {
+      b: SjxBot; b.actor = i; b.x = a.x; b.z = a.z; b.y = a.y; b.yaw = a.yaw;
+      b.robot.state.robot_id = ROBOT_IMPERIAL; b.robot.state.health = SJX_FARM_HP; b.robot.state.health_max = SJX_FARM_HP_MAX;
+      b.robot.state.has_core = true; b.robot.state.core = sr_stack(ITEM_SMALL_CORE, 1); b.robot.owner = SR_OWNER_OTHER;
+      x[0].bots[x[0].bot_n] = b; x[0].bot_n += 1;
+    }
+  }
+  sjx_heat(g);
+}
+sjx_on :: (g: [] SpGame) -> bool { return g[0].jam && g[0].jx[0].ok; }
+sjx_say :: (g: [] SpGame, what: int, item: string) { g[0].jx[0].said = what; g[0].jx[0].said_item = item; g[0].jx[0].said_t = 2.5; }
+// What she holds: the hotbar slot picked, and what is in it.
+sjx_held :: (g: [] SpGame) -> SrItemStack { x := g[0].jx[0]; return x.inv[0].main[0].slots[x.inv[0].selected]; }
+sjx_count :: (g: [] SpGame, id: string) -> int {
+  c := g[0].jx[0].inv[0].main[0]; n := 0;
+  for k: 0..<c.size { if c.slots[k].item == id { n += c.slots[k].count; } }
+  return n;
+}
+// Items into her inventory (the hotbar first, then the grid): false, and FULL said, when they do not fit.
+sjx_give :: (g: [] SpGame, s: SrStack) -> bool {
+  x := g[0].jx[..]; d := x[0].inv[0].defs;
+  r := sr_inv_add(d, x[0].inv[0].main[..], sr_item_of(s));
+  if !r.ok { sjx_say(g, SJX_FULL, s.item); return false; }
+  sjx_say(g, SJX_ITEM, s.item); return true;
+}
+// One of the held stack spent (a battery fed, a core put in).
+sjx_spend_held :: (g: [] SpGame) {
+  x := g[0].jx[..]; k := x[0].inv[0].selected;
+  x[0].inv[0].main[0].slots[k].count -= 1;
+  if x[0].inv[0].main[0].slots[k].count <= 0 { x[0].inv[0].main[0].slots[k] = SrItemStack.{}; }
+}
+// Picks the hotbar slot holding an item (the run checks', and a click on the hotbar's).
+sjx_hold :: (g: [] SpGame, id: string) -> bool {
+  for k: 0..<SR_HOTBAR_SLOTS { if g[0].jx[0].inv[0].main[0].slots[k].item == id { g[0].jx[0].inv[0].selected = k; return true; } }
+  return false;
+}
+// Her live robots with cores: Digger (when he is with her) and the robots she took.
+sjx_crew :: (g: [] SpGame) -> int {
+  x := g[0].jx[0]; n := ifx g[0].bot then 1 else 0;
+  for i: 0..<x.bot_n { b := x.bots[i]; if b.robot.owner == SR_OWNER_HER && sr_socket_awake(b.robot) && !b.harvested { n += 1; } }
+  return n;
+}
+sjx_heat :: (g: [] SpGame) {
+  x := g[0].jx[..];
+  x[0].heat = sr_heat_sum(SrHeatInputs.{banned_pieces = sjx_count(g, ITEM_BANNED_PIECE), diggers = ifx g[0].bot then 1 else 0});
+  x[0].level = sr_heat_level(x[0].heat);
+}
+
+// ---- what she faces: the nearest target in reach, what she looks at first
+SJX_T_NONE :: 0; SJX_T_BOT :: 1; SJX_T_CHARGE :: 2; SJX_T_DIGGER :: 3;
+SjxTarget :: struct { kind: int; i: int = -1; facts: SrTargetFacts; }
+sjx_score :: (g: [] SpGame, tx: f32, tz: f32, reach: f32) -> f32 {
+  d := dist2(g[0].px, g[0].pz, tx, tz);
+  if d > reach { return 1e9; }
+  y := g[0].yaw; f := ifx d > 0.01 then (sin(y) * (tx - g[0].px) + cos(y) * (tz - g[0].pz)) / d else 1.0f32;
+  return d - f * 1.5;
+}
+sjx_bot_facts :: (b: SjxBot) -> SrTargetFacts {
+  hers := b.robot.owner == SR_OWNER_HER;
+  return SrTargetFacts.{has_target = true, is_robot = true, is_hers = hers, awake = sr_socket_awake(b.robot), powered_down = b.robot.powered_down,
+    has_core = sr_socket_has_core(b.robot), energy_full = b.robot.state.health >= b.robot.state.health_max, counted_in_crew = hers && sr_socket_awake(b.robot)};
+}
+sjx_target :: (g: [] SpGame, reach: f32, use: bool) -> SjxTarget {
+  x := g[0].jx[..]; best := SjxTarget.{}; bs := 1e8f32;
+  for i: 0..<x[0].bot_n {
+    b := x[0].bots[i];
+    if b.harvested || (!use && b.robot.owner == SR_OWNER_HER && sr_socket_awake(b.robot)) { continue; }   // a left click never acts on her live robots
+    s := sjx_score(g, b.x, b.z, reach);
+    if s < bs { bs = s; best = SjxTarget.{kind = SJX_T_BOT, i = i, facts = sjx_bot_facts(b)}; }
+  }
+  if !use {
+    for i: 0..<x[0].charge_n {
+      a := g[0].jr[0].actors[x[0].charge_actor[i]];
+      s := sjx_score(g, a.x, a.z, reach);
+      if s < bs { bs = s; best = SjxTarget.{kind = SJX_T_CHARGE, i = i, facts = SrTargetFacts.{has_target = true, harvestable_ready = sr_charge_ready(x[0].charge[i])}}; }
+    }
+  } else if g[0].bot {
+    s := sjx_score(g, g[0].bot_x, g[0].bot_z, reach);
+    hp := g[0].dr[0].hp;
+    if s < bs { bs = s; best = SjxTarget.{kind = SJX_T_DIGGER, facts = SrTargetFacts.{has_target = true, is_robot = true, is_hers = true, awake = !hp.down,
+      powered_down = hp.down, has_core = true, energy_full = hp.hp >= hp.most, counted_in_crew = true}}; }
+  }
+  return best;
+}
+sjx_input :: (g: [] SpGame, t: SjxTarget) -> SrClickInput {
+  held := sjx_held(g); k := sr_defs_find(g[0].jx[0].inv[0].defs, held.item);
+  return SrClickInput.{held = held, held_category = ifx k >= 0 then g[0].jx[0].inv[0].defs.rows[k].category else -1, target = t.facts, crew_count = sjx_crew(g)};
+}
+
+// ---- the clicks
+// The left button (the jam's Attack): down acts at once, or starts a hold the step finishes; up lets go.
+sjx_left :: (g: [] SpGame, down: bool) -> bool {
+  x := g[0].jx[..];
+  x[0].down = down; x[0].held = 0; x[0].hold_bot = -1;
+  if !down { return false; }
+  return sjx_attack(g, 0);
+}
+sjx_attack :: (g: [] SpGame, held: f32) -> bool {
+  x := g[0].jx[..];
+  t := sjx_target(g, SJX_ATTACK_REACH, false);
+  if t.kind == SJX_T_NONE { return false; }
+  if t.kind == SJX_T_CHARGE && !sr_charge_ready(x[0].charge[t.i]) { sjx_say(g, SJX_NOT_READY, ITEM_BATTERY); return true; }   // a dark charge point: not yet
+  in := sjx_input(g, t); a := sr_resolve_left_click(in);
+  if !a.yes { return false; }
+  safety := sr_click_safety(in, a);
+  if safety.hold_seconds > held { x[0].hold_bot = ifx t.kind == SJX_T_BOT then t.i else -1; return true; }   // held on: the step finishes it
+  if a.verb == SR_VERB_HARVEST && t.kind == SJX_T_CHARGE {
+    p := x[0].charge[t.i..<t.i + 1];
+    if !sr_charge_ready(p[0]) { sjx_say(g, SJX_NOT_READY, ITEM_BATTERY); return true; }
+    if !sr_inv_can_add(x[0].inv[0].defs, x[0].inv[0].main[0], sr_item(ITEM_BATTERY, 1)) { sjx_say(g, SJX_FULL, ITEM_BATTERY); return true; }
+    h := sr_charge_harvest(p);
+    _ := sjx_give(g, sr_stack_of(h.battery)); sjx_say(g, SJX_BATTERY, ITEM_BATTERY);
+    return true;
+  }
+  if a.verb == SR_VERB_HARVEST && t.kind == SJX_T_BOT {
+    b := x[0].bots[t.i];
+    r := sr_harvest(SrHarvestInput.{robot = b.robot, already_harvested = b.harvested, held_seconds = held, prior_harvests = x[0].harvests});
+    if !sr_harvest_ok(r) { return false; }
+    for k: 0..<r.n { _ := sjx_give(g, r.drops[k]); }
+    x[0].bots[t.i].harvested = true; x[0].harvests += 1; x[0].hold_bot = -1; x[0].down = false;
+    sj_actor_set(g[0].jr[..], b.actor, false, b.x, b.y, b.z, 0);
+    sjx_say(g, SJX_HARVESTED, ""); sjx_heat(g);
+    return true;
+  }
+  if a.verb == SR_VERB_ATTACK && t.kind == SJX_T_BOT {
+    if x[0].hit_t < SJX_HIT_COOL { return true; }
+    x[0].hit_t = 0;
+    b := x[0].bots[t.i..<t.i + 1];
+    v := sr_apply_damage(SrVitals.{health = b[0].robot.state.health, health_max = b[0].robot.state.health_max}, SJX_HER_HIT);
+    b[0].robot.state.health = v.health; b[0].robot.powered_down = v.powered_down; b[0].hostile = !v.powered_down;
+    sjx_say(g, ifx v.powered_down then SJX_DOWN else SJX_HIT, "");
+    return true;
+  }
+  return false;
+}
+// E (the jam's Use) with what she holds: true when the rules took it; else the game's E goes on.
+sjx_use :: (g: [] SpGame) -> bool {
+  x := g[0].jx[..];
+  t := sjx_target(g, SJX_USE_REACH, true);
+  if t.kind == SJX_T_NONE || t.kind == SJX_T_CHARGE { return false; }
+  in := sjx_input(g, t); a := sr_resolve_right_click(in);
+  if !a.yes {
+    if a.refusal == SR_REFUSE_FULL { sjx_say(g, SJX_FULL, ""); return true; }
+    if a.refusal == SR_REFUSE_CREW_LIMIT { sjx_say(g, SJX_CREW, ""); return true; }
+    if a.refusal == SR_REFUSE_BRING_TO_ZERO_FIRST { sjx_say(g, SJX_ZERO, ""); return true; }
+    return false;
+  }
+  if a.verb == SR_VERB_FEED {
+    if t.kind == SJX_T_DIGGER {
+      v := [1] SrVitals.[SrVitals.{health = g[0].dr[0].hp.hp, health_max = g[0].dr[0].hp.most}];
+      if sr_try_feed_battery(v[..], SR_DEFAULT_BATTERY_HEALTH_SHARE) != SR_FEED_FED { return false; }
+      g[0].dr[0].hp.hp = v[0].health;
+    } else {
+      b := x[0].bots[t.i..<t.i + 1];
+      v := [1] SrVitals.[SrVitals.{health = b[0].robot.state.health, health_max = b[0].robot.state.health_max}];
+      if sr_try_feed_battery(v[..], SR_DEFAULT_BATTERY_HEALTH_SHARE) != SR_FEED_FED { return false; }
+      b[0].robot.state.health = v[0].health;
+    }
+    sjx_spend_held(g); sjx_say(g, SJX_FED, ""); return true;
+  }
+  if a.verb == SR_VERB_CORE_IN && t.kind == SJX_T_BOT {
+    b := x[0].bots[t.i];
+    r := sr_take_control(b.robot, sr_stack_of(sjx_held(g)), sjx_crew(g), false, SR_DEFAULT_TAKE_WAKE_SHARE);
+    if !r.ok { sjx_say(g, ifx r.refusal == SR_REFUSE_CREW_LIMIT then SJX_CREW else SJX_ZERO, ""); return true; }
+    sjx_spend_held(g);
+    if !sr_stack_empty(r.popped_core) { _ := sjx_give(g, r.popped_core); }
+    x[0].bots[t.i].robot = r.robot; x[0].bots[t.i].hostile = false;
+    x[0].bots[t.i].robot.mode = ifx x[0].dig_stay then SR_MODE_STAY else SR_MODE_FOLLOW;
+    sjx_say(g, SJX_TAKEN, ""); sjx_heat(g); return true;
+  }
+  return false;
+}
+// G: her whole crew stays, or follows again.
+sjx_crew_key :: (g: [] SpGame) {
+  x := g[0].jx[..];
+  modes: [SJX_BOTS + 1] int; n := 0;
+  if g[0].bot { modes[n] = ifx x[0].dig_stay then SR_MODE_STAY else SR_MODE_FOLLOW; n += 1; }
+  for i: 0..<x[0].bot_n { b := x[0].bots[i]; if b.robot.owner == SR_OWNER_HER && !b.harvested { modes[n] = b.robot.mode; n += 1; } }
+  if n == 0 { return; }
+  to := sr_crew_toggle_mode(modes[0..<n]);
+  x[0].dig_stay = to == SR_MODE_STAY;
+  for i: 0..<x[0].bot_n { if x[0].bots[i].robot.owner == SR_OWNER_HER { x[0].bots[i].robot.mode = to; } }
+  sjx_say(g, ifx to == SR_MODE_STAY then SJX_STAY else SJX_FOLLOWS, "");
+}
+// The jam's keys, before the game's: 1 to 9 hold a hotbar slot (and go on to the game's), E uses, G the
+// crew. 1: taken; 0: not the jam's, the game goes on.
+sjx_key :: (g: [] SpGame, key: int, down: bool) -> int {
+  if !sjx_on(g) || g[0].mode != M_PLAY { return 0; }
+  if down && key >= '1' && key <= '9' { g[0].jx[0].inv[0].selected = key - '1'; return 0; }
+  if down && (key == 'e' || key == 'E') && sjx_use(g) { return 1; }
+  if down && (key == 'g' || key == 'G') { sjx_crew_key(g); return 1; }
+  return 0;
+}
+// The pointer in play: the left button is the jam's Attack when a target answers (else it points Digger).
+sjx_pointer :: (g: [] SpGame, phase: int) -> bool {
+  if !sjx_on(g) || g[0].mode != M_PLAY || d_cursor(g) || g[0].dr[0].map || g[0].look_free { return false; }
+  if phase == 0 { return sjx_left(g, true); }
+  if phase == 2 || phase == 3 { _ := sjx_left(g, false); }
+  return false;
+}
+
+// ---- each step in play
+sjx_step :: (g: [] SpGame, dt: f32) {
+  if g[0].jam && !g[0].jx[0].ok { sjx_reset(g); }   // a page that bound the jam world after the run began
+  if !sjx_on(g) { return; }
+  x := g[0].jx[..];
+  x[0].hit_t += dt;
+  if x[0].said_t > 0 { x[0].said_t -= dt; if x[0].said_t <= 0 { x[0].said = SJX_NONE; } }
+  for i: 0..<x[0].charge_n { sr_charge_tick(x[0].charge[i..<i + 1], dt); }
+  // the left button held on a powered-down robot: the harvest after 1 s on it
+  if x[0].down && x[0].hold_bot >= 0 {
+    x[0].held += dt;
+    t := sjx_target(g, SJX_ATTACK_REACH, false);
+    if t.kind != SJX_T_BOT || t.i != x[0].hold_bot { x[0].hold_bot = -1; x[0].held = 0; }
+    else if x[0].held >= SR_CLICK_HOLD_HARVEST_ROBOT_SECONDS { _ := sjx_attack(g, x[0].held); }
+  }
+  // the pickups: hers when she or Digger comes near
+  if g[0].zone == Z_MINE {
+    for i: 0..<x[0].pick_n {
+      if x[0].pick_taken[i] { continue; }
+      a := g[0].jr[0].actors[x[0].pick_actor[i]];
+      near := dist2(g[0].px, g[0].pz, a.x, a.z) < SJX_PICK_REACH || (g[0].bot && !d_down(g) && dist2(g[0].bot_x, g[0].bot_z, a.x, a.z) < d_range(g));
+      if !near { continue; }
+      if sjx_give(g, sr_stack(x[0].pick_item[i], 1)) { x[0].pick_taken[i] = true; sj_actor_set(g[0].jr[..], x[0].pick_actor[i], false, a.x, a.y, a.z, 0); }
+    }
+  }
+  // the robots: a hit farm robot comes at her; hers follow in their formation slots (Digger has slot 0)
+  slot := ifx g[0].bot then 1 else 0;
+  y := g[0].yaw; her := d3(cast(f64) g[0].px, cast(f64) g[0].pz, 0.0); fwd := d3(cast(f64) sin(y), cast(f64) cos(y), 0.0);
+  for i: 0..<x[0].bot_n {
+    b := x[0].bots[i..<i + 1];
+    if b[0].harvested { continue; }
+    if b[0].robot.owner == SR_OWNER_HER {
+      if b[0].robot.mode == SR_MODE_FOLLOW && slot < SR_MAX_FOLLOWERS {
+        to := sr_follower_slot_position(her, fwd, slot);
+        at := sr_steer_step(d3(cast(f64) b[0].x, cast(f64) b[0].z, 0.0), to, cast(f64) hi(SJX_FOLLOW, g[0].fl[0].speed), cast(f64) dt, 0.1);
+        if dist2(b[0].x, b[0].z, cast(f32) at.x, cast(f32) at.y) > 0.001 { b[0].yaw = atan2(cast(f32) at.x - b[0].x, cast(f32) at.y - b[0].z); }
+        b[0].x = cast(f32) at.x; b[0].z = cast(f32) at.y;
+        slot += 1;
+      }
+    } else if b[0].hostile && !b[0].robot.powered_down {
+      d := dist2(b[0].x, b[0].z, g[0].px, g[0].pz);
+      b[0].yaw = atan2(g[0].px - b[0].x, g[0].pz - b[0].z);
+      if d > SJX_FARM_REACH { k := lo(1, SJX_FARM_SPEED * dt / d); b[0].x += (g[0].px - b[0].x) * k; b[0].z += (g[0].pz - b[0].z) * k; }
+      b[0].blow_t += dt;
+      if b[0].blow_t >= SJX_FARM_BLOW { b[0].blow_t = 0; if d <= SJX_FARM_REACH + 0.3 { g_hurt(g); } }
+    }
+    a := g[0].jr[0].actors[b[0].actor];
+    sj_actor_set(g[0].jr[..], b[0].actor, true, b[0].x, a.y, b[0].z, b[0].yaw - a.yaw);
+  }
+  sjx_heat(g);
+}
+
+// ---- the HUD: the hotbar at the bottom, Heat's level at the top left, what she faces and what was said
+SJX_LEVELS :: [3] string.["HEAT LOW", "HEAT MEDIUM", "HEAT HIGH"];
+sjx_hud :: (g: [] SpGame, out: [] f32, at: int, q: Ui) -> int {
+  if !sjx_on(g) || g[0].mode != M_PLAY { return at; }
+  n := at; k := q.k; x := g[0].jx[0]; nb: [48] u8;
+  // the hotbar: 9 slots, the held one lit, each with its item and count
+  cw := 46 * k; gap := 4 * k; w := 9 * cw + 8 * gap; x0 := q.w * 0.5 - w * 0.5; y1 := ro_safe(q.w, q.h).y1 - 80 * k; y0 := y1 - cw;
+  for i: 0..<SR_HOTBAR_SLOTS {
+    s := x.inv[0].main[0].slots[i]; cx0 := x0 + cast(f32) i * (cw + gap);
+    on := i == x.inv[0].selected;
+    n = hv_rect(out, n, cx0, y0, cx0 + cw, y1, HV_CELL(), 0.88);
+    n = hv_frame(out, n, cx0, y0, cx0 + cw, y1, (ifx on then 2.2f32 else 1.0f32) * k, ifx on then HV_ORANGE() else HV_LINE(), 1);
+    if !sr_item_empty(s) {
+      name := sjx_item_name(s.item, nb[..]);
+      n = hv_mid(out, n, F_MONO, name[0..<lo_i(name.count, 7)], cx0 + cw * 0.5, y0 + cw * 0.5, 5.5 * k, HV_CREAM(), 1);
+      if s.count > 1 { cb: [16] u8; n = hv_right(out, n, F_MONO, num(cb[..], "", s.count, ""), cx0 + cw - 4 * k, y1 - 5 * k, 6.5 * k, HV_CREAM(), 1); }
+    }
+  }
+  // Heat's level
+  n = hv_text(out, n, F_TITLE, SJX_LEVELS[x.level], ro_safe(q.w, q.h).x0, ro_safe(q.w, q.h).y0 + 70 * k, 9 * k, ifx x.level == SR_HEAT_LOW then HV_DIM() else HV_ORANGE(), 1);
+  // what the rules said, or the harvest's hold
+  line := SJX_SAYS[x.said];
+  if x.said == SJX_ITEM { line = sjx_item_name(x.said_item, nb[..]); }
+  if x.down && x.hold_bot >= 0 { line = "HARVESTING..."; }
+  if line.count > 0 && (x.said_t > 0 || x.down) { n = hv_mid(out, n, F_TITLE, line, q.w * 0.5, y0 - 14 * k, 9 * k, HV_CREAM(), 1); }
+  return n;
+}

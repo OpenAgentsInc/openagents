@@ -112,8 +112,9 @@ fl_walk :: (g: [] SpGame, go: f32, side: f32, pace: f32, dt: f32) {
   n := sqrt(wx * wx + wz * wz); amount := lo(n, 1);
   if n > 0.0001 { wx /= n; wz /= n; }
   air := g_airborne(g);
-  v := source_velocity(f[0].vx, f[0].vz, wx, wz, amount, pace, ifx air then FL_ACCEL * FL_AIR else FL_ACCEL,
-    ifx air then FL_AIR_FRICTION else FL_FRICTION, ifx air then FL_AIR_BRAKE else FL_BRAKE, 1, dt);
+  t := sjx_feel(g);   // the prototype's numbers, or the jam's (jam/jam-rules.coax)
+  v := source_velocity(f[0].vx, f[0].vz, wx, wz, amount, pace, ifx air then t.accel * t.air else t.accel,
+    ifx air then t.air_friction else t.friction, ifx air then t.air_brake else t.brake, 1, dt);
   x0 := g[0].px; z0 := g[0].pz;
   g[0].px += v.x * dt; g[0].pz += v.z * dt;
   g_collide(g);
@@ -169,6 +170,8 @@ fl_mount :: (g: [] SpGame) {
 fl_deck_y :: (g: [] SpGame) -> f32 { f := g[0].fl[0]; return f.deck * f.lift; }
 // The engine's walking numbers with hers.
 fl_loc :: () -> LocomotionProfile { loc: LocomotionProfile; loc.gravity = FL_GRAVITY; loc.jump_speed = FL_JUMP; return loc; }
+// Hers in this world: the prototype's, or in the jam world the jam's jump (jam/jam-rules.coax sjx_loc).
+fl_loc_of :: (g: [] SpGame) -> LocomotionProfile { return ifx g[0].jam then sjx_loc() else fl_loc(); }
 fl_jump_tune :: (j: [] Jump) { j[0].air_jumps = 1; j[0].cut = FL_CUT; j[0].coyote = FL_COYOTE; j[0].buffer = FL_BUFFER; }
 // After the jump's step: the takeoff, the second jump and the landing, for her pose and squash.
 fl_after_jump :: (g: [] SpGame, dt: f32) {

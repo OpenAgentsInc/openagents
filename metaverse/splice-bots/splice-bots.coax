@@ -511,7 +511,7 @@ splice_frame :: (s: [] Splice, out: [] f32, u: [] f32, width: f32, height: f32, 
 }
 splice_key :: (s: [] Splice, key: int, down: bool) -> bool #export_c #effects(all) {
   if s[0].gallery { return false; }
-  if down && (key == 'g' || key == 'G') { s[0].game[0].gray = !s[0].game[0].gray; return true; }   // graybox, in any mode
+  if down && (key == 'g' || key == 'G') && !sjx_on(s[0].game[..]) { s[0].game[0].gray = !s[0].game[0].gray; return true; }   // graybox, in any mode; in the jam world G is her crew's (jam/jam-farm.coax)
   if !s[0].started { return false; }
   // hands off: the keys fly the camera (W S A D, Q down, E up) or do nothing
   if s[0].edit && !vp_hands(s[0].vp[..]) {

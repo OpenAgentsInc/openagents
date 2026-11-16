@@ -1,0 +1,44 @@
+// The jam build's rules on the game (GitHub #13653; docs/unreal/2026-11-16-splice-bots-jam-port-plan.md, item 4):
+// in the jam world (g[0].jam) the game plays by the SpliceRules port (rules/) wherever the jam's numbers or
+// rules differ from the prototype's. The prototype's own world (/worlds/splice-bots) keeps its numbers.
+//
+//   Her walk     6.9 m/s, sprint x1.5, sneak 2.52 m/s, the 15 Nov playtest's acceleration (SrWalkTuning)
+//   Her jump     10.6 m/s, gravity 32 rising and x1.25 from the top, the double jump x1.15 (the engine's
+//                jump with LocomotionProfile.fall_gravity_scale)
+//   The board    22 m/s casual, 40 sprinting, a slow build of 5 m/s^2, the ollie 6.5 m/s (SrBoardTuning)
+//
+//   coax/bin/coax test metaverse/splice-bots/splice-bots.coax --only "jam rules"
+#load "../rules/rules-lib.coax";
+
+// ---- How she moves
+// The walk's numbers fl_walk steps her with (feel.coax).
+SjxFeel :: struct { accel: f32; air: f32; friction: f32; brake: f32; air_friction: f32; air_brake: f32; }
+sjx_feel :: (g: [] SpGame) -> SjxFeel {
+  if !g[0].jam { return SjxFeel.{accel = FL_ACCEL, air = FL_AIR, friction = FL_FRICTION, brake = FL_BRAKE, air_friction = FL_AIR_FRICTION, air_brake = FL_AIR_BRAKE}; }
+  t: SrWalkTuning;
+  return SjxFeel.{accel = t.accel, air = t.air, friction = t.friction, brake = t.brake, air_friction = t.air_friction, air_brake = t.air_brake};
+}
+// Her speed on foot now: walking, sneaking (Left Shift) or sprinting (Z, or W W).
+sjx_walk_speed :: (g: [] SpGame) -> f32 {
+  if !g[0].jam { return T_WALK * d_pace(g); }
+  t: SrWalkTuning; st := g[0].dr[0].st;
+  pace := ifx st.sneak then t.sneak_pace else ifx stance_fast(st) then t.sprint_pace else 1.0f32;
+  return t.walk_speed * pace;
+}
+// The jam's jump, as the engine's jump steps it.
+sjx_loc :: () -> LocomotionProfile {
+  t: SrWalkTuning; loc: LocomotionProfile;
+  loc.gravity = t.gravity; loc.jump_speed = t.jump_speed; loc.fall_gravity_scale = t.fall_gravity_scale;
+  return loc;
+}
+// The jam's board: casual and sprint speeds, its slow build and the ollie. Q Q's super fast is the sprint
+// speed times the engine's BOARD_SUPER, as in the prototype.
+sjx_board_tune :: (super: bool) -> MountTune {
+  b: SrBoardTuning;
+  fast := cast(int) (b.sprint_speed * 100);
+  m := board_tune(cast(int) (b.casual_speed * 100), ifx super then board_super_cms(fast) else fast);
+  m.accel = cast(f32) b.accel; m.brake = cast(f32) b.brake; m.jump_v = cast(f32) b.hop_speed; m.gravity = cast(f32) b.gravity;
+  return m;
+}
+
+#load "jam-farm.coax";   // what she carries and does with it: the inventory, clicks, charge points, the farm robot, her crew, Heat

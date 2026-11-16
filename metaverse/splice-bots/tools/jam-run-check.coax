@@ -7,7 +7,9 @@
 //     stood in for by placing her);
 //   - from the farm's player start to Sniper with real keys (the mouse turns, W walks), against the
 //     jam's own colliders;
-//   - from the garage's door to the boss's fall with real keys (sp_keys_play), against them too.
+//   - from the garage's door to the boss's fall with real keys (sp_keys_play), against them too;
+//   - the jam's farm rules with real keys and clicks (jrc_farm_rules, jam/jam-farm.coax): a battery from a
+//     charge point, the farm robot hit down and harvested with a held click.
 //
 //   coax/web/tool.sh metaverse/splice-bots/tools/jam-run-check.coax PACK
 //
@@ -22,6 +24,54 @@
 
 
 jrc_line :: (what: string, r: int) { print("%: % %\n", what, r, ifx r == 0 then "(pass)" else "(failed at that beat)"); }
+
+// ---- the jam's farm rules (jam/jam-farm.coax), with the keys and the mouse: walk to the nearest charge point
+// and click it for a battery, walk to the farm's Imperial robot, click it down, hold the click to harvest it.
+// 0 is a pass, else the beat that failed.
+jrc_walk :: (g: [] SpGame, tx: f32, tz: f32, near: f32, secs: f32) -> bool {
+  // straight at it, hopping the solar lines in the way as a player does (Space held 0.3 s of every 0.6 s)
+  k := [1] SpKeys.[SpKeys.{}];
+  for i: 0..<cast(int) (secs / 0.05) {
+    _ := g_key(g, ' ', i % 12 < 6);
+    _ = sp_keys_toward(g, k[..], tx, tz, 0.05);
+    if dist2(g[0].px, g[0].pz, tx, tz) < near { break; }
+  }
+  sp_keys_free(g); _ := g_key(g, ' ', false); for i: 0..<40 { g_step(g, 0.02); }   // let go, and land
+  g_look(g, -angle_wrap(ro_bearing(g[0].px, g[0].pz, tx, tz) - g[0].yaw) / T_LOOK, 0);   // face it with the mouse
+  return dist2(g[0].px, g[0].pz, tx, tz) < near + 0.5;
+}
+jrc_click :: (g: [] SpGame, hold: f32) -> bool {
+  r := g_pointer(g, 640, 360, 0);
+  for i: 0..<cast(int) (hold / 0.02) { g_step(g, 0.02); }
+  _ := g_pointer(g, 640, 360, 2); g_step(g, 0.02);
+  return r;
+}
+jrc_farm_rules :: (g: [] SpGame) -> int {
+  g_reset(g);
+  if !(g_key(g, -2, true) && g_key(g, -2, true) && g[0].mode == M_PLAY && sjx_on(g)) { return 1; }
+  x := g[0].jx[0];
+  if x.charge_n == 0 || x.bot_n == 0 { return 2; }
+  // the nearest charge point: a click, a battery
+  best := 0; bd := 1e9f32;
+  for i: 0..<x.charge_n { a := g[0].jr[0].actors[x.charge_actor[i]]; d := dist2(g[0].px, g[0].pz, a.x, a.z); if d < bd { bd = d; best = i; } }
+  c := g[0].jr[0].actors[x.charge_actor[best]];
+  if !jrc_walk(g, c.x, c.z, 1.8, 90) { print("  she stopped at (%, %); the charge point is at (%, %)\n", g[0].px, g[0].pz, c.x, c.z); return 3; }
+  if !(jrc_click(g, 0.1) && sjx_count(g, ITEM_BATTERY) == 1) { return 4; }
+  // the farm robot: clicked down (her hits, 0.35 s apart), then a held click harvests it
+  for tries: 0..<60 {
+    b := g[0].jx[0].bots[0];
+    if b.robot.powered_down { break; }
+    if !jrc_walk(g, b.x, b.z, 2.6, 60) { print("  she stopped at (%, %); the robot is at (%, %); mode %, look_free %, paused %, feet %\n", g[0].px, g[0].pz, b.x, b.z, g[0].mode, g[0].look_free, g[0].dr[0].paused, g_feet_y(g)); return 5; }
+    _ := jrc_click(g, 0.4);
+  }
+  b := g[0].jx[0].bots[0];
+  if !b.robot.powered_down { return 6; }
+  if !jrc_walk(g, b.x, b.z, 2.6, 30) { return 7; }
+  _ := jrc_click(g, 1.2);
+  if !(g[0].jx[0].bots[0].harvested && sjx_count(g, ITEM_SMALL_CORE) == 1 && sjx_count(g, ITEM_IMPERIAL_PART) == 3) { return 8; }
+  print("  her hotbar: % scrap, % battery, % core, % Imperial parts; Heat %\n", sjx_count(g, ITEM_SCRAP_PART), sjx_count(g, ITEM_BATTERY), sjx_count(g, ITEM_SMALL_CORE), sjx_count(g, ITEM_IMPERIAL_PART), g[0].jx[0].heat);
+  return 0;
+}
 
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
@@ -63,5 +113,7 @@ tool_main :: () -> int #export_c #effects(all) {
   jrc_line("the garage's door to the boss with the keys", r);
   if r != 0 { print("  she stopped at (%, %), zone %\n", g[0].px, g[0].pz, g[0].zone); }
   failed = failed || r != 0;
+  // the jam's farm rules with the keys and the mouse
+  r = jrc_farm_rules(g[..]); jrc_line("the farm's rules: a charge point, the farm robot down and harvested", r); failed = failed || r != 0;
   return ifx failed then 1 else 0;
 }

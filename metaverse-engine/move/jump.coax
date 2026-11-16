@@ -42,7 +42,7 @@ jump_settle :: (loc: LocomotionProfile, y: f32, vy: f32, on_ground: bool, ground
     }
   }
   if out.falls {
-    out.vy -= loc.gravity * dt;
+    out.vy -= (ifx vy > 0 then loc.gravity else loc.gravity * loc.fall_gravity_scale) * dt;   // heavier from the top on, when a realm asks
     out.on_ground = false;
   }
   return out;
@@ -124,6 +124,16 @@ jt_top :: (air: int, second: int) -> f32 #effects(all) {
     if j.y > top { top = j.y; }
   }
   return top;
+}
+#test "a realm's falling gravity: a scale over 1 brings a jump down sooner and leaves its top where it was" {
+  loc: LocomotionProfile; heavy := loc; heavy.fall_gravity_scale = 1.25;
+  a := jump_press(jump_place(0), true); b := a; top_a := 0.0f32; top_b := 0.0f32; air_a := 0; air_b := 0;
+  for i: 0..<200 {
+    a = jump_step(a, loc, 0, 1.0f32 / 64); b = jump_step(b, heavy, 0, 1.0f32 / 64);
+    top_a = quality_hi(top_a, a.y); top_b = quality_hi(top_b, b.y);
+    if !a.on_ground { air_a += 1; } if !b.on_ground { air_b += 1; }
+  }
+  #assert top_a - top_b < 0.001 && top_b - top_a < 0.001 && air_b < air_a && a.on_ground && b.on_ground;
 }
 #test "a double jump: with one air jump, a second press in the air goes higher than one jump; without it, nothing; landing gives it back" {
   loc: LocomotionProfile;

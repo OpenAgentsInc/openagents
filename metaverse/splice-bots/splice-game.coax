@@ -32,7 +32,9 @@
 #load "director.coax";             // the Director's keys, Digger's pickups, the inventory, Heat's sensing and health (#13505)
 #load "sound.coax";                // the sound table and the moments each sound plays (#13505)
 #load "jam/jam-world.coax";         // the jam build's world: the imported levels' landmarks and colliders (#13653)
+#load "jam/jam-rules.coax";         // the jam build's rules on the game, in the jam world (#13653)
 #load "jam/jam-checks.coax" #test;
+#load "jam/jam-rules-checks.coax" #test;
 #load "sound-checks.coax" #test;
 #load "layer-checks.coax" #test;   // the colliders' and the layer's checks
 #load "walk-checks.coax" #test;
@@ -119,6 +121,7 @@ SpGame :: struct {
   jam: bool;                  // the jam build's world (jam/jam-world.coax, #13653): the imported levels stand for the drawn world; outlives a reset
   jw: [SJ_MAPS] Colliders; jw_open: [SJ_MAPS] Colliders; jw_on: [SJ_MAPS] bool; jw_n: int;   // and its route maps' colliders, over the page's store (sj_bind); outlive a reset
   jr: [1] SjJam;              // and its route: the maps, their starts and the game actors (sj_read); outlives a reset
+  jx: [1] SjRules;            // the jam's rules in the jam world: her inventory, the charge points, the farm robot, her crew, Heat (jam/jam-farm.coax)
   mode: int; zone: int; phase: int; t: f32;
   px: f32; pz: f32; yaw: f32; pitch: f32; stride: f32;
   face_off: f32;               // her body's turn from the view's yaw: she turns to face the way she walks (g_face)
@@ -348,6 +351,7 @@ g_reset :: (g: [] SpGame) {
   g_foes(g);
   g[0].bot = true; g_bot_home(g);   // Digger is with her from the first step (director.coax)
   sb_reset(g);
+  sjx_reset(g);   // the jam's rules, in the jam world (jam/jam-farm.coax)
 }
 g_say :: (g: [] SpGame, m: int) { g[0].msg = m; g[0].msg_t = 3.5; g_event(g, m); }
 // The Digger beside you: where it stands when it is not at work.
@@ -370,6 +374,7 @@ g_begin :: (g: [] SpGame) {
   // a world that starts past the rail starts with the rail's Battery: the edit bay needs it for Digger's cut
   g[0].have[H_BATTERY] = true; g[0].taken[H_BATTERY] = true;
   _ = sj_begin(g);   // the jam world starts at the farm's player start (jam/jam-world.coax)
+  sjx_reset(g);      // and a new run's jam rules: an empty inventory, the farm's pickups and robot (jam/jam-farm.coax)
   g_foes(g); g_keep(g);
 }
 // Stand at (x, z) metres facing `deg` degrees, the Digger beside you.
@@ -475,6 +480,7 @@ d_apart_step :: (g: [] SpGame, tx: f32, tz: f32, speed: f32, dt: f32) -> f32 {
   return left;
 }
 g_bot :: (g: [] SpGame, dt: f32) {
+  if g[0].jam && g[0].jx[0].dig_stay && g[0].bot_state == BOT_FOLLOW && !d_busy(g) { return; }   // G: he stays (jam/jam-farm.coax)
   if !g[0].bot || (d_busy(g) && g[0].bot_state == BOT_FOLLOW) { return; }   // on an errand of his own, or powered down (director.coax)
   if sb_holds_digger(g) { return; }   // his core is in the drill mech, or he is fielded in a battle (splice-battle.coax)
   face := ifx g[0].bot_wall then g[0].at.wall_z + 1 else g[0].at.rubble_z + 1;
@@ -573,7 +579,7 @@ g_walk :: (g: [] SpGame, dt: f32) {
   go := (ifx g[0].fwd then 1.0f32 else 0.0f32) - (ifx g[0].back then 1.0f32 else 0.0f32);
   side := (ifx g[0].right then 1.0f32 else 0.0f32) - (ifx g[0].left then 1.0f32 else 0.0f32);
   g[0].yaw += turn * T_TURN * dt;
-  fl_walk(g, go, side, T_WALK * d_pace(g), dt);   // feel.coax
+  fl_walk(g, go, side, sjx_walk_speed(g), dt);   // feel.coax; her speed, the jam's in the jam world (jam/jam-rules.coax)
 }
 // Which way her body faces: the view's yaw turned by the way she last walked.
 g_face :: (g: [] SpGame) -> f32 { return ifx g_riding(g) then g[0].yaw else g[0].yaw + g[0].face_off; }
@@ -582,6 +588,7 @@ g_face :: (g: [] SpGame) -> f32 { return ifx g_riding(g) then g[0].yaw else g[0]
 // W and S speed up and slow, A and D carve, Space hops.
 // The engine's board (metaverse-engine/action/hoverboard.coax) steps it; Splice Bots' own colliders push it.
 g_board_tune :: (g: [] SpGame) -> MountTune {
+  if g[0].jam { return sjx_board_tune(g[0].dr[0].super); }   // the jam's board (jam/jam-rules.coax)
   b := g[0].c[0].board;
   return board_tune(b.casual, ifx g[0].dr[0].super then board_super_cms(b.fast) else b.fast);   // a double tap of Q: super fast (director.coax)
 }
@@ -646,7 +653,7 @@ g_jump :: (g: [] SpGame, dt: f32) {
   c := Colliders.{ground = gr, floors = floors[0..<sl_floors(g, x, z, floors[..]) * STAND_FLOATS]};
   under := query_stand_checked(c, x, z, j[0].y, T_RADIUS);
   fl_jump_tune(j);   // a second Space in the air jumps higher (#13505 playtest), coyote time and a press buffer (feel.coax)
-  j[0] = jump_advance(j[0], fl_loc(), ifx under.status == QueryStatus.ok then hi(gr, under.y) else gr, dt);
+  j[0] = jump_advance(j[0], fl_loc_of(g), ifx under.status == QueryStatus.ok then hi(gr, under.y) else gr, dt);
   // standing: on the floor exactly (the catwalk's ramps), not eased onto it
   if j[0].on_ground && under.status == QueryStatus.ok { j[0].y = hi(gr, under.y); }
   if j[0].on_ground { g[0].air_from = j[0].y; }
@@ -708,6 +715,7 @@ g_step :: (g: [] SpGame, dt: f32) {
   // the party: each foe keeps its plan for the time of day (content.coax plans, metaverse-engine/ai/plan.coax).
   // As shipped, raiders dance where they stand and fight only if you hit them; Imperial robots patrol,
   // notice you (from further at higher Heat), chase, and give up at the catwalk or far away
+  sjx_step(g, dt);   // the jam's rules: pickups, charge points, the farm robot, her crew (jam/jam-farm.coax)
   g_foes_step(g, dt);
   d_post(g, dt);   // Heat's floor, and Digger's own errands (director.coax)
   g_bot(g, dt);
@@ -869,6 +877,7 @@ g_key :: (g: [] SpGame, key: int, down: bool) -> bool {
   if fr_front(g) { return down && fr_key(g, key); }   // the title, creation and credits screens (front.coax)
   if sb_ride_key(g, key, down) { return true; }   // on the drive: E battles the raider mech, 1 to 4 are Sniper's cards (splice-battle.coax)
   if g[0].mode == M_DRIVE { return dv_key(g, key, down); }   // W: faster; Space or Enter: there now, unless the raider mech is on her (drive.coax)
+  if sjx_key(g, key, down) == 1 { return true; }   // the jam's keys in the jam world: the hotbar, E's uses, G (jam/jam-farm.coax)
   mine := d_key(g, key, down);   // the Director's keys first: Shift, Q, I, M, Esc, 1 to 4 (director.coax)
   if mine >= 0 { return mine == 1; }
   if key == 'w' || key == 'W' || key == -6 { g[0].fwd = down; return true; }
@@ -930,6 +939,7 @@ g_blur :: (g: [] SpGame) {
 in_box :: (b: [] f32, o: int, x: f32, y: f32) -> bool { return x >= b[o] && x <= b[o + 2] && y >= b[o + 1] && y <= b[o + 3]; }
 g_pointer ::(g: [] SpGame, x: f32, y: f32, phase: int) -> bool {
   if fr_front(g) { return fr_pointer(g, x, y, phase); }
+  if sjx_pointer(g, phase) { return true; }   // the jam's left click: hit, harvest, a charge point (jam/jam-farm.coax)
   if d_pointer(g, x, y, phase) { return true; }   // pause, the grid, and pointing Digger (director.coax)
   if g[0].mode == M_BAY {
     // drag a part or a card from its list onto the timeline; a click with no drag places it too

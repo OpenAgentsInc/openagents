@@ -5,54 +5,7 @@
 // import bundle; tools/data-check.coax checks the rules against them. What is ported and what is left
 // is on #13653.
 //   coax/bin/coax test metaverse/splice-bots/rules/rules.coax
-#load "item-types.coax";
-#load "robot-types.coax";
-#load "robot-payload.coax";
-#load "event-tags.coax";
-#load "recipes.coax";
-#load "inventory.coax";
-#load "run-save.coax";
-#load "checkpoint.coax";
-#load "run-stats.coax";
-#load "formation.coax";
-#load "vitals.coax";
-#load "card-effects.coax";
-#load "companion.coax";
-#load "heat.coax";
-#load "splice.coax";
-#load "charge-point.coax";
-#load "recharge.coax";
-#load "core-socket.coax";
-#load "harvest.coax";
-#load "click-rules.coax";
-#load "time-of-day.coax";
-#load "flow.coax";
-#load "music.coax";
-#load "beat.coax";
-#load "sight.coax";
-#load "exit-tuning.coax";
-#load "night-exit.coax";
-#load "core-reader.coax";
-#load "rock-wall.coax";
-#load "jetpack.coax";
-#load "card-queue.coax";
-#load "enemy-plan.coax";
-#load "drill-mech.coax";
-#load "hardpoints.coax";
-#load "walk.coax";
-#load "anim-state.coax";
-#load "boss.coax";
-#load "gait.coax";
-#load "trail.coax";
-#load "board.coax";
-#load "cab.coax";
-#load "robot-pose.coax";
-#load "ride.coax";
-#load "tracks.coax";
-#load "aim.coax";
-#load "chase.coax";
-#load "camera-boom.coax";
-#load "drive-camera.coax";
+#load "rules-lib.coax";
 
 #load "data-checks.coax" #test;
 #load "robot-payload-checks.coax" #test;
