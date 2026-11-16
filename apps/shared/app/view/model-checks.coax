@@ -51,6 +51,12 @@ view_test_kinds :: (vm: [] ViewModel, kinds: [] int) -> bool {
   view_build(t[0].vm[..], t[0].d[..], ViewFacts.{});
   #assert t[0].vm[0].n == 0 && !t[0].vm[0].empty && t[0].vm[0].rejoining;
 }
+#test "a conversation whose read failed shows the note with Reconnect, not the banner over it" #steps 2000000000 {
+  t: [1] ViewTestChat;
+  t[0].d[0].id_n = el_copy(t[0].d[0].id[..], VIEW_T_CNV);
+  view_build(t[0].vm[..], t[0].d[..], ViewFacts.{note = "We could not read this chat. We will try again."});
+  #assert !t[0].vm[0].rejoining && !t[0].vm[0].empty && view_find(t[0].vm[..], "chat.note") >= 0;
+}
 #test "saved messages come in order under stable ids, and a streaming answer follows the turn's message" #steps 2000000000 {
   t: [1] ViewTestChat; view_test_open(t[..]); view_test_turn(t[..], CT_RUNNING, "Working on");
   vm := t[0].vm[..];

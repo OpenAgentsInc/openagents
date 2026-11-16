@@ -109,6 +109,16 @@ ckt_login :: (c: [] AppCore) -> bool {
   n := app_host_keep(c, buf[..]); #assert cast(string) buf[0..<n] == "cnv_0123456789abcdef0123456789abcdef";
   op := app_host_next(c); #assert ckt_kind(c, op) == FX_HTTP && ckt_field(c, op, APP_HOST_METHOD) == UP_GET;
 }
+#test "the kept conversation stays kept while the login state is not known yet" {
+  buf: [4096] u8;
+  a: [1] AppCore; c := a[..];
+  #assert app_host_init(c) && app_host_launch(c, 1, 1, "cnv_0123456789abcdef0123456789abcdef") == APP_OK && app_conversation(c) == "";
+  // the host keeps app_host_keep whenever it changes: an app ended now must still reopen the conversation
+  n := app_host_keep(c, buf[..]); #assert cast(string) buf[0..<n] == "cnv_0123456789abcdef0123456789abcdef";
+  // logged out at launch, it waits for the login and stays kept; a log out forgets it
+  #assert ckt_answer(c, 2, false, 0, "", "", 0) == FX_AUTH_STATE && c[0].auth == AUTH_OUT;
+  n = app_host_keep(c, buf[..]); #assert cast(string) buf[0..<n] == "cnv_0123456789abcdef0123456789abcdef";
+}
 #test "closing login fences a verify in flight so its late result cannot log in" {
   a: [1] AppCore; c := a[..];
   #assert app_host_init(c) && app_host_launch(c, 1, 1, "") == APP_OK && ckt_answer(c, 2, false, 0, "", "", 0) == FX_AUTH_STATE;

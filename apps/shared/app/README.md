@@ -23,7 +23,7 @@ and rejoin after relaunch.
 1. The phone pairs with your computer as its own NIP-HOST device: `openagents-environment pair --workspace DIR` prints an `openagents://pair?` link with a one-time code, and opening it on the phone asks to pair.
 2. The phone's secp256k1 key is made once and kept in the Keychain (this device only, never synced); the 7-day grant sits beside it. Neither enters Coax, the outbox or a log.
 3. Every request and reply is sealed, opened and checked in `device/seal.coax`; Swift (`native/AppDeviceLink.swift`) only holds the key and moves bytes over the relay's WebSocket.
-4. The device lane (`device/lane.coax`) drives the environment runtime (`DescribeEnvironment` … `StopTurn`) with the same EnvironmentApp reducer, and keeps "host TAB session" for rejoin.
+4. The device lane (`device/lane.coax`) drives the environment runtime (`DescribeEnvironment` … `StopTurn`) with the same EnvironmentApp reducer, and keeps "host TAB session" for rejoin. After every event it lets the reducer schedule its next read, so a read that got no answer is sent again by itself; a write with an unknown outcome never is. The lane is part of the core: check it through `core/core.coax` or `device/lane-check.coax`, not on its own.
 5. Login gates only Default (where we choose); a paired computer works logged out, and nothing is shared with the server.
 
 ## The core
@@ -106,7 +106,9 @@ transcript buffers) and follow the loop at the top of `core/host.coax`:
 `app_host_next` / `app_host_request` / `app_host_path` / `app_host_text` /
 `app_host_body` / `app_host_taken`, tell `app_host_cancel_next`, deliver
 results with `app_host_done` in a later turn, and sleep until
-`app_host_wake`. Keep `app_host_keep` for the next launch's rejoin.
+`app_host_wake`. Keep `app_host_keep` for the next launch's rejoin, and write it
+whenever it changes: iOS ends an app swiped away in the switcher, or a crashed
+one, with no background notice.
 
 The services the host implements:
 

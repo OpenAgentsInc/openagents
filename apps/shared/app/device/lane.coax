@@ -23,7 +23,10 @@
 // The paired computers are the device service's list (FX_DEVICE_LIST); a
 // pairing link the person opened is FX_DEVICE_PAIR. Keys and grants stay in
 // the native service; the lane knows each computer's public key and name.
+// The lane is part of the core and uses its records (AppCore, the outbox, the ACT_ codes), so it
+// does not compile alone; core/core.coax loads it, and loading the core from here would be a cycle.
 //   coax/bin/coax test apps/shared/app/core/core.coax --library --traversal 1000000000 --run-steps 250000000
+//   coax/web/tool.sh apps/shared/app/device/lane-check.coax
 #load "../../environment-app.coax";
 
 DL_PAIRED :: 16;
@@ -283,8 +286,17 @@ dl_step :: (c: [] AppCore) {
   if !app_device_on(c) { return; }
   d := dl_lane(c); e := d[0].e[..];
   now := c[0].mono_ms;
+  // The reducer schedules its next read here, as the desktop's tick does (eu_pause): the turn's
+  // poll, and after a read with no answer the same read again (eu_read_retry). A reply only
+  // schedules one when it succeeds, so without this a lost read left the conversation waiting
+  // on "Reconnecting…" for good. A write with an unknown outcome is never sent again here.
+  if d[0].op == 0 { eu_wait(e); }
   if e[0].action == 12 { e[0].action = 0; d[0].wake_at = now + DL_POLL_MS; }
-  if d[0].wake_at > 0 && now >= d[0].wake_at && d[0].op == 0 && c[0].foreground { d[0].wake_at = 0; eu_reply(e, 12, 0, "", false); }
+  if d[0].wake_at > 0 && now >= d[0].wake_at && d[0].op == 0 && c[0].foreground {
+    d[0].wake_at = 0; eu_reply(e, 12, 0, "", false);
+    // a retry the reducer is still counting down waits one more round
+    eu_wait(e); if e[0].action == 12 { e[0].action = 0; d[0].wake_at = now + DL_POLL_MS; }
+  }
   if d[0].op != 0 { return; }
   if e[0].action == 11 {
     op := fx_request(c[0].out[..], OWN_DEVICE, FX_IDS, DL_P_IDS, 0, "", "", "", 0, 0);

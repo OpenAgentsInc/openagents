@@ -107,7 +107,7 @@ ViewModel :: struct {
   rows: [VIEW_ROWS] ViewRow; n: int;
   lost: int;                    // rows that did not fit this build
   empty: bool;                  // nothing to show: the empty conversation
-  rejoining: bool;              // a conversation is open and not read yet: the reconnecting banner
+  rejoining: bool;              // a conversation is open and not read yet, and no read failed: the reconnecting banner
   // the decoded identities of the history page, and what they were decoded from
   saved: [VIEW_HISTORY] ViewSaved; saved_n: int;
   key_id: [36] u8; key_revision: int; key_raw: int; key_n: int; key_set: bool;
@@ -241,7 +241,8 @@ view_build :: (vm: [] ViewModel, d: [] DurableChat, f: ViewFacts) {
   if d[0].uncertain && d[0].pending == 1 { view_notice(vm, "chat.unsure", VIEW_W_SEND_UNSURE, VIEW_DO_RETRY); }
   else if f.stop == VIEW_STOP_UNCERTAIN { view_notice(vm, "chat.unsure", VIEW_W_STOP_UNSURE, VIEW_DO_RETRY); }
   if f.note.count > 0 { view_notice(vm, "chat.note", f.note, ifx d[0].id_n > 0 then VIEW_DO_RECONNECT else VIEW_DO_NONE); }
-  vm[0].rejoining = d[0].id_n > 0 && !d[0].loaded;
+  // a read that failed says so in the note, with Reconnect; the banner would cover it
+  vm[0].rejoining = d[0].id_n > 0 && !d[0].loaded && f.note.count == 0;
   vm[0].empty = vm[0].n == 0 && !vm[0].rejoining;
 }
 
@@ -276,7 +277,7 @@ view_build_device :: (vm: [] ViewModel, e: [] EnvironmentApp, f: ViewFacts) {
   if f.send_unsure { view_notice(vm, "chat.unsure", VIEW_W_SEND_UNSURE, VIEW_DO_RETRY); }
   else if f.stop == VIEW_STOP_UNCERTAIN { view_notice(vm, "chat.unsure", VIEW_W_STOP_UNSURE, VIEW_DO_RETRY); }
   if f.note.count > 0 { view_notice(vm, "chat.note", f.note, ifx f.send_unsure || f.stop == VIEW_STOP_UNCERTAIN then VIEW_DO_NONE else VIEW_DO_RECONNECT); }
-  vm[0].rejoining = f.reading;
+  vm[0].rejoining = f.reading && f.note.count == 0;
   vm[0].empty = vm[0].n == 0 && !vm[0].rejoining;
 }
 

@@ -123,8 +123,14 @@ app_host_wake :: (c: [] AppCore) -> int #export_c #effects(all) { if c.count < 1
 app_host_busy :: (c: [] AppCore) -> int #export_c #effects(all) { if c.count < 1 { return 0; } return app_busy(c); }
 app_host_dirty_take :: (c: [] AppCore, mask: int) -> int #export_c #effects(all) { if c.count < 1 { return 0; } return app_dirty_take(c, mask); }
 // The conversation to keep for the next launch's rejoin: its ID into out, the byte count (0 for none).
+// It changes as the person moves between conversations, so a host keeps it whenever it changes:
+// iOS ends an app swiped away in the switcher, or a crashed one, with no background notice.
+// A kept conversation still waiting for the login state or the paired list is still the one to keep.
 app_host_keep :: (c: [] AppCore, out: [] u8) -> int #export_c #effects(all) {
   if c.count < 1 { return 0; }
   if app_device_on(c) { return app_device_keep(c, out); }
-  n := app_host_copy(app_conversation(c), out); return ifx n < 0 then 0 else n;
+  id := app_conversation(c);
+  if id.count == 0 && c[0].rejoin_n > 0 { id = cast(string) c[0].rejoin[0..<c[0].rejoin_n]; }
+  if id.count == 0 && dl_has(c) && c[0].device[0].rejoin_n > 0 { d := dl_lane(c); id = cast(string) d[0].rejoin[0..<d[0].rejoin_n]; }
+  n := app_host_copy(id, out); return ifx n < 0 then 0 else n;
 }

@@ -1,8 +1,8 @@
 // Firm reason: 6 (the app's native services wired to the compiled shared core; every decision is Coax).
 // The shared app core in the iOS app (apps/shared/app/README.md, GitHub #13645). `AppCoreC` is the
 // core's host ABI over core-host.h; `AppServices` builds the native services, bridges them to the
-// core (AppCoreBridge, AppEffects) and launches it, rejoining the conversation kept at the last
-// background. HTTP admits only what the core's installed policy admits (up_http). Tokens and the
+// core (AppCoreBridge, AppEffects) and launches it, rejoining the conversation kept when it last
+// changed. HTTP admits only what the core's installed policy admits (up_http). Tokens and the
 // email attempt stay in AppAuth and AppAccount.
 import UIKit
 
@@ -40,7 +40,12 @@ import UIKit
     /// A person's action the platform owns (the editor's text, a hardware Return).
     func action(_ code: Int64, flag: Bool = false, text: String = "", more: String = "") { _ = oa_core_action(raw, mono, wall, code, flag ? 1 : 0, text, more); after?() }
     func dirty(_ mask: Int64) -> Int64 { oa_core_dirty_take(raw, mask) }
-    func keep() -> String { String(decoding: bytes { oa_core_keep(raw, $0, $1) } ?? Data(), as: UTF8.self) }
+    /// The conversation to rejoin at the next launch (app_host_keep): an ID, at most 193 bytes.
+    func keep() -> String {
+        var out = [UInt8](repeating: 0, count: 256)
+        let n = oa_core_keep(raw, &out, Int64(out.count))
+        return n > 0 ? String(decoding: out[0..<Int(n)], as: UTF8.self) : ""
+    }
 }
 
 @MainActor final class AppServices {
@@ -69,7 +74,7 @@ import UIKit
             guard let self else { return }
             switch fact {
             case .foreground: self.bridge.lifecycle(foreground: true)
-            case .background: UserDefaults.standard.set(self.core.keep(), forKey: AppServices.rejoinKey); self.bridge.lifecycle(foreground: false)
+            case .background: self.keepRejoin(); self.bridge.lifecycle(foreground: false)
             default: break
             }
         }
@@ -77,14 +82,27 @@ import UIKit
 
     /// Launches the core, rejoining the conversation kept at the last background. Attach the page first.
     func launch() {
-        core.launch(rejoin: UserDefaults.standard.string(forKey: AppServices.rejoinKey) ?? "")
+        let rejoin = UserDefaults.standard.string(forKey: AppServices.rejoinKey) ?? ""
+        kept = rejoin
+        core.launch(rejoin: rejoin)
         bridge.heard()
         // a pairing link the system opened (now, or before the core was up): dispatch.coax ACT_DEVICE_PAIR
         AppDeviceLink.shared.onLink = { [weak self] link in self?.core.action(AppServices.actDevicePair, text: link); self?.bridge.heard() }
     }
     private static let actDevicePair: Int64 = 19
     /// The page went into the core (a tap): perform what it asked, without waking the page again.
-    func pump() { bridge.pump() }
+    func pump() { bridge.pump(); keepRejoin() }
+
+    /// The conversation to rejoin, written whenever it changes: iOS ends an app swiped away in the
+    /// switcher, or one that crashed, with no background notice, so the last background is too late.
+    private var kept: String?
+    private func keepRejoin() {
+        guard kept != nil else { return }   // not launched yet: the core has not read the kept one
+        let now = core.keep()
+        if now == kept { return }
+        kept = now
+        if now.isEmpty { UserDefaults.standard.removeObject(forKey: AppServices.rejoinKey) } else { UserDefaults.standard.set(now, forKey: AppServices.rejoinKey) }
+    }
 
     /// The login card's typed email, kept between launches (no secret: app preferences).
     private static let draftKey = "openagents.login-draft"

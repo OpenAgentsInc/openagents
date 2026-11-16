@@ -133,6 +133,52 @@ lc_rejoin :: (r: [] LcRun) {
   lc_ok(r, lc_done(c, r, q[..], FXO_DONE, false, lc_view("ReadSession", "", false, "Hi there", false, vb[..]), "", 0) == APP_OK && app_send_state(c) == SEND_EMPTY, "its transcript is back and the composer is free");
   e := app_device_env(c); lc_ok(r, e[0].view[0].ni == 2, "both messages are back");
 }
+// The read after a relaunch gets no answer (the computer was asleep, or its service restarting):
+// the same read is sent again by itself, and the conversation comes back with no tap. A lost read
+// of a running turn is read again the same way.
+lc_rejoin_lost :: (r: [] LcRun) {
+  a: [1] AppCore; c := a[..]; dl: [1] DeviceLane; q: [1] LcReq; vb: [65536] u8;
+  ok := app_host_init(c) && app_host_device(c, dl[..]) && app_host_launch(c, 1, 1000, "fb9347515b57c2c3a066baa42dc6920b24645539a4e32c11ed36c2e4789c265a\t5193ca7c5e83b589ad2c9f2c139ac442") == APP_OK;
+  r[0].t = 1;
+  while ok && lc_next(c, q[..]) {
+    if q[0].kind == FX_AUTH_STATE { ok = lc_done(c, r, q[..], FXO_DONE, false, "", "", 0) >= 0; }
+    else if q[0].kind == FX_DEVICE_LIST { ok = lc_done(c, r, q[..], FXO_DONE, false, "fb9347515b57c2c3a066baa42dc6920b24645539a4e32c11ed36c2e4789c265a\tStudio Mac\n", "", 0) >= 0; }
+    else { break; }
+  }
+  lc_ok(r, ok && q[0].kind == FX_DEVICE_CALL && lc_has(lc_body(q[..]), "\"DescribeEnvironment\""), "the relaunch reads the computer first");
+  lc_ok(r, lc_done(c, r, q[..], FXO_UNKNOWN, false, "", "", 0) == APP_OK, "the read gets no answer");
+  e := app_device_env(c);
+  lc_ok(r, e[0].ns > 0 && eu_current(e) < 0 && !lc_next(c, q[..]), "the conversation is not read yet, and nothing is sent at once");
+  // the clock runs on: the same read again, with no tap
+  again := false;
+  for k: 0..<12 {
+    w := app_host_wake(c); if w < 0 { break; }
+    r[0].t = w; _ := app_host_clock(c, w, 3000 + k);
+    if lc_next(c, q[..]) { again = true; break; }
+  }
+  lc_ok(r, again && q[0].kind == FX_DEVICE_CALL && lc_has(lc_body(q[..]), "\"DescribeEnvironment\""), "the lost read is sent again by itself");
+  lc_ok(r, lc_done(c, r, q[..], FXO_DONE, false, lc_view("DescribeEnvironment", "", false, "", false, vb[..]), "", 0) == APP_OK && lc_next(c, q[..]) && lc_has(lc_body(q[..]), "\"ListSessions\""), "then the conversations are listed");
+  lc_ok(r, lc_done(c, r, q[..], FXO_DONE, false, lc_view("ListSessions", "", false, "", false, vb[..]), "", 0) == APP_OK, "the list is taken");
+  w := app_host_wake(c);
+  lc_ok(r, w > 0 && app_host_clock(c, w, 4000) == APP_OK && lc_next(c, q[..]) && lc_has(lc_body(q[..]), "\"ReadSession\""), "the kept conversation is read");
+  r[0].t = w;
+  lc_ok(r, lc_done(c, r, q[..], FXO_DONE, false, lc_view("ReadSession", "", true, "Hi", false, vb[..]), "", 0) == APP_OK, "its turn is running");
+  e = app_device_env(c);
+  lc_ok(r, eu_current(e) >= 0 && e[0].view[0].ni == 2, "the conversation is back with no tap");
+  // a poll of the running turn gets no answer: it is read again by itself
+  w = app_host_wake(c);
+  lc_ok(r, w > 0 && app_host_clock(c, w, 5000) == APP_OK && lc_next(c, q[..]) && lc_has(lc_body(q[..]), "\"ReadSession\""), "the running turn is polled");
+  r[0].t = w;
+  lc_ok(r, lc_done(c, r, q[..], FXO_UNKNOWN, false, "", "", 0) == APP_OK, "the poll gets no answer");
+  again = false;
+  for k: 0..<12 {
+    w = app_host_wake(c); if w < 0 { break; }
+    r[0].t = w; _ := app_host_clock(c, w, 6000 + k);
+    if lc_next(c, q[..]) { again = true; break; }
+  }
+  lc_ok(r, again && lc_has(lc_body(q[..]), "\"ReadSession\""), "the lost poll is sent again by itself");
+  lc_ok(r, lc_done(c, r, q[..], FXO_DONE, false, lc_view("ReadSession", "", false, "Hi there", false, vb[..]), "", 0) == APP_OK && app_send_state(c) == SEND_EMPTY, "the finished turn is shown and the composer is free");
+}
 lc_unpaired :: (r: [] LcRun) {
   // with no lane attached the core is as before: a logged-out send asks to log in
   a: [1] AppCore; c := a[..];
@@ -162,7 +208,7 @@ lc_bridge :: (r: [] LcRun) {
 
 tool_main :: () -> int #export_c #effects(all) {
   r: [1] LcRun;
-  lc_turn(r[..]); lc_rejoin(r[..]); lc_unpaired(r[..]); lc_bridge(r[..]);
+  lc_turn(r[..]); lc_rejoin(r[..]); lc_rejoin_lost(r[..]); lc_unpaired(r[..]); lc_bridge(r[..]);
   b: [64] u8; n := 0;
   lc_say(ifx r[0].failed == 0 then "device lane: all checks passed" else "device lane: checks failed");
   return ifx r[0].failed == 0 then 0 else 1;
