@@ -1720,3 +1720,15 @@ one, loading More, and reopening the drawer during a running turn. The identity 
 includes the auto-synced Account chats drawer and main's reconnect/rejoin fix. Check opening a saved
 chat, paging, returning to Latest, and scrolling at large text sizes. The
 compiled fixtures exercise 60 chats and assert fixed widths during opening.
+
+## GPU Projects on iPhone (#13645, 2026-11-16)
+
+Build **1401** is VALID, IN_BETA_TESTING and verified in Owner
+TestFlight; install it from that group. Sidebar → Projects: create a disposable Project, edit Details
+and Instructions, add/read/remove reference text, then open its saved chats
+or start a new Project chat. Check keyboard dismissal, large text, native
+scrolling and returning to the sidebar. Settings retains automatic account
+Nostr identity, public-key Copy and the passkey-protected Backup/Rotate/Restore
+flow; use a disposable identity for replacement tests. These physical-phone
+and system passkey ceremonies remain owner checks. The broader GPU epic is
+still open for the remaining screens, composition and desktop adoption.

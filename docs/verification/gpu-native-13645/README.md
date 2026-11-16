@@ -192,3 +192,21 @@ edit the declared Project fields and composer, but never the private custody
 field. A controlled full-page drive check verifies Project field edits do not
 change the composer and that a private field cannot fall through to it.
 The driver/app suite passes 995 checks before the final short-viewport fixture.
+
+### TestFlight 1401
+
+The signed archive and exported IPA pass the installed package audit: no
+JavaScriptCore, WebKit, JS, Wasm, HTML or removed projection symbols. App Store
+Connect accepted the upload on 2026-11-16 with delivery
+`6521b6f4-7cfd-443a-bfe4-036e5a5af5ca`. The archived arm64 dSYM UUID is
+`871BED89-9EB1-3F6E-AA47-EB9AABE1FF39`. Upload acceptance is not TestFlight
+availability; the subsequent App Store Connect check reports VALID and
+IN_BETA_TESTING, and the assignment command verified build 1401 in Owner.
+
+The final UIKit run uses Foundation's launch-argument domain to isolate its
+saved email preference, and passes against the previously populated simulator.
+It exercises actual sidebar taps, Projects as a regular page, disabled creation
+while logged out, Settings/login Back and native email typing. Its result is
+`/tmp/oa-gpu-project-ui-1401-launch-domain.xcresult`.
+
+![Projects in the GPU drawer](sidebar-projects-1401.png)
