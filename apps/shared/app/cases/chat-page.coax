@@ -59,6 +59,9 @@ cp_state :: (r: [] CpRun, p: [] ChatPage, v: [] f32, d: [] GdDrive) {
   gd_state_b(d, "keyboard.shown", ifx r[0].plays_host then r[0].keyboard else p[0].focused);
   gd_state_b(d, "page.moving", chat_moving(p));
   gd_state_i(d, "page.refused", chat_refused(p));
+  // the account as the login flow knows it (never the email or the code)
+  gd_state_b(d, "account.logged_in", lf_logged_in(p[0].lf[..]));
+  gd_state_i(d, "login.step", lf_step(p[0].lf[..]));
 }
 // Relaunch: the page starts again on the same core. The draft is the core's, so it stays; what the
 // page held (focus, a press, the keyboard) does not.
@@ -81,7 +84,14 @@ cp_draw :: (r: [] CpRun, p: [] ChatPage, v: [] f32, d: [] GdDrive) {
 // What else the driver asked for, done through the page's own entries.
 cp_step :: (r: [] CpRun, p: [] ChatPage, v: [] f32, d: [] GdDrive, code: int) {
   if code == GD_POINTER { u := p[0].d; gd_took(d, chat_pointer(p, gd_px(d) * u, gd_py(d) * u, gd_phase(d))); return; }
-  if code == GD_EDITOR { e := gd_edit(d, ch_draft(p)); gd_edited(d, e.ok && chat_set_text(p, e.text)); return; }
+  // the platform editor over the focused field: a login field's value, else the composer's draft
+  if code == GD_EDITOR {
+    if ch_login_field(ch_focus(p)) != LF_FIELD_NONE {
+      buf: [512] u8; n := chat_field_text(p, buf[..]); e := gd_edit(d, cast(string) buf[0..<n]);
+      gd_edited(d, e.ok && chat_set_field(p, e.text)); return;
+    }
+    e := gd_edit(d, ch_draft(p)); gd_edited(d, e.ok && chat_set_text(p, e.text)); return;
+  }
   if code == GD_STATE { cp_state(r, p, v, d); return; }
   if code == GD_COMPLETE { gd_log(d, "the page has no outbox: a completion was dropped"); return; }
   if code == GD_LIFE && gd_life(d) == "relaunch" { cp_relaunch(r, p, v, d); }
