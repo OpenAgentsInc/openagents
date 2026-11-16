@@ -9,7 +9,7 @@ const root = process.argv[2];
     const decoder = new TextDecoder();
     const context = vm.createContext({cnUTF8: bytes => decoder.decode(Uint8Array.from(bytes))});
     for (const p of ['tree-commands.js', `build/${name}.js`, 'runtime.js']) vm.runInContext(read(p).toString(), context);
-    const memory = new WebAssembly.Memory({initial:512, maximum:1024});
+    const memory = new WebAssembly.Memory({initial:1024, maximum:1024});
     const {instance} = await WebAssembly.instantiate(read(`build/${name}.wasm`), {env:{memory},wasi_snapshot_preview1:{fd_fdstat_get:()=>8,fd_seek:()=>8,fd_write:()=>8}});
     const x=instance.exports, state=Math.ceil(x.__heap_base.value/65536)*65536;
     x.coaxial_state_init(state);
