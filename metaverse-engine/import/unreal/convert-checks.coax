@@ -27,6 +27,10 @@ cvt_geo :: (g: [] CvGeo, verts: [] u32, idx: [] u32, hash: [] int, sections: [] 
   #assert cv_shape(g[..], SU_SPHERE, 2) > 100 && abs(meshes[2].hi[1] - 0.5) < 0.001;
   #assert cv_shape(g[..], SU_CYLINDER, 3) > 40 && abs(meshes[3].lo[1] + 0.5) < 0.0001 && abs(meshes[3].hi[1] - 0.5) < 0.0001;
   #assert cv_shape(g[..], SU_NONE, 4) == -1;
+  // fitted to bounds: the template's corner-pivot cube, 0 to 1 m, and a flat plane at its height
+  #assert cv_shape_in(g[..], SU_BOX, 4, d3(0, 0, 0), d3(1, 1, 1)) == 12 && meshes[4].lo[0] == 0 && meshes[4].hi[2] == 1;
+  #assert cv_shape_in(g[..], SU_BOUNDS, 5, d3(-1, 0, -0.25), d3(1, 2, 0.25)) == 12 && meshes[5].lo[0] == -1 && meshes[5].hi[1] == 2 && meshes[5].hi[2] == 0.25;
+  #assert cv_shape_in(g[..], SU_PLANE, 6, d3(-0.5, 0.2, -0.5), d3(0.5, 0.2, 0.5)) == 2 && abs(meshes[6].lo[1] - 0.2) < 0.00001 && abs(meshes[6].hi[1] - 0.2) < 0.00001;
 }
 #test "an unturned box is a wall, a thin one a floor, a yawed one a hull whose faces hold its corners" {
   c: [8] D3; sh: [1] CvShape;

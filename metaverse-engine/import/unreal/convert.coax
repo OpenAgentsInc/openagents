@@ -237,8 +237,14 @@ cv_mesh_close :: (g: [] CvGeo, mesh: int, tris: int) #effects(all) {
 
 // The engine's own shape for a substituted mesh (substitute.coax), at Unreal's sizes, one section.
 cv_shape :: (g: [] CvGeo, shape: int, mesh: int) -> int #effects(all) {
+  return cv_shape_in(g, shape, mesh, d3(-0.5, -0.5, -0.5), d3(0.5, 0.5, 0.5));
+}
+// The same, fitted to the mesh's bounds (lo and hi in the pack's axes, metres): the unit shape's box,
+// -0.5 to 0.5 on each axis, is scaled and moved onto them. A flat side (a plane's height) keeps the
+// shape flat at its place. The character stand-in keeps its own size and place (the Mannequin's pivot).
+cv_shape_in :: (g: [] CvGeo, shape: int, mesh: int, lo: D3, hi: D3) -> int #effects(all) {
   buf: [8192 * VERTEX_WORDS] u32; p: [1] Pen; pen_set(p[..], 1, MAT_WORLD, 1, 1, 1);
-  if shape == SU_BOX { box(buf[..], p[..], frame_at(v3(0, 0, 0), 0), 0.5, 0.5, 0.5); }
+  if shape == SU_BOX || shape == SU_BOUNDS { box(buf[..], p[..], frame_at(v3(0, 0, 0), 0), 0.5, 0.5, 0.5); }
   if shape == SU_PLANE { quad(buf[..], p[..], v3(-0.5, 0, -0.5), v3(-0.5, 0, 0.5), v3(0.5, 0, 0.5), v3(0.5, 0, -0.5)); }
   if shape == SU_SPHERE { ball(buf[..], p[..], v3(0, 0, 0), 0.5, 24); }
   if shape == SU_CYLINDER { tube(buf[..], p[..], frame_at(v3(0, -0.5, 0), 0), 1, 0.5, 0.5, 0.5, 0.5, 24, true); }
@@ -252,6 +258,12 @@ cv_shape :: (g: [] CvGeo, shape: int, mesh: int) -> int #effects(all) {
     i := v * VERTEX_WORDS; packed := buf[i + 3];
     n := d3(cast(f64) (packed & 255) / 255 * 2 - 1, cast(f64) ((packed >> 8) & 255) / 255 * 2 - 1, cast(f64) ((packed >> 16) & 255) / 255 * 2 - 1);
     at := d3(cast(f64) f32_from_bits(buf[i]), cast(f64) f32_from_bits(buf[i + 1]), cast(f64) f32_from_bits(buf[i + 2]));
+    if shape != SU_CHARACTER {
+      sx := hi.x - lo.x; sy := hi.y - lo.y; sz := hi.z - lo.z;
+      at = d3(lo.x + (at.x + 0.5) * sx, lo.y + (at.y + 0.5) * sy, lo.z + (at.z + 0.5) * sz);
+      // a stretched normal: divide by the scale (a flat axis keeps its own), then unit length
+      n = d3(ifx sx > 1e-9 then n.x / sx else n.x, ifx sy > 1e-9 then n.y / sy else n.y, ifx sz > 1e-9 then n.z / sz else n.z);
+    }
     if !cv_corner(g, s, base, at, d3_unit_or(n, d3(0.0, 1.0, 0.0)), 0, 0, 0xFFFFFFFF) { return cv_fail(g, "more vertices than the import holds"); }
   }
   cv_mesh_close(g, mesh, p[0].n / 3);

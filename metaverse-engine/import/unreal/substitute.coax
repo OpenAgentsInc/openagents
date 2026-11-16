@@ -2,10 +2,12 @@
 // origin `engine`, Epic's pieces under /Engine/ and the template folders. They are never carried; each
 // is replaced by the engine's own, and every replacement is counted and listed, never silent.
 //
-//   meshes      Basic Shapes are the engine's own shapes (convert.coax draws them: cv_shape),
-//               at Unreal's sizes: a 100 cm cube, sphere, cylinder and cone round their middle, and a
-//               100 cm plane at its foot facing up. An engine mesh not in the table is refused, by
-//               name: add its substitute here rather than carrying Epic's geometry.
+//   meshes      Basic Shapes and the template's prototyping shapes are the engine's own shapes
+//               (convert.coax draws them: cv_shape), each fitted to the mesh's own bounds, so a cube
+//               whose pivot is a corner (the template's SM_Cube) sits where Unreal's does. Any other
+//               engine mesh (a template door, a jump pad, a target) is the engine's box of its bounds
+//               (SU_BOUNDS), counted and listed by name: Epic's geometry is never carried, and one
+//               such asset never refuses the bundle.
 //   materials   every engine material is the engine's default material (a plain lit grey)
 //   skeletal    a mesh on the UE Mannequin's skeleton is the engine's character: until the rig importer
 //               (#13651, metaverse-engine/import/unreal/ rigs) retargets it, it is drawn as the engine's
@@ -17,12 +19,12 @@
 //   coax/bin/coax test metaverse-engine/import/unreal/substitute.coax
 #authority;
 
-SU_NONE :: 0; SU_BOX :: 1; SU_SPHERE :: 2; SU_CYLINDER :: 3; SU_CONE :: 4; SU_PLANE :: 5; SU_CHARACTER :: 6;
-SU_WHAT :: [7] string.["no substitute", "the engine's box", "the engine's sphere", "the engine's cylinder", "the engine's cone", "the engine's plane", "the engine's character"];
+SU_NONE :: 0; SU_BOX :: 1; SU_SPHERE :: 2; SU_CYLINDER :: 3; SU_CONE :: 4; SU_PLANE :: 5; SU_CHARACTER :: 6; SU_BOUNDS :: 7;
+SU_WHAT :: [8] string.["no substitute", "the engine's box", "the engine's sphere", "the engine's cylinder", "the engine's cone", "the engine's plane", "the engine's character", "a box of its bounds"];
 
 SuRow :: struct { id: string; shape: int; }
 // book:begin table
-SU_MESHES :: [12] SuRow.[
+SU_MESHES :: [17] SuRow.[
   SuRow.{id = "/Engine/BasicShapes/Cube.Cube", shape = SU_BOX},
   SuRow.{id = "/Engine/BasicShapes/Sphere.Sphere", shape = SU_SPHERE},
   SuRow.{id = "/Engine/BasicShapes/Cylinder.Cylinder", shape = SU_CYLINDER},
@@ -33,15 +35,22 @@ SU_MESHES :: [12] SuRow.[
   SuRow.{id = "/Engine/EngineMeshes/Cylinder.Cylinder", shape = SU_CYLINDER},
   SuRow.{id = "/Game/LevelPrototyping/Meshes/SM_Cube.SM_Cube", shape = SU_BOX},
   SuRow.{id = "/Game/LevelPrototyping/Meshes/SM_Cylinder.SM_Cylinder", shape = SU_CYLINDER},
+  SuRow.{id = "/Game/LevelPrototyping/Meshes/SM_ChamferCube.SM_ChamferCube", shape = SU_BOX},
+  SuRow.{id = "/Game/LevelPrototyping/Meshes/SM_Plane.SM_Plane", shape = SU_PLANE},
+  SuRow.{id = "/Game/LevelPrototyping/Interactable/Door/Meshes/SM_Door.SM_Door", shape = SU_BOX},
   SuRow.{id = "/Game/Characters/Mannequins/Meshes/SKM_Manny.SKM_Manny", shape = SU_CHARACTER},
   SuRow.{id = "/Game/Characters/Mannequins/Meshes/SKM_Quinn.SKM_Quinn", shape = SU_CHARACTER},
+  SuRow.{id = "/Game/Characters/Mannequins/Meshes/SKM_Manny_Simple.SKM_Manny_Simple", shape = SU_CHARACTER},
+  SuRow.{id = "/Game/Characters/Mannequins/Meshes/SKM_Quinn_Simple.SKM_Quinn_Simple", shape = SU_CHARACTER},
 ];
 // book:end table
 
-// The substitute for an engine mesh or skeletal mesh, or SU_NONE: refused.
+// The substitute for an engine mesh or skeletal mesh: its row's shape, else a box of its bounds.
+// SU_NONE only for no id at all.
 su_mesh :: (id: string) -> int #effects(all) {
+  if id.count == 0 { return SU_NONE; }
   for r: SU_MESHES { if r.id == id { return r.shape; } }
-  return SU_NONE;
+  return SU_BOUNDS;
 }
 // Every engine material is the engine's default material.
 su_material :: (id: string) -> bool #effects(all) { return id.count > 0; }
@@ -50,14 +59,15 @@ su_material :: (id: string) -> bool #effects(all) { return id.count > 0; }
 // as SU_CHARACTER's stand-in and listed.
 su_rig_hook :: (skeleton: string) -> bool #effects(all) { return skeleton.count < 0; }
 
-#test "Epic's shapes are the engine's, by exact id, and anything else is refused by name" {
+#test "Epic's shapes are the engine's, by exact id, and any other engine mesh is a box of its bounds" {
   #assert su_mesh("/Engine/BasicShapes/Cube.Cube") == SU_BOX && su_mesh("/Engine/BasicShapes/Plane.Plane") == SU_PLANE;
   #assert su_mesh("/Engine/BasicShapes/Cone.Cone") == SU_CONE && su_mesh("/Engine/BasicShapes/Sphere.Sphere") == SU_SPHERE;
   #assert su_mesh("/Engine/BasicShapes/Cylinder.Cylinder") == SU_CYLINDER;
   #assert su_mesh("/Game/Characters/Mannequins/Meshes/SKM_Quinn.SKM_Quinn") == SU_CHARACTER;
-  #assert su_mesh("/Engine/BasicShapes/Cube") == SU_NONE && su_mesh("/Game/SpliceBots/SM_Garage.SM_Garage") == SU_NONE && su_mesh("") == SU_NONE;
+  #assert su_mesh("/Engine/BasicShapes/Cube") == SU_BOUNDS && su_mesh("/Game/LevelPrototyping/Meshes/SM_Ramp.SM_Ramp") == SU_BOUNDS && su_mesh("") == SU_NONE;
+  #assert su_mesh("/Game/LevelPrototyping/Meshes/SM_Plane.SM_Plane") == SU_PLANE && su_mesh("/Game/Characters/Mannequins/Meshes/SKM_Manny_Simple.SKM_Manny_Simple") == SU_CHARACTER;
   #assert su_material("/Engine/BasicShapes/BasicShapeMaterial") && !su_material("");
   #assert !su_rig_hook("/Game/Characters/Mannequins/Meshes/SK_Mannequin.SK_Mannequin");
-  #assert SU_WHAT.count == SU_CHARACTER + 1;
+  #assert SU_WHAT.count == SU_BOUNDS + 1;
   for r: SU_MESHES { #assert r.shape > SU_NONE && r.shape <= SU_CHARACTER && r.id.count > 8; }
 }

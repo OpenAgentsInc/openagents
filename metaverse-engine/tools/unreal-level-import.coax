@@ -41,6 +41,7 @@ Im :: struct {
   layer_of: [] int; layers: int; data_layers: int;
   sound_names: [512] [32] u8; sound_n: [512] int;
   unmapped: [1] int; outside: int; uncollided: int; worst: f64;
+  boxed: int; dropped: int;   // colliders the walker can't take as given: a box of their bounds, or left out (listed)
 }
 
 im_fail :: (s: string) -> int #effects(all) { tool_err("unreal-level-import: "); tool_errln(s); return 1; }
@@ -93,6 +94,13 @@ im_q :: (d: Jv, n: int) -> DQ #effects(all) { return dq_unit(dq(ab_f(d, n, 0), a
 
 // The colliders of a mesh row's simple collision through a placement, into im.shapes. False: a shape the
 // engine can't hold (an unevenly scaled sphere or capsule, a hull over its limits), `why` says which.
+// An axis-aligned box in the pack's axes, from its two corners, as a box collider.
+im_aligned_box :: (lo: D3, hi: D3, map: int, sh: [] CvShape) -> bool #effects(all) {
+  if !(hi.x - lo.x > 0.001) || !(hi.y - lo.y > 0.001) || !(hi.z - lo.z > 0.001) { return false; }
+  c: [8] D3;
+  for k: 0..<8 { c[k] = d3(ifx k & 1 != 0 then hi.x else lo.x, ifx k & 2 != 0 then hi.y else lo.y, ifx k & 4 != 0 then hi.z else lo.z); }
+  return cv_box_shape(c[..], map, sh);
+}
 im_collide :: (im: [] Im, d: Jv, mesh_row: int, pose: ImPose, map: int, name: int, why: [] string) -> int #effects(all) {
   c := jv_get(d, mesh_row, "collision"); added := 0;
   boxes := jv_get(d, c, "boxes"); k := im_first(d, boxes);
@@ -100,15 +108,16 @@ im_collide :: (im: [] Im, d: Jv, mesh_row: int, pose: ImPose, map: int, name: in
     corners: [8] D3;
     cv_box_corners(im_d3(d, jv_get(d, k, "center_cm")), im_q(d, jv_get(d, k, "rotation")), im_d3(d, jv_get(d, k, "extent_cm")), pose.ut, pose.uq, pose.us, corners[..]);
     if im[0].nsh >= im[0].shapes.count { why[0] = "more colliders than the import holds"; return -1; }
-    sh: [1] CvShape; if !cv_box_shape(corners[..], map, sh[..]) { why[0] = "a collision box that is neither solid nor a floor"; return -1; }
+    sh: [1] CvShape; if !cv_box_shape(corners[..], map, sh[..]) { im[0].dropped += 1; why[0] = "a collision box that is neither solid nor a floor, left out"; k = d.nodes[k].next; continue; }
     im[0].shapes[im[0].nsh] = ImShape.{shape = sh[0], name = name}; im[0].nsh += 1; added += 1;
     k = d.nodes[k].next;
   }
   spheres := jv_get(d, c, "spheres"); k = im_first(d, spheres);
   while k != -1 {
-    if !near_d(pose.us.x, pose.us.y, 0.0001) || !near_d(pose.us.y, pose.us.z, 0.0001) { why[0] = "a collision sphere scaled unevenly"; return -1; }
     sh: [1] CvShape;
-    if !cv_capsule_shape(im_d3(d, jv_get(d, k, "center_cm")), dq(0.0, 0.0, 0.0, 1.0), ab_num(d, jv_get(d, k, "radius_cm")).value, 0.0, pose.ut, pose.uq, pose.us, map, sh[..]) { why[0] = "a collision sphere scaled unevenly"; return -1; }
+    if !near_d(pose.us.x, pose.us.y, 0.0001) || !near_d(pose.us.y, pose.us.z, 0.0001) || !cv_capsule_shape(im_d3(d, jv_get(d, k, "center_cm")), dq(0.0, 0.0, 0.0, 1.0), ab_num(d, jv_get(d, k, "radius_cm")).value, 0.0, pose.ut, pose.uq, pose.us, map, sh[..]) {
+      im[0].dropped += 1; why[0] = "a collision sphere scaled unevenly, left out"; k = d.nodes[k].next; continue;
+    }
     if im[0].nsh >= im[0].shapes.count { why[0] = "more colliders than the import holds"; return -1; }
     im[0].shapes[im[0].nsh] = ImShape.{shape = sh[0], name = name}; im[0].nsh += 1; added += 1;
     k = d.nodes[k].next;
@@ -116,7 +125,9 @@ im_collide :: (im: [] Im, d: Jv, mesh_row: int, pose: ImPose, map: int, name: in
   caps := jv_get(d, c, "capsules"); k = im_first(d, caps);
   while k != -1 {
     sh: [1] CvShape;
-    if !cv_capsule_shape(im_d3(d, jv_get(d, k, "center_cm")), im_q(d, jv_get(d, k, "rotation")), ab_num(d, jv_get(d, k, "radius_cm")).value, ab_num(d, jv_get(d, k, "length_cm")).value, pose.ut, pose.uq, pose.us, map, sh[..]) { why[0] = "a collision capsule scaled unevenly across it"; return -1; }
+    if !cv_capsule_shape(im_d3(d, jv_get(d, k, "center_cm")), im_q(d, jv_get(d, k, "rotation")), ab_num(d, jv_get(d, k, "radius_cm")).value, ab_num(d, jv_get(d, k, "length_cm")).value, pose.ut, pose.uq, pose.us, map, sh[..]) {
+      im[0].dropped += 1; why[0] = "a collision capsule scaled unevenly across it, left out"; k = d.nodes[k].next; continue;
+    }
     if im[0].nsh >= im[0].shapes.count { why[0] = "more colliders than the import holds"; return -1; }
     im[0].shapes[im[0].nsh] = ImShape.{shape = sh[0], name = name}; im[0].nsh += 1; added += 1;
     k = d.nodes[k].next;
@@ -124,10 +135,20 @@ im_collide :: (im: [] Im, d: Jv, mesh_row: int, pose: ImPose, map: int, name: in
   hulls := jv_get(d, c, "convex"); k = im_first(d, hulls);
   while k != -1 {
     vs := jv_get(d, k, "vertices_cm"); pts: [CV_HULL_POINTS] D3; n := jv_len(d, vs);
-    if n > CV_HULL_POINTS { why[0] = "a convex collider over the points the import takes"; return -1; }
-    v := im_first(d, vs); i := 0;
-    while v != -1 { w := ua_place(pose.ut, pose.uq, pose.us, im_d3(d, v)); pts[i] = ua_pos(w.x, w.y, w.z); i += 1; v = d.nodes[v].next; }
-    sh: [1] CvShape; if !cv_hull_shape(pts[0..<n], map, sh[..]) { why[0] = "a convex collider that isn't a solid of at most CV_HULL_FACES faces"; return -1; }
+    v := im_first(d, vs); i := 0; blo := d3(1e30, 1e30, 1e30); bhi := d3(-1e30, -1e30, -1e30);
+    while v != -1 {
+      w := ua_place(pose.ut, pose.uq, pose.us, im_d3(d, v)); q := ua_pos(w.x, w.y, w.z);
+      if i < CV_HULL_POINTS { pts[i] = q; }
+      blo = d3(fmin(blo.x, q.x), fmin(blo.y, q.y), fmin(blo.z, q.z)); bhi = d3(fmax(bhi.x, q.x), fmax(bhi.y, q.y), fmax(bhi.z, q.z));
+      i += 1; v = d.nodes[v].next;
+    }
+    sh: [1] CvShape;
+    if n > CV_HULL_POINTS || !cv_hull_shape(pts[0..<n], map, sh[..]) {
+      // the walker takes hulls of at most CV_HULL_POINTS points and CV_HULL_FACES faces: a bigger one is
+      // the box of its points (in the pack's axes), which stays inside what its mesh draws' bounds
+      if !im_aligned_box(blo, bhi, map, sh[..]) { im[0].dropped += 1; why[0] = "a convex collider with no volume, left out"; k = d.nodes[k].next; continue; }
+      im[0].boxed += 1; why[0] = "a convex collider over the faces the walker takes, as the box of its points";
+    }
     if im[0].nsh >= im[0].shapes.count { why[0] = "more colliders than the import holds"; return -1; }
     im[0].shapes[im[0].nsh] = ImShape.{shape = sh[0], name = name}; im[0].nsh += 1; added += 1;
     k = d.nodes[k].next;
@@ -207,9 +228,14 @@ tool_main :: () -> int #export_c #effects(all) {
     id := ab_id(dd, r); c[CV_MESHES].read += 1;
     if ab_field(dd, r, "origin") == "engine" {
       shape := su_mesh(id);
-      if shape == SU_NONE { return im_fault("refused:", id, "an engine mesh with no substitute in metaverse-engine/import/unreal/substitute.coax"); }
-      if cv_shape(g, shape, k) < 0 { return im_fault("mesh", id, g[0].bad); }
-      c[CV_MESHES].substituted += 1; im_line(rep[..], "substituted ", id, ifx shape == SU_CHARACTER then " by the engine's character stand-in (the rig importer, #13651, retargets it)" else "");
+      if shape == SU_NONE { return im_fault("refused:", id, "an engine mesh with no id"); }
+      // fitted to the mesh's own bounds, in the pack's axes
+      bn := jv_get(dd, r, "bounds_cm");
+      ba := ua_pos(ab_f(dd, bn, 0), ab_f(dd, bn, 1), ab_f(dd, bn, 2)); bz := ua_pos(ab_f(dd, bn, 3), ab_f(dd, bn, 4), ab_f(dd, bn, 5));
+      lo := d3(fmin(ba.x, bz.x), fmin(ba.y, bz.y), fmin(ba.z, bz.z)); hi := d3(fmax(ba.x, bz.x), fmax(ba.y, bz.y), fmax(ba.z, bz.z));
+      if cv_shape_in(g, shape, k, lo, hi) < 0 { return im_fault("mesh", id, g[0].bad); }
+      c[CV_MESHES].substituted += 1;
+      im_line(rep[..], "substituted ", id, ifx shape == SU_CHARACTER then " by the engine's character stand-in (the rig importer, #13651, retargets it)" else ifx shape == SU_BOUNDS then " by a box of its bounds" else "");
       continue;
     }
     fb: [4096] u8; n := im_read(fs_join(bundle, ab_field(dd, r, "file"), fb[..]), scratch[..]);
@@ -249,12 +275,16 @@ tool_main :: () -> int #export_c #effects(all) {
   // ---- maps
   if b[0].maps.count > AB_MAPS { return im_fail("more maps than the import holds"); }
   spawn: [AB_MAPS] int; key: [AB_MAPS] int; fall: [AB_MAPS] f64;
+  // a map with no player start (a look-development map, a level instance) gets a stand-in, listed: the
+  // middle of what collides, a metre over its top, so the walker comes down on what is there
+  seen_lo: [AB_MAPS * 3] f64; seen_hi: [AB_MAPS * 3] f64;
   for m: 0..<b[0].maps.count {
     map_id := ab_id(dd, ab_row(b, b[0].maps, m));
     if b[0].landscapes[m].count > 0 { return im_fault("map", map_id, "has a landscape, which this version doesn't convert yet (spec 5.5)"); }
     spawn[m] = -1; key[m] = -1; fall[m] = 1e30;
+    for v: 0..<3 { seen_lo[m * 3 + v] = 1e30; seen_hi[m * 3 + v] = -1e30; }
     for k: 0..<b[0].spots[m].count { r := ab_row(b, b[0].spots[m], k); c[CV_SPOTS].read += 1; c[CV_SPOTS].carried += 1; if spawn[m] < 0 && ab_field(dd, r, "kind") == "player_start" { spawn[m] = r; } }
-    if spawn[m] < 0 { return im_fault("map", map_id, "has no player start (spec 5.6)"); }
+    if spawn[m] < 0 { im_line(rep[..], "no player start in ", map_id, ": a stand-in over the middle of what collides"); }
     for k: 0..<b[0].lights[m].count {
       r := ab_row(b, b[0].lights[m], k); c[CV_LIGHT_ROWS].read += 1;
       if ab_field(dd, r, "kind") == "directional" && (key[m] < 0 || ab_num(dd, jv_get(dd, r, "intensity")).value > ab_num(dd, jv_get(dd, key[m], "intensity")).value) { key[m] = r; }
@@ -277,11 +307,16 @@ tool_main :: () -> int #export_c #effects(all) {
       }
       c[CV_PLACEMENTS].carried += 1;
       lo: [3] f64; hi: [3] f64; cv_visible(meshes[mi], pose.t, pose.q, pose.s, lo[..], hi[..]);
-      fall[m] = fmin(fall[m], lo[1]);
+      // the height you fall out at, and a stand-in start, come from what you can stand on: a sky sphere
+      // 20 km across that nothing collides with is drawn, not walked
       if ab_field(dd, r, "collision") != "block" { continue; }
+      fall[m] = fmin(fall[m], lo[1]);
+      for v: 0..<3 { seen_lo[m * 3 + v] = fmin(seen_lo[m * 3 + v], lo[v]); seen_hi[m * 3 + v] = fmax(seen_hi[m * 3 + v], hi[v]); }
       first := im[0].nsh; whyc: [1] string;
+      was := im[0].boxed + im[0].dropped;
       added := ifx skel then 0 else im_collide(im[..], dd, mesh_row, pose, m, r, whyc[..]);
       if added < 0 { return im_fault("placement", pname, whyc[0]); }
+      if im[0].boxed + im[0].dropped > was { cv_put(rep[..], "collider "); cv_put(rep[..], pname); cv_put(rep[..], ": "); cv_put(rep[..], whyc[0]); cv_put(rep[..], "\n"); }
       if added == 0 {
         im[0].uncollided += 1;
         im_line(rep[..], "not collided ", pname, ifx jv_bool(dd, jv_get(dd, jv_get(dd, mesh_row, "collision"), "complex_as_simple")) then ": its mesh collides as its triangles, which this version doesn't carry" else ": its mesh has no collision; you can walk through it");
@@ -358,8 +393,12 @@ tool_main :: () -> int #export_c #effects(all) {
     dl := 0; for k: 0..<b[0].textures.count { if use[k] == 2 { cv_put(cat[..], "D"); cv_int(cat[..], dl); cv_word(cat[..], cast(string) layer_names[k][0..<layer_n[k]]); cv_put(cat[..], " 0\n"); dl += 1; } }
     for k: 0..<b[0].sounds.count { cv_put(cat[..], "S "); cv_put(cat[..], cast(string) im[0].sound_names[k][0..<im[0].sound_n[k]]); cv_put(cat[..], " 0\n"); }
     for m: 0..<b[0].maps.count {
-      sp := spawn[m]; p := im_pose(dd, sp);
-      cv_put(cat[..], "spawn"); cv_int(cat[..], m); cv_num(cat[..], p.t.x); cv_num(cat[..], p.t.y); cv_num(cat[..], p.t.z); cv_num(cat[..], cv_yaw(p.q)); cv_put(cat[..], "\n");
+      sp := spawn[m];
+      cv_put(cat[..], "spawn"); cv_int(cat[..], m);
+      if sp >= 0 { p := im_pose(dd, sp); cv_num(cat[..], p.t.x); cv_num(cat[..], p.t.y); cv_num(cat[..], p.t.z); cv_num(cat[..], cv_yaw(p.q)); }
+      else if seen_lo[m * 3] > seen_hi[m * 3] { cv_num(cat[..], 0.0); cv_num(cat[..], 1.0); cv_num(cat[..], 0.0); cv_num(cat[..], 0.0); }
+      else { cv_num(cat[..], (seen_lo[m * 3] + seen_hi[m * 3]) * 0.5); cv_num(cat[..], seen_hi[m * 3 + 1] + 1.0); cv_num(cat[..], (seen_lo[m * 3 + 2] + seen_hi[m * 3 + 2]) * 0.5); cv_num(cat[..], 0.0); }
+      cv_put(cat[..], "\n");
       cv_put(cat[..], "fall"); cv_int(cat[..], m); cv_num(cat[..], fall[m]); cv_put(cat[..], "\n");
       if key[m] >= 0 {
         r := key[m]; kp := im_pose(dd, r); toward := d3_neg(dq_rotate(kp.q, ua_dir(d3(1.0, 0.0, 0.0)))); col := jv_get(dd, r, "color");

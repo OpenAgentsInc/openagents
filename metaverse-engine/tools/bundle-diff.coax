@@ -3,6 +3,13 @@
 // the importer's spec, section 4.3. Both are admitted whole first (a refused bundle is named, not diffed).
 //
 //   coax/web/tool.sh metaverse-engine/tools/bundle-diff.coax OLD.aimport NEW.aimport
+//   coax/web/tool.sh metaverse-engine/tools/bundle-diff.coax OLD.aimport NEW.aimport --maps OLD_MAP=NEW_MAP...
+//
+// --maps compares the named maps of two routes of one game (the data route and the editor route name
+// their maps and actors differently): their placements pair by place, translation within 1 cm, and a
+// pair is the same when its asset, rotation (within 1e-5) and scale (within 1e-5) are. It prints, a map
+// a line: placements in each, paired the same, paired but different, only in OLD, only in NEW; and each
+// only-in-OLD row by name. Exits 0 when every OLD placement pairs the same, 3 otherwise.
 //
 // Numbers compare as section 6 says: under a key ending _cm within 0.01 cm, a rotation within 1e-5 a
 // component, everything else exactly; skipped.json by its count of rows per reason.
@@ -81,13 +88,61 @@ bd_list :: (o: [] BdSide, n: [] BdSide, lo: AbList, ln: AbList, key: string, lis
   }
 }
 
+BD_PLACE_CM :: 1.0; BD_NEAR :: 0.00001;
+bd_find_map :: (b: [] AbBundle, id: string) -> int #effects(all) {
+  for k: 0..<b[0].maps.count { if ab_id(b[0].d, ab_row(b, b[0].maps, k)) == id { return k; } }
+  return -1;
+}
+bd_vec_near :: (od: Jv, a: int, nd: Jv, b: int, n: int, tol: f64) -> bool #effects(all) {
+  for k: 0..<n { if abs(anim_decimal(jv_raw(od, jv_at(od, a, k))).value - anim_decimal(jv_raw(nd, jv_at(nd, b, k))).value) > tol { return false; } }
+  return true;
+}
+bd_quat_near :: (od: Jv, a: int, nd: Jv, b: int) -> bool #effects(all) {
+  dot := 0.0; for k: 0..<4 { dot += anim_decimal(jv_raw(od, jv_at(od, a, k))).value * anim_decimal(jv_raw(nd, jv_at(nd, b, k))).value; }
+  return abs(dot) > 1.0 - BD_NEAR;
+}
+// One pair of maps, by place. Returns the OLD placements that don't pair the same.
+bd_by_place :: (ob: [] AbBundle, om: int, nb: [] AbBundle, nm: int, label: string) -> int #effects(all) {
+  od := ob[0].d; nd := nb[0].d; ol := ob[0].placements[om]; nl := nb[0].placements[nm];
+  used: [AB_ROWS] bool; same := 0; diff := 0; gone := 0;
+  for i: 0..<ol.count {
+    ro := ab_row(ob, ol, i); to := jv_get(od, ro, "translation_cm"); best := -1; bsame := false;
+    for j: 0..<nl.count {
+      if used[j] { continue; }
+      rn := ab_row(nb, nl, j);
+      if !bd_vec_near(od, to, nd, jv_get(nd, rn, "translation_cm"), 3, BD_PLACE_CM) { continue; }
+      ok := ab_field(od, ro, "asset") == ab_field(nd, rn, "asset") && bd_quat_near(od, jv_get(od, ro, "rotation"), nd, jv_get(nd, rn, "rotation"))
+        && bd_vec_near(od, jv_get(od, ro, "scale"), nd, jv_get(nd, rn, "scale"), 3, BD_NEAR);
+      if best < 0 || (ok && !bsame) { best = j; bsame = ok; }
+      if ok { break; }
+    }
+    if best < 0 { gone += 1; print("- placements % %\n", label, ab_field(od, ro, "name")); continue; }
+    used[best] = true; if bsame { same += 1; } else { diff += 1; print("~ placements % % (%)\n", label, ab_field(od, ro, "name"), ab_field(nd, ab_row(nb, nl, best), "name")); }
+  }
+  added := 0; for j: 0..<nl.count { if !used[j] { added += 1; } }
+  print("bundle-diff: map %: % placements, % in the new; % paired the same, % paired but different, % only in the old, % only in the new\n",
+    label, ol.count, nl.count, same, diff, gone, added);
+  return diff + gone;
+}
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
-  if !args_load(a[..]) || args_count(a[..]) != 2 { print("usage: bundle-diff OLD.aimport NEW.aimport\n"); return 2; }
+  by_place := args_load(a[..]) && args_count(a[..]) > 3 && args_at(a[..], 2) == "--maps";
+  if !by_place && args_count(a[..]) != 2 { print("usage: bundle-diff OLD.aimport NEW.aimport [--maps OLD_MAP=NEW_MAP...]\n"); return 2; }
   ot: [BD_MANIFEST] u8; on: [BD_NODES] JvNode; oa: [AB_ROWS] int; os: [1] BdSide;
   nt: [BD_MANIFEST] u8; nn: [BD_NODES] JvNode; na: [AB_ROWS] int; ns: [1] BdSide;
   if !bd_load(args_at(a[..], 0), ot[..], on[..], oa[..], os[..]) || !bd_load(args_at(a[..], 1), nt[..], nn[..], na[..], ns[..]) { return 1; }
   ob := os[0].b[..]; nb := ns[0].b[..]; c: [1] BdCount;
+  if by_place {
+    bad := 0;
+    for k: 3..<args_count(a[..]) {
+      pair := args_at(a[..], k); eq := -1; for ch, i: pair { if ch == '=' && eq < 0 { eq = i; } }
+      if eq <= 0 { tool_err("bundle-diff: not OLD_MAP=NEW_MAP: "); tool_errln(pair); return 2; }
+      om := bd_find_map(ob, pair[0..<eq]); nm := bd_find_map(nb, pair[eq + 1..<pair.count]);
+      if om < 0 || nm < 0 { tool_err("bundle-diff: no such map in its bundle: "); tool_errln(pair); return 1; }
+      bad += bd_by_place(ob, om, nb, nm, pair[eq + 1..<pair.count]);
+    }
+    return ifx bad == 0 then 0 else 3;
+  }
   if ob[0].route != nb[0].route { print("~ route\n"); c[0].changed += 1; }
   bd_list(os[..], ns[..], ob[0].files, nb[0].files, "path", "files", "", c[..]);
   bd_list(os[..], ns[..], ob[0].meshes, nb[0].meshes, "id", "meshes", "", c[..]);

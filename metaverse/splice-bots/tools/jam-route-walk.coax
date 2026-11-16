@@ -6,7 +6,11 @@
 // must be one you can see: a collider whose drawn instance (the P line of the same name) covers it.
 // A collider with no drawn instance is an invisible blocker, and the walk fails.
 //
-//   coax/web/tool.sh metaverse/splice-bots/tools/jam-route-walk.coax PACK
+//   coax/web/tool.sh metaverse/splice-bots/tools/jam-route-walk.coax PACK [--route ROUTE_PACK]
+//
+// --route takes the spots from another pack of the same levels: the editor route's bundle has only
+// player starts, and the data route's has the jam's markers. Its maps pair with PACK's by exact id
+// (JRW_SHARED); a map with no pair walks its own spots.
 //
 // It prints a line a map (legs, reached, stopped by something you can see, stopped by nothing you can see)
 // and each stop, and exits 1 on an invisible blocker.
@@ -113,9 +117,21 @@ jrw_shape_name :: (cat: string, k: int) -> string #effects(all) {
   return "";
 }
 
+// The jam's four levels in the data route's ids and the editor route's.
+JRW_SHARED :: [4] [2] string.[
+  [2] string.["/Data/level_layout/farm", "/Game/World/Graybox/L_Farm"], [2] string.["/Data/level_layout/lab", "/Game/World/Graybox/L_Lab"],
+  [2] string.["/Data/level_layout/plain", "/Game/World/Graybox/L_Plain"], [2] string.["/Data/level_layout/ring", "/Game/World/Graybox/L_Ring"]];
+jrw_pair :: (w: [] IwWorld, m: int, r: [] IwWorld) -> int #effects(all) {
+  id := cast(string) w[0].maps[m].id[0..<w[0].maps[m].id_n];
+  for pr: JRW_SHARED { if pr[1] == id || pr[0] == id {
+    for k: 0..<r[0].nm { rid := cast(string) r[0].maps[k].id[0..<r[0].maps[k].id_n]; if rid == pr[0] || rid == pr[1] { return k; } }
+  } }
+  return -1;
+}
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
-  if !args_load(a[..]) || args_count(a[..]) != 1 { print("usage: jam-route-walk PACK\n"); return 2; }
+  routed := args_load(a[..]) && args_count(a[..]) == 3 && args_at(a[..], 1) == "--route";
+  if !routed && args_count(a[..]) != 1 { print("usage: jam-route-walk PACK [--route ROUTE_PACK]\n"); return 2; }
   pack_b: [268435456] u8; path := args_at(a[..], 0); pn := fs_size(path);
   if pn < 0 || pn > pack_b.count || fs_read(path, pack_b[0..<pn]) != pn { tool_errln("jam-route-walk: could not read the pack"); return 1; }
   pack := cast(string) pack_b[0..<pn]; rd: [1] PackRead;
@@ -123,17 +139,26 @@ tool_main :: () -> int #export_c #effects(all) {
   cat := pack_bytes(pack, rd[..], 0);
   w: [1] IwWorld;
   if !iw_admit(w[..], cat) { tool_err("jam-route-walk: the world is refused: "); tool_errln(w[0].why); return 1; }
+  rw: [1] IwWorld;
+  if routed {
+    route_b: [67108864] u8; rp := args_at(a[..], 2); rn := fs_size(rp);
+    if rn < 0 || rn > route_b.count || fs_read(rp, route_b[0..<rn]) != rn { tool_errln("jam-route-walk: could not read the route pack"); return 1; }
+    rpk := cast(string) route_b[0..<rn]; rr: [1] PackRead;
+    if !pack_read(rpk, rr[..]) || !iw_admit(rw[..], pack_bytes(rpk, rr[..], 0)) { tool_errln("jam-route-walk: the route pack is refused"); return 1; }
+  }
   c: [1] IwColliders; invisible := 0;
   for m: 0..<w[0].nm {
     iw_colliders(w[..], m, c[..]); world := iw_walker(w[..], m, c[..]);
+    src := w[..]; sm := m;
+    if routed { pm := jrw_pair(w[..], m, rw[..]); if pm >= 0 { src = rw[..]; sm = pm; } }
     order: [IW_SPOTS] int; n := 0;
-    for k: 0..<w[0].nspot { if w[0].spots[k].map == m && w[0].spots[k].kind != IW_SPOT_START { order[n] = k; n += 1; } }
-    for x: 1..<n { k := x; while k > 0 && jrw_after(cast(string) w[0].spots[order[k - 1]].name[0..<w[0].spots[order[k - 1]].name_n], cast(string) w[0].spots[order[k]].name[0..<w[0].spots[order[k]].name_n]) { t := order[k]; order[k] = order[k - 1]; order[k - 1] = t; k -= 1; } }
+    for k: 0..<src[0].nspot { if src[0].spots[k].map == sm && src[0].spots[k].kind != IW_SPOT_START { order[n] = k; n += 1; } }
+    for x: 1..<n { k := x; while k > 0 && jrw_after(cast(string) src[0].spots[order[k - 1]].name[0..<src[0].spots[order[k - 1]].name_n], cast(string) src[0].spots[order[k]].name[0..<src[0].spots[order[k]].name_n]) { t := order[k]; order[k] = order[k - 1]; order[k - 1] = t; k -= 1; } }
     mp := w[0].maps[m];
     p := walker.place_in(world, mp.spawn[0], mp.spawn[1], mp.spawn[2], mp.yaw);
     reached := 0; seen := 0; unseen := 0; fell := 0;
     for leg: 0..<n {
-      s := w[0].spots[order[leg]]; best: f32 = 1e30; since: f32 = 0; t: f32 = 0; stopped := false;
+      s := src[0].spots[order[leg]]; best: f32 = 1e30; since: f32 = 0; t: f32 = 0; stopped := false;
       while t < JRW_LEG {
         dx := s.at[0] - p.body.pos.x; dz := s.at[2] - p.body.pos.z; d := sqrt(dx * dx + dz * dz);
         if d < JRW_REACH { break; }
