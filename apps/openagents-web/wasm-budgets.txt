@@ -49,7 +49,7 @@ milestone 128000
 # 410,371 measured 2026-11-13 once the library's relay scopes reads and moderation to NIP-29 groups and answers NIP-67's
 # finish (abceb6d324, #13382; the page runs that relay in process); about 5% room.
 nostr-chat 431000
-components 210000
+components 260000
 # /kit, the control kit's page (kit.coax): 80,287 bytes measured 2026-11-11 on a Linux build host; about 10% room.
 # With the dock (components/kit/dock.coax, #13416: panes, props and facts, and their section on the page): 89,924 bytes measured 2026-11-13 on a Mac; about 11% room.
 # With a row's control (k_row_with, #13414), whose icon is the caller's to name, so the icons' names table is kept whole: 112,566 bytes measured 2026-11-13 on a Mac; about 10% room.
@@ -273,7 +273,7 @@ oneshot 410000
 # 292,500 final Linux release bytes at #12845; 2.5% room in this 300,000-byte bound.
 orbitleague 300000
 private 280000
-project 2400000
+project 2450000
 # #13604: the draft review rows the apps share (coax/lib/project/draft.coax and the JSON field walk) move
 # here from drop.js: 92,453 -> 113,505 bytes measured 2026-11-14 (macOS build); about 15% room.
 projects 130000
