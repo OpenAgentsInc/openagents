@@ -39,6 +39,9 @@ app_enter :: (f: [] UiFrame, k: int, from: AppMark) {
   dy := (1 - e) * f[0].skin.app.rise;
   prim_move(f[0].sheet[0].under, from.nu, f[0].sheet[0].nu, 0, dy);
   prim_move(f[0].sheet[0].over, from.no, f[0].sheet[0].no, 0, dy);
+  // and it fades in as it rises (group opacity, paint/list.coax)
+  prim_opacity(f[0].sheet[0].under, from.nu, f[0].sheet[0].nu, e);
+  prim_opacity(f[0].sheet[0].over, from.no, f[0].sheet[0].no, e);
 }
 // Text cut to a width: the text itself when it fits, else its longest start
 // that fits with an ellipsis after it, kept in the sheet's pool.

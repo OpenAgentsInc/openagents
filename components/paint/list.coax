@@ -30,6 +30,10 @@
 //               edges                      (an edge at or past PRIM_OPEN is no edge); on false: no clip
 //   PRIM_FADE      y the top edge             a its band, b the bottom edge, c its band: what follows fades
 //                                          out toward each edge over its band; on false: no fade
+//   PRIM_ALPHA     -                          a its opacity (0 to 1): what follows draws at it, times the
+//                                             groups around it, until the matching end (on false). A
+//                                             group's own primitives each take the opacity; they are not
+//                                             composited as one layer first (overlaps inside show through)
 //   PRIM_POLY      the points' bounds          pts its points (x, y pairs, a view into the caller's pool),
 //                                             fill; a closed polygon, filled even-odd (ARWES's frames)
 //   coax/bin/coax test components/paint/list.coax
@@ -37,8 +41,8 @@
 #load "../core/color.coax";
 
 PRIM_BOX :: 0; PRIM_SHADOW :: 1; PRIM_INSET :: 2; PRIM_GRADIENT :: 3; PRIM_ELBOW :: 4; PRIM_LINE :: 5; PRIM_RING :: 6; PRIM_ARC :: 7;
-PRIM_TEXT :: 8; PRIM_ICON :: 9; PRIM_IMAGE :: 10; PRIM_CLIP :: 11; PRIM_FADE :: 12; PRIM_POLY :: 13;
-PRIM_KINDS :: 14;
+PRIM_TEXT :: 8; PRIM_ICON :: 9; PRIM_IMAGE :: 10; PRIM_CLIP :: 11; PRIM_FADE :: 12; PRIM_POLY :: 13; PRIM_ALPHA :: 14;
+PRIM_KINDS :: 15;
 PRIM_OPEN :: 1000000.0;        // a clip edge this far out is no edge
 
 Prim :: struct {
@@ -113,6 +117,18 @@ prim_fade :: (list: [] Prim, n: int, top: f32, band_top: f32, bottom: f32, band_
   return prim_put(list, n, Prim.{kind = PRIM_FADE, y = top, a = band_top, b = bottom, c = band_bottom, on = true, id = -1, line = -1});
 }
 prim_unfade :: (list: [] Prim, n: int) -> int { return prim_put(list, n, Prim.{kind = PRIM_FADE, id = -1, line = -1}); }
+// What follows draws at `alpha` (group opacity: a component's entry or exit) until prim_unalpha. Groups nest.
+prim_alpha :: (list: [] Prim, n: int, alpha: f32) -> int {
+  o := ifx alpha < 0 then 0.0f32 else ifx alpha > 1 then 1.0f32 else alpha;
+  return prim_put(list, n, Prim.{kind = PRIM_ALPHA, a = o, on = true, id = -1, line = -1});
+}
+prim_unalpha :: (list: [] Prim, n: int) -> int { return prim_put(list, n, Prim.{kind = PRIM_ALPHA, id = -1, line = -1}); }
+// Primitives from..<to, already painted, at `alpha`: their colours' alpha scaled (what a part that
+// enters fades with, once it knows where its primitives end).
+prim_opacity :: (list: [] Prim, from: int, to: int, alpha: f32) {
+  o := ifx alpha < 0 then 0.0f32 else ifx alpha > 1 then 1.0f32 else alpha;
+  for k: from..<to { if k >= 0 && k < list.count { list[k].fill.a *= o; list[k].edge.a *= o; } }
+}
 // A filled polygon: pts holds its points as x, y pairs (at least three);
 // its bounds are theirs. pts is a view the list keeps, so it must outlive it.
 prim_poly :: (list: [] Prim, n: int, pts: [] f32, fill: Rgba) -> int {
@@ -143,6 +159,7 @@ prim_move :: (list: [] Prim, from: int, to: int, dx: f32, dy: f32) {
       continue;
     }
     if kind == PRIM_FADE { list[k].y += dy; list[k].b += dy; continue; }
+    if kind == PRIM_ALPHA { continue; }
     list[k].x += dx; list[k].y += dy;
     if kind == PRIM_LINE { list[k].a += dx; list[k].b += dy; }
     if kind == PRIM_ELBOW { list[k].a += dx; }

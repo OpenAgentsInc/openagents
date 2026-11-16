@@ -445,6 +445,8 @@ gpu_draw :: (out: [] f32, at: int, a: [] Atlas, d: f32, list: [] Prim, ox: f32, 
   // brings back the one around it
   depth := 0; sl: [GP_CLIP_DEPTH] f32; st: [GP_CLIP_DEPTH] f32; sr: [GP_CLIP_DEPTH] f32; sb: [GP_CLIP_DEPTH] f32; son: [GP_CLIP_DEPTH] bool;
   fade := false; ft: f32 = 0; fa: f32 = 0; fb: f32 = 0; fc: f32 = 0;
+  // group opacity nests: each group's opacity times the ones around it
+  ga: f32 = 1; gdepth := 0; gs: [GP_CLIP_DEPTH] f32;
   for k: 0..<list.count {
     p := list[k];
     if p.kind == PRIM_CLIP {
@@ -462,6 +464,12 @@ gpu_draw :: (out: [] f32, at: int, a: [] Atlas, d: f32, list: [] Prim, ox: f32, 
       continue;
     }
     if p.kind == PRIM_FADE { fade = p.on; ft = p.y; fa = p.a; fb = p.b; fc = p.c; continue; }
+    if p.kind == PRIM_ALPHA {
+      if p.on { if gdepth < GP_CLIP_DEPTH { gs[gdepth] = ga; } gdepth += 1; ga *= p.a; }
+      else if gdepth > 0 { gdepth -= 1; ga = ifx gdepth < GP_CLIP_DEPTH then gs[gdepth] else 1.0f32; if gdepth == 0 { ga = 1; } }
+      continue;
+    }
+    if ga <= 0 { continue; }
     x := p.x + ox; y := p.y + oy;
     if y > y1 || y + prim_extent(p) < y0 { continue; }
     if clip && cr < PRIM_OPEN && p.x >= cr { continue; }
@@ -490,12 +498,41 @@ gpu_draw :: (out: [] f32, at: int, a: [] Atlas, d: f32, list: [] Prim, ox: f32, 
     }
     if clip { gp_clip_edges(out, v0, v, d, ifx cl > -PRIM_OPEN then cl + ox else cl, ifx ct > -PRIM_OPEN then ct + oy else ct, ifx cr < PRIM_OPEN then cr + ox else cr, ifx cb < PRIM_OPEN then cb + oy else cb); }
     if fade { gp_fade(out, v0, v, d, ft + oy, fa, fb + oy, fc); }
+    if ga < 1 { gp_opacity(out, v0, v, ga); }
   }
   return v;
+}
+// Vertices from..<to drawn at an opacity: each colour's alpha (fill and edge) scaled by it.
+gp_opacity :: (out: [] f32, from: int, to: int, alpha: f32) {
+  for k: from..<to {
+    o := k * GP_VERTEX_FLOATS;
+    if o + 19 < out.count { out[o + 15] *= alpha; out[o + 19] *= alpha; }
+  }
 }
 
 // ---------------------------------------------------------------- checks
 
+gp_t_near :: (x: f32, y: f32) -> bool { return abs(x - y) < 0.0001; }
+#test "group opacity: what follows draws at the group's opacity, nested groups multiply, a hidden group draws nothing, and the end brings back the one around it" {
+  list: [10] Prim; n := 0; c := rgba(1, 1, 1, 0.8);
+  n = prim_fill(list[..], n, 0, 0, 10, 10, 0, c);
+  n = prim_alpha(list[..], n, 0.5);
+  n = prim_fill(list[..], n, 0, 20, 10, 10, 0, c);
+  n = prim_alpha(list[..], n, 0.5);
+  n = prim_fill(list[..], n, 0, 40, 10, 10, 0, c);
+  n = prim_unalpha(list[..], n);
+  n = prim_fill(list[..], n, 0, 60, 10, 10, 0, c);
+  n = prim_unalpha(list[..], n);
+  n = prim_alpha(list[..], n, 0);
+  n = prim_fill(list[..], n, 0, 80, 10, 10, 0, c);
+  n = prim_unalpha(list[..], n);
+  a: [1] Atlas; out: [6 * 6 * GP_VERTEX_FLOATS] f32;
+  v := gpu_draw(out[..], 0, a[..], 1, list[0..<n], 0, 0, -8, 200);
+  #assert v == 24 && list[1].kind == PRIM_ALPHA && prim_alpha(list[0..<0], 0, 0.5) == 0;
+  #assert gp_t_near(out[15], 0.8) && gp_t_near(out[6 * GP_VERTEX_FLOATS + 15], 0.4) && gp_t_near(out[12 * GP_VERTEX_FLOATS + 15], 0.2) && gp_t_near(out[18 * GP_VERTEX_FLOATS + 15], 0.4);
+  // an entering part fades with prim_opacity over what it painted
+  prim_opacity(list[..], 0, 1, 0.25); #assert gp_t_near(list[0].fill.a, 0.2) && list[2].fill.a == 0.8;
+}
 #test "a browser's fewer dilation levels fold the five" {
   a: [1] Atlas;
   #assert gp_level(a[..], hex(0xe8e8ea, 1)) == 4;           // 0: the Mac's five
