@@ -1766,11 +1766,10 @@ availability is not yet verified. The handoff records the assignment command.
 
 ## Claude-reference GPU chat on iPhone (build 1404)
 
-Apple accepted build **1404** with no upload errors. Its first API status is
-`NOT_YET_LISTED`; processing and Owner assignment remain pending. Install
-availability is not yet verified. The handoff records the assignment command.
+Build **1404** is VALID, IN_BETA_TESTING and verified in the Owner TestFlight
+group. Install it from that group; the handoff records the delivery and checks.
 
-- [ ] Once available in Owner TestFlight, open a computer chat and check the
+- [ ] In 1404, open a computer chat and check the
       centered title, collapsed activity groups, individual tool details,
       reply/code Copy and Send/Stop. Conversation options → Recent chats:
       search loaded history, then return to the draft. Verify that tapping

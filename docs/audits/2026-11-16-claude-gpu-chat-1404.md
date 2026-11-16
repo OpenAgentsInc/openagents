@@ -114,10 +114,11 @@ IPA SHA-256:
 Archive and IPA: `/tmp/oa-claude-chat-1404-frozen`; release log:
 `/tmp/oa-claude-chat-1404-release.log`. Apple accepted the upload with no
 errors at **2026-11-16 11:53:04 CST**, delivery UUID
-`2957d9d2-8fc2-40e2-ae05-f8f3f00655b8`. The first post-upload API query is
-`NOT_YET_LISTED`; install availability is not yet verified. The Owner group
-is internal and does not automatically include all builds, so its assignment
-must be completed when Apple reports this build `VALID`:
+`2957d9d2-8fc2-40e2-ae05-f8f3f00655b8`. **1404 is VALID,
+IN_BETA_TESTING and verified in the Owner TestFlight group** (2026-11-16
+11:55 CST). The Owner group is internal and does not automatically include
+all builds; this exact build was explicitly assigned and membership verified.
+The commands used were:
 
 ```sh
 python3 apps/openagents-ios/tools/app_store.py status --build 1404
@@ -126,8 +127,8 @@ python3 apps/openagents-ios/tools/app_store.py testflight --build 1404 --group O
 
 Load the existing ASC credentials from the local secrets file, never into a
 document or log. The tool verifies exact Owner membership after assignment.
-The accepted build does not need a second upload. Per owner instruction,
-Apple processing is not an idle wait.
+The accepted build does not need a second upload. Documentation and cleanup
+continued during processing; there was no idle wait on Apple's queue.
 
 The source pre-push hook passes all structural gates. It selects no registered
 Coax suite for this app change; the explicit whole-app check run above supplies
