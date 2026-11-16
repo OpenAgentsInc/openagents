@@ -18,6 +18,7 @@
 
 #load "../task.coax";
 #load "../account.coax";
+#load "../../../apps/shared/app/login/card.coax";   // the one login card (lf_card), shown with example state
 #load "../nav.coax";
 #load "../../skin/arcade.coax";
 #load "../../backend/gpu.coax";
@@ -34,7 +35,7 @@ AG_ASK_NONE :: 0; AG_ASK_CLOSE :: 1;
 
 // The gallery's own actions: what a press on each example does.
 AG_CLOSE :: 1; AG_FIELD :: 2; AG_BUTTON :: 3; AG_SWITCH :: 4; AG_CHIP :: 5; AG_MENU :: 6; AG_COPY :: 7; AG_TOOL :: 8;
-AG_ALLOW :: 9; AG_DENY :: 10; AG_LOGIN_SUBMIT :: 11; AG_LOGIN_BACK :: 12; AG_NAV :: 13; AG_SIDE :: 14; AG_SEND :: 15;
+AG_ALLOW :: 9; AG_DENY :: 10; AG_NAV :: 13; AG_SIDE :: 14; AG_SEND :: 15;
 AG_RETRY :: 16; AG_PICK :: 17; AG_LOGIN :: 18;
 
 AG_MARKDOWN :: "## Plan\n\nThe composer test fails because **Send** stays enabled with an empty draft. I will:\n\n1. Read `composer.coax`\n2. Fix the check\n- [x] Found the cause\n- [ ] Run the checks\n\n> The shared composer keeps its own height.\n\n```rust\nfn enabled(text: &str) -> bool {\n    !text.trim().is_empty()\n}\n```\n\n| Check | Result |\n| --- | --- |\n| composer | failed |\n| send | passed |";
@@ -57,6 +58,7 @@ AppGallery :: struct {
   // the example state a press changes
   switch_on: bool; chip: int; pick: int; copied: int; answered: int; nav_open: bool; side: int;
   running: bool; login_code: bool; offline: bool; presses: int;
+  login: [1] LoginFlow;                        // example state for the login card, made new each frame
 }
 
 ag_init :: (s: [] AppGallery) {
@@ -227,15 +229,22 @@ ag_task :: (s: [] AppGallery, f: [] UiFrame, x: f32, top: f32, w: f32) -> f32 {
   return y - top;
 }
 
+// The login card's example state: the email step or the code step, opened, with nothing in flight.
+ag_login :: (s: [] AppGallery) {
+  l := s[0].login[..];
+  l[0] = LoginFlow.{};
+  l[0].known = true; l[0].open = true; l[0].state = ifx s[0].login_code then ALF_CODE else ALF_OUT;
+  l[0].email_n = el_copy(l[0].email[..], "ada@example.com");
+  if s[0].login_code { l[0].code_n = el_copy(l[0].code[..], "482913"); l[0].words_n = el_copy(l[0].words[..], ALF_SENT); }
+  focus := ag_focus(s);
+  l[0].focus = ifx focus == "login.email" then LF_FIELD_EMAIL else ifx focus == "login.code" then LF_FIELD_CODE else LF_FIELD_NONE;
+}
 ag_account :: (s: [] AppGallery, f: [] UiFrame, x: f32, top: f32, w: f32) -> f32 {
   k := f[0].skin; a := k.app; y := top;
   y += ag_section(f, "g.account", x, y, w, "Account");
-  y += ag_caption(f, "g.c.login", x, y, w, "The login card: Send code moves to the code step");
-  l := AppLogin.{step = ifx s[0].login_code then APP_LOGIN_CODE else APP_LOGIN_EMAIL, email = "ada@example.com", code = "482913"};
-  y += app_login(f, "g.login", x, y, w, l, AppLoginActions.{field = AG_FIELD, submit = AG_LOGIN_SUBMIT, back = AG_LOGIN_BACK, resend = AG_BUTTON}) + a.gap;
-  y += app_login(f, "g.login.error", x, y, w, AppLogin.{step = APP_LOGIN_CODE, email = "ada@example.com", code = "4829", error = "That code is not right. Check the email and try again."},
-    AppLoginActions.{field = AG_FIELD, submit = AG_BUTTON, back = AG_BUTTON, resend = AG_BUTTON}) + a.gap;
-  y += app_login(f, "g.login.busy", x, y, w, AppLogin.{step = APP_LOGIN_EMAIL, email = "ada@example.com", busy = true}, AppLoginActions.{field = AG_FIELD, submit = AG_BUTTON}) + a.gap;
+  y += ag_caption(f, "g.c.login", x, y, w, "The login card: Send code moves to the code step, Change email moves back");
+  ag_login(s);
+  y += lf_card(f, s[0].login[..], x, y, w, false) + a.gap;
   y += app_logged_out_card(f, "g.logged.out", x, y, w, "Log in to run tasks on your computers.", AG_LOGIN) + a.gap;
   return y - top;
 }
@@ -307,6 +316,13 @@ ag_code_block :: (id: string) -> int {
 // A press on a committed row: the gallery's example state changes. Returns whether it did anything.
 ag_press :: (s: [] AppGallery, row: int) -> bool {
   act := surface_action(s[0].surface[..], row); id := surface_id(s[0].surface[..], row);
+  // the login card's rows carry the login flow's actions (LF_ACT_*), not the gallery's
+  if id.count > 6 && cast(string) id[0..<6] == "login." {
+    if act == LF_ACT_SEND { s[0].login_code = true; }
+    else if act == LF_ACT_CHANGE { s[0].login_code = false; }
+    else if act == LF_ACT_VERIFY || act == LF_ACT_RESEND || act == LF_ACT_CANCEL { s[0].presses += 1; }
+    return act != 0;
+  }
   if act == AG_CLOSE { s[0].ask = AG_ASK_CLOSE; return true; }
   if act == AG_FIELD { return true; }   // the focus rule gave it the keyboard
   if act == AG_BUTTON { s[0].presses += 1; return true; }
@@ -326,8 +342,6 @@ ag_press :: (s: [] AppGallery, row: int) -> bool {
     if id.count > 6 && cast(string) id[0..<6] == "g.ask." { s[0].answered = ifx s[0].answered >= 0 then -1 else ifx act == AG_ALLOW then 1 else 0; }
     return true;
   }
-  if act == AG_LOGIN_SUBMIT { s[0].login_code = true; return true; }
-  if act == AG_LOGIN_BACK { s[0].login_code = false; return true; }
   if act == AG_LOGIN { s[0].presses += 1; return true; }
   if act == AG_NAV { s[0].nav_open = !s[0].nav_open; return true; }
   if act == AG_SIDE { if id.count == 8 { s[0].side = cast(int) (id[7] - '0'); } return true; }

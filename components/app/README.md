@@ -14,14 +14,14 @@ never changes app state: a press reaches the app as the row's action.
 | `base.coax` | text styles (`app_text`), buttons (`app_button`: default, primary, quiet, destructive; busy and disabled), `app_icon_button`, `app_chip`, `app_field` (plain, secure, error, disabled), `app_notice`, `app_divider`, `app_card`, `app_sheet`, `app_menu_row`, `app_switch`, `app_progress`, `app_ring`; helpers `app_fit`, `app_id`, scroll anchoring (`app_anchor_take`, `app_anchor_scroll`) |
 | `chat.coax` | `app_composer` (Send, Stop while a reply runs, locked), `app_composer_chips` (environment and repository), `app_message_user`, `app_message_agent` (Markdown through `kit/markdown.coax`), `app_code` (language and Copy), `app_typing`, `app_empty`, `app_retry`, `app_jump`, `app_meta` |
 | `task.coax` | `app_task_header`, `app_task_state`, `app_tool` (opens onto paged input and result), `app_tool_group`, `app_tool_press`, `app_permission` (Deny, Allow, sending, uncertain, answered, expired), `app_task_result`, `app_banner` (reconnecting, offline) |
-| `account.coax` | `app_login` (email step, code step, busy, error), `app_logged_out_card` |
+| `account.coax` | `app_logged_out_card`; the login card is the login flow's `lf_card` (`apps/shared/app/login/card.coax`), and the gallery shows it |
 | `nav.coax` | `app_nav_button`, `app_side_head`, `app_side_row`, `app_side_list` |
 | `gallery/gallery.coax` | every component above on one scrolling page, with example data; the iOS dev menu opens it |
 
 One call:
 
 ```jai
-h := app_button(f, "login.submit", x, y, w, -1, "Send code", APP_BUTTON_PRIMARY, 0, ACT_SEND);
+h := app_button(f, "chat.retry", x, y, w, -1, "Try again", APP_BUTTON_PRIMARY, 0, ACT_RETRY);
 y += app_tool(f, tool_id, x, y + h, w, AppTool.{icon = ICON_TERMINAL, title = "Ran a command", arg = "ls", state = APP_TOOL_DONE, input = "ls", output = "a\nb"}, false, ACT_TOOL);
 // on a press: if app_tool_press(keyed, tool_id, pressed_id) { /* the row opened or turned a page */ }
 ```
@@ -29,7 +29,7 @@ y += app_tool(f, tool_id, x, y + h, w, AppTool.{icon = ICON_TERMINAL, title = "R
 Rules the set keeps:
 
 - The inputs are plain records (`AppTask`, `AppTool`, `AppPermission`,
-  `AppLogin`, `AppComposer`, `AppSideRow`); a screen copies what it shows
+  `AppComposer`, `AppSideRow`); a screen copies what it shows
   into them. Nothing here loads the task protocol, a service or app state.
 - The mono skin shows state by brightness and line, never hue.
 - Text a component makes up (a cut label, a count) is kept in the sheet's

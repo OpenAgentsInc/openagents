@@ -26,7 +26,7 @@ ag_test_show :: (s: [] AppGallery, o: [] AgOut, id: string) {
   s: [1] AppGallery; o: [1] AgOut; ag_test_atlas(s[0].atlas[..]);
   n := ag_test_frame(s[..], o[..]);
   #assert n > 0 && appgallery_refused(s[..]) == 0;
-  ids := [12] string.["g.basics", "g.chat", "g.task", "g.account", "g.nav", "g.env", "g.email", "g.composer", "g.tool.run", "g.ask", "g.login", "g.nav.button"];
+  ids := [12] string.["g.basics", "g.chat", "g.task", "g.account", "g.nav", "g.env", "g.email", "g.composer", "g.tool.run", "g.ask", "login", "g.nav.button"];
   for id: ids { #assert surface_find(s[0].surface[..], id) >= 0; }
   #assert s[0].content > s[0].view && ag_test_row(s[..], "g.header").role == EL_REGION;
   #assert ag_test_tap(s[..], o[..], "g.close") && appgallery_action(s[..]) == AG_ASK_CLOSE && appgallery_action(s[..]) == AG_ASK_NONE;
@@ -65,13 +65,13 @@ ag_test_show :: (s: [] AppGallery, o: [] AgOut, id: string) {
   #assert ag_test_tap(s[..], o[..], "g.ask.allow") && s[0].answered == 1;
   _ := ag_test_frame(s[..], o[..]);
   #assert surface_find(s[0].surface[..], "g.ask.allow") < 0;
-  ag_test_show(s[..], o[..], "g.login");
-  #assert ag_test_tap(s[..], o[..], "g.login.submit") && s[0].login_code;
+  ag_test_show(s[..], o[..], "login");
+  #assert ag_test_tap(s[..], o[..], "login.send") && s[0].login_code;
   _ := ag_test_frame(s[..], o[..]);
-  #assert surface_find(s[0].surface[..], "g.login.code") >= 0;
+  #assert surface_find(s[0].surface[..], "login.code") >= 0 && surface_find(s[0].surface[..], "login.cancel") >= 0;
   // a drag of 100 units scrolls 100 units and presses nothing
   before := s[0].scroll; presses := s[0].presses;
-  r := ag_test_row(s[..], "g.login.submit"); x := (r.x + r.w / 2) * s[0].d; y := (r.y + r.h / 2) * s[0].d;
+  r := ag_test_row(s[..], "login.verify"); x := (r.x + r.w / 2) * s[0].d; y := (r.y + r.h / 2) * s[0].d;
   _ := appgallery_pointer(s[..], x, y, 0); _ := appgallery_pointer(s[..], x, y - 100 * s[0].d, 1);
   #assert !appgallery_pointer(s[..], x, y - 100 * s[0].d, 2) && abs(s[0].scroll - before - 100) < 0.01 && s[0].presses == presses && s[0].login_code;
 }
