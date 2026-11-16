@@ -8,7 +8,10 @@ const root = process.argv[2];
     const read = p => fs.readFileSync(`${root}/${p}`);
     const decoder = new TextDecoder();
     const context = vm.createContext({cnUTF8: bytes => decoder.decode(Uint8Array.from(bytes))});
-    for (const p of ['tree-commands.js', `build/${name}.js`, 'runtime.js']) vm.runInContext(read(p).toString(), context);
+    for (const p of ['tree-commands.js', `build/${name}.js`, 'runtime.js']) {
+      const data=p===`build/${name}.js`?Buffer.concat([read(p),read(`build/${name}.tail.js`)]):read(p);
+      vm.runInContext(data.toString(), context);
+    }
     // Match the installed 64 MiB carrier. The account/task and inbox state
     // exceeds the older 32 MiB oracle allocation before its first frame.
     const memory = new WebAssembly.Memory({initial:1024, maximum:1024});

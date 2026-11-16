@@ -326,8 +326,10 @@ from the installed producer and resolved through that same inventory.
 
 Publish compatible UI/inventory changes through the signed package tools in
 [`coax/native/`](../../coax/native/README.md). The worlds-enabled package needs
-all four portable programs (`app`, `extras`, `worlds`, `editor`), their runtime
-and fonts, and the four `worlds/*.json` inventories. A new build's initial feed
+both `.js` and `.tail.js` parts of all four portable programs (`app`, `extras`,
+`worlds`, `editor`), their runtime and fonts, and all five `worlds/*.json`
+inventories. Wasm parity artifacts stay in the archive and are omitted from
+the OTA manifest so it retains the frozen 24-file limit. A new build's initial feed
 must be packaged from that archive's `Starter/` directory, rather than a later
 generation of the checkout. Matching bundled hashes let a fresh installation
 record the feed without offering a redundant update.

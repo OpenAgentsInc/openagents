@@ -126,8 +126,8 @@ node coax/native/tests/runtime-oracle.cjs apps/openagents-ios/Starter
 mkdir -p /tmp/native-release
 coax/web/tool.sh coax/native/package.coax apps/openagents-ios/Starter \
   com.openagents.app "$(cat apps/openagents-ios/Generated/runtime.txt)" 1 \
-  /tmp/native-release/manifest.json index.html runtime.js tree-commands.js build/app.js build/extras.js \
-  coaxial/shell.js build/app.wasm build/extras.wasm build/zeron/Geist.ttf \
+  /tmp/native-release/manifest.json index.html runtime.js tree-commands.js build/app.js build/app.tail.js build/extras.js build/extras.tail.js \
+  coaxial/shell.js build/zeron/Geist.ttf \
   build/zeron/Geist-Medium.ttf build/zeron/Geist-SemiBold.ttf build/zeron/GeistMono.ttf
 coax/web/tool.sh coax/native/publish.coax apps/openagents-ios/Starter \
   /tmp/native-release/manifest.json /tmp/native-release/latest.cnu \
@@ -140,8 +140,11 @@ signs locally using CryptoKit Ed25519, uploads immutable artifacts first,
 then promotes `latest.cnu`. An interrupted publish keeps the previous feed.
 `index.html` remains required by the frozen package-v1 format; the UIKit
 profile never executes it. Native presentation needs `runtime.js`,
-`tree-commands.js`, `build/app.js` and `build/extras.js`. The Wasm files
-are retained as build/parity references, not executed by JavaScriptCore.
+`tree-commands.js` and both parts of each compiled program. The Wasm files
+remain in archives as build/parity references; they are not executed by
+JavaScriptCore or included in the OTA manifest. The installed
+[program-parts profile](../../docs/protocol/native-program-parts-v1.md) requires
+both `.js` and `.tail.js`, including an empty tail for a smaller module.
 To roll back, publish old compatible resources with a higher generation.
 The installed key is the public file here; keep its private key outside the
 repository. A restricted backup is in Secret Manager

@@ -3,13 +3,21 @@
 // this artifact; UIKit, rather than a DOM or WebView, presents its elements.
 #load "../lib/sys/tool.coax";
 #load "../lib/sys/proc.coax";
+#load "../lib/sys/fs.coax";
+#load "../lib/json/json.coax";
+#load "program-parts.coax";
 nc_run :: (a:[]string)->bool {
   out:[4096]u8;err:[4096]u8;r:=proc_run(a,180000,out[..],err[..]);
   if r.started!=0 || r.status!=0 || r.timed_out {tool_errln(cast(string)err[0..<r.err_n]);return false;}return true;
 }
 tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=3 {tool_errln("compile INPUT.wasm LOWERED.wasm OUTPUT.js");return 2;}
+  name:=args_at(a[..],2);if name.count<3 || name[name.count-3..<name.count]!=".js" {return 2;}
   lower:=[6]string.["wasm-opt",args_at(a[..],0),"--llvm-nontrapping-fptoint-lowering","--llvm-memory-copy-fill-lowering","-o",args_at(a[..],1)];
   emit:=[8]string.["wasm2js",args_at(a[..],1),"--emscripten","--pedantic","-Oz","-o",args_at(a[..],2),"--enable-mutable-globals"];
-  return ifx nc_run(lower[..]) && nc_run(emit[..]) then 0 else 1;
+  if !nc_run(lower[..]) || !nc_run(emit[..]) {return 1;}
+  bytes:[16777217]u8;n:=fs_read(name,bytes[..]);first:=cnp_first_bytes(n);if first<0 {tool_errln("Compiled native program exceeds its installed bound");return 1;}
+  tail:[4096]u8;o:[1]Jo;jo_start(o[..],tail[..]);jo_put(o[..],name[0..<name.count-3]);jo_put(o[..],".tail.js");if o[0].bad {return 1;}
+  if !fs_write(jo_text(o[..]),cast(string)bytes[first..<n]) || !fs_write(name,cast(string)bytes[0..<first]) {return 1;}
+  return 0;
 }

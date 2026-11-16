@@ -1,0 +1,1 @@
+Private Nostr messages in your inbox: replies, delivery status, automatic sync, and history recovery across phone and web.

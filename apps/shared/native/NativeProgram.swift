@@ -18,7 +18,12 @@ import JavaScriptCore
         let decode:@convention(block) ([NSNumber])->String = { String(decoding:$0.map {UInt8(truncating:$0)},as:UTF8.self) }
         context.setObject(decode,forKeyedSubscript:"cnUTF8" as NSString)
         for path in ["tree-commands.js","build/\(module).js","runtime.js"] {
-            let data=try Data(contentsOf:directory.appendingPathComponent(path))
+            var data=try Data(contentsOf:directory.appendingPathComponent(path))
+            if path=="build/\(module).js" {
+                let tail=try Data(contentsOf:directory.appendingPathComponent("build/\(module).tail.js"))
+                guard cnp_parts(Int64(data.count),Int64(tail.count)) else {throw NativeFailure.refused("Invalid native program parts")}
+                data.append(tail)
+            }
             guard cn_program_bytes(Int64(data.count)),let script=String(data:data,encoding:.utf8) else {throw NativeFailure.refused("Invalid native program")}
             context.evaluateScript(script,withSourceURL:URL(string:"coax-native:///\(path)"))
             if let failure {throw NativeFailure.refused(failure)}

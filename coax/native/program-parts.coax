@@ -1,0 +1,18 @@
+// The one codec for the installed program-parts artifact profile.
+#authority;
+#test "program splitting retains every boundary within the installed and signed-file ceilings" {
+ sizes:=[8]int.[-1,0,1,8388607,8388608,8388609,16777216,16777217];
+ first:=[8]int.[-1,-1,1,8388607,8388608,8388608,8388608,-1];
+ for size,i:sizes {#assert cnp_first_bytes(size)==first[i];if first[i]>0 {#assert cnp_parts(first[i],size-first[i]);}}
+}
+#test "a loader refuses missing empty oversized or noncanonical program parts before evaluation" {
+ #assert cnp_parts(1,0) && cnp_parts(8388608,0) && cnp_parts(8388608,1) && cnp_parts(8388608,8388608);
+ #assert !cnp_parts(0,0) && !cnp_parts(-1,0) && !cnp_parts(8388609,0) && !cnp_parts(8388608,-1) && !cnp_parts(8388608,8388609) && !cnp_parts(8388607,1);
+}
+cnp_first_bytes :: (total:int)->int #effects(all) {
+ if total<1 || total>16777216 {return -1;}
+ return ifx total<8388608 then total else 8388608; // mutant: equivalent (< -> <=, or comparison threshold +1: the only newly included integer is 8388608, and both arms return that same value)
+}
+cnp_parts :: (first:int,tail:int)->bool #export_c #effects(all) {
+ return first>0 && first<=8388608 && tail>=0 && tail<=8388608 && (tail==0 || first==8388608);
+}

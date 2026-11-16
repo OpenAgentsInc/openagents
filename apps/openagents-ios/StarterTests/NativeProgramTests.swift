@@ -5,6 +5,24 @@ import CryptoKit
 @testable import OpenAgents
 
 @MainActor final class NativeProgramTests:XCTestCase {
+    func testProgramPartsJoinBytesBeforeUTF8AndRefuseMissingOrNoncanonicalTails()throws {
+        let directory=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at:directory.appendingPathComponent("build"),withIntermediateDirectories:true)
+        defer {try? FileManager.default.removeItem(at:directory)}
+        try Data("globalThis.partProbe=1;".utf8).write(to:directory.appendingPathComponent("tree-commands.js"))
+        try Data("globalThis.partProbe+=1;".utf8).write(to:directory.appendingPathComponent("runtime.js"))
+        let entry=directory.appendingPathComponent("build/app.js"),tail=directory.appendingPathComponent("build/app.tail.js")
+        var first=Data("function instantiate(_) { return {}; } /* ".utf8)
+        first.append(Data(repeating:32,count:8_388_607-first.count));first.append(0xc3)
+        try first.write(to:entry);try Data([0xa9,32,42,47]).write(to:tail)
+        let program=try NativeProgram(directory:directory,module:"app")
+        XCTAssertEqual(program.context.objectForKeyedSubscript("partProbe")?.toInt32(),2)
+        try FileManager.default.removeItem(at:tail);XCTAssertThrowsError(try NativeProgram(directory:directory,module:"app"))
+        try Data(repeating:32,count:8_388_609).write(to:tail);XCTAssertThrowsError(try NativeProgram(directory:directory,module:"app"))
+        try Data("function instantiate(_) { return {}; }".utf8).write(to:entry);try Data(" ".utf8).write(to:tail)
+        XCTAssertThrowsError(try NativeProgram(directory:directory,module:"app"))
+        try Data().write(to:tail);XCTAssertNoThrow(try NativeProgram(directory:directory,module:"app"))
+    }
     func testPrivateRecipientPickerAndComposerUseTheShippedNativeModule()throws {
         let p=try NativeProgram(directory:XCTUnwrap(Bundle.main.url(forResource:"Starter",withExtension:nil)),module:"app",diagnostic:{print("DM program:",$0)})
         func answer(_ op:Int,_ value:Any,_ status:Int=0)throws {try p.event(100+op,status,String(decoding:JSONSerialization.data(withJSONObject:value),as:UTF8.self));try p.frame()}
