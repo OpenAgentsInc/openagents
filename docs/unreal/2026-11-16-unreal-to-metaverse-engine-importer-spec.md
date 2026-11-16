@@ -286,10 +286,22 @@ Rules for the tool:
   exporters.
 - **Private by default.** Output goes under the owner's private asset root
   (`~/.openagents`, the animation importer's `anim_export_path` rule) unless
-  every asset is in a public licence class (section 9.2).
+  the plan says the content may be public.
 - **Loud.** It ends with a table of counts: read, carried, skipped,
   refused. A count that does not match the manifest is a failure with a
   non-zero exit.
+
+### 4.4 Cooked route
+
+For a build without its source project. `UnrealPak` unpacks the build's
+containers (section 7.1), and `metaverse-engine/import/unreal/cooked/`
+reads the packages into the same bundle the editor route writes: static
+and skeletal meshes from their render data, textures from their mips,
+materials' parameters, sounds, and each map's actors and components. A
+cooked build keeps no editor-only data, so some fields come out empty
+(source triangles of a Nanite mesh, landscape paint layers); the bundle
+says so per field, and `bundle-diff` reports every difference from the
+editor route's bundle of the same build.
 
 ## 5. Conversion rules
 
@@ -405,14 +417,29 @@ jam on 2026-11-15 (`OLD-SPLICEBOTS-Win64-Shipping-20261115-152753.zip`,
 334 MB packed, 464 MB unpacked, 178 files), and the source project it was
 built from, `~/games/SPLICEBOTS` (UE 5.9, a git repository).
 
-### 7.1 The packaged build alone is not enough
+### 7.1 The packaged build is readable
 
 The build's meshes, textures, materials and maps are cooked packages
-inside IoStore containers: `SPLICEBOTS-Windows.ucas` (196 MB),
-`.utoc`, `.pak` (11 MB) and `global.ucas`. The editor cannot open cooked
-content, and reading those containers ourselves means parsing Epic's
-package formats, which section 9.1 rules out. **Nothing is imported from
-the cooked containers.**
+inside IoStore containers: `SPLICEBOTS-Windows.ucas` (196 MB), `.utoc`,
+`.pak` (11 MB) and `global.ucas`. Checked on 2026-11-16:
+
+- **Not encrypted and not signed.** The `.utoc` header's container flags
+  are compressed and indexed only, and the encryption key id in the `.utoc`
+  and the `.pak` footer is all zeros.
+- **Compressed with Oodle**, in 64 KB blocks.
+- **Unpacked by Epic's own tool.** The UE 5.9 source build's `UnrealPak`
+  extracts it: `UnrealPak IoStore -FindAndExtract=SPLICEBOTS-Windows.utoc
+  -PackageFilter=* -OutPath=DIR` wrote 1,012 packages (`.uheader`,
+  `.uexp`, `.ubulk`), 220 MB, in 0.13 seconds. Oodle decompression stays
+  inside Unreal's tool.
+- **Everything is there**: 90 static meshes, 16 textures, 38 materials and
+  245 material instances, 21 Niagara systems, 24 sound effects, and the 8
+  maps (`L_SolarFarm` and the graybox maps).
+
+The extracted packages are cooked "zen" packages. The editor route
+(section 4.2) does not need them. The cooked route reads them with our own
+reader (section 4.4) into the same bundle (`metaverse-engine/import/unreal/BUNDLE.md`),
+and the editor route's bundle for the same build is its answer key.
 
 ### 7.2 What the build does give us
 
@@ -461,20 +488,21 @@ The real models and the final level layout are in the source project:
   Microduck). The import reads the pinned commit from a clean worktree of
   the project, never the working copy.
 
-### 7.4 Licence classes in this project
+### 7.4 Content classes in this project
 
-From the project's own `Docs/jam/04-third-party.md`, applied to section 9.2:
+The owner ruled on 2026-11-16: everything in Splice Bots is the owner's
+own content, so all of it is imported. Epic's pieces are replaced with the
+engine's own:
 
-| Content | Class | Import |
-|---|---|---|
-| Blender and script-made models, the Greek quarter, icons, music, chirps, our sounds, all `Data/` tables | Ours | Yes |
-| Michroma, IBM Plex Mono | Open (OFL) | Yes |
-| Tripo models (Director, Digger, raiders, mechs, parts) | Tripo's terms; the doc says to confirm the plan used | Private until confirmed |
-| Her animation clips | Source not confirmed: Tripo presets or Epic samples | Private until confirmed |
-| Mannequin skeleton, third-person animation set, Basic Shapes, `LevelPrototyping`, `ThirdPerson` | Epic Content | Refused for any public pack |
+| Content | Import |
+|---|---|
+| Everything made for the game: the Tripo, Blender and script-made models, the Greek quarter, her clips, icons, music, chirps, sounds, all `Data/` tables | Imported |
+| Michroma, IBM Plex Mono (OFL) | Already in the engine |
+| UE Mannequin skeleton and the meshes and clips on it | Retargeted onto the engine's skeleton: the Director and the raiders play on ours |
+| Basic Shapes, `/Engine/` materials, `LevelPrototyping`, `ThirdPerson` | Replaced by the engine's own shape, material or kit piece, by a substitution table |
 
-Until the founders decide, the whole Splice Bots import goes to the
-private root (section 4.3), as Valley Lab's packs do, whatever its classes.
+The pack is the owner's content, so it is kept out of the repository and
+served as a private pack (`private:NAME`, as Valley Lab's are).
 
 ### 7.5 The round trip for Splice
 
@@ -557,8 +585,13 @@ Step 0 points both importers at the 5.9 source build, through
 - The editor script reads `L_SolarFarm`, `L_SolarFarm_GreekQuarter` and the
   graybox maps at that commit from a clean worktree, and their placements
   land on those meshes.
-- Every placement whose mesh is Epic Content is listed and refused;
-  nothing is drawn in its place silently.
+- Every placement whose mesh is Epic's is drawn with its substitute from
+  the engine and listed; nothing is replaced silently.
+- The Director and the raiders play on the engine's skeleton, retargeted
+  from the Mannequin.
+- The same build, read by the cooked route, gives a bundle that
+  `bundle-diff` finds equal to the editor route's, or names each
+  difference.
 - Headless shots from three cameras agree with the editor's shots from
   the same cameras in silhouette, at least 98 percent.
 - The game is walkable from her start to the far edge of the solar farm.
@@ -624,44 +657,29 @@ Step 0 points both importers at the 5.9 source build, through
 
 ### 9.1 Code
 
-The rule in [the learning note](2026-11-11-learning-from-unreal-5-9.md),
-section 5, stands: ideas only, never Epic's code.
+The owner handles the legal review of this work separately. What the
+importer does, so that review has the facts:
 
-- The importer reads data that the editor writes through its public API:
-  glTF (a Khronos format), PNG, WAV and our JSON. It never parses Unreal's
-  package formats itself, and never reads engine source at run time.
-- The Python script and any `AethyrBridge` commandlet call Unreal's public
-  API from inside Unreal. That is ordinary licensee use, like the
-  animation SDK and the exporter's importer.
-- No material graph, shader, constant table or file format of Epic's is
-  translated. A material comes across as the textures and numbers the
-  creator set, not the code that shades them.
+- The editor route calls Unreal's public API from inside Unreal (Python
+  and, where Python cannot reach, an `AethyrBridge` commandlet).
+- Oodle decompression runs only inside Epic's `UnrealPak`, on the
+  licensee's machine. No Oodle code or library is in our repository.
+- The cooked route reads the decompressed packages with our own reader,
+  written from the data and validated against the editor route's output.
+  It contains no Epic source.
+- No material graph or shader is translated. A material comes across as
+  its textures and parameters.
 
 ### 9.2 Content
 
-The engine is not Unreal, and the EULA limits Epic Content to Unreal-based
-products ([web-games-in-the-verse.md](web-games-in-the-verse.md),
-section 7). So the content rules are stricter than the code rules. Every
-asset in a bundle has one licence class, set by the plan per folder and
-checked by path:
-
-| Class | Examples | What the importer does |
-|---|---|---|
-| Ours | Splice's generated content, our designers' overrides, a level we build | Public pack, under a licence from the policy list |
-| Open | CC0, CC BY, CC BY-SA, the licences `pack-import-policy.coax` admits | Public pack, with the licence recorded per asset |
-| Fab Standard License | Assets bought on Fab | **Private only** until the owner rules (section 10). Fab's licence allows any engine, but the policy list does not hold it |
-| Epic Content | Anything under `/Engine/`, starter content, the Mannequin, `LevelPrototyping`, Epic samples such as Valley of the Ancient, Megascans claimed under the old Unreal-only licence | **Refused for a public pack.** Admitted only to the private root as reference, as Valley Lab's packs are, and never shipped |
-| MetaHuman | `/Game/MetaHumans/` and any MetaHuman asset | **Refused always**, private or not ([metahuman-support.md](../metaverse/metahuman-support.md)) |
-
-And for every class:
-
-- Imported Unreal content stays out of every training, Gym or dataset
-  pipeline. The EULA forbids using Licensed Technology as AI training
-  input, and the owner's MetaHuman rule forbids it for MetaHumans.
-- An asset whose class the plan does not set is refused. Nothing is
-  assumed to be ours.
-- A public pack must still pass the licence check in
-  `metaverse-engine/editor/pack.coax`.
+Every asset in a bundle has an `origin`: `project` (made for the game) or
+`engine` (Epic's: `/Engine/` and the template folders). `project` assets
+are imported. `engine` assets are replaced by the engine's own through the
+importer's substitution table, and a Mannequin-based skeleton is
+retargeted onto the engine's skeleton. MetaHuman content is never imported
+(the owner's MetaHuman rule). Imported content stays out of every
+training, Gym or dataset pipeline, and out of the repository: packs are
+private.
 
 ## 10. Owner decisions
 
@@ -680,12 +698,13 @@ And for every class:
    project, needs the guest terms of [web-games-in-the-verse.md](web-games-in-the-verse.md)
    first.
 
-4. **Splice Bots' unconfirmed licences.** The Tripo plan and the source of
-   her animation clips decide whether those models and clips can ever leave
-   the private root (section 7.4). Until then the whole import stays private.
-5. **The six uncommitted jam files.** Commit them to the Splice Bots project
+4. **The six uncommitted jam files.** Commit them to the Splice Bots project
    so the import can pin one commit instead of a commit plus files from the
    build (section 7.3).
+
+Decided 2026-11-16: Splice Bots is all the owner's content and is
+imported in full, with Epic's pieces replaced (section 7.4); legal review
+is the owner's, separately.
 
 ## 11. Risks and open questions
 
