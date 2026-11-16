@@ -1,8 +1,9 @@
 # Shared Coax components
 
 This is the component library for Coax Native, Coax Native Web, desktop apps,
-realm HUDs and terminal surfaces. Start with [spec.md](spec.md) and
-[rendering.md](rendering.md). Coax Native uses this library; it does not own
+realm HUDs and terminal surfaces. Start with [spec.md](spec.md),
+[rendering.md](rendering.md) and, for native presentation,
+[gpu-components.md](gpu-components.md). Coax Native uses this library; it does not own
 a second set of native-only components.
 
 ## Find the existing owner

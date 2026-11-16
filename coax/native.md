@@ -9,6 +9,12 @@ Written 2026-11-13. Status: framework specification with the initial native
 iOS account surface implemented by /root on 2026-11-13. Other target and
 verification stages below remain proposals, not claims about this release.
 
+Native presentation, 2026-11-15: [GPU components on native](../components/gpu-components.md)
+is the plan of record. Native targets draw every component through the
+shared display-list kit, iOS first, and keep the platform for text entry,
+accessibility and system sheets. The UIKit/JavaScriptCore runtime below
+keeps working until its screens move (#13645).
+
 Rendering assessment, 2026-11-14: [shared component rendering](../components/rendering.md)
 recommends GPU visuals for the new native component set on iOS and Android,
 with native text/accessibility services, and GPU islands within DOM web pages.

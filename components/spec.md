@@ -1,5 +1,10 @@
 # Components: one component system for every OpenAgents and Metaverse app (spec, draft)
 
+**Native presentation, 2026-11-15:** [gpu-components.md](gpu-components.md)
+is the plan of record: native targets draw every component through the
+display-list kit, iOS first, with platform text entry and accessibility
+(#13645).
+
 **Rendering assessment, 2026-11-14:** [rendering.md](rendering.md) specifies
 the recommended GPU visual target for new Coax Native components, native
 input/accessibility adapters, DOM pages with GPU islands, all Arcade motion,

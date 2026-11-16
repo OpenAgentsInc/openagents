@@ -1,5 +1,10 @@
 # Coax Native component rendering and composition
 
+**2026-11-15:** [gpu-components.md](gpu-components.md) adopts this
+recommendation as the plan of record and sets the migration order, iOS
+first (#13645). Where the two differ on native presentation, that document
+wins.
+
 2026-11-14. Architecture and implementation requirements, with the mobile
 chrome checkpoint below. This is **not a performance result**. Audit baseline:
 `96825b529e`. This extends [the component spec](spec.md),
