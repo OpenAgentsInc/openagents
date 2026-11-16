@@ -6,14 +6,16 @@
 // The pack's vertices part is one block of words the GPU reads as it is (gpu/splice-jam.coax sjc_scene_vs):
 //   a character's vertices   SJC_VERTEX words each: x, y, z (f32 bits, metres, standing on y = 0 facing +z),
 //                            its normal (three signed bytes) and its region (the top byte), its four joints
-//                            (a byte each), its four weights (a byte each, summing to 255)
+//                            (a byte each), its four weights (a byte each, summing to 255), its colour (the
+//                            source mesh's, sRGB bytes)
 //   a character's indices    a word each, into its own vertices
-//   a character's colours    SJC_COLOURS words: a region's colour (sRGB bytes) and anime material (the top byte)
+//   a character's colours    SJC_COLOURS words: a region's colour (sRGB bytes, unused since version 2) and anime
+//                            material (the top byte)
 //   the palettes             SJC_PALETTE floats a frame: each joint's skinning matrix, three rows of four
 //                            (metaverse-engine/anim/sample.coax anim_sample), every clip of every character
 //                            baked at its own rate, frame after frame
 // The catalog says where each part is:
-//   sjc 1 PWORD FRAMES                                        version, the palettes' first word, their frames
+//   sjc 2 PWORD FRAMES                                        version, the palettes' first word, their frames
 //   char K NAME JOINTS VWORD VERTICES IWORD INDICES CWORD MM  character K and its height in millimetres
 //   clip K ROLE FRAME0 FRAMES RATE_MILLI LOOP DISTANCE_MM     a clip of character K: ROLE one of SJC_ROLE
 //
@@ -24,12 +26,12 @@
 //   coax/bin/coax test metaverse/splice-bots/splice-jam.coax --only chars
 #load "../../../metaverse-engine/world/imported-read.coax";
 
-SJC_VERSION :: 1;
+SJC_VERSION :: 2;          // 2: each vertex has its own colour
 SJC_CHARS :: 8;            // characters a pack has at most: the Director and six raiders
 SJC_CLIPS :: 80;           // clips at most, every character's
 SJC_JOINTS :: 65;          // the people's skeleton
 SJC_PALETTE :: SJC_JOINTS * 12;
-SJC_VERTEX :: 6;           // words a vertex
+SJC_VERTEX :: 7;           // words a vertex
 SJC_COLOURS :: 8;          // words of colours a character
 SJC_NAME :: 16;
 SJC_FADE :: 0.18f32;       // s a change of clip blends over

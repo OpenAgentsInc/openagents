@@ -33,8 +33,9 @@ splice_jam_catalog :: (s: [] SpliceJam, store: [] SjStore, text: string, rows: [
     j := store[0].jam[..];
     for i: 0..<j[0].n {
       k := j[0].actors[i].kind;
-      if sj_game_draws(k) { sj_actor_set(j, i, false, 0, 0, 0, 0); }
+      if sj_game_draws(k) || sjc_page_draws(k) { sj_actor_set(j, i, false, 0, 0, 0, 0); }
     }
+    sjc_cards(s[0].chars[..], j, text);   // where the audience stands (jam/jam-cast.coax)
   }
   sj_bind(s[0].page[0].game[..], store);
   s[0].page[0].world_built = false;   // the world store again, without what the jam world draws (splice-game.coax g_world)

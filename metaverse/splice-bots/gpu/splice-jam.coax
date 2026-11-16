@@ -11,7 +11,7 @@
 // Its colour is the vertex's times its material's, times its colour layer at its UV when it has one.
 // From SJC_GPU_BASE an instance is a body (jam/jam-cast.coax): her Director or a raider, from the characters pack
 // (`chars`, the second private pack's words, jam/jam-chars.coax). A draw of its triangles in order, with no
-// index buffer: the vertex index is a word of its indices, and the vertex is skinned by its four joints from
+// index buffer: the vertex index is a word of its indices, and the vertex (its own colour) is skinned by its four joints from
 // the two palette frames its slot names (blended by the second's share), then placed by the slot's frame.
 // Each entry here is a thin wrapper, so the module's entries keep the names the host looks for.
 #load "splice-bots.coax";
@@ -22,6 +22,7 @@ SJC_GPU_BASE :: 131072; // jam-cast.coax SJC_BASE
 SJC_GPU_AT :: 1536;     // jam-cast.coax SJC_AT in vec4s: the slots after the jam's actors
 SJC_GPU_SLOT :: 5;      // vec4s a slot (SJC_SLOT_FLOATS / 4)
 SJC_GPU_PALETTE :: 780; // words a palette frame (jam-chars.coax SJC_PALETTE)
+SJC_GPU_VERTEX :: 7;    // words a vertex (jam-chars.coax SJC_VERTEX)
 
 // ---- the bodies
 SjcSkinned :: struct { p:V3; n:V3; colour:u32; obj:f32; shown:bool; }
@@ -43,7 +44,7 @@ sjc_skin :: (id:u32,instance:u32,chars:[]u32,jam_actors:[]V4)->SjcSkinned {
   fa:u32=add_wrap(pword,mul_wrap(cast(u32)(ax.w+0.5f32),cast(u32)SJC_GPU_PALETTE));
   fb:u32=add_wrap(pword,mul_wrap(cast(u32)(ay.w+0.5f32),cast(u32)SJC_GPU_PALETTE));
   w:f32=az.w;
-  v:u32=add_wrap(cast(u32)(base.x+0.5f32),mul_wrap(chars[cast(int)id],cast(u32)6));
+  v:u32=add_wrap(cast(u32)(base.x+0.5f32),mul_wrap(chars[cast(int)id],cast(u32)SJC_GPU_VERTEX));
   rest:V4=v4(f32_from_bits(chars[cast(int)v]),f32_from_bits(chars[cast(int)add_wrap(v,cast(u32)1)]),f32_from_bits(chars[cast(int)add_wrap(v,cast(u32)2)]),1.0f32);
   nw:u32=chars[cast(int)add_wrap(v,cast(u32)3)];
   n4:V4=wg_unpack4x8snorm(nw);
@@ -60,8 +61,10 @@ sjc_skin :: (id:u32,instance:u32,chars:[]u32,jam_actors:[]V4)->SjcSkinned {
   }
   o.p=v3(at.x+(ax.x*p.x)+(ay.x*p.y)+(az.x*p.z),at.y+(ax.y*p.x)+(ay.y*p.y)+(az.y*p.z),at.z+(ax.z*p.x)+(ay.z*p.y)+(az.z*p.z));
   o.n=v3((ax.x*n.x)+(ay.x*n.y)+(az.x*n.z),(ax.y*n.x)+(ay.y*n.y)+(az.y*n.z),(ax.z*n.x)+(ay.z*n.y)+(az.z*n.z));
+  // its own colour, with its region's anime material (the top byte)
   region:u32=nw>>cast(u32)24;
-  o.colour=chars[cast(int)add_wrap(cast(u32)(base.y+0.5f32),region)];
+  mat:u32=chars[cast(int)add_wrap(cast(u32)(base.y+0.5f32),region)]&cast(u32)0xff000000;
+  o.colour=(chars[cast(int)add_wrap(v,cast(u32)6)]&cast(u32)0x00ffffff)|mat;
   o.obj=base.z;
   return o;
 }

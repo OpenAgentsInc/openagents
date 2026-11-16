@@ -1,10 +1,11 @@
 // jam-chars.coax's and jam-cast.coax's checks, on a synthetic characters catalog (no private content): two
 // characters, the Director with five clips and a raider with three, their parts' words made up.
 // splice-jam.coax loads this file with `#load ... #test;`.
-SJCT_CATALOG :: "pack test\nsjc 1 1000 32\nchar 0 director 65 0 3 18 3 21 1750\nchar 1 raider-1 65 29 3 47 3 50 1800\nclip 0 idle 0 4 30000 1 0\nclip 0 walk 4 4 30000 1 1200\nclip 0 jog 8 4 30000 1 3000\nclip 0 sprint 12 4 30000 1 0\nclip 0 jump_start 16 4 30000 0 0\nclip 1 idle 20 4 30000 1 0\nclip 1 walk 24 4 30000 1 1300\nclip 1 jog 28 4 30000 1 3400\n";
+SJCT_CATALOG :: "pack test\nsjc 2 1000 32\nchar 0 director 65 0 3 18 3 21 1750\nchar 1 raider-1 65 29 3 47 3 50 1800\nclip 0 idle 0 4 30000 1 0\nclip 0 walk 4 4 30000 1 1200\nclip 0 jog 8 4 30000 1 3000\nclip 0 sprint 12 4 30000 1 0\nclip 0 jump_start 16 4 30000 0 0\nclip 1 idle 20 4 30000 1 0\nclip 1 walk 24 4 30000 1 1300\nclip 1 jog 28 4 30000 1 3400\n";
 SJCT_BYTES :: (1000 + 32 * SJC_PALETTE) * 4;
-// Seven raiders along the ring's entry (map 2 in the draw checks' catalog), as the jam places its sixteen.
-SJCT_RING :: "P 2 0 0 0 0 0 0 0 1 -4.3 0 -168 1 1 1 SpliceRaveRaider_UAID_1/CharacterMesh0\nP 2 0 0 0 0 0 0 0 1 4.3 0 -162.5 1 1 1 SpliceRaveRaider_UAID_2/CharacterMesh0\nP 2 0 0 0 0 0 0 0 1 -4.9 0 -157 1 1 1 SpliceRaveRaider_UAID_3/CharacterMesh0\nP 2 0 0 0 0 0 0 0 1 4.9 0 -151.5 1 1 1 SpliceRaveRaider_UAID_4/CharacterMesh0\nP 2 0 0 0 0 0 0 0 1 -5.5 0 -146 1 1 1 SpliceRaveRaider_UAID_5/CharacterMesh0\nP 2 0 0 0 0 0 0 0 1 5.5 0 -140.5 1 1 1 SpliceRaveRaider_UAID_6/CharacterMesh0\nP 2 0 0 0 0 0 0 0 1 -4.3 0 -135 1 1 1 SpliceRaveRaider_UAID_7/CharacterMesh0\n";
+// Seven raiders along the ring's entry (map 2 in the draw checks' catalog), as the jam places its sixteen; three of
+// the crowd's cards, and the unposed Director on her board.
+SJCT_RING :: "P 2 0 0 0 0 0 0 0 1 -4.3 0 -168 1 1 1 SpliceRaveRaider_UAID_1/CharacterMesh0\nP 2 0 0 0 0 0 0 0 1 4.3 0 -162.5 1 1 1 SpliceRaveRaider_UAID_2/CharacterMesh0\nP 2 0 0 0 0 0 0 0 1 -4.9 0 -157 1 1 1 SpliceRaveRaider_UAID_3/CharacterMesh0\nP 2 0 0 0 0 0 0 0 1 4.9 0 -151.5 1 1 1 SpliceRaveRaider_UAID_4/CharacterMesh0\nP 2 0 0 0 0 0 0 0 1 -5.5 0 -146 1 1 1 SpliceRaveRaider_UAID_5/CharacterMesh0\nP 2 0 0 0 0 0 0 0 1 5.5 0 -140.5 1 1 1 SpliceRaveRaider_UAID_6/CharacterMesh0\nP 2 0 0 0 0 0 0 0 1 -4.3 0 -135 1 1 1 SpliceRaveRaider_UAID_7/CharacterMesh0\nP 2 0 0 0 -3 0.7071068 0 0 0.7071068 20 1 -150 1.1 1 2 SpliceCrowd_UAID_9/Cards#0\nP 2 0 0 0 -3 0.7071068 0 0 0.7071068 -20 1 -140 1.1 1 2 SpliceCrowd_UAID_9/Cards#1\nP 2 0 0 0 -3 0.7071068 0 0 0.7071068 22 1 -130 1.1 1 2 SpliceCrowd_UAID_9/Cards#2\nP 2 0 0 -1 -3 0 0 0 1 -1.4 0.35 -141 1 1 1 SkeletalMeshActor_UAID_8/SkeletalMeshComponent0\n";
 
 #test "chars: a characters catalog reads as its characters and clips; one that does not hold is refused, saying why" {
   c: [1] SjcCast;
@@ -16,11 +17,11 @@ SJCT_RING :: "P 2 0 0 0 0 0 0 0 1 -4.3 0 -168 1 1 1 SpliceRaveRaider_UAID_1/Char
   #assert w.frame0 == 4 && w.frames == 4 && abs(w.rate - 30) < 0.001 && w.looping && abs(w.distance - 1.2) < 0.001;
   #assert !c[0].clips[c[0].chars[0].clip[SJC_JUMP_START]].looping;
   #assert !sjc_read(c[..], "char 0 director 65 0 3 18 3 21 1750\n") && c[0].why == "not a characters pack";
-  #assert !sjc_read(c[..], "sjc 2 0 4\n") && c[0].why == "a characters pack of another version";
-  #assert !sjc_read(c[..], "sjc 1 0 4\nchar 0 d 65 0 3 3 3 6 1000\nclip 0 idle 2 4 30000 1 0\n") && c[0].why == "a clip past the palettes";
-  #assert !sjc_read(c[..], "sjc 1 0 4\nchar 0 d 65 0 3 3 3 6 1000\nclip 0 walk 0 4 30000 1 0\n") && c[0].why == "a character with no idle";
-  #assert !sjc_read(c[..], "sjc 1 0 4\nchar 0 d 64 0 3 3 3 6 1000\n") && c[0].why == "a character that does not hold";
-  #assert !sjc_read(c[..], "sjc 1 0 4\nchar 0 d 65 0 3 3 3 6 1000\nclip 0 idle 0 4 30000 1 0\nclip 0 idle 0 4 30000 1 0\n") && c[0].why == "a clip that does not hold";
+  #assert !sjc_read(c[..], "sjc 3 0 4\n") && c[0].why == "a characters pack of another version";
+  #assert !sjc_read(c[..], "sjc 2 0 4\nchar 0 d 65 0 3 3 3 6 1000\nclip 0 idle 2 4 30000 1 0\n") && c[0].why == "a clip past the palettes";
+  #assert !sjc_read(c[..], "sjc 2 0 4\nchar 0 d 65 0 3 3 3 6 1000\nclip 0 walk 0 4 30000 1 0\n") && c[0].why == "a character with no idle";
+  #assert !sjc_read(c[..], "sjc 2 0 4\nchar 0 d 64 0 3 3 3 6 1000\n") && c[0].why == "a character that does not hold";
+  #assert !sjc_read(c[..], "sjc 2 0 4\nchar 0 d 65 0 3 3 3 6 1000\nclip 0 idle 0 4 30000 1 0\nclip 0 idle 0 4 30000 1 0\n") && c[0].why == "a clip that does not hold";
 }
 #test "chars: her clip from how she moves: the board, the air, landing, sneaking, then still, walk, jog and sprint by speed" {
   #assert sjc_her_role(true, true, true, 0, false, false, 9) == SJC_BOARD;
@@ -115,8 +116,22 @@ sjct_page :: (c: [] SjctCheck) {
     k := SJC_AT + (SJC_PARTY + i) * SJC_SLOT_FLOATS;
     if actors[k + 3] == 1 { drawn += 1; #assert abs(actors[k] - g[0].fx[i]) < 0.6 && abs(actors[k + 2] - g[0].fz[i]) < 0.6 && actors[k + 16] == 29; }
   }
-  crowd := 0; for k: SJC_CROWD..<SJC_SLOTS { if actors[SJC_AT + k * SJC_SLOT_FLOATS + 3] == 1 { crowd += 1; } }
+  crowd := 0; for k: SJC_CROWD..<SJC_AUDIENCE { if actors[SJC_AT + k * SJC_SLOT_FLOATS + 3] == 1 { crowd += 1; } }
   #assert drawn >= 1 && crowd == 4;   // seven placed: three are the game's, four the crowd
+  // the audience stands where the crowd's cards are, on the ground, while she is near them; the cards and the figure stay hidden
+  c := s[0].chars[..]; j := g[0].jr[..];
+  #assert c[0].cards == 3 && abs(c[0].crowd_x - 7.333) < 0.01 && abs(c[0].card_y[0]) < 0.001;
+  for i: 0..<j[0].n { if j[0].actors[i].kind == SJ_CROWD || j[0].actors[i].kind == SJ_FIGURE { #assert actors[i * SJD_ACTOR_FLOATS + 3] == 0; } }
+  #assert j[0].count[SJ_FIGURE] == 1 && j[0].count[SJ_CROWD] == 1;
+  aud := 0; for k: SJC_AUDIENCE..<SJC_SLOTS { if actors[SJC_AT + k * SJC_SLOT_FLOATS + 3] == 1 { aud += 1; } }
+  near := dist2(g[0].px, g[0].pz, c[0].crowd_x, c[0].crowd_z) <= SJC_CROWD_NEAR;
+  #assert aud == (ifx near then 3 else 0);
+  g[0].px = c[0].crowd_x; g[0].pz = c[0].crowd_z + 3; _ = sj_check_frame(b);
+  aud = 0; for k: SJC_AUDIENCE..<SJC_SLOTS { q := SJC_AT + k * SJC_SLOT_FLOATS; if actors[q + 3] == 1 { aud += 1; #assert abs(actors[q + 1]) < 0.3; } }
+  #assert aud == 3;
+  c[0].crowd_x += SJC_CROWD_NEAR * 3; _ = sj_check_frame(b);   // the crowd far from her
+  aud = 0; for k: SJC_AUDIENCE..<SJC_SLOTS { if actors[SJC_AT + k * SJC_SLOT_FLOATS + 3] == 1 { aud += 1; } }
+  #assert aud == 0;   // far off: not drawn
   // without the jam world nothing is handed over
   g[0].jam = false; _ = sj_check_frame(b);
   #assert !g[0].hide[TK_SMUGGLER] && splice_jam_fact(s, 12) == 0;

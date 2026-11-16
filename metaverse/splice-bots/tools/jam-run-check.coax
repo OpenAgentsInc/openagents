@@ -14,7 +14,8 @@
 //   coax/web/tool.sh metaverse/splice-bots/tools/jam-run-check.coax PACK [CHARS]
 //
 // With CHARS, the characters pack (tools/jam-chars-pack.coax), it also checks the cast (jrc_chars):
-// the Director with her ten clips, the six raider bodies, and the 16 raiders in the ring that wear them.
+// the Director with her ten clips, the six raider bodies, the 16 raiders in the ring that wear them, and the
+// crowd's cards the audience stands at.
 //
 // It prints the route it read and a line a run: 0 is a pass, else the number of the beat that failed
 // (the beats are numbered in g_run_to_garage, g_run_from_garage and sp_keys_play). It exits 1 when a run
@@ -78,7 +79,8 @@ jrc_farm_rules :: (g: [] SpGame) -> int {
 }
 
 // ---- the characters pack (jam/jam-chars.coax): her body and the raiders' for the jam's ring. 0 is a pass,
-// else 1 to 4: not read, no Director, a clip of hers missing, a raider body missing, fewer than 16 raiders.
+// else 1 to 5: not read, no Director or a clip of hers missing, a raider body missing, fewer than 16 raiders,
+// no crowd cards in the ring for the audience to stand at.
 jrc_chars :: (path: string, j: [] SjJam) -> int {
   b: [16777216] u8; n := fs_size(path);
   if n < 0 || n > b.count || fs_read(path, b[0..<n]) != n { tool_errln("jam-run-check: could not read the characters pack"); return 1; }
@@ -95,7 +97,11 @@ jrc_chars :: (path: string, j: [] SjJam) -> int {
   ring := 0;
   for i: 0..<SJ_ACTORS { if sj_nth(j, SJ_RAIDER, SJ_RING, i) < 0 { break; } ring += 1; }
   print("raiders in the ring: %\n", ring);
-  return ifx ring >= 16 then 0 else 4;
+  // the crowd's cards (the page stands raiders where they are) and the unposed Director (the page hides it)
+  cards := 0; figures := 0;
+  for i: 0..<j[0].n { a := j[0].actors[i]; if a.kind == SJ_CROWD && a.route == SJ_RING { cards += a.parts; } if a.kind == SJ_FIGURE { figures += 1; } }
+  print("the crowd's cards in the ring: %; unposed Directors, hidden: %\n", cards, figures);
+  return ifx ring < 16 then 4 else ifx cards < 1 then 5 else 0;
 }
 
 tool_main :: () -> int #export_c #effects(all) {

@@ -10,6 +10,10 @@
 // (splice-game.coax g_raider_pose: dancing, asleep, standing, walking, in a fight) and those leaving the garage
 // (g_leaver_frame). While any of the party is drawn, the jam's other raiders dance where the jam places them
 // (the crowd). Each raider's body is one of the six by its place in the ring (sjc_body_of).
+// The audience: the jam's rave crowd is 416 cards (SpliceCrowd) whose look does not come through the import
+// (they draw as white slabs), so the page hides them (splice-jam.coax) and stands raiders where some of them
+// are, facing the dance floor (sjc_cards): dancing while the party is on, standing about by day. They are
+// drawn while she is near the ring (SJC_CROWD_NEAR).
 // Until the pack is in, nothing is hidden and the game draws its own bodies.
 //
 // A body is a slot: a row of the actor store after the jam's actors (SJC_AT floats in; gpu/splice-jam.coax
@@ -18,11 +22,16 @@
 //   (its character's first vertex word, its first colour word, its ink object, the palettes' first word)
 #load "jam-chars.coax";
 
-SJC_SLOTS :: 32;
+SJC_SLOTS :: 72;
 SJC_SLOT_FLOATS :: 20;
 SJC_AT :: SJ_ACTORS * SJD_ACTOR_FLOATS;   // the slots' first float in the actor store
 SJC_BASE :: 131072;                      // a body's instance: SJC_BASE + its slot (past the jam's rows)
 SJC_HER :: 0; SJC_PARTY :: 1; SJC_LEAVING :: SJC_PARTY + F_RAIDERS; SJC_CROWD :: SJC_LEAVING + F_RAIDERS;
+SJC_RING_CROWD :: 11;                    // the jam's 16 raiders less the game's five
+SJC_AUDIENCE :: SJC_CROWD + SJC_RING_CROWD;   // the audience's first slot
+SJC_AUDIENCE_N :: 48;                    // raiders standing in for the crowd's cards, at most
+SJC_CARDS :: 512;                        // the crowd's cards read, at most
+SJC_CROWD_NEAR :: 90.0f32;               // m from the crowd's middle within which she sees the audience
 SJC_MATCH :: 0.3f32;                     // m: a raider the game drew is the one whose frame stands this near
 SJC_HER_OBJ :: 246;                      // her ink object (front.coax FR_OBJ)
 SJC_DANCE_RATE :: 1.1f32;                // a dancer's idle, a little quick, under the game's bounce to the beat (g_dance_frame)
@@ -34,6 +43,29 @@ SjcPage :: struct {
   was: [SJC_SLOTS] bool; px: [SJC_SLOTS] f32; pz: [SJC_SLOTS] f32;   // where each slot's body was last frame
   on: [SJC_SLOTS] bool; ch: [SJC_SLOTS] int;
   shown: int;                            // bodies drawn this frame
+  card_x: [SJC_CARDS] f32; card_y: [SJC_CARDS] f32; card_z: [SJC_CARDS] f32; cards: int;   // the crowd's cards (sjc_cards)
+  crowd_x: f32; crowd_z: f32;            // their middle
+}
+
+// The kinds the jam places that this page draws itself, so they stay hidden: the crowd's cards (the audience)
+// and the unposed Director (her body).
+sjc_page_draws :: (kind: int) -> bool { return kind == SJ_CROWD || kind == SJ_FIGURE; }
+// The crowd's cards in the ring from the jam world's catalog: where each stands (its middle less half its
+// 2 m height), up to SJC_CARDS, and their middle.
+sjc_cards :: (d: [] SjcPage, j: [] SjJam, text: string) {
+  d[0].cards = 0; ring := j[0].map[SJ_RING];
+  if ring < 0 { return; }
+  sx := 0.0f32; sz := 0.0f32; from := 0;
+  for at: 0..<text.count + 1 {
+    if at < text.count && text[at] != '\n' { continue; }
+    line := text[from..<at]; from = at + 1;
+    if d[0].cards >= SJC_CARDS || iw_field(line, 0) != "P" || iw_fields(line) < 17 || cast(int) sj_num(iw_field(line, 1)) != ring { continue; }
+    if sj_kind_of(sj_actor_name(iw_field(line, 16))) != SJ_CROWD { continue; }
+    k := d[0].cards;
+    d[0].card_x[k] = sj_num(iw_field(line, 10)); d[0].card_y[k] = sj_num(iw_field(line, 11)) - sj_num(iw_field(line, 15)) * 0.5; d[0].card_z[k] = sj_num(iw_field(line, 12));
+    sx += d[0].card_x[k]; sz += d[0].card_z[k]; d[0].cards = k + 1;
+  }
+  if d[0].cards > 0 { d[0].crowd_x = sx / cast(f32) d[0].cards; d[0].crowd_z = sz / cast(f32) d[0].cards; }
 }
 
 // The characters pack's catalog arrived (page asset 4).
@@ -150,7 +182,7 @@ sjc_raiders :: (d: [] SjcPage, g: [] SpGame, dt: f32, rows: [] f32, draws: [] u3
   }
   if party {
     s := SJC_CROWD; k := 0;
-    while s < SJC_SLOTS {
+    while s < SJC_AUDIENCE {
       a := sj_nth(j, SJ_RAIDER, SJ_RING, k);
       if a < 0 { break; }
       if k % SJ_FOE_EVERY != 0 || k / SJ_FOE_EVERY >= F_RAIDERS {
@@ -161,6 +193,24 @@ sjc_raiders :: (d: [] SjcPage, g: [] SpGame, dt: f32, rows: [] f32, draws: [] u3
       }
       k += 1;
     }
+  }
+  return sjc_audience(d, g, dt, party, rows, draws, n);
+}
+
+// The audience where the crowd's cards are, spread over them, each facing the dance floor's middle line
+// (x = the crowd's middle) a little askew: dancing while the party is on, else standing.
+sjc_audience :: (d: [] SjcPage, g: [] SpGame, dt: f32, party: bool, rows: [] f32, draws: [] u32, at: int) -> int {
+  n := at; m := d[0].cards;
+  if m == 0 || dist2(g[0].px, g[0].pz, d[0].crowd_x, d[0].crowd_z) > SJC_CROWD_NEAR { return n; }
+  count := ifx m < SJC_AUDIENCE_N then m else SJC_AUDIENCE_N; t := g[0].t;
+  for i: 0..<count {
+    c := i * m / count;
+    x := d[0].card_x[c]; z := d[0].card_z[c];
+    yaw := atan2(d[0].crowd_x - x, 0.0f32) + sin(cast(f32) c * 12.9898) * 0.45;
+    beat := t * 7.5 + cast(f32) c * 0.7;
+    // the game's bounce to the beat (g_dance_frame), but turned toward the floor, swaying
+    f := ifx party then frame_at(g_dance_frame(v3(x, d[0].card_y[c], z), beat, c, true, yaw).o, yaw + sin(beat * 0.5) * 0.35) else frame_at(v3(x, d[0].card_y[c], z), yaw);
+    n = sjc_put(d, SJC_AUDIENCE + i, sjc_raider_body(d, 16 + c), f, SJC_IDLE, 0, ifx party then SJC_DANCE_RATE else 1.0f32, 160 + i, dt, rows, draws, n);
   }
   return n;
 }

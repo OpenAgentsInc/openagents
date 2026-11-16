@@ -3,7 +3,8 @@
 // (her body) and the six raider bodies, from the rigs metaverse-engine/tools/unreal-rig.coax splice-bots wrote
 // (RIG_ROOT/director, RIG_ROOT/raider-1 .. raider-6, each its library.bundle). Each mesh's skin8 vertices go
 // to SJC_VERTEX words (its four heaviest joints, their weights summed to 255 again) with a region each for its
-// colour; each clip is sampled at its own rate with the engine's sampler (metaverse-engine/anim/sample.coax)
+// material and its own colour, the source mesh's vertex colours (RIG_ROOT/NAME/source/character.gltf COLOR_0,
+// the same vertices in the same order, checked by height); each clip is sampled at its own rate with the engine's sampler (metaverse-engine/anim/sample.coax)
 // into skinning matrices, frame after frame. A clip that walks off (its hips' travel) is put back in place,
 // its metres a loop kept as its distance, so the game moves the body and the gait keeps pace.
 //
@@ -30,8 +31,10 @@ JCP_BUDGET :: 96000000;
 JCP_WORDS :: 20000000;
 JCP_TRAVEL :: 0.1;          // m: a clip whose hips go further than this over it walks off, and is put back in place
 // Each character's colours by region (skin, hair, top, bottom, shoes): sRGB, and the anime material
-// (gpu/animelab.coax: 1 skin, 2 hair, 10 cloth). The rigs carry no textures, so the cel look is these.
-JCP_SKIN :: 1; JCP_HAIR :: 2; JCP_CLOTH :: 10;
+// (gpu/animelab.coax: 1 skin, 10 cloth). Since version 2 a vertex's colour is its own (the source mesh's), and
+// a region gives only its material. Hair is cloth too: the hair material's sheen spot, on these coarse meshes,
+// washes a dark head to grey under the rave's back light.
+JCP_SKIN :: 1; JCP_CLOTH :: 10;
 JCP_RGB :: [JCP_N * SJC_REGIONS * 3] f32.[
   0.93, 0.76, 0.64,  0.14, 0.11, 0.10,  0.17, 0.25, 0.34,  0.30, 0.31, 0.35,  0.10, 0.10, 0.11,   // the Director
   0.80, 0.58, 0.44,  0.20, 0.14, 0.10,  1.00, 0.36, 0.62,  0.20, 0.20, 0.24,  0.12, 0.11, 0.11,   // raiders: the party's pink
@@ -57,7 +60,42 @@ jcp_put :: (o: [] JcpOut, w: u32) {
 }
 
 // One character's mesh (every section, joined) into the words, and its colours: what it took.
-jcp_mesh :: (o: [] JcpOut, lib: [] AnimLibrary, k: int) -> JcpChar {
+// The source mesh's vertex colours (linear, glTF COLOR_0) as sRGB bytes into rgb, checked against the rig's
+// vertices: the same count, and each at the rig's height. "" when they are in, else why not.
+JCP_GLTF :: 4194304; JCP_BIN :: 33554432;
+JcpSource :: struct { text: [JCP_GLTF] u8; bin: [JCP_BIN] u8; nodes: [262144] JvNode; }
+jcp_colours :: (src: [] JcpSource, dir: string, lib: [] AnimLibrary, rgb: [] u32) -> string {
+  pb: [4096] u8; sb: [4096] u8; bb: [4096] u8;
+  folder := fs_join(dir, "source", sb[..]);
+  tn := fs_read(fs_join(folder, "character.gltf", pb[..]), src[0].text[..]);
+  if tn <= 0 || tn >= src[0].text.count { return "no source mesh (source/character.gltf)"; }
+  d: [1] Jv; g: [1] AgFile;
+  if anim_json(cast(string) src[0].text[0..<tn], d[..], src[0].nodes[..]) != 0 { return "a source mesh that does not read"; }
+  g[0].d = d[0];
+  ub: [1024] u8; un := jv_str(d[0], ag_get(g[..], ag_top(g[..], "buffers", 0), "uri"), ub[..]);
+  if un <= 0 { return "a source mesh with no buffer file"; }
+  bn := fs_read(fs_join(folder, cast(string) ub[0..<un], bb[..]), src[0].bin[..]);
+  if bn <= 0 || bn >= src[0].bin.count { return "a source mesh whose buffer does not read"; }
+  g[0].binary = src[0].bin[0..<bn];
+  pr := jv_at(d[0], ag_get(g[..], ag_top(g[..], "meshes", 0), "primitives"), 0); attr := ag_get(g[..], pr, "attributes");
+  pa := ag_accessor(g[..], ag_int(g[..], attr, "POSITION", -1)); ca := ag_accessor(g[..], ag_int(g[..], attr, "COLOR_0", -1));
+  if !pa.ok || !ca.ok || ca.components < 3 || ca.count != pa.count { return "a source mesh with no vertex colours"; }
+  r := lib[0].rig[0]; packs := lib[0].packs[..]; v := 0;
+  for sec: 0..<r.sections {
+    m := r.meshes[sec]; b := packs[m.vertices.pack].bytes;
+    for i: 0..<m.vertices.count {
+      if v >= pa.count || v >= rgb.count { return "a source mesh with other vertices than the rig's"; }
+      y := anim_float(b, m.vertices.offset + i * m.vertices.stride + 4);
+      if abs(y - ag_value(g[..], pa, v, 1)) > 0.02 { return "a source mesh whose vertices are not the rig's"; }
+      rgb[v] = cast(u32) pi_srgb(ag_value(g[..], ca, v, 0)) | (cast(u32) pi_srgb(ag_value(g[..], ca, v, 1)) << 8) | (cast(u32) pi_srgb(ag_value(g[..], ca, v, 2)) << 16) | (255 << 24);
+      v += 1;
+    }
+  }
+  if v != pa.count || g[0].bad { return "a source mesh with other vertices than the rig's"; }
+  return "";
+}
+
+jcp_mesh :: (o: [] JcpOut, lib: [] AnimLibrary, k: int, rgb: [] u32) -> JcpChar {
   r := lib[0].rig[0]; packs := lib[0].packs[..];
   c := JcpChar.{vword = o[0].n};
   // the head's top: hair is its upper third
@@ -94,6 +132,7 @@ jcp_mesh :: (o: [] JcpOut, lib: [] AnimLibrary, k: int) -> JcpChar {
       jcp_put(o, jcp_snorm(anim_float(b, at + 12)) | (jcp_snorm(anim_float(b, at + 16)) << 8) | (jcp_snorm(nz) << 16) | (cast(u32) region << 24));
       jcp_put(o, cast(u32) js[0] | (cast(u32) js[1] << 8) | (cast(u32) js[2] << 16) | (cast(u32) js[3] << 24));
       jcp_put(o, cast(u32) w8[0] | (cast(u32) w8[1] << 8) | (cast(u32) w8[2] << 16) | (cast(u32) w8[3] << 24));
+      jcp_put(o, rgb[c.vertices + v]);
     }
     c.vertices += m.vertices.count;
   }
@@ -104,10 +143,10 @@ jcp_mesh :: (o: [] JcpOut, lib: [] AnimLibrary, k: int) -> JcpChar {
     c.indices += m.indices.count; base += m.vertices.count;
   }
   c.cword = o[0].n;
-  rgb := JCP_RGB; mats := [SJC_REGIONS] u32.[JCP_SKIN, JCP_HAIR, JCP_CLOTH, JCP_CLOTH, JCP_CLOTH];
+  tint := JCP_RGB; mats := [SJC_REGIONS] u32.[JCP_SKIN, JCP_CLOTH, JCP_CLOTH, JCP_CLOTH, JCP_CLOTH];
   for g: 0..<SJC_COLOURS {
     rg := ifx g < SJC_REGIONS then g else SJC_TOP; at := (k * SJC_REGIONS + rg) * 3;
-    jcp_put(o, jcp_byte(rgb[at]) | (jcp_byte(rgb[at + 1]) << 8) | (jcp_byte(rgb[at + 2]) << 16) | (mats[rg] << 24));
+    jcp_put(o, jcp_byte(tint[at]) | (jcp_byte(tint[at + 1]) << 8) | (jcp_byte(tint[at + 2]) << 16) | (mats[rg] << 24));
   }
   c.height = top;
   return c;
@@ -163,7 +202,7 @@ tool_main :: () -> int #export_c #effects(all) {
   if !args_load(args[..]) || args_count(args[..]) != 2 { tool_errln("usage: jam-chars-pack RIG_ROOT OUT.pack"); return 2; }
   root := args_at(args[..], 0); outp := args_at(args[..], 1);
   o: [1] JcpOut; chars: [JCP_N] JcpChar; rows: [SJC_CLIPS] JcpClipRow; rn := 0;
-  bundle: [33554432] u8; json: [65536] u8; lib: [1] AnimLibrary; s: [1] AnimSample;
+  bundle: [33554432] u8; json: [65536] u8; lib: [1] AnimLibrary; s: [1] AnimSample; src: [1] JcpSource; rgb: [1000000] u32;
   for k: 0..<JCP_N {
     pb: [4096] u8; db: [4096] u8;
     path := fs_join(fs_join(root, JCP_NAMES[k], db[..]), "library.bundle", pb[..]);
@@ -175,7 +214,9 @@ tool_main :: () -> int #export_c #effects(all) {
     e := anim_bundle_load(bundle[0..<n], lib[..]);
     if e != 0 { tool_err("jam-chars-pack: refused "); tool_err(path); tool_err(": "); tool_errln(anim_error_name(e)); return 1; }
     if lib[0].rig[0].joints != SJC_JOINTS || lib[0].rig[0].sections < 1 { tool_err("jam-chars-pack: not on the people's 65 joints: "); tool_errln(path); return 1; }
-    chars[k] = jcp_mesh(o[..], lib[..], k);
+    why := jcp_colours(src[..], fs_join(root, JCP_NAMES[k], db[..]), lib[..], rgb[..]);
+    if why.count > 0 { tool_err("jam-chars-pack: "); tool_err(JCP_NAMES[k]); tool_err(": "); tool_errln(why); return 1; }
+    chars[k] = jcp_mesh(o[..], lib[..], k, rgb[..]);
     for ci: 0..<lib[0].count {
       if rn >= SJC_CLIPS { tool_errln("jam-chars-pack: too many clips"); return 1; }
       nm := [1] AnimName.[lib[0].clips[ci].name];
@@ -200,7 +241,7 @@ tool_main :: () -> int #export_c #effects(all) {
   for pass: 0..<5 {
     at = pi_put(catalog[..], 0, "pack splice-bots-jam-chars\nbudget 96000000\nbytes ");
     at = pi_put_int(catalog[..], at, total);
-    at = pi_put(catalog[..], at, "\nL 0 Splice Bots jam characters|private, the owner's|https://openagents.com/worlds/splice-bots-jam\nM chars 0 3 0\nT 0 neutral 0\nsjc 1");
+    at = pi_put(catalog[..], at, "\nL 0 Splice Bots jam characters|private, the owner's|https://openagents.com/worlds/splice-bots-jam\nM chars 0 3 0\nT 0 neutral 0\nsjc 2");
     at = jcp_line_int(catalog[..], at, pword); at = jcp_line_int(catalog[..], at, o[0].frames);
     for k: 0..<JCP_N {
       c := chars[k];

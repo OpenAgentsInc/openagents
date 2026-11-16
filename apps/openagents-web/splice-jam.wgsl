@@ -356,6 +356,7 @@ fn coax_p_sjc_skin(p_id: u32, p_instance: u32) -> coax_t11 {
   var l_r1: vec4f;
   var l_r2: vec4f;
   var l_region: u32;
+  var l_mat: u32;
   l_o = coax_t11();
   l_k = (1536i + (i32((l_instance - 131072u)) * 5i));
   l_at = jam_actors[l_k];
@@ -368,7 +369,7 @@ fn coax_p_sjc_skin(p_id: u32, p_instance: u32) -> coax_t11 {
   l_fa = (l_pword + (u32((l_ax.w + 0x1.000000p-1f)) * 780u));
   l_fb = (l_pword + (u32((l_ay.w + 0x1.000000p-1f)) * 780u));
   l_w = l_az.w;
-  l_v = (u32((l_base.x + 0x1.000000p-1f)) + (chars[i32(l_id)] * 6u));
+  l_v = (u32((l_base.x + 0x1.000000p-1f)) + (chars[i32(l_id)] * 7u));
   l_rest = coax_p_v4(bitcast<f32>(chars[i32(l_v)]), bitcast<f32>(chars[i32((l_v + 1u))]), bitcast<f32>(chars[i32((l_v + 2u))]), 0x1.000000p0f);
   l_nw = chars[i32((l_v + 3u))];
   l_n4 = coax_p_wg_unpack4x8snorm(l_nw);
@@ -394,7 +395,8 @@ fn coax_p_sjc_skin(p_id: u32, p_instance: u32) -> coax_t11 {
   l_o.x = coax_p_v3((((l_at.x + (l_ax.x * l_p.x)) + (l_ay.x * l_p.y)) + (l_az.x * l_p.z)), (((l_at.y + (l_ax.y * l_p.x)) + (l_ay.y * l_p.y)) + (l_az.y * l_p.z)), (((l_at.z + (l_ax.z * l_p.x)) + (l_ay.z * l_p.y)) + (l_az.z * l_p.z)));
   l_o.y = coax_p_v3((((l_ax.x * l_n.x) + (l_ay.x * l_n.y)) + (l_az.x * l_n.z)), (((l_ax.y * l_n.x) + (l_ay.y * l_n.y)) + (l_az.y * l_n.z)), (((l_ax.z * l_n.x) + (l_ay.z * l_n.y)) + (l_az.z * l_n.z)));
   l_region = (l_nw >> u32(24u));
-  l_o.z = chars[i32((u32((l_base.y + 0x1.000000p-1f)) + l_region))];
+  l_mat = (chars[i32((u32((l_base.y + 0x1.000000p-1f)) + l_region))] & 4278190080u);
+  l_o.z = ((chars[i32((l_v + 6u))] & 16777215u) | l_mat);
   l_o.w = l_base.z;
   return l_o;
 }

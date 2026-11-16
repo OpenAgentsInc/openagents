@@ -174,8 +174,13 @@ Each batch is pushed to `main` green, with its checks, and commented on #13653.
   `jam/jam-cast.coax` the draw). The game picks her clip from how she moves: idle, walk, jog,
   sprint, the jump's three parts, the crouch and the board. The game's five raiders are every third of
   the jam's 16 in `L_Ring`, and their plans in the garage start there. While the party is on, the
-  other 11 dance as the crowd. The page skins the bodies on the GPU from palettes baked per frame.
-  Without the pack, the page draws the prototype's bodies.
+  other 11 dance as the crowd. The page skins the bodies on the GPU from palettes baked per frame, and
+  each vertex has the source mesh's own colour. Without the pack, the page draws the prototype's bodies.
+- The ring's audience is raiders, not the jam's crowd cards. The import does not bring the cards' look
+  through, so the 416 cards drew as white slabs. The page hides them and stands up to 48 raiders where
+  the cards are, facing the dance floor. They dance while the party is on and stand by day. The jam
+  also places her body's mesh, unposed, on a board by Digger in the ring. That figure is hidden too,
+  because the page draws her itself.
 
   The characters come as their own pack for three reasons. They do not wait on an importer rebuild of
   the world pack. A change to them does not mean uploading the world pack again. The page loads

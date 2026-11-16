@@ -16,7 +16,7 @@ static coax_v_t_SpliceJam jam_at(cx_face_addr state) { return (coax_v_t_SpliceJa
 static coax_t_SjStore jam_store[1];            /* the jam world read whole: static, the game holds slices into it (jam-world.coax) */
 static coax_v_t_SjStore store_at(void) { return (coax_v_t_SjStore){jam_store, 1}; }
 #define JAM_ROWS (8192u * 32u)                   /* jam-draw.coax SJD_ROWS x imported-read.coax IW_OBJECT */
-#define JAM_ACTORS (512u * 12u + 32u * 20u)      /* jam-world.coax SJ_ACTORS x jam-draw.coax SJD_ACTOR_FLOATS, then jam-cast.coax SJC_SLOTS x SJC_SLOT_FLOATS */
+#define JAM_ACTORS (512u * 12u + 72u * 20u)      /* jam-world.coax SJ_ACTORS x jam-draw.coax SJD_ACTOR_FLOATS, then jam-cast.coax SJC_SLOTS x SJC_SLOT_FLOATS */
 static float jam_rows[JAM_ROWS];
 static float jam_actors[JAM_ACTORS];
 static uint8_t catalog[4194304];

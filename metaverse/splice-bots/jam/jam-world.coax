@@ -19,9 +19,11 @@ SJ_FARM :: 0; SJ_PLAIN :: 1; SJ_RING :: 2; SJ_LAB :: 3; SJ_MAPS :: 4;
 SJ_WALKED :: [SJ_MAPS] bool.[true, true, true, true];   // whose colliders she walks against (sj_bind)
 SJ_MAP_IDS :: [SJ_MAPS] string.["/Game/SpliceBots/World/Maps/L_SolarFarm", "/Game/World/Graybox/L_Plain", "/Game/World/Graybox/L_Ring", "/Game/World/Graybox/L_Lab"];
 // The game actors the game reads, by their Unreal class (the jam's SpliceGame module). SJ_OPENING is no
-// class: an actor SJ_OPEN_ACTOR names.
-SJ_SNIPER :: 0; SJ_DIGGER :: 1; SJ_IMPERIAL :: 2; SJ_PICKUP :: 3; SJ_CHARGE :: 4; SJ_CRATE :: 5; SJ_ROCK :: 6; SJ_RAIDER :: 7; SJ_CROWD :: 8; SJ_OPENING :: 9; SJ_KINDS :: 10;
-SJ_CLASS :: [SJ_KINDS] string.["SpliceSniper", "SpliceDigger", "SpliceImperialStandIn", "SpliceFarmPickup", "SpliceFarmChargePoint", "SpliceFarmCrate", "SpliceRockWallActor", "SpliceRaveRaider", "SpliceCrowd", "opening"];
+// class: an actor SJ_OPEN_ACTOR names. SJ_FIGURE is the jam's Director placed in a map as a mesh, unposed
+// (a SkeletalMeshActor, her body's mesh: on her board by Digger in the ring); the page draws her body itself
+// (jam/jam-cast.coax), so the figure stays hidden (splice-jam.coax).
+SJ_SNIPER :: 0; SJ_DIGGER :: 1; SJ_IMPERIAL :: 2; SJ_PICKUP :: 3; SJ_CHARGE :: 4; SJ_CRATE :: 5; SJ_ROCK :: 6; SJ_RAIDER :: 7; SJ_CROWD :: 8; SJ_OPENING :: 9; SJ_FIGURE :: 10; SJ_KINDS :: 11;
+SJ_CLASS :: [SJ_KINDS] string.["SpliceSniper", "SpliceDigger", "SpliceImperialStandIn", "SpliceFarmPickup", "SpliceFarmChargePoint", "SpliceFarmCrate", "SpliceRockWallActor", "SpliceRaveRaider", "SpliceCrowd", "opening", "SkeletalMeshActor"];
 
 // ---- the sealed maps, opened for one world
 // The jam loaded the ring and the lab each as its own sealed map. Here they are two sealed areas of one
