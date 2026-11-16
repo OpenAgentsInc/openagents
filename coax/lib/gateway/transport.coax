@@ -157,7 +157,7 @@ gw_status_of :: (line: string) -> int {
   return ifx n == 3 then v else 0;
 }
 
-// The next body line, copied into line (lines longer than it are cut), or
+// The next body line, copied into line (an oversized line ends in failure), or
 // GW_IDLE when nothing has come yet, or GW_END once curl is done. The
 // status line and headers are read here and never returned; an interim
 // "100 Continue" block is skipped.
@@ -170,7 +170,7 @@ gw_poll_wait :: (st: [] GwStream, line: [] u8, wait_ms: int) -> GwRead {
   for guard: 0..<64 {
     n := cxproc_read_line(st[0].h, ifx guard == 0 then wait_ms else 0);
     if n == CL_TIMEOUT { return GwRead.{kind = GW_IDLE}; }
-    if n == CL_TOO_LONG { continue; }
+    if n == CL_TOO_LONG || n>line.count {gw_close(st);st[0].exit= -3;return GwRead.{kind=GW_END};}
     if n < 0 {
       st[0].ended = true;
       st[0].exit = cxproc_wait(st[0].h, 2000);

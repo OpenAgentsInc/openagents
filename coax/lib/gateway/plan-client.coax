@@ -1,0 +1,66 @@
+// Native plan polling, loaded by plan.coax. Pure event/attempt decisions stay
+// in that facade; real process/clock/retry effects run in plan-retry-checks.
+gw_plan_poll :: (p: [] GwPlan, bench: [] GwBench, out: [] GwEvent) -> int {
+  if p[0].over { return 0; }
+  if p[0].at >= p[0].n { return gw_plan_no_capacity(p, out, 0); }
+  if p[0].retry_at > 0 {
+    if cxproc_now_ms() < p[0].retry_at { return 0; }
+    p[0].retry_at = 0;
+    if !gw_plan_launch(p, bench) { return gw_plan_no_capacity(p, out, 0); }
+    return 0;
+  }
+  ev: [8] GwEvent;
+  n := gw_call_poll(p[0].call[..], ev[..]);
+  if n == 0 {
+    c := p[0].call[0];
+    s := gw_stall(p[0].first_limit_ms, p[0].idle_limit_ms, c.started_ms, c.last_ms, cxproc_now_ms());
+    if s == GW_STALL_NONE { return 0; }
+    gw_call_close(p[0].call[..]);
+    ev[0] = GwEvent.{kind = GW_EV_REFUSED, status = 0, reason = ifx s == GW_STALL_FIRST then "nothing came within the first-token limit" else "the stream went silent past the idle limit"};
+    n = 1;
+  }
+  k := 0;
+  for i: 0..<n {
+    x := ev[i];
+    if x.kind==GW_EV_TEXT && p[0].journal.count>0 && !jf_reply(p[0].journal,x.text) {
+      gw_call_close(p[0].call[..]);p[0].why="durable model reply failed; no tool will start";
+      p[0].at=p[0].n;return gw_plan_no_capacity(p,out,0);
+    }
+    if x.kind == GW_EV_TEXT || x.kind==GW_EV_TOOL { p[0].texted = true; }
+    if x.kind == GW_EV_REFUSED && !p[0].texted && p[0].tried < p[0].retries && gw_retryable(x.status) {
+      gw_call_close(p[0].call[..]);
+      gw_plan_log(p, p[0].at, GW_OUT_RETRIED, x.status, x.usage);
+      p[0].why = x.reason;
+      p[0].retry_at = cxproc_now_ms() + gw_backoff(p[0].backoff_ms, p[0].tried);
+      if p[0].retry_at <= 0 { p[0].retry_at = 1; }
+      p[0].tried += 1;
+      return k;
+    }
+    first := p[0].call[0].first;
+    if (x.kind == GW_EV_TEXT || x.kind == GW_EV_REASONING || x.kind==GW_EV_TOOL) && p[0].first_ms < 0 { p[0].first_ms = cxproc_now_ms(); }
+    left := p[0].n - p[0].at - 1;
+    d := gw_plan_decide(x, first, left);
+    if d == GW_PASS { k = gw_put(out, k, x); continue; }
+    if d == GW_END_PASS {
+      outcome := ifx x.kind == GW_EV_DONE then GW_OUT_DONE else ifx first then GW_OUT_CUT else GW_OUT_LAST;
+      if x.kind == GW_EV_REFUSED && gw_bench_status(x.status) { gw_bench(bench, p[0].attempts[p[0].at].gateway.name); }
+      gw_plan_log(p, p[0].at, outcome, ifx x.kind == GW_EV_DONE then 200 else x.status, x.usage);
+      if p[0].journal.count>0 && p[0].journal[0].flow.chain.failed {
+        p[0].at=p[0].n;return gw_plan_no_capacity(p,out,0);
+      }
+      if x.kind == GW_EV_DONE { x.usage = gw_plan_price(p, p[0].at, x.usage); }
+      p[0].over = true; p[0].at = p[0].n;
+      if x.kind == GW_EV_REFUSED && !first { p[0].why = x.reason; return k + gw_plan_no_capacity(p, out[k..<out.count], x.status); }
+      return gw_put(out, k, x);
+    }
+    // GW_NEXT: this attempt refused before its first token
+    benched := gw_bench_status(x.status);
+    if benched { gw_bench(bench, p[0].attempts[p[0].at].gateway.name); }
+    gw_plan_log(p, p[0].at, ifx benched then GW_OUT_BENCHED else GW_OUT_FELL_THROUGH, x.status, x.usage);
+    p[0].why = x.reason;
+    p[0].at += 1;
+    if !gw_plan_launch(p, bench) { return k + gw_plan_no_capacity(p, out[k..<out.count], x.status); }
+    return k;
+  }
+  return k;
+}

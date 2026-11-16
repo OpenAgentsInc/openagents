@@ -21,6 +21,11 @@ PR_STALL :: 1;                   // take the request, answer nothing
 PR_429 :: 2;                     // Vertex's quota refusal
 PR_OK :: 3;                      // a whole Gemini stream: thinking, text, done
 PR_CUT :: 4;                     // a first text chunk, then the connection closes
+PR_TOOL_CUT :: 5;                // a tool frame finishes, but HTTP's declared body is short
+PR_TOOL_OK :: 6; PR_WHOLE_CUT :: 7; PR_TOOL_AFTER :: 8; PR_TOOL_LONG :: 9; PR_TOOL_PARTIAL :: 10;
+PR_TOOL_BODY :: "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"read_file\",\"arguments\":\"{}\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n";
+PR_WHOLE_BODY :: "{\"choices\":[{\"message\":{\"tool_calls\":[{\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"read_file\",\"arguments\":\"{}\"}}]},\"finish_reason\":\"tool_calls\"}]}";
+PR_TOOL_TRAILER :: ": waiting for EOF\n\n";
 
 PR_OK_BODY :: "data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"weighing it\",\"thought\":true}]}}]}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"OK.\"}]},\"finishReason\":\"STOP\"}],\"usageMetadata\":{\"promptTokenCount\":34,\"candidatesTokenCount\":2,\"thoughtsTokenCount\":5,\"cachedContentTokenCount\":0}}\r\n\r\n";
 PR_CUT_BODY :: "data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"O\"}]}}]}\r\n\r\n";
@@ -30,6 +35,7 @@ PrServer :: struct {
   srv: int;
   script: [] int; at: int;       // what each connection gets, in order
   held: [8] int; nheld: int;     // stalled connections, closed at the end
+  finish_at:[8]int;             // a positive time releases the final declared bytes
   served: int;
 }
 
@@ -48,6 +54,7 @@ pr_drain :: (h: int) {
 
 // One connection, if one is waiting: answered by the script's next entry.
 pr_serve :: (s: [] PrServer) {
+  for i:0..<s[0].nheld {if s[0].held[i]>=0 && s[0].finish_at[i]>0 && cxproc_now_ms()>=s[0].finish_at[i] {_=pr_send(s[0].held[i],PR_TOOL_TRAILER);_=cxsock_close(s[0].held[i]);s[0].held[i]= -1;s[0].finish_at[i]=0;}}
   h := cxsock_accept(s[0].srv, 0);
   if h < 0 { return; }
   pr_drain(h);
@@ -55,7 +62,16 @@ pr_serve :: (s: [] PrServer) {
   s[0].at += 1; s[0].served += 1;
   if what == PR_STALL { if s[0].nheld < 8 { s[0].held[s[0].nheld] = h; s[0].nheld += 1; } return; }
   ok := true;
-  if what == PR_429 {
+  if what>=PR_TOOL_CUT && what<=PR_TOOL_PARTIAL {
+    body:=ifx what==PR_WHOLE_CUT then PR_WHOLE_BODY else PR_TOOL_BODY;
+    tail:=ifx what==PR_TOOL_OK then PR_TOOL_TRAILER else ifx what==PR_TOOL_AFTER then "data: {\"choices\":[{\"delta\":{\"content\":\"late\"}}]}\n\n" else ifx what==PR_TOOL_PARTIAL then "data: incomplete" else "";
+    total:=body.count+tail.count;if what==PR_TOOL_CUT || what==PR_WHOLE_CUT {total+=7;}if what==PR_TOOL_LONG {total+=70004;}
+    header:[256]u8;n:=json_raw(header[..],0,"HTTP/1.1 200 OK\r\nContent-Type: ");n=json_raw(header[..],n,ifx what==PR_WHOLE_CUT then "application/json" else "text/event-stream");n=json_raw(header[..],n,"\r\nContent-Length: ");n=json_write_int(header[..],n,total);n=json_raw(header[..],n,"\r\nConnection: close\r\n\r\n");
+    ok=n>0 && pr_send(h,cast(string)header[0..<n]) && pr_send(h,body);
+    if what==PR_TOOL_OK && ok && s[0].nheld<8 {i:=s[0].nheld;s[0].held[i]=h;s[0].finish_at[i]=cxproc_now_ms()+50;s[0].nheld+=1;return;}
+    if what==PR_TOOL_LONG {long:[70002]u8;long[0]=':';long[1]=' ';for i:2..<long.count {long[i]='x';}ok=ok && pr_send(h,cast(string)long[..]) && pr_send(h,"\n\n");}
+    else {ok=ok && pr_send(h,tail);}
+  } else if what == PR_429 {
     ok = pr_send(h, "HTTP/1.1 429 Too Many Requests\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n") && pr_send(h, PR_429_BODY);
   } else {
     ok = pr_send(h, "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n");
@@ -70,6 +86,8 @@ PrResult :: struct {
   ended: int;                    // GW_EV_DONE or GW_EV_REFUSED
   status: int;
   input: int;
+  tools: int;
+  call_id:[128]u8;ni:int;premature:bool;
 }
 
 // Runs the plan against the server until it ends (10 s at most).
@@ -82,12 +100,14 @@ pr_run :: (p: [] GwPlan, bench: [] GwBench, s: [] PrServer, r: [] PrResult) {
       e := ev[i];
       if e.kind == GW_EV_TEXT { for c: e.text { if r[0].nt < 256 { r[0].text[r[0].nt] = c; r[0].nt += 1; } } }
       if e.kind == GW_EV_REASONING { r[0].reasoning += 1; }
+      if e.kind==GW_EV_TOOL {r[0].tools+=1;r[0].ni=js_copy(r[0].call_id[..],e.call_id);}
+      if e.kind==GW_EV_DONE {for j:0..<s[0].nheld {if s[0].finish_at[j]>0 {r[0].premature=true;}}}
       if e.kind == GW_EV_DONE || e.kind == GW_EV_REFUSED { r[0].ended = e.kind; r[0].status = e.status; r[0].input = e.usage.input_tokens; }
     }
     if r[0].ended != 0 { break; }
     x := cxproc_sleep_ms(2);
   }
-  for i: 0..<s[0].nheld { x := cxsock_close(s[0].held[i]); }
+  for i: 0..<s[0].nheld {if s[0].held[i]>=0 {x := cxsock_close(s[0].held[i]);}}
   s[0].nheld = 0;
 }
 
@@ -178,11 +198,33 @@ pr_case3 :: () -> bool {  // with no retries set a stall still ends the call, as
   return true;
 }
 
+pr_case4 :: ()->bool {
+ t:[1]PrTest;srv:=cxsock_listen(0);if srv<0 {return false;}pr_plan(t[0].p[..],t[0].b[..],t[0].url[..],cxsock_port(srv),2,t[0].none[..]);
+ t[0].p[0].attempts[0].gateway.wire=GW_WIRE_CHAT;_=gw_plan_add(t[0].p[..],t[0].p[0].attempts[0].gateway,"fallback",t[0].none[0..<0]);
+ script:=[2]int.[PR_TOOL_CUT,PR_OK];s:=[1]PrServer.[PrServer.{srv=srv,script=script[..]}];r:[1]PrResult;
+ gw_plan_start(t[0].p[..],t[0].bench[..],pr_request(t[..]));pr_run(t[0].p[..],t[0].bench[..],s[..],r[..]);_=cxsock_close(srv);
+ return pr_check(r[0].ended==GW_EV_REFUSED && r[0].tools==1 && s[0].served==1 && t[0].p[0].nlog==1 && t[0].p[0].log[0].outcome==GW_OUT_CUT,"tool fragments pass through and prevent both retries and fallback after a short HTTP body");
+}
+
+pr_case5 :: ()->bool {
+ ok:=true;for what:PR_TOOL_OK..<PR_TOOL_PARTIAL+1 {
+  t:[1]PrTest;srv:=cxsock_listen(0);if srv<0 {return false;}pr_plan(t[0].p[..],t[0].b[..],t[0].url[..],cxsock_port(srv),0,t[0].none[..]);t[0].p[0].attempts[0].gateway.wire=GW_WIRE_CHAT;
+  script:=[1]int.[what];s:=[1]PrServer.[PrServer.{srv=srv,script=script[..]}];r:[1]PrResult;
+  gw_plan_start(t[0].p[..],t[0].bench[..],pr_request(t[..]));pr_run(t[0].p[..],t[0].bench[..],s[..],r[..]);_=cxsock_close(srv);
+  clean:=what==PR_TOOL_OK;good:=r[0].ended==(ifx clean then GW_EV_DONE else GW_EV_REFUSED) && t[0].p[0].call[0].complete==clean && !r[0].premature && s[0].served==1;
+  if what==PR_WHOLE_CUT {good=good && r[0].tools==0;}else {good=good && r[0].tools==1 && r[0].ni==6 && cast(string)r[0].call_id[0..<r[0].ni]=="call_1";}
+  gw_call_close(t[0].p[0].call[..]);good=good && t[0].p[0].call[0].complete==clean;
+  print("HTTP completion fixture %\n",what);ok=pr_check(good,"only a complete HTTP tool response publishes done; late, short, oversized and partial-event responses refuse") && ok;
+ }return ok;
+}
+
 tool_main :: () -> int #export_c #effects(all) {
   failed := 0;
   if !pr_case0() { failed += 1; }
   if !pr_case1() { failed += 1; }
   if !pr_case2() { failed += 1; }
   if !pr_case3() { failed += 1; }
+  if !pr_case4() { failed += 1; }
+  if !pr_case5() { failed += 1; }
   return ifx failed > 0 then 1 else 0;
 }

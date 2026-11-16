@@ -1,0 +1,47 @@
+// A provider finish is provisional until the transport observes clean EOF.
+// This owner copies terminal strings before the parser's next arena reset.
+// coax/bin/coax test coax/lib/gateway/completion.coax --library
+#load "types.coax";
+#load "../json/shape.coax";
+#authority;
+GW_COMPLETION_BYTES :: 1024;
+GW_COMPLETION_PASS :: 1; GW_COMPLETION_HOLD :: 0; GW_COMPLETION_REFUSE :: -1;
+GwCompletion :: struct {event:GwEvent;bytes:[GW_COMPLETION_BYTES]u8;done:bool;failed:bool;ended:bool;}
+
+#test "completion owns provisional terminal strings and publishes only after clean transport" {
+ c:[1]GwCompletion;gw_completion_begin(c[..]);text:=[1]u8.['p'];reason:=[1]u8.['r'];
+ #assert gw_completion_feed(c[..],GwEvent.{kind=GW_EV_TOOL,call_id="a"})==GW_COMPLETION_PASS;
+ #assert gw_completion_feed(c[..],GwEvent.{kind=GW_EV_TEXT,text="answer"})==GW_COMPLETION_PASS && gw_completion_feed(c[..],GwEvent.{kind=GW_EV_REASONING,text="thought"})==GW_COMPLETION_PASS;
+ #assert gw_completion_feed(c[..],GwEvent.{kind=GW_EV_DONE,text=cast(string)text[..],reason=cast(string)reason[..],status=200,usage=GwUsage.{input_tokens=7,output_tokens=3}})==GW_COMPLETION_HOLD && c[0].done;
+ text[0]='x';reason[0]='x';e:=gw_completion_end(c[..],true);#assert e.kind==GW_EV_DONE && e.text=="p" && e.reason=="r" && e.status==200 && e.usage.input_tokens==7 && e.usage.output_tokens==3;
+ #assert gw_completion_end(c[..],true).kind==GW_EV_REFUSED;
+ gw_completion_begin(c[..]);#assert !c[0].done && !c[0].failed && !c[0].ended && c[0].event.kind==0;
+}
+#test "completion rejects transport failure missing finish refusal unknown and late events" {
+ for clean:0..<2 {c:[1]GwCompletion;gw_completion_begin(c[..]);e:=gw_completion_end(c[..],clean==1);#assert e.kind==GW_EV_REFUSED && e.status==200 && e.reason=="the response did not complete" && c[0].failed && c[0].ended && gw_completion_end(c[..],true).kind==GW_EV_REFUSED;}
+ for kind:[3]int.[GW_EV_REFUSED,0,99] {c:[1]GwCompletion;gw_completion_begin(c[..]);#assert gw_completion_feed(c[..],GwEvent.{kind=kind})==GW_COMPLETION_REFUSE && c[0].failed && gw_completion_feed(c[..],GwEvent.{kind=GW_EV_DONE})==GW_COMPLETION_REFUSE && gw_completion_end(c[..],true).kind==GW_EV_REFUSED;}
+ for kind:[4]int.[GW_EV_DONE,GW_EV_TEXT,GW_EV_TOOL,GW_EV_REFUSED] {c:[1]GwCompletion;gw_completion_begin(c[..]);#assert gw_completion_feed(c[..],GwEvent.{kind=GW_EV_DONE})==GW_COMPLETION_HOLD && gw_completion_feed(c[..],GwEvent.{kind=kind})==GW_COMPLETION_REFUSE && gw_completion_end(c[..],true).kind==GW_EV_REFUSED;}
+ c:[1]GwCompletion;gw_completion_begin(c[..]);#assert gw_completion_feed(c[..],GwEvent.{kind=GW_EV_DONE})==GW_COMPLETION_HOLD && gw_completion_end(c[..],false).kind==GW_EV_REFUSED && c[0].failed && c[0].ended;
+ gw_completion_begin(c[..]);#assert gw_completion_feed(c[..],GwEvent.{kind=GW_EV_DONE})==GW_COMPLETION_HOLD && gw_completion_end(c[..],true).kind==GW_EV_DONE && gw_completion_feed(c[..],GwEvent.{kind=GW_EV_TEXT})==GW_COMPLETION_REFUSE;
+}
+#test "completion accepts exact combined terminal extent and refuses one excess byte" {
+ buf:[GW_COMPLETION_BYTES+1]u8;for i:0..<buf.count {buf[i]='a';}
+ for split:[3]int.[0,1,GW_COMPLETION_BYTES] {c:[1]GwCompletion;gw_completion_begin(c[..]);#assert gw_completion_feed(c[..],GwEvent.{kind=GW_EV_DONE,text=cast(string)buf[0..<split],reason=cast(string)buf[split..<GW_COMPLETION_BYTES]})==GW_COMPLETION_HOLD;
+  e:=gw_completion_end(c[..],true);#assert e.kind==GW_EV_DONE && e.text.count==split && e.reason.count==GW_COMPLETION_BYTES-split;
+  gw_completion_begin(c[..]);#assert gw_completion_feed(c[..],GwEvent.{kind=GW_EV_DONE,text=cast(string)buf[0..<split],reason=cast(string)buf[split..<buf.count]})==GW_COMPLETION_REFUSE && gw_completion_end(c[..],true).kind==GW_EV_REFUSED;
+ }
+ c:[1]GwCompletion;gw_completion_begin(c[..]);#assert gw_completion_feed(c[..],GwEvent.{kind=GW_EV_DONE,text=cast(string)buf[..]})==GW_COMPLETION_REFUSE;
+}
+
+gw_completion_begin :: (c:[]GwCompletion) #effects(all) {c[0]=GwCompletion.{};}
+gw_completion_feed :: (c:[]GwCompletion,e:GwEvent)->int #effects(all) {
+ if c[0].failed || c[0].done || c[0].ended {c[0].failed=true;return GW_COMPLETION_REFUSE;}
+ if e.kind==GW_EV_TEXT || e.kind==GW_EV_REASONING || e.kind==GW_EV_TOOL {return GW_COMPLETION_PASS;}
+ if e.kind!=GW_EV_DONE || e.text.count>GW_COMPLETION_BYTES || e.reason.count>GW_COMPLETION_BYTES-e.text.count {c[0].failed=true;return GW_COMPLETION_REFUSE;} // mutant: equivalent (widening only the individual text limit still refuses that extra byte at the independent combined-extent check)
+ n:=js_copy(c[0].bytes[..],e.text);n+=js_copy(c[0].bytes[n..<GW_COMPLETION_BYTES],e.reason);
+ c[0].event=GwEvent.{kind=GW_EV_DONE,text=cast(string)c[0].bytes[0..<e.text.count],reason=cast(string)c[0].bytes[e.text.count..<n],status=e.status,usage=e.usage};c[0].done=true;return GW_COMPLETION_HOLD;
+}
+gw_completion_end :: (c:[]GwCompletion,clean:bool)->GwEvent #effects(all) {
+ if c[0].ended || c[0].failed || !c[0].done || !clean {c[0].failed=true;c[0].ended=true;return GwEvent.{kind=GW_EV_REFUSED,status=200,reason="the response did not complete"};}
+ c[0].ended=true;return c[0].event;
+}

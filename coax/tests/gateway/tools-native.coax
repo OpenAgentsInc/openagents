@@ -4,12 +4,17 @@
 // The profile runs the evaluator baseline, then the ordinary native backend.
 #load "../../lib/gateway/chat.coax";
 #load "../../lib/gateway/tool-step.coax";
+#load "../../lib/gateway/completion.coax";
 
 #test "gateway tools: native fixture also passes the original evaluator" #steps 200000000 {
  #assert gwt_native_checks()==0;
 }
 
 gwt_native_checks :: ()->int #export_c #effects(all) {
+ completion:[1]GwCompletion;gw_completion_begin(completion[..]);terminal:=[1]u8.['x'];
+ #assert gw_completion_feed(completion[..],GwEvent.{kind=GW_EV_DONE,text=cast(string)terminal[..],reason="tool_calls"})==GW_COMPLETION_HOLD;terminal[0]='y';
+ final:=gw_completion_end(completion[..],true);#assert final.kind==GW_EV_DONE && final.text=="x" && final.reason=="tool_calls" && gw_completion_end(completion[..],true).kind==GW_EV_REFUSED;
+ gw_completion_begin(completion[..]);#assert gw_completion_feed(completion[..],GwEvent.{kind=GW_EV_DONE})==GW_COMPLETION_HOLD && gw_completion_end(completion[..],false).kind==GW_EV_REFUSED;
  s:[1]GwToolStep;gwt_step_begin(s[..]);arena:[GW_TOOL_OUTPUT+512]u8;ar:=[1]ClArena.[ClArena.{buf=arena[..]}];ev:[16]GwEvent;
  body:="{\"choices\":[{\"message\":{\"tool_calls\":[{\"id\":\"call_café\",\"type\":\"function\",\"function\":{\"name\":\"read_file\",\"arguments\":\"{\\\"path\\\":\\\"note.txt\\\"}\"}}]},\"finish_reason\":\"tool_calls\"}]}";
  n:=gw_chat_whole(ar[..],body,ev[..]);#assert n==2;

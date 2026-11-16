@@ -39,9 +39,26 @@ retains `is_error`, and its output is sent as the tool message's content.
 call until the provider's tool finish and a separate successful transport
 completion have both been observed. Refusal, a late event, sparse or duplicate
 calls, invalid arguments and exhausted bounds poison the entire candidate.
-The caller owns the successful transport observation: the existing
-`GwCall.finished` flag alone does not supply it. Calls returned by the step
-borrow its storage until its next reset and remain inert.
+The caller owns the successful transport observation. The native `GwCall`
+adapter supplies `complete` only when a valid finish and successful HTTP 200
+EOF were both observed; `finished` alone also includes failures and Stop.
+Routine cleanup preserves an already observed completion. Calls returned by
+the step borrow its storage until its next reset and remain inert.
+
+The pure completion policy copies up to 1,024 combined terminal provider/reason
+bytes into its own storage while waiting for EOF. Duplicate or late semantic
+events, a trailing incomplete SSE event, a short declared HTTP body, an
+oversized line or exhausted body/event buffers refuse the response. No tool
+candidate seals from its successful prefix. Native default buffers hold 65,536
+bytes per line and 262,144 bytes per whole body; a DTO's individual extent does
+not promise that a multi-call response fits those transport bounds. Give the
+call adapter at least 16 event slots when receiving up to eight tool calls.
+
+Native process/HTTP effects live in `client.coax`; the public gateway facade
+retains its existing entry points and pure codecs. The plan passes tool
+fragments as data and does not retry or switch providers once it handed any
+tool fragment to its caller. Its native polling effects live in
+`plan-client.coax`, alongside the pure decisions in `plan.coax`.
 
 The Chat parser preserves function call IDs and refuses invalid field types,
 unsupported tool types and incomplete event/string buffers. A tool delta may
