@@ -12,22 +12,8 @@
 
 #load "picker.coax";       // the transcript, the composer and the menus
 #load "../skin/all.coax";
-
-FC_PRIMS :: 4096;
-
-// A list's prims hashed: every number in 1/65536ths, every text's bytes.
-fc_q :: (h: int, v: f32) -> int { return (h * 1000003 + cast(int) floor(v * 65536 + 0.5)) & 0xFFFFFFFFFF; }
-fc_hash :: (list: [] Prim, n: int, seed: int) -> int {
-  h := (seed & 0xFFFFFFFF) * 31 + n;
-  for i: 0..<n {
-    p := list[i];
-    h = (h * 1000003 + p.kind * 7 + p.id * 131 + (ifx p.on then 1 else 0) + p.line * 17 + p.off) & 0xFFFFFFFFFF;
-    for v: [16] f32.[p.x, p.y, p.w, p.h, p.radius, p.border, p.a, p.b, p.c, p.d, p.fill.r, p.fill.g, p.fill.b, p.fill.a, p.edge.r, p.edge.a] { h = fc_q(h, v); }
-    h = fc_q(fc_q(h, p.edge.g), p.edge.b);
-    for c: p.text { h = (h * 257 + cast(int) c) & 0xFFFFFFFFFF; }
-  }
-  return h;
-}
+#load "frame-hash-checks.coax";
+#load "composer-frames-checks.coax";
 
 fc_transcript :: (sk: UiSkin) -> int {
   t: [1] Transcript; a: [1] Atlas;
@@ -48,30 +34,6 @@ fc_transcript :: (sk: UiSkin) -> int {
   t[0].hover_kind = H_ACTION; t[0].hover_a = 0; t[0].hover_b = 2;
   t_layout(t[..], a[..], zeron_dark(), 292, 736, 145);
   return fc_hash(t[0].boxes[..], t[0].nbox, h) + cast(int) floor(t[0].content_h * 64);
-}
-
-fc_composer :: (sk: UiSkin) -> int {
-  c: [1] Composer; a: [1] Atlas;
-  md_test_atlas(a[..]);
-  composer_set_skin(c[..], sk);
-  c[0].focused = true;
-  composer_insert(c[..], "Keep the tool group headers quiet\nand let the chips carry the error.");
-  list: [COMPOSER_PRIMS] Prim; split: [1] int;
-  c[0].hover = CH_MODEL; c[0].plan = true; c[0].access_set = true;
-  n := composer_prims(list[..], 0, c[..], a[..], 292, 368, 736, split[..]);
-  h := fc_hash(list[..], n, 2);
-  composer_select_all(c[..]);
-  c[0].hover = CH_ACCESS; c[0].brand = ICON_OPENAI; c[0].model_label = "gpt-5.5"; c[0].effort_label = "High";
-  n = composer_prims(list[..], 0, c[..], a[..], 292, 368, 736, split[..]);
-  h = fc_hash(list[..], n, h);
-  n = composer_docked_prims(list[..], 0, c[..], a[..], 292, 860, 736, split[..]);
-  h = fc_hash(list[..], n, h);
-  e: [1] Composer; composer_set_skin(e[..], sk); e[0].running = true; e[0].focused = true;
-  n = composer_docked_prims(list[..], 0, e[..], a[..], 292, 860, 736, split[..]);
-  h = fc_hash(list[..], n, h);
-  e[0].docked = false; e[0].no_attach = true; e[0].no_access = true;
-  n = composer_prims(list[..], 0, e[..], a[..], 292, 368, 736, split[..]);
-  return fc_hash(list[..], n, h) + cast(int) floor(docked_height(c[..], a[..], 736) * 64);
 }
 
 fc_menus :: (sk: UiSkin) -> int {
@@ -100,18 +62,9 @@ fc_menus :: (sk: UiSkin) -> int {
   return fc_hash(list[..], pk_prims(list[..], 0, p[..], cat[..], sel, a[..], 1320, 880), h);
 }
 
-// The hashes as of 6cc616b5eb, before the chat set's measures moved into its skin.
-FC_WANT :: [9] int.[895054135633, 668902141251, 972258035541,     // zeron: transcript, composer, menus
-                    140100635475, 1036568112289, 470701923851,    // everglade
-                    807423348363, 396024690953, 326021744922];    // verse
-
 #test "frames: the transcript in three skins" #steps 900000000 {
   want := FC_WANT;
   #assert fc_transcript(uiskin(UISKIN_ZERON)) == want[0] && fc_transcript(uiskin(UISKIN_EVERGLADE)) == want[3] && fc_transcript(uiskin(UISKIN_VERSE)) == want[6];
-}
-#test "frames: the composer in three skins" #steps 900000000 {
-  want := FC_WANT;
-  #assert fc_composer(uiskin(UISKIN_ZERON)) == want[1] && fc_composer(uiskin(UISKIN_EVERGLADE)) == want[4] && fc_composer(uiskin(UISKIN_VERSE)) == want[7];
 }
 #test "frames: the menus in three skins" #steps 900000000 {
   want := FC_WANT;

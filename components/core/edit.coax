@@ -293,6 +293,28 @@ eb_splice :: (e: [] EditBuf, from: int, to: int, s: string) -> bool {
   #assert eb_text(e[..])=="ab" && e[0].gen==g && !e[0].marked;
   #assert e[0].hist[EB_UNDO].count==u && e[0].hist[EB_REDO].count==r && eb_redo(e[..]) && eb_text(e[..])=="abc";
 }
+#test "explicit replacement at byte zero keeps its range and advances exactly one document generation" {
+ e:[1]EditBuf;eb_set(e[..],"abcd");g:=e[0].gen;
+ #assert eb_replace(e[..],0,1,"X") && eb_text(e[..])=="Xbcd" && e[0].gen==g+1 && e[0].caret==1 && e[0].anchor==1;
+ eb_move_to(e[..],4);eb_select_to(e[..],2);g=e[0].gen;
+ #assert eb_mark(e[..],0,1,"XYZ",0,1) && eb_text(e[..])=="XYZbcd" && e[0].marked_at==0 && e[0].marked_end==3;
+ #assert e[0].anchor==0 && e[0].caret==1 && e[0].gen==g+1;
+ g=e[0].gen;#assert eb_replace(e[..],-1,-1,"Q") && eb_text(e[..])=="Qbcd" && !e[0].marked && e[0].gen==g+1;
+}
+#test "composition cursor ranges are inclusive and invalid ranges fall back to its end" {
+ e:[1]EditBuf;
+ for item:[8][2]int.[[2]int.[0,0],[2]int.[0,3],[2]int.[1,2],[2]int.[2,2],[2]int.[-1,1],[2]int.[1,0],[2]int.[0,4],[2]int.[4,4]] {
+  eb_set(e[..],"ab");#assert eb_insert(e[..],"c") && eb_undo(e[..]) && eb_can_redo(e[..]);g:=e[0].gen;
+  #assert eb_mark(e[..],-1,-1,"XYZ",item[0],item[1]);
+  valid:=item[0]>=0 && item[0]<=3 && item[1]>=item[0] && item[1]<=3;
+  #assert e[0].anchor==(ifx valid then item[0]+2 else 5) && e[0].caret==(ifx valid then item[1]+2 else 5);
+  #assert e[0].gen==g+1 && e[0].hist[EB_REDO].count==0 && e[0].hist[EB_REDO].used==0 && e[0].last_kind==EB_EDIT_NONE;
+  history:=e[0].hist[EB_UNDO].count;g=e[0].gen;
+  #assert eb_mark(e[..],-1,-1,"q",0,1) && eb_text(e[..])=="abq" && e[0].marked && e[0].marked_at==2 && e[0].marked_end==3 && e[0].anchor==2 && e[0].caret==3 && e[0].gen==g+1;
+  #assert e[0].hist[EB_UNDO].count==history && eb_undo(e[..]) && eb_text(e[..])=="ab";
+ }
+ eb_set(e[..],"ab");g:=e[0].gen;#assert eb_mark(e[..],1,2,"",0,0) && eb_text(e[..])=="a" && !e[0].marked && e[0].gen==g+1;
+}
 eb_replace :: (e: [] EditBuf, from_in: int, to_in: int, s: string) -> bool {
   from := from_in; to := to_in;
   if from < 0 {

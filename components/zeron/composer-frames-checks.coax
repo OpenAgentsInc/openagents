@@ -1,0 +1,35 @@
+// The existing composer goldens, in a focused suite without unrelated
+// transcript/menu fixtures. Hashes and cases are unchanged.
+#load "composer.coax";
+#load "markdown.coax";
+#load "../skin/all.coax";
+#load "frame-hash-checks.coax";
+
+fc_composer :: (sk: UiSkin) -> int {
+  c: [1] Composer; a: [1] Atlas;
+  md_test_atlas(a[..]);
+  composer_set_skin(c[..], sk);
+  c[0].focused = true;
+  composer_insert(c[..], "Keep the tool group headers quiet\nand let the chips carry the error.");
+  list: [COMPOSER_PRIMS] Prim; split: [1] int;
+  c[0].hover = CH_MODEL; c[0].plan = true; c[0].access_set = true;
+  n := composer_prims(list[..], 0, c[..], a[..], 292, 368, 736, split[..]);
+  h := fc_hash(list[..], n, 2);
+  composer_select_all(c[..]);
+  c[0].hover = CH_ACCESS; c[0].brand = ICON_OPENAI; c[0].model_label = "gpt-5.5"; c[0].effort_label = "High";
+  n = composer_prims(list[..], 0, c[..], a[..], 292, 368, 736, split[..]);
+  h = fc_hash(list[..], n, h);
+  n = composer_docked_prims(list[..], 0, c[..], a[..], 292, 860, 736, split[..]);
+  h = fc_hash(list[..], n, h);
+  e: [1] Composer; composer_set_skin(e[..], sk); e[0].running = true; e[0].focused = true;
+  n = composer_docked_prims(list[..], 0, e[..], a[..], 292, 860, 736, split[..]);
+  h = fc_hash(list[..], n, h);
+  e[0].docked = false; e[0].no_attach = true; e[0].no_access = true;
+  n = composer_prims(list[..], 0, e[..], a[..], 292, 368, 736, split[..]);
+  return fc_hash(list[..], n, h) + cast(int) floor(docked_height(c[..], a[..], 736) * 64);
+}
+
+#test "frames: the composer in three skins" #steps 900000000 {
+  want := FC_WANT;
+  #assert fc_composer(uiskin(UISKIN_ZERON)) == want[1] && fc_composer(uiskin(UISKIN_EVERGLADE)) == want[4] && fc_composer(uiskin(UISKIN_VERSE)) == want[7];
+}

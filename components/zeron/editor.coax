@@ -53,6 +53,84 @@
   hit:=content_hit(c,a[..],50,25);#assert hit.at==16;
   move_to(c,0);composer_body_layout(c,a[..],10,20,40,22.75);#assert c[0].scroll_x==0;
 }
+#test "empty SDK spans are inert and a fresh owner retires all prior editing state" {
+ e:[1]UiEditor;a:[1]Atlas;out:[16]u8;pixels:[32]f32;box:=[4]f32.[10,20,80,40];
+ ue_close(e[0..<0]);ue_cancel(e[0..<0]);
+ #assert !ue_open(e[0..<0],1,"") && !ue_insert(e[0..<0],"x") && !ue_mark(e[0..<0],"x",0,1);
+ #assert !ue_transaction(e[0..<0],"x","",0,0) && !ue_key(e[0..<0],a[..],KEY_BACKSPACE,0) && !ue_paste(e[0..<0],"x");
+ #assert ue_text(e[0..<0],out[..])== -1 && ue_owner(e[0..<0])==0 && ue_paint(e[0..<0],a[..],pixels[..],0,1,box[..],zeron_skin(),0)==0;
+ #assert ue_open(e[..],17,"old");c:=e[0].body[..];c[0].no_wrap=true;c[0].scroll=23;c[0].scroll_x=14;c[0].since=3;c[0].caret_hidden=true;c[0].selecting=true;c[0].follow=false;
+ #assert ue_open(e[..],18,"") && ue_owner(e[..])==18 && ue_value(e[..])=="" && typed(c)=="";
+ #assert !c[0].no_wrap && c[0].scroll==0 && c[0].scroll_x==0 && c[0].since==0 && !c[0].caret_hidden && !c[0].selecting && c[0].focused && c[0].follow;
+ ue_close(e[..]);ue_cancel(e[..]);#assert ue_owner(e[..])==0 && ue_value(e[..])=="";
+ #assert !ue_paste(e[..],"x") && !ue_transaction(e[..],"x","",0,0) && !ue_key(e[..],a[..],KEY_LEFT,0);
+}
+#test "capacity is inclusive, an oversized composition is atomic, and text output is all or nothing" {
+ e:[1]UiEditor;full:[EB_TEXT]u8;for i:0..<full.count {full[i]='a';}
+ #assert ue_open(e[..],1,cast(string)full[..]) && ue_value(e[..]).count==EB_TEXT;
+ #assert !ue_mark(e[..],"x",0,1) && !e[0].body[0].ed[0].marked && ue_value(e[..]).count==EB_TEXT;
+ #assert !ue_paste(e[..],"x") && ue_value(e[..]).count==EB_TEXT;
+ small:=[3]u8.[42,42,42];#assert ue_text(e[..],small[..])== -1 && small[0]==42 && small[2]==42;
+ #assert ue_open(e[..],2,"é");#assert ue_text(e[..],small[0..<1])== -1 && small[0]==42;
+ #assert ue_text(e[..],small[0..<2])==2 && small[0]==195 && small[1]==169 && small[2]==42;
+ #assert ue_text(e[..],small[..])==2 && small[2]==42;
+}
+#test "cancelled composition clears its redo and caret state while ordinary cancellation preserves redo" {
+ e:[1]UiEditor;#assert ue_open(e[..],1,"ab");c:=e[0].body[..];
+ #assert ue_insert(e[..],"cd");composer_undo(c);ue_committed(e[..]);#assert can_redo(c);
+ ue_cancel(e[..]);#assert can_redo(c) && ue_value(e[..])=="ab";
+ composer_select_all(c);#assert ue_mark(e[..],"候補",-1,-1);c[0].follow=false;c[0].since=2;
+ ue_cancel(e[..]);#assert ue_value(e[..])=="ab" && typed(c)=="ab" && !can_redo(c) && c[0].ed[0].hist[EB_REDO].used==0;
+ #assert !c[0].caret_hidden && c[0].follow && c[0].since==0 && selected(c)=="ab";
+}
+#test "mark and insertion replace the current selection, restart the caret, and keep provisional text private" {
+ e:[1]UiEditor;a:[1]Atlas;test_atlas(a[..]);#assert ue_open(e[..],1,"abcd");c:=e[0].body[..];
+ move_to(c,1);select_to(c,3);c[0].follow=false;c[0].since=2;c[0].upstream=true;c[0].has_column=true;
+ #assert ue_mark(e[..],"é",-1,-1) && typed(c)=="aéd" && ue_value(e[..])=="abcd" && c[0].caret_hidden;
+ #assert c[0].follow && c[0].since==0 && !c[0].upstream && !c[0].has_column;
+ #assert !ue_key(e[..],a[..],KEY_LEFT,0) && typed(c)=="aéd";
+ c[0].follow=false;c[0].since=2;#assert ue_mark(e[..],"xyz",1,2) && selected(c)=="y" && !c[0].caret_hidden && c[0].follow && c[0].since==0;
+ #assert ue_value(e[..])=="abcd";#assert ue_insert(e[..],"🙂") && ue_value(e[..])=="a🙂d" && typed(c)=="a🙂d" && !c[0].caret_hidden;
+ move_to(c,1);select_to(c,5);c[0].caret_hidden=true;c[0].follow=false;c[0].since=2;
+ #assert ue_insert(e[..],"Q") && ue_value(e[..])=="aQd" && !c[0].caret_hidden && c[0].follow && c[0].since==0;
+ #assert !ue_key(e[..],a[..],999999,0) && ue_value(e[..])=="aQd";
+}
+#test "a single character paste has its own undo and replaces a marked range rather than committing it" {
+ e:[1]UiEditor;a:[1]Atlas;test_atlas(a[..]);#assert ue_open(e[..],1,"") && ue_insert(e[..],"a");c:=e[0].body[..];
+ #assert ue_paste(e[..],"b") && ue_value(e[..])=="ab";
+ #assert ue_key(e[..],a[..],'z',MOD_CTRL) && ue_value(e[..])=="a";
+ #assert ue_mark(e[..],"pending",-1,-1);c[0].since=3;c[0].follow=false;
+ #assert ue_paste(e[..],"c") && ue_value(e[..])=="ac" && !c[0].caret_hidden && c[0].since==0 && c[0].follow;
+ #assert !ue_paste(e[..],"") && ue_value(e[..])=="ac";
+}
+#test "whole input-method capacity admission includes selection replacement and never commits a prefix" {
+ e:[1]UiEditor;full:[EB_TEXT]u8;for i:0..<full.count {full[i]='x';}
+ #assert ue_open(e[..],1,cast(string)full[0..<EB_TEXT-2]);
+ #assert ue_transaction(e[..],"a","b",1,1) && ue_value(e[..]).count==EB_TEXT-1 && typed(e[0].body[..]).count==EB_TEXT;
+ #assert !ue_transaction(e[..],"ab","c",0,1) && ue_value(e[..]).count==EB_TEXT-1 && typed(e[0].body[..]).count==EB_TEXT;
+ #assert ue_open(e[..],2,"z");composer_select_all(e[0].body[..]);
+ #assert ue_transaction(e[..],cast(string)full[..],"",0,0) && ue_value(e[..]).count==EB_TEXT;
+ #assert ue_open(e[..],3,"") && ue_transaction(e[..],"",cast(string)full[..],0,0) && ue_value(e[..])=="";
+ #assert ue_open(e[..],4,"abcd");move_to(e[0].body[..],1);select_to(e[0].body[..],3);
+ #assert ue_transaction(e[..],"X","yz",2,0) && ue_value(e[..])=="aXd" && selected(e[0].body[..])=="yz";
+ #assert ue_transaction(e[..],"","",0,0) && ue_value(e[..])=="aXd";
+ #assert ue_open(e[..],5,"ab");move_to(e[0].body[..],0);select_to(e[0].body[..],2);
+ #assert ue_transaction(e[..],"","",0,0) && ue_value(e[..])=="ab" && selected(e[0].body[..])=="ab";
+}
+#test "the active text body paints its supplied skin and geometry, advances its clock and blinks one caret" {
+ e:[1]UiEditor;a:[1]Atlas;test_atlas(a[..]);#assert ue_open(e[..],1,"ab");
+ box:=[4]f32.[10,20,80,40];out:[10000]f32;sk:=zeron_skin();sk.ink=rgba(0.1,0.2,0.3,1);sk.cmp.line=33;sk.cmp.caret=3;sk.cmp.caret_blink=0.5;
+ n:=ue_paint(e[..],a[..],out[..],0,2,box[..],sk,0.2);c:=e[0].body[..];
+ #assert n==18 && c[0].x==10 && c[0].y==20 && c[0].w==80 && c[0].h==40 && c[0].text_x==10 && c[0].text_y==20 && c[0].text_w==80 && c[0].view_h==40;
+ #assert c[0].since==0.2f32 && c[0].ed[0].clock==0.2f32 && c[0].skin.ink.r==0.1f32 && c[0].lines==1;
+ #assert out[12]==0.1f32 && out[13]==0.2f32 && out[14]==0.3f32 && out[GP_VERTEX_FLOATS*12+6]==6;
+ #assert ue_paint(e[..],a[..],out[..],0,2,box[..],sk,0.4)==12;
+ #assert c[0].since>0.59f32 && c[0].ed[0].clock>0.59f32;
+ saved:=c[0].since;#assert ue_paint(e[..],a[..],out[..],6,2,box[0..<3],sk,1)==6 && c[0].since==saved;
+ box[2]=0;#assert ue_paint(e[..],a[..],out[..],6,2,box[..],sk,1)==6;box[2]=80;box[3]=0;#assert ue_paint(e[..],a[..],out[..],6,2,box[..],sk,1)==6;
+ box[3]=40;a[0].ready=false;#assert ue_paint(e[..],a[..],out[..],6,2,box[..],sk,1)==6;
+ ue_close(e[..]);a[0].ready=true;#assert ue_paint(e[..],a[..],out[..],6,2,box[..],sk,1)==6 && c[0].since==0;
+}
 
 UiEditor :: struct {body: [1] Composer; owner: u64; committed: [EB_TEXT] u8; n: int;}
 ue_value :: (e: [] UiEditor) -> string {return cast(string)e[0].committed[0..<e[0].n];}
@@ -93,9 +171,17 @@ ue_mark :: (e: [] UiEditor, text: string, from: int, to: int) -> bool #export_c 
 ue_transaction :: (e:[]UiEditor,commit:string,preedit:string,begin:int,end:int)->bool #export_c #effects(all) {
   if e.count<1 || e[0].owner==0 {return false;}
   b:=e[0].body[0].ed[..];lo:=ifx b[0].marked then b[0].marked_at else eb_sel_lo(b);hi:=ifx b[0].marked then b[0].marked_end else eb_sel_hi(b);
-  if commit.count>EB_TEXT || preedit.count>EB_TEXT || b[0].n-(hi-lo)+commit.count+preedit.count>EB_TEXT {return false;}
+  // Subtract from the available room: adding two borrowed string counts
+  // could overflow before a capacity comparison. Valid buffer ranges leave
+  // 0..EB_TEXT bytes, and string counts are nonnegative.
+  room:=EB_TEXT-(b[0].n-(hi-lo));
+  if commit.count>room-preedit.count {return false;}
   if commit.count>0 || b[0].marked {if !ue_insert(e,commit) {return false;}}
-  if preedit.count>0 {return ue_mark(e,preedit,ifx begin<end then begin else end,ifx begin>end then begin else end);}
+  if preedit.count>0 {
+    lo_cursor:=ifx begin<end then begin else end; // mutant: equivalent — at equality either branch returns the same byte offset
+    hi_cursor:=ifx begin>end then begin else end; // mutant: equivalent — at equality either branch returns the same byte offset
+    return ue_mark(e,preedit,lo_cursor,hi_cursor);
+  }
   e[0].body[0].caret_hidden=false;return true;
 }
 ue_key :: (e: [] UiEditor, a: [] Atlas, key: int, mods: int) -> bool #export_c #effects(all) {
