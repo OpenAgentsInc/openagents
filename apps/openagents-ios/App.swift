@@ -26,6 +26,8 @@ import UIKit
     /// The composer field's row, for the tap that ends editing (KitTapOutside).
     private var fieldBox=CGRect.null
     private var tapOutside:KitTapOutside?
+    /// The shared app core and the native services it asks for.
+    private var services:AppServices?
     private lazy var editor:ComposerEditor={var s=[Float](repeating:0,count:14);_ = oc_style(&s);return ComposerEditor(style:s)}()
 
     override func viewDidLoad() {
@@ -36,6 +38,7 @@ import UIKit
             NSLayoutConstraint.activate([label.centerYAnchor.constraint(equalTo:view.centerYAnchor),label.leadingAnchor.constraint(equalTo:view.leadingAnchor,constant:24),label.trailingAnchor.constraint(equalTo:view.trailingAnchor,constant:-24)]);return
         }
         self.owner=owner
+        services=AppServices();services?.bridge.changed={ [weak self] in self?.wake() }
         // A touch lands on the Metal view, not here: the surface says when one changed something.
         oc_on_change(owner,{ context in
             guard let context else {return}

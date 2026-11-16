@@ -98,3 +98,4 @@ void oc_close(void *chat) {
   gallery_free(&c->app);
   free(c->s); free(c);
 }
+#include "core-host.c"

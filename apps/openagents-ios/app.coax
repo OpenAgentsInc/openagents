@@ -5,3 +5,10 @@
 // generate.sh compiles this file to Generated/gallery.c.
 #load "../../components/raster/host-tables.coax";
 #load "chat.coax";
+// The shared app core (apps/shared/app/README.md): state, dispatch, the effect outbox and the
+// host ABI that core-host.c wraps.
+#load "../shared/app/core/core.coax";
+
+// A dispatch answered APP_GUEST: a guest screen's result waits for its owner. No guest screen is
+// loaded yet, so the root releases it; the environment picker's route goes here when it lands.
+oa_root_guest :: (c: [] AppCore) #export_c #effects(all) { app_guest_done(c); }

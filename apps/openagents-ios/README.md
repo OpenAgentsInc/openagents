@@ -14,19 +14,25 @@ Bundle ID `com.openagents.app`, team `HQWSG26L43`, version 1.0.0.
 | File | What it is |
 | --- | --- |
 | `chat.coax` | The chat page: state, layout, paint and semantic rows, with its check |
-| `app.coax` | The root that `generate.sh` compiles to C: the chat page and the atlas tables |
+| `app.coax` | The root that `generate.sh` compiles to C: the chat page, the shared app core and the atlas tables |
 | `host.c`, `host.h` | The page's GPU carrier, included by `components/gallery/linux/main.c` |
 | `ComponentsHost.m` | Compiles the shared Apple GPU host into the app |
-| `App.swift` | App delegate and chat screen: display link, platform editor, VoiceOver |
+| `App.swift` | App delegate and chat screen: display link, platform editor, VoiceOver, a tap outside a field ends editing |
+| `AppCore.swift` | The shared app core (`apps/shared/app/`) with the native services: HTTP under the core's policy, the account, the clipboard, links, lifecycle and rejoin |
+| `core-host.c`, `core-host.h` | The core's `app_host_` entry points as plain C, included by `host.c` |
 | `Bridge.h` | The C functions Swift sees |
 | `project.yml` | The XcodeGen project: the `OpenAgents` app |
 | `generate.sh` | Coax to C and Coax to Metal, in one remote job |
+| `dev.sh` | The fast Simulator loop: generate and xcodegen only when their inputs changed, an incremental build, install, relaunch and one screenshot (`apps/shared/app/preview/`) |
 | `build.sh` | Generate, `xcodegen generate`, then a simulator build |
 | `check.sh` | Fails if the built app holds any JavaScript path |
 | `release.sh` | Archive and upload to App Store Connect; `tools/app_store.py` is its API client |
 | `OpenAgents/` | Icons, `Info.plist` and entitlements |
 
-Shared code the app builds: `apps/shared/native/KitEditor.swift`,
+Shared code the app builds: `apps/shared/native/` (the platform editors, the tap-outside rule
+`KitFocus.swift`, and the services `AppHTTP`, `AppAccount`, `AppWake`, `AppDevice`,
+`AppEffects`, `AppCoreBridge`; checked by `apps/shared/native/app-services-check.sh`),
+`apps/shared/host/apple/AppAuth.swift`, `DeviceKey.swift`,
 `apps/shared/host/apple/ui-host.m` and `components/`.
 
 ## Build and run

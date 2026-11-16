@@ -20,6 +20,8 @@ targets:
     platform: iOS
     sources:
       - App.swift
+      # The shared app core's host loop: its C entry points are in host.c (core-host.c).
+      - AppCore.swift
       # The shared component carrier with the app's pages: the chat page, no gallery page.
       - path: ../../components/gallery/linux/main.c
         compilerFlags: "-DCOMPONENTS_EMBEDDED=1 -DCOMPONENTS_NO_GALLERY=1 -DCOMPONENTS_CHAT=1 -IGenerated -I../shared/host/linux"
