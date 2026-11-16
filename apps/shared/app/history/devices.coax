@@ -1,0 +1,48 @@
+// Paired/local history uses the shared read-only navigation cache. It never
+// borrows or replaces the active conversation's EnvironmentApp.
+#load "../core/core.coax";
+#load "../../app-navigation.coax";
+DH_OWNER :: 6; DH_INTERVAL :: 15000;
+DeviceHistory :: struct {nav:[1]AppNavigation;revision:int= -1;visible:bool;op:int;generation:int;next:int;host:int;pages:[16][128]u8;page_n:[16]int;}
+dh_row_id :: (h:[]DeviceHistory,i:int,out:[]u8)->string {return nav_row_id(h[0].nav[..],i,out);}
+dh_catalog :: (h:[]DeviceHistory,c:[]AppCore) {
+ if h[0].revision==app_device_revision(c) {return;}
+ if h[0].op>0 {_:=app_guest_cancel(c,DH_OWNER);h[0].op=0;}
+ n:=h[0].nav[..];b:=n[0].browser[..];old:[1]EaCatalog;old[0]=b[0].catalog[0];pages:[16][128]u8;lengths:[16]int;
+ b[0]=EnvironmentApp.{};b[0].active=true;b[0].catalog[0].ok=true;b[0].catalog[0].n=app_device_count(c);
+ for i:0..<b[0].catalog[0].n {
+  _:=ea_copy(b[0].catalog[0].entries[i].host[..],app_device_host(c,i));b[0].catalog[0].entries[i].nl=ea_copy(b[0].catalog[0].entries[i].label[..],app_device_name(c,i));
+  for j:0..<old[0].n {if cast(string)old[0].entries[j].host[..]==app_device_host(c,i) {pages[i]=h[0].pages[j];lengths[i]=h[0].page_n[j];}}
+ }
+ nav_reindex(n,old[..]);h[0].pages=pages;h[0].page_n=lengths;h[0].revision=app_device_revision(c);n[0].next=0;h[0].next=c[0].mono_ms;
+}
+dh_read :: (h:[]DeviceHistory,c:[]AppCore,host:int,cursor:string)->bool {
+ n:=h[0].nav[..];b:=n[0].browser[..];if host<0 || host>=b[0].catalog[0].n || h[0].op>0 || !h[0].visible {return false;}
+ raw:[24576]u8;size:=ea_read_body("ListSessions","",cursor,raw[..]);if size<0 {return false;}
+ key:=cast(string)b[0].catalog[0].entries[host].host[..];op:=app_guest_device(c,DH_OWNER,1,key,cast(string)raw[0..<size]);if op==0 {h[0].next=c[0].mono_ms+1000;return false;}
+ h[0].op=op;h[0].generation=fx_generation(c[0].out[..],DH_OWNER);h[0].host=host;h[0].page_n[host]=ea_copy(h[0].pages[host][..],cursor);
+ b[0].selected=host;b[0].page=1;b[0].uncertain=false;b[0].flight=true;eu_request(b,"ListSessions");#assert ea_read(cast(string)raw[0..<size],b[0].request[..]);_:=app_guest_due(c,DH_OWNER,-1);return true;
+}
+dh_sync :: (h:[]DeviceHistory,c:[]AppCore,visible:bool) {
+ dh_catalog(h,c);n:=h[0].nav[..];b:=n[0].browser[..];
+ if h[0].op>0 && h[0].generation!=fx_generation(c[0].out[..],DH_OWNER) {h[0].op=0;b[0].flight=false;b[0].action=0;h[0].next=c[0].mono_ms;}
+ if !visible || !c[0].foreground {
+  if h[0].op>0 {_:=app_guest_cancel(c,DH_OWNER);h[0].op=0;}
+  h[0].visible=false;b[0].flight=false;b[0].action=0;_:=app_guest_due(c,DH_OWNER,-1);return;
+ }
+ if !h[0].visible {h[0].visible=true;n[0].next=0;h[0].next=c[0].mono_ms;}
+ if h[0].op==0 && c[0].mono_ms>=h[0].next {
+  if n[0].next>=b[0].catalog[0].n {n[0].next=0;h[0].next=c[0].mono_ms+DH_INTERVAL;}
+  else {host:=n[0].next;_:=dh_read(h,c,host,cast(string)h[0].pages[host][0..<h[0].page_n[host]]);}
+ }
+ _:=app_guest_due(c,DH_OWNER,ifx h[0].op==0 && b[0].catalog[0].n>0 then h[0].next else -1);
+}
+dh_guest :: (h:[]DeviceHistory,c:[]AppCore,raw:string)->bool {
+ g:=c[0].guest;if !g.waiting || g.owner!=DH_OWNER {return false;}
+ if g.op==h[0].op {h[0].op=0;n:=h[0].nav[..];nav_reply(n,g.status,raw,g.outcome!=FXO_DONE);n[0].browser[0].action=0;n[0].browser[0].timer=false;h[0].next=c[0].mono_ms;}
+ app_guest_done(c);return true;
+}
+dh_more :: (h:[]DeviceHistory,c:[]AppCore,host:int)->bool {
+ if host<0 || host>=h[0].nav[0].browser[0].catalog[0].n {return false;}
+ g:=h[0].nav[0].groups[host];return g.nc>0 && dh_read(h,c,host,cast(string)g.cursor[0..<g.nc]);
+}

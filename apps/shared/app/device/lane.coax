@@ -68,6 +68,10 @@ dl_find :: (c: [] AppCore, host: string) -> int {
 }
 // Whether the current conversation runs on a paired computer.
 app_device_on :: (c: [] AppCore) -> bool { return dl_has(c) && c[0].device[0].on; }
+// Do not retire the only owner of an unanswered write by changing chats.
+app_navigation_blocked :: (c:[]AppCore)->bool {
+ return dca_blocked(c[0].chat[..]) || (app_device_on(c) && (dl_writing(c) || c[0].device[0].e[0].uncertain));
+}
 app_device_env :: (c: [] AppCore) -> [] EnvironmentApp { return dl_env(c[0].device); }
 dl_env :: (d: [] DeviceLane) -> [] EnvironmentApp { return d[0].e[..]; }
 // The paired computers: count, and each one's key and name.
@@ -107,6 +111,7 @@ dl_list_read :: (c: [] AppCore, text: string) {
     if line.count < 66 || line[64] != '\t' || d[0].np >= DL_PAIRED { continue; }
     host := cast(string) line[0..<64]; name := cast(string) line[65..<line.count];
     if !ea_id(host, 64) || name.count < 1 || name.count > DL_NAME || !dl_plain(name) { continue; }
+    if dl_find(c,host)>=0 {continue;}
     k := d[0].np; for b, j: host { d[0].paired[k].host[j] = b; } d[0].paired[k].nn = js_copy(d[0].paired[k].name[..], name); d[0].np += 1;
   }
   d[0].listed = true; d[0].list_rev += 1;

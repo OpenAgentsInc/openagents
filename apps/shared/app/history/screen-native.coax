@@ -33,8 +33,25 @@ hs_window :: () {
  #assert !chat_activate(s[..],id) && chat_refused(s[..])==0 && !chat_moving(s[..]);
  #assert chat_activate(s[..],"cnv_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa59");
 }
+hs_devices :: () {
+ s:[1]ChatPage;c:[1]AppCore;d:[1]DeviceLane;o:[1]ChOut;hs_setup(s[..],c[..],o[..]);#assert app_device_attach(c[..],d[..]);
+ dl_list_read(c[..],"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\tMac\n");chat_step(s[..]);
+ h:=s[0].devices[..];b:=h[0].nav[0].browser[..];b[0].selected=0;b[0].view[0].ok=true;b[0].view[0].ns=1;
+ item:=b[0].view[0].sessions[..];item[0].ni=ea_copy(item[0].id[..],"saved-session");item[0].nt=ea_copy(item[0].title[..],"A saved computer chat");nav_accept(h[0].nav[..],0);
+ _:=ch_test_frame(s[..],o[..]);id:[64]u8;key:=dh_row_id(h,0,id[..]);
+ #assert h[0].nav[0].n==1 && h[0].nav[0].browser[0].catalog[0].n==1;
+ #assert key.count<EL_ID;
+ #assert surface_find(ch_live(s[..]),key)>=0;
+ #assert chat_refused(s[..])==0;
+ #assert chat_activate(s[..],key) && !s[0].drawer && app_device_on(c[..]);
+ e:=app_device_env(c[..]);#assert cast(string)e[0].session[0..<e[0].ns]=="saved-session";
+ // A retained unknown write cannot be replaced by navigating to another chat.
+ e[0].uncertain=true;eu_request(e,"SendMessage");s[0].drawer=true;_:=ch_test_frame(s[..],o[..]);
+ #assert !chat_activate(s[..],key) && s[0].drawer && e[0].uncertain && cast(string)e[0].session[0..<e[0].ns]=="saved-session";
+}
 native_check :: (i:int,run:bool)->int #export_c #effects(all) {
  if i==0 {if run {hs_open();}else {print("GPU history opens the selected saved conversation through the real core");}}
  if i==1 {if run {hs_window();}else {print("60 chats realize only visible rows, keep width through animation and sleep still");}}
- return 2;
+ if i==2 {if run {hs_devices();}else {print("GPU drawer opens a computer session and preserves unresolved commands");}}
+ return 3;
 }

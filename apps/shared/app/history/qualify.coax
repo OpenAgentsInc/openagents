@@ -4,6 +4,6 @@
 tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..]) || (args_count(a[..])<1 || args_count(a[..])>2) {return 2;}
  mode:=args_at(a[..],0);if mode!="debug" && mode!="release" {return 2;}
- source:=ifx args_count(a[..])==2 && args_at(a[..],1)=="screen" then "apps/shared/app/history/screen-native.coax" else "apps/shared/app/history/native.coax";
+ source:=ifx args_count(a[..])==2 && args_at(a[..],1)=="screen" then "apps/shared/app/history/screen-native.coax" else ifx args_count(a[..])==2 && args_at(a[..],1)=="devices" then "apps/shared/app/history/device-native.coax" else "apps/shared/app/history/native.coax";
  return nc_suite_mode(source,ifx mode=="debug" then 0 else 1);
 }

@@ -24,6 +24,17 @@
 }
 oa_root_host_key :: (key:string)->bool #export_c #effects(all) {return key.count==64 && es_hex(key);}
 
+// Read-only desktop qualification uses the same request/view codec as the lane.
+#test "native resident probe refuses mismatched hosts and non-view bytes" {
+ v:[1]EaView;h:="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";v[0].nh=ea_copy(v[0].host[..],h);v[0].nm=ea_copy(v[0].method[..],"ListSessions");v[0].complete=true;raw:[4096]u8;n:=ea_view_write(v[..],raw[..]);
+ #assert n>0 && oa_root_resident_count(h,"ListSessions",cast(string)raw[0..<n])==0;
+ #assert oa_root_resident_count(h,"ReadSession",cast(string)raw[0..<n])<0 && oa_root_resident_count(h,"ListSessions","{}")<0;
+ #assert oa_root_resident_count("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","ListSessions",cast(string)raw[0..<n])<0;
+}
+oa_root_resident_count :: (host:string,method:string,raw:string)->int #export_c #effects(all) {
+ v:[1]EaView;if !oa_root_host_key(host) || !ea_view_read(raw,v[..]) || cast(string)v[0].host[0..<v[0].nh]!=host || cast(string)v[0].method[0..<v[0].nm]!=method || v[0].ne>0 {return -1;}return v[0].ns;
+}
+
 
 // A dispatch answered APP_GUEST with no page to take it (core-host.c oa_core_on_guest: the chat page
 // routes the environment picker's reads itself): the root releases it.

@@ -65,6 +65,7 @@ enum AppMacProcess {
     private let peer: AppDeviceService
     private let run: Runner
     private var localHost: String?
+    var localPublicKey: String? { localHost }
     private var discovering: Task<String, Never>?
     init(home: URL? = nil, peer: AppDeviceService? = nil, run: Runner? = nil) {
         self.home = home ?? AppFileViewStore.folder.deletingLastPathComponent().deletingLastPathComponent()

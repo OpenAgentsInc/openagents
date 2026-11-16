@@ -50,6 +50,7 @@ import QuartzCore
         watch(NSApplication.didResignActiveNotification) { [weak self] in self?.keep(); self?.clearPrivate(); self?.runtime.bridge.lifecycle(foreground: false) }
         watches.append(center.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { [weak self] _ in MainActor.assumeIsolated { self?.retire() } })
         runtime.launch(rejoin: held.rejoin)
+        if !hidden { AppDeviceLink.shared.onLink = { [weak self] link in guard let self, !self.retired else { return }; self.runtime.core.action(19, text: link); self.runtime.bridge.heard() } }
         step()
     }
     func wake() { guard !retired else { return }; display?.isPaused = false }

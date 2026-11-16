@@ -113,7 +113,7 @@ app_action :: (c: [] AppCore, e: AppEvent) -> int {
   // a conversation on the person's own computer needs no account
   if app_device_on(c) && (a == ACT_SEND || a == ACT_STOP || a == ACT_ALLOW || a == ACT_DENY || a == ACT_RETRY || a == ACT_RECONNECT) { return dl_action(c, a); }
   if a == ACT_DEVICE_PAIR { return dl_pair(c, e.text); }
-  if a == ACT_DEVICE_REJOIN { return dl_rejoin(c, e.text); }
+  if a == ACT_DEVICE_REJOIN { if e.text.count>0 && app_navigation_blocked(c) {return APP_R_BLOCKED;} return dl_rejoin(c, e.text); }
   if a == ACT_DRAFT {
     if !app_draft_keep(c, app_conversation(c), e.text) { return APP_R_INVALID; }
     app_mark(c, SURF_COMPOSER); return APP_OK;
@@ -165,11 +165,13 @@ app_action :: (c: [] AppCore, e: AppEvent) -> int {
     tc_reset(c, e.text); app_say(c, ""); return APP_OK;
   }
   if a == ACT_NEW {
+    if app_navigation_blocked(c) {return APP_R_BLOCKED;}
     if app_device_on(c) { dl_new(c); app_say(c, ""); return APP_OK; }
     if dca_blocked(d) { return APP_R_BLOCKED; }
     tc_reset(c, ""); app_say(c, ""); return APP_OK;
   }
   if a == ACT_ENVIRONMENT || a == ACT_REPOSITORY {
+    if a==ACT_ENVIRONMENT && e.text!=app_environment(c) && app_navigation_blocked(c) {return APP_R_BLOCKED;}
     if !app_slot_set(ifx a == ACT_ENVIRONMENT then c[0].environment[..] else c[0].repository[..], e.text, e.more) { return APP_R_INVALID; }
     // a paired computer runs the conversation itself; anything else is the account's
     if a == ACT_ENVIRONMENT { dl_select(c, ifx dl_find(c, e.text) >= 0 then e.text else ""); }
@@ -333,6 +335,13 @@ app_dispatch :: (c: [] AppCore, e: AppEvent) -> int {
 app_guest_http :: (c: [] AppCore, owner: int, purpose: int, method: int, path: string, body: string) -> int {
   if c[0].auth != AUTH_IN || owner < OWN_ENVIRONMENT || owner > OWN_GUEST_LAST { return 0; }
   return fx_request(c[0].out[..], owner, FX_HTTP, purpose, method, path, "", body, UP_RESPONSE_MAX, TC_HTTP_TIMEOUT_MS);
+}
+// Read-only browsing is independent of account login and the active lane.
+// The existing device adapter alone admits the paired/local host's grant.
+app_guest_device :: (c:[]AppCore,owner:int,purpose:int,host:string,body:string)->int {
+ if owner<OWN_ENVIRONMENT || owner>OWN_GUEST_LAST || dl_find(c,host)<0 {return 0;}
+ q:[1]EaRequest;if !ea_read(body,q[..]) || ea_right(cast(string)q[0].method[0..<q[0].nm])!=0 {return 0;}
+ return fx_request(c[0].out[..],owner,FX_DEVICE_CALL,purpose,0,"",host,body,0,TC_HTTP_TIMEOUT_MS);
 }
 // Closed custody request. Only its action and public expected key cross the core.
 app_guest_identity :: (c:[]AppCore,owner:int,purpose:int,action:string,pubkey:string)->int {

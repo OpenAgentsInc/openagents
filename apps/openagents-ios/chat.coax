@@ -34,6 +34,7 @@
 #load "../shared/app/environment/view.coax";
 #load "../shared/app/settings/identity.coax";
 #load "../shared/app/history/index.coax";
+#load "../shared/app/history/devices.coax";
 #load "../../components/app/identity.coax";
 #load "../../components/core/edit.coax";
 #load "../../components/skin/arcade.coax";
@@ -82,6 +83,7 @@ ChatPage :: struct {
   core: [] AppCore; lb: [1] LoginBridge; lf: [1] LoginFlow;
   identity: [1] IdentitySettings;
   history:[1]ChatIndex;history_content:f32;history_viewport:f32;
+  devices:[1]DeviceHistory;
   native_scroll:bool; settings_content:f32; settings_viewport:f32; login_content:f32; login_viewport:f32; reveal_focus:bool;
   action: int;
   box: ComposerBox; stamp: int; moving: bool; refused: int;
@@ -125,6 +127,32 @@ ch_step :: (s: [] ChatPage) {
   es_bridge_sync(s[0].core, s[0].eb[..], s[0].env[..]);
   iks_sync(s[0].identity[..],s[0].core);
   hi_sync(s[0].history[..],s[0].core,s[0].drawer);
+  dh_sync(s[0].devices[..],s[0].core,s[0].drawer);
+}
+// One scroll window for computer groups and account chats; each title is one
+// line. Stable IDs follow the full host/session, not the host's current index.
+ch_history :: (s:[]ChatPage,f:[]UiFrame,x:f32,y:f32,w:f32,bottom:f32) {
+ rows:[640]AppSideRow;ids:[640][64]u8;count:=0;h:=s[0].devices[..];n:=h[0].nav[..];b:=n[0].browser[..];c:=s[0].core;
+ for host:0..<b[0].catalog[0].n {
+  entry:=b[0].catalog[0].entries[host];key:=nav_session_id(cast(string)entry.host[..],"group",ids[count][..]);ids[count][4]='h';ids[count][5]='o';ids[count][6]='s';ids[count][7]='t';
+  rows[count]=AppSideRow.{id=key,title=cast(string)b[0].catalog[0].entries[host].label[0..<entry.nl],heading=true,action=0};count+=1;shown:=0;
+  for i:0..<n[0].n {r:=n[0].rows[i];if r.host!=host {continue;}sid:=cast(string)n[0].rows[i].session.id[0..<r.session.ni];
+   key=dh_row_id(h,i,ids[count][..]);rows[count]=AppSideRow.{id=key,title=ifx r.session.nt>0 then cast(string)n[0].rows[i].session.title[0..<r.session.nt] else "New chat",state=(ifx app_device_on(c) && app_environment(c)==cast(string)entry.host[..] && cast(string)app_device_env(c)[0].session[0..<app_device_env(c)[0].ns]==sid then EL_S_CURRENT else 0) | (ifx r.session.busy then EL_S_BUSY else 0),action=343};count+=1;shown+=1;
+  }
+  if shown==0 {key=nav_session_id(cast(string)entry.host[..],"empty",ids[count][..]);rows[count]=AppSideRow.{id=key,title=ifx n[0].groups[host].failed then "Unavailable" else ifx n[0].groups[host].loaded then "No chats yet" else "Loading…",state=EL_S_DISABLED,action=0};count+=1;}
+  if n[0].groups[host].nc>0 {key=nav_session_id(cast(string)entry.host[..],"more",ids[count][..]);ids[count][4]='m';ids[count][5]='o';ids[count][6]='r';ids[count][7]='e';rows[count]=AppSideRow.{id=key,title="More",state=ifx h[0].op>0 then EL_S_DISABLED else 0,action=344};count+=1;}
+ }
+ hf:=s[0].history[..];hi:=hf[0].page[..];
+ if lf_logged_in(s[0].lf[..]) {
+  rows[count]=AppSideRow.{id="history.title",title="Account chats",heading=true,action=0};count+=1;
+  if hf[0].cursor_n>0 {rows[count]=AppSideRow.{id="history.first",title="Latest chats",state=ifx hf[0].op>0 then EL_S_DISABLED else 0,action=342};count+=1;}
+  for i:0..<hi[0].n {rows[count]=AppSideRow.{id=cast(string)hi[0].items[i].id[..],title=ifx hi[0].items[i].title_n>0 then cast(string)hi[0].items[i].title[0..<hi[0].items[i].title_n] else "New chat",state=ifx !app_device_on(c) && cast(string)hi[0].items[i].id[..]==app_conversation(c) then EL_S_CURRENT else 0,action=340};count+=1;}
+  if hi[0].next_n>0 {rows[count]=AppSideRow.{id="history.more",title="More",state=ifx hf[0].op>0 then EL_S_DISABLED else 0,action=341};count+=1;}
+  if hi[0].n==0 {rows[count]=AppSideRow.{id="history.empty",title=ifx hf[0].note then "Unavailable" else ifx !hf[0].loaded then "Loading…" else "No chats yet",state=EL_S_DISABLED,action=0};count+=1;}
+ }
+ s[0].history_viewport=ifx bottom>y then bottom-y else 0.0f32;s[0].history_content=app_side_content(f,rows[0..<count]);
+ key:=uiframe_key(f,"history.viewport");offset:=scroll_clamp(keyed_scroll(f[0].keyed,key),s[0].history_content,s[0].history_viewport);keyed_scroll_set(f[0].keyed,key,offset);
+ _:=app_side_window(f,x,y,w,s[0].history_viewport,rows[0..<count],offset,0,0);
 }
 // The picker is open.
 ch_picking :: (s: [] ChatPage) -> bool { return s[0].env[0].sheet != ES_SHEET_NONE; }
@@ -233,7 +261,6 @@ ch_layout_cover :: (s: [] ChatPage, f: [] UiFrame, w: f32, h: f32) {
   if l[0].open { ch_login_page(s, f, w, h); }
   // the sidebar: it pushes the page right. Only what works shows: New chat; Log in while logged
   // out; the account's avatar and Log out once logged in. Search keeps its slot until it works.
-  // The core keeps only the current conversation, so there are no history rows yet.
   in := app_sidebar(f, "drawer", "drawer.scrim", 0, 0, w, h, top, s[0].share, "Menu", CH_HIT_SCRIM);
   if in.w > 0 {
     a := k.app;
@@ -241,26 +268,13 @@ ch_layout_cover :: (s: [] ChatPage, f: [] UiFrame, w: f32, h: f32) {
     by := h - s[0].safe_bottom / u - a.gap * 2 - k.control_h;
     iy := in.y + 4 / u + a.icon_button + a.gap * 2;
     _:=app_button(f,"drawer.settings",in.x,by-2*(k.control_h+a.gap),in.w,-1,"Settings",APP_BUTTON_QUIET,0,211);
+    ch_history(s,f,in.x,iy,in.w,by-2*(k.control_h+a.gap)-a.gap);
     if lf_logged_in(l) {
-      hf:=s[0].history[..];hi:=hf[0].page[..];hy:=iy;
-      if hf[0].cursor_n>0 {_:=app_icon_button(f,"history.first",in.x+in.w-k.app.icon_button,hy,ICON_ARROW_UP,"Latest chats",APP_BUTTON_QUIET,ifx hf[0].op>0 then EL_S_DISABLED else 0,342);}
-      hy+=app_side_head(f,"history.title",in.x,hy,ifx hf[0].cursor_n>0 then in.w-k.app.icon_button else in.w,"Account chats");
-      bottom:=by-2*(k.control_h+a.gap)-a.gap;s[0].history_viewport=ifx bottom>hy then bottom-hy else 0.0f32;
-      key:=uiframe_key(f,"history.viewport");offset:=keyed_scroll(f[0].keyed,key);rows:[60]AppSideRow;
-      for i:0..<hi[0].n {rows[i]=AppSideRow.{id=cast(string)hi[0].items[i].id[..],title=ifx hi[0].items[i].title_n>0 then cast(string)hi[0].items[i].title[0..<hi[0].items[i].title_n] else "New chat",state=ifx cast(string)hi[0].items[i].id[..]==app_conversation(s[0].core) then EL_S_CURRENT else 0};}
-      s[0].history_content=cast(f32)hi[0].n*k.app.side_row;
-      if hi[0].next_n>0 {s[0].history_content+=k.control_h+a.gap;}
-      offset=scroll_clamp(offset,s[0].history_content,s[0].history_viewport);keyed_scroll_set(f[0].keyed,key,offset);
-      _:=app_side_window(f,in.x,hy,in.w,s[0].history_viewport,rows[0..<hi[0].n],offset,ifx hi[0].next_n>0 then k.control_h+a.gap else 0.0f32,340);
-      uiframe_clip(f,in.x,hy,in.x+in.w,bottom);
-      if hi[0].next_n>0 {_:=app_button(f,"history.more",in.x,hy+cast(f32)hi[0].n*k.app.side_row-offset,in.w,-1,"More",APP_BUTTON_QUIET,ifx hf[0].op>0 then EL_S_DISABLED else 0,341);}
-      if hi[0].n==0 {_:=app_text(f,"history.empty",in.x,hy,in.w,APP_TEXT_CAPTION,ifx hf[0].note then "Unavailable" else ifx !hf[0].loaded then "Loading…" else "No chats yet");}
-      uiframe_unclip(f);
       who := lf_who(l); s[0].initials_n = app_initials(who, s[0].initials[..]);
       _ := app_button(f, "drawer.logout", in.x, by - k.control_h - a.gap, in.w, -1, "Log out", APP_BUTTON_DEFAULT, 0, CH_HIT_LOGOUT);
       _ := app_sidebar_avatar(f, "drawer.account", in.x + in.w - k.control_h, by, cast(string) s[0].initials[0..<s[0].initials_n], ifx who.count > 0 then who else "Account", 0);
     } else if lf_known(l) {
-      _ := app_sidebar_item(f, "drawer.login", in.x, iy, in.w, -1, "Log in", 0, CH_HIT_LOGIN);
+      _ := app_sidebar_item(f, "drawer.login", in.x, by-k.control_h-a.gap, in.w, -1, "Log in", 0, CH_HIT_LOGIN);
     }
     _ := app_sidebar_new(f, "drawer.new", in.x, by, ICON_COMPOSE, "New chat", CH_HIT_NEW);
     app_sidebar_end(f, in);
@@ -302,10 +316,24 @@ ch_press :: (s: [] ChatPage, row: int) -> bool {
   if !elt_visible(t[..],row).visible && !(s[0].native && ch_picking(s) && ch_env_row(surface_id(sf,row))) {return false;}
   if elt_ok(t[..], row) && t[0].rows[row].role == EL_FIELD && act != 0 { ch_set_focus(s, surface_id(sf, row)); }
   if act==340 {
-    if s[0].core.count<1 || dca_blocked(s[0].core[0].chat[..]) {return false;}
+    if s[0].core.count<1 || app_navigation_blocked(s[0].core) {return false;}
     id:=surface_id(sf,row);if !ct_id(id,"cnv_",32) {return false;}
     _:=app_dispatch(s[0].core,AppEvent.{kind=EV_ACTION,code=ACT_ENVIRONMENT,more="Default",mono_ms=ch_now(s),wall_ms=s[0].core[0].wall_ms});
     opened:=app_dispatch(s[0].core,AppEvent.{kind=EV_ACTION,code=ACT_OPEN,text=id,mono_ms=ch_now(s),wall_ms=s[0].core[0].wall_ms});if opened<1 {return false;}s[0].drawer=false;ch_set_focus(s,"");ch_step(s);return true;
+  }
+  if act==343 {
+    c:=s[0].core;if c.count<1 || app_navigation_blocked(c) {return false;}
+    h:=s[0].devices[..];id:=surface_id(sf,row);buf:[64]u8;
+    for i:0..<h[0].nav[0].n {if dh_row_id(h,i,buf[..])!=id {continue;}r:=h[0].nav[0].rows[i];entry:=h[0].nav[0].browser[0].catalog[0].entries[r.host];key:[193]u8;
+      for j:0..<64 {key[j]=entry.host[j];}key[64]='\t';for j:0..<r.session.ni {key[65+j]=r.session.id[j];}
+      opened:=app_dispatch(c,AppEvent.{kind=EV_ACTION,code=ACT_DEVICE_REJOIN,text=cast(string)key[0..<65+r.session.ni],mono_ms=ch_now(s),wall_ms=c[0].wall_ms});if opened<1 {return false;}
+      s[0].drawer=false;ch_set_focus(s,"");ch_step(s);return true;
+    }return false;
+  }
+  if act==344 {
+    h:=s[0].devices[..];buf:[64]u8;id:=surface_id(sf,row);
+    for i:0..<h[0].nav[0].browser[0].catalog[0].n {key:=nav_session_id(cast(string)h[0].nav[0].browser[0].catalog[0].entries[i].host[..],"more",buf[..]);buf[4]='m';buf[5]='o';buf[6]='r';buf[7]='e';if id==key {done:=dh_more(h,s[0].core,i);ch_step(s);return done;}}
+    return false;
   }
   if act==342 {done:=hi_first(s[0].history[..],s[0].core);if done {chat_scroll_to(s,0);}ch_step(s);return done;}
   if act==341 {done:=hi_more(s[0].history[..],s[0].core);ch_step(s);return done;}
@@ -459,7 +487,7 @@ chat_step :: (s: [] ChatPage) #export_c #effects(all) { if s.count > 0 && s[0].r
 // the guest is let go. Then the flow and the chips follow.
 chat_guest :: (s: [] ChatPage, body: string) #export_c #effects(all) {
   if s.count < 1 || s[0].core.count < 1 { return; }
-  if !iks_guest(s[0].identity[..],s[0].core,body) && !hi_guest(s[0].history[..],s[0].core,body) && !es_bridge_guest(s[0].core, s[0].eb[..], s[0].env[..], body, ch_now(s)) { app_guest_done(s[0].core); }
+  if !iks_guest(s[0].identity[..],s[0].core,body) && !hi_guest(s[0].history[..],s[0].core,body) && !dh_guest(s[0].devices[..],s[0].core,body) && !es_bridge_guest(s[0].core, s[0].eb[..], s[0].env[..], body, ch_now(s)) { app_guest_done(s[0].core); }
   if s[0].history[0].changed {s[0].history[0].changed=false;keyed_scroll_set(s[0].keyed[1..<2],keyed_find(s[0].keyed[1..<2],"history.viewport"),0);}
   ch_step(s);
 }

@@ -1,6 +1,15 @@
 // Checks for the app set's navigation components (nav.coax).
 #load "checks-kit.coax";
 
+#test "app nav: grouped history measures headings and routes each visible row's own action" {
+ t:[1]AppTest;app_test_init(t[..]);rows:=[3]AppSideRow.[AppSideRow.{id="g",title="Computer",heading=true,action=0},AppSideRow.{id="one",title="One",action=17},AppSideRow.{id="more",title="More",action=18}];
+ app_test_begin(t[..],"","",true);height:=t[0].f[0].skin.app.side_row;head:=t[0].f[0].skin.app.side_head;
+ #assert app_side_content(t[0].f[..],rows[..])==head+2*height;
+ _:=app_side_window(t[0].f[..],0,0,80,head+height,rows[..],head,0,9);
+ #assert app_test_end(t[..]) && app_test_row(t[..],"one").y==0 && app_test_row(t[..],"one").action==17 && app_test_row(t[..],"more").action==18;
+ #assert !app_test_pressable(t[..],"g");
+}
+
 #test "app nav: the navigation button says what a press does; history rows are current, busy and two-line, and keep their state by id when reordered" {
   t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..]; s := arcade_phone_skin();
   rows := [3] AppSideRow.[AppSideRow.{id = "chat.a1", title = "Fix the failing check", detail = "Codex · 2 min ago", state = EL_S_CURRENT},

@@ -3,6 +3,7 @@
 #load "environment-app.coax";
 #load "../../coax/lib/nostr/nip51.coax"; // the existing folded substring matcher
 #load "../../coax/native/workspace.coax";
+#load "../../coax/lib/crypto/sha256-memory.coax";
 NAV_THREADS :: 512; NAV_VISIBLE :: 96;
 NavThread :: struct {host:int;session:EaSession;}
 NavGroup :: struct {loaded:bool;failed:bool;complete:bool;cursor:[128]u8;nc:int;offer:EaOffer;offset:int;}
@@ -49,7 +50,15 @@ nav_keep_draft :: (n:[]AppNavigation,key:string,body:string) {
  n[0].clock+=1;n[0].drafts[at].nk=ea_copy(n[0].drafts[at].key[..],key);n[0].drafts[at].nb=ea_copy(n[0].drafts[at].body[..],body);n[0].drafts[at].age=n[0].clock;
 }
 nav_draft :: (n:[]AppNavigation,key:string)->string {for i:0..<16 {if n[0].drafts[i].nk>0 && cast(string)n[0].drafts[i].key[0..<n[0].drafts[i].nk]==key {return cast(string)n[0].drafts[i].body[0..<n[0].drafts[i].nb];}}return "";}
-nav_row_id :: (n:[]AppNavigation,i:int,out:[]u8)->string {r:=n[0].rows[i];b:[96]u8;a:[96]u8;return tr_cat(out,tr_join(b[..],"nav.chat.",r.host),tr_join(a[..],".",tr_hash(cast(string)r.session.id[0..<r.session.ni])));}
+// A row follows its full host/session identity, including after catalog reorder.
+nav_session_id :: (host:string,session:string,out:[]u8)->string {
+ if host.count!=64 || session.count<1 || session.count>128 || out.count<47 {return "";}
+ key:[193]u8;for c,i:host {key[i]=c;}key[64]='\t';for c,i:session {key[65+i]=c;}
+ hash:[32]u8;if sha256_hash(key[0..<65+session.count],hash[..])!=SHA_OK {return "";}
+ prefix:="nav.chat.";for c,i:prefix {out[i]=c;}hex:="0123456789abcdef";
+ for i:0..<19 {out[9+2*i]=hex[cast(int)(hash[i]>>4)];out[10+2*i]=hex[cast(int)(hash[i]&15)];}return cast(string)out[0..<47];
+}
+nav_row_id :: (n:[]AppNavigation,i:int,out:[]u8)->string {r:=n[0].rows[i];return nav_session_id(cast(string)n[0].browser[0].catalog[0].entries[r.host].host[..],cast(string)r.session.id[0..<r.session.ni],out);}
 nav_accept :: (n:[]AppNavigation,before:int) {
  b:=n[0].browser[..];host:=b[0].selected;if host<0 || host>=64 || !b[0].view[0].ok {return;}
  v:=b[0].view[..];g:=n[0].groups[host];g.loaded=true;g.failed=v[0].ne>0 || b[0].uncertain;

@@ -402,7 +402,7 @@ static int ui_ax_tap(UiHost *h, NSString *ident);
   return NSAccessibilityFrameInView(h->view, v);
 }
 - (BOOL)isAccessibilityFocused { UiHost *h = self.host; return h && [h->ax_focus isEqualToString:self.ident]; }
-- (void)setAccessibilityFocused:(BOOL)on { UiHost *h = self.host; if (h && on) { h->ax_focus = [self.ident copy]; h->ax_ring = 0; h->stale = 1; } }
+- (void)setAccessibilityFocused:(BOOL)on { UiHost *h = self.host; if (h && on) { h->ax_focus = [self.ident copy]; h->ax_ring = 0; h->stale = 1; if(h->app.changed)h->app.changed(h->app.user); } }
 - (BOOL)accessibilityPerformPress {
   if (self.kind == UI_AX_REGION || self.kind == UI_AX_ITEM || self.kind == UI_AX_TEXT || self.kind == UI_AX_HEADING || self.kind == UI_AX_IMAGE || self.kind == UI_AX_PROGRESS || self.kind == UI_AX_NOTICE || !self.enabled) return NO;
   return ui_ax_tap(self.host, self.ident) != 0;
@@ -412,13 +412,14 @@ static int ui_ax_tap(UiHost *h, NSString *ident);
 
 static int ui_ax_tap(UiHost *h, NSString *ident) {
   if (!h || !ident.length) return 0;
-  if (h->app.activate) {int pressed=h->app.activate(h->app.user,ident.UTF8String);if(pressed)h->stale=1;return pressed;}
+  if (h->app.activate) {int pressed=h->app.activate(h->app.user,ident.UTF8String);if(pressed){h->stale=1;if(h->app.changed)h->app.changed(h->app.user);}return pressed;}
   if (!h->app.drive) return 0;
   char op[128], out[512];
   snprintf(op, sizeof op, "tap %s", ident.UTF8String);
   int n = h->app.drive(h->app.user, op, out, (int)sizeof out);
   if (n < 0) return 0;
   h->stale = 1;
+  if(h->app.changed)h->app.changed(h->app.user);
   return !(n > 0 && !strncmp(out, "no row", 6));   // the chat's answer when the id is gone
 }
 // Compiled surfaces expose the committed table directly. The string-tree reader
@@ -551,6 +552,7 @@ static NSString *ui_ax_move(UiHost *h, int back) {
   if (el.kind == UI_AX_FIELD) ui_ax_tap(h, el.ident);
   if (h->view && h->view.window) NSAccessibilityPostNotification(el, NSAccessibilityFocusedUIElementChangedNotification);
   h->stale = 1;
+  if(h->app.changed)h->app.changed(h->app.user);
   return el.ident;
 }
 static int ui_ax_press_focus(UiHost *h) {
