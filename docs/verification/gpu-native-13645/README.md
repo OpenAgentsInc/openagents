@@ -63,7 +63,8 @@ Screenshot SHA-256:
 The isolated app has no account or paired computers. Archive, package gate
 and export pass; upload accepted with delivery
 `13f947a0-90bb-4ad9-9a0a-74eb32fa818c`. The dSYM is retained as
-`a65283d9d69a321586bfaf7cafba90dc`. Apple processing is separate.
+`a65283d9d69a321586bfaf7cafba90dc`. Apple reports `VALID` and
+`IN_BETA_TESTING`; assignment to the internal Owner group is verified.
 
 The Linux [ATK/AT-SPI record](../../../apps/shared/host/linux/ACCESSIBILITY.md)
 covers retained roles/states/text/actions, atomic refusal, structural and
