@@ -264,7 +264,7 @@ splice_world_fact :: (s: [] Splice, k: int) -> int #export_c #effects(all) {
   if k == 12 { return s[0].ld[0].mesh_n; } if k == 13 { return s[0].imports_n; }
   if k == 14 { return we_cm(g_feet_y(s[0].game[..])); }
   if k == 15 { return ifx s[0].game[0].jam then 1 else 0; }   // the game plays in the jam world (jam/jam-world.coax)
-  if k >= 16 && k <= 35 { return sjx_fact(s[0].game[..], k); }   // the jam's rules (jam/jam-farm.coax sjx_fact; jam-keys-check.coax)
+  if k >= 16 && k <= 39 { return sjx_fact(s[0].game[..], k); }   // the jam's rules (jam/jam-farm.coax sjx_fact; jam-keys-check.coax)
   if k >= 40 && k <= 44 { return sjf_fact(s[0].game[..], k); }   // the jam's jetpack (jam/jam-fx.coax sjf_fact)
   return -1;
 }

@@ -48,6 +48,7 @@ SjRules :: struct {
   down: bool; held: f32; hold_bot: int = -1; hold_kind: int;   // the left button: down, for how long, the robot a harvest is held on (SJX_T_BOT or SJX_T_EXIT)
   fed: int;                   // batteries she has fed
   exit: [1] SjExit;           // the night exit (jam/jam-exit.coax)
+  box: [1] SjChest;           // the cabin's chest open or shut, its panel's cells (jam/jam-chest.coax); `chest` holds what is in it
   hit_t: f32 = 1;             // s since her last hit
   dig_stay: bool;             // Digger stays (G)
   heat: int; level: int;      // the jam's Heat and its level
@@ -327,14 +328,16 @@ sjx_crew_key :: (g: [] SpGame) {
 // crew. 1: taken; 0: not the jam's, the game goes on.
 sjx_key :: (g: [] SpGame, key: int, down: bool) -> int {
   if !sjx_on(g) || g[0].mode != M_PLAY { return 0; }
+  if down && sjk_key(g, key) { return 1; }   // the cabin's chest: E opens it at it, E or Esc closes it (jam/jam-chest.coax)
   if down && key >= '1' && key <= '9' { g[0].jx[0].inv[0].selected = key - '1'; return 0; }
   if down && (key == 'e' || key == 'E') && sjx_use(g) { return 1; }
   if down && (key == 'g' || key == 'G') { sjx_crew_key(g); return 1; }
   return 0;
 }
 // The pointer in play: the left button is the jam's Attack when a target answers (else it points Digger), the
-// right its Use.
-sjx_pointer :: (g: [] SpGame, phase: int) -> bool {
+// right its Use. With the chest open, a click moves a stack (jam/jam-chest.coax).
+sjx_pointer :: (g: [] SpGame, x: f32, y: f32, phase: int) -> bool {
+  if sjk_open(g) && g[0].mode == M_PLAY { if phase == 0 { sjk_click(g, x, y); } return true; }
   if !sjx_on(g) || g[0].mode != M_PLAY || d_cursor(g) || g[0].dr[0].map || g[0].look_free { return false; }
   if g[0].jx[0].button == 2 { return phase == 0 && sjx_use(g); }   // the right button: Use (feed, a core in), as E does
   if phase == 0 { return sjx_left(g, true); }
@@ -349,6 +352,7 @@ sjx_step :: (g: [] SpGame, dt: f32) {
   sjs_step(g, dt);   // the story's cards (jam/jam-story.coax)
   sjb_step(g, dt);   // the boss's bite (jam/jam-boss.coax)
   sjn_step(g, dt);   // the night exit (jam/jam-exit.coax)
+  sjk_step(g);       // the cabin's chest closes when she walks off (jam/jam-chest.coax)
   x := g[0].jx[..];
   x[0].hit_t += dt;
   if x[0].said_t > 0 { x[0].said_t -= dt; if x[0].said_t <= 0 { x[0].said = SJX_NONE; } }
@@ -403,6 +407,7 @@ sjx_step :: (g: [] SpGame, dt: f32) {
 // at most, 29 and 30 its jaw's x and z (cm); 31 to 35 the night exit's (jam/jam-exit.coax sjn_fact).
 sjx_fact :: (g: [] SpGame, k: int) -> int {
   if !sjx_on(g) { return -1; }
+  if k >= 36 { return sjk_fact(g, k); }
   if k >= 31 { return sjn_fact(g, k); }
   x := g[0].jx[0];
   if k == 16 { return ifx g[0].mode == M_PLAY then 1 else 0; }
@@ -459,5 +464,5 @@ sjx_hud :: (g: [] SpGame, out: [] f32, at: int, q: Ui) -> int {
   if x.said == SJX_ITEM { line = sjx_item_name(x.said_item, nb[..]); }
   if x.down && x.hold_bot >= 0 { line = "HARVESTING..."; }
   if line.count > 0 && (x.said_t > 0 || x.down) { n = hv_mid(out, n, F_TITLE, line, q.w * 0.5, y0 - 14 * k, 9 * k, HV_CREAM(), 1); }
-  return n;
+  return sjk_hud(g, out, n, q);   // the cabin's chest, open (jam/jam-chest.coax)
 }

@@ -990,7 +990,7 @@ g_blur :: (g: [] SpGame) {
 in_box :: (b: [] f32, o: int, x: f32, y: f32) -> bool { return x >= b[o] && x <= b[o + 2] && y >= b[o + 1] && y <= b[o + 3]; }
 g_pointer ::(g: [] SpGame, x: f32, y: f32, phase: int) -> bool {
   if fr_front(g) { return fr_pointer(g, x, y, phase); }
-  if sjx_pointer(g, phase) { return true; }   // the jam's left click: hit, harvest, a charge point (jam/jam-farm.coax)
+  if sjx_pointer(g, x, y, phase) { return true; }   // the jam's left click: hit, harvest, a charge point; the chest's panel (jam/jam-farm.coax)
   if d_pointer(g, x, y, phase) { return true; }   // pause, the grid, and pointing Digger (director.coax)
   if g[0].mode == M_BAY {
     // drag a part or a card from its list onto the timeline; a click with no drag places it too
@@ -1322,6 +1322,7 @@ g_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
     }
   }
   sjn_live(g, buf, p, t);   // the jam's night exit robots (jam/jam-exit.coax)
+  sjk_live(g, buf, p);      // the chest in Sniper's cabin (jam/jam-chest.coax)
   // the editor's shown foe: its route as dots on the ground, its notice as a ring round it (?edit)
   if g[0].shown >= 0 && g[0].shown < FOES && g[0].fhp[g[0].shown] > 0 { g_plan_marks(g, buf, p, g[0].shown); }
   // the DJ at the booth, the dance floor's tiles changing colour on the beat, beams from the truss

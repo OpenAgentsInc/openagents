@@ -79,6 +79,29 @@ jrc_exit :: (g: [] SpGame) -> int {
   for i: 0..<50 { if sjn_fact(g, 31) == SR_EXIT_WON { break; } g_step(g, 0.02); }
   return ifx sjn_fact(g, 31) == SR_EXIT_WON then 0 else 9;
 }
+// ---- the chest in Sniper's cabin (jam/jam-chest.coax), with the keys and the mouse, after the farm's rules:
+// she stands in the cabin, walks to the chest, E opens it, a click on her hotbar's first stack puts it in the
+// chest and a click on the chest's first slot takes it back, E closes it. 0 is a pass, else the beat.
+jrc_chest :: (g: [] SpGame) -> int {
+  r := dv_room(g); if !r.ok { return 1; }
+  g[0].px = (r.x0 + r.x1) * 0.5; g[0].pz = (r.z0 + r.z1) * 0.5; g_step(g, 0.02);
+  if !sp_in_room(g) { return 2; }
+  c := sjk_at(g);
+  if !jrc_walk(g, c.x + 1.2, c.z, 0.4, 20) || !sjk_near(g) { print("  the chest: she stopped at (%, %), it is at (%, %)\n", g[0].px, g[0].pz, c.x, c.z); return 3; }
+  first := g[0].jx[0].inv[0].main[0].slots[0];
+  if sr_item_empty(first) { return 4; }
+  _ := g_key(g, 'e', true); _ = g_key(g, 'e', false);
+  if !sjk_open(g) || g_mouselook(g) != 1 { return 5; }
+  b: [65536] f32; _ = sjx_hud(g, b[..], 0, Ui.{w = 1280, h = 720, k = 1});
+  cl := g[0].jx[0].box[0].cells[SR_CHEST_SLOTS * 4..<SR_CHEST_SLOTS * 4 + 4];
+  _ = g_pointer(g, (cl[0] + cl[2]) * 0.5, (cl[1] + cl[3]) * 0.5, 0); _ = g_pointer(g, (cl[0] + cl[2]) * 0.5, (cl[1] + cl[3]) * 0.5, 2); g_step(g, 0.02);
+  if g[0].jx[0].chest[0].slots[0].item != first.item || g[0].jx[0].chest[0].slots[0].count != first.count { return 6; }
+  c0 := g[0].jx[0].box[0].cells[0..<4];
+  _ = g_pointer(g, (c0[0] + c0[2]) * 0.5, (c0[1] + c0[3]) * 0.5, 0); _ = g_pointer(g, (c0[0] + c0[2]) * 0.5, (c0[1] + c0[3]) * 0.5, 2); g_step(g, 0.02);
+  if sjk_fact(g, 39) != 0 || sjx_count(g, first.item) < first.count { return 7; }
+  _ = g_key(g, 'e', true); _ = g_key(g, 'e', false);
+  return ifx sjk_open(g) then 8 else 0;
+}
 jrc_farm_rules :: (g: [] SpGame, tables: string) -> int {
   g_reset(g); if tables != "" { sjx_data(g, tables); }
   if !(g_key(g, -2, true) && g_key(g, -2, true) && g[0].mode == M_PLAY && sjx_on(g)) { return 1; }
@@ -349,6 +372,7 @@ tool_main :: () -> int #export_c #effects(all) {
   }
   // the jam's farm rules with the keys and the mouse
   r = jrc_farm_rules(g[..], tables); jrc_line("the farm's rules: a charge point, the farm robot down and harvested", r); failed = failed || r != 0;
+  if r == 0 { r = jrc_chest(g[..]); jrc_line("the chest in Sniper's cabin: a stack in and out with the keys and the mouse", r); failed = failed || r != 0; }
   // the jump course and the Greek quarter with the keys (jam/jam-fx.coax)
   r = jrc_course(g[..], s[..]); jrc_line("the jump course: P1 to P3 and its pickups, the Greek quarter's roofs", r); failed = failed || r != 0;
   // the jetpack with the keys (jam/jam-fx.coax)

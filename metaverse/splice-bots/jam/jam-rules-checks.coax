@@ -117,7 +117,7 @@ sjr_click :: (g: [] SpGame) -> bool { r := g_pointer(g, 640, 360, 0); _ := g_poi
   for i: 0..<4 { _ := sjx_give(g[..], sr_stack(ITEM_BANNED_PIECE, 1)); }
   sjx_heat(g[..]); #assert g[0].jx[0].heat == 8 && g[0].jx[0].level == SR_HEAT_HIGH;
   // the prototype's world has none of it
-  g2 := [1] SpGame.[SpGame.{}]; g_reset(g2[..]); #assert !sjx_on(g2[..]) && !sjx_pointer(g2[..], 0) && sjx_key(g2[..], 'g', true) == 0;
+  g2 := [1] SpGame.[SpGame.{}]; g_reset(g2[..]); #assert !sjx_on(g2[..]) && !sjx_pointer(g2[..], 640, 360, 0) && sjx_key(g2[..], 'g', true) == 0;
 }
 
 // A data catalog with the jam tables' shape and made-up words (jam/jam-data.coax): strings, card triggers,
@@ -205,4 +205,31 @@ SJR_DATA :: "table 0 /Data/card_triggers csv 5 6\nX 0 id,trigger,card_kind,lane,
   g[0].px = 0; g[0].pz = -30; g[0].bot_x = 2; g[0].bot_z = -30; g[0].hearts = T_HEARTS; g[0].hit_cool = 0;
   g_step(g[..], 0.02);
   #assert e[0].st[0].outcome == SR_EXIT_WON && g[0].jx[0].said == SJX_OUT;
+}
+#test "jam chest: E at the chest in Sniper's cabin opens its 27 slots over hers; a click moves a stack each way; E closes it, and so does walking off" #steps 4000000000 #traversal 2000000000 {
+  s := [1] SjStore.[SjStore.{}]; g := [1] SpGame.[SpGame.{}];
+  sjr_start(g[..], s[..]);
+  c := sjk_at(g[..]); #assert dv_room(g[..]).ok;
+  #assert sjx_give(g[..], sr_stack(ITEM_SCRAP_PART, 5));
+  // away from it E is the game's; at it, E opens it and frees the pointer
+  g[0].px = c.x + 1.2; g[0].pz = c.z; g_step(g[..], 0.02);
+  #assert sp_in_room(g[..]) && sjk_near(g[..]);
+  #assert g_key(g[..], 'e', true); _ := g_key(g[..], 'e', false);
+  #assert sjk_open(g[..]) && g_mouselook(g[..]) == 1 && g[0].mode == M_PLAY;
+  g_lock(g[..], 0); #assert !g[0].dr[0].paused && sjk_open(g[..]);   // the browser lets the pointer go: no pause
+  b: [65536] f32; n := sjx_hud(g[..], b[..], 0, Ui.{w = 1280, h = 720, k = 1});
+  #assert n > 0 && g[0].jx[0].box[0].cell_n == SJK_CELLS;
+  // her hotbar's first slot (the panel's cell 27): the scrap goes into the chest, and back
+  cell := g[0].jx[0].box[0].cells[SR_CHEST_SLOTS * 4..<SR_CHEST_SLOTS * 4 + 4];
+  _ = g_pointer(g[..], (cell[0] + cell[2]) * 0.5, (cell[1] + cell[3]) * 0.5, 0); _ = g_pointer(g[..], (cell[0] + cell[2]) * 0.5, (cell[1] + cell[3]) * 0.5, 2);
+  #assert sjx_count(g[..], ITEM_SCRAP_PART) == 0 && sjk_fact(g[..], 39) == 1 && g[0].jx[0].chest[0].slots[0].count == 5;
+  chest0 := g[0].jx[0].box[0].cells[0..<4];
+  _ = g_pointer(g[..], (chest0[0] + chest0[2]) * 0.5, (chest0[1] + chest0[3]) * 0.5, 0);
+  #assert sjx_count(g[..], ITEM_SCRAP_PART) == 5 && sjk_fact(g[..], 39) == 0 && g[0].jx[0].box[0].moved == 2;
+  // a click off every cell moves nothing and does not attack
+  _ = g_pointer(g[..], 2, 2, 0); #assert sjk_open(g[..]) && sjx_count(g[..], ITEM_SCRAP_PART) == 5;
+  // E closes it; open again and walk off: it closes
+  #assert g_key(g[..], 'e', true); _ = g_key(g[..], 'e', false); #assert !sjk_open(g[..]) && g_mouselook(g[..]) == 2;
+  _ = g_key(g[..], 'e', true); _ = g_key(g[..], 'e', false); #assert sjk_open(g[..]);
+  g[0].px = c.x + 3.5; g_step(g[..], 0.02); #assert !sjk_open(g[..]);
 }

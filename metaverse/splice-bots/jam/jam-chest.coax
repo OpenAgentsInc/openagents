@@ -1,0 +1,103 @@
+// The chest in Sniper's cabin in the jam world (GitHub #13653; the jam's ASpliceChest, rules/chest-checks.coax:
+// a 27-slot SrContainer over the inventory rules). It stands against the cabin's back wall (dv_room's -x wall,
+// drive.coax). E within SJK_REACH of it opens it: the pointer comes free, and the panel shows the chest's 27
+// slots over hers, the 27 of her grid and the 9 of her hotbar. A click on a slot moves its stack to the other
+// side (sr_inv_transfer, the jam's shift click, merging first). E or Esc closes it, as does walking off.
+// Its contents stay in it for the run.
+//   coax/bin/coax test metaverse/splice-bots/splice-bots.coax --only "jam chest"
+
+SJK_REACH :: 2.0f32;          // m: she opens it from this near
+SJK_CELLS :: SR_CHEST_SLOTS + SR_TOTAL_SLOTS;   // the panel's cells: the chest's, then hers
+SjChest :: struct {
+  open: bool;
+  cells: [SJK_CELLS * 4] f32; cell_n: int;   // where the panel last drew each cell (x0, y0, x1, y1), for a click
+  moved: int;                                 // stacks moved, either way
+}
+
+// Where it stands: against the cabin's -x wall, a third of the way along it; far off when there is no cabin.
+sjk_at :: (g: [] SpGame) -> Point {
+  r := dv_room(g);
+  if !r.ok { return v3(1000000, 0, 1000000); }
+  return v3(r.x0 + 0.45, 0, r.z0 + (r.z1 - r.z0) * 0.33);
+}
+sjk_open :: (g: [] SpGame) -> bool { return sjx_on(g) && g[0].jx[0].box[0].open; }
+sjk_near :: (g: [] SpGame) -> bool { c := sjk_at(g); return sp_in_room(g) && dist2(g[0].px, g[0].pz, c.x, c.z) < SJK_REACH; }
+
+// E: opens it when she is at it, closes it when open. True when the chest took the key.
+sjk_key :: (g: [] SpGame, key: int) -> bool {
+  b := g[0].jx[0].box[..];
+  if b[0].open && (key == 'e' || key == 'E' || key == -1) { b[0].open = false; g[0].look_free = false; return true; }
+  if !b[0].open && (key == 'e' || key == 'E') && sjk_near(g) { b[0].open = true; b[0].cell_n = 0; return true; }
+  return false;
+}
+// It closes when she leaves it or play stops.
+sjk_step :: (g: [] SpGame) {
+  b := g[0].jx[0].box[..];
+  if b[0].open && (g[0].mode != M_PLAY || !sjk_near(g)) { b[0].open = false; }
+}
+// A click on the panel: the stack in the cell under the pointer goes to the other side. Swallows every click
+// while it is open.
+sjk_click :: (g: [] SpGame, px: f32, py: f32) {
+  x := g[0].jx[..]; b := x[0].box[..];
+  for i: 0..<b[0].cell_n {
+    if px < b[0].cells[i * 4] || px > b[0].cells[i * 4 + 2] || py < b[0].cells[i * 4 + 1] || py > b[0].cells[i * 4 + 3] { continue; }
+    d := x[0].inv[0].defs;
+    r := ifx i < SR_CHEST_SLOTS then sr_inv_transfer(d, x[0].chest[..], i, x[0].inv[0].main[..], -1)
+         else sr_inv_transfer(d, x[0].inv[0].main[..], i - SR_CHEST_SLOTS, x[0].chest[..], -1);
+    if r.ok { b[0].moved += 1; sjx_heat(g); } else if r.refusal == SR_REFUSE_FULL { sjx_say(g, SJX_FULL, ""); }
+    return;
+  }
+}
+
+// The panel: CHEST over SPLICE (her grid, then her hotbar), 9 across, each cell its item and count.
+sjk_hud :: (g: [] SpGame, out: [] f32, at: int, q: Ui) -> int {
+  if !sjk_open(g) {   // at it, shut: what E does, over the hotbar
+    if sjx_on(g) && g[0].mode == M_PLAY && sjk_near(g) { return hv_mid(out, at, F_TITLE, "E  OPEN THE CHEST", q.w * 0.5, ro_safe(q.w, q.h).y1 - 96 * q.k, 9 * q.k, HV_CREAM(), 1); }
+    return at;
+  }
+  n := at; k := q.k; x := g[0].jx[..]; b := x[0].box[..]; nb: [48] u8;
+  cw := 46 * k; gap := 4 * k; w := 9 * cw + 8 * gap; x0 := q.w * 0.5 - w * 0.5;
+  y := q.h * 0.5 - (7 * cw + 6 * gap + 70 * k) * 0.5;
+  n = hv_rect(out, n, x0 - 18 * k, y - 34 * k, x0 + w + 18 * k, y + 7 * cw + 6 * gap + 64 * k, HV_PANEL(), 0.96);
+  n = hv_text(out, n, F_MONO, "CHEST", x0, y - 12 * k, 6.5 * k, HV_ORANGE(), 1);
+  n = hv_right(out, n, F_MONO, "CLICK: MOVE   E: CLOSE", x0 + w, y - 12 * k, 5.5 * k, HV_DIM(), 1);
+  b[0].cell_n = 0;
+  for i: 0..<SJK_CELLS {
+    hers := i >= SR_CHEST_SLOTS; j := ifx hers then i - SR_CHEST_SLOTS else i;
+    // her grid (main slots 9 to 35) above her hotbar (0 to 8)
+    row := ifx !hers then j / 9 else ifx j >= SR_HOTBAR_SLOTS then 3 + (j - SR_HOTBAR_SLOTS) / 9 else 6;
+    col := ifx !hers then j % 9 else ifx j >= SR_HOTBAR_SLOTS then (j - SR_HOTBAR_SLOTS) % 9 else j;
+    cy0 := y + cast(f32) row * (cw + gap) + (ifx row >= 3 then 30 * k else 0.0f32) + (ifx row >= 6 then 8 * k else 0.0f32);
+    cx0 := x0 + cast(f32) col * (cw + gap);
+    s := ifx hers then x[0].inv[0].main[0].slots[j] else x[0].chest[0].slots[j];
+    n = hv_rect(out, n, cx0, cy0, cx0 + cw, cy0 + cw, HV_CELL(), 0.92);
+    n = hv_frame(out, n, cx0, cy0, cx0 + cw, cy0 + cw, k, HV_LINE(), 1);
+    if !sr_item_empty(s) {
+      name := sjx_item_name(s.item, nb[..]);
+      n = hv_mid(out, n, F_MONO, name[0..<lo_i(name.count, 7)], cx0 + cw * 0.5, cy0 + cw * 0.5, 5.5 * k, HV_CREAM(), 1);
+      if s.count > 1 { cb: [16] u8; n = hv_right(out, n, F_MONO, num(cb[..], "", s.count, ""), cx0 + cw - 4 * k, cy0 + cw - 5 * k, 6.5 * k, HV_CREAM(), 1); }
+    }
+    o := i * 4; b[0].cells[o] = cx0; b[0].cells[o + 1] = cy0; b[0].cells[o + 2] = cx0 + cw; b[0].cells[o + 3] = cy0 + cw;
+    b[0].cell_n = i + 1;
+    if hers && j == SR_HOTBAR_SLOTS { n = hv_text(out, n, F_MONO, "SPLICE", x0, cy0 - 10 * k, 6.5 * k, HV_ORANGE(), 1); }   // over her grid
+  }
+  return n;
+}
+
+// Drawn in the cabin: a low crate of the hull's plates with an orange band and a lid.
+sjk_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
+  if !sjx_on(g) || !dv_room(g).ok { return; }
+  c := sjk_at(g);
+  kit_pen(p, 240, MAT_SKIN, t3(0.30, 0.30, 0.36)); block(buf, p, c.x, 0, c.z, 0.38, 0.62, 0.62);
+  kit_pen(p, 241, MAT_FLAT, HEAT()); block(buf, p, c.x, 0.30, c.z, 0.40, 0.08, 0.64);
+  kit_pen(p, 242, MAT_FLAT, t3(0.88, 0.82, 0.72)); block(buf, p, c.x, 0.62, c.z, 0.42, 0.06, 0.66);
+}
+
+// For a page check (sjx_fact): 36 the chest is open, 37 and 38 where it stands (x and z, cm), 39 stacks in it.
+sjk_fact :: (g: [] SpGame, k: int) -> int {
+  x := g[0].jx[0];
+  if k == 36 { return ifx x.box[0].open then 1 else 0; }
+  if k == 37 || k == 38 { c := sjk_at(g); return we_cm(ifx k == 37 then c.x else c.z); }
+  if k == 39 { return sr_count_used(x.chest[0]); }
+  return -1;
+}

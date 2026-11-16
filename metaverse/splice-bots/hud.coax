@@ -414,7 +414,7 @@ hv_hud :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui) -> int {
   n := 0; hv_step(g);
   if g[0].dr[0].paused { return d_hud(g, out, u, q, n); }
   if g[0].hv[0].hidden { return d_hud(g, out, u, q, n); }   // H: only what an open window, the wheel or a line from Digger needs
-  open := g[0].dr[0].bag || g[0].dr[0].map;
+  open := g[0].dr[0].bag || g[0].dr[0].map || sjk_open(g);   // and the jam chest's panel (jam/jam-chest.coax)
   if g[0].dr[0].wheel.open { return d_hud(g, out, u, q, n); }   // the wheel takes the screen (hv_wheel)
   n = hv_compass(g, out, n, q);
   n = hv_toasts(g, out, n, q);

@@ -355,7 +355,7 @@ d_command :: (g: [] SpGame, p: DPoint) -> int {
 // ---- keys, the pointer and the step
 // Rover: where the edit bay is. Inside Sniper, or at its door until the rover's room is built.
 d_in_rover :: (g: [] SpGame) -> bool { return g[0].zone == Z_MINE && (near_rover(g, T_USE_RANGE) || sp_in_room(g)); }   // at Sniper, or in its room (drive.coax)
-d_cursor :: (g: [] SpGame) -> bool { d := g[0].dr[0]; return d.paused || d.bag; }
+d_cursor :: (g: [] SpGame) -> bool { d := g[0].dr[0]; return d.paused || d.bag || sjk_open(g); }   // and the jam chest's panel (jam/jam-chest.coax)
 d_pause :: (g: [] SpGame) {
   d := g[0].dr[..]; d[0].paused = true; d[0].bag = false; d[0].map = false; d[0].wheel = Wheel.{};
   g[0].fwd = false; g[0].back = false; g[0].left = false; g[0].right = false; g[0].turn_l = false; g[0].turn_r = false;
@@ -493,7 +493,7 @@ d_pointer :: (g: [] SpGame, x: f32, y: f32, phase: int) -> bool {
 d_lock :: (g: [] SpGame, status: int) {
   d := g[0].dr[0];
   if status == 0 && d.map { d_map_close(g); return; }   // Esc frees the pointer in a browser before its key arrives: it closes the map
-  if status == 0 && g[0].mode == M_PLAY && !g[0].look_free && !d.bag && !d.map { d_pause(g); }
+  if status == 0 && g[0].mode == M_PLAY && !g[0].look_free && !d.bag && !d.map && !sjk_open(g) { d_pause(g); }   // the jam chest's panel frees it too (jam/jam-chest.coax)
 }
 // A step in play, before the walk: the stance's time, the board's speed, the toast.
 d_pre :: (g: [] SpGame, dt: f32) {
