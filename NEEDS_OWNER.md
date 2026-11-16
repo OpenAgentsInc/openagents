@@ -1749,6 +1749,10 @@ still open for the remaining screens, composition and desktop adoption.
 
 ## GPU composition on iPhone (#13645, build 1403)
 
+Apple accepted **1403** with no upload errors. The immediate status is
+`NOT_YET_LISTED`; Owner assignment is pending processing, so install
+availability is not yet verified. The handoff records the assignment command.
+
 - [ ] When **1403** becomes available in Owner TestFlight, open
       **Settings → Renderer**. Check the image, moving translucent group,
       transformed Tap button, blur with a sharp button and source blur.

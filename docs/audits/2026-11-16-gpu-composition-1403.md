@@ -94,13 +94,29 @@ a separate frozen checkout of the landed source commit. Release output:
 `/tmp/oa-gpu-composition-1403-frozen`; log:
 `/tmp/oa-gpu-composition-1403-release.log`.
 Archive and export passed. The package audit found no JavaScriptCore,
-WebKit, `.js`, `.wasm` or `.html`. Upload has started; acceptance and
-TestFlight status will be recorded after the release command returns.
+WebKit, `.js`, `.wasm` or `.html`. Apple accepted the upload with no errors
+at 2026-11-16 11:09:20 CST; delivery UUID
+`7024970e-cd52-44a6-9e26-90a6b7d76e04`. The immediate App Store Connect query
+returned `NOT_YET_LISTED`. Owner TestFlight assignment remains pending Apple's
+processing; upload acceptance is not a claim of install availability. Per
+the owner's instruction, work did not wait for Apple processing.
 The archived app's actual `CFBundleVersion` is 1403. Its arm64 dSYM UUID is
 `C7DAB034-8A42-322F-B318-92F6C159FA15`, preserved at
 `gs://openagentsgemini-oa-symbols/app/c7dab0348a42322fb31892f6c159fa15.dSYM.zip`.
 Exported IPA SHA-256:
 `83eab5e1024e6636a90a0649a0affb983da8736ac5032c5080c47434a702ee17`.
+
+Once the build is listed as `VALID`, use the existing release tool with ASC
+credentials loaded from the local secrets file:
+
+```sh
+python3 apps/openagents-ios/tools/app_store.py status --build 1403
+python3 apps/openagents-ios/tools/app_store.py testflight --build 1403 --group Owner --notes-file /tmp/oa-gpu-composition-1403-notes.txt
+```
+
+The notes file is retained locally. The tool verifies exact membership in
+the Owner group after assignment. Do not reupload the accepted build or
+change its archived source.
 
 ## Limits and remaining work
 
