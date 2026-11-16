@@ -112,7 +112,9 @@ final class AppAuth: @unchecked Sendable {
     static let phoneDevice = DeviceKeys(store: KeychainDeviceKeyStore())
     static let defaultStore: TokenStore = KeychainTokenStore()
     static let defaultDevice: DeviceKeys? = phoneDevice
-    static let defaultSign: Sign = { try PhoneSignIn.nip98(url: $0, body: $1, now: $2) }
+    /// The lean iPhone app (GitHub #13645) holds no Nostr key: it logs in with an email code. An app
+    /// that has one passes its own signer.
+    static let defaultSign: Sign = { _, _, _ in throw Failure.said("This phone has no key to log in with.") }
     #else
     /// The Mac's: files under `~/.openagents/desktop/`, never the Keychain. The desktop app passes
     /// its own key's signer; without one, "Log in with a key" says there is none.

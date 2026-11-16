@@ -30,6 +30,14 @@ targets:
         type: folder
         buildPhase: resources
       - ../shared/native/KitEditor.swift
+      # Native services for the compiled app: HTTP, the account, wakes, the device and the effect bridge.
+      - ../shared/native/AppHTTP.swift
+      - ../shared/native/AppAccount.swift
+      - ../shared/native/AppWake.swift
+      - ../shared/native/AppEffects.swift
+      - ../shared/native/AppDevice.swift
+      - ../shared/host/apple/AppAuth.swift
+      - ../shared/host/apple/DeviceKey.swift
       - OpenAgents/Assets.xcassets
     settings:
       base:
