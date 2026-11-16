@@ -193,3 +193,11 @@ an update from substituting a different native program. The optional full-pack
 digest gate rejects altered geometry before parsing/upload, on both hosts.
 No GLB source copy or model geometry is bundled into the app. This is an
 articulated research viewer, with the model's CC BY-NC-SA terms above.
+
+## In the Splice Bots edit bay
+
+[`../microduck-bay/README.md`](../microduck-bay/README.md) puts up to 40 of
+these Microducks in the Splice Bots edit bay as one GPU-instanced crowd: spawn,
+wander, walk in a line, and craft one at the bench by the game's recipe
+(`/demos/microduck-bay/`, local only, GitHub #13652).
+

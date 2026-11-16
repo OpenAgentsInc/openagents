@@ -1,0 +1,42 @@
+/* Firm reason: 1 (scalar browser ABI only; camera, input, crowd and drawing are Coax). */
+#include "microduck-bay.h"
+#include <stdint.h>
+#include <stdbool.h>
+#include <string.h>
+#include "face-address.h"
+#define EXPORT(name) __attribute__((export_name(name)))
+static uint8_t catalog[131072], menu[32768], inbox[1024];
+static uint32_t menu_len;
+static coax_t_MicroduckBay *state(cx_face_addr p) { return (coax_t_MicroduckBay *)(uintptr_t)p; }
+static coax_v_t_MicroduckBay view(cx_face_addr p) { return (coax_v_t_MicroduckBay){state(p),1}; }
+EXPORT("coaxial_layout") uint32_t coaxial_layout(void) { return sizeof(coax_t_MicroduckBay)*1000003u+0x4d444231u; }
+EXPORT("coaxial_state_size") uint32_t coaxial_state_size(void) { return sizeof(coax_t_MicroduckBay); }
+EXPORT("coaxial_state_init") void coaxial_state_init(cx_face_addr p) { coax_default_t_MicroduckBay(state(p));
+#if defined(COAXIAL_NATIVE_ADDRESS)
+state(p)->native=true;
+#endif
+ }
+EXPORT("coaxial_max_vertices") uint32_t coaxial_max_vertices(void) { return 32768; }
+EXPORT("coaxial_vertex_floats") uint32_t coaxial_vertex_floats(void) { return 12; }
+EXPORT("coaxial_uniform_floats") uint32_t coaxial_uniform_floats(void) { return 4864; }
+EXPORT("coaxial_frame") uint32_t coaxial_frame(cx_face_addr p,cx_face_addr v,cx_face_addr u,float w,float h,float d,float dt,uint32_t still) {
+  (void)still; mdb_advance(view(p),dt);
+  return mdb_frame(view(p),(coax_v_f32){(float *)(uintptr_t)v,32768*12},(coax_v_f32){(float *)(uintptr_t)u,4864},w,h,d);
+}
+EXPORT("coaxial_key") uint32_t coaxial_key(cx_face_addr p,int32_t k,int32_t mods) { (void)mods; return mdb_key(view(p),k); }
+EXPORT("coaxial_pointer") uint32_t coaxial_pointer(cx_face_addr p,float x,float y,int32_t phase,int32_t kind,int32_t id) { return mdb_pointer(view(p),x,y,phase,kind,id); }
+EXPORT("coaxial_wheel") void coaxial_wheel(cx_face_addr p,float delta) { mdb_wheel(view(p),delta); }
+EXPORT("coaxial_pinch") uint32_t coaxial_pinch(cx_face_addr p,float ratio) { return mdb_pinch(view(p),ratio); }
+EXPORT("coaxial_blur") void coaxial_blur(cx_face_addr p) { state(p)->drag=false; state(p)->scrub=false; state(p)->down_key=0; }
+EXPORT("coaxial_scene_ready") uint32_t coaxial_scene_ready(cx_face_addr p) { return state(p)->ready; }
+EXPORT("coaxial_asset") cx_face_addr coaxial_asset(cx_face_addr p,int32_t i,uint32_t n) { (void)p; return i==0 && n<=sizeof catalog ? (cx_face_addr)(uintptr_t)catalog:0; }
+EXPORT("coaxial_asset_capacity") uint32_t coaxial_asset_capacity(cx_face_addr p,int32_t i) { (void)p; return i==0 ? sizeof catalog:0; }
+EXPORT("coaxial_asset_ready") void coaxial_asset_ready(cx_face_addr p,int32_t i,uint32_t n) { if(i==0 && n<=sizeof catalog) mdb_asset(view(p),(coax_string){(const char *)catalog,n}); }
+EXPORT("coaxial_draws") cx_face_addr coaxial_draws(cx_face_addr p) { return (cx_face_addr)(uintptr_t)state(p)->draws.e; }
+EXPORT("coaxial_draw_count") uint32_t coaxial_draw_count(cx_face_addr p) { return state(p)->ready?(uint32_t)state(p)->assembly.e[0].parts+1u:0u; }
+EXPORT("coaxial_guard_probe") int32_t coaxial_guard_probe(cx_face_addr p,int32_t field) { return field==0?state(p)->ready:field==1?(int32_t)state(p)->bay.e[0].count:field==2?(int32_t)state(p)->bay.e[0].mode:field==3?(int32_t)state(p)->bay.e[0].crafted:0; }
+EXPORT("coaxial_view_menu_len_v1") uint32_t coaxial_view_menu_len_v1(cx_face_addr p) { int64_t n=mdb_menu(view(p),(coax_v_u8){menu,sizeof menu}); menu_len=n<0?0:(uint32_t)n;return menu_len; }
+EXPORT("coaxial_view_menu_v1") cx_face_addr coaxial_view_menu_v1(cx_face_addr p) { (void)p;return menu_len?(cx_face_addr)(uintptr_t)menu:0; }
+EXPORT("coaxial_inbox") cx_face_addr coaxial_inbox(cx_face_addr p) { (void)p; return (cx_face_addr)(uintptr_t)inbox; }
+EXPORT("coaxial_inbox_cap") uint32_t coaxial_inbox_cap(void) { return sizeof inbox; }
+EXPORT("coaxial_message") void coaxial_message(cx_face_addr p,int32_t kind,uint32_t n) { (void)n; mdb_message(view(p),kind); memset(inbox,0,sizeof inbox); }

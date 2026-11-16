@@ -230,11 +230,7 @@ md_film_tick :: (s:[]Microduck,dt:f32) {
  // This is a visual ground anchor over the source foot bounds. It is not
  // contact, balance or dynamics: the lowest presented foot stays on its
  // stand plane while the shared gait lifts the other leg.
- root:=f.origin;if f.walk>0 {rest:=1000.0f32;lowest:=1000.0f32;
-  for part:0..<s[0].assembly[0].parts {p:=s[0].assembly[0].part[part];if p.joint!=4 && p.joint!=13 {continue;}rest=am_lo(rest,p.low.y);
-   for k:0..<8 {c:=query_corner(world_point(p.low.x,p.low.y,p.low.z),world_point(p.high.x,p.high.y,p.high.z),0,cast(f32)((k>>1)&1),cast(f32)((k>>2)&1),k&1);v:=assembly_point(s[0].assembly[..],pose[..],part,v3(c.x,c.y,c.z),0);lowest=am_lo(lowest,v.y);}
-  }if rest<1000 && lowest<1000 {root.y=rest-lowest;}
- }
+ root:=f.origin;if f.walk>0 {root.y=mdf_ground(s[0].assembly[..],pose[..]);}
  s[0].angles=angles;s[0].pose[0]=pose[0];s[0].explosion=f.explosion;s[0].zoom=f.zoom;s[0].film_time=f.time;s[0].film_origin=root;s[0].yaw=f.yaw;s[0].pitch=f.pitch;
  s[0].film_copies=f.copies;s[0].film_centre=f.centre;s[0].film_reveal=f.reveal;
 }

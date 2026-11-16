@@ -1,0 +1,79 @@
+// The edit bay's shaders: the bay's static mesh and the Microduck crowd from one geometry upload.
+// A duck instance is a part's palette row (three palettes: walk, walk half a stride on, stand)
+// placed at its own x, z and yaw, at the game's height (apps/openagents-web/microduck-bay.coax).
+#load "splash.coax";
+#load "../../../metaverse-engine/ui/primitive-shader.coax";
+#load "../../../metaverse-engine/anim/assembly-draw.coax";
+
+MDB_GPU_PALETTE :: 64;
+MDB_GPU_STRIDE :: 1536;        // ASSEMBLY_PARTS * 16
+MDB_GPU_INSTANCE :: 4672;      // MDB_GPU_PALETTE + 3 * MDB_GPU_STRIDE
+mdb_colour :: (word: u32) -> V3 { return v3(cast(f32) (word & 255) / 255.0f32, cast(f32) ((word >> 8) & 255) / 255.0f32, cast(f32) ((word >> 16) & 255) / 255.0f32); }
+mdb_vec :: (u: [] f32, at: int) -> V3 { return v3(u[at], u[at + 1], u[at + 2]); }
+#test "a duck copy stands at its own place and turn, at the game's scale" {
+  u: [4864] f32; v: [12] u32;
+  u[28] = 2; u[29] = 70; u[33] = 0.02; u[8] = 0; u[9] = 1; u[10] = -5; u[20] = 0; u[22] = 1; u[12] = 1; u[17] = 1; u[24] = 1000; u[0] = 1000; u[1] = 1000; u[26] = 500; u[27] = 500;
+  v[0] = f32_bits(0.1); v[1] = f32_bits(0.2); v[2] = f32_bits(0); v[3] = f32_bits(1); v[8] = 0x00332211;
+  b := 64 + 2 * 1536 + 7 * 16; u[b] = 1; u[b + 5] = 1; u[b + 10] = 1;
+  at := 4672 + 3 * 4; u[at] = 4; u[at + 1] = -3; u[at + 2] = 1.5707963; u[at + 3] = 2;
+  s := mdb_scene_vs(0, assembly_crowd_base(7) + 3, u[..], v[..]);
+  #assert abs(s.world.x - 4) < 0.0001 && abs(s.world.y - 0.42) < 0.0001 && abs(s.world.z + 3.2) < 0.0001;
+  #assert abs(s.normal.z + 1) < 0.0001;
+  bay := mdb_scene_vs(0, assembly_crowd_base(96), u[..], v[..]);
+  #assert bay.world.x == 0.1f32 && bay.world.y == 0.2f32 && bay.normal.x == 1;
+}
+mdb_bg_vs :: (i: u32, j: u32) -> V4 { return splash_bg_vs(i, j); }
+mdb_bg_fs :: (pos: V4, u: [] f32) -> V4 {
+  x := (pos.x - u[26]) / u[24]; y := (u[27] - pos.y) / u[24];
+  ray := wg_normalize3(wg_add_f3f3(mdb_vec(u, 20), wg_add_f3f3(wg_mul_f3f(mdb_vec(u, 12), x), wg_mul_f3f(mdb_vec(u, 16), y))));
+  up := fmax(ray.y, 0.0f32);
+  base := wg_add_f3f3(v3(0.05f32, 0.06f32, 0.075f32), wg_mul_f3f(v3(0.10f32, 0.12f32, 0.14f32), pow(1.0f32 - up, 3.0f32)));
+  return v4(base.x, base.y, base.z, 1.0f32);
+}
+MdbSurface :: struct { pos: V4; world: V3; normal: V3; colour: V3; }
+mdb_scene_vs :: (i: u32, j: u32, u: [] f32, vertices: [] u32) -> MdbSurface {
+  at := cast(int) i * 12;
+  rest := v3(f32_from_bits(vertices[at]), f32_from_bits(vertices[at + 1]), f32_from_bits(vertices[at + 2]));
+  rest_normal := v3(f32_from_bits(vertices[at + 3]), f32_from_bits(vertices[at + 4]), f32_from_bits(vertices[at + 5]));
+  material := mdb_colour(vertices[at + 8]);
+  part := assembly_crowd_part(j);
+  p := rest; normal := rest_normal;
+  if cast(f32) part < u[29] {
+    copy := cast(int) assembly_crowd_copy(j);
+    inst := MDB_GPU_INSTANCE + copy * 4;
+    pal := cast(int) u[inst + 3];
+    b := MDB_GPU_PALETTE + pal * MDB_GPU_STRIDE + cast(int) part * 16;
+    q := v3(wg_dot3(mdb_vec(u, b), rest) + u[b + 3], wg_dot3(mdb_vec(u, b + 4), rest) + u[b + 7] + u[36 + pal], wg_dot3(mdb_vec(u, b + 8), rest) + u[b + 11]);
+    n := v3(wg_dot3(mdb_vec(u, b), rest_normal), wg_dot3(mdb_vec(u, b + 4), rest_normal), wg_dot3(mdb_vec(u, b + 8), rest_normal));
+    k := u[28]; c := cos(u[inst + 2]); s := sin(u[inst + 2]);
+    lx := (q.x - u[30]) * k; ly := (q.y - u[32]) * k; lz := (q.z - u[31]) * k;
+    p = v3(u[inst] + c * lx + s * lz, u[33] + ly, u[inst + 1] - s * lx + c * lz);
+    normal = v3(c * n.x + s * n.z, n.y, -s * n.x + c * n.z);
+  }
+  r := sub3(p, mdb_vec(u, 8)); z := wg_dot3(r, mdb_vec(u, 20));
+  clip := v4(2.0f32 * (wg_dot3(r, mdb_vec(u, 12)) * u[24] + (u[26] - u[0] * 0.5f32) * z) / u[0],
+    2.0f32 * (wg_dot3(r, mdb_vec(u, 16)) * u[24] + (u[1] * 0.5f32 - u[27]) * z) / u[1],
+    100.0f32 / 99.92f32 * (z - 0.08f32), z);
+  return MdbSurface.{pos = clip, world = p, normal = normal, colour = material};
+}
+mdb_scene_fs :: (v: MdbSurface, u: [] f32) -> V4 {
+  n := wg_normalize3(v.normal);
+  key := wg_normalize3(v3(-0.45f32, 0.85f32, 0.35f32)); fill := wg_normalize3(v3(0.7f32, 0.45f32, -0.6f32));
+  light := 0.34f32 + fmax(wg_dot3(n, key), 0.0f32) * 0.62f32 + fmax(wg_dot3(n, fill), 0.0f32) * 0.24f32;
+  view := wg_normalize3(sub3(mdb_vec(u, 8), v.world)); half := wg_normalize3(wg_add_f3f3(key, view));
+  spec := pow(fmax(wg_dot3(n, half), 0.0f32), 40.0f32) * 0.12f32;
+  // the floor's seams every 2 m, faint
+  seam := 0.0f32;
+  if n.y > 0.9f32 && v.world.y < 0.05f32 { gx := abs(v.world.x * 0.5f32 - floor(v.world.x * 0.5f32 + 0.5f32)); gz := abs(v.world.z * 0.5f32 - floor(v.world.z * 0.5f32 + 0.5f32)); seam = ifx fmin(gx, gz) < 0.006f32 then 0.06f32 else 0.0f32; }
+  colour := wg_add_f3f3(wg_mul_f3f(v.colour, light - seam), v3(spec, spec, spec));
+  // distance haze toward the bay's dark
+  d := length3(sub3(v.world, mdb_vec(u, 8)));
+  fog := 1.0f32 - exp(-d * 0.018f32);
+  colour = wg_add_f3f3(wg_mul_f3f(colour, 1.0f32 - fog * 0.6f32), wg_mul_f3f(v3(0.07f32, 0.08f32, 0.1f32), fog * 0.6f32));
+  return v4(colour.x, colour.y, colour.z, 1.0f32);
+}
+MdbStroke :: struct { a: V4; b: V4; c: V4; }
+mdb_fx_vs :: (i: u32, j: u32, a: MdbStroke, u: [] f32) -> SplashV {
+  return splash_fx_vs(i, j, splash_fx_vs_in.{a = a.a, b = a.b, c = a.c, d = v4(0.0f32, 0.0f32, 0.0f32, 0.0f32)}, u);
+}
+mdb_fx_fs :: (v: SplashV, u: [] f32) -> V4 { if v.tint.w > 4.5f32 { return hud_primitive_fs(v.place, v.shape, v.tint, u[3]); } return splash_fx_fs(v, u); }

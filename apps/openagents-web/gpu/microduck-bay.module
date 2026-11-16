@@ -1,0 +1,3 @@
+--vertices mdb_bg_vs,mdb_scene_vs,mdb_fx_vs
+--fragments mdb_bg_fs,mdb_scene_fs,mdb_fx_fs
+--bindings apps/openagents-web/gpu/microduck-bay.bindings --strip mdb_

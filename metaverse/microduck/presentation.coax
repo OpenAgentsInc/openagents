@@ -4,6 +4,7 @@
 #load "../../components/core/arwes/motion.coax";
 #load "../../metaverse-engine/anim/figure.coax" as film_figure;
 #load "../../metaverse-engine/anim/assembly.coax";
+#load "../../metaverse-engine/physics/query.coax";
 MdFilmFrame :: struct {time:f32;explosion:f32;zoom:f32;walk:f32;blend:f32;phase:f32;origin:Point;yaw:f32;pitch:f32;copies:int=1;centre:f32;reveal:f32;}
 MD_PARADE_GAP :: 0.34f32;
 #test "the parade reveals ten followers only after the close walking view" {
@@ -109,4 +110,14 @@ mdf_angles :: (a:[]RigidAssembly,f:MdFilmFrame,out:[]f32)->bool {
  sway:=0.025*sin(f.phase*AM_PI*2)*f.blend;out[1]+=sway;out[10]+=sway;
  out[7]=0.04*sin(f.walk*1.2)*f.blend;out[8]= -sway*0.6;
  return true;
+}
+// The lift that keeps the lowest presented foot on its stand plane: the
+// foot parts' (joints 4 and 13) rest floor less their lowest posed corner.
+// A visual ground anchor, not contact, balance or dynamics. Shared by the
+// film and the edit-bay crowd (apps/openagents-web/microduck-bay.coax).
+mdf_ground :: (a:[]RigidAssembly,pose:[]AssemblyPose)->f32 {
+ rest:=1000.0f32;lowest:=1000.0f32;
+ for part:0..<a[0].parts {p:=a[0].part[part];if p.joint!=4 && p.joint!=13 {continue;}rest=am_lo(rest,p.low.y);
+  for k:0..<8 {c:=query_corner(world_point(p.low.x,p.low.y,p.low.z),world_point(p.high.x,p.high.y,p.high.z),0,cast(f32)((k>>1)&1),cast(f32)((k>>2)&1),k&1);v:=assembly_point(a,pose,part,v3(c.x,c.y,c.z),0);lowest=am_lo(lowest,v.y);}
+ }return ifx rest<1000 && lowest<1000 then rest-lowest else 0.0f32;
 }

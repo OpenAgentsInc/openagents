@@ -14,3 +14,14 @@ ASSEMBLY_DRAW_STRIDE :: 16;
 assembly_draw_base :: (part:u32)->u32 {return part*16;}
 assembly_draw_part :: (instance:u32)->u32 {return instance/16;}
 assembly_draw_copy :: (instance:u32)->u32 {return instance%16;}
+// A crowd: up to sixty-four copies a part, for a scene that places each copy
+// itself (the edit bay's Microducks, apps/openagents-web/microduck-bay.coax).
+// The same map at a wider stride; the film keeps the sixteen-copy one.
+ASSEMBLY_CROWD_STRIDE :: 64;
+#test "crowd copies never select the adjacent part palette" {
+ #assert assembly_crowd_base(3)==192 && assembly_crowd_part(255)==3 && assembly_crowd_copy(255)==63;
+ for part:0..<97 {for copy:0..<64 {id:=assembly_crowd_base(cast(u32)part)+cast(u32)copy;#assert assembly_crowd_part(id)==cast(u32)part && assembly_crowd_copy(id)==cast(u32)copy;}}
+}
+assembly_crowd_base :: (part:u32)->u32 {return part*64;}
+assembly_crowd_part :: (instance:u32)->u32 {return instance/64;}
+assembly_crowd_copy :: (instance:u32)->u32 {return instance%64;}

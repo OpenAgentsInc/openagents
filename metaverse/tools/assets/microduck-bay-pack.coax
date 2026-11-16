@@ -1,0 +1,312 @@
+// The Splice Bots edit bay with the Microduck, as one private VPK1 pack for the local workbench
+// demo (apps/openagents-web/demos/microduck-bay/, GitHub #13652). It reads:
+//   - the Microduck pack (metaverse/tools/assets/microduck-pack.coax): its geometry and RBA1 record,
+//     kept first and unchanged, so the assembly's index ranges stay valid;
+//   - the editor route's import bundle (BUNDLE.aimport, metaverse-engine/import/unreal/BUNDLE.md):
+//     the grey shell is LI_Bay's placements (its Cube boxes, tagged bay_part:KIND; the hidden stair
+//     ramps are left out), and the props are L_Ring's bay_dress placements inside bay_A1, taken
+//     back into the bay's own frame by bay_A1's row of the game's Data/level_layout.csv;
+//   - each prop's mesh from the private jam project (GAME/Assets/Source/Things/thing_bay_*.glb,
+//     which keep the vertex colours) through the engine's glTF importer (pi_glb), placed with the
+//     importer's axes (metaverse-engine/import/unreal/axes.coax);
+//   - the game's rules (metaverse/splice-bots/rules): RECIPE_MICRODUCK from the ported recipes, the
+//     items' names and stack sizes from Data/items.csv and the Microduck's move speed from
+//     Data/robots.csv, each read with the rules' own readers.
+// It writes the pack outside the repository (the private build folder coax/web/serve.c serves at
+// /private/NAME.pack on a local address only). No Splice Bots bytes are committed.
+//   coax/web/tool.sh metaverse/tools/assets/microduck-bay-pack.coax MICRODUCK.pack BUNDLE.aimport GAME OUT.pack
+#import "Basic";
+#load "../../../metaverse-engine/editor/pack-import.coax";
+#load "../../../metaverse-engine/import/unreal/axes.coax";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/fs.coax";
+#load "../../../coax/lib/sys/args.coax";
+#load "../../../metaverse-engine/import/unreal/bundle.coax";
+#load "../../splice-bots/rules/rules.coax";
+
+// The shell's kinds, from a box's bay_part tag.
+MB_FLOOR :: 0; MB_BACK :: 1; MB_SIDE :: 2; MB_STAIR :: 3; MB_LOFT :: 4; MB_RAIL :: 5;
+MB_PART_TAGS :: [7] string.["bay_part:floor", "bay_part:back_wall", "bay_part:side_wall", "bay_part:stair_step", "bay_part:stair_landing", "bay_part:loft_deck", "bay_part:loft_rail"];
+MB_PART_KIND :: [7] int.[MB_FLOOR, MB_BACK, MB_SIDE, MB_STAIR, MB_STAIR, MB_LOFT, MB_RAIL];
+// The Microduck stands 0.62 m in the game (Data/robots.csv, ROBOT_MICRODUCK's notes: "0.62 m tall").
+MB_DUCK_HEIGHT :: 0.62;
+MBP_BAY :: "bay_A1";         // the ring bay whose dressing is the edit bay's
+MBP_PLACES :: 128;
+// A placement in the bay's own Unreal frame (cm): a prop's mesh stem ("" for a shell box) and kind.
+MbpPlace :: struct { mesh: string; kind: int; t: D3; q: DQ; s: D3; }
+
+MBP_BUDGET :: 64000000;
+MBP_CELL :: 0.25;          // m: the walkable grid's cell
+MBP_X0 :: -11.5; MBP_X1 :: 12.5; MBP_Z0 :: -20.6; MBP_Z1 :: 20.6;   // the bay's floor (make_bay.py FLOOR_X, FLOOR_HALF_Y)
+MBP_NX :: 96; MBP_NZ :: 165;
+MBP_LOW :: 0.06;           // m: geometry wholly below this is floor paint; a duck walks over it
+MBP_HIGH :: 0.75;          // m: geometry wholly above this is overhead; a duck walks under it
+MBP_REACH :: 0.25;         // m a blocked cell reaches round what blocks it (a duck's half width)
+
+MbpGrid :: struct { cell: [MBP_NX * MBP_NZ] u8; }
+
+// A point of a bay-local Unreal placement (cm) into the engine (m).
+mbp_place :: (pl: MbpPlace, p: D3) -> D3 { return ua_pos_d(ua_place(pl.t, pl.q, pl.s, p)); }
+ua_pos_d :: (p: D3) -> D3 { return ua_pos(p.x, p.y, p.z); }
+
+// Mark the cells under a triangle's bounds when it stands in a duck's height band.
+mbp_block :: (g: [] MbpGrid, a: D3, b: D3, c: D3) {
+  lo_y := fmin(a.y, fmin(b.y, c.y)); hi_y := fmax(a.y, fmax(b.y, c.y));
+  if hi_y < MBP_LOW || lo_y > MBP_HIGH { return; }
+  x0 := fmin(a.x, fmin(b.x, c.x)) - MBP_REACH; x1 := fmax(a.x, fmax(b.x, c.x)) + MBP_REACH;
+  z0 := fmin(a.z, fmin(b.z, c.z)) - MBP_REACH; z1 := fmax(a.z, fmax(b.z, c.z)) + MBP_REACH;
+  i0 := cast(int) floor((x0 - MBP_X0) / MBP_CELL); i1 := cast(int) floor((x1 - MBP_X0) / MBP_CELL);
+  k0 := cast(int) floor((z0 - MBP_Z0) / MBP_CELL); k1 := cast(int) floor((z1 - MBP_Z0) / MBP_CELL);
+  if i0 < 0 { i0 = 0; } if k0 < 0 { k0 = 0; } if i1 >= MBP_NX { i1 = MBP_NX - 1; } if k1 >= MBP_NZ { k1 = MBP_NZ - 1; }
+  for k: k0..<k1 + 1 { for i: i0..<i1 + 1 { g[0].cell[k * MBP_NX + i] = 1; } }
+}
+mbp_vertex :: (v: [] u8, n: int) -> D3 { at := n * PI_VERTEX; return d3(cast(f64) pi_get(v, at), cast(f64) pi_get(v, at + 4), cast(f64) pi_get(v, at + 8)); }
+mbp_put :: (v: [] u8, n: int, p: D3, normal: D3, rgb: [3] int) {
+  at := n * PI_VERTEX;
+  for j: 0..<PI_VERTEX { v[at + j] = 0; }
+  pi_f32(v, at, cast(f32) p.x); pi_f32(v, at + 4, cast(f32) p.y); pi_f32(v, at + 8, cast(f32) p.z);
+  pi_f32(v, at + 12, cast(f32) normal.x); pi_f32(v, at + 16, cast(f32) normal.y); pi_f32(v, at + 20, cast(f32) normal.z);
+  pi_f32(v, at + 24, 0.5); pi_f32(v, at + 28, 0.5);
+  v[at + 32] = cast,trunc(u8) rgb[0]; v[at + 33] = cast,trunc(u8) rgb[1]; v[at + 34] = cast,trunc(u8) rgb[2];
+}
+// A shell colour by kind: the jam's grey boxes, the floor a shade darker and warmer.
+mbp_shell_rgb :: (kind: int) -> [3] int {
+  if kind == MB_FLOOR { return [3] int.[86, 84, 80]; }
+  if kind == MB_STAIR || kind == MB_RAIL { return [3] int.[150, 150, 146]; }
+  if kind == MB_LOFT { return [3] int.[124, 124, 120]; }
+  return [3] int.[112, 113, 116];
+}
+
+// The bay's placements from the bundle's manifest into out: LI_Bay's shell boxes, then the ring bay's
+// props whose origin stands on its floor (LI_Bay's floor box: X -1150..1250, Y +-2060 cm), in the
+// bay's own frame (bay at c, turned yaw degrees). The count, or -1 with why.
+mbp_places :: (d: Jv, c: D3, yaw: f64, out: [] MbpPlace, why: [] string) -> int #effects(all) {
+  n := 0;
+  maps := jv_get(d, 0, "maps");
+  back := dq_conj(ua_yaw(yaw));
+  for m: 0..<jv_len(d, maps) {
+    map := jv_at(d, maps, m);
+    id := ab_id(d, map);
+    shell := id == "/Game/World/Graybox/Bays/LI_Bay"; ring := id == "/World/Graybox/L_Ring" || id == "/Game/World/Graybox/L_Ring";
+    if !shell && !ring { continue; }
+    pl := jv_get(d, map, "placements");
+    for k: 0..<jv_len(d, pl) {
+      row := jv_at(d, pl, k);
+      if jv_kind(d, jv_get(d, row, "visible")) != JV_TRUE { continue; }
+      tags := jv_get(d, row, "tags");
+      place: MbpPlace; place.kind = -1;
+      tn := jv_get(d, row, "translation_cm"); rn := jv_get(d, row, "rotation"); sn := jv_get(d, row, "scale");
+      place.t = d3(ab_f(d, tn, 0), ab_f(d, tn, 1), ab_f(d, tn, 2));
+      place.q = dq_unit(dq(ab_f(d, rn, 0), ab_f(d, rn, 1), ab_f(d, rn, 2), ab_f(d, rn, 3)));
+      place.s = d3(ab_f(d, sn, 0), ab_f(d, sn, 1), ab_f(d, sn, 2));
+      dress := false;
+      for g: 0..<jv_len(d, tags) {
+        tag := ab_s(d, jv_at(d, tags, g));
+        if tag == "bay_dress" { dress = true; }
+        for name, j: MB_PART_TAGS { if tag == name { place.kind = MB_PART_KIND[j]; } }
+      }
+      if shell {
+        if place.kind < 0 || ab_field(d, row, "asset") != "/Engine/BasicShapes/Cube.Cube" { continue; }
+      } else {
+        // a ring prop: the mesh's stem (SM_thing_bay_X.SM_thing_bay_X -> thing_bay_X), inside the bay
+        asset := ab_field(d, row, "asset");
+        dot := asset.count; while dot > 0 && asset[dot - 1] != '.' { dot -= 1; }
+        stem := asset[dot..<asset.count];
+        if !dress || stem.count < 13 || stem[0..<13] != "SM_thing_bay_" { continue; }
+        local := dq_rotate(back, d3_sub(place.t, c));
+        if local.x > 1250.0 || local.x < -1160.0 || local.y > 2060.0 || local.y < -2060.0 { continue; }   // its origin on the floor
+        place.mesh = stem[3..<stem.count]; place.t = local; place.q = dq_mul(back, place.q);
+      }
+      if n >= out.count { why[0] = "more placements than MBP_PLACES"; return -1; }
+      out[n] = place; n += 1;
+    }
+  }
+  return n;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  args: [1] Args;
+  if !args_load(args[..]) || args_count(args[..]) != 4 { tool_errln("usage: microduck-bay-pack MICRODUCK.pack BUNDLE.aimport GAME OUT.pack"); return 2; }
+  bundle := args_at(args[..], 1); game := args_at(args[..], 2);
+  duck: [56000000] u8; dn := fs_read(args_at(args[..], 0), duck[..]);
+  read: [1] PackRead;
+  if dn < 1 || !pack_read(cast(string) duck[0..<dn], read[..]) { tool_errln("cannot read the Microduck pack"); return 1; }
+  cat_e := read[0].entries[0]; vert_e := read[0].entries[1]; idx_e := read[0].entries[2]; layer_e := read[0].entries[3];
+  duck_cat := cast(string) duck[cat_e.at..<cat_e.at + cat_e.n];
+  // The RBA1 line of the Microduck's catalog, carried as it is.
+  rba := "";
+  at := 0;
+  for k: 0..<duck_cat.count { if duck_cat[k] == '\n' { line := duck_cat[at..<k]; if line.count > 5 && line[0..<5] == "RBA1 " { rba = line; } at = k + 1; } }
+  if rba.count == 0 { tool_errln("the Microduck pack has no RBA1 record"); return 1; }
+  paths: [4][4096] u8;
+
+  // The game's data, read with the ported rules: the bay's place on the ring, the recipe, its items.
+  text: [400000] u8;
+  tn := fs_read(fs_join(game, "Data/level_layout.csv", paths[1][..]), text[..]);
+  if tn < 1 { tool_errln("cannot read Data/level_layout.csv"); return 1; }
+  layout := cast(string) text[0..<tn];
+  head := csv_record(layout, 0);
+  c_id := csv_column(head.text, "box_id"); c_x := csv_column(head.text, "x_cm"); c_y := csv_column(head.text, "y_cm"); c_yaw := csv_column(head.text, "yaw_deg");
+  bay_c := d3(0.0, 0.0, 0.0); bay_yaw := 0.0; found := false;
+  at = head.next;
+  while at < layout.count {
+    rec := csv_record(layout, at); at = rec.next;
+    if csv_at(rec.text, c_id) != MBP_BAY { continue; }
+    bay_c = d3(csv_number(csv_at(rec.text, c_x)).v, csv_number(csv_at(rec.text, c_y)).v, 0.0);
+    bay_yaw = csv_number(csv_at(rec.text, c_yaw)).v; found = true;
+  }
+  if !found { tool_errln("bay_A1 is not in Data/level_layout.csv"); return 1; }
+
+  manifest: [33554432] u8; jn: [600000] JvNode; jd: [1] Jv;
+  mn := fs_read(fs_join(bundle, "manifest.json", paths[1][..]), manifest[..]);
+  if mn < 1 || !jv_parse(jd[..], cast(string) manifest[0..<mn], jn[..]) { tool_errln("cannot read the bundle's manifest.json"); return 1; }
+  places: [MBP_PLACES] MbpPlace; why: [1] string;
+  np := mbp_places(jd[0], bay_c, bay_yaw, places[..], why[..]);
+  if np < 0 { tool_errln(why[0]); return 1; }
+
+  vertices: [48000000] u8; indices: [12000000] u8; nodes: [65536] JvNode; parts: [1] PiPart;
+  for k: 0..<vert_e.n { vertices[k] = duck[vert_e.at + k]; }
+  for k: 0..<idx_e.n { indices[k] = duck[idx_e.at + k]; }
+  nv := vert_e.n / PI_VERTEX; ni := idx_e.n / 4;
+  duck_indices := ni;
+  room := PiRoom.{vertices = vertices[..], indices = indices[..], nodes = nodes[..], parts = parts[0..<0]};
+  grid: [1] MbpGrid;
+
+  // The props, through the engine's glTF importer, then placed.
+  things := fs_join(game, "Assets/Source/Things", paths[0][..]);
+  bench_lo := d3(1000.0, 1000.0, 1000.0); bench_hi := d3(-1000.0, -1000.0, -1000.0);
+  props := 0; boxes := 0;
+  for pl: places[0..<np] {
+    if pl.mesh == "" { continue; }
+    name: [128] u8; o: [1] Jo; jo_start(o[..], name[..]); jo_put(o[..], pl.mesh); jo_put(o[..], ".glb");
+    file := fs_join(things, jo_text(o[..]), paths[1][..]);
+    glb: [4000000] u8; gn := fs_read(file, glb[..]);
+    if gn < 1 { tool_errln(file); return 1; }
+    made: [1] PiMade;
+    why_glb := pi_glb(glb[0..<gn], PipLimits.{triangles = 200000}, room, nv, ni, made[..]);
+    if why_glb != "" || made[0].vertices == 0 { print("%: %\n", pl.mesh, why_glb); return 1; }
+    bench := pl.mesh == "thing_bay_bench";
+    turn := ua_quat(pl.q);
+    for i: nv..<nv + made[0].vertices {
+      // the glTF's metres are the engine's frame (axes.coax ua_gltf): to Unreal's, placed, and back
+      local := ua_forward_pos(mbp_vertex(vertices[..], i));
+      world := mbp_place(pl, local);
+      nat := i * PI_VERTEX + 12;
+      normal := dq_rotate(turn, d3(cast(f64) pi_get(vertices[..], nat), cast(f64) pi_get(vertices[..], nat + 4), cast(f64) pi_get(vertices[..], nat + 8)));
+      // the importer keeps a vertex colour's linear bytes; the Microduck's material colours are sRGB
+      rgb: [3] int;
+      for j: 0..<3 { rgb[j] = pi_srgb(cast(f32) vertices[i * PI_VERTEX + 32 + j] / 255.0); }
+      mbp_put(vertices[..], i, world, normal, rgb);
+      if bench { bench_lo = d3(fmin(bench_lo.x, world.x), fmin(bench_lo.y, world.y), fmin(bench_lo.z, world.z)); bench_hi = d3(fmax(bench_hi.x, world.x), fmax(bench_hi.y, world.y), fmax(bench_hi.z, world.z)); }
+    }
+    for t: 0..<made[0].indices / 3 {
+      a := mbp_vertex(vertices[..], pack_u32(cast(string) indices[..], (ni + t * 3) * 4));
+      b := mbp_vertex(vertices[..], pack_u32(cast(string) indices[..], (ni + t * 3 + 1) * 4));
+      c := mbp_vertex(vertices[..], pack_u32(cast(string) indices[..], (ni + t * 3 + 2) * 4));
+      mbp_block(grid[..], a, b, c);
+    }
+    nv += made[0].vertices; ni += made[0].indices; props += 1;
+  }
+  if bench_hi.x < bench_lo.x { tool_errln("the bay has no bench"); return 1; }
+
+  // The shell: a box is Unreal's 1 m Cube, scaled; six faces of four vertices, its normals turned with it.
+  for pl: places[0..<np] {
+    if pl.mesh != "" { continue; }
+    kind := pl.kind; boxes += 1;
+    corners: [8] D3;
+    for c: 0..<8 {
+      corners[c] = mbp_place(pl, d3(ifx (c & 1) != 0 then 50.0 else -50.0, ifx (c & 2) != 0 then 50.0 else -50.0, ifx (c & 4) != 0 then 50.0 else -50.0));
+    }
+    faces := [24] int.[0, 2, 6, 4, 1, 5, 7, 3, 0, 4, 5, 1, 2, 3, 7, 6, 0, 1, 3, 2, 4, 6, 7, 5];
+    normals := [6] D3.[d3(-1.0, 0.0, 0.0), d3(1.0, 0.0, 0.0), d3(0.0, -1.0, 0.0), d3(0.0, 1.0, 0.0), d3(0.0, 0.0, -1.0), d3(0.0, 0.0, 1.0)];
+    for f: 0..<6 {
+      n := ua_dir(dq_rotate(pl.q, normals[f]));
+      for j: 0..<4 { mbp_put(vertices[..], nv + j, corners[faces[f * 4 + j]], n, mbp_shell_rgb(kind)); }
+      quad := [6] int.[0, 1, 2, 0, 2, 3];
+      for j: 0..<6 { pack_put32(indices[..], (ni + j) * 4, nv + quad[j]); }
+      if kind != MB_FLOOR {
+        mbp_block(grid[..], corners[faces[f * 4]], corners[faces[f * 4 + 1]], corners[faces[f * 4 + 2]]);
+        mbp_block(grid[..], corners[faces[f * 4]], corners[faces[f * 4 + 2]], corners[faces[f * 4 + 3]]);
+      }
+      nv += 4; ni += 6;
+    }
+  }
+
+  // The recipe and its items (the rules' readers), and the Microduck's speed.
+  find := sr_find_slice_recipe(RECIPE_MICRODUCK);
+  if !find.found { tool_errln("RECIPE_MICRODUCK is not in the rules"); return 1; }
+  rec := find.recipe;
+  recipe: [512] u8; ro: [1] Jo; jo_start(ro[..], recipe[..]);
+  jo_put(ro[..], rec.recipe_id); jo_put(ro[..], " "); jo_put(ro[..], rec.output_id);
+  for g: 0..<rec.n { jo_put(ro[..], " "); jo_put(ro[..], rec.ingredients[g].item); jo_put(ro[..], " "); mbp_int(ro[..], rec.ingredients[g].count); }
+  items_text: [200000] u8;
+  tn = fs_read(fs_join(game, "Data/items.csv", paths[1][..]), items_text[..]);
+  defs: [1] SrItemDefs;
+  if tn < 1 || !sr_items_read(cast(string) items_text[0..<tn], defs[..]).ok { tool_errln("cannot read Data/items.csv"); return 1; }
+  items: [8000] u8; io: [1] Jo; jo_start(io[..], items[..]);
+  for g: 0..<rec.n + 1 {
+    id := ifx g < rec.n then rec.ingredients[g].item else rec.output_id;
+    row := sr_defs_find(defs[0], id);
+    if row < 0 { tool_errln(id); return 1; }
+    def := defs[0].rows[row];
+    jo_put(io[..], "item "); jo_put(io[..], id); jo_put(io[..], " "); mbp_int(io[..], def.stack_size); jo_put(io[..], " ");
+    for c: def.name { jo_byte(io[..], ifx c == ' ' then cast(u8) '_' else c); }
+    jo_put(io[..], "\n");
+  }
+  robots_text: [200000] u8;
+  tn = fs_read(fs_join(game, "Data/robots.csv", paths[1][..]), robots_text[..]);
+  robots: [1] SrRobotRows;
+  if tn < 1 || !sr_robots_read(cast(string) robots_text[0..<tn], robots[..]).ok { tool_errln("cannot read Data/robots.csv"); return 1; }
+  speed := -1.0;
+  for r: robots[0].rows[0..<robots[0].n] { if r.robot_id == ROBOT_MICRODUCK && r.move_speed.n > 0 { speed = cast(f64) r.move_speed.v[0]; } }
+  if speed < 0.0 { tool_errln("ROBOT_MICRODUCK has no move speed in Data/robots.csv"); return 1; }
+
+  // The bench's front (where a crafted duck steps out): the bench's middle, toward the bay's mouth.
+  mid := d3_scale(d3_add(bench_lo, bench_hi), 0.5);
+
+  catalog: [131072] u8; sources: [4] PackSource; total := 0; cn := 0;
+  for pass: 0..<5 {
+    n := pi_put(catalog[..], 0, "pack microduck-bay\nbudget 64000000\nbytes ");
+    n = pi_put_int(catalog[..], n, total);
+    n = pi_put(catalog[..], n, "\nL 0 Pollen Robotics / NVIDIA DLI|CC BY-NC-SA 4.0|https://creativecommons.org/licenses/by-nc-sa/4.0/\nL 1 Splice Bots jam (private)|private, internal playtests only|local\nM microduck 0 ");
+    n = pi_put_int(catalog[..], n, duck_indices);
+    n = pi_put(catalog[..], n, " 0\nM bay ");
+    n = pi_put_int(catalog[..], n, duck_indices); n = pi_put(catalog[..], n, " ");
+    n = pi_put_int(catalog[..], n, ni - duck_indices); n = pi_put(catalog[..], n, " 1\nT 0 neutral 0\n");
+    n = pi_put(catalog[..], n, rba); n = pi_put(catalog[..], n, "\n");
+    n = pi_put(catalog[..], n, "duck "); n = pi_put_int(catalog[..], n, cast(int) floor(MB_DUCK_HEIGHT * 1000 + 0.5)); n = pi_put(catalog[..], n, "\n");
+    n = pi_put(catalog[..], n, "bench "); n = mbp_mm(catalog[..], n, bench_lo.x); n = mbp_mm(catalog[..], n, bench_lo.z); n = mbp_mm(catalog[..], n, bench_hi.x); n = mbp_mm(catalog[..], n, bench_hi.z); n = mbp_mm(catalog[..], n, mid.y); n = pi_put(catalog[..], n, "\n");
+    n = pi_put(catalog[..], n, "recipe "); n = pi_put(catalog[..], n, jo_text(ro[..])); n = pi_put(catalog[..], n, "\n");
+    n = pi_put(catalog[..], n, jo_text(io[..]));
+    n = pi_put(catalog[..], n, "robot ROBOT_MICRODUCK "); n = mbp_mm(catalog[..], n, speed); n = pi_put(catalog[..], n, "\n");
+    n = pi_put(catalog[..], n, "grid "); n = mbp_mm(catalog[..], n, MBP_X0); n = mbp_mm(catalog[..], n, MBP_Z0); n = mbp_mm(catalog[..], n, MBP_CELL);
+    n = pi_put_int(catalog[..], n, MBP_NX); n = pi_put(catalog[..], n, " "); n = pi_put_int(catalog[..], n, MBP_NZ); n = pi_put(catalog[..], n, "\n");
+    for k: 0..<MBP_NZ {
+      n = pi_put(catalog[..], n, "g ");
+      for i: 0..<MBP_NX { n = pi_put(catalog[..], n, ifx grid[0].cell[k * MBP_NX + i] != 0 then "#" else "."); }
+      n = pi_put(catalog[..], n, "\n");
+    }
+    if n > catalog.count { tool_errln("the catalog is over its room"); return 1; }
+    cn = n;
+    sources[0] = PackSource.{kind = PACK_CATALOG, licence = PACK_MANY, name = "catalog", data = cast(string) catalog[0..<cn]};
+    sources[1] = PackSource.{kind = PACK_VERTICES, licence = PACK_MANY, name = "vertices", data = cast(string) vertices[0..<nv * PI_VERTEX]};
+    sources[2] = PackSource.{kind = PACK_INDICES, licence = PACK_MANY, name = "indices", data = cast(string) indices[0..<ni * 4]};
+    sources[3] = PackSource.{kind = PACK_LAYER, licence = 0, name = "neutral", data = cast(string) duck[layer_e.at..<layer_e.at + layer_e.n]};
+    total = pack_size(sources[..]);
+  }
+  out: [MBP_BUDGET] u8; size := pack_write(sources[..], MBP_BUDGET, out[..]); back: [1] PackRead;
+  if size < 1 || !pack_read(cast(string) out[0..<size], back[..]) { tool_errln(back[0].why); return 1; }
+  dest := args_at(args[..], 3);
+  if !fs_mkdir(fs_dir(dest)) || !fs_write(dest, cast(string) out[0..<size]) { tool_errln("cannot write the bay pack"); return 1; }
+  open := 0; for c: grid[0].cell { if c == 0 { open += 1; } }
+  print("Microduck bay: % vertices, % triangles (% the bay's), % open cells of %, % bytes, %\n", nv, ni / 3, (ni - duck_indices) / 3, open, MBP_NX * MBP_NZ, size, dest);
+  print("% props and % shell boxes from %; recipe %\n", props, boxes, bundle, jo_text(ro[..]));
+  return 0;
+}
+
+// Millimetres, signed, then a space.
+mbp_mm :: (out: [] u8, n: int, metres: f64) -> int {
+  return pi_put(out, pi_put_int(out, n, cast(int) floor(metres * 1000.0 + 0.5)), " ");
+}
+// A whole number into o.
+mbp_int :: (o: [] Jo, v: int) { b: [24] u8; k := pi_put_int(b[..], 0, v); jo_put(o, cast(string) b[0..<k]); }

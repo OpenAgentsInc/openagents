@@ -1,0 +1,286 @@
+// The Splice Bots edit bay with a Microduck crowd (GitHub #13652): a standalone local workbench.
+// The bay and the Microduck come from one private pack (metaverse/tools/assets/microduck-bay-pack.coax);
+// the crowd and the bench are metaverse/microduck-bay/crowd.coax; the ducks share the Microduck
+// viewer's one geometry upload, its pose chain and palette and the engine's gait
+// (metaverse/microduck/presentation.coax), drawn as GPU instances. The Microduck model is
+// Pollen Robotics' and NVIDIA DLI's, CC BY-NC-SA 4.0, for internal playtests only.
+#load "../../metaverse-engine/cam/shot.coax";
+#load "../../metaverse-engine/ui/draw.coax";
+#load "../../metaverse-engine/anim/assembly-wire.coax";
+#load "../../metaverse-engine/anim/assembly-draw.coax";
+#load "../../metaverse-engine/ui/menu-wire.coax";
+#load "../../metaverse-engine/ui/plot.coax";
+#load "../../components/kit/controls.coax";
+#load "../../components/skin/arcade.coax";
+#load "../../metaverse/microduck/presentation.coax";
+#load "../../metaverse/microduck-bay/crowd.coax";
+
+MDB_HUD_VERTICES :: 32768;
+MDB_PALETTE :: 64;                       // three palettes of ASSEMBLY_PARTS parts: walk, walk half a stride on, stand
+MDB_PALETTE_STRIDE :: ASSEMBLY_PARTS * 16;
+MDB_INSTANCE :: MDB_PALETTE + 3 * MDB_PALETTE_STRIDE;   // x, z, yaw, palette for each duck
+MDB_UNIFORMS :: MDB_INSTANCE + MB_MAX * 4;
+MDB_FLOOR_Y :: 0.02;                     // the bay floor's top (make_bay.py FLOOR_TOP, 2 cm)
+MDB_CADENCE :: 1.6;                      // strides a second of the engine's gait at the bay's walk
+
+MdbHit :: struct { x: f32; y: f32; w: f32; h: f32; key: int; }
+MicroduckBay :: struct {
+  native: bool; ready: bool;
+  yaw: f32 = -1.75; pitch: f32 = 0.45; zoom: f32 = 9.4; tx: f32 = -1.0; tz: f32 = 7.2;
+  drag: bool; pointer_id: int; px: f32; py: f32; dpr: f32 = 1; travel: f32; down_key: int; scrub: bool;
+  draws: [(ASSEMBLY_PARTS + 1) * 4] u32;
+  assembly: [1] RigidAssembly; scale: f32 = 1; cx: f32; cz: f32; floor0: f32;
+  bay: [1] MbBay; bay_first: int; bay_count: int;
+  walk: f32; lens: Lens;
+  hits: [32] MdbHit; hit_n: int; slider: SheetHit;
+}
+
+#test "a frame never draws before the pack's catalog arrives, and refuses a broken one" {
+  s: [1] MicroduckBay; out: [MDB_HUD_VERTICES * 12] f32; u: [MDB_UNIFORMS] f32;
+  #assert mdb_frame(s[..], out[..], u[..], 1280, 800, 1) > 0 && s[0].draws[1] == 0;
+  for v: u[..] { #assert v == v && abs(v) < 100000; }
+  mdb_asset(s[..], "bad\n"); #assert !s[0].ready;
+  #assert mdb_frame(s[..], out[..], u[..], 0, 800, 1) == 0;
+}
+#test "the panel's keys spawn, move, stop, craft and refill" {
+  s: [1] MicroduckBay; b: [400000] u8;
+  #assert mb_read(s[0].bay[..], mbc_catalog(b[..], false, 16));
+  s[0].ready = true;
+  #assert mdb_key(s[..], 5030) && s[0].bay[0].count == 30;
+  #assert mdb_key(s[..], 5200) && s[0].bay[0].mode == MB_WANDER;
+  #assert mdb_key(s[..], 5101) && s[0].bay[0].count == 30;
+  #assert mdb_key(s[..], 5100) && s[0].bay[0].count == 29;
+  #assert mdb_key(s[..], 5300) && s[0].bay[0].count == 30 && s[0].bay[0].crafted == 1;
+  #assert mdb_key(s[..], 5301) && mdb_key(s[..], 5202) && s[0].bay[0].mode == MB_STOP;
+  #assert mdb_key(s[..], 5001) && s[0].bay[0].count == 1;
+}
+
+mdb_view :: (s: [] MicroduckBay, k: int) {
+  s[0].drag = false;
+  if k == 0 { s[0].yaw = -1.75; s[0].pitch = 0.45; s[0].zoom = 9.4; s[0].tx = -1.0; s[0].tz = 7.2; }
+  if k == 1 { s[0].yaw = 3.14159; s[0].pitch = 0.42; s[0].zoom = 6.5; s[0].tx = 0.0; s[0].tz = 7.4; }
+  if k == 2 { s[0].yaw = -1.5708; s[0].pitch = 1.25; s[0].zoom = 24.0; s[0].tx = 0.0; s[0].tz = 0.0; }
+}
+mdb_key :: (s: [] MicroduckBay, key: int) -> bool #export_c #effects(all) {
+  if key == 49 { mdb_view(s, 0); return true; }
+  if key == 50 { mdb_view(s, 1); return true; }
+  if key == 51 { mdb_view(s, 2); return true; }
+  if key == -4 || key == -5 { s[0].yaw += ifx key == -4 then -0.12f32 else 0.12f32; return true; }
+  if !s[0].ready { return false; }
+  b := s[0].bay[..];
+  if key == 5001 || key == 5010 || key == 5020 || key == 5030 { mb_spawn(b, key - 5000); return true; }
+  if key == 5100 { mb_spawn(b, b[0].count - 1); return true; }
+  if key == 5101 { mb_spawn(b, b[0].count + 1); return true; }
+  if key == 5200 || key == 119 || key == 87 { mb_mode(b, MB_WANDER); return true; }
+  if key == 5201 || key == 108 || key == 76 { mb_mode(b, MB_LINE); return true; }
+  if key == 5202 || key == 115 || key == 83 { mb_mode(b, MB_STOP); return true; }
+  if key == 5203 || key == 114 || key == 82 { mb_reset(b); return true; }
+  if key == 5300 || key == 99 || key == 67 { _ = mb_craft(b); return true; }
+  if key == 5301 || key == 102 || key == 70 { mb_refill(b); return true; }
+  return false;
+}
+mdb_hit :: (s: [] MicroduckBay, x: f32, y: f32) -> int {
+  for i: 0..<s[0].hit_n { h := s[0].hits[i]; if x >= h.x && x <= h.x + h.w && y >= h.y && y <= h.y + h.h { return h.key; } }
+  return 0;
+}
+mdb_slide :: (s: [] MicroduckBay, px: f32) {
+  v := slider_value(s[0].slider.x, s[0].slider.w, px);
+  mb_spawn(s[0].bay[..], cast(int) floor(v * cast(f32) MB_SPAWN_MAX + 0.5));
+}
+mdb_pointer :: (s: [] MicroduckBay, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
+  px := x / s[0].dpr; py := y / s[0].dpr;
+  if phase == 0 {
+    hit := s[0].slider;
+    if s[0].ready && hit.w > 0 && px >= hit.x && px <= hit.x + hit.w && py >= hit.y - 6 && py <= hit.y + hit.h + 6 { s[0].scrub = true; s[0].pointer_id = id; mdb_slide(s, px); return true; }
+    k := mdb_hit(s, px, py);
+    if k != 0 { s[0].down_key = k; s[0].pointer_id = id; return true; }
+    s[0].drag = true; s[0].pointer_id = id; s[0].px = x; s[0].py = y; s[0].travel = 0; return true;
+  }
+  if s[0].pointer_id != id { return false; }
+  if s[0].scrub { mdb_slide(s, px); if phase >= 2 { s[0].scrub = false; } return true; }
+  if s[0].down_key != 0 {
+    if phase >= 2 { k := s[0].down_key; s[0].down_key = 0; if phase == 2 && mdb_hit(s, px, py) == k { _ := mdb_key(s, k); } }
+    return true;
+  }
+  if !s[0].drag { return false; }
+  if phase == 1 {
+    s[0].travel += abs(x - s[0].px) + abs(y - s[0].py);
+    s[0].yaw -= (x - s[0].px) / s[0].dpr * 0.006;
+    s[0].pitch = shot_clamp(s[0].pitch + (y - s[0].py) / s[0].dpr * 0.006, 0.08, 1.4);
+    s[0].px = x; s[0].py = y;
+  } else { s[0].drag = false; }
+  return true;
+}
+mdb_wheel :: (s: [] MicroduckBay, delta: f32) #export_c #effects(all) { s[0].zoom = shot_clamp(s[0].zoom + delta * 0.01, 2.5, 30.0); }
+mdb_pinch :: (s: [] MicroduckBay, ratio: f32) -> bool #export_c #effects(all) {
+  if !(ratio > 0) { return false; } s[0].zoom = shot_clamp(s[0].zoom / ratio, 2.5, 30.0); s[0].drag = false; return true;
+}
+mdb_source :: () -> AssetId { id: [1] AssetId; _ := asset_parse("eea0931fefde8b2d352eaaa73b5e380f2790f63fb716a8c1a2ce219ffe58c1ac", id[..]); return id[0]; }
+mdb_asset :: (s: [] MicroduckBay, catalog: string) #export_c #effects(all) {
+  s[0].ready = false;
+  a: [1] RigidAssembly;
+  if !assembly_catalogue_read(catalog, mdb_source(), a[..]) || a[0].joints != 14 { return; }
+  if !mb_read(s[0].bay[..], catalog) { return; }
+  // the bay's index range: its M line
+  at := 0; s[0].bay_count = 0;
+  for k: 0..<catalog.count {
+    if catalog[k] != '\n' { continue; }
+    line := catalog[at..<k]; at = k + 1;
+    if pack_field(line, 0) == "M" && pack_field(line, 1) == "bay" { s[0].bay_first = pack_number(pack_field(line, 2)); s[0].bay_count = pack_number(pack_field(line, 3)); }
+  }
+  if s[0].bay_first < 0 || s[0].bay_count < 3 { return; }
+  s[0].assembly[0] = a[0];
+  // The Microduck at the game's height, its feet on the floor and its middle over its place.
+  lo := v3(1000, 1000, 1000); hi := v3(-1000, -1000, -1000);
+  for i: 0..<a[0].parts { p := a[0].part[i]; lo = v3(am_lo(lo.x, p.low.x), am_lo(lo.y, p.low.y), am_lo(lo.z, p.low.z)); hi = v3(am_hi(hi.x, p.high.x), am_hi(hi.y, p.high.y), am_hi(hi.z, p.high.z)); }
+  if !(hi.y > lo.y) { return; }
+  s[0].scale = s[0].bay[0].height / (hi.y - lo.y); s[0].floor0 = lo.y; s[0].cx = (lo.x + hi.x) * 0.5; s[0].cz = (lo.z + hi.z) * 0.5;
+  s[0].ready = true;
+  mb_spawn(s[0].bay[..], 10);
+}
+mdb_fract :: (x: f32) -> f32 { return x - floor(x); }
+mdb_vec :: (u: [] f32, at: int, p: WorldPoint) { u[at] = p.x; u[at + 1] = p.y; u[at + 2] = p.z; }
+// The three palettes: two strides of the engine's gait half a step apart, and the stand.
+mdb_palettes :: (s: [] MicroduckBay, u: [] f32) {
+  a := s[0].assembly[..];
+  for k: 0..<3 {
+    angles: [32] f32; pose: [1] AssemblyPose;
+    f := MdFilmFrame.{walk = ifx k < 2 then 1.0f32 + s[0].walk else 0.0f32, blend = 1, phase = mdb_fract(s[0].walk * MDB_CADENCE + (ifx k == 1 then 0.5f32 else 0.0f32))};
+    if !mdf_angles(a, f, angles[..]) || !assembly_pose(a, angles[..], pose[..]) { continue; }
+    base := MDB_PALETTE + k * MDB_PALETTE_STRIDE;
+    _ := assembly_palette(a, pose[..], 0, -1, u[base..<base + MDB_PALETTE_STRIDE]);
+    u[36 + k] = ifx k < 2 then mdf_ground(a, pose[..]) else 0.0f32;
+  }
+}
+mdb_advance :: (s: [] MicroduckBay, dt: f32) #export_c #effects(all) {
+  if !s[0].ready || !(dt > 0) { return; }
+  t := ifx dt > 0.1 then 0.1f32 else dt;
+  s[0].walk += t; if s[0].walk > 1000 { s[0].walk -= 1000; }
+  mb_tick(s[0].bay[..], t);
+}
+mdb_frame :: (s: [] MicroduckBay, out: [] f32, u: [] f32, w: f32, h: f32, d: f32) -> int #export_c #effects(all) {
+  if !(w > 0) || !(h > 0) || !(d > 0) || u.count < MDB_UNIFORMS { return 0; }
+  s[0].dpr = d;
+  for k: 0..<MDB_UNIFORMS { u[k] = 0; }
+  u[0] = w; u[1] = h; u[3] = 1;
+  f := shot_orbit_forward(s[0].yaw, s[0].pitch);
+  ray := ShotRay.{from = world_point(s[0].tx, 0.35, s[0].tz), dir = world_scale(f, -1), far = s[0].zoom};
+  shot := shot_orbit(ray, ray.far, s[0].yaw, s[0].pitch);
+  width := w / d; height := h / d; wide := width >= 900;
+  lens := lens_at(shot.eye, shot.at, w * (ifx wide then 0.40f32 else 0.5f32), h * 0.5, (ifx w < h then w else h) * 1.15, 0.08);
+  mdb_vec(u, 8, lens.eye); mdb_vec(u, 12, lens.right); mdb_vec(u, 16, lens.up); mdb_vec(u, 20, lens.ahead);
+  u[24] = lens.focal; u[26] = lens.cx; u[27] = lens.cy;
+  s[0].lens = lens;
+  u[28] = s[0].scale; u[29] = cast(f32) s[0].assembly[0].parts; u[30] = s[0].cx; u[31] = s[0].cz; u[32] = s[0].floor0; u[33] = MDB_FLOOR_Y;
+  ducks := 0;
+  for i: 0..<ASSEMBLY_PARTS + 1 { at := i * 4; s[0].draws[at] = 0; s[0].draws[at + 1] = 0; s[0].draws[at + 2] = 0; s[0].draws[at + 3] = 0; }
+  if s[0].ready {
+    mdb_palettes(s, u);
+    b := s[0].bay[0]; ducks = b.count;
+    for i: 0..<b.count {
+      at := MDB_INSTANCE + i * 4; dk := b.ducks[i];
+      u[at] = dk.x; u[at + 1] = dk.z; u[at + 2] = dk.yaw;
+      u[at + 3] = ifx dk.draws != 0 then cast(f32) (i % 2) else 2.0f32;
+    }
+    // the bay first, then each Microduck part once for every duck
+    s[0].draws[0] = cast(u32) s[0].bay_first; s[0].draws[1] = cast(u32) s[0].bay_count; s[0].draws[2] = assembly_crowd_base(ASSEMBLY_PARTS); s[0].draws[3] = 1;
+    for i: 0..<s[0].assembly[0].parts {
+      at := (i + 1) * 4; part := s[0].assembly[0].part[i];
+      s[0].draws[at] = cast(u32) part.first_index; s[0].draws[at + 1] = cast(u32) part.indices;
+      s[0].draws[at + 2] = assembly_crowd_base(cast(u32) i); s[0].draws[at + 3] = cast(u32) ducks;
+    }
+  }
+  return mdb_hud(s, out, w, h, d);
+}
+mdb_draw_count :: (s: [] MicroduckBay) -> int { return ifx s[0].ready then s[0].assembly[0].parts + 1 else 0; }
+
+// ---- the panel: buttons are the HUD's frames and the controls kit's slider; a press is a key.
+mdb_button :: (s: [] MicroduckBay, out: [] f32, n: int, p: HdPen, x: f32, y: f32, w: f32, label: string, key: int, on: bool) -> int {
+  v := n; hb := 36.0f32;
+  v = aw_quad(out, v, HudBox.{x = x, y = y, width = w, height = hb}, 0, 0, 0, ifx on then AxColor.{r = 0.34, g = 0.38, b = 0.44, a = 0.95} else AxColor.{r = 0.12, g = 0.14, b = 0.17, a = 0.9}, p, 6);
+  v = hd_rect(out, v, HudBox.{x = x, y = y, width = w, height = hb}, p, ifx on then 0 else 1, ifx on then 0.9f32 else 0.5f32);
+  k := hd_ink(p, 0); k.sans = p.sans; k.scale = 1;
+  tw := ink_width(label, 11, 0.22, 0.72, k);
+  pen := p;
+  v = hd_text(out, v, label, x + (w - tw) * 0.5, y + hb * 0.5 + 5, 11, pen, 0);
+  if s[0].hit_n < 32 { s[0].hits[s[0].hit_n] = MdbHit.{x = x, y = y, w = w, h = hb, key = key}; s[0].hit_n += 1; }
+  return v;
+}
+mdb_number :: (out: [] f32, n: int, label: string, have: int, cap: int, x: f32, y: f32, w: f32, p: HdPen) -> int {
+  text: [96] u8; o: [1] Jo; jo_start(o[..], text[..]); o[0].keyed = true; jo_int(o[..], have);
+  if cap > 0 { jo_put(o[..], " / "); o[0].keyed = true; jo_int(o[..], cap); }
+  v := hd_text_fit(out, n, label, x, y, 11, w * 0.6, p, 1);
+  return hd_text_fit(out, v, jo_text(o[..]), x + w * 0.62, y, 11, w * 0.38, p, 0);
+}
+mdb_hud :: (s: [] MicroduckBay, out: [] f32, w: f32, h: f32, d: f32) -> int {
+  pen := HdPen.{d = d, top = 0, bottom = h / d, cyan = false};
+  width := w / d; height := h / d; wide := width >= 900;
+  n := 0; s[0].hit_n = 0; s[0].slider = SheetHit.{};
+  n = hd_text(out, n, "OPENAGENTS / METAVERSE ENGINE", 32, 38, 11, pen, 1);
+  n = hd_text(out, n, "EDIT BAY", 30, 84, 32, pen, 0);
+  n = hd_text(out, n, "SPLICE BOTS JAM / MICRODUCK WORKBENCH", 32, 108, 11, pen, 2);
+  if !s[0].ready {
+    n = hd_text(out, n, "LOADING THE BAY PACK", 32, height - 100, 11, pen, 1);
+    return hd_text(out, n, "NEEDS THE PRIVATE PACK: SEE METAVERSE/MICRODUCK-BAY/README.MD", 32, height - 76, 10, pen, 2);
+  }
+  b := s[0].bay[..];
+  // the bench's label in the world
+  top := world_to_screen(s[0].lens, world_point((b[0].bench_x0 + b[0].bench_x1) * 0.5, b[0].bench_y * 2 + 0.25, (b[0].bench_z0 + b[0].bench_z1) * 0.5));
+  if top.ok && top.at.x > 0 && top.at.y > 0 { bx := top.at.x / d; by := top.at.y / d; n = hd_diamond(out, n, bx, by, 4, pen, 0); n = hd_text(out, n, "BENCH", bx + 10, by + 4, 11, pen, 0); }
+  x := ifx wide then width - 332 else 16.0f32; pw := ifx wide then 308.0f32 else width - 32;
+  y := ifx wide then 92.0f32 else height - 452;
+  n = hd_panel(out, n, HudBox.{x = x - 12, y = y - 14, width = pw + 24, height = 440}, pen, true);
+  n = hd_text(out, n, "SPAWN MICRODUCKS", x, y + 8, 11, pen, 0);
+  bw := (pw - 24) / 4;
+  for c, i: [4] int.[1, 10, 20, 30] {
+    label := [4] string.["1", "10", "20", "30"][i];
+    n = mdb_button(s, out, n, pen, x + cast(f32) i * (bw + 8), y + 20, bw, label, 5000 + c, b[0].count == c);
+  }
+  // the count's slider (the controls kit's, its box drawn by the HUD)
+  list: [16] Prim; hits: [1] SheetHit; sh: [1] Sheet; sh[0].under = list[..]; sh[0].hits = hits[..];
+  skin := arcade_skin(); skin.control_h = 32;
+  share := cast(f32) (ifx b[0].count > MB_SPAWN_MAX then MB_SPAWN_MAX else b[0].count) / cast(f32) MB_SPAWN_MAX;
+  slider(sh[..], skin, x, y + 66, pw - 92, share, 1, 0);
+  s[0].slider = hits[0];
+  n = hd_control_boxes(out, n, list[0..<sh[0].nu], pen);
+  n = mdb_number(out, n, "", b[0].count, MB_MAX, x + pw - 150, y + 87, 150, pen);
+  n = hd_text(out, n, "MOTION", x, y + 124, 11, pen, 0);
+  for label, i: [4] string.["WANDER", "LINE", "STOP", "RESET"] {
+    on := (i == 0 && b[0].mode == MB_WANDER) || (i == 1 && b[0].mode == MB_LINE) || (i == 2 && b[0].mode == MB_STOP);
+    n = mdb_button(s, out, n, pen, x + cast(f32) i * (bw + 8), y + 136, bw, label, 5200 + i, on);
+  }
+  n = hd_text(out, n, "EDIT BAY BENCH", x, y + 200, 11, pen, 0);
+  n = hd_text_fit(out, n, mb_recipe_text(b), x, y + 220, 10, pw, pen, 2);
+  recipe: [128] u8; ro: [1] Jo; jo_start(ro[..], recipe[..]);
+  for i: 0..<b[0].item_n { if i > 0 { jo_put(ro[..], " + "); } ro[0].keyed = true; jo_int(ro[..], b[0].items[i].need); jo_put(ro[..], " "); jo_put(ro[..], mb_item_text(b, i)); }
+  n = hd_text_fit(out, n, jo_text(ro[..]), x, y + 238, 10, pw, pen, 1);
+  n = mdb_button(s, out, n, pen, x, y + 250, pw * 0.62, "CRAFT AT BENCH", 5300, false);
+  n = mdb_button(s, out, n, pen, x + pw * 0.62 + 8, y + 250, pw * 0.38 - 8, "REFILL", 5301, false);
+  n = hd_text(out, n, "INVENTORY", x, y + 312, 11, pen, 0);
+  for i: 0..<b[0].item_n { n = mdb_number(out, n, mb_item_text(b, i), b[0].items[i].have, b[0].items[i].stack, x, y + 334 + cast(f32) i * 20, pw, pen); }
+  ry := y + 334 + cast(f32) b[0].item_n * 20;
+  n = mdb_number(out, n, "CRAFTED", b[0].crafted, 0, x, ry, pw, pen);
+  n = hd_line(out, n, x, ry + 14, x + pw, ry + 14, pen, 3, 0.4);
+  n = hd_text_fit(out, n, mb_said(b), x, ry + 36, 10, pw, pen, 1);
+  if wide {
+    n = hd_line(out, n, 32, height - 80, width - 380, height - 80, pen, 2, 0.4);
+    n = hd_text(out, n, "DRAG ORBIT / SCROLL ZOOM / 1 2 3 VIEWS / W WANDER / L LINE / S STOP / C CRAFT / F REFILL / R RESET", 32, height - 54, 10, pen, 0);
+  }
+  return hd_text(out, n, "MICRODUCK: POLLEN ROBOTICS + NVIDIA DLI / CC BY-NC-SA 4.0 / INTERNAL PLAYTEST / BAY: SPLICE BOTS JAM, PRIVATE", 32, height - 29, 9, pen, 2);
+}
+
+mdb_menu :: (s: [] MicroduckBay, out: [] u8) -> int #export_c #effects(all) {
+  rows: [24] ViewMenuItem; n := 0;
+  for label, i: [3] string.["Wide", "Bench", "Overhead"] { rows[n] = ViewMenuItem.{label = label, group = "View", key = 49 + i}; n += 1; }
+  if s[0].ready {
+    c := s[0].bay[0].count; m := s[0].bay[0].mode;
+    for k, i: [4] int.[1, 10, 20, 30] { rows[n] = ViewMenuItem.{label = [4] string.["1 Microduck", "10 Microducks", "20 Microducks", "30 Microducks"][i], group = "Spawn", key = 5000 + k, current = c == k}; n += 1; }
+    rows[n] = ViewMenuItem.{label = "One fewer", group = "Spawn", key = 5100, keep_open = true}; n += 1;
+    rows[n] = ViewMenuItem.{label = "One more", group = "Spawn", key = 5101, keep_open = true}; n += 1;
+    for label, i: [4] string.["Wander", "Walk in a line", "Stop", "Reset"] { rows[n] = ViewMenuItem.{label = label, group = "Motion", key = 5200 + i, current = (i == 0 && m == MB_WANDER) || (i == 1 && m == MB_LINE) || (i == 2 && m == MB_STOP)}; n += 1; }
+    rows[n] = ViewMenuItem.{label = "Craft at bench", group = "Bench", key = 5300, keep_open = true}; n += 1;
+    rows[n] = ViewMenuItem.{label = "Refill parts", group = "Bench", key = 5301, keep_open = true}; n += 1;
+  }
+  return view_menu_write("Edit bay", rows[0..<n], out);
+}
+mdb_message :: (s: [] MicroduckBay, kind: int) #export_c #effects(all) { if kind == 601 { s[0].drag = false; s[0].scrub = false; s[0].down_key = 0; } }

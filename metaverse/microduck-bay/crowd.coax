@@ -1,0 +1,260 @@
+// The edit bay's Microduck crowd and its bench (GitHub #13652): what the bay pack's catalog says
+// (metaverse/tools/assets/microduck-bay-pack.coax writes it), the ducks' walk over the bay's open
+// floor, and crafting at the bench from the game's own recipe and items. No drawing, no platform:
+// apps/openagents-web/microduck-bay.coax draws it and feeds it input.
+//
+// The catalog lines read here, beside the pack's own (metaverse-engine/editor/pack.coax):
+//   duck MM                       the Microduck's height in the game
+//   bench X0 Z0 X1 Z1 Y           the bench's floor bounds and its middle height (mm)
+//   recipe ID OUTPUT ITEM N ...   the recipe, from the ported rules (metaverse/splice-bots/rules)
+//   item ID STACK NAME            an item's stack size and its name (spaces as _), from items.csv
+//   robot ID SPEED                its move speed (mm/s), from robots.csv; not used yet
+//   grid X0 Z0 CELL NX NZ         the walkable grid's corner and cell (mm) and its size
+//   g ROW                         a row of it from Z0 up: '.' open, '#' blocked
+//   coax/bin/coax test metaverse/microduck-bay/crowd.coax
+#load "../../metaverse-engine/core/rand.coax";
+#load "../../metaverse-engine/core/angle.coax";
+#load "../../metaverse-engine/editor/pack.coax";
+
+MB_MAX :: 40;              // ducks at most: spawn sets up to 30, the bench adds to 40
+MB_SPAWN_MAX :: 30;
+MB_NX :: 96; MB_NZ :: 165;
+MB_ITEMS :: 4;
+MB_WALK :: 0.5;            // m/s a wandering duck walks
+MB_FOLLOW :: 1.1;          // m/s at most a follower walks to keep its place in the line
+MB_GAP :: 0.62;            // m between ducks in a line
+MB_TURN :: 5.0;            // rad/s a duck turns
+MB_APART :: 0.42;          // m: two ducks closer than this step apart
+// The open floor a duck may use: inside the walls and clear of the bay's mouth.
+MB_AREA_X0 :: -9.0; MB_AREA_X1 :: 9.2; MB_AREA_Z0 :: -13.0; MB_AREA_Z1 :: 13.0;
+// Where spawned ducks stand: the open floor in front of the bench.
+MB_SPAWN_X :: 0.0; MB_SPAWN_Z :: 4.5;
+
+MB_STOP :: 0; MB_WANDER :: 1; MB_LINE :: 2;
+
+MbName :: struct { b: [40] u8; n: int; }
+MbItem :: struct { id: MbName; name: MbName; stack: int; have: int; need: int; }
+MbDuck :: struct { x: f32; z: f32; yaw: f32; tx: f32; tz: f32; wait: f32; moving: bool; draws: int; }
+MbBay :: struct {
+  ready: bool;
+  open: [MB_NX * MB_NZ] u8; gx: f32; gz: f32; cell: f32 = 0.25;
+  bench_x0: f32; bench_z0: f32; bench_x1: f32; bench_z1: f32; bench_y: f32;
+  height: f32 = 0.62;
+  recipe: MbName; output: MbName;
+  items: [MB_ITEMS] MbItem; item_n: int;
+  ducks: [MB_MAX] MbDuck; count: int; crafted: int;
+  mode: int; seed: int = 13652; step: int;
+  said: [96] u8; said_n: int;
+}
+
+mb_raw :: (s: string) -> MbName { n: MbName; if s.count > 40 { return n; } for c, i: s { n.b[i] = c; } n.n = s.count; return n; }
+mb_name :: (s: string) -> MbName { n: MbName; if s.count > 40 { return n; } for c, i: s { n.b[i] = ifx c == '_' then cast(u8) ' ' else c; } n.n = s.count; return n; }
+mb_item_text :: (s: [] MbBay, i: int) -> string { return cast(string) s[0].items[i].name.b[0..<s[0].items[i].name.n]; }
+mb_item_id :: (s: [] MbBay, i: int) -> string { return cast(string) s[0].items[i].id.b[0..<s[0].items[i].id.n]; }
+mb_recipe_text :: (s: [] MbBay) -> string { return cast(string) s[0].recipe.b[0..<s[0].recipe.n]; }
+mb_say :: (s: [] MbBay, a: string, b: string) {
+  n := 0;
+  for c: a { if n < 96 { s[0].said[n] = c; n += 1; } }
+  for c: b { if n < 96 { s[0].said[n] = c; n += 1; } }
+  s[0].said_n = n;
+}
+mb_said :: (s: [] MbBay) -> string { return cast(string) s[0].said[0..<s[0].said_n]; }
+// A signed whole number field (pack_number takes no sign), or the fallback.
+mb_int :: (f: string, otherwise: int) -> int {
+  if f.count > 1 && f[0] == '-' { v := pack_number(f[1..<f.count]); return ifx v < 0 then otherwise else -v; }
+  v := pack_number(f); return ifx v < 0 then otherwise else v;
+}
+mb_mm :: (line: string, i: int) -> f32 { return cast(f32) mb_int(pack_field(line, i), 0) / 1000.0; }
+
+// The catalog's bay lines into s. False when the bay or the recipe is missing.
+mb_read :: (s: [] MbBay, catalog: string) -> bool {
+  b: MbBay; b.mode = MB_STOP; row := 0; grid := false; at := 0;
+  for k: 0..<catalog.count {
+    if catalog[k] != '\n' { continue; }
+    line := catalog[at..<k]; at = k + 1;
+    what := pack_field(line, 0);
+    if what == "duck" { b.height = mb_mm(line, 1); }
+    else if what == "bench" { b.bench_x0 = mb_mm(line, 1); b.bench_z0 = mb_mm(line, 2); b.bench_x1 = mb_mm(line, 3); b.bench_z1 = mb_mm(line, 4); b.bench_y = mb_mm(line, 5); }
+    else if what == "grid" {
+      if pack_number(pack_field(line, 4)) != MB_NX || pack_number(pack_field(line, 5)) != MB_NZ { return false; }
+      b.gx = mb_mm(line, 1); b.gz = mb_mm(line, 2); b.cell = mb_mm(line, 3); grid = true;
+    }
+    else if what == "g" && row < MB_NZ {
+      cells := pack_field(line, 1);
+      if cells.count != MB_NX { return false; }
+      for c, i: cells { b.open[row * MB_NX + i] = ifx c == '.' then cast(u8) 1 else cast(u8) 0; }
+      row += 1;
+    }
+    else if what == "recipe" {
+      b.recipe = mb_raw(pack_field(line, 1)); b.output = mb_raw(pack_field(line, 2));
+      f := 3;
+      while pack_field(line, f).count > 0 && b.item_n < MB_ITEMS {
+        b.items[b.item_n] = MbItem.{id = mb_raw(pack_field(line, f)), need = pack_number(pack_field(line, f + 1)), stack = 64};
+        b.item_n += 1; f += 2;
+      }
+    }
+  }
+  // Each ingredient's name and stack from its item line (after the recipe).
+  at = 0;
+  for k: 0..<catalog.count {
+    if catalog[k] != '\n' { continue; }
+    line := catalog[at..<k]; at = k + 1;
+    if pack_field(line, 0) != "item" { continue; }
+    for i: 0..<b.item_n {
+      id := b.items[i].id;
+      if cast(string) id.b[0..<id.n] != pack_field(line, 1) { continue; }
+      b.items[i].stack = pack_number(pack_field(line, 2)); b.items[i].name = mb_name(pack_field(line, 3));
+    }
+  }
+  if !grid || row != MB_NZ || b.item_n == 0 || b.recipe.n == 0 { return false; }
+  for i: 0..<b.item_n { if b.items[i].need < 1 || b.items[i].stack < 1 || b.items[i].name.n == 0 { return false; } }
+  b.ready = true;
+  s[0] = b;
+  mb_stock(s);
+  mb_say(s, "EDIT BAY READY / ", "SPAWN OR CRAFT A MICRODUCK");
+  return true;
+}
+// The starting stock: two recipes' worth (the farm gives her enough for two, rules/recipes.coax).
+mb_stock :: (s: [] MbBay) { for i: 0..<s[0].item_n { s[0].items[i].have = s[0].items[i].need * 2; } s[0].crafted = 0; }
+
+// Is the floor at (x, z) open to a duck?
+mb_open :: (s: [] MbBay, x: f32, z: f32) -> bool {
+  if !(x >= MB_AREA_X0 && x <= MB_AREA_X1 && z >= MB_AREA_Z0 && z <= MB_AREA_Z1) { return false; }
+  i := cast(int) floor((x - s[0].gx) / s[0].cell); k := cast(int) floor((z - s[0].gz) / s[0].cell);
+  if i < 0 || k < 0 || i >= MB_NX || k >= MB_NZ { return false; }
+  return s[0].open[k * MB_NX + i] != 0;
+}
+mb_unit :: (s: [] MbBay) -> f32 { s[0].step += 1; return rand_unit(s[0].seed, 1, s[0].step); }
+// A yaw that faces the duck along (dx, dz). The Microduck walks along its own +x.
+mb_heading :: (dx: f32, dz: f32) -> f32 { return angle_atan2(-dz, dx); }
+mb_wrap :: (a: f32) -> f32 { v := a; while v > 3.14159265 { v -= 6.2831853; } while v < -3.14159265 { v += 6.2831853; } return v; }
+
+// A new wander target for duck i: an open point 1.5 to 5 m away that it can see along open cells.
+mb_target :: (s: [] MbBay, i: int) {
+  d := s[0].ducks[i];
+  for attempt: 0..<24 {
+    a := mb_unit(s) * 6.2831853; r := 1.5 + mb_unit(s) * 3.5;
+    tx := d.x + cos(a) * r; tz := d.z + sin(a) * r;
+    clear := true;
+    for k: 1..<9 { f := cast(f32) k / 8.0; if !mb_open(s, d.x + (tx - d.x) * f, d.z + (tz - d.z) * f) { clear = false; break; } }
+    if clear { s[0].ducks[i].tx = tx; s[0].ducks[i].tz = tz; s[0].ducks[i].moving = true; return; }
+  }
+  s[0].ducks[i].moving = false; s[0].ducks[i].wait = 0.5;
+}
+
+// Place n ducks: keep the ones there, and stand new ones on open floor in front of the bench.
+mb_spawn :: (s: [] MbBay, n: int) {
+  if !s[0].ready { return; }
+  want := ifx n < 0 then 0 else ifx n > MB_SPAWN_MAX then MB_SPAWN_MAX else n;
+  if want < s[0].count { s[0].count = want; }
+  ring := 0; k := 0;
+  while s[0].count < want && ring < 400 {
+    // a spiral of points 0.6 m apart round the spawn point
+    a := cast(f32) k * 2.39996; r := 0.6 * sqrt(cast(f32) k);
+    x := MB_SPAWN_X + cos(a) * r; z := MB_SPAWN_Z + sin(a) * r;
+    k += 1; ring += 1;
+    if !mb_open(s, x, z) || mb_crowded(s, x, z, 0.5) { continue; }
+    s[0].ducks[s[0].count] = MbDuck.{x = x, z = z, yaw = mb_heading(-1, 0) + (mb_unit(s) - 0.5) * 0.6, tx = x, tz = z, wait = mb_unit(s) * 1.5};
+    if s[0].mode == MB_WANDER { mb_target(s, s[0].count); s[0].ducks[s[0].count].moving = false; }
+    s[0].count += 1;
+  }
+  mb_say(s, "SPAWNED / ", ifx want == 1 then "1 MICRODUCK" else "MICRODUCKS ON THE BAY FLOOR");
+}
+mb_crowded :: (s: [] MbBay, x: f32, z: f32, r: f32) -> bool {
+  for i: 0..<s[0].count { dx := s[0].ducks[i].x - x; dz := s[0].ducks[i].z - z; if dx * dx + dz * dz < r * r { return true; } }
+  return false;
+}
+mb_mode :: (s: [] MbBay, mode: int) {
+  s[0].mode = mode;
+  for i: 0..<s[0].count {
+    s[0].ducks[i].moving = false; s[0].ducks[i].wait = ifx mode == MB_WANDER then mb_unit(s) * 0.8 else 0.0f32;
+  }
+  if mode == MB_LINE && s[0].count > 0 { mb_target(s, 0); }
+  mb_say(s, ifx mode == MB_WANDER then "WANDER / " else ifx mode == MB_LINE then "LINE / " else "STOP / ",
+    ifx mode == MB_WANDER then "EACH DUCK PICKS ITS OWN WAY" else ifx mode == MB_LINE then "THE DUCKS FOLLOW THE FIRST" else "EVERY DUCK STANDS");
+}
+// Back to the start: the same count re-placed in front of the bench, standing, and the stock refilled.
+mb_reset :: (s: [] MbBay) {
+  n := s[0].count; if n > MB_SPAWN_MAX { n = MB_SPAWN_MAX; }
+  s[0].count = 0; s[0].mode = MB_STOP; s[0].step = 0;
+  mb_spawn(s, n); mb_stock(s);
+  mb_say(s, "RESET / ", "DUCKS RE-PLACED, STOCK BACK TO TWO RECIPES");
+}
+// Craft one Microduck at the bench by the recipe: it takes the ingredients and steps out of the bench's front.
+mb_craft :: (s: [] MbBay) -> bool {
+  if !s[0].ready { return false; }
+  if s[0].count >= MB_MAX { mb_say(s, "BAY FULL / ", "40 MICRODUCKS AT MOST"); return false; }
+  for i: 0..<s[0].item_n { if s[0].items[i].have < s[0].items[i].need { mb_say(s, "NOT ENOUGH ", mb_item_text(s, i)); return false; } }
+  for i: 0..<s[0].item_n { s[0].items[i].have -= s[0].items[i].need; }
+  x := (s[0].bench_x0 + s[0].bench_x1) * 0.5 + (mb_unit(s) - 0.5) * 1.2;
+  z := s[0].bench_z0 - 0.45;
+  s[0].ducks[s[0].count] = MbDuck.{x = x, z = z, yaw = mb_heading(0, -1), tx = x, tz = z - 1.6 - mb_unit(s), moving = true};
+  s[0].count += 1; s[0].crafted += 1;
+  mb_say(s, "CRAFTED AT THE BENCH / ", mb_recipe_text(s));
+  return true;
+}
+// Refill: one more recipe's worth of every ingredient, up to its stack size.
+mb_refill :: (s: [] MbBay) {
+  for i: 0..<s[0].item_n { v := s[0].items[i].have + s[0].items[i].need; s[0].items[i].have = ifx v > s[0].items[i].stack then s[0].items[i].stack else v; }
+  mb_say(s, "REFILLED / ", "ONE MORE RECIPE OF PARTS");
+}
+
+// Walk duck i toward (tx, tz) at up to speed: turn toward it, then step forward if the floor is open.
+mb_walk :: (s: [] MbBay, i: int, tx: f32, tz: f32, speed: f32, dt: f32) -> bool {
+  d := s[0].ducks[i];
+  dx := tx - d.x; dz := tz - d.z; dist := sqrt(dx * dx + dz * dz);
+  if dist < 0.05 { return false; }
+  want := mb_heading(dx, dz); turn := mb_wrap(want - d.yaw); most := MB_TURN * dt;
+  if turn > most { turn = most; } if turn < -most { turn = -most; }
+  yaw := mb_wrap(d.yaw + turn);
+  step := speed * dt; if step > dist { step = dist; }
+  // slow down while facing away
+  facing := cos(mb_wrap(want - yaw)); if facing < 0.2 { step *= 0.2; } else { step *= facing; }
+  nx := d.x + cos(yaw) * step; nz := d.z - sin(yaw) * step;
+  s[0].ducks[i].yaw = yaw;
+  if !mb_open(s, nx, nz) { return false; }
+  s[0].ducks[i].x = nx; s[0].ducks[i].z = nz;
+  return true;
+}
+
+// One step of the crowd. Each duck says whether it walks this frame (its palette).
+mb_tick :: (s: [] MbBay, dt: f32) {
+  if !s[0].ready || !(dt > 0) { return; }
+  t := ifx dt > 0.05 then 0.05f32 else dt;
+  for i: 0..<s[0].count {
+    d := s[0].ducks[i];
+    walked := false;
+    if s[0].mode == MB_LINE && i > 0 {
+      lead := s[0].ducks[i - 1];
+      dx := lead.x - d.x; dz := lead.z - d.z; dist := sqrt(dx * dx + dz * dz);
+      if dist > MB_GAP {
+        // aim at the place one gap behind the duck ahead
+        k := (dist - MB_GAP) / dist;
+        walked = mb_walk(s, i, d.x + dx * k + dx * 0.001, d.z + dz * k + dz * 0.001, MB_FOLLOW * (ifx dist > MB_GAP * 2 then 1.0f32 else 0.7f32), t);
+      }
+    } else if d.moving {
+      walked = mb_walk(s, i, d.tx, d.tz, MB_WALK, t);
+      nd := s[0].ducks[i]; dx := nd.tx - nd.x; dz := nd.tz - nd.z;
+      if !walked || dx * dx + dz * dz < 0.01 {
+        s[0].ducks[i].moving = false; s[0].ducks[i].wait = 0.6 + mb_unit(s) * 2.0;
+        if !walked && s[0].mode != MB_STOP { s[0].ducks[i].wait = 0.1; }
+      }
+    } else if s[0].mode == MB_WANDER || (s[0].mode == MB_LINE && i == 0) {
+      s[0].ducks[i].wait -= t;
+      if s[0].ducks[i].wait <= 0 { mb_target(s, i); }
+    }
+    s[0].ducks[i].draws = ifx walked then 1 else 0;
+  }
+  // Ducks too close step apart, where the floor is open.
+  for i: 0..<s[0].count { for j: i + 1..<s[0].count {
+    a := s[0].ducks[i]; b := s[0].ducks[j];
+    dx := b.x - a.x; dz := b.z - a.z; d2 := dx * dx + dz * dz;
+    if d2 >= MB_APART * MB_APART { continue; }
+    dist := sqrt(d2); ux := ifx dist > 0.0001 then dx / dist else 1.0f32; uz := ifx dist > 0.0001 then dz / dist else 0.0f32;
+    push := (MB_APART - dist) * 0.5;
+    if mb_open(s, a.x - ux * push, a.z - uz * push) { s[0].ducks[i].x = a.x - ux * push; s[0].ducks[i].z = a.z - uz * push; }
+    if mb_open(s, b.x + ux * push, b.z + uz * push) { s[0].ducks[j].x = b.x + ux * push; s[0].ducks[j].z = b.z + uz * push; }
+  }}
+}
+
+#load "crowd-checks.coax" #test;
