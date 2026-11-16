@@ -33,7 +33,9 @@ import Foundation
     func lifecycle(_ code: Int32) { _ = oa_core_lifecycle(raw, mono, wall, Int64(code)); after?() }
     func launch(rejoin: String) { _ = oa_core_launch(raw, mono, wall, rejoin); after?() }
     /// A person's action the platform owns (the editor's text, a hardware Return).
-    func action(_ code: Int64, flag: Bool = false, text: String = "", more: String = "") { _ = oa_core_action(raw, mono, wall, code, flag ? 1 : 0, text, more); after?() }
+    @discardableResult func action(_ code: Int64, flag: Bool = false, text: String = "", more: String = "") -> Int64 {
+        let result = oa_core_action(raw, mono, wall, code, flag ? 1 : 0, text, more); after?(); return result
+    }
     func dirty(_ mask: Int64) -> Int64 { oa_core_dirty_take(raw, mask) }
     /// The conversation to rejoin at the next launch (app_host_keep): an ID, at most 193 bytes.
     func keep() -> String {

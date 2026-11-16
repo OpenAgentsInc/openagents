@@ -40,8 +40,11 @@ for remote calls. `--inspect-resident` is a separate explicit, hidden check:
 it discovers the installed service and makes only DescribeEnvironment and
 ListSessions requests, decoded by the existing Coax codec. On 2026-11-16 it
 authenticated to the actual Mac service and read 16 session summaries; no
-turn was started and no transcript or private bytes were logged. Running-turn
-detach still needs end-to-end qualification.
+turn was started and no transcript or private bytes were logged. `--inspect-resident-turn` is a separate explicit opt-in check that sends one
+marker-only Claude turn through the shared core, closes the hidden GUI while
+the actual service reports busy, then opens a new GUI/core and rejoins the
+retained session. That real installed-service check passed on 2026-11-16;
+it requested no tool calls and logs no transcript or account credentials.
 
 `AppCoreC` and `AppRuntime` are shared with iOS. `KitEditorMac` owns active
 AppKit composition and selection; `KitPasskey` uses AuthenticationServices'
@@ -55,7 +58,7 @@ navigation rather than losing its sole owner. Row IDs include the full
 host/session identity and remain stable through catalog reorder.
 
 Remaining before this becomes the default desktop application: existing preference/reference migration,
-production signing/passkey ceremonies, real VoiceOver and closing the GUI during a running turn. Linux
+production signing/passkey ceremonies, real VoiceOver. Running-turn GUI detach/rejoin now passes its explicit live check. Linux
 still needs its shared-core service adapter and AT-SPI bridge. Do not delete
 the existing desktop clients on the strength of this qualification target.
 

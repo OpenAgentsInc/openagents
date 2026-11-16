@@ -18,17 +18,26 @@ private struct EmptyTokenStore: TokenStore {
 }
 @MainActor final class GPUAppDelegate: NSObject, NSApplicationDelegate {
     var controller: GPUWindow?
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+    var terminateOnClose = true
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { terminateOnClose }
     func applicationWillTerminate(_ notification: Notification) { controller?.retire() }
     func application(_ app: NSApplication, open urls: [URL]) { for url in urls where url.scheme == "openagents" && url.host == "pair" { AppDeviceLink.shared.opened(url.absoluteString) } }
 }
 @main struct GPUDesktopApp {
     @MainActor static func main() {
         let resident = CommandLine.arguments.contains("--inspect-resident")
-        let inspect = resident || CommandLine.arguments.contains("--inspect-controls") || CommandLine.arguments.contains("--inspect-program")
+        let turn = CommandLine.arguments.contains("--inspect-resident-turn")
+        let inspect = resident || turn || CommandLine.arguments.contains("--inspect-controls") || CommandLine.arguments.contains("--inspect-program")
         let app = NSApplication.shared; app.setActivationPolicy(inspect ? .prohibited : .regular)
-        let delegate = GPUAppDelegate(); app.delegate = delegate
+        let delegate = GPUAppDelegate(); delegate.terminateOnClose = !inspect; app.delegate = delegate
         guard let resources = Bundle.main.resourceURL?.appendingPathComponent("Components").path else { exit(2) }
+        if turn {
+            Task {
+                do { try await inspectResidentTurn(resources: resources, delegate: delegate); exit(0) }
+                catch { delegate.controller?.retire(); fputs(("Resident turn qualification: " + error.localizedDescription + "\n"), stderr); exit(1) }
+            }
+            app.run(); return
+        }
         do {
             let auth = inspect ? AppAuth(store: EmptyTokenStore(), device: nil) : AppAuth()
             let mac = !inspect || resident ? AppMacDevice() : nil
@@ -48,6 +57,30 @@ private struct EmptyTokenStore: TokenStore {
             app.run()
 
         } catch { fputs(("GPU app: " + error.localizedDescription + "\n"), stderr); exit(1) }
+    }
+    /// Explicit opt-in integration test. Uses the installed service and sends
+    /// one marker-only Claude turn. No account token, tool action or GUI is used.
+    @MainActor private static func inspectResidentTurn(resources: String, delegate: GPUAppDelegate) async throws {
+        let devices = AppMacDevice(), store = QualifyingViewStore()
+        _ = await withCheckedContinuation { continuation in devices.list { continuation.resume(returning: $0) } }
+        guard let host = devices.localPublicKey else { throw AppAuth.Failure.said("No installed resident service was found.") }
+        let marker = "OPENAGENTS_GPU_RESIDENT_" + UUID().uuidString.replacingOccurrences(of: "-", with: "")
+        var first: GPUWindow? = try GPUWindow(resources: resources, hidden: true, auth: AppAuth(store: EmptyTokenStore(), device: nil), devices: devices, store: store)
+        delegate.controller = first
+        try await first!.inspectUntil { oa_environment_stage(first!.runtime.core.raw, host, marker) > 0 }
+        guard first!.runtime.core.action(10, text: host, more: "This computer") == 1,
+              first!.runtime.core.action(1, text: "Reply exactly " + marker + ". Do not use tools or change files.") == 1,
+              first!.runtime.core.action(2) == 1 else { throw AppAuth.Failure.said("The core refused the single test turn.") }
+        first!.runtime.bridge.heard()
+        try await first!.inspectUntil { oa_environment_stage(first!.runtime.core.raw, host, marker) >= 3 }
+        guard oa_environment_stage(first!.runtime.core.raw, host, marker) == 3,
+              !first!.runtime.core.keep().isEmpty else { throw AppAuth.Failure.said("The turn completed before running-detach could be observed.") }
+        first!.window.close(); first!.retire(); delegate.controller = nil; first = nil
+        let second = try GPUWindow(resources: resources, hidden: true, auth: AppAuth(store: EmptyTokenStore(), device: nil), devices: devices, store: store)
+        delegate.controller = second
+        try await second.inspectUntil { oa_environment_stage(second.runtime.core.raw, host, marker) == 4 }
+        second.retire()
+        print("Mac resident: one actual Claude turn, GUI closed while busy, reopened/rejoined and exact assistant marker received; no tool calls requested")
     }
     @MainActor private static func inspectResident(_ devices: AppMacDevice) async throws {
         _ = await withCheckedContinuation { continuation in devices.list { continuation.resume(returning: $0) } }

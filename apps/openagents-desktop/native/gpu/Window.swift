@@ -119,6 +119,16 @@ import QuartzCore
         if op.hasPrefix("tap ") { _ = oc_activate(owner, String(op.dropFirst(4))); step(); return "" }
         var out = [CChar](repeating: 0, count: 65536); _ = oc_drive(owner, op, &out, Int32(out.count)); step(); return String(cString: out)
     }
+    /// SDK-only observer for hidden integration checks. Product scheduling
+    /// remains the core's sleeping effect timer and paused display link.
+    func inspectUntil(_ ready: () -> Bool) async throws {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(60))
+        while !ready() {
+            guard ContinuousClock.now < deadline else { throw AppAuth.Failure.said("The hidden SDK check reached its deadline.") }
+            step()
+            try await Task.sleep(for: .milliseconds(50))
+        }
+    }
     /// Real SDK qualification: no window is shown and no message or login request is sent.
     func inspectControls() throws {
         _ = drive("tap nav.menu"); _ = drive("clock +1000"); _ = drive("tap drawer.settings"); _ = drive("clock +1000")

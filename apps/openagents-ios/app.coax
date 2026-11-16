@@ -36,6 +36,28 @@ oa_root_resident_count :: (host:string,method:string,raw:string)->int #export_c 
  v:[1]EaView;if !oa_root_host_key(host) || !ea_view_read(raw,v[..]) || cast(string)v[0].host[0..<v[0].nh]!=host || cast(string)v[0].method[0..<v[0].nm]!=method || v[0].ne>0 {return -1;}return v[0].ns;
 }
 
+// Hidden SDK qualification observes public core state only. It never emits
+// transcript text, credentials or a command, and cannot change a session.
+#test "resident observer requires its exact host and an assistant marker, never the echoed user prompt" {
+ c:[1]AppCore;d:[1]DeviceLane;app_init(c[..]);#assert app_device_attach(c[..],d[..]);
+ h:="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+ #assert oa_root_resident_stage(c[..],h,"MARKER")==0;
+ d[0].np=1;for b,i:h {d[0].paired[0].host[i]=b;}#assert oa_root_resident_stage(c[..],h,"MARKER")==1;
+ #assert app_slot_set(c[0].environment[..],h,"Fixture");dl_select(c[..],h);e:=d[0].e[..];e[0].ns=ea_copy(e[0].session[..],"fixture");v:=e[0].view[..];v[0].nh=ea_copy(v[0].host[..],h);v[0].ni=1;
+ v[0].items[0].nr=ea_copy(v[0].items[0].role[..],"user");v[0].text_n=ea_copy(v[0].text[..],"MARKER");v[0].items[0].nt=6;
+ #assert oa_root_resident_stage(c[..],h,"MARKER")==2;
+ v[0].items[0].nr=ea_copy(v[0].items[0].role[..],"assistant");#assert oa_root_resident_stage(c[..],h,"MARKER")==4;
+ #assert oa_root_resident_stage(c[..],"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","MARKER")==0;
+}
+oa_root_resident_stage :: (c:[]AppCore,host:string,marker:string)->int #export_c #effects(all) {
+ if c.count<1 || dl_find(c,host)<0 {return 0;}
+ if !app_device_on(c) || app_environment(c)!=host {return 1;}
+ e:=app_device_env(c);if e[0].ns==0 {return 2;}v:=e[0].view[..];
+ if v[0].ne>0 {return -1;}if dl_e_busy(e) {return 3;}
+ for i:0..<v[0].ni {m:=v[0].items[i];if cast(string)m.role[0..<m.nr]=="assistant" && m.nk==0 && ea_item_text(v,i)==marker {return 4;}}
+ return 2;
+}
+
 
 // A dispatch answered APP_GUEST with no page to take it (core-host.c oa_core_on_guest: the chat page
 // routes the environment picker's reads itself): the root releases it.

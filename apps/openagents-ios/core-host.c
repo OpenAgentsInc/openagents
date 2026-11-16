@@ -64,6 +64,7 @@ int64_t oa_device_public(const uint8_t secret[32], uint8_t out[64]) { return dv_
 int oa_device_host(const char *key) {return oa_root_host_key(oa_cstr(key));}
 int32_t oa_environment_read(const char *method,const char *session,const char *before,uint8_t *out,int32_t cap) {return (int32_t)ea_read_body(oa_cstr(method),oa_cstr(session),oa_cstr(before),oa_out(out,cap));}
 int32_t oa_environment_count(const char *host,const char *method,const uint8_t *raw,int32_t size) {return (int32_t)oa_root_resident_count(oa_cstr(host),oa_cstr(method),oa_bytes((const char *)raw,size));}
+int32_t oa_environment_stage(void *core,const char *host,const char *marker) {return (int32_t)oa_root_resident_stage((coax_v_t_AppCore){core,core?1:0},oa_cstr(host),oa_cstr(marker));}
 int64_t oa_device_seal(void *work, int64_t op, const uint8_t secret[32], const char *host, const char *relay, const char *arg, int64_t epoch,
                        const uint8_t *params, int64_t params_n, int64_t now, const uint8_t random[96], uint8_t *out, int64_t cap) {
   return dv_seal(oa_work(work), op, oa_in(secret, 32), oa_cstr(host), oa_cstr(relay), oa_cstr(arg), epoch, oa_bytes((const char *)params, params_n), now, oa_in(random, 96), oa_out(out, cap));

@@ -132,7 +132,14 @@ links neither JavaScriptCore nor WebKit and contains no JS/Wasm/HTML or old
 native projection. Ten standalone Apple SDK tests cover identity custody,
 file storage and bounded resident-service carriage. A read-only probe of the
 installed Mac service authenticated and decoded DescribeEnvironment and
-16 session summaries; no turn was started.
+16 session summaries; that read-only probe started no turn. The subsequent
+explicit `--inspect-resident-turn` check passes against the installed service:
+one marker-only Claude turn, GUI closed while busy, a new GUI/core opened
+with the same public rejoin reference, and the exact assistant reply received.
+The test requests no tools, changes no files and prints no transcript,
+credentials or session reference. Its Coax observer refuses a mismatched
+host and never mistakes an echoed user prompt for the assistant's reply.
+The whole app root passes 1,328 checks after main's early-Send/slot fixes.
 
 The account/device drawer checks pass in debug and release, including
 ASan/UBSan. Backend nesting checks: GPU 40, surface 29, frame 62 and app

@@ -752,5 +752,8 @@ reply codecs and kernel-peer authentication. Remote calls still use
 The SDK retains failed/unknown outcomes, keeps request files owner-only and
 removes them after the bounded call. Ten Mac XCTest cases now include this
 adapter and the real process deadline/output limits. A separate effect-bridge
-check proves discovery cancellation, duplicate and retirement fencing. This
-is SDK qualification, not proof of a real resident-service chat or full G6.
+check proves discovery cancellation, duplicate and retirement fencing. The explicit hidden resident-turn check now sends one actual marker-only
+Claude turn through the shared core, closes the GUI while busy, creates a new
+GUI/core and rejoins the retained session until the exact assistant marker
+arrives. It passes without requesting tools or opening a visible window.
+This is real resident-service integration evidence, not full G6 acceptance.
