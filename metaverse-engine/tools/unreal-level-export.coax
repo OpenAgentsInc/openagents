@@ -1,0 +1,250 @@
+// tool.sh: stack-gib 2
+// The editor route of the Unreal importer (docs/unreal/2026-11-16-unreal-to-metaverse-engine-importer-spec.md,
+// section 4.2; GitHub #13647): writes one import bundle (metaverse-engine/import/unreal/BUNDLE.md, version 1)
+// for the maps a plan names, from a UE 5.9 project, and admits it with the importer's own checks.
+//   coax/web/tool.sh metaverse-engine/tools/unreal-level-export.coax PLAN.json PROJECT.uproject ENGINE_DIR NEW_DIR.aimport
+// Run from the repository root. PLAN.json is a world.unreal.source.v1 plan (plan.coax) with route "editor":
+// its maps are exported, its SHA-256 becomes the manifest's source.plan_sha256, and when it names a
+// revision the project's git HEAD must be that revision. NEW_DIR.aimport must not exist and must be under
+// ~/.openagents (the content is the project owner's; it never goes into a repository).
+// Steps: admits the plan; refuses a project whose tracked files differ from its revision (export from a
+// clean worktree); copies the AethyrBridge plugin into PROJECT_DIR/Plugins (its UAethyrEditorChecks reads
+// convex hulls and skeletons, which Python cannot) and builds the project's editor target; runs
+// metaverse-engine/import/unreal/export_level.py in a headless editor with a renderer (material baking
+// needs one; -RenderOffscreen, never -nullrhi) under a time limit, waiting on the editor's own process
+// id; reads the editor's log (NEW_DIR.aimport.log beside the bundle) for the script's verdict, because
+// the editor exits 0 when a Python script fails; checks that no tracked project file changed; and admits
+// the bundle as unreal-level-import does (bundle.coax: the manifest, every file's size and SHA-256
+// against the disk, skipped.json), with every id inside the plan's folders and its origin matching its
+// folder's licence.
+// Exit 0: the bundle is whole. 1: a step failed (the partial bundle is removed, the log is kept). 2: usage.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../anim/export-policy.coax";
+#load "../import/unreal/plan.coax";
+#load "../import/unreal/files.coax";
+
+ULE_EDITOR_MS :: 7200000;
+ULE_BUILD_MS :: 3600000;
+ULE_MANIFEST :: 33554432; ULE_NODES :: 600000; ULE_FILE :: 33554432; ULE_LOG :: 67108864;
+
+ule_cat :: (a: string, b: string, out: [] u8) -> string {
+  if a.count + b.count > out.count { return ""; }
+  for c, k: a { out[k] = c; }
+  for c, k: b { out[a.count + k] = c; }
+  return cast(string) out[0..<a.count + b.count];
+}
+ule_find :: (text: string, needle: string, from: int) -> int {
+  if needle.count == 0 || needle.count > text.count { return -1; }
+  i := from;
+  while i + needle.count <= text.count {
+    same := true;
+    for c, k: needle { if text[i + k] != c { same = false; break; } }
+    if same { return i; }
+    i += 1;
+  }
+  return -1;
+}
+ule_read :: (path: string, out: [] u8) -> int #effects(all) {
+  n := fs_size(path);
+  if n < 0 || n > out.count { return -1; }
+  return ifx fs_read(path, out[0..<n]) == n then n else -1;
+}
+
+// The script's verdict in the editor's log: 0 done, 1 failed, 2 neither (the editor stopped early).
+// A Python error anywhere also fails, since the editor itself exits 0 after one.
+ule_verdict :: (text: string) -> int {
+  if ule_find(text, "AIMPORT_FAILED", 0) >= 0 || ule_find(text, "LogPython: Error", 0) >= 0 { return 1; }
+  return ifx ule_find(text, "AIMPORT_DONE", 0) >= 0 then 0 else 2;
+}
+#test "the log's verdict" {
+  #assert ule_verdict("x\nLogPython: AIMPORT AIMPORT_DONE meshes=1\n") == 0;
+  #assert ule_verdict("LogPython: Error: AIMPORT_FAILED no maps\n") == 1;
+  #assert ule_verdict("AIMPORT_DONE\nLogPython: Error: Traceback\n") == 1;
+  #assert ule_verdict("LogInit: started\n") == 2 && ule_verdict("") == 2;
+}
+
+// The plan's maps as the script's AIMPORT_MAPS value: comma-separated, in the plan's order; "" when they don't fit.
+ule_maps :: (p: [] UpPlan, out: [] u8) -> string #effects(all) {
+  n := 0;
+  for k: 0..<p[0].maps {
+    m := up_text(p[0].map[k..<k+1]);
+    if n + m.count + 1 > out.count { return ""; }
+    if k > 0 { out[n] = ','; n += 1; }
+    for c: m { out[n] = c; n += 1; }
+  }
+  return cast(string) out[0..<n];
+}
+#test "a plan's maps for the script" {
+  p: [1] UpPlan;
+  plan := "{\"schema\":\"world.unreal.source.v1\",\"name\":\"x\",\"title\":\"X\",\"profile\":\"level\",\"route\":\"editor\",\"project\":\"/X\",\"revision\":null,\"maps\":[\"/Game/A/L_One\",\"/Game/B/L_Two\"],\"take\":\"map\",\"folders\":[{\"path\":\"/Game/\",\"licence\":\"project\"}],\"output\":\"private\",\"budget\":1000}";
+  #assert up_admit(plan, p[..]) == UP_OK && p[0].route == UP_EDITOR;
+  out: [64] u8;
+  #assert ule_maps(p[..], out[..]) == "/Game/A/L_One,/Game/B/L_Two";
+  #assert ule_maps(p[..], out[0..<10]) == "";
+}
+
+// Runs a program with no pipes (Unreal's helpers outlive a pipe's reader) and waits on its own process
+// id: its exit status, or -1 when it did not start or ran past the limit (then it is killed).
+ule_run :: (args: [] string, env: [] string, timeout_ms: int) -> int #effects(all) {
+  h := proc_new(); if h < 0 { return -1; }
+  defer { released := proc_release(h); }
+  ok := proc_quiet(h);
+  for a: args { ok = ok && proc_arg(h, a); }
+  for e: env { ok = ok && proc_env(h, e); }
+  if !ok || proc_start(h) != 0 { return -1; }
+  status := proc_wait(h, timeout_ms);
+  if status == PROC_RUNNING { killed := proc_kill(h, PROC_SIGKILL); status = proc_wait(h, 5000); return -1; }
+  return status;
+}
+// A git command's output into out, or "<failed>".
+ule_git :: (dir: string, a: string, b: string, c: string, out: [] u8) -> string #effects(all) {
+  err: [4096] u8;
+  args := [6] string.["/usr/bin/git", "-C", dir, a, b, c];
+  r := proc_run(args[..], 60000, out, err[..]);
+  if r.started != 0 || r.status != 0 || r.cut { return "<failed>"; }
+  return cast(string) out[0..<r.out_n];
+}
+
+ule_fail :: (why: string) -> int #effects(all) { print("unreal-level-export: %\n", why); return 1; }
+
+// Admits the bundle at dir as unreal-level-import does, and every id against the plan's folders.
+// Returns "" or the first fault; files[0] gets the listed files' count.
+ule_admit :: (dir: string, plan: [] UpPlan, plan_sha: string, files: [] int, why: [] u8) -> string #effects(all) {
+  text: [ULE_MANIFEST] u8; nodes: [ULE_NODES] JvNode; at: [AB_ROWS] int; d: [1] Jv; bb: [1] AbBundle; fault: [1] AbFault;
+  mp: [4096] u8; tn := ule_read(fs_join(dir, "manifest.json", mp[..]), text[..]);
+  if tn < 0 { return "manifest.json is missing or over the manifest limit"; }
+  if ab_admit(cast(string) text[0..<tn], d[..], nodes[..], at[..], bb[..], fault[..]) != AB_OK { return ab_why(fault[..], why); }
+  b := bb[..]; dd := b[0].d;
+  disk: [UF_DISK_MAX] AbDisk; scratch: [ULE_FILE] u8; badname: [256] u8;
+  nd := uf_disk(dir, disk[..], scratch[..], badname[..]);
+  if nd < 0 { return "the bundle's files can't be listed: a folder the format doesn't have, a file over the file limit, or one that can't be read"; }
+  if ab_disk(b, disk[0..<nd], fault[..]) != AB_OK { return ab_why(fault[..], why); }
+  skip_text: [4194304] u8; sk_nodes: [131072] JvNode; skd: [1] Jv;
+  sn := ule_read(fs_join(dir, "skipped.json", mp[..]), skip_text[..]);
+  if sn < 0 || ab_skipped(cast(string) skip_text[0..<sn], skd[..], sk_nodes[..], fault[..]) < 0 { return "skipped.json is missing or out of its form"; }
+  if !(plan_sha == ab_field(dd, jv_get(dd, 0, "source"), "plan_sha256")) { return "source.plan_sha256 is not the plan's SHA-256"; }
+  lists := [8] AbList.[b[0].meshes, b[0].skeletal, b[0].skeletons, b[0].animations, b[0].materials, b[0].textures, b[0].sounds, b[0].maps];
+  for l: lists { for k: 0..<l.count {
+    r := ab_row(b, l, k); id := ab_id(dd, r); lic := up_licence(plan, id); origin := ab_field(dd, r, "origin");
+    if lic == UP_REFUSED { print("unreal-level-export: refused: %\n", id); return "an id outside the plan's folders, in a refused folder, or MetaHuman content"; }
+    if origin.count > 0 && (lic == UP_ENGINE) != (origin == "engine") { print("unreal-level-export: %\n", id); return "an asset's origin doesn't match its folder's licence in the plan"; }
+  } }
+  files[0] = b[0].files.count;
+  return "";
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 4 {
+    print("usage: unreal-level-export PLAN.json PROJECT.uproject ENGINE_DIR NEW_DIR.aimport   (run from the repository root)\n");
+    return 2;
+  }
+  // the plan
+  pt: [65536] u8; pn := ule_read(args_at(a[..], 0), pt[..]);
+  if pn < 0 { return ule_fail("could not read the plan"); }
+  plan: [1] UpPlan;
+  code := up_admit(cast(string) pt[0..<pn], plan[..]);
+  if code != UP_OK { print("unreal-level-export: the plan is refused: %\n", UP_WHY[code]); return 1; }
+  if plan[0].route != UP_EDITOR { return ule_fail("the plan's route is not \"editor\""); }
+  plan_sha_buf: [64] u8; _ = uf_sha_hex(pt[0..<pn], plan_sha_buf[..]); plan_sha := cast(string) plan_sha_buf[..];
+  maps_buf: [16384] u8; maps := ule_maps(plan[..], maps_buf[..]);
+  if maps == "" { return ule_fail("the plan's maps do not fit"); }
+
+  b0: [4096] u8; b1: [4096] u8; b2: [4096] u8; b3: [4096] u8; b4: [4096] u8; b5: [4096] u8;
+  project := fs_realpath(args_at(a[..], 1), b0[..]);
+  name := fs_base(project);
+  if project == "" || fs_kind(project) != FS_FILE || name.count < 10 || ule_find(name, ".uproject", 0) != name.count - 9 { return ule_fail("the second argument is an existing .uproject file"); }
+  stem := name[0..<name.count - 9];
+  project_dir := fs_dir(project);
+  engine := fs_realpath(args_at(a[..], 2), b1[..]);
+  ubt := fs_join(engine, "Engine/Build/BatchFiles/RunUBT.sh", b2[..]);
+  if engine == "" || fs_kind(ubt) != FS_FILE { return ule_fail("ENGINE_DIR has no Engine/Build/BatchFiles/RunUBT.sh"); }
+  platform := ifx tool_os() == TOOL_LINUX then "Linux" else "Mac";
+  e0: [256] u8; editor_buf: [4096] u8;
+  editor := fs_join(engine, ule_cat(ule_cat("Engine/Binaries/", platform, e0[..]), "/UnrealEditor-Cmd", b3[..]), editor_buf[..]);
+  if fs_kind(editor) != FS_FILE { return ule_fail("ENGINE_DIR has no built UnrealEditor-Cmd"); }
+  script := fs_realpath("metaverse-engine/import/unreal/export_level.py", b4[..]);
+  plugin := fs_realpath("metaverse-engine/export/unreal/AethyrBridge", b5[..]);
+  if script == "" || plugin == "" { return ule_fail("run from the repository root: metaverse-engine/import/unreal/export_level.py was not found"); }
+
+  // the destination: new, under the owner's private root
+  home: [4096] u8; root_buf: [4096] u8; canonical_root: [4096] u8; parent_buf: [4096] u8; dest_buf: [4096] u8;
+  private_root := fs_realpath(fs_join(proc_getenv("HOME", home[..]), ".openagents", root_buf[..]), canonical_root[..]);
+  wanted := args_at(a[..], 3);
+  parent := fs_realpath(fs_dir(wanted), parent_buf[..]);
+  leaf := fs_base(wanted);
+  if parent == "" || !anim_export_path(parent, private_root, leaf) { return ule_fail("NEW_DIR.aimport must be under ~/.openagents (the content is private)"); }
+  if leaf.count < 9 || ule_find(leaf, ".aimport", 0) != leaf.count - 8 { return ule_fail("the bundle's folder name ends in .aimport"); }
+  dest := fs_join(parent, leaf, dest_buf[..]);
+  if fs_kind(dest) != FS_NONE { return ule_fail("NEW_DIR.aimport exists already; the tool never writes into an existing folder"); }
+  log_buf: [4200] u8; log_path := ule_cat(dest, ".log", log_buf[..]);
+  removed_log := fs_remove(log_path);
+
+  // a clean worktree at the plan's revision
+  rev_buf: [256] u8; dirty_buf: [65536] u8;
+  revision := ule_git(project_dir, "rev-parse", "--verify", "HEAD", rev_buf[..]);
+  if revision == "<failed>" || revision.count < 40 { revision = ""; } else { revision = revision[0..<40]; }
+  plan_rev := up_text(plan[0].revision[..]);
+  if plan_rev != "" && plan_rev != revision { print("unreal-level-export: the plan names %, the project is at %\n", plan_rev, revision); return ule_fail("the project is not at the plan's revision"); }
+  if revision == "" { print("unreal-level-export: the project is not a git checkout; source.revision is null\n"); }
+  else {
+    dirty := ule_git(project_dir, "status", "--porcelain", "--untracked-files=no", dirty_buf[..]);
+    if dirty != "" { print("%\n", dirty); return ule_fail("tracked project files differ from the revision: export from a clean worktree"); }
+  }
+
+  // the plugin, built into the project's editor target
+  plugins_buf: [4200] u8; plugins := fs_join(project_dir, "Plugins", plugins_buf[..]);
+  made := fs_mkdir(plugins);
+  empty: [1] string; none := empty[0..<0];
+  copy := [4] string.["/bin/cp", "-R", plugin, plugins];
+  if ule_run(copy[..], none, 60000) != 0 { return ule_fail("could not copy the AethyrBridge plugin into the project"); }
+  t0: [256] u8; t1: [4200] u8;
+  print("unreal-level-export: building %Editor for %\n", stem, platform);
+  build := [9] string.["/bin/bash", ubt, ule_cat(stem, "Editor", t0[..]), platform, "Development", ule_cat("-project=", project, t1[..]), "-NoHotReload", "-NoHotReloadFromIDE", "-WaitMutex"];
+  if ule_run(build[..], none, ULE_BUILD_MS) != 0 { return ule_fail("the project did not build (run RunUBT.sh by hand to see why)"); }
+
+  // the export
+  if !fs_mkdir(dest) { return ule_fail("could not create NEW_DIR.aimport"); }
+  keep := false;
+  defer { if !keep { wipe := [3] string.["/bin/rm", "-rf", dest]; gone := ule_run(wipe[..], none, 60000); } }
+  v0: [4300] u8; v1: [16500] u8; v2: [512] u8; v3: [256] u8; v4: [256] u8; v5: [4300] u8; v6: [4300] u8;
+  env := [5] string.[ule_cat("AIMPORT_OUT=", dest, v0[..]), ule_cat("AIMPORT_MAPS=", maps, v1[..]), ule_cat("AIMPORT_PROJECT=", stem, v2[..]),
+                     ule_cat("AIMPORT_REVISION=", revision, v3[..]), ule_cat("AIMPORT_PLAN_SHA256=", plan_sha, v4[..])];
+  run := [9] string.[editor, project, ule_cat("-ExecutePythonScript=", script, v5[..]), "-unattended", "-nosplash", "-RenderOffscreen", "-nosound", "-NoSourceControl", ule_cat("-abslog=", log_path, v6[..])];
+  print("unreal-level-export: exporting % maps in a headless editor (log %)\n", plan[0].maps, log_path);
+  status := ule_run(run[..], env[..], ULE_EDITOR_MS);
+  // the editor leaves an empty Lore.log beside its -abslog file
+  lore_buf: [4200] u8; lore_gone := fs_remove(fs_join(parent, "Lore.log", lore_buf[..]));
+  log_text: [ULE_LOG] u8; ln := ule_read(log_path, log_text[..]);
+  if ln < 1 { print("unreal-level-export: the editor wrote no log (exit status %)\n", status); return 1; }
+  logged := cast(string) log_text[0..<ln];
+  verdict := ule_verdict(logged);
+  if status != 0 || verdict != 0 {
+    at := ule_find(logged, "AIMPORT_FAILED", 0);
+    if at >= 0 { end := at; while end < ln && logged[end] != '\n' { end += 1; } print("unreal-level-export: %\n", logged[at..<end]); }
+    print("unreal-level-export: editor exit status %, verdict % (0 done, 1 failed, 2 no verdict); see %\n", status, verdict, log_path);
+    return 1;
+  }
+  if revision != "" {
+    dirty := ule_git(project_dir, "status", "--porcelain", "--untracked-files=no", dirty_buf[..]);
+    if dirty != "" { print("%\n", dirty); return ule_fail("the editor changed tracked project files"); }
+  }
+  // admission, as the importer admits it
+  files: [1] int; why: [512] u8;
+  fault := ule_admit(dest, plan[..], plan_sha, files[..], why[..]);
+  if fault != "" { print("unreal-level-export: the bundle is refused: %\n", fault); return 1; }
+  at := 0;
+  while true {
+    at = ule_find(logged, "AIMPORT COUNT ", at);
+    if at < 0 { break; }
+    end := at; while end < ln && logged[end] != '\n' { end += 1; }
+    print("%\n", logged[at + 7..<end]); at = end;
+  }
+  done := ule_find(logged, "AIMPORT_DONE", 0); end := done; while end < ln && logged[end] != '\n' { end += 1; }
+  print("%\n", logged[done..<end]);
+  print("unreal-level-export: ok, admitted (% files), bundle %\n", files[0], dest);
+  keep = true;
+  return 0;
+}

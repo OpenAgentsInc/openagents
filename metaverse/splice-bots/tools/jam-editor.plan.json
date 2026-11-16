@@ -1,0 +1,32 @@
+{
+  "schema": "world.unreal.source.v1",
+  "name": "splice-bots-jam-editor",
+  "title": "Splice Bots — Unreal jam project, editor route",
+  "profile": "level",
+  "route": "editor",
+  "project": "/SPLICEBOTS-jam",
+  "revision": "70c5badcd169ed2c2eb18774dc91da78e4e7129f",
+  "maps": [
+    "/Game/SpliceBots/Look/L_Look_01",
+    "/Game/SpliceBots/World/Maps/L_SolarFarm",
+    "/Game/SpliceBots/World/Maps/L_SolarFarm_GreekQuarter",
+    "/Game/World/Graybox/Bays/LI_Bay",
+    "/Game/World/Graybox/Bays/LI_Bay_Balcony",
+    "/Game/World/Graybox/L_Cabin",
+    "/Game/World/Graybox/L_Farm",
+    "/Game/World/Graybox/L_Lab",
+    "/Game/World/Graybox/L_Plain",
+    "/Game/World/Graybox/L_Ring"
+  ],
+  "take": "map",
+  "folders": [
+    {"path": "/Game/", "licence": "project"},
+    {"path": "/Game/Characters/Mannequins/", "licence": "engine"},
+    {"path": "/Game/LevelPrototyping/", "licence": "engine"},
+    {"path": "/Game/ThirdPerson/", "licence": "engine"},
+    {"path": "/Game/StarterContent/", "licence": "engine"},
+    {"path": "/Engine/", "licence": "engine"}
+  ],
+  "output": "private",
+  "budget": 268435456
+}
