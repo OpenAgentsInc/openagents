@@ -1,5 +1,9 @@
 # Microduck assembly film — #13643
 
+The follow-up [cinematic take two](take-2/README.md) adds a full rising orbit,
+a reassembly push-in and a settled tracking walk, recorded in 1080p60.
+The original take and its evidence follow.
+
 [Watch the recorded video](https://storage.googleapis.com/openagentsgemini-native-world-assets/objects/48916df893418bda111d5e61561f6d1640c67ad8e2a490ded962e9c90ce24250).
 The actual Coax Native Web viewer rendered all 1,080 frames on WebGPU
 (Apple Metal 3). The silent H.264 MP4 is 18 seconds at 1920×1080 and 60 fps,

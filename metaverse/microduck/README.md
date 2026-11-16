@@ -27,6 +27,11 @@ anchor keeps the lowest foot on its stand plane. It is a kinematic animation,
 without trained locomotion or contact/balance physics. **Pause animation**
 holds it; **Reset** restores the original scene.
 
+**Animation → Cinematic assembly + walk** is the second, 21-second take:
+a full rising orbit around the exploded parts, a push toward reassembly,
+then a settled tracking view for the walk. The original take stays available.
+[Recording and choreography](../../docs/verification/microduck-film-13643/take-2/README.md).
+
 ## Illustrative servo
 
 The floating menu now includes **Illustrative servo**: Baseline, Delayed
