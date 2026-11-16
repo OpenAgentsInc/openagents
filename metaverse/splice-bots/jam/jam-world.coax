@@ -184,7 +184,12 @@ sj_bind :: (g: [] SpGame, s: [] SjStore) {
   }
   g[0].jw_n = SJ_MAPS;
   g[0].jr[0] = s[0].jam[0];
+  // a run that began before the pack arrived (the page starts at once, the pack loads after) and still
+  // stands where the tables start it begins again at the jam's start
+  k := flw_first(g[0].c[0].starts[..], g[0].c[0].start_n);
+  fresh := k >= 0 && g[0].mode == M_PLAY && g[0].zone == Z_MINE && dist2(g[0].px, g[0].pz, sc_m(g[0].c[0].starts[k].x), sc_m(g[0].c[0].starts[k].z)) < 0.5;
   _ := g_places(g);
+  if fresh { _ = sj_begin(g); g_keep(g); }
 }
 // The landmarks the jam world moves: where a run starts (the farm's player start). The rest of the jam's
 // actors stand where the prototype's landmarks do (Sniper by its charger at the farm, the buried part before

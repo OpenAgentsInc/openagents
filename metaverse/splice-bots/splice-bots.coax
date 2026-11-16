@@ -262,6 +262,8 @@ splice_world_fact :: (s: [] Splice, k: int) -> int #export_c #effects(all) {
   if k == 7 { return we_cm(s[0].game[0].px); } if k == 8 { return we_cm(s[0].game[0].pz); }
   if k == 9 { return s[0].game[0].imp[0].gen; } if k == 10 { return s[0].game[0].imp[0].n; } if k == 11 { return s[0].imports_refused; }
   if k == 12 { return s[0].ld[0].mesh_n; } if k == 13 { return s[0].imports_n; }
+  if k == 14 { return we_cm(g_feet_y(s[0].game[..])); }
+  if k == 15 { return ifx s[0].game[0].jam then 1 else 0; }   // the game plays in the jam world (jam/jam-world.coax)   // her feet's height (metaverse/splice-bots/tools/jam-keys-check.coax)
   return -1;
 }
 // The world's import pack as it arrived (the page's data asset, GitHub #13420): read whole

@@ -58,6 +58,14 @@ SJT_CATALOG :: "world 1 jam-test\ntitle Jam test\nmap 0 /Game/SpliceBots/World/M
   _ = g_key(g[..], ' ', false);
   #assert abs(g_feet_y(g[..]) - 1) < 0.05;
 }
+#test "jam: a run that began before the pack arrived begins again at the jam's start" #steps 2000000000 #traversal 1000000000 {
+  s := [1] SjStore.[SjStore.{}];
+  #assert sj_load(s[..], SJT_CATALOG);
+  g := [1] SpGame.[SpGame.{}]; g_reset(g[..]); _ := spw_shipped(g[..]);
+  g_begin(g[..]); #assert g[0].mode == M_PLAY && abs(g[0].px + 800) > 1;
+  sj_bind(g[..], s[..]);
+  #assert abs(g[0].px + 800) < 0.01 && abs(g[0].pz + 105) < 0.01;
+}
 #test "jam: the whole run plays in the jam world, from the title to SCENE RESTORED" #steps 2000000000 #traversal 1000000000 {
   s := [1] SjStore.[SjStore.{}];
   #assert sj_load(s[..], SJT_CATALOG);
