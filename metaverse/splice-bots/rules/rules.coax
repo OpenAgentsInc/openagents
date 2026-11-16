@@ -39,6 +39,8 @@
 #load "enemy-plan.coax";
 #load "drill-mech.coax";
 #load "hardpoints.coax";
+#load "walk.coax";
+#load "anim-state.coax";
 
 #load "data-checks.coax" #test;
 #load "robot-payload-checks.coax" #test;
@@ -63,3 +65,5 @@
 #load "card-enemy-checks.coax" #test;
 #load "drill-mech-checks.coax" #test;
 #load "hardpoints-checks.coax" #test;
+#load "walk-checks.coax" #test;
+#load "anim-state-checks.coax" #test;

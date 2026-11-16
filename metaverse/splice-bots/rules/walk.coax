@@ -1,0 +1,289 @@
+// Splice Bots rules: her movement on foot (SpliceWalk.h, package R-02): the walk's velocity, sneak and
+// sprint pace, the jump and the double jump. The C++ was ported from the prototype (read only):
+//   metaverse/splice-bots/feel.coax          her feel constants (lines 13-59), fl_walk, fl_loc, fl_jump_tune
+//   metaverse/splice-bots/splice-game.coax   T_WALK (line 51), g_walk
+//   metaverse-engine/move/locomotion.coax    source_velocity, LocomotionProfile defaults
+//   metaverse-engine/move/stance.coax        sneak, sprint, double tap (lines 11-15)
+//   metaverse-engine/move/jump.coax          jump_step, jump_advance, JUMP_AIR (line 77)
+// This is a port of the C++ (the build's truth), not a load of the prototype: the tuning differs (15 Nov
+// playtest) and the C++ caps a frame's fixed steps. Nothing here collides: the game pushes her out of the
+// world after sr_walk_step and gives sr_jump_step the floor under her. Metres, seconds, radians. f32, as
+// the C++ (the checks compare exact f32 values).
+#load "night-exit.coax";   // sr_atan2_deg (FMath::Atan2)
+
+// FMath::Atan2 in radians.
+sr_atan2 :: (y: f32, x: f32) -> f32 { return cast(f32) (sr_atan2_deg(cast(f64) y, cast(f64) x) * PI_D / 180.0); }
+
+// FSpliceWalkTuning: every number her movement is tuned with, at the prototype's values except where
+// marked "15 Nov playtest" (Kiki: "jumps should go further, running should feel faster"; Docs/decisions/
+// LOG.md 2026-11-15). The prototype's value is in each comment. Sneak keeps its 2.52 m/s.
+SrWalkTuning :: struct {
+  walk_speed: f32 = 6.9;          // 15 Nov playtest (T_WALK 5.6, splice-game.coax:51), m/s on foot
+  accel: f32 = 68.0;              // 15 Nov playtest (FL_ACCEL 52), m/s^2 toward the asked speed
+  turn: f32 = 16.0;               // FL_TURN, /s (declared; fl_walk does not read it)
+  brake: f32 = 32.0;              // 15 Nov playtest (FL_BRAKE 26), m/s^2 braking on let-go
+  friction: f32 = 10.0;           // 15 Nov playtest (FL_FRICTION 9), /s
+  air: f32 = 0.9;                 // 15 Nov playtest (FL_AIR 0.75), share of accel kept in the air
+  air_friction: f32 = 3.0;        // 15 Nov playtest (FL_AIR_FRICTION 4), /s
+  air_brake: f32 = 7.0;           // 15 Nov playtest (FL_AIR_BRAKE 12), m/s^2
+  face: f32 = 18.0;               // FL_FACE, /s her body turns to her heading
+  gravity: f32 = 32.0;            // 15 Nov playtest (FL_GRAVITY 30), m/s^2 while she rises
+  fall_gravity_scale: f32 = 1.25; // 15 Nov playtest (the prototype has none: 1), gravity times this once she falls
+  jump_speed: f32 = 10.6;         // 15 Nov playtest (FL_JUMP 9), m/s up
+  cut: f32 = 0.45;                // FL_CUT, share of the rise kept on an early let-go
+  coyote: f32 = 0.1;              // FL_COYOTE, s
+  buffer: f32 = 0.12;             // FL_BUFFER, s
+  step: f32 = 0.3;                // FL_STEP, m
+  swing: f32 = 0.6;               // FL_SWING, rad
+  knee: f32 = 1.1;                // FL_KNEE, rad
+  stride: f32 = 1.9;              // FL_STRIDE, m per whole gait
+  stop: f32 = 0.4;                // FL_STOP, m/s
+  settle: f32 = 14.0;             // FL_SETTLE, /s
+  lean: f32 = 0.035;              // FL_LEAN
+  lean_max: f32 = 0.2;            // FL_LEAN_MAX
+  pitch: f32 = 0.006;             // FL_PITCH
+  pitch_max: f32 = 0.18;          // FL_PITCH_MAX
+  lean_ease: f32 = 14.0;          // FL_LEAN_EASE, /s
+  takeoff: f32 = 0.14;            // FL_TAKEOFF, s
+  stretch: f32 = 0.08;            // FL_STRETCH
+  fall_vy: f32 = -2.5;            // FL_FALL_VY, m/s
+  land: f32 = 0.12;               // FL_LAND, s
+  squash: f32 = 0.016;            // FL_SQUASH, per m/s of impact
+  crouch_swing: f32 = 0.4;        // FL_CROUCH_SWING, rad
+  crouch_hip: f32 = 0.7;          // FL_CROUCH_HIP, rad
+  crouch_knee: f32 = 1.3;         // FL_CROUCH_KNEE, rad
+  crouch_arm: f32 = 0.45;         // FL_CROUCH_ARM, rad
+  crouch_lean: f32 = 0.15;        // FL_CROUCH_LEAN
+  squash_max: f32 = 0.2;          // FL_SQUASH_MAX
+  soft: f32 = 3.0;                // FL_SOFT, m/s
+  deck: f32 = 16.0;               // FL_DECK, /s
+  board_lean: f32 = 0.7;          // FL_BOARD_LEAN
+  metric_height: f32 = 1.75;      // FL_M_HEIGHT, m
+  metric_board: f32 = 7.0;        // FL_M_BOARD, m/s
+  metric_board_fast: f32 = 22.0;  // FL_M_BOARD_FAST, m/s
+  tap: f32 = 0.3;                 // STANCE_TAP, s for a double tap of forward
+  sneak_pace: f32 = 0.365;        // 15 Nov playtest (STANCE_SNEAK_PACE 0.45): keeps sneak at 2.52 m/s
+  sprint_pace: f32 = 1.5;         // STANCE_SPRINT_PACE (sprint 10.35 m/s with the faster walk)
+  sneak_seen: f32 = 0.5;          // STANCE_SNEAK_SEEN
+  jump_air: f32 = 1.15;           // JUMP_AIR, share of jump_speed for the air jump
+  air_jumps: int = 1;             // fl_jump_tune, her double jump
+  ride_height: f32 = 0.4;         // locomotion.coax:13 ride_height, m
+  step_smooth: f32 = 10.0;        // locomotion.coax:13 step_smooth, /s
+  sink_limit: f32 = 0.05;         // locomotion.coax:14 sink_limit, m
+  braking_factor: f32 = 1.0;      // feel.coax:116, the factor fl_walk passes to source_velocity
+  fixed_step: f32 = 0.015625;     // 1/64 s, jump.coax:6-7, the engine's fixed step
+}
+
+SrVelocity :: struct { x: f32; z: f32; }
+// The sneak and sprint keys (stance.coax Stance).
+SrStance :: struct {
+  sneak: bool;          // sneak held (Left Shift)
+  hold: bool;           // sprint key held (Z)
+  fwd: bool;            // forward held
+  tapped: bool;         // forward double-tapped: fast until it lets go
+  since: f32 = 1000.0;  // s since forward last went down (STANCE_NEVER)
+}
+// A press of the jump control: each rise is one press, taken by the first step after it.
+SrJumpPress :: struct { held: bool; waiting: int; taken: int; }
+// The jump kept for her (jump.coax Jump).
+SrJump :: struct {
+  y: f32; prev_y: f32; vy: f32; on_ground: bool = true;
+  presses: SrJumpPress;
+  clock: f64;          // seconds accepted but not yet stepped
+  ticks: int;          // fixed steps run
+  air_jumps: int; air_used: int;
+  coyote: f32; buffer: f32; since_floor: f32; jumped: bool; waiting_time: f32;
+  landed: bool; impact: f32; cut: f32; cut_done: bool;
+}
+// Her walk across the ground: where she is, her velocity, and which way her body faces.
+SrWalkState :: struct {
+  x: f32; z: f32;
+  yaw: f32;       // the view's yaw
+  face_off: f32;  // her body's turn from the view (feel.coax:141-142)
+  vx: f32; vz: f32; speed: f32;
+}
+// Her whole state on foot over flat ground.
+SrOnFoot :: struct { walk: SrWalkState; jump: SrJump; stance: SrStance; }
+
+// Most fixed steps one frame runs (a long hitch does not replay seconds of jump).
+SR_WALK_MAX_STEPS_PER_FRAME :: 8;
+
+// ---- locomotion.coax source_velocity, line for line (UE CalcVelocity's scalar path); the prototype's
+// source_velocity computes the same. (x, z) the velocity now; (dx, dz) the unit direction asked; amount 0..1.
+sr_source_velocity :: (x: f32, z: f32, dx: f32, dz: f32, amount: f32, speed: f32, accel: f32, friction: f32, brake: f32, factor: f32, dt: f32) -> SrVelocity {
+  v := SrVelocity.{x = x, z = z}; old := v;
+  old_size := sqrt(x * x + z * z);
+  maximum := speed * amount;
+  ax := dx * accel * amount; az := dz * accel * amount;
+  zero := ax == 0.0 && az == 0.0;
+  over := old_size * old_size > maximum * maximum * 1.01;
+  if zero || over {
+    if old_size > 0.0 {
+      v.x += (0.0 - friction * factor * v.x - brake * x / old_size) * dt;
+      v.z += (0.0 - friction * factor * v.z - brake * z / old_size) * dt;
+      threshold : f32 = ifx brake > 0.0 then 0.01 else 0.00000001;
+      if v.x * x + v.z * z < 0.0 || v.x * v.x + v.z * v.z <= threshold { v = SrVelocity.{}; }
+      if over && v.x * v.x + v.z * v.z < maximum * maximum && ax * old.x + az * old.z > 0.0 { v.x = x / old_size * maximum; v.z = z / old_size * maximum; }
+    }
+  } else {
+    share : f32 = ifx friction * dt > 1.0 then 1.0 else friction * dt;
+    v.x -= (v.x - dx * old_size) * share;
+    v.z -= (v.z - dz * old_size) * share;
+  }
+  if !zero {
+    now := sqrt(v.x * v.x + v.z * v.z);
+    limit := ifx now * now > maximum * maximum * 1.01 then now else maximum;
+    v.x += ax * dt; v.z += az * dt;
+    size := sqrt(v.x * v.x + v.z * v.z);
+    if size > limit { v.x = v.x / size * limit; v.z = v.z / size * limit; }
+  }
+  return v;
+}
+
+// ---- stance.coax (the same rules as the prototype's stance_*, with the tap and paces from the tuning)
+sr_stance_sneak :: (s: SrStance, down: bool) -> SrStance { n := s; n.sneak = down; return n; }
+sr_stance_hold :: (s: SrStance, down: bool) -> SrStance { n := s; n.hold = down; return n; }
+sr_stance_forward :: (s: SrStance, down: bool, t: SrWalkTuning) -> SrStance {
+  n := s;
+  if down && !s.fwd { n.tapped = s.since <= t.tap; n.since = 0.0; }
+  if !down { n.tapped = false; }
+  n.fwd = down;
+  return n;
+}
+sr_stance_tick :: (s: SrStance, dt: f32) -> SrStance { n := s; if n.since < 1000.0 { n.since += dt; } return n; }
+sr_stance_fast :: (s: SrStance) -> bool { return !s.sneak && (s.hold || (s.tapped && s.fwd)); }
+sr_stance_pace :: (s: SrStance, t: SrWalkTuning) -> f32 { return ifx s.sneak then t.sneak_pace else ifx sr_stance_fast(s) then t.sprint_pace else 1.0; }
+sr_stance_noticed :: (s: SrStance, base: f32, more: f32, t: SrWalkTuning) -> f32 {
+  r := base + more;
+  if s.sneak { r *= t.sneak_seen; }
+  return ifx r > 0.0 then r else 0.0;
+}
+
+// ---- jump.coax. The engine's input edge (core/input.coax): a rise of the control is one press, a step
+// takes one waiting press.
+sr_input_level :: (p: SrJumpPress, down: bool) -> SrJumpPress { n := p; if down && !p.held { n.waiting += 1; } n.held = down; return n; }
+SrInputTake :: struct { edge: SrJumpPress; pressed: bool; }
+sr_input_take :: (p: SrJumpPress) -> SrInputTake {
+  o := SrInputTake.{edge = p};
+  if p.waiting > 0 { o.edge.waiting -= 1; o.edge.taken += 1; o.pressed = true; }
+  return o;
+}
+// A jump standing at y, with her tune (fl_jump_tune: one air jump, cut, coyote, buffer).
+sr_her_jump :: (y: f32, t: SrWalkTuning) -> SrJump {
+  return SrJump.{y = y, prev_y = y, air_jumps = t.air_jumps, cut = t.cut, coyote = t.coyote, buffer = t.buffer};
+}
+sr_jump_press :: (j: SrJump, down: bool) -> SrJump { n := j; n.presses = sr_input_level(j.presses, down); return n; }
+sr_jump_airborne :: (j: SrJump) -> bool { return !j.on_ground; }
+// The gravity a step applies for vy: gravity rising, gravity * fall_gravity_scale at the top and falling
+// (15 Nov playtest). The rise, and so sr_metric_jump, use gravity only.
+sr_gravity_at :: (vy: f32, t: SrWalkTuning) -> f32 { return ifx vy > 0.0 then t.gravity else t.gravity * t.fall_gravity_scale; }
+// One fixed step over a floor at ground.
+sr_jump_step :: (j: SrJump, t: SrWalkTuning, ground: f32, dt: f32) -> SrJump {
+  nx := j; nx.prev_y = j.y;
+  // jump_take
+  take := sr_input_take(j.presses);
+  vy := j.vy; on_ground := j.on_ground;
+  if take.pressed && j.on_ground { vy = t.jump_speed; on_ground = false; }
+  nx.presses = take.edge; nx.landed = false; nx.waiting_time = j.waiting_time - dt;
+  if j.on_ground { nx.air_used = 0; nx.since_floor = 0.0; nx.jumped = take.pressed; }
+  else { nx.since_floor = j.since_floor + dt; }
+  if take.pressed && !j.on_ground {
+    if !j.jumped && j.since_floor <= j.coyote { vy = t.jump_speed; nx.jumped = true; }   // just off an edge: a jump from it
+    else if j.air_used < j.air_jumps { vy = t.jump_speed * t.jump_air; nx.air_used = j.air_used + 1; }   // the double jump
+    else { nx.waiting_time = j.buffer; }   // held for the landing
+  }
+  if take.pressed { nx.cut_done = false; }
+  if !take.pressed && j.on_ground && j.waiting_time > 0.0 {   // the buffered press, now on the floor
+    vy = t.jump_speed; on_ground = false; nx.jumped = true; nx.waiting_time = 0.0; nx.cut_done = true;
+  }
+  if j.cut > 0.0 && !nx.cut_done && !on_ground && vy > 0.0 && !take.edge.held { vy *= j.cut; nx.cut_done = true; }   // let go while rising
+  // jump_settle
+  sy := j.y; svy := vy; s_on_ground := on_ground; falls := true;
+  above := j.y - ground;
+  if above <= t.ride_height && vy <= 0.0 {
+    if on_ground {
+      svy = 0.0;
+      k : f32 = ifx t.step_smooth * dt < 1.0 then t.step_smooth * dt else 1.0;
+      sy += (ground - j.y) * k; falls = false;
+    } else if above + vy * dt <= 0.0 { svy = 0.0; sy = ground; s_on_ground = true; falls = false; }
+  }
+  if falls { svy -= sr_gravity_at(vy, t) * dt; s_on_ground = false; }   // heavier once at the top or falling
+  nx.vy = svy; nx.on_ground = s_on_ground;
+  if s_on_ground && !on_ground { nx.landed = true; nx.impact = -vy; }
+  // jump_rise
+  ry := sy + svy * dt; floor_y := ground - t.sink_limit;
+  nx.y = ifx ry > floor_y then ry else floor_y;
+  return nx;
+}
+// A frame's time: runs the fixed steps that are due (at most SR_WALK_MAX_STEPS_PER_FRAME).
+sr_jump_advance :: (j: SrJump, t: SrWalkTuning, ground: f32, frame: f32) -> SrJump {
+  nx := j;
+  nx.clock = j.clock + cast(f64) (ifx frame > 0.0 then frame else 0.0);
+  step := cast(f64) t.fixed_step;
+  due := 0;
+  while nx.clock >= step && due < SR_WALK_MAX_STEPS_PER_FRAME { nx.clock -= step; due += 1; }
+  if due == SR_WALK_MAX_STEPS_PER_FRAME { nx.clock = fmin(nx.clock, step); }
+  landed := false;
+  for i: 0..<due {
+    clock := nx.clock; ticks := nx.ticks;
+    nx = sr_jump_step(nx, t, ground, t.fixed_step);
+    nx.clock = clock; nx.ticks = ticks + 1;
+    landed = landed || nx.landed;
+  }
+  nx.landed = landed;
+  return nx;
+}
+// Feet as drawn, between the last two steps.
+sr_jump_feet :: (j: SrJump, t: SrWalkTuning) -> f32 {
+  a := cast(f32) (j.clock / cast(f64) t.fixed_step);
+  a = ifx a < 0.0 then 0.0 else ifx a > 1.0 then 1.0 else a;
+  return j.prev_y + (j.y - j.prev_y) * a;
+}
+
+// ---- feel.coax fl_walk, without the world's push and the gait's poses.
+// go: forward minus back; side: right minus left; pace: her speed now (sr_walk_pace).
+sr_walk_step :: (w: SrWalkState, go: f32, side: f32, pace: f32, airborne: bool, t: SrWalkTuning, dt: f32) -> SrWalkState {
+  n := w; y := w.yaw;
+  wx := sin(y) * go - cos(y) * side;
+  wz := cos(y) * go + sin(y) * side;
+  ln := sqrt(wx * wx + wz * wz);
+  amount : f32 = ifx ln < 1.0 then ln else 1.0;
+  if ln > 0.0001 { wx /= ln; wz /= ln; }
+  v := sr_source_velocity(w.vx, w.vz, wx, wz, amount, pace,
+    ifx airborne then t.accel * t.air else t.accel,
+    ifx airborne then t.air_friction else t.friction,
+    ifx airborne then t.air_brake else t.brake,
+    t.braking_factor, dt);
+  n.x += v.x * dt; n.z += v.z * dt; n.vx = v.x; n.vz = v.z;
+  n.speed = sqrt(v.x * v.x + v.z * v.z);
+  // she turns to face the way you steer, never walking backwards
+  if ln > 0.0 {
+    want := sr_atan2(-side, go);
+    d := want - w.face_off;
+    d = sr_atan2(sin(d), cos(d));
+    k : f32 = ifx t.face * dt < 1.0 then t.face * dt else 1.0;
+    n.face_off = w.face_off + d * k;
+  }
+  return n;
+}
+// Her speed for this stance (splice-game.coax g_walk: T_WALK * d_pace).
+sr_walk_pace :: (s: SrStance, t: SrWalkTuning) -> f32 { return t.walk_speed * sr_stance_pace(s, t); }
+// Which way her body faces (splice-game.coax g_face, on foot).
+sr_face_yaw :: (w: SrWalkState) -> f32 { return w.yaw + w.face_off; }
+// A frame on foot over flat ground: the walk, then the jump (g_move), then the stance's time.
+sr_step_on_foot :: (s: SrOnFoot, go: f32, side: f32, ground: f32, t: SrWalkTuning, dt: f32) -> SrOnFoot {
+  n := s;
+  n.walk = sr_walk_step(s.walk, go, side, sr_walk_pace(s.stance, t), sr_jump_airborne(s.jump), t, dt);
+  n.jump = sr_jump_advance(s.jump, t, ground, dt);
+  n.stance = sr_stance_tick(s.stance, dt);
+  return n;
+}
+// Feet as drawn over flat ground (g_feet_y).
+sr_feet_y :: (s: SrOnFoot, ground: f32, t: SrWalkTuning) -> f32 { f := sr_jump_feet(s.jump, t); return ifx f > ground then f else ground; }
+
+// ---- feel.coax:55-59, the metrics (the 15 Nov playtest values; the prototype's FL_M_* in brackets).
+sr_metric_jump :: (t: SrWalkTuning) -> f32 { return t.jump_speed * t.jump_speed / (2.0 * t.gravity) - t.jump_speed / 128.0; }   // 1.67 m (1.28)
+sr_metric_double :: (t: SrWalkTuning) -> f32 { up := t.jump_speed * t.jump_air; return sr_metric_jump(t) + up * up / (2.0 * t.gravity) - up / 128.0; }   // 3.90 m (2.98)
+sr_metric_ledge :: (t: SrWalkTuning) -> f32 { return sr_metric_jump(t) + t.step; }   // 1.97 m (1.58)
+sr_metric_walk :: (t: SrWalkTuning) -> f32 { return t.walk_speed; }   // 6.9 m/s (5.6)
+sr_metric_sneak :: (t: SrWalkTuning) -> f32 { return t.walk_speed * t.sneak_pace; }   // 2.52 m/s

@@ -1,0 +1,87 @@
+// Parity checks for anim-state.coax: SpliceTests/Rules/SpliceAnimStateTests.cpp, every test ported.
+// rules.coax loads this file with `#load ... #test;`.
+
+AS_DT :: 0.016666667;
+as_on_ground :: (speed: f32) -> SrAnimInput { return SrAnimInput.{speed = speed}; }
+as_in_air :: (speed: f32, vy: f32) -> SrAnimInput { return SrAnimInput.{speed = speed, vertical_speed = vy, on_floor = false}; }
+as_near :: (a: f32, b: f32) -> bool { return abs(a - b) <= 0.00001; }
+
+#test "Splice.Rules.AnimState.Idle" {
+  t: SrWalkTuning;
+  a := sr_anim_step(SrAnim.{}, as_on_ground(0.0), t, AS_DT);
+  #assert a.state == SR_ANIM_IDLE && a.fraction == 0.0;
+  #assert sr_anim_step(SrAnim.{}, as_on_ground(t.stop * 0.5), t, AS_DT).state == SR_ANIM_IDLE;   // below stop is still idle
+}
+#test "Splice.Rules.AnimState.Walk" {
+  t: SrWalkTuning;
+  full := sr_anim_step(SrAnim.{}, as_on_ground(t.walk_speed), t, AS_DT);
+  #assert full.state == SR_ANIM_WALK && as_near(full.fraction, 1.0);
+  half := sr_anim_step(SrAnim.{}, as_on_ground(t.walk_speed * 0.5), t, AS_DT);
+  #assert half.state == SR_ANIM_WALK && as_near(half.fraction, 0.5);
+  #assert as_near(sr_anim_step(SrAnim.{}, as_on_ground(t.walk_speed * 2.0), t, AS_DT).fraction, 1.0);   // clamps at 1
+}
+#test "Splice.Rules.AnimState.SprintSneak" {
+  t: SrWalkTuning;
+  sprint_speed := t.walk_speed * t.sprint_pace; sneak_speed := t.walk_speed * t.sneak_pace;
+  sp := as_on_ground(sprint_speed); sp.sprinting = true;
+  s := sr_anim_step(SrAnim.{}, sp, t, AS_DT);
+  #assert s.state == SR_ANIM_SPRINT && as_near(s.fraction, 1.0);
+  sn := as_on_ground(sneak_speed * 0.5); sn.sneaking = true;
+  n := sr_anim_step(SrAnim.{}, sn, t, AS_DT);
+  #assert n.state == SR_ANIM_SNEAK && as_near(n.fraction, 0.5);
+  still := as_on_ground(0.0); still.sneaking = true;
+  #assert sr_anim_step(SrAnim.{}, still, t, AS_DT).state == SR_ANIM_SNEAK;   // sneaking still stays crouched
+  both := as_on_ground(sneak_speed); both.sneaking = true; both.sprinting = true;
+  #assert sr_anim_step(SrAnim.{}, both, t, AS_DT).state == SR_ANIM_SNEAK;    // sneak wins over sprint
+  held := as_on_ground(0.0); held.sprinting = true;
+  #assert sr_anim_step(SrAnim.{}, held, t, AS_DT).state == SR_ANIM_IDLE;     // sprint key held standing still
+}
+#test "Splice.Rules.AnimState.JumpFall" {
+  t: SrWalkTuning;
+  a := sr_anim_step(SrAnim.{}, as_on_ground(t.walk_speed), t, AS_DT);
+  #assert a.state == SR_ANIM_WALK;
+  // A jump: her rise slows under gravity, through the apex, then she falls.
+  vy := t.jump_speed; saw_up := false; saw_fall := false; fell_before_up := false; up_after_fall := false; other := false;
+  for i: 0..<60 {
+    a = sr_anim_step(a, as_in_air(t.walk_speed, vy), t, AS_DT);
+    if a.state == SR_ANIM_JUMP_UP { saw_up = true; if saw_fall { up_after_fall = true; } }
+    else if a.state == SR_ANIM_FALL { if !saw_up { fell_before_up = true; } saw_fall = true; }
+    else { other = true; }
+    vy -= t.gravity * AS_DT;
+  }
+  #assert saw_up && saw_fall && !fell_before_up && !up_after_fall && !other;
+  // At the apex band (between 0 and fall_vy) JumpUp holds.
+  #assert sr_anim_step(SrAnim.{state = SR_ANIM_JUMP_UP}, as_in_air(0.0, t.fall_vy * 0.5), t, AS_DT).state == SR_ANIM_JUMP_UP;
+  // Walking off a ledge (no rise) is Fall straight away.
+  #assert sr_anim_step(SrAnim.{}, as_in_air(t.walk_speed, 0.0), t, AS_DT).state == SR_ANIM_FALL;
+}
+#test "Splice.Rules.AnimState.Land" {
+  t: SrWalkTuning;
+  a := sr_anim_step(SrAnim.{state = SR_ANIM_FALL}, as_on_ground(0.0), t, AS_DT);
+  #assert a.state == SR_ANIM_LAND && as_near(a.land_left, t.land);
+  #assert sr_anim_step(SrAnim.{state = SR_ANIM_JUMP_UP}, as_on_ground(0.0), t, AS_DT).state == SR_ANIM_LAND;   // touching down while rising
+  // Land plays for FL_LAND, then the ground state takes over.
+  time : f32 = 0.0;
+  while a.state == SR_ANIM_LAND && time < 1.0 { a = sr_anim_step(a, as_on_ground(0.0), t, AS_DT); time += AS_DT; }
+  #assert a.state == SR_ANIM_IDLE;
+  #assert time >= t.land - 2.0 * AS_DT && time <= t.land + AS_DT;
+}
+#test "Splice.Rules.AnimState.Ride" {
+  t: SrWalkTuning;
+  for p: 0..<8 {
+    for mask: 0..<8 {
+      prev := SrAnim.{state = p, land_left = t.land};
+      in: SrAnimInput;
+      in.speed = t.metric_board;
+      in.on_floor = (mask & 1) != 0;
+      in.vertical_speed = ifx (mask & 1) != 0 then 0.0 else 3.0;
+      in.sneaking = (mask & 2) != 0;
+      in.sprinting = (mask & 4) != 0;
+      in.riding = true;
+      #assert sr_anim_step(prev, in, t, AS_DT).state == SR_ANIM_RIDE;
+    }
+  }
+  board := SrAnimInput.{speed = t.metric_board_fast * 0.5, riding = true};
+  #assert as_near(sr_anim_step(SrAnim.{}, board, t, AS_DT).fraction, 0.5);
+  #assert sr_anim_name(SR_ANIM_JUMP_UP) == "JumpUp" && sr_anim_name(SR_ANIM_RIDE) == "Ride";
+}

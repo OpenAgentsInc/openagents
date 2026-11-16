@@ -1,0 +1,139 @@
+// Parity checks for walk.coax: SpliceTests/Rules/SpliceWalkTests.cpp, every test ported. Those tests
+// were themselves ported from the prototype (splice-game.coax #tests at 1799, 2127, 2925, and
+// locomotion.coax's source_velocity check); what they left out needs the full game (her crouched poses,
+// the camera's eye, foe hostility, the board row and first character's height, the raider mech).
+// rules.coax loads this file with `#load ... #test;`.
+
+WK_PI :: 3.14159265;
+// Keys held, as splice-game.coax g_walk reads them.
+WkKeys :: struct { w: bool; s: bool; a: bool; d: bool; }
+wk_go :: (k: WkKeys) -> f32 { return (ifx k.w then 1.0 else 0.0) - (ifx k.s then 1.0 else 0.0); }
+wk_side :: (k: WkKeys) -> f32 { return (ifx k.d then 1.0 else 0.0) - (ifx k.a then 1.0 else 0.0); }
+// g_stage(5) with her at (x, z) facing yaw: standing, keys up.
+wk_stage :: (x: f32, z: f32, yaw: f32, t: SrWalkTuning) -> SrOnFoot {
+  s: SrOnFoot; s.walk.x = x; s.walk.z = z; s.walk.yaw = yaw; s.jump = sr_her_jump(0.0, t);
+  return s;
+}
+wk_step :: (s: SrOnFoot, k: WkKeys, t: SrWalkTuning, dt: f32) -> SrOnFoot { return sr_step_on_foot(s, wk_go(k), wk_side(k), 0.0, t, dt); }
+// feel checks' fl_open: (20, 12) facing PI, five frames at 60 Hz.
+wk_fl_open :: (t: SrWalkTuning) -> SrOnFoot {
+  s := wk_stage(20.0, 12.0, WK_PI, t); none: WkKeys;
+  for i: 0..<5 { s = wk_step(s, none, t, 1.0 / 60.0); }
+  return s;
+}
+wk_wrap :: (a: f32) -> f32 { return abs(sr_atan2(sin(a), cos(a))); }
+
+#test "Splice.Rules.Walk.SourceVelocity" {
+  dt : f32 = 1.0 / 64.0;
+  a := sr_source_velocity(0, 0, 0, 1, 1, 4.27, 5, 4, 10, 2, dt);
+  #assert a.x == 0.0 && a.z == 0.078125;
+  b := sr_source_velocity(0, 4.27, 0, 0, 0, 4.27, 5, 4, 10, 2, dt);
+  #assert abs(b.z - 3.58) < 0.000001;
+  c := sr_source_velocity(1, 0, 0, 1, 1, 4.27, 5, 4, 10, 2, dt);
+  #assert c.x == 0.9375 && c.z == 0.140625;
+  d := sr_source_velocity(0, 0.15, 0, 0, 0, 4.27, 5, 4, 10, 2, dt);
+  #assert d.x == 0.0 && d.z == 0.0;
+  e := sr_source_velocity(0.2, 0.3, 0, 0, 0, 4.27, 0, 0, 0, 2, dt);
+  #assert e.x == 0.2 && e.z == 0.3;
+  g := sr_source_velocity(1, 0, 0, 1, 1, 4.27, 5, 128, 10, 2, dt);
+  #assert g.x == 0.0 && g.z == 1.078125;
+  f := sr_source_velocity(0, 4.27, 0, 1, 1, 1.47, 5, 4, 10, 2, dt);
+  #assert abs(f.z - 3.58) < 0.000001;
+}
+
+#test "Splice.Rules.Walk.SneakSprint" {
+  t: SrWalkTuning;
+  s := wk_stage(0.0, 0.0, WK_PI, t); k: WkKeys;
+  // Shift: sneaking
+  s.stance = sr_stance_sneak(s.stance, true);
+  #assert sr_stance_pace(s.stance, t) == t.sneak_pace;
+  k.w = true; s.stance = sr_stance_forward(s.stance, true, t);
+  for i: 0..<50 { s = wk_step(s, k, t, 0.02); }
+  #assert -s.walk.z > sr_metric_sneak(t) * 0.9 && -s.walk.z < sr_metric_sneak(t) * 1.05;
+  k.w = false; s.stance = sr_stance_forward(s.stance, false, t); s.stance = sr_stance_sneak(s.stance, false);
+  #assert sr_stance_pace(s.stance, t) == 1.0;
+  // Z held: half as fast again
+  s = wk_stage(0.0, 0.0, WK_PI, t);
+  s.stance = sr_stance_hold(s.stance, true); s.stance = sr_stance_forward(s.stance, true, t);
+  k.w = true;
+  for i: 0..<50 { s = wk_step(s, k, t, 0.02); }
+  sprint := t.walk_speed * t.sprint_pace;
+  #assert -s.walk.z > sprint * 0.9 && -s.walk.z < sprint * 1.05;
+  s.stance = sr_stance_hold(s.stance, false); s.stance = sr_stance_forward(s.stance, false, t);
+  k.w = false; s = wk_step(s, k, t, 0.02);
+  #assert sr_stance_pace(s.stance, t) == 1.0;
+  // W W: a double tap sprints
+  s = wk_stage(0.0, 0.0, WK_PI, t);
+  s.stance = sr_stance_forward(s.stance, true, t);
+  s = wk_step(s, WkKeys.{w = true}, t, 0.02);
+  s.stance = sr_stance_forward(s.stance, false, t);
+  s = wk_step(s, WkKeys.{}, t, 0.02);
+  s.stance = sr_stance_forward(s.stance, true, t);
+  #assert sr_stance_pace(s.stance, t) == t.sprint_pace;
+  // sensing: from its notice, farther with Heat, half as far while she sneaks
+  notice : f32 = 5.0; heat_more : f32 = 60.0 * 0.07;
+  st: SrStance;
+  #assert sr_stance_noticed(st, notice, 0.0, t) == 5.0;
+  st = sr_stance_sneak(st, true);
+  #assert sr_stance_noticed(st, notice, 0.0, t) == 5.0 * t.sneak_seen;
+  #assert sr_stance_noticed(st, notice, heat_more, t) == (5.0 + heat_more) * t.sneak_seen;
+  st = sr_stance_sneak(st, false);
+  #assert sr_stance_noticed(st, notice, heat_more, t) == 5.0 + heat_more;
+}
+
+#test "Splice.Rules.Walk.FeelMetrics" {
+  t: SrWalkTuning; dt : f32 = 1.0 / 60.0; none: WkKeys;
+  for kind: 0..<2 {
+    s := wk_fl_open(t);
+    s.jump = sr_jump_press(s.jump, true);
+    top : f32 = 0.0; pressed := false; let_go := false;
+    for i: 0..<150 {
+      s = wk_step(s, none, t, dt);
+      if kind == 1 && let_go && !pressed { s.jump = sr_jump_press(s.jump, true); pressed = true; }
+      if !let_go && i > 1 && s.jump.vy <= 0.0 { s.jump = sr_jump_press(s.jump, false); let_go = true; }
+      fy := sr_feet_y(s, 0.0, t); if fy > top { top = fy; }
+    }
+    want := ifx kind == 0 then sr_metric_jump(t) else sr_metric_double(t);
+    #assert abs(top - want) < 0.08;
+  }
+  // 15 Nov playtest tuning (the prototype's were 1.28 and 2.98).
+  #assert abs(sr_metric_jump(t) - 1.67) < 0.01;
+  #assert abs(sr_metric_double(t) - 3.90) < 0.01;
+  #assert sr_metric_walk(t) == t.walk_speed;
+  // a tap hops: let go at once, she keeps FL_CUT of the rise
+  s := wk_fl_open(t);
+  s.jump = sr_jump_press(s.jump, true);
+  s = wk_step(s, none, t, dt);
+  s.jump = sr_jump_press(s.jump, false);
+  hop : f32 = 0.0;
+  for i: 0..<60 { s = wk_step(s, none, t, dt); fy := sr_feet_y(s, 0.0, t); if fy > hop { hop = fy; } }
+  #assert hop > 0.15 && hop < sr_metric_jump(t) * 0.35 && s.jump.on_ground;
+}
+
+#test "Splice.Rules.Walk.FaceAndDoubleJump" {
+  t: SrWalkTuning;
+  s := wk_stage(0.0, 0.0, WK_PI, t); k: WkKeys;
+  k.s = true;
+  for i: 0..<40 { s = wk_step(s, k, t, 0.02); }
+  #assert wk_wrap(sr_face_yaw(s.walk) - (s.walk.yaw + WK_PI)) < 0.05;   // walking toward the view: she faces it
+  k.s = false; k.d = true;
+  for i: 0..<40 { s = wk_step(s, k, t, 0.02); }
+  #assert wk_wrap(sr_face_yaw(s.walk) - (s.walk.yaw - WK_PI * 0.5)) < 0.05;   // walking right: she faces right
+  // a jump, and a jump with a second Space in the air
+  one : f32 = 0.0; none: WkKeys;
+  for kind: 0..<2 {
+    j := wk_stage(0.0, 0.0, WK_PI, t);
+    j = wk_step(j, none, t, 0.02);
+    j.jump = sr_jump_press(j.jump, true);
+    j = wk_step(j, none, t, 0.02);
+    top : f32 = 0.0;
+    for i: 0..<120 {
+      if i == 11 { j.jump = sr_jump_press(j.jump, false); }
+      if kind == 1 && i == 12 { j.jump = sr_jump_press(j.jump, true); }
+      if i == 40 { j.jump = sr_jump_press(j.jump, false); }
+      j = wk_step(j, none, t, 0.02);
+      fy := sr_feet_y(j, 0.0, t); if fy > top { top = fy; }
+    }
+    if kind == 0 { one = top; } else { #assert top > one * 1.6; }
+  }
+}

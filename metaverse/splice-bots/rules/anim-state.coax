@@ -1,0 +1,66 @@
+// Splice Bots rules: which pose family her body plays (SpliceAnimState.h, package M-07). Decision M-04
+// (Docs/decisions/M-04-anim-graph.md): scripted blend spaces from Epic's UE5 Mannequin clips, driven from
+// code. This picks the state and the blend-space input; the game's anim instance applies it. Thresholds
+// come from her feel (walk.coax, SrWalkTuning): stop, fall_vy, land, the stance paces. Metres, seconds.
+#load "walk.coax";
+
+// ESpliceAnimState. The order is mirrored by ESpliceAnimPose in SpliceGame.
+SR_ANIM_IDLE :: 0; SR_ANIM_WALK :: 1; SR_ANIM_SPRINT :: 2; SR_ANIM_SNEAK :: 3;
+SR_ANIM_JUMP_UP :: 4; SR_ANIM_FALL :: 5; SR_ANIM_LAND :: 6; SR_ANIM_RIDE :: 7;
+
+// What the game says about her movement this frame.
+SrAnimInput :: struct {
+  speed: f32;            // ground (horizontal) speed, m/s
+  vertical_speed: f32;   // m/s, up positive
+  on_floor: bool = true;
+  sneaking: bool;
+  sprinting: bool;
+  riding: bool;          // on the board (or any ride); wins over everything
+}
+// The state kept from frame to frame.
+SrAnim :: struct {
+  state: int = SR_ANIM_IDLE;
+  fraction: f32;    // blend-space input, 0..1: speed over the pace of this state
+  land_left: f32;   // s of the landing pose still to play
+}
+
+sr_anim_is_air :: (s: int) -> bool { return s == SR_ANIM_JUMP_UP || s == SR_ANIM_FALL; }
+sr_anim_name :: (s: int) -> string {
+  return ifx s == SR_ANIM_IDLE then "Idle" else ifx s == SR_ANIM_WALK then "Walk" else ifx s == SR_ANIM_SPRINT then "Sprint"
+    else ifx s == SR_ANIM_SNEAK then "Sneak" else ifx s == SR_ANIM_JUMP_UP then "JumpUp" else ifx s == SR_ANIM_FALL then "Fall"
+    else ifx s == SR_ANIM_LAND then "Land" else ifx s == SR_ANIM_RIDE then "Ride" else "?";
+}
+// The state on the ground, ignoring the landing pose. Sneaking, still or moving, is Sneak (the sneak blend
+// space starts at its crouch idle).
+sr_anim_ground :: (in: SrAnimInput, t: SrWalkTuning) -> int {
+  if in.sneaking { return SR_ANIM_SNEAK; }
+  if in.speed < t.stop { return SR_ANIM_IDLE; }
+  return ifx in.sprinting then SR_ANIM_SPRINT else SR_ANIM_WALK;
+}
+// In the air: rising is JumpUp, at or below fall_vy is Fall, the apex band keeps what she had.
+sr_anim_air :: (prev: int, in: SrAnimInput, t: SrWalkTuning) -> int {
+  if in.vertical_speed > 0.0 { return SR_ANIM_JUMP_UP; }
+  if in.vertical_speed <= t.fall_vy { return SR_ANIM_FALL; }
+  return ifx prev == SR_ANIM_JUMP_UP then SR_ANIM_JUMP_UP else SR_ANIM_FALL;
+}
+// The speed (m/s) at which the state's blend space reaches 1. Idle, Walk and the air states use walk_speed;
+// Sprint and Sneak their stance pace; Ride the fast board metric; Land the pace she lands into.
+sr_anim_full_speed :: (state: int, in: SrAnimInput, t: SrWalkTuning) -> f32 {
+  if state == SR_ANIM_SPRINT { return t.walk_speed * t.sprint_pace; }
+  if state == SR_ANIM_SNEAK { return t.walk_speed * t.sneak_pace; }
+  if state == SR_ANIM_RIDE { return t.metric_board_fast; }
+  if state == SR_ANIM_LAND { return ifx in.sneaking then t.walk_speed * t.sneak_pace else ifx in.sprinting then t.walk_speed * t.sprint_pace else t.walk_speed; }
+  return t.walk_speed;
+}
+// One frame: the previous state, this frame's movement, her tuning and the frame time.
+sr_anim_step :: (prev: SrAnim, in: SrAnimInput, t: SrWalkTuning, dt: f32) -> SrAnim {
+  o: SrAnim;
+  if in.riding { o.state = SR_ANIM_RIDE; }
+  else if !in.on_floor { o.state = sr_anim_air(prev.state, in, t); }
+  else if sr_anim_is_air(prev.state) { o.state = SR_ANIM_LAND; o.land_left = t.land; }
+  else if prev.state == SR_ANIM_LAND && prev.land_left - dt > 0.0 { o.state = SR_ANIM_LAND; o.land_left = prev.land_left - dt; }
+  else { o.state = sr_anim_ground(in, t); }
+  full := sr_anim_full_speed(o.state, in, t);
+  if full > 0.0 { f := in.speed / full; o.fraction = ifx f < 0.0 then 0.0 else ifx f > 1.0 then 1.0 else f; }
+  return o;
+}
