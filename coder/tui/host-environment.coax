@@ -135,7 +135,10 @@ es_save :: (slot:[]EsSlot,host:string,label:string)->bool #effects(all) {
 }
 es_tick :: (h:[]HsHost) #effects(all) {
   e:=h[0].environment[..];
-  for i:0..<ES_SLOTS {slot:=e[0].slots[i..<i+1];if !slot[0].occupied || slot[0].probing || slot[0].failed || slot[0].execution[0].active {continue;}
+  now:=cxproc_wall_us()/1000;
+  for i:0..<ES_SLOTS {slot:=e[0].slots[i..<i+1];
+    why:=es_free_why(slot,now);if why!=ES_KEEP {es_release(h,slot,why==ES_IDLE);continue;}
+    if !slot[0].occupied || slot[0].probing || slot[0].failed || slot[0].execution[0].active {continue;}
     s:=slot[0].s[..];before:=s[0].live;asking:=s[0].asking;
     slot[0].started=slot[0].started || slot[0].engine[0].running;ag_poll(es_agent(slot),0.016,true);
     if s[0].exhausted {slot[0].failed=true;ag_stop(es_agent(slot));}
@@ -151,6 +154,90 @@ es_tick :: (h:[]HsHost) #effects(all) {
       s[0].changed=false;
     }
   }
+}
+
+// Slots are given back (environment-runtime-v1alpha1.md, "The service retains four managed
+// process slots"). A managed chat holds one while its Claude process runs; it gives it back when
+// that process ends, after ES_IDLE_MS with no turn, or when a new chat needs one and it is the
+// least recently used idle chat. A turn running, a permission waiting or a message still on its
+// way to the CLI keeps the slot. A chat given back while idle keeps its Claude session ID beside
+// its saved files and continues on its next message; one whose process ended is read only.
+ES_IDLE_MS :: 600000;
+ES_KEEP :: 0; ES_ENDED :: 1; ES_IDLE :: 2;
+// A managed chat with nothing in progress.
+es_idle :: (slot:[]EsSlot)->bool #effects(all) {
+  return slot[0].occupied && es_idle_rule(slot[0].probing || slot[0].execution[0].active,slot[0].s[0].live,slot[0].s[0].asking,slot[0].engine[0].pend,slot[0].summary.nr);
+}
+es_idle_rule :: (other:bool,live:bool,asking:int,pend:int,interaction:int)->bool {return !other && !live && asking<0 && pend<0 && interaction==0;}
+// Whether a slot is given back now, and why (ES_KEEP: not).
+es_free_why :: (slot:[]EsSlot,now:int)->int #effects(all) {
+  return es_free_rule(es_idle(slot),slot[0].failed || (slot[0].started && !slot[0].engine[0].running),slot[0].summary.updated,now);
+}
+es_free_rule :: (idle:bool,ended:bool,updated:int,now:int)->int {
+  if !idle {return ES_KEEP;}if ended {return ES_ENDED;}return ifx now-updated>=ES_IDLE_MS then ES_IDLE else ES_KEEP;
+}
+// The idle chat a new one takes the slot of: the least recently updated, or -1.
+es_evict_pick :: (e:[]EsHost)->int #effects(all) {
+  idle:[ES_SLOTS]bool;updated:[ES_SLOTS]int;for i:0..<ES_SLOTS {idle[i]=es_idle(e[0].slots[i..<i+1]);updated[i]=e[0].slots[i].summary.updated;}
+  return es_oldest(idle[..],updated[..]);
+}
+es_oldest :: (idle:[]bool,updated:[]int)->int {k:= -1;for i:0..<idle.count {if idle[i] && (k<0 || updated[i]<updated[k]) {k=i;}}return k;}
+// A free slot for a new or resumed chat, giving back the least recent idle one when all are
+// held; -1 when every slot has a turn running or a permission waiting.
+es_take_slot :: (h:[]HsHost)->int #effects(all) {
+  e:=h[0].environment[..];for i:0..<ES_SLOTS {if !e[0].slots[i].occupied {return i;}}
+  k:=es_evict_pick(e);if k<0 {return -1;}es_release(h,e[0].slots[k..<k+1],true);return k;
+}
+// The slot gives its chat back: saved as it stands, its Claude process closed. resume keeps its
+// Claude session ID (environment-GRANT-ID.resume) so the next message continues it.
+es_release :: (h:[]HsHost,slot:[]EsSlot,resume:bool) #effects(all) {
+  e:=h[0].environment[..];c:=e[0].configuration[..];
+  saved:=!slot[0].failed && es_save(slot,cast(string)h[0].xhex[..],cast(string)c[0].label[0..<c[0].nl]);
+  p:[1400]u8;marker:=es_file(slot,".resume",p[..]);engine:=slot[0].engine[..];
+  if resume && saved && engine[0].sid_n>0 {_ = fs_replace_durable(marker,cast(string)engine[0].sid[0..<engine[0].sid_n]);}
+  else if fs_exists(marker) {_ = fs_remove(marker);}
+  xt_close(slot);xt_reset(slot);
+}
+// A chat's kept Claude session ID ("" when it was not given back while idle).
+es_resume_id :: (grant:string,id:string,out:[]u8)->string #effects(all) {
+  p:[1400]u8;n:=fs_read(es_named_file(grant,id,".resume",p[..]),out);
+  if n<1 || n>128 {return "";}for b:out[0..<n] {if !((b>='0' && b<='9') || (b>='a' && b<='z') || (b>='A' && b<='Z') || b=='-') {return "";}}
+  return cast(string)out[0..<n];
+}
+// A slot made ready for a managed chat of this grant and device.
+es_occupy :: (h:[]HsHost,slot:[]EsSlot,grant:string,device:string) #effects(all) {
+  e:=h[0].environment[..];
+  xt_reset(slot);slot[0].occupied=true;ncopy:=ea_copy(slot[0].grant[..],grant);ncopy=ea_copy(slot[0].device[..],device);
+  s:=slot[0].s[..];s_init(s,slot[0].pool[..]);engine:=slot[0].engine[..];e_attach(engine,slot[0].line[..],slot[0].arena[..],slot[0].out[..],slot[0].scratch[..],slot[0].prompt[..]);
+  c:=e[0].configuration[..];engine[0].cwd_n=ea_copy(engine[0].cwd[..],cast(string)c[0].workspace[0..<c[0].nw]);
+  home:[1024]u8;exe:[1200]u8;p:=fs_join(proc_getenv("HOME",home[..]),".local/bin/claude",exe[..]);if fs_kind(p)==FS_FILE {engine[0].claude_n=ea_copy(engine[0].claude[..],p);}
+  slot[0].summary.updated=cxproc_wall_us()/1000;
+}
+// A chat given back while idle takes a slot again with its saved history and Claude session:
+// its slot index, -1 when it cannot continue, -2 when no slot is free.
+es_resume :: (h:[]HsHost,id:string,grant:string,device:string)->int #effects(all) {
+  summary:[1]EaSession;sid:[128]u8;
+  if !es_saved_summary(h,id,grant,summary[..]) || cast(string)summary[0].control[0..<summary[0].nc]!="available" {return -1;}
+  resume:=es_resume_id(grant,id,sid[..]);if resume.count==0 {return -1;}
+  k:=es_take_slot(h);if k<0 {return -2;}
+  slot:=h[0].environment[0].slots[k..<k+1];es_occupy(h,slot,grant,device);
+  saved:=summary[0];saved.updated=slot[0].summary.updated;slot[0].summary=saved;
+  path:[1400]u8;data:[2097152]u8;n:=fs_read(es_file(slot,".jsonl",path[..]),data[..]);
+  if n<0 || !pa_bind(h,slot,id,grant) {xt_reset(slot);return -1;}
+  sl_load(slot[0].s[..],cast(string)data[0..<n]);
+  engine:=slot[0].engine[..];engine[0].sid_n=ea_copy(engine[0].sid[..],resume);
+  // the slot owns the chat again; a restart from here reads it as observe-only
+  p:[1400]u8;_ = fs_remove(es_named_file(grant,id,".resume",p[..]));
+  return k;
+}
+#test "a slot is given back when its chat ends or idles, never during a turn or a permission" {
+  #assert es_idle_rule(false,false,-1,-1,0) && !es_idle_rule(false,true,-1,-1,0) && !es_idle_rule(false,false,0,-1,0) && !es_idle_rule(false,false,-1,0,0) && !es_idle_rule(false,false,-1,-1,3) && !es_idle_rule(true,false,-1,-1,0);
+  #assert es_free_rule(true,false,1000,1000+ES_IDLE_MS-1)==ES_KEEP && es_free_rule(true,false,1000,1000+ES_IDLE_MS)==ES_IDLE;
+  #assert es_free_rule(true,true,1000,1001)==ES_ENDED && es_free_rule(false,true,1000,1000+ES_IDLE_MS)==ES_KEEP && es_free_rule(false,false,1000,1000+ES_IDLE_MS)==ES_KEEP;
+}
+#test "a full computer gives a new chat the least recently used idle slot, and refuses when all are busy" {
+  idle:=[4]bool.[false,false,false,false];updated:=[4]int.[5000,4999,4998,4997];#assert es_oldest(idle[..],updated[..])== -1;
+  idle[1]=true;idle[2]=true;#assert es_oldest(idle[..],updated[..])==2;idle[2]=false;#assert es_oldest(idle[..],updated[..])==1;
 }
 
 es_handle :: (h:[]HsHost,rq:HbAppRequest,signer:string,event:string,mailbox:string,w:[]HbWork,st:[]HsState,statebuf:[]u8,out:[]u8)->int #effects(all) {
@@ -314,7 +401,10 @@ es_saved_summary :: (h:[]HsHost,id:string,grant:string,summary:[]EaSession)->boo
   path:[1400]u8;b:[8192]u8;n:=fs_read(es_file(slot[..],".json",path[..]),b[..]);v:[1]EaView;
   if n<1 || !ea_view_read(cast(string)b[0..<n],v[..]) || v[0].ns!=1 || cast(string)v[0].host[..]!=cast(string)h[0].xhex[..] {return false;}
   s:=v[0].sessions[0];if cast(string)s.id[0..<s.ni]!=id {return false;}
-  s.nc=ea_copy(s.control[..],ifx s.busy then "unknown" else "observe-only");s.busy=false;s.nr=0;summary[0]=s;return true;
+  // A chat that gave its slot back while idle (es_release) continues; any other saved chat is
+  // read only, as after a service restart.
+  sb:[128]u8;resumable:=!s.busy && es_resume_id(grant,id,sb[..]).count>0;
+  s.nc=ea_copy(s.control[..],ifx s.busy then "unknown" else ifx resumable then "available" else "observe-only");s.busy=false;s.nr=0;summary[0]=s;return true;
 }
 es_saved_list :: (h:[]HsHost,grant:string,v:[]EaView) #effects(all) {
   dir:[1400]u8;files:[1]FsList;count:=fs_list(es_path("",dir[..]),files[..]);if count<0 {v[0].complete=false;return;}
@@ -381,18 +471,17 @@ es_dispatch :: (h:[]HsHost,q:[]EaRequest,device:string,grant:string,v:[]EaView) 
   if method=="OpenSession" {
     if xt_claimed_session(grant,id) {es_refuse(v,"conflict");return;}
     if k>=0 || !ea_text(cast(string)q[0].text[0..<q[0].nt]) {es_refuse(v,"conflict");return;}
-    for i:0..<ES_SLOTS {if !e[0].slots[i].occupied {k=i;break;}}
+    k=es_take_slot(h);
     if k<0 {es_refuse(v,"capacity");return;}
-    slot:=e[0].slots[k..<k+1];xt_reset(slot);slot[0].occupied=true;ncopy:=ea_copy(slot[0].grant[..],grant);ncopy=ea_copy(slot[0].device[..],device);
-    s:=slot[0].s[..];s_init(s,slot[0].pool[..]);engine:=slot[0].engine[..];e_attach(engine,slot[0].line[..],slot[0].arena[..],slot[0].out[..],slot[0].scratch[..],slot[0].prompt[..]);
-    c:=e[0].configuration[..];engine[0].cwd_n=ea_copy(engine[0].cwd[..],cast(string)c[0].workspace[0..<c[0].nw]);
-    home:[1024]u8;exe:[1200]u8;p:=fs_join(proc_getenv("HOME",home[..]),".local/bin/claude",exe[..]);if fs_kind(p)==FS_FILE {engine[0].claude_n=ea_copy(engine[0].claude[..],p);}
+    slot:=e[0].slots[k..<k+1];es_occupy(h,slot,grant,device);engine:=slot[0].engine[..];
     summary:=slot[0].summary;summary.ni=ea_copy(summary.id[..],id);summary.nw=ea_copy(summary.workspace[..],"default");summary.nt=ea_copy(summary.title[..],hs_cut(cast(string)q[0].text[0..<q[0].nt],200));
     summary.managed=true;summary.nc=ea_copy(summary.control[..],"available");summary.generation=cxproc_wall_us()/1000;slot[0].summary=summary;
     if !pa_bind(h,slot,id,grant) {slot[0].occupied=false;es_refuse(v,"conflict");return;}
     m:=[1]int.[engine[0].model];l:=[1]int.[engine[0].effort];
     if !es_choice(engine[0].cat[..],q,m[..],l[..]) {slot[0].occupied=false;es_refuse(v,"model_unavailable");return;}
   } else {
+    // A chat that gave its slot back while idle continues: its next message resumes it.
+    if k<0 && method=="SendMessage" {k=es_resume(h,id,grant,device);if k== -2 {es_refuse(v,"capacity");return;}}
     if k<0 {es_refuse(v,"not_found");return;}
     slot:=e[0].slots[k..<k+1];summary:=slot[0].summary;
     if slot[0].failed || cast(string)summary.control[0..<summary.nc]!="available" || ea_command(q[0].generation,summary.generation,q[0].revision,summary.revision,method=="SendMessage" && summary.busy,false)!=0 {es_refuse(v,"conflict");return;}

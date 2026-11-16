@@ -89,7 +89,16 @@ and effort. Writers leave both fields out when nothing is chosen. A computer
 that sends no offer gets requests without them, and its clients show no
 pickers.
 
-The service retains four managed process slots. Capacity refuses explicitly.
+The service retains four managed process slots. A managed chat holds one while
+its Claude process runs and gives it back when that process ends, after ten
+minutes with no turn, or when a new chat needs a slot and it is the least
+recently used idle chat. A running turn, a waiting permission or a message
+still on its way to the CLI keeps the slot. A chat given back while idle keeps
+its Claude session ID beside its saved files (`environment-GRANT-ID.resume`),
+reads as `available`, and continues on its next message, which takes a slot
+again and resumes the session with `--resume`. A chat whose process ended
+reads as observe-only. Capacity refuses explicitly, and only when all four
+slots have a turn running or a permission waiting.
 Closing/quit detaches the client. A service restart recovers saved histories
 as observe-only/unknown instead of guessing that an old native writer can
 be resumed safely. Full persisted process reconciliation and qualified native
