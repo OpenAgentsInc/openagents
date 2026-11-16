@@ -23,7 +23,9 @@
 //                   is unhealthy     none of its windows could be read
 //                   ticks slower     its tick's p50 or p95 (the middle one of its windows) is over twice
 //                                    the others' and 300 us more, or it runs under nine in ten of
-//                                    the ticks a second the others run
+//                                    the ticks a second the others run; when the others seated
+//                                    fewer players (an empty old room), its p95 against its own
+//                                    tick period instead
 //                   refuses more     it refuses over twice the frames a second the others do, and
 //                                    1 a second more
 //                   seats fewer      it seated under nine in ten of what the others seated (bots)
@@ -256,6 +258,16 @@ RsPins :: struct { engine: int; rules: int; content: int; wire_lo: int; wire_hi:
   #assert rs_canary(c, norate) == 0;
   #assert rs_slower(601, 150) && !rs_slower(600, 150) && !rs_slower(90000, -1) && !rs_slower(-1, 0) && rs_slower(301, 0) && !rs_slower(300, 0);
   #assert rs_fewer_ticks(269, 300) && !rs_fewer_ticks(270, 300) && !rs_fewer_ticks(-1, 300) && !rs_fewer_ticks(100, -1) && rs_fewer_ticks(0, 300) && !rs_fewer_ticks(0, 0) && rs_fewer_ticks(90, 101) && !rs_fewer_ticks(91, 101);
+  // an empty baseline (the old room refused the new bots: seated 0) is no measure of tick time; the
+  // canary is held to its own period (staging, 2026-11-16: 2400/3060 us against an empty 20/240 us)
+  empty := RsShard.{tick_p50_us = 20, tick_p95_us = 240, ticks_ds = 300, refused_ds = 0, seated = 0, unsaved_ms = 100, windows = 12};
+  full := RsShard.{tick_p50_us = 2400, tick_p95_us = 3060, ticks_ds = 300, refused_ds = 0, seated = 32, unsaved_ms = 100, windows = 12};
+  #assert rs_canary(full, empty) == 0;
+  full.tick_p95_us = 33334;   // longer than a 30-a-second tick: behind its own clock
+  #assert rs_canary(full, empty) == RS_C_TICK;
+  full.tick_p95_us = 3060; full.ticks_ds = 269;   // and fewer ticks than the others still counts
+  #assert rs_canary(full, empty) == RS_C_TICK;
+  #assert rs_over_period(33334, 300) && !rs_over_period(33333, 300) && !rs_over_period(-1, 300) && !rs_over_period(100, -1) && rs_over_period(1, 0);
   // one window is a reading, of the canary and of the others
   c = ok; c.windows = 1;
   #assert rs_canary(c, o) == 0;
@@ -422,11 +434,24 @@ rs_canary :: (c: RsShard, o: RsShard) -> int #effects(all) {
   if c.version_refused > 0 { bits += RS_C_VERSION; }
   if o.windows <= 0 { return bits; }   // nothing to compare with: only its own crash or refusal stops it
   // a number the others did not report compares with nothing; one the canary did not (-1) is over nothing
-  if rs_slower(c.tick_p50_us, o.tick_p50_us) || rs_slower(c.tick_p95_us, o.tick_p95_us) || rs_fewer_ticks(c.ticks_ds, o.ticks_ds) { bits += RS_C_TICK; }
+  // Tick times compare only under the same load. When the others seated fewer players than the canary (an
+  // old room that refused the new bots seats none, and its empty tick is ~20 us), its tick is not a
+  // measure of this release: the canary's p95 is held to its own tick period instead (it keeps up or not).
+  if c.seated * RS_SEATS_PERCENT <= o.seated * 100 {
+    if rs_slower(c.tick_p50_us, o.tick_p50_us) || rs_slower(c.tick_p95_us, o.tick_p95_us) { bits += RS_C_TICK; }
+  } else if rs_over_period(c.tick_p95_us, c.ticks_ds) { bits += RS_C_TICK; }
+  if (bits & RS_C_TICK) == 0 && rs_fewer_ticks(c.ticks_ds, o.ticks_ds) { bits += RS_C_TICK; }
   if o.refused_ds >= 0 && c.refused_ds > o.refused_ds * 2 + RS_REFUSED_MARGIN_DS { bits += RS_C_REFUSED; }
   if c.seated * 100 < o.seated * RS_SEATS_PERCENT { bits += RS_C_SEATS; }
   if c.unsaved_ms > RS_CHECKPOINT_MS && o.unsaved_ms <= RS_CHECKPOINT_MS { bits += RS_C_CHECKPOINT; }
   return bits;
+}
+// Whether a tick's p95 is longer than the period its tick rate (tenths a second) gives: the room falls
+// behind its own clock. A time or rate not read is over nothing; a rate of 0 is no tick at all.
+rs_over_period :: (p95_us: int, ticks_ds: int) -> bool #effects(all) {
+  if p95_us < 0 || ticks_ds < 0 { return false; }
+  if ticks_ds == 0 { return true; }
+  return p95_us > 10000000 / ticks_ds;
 }
 // Whether a tick time of the canary's is over twice the others' and the margin more. The others' not
 // read (-1) compares with nothing; the canary's not read is over nothing.

@@ -140,7 +140,7 @@ shard just before, under the same bots. The canary fails when it:
 | --- | --- |
 | `crashed` | A crash bucket names the new release |
 | `unhealthy` | None of its windows could be read |
-| `slower-tick` | Its tick's p50 or p95 (the middle one of its windows) is over twice the others' and 300 µs more, or it runs under nine in ten of the ticks a second the others run |
+| `slower-tick` | Its tick's p50 or p95 (the middle one of its windows) is over twice the others' and 300 µs more, or it runs under nine in ten of the ticks a second the others run. When the others seated fewer players than the canary (an old room that refused the new bots seats none), their tick time is no measure, and the canary's p95 is held to its own tick period instead |
 | `more-refusals` | It refuses over twice the frames a second the others do, and 1 a second more |
 | `fewer-seats` | It seated under nine in ten of what the others seated (bots) |
 | `slower-saves` | Its oldest unsaved checkpoint is past 15 s and the others' is not |
