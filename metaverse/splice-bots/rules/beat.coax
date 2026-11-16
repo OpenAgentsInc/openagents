@@ -1,0 +1,117 @@
+// Splice Bots rules: the rave's beat clock and light rule (SpliceBeat.h, package A-04; GDD 04 5.7
+// UE-RAVE-06, -08 to -12). MS_MUS_Rave is 138 bpm in 4/4. LED bars pulse every beat, the floor pools
+// on beats 0 and 2 of the bar, strobes every beat (every Nth under reduce flashing, at most 2 a second
+// at half contrast); no strobe is ever signal orange. The INFERRED values are the C++'s (pulse shape,
+// resting levels, the 0.12 s flash). No engine calls: the rave lights actor applies the levels.
+
+// Where the music is: beat 0 is the first beat of bar 0; phase is 0 on the beat, running to 1.
+SrBeatTime :: struct { beat_index: int; bar: int; beat: int; phase: f32; }
+// A fixed-tempo clock (FSpliceBeatClock): Quartz runs the real one; this is its arithmetic.
+SrBeatClock :: struct { bpm: f32 = 138.0; beats_per_bar: int = 4; }
+sr_beat_clock :: (bpm: f32, beats_per_bar: int) -> SrBeatClock { return SrBeatClock.{bpm = ifx bpm > 0.0 then bpm else 120.0, beats_per_bar = ifx beats_per_bar > 0 then beats_per_bar else 4}; }
+sr_seconds_per_beat :: (c: SrBeatClock) -> f64 { return 60.0 / cast(f64) c.bpm; }
+sr_seconds_per_bar :: (c: SrBeatClock) -> f64 { return sr_seconds_per_beat(c) * cast(f64) c.beats_per_bar; }
+sr_time_of_beat :: (c: SrBeatClock, beat_index: int) -> f64 { return cast(f64) beat_index * sr_seconds_per_beat(c); }
+// The beat at seconds since the clock started (negative is beat 0, phase 0). A tiny tolerance lands
+// sr_time_of_beat(n) on beat n.
+sr_beat_at :: (c: SrBeatClock, seconds: f64) -> SrBeatTime {
+  t: SrBeatTime;
+  if seconds <= 0.0 { return t; }
+  beats := seconds / sr_seconds_per_beat(c);
+  fl := floor(beats + 0.000000001);
+  t.beat_index = cast(int) fl; t.bar = t.beat_index / c.beats_per_bar; t.beat = t.beat_index % c.beats_per_bar;
+  p := cast(f32) (beats - fl); t.phase = ifx p < 0.0 then 0.0 else ifx p > 1.0 then 1.0 else p;
+  return t;
+}
+// From a Quartz beat event (bar and beat counted from 1) and the phase since it.
+sr_beat_from_quartz :: (c: SrBeatClock, quartz_bar: int, quartz_beat: int, phase: f32) -> SrBeatTime {
+  t: SrBeatTime;
+  t.bar = ifx quartz_bar - 1 > 0 then quartz_bar - 1 else 0;
+  b := quartz_beat - 1; t.beat = ifx b < 0 then 0 else ifx b > c.beats_per_bar - 1 then c.beats_per_bar - 1 else b;
+  t.beat_index = t.bar * c.beats_per_bar + t.beat;
+  t.phase = ifx phase < 0.0 then 0.0 else ifx phase > 1.0 then 1.0 else phase;
+  return t;
+}
+
+SR_RAVE_BPM :: 138.0; SR_RAVE_BEATS_PER_BAR :: 4;
+SR_LED_REST :: 0.55; SR_POOL_REST :: 0.35;                 // INFERRED resting levels
+SR_REDUCED_MAX_FLASHES_PER_SECOND :: 2.0;                  // UE-RAVE-10
+SR_REDUCED_STROBE_CONTRAST :: 0.5;
+SR_MAX_FLASH_SCREEN_SHARE :: 0.25;                         // never full-screen, at any setting
+SR_MAX_RAVE_LIGHTS :: 6;                                   // UE-RAVE-11
+SR_STROBE_FLASH_SECONDS :: 0.12;                           // NS_Strobe's life (INFERRED)
+SR_ORANGE_HUE_MIN :: 8.0; SR_ORANGE_HUE_MAX :: 45.0; SR_ORANGE_MIN_SATURATION :: 0.45; SR_ORANGE_MIN_VALUE :: 0.35;
+// ESpliceRaveLight.
+SR_LIGHT_LED_BAR :: 0; SR_LIGHT_POOL :: 1; SR_LIGHT_STROBE :: 2;
+
+sr_reduce_flashing_on :: (setting: bool, reduced_motion: bool) -> bool { return setting || reduced_motion; }
+sr_strobe_contrast :: (reduce: bool) -> f32 { return ifx reduce then SR_REDUCED_STROBE_CONTRAST else 1.0; }
+// 1 normally; with reduce flashing the smallest N keeping the rate at or under 2 a second.
+sr_strobe_every_nth_beat :: (bpm: f32, reduce: bool) -> int {
+  if !reduce || bpm <= 0.0 { return 1; }
+  n := cast(int) -floor(-(bpm / 60.0 / SR_REDUCED_MAX_FLASHES_PER_SECOND - 0.0001));
+  return ifx n > 1 then n else 1;
+}
+sr_strobe_flashes_per_second :: (bpm: f32, reduce: bool) -> f32 { return (bpm / 60.0) / cast(f32) sr_strobe_every_nth_beat(bpm, reduce); }
+
+// Colour, linear RGB. sRGB hex in, the standard sRGB curve both ways.
+SrColor :: struct { r: f32 = 1.0; g: f32 = 1.0; b: f32 = 1.0; }
+sr_powf :: (x: f64, y: f64) -> f64 { return ifx x <= 0.0 then 0.0 else exp(log(x) * y); }
+sr_srgb_to_linear :: (c: f64) -> f32 { return cast(f32) (ifx c <= 0.04045 then c / 12.92 else sr_powf((c + 0.055) / 1.055, 2.4)); }
+sr_linear_to_srgb :: (c: f64) -> f64 { v := ifx c < 0.0 then 0.0 else ifx c > 1.0 then 1.0 else c; return ifx v <= 0.0031308 then v * 12.92 else 1.055 * sr_powf(v, 1.0 / 2.4) - 0.055; }
+sr_hex_digit :: (c: u8) -> int { return ifx c >= 48 && c <= 57 then cast(int) c - 48 else ifx c >= 65 && c <= 70 then cast(int) c - 55 else ifx c >= 97 && c <= 102 then cast(int) c - 87 else 0; }
+// Linear colour from an sRGB 8-bit triple.
+sr_from_srgb8 :: (r: int, g: int, b: int) -> SrColor { return SrColor.{r = sr_srgb_to_linear(cast(f64) r / 255.0), g = sr_srgb_to_linear(cast(f64) g / 255.0), b = sr_srgb_to_linear(cast(f64) b / 255.0)}; }
+sr_hex_byte :: (h: string, k: int) -> int { return sr_hex_digit(h[k]) * 16 + sr_hex_digit(h[k + 1]); }
+// "#RRGGBB" (the # optional) to linear.
+sr_color_from_hex :: (hex: string) -> SrColor {
+  o := ifx hex.count > 0 && hex[0] == 35 then 1 else 0;
+  if hex.count < o + 6 { return SrColor.{}; }
+  return sr_from_srgb8(sr_hex_byte(hex, o), sr_hex_byte(hex, o + 2), sr_hex_byte(hex, o + 4));
+}
+sr_signal_orange :: () -> SrColor { return sr_color_from_hex("#FB8536"); }
+SrHsv :: struct { h: f64; s: f64; v: f64; }
+sr_rgb_to_hsv :: (r: f64, g: f64, b: f64) -> SrHsv {
+  mx := ifx r > g then (ifx r > b then r else b) else (ifx g > b then g else b);
+  mn := ifx r < g then (ifx r < b then r else b) else (ifx g < b then g else b);
+  d := mx - mn; h := 0.0;
+  if d > 0.0 {
+    if mx == r { h = 60.0 * (g - b) / d; } else if mx == g { h = 60.0 * ((b - r) / d + 2.0); } else { h = 60.0 * ((r - g) / d + 4.0); }
+    if h < 0.0 { h += 360.0; }
+  }
+  return SrHsv.{h = h, s = ifx mx > 0.0 then d / mx else 0.0, v = mx};
+}
+// A linear channel as its 8-bit sRGB value over 255 (FLinearColor::ToFColorSRGB).
+sr_srgb8_of :: (x: f32) -> f64 { return floor(sr_linear_to_srgb(cast(f64) x) * 255.0 + 0.5) / 255.0; }
+// Reads as the danger orange: sRGB hue 8 to 45 degrees, saturated, not dark (quantised to 8 bits as the C++).
+sr_is_signal_orange :: (c: SrColor) -> bool {
+  hsv := sr_rgb_to_hsv(sr_srgb8_of(c.r), sr_srgb8_of(c.g), sr_srgb8_of(c.b));
+  return hsv.h >= SR_ORANGE_HUE_MIN && hsv.h <= SR_ORANGE_HUE_MAX && hsv.s >= SR_ORANGE_MIN_SATURATION && hsv.v >= SR_ORANGE_MIN_VALUE;
+}
+// LED yellow #FAE908, pool yellow #FDE743, cream #FFF3E4.
+sr_strobe_palette :: () -> [3] SrColor { return [3] SrColor.[sr_color_from_hex("#FAE908"), sr_color_from_hex("#FDE743"), sr_color_from_hex("#FFF3E4")]; }
+sr_safe_strobe_colour :: (wanted: SrColor) -> SrColor { return ifx sr_is_signal_orange(wanted) then sr_strobe_palette()[0] else wanted; }
+
+// UE-RAVE-08's pulse: 1 at phase 0 falling to 0 at 1 (squared).
+sr_beat_pulse :: (phase: f32) -> f32 { l := 1.0 - (ifx phase < 0.0 then 0.0 else ifx phase > 1.0 then 1.0 else phase); return l * l; }
+sr_light_fires_on :: (kind: int, t: SrBeatTime, bpm: f32, reduce: bool) -> bool {
+  if kind == SR_LIGHT_LED_BAR { return true; }
+  if kind == SR_LIGHT_POOL { return t.beat % 2 == 0; }
+  if kind == SR_LIGHT_STROBE { return t.beat_index % sr_strobe_every_nth_beat(bpm, reduce) == 0; }
+  return false;
+}
+// The levels for one frame: 0 off, 1 full.
+SrRaveLevels :: struct { pulse: f32; led: f32; pool: [3] f32; strobe: f32; strobe_beat: bool; strobe_colour: SrColor; }
+sr_rave_evaluate :: (t: SrBeatTime, bpm: f32, reduce: bool, colour_index: int) -> SrRaveLevels {
+  l: SrRaveLevels;
+  l.pulse = sr_beat_pulse(t.phase);
+  l.led = SR_LED_REST + (1.0 - SR_LED_REST) * l.pulse;
+  pool : f32 = ifx sr_light_fires_on(SR_LIGHT_POOL, t, bpm, reduce) then SR_POOL_REST + (1.0 - SR_POOL_REST) * l.pulse else SR_POOL_REST;
+  for i: 0..<3 { l.pool[i] = pool; }
+  l.strobe_beat = sr_light_fires_on(SR_LIGHT_STROBE, t, bpm, reduce);
+  into := cast(f64) t.phase * (60.0 / cast(f64) (ifx bpm > 1.0 then bpm else 1.0));
+  l.strobe = ifx l.strobe_beat && into < SR_STROBE_FLASH_SECONDS then sr_strobe_contrast(reduce) else 0.0;
+  idx := ((colour_index % 3) + 3) % 3;
+  l.strobe_colour = sr_safe_strobe_colour(sr_strobe_palette()[idx]);
+  return l;
+}

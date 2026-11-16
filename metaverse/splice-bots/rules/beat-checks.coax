@@ -1,0 +1,89 @@
+// Parity checks for beat.coax: SpliceTests/Rules/SpliceBeatTests.cpp. The rave lights actor's default
+// lines (its Bpm and MaxStrobes) and ReduceFlashingSettingRow (the menu view model) are the game's, not rules.
+// rules.coax loads this file with `#load ... #test;`.
+
+BtOnsets :: struct { n: int; t: [512] f64; max_level: f32; }
+bt_flash_onsets :: (bpm: f32, reduce: bool, seconds: f64) -> BtOnsets {
+  c := sr_beat_clock(bpm, 4); o: BtOnsets; was := false;
+  ms := 0;
+  while cast(f64) ms <= seconds * 1000.0 {
+    t := cast(f64) ms / 1000.0;
+    l := sr_rave_evaluate(sr_beat_at(c, t), bpm, reduce, 0);
+    lit := l.strobe > 0.0;
+    if l.strobe > o.max_level { o.max_level = l.strobe; }
+    if lit && !was && o.n < 512 { o.t[o.n] = t; o.n += 1; }
+    was = lit; ms += 1;
+  }
+  return o;
+}
+bt_most_in_any_second :: (o: BtOnsets) -> int {
+  most := 0;
+  for i: 0..<o.n { n := 0; j := i; while j < o.n && o.t[j] < o.t[i] + 1.0 - 0.000000001 { n += 1; j += 1; } if n > most { most = n; } }
+  return most;
+}
+
+#test "Splice.Rules.Beat.BeatsLandOn138BpmBoundaries" {
+  #assert SR_RAVE_BPM == 138.0;
+  c := sr_beat_clock(SR_RAVE_BPM, SR_RAVE_BEATS_PER_BAR); spb := 60.0 / 138.0;
+  #assert abs(sr_seconds_per_beat(c) - spb) < 0.000000000001 && abs(sr_seconds_per_bar(c) - 4.0 * spb) < 0.000000000001;
+  for n: 0..<2000 {
+    start := cast(f64) n * spb;
+    on := sr_beat_at(c, start);
+    #assert on.beat_index == n && on.phase < 0.0001 && on.bar == n / 4 && on.beat == n % 4;
+    mid := sr_beat_at(c, start + 0.5 * spb);
+    #assert mid.beat_index == n && abs(mid.phase - 0.5) < 0.001;
+    before := sr_beat_at(c, start + spb - 0.0001);
+    #assert before.beat_index == n && before.phase > 0.99;
+    #assert abs(sr_time_of_beat(c, n) - start) < 0.000000001;
+  }
+  #assert sr_beat_at(c, 60.0).beat_index == 138 && sr_beat_at(c, -1.0).beat_index == 0;
+  #assert sr_beat_from_quartz(c, 1, 1, 0.0).beat_index == 0;
+  q := sr_beat_from_quartz(c, 2, 3, 0.25);
+  #assert q.beat_index == 6 && q.bar == 1 && q.beat == 2;
+  #assert sr_beat_pulse(0.0) == 1.0 && sr_beat_pulse(1.0) == 0.0 && sr_beat_pulse(0.25) > sr_beat_pulse(0.5) && sr_beat_pulse(0.5) > sr_beat_pulse(0.75);
+  for b: 0..<8 {
+    t := sr_beat_at(c, cast(f64) b * spb);
+    #assert sr_light_fires_on(SR_LIGHT_LED_BAR, t, 138.0, false) && sr_light_fires_on(SR_LIGHT_POOL, t, 138.0, false) == (t.beat % 2 == 0) && sr_light_fires_on(SR_LIGHT_STROBE, t, 138.0, false);
+    l := sr_rave_evaluate(t, 138.0, false, 0);
+    #assert abs(l.led - 1.0) < 0.0001 && l.strobe > 0.0;
+    late := sr_rave_evaluate(sr_beat_at(c, (cast(f64) b + 0.6) * spb), 138.0, false, 0);
+    #assert late.strobe == 0.0 && late.led < l.led && late.led > 0.0;
+  }
+}
+bt_q8 :: (x: f64) -> int { return cast(int) floor(x * 255.0 + 0.5); }
+
+#test "Splice.Rules.Beat.StrobesAreNeverOrange" {
+  for h: [4] string.["#FB8536", "#E88745", "#E36A3B", "#DE7441"] { #assert sr_is_signal_orange(sr_color_from_hex(h)); }
+  #assert sr_is_signal_orange(sr_signal_orange());
+  for h: [3] string.["#FAE908", "#FDE743", "#FFF3E4"] { #assert !sr_is_signal_orange(sr_color_from_hex(h)); }
+  for p: sr_strobe_palette() { #assert !sr_is_signal_orange(p); }
+  replaced := 0;
+  for hue: 0..<360 { for sat: [2] f64.[1.0, 0.5] {
+    // HSV (value 1) to an 8-bit sRGB triple, then linear, as the C++ test builds its colours.
+    hh := cast(f64) hue / 60.0; i := cast(int) floor(hh); f := hh - floor(hh);
+    p := 1.0 - sat; qq := 1.0 - sat * f; tt := 1.0 - sat * (1.0 - f);
+    rgb := [6] [3] f64.[[3] f64.[1.0, tt, p], [3] f64.[qq, 1.0, p], [3] f64.[p, 1.0, tt], [3] f64.[p, qq, 1.0], [3] f64.[tt, p, 1.0], [3] f64.[1.0, p, qq]][i % 6];
+    wanted := sr_from_srgb8(bt_q8(rgb[0]), bt_q8(rgb[1]), bt_q8(rgb[2]));
+    #assert !sr_is_signal_orange(sr_safe_strobe_colour(wanted));
+    if sr_is_signal_orange(wanted) { replaced += 1; }
+  } }
+  #assert replaced > 0 && !sr_is_signal_orange(sr_safe_strobe_colour(sr_signal_orange()));
+  c := sr_beat_clock(138.0, 4);
+  for reduce: [2] bool.[false, true] { for n: 0..<1000 {
+    #assert !sr_is_signal_orange(sr_rave_evaluate(sr_beat_at(c, cast(f64) n * sr_seconds_per_beat(c)), 138.0, reduce, n - 500).strobe_colour);
+  } }
+}
+#test "Splice.Rules.Beat.ReduceFlashingLowersStrobeRateUnderLimit" {
+  limit : f32 = SR_REDUCED_MAX_FLASHES_PER_SECOND;
+  #assert limit == 2.0 && !sr_reduce_flashing_on(false, false) && sr_reduce_flashing_on(true, false) && sr_reduce_flashing_on(false, true);
+  #assert SR_MAX_FLASH_SCREEN_SHARE <= 0.25;
+  #assert sr_strobe_every_nth_beat(138.0, false) == 1 && sr_strobe_every_nth_beat(138.0, true) == 2;
+  #assert sr_strobe_flashes_per_second(138.0, false) > limit && sr_strobe_flashes_per_second(138.0, true) <= limit;
+  normal := bt_flash_onsets(138.0, false, 60.0); reduced := bt_flash_onsets(138.0, true, 60.0);
+  #assert normal.n >= 138 && normal.n <= 139 && reduced.n < normal.n;
+  #assert bt_most_in_any_second(normal) >= 3 && bt_most_in_any_second(reduced) <= 2 && cast(f64) reduced.n / 60.0 <= cast(f64) limit;
+  #assert normal.max_level == 1.0 && reduced.max_level > 0.0 && reduced.max_level <= 0.5;
+  for bpm: [6] f32.[60.0, 90.0, 120.0, 138.0, 175.0, 240.0] {
+    #assert sr_strobe_flashes_per_second(bpm, true) <= limit && bt_most_in_any_second(bt_flash_onsets(bpm, true, 20.0)) <= 2;
+  }
+}
