@@ -413,7 +413,10 @@ run() {
   # The command, with this checkout's path written @ROOT@ (the host's tree
   # replaces it), and the Coax build settings it would have seen here.
   local argv=() a env_vars=() v
-  for a in "$@"; do argv+=("${a//"$root"/@ROOT@}"); done
+  # Git names the checkout by its real path; a caller's `pwd` may name it through a symlink (macOS:
+  # /var is /private/var, so a release's checkout in $TMPDIR is /var/... to `cd && pwd`). Both map.
+  local alias_root=""; [[ "$root" == /private/* ]] && alias_root="${root#/private}"
+  for a in "$@"; do a="${a//"$root"/@ROOT@}"; [[ -n "$alias_root" ]] && a="${a//"$alias_root"/@ROOT@}"; argv+=("$a"); done
   while IFS= read -r v; do
     case "${v%%=*}" in
       COAX|COAXIAL_CLANG|COAXIAL_SYSROOT|COAXIAL_RESOURCES|COAXIAL_WASM_OPT|COAXIAL_WASM_CACHE|COAXIAL_TOOLCHAIN|COAX_CHECK_CACHE|COAX_RELEASE_CACHE) ;;
