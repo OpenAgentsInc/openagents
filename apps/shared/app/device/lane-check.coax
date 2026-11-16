@@ -8,7 +8,7 @@
 //   coax/web/tool.sh apps/shared/app/device/lane-check.coax
 // tool.sh: run-steps 250000000
 // tool.sh: stack-gib 1
-#load "../core/core.coax";
+#load "../environment/bridge.coax";
 #load "seal.coax";
 #load "../../../../coax/lib/sys/tool.coax";
 cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
@@ -140,9 +140,29 @@ lc_unpaired :: (r: [] LcRun) {
   lc_ok(r, app_host_launch(c, 2, 1000, "fb9347515b57c2c3a066baa42dc6920b24645539a4e32c11ed36c2e4789c265a\tnot an id!") < 0, "a kept device conversation that does not read is refused");
 }
 
+lc_bridge :: (r: [] LcRun) {
+  // the picker's bridge: the rejoined computer stays chosen
+  a: [1] AppCore; c := a[..]; dl: [1] DeviceLane; q: [1] LcReq;
+  b: [1] EsBridge; s := [1] EnvSelect.[es_new()];
+  ok := app_host_init(c) && app_host_device(c, dl[..]) && app_host_launch(c, 1, 1000, "fb9347515b57c2c3a066baa42dc6920b24645539a4e32c11ed36c2e4789c265a\t5193ca7c5e83b589ad2c9f2c139ac442") == APP_OK;
+  es_bridge_sync(c, b[..], s[..]);
+  while ok && lc_next(c, q[..]) {
+    if q[0].kind == FX_AUTH_STATE { ok = lc_done(c, r, q[..], FXO_DONE, false, "", "", 0) >= 0; }
+    else if q[0].kind == FX_DEVICE_LIST { ok = lc_done(c, r, q[..], FXO_DONE, false, "fb9347515b57c2c3a066baa42dc6920b24645539a4e32c11ed36c2e4789c265a\tStudio Mac\n", "", 0) >= 0; }
+    else { break; }
+    es_bridge_sync(c, b[..], s[..]);
+  }
+  es_bridge_sync(c, b[..], s[..]);
+  lc_ok(r, ok && app_environment(c) == LC_HOST && app_device_on(c) && es_env_value(s[..]) == "Studio Mac", "a rejoined computer stays chosen in the picker");
+  // logged out, Default asks to log in and the computer stays
+  _ = es_press(s[..], "composer.environment", 4); _ = es_press(s[..], "env.default", 4);
+  es_bridge_sync(c, b[..], s[..]);
+  lc_ok(r, es_take_login(s[..]) && app_environment(c) == LC_HOST && es_env_value(s[..]) == "Studio Mac", "logged out, Default asks to log in and keeps the computer");
+}
+
 tool_main :: () -> int #export_c #effects(all) {
   r: [1] LcRun;
-  lc_turn(r[..]); lc_rejoin(r[..]); lc_unpaired(r[..]);
+  lc_turn(r[..]); lc_rejoin(r[..]); lc_unpaired(r[..]); lc_bridge(r[..]);
   b: [64] u8; n := 0;
   lc_say(ifx r[0].failed == 0 then "device lane: all checks passed" else "device lane: checks failed");
   return ifx r[0].failed == 0 then 0 else 1;

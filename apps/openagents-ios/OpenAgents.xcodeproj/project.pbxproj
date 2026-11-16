@@ -21,6 +21,7 @@
 		7AD3562212739D9331D9535D /* AppAccount.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B5B40FB5A03D1054E56FC0E /* AppAccount.swift */; };
 		A09F60FB92403B2A4A5AEC6D /* AppCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2375370987EB21F55CB7A476 /* AppCore.swift */; };
 		AD751202F9DD8187E36837E4 /* ComponentsHost.m in Sources */ = {isa = PBXBuildFile; fileRef = C6F4AFFB9B751E6D6F603036 /* ComponentsHost.m */; };
+		B0F7117A6675BF891B1CB0FB /* AppDeviceLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5917C68CA930E40796E53DAF /* AppDeviceLink.swift */; };
 		C5085655B93C50F2344D1AFA /* AppEffects.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62F39B1A4B1714CD2CBBCE87 /* AppEffects.swift */; };
 		C77117B7CBCFC4CC0576E57C /* phone-drive.c in Sources */ = {isa = PBXBuildFile; fileRef = D53AE5A2D45A0A6B3D45B8D4 /* phone-drive.c */; };
 		C789B2E23521F07A4F8AA6D8 /* Components in Resources */ = {isa = PBXBuildFile; fileRef = 346439B2CDF1C4DE6F844825 /* Components */; };
@@ -33,6 +34,7 @@
 		2375370987EB21F55CB7A476 /* AppCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppCore.swift; sourceTree = "<group>"; };
 		346439B2CDF1C4DE6F844825 /* Components */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Components; path = Generated/Components; sourceTree = SOURCE_ROOT; };
 		550581B2872EB638FBFB4619 /* gallery.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = gallery.c; sourceTree = "<group>"; };
+		5917C68CA930E40796E53DAF /* AppDeviceLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDeviceLink.swift; sourceTree = "<group>"; };
 		62F39B1A4B1714CD2CBBCE87 /* AppEffects.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppEffects.swift; sourceTree = "<group>"; };
 		776F82566A59AA4CF6654437 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		77B22B57F0B9827AF4F47864 /* AppCoreBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppCoreBridge.swift; sourceTree = "<group>"; };
@@ -85,6 +87,7 @@
 				9B5B40FB5A03D1054E56FC0E /* AppAccount.swift */,
 				77B22B57F0B9827AF4F47864 /* AppCoreBridge.swift */,
 				97F8922AB2F3371989FB21C4 /* AppDevice.swift */,
+				5917C68CA930E40796E53DAF /* AppDeviceLink.swift */,
 				62F39B1A4B1714CD2CBBCE87 /* AppEffects.swift */,
 				1C02A25433276C58798C0279 /* AppHTTP.swift */,
 				9389244D4DF6F9694B96642C /* AppWake.swift */,
@@ -207,6 +210,7 @@
 				A09F60FB92403B2A4A5AEC6D /* AppCore.swift in Sources */,
 				43F4D16A20C18037A922D32F /* AppCoreBridge.swift in Sources */,
 				773A6AF7C732E03BA2FCC8C4 /* AppDevice.swift in Sources */,
+				B0F7117A6675BF891B1CB0FB /* AppDeviceLink.swift in Sources */,
 				C5085655B93C50F2344D1AFA /* AppEffects.swift in Sources */,
 				FD7E4A9C679B91D89A1D3D7B /* AppHTTP.swift in Sources */,
 				4BD534419A18D33EAA0A7955 /* AppWake.swift in Sources */,

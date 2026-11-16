@@ -39,7 +39,20 @@ enum AppCall {
     case clipboard(String)
     /// Open a link outside the app. The app asks only on an explicit action.
     case link(String)
+    /// The computers this phone is paired with, with no account (AppDeviceService).
+    case deviceList
+    /// Pair with the computer in an openagents://pair? link.
+    case devicePair(String)
+    /// One environment request to a paired computer (its key, 64 hex).
+    case deviceCall(host: String, body: Data)
     case unsupported
+}
+/// The phone's own computers (AppDeviceLink on iOS). The device key and the grants stay in it.
+@MainActor protocol AppDeviceService: AnyObject {
+    /// One computer a line: its key, TAB, its name.
+    func list() -> String
+    func pair(_ link: String, done: @escaping (_ paired: Bool, _ words: String) -> Void)
+    func call(host: String, body: Data, done: @escaping (AppCompletion.State, Data) -> Void)
 }
 struct AppRequest { var op: UInt64; var generation: UInt64; var call: AppCall }
 
@@ -76,6 +89,7 @@ struct AppCompletion: Equatable {
     private let account: AppAccount
     private let wake: AppWake
     private weak var platform: AppPlatform?
+    private weak var devices: AppDeviceService?
     private var inside = false
     private var late: [AppCompletion] = []
     /// Requests with a completion still owed, and the generation each had.
@@ -85,8 +99,8 @@ struct AppCompletion: Equatable {
     /// Completions delivered, for the checks.
     private(set) var delivered = 0
 
-    init(outbox: AppOutbox, http: AppHTTP, account: AppAccount, wake: AppWake, platform: AppPlatform?) {
-        self.outbox = outbox; self.http = http; self.account = account; self.wake = wake; self.platform = platform
+    init(outbox: AppOutbox, http: AppHTTP, account: AppAccount, wake: AppWake, platform: AppPlatform?, devices: AppDeviceService? = nil) {
+        self.outbox = outbox; self.http = http; self.account = account; self.wake = wake; self.platform = platform; self.devices = devices
     }
 
     /// Call after every dispatch into the app. Does nothing when called from inside one.
@@ -137,6 +151,17 @@ struct AppCompletion: Equatable {
         case .link(let link):
             guard let platform else { finish(op, generation, .failed, 0, Data()); return }
             platform.open(link) { [weak self] opened in self?.finish(op, generation, opened ? .done : .failed, 0, Data("{}".utf8)) }
+        case .deviceList:
+            guard let devices else { finish(op, generation, .unsupported, 0, Data()); return }
+            finish(op, generation, .done, 200, Data(devices.list().utf8), "text/plain")
+        case .devicePair(let link):
+            guard let devices else { finish(op, generation, .unsupported, 0, Data()); return }
+            devices.pair(link) { [weak self] ok, words in
+                self?.finish(op, generation, ok ? .done : .failed, 200, (try? JSONSerialization.data(withJSONObject: ok ? ["name": words] : ["error": words])) ?? Data())
+            }
+        case .deviceCall(let host, let body):
+            guard let devices else { finish(op, generation, .unsupported, 0, Data()); return }
+            devices.call(host: host, body: body) { [weak self] state, view in self?.finish(op, generation, state, 200, view) }
         case .unsupported: finish(op, generation, .unsupported, 0, Data())
         }
     }

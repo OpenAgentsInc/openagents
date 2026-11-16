@@ -60,7 +60,7 @@ import UIKit
             oa_policy_http(method == "GET" ? AppCoreCode.get : method == "POST" ? AppCoreCode.post : 0, path, Int64(bytes)) != 0
         }), authorize: AppAccount.authorizer(auth))
         bridge = AppCoreBridge(core: core)
-        effects = AppEffects(outbox: bridge, http: http, account: account, wake: AppWake(), platform: device)
+        effects = AppEffects(outbox: bridge, http: http, account: account, wake: AppWake(), platform: device, devices: AppDeviceLink.shared)
         bridge.effects = effects
         device.fact = { [weak self] fact in
             guard let self else { return }
@@ -76,7 +76,10 @@ import UIKit
     func launch() {
         core.launch(rejoin: UserDefaults.standard.string(forKey: AppServices.rejoinKey) ?? "")
         bridge.heard()
+        // a pairing link the system opened (now, or before the core was up): dispatch.coax ACT_DEVICE_PAIR
+        AppDeviceLink.shared.onLink = { [weak self] link in self?.core.action(AppServices.actDevicePair, text: link); self?.bridge.heard() }
     }
+    private static let actDevicePair: Int64 = 19
     /// The page went into the core (a tap): perform what it asked, without waking the page again.
     func pump() { bridge.pump() }
 
@@ -92,5 +95,15 @@ import UIKit
     static var keptEnvironment: String { UserDefaults.standard.string(forKey: environmentKey) ?? "" }
     static func keepEnvironment(_ text: String) {
         if text.isEmpty { UserDefaults.standard.removeObject(forKey: environmentKey) } else { UserDefaults.standard.set(text, forKey: environmentKey) }
+    }
+}
+
+/// A pairing link the system opened (openagents://pair?..., printed by `openagents-environment pair`):
+/// the device service hands it to the core.
+extension OpenAgentsApp {
+    @objc func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any]) -> Bool {
+        guard url.scheme == "openagents", url.host == "pair" else { return false }
+        AppDeviceLink.shared.opened(url.absoluteString)
+        return true
     }
 }

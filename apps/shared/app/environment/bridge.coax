@@ -25,6 +25,7 @@ EsBridge :: struct {
   sent: [ES_B_SENT] EsSent; next: int;
   key: [ES_DRAFT_KEY] u8; nk: int;            // the draft last made current
   refused: int;                         // reads the core would not take
+  seen: [64] u8; nseen: int;            // the core's computer at the last sync
 }
 
 es_b_outcome :: (fxo: int) -> int #effects(all) {
@@ -57,6 +58,12 @@ es_bridge_sync :: (c: [] AppCore, b: [] EsBridge, s: [] EnvSelect) #effects(all)
     es_paired_end(s);
   }
   es_paired_note(s, app_device_pair_words(c));
+  // the core moved to a paired computer by itself (a relaunch rejoined its conversation): the
+  // draft takes it, so the chip names it and the slot is not set back
+  core_env := app_environment(c);
+  if core_env.count == 64 && core_env != cast(string) b[0].seen[0..<b[0].nseen] && es_paired_find(s, core_env) >= 0 {
+    d := es_now(s); s[0].drafts[d].manual = true; for ch, i: core_env { s[0].drafts[d].host[i] = ch; } s[0].drafts[d].nr = 0;
+  }
   // the slots the core sends with a request: a paired computer's needs no account
   if s[0].in || s[0].paired[0].n > 0 || app_environment(c).count > 0 {
     ch := es_choice(s, key);
@@ -65,6 +72,8 @@ es_bridge_sync :: (c: [] AppCore, b: [] EsBridge, s: [] EnvSelect) #effects(all)
     if host != app_environment(c) || name != app_environment_label(c) {
       _ := app_dispatch(c, AppEvent.{kind = EV_ACTION, code = ACT_ENVIRONMENT, mono_ms = c[0].mono_ms, wall_ms = c[0].wall_ms, text = host, more = name});
     }
+    now_env := app_environment(c); b[0].nseen = ifx now_env.count <= 64 then es_copy(b[0].seen[..], now_env) else 0;
+    if b[0].nseen < 0 { b[0].nseen = 0; }
     repo := cast(string) ch.repo[0..<ch.nr];
     if s[0].in && repo != app_repository(c) {
       _ := app_dispatch(c, AppEvent.{kind = EV_ACTION, code = ACT_REPOSITORY, mono_ms = c[0].mono_ms, wall_ms = c[0].wall_ms, text = repo, more = es_repo_value(s)});

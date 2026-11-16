@@ -114,6 +114,18 @@ advertising full SESS history support.
 
 ## Installation and checks
 
+A phone pairs with this computer with no OpenAgents account:
+
+```sh
+openagents-environment pair --workspace ~/code/project --label "Mac"
+```
+
+It prints an `openagents://pair?host=…&relay=…&code=…&name=…` link. Open it on
+the phone (OpenAgents asks this computer to pair); the computer allows only the
+request whose label ends with that code, for 7 days, and writes its own
+enrollment for that workspace. Revoke it with `coder host forget ID`. The
+phone's side is `apps/shared/app/device/` and `apps/shared/native/AppDeviceLink.swift`.
+
 The native targets are `apps/openagents-desktop/native/build.sh` (Mac) and
 `native/build-linux.sh` (Linux SDK link after generating `program.coax`,
 `linux-services.coax` and `coder/tui/host.coax`). The Linux desktop identity

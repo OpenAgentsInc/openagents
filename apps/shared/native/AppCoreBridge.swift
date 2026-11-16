@@ -32,7 +32,7 @@ import Foundation
 }
 
 /// effects.coax FX_ kinds.
-enum AppCoreKind: Int64 { case http = 1, authState = 2, authEmail = 3, authVerify = 4, authLogout = 5, ids = 6, clipboard = 7, link = 8, authCancel = 9 }
+enum AppCoreKind: Int64 { case http = 1, authState = 2, authEmail = 3, authVerify = 4, authLogout = 5, ids = 6, clipboard = 7, link = 8, authCancel = 9, deviceList = 10, devicePair = 11, deviceCall = 12 }
 /// host.coax APP_HOST_ fields, in order.
 enum AppCoreField: Int { case kind = 0, generation, method, limit, timeout, owner; static let count = 6 }
 /// url-policy.coax UP_ methods and dispatch.coax LIFE_ codes.
@@ -89,6 +89,11 @@ enum AppCoreCode { static let get: Int64 = 1, post: Int64 = 2; static let foregr
         case .ids: return .identities
         case .clipboard: return words(core.body(op)).map { .clipboard($0) }
         case .link: return words(core.body(op)).map { .link($0) }
+        case .deviceList: return .deviceList
+        case .devicePair: return words(core.body(op)).map { .devicePair($0) }
+        case .deviceCall:
+            guard let host = words(core.text(op)), let body = core.body(op) else { return nil }
+            return .deviceCall(host: host, body: body)
         }
     }
 
@@ -103,6 +108,10 @@ enum AppCoreCode { static let get: Int64 = 1, post: Int64 = 2; static let foregr
         case .authEmail?, .authVerify?:
             flag = c.state == .done
             if let words = json["error"] as? String { text = Data(words.utf8) }
+        case .deviceList?, .deviceCall?: text = c.body
+        case .devicePair?:
+            flag = c.state == .done
+            text = Data(((json["name"] as? String) ?? (json["error"] as? String) ?? "").utf8)
         case .ids?:
             text = Data((json["command_id"] as? String ?? "").utf8); more = Data((json["session_id"] as? String ?? "").utf8)
             value = (json["now_ms"] as? NSNumber)?.int64Value ?? 0

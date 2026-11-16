@@ -14,6 +14,15 @@ and rejoin after relaunch.
 | `environment/` | `claude-env-select` | Environment and repository selection |
 | `cases/` | `claude-drive-cases` | `coax drive` cases and fake services |
 | `preview/` | `claude-dev-loop` | Running the app on the Mac without Xcode |
+| `device/` | `claude-device-submit` | Your own computers with no account: pairing, the device lane, its seal |
+
+### Your own computers need no account
+
+1. The phone pairs with your computer as its own NIP-HOST device: `openagents-environment pair --workspace DIR` prints an `openagents://pair?` link with a one-time code, and opening it on the phone asks to pair.
+2. The phone's secp256k1 key is made once and kept in the Keychain (this device only, never synced); the 7-day grant sits beside it. Neither enters Coax, the outbox or a log.
+3. Every request and reply is sealed, opened and checked in `device/seal.coax`; Swift (`native/AppDeviceLink.swift`) only holds the key and moves bytes over the relay's WebSocket.
+4. The device lane (`device/lane.coax`) drives the environment runtime (`DescribeEnvironment` … `StopTurn`) with the same EnvironmentApp reducer, and keeps "host TAB session" for rejoin.
+5. Login gates only Default (where we choose); a paired computer works logged out, and nothing is shared with the server.
 
 ## The core
 
@@ -110,6 +119,13 @@ The services the host implements:
 | `FX_IDS` | - | text, more: two random 128-bit IDs (32 lowercase hex); value: wall ms |
 | `FX_CLIPBOARD` | body: text | - |
 | `FX_LINK` | body: http(s) URL | - |
+| `FX_DEVICE_LIST` | - | text: one paired computer a line, "host TAB name" |
+| `FX_DEVICE_PAIR` | body: the `openagents://pair?` link | flag: paired; text: the name, or words on failure |
+| `FX_DEVICE_CALL` | text: the computer's key (64 hex); body: the environment request | text: its view; unknown when no answer came |
+
+The device rows need a `DeviceLane` attached with `app_host_device(c, d)` before
+launch (about 1.6 MiB; `apps/openagents-ios/core-host.c` callocs it). With no
+lane attached they are never asked for.
 
 Lifecycle facts come in through `app_host_lifecycle` (`LIFE_FOREGROUND`,
 `LIFE_BACKGROUND`); a foreground asks for the login state again and resumes

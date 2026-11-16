@@ -19,10 +19,16 @@ static int64_t oa_routed(void *core, int64_t answer) { return oa_routed_body(cor
 
 void *oa_core_open(void) {
   coax_t_AppCore *c = calloc(1, sizeof *c);
-  if (c && !app_host_init(oa_core(c))) { free(c); return NULL; }
+  // the device lane (apps/shared/app/device/lane.coax): its own record beside the core, for the core's life
+  coax_t_DeviceLane *d = calloc(1, sizeof *d);
+  if (!c || !d || !app_host_init(oa_core(c)) || !app_host_device(oa_core(c), (coax_v_t_DeviceLane){d, 1})) { free(c); free(d); return NULL; }
   return c;
 }
-void oa_core_close(void *core) { free(core); }
+void oa_core_close(void *core) {
+  coax_t_AppCore *c = core;
+  if (c) free(c->device.data);
+  free(core);
+}
 int64_t oa_core_launch(void *core, int64_t mono, int64_t wall, const char *rejoin) { return oa_routed(core, app_host_launch(oa_core(core), mono, wall, oa_cstr(rejoin))); }
 int64_t oa_core_clock(void *core, int64_t mono, int64_t wall) { return oa_routed(core, app_host_clock(oa_core(core), mono, wall)); }
 int64_t oa_core_lifecycle(void *core, int64_t mono, int64_t wall, int64_t code) { return oa_routed(core, app_host_lifecycle(oa_core(core), mono, wall, code)); }
@@ -46,3 +52,24 @@ int64_t oa_core_busy(void *core) { return app_host_busy(oa_core(core)); }
 int64_t oa_core_dirty_take(void *core, int64_t mask) { return app_host_dirty_take(oa_core(core), mask); }
 int64_t oa_core_keep(void *core, uint8_t *out, int64_t cap) { return app_host_keep(oa_core(core), (coax_v_u8){out, cap}); }
 int oa_policy_http(int64_t method, const char *path, int64_t body_bytes) { return up_http(method, oa_cstr(path), body_bytes); }
+
+// ---------------------------------------------------------------- the device's seal (seal.coax dv_*)
+
+void *oa_device_work_open(void) { return calloc(1, sizeof(coax_t_DvWork)); }
+void oa_device_work_close(void *work) { if (work) { memset(work, 0, sizeof(coax_t_DvWork)); free(work); } }
+static coax_v_t_DvWork oa_work(void *w) { return (coax_v_t_DvWork){w, w ? 1 : 0}; }
+static coax_v_u8 oa_out(uint8_t *p, int64_t n) { return (coax_v_u8){p, p ? n : 0}; }
+static coax_v_u8 oa_in(const uint8_t *p, int64_t n) { return (coax_v_u8){(uint8_t *)p, p ? n : 0}; }
+int64_t oa_device_public(const uint8_t secret[32], uint8_t out[64]) { return dv_public(oa_in(secret, 32), oa_out(out, 64)); }
+int64_t oa_device_seal(void *work, int64_t op, const uint8_t secret[32], const char *host, const char *relay, const char *arg, int64_t epoch,
+                       const uint8_t *params, int64_t params_n, int64_t now, const uint8_t random[96], uint8_t *out, int64_t cap) {
+  return dv_seal(oa_work(work), op, oa_in(secret, 32), oa_cstr(host), oa_cstr(relay), oa_cstr(arg), epoch, oa_bytes((const char *)params, params_n), now, oa_in(random, 96), oa_out(out, cap));
+}
+int64_t oa_device_filter(void *work, uint8_t *out, int64_t cap) { return dv_filter(oa_work(work), oa_out(out, cap)); }
+int64_t oa_device_event_id(void *work, uint8_t out[64]) { return dv_event_id(oa_work(work), oa_out(out, 64)); }
+int64_t oa_device_auth(const uint8_t secret[32], const char *relay, const uint8_t *challenge, int64_t challenge_n, int64_t now, const uint8_t aux[32], uint8_t *out, int64_t cap) {
+  return dv_auth(oa_in(secret, 32), oa_cstr(relay), oa_bytes((const char *)challenge, challenge_n), now, oa_in(aux, 32), oa_out(out, cap));
+}
+int64_t oa_device_open(void *work, const uint8_t secret[32], const char *host, const uint8_t *event, int64_t event_n, int64_t now, uint8_t *out, int64_t cap) {
+  return dv_open(oa_work(work), oa_in(secret, 32), oa_cstr(host), oa_bytes((const char *)event, event_n), now, oa_out(out, cap));
+}

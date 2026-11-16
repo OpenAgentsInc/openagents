@@ -560,11 +560,14 @@ struct KeychainTokenStore: TokenStore {
 
 /// The device key's Keychain item (see `DeviceKeys`): the Secure Enclave's wrapped blob, beside the
 /// tokens, this device only, after first unlock, never synced.
+/// `account` names another item of the same kind: the own-computer device key and its pairings
+/// (apps/shared/native/AppDeviceLink.swift).
 struct KeychainDeviceKeyStore: DeviceKeyStore {
+    var account = "device-key-v1"
     private var base: [String: Any] {
         [kSecClass as String: kSecClassGenericPassword,
          kSecAttrService as String: "com.openagents.app.auth",
-         kSecAttrAccount as String: "device-key-v1",
+         kSecAttrAccount as String: account,
          kSecAttrSynchronizable as String: false]
     }
     func load() -> Data? {

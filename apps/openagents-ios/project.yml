@@ -45,6 +45,8 @@ targets:
       - ../shared/native/AppEffects.swift
       - ../shared/native/AppDevice.swift
       - ../shared/native/AppCoreBridge.swift
+      # The phone's own computers, with no account: the device key, pairing and the relay.
+      - ../shared/native/AppDeviceLink.swift
       - ../shared/host/apple/AppAuth.swift
       - ../shared/host/apple/DeviceKey.swift
       - OpenAgents/Assets.xcassets
