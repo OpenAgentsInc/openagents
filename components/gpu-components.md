@@ -717,8 +717,11 @@ refusal. These checks do not replace a real passkey or screen-reader ceremony.
 Linux now has an [ATK SDK projection](../apps/shared/host/linux/ACCESSIBILITY.md)
 of the same committed rows. Its real SDK queries and retained-object
 retirement pass ordinary and ASan/UBSan/LSan checks on a Linux build host.
-AT-SPI registration, active text/focus and integration into the Vulkan app
-remain separate gates; G6 is still open.
+Its AT-SPI registration now passes a separate actual D-Bus client's discovery,
+redacted-field and activation queries. The Vulkan host's integration compiles
+against its generated Wayland and actual Vulkan/ATK SDKs. Active text/focus,
+the compiled OpenAgents Linux consumer and an Orca ceremony remain separate
+gates; G6 is still open.
 
 The desktop SDK now has `AppMacDevice`: asynchronous discovery and bounded
 process carriage through the installed `openagents-environment key` and

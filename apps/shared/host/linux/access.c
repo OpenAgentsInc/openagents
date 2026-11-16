@@ -19,7 +19,7 @@ static UiAtkNode *ui_atk_parent_node(UiAtkNode *n) {
  if(n->row.parent>=0)for(guint i=0;i<n->owner->nodes->len;i++) {UiAtkNode *p=g_ptr_array_index(n->owner->nodes,i);if(p->index==n->row.parent)return p;}
  return n->owner->window;
 }
-static AtkObject *ui_atk_parent(AtkObject *raw) {UiAtkNode *n=(UiAtkNode *)raw;return ATK_OBJECT(ui_atk_parent_node(n));}
+static AtkObject *ui_atk_parent(AtkObject *raw) {UiAtkNode *n=(UiAtkNode *)raw;return n->window?atk_object_peek_parent(raw):ATK_OBJECT(ui_atk_parent_node(n));}
 static gint ui_atk_children(AtkObject *raw) {
  UiAtkNode *n=(UiAtkNode *)raw;if(!n->owner)return 0;int count=0;
  for(guint i=0;i<n->owner->nodes->len;i++)if(ui_atk_parent_node(g_ptr_array_index(n->owner->nodes,i))==n)count++;
@@ -31,22 +31,29 @@ static AtkObject *ui_atk_child(AtkObject *raw,gint at) {
  return NULL;
 }
 static gint ui_atk_index(AtkObject *raw) {
+ if(((UiAtkNode *)raw)->window){AtkObject *p=atk_object_peek_parent(raw);if(!p)return -1;int count=atk_object_get_n_accessible_children(p);for(int i=0;i<count;i++){AtkObject *child=atk_object_ref_accessible_child(p,i);int same=child==raw;if(child)g_object_unref(child);if(same)return i;}return -1;}
  UiAtkNode *n=(UiAtkNode *)raw,*parent=ui_atk_parent_node(n);if(!parent)return -1;int index=0;
  for(guint i=0;i<n->owner->nodes->len;i++){UiAtkNode *child=g_ptr_array_index(n->owner->nodes,i);if(child==n)return index;if(ui_atk_parent_node(child)==parent)index++;}return -1;
 }
 static int ui_atk_pressable(UiAtkNode *n) {return n->owner && !n->window && !(n->row.state&1) && (n->row.role==0 || n->row.role==1 || n->row.role==2 || n->row.role==3 || n->row.role==6 || n->row.role==7 || n->row.role==10);}
+static const AtkStateType ui_atk_state_types[10]={ATK_STATE_ENABLED,ATK_STATE_SENSITIVE,ATK_STATE_FOCUSABLE,ATK_STATE_BUSY,ATK_STATE_FOCUSED,ATK_STATE_EXPANDABLE,ATK_STATE_EXPANDED,ATK_STATE_CHECKED,ATK_STATE_PRESSED,ATK_STATE_SELECTED};
+static int ui_atk_state(int role,int state,AtkStateType which) {
+ if(which==ATK_STATE_ENABLED || which==ATK_STATE_SENSITIVE)return !(state&1);
+ if(which==ATK_STATE_FOCUSABLE)return !(state&1) && (role==0 || role==1 || role==2 || role==3 || role==6 || role==7 || role==10);
+ if(which==ATK_STATE_BUSY)return (state&2)!=0;
+ if(which==ATK_STATE_FOCUSED)return (state&64)!=0;
+ if(which==ATK_STATE_EXPANDABLE)return (state&128)!=0;
+ if(which==ATK_STATE_EXPANDED)return (state&128) && (state&8);
+ if(which==ATK_STATE_CHECKED)return (state&256) && (state&32);
+ if(which==ATK_STATE_PRESSED)return (state&512) && (state&4);
+ if(which==ATK_STATE_SELECTED)return (state&16)!=0;
+ return 0;
+}
 static AtkStateSet *ui_atk_states(AtkObject *raw) {
  UiAtkNode *n=(UiAtkNode *)raw;AtkStateSet *s=atk_state_set_new();
  if(!n->owner){atk_state_set_add_state(s,ATK_STATE_DEFUNCT);return s;}
  atk_state_set_add_state(s,ATK_STATE_VISIBLE);atk_state_set_add_state(s,ATK_STATE_SHOWING);
- if(!(n->row.state&1)){atk_state_set_add_state(s,ATK_STATE_ENABLED);atk_state_set_add_state(s,ATK_STATE_SENSITIVE);}
- if(ui_atk_pressable(n))atk_state_set_add_state(s,ATK_STATE_FOCUSABLE);
- if(n->row.state&2)atk_state_set_add_state(s,ATK_STATE_BUSY);
- if(n->row.state&64)atk_state_set_add_state(s,ATK_STATE_FOCUSED);
- if(n->row.state&128){atk_state_set_add_state(s,ATK_STATE_EXPANDABLE);if(n->row.state&8)atk_state_set_add_state(s,ATK_STATE_EXPANDED);}
- if(n->row.state&256 && n->row.state&32)atk_state_set_add_state(s,ATK_STATE_CHECKED);
- if(n->row.state&512 && n->row.state&4)atk_state_set_add_state(s,ATK_STATE_PRESSED);
- if(n->row.state&16)atk_state_set_add_state(s,ATK_STATE_SELECTED);
+ for(int i=0;i<10;i++)if((!n->window || ui_atk_state_types[i]!=ATK_STATE_FOCUSABLE) && ui_atk_state(n->row.role,n->row.state,ui_atk_state_types[i]))atk_state_set_add_state(s,ui_atk_state_types[i]);
  return s;
 }
 static void ui_atk_node_class_init(UiAtkNodeClass *c) {AtkObjectClass *a=ATK_OBJECT_CLASS(c);a->get_parent=ui_atk_parent;a->get_n_children=ui_atk_children;a->ref_child=ui_atk_child;a->get_index_in_parent=ui_atk_index;a->ref_state_set=ui_atk_states;}
@@ -94,16 +101,30 @@ int ui_access_sync(UiAccess *a) {
  UiElement *rows=g_new0(UiElement,count);unsigned char *valid=g_new0(unsigned char,count);GHashTable *seen=g_hash_table_new(g_str_hash,g_str_equal);int ok=1;
  for(int i=0;i<count;i++){if(!a->app.element(a->app.user,i,&rows[i]))continue;if(!ui_atk_valid(&rows[i],i) || g_hash_table_contains(seen,rows[i].id)){ok=0;break;}g_hash_table_add(seen,rows[i].id);valid[i]=rows[i].box[2]>0 && rows[i].box[3]>0;}
  if(!ok){g_hash_table_destroy(seen);g_free(valid);g_free(rows);return 0;}
+ typedef struct {UiAtkNode *node,*parent;int position,role,state;char *text;} Before;
+ GPtrArray *old=a->nodes;Before *before=g_new0(Before,old->len);
+ for(guint i=0;i<old->len;i++){UiAtkNode *n=g_ptr_array_index(old,i);before[i]=(Before){.node=g_object_ref(n),.parent=g_object_ref(ui_atk_parent_node(n)),.position=ui_atk_index(ATK_OBJECT(n)),.role=n->row.role,.state=n->row.state,.text=g_strdup(ui_atk_value(n))};}
  GPtrArray *next=g_ptr_array_new();for(int i=0;i<count;i++){if(!valid[i])continue;UiAtkNode *n=g_hash_table_lookup(a->ids,rows[i].id);
   if(!n){n=g_object_new(ui_atk_node_get_type(),NULL);g_hash_table_insert(a->ids,g_strdup(rows[i].id),n);}
   n->owner=a;n->row=rows[i];n->index=i;atk_object_set_role(ATK_OBJECT(n),ui_atk_roles[n->row.role]);atk_object_set_name(ATK_OBJECT(n),n->row.label);atk_object_set_accessible_id(ATK_OBJECT(n),n->row.id);g_ptr_array_add(next,n);
  }
  GHashTableIter it;gpointer key,value;g_hash_table_iter_init(&it,a->ids);while(g_hash_table_iter_next(&it,&key,&value)){UiAtkNode *n=value;if(!g_ptr_array_find(next,n,NULL)){n->owner=NULL;atk_object_notify_state_change(ATK_OBJECT(n),ATK_STATE_DEFUNCT,TRUE);g_hash_table_iter_remove(&it);}}
- g_ptr_array_free(a->nodes,TRUE);a->nodes=next;g_hash_table_destroy(seen);g_free(valid);g_free(rows);return 1;
+ a->nodes=next;
+ // SDK observers receive structural/state/text changes only after the whole
+ // new generation is available. Reverse removals preserve old sibling indices.
+ for(guint i=old->len;i>0;i--){Before *p=&before[i-1];UiAtkNode *n=p->node;if(n->owner!=a || ui_atk_parent_node(n)!=p->parent || ui_atk_index(ATK_OBJECT(n))!=p->position)g_signal_emit_by_name(p->parent,"children-changed::remove",(guint)p->position,n,NULL);}
+ for(guint i=0;i<next->len;i++){
+  UiAtkNode *n=g_ptr_array_index(next,i);guint old_at;Before *p=g_ptr_array_find(old,n,&old_at)?&before[old_at]:NULL;UiAtkNode *parent=ui_atk_parent_node(n);int position=ui_atk_index(ATK_OBJECT(n));
+  if(!p || p->parent!=parent || p->position!=position)g_signal_emit_by_name(parent,"children-changed::add",(guint)position,n,NULL);
+  for(int k=0;k<10;k++){int was=p?ui_atk_state(p->role,p->state,ui_atk_state_types[k]):0;int now=ui_atk_state(n->row.role,n->row.state,ui_atk_state_types[k]);if(was!=now)atk_object_notify_state_change(ATK_OBJECT(n),ui_atk_state_types[k],now);}
+  const char *text=ui_atk_value(n);if(!p || strcmp(p->text,text)){if(p && *p->text)g_signal_emit_by_name(n,"text-changed::delete",0,(gint)g_utf8_strlen(p->text,-1));if(*text)g_signal_emit_by_name(n,"text-changed::insert",0,(gint)g_utf8_strlen(text,-1));}
+ }
+ for(guint i=0;i<old->len;i++){g_object_unref(before[i].node);g_object_unref(before[i].parent);g_free(before[i].text);}g_free(before);g_ptr_array_free(old,TRUE);
+ g_hash_table_destroy(seen);g_free(valid);g_free(rows);return 1;
 }
 AtkObject *ui_access_window(UiAccess *a) {return a?ATK_OBJECT(a->window):NULL;}
 void ui_access_destroy(UiAccess *a) {
  if(!a)return;
  for(guint i=0;i<a->nodes->len;i++){UiAtkNode *n=g_ptr_array_index(a->nodes,i);n->owner=NULL;atk_object_notify_state_change(ATK_OBJECT(n),ATK_STATE_DEFUNCT,TRUE);}
- a->window->owner=NULL;g_hash_table_destroy(a->ids);g_ptr_array_free(a->nodes,TRUE);g_object_unref(a->window);g_free(a);
+ a->window->owner=NULL;atk_object_notify_state_change(ATK_OBJECT(a->window),ATK_STATE_DEFUNCT,TRUE);g_hash_table_destroy(a->ids);g_ptr_array_free(a->nodes,TRUE);g_object_unref(a->window);g_free(a);
 }

@@ -1712,7 +1712,7 @@ text and native momentum scrolling on the phone. Simulator/native checks
 cover the state/crypto/transport paths; these system ceremonies and physical
 appearance cannot be certified by those checks.
 
-Build 1397 is verified in the Owner TestFlight group; 1398 adds computer-chat
+Build 1398 is verified in the Owner TestFlight group; it adds computer-chat
 history to that same drawer. Check each paired computer's sessions, opening
 one, loading More, and reopening the drawer during a running turn. The identity API is
 `oa-api-00171-b4j` after staging and production migration/smoke checks. It

@@ -2,6 +2,9 @@
 // The shared Linux host (ui-host.h).
 #define _GNU_SOURCE
 #include "ui-host.h"
+#ifdef UI_ATSPI
+#include "access-bus.h"
+#endif
 #include "../drive.h"
 #include <stdarg.h>
 #include "vkc.h"
@@ -53,6 +56,10 @@ struct UiHost {
   struct wl_pointer *pointer;
   uint32_t enter_serial;
   int cursor_kind;
+#ifdef UI_ATSPI
+  UiAccess *access;
+  int access_attempted;
+#endif
 };
 
 static double ui_now(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return t.tv_sec + t.tv_nsec / 1e9; }
@@ -116,6 +123,10 @@ static void ui_fill(UiHost *h, float dt) {
   if (n < 0) n = 0;
   if ((uint32_t)n > h->app.max_vertices) n = (int)h->app.max_vertices;
   h->pass.vertex_count = (uint32_t)n;
+#ifdef UI_ATSPI
+  if(!h->access && h->app.elements && h->app.element)h->access=ui_access_create(&h->app);
+  if(h->access && ui_access_sync(h->access) && !h->offscreen && !h->access_attempted){h->access_attempted=1;(void)ui_access_bus_start(h->access);}
+#endif
 }
 
 // ---- the seat
@@ -216,6 +227,9 @@ UiHost *ui_open(const UiApp *app, int offscreen) {
 static void ui_drive_poll(UiHost *h);
 static void ui_drive_close(UiHost *h);
 int ui_frame(UiHost *h) {
+#ifdef UI_ATSPI
+  ui_access_bus_pump();
+#endif
   ui_drive_poll(h);
   if (h->offscreen) return 0;
   vkw_pump(&h->win);
@@ -351,6 +365,9 @@ int ui_shot_write(UiHost *h, const char *png) {
 }
 void ui_close(UiHost *h) {
   if (!h) return;
+#ifdef UI_ATSPI
+  ui_access_destroy(h->access);h->access=NULL;
+#endif
   ui_drive_close(h);
   vkDeviceWaitIdle(h->v.dev);
   if (h->has_pipe) vks_pipe_close(&h->v, &h->pipe);

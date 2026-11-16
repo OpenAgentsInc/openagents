@@ -3,20 +3,22 @@
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
-static int count=14,presses,wakes,bad;
+static int count=14,presses,wakes,bad,checked=1,removals,state_changes;
 static UiAccess *closing;
 static int elements(void *p) {(void)p;return count;}
 static int element(void *p,int i,UiElement *r) {
  (void)p;memset(r,0,sizeof *r);snprintf(r->id,sizeof r->id,"fixture.%d",i);snprintf(r->label,sizeof r->label,"Row %d 日本",i);
  r->role=i;r->parent=-1;r->box[0]=10;r->box[1]=(float)i*30;r->box[2]=200;r->box[3]=28;
  if(i==0)r->state=1;
- if(i==6)r->state=256|32;
+ if(i==6)r->state=256|(checked?32:0);
  if(i==3)snprintf(r->label,sizeof r->label,"Private key");
  if(bad && i==1)snprintf(r->id,sizeof r->id,"fixture.0");
  return 1;
 }
 static int activate(void *p,const char *id) {(void)p;if(!strcmp(id,"fixture.1")){presses++;if(closing){ui_access_destroy(closing);closing=NULL;}return 1;}return 0;}
 static void changed(void *p) {(void)p;wakes++;}
+static void children(AtkObject *o,guint index,gpointer child,gpointer raw) {(void)o;(void)index;(void)child;(void)raw;removals++;}
+static void state_changed(AtkObject *o,const gchar *state,gboolean on,gpointer raw) {(void)o;(void)raw;if(!strcmp(state,"checked") && !on)state_changes++;}
 int main(void) {
  UiApp app={.title="GPU accessibility fixture",.app_id="com.openagents.fixture",.access_capacity=14,.elements=elements,.element=element,.activate=activate,.changed=changed};
  UiAccess *a=ui_access_create(&app);assert(a && ui_access_sync(a));AtkObject *window=ui_access_window(a);assert(atk_object_get_n_accessible_children(window)==14);
@@ -31,7 +33,9 @@ int main(void) {
  bad=1;assert(!ui_access_sync(a) && atk_object_get_n_accessible_children(window)==14);bad=0;
  count=15;assert(!ui_access_sync(a) && atk_object_get_n_accessible_children(window)==14);count=14;
  assert(ui_access_sync(a));AtkObject *same=atk_object_ref_accessible_child(window,1);assert(same==second);g_object_unref(same);
- count=0;assert(ui_access_sync(a) && atk_object_get_n_accessible_children(window)==0 && !atk_action_do_action(ATK_ACTION(second),0));
+ g_signal_connect(window,"children-changed::remove",G_CALLBACK(children),NULL);g_signal_connect(check,"state-change",G_CALLBACK(state_changed),NULL);
+ checked=0;assert(ui_access_sync(a) && state_changes==1);
+ count=0;assert(ui_access_sync(a) && removals==14 && atk_object_get_n_accessible_children(window)==0 && !atk_action_do_action(ATK_ACTION(second),0));
  states=atk_object_ref_state_set(second);assert(atk_state_set_contains_state(states,ATK_STATE_DEFUNCT));g_object_unref(states);
  ui_access_destroy(a);assert(!atk_action_do_action(ATK_ACTION(field),0));
  g_object_unref(first);g_object_unref(second);g_object_unref(field);g_object_unref(check);

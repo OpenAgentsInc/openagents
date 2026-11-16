@@ -2,17 +2,41 @@
 #import "Basic";
 #load "../../../../../coax/lib/sys/native-check.coax";
 tool_main :: ()->int #export_c #effects(all) {
+ argv:[1]Args;if !args_load(argv[..]) {return 2;}bus:=args_has(argv[..],"bus");host:=args_has(argv[..],"host");
  dirb:[1024]u8;dir:=fs_temp("oa-atk-",dirb[..]);if dir.count<1 {return 2;}
  binb:[1200]u8;binary:=fs_join(dir,"access",binb[..]);out:[65536]u8;
  // The SDK supplies its compiler/linker flags through pkg-config.
- flags:[1]Args;if !args_add(flags[..],"pkg-config") || !args_add(flags[..],"--cflags") || !args_add(flags[..],"--libs") || !args_add(flags[..],"atk") {return 2;}
+ flags:[1]Args;if !args_add(flags[..],"pkg-config") || !args_add(flags[..],"--cflags") || !args_add(flags[..],"--libs") || !args_add(flags[..],ifx bus then "atk-bridge-2.0" else "atk") {return 2;}
+ if bus {#assert args_add(flags[..],"atk") && args_add(flags[..],"atspi-2") && args_add(flags[..],"gio-2.0");}
+ if host {for flag:[5]string.["atk-bridge-2.0","wayland-client","wayland-cursor","xkbcommon","vulkan"] {#assert args_add(flags[..],flag);}}
  n:=nc_run(flags[0].v[0..<flags[0].n],30,out[..]);if n<0 {return 1;}
- cc:[1]Args;for flag:[8]string.["cc","-std=gnu11","-O1","-Wall","-Wextra","-Werror","apps/shared/host/linux/tests/access.c","apps/shared/host/linux/access.c"] {#assert args_add(cc[..],flag);}
+ cc:[1]Args;for flag:[8]string.["cc","-std=gnu11","-O1","-Wall","-Wextra","-Werror",ifx bus then "apps/shared/host/linux/tests/access-bus.c" else "apps/shared/host/linux/tests/access.c","apps/shared/host/linux/access.c"] {#assert args_add(cc[..],flag);}
+ if bus {#assert args_add(cc[..],"apps/shared/host/linux/access-bus.c");}
  from:=0;for c,i:cast(string)out[0..<n] {if c==' ' || c=='\n' || c=='\t' {if i>from {#assert args_add(cc[..],cast(string)out[from..<i]);}from=i+1;}}
  if from<n {#assert args_add(cc[..],cast(string)out[from..<n]);}#assert args_add(cc[..],"-o") && args_add(cc[..],binary);
- for sanitized:0..<2 {
+ if host {
+  query:=[3]string.["pkg-config","--variable=pkgdatadir","wayland-protocols"];n=nc_run(query[..],10,out[..]);if n<1 {return 1;}
+  while n>0 && (out[n-1]=='\n' || out[n-1]=='\r') {n-=1;}
+  directory:[2048]u8;for i:0..<n {directory[i]=out[i];}
+  names:=[3]string.["xdg-shell","xdg-decoration-unstable-v1","text-input-unstable-v3"];
+  specs:=[3]string.["stable/xdg-shell/xdg-shell.xml","unstable/xdg-decoration/xdg-decoration-unstable-v1.xml","unstable/text-input/text-input-unstable-v3.xml"];
+  for i:0..<3 {
+   input:[4096]u8;output:[4096]u8;leaf:[256]u8;at:=0;for c:names[i] {leaf[at]=c;at+=1;}for c:"-client-protocol.h" {leaf[at]=c;at+=1;}
+   source:=fs_join(cast(string)directory[0..<n],specs[i],input[..]);target:=fs_join(dir,cast(string)leaf[0..<at],output[..]);
+   scan:=[4]string.["wayland-scanner","client-header",source,target];if nc_run(scan[..],30,out[..])<0 {return 1;}
+  }
+  units:=[2]string.["metaverse-engine/host/wayland-input.coax","metaverse-engine/host/wayland-text.coax"];headers:=[2]string.["wayland-input.h","wayland-text.h"];generated:[1048576]u8;
+  for i:0..<2 {header:[4096]u8;path:=fs_join(dir,headers[i],header[..]);gen:=[6]string.["coax/bin/coax","c",units[i],"--library","--header",path];if nc_run(gen[..],90,generated[..])<0 {return 1;}}
+  // Syntax-check the actual Vulkan host with its AT-SPI lifecycle enabled.
+  check:[1]Args;for arg:[13]string.["cc","-std=gnu11","-DUI_ATSPI","-DENGINE_WAYLAND_INPUT_V1","-DENGINE_WAYLAND_TEXT_V1","-fsyntax-only","-I",dir,"-Imetaverse/gpu","-Imetaverse/kms","-Icoax/platform","-Iapps/shared/host/linux","apps/shared/host/linux/ui-host.c"] {#assert args_add(check[..],arg);}
+  for i:8..<cc[0].n-2 {#assert args_add(check[..],cc[0].v[i]);}
+  if nc_run(check[0].v[0..<check[0].n],60,out[..])<0 {return 1;}print("Vulkan host: AT-SPI lifecycle compiles against the actual Wayland/Vulkan/ATK SDKs\n");_:=fs_remove(dir);return 0;
+ }
+ for sanitized:0..<(ifx bus then 1 else 2) {
   if sanitized==1 {#assert args_add(cc[..],"-fsanitize=address,undefined") && args_add(cc[..],"-fno-omit-frame-pointer");}
   if nc_run(cc[0].v[0..<cc[0].n],90,out[..])<0 {return 1;}
-  run:=[1]string.[binary];n=nc_run(run[..],30,out[..]);if n<0 {return 1;}print("ATK sanitizers %: %\n",sanitized,cast(string)out[0..<n]);
+  run:[1]Args;
+  if bus {#assert args_add(run[..],"dbus-run-session");config:=args_value(argv[..],"--bus-config","");if config.count>0 {#assert args_add(run[..],"--config-file") && args_add(run[..],config);}#assert args_add(run[..],"--");}
+  #assert args_add(run[..],binary);n=nc_run(run[0].v[0..<run[0].n],30,out[..]);if n<0 {return 1;}print("ATK sanitizers %: %\n",sanitized,cast(string)out[0..<n]);
  }_:=fs_remove(dir);return 0;
 }
