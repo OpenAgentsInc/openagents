@@ -41,7 +41,7 @@ EXPORT("coaxial_draw_count") uint32_t coaxial_draw_count(cx_face_addr p) { retur
 EXPORT("coaxial_stores") uint32_t coaxial_stores(void) { return 1u; }
 EXPORT("coaxial_store_cap") uint32_t coaxial_store_cap(int32_t k) { (void)k; return (uint32_t)sizeof(((coax_t_ImportWorld *)0)->objects); }
 EXPORT("coaxial_store") cx_face_addr coaxial_store(cx_face_addr p, int32_t k) { (void)k; return (cx_face_addr)(uintptr_t)state(p)->objects.e; }
-EXPORT("coaxial_store_bytes") uint32_t coaxial_store_bytes(cx_face_addr p, int32_t k) { (void)k; uint32_t n = (uint32_t)state(p)->draw_n; return (n ? n : 1u) * 28u * (uint32_t)sizeof(float); }
+EXPORT("coaxial_store_bytes") uint32_t coaxial_store_bytes(cx_face_addr p, int32_t k) { (void)k; uint32_t n = (uint32_t)state(p)->draw_n; return (n ? n : 1u) * 32u * (uint32_t)sizeof(float); }
 EXPORT("coaxial_store_version") uint32_t coaxial_store_version(cx_face_addr p, int32_t k) { (void)k; return (uint32_t)state(p)->store_version; }
 EXPORT("coaxial_scene_ready") uint32_t coaxial_scene_ready(cx_face_addr p) { return state(p)->ready ? 1u : 0u; }
 /* For headless checks: 0 ready, 1 the catalog admitted, 2 failed, 3 to 6 each asset's bytes, 7 draws, 8 the map. */

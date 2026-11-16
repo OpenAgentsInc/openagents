@@ -26,6 +26,23 @@ ImportWorld :: struct {
   width: f32 = 1280; height: f32 = 800; d: f32 = 1;
   falls: int;
   title_text: [96] u8; title_n: int;
+  order: [IW_MAPS] int; slot: int;   // the maps in the order you go through them (IWR_FIRST, then the catalog's)
+  map_text: [96] u8;
+}
+// Maps that come first, by exact id: the Splice Bots jam route's four, from the editor and the data routes.
+IWR_FIRST :: [8] string.["/Game/World/Graybox/L_Farm", "/Game/World/Graybox/L_Lab", "/Game/World/Graybox/L_Plain", "/Game/World/Graybox/L_Ring",
+  "/Data/level_layout/farm", "/Data/level_layout/lab", "/Data/level_layout/plain", "/Data/level_layout/ring"];
+iwr_order :: (s: [] ImportWorld) #effects(all) {
+  w := s[0].world[..]; n := 0; taken: [IW_MAPS] bool;
+  for id: IWR_FIRST { for m: 0..<w[0].nm { if !taken[m] && cast(string) w[0].maps[m].id[0..<w[0].maps[m].id_n] == id { s[0].order[n] = m; taken[m] = true; n += 1; } } }
+  for m: 0..<w[0].nm { if !taken[m] { s[0].order[n] = m; n += 1; } }
+}
+// A map's name for the HUD: its id's last part, without the level prefix, its underscores as spaces.
+iwr_map_label :: (s: [] ImportWorld, map: int) -> string #effects(all) {
+  name := iw_map_name(s[0].world[..], map); from := 0;
+  if name.count > 3 && name[0] == 'L' && name[1] == 'I' && name[2] == '_' { from = 3; } else if name.count > 2 && name[0] == 'L' && name[1] == '_' { from = 2; }
+  n := 0; for k: from..<name.count { if n < s[0].map_text.count { s[0].map_text[n] = ifx name[k] == '_' then ' ' else name[k]; n += 1; } }
+  return cast(string) s[0].map_text[0..<n];
 }
 
 // The state's defaults, set field by field over zeroed memory: the state is megabytes, too big to build
@@ -41,7 +58,7 @@ iwr_init :: (s: [] ImportWorld) #export_c #effects(all) {
 iwr_catalog :: (s: [] ImportWorld, text: string) #export_c #effects(all) {
   s[0].assets[0] = text.count;
   if !iw_admit(s[0].world[..], text) { s[0].failed = true; return; }
-  s[0].admitted = true; iwr_map(s, 0);
+  s[0].admitted = true; iwr_order(s); s[0].slot = 0; iwr_map(s, s[0].order[0]);
 }
 iwr_asset :: (s: [] ImportWorld, index: int, bytes: int) #export_c #effects(all) {
   if index < 0 || index > 3 { return; }
@@ -86,8 +103,8 @@ iwr_key :: (s: [] ImportWorld, key: int, down: bool) -> bool #export_c #effects(
   if key == -4 { s[0].look_x += 0.12; return true; }
   if key == -5 { s[0].look_x -= 0.12; return true; }
   if key == 82 || key == 114 { iwr_blur(s); iwr_start(s); return true; }
-  if key == 77 || key == 109 { if s[0].admitted { iwr_blur(s); iwr_map(s, (s[0].map + 1) % s[0].world[0].nm); } return true; }
-  if key >= 49 && key <= 57 { if s[0].admitted && key - 49 < s[0].world[0].nm { iwr_blur(s); iwr_map(s, key - 49); } return true; }
+  if key == 77 || key == 109 { if s[0].admitted { iwr_blur(s); s[0].slot = (s[0].slot + 1) % s[0].world[0].nm; iwr_map(s, s[0].order[s[0].slot]); } return true; }
+  if key >= 49 && key <= 57 { if s[0].admitted && key - 49 < s[0].world[0].nm { iwr_blur(s); s[0].slot = key - 49; iwr_map(s, s[0].order[s[0].slot]); } return true; }
   return false;
 }
 iwr_step :: (s: [] ImportWorld, dt: f32, still: bool) #effects(all) {
@@ -160,15 +177,18 @@ iwr_frame :: (s: [] ImportWorld, out: [] f32, u: [] f32, w: f32, h: f32, d: f32,
   iwr_put3(u, 28, IWR_SUN[0], IWR_SUN[1], IWR_SUN[2]); iwr_put3(u, 32, 0.8, 0.78, 0.72);
   name := ""; maps := 0;
   if s[0].admitted {
-    m := s[0].world[0].maps[s[0].map]; name = iw_map_name(s[0].world[..], s[0].map); maps = s[0].world[0].nm;
+    m := s[0].world[0].maps[s[0].map]; name = iwr_map_label(s, s[0].map); maps = s[0].world[0].nm;
     if m.key {
       // the key light's colour, its brightness folded to the range the shader lights in
       bright := walker.lo(walker.hi(m.key_i, 0), 10) / 10 * 0.6 + 0.4;
       iwr_put3(u, 28, m.key_dir[0], m.key_dir[1], m.key_dir[2]); iwr_put3(u, 32, m.key_rgb[0] * bright, m.key_rgb[1] * bright, m.key_rgb[2] * bright);
     }
     u[35] = cast(f32) m.nl;
+    // point lights by their share of the map's brightest (a level's own units, candela or lumens, are
+    // thousands): the square root keeps a dim lamp visible beside a flood light
+    top: f32 = 0; for k: 0..<m.nl { top = walker.hi(top, m.lights[k].intensity); }
     for k: 0..<m.nl {
-      l := m.lights[k]; b := 44 + k * 8; i := walker.lo(l.intensity, 4);
+      l := m.lights[k]; b := 44 + k * 8; i := ifx top > 0 then 0.9 * sqrt(walker.hi(l.intensity, 0) / top) else 0.0;
       iwr_put3(u, b, l.at[0], l.at[1], l.at[2]); u[b + 3] = l.range; iwr_put3(u, b + 4, l.rgb[0] * i, l.rgb[1] * i, l.rgb[2] * i);
     }
   }
@@ -179,9 +199,11 @@ iwr_frame :: (s: [] ImportWorld, out: [] f32, u: [] f32, w: f32, h: f32, d: f32,
   n = hd_text_fit(out, n, title, 20, 34, 11, walker.lo(380, width - 140) - 24, pen, 0);
   if s[0].failed { return hd_text_fit(out, n, "This world isn't available here", 20, 62, 11, width - 40, pen, 1); }
   if !s[0].ready { return hd_text_fit(out, n, "Loading the world", 20, 62, 11, width - 40, pen, 1); }
-  num: [8] u8; num[0] = cast,trunc(u8) (49 + s[0].map); num[1] = '/'; num[2] = cast,trunc(u8) (48 + maps);
-  n = hd_text(out, n, cast(string) num[0..<3], 20, 58, 11, pen, 0);
-  n = hd_text_fit(out, n, name, 52, 58, 11, walker.lo(380, width - 140) - 56, pen, 0);
+  num: [8] u8; nn := 0; at := s[0].slot + 1;
+  if at >= 10 { num[nn] = cast,trunc(u8) (48 + at / 10); nn += 1; } num[nn] = cast,trunc(u8) (48 + at % 10); nn += 1; num[nn] = '/'; nn += 1;
+  if maps >= 10 { num[nn] = cast,trunc(u8) (48 + maps / 10); nn += 1; } num[nn] = cast,trunc(u8) (48 + maps % 10); nn += 1;
+  n = hd_text(out, n, cast(string) num[0..<nn], 20, 58, 11, pen, 0);
+  n = hd_text_fit(out, n, name, 60, 58, 11, walker.lo(380, width - 140) - 56, pen, 0);
   n = hd_text(out, n, "NEXT MAP", width - 100, 35, 11, pen, 0);
   if width >= 700 {
     n = hd_text(out, n, "WASD MOVE  SPACE JUMP  SHIFT RUN  1-9 OR M MAP  R START", 20, height - 21, 10, pen, 0);
@@ -203,6 +225,17 @@ iwr_frame :: (s: [] ImportWorld, out: [] f32, u: [] f32, w: f32, h: f32, d: f32,
   #assert u[35] == 1 && u[47] == 22 && abs(u[28] - 0.3) < 0.0001;   // the lab's light and key
   #assert iwr_key(s[..], 77, true) && s[0].map == 0;
   #assert iwr_key(s[..], 57, true) && s[0].map == 0;   // no ninth map
+}
+#test "the jam route's maps come first, by exact id, then the rest in the catalog's order" #steps 1000000000 {
+  s: [1] ImportWorld;
+  t := "world 1 x\nmap 0 /Game/SpliceBots/Look/L_Look_01\nmap 1 /Game/World/Graybox/L_Ring\nmap 2 /Game/World/Graybox/L_Farm\nmap 3 /Game/World/Graybox/LI_Bay\n";
+  for id, k: [4] string.["/Game/SpliceBots/Look/L_Look_01", "/Game/World/Graybox/L_Ring", "/Game/World/Graybox/L_Farm", "/Game/World/Graybox/LI_Bay"] {
+    for c, j: id { s[0].world[0].maps[k].id[j] = c; } s[0].world[0].maps[k].id_n = id.count;
+  }
+  s[0].world[0].nm = 4; iwr_order(s[..]);
+  #assert s[0].order[0] == 2 && s[0].order[1] == 1 && s[0].order[2] == 0 && s[0].order[3] == 3;
+  #assert iwr_map_label(s[..], 2) == "Farm" && iwr_map_label(s[..], 3) == "Bay" && iwr_map_label(s[..], 0) == "Look 01";
+  _ = t;
 }
 #test "the title's underscores read as spaces, and a run of them as a dash" #steps 1000000000 {
   s: [1] ImportWorld; out: [IWR_HUD * 12] f32; u: [IWR_UNIFORMS] f32;

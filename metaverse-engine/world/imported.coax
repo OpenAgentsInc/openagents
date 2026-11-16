@@ -11,7 +11,7 @@
 
 IW_MAPS :: 16; IW_MATS :: 512; IW_SECTIONS :: 4096; IW_INSTANCES :: 8192; IW_LIGHTS :: 16; IW_SPOTS :: 1024;
 IW_SHAPES :: 8192; IW_HULL_WORDS :: 3 + 4 * 32; IW_POOL :: 131072;
-IW_OBJECT :: 28;                  // floats an instance takes in the object store: 7 vec4s (below)
+IW_OBJECT :: 32;                  // floats an instance takes in the object store: 8 vec4s (below)
 // A map's colliders, the most a walker World is given.
 IW_WALLS :: 4096; IW_FLOORS :: 1024; IW_HULLS :: 1024; IW_BODIES :: 512;
 
@@ -206,6 +206,7 @@ iw_draws :: (w: [] IwWorld, map: int, draws: [] u32, objects: [] f32) -> int #ef
     mt := w[0].mats[p.mat];
     for c: 0..<4 { objects[o + 24 + c] = mt.rgba[c]; }
     if mt.flags & 4 != 0 { objects[o + 27] = -mt.rgba[3]; }   // unlit: the shader takes a negative alpha
+    objects[o + 28] = cast(f32) mt.layer; objects[o + 29] = 0; objects[o + 30] = 0; objects[o + 31] = 0;   // its colour layer, or -1
     n += 1;
   }
   return n;
