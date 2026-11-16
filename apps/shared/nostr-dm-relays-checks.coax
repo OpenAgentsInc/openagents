@@ -1,4 +1,83 @@
 // Real installed-wire and Relay transitions; no alternate socket state machine.
+ndr_test_caught :: (s:[]NostrInbox,p:[]NostrDmRelays) #effects(all) {
+ urls:=[2]string.["wss://one.example","wss://two.example"];peer:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+ #assert ndi_bind(s,"a",NMS_LIST_PUB) && ndr_configure(p,s,urls[..],peer);
+ p[0].reset=false;p[0].ms=100;p[0].clock_at=60100;p[0].now=NMS_LIST_AT;p[0].next=1;
+ for i:0..<2 {r:=p[0].relays[i..<i+1];r[0].relay[0].gen=7;r[0].relay[0].state=RL_OPEN;r[0].idle=1000;for k:0..<3 {r[0].relay[0].subs[k].state=RS_CAUGHT;}}
+}
+ndr_test_frame :: (p:[]NostrDmRelays,i:int,sub:int,kind:string,payload:string,out:[]u8)->int #effects(all) {
+ o:[1]Jo;name:[24]u8;jo_start(o[..],out);jo_arr(o[..]);jo_str(o[..],kind);jo_str(o[..],rl_sub_text(sub,p[0].relays[i].relay[0].subs[sub].serial,name[..]));
+ if kind=="EVENT" {jo_put(o[..],",");jo_put(o[..],payload);}else if kind=="CLOSED" {jo_str(o[..],payload);}jo_end(o[..]);return o[0].n;
+}
+#test "relay frames preserve actual subscription barriers event kinds signatures and completeness" {
+ s:[1]NostrInbox;p:[1]NostrDmRelays;b:[16000]u8;ndr_test_caught(s[..],p[..]);r:=p[0].relays[1..<2];p[0].heads_changed=false;p[0].changed=false;
+ #assert !ndr_frame(p[..],1,"{}") && r[0].partial;r[0].partial=false;
+ #assert !ndr_frame(p[..],1,"[\"EOSE\",\"unknown\"]") && !r[0].partial;
+ #assert ndr_frame(p[..],1,"[\"NOTICE\",\"hello\"]") && r[0].relay[0].notices==1;
+ n:=ndr_test_frame(p[..],1,0,"EVENT",NMS_LIST_EVENT,b[..]);#assert ndr_frame(p[..],1,cast(string)b[0..<n]) && p[0].heads_changed && !p[0].changed && !r[0].partial;
+ p[0].heads_changed=false;#assert ndr_frame(p[..],1,cast(string)b[0..<n]) && p[0].heads_changed;
+ n=ndr_test_frame(p[..],1,2,"EVENT",NMS_LIST_EVENT,b[..]);#assert !ndr_frame(p[..],1,cast(string)b[0..<n]) && r[0].partial;r[0].partial=false;
+ // A real independently signed public event cannot masquerade as either inbox list or gift wrap.
+ n=ndr_test_frame(p[..],1,0,"EVENT",NMS_EXPIRING_EVENT,b[..]);#assert !ndr_frame(p[..],1,cast(string)b[0..<n]) && r[0].partial;r[0].partial=false;
+ // Keep valid JSON/hex while changing the actual signature.
+ broken:[4096]u8;nb:=ndi_copy(broken[..],NMS_LIST_EVENT);broken[nb-3]=ifx broken[nb-3]=='0' then '1' else '0';
+ n=ndr_test_frame(p[..],1,0,"EVENT",cast(string)broken[0..<nb],b[..]);#assert !ndr_frame(p[..],1,cast(string)b[0..<n]) && r[0].partial;r[0].partial=false;
+ p[0].heads_changed=false;n=ndr_test_frame(p[..],1,1,"EOSE","",b[..]);#assert ndr_frame(p[..],1,cast(string)b[0..<n]) && p[0].heads_changed;
+ for count:[3]int.[0,127,128] {r[0].partial=false;r[0].received=count;p[0].heads_changed=false;n=ndr_test_frame(p[..],1,2,"EOSE","",b[..]);#assert ndr_frame(p[..],1,cast(string)b[0..<n]) && r[0].partial==(count==128) && !p[0].heads_changed;}
+ for reason:[3]string.["auth-required:","auth-required: sign in","restricted: blocked"] {r[0].partial=false;r[0].relay[0].subs[0].state=RS_LIVE;n=ndr_test_frame(p[..],1,0,"CLOSED",reason,b[..]);#assert ndr_frame(p[..],1,cast(string)b[0..<n]) && r[0].partial==(reason=="restricted: blocked") && r[0].relay[0].subs[0].state==(ifx reason=="restricted: blocked" then RS_REFUSED else RS_AUTH);}
+}
+#test "late retired and clock observations retain their exact ownership and backoff semantics" {
+ s:[1]NostrInbox;p:[1]NostrDmRelays;b:[2048]u8;ndr_test_caught(s[..],p[..]);
+ p[0].active=false;p[0].busy=true;p[0].action=23;p[0].pending=3;p[0].needs_auth=true;
+ #assert !ndr_reply(p[..],s[..],1,"",false) && !p[0].busy && p[0].action==0 && !p[0].needs_auth;
+ p[0].busy=true;p[0].action=23;p[0].pending=5;p[0].reset=false;#assert ndr_reply(p[..],s[..],1,"",false) && !p[0].busy && p[0].action==0 && !p[0].reset;
+ p[0].active=true;p[0].busy=true;p[0].pending=6;p[0].slot=0;n:=nrs_observation(0,1,0,NMS_LIST_PUB,"idle","",b[..]);#assert !ndr_reply(p[..],s[..],1,cast(string)b[0..<n],false) && p[0].busy;
+ n=nrs_observation(0,1,0,NMS_LIST_PUB,"clock","1730000042",b[..]);#assert ndr_reply(p[..],s[..],1,cast(string)b[0..<n],false) && p[0].now==1730000042 && !p[0].busy;
+ p[0].pending=3;p[0].slot=1;p[0].busy=true;p[0].action=23;n=nrs_observation(1,7,0,NMS_LIST_PUB,"idle","",b[..]);#assert !ndr_reply(p[..],s[..],1,cast(string)b[0..<n],false) && p[0].relays[1].idle==600 && !p[0].busy && p[0].action==0;
+ for kind:[3]string.["closed","failed","overflow"] {p[0].busy=true;p[0].relays[1].relay[0].state=RL_OPEN;p[0].relays[1].relay[0].attempt=0;p[0].relays[1].ack=0;p[0].relays[1].partial=false;n=nrs_observation(1,7,1,NMS_LIST_PUB,kind,"",b[..]);#assert n>0 && ndr_reply(p[..],s[..],1,cast(string)b[0..<n],false) && p[0].relays[1].partial && p[0].relays[1].ack==1 && p[0].relays[1].relay[0].state==RL_BACKOFF && p[0].relays[1].relay[0].deadline==717;}
+ p[0].busy=true;p[0].pending=4;n=nrs_observation(1,7,1,NMS_LIST_PUB,"closed","",b[..]);#assert ndr_reply(p[..],s[..],1,cast(string)b[0..<n],false) && !p[0].busy;
+}
+#test "relay clock advance is bounded and clears only the per-frame drain allowance" {
+ p:[1]NostrDmRelays;p[0].ms=17;p[0].drained=12;
+ for dt:[4]f32.[-1,0,1.001,2] {ndr_advance(p[..],dt);#assert p[0].ms==17 && p[0].drained==12;}
+ ndr_advance(p[..],0.25);#assert p[0].ms==267 && p[0].drained==0;p[0].drained=4;ndr_advance(p[..],1);#assert p[0].ms==1267 && p[0].drained==0;
+}
+#test "relay scheduler independently retains busy action AUTH retirement and clock barriers" {
+ s:[1]NostrInbox;p:[1]NostrDmRelays;ndr_test_caught(s[..],p[..]);
+ for barrier:0..<3 {p[0].busy=barrier==0;p[0].action=ifx barrier==1 then 23 else 0;p[0].needs_auth=barrier==2;#assert !ndr_tick(p[..],0) && p[0].next==1 && !p[0].reset;}
+ p[0].busy=false;p[0].action=0;p[0].needs_auth=false;p[0].reset=true;
+ #assert ndr_tick(p[..],0) && !p[0].reset && p[0].pending==5 && p[0].slot==0 && p[0].busy;
+ p[0].busy=false;p[0].action=0;p[0].active=false;#assert !ndr_tick(p[..],0);p[0].active=true;p[0].drained=12;#assert !ndr_tick(p[..],0);
+ p[0].drained=0;p[0].clock_at=100;#assert ndr_tick(p[..],0) && p[0].clock_at==60100 && p[0].pending==6 && p[0].slot==0;
+}
+#test "relay scheduler rotates idle connections and bounds exhausted generations and connect timeouts" {
+ s:[1]NostrInbox;p:[1]NostrDmRelays;ndr_test_caught(s[..],p[..]);q:[1]NrsRequest;
+ r:=p[0].relays[1..<2];r[0].relay[0].state=RL_IDLE;r[0].ack=9;r[0].idle=9;
+ #assert ndr_tick(p[..],0) && p[0].next==0 && p[0].pending==1 && p[0].slot==1 && r[0].ack==0 && r[0].idle==0 && r[0].relay[0].gen==8 && r[0].relay[0].state==RL_CONNECTING && r[0].relay[0].deadline==5100;
+ #assert nrs_read(cast(string)p[0].body[0..<p[0].nb],q[..]) && cast(string)q[0].payload[0..<q[0].n]=="wss://two.example";
+ p[0].busy=false;p[0].action=0;p[0].next=1;r[0].relay[0].deadline=100;
+ #assert ndr_tick(p[..],0) && p[0].pending==4 && p[0].slot==1 && r[0].partial && r[0].relay[0].state==RL_BACKOFF && r[0].relay[0].deadline==717 && r[0].relay[0].attempt==1;
+ p[0].busy=false;p[0].action=0;r[0].relay[0].state=RL_IDLE;r[0].relay[0].gen=NRR_SERIAL;r[0].partial=false;
+ #assert !ndr_tick(p[..],0) && r[0].partial && r[0].relay[0].gen==NRR_SERIAL;
+}
+#test "relay polling rotates fairly and enforces exactly twelve observations per frame" {
+ s:[1]NostrInbox;p:[1]NostrDmRelays;ndr_test_caught(s[..],p[..]);p[0].relays[1].idle=100;p[0].drained=11;
+ #assert ndr_tick(p[..],0) && p[0].pending==3 && p[0].slot==1 && p[0].next==0 && p[0].drained==12;
+ p[0].busy=false;p[0].action=0;#assert !ndr_tick(p[..],0);
+ p[0].relays[0].idle=100;#assert ndr_tick(p[..],0.001) && p[0].slot==0 && p[0].next==1 && p[0].drained==1 && p[0].ms==101;
+}
+#test "relay output adapts real REQ CLOSE EVENT acceptance and AUTH without manufacturing a second frame" {
+ s:[1]NostrInbox;p:[1]NostrDmRelays;ndr_test_caught(s[..],p[..]);q:[1]NrsRequest;r:=p[0].relays[1..<2];
+ r[0].relay[0].subs[0].state=RS_WANT;#assert ndr_tick(p[..],0) && p[0].pending==2 && p[0].slot==1 && r[0].relay[0].subs[0].state==RS_LIVE;
+ #assert nrs_read(cast(string)p[0].body[0..<p[0].nb],q[..]) && cast(string)q[0].payload[0..<6]=="[\"REQ\"";
+ p[0].busy=false;p[0].action=0;#assert rl_unsubscribe(r[0].relay[..],0) && ndr_tick(p[..],0) && r[0].relay[0].subs[0].state==RS_FREE;
+ #assert nrs_read(cast(string)p[0].body[0..<p[0].nb],q[..]) && cast(string)q[0].payload[0..<8]=="[\"CLOSE\"";
+ p[0].busy=false;p[0].action=0;#assert ndr_stage(p[..],1,NMS_LIST_EVENT) && ndr_tick(p[..],0) && p[0].pending==2;
+ #assert nrs_read(cast(string)p[0].body[0..<p[0].nb],q[..]) && cast(string)q[0].payload[0..<8]=="[\"EVENT\"" && r[0].relay[0].pubs[p[0].publish_entry].state==RP_SENT;
+ entry:=p[0].publish_entry;r[0].relay[0].pubs[entry].state=RP_ACCEPTED;p[0].busy=false;p[0].action=0;p[0].changed=false;
+ #assert !ndr_tick(p[..],0) && p[0].publish_n==0 && p[0].publish_entry== -1 && p[0].changed && r[0].relay[0].pubs[entry].state==RP_FREE;
+ #assert ndr_frame(p[..],1,"[\"AUTH\",\"fixture\"]") && ndr_tick(p[..],0) && p[0].needs_auth && p[0].slot==1 && p[0].action==0;
+}
 #test "relay configuration validates the whole pool before replacing an owner" {
  s:[1]NostrInbox;p:[1]NostrDmRelays;urls:=[7]string.["wss://one.example","wss://two.example","wss://three.example","wss://four.example","wss://five.example","wss://six.example","wss://seven.example"];
  #assert !ndr_configure(p[..],s[..],urls[0..<1],"") && ndi_bind(s[..],"a",NMS_LIST_PUB);

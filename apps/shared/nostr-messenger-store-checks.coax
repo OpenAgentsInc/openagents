@@ -1,4 +1,33 @@
 // Complete existing wire replies, through the real coordinator decoder.
+#test "receipt index replies update recovered and current outgoing acceptance only after a complete matching index" {
+ m:[1]NostrMessenger;b:[16000]u8;receipt:[2048]u8;q:[1]NdlRequest;page:[1]NdlPage;rows:[2]MsIndexRow;
+ me:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";op:=NMS_LIST_PUB;
+ #assert ndi_bind(m[0].inbox[..],"a",me) && ndi_begin(m[0].inbox[..],op,me);n:=nsr_write("custody","open",op,me,"ok",0,0,DM_OPENED_GOLDEN,b[..]);#assert ndi_opened(m[0].inbox[..],1,cast(string)b[0..<n]);
+ #assert ndd_begin(m[0].delivery[..],m[0].inbox[..]);n=ndd_request(m[0].delivery[..],me,b[..]);#assert ndl_request_read(cast(string)b[0..<n],q[..]) && ndl_begin(page[..],q[..]);
+ ids:=[2]string.[op,me];nr:=nsm_sealed_write(ids[..],7,receipt[..]);#assert ndl_put(page[..],op,cast(string)receipt[0..<nr]);n=ndl_page_write(page[..],b[..]);#assert ndd_page(m[0].delivery[..],m[0].inbox[..],1,cast(string)b[0..<n]);
+ m[0].outgoing[0].generation=1;m[0].outgoing[0].phase=3;#assert nsm_sealed_read(cast(string)receipt[0..<nr],m[0].outgoing[0].delivery[0].receipt[..]);m[0].outgoing[0].status=0;
+ m[0].generation=1;m[0].op=22;m[0].expected=5;_=ndi_copy(m[0].operation[..],op);
+ for i:0..<2 {_=ndi_copy(rows[i].id[..],ids[i]);_=ndi_copy(rows[i].author[..],me);rows[i].kind=1059;rows[i].created=1730000000;rows[i].accepted=1;}
+ n=ms_index_write(8,0,true,rows[..],b[..]);#assert ndm_test_store_answer(m[..],11,"index","ok",cast(string)b[0..<n],8,0) && m[0].status_at==1 && nds_status(m[0].delivery[0].rows[0].state[..])==1 && m[0].outgoing[0].status==1 && m[0].outgoing[0].seen;
+ m[0].status_at=0;#assert !ndm_test_store_answer(m[..],11,"index","ok","{}",8,0) && m[0].status_at==0;
+ #assert !ndm_test_store_answer(m[..],11,"index","ok",cast(string)b[0..<n],9,0) && m[0].status_at==0;
+ n=ms_index_write(8,1,false,rows[..],b[..]);#assert !ndm_test_store_answer(m[..],11,"index","ok",cast(string)b[0..<n],8,1) && m[0].status_at==0;
+ #assert !ndm_test_store_answer(m[..],13,"index","ok","",0,0);
+}
+#test "head index responses refuse excess rows stale revisions and stale peer events before changing discovery" {
+ m:[1]NostrMessenger;b:[16000]u8;rows:[2]MsIndexRow;other:="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+ #assert ndi_bind(m[0].inbox[..],"a",NMS_LIST_PUB);m[0].op=22;m[0].expected=5;_=ndi_copy(m[0].operation[..],NMS_LIST_PUB);
+ for i:0..<2 {_=ndi_copy(rows[i].id[..],ifx i==0 then NMS_LIST_ID_HEX else other);_=ndi_copy(rows[i].author[..],NMS_LIST_PUB);rows[i].created=NMS_LIST_AT;rows[i].kind=10050;}
+ n:=ms_index_write(7,0,true,rows[..],b[..]);#assert !ndm_test_store_answer(m[..],6,"index","ok",cast(string)b[0..<n],7,0) && m[0].head_index[0].n==0;
+ n=ms_index_write(7,0,true,rows[0..<1],b[..]);#assert !ndm_test_store_answer(m[..],6,"index","ok",cast(string)b[0..<n],8,0);
+ #assert ndm_test_store_answer(m[..],6,"index","ok",cast(string)b[0..<n],7,0) && m[0].head_index[0].n==1 && cast(string)m[0].head_index[0].rows[0].id[..]==NMS_LIST_ID_HEX;
+ m[0].expected=6;m[0].head_for_peer=true;_=ndi_copy(m[0].head_pub[..],other);m[0].np=ndi_copy(m[0].peer[..],NMS_LIST_PUB);m[0].head_peer=true;m[0].head_wanted=false;
+ #assert ndm_test_store_answer(m[..],7,"event","ok",NMS_LIST_EVENT,0,0) && m[0].head_wanted && !m[0].head_peer && m[0].head_index[0].n==0;
+ m[0].head_for_peer=false;m[0].head_index[0].n=1;_=ndi_copy(m[0].head_index[0].rows[0].id[..],other);_=ndi_copy(m[0].head_pub[..],NMS_LIST_PUB);
+ #assert !ndm_test_store_answer(m[..],7,"event","ok",NMS_LIST_EVENT,0,0) && !m[0].own_ready;
+ _=ndi_copy(m[0].head_index[0].rows[0].id[..],NMS_LIST_ID_HEX);#assert !ndm_test_store_answer(m[..],7,"event","ok","{}",0,0);
+ m[0].head_pub[0]='g';#assert !ndm_test_store_answer(m[..],7,"event","ok",NMS_LIST_EVENT,0,0);
+}
 ndm_test_store_answer :: (m:[]NostrMessenger,task:int,action:string,status:string,payload:string,revision:int,cursor:int)->bool {
  b:[400000]u8;n:=nsr_write(ifx task==8 then "custody" else "store",action,cast(string)m[0].operation[..],cast(string)m[0].inbox[0].identity[..],status,revision,cursor,payload,b[..]);
  #assert n>0;return ndm_store_reply(m,task,200,cast(string)b[0..<n],false);

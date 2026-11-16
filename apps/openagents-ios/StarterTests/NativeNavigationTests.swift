@@ -120,7 +120,9 @@ import UIKit
         XCTAssertTrue(p.elements(navigation:true).contains {$0.label=="Mac task 48"})
         XCTAssertFalse(p.elements(navigation:true).contains {$0.label=="Mac task 0"})
         try p.input("nav.latest.0");try p.frame();XCTAssertTrue(p.elements(navigation:true).contains {$0.label=="Mac task 0"})
-        try p.input("nav.search","Mac task 99");try p.frame();XCTAssertTrue(p.elements(navigation:true).contains {$0.label=="Mac task 99"})
+        try p.input("nav.more.0");try p.frame();try p.input("nav.more.0");try p.frame()
+        XCTAssertTrue(p.elements(navigation:true).contains {$0.label=="Mac task 99"})
+        XCTAssertFalse(p.elements(navigation:true).contains {$0.id=="nav.search"})
     }
     func testChangingComposerDomainKeepsItsReusedViewAttached() {
         let surface=NativeControls();surface.loadViewIfNeeded()
@@ -128,7 +130,7 @@ import UIKit
         surface.render([composer("env.composer")]);surface.render([composer("chat.composer")])
         XCTAssertTrue(surface.controls["chat.composer"]?.isDescendant(of:surface.view)==true)
     }
-    func testHistoryProjectionSearchSelectionDraftAndFixedComposerControls()throws {
+    func testHistoryProjectionSelectionDraftAndFixedComposerControls()throws {
         let p=try loaded(),detail=NativeControls(),workspace=NativeWorkspace(detail:detail)
         workspace.loadViewIfNeeded();workspace.view.frame=CGRect(x:0,y:0,width:402,height:874)
         func render()throws {try p.frame();workspace.render(p.elements(),history:p.elements(navigation:true));workspace.view.layoutIfNeeded();detail.view.layoutIfNeeded()}
@@ -138,7 +140,9 @@ import UIKit
         XCTAssertNil(workspace.sidebar.controls["nav.search"])
         XCTAssertNotNil(workspace.sidebar.controls["nav.compose"] as? NativeButton)
         try p.input("nav.search","coder");try render()
-        XCTAssertEqual(p.elements(navigation:true).filter {$0.id.hasPrefix("nav.chat.")}.map(\.label),["CoderOS task"])
+        // The current reference drawer has no search field; stale input cannot
+        // silently filter out the other computer. Shared search is checked in Coax.
+        XCTAssertEqual(Set(p.elements(navigation:true).filter {$0.id.hasPrefix("nav.chat.")}.map(\.label)),Set(["Mac task","CoderOS task"]))
         try p.input("nav.search","");try render()
         let macID=try XCTUnwrap(p.elements(navigation:true).first {$0.label=="Mac task"}?.id)
         try p.input(macID);try render();let read=try p.action();XCTAssertEqual(read.0,4);XCTAssertTrue(read.1.contains("ReadSession"))

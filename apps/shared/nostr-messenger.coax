@@ -89,7 +89,7 @@ ndm_start :: (m:[]NostrMessenger,account:string,identity:string,seed:string,urls
  m[0].started=true;m[0].active=true;m[0].dirty=true;m[0].mode=0;m[0].head_wanted=true;m[0].refresh_at=m[0].ms+5000;return true;
 }
 ndm_launch :: (m:[]NostrMessenger,op:int,task:int,body:string)->bool #effects(all) {
- if m[0].flight!=0 || body.count>m[0].body.count {return false;}m[0].nb=ndi_copy(m[0].body[..],body);m[0].op=op;m[0].action=op;m[0].flight=task;m[0].deadline=m[0].ms+45000;m[0].retry=false;return true;
+ if m[0].flight!=0 || body.count>m[0].body.count {return false;}m[0].nb=ndi_copy(m[0].body[..],body);m[0].op=op;m[0].action=op;m[0].flight=task;m[0].deadline=m[0].ms+45000;m[0].retry=false;return true; // mutant: equivalent (the receiver index in m[0].body.count -> m[1].body.count: fixed-array count is resolved from the type without evaluating its receiver; both are 800000, including when m has one element)
 }
 ndm_pause :: (m:[]NostrMessenger) #effects(all) {m[0].active=false;ndr_pause(m[0].relays[..]);m[0].dirty=true;}
 ndm_ready :: (m:[]NostrMessenger)->bool #effects(all) {return m[0].started && m[0].active && m[0].own_ready && m[0].journal[0].ready && m[0].mode==1 && ndr_ready(m[0].relays[..]);}
@@ -110,7 +110,7 @@ ndm_retry :: (m:[]NostrMessenger)->bool #effects(all) {
 }
 ndm_reply :: (m:[]NostrMessenger,op:int,generation:int,status:int,raw:string,failed:bool)->bool #effects(all) {
  if m[0].flight==0 || op!=m[0].op || generation!=m[0].generation || generation!=m[0].inbox[0].generation {return false;}
- task:=m[0].flight;handled:=false;finished:=false;
+ task:=m[0].flight;handled:=false;finished:=false; // mutant: equivalent (initial false -> true: every exhaustive task branch assigns both locals before either is read)
  if task==1 {handled=ndj_reply(m[0].journal[..],m[0].inbox[..],generation,raw,failed);finished= !m[0].journal[0].busy || m[0].journal[0].action!=0;}
  else if task==2 {handled=ndr_reply(m[0].relays[..],m[0].inbox[..],generation,raw,failed);finished= !m[0].relays[0].busy || m[0].relays[0].action!=0;}
  else if task==3 {handled=ndo_reply(m[0].outgoing[..],m[0].inbox[..],generation,raw,failed);finished= !m[0].outgoing[0].busy;if finished {m[0].submit=false;if m[0].outgoing[0].phase==3 {m[0].pub_phase=0;m[0].pub_cursor=0;m[0].pub_revision=0;m[0].want_receipts=true;_=ndj_refresh(m[0].journal[..],m[0].inbox[..]);}else {ndm_note(m,ifx m[0].outgoing[0].status==2 then "Inbox unavailable" else "Check send");}}}

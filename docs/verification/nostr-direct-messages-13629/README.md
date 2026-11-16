@@ -16,7 +16,7 @@ Logs below live in the isolated `oa-arcade-dm` worktree's ignored `build/`.
 
 | Check | Result | Evidence |
 | --- | --- | --- |
-| Actual PostgreSQL/API journal, custody, delivery and private read-position routes | 56 checks passed under ASan | `dm-api-read-position-tests.log` |
+| Actual PostgreSQL/API journal, custody, delivery and private read-position routes | 56 checks passed under ASan | `dm-api-final-focused.log` |
 | Read-position wire codec | 147 mutants: 145 killed, 2 reviewed equivalents, no survivors | `dm-read-wire-qualified.log` |
 | Read-position projection | 234 mutants: 228 killed, 6 reviewed equivalents, no survivors | `dm-read-projection-qualified.log` |
 | Delivery observation state | 152 mutants: 150 killed, 2 reviewed equivalents, no survivors | `dm-delivery-state-transition-qualified.log` |
@@ -27,17 +27,22 @@ Logs below live in the isolated `oa-arcade-dm` worktree's ignored `build/`.
 | Extracted unsigned-rumor adapter | 63 mutants killed, no survivors | `dm-rumor-initial-qualified.log` |
 | Extracted kind-10050 relay projection | 78 mutants killed, no survivors | `dm-receipt-baseline-and-relay-projection.log` |
 | Extracted NIP-17 message projection, including exact rumor-size ceiling | 293 mutants: 287 killed, 6 reviewed equivalents, no survivors | `dm-message-projection-qualified.log` |
+| Private read-marker API admission | 37 mutants: 36 killed, 1 reviewed equivalent, no survivors | `dm-read-policy-qualified.log` |
+| Receipt cache | 256 mutants: 249 killed, 7 reviewed equivalents, no survivors | `dm-cache-final-qualified.log` |
+| Journal replay | 513 mutants: 505 killed, 8 reviewed equivalents, no survivors; canonical shard records retained here | `dm-journal-merged-qualified.log`, `journal-1.rec`, `journal-2.rec` |
+| Delivery receipt wire | 388 mutants: 380 killed, 8 reviewed equivalents, no survivors; canonical records retained here | `dm-delivery-wire-canonical-merged.log`, `delivery-1.rec`, `delivery-2.rec` |
+| Compose intent | 96 mutants: 93 killed, 3 reviewed equivalents, no survivors | `dm-compose-final-qualified.log` |
 | Actual native recipient picker/composer and accessible delivery glyph | Passed on the isolated signed simulator | `dm-native-final-ui-tests.log` |
 | Shared DOM adapter, including complete digest IDs, focus and field values | 19 checks passed | `dm-full-id-modules.log` |
 | Compiled native/web/reference exchange, native cold history-row selection, exact committed-send retry | Passed, signed iOS simulator and real relay/API | `dm-id128-live-tests.log`, `dm-id128-live-reference.log` |
 | Browser cold recovery through the real history row | Passed; both texts recovered | `dm-id128-cold-result.log`, `dm-id128-cold-final.png` |
-| Tools, wire registry and component layers | Passed | `dm-tools-latest.log`, `dm-wire-latest.log`, `dm-components-latest.log` |
+| Tools, wire registry and component layers | Passed | `dm-final-tools.log`, `dm-final-wire.log`, `dm-final-components.log`, `dm-final-layer.log` |
 
 The receipt/coordination checks now also cover closed nested rows, independent
 generation fences, all known open-refusal statuses, exact operation-hash
 vectors, stale revision/offset replacement, native history dispatch, and the
 independent lifecycle prerequisites. The shared coordinator's latest ordinary
-suite passed 1,027 checks (`dm-receipt-and-lifecycle-final-baseline.log`).
+suite passed 1,071 checks (`dm-store-receipt-corrected-tests.log`).
 
 Initial mutation diagnostics used bounded shards and, for some runs, the
 documented native mutation profile with a smaller evaluator slot budget.
@@ -99,6 +104,25 @@ production account, limit, key, inbox or service was changed.
   truncated complete digest-based conversation IDs while drawing the full ID,
   so a visible history row could not dispatch its own selection. The fix also
   preserves complete field/focus IDs and prevents suffix collisions.
+
+## Merged native regression checks
+
+The complete app was regenerated on November 15 after rebasing onto
+`90f8dfcf8f`, retaining the native task controls and current Microduck/world
+resources. The native regression run covered 55 non-live cases. Two obsolete
+assertions still attempted to search through the reference drawer’s already
+removed field; those now check actual paging, retention of both computers, and
+refusal of stale input. The focused correction passed both cases. Account
+login, durable streaming/Stop, retained native task approval/retry, environment
+commands, provider usage, key custody, feed and DM controls passed. The live
+case is opt-in and its earlier successful separate run is recorded above.
+
+The independent runtime oracle now allocates the same fixed 64 MiB carrier
+as the installed runtime. Its old 32 MiB allocation failed before the first
+frame against the current 39,273,640-byte account/task/inbox state. The Coax
+state plus stack fits the installed limit; both app and extras now match the
+independent WebAssembly frames and actions (`dm-final-runtime-oracle-memory.log`).
+The installed limit was unchanged.
 
 ## Remaining release work
 
