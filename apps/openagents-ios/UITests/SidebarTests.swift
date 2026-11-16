@@ -17,12 +17,24 @@ final class SidebarTests:XCTestCase {
             XCTAssertTrue(settings.waitForNonExistence(timeout:10))
             XCTAssertEqual(menu.label,"Open sidebar")
         }
+        menu.tap();XCTAssertTrue(settings.waitForExistence(timeout:10))
+        app.buttons["drawer.projects"].tap()
+        XCTAssertTrue(app.buttons["projects.login"].waitForExistence(timeout:10))
+        XCTAssertFalse(app.buttons["project.new"].isEnabled)
         menu.tap();XCTAssertTrue(settings.waitForExistence(timeout:10));settings.tap()
         let login=app.buttons["settings.login"]
         XCTAssertTrue(login.waitForExistence(timeout:10))
         login.tap()
         let back=app.buttons["login.back"]
         XCTAssertTrue(back.waitForExistence(timeout:10))
+        let email=app.textFields["login.email"]
+        XCTAssertTrue(email.waitForExistence(timeout:10));email.tap()
+        if let held=email.value as? String {
+            email.typeText(String(repeating:XCUIKeyboardKey.rightArrow.rawValue,count:held.count))
+            email.typeText(String(repeating:XCUIKeyboardKey.delete.rawValue,count:held.count))
+        }
+        email.typeText("fixture@example.test")
+        XCTAssertEqual(email.value as? String,"fixture@example.test")
         back.tap()
         XCTAssertTrue(login.waitForExistence(timeout:10))
         app.buttons["settings.back"].tap()

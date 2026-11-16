@@ -35,6 +35,8 @@
 #load "../shared/app/settings/identity.coax";
 #load "../shared/app/history/index.coax";
 #load "../shared/app/history/devices.coax";
+#load "../shared/app/projects/view.coax";
+#load "../shared/app/fields.coax";
 #load "../../components/app/identity.coax";
 #load "../../components/core/edit.coax";
 #load "../../components/skin/arcade.coax";
@@ -84,6 +86,7 @@ ChatPage :: struct {
   identity: [1] IdentitySettings;
   history:[1]ChatIndex;history_content:f32;history_viewport:f32;
   devices:[1]DeviceHistory;
+  section:int;projects:[1]ProjectScreen;section_content:f32;section_viewport:f32;
   native_scroll:bool; settings_content:f32; settings_viewport:f32; login_content:f32; login_viewport:f32; reveal_focus:bool;
   action: int;
   box: ComposerBox; stamp: int; moving: bool; refused: int;
@@ -128,6 +131,7 @@ ch_step :: (s: [] ChatPage) {
   iks_sync(s[0].identity[..],s[0].core);
   hi_sync(s[0].history[..],s[0].core,s[0].drawer);
   dh_sync(s[0].devices[..],s[0].core,s[0].drawer);
+  ps_sync(s[0].projects[..],s[0].core,s[0].section==1 && !s[0].drawer && !s[0].lf[0].open && !s[0].identity[0].open);
 }
 // One scroll window for computer groups and account chats; each title is one
 // line. Stable IDs follow the full host/session, not the host's current index.
@@ -219,6 +223,22 @@ ch_layout :: (s: [] ChatPage, f: [] UiFrame, w: f32, h: f32) {
     ch_reveal(s,f,key,nav_y,bottom,s[0].settings_content,offset);uiframe_unclip(f);
     return;
   }
+  if s[0].section==1 {
+    p:=s[0].projects[..];project:=p[0].p[..];gap:=k.app.gap;nav:=k.app.icon_button;
+    title:=ifx p[0].page==0 then "Projects" else ifx p[0].page==1 then "New Project" else ifx project[0].api_loaded then cast(string)project[0].api[0].name[0..<project[0].api[0].nn] else "Project";
+    shown:=app_fit(f,k.title.face,title,w-2*(nav+gap));tw:=measure_width(f[0].m,k.title.face,shown);
+    _:=app_text(f,"projects.title",(w-tw)/2,nav_y+(nav-k.title.line)/2,tw,APP_TEXT_TITLE,shown);
+    if p[0].page==0 {_:=app_button(f,"project.new",w-nav-12/u,nav_y,nav,-1,"+",APP_BUTTON_QUIET,ifx !p[0].signed_in || ps_blocked(p) || p[0].op>0 then EL_S_DISABLED else 0,PS_ACTION);uiframe_say_set(f,elt_find(f[0].rows,"project.new"),"New Project");}
+    else {_:=app_icon_button(f,"project.back",w-nav-12/u,nav_y,ICON_BACK,"Back",APP_BUTTON_QUIET,ifx ps_blocked(p) then EL_S_DISABLED else 0,PS_ACTION);}
+    area_top:=nav_y+nav+gap;key:=uiframe_key(f,"section.viewport");offset:=keyed_scroll(f[0].keyed,key);s[0].section_viewport=bottom-area_top;
+    uiframe_clip(f,0,area_top,w,bottom);
+    s[0].section_content=ps_view(p,f,16/u,area_top-offset,w-32/u,area_top,bottom,ifx s[0].focused then ch_focus(s) else "");
+    if !p[0].signed_in {_:=app_button(f,"projects.login",16/u,area_top+2*k.control_h,w-32/u,-1,"Log in",APP_BUTTON_PRIMARY,0,CH_HIT_LOGIN);s[0].section_content+=3*k.control_h;}
+    ch_reveal(s,f,key,area_top,bottom,s[0].section_content,offset);uiframe_unclip(f);
+    s[0].menu_x=12/u;s[0].menu_y=nav_y;s[0].menu_side=k.app.nav;
+    if s[0].native {ch_menu_row(s,f,s[0].menu_x,nav_y);}else {_:=app_nav_button(f,"nav.menu",s[0].menu_x,nav_y,s[0].drawer,0,CH_HIT_MENU);}
+    return;
+  }
   s[0].again = false;
   if s[0].core.count > 0 {
     // the chips show once logged in, or whenever this phone can run on its own computer (a paired
@@ -267,6 +287,8 @@ ch_layout_cover :: (s: [] ChatPage, f: [] UiFrame, w: f32, h: f32) {
     _ := app_sidebar_head(f, "drawer.title", in.x, in.y + 4 / u, in.w, "OpenAgents", "drawer.search", ICON_MAGNIFER, 0);
     by := h - s[0].safe_bottom / u - a.gap * 2 - k.control_h;
     iy := in.y + 4 / u + a.icon_button + a.gap * 2;
+    iy+=app_sidebar_item(f,"drawer.chat",in.x,iy,in.w,-1,"Chat",ifx s[0].section==0 then EL_S_CURRENT else 0,410);
+    iy+=app_sidebar_item(f,"drawer.projects",in.x,iy,in.w,ICON_FOLDER,"Projects",ifx s[0].section==1 then EL_S_CURRENT else 0,411);
     _:=app_button(f,"drawer.settings",in.x,by-2*(k.control_h+a.gap),in.w,-1,"Settings",APP_BUTTON_QUIET,0,211);
     ch_history(s,f,in.x,iy,in.w,by-2*(k.control_h+a.gap)-a.gap);
     if lf_logged_in(l) {
@@ -318,11 +340,22 @@ ch_press :: (s: [] ChatPage, row: int) -> bool {
   if !elt_ok(t[..],row) || (t[0].rows[row].state & EL_S_DISABLED)!=0 {return false;}
   if !elt_visible(t[..],row).visible && !(s[0].native && ch_picking(s) && ch_env_row(surface_id(sf,row))) {return false;}
   if elt_ok(t[..], row) && t[0].rows[row].role == EL_FIELD && act != 0 { ch_set_focus(s, surface_id(sf, row)); }
+  if act==410 || act==411 {
+    if ps_blocked(s[0].projects[..]) {return false;}s[0].section=ifx act==411 then 1 else 0;
+    if s[0].section==1 {ps_open(s[0].projects[..]);}else {s[0].projects[0].open=false;}
+    s[0].drawer=false;ch_set_focus(s,"");ch_step(s);return true;
+  }
+  if act==PS_FIELD {return ps_editing(surface_id(sf,row));}
+  if act==PS_ACTION {
+    result:=ps_press(s[0].projects[..],s[0].core,surface_id(sf,row));if result==0 {return false;}
+    if result==2 {s[0].section=0;}ch_set_focus(s,"");
+    keyed_scroll_set(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"section.viewport"),0);ch_step(s);return true;
+  }
   if act==340 {
     if s[0].core.count<1 || app_navigation_blocked(s[0].core) {return false;}
     id:=surface_id(sf,row);if !ct_id(id,"cnv_",32) {return false;}
     _:=app_dispatch(s[0].core,AppEvent.{kind=EV_ACTION,code=ACT_ENVIRONMENT,more="Default",mono_ms=ch_now(s),wall_ms=s[0].core[0].wall_ms});
-    opened:=app_dispatch(s[0].core,AppEvent.{kind=EV_ACTION,code=ACT_OPEN,text=id,mono_ms=ch_now(s),wall_ms=s[0].core[0].wall_ms});if opened<1 {return false;}s[0].drawer=false;ch_set_focus(s,"");ch_step(s);return true;
+    opened:=app_dispatch(s[0].core,AppEvent.{kind=EV_ACTION,code=ACT_OPEN,text=id,mono_ms=ch_now(s),wall_ms=s[0].core[0].wall_ms});if opened<1 {return false;}s[0].section=0;s[0].drawer=false;ch_set_focus(s,"");ch_step(s);return true;
   }
   if act==343 {
     c:=s[0].core;if c.count<1 || app_navigation_blocked(c) {return false;}
@@ -330,7 +363,7 @@ ch_press :: (s: [] ChatPage, row: int) -> bool {
     for i:0..<h[0].nav[0].n {if dh_row_id(h,i,buf[..])!=id {continue;}r:=h[0].nav[0].rows[i];entry:=h[0].nav[0].browser[0].catalog[0].entries[r.host];key:[193]u8;
       for j:0..<64 {key[j]=entry.host[j];}key[64]='\t';for j:0..<r.session.ni {key[65+j]=r.session.id[j];}
       opened:=app_dispatch(c,AppEvent.{kind=EV_ACTION,code=ACT_DEVICE_REJOIN,text=cast(string)key[0..<65+r.session.ni],mono_ms=ch_now(s),wall_ms=c[0].wall_ms});if opened<1 {return false;}
-      s[0].drawer=false;ch_set_focus(s,"");ch_step(s);return true;
+      s[0].section=0;s[0].drawer=false;ch_set_focus(s,"");ch_step(s);return true;
     }return false;
   }
   if act==344 {
@@ -368,8 +401,9 @@ ch_press :: (s: [] ChatPage, row: int) -> bool {
   // New chat: a new, empty conversation in the core, and the sidebar closes onto it
   if act == CH_HIT_NEW {
     c := s[0].core; if c.count < 1 { return false; }
+    if ps_blocked(s[0].projects[..]) {return false;}
     _ := app_dispatch(c, AppEvent.{kind = EV_ACTION, code = ACT_NEW, mono_ms = c[0].mono_ms, wall_ms = c[0].wall_ms});
-    s[0].drawer = false; ch_step(s); return true;
+    s[0].section=0;s[0].drawer = false; ch_step(s); return true;
   }
   if act >= LF_ACT_EMAIL && act <= LF_ACT_CANCEL {
     done := lf_press(l, act); ch_step(s);
@@ -490,7 +524,7 @@ chat_step :: (s: [] ChatPage) #export_c #effects(all) { if s.count > 0 && s[0].r
 // the guest is let go. Then the flow and the chips follow.
 chat_guest :: (s: [] ChatPage, body: string) #export_c #effects(all) {
   if s.count < 1 || s[0].core.count < 1 { return; }
-  if !iks_guest(s[0].identity[..],s[0].core,body) && !hi_guest(s[0].history[..],s[0].core,body) && !dh_guest(s[0].devices[..],s[0].core,body) && !es_bridge_guest(s[0].core, s[0].eb[..], s[0].env[..], body, ch_now(s)) { app_guest_done(s[0].core); }
+  if !ps_guest(s[0].projects[..],s[0].core,body) && !iks_guest(s[0].identity[..],s[0].core,body) && !hi_guest(s[0].history[..],s[0].core,body) && !dh_guest(s[0].devices[..],s[0].core,body) && !es_bridge_guest(s[0].core, s[0].eb[..], s[0].env[..], body, ch_now(s)) { app_guest_done(s[0].core); }
   if s[0].history[0].changed {s[0].history[0].changed=false;keyed_scroll_set(s[0].keyed[1..<2],keyed_find(s[0].keyed[1..<2],"history.viewport"),0);}
   ch_step(s);
 }
@@ -508,26 +542,42 @@ chat_draft :: (s: [] ChatPage, out: [] u8) -> int #export_c #effects(all) { if s
 // login.email or login.code. Its box in points (x, y, w, h) for a login field.
 chat_focus :: (s: [] ChatPage, out: [] u8) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return ch_out(out, ch_focus(s)); }
 chat_field_box :: (s: [] ChatPage, out: [] f32) -> bool #export_c #effects(all) {
-  if s.count < 1 || out.count < 4 || (ch_login_field(ch_focus(s)) == LF_FIELD_NONE && ch_focus(s)!="identity.secret") { return false; }
+  if s.count < 1 || out.count < 4 || (ch_login_field(ch_focus(s)) == LF_FIELD_NONE && ch_focus(s)!="identity.secret" && !ps_editing(ch_focus(s))) { return false; }
   t := [1] ElTable.[ch_rows(s)]; i := elt_find(t[..], ch_focus(s));
   if i < 0 { return false; }
   r := t[0].rows[i]; u := ch_u(s);
   out[0] = r.x * u; out[1] = r.y * u; out[2] = r.w * u; out[3] = r.h * u;
   return true;
 }
+// The content rectangle in points, from the same skin and committed row as
+// the painter. SDK adapters add only their editor's own native text insets.
+chat_field_text_box :: (s:[]ChatPage,out:[]f32)->bool #export_c #effects(all) {
+ if !chat_field_box(s,out) {return false;}k:=arcade_phone_skin();u:=ch_u(s);pad:=k.chrome.field_pad*u;
+ out[0]+=pad;out[2]-=2*pad;
+ if chat_field_kind(s)==4 {out[1]+=pad;out[3]-=2*pad;}
+ else {height:=k.body.line*u;out[1]+=(out[3]-height)/2;out[3]=height;}
+ return out[2]>0 && out[3]>0;
+}
 // A login field's value, and its whole value after an edit (false: not taken; show the flow's again).
 chat_field_text :: (s: [] ChatPage, out: [] u8) -> int #export_c #effects(all) {
   if s.count < 1 { return 0; } f := ch_login_field(ch_focus(s)); l := s[0].lf[..];
-  return ch_out(out, ifx f == LF_FIELD_EMAIL then lf_email(l) else ifx f == LF_FIELD_CODE then lf_code(l) else "");
+  return ch_out(out, ifx f == LF_FIELD_EMAIL then lf_email(l) else ifx f == LF_FIELD_CODE then lf_code(l) else ps_field(s[0].projects[..],ch_focus(s)));
 }
 chat_set_field :: (s: [] ChatPage, text: string) -> bool #export_c #effects(all) {
   if s.count < 1 { return false; } f := ch_login_field(ch_focus(s));
+  if s[0].section==1 && ps_editing(ch_focus(s)) {return ps_edit(s[0].projects[..],ch_focus(s),text);}
   return f != LF_FIELD_NONE && lf_set(s[0].lf[..], f, text);
 }
 // Return in a login field: the card's step action.
 chat_submit :: (s: [] ChatPage) -> bool #export_c #effects(all) {
+  if s.count>0 && ps_editing(ch_focus(s)) {ch_set_focus(s,"");return true;}
   if s.count < 1 || ch_login_field(ch_focus(s)) == LF_FIELD_NONE { return false; }
   done := lf_submit(s[0].lf[..]); ch_step(s); return done;
+}
+// KitFieldKind's existing SDK values, plus a multiline platform text view.
+chat_field_kind :: (s:[]ChatPage)->int #export_c #effects(all) {
+ if s.count<1 {return -1;}id:=ch_focus(s);
+ return app_field_kind(id);
 }
 // The platform editor gave up the keyboard by itself (the keyboard's own dismissal).
 chat_blur :: (s: [] ChatPage) #export_c #effects(all) { if s.count > 0 { ch_set_focus(s, ""); } }
@@ -541,12 +591,14 @@ ch_scroll_offset :: (s:[]ChatPage)->f32 {
  if s[0].drawer {return keyed_scroll(s[0].keyed[1..<2],keyed_find(s[0].keyed[1..<2],"history.viewport"));}
  if s[0].lf[0].open {return keyed_scroll(s[0].keyed[1..<2],keyed_find(s[0].keyed[1..<2],"login.viewport"));}
  if s[0].identity[0].open {return keyed_scroll(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"settings.viewport"));}
+ if s[0].section>0 {return keyed_scroll(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"section.viewport"));}
  return s[0].view[0].list[0].top;
 }
 ch_scroll_max :: (s:[]ChatPage)->f32 {
  if s[0].drawer {return scroll_max(s[0].history_content,s[0].history_viewport);}
  if s[0].lf[0].open {return scroll_max(s[0].login_content,s[0].login_viewport);}
  if s[0].identity[0].open {return scroll_max(s[0].settings_content,s[0].settings_viewport);}
+ if s[0].section>0 {return scroll_max(s[0].section_content,s[0].section_viewport);}
  l:=s[0].view[0].list[0];return scroll_max(l.content,l.viewport);
 }
 chat_scroll_to :: (s:[]ChatPage,offset:f32) #export_c #effects(all) {
@@ -555,6 +607,7 @@ chat_scroll_to :: (s:[]ChatPage,offset:f32) #export_c #effects(all) {
  if s[0].drawer {keyed_scroll_set(s[0].keyed[1..<2],keyed_find(s[0].keyed[1..<2],"history.viewport"),value);}
  else if s[0].lf[0].open {keyed_scroll_set(s[0].keyed[1..<2],keyed_find(s[0].keyed[1..<2],"login.viewport"),value);}
  else if s[0].identity[0].open {keyed_scroll_set(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"settings.viewport"),value);}
+ else if s[0].section>0 {keyed_scroll_set(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"section.viewport"),value);}
  else {view_scroll(s[0].view[..],value-ch_scroll_offset(s));}
 }
 chat_scroll_info :: (s:[]ChatPage,out:[]f32)->bool #export_c #effects(all) {
@@ -664,7 +717,7 @@ chat_layer :: (s: [] ChatPage) -> int #export_c #effects(all) { if s.count < 1 |
 // VoiceOver's scroll: the transcript a page up (dir 1, toward the latest) or down (-1). True when it moved.
 chat_scroll_page :: (s: [] ChatPage, dir: int) -> bool #export_c #effects(all) {
   if s.count<1 || !s[0].ready {return false;}
-  if s[0].identity[0].open || s[0].lf[0].open || s[0].drawer {before:=ch_scroll_offset(s);height:=ifx s[0].drawer then s[0].history_viewport else ifx s[0].lf[0].open then s[0].login_viewport else s[0].settings_viewport;chat_scroll_to(s,before+cast(f32)dir*height*0.8);return before!=ch_scroll_offset(s);}
+  if s[0].identity[0].open || s[0].lf[0].open || s[0].drawer || s[0].section>0 {before:=ch_scroll_offset(s);height:=ifx s[0].drawer then s[0].history_viewport else ifx s[0].lf[0].open then s[0].login_viewport else ifx s[0].identity[0].open then s[0].settings_viewport else s[0].section_viewport;chat_scroll_to(s,before+cast(f32)dir*height*0.8);return before!=ch_scroll_offset(s);}
   if ch_layer(s)!=0 || s[0].view[0].viewport<=0 {return false;}
   view_scroll(s[0].view[..], cast(f32) dir * s[0].view[0].viewport * 0.8);
   return true;

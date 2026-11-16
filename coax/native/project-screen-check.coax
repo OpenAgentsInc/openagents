@@ -1,0 +1,6 @@
+// Runtime/paint qualification of the actual compiled page. The native unit
+// also runs the Projects model/component #tests during compilation. The
+// core's admission and request rules have their separate app-core-check
+// mutation gate; do not use a frame/SDK suite as its policy replacement.
+// coax test coax/native/project-screen-check.coax --native-link ../../apps/shared/app/projects/screen-native.coax
+#import "Basic";

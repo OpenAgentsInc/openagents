@@ -2,6 +2,7 @@
 #load "../../coax/lib/project/wire.coax";
 #load "../../coax/lib/project/api-wire.coax";
 #load "../../coax/lib/project/draft.coax";
+#load "../../coax/web/api/chat-history-wire.coax";
 ProjectApp :: struct {
  canonical:bool;api:[1]PrProject;knowledge:[1]PrKnowledgeIndex;api_page:int;api_loaded:bool;
  api_name:[160]u8;api_nn:int;api_text:[20000]u8;api_nt:int;api_title:[256]u8;api_nl:int;api_content:[65536]u8;api_nc:int;resume_chat:[24]u8;resume_n:int;
@@ -20,6 +21,35 @@ ProjectApp :: struct {
 }
 pja_copy :: (out:[]u8,value:string)->int {if value.count>out.count {return -1;}for c,i:value {out[i]=c;}return value.count;}
 pja_note :: (p:[]ProjectApp,value:string) {p[0].nn=pja_copy(p[0].note[..],value);}
+
+// The canonical project mutation retained by either presentation. Preparing
+// a second intent never replaces a write whose result is still unresolved.
+#test "project mutation preparation is atomic and exact replay retains its identity" {
+ p:[1]ProjectApp;b:[131072]u8;
+ #assert pja_pending_begin(p[..],"/api/projects/v1","{\"name\":\"One\"}",-1,111);
+ #assert !pja_pending_begin(p[..],"/api/projects/v1","{\"name\":\"Two\"}",-1,111);
+ #assert pja_pending_command(p[..],"0123456789abcdef0123456789abcdef");n:=pja_pending_body(p[..],b[..]);#assert n>0;
+ #assert cast(string)b[0..<n]=="{\"operation_id\":\"0123456789abcdef0123456789abcdef\",\"value\":{\"name\":\"One\"}}";
+ p[0].uncertain=true;#assert !pja_pending_command(p[..],"fedcba9876543210fedcba9876543210");
+ same:[131072]u8;m:=pja_pending_body(p[..],same[..]);#assert n==m && cast(string)b[0..<n]==cast(string)same[0..<m];
+ pja_pending_clear(p[..]);#assert p[0].pending_purpose==0 && !p[0].uncertain && pja_pending_body(p[..],b[..])<0;
+ big:[257]u8;#assert !pja_pending_begin(p[..],cast(string)big[..],"{}",0,1) && p[0].pending_np==0;
+ #assert !pja_pending_begin(p[..],"/x","{}",-2,1) && !pja_pending_begin(p[..],"/x","{}",0,0);
+}
+pja_pending_begin :: (p:[]ProjectApp,path:string,value:string,revision:int,purpose:int)->bool {
+ if p[0].pending_purpose!=0 || path.count<1 || path.count>p[0].pending_path.count || value.count>p[0].pending_value.count || revision< -1 || purpose<1 {return false;}
+ p[0].pending_np=pja_copy(p[0].pending_path[..],path);p[0].pending_nv=pja_copy(p[0].pending_value[..],value);
+ p[0].pending_revision=revision;p[0].pending_purpose=purpose;p[0].pending_no=0;p[0].uncertain=false;return true;
+}
+pja_pending_command :: (p:[]ProjectApp,command:string)->bool {
+ if p[0].pending_purpose==0 || p[0].pending_no!=0 || command.count<1 || command.count>p[0].pending_operation.count {return false;}
+ p[0].pending_no=pja_copy(p[0].pending_operation[..],command);return true;
+}
+pja_pending_body :: (p:[]ProjectApp,out:[]u8)->int {
+ if p[0].pending_purpose==0 || p[0].pending_no==0 {return -1;}
+ return pr_mutation(cast(string)p[0].pending_operation[0..<p[0].pending_no],p[0].pending_revision,cast(string)p[0].pending_value[0..<p[0].pending_nv],out);
+}
+pja_pending_clear :: (p:[]ProjectApp) {p[0].pending_purpose=0;p[0].pending_no=0;p[0].pending_np=0;p[0].pending_nv=0;p[0].uncertain=false;}
 pja_slug :: (p:[]ProjectApp)->string {return cast(string)p[0].slug[0..<p[0].ns];}
 pja_drop :: (p:[]ProjectApp)->string {return cast(string)p[0].drop[0..<p[0].ndrop];}
 pja_path :: (project:bool,id:string,op:string,out:[]u8)->string {o:[1]Jo;jo_start(o[..],out);jo_put(o[..],ifx project then "/projects/" else "/api/drops/");jo_put(o[..],id);if op.count>0 {jo_put(o[..],ifx project then "/api/" else "/");jo_put(o[..],op);}return jo_text(o[..]);}

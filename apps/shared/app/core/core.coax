@@ -10,3 +10,4 @@
 #load "host.coax";
 
 #load "core-checks.coax" #test;
+#load "action-checks.coax" #test;

@@ -22,8 +22,11 @@ OWN_ACCOUNT :: 0;      // login state and the login flow's requests
 OWN_CHAT :: 1;         // the current conversation and its task
 OWN_PAGE :: 2;         // copy and open-link, asked for by a tap
 OWN_ENVIRONMENT :: 3;  // guest: environment and repository reads
-OWN_GUEST_LAST :: 6;   // owners 3..6 are guests
+OWN_SCREEN :: 8;       // the active Projects, Usage or Worlds page's serial effects
+OWN_GUEST_LAST :: 8;   // guests 3..6 and 8; owner 7 remains the independent device lane
 OWN_DEVICE :: 7;       // the conversation on a paired computer, and the paired list (device/lane.coax); no account
+
+app_guest_owner :: (owner:int)->bool {return owner>=OWN_ENVIRONMENT && owner<=OWN_GUEST_LAST && owner!=OWN_DEVICE;}
 
 // Is an account logged in. Unknown until the host answers the first FX_AUTH_STATE.
 AUTH_UNKNOWN :: 0; AUTH_OUT :: 1; AUTH_IN :: 2;

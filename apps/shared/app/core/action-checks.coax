@@ -1,0 +1,189 @@
+// Exercise the existing action boundary as well as the new Project start.
+// Fixtures contain only disposable IDs and public text; no platform effects run.
+ac_reset :: (c:[]AppCore) {app_init(c);c[0].auth=AUTH_IN;c[0].dirty=0;}
+ac_do :: (c:[]AppCore,code:int,text:string,more:string,flag:bool)->int {return app_action(c,AppEvent.{code=code,text=text,more=more,flag=flag});}
+ac_full :: (c:[]AppCore) {for i:0..<FX_MAX {#assert fx_request(c[0].out[..],OWN_PAGE,FX_LINK,0,0,"","","https://example.test/",0,0)>0;}} // mutant: equivalent — only the unused filler owner/purpose/timeout and positive-ID >= boundary survive; every admitted filler is non-account-owned and consumes one slot, which is all these full-outbox fixtures observe
+ac_account_request :: (c:[]AppCore,kind:int,text:string) {
+ op:=c[0].account_op;at:=fx_find(c[0].out[..],op);#assert at>=0;
+ r:=c[0].out[0].slots[at];#assert r.owner==OWN_ACCOUNT;#assert r.kind==kind;#assert r.purpose==kind;#assert r.method==0;#assert r.path_n==0;#assert r.body_n==0;#assert r.limit==0;#assert r.timeout_ms==0;#assert c[0].account_purpose==kind;
+ #assert cast(string)c[0].out[0].slots[at].text[0..<r.text_n]==text;
+}
+#test "core actions distinguish login, empty, busy and invalid requests without emitting effects" {
+ c:[1]AppCore;ac_reset(c[..]);
+ for auth:[2]int.[AUTH_UNKNOWN,AUTH_OUT] {c[0].auth=auth;for code:[7]int.[ACT_STOP,ACT_ALLOW,ACT_DENY,ACT_RETRY,ACT_RECONNECT,ACT_OPEN,ACT_PROJECT_NEW] {#assert ac_do(c[..],code,"","",false)==APP_R_LOGIN && fx_held(c[0].out[..])==0;}}
+ ac_reset(c[..]);#assert ac_do(c[..],0,"","",false)==APP_R_INVALID && ac_do(c[..],99,"","",false)==APP_R_INVALID;
+ #assert ac_do(c[..],ACT_SEND,"","",false)==APP_R_EMPTY;
+ #assert app_draft_keep(c[..],"","x");c[0].auth=AUTH_UNKNOWN;#assert ac_do(c[..],ACT_SEND,"","",false)==APP_R_BLOCKED;
+ c[0].auth=AUTH_OUT;#assert ac_do(c[..],ACT_SEND,"","",false)==APP_LOGIN && c[0].login_wanted && c[0].dirty==SURF_ACCOUNT;
+ ac_reset(c[..]);big:[APP_DRAFT_BYTES+1]u8;#assert ac_do(c[..],ACT_DRAFT,cast(string)big[..],"",false)==APP_R_INVALID && c[0].dirty==0;
+ #assert ac_do(c[..],ACT_DRAFT,"x","",false)==APP_OK && app_draft(c[..])=="x" && c[0].dirty==SURF_COMPOSER;
+}
+#test "sending preserves existing revision metadata and atomically prepares exactly one pending message" {
+ for existing:0..<2 {c:[1]AppCore;ac_reset(c[..]);d:=c[0].chat[..];
+  if existing==1 {d[0].id_n=js_copy(d[0].id[..],"cnv_0123456789abcdef0123456789abcdef");d[0].loaded=true;}
+  d[0].revision=7;d[0].legacy_n=5;d[0].legacy_revision=8;d[0].body_n=5;d[0].uncertain=true;
+  #assert app_draft_keep(c[..],app_conversation(c[..]),"x");app_say(c[..],"old");c[0].dirty=0;
+  #assert ac_do(c[..],ACT_SEND,"","",false)==APP_OK && d[0].submitted_n==1 && cast(string)d[0].submitted[0..<1]=="x" && d[0].pending==1 && d[0].body_n==0 && !d[0].uncertain && app_note(c[..])=="";
+  #assert d[0].revision==(ifx existing==1 then 7 else 0) && d[0].legacy_n==(ifx existing==1 then 5 else 0) && d[0].legacy_revision==(ifx existing==1 then 8 else -1) && c[0].dirty==(SURF_NOTE|SURF_TRANSCRIPT|SURF_COMPOSER);
+ }
+}
+#test "Stop distinguishes the hosted turn, pending stop and native task controls" {
+ c:[1]AppCore;ac_reset(c[..]);d:=c[0].chat[..];n:=d[0].native[..];
+ #assert ac_do(c[..],ACT_STOP,"","",false)==APP_R_BLOCKED;
+ d[0].has_view=true;d[0].view[0].state=CT_RUNNING;d[0].pending=1;#assert ac_do(c[..],ACT_STOP,"","",false)==APP_R_BLOCKED;
+ d[0].pending=0;d[0].want_stop=true;#assert ac_do(c[..],ACT_STOP,"","",false)==APP_R_BLOCKED;
+ d[0].want_stop=false;n[0].selected=true;n[0].preparing=true;n[0].verb="deny";
+ #assert tc_same_turn(d);#assert ac_do(c[..],ACT_STOP,"","",false)==APP_OK && d[0].want_stop && !n[0].preparing && n[0].verb=="" && c[0].dirty==(SURF_COMPOSER|SURF_TASK);
+ ac_reset(c[..]);n=c[0].chat[0].native[..];n[0].bound=true;n[0].has_status=true;n[0].status[0].state=XT_RUNNING;
+ #assert ac_do(c[..],ACT_STOP,"","",false)==APP_OK && n[0].preparing && n[0].verb=="stop" && c[0].dirty==(SURF_COMPOSER|SURF_TASK);
+}
+#test "Allow and Deny use the held native permission and never run while a control is pending" {
+ for code:[2]int.[ACT_ALLOW,ACT_DENY] {c:[1]AppCore;ac_reset(c[..]);n:=c[0].chat[0].native[..];#assert ac_do(c[..],code,"","",false)==APP_R_BLOCKED;
+  n[0].bound=true;n[0].has_status=true;n[0].status[0].state=XT_WAITING;n[0].status[0].revision=2;n[0].status[0].interaction="held";
+  n[0].available=true;n[0].has_session=true;n[0].shown[0].asking=0;n[0].captured_n=1;n[0].canonical_n=1;n[0].captured[0]='x';n[0].canonical[0]='x';
+  #assert ac_do(c[..],code,"","",false)==APP_OK && n[0].verb==(ifx code==ACT_ALLOW then "approve" else "deny") && n[0].preparing && n[0].expected_revision==2 && c[0].dirty==SURF_TASK;
+  #assert ac_do(c[..],code,"","",false)==APP_R_BLOCKED;
+ }
+}
+#test "Retry only releases uncertainty of the retained hosted or native command" {
+ c:[1]AppCore;ac_reset(c[..]);d:=c[0].chat[..];n:=d[0].native[..];#assert ac_do(c[..],ACT_RETRY,"","",false)==APP_R_BLOCKED;
+ d[0].pending=1;d[0].body_n=1;d[0].body[0]='x';d[0].uncertain=true;app_say(c[..],"old");c[0].dirty=0;
+ #assert ac_do(c[..],ACT_RETRY,"","",false)==APP_OK && !d[0].uncertain && d[0].pending==1 && d[0].body_n==1 && d[0].body[0]=='x' && app_note(c[..])=="" && c[0].dirty==(SURF_NOTE|SURF_COMPOSER);
+ #assert ac_do(c[..],ACT_RETRY,"","",false)==APP_R_BLOCKED;
+ for missing:0..<3 {d[0].pending=ifx missing==0 then 0 else 1;d[0].body_n=ifx missing==1 then 0 else 1;d[0].uncertain=missing!=2;#assert ac_do(c[..],ACT_RETRY,"","",false)==APP_R_BLOCKED;}
+ ac_reset(c[..]);n=c[0].chat[0].native[..];n[0].body_n=1;n[0].body[0]='n';n[0].uncertain=true;nta_note(n,"old");
+ #assert ac_do(c[..],ACT_RETRY,"","",false)==APP_OK && !n[0].uncertain && n[0].body_n==1 && n[0].body[0]=='n' && n[0].note_n==0 && c[0].dirty==SURF_TASK;
+ n[0].body_n=0;n[0].uncertain=true;#assert ac_do(c[..],ACT_RETRY,"","",false)==APP_R_BLOCKED;
+}
+#forall "Reconnect resumes the selected view and native binding without replacing a pending control" bound:0..<2 {
+ c:[1]AppCore;ac_reset(c[..]);d:=c[0].chat[..];d[0].id_n=js_copy(d[0].id[..],"cnv_0123456789abcdef0123456789abcdef");d[0].has_view=true;n:=d[0].native[..];n[0].selected=true;n[0].bound=bound==1;n[0].absent=true;
+ c[0].read_at=9;c[0].poll_at=8;c[0].task_at=7;c[0].idle_at=6;
+ #assert ac_do(c[..],ACT_RECONNECT,"","",false)==APP_OK && c[0].read_at==0 && c[0].poll_at==0 && c[0].task_at==0 && c[0].idle_at==0 && c[0].want_turn && n[0].need==(ifx bound==1 then 2 else 1) && !n[0].absent;
+ n[0].need=5;n[0].absent=true;#assert ac_do(c[..],ACT_RECONNECT,"","",false)==APP_OK && n[0].need==5 && n[0].absent;
+ n[0].need=0;n[0].preparing=true;#assert ac_do(c[..],ACT_RECONNECT,"","",false)==APP_OK && n[0].need==0 && n[0].absent;
+}
+#test "Reconnect reads missing history from its retained cursor and refuses an empty conversation" {
+ c:[1]AppCore;ac_reset(c[..]);#assert ac_do(c[..],ACT_RECONNECT,"","",false)==APP_R_EMPTY;
+ d:=c[0].chat[..];d[0].id_n=js_copy(d[0].id[..],"cnv_0123456789abcdef0123456789abcdef");d[0].history_after=19;d[0].latest=true;
+ #assert ac_do(c[..],ACT_RECONNECT,"","",false)==APP_OK && c[0].want_history && !c[0].want_turn && d[0].history_after==19 && !d[0].latest;
+}
+#test "Open, New and environment choices preserve pending writes and clear the previous conversation" {
+ c:[1]AppCore;ac_reset(c[..]);id:="cnv_0123456789abcdef0123456789abcdef";d:=c[0].chat[..];
+ #assert ac_do(c[..],ACT_OPEN,"bad","",false)==APP_R_INVALID;
+ d[0].pending=1;#assert ac_do(c[..],ACT_OPEN,id,"",false)==APP_R_BLOCKED && ac_do(c[..],ACT_NEW,"","",false)==APP_R_BLOCKED;
+ d[0].pending=0;#assert ac_do(c[..],ACT_OPEN,id,"",false)==APP_OK && app_conversation(c[..])==id && app_note(c[..])=="";
+ d[0].pending=1;#assert ac_do(c[..],ACT_OPEN,id,"",false)==APP_OK && d[0].pending==1;d[0].pending=0;
+ #assert ac_do(c[..],ACT_NEW,"","",false)==APP_OK && app_conversation(c[..])=="" && app_note(c[..])=="";
+ for code:[2]int.[ACT_ENVIRONMENT,ACT_REPOSITORY] {c[0].dirty=0;#assert ac_do(c[..],code,"one","Name",false)==APP_OK && c[0].dirty==(SURF_ENVIRONMENT|SURF_COMPOSER);#assert (ifx code==ACT_ENVIRONMENT then app_environment(c[..]) else app_repository(c[..]))=="one";}
+ big:[APP_SLOT_VALUE+1]u8;#assert ac_do(c[..],ACT_REPOSITORY,cast(string)big[..],"",false)==APP_R_INVALID;
+ d[0].pending=1;#assert ac_do(c[..],ACT_ENVIRONMENT,"other","",false)==APP_R_BLOCKED && ac_do(c[..],ACT_ENVIRONMENT,"one","Name",false)==APP_OK;
+}
+#test "copy and links issue exactly the admitted platform request, or refuse without publishing" {
+ for code:[2]int.[ACT_COPY,ACT_LINK] {c:[1]AppCore;ac_reset(c[..]);text:=ifx code==ACT_COPY then "x" else "https://example.test/";
+  #assert ac_do(c[..],code,text,"",false)==APP_OK;op:=fx_next(c[0].out[..]);at:=fx_find(c[0].out[..],op);r:=c[0].out[0].slots[at];kind:=ifx code==ACT_COPY then FX_CLIPBOARD else FX_LINK;
+  #assert r.owner==OWN_PAGE && r.kind==kind && r.purpose==kind && r.method==0 && r.path_n==0 && r.text_n==0 && r.limit==0 && r.timeout_ms==0 && fx_body(c[0].out[..],at)==text;
+  #assert ac_do(c[..],code,"","",false)==APP_R_INVALID;
+  ac_reset(c[..]);ac_full(c[..]);#assert ac_do(c[..],code,text,"",false)==APP_R_FULL;
+ }
+ c:[1]AppCore;ac_reset(c[..]);big:[UP_COPY_MAX+1]u8;#assert ac_do(c[..],ACT_COPY,cast(string)big[..],"",false)==APP_R_INVALID && ac_do(c[..],ACT_LINK,"javascript:x","",false)==APP_R_INVALID;
+}
+#forall "login visibility fences an old attempt only when a logged-out flow is closed" mode:0..<5 {
+ c:[1]AppCore;ac_reset(c[..]);c[0].auth=ifx mode==2 then AUTH_IN else AUTH_OUT;
+ if mode>=3 {c[0].login=LOGIN_CODE;c[0].words_n=3;if mode==4 {ac_full(c[..]);}}
+ c[0].dirty=0;g:=fx_generation(c[0].out[..],OWN_ACCOUNT);show:=mode==0 || mode==2;
+ result:=ac_do(c[..],ACT_LOGIN_SHOW,"","",show);
+ if mode==4 {#assert result==APP_R_FULL && c[0].login==LOGIN_CODE && c[0].words_n==3 && c[0].dirty==0 && fx_generation(c[0].out[..],OWN_ACCOUNT)==g;}
+ else {#assert result==APP_OK && c[0].login_wanted==(mode==0) && c[0].dirty==SURF_ACCOUNT;
+  if mode==3 {#assert c[0].login==LOGIN_IDLE && c[0].words_n==0 && fx_generation(c[0].out[..],OWN_ACCOUNT)==g+1;ac_account_request(c[..],FX_AUTH_CANCEL,"");}
+  else {#assert fx_held(c[0].out[..])==0 && fx_generation(c[0].out[..],OWN_ACCOUNT)==g;}
+ }
+}
+#forall "email and code actions admit both inclusive text boundaries and preserve request carriage" example:0..<10 {
+ c:[1]AppCore;ac_reset(c[..]);c[0].auth=AUTH_OUT;c[0].words_n=3;
+ email:=example<5;which:=example%5;length:=ifx which==0 then 0 else ifx which==1 then (ifx email then 2 else 0) else ifx which==2 then (ifx email then 3 else 1) else ifx which==3 then (ifx email then APP_EMAIL else APP_CODE) else (ifx email then APP_EMAIL+1 else APP_CODE+1);
+ if !email {c[0].login=LOGIN_CODE;}bytes:[APP_EMAIL+1]u8;for i:0..<length {bytes[i]='a';}
+ text:=cast(string)bytes[0..<length];result:=ac_do(c[..],ifx email then ACT_LOGIN_EMAIL else ACT_LOGIN_CODE,text,"",false);
+ if which==2 || which==3 {#assert result==APP_OK && c[0].words_n==0 && c[0].dirty==SURF_ACCOUNT && c[0].login==(ifx email then LOGIN_SENDING else LOGIN_VERIFYING);ac_account_request(c[..],ifx email then FX_AUTH_EMAIL else FX_AUTH_VERIFY,text);
+  if email {#assert app_email(c[..])==text && c[0].login_wanted;}
+ }else {#assert result==APP_R_INVALID && fx_held(c[0].out[..])==0 && c[0].words_n==3 && c[0].dirty==0;}
+}
+#forall "email and code actions refuse wrong login stages, outstanding requests and full outboxes" example:0..<8 {
+ c:[1]AppCore;ac_reset(c[..]);email:=example<4;mode:=example%4;c[0].auth=AUTH_OUT;if !email {c[0].login=LOGIN_CODE;}
+ if mode==0 {if email {c[0].auth=AUTH_IN;}else {c[0].login=LOGIN_IDLE;}}
+ if mode==1 {c[0].account_op=9;}
+ if mode==2 {ac_full(c[..]);}
+ if mode==3 {c[0].out[0].owners[OWN_ACCOUNT].retired=true;}
+ result:=ac_do(c[..],ifx email then ACT_LOGIN_EMAIL else ACT_LOGIN_CODE,"abc","",false);
+ #assert result==(ifx mode<2 then APP_R_BLOCKED else APP_R_FULL);
+}
+#forall "Back from code consumes only its own cancellation request and refuses incompatible states" mode:0..<4 {
+ c:[1]AppCore;ac_reset(c[..]);c[0].auth=AUTH_OUT;c[0].login=ifx mode==0 then LOGIN_IDLE else LOGIN_CODE;c[0].words_n=3;
+ if mode==1 {c[0].account_op=9;}if mode==2 {ac_full(c[..]);}
+ result:=ac_do(c[..],ACT_LOGIN_BACK,"","",false);
+ if mode==3 {#assert result==APP_OK && c[0].login==LOGIN_IDLE && c[0].words_n==0 && c[0].dirty==SURF_ACCOUNT;ac_account_request(c[..],FX_AUTH_CANCEL,"");}
+ else {#assert result==(ifx mode==2 then APP_R_FULL else APP_R_BLOCKED) && c[0].words_n==3 && c[0].dirty==0;}
+}
+#test "Logout retains an explicit failure when the new generation cannot publish the platform clear" {
+ c:[1]AppCore;ac_reset(c[..]);c[0].auth=AUTH_OUT;#assert ac_do(c[..],ACT_LOGOUT,"","",false)==APP_R_BLOCKED;
+ c[0].auth=AUTH_IN;ac_full(c[..]);#assert ac_do(c[..],ACT_LOGOUT,"","",false)==APP_R_RETIRED && c[0].auth==AUTH_IN;
+ ac_reset(c[..]);#assert ac_do(c[..],ACT_LOGOUT,"","",false)==APP_OK && c[0].auth==AUTH_OUT && c[0].login==LOGIN_IDLE;ac_account_request(c[..],FX_AUTH_LOGOUT,"");
+}
+#forall "paired-computer actions stay independent of account login" index:0..<6 {
+ c:[1]AppCore;lane:[1]DeviceLane;ac_reset(c[..]);#assert app_device_attach(c[..],lane[..]);lane[0].on=true;c[0].auth=AUTH_OUT;
+ code:=[6]int.[ACT_SEND,ACT_STOP,ACT_ALLOW,ACT_DENY,ACT_RETRY,ACT_RECONNECT][index];
+ if index==0 {lane[0].e[0].catalog[0].entries[0].host[0]='a';#assert app_draft_keep(c[..],"","x");}
+ if index>=4 {lane[0].e[0].flight=true;}
+ result:=ac_do(c[..],code,"","",false);#assert result==(ifx index==0 then APP_OK else APP_R_BLOCKED);
+ if index==0 {#assert lane[0].queued && lane[0].sent_n==1 && !c[0].login_wanted;}
+}
+#test "pairing and rejoin actions use the device owner and retain navigation fences" {
+ c:[1]AppCore;lane:[1]DeviceLane;ac_reset(c[..]);#assert app_device_attach(c[..],lane[..]);
+ link:="openagents://pair?host=a&code=b";#assert ac_do(c[..],ACT_DEVICE_PAIR,link,"",false)==APP_OK;
+ op:=lane[0].pair_op;at:=fx_find(c[0].out[..],op);#assert at>=0 && c[0].out[0].slots[at].owner==OWN_DEVICE && c[0].out[0].slots[at].kind==FX_DEVICE_PAIR && fx_body(c[0].out[..],at)==link;
+ #assert ac_do(c[..],ACT_DEVICE_REJOIN,"bad","",false)==APP_R_INVALID;
+ c[0].chat[0].pending=1;#assert ac_do(c[..],ACT_DEVICE_REJOIN,"b","",false)==APP_R_BLOCKED && ac_do(c[..],ACT_DEVICE_REJOIN,"","",false)==APP_OK;
+}
+#test "an empty logged-out Send stays empty and opening a chat clears the old notice" {
+ c:[1]AppCore;ac_reset(c[..]);c[0].auth=AUTH_OUT;#assert ac_do(c[..],ACT_SEND,"","",false)==APP_R_EMPTY && !c[0].login_wanted;
+ c[0].auth=AUTH_IN;app_say(c[..],"old");#assert ac_do(c[..],ACT_OPEN,"cnv_0123456789abcdef0123456789abcdef","",false)==APP_OK && app_note(c[..])=="";
+ app_say(c[..],"old");#assert ac_do(c[..],ACT_NEW,"","",false)==APP_OK && app_note(c[..])=="";
+}
+#test "Project start clears the old computer, repository, transcript and notice as one new context" {
+ c:[1]AppCore;lane:[1]DeviceLane;ac_reset(c[..]);#assert app_device_attach(c[..],lane[..]);lane[0].on=true;
+ #assert app_slot_set(c[0].environment[..],"old","Old") && app_slot_set(c[0].repository[..],"repo","Repo");
+ c[0].chat[0].id_n=js_copy(c[0].chat[0].id[..],"cnv_0123456789abcdef0123456789abcdef");app_say(c[..],"old");c[0].dirty=0;
+ #assert app_action(c[..],AppEvent.{code=ACT_PROJECT_NEW,text="prj_0123456789abcdef0123456789abcdef",value=1})==APP_OK;
+ #assert !app_device_on(c[..]) && app_environment(c[..])=="" && app_repository(c[..])=="" && app_conversation(c[..])=="" && app_note(c[..])=="" && c[0].dirty==SURF_ALL;
+ lane[0].on=true;lane[0].e[0].uncertain=true;#assert app_action(c[..],AppEvent.{code=ACT_PROJECT_NEW,text="prj_0123456789abcdef0123456789abcdef",value=1})==APP_R_BLOCKED;
+}
+#test "paired environment selection admits index zero and New resets only that computer's visible session" {
+ c:[1]AppCore;lane:[1]DeviceLane;ac_reset(c[..]);#assert app_device_attach(c[..],lane[..]);host:="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+ lane[0].np=1;_=js_copy(lane[0].paired[0].host[..],host);
+ #assert ac_do(c[..],ACT_ENVIRONMENT,host,"Mac",false)==APP_OK && app_device_on(c[..]) && cast(string)lane[0].host[..]==host;
+ #assert ac_do(c[..],ACT_REPOSITORY,"repo","Repo",false)==APP_OK && app_device_on(c[..]);
+ lane[0].e[0].ns=js_copy(lane[0].e[0].session[..],"old");c[0].chat[0].id_n=js_copy(c[0].chat[0].id[..],"cnv_0123456789abcdef0123456789abcdef");app_say(c[..],"old");
+ #assert ac_do(c[..],ACT_NEW,"","",false)==APP_OK && app_device_on(c[..]) && lane[0].e[0].ns==0 && app_conversation(c[..])=="cnv_0123456789abcdef0123456789abcdef" && app_note(c[..])=="";
+ #assert ac_do(c[..],ACT_ENVIRONMENT,"unpaired","Other",false)==APP_OK && !app_device_on(c[..]);
+}
+#test "closing login with a pending operation clears its tracking before a retired-ID refusal" {
+ c:[1]AppCore;ac_reset(c[..]);c[0].auth=AUTH_OUT;c[0].login=LOGIN_CODE;
+ #assert app_account_request(c[..],FX_AUTH_STATE,"","");op:=c[0].account_op;#assert fx_take(c[0].out[..],op);
+ c[0].out[0].next_op=FX_OP_MAX;
+ #assert ac_do(c[..],ACT_LOGIN_SHOW,"","",false)==APP_R_RETIRED && c[0].account_op==0 && c[0].account_purpose==0;
+}
+#test "a retiring account clear forgets its pending request before the new request can be refused" {
+ c:[1]AppCore;ac_reset(c[..]);#assert app_account_request(c[..],FX_AUTH_STATE,"","");op:=c[0].account_op;#assert fx_take(c[0].out[..],op);
+ c[0].out[0].next_op=FX_OP_MAX;
+ #assert ac_do(c[..],ACT_LOGOUT,"","",false)==APP_R_RETIRED && c[0].account_op==0;
+}
+#test "login visibility keeps an authenticated or unopened flow from cancelling unrelated requests" {
+ c:[1]AppCore;ac_reset(c[..]);c[0].login=LOGIN_CODE;
+ #assert ac_do(c[..],ACT_LOGIN_SHOW,"","",false)==APP_OK && c[0].login==LOGIN_CODE && c[0].account_op==0;
+ c[0].auth=AUTH_OUT;c[0].login=LOGIN_IDLE;#assert ac_do(c[..],ACT_LOGIN_SHOW,"","",false)==APP_OK && c[0].account_op==0;
+}
+#test "Logout fences a pending account-state reply before publishing the new platform clear" {
+ c:[1]AppCore;ac_reset(c[..]);#assert app_account_request(c[..],FX_AUTH_STATE,"","");old:=c[0].account_op;generation:=fx_generation(c[0].out[..],OWN_ACCOUNT);#assert fx_take(c[0].out[..],old);
+ #assert ac_do(c[..],ACT_LOGOUT,"","",false)==APP_OK && c[0].auth==AUTH_OUT && fx_generation(c[0].out[..],OWN_ACCOUNT)==generation+1;
+ #assert fx_state(c[0].out[..],old)==FX_CANCELLED && c[0].account_op!=old;
+ #assert app_host_done(c[..],1,1,old,generation,FXO_DONE,200,true,"","",0)==APP_R_LATE && c[0].auth==AUTH_OUT;
+}

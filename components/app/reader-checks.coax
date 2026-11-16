@@ -1,0 +1,9 @@
+#load "checks-kit.coax";
+#test "a read-only text surface reaches the final byte and realizes only the visible window" {
+ t:[1]AppTest;app_test_init(t[..]);text:[4096]u8;for i:0..<text.count {text[i]=ifx i%2==0 then 'x' else '\n';}
+ app_test_begin(t[..],"","",true);h:=app_read_text(t[0].f[..],"read",0,0,100,0,300,cast(string)text[..]);#assert app_test_end(t[..]);
+ #assert h==2048*t[0].f[0].skin.body.line && surface_rows(t[0].sf[..]).n<3;
+ last:=h-32;app_test_begin(t[..],"","",true);again:=app_read_text(t[0].f[..],"read",0,-last,100,0,100,cast(string)text[..]);#assert app_test_end(t[..]) && again==h;
+ #assert app_test_find(t[..],"read.2032")>=0 && app_test_texts(t[..],"x")>0;
+ app_test_begin(t[..],"","",true);#assert app_read_text(t[0].f[..],"read",0,0,100,0,300,"")==0 && app_test_end(t[..]);
+}

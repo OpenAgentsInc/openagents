@@ -47,6 +47,7 @@ ACT_COPY :: 17;        // text: what to copy
 ACT_LINK :: 18;        // text: the URL to open
 ACT_DEVICE_PAIR :: 19; // text: a pairing link the person opened (openagents://pair?...)
 ACT_DEVICE_REJOIN :: 20; // text: "host TAB session" kept at the last background (app_device_keep), or ""
+ACT_PROJECT_NEW :: 21; // text: canonical project ID; value: the read project revision (in-process page action)
 
 // What app_dispatch answers.
 APP_OK :: 1;           // committed
@@ -79,7 +80,7 @@ app_account_request :: (c: [] AppCore, kind: int, text: string, body: string) ->
 app_logged_out :: (c: [] AppCore, words: string) {
   c[0].auth = AUTH_OUT; c[0].login = LOGIN_IDLE; c[0].rejoin_n = 0;
   tc_reset(c, "");
-  for owner: OWN_PAGE..<OWN_GUEST_LAST + 1 { _ := fx_cancel(c[0].out[..], owner); }
+  for owner: OWN_PAGE..<OWN_GUEST_LAST + 1 { if owner!=OWN_DEVICE {_ := fx_cancel(c[0].out[..], owner);} } // mutant: equivalent — one extra loop iteration names owner FX_OWNERS, which fx_cancel refuses without changing the outbox
   c[0].guest = AppGuest.{};for owner:OWN_ENVIRONMENT..<OWN_GUEST_LAST+1 {c[0].guest_due[owner]=0;}
   // drafts of the account's saved conversations go; the new chat's draft is not the account's
   app_drafts_clear(c, true);
@@ -124,7 +125,7 @@ app_action :: (c: [] AppCore, e: AppEvent) -> int {
     if state == SEND_EMPTY { return APP_R_EMPTY; }
     if state != SEND_READY { return APP_R_BLOCKED; }
     d[0].submitted_n = js_copy(d[0].submitted[..], app_draft(c));
-    if d[0].id_n == 0 { d[0].revision = 0; d[0].project_n = 0; d[0].project_revision = -1; d[0].legacy_n = 0; d[0].legacy_revision = -1; }
+    if d[0].id_n == 0 { d[0].revision = 0; d[0].legacy_n = 0; d[0].legacy_revision = -1; }
     d[0].pending = 1; d[0].body_n = 0; d[0].uncertain = false;
     app_say(c, ""); app_mark(c, SURF_TRANSCRIPT | SURF_COMPOSER); return APP_OK;
   }
@@ -167,8 +168,17 @@ app_action :: (c: [] AppCore, e: AppEvent) -> int {
   if a == ACT_NEW {
     if app_navigation_blocked(c) {return APP_R_BLOCKED;}
     if app_device_on(c) { dl_new(c); app_say(c, ""); return APP_OK; }
-    if dca_blocked(d) { return APP_R_BLOCKED; }
+    if dca_blocked(d) { return APP_R_BLOCKED; } // mutant: equivalent — ACT_NEW already refused app_navigation_blocked, which includes every dca_blocked state, so this retained defensive branch is unreachable
     tc_reset(c, ""); app_say(c, ""); return APP_OK;
+  }
+  if a==ACT_PROJECT_NEW {
+    if c[0].auth!=AUTH_IN {return APP_R_LOGIN;}
+    if !ex_reference(e.text,"prj_") || e.value<1 || e.value>=2147483646 {return APP_R_INVALID;}
+    if app_navigation_blocked(c) || dca_blocked(d) {return APP_R_BLOCKED;}
+    dl_leave(c);tc_reset(c,"");
+    c[0].environment[0]=AppSlot.{};c[0].repository[0]=AppSlot.{};
+    d[0].project_n=js_copy(d[0].project[..],e.text);d[0].project_revision=e.value;
+    app_say(c,"");app_mark(c,SURF_ALL);return APP_OK;
   }
   if a == ACT_ENVIRONMENT || a == ACT_REPOSITORY {
     if a==ACT_ENVIRONMENT && e.text!=app_environment(c) && app_navigation_blocked(c) {return APP_R_BLOCKED;}
@@ -333,34 +343,41 @@ app_dispatch :: (c: [] AppCore, e: AppEvent) -> int {
 // 0 with nothing changed (not logged in, not a guest owner, refused by policy, or no room). Its
 // result arrives as the dispatch answer APP_GUEST.
 app_guest_http :: (c: [] AppCore, owner: int, purpose: int, method: int, path: string, body: string) -> int {
-  if c[0].auth != AUTH_IN || owner < OWN_ENVIRONMENT || owner > OWN_GUEST_LAST { return 0; }
+  if c[0].auth != AUTH_IN || !app_guest_owner(owner) { return 0; }
   return fx_request(c[0].out[..], owner, FX_HTTP, purpose, method, path, "", body, UP_RESPONSE_MAX, TC_HTTP_TIMEOUT_MS);
 }
 // Read-only browsing is independent of account login and the active lane.
 // The existing device adapter alone admits the paired/local host's grant.
 app_guest_device :: (c:[]AppCore,owner:int,purpose:int,host:string,body:string)->int {
- if owner<OWN_ENVIRONMENT || owner>OWN_GUEST_LAST || dl_find(c,host)<0 {return 0;}
+ if !app_guest_owner(owner) || dl_find(c,host)<0 {return 0;}
  q:[1]EaRequest;if !ea_read(body,q[..]) || ea_right(cast(string)q[0].method[0..<q[0].nm])!=0 {return 0;}
  return fx_request(c[0].out[..],owner,FX_DEVICE_CALL,purpose,0,"",host,body,0,TC_HTTP_TIMEOUT_MS);
 }
 // Closed custody request. Only its action and public expected key cross the core.
 app_guest_identity :: (c:[]AppCore,owner:int,purpose:int,action:string,pubkey:string)->int {
- if c[0].auth!=AUTH_IN || owner<OWN_ENVIRONMENT || owner>OWN_GUEST_LAST {return 0;}
+ if c[0].auth!=AUTH_IN || !app_guest_owner(owner) {return 0;}
  return fx_request(c[0].out[..],owner,FX_IDENTITY,purpose,0,"",action,pubkey,0,0);
 }
 // Fence a guest's requests (its screen closed): late results are dropped.
 app_guest_cancel :: (c: [] AppCore, owner: int) -> bool {
-  if owner < OWN_ENVIRONMENT || owner > OWN_GUEST_LAST { return false; }
+  if !app_guest_owner(owner) { return false; }
   c[0].guest_due[owner]=0;return fx_cancel(c[0].out[..], owner);
 }
 // The root routed the waiting guest result (its body is the EV_DONE event's text). Until this is
 // called, the next event is refused as APP_R_INVALID, so a result is never overwritten.
 app_guest_done :: (c: [] AppCore) { c[0].guest = AppGuest.{}; }
 
+// A screen needs a command identity before a write. Randomness and civil
+// time remain platform effects; the root receives the existing FX_IDS reply.
+app_guest_ids :: (c:[]AppCore,owner:int,purpose:int)->int {
+ if c[0].auth!=AUTH_IN || !app_guest_owner(owner) {return 0;}
+ return fx_request(c[0].out[..],owner,FX_IDS,purpose,0,"","","",0,0);
+}
+
 // A guest schedules one future action without keeping frames alive. -1 clears it.
 app_guest_due :: (c:[]AppCore,owner:int,at:int)->bool {
- if owner<OWN_ENVIRONMENT || owner>OWN_GUEST_LAST {return false;}
- c[0].guest_due[owner]=ifx at>0 then at else 0;return true;
+ if !app_guest_owner(owner) {return false;}
+ c[0].guest_due[owner]=ifx at>0 then at else 0;return true; // mutant: equivalent — at zero either branch stores zero
 }
 // ---------------------------------------------------------------- busy and the next wake
 

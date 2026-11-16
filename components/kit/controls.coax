@@ -96,9 +96,18 @@ slider_value :: (x: f32, w: f32, px: f32) -> f32 {
 
 // Wrapped row copy uses the shared line wrapper and the skin's type roles.
 control_copy :: (sh:[]Sheet,m:TextMeasure,face:UiType,color:Rgba,x:f32,y:f32,w:f32,text:string)->f32 {
+ return control_copy_kind(sh,m,face,color,x,y,w,text,false);
+}
+// Plain editing previews preserve authored hard breaks through the existing
+// text_wrap_lines helper. Markdown keeps its own block-level hard breaks.
+control_copy_lines :: (sh:[]Sheet,m:TextMeasure,face:UiType,color:Rgba,x:f32,y:f32,w:f32,text:string)->f32 {
+ return control_copy_kind(sh,m,face,color,x,y,w,text,true);
+}
+control_copy_kind :: (sh:[]Sheet,m:TextMeasure,face:UiType,color:Rgba,x:f32,y:f32,w:f32,text:string,hard:bool)->f32 {
  if text.count==0 {return 0;}
  lines:[16]TextLine;runs:[1]MdRun;faces:=TextFaces.{plain=face.face,bold=face.face,code=face.face};
- n:=text_wrap(m,faces,text,runs[0..<0],ifx w>1 then w else 1.0f32,lines[..]);
+ width:=ifx w>1 then w else 1.0f32;
+ n:=ifx hard then text_wrap_lines(m,faces,text,width,lines[..]) else text_wrap(m,faces,text,runs[0..<0],width,lines[..]);
  for i:0..<n {_:=sheet_text(sh,m,-1,x,y+cast(f32)i*face.line,face.line,face.face,color,cast(string)text[lines[i].from..<lines[i].to]);}
  return cast(f32)n*face.line;
 }

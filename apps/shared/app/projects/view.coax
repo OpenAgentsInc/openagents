@@ -1,0 +1,60 @@
+// GPU presentation over the shared Projects flow. The fields, buttons,
+// one-line rows, clipping and Markdown all come from the component kit.
+#load "flow.coax";
+#load "../../../../components/app/nav.coax";
+#load "../../../../components/app/reader.coax";
+#load "view-checks.coax" #test;
+PS_ACTION :: 401; PS_FIELD :: 402;
+ps_editing :: (id:string)->bool {return id=="project.name" || id=="project.description" || id=="project.text" || id=="project.knowledge.title";}
+ps_textbox :: (f:[]UiFrame,id:string,x:f32,y:f32,w:f32,label:string,text:string,focus:string,off:int,height:f32)->f32 {
+ k:=f[0].skin;rows:=cast(int)floor((height-2*k.chrome.field_pad)/k.body.line);if rows<1 {rows=1;}if rows>4 {rows=4;}
+ return ctx_textarea(f,id,x,y,w,label,text,label,rows,focus==id,off,PS_FIELD);
+}
+// Content only; the app's floating navigation and native momentum owner stay
+// on the main page. Rows outside the clipped viewport are not realized.
+ps_view :: (s:[]ProjectScreen,f:[]UiFrame,x:f32,origin_y:f32,w:f32,top:f32,bottom:f32,focus:string)->f32 {
+ y:=origin_y;start:=y;k:=f[0].skin;gap:=k.app.gap;p:=s[0].p[..];off:=ifx s[0].op>0 || ps_blocked(s) then EL_S_DISABLED else 0;
+ if p[0].nn>0 {y+=app_notice(f,"project.note",x,y,w,cast(string)p[0].note[0..<p[0].nn],APP_NOTICE_ERROR)+gap;}
+ if p[0].uncertain {y+=app_button(f,"project.retry",x,y,w,-1,"Check save",APP_BUTTON_PRIMARY,ifx s[0].op>0 then EL_S_DISABLED else 0,PS_ACTION);return y-start;}
+ if !s[0].signed_in {return app_text(f,"project.signed-out",x,y,w,APP_TEXT_BODY,"Log in to view Projects");}
+ if s[0].page==0 {
+  if s[0].list[0].n==0 {y+=app_text(f,"project.empty",x,y,w,APP_TEXT_BODY,ifx s[0].loaded then "No Projects" else "Loading…")+gap;}
+  for i:0..<s[0].list[0].n {r:=s[0].list[0].items[i];h:=k.app.side_row;
+   if y+h>top && y<bottom {id:[64]u8;_:=app_side_row(f,app_id(id[..],"pr.item.",cast(string)r.id[0..<r.ni]),x,y,w,sheet_single_line(f[0].sheet,cast(string)s[0].list[0].items[i].name[0..<r.nn]),"",off,PS_ACTION);}y+=h;
+  }
+  if s[0].list[0].nn>0 {y+=app_button(f,"project.more",x,y,w,-1,"More",APP_BUTTON_QUIET,off,PS_ACTION)+gap;}
+  if s[0].nc>0 {y+=app_button(f,"project.first",x,y,w,-1,"Latest",APP_BUTTON_QUIET,off,PS_ACTION);}
+ } else if s[0].page==1 || s[0].page==3 || s[0].page==7 {
+  if s[0].page==1 || s[0].page==7 {y+=app_field(f,"project.name",x,y,w,"Name",cast(string)p[0].api_name[0..<p[0].api_nn],"Name",false,focus=="project.name","",off,PS_FIELD)+gap;}
+  y+=ps_textbox(f,ifx s[0].page==7 then "project.description" else "project.text",x,y,w,ifx s[0].page==7 then "Description" else "Instructions",ifx s[0].page==7 then cast(string)p[0].notes[0..<p[0].nnotes] else cast(string)p[0].api_text[0..<p[0].api_nt],focus,off,bottom-top)+gap;
+  y+=app_button(f,ifx s[0].page==1 then "project.create" else ifx s[0].page==7 then "project.update" else "project.save",x,y,w,-1,ifx s[0].page==1 then "Create" else "Save",APP_BUTTON_PRIMARY,off | (ifx (s[0].page==1 || s[0].page==7) && p[0].api_nn==0 then EL_S_DISABLED else 0),PS_ACTION);
+ } else if s[0].page==4 {
+  y+=app_field(f,"project.knowledge.title",x,y,w,"Title",cast(string)p[0].api_title[0..<p[0].api_nl],"Title",false,focus=="project.knowledge.title","",off,PS_FIELD)+gap;
+  y+=ps_textbox(f,"project.text",x,y,w,"Reference text",cast(string)p[0].api_text[0..<p[0].api_nt],focus,off,bottom-top)+gap;
+  y+=app_button(f,"project.knowledge.add",x,y,w,-1,"Add",APP_BUTTON_PRIMARY,off | (ifx p[0].api_nl==0 || p[0].api_nt==0 then EL_S_DISABLED else 0),PS_ACTION)+gap;
+  for i:0..<p[0].knowledge[0].n {r:=p[0].knowledge[0].items[i];h:=k.app.side_row;
+   if y+h>top && y<bottom {id:[64]u8;_:=app_side_row(f,app_id(id[..],"pr.source.",cast(string)r.id[0..<r.ni]),x,y,w-k.app.icon_button,sheet_single_line(f[0].sheet,cast(string)p[0].knowledge[0].items[i].title[0..<r.nn]),"",off,PS_ACTION);
+    erase_id:[64]u8;_:=app_button(f,app_id(erase_id[..],"pr.remove.",cast(string)r.id[0..<r.ni]),x+w-k.app.icon_button,y,k.app.icon_button,-1,"×",APP_BUTTON_QUIET,off,PS_ACTION);
+   }y+=h;
+  }
+ } else if s[0].page==5 {
+  y+=app_button(f,"project.chat.new",x,y,w,-1,"New chat",APP_BUTTON_PRIMARY,off,PS_ACTION)+gap;
+  if s[0].chats[0].n==0 {y+=app_text(f,"project.chats.empty",x,y,w,APP_TEXT_BODY,ifx s[0].op>0 then "Loading…" else "No chats");}
+  for i:0..<s[0].chats[0].n {r:=s[0].chats[0].items[i];h:=k.app.side_row;
+   if y+h>top && y<bottom {id:[64]u8;_:=app_side_row(f,app_id(id[..],"pr.chat.",cast(string)r.id[..]),x,y,w,sheet_single_line(f[0].sheet,cast(string)s[0].chats[0].items[i].title[0..<r.title_n]),"",off,PS_ACTION);}y+=h;
+  }
+  if s[0].chats[0].next_n>0 {y+=app_button(f,"project.chats.more",x,y,w,-1,"More",APP_BUTTON_QUIET,off,PS_ACTION);}
+ if s[0].ncc>0 {y+=app_button(f,"project.chats.first",x,y,w,-1,"Latest",APP_BUTTON_QUIET,off,PS_ACTION);}
+ } else if s[0].page==6 {
+  y+=app_text(f,"pr.source.text",x,y,w,APP_TEXT_BODY,cast(string)p[0].api_content[0..<p[0].api_nc]);
+ } else if !p[0].api_loaded {y+=app_text(f,"project.loading",x,y,w,APP_TEXT_BODY,"Loading…");}
+ else {
+  if p[0].api[0].nd>0 {y+=app_text(f,"project.description",x,y,w,APP_TEXT_BODY,cast(string)p[0].api[0].description[0..<p[0].api[0].nd])+gap;}
+  y+=app_button(f,"project.chat.new",x,y,w,-1,"New chat",APP_BUTTON_PRIMARY,off,PS_ACTION)+gap;
+  y+=app_button(f,"project.details",x,y,w,-1,"Details",APP_BUTTON_DEFAULT,off,PS_ACTION)+gap;
+  y+=app_button(f,"project.instructions",x,y,w,-1,"Instructions",APP_BUTTON_DEFAULT,off,PS_ACTION)+gap;
+  y+=app_button(f,"project.knowledge",x,y,w,-1,"Knowledge",APP_BUTTON_DEFAULT,off,PS_ACTION)+gap;
+  y+=app_button(f,"project.chats",x,y,w,-1,"Chats",APP_BUTTON_DEFAULT,off,PS_ACTION);
+ }
+ return y-start;
+}

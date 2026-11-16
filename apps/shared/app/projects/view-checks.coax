@@ -1,0 +1,39 @@
+#load "../../../../components/app/checks-kit.coax";
+
+#test "GPU Projects realize each form through the same kit and retain one-line saved chat rows" {
+ s:[1]ProjectScreen;t:[1]AppTest;app_test_init(t[..]);s[0].signed_in=true;s[0].loaded=true;p:=s[0].p[..];p[0].api_loaded=true;
+ s[0].list[0].n=1;s[0].list[0].items[0].ni=pr_copy(s[0].list[0].items[0].id[..],"prj_0123456789abcdef0123456789abcdef");s[0].list[0].items[0].nn=pr_copy(s[0].list[0].items[0].name[..],"Research");
+ p[0].api_nn=pr_copy(p[0].api_name[..],"Research");p[0].api_nt=pr_copy(p[0].api_text[..],"Use references\nBe precise");p[0].api_nl=pr_copy(p[0].api_title[..],"Reference");p[0].api_nc=pr_copy(p[0].api_content[..],"Read this reference");
+ p[0].knowledge[0].n=1;p[0].knowledge[0].items[0].ni=pr_copy(p[0].knowledge[0].items[0].id[..],"knw_0123456789abcdef0123456789abcdef");p[0].knowledge[0].items[0].nn=pr_copy(p[0].knowledge[0].items[0].title[..],"Reference");
+ s[0].chats[0].n=1;_ = pr_copy(s[0].chats[0].items[0].id[..],"cnv_0123456789abcdef0123456789abcdef");s[0].chats[0].items[0].title_n=pr_copy(s[0].chats[0].items[0].title[..],"A saved\nconversation");
+ for page:0..<8 {
+  s[0].page=page;app_test_begin(t[..],"","project.text",true);h:=ps_view(s[..],t[0].f[..],0,0,300,0,700,"project.text");#assert h>0 && app_test_end(t[..]);
+  if page==0 {#assert app_test_find(t[..],"pr.item.prj_0123456789abcdef0123456789abcdef")>=0;}
+  if page==1 {#assert app_test_row(t[..],"project.text").role==EL_FIELD && app_test_has(t[..],"project.text",EL_S_FOCUSED) && app_test_pressable(t[..],"project.create");}
+  if page==2 {#assert app_test_pressable(t[..],"project.instructions") && app_test_pressable(t[..],"project.chats");}
+  if page==3 {#assert app_test_pressable(t[..],"project.save");}
+  if page==4 {#assert app_test_pressable(t[..],"project.knowledge.add") && app_test_find(t[..],"pr.source.knw_0123456789abcdef0123456789abcdef")>=0;}
+  if page==5 {#assert app_test_label(t[..],"pr.chat.cnv_0123456789abcdef0123456789abcdef")=="A saved conversation";#assert app_test_row(t[..],"pr.chat.cnv_0123456789abcdef0123456789abcdef").h==t[0].f[0].skin.app.side_row;}
+  if page==6 {#assert app_test_texts(t[..],"Read this reference")==1;}
+  if page==7 {#assert app_test_find(t[..],"project.description")>=0 && app_test_pressable(t[..],"project.update");}
+ }
+}
+#test "GPU Projects distinguish loading, empty, logged-out, busy and unconfirmed saves" {
+ s:[1]ProjectScreen;t:[1]AppTest;app_test_init(t[..]);app_test_begin(t[..],"","",true);
+ _:=ps_view(s[..],t[0].f[..],0,0,300,0,700,"");#assert app_test_end(t[..]) && app_test_find(t[..],"project.signed-out")>=0;
+ s[0].signed_in=true;app_test_begin(t[..],"","",true);_ = ps_view(s[..],t[0].f[..],0,0,300,0,700,"");#assert app_test_end(t[..]) && app_test_texts(t[..],"Loading…")==1;
+ s[0].loaded=true;app_test_begin(t[..],"","",true);_ = ps_view(s[..],t[0].f[..],0,0,300,0,700,"");#assert app_test_end(t[..]) && app_test_texts(t[..],"No Projects")==1;
+ s[0].page=1;s[0].op=1;app_test_begin(t[..],"","",true);_ = ps_view(s[..],t[0].f[..],0,0,300,0,700,"");#assert app_test_end(t[..]) && !app_test_pressable(t[..],"project.create") && !app_test_pressable(t[..],"project.name");
+ s[0].p[0].uncertain=true;s[0].p[0].nn=pr_copy(s[0].p[0].note[..],"Save unconfirmed");app_test_begin(t[..],"","",true);_ = ps_view(s[..],t[0].f[..],0,0,300,0,700,"");#assert app_test_end(t[..]) && app_test_find(t[..],"project.note")>=0 && !app_test_pressable(t[..],"project.retry");
+ s[0].op=0;app_test_begin(t[..],"","",true);_ = ps_view(s[..],t[0].f[..],0,0,300,0,700,"");#assert app_test_end(t[..]) && app_test_pressable(t[..],"project.retry") && app_test_find(t[..],"project.create")<0;
+}
+#test "a 200-source Project draws only visible rows and preserves the full scroll extent" {
+ s:[1]ProjectScreen;t:[1]AppTest;app_test_init(t[..]);s[0].signed_in=true;s[0].page=4;p:=s[0].p[..];p[0].knowledge[0].n=200;
+ for i:0..<200 {p[0].knowledge[0].items[i].ni=pr_copy(p[0].knowledge[0].items[i].id[..],"knw_00000000000000000000000000000000");p[0].knowledge[0].items[i].id[34]="0123456789abcdef"[i/16];p[0].knowledge[0].items[i].id[35]="0123456789abcdef"[i%16];p[0].knowledge[0].items[i].nn=pr_copy(p[0].knowledge[0].items[i].title[..],"Reference");}
+ app_test_begin(t[..],"","",true);h:=ps_view(s[..],t[0].f[..],0,0,300,0,500,"");#assert app_test_end(t[..]) && h>500 && surface_rows(t[0].sf[..]).n<20;
+}
+#test "a Project text area fits its viewport instead of placing four lines beneath a small phone keyboard" {
+ t:[1]AppTest;app_test_init(t[..]);app_test_begin(t[..],"","",true);
+ h:=ps_textbox(t[0].f[..],"project.text",0,0,300,"Instructions","Text","",0,100);
+ #assert h<=100 && h>=t[0].f[0].skin.chrome.field_h && app_test_end(t[..]);
+}

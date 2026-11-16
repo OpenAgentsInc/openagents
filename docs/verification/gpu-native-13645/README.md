@@ -152,3 +152,43 @@ OpenAgents qualification uses its actual page rather than that older gallery.
 
 Real iPhone and VoiceOver/Orca/passkey ceremonies remain in `NEEDS_OWNER.md`;
 the native SDK and software Vulkan observations do not certify those exits.
+
+## GPU Projects page
+
+The shared Projects fixture suite passes 613 checks, including actual canonical
+create/read/edit/knowledge codecs, revision binding, cursor scope, logout,
+hidden-read cancellation and exact replay after an unknown write. It checks
+all eight page variants and visible-only realization of a 200-source library.
+The source reader reaches the last byte without realizing an entire document.
+
+`projects/qualify.coax` passes normal and ASan/UBSan debug/release builds of the
+actual compiled page: regular-page drawer navigation, single/multiline editor
+handoff, retained save ownership, sidebar reopening, large text, keyboard
+reveal and idle settling. Logs for this worktree are
+`/tmp/oa-gpu-project-flow-complete.log`,
+`/tmp/oa-gpu-project-screen-native-debug.log` and
+`/tmp/oa-gpu-project-screen-native-release.log`.
+
+This is one G4 screen family, not completion of #13645. Provider Usage,
+world-library adoption, G3 composition gaps and production desktop migration
+retain their own exits. No physical iPhone or third-party Linux IME/Orca
+acceptance is inferred from these fixtures.
+
+The normal `check.sh only coax/native/app-core-check.coax origin/main` gate
+passes after adding action-boundary coverage. Its changed-procedure gate
+covers 656 mutants: 648 killed, eight proved equivalent, zero surviving.
+The separate native frame suite is registered through `--native-link` and
+passes `check.sh only`; it does not replace the core policy gate. The Linux
+canvas-editor adapter passes all 1,017 checks, including actual Project
+name/reference input, provisional composition and Return as a newline.
+The actual UIKit test also passes repeated drawer taps, regular-page Projects,
+Settings/login Back and typing an email through the native editor. The hidden
+Mac SDK build and current compiled Nostr Settings normal/sanitized page
+qualification pass. Physical passkey and phone appearance exits remain.
+
+`app-input-check.coax` separately mutation-qualifies the closed editor roles:
+20 mutants killed, no survivors or equivalents. The public drive editor may
+edit the declared Project fields and composer, but never the private custody
+field. A controlled full-page drive check verifies Project field edits do not
+change the composer and that a private field cannot fall through to it.
+The driver/app suite passes 995 checks before the final short-viewport fixture.

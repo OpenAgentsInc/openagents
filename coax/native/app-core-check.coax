@@ -1,0 +1,4 @@
+// Explicit native suite root for the shared compiled app. apps/shared/ is
+// outside web suite discovery; do not mistake an empty selection for a pass.
+// coax test coax/native/app-core-check.coax --library
+#load "../../apps/shared/app/core/core.coax";

@@ -226,6 +226,11 @@ import UIKit
     private func box()->CGRect? {
         guard let owner else {return nil}
         var b=[Float](repeating:0,count:6)
+        if oc_field_kind(owner)==4 {
+            guard oc_field_text_box(owner,&b) != 0 else {return nil}
+            let inset=editor.textContainerInset
+            return CGRect(x:CGFloat(b[0])-inset.left,y:CGFloat(b[1])-inset.top,width:CGFloat(b[2])+inset.left+inset.right,height:CGFloat(b[3])+inset.top+inset.bottom)
+        }
         guard oc_editor(owner,&b) != 0 else {return nil}
         return CGRect(x:CGFloat(b[0]),y:CGFloat(b[1]),width:CGFloat(b[2]),height:CGFloat(b[3]))
     }
@@ -236,7 +241,9 @@ import UIKit
     private func placeEditor() {
         guard let owner else {return}
         // A sent draft is cleared by the page: the editor follows when it has no marked text.
-        var bytes=[CChar](repeating:0,count:17000);_ = oc_text(owner,&bytes,Int32(bytes.count));let held=String(cString:bytes)
+        var bytes=[CChar](repeating:0,count:20001)
+        if oc_field_kind(owner)==4 {_ = oc_field_text(owner,&bytes,Int32(bytes.count))}else {_ = oc_text(owner,&bytes,Int32(bytes.count))}
+        let held=String(cString:bytes)
         if editor.markedTextRange==nil,editor.text != held {editor.set(held)}
         guard editor.superview != nil,let frame=box() else {return}
         if editor.frame != frame {editor.frame=frame}
@@ -251,27 +258,36 @@ import UIKit
     private func followFocus() {
         guard let owner else {return}
         let id=focusID()
+        let kind=oc_field_kind(owner)
         // A touch-down outside the field dismisses the keyboard before touch-up confirms.
         // Keep restore input in this secure editor while Coax still owns that confirmation.
         let privateMode=oc_private_mode(owner)
-        if field.kind == .secret && privateMode==0 {field.text="";oc_secret_ready(owner,0)}
+        if privateMode==0 {if field.kind == .secret {field.text="";oc_secret_ready(owner,0)};services?.identity.hideBackup()}
         if editorFieldID != id {
             if id=="identity.secret" && field.kind != .secret {field.text=""}
             editorFieldID=id
         }
-        if id != "chat.composer",editor.isFirstResponder {_ = editor.resignFirstResponder()}
+        if id=="chat.composer" || kind==4 {
+            if field.isFirstResponder {_ = field.resignFirstResponder()};field.removeFromSuperview()
+            if editor.accessibilityIdentifier != id {
+                if editor.isFirstResponder {_ = editor.resignFirstResponder()}
+                editor.accessibilityIdentifier=id;editor.set("")
+            }
+            attachEditor();placeEditor();if !editor.isFirstResponder {_ = editor.becomeFirstResponder()}
+            return
+        }
+        if editor.isFirstResponder {_ = editor.resignFirstResponder()};editor.removeFromSuperview()
         let privateField=id=="identity.secret"
-        guard id.hasPrefix("login.") || privateField else {if field.isFirstResponder {_ = field.resignFirstResponder()};field.removeFromSuperview();if oc_private_mode(owner)==0 {field.text="";services?.identity.hideBackup()};return}
+        guard kind>=0 else {if field.isFirstResponder {_ = field.resignFirstResponder()};field.removeFromSuperview();if oc_private_mode(owner)==0 {field.text="";services?.identity.hideBackup()};return}
         var b=[Float](repeating:0,count:4)
-        guard oc_field_box(owner,&b) != 0 else {field.isHidden=true;return}
+        guard oc_field_text_box(owner,&b) != 0 else {field.isHidden=true;return}
         let row=CGRect(x:CGFloat(b[0]),y:CGFloat(b[1]),width:CGFloat(b[2]),height:CGFloat(b[3]))
-        // the editor sits over the field's text line, in the middle of the field's row
-        let scale=CGFloat(zoom)
-        let frame=CGRect(x:row.minX+11*scale,y:row.midY-min(22*scale,row.height/2),width:max(40,row.width-22*scale),height:min(44*scale,row.height))
+        let frame=row
         if field.superview==nil {view.addSubview(field)}
         field.isHidden=privateField && UIScreen.main.isCaptured
         if field.frame != frame {field.frame=frame}
-        field.configure(privateField ? .secret:id=="login.code" ? .code:.email,placeholder:privateField ? "nsec or hex":id=="login.code" ? "000000":"you@example.com")
+        field.accessibilityIdentifier=id
+        field.configure(KitFieldKind(rawValue:kind) ?? .plain,placeholder:privateField ? "nsec or hex":kind==2 ? "000000":kind==1 ? "you@example.com":"")
         if privateField {
             field.isSecureTextEntry=oc_private_mode(owner) != 2
             if oc_private_mode(owner)==2 {field.text=UIScreen.main.isCaptured ? "":services?.identity.backup ?? ""}
@@ -291,18 +307,22 @@ import UIKit
     }
     @objc private func fieldChanged() {
         // an input method's provisional text stays the platform's until it is committed (one editing authority)
-        guard let owner,field.markedTextRange==nil else {return}
+        guard let owner,field.markedTextRange==nil,field.accessibilityIdentifier==focusID() else {return}
         if focusID()=="identity.secret" {oc_secret_ready(owner,(field.text ?? "").isEmpty ? 0:1);wake();return}
         if oc_set_field(owner,field.text ?? "")==0 {var bytes=[CChar](repeating:0,count:512);_ = oc_field_text(owner,&bytes,Int32(bytes.count));field.text=String(cString:bytes)}
         wake()
     }
-    func textFieldShouldReturn(_ textField:UITextField)->Bool {if let owner {if focusID()=="identity.secret" {_ = field.resignFirstResponder();oc_blur(owner)}else {_ = oc_submit(owner)}};wake();return false}
+    func textFieldShouldReturn(_ textField:UITextField)->Bool {guard textField.accessibilityIdentifier==focusID() else {return false};if let owner {if focusID()=="identity.secret" {_ = field.resignFirstResponder();oc_blur(owner)}else {_ = oc_submit(owner)}};wake();return false}
     func textField(_ textField:UITextField,shouldChangeCharactersIn range:NSRange,replacementString string:String)->Bool {guard let owner else {return false};return focusID() != "identity.secret" || oc_private_mode(owner) != 2}
-    func textFieldDidEndEditing(_ textField:UITextField) {if let owner,focusID().hasPrefix("login.") || focusID()=="identity.secret" {oc_blur(owner)};wake()}
+    func textFieldDidEndEditing(_ textField:UITextField) {if let owner,textField.accessibilityIdentifier==focusID(),oc_field_kind(owner)>=0,oc_field_kind(owner) != 4 {oc_blur(owner)};wake()}
     @discardableResult private func focus()->Bool {attachEditor();let took=editor.becomeFirstResponder();wake();return took}
     func textViewDidBeginEditing(_ textView:UITextView) {wake()}
-    func textViewDidEndEditing(_ textView:UITextView) {editor.removeFromSuperview();if let owner,focusID()=="chat.composer" {oc_blur(owner)};wake()}
-    func textViewDidChange(_ textView:UITextView) {if let owner,textView.markedTextRange==nil {_ = oc_set_text(owner,textView.text ?? "")};wake()}
+    func textViewDidEndEditing(_ textView:UITextView) {editor.removeFromSuperview();if let owner,textView.accessibilityIdentifier==focusID() {oc_blur(owner)};wake()}
+    func textViewDidChange(_ textView:UITextView) {
+        guard let owner,textView.markedTextRange==nil,textView.accessibilityIdentifier==focusID() else {return}
+        let accepted=oc_field_kind(owner)==4 ? oc_set_field(owner,textView.text ?? ""):oc_set_text(owner,textView.text ?? "")
+        if accepted==0 {placeEditor()};wake()
+    }
     @objc private func keyboardMoved(_ note:Notification) {
         guard let end=(note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue,let window=view.window else {return}
         let inView=view.convert(end,from:window.screen.coordinateSpace)
@@ -352,6 +372,9 @@ import UIKit
                 // the composer is the platform editor: over the text while it has the keyboard, else standing for the field's row
                 self.editor.box=row.frame;self.editor.accessibilityIdentifier=row.id;self.editor.accessibilityLabel=row.label;self.editor.placeholder=row.label
                 return .view(self.editor)
+            }
+            if row.role==KitRole.field,self.editor.isFirstResponder,self.focusID()==row.id {
+                self.editor.accessibilityLabel=row.label;self.editor.placeholder=row.label;return .view(self.editor)
             }
             // a login field that holds the keyboard is the platform field itself
             if row.role==KitRole.field,self.field.isFirstResponder,self.focusID()==row.id {

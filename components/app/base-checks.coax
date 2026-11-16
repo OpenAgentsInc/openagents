@@ -1,6 +1,16 @@
 // Checks for the app set's basics (base.coax).
 #load "checks-kit.coax";
 
+#test "app multiline fields use one skin-sized frame, committed row and clipped shared text" {
+ t:[1]AppTest;app_test_init(t[..]);f:=t[0].f[..];app_test_begin(t[..],"","edit",true);
+ h:=ctx_textarea(f,"edit",10,20,200,"Instructions","one\ntwo","",4,true,0,1);
+ _:=ctx_textarea(f,"preview",10,200,200,"Notes","one\ntwo","",4,false,0,2);
+ _:=ctx_textarea(f,"off",10,400,200,"Notes","","Optional",1,false,EL_S_DISABLED,3);
+ #assert app_test_end(t[..]) && h>=4*f[0].skin.body.line && app_test_row(t[..],"edit").h==h;
+ #assert app_test_value(t[..],"edit")=="one two" && app_test_has(t[..],"edit",EL_S_FOCUSED) && app_test_hits(t[..])==2;
+ #assert app_test_texts(t[..],"one")==1 && app_test_texts(t[..],"two")==1 && app_test_texts(t[..],"Optional")==1;
+}
+
 #test "app basics: a button records its row and hit in each kind; busy and disabled keep the row and take no press" {
   t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..];
   app_test_begin(t[..], "b.default", "", true);

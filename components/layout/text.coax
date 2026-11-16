@@ -69,12 +69,21 @@ text_wrap_lines :: (m: TextMeasure, f: TextFaces, text: string, width: f32, out:
   n := 0; lq := 0;
   while lq <= text.count && n < out.count {
     e := lq; while e < text.count && text[e] != '\n' { e += 1; }
-    part: [64] TextLine;
-    k := text_wrap(m, f, cast(string) text[lq..<e], no_runs[0..<0], width, part[..]);
-    for j: 0..<k { if n < out.count { out[n] = TextLine.{from = part[j].from + lq, to = part[j].to + lq}; n += 1; } }
+    k := text_wrap(m, f, cast(string) text[lq..<e], no_runs[0..<0], width, out[n..<out.count]);
+    for j: 0..<k { out[n+j].from += lq; out[n+j].to += lq; }
+    n += k;
     lq = e + 1;
   }
   return n;
+}
+
+#test "hard-line wrapping fills the caller's capacity without dropping a long line after 64 rows" {
+ text:[150]u8;for i:0..<text.count {text[i]='x';}
+ lines:[160]TextLine;faces:=TextFaces.{};m:=measure_cells();
+ n:=text_wrap_lines(m,faces,cast(string)text[..],1,lines[..]);
+ #assert n==150 && lines[64].from==64 && lines[149].to==150;
+ #assert text_wrap_lines(m,faces,"abc\n\nxyz",1,lines[0..<5])==5 && lines[3].from==4 && lines[3].to==4 && lines[4].from==5 && lines[4].to==6;
+ #assert text_wrap_lines(m,faces,"x",1,lines[0..<0])==0;
 }
 
 // ---------------------------------------------------------------- checks

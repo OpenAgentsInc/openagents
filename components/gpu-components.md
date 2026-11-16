@@ -458,7 +458,7 @@ does not start the next one's removals.
 | G1 (in progress; composer 2026-11-15; VoiceOver bridge, large text and one editing authority 2026-11-16) | The iOS app as one compiled page: the chat page (composer first, then chat logic, transcript and the login card) on the kit, with the text-editor overlay and the VoiceOver bridge. No JavaScript, no Updates, no UIKit control projection (see [The iOS app](#the-ios-app-grown-screen-by-screen)) | The app links no JavaScriptCore or WebKit and holds no `.js`, `.wasm` or `.html`; typing, sending, stopping, scrolling and login work against the account fixture; a still page presents no frames |
 | G2 (Settings, account history and platform scroll driver built 2026-11-16; physical scroll qualification pending) | The next screens of the iOS app, one at a time, each on the kit: the sidebar with chat history, then Settings, with the scroll driver | Each screen has no UIKit controls; large text lays out; scrolling feels native on a physical phone |
 | G3 (nested clips and per-primitive alpha built; composited group opacity, images, transforms and blur remain) | Backend gaps the chat needs: images, nested clips, transforms, group opacity, blur | Each has a gallery specimen and a generated-shader check on Metal and WebGPU |
-| G4 | The rest of iOS, screen by screen: Projects, Usage, environment and repository choice, the world library | Each screen passes its acceptance case on a physical phone, and the transcript workloads under [Measurements](#measurements) are recorded |
+| G4 (Projects built; other screens remain) | The rest of iOS, screen by screen: Projects, Usage, environment and repository choice, the world library | Each screen passes its acceptance case on a physical phone, and the transcript workloads under [Measurements](#measurements) are recorded |
 | G6 | Desktop on Mac and Linux: move the native environment client's screens from AppKit and GTK controls onto the kit, on the shared AppKit/Metal and Wayland/Vulkan hosts the recovery shell already uses; then delete those projections | Login, history and chat run on both desktops through the kit, with real text entry, keyboard focus and a screen reader |
 | G7 | Android on the existing Vulkan host | Real input method, TalkBack and device evidence before any parity claim |
 
@@ -757,3 +757,23 @@ Claude turn through the shared core, closes the GUI while busy, creates a new
 GUI/core and rejoins the retained session until the exact assistant marker
 arrives. It passes without requesting tools or opening a visible window.
 This is real resident-service integration evidence, not full G6 acceptance.
+
+### Projects on the compiled page (2026-11-16)
+
+`apps/shared/app/projects/` now owns the GPU Projects flow and view, reusing
+`ProjectApp`, the private Projects codec and the core effect outbox. The drawer
+opens it as a main page. It supports creation, details, instructions, text
+knowledge and saved account conversations, including cursor paging and new
+chat binding. Reads sleep while hidden and sync while visible; forms are not
+overwritten by periodic reads. Unknown writes retain their exact command.
+
+`ctx_textarea` is a shared kit component. It supplies the frame and semantic
+row while the active platform editor owns composition. Coax supplies the
+editor's text rectangle on iOS/Mac/Linux. The shared read-only text component
+streams line-wrapper chunks through a visible window, so a 64 KiB source is
+not silently cut to a preview. Semantic action IDs fit the shared ID capacity
+and preserve the full server ID; titles stay on one line.
+
+Projects does not complete G4: provider Usage and the world library still
+need their compiled-page adoption. File attachments and physical phone
+qualification remain explicit. G3 and the desktop default gates remain open.

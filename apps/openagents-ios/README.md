@@ -1,6 +1,6 @@
 # OpenAgents for iOS
 
-The iOS app is one screen: the chat page, the shared transcript over the
+The iOS app uses the compiled chat page, the shared transcript over the
 composer (apps/shared/app/view/page.coax). The navigation button at the top left opens the sidebar,
 which pushes the page right; it holds New chat, Log in while logged out, and the account and Log out
 once logged in. Log in pushes a full login page with a Back button; a Send on Default while logged out
@@ -98,3 +98,31 @@ reads. It realizes visible one-line rows only, keeps the full panel width
 through animation, and opens the chosen saved conversation through the
 shared core. More pages older chats; the up-arrow returns to Latest.
 Account history is separate from sessions running on a paired computer.
+
+## GPU Projects
+
+Sidebar → Projects opens a regular page on the same GPU surface. The list,
+creation, details, instructions, knowledge and saved account chats use the
+shared components and the existing private Projects API. Lists sync while
+visible; forms retain edits. Saves retain one command through an unknown
+result; Check save resends its exact bytes. New chats retain the Project ID
+and read revision through the first submission.
+
+Single-line fields use the existing native field; instructions and reference
+text use the same platform text view as the composer. The shared Coax editor
+is used on Linux. All hosts admit up to 16 KiB of editable reference/instruction
+text; longer saved instructions are kept intact and refused for editing.
+Complete downloaded source text is read through the shared virtualized reader,
+with visible-only semantic rows and no second line wrapper. File attachments
+remain a separate migration item.
+
+```sh
+coax/remote/remote.sh run -- coax/bin/coax test apps/shared/app/projects/view.coax --library
+coax/remote/remote.sh run -- coax/web/tool.sh apps/shared/app/projects/qualify.coax debug
+coax/remote/remote.sh run -- coax/web/tool.sh apps/shared/app/projects/qualify.coax release
+```
+
+The page qualifiers run normal and ASan/UBSan builds against the actual compiled
+page. They check drawer navigation, single/multiline fields, native editor
+rectangles, pinned save ownership, large type, keyboard reveal and settled
+motion. These fixtures do not replace a physical-phone ceremony.

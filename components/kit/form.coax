@@ -116,6 +116,23 @@ ctx_field :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, label: string, 
   elt_value(f[0].rows, row, text);
   return form_field(f[0].sheet, f[0].m, s, x, y, w, text, placeholder, uiframe_focused(f, id), editing, (state & EL_S_DISABLED) != 0, UIFRAME_HIT, row);
 }
+// A multiline member of the same field family. The existing field painter
+// supplies its frame/hit, and the shared wrapper supplies its inactive text.
+// The active platform editor alone draws composition, selection and caret.
+ctx_textarea :: (f:[]UiFrame,id:string,x:f32,y:f32,w:f32,label:string,text:string,placeholder:string,lines:int,editing:bool,state:int,action:int)->f32 {
+ s:=f[0].skin;count:=ifx lines<1 then 1 else ifx lines>16 then 16 else lines; // not a size: bounded visible line count
+ h:=cast(f32)count*s.body.line+2*s.chrome.field_pad;if h<s.chrome.field_h {h=s.chrome.field_h;}
+ row:=uiframe_semantic(f,id,EL_FIELD,label,x,y,w,h,state,action);elt_value(f[0].rows,row,text);
+ s.chrome.field_h=h;before:=f[0].sheet[0].nh;
+ _:=form_field(f[0].sheet,f[0].m,s,x,y,w,"","",uiframe_focused(f,id),true,(state&EL_S_DISABLED)!=0,UIFRAME_HIT,row);
+ if (state&EL_S_DISABLED)!=0 {f[0].sheet[0].nh=before;}
+ if !editing {
+  uiframe_clip(f,x+s.chrome.field_pad,y+s.chrome.field_pad,x+w-s.chrome.field_pad,y+h-s.chrome.field_pad);
+  _:=control_copy_lines(f[0].sheet,f[0].m,s.body,ifx text.count==0 then s.faint else s.ink,x+s.chrome.field_pad,y+s.chrome.field_pad,w-2*s.chrome.field_pad,ifx text.count==0 then placeholder else text);
+  uiframe_unclip(f);
+ }
+ return h;
+}
 // A form's action: the filled one when primary, held while its id is
 // pressed; EL_S_BUSY shows the activity mark on the frame's clock and
 // disables it. Returns its height.

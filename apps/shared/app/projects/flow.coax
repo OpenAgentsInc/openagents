@@ -1,0 +1,138 @@
+// Projects on the shared compiled app core. Reuse the one Projects codec,
+// retained mutation and account-conversation contracts; no browser fallback.
+#load "../core/core.coax";
+#load "../../projects-app.coax";
+#load "../../../../components/core/edit.coax";
+#load "flow-checks.coax" #test;
+
+PS_LIST :: 1; PS_READ :: 2; PS_IDS :: 3; PS_CREATE :: 4; PS_INSTRUCTIONS :: 5;
+PS_KNOWLEDGE :: 6; PS_ADD :: 7; PS_REMOVE :: 8; PS_CHATS :: 9; PS_SOURCE :: 10; PS_UPDATE :: 11;
+ProjectScreen :: struct {
+ open:bool;signed_in:bool;loaded:bool;failed:bool;page:int;op:int;purpose:int;next:int;want:int;
+ list:[1]PrIndex;p:[1]ProjectApp;chats:[1]CtIndex;
+ cursor:[36]u8;nc:int;chat_cursor:[36]u8;ncc:int;source:[36]u8;ns:int;
+}
+ps_id :: (s:[]ProjectScreen)->string {p:=s[0].p[..];return cast(string)p[0].api[0].id[0..<p[0].api[0].ni];}
+ps_note :: (s:[]ProjectScreen,text:string) {pja_note(s[0].p[..],text);}
+ps_blocked :: (s:[]ProjectScreen)->bool {return s[0].p[0].pending_purpose>0;}
+ps_path :: (s:[]ProjectScreen,what:int,out:[]u8)->string {
+ o:[1]Jo;jo_start(o[..],out);
+ if what==PS_LIST {jo_raw(o[..],"/api/projects/v1");if s[0].nc>0 {jo_raw(o[..],"?cursor=");jo_raw(o[..],cast(string)s[0].cursor[0..<s[0].nc]);}}
+ else if what==PS_CHATS {jo_raw(o[..],"/api/chat/conversations/v2alpha1?project_id=");jo_raw(o[..],ps_id(s));jo_raw(o[..],"&cursor=");jo_raw(o[..],cast(string)s[0].chat_cursor[0..<s[0].ncc]);}
+ else {suffix:[96]u8;part:="";if what==PS_KNOWLEDGE {part="knowledge";}
+  if what==PS_SOURCE {j:[1]Jo;jo_start(j[..],suffix[..]);jo_raw(j[..],"knowledge/");jo_raw(j[..],cast(string)s[0].source[0..<s[0].ns]);jo_raw(j[..],"/content");part=jo_text(j[..]);}
+  return pr_route(ps_id(s),part,out);
+ }
+ return ifx o[0].bad then "" else jo_text(o[..]);
+}
+ps_open :: (s:[]ProjectScreen) {s[0].open=true;s[0].next=0;if !s[0].loaded {s[0].want=PS_LIST;}}
+ps_choose :: (s:[]ProjectScreen,id:string)->bool {
+ if ps_blocked(s) || !ex_reference(id,"prj_") {return false;}
+ s[0].p[0]=ProjectApp.{};p:=s[0].p[..];p[0].canonical=true;p[0].api[0].ni=pr_copy(p[0].api[0].id[..],id);
+ s[0].page=2;s[0].want=PS_READ;s[0].chats[0]=CtIndex.{};s[0].ncc=0;return true;
+}
+ps_edit :: (s:[]ProjectScreen,id:string,text:string)->bool {
+ if ps_blocked(s) {return false;}p:=s[0].p[..];n:= -1;
+ if id=="project.name" {n=pja_copy(p[0].api_name[..],text);if n>=0 {p[0].api_nn=n;}}
+ if id=="project.description" {n=pja_copy(p[0].notes[0..<4096],text);if n>=0 {p[0].nnotes=n;}}
+ if id=="project.text" {if text.count>EB_TEXT {return false;}n=pja_copy(p[0].api_text[..],text);if n>=0 {p[0].api_nt=n;}}
+ if id=="project.knowledge.title" {n=pja_copy(p[0].api_title[..],text);if n>=0 {p[0].api_nl=n;}}
+ return n>=0;
+}
+ps_field :: (s:[]ProjectScreen,id:string)->string {
+ p:=s[0].p[..];return ifx id=="project.name" then cast(string)p[0].api_name[0..<p[0].api_nn] else ifx id=="project.description" then cast(string)p[0].notes[0..<p[0].nnotes] else ifx id=="project.text" then cast(string)p[0].api_text[0..<p[0].api_nt] else ifx id=="project.knowledge.title" then cast(string)p[0].api_title[0..<p[0].api_nl] else "";
+}
+ps_mutate :: (s:[]ProjectScreen,what:int,value:string,path:string)->bool {
+ p:=s[0].p[..];if !pja_pending_begin(p,path,value,ifx what==PS_CREATE then -1 else p[0].api[0].revision,what) {return false;}
+ s[0].want=PS_IDS;p[0].nn=0;return true;
+}
+ps_sync :: (s:[]ProjectScreen,c:[]AppCore,visible:bool) {
+ signed:=c[0].auth==AUTH_IN;
+ if signed!=s[0].signed_in {_:=app_guest_cancel(c,OWN_SCREEN);was:=s[0].open;s[0]=ProjectScreen.{};s[0].signed_in=signed;s[0].open=was;}
+ if !s[0].open || !visible || !signed || !c[0].foreground {
+  if s[0].op>0 && !ps_blocked(s) {_:=app_guest_cancel(c,OWN_SCREEN);s[0].want=s[0].purpose;s[0].op=0;s[0].purpose=0;}
+  _:=app_guest_due(c,OWN_SCREEN,-1);return;
+ }
+ if s[0].op>0 {return;}p:=s[0].p[..];what:=s[0].want;
+ auto:=ifx s[0].page==0 then PS_LIST else ifx s[0].page==2 then PS_READ else ifx s[0].page==4 then PS_KNOWLEDGE else ifx s[0].page==5 then PS_CHATS else 0;
+ if what==0 && !ps_blocked(s) && auto>0 && c[0].mono_ms>=s[0].next {what=auto;}
+ if what==0 {_:=app_guest_due(c,OWN_SCREEN,ifx auto>0 && !ps_blocked(s) then s[0].next else -1);return;}
+ if what==PS_IDS {s[0].op=app_guest_ids(c,OWN_SCREEN,PS_IDS);}
+ else if p[0].pending_purpose==what {
+  body:[131072]u8;n:=pja_pending_body(p,body[..]);if n<1 {ps_note(s,"Save is too large");return;}
+  s[0].op=app_guest_http(c,OWN_SCREEN,what,UP_POST,cast(string)p[0].pending_path[0..<p[0].pending_np],cast(string)body[0..<n]);
+ } else {path:[256]u8;route:=ps_path(s,what,path[..]);s[0].op=app_guest_http(c,OWN_SCREEN,what,UP_GET,route,"");}
+ if s[0].op>0 {s[0].purpose=what;s[0].want=0;_:=app_guest_due(c,OWN_SCREEN,-1);}
+ else {_:=app_guest_due(c,OWN_SCREEN,c[0].mono_ms+1000);}
+}
+ps_guest :: (s:[]ProjectScreen,c:[]AppCore,raw:string)->bool {
+ g:=c[0].guest;if !g.waiting || g.owner!=OWN_SCREEN || g.op!=s[0].op {return false;}
+ what:=s[0].purpose;s[0].op=0;s[0].purpose=0;p:=s[0].p[..];write:=p[0].pending_purpose==what;
+ if what==PS_IDS {
+  if g.outcome==FXO_DONE && tc_hex32(raw) && pja_pending_command(p,raw) {s[0].want=p[0].pending_purpose;}
+  else {pja_pending_clear(p);ps_note(s,"Could not prepare save");}
+ } else if g.outcome!=FXO_DONE || g.status<200 || g.status>=300 {
+  if write {if g.outcome==FXO_DONE && (g.status==400 || g.status==403 || g.status==404 || g.status==409 || g.status==413 || g.status==422) {pja_pending_clear(p);s[0].want=ifx what==PS_CREATE then 0 else PS_READ;ps_note(s,ifx g.status==409 then "Project changed. Review before saving." else "Save refused");}else {p[0].uncertain=true;ps_note(s,"Save unconfirmed");}}
+  else {s[0].failed=true;ps_note(s,"Unavailable");s[0].next=c[0].mono_ms+15000;}
+ } else {
+  ok:=false;
+  if what==PS_LIST {ok=pr_index_read(raw,s[0].list[..]);if ok {s[0].loaded=true;s[0].failed=false;s[0].next=c[0].mono_ms+15000;}}
+  if what==PS_READ || what==PS_CREATE || what==PS_UPDATE {next:[1]PrProject;ok=pr_project_read(raw,next[..]);if ok {ref:=cast(string)next[0].id[0..<next[0].ni];ok=ex_reference(ref,"prj_") && (what==PS_CREATE || ref==ps_id(s));}if ok {p[0].api[0]=next[0];p[0].api_loaded=true;s[0].page=2;}}
+  if what==PS_KNOWLEDGE {ok=pr_knowledge_read(raw,p[0].knowledge[..]);}
+  if what==PS_CHATS {ok=ctr_index_read(raw,s[0].chats[..]);}
+  if what==PS_SOURCE {n:=pr_content_read(raw,cast(string)s[0].source[0..<s[0].ns],p[0].api_content[..]);ok=n>=0;if ok {p[0].api_nc=n;s[0].page=6;}}
+  if what==PS_INSTRUCTIONS || what==PS_ADD || what==PS_REMOVE {ok=pr_mutation_result(raw,ifx what==PS_INSTRUCTIONS then 3 else ifx what==PS_ADD then 4 else 5,ps_id(s),cast(string)s[0].source[0..<s[0].ns],p[0].pending_revision);}
+  if ok {s[0].next=c[0].mono_ms+15000;p[0].nn=0;if write {pja_pending_clear(p);s[0].want=PS_READ;if what!=PS_CREATE {s[0].page=2;}}}
+  else {if write {p[0].uncertain=true;}ps_note(s,"Incomplete response");}
+ }
+ app_guest_done(c);return true;
+}
+// A retry reuses the exact retained operation/value. It does not allocate an ID.
+ps_retry :: (s:[]ProjectScreen)->bool {p:=s[0].p[..];if !p[0].uncertain || s[0].op>0 {return false;}s[0].want=p[0].pending_purpose;p[0].uncertain=false;return true;}
+
+// 0 unhandled/refused, 1 changed this screen, 2 return to the chat page.
+ps_press :: (s:[]ProjectScreen,c:[]AppCore,id:string)->int {
+ if id=="project.retry" {return ifx ps_retry(s) then 1 else 0;}
+ if ps_blocked(s) || s[0].op>0 {return 0;}p:=s[0].p[..];
+ if id=="project.back" {if s[0].page==0 {s[0].open=false;return 2;}s[0].page=ifx s[0].page==2 || s[0].page==1 then 0 else ifx s[0].page==6 then 4 else 2;if s[0].page==0 {s[0].want=PS_LIST;}return 1;}
+ if id=="project.new" {if !s[0].signed_in {return 0;}p[0]=ProjectApp.{};p[0].canonical=true;s[0].page=1;return 1;}
+ if id=="project.more" {s[0].nc=pja_copy(s[0].cursor[..],cast(string)s[0].list[0].next[0..<s[0].list[0].nn]);s[0].want=PS_LIST;return 1;}
+ if id=="project.first" {s[0].nc=0;s[0].want=PS_LIST;return 1;}
+ prefix:="pr.item.";if id.count>prefix.count && id[0..<prefix.count]==prefix {return ifx ps_choose(s,id[prefix.count..<id.count]) then 1 else 0;}
+ if id=="project.instructions" {if p[0].api[0].nt>EB_TEXT {ps_note(s,"Instructions exceed this editor's limit");return 1;}p[0].api_nt=pja_copy(p[0].api_text[..],cast(string)p[0].api[0].instructions[0..<p[0].api[0].nt]);s[0].page=3;return 1;}
+ if id=="project.knowledge" {s[0].page=4;s[0].want=PS_KNOWLEDGE;p[0].api_nt=0;p[0].api_nl=0;return 1;}
+ if id=="project.chats.more" {s[0].ncc=pja_copy(s[0].chat_cursor[..],cast(string)s[0].chats[0].next[0..<s[0].chats[0].next_n]);s[0].want=PS_CHATS;return 1;}
+ if id=="project.chats.first" {s[0].ncc=0;s[0].want=PS_CHATS;return 1;}
+ if id=="project.details" {p[0].api_nn=pja_copy(p[0].api_name[..],cast(string)p[0].api[0].name[0..<p[0].api[0].nn]);p[0].nnotes=pja_copy(p[0].notes[..],cast(string)p[0].api[0].description[0..<p[0].api[0].nd]);s[0].page=7;return 1;}
+ if id=="project.chats" {s[0].page=5;s[0].want=PS_CHATS;return 1;}
+ if id=="project.chat.new" {
+  r:=app_dispatch(c,AppEvent.{kind=EV_ACTION,code=ACT_PROJECT_NEW,text=ps_id(s),value=p[0].api[0].revision,mono_ms=c[0].mono_ms,wall_ms=c[0].wall_ms});if r!=APP_OK {return 0;}s[0].open=false;return 2;
+ }
+ prefix="pr.chat.";if id.count>prefix.count && id[0..<prefix.count]==prefix {ref:=id[prefix.count..<id.count];if !ex_reference(ref,"cnv_") {return 0;}
+  if app_navigation_blocked(c) {return 0;}_:=app_dispatch(c,AppEvent.{kind=EV_ACTION,code=ACT_ENVIRONMENT,mono_ms=c[0].mono_ms,wall_ms=c[0].wall_ms});
+  if app_dispatch(c,AppEvent.{kind=EV_ACTION,code=ACT_OPEN,text=ref,mono_ms=c[0].mono_ms,wall_ms=c[0].wall_ms})!=APP_OK {return 0;}s[0].open=false;return 2;
+ }
+ prefix="pr.source.";if id.count>prefix.count && id[0..<prefix.count]==prefix {ref:=id[prefix.count..<id.count];if !ex_reference(ref,"knw_") {return 0;}s[0].ns=pja_copy(s[0].source[..],ref);s[0].want=PS_SOURCE;return 1;}
+ path:[256]u8;value:[65536]u8;
+ if id=="project.create" {if p[0].api_nn==0 {return 0;}return ifx ps_mutate(s,PS_CREATE,pr_value(1,cast(string)p[0].api_name[0..<p[0].api_nn],cast(string)p[0].api_text[0..<p[0].api_nt],value[..]),pr_route("","",path[..])) then 1 else 0;}
+ if id=="project.update" {if p[0].api_nn==0 {return 0;}return ifx ps_mutate(s,PS_UPDATE,pr_value(2,cast(string)p[0].api_name[0..<p[0].api_nn],cast(string)p[0].notes[0..<p[0].nnotes],value[..]),pr_route(ps_id(s),"update",path[..])) then 1 else 0;}
+ if id=="project.save" {return ifx ps_mutate(s,PS_INSTRUCTIONS,pr_value(3,"",cast(string)p[0].api_text[0..<p[0].api_nt],value[..]),pr_route(ps_id(s),"instructions",path[..])) then 1 else 0;}
+ if id=="project.knowledge.add" {if p[0].api_nl==0 || p[0].api_nt==0 {return 0;}return ifx ps_mutate(s,PS_ADD,pr_value(4,cast(string)p[0].api_title[0..<p[0].api_nl],cast(string)p[0].api_text[0..<p[0].api_nt],value[..]),pr_route(ps_id(s),"knowledge",path[..])) then 1 else 0;}
+ prefix="pr.remove.";if id.count>prefix.count && id[0..<prefix.count]==prefix {ref:=id[prefix.count..<id.count];if !ex_reference(ref,"knw_") {return 0;}s[0].ns=pja_copy(s[0].source[..],ref);part:[96]u8;o:[1]Jo;jo_start(o[..],part[..]);jo_raw(o[..],"knowledge/");jo_raw(o[..],ref);jo_raw(o[..],"/remove");return ifx ps_mutate(s,PS_REMOVE,"",pr_route(ps_id(s),jo_text(o[..]),path[..])) then 1 else 0;}
+ return 0;
+}
+
+#test "project requests reuse the canonical paths, codec and exact command on unknown retry" {
+ s:[1]ProjectScreen;c:[1]AppCore;app_init(c[..]);c[0].auth=AUTH_IN;ps_sync(s[..],c[..],false);ps_open(s[..]);
+ #assert ps_edit(s[..],"project.name","Research") && ps_edit(s[..],"project.text","Be precise");
+ value:[1024]u8;path:[256]u8;
+ #assert ps_mutate(s[..],PS_CREATE,pr_value(1,"Research","Be precise",value[..]),pr_route("","",path[..]));
+ ps_sync(s[..],c[..],true);op:=s[0].op;#assert op>0 && s[0].purpose==PS_IDS;
+ #assert fx_take(c[0].out[..],op);c[0].guest=AppGuest.{waiting=true,owner=OWN_SCREEN,op=op,outcome=FXO_DONE};
+ #assert ps_guest(s[..],c[..],"0123456789abcdef0123456789abcdef");ps_sync(s[..],c[..],true);
+ op=s[0].op;at:=fx_find(c[0].out[..],op);#assert at>=0;before:[2048]u8;n:=pja_copy(before[..],fx_body(c[0].out[..],at));#assert n>0;
+ #assert fx_take(c[0].out[..],op);c[0].guest=AppGuest.{waiting=true,owner=OWN_SCREEN,op=op,outcome=FXO_UNKNOWN};
+ #assert ps_guest(s[..],c[..],"") && ps_blocked(s[..]) && !ps_edit(s[..],"project.name","Different") && !ps_choose(s[..],"prj_0123456789abcdef0123456789abcdef");
+ #assert ps_retry(s[..]);ps_sync(s[..],c[..],true);at=fx_find(c[0].out[..],s[0].op);
+ #assert at>=0 && fx_body(c[0].out[..],at)==cast(string)before[0..<n];
+}

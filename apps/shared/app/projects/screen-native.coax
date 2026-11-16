@@ -1,0 +1,43 @@
+// Actual compiled page, including field focus, scrolling and navigation.
+#import "Basic";
+#load "../../../openagents-ios/chat.coax";
+psn_setup :: (s:[]ChatPage,c:[]AppCore,o:[]ChOut) {
+ app_init(c);c[0].auth=AUTH_IN;ch_test_atlas(s[0].atlas[..]);chat_attach(s,c,"");chat_step(s);
+ _:=ch_test_frame(s,o);#assert chat_activate(s,"nav.menu");_:=ch_test_frame(s,o);
+ #assert chat_activate(s,"drawer.projects");_:=ch_test_frame(s,o);
+ #assert s[0].section==1 && !s[0].drawer && !s[0].identity[0].open && chat_layer(s)==0;
+ // A held list is a real effect; deliver its own completion before creating.
+ p:=s[0].projects[..];op:=p[0].op;#assert op>0 && p[0].purpose==PS_LIST && fx_take(c[0].out[..],op);
+ raw:="{\"schema\":\"openagents.projects.api.v1alpha1\",\"data\":[],\"next_cursor\":null}";
+ #assert app_dispatch(c,AppEvent.{kind=EV_DONE,op=op,generation=fx_generation(c[0].out[..],OWN_SCREEN),outcome=FXO_DONE,status=200,text=raw})==APP_GUEST;
+ chat_guest(s,raw);_:=ch_test_frame(s,o);#assert chat_activate(s,"project.new");_:=ch_test_frame(s,o);
+}
+psn_fields :: () {
+ s:[1]ChatPage;c:[1]AppCore;o:[1]ChOut;psn_setup(s[..],c[..],o[..]);
+ #assert chat_activate(s[..],"project.name");_:=ch_test_frame(s[..],o[..]);#assert chat_field_kind(s[..])==0 && chat_set_field(s[..],"Research");
+ #assert chat_submit(s[..]);_:=ch_test_frame(s[..],o[..]);#assert ch_focus(s[..])=="" && s[0].projects[0].page==1;
+ #assert chat_activate(s[..],"project.text");_:=ch_test_frame(s[..],o[..]);#assert chat_field_kind(s[..])==4 && chat_set_field(s[..],"Use references\nBe precise");
+ b:[6]f32;#assert chat_field_text_box(s[..],b[..]) && b[2]>100 && b[3]>50;
+ out:[256]u8;n:=chat_field_text(s[..],out[..]);#assert n==25 && cast(string)out[0..<n]=="Use references\nBe precise";
+ chat_blur(s[..]);_:=ch_test_frame(s[..],o[..]);#assert chat_field_kind(s[..])== -1 && ch_test_has(s[..],"project.create");
+ #assert chat_activate(s[..],"project.create");_:=ch_test_frame(s[..],o[..]);#assert s[0].projects[0].purpose==PS_IDS && ps_blocked(s[0].projects[..]);
+ #assert !chat_activate(s[..],"project.back") && !chat_activate(s[..],"project.name") && chat_refused(s[..])==0;
+ // Repeated actual committed-row taps keep the sidebar functional after a form.
+ #assert chat_activate(s[..],"nav.menu");_:=ch_test_frame(s[..],o[..]);#assert ch_test_has(s[..],"drawer.projects");
+ #assert chat_activate(s[..],"nav.menu");_:=ch_test_frame(s[..],o[..]);#assert !s[0].drawer;
+}
+psn_large :: () {
+ s:[1]ChatPage;c:[1]AppCore;o:[1]ChOut;psn_setup(s[..],c[..],o[..]);
+ _:=chat_text_zoom(s[..],CH_ZOOM_MAX);chat_env(s[..],59,34,336,true,0,true);
+ _:=chat_frame(s[..],o[0].v[..],1206,2622,3,0.1);_:=chat_frame(s[..],o[0].v[..],1206,2622,3,0.1);
+ #assert ch_scroll_max(s[..])>0 && chat_refused(s[..])==0;
+ chat_scroll_to(s[..],ch_scroll_max(s[..]));_:=chat_frame(s[..],o[0].v[..],1206,2622,3,0.1);
+ #assert chat_activate(s[..],"project.text");_:=chat_frame(s[..],o[0].v[..],1206,2622,3,0.1);_:=chat_frame(s[..],o[0].v[..],1206,2622,3,0.1);
+ #assert chat_field_kind(s[..])==4 && chat_row_visible(s[..],surface_find(ch_live(s[..]),"project.text")) && chat_refused(s[..])==0;
+ chat_blur(s[..]);_:=chat_frame(s[..],o[0].v[..],1206,2622,3,0.1);#assert !chat_moving(s[..]);
+}
+native_check :: (i:int,run:bool)->int #export_c #effects(all) {
+ if i==0 {if run {psn_fields();}else {print("GPU Projects, shared single/multiline fields, save ownership and sidebar");}}
+ if i==1 {if run {psn_large();}else {print("Project large type, keyboard reveal, scroll and idle");}}
+ return 2;
+}

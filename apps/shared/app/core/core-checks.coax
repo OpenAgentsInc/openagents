@@ -28,6 +28,21 @@ ckt_login :: (c: [] AppCore) -> bool {
   // time never goes back
   #assert app_host_clock(c, 3, 1000) == APP_R_INVALID && c[0].mono_ms == 4;
 }
+#test "a new Project chat retains its pinned project revision through the first send" {
+ a:[1]AppCore;c:=a[..];app_init(c);c[0].auth=AUTH_IN;id:="prj_0123456789abcdef0123456789abcdef";
+ #assert app_dispatch(c,AppEvent.{kind=EV_ACTION,code=ACT_PROJECT_NEW,text=id,value=7,mono_ms=1,wall_ms=1})==APP_OK;
+ #assert dca_project(c[0].chat[..])==id && c[0].chat[0].project_revision==7 && app_conversation(c)=="";
+ #assert app_host_action(c,2,1,ACT_DRAFT,false,"Use the Project's instructions","")==APP_OK;
+ #assert app_host_action(c,3,1,ACT_SEND,false,"","")==APP_OK && dca_project(c[0].chat[..])==id && c[0].chat[0].project_revision==7;
+}
+#test "a Project chat cannot bind an invalid revision or bypass login or an unresolved write" {
+ a:[1]AppCore;c:=a[..];app_init(c);id:="prj_0123456789abcdef0123456789abcdef";
+ #assert app_dispatch(c,AppEvent.{kind=EV_ACTION,code=ACT_PROJECT_NEW,text=id,value=1})==APP_R_LOGIN;
+ c[0].auth=AUTH_IN;
+ #assert app_dispatch(c,AppEvent.{kind=EV_ACTION,code=ACT_PROJECT_NEW,text="legacy",value=1})==APP_R_INVALID;
+ for rev:[3]int.[-1,0,2147483646] {#assert app_dispatch(c,AppEvent.{kind=EV_ACTION,code=ACT_PROJECT_NEW,text=id,value=rev})==APP_R_INVALID;}
+ c[0].chat[0].pending=1;c[0].chat[0].uncertain=true;#assert app_dispatch(c,AppEvent.{kind=EV_ACTION,code=ACT_PROJECT_NEW,text=id,value=1})==APP_R_BLOCKED;
+}
 #test "email login keeps the attempt native and verifies the code" {
   buf: [4096] u8;
   a: [1] AppCore; c := a[..];
@@ -99,6 +114,50 @@ ckt_login :: (c: [] AppCore) -> bool {
   #assert app_host_done(c, 4, 1, op, g, FXO_DONE, 200, false, "{}", "", 0) == APP_GUEST && c[0].guest.waiting && c[0].guest.purpose == 7;
   #assert app_host_clock(c, 5, 1) == APP_R_INVALID;
   app_guest_done(c); #assert app_host_clock(c, 5, 1) == APP_OK;
+}
+#test "screen effects have their own guest owner and cannot impersonate the device lane" {
+ a:[1]AppCore;c:=a[..];#assert ckt_login(c);
+ #assert app_guest_http(c,OWN_DEVICE,1,UP_GET,"/api/chat/x","")==0;
+ #assert !app_guest_cancel(c,OWN_DEVICE) && !app_guest_due(c,OWN_DEVICE,100);
+ #assert app_guest_identity(c,OWN_DEVICE,1,"read","")==0 && app_guest_ids(c,OWN_DEVICE,1)==0;
+ op:=app_guest_http(c,OWN_SCREEN,1,UP_GET,"/api/chat/x","");#assert op>0;
+ #assert app_guest_due(c,OWN_SCREEN,400) && app_next_wake(c)==400;
+ #assert app_guest_cancel(c,OWN_SCREEN) && c[0].guest_due[OWN_SCREEN]==0;
+ ids:=app_guest_ids(c,OWN_SCREEN,2);#assert ids>0 && ckt_kind(c,ids)==FX_IDS;
+ // Logging out fences account screens but does not cancel an independently
+ // paired computer's operation, even though its owner lies between guests.
+ device:=fx_request(c[0].out[..],OWN_DEVICE,FX_DEVICE_LIST,1,0,"","","",0,0);#assert device>0;
+ g:=fx_generation(c[0].out[..],OWN_DEVICE);app_logged_out(c,"");
+ #assert fx_generation(c[0].out[..],OWN_DEVICE)==g && ckt_kind(c,device)==FX_DEVICE_LIST && app_guest_ids(c,OWN_SCREEN,1)==0;
+}
+#test "guest owner boundaries, closed request fields and sleeping deadlines are exact" {
+ a:[1]AppCore;c:=a[..];#assert ckt_login(c);
+ yes:=[5]int.[3,4,5,6,8];no:=[7]int.[-1,0,1,2,7,9,10];
+ for owner:yes {#assert app_guest_owner(owner);}
+ for owner:no {#assert !app_guest_owner(owner) && app_guest_http(c,owner,9,UP_GET,"/api/chat/x","")==0 && app_guest_identity(c,owner,9,"read","")==0 && app_guest_ids(c,owner,9)==0 && !app_guest_due(c,owner,1);}
+ op:=app_guest_http(c,OWN_SCREEN,19,UP_GET,"/api/chat/x","");#assert op>0 && ckt_field(c,op,APP_HOST_TIMEOUT)==60000;
+ #assert fx_refuse(c[0].out[..],op);
+ op=app_guest_identity(c,OWN_SCREEN,23,"read","");#assert op>0;
+ r:=c[0].out[0].slots[fx_find(c[0].out[..],op)];#assert r.kind==FX_IDENTITY && r.owner==OWN_SCREEN && r.purpose==23 && r.method==0 && r.limit==0 && r.timeout_ms==0 && r.path_n==0 && r.body_n==0;
+ #assert fx_refuse(c[0].out[..],op);
+ op=app_guest_ids(c,OWN_SCREEN,29);#assert op>0;
+ r=c[0].out[0].slots[fx_find(c[0].out[..],op)];#assert r.kind==FX_IDS && r.owner==OWN_SCREEN && r.purpose==29 && r.method==0 && r.limit==0 && r.timeout_ms==0 && r.path_n==0 && r.text_n==0 && r.body_n==0;
+ for due:[4]int.[1,0,-1,999] {#assert app_guest_due(c,OWN_SCREEN,due) && c[0].guest_due[OWN_SCREEN]==(ifx due==999 then 999 else ifx due==1 then 1 else 0);}
+ c[0].auth=AUTH_OUT;#assert app_guest_identity(c,OWN_SCREEN,1,"read","")==0;
+}
+#test "logout retires all account screen state and pending page actions while preserving paired work" {
+ a:[1]AppCore;c:=a[..];app_init(c);c[0].auth=AUTH_IN;c[0].login=LOGIN_VERIFYING;c[0].rejoin_n=36;
+ #assert app_slot_set(c[0].environment[..],"hosted","Hosted") && app_slot_set(c[0].repository[..],"repo","Repository");
+ c[0].guest=AppGuest.{waiting=true,owner=OWN_SCREEN,op=91};
+ page:=fx_request(c[0].out[..],OWN_PAGE,FX_CLIPBOARD,1,0,"","","fixture",0,0);#assert page>0;
+ gp:=fx_generation(c[0].out[..],OWN_PAGE);
+ device:=fx_request(c[0].out[..],OWN_DEVICE,FX_DEVICE_LIST,1,0,"","","",0,0);#assert device>0;gd:=fx_generation(c[0].out[..],OWN_DEVICE);
+ for owner:[5]int.[3,4,5,6,8] {#assert app_guest_due(c,owner,999);}
+ c[0].dirty=0;app_say(c,"stale");c[0].dirty=0;app_logged_out(c,"Signed out");
+ #assert c[0].auth==AUTH_OUT && c[0].login==LOGIN_IDLE && c[0].rejoin_n==0 && !c[0].guest.waiting;
+ #assert app_environment(c)=="" && app_repository(c)=="" && app_note(c)=="Signed out" && c[0].dirty==SURF_ALL;
+ #assert fx_generation(c[0].out[..],OWN_PAGE)>gp && fx_generation(c[0].out[..],OWN_DEVICE)==gd;
+ for owner:[5]int.[3,4,5,6,8] {#assert c[0].guest_due[owner]==0;}
 }
 #test "a launch with a saved conversation rejoins it after login" {
   buf: [4096] u8;

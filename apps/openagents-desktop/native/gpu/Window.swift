@@ -65,6 +65,14 @@ import QuartzCore
         if oc_moving(owner) == 0 { display?.isPaused = true }
     }
     private func read(_ get: (UnsafeMutableRawPointer, UnsafeMutablePointer<CChar>, Int32) -> Int32, cap: Int = 17000) -> String { var b = [CChar](repeating: 0, count: cap); _ = get(owner, &b, Int32(cap)); return String(cString: b) }
+    private func semanticLabel(_ id: String) -> String {
+        for index in 0..<oc_rows(owner) {
+            var box = [Float](repeating: 0, count: 8), key = [CChar](repeating: 0, count: 65), label = [CChar](repeating: 0, count: 4097)
+            let keyCapacity = Int32(key.count), labelCapacity = Int32(label.count)
+            if oc_row(owner, index, &box, &key, keyCapacity, &label, labelCapacity) != 0, String(cString: key) == id { return String(cString: label) }
+        }
+        return ""
+    }
     private func rect(_ b: [Float]) -> NSRect { NSRect(x: CGFloat(b[0]), y: canvas.bounds.height - CGFloat(b[1] + b[3]), width: CGFloat(b[2]), height: CGFloat(b[3])) }
     private func followFocus() { editor.synchronize { followFocusNow() } }
     private func followFocusNow() {
@@ -72,21 +80,20 @@ import QuartzCore
         if mode == 0 { secret.stringValue = ""; backup.string = ""; identity.hideBackup(); oc_secret_ready(owner, 0) }
         let next: NSView?
         if id == "chat.composer" { next = editor; editor.contentType = nil }
-        else if id.hasPrefix("login.") { next = editor; editor.contentType = id == "login.code" ? .oneTimeCode : .emailAddress }
+        else if oc_field_kind(owner) >= 0 && oc_field_kind(owner) != 3 { next = editor; editor.contentType = oc_field_kind(owner) == 2 ? .oneTimeCode : oc_field_kind(owner) == 1 ? .emailAddress : nil }
         else if id == "identity.secret" { next = mode == 2 ? backup : secret }
         else { next = nil }
         if active !== next || activeID != id {
             editor.discardComposition()
             if active != nil { window.makeFirstResponder(canvas); active?.removeFromSuperview() }
             active = next; activeID = id
-            if let next { canvas.addSubview(next); next.setAccessibilityIdentifier(id); next.setAccessibilityLabel(id == "chat.composer" ? "Message" : id == "login.code" ? "Email code" : id == "login.email" ? "Email" : "Private key") }
+            if let next { canvas.addSubview(next); next.setAccessibilityIdentifier(id); next.setAccessibilityLabel(semanticLabel(id)) }
         }
         guard let next else { oc_access_editor(owner, "", nil); return }
         var b = [Float](repeating: 0, count: 6)
-        let valid = id == "chat.composer" ? oc_editor(owner, &b) : oc_field_box(owner, &b)
+        let valid = id == "chat.composer" ? oc_editor(owner, &b) : oc_field_text_box(owner, &b)
         guard valid != 0 else { next.isHidden = true; oc_access_editor(owner, "", nil); return }
         next.isHidden = false
-        if id != "chat.composer" { b[0] += 10; b[2] -= 20 }
         next.frame = rect(b)
         if next === editor, !editor.hasMarkedText() {
             let text = read(id == "chat.composer" ? oc_text : oc_field_text)
@@ -97,13 +104,14 @@ import QuartzCore
         if next !== backup, window.firstResponder !== next { window.makeFirstResponder(next) }
     }
     private func commit(_ text: String) {
+        guard active === editor, activeID == read(oc_focus, cap: 65) else { return }
         if activeID == "chat.composer" { _ = oc_set_text(owner, text) } else { _ = oc_set_field(owner, text) }
         wake()
     }
     private func command(_ selector: Selector) -> Bool {
         if selector == #selector(NSResponder.insertTab(_:)) || selector == #selector(NSResponder.insertBacktab(_:)) { _ = drive(selector == #selector(NSResponder.insertBacktab(_:)) ? "ax-key shift-tab" : "ax-key tab"); return true }
         if selector == #selector(NSResponder.cancelOperation(_:)) { oc_blur(owner); wake(); return true }
-        if selector == #selector(NSResponder.insertNewline(_:)), activeID != "chat.composer" { _ = oc_submit(owner); wake(); return true }
+        if selector == #selector(NSResponder.insertNewline(_:)), activeID != "chat.composer", oc_field_kind(owner) != 4 { _ = oc_submit(owner); wake(); return true }
         return false
     }
     func controlTextDidChange(_ notification: Notification) { guard active === secret else { return }; oc_secret_ready(owner, secret.stringValue.isEmpty ? 0 : 1); wake() }

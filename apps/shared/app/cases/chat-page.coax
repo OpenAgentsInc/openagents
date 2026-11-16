@@ -11,7 +11,7 @@
 // The page draws the shared app core (chat_attach), which the caller holds. Its outbox is not played
 // here: completions are logged and dropped, and a case that needs services plays on the core's own
 // adapter (core-page.coax).
-//   coax/bin/coax test apps/shared/app/cases/chat-page.coax
+//   coax/bin/coax test apps/shared/app/cases/chat-page.coax --library --run-steps 250000000 --steps 200000000
 
 #load "../../../openagents-ios/chat.coax";
 #load "drive.coax";
@@ -86,8 +86,12 @@ cp_step :: (r: [] CpRun, p: [] ChatPage, v: [] f32, d: [] GdDrive, code: int) {
   if code == GD_POINTER { u := p[0].d; gd_took(d, chat_pointer(p, gd_px(d) * u, gd_py(d) * u, gd_phase(d))); return; }
   // the platform editor over the focused field: a login field's value, else the composer's draft
   if code == GD_EDITOR {
-    if ch_login_field(ch_focus(p)) != LF_FIELD_NONE {
-      buf: [512] u8; n := chat_field_text(p, buf[..]); e := gd_edit(d, cast(string) buf[0..<n]);
+    kind:=chat_field_kind(p);
+    // Private custody has no drive editor; only the secure platform field
+    // receives those bytes. Generic fields include the Project text areas.
+    if !app_public_input(ch_focus(p)) {gd_edited(d,false);return;}
+    if kind>=0 {
+      buf: [EB_TEXT+1] u8; n := chat_field_text(p, buf[..]);if n<0 {gd_edited(d,false);return;}e := gd_edit(d, cast(string) buf[0..<n]);
       gd_edited(d, e.ok && chat_set_field(p, e.text)); return;
     }
     e := gd_edit(d, ch_draft(p)); gd_edited(d, e.ok && chat_set_text(p, e.text)); return;
@@ -138,4 +142,15 @@ cp_drive :: (r: [] CpRun, p: [] ChatPage, v: [] f32, d: [] GdDrive, op: string) 
   #assert cp_drive(r[..], page[..], o[0].v[..], d[..], "state chat.draft") && gd_answer(d[..]) == "Fix the build";
   #assert cp_drive(r[..], page[..], o[0].v[..], d[..], "state keyboard.shown") && gd_answer(d[..]) == "false";
   #assert cp_drive(r[..], page[..], o[0].v[..], d[..], "tap chat.nope") && gd_answer(d[..]) == "no row chat.nope in the committed tree (tree lists them)";
+}
+
+#test "drive edits Project fields while private custody never falls through into the public composer" #steps 2000000000 {
+ p:[1]ChatPage;c:[1]AppCore;o:[1]ChOut;d:[1]GdDrive;r:[1]CpRun;app_init(c[..]);c[0].auth=AUTH_IN;ch_test_atlas(p[0].atlas[..]);chat_attach(p[..],c[..],"");
+ cp_open(r[..],p[..],o[0].v[..],d[..],c[..],"cpu",0,false);r[0].reduced=true;
+ p[0].section=1;p[0].projects[0].signed_in=true;p[0].projects[0].open=true;p[0].projects[0].page=1;
+ #assert cp_drive(r[..],p[..],o[0].v[..],d[..],"type project.name Research") && gd_answer(d[..])=="typed into project.name";
+ #assert ps_field(p[0].projects[..],"project.name")=="Research" && app_draft(c[..])=="";
+ #assert cp_drive(r[..],p[..],o[0].v[..],d[..],"type project.text Evidence") && ps_field(p[0].projects[..],"project.text")=="Evidence" && app_draft(c[..])=="";
+ ch_set_focus(p[..],"identity.secret");cp_step(r[..],p[..],o[0].v[..],d[..],GD_EDITOR);
+ #assert !d[0].edited && app_draft(c[..])=="" && !p[0].identity[0].secret_ready;
 }

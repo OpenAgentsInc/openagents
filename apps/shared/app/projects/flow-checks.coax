@@ -1,0 +1,90 @@
+// Disposable account/project fixtures; no production account or credentials.
+PS_TEST_PROJECT :: "prj_0123456789abcdef0123456789abcdef";
+PS_TEST_SOURCE :: "knw_0123456789abcdef0123456789abcdef";
+ps_test_path :: (c:[]AppCore,at:int)->string {r:=c[0].out[0].slots[at];return cast(string)c[0].out[0].slots[at].path[0..<r.path_n];}
+ps_test_setup :: (s:[]ProjectScreen,c:[]AppCore) {
+ app_init(c);c[0].auth=AUTH_IN;ps_sync(s,c,false);ps_open(s);
+}
+ps_test_answer :: (s:[]ProjectScreen,c:[]AppCore,status:int,outcome:int,raw:string) {
+ op:=s[0].op;#assert op>0 && fx_take(c[0].out[..],op);
+ #assert app_dispatch(c,AppEvent.{kind=EV_DONE,op=op,generation=fx_generation(c[0].out[..],OWN_SCREEN),outcome=outcome,status=status,text=raw})==APP_GUEST;
+ #assert ps_guest(s,c,raw);
+}
+ps_test_project :: (p:[]PrProject) {
+ p[0].ni=pr_copy(p[0].id[..],PS_TEST_PROJECT);p[0].no=pr_copy(p[0].owner[..],"fixture");p[0].nn=pr_copy(p[0].name[..],"Research");p[0].revision=1;p[0].instructions_revision=1;
+ p[0].nt=pr_copy(p[0].instructions[..],"Use references");
+}
+#test "Project reads sleep while hidden, resume once, and keep account and late-reply fences" {
+ s:[1]ProjectScreen;c:[1]AppCore;ps_test_setup(s[..],c[..]);ps_sync(s[..],c[..],true);op:=s[0].op;#assert op>0 && s[0].purpose==PS_LIST;
+ at:=fx_find(c[0].out[..],op);#assert ps_test_path(c[..],at)=="/api/projects/v1";
+ ps_sync(s[..],c[..],true);#assert s[0].op==op;ps_sync(s[..],c[..],false);#assert s[0].op==0 && s[0].want==PS_LIST && c[0].guest_due[OWN_SCREEN]==0;
+ ps_sync(s[..],c[..],true);#assert s[0].op>op;
+ ps_test_answer(s[..],c[..],200,FXO_DONE,"{\"schema\":\"openagents.projects.api.v1alpha1\",\"data\":[],\"next_cursor\":null}");
+ #assert s[0].loaded && s[0].list[0].n==0 && s[0].next==15000;
+ ps_sync(s[..],c[..],true);#assert s[0].op==0 && c[0].guest_due[OWN_SCREEN]==15000;
+ c[0].mono_ms=15000;ps_sync(s[..],c[..],true);#assert s[0].op>0;
+ c[0].auth=AUTH_OUT;ps_sync(s[..],c[..],true);#assert !s[0].signed_in && !s[0].loaded && s[0].op==0 && s[0].open;
+ #assert !ps_guest(s[..],c[..],"{}") && ps_press(s[..],c[..],"project.new")==0;
+}
+#test "Project create, instructions and references use canonical requests and read the saved revision" {
+ s:[1]ProjectScreen;c:[1]AppCore;ps_test_setup(s[..],c[..]);
+ #assert ps_press(s[..],c[..],"project.new")==1 && s[0].page==1;
+ #assert ps_press(s[..],c[..],"project.create")==0 && ps_edit(s[..],"project.name","Research") && ps_edit(s[..],"project.text","Use references");
+ #assert ps_field(s[..],"project.name")=="Research" && ps_field(s[..],"project.text")=="Use references" && ps_field(s[..],"unknown")=="";
+ #assert ps_press(s[..],c[..],"project.create")==1;ps_sync(s[..],c[..],true);
+ ps_test_answer(s[..],c[..],0,FXO_DONE,"0123456789abcdef0123456789abcdef");ps_sync(s[..],c[..],true);
+ at:=fx_find(c[0].out[..],s[0].op);#assert c[0].out[0].slots[at].method==UP_POST && ps_test_path(c[..],at)=="/api/projects/v1";
+ p:[1]PrProject;ps_test_project(p[..]);b:[131072]u8;n:=pr_project_write(p[..],b[..]);ps_test_answer(s[..],c[..],201,FXO_DONE,cast(string)b[0..<n]);
+ #assert s[0].page==2 && !ps_blocked(s[..]) && ps_id(s[..])==PS_TEST_PROJECT && s[0].p[0].api_loaded;
+ ps_sync(s[..],c[..],true);ps_test_answer(s[..],c[..],200,FXO_DONE,cast(string)b[0..<n]);
+ #assert ps_press(s[..],c[..],"project.instructions")==1 && s[0].page==3 && ps_field(s[..],"project.text")=="Use references";
+ #assert ps_edit(s[..],"project.text","Be precise") && ps_press(s[..],c[..],"project.save")==1;
+ ps_sync(s[..],c[..],true);ps_test_answer(s[..],c[..],0,FXO_DONE,"abcdef0123456789abcdef0123456789");ps_sync(s[..],c[..],true);
+ at=fx_find(c[0].out[..],s[0].op);#assert ps_test_path(c[..],at)=="/api/projects/v1/prj_0123456789abcdef0123456789abcdef/instructions";
+ p[0].revision=2;p[0].instructions_revision=2;n=pr_instructions_write(p[..],b[..]);ps_test_answer(s[..],c[..],200,FXO_DONE,cast(string)b[0..<n]);#assert !ps_blocked(s[..]) && s[0].want==PS_READ;
+ ps_sync(s[..],c[..],true);n=pr_project_write(p[..],b[..]);ps_test_answer(s[..],c[..],200,FXO_DONE,cast(string)b[0..<n]);#assert s[0].p[0].api[0].revision==2;
+ #assert ps_press(s[..],c[..],"project.knowledge")==1 && s[0].page==4 && ps_field(s[..],"project.text")=="";
+ ps_sync(s[..],c[..],true);ps_test_answer(s[..],c[..],200,FXO_DONE,"{\"schema\":\"openagents.projects.api.v1alpha1\",\"data\":[]}");
+ #assert ps_edit(s[..],"project.knowledge.title","Reference") && ps_edit(s[..],"project.text","Evidence") && ps_press(s[..],c[..],"project.knowledge.add")==1;
+ ps_sync(s[..],c[..],true);ps_test_answer(s[..],c[..],0,FXO_DONE,"22222222222222222222222222222222");ps_sync(s[..],c[..],true);
+ k:[1]PrKnowledge;k[0].ni=pr_copy(k[0].id[..],PS_TEST_SOURCE);k[0].np=pr_copy(k[0].project[..],PS_TEST_PROJECT);k[0].nn=pr_copy(k[0].title[..],"Reference");k[0].revision=3;
+ n=pr_knowledge_write(k[..],b[..]);ps_test_answer(s[..],c[..],201,FXO_DONE,cast(string)b[0..<n]);#assert !ps_blocked(s[..]) && s[0].want==PS_READ;
+}
+#test "unknown Project saves retain their command while known refusals release it" {
+ for status:[7]int.[400,403,404,409,413,422,503] {
+  s:[1]ProjectScreen;c:[1]AppCore;ps_test_setup(s[..],c[..]);#assert ps_choose(s[..],PS_TEST_PROJECT);s[0].p[0].api[0].revision=1;
+  #assert ps_edit(s[..],"project.text","Save") && ps_press(s[..],c[..],"project.save")==1;
+  ps_sync(s[..],c[..],true);ps_test_answer(s[..],c[..],0,FXO_DONE,"0123456789abcdef0123456789abcdef");ps_sync(s[..],c[..],true);
+  ps_test_answer(s[..],c[..],status,FXO_DONE,"{}");#assert ps_blocked(s[..])==(status==503) && s[0].p[0].uncertain==(status==503);
+  if status==503 {#assert ps_retry(s[..]);ps_sync(s[..],c[..],false);#assert s[0].op==0 && ps_blocked(s[..]);ps_sync(s[..],c[..],true);#assert s[0].purpose==PS_INSTRUCTIONS;}
+ }
+}
+#test "Project navigation refuses malformed IDs, keeps bounded editor bytes and binds new chats" {
+ s:[1]ProjectScreen;c:[1]AppCore;ps_test_setup(s[..],c[..]);#assert !ps_choose(s[..],"legacy") && ps_choose(s[..],PS_TEST_PROJECT);
+ s[0].want=0;s[0].p[0].api[0].revision=7;s[0].p[0].api_loaded=true;
+ #assert ps_press(s[..],c[..],"project.chat.new")==2 && cast(string)c[0].chat[0].project[0..<c[0].chat[0].project_n]==PS_TEST_PROJECT && c[0].chat[0].project_revision==7;
+ #assert ps_edit(s[..],"project.text","Keep");big:[EB_TEXT+1]u8;#assert !ps_edit(s[..],"project.text",cast(string)big[..]) && ps_field(s[..],"project.text")=="Keep";
+ #assert !ps_edit(s[..],"other","") && ps_press(s[..],c[..],"pr.chat.bad")==0 && ps_press(s[..],c[..],"pr.source.bad")==0 && ps_press(s[..],c[..],"pr.remove.bad")==0;
+ s[0].p[0].api[0].nt=EB_TEXT+1;#assert ps_press(s[..],c[..],"project.instructions")==1 && s[0].page==2 && ps_field(s[..],"project.text")=="Keep";
+ #assert ps_press(s[..],c[..],"project.back")==1 && s[0].page==0 && s[0].want==PS_LIST;
+}
+
+#test "Project details use the read revision, while sources and chat pages keep their exact scope" {
+ s:[1]ProjectScreen;c:[1]AppCore;ps_test_setup(s[..],c[..]);#assert ps_choose(s[..],PS_TEST_PROJECT);p:=s[0].p[..];ps_test_project(p[0].api[..]);p[0].api_loaded=true;s[0].want=0;
+ #assert ps_press(s[..],c[..],"project.details")==1 && s[0].page==7 && ps_field(s[..],"project.name")=="Research";
+ #assert ps_edit(s[..],"project.name","Updated") && ps_edit(s[..],"project.description","A description") && ps_field(s[..],"project.description")=="A description";
+ #assert ps_press(s[..],c[..],"project.update")==1;ps_sync(s[..],c[..],true);ps_test_answer(s[..],c[..],0,FXO_DONE,"0123456789abcdef0123456789abcdef");ps_sync(s[..],c[..],true);
+ at:=fx_find(c[0].out[..],s[0].op);#assert ps_test_path(c[..],at)=="/api/projects/v1/prj_0123456789abcdef0123456789abcdef/update";request:[1]PrRequest;
+ #assert pr_request(fx_body(c[0].out[..],at),2,request[..]) && request[0].revision==1 && cast(string)request[0].description[0..<request[0].nd]=="A description";
+ p[0].api[0].revision=2;b:[131072]u8;n:=pr_project_write(p[0].api[..],b[..]);ps_test_answer(s[..],c[..],200,FXO_DONE,cast(string)b[0..<n]);#assert !ps_blocked(s[..]) && s[0].page==2;
+ // Finish readback, then navigate through a source and both chat cursors.
+ ps_sync(s[..],c[..],true);ps_test_answer(s[..],c[..],200,FXO_DONE,cast(string)b[0..<n]);
+ #assert ps_press(s[..],c[..],"pr.source.knw_0123456789abcdef0123456789abcdef")==1;
+ path:[256]u8;#assert ps_path(s[..],PS_SOURCE,path[..])=="/api/projects/v1/prj_0123456789abcdef0123456789abcdef/knowledge/knw_0123456789abcdef0123456789abcdef/content";
+ ps_sync(s[..],c[..],true);k:[1]PrKnowledge;k[0].ni=pr_copy(k[0].id[..],PS_TEST_SOURCE);k[0].nt=pr_copy(k[0].text[..],"Full evidence");n=pr_knowledge_content(k[..],b[..]);ps_test_answer(s[..],c[..],200,FXO_DONE,cast(string)b[0..<n]);
+ #assert s[0].page==6 && p[0].api_nc==13 && ps_press(s[..],c[..],"project.back")==1 && s[0].page==4;
+ s[0].chats[0].next_n=pr_copy(s[0].chats[0].next[..],"cnv_0123456789abcdef0123456789abcdef");
+ #assert ps_press(s[..],c[..],"project.chats")==1 && ps_press(s[..],c[..],"project.chats.more")==1;
+ #assert ps_path(s[..],PS_CHATS,path[..])=="/api/chat/conversations/v2alpha1?project_id=prj_0123456789abcdef0123456789abcdef&cursor=cnv_0123456789abcdef0123456789abcdef";
+ #assert ps_press(s[..],c[..],"project.chats.first")==1 && s[0].ncc==0;
+}

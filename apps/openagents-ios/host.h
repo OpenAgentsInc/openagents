@@ -84,6 +84,8 @@ int oc_draft(void *chat, char *out, int cap);
 // edit (0: not taken), Return in it, and the keyboard going away by itself.
 int oc_focus(void *chat, char *out, int cap);
 int oc_field_box(void *chat, float box[4]);
+int oc_field_kind(void *chat); // -1 none, 0 plain, 1 email, 2 code, 3 private, 4 multiline
+int oc_field_text_box(void *chat,float box[4]);
 int oc_field_text(void *chat, char *out, int cap);
 int oc_set_field(void *chat, const char *text);
 int oc_submit(void *chat);

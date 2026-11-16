@@ -48,6 +48,12 @@ UP_COPY_MAX :: 131072; UP_LINK_MAX :: 4096;
  for action:[5]string.["backup","rotate","restore","retry","discard"] {#assert up_identity(action,"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798");}
  #assert !up_identity("sign","79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798") && !up_identity("restore","bad") && !up_identity("rotate","");
 }
+#test "compiled Projects use the canonical API namespace without opening adjacent origins or APIs" {
+ for path:[7]string.["/api/projects/v1/","/api/projects/v1?","/api/projects/v1","/api/projects/v1?cursor=prj_0123456789abcdef0123456789abcdef","/api/projects/v1/prj_0123456789abcdef0123456789abcdef","/api/projects/v1/prj_0123456789abcdef0123456789abcdef/instructions","/api/projects/v1/prj_0123456789abcdef0123456789abcdef/knowledge"] {
+  #assert up_http(UP_GET,path,0) && up_http(UP_POST,path,2) && !up_http(UP_GET,path,2);
+ }
+ for path:[8]string.["/api/projects/v10","/api/projects/v1evil","//evil/api/projects/v1","https://evil/api/projects/v1","/api/projects/v1/../wallet","/api/projects/v1/%2e%2e/wallet","/api/projects/v1\\wallet","/api/projects/v1\n"] {#assert !up_path(path);}
+}
 #forall "identity custody admits exactly lowercase hex public keys" byte:0..<256 {
  key:[64]u8;for i:0..<64 {key[i]='0';}key[31]=cast(u8)byte;
  allowed:=byte>=48 && byte<=57 || byte>=97 && byte<=102;
@@ -67,7 +73,8 @@ up_safe :: (path: string) -> bool #effects(all) {
 }
 // A relative API path this app may request.
 up_path :: (path: string) -> bool #export_c #effects(all) {
-  return up_safe(path) && ((path.count >= 10 && path[0..<10] == "/api/chat/") || path == "/api/auth/account" || path == "/api/auth/identity/v1");
+  projects:=path=="/api/projects/v1" || path.count>16 && path[0..<16]=="/api/projects/v1" && (path[16]=='/' || path[16]=='?'); // mutant: equivalent — > to >= at length 16 is unreachable: an exact prefix is already true in the first disjunct, and another 16-byte value fails the prefix comparison
+  return up_safe(path) && ((path.count >= 10 && path[0..<10] == "/api/chat/") || path == "/api/auth/account" || path == "/api/auth/identity/v1" || projects);
 }
 // One HTTP request: its method, its path and its body's bytes.
 up_http :: (method: int, path: string, body_bytes: int) -> bool #export_c #effects(all) {

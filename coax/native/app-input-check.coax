@@ -1,0 +1,3 @@
+// Editor admission is tested apart from SDK/paint qualification.
+// coax test coax/native/app-input-check.coax --library
+#load "../../apps/shared/app/fields.coax";

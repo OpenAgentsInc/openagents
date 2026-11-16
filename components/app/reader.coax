@@ -1,0 +1,22 @@
+// A full read-only text surface. The shared wrapper supplies every line;
+// only chunks intersecting the viewport paint or create semantic rows.
+#load "base.coax";
+#load "reader-checks.coax" #test;
+APP_READ_LINES :: 16; // bounded wrapping scratch, not a document limit
+app_read_text :: (f:[]UiFrame,id:string,x:f32,y:f32,w:f32,top:f32,bottom:f32,text:string)->f32 {
+ at:=0;line:=0;h:f32=0;s:=f[0].skin;face:=s.body;sh:=f[0].sheet;
+ faces:=TextFaces.{plain=face.face,bold=face.face,code=face.face};lines:[APP_READ_LINES]TextLine;
+ width:=ifx w>1 then w else 1.0f32;
+ while at<text.count {
+  part:=text[at..<text.count];n:=text_wrap_lines(f[0].m,faces,part,width,lines[..]);if n==0 {break;}
+  end:=lines[n-1].to;if end<part.count && part[end]=='\n' {end+=1;}
+  if end<=0 {break;}chunk_h:=cast(f32)n*face.line;
+  if y+h+chunk_h>top && y+h<bottom {
+   key:[EL_ID]u8;suffix:[32]u8;z:=el_copy(suffix[..],".");z=text_put_int(suffix[..],z,line);
+   _:=uiframe_semantic(f,app_id(key[..],id,cast(string)suffix[0..<z]),EL_TEXT,part[0..<end],x,y+h,w,chunk_h,0,0);
+   for i:0..<n {ly:=y+h+cast(f32)i*face.line;if ly+face.line>top && ly<bottom {_:=sheet_text(sh,f[0].m,-1,x,ly,face.line,face.face,s.ink,part[lines[i].from..<lines[i].to]);}}
+  }
+  at+=end;line+=n;h+=chunk_h;
+ }
+ return h;
+}
