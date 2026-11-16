@@ -1,0 +1,136 @@
+// What the importer's tools share that touches bytes, not meaning: a file's SHA-256 in hex, numbers
+// written into JSON the same way every run (so the same content gives the same manifest bytes,
+// BUNDLE.md section 1), plain CSV fields, and a bundle's files listed from disk for ab_disk.
+// Used by metaverse-engine/tools/unreal-level-import.coax, metaverse-engine/tools/bundle-diff.coax
+// and a game's bundle producer (metaverse/splice-bots/tools/jam-data-bundle.coax).
+//   coax/bin/coax test metaverse-engine/import/unreal/files.coax
+#load "../../../coax/lib/crypto/sha256.coax";
+#load "../../../coax/lib/json/json.coax";
+#load "../../../coax/lib/sys/fs.coax";
+#load "bundle.coax";
+
+UF_HEX :: "0123456789abcdef";
+
+// The SHA-256 of bytes as 64 lower-case hex digits into out.
+uf_sha_hex :: (bytes: [] u8, out: [] u8) -> bool #effects(all) {
+  state: [112] u8; digest: [32] u8;
+  if out.count < 64 || sha256_init(state[..]) != SHA_OK { return false; }
+  at := 0;
+  while at < bytes.count {
+    n := ifx bytes.count - at > 1048576 then 1048576 else bytes.count - at;
+    if sha256_update_checked(state[..], bytes[at..<at + n], false) != SHA_OK { return false; }
+    at += n;
+  }
+  if sha256_final_checked(state[..], digest[..], false) != SHA_OK { return false; }
+  for k: 0..<32 { out[k * 2] = UF_HEX[cast(int) (digest[k] >> 4)]; out[k * 2 + 1] = UF_HEX[cast(int) (digest[k] & 15)]; }
+  return true;
+}
+
+// A number as JSON text: at most 7 decimals, trailing zeros and a bare point dropped, -0 as 0.
+// Exact for every whole number of cm and every tenth of a mm a bundle carries.
+uf_num_text :: (v: f64, out: [] u8) -> string #effects(all) {
+  n := 0; a := v;
+  if a < 0 { a = -a; }
+  scaled := floor(a * 10000000.0 + 0.5);
+  whole := cast(int) floor(scaled / 10000000.0); frac := cast(int) (scaled - cast(f64) whole * 10000000.0);
+  if v < 0 && (whole != 0 || frac != 0) { out[n] = '-'; n += 1; }
+  digits: [24] u8; d := 0;
+  if whole == 0 { digits[0] = '0'; d = 1; }
+  while whole > 0 { digits[d] = cast,trunc(u8) (48 + whole % 10); d += 1; whole /= 10; }
+  for k: 0..<d { out[n] = digits[d - 1 - k]; n += 1; }
+  if frac != 0 {
+    out[n] = '.'; n += 1;
+    places := 7; while frac % 10 == 0 { frac /= 10; places -= 1; }
+    scale := 1; for k: 0..<places - 1 { scale *= 10; }
+    for k: 0..<places { out[n] = cast,trunc(u8) (48 + (frac / scale) % 10); n += 1; scale /= 10; }
+  }
+  return cast(string) out[0..<n];
+}
+uf_num :: (o: [] Jo, v: f64) #effects(all) { t: [48] u8; jo_raw(o, uf_num_text(v, t[..])); }
+uf_nums :: (o: [] Jo, v: [] f64) #effects(all) { jo_arr(o); for x: v { uf_num(o, x); } jo_end(o); }
+
+// The k-th comma-separated field of a line (no quoting: the tables this reads have none), or "".
+uf_field :: (line: string, k: int) -> string #effects(all) {
+  i := 0; from := 0;
+  for c, at: line {
+    if c == ',' { if i == k { return line[from..<at]; } i += 1; from = at + 1; }
+  }
+  return ifx i == k then line[from..<line.count] else "";
+}
+// The fields from k to the end of the line, commas and all: a free-text last column.
+uf_rest :: (line: string, k: int) -> string #effects(all) {
+  i := 0;
+  for c, at: line { if c == ',' { i += 1; if i == k { return line[at + 1..<line.count]; } } }
+  return "";
+}
+// The line starting at byte `at` (without its \r\n or \n) and where the next one starts.
+UfLine :: struct { text: string; next: int; }
+uf_line :: (t: string, at: int) -> UfLine #effects(all) {
+  e := at; while e < t.count && t[e] != '\n' { e += 1; }
+  end := ifx e > at && t[e - 1] == '\r' then e - 1 else e;
+  from := ifx at == 0 && t.count >= 3 && t[0] == 0xEF && t[1] == 0xBB && t[2] == 0xBF then 3 else at;   // a byte order mark
+  return UfLine.{text = t[ifx from < end then from else end..<end], next = e + 1};
+}
+// A decimal field: ok false when empty or not a number.
+UfValue :: struct { ok: bool; v: f64; }
+uf_value :: (s: string) -> UfValue #effects(all) {
+  if s.count == 0 { return UfValue.{}; }
+  n := anim_decimal(s);
+  return UfValue.{ok = n.ok, v = n.value};
+}
+
+// ---- a bundle's files on disk
+
+UF_DISK_MAX :: 16384;
+// Lists the files in a bundle's folders (BUNDLE.md section 2), sorted by path, their sizes and
+// hashes, into disk. `bytes` is scratch the size of the largest file. Returns the count, or -1:
+// a folder that can't be listed, a file that can't be read, more than disk holds, or a folder
+// at the top of the bundle the format doesn't have (named in `bad`).
+uf_disk :: (bundle: string, disk: [] AbDisk, bytes: [] u8, bad: [] u8) -> int #effects(all) {
+  top: [1] FsList; n := 0; bad[0] = 0;
+  if fs_list(bundle, top[..]) < 0 { return -1; }
+  for t: 0..<top[0].n {
+    name := fs_entry(top[..], t);
+    if name == "manifest.json" || name == "skipped.json" { continue; }
+    known := false; for d: AB_DIRS { if d[0..<d.count - 1] == name { known = true; } }
+    if !known { for c, j: name { if j < bad.count - 1 { bad[j] = c; bad[j + 1] = 0; } } return -1; }
+    dir_buf: [4096] u8; dir := fs_join(bundle, name, dir_buf[..]);
+    l: [1] FsList;
+    if fs_list(dir, l[..]) < 0 || l[0].full { return -1; }
+    for k: 0..<l[0].n {
+      file := fs_entry(l[..], k);
+      if n >= disk.count { return -1; }
+      path_buf: [4096] u8; path := fs_join(dir, file, path_buf[..]);
+      size := fs_size(path);
+      if size < 0 || size > bytes.count || fs_read(path, bytes[0..<size]) != size { return -1; }
+      rel_n := name.count + 1 + file.count;
+      if rel_n > 128 { return -1; }
+      for c, j: name { disk[n].path[j] = c; } disk[n].path[name.count] = '/';
+      for c, j: file { disk[n].path[name.count + 1 + j] = c; }
+      disk[n].path_n = rel_n; disk[n].bytes = size;
+      if !uf_sha_hex(bytes[0..<size], disk[n].sha[..]) { return -1; }
+      n += 1;
+    }
+  }
+  return n;
+}
+
+#test "numbers are written the same way every time, shortest first" {
+  t: [48] u8;
+  #assert uf_num_text(0, t[..]) == "0" && uf_num_text(-0.0, t[..]) == "0" && uf_num_text(-92930, t[..]) == "-92930";
+  #assert uf_num_text(1.36, t[..]) == "1.36" && uf_num_text(0.7071067811865476, t[..]) == "0.7071068" && uf_num_text(-0.00000004, t[..]) == "0";
+  #assert uf_num_text(3752.9, t[..]) == "3752.9" && uf_num_text(14673.4, t[..]) == "14673.4" && uf_num_text(0.5, t[..]) == "0.5";
+}
+#test "plain CSV fields, lines and decimals" {
+  line := "farm,bank_L01_B1,platform,-92930,-18900,68,2100,120,136,0,03-world.md 1.3, and more";
+  #assert uf_field(line, 0) == "farm" && uf_field(line, 9) == "0" && uf_field(line, 5) == "68" && uf_field(line, 12) == "";
+  #assert uf_rest(line, 10) == "03-world.md 1.3, and more";
+  b: [11] u8; for c, j: "...a,b\r\nc\n" { b[j] = c; } b[0] = 0xEF; b[1] = 0xBB; b[2] = 0xBF; t := cast(string) b[..];
+  l := uf_line(t, 0); #assert l.text == "a,b" && l.next == 8;
+  l = uf_line(t, l.next); #assert l.text == "c" && l.next == 10;
+  #assert uf_value("").ok == false && uf_value("-38310").v == -38310.0 && uf_value("626.5").v == 626.5 && !uf_value("x").ok;
+}
+#test "a SHA-256 in hex" {
+  out: [64] u8; one: [1] u8;
+  #assert uf_sha_hex(one[0..<0], out[..]) && cast(string) out[..] == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+}

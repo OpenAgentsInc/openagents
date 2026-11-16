@@ -1,0 +1,63 @@
+// The substitution table (the importer's spec, sections 7.4 and 9.2): what becomes of an asset of
+// origin `engine`, Epic's pieces under /Engine/ and the template folders. They are never carried; each
+// is replaced by the engine's own, and every replacement is counted and listed, never silent.
+//
+//   meshes      Basic Shapes are the engine's own shapes (convert.coax draws them: cv_shape),
+//               at Unreal's sizes: a 100 cm cube, sphere, cylinder and cone round their middle, and a
+//               100 cm plane at its foot facing up. An engine mesh not in the table is refused, by
+//               name: add its substitute here rather than carrying Epic's geometry.
+//   materials   every engine material is the engine's default material (a plain lit grey)
+//   skeletal    a mesh on the UE Mannequin's skeleton is the engine's character: until the rig importer
+//               (#13651, metaverse-engine/import/unreal/ rigs) retargets it, it is drawn as the engine's
+//               character stand-in, a capsule of the Mannequin's height, and listed as waiting on it
+//               (su_rig_hook)
+//   textures    none: an engine texture is only ever reached through an engine material
+//   sounds      none: an engine sound is refused
+// A lookup is by exact id, the table's own (typed rows, never a pattern over names).
+//   coax/bin/coax test metaverse-engine/import/unreal/substitute.coax
+#authority;
+
+SU_NONE :: 0; SU_BOX :: 1; SU_SPHERE :: 2; SU_CYLINDER :: 3; SU_CONE :: 4; SU_PLANE :: 5; SU_CHARACTER :: 6;
+SU_WHAT :: [7] string.["no substitute", "the engine's box", "the engine's sphere", "the engine's cylinder", "the engine's cone", "the engine's plane", "the engine's character"];
+
+SuRow :: struct { id: string; shape: int; }
+// book:begin table
+SU_MESHES :: [12] SuRow.[
+  SuRow.{id = "/Engine/BasicShapes/Cube.Cube", shape = SU_BOX},
+  SuRow.{id = "/Engine/BasicShapes/Sphere.Sphere", shape = SU_SPHERE},
+  SuRow.{id = "/Engine/BasicShapes/Cylinder.Cylinder", shape = SU_CYLINDER},
+  SuRow.{id = "/Engine/BasicShapes/Cone.Cone", shape = SU_CONE},
+  SuRow.{id = "/Engine/BasicShapes/Plane.Plane", shape = SU_PLANE},
+  SuRow.{id = "/Engine/EngineMeshes/Cube.Cube", shape = SU_BOX},
+  SuRow.{id = "/Engine/EngineMeshes/Sphere.Sphere", shape = SU_SPHERE},
+  SuRow.{id = "/Engine/EngineMeshes/Cylinder.Cylinder", shape = SU_CYLINDER},
+  SuRow.{id = "/Game/LevelPrototyping/Meshes/SM_Cube.SM_Cube", shape = SU_BOX},
+  SuRow.{id = "/Game/LevelPrototyping/Meshes/SM_Cylinder.SM_Cylinder", shape = SU_CYLINDER},
+  SuRow.{id = "/Game/Characters/Mannequins/Meshes/SKM_Manny.SKM_Manny", shape = SU_CHARACTER},
+  SuRow.{id = "/Game/Characters/Mannequins/Meshes/SKM_Quinn.SKM_Quinn", shape = SU_CHARACTER},
+];
+// book:end table
+
+// The substitute for an engine mesh or skeletal mesh, or SU_NONE: refused.
+su_mesh :: (id: string) -> int #effects(all) {
+  for r: SU_MESHES { if r.id == id { return r.shape; } }
+  return SU_NONE;
+}
+// Every engine material is the engine's default material.
+su_material :: (id: string) -> bool #effects(all) { return id.count > 0; }
+// The rig importer's hook (#13651): true when a skeleton's meshes and clips are retargeted onto the
+// engine's skeleton by it. Until that lands nothing is retargeted, and a Mannequin character is drawn
+// as SU_CHARACTER's stand-in and listed.
+su_rig_hook :: (skeleton: string) -> bool #effects(all) { return skeleton.count < 0; }
+
+#test "Epic's shapes are the engine's, by exact id, and anything else is refused by name" {
+  #assert su_mesh("/Engine/BasicShapes/Cube.Cube") == SU_BOX && su_mesh("/Engine/BasicShapes/Plane.Plane") == SU_PLANE;
+  #assert su_mesh("/Engine/BasicShapes/Cone.Cone") == SU_CONE && su_mesh("/Engine/BasicShapes/Sphere.Sphere") == SU_SPHERE;
+  #assert su_mesh("/Engine/BasicShapes/Cylinder.Cylinder") == SU_CYLINDER;
+  #assert su_mesh("/Game/Characters/Mannequins/Meshes/SKM_Quinn.SKM_Quinn") == SU_CHARACTER;
+  #assert su_mesh("/Engine/BasicShapes/Cube") == SU_NONE && su_mesh("/Game/SpliceBots/SM_Garage.SM_Garage") == SU_NONE && su_mesh("") == SU_NONE;
+  #assert su_material("/Engine/BasicShapes/BasicShapeMaterial") && !su_material("");
+  #assert !su_rig_hook("/Game/Characters/Mannequins/Meshes/SK_Mannequin.SK_Mannequin");
+  #assert SU_WHAT.count == SU_CHARACTER + 1;
+  for r: SU_MESHES { #assert r.shape > SU_NONE && r.shape <= SU_CHARACTER && r.id.count > 8; }
+}

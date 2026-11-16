@@ -1,0 +1,109 @@
+// The one conversion from Unreal's frame to the Metaverse Engine's (the importer's spec, section 3.2;
+// metaverse-engine/import/unreal/BUNDLE.md, section 1). Every number a bundle carries is Unreal's own:
+// centimetres, X forward, Y right, Z up, left-handed. The engine is metres, y up, right-handed.
+//
+// The exporter measured its mapping in its step 0 (#13399, metaverse-engine/tools/unreal-axes-fixture.coax):
+// marker cubes at the engine's (10, 0, 0), (0, 5, 0) and (0, 0, 20) imported at Unreal's (1000, 0, 0),
+// (0, 0, 500) and (0, 2000, 0), their faces wound as Unreal's own cube. So Unreal X = 100 x, Y = 100 z,
+// Z = 100 y, and this file applies the inverse:
+//   position   (X, Y, Z) cm         -> (X, Z, Y) / 100 m
+//   rotation   (qx, qy, qz, qw)     -> (-qx, -qz, -qy, qw)
+//   scale      (sx, sy, sz)         -> (sx, sz, sy)
+//   a length   cm                   -> cm / 100 m; a half extent (ex, ey, ez) -> (ex, ez, ey) / 100
+// Swapping Y and Z is a reflection M (det -1), and M R M for a rotation R about the axis a by the
+// angle t is the rotation about M a by -t: the quaternion's vector part is swapped and negated, its
+// scalar kept. The checks below prove it on the measured cubes and over a grid of rotations, rather
+// than trusting the derivation. A triangle keeps its index order: the mapping that reflects the frame
+// also reflects which side Unreal calls front, which is what the measured winding says.
+//
+// Mesh vertices in a bundle are glTF's (metres, y up, right-handed: Unreal's glTF exporter converted
+// them), the engine's frame already: ua_gltf applies no second change.
+//
+// North. Splice Bots states its world as "X east, Y south, Z up" (graybox/farm.json). Unreal's +Y
+// becomes the engine's +z, so in an imported world the engine's +z is that game's south and north is
+// -z (UA_NORTH). The terrain tile profile's "+z north" therefore holds only after a realm turns the
+// world; an import keeps the source's positions and states its north instead.
+//   coax/bin/coax test metaverse-engine/import/unreal/axes.coax
+#authority;
+#load "../../core/math-d.coax";
+
+UA_CM :: 100.0;                         // Unreal units a metre
+UA_NORTH :: D3.{x = 0.0, y = 0.0, z = -1.0};   // the source's north in the engine, for an "X east, Y south" world
+
+// book:begin axes
+ua_pos :: (x: f64, y: f64, z: f64) -> D3 #effects(all) { return d3(x / UA_CM, z / UA_CM, y / UA_CM); }
+ua_quat :: (q: DQ) -> DQ #effects(all) { return dq(-q.x, -q.z, -q.y, q.w); }
+ua_scale :: (s: D3) -> D3 #effects(all) { return d3(s.x, s.z, s.y); }
+ua_len :: (cm: f64) -> f64 #effects(all) { return cm / UA_CM; }
+ua_extent :: (e: D3) -> D3 #effects(all) { return d3(e.x / UA_CM, e.z / UA_CM, e.y / UA_CM); }
+ua_dir :: (v: D3) -> D3 #effects(all) { return d3(v.x, v.z, v.y); }   // a direction: the same swap, no scale
+ua_gltf :: (p: D3) -> D3 #effects(all) { return p; }
+// Unreal's yaw (degrees, about +Z, X turning toward +Y) as Unreal's quaternion: FRotator(0, yaw, 0).
+ua_yaw :: (degrees: f64) -> DQ #effects(all) { half := degrees * PI_D / 360.0; return dq(0.0, 0.0, sin(half), cos(half)); }
+// book:end axes
+
+// The exporter's forward mapping (metaverse-engine/export/unreal/), which these invert.
+ua_forward_pos :: (p: D3) -> D3 #effects(all) { return d3(p.x * UA_CM, p.z * UA_CM, p.y * UA_CM); }
+ua_forward_quat :: (q: DQ) -> DQ #effects(all) { return dq(-q.x, -q.z, -q.y, q.w); }
+
+// A point in a placed thing's own frame (Unreal's, cm) to the world, in Unreal's frame: T + R (S p).
+ua_place :: (t: D3, q: DQ, s: D3, p: D3) -> D3 #effects(all) { return d3_add(t, dq_rotate(q, d3_mul(s, p))); }
+
+ua_near3 :: (a: D3, b: D3, tolerance: f64) -> bool #effects(all) { return near_d(a.x, b.x, tolerance) && near_d(a.y, b.y, tolerance) && near_d(a.z, b.z, tolerance); }
+
+#test "the measured marker cubes land where the exporter's step 0 found them, and back" {
+  engine := [3] D3.[d3(10.0, 0.0, 0.0), d3(0.0, 5.0, 0.0), d3(0.0, 0.0, 20.0)];
+  unreal := [3] D3.[d3(1000.0, 0.0, 0.0), d3(0.0, 0.0, 500.0), d3(0.0, 2000.0, 0.0)];
+  for k: 0..<3 {
+    #assert d3_eq(ua_pos(unreal[k].x, unreal[k].y, unreal[k].z), engine[k]);
+    #assert d3_eq(ua_forward_pos(engine[k]), unreal[k]);
+  }
+  #assert ua_len(250.0) == 2.5 && d3_eq(ua_extent(d3(50.0, 20.0, 10.0)), d3(0.5, 0.1, 0.2));
+  #assert d3_eq(ua_scale(d3(1.0, 2.0, 3.0)), d3(1.0, 3.0, 2.0)) && d3_eq(ua_dir(d3(1.0, 2.0, 3.0)), d3(1.0, 3.0, 2.0));
+  #assert d3_eq(ua_gltf(d3(1.0, 2.0, 3.0)), d3(1.0, 2.0, 3.0));
+}
+#test "a quarter yaw in Unreal turns X toward Y, and in the engine x toward z" {
+  q := ua_yaw(90.0);
+  v := dq_rotate(q, d3(100.0, 0.0, 0.0));
+  #assert ua_near3(v, d3(0.0, 100.0, 0.0), 0.000000001);
+  e := dq_rotate(ua_quat(q), d3(1.0, 0.0, 0.0));
+  #assert ua_near3(e, d3(0.0, 0.0, 1.0), 0.000000001);
+  #assert ua_near3(dq_rotate(ua_yaw(0.0), d3(1.0, 2.0, 3.0)), d3(1.0, 2.0, 3.0), 0.0);
+}
+#test "the source's north is the engine's -z: Unreal's -Y, the game's north" {
+  #assert ua_near3(ua_dir(d3(0.0, -1.0, 0.0)), UA_NORTH, 0.0);
+}
+// Rotations over a grid of axes and angles: rotating in Unreal and converting equals converting and
+// rotating with the converted quaternion. This is the rule's proof, not its derivation.
+#forall "a rotated point converts the same either way round" step: 0..<240 {
+  axis := d3_unit(d3(cast(f64) (step % 5) - 2.0 + 0.3, cast(f64) ((step / 5) % 4) - 1.5, cast(f64) ((step / 20) % 3) - 0.7));
+  angle := cast(f64) (step % 12) * 0.5 - 2.9;
+  half := angle * 0.5; s := sin(half);
+  q := dq(axis.x * s, axis.y * s, axis.z * s, cos(half));
+  p := d3(37.5, -120.25, 9.0);
+  unreal := dq_rotate(q, p);
+  a := ua_pos(unreal.x, unreal.y, unreal.z);
+  b := dq_rotate(ua_quat(q), ua_pos(p.x, p.y, p.z));
+  #assert ua_near3(a, b, 0.000000001);
+}
+// A whole placement, rotated and scaled unevenly, the way a box's corners are checked.
+#forall "a placed, rotated and unevenly scaled corner converts the same either way round" step: 0..<64 {
+  q := dq_unit(dq(cast(f64) (step % 4) - 1.5, cast(f64) ((step / 4) % 4) * 0.5 - 0.7, 0.4, 1.0));
+  t := d3(-92930.0 + cast(f64) step, -18900.0, 68.0);
+  s := d3(21.0, 1.2, 1.36 + cast(f64) step * 0.01);
+  corner := d3(50.0, -50.0, 50.0);
+  w := ua_place(t, q, s, corner);
+  a := ua_pos(w.x, w.y, w.z);
+  tt := ua_pos(t.x, t.y, t.z); local := ua_pos(corner.x, corner.y, corner.z);
+  b := d3_add(tt, dq_rotate(ua_quat(q), d3_mul(ua_scale(s), local)));
+  #assert ua_near3(a, b, 0.0000001);
+}
+// The importer's conversion inverts the exporter's, on positions and on quaternions.
+#forall "the import inverts the exporter's forward mapping" step: 0..<125 {
+  p := d3(cast(f64) (step % 5) * 13.7 - 20.0, cast(f64) ((step / 5) % 5) * -3.1 + 1.0, cast(f64) (step / 25) * 41.0 - 77.0);
+  u := ua_forward_pos(p);
+  #assert ua_near3(ua_pos(u.x, u.y, u.z), p, 0.000000000001);
+  q := dq_unit(dq(p.x, p.y, p.z, 3.0));
+  r := ua_quat(ua_forward_quat(q));
+  #assert r.x == q.x && r.y == q.y && r.z == q.z && r.w == q.w;
+}

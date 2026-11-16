@@ -1,0 +1,265 @@
+// An import's plan: a small JSON file in the profile world.unreal.source.v1 (the importer's spec,
+// section 4.1), admitted whole before any editor runs or any bundle is read, or refused with the first
+// fault. Modelled on the animation importer's anim.unreal.source.v1 (metaverse-engine/anim/unreal-source.coax).
+//
+//   { "schema": "world.unreal.source.v1",
+//     "name": "splice-bots-jam",                  the pack's name: 1 to 58 of a-z, 0-9 and -
+//     "title": "Splice Bots ...",                 what the realm shows, 1 to 80 bytes, no control bytes
+//     "profile": "level" | "round-trip",
+//     "route": "editor" | "cooked" | "data",       which producer writes the bundle (BUNDLE.md, section 5)
+//     "project": "/abs/path",                     the source project (or, for data, the build's Data/)
+//     "revision": "40 hex" | null,                the project's revision, when it has one
+//     "maps": ["/Game/.../L_SolarFarm", ...],     1 to UP_MAPS maps
+//     "take": "map" | {"bounds_cm": [x0, y0, z0, x1, y1, z1]},
+//     "folders": [{"path": "/Game/SpliceBots/", "licence": "project" | "engine" | "refused"}, ...],
+//     "admit_volumes": ["BlockingVolume_3", ...],   invisible blockers admitted by name (spec 5.3)
+//     "output": "private" | "public",
+//     "budget": BYTES,                            the pack's budget, at most UP_BUDGET
+//     "pins": [{"file": "messages.csv", "sha256": "64 hex"}, ...] }   files taken from elsewhere than
+//                                                 the revision (the jam build's six, spec 7.3)
+//
+// Every asset a bundle names must fall in a folder of the plan (the longest prefix wins): a
+// reference outside them is refused, not followed. A folder's licence class says what becomes of its
+// assets: project assets are imported, engine assets are replaced by the engine's own
+// (substitute.coax), refused ones refuse the whole import. MetaHuman content is refused whatever a
+// plan says (the owner's MetaHuman rule; spec, section 9.2).
+//   coax/bin/coax test metaverse-engine/import/unreal/plan.coax
+#authority;
+#load "../../anim/json.coax";
+
+UP_MAPS :: 16; UP_FOLDERS :: 32; UP_VOLUMES :: 64; UP_PINS :: 32;
+UP_PATH :: 512;               // an asset path or file name's bytes at most
+UP_BUDGET :: 1073741824;      // a pack's budget at most (1 GiB): VPK's u32 offsets with room
+UP_BYTES :: 65536;            // a plan's bytes at most
+
+// What a refusal names.
+UP_OK :: 0; UP_JSON :: 1; UP_SCHEMA :: 2; UP_KEY :: 3; UP_NAME :: 4; UP_ASSET :: 5; UP_LIMIT :: 6;
+UP_CHOICE :: 7; UP_HASH :: 8; UP_TWICE :: 9; UP_METAHUMAN :: 10; UP_BOUNDS :: 11;
+UP_WHY :: [12] string.["admitted", "not JSON", "not a world.unreal.source.v1 plan", "a field the profile doesn't have, or one missing",
+  "a name, title or project path out of its form", "an asset path out of its form", "over a limit", "a choice the profile doesn't have",
+  "a revision or hash out of its form", "a path named twice", "MetaHuman content, which is never imported", "bounds inside out"];
+
+UP_LEVEL :: 0; UP_ROUND_TRIP :: 1;
+UP_EDITOR :: 0; UP_COOKED :: 1; UP_DATA :: 2;
+UP_PROJECT :: 0; UP_ENGINE :: 1; UP_REFUSED :: 2;
+
+UpText :: struct { b: [UP_PATH] u8; n: int; }
+UpFolder :: struct { path: [1] UpText; licence: int; }
+UpPin :: struct { file: [1] UpText; sha256: [1] UpText; }
+UpPlan :: struct {
+  name: [1] UpText; title: [1] UpText; project: [1] UpText; revision: [1] UpText;   // revision n 0: none
+  profile: int; route: int; open: bool; budget: int;   // open: the output is public
+  maps: int; map: [UP_MAPS] UpText;
+  bounded: bool; bounds: [6] f64;
+  folders: int; folder: [UP_FOLDERS] UpFolder;
+  volumes: int; volume: [UP_VOLUMES] UpText;
+  pins: int; pin: [UP_PINS] UpPin;
+}
+
+up_text :: (t: [] UpText) -> string #effects(all) { return cast(string) t[0].b[0..<t[0].n]; }
+up_string :: (d: Jv, node: int, max: int) -> UpText #effects(all) {
+  t: UpText; if jv_kind(d, node) != JV_STRING { t.n = -1; return t; }
+  n := jv_str(d, node, t.b[0..<up_hi(max, 0)]);
+  t.n = ifx n < 0 then -1 else n;
+  return t;
+}
+up_hi :: (a: int, b: int) -> int #effects(all) { return ifx a > b then a else b; }
+up_hex :: (s: string, n: int) -> bool #effects(all) {
+  if s.count != n { return false; }
+  for c: s { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; } }
+  return true;
+}
+up_name_ok :: (s: string) -> bool #effects(all) {
+  if s.count < 1 || s.count > 58 || s[0] == '-' || s[s.count - 1] == '-' { return false; }
+  for c: s { if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') { return false; } }
+  return true;
+}
+up_title_ok :: (s: string) -> bool #effects(all) {
+  if s.count < 1 || s.count > 80 { return false; }
+  for c: s { if c < 32 || c == 127 { return false; } }
+  return true;
+}
+// An asset path or folder: /Game/, /Engine/ or, for a build's loose data, /Data/; then letters,
+// digits, _ - . / and spaces, no "..", no "//", no trailing space.
+up_asset_ok :: (s: string) -> bool #effects(all) {
+  if s.count < 6 || s.count > UP_PATH { return false; }
+  root := s[0..<6] == "/Game/" || s[0..<6] == "/Data/" || (s.count >= 8 && s[0..<8] == "/Engine/");
+  if !root || s[s.count - 1] == ' ' { return false; }
+  for c, k: s {
+    plain := (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '-' || c == '.' || c == '/' || c == ' ';
+    if !plain { return false; }
+    if k > 0 && ((c == '.' && s[k - 1] == '.') || (c == '/' && s[k - 1] == '/')) { return false; }
+  }
+  return true;
+}
+// MetaHuman content in any folder, by the paths Epic's tools write.
+up_metahuman :: (s: string) -> bool #effects(all) {
+  for k: 0..<s.count {
+    if k + 10 <= s.count && s[k..<k + 10] == "MetaHumans" { return true; }
+    if k + 9 <= s.count && s[k..<k + 9] == "MetaHuman" && (k + 9 == s.count || s[k + 9] == '/' || s[k + 9] == '_') { return true; }
+  }
+  return false;
+}
+up_file_ok :: (s: string) -> bool #effects(all) {
+  if s.count < 1 || s.count > 200 || s[0] == '/' { return false; }
+  for c, k: s {
+    plain := (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '-' || c == '.' || c == '/';
+    if !plain || (k > 0 && c == '.' && s[k - 1] == '.') { return false; }
+  }
+  return true;
+}
+
+UP_KEYS :: "schema|name|title|profile|route|project|revision|maps|take|folders|admit_volumes|output|budget|pins";
+UP_REQUIRED :: [12] string.["schema", "name", "title", "profile", "route", "project", "revision", "maps", "take", "folders", "output", "budget"];
+
+// book:begin plan
+up_admit :: (text: string, out: [] UpPlan) -> int #effects(all) {
+  if text.count > UP_BYTES { return UP_LIMIT; }
+  nodes: [8192] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], text, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { return UP_JSON; }
+  if !anim_schema(d[0], "world.unreal.source.v1") { return UP_SCHEMA; }
+  if !anim_keys(d[0], 0, UP_KEYS) { return UP_KEY; }
+  for k: UP_REQUIRED { if jv_get(d[0], 0, k) == -1 { return UP_KEY; } }
+  p: [1] UpPlan;
+  profiles := [2] string.["level", "round-trip"]; routes := [3] string.["editor", "cooked", "data"];
+  outputs := [2] string.["private", "public"]; takes := [1] string.["map"]; licences := [3] string.["project", "engine", "refused"];
+  p[0].name[0] = up_string(d[0], jv_get(d[0], 0, "name"), 64); if p[0].name[0].n < 0 || !up_name_ok(up_text(p[0].name[..])) { return UP_NAME; }
+  p[0].title[0] = up_string(d[0], jv_get(d[0], 0, "title"), 160); if p[0].title[0].n < 0 || !up_title_ok(up_text(p[0].title[..])) { return UP_NAME; }
+  p[0].project[0] = up_string(d[0], jv_get(d[0], 0, "project"), UP_PATH); if p[0].project[0].n < 2 || p[0].project[0].b[0] != '/' { return UP_NAME; }
+  p[0].profile = anim_choice(d[0], jv_get(d[0], 0, "profile"), profiles[..]); if p[0].profile < 0 { return UP_CHOICE; }
+  p[0].route = anim_choice(d[0], jv_get(d[0], 0, "route"), routes[..]); if p[0].route < 0 { return UP_CHOICE; }
+  output := anim_choice(d[0], jv_get(d[0], 0, "output"), outputs[..]); if output < 0 { return UP_CHOICE; }
+  p[0].open = output == 1;
+  rev := jv_get(d[0], 0, "revision");
+  if jv_kind(d[0], rev) != JV_NULL {
+    p[0].revision[0] = up_string(d[0], rev, 64); if p[0].revision[0].n < 0 || !up_hex(up_text(p[0].revision[..]), 40) { return UP_HASH; }
+  }
+  p[0].budget = anim_integer(d[0], jv_get(d[0], 0, "budget"), 1, UP_BUDGET); if p[0].budget < 1 { return UP_LIMIT; }
+  maps := jv_get(d[0], 0, "maps"); p[0].maps = jv_len(d[0], maps);
+  if jv_kind(d[0], maps) != JV_ARRAY || p[0].maps < 1 || p[0].maps > UP_MAPS { return UP_LIMIT; }
+  for k: 0..<p[0].maps {
+    p[0].map[k] = up_string(d[0], jv_at(d[0], maps, k), UP_PATH);
+    if p[0].map[k].n < 0 || !up_asset_ok(up_text(p[0].map[k..<k+1])) || p[0].map[k].b[p[0].map[k].n - 1] == '/' { return UP_ASSET; }
+    if up_metahuman(up_text(p[0].map[k..<k+1])) { return UP_METAHUMAN; }
+    for j: 0..<k { if up_text(p[0].map[j..<j+1]) == up_text(p[0].map[k..<k+1]) { return UP_TWICE; } }
+  }
+  take := jv_get(d[0], 0, "take");
+  if jv_kind(d[0], take) == JV_OBJECT {
+    if !anim_keys(d[0], take, "bounds_cm") { return UP_KEY; }
+    b := jv_get(d[0], take, "bounds_cm");
+    if !anim_vector(d[0], b, 6, 100000000.0) { return UP_BOUNDS; }
+    for k: 0..<6 { p[0].bounds[k] = anim_number(d[0], jv_at(d[0], b, k), -100000000.0, 100000000.0).value; }
+    if p[0].bounds[0] > p[0].bounds[3] || p[0].bounds[1] > p[0].bounds[4] || p[0].bounds[2] > p[0].bounds[5] { return UP_BOUNDS; }
+    p[0].bounded = true;
+  } else if anim_choice(d[0], take, takes[..]) != 0 { return UP_CHOICE; }
+  folders := jv_get(d[0], 0, "folders"); p[0].folders = jv_len(d[0], folders);
+  if jv_kind(d[0], folders) != JV_ARRAY || p[0].folders < 1 || p[0].folders > UP_FOLDERS { return UP_LIMIT; }
+  for k: 0..<p[0].folders {
+    f := jv_at(d[0], folders, k);
+    if !anim_keys(d[0], f, "path|licence") || jv_get(d[0], f, "path") == -1 || jv_get(d[0], f, "licence") == -1 { return UP_KEY; }
+    p[0].folder[k].path[0] = up_string(d[0], jv_get(d[0], f, "path"), UP_PATH);
+    path := up_text(p[0].folder[k].path[..]);
+    if p[0].folder[k].path[0].n < 0 || !up_asset_ok(path) || path[path.count - 1] != '/' { return UP_ASSET; }
+    p[0].folder[k].licence = anim_choice(d[0], jv_get(d[0], f, "licence"), licences[..]);
+    if p[0].folder[k].licence < 0 { return UP_CHOICE; }
+    if p[0].folder[k].licence != UP_REFUSED && up_metahuman(path) { return UP_METAHUMAN; }
+    for j: 0..<k { if up_text(p[0].folder[j].path[..]) == path { return UP_TWICE; } }
+  }
+  vols := jv_get(d[0], 0, "admit_volumes");
+  if vols != -1 {
+    p[0].volumes = jv_len(d[0], vols);
+    if jv_kind(d[0], vols) != JV_ARRAY || p[0].volumes > UP_VOLUMES { return UP_LIMIT; }
+    for k: 0..<p[0].volumes {
+      p[0].volume[k] = up_string(d[0], jv_at(d[0], vols, k), 128);
+      if p[0].volume[k].n < 1 || !up_title_ok(up_text(p[0].volume[k..<k+1])) { return UP_NAME; }
+      for j: 0..<k { if up_text(p[0].volume[j..<j+1]) == up_text(p[0].volume[k..<k+1]) { return UP_TWICE; } }
+    }
+  }
+  pins := jv_get(d[0], 0, "pins");
+  if pins != -1 {
+    p[0].pins = jv_len(d[0], pins);
+    if jv_kind(d[0], pins) != JV_ARRAY || p[0].pins > UP_PINS { return UP_LIMIT; }
+    for k: 0..<p[0].pins {
+      e := jv_at(d[0], pins, k);
+      if !anim_keys(d[0], e, "file|sha256") || jv_get(d[0], e, "file") == -1 || jv_get(d[0], e, "sha256") == -1 { return UP_KEY; }
+      p[0].pin[k].file[0] = up_string(d[0], jv_get(d[0], e, "file"), 256); if p[0].pin[k].file[0].n < 0 || !up_file_ok(up_text(p[0].pin[k].file[..])) { return UP_NAME; }
+      p[0].pin[k].sha256[0] = up_string(d[0], jv_get(d[0], e, "sha256"), 64); if p[0].pin[k].sha256[0].n < 0 || !up_hex(up_text(p[0].pin[k].sha256[..]), 64) { return UP_HASH; }
+      for j: 0..<k { if up_text(p[0].pin[j].file[..]) == up_text(p[0].pin[k].file[..]) { return UP_TWICE; } }
+    }
+  }
+  out[0] = p[0];
+  return UP_OK;
+}
+// book:end plan
+
+// The folder an asset falls in, the longest prefix, or -1: a reference outside the plan.
+up_folder :: (p: [] UpPlan, asset: string) -> int #effects(all) {
+  best := -1; best_n := 0;
+  for k: 0..<p[0].folders {
+    f := up_text(p[0].folder[k].path[..]);
+    if f.count <= asset.count && asset[0..<f.count] == f && f.count > best_n { best = k; best_n = f.count; }
+  }
+  return best;
+}
+// An asset's licence class: UP_PROJECT, UP_ENGINE or UP_REFUSED (outside every folder, a refused
+// folder, or MetaHuman content anywhere).
+up_licence :: (p: [] UpPlan, asset: string) -> int #effects(all) {
+  if up_metahuman(asset) { return UP_REFUSED; }
+  k := up_folder(p, asset);
+  return ifx k < 0 then UP_REFUSED else p[0].folder[k].licence;
+}
+up_volume_admitted :: (p: [] UpPlan, name: string) -> bool #effects(all) {
+  for k: 0..<p[0].volumes { if up_text(p[0].volume[k..<k+1]) == name { return true; } }
+  return false;
+}
+
+// ---- Checks: the jam's plan, then one refusal for each rule.
+// The fixture is written with ' for " (up_test_plan turns them back).
+UP_TEST_PLAN :: "{'schema': 'world.unreal.source.v1', 'name': 'splice-bots-jam', 'title': 'Splice Bots — Unreal jam build',  'profile': 'level', 'route': 'data', 'project': '/Users/x/.openagents/unreal/splice-bots-jam/build/SPLICEBOTS/Data',  'revision': '70c5badcd169ed2c2eb18774dc91da78e4e7129f',  'maps': ['/Data/level_layout/farm', '/Data/level_layout/lab'], 'take': 'map',  'folders': [{'path': '/Data/', 'licence': 'project'}, {'path': '/Engine/', 'licence': 'engine'}, {'path': '/Game/MetaHumans/', 'licence': 'refused'}],  'admit_volumes': ['BlockingVolume_3'], 'output': 'private', 'budget': 67108864,  'pins': [{'file': 'messages.csv', 'sha256': '0000000000000000000000000000000000000000000000000000000000000001'}]}";
+up_test_swap :: (from: string, to: string, out: [] u8) -> string #effects(all) {
+  plain: [4096] u8; for c, j: UP_TEST_PLAN { plain[j] = ifx c == '\'' then '"' else c; }
+  t := cast(string) plain[0..<UP_TEST_PLAN.count]; n := 0; k := 0; done := false;
+  while k < t.count {
+    if !done && k + from.count <= t.count && t[k..<k + from.count] == from { for c: to { out[n] = c; n += 1; } k += from.count; done = true; continue; }
+    out[n] = t[k]; n += 1; k += 1;
+  }
+  return cast(string) out[0..<n];
+}
+up_test :: (from: string, to: string) -> int #effects(all) { b: [4096] u8; p: [1] UpPlan; return up_admit(up_test_swap(from, to, b[..]), p[..]); }
+
+#test "the jam's plan is admitted whole, and its folders say what becomes of each asset" {
+  p: [1] UpPlan;
+  b: [4096] u8;
+  #assert up_admit(up_test_swap("", "", b[..]), p[..]) == UP_OK;
+  #assert up_text(p[0].name[..]) == "splice-bots-jam" && p[0].route == UP_DATA && p[0].profile == UP_LEVEL && !p[0].open;
+  #assert p[0].maps == 2 && up_text(p[0].map[1..<2]) == "/Data/level_layout/lab" && p[0].budget == 67108864 && p[0].pins == 1;
+  #assert up_text(p[0].revision[..]) == "70c5badcd169ed2c2eb18774dc91da78e4e7129f" && !p[0].bounded;
+  #assert up_licence(p[..], "/Data/graybox/wall") == UP_PROJECT && up_licence(p[..], "/Engine/BasicShapes/Cube.Cube") == UP_ENGINE;
+  #assert up_licence(p[..], "/Game/Other/SM_X.SM_X") == UP_REFUSED && up_licence(p[..], "/Data/MetaHumans/Ada/x") == UP_REFUSED;
+  #assert up_licence(p[..], "/Game/MetaHumans/Ada/SK_Ada.SK_Ada") == UP_REFUSED && up_folder(p[..], "/Game/Other") == -1;
+  #assert up_volume_admitted(p[..], "BlockingVolume_3") && !up_volume_admitted(p[..], "BlockingVolume_4");
+}
+#test "each rule of the profile refuses the whole plan and names its fault" {
+  #assert up_test("world.unreal.source.v1", "world.unreal.source.v2") == UP_SCHEMA;
+  #assert up_test("\"take\": \"map\",", "\"take\": \"map\", \"extra\": 1,") == UP_KEY;
+  #assert up_test("\"output\": \"private\",", "") == UP_KEY;
+  #assert up_test("splice-bots-jam", "Splice_Bots") == UP_NAME;
+  #assert up_test("\"level\"", "\"levels\"") == UP_CHOICE;
+  #assert up_test("\"data\"", "\"zip\"") == UP_CHOICE;
+  #assert up_test("70c5badcd169ed2c2eb18774dc91da78e4e7129f", "70c5bad") == UP_HASH;
+  #assert up_test("\"70c5badcd169ed2c2eb18774dc91da78e4e7129f\"", "null") == UP_OK;
+  #assert up_test("/Data/level_layout/lab", "/Data/level_layout/farm") == UP_TWICE;
+  #assert up_test("/Data/level_layout/lab", "/Data/level_layout/../lab") == UP_ASSET;
+  #assert up_test("/Data/level_layout/lab", "C:/lab") == UP_ASSET;
+  #assert up_test("/Game/MetaHumans/\", \"licence\": \"refused\"", "/Game/MetaHumans/\", \"licence\": \"project\"") == UP_METAHUMAN;
+  #assert up_test("/Data/level_layout/lab", "/Game/MetaHumans/L_Ada") == UP_METAHUMAN;
+  #assert up_test("67108864", "1073741825") == UP_LIMIT;
+  #assert up_test("\"map\"", "{\"bounds_cm\": [0, 0, 0, 10, 10, 10]}") == UP_OK;
+  #assert up_test("\"map\"", "{\"bounds_cm\": [0, 0, 0, -10, 10, 10]}") == UP_BOUNDS;
+  #assert up_test("\"map\"", "\"cells\"") == UP_CHOICE;
+  #assert up_test("0000000000000000000000000000000000000000000000000000000000000001", "xyz") == UP_HASH;
+  #assert up_test("{", "[") == UP_JSON;
+  #assert up_test("\"path\": \"/Data/\"", "\"path\": \"/Data\"") == UP_ASSET;
+  #assert up_test("/Users/x", "Users/x") == UP_NAME;
+  #assert UP_WHY.count == UP_BOUNDS + 1;
+}

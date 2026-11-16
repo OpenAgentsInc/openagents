@@ -1,0 +1,82 @@
+// bundle.coax's checks: a small bundle admitted whole, then one refusal for each rule.
+// The fixture is written with ' for " (abt_text turns them back).
+ABT :: "{'aimport': 1, 'source': {'route': 'data', 'project': 'SPLICEBOTS', 'revision': null, 'engine': '5.9.0', 'maps': ['/Data/level_layout/farm'], 'plan_sha256': '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'}, 'files': [{'path': 'meshes/0001.glb', 'sha256': '1111111111111111111111111111111111111111111111111111111111111111', 'bytes': 1200}, {'path': 'sounds/0001.wav', 'sha256': '2222222222222222222222222222222222222222222222222222222222222222', 'bytes': 44}, {'path': 'textures/0001.png', 'sha256': '3333333333333333333333333333333333333333333333333333333333333333', 'bytes': 70}], 'meshes': [{'id': '/Engine/BasicShapes/Cube.Cube', 'file': 'meshes/0001.glb', 'triangles': 12, 'vertices': 24, 'bounds_cm': [-50, -50, -50, 50, 50, 50], 'nanite': false, 'materials': ['/Data/graybox/M_platform'], 'collision': {'complex_as_simple': false, 'boxes': [{'center_cm': [0, 0, 0], 'rotation': [0, 0, 0, 1], 'extent_cm': [50, 50, 50]}], 'spheres': [], 'capsules': [], 'convex': []}, 'origin': 'engine'}], 'skeletal_meshes': [], 'skeletons': [], 'animations': [], 'materials': [{'id': '/Data/graybox/M_platform', 'parent': '/Engine/BasicShapes/BasicShapeMaterial', 'root': '/Engine/BasicShapes/BasicShapeMaterial', 'blend': 'opaque', 'two_sided': false, 'shading': 'default_lit', 'textures': [{'name': 'BaseColor', 'texture': '/Data/icons/UI_HEAT'}], 'scalars': [{'name': 'Roughness', 'value': 0.7}], 'vectors': [{'name': 'BaseColor', 'value': [0.5, 0.5, 0.5, 1]}], 'baked': {}, 'origin': 'project'}], 'textures': [{'id': '/Data/icons/UI_HEAT', 'file': 'textures/0001.png', 'width': 64, 'height': 64, 'srgb': true, 'compression': 'ui', 'origin': 'project'}], 'sounds': [{'id': '/Data/audio/wav/ui-move', 'file': 'sounds/0001.wav', 'seconds': 0.04, 'channels': 1, 'rate': 44100, 'origin': 'project'}], 'maps': [{'id': '/Data/level_layout/farm', 'placements': [{'name': 'bank_L01_B1', 'actor': 'bank_L01_B1', 'actor_class': '/Script/Engine.StaticMeshActor', 'component': 'StaticMeshComponent0', 'instance': -1, 'kind': 'static', 'asset': '/Engine/BasicShapes/Cube.Cube', 'translation_cm': [-92930, -18900, 68], 'rotation': [0, 0, 0, 1], 'scale': [21, 1.2, 1.36], 'materials': ['/Data/graybox/M_platform'], 'collision': 'block', 'visible': true, 'cast_shadow': true, 'tags': []}, {'name': 'bank_L01_B2', 'actor': 'bank_L01_B2', 'actor_class': '/Script/Engine.StaticMeshActor', 'component': 'StaticMeshComponent0', 'instance': -1, 'kind': 'static', 'asset': '/Engine/BasicShapes/Cube.Cube', 'translation_cm': [-90790, -18900, 68], 'rotation': [0, 0, 0.7071068, 0.7071068], 'scale': [21, 1.2, 1.36], 'materials': ['/Data/graybox/M_platform'], 'collision': 'block', 'visible': true, 'cast_shadow': true, 'tags': []}], 'lights': [{'name': 'Sun', 'kind': 'directional', 'translation_cm': [0, 0, 0], 'rotation': [0, 0, 0, 1], 'color': [1, 0.95, 0.9], 'intensity': 10, 'units': 'lux', 'radius_cm': 0, 'inner_deg': 0, 'outer_deg': 0, 'cast_shadows': true, 'movable': 'stationary'}], 'spots': [{'name': 'Arrive_01_start', 'kind': 'player_start', 'translation_cm': [0, 0, 92], 'rotation': [0, 0, 0, 1], 'tags': []}], 'volumes': [{'name': 'BlockingVolume_1', 'class': '/Script/Engine.BlockingVolume', 'translation_cm': [0, 0, 0], 'rotation': [0, 0, 0, 1], 'scale': [1, 1, 1], 'boxes': [{'center_cm': [0, 0, 0], 'rotation': [0, 0, 0, 1], 'extent_cm': [100, 100, 100]}]}], 'landscapes': [], 'atmosphere': {'fog': {}, 'sky': {}, 'post': {}}, 'streamed': []}]}";
+
+abt_q :: (s: string, out: [] u8) -> string #effects(all) { for c, j: s { out[j] = ifx c == '\'' then '"' else c; } return cast(string) out[0..<s.count]; }
+// The fixture with its first `from` replaced by `to`, all three written with ' for ".
+abt_text :: (from_q: string, to_q: string, out: [] u8) -> string #effects(all) {
+  fb: [512] u8; tb: [512] u8; from := abt_q(from_q, fb[..]); to := abt_q(to_q, tb[..]);
+  plain: [8192] u8; _ = abt_q(ABT, plain[..]);
+  t := cast(string) plain[0..<ABT.count]; n := 0; k := 0; done := from.count == 0;
+  while k < t.count {
+    if !done && k + from.count <= t.count && t[k..<k + from.count] == from { for c: to { out[n] = c; n += 1; } k += from.count; done = true; continue; }
+    out[n] = t[k]; n += 1; k += 1;
+  }
+  return cast(string) out[0..<n];
+}
+abt_run :: (from: string, to: string, f: [] AbFault) -> int #effects(all) {
+  text: [8192] u8; nodes: [2048] JvNode; d: [1] Jv; at: [1024] int; b: [1] AbBundle;
+  return ab_admit(abt_text(from, to, text[..]), d[..], nodes[..], at[..], b[..], f);
+}
+abt :: (from: string, to: string) -> int #effects(all) { f: [1] AbFault; return abt_run(from, to, f[..]); }
+
+#test "a small bundle is admitted whole and its rows are found by id" {
+  text: [8192] u8; nodes: [2048] JvNode; d: [1] Jv; at: [1024] int; b: [1] AbBundle; f: [1] AbFault;
+  #assert ab_admit(abt_text("", "", text[..]), d[..], nodes[..], at[..], b[..], f[..]) == AB_OK;
+  #assert b[0].route == AB_DATA && b[0].files.count == 3 && b[0].meshes.count == 1 && b[0].maps.count == 1 && b[0].placements[0].count == 2;
+  #assert ab_find(b[..], b[0].meshes, "/Engine/BasicShapes/Cube.Cube") == 0 && ab_find(b[..], b[0].meshes, "/Engine/BasicShapes/Cube") == -1;
+  #assert ab_file_row(b[..], "sounds/0001.wav") == 1 && ab_file_row(b[..], "sounds/0002.wav") == -1;
+  #assert ab_find_by(b[..], b[0].placements[0], "name", "bank_L01_B2") == 1;
+  #assert ab_f(b[0].d, jv_get(b[0].d, ab_row(b[..], b[0].placements[0], 0), "translation_cm"), 0) == -92930.0;
+  disk: [3] AbDisk;
+  names := [3] string.["meshes/0001.glb", "sounds/0001.wav", "textures/0001.png"]; sizes := [3] int.[1200, 44, 70]; digits := [3] u8.['1', '2', '3'];
+  for k: 0..<3 { for c, j: names[k] { disk[k].path[j] = c; } disk[k].path_n = names[k].count; disk[k].bytes = sizes[k]; for j: 0..<64 { disk[k].sha[j] = digits[k]; } }
+  #assert ab_disk(b[..], disk[..], f[..]) == AB_OK;
+  disk[1].bytes = 45; #assert ab_disk(b[..], disk[..], f[..]) == AB_SIZE && f[0].row == 1; disk[1].bytes = 44;
+  disk[2].sha[5] = '4'; #assert ab_disk(b[..], disk[..], f[..]) == AB_HASH; disk[2].sha[5] = '3';
+  #assert ab_disk(b[..], disk[0..<2], f[..]) == AB_MISSING;
+  disk[1].path[0] = 'a'; #assert ab_disk(b[..], disk[..], f[..]) == AB_UNLISTED;
+  why: [256] u8; f[0] = AbFault.{}; _ = ab_fail(f[..], AB_REFERENCE, "meshes", 3, "/Game/X");
+  #assert ab_why(f[..], why[..]) == "meshes, row 3 (/Game/X): a reference that names nothing in the bundle";
+}
+#test "each rule refuses the whole bundle and names its first fault" {
+  f: [1] AbFault;
+  #assert abt("'aimport': 1", "'aimport': 2") == AB_VERSION;
+  #assert abt("{'aimport'", "['aimport'") == AB_JSON;
+  #assert abt("'animations': [],", "'animations': [], 'extra': 1,") == AB_KEY;
+  #assert abt("'route': 'data'", "'route': 'zip'") == AB_FORM;
+  #assert abt("'revision': null", "'revision': 'abc'") == AB_FORM;
+  #assert abt("meshes/0001.glb', 'sha256'", "meshes/../0001.glb', 'sha256'") == AB_FILE;
+  #assert abt("'path': 'sounds/0001.wav'", "'path': 'a/0001.wav'") == AB_FILE;
+  #assert abt("'path': 'sounds/0001.wav'", "'path': 'textures/0002.png'") == AB_ORDER;
+  #assert abt("'bytes': 44", "'bytes': -1") == AB_FORM;
+  #assert abt("'file': 'meshes/0001.glb'", "'file': 'meshes/0002.glb'") == AB_REFERENCE;
+  #assert abt("'materials': ['/Data/graybox/M_platform'], 'collision': {", "'materials': ['/Data/graybox/M_other'], 'collision': {") == AB_REFERENCE;
+  #assert abt("'texture': '/Data/icons/UI_HEAT'", "'texture': '/Data/icons/UI_COLD'") == AB_REFERENCE;
+  #assert abt("'extent_cm': [50, 50, 50]", "'extent_cm': [50, -50, 50]") == AB_FORM;
+  #assert abt("'bounds_cm': [-50, -50, -50, 50, 50, 50]", "'bounds_cm': [50, -50, -50, -50, 50, 50]") == AB_FORM;
+  #assert abt("'compression': 'ui'", "'compression': 'TC_Default'") == AB_FORM;
+  #assert abt("'channels': 1", "'channels': 0") == AB_FORM;
+  #assert abt("'origin': 'engine'", "'origin': 'marketplace'") == AB_FORM;
+  #assert abt("'asset': '/Engine/BasicShapes/Cube.Cube'", "'asset': '/Engine/BasicShapes/Sphere.Sphere'") == AB_REFERENCE;
+  #assert abt_run("'name': 'bank_L01_B2'", "'name': 'bank_L01_B1'", f[..]) == AB_ORDER && f[0].row == 1;
+  #assert abt("'rotation': [0, 0, 0.7071068, 0.7071068]", "'rotation': [0, 0, 0.8, 0.8]") == AB_FORM;
+  #assert abt("'collision': 'block', 'visible': true", "'collision': 'blocked', 'visible': true") == AB_FORM;
+  #assert abt("'kind': 'player_start'", "'kind': 'start'") == AB_FORM;
+  #assert abt("'units': 'lux'", "'units': 'nits'") == AB_FORM;
+  #assert abt("'maps': ['/Data/level_layout/farm']", "'maps': ['/Data/level_layout/lab']") == AB_REFERENCE;
+  #assert abt("'extent_cm': [100, 100, 100]", "'extent_cm': [100, 100]") == AB_FORM;
+  #assert abt("'id': '/Data/audio/wav/ui-move'", "'id': 'C:/audio/ui-move'") == AB_FORM;
+  // tables are optional (BUNDLE.md 3.7), and checked like any list when present
+  #assert abt("'animations': [],", "'animations': [], 'tables': [{'id': '/Data/strings', 'file': 'sounds/0001.wav', 'format': 'csv', 'rows': 47, 'origin': 'project'}],") == AB_OK;
+  #assert abt("'animations': [],", "'animations': [], 'tables': [{'id': '/Data/strings', 'file': 'tables/0001.csv', 'format': 'csv', 'rows': 47, 'origin': 'project'}],") == AB_REFERENCE;
+  #assert abt("'animations': [],", "'animations': [], 'tables': [{'id': '/Data/strings', 'file': 'sounds/0001.wav', 'format': 'xml', 'rows': 47, 'origin': 'project'}],") == AB_FORM;
+}
+#test "skipped.json names a reason for every row, and detail for anything unsupported" {
+  nodes: [256] JvNode; d: [1] Jv; f: [1] AbFault;
+  #assert ab_skipped("[{\"map\": \"/Data/level_layout/lab\", \"actor\": \"wall_7\", \"class\": \"\", \"component\": \"\", \"reason\": \"unsupported\", \"detail\": \"size_y_cm not stated\"}]", d[..], nodes[..], f[..]) == 1;
+  #assert ab_skipped("[]", d[..], nodes[..], f[..]) == 0;
+  #assert ab_skipped("[{\"map\": \"\", \"actor\": \"a\", \"class\": \"\", \"component\": \"\", \"reason\": \"unsupported\"}]", d[..], nodes[..], f[..]) == -1;
+  #assert ab_skipped("[{\"map\": \"\", \"actor\": \"a\", \"class\": \"\", \"component\": \"\", \"reason\": \"forgot\"}]", d[..], nodes[..], f[..]) == -1 && f[0].code == AB_SKIPPED;
+  #assert ab_skipped("{}", d[..], nodes[..], f[..]) == -1;
+}

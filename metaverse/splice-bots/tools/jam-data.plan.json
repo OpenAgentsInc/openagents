@@ -1,0 +1,25 @@
+{
+  "schema": "world.unreal.source.v1",
+  "name": "splice-bots-jam",
+  "title": "Splice Bots — Unreal jam build",
+  "profile": "level",
+  "route": "data",
+  "project": "/SPLICEBOTS/Data",
+  "revision": "70c5badcd169ed2c2eb18774dc91da78e4e7129f",
+  "maps": ["/Data/level_layout/farm", "/Data/level_layout/lab", "/Data/level_layout/plain", "/Data/level_layout/ring"],
+  "take": "map",
+  "folders": [
+    {"path": "/Data/", "licence": "project"},
+    {"path": "/Engine/", "licence": "engine"}
+  ],
+  "output": "private",
+  "budget": 67108864,
+  "pins": [
+    {"file": "audio/sfx.csv", "sha256": "61c5baf26fe213bc9d3a5954dfd83645cec824a21eb9e44e25c75d1e88579818"},
+    {"file": "icons/icons.csv", "sha256": "f286b08fe6be8f97d5172e5ff38d252ea4a6d919e391d3ccff0b0393dbeb6ae4"},
+    {"file": "input/Board.json", "sha256": "03ab7124c0d35fac16bf224ce9e953978dfc11d135943d04beeeb710afb6b369"},
+    {"file": "input/Play.json", "sha256": "0fb52b75611a07c14f11ad08b494e89c20b77facf54594da18101f85c5e2d3f7"},
+    {"file": "input_bindings.csv", "sha256": "1faa4bf4a40d1ace007ca35383989d8cf5abc34ac0e4deadc317f975d3e9cd2e"},
+    {"file": "messages.csv", "sha256": "98498e45944fa1954a9c8ea91b5bb99685ca1e6797c488e10d80ca5ac508049d"}
+  ]
+}

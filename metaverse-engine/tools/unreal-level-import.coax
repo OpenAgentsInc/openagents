@@ -1,0 +1,448 @@
+// tool.sh: stack-gib 2
+// The Unreal level importer's command (the importer's spec, section 4.3): an import bundle
+// (metaverse-engine/import/unreal/BUNDLE.md) into one private pack of an imported world.
+//
+//   coax/web/tool.sh metaverse-engine/tools/unreal-level-import.coax BUNDLE.aimport NEW_DIR [--plan PLAN.json]
+//
+// It admits the bundle whole (bundle.coax: the manifest, every file's size and SHA-256 against the disk,
+// skipped.json), converts it (convert.coax), writes NEW_DIR/NAME.pack, reads the pack back with pack_read
+// and checks every count against the bundle's before it reports success. NEW_DIR must not exist. NAME is
+// the plan's name, or the bundle folder's without .aimport. The plan, when given, must be the one the
+// bundle was made from (its SHA-256 is the manifest's source.plan_sha256); it sets the pack's budget,
+// admits invisible blockers by name (spec 5.3) and says whether the output may be public. Without one
+// the budget is IMPORT_BUDGET and every invisible blocker is refused. The pack is private either way
+// unless the plan says public: it belongs under ~/.openagents, served locally as /private/NAME.pack.
+//
+// Whole or refused: a fault anywhere writes nothing and names it, with a non-zero exit. What a rule
+// leaves out (an invisible blocker, a hidden component, a texture whose use is unknown) is not a fault:
+// it is counted as refused or skipped in the table the tool ends with, and listed by name in
+// NEW_DIR/import-report.txt, as is every substitution, every mesh drawn without collision and every
+// collider that reaches more than CV_SLACK past what you see.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../editor/pack.coax";
+#load "../import/unreal/plan.coax";
+#load "../import/unreal/convert.coax";
+
+IMPORT_BUDGET :: 268435456;          // a pack's budget without a plan (256 MiB)
+IMPORT_MANIFEST :: 33554432;         // a manifest's bytes at most
+IMPORT_NODES :: 600000;              // its JSON values at most
+IMPORT_FILE :: 33554432;             // one bundle file's bytes at most
+IMPORT_VERTICES :: 1500000; IMPORT_INDICES :: 6000000; IMPORT_SECTIONS :: 16384;
+IMPORT_INSTANCES :: 200000; IMPORT_SHAPES :: 100000; IMPORT_BLOB :: 167772160; IMPORT_PACK :: 268435456;
+IMPORT_CATALOG :: 33554432; IMPORT_REPORT :: 4194304;
+
+ImInst :: struct { map: int; section: int; mat: int; cx: int; cz: int; q: DQ; t: D3; s: D3; name: int; }   // name: its placement's node
+ImShape :: struct { shape: CvShape; name: int; }
+Im :: struct {
+  counts: [CV_ROWS] CvCount;
+  insts: [] ImInst; ni: int; shapes: [] ImShape; nsh: int;
+  mats: [] CvMat; nm: int;
+  layer_of: [] int; layers: int; data_layers: int;
+  sound_names: [512] [32] u8; sound_n: [512] int;
+  unmapped: [1] int; outside: int; uncollided: int; worst: f64;
+}
+
+im_fail :: (s: string) -> int #effects(all) { tool_err("unreal-level-import: "); tool_errln(s); return 1; }
+im_fault :: (what: string, id: string, why: string) -> int #effects(all) {
+  tool_err("unreal-level-import: "); tool_err(what); if id.count > 0 { tool_err(" "); tool_err(id); } tool_err(": "); tool_errln(why); return 1;
+}
+im_line :: (r: [] CvText, a: string, b: string, c: string) #effects(all) { cv_put(r, a); cv_put(r, b); cv_put(r, c); cv_put(r, "\n"); }
+
+// Instances in the catalog's order: map, section, material, then name.
+im_before :: (b: [] AbBundle, x: ImInst, y: ImInst) -> bool #effects(all) {
+  if x.map != y.map { return x.map < y.map; }
+  if x.section != y.section { return x.section < y.section; }
+  if x.mat != y.mat { return x.mat < y.mat; }
+  return ab_cmp(ab_field(b[0].d, x.name, "name"), ab_field(b[0].d, y.name, "name")) < 0;
+}
+im_sort :: (b: [] AbBundle, a: [] ImInst, tmp: [] ImInst) #effects(all) {
+  n := a.count; width := 1;
+  while width < n {
+    lo := 0;
+    while lo < n {
+      mid := ifx lo + width < n then lo + width else n; hi := ifx lo + 2 * width < n then lo + 2 * width else n;
+      i := lo; j := mid; k := lo;
+      while k < hi { if j >= hi || (i < mid && !im_before(b, a[j], a[i])) { tmp[k] = a[i]; i += 1; } else { tmp[k] = a[j]; j += 1; } k += 1; }
+      lo = hi;
+    }
+    for k: 0..<n { a[k] = tmp[k]; }
+    width *= 2;
+  }
+}
+im_read :: (path: string, out: [] u8) -> int #effects(all) {
+  n := fs_size(path);
+  if n < 0 || n > out.count { return -1; }
+  return ifx fs_read(path, out[0..<n]) == n then n else -1;
+}
+// A bundle row's world transform in the engine's frame.
+ImPose :: struct { t: D3; q: DQ; s: D3; ut: D3; uq: DQ; us: D3; }
+im_pose :: (d: Jv, row: int) -> ImPose #effects(all) {
+  tn := jv_get(d, row, "translation_cm"); rn := jv_get(d, row, "rotation"); sn := jv_get(d, row, "scale");
+  p: ImPose;
+  p.ut = d3(ab_f(d, tn, 0), ab_f(d, tn, 1), ab_f(d, tn, 2));
+  p.uq = dq_unit(dq(ab_f(d, rn, 0), ab_f(d, rn, 1), ab_f(d, rn, 2), ab_f(d, rn, 3)));
+  p.us = ifx sn == -1 then d3(1.0, 1.0, 1.0) else d3(ab_f(d, sn, 0), ab_f(d, sn, 1), ab_f(d, sn, 2));
+  p.t = ua_pos(p.ut.x, p.ut.y, p.ut.z); p.q = ua_quat(p.uq); p.s = ua_scale(p.us);
+  return p;
+}
+im_first :: (d: Jv, n: int) -> int #effects(all) { return ifx n < 0 || n >= d.count then -1 else d.nodes[n].first; }
+im_words :: (w: [] u32, out: [] u8) -> string #effects(all) { for v, k: w { for i: 0..<4 { out[k * 4 + i] = cast,trunc(u8) (v >> cast(u32) (8 * i)); } } return cast(string) out[0..<w.count * 4]; }
+im_d3 :: (d: Jv, n: int) -> D3 #effects(all) { return d3(ab_f(d, n, 0), ab_f(d, n, 1), ab_f(d, n, 2)); }
+im_q :: (d: Jv, n: int) -> DQ #effects(all) { return dq_unit(dq(ab_f(d, n, 0), ab_f(d, n, 1), ab_f(d, n, 2), ab_f(d, n, 3))); }
+
+// The colliders of a mesh row's simple collision through a placement, into im.shapes. False: a shape the
+// engine can't hold (an unevenly scaled sphere or capsule, a hull over its limits), `why` says which.
+im_collide :: (im: [] Im, d: Jv, mesh_row: int, pose: ImPose, map: int, name: int, why: [] string) -> int #effects(all) {
+  c := jv_get(d, mesh_row, "collision"); added := 0;
+  boxes := jv_get(d, c, "boxes"); k := im_first(d, boxes);
+  while k != -1 {
+    corners: [8] D3;
+    cv_box_corners(im_d3(d, jv_get(d, k, "center_cm")), im_q(d, jv_get(d, k, "rotation")), im_d3(d, jv_get(d, k, "extent_cm")), pose.ut, pose.uq, pose.us, corners[..]);
+    if im[0].nsh >= im[0].shapes.count { why[0] = "more colliders than the import holds"; return -1; }
+    sh: [1] CvShape; if !cv_box_shape(corners[..], map, sh[..]) { why[0] = "a collision box that is neither solid nor a floor"; return -1; }
+    im[0].shapes[im[0].nsh] = ImShape.{shape = sh[0], name = name}; im[0].nsh += 1; added += 1;
+    k = d.nodes[k].next;
+  }
+  spheres := jv_get(d, c, "spheres"); k = im_first(d, spheres);
+  while k != -1 {
+    if !near_d(pose.us.x, pose.us.y, 0.0001) || !near_d(pose.us.y, pose.us.z, 0.0001) { why[0] = "a collision sphere scaled unevenly"; return -1; }
+    sh: [1] CvShape;
+    if !cv_capsule_shape(im_d3(d, jv_get(d, k, "center_cm")), dq(0.0, 0.0, 0.0, 1.0), ab_num(d, jv_get(d, k, "radius_cm")).value, 0.0, pose.ut, pose.uq, pose.us, map, sh[..]) { why[0] = "a collision sphere scaled unevenly"; return -1; }
+    if im[0].nsh >= im[0].shapes.count { why[0] = "more colliders than the import holds"; return -1; }
+    im[0].shapes[im[0].nsh] = ImShape.{shape = sh[0], name = name}; im[0].nsh += 1; added += 1;
+    k = d.nodes[k].next;
+  }
+  caps := jv_get(d, c, "capsules"); k = im_first(d, caps);
+  while k != -1 {
+    sh: [1] CvShape;
+    if !cv_capsule_shape(im_d3(d, jv_get(d, k, "center_cm")), im_q(d, jv_get(d, k, "rotation")), ab_num(d, jv_get(d, k, "radius_cm")).value, ab_num(d, jv_get(d, k, "length_cm")).value, pose.ut, pose.uq, pose.us, map, sh[..]) { why[0] = "a collision capsule scaled unevenly across it"; return -1; }
+    if im[0].nsh >= im[0].shapes.count { why[0] = "more colliders than the import holds"; return -1; }
+    im[0].shapes[im[0].nsh] = ImShape.{shape = sh[0], name = name}; im[0].nsh += 1; added += 1;
+    k = d.nodes[k].next;
+  }
+  hulls := jv_get(d, c, "convex"); k = im_first(d, hulls);
+  while k != -1 {
+    vs := jv_get(d, k, "vertices_cm"); pts: [CV_HULL_POINTS] D3; n := jv_len(d, vs);
+    if n > CV_HULL_POINTS { why[0] = "a convex collider over the points the import takes"; return -1; }
+    v := im_first(d, vs); i := 0;
+    while v != -1 { w := ua_place(pose.ut, pose.uq, pose.us, im_d3(d, v)); pts[i] = ua_pos(w.x, w.y, w.z); i += 1; v = d.nodes[v].next; }
+    sh: [1] CvShape; if !cv_hull_shape(pts[0..<n], map, sh[..]) { why[0] = "a convex collider that isn't a solid of at most CV_HULL_FACES faces"; return -1; }
+    if im[0].nsh >= im[0].shapes.count { why[0] = "more colliders than the import holds"; return -1; }
+    im[0].shapes[im[0].nsh] = ImShape.{shape = sh[0], name = name}; im[0].nsh += 1; added += 1;
+    k = d.nodes[k].next;
+  }
+  return added;
+}
+
+im_count_line :: (t: [] CvText, name: string, c: CvCount) #effects(all) {
+  b: [24] u8; n := 0; for ch: name { b[n] = ch; n += 1; } while n < 20 { b[n] = ' '; n += 1; }
+  cv_put(t, cast(string) b[0..<n]);
+  for v: [5] int.[c.read, c.carried, c.substituted, c.skipped, c.refused] { nb: [24] u8; s := uf_num_text(cast(f64) v, nb[..]); for k: s.count..<12 { cv_put(t, " "); } cv_put(t, s); }
+  cv_put(t, "\n");
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || (args_count(a[..]) != 2 && args_count(a[..]) != 4) || (args_count(a[..]) == 4 && args_at(a[..], 2) != "--plan") {
+    print("usage: unreal-level-import BUNDLE.aimport NEW_DIR [--plan PLAN.json]\n"); return 2;
+  }
+  bundle := args_at(a[..], 0); out_dir := args_at(a[..], 1);
+  if fs_exists(out_dir) { return im_fail("the output folder already exists; name a new one"); }
+  print("unreal-level-import: limits: % triangles a mesh, % px a texture side, % vertices, % indices, % instances, % colliders, % files of % MiB, a manifest of % MiB\n",
+    CV_MESH_TRIANGLES, CV_TEXTURE_SIDE, IMPORT_VERTICES, IMPORT_INDICES, IMPORT_INSTANCES, IMPORT_SHAPES, UF_DISK_MAX, IMPORT_FILE / 1048576, IMPORT_MANIFEST / 1048576);
+  // ---- admit
+  text: [IMPORT_MANIFEST] u8; nodes: [IMPORT_NODES] JvNode; at: [AB_ROWS] int; d: [1] Jv; bb: [1] AbBundle; fault: [1] AbFault; why: [512] u8;
+  mp: [4096] u8; tn := im_read(fs_join(bundle, "manifest.json", mp[..]), text[..]);
+  if tn < 0 { return im_fail("could not read manifest.json (or it is over the manifest limit)"); }
+  if ab_admit(cast(string) text[0..<tn], d[..], nodes[..], at[..], bb[..], fault[..]) != AB_OK { return im_fault("the bundle is refused:", "", ab_why(fault[..], why[..])); }
+  b := bb[..]; dd := b[0].d;
+  disk: [UF_DISK_MAX] AbDisk; scratch: [IMPORT_FILE] u8; badname: [256] u8;
+  nd := uf_disk(bundle, disk[..], scratch[..], badname[..]);
+  if nd < 0 { return im_fault("the bundle's files can't be listed:", cast(string) badname[0..<0], "a folder the format doesn't have, a file over the file limit, or one that can't be read"); }
+  if ab_disk(b, disk[0..<nd], fault[..]) != AB_OK { return im_fault("the bundle is refused:", "", ab_why(fault[..], why[..])); }
+  skip_text: [4194304] u8; sk_nodes: [131072] JvNode; skd: [1] Jv;
+  sn := im_read(fs_join(bundle, "skipped.json", mp[..]), skip_text[..]);
+  skipped := ifx sn < 0 then -1 else ab_skipped(cast(string) skip_text[0..<sn], skd[..], sk_nodes[..], fault[..]);
+  if skipped < 0 { return im_fault("the bundle is refused:", "", "skipped.json is missing or out of its form"); }
+  // ---- the plan
+  plan: [1] UpPlan; have_plan := args_count(a[..]) == 4; budget := IMPORT_BUDGET;
+  name_buf: [64] u8; name := "";
+  if have_plan {
+    pt: [65536] u8; pn := im_read(args_at(a[..], 3), pt[..]);
+    if pn < 0 { return im_fail("could not read the plan"); }
+    code := up_admit(cast(string) pt[0..<pn], plan[..]);
+    if code != UP_OK { return im_fault("the plan is refused:", "", UP_WHY[code]); }
+    h: [64] u8; _ = uf_sha_hex(pt[0..<pn], h[..]);
+    if cast(string) h[..] != ab_field(dd, jv_get(dd, 0, "source"), "plan_sha256") { return im_fail("the plan is not the one this bundle was made from (its SHA-256 differs from source.plan_sha256)"); }
+    budget = plan[0].budget; name = up_text(plan[0].name[..]);
+  } else {
+    base := fs_base(bundle); if base.count > 8 && base[base.count - 8..<base.count] == ".aimport" { base = base[0..<base.count - 8]; }
+    if !up_name_ok(base) { return im_fail("the bundle folder's name is not a pack name (a-z, 0-9, -); give --plan"); }
+    for c, k: base { name_buf[k] = c; } name = cast(string) name_buf[0..<base.count];
+  }
+  // Every id within the plan's folders, of a licence that fits (project, or engine to substitute).
+  if have_plan {
+    lists := [9] AbList.[b[0].meshes, b[0].skeletal, b[0].skeletons, b[0].animations, b[0].materials, b[0].textures, b[0].sounds, b[0].maps, b[0].tables];
+    for l: lists { for k: 0..<l.count {
+      id := ab_id(dd, ab_row(b, l, k)); lic := up_licence(plan[..], id);
+      if lic == UP_REFUSED { return im_fault("refused:", id, "outside the plan's folders, in a refused folder, or MetaHuman content"); }
+      if (lic == UP_ENGINE) != (ab_field(dd, ab_row(b, l, k), "origin") == "engine") && ab_field(dd, ab_row(b, l, k), "origin").count > 0 { return im_fault("refused:", id, "its origin doesn't match its folder's licence in the plan"); }
+    } }
+  }
+  report_b: [IMPORT_REPORT] u8; rep: [1] CvText; rep[0].b = report_b[..];
+  im_line(rep[..], "Import of ", bundle, ""); im_line(rep[..], "Pack ", name, ".pack");
+  // ---- meshes
+  verts: [IMPORT_VERTICES * CV_WORDS] u32; idx: [IMPORT_INDICES] u32; hash: [IMPORT_VERTICES * 2 + 1] int; sections: [IMPORT_SECTIONS] CvSection;
+  nmesh := b[0].meshes.count + b[0].skeletal.count;
+  meshes: [16384] CvMesh; if nmesh > 16384 { return im_fail("more meshes than the import holds"); }
+  for k: 0..<hash.count { hash[k] = -1; }
+  gg: [1] CvGeo; gg[0] = CvGeo.{verts = verts[..], idx = idx[..], hash = hash[..], sections = sections[..], meshes = meshes[0..<nmesh]}; g := gg[..];
+  glb_nodes: [131072] JvNode;
+  im: [1] Im; insts: [IMPORT_INSTANCES] ImInst; shapes: [IMPORT_SHAPES] ImShape; mats: [4097] CvMat; layer_of: [4096] int;
+  im[0].insts = insts[..]; im[0].shapes = shapes[..]; im[0].mats = mats[..]; im[0].layer_of = layer_of[..];
+  c := im[0].counts[..];
+  for k: 0..<nmesh {
+    skel := k >= b[0].meshes.count; l := ifx skel then b[0].skeletal else b[0].meshes; r := ab_row(b, l, ifx skel then k - b[0].meshes.count else k);
+    id := ab_id(dd, r); c[CV_MESHES].read += 1;
+    if ab_field(dd, r, "origin") == "engine" {
+      shape := su_mesh(id);
+      if shape == SU_NONE { return im_fault("refused:", id, "an engine mesh with no substitute in metaverse-engine/import/unreal/substitute.coax"); }
+      if cv_shape(g, shape, k) < 0 { return im_fault("mesh", id, g[0].bad); }
+      c[CV_MESHES].substituted += 1; im_line(rep[..], "substituted ", id, ifx shape == SU_CHARACTER then " by the engine's character stand-in (the rig importer, #13651, retargets it)" else "");
+      continue;
+    }
+    fb: [4096] u8; n := im_read(fs_join(bundle, ab_field(dd, r, "file"), fb[..]), scratch[..]);
+    if n < 0 { return im_fault("mesh", id, "its file can't be read or is over the file limit"); }
+    tris := cv_gltf(g, scratch[0..<n], glb_nodes[..], k);
+    if tris < 0 { return im_fault("mesh", id, g[0].bad); }
+    if tris != anim_integer(dd, jv_get(dd, r, "triangles"), 0, 100000000) { return im_fault("mesh", id, "its glTF holds a different count of triangles than the manifest states (a Nanite fallback?)"); }
+    if tris > CV_MESH_TRIANGLES { return im_fault("mesh", id, "over the triangles a mesh may have (the cluster path is not in this version)"); }
+    c[CV_MESHES].carried += 1;
+  }
+  // ---- textures: how each is used decides its layer
+  base_use: [4096] bool;
+  if b[0].textures.count > 4096 { return im_fail("more textures than the import holds"); }
+  for k: 0..<b[0].materials.count {
+    r := ab_row(b, b[0].materials, k); ts := jv_get(dd, r, "textures");
+    for j: 0..<jv_len(dd, ts) { e := jv_at(dd, ts, j); if anim_in(jv_raw(dd, jv_get(dd, e, "name")), CV_BASE_TEXTURE) { t := ab_find(b, b[0].textures, ab_field(dd, e, "texture")); if t >= 0 { base_use[t] = true; } } }
+    bk := jv_get(dd, jv_get(dd, r, "baked"), "base_color"); if bk != -1 { t := ab_find(b, b[0].textures, ab_s(dd, bk)); if t >= 0 { base_use[t] = true; } }
+  }
+  use: [4096] int;
+  for k: 0..<b[0].textures.count {
+    r := ab_row(b, b[0].textures, k); c[CV_TEXTURES].read += 1; layer_of[k] = -1;
+    if anim_integer(dd, jv_get(dd, r, "width"), 1, 16384) > CV_TEXTURE_SIDE || anim_integer(dd, jv_get(dd, r, "height"), 1, 16384) > CV_TEXTURE_SIDE { return im_fault("texture", ab_id(dd, r), "over the side a texture may have"); }
+    use[k] = cv_texture_use(b, r, base_use[k]);
+    if use[k] == 0 { c[CV_TEXTURES].refused += 1; im_line(rep[..], "refused ", ab_id(dd, r), ": a texture whose use is unknown"); continue; }
+    if use[k] == 1 { layer_of[k] = im[0].layers; im[0].layers += 1; } else { im[0].data_layers += 1; }
+    c[CV_TEXTURES].carried += 1;
+  }
+  // ---- materials (and the engine's default, last)
+  if b[0].materials.count > 4096 { return im_fail("more materials than the import holds"); }
+  for k: 0..<b[0].materials.count {
+    r := ab_row(b, b[0].materials, k); c[CV_MATERIALS].read += 1;
+    mats[k] = cv_material(b, r, layer_of[..], im[0].unmapped[..]);
+    if ab_field(dd, r, "origin") == "engine" { c[CV_MATERIALS].substituted += 1; im_line(rep[..], "substituted ", ab_id(dd, r), " by the engine's default material"); }
+    else { c[CV_MATERIALS].carried += 1; if mats[k].flags & CV_FALLBACK != 0 { im_line(rep[..], "fallback ", ab_id(dd, r), ": no base colour or texture the mapping knows, drawn plain"); } }
+  }
+  default_mat := b[0].materials.count; mats[default_mat] = CvMat.{rgba = CV_DEFAULT, flags = CV_FALLBACK}; im[0].nm = default_mat + 1;
+  // ---- maps
+  if b[0].maps.count > AB_MAPS { return im_fail("more maps than the import holds"); }
+  spawn: [AB_MAPS] int; key: [AB_MAPS] int; fall: [AB_MAPS] f64;
+  for m: 0..<b[0].maps.count {
+    map_id := ab_id(dd, ab_row(b, b[0].maps, m));
+    if b[0].landscapes[m].count > 0 { return im_fault("map", map_id, "has a landscape, which this version doesn't convert yet (spec 5.5)"); }
+    spawn[m] = -1; key[m] = -1; fall[m] = 1e30;
+    for k: 0..<b[0].spots[m].count { r := ab_row(b, b[0].spots[m], k); c[CV_SPOTS].read += 1; c[CV_SPOTS].carried += 1; if spawn[m] < 0 && ab_field(dd, r, "kind") == "player_start" { spawn[m] = r; } }
+    if spawn[m] < 0 { return im_fault("map", map_id, "has no player start (spec 5.6)"); }
+    for k: 0..<b[0].lights[m].count {
+      r := ab_row(b, b[0].lights[m], k); c[CV_LIGHT_ROWS].read += 1;
+      if ab_field(dd, r, "kind") == "directional" && (key[m] < 0 || ab_num(dd, jv_get(dd, r, "intensity")).value > ab_num(dd, jv_get(dd, key[m], "intensity")).value) { key[m] = r; }
+    }
+    for k: 0..<b[0].placements[m].count {
+      r := ab_row(b, b[0].placements[m], k); c[CV_PLACEMENTS].read += 1;
+      pname := ab_field(dd, r, "name");
+      if !jv_bool(dd, jv_get(dd, r, "visible")) { c[CV_PLACEMENTS].skipped += 1; im_line(rep[..], "skipped ", pname, ": hidden in game"); continue; }
+      skel := ab_field(dd, r, "kind") == "skeletal";
+      mi := ifx skel then b[0].meshes.count + ab_find(b, b[0].skeletal, ab_field(dd, r, "asset")) else ab_find(b, b[0].meshes, ab_field(dd, r, "asset"));
+      mesh_row := ifx skel then ab_row(b, b[0].skeletal, mi - b[0].meshes.count) else ab_row(b, b[0].meshes, mi);
+      pose := im_pose(dd, r);
+      pm := jv_get(dd, r, "materials"); mm := jv_get(dd, mesh_row, "materials");
+      for s: meshes[mi].first..<meshes[mi].first + meshes[mi].sections {
+        slot := sections[s].slot; mat := default_mat;
+        mid := ifx slot < jv_len(dd, pm) then ab_s(dd, jv_at(dd, pm, slot)) else ifx slot < jv_len(dd, mm) then ab_s(dd, jv_at(dd, mm, slot)) else "";
+        if mid.count > 0 { f := ab_find(b, b[0].materials, mid); if f >= 0 { mat = f; } }
+        if im[0].ni >= insts.count { return im_fail("more instances than the import holds"); }
+        insts[im[0].ni] = ImInst.{map = m, section = s, mat = mat, cx = cv_cell(pose.t.x), cz = cv_cell(pose.t.z), q = pose.q, t = pose.t, s = pose.s, name = r}; im[0].ni += 1;
+      }
+      c[CV_PLACEMENTS].carried += 1;
+      lo: [3] f64; hi: [3] f64; cv_visible(meshes[mi], pose.t, pose.q, pose.s, lo[..], hi[..]);
+      fall[m] = fmin(fall[m], lo[1]);
+      if ab_field(dd, r, "collision") != "block" { continue; }
+      first := im[0].nsh; whyc: [1] string;
+      added := ifx skel then 0 else im_collide(im[..], dd, mesh_row, pose, m, r, whyc[..]);
+      if added < 0 { return im_fault("placement", pname, whyc[0]); }
+      if added == 0 {
+        im[0].uncollided += 1;
+        im_line(rep[..], "not collided ", pname, ifx jv_bool(dd, jv_get(dd, jv_get(dd, mesh_row, "collision"), "complex_as_simple")) then ": its mesh collides as its triangles, which this version doesn't carry" else ": its mesh has no collision; you can walk through it");
+      }
+      for k2: first..<im[0].nsh {
+        o := cv_outside(shapes[k2].shape, lo, hi);
+        fall[m] = fmin(fall[m], shapes[k2].shape.lo[1]);
+        if o > CV_SLACK { im[0].outside += 1; nb: [48] u8; im_line(rep[..], "collider past what you see ", pname, uf_num_text(o, nb[..])); }
+        im[0].worst = fmax(im[0].worst, o);
+      }
+      c[CV_COLLIDERS].read += added; c[CV_COLLIDERS].carried += added;
+    }
+    for k: 0..<b[0].volumes[m].count {
+      r := ab_row(b, b[0].volumes[m], k); c[CV_VOLUMES].read += 1; vname := ab_field(dd, r, "name");
+      if !have_plan || !up_volume_admitted(plan[..], vname) { c[CV_VOLUMES].refused += 1; im_line(rep[..], "refused ", vname, ": an invisible blocker the plan doesn't admit (spec 5.3)"); continue; }
+      pose := im_pose(dd, r); boxes := jv_get(dd, r, "boxes"); n := im_first(dd, boxes);
+      while n != -1 {
+        corners: [8] D3; sh: [1] CvShape;
+        cv_box_corners(im_d3(dd, jv_get(dd, n, "center_cm")), im_q(dd, jv_get(dd, n, "rotation")), im_d3(dd, jv_get(dd, n, "extent_cm")), pose.ut, pose.uq, pose.us, corners[..]);
+        if !cv_box_shape(corners[..], m, sh[..]) || im[0].nsh >= shapes.count { return im_fault("volume", vname, "a brush box the engine can't hold"); }
+        shapes[im[0].nsh] = ImShape.{shape = sh[0], name = r}; im[0].nsh += 1; c[CV_COLLIDERS].read += 1; c[CV_COLLIDERS].carried += 1;
+        n = dd.nodes[n].next;
+      }
+      c[CV_VOLUMES].carried += 1;
+    }
+    for k: 0..<b[0].landscapes[m].count { c[CV_LANDSCAPES].read += 1; }
+    if fall[m] > 1e29 { fall[m] = 0; }
+    fall[m] -= 20;
+  }
+  tmp: [IMPORT_INSTANCES] ImInst; im_sort(b, insts[0..<im[0].ni], tmp[0..<im[0].ni]);
+  // ---- entries' bytes: layers, data layers, sounds, then the catalog
+  blob: [IMPORT_BLOB] u8; used := 0;
+  src: [PACK_READ_MAX] PackSource; ns := 3;
+  layer_names: [4096] [32] u8; layer_n: [4096] int;
+  for pass: 0..<3 {
+    list := ifx pass < 2 then b[0].textures else b[0].sounds;
+    for k: 0..<list.count {
+      r := ab_row(b, list, k);
+      if pass < 2 && use[k] != pass + 1 { continue; }
+      fb: [4096] u8; n := im_read(fs_join(bundle, ab_field(dd, r, "file"), fb[..]), blob[used..<blob.count]);
+      if n < 0 { return im_fault(ifx pass < 2 then "texture" else "sound", ab_id(dd, r), "its file can't be read, or the pack's entries are over IMPORT_BLOB"); }
+      if ns >= PACK_READ_MAX { return im_fail("more pack entries than a pack holds (128: layers, data layers and sounds)"); }
+      eb: [40] u8; en := cv_entry_name(ab_id(dd, r), k, eb[..]);
+      if pass < 2 { for ch, j: en { layer_names[k][j] = ch; } layer_n[k] = en.count; } else { for ch, j: en { im[0].sound_names[k][j] = ch; } im[0].sound_n[k] = en.count; }
+      nm := ifx pass < 2 then cast(string) layer_names[k][0..<layer_n[k]] else cast(string) im[0].sound_names[k][0..<im[0].sound_n[k]];
+      src[ns] = PackSource.{kind = ifx pass == 0 then PACK_LAYER else ifx pass == 1 then PACK_DATA else PACK_SOUND, licence = 0, name = nm, data = cast(string) blob[used..<used + n]};
+      ns += 1; used = pack_pad(used + n);
+      if pass == 2 { c[CV_SOUNDS].read += 1; c[CV_SOUNDS].carried += 1; }
+    }
+  }
+  for k: 0..<b[0].tables.count { c[CV_TABLES].read += 1; c[CV_TABLES].carried += 1; }
+  c[CV_SKIPPED].read = skipped; c[CV_SKIPPED].carried = skipped;
+  vbytes := g[0].nv * CV_WORDS * 4; ibytes := g[0].ni * 4;
+  if vbytes == 0 || ibytes == 0 { return im_fail("the bundle has no geometry"); }
+  // ---- the catalog, written until its stated size is the pack's
+  wbytes: [(IMPORT_VERTICES * CV_WORDS + IMPORT_INDICES) * 4] u8;
+  cat_b: [IMPORT_CATALOG] u8; cat: [1] CvText; pack_b: [IMPORT_PACK] u8; total := 0;
+  title_b: [160] u8; title := ifx have_plan then up_text(plan[0].title[..]) else name;
+  for round: 0..<4 {
+    cat[0] = CvText.{b = cat_b[..]};
+    cv_put(cat[..], "budget"); cv_int(cat[..], budget); cv_put(cat[..], "\nbytes"); cv_int(cat[..], total); cv_put(cat[..], "\n");
+    cv_put(cat[..], "L 0 "); cv_put(cat[..], name); cv_put(cat[..], ifx have_plan && plan[0].open then "|public|-\n" else "|private|-\n");
+    cv_put(cat[..], "world 1 "); cv_put(cat[..], name); cv_put(cat[..], "\ntitle "); cv_put(cat[..], cv_field(title, title_b[..])); cv_put(cat[..], "\n");
+    cv_put(cat[..], "north"); cv_num(cat[..], UA_NORTH.x); cv_num(cat[..], UA_NORTH.y); cv_num(cat[..], UA_NORTH.z); cv_put(cat[..], "\n");
+    for m: 0..<b[0].maps.count { cv_put(cat[..], "map"); cv_int(cat[..], m); cv_word(cat[..], ab_id(dd, ab_row(b, b[0].maps, m))); cv_put(cat[..], "\n"); }
+    for k: 0..<im[0].nm {
+      mt := mats[k]; cv_put(cat[..], "mat"); cv_int(cat[..], k); for v: 0..<4 { cv_num(cat[..], cast(f64) mt.rgba[v]); } cv_int(cat[..], mt.layer); cv_int(cat[..], mt.flags); cv_put(cat[..], "\n");
+    }
+    for s: 0..<g[0].ns {
+      sc := sections[s]; cv_put(cat[..], "M s"); nb: [24] u8; cv_put(cat[..], uf_num_text(cast(f64) s, nb[..])); cv_int(cat[..], sc.first); cv_int(cat[..], sc.count); cv_put(cat[..], " 0");
+      for v: 0..<3 { cv_num(cat[..], cast(f64) sc.lo[v]); } for v: 0..<3 { cv_num(cat[..], cast(f64) sc.hi[v]); } cv_put(cat[..], "\n");
+    }
+    for k: 0..<b[0].textures.count { if use[k] == 1 { cv_put(cat[..], "T"); cv_int(cat[..], layer_of[k]); cv_word(cat[..], cast(string) layer_names[k][0..<layer_n[k]]); cv_put(cat[..], " 0\n"); } }
+    dl := 0; for k: 0..<b[0].textures.count { if use[k] == 2 { cv_put(cat[..], "D"); cv_int(cat[..], dl); cv_word(cat[..], cast(string) layer_names[k][0..<layer_n[k]]); cv_put(cat[..], " 0\n"); dl += 1; } }
+    for k: 0..<b[0].sounds.count { cv_put(cat[..], "S "); cv_put(cat[..], cast(string) im[0].sound_names[k][0..<im[0].sound_n[k]]); cv_put(cat[..], " 0\n"); }
+    for m: 0..<b[0].maps.count {
+      sp := spawn[m]; p := im_pose(dd, sp);
+      cv_put(cat[..], "spawn"); cv_int(cat[..], m); cv_num(cat[..], p.t.x); cv_num(cat[..], p.t.y); cv_num(cat[..], p.t.z); cv_num(cat[..], cv_yaw(p.q)); cv_put(cat[..], "\n");
+      cv_put(cat[..], "fall"); cv_int(cat[..], m); cv_num(cat[..], fall[m]); cv_put(cat[..], "\n");
+      if key[m] >= 0 {
+        r := key[m]; kp := im_pose(dd, r); toward := d3_neg(dq_rotate(kp.q, ua_dir(d3(1.0, 0.0, 0.0)))); col := jv_get(dd, r, "color");
+        cv_put(cat[..], "key"); cv_int(cat[..], m); cv_num(cat[..], toward.x); cv_num(cat[..], toward.y); cv_num(cat[..], toward.z);
+        for v: 0..<3 { cv_num(cat[..], ab_f(dd, col, v)); } cv_num(cat[..], ab_num(dd, jv_get(dd, r, "intensity")).value); cv_put(cat[..], "\n");
+      }
+      // point and spot lights, brightest first up to CV_LIGHTS; the rest are listed
+      order: [256] int; n := 0;
+      for k: 0..<b[0].lights[m].count { r := ab_row(b, b[0].lights[m], k); kd := ab_field(dd, r, "kind"); if (kd == "point" || kd == "spot") && n < 256 { order[n] = r; n += 1; } }
+      for x: 1..<n { k := x; while k > 0 && ab_num(dd, jv_get(dd, order[k - 1], "intensity")).value < ab_num(dd, jv_get(dd, order[k], "intensity")).value { t := order[k]; order[k] = order[k - 1]; order[k - 1] = t; k -= 1; } }
+      for k: 0..<n {
+        r := order[k];
+        if k >= CV_LIGHTS { if round == 0 { c[CV_LIGHT_ROWS].refused += 1; im_line(rep[..], "refused ", ab_field(dd, r, "name"), ": over the lights a map carries"); } continue; }
+        if round == 0 { c[CV_LIGHT_ROWS].carried += 1; }
+        lp := im_pose(dd, r); col := jv_get(dd, r, "color");
+        cv_put(cat[..], "light"); cv_int(cat[..], m); cv_num(cat[..], lp.t.x); cv_num(cat[..], lp.t.y); cv_num(cat[..], lp.t.z);
+        for v: 0..<3 { cv_num(cat[..], ab_f(dd, col, v)); } cv_num(cat[..], ab_num(dd, jv_get(dd, r, "intensity")).value); cv_num(cat[..], ua_len(ab_num(dd, jv_get(dd, r, "radius_cm")).value)); cv_put(cat[..], "\n");
+      }
+      if key[m] >= 0 && round == 0 { c[CV_LIGHT_ROWS].carried += 1; }
+      for k: 0..<b[0].lights[m].count { r := ab_row(b, b[0].lights[m], k); kd := ab_field(dd, r, "kind"); if round == 0 && kd != "point" && kd != "spot" && r != key[m] { c[CV_LIGHT_ROWS].skipped += 1; im_line(rep[..], "skipped ", ab_field(dd, r, "name"), ": a sky, rect or second directional light (recorded in the manifest, not applied)"); } }
+      for k: 0..<b[0].spots[m].count {
+        r := ab_row(b, b[0].spots[m], k); p2 := im_pose(dd, r); fb: [256] u8;
+        cv_put(cat[..], "spot"); cv_int(cat[..], m); cv_word(cat[..], ab_field(dd, r, "kind")); cv_num(cat[..], p2.t.x); cv_num(cat[..], p2.t.y); cv_num(cat[..], p2.t.z); cv_num(cat[..], cv_yaw(p2.q));
+        cv_word(cat[..], cv_field(ab_field(dd, r, "name"), fb[..])); cv_put(cat[..], "\n");
+      }
+    }
+    for k: 0..<im[0].ni {
+      ins := insts[k]; fb: [256] u8;
+      cv_put(cat[..], "P"); cv_int(cat[..], ins.map); cv_int(cat[..], ins.section); cv_int(cat[..], ins.mat); cv_int(cat[..], ins.cx); cv_int(cat[..], ins.cz);
+      cv_num(cat[..], ins.q.x); cv_num(cat[..], ins.q.y); cv_num(cat[..], ins.q.z); cv_num(cat[..], ins.q.w);
+      cv_num(cat[..], ins.t.x); cv_num(cat[..], ins.t.y); cv_num(cat[..], ins.t.z); cv_num(cat[..], ins.s.x); cv_num(cat[..], ins.s.y); cv_num(cat[..], ins.s.z);
+      cv_word(cat[..], cv_field(ab_field(dd, ins.name, "name"), fb[..])); cv_put(cat[..], "\n");
+    }
+    for k: 0..<im[0].nsh { fb: [256] u8; cv_shape_line(cat[..], shapes[k].shape, cv_field(ab_field(dd, shapes[k].name, "name"), fb[..])); }
+    for k: 0..<b[0].tables.count {
+      r := ab_row(b, b[0].tables, k); fb: [4096] u8;
+      n := im_read(fs_join(bundle, ab_field(dd, r, "file"), fb[..]), scratch[..]);
+      if n < 0 { return im_fault("table", ab_id(dd, r), "its file can't be read"); }
+      t := cast(string) scratch[0..<n]; lines := 0; at2 := 0; while at2 < t.count { l := uf_line(t, at2); at2 = l.next; lines += 1; }
+      cv_put(cat[..], "table"); cv_int(cat[..], k); cv_word(cat[..], ab_id(dd, r)); cv_word(cat[..], ab_field(dd, r, "format")); cv_int(cat[..], anim_integer(dd, jv_get(dd, r, "rows"), 0, 10000000)); cv_int(cat[..], lines); cv_put(cat[..], "\n");
+      at2 = 0;
+      while at2 < t.count {
+        l := uf_line(t, at2); at2 = l.next;
+        for ch: l.text { if ch == '\n' || ch == '\r' { return im_fault("table", ab_id(dd, r), "a line the catalog can't carry"); } }
+        cv_put(cat[..], "X"); cv_int(cat[..], k); cv_put(cat[..], " "); cv_put(cat[..], l.text); cv_put(cat[..], "\n");
+      }
+    }
+    if cat[0].bad { return im_fail("the catalog is over IMPORT_CATALOG"); }
+    src[0] = PackSource.{kind = PACK_CATALOG, licence = PACK_MANY, name = "catalog", data = cv_text(cat[..])};
+    src[1] = PackSource.{kind = PACK_VERTICES, licence = PACK_MANY, name = "vertices", data = im_words(verts[0..<g[0].nv * CV_WORDS], wbytes[0..<vbytes])};
+    src[2] = PackSource.{kind = PACK_INDICES, licence = PACK_MANY, name = "indices", data = im_words(idx[0..<g[0].ni], wbytes[vbytes..<vbytes + ibytes])};
+    size := pack_size(src[0..<ns]);
+    if size == total { break; }
+    total = size;
+  }
+  if total > budget { nb: [48] u8; return im_fault("the pack", name, "is over its budget"); }
+  wide := ns > PACK_MAX;
+  pn := ifx wide then pack_write_v2(src[0..<ns], budget, pack_b[..]) else pack_write(src[0..<ns], budget, pack_b[..]);
+  if pn < 0 || pn != total { return im_fail("the pack could not be written (over IMPORT_PACK, or a name out of its form)"); }
+  // ---- read it back, and every count against the bundle's
+  rd: [1] PackRead; pack := cast(string) pack_b[0..<pn];
+  if !pack_read(pack, rd[..]) { return im_fault("the pack it wrote is refused by pack_read:", "", rd[0].why); }
+  back := pack_bytes(pack, rd[..], 0); pl := 0; cl := 0; ml := 0; xl := 0;
+  at3 := 0; while at3 < back.count { l := uf_line(back, at3); at3 = l.next; w := pack_field(l.text, 0); if w == "P" { pl += 1; } if w == "col" { cl += 1; } if w == "M" { ml += 1; } if w == "X" { xl += 1; } }
+  layers_back := 0; sounds_back := 0; for e: 0..<rd[0].count { if rd[0].entries[e].kind == PACK_LAYER || rd[0].entries[e].kind == PACK_DATA { layers_back += 1; } if rd[0].entries[e].kind == PACK_SOUND { sounds_back += 1; } }
+  ok := pl == im[0].ni && cl == im[0].nsh && ml == g[0].ns && layers_back == c[CV_TEXTURES].carried && sounds_back == c[CV_SOUNDS].carried
+    && pack_bytes(pack, rd[..], 1).count == vbytes && pack_bytes(pack, rd[..], 2).count == ibytes;
+  for row: 0..<CV_ROWS { cc := c[row]; if row != CV_SKIPPED && cc.read != cc.carried + cc.substituted + cc.skipped + cc.refused { ok = false; } }
+  // every placement read is accounted for
+  // ---- the table
+  tab_b: [8192] u8; tab: [1] CvText; tab[0].b = tab_b[..];
+  cv_put(tab[..], "                            read     carried substituted     skipped     refused\n");
+  for row: 0..<CV_ROWS { im_count_line(tab[..], CV_ROW_NAMES[row], c[row]); }
+  print("%", cv_text(tab[..]));
+  print("unreal-level-import: % maps, % sections, % vertices, % triangles, % instance rows, % colliders (% past what you see by more than % m, the worst % m), % placements not collided, % material parameters not mapped\n",
+    b[0].maps.count, g[0].ns, g[0].nv, g[0].ni / 3, im[0].ni, im[0].nsh, im[0].outside, CV_SLACK, im[0].worst, im[0].uncollided, im[0].unmapped[0]);
+  if !ok { return im_fail("a count read back from the pack does not match the bundle's: nothing is written"); }
+  if !fs_mkdir_private(out_dir) { return im_fail("could not make the output folder"); }
+  pb: [4096] u8; fname: [128] u8; fnn := 0; for ch: name { fname[fnn] = ch; fnn += 1; } for ch: ".pack" { fname[fnn] = ch; fnn += 1; }
+  if !fs_write(fs_join(out_dir, cast(string) fname[0..<fnn], pb[..]), pack) { return im_fail("could not write the pack"); }
+  cv_put(rep[..], "\n"); cv_put(rep[..], cv_text(tab[..]));
+  if !fs_write(fs_join(out_dir, "import-report.txt", pb[..]), cv_text(rep[..])) { return im_fail("could not write the report"); }
+  digest: [64] u8; _ = uf_sha_hex(pack_b[0..<pn], digest[..]);
+  print("unreal-level-import: wrote %/% (% bytes, VPK%, %), read back whole\n", out_dir, cast(string) fname[0..<fnn], pn, ifx wide then 2 else 1, cast(string) digest[..]);
+  return 0;
+}

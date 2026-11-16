@@ -1,0 +1,520 @@
+// tool.sh: stack-gib 2
+// Splice Bots' data-only import bundle (the importer's spec, section 7, step 1): the shipped jam build's
+// loose data (SPLICEBOTS/Data/ beside its packages) as an import bundle of route "data"
+// (metaverse-engine/import/unreal/BUNDLE.md), so the importer runs end to end before an editor
+// bundle exists. It reads no Unreal package; what it writes is what the data states, and nothing more.
+//
+//   coax/web/tool.sh metaverse/splice-bots/tools/jam-data-bundle.coax DATA_DIR PLAN.json NEW.aimport
+//
+// DATA_DIR is the build's Data folder (~/.openagents/unreal/splice-bots-jam/build/SPLICEBOTS/Data);
+// PLAN is metaverse/splice-bots/tools/jam-data.plan.json, admitted whole first (plan.coax). The plan pins
+// the six files where the build's copy differs from the revision (messages, input bindings, two input
+// contexts, the sound table, the icon table): the build's copy wins, and a pin that doesn't match
+// stops the tool. NEW.aimport must not exist; the bundle is written beside it and renamed into place.
+//
+// What becomes of the data:
+//   level_layout.csv   each level a map, /Data/level_layout/NAME. A box row is a placement of the engine's
+//                      cube (/Engine/BasicShapes/Cube.Cube, scale = size / 100, the yaw about Z) or, for
+//                      a floor (no height), its plane; a light row a point light (range = half its size,
+//                      strength 1.1, white: WORLD-LAB-05); a marker a spot (Arrive_* and drive_s00, where a
+//                      level starts you, player starts; the rest target points). A row with a field no
+//                      source states ("null_means: do not guess") is not guessed: it goes to skipped.json.
+//   blockouts/*.obj    meshes, /Data/blockouts/NAME, as glTF (metres, y up); not placed by any level
+//   icons/*.png        textures, /Data/icons/NAME, user-interface 8-bit colour
+//   audio/wav/*.wav    sounds, /Data/audio/wav/NAME
+//   the other tables   tables, /Data/PATH (every .csv and .json: strings, key bindings, messages...)
+//   everything else    one skipped.json row each (fonts, a settings snippet, the graybox JSON that repeats
+//                      level_layout.csv, the asset plan with its machine paths): nothing is dropped silently
+// Each kind of box gets one graybox material with a flat colour of this file's choosing (JDB_PALETTE):
+// the data states no materials.
+#import "Basic";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../metaverse-engine/import/unreal/plan.coax";
+#load "../../../metaverse-engine/import/unreal/files.coax";
+#load "../../../metaverse-engine/import/unreal/axes.coax";
+#load "../../../metaverse-engine/export/glb-write.coax";
+
+JDB_LEVELS :: [4] string.["farm", "lab", "plain", "ring"];
+JDB_KINDS :: [8] string.["bay", "floor", "light", "marker", "platform", "ramp", "wall", "other"];
+JDB_PALETTE :: [24] f64.[0.50, 0.52, 0.56,  0.76, 0.69, 0.53,  1, 1, 1,  1, 0.55, 0.1,  0.55, 0.56, 0.6,  0.62, 0.58, 0.5,  0.42, 0.45, 0.5,  0.6, 0.6, 0.6];
+JDB_ROWS :: 2048; JDB_FILES :: 256;
+JDB_CUBE :: "/Engine/BasicShapes/Cube.Cube"; JDB_PLANE :: "/Engine/BasicShapes/Plane.Plane";
+JDB_SHAPE_MATERIAL :: "/Engine/BasicShapes/BasicShapeMaterial";
+JDB_LIGHT_STRENGTH :: 1.1;   // WORLD-LAB-05, as level_layout.csv's light rows state it
+
+JdbText :: struct { b: [160] u8; n: int; }
+jdb_t :: (t: [] JdbText) -> string #effects(all) { return cast(string) t[0].b[0..<t[0].n]; }
+jdb_set :: (t: [] JdbText, s: string) #effects(all) { n := ifx s.count < 160 then s.count else 160; for k: 0..<n { t[0].b[k] = s[k]; } t[0].n = n; }
+JdbRow :: struct { level: int; kind: int; name: [1] JdbText; v: [7] f64; have: [7] bool; }
+JdbFile :: struct { path: [1] JdbText; sha: [64] u8; bytes: int; }
+JdbAsset :: struct { id: [1] JdbText; file: int; a: [6] f64; n: int; m: int; }   // a: bounds, or width/height/...; n, m: counts
+JdbSkip :: struct { map: [1] JdbText; actor: [1] JdbText; detail: [1] JdbText; }
+
+Jdb :: struct {
+  data: [1] JdbText; out: [1] JdbText;
+  rows: int; row: [JDB_ROWS] JdbRow;
+  files: int; file: [JDB_FILES] JdbFile;
+  meshes: int; mesh: [80] JdbAsset; textures: int; texture: [64] JdbAsset; sounds: int; sound: [32] JdbAsset;
+  skips: int; skip: [512] JdbSkip;
+  tables: int; table: [64] JdbAsset; table_rel: [64] [1] JdbText;   // table: n = rows, m = 1 for JSON
+  kinds_used: [8] bool;
+}
+
+jdb_cmp :: (a: string, b: string) -> int #effects(all) { return ab_cmp(a, b); }
+jdb_lo :: (a: f32, b: f32) -> f32 #effects(all) { return ifx a < b then a else b; }
+jdb_hi :: (a: f32, b: f32) -> f32 #effects(all) { return ifx a > b then a else b; }
+jdb_starts :: (s: string, p: string) -> bool #effects(all) { return s.count >= p.count && s[0..<p.count] == p; }
+jdb_ends :: (s: string, p: string) -> bool #effects(all) { return s.count >= p.count && s[s.count - p.count..<s.count] == p; }
+jdb_path :: (dir: string, name: string, out: [] u8) -> string #effects(all) { return fs_join(dir, name, out); }
+jdb_fail :: (s: string) -> int #effects(all) { tool_err("jam-data-bundle: "); tool_errln(s); return 1; }
+
+// A file written into the bundle under rel (meshes/0001.glb...), listed with its hash.
+jdb_write :: (j: [] Jdb, root: string, rel: string, bytes: [] u8) -> int #effects(all) {
+  p: [4096] u8; path := jdb_path(root, rel, p[..]);
+  if !fs_write(path, cast(string) bytes) || j[0].files >= JDB_FILES { return -1; }
+  k := j[0].files; jdb_set(j[0].file[k].path[..], rel); j[0].file[k].bytes = bytes.count;
+  if !uf_sha_hex(bytes, j[0].file[k].sha[..]) { return -1; }
+  j[0].files += 1; return k;
+}
+jdb_numbered :: (dir: string, k: int, ext: string, out: [] u8) -> string #effects(all) {
+  n := 0; for c: dir { out[n] = c; n += 1; } out[n] = '/'; n += 1;
+  v := k + 1; d := 1000; while d > 0 { out[n] = cast,trunc(u8) (48 + (v / d) % 10); n += 1; d /= 10; }
+  for c: ext { out[n] = c; n += 1; }
+  return cast(string) out[0..<n];
+}
+jdb_skip :: (j: [] Jdb, map: string, actor: string, detail: string) #effects(all) {
+  if j[0].skips >= 512 { return; }
+  k := j[0].skips; jdb_set(j[0].skip[k].map[..], map); jdb_set(j[0].skip[k].actor[..], actor); jdb_set(j[0].skip[k].detail[..], detail); j[0].skips += 1;
+}
+jdb_map_id :: (level: int, out: [] u8) -> string #effects(all) {
+  n := 0; for c: "/Data/level_layout/" { out[n] = c; n += 1; } for c: JDB_LEVELS[level] { out[n] = c; n += 1; }
+  return cast(string) out[0..<n];
+}
+jdb_prefixed :: (prefix: string, name: string, out: [] u8) -> string #effects(all) {
+  n := 0; for c: prefix { out[n] = c; n += 1; } for c: name { out[n] = c; n += 1; }
+  return cast(string) out[0..<n];
+}
+
+// ---- level_layout.csv
+
+JDB_COLUMNS :: [7] string.["x_cm", "y_cm", "z_cm", "size_x_cm", "size_y_cm", "size_z_cm", "yaw_deg"];
+jdb_layout :: (j: [] Jdb, text: string) -> bool #effects(all) {
+  l := uf_line(text, 0);
+  if l.text != "level,box_id,kind,x_cm,y_cm,z_cm,size_x_cm,size_y_cm,size_z_cm,yaw_deg,source" { return false; }
+  at := l.next;
+  while at < text.count {
+    l = uf_line(text, at); at = l.next;
+    if l.text.count == 0 { continue; }
+    level := -1; for name, k: JDB_LEVELS { if uf_field(l.text, 0) == name { level = k; } }
+    if level < 0 || j[0].rows >= JDB_ROWS { return false; }
+    r := j[0].rows; j[0].row[r].level = level; j[0].row[r].kind = 7;
+    for name, k: JDB_KINDS { if uf_field(l.text, 2) == name { j[0].row[r].kind = k; } }
+    jdb_set(j[0].row[r].name[..], uf_field(l.text, 1));
+    if j[0].row[r].name[0].n == 0 { return false; }
+    for k: 0..<7 { v := uf_value(uf_field(l.text, 3 + k)); j[0].row[r].v[k] = v.v; j[0].row[r].have[k] = v.ok; }
+    j[0].rows += 1;
+  }
+  return true;
+}
+// A row's missing field, or "" when every field the row's use needs is stated.
+jdb_missing :: (r: JdbRow) -> string #effects(all) {
+  need := ifx r.kind == 3 then 3 else 7;   // a marker needs a place and a facing; a box all seven
+  for k: 0..<need { if !r.have[k] { return JDB_COLUMNS[k]; } }
+  if r.kind == 3 && !r.have[6] { return JDB_COLUMNS[6]; }
+  return "";
+}
+jdb_start :: (name: string) -> bool #effects(all) { return (name.count > 7 && name[0..<7] == "Arrive_") || name == "drive_s00"; }
+
+// ---- meshes
+
+// A box mesh's glTF: Unreal's 100 cm cube or 100 cm plane (facing +Z in Unreal, +y in glTF), metres.
+jdb_shape_glb :: (plane: bool, out: [] u8) -> int #effects(all) {
+  buf: [36 * VERTEX_WORDS] u32; p: [1] Pen; pen_set(p[..], 1, MAT_WORLD, 0.6, 0.6, 0.6);
+  count := 36;
+  if plane { quad(buf[..], p[..], v3(-0.5, 0, -0.5), v3(-0.5, 0, 0.5), v3(0.5, 0, 0.5), v3(0.5, 0, -0.5)); count = 6; }
+  else { box(buf[..], p[..], frame_at(v3(0, 0, 0), 0), 0.5, 0.5, 0.5); }
+  parts := [1] GlbPart.[GlbPart.{name = ifx plane then "Plane" else "Cube", first = 0, count = count}];
+  return glb_from_cel(buf[..], parts[..], out);
+}
+// A blockout OBJ (centimetres, y up, quads or triangles) as glTF in metres, each face wound to face
+// out from the mesh's middle (the files wind theirs the other way round). Bounds in Unreal's frame.
+jdb_obj_glb :: (text: string, out: [] u8, a: [] JdbAsset) -> int #effects(all) {
+  v: [1024] Point; nv := 0; faces: [512] [4] int; fn: [512] int; nf := 0;
+  at := 0;
+  while at < text.count {
+    l := uf_line(text, at); at = l.next;
+    s := l.text;
+    if s.count > 2 && s[0] == 'v' && s[1] == ' ' {
+      if nv >= 1024 { return -1; }
+      xs := [3] f64.[0, 0, 0]; f := 0; from := 2;
+      for c, k: s { if k >= 2 && (c == ' ' || k == s.count - 1) { e := ifx c == ' ' then k else k + 1; if e > from && f < 3 { xs[f] = uf_value(s[from..<e]).v; f += 1; } from = k + 1; } }
+      if f != 3 { return -1; }
+      v[nv] = v3(cast(f32) (xs[0] / 100), cast(f32) (xs[1] / 100), cast(f32) (xs[2] / 100)); nv += 1;
+    }
+    if s.count > 2 && s[0] == 'f' && s[1] == ' ' {
+      if nf >= 512 { return -1; }
+      n := 0; from := 2;
+      for c, k: s {
+        if k >= 2 && (c == ' ' || k == s.count - 1) {
+          e := ifx c == ' ' then k else k + 1;
+          if e > from {
+            word := s[from..<e]; slash := word.count; for ch, q: word { if ch == '/' && slash == word.count { slash = q; } }
+            idx := cast(int) uf_value(word[0..<slash]).v - 1;
+            if idx < 0 || idx >= nv || n >= 4 { return -1; }
+            faces[nf][n] = idx; n += 1;
+          }
+          from = k + 1;
+        }
+      }
+      if n < 3 { return -1; }
+      fn[nf] = n; nf += 1;
+    }
+  }
+  if nv == 0 || nf == 0 { return -1; }
+  mid := v3(0, 0, 0); lo := v[0]; hi := v[0];
+  for k: 0..<nv { mid = add(mid, v[k]); lo = v3(jdb_lo(lo.x, v[k].x), jdb_lo(lo.y, v[k].y), jdb_lo(lo.z, v[k].z)); hi = v3(jdb_hi(hi.x, v[k].x), jdb_hi(hi.y, v[k].y), jdb_hi(hi.z, v[k].z)); }
+  mid = times(mid, 1.0 / cast(f32) nv);
+  buf: [3072 * VERTEX_WORDS] u32; p: [1] Pen; pen_set(p[..], 1, MAT_WORLD, 0.6, 0.6, 0.6);
+  tris := 0;
+  for f: 0..<nf {
+    q := faces[f]; c := v3(0, 0, 0); for k: 0..<fn[f] { c = add(c, v[q[k]]); } c = times(c, 1.0 / cast(f32) fn[f]);
+    n := cross(sub(v[q[1]], v[q[0]]), sub(v[q[2]], v[q[0]]));
+    flip := dot(n, sub(c, mid)) < 0;
+    for t: 0..<fn[f] - 2 {
+      i0 := q[0]; i1 := q[t + 1]; i2 := q[t + 2];
+      if flip { s := i1; i1 = i2; i2 = s; }
+      nn := unit_or(cross(sub(v[i1], v[i0]), sub(v[i2], v[i0])), v3(0, 1, 0));
+      tri(buf[..], p[..], v[i0], v[i1], v[i2], nn, nn, nn); tris += 1;
+    }
+  }
+  if p[0].over { return -1; }
+  parts := [1] GlbPart.[GlbPart.{name = "blockout", first = 0, count = tris * 3}];
+  // Unreal's bounds: glTF (x, y, z) m is Unreal (100 x, 100 z, 100 y) cm (axes.coax ua_forward_pos).
+  a[0].a = [6] f64.[cast(f64) lo.x * 100, cast(f64) lo.z * 100, cast(f64) lo.y * 100, cast(f64) hi.x * 100, cast(f64) hi.z * 100, cast(f64) hi.y * 100];
+  a[0].n = tris; a[0].m = tris * 3;
+  return glb_from_cel(buf[..], parts[..], out);
+}
+
+// ---- reading the folders
+
+jdb_u32le :: (b: [] u8, at: int) -> int #effects(all) { return cast(int) b[at] | (cast(int) b[at + 1] << 8) | (cast(int) b[at + 2] << 16) | (cast(int) b[at + 3] << 24); }
+jdb_u16le :: (b: [] u8, at: int) -> int #effects(all) { return cast(int) b[at] | (cast(int) b[at + 1] << 8); }
+jdb_u32be :: (b: [] u8, at: int) -> int #effects(all) { return (cast(int) b[at] << 24) | (cast(int) b[at + 1] << 16) | (cast(int) b[at + 2] << 8) | cast(int) b[at + 3]; }
+// A PCM WAV's channels, rate and seconds (into a.n, a.m, a.a[0]), or false.
+jdb_wav :: (b: [] u8, a: [] JdbAsset) -> bool #effects(all) {
+  if b.count < 44 || cast(string) b[0..<4] != "RIFF" || cast(string) b[8..<12] != "WAVE" { return false; }
+  at := 12; channels := 0; rate := 0; bits := 0; data := -1;
+  while at + 8 <= b.count {
+    size := jdb_u32le(b, at + 4); id := cast(string) b[at..<at + 4];
+    if id == "fmt " && at + 24 <= b.count { channels = jdb_u16le(b, at + 10); rate = jdb_u32le(b, at + 12); bits = jdb_u16le(b, at + 22); }
+    if id == "data" { data = size; break; }
+    at += 8 + size + size % 2;
+  }
+  if channels < 1 || rate < 1 || bits < 8 || data < 0 { return false; }
+  a[0].n = channels; a[0].m = rate; a[0].a[0] = cast(f64) data / cast(f64) (rate * channels * (bits / 8));
+  return true;
+}
+jdb_png :: (b: [] u8, a: [] JdbAsset) -> bool #effects(all) {
+  if b.count < 24 || b[0] != 137 || cast(string) b[1..<4] != "PNG" || cast(string) b[12..<16] != "IHDR" { return false; }
+  a[0].n = jdb_u32be(b, 16); a[0].m = jdb_u32be(b, 20);
+  return a[0].n > 0 && a[0].m > 0;
+}
+// The files of a folder with an extension, their names without it, sorted.
+jdb_names :: (dir: string, ext: string, l: [] FsList, out: [] [1] JdbText) -> int #effects(all) {
+  if fs_list(dir, l) < 0 || l[0].full { return -1; }
+  n := 0;
+  for k: 0..<l[0].n {
+    e := fs_entry(l, k);
+    if e.count > ext.count && e[e.count - ext.count..<e.count] == ext { if n >= out.count { return -1; } jdb_set(out[n][..], e[0..<e.count - ext.count]); n += 1; }
+  }
+  return n;
+}
+
+// A CSV's records after its header, quotes respected (a quoted field may hold a comma or a line break).
+jdb_records :: (t: string) -> int #effects(all) {
+  n := 0; quoted := false; any := false;
+  for c: t {
+    if c == '"' { quoted = !quoted; }
+    if c == '\n' && !quoted { if any { n += 1; } any = false; continue; }
+    if c != '\r' { any = true; }
+  }
+  if any { n += 1; }
+  return ifx n > 0 then n - 1 else 0;
+}
+
+// ---- the manifest
+
+jdb_id :: (o: [] Jo, key: string, s: string) #effects(all) { jo_key(o, key); jo_str(o, s); }
+jdb_vec :: (o: [] Jo, key: string, a: f64, b: f64, c: f64) #effects(all) { jo_key(o, key); v := [3] f64.[a, b, c]; uf_nums(o, v[..]); }
+jdb_quat :: (o: [] Jo, key: string, q: DQ) #effects(all) { jo_key(o, key); v := [4] f64.[q.x, q.y, q.z, q.w]; uf_nums(o, v[..]); }
+jdb_empty :: (o: [] Jo, key: string) #effects(all) { jo_key(o, key); jo_arr(o); jo_end(o); }
+jdb_box_collision :: (o: [] Jo, e: [] f64) #effects(all) {
+  jo_key(o, "collision"); jo_obj(o); jo_key(o, "complex_as_simple"); jo_bool(o, false);
+  jo_key(o, "boxes"); jo_arr(o); jo_obj(o);
+  jdb_vec(o, "center_cm", (e[0] + e[3]) / 2, (e[1] + e[4]) / 2, (e[2] + e[5]) / 2); jdb_quat(o, "rotation", dq(0, 0, 0, 1));
+  jdb_vec(o, "extent_cm", (e[3] - e[0]) / 2, (e[4] - e[1]) / 2, (e[5] - e[2]) / 2);
+  jo_end(o); jo_end(o);
+  jdb_empty(o, "spheres"); jdb_empty(o, "capsules"); jdb_empty(o, "convex");
+  jo_end(o);
+}
+jdb_material_id :: (kind: int, out: [] u8) -> string #effects(all) { return jdb_prefixed("/Data/graybox/M_", JDB_KINDS[kind], out); }
+
+jdb_manifest :: (j: [] Jdb, plan_sha: string, o: [] Jo) #effects(all) {
+  jo_obj(o);
+  jo_key(o, "aimport"); jo_int(o, 1);
+  jo_key(o, "source"); jo_obj(o);
+  jdb_id(o, "route", "data"); jdb_id(o, "project", "SPLICEBOTS"); jo_key(o, "revision"); jo_null(o); jdb_id(o, "engine", "5.9.0");
+  jo_key(o, "maps"); jo_arr(o); for k: 0..<4 { b: [64] u8; jo_str(o, jdb_map_id(k, b[..])); } jo_end(o);
+  jdb_id(o, "plan_sha256", plan_sha);
+  jo_end(o);
+  jo_key(o, "files"); jo_arr(o);
+  for k: 0..<j[0].files { jo_obj(o); jdb_id(o, "path", jdb_t(j[0].file[k].path[..])); jdb_id(o, "sha256", cast(string) j[0].file[k].sha[..]); jo_key(o, "bytes"); jo_int(o, j[0].file[k].bytes); jo_end(o); }
+  jo_end(o);
+  jo_key(o, "meshes"); jo_arr(o);
+  for k: 0..<j[0].meshes {
+    m := j[0].mesh[k]; id := jdb_t(j[0].mesh[k].id[..]);
+    jo_obj(o); jdb_id(o, "id", id); jdb_id(o, "file", jdb_t(j[0].file[m.file].path[..]));
+    jo_key(o, "triangles"); jo_int(o, m.n); jo_key(o, "vertices"); jo_int(o, m.m);
+    jo_key(o, "bounds_cm"); uf_nums(o, j[0].mesh[k].a[..]); jo_key(o, "nanite"); jo_bool(o, false);
+    jo_key(o, "materials"); jo_arr(o); jo_str(o, JDB_SHAPE_MATERIAL); jo_end(o);
+    jdb_box_collision(o, j[0].mesh[k].a[..]);
+    jdb_id(o, "origin", ifx jdb_starts(id, "/Engine/") then "engine" else "project");
+    jo_end(o);
+  }
+  jo_end(o);
+  jdb_empty(o, "skeletal_meshes"); jdb_empty(o, "skeletons"); jdb_empty(o, "animations");
+  jo_key(o, "materials"); jo_arr(o);
+  for kind: 0..<8 {
+    if !j[0].kinds_used[kind] { continue; }
+    b: [64] u8; jo_obj(o); jdb_id(o, "id", jdb_material_id(kind, b[..])); jdb_id(o, "parent", JDB_SHAPE_MATERIAL); jdb_id(o, "root", JDB_SHAPE_MATERIAL);
+    jdb_id(o, "blend", "opaque"); jo_key(o, "two_sided"); jo_bool(o, false); jdb_id(o, "shading", "default_lit");
+    jdb_empty(o, "textures"); jdb_empty(o, "scalars");
+    jo_key(o, "vectors"); jo_arr(o); jo_obj(o); jdb_id(o, "name", "BaseColor"); jo_key(o, "value");
+    c := [4] f64.[JDB_PALETTE[kind * 3], JDB_PALETTE[kind * 3 + 1], JDB_PALETTE[kind * 3 + 2], 1]; uf_nums(o, c[..]); jo_end(o); jo_end(o);
+    jo_key(o, "baked"); jo_obj(o); jo_end(o); jdb_id(o, "origin", "project");
+    jo_end(o);
+  }
+  // The engine's own material, which the engine's shapes carry in their one slot.
+  jo_obj(o); jdb_id(o, "id", JDB_SHAPE_MATERIAL); jdb_id(o, "parent", JDB_SHAPE_MATERIAL); jdb_id(o, "root", JDB_SHAPE_MATERIAL);
+  jdb_id(o, "blend", "opaque"); jo_key(o, "two_sided"); jo_bool(o, false); jdb_id(o, "shading", "default_lit");
+  jdb_empty(o, "textures"); jdb_empty(o, "scalars"); jdb_empty(o, "vectors"); jo_key(o, "baked"); jo_obj(o); jo_end(o); jdb_id(o, "origin", "engine");
+  jo_end(o);
+  jo_end(o);
+  jo_key(o, "textures"); jo_arr(o);
+  for k: 0..<j[0].textures {
+    t := j[0].texture[k]; jo_obj(o); jdb_id(o, "id", jdb_t(j[0].texture[k].id[..])); jdb_id(o, "file", jdb_t(j[0].file[t.file].path[..]));
+    jo_key(o, "width"); jo_int(o, t.n); jo_key(o, "height"); jo_int(o, t.m); jo_key(o, "srgb"); jo_bool(o, true); jdb_id(o, "compression", "ui"); jdb_id(o, "origin", "project");
+    jo_end(o);
+  }
+  jo_end(o);
+  jo_key(o, "sounds"); jo_arr(o);
+  for k: 0..<j[0].sounds {
+    s := j[0].sound[k]; jo_obj(o); jdb_id(o, "id", jdb_t(j[0].sound[k].id[..])); jdb_id(o, "file", jdb_t(j[0].file[s.file].path[..]));
+    jo_key(o, "seconds"); uf_num(o, s.a[0]); jo_key(o, "channels"); jo_int(o, s.n); jo_key(o, "rate"); jo_int(o, s.m); jdb_id(o, "origin", "project");
+    jo_end(o);
+  }
+  jo_end(o);
+  jo_key(o, "tables"); jo_arr(o);
+  for k: 0..<j[0].tables {
+    t := j[0].table[k]; jo_obj(o); jdb_id(o, "id", jdb_t(j[0].table[k].id[..])); jdb_id(o, "file", jdb_t(j[0].file[t.file].path[..]));
+    jdb_id(o, "format", ifx t.m == 1 then "json" else "csv"); jo_key(o, "rows"); jo_int(o, t.n); jdb_id(o, "origin", "project");
+    jo_end(o);
+  }
+  jo_end(o);
+  jo_key(o, "maps"); jo_arr(o);
+  order: [JDB_ROWS] int;
+  for level: 0..<4 {
+    n := 0;
+    for r: 0..<j[0].rows { if j[0].row[r].level == level && jdb_missing(j[0].row[r]).count == 0 { order[n] = r; n += 1; } }
+    // by name: placements, lights and spots are each sorted (BUNDLE.md section 1)
+    for a: 1..<n { k := a; while k > 0 && jdb_cmp(jdb_t(j[0].row[order[k - 1]].name[..]), jdb_t(j[0].row[order[k]].name[..])) > 0 { s := order[k]; order[k] = order[k - 1]; order[k - 1] = s; k -= 1; } }
+    b: [64] u8; jo_obj(o); jdb_id(o, "id", jdb_map_id(level, b[..]));
+    jo_key(o, "placements"); jo_arr(o);
+    for i: 0..<n {
+      r := j[0].row[order[i]]; if r.kind == 2 || r.kind == 3 { continue; }
+      name := jdb_t(j[0].row[order[i]].name[..]); flat := r.kind == 1 && r.v[5] == 0;
+      jo_obj(o); jdb_id(o, "name", name); jdb_id(o, "actor", name); jdb_id(o, "actor_class", "/Script/Engine.StaticMeshActor");
+      jdb_id(o, "component", "StaticMeshComponent0"); jo_key(o, "instance"); jo_int(o, -1); jdb_id(o, "kind", "static");
+      jdb_id(o, "asset", ifx flat then JDB_PLANE else JDB_CUBE);
+      jdb_vec(o, "translation_cm", r.v[0], r.v[1], r.v[2]); jdb_quat(o, "rotation", ua_yaw(r.v[6]));
+      jdb_vec(o, "scale", r.v[3] / 100, r.v[4] / 100, ifx flat then 1.0 else r.v[5] / 100);
+      mb: [64] u8; jo_key(o, "materials"); jo_arr(o); jo_str(o, jdb_material_id(r.kind, mb[..])); jo_end(o);
+      jdb_id(o, "collision", "block"); jo_key(o, "visible"); jo_bool(o, true); jo_key(o, "cast_shadow"); jo_bool(o, true); jdb_empty(o, "tags");
+      jo_end(o);
+    }
+    jo_end(o);
+    jo_key(o, "lights"); jo_arr(o);
+    for i: 0..<n {
+      r := j[0].row[order[i]]; if r.kind != 2 { continue; }
+      jo_obj(o); jdb_id(o, "name", jdb_t(j[0].row[order[i]].name[..])); jdb_id(o, "kind", "point");
+      jdb_vec(o, "translation_cm", r.v[0], r.v[1], r.v[2]); jdb_quat(o, "rotation", ua_yaw(r.v[6])); jdb_vec(o, "color", 1, 1, 1);
+      jo_key(o, "intensity"); uf_num(o, JDB_LIGHT_STRENGTH); jdb_id(o, "units", "unitless"); jo_key(o, "radius_cm"); uf_num(o, r.v[3] / 2);
+      jo_key(o, "inner_deg"); jo_int(o, 0); jo_key(o, "outer_deg"); jo_int(o, 0); jo_key(o, "cast_shadows"); jo_bool(o, false); jdb_id(o, "movable", "static");
+      jo_end(o);
+    }
+    jo_end(o);
+    jo_key(o, "spots"); jo_arr(o);
+    for i: 0..<n {
+      r := j[0].row[order[i]]; if r.kind != 3 { continue; }
+      name := jdb_t(j[0].row[order[i]].name[..]);
+      jo_obj(o); jdb_id(o, "name", name); jdb_id(o, "kind", ifx jdb_start(name) then "player_start" else "target_point");
+      jdb_vec(o, "translation_cm", r.v[0], r.v[1], r.v[2]); jdb_quat(o, "rotation", ua_yaw(r.v[6])); jdb_empty(o, "tags");
+      jo_end(o);
+    }
+    jo_end(o);
+    jdb_empty(o, "volumes"); jdb_empty(o, "landscapes");
+    jo_key(o, "atmosphere"); jo_obj(o); jo_end(o); jdb_empty(o, "streamed");
+    jo_end(o);
+  }
+  jo_end(o);
+  jo_end(o);
+}
+
+jdb_skip_key :: (j: [] Jdb, k: int, out: [] u8) -> string #effects(all) { m := 0; for c: jdb_t(j[0].skip[k].map[..]) { out[m] = c; m += 1; } out[m] = 0; m += 1; for c: jdb_t(j[0].skip[k].actor[..]) { out[m] = c; m += 1; } return cast(string) out[0..<m]; }
+jdb_skipped :: (j: [] Jdb, o: [] Jo) #effects(all) {
+  order: [512] int; n := j[0].skips; for k: 0..<n { order[k] = k; }
+  for a: 1..<n { k := a; while k > 0 { x: [400] u8; y: [400] u8; if jdb_cmp(jdb_skip_key(j, order[k - 1], x[..]), jdb_skip_key(j, order[k], y[..])) <= 0 { break; } s := order[k]; order[k] = order[k - 1]; order[k - 1] = s; k -= 1; } }
+  jo_arr(o);
+  for i: 0..<n {
+    k := order[i];
+    jo_obj(o); jdb_id(o, "map", jdb_t(j[0].skip[k].map[..])); jdb_id(o, "actor", jdb_t(j[0].skip[k].actor[..])); jdb_id(o, "class", "");
+    jdb_id(o, "component", ""); jdb_id(o, "reason", "unsupported"); jdb_id(o, "detail", jdb_t(j[0].skip[k].detail[..]));
+    jo_end(o);
+  }
+  jo_end(o);
+}
+
+// Every file under DATA_DIR that the bundle doesn't carry, one skipped row each (recursively).
+jdb_leftovers :: (j: [] Jdb, data: string, rel: string, depth: int) #effects(all) {
+  l: [1] FsList; dir_b: [4096] u8; dir := ifx rel.count == 0 then data else jdb_path(data, rel, dir_b[..]);
+  if fs_list(dir, l[..]) < 0 || depth > 4 { return; }
+  for k: 0..<l[0].n {
+    name := fs_entry(l[..], k);
+    rb: [512] u8; r := ifx rel.count == 0 then jdb_prefixed("", name, rb[..]) else jdb_path(rel, name, rb[..]);
+    pb: [4096] u8; full := jdb_path(data, r, pb[..]);
+    if fs_kind(full) == 2 { jdb_leftovers(j, data, r, depth + 1); continue; }
+    carried := r == "level_layout.csv" || (jdb_starts(r, "blockouts/") && jdb_ends(r, ".obj"))
+      || (jdb_starts(r, "icons/") && jdb_ends(r, ".png")) || (jdb_starts(r, "audio/wav/") && jdb_ends(r, ".wav"));
+    if carried { continue; }
+    ib: [512] u8; id := jdb_prefixed("/Data/", r, ib[..]);
+    table := (jdb_ends(r, ".csv") || jdb_ends(r, ".json")) && !jdb_starts(r, "graybox/") && r != "asset_manifest.csv";
+    if table && j[0].tables < 64 {
+      t := j[0].tables; jdb_set(j[0].table_rel[t][..], r);
+      xb: [512] u8; jdb_set(j[0].table[t].id[..], jdb_prefixed("/Data/", r[0..<r.count - (ifx jdb_ends(r, ".csv") then 4 else 5)], xb[..]));
+      j[0].table[t].m = ifx jdb_ends(r, ".json") then 1 else 0; j[0].tables += 1; continue;
+    }
+    detail := ifx jdb_starts(r, "graybox/") then "repeats level_layout.csv, which is carried"
+      else ifx jdb_starts(r, "fonts/") then "a font: the realm draws with the engine's"
+      else ifx r == "asset_manifest.csv" then "the asset plan, not level content"
+      else "a settings file, not level content";
+    jdb_skip(j, "", id, detail);
+  }
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 3 { print("usage: jam-data-bundle DATA_DIR PLAN.json NEW.aimport\n"); return 2; }
+  data := args_at(a[..], 0); plan_path := args_at(a[..], 1); out := args_at(a[..], 2);
+  if fs_exists(out) { return jdb_fail("the bundle folder already exists; name a new one"); }
+  pt: [65536] u8; pn := fs_read(plan_path, pt[..]);
+  plan: [1] UpPlan;
+  if pn <= 0 { return jdb_fail("could not read the plan"); }
+  code := up_admit(cast(string) pt[0..<pn], plan[..]);
+  if code != UP_OK { tool_err("jam-data-bundle: the plan is refused: "); tool_errln(UP_WHY[code]); return 1; }
+  if plan[0].route != UP_DATA { return jdb_fail("the plan's route is not \"data\""); }
+  plan_sha: [64] u8; _ = uf_sha_hex(pt[0..<pn], plan_sha[..]);
+  scratch: [8388608] u8;
+  for k: 0..<plan[0].pins {
+    pb: [4096] u8; path := jdb_path(data, up_text(plan[0].pin[k].file[..]), pb[..]);
+    n := fs_read(path, scratch[..]); h: [64] u8;
+    if n < 0 || !uf_sha_hex(scratch[0..<n], h[..]) || cast(string) h[..] != up_text(plan[0].pin[k].sha256[..]) {
+      tool_err("jam-data-bundle: a pinned file differs from the plan: "); tool_errln(up_text(plan[0].pin[k].file[..])); return 1;
+    }
+  }
+  j: [1] Jdb;
+  lb: [4096] u8; ln := fs_read(jdb_path(data, "level_layout.csv", lb[..]), scratch[..]);
+  if ln <= 0 || !jdb_layout(j[..], cast(string) scratch[0..<ln]) { return jdb_fail("level_layout.csv is not the table this reads"); }
+  for r: 0..<j[0].rows {
+    missing := jdb_missing(j[0].row[r]);
+    mb: [64] u8; db: [160] u8;
+    if missing.count > 0 { jdb_skip(j[..], jdb_map_id(j[0].row[r].level, mb[..]), jdb_t(j[0].row[r].name[..]), jdb_prefixed(missing, " not stated by any source (not guessed)", db[..])); continue; }
+    if j[0].row[r].kind != 2 && j[0].row[r].kind != 3 { j[0].kinds_used[j[0].row[r].kind] = true; }
+  }
+  tb: [4096] u8; temp := jdb_prefixed(out, ".partial", tb[..]);
+  if fs_exists(temp) { return jdb_fail("a half-written bundle is beside it (.partial); remove it first"); }
+  if !fs_mkdir_private(temp) { return jdb_fail("could not make the bundle folder"); }
+  for d: [4] string.["meshes", "sounds", "tables", "textures"] { db: [4096] u8; if !fs_mkdir(jdb_path(temp, d, db[..])) { return jdb_fail("could not make a bundle folder"); } }
+  // Meshes, in id order: the blockouts (/Data/...), then the engine's cube and plane (/Engine/...).
+  names: [128] [1] JdbText; l: [1] FsList; ob: [4096] u8;
+  blockouts := jdb_names(jdb_path(data, "blockouts", ob[..]), ".obj", l[..], names[..]);
+  if blockouts < 0 { return jdb_fail("could not list blockouts/"); }
+  glb: [1048576] u8;
+  for k: 0..<blockouts + 2 {
+    m := j[0].meshes; n := 0; ib: [256] u8; fb: [32] u8;
+    if k < blockouts {
+      fnb: [4096] u8; fname: [256] u8; fnm := jdb_prefixed(jdb_t(names[k][..]), ".obj", fname[..]);
+      tn := fs_read(jdb_path(jdb_path(data, "blockouts", ob[..]), fnm, fnb[..]), scratch[..]);
+      if tn <= 0 { return jdb_fail("could not read a blockout"); }
+      n = jdb_obj_glb(cast(string) scratch[0..<tn], glb[..], j[0].mesh[m..<m + 1]);
+      jdb_set(j[0].mesh[m].id[..], jdb_prefixed("/Data/blockouts/", jdb_t(names[k][..]), ib[..]));
+    } else {
+      plane := k == blockouts + 1;
+      n = jdb_shape_glb(plane, glb[..]);
+      jdb_set(j[0].mesh[m].id[..], ifx plane then JDB_PLANE else JDB_CUBE);
+      j[0].mesh[m].a = ifx plane then [6] f64.[-50, -50, 0, 50, 50, 0] else [6] f64.[-50, -50, -50, 50, 50, 50];
+      j[0].mesh[m].n = ifx plane then 2 else 12; j[0].mesh[m].m = ifx plane then 6 else 36;
+    }
+    if n < 0 { tool_err("jam-data-bundle: a mesh did not convert: "); tool_errln(jdb_t(j[0].mesh[m].id[..])); return 1; }
+    j[0].mesh[m].file = jdb_write(j[..], temp, jdb_numbered("meshes", m, ".glb", fb[..]), glb[0..<n]);
+    if j[0].mesh[m].file < 0 { return jdb_fail("could not write a mesh"); }
+    j[0].meshes += 1;
+  }
+  // Sounds and textures.
+  wb: [4096] u8; wavs := jdb_names(jdb_path(data, "audio/wav", wb[..]), ".wav", l[..], names[..]);
+  if wavs < 0 { return jdb_fail("could not list audio/wav/"); }
+  for k: 0..<wavs {
+    s := j[0].sounds; fnb: [4096] u8; fname: [256] u8; ib: [256] u8; fb: [32] u8;
+    n := fs_read(jdb_path(jdb_path(data, "audio/wav", wb[..]), jdb_prefixed(jdb_t(names[k][..]), ".wav", fname[..]), fnb[..]), scratch[..]);
+    if n <= 0 || !jdb_wav(scratch[0..<n], j[0].sound[s..<s + 1]) { tool_err("jam-data-bundle: not a PCM WAV: "); tool_errln(jdb_t(names[k][..])); return 1; }
+    jdb_set(j[0].sound[s].id[..], jdb_prefixed("/Data/audio/wav/", jdb_t(names[k][..]), ib[..]));
+    j[0].sound[s].file = jdb_write(j[..], temp, jdb_numbered("sounds", s, ".wav", fb[..]), scratch[0..<n]);
+    if j[0].sound[s].file < 0 { return jdb_fail("could not write a sound"); }
+    j[0].sounds += 1;
+  }
+  // Tables, in id order, then textures: the files stay sorted by path.
+  jdb_leftovers(j[..], data, "", 0);
+  for ta: 1..<j[0].tables { k := ta; while k > 0 && jdb_cmp(jdb_t(j[0].table[k - 1].id[..]), jdb_t(j[0].table[k].id[..])) > 0 {
+    s := j[0].table[k]; j[0].table[k] = j[0].table[k - 1]; j[0].table[k - 1] = s; r := j[0].table_rel[k]; j[0].table_rel[k] = j[0].table_rel[k - 1]; j[0].table_rel[k - 1] = r; k -= 1; } }
+  for k: 0..<j[0].tables {
+    tb2: [4096] u8; fb: [32] u8;
+    n := fs_read(jdb_path(data, jdb_t(j[0].table_rel[k][..]), tb2[..]), scratch[..]);
+    if n < 0 { tool_err("jam-data-bundle: could not read "); tool_errln(jdb_t(j[0].table_rel[k][..])); return 1; }
+    j[0].table[k].n = ifx j[0].table[k].m == 1 then 1 else jdb_records(cast(string) scratch[0..<n]);
+    j[0].table[k].file = jdb_write(j[..], temp, jdb_numbered("tables", k, ifx j[0].table[k].m == 1 then ".json" else ".csv", fb[..]), scratch[0..<n]);
+    if j[0].table[k].file < 0 { return jdb_fail("could not write a table"); }
+  }
+  ib2: [4096] u8; pngs := jdb_names(jdb_path(data, "icons", ib2[..]), ".png", l[..], names[..]);
+  if pngs < 0 { return jdb_fail("could not list icons/"); }
+  for k: 0..<pngs {
+    t := j[0].textures; fnb: [4096] u8; fname: [256] u8; ib: [256] u8; fb: [32] u8;
+    n := fs_read(jdb_path(jdb_path(data, "icons", ib2[..]), jdb_prefixed(jdb_t(names[k][..]), ".png", fname[..]), fnb[..]), scratch[..]);
+    if n <= 0 || !jdb_png(scratch[0..<n], j[0].texture[t..<t + 1]) { tool_err("jam-data-bundle: not a PNG: "); tool_errln(jdb_t(names[k][..])); return 1; }
+    jdb_set(j[0].texture[t].id[..], jdb_prefixed("/Data/icons/", jdb_t(names[k][..]), ib[..]));
+    j[0].texture[t].file = jdb_write(j[..], temp, jdb_numbered("textures", t, ".png", fb[..]), scratch[0..<n]);
+    if j[0].texture[t].file < 0 { return jdb_fail("could not write a texture"); }
+    j[0].textures += 1;
+  }
+  o: [1] Jo; jo_start(o[..], scratch[..]);
+  jdb_manifest(j[..], cast(string) plan_sha[..], o[..]);
+  if o[0].bad { return jdb_fail("the manifest did not fit"); }
+  mb: [4096] u8; if !fs_write(jdb_path(temp, "manifest.json", mb[..]), jo_text(o[..])) { return jdb_fail("could not write manifest.json"); }
+  manifest_bytes := o[0].n;
+  jo_start(o[..], scratch[..]); jdb_skipped(j[..], o[..]);
+  if o[0].bad || !fs_write(jdb_path(temp, "skipped.json", mb[..]), jo_text(o[..])) { return jdb_fail("could not write skipped.json"); }
+  if !fs_rename(temp, out) { return jdb_fail("could not rename the bundle into place"); }
+  placements := 0; lights := 0; spots := 0;
+  for r: 0..<j[0].rows { if jdb_missing(j[0].row[r]).count == 0 { k := j[0].row[r].kind; if k == 2 { lights += 1; } else if k == 3 { spots += 1; } else { placements += 1; } } }
+  print("jam-data-bundle: % rows: % placements, % lights, % spots; % meshes, % textures, % sounds, % tables, % files; % skipped; manifest % bytes\n",
+    j[0].rows, placements, lights, spots, j[0].meshes, j[0].textures, j[0].sounds, j[0].tables, j[0].files, j[0].skips, manifest_bytes);
+  return 0;
+}

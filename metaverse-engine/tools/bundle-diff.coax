@@ -1,0 +1,120 @@
+// tool.sh: stack-gib 2
+// What changed between two Unreal import bundles (metaverse-engine/import/unreal/BUNDLE.md), row by row:
+// the importer's spec, section 4.3. Both are admitted whole first (a refused bundle is named, not diffed).
+//
+//   coax/web/tool.sh metaverse-engine/tools/bundle-diff.coax OLD.aimport NEW.aimport
+//
+// Numbers compare as section 6 says: under a key ending _cm within 0.01 cm, a rotation within 1e-5 a
+// component, everything else exactly; skipped.json by its count of rows per reason.
+// It prints one line a row that differs, in the lists' own order: `+ LIST KEY` added, `- LIST KEY`
+// removed, `~ LIST KEY` changed (its JSON differs; a file's when its SHA-256 does). A map's placements,
+// lights, spots, volumes and landscapes are keyed by name under the map's id. It ends with the counts and
+// exits 0 when the bundles hold the same rows, 3 when they differ, 1 when either is refused.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../import/unreal/files.coax";
+
+BD_MANIFEST :: 33554432; BD_NODES :: 600000;
+BdSide :: struct { d: [1] Jv; b: [1] AbBundle; }
+BdCount :: struct { added: int; removed: int; changed: int; same: int; }
+
+bd_load :: (path: string, text: [] u8, nodes: [] JvNode, at: [] int, s: [] BdSide) -> bool #effects(all) {
+  pb: [4096] u8; mp := fs_join(path, "manifest.json", pb[..]); n := fs_size(mp);
+  if n < 0 || n > text.count || fs_read(mp, text[0..<n]) != n { tool_err("bundle-diff: can't read "); tool_errln(mp); return false; }
+  f: [1] AbFault; why: [512] u8;
+  if ab_admit(cast(string) text[0..<n], s[0].d[..], nodes, at, s[0].b[..], f[..]) != AB_OK { tool_err("bundle-diff: "); tool_err(path); tool_err(" is refused: "); tool_errln(ab_why(f[..], why[..])); return false; }
+  return true;
+}
+bd_line :: (mark: string, list: string, scope: string, key: string) #effects(all) {
+  if scope.count > 0 { print("% % % %\n", mark, list, scope, key); } else { print("% % %\n", mark, list, key); }
+}
+// Two values the same, BUNDLE.md section 6's way: a number under a key ending _cm within BD_CM, under
+// `rotation` within BD_QUAT, every other number, string, key and length exactly.
+BD_CM :: 0.01; BD_QUAT :: 0.00001;
+bd_tol :: (key: string, tol: f64) -> f64 #effects(all) {
+  if key == "rotation" { return BD_QUAT; }
+  if key.count > 3 && key[key.count - 3..<key.count] == "_cm" { return BD_CM; }
+  return tol;
+}
+bd_same :: (od: Jv, a: int, nd: Jv, b: int, tol: f64) -> bool #effects(all) {
+  ka := jv_kind(od, a);
+  if ka != jv_kind(nd, b) { return false; }
+  if ka == JV_NUMBER {
+    if jv_raw(od, a) == jv_raw(nd, b) { return true; }
+    x := anim_decimal(jv_raw(od, a)); y := anim_decimal(jv_raw(nd, b));
+    return x.ok && y.ok && abs(x.value - y.value) <= tol;
+  }
+  if ka != JV_ARRAY && ka != JV_OBJECT { return jv_raw(od, a) == jv_raw(nd, b); }
+  if jv_len(od, a) != jv_len(nd, b) { return false; }
+  x := od.nodes[a].first; y := nd.nodes[b].first;
+  while x != -1 && y != -1 {
+    t := tol;
+    if ka == JV_OBJECT { if jv_key(od, x) != jv_key(nd, y) { return false; } t = bd_tol(jv_key(od, x), tol); }
+    if !bd_same(od, x, nd, y, t) { return false; }
+    x = od.nodes[x].next; y = nd.nodes[y].next;
+  }
+  return true;
+}
+// skipped.json's rows per reason, both sides.
+BD_REASONS :: [8] string.["logic", "niagara", "sequencer", "audio_graph", "widget", "decal", "hidden", "unsupported"];
+bd_reasons :: (path: string, text: [] u8, nodes: [] JvNode, out: [] int) -> bool #effects(all) {
+  pb: [4096] u8; sp := fs_join(path, "skipped.json", pb[..]); n := fs_size(sp);
+  if n < 0 || n > text.count || fs_read(sp, text[0..<n]) != n { return false; }
+  d: [1] Jv; f: [1] AbFault;
+  if ab_skipped(cast(string) text[0..<n], d[..], nodes, f[..]) < 0 { return false; }
+  r := d[0].nodes[0].first;
+  while r != -1 { why := ab_field(d[0], r, "reason"); for w, k: BD_REASONS { if w == why { out[k] += 1; } } r = d[0].nodes[r].next; }
+  return true;
+}
+// A merge of two lists sorted by `key`.
+bd_list :: (o: [] BdSide, n: [] BdSide, lo: AbList, ln: AbList, key: string, list: string, scope: string, c: [] BdCount) #effects(all) {
+  i := 0; j := 0; od := o[0].b[0].d; nd := n[0].b[0].d;
+  while i < lo.count || j < ln.count {
+    ro := ifx i < lo.count then ab_row(o[0].b[..], lo, i) else -1; rn := ifx j < ln.count then ab_row(n[0].b[..], ln, j) else -1;
+    ko := ifx ro >= 0 then ab_field(od, ro, key) else ""; kn := ifx rn >= 0 then ab_field(nd, rn, key) else "";
+    cmp := ifx ro < 0 then 1 else ifx rn < 0 then -1 else ab_cmp(ko, kn);
+    if cmp < 0 { bd_line("-", list, scope, ko); c[0].removed += 1; i += 1; continue; }
+    if cmp > 0 { bd_line("+", list, scope, kn); c[0].added += 1; j += 1; continue; }
+    same := ifx key == "path" then ab_field(od, ro, "sha256") == ab_field(nd, rn, "sha256") && jv_raw(od, jv_get(od, ro, "bytes")) == jv_raw(nd, jv_get(nd, rn, "bytes")) else bd_same(od, ro, nd, rn, 0.0);
+    if same { c[0].same += 1; } else { bd_line("~", list, scope, ko); c[0].changed += 1; }
+    i += 1; j += 1;
+  }
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 2 { print("usage: bundle-diff OLD.aimport NEW.aimport\n"); return 2; }
+  ot: [BD_MANIFEST] u8; on: [BD_NODES] JvNode; oa: [AB_ROWS] int; os: [1] BdSide;
+  nt: [BD_MANIFEST] u8; nn: [BD_NODES] JvNode; na: [AB_ROWS] int; ns: [1] BdSide;
+  if !bd_load(args_at(a[..], 0), ot[..], on[..], oa[..], os[..]) || !bd_load(args_at(a[..], 1), nt[..], nn[..], na[..], ns[..]) { return 1; }
+  ob := os[0].b[..]; nb := ns[0].b[..]; c: [1] BdCount;
+  if ob[0].route != nb[0].route { print("~ route\n"); c[0].changed += 1; }
+  bd_list(os[..], ns[..], ob[0].files, nb[0].files, "path", "files", "", c[..]);
+  bd_list(os[..], ns[..], ob[0].meshes, nb[0].meshes, "id", "meshes", "", c[..]);
+  bd_list(os[..], ns[..], ob[0].skeletal, nb[0].skeletal, "id", "skeletal_meshes", "", c[..]);
+  bd_list(os[..], ns[..], ob[0].skeletons, nb[0].skeletons, "id", "skeletons", "", c[..]);
+  bd_list(os[..], ns[..], ob[0].animations, nb[0].animations, "id", "animations", "", c[..]);
+  bd_list(os[..], ns[..], ob[0].materials, nb[0].materials, "id", "materials", "", c[..]);
+  bd_list(os[..], ns[..], ob[0].textures, nb[0].textures, "id", "textures", "", c[..]);
+  bd_list(os[..], ns[..], ob[0].sounds, nb[0].sounds, "id", "sounds", "", c[..]);
+  bd_list(os[..], ns[..], ob[0].tables, nb[0].tables, "id", "tables", "", c[..]);
+  // maps: by id, and each one's rows by name
+  i := 0; j := 0; od := ob[0].d; nd := nb[0].d;
+  while i < ob[0].maps.count || j < nb[0].maps.count {
+    ko := ifx i < ob[0].maps.count then ab_id(od, ab_row(ob, ob[0].maps, i)) else ""; kn := ifx j < nb[0].maps.count then ab_id(nd, ab_row(nb, nb[0].maps, j)) else "";
+    cmp := ifx i >= ob[0].maps.count then 1 else ifx j >= nb[0].maps.count then -1 else ab_cmp(ko, kn);
+    if cmp < 0 { bd_line("-", "maps", "", ko); c[0].removed += 1; i += 1; continue; }
+    if cmp > 0 { bd_line("+", "maps", "", kn); c[0].added += 1; j += 1; continue; }
+    bd_list(os[..], ns[..], ob[0].placements[i], nb[0].placements[j], "name", "placements", ko, c[..]);
+    bd_list(os[..], ns[..], ob[0].lights[i], nb[0].lights[j], "name", "lights", ko, c[..]);
+    bd_list(os[..], ns[..], ob[0].spots[i], nb[0].spots[j], "name", "spots", ko, c[..]);
+    bd_list(os[..], ns[..], ob[0].volumes[i], nb[0].volumes[j], "name", "volumes", ko, c[..]);
+    bd_list(os[..], ns[..], ob[0].landscapes[i], nb[0].landscapes[j], "name", "landscapes", ko, c[..]);
+    c[0].same += 1; i += 1; j += 1;
+  }
+  ro: [8] int; rn: [8] int;
+  if !bd_reasons(args_at(a[..], 0), ot[..], on[..], ro[..]) || !bd_reasons(args_at(a[..], 1), nt[..], nn[..], rn[..]) { tool_errln("bundle-diff: a skipped.json can't be read or is out of its form"); return 1; }
+  for w, k: BD_REASONS { if ro[k] != rn[k] { print("~ skipped % % -> %\n", w, ro[k], rn[k]); c[0].changed += 1; } }
+  print("bundle-diff: % added, % removed, % changed, % the same\n", c[0].added, c[0].removed, c[0].changed, c[0].same);
+  return ifx c[0].added + c[0].removed + c[0].changed == 0 then 0 else 3;
+}

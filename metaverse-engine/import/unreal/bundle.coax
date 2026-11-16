@@ -1,0 +1,463 @@
+// Admits an import bundle (metaverse-engine/import/unreal/BUNDLE.md, version 1): its version, every
+// file's hash and size, every id reference resolved, every list sorted, every count in range and
+// every field in its form. A bundle is admitted whole or refused with its first fault named
+// (ab_why: the list, the row, the id and what is wrong), so no half-read bundle reaches a pack.
+//
+// ab_admit reads manifest.json. It indexes every list's rows (AbBundle.at, in the caller's array)
+// so convert.coax and bundle-diff find a row by id in O(log n): the lists are sorted, so a binary
+// search over the index is the lookup. ab_disk then compares the files the tool found on disk
+// (their paths, sizes and SHA-256, sorted) with the manifest's `files`; ab_skipped admits
+// skipped.json. The tool does the reading and hashing (metaverse-engine/tools/unreal-level-import.coax);
+// nothing here touches the file system.
+//   coax/bin/coax test metaverse-engine/import/unreal/bundle.coax
+#load "../../anim/json.coax";
+
+AB_MAPS :: 16; AB_FILES :: 16384; AB_ROWS :: 262144;
+AB_ID :: 384;                 // an id's bytes at most
+AB_RANGE :: 100000000.0;      // the largest coordinate, cm (1,000 km)
+AB_LIST_ROWS :: 65536;        // rows in one list at most (meshes, materials, a map's placements...)
+
+// The first fault's kind.
+AB_OK :: 0; AB_JSON :: 1; AB_VERSION :: 2; AB_KEY :: 3; AB_FORM :: 4; AB_ORDER :: 5; AB_REFERENCE :: 6;
+AB_LIMIT :: 7; AB_FILE :: 8; AB_UNLISTED :: 9; AB_MISSING :: 10; AB_SIZE :: 11; AB_HASH :: 12; AB_SKIPPED :: 13;
+AB_WHY :: [14] string.["admitted", "not JSON", "not an import bundle of version 1", "a field the format doesn't have, or one missing",
+  "a value out of its form", "out of order or named twice", "a reference that names nothing in the bundle", "over a limit",
+  "a file path out of its form", "a file on disk the manifest doesn't list", "a listed file missing from disk",
+  "a file's size differs from the manifest's", "a file's SHA-256 differs from the manifest's", "skipped.json out of its form"];
+
+AB_EDITOR :: 0; AB_COOKED :: 1; AB_DATA :: 2;
+
+AbList :: struct { first: int; count: int; }
+AbFault :: struct { code: int; list: [32] u8; list_n: int; row: int = -1; id: [AB_ID] u8; id_n: int; }
+AbBundle :: struct {
+  d: Jv; at: [] int; used: int;
+  route: int;
+  files: AbList; meshes: AbList; skeletal: AbList; skeletons: AbList; animations: AbList;
+  materials: AbList; textures: AbList; sounds: AbList; maps: AbList; tables: AbList;
+  placements: [AB_MAPS] AbList; lights: [AB_MAPS] AbList; spots: [AB_MAPS] AbList;
+  volumes: [AB_MAPS] AbList; landscapes: [AB_MAPS] AbList;
+}
+// A file as the tool found it on disk: its path under the bundle, size and SHA-256 in hex.
+AbDisk :: struct { path: [128] u8; path_n: int; bytes: int; sha: [64] u8; }
+
+// ---- reading
+
+// A row's node (index k of list l).
+ab_row :: (b: [] AbBundle, l: AbList, k: int) -> int #effects(all) { return b[0].at[l.first + k]; }
+// A string's raw bytes (between its quotes), or "" when not a plain string.
+ab_s :: (d: Jv, node: int) -> string #effects(all) { return ifx jv_kind(d, node) == JV_STRING then jv_raw(d, node) else ""; }
+ab_field :: (d: Jv, node: int, key: string) -> string #effects(all) { return ab_s(d, jv_get(d, node, key)); }
+ab_id :: (d: Jv, node: int) -> string #effects(all) { return ab_field(d, node, "id"); }
+// Byte order, the order a sorted list keeps.
+ab_cmp :: (a: string, b: string) -> int #effects(all) {
+  n := ifx a.count < b.count then a.count else b.count;
+  for k: 0..<n { if a[k] != b[k] { return ifx a[k] < b[k] then -1 else 1; } }
+  return ifx a.count < b.count then -1 else ifx a.count > b.count then 1 else 0;
+}
+// The row of list l whose `key` is s, or -1: a binary search, the list being sorted by it.
+ab_find_by :: (b: [] AbBundle, l: AbList, key: string, s: string) -> int #effects(all) {
+  lo := 0; hi := l.count - 1;
+  while lo <= hi {
+    mid := (lo + hi) / 2;
+    c := ab_cmp(ab_field(b[0].d, ab_row(b, l, mid), key), s);
+    if c == 0 { return mid; }
+    if c < 0 { lo = mid + 1; } else { hi = mid - 1; }
+  }
+  return -1;
+}
+ab_find :: (b: [] AbBundle, l: AbList, id: string) -> int #effects(all) { return ab_find_by(b, l, "id", id); }
+ab_file_row :: (b: [] AbBundle, path: string) -> int #effects(all) { return ab_find_by(b, b[0].files, "path", path); }
+// A number field (anim_number's strict decimal), or nan's stand-in 0 with ok false.
+ab_num :: (d: Jv, node: int) -> AnimNumber #effects(all) { return anim_number(d, node, -AB_RANGE, AB_RANGE); }
+ab_f :: (d: Jv, node: int, i: int) -> f64 #effects(all) { return ab_num(d, jv_at(d, node, i)).value; }
+ab_vec :: (d: Jv, node: int, n: int) -> bool #effects(all) { return anim_vector(d, node, n, AB_RANGE); }
+
+// ---- forms
+
+ab_hex :: (s: string, n: int) -> bool #effects(all) {
+  if s.count != n { return false; }
+  for c: s { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; } }
+  return true;
+}
+// An id: an object path under /Game/, /Engine/ or /Data/ (a build's loose data, BUNDLE.md section 5),
+// no escapes, no control bytes, no "..".
+ab_id_ok :: (s: string) -> bool #effects(all) {
+  if s.count < 7 || s.count > AB_ID || s[0] != '/' { return false; }
+  root := s[0..<6] == "/Game/" || s[0..<6] == "/Data/" || (s.count >= 8 && s[0..<8] == "/Engine/");
+  if !root { return false; }
+  for c, k: s {
+    if c < 32 || c == 127 || c == '\\' || c == '"' { return false; }
+    if k > 0 && c == '.' && s[k - 1] == '.' { return false; }
+  }
+  return true;
+}
+AB_DIRS :: [7] string.["meshes/", "skeletal/", "anims/", "textures/", "sounds/", "landscape/", "tables/"];
+// A file path in the bundle: one of its folders, then letters, digits, - and _, one extension.
+ab_path_ok :: (s: string) -> bool #effects(all) {
+  if s.count < 3 || s.count > 120 { return false; }
+  dir := -1;
+  for d, k: AB_DIRS { if s.count > d.count && s[0..<d.count] == d { dir = k; } }
+  if dir < 0 { return false; }
+  dots := 0;
+  for c: s[AB_DIRS[dir].count..<s.count] {
+    if c == '.' { dots += 1; continue; }
+    if !((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '_') { return false; }
+  }
+  return dots == 1 && s[s.count - 1] != '.';
+}
+ab_word :: (d: Jv, node: int, words: string) -> bool #effects(all) { return jv_kind(d, node) == JV_STRING && anim_in(jv_raw(d, node), words); }
+ab_bool :: (d: Jv, node: int) -> bool #effects(all) { k := jv_kind(d, node); return k == JV_TRUE || k == JV_FALSE; }
+ab_int :: (d: Jv, node: int, low: int, high: int) -> bool #effects(all) { return anim_integer(d, node, low, high) >= low; }
+// A quaternion: four numbers, unit within 1e-3.
+ab_quat :: (d: Jv, node: int) -> bool #effects(all) {
+  if !anim_vector(d, node, 4, 1.01) { return false; }
+  n := 0.0; for k: 0..<4 { v := ab_f(d, node, k); n += v * v; }
+  return abs(n - 1.0) <= 0.002;
+}
+ab_bounds :: (d: Jv, node: int) -> bool #effects(all) {
+  if !ab_vec(d, node, 6) { return false; }
+  return ab_f(d, node, 0) <= ab_f(d, node, 3) && ab_f(d, node, 1) <= ab_f(d, node, 4) && ab_f(d, node, 2) <= ab_f(d, node, 5);
+}
+// The required keys of an object are present and nothing else: `allowed` and `required` as anim_keys' lists.
+ab_keys :: (d: Jv, node: int, allowed: string, required: string) -> bool #effects(all) {
+  if !anim_keys(d, node, allowed) { return false; }
+  first := 0;
+  for k: 0..<required.count + 1 {
+    if k == required.count || required[k] == '|' {
+      if k > first && jv_get(d, node, required[first..<k]) == -1 { return false; }
+      first = k + 1;
+    }
+  }
+  return true;
+}
+
+// ---- admission
+
+AbRun :: struct { code: int; list: string; row: int = -1; id: string; }
+ab_fail :: (f: [] AbFault, code: int, list: string, row: int, id: string) -> int #effects(all) {
+  f[0].code = code; f[0].row = row;
+  f[0].list_n = ifx list.count < 32 then list.count else 32; for k: 0..<f[0].list_n { f[0].list[k] = list[k]; }
+  f[0].id_n = ifx id.count < AB_ID then id.count else AB_ID; for k: 0..<f[0].id_n { f[0].id[k] = id[k]; }
+  return code;
+}
+// Index list node `node` into b.at, refusing a list that isn't an array or is over AB_LIST_ROWS.
+ab_index :: (b: [] AbBundle, node: int, out: [] AbList) -> bool #effects(all) {
+  d := b[0].d;
+  if jv_kind(d, node) != JV_ARRAY || jv_len(d, node) > AB_LIST_ROWS || b[0].used + jv_len(d, node) > b[0].at.count { return false; }
+  out[0] = AbList.{first = b[0].used, count = jv_len(d, node)};
+  k := d.nodes[node].first;
+  while k != -1 { b[0].at[b[0].used] = k; b[0].used += 1; k = d.nodes[k].next; }
+  return true;
+}
+// Each row an object with a well-formed, strictly increasing `key`.
+ab_sorted :: (b: [] AbBundle, l: AbList, key: string, name: string, f: [] AbFault) -> int #effects(all) {
+  d := b[0].d;
+  for k: 0..<l.count {
+    r := ab_row(b, l, k);
+    if jv_kind(d, r) != JV_OBJECT { return ab_fail(f, AB_FORM, name, k, ""); }
+    s := ab_field(d, r, key);
+    ok := ifx key == "path" then ab_path_ok(s) else ifx key == "id" then ab_id_ok(s) else s.count > 0 && s.count <= AB_ID;
+    if !ok { return ab_fail(f, ifx key == "path" then AB_FILE else AB_FORM, name, k, s); }
+    if k > 0 && ab_cmp(ab_field(d, ab_row(b, l, k - 1), key), s) >= 0 { return ab_fail(f, AB_ORDER, name, k, s); }
+  }
+  return AB_OK;
+}
+// A list of ids that each name a row of `l` (materials or textures).
+ab_refs :: (b: [] AbBundle, node: int, l: AbList) -> bool #effects(all) {
+  d := b[0].d;
+  if jv_kind(d, node) != JV_ARRAY || jv_len(d, node) > 256 { return false; }
+  k := d.nodes[node].first;
+  while k != -1 { if ab_find(b, l, ab_s(d, k)) < 0 { return false; } k = d.nodes[k].next; }
+  return true;
+}
+ab_file_ref :: (b: [] AbBundle, node: int) -> bool #effects(all) { return ab_file_row(b, ab_s(b[0].d, node)) >= 0; }
+ab_origin :: (d: Jv, node: int) -> bool #effects(all) { return ab_word(d, jv_get(d, node, "origin"), "project|engine"); }
+// A collision box, sphere, capsule or hull (BUNDLE.md 3.1; a volume's brush boxes too).
+ab_box :: (d: Jv, n: int) -> bool #effects(all) {
+  if !ab_keys(d, n, "center_cm|rotation|extent_cm", "center_cm|rotation|extent_cm") || !ab_vec(d, jv_get(d, n, "center_cm"), 3) || !ab_quat(d, jv_get(d, n, "rotation")) { return false; }
+  e := jv_get(d, n, "extent_cm"); if !ab_vec(d, e, 3) { return false; }
+  for k: 0..<3 { if ab_f(d, e, k) < 0 { return false; } }
+  return true;
+}
+ab_collision :: (d: Jv, c: int) -> bool #effects(all) {
+  if !ab_keys(d, c, "complex_as_simple|boxes|spheres|capsules|convex", "complex_as_simple|boxes|spheres|capsules|convex") || !ab_bool(d, jv_get(d, c, "complex_as_simple")) { return false; }
+  for list: [4] string.["boxes", "spheres", "capsules", "convex"] {
+    l := jv_get(d, c, list); if jv_kind(d, l) != JV_ARRAY || jv_len(d, l) > 1024 { return false; }
+    k := d.nodes[l].first;
+    while k != -1 {
+      ok := false;
+      if list == "boxes" { ok = ab_box(d, k); }
+      if list == "spheres" { ok = ab_keys(d, k, "center_cm|radius_cm", "center_cm|radius_cm") && ab_vec(d, jv_get(d, k, "center_cm"), 3) && ab_num(d, jv_get(d, k, "radius_cm")).value > 0; }
+      if list == "capsules" {
+        ok = ab_keys(d, k, "center_cm|rotation|radius_cm|length_cm", "center_cm|rotation|radius_cm|length_cm") && ab_vec(d, jv_get(d, k, "center_cm"), 3) && ab_quat(d, jv_get(d, k, "rotation"))
+          && ab_num(d, jv_get(d, k, "radius_cm")).value > 0 && ab_num(d, jv_get(d, k, "length_cm")).value >= 0;
+      }
+      if list == "convex" {
+        v := jv_get(d, k, "vertices_cm");
+        ok = ab_keys(d, k, "vertices_cm", "vertices_cm") && jv_kind(d, v) == JV_ARRAY && jv_len(d, v) >= 4 && jv_len(d, v) <= 256;
+        if ok { p := d.nodes[v].first; while p != -1 { if !ab_vec(d, p, 3) { ok = false; break; } p = d.nodes[p].next; } }
+      }
+      if !ok { return false; }
+      k = d.nodes[k].next;
+    }
+  }
+  return true;
+}
+
+AB_TOP :: "aimport|source|files|meshes|skeletal_meshes|skeletons|animations|materials|textures|sounds|maps";
+AB_TOP_ALLOWED :: "aimport|source|files|meshes|skeletal_meshes|skeletons|animations|materials|textures|sounds|maps|tables";   // tables: optional (BUNDLE.md 3.7)
+AB_SOURCE :: "route|project|revision|engine|maps|plan_sha256";
+AB_MESH :: "id|file|triangles|vertices|bounds_cm|nanite|materials|collision|origin";
+AB_SKELETAL :: "id|file|skeleton|triangles|vertices|bounds_cm|materials|origin";
+AB_MATERIAL :: "id|parent|root|blend|two_sided|shading|textures|scalars|vectors|baked|origin";
+AB_TEXTURE_ALLOWED :: "id|file|width|height|srgb|compression|origin|baked_from";
+AB_TEXTURE :: "id|file|width|height|srgb|compression|origin";
+AB_SOUND :: "id|file|seconds|channels|rate|origin";
+AB_MAP :: "id|placements|lights|spots|volumes|landscapes|atmosphere|streamed";
+AB_PLACEMENT :: "name|actor|actor_class|component|instance|kind|asset|translation_cm|rotation|scale|materials|collision|visible|cast_shadow|tags";
+AB_LIGHT :: "name|kind|translation_cm|rotation|color|intensity|units|radius_cm|inner_deg|outer_deg|cast_shadows|movable";
+AB_SPOT :: "name|kind|translation_cm|rotation|tags";
+AB_VOLUME :: "name|class|translation_cm|rotation|scale|boxes";
+AB_COMPRESSION :: "default|normalmap|masks|grayscale|hdr|alpha|displacementmap|vectordisplacementmap|bc7|ui|other";
+
+// book:begin admit
+ab_admit :: (text: string, d: [] Jv, nodes: [] JvNode, at: [] int, out: [] AbBundle, f: [] AbFault) -> int #effects(all) {
+  if !jv_parse(d, text, nodes) || jv_kind(d[0], 0) != JV_OBJECT { return ab_fail(f, AB_JSON, "manifest", -1, ""); }
+  bb: [1] AbBundle; b := bb[..]; b[0].d = d[0]; b[0].at = at; dd := d[0];
+  if anim_integer(dd, jv_get(dd, 0, "aimport"), 1, 1) != 1 { return ab_fail(f, AB_VERSION, "manifest", -1, ""); }
+  if !ab_keys(dd, 0, AB_TOP_ALLOWED, AB_TOP) { return ab_fail(f, AB_KEY, "manifest", -1, ""); }
+  src := jv_get(dd, 0, "source");
+  if !ab_keys(dd, src, AB_SOURCE, AB_SOURCE) { return ab_fail(f, AB_KEY, "source", -1, ""); }
+  b[0].route = anim_choice(dd, jv_get(dd, src, "route"), AB_ROUTES[..]);
+  rev := jv_get(dd, src, "revision");
+  smaps := jv_get(dd, src, "maps");
+  if b[0].route < 0 || ab_s(dd, jv_get(dd, src, "project")).count == 0 || jv_kind(dd, jv_get(dd, src, "engine")) != JV_STRING
+    || !(jv_kind(dd, rev) == JV_NULL || ab_hex(ab_s(dd, rev), 40)) || !ab_hex(ab_s(dd, jv_get(dd, src, "plan_sha256")), 64)
+    || jv_kind(dd, smaps) != JV_ARRAY || jv_len(dd, smaps) < 1 || jv_len(dd, smaps) > AB_MAPS { return ab_fail(f, AB_FORM, "source", -1, ""); }
+  lists := [9] string.["files", "meshes", "skeletal_meshes", "skeletons", "animations", "materials", "textures", "sounds", "maps"];
+  got: [9] AbList;
+  for name, k: lists {
+    one: [1] AbList;
+    if !ab_index(b, jv_get(dd, 0, name), one[..]) { return ab_fail(f, AB_LIMIT, name, -1, ""); }
+    got[k] = one[0];
+    code := ab_sorted(b, one[0], ifx k == 0 then "path" else "id", name, f); if code != AB_OK { return code; }
+  }
+  b[0].files = got[0]; b[0].meshes = got[1]; b[0].skeletal = got[2]; b[0].skeletons = got[3]; b[0].animations = got[4];
+  b[0].materials = got[5]; b[0].textures = got[6]; b[0].sounds = got[7]; b[0].maps = got[8];
+  if b[0].files.count > AB_FILES { return ab_fail(f, AB_LIMIT, "files", -1, ""); }
+  for k: 0..<b[0].files.count {
+    r := ab_row(b, b[0].files, k);
+    if !ab_keys(dd, r, "path|sha256|bytes", "path|sha256|bytes") { return ab_fail(f, AB_KEY, "files", k, ab_field(dd, r, "path")); }
+    if !ab_hex(ab_field(dd, r, "sha256"), 64) || !ab_int(dd, jv_get(dd, r, "bytes"), 0, 4294967295) { return ab_fail(f, AB_FORM, "files", k, ab_field(dd, r, "path")); }
+  }
+  for k: 0..<b[0].meshes.count {
+    r := ab_row(b, b[0].meshes, k); id := ab_id(dd, r);
+    if !ab_keys(dd, r, AB_MESH, AB_MESH) { return ab_fail(f, AB_KEY, "meshes", k, id); }
+    if !ab_int(dd, jv_get(dd, r, "triangles"), 0, 100000000) || !ab_int(dd, jv_get(dd, r, "vertices"), 0, 100000000) || !ab_bounds(dd, jv_get(dd, r, "bounds_cm"))
+      || !ab_bool(dd, jv_get(dd, r, "nanite")) || !ab_origin(dd, r) || !ab_collision(dd, jv_get(dd, r, "collision")) { return ab_fail(f, AB_FORM, "meshes", k, id); }
+    if !ab_file_ref(b, jv_get(dd, r, "file")) || !ab_refs(b, jv_get(dd, r, "materials"), b[0].materials) { return ab_fail(f, AB_REFERENCE, "meshes", k, id); }
+  }
+  for k: 0..<b[0].skeletal.count {
+    r := ab_row(b, b[0].skeletal, k); id := ab_id(dd, r);
+    if !ab_keys(dd, r, AB_SKELETAL, AB_SKELETAL) { return ab_fail(f, AB_KEY, "skeletal_meshes", k, id); }
+    if !ab_int(dd, jv_get(dd, r, "triangles"), 0, 100000000) || !ab_int(dd, jv_get(dd, r, "vertices"), 0, 100000000) || !ab_bounds(dd, jv_get(dd, r, "bounds_cm")) || !ab_origin(dd, r) { return ab_fail(f, AB_FORM, "skeletal_meshes", k, id); }
+    if !ab_file_ref(b, jv_get(dd, r, "file")) || ab_find(b, b[0].skeletons, ab_field(dd, r, "skeleton")) < 0 || !ab_refs(b, jv_get(dd, r, "materials"), b[0].materials) { return ab_fail(f, AB_REFERENCE, "skeletal_meshes", k, id); }
+  }
+  for k: 0..<b[0].skeletons.count {
+    r := ab_row(b, b[0].skeletons, k); id := ab_id(dd, r);
+    if !ab_keys(dd, r, "id|origin|bones", "id|origin|bones") { return ab_fail(f, AB_KEY, "skeletons", k, id); }
+    bones := jv_get(dd, r, "bones");
+    if !ab_origin(dd, r) || jv_kind(dd, bones) != JV_ARRAY || jv_len(dd, bones) < 1 || jv_len(dd, bones) > 1024 { return ab_fail(f, AB_FORM, "skeletons", k, id); }
+    i := 0; n := dd.nodes[bones].first;
+    while n != -1 {
+      if !ab_keys(dd, n, "name|parent|rest_translation_cm|rest_rotation|rest_scale", "name|parent|rest_translation_cm|rest_rotation|rest_scale")
+        || ab_field(dd, n, "name").count == 0 || anim_integer(dd, jv_get(dd, n, "parent"), -1, i - 1) < -1 || (i > 0) != (anim_integer(dd, jv_get(dd, n, "parent"), -1, i - 1) >= 0)
+        || !ab_vec(dd, jv_get(dd, n, "rest_translation_cm"), 3) || !ab_quat(dd, jv_get(dd, n, "rest_rotation")) || !ab_vec(dd, jv_get(dd, n, "rest_scale"), 3) { return ab_fail(f, AB_FORM, "skeletons", k, id); }
+      i += 1; n = dd.nodes[n].next;
+    }
+  }
+  for k: 0..<b[0].animations.count {
+    r := ab_row(b, b[0].animations, k); id := ab_id(dd, r);
+    if !ab_keys(dd, r, "id|file|skeleton|frames|rate|seconds|origin", "id|file|skeleton|frames|rate|seconds|origin") { return ab_fail(f, AB_KEY, "animations", k, id); }
+    if !ab_int(dd, jv_get(dd, r, "frames"), 1, 1000000) || ab_num(dd, jv_get(dd, r, "rate")).value <= 0 || ab_num(dd, jv_get(dd, r, "seconds")).value < 0 || !ab_origin(dd, r) { return ab_fail(f, AB_FORM, "animations", k, id); }
+    if !ab_file_ref(b, jv_get(dd, r, "file")) || ab_find(b, b[0].skeletons, ab_field(dd, r, "skeleton")) < 0 { return ab_fail(f, AB_REFERENCE, "animations", k, id); }
+  }
+  for k: 0..<b[0].textures.count {
+    r := ab_row(b, b[0].textures, k); id := ab_id(dd, r);
+    if !ab_keys(dd, r, AB_TEXTURE_ALLOWED, AB_TEXTURE) { return ab_fail(f, AB_KEY, "textures", k, id); }
+    if !ab_int(dd, jv_get(dd, r, "width"), 1, 16384) || !ab_int(dd, jv_get(dd, r, "height"), 1, 16384) || !ab_bool(dd, jv_get(dd, r, "srgb"))
+      || !ab_word(dd, jv_get(dd, r, "compression"), AB_COMPRESSION) || !ab_origin(dd, r) { return ab_fail(f, AB_FORM, "textures", k, id); }
+    from := jv_get(dd, r, "baked_from");
+    if !ab_file_ref(b, jv_get(dd, r, "file")) || (from != -1 && ab_find(b, b[0].materials, ab_s(dd, from)) < 0) { return ab_fail(f, AB_REFERENCE, "textures", k, id); }
+  }
+  for k: 0..<b[0].materials.count {
+    r := ab_row(b, b[0].materials, k); id := ab_id(dd, r);
+    if !ab_keys(dd, r, AB_MATERIAL, AB_MATERIAL) { return ab_fail(f, AB_KEY, "materials", k, id); }
+    if !ab_id_ok(ab_field(dd, r, "parent")) || !ab_id_ok(ab_field(dd, r, "root")) || !ab_word(dd, jv_get(dd, r, "blend"), "opaque|masked|translucent|additive")
+      || !ab_bool(dd, jv_get(dd, r, "two_sided")) || !ab_word(dd, jv_get(dd, r, "shading"), "default_lit|unlit|subsurface|other") || !ab_origin(dd, r) { return ab_fail(f, AB_FORM, "materials", k, id); }
+    for list: [3] string.["textures", "scalars", "vectors"] {
+      l := jv_get(dd, r, list); if jv_kind(dd, l) != JV_ARRAY || jv_len(dd, l) > 256 { return ab_fail(f, AB_FORM, "materials", k, id); }
+      n := dd.nodes[l].first;
+      while n != -1 {
+        if list == "textures" {
+          if !ab_keys(dd, n, "name|texture", "name|texture") || ab_field(dd, n, "name").count == 0 { return ab_fail(f, AB_FORM, "materials", k, id); }
+          if ab_find(b, b[0].textures, ab_field(dd, n, "texture")) < 0 { return ab_fail(f, AB_REFERENCE, "materials", k, id); }
+        } else if !ab_keys(dd, n, "name|value", "name|value") || ab_field(dd, n, "name").count == 0
+          || !(ifx list == "scalars" then ab_num(dd, jv_get(dd, n, "value")).ok else ab_vec(dd, jv_get(dd, n, "value"), 4)) { return ab_fail(f, AB_FORM, "materials", k, id); }
+        n = dd.nodes[n].next;
+      }
+    }
+    baked := jv_get(dd, r, "baked");
+    if !anim_keys(dd, baked, "base_color|normal|orm|emissive") { return ab_fail(f, AB_FORM, "materials", k, id); }
+    n := dd.nodes[baked].first;
+    while n != -1 { if ab_find(b, b[0].textures, ab_s(dd, n)) < 0 { return ab_fail(f, AB_REFERENCE, "materials", k, id); } n = dd.nodes[n].next; }
+  }
+  tl := jv_get(dd, 0, "tables");
+  if tl != -1 {
+    one: [1] AbList;
+    if !ab_index(b, tl, one[..]) { return ab_fail(f, AB_LIMIT, "tables", -1, ""); }
+    code := ab_sorted(b, one[0], "id", "tables", f); if code != AB_OK { return code; }
+    b[0].tables = one[0];
+  }
+  for k: 0..<b[0].tables.count {
+    r := ab_row(b, b[0].tables, k); id := ab_id(dd, r);
+    if !ab_keys(dd, r, "id|file|format|rows|origin", "id|file|format|rows|origin") { return ab_fail(f, AB_KEY, "tables", k, id); }
+    if !ab_word(dd, jv_get(dd, r, "format"), "csv|json") || !ab_int(dd, jv_get(dd, r, "rows"), 0, 10000000) || !ab_origin(dd, r) { return ab_fail(f, AB_FORM, "tables", k, id); }
+    if !ab_file_ref(b, jv_get(dd, r, "file")) { return ab_fail(f, AB_REFERENCE, "tables", k, id); }
+  }
+  for k: 0..<b[0].sounds.count {
+    r := ab_row(b, b[0].sounds, k); id := ab_id(dd, r);
+    if !ab_keys(dd, r, AB_SOUND, AB_SOUND) { return ab_fail(f, AB_KEY, "sounds", k, id); }
+    if ab_num(dd, jv_get(dd, r, "seconds")).value < 0 || !ab_int(dd, jv_get(dd, r, "channels"), 1, 8) || !ab_int(dd, jv_get(dd, r, "rate"), 8000, 192000) || !ab_origin(dd, r) { return ab_fail(f, AB_FORM, "sounds", k, id); }
+    if !ab_file_ref(b, jv_get(dd, r, "file")) { return ab_fail(f, AB_REFERENCE, "sounds", k, id); }
+  }
+  if b[0].maps.count != jv_len(dd, smaps) { return ab_fail(f, AB_REFERENCE, "source", -1, ""); }
+  sm := dd.nodes[smaps].first;
+  while sm != -1 { if ab_find(b, b[0].maps, ab_s(dd, sm)) < 0 { return ab_fail(f, AB_REFERENCE, "source", -1, ab_s(dd, sm)); } sm = dd.nodes[sm].next; }
+  for m: 0..<b[0].maps.count {
+    r := ab_row(b, b[0].maps, m); id := ab_id(dd, r);
+    if !ab_keys(dd, r, AB_MAP, AB_MAP) || jv_kind(dd, jv_get(dd, r, "atmosphere")) != JV_OBJECT { return ab_fail(f, AB_KEY, "maps", m, id); }
+    sub := [5] string.["placements", "lights", "spots", "volumes", "landscapes"];
+    for name, s: sub {
+      one: [1] AbList;
+      if !ab_index(b, jv_get(dd, r, name), one[..]) { return ab_fail(f, AB_LIMIT, name, -1, id); }
+      code := ab_sorted(b, one[0], "name", name, f); if code != AB_OK { return code; }
+      if s == 0 { b[0].placements[m] = one[0]; } if s == 1 { b[0].lights[m] = one[0]; } if s == 2 { b[0].spots[m] = one[0]; }
+      if s == 3 { b[0].volumes[m] = one[0]; } if s == 4 { b[0].landscapes[m] = one[0]; }
+    }
+    st := jv_get(dd, r, "streamed");
+    if jv_kind(dd, st) != JV_ARRAY { return ab_fail(f, AB_FORM, "maps", m, id); }
+    pl := b[0].placements[m];
+    for k: 0..<pl.count {
+      p := ab_row(b, pl, k); name := ab_field(dd, p, "name");
+      if !ab_keys(dd, p, AB_PLACEMENT, AB_PLACEMENT) { return ab_fail(f, AB_KEY, "placements", k, name); }
+      kind := anim_choice(dd, jv_get(dd, p, "kind"), AB_KINDS[..]);
+      if kind < 0 || !ab_int(dd, jv_get(dd, p, "instance"), -1, 100000000) || !ab_vec(dd, jv_get(dd, p, "translation_cm"), 3) || !ab_quat(dd, jv_get(dd, p, "rotation"))
+        || !ab_vec(dd, jv_get(dd, p, "scale"), 3) || !ab_word(dd, jv_get(dd, p, "collision"), "block|overlap|none") || !ab_bool(dd, jv_get(dd, p, "visible"))
+        || !ab_bool(dd, jv_get(dd, p, "cast_shadow")) || jv_kind(dd, jv_get(dd, p, "tags")) != JV_ARRAY { return ab_fail(f, AB_FORM, "placements", k, name); }
+      list := ifx kind == 0 then b[0].meshes else b[0].skeletal;
+      if ab_find(b, list, ab_field(dd, p, "asset")) < 0 || !ab_refs(b, jv_get(dd, p, "materials"), b[0].materials) { return ab_fail(f, AB_REFERENCE, "placements", k, name); }
+    }
+    for k: 0..<b[0].lights[m].count {
+      p := ab_row(b, b[0].lights[m], k); name := ab_field(dd, p, "name");
+      if !ab_keys(dd, p, AB_LIGHT, AB_LIGHT) { return ab_fail(f, AB_KEY, "lights", k, name); }
+      if !ab_word(dd, jv_get(dd, p, "kind"), "directional|point|spot|rect|sky") || !ab_vec(dd, jv_get(dd, p, "translation_cm"), 3) || !ab_quat(dd, jv_get(dd, p, "rotation"))
+        || !anim_vector(dd, jv_get(dd, p, "color"), 3, 1000.0) || ab_num(dd, jv_get(dd, p, "intensity")).value < 0 || !ab_word(dd, jv_get(dd, p, "units"), "lux|candelas|lumens|unitless")
+        || ab_num(dd, jv_get(dd, p, "radius_cm")).value < 0 || !ab_num(dd, jv_get(dd, p, "inner_deg")).ok || !ab_num(dd, jv_get(dd, p, "outer_deg")).ok
+        || !ab_bool(dd, jv_get(dd, p, "cast_shadows")) || !ab_word(dd, jv_get(dd, p, "movable"), "static|stationary|movable") { return ab_fail(f, AB_FORM, "lights", k, name); }
+    }
+    for k: 0..<b[0].spots[m].count {
+      p := ab_row(b, b[0].spots[m], k); name := ab_field(dd, p, "name");
+      if !ab_keys(dd, p, AB_SPOT, AB_SPOT) { return ab_fail(f, AB_KEY, "spots", k, name); }
+      if !ab_word(dd, jv_get(dd, p, "kind"), "player_start|tag|target_point") || !ab_vec(dd, jv_get(dd, p, "translation_cm"), 3) || !ab_quat(dd, jv_get(dd, p, "rotation"))
+        || jv_kind(dd, jv_get(dd, p, "tags")) != JV_ARRAY { return ab_fail(f, AB_FORM, "spots", k, name); }
+    }
+    for k: 0..<b[0].volumes[m].count {
+      p := ab_row(b, b[0].volumes[m], k); name := ab_field(dd, p, "name");
+      if !ab_keys(dd, p, AB_VOLUME, AB_VOLUME) { return ab_fail(f, AB_KEY, "volumes", k, name); }
+      boxes := jv_get(dd, p, "boxes");
+      ok := ab_field(dd, p, "class").count > 0 && ab_vec(dd, jv_get(dd, p, "translation_cm"), 3) && ab_quat(dd, jv_get(dd, p, "rotation"))
+        && ab_vec(dd, jv_get(dd, p, "scale"), 3) && jv_kind(dd, boxes) == JV_ARRAY && jv_len(dd, boxes) <= 1024;
+      if ok { n := dd.nodes[boxes].first; while n != -1 { if !ab_box(dd, n) { ok = false; break; } n = dd.nodes[n].next; } }
+      if !ok { return ab_fail(f, AB_FORM, "volumes", k, name); }
+    }
+    for k: 0..<b[0].landscapes[m].count {
+      p := ab_row(b, b[0].landscapes[m], k); name := ab_field(dd, p, "name");
+      if !ab_keys(dd, p, "name|translation_cm|rotation|scale|components|layers|material", "name|translation_cm|rotation|scale|components|layers|material") { return ab_fail(f, AB_KEY, "landscapes", k, name); }
+      comps := jv_get(dd, p, "components"); layers := jv_get(dd, p, "layers");
+      if !ab_vec(dd, jv_get(dd, p, "translation_cm"), 3) || !ab_quat(dd, jv_get(dd, p, "rotation")) || !ab_vec(dd, jv_get(dd, p, "scale"), 3)
+        || jv_kind(dd, comps) != JV_ARRAY || jv_kind(dd, layers) != JV_ARRAY { return ab_fail(f, AB_FORM, "landscapes", k, name); }
+      n := dd.nodes[comps].first;
+      while n != -1 {
+        if !ab_keys(dd, n, "file|x|y|size", "file|x|y|size") || !ab_int(dd, jv_get(dd, n, "x"), 0, 1000000) || !ab_int(dd, jv_get(dd, n, "y"), 0, 1000000) || !ab_int(dd, jv_get(dd, n, "size"), 2, 8192) { return ab_fail(f, AB_FORM, "landscapes", k, name); }
+        if !ab_file_ref(b, jv_get(dd, n, "file")) { return ab_fail(f, AB_REFERENCE, "landscapes", k, name); }
+        n = dd.nodes[n].next;
+      }
+      n = dd.nodes[layers].first;
+      while n != -1 {
+        if !ab_keys(dd, n, "name|file", "name|file") { return ab_fail(f, AB_FORM, "landscapes", k, name); }
+        if !ab_file_ref(b, jv_get(dd, n, "file")) { return ab_fail(f, AB_REFERENCE, "landscapes", k, name); }
+        n = dd.nodes[n].next;
+      }
+    }
+  }
+  out[0] = b[0];
+  return AB_OK;
+}
+// book:end admit
+AB_ROUTES :: [3] string.["editor", "cooked", "data"];
+AB_KINDS :: [2] string.["static", "skeletal"];
+
+// The files on disk against the manifest's: `disk` sorted by path, as the tool lists the bundle's
+// folders (manifest.json and skipped.json, the bundle's own, left out). Both sorted, one walk.
+ab_disk :: (b: [] AbBundle, disk: [] AbDisk, f: [] AbFault) -> int #effects(all) {
+  d := b[0].d; i := 0; k := 0;
+  while i < disk.count || k < b[0].files.count {
+    on_disk := ifx i < disk.count then cast(string) disk[i].path[0..<disk[i].path_n] else "";
+    r := ifx k < b[0].files.count then ab_row(b, b[0].files, k) else -1;
+    listed := ifx r >= 0 then ab_field(d, r, "path") else "";
+    c := ifx r < 0 then -1 else ifx i >= disk.count then 1 else ab_cmp(on_disk, listed);
+    if c < 0 { return ab_fail(f, AB_UNLISTED, "files", -1, on_disk); }
+    if c > 0 { return ab_fail(f, AB_MISSING, "files", k, listed); }
+    if anim_integer(d, jv_get(d, r, "bytes"), 0, 4294967295) != disk[i].bytes { return ab_fail(f, AB_SIZE, "files", k, listed); }
+    if !(cast(string) disk[i].sha[0..<64] == ab_field(d, r, "sha256")) { return ab_fail(f, AB_HASH, "files", k, listed); }
+    i += 1; k += 1;
+  }
+  return AB_OK;
+}
+
+AB_REASONS :: "logic|niagara|sequencer|audio_graph|widget|decal|hidden|unsupported";
+// skipped.json: rows of map, actor, class, component, reason and, for `unsupported`, detail.
+// Returns the rows, or -1 when it is out of its form (f names the row).
+ab_skipped :: (text: string, d: [] Jv, nodes: [] JvNode, f: [] AbFault) -> int #effects(all) {
+  if !jv_parse(d, text, nodes) || jv_kind(d[0], 0) != JV_ARRAY { _ = ab_fail(f, AB_SKIPPED, "skipped", -1, ""); return -1; }
+  dd := d[0]; k := dd.nodes[0].first; i := 0;
+  while k != -1 {
+    reason := jv_get(dd, k, "reason");
+    ok := ab_keys(dd, k, "map|actor|class|component|reason|detail", "map|actor|class|component|reason") && ab_word(dd, reason, AB_REASONS);
+    for key: [4] string.["map", "actor", "class", "component"] { if jv_kind(dd, jv_get(dd, k, key)) != JV_STRING { ok = false; } }
+    if ok && jv_raw_eq(jv_raw(dd, reason), "unsupported") && ab_field(dd, k, "detail").count == 0 { ok = false; }
+    if !ok { _ = ab_fail(f, AB_SKIPPED, "skipped", i, ab_field(dd, k, "actor")); return -1; }
+    i += 1; k = dd.nodes[k].next;
+  }
+  return i;
+}
+
+// The first fault in words: "meshes, row 3 (/Game/X): a reference that names nothing in the bundle".
+ab_put :: (out: [] u8, n: int, s: string) -> int #effects(all) { m := n; for c: s { if m < out.count { out[m] = c; m += 1; } } return m; }
+ab_why :: (f: [] AbFault, out: [] u8) -> string #effects(all) {
+  n := ab_put(out, 0, cast(string) f[0].list[0..<f[0].list_n]);
+  if f[0].row >= 0 {
+    n = ab_put(out, n, ", row ");
+    digits: [20] u8; v := f[0].row; dn := 0;
+    if v == 0 { digits[0] = '0'; dn = 1; }
+    while v > 0 { digits[dn] = cast,trunc(u8) (48 + v % 10); dn += 1; v /= 10; }
+    for j: 0..<dn { if n < out.count { out[n] = digits[dn - 1 - j]; n += 1; } }
+  }
+  if f[0].id_n > 0 { n = ab_put(out, n, " ("); n = ab_put(out, n, cast(string) f[0].id[0..<f[0].id_n]); n = ab_put(out, n, ")"); }
+  n = ab_put(out, n, ": ");
+  n = ab_put(out, n, AB_WHY[ifx f[0].code >= 0 && f[0].code < AB_WHY.count then f[0].code else AB_JSON]);
+  return cast(string) out[0..<n];
+}
+
+#load "bundle-checks.coax" #test;

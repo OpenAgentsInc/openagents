@@ -53,6 +53,7 @@ book metaverse-engine/audio/epic.coax metaverse-engine/book/ch067-scores-mixing-
 book metaverse-engine/audio/voice.coax metaverse-engine/book/ch069-voices-in-a-realm.md
 pipeline metaverse-engine/export/ metaverse-engine/tools/unreal-axes-fixture.coax  # the Unreal exporter writes worlds as glTF (#13399; the world exporter is #13400)
 pipeline metaverse-engine/import/unreal/rig metaverse-engine/tools/unreal-rig.coax  # the Splice Bots jam's characters are fitted onto our skeleton offline into its private pack (#13651; the importer, #13648, calls ur_rig_bundle)
+pipeline metaverse-engine/import/unreal/ metaverse-engine/tools/unreal-level-import.coax  # the Unreal level importer turns import bundles into the private packs imported worlds load (#13648)
 
 # Realm scripts (#13467): the module check, the interpreter, the host and the manifest. Until a realm loads the frame
 # codec and a page module loads the host, their consumers are the build tool and the checks.

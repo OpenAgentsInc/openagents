@@ -1,0 +1,68 @@
+// convert.coax's checks: welding, the glTF read, the engine's shapes, the colliders a box becomes.
+#load "../../export/glb-write.coax";
+cvt_geo :: (g: [] CvGeo, verts: [] u32, idx: [] u32, hash: [] int, sections: [] CvSection, meshes: [] CvMesh) #effects(all) {
+  for k: 0..<hash.count { hash[k] = -1; }
+  g[0] = CvGeo.{verts = verts, idx = idx, hash = hash, sections = sections, meshes = meshes};
+}
+#test "a cube read from glTF welds to its 24 corners, 12 triangles, in the frame it was written in" {
+  verts: [4096 * CV_WORDS] u32; idx: [8192] u32; hash: [8192] int; sections: [16] CvSection; meshes: [4] CvMesh; g: [1] CvGeo;
+  cvt_geo(g[..], verts[..], idx[..], hash[..], sections[..], meshes[..]);
+  buf: [36 * VERTEX_WORDS] u32; p: [1] Pen; pen_set(p[..], 1, MAT_FLAT, 1, 1, 1);
+  box(buf[..], p[..], frame_at(v3(10, 0, 0), 0), 0.5, 0.5, 0.5);
+  parts := [1] GlbPart.[GlbPart.{name = "c", first = 0, count = 36}];
+  glb: [16384] u8; n := glb_from_cel(buf[..], parts[..], glb[..]); #assert n > 0;
+  nodes: [512] JvNode;
+  #assert cv_gltf(g[..], glb[0..<n], nodes[..], 0) == 12;
+  #assert g[0].nv == 24 && g[0].ni == 36 && g[0].ns == 1 && meshes[0].sections == 1 && meshes[0].tris == 12;
+  #assert meshes[0].lo[0] == 9.5 && meshes[0].hi[0] == 10.5 && meshes[0].lo[1] == -0.5 && meshes[0].hi[2] == 0.5;
+  // the same mesh again in a new section is welded apart from the first
+  #assert cv_gltf(g[..], glb[0..<n], nodes[..], 1) == 12 && g[0].nv == 48;
+  #assert cv_gltf(g[..], glb[0..<10], nodes[..], 2) == -1 && g[0].bad.count > 0;
+}
+#test "the engine's shapes stand in for Epic's at Unreal's sizes" {
+  verts: [8192 * CV_WORDS] u32; idx: [16384] u32; hash: [16384] int; sections: [16] CvSection; meshes: [8] CvMesh; g: [1] CvGeo;
+  cvt_geo(g[..], verts[..], idx[..], hash[..], sections[..], meshes[..]);
+  #assert cv_shape(g[..], SU_BOX, 0) == 12 && meshes[0].lo[0] == -0.5 && meshes[0].hi[1] == 0.5;
+  #assert cv_shape(g[..], SU_PLANE, 1) == 2 && meshes[1].lo[1] == 0 && meshes[1].hi[1] == 0 && meshes[1].hi[2] == 0.5;
+  #assert cv_shape(g[..], SU_SPHERE, 2) > 100 && abs(meshes[2].hi[1] - 0.5) < 0.001;
+  #assert cv_shape(g[..], SU_CYLINDER, 3) > 40 && abs(meshes[3].lo[1] + 0.5) < 0.0001 && abs(meshes[3].hi[1] - 0.5) < 0.0001;
+  #assert cv_shape(g[..], SU_NONE, 4) == -1;
+}
+#test "an unturned box is a wall, a thin one a floor, a yawed one a hull whose faces hold its corners" {
+  c: [8] D3; sh: [1] CvShape;
+  // Splice's bank_L01_B1: centre (-92930, -18900, 68) cm, size 2100 x 120 x 136, yaw 0
+  t := d3(-92930.0, -18900.0, 68.0); s := d3(21.0, 1.2, 1.36);
+  cv_box_corners(d3(0.0, 0.0, 0.0), dq(0.0, 0.0, 0.0, 1.0), d3(50.0, 50.0, 50.0), t, ua_yaw(0.0), s, c[..]);
+  #assert cv_box_shape(c[..], 2, sh[..]) && sh[0].kind == CV_C_BOX && sh[0].map == 2;
+  #assert near_d(sh[0].v[0], -939.8, 0.0000001) && near_d(sh[0].v[3], -918.8, 0.0000001);
+  #assert near_d(sh[0].v[1], 0.0, 0.0000001) && near_d(sh[0].v[4], 1.36, 0.0000001);
+  #assert near_d(sh[0].v[2], -189.6, 0.0000001) && near_d(sh[0].v[5], -188.4, 0.0000001);
+  // a plane of 210 x 127 m at the ground is a floor
+  cv_box_corners(d3(0.0, 0.0, 0.0), dq(0.0, 0.0, 0.0, 1.0), d3(50.0, 50.0, 0.0), d3(-85500.0, -14150.0, 0.0), ua_yaw(0.0), d3(210.0, 127.0, 1.0), c[..]);
+  #assert cv_box_shape(c[..], 0, sh[..]) && sh[0].kind == CV_C_FLOOR && sh[0].v[6] == 0;
+  // yawed 75 degrees: a hull, every corner on or inside every face
+  cv_box_corners(d3(0.0, 0.0, 0.0), dq(0.0, 0.0, 0.0, 1.0), d3(50.0, 50.0, 50.0), d3(3752.9, -5494.1, 550.0), ua_yaw(75.0), d3(20.0, 37.961, 11.0), c[..]);
+  #assert cv_box_shape(c[..], 3, sh[..]) && sh[0].kind == CV_C_HULL && sh[0].v[0] == 6;
+  for p: c { for f: 0..<6 { at := 3 + f * 4; #assert d3_dot(d3(sh[0].v[at], sh[0].v[at + 1], sh[0].v[at + 2]), p) <= sh[0].v[at + 3] + 0.000001; } }
+  inside := d3(37.529, 5.5, -54.941); for f: 0..<6 { at := 3 + f * 4; #assert d3_dot(d3(sh[0].v[at], sh[0].v[at + 1], sh[0].v[at + 2]), inside) < sh[0].v[at + 3]; }
+  #assert cv_outside(sh[0], sh[0].lo, sh[0].hi) == 0;
+}
+#test "a convex hull from points, and capsules that scale evenly" {
+  pts: [8] D3; for k: 0..<8 { pts[k] = d3(ifx k & 1 != 0 then 1.0 else 0.0, ifx k & 2 != 0 then 2.0 else 0.0, ifx k & 4 != 0 then 3.0 else 0.0); }
+  sh: [1] CvShape;
+  #assert cv_hull_shape(pts[..], 1, sh[..]) && sh[0].v[0] == 6 && sh[0].v[1] == 0 && sh[0].v[2] == 2;
+  #assert !cv_hull_shape(pts[0..<3], 1, sh[..]);
+  #assert cv_capsule_shape(d3(0.0, 0.0, 0.0), dq(0.0, 0.0, 0.0, 1.0), 30.0, 120.0, d3(0.0, 0.0, 100.0), dq(0.0, 0.0, 0.0, 1.0), d3(1.0, 1.0, 1.0), 0, sh[..]);
+  #assert sh[0].kind == CV_C_CAPSULE && near_d(sh[0].v[1], 0.4, 0.0000001) && near_d(sh[0].v[4], 1.6, 0.0000001) && sh[0].v[6] == 0.3;
+  #assert !cv_capsule_shape(d3(0.0, 0.0, 0.0), dq(0.0, 0.0, 0.0, 1.0), 30.0, 120.0, d3(0.0, 0.0, 0.0), dq(0.0, 0.0, 0.0, 1.0), d3(1.0, 2.0, 1.0), 0, sh[..]);
+}
+#test "entry names, cells, yaws and catalog numbers" {
+  b: [40] u8;
+  #assert cv_entry_name("/Data/audio/wav/ui-move", 3, b[..]) == "ui-move-3" && cv_entry_name("/Game/A/T_Garage_D.T_Garage_D", 0, b[..]) == "t-garage-d-0";
+  #assert cv_cell(-929.3) == -15 && cv_cell(63.9) == 0 && cv_cell(64.0) == 1;
+  #assert near_d(cv_yaw(dq(0.0, 0.0, 0.0, 1.0)), 0.0, 0.0000001) && near_d(cv_yaw(ua_quat(ua_yaw(-90.0))), PI_D / 2, 0.0000001);
+  tb: [256] u8; t: [1] CvText; t[0].b = tb[..];
+  cv_put(t[..], "P"); cv_int(t[..], 2); cv_num(t[..], -0.0); cv_num(t[..], 1.36); cv_word(t[..], "bank_L01_B1");
+  #assert cv_text(t[..]) == "P 2 0 1.36 bank_L01_B1";
+  fb: [16] u8; #assert cv_field("a b\tc", fb[..]) == "a_b_c";
+}

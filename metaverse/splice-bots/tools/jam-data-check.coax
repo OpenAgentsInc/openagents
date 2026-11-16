@@ -1,0 +1,232 @@
+// tool.sh: stack-gib 1
+// The Splice Bots jam data import's acceptance (the importer's spec, section 8 step 1): the pack
+// unreal-level-import wrote from the jam build's Data folder, checked against that folder's own CSVs.
+//
+//   coax/web/tool.sh metaverse/splice-bots/tools/jam-data-check.coax DATA_DIR PACK
+//
+//   - every level_layout.csv row is in the pack once, per level and per kind: a box (wall, platform, ramp,
+//     floor, bay) as a drawn instance and a collider, a marker as a named spot, a light as a light; a
+//     row with a field no source states is counted as not stated (the producer leaves it out, not guessed)
+//   - every box's centre, size and corners come back within 0.1 mm of the CSV after the axis change
+//     (metaverse-engine/import/unreal/axes.coax), from both the drawn instance and its collider; a yawed
+//     box's collider holds each corner on three of its faces
+//   - the nine WAVs are the pack's sounds, the icons its colour layers (icons/icons.csv's rows), and
+//     every table (strings, messages, key bindings and the rest) is carried line for line, byte equal
+// It prints a table per level and kind and exits non-zero on any miss or mismatch.
+#import "Basic";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../metaverse-engine/editor/pack.coax";
+#load "../../../metaverse-engine/import/unreal/files.coax";
+#load "../../../metaverse-engine/import/unreal/axes.coax";
+
+JDC_LEVELS :: [4] string.["farm", "lab", "plain", "ring"];
+JDC_KINDS :: [8] string.["bay", "floor", "light", "marker", "platform", "ramp", "wall", "other"];
+JDC_MARKER :: 3; JDC_LIGHT :: 2;
+JDC_TOLERANCE :: 0.0001;    // m: 0.1 mm
+JDC_LINES :: 65536;
+
+JdcCount :: struct { rows: int; found: int; unstated: int; wrong: int; }
+Jdc :: struct {
+  cat: string; line: [JDC_LINES] int; len: [JDC_LINES] int; n: int;
+  counts: [4] [8] JdcCount; worst: f64; bad: int;
+}
+jdc_line :: (j: [] Jdc, k: int) -> string #effects(all) { return j[0].cat[j[0].line[k]..<j[0].line[k] + j[0].len[k]]; }
+jdc_num :: (line: string, k: int) -> f64 #effects(all) { return uf_value(pack_field(line, k)).v; }
+jdc_fields :: (line: string) -> int #effects(all) { n := 0; for c: line { if c == ' ' { n += 1; } } return n + 1; }
+// The catalog line `what MAP ...` whose last field is NAME, or -1.
+jdc_named :: (j: [] Jdc, what: string, map: int, name: string) -> int #effects(all) {
+  found := -1;
+  for k: 0..<j[0].n {
+    l := jdc_line(j, k);
+    if pack_field(l, 0) != what || cast(int) jdc_num(l, 1) != map || pack_field(l, jdc_fields(l) - 1) != name { continue; }
+    if found >= 0 { return -2; }
+    found = k;
+  }
+  return found;
+}
+jdc_miss :: (j: [] Jdc, level: int, name: string, why: string) #effects(all) {
+  tool_err("jam-data-check: "); tool_err(JDC_LEVELS[level]); tool_err(" "); tool_err(name); tool_err(": "); tool_errln(why); j[0].bad += 1;
+}
+jdc_err :: (j: [] Jdc, e: f64) -> bool #effects(all) { j[0].worst = fmax(j[0].worst, e); return e <= JDC_TOLERANCE; }
+// The CSV box's corners in the engine's frame: Unreal centre (x, y, z) cm, size, yaw about Unreal's z.
+jdc_corners :: (v: [7] f64, out: [] D3) #effects(all) {
+  q := ua_yaw(v[6]);
+  for k: 0..<8 {
+    local := d3((ifx k & 1 != 0 then 0.5 else -0.5) * v[3], (ifx k & 2 != 0 then 0.5 else -0.5) * v[4], (ifx k & 4 != 0 then 0.5 else -0.5) * v[5]);
+    w := d3_add(d3(v[0], v[1], v[2]), dq_rotate(q, local));
+    out[k] = ua_pos(w.x, w.y, w.z);
+  }
+}
+// The farthest an expected corner is from its nearest in `got` (both ways round, so the sets agree).
+jdc_corner_error :: (want: [] D3, got: [] D3) -> f64 #effects(all) {
+  e := 0.0;
+  for pass: 0..<2 {
+    a := ifx pass == 0 then want else got; b := ifx pass == 0 then got else want;
+    for p: a { near := 1e30; for q: b { near = fmin(near, d3_len(d3_sub(p, q))); } e = fmax(e, near); }
+  }
+  return e;
+}
+// A box row against its drawn instance (P) and its collider (col).
+jdc_box :: (j: [] Jdc, level: int, name: string, v: [7] f64) -> bool #effects(all) {
+  want: [8] D3; jdc_corners(v, want[..]);
+  p := jdc_named(j, "P", level, name); c := jdc_named(j, "col", level, name);
+  if p < 0 { jdc_miss(j, level, name, ifx p == -2 then "drawn more than once" else "not drawn"); return false; }
+  if c < 0 { jdc_miss(j, level, name, ifx c == -2 then "more than one collider" else "no collider"); return false; }
+  pl := jdc_line(j, p);
+  q := dq(jdc_num(pl, 6), jdc_num(pl, 7), jdc_num(pl, 8), jdc_num(pl, 9));
+  t := d3(jdc_num(pl, 10), jdc_num(pl, 11), jdc_num(pl, 12)); s := d3(jdc_num(pl, 13), jdc_num(pl, 14), jdc_num(pl, 15));
+  flat := v[5] == 0;
+  got: [8] D3;
+  for k: 0..<8 {
+    local := d3(ifx k & 1 != 0 then 0.5 else -0.5, ifx flat then 0.0 else ifx k & 2 != 0 then 0.5 else -0.5, ifx k & 4 != 0 then 0.5 else -0.5);
+    got[k] = d3_add(t, dq_rotate(q, d3_mul(s, local)));
+  }
+  mid_want := d3(0.0, 0.0, 0.0); mid_got := d3(0.0, 0.0, 0.0);
+  for k: 0..<8 { mid_want = d3_add(mid_want, d3_scale(want[k], 0.125)); mid_got = d3_add(mid_got, d3_scale(got[k], 0.125)); }
+  if !jdc_err(j, d3_len(d3_sub(mid_want, mid_got))) { jdc_miss(j, level, name, "its drawn centre is off by more than 0.1 mm"); return false; }
+  if !jdc_err(j, jdc_corner_error(want[..], got[..])) { jdc_miss(j, level, name, "a drawn corner is off by more than 0.1 mm (its size or yaw)"); return false; }
+  cl := jdc_line(j, c); kind := pack_field(cl, 2);
+  if kind == "box" {
+    lo := d3(jdc_num(cl, 3), jdc_num(cl, 4), jdc_num(cl, 5)); hi := d3(jdc_num(cl, 6), jdc_num(cl, 7), jdc_num(cl, 8));
+    cs: [8] D3; for k: 0..<8 { cs[k] = d3(ifx k & 1 != 0 then hi.x else lo.x, ifx k & 2 != 0 then hi.y else lo.y, ifx k & 4 != 0 then hi.z else lo.z); }
+    if !jdc_err(j, jdc_corner_error(want[..], cs[..])) { jdc_miss(j, level, name, "its collider box is off by more than 0.1 mm"); return false; }
+    return true;
+  }
+  if kind == "floor" {
+    o := d3(jdc_num(cl, 3), jdc_num(cl, 9), jdc_num(cl, 4));
+    a := d3(jdc_num(cl, 5), jdc_num(cl, 10), jdc_num(cl, 6)); b := d3(jdc_num(cl, 7), jdc_num(cl, 11), jdc_num(cl, 8));
+    cs := [4] D3.[o, d3_add(o, a), d3_add(o, b), d3_add(d3_add(o, a), b)];
+    if !jdc_err(j, jdc_corner_error(want[..], cs[..])) { jdc_miss(j, level, name, "its floor is off by more than 0.1 mm"); return false; }
+    return true;
+  }
+  if kind == "hull" {
+    faces := cast(int) jdc_num(cl, 3);
+    for w: want {
+      on := 0;
+      for f: 0..<faces {
+        at := 6 + f * 4; n := d3(jdc_num(cl, at), jdc_num(cl, at + 1), jdc_num(cl, at + 2)); dd := jdc_num(cl, at + 3);
+        s2 := d3_dot(n, w) - dd;
+        if s2 > JDC_TOLERANCE { _ = jdc_err(j, s2); jdc_miss(j, level, name, "a corner lies outside its collider by more than 0.1 mm"); return false; }
+        if abs(s2) <= JDC_TOLERANCE { on += 1; }
+      }
+      if on < 3 { jdc_miss(j, level, name, "a corner is not a corner of its collider (within 0.1 mm)"); return false; }
+    }
+    return true;
+  }
+  jdc_miss(j, level, name, "its collider is not a box, floor or hull"); return false;
+}
+jdc_pos :: (j: [] Jdc, line: string, at: int, v: [7] f64) -> bool #effects(all) {
+  want := ua_pos(v[0], v[1], v[2]);
+  return jdc_err(j, d3_len(d3_sub(want, d3(jdc_num(line, at), jdc_num(line, at + 1), jdc_num(line, at + 2)))));
+}
+jdc_light :: (j: [] Jdc, level: int, v: [7] f64) -> bool #effects(all) {
+  want := ua_pos(v[0], v[1], v[2]);
+  for k: 0..<j[0].n {
+    l := jdc_line(j, k);
+    if pack_field(l, 0) == "light" && cast(int) jdc_num(l, 1) == level && d3_len(d3_sub(want, d3(jdc_num(l, 2), jdc_num(l, 3), jdc_num(l, 4)))) <= JDC_TOLERANCE { return true; }
+  }
+  return false;
+}
+jdc_count_kind :: (j: [] Jdc, what: string) -> int #effects(all) { n := 0; for k: 0..<j[0].n { if pack_field(jdc_line(j, k), 0) == what { n += 1; } } return n; }
+jdc_pad :: (t: [] u8, at: int, s: string, width: int) -> int #effects(all) {
+  n := at; for k: s.count..<width { t[n] = ' '; n += 1; } for c: s { t[n] = c; n += 1; } return n;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 2 { print("usage: jam-data-check DATA_DIR PACK\n"); return 2; }
+  data := args_at(a[..], 0);
+  pack_b: [268435456] u8; pn := fs_size(args_at(a[..], 1));
+  if pn < 0 || pn > pack_b.count || fs_read(args_at(a[..], 1), pack_b[0..<pn]) != pn { tool_errln("jam-data-check: could not read the pack"); return 1; }
+  pack := cast(string) pack_b[0..<pn]; rd: [1] PackRead;
+  if !pack_read(pack, rd[..]) { tool_err("jam-data-check: the pack is refused: "); tool_errln(rd[0].why); return 1; }
+  jj: [1] Jdc; j := jj[..]; j[0].cat = pack_bytes(pack, rd[..], 0);
+  at := 0; while at < j[0].cat.count { l := uf_line(j[0].cat, at); if j[0].n >= JDC_LINES { tool_errln("jam-data-check: a catalog over JDC_LINES lines"); return 1; } j[0].line[j[0].n] = at; j[0].len[j[0].n] = l.text.count; j[0].n += 1; at = l.next; }
+  // ---- level_layout.csv
+  pb: [4096] u8; text: [4194304] u8;
+  tn := fs_size(fs_join(data, "level_layout.csv", pb[..]));
+  if tn < 0 || tn > text.count || fs_read(fs_join(data, "level_layout.csv", pb[..]), text[0..<tn]) != tn { tool_errln("jam-data-check: could not read level_layout.csv"); return 1; }
+  csv := cast(string) text[0..<tn]; at = uf_line(csv, 0).next;
+  while at < csv.count {
+    l := uf_line(csv, at); at = l.next;
+    if l.text.count == 0 { continue; }
+    level := -1; for nm, k: JDC_LEVELS { if uf_field(l.text, 0) == nm { level = k; } }
+    kind := 7; for nm, k: JDC_KINDS { if uf_field(l.text, 2) == nm { kind = k; } }
+    name := uf_field(l.text, 1);
+    if level < 0 { tool_err("jam-data-check: a row of no level: "); tool_errln(name); return 1; }
+    j[0].counts[level][kind].rows += 1;
+    v: [7] f64; stated := true; need := ifx kind == JDC_MARKER then 3 else 7;
+    for k: 0..<7 { u := uf_value(uf_field(l.text, 3 + k)); v[k] = u.v; if k < need && !u.ok { stated = false; } }
+    if kind == JDC_MARKER && !uf_value(uf_field(l.text, 9)).ok { stated = false; }
+    if !stated {
+      j[0].counts[level][kind].unstated += 1;
+      // and the pack must not carry it
+      if jdc_named(j, "P", level, name) != -1 || jdc_named(j, "spot", level, name) != -1 { jdc_miss(j, level, name, "carried though a field is not stated"); j[0].counts[level][kind].wrong += 1; }
+      continue;
+    }
+    ok := false;
+    if kind == JDC_MARKER {
+      s := jdc_named(j, "spot", level, name);
+      if s < 0 { jdc_miss(j, level, name, "no named spot"); }
+      else { sl := jdc_line(j, s); ok = jdc_pos(j, sl, 3, v); if !ok { jdc_miss(j, level, name, "its spot is off by more than 0.1 mm"); } }
+    } else if kind == JDC_LIGHT {
+      ok = jdc_light(j, level, v); if !ok { jdc_miss(j, level, name, "no light within 0.1 mm of it"); }
+    } else {
+      ok = jdc_box(j, level, name, v);
+    }
+    if ok { j[0].counts[level][kind].found += 1; } else { j[0].counts[level][kind].wrong += 1; }
+  }
+  // ---- the counts: per level, every pack row a CSV row's
+  for level: 0..<4 {
+    boxes := 0; marks := 0; lights := 0;
+    for kind: 0..<8 { c := j[0].counts[level][kind]; if kind == JDC_MARKER { marks += c.found; } else if kind == JDC_LIGHT { lights += c.found; } else { boxes += c.found; } }
+    p := 0; cc := 0; s := 0; li := 0;
+    for k: 0..<j[0].n { l := jdc_line(j, k); w := pack_field(l, 0); if cast(int) jdc_num(l, 1) != level { continue; } if w == "P" { p += 1; } if w == "col" { cc += 1; } if w == "spot" { s += 1; } if w == "light" { li += 1; } }
+    if p != boxes || cc != boxes || s != marks || li != lights { tool_err("jam-data-check: "); tool_err(JDC_LEVELS[level]); tool_errln(": the pack has rows the CSV doesn't"); j[0].bad += 1; }
+  }
+  // ---- sounds, icons, tables
+  wl: [1] FsList; wn := 0; wav := fs_join(data, "audio/wav", pb[..]);
+  if fs_list(wav, wl[..]) >= 0 { for k: 0..<wl[0].n { e := fs_entry(wl[..], k); if e.count > 4 && e[e.count - 4..<e.count] == ".wav" { wn += 1; } } }
+  sounds := jdc_count_kind(j, "S"); layers := jdc_count_kind(j, "T");
+  icons := -1; tables := 0; table_bad := 0;
+  for k: 0..<j[0].n {
+    l := jdc_line(j, k); if pack_field(l, 0) != "table" { continue; }
+    tables += 1;
+    id := pack_field(l, 2); fmt := pack_field(l, 3); lines := cast(int) jdc_num(l, 5);
+    if id.count < 7 || id[0..<6] != "/Data/" { table_bad += 1; continue; }
+    rel: [512] u8; rn := 0; for c: id[6..<id.count] { rel[rn] = c; rn += 1; } rel[rn] = '.'; rn += 1; for c: fmt { rel[rn] = c; rn += 1; }
+    fp := fs_join(data, cast(string) rel[0..<rn], pb[..]); fsz := fs_size(fp);
+    if fsz < 0 || fsz > text.count || fs_read(fp, text[0..<fsz]) != fsz { tool_err("jam-data-check: no file for table "); tool_errln(id); table_bad += 1; continue; }
+    t := cast(string) text[0..<fsz]; ta := 0; got := 0; same := true; x := k + 1;
+    while ta < t.count {
+      fl := uf_line(t, ta); ta = fl.next; got += 1;
+      // the X lines that follow carry the file's lines in order
+      want_pre := "X "; xl := ifx x < j[0].n then jdc_line(j, x) else "";
+      sp := 0; spaces := 0; for c, i: xl { if c == ' ' { spaces += 1; if spaces == 2 { sp = i + 1; break; } } }
+      if xl.count < 2 || xl[0..<2] != want_pre || xl[sp..<xl.count] != fl.text { same = false; }
+      x += 1;
+    }
+    if got != lines || !same { tool_err("jam-data-check: table "); tool_err(id); tool_errln(" is not carried line for line"); table_bad += 1; }
+    if id == "/Data/icons/icons" { icons = cast(int) jdc_num(l, 4); }
+  }
+  // ---- the table
+  out: [16384] u8; n := 0;
+  for c: "level  kind         rows   carried  not stated  mismatched\n" { out[n] = c; n += 1; }
+  totals: JdcCount;
+  for level: 0..<4 { for kind: 0..<8 {
+    c := j[0].counts[level][kind]; if c.rows == 0 { continue; }
+    totals.rows += c.rows; totals.found += c.found; totals.unstated += c.unstated; totals.wrong += c.wrong;
+    nb: [24] u8;
+    for ch: JDC_LEVELS[level] { out[n] = ch; n += 1; } for k: JDC_LEVELS[level].count..<7 { out[n] = ' '; n += 1; }
+    for ch: JDC_KINDS[kind] { out[n] = ch; n += 1; } for k: JDC_KINDS[kind].count..<9 { out[n] = ' '; n += 1; }
+    n = jdc_pad(out[..], n, uf_num_text(cast(f64) c.rows, nb[..]), 7); n = jdc_pad(out[..], n, uf_num_text(cast(f64) c.found, nb[..]), 10);
+    n = jdc_pad(out[..], n, uf_num_text(cast(f64) c.unstated, nb[..]), 12); n = jdc_pad(out[..], n, uf_num_text(cast(f64) c.wrong, nb[..]), 12); out[n] = '\n'; n += 1;
+  } }
+  print("%", cast(string) out[0..<n]);
+  print("all levels: % rows, % carried, % not stated, % mismatched; the worst difference % m (tolerance % m)\n", totals.rows, totals.found, totals.unstated, totals.wrong, j[0].worst, JDC_TOLERANCE);
+  print("sounds: % WAVs in audio/wav, % in the pack; icons: % rows in icons/icons.csv, % colour layers; tables: % carried, % not line for line\n", wn, sounds, icons, layers, tables, table_bad);
+  if wn != sounds || wn != 9 || icons != layers || table_bad != 0 { j[0].bad += 1; }
+  if j[0].bad > 0 { tool_err("jam-data-check: "); tool_errln("refused: see above"); return 1; }
+  print("jam-data-check: the pack matches the CSVs\n");
+  return 0;
+}
