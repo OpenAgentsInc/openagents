@@ -1,0 +1,249 @@
+// Splice Bots rules: the raider mech's road chase as a pure state machine (SpliceChase.h, package B-11; GDD 04
+// section 4 part 4: the mech runs Sniper down on its `chase` plan and claws at the REAR CAR with a telegraphed
+// combo, a hit slows Sniper for 2 s (INFERRED there), outrunning it ends the chase; UE-AI-26: every attack is a
+// telegraph timeline, wind-up, lock, impact, recovery, started only when the shared lane is granted; GDD 02
+// section 11 gives the numbers).
+// CONFLICT (Docs/decisions/LOG.md): GDD 02 11.3 aims the claws at Sniper's middle with no slow; part 4 is the
+// Unreal spec, so the mech runs beside, reaches for and claws the rear car, and a landed claw slows Sniper.
+// It does not move Sniper: it reports the slow for the rover's owner to apply (sr_chase_slowed_top_speed).
+// Units: metres and seconds on the ground plane. Yaw in degrees as Unreal: 0 faces +x, 90 faces +y, +yaw turns
+// right seen from above, so left of a heading is (sin yaw, -cos yaw).
+#load "../../../metaverse-engine/core/math-d.coax";
+#load "trail.coax";   // sr_unwind_deg, sr_deg_to_rad, sr_yaw_of
+#load "heat.coax";    // sr_maxi
+
+ROBOT_RAIDER_MECH :: "ROBOT_RAIDER_MECH";   // robots.csv row id (SpliceChase::RobotId)
+
+// ESpliceChasePhase. Gone: gave up or turned back this drive; does not notice again until sr_chase_make_watch.
+SR_CHASE_WATCH :: 0; SR_CHASE_HUNT :: 1; SR_CHASE_GONE :: 2;
+// ESpliceChaseGiveUp: outrun past DV_RM_GIVE_UP (SYS-CHASE-04), the road's end at DV_RM_QUIT 0.92 (SYS-CHASE-11),
+// she left the seat (SYS-CHASE-19).
+SR_CHASE_GIVE_UP_NONE :: 0; SR_CHASE_GIVE_UP_OUTRUN :: 1; SR_CHASE_GIVE_UP_ROAD_END :: 2; SR_CHASE_GIVE_UP_LEFT_SEAT :: 3;
+// ESpliceClawBeat, SB_CLAW's beats. Wind-up: the ring is dashed and tracks the rear car's lead; lock: solid, Sniper's
+// pace and heading recorded; impact: the strike; hold: claws up between the strikes; recovery: claws slack.
+SR_CLAW_NONE :: 0; SR_CLAW_WIND_UP :: 1; SR_CLAW_LOCK :: 2; SR_CLAW_IMPACT :: 3; SR_CLAW_HOLD :: 4; SR_CLAW_RECOVERY :: 5;
+SR_CHASE_STRIKES_MAX :: 4;   // caps the events' lists; the tuning's strikes stays at or under it
+SR_CHASE_SMALL :: 0.0001;    // KINDA_SMALL_NUMBER
+
+// Every number, with its source. GDD 02 11.5 unless noted.
+SrChaseTuning :: struct {
+  notice_range: f64 = 45.0;     // DV_RM_NOTICE (drive.coax:27)
+  give_up_range: f64 = 60.0;    // DV_RM_GIVE_UP (drive.coax:27)
+  watch_offset: f64 = 12.0;     // SB_RM_WATCH (splice-battle.coax:53), m off the road; the caller's placement
+  chase_speed: f64 = 16.0;      // SB_RM_CHASE (splice-battle.coax:52); robots.csv ROBOT_RAIDER_MECH move_speed 16
+  acceleration: f64 = 8.0;      // INFERRED: reaches SB_RM_CHASE in 2 s from the post
+  side: f64 = 2.9;              // SB_RM_SIDE (splice-battle.coax:53): runs to this point left of the rear car
+  stop_distance: f64 = 0.05;    // sb_toward's stop (splice-battle.coax:578)
+  alongside_distance: f64 = 0.5;   // within this it faces the way Sniper drives (splice-battle.coax:579)
+  claw_reach: f64 = 4.5;        // SB_RM_CLAW_REACH (splice-battle.coax:54), robots.csv attack_range; to the rear car
+  claw_every: f64 = 1.3;        // SB_RM_CLAW_EVERY: least time between combos, and after notice
+  claw_ring: f64 = 2.4;         // SB_CLAW_R (splice-battle.coax:101): the warning ring's radius
+  // SB_CLAW (splice-battle.coax:94): wind 0.55, lock 0.25, impact 0.12, hold 0.4, recovery 1.3, 2 strikes.
+  wind: f64 = 0.55;
+  lock: f64 = 0.25;
+  impact: f64 = 0.12;
+  hold: f64 = 0.4;
+  recovery: f64 = 1.3;
+  strikes: int = 2;
+  dodge_pace: f64 = 2.0;        // SB_CLAW_PACE (splice-battle.coax:102), m/s from lock to impact
+  dodge_turn: f64 = 0.08;       // SB_CLAW_TURN (splice-battle.coax:103), rad from lock to impact
+  damage: f64 = 3.0;            // CLAW_DAMAGE (splice-battle.coax:148), robots.csv attack_damage 3
+  hull_floor_share: f64 = 0.3333333333333333;   // the claws never take the hull below this (splice-battle.coax:615)
+  slow_seconds: f64 = 2.0;      // GDD 04 part 4 (INFERRED there)
+  // INFERRED: Sniper's top speed held to half, 12 m/s, under the mech's 16, so a hit lets it stay alongside for
+  // the second claw. A second hit restarts the 2 s; it does not stack.
+  slow_factor: f64 = 0.5;
+}
+
+// What the caller tells it each tick.
+SrChaseInputs :: struct {
+  delta_seconds: f64;
+  cab: D2;                  // the cab's middle
+  rear_car: D2;             // the rear car's middle (the trail's last car)
+  rear_car_yaw_deg: f64;
+  cab_speed: f64;           // SrCabState.speed
+  cab_yaw_deg: f64;
+  dusk_or_dawn: bool;       // it notices only then (SYS-CHASE-02)
+  driver_seated: bool = true;   // false ends a hunt (SYS-CHASE-19)
+  road_end: bool;           // past DV_RM_QUIT 0.92 of the way (the caller's route progress)
+  lane_granted: bool = true;    // the attack director's lane (UE-AI-26, SB_GAP); granted until it exists
+  hull: f64 = 24.0;         // SNIPER_HULL 24
+  hull_max: f64 = 24.0;
+}
+// A claw's telegraph: strike `strike`'s warning begins this tick, lead_seconds before its impact.
+SrClawTelegraph :: struct { strike: int; lead_seconds: f64; aim: D2; }
+// A claw's impact this tick. landed false is DODGED. damage 0 below the floor or on a miss.
+SrClawStrike :: struct { strike: int; landed: bool; damage: f64; slow_seconds: f64; slow_factor: f64 = 1.0; aim: D2; }
+SrChaseEvents :: struct {
+  noticed: bool;            // CHASE-01 "A raider mech gives chase. Hold W to outrun it."
+  gave_up: int;             // SR_CHASE_GIVE_UP_*; CHASE-02 "The raider mech gave up."
+  telegraphs_n: int; telegraphs: [SR_CHASE_STRIKES_MAX] SrClawTelegraph;
+  locked_n: int; locked: [SR_CHASE_STRIKES_MAX] int;   // strikes whose ring turned solid this tick
+  strikes_n: int; strikes: [SR_CHASE_STRIKES_MAX] SrClawStrike;
+  combo_ended: bool;
+}
+// The mech, owned by the caller (GDD 02 11.2).
+SrChaseState :: struct {
+  phase: int = SR_CHASE_WATCH;
+  position: D2;
+  yaw_deg: f64;
+  speed: f64;              // m/s it moved last tick
+  post: D2;
+  post_yaw_deg: f64;
+  now: f64;                // seconds since make_watch
+  claw_timer: f64;         // rm_claw: counts down only while in reach
+  claw_t: f64 = -1.0;      // claw_t: time into the combo; -1 none
+  aim: D2;                 // claw_x, claw_z
+  lock_speed: f64;         // lock_v
+  lock_yaw_deg: f64;       // lock_yaw
+  last_rear: D2;           // was_x, was_z: for the rear car's velocity
+  has_last_rear: bool;
+  slow_remaining: f64;     // seconds of slow left on Sniper
+}
+SrClawBeatAt :: struct { beat: int; strike: int; }
+
+// On watch at its post, facing across the road (GDD 02 11.3 "Watch"). Clears hunt, gone and claws.
+sr_chase_make_watch :: (post: D2, post_yaw_deg: f64) -> SrChaseState {
+  s: SrChaseState;
+  s.post = post; s.post_yaw_deg = post_yaw_deg; s.position = post; s.yaw_deg = post_yaw_deg;
+  return s;
+}
+// The combo's timeline (SB_CLAW). Strike k is 0-based.
+sr_chase_lock_start :: (strike: int, t: SrChaseTuning) -> f64 { return t.wind + cast(f64) strike * (t.lock + t.impact + t.hold); }          // 0.55, 1.32
+sr_chase_impact_start :: (strike: int, t: SrChaseTuning) -> f64 { return sr_chase_lock_start(strike, t) + t.lock; }                        // 0.80, 1.57
+// When strike k's warning begins: the wind-up for the first, the hold before each later one. 0, 0.92.
+sr_chase_telegraph_start :: (strike: int, t: SrChaseTuning) -> f64 { return ifx strike <= 0 then 0.0 else sr_chase_impact_start(strike - 1, t) + t.impact; }
+sr_chase_telegraph_lead_seconds :: (strike: int, t: SrChaseTuning) -> f64 { return sr_chase_impact_start(strike, t) - sr_chase_telegraph_start(strike, t); }   // 0.80, 0.65
+sr_chase_combo_length :: (t: SrChaseTuning) -> f64 { return sr_chase_impact_start(sr_maxi(t.strikes, 1) - 1, t) + t.impact + t.recovery; }   // 2.99
+// The beat at claw_t into the combo, and which strike it belongs to (the next or current one).
+sr_chase_beat_at :: (claw_t: f64, t: SrChaseTuning) -> SrClawBeatAt {
+  r: SrClawBeatAt;
+  n := sr_maxi(t.strikes, 1);
+  if claw_t < 0.0 || claw_t >= sr_chase_combo_length(t) { return r; }
+  if claw_t < t.wind { r.beat = SR_CLAW_WIND_UP; return r; }
+  r.beat = SR_CLAW_RECOVERY; r.strike = n - 1;
+  for k: 0..<n {
+    l := sr_chase_lock_start(k, t);
+    if claw_t < l + t.lock { r.beat = SR_CLAW_LOCK; r.strike = k; return r; }
+    if claw_t < l + t.lock + t.impact { r.beat = SR_CLAW_IMPACT; r.strike = k; return r; }
+    if k < n - 1 && claw_t < l + t.lock + t.impact + t.hold { r.beat = SR_CLAW_HOLD; r.strike = k + 1; return r; }
+  }
+  return r;
+}
+sr_chase_left_of :: (yaw_deg: f64) -> D2 { r := sr_deg_to_rad(yaw_deg); return d2(sin(r), -cos(r)); }
+// The point it runs to: Side metres left of the rear car.
+sr_chase_point :: (rear_car: D2, rear_car_yaw_deg: f64, t: SrChaseTuning) -> D2 { return d2_add(rear_car, d2_scale(sr_chase_left_of(rear_car_yaw_deg), t.side)); }
+// The nearer of the cab and the rear car.
+sr_chase_distance_to_train :: (s: SrChaseState, input: SrChaseInputs) -> f64 { return fmin(d2_dist(s.position, input.cab), d2_dist(s.position, input.rear_car)); }
+sr_chase_is_slowing :: (s: SrChaseState) -> bool { return s.slow_remaining > 0.0; }
+// The share of Sniper's top speed allowed now: SlowFactor while a slow runs, else 1.
+sr_chase_slow_factor_now :: (s: SrChaseState, t: SrChaseTuning) -> f64 { return ifx sr_chase_is_slowing(s) then t.slow_factor else 1.0; }
+// The cab's top speed as the rover owner should cap it now (24 m/s, or 12 m/s while slowed).
+sr_chase_slowed_top_speed :: (s: SrChaseState, cab_top_speed: f64, t: SrChaseTuning) -> f64 { return cab_top_speed * sr_chase_slow_factor_now(s, t); }
+
+sr_chase_end_hunt :: (s: [] SrChaseState, why: int, out: [] SrChaseEvents) {
+  s[0].phase = SR_CHASE_GONE; s[0].claw_t = -1.0; s[0].speed = 0.0;
+  out[0].gave_up = why;
+}
+
+// One tick: notice and give-up, the run beside the rear car, then the claws (GDD 02 11.3 "Claws" 1 to 9, aimed at
+// the rear car). A claw lands unless Sniper's speed changed by more than DodgePace or its heading by more than
+// DodgeTurn between that strike's lock and its impact. A landed claw scratches the hull (never below the floor)
+// and slows Sniper for SlowSeconds. out[0] is cleared and filled.
+sr_chase_step :: (in0: SrChaseState, input: SrChaseInputs, out: [] SrChaseEvents, t: SrChaseTuning) -> SrChaseState {
+  s := [1] SrChaseState.[in0];
+  fresh: SrChaseEvents;
+  out[0] = fresh;
+  dt := fmax(input.delta_seconds, 0.0);
+  s[0].now += dt;
+  s[0].slow_remaining = fmax(0.0, s[0].slow_remaining - dt);
+  // The rear car's velocity from last tick (was_x, was_z), for the ring's lead.
+  rear_vel := d2(0.0, 0.0);
+  if s[0].has_last_rear && dt > 0.0 { rear_vel = d2_scale(d2_sub(input.rear_car, s[0].last_rear), 1.0 / dt); }
+  s[0].last_rear = input.rear_car;
+  s[0].has_last_rear = true;
+
+  // Notice and give-up (GDD 02 11.3 "Notice" 1 to 3, and "Getting out mid-chase").
+  d := sr_chase_distance_to_train(s[0], input);
+  if s[0].phase == SR_CHASE_HUNT {
+    if !input.driver_seated { sr_chase_end_hunt(s[..], SR_CHASE_GIVE_UP_LEFT_SEAT, out); }
+    else if input.road_end { sr_chase_end_hunt(s[..], SR_CHASE_GIVE_UP_ROAD_END, out); }
+    else if d > t.give_up_range { sr_chase_end_hunt(s[..], SR_CHASE_GIVE_UP_OUTRUN, out); }
+  } else if s[0].phase == SR_CHASE_WATCH && input.dusk_or_dawn && input.driver_seated && !input.road_end && d < t.notice_range {
+    s[0].phase = SR_CHASE_HUNT; s[0].claw_timer = t.claw_every; s[0].claw_t = -1.0; s[0].speed = 0.0;
+    out[0].noticed = true;
+  }
+  if s[0].phase != SR_CHASE_HUNT { return s[0]; }
+
+  // The run (11.3 "Chase", beside the rear car per UE-VEH-11): straight at its point, speeding up at Acceleration
+  // to ChaseSpeed; it never overshoots the point, so alongside its speed is Sniper's.
+  goal := sr_chase_point(input.rear_car, input.rear_car_yaw_deg, t);
+  to_goal := d2_sub(goal, s[0].position);
+  goal_dist := d2_len(to_goal);
+  want := fmin(s[0].speed + t.acceleration * dt, t.chase_speed);
+  move := fmin(want * dt, fmax(0.0, goal_dist - t.stop_distance));
+  if move > 0.0 && goal_dist > 0.0001 {
+    s[0].position = d2_add(s[0].position, d2_scale(to_goal, move / goal_dist));
+    s[0].yaw_deg = sr_yaw_of(to_goal);
+  }
+  s[0].speed = ifx dt > 0.0 then move / dt else 0.0;
+  if d2_dist(s[0].position, goal) < t.alongside_distance { s[0].yaw_deg = input.rear_car_yaw_deg; }
+
+  // The claws (11.3 "Claws", aimed at the rear car).
+  to_rear := d2_dist(s[0].position, input.rear_car);
+  if s[0].claw_t < 0.0 {
+    if to_rear > t.claw_reach { return s[0]; }
+    s[0].claw_timer -= dt;
+    if s[0].claw_timer > 0.0 || !input.lane_granted { return s[0]; }
+    s[0].claw_timer = t.claw_every;
+    s[0].claw_t = 0.0;
+    lead := sr_chase_telegraph_lead_seconds(0, t);
+    s[0].aim = d2_add(input.rear_car, d2_scale(rear_vel, lead));
+    out[0].telegraphs[0] = SrClawTelegraph.{strike = 0, lead_seconds = lead, aim = s[0].aim};
+    out[0].telegraphs_n = 1;
+    return s[0];
+  }
+
+  a := s[0].claw_t;
+  b := a + dt;
+  s[0].claw_t = b;
+  n := sr_maxi(t.strikes, 1);
+  // Later strikes' warnings begin as the hold begins.
+  for k: 1..<n {
+    ts := sr_chase_telegraph_start(k, t);
+    if a < ts && ts <= b {
+      out[0].telegraphs[out[0].telegraphs_n] = SrClawTelegraph.{strike = k, lead_seconds = sr_chase_telegraph_lead_seconds(k, t), aim = d2_add(input.rear_car, d2_scale(rear_vel, sr_chase_impact_start(k, t) - b))};
+      out[0].telegraphs_n += 1;
+    }
+  }
+  // While winding up or holding, the ring tracks where the rear car will be at the impact (step 3).
+  beat := sr_chase_beat_at(b, t);
+  if beat.beat == SR_CLAW_WIND_UP || beat.beat == SR_CLAW_HOLD {
+    s[0].aim = d2_add(input.rear_car, d2_scale(rear_vel, fmax(0.0, sr_chase_impact_start(beat.strike, t) - b)));
+  }
+  for k: 0..<n {
+    // Entering a lock records Sniper's pace and heading (step 4).
+    ls := sr_chase_lock_start(k, t);
+    if a < ls && ls <= b {
+      s[0].lock_speed = input.cab_speed; s[0].lock_yaw_deg = input.cab_yaw_deg;
+      out[0].locked[out[0].locked_n] = k; out[0].locked_n += 1;
+    }
+    // The impact (steps 5 to 7).
+    is := sr_chase_impact_start(k, t);
+    if a < is && is <= b {
+      turn := abs(sr_deg_to_rad(sr_unwind_deg(input.cab_yaw_deg - s[0].lock_yaw_deg)));
+      hit: SrClawStrike;
+      hit.strike = k; hit.aim = s[0].aim;
+      hit.landed = abs(input.cab_speed - s[0].lock_speed) <= t.dodge_pace && turn <= t.dodge_turn;
+      if hit.landed {
+        floor_hull := input.hull_max * t.hull_floor_share;
+        hit.damage = ifx input.hull - t.damage >= floor_hull - SR_CHASE_SMALL then t.damage else 0.0;
+        hit.slow_seconds = t.slow_seconds; hit.slow_factor = t.slow_factor;
+        s[0].slow_remaining = t.slow_seconds;
+      }
+      out[0].strikes[out[0].strikes_n] = hit; out[0].strikes_n += 1;
+    }
+  }
+  if b >= sr_chase_combo_length(t) { s[0].claw_t = -1.0; out[0].combo_ended = true; }
+  return s[0];
+}

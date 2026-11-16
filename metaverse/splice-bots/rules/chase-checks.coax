@@ -1,0 +1,248 @@
+// Parity checks for chase.coax: SpliceTests/Rules/SpliceChaseTests.cpp, against Sniper's real cab (cab.coax) and
+// its trail-following cars (trail.coax). The harness is the C++ FChaseTrain: the cab in its sub-steps on flat
+// ground through the trail's yaw limit, the trail laid each sub-step, the cars placed on it. Numbers: GDD 02 11.5;
+// "within the GDD's time" is GDD 02 11.11 test 2's 10 s. rules.coax loads this file with `#load ... #test;`.
+
+CH_FRAME :: 1.0 / 60.0;
+CH_WINDOW :: 10.0;
+CH_HOLD_W :: 0; CH_BRAKE :: 1; CH_HANDBRAKE_TURN :: 2;
+
+ChTrain :: struct { tuning: SrCabTuning; cab: SrCabState; trail: [1] SrTrail; pose: SrTrainPose; }
+ch_place :: (tr: [] ChTrain, at: D3, yaw_deg: f64, speed: f64) {
+  fresh: SrCabState;
+  tr[0].cab = fresh;
+  tr[0].cab.location = at; tr[0].cab.yaw_deg = yaw_deg; tr[0].cab.speed = speed;
+  sr_trail_reset(tr[0].trail[..], sr_cab_pose(tr[0].cab));
+  tr[0].pose = sr_trail_place_cars(tr[0].trail[..], sr_cab_pose(tr[0].cab));
+}
+ch_step :: (tr: [] ChTrain, input: SrCabInput, dt: f64, top_speed: f64) {
+  t := tr[0].tuning;
+  t.top_speed = top_speed;
+  n := sr_cab_num_sub_steps(t, dt);
+  for i: 0..<n {
+    tr[0].cab = sr_cab_sub_step(t, tr[0].cab, input, dt / cast(f64) n, sr_cab_flat_ground(0.0), tr[0].trail[..]);
+    sr_trail_update(tr[0].trail[..], sr_cab_pose(tr[0].cab));
+  }
+  tr[0].pose = sr_trail_place_cars(tr[0].trail[..], sr_cab_pose(tr[0].cab));
+}
+ch_inputs :: (tr: ChTrain, dt: f64, hull: f64) -> SrChaseInputs {
+  rear := tr.pose.cars[SR_TRAIL_FOLLOW_CARS - 1];
+  return SrChaseInputs.{delta_seconds = dt, cab = sr_flat(tr.cab.location), rear_car = sr_flat(rear.location), rear_car_yaw_deg = rear.yaw_deg,
+    cab_speed = tr.cab.speed, cab_yaw_deg = tr.cab.yaw_deg, dusk_or_dawn = true, hull = hull};
+}
+ch_drive :: (throttle: f64, steer: f64, handbrake: bool) -> SrCabInput { return SrCabInput.{throttle = throttle, steer = steer, handbrake = handbrake}; }
+ch_tuning :: () -> SrChaseTuning { t: SrChaseTuning; return t; }
+// The road runs along +x; the post is 12 m to its left (SB_RM_WATCH), facing across it.
+ch_post_on_road :: () -> SrChaseState { return sr_chase_make_watch(d2(0.0, -ch_tuning().watch_offset), 90.0); }
+// The mech already hunting, alongside the rear car (the 11.11 tests start "from alongside").
+ch_alongside :: (tr: ChTrain) -> SrChaseState {
+  inp := ch_inputs(tr, 0.0, 24.0);
+  s := sr_chase_make_watch(sr_chase_point(inp.rear_car, inp.rear_car_yaw_deg, ch_tuning()), inp.rear_car_yaw_deg);
+  s.phase = SR_CHASE_HUNT;
+  s.claw_timer = ch_tuning().claw_every;
+  s.speed = tr.cab.speed;
+  return s;
+}
+
+ChDriveResult :: struct { noticed: f64 = -1.0; gave_up: f64 = -1.0; first_telegraph: f64 = -1.0; landed: int; hull: f64 = 24.0; why: int; }
+// Sniper comes down the road at top speed past the post; a second after the notice the driver does `driver`.
+ch_drive_past :: (driver: int, seconds: f64) -> ChDriveResult {
+  tr: [1] ChTrain;
+  ch_place(tr[..], d3(-70.0, 0.0, 0.0), 0.0, 24.0);
+  s := ch_post_on_road();
+  r: ChDriveResult;
+  ev: [1] SrChaseEvents;
+  frames := cast(int) floor(seconds / CH_FRAME);
+  for i: 1..<frames + 1 {
+    now := cast(f64) i * CH_FRAME;
+    inp := ch_drive(1.0, 0.0, false);
+    if r.noticed >= 0.0 && now - r.noticed > 1.0 {
+      if driver == CH_BRAKE { inp = ch_drive(ifx tr[0].cab.speed > 0.5 then -1.0 else 0.0, 0.0, false); }
+      if driver == CH_HANDBRAKE_TURN { inp = ch_drive(0.0, -1.0, true); }   // hard left, towards it
+    }
+    ch_step(tr[..], inp, CH_FRAME, sr_chase_slowed_top_speed(s, tr[0].tuning.top_speed, ch_tuning()));
+    s = sr_chase_step(s, ch_inputs(tr[0], CH_FRAME, r.hull), ev[..], ch_tuning());
+    if ev[0].noticed { r.noticed = now; }
+    if ev[0].telegraphs_n > 0 && r.first_telegraph < 0.0 { r.first_telegraph = now; }
+    for k: 0..<ev[0].strikes_n { if ev[0].strikes[k].landed { r.landed += 1; } r.hull -= ev[0].strikes[k].damage; }
+    if ev[0].gave_up != SR_CHASE_GIVE_UP_NONE { r.gave_up = now; r.why = ev[0].gave_up; break; }
+  }
+  return r;
+}
+
+#test "Splice.Rules.Chase.Timeline" {
+  t := ch_tuning();
+  #assert abs(sr_chase_impact_start(0, t) - 0.80) <= 0.0001;
+  #assert abs(sr_chase_impact_start(1, t) - 1.57) <= 0.0001;
+  #assert abs(sr_chase_combo_length(t) - 2.99) <= 0.0001;
+  #assert abs(sr_chase_telegraph_lead_seconds(0, t) - 0.80) <= 0.0001;
+  #assert abs(sr_chase_telegraph_lead_seconds(1, t) - 0.65) <= 0.0001;
+  w := sr_chase_beat_at(0.3, t);
+  #assert w.beat == SR_CLAW_WIND_UP && w.strike == 0;
+  h := sr_chase_beat_at(1.1, t);
+  #assert h.beat == SR_CLAW_HOLD && h.strike == 1;
+  #assert sr_chase_beat_at(2.5, t).beat == SR_CLAW_RECOVERY;
+  #assert sr_chase_beat_at(3.0, t).beat == SR_CLAW_NONE;
+}
+
+#test "Splice.Rules.Chase.TopSpeedPullsAway" {
+  // Past the post holding W: it notices, cannot keep up (16 against 24 m/s) and gives up within 10 s.
+  r := ch_drive_past(CH_HOLD_W, 30.0);
+  #assert r.noticed >= 0.0;
+  #assert r.gave_up >= 0.0 && r.why == SR_CHASE_GIVE_UP_OUTRUN;
+  #assert r.gave_up - r.noticed <= CH_WINDOW;
+  #assert r.landed == 0;
+  // From alongside at top speed (11.11 test 2): the gap opens at 8 m/s and it gives up within 10 s.
+  tr: [1] ChTrain;
+  ch_place(tr[..], D3_ZERO, 0.0, 24.0);
+  s := ch_alongside(tr[0]);
+  gave_up := -1.0; hull := 24.0;
+  ev: [1] SrChaseEvents;
+  i := 1;
+  while i <= cast(int) floor(20.0 / CH_FRAME) && gave_up < 0.0 {
+    ch_step(tr[..], ch_drive(1.0, 0.0, false), CH_FRAME, sr_chase_slowed_top_speed(s, 24.0, ch_tuning()));
+    s = sr_chase_step(s, ch_inputs(tr[0], CH_FRAME, hull), ev[..], ch_tuning());
+    for k: 0..<ev[0].strikes_n { hull -= ev[0].strikes[k].damage; }
+    if ev[0].gave_up == SR_CHASE_GIVE_UP_OUTRUN { gave_up = cast(f64) i * CH_FRAME; }
+    i += 1;
+  }
+  #assert gave_up > 0.0 && gave_up <= CH_WINDOW;
+  #assert hull >= 8.0;
+  #assert s.phase == SR_CHASE_GONE;
+}
+
+#test "Splice.Rules.Chase.BadDriverIsCaught" {
+  // Brakes with S a second after the notice: it runs Sniper down and starts clawing within 10 s.
+  brake := ch_drive_past(CH_BRAKE, 20.0);
+  #assert brake.noticed >= 0.0;
+  #assert brake.first_telegraph >= 0.0 && brake.first_telegraph - brake.noticed <= CH_WINDOW;
+  #assert brake.gave_up < 0.0;
+  // Turns hard towards it with the handbrake on: caught within 10 s.
+  turn := ch_drive_past(CH_HANDBRAKE_TURN, 20.0);
+  #assert turn.first_telegraph >= 0.0 && turn.first_telegraph - turn.noticed <= CH_WINDOW;
+}
+
+#test "Splice.Rules.Chase.TelegraphBeforeEveryStrike" {
+  // A steady cruise at 12 m/s with it alongside (11.11 test 4), for 20 s: several combos.
+  tr: [1] ChTrain;
+  ch_place(tr[..], D3_ZERO, 0.0, 12.0);
+  s := ch_alongside(tr[0]);
+  warned_at := [2] f64.[-1.0, -1.0];
+  warn_lead := [2] f64.[0.0, 0.0];
+  strikes := 0; landed := 0; unwarned := 0; wrong_lead := 0;
+  hull := 24.0;
+  ev: [1] SrChaseEvents;
+  for i: 1..<cast(int) floor(20.0 / CH_FRAME) + 1 {
+    now := cast(f64) i * CH_FRAME;
+    ch_step(tr[..], ch_drive(1.0, 0.0, false), CH_FRAME, 12.0);
+    s = sr_chase_step(s, ch_inputs(tr[0], CH_FRAME, hull), ev[..], ch_tuning());
+    for k: 0..<ev[0].telegraphs_n { tg := ev[0].telegraphs[k]; warned_at[tg.strike] = now; warn_lead[tg.strike] = tg.lead_seconds; }
+    for k: 0..<ev[0].strikes_n {
+      hit := ev[0].strikes[k];
+      strikes += 1;
+      if hit.landed { landed += 1; }
+      hull -= hit.damage;
+      since := ifx warned_at[hit.strike] < 0.0 then -1.0 else now - warned_at[hit.strike];
+      if since <= 0.0 { unwarned += 1; }
+      else if abs(since - warn_lead[hit.strike]) > CH_FRAME + 0.0001 { wrong_lead += 1; }
+      warned_at[hit.strike] = -1.0;   // each warning covers one strike
+    }
+  }
+  #assert strikes >= 4;
+  #assert unwarned == 0;
+  #assert wrong_lead == 0;
+  #assert landed == strikes;
+  #assert hull >= 8.0;
+}
+
+#test "Splice.Rules.Chase.StrikeSlowsCab" {
+  t := ch_tuning();
+  tr: [1] ChTrain;
+  ch_place(tr[..], D3_ZERO, 0.0, 12.0);
+  s := ch_alongside(tr[0]);
+  first: SrClawStrike;
+  hit_seen := false;
+  ev: [1] SrChaseEvents;
+  i := 1;
+  while i <= cast(int) floor(5.0 / CH_FRAME) && !hit_seen {
+    ch_step(tr[..], ch_drive(1.0, 0.0, false), CH_FRAME, 12.0);
+    s = sr_chase_step(s, ch_inputs(tr[0], CH_FRAME, 24.0), ev[..], t);
+    if ev[0].strikes_n > 0 { first = ev[0].strikes[0]; hit_seen = true; }
+    i += 1;
+  }
+  #assert hit_seen && first.landed;
+  #assert abs(first.damage - 3.0) <= 0.0001;
+  #assert abs(first.slow_seconds - 2.0) <= 0.0001;
+  #assert abs(first.slow_factor - 0.5) <= 0.0001;
+  #assert abs(sr_chase_slowed_top_speed(s, 24.0, t) - 12.0) <= 0.0001;
+  // The rover's owner applies it as the cab's top speed: with W held, the cab does not pass 12 m/s while slowed.
+  fast: [1] ChTrain;
+  ch_place(fast[..], D3_ZERO, 0.0, 10.0);
+  for k: 0..<60 { ch_step(fast[..], ch_drive(1.0, 0.0, false), CH_FRAME, sr_chase_slowed_top_speed(s, 24.0, t)); }
+  #assert fast[0].cab.speed <= 12.0 + 0.001;
+  // Drive away so no further claw comes: the slow ends after 2 s.
+  far := ch_inputs(tr[0], CH_FRAME, 24.0);
+  far.cab = d2_add(s.position, d2(100.0, 0.0)); far.rear_car = far.cab;
+  for k: 0..<cast(int) floor(2.05 / CH_FRAME) { s = sr_chase_step(s, far, ev[..], t); }
+  #assert !sr_chase_is_slowing(s);
+  #assert abs(sr_chase_slowed_top_speed(s, 24.0, t) - 24.0) <= 0.0001;
+  // A claw dodged by braking at the lock does not slow (11.6 case 7); one at the floor does no damage.
+  ch_place(tr[..], D3_ZERO, 0.0, 12.0);
+  s = ch_alongside(tr[0]);
+  dodged := 0; slowed := 0; floor_ok := true;
+  for k: 1..<cast(int) floor(4.0 / CH_FRAME) + 1 {
+    locked := s.claw_t >= 0.0;
+    ch_step(tr[..], ch_drive(ifx locked && s.claw_t > sr_chase_lock_start(0, t) then -1.0 else 1.0, 0.0, false), CH_FRAME, 12.0);
+    s = sr_chase_step(s, ch_inputs(tr[0], CH_FRAME, 9.0), ev[..], t);
+    for j: 0..<ev[0].strikes_n {
+      hit := ev[0].strikes[j];
+      if !hit.landed { dodged += 1; if hit.slow_seconds > 0.0 { slowed += 1; } }
+      if hit.landed { floor_ok = floor_ok && hit.damage == 0.0; }   // at hull 9 a claw takes nothing (floor 8)
+    }
+  }
+  #assert floor_ok;
+  #assert dodged > 0;
+  #assert slowed == 0;
+}
+
+#test "Splice.Rules.Chase.GivesUpBeyondRange" {
+  t := ch_tuning();
+  tr: [1] ChTrain;
+  ch_place(tr[..], D3_ZERO, 0.0, 0.0);
+  hunting := ch_alongside(tr[0]);
+  ev: [1] SrChaseEvents;
+  inp := ch_inputs(tr[0], CH_FRAME, 24.0);
+  inp.cab = d2_add(hunting.position, d2(59.0, 0.0)); inp.rear_car = inp.cab;
+  s := sr_chase_step(hunting, inp, ev[..], t);
+  #assert s.phase == SR_CHASE_HUNT && ev[0].gave_up == SR_CHASE_GIVE_UP_NONE;
+  inp.cab = d2_add(hunting.position, d2(61.0, 0.0)); inp.rear_car = inp.cab;
+  s = sr_chase_step(hunting, inp, ev[..], t);
+  #assert s.phase == SR_CHASE_GONE && ev[0].gave_up == SR_CHASE_GIVE_UP_OUTRUN;
+  // Gone stays gone this drive, even back in range.
+  inp.cab = d2_add(s.position, d2(5.0, 0.0)); inp.rear_car = inp.cab;
+  s = sr_chase_step(s, inp, ev[..], t);
+  #assert s.phase == SR_CHASE_GONE && !ev[0].noticed;
+  // The road's end and getting out end it too.
+  near := ch_inputs(tr[0], CH_FRAME, 24.0);
+  near.road_end = true;
+  s = sr_chase_step(hunting, near, ev[..], t);
+  #assert ev[0].gave_up == SR_CHASE_GIVE_UP_ROAD_END;
+  near.road_end = false;
+  near.driver_seated = false;
+  s = sr_chase_step(hunting, near, ev[..], t);
+  #assert ev[0].gave_up == SR_CHASE_GIVE_UP_LEFT_SEAT;
+  // Notice only at dusk or dawn, within 45 m.
+  watch := ch_post_on_road();
+  day := ch_inputs(tr[0], CH_FRAME, 24.0);
+  day.cab = d2_add(watch.position, d2(10.0, 0.0)); day.rear_car = day.cab;
+  day.dusk_or_dawn = false;
+  s = sr_chase_step(watch, day, ev[..], t);
+  #assert s.phase == SR_CHASE_WATCH && !ev[0].noticed;
+  day.dusk_or_dawn = true;
+  day.cab = d2_add(watch.position, d2(46.0, 0.0)); day.rear_car = day.cab;
+  s = sr_chase_step(watch, day, ev[..], t);
+  #assert s.phase == SR_CHASE_WATCH;
+  day.cab = d2_add(watch.position, d2(44.0, 0.0)); day.rear_car = day.cab;
+  s = sr_chase_step(watch, day, ev[..], t);
+  #assert s.phase == SR_CHASE_HUNT && ev[0].noticed;
+}
