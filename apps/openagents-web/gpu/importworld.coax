@@ -28,7 +28,7 @@ iwr_bg_fs :: (pos: V4, u: [] f32) -> V4 {
 // and this rolls them off instead of clipping them to white.
 iwr_tone1 :: (x: f32) -> f32 { y := fmax(x, 0.0f32); return clampf(y * (2.51f32 * y + 0.03f32) / (y * (2.43f32 * y + 0.59f32) + 0.14f32), 0.0f32, 1.0f32); }
 iwr_tone :: (c: V3) -> V3 { return v3(iwr_tone1(c.x), iwr_tone1(c.y), iwr_tone1(c.z)); }
-IwrSurface :: struct { pos: V4; world: V3; normal: V3; colour: V4; uv: V2; layer: f32; }
+IwrSurface :: struct { pos: V4; world: V3; normal: V3; colour: V4; uv: V2; layer: f32; shade: V4; }
 iwr_scene_vs :: (i: u32, j: u32, u: [] f32, vertices: [] u32, objects: [] V4) -> IwrSurface {
   at := cast(int) i * 12; o := cast(int) j * 8;
   rest := v4(f32_from_bits(vertices[at]), f32_from_bits(vertices[at + 1]), f32_from_bits(vertices[at + 2]), 1.0f32);
@@ -44,7 +44,8 @@ iwr_scene_vs :: (i: u32, j: u32, u: [] f32, vertices: [] u32, objects: [] V4) ->
     2.0f32 * (wg_dot3(r, iwr_vec(u, 16)) * u[24] + (u[1] * 0.5f32 - u[27]) * z) / u[1],
     far / (far - near) * (z - near), z);
   uv := v2(f32_from_bits(vertices[at + 6]), f32_from_bits(vertices[at + 7]));
-  return IwrSurface.{pos = clip, world = p, normal = n, colour = v4(vc.x * m.x, vc.y * m.y, vc.z * m.z, m.w), uv = uv, layer = objects[o + 7].x};
+  return IwrSurface.{pos = clip, world = p, normal = n, colour = v4(vc.x * m.x, vc.y * m.y, vc.z * m.z, m.w), uv = uv, layer = objects[o + 7].x,
+    shade = v4(vc.x * objects[o + 7].y, vc.y * objects[o + 7].z, vc.z * objects[o + 7].w, objects[o + 7].y)};
 }
 iwr_scene_fs :: (v: IwrSurface, front: bool, u: [] f32, sheets: Tex2DArray, sheet: Sampler) -> V4 {
   base := v3(v.colour.x, v.colour.y, v.colour.z);
@@ -52,7 +53,16 @@ iwr_scene_fs :: (v: IwrSurface, front: bool, u: [] f32, sheets: Tex2DArray, shee
   tex := render_sample_layer8(sheets, sheet, v.uv, cast(s32) (fmax(v.layer, 0.0f32) + 0.5f32));
   if v.layer > -0.5f32 { base = v3(base.x * tex.x, base.y * tex.y, base.z * tex.z); }
   c := base;
-  if v.colour.w >= 0.0f32 {
+  if v.shade.w >= 0.0f32 {
+    // two-tone: the lit colour where the key light falls, the shadow colour where it doesn't, as the
+    // project's own toon master draws it (no curve: the two colours are what it shows)
+    n := wg_normalize3(v.normal);
+    if !front { n = wg_mul_f3f(n, -1.0f32); }
+    t := clampf((wg_dot3(n, wg_normalize3(iwr_vec(u, 28))) + 0.05f32) * 5.0f32, 0.0f32, 1.0f32);
+    sh := v3(v.shade.x, v.shade.y, v.shade.z);
+    if v.layer > -0.5f32 { sh = v3(sh.x * tex.x, sh.y * tex.y, sh.z * tex.z); }
+    c = wg_mix_f3f3f(sh, base, t * t * (3.0f32 - 2.0f32 * t));
+  } else if v.colour.w >= 0.0f32 {
     n := wg_normalize3(v.normal);
     if !front { n = wg_mul_f3f(n, -1.0f32); }
     key := wg_normalize3(iwr_vec(u, 28));
@@ -86,7 +96,7 @@ iwr_fx_fs :: (v: SplashV, u: [] f32) -> V4 { if v.tint.w > 4.5f32 { return hud_p
   texels := [4] V4.[v4(1, 1, 1, 1), v4(1, 1, 1, 1), v4(1, 1, 1, 1), v4(1, 1, 1, 1)]; sheets := Tex2DArray.{width = 2, height = 2, layers = 1, texels = texels[..]}; sheet: Sampler;
   u[0] = 1280; u[1] = 800; u[3] = 1; u[8] = 0; u[9] = 1; u[10] = 10; u[12] = 1; u[17] = 1; u[22] = -1; u[24] = 800; u[26] = 640; u[27] = 400;
   v[0] = f32_bits(0.5); v[1] = f32_bits(0); v[2] = f32_bits(0); v[4] = f32_bits(1); v[8] = 0xFFFFFFFF;
-  ob[0] = v4(2, 0, 0, 3); ob[1] = v4(0, 1, 0, 1); ob[2] = v4(0, 0, 1, -2); ob[3] = v4(0.5, 0, 0, 0); ob[4] = v4(0, 1, 0, 0); ob[5] = v4(0, 0, 1, 0); ob[6] = v4(0.5, 0.25, 1, 1); ob[7] = v4(-1, 0, 0, 0);
+  ob[0] = v4(2, 0, 0, 3); ob[1] = v4(0, 1, 0, 1); ob[2] = v4(0, 0, 1, -2); ob[3] = v4(0.5, 0, 0, 0); ob[4] = v4(0, 1, 0, 0); ob[5] = v4(0, 0, 1, 0); ob[6] = v4(0.5, 0.25, 1, 1); ob[7] = v4(-1, -1, 0, 0);
   s := iwr_scene_vs(0, 0, u[..], v[..], ob[..]);
   #assert s.world.x == 4 && s.world.y == 1 && s.world.z == -2 && s.normal.y == 1 && s.colour.y == 0.25f32;
   #assert s.pos.w == 12;   // 12 m ahead of the eye
@@ -97,4 +107,8 @@ iwr_fx_fs :: (v: SplashV, u: [] f32) -> V4 { if v.tint.w > 4.5f32 { return hud_p
   // a layer darkens by its texels: half grey halves the colour
   for k: 0..<4 { texels[k] = v4(0.5, 0.5, 0.5, 1); } s.layer = 0;
   #assert abs(iwr_scene_fs(s, false, u[..], sheets, sheet).x - 0.25f32) < 0.01;   // unlit: no curve
+  // two-tone: the lit colour facing the key, the shadow colour facing away, no curve
+  for k: 0..<4 { texels[k] = v4(1, 1, 1, 1); } s.layer = -1; s.colour = v4(0.9, 0.6, 0.4, 1); s.shade = v4(0.2, 0.1, 0.3, 0.2);
+  tl := iwr_scene_fs(s, true, u[..], sheets, sheet); ts := iwr_scene_fs(s, false, u[..], sheets, sheet);
+  #assert abs(tl.x - 0.9f32) < 0.01 && abs(ts.x - 0.2f32) < 0.01 && abs(ts.z - 0.3f32) < 0.01;
 }

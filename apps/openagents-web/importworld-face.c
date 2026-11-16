@@ -29,7 +29,10 @@ EXPORT("coaxial_pointer") uint32_t coaxial_pointer(cx_face_addr p, float x, floa
 EXPORT("coaxial_wheel") void coaxial_wheel(cx_face_addr p, float delta) { iwr_wheel(view(p), delta); }
 EXPORT("coaxial_inbox") cx_face_addr coaxial_inbox(cx_face_addr p) { (void)p; return (cx_face_addr)(uintptr_t)inbox; }
 EXPORT("coaxial_inbox_cap") uint32_t coaxial_inbox_cap(void) { return sizeof inbox; }
-EXPORT("coaxial_message") void coaxial_message(cx_face_addr p, int32_t kind, uint32_t n) { (void)p; (void)kind; (void)n; }
+EXPORT("coaxial_message") void coaxial_message(cx_face_addr p, int32_t kind, uint32_t n) {
+  if (n > sizeof inbox) n = sizeof inbox;
+  iwr_message(view(p), kind, (coax_string){(const char *)inbox, (int64_t)n});
+}
 EXPORT("coaxial_asset") cx_face_addr coaxial_asset(cx_face_addr p, int32_t i, uint32_t n) { (void)p; return i == 0 && n <= sizeof catalog ? (cx_face_addr)(uintptr_t)catalog : 0; }
 EXPORT("coaxial_asset_capacity") uint32_t coaxial_asset_capacity(cx_face_addr p, int32_t i) { (void)p; return i == 0 ? (uint32_t)sizeof catalog : 0u; }
 EXPORT("coaxial_asset_ready") void coaxial_asset_ready(cx_face_addr p, int32_t i, uint32_t n) {
@@ -47,5 +50,7 @@ EXPORT("coaxial_scene_ready") uint32_t coaxial_scene_ready(cx_face_addr p) { ret
 /* For headless checks: 0 ready, 1 the catalog admitted, 2 failed, 3 to 6 each asset's bytes, 7 draws, 8 the map. */
 EXPORT("coaxial_guard_probe") int32_t coaxial_guard_probe(cx_face_addr p, int32_t field) {
   coax_t_ImportWorld *s = state(p);
-  switch (field) { case 0: return s->ready; case 1: return s->admitted; case 2: return s->failed; case 3: case 4: case 5: case 6: return (int32_t)s->assets.e[field - 3]; case 7: return (int32_t)s->draw_n; case 8: return (int32_t)s->map; default: return 0; }
+  switch (field) { case 0: return s->ready; case 1: return s->admitted; case 2: return s->failed; case 3: case 4: case 5: case 6: return (int32_t)s->assets.e[field - 3]; case 7: return (int32_t)s->draw_n; case 8: return (int32_t)s->map;
+    case 9: return (int32_t)(s->you.body.pos.x * 100.0f); case 10: return (int32_t)(s->you.body.pos.y * 100.0f); case 11: return (int32_t)(s->you.body.pos.z * 100.0f);
+    default: return 0; }
 }

@@ -84,6 +84,17 @@ iwr_start :: (s: [] ImportWorld) #effects(all) {
   s[0].you = walker.place_in(w, m.spawn[0], m.spawn[1], m.spawn[2], m.yaw);
   s[0].you.body.on_ground = true; s[0].started = true;
 }
+// A message from the page (coaxial.send): 700 "X Y Z YAW" puts you there on the current map, as a
+// start puts you (a check or a shot goes to a spot that way). Anything else is ignored.
+IWR_PLACE :: 700;
+iwr_message :: (s: [] ImportWorld, kind: int, body: string) #export_c #effects(all) {
+  if kind != IWR_PLACE || !s[0].admitted || iw_fields(body) != 4 { return; }
+  at: [4] f64;
+  for k: 0..<4 { n := iw_num(iw_field(body, k)); if !n.ok { return; } at[k] = n.v; }
+  w := iw_walker(s[0].world[..], s[0].map, s[0].colliders[..]);
+  s[0].you = walker.place_in(w, cast(f32) at[0], cast(f32) at[1], cast(f32) at[2], cast(f32) at[3]);
+  s[0].you.body.on_ground = true; s[0].started = true;
+}
 iwr_blur :: (s: [] ImportWorld) #export_c #effects(all) {
   s[0].keys = 0; s[0].thumbs = metaverse_sticks_reset(); for k: 0..<4 { s[0].active[k] = false; } s[0].look_x = 0; s[0].look_y = 0;
   s[0].you = walker.walk_input(s[0].you, 0, 0, 0, 0, false, false, 0, 0);
@@ -225,6 +236,11 @@ iwr_frame :: (s: [] ImportWorld, out: [] f32, u: [] f32, w: f32, h: f32, d: f32,
   #assert u[35] == 1 && u[47] == 22 && abs(u[28] - 0.3) < 0.0001;   // the lab's light and key
   #assert iwr_key(s[..], 77, true) && s[0].map == 0;
   #assert iwr_key(s[..], 57, true) && s[0].map == 0;   // no ninth map
+  // the page puts you at a spot; a malformed one or another message changes nothing
+  iwr_message(s[..], IWR_PLACE, "-9 0 -1.5 1.5707963");
+  #assert abs(s[0].you.body.pos.x + 9) < 0.001 && abs(s[0].you.body.pos.z + 1.5) < 0.001;
+  iwr_message(s[..], IWR_PLACE, "1 2 x 0"); iwr_message(s[..], 701, "0 0 0 0");
+  #assert abs(s[0].you.body.pos.x + 9) < 0.001;
 }
 #test "the jam route's maps come first, by exact id, then the rest in the catalog's order" #steps 1000000000 {
   s: [1] ImportWorld;

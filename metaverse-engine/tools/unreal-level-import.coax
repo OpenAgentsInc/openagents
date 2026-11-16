@@ -2,7 +2,10 @@
 // The Unreal level importer's command (the importer's spec, section 4.3): an import bundle
 // (metaverse-engine/import/unreal/BUNDLE.md) into one private pack of an imported world.
 //
-//   coax/web/tool.sh metaverse-engine/tools/unreal-level-import.coax BUNDLE.aimport NEW_DIR [--plan PLAN.json]
+//   coax/web/tool.sh metaverse-engine/tools/unreal-level-import.coax BUNDLE.aimport NEW_DIR [--plan PLAN.json] [--two-tone LIT=SHADE]
+//
+// --two-tone names a project's toon pair of vector parameters (Splice Bots' master: Lit=Shade): a material
+// with both is carried as two-tone (convert.coax cv_material_toned), not as an unlit or plain one.
 //
 // It admits the bundle whole (bundle.coax: the manifest, every file's size and SHA-256 against the disk,
 // skipped.json), converts it (convert.coax), writes NEW_DIR/NAME.pack, reads the pack back with pack_read
@@ -165,8 +168,19 @@ im_count_line :: (t: [] CvText, name: string, c: CvCount) #effects(all) {
 
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
-  if !args_load(a[..]) || (args_count(a[..]) != 2 && args_count(a[..]) != 4) || (args_count(a[..]) == 4 && args_at(a[..], 2) != "--plan") {
-    print("usage: unreal-level-import BUNDLE.aimport NEW_DIR [--plan PLAN.json]\n"); return 2;
+  plan_arg := ""; tone_lit := ""; tone_shade := ""; args_ok := args_load(a[..]) && args_count(a[..]) >= 2 && args_count(a[..]) % 2 == 0;
+  k_arg := 2;
+  while args_ok && k_arg < args_count(a[..]) {
+    flag := args_at(a[..], k_arg); val := args_at(a[..], k_arg + 1);
+    if flag == "--plan" && plan_arg.count == 0 { plan_arg = val; }
+    else if flag == "--two-tone" && tone_lit.count == 0 {
+      eq := -1; for ch, i: val { if ch == '=' && eq < 0 { eq = i; } }
+      if eq <= 0 || eq == val.count - 1 { args_ok = false; } else { tone_lit = val[0..<eq]; tone_shade = val[eq + 1..<val.count]; }
+    } else { args_ok = false; }
+    k_arg += 2;
+  }
+  if !args_ok {
+    print("usage: unreal-level-import BUNDLE.aimport NEW_DIR [--plan PLAN.json] [--two-tone LIT=SHADE]\n"); return 2;
   }
   bundle := args_at(a[..], 0); out_dir := args_at(a[..], 1);
   if fs_exists(out_dir) { return im_fail("the output folder already exists; name a new one"); }
@@ -187,10 +201,10 @@ tool_main :: () -> int #export_c #effects(all) {
   skipped := ifx sn < 0 then -1 else ab_skipped(cast(string) skip_text[0..<sn], skd[..], sk_nodes[..], fault[..]);
   if skipped < 0 { return im_fault("the bundle is refused:", "", "skipped.json is missing or out of its form"); }
   // ---- the plan
-  plan: [1] UpPlan; have_plan := args_count(a[..]) == 4; budget := IMPORT_BUDGET;
+  plan: [1] UpPlan; have_plan := plan_arg.count > 0; budget := IMPORT_BUDGET;
   name_buf: [64] u8; name := "";
   if have_plan {
-    pt: [65536] u8; pn := im_read(args_at(a[..], 3), pt[..]);
+    pt: [65536] u8; pn := im_read(plan_arg, pt[..]);
     if pn < 0 { return im_fail("could not read the plan"); }
     code := up_admit(cast(string) pt[0..<pn], plan[..]);
     if code != UP_OK { return im_fault("the plan is refused:", "", UP_WHY[code]); }
@@ -267,7 +281,7 @@ tool_main :: () -> int #export_c #effects(all) {
   if b[0].materials.count > 4096 { return im_fail("more materials than the import holds"); }
   for k: 0..<b[0].materials.count {
     r := ab_row(b, b[0].materials, k); c[CV_MATERIALS].read += 1;
-    mats[k] = cv_material(b, r, layer_of[..], im[0].unmapped[..]);
+    mats[k] = cv_material_toned(b, r, layer_of[..], im[0].unmapped[..], tone_lit, tone_shade);
     if ab_field(dd, r, "origin") == "engine" { c[CV_MATERIALS].substituted += 1; im_line(rep[..], "substituted ", ab_id(dd, r), " by the engine's default material"); }
     else { c[CV_MATERIALS].carried += 1; if mats[k].flags & CV_FALLBACK != 0 { im_line(rep[..], "fallback ", ab_id(dd, r), ": no base colour or texture the mapping knows, drawn plain"); } }
   }
@@ -383,7 +397,9 @@ tool_main :: () -> int #export_c #effects(all) {
     cv_put(cat[..], "north"); cv_num(cat[..], UA_NORTH.x); cv_num(cat[..], UA_NORTH.y); cv_num(cat[..], UA_NORTH.z); cv_put(cat[..], "\n");
     for m: 0..<b[0].maps.count { cv_put(cat[..], "map"); cv_int(cat[..], m); cv_word(cat[..], ab_id(dd, ab_row(b, b[0].maps, m))); cv_put(cat[..], "\n"); }
     for k: 0..<im[0].nm {
-      mt := mats[k]; cv_put(cat[..], "mat"); cv_int(cat[..], k); for v: 0..<4 { cv_num(cat[..], cast(f64) mt.rgba[v]); } cv_int(cat[..], mt.layer); cv_int(cat[..], mt.flags); cv_put(cat[..], "\n");
+      mt := mats[k]; cv_put(cat[..], "mat"); cv_int(cat[..], k); for v: 0..<4 { cv_num(cat[..], cast(f64) mt.rgba[v]); } cv_int(cat[..], mt.layer); cv_int(cat[..], mt.flags);
+      if mt.flags & CV_TWO_TONE != 0 { for v: 0..<3 { cv_num(cat[..], cast(f64) mt.shade[v]); } }
+      cv_put(cat[..], "\n");
     }
     for s: 0..<g[0].ns {
       sc := sections[s]; cv_put(cat[..], "M s"); nb: [24] u8; cv_put(cat[..], uf_num_text(cast(f64) s, nb[..])); cv_int(cat[..], sc.first); cv_int(cat[..], sc.count); cv_put(cat[..], " 0");

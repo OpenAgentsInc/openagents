@@ -39,6 +39,15 @@ IWT_CATALOG :: "budget 100\nbytes 90\nL 0 test|private|-\nworld 1 test\ntitle A 
   #assert iw_draws(w[..], 1, draws[..], objects[..]) == 1;
   #assert abs(objects[0] - 0.7071068) < 0.00001 && abs(objects[2] - 0.7071068) < 0.00001 && abs(objects[8] + 0.7071068) < 0.00001 && objects[7] == 0.5f32;
 }
+#test "a two-tone material carries its shadow colour into its instances' rows; a line without it is refused" #steps 1000000000 {
+  w: [1] IwWorld;
+  t := "world 1 x\nmap 0 a\nmat 0 0.9 0.6 0.4 1 -1 32 0.2 0.1 0.3\nM s0 0 36 0 -0.5 -0.5 -0.5 0.5 0.5 0.5\nspawn 0 0 0 0 0\nP 0 0 0 0 0 0 0 0 1 0 0 0 1 1 1 sand\n";
+  #assert iw_admit(w[..], t) && w[0].mats[0].flags == 32 && w[0].mats[0].shade[2] == 0.3f32;
+  draws: [8] u32; objects: [2 * IW_OBJECT] f32;
+  #assert iw_draws(w[..], 0, draws[..], objects[..]) == 1 && objects[24] == 0.9f32 && objects[28] == -1 && objects[29] == 0.2f32 && objects[31] == 0.3f32;
+  #assert !iw_admit(w[..], "world 1 x\nmap 0 a\nmat 0 0.9 0.6 0.4 1 -1 32\n") && !iw_admit(w[..], "world 1 x\nmap 0 a\nmat 0 0.9 0.6 0.4 1 -1 0 0.2 0.1 0.3\n");
+  #assert iw_admit(w[..], IWT_CATALOG) && iw_draws(w[..], 0, draws[..], objects[..]) == 2 && objects[29] == -1;   // not two-tone
+}
 #test "the shared walker stands on an imported floor, is stopped by its wall and stands on a hull" #steps 1000000000 {
   w: [1] IwWorld; #assert iw_admit(w[..], IWT_CATALOG);
   c: [1] IwColliders; iw_colliders(w[..], 0, c[..]);

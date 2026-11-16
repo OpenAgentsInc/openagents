@@ -17,8 +17,10 @@
 //   title TEXT                       what a realm shows
 //   north X Y Z                      the source's north in the engine (axes.coax UA_NORTH)
 //   map K ID                         map K (0, 1, ...): its bundle id
-//   mat K R G B A LAYER FLAGS        material K: linear base colour, its colour layer or -1, flags
-//                                    (1 two-sided, 2 masked, 4 unlit, 8 translucent, 16 fallback)
+//   mat K R G B A LAYER FLAGS [SR SG SB]   material K: linear base colour, its colour layer or -1, flags
+//                                    (1 two-sided, 2 masked, 4 unlit, 8 translucent, 16 fallback, 32 two-tone);
+//                                    a two-tone material adds its shadow colour: it is the lit colour where
+//                                    the key light falls and the shadow colour where it doesn't
 //   M NAME FIRST COUNT 0 X0 Y0 Z0 X1 Y1 Z1   section NAME (sN): its indices and its local bounds
 //   P MAP SECTION MAT CX CZ QX QY QZ QW TX TY TZ SX SY SZ NAME   an instance of a section, in 64 m
 //                                    cell (CX, CZ), sorted by map, section, material, name
@@ -60,9 +62,9 @@ CvCount :: struct { read: int; carried: int; substituted: int; skipped: int; ref
 
 CvSection :: struct { mesh: int; slot: int; first: int; count: int; lo: [3] f32; hi: [3] f32; }
 CvMesh :: struct { sections: int; first: int; shape: int; tris: int; lo: [3] f64; hi: [3] f64; done: bool; }
-CvMat :: struct { rgba: [4] f32; layer: int = -1; flags: int; }
+CvMat :: struct { rgba: [4] f32; layer: int = -1; flags: int; shade: [3] f32; }
 CvLayer :: struct { texture: int; data: bool; }   // a texture row, carried as a colour or a data layer
-CV_TWO_SIDED :: 1; CV_MASKED :: 2; CV_UNLIT :: 4; CV_TRANSLUCENT :: 8; CV_FALLBACK :: 16;
+CV_TWO_SIDED :: 1; CV_MASKED :: 2; CV_UNLIT :: 4; CV_TRANSLUCENT :: 8; CV_FALLBACK :: 16; CV_TWO_TONE :: 32;
 
 // The geometry being built: caller arrays (the tool's), so nothing here allocates.
 CvGeo :: struct {
@@ -273,16 +275,36 @@ cv_shape_in :: (g: [] CvGeo, shape: int, mesh: int, lo: D3, hi: D3) -> int #effe
 // ---- materials
 
 // The parameter names the importer maps (spec 5.4): every other parameter is listed, not guessed.
-CV_BASE_COLOR :: "BaseColor|Base Color|Color|Tint|Albedo|DiffuseColor|Base_Color";
+CV_BASE_COLOR :: "BaseColor|Base Color|Color|Colour|Base Colour|Tint|Albedo|DiffuseColor|Base_Color";
 CV_BASE_TEXTURE :: "BaseColor|Base Color|Albedo|Diffuse|BaseColorTexture|Base_Color|Texture";
 CV_DEFAULT :: [4] f32.[0.7, 0.7, 0.7, 1];
 // A material row as the engine's record: the mapped base colour and texture, its blend and shading.
 // `layer_of` maps a texture row to its colour layer (-1: none). `unmapped` counts what was not mapped.
 cv_material :: (b: [] AbBundle, row: int, layer_of: [] int, unmapped: [] int) -> CvMat #effects(all) {
+  return cv_material_toned(b, row, layer_of, unmapped, "", "");
+}
+// The same, with a two-tone pair named by the import's command (--two-tone LIT=SHADE): a material whose
+// vectors have both names is a toon material that shades itself (a project's own master, often "unlit"
+// in the engine): its base colour is LIT, its shadow colour SHADE, and the realm lights it by the key.
+// Empty names: no pair.
+cv_material_toned :: (b: [] AbBundle, row: int, layer_of: [] int, unmapped: [] int, lit: string, shade: string) -> CvMat #effects(all) {
   d := b[0].d; m: CvMat; m.rgba = CV_DEFAULT;
   if ab_field(d, row, "origin") == "engine" { m.flags = CV_FALLBACK; return m; }   // substitute.coax: the engine's default
-  vs := jv_get(d, row, "vectors"); found := false;
+  vs := jv_get(d, row, "vectors"); found := false; lit_at := -1; shade_at := -1;
+  if lit.count > 0 && shade.count > 0 {
+    for k: 0..<jv_len(d, vs) {
+      nm := ab_field(d, jv_at(d, vs, k), "name");
+      if nm == lit && lit_at < 0 { lit_at = k; } else if nm == shade && shade_at < 0 { shade_at = k; }
+    }
+    if lit_at < 0 || shade_at < 0 { lit_at = -1; shade_at = -1; }
+  }
+  if lit_at >= 0 {
+    lv := jv_get(d, jv_at(d, vs, lit_at), "value"); sv := jv_get(d, jv_at(d, vs, shade_at), "value");
+    for c: 0..<4 { m.rgba[c] = cast(f32) ab_f(d, lv, c); } for c: 0..<3 { m.shade[c] = cast(f32) ab_f(d, sv, c); }
+    m.flags |= CV_TWO_TONE; found = true;
+  }
   for k: 0..<jv_len(d, vs) {
+    if k == lit_at || k == shade_at { continue; }
     e := jv_at(d, vs, k);
     if anim_in(jv_raw(d, jv_get(d, e, "name")), CV_BASE_COLOR) && !found { v := jv_get(d, e, "value"); for c: 0..<4 { m.rgba[c] = cast(f32) ab_f(d, v, c); } found = true; }
     else { unmapped[0] += 1; }
@@ -302,7 +324,7 @@ cv_material :: (b: [] AbBundle, row: int, layer_of: [] int, unmapped: [] int) ->
   blend := ab_field(d, row, "blend");
   if blend == "masked" { m.flags |= CV_MASKED; }
   if blend == "translucent" || blend == "additive" { m.flags |= CV_TRANSLUCENT; }
-  if ab_field(d, row, "shading") == "unlit" { m.flags |= CV_UNLIT; }
+  if ab_field(d, row, "shading") == "unlit" && m.flags & CV_TWO_TONE == 0 { m.flags |= CV_UNLIT; }
   return m;
 }
 // How a texture is carried: 1 a colour layer, 2 a data layer, 0 refused (its use unknown, spec 5.4).

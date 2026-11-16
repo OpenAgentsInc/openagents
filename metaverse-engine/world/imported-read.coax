@@ -18,7 +18,7 @@ IW_OBJECT :: 32;                  // floats an instance takes in the object stor
 // A map's colliders, the most a walker World is given.
 IW_WALLS :: 4096; IW_FLOORS :: 1024; IW_HULLS :: 1024; IW_BODIES :: 512;
 
-IwMat :: struct { rgba: [4] f32; layer: int; flags: int; }
+IwMat :: struct { rgba: [4] f32; layer: int; flags: int; shade: [3] f32; }   // shade: a two-tone material's (flag 32)
 IwSection :: struct { first: int; count: int; }
 // actor: its placement name's actor (iw_actor_name) as iw_hash, so a realm groups an actor's parts and
 // finds a game's actors by name; 0 for none.
@@ -129,9 +129,12 @@ iw_admit :: (w: [] IwWorld, text: string) -> bool #effects(all) {
       w[0].maps[k] = IwMap.{}; w[0].maps[k].id_n = iw_copy(iw_field(l[0].line, 2), w[0].maps[k].id[..]); w[0].nm += 1;
     } else if what == "mat" {
       k := iw_i(l, 1, 0, IW_MATS - 1);
-      if l[0].bad || k != w[0].nmat || n != 8 { return iw_refuse(w, "materials out of order or of the wrong form"); }
+      if l[0].bad || k != w[0].nmat || (n != 8 && n != 11) { return iw_refuse(w, "materials out of order or of the wrong form"); }
       for c: 0..<4 { w[0].mats[k].rgba[c] = iw_f(l, 2 + c); }
-      w[0].mats[k].layer = iw_i(l, 6, -1, 4095); w[0].mats[k].flags = iw_i(l, 7, 0, 255); w[0].nmat += 1;
+      w[0].mats[k].layer = iw_i(l, 6, -1, 4095); w[0].mats[k].flags = iw_i(l, 7, 0, 255);
+      if (n == 11) != (w[0].mats[k].flags & 32 != 0) { return iw_refuse(w, "a two-tone material without its shadow colour, or one with it that isn't"); }
+      if n == 11 { for c: 0..<3 { w[0].mats[k].shade[c] = iw_f(l, 8 + c); } }
+      w[0].nmat += 1;
     } else if what == "M" {
       if w[0].ns >= IW_SECTIONS || n != 11 { return iw_refuse(w, "more sections than a world holds, or one of the wrong form"); }
       w[0].sections[w[0].ns] = IwSection.{first = iw_i(l, 2, 0, 2147483647), count = iw_i(l, 3, 0, 2147483647)}; w[0].ns += 1;
@@ -234,7 +237,9 @@ iw_object :: (w: [] IwWorld, k: int, objects: [] f32, o: int) #effects(all) {
   mt := w[0].mats[p.mat];
   for c: 0..<4 { objects[o + 24 + c] = mt.rgba[c]; }
   if mt.flags & 4 != 0 { objects[o + 27] = -mt.rgba[3]; }   // unlit: the shader takes a negative alpha
-  objects[o + 28] = cast(f32) mt.layer; objects[o + 29] = 0; objects[o + 30] = 0; objects[o + 31] = 0;   // its colour layer, or -1
+  // its colour layer or -1, then a two-tone material's shadow colour (or -1: lit the usual way)
+  objects[o + 28] = cast(f32) mt.layer; objects[o + 29] = -1; objects[o + 30] = 0; objects[o + 31] = 0;
+  if mt.flags & 32 != 0 { for c: 0..<3 { objects[o + 29 + c] = mt.shade[c]; } }
 }
 
 // ---- walking
