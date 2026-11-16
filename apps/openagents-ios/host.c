@@ -152,5 +152,10 @@ int oc_field_text(void *chat, char *out, int cap) { Chat *c = chat; return c && 
 int oc_set_field(void *chat, const char *text) { Chat *c = chat; if (!c) return 0; oc_changed(c); return chat_set_field(oc_state(c), oc_string(text)); }
 int oc_submit(void *chat) { Chat *c = chat; if (!c) return 0; oc_changed(c); return chat_submit(oc_state(c)); }
 void oc_blur(void *chat) { Chat *c = chat; if (c) { chat_blur(oc_state(c)); oc_changed(c); } }
+void oc_native(void *chat, int on) { Chat *c = chat; if (c) { chat_native(oc_state(c), on != 0); oc_changed(c); } }
+int oc_menu(void *chat, float out[6]) { Chat *c = chat; return c && chat_menu(oc_state(c), (coax_v_f32){out, 6}); }
+int oc_sheet(void *chat) { Chat *c = chat; return c ? (int)chat_sheet(oc_state(c)) : 0; }
+int oc_find(void *chat, const char *id, float box[4]) { Chat *c = chat; return c && chat_find(oc_state(c), oc_string(id), (coax_v_f32){box, 4}); }
+int oc_row_value(void *chat, int i, char *out, int cap) { Chat *c = chat; return c && cap > 0 ? oc_bytes(chat_row_value(oc_state(c), i, (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap) : 0; }
 #include "core-host.c"
 #include "../../components/app/gallery/host.c"

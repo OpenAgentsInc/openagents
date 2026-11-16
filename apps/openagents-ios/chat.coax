@@ -4,7 +4,8 @@
 // over the composer), the navigation button at the top left that opens the
 // drawer, and the login card. Nothing here runs in JavaScript
 // and nothing is a platform control except the platform editor over the field
-// that holds the keyboard.
+// that holds the keyboard, and, on the phone, the menu button and the chips' picker (chat_native:
+// the host draws them as Liquid Glass system controls, GlassChrome.swift).
 //
 // The drawer slides in from the left over a scrim; a press on the scrim or a
 // swipe to the left closes it, a swipe right from the left edge opens it. It
@@ -74,6 +75,9 @@ ChatPage :: struct {
   core: [] AppCore; lb: [1] LoginBridge; lf: [1] LoginFlow;
   action: int;
   box: ComposerBox; stamp: int; moving: bool; refused: int;
+  // the host draws the menu button and the chips' picker as system controls (chat_native): the
+  // page keeps their rows and hits for VoiceOver and the driver, and paints neither
+  native: bool; page_w: f32; menu_x: f32; menu_y: f32; menu_side: f32;
 }
 
 ch_init :: (s: [] ChatPage) {
@@ -158,17 +162,27 @@ ch_layout :: (s: [] ChatPage, f: [] UiFrame, w: f32, h: f32) {
     }
   }
   // the navigation button at the top left opens the drawer
-  _ := app_nav_button(f, "nav.menu", 12 / u, nav_y, s[0].drawer, 0, CH_HIT_MENU);
+  s[0].menu_x = 12 / u; s[0].menu_y = nav_y; s[0].menu_side = k.app.nav;
+  if s[0].native { ch_menu_row(s, f, s[0].menu_x, nav_y); } else { _ := app_nav_button(f, "nav.menu", s[0].menu_x, nav_y, s[0].drawer, 0, CH_HIT_MENU); }
+}
+// The menu button's row and hit with no paint: the host's system button stands over it.
+ch_menu_row :: (s: [] ChatPage, f: [] UiFrame, x: f32, y: f32) {
+  side := f[0].skin.app.nav; open := s[0].drawer;
+  row := uiframe_semantic(f, "nav.menu", EL_BUTTON, ifx open then "Close sidebar" else "Open sidebar", x, y, side, side, EL_S_EXPANDS | (ifx open then EL_S_EXPANDED else 0), CH_HIT_MENU);
+  sheet_hit(f[0].sheet, UIFRAME_HIT, row, 0, x, y, side, side);
 }
 // The cover: the chips' picker or the login card over a dimmed page, and the sidebar.
 ch_layout_cover :: (s: [] ChatPage, f: [] UiFrame, w: f32, h: f32) {
   k := f[0].skin; u: f32 = ARCADE_PHONE_SCALE; top := s[0].safe_top / u;
   if ch_picking(s) {
     // a press beside the picker closes it (es_press "env.scrim")
-    sheet_fill(f[0].sheet, 0, 0, w, h, 0, opacity(Rgba.{r = 0, g = 0, b = 0, a = 1}, APP_SIDEBAR_DIM));
+    if !s[0].native { sheet_fill(f[0].sheet, 0, 0, w, h, 0, opacity(Rgba.{r = 0, g = 0, b = 0, a = 1}, APP_SIDEBAR_DIM)); }
     _ := uiframe_semantic(f, "env.scrim", EL_BUTTON, "Close", 0, 0, w, h, 0, 0);
     py := top + 56 / u; ph := h - s[0].safe_bottom / u - 12 / u - py;
+    sh := f[0].sheet; nu := sh[0].nu; no := sh[0].no; nl := sh[0].nl;
     s[0].picker = es_picker(f, s[0].env[..], 12 / u, py, w - 24 / u, ph, ICON_CHECK);
+    // the host's popover shows these rows (chat_row, chat_row_value): the picker keeps them and paints nothing
+    if s[0].native { sh[0].nu = nu; sh[0].no = no; sh[0].nl = nl; }
   }
   l := s[0].lf[..];
   if l[0].open {
@@ -264,7 +278,7 @@ chat_frame :: (s: [] ChatPage, out: [] f32, width: f32, height: f32, dpr: f32, d
   if !s[0].ready { ch_init(s); }
   a := s[0].atlas[..];
   d := (ifx dpr < 1 then 1.0f32 else dpr) * ARCADE_PHONE_SCALE;
-  w := width / d; h := height / d;
+  w := width / d; h := height / d; s[0].page_w = w;
   s[0].d = d;
   t := ifx dt < 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
   if !s[0].reduced { s[0].time += t; }
@@ -433,6 +447,36 @@ chat_refused :: (s: [] ChatPage) -> int #export_c #effects(all) { if s.count < 1
 chat_max_vertices :: () -> int #export_c #effects(all) { return CH_MAX_VERTICES; }
 chat_scale :: () -> f32 #export_c #effects(all) { return ARCADE_PHONE_SCALE; }
 
+// ---- the system controls the host draws over the page (chat_native)
+
+// The host draws the menu button and the chips' picker as system controls: the page keeps their
+// rows and hits and paints neither.
+chat_native :: (s: [] ChatPage, on: bool) #export_c #effects(all) { if s.count > 0 { s[0].native = on; } }
+// The menu button: x, y, side, the page's push to the right while the sidebar opens (points), then
+// 1 when the sidebar is open and 1 when it hides (the login card covers the page).
+chat_menu :: (s: [] ChatPage, out: [] f32) -> bool #export_c #effects(all) {
+  if s.count < 1 || out.count < 6 || !(s[0].menu_side > 0) { return false; }
+  u: f32 = ARCADE_PHONE_SCALE;
+  out[0] = s[0].menu_x * u; out[1] = s[0].menu_y * u; out[2] = s[0].menu_side * u;
+  out[3] = app_sidebar_shift(s[0].page_w, s[0].share) * u;
+  out[4] = ifx s[0].drawer then 1.0f32 else 0.0f32; out[5] = ifx s[0].lf[0].open then 1.0f32 else 0.0f32;
+  return true;
+}
+// The open picker: 0 none, 1 where it runs, 2 the repository.
+chat_sheet :: (s: [] ChatPage) -> int #export_c #effects(all) { if s.count < 1 || !s[0].ready { return 0; } return s[0].env[0].sheet; }
+// A committed row's box in points, on either layer (a chip the popover points at).
+chat_find :: (s: [] ChatPage, id: string, out: [] f32) -> bool #export_c #effects(all) {
+  if s.count < 1 || out.count < 4 { return false; }
+  u: f32 = ARCADE_PHONE_SCALE;
+  for layer: 0..<2 {
+    t := [1] ElTable.[surface_rows(ch_sf(s, layer))]; i := elt_find(t[..], id);
+    if i < 0 { continue; }
+    r := t[0].rows[i]; out[0] = r.x * u; out[1] = r.y * u; out[2] = r.w * u; out[3] = r.h * u;
+    return true;
+  }
+  return false;
+}
+
 // ---- the committed semantic rows, for the accessibility bridge and the driver
 
 chat_rows :: (s: [] ChatPage) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return ch_rows(s).n; }
@@ -449,6 +493,8 @@ chat_row :: (s: [] ChatPage, i: int, out: [] f32) -> bool #export_c #effects(all
 }
 chat_row_id :: (s: [] ChatPage, i: int, out: [] u8) -> int #export_c #effects(all) { if s.count < 1 { return 0; } t := [1] ElTable.[ch_rows(s)]; return ch_out(out, elt_id(t[..], i)); }
 chat_row_label :: (s: [] ChatPage, i: int, out: [] u8) -> int #export_c #effects(all) { if s.count < 1 { return 0; } t := [1] ElTable.[ch_rows(s)]; return ch_out(out, elt_label(t[..], i)); }
+// Row i's value: what a picker's row says under its name.
+chat_row_value :: (s: [] ChatPage, i: int, out: [] u8) -> int #export_c #effects(all) { if s.count < 1 { return 0; } t := [1] ElTable.[ch_rows(s)]; return ch_out(out, elt_value_of(t[..], i)); }
 chat_activate :: (s: [] ChatPage, id: string) -> bool #export_c #effects(all) { if s.count < 1 { return false; } return ch_press(s, surface_find(ch_live(s), id)); }
 // coax drive: `tree` and `counts` over the same rows. The answer's length, or -1.
 chat_drive :: (s: [] ChatPage, op: string, out: [] u8) -> int #export_c #effects(all) {
@@ -555,4 +601,25 @@ ch_test_has :: (s: [] ChatPage, id: string) -> bool { return surface_find(ch_sf(
   _ := chat_pointer(s[..], 600, 60, 0); _ := chat_pointer(s[..], 600, 60, 2);
   #assert !ch_picking(s[..]);
   saved: [256] u8; _ := chat_env_save(s[..], saved[..]);
+}
+
+#test "chat page, system controls: the menu button and the picker keep their rows and hits, and paint nothing; the host reads the picker's rows and the chip it points at" #steps 2000000000 {
+  s: [1] ChatPage; o: [1] ChOut; ch_test_atlas(s[0].atlas[..]);
+  core: [1] AppCore; app_init(core[..]);
+  chat_attach(s[..], core[..], "");
+  a: [1] ChOut; painted := ch_test_frame(s[..], a[..]);
+  chat_native(s[..], true); bare := ch_test_frame(s[..], o[..]);
+  #assert bare < painted && ch_test_has(s[..], "nav.menu");
+  m: [6] f32; #assert chat_menu(s[..], m[..]) && m[2] > 30 && m[3] == 0 && m[4] == 0;
+  #assert ch_test_tap(s[..], "nav.menu") && s[0].drawer; _ := ch_test_frame(s[..], o[..]); _ := ch_test_frame(s[..], o[..]);
+  #assert chat_menu(s[..], m[..]) && m[3] > 100 && m[4] == 1;
+  #assert chat_activate(s[..], "drawer.scrim") && !s[0].drawer; _ := ch_test_frame(s[..], o[..]);
+  core[0].auth = AUTH_IN; chat_step(s[..]); _ := ch_test_frame(s[..], o[..]);
+  #assert chat_activate(s[..], "composer.environment") && chat_sheet(s[..]) == ES_SHEET_ENV;
+  before := ch_test_text(s[..], "Where it runs"); _ := ch_test_frame(s[..], o[..]);
+  #assert before == 0 && ch_test_text(s[..], "Where it runs") == 0 && ch_test_has(s[..], "env.default") && chat_refused(s[..]) == 0;
+  box: [4] f32; #assert chat_find(s[..], "composer.environment", box[..]) && box[2] > 40;
+  t := [1] ElTable.[ch_rows(s[..])]; i := elt_find(t[..], "env.default");
+  v: [64] u8; #assert i >= 0 && (t[0].rows[i].state & EL_S_CHECKED) != 0 && chat_row_value(s[..], i, v[..]) > 0;
+  #assert chat_activate(s[..], "env.default") && chat_sheet(s[..]) == ES_SHEET_NONE;
 }

@@ -306,6 +306,20 @@ is false. A host whose tap can begin and end between two frames also calls
 `uiframe_press_focus(surface, input)` at touch down. Focus on a control the
 keyboard stepped to is not a text field's, and a press elsewhere leaves it.
 
+### Liquid Glass controls
+
+On iOS 26 and later, a control that the system draws in Liquid Glass may be a
+system view over the GPU view, because the display list cannot sample and
+refract what is behind it as the system does. The iOS chat page uses two: the
+round menu button (`UIGlassEffect`) and the environment and repository picker
+(a SwiftUI popover anchored to its chip), both in
+`apps/openagents-ios/GlassChrome.swift`. The page still lays out both and
+records their semantic rows and hits; with `chat_native` on it paints
+neither. The system view reads what to show from those committed rows (label,
+value, state bits) and sends a press back by row ID, so Coax still decides
+what each row says and whether it can be chosen. Older iOS gets a material
+blur in the same place.
+
 ### Accessibility
 
 The host builds platform accessibility elements from the committed semantic

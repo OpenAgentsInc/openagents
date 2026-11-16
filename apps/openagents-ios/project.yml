@@ -20,6 +20,8 @@ targets:
     platform: iOS
     sources:
       - App.swift
+      # The system controls over the page: the Liquid Glass menu button and the chips' popover.
+      - GlassChrome.swift
       # The shared app core's host loop: its C entry points are in host.c (core-host.c).
       - AppCore.swift
       # The dev menu: the app set's gallery, debug builds only.

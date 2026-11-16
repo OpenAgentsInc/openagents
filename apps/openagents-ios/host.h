@@ -63,5 +63,15 @@ void oc_blur(void *chat);
 int oc_refused(void *chat);
 // Frames presented to the screen (a static page adds none).
 unsigned long long oc_presented(void *chat);
+// The system controls over the page (GlassChrome.swift): with native on, the page paints neither the
+// menu button nor the chips' picker and keeps their rows. The menu button: x, y, side and the page's
+// push while the sidebar opens (points), then 1 when the sidebar is open and 1 when it hides. The
+// open picker (0 none, 1 where it runs, 2 the repository), a committed row's box by id on either
+// layer, and row i's value (what a picker's row says under its name).
+void oc_native(void *chat, int on);
+int oc_menu(void *chat, float out[6]);
+int oc_sheet(void *chat);
+int oc_find(void *chat, const char *id, float box[4]);
+int oc_row_value(void *chat, int i, char *out, int cap);
 void oc_close(void *chat);
 #endif

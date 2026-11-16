@@ -8,6 +8,8 @@
 //     (kit/frame.coax's focus rule: a tap outside the focused field takes it away); this file
 //     shows the keyboard for that field and hides it when there is none;
 //   - VoiceOver: an element per semantic row; the Metal view itself is hidden from accessibility;
+//   - the system controls over the page (GlassChrome.swift): the Liquid Glass menu button and the
+//     chips' picker as a popover, which the page keeps the rows of and does not paint;
 //   - the shared app core with its native services (AppCore.swift), attached to the page.
 import UIKit
 
@@ -30,6 +32,7 @@ import UIKit
     private lazy var field:FieldEditor={var s=[Float](repeating:0,count:14);_ = oc_style(&s);return FieldEditor(style:s)}()
     /// The shared app core and the native services it asks for.
     private var services:AppServices?
+    private var chrome:GlassChrome?
     private lazy var editor:ComposerEditor={var s=[Float](repeating:0,count:14);_ = oc_style(&s);return ComposerEditor(style:s)}()
 
     override func viewDidLoad() {
@@ -58,6 +61,10 @@ import UIKit
         let canvas=Unmanaged<UIView>.fromOpaque(raw).takeUnretainedValue();self.canvas=canvas
         canvas.frame=view.bounds;canvas.autoresizingMask=[.flexibleWidth,.flexibleHeight];view.addSubview(canvas)
         canvas.isAccessibilityElement=false;canvas.accessibilityElementsHidden=true
+        // the menu button and the chips' picker are system controls over the page
+        oc_native(owner,1)
+        let chrome=GlassChrome(on:self);self.chrome=chrome
+        chrome.activate={ [weak self] id in guard let self,let owner=self.owner else {return false};let pressed=oc_activate(owner,id) != 0;self.wake();return pressed }
         field.delegate=self;field.addTarget(self,action:#selector(fieldChanged),for:.editingChanged)
         editor.delegate=self;editor.host=view;editor.attach={ [weak self] in self?.attachEditor() };editor.activate={ [weak self] in self?.focus() ?? false }
         let center=NotificationCenter.default
@@ -86,6 +93,7 @@ import UIKit
         }
         // Debug builds: `-OAPress nav.menu,drawer.scrim` presses those rows in turn after launch, as
         // VoiceOver would, so a screen can be reached and captured without a hand on the simulator.
+        if let owner,!pressedAtLaunch {DispatchQueue.main.asyncAfter(deadline:.now()+0.8) { [weak self] in self?.chrome?.sample(owner)}}
         if let ids=UserDefaults.standard.string(forKey:"OAPress"),!pressedAtLaunch {
             pressedAtLaunch=true
             for (i,id) in ids.split(separator:",").enumerated() {
@@ -130,6 +138,7 @@ import UIKit
         services?.pump()
         if oc_action(owner)==1 {_ = focus()}
         followFocus();placeEditor();refreshRows();keepDraft()
+        chrome?.sync(owner,rowsStamp:oc_rows_stamp(owner))
         // A static page sleeps: no frame runs until something wakes it.
         if oc_moving(owner)==0 {display?.isPaused=true}
     }
@@ -221,6 +230,8 @@ import UIKit
             let name=String(cString:id),words=String(cString:label),state=Int(row[5]),role=Int(row[4])
             let rect=CGRect(x:CGFloat(row[0]),y:CGFloat(row[1]),width:CGFloat(row[2]),height:CGFloat(row[3]))
             names.append(name)
+            // the system controls stand for their own rows
+            if chrome != nil,GlassChrome.covers(name) {if name=="nav.menu",let chrome {elements.append(chrome.menu)};continue}
             if role==3,name=="chat.composer" {
                 // The field is the platform editor: over the text while it has the keyboard, else standing for the field's row.
                 editor.box=rect;editor.accessibilityIdentifier=name;editor.accessibilityLabel=words;editor.placeholder=words
