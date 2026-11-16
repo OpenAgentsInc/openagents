@@ -1,0 +1,512 @@
+// Where the next message runs and which repository it works in: the state
+// behind the two chips above the chat composer (GitHub #13645, for #13620).
+// No host code and no drawing here: view.coax draws this state, and the app
+// core sends the requests this file queues (es_take) through its outbox.
+//
+// Both lists come from the environment contract as it is:
+//   - The computers are the account's catalog (GET /api/chat/environments/v1,
+//     coax/lib/agent/environment/wire.coax).
+//   - Whether a computer answers, and the repositories it has checked out,
+//     are its own StationReport (GET /api/chat/environment/station/v1?host=KEY,
+//     the router's Station.repos). station.coax turns a report into an
+//     EsStationFact.
+//
+// "Default" means we choose where each task runs, the product rule in
+// docs/router/README.md. Today the chat submit request has no field for a
+// computer or a repository, so both choices are capabilities the core turns
+// on (es_capabilities) once a request can carry them. While the computer
+// capability is off, the picker shows the computers and whether each one
+// answers, the rows take no press, and es_choice says Default. While the
+// repository capability is off, view.coax leaves the repository chip out.
+// INTEGRATION.md says what the request lacks.
+//
+// Rules this file keeps:
+//   - A choice belongs to a draft (es_draft), as the composer's text does,
+//     and is saved with the drafts (es_save, es_restore).
+//   - A fetch is a typed effect with an operation number and the login's
+//     generation. Its answer comes back through es_*_done. An answer for
+//     another generation, or for anything but the newest fetch of its kind,
+//     changes nothing, so a stale list never replaces a newer one.
+//   - A fetch whose outcome is unknown is never sent again by itself. Refresh
+//     is a person's.
+//   - Logging out clears every list and every choice.
+//   - Logged out, a press on a chip asks for login (es_take_login) and opens
+//     nothing.
+//   coax/bin/coax test apps/shared/app/environment/select-checks.coax
+
+#load "../../../../coax/lib/agent/environment/wire.coax";   // EaCatalog, ea_catalog_read
+
+ES_COMPUTERS :: 64;           // the catalog's bound
+ES_KEY :: 64;                 // bytes of a draft's key (a conversation id, or "" for a new chat)
+ES_DRAFTS :: 16;              // drafts whose choice is kept; the one used longest ago goes first
+ES_EFFECTS :: 8;              // effects waiting for the core to take
+ES_PATH :: 160;
+ES_CHECKS :: 4;               // computers asked at once
+ES_CATALOG_FRESH_MS :: 60000; // an open picker reads the list again after a minute
+ES_REACH_FRESH_MS :: 120000;  // a report older than this is not reachable (the router's RTR_FRESH_MS)
+ES_REPO :: 96;                // bytes of a repository's name
+ES_STATION_REPOS :: 16;       // repositories one computer reports (the router's RTR_REPOS)
+ES_REPOS :: 64;               // repositories the picker lists
+ES_EL_ID :: 48;               // bytes of a row's id (components/core/elements.coax EL_ID)
+ES_SAVE :: ES_DRAFTS * (ES_KEY + 64 + ES_REPO + 8);   // bytes es_save can write
+
+// A fetch, as the screen shows it.
+ES_IDLE :: 0; ES_PENDING :: 1; ES_DONE :: 2; ES_FAILED :: 3; ES_UNKNOWN :: 4;
+// How an effect ended, as the core reports it: an HTTP answer arrived; it was
+// not sent or failed for certain; or nobody knows (the app stopped, the
+// connection dropped after sending).
+ES_O_DONE :: 0; ES_O_FAILED :: 1; ES_O_UNKNOWN :: 2;
+// The effects: each is a GET of `path` as the logged-in account.
+ES_E_CATALOG :: 1; ES_E_STATION :: 2;
+// Whether a computer answers.
+ES_R_NONE :: 0; ES_R_CHECKING :: 1; ES_R_READY :: 2; ES_R_AWAY :: 3; ES_R_UNSURE :: 4;
+// The open picker.
+ES_SHEET_NONE :: 0; ES_SHEET_ENV :: 1; ES_SHEET_REPO :: 2;
+
+ES_PATH_CATALOG :: "/api/chat/environments/v1";
+ES_PATH_STATION :: "/api/chat/environment/station/v1?host=";
+
+EsEffect :: struct { kind: int; op: int; generation: int; path: [ES_PATH] u8; np: int; }
+EsRepo :: struct { name: [ES_REPO] u8; nn: int; }
+EsComputer :: struct {
+  reach: int; op: int; refresh: bool; reported_at_ms: int; checked_at_ms: int;
+  repos: [ES_STATION_REPOS] EsRepo; nr: int;   // what its last report said it has checked out
+}
+// A computer's answer, read from its StationReport by station.coax.
+EsStationFact :: struct { ok: bool; host: [64] u8; reported_at_ms: int; repos: [ES_STATION_REPOS] EsRepo; nr: int; }
+EsRepoList :: struct { entries: [ES_REPOS] EsRepo; n: int; }
+EsDraft :: struct {
+  key: [ES_KEY] u8; nk: int; held: bool; used: int;
+  host: [64] u8; manual: bool;             // a chosen computer, or Default
+  repo: [ES_REPO] u8; nr: int;             // nr 0: no repository
+}
+// What a message sent from a draft carries.
+EsChoice :: struct {
+  manual: bool; host: [64] u8;             // the chosen computer's key
+  name: [80] u8; nn: int;
+  repo: [ES_REPO] u8; nr: int;             // nr 0: no repository
+}
+
+EnvSelect :: struct {
+  in: bool;                    // logged in
+  generation: int;             // the login's; logging out starts the next
+  next_op: int;
+  manual_ready: bool;          // a request can carry a chosen computer
+  repo_ready: bool;            // a request can carry a repository
+  want_login: bool;
+  // the account's computers
+  catalog: [1] EaCatalog; computers: [ES_COMPUTERS] EsComputer;
+  catalog_state: int; catalog_op: int; catalog_at_ms: int;
+  shown: [1] EsRepoList;       // the repository picker's rows, kept here so the frame's text outlives it
+  // drafts
+  drafts: [ES_DRAFTS] EsDraft; current: int; tick: int;
+  // the picker
+  sheet: int; scroll: f32;
+  // effects for the core
+  out: [ES_EFFECTS] EsEffect; nout: int; lost: int;
+}
+
+// The first state: logged out, nothing listed, the new chat's draft not yet made.
+es_new :: () -> EnvSelect #effects(all) { return EnvSelect.{current = -1}; }
+
+// ---------------------------------------------------------------- text
+
+es_put :: (out: [] u8, at: int, s: string) -> int #effects(all) {
+  n := at;
+  for c: s { if n >= out.count { break; } out[n] = c; n += 1; }
+  return n;
+}
+es_copy :: (out: [] u8, s: string) -> int #effects(all) { return es_put(out, 0, s); }
+es_hex :: (s: string) -> bool #effects(all) {
+  for c: s { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; } }
+  return true;
+}
+
+// ---------------------------------------------------------------- drafts
+
+es_draft_find :: (s: [] EnvSelect, key: string) -> int #effects(all) {
+  for i: 0..<ES_DRAFTS { if s[0].drafts[i].held && cast(string) s[0].drafts[i].key[0..<s[0].drafts[i].nk] == key { return i; } }
+  return -1;
+}
+// A row for key: the one it has, or a new one on Default with no repository.
+// When every row is held, the one used longest ago goes.
+es_draft_row :: (s: [] EnvSelect, key: string) -> int #effects(all) {
+  if key.count > ES_KEY { return -1; }
+  s[0].tick += 1;
+  i := es_draft_find(s, key);
+  if i < 0 {
+    for k: 0..<ES_DRAFTS { if !s[0].drafts[k].held { i = k; break; } }
+    if i < 0 { i = 0; for k: 1..<ES_DRAFTS { if s[0].drafts[k].used < s[0].drafts[i].used { i = k; } } }
+    s[0].drafts[i] = EsDraft.{};
+    s[0].drafts[i].held = true; s[0].drafts[i].nk = es_copy(s[0].drafts[i].key[..], key);
+  }
+  s[0].drafts[i].used = s[0].tick;
+  return i;
+}
+// The draft now on screen (call it whenever the composer shows another draft).
+es_draft :: (s: [] EnvSelect, key: string) #effects(all) {
+  i := es_draft_row(s, key);
+  if i >= 0 { s[0].current = i; }
+}
+// The current draft's row, made when there is none yet (the new chat's, key "").
+es_now :: (s: [] EnvSelect) -> int #effects(all) {
+  if s[0].current < 0 || s[0].current >= ES_DRAFTS || !s[0].drafts[s[0].current].held { es_draft(s, ""); }
+  return s[0].current;
+}
+// A draft's choice moves to a new key: a new chat that was given its conversation id.
+es_draft_move :: (s: [] EnvSelect, from: string, to: string) #effects(all) {
+  i := es_draft_find(s, from);
+  if i < 0 || to.count > ES_KEY || from == to { return; }
+  k := es_draft_find(s, to);
+  if k >= 0 { s[0].drafts[k] = EsDraft.{}; if s[0].current == k { s[0].current = i; } }
+  s[0].drafts[i].nk = es_copy(s[0].drafts[i].key[..], to);
+}
+// A draft is gone (its conversation was deleted, or its message was sent and
+// the next one starts over): its choice goes with it.
+es_draft_drop :: (s: [] EnvSelect, key: string) #effects(all) {
+  i := es_draft_find(s, key);
+  if i >= 0 { s[0].drafts[i] = EsDraft.{}; }
+}
+
+// The drafts' choices as text, for the core to save with the drafts: one
+// line per draft with a choice, "key TAB host-or-dash TAB repo LF". A draft
+// on Default with no repository is not written. Returns the length in out.
+es_save :: (s: [] EnvSelect, out: [] u8) -> int #effects(all) {
+  n := 0;
+  for i: 0..<ES_DRAFTS {
+    d := s[0].drafts[i];
+    if !d.held || (!d.manual && d.nr == 0) { continue; }
+    if n + d.nk + 64 + d.nr + 3 > out.count { break; }
+    n = es_put(out, n, cast(string) d.key[0..<d.nk]); n = es_put(out, n, "\t");
+    n = es_put(out, n, ifx d.manual then cast(string) d.host[..] else "-"); n = es_put(out, n, "\t");
+    n = es_put(out, n, cast(string) d.repo[0..<d.nr]); n = es_put(out, n, "\n");
+  }
+  return n;
+}
+// One saved line back into its draft. False for a line es_save does not write.
+es_restore_line :: (s: [] EnvSelect, line: string) -> bool #effects(all) {
+  a := -1; b := -1;
+  for c, i: line { if c == '\t' { if a < 0 { a = i; } else if b < 0 { b = i; } else { return false; } } }
+  if a < 0 || b < 0 { return false; }
+  key := cast(string) line[0..<a]; host := cast(string) line[a + 1..<b]; repo := cast(string) line[b + 1..<line.count];
+  if key.count > ES_KEY || repo.count > ES_REPO { return false; }
+  manual := host != "-";
+  if manual && (host.count != 64 || !es_hex(host)) { return false; }
+  if !manual && repo.count == 0 { return false; }
+  i := es_draft_row(s, key);
+  if i < 0 { return false; }
+  s[0].drafts[i].manual = manual;
+  if manual { for c, k: host { s[0].drafts[i].host[k] = c; } }
+  s[0].drafts[i].nr = es_copy(s[0].drafts[i].repo[..], repo);
+  return true;
+}
+// Saved choices back, after a launch and before the first frame. Lines that
+// cannot be read are skipped. Returns how many drafts came back. A computer
+// that is no longer the account's turns back to Default when the list is read.
+es_restore :: (s: [] EnvSelect, text: string) -> int #effects(all) {
+  got := 0; from := 0;
+  for c, i: text {
+    if c != '\n' { continue; }
+    if es_restore_line(s, cast(string) text[from..<i]) { got += 1; }
+    from = i + 1;
+  }
+  return got;
+}
+
+// ---------------------------------------------------------------- reading the state
+
+es_computer_find :: (s: [] EnvSelect, host: string) -> int #effects(all) {
+  if host.count != 64 { return -1; }
+  for i: 0..<s[0].catalog[0].n { if cast(string) s[0].catalog[0].entries[i].host[..] == host { return i; } }
+  return -1;
+}
+es_computer_name :: (s: [] EnvSelect, i: int) -> string #effects(all) {
+  if i < 0 || i >= s[0].catalog[0].n { return ""; }
+  return cast(string) s[0].catalog[0].entries[i].label[0..<s[0].catalog[0].entries[i].nl];
+}
+// The computer the current draft chose: its row in the catalog, or -1 for Default.
+es_chosen :: (s: [] EnvSelect) -> int #effects(all) {
+  d := es_now(s);
+  if !s[0].manual_ready || !s[0].drafts[d].manual { return -1; }
+  return es_computer_find(s, cast(string) s[0].drafts[d].host[..]);
+}
+// What the environment chip shows.
+es_env_value :: (s: [] EnvSelect) -> string #effects(all) {
+  i := es_chosen(s);
+  return ifx i >= 0 then es_computer_name(s, i) else "Default";
+}
+es_repo_name :: (s: [] EnvSelect) -> string #effects(all) { d := es_now(s); return cast(string) s[0].drafts[d].repo[0..<s[0].drafts[d].nr]; }
+// What the repository chip shows: the name after its owner, or "No repository".
+es_repo_value :: (s: [] EnvSelect) -> string #effects(all) {
+  r := es_repo_name(s);
+  if r.count == 0 { return "No repository"; }
+  from := 0;
+  for c, i: r { if c == '/' { from = i + 1; } }
+  return cast(string) r[from..<r.count];
+}
+es_reach_words :: (reach: int) -> string #effects(all) {
+  if reach == ES_R_CHECKING { return "Checking…"; }
+  if reach == ES_R_READY { return "Ready"; }
+  if reach == ES_R_AWAY { return "Not reachable"; }
+  if reach == ES_R_UNSURE { return "We couldn't check"; }
+  return "";
+}
+// What a message sent from the draft called key carries. Default and no
+// repository unless the capability is on and the choice still stands.
+es_choice :: (s: [] EnvSelect, key: string) -> EsChoice #effects(all) {
+  c: EsChoice;
+  d := es_draft_find(s, key);
+  if d < 0 || !s[0].in { return c; }
+  if s[0].manual_ready && s[0].drafts[d].manual {
+    i := es_computer_find(s, cast(string) s[0].drafts[d].host[..]);
+    if i >= 0 { c.manual = true; c.host = s[0].drafts[d].host; c.nn = es_copy(c.name[..], es_computer_name(s, i)); }
+  }
+  if s[0].repo_ready && s[0].drafts[d].nr > 0 { c.repo = s[0].drafts[d].repo; c.nr = s[0].drafts[d].nr; }
+  return c;
+}
+// The repositories the picker lists, into out: those the computers that
+// answer have checked out, each once, in catalog order. With a computer
+// chosen, only that computer's.
+es_repo_list :: (s: [] EnvSelect, out: [] EsRepoList) #effects(all) {
+  out[0].n = 0;
+  only := es_chosen(s);
+  for i: 0..<s[0].catalog[0].n {
+    if only >= 0 && i != only { continue; }
+    c := s[0].computers[i];
+    if c.reach != ES_R_READY { continue; }
+    for r: 0..<c.nr {
+      name := cast(string) c.repos[r].name[0..<c.repos[r].nn];
+      seen := false;
+      for k: 0..<out[0].n { if cast(string) out[0].entries[k].name[0..<out[0].entries[k].nn] == name { seen = true; break; } }
+      if !seen && out[0].n < ES_REPOS { out[0].entries[out[0].n] = c.repos[r]; out[0].n += 1; }
+    }
+  }
+}
+// Whether a computer is still being asked, so the repository list may grow.
+es_checking :: (s: [] EnvSelect) -> bool #effects(all) {
+  if s[0].catalog_state == ES_PENDING { return true; }
+  for i: 0..<s[0].catalog[0].n { r := s[0].computers[i].reach; if r == ES_R_CHECKING || r == ES_R_NONE { return true; } }
+  return false;
+}
+
+// ---------------------------------------------------------------- effects
+
+// The next effect for the core to send, into e. False: none waits.
+es_take :: (s: [] EnvSelect, e: [] EsEffect) -> bool #effects(all) {
+  if s[0].nout < 1 { return false; }
+  e[0] = s[0].out[0];
+  for i: 1..<s[0].nout { s[0].out[i - 1] = s[0].out[i]; }
+  s[0].nout -= 1;
+  return true;
+}
+// A press on a chip while logged out: the core opens the login flow. Read once.
+es_take_login :: (s: [] EnvSelect) -> bool #effects(all) { w := s[0].want_login; s[0].want_login = false; return w; }
+
+es_emit :: (s: [] EnvSelect, kind: int) -> int #effects(all) {
+  if s[0].nout >= ES_EFFECTS { s[0].lost += 1; return -1; }
+  s[0].next_op += 1;
+  s[0].out[s[0].nout] = EsEffect.{kind = kind, op = s[0].next_op, generation = s[0].generation};
+  s[0].nout += 1;
+  return s[0].nout - 1;
+}
+es_fetch_catalog :: (s: [] EnvSelect) #effects(all) {
+  k := es_emit(s, ES_E_CATALOG);
+  if k < 0 { return; }
+  s[0].out[k].np = es_copy(s[0].out[k].path[..], ES_PATH_CATALOG);
+  s[0].catalog_op = s[0].out[k].op; s[0].catalog_state = ES_PENDING;
+}
+// Asks the computers that have no answer, a few at once, while a picker is open.
+es_check_next :: (s: [] EnvSelect) #effects(all) {
+  if s[0].sheet == ES_SHEET_NONE || !s[0].catalog[0].ok { return; }
+  flying := 0;
+  for i: 0..<s[0].catalog[0].n { if s[0].computers[i].reach == ES_R_CHECKING { flying += 1; } }
+  for i: 0..<s[0].catalog[0].n {
+    if flying >= ES_CHECKS { break; }
+    if s[0].computers[i].reach != ES_R_NONE { continue; }
+    k := es_emit(s, ES_E_STATION);
+    if k < 0 { break; }
+    n := es_put(s[0].out[k].path[..], 0, ES_PATH_STATION);
+    n = es_put(s[0].out[k].path[..], n, cast(string) s[0].catalog[0].entries[i].host[..]);
+    if s[0].computers[i].refresh { n = es_put(s[0].out[k].path[..], n, "&refresh=1"); }
+    s[0].out[k].np = n;
+    s[0].computers[i].op = s[0].out[k].op; s[0].computers[i].reach = ES_R_CHECKING; s[0].computers[i].refresh = false;
+    flying += 1;
+  }
+}
+
+// ---------------------------------------------------------------- login
+
+// What the app core can carry. Off, a computer cannot be chosen and the
+// repository chip is not drawn.
+es_capabilities :: (s: [] EnvSelect, manual_ready: bool, repo_ready: bool) #effects(all) { s[0].manual_ready = manual_ready; s[0].repo_ready = repo_ready; }
+// Logging out: every list and every choice is cleared, what waited to be sent
+// is dropped, and answers still on their way belong to a generation that is over.
+es_logout :: (s: [] EnvSelect) #effects(all) {
+  keep := EnvSelect.{generation = s[0].generation + 1, next_op = s[0].next_op, manual_ready = s[0].manual_ready, repo_ready = s[0].repo_ready, lost = s[0].lost, current = -1};
+  s[0] = keep;
+}
+// The login fact, whenever the core learns it.
+es_login :: (s: [] EnvSelect, in: bool) #effects(all) {
+  if in == s[0].in { return; }
+  if !in { es_logout(s); return; }
+  s[0].in = true; s[0].want_login = false;
+}
+
+// ---------------------------------------------------------------- the pickers
+
+es_close :: (s: [] EnvSelect) #effects(all) { s[0].sheet = ES_SHEET_NONE; s[0].scroll = 0; }
+// A picker opens: the list is read again when it is old, and computers whose
+// answer is old are asked again.
+es_open :: (s: [] EnvSelect, sheet: int, now_ms: int) #effects(all) {
+  if !s[0].in { s[0].want_login = true; return; }
+  s[0].sheet = sheet; s[0].scroll = 0;
+  stale := !s[0].catalog[0].ok || now_ms - s[0].catalog_at_ms > ES_CATALOG_FRESH_MS;
+  if s[0].catalog_state != ES_PENDING && s[0].catalog_state != ES_UNKNOWN && stale { es_fetch_catalog(s); }
+  for i: 0..<s[0].catalog[0].n {
+    c := s[0].computers[i];
+    if (c.reach == ES_R_READY || c.reach == ES_R_AWAY) && now_ms - c.checked_at_ms > ES_REACH_FRESH_MS { s[0].computers[i].reach = ES_R_NONE; }
+  }
+  es_check_next(s);
+}
+es_open_env :: (s: [] EnvSelect, now_ms: int) #effects(all) { es_open(s, ES_SHEET_ENV, now_ms); }
+es_open_repo :: (s: [] EnvSelect, now_ms: int) #effects(all) {
+  if s[0].in && !s[0].repo_ready { return; }
+  es_open(s, ES_SHEET_REPO, now_ms);
+}
+// Reads the computers again: the list, then each one, asking it afresh. This
+// is also how an unknown outcome is tried again.
+es_refresh :: (s: [] EnvSelect, now_ms: int) #effects(all) {
+  if !s[0].in { return; }
+  for i: 0..<ES_COMPUTERS { if s[0].computers[i].reach != ES_R_CHECKING { s[0].computers[i].reach = ES_R_NONE; s[0].computers[i].refresh = true; } }
+  if s[0].catalog_state != ES_PENDING { es_fetch_catalog(s); }
+  es_check_next(s);
+}
+// The draft runs where we choose.
+es_choose_default :: (s: [] EnvSelect) #effects(all) {
+  d := es_now(s);
+  s[0].drafts[d].manual = false;
+  es_close(s);
+}
+// The draft runs on computer i. False, and nothing changes, while a computer
+// cannot be chosen, for a row that is not there, and for one that does not answer.
+es_choose_computer :: (s: [] EnvSelect, i: int) -> bool #effects(all) {
+  if !s[0].in || !s[0].manual_ready || i < 0 || i >= s[0].catalog[0].n || s[0].computers[i].reach == ES_R_AWAY { return false; }
+  d := es_now(s);
+  s[0].drafts[d].manual = true; s[0].drafts[d].host = s[0].catalog[0].entries[i].host;
+  es_close(s);
+  return true;
+}
+// The draft works in repository i of the list on screen.
+es_choose_repo :: (s: [] EnvSelect, i: int) -> bool #effects(all) {
+  if !s[0].in || !s[0].repo_ready || s[0].sheet != ES_SHEET_REPO { return false; }
+  es_repo_list(s, s[0].shown[..]);
+  if i < 0 || i >= s[0].shown[0].n { return false; }
+  d := es_now(s);
+  s[0].drafts[d].repo = s[0].shown[0].entries[i].name; s[0].drafts[d].nr = s[0].shown[0].entries[i].nn;
+  es_close(s);
+  return true;
+}
+es_choose_no_repo :: (s: [] EnvSelect) #effects(all) {
+  d := es_now(s);
+  s[0].drafts[d].nr = 0;
+  es_close(s);
+}
+// The picker's list moved by dy within what fits: content tall, in a view tall.
+es_scroll :: (s: [] EnvSelect, dy: f32, content: f32, view: f32) #effects(all) {
+  top := s[0].scroll + dy; most := ifx content > view then content - view else 0.0f32;
+  s[0].scroll = ifx top < 0 then 0.0f32 else ifx top > most then most else top;
+}
+
+// ---------------------------------------------------------------- presses
+
+// "env.c." and the first 16 bytes of a computer's key: a row's id stays the
+// same when the list is read again, so its keyed state stays with it.
+es_computer_id :: (s: [] EnvSelect, i: int, out: [] u8) -> string #effects(all) {
+  n := es_put(out, 0, "env.c.");
+  n = es_put(out, n, cast(string) s[0].catalog[0].entries[i].host[0..<16]);
+  return cast(string) out[0..<n];
+}
+// prefix and i (0 to 99) into out: its length.
+es_index_put :: (prefix: string, i: int, out: [] u8) -> int #effects(all) {
+  n := es_put(out, 0, prefix);
+  if i >= 10 && n < out.count { out[n] = cast(u8) ('0' + i / 10); n += 1; }
+  if n < out.count { out[n] = cast(u8) ('0' + i % 10); n += 1; }
+  return n;
+}
+es_index_id :: (prefix: string, i: int, out: [] u8) -> string #effects(all) { n := es_index_put(prefix, i, out); return cast(string) out[0..<n]; }
+// The number after prefix in id (0 to 99), or -1.
+es_index_of :: (id: string, prefix: string) -> int #effects(all) {
+  if id.count <= prefix.count || id.count > prefix.count + 2 || cast(string) id[0..<prefix.count] != prefix { return -1; }
+  v := 0;
+  for k: prefix.count..<id.count { if id[k] < '0' || id[k] > '9' { return -1; } v = v * 10 + cast(int) (id[k] - '0'); }
+  return v;
+}
+// A press on one of this area's rows, by its id (the ids view.coax records).
+// False: the id is not ours, or the press does nothing now.
+es_press :: (s: [] EnvSelect, id: string, now_ms: int) -> bool #effects(all) {
+  if id == "composer.environment" { es_open_env(s, now_ms); return true; }
+  if id == "composer.repo" { if s[0].in && !s[0].repo_ready { return false; } es_open_repo(s, now_ms); return true; }
+  if s[0].sheet == ES_SHEET_NONE { return false; }
+  if id == "env.close" || id == "env.scrim" { es_close(s); return true; }
+  if id == "env.refresh" { es_refresh(s, now_ms); return true; }
+  if s[0].sheet == ES_SHEET_ENV {
+    if id == "env.default" { es_choose_default(s); return true; }
+    for i: 0..<s[0].catalog[0].n { b: [ES_EL_ID] u8; if id == es_computer_id(s, i, b[..]) { return es_choose_computer(s, i); } }
+    return false;
+  }
+  if id == "env.repo.none" { es_choose_no_repo(s); return true; }
+  return es_choose_repo(s, es_index_of(id, "env.repo."));
+}
+
+// ---------------------------------------------------------------- answers
+
+// Whether an answer is for this login.
+es_ours :: (s: [] EnvSelect, generation: int) -> bool #effects(all) { return s[0].in && generation == s[0].generation; }
+es_state_of :: (outcome: int, good: bool) -> int #effects(all) { return ifx outcome == ES_O_UNKNOWN then ES_UNKNOWN else ifx outcome == ES_O_DONE && good then ES_DONE else ES_FAILED; }
+
+// The catalog's answer. False: it changed nothing (another login's, or not
+// the newest fetch). A list that cannot be read, or any status but 200,
+// fails and keeps the list on screen.
+es_catalog_done :: (s: [] EnvSelect, op: int, generation: int, outcome: int, status: int, body: string, now_ms: int) -> bool #effects(all) {
+  if !es_ours(s, generation) || op != s[0].catalog_op || s[0].catalog_state != ES_PENDING { return false; }
+  c: [1] EaCatalog;
+  good := outcome == ES_O_DONE && status == 200 && ea_catalog_read(body, c[..]) && c[0].ok;
+  s[0].catalog_state = es_state_of(outcome, good);
+  if !good { return true; }
+  // each computer keeps what is known about it, by its key
+  was: [ES_COMPUTERS] EsComputer;
+  for i: 0..<c[0].n {
+    k := es_computer_find(s, cast(string) c[0].entries[i].host[..]);
+    if k >= 0 { was[i] = s[0].computers[k]; }
+  }
+  s[0].catalog[0] = c[0]; s[0].computers = was; s[0].catalog_at_ms = now_ms;
+  // a draft whose computer is gone runs where we choose
+  for d: 0..<ES_DRAFTS { if s[0].drafts[d].held && s[0].drafts[d].manual && es_computer_find(s, cast(string) s[0].drafts[d].host[..]) < 0 { s[0].drafts[d].manual = false; } }
+  es_check_next(s);
+  return true;
+}
+// A computer's answer. 200 with its own report: it answers, and its
+// repositories are listed. 503 (it did not report) or 404 (it is no longer
+// the account's): it does not. Anything else is not known, and it is not
+// asked again until a person refreshes. A report far behind our clock is old.
+es_station_done :: (s: [] EnvSelect, op: int, generation: int, outcome: int, status: int, fact: EsStationFact, now_ms: int) -> bool #effects(all) {
+  if !es_ours(s, generation) { return false; }
+  at := -1;
+  for i: 0..<s[0].catalog[0].n { if s[0].computers[i].op == op && s[0].computers[i].reach == ES_R_CHECKING { at = i; break; } }
+  if at < 0 { return false; }
+  reach := ES_R_UNSURE;
+  f := fact;
+  if outcome == ES_O_DONE {
+    if status == 200 && f.ok && cast(string) f.host[..] == cast(string) s[0].catalog[0].entries[at].host[..] {
+      reach = ifx fact.reported_at_ms > 0 && now_ms - fact.reported_at_ms > ES_REACH_FRESH_MS then ES_R_AWAY else ES_R_READY;
+    } else if status == 503 || status == 404 { reach = ES_R_AWAY; }
+  }
+  s[0].computers[at].reach = reach; s[0].computers[at].checked_at_ms = now_ms;
+  if reach == ES_R_READY { s[0].computers[at].repos = fact.repos; s[0].computers[at].nr = fact.nr; s[0].computers[at].reported_at_ms = fact.reported_at_ms; }
+  else if reach == ES_R_AWAY { s[0].computers[at].nr = 0; }
+  es_check_next(s);
+  return true;
+}
+// A station effect's op that no computer waits on (the list changed under
+// it): nothing to do. An effect the core could not start at all ends as
+// ES_O_FAILED through the same *_done.

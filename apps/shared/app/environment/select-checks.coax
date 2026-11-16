@@ -1,0 +1,191 @@
+// Checks for select.coax: the environment and repository choice of a draft.
+// The catalog and the station facts here are example data for the checks only.
+//   coax/bin/coax test apps/shared/app/environment/select-checks.coax
+
+#load "select.coax";
+
+ESC_A :: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+ESC_B :: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+ESC_C :: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+ESC_CATALOG :: "{\"schema\":\"openagents.environment.catalog.v1alpha1\",\"environments\":[{\"host_pubkey\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"display_name\":\"MacBook Pro\"},{\"host_pubkey\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"display_name\":\"coderos\"},{\"host_pubkey\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"display_name\":\"Studio\"}]}";
+ESC_CATALOG_AB :: "{\"schema\":\"openagents.environment.catalog.v1alpha1\",\"environments\":[{\"host_pubkey\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"display_name\":\"MacBook Pro\"},{\"host_pubkey\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"display_name\":\"coderos\"}]}";
+
+esc_fact :: (host: string, at: int, r1: string, r2: string) -> EsStationFact #effects(all) {
+  f: EsStationFact; f.ok = true; f.reported_at_ms = at;
+  for c, i: host { f.host[i] = c; }
+  if r1.count > 0 { f.repos[f.nr].nn = es_copy(f.repos[f.nr].name[..], r1); f.nr += 1; }
+  if r2.count > 0 { f.repos[f.nr].nn = es_copy(f.repos[f.nr].name[..], r2); f.nr += 1; }
+  return f;
+}
+// The effect waiting at k: its kind and its path.
+esc_path :: (s: [] EnvSelect, k: int) -> string #effects(all) { return cast(string) s[0].out[k].path[0..<s[0].out[k].np]; }
+// Logged in, the picker opened, the catalog read, and every computer answered:
+// A with two repositories, B with one of them and a third, C not reachable.
+esc_ready :: (s: [] EnvSelect, manual: bool, repo: bool) #effects(all) {
+  s[0] = es_new();
+  es_capabilities(s, manual, repo);
+  es_login(s, true);
+  es_open_env(s, 1000);
+  e: [1] EsEffect; _ := es_take(s, e[..]);
+  _ = es_catalog_done(s, e[0].op, e[0].generation, ES_O_DONE, 200, ESC_CATALOG, 1000);
+  ops: [3] int; for k: 0..<3 { _ = es_take(s, e[..]); ops[k] = e[0].op; }
+  _ = es_station_done(s, ops[0], s[0].generation, ES_O_DONE, 200, esc_fact(ESC_A, 1000, "OpenAgentsInc/openagents", "OpenAgentsInc/coax"), 1000);
+  _ = es_station_done(s, ops[1], s[0].generation, ES_O_DONE, 200, esc_fact(ESC_B, 1000, "OpenAgentsInc/openagents", "OpenAgentsInc/everglade"), 1000);
+  _ = es_station_done(s, ops[2], s[0].generation, ES_O_DONE, 503, EsStationFact.{}, 1000);
+}
+
+#test "logged out, a chip asks for login, opens nothing and sends nothing" {
+  s := [1] EnvSelect.[es_new()];
+  #assert es_press(s[..], "composer.environment", 0) && es_take_login(s[..]) && !es_take_login(s[..]);
+  #assert es_press(s[..], "composer.repo", 0) && es_take_login(s[..]);
+  #assert s[0].sheet == ES_SHEET_NONE && s[0].nout == 0 && es_env_value(s[..]) == "Default" && es_repo_value(s[..]) == "No repository";
+}
+
+#test "opening the picker reads the catalog, then asks each computer for its report" {
+  s := [1] EnvSelect.[es_new()];
+  es_login(s[..], true);
+  #assert es_press(s[..], "composer.environment", 1000) && s[0].sheet == ES_SHEET_ENV && s[0].nout == 1;
+  #assert s[0].out[0].kind == ES_E_CATALOG && esc_path(s[..], 0) == ES_PATH_CATALOG && s[0].catalog_state == ES_PENDING;
+  e: [1] EsEffect; #assert es_take(s[..], e[..]) && !es_take(s[..], e[..]);
+  #assert es_catalog_done(s[..], e[0].op, e[0].generation, ES_O_DONE, 200, ESC_CATALOG, 1000) && s[0].catalog[0].n == 3 && s[0].catalog_state == ES_DONE;
+  #assert s[0].nout == 3 && s[0].out[0].kind == ES_E_STATION && esc_path(s[..], 0) == "/api/chat/environment/station/v1?host=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  #assert s[0].computers[0].reach == ES_R_CHECKING && es_reach_words(s[0].computers[0].reach) == "Checking…";
+  // the catalog answer again changes nothing: it is not pending
+  #assert !es_catalog_done(s[..], e[0].op, e[0].generation, ES_O_DONE, 200, ESC_CATALOG, 1000);
+}
+
+#test "the answers: ready with repositories, not reachable, old, and one we could not check" {
+  s: [1] EnvSelect; esc_ready(s[..], false, false);
+  #assert s[0].computers[0].reach == ES_R_READY && s[0].computers[0].nr == 2 && s[0].computers[1].reach == ES_R_READY && s[0].computers[2].reach == ES_R_AWAY;
+  l: [1] EsRepoList; es_repo_list(s[..], l[..]);
+  #assert l[0].n == 3 && cast(string) l[0].entries[0].name[0..<l[0].entries[0].nn] == "OpenAgentsInc/openagents" && cast(string) l[0].entries[2].name[0..<l[0].entries[2].nn] == "OpenAgentsInc/everglade";
+  #assert !es_checking(s[..]);
+  // a report from another computer, an old report and an unknown outcome
+  t: [1] EnvSelect; esc_ready(t[..], false, false);
+  es_refresh(t[..], 2000);
+  e: [1] EsEffect; ops: [4] int; n := 0;
+  while es_take(t[..], e[..]) { if e[0].kind == ES_E_STATION { ops[n] = e[0].op; n += 1; } }
+  #assert n == 3;
+  #assert es_station_done(t[..], ops[0], t[0].generation, ES_O_DONE, 200, esc_fact(ESC_B, 2000, "", ""), 2000) && t[0].computers[0].reach == ES_R_UNSURE;
+  #assert es_station_done(t[..], ops[1], t[0].generation, ES_O_DONE, 200, esc_fact(ESC_B, 200000 - ES_REACH_FRESH_MS - 1, "", ""), 200000) && t[0].computers[1].reach == ES_R_AWAY && t[0].computers[1].nr == 0;
+  #assert es_station_done(t[..], ops[2], t[0].generation, ES_O_UNKNOWN, 0, EsStationFact.{}, 2000) && t[0].computers[2].reach == ES_R_UNSURE;
+  #assert es_reach_words(ES_R_UNSURE) == "We couldn't check" && es_reach_words(ES_R_AWAY) == "Not reachable";
+  // nothing asks again by itself
+  #assert t[0].nout == 0;
+}
+
+#test "while a request cannot carry a computer, the rows take no press and the choice is Default" {
+  s: [1] EnvSelect; esc_ready(s[..], false, false);
+  b: [ES_EL_ID] u8;
+  #assert !es_press(s[..], es_computer_id(s[..], 0, b[..]), 1000) && s[0].sheet == ES_SHEET_ENV;
+  #assert es_env_value(s[..]) == "Default" && !es_choice(s[..], "").manual;
+  // the repository chip takes no press while its capability is off
+  #assert es_press(s[..], "env.close", 1000) && s[0].sheet == ES_SHEET_NONE && !es_press(s[..], "composer.repo", 1000) && s[0].sheet == ES_SHEET_NONE;
+}
+
+#test "a chosen computer is the chip's value and the message's; one that is gone turns back to Default" {
+  s: [1] EnvSelect; esc_ready(s[..], true, true);
+  b: [ES_EL_ID] u8;
+  #assert es_computer_id(s[..], 1, b[..]) == "env.c.bbbbbbbbbbbbbbbb";
+  #assert es_press(s[..], es_computer_id(s[..], 1, b[..]), 1000) && s[0].sheet == ES_SHEET_NONE && es_env_value(s[..]) == "coderos";
+  c := es_choice(s[..], "");
+  #assert c.manual && cast(string) c.host[..] == ESC_B && cast(string) c.name[0..<c.nn] == "coderos";
+  // a computer that does not answer cannot be chosen
+  _ := es_press(s[..], "composer.environment", 1000);
+  #assert !es_press(s[..], es_computer_id(s[..], 2, b[..]), 1000) && es_env_value(s[..]) == "coderos";
+  // with a computer chosen, the repositories are that computer's
+  l: [1] EsRepoList; es_repo_list(s[..], l[..]);
+  #assert l[0].n == 2 && cast(string) l[0].entries[1].name[0..<l[0].entries[1].nn] == "OpenAgentsInc/everglade";
+  // the list is read again without it
+  es_refresh(s[..], 2000);
+  e: [1] EsEffect; op := 0; g := 0;
+  while es_take(s[..], e[..]) { if e[0].kind == ES_E_CATALOG { op = e[0].op; g = e[0].generation; } }
+  #assert op > 0 && es_catalog_done(s[..], op, g, ES_O_DONE, 200, "{\"schema\":\"openagents.environment.catalog.v1alpha1\",\"environments\":[{\"host_pubkey\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"display_name\":\"MacBook Pro\"}]}", 2000);
+  #assert es_env_value(s[..]) == "Default" && !es_choice(s[..], "").manual;
+  #assert es_press(s[..], "env.default", 2000) && s[0].sheet == ES_SHEET_NONE;
+}
+
+#test "a repository is chosen from the reports, and No repository clears it" {
+  s: [1] EnvSelect; esc_ready(s[..], false, true);
+  _ := es_press(s[..], "env.close", 1000);
+  #assert es_press(s[..], "composer.repo", 1000) && s[0].sheet == ES_SHEET_REPO;
+  b: [ES_EL_ID] u8;
+  #assert es_index_id("env.repo.", 2, b[..]) == "env.repo.2" && es_index_of("env.repo.12", "env.repo.") == 12 && es_index_of("env.repo.x", "env.repo.") == -1;
+  #assert es_press(s[..], "env.repo.2", 1000) && s[0].sheet == ES_SHEET_NONE && es_repo_name(s[..]) == "OpenAgentsInc/everglade" && es_repo_value(s[..]) == "everglade";
+  c := es_choice(s[..], "");
+  #assert cast(string) c.repo[0..<c.nr] == "OpenAgentsInc/everglade" && !c.manual;
+  _ = es_press(s[..], "composer.repo", 1000);
+  #assert !es_press(s[..], "env.repo.9", 1000) && es_press(s[..], "env.repo.none", 1000) && es_repo_value(s[..]) == "No repository";
+}
+
+#test "answers for another login, or not the newest fetch, change nothing" {
+  s := [1] EnvSelect.[es_new()];
+  es_login(s[..], true);
+  es_open_env(s[..], 1000);
+  e: [1] EsEffect; _ := es_take(s[..], e[..]);
+  old := e[0];
+  es_login(s[..], false); es_login(s[..], true);
+  #assert !es_catalog_done(s[..], old.op, old.generation, ES_O_DONE, 200, ESC_CATALOG, 1000) && s[0].catalog[0].n == 0;
+  es_open_env(s[..], 1000);
+  _ = es_take(s[..], e[..]);
+  #assert !es_catalog_done(s[..], e[0].op - 1, e[0].generation, ES_O_DONE, 200, ESC_CATALOG, 1000);
+  #assert es_catalog_done(s[..], e[0].op, e[0].generation, ES_O_DONE, 500, "", 1000) && s[0].catalog_state == ES_FAILED;
+}
+
+#test "an unknown catalog outcome is not sent again by itself; Refresh sends it" {
+  s := [1] EnvSelect.[es_new()];
+  es_login(s[..], true);
+  es_open_env(s[..], 1000);
+  e: [1] EsEffect; _ := es_take(s[..], e[..]);
+  #assert es_catalog_done(s[..], e[0].op, e[0].generation, ES_O_UNKNOWN, 0, "", 1000) && s[0].catalog_state == ES_UNKNOWN;
+  es_close(s[..]); es_open_env(s[..], 999999);
+  #assert s[0].nout == 0;
+  #assert es_press(s[..], "env.refresh", 999999) && s[0].nout == 1 && s[0].out[0].kind == ES_E_CATALOG;
+}
+
+#test "each draft keeps its own choice, a new chat's moves to its conversation, and logging out clears all" {
+  s: [1] EnvSelect; esc_ready(s[..], true, true);
+  b: [ES_EL_ID] u8;
+  es_draft(s[..], "");
+  _ := es_press(s[..], es_computer_id(s[..], 0, b[..]), 1000);
+  es_draft(s[..], "conv-1");
+  #assert es_env_value(s[..]) == "Default";
+  _ = es_press(s[..], "composer.environment", 1000); _ = es_press(s[..], es_computer_id(s[..], 1, b[..]), 1000);
+  es_draft(s[..], "");
+  #assert es_env_value(s[..]) == "MacBook Pro";
+  es_draft_move(s[..], "", "conv-2");
+  one := es_choice(s[..], "conv-1");
+  #assert es_choice(s[..], "conv-2").manual && !es_choice(s[..], "").manual && cast(string) one.host[..] == ESC_B;
+  es_draft_drop(s[..], "conv-1");
+  #assert !es_choice(s[..], "conv-1").manual;
+  es_login(s[..], false);
+  #assert !s[0].in && s[0].catalog[0].n == 0 && es_draft_find(s[..], "conv-2") < 0 && s[0].nout == 0 && !es_choice(s[..], "conv-2").manual;
+}
+
+#test "choices are saved with the drafts and come back; lines that cannot be read are skipped" {
+  s: [1] EnvSelect; esc_ready(s[..], true, true);
+  b: [ES_EL_ID] u8;
+  es_draft(s[..], "conv-1");
+  _ := es_press(s[..], es_computer_id(s[..], 1, b[..]), 1000);
+  es_draft(s[..], "conv-2");
+  _ = es_press(s[..], "composer.repo", 1000); _ = es_press(s[..], "env.repo.0", 1000);
+  es_draft(s[..], "conv-3");   // Default with no repository: not written
+  out: [ES_SAVE] u8; n := es_save(s[..], out[..]);
+  saved := cast(string) out[0..<n];
+  #assert saved == "conv-1\tbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\t\nconv-2\t-\tOpenAgentsInc/openagents\n";
+  // after a launch: restored before the list is read, carried once it is
+  t: [1] EnvSelect; esc_ready(t[..], true, true);
+  #assert es_restore(t[..], "junk\nconv-9\tnothex\tx\nconv-8\t-\t\n") == 0;
+  #assert es_restore(t[..], saved) == 2;
+  one := es_choice(t[..], "conv-1");
+  #assert cast(string) one.host[..] == ESC_B && one.nr == 0;
+  c := es_choice(t[..], "conv-2");
+  #assert !c.manual && cast(string) c.repo[0..<c.nr] == "OpenAgentsInc/openagents";
+}
+
+#test "a full outbox drops the effect and counts it" {
+  s := [1] EnvSelect.[es_new()];
+  es_login(s[..], true);
+  for i: 0..<ES_EFFECTS + 2 { es_refresh(s[..], 0); s[0].catalog_state = ES_IDLE; }
+  #assert s[0].nout == ES_EFFECTS && s[0].lost == 2;
+}

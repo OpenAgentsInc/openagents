@@ -1,0 +1,31 @@
+// station.coax held to a real report: the router's golden StationReport
+// (proto/coder/router-v1alpha1.json) reads into the fact select.coax keeps,
+// and bodies that are not a report read as not ok.
+//
+// A tool, not #test blocks: the router's codec is generated proto code that
+// cannot run at compile time.
+//   coax/web/tool.sh apps/shared/app/environment/station-checks.coax
+#import "Basic";
+#load "station.coax";
+#load "../../../../coax/lib/sys/tool.coax";
+
+ESS_REPORT :: "{\"schema\":\"openagents.router.station.v1alpha1\",\"host_pubkey\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"station\":{\"station_id\":\"adas-macbook\",\"display_name\":\"Adas-MacBook\",\"reported_at_ms\":1763100000000,\"os\":\"macos\",\"cpu_cores\":12,\"memory_total_mb\":36864,\"memory_free_mb\":12000,\"disk_free_mb\":200000,\"disk_floor_mb\":20480,\"load_1m_milli\":2100,\"load_15m_milli\":1800,\"apple_builds\":true,\"agents\":[{\"engine\":\"claude\",\"installed\":true,\"logged_in\":true},{\"engine\":\"codex\",\"installed\":true}],\"work\":[{\"engine\":\"claude\",\"state\":\"working\"}],\"repos\":[\"openagents\",\"OpenAgentsInc/coax\"]}}";
+
+ess_fail :: (what: string) -> bool #effects(all) { print("FAIL %\n", what); return false; }
+
+tool_main :: () -> int #export_c #effects(all) {
+  ok := true;
+  f := es_station_read(ESS_REPORT);
+  if !f.ok { ok = ess_fail("the golden report did not read"); }
+  if cast(string) f.host[..] != "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" { ok = ess_fail("the host key"); }
+  if f.reported_at_ms != 1763100000000 { ok = ess_fail("the report's time"); }
+  if f.nr != 2 || cast(string) f.repos[0].name[0..<f.repos[0].nn] != "openagents" || cast(string) f.repos[1].name[0..<f.repos[1].nn] != "OpenAgentsInc/coax" { ok = ess_fail("the repositories"); }
+  bad := [4] string.[
+    "",
+    "{\"schema\":\"openagents.router.request.v1alpha1\",\"host_pubkey\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"station\":{\"station_id\":\"mac\"}}",
+    "{\"schema\":\"openagents.router.station.v1alpha1\",\"host_pubkey\":\"aaaa\",\"station\":{\"station_id\":\"mac\"}}",
+    "{\"error\":\"That computer did not report.\"}"];
+  for b: bad { if es_station_read(b).ok { ok = ess_fail(b); } }
+  print("station-checks: %\n", ifx ok then "ok" else "FAILED");
+  return ifx ok then 0 else 1;
+}

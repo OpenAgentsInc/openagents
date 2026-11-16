@@ -1,0 +1,56 @@
+// Checks for bridge.coax: the environment reads through the core's outbox and
+// the choice in the core's selection slots. Example data only.
+//   coax/bin/coax test apps/shared/app/environment/bridge.coax --library --traversal 1000000000
+
+#load "select-checks.coax";
+
+// The next request the core holds: its path, after the host took it.
+esb_take :: (c: [] AppCore, t: int, path: [] u8) -> int #effects(all) {
+  op := app_host_next(c); if op < 1 { return -1; }
+  n := app_host_path(c, op, path);
+  if app_host_taken(c, t, t, op, true) != APP_OK { return -2; }
+  return n;
+}
+
+#test "the picker's reads go through the outbox as a guest, and a chosen computer fills the core's slot" {
+  a: [1] AppCore; c := a[..];
+  b: [1] EsBridge; s := [1] EnvSelect.[es_new()];
+  path: [ES_PATH] u8;
+  #assert app_host_init(c) && app_host_launch(c, 1, 1000, "") == APP_OK;
+  #assert ckt_answer(c, 2, true, 0, "", "", 0) == FX_AUTH_STATE && c[0].auth == AUTH_IN;
+  es_capabilities(s[..], true, true);
+  es_bridge_sync(c, b[..], s[..]);
+  #assert s[0].in && app_host_next(c) == 0;
+  // the chip opens the picker; the catalog read is the core's request
+  #assert es_press(s[..], "composer.environment", 1000);
+  es_bridge_sync(c, b[..], s[..]);
+  op := app_host_next(c); g := ckt_gen(c, op); owner := ckt_field(c, op, APP_HOST_OWNER); n := esb_take(c, 3, path[..]);
+  #assert n > 0 && cast(string) path[0..<n] == ES_PATH_CATALOG && owner == OWN_ENVIRONMENT;
+  #assert app_host_done(c, 4, 4, op, g, FXO_DONE, 200, false, ESC_CATALOG, "", 0) == APP_GUEST;
+  #assert es_bridge_guest(c, b[..], s[..], ESC_CATALOG, 4) && !c[0].guest.waiting && s[0].catalog[0].n == 3;
+  // then each computer's report; one did not report
+  es_bridge_sync(c, b[..], s[..]);
+  op = app_host_next(c); g = ckt_gen(c, op); n = esb_take(c, 5, path[..]);
+  #assert cast(string) path[0..<n] == "/api/chat/environment/station/v1?host=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  #assert app_host_done(c, 6, 6, op, g, FXO_DONE, 503, false, "{\"error\":\"That computer did not report.\"}", "", 0) == APP_GUEST;
+  #assert es_bridge_guest(c, b[..], s[..], "", 6) && s[0].computers[0].reach == ES_R_AWAY;
+  // the second computer's answer is lost on the way
+  op = app_host_next(c); g = ckt_gen(c, op); n = esb_take(c, 7, path[..]);
+  #assert app_host_done(c, 8, 8, op, g, FXO_UNKNOWN, 0, false, "", "", 0) == APP_GUEST && es_bridge_guest(c, b[..], s[..], "", 8) && s[0].computers[1].reach == ES_R_UNSURE;
+  // a computer we could not check can still be chosen; its key is the core's slot
+  bid: [ES_EL_ID] u8;
+  #assert es_press(s[..], es_computer_id(s[..], 1, bid[..]), 8);
+  es_bridge_sync(c, b[..], s[..]);
+  #assert app_environment(c) == ESC_B && app_environment_label(c) == "coderos" && app_repository(c) == "";
+  // Default clears it
+  _ = es_press(s[..], "composer.environment", 8); _ = es_press(s[..], "env.default", 8);
+  es_bridge_sync(c, b[..], s[..]);
+  #assert app_environment(c) == "" && app_environment_label(c) == "";
+}
+
+#test "a guest result that is not ours is left for its owner" {
+  a: [1] AppCore; c := a[..];
+  b: [1] EsBridge; s := [1] EnvSelect.[es_new()];
+  c[0].guest = AppGuest.{waiting = true, owner = OWN_ENVIRONMENT + 1, purpose = 1};
+  #assert !es_bridge_guest(c, b[..], s[..], "", 0) && c[0].guest.waiting;
+}

@@ -1,0 +1,110 @@
+// The environment and repository chips and their picker, drawn from
+// select.coax's state with the GPU components (GitHub #13645, for #13620).
+// No effects and no host calls: the chat page calls these each frame, and a
+// press comes back to es_press by its row's id.
+//
+// The chips themselves belong to the composer's surface
+// (apps/shared/composer/surface.coax draws them with kit/chip.coax, under the
+// ids "composer.environment" and "composer.repo"). es_chips says what they
+// show and whether each takes a press; the page hands that to
+// composer_surface_chips. The picker is a panel the page draws on its own
+// frame (es_picker), over the chat and under nothing else.
+//
+// Row ids (es_press reads the same):
+//   env.close, env.refresh          the picker's two buttons
+//   env.default, env.c.<16 hex>     Default, and each computer, by its key
+//   env.repo.none, env.repo.<n>     No repository, and repository n of es_repo_list
+//   coax/bin/coax test apps/shared/app/environment/view.coax
+
+#load "select.coax";
+#load "../../../../components/kit/chip.coax";      // ctx_chip; loads controls.coax and frame.coax
+
+// What the two chips show now.
+EsChips :: struct {
+  environment: string; environment_on: bool;   // "Default" or a computer's name
+  repository: string; repository_on: bool;     // a repository's name, or "No repository"
+}
+// The chips' facts. Logged out both take a press (it asks for login). The
+// repository chip takes none while a request cannot carry a repository.
+es_chips :: (s: [] EnvSelect) -> EsChips #effects(all) {
+  return EsChips.{environment = es_env_value(s), environment_on = true,
+                  repository = es_repo_value(s), repository_on = !s[0].in || s[0].repo_ready};
+}
+
+// How tall the picker's list is, and how much of it shows: the page passes
+// them to es_scroll with a drag.
+EsPickerSize :: struct { content: f32; view: f32; }
+
+ES_V_TITLE_ENV :: "Where it runs";
+ES_V_TITLE_REPO :: "Repository";
+
+es_v_row_h :: (k: UiSkin) -> f32 #effects(all) {
+  h := k.body.line + k.small.line + 2 * k.control_pad;
+  return ifx h < k.control_h then k.control_h else h;
+}
+// One choice: its semantic row under id, then the kit's choice row.
+es_v_choice :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, title: string, detail: string, selected: bool, on: bool, check: int) -> f32 #effects(all) {
+  k := f[0].skin; h := es_v_row_h(k);
+  state := (ifx selected then EL_S_CURRENT | EL_S_CHECKS | EL_S_CHECKED else 0) | (ifx on then 0 else EL_S_DISABLED);
+  row := uiframe_semantic(f, id, EL_ROW, title, x, y, w, h, state, 0);
+  if detail.count > 0 { elt_value(f[0].rows, row, detail); }
+  return choice_row(f[0].sheet, f[0].m, k, x, y, w, title, detail, selected, check, UIFRAME_HIT, row, 0);
+}
+es_v_note :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, text: string) -> f32 #effects(all) {
+  k := f[0].skin;
+  _ := uiframe_semantic(f, id, EL_TEXT, text, x, y, w, k.control_h, 0, 0);
+  _ = control_copy(f[0].sheet, f[0].m, k.small, k.muted, x, y + (k.control_h - k.small.line) / 2, w, text);
+  return k.control_h;
+}
+// What a computer's row says under its name.
+es_v_detail :: (s: [] EnvSelect, i: int) -> string #effects(all) { return es_reach_words(s[0].computers[i].reach); }
+
+// The open picker in (x, y, w, h). `check` is the atlas's check icon. Draws
+// nothing when no picker is open.
+es_picker :: (f: [] UiFrame, s: [] EnvSelect, x: f32, y: f32, w: f32, h: f32, check: int) -> EsPickerSize #effects(all) {
+  size: EsPickerSize;
+  if s[0].sheet == ES_SHEET_NONE { return size; }
+  k := f[0].skin;
+  env := s[0].sheet == ES_SHEET_ENV;
+  inside := ctx_panel(f, ifx env then "env.panel" else "env.repo.panel", x, y, w, h, ifx env then ES_V_TITLE_ENV else ES_V_TITLE_REPO);
+  // the two buttons along the top
+  bw := ctx_button(f, "env.close", inside.x, inside.y, "Done", false, 0, 0);
+  busy := es_checking(s);
+  _ = ctx_button(f, "env.refresh", inside.x + bw + k.space, inside.y, "Refresh", false, ifx busy then EL_S_BUSY else 0, 0);
+  top := inside.y + k.control_h + k.space;
+  bottom := y + h - k.pad;
+  size.view = ifx bottom > top then bottom - top else 0.0f32;
+  uiframe_clip(f, inside.x, top, inside.x + inside.w, bottom);
+  cy := top - s[0].scroll;
+  if env {
+    chosen := es_chosen(s);
+    cy += es_v_choice(f, "env.default", inside.x, cy, inside.w, "Default", "We choose where each task runs", chosen < 0, true, check);
+    b: [ES_EL_ID] u8;
+    for i: 0..<s[0].catalog[0].n {
+      on := s[0].manual_ready && s[0].computers[i].reach != ES_R_AWAY;
+      cy += es_v_choice(f, es_computer_id(s, i, b[..]), inside.x, cy, inside.w, es_computer_name(s, i), es_v_detail(s, i), i == chosen, on, check);
+    }
+    if s[0].catalog_state == ES_PENDING && s[0].catalog[0].n == 0 { cy += es_v_note(f, "env.note", inside.x, cy, inside.w, "Checking…"); }
+    else if s[0].catalog_state == ES_FAILED { cy += es_v_note(f, "env.note", inside.x, cy, inside.w, "We couldn't read your computers."); }
+    else if s[0].catalog_state == ES_UNKNOWN { cy += es_v_note(f, "env.note", inside.x, cy, inside.w, "We couldn't tell if your computers loaded. Refresh to try again."); }
+    else if s[0].catalog[0].ok && s[0].catalog[0].n == 0 { cy += es_v_note(f, "env.note", inside.x, cy, inside.w, "No computers are connected to this account."); }
+  } else {
+    es_repo_list(s, s[0].shown[..]);
+    picked := es_repo_name(s);
+    cy += es_v_choice(f, "env.repo.none", inside.x, cy, inside.w, "No repository", "", picked.count == 0, true, check);
+    b: [ES_EL_ID] u8;
+    for i: 0..<s[0].shown[0].n {
+      name := cast(string) s[0].shown[0].entries[i].name[0..<s[0].shown[0].entries[i].nn];
+      nb := es_index_put("env.repo.", i, b[..]);
+      cy += es_v_choice(f, cast(string) b[0..<nb], inside.x, cy, inside.w, name, "", name == picked, true, check);
+    }
+    if busy { cy += es_v_note(f, "env.note", inside.x, cy, inside.w, "Checking…"); }
+    else if s[0].shown[0].n == 0 { cy += es_v_note(f, "env.note", inside.x, cy, inside.w, "None of your computers that answer has a repository checked out."); }
+  }
+  uiframe_unclip(f);
+  ctx_panel_end(f);
+  size.content = cy + s[0].scroll - top;
+  return size;
+}
+
+#load "view-checks.coax" #test;

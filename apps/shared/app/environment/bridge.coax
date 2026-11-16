@@ -1,0 +1,93 @@
+// The environment selection on the shared app core (apps/shared/app/core/):
+// the one file that names the core's procedures, so a rename there costs one
+// edit here. select.coax keeps the state; this file carries its reads through
+// the core's outbox as a guest (OWN_ENVIRONMENT), routes their results back,
+// and keeps the core's two selection slots equal to the current draft's
+// choice (ACT_ENVIRONMENT, ACT_REPOSITORY).
+//
+// The root that loads the core calls, outside any dispatch:
+//   es_bridge_sync(c, b, s)          after every dispatch: the login fact, the
+//                                    current draft, the core's slots, and the
+//                                    reads select.coax asked for
+//   es_bridge_guest(c, b, s, e, now) when app_dispatch answered APP_GUEST: true
+//                                    when the result was ours (it calls app_guest_done)
+// and hands a press on one of our ids to es_press, then calls es_bridge_sync.
+//   coax/bin/coax test apps/shared/app/environment/bridge.coax --library --traversal 1000000000
+
+#load "../core/core.coax";
+#load "station.coax";
+
+ES_B_SENT :: 16;   // reads in flight that the bridge remembers
+
+// A read the core carries: the core's purpose is select.coax's op.
+EsSent :: struct { op: int; generation: int; kind: int; }
+EsBridge :: struct {
+  sent: [ES_B_SENT] EsSent; next: int;
+  key: [ES_KEY] u8; nk: int;            // the draft last made current
+  refused: int;                         // reads the core would not take
+}
+
+es_b_outcome :: (fxo: int) -> int #effects(all) {
+  if fxo == FXO_DONE { return ES_O_DONE; }
+  if fxo == FXO_UNKNOWN { return ES_O_UNKNOWN; }
+  return ES_O_FAILED;
+}
+// A read that ended: the answer to select.coax.
+es_b_end :: (s: [] EnvSelect, r: EsSent, outcome: int, status: int, body: string, now_ms: int) #effects(all) {
+  if r.kind == ES_E_CATALOG { _ := es_catalog_done(s, r.op, r.generation, outcome, status, body, now_ms); return; }
+  fact: EsStationFact;
+  if outcome == ES_O_DONE && status == 200 { fact = es_station_read(body); }
+  _ := es_station_done(s, r.op, r.generation, outcome, status, fact, now_ms);
+}
+
+// The login fact, the current draft, the core's slots and the waiting reads.
+es_bridge_sync :: (c: [] AppCore, b: [] EsBridge, s: [] EnvSelect) #effects(all) {
+  es_login(s, c[0].auth == AUTH_IN);
+  // the current conversation's draft; a new chat that was saved keeps its choice
+  key := app_conversation(c);
+  if key.count <= ES_KEY {
+    was := cast(string) b[0].key[0..<b[0].nk];
+    if was.count == 0 && key.count > 0 && es_draft_find(s, key) < 0 { es_draft_move(s, "", key); }
+    es_draft(s, key);
+    b[0].nk = es_copy(b[0].key[..], key);
+  }
+  // the slots the core sends with a request
+  if s[0].in {
+    ch := es_choice(s, key);
+    host := ifx ch.manual then cast(string) ch.host[..] else "";
+    name := cast(string) ch.name[0..<ch.nn];
+    if host != app_environment(c) || name != app_environment_label(c) {
+      _ := app_dispatch(c, AppEvent.{kind = EV_ACTION, code = ACT_ENVIRONMENT, mono_ms = c[0].mono_ms, wall_ms = c[0].wall_ms, text = host, more = name});
+    }
+    repo := cast(string) ch.repo[0..<ch.nr];
+    if repo != app_repository(c) {
+      _ := app_dispatch(c, AppEvent.{kind = EV_ACTION, code = ACT_REPOSITORY, mono_ms = c[0].mono_ms, wall_ms = c[0].wall_ms, text = repo, more = es_repo_value(s)});
+    }
+  }
+  // the reads select.coax asked for, through the outbox
+  e: [1] EsEffect;
+  while es_take(s, e[..]) {
+    r := EsSent.{op = e[0].op, generation = e[0].generation, kind = e[0].kind};
+    got := app_guest_http(c, OWN_ENVIRONMENT, e[0].op, UP_GET, cast(string) e[0].path[0..<e[0].np], "");
+    if got == 0 { b[0].refused += 1; es_b_end(s, r, ES_O_FAILED, 0, "", c[0].mono_ms); continue; }
+    b[0].sent[b[0].next % ES_B_SENT] = r; b[0].next += 1;
+  }
+}
+
+// A guest result the core handed back (APP_GUEST): ours when its owner is
+// OWN_ENVIRONMENT. Its body is the event's text.
+es_bridge_guest :: (c: [] AppCore, b: [] EsBridge, s: [] EnvSelect, body: string, now_ms: int) -> bool #effects(all) {
+  g := c[0].guest;
+  if !g.waiting || g.owner != OWN_ENVIRONMENT { return false; }
+  for i: 0..<ES_B_SENT {
+    r := b[0].sent[i];
+    if r.op != g.purpose || r.op == 0 { continue; }
+    b[0].sent[i] = EsSent.{};
+    es_b_end(s, r, es_b_outcome(g.outcome), g.status, body, now_ms);
+    break;
+  }
+  app_guest_done(c);
+  return true;
+}
+
+#load "bridge-checks.coax" #test;

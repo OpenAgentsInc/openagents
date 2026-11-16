@@ -1,0 +1,34 @@
+// A computer's StationReport (GET /api/chat/environment/station/v1?host=KEY)
+// as the environment chip needs it: whether it is that computer's report,
+// when it was made, and the repositories it has checked out. The one reader
+// is the router's (coax/lib/agent/router/wire.coax rtr_report_read); this
+// file only copies what select.coax keeps.
+//
+// The router's codec is generated proto code, which cannot run in a
+// compile-time #test, so this file's checks are a tool:
+//   coax/web/tool.sh apps/shared/app/environment/station-checks.coax
+
+#load "../../../../coax/lib/agent/router/wire.coax";
+#load "select.coax";
+
+ES_REPORT_NODES :: 2048;
+
+// The report in body as an EsStationFact. ok is false for a body that is not
+// a StationReport. The caller compares fact.host with the computer it asked
+// (es_station_done does).
+es_station_read :: (body: string) -> EsStationFact #effects(all) {
+  fact: EsStationFact;
+  if body.count > RTR_REPORT_MAX { return fact; }
+  nodes: [ES_REPORT_NODES] JvNode; wire: [RTR_REPORT_MAX] u8; q: [1] RtrRequest; host: [64] u8;
+  if !rtr_report_read(body, nodes[..], wire[..], q[..], 0, host[..]) { return fact; }
+  st := q[0].stations[0];
+  fact.ok = true; fact.host = host; fact.reported_at_ms = st.reported_at_ms;
+  for i: 0..<st.nrepos {
+    if fact.nr >= ES_STATION_REPOS { break; }
+    name := st.repos[i];
+    if name.count == 0 || name.count > ES_REPO { continue; }
+    fact.repos[fact.nr].nn = es_copy(fact.repos[fact.nr].name[..], name);
+    fact.nr += 1;
+  }
+  return fact;
+}

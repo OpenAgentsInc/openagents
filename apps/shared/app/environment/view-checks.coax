@@ -1,0 +1,71 @@
+// Checks for view.coax: the chips' facts and the picker's rows. The computers
+// and repositories are example data for the checks only (select-checks.coax).
+//   coax/bin/coax test apps/shared/app/environment/view.coax
+
+#load "select-checks.coax";
+#load "../../../../components/skin/arcade.coax";
+
+EsvStore :: struct { under_a: [256] Prim; over_a: [256] Prim; hits_a: [32] SheetHit; under_b: [256] Prim; over_b: [256] Prim; hits_b: [32] SheetHit; rows_a: [32] El; rows_b: [32] El; keys: [16] Keyed; }
+
+// One frame of the open picker; its committed rows in t.
+esv_frame :: (st: [] EsvStore, sf: [] UiSurface, s: [] EnvSelect) -> EsPickerSize #effects(all) {
+  ks := [1] KeyedStore.[KeyedStore.{rows = st[0].keys[..]}];
+  f: [1] UiFrame;
+  uiframe_begin(f[..], sf, ks[..], measure_cells(), arcade_phone_skin(), uiinput(0, 0, false, false, "", ""), 0, 0.016, true, false);
+  size := es_picker(f[..], s, 0, 0, 320, 480, 0);
+  #assert uiframe_end(f[..], sf);
+  return size;
+}
+// A tap at the middle of row id, as the page routes it: the committed rows say which id it hit.
+esv_tap :: (sf: [] UiSurface, s: [] EnvSelect, id: string) -> bool #effects(all) {
+  t := [1] ElTable.[surface_rows(sf)];
+  i := elt_find(t[..], id);
+  if i < 0 { return false; }
+  r := t[0].rows[i];
+  hit := surface_id(sf, surface_hit(sf, r.x + r.w / 2, r.y + r.h / 2));
+  if hit != id { return false; }
+  return es_press(s, hit, 1000);
+}
+
+#test "the chips: Default and No repository; the repository chip takes no press while it cannot be carried" {
+  s := [1] EnvSelect.[es_new()];
+  c := es_chips(s[..]);
+  #assert c.environment == "Default" && c.environment_on && c.repository == "No repository" && c.repository_on;
+  es_login(s[..], true);
+  #assert !es_chips(s[..]).repository_on;
+  es_capabilities(s[..], false, true);
+  #assert es_chips(s[..]).repository_on;
+}
+
+#test "the picker lists Default and every computer with whether it answers; while choosing is off the computers take no press" {
+  st: [1] EsvStore;
+  sf := [1] UiSurface.[surface_over(Sheet.{under = st[0].under_a[..], over = st[0].over_a[..], hits = st[0].hits_a[..]}, st[0].rows_a[..],
+                                    Sheet.{under = st[0].under_b[..], over = st[0].over_b[..], hits = st[0].hits_b[..]}, st[0].rows_b[..])];
+  s: [1] EnvSelect; esc_ready(s[..], false, false);
+  size := esv_frame(st[..], sf[..], s[..]);
+  t := [1] ElTable.[surface_rows(sf[..])];
+  d := elt_find(t[..], "env.default"); a := elt_find(t[..], "env.c.aaaaaaaaaaaaaaaa"); c := elt_find(t[..], "env.c.cccccccccccccccc");
+  #assert d >= 0 && a >= 0 && c >= 0 && elt_label(t[..], a) == "MacBook Pro" && elt_value_of(t[..], a) == "Ready" && elt_value_of(t[..], c) == "Not reachable";
+  #assert elt_has(t[..], d, EL_S_CHECKED) && elt_has(t[..], a, EL_S_DISABLED) && elt_find(t[..], "env.close") >= 0 && elt_find(t[..], "env.refresh") >= 0;
+  #assert size.content > 0 && size.view > 0;
+  #assert !esv_tap(sf[..], s[..], "env.c.aaaaaaaaaaaaaaaa") && s[0].sheet == ES_SHEET_ENV;
+  #assert esv_tap(sf[..], s[..], "env.default") && s[0].sheet == ES_SHEET_NONE;
+  // closed: nothing is drawn
+  _ := esv_frame(st[..], sf[..], s[..]);
+  t[0] = surface_rows(sf[..]);
+  #assert elt_find(t[..], "env.default") < 0;
+}
+
+#test "with choosing on, a tap on a computer chooses it, and the repository picker lists the reports' repositories" {
+  st: [1] EsvStore;
+  sf := [1] UiSurface.[surface_over(Sheet.{under = st[0].under_a[..], over = st[0].over_a[..], hits = st[0].hits_a[..]}, st[0].rows_a[..],
+                                    Sheet.{under = st[0].under_b[..], over = st[0].over_b[..], hits = st[0].hits_b[..]}, st[0].rows_b[..])];
+  s: [1] EnvSelect; esc_ready(s[..], true, true);
+  _ := esv_frame(st[..], sf[..], s[..]);
+  #assert esv_tap(sf[..], s[..], "env.c.aaaaaaaaaaaaaaaa") && es_chips(s[..]).environment == "MacBook Pro";
+  _ = es_press(s[..], "composer.repo", 1000);
+  _ = esv_frame(st[..], sf[..], s[..]);
+  t := [1] ElTable.[surface_rows(sf[..])];
+  #assert elt_find(t[..], "env.repo.none") >= 0 && elt_label(t[..], elt_find(t[..], "env.repo.1")) == "OpenAgentsInc/coax" && elt_find(t[..], "env.repo.2") < 0;
+  #assert esv_tap(sf[..], s[..], "env.repo.1") && es_chips(s[..]).repository == "coax";
+}
