@@ -40,7 +40,7 @@ final class NavigationUITests:XCTestCase {
         attach(app,"History groups and fixed navigation")
         XCTAssertTrue(mac.waitForExistence(timeout:5));mac.tap()
         let field=app.textViews["env.composer"];XCTAssertTrue(field.waitForExistence(timeout:10));field.tap();field.typeText("Keep my draft")
-        app.showChatHistory();XCTAssertTrue(search.waitForExistence(timeout:5));XCTAssertFalse(app.keyboards.firstMatch.exists)
+        app.showChatHistory();XCTAssertTrue(app.staticTexts["Recents"].waitForExistence(timeout:5));XCTAssertFalse(app.keyboards.firstMatch.exists)
         coder.tap();XCTAssertTrue(field.waitForExistence(timeout:10));XCTAssertEqual(field.value as? String,"")
         app.showChatHistory();mac.tap();XCTAssertTrue(field.waitForExistence(timeout:10));XCTAssertEqual(field.value as? String,"Keep my draft")
         XCTAssertFalse(app.buttons["Your computers"].exists);XCTAssertFalse(app.buttons["Refresh conversation"].exists)
