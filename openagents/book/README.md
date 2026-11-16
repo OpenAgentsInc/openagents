@@ -1,19 +1,19 @@
 # The OpenAgents Book
 
-Building the OpenAgents web, mobile and desktop apps, and the general agent
-behind them, in [Coax](../../coax/book/README.md) on
-[Coax Native](../../coax/native.md).
+Building the OpenAgents apps, and the general agent behind them, in
+[Coax](../../coax/book/README.md) on [Coax Native](../../coax/native.md),
+one small step at a time.
 
-> **Status: design drafts, for the owner to edit, and the first milestone.**
-> Chapter 11 is implemented: login, one message, a fixture reply and Stop run
-> on the web and in the iPhone simulator
-> ([#13516](https://github.com/OpenAgentsInc/openagents/issues/13516)).
-> Chapter 6 is partly implemented, 73 chapters are design drafts and three
-> are planned outlines. Restructured on 2026-11-13
-> ([#13512](https://github.com/OpenAgentsInc/openagents/issues/13512)) so that
-> working web and iPhone apps come first.
-> Where a piece already runs in the repository, such as the login, the web
-> chat and the iPhone wallet, the chapter says so and builds on it.
+> **Status: design drafts, for the owner to edit.** 75 chapters are design
+> drafts and three are planned outlines. No chapter is implemented on the
+> new iOS app yet. The opening was rewritten on 2026-11-15
+> ([#13645](https://github.com/OpenAgentsInc/openagents/issues/13645)): the
+> iOS app is rebuilt as compiled Coax drawn on the GPU, starting from one
+> text input. The first milestone recorded on 2026-11-13
+> ([#13516](https://github.com/OpenAgentsInc/openagents/issues/13516)) ran on
+> the old app, which is being removed; chapter 6 earns it again.
+> Where a piece already runs in the repository, such as the login service
+> and the GPU login screen, the chapter says so and builds on it.
 > [CONTRACT.md](CONTRACT.md) says what moves a chapter forward. The book
 > gives no dates.
 
@@ -26,43 +26,59 @@ answers from a shared knowledge base, hands work to Coder and to other
 engines, grows by plugins that anyone can write, and pays their authors in
 Bitcoin.
 
-This book builds that, and it builds the apps you use it through first. You
-start with a small app on Coax Native that runs one checked case in the
-browser and on the iPhone. By chapter 11 you have openagents.com and the
-iPhone app: a public site, login, a logged-in shell and a conversation
-screen, all from one set of shared actions. Chapter 12 puts the first real
-agent behind that screen, and every later chapter adds one capability to an
-app that already runs.
+This book builds that, and it builds the app you use it through first. You
+start with an iPhone app that has one screen, the chat page, and on it one
+text input. Each chapter adds one visible thing: Send, a transcript, a reply
+from our service, the login card when a send needs an account. Chapter 6
+runs one case through every step on the simulator and a physical phone.
+Chapters 7 to 11 add history, the environment and repository chips,
+settings, the desktop and Android, and the web. Chapter 12 puts the first
+agent of our own behind the chat page, and every later chapter adds one
+capability to an app that already runs.
 
-Begin with the [Coax Native starter](../../coax/native/README.md), including
-optional signed Updates. The first iOS starter installs native account and
-chat services; the book adds application behavior in Coax and can deliver
-compatible Wasm changes over the air. This starter is a running foundation,
-not completion of the chapter's web/iPhone acceptance contract.
-
-The next desktop consumer replaces the current OpenAgents shell on Mac and
-Linux, then adds Windows. It uses the same Coax Native application model and
-shared components. A separately runnable environment service owns Claude;
-the desktop app configures this computer and chats/controls any enrolled
-computer, just as the phone can. Follow the [environment/desktop plan](../../docs/protocol/environments-claude-and-world-editing.md#31-one-desktop-product-two-independent-lifetimes)
-and the [parallel build track](PLAN.md#order-of-building). This is planned
-work, not a change to chapter 11's completed web/iPhone milestone or a second
-agent implementation.
+The iOS app is compiled Coax linked into the binary: no JavaScript, no
+JavaScriptCore, no Wasm and no over-the-air updates. Every change ships in a
+TestFlight or store build. The shared display-list kit in
+[`components/`](../../components) draws every component on the GPU
+([GPU components on native](../../components/gpu-components.md)); the
+platform supplies only the focused text field's editor, accessibility and
+system sheets. The desktop (Mac and Linux) and Android follow and reuse the
+same pieces. The web keeps DOM for text surfaces (chapter 11).
 
 Each chapter cites the episodes where an idea was first tried, the old
 crates that implemented it in the Rust tree that ended at `coder-v1.0.0`,
 and the NIPs that carry it. Then it says what we build now, what it builds
 on, and how a run proves it.
 
+## Book-driven development
+
+The book leads and the app follows:
+
+- **The chapter comes first.** A chapter is written, then the app is built
+  to it. Code that no chapter asks for is not written.
+- **The app is what the book has built.** The app on `main` contains
+  exactly what the book has built through its latest implemented chapter,
+  and nothing else. A feature that is not in a chapter is not in the app.
+  Code from the old app comes back only when a chapter rebuilds it the new
+  way.
+- **One small increment per chapter.** Each chapter adds one thing you can
+  see or use and leaves the app running. Its check
+  ([CONTRACT.md](CONTRACT.md#the-chapters-check)) shows the increment works
+  before the next chapter starts.
+- **The chapter changes with the code.** When the build teaches something
+  the draft got wrong, the chapter is corrected in the same change.
+
 ## How to read it
 
-- **To build the apps,** read Parts I and II in order. Chapter 11 is the
-  first milestone: the web and iPhone apps log in, send a message, receive a
-  fixture reply and cancel a pending turn through the same actions.
-- **For the argument,** read chapters 1, 12, 13, 15, 37, 43, 53, 63 and 78.
-  They give the app, the loop, the composition, the typed front, execution
-  ownership, the evidence rule, the market, the protocol and what 1.0 means.
-- **For the wire,** read chapter 9, then chapters 62 to 67 beside
+- **To build the app,** read Parts I and II in order. Chapter 6 is the
+  first milestone: the iPhone app types a message, logs in when the send
+  needs it, receives a reply and stops a pending one, checked by one case on
+  the simulator and a physical phone.
+- **For the argument,** read chapters 10, 12, 13, 15, 37, 43, 53, 63 and 78.
+  They give the one app, the loop, the composition, the typed front,
+  execution ownership, the evidence rule, the market, the protocol and what
+  1.0 means.
+- **For the wire,** read chapter 4, then chapters 62 to 67 beside
   [the OpenAgents Protocol](../../docs/protocol/openagents-protocol-spec.md)
   and [`proto/`](../../proto/README.md).
 - **For one promise,** find it in the [plan's coverage table](PLAN.md#promise-coverage).
@@ -73,7 +89,7 @@ own the foundations, and this book links to them and does not repeat them:
 
 | Topic | Owner |
 | --- | --- |
-| The app framework: state, components, hosts, `coax drive`, delivery | [Coax Native](../../coax/native.md), [Coax Native Web](../../coax/web.md), [the components spec](../../components/spec.md) |
+| The app framework: state, components, hosts, `coax drive` | [Coax Native](../../coax/native.md), [Coax Native Web](../../coax/web.md), [the components spec](../../components/spec.md), [GPU components on native](../../components/gpu-components.md) |
 | The coding agent and its harness | [Coder: Coding Agents From Scratch](../../coder/book/README.md) |
 | Events, relays and NIPs | [Nostr From Scratch](../../nostr/book/README.md) |
 | Keys, signatures, Lightning | [Bitcoin From Scratch](../../bitcoin/book/README.md) |
@@ -92,9 +108,9 @@ Each part ends with something that runs.
 
 | Part | Chapters | What runs at the end |
 | --- | --- | --- |
-| I. An app on Coax Native | 1–6 | Shared state and actions, components, routes, effects, stable IDs and a controlled clock, with one acceptance case passing on the web and the iPhone. |
-| II. OpenAgents on the web and phone | 7–11 | The public website, login, the logged-in shell and settings, and a conversation screen with fixture replies, on openagents.com and the iPhone app. |
-| III. One general agent | 12–23 | The loop, members, typed plans, routing, approvals, streaming and the record, with knowledge and memory, answering the conversation screen. |
+| I. The chat page, one step at a time | 1–6 | The iPhone app's chat page on the GPU kit: a text input, Send, a transcript, a streamed reply with Stop, and the login card, with one acceptance case passing in the simulator and on a phone. |
+| II. What the app adds next | 7–11 | History and the sidebar, the environment and repository chips, settings, the same app on the desktop and Android, and the web's DOM presentation. |
+| III. One general agent | 12–23 | The loop, members, typed plans, routing, approvals, streaming and the record, with knowledge and memory, answering the chat page. |
 | IV. Capabilities on your devices | 24–33 | Coder and other engines, remote work, files, voice, and the wallet with payment review, from one conversation. |
 | V. Continuity across devices | 34–37 | State that survives, reconnects, sync, background and resume, and one execution owner per task. |
 | VI. An extensible agent and its economy | 38–70 | Plugins, evidence, adoption, the registry, paid calls, receipts, payouts, the protocol, self-hosting and compute. |
@@ -155,26 +171,26 @@ NIPs, old crates and protocol packages.
 ## Chapters
 
 <!-- chapters:begin -->
-### I. An app on Coax Native
+### I. The chat page, one step at a time
 
 | Chapter | Status |
 | --- | --- |
-| [1. One app, every surface](ch001-one-app-every-surface.md) | Unimplemented: design draft |
+| [1. A text input on the GPU](ch001-a-text-input-on-the-gpu.md) | Unimplemented: design draft |
 | [2. State and actions](ch002-state-and-actions.md) | Unimplemented: design draft |
-| [3. Components](ch003-components.md) | Unimplemented: design draft |
-| [4. Routes and navigation](ch004-routes-and-navigation.md) | Unimplemented: design draft |
-| [5. Effects, services and time](ch005-effects-services-and-time.md) | Unimplemented: design draft |
-| [6. One case on the web and the iPhone](ch006-one-case-on-the-web-and-the-iphone.md) | Partly implemented: login cases, web, iPhone simulator and iPhone |
+| [3. A transcript](ch003-a-transcript.md) | Unimplemented: design draft |
+| [4. A reply from the service](ch004-a-reply-from-the-service.md) | Unimplemented: design draft |
+| [5. Logging in when a send needs it](ch005-logging-in-when-a-send-needs-it.md) | Unimplemented: design draft |
+| [6. One case, every step](ch006-one-case-every-step.md) | Unimplemented: design draft |
 
-### II. OpenAgents on the web and phone
+### II. What the app adds next
 
 | Chapter | Status |
 | --- | --- |
-| [7. The public website](ch007-the-public-website.md) | Unimplemented: design draft |
-| [8. Accounts and login](ch008-accounts-and-login.md) | Unimplemented: design draft |
-| [9. The API the apps call](ch009-the-api-the-apps-call.md) | Unimplemented: design draft |
-| [10. The logged-in shell](ch010-the-logged-in-shell.md) | Unimplemented: design draft |
-| [11. A conversation screen](ch011-a-conversation-screen.md) | Runnable: first milestone, recorded fakes |
+| [7. History and the sidebar](ch007-history-and-the-sidebar.md) | Unimplemented: design draft |
+| [8. Environment and repository chips](ch008-environment-and-repository-chips.md) | Unimplemented: design draft |
+| [9. Settings](ch009-settings.md) | Unimplemented: design draft |
+| [10. Desktop and Android](ch010-desktop-and-android.md) | Unimplemented: design draft |
+| [11. The web](ch011-the-web.md) | Unimplemented: design draft |
 
 ### III. One general agent
 

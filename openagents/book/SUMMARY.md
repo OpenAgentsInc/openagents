@@ -5,22 +5,22 @@
 - [Contract](CONTRACT.md)
 - [The port audit](../../docs/audits/2026-11-10-episode-289-port-audit.md)
 
-## I. An app on Coax Native
+## I. The chat page, one step at a time
 
-- [1. One app, every surface](ch001-one-app-every-surface.md) — design draft
+- [1. A text input on the GPU](ch001-a-text-input-on-the-gpu.md) — design draft
 - [2. State and actions](ch002-state-and-actions.md) — design draft
-- [3. Components](ch003-components.md) — design draft
-- [4. Routes and navigation](ch004-routes-and-navigation.md) — design draft
-- [5. Effects, services and time](ch005-effects-services-and-time.md) — design draft
-- [6. One case on the web and the iPhone](ch006-one-case-on-the-web-and-the-iphone.md) — partly implemented
+- [3. A transcript](ch003-a-transcript.md) — design draft
+- [4. A reply from the service](ch004-a-reply-from-the-service.md) — design draft
+- [5. Logging in when a send needs it](ch005-logging-in-when-a-send-needs-it.md) — design draft
+- [6. One case, every step](ch006-one-case-every-step.md) — design draft
 
-## II. OpenAgents on the web and phone
+## II. What the app adds next
 
-- [7. The public website](ch007-the-public-website.md) — design draft
-- [8. Accounts and login](ch008-accounts-and-login.md) — design draft
-- [9. The API the apps call](ch009-the-api-the-apps-call.md) — design draft
-- [10. The logged-in shell](ch010-the-logged-in-shell.md) — design draft
-- [11. A conversation screen](ch011-a-conversation-screen.md)
+- [7. History and the sidebar](ch007-history-and-the-sidebar.md) — design draft
+- [8. Environment and repository chips](ch008-environment-and-repository-chips.md) — design draft
+- [9. Settings](ch009-settings.md) — design draft
+- [10. Desktop and Android](ch010-desktop-and-android.md) — design draft
+- [11. The web](ch011-the-web.md) — design draft
 
 ## III. One general agent
 

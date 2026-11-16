@@ -8,6 +8,26 @@ book's checker enforces it. Run the checker with:
 python3 psionic/tests/book.py --book openagents
 ```
 
+## Book-driven development
+
+The book leads and the app follows. These rules hold for every chapter:
+
+- **The chapter is written first.** Then the app is built to it. Code that
+  no chapter asks for is not written.
+- **The app on `main` is what the book has built.** It contains exactly
+  what the book has built through its latest implemented chapter, and
+  nothing else. A feature that is not in a chapter is not in the app. Code
+  from the old app returns only when a chapter rebuilds it the new way.
+- **One small increment per chapter.** Each chapter adds one thing you can
+  see or use, and leaves the app running. Its check passes before the next
+  chapter's code starts.
+- **The chapter changes with the code.** When building shows the draft was
+  wrong, the same change corrects the chapter.
+
+A chapter about a later capability can be a design draft long before its
+code exists. What it can't do is describe the app as having something that
+no implemented chapter built.
+
 ## Three separate facts
 
 The registry ([chapters.json](chapters.json)) keeps three facts about each
@@ -69,7 +89,7 @@ Checks follow three rules:
 | `cpu` | The chapter's program runs on the build host, in debug and release |
 | `wasm` | The program runs as Wasm |
 | `web` | The case passes in headless Chrome through `coax drive`; keyboard and accessibility checks name the browser they ran in |
-| `ios-simulator` | The case passes in the iPhone simulator through the shared driver |
+| `ios-simulator` | The case passes in the iPhone simulator through the shared driver, on the app built from the commit under test |
 | `ios-device` | The case passes on a physical iPhone, with keyboard input methods, VoiceOver, backgrounding and the platform SDK it uses checked on the device |
 | `android-emulator` | The case passes in the Android emulator through the shared driver |
 | `android-device` | The case passes on a physical Android phone, with the same device checks as `ios-device` |
@@ -102,8 +122,8 @@ the run is recorded.
   is `coax/web/api/`, and clients are the apps in `apps/`.
 - That a partly implemented or implemented chapter has a "The chapter's
   check" section naming its source, trace, refusal and independent check.
-  Chapters 1 to 11 and the chapters added in the reorder already plan one;
-  the others add theirs when they are next edited.
+  Chapters 1 to 11, rewritten on 2026-11-15, already plan one; the others
+  add theirs when they are next edited.
 
 `--coax COMPILER` also compiles and runs every example and compares its
 output with the committed trace.

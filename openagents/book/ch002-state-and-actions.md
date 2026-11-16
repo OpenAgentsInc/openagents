@@ -5,74 +5,95 @@
 
 ## Premise
 
-Chapter 1 named the app. This chapter gives it a body: one state record, a
-set of actions that change it, and one dispatcher that every input goes
-through. Nothing is drawn yet. You drive the app from a test and read its
-state back.
+Chapter 1's field holds text, and nothing happens when you press Send. This
+chapter gives the app its model: one state record, actions that change it,
+dirty marks that say which surface to draw again, and one frame that draws
+it. Send becomes an action that moves the draft into the state as your
+first message.
 
 ## Draft
 
 An app on Coax Native is its state and its actions
 ([Coax Native, "Application state and dispatch"](../../coax/native.md#application-state-and-dispatch)).
-The state is an explicit record the app owns: the current route, the fields
-a person has typed, what is loading and what came back. An action is a named,
-typed change to that record, such as `account.open_login` or
-`composer.send`.
+The state is an explicit record the app owns. For now it holds three
+things: the draft, the messages you sent, and whether Send can be pressed.
+An action is a named, typed change to that record. This chapter has two:
+`composer.edit`, which sets the draft, and `composer.send`, which moves the
+draft into the messages and clears it.
 
-Every input reaches the app as an action. A tap, a key, a timer, a deep link,
-an accessibility action and the answer to a network request all enter one
-serialized dispatcher. A host never changes state on its own, and it never
-calls back into Coax from the middle of a platform call. It queues an event
-and wakes the dispatcher.
+Every input reaches the app as an action. A tap, a key, an edit from the
+platform editor, an accessibility action and a driver operation all enter
+one serialized dispatcher. A host never changes state on its own, and it
+never calls back into Coax from the middle of a platform call. It queues an
+event and wakes the dispatcher.
 
 An action is all or nothing. It checks its inputs, works out the whole new
-state and the effects it wants, and then commits both. If it refuses, the
-person sees no half-changed screen and no effect is sent. Use the existing
+state, and then commits it. If it refuses, you see no half-changed screen.
+`composer.send` with an empty draft refuses, and Send is drawn disabled so
+you can see that before you press it. Use the existing
 [checked state](../../coax/checked-state.md) mechanism for this.
 
-An action never does the effect itself. It asks for one, as a request with an
-operation ID, and the request goes out after the commit. The answer comes
-back later as another action. Chapter 5 builds that path. Here the app has no
-effects at all, which keeps the first checks exact.
+An action marks what it changed. The dirty mark is per surface: a change to
+the draft marks the composer, not the whole screen. A frame runs only when a
+surface is dirty or a motion is due. The frame lays out, paints and records
+rows for the dirty surface and commits it
+([GPU components, "The frame"](../../components/gpu-components.md#the-frame)):
 
-Stable IDs start here. Every piece of state that a person can see or press
-gets an ID made from its role and its domain key, such as `composer.send` or
-`session.5e55a0e1`. An ID never comes from a list index or a pixel position.
-Chapter 3 hands these IDs to the components, and `coax drive` finds things
-by them.
+```text
+input, timer or completion
+        -> action (validates, changes state, marks surfaces dirty)
+        -> frame: components lay out, paint and record rows
+        -> commit: display list + hit regions + semantic rows, together
+        -> gpu_draw -> present
+```
+
+Views derive from state. A view reads committed state and calls
+components. It never starts a request, reads a clock or changes state. A
+forgotten dirty mark shows stale UI, so state fields change only inside
+actions, and a check compares an incremental frame with a full rebuild.
+
+Stable IDs start here. Every piece of state that you can see or press has
+an ID made from its role and its domain key, such as `composer.send` or
+`message.1`. An ID never comes from a list index or a pixel position.
+
+There are no effects yet. Send adds your message to the state and nothing
+leaves the phone. Chapter 4 sends it.
 
 ## What we build
 
 A plan for what this chapter ships once the draft is approved:
 
-- The app's state record and its first actions: open the login screen,
-  type into a field, submit and go back.
-- One dispatcher with a bounded queue. A full queue refuses with a named
-  result; it never drops an event silently.
-- Checks that drive the actions and read the state, with no host.
+- The chat page's state record: the draft, the sent messages, Send's state.
+- The actions `composer.edit` and `composer.send`, with the refusal for an
+  empty draft.
+- Per-surface dirty marks and the frame that commits only dirty surfaces.
+- Send as a frame-context button, `composer.send`, beside the field.
 
 It builds on what exists today:
 
 - [`coax/native.md`](../../coax/native.md)
 - [`coax/checked-state.md`](../../coax/checked-state.md)
-- [`apps/shared/app-login-flow.coax`](../../apps/shared/app-login-flow.coax)
-- [`apps/shared/app-login.coax`](../../apps/shared/app-login.coax)
+- [`components/gpu-components.md`](../../components/gpu-components.md#state-and-invalidation)
+- [`components/kit/controls.coax`](../../components/kit/controls.coax) (`ctx_button`)
+- [`components/paint/surface.coax`](../../components/paint/surface.coax)
 
 ### The chapter's check
 
-- **Source:** `openagents/examples/app-state.coax`, with its checks beside
-  it, over the planned app module in `apps/shared/`.
-- **Trace:** the program dispatches `account.open_login`, `field.type
-  account.email "you@example.com"` and `account.submit_email`, and prints
-  the route and the fields after each, one line per action.
-- **Refusal:** `account.submit_email` with an empty field leaves the state
-  unchanged, requests no effect and prints the refusal's name.
+- **Source:** the chat page's state and actions in the lean app, with their
+  checks, and `openagents/examples/cases/send.ops`.
+- **Trace:** `type composer.input hello`, `tap composer.send`, `state
+  messages` prints `you: hello`, `state draft` prints an empty line, and
+  `tree` shows `message.1`.
+- **Refusal:** `tap composer.send` with an empty draft answers
+  `composer.send can't be pressed now` and leaves the state unchanged.
 - **Independent check:** a `#forall` check that any sequence of refused
-  actions leaves the state equal to its starting value.
+  actions leaves the state equal to its start, and a check that an
+  incremental frame and a full rebuild commit the same rows.
 
-Planned paths: `openagents/examples/app-state.coax`. Generic dispatch code
+Planned paths: `openagents/examples/cases/send.ops`. Generic dispatch code
 goes in the proposed `coax/lib/app/` that
-[Coax Native](../../coax/native.md#architecture) describes, not in this book.
+[Coax Native](../../coax/native.md#architecture) describes, not in this
+book.
 
 ## Sources
 

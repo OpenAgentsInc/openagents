@@ -7,10 +7,18 @@ The first draft (2026-11-10) followed
 [the port audit](../../docs/audits/2026-11-10-episode-289-port-audit.md) and
 started from the agent loop; the apps waited for chapter 61. On 2026-11-13
 ([#13512](https://github.com/OpenAgentsInc/openagents/issues/13512)) the book
-was reordered so that working web and iPhone apps come first, on
-[Coax Native](../../coax/native.md), and every later part adds to apps that
-already run. The [chapter map](#chapter-map) gives each chapter's number in
-the first draft, so links and notes against the old numbers can be traced.
+was reordered so that working web and iPhone apps came first, on
+[Coax Native](../../coax/native.md), from shared DOM and UIKit components.
+On 2026-11-15
+([#13645](https://github.com/OpenAgentsInc/openagents/issues/13645)) the
+opening, chapters 1 to 11, was rewritten for the new iOS app: compiled Coax
+linked into the binary, every component drawn on the GPU by the shared
+display-list kit, no JavaScript and no over-the-air updates. The app starts
+from one text input on the chat page and grows a chapter at a time, under
+[book-driven development](README.md#book-driven-development). Chapters 12
+to 78 keep their numbers and content. The [chapter map](#chapter-map) gives
+each chapter's number in the first draft and in the 2026-11-13 order, so
+links and notes against the old numbers can be traced.
 
 ## Where the code goes
 
@@ -19,28 +27,30 @@ extends the owner.
 
 | What | Owner | Chapters |
 | --- | --- | --- |
-| App state, actions, routes and the driver | Coax Native ([`coax/native.md`](../../coax/native.md)); generic pieces in the proposed `coax/lib/app/` | 1–6 |
-| Components, text, Markdown, the edit buffer | [`components/`](../../components) | 3, 7, 10, 11 |
-| The apps | [`apps/openagents-web`](../../apps/openagents-web), [`apps/openagents-ios`](../../apps/openagents-ios), [`apps/openagents-desktop`](../../apps/openagents-desktop/README.md), shared app code in [`apps/shared`](../../apps/shared) | 1–11, 30, 31, 34, 36, 75 |
-| Login, accounts, agent grants and the HTTP API | [`coax/web/api/`](../../coax/web/api), [`apps/shared/app-login-flow.coax`](../../apps/shared/app-login-flow.coax) | 8, 9, 59, 64 |
-| Engines, sessions, the journal, observation | [`coax/lib/agent/`](../../coax/lib/agent) | 11, 12, 18, 25, 26, 37 |
+| App state, actions, routes and the driver | Coax Native ([`coax/native.md`](../../coax/native.md)); generic pieces in the proposed `coax/lib/app/` | 2, 4, 6, 7 |
+| Components on the GPU: the frame context, keyed state, the semantic table, the surface commit, text, Markdown, the edit buffer | [`components/`](../../components) ([GPU components on native](../../components/gpu-components.md)) | 1–3, 5, 7–9 |
+| The web's DOM presentation | [`components/backend/dom.coax`](../../components/backend/dom.coax), [`coax/web/`](../../coax/web) | 11 |
+| The apps | [`apps/openagents-ios`](../../apps/openagents-ios) first, then [`apps/openagents-desktop`](../../apps/openagents-desktop/README.md), Android and [`apps/openagents-web`](../../apps/openagents-web); hosts and shared app code in [`apps/shared`](../../apps/shared) | 1–11, 30, 31, 34, 36, 75 |
+| Login, accounts, agent grants and the HTTP API | [`coax/web/api/`](../../coax/web/api); on iOS the GPU login screen ([`apps/shared/login/`](../../apps/shared/login)) and the native auth adapter ([`AppAuth.swift`](../../apps/shared/host/apple/AppAuth.swift)) | 4, 5, 59, 64 |
+| Engines, sessions, the journal, observation | [`coax/lib/agent/`](../../coax/lib/agent) | 3, 4, 12, 18, 25, 26, 37 |
 | Money rules | The Payments context, [`pay/`](../../pay) | 32, 33, 56–58, 61 |
 | The wallet | The iPhone app's Breez Spark wallet ([`apps/openagents-ios/OpenAgents/Wallet`](../../apps/openagents-ios/OpenAgents/Wallet)) over `pay/` | 32, 33 |
 | Voice | [`metaverse/voice.coax`](../../metaverse/voice.coax), [`apps/shared/dictation.coax`](../../apps/shared/dictation.coax) | 31 |
 | Worlds | The Metaverse Engine | 71–74 |
-| Releases and over-the-air updates | [`coax/remote/`](../../coax/remote), each app's release script, [Coax Native Updates](../../coax/native-updates.md) | 76 |
+| Releases (every iOS change ships in a TestFlight or store build) | [`coax/remote/`](../../coax/remote), each app's release script | 76 |
 | The front, members, plans, knowledge, plugins, evidence and the registry | `openagents/` (planned), the product's own behavior | 12–23, 27, 28, 38–55 |
 
 The wire shapes live in [`proto/`](../../proto/README.md), and
 [the OpenAgents Protocol](../../docs/protocol/openagents-protocol-spec.md)
-describes them. Chapter 9 gives the apps the minimum; chapters 62 to 67 give
+describes them. Chapter 4 gives the app the minimum; chapters 62 to 67 give
 the rest.
 
 The [environment application profile](../../docs/protocol/environments-claude-and-world-editing.md)
 owns the proto-first desktop/phone connection to Claude on this Mac and
 CoderOS, and subsequent realm editing/preview. It composes HOST, ENV, WS and
 SESS rather than defining another app-specific agent wire. The desktop app
-and optional headless CLI attach to the same resident execution owner.
+and optional headless CLI attach to the same resident execution owner. Chapters 8
+and 10 use it.
 
 The checker refuses a planned path that already exists or that sits where a
 current owner lives ([CONTRACT.md](CONTRACT.md#what-the-checker-enforces)).
@@ -48,89 +58,91 @@ current owner lives ([CONTRACT.md](CONTRACT.md#what-the-checker-enforces)).
 ## Chapter map
 
 Each chapter, its part, its number in the first draft ("new" for a chapter
-added in the reorder) and the earlier chapters it depends on.
+added in the 2026-11-13 reorder), what it replaces in the 2026-11-13 order,
+and the earlier chapters it depends on. Chapters 12 to 78 kept their numbers
+in the 2026-11-15 rewrite.
 
 <!-- map:begin -->
-| Chapter | Part | First draft | Depends on |
-| --- | --- | --- | --- |
-| [1. One app, every surface](ch001-one-app-every-surface.md) | I | 2 | none |
-| [2. State and actions](ch002-state-and-actions.md) | I | new | 1 |
-| [3. Components](ch003-components.md) | I | new | 2 |
-| [4. Routes and navigation](ch004-routes-and-navigation.md) | I | new | 2, 3 |
-| [5. Effects, services and time](ch005-effects-services-and-time.md) | I | new | 2 |
-| [6. One case on the web and the iPhone](ch006-one-case-on-the-web-and-the-iphone.md) | I | new | 3, 4, 5 |
-| [7. The public website](ch007-the-public-website.md) | II | new | 3, 4 |
-| [8. Accounts and login](ch008-accounts-and-login.md) | II | 50 | 5, 6 |
-| [9. The API the apps call](ch009-the-api-the-apps-call.md) | II | new | 8 |
-| [10. The logged-in shell](ch010-the-logged-in-shell.md) | II | new | 8, 9 |
-| [11. A conversation screen](ch011-a-conversation-screen.md) | II | new | 6, 9, 10 |
-| [12. The simplest agent](ch012-the-simplest-agent.md) | III | 1 | 11 |
-| [13. Members](ch013-members.md) | III | 3 | 12 |
-| [14. A typed plan](ch014-a-typed-plan.md) | III | 4 | 13 |
-| [15. Decide before you generate](ch015-decide-before-you-generate.md) | III | 5 | 14 |
-| [16. Measure the front](ch016-measure-the-front.md) | III | 6 | 15 |
-| [17. Grants and approvals](ch017-grants-and-approvals.md) | III | 7 | 14 |
-| [18. On the record](ch018-on-the-record.md) | III | 8 | 14, 17 |
-| [19. Conversation](ch019-conversation.md) | III | 9 | 15 |
-| [20. Prepared answers](ch020-prepared-answers.md) | III | 10 | 16, 19 |
-| [21. A knowledge base](ch021-a-knowledge-base.md) | III | 11 | 18, 20 |
-| [22. Retrieval by meaning](ch022-retrieval-by-meaning.md) | III | 12 | 21 |
-| [23. Memory and consent](ch023-memory-and-consent.md) | III | 13 | 17, 21 |
-| [24. Coder as a member](ch024-coder-as-a-member.md) | IV | 14 | 13, 17 |
-| [25. Other engines](ch025-other-engines.md) | IV | 15 | 24 |
-| [26. Subagents you can see](ch026-subagents-you-can-see.md) | IV | 16 | 18, 25 |
-| [27. Programs](ch027-programs.md) | IV | 17 | 14, 24 |
-| [28. The command line behind the agent](ch028-the-command-line-behind-the-agent.md) | IV | 18 | 15, 17 |
-| [29. Where work runs](ch029-where-work-runs.md) | IV | 21 | 17, 24 |
-| [30. Files and device services](ch030-files-and-device-services.md) | IV | new | 5, 11 |
-| [31. Voice](ch031-voice.md) | IV | new | 11, 30 |
-| [32. A wallet](ch032-a-wallet.md) | IV | 19 | 17, 28 |
-| [33. Spending approval](ch033-spending-approval.md) | IV | 20 | 17, 32 |
-| [34. State that survives](ch034-state-that-survives.md) | V | new | 9, 11 |
-| [35. Sync across devices](ch035-sync-across-devices.md) | V | 51 | 1, 8, 34 |
-| [36. Background, resume and cancel](ch036-background-resume-and-cancel.md) | V | new | 5, 34 |
-| [37. One owner per task](ch037-one-owner-per-task.md) | V | new | 29, 35, 36 |
-| [38. The plugin interface](ch038-the-plugin-interface.md) | VI | 22 | 13, 17 |
-| [39. The sandbox](ch039-the-sandbox.md) | VI | 23 | 38 |
-| [40. Installing grants nothing](ch040-installing-grants-nothing.md) | VI | 24 | 17, 39 |
-| [41. Write a plugin](ch041-write-a-plugin.md) | VI | 25 | 40 |
-| [42. The authoring interview](ch042-the-authoring-interview.md) | VI | 26 | 27, 41 |
-| [43. Test-time capabilities](ch043-test-time-capabilities.md) | VI | 27 | 40 |
-| [44. Cases and graders](ch044-cases-and-graders.md) | VI | 28 | 43 |
-| [45. A two-arm run](ch045-a-two-arm-run.md) | VI | 29 | 18, 44 |
-| [46. A claim's key](ch046-a-claims-key.md) | VI | 30 | 45 |
-| [47. Reproduction by another key](ch047-reproduction-by-another-key.md) | VI | 31 | 46 |
-| [48. External validation](ch048-external-validation.md) | VI | 32 | 47 |
-| [49. Adoption is policy](ch049-adoption-is-policy.md) | VI | 33 | 48 |
-| [50. Credit](ch050-credit.md) | VI | 34 | 47, 49 |
-| [51. Revalidation](ch051-revalidation.md) | VI | 35 | 46, 49 |
-| [52. The Gym](ch052-the-gym.md) | VI | 36 | 41, 49, 50, 51 |
-| [53. Why an open market](ch053-why-an-open-market.md) | VI | 37 | 52 |
-| [54. Releases as signed events](ch054-releases-as-signed-events.md) | VI | 38 | 38, 53 |
-| [55. Everyone gets it](ch055-everyone-gets-it.md) | VI | 39 | 49, 54 |
-| [56. Paid calls](ch056-paid-calls.md) | VI | 40 | 32, 33, 54 |
-| [57. Metering and receipts](ch057-metering-and-receipts.md) | VI | 41 | 56 |
-| [58. Payouts to authors](ch058-payouts-to-authors.md) | VI | 42 | 32, 57 |
-| [59. One identity](ch059-one-identity.md) | VI | 43 | 17, 32 |
-| [60. Reputation from reproduced claims](ch060-reputation-from-reproduced-claims.md) | VI | 44 | 50, 57, 59 |
-| [61. Markets for work](ch061-markets-for-work.md) | VI | 45 | 26, 58, 60 |
-| [62. Signed JSON over WebSockets](ch062-signed-json-over-websockets.md) | VI | 46 | 18 |
-| [63. Every step is an event](ch063-every-step-is-an-event.md) | VI | 47 | 52, 61, 62 |
-| [64. The OpenAgents API](ch064-the-openagents-api.md) | VI | 48 | 1, 9, 63 |
-| [65. One schema, three carriages](ch065-one-schema-three-carriages.md) | VI | 49 | 62, 64 |
-| [66. The compliance rule](ch066-the-compliance-rule.md) | VI | 52 | 65 |
-| [67. Host it yourself](ch067-host-it-yourself.md) | VI | 53 | 55, 64 |
-| [68. One gateway](ch068-one-gateway.md) | VI | 54 | 15 |
-| [69. Models we serve](ch069-models-we-serve.md) | VI | 55 | 16, 68 |
-| [70. Pylons](ch070-pylons.md) | VI | 56 | 58, 69 |
-| [71. The Metaverse is a surface](ch071-the-verse-is-a-surface.md) | VII | 57 | 1, 12 |
-| [72. Agents you can meet](ch072-agents-you-can-meet.md) | VII | 58 | 26, 71 |
-| [73. Realms and makers](ch073-realms-and-makers.md) | VII | 59 | 58, 59, 71 |
-| [74. A decision in the world](ch074-a-decision-in-the-world.md) | VII | 60 | 57, 70, 73 |
-| [75. Cross-host conformance](ch075-cross-host-conformance.md) | VII | 61 | 1, 11, 37, 64, 71 |
-| [76. Releases from one source](ch076-releases-from-one-source.md) | VII | 63 | 75 |
-| [77. A Windows host](ch077-a-windows-host.md) | VII | 62 | 70, 75 |
-| [78. What 1.0 means](ch078-what-one-point-zero-means.md) | VII | 64 | 52, 61, 67, 70, 74, 76 |
+| Chapter | Part | First draft | 2026-11-13 order | Depends on |
+| --- | --- | --- | --- | --- |
+| [1. A text input on the GPU](ch001-a-text-input-on-the-gpu.md) | I | new | part of 3 (components) | none |
+| [2. State and actions](ch002-state-and-actions.md) | I | new | 2 | 1 |
+| [3. A transcript](ch003-a-transcript.md) | I | new | part of 11 (the transcript) | 2 |
+| [4. A reply from the service](ch004-a-reply-from-the-service.md) | I | new | 5 (effects), 9 (the API), part of 11 (reply and Stop) | 3 |
+| [5. Logging in when a send needs it](ch005-logging-in-when-a-send-needs-it.md) | I | 50 | 8 (accounts and login), part of 4 (modals) | 4 |
+| [6. One case, every step](ch006-one-case-every-step.md) | I | new | 6, and 11's milestone as history | 5 |
+| [7. History and the sidebar](ch007-history-and-the-sidebar.md) | II | new | 4 (routes), part of 10 (the side) | 6 |
+| [8. Environment and repository chips](ch008-environment-and-repository-chips.md) | II | new | new | 7 |
+| [9. Settings](ch009-settings.md) | II | new | part of 10 (settings) | 7 |
+| [10. Desktop and Android](ch010-desktop-and-android.md) | II | 2 | 1 (one app, every surface) | 6, 7, 8, 9 |
+| [11. The web](ch011-the-web.md) | II | new | 7 (the public website), part of 3 (DOM) | 6, 7, 9 |
+| [12. The simplest agent](ch012-the-simplest-agent.md) | III | 1 | 12 | 6 |
+| [13. Members](ch013-members.md) | III | 3 | 13 | 12 |
+| [14. A typed plan](ch014-a-typed-plan.md) | III | 4 | 14 | 13 |
+| [15. Decide before you generate](ch015-decide-before-you-generate.md) | III | 5 | 15 | 14 |
+| [16. Measure the front](ch016-measure-the-front.md) | III | 6 | 16 | 15 |
+| [17. Grants and approvals](ch017-grants-and-approvals.md) | III | 7 | 17 | 14 |
+| [18. On the record](ch018-on-the-record.md) | III | 8 | 18 | 14, 17 |
+| [19. Conversation](ch019-conversation.md) | III | 9 | 19 | 15 |
+| [20. Prepared answers](ch020-prepared-answers.md) | III | 10 | 20 | 16, 19 |
+| [21. A knowledge base](ch021-a-knowledge-base.md) | III | 11 | 21 | 18, 20 |
+| [22. Retrieval by meaning](ch022-retrieval-by-meaning.md) | III | 12 | 22 | 21 |
+| [23. Memory and consent](ch023-memory-and-consent.md) | III | 13 | 23 | 17, 21 |
+| [24. Coder as a member](ch024-coder-as-a-member.md) | IV | 14 | 24 | 13, 17 |
+| [25. Other engines](ch025-other-engines.md) | IV | 15 | 25 | 24 |
+| [26. Subagents you can see](ch026-subagents-you-can-see.md) | IV | 16 | 26 | 18, 25 |
+| [27. Programs](ch027-programs.md) | IV | 17 | 27 | 14, 24 |
+| [28. The command line behind the agent](ch028-the-command-line-behind-the-agent.md) | IV | 18 | 28 | 15, 17 |
+| [29. Where work runs](ch029-where-work-runs.md) | IV | 21 | 29 | 17, 24 |
+| [30. Files and device services](ch030-files-and-device-services.md) | IV | new | 30 | 4, 6 |
+| [31. Voice](ch031-voice.md) | IV | new | 31 | 6, 30 |
+| [32. A wallet](ch032-a-wallet.md) | IV | 19 | 32 | 17, 28 |
+| [33. Spending approval](ch033-spending-approval.md) | IV | 20 | 33 | 17, 32 |
+| [34. State that survives](ch034-state-that-survives.md) | V | new | 34 | 4, 6 |
+| [35. Sync across devices](ch035-sync-across-devices.md) | V | 51 | 35 | 5, 10, 34 |
+| [36. Background, resume and cancel](ch036-background-resume-and-cancel.md) | V | new | 36 | 4, 34 |
+| [37. One owner per task](ch037-one-owner-per-task.md) | V | new | 37 | 29, 35, 36 |
+| [38. The plugin interface](ch038-the-plugin-interface.md) | VI | 22 | 38 | 13, 17 |
+| [39. The sandbox](ch039-the-sandbox.md) | VI | 23 | 39 | 38 |
+| [40. Installing grants nothing](ch040-installing-grants-nothing.md) | VI | 24 | 40 | 17, 39 |
+| [41. Write a plugin](ch041-write-a-plugin.md) | VI | 25 | 41 | 40 |
+| [42. The authoring interview](ch042-the-authoring-interview.md) | VI | 26 | 42 | 27, 41 |
+| [43. Test-time capabilities](ch043-test-time-capabilities.md) | VI | 27 | 43 | 40 |
+| [44. Cases and graders](ch044-cases-and-graders.md) | VI | 28 | 44 | 43 |
+| [45. A two-arm run](ch045-a-two-arm-run.md) | VI | 29 | 45 | 18, 44 |
+| [46. A claim's key](ch046-a-claims-key.md) | VI | 30 | 46 | 45 |
+| [47. Reproduction by another key](ch047-reproduction-by-another-key.md) | VI | 31 | 47 | 46 |
+| [48. External validation](ch048-external-validation.md) | VI | 32 | 48 | 47 |
+| [49. Adoption is policy](ch049-adoption-is-policy.md) | VI | 33 | 49 | 48 |
+| [50. Credit](ch050-credit.md) | VI | 34 | 50 | 47, 49 |
+| [51. Revalidation](ch051-revalidation.md) | VI | 35 | 51 | 46, 49 |
+| [52. The Gym](ch052-the-gym.md) | VI | 36 | 52 | 41, 49, 50, 51 |
+| [53. Why an open market](ch053-why-an-open-market.md) | VI | 37 | 53 | 52 |
+| [54. Releases as signed events](ch054-releases-as-signed-events.md) | VI | 38 | 54 | 38, 53 |
+| [55. Everyone gets it](ch055-everyone-gets-it.md) | VI | 39 | 55 | 49, 54 |
+| [56. Paid calls](ch056-paid-calls.md) | VI | 40 | 56 | 32, 33, 54 |
+| [57. Metering and receipts](ch057-metering-and-receipts.md) | VI | 41 | 57 | 56 |
+| [58. Payouts to authors](ch058-payouts-to-authors.md) | VI | 42 | 58 | 32, 57 |
+| [59. One identity](ch059-one-identity.md) | VI | 43 | 59 | 17, 32 |
+| [60. Reputation from reproduced claims](ch060-reputation-from-reproduced-claims.md) | VI | 44 | 60 | 50, 57, 59 |
+| [61. Markets for work](ch061-markets-for-work.md) | VI | 45 | 61 | 26, 58, 60 |
+| [62. Signed JSON over WebSockets](ch062-signed-json-over-websockets.md) | VI | 46 | 62 | 18 |
+| [63. Every step is an event](ch063-every-step-is-an-event.md) | VI | 47 | 63 | 52, 61, 62 |
+| [64. The OpenAgents API](ch064-the-openagents-api.md) | VI | 48 | 64 | 4, 63 |
+| [65. One schema, three carriages](ch065-one-schema-three-carriages.md) | VI | 49 | 65 | 62, 64 |
+| [66. The compliance rule](ch066-the-compliance-rule.md) | VI | 52 | 66 | 65 |
+| [67. Host it yourself](ch067-host-it-yourself.md) | VI | 53 | 67 | 55, 64 |
+| [68. One gateway](ch068-one-gateway.md) | VI | 54 | 68 | 15 |
+| [69. Models we serve](ch069-models-we-serve.md) | VI | 55 | 69 | 16, 68 |
+| [70. Pylons](ch070-pylons.md) | VI | 56 | 70 | 58, 69 |
+| [71. The Metaverse is a surface](ch071-the-verse-is-a-surface.md) | VII | 57 | 71 | 10, 12 |
+| [72. Agents you can meet](ch072-agents-you-can-meet.md) | VII | 58 | 72 | 26, 71 |
+| [73. Realms and makers](ch073-realms-and-makers.md) | VII | 59 | 73 | 58, 59, 71 |
+| [74. A decision in the world](ch074-a-decision-in-the-world.md) | VII | 60 | 74 | 57, 70, 73 |
+| [75. Cross-host conformance](ch075-cross-host-conformance.md) | VII | 61 | 75 | 6, 10, 37, 64, 71 |
+| [76. Releases from one source](ch076-releases-from-one-source.md) | VII | 63 | 76 | 75 |
+| [77. A Windows host](ch077-a-windows-host.md) | VII | 62 | 77 | 70, 75 |
+| [78. What 1.0 means](ch078-what-one-point-zero-means.md) | VII | 64 | 78 | 52, 61, 67, 70, 74, 76 |
 <!-- map:end -->
 
 ## Promise coverage
@@ -145,60 +157,172 @@ promise is met.
 <!-- coverage:begin -->
 | Promise | Chapters |
 | --- | --- |
-| P1 | 1–7, 10–12, 30–31, 34–37, 71, 75 |
+| P1 | 1–4, 6–7, 9–12, 30–31, 34–37, 71, 75 |
 | P2 | 20–23 |
-| P3 | 13, 24–26, 29–30, 37 |
+| P3 | 8, 13, 24–26, 29–30, 37 |
 | P4 | 13, 18, 26, 38, 72 |
 | P5 | 27, 38–41, 44–45, 52 |
-| P6 | 11, 19–20, 27, 52 |
+| P6 | 19–20, 27, 52 |
 | P7 | 14–16, 68–69 |
 | P8 | 17, 28, 32–33 |
 | P9 | 42 |
 | P10 | 49, 53–55, 73 |
 | P11 | 32, 53, 56–58, 61, 70, 73–74 |
-| P12 | 9, 18, 53–54, 61–63, 65–68, 70, 74 |
-| P13 | 9, 29, 37, 64, 67, 71, 75 |
-| P14 | 8, 17, 23, 32, 50, 59–60 |
+| P12 | 4, 18, 53–54, 61–63, 65–68, 70, 74 |
+| P13 | 4, 11, 29, 37, 64, 67, 71, 75 |
+| P14 | 5, 17, 23, 32, 50, 59–60 |
 | P15 | 40, 43–52 |
-| P16 | 6–7, 75–78 |
+| P16 | 6, 10–11, 75–78 |
 <!-- coverage:end -->
 
 ## Order of building
 
 Each step ships something a person can use and is the base for the next.
+Under [book-driven development](README.md#book-driven-development), a
+step's chapters are written before its code, and the app contains only what
+the implemented chapters built.
 
 | Step | What ships | Chapters | Targets |
 | --- | --- | --- | --- |
-| Step 1: the first milestone | The website and the iPhone app use shared actions to open login, log in, send a message, receive a fixture reply and cancel a pending turn. The same operations assert both. Logout and cancel fence a held reply; a reconnect can't send twice | 1–11 | `web`, `ios-simulator` |
-| Step 2: Android | The same cases on the existing Android adapters, without claiming a finished Android app | 6, 11, 75 | `android-emulator` |
-| Step 3: live and device checks | Live-service checks with their scope stated; device runs for keyboard, VoiceOver, lifecycle and SDKs; payment refusal and duplicate-result cases | 6, 8, 33, 36 | `ios-device`, `android-device` |
-| Step 4: one agent | The loop, members, the typed front, grants, the record, conversation, knowledge and memory behind the conversation screen | 12–23 | as step 1 |
-| Step 5: capabilities | Coder, other engines, remote work, files, voice, the wallet and payment approval | 24–33 | as step 3 |
-| Step 6: continuity | Persistence, sync, background and resume, one owner per task | 34–37 | as step 3 |
-| Step 7: plugins, evidence and the market | The plugin interface, the evidence rule, the registry, paid calls and payouts | 38–61 | as step 1 |
-| Step 8: the protocol and compute | The protocol chapters, the API for partners, self-hosting, the gateway and Pylons | 62–70 | as step 1 |
-| Step 9: worlds and delivery | The agent in realms, the conformance run, releases from one source, Windows and 1.0 | 71–78 | every target |
+| Step 1: the chat page | The lean iOS app, one chapter at a time: a text input on the GPU, Send, a transcript, a streamed reply with Stop, and the login card when a send needs an account. One case asserts every step; logout and Stop fence a held reply; a retry can't send twice | 1–6 | `ios-simulator`, `ios-device` |
+| Step 2: the rest of the iOS app | History and the sidebar, the environment and repository chips, settings, each rebuilt on the GPU kit | 7–9 | as step 1 |
+| Step 3: desktop and Android | The same app on the Mac and Linux hosts, replacing the current desktop shell, then on Android, without claiming a finished Android app before its cases pass | 10, 75 | `macos-arm64`, `android-emulator`, `android-device` |
+| Step 4: the web | The chat page, history and settings on openagents.com from the shared state and actions, drawn as DOM, and the public pages | 11 | `web` |
+| Step 5: one agent | The loop, members, the typed front, grants, the record, conversation, knowledge and memory behind the chat page | 12–23 | as step 1 |
+| Step 6: capabilities | Coder, other engines, remote work, files, voice, the wallet and payment approval | 24–33 | as step 1 |
+| Step 7: continuity | Persistence, sync, background and resume, one owner per task | 34–37 | as step 1 |
+| Step 8: plugins, evidence and the market | The plugin interface, the evidence rule, the registry, paid calls and payouts | 38–61 | as step 1 |
+| Step 9: the protocol and compute | The protocol chapters, the API for partners, self-hosting, the gateway and Pylons | 62–70 | as step 1 |
+| Step 10: worlds and delivery | The agent in realms, the conformance run, releases from one source, Windows and 1.0 | 71–78 | every target |
 
-**Parallel desktop/environment track (owner direction, 2026-11-13).** After
-the shared first milestone, replace the existing desktop shell on Mac and
-Linux with Coax Native, reusing its hosts, components and engine libraries.
-Start with setup/attachment to an independent local service, authorized chat
-history from both computers, then managed Claude chat/control from either
-desktop and the phone. A CLI-only service may land first for phone access;
-the normal setup experience is the desktop app. Closing the GUI must not stop
-Claude. See the [canonical stages and gates](../../docs/protocol/environments-claude-and-world-editing.md#10-implementation-sequence-and-completion-gates).
+**The desktop and environment service (owner direction, 2026-11-13).**
+Chapter 10 replaces the existing desktop shell on Mac and Linux, reusing
+the shared hosts and components. The desktop app sets up and attaches to an
+independent local environment service, shows authorized chat history from
+both computers, and controls managed Claude chat from either desktop and the
+phone. A CLI-only service may land first for phone access; the normal setup
+experience is the desktop app. Closing the window must not stop Claude. See
+the [canonical stages and gates](../../docs/protocol/environments-claude-and-world-editing.md#10-implementation-sequence-and-completion-gates).
+The service can be built alongside steps 1 and 2; the desktop app itself
+follows them, so it reuses the pieces the iPhone app built. Windows follows
+Mac and Linux qualification (chapter 77).
 
-This track can proceed alongside the numbered steps; Mac/Linux delivery does
-not wait for Android, the full general agent, realm visualization or chapter
-77. It applies the existing app, execution-owner and protocol chapters without
-renumbering or claiming their drafts implemented. Realm editing/preview adds
-to the same conversation afterward. Windows follows Mac/Linux qualification,
-using the same app/protocol with its platform backend still to be selected.
+Steps 5 to 9 can overlap once step 1 is done, each adding to the chat page
+through chapters of its own. Windows and the other additional platforms
+(chapter 77) are qualified on their own evidence and never hold up the
+iPhone. Name an implementer and a start date for a step before it begins.
 
-Steps 4 to 8 can overlap once step 1 is done. Windows and the other
-additional platforms (chapter 77) are qualified on their own evidence and
-never hold up the web or the phone. Name an implementer and a start date for
-a step before it begins.
+## What the new approach keeps from the first plan
+
+The opening of 2026-11-13 (old chapters 1 to 11), its contract and its plan
+held ideas the new iOS app should keep. Some it already has; some the old
+plan did better, and the new app should adopt them.
+
+**Keep, and where each applies now:**
+
+1. **The four-part chapter check** (source, exact trace, refusal,
+   independent check). It is what made the 2026-11-13 milestone credible.
+   Every new opening chapter plans one ([CONTRACT.md](CONTRACT.md)).
+2. **Common `coax drive` operations on every host**, with no private test
+   language per host. The GPU login screen's driver answers `tree`, `tap`,
+   `type` and `counts`; the old shared module also answered `state`,
+   `clock` and `logs`. Chapter 6 needs the whole set. The old plan is ahead
+   here.
+3. **Driver input through the real input path.** The old rule was that
+   `tap` and `type` never write state directly, and both old hosts refused a
+   driver tap that no real press delivered. Today the login screen's driver
+   `tap` presses the row's action directly and `type` sets the field's
+   value, so hit testing and the editor path are not exercised. Adopt: a
+   driver tap enters as a pointer down and up at the row's committed bounds,
+   as the screen's own checks already do, and `type` enters where the
+   editor's edits enter (chapters 1 and 6).
+4. **Fake services with held answers and a controlled clock** (`clock data
+   release NAME`, the pinned seed, date, locale and zone), so a trace is
+   byte-exact with no network. The GPU login screen is checked today against
+   a local fixture server and an XCUITest, which is slower and timed by the
+   host. The old plan is better here; chapter 4 adopts it.
+5. **A cpu host for cases.** The old case runner (`apps/shared/cases.coax`)
+   played every case on the build host with no simulator and compared bytes.
+   Keep a cpu host for the new cases, so the trace runs in seconds on a build
+   host and the simulator run adds only what needs a simulator (chapter 6).
+6. **Meaning before pictures.** Assert on state and the semantic tree first;
+   a screenshot last. On the GPU kit everything is pixels, so the committed
+   semantic rows are the anchor for checks, accessibility and the driver
+   alike (chapters 1 and 6).
+7. **Effect outbox semantics.** Taking a request means accepted or refused,
+   not succeeded; states are pending, done, failed or unknown; an unknown
+   outcome never retries on its own; an operation ID makes a retry safe
+   (chapter 4).
+8. **The late-answer fence.** Stop, logout and leaving a screen drop late
+   answers; the old `logout-pending` and `reconnect` cases are the model for
+   chapters 4 and 5.
+9. **Typed routes, and a link is input, not permission,** with a return
+   target through login. These arrive with the second place to go
+   (chapter 7) and with URLs on the web (chapter 11).
+10. **One execution owner per task.** A client presents a turn and never runs
+    it again. It first shows in the app with the environment chip
+    (chapter 8), and chapter 37 builds it.
+11. **The three meanings of "one app"**: shared code, shared data, one
+    execution owner. Chapter 10 keeps the old chapter 1's statement.
+12. **The device evidence list.** The old milestone ran on a physical
+    iPhone: the number pad on the code field, a Japanese input method
+    sending `日本語` once, non-Latin text and an emoji, labels and the
+    accessibility audit, a reply finishing once across backgrounding. The
+    GPU login screen has run none of these yet. Chapter 6 runs the same list
+    again.
+13. **Who may drive a phone**: TCP on the phone's own network, a launch
+    token, one driver at a time. Decided on 2026-11-13 and unchanged
+    (chapter 6).
+14. **The stale-build refusal.** The driver checks the app was built from
+    the source under test. The web has it; the iOS driver still lacks it
+    (chapter 6).
+15. **One schema per record, the decision in Coax, and a versioned API.**
+    With no over-the-air updates, an installed app can lag the service for
+    weeks and a bad build is fixed only forward, so the version rule matters
+    more than before (chapter 4).
+16. **Tokens stay native.** No token or pending handle enters Coax, a trace
+    or a log. The GPU login screen already keeps to this (chapter 5).
+17. **Stable IDs from role and domain key, never an index,** and a duplicate
+    refused, not shared. The G0 foundation enforces this in the keyed store
+    and the surface commit (chapters 1 to 3).
+18. **Show only what works, and every limit with its number** (chapter 9).
+19. **A public page is a web page first,** with one source for the page and
+    its Markdown twin (chapter 11).
+20. **Large text.** The old shared screens were fixed to follow the text
+    size after the device audit. The GPU login screen draws at a fixed scale
+    today. The old app is ahead here; chapter 9 makes it a requirement and
+    chapter 5 applies it to the login card.
+
+**Dropped, and why:**
+
+- **Shared DOM and UIKit presentation on iOS** (old chapters 3 and 11). The
+  GPU kit draws every native component; the UIKit control projection is
+  deleted.
+- **Coax as Wasm or JavaScript in WebKit or JavaScriptCore, and the Coax
+  Native starter as the base** (old chapter 1 and the README). The app is
+  compiled Coax linked into the binary.
+- **Over-the-air Updates** (the old README and chapter 76's rule for what may
+  go over the air, and the signed previous package as a way back). Dropped
+  by the owner. The cost is a slower fix path; chapter 4's version rule and
+  chapter 76's fix-forward carry it.
+- **The web and the iPhone as twin first targets** (old chapter 6). iOS is
+  first; desktop and Android follow (chapter 10); the web is chapter 11.
+  Cross-host byte equality moves to chapters 10, 11 and 75.
+- **The public website in the opening** (old chapter 7). The iOS app does
+  not need it; it moved to chapter 11.
+- **A routes chapter before any screen needs a route** (old chapter 4).
+  Routes arrive in chapter 7, with the second place to go.
+- **The logged-in shell as one chapter** (old chapter 10). It split into the
+  sidebar (chapter 7) and settings (chapter 9).
+- **Standalone example programs for the opening chapters**
+  (`app-state.coax`, `login-screen.coax`, `routes.coax`, `effects.coax`).
+  They would copy the app's code into the book. The new checks run against
+  the app's own modules and its `.ops` cases. The cost: `book.py --coax`
+  runs none of the opening, so item 5's cpu host is what keeps those traces
+  cheap.
+- **Login as the first screen.** The code on `main` built the login screen
+  first (stage G1). The book starts from the composer instead and reuses
+  that screen as chapter 5's login card.
 
 ## Not written yet
 
@@ -217,18 +341,22 @@ holds this book, and product code goes there only where no current owner
 exists. Two of the first draft's questions are settled by what now runs: the
 first wallet is Breez Spark, in the iPhone app (chapter 32), and every agent
 task has one execution owner instead of a fixed split between devices and
-the hosted service (chapter 37). The chapters still ask:
+the hosted service (chapter 37). The 2026-11-15 decision settles the old
+chapter 3's question, which iPhone screens move off UIKit first: all of
+them, on the GPU kit, starting with the chat page. The chapters still ask:
 
 <!-- questions:begin -->
-There are 81 of them.
+There are 83 of them.
 
 | Chapter | Question |
 | --- | --- |
-| [1](ch001-one-app-every-surface.md) | The [sync spec](../../docs/sync/README.md) recommends syncing a conversation through our service, readable by the server at first (chapter 35). Confirm that, and say which collections get end-to-end encryption first. |
-| [3](ch003-components.md) | Which screens of the iPhone app move to the native control backend first, and which stay UIKit controllers until it is qualified? |
-| [6](ch006-one-case-on-the-web-and-the-iphone.md) | Which transport does the driver use to reach an app on a physical iPhone, and who may attach to it? |
-| [8](ch008-accounts-and-login.md) | Do a member's grant (chapter 17) and an agent's grant become one record, or stay two? |
-| [8](ch008-accounts-and-login.md) | Which scopes come after `profile:read` and `wallet:spend`? |
+| [1](ch001-a-text-input-on-the-gpu.md) | Does the first TestFlight build of the lean app ship with only this chapter's text input, or does it wait until chapter 4 gives it a reply? |
+| [4](ch004-a-reply-from-the-service.md) | Which service answers in this chapter, before chapter 12: the existing `/chat` route with its live models, or only the fake service until our own loop exists? |
+| [5](ch005-logging-in-when-a-send-needs-it.md) | Does the lean app's login card include "Use a Nostr key" in this chapter, or only email until the key login is rebuilt on the kit? |
+| [5](ch005-logging-in-when-a-send-needs-it.md) | Do a member's grant (chapter 17) and an agent's grant become one record, or stay two? |
+| [5](ch005-logging-in-when-a-send-needs-it.md) | Which scopes come after `profile:read` and `wallet:spend`? |
+| [8](ch008-environment-and-repository-chips.md) | Which environments does the first build list: this account's hosted computer, your enrolled computers, or both? |
+| [10](ch010-desktop-and-android.md) | The [sync spec](../../docs/sync/README.md) recommends syncing a conversation through our service, readable by the server at first (chapter 35). Confirm that, and say which collections get end-to-end encryption first. |
 | [13](ch013-members.md) | What does the product call these? The essays say "members"; Episode 289 says tools, subagents and plugins. |
 | [14](ch014-a-typed-plan.md) | The audit's plan carries a budget. Our rule is that we impose no limits on a run and show any limit the user sets. Should a plan carry only limits the user set? |
 | [15](ch015-decide-before-you-generate.md) | Which of our own decision models backs up Gemini Decision 1 for the front at 1.0, and what result would move our own model to the first door? |
