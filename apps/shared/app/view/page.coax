@@ -1,0 +1,327 @@
+// The chat page (GitHub #13645, for #13620): the transcript of the current
+// conversation over the composer, built each frame from the app core's state
+// with the app's GPU components (components/app/) on the frame context.
+//
+// One frame, inside the root's uiframe_begin and uiframe_end:
+//
+//   out := view_page(f, v, c, ViewLayout.{x = 0, top = safe_top, w = w, bottom = composer_bottom, chips_h = chip_row_h, ...});
+//   // the environment and repository chips go in out.chips_* (apps/shared/app/environment/)
+//   // out.again: a row changed height while it was painted; draw one more frame
+//
+// A press on a committed row:
+//
+//   p := view_press(v, c, keyed, surface_id(surface, row), surface_action(surface, row));
+//   if p.kind == VIEW_P_DISPATCH { _ := view_dispatch(c, p.what, p.text, mono_ms, wall_ms); }
+//   if p.kind == VIEW_P_FOCUS { /* the host puts the platform editor over out.composer */ }
+//
+// What the page keeps (ChatView): the rows' model, the virtualized list (the
+// reading position is an anchor row, list.coax), one Markdown document and
+// one decoded message at a time, and a measuring sheet. It never calls a host
+// and never writes the core. Text it paints from memory it reuses (a decoded
+// message, the parsed document) is copied into the sheet's pool, so the
+// committed generation does not change under the person's eyes.
+//
+// Rows are measured on a separate sheet before they are placed, so a row
+// appears at its real height. A row whose height changes while it is painted
+// (a tool row opening on its spring) is placed again next frame (out.again).
+//   coax/bin/coax test apps/shared/app/view/page.coax
+
+#load "core.coax";
+#load "list.coax";
+#load "../../../../components/app/task.coax";
+
+// The page's action numbers: what a press on one of its rows is.
+VIEW_A_FIELD :: 1;      // the composer's text: the host gives it the keyboard
+VIEW_A_SEND :: 2;       // Send, or Stop while a reply runs
+VIEW_A_ALLOW :: 3; VIEW_A_DENY :: 4;
+VIEW_A_RETRY :: 5;      // a notice's Try again
+VIEW_A_RECONNECT :: 6;  // a notice's Reconnect, the banner's Try again
+VIEW_A_JUMP :: 7;       // back to the latest message
+VIEW_A_TOOL :: 8;       // a tool row, or its pager
+VIEW_A_COPY :: 9;       // Copy on a code block
+
+// What view_press found.
+VIEW_P_NONE :: 0;       // not the page's
+VIEW_P_LOCAL :: 1;      // the page changed its own state: draw a frame
+VIEW_P_FOCUS :: 2;      // the host gives the composer the keyboard
+VIEW_P_DISPATCH :: 3;   // dispatch `what` (VIEW_C_*) with `text` to the core (view_dispatch)
+
+VIEW_COMPOSER_ID :: "chat.composer";
+VIEW_SEND_ID :: "chat.composer.send";
+VIEW_PLACEHOLDER :: "Message";
+VIEW_EMPTY_TITLE :: "OpenAgents";
+VIEW_TYPING_LABEL :: "Writing a reply";
+VIEW_OVERSCAN :: 400;   // layout units painted past each edge of the viewport
+VIEW_SLACK :: 4;        // how close to the end still counts as the end
+VIEW_ESTIMATE :: 48;    // a row never measured
+VIEW_COPY_BYTES :: 65536;
+// The measuring sheet's capacity: one row at a time.
+VIEW_M_UNDER :: 2048; VIEW_M_OVER :: 8192; VIEW_M_LINES :: 4096; VIEW_M_HITS :: 256; VIEW_M_POOL :: 262144;
+
+ViewLayout :: struct {
+  x: f32; top: f32; w: f32;   // the page's column, and the top of the transcript (under the safe area)
+  bottom: f32;                // where the composer's bottom edge docks (over the keyboard or the safe area)
+  chips_h: f32;               // the chip row's height over the composer (0: no chips)
+  editing: bool;              // the platform editor holds the keyboard over the composer's text
+  editor_h: f32;              // its text height, layout units
+  unit: f32;                  // points a layout unit (the composer's layout is in points)
+}
+ViewOut :: struct {
+  composer: ComposerBox; composer_y: f32;   // the composer as drawn, and its top
+  chips_x: f32; chips_y: f32; chips_w: f32; // the slot the environment chips draw in
+  again: bool;                              // a row's height changed as it was painted: draw again
+}
+ViewPress :: struct { kind: int; what: int; text: string; }
+
+ChatView :: struct {
+  model: [1] ViewModel;
+  list: [1] VList; a: [VIEW_ROWS] VRow; b: [VIEW_ROWS] VRow; made: bool;
+  doc: [1] MdDoc;
+  msg: [1] CtMessage; text: [VIEW_MESSAGE_TEXT] u8;
+  m_under: [VIEW_M_UNDER] Prim; m_over: [VIEW_M_OVER] Prim; m_lines: [VIEW_M_LINES] SheetLine; m_hits: [VIEW_M_HITS] SheetHit; m_pool: [VIEW_M_POOL] u8;
+  copy: [VIEW_COPY_BYTES] u8; copy_n: int;
+  copied: [EL_ID] u8; copied_n: int; copied_block: int;   // the code block copied last ("": none)
+  viewport: f32;
+}
+
+view_init :: (v: [] ChatView) {
+  if v[0].made { return; }
+  v[0].list[0] = vlist_over(v[0].a[..], v[0].b[..], VIEW_ESTIMATE);
+  v[0].copied_block = -1; v[0].made = true;
+}
+
+// ---------------------------------------------------------------- text
+
+// Copies every run of text painted since `from` into the sheet's pool.
+view_keep :: (sh: [] Sheet, from: int) {
+  for i: from..<sh[0].no { if sh[0].over[i].kind == PRIM_TEXT { sh[0].over[i].text = sheet_pool(sh, sh[0].over[i].text); } }
+}
+// A saved message's text, decoded into the page's buffer ("" when it does not read).
+view_saved_text :: (v: [] ChatView, d: [] DurableChat, index: int) -> string {
+  if !ctr_history_message(d[0].history[..], index, v[0].msg[..], v[0].text[..]) { return ""; }
+  return cast(string) v[0].text[0..<v[0].msg[0].bytes];
+}
+// Parses Markdown into the page's one document. Returns its blocks.
+view_parse :: (v: [] ChatView, source: string) -> int {
+  doc := v[0].doc[..];
+  doc[0].n = 0; doc[0].nb = 0; doc[0].nr = 0; doc[0].ni = 0; doc[0].nlink = 0; doc[0].keep_rules = false;
+  return md_parse(doc, source, 0);
+}
+
+// ---------------------------------------------------------------- the task's records
+
+view_engine :: (engine: string) -> string {
+  return ifx engine == "codex" then "Codex" else ifx engine == "claude" || engine == "claude_code" || engine == "claude-code" then "Claude Code" else engine;
+}
+view_app_task :: (d: [] DurableChat, f: ViewFacts) -> AppTask {
+  n := d[0].native[..]; st := n[0].status[0]; b := n[0].b[0];
+  t: AppTask;
+  t.computer = cast(string) n[0].host_label[0..<n[0].host_label_n];
+  t.engine = view_engine(b.engine); t.model = b.model; t.effort = b.effort;
+  t.state = ifx st.state >= XT_QUEUED && st.state <= XT_UNKNOWN then st.state else APP_TASK_UNKNOWN;   // XT_* and APP_TASK_* are the protocol's order
+  t.stopping = st.stop || f.stop == VIEW_STOP_ASKED || f.stop == VIEW_STOP_SEEN;
+  t.detail = view_task_error(st.error);
+  return t;
+}
+// A task's error in words: never the protocol's code.
+view_task_error :: (code: string) -> string {
+  if code.count == 0 { return ""; }
+  return ifx code == "login_required" then "The computer needs you to log in to its engine."
+    else ifx code == "engine_unavailable" || code == "engine_lost" then "The engine stopped answering."
+    else ifx code == "model_unavailable" then "The model is not available."
+    else ifx code == "expired" then "It ran out of time."
+    else ifx code == "route_refused" then "No computer could take it."
+    else ifx code == "resident_restarted" then "The computer restarted."
+    else "Something went wrong on the computer.";
+}
+view_tool_title :: (p: SPart) -> string {
+  k := p.tk;
+  return ifx k == TK_EXEC then "Ran a command" else ifx k == TK_READ then "Read" else ifx k == TK_EDIT then "Edited" else ifx k == TK_WRITE then "Wrote"
+    else ifx k == TK_SEARCH then "Searched" else ifx k == TK_GLOB then "Found files" else ifx k == TK_FETCH then "Fetched" else ifx k == TK_WEB then "Searched the web"
+    else ifx k == TK_TODO then "Updated the plan" else ifx k == TK_AGENT then "Asked an agent" else ifx p.name.count > 0 then p.name else "Used a tool";
+}
+view_app_tool :: (s: [] Session, k: int, ended: bool) -> AppTool {
+  p := s[0].parts[k];
+  t := AppTool.{icon = -1, title = view_tool_title(p), arg = ifx p.arg.count > 0 then p.arg else p.detail, input = p.input, output = p.output};
+  t.state = ifx p.failed then APP_TOOL_FAILED else ifx p.resolved || ended then APP_TOOL_DONE else ifx k == s[0].asking then APP_TOOL_PENDING else APP_TOOL_RUNNING;
+  return t;
+}
+view_app_permission :: (s: [] Session, k: int, f: ViewFacts, has: bool) -> AppPermission {
+  p: AppPermission;
+  p.title = "Allow this?"; p.detail = "";
+  if has && k >= 0 && k < s[0].n {
+    part := s[0].parts[k];
+    p.title = ifx part.tk == TK_EXEC then "Run this command?" else ifx part.tk == TK_EDIT || part.tk == TK_WRITE then "Change this file?" else ifx part.tk == TK_READ then "Read this file?" else "Allow this?";
+    p.detail = ifx part.arg.count > 0 then part.arg else part.detail;
+  }
+  p.state = ifx f.permit == VIEW_PERMIT_SENT then APP_PERMISSION_SENDING else ifx f.permit == VIEW_PERMIT_UNCERTAIN then APP_PERMISSION_UNCERTAIN else APP_PERMISSION_HELD;
+  p.allow = f.allowing; p.can_allow = f.permit == VIEW_PERMIT_READY;
+  return p;
+}
+view_app_result :: (s: [] Session) -> AppTaskResult {
+  r := AppTaskResult.{seconds = s[0].turn_ms / 1000, cents = ifx s[0].cost > 0 then cast(int) (s[0].cost * 100 + 0.5) else -1};
+  for k: 0..<s[0].n { if s[0].parts[k].kind == P_TOOL { r.tools += 1; if s[0].parts[k].failed { r.failed += 1; } } }
+  return r;
+}
+
+// ---------------------------------------------------------------- one row
+
+// Whether a tool row is open, read without marking it seen (for measuring).
+view_open_now :: (keyed: [] KeyedStore, id: string) -> bool {
+  k := keyed_find(keyed, id);
+  return k >= 0 && keyed_slot(keyed, k, APP_TOOL_OPEN) > 0;
+}
+// Paints row i of the model at (x, y), w wide, and returns its height with the gap under it.
+// `open` is whether a tool row starts open (measuring passes what the person set).
+view_row :: (f: [] UiFrame, v: [] ChatView, d: [] DurableChat, facts: ViewFacts, i: int, x: f32, y: f32, w: f32, open: bool) -> f32 {
+  vm := v[0].model[..]; r := vm[0].rows[i]; id := view_row_id(vm, i);
+  s := f[0].skin; sh := f[0].sheet; n := d[0].native[..]; ses := n[0].shown[..];
+  from := sh[0].no; h: f32 = 0; gap := s.app.gap * 2;
+  if r.kind == VK_MESSAGE || r.kind == VK_SENT || r.kind == VK_REPLY {
+    text := ifx r.kind == VK_MESSAGE then view_saved_text(v, d, r.index) else ifx r.kind == VK_SENT then cast(string) d[0].submitted[0..<d[0].submitted_n] else ct_view_text(d[0].view[..]);
+    agent := r.kind == VK_REPLY || (r.kind == VK_MESSAGE && r.assistant);
+    if agent {
+      blocks := view_parse(v, text);
+      copied := ifx v[0].copied_n > 0 && cast(string) v[0].copied[0..<v[0].copied_n] == id then v[0].copied_block else -1;
+      h = app_message_agent(f, id, x, y, w, v[0].doc[..], blocks, copied, VIEW_A_COPY);
+    } else { h = app_message_user(f, id, x, y, w, text); }
+  } else if r.kind == VK_TYPING { h = app_typing(f, id, x, y, VIEW_TYPING_LABEL); }
+  else if r.kind == VK_TASK_HEAD { h = app_task_header(f, id, x, y, w, view_app_task(d, facts)); gap = s.app.gap; }
+  else if r.kind == VK_TOOL { h = app_tool(f, id, x, y, w, view_app_tool(ses, r.index, xt_terminal(n[0].status[0].state)), open, VIEW_A_TOOL); gap = s.app.gap; }
+  else if r.kind == VK_PERMISSION { h = app_permission(f, id, x, y, w, view_app_permission(ses, r.index, facts, n[0].has_session), VIEW_A_ALLOW, VIEW_A_DENY); gap = s.app.gap; }
+  else if r.kind == VK_TASK_STATE { h = app_task_state(f, id, x, y, w, view_app_task(d, facts)); gap = s.app.gap; }
+  else if r.kind == VK_TASK_RESULT { h = app_task_result(f, id, x, y, w, view_app_result(ses)); }
+  else if r.kind == VK_NOTICE {
+    if r.act == VIEW_DO_RETRY { h = app_retry(f, id, x, y, w, r.text, "Try again", 0, VIEW_A_RETRY); }
+    else if r.act == VIEW_DO_RECONNECT { h = app_retry(f, id, x, y, w, r.text, "Reconnect", 0, VIEW_A_RECONNECT); }
+    else if r.text == VIEW_W_STOPPED { h = app_meta(f, id, x, y, w, r.text, false); }
+    else { h = app_notice(f, id, x, y, w, r.text, APP_NOTICE_ERROR); }
+  }
+  view_keep(sh, from);
+  return h + gap;
+}
+
+// A row's height, laid out on the page's measuring sheet: nothing is recorded and nothing is kept.
+view_measure :: (f: [] UiFrame, v: [] ChatView, d: [] DurableChat, facts: ViewFacts, i: int, w: f32) -> f32 {
+  sh := [1] Sheet.[Sheet.{under = v[0].m_under[..], over = v[0].m_over[..], lines = v[0].m_lines[..], hits = v[0].m_hits[..], pool = v[0].m_pool[..]}];
+  mf := [1] UiFrame.[uiframe_over(sh[..], f[0].m, f[0].skin)];
+  mf[0].clock = f[0].clock; mf[0].reduced_motion = true;
+  return view_row(mf[..], v, d, facts, i, 0, 0, w, view_open_now(f[0].keyed, view_row_id(v[0].model[..], i)));
+}
+
+// ---------------------------------------------------------------- the page
+
+view_composer_state :: (d: [] DurableChat, facts: ViewFacts) -> int {
+  if facts.send == VIEW_SEND_STOP { return APP_COMPOSER_RUNNING; }
+  if d[0].pending == 1 && !d[0].uncertain { return APP_COMPOSER_SENDING; }
+  return APP_COMPOSER_READY;
+}
+
+// One frame of the chat page.
+view_page :: (f: [] UiFrame, v: [] ChatView, c: [] AppCore, lay: ViewLayout) -> ViewOut {
+  view_init(v);
+  s := f[0].skin; a := s.app; d := view_chat_of(c); l := v[0].list[..]; vm := v[0].model[..];
+  facts := view_facts(c);
+  view_build(vm, d, facts);
+  out: ViewOut;
+  // the composer docks at the bottom, the chip slot over it
+  look := AppComposer.{placeholder = VIEW_PLACEHOLDER, text = view_draft_of(c), state = view_composer_state(d, facts), editing = lay.editing, editor_h = lay.editor_h, unit = lay.unit};
+  pad := a.gap * 2;
+  out.composer = app_composer(f, VIEW_COMPOSER_ID, VIEW_SEND_ID, lay.x + pad, lay.bottom, lay.w - 2 * pad, look, VIEW_A_FIELD, VIEW_A_SEND);
+  out.composer_y = lay.bottom - out.composer.height;
+  out.chips_x = lay.x + pad; out.chips_w = lay.w - 2 * pad;
+  out.chips_y = out.composer_y - (ifx lay.chips_h > 0 then lay.chips_h + a.gap else 0.0f32);
+  // the transcript fills what is left
+  top := lay.top; bottom := out.chips_y - a.gap;
+  viewport := ifx bottom > top then bottom - top else 0.0f32;
+  cx := lay.x + pad; cw := lay.w - 2 * pad;
+  if v[0].viewport > 0 && viewport != v[0].viewport { vlist_viewport(l, viewport); }
+  v[0].viewport = viewport;
+  vlist_begin(l);
+  for i: 0..<vm[0].n { _ := vlist_row(l, view_row_id(vm, i), vm[0].rows[i].stamp); }
+  vlist_place(l, viewport, VIEW_OVERSCAN);
+  guard := 0;
+  while guard < VIEW_ROWS {
+    i := vlist_need(l);
+    if i < 0 { break; }
+    vlist_measured(l, i, view_measure(f, v, d, facts, i, cw));
+    vlist_place(l, viewport, VIEW_OVERSCAN);
+    guard += 1;
+  }
+  uiframe_clip(f, lay.x, top, lay.x + lay.w, bottom);
+  for i: l[0].first..<l[0].last {
+    y := top + vlist_y(l, i);
+    h := view_row(f, v, d, facts, i, cx, y, cw, false);
+    if h != vlist_height(l, i) { vlist_measured(l, i, h); out.again = true; }
+  }
+  if vm[0].empty { _ := app_empty(f, "chat.empty", cx, top + (viewport - s.title.line) / 2, cw, -1, VIEW_EMPTY_TITLE, ""); }
+  uiframe_unclip(f);
+  vlist_settle(l, VIEW_SLACK);
+  if vm[0].rejoining { _ := app_banner(f, "chat.banner", cx, top + a.gap, cw, APP_BANNER_RECONNECTING, 0); }
+  if !l[0].follow && l[0].content > viewport { _ := app_jump(f, "chat.jump", lay.x + lay.w / 2, bottom - a.icon_button - a.gap, "Jump to latest", 0, VIEW_A_JUMP); }
+  return out;
+}
+
+// A scroll by dy layout units (positive: toward the latest message).
+view_scroll :: (v: [] ChatView, dy: f32) { view_init(v); vlist_scroll(v[0].list[..], dy); }
+
+// ---------------------------------------------------------------- presses
+
+// The model row whose id is `pressed` or the start of it (a tool row's pager, a message's code block).
+view_owner :: (vm: [] ViewModel, pressed: string, kind: int) -> int {
+  for i: 0..<vm[0].n {
+    if vm[0].rows[i].kind != kind { continue; }
+    id := view_row_id(vm, i);
+    if pressed.count >= id.count && cast(string) pressed[0..<id.count] == id && (pressed.count == id.count || pressed[id.count] == '.') { return i; }
+  }
+  return -1;
+}
+// The code block a Copy id names ("chat.reply.code.3.copy": 3), or -1.
+view_code_block :: (id: string) -> int {
+  mark := ".code.";
+  for at: 0..<id.count {
+    if at + mark.count > id.count || cast(string) id[at..<at + mark.count] != mark { continue; }
+    k := at + mark.count; n := 0; digits := 0;
+    while k < id.count && id[k] >= '0' && id[k] <= '9' { n = n * 10 + cast(int) (id[k] - '0'); k += 1; digits += 1; }
+    if digits > 0 { return n; }
+  }
+  return -1;
+}
+// A press on the committed row `pressed` whose action is `action`. `keyed` is the
+// frame's keyed store (a tool row keeps what is open there).
+view_press :: (v: [] ChatView, c: [] AppCore, keyed: [] KeyedStore, pressed: string, action: int) -> ViewPress {
+  view_init(v);
+  vm := v[0].model[..]; facts := view_facts(c);
+  if action == VIEW_A_FIELD { return ViewPress.{kind = VIEW_P_FOCUS}; }
+  if action == VIEW_A_SEND { return ViewPress.{kind = VIEW_P_DISPATCH, what = ifx facts.send == VIEW_SEND_STOP then VIEW_C_STOP else VIEW_C_SEND}; }
+  // an answer whose outcome is unknown is sent again as it was
+  if action == VIEW_A_ALLOW || action == VIEW_A_DENY {
+    what := ifx facts.permit == VIEW_PERMIT_UNCERTAIN then VIEW_C_RETRY else ifx action == VIEW_A_ALLOW then VIEW_C_ALLOW else VIEW_C_DENY;
+    return ViewPress.{kind = VIEW_P_DISPATCH, what = what};
+  }
+  if action == VIEW_A_RETRY { return ViewPress.{kind = VIEW_P_DISPATCH, what = VIEW_C_RETRY}; }
+  if action == VIEW_A_RECONNECT { return ViewPress.{kind = VIEW_P_DISPATCH, what = VIEW_C_RECONNECT}; }
+  if action == VIEW_A_JUMP { vlist_jump(v[0].list[..]); return ViewPress.{kind = VIEW_P_LOCAL}; }
+  if action == VIEW_A_TOOL {
+    i := view_owner(vm, pressed, VK_TOOL);
+    if i < 0 { return ViewPress.{}; }
+    id := view_row_id(vm, i);
+    vlist_pin(v[0].list[..], id);   // it stays where it is while it opens
+    return ViewPress.{kind = ifx app_tool_press(keyed, id, pressed) then VIEW_P_LOCAL else VIEW_P_NONE};
+  }
+  if action == VIEW_A_COPY {
+    i := view_owner(vm, pressed, VK_MESSAGE); if i < 0 { i = view_owner(vm, pressed, VK_REPLY); }
+    b := view_code_block(pressed);
+    if i < 0 || b < 0 { return ViewPress.{}; }
+    d := view_chat_of(c); r := vm[0].rows[i];
+    text := ifx r.kind == VK_MESSAGE then view_saved_text(v, d, r.index) else ct_view_text(d[0].view[..]);
+    blocks := view_parse(v, text);
+    if b >= blocks || v[0].doc[0].blocks[b].kind != MB_CODE { return ViewPress.{}; }
+    v[0].copy_n = el_put(v[0].copy[..], 0, md_block_text(v[0].doc[..], b));
+    v[0].copied_n = el_copy(v[0].copied[..], view_row_id(vm, i)); v[0].copied_block = b;
+    return ViewPress.{kind = VIEW_P_DISPATCH, what = VIEW_C_COPY, text = cast(string) v[0].copy[0..<v[0].copy_n]};
+  }
+  return ViewPress.{};
+}
+
+#load "page-checks.coax" #test;

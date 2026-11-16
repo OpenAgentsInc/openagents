@@ -1,0 +1,41 @@
+// The one place the chat page names the app core (apps/shared/app/README.md;
+// GitHub #13645). Everything else in view/ reads the core through these
+// procedures, so a rename in core/ costs one edit here.
+//
+// view_facts turns the core's answers about Send, Stop and a permission
+// prompt into the model's numbers. view_code turns a press on the page into
+// the core action it asks for. The page never writes the core: the root
+// dispatches the event view_press returns (page.coax).
+//   coax/bin/coax test apps/shared/app/view/page.coax
+
+#load "../core/core.coax";
+#load "model.coax";
+
+view_chat_of :: (c: [] AppCore) -> [] DurableChat { return app_chat(c); }
+view_draft_of :: (c: [] AppCore) -> string { return app_draft(c); }
+
+view_facts :: (c: [] AppCore) -> ViewFacts {
+  send := app_send_state(c); stop := app_stop_state(c); permit := app_permission_state(c);
+  f: ViewFacts;
+  f.send = ifx send == SEND_EMPTY then VIEW_SEND_EMPTY else ifx send == SEND_LOGIN then VIEW_SEND_LOGIN else ifx send == SEND_WAIT then VIEW_SEND_WAIT else ifx send == SEND_STOP then VIEW_SEND_STOP else VIEW_SEND_READY;
+  f.stop = ifx stop == STOP_READY then VIEW_STOP_READY else ifx stop == STOP_ASKED then VIEW_STOP_ASKED else ifx stop == STOP_UNCERTAIN then VIEW_STOP_UNCERTAIN else ifx stop == STOP_SEEN then VIEW_STOP_SEEN else VIEW_STOP_NONE;
+  f.permit = ifx permit == PERMIT_READING then VIEW_PERMIT_READING else ifx permit == PERMIT_READY then VIEW_PERMIT_READY else ifx permit == PERMIT_SENT then VIEW_PERMIT_SENT else ifx permit == PERMIT_UNCERTAIN then VIEW_PERMIT_UNCERTAIN else VIEW_PERMIT_NONE;
+  f.allowing = app_task(c)[0].verb == "approve";
+  f.note = app_note(c);
+  return f;
+}
+
+// What a press asks the core for. VIEW_C_* are the page's own words for it.
+VIEW_C_SEND :: 1; VIEW_C_STOP :: 2; VIEW_C_ALLOW :: 3; VIEW_C_DENY :: 4; VIEW_C_RETRY :: 5; VIEW_C_RECONNECT :: 6; VIEW_C_COPY :: 7; VIEW_C_LINK :: 8;
+view_code :: (what: int) -> int {
+  return ifx what == VIEW_C_SEND then ACT_SEND else ifx what == VIEW_C_STOP then ACT_STOP else ifx what == VIEW_C_ALLOW then ACT_ALLOW
+    else ifx what == VIEW_C_DENY then ACT_DENY else ifx what == VIEW_C_RETRY then ACT_RETRY else ifx what == VIEW_C_RECONNECT then ACT_RECONNECT
+    else ifx what == VIEW_C_COPY then ACT_COPY else ifx what == VIEW_C_LINK then ACT_LINK else 0;
+}
+// The event for the core: the action and its text, with the host's clock facts.
+view_app_event :: (what: int, text: string, mono_ms: int, wall_ms: int) -> AppEvent {
+  return AppEvent.{kind = EV_ACTION, code = view_code(what), text = text, mono_ms = mono_ms, wall_ms = wall_ms};
+}
+view_dispatch :: (c: [] AppCore, what: int, text: string, mono_ms: int, wall_ms: int) -> int { return app_dispatch(c, view_app_event(what, text, mono_ms, wall_ms)); }
+// The surfaces the page draws, taken from the core's dirty set.
+view_dirty_take :: (c: [] AppCore) -> int { return app_dirty_take(c, SURF_TRANSCRIPT | SURF_COMPOSER | SURF_TASK | SURF_NOTE); }

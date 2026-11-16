@@ -110,7 +110,11 @@ view_saved_id :: (out: [] u8, msg: [] CtMessage) -> int {
     n := el_put(out, 0, "m."); n = el_put(out, n, view_tail(cast(string) m[0].turn[0..<m[0].turn_n], VIEW_TURN_TAIL));
     return el_put(out, n, ifx m[0].assistant then ".a" else ".u");
   }
-  n := el_put(out, 0, "m."); return el_put(out, n, view_tail(cast(string) m[0].id[0..<m[0].id_n], EL_ID - 8));
+  // "<conversation>.legacy.<N>" (ctr_message_read admits no other form)
+  id := cast(string) m[0].id[0..<m[0].id_n]; mark := ".legacy.";
+  rest := id;
+  for at: 0..<id.count { if at + mark.count <= id.count && cast(string) id[at..<at + mark.count] == mark { rest = cast(string) id[at + mark.count..<id.count]; break; } }
+  n := el_put(out, 0, "m.legacy."); return el_put(out, n, view_tail(rest, VIEW_TURN_TAIL));
 }
 // The id of a turn's task row: "task.<turn>.<part>".
 view_task_id :: (out: [] u8, turn: string, part: string) -> int {
