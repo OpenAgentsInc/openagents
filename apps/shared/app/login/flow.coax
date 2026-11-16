@@ -1,0 +1,645 @@
+// The app's login flow, as state with no effects (GitHub #13645): email, then
+// the code from the email. It runs over the auth service in service.coax and
+// keeps the shared login rules: what an email and a code must be, the words
+// for each, and the states come from apps/shared/app-login-flow.coax and
+// app-login.coax. No token, pending handle or key is here.
+//
+//   l: [1] LoginFlow; lf_begin(l[..]);              // asks the host whether it holds a login
+//   q: [1] LoginRequest;
+//   while lf_take(l[..], q[..]) { ... the outbox sends q[0] ... }
+//   _ := lf_result(l[..], result);                  // a completion, as a later action
+//
+// In the app, bridge.coax does the last two lines over the shared app core's
+// outbox, and card.coax draws the card. The names are lf_ and LF_ so the flow
+// loads beside the core (its LOGIN_ steps) and the login screen
+// (apps/shared/login/screen.coax, its login_ host calls). The typed email
+// survives a relaunch (lf_draft, lf_restore).
+//
+// The steps (lf_step): the session is being read, logged out, an email is
+// typed, the code is requested, the code step, verifying, checking, logged in.
+//
+// What needs an account asks first:
+//
+//   if lf_need(l[..], INTENT_SEND, 0) == LF_GO { ... send ... }
+//
+// While logged out that opens the card and keeps the intent. The composer's
+// draft is the composer's: nothing here reads or clears it. After the login
+// the intent is offered (lf_offer), never run: the person presses Send
+// again. Cancel drops the intent and keeps the draft.
+//
+// Every request carries an operation ID and the owner generation. Cancel,
+// logout and a login each start a new generation, so an answer that arrives
+// after one names an old generation and is dropped (lf_result returns
+// false and counts it). A cancel or logout that may leave a login behind
+// (a verify in flight, or one whose outcome is unknown) also asks the host to
+// forget it. An unknown outcome is shown as unknown; nothing is sent again
+// until the person presses.
+//
+// A failure shows the service's own words: a limit on codes ("Too many codes
+// for this address. Try again ..."), a wrong code with the tries left, a code
+// that has ended. The flow adds no limit of its own to a resend.
+//   coax/bin/coax test apps/shared/app/login/flow.coax
+
+#load "../../app-login-flow.coax";
+#load "service.coax";
+
+LF_EMAIL_MAX :: LS_TEXT; LF_CODE_MAX :: 32; LF_QUEUE :: 3;
+// The steps, as lf_step gives them.
+LF_READING :: 0; LF_OUT :: 1; LF_EMAIL :: 2; LF_REQUESTING :: 3; LF_CODE :: 4; LF_VERIFYING :: 5; LF_CHECKING :: 6; LF_IN :: 7;
+// What lf_need answers.
+LF_GO :: 0; LF_ASKED :: 1; LF_WAIT :: 2;
+// The card's fields and what a press on one of its parts does.
+LF_FIELD_NONE :: 0; LF_FIELD_EMAIL :: 1; LF_FIELD_CODE :: 2;
+LF_ACT_EMAIL :: 1; LF_ACT_CODE :: 2; LF_ACT_SEND :: 3; LF_ACT_VERIFY :: 4; LF_ACT_RESEND :: 5; LF_ACT_CHANGE :: 6; LF_ACT_CANCEL :: 7;
+// The flow's own words. The rest are the shared rules' and the service's.
+LF_RESENT :: "We sent a new 6-digit code to your email. Type it here.";
+LF_UNKNOWN_START :: "We don't know if the code went out. Send it again when ready.";
+LF_UNKNOWN_VERIFY :: "We don't know if that worked. Check again when you're online.";
+LF_NOT_YET :: "Not logged in yet. Type the code again, or ask for a new one.";
+LF_UNREAD :: "We couldn't read your login on this device. Log in again.";
+// Each is under 64 bytes, the most a semantic row's label holds (components/core/elements.coax EL_LABEL).
+// A kept draft: this line, then the typed email.
+LF_DRAFT_TAG :: "login-draft 1\n"; LF_DRAFT_MAX :: 14 + LF_EMAIL_MAX;
+
+LoginFlow :: struct {
+  state: int;                       // ALF_OUT, ALF_CODE, ALF_IN (app-login-flow.coax)
+  known: bool;                      // the host has said whether it holds a login
+  open: bool;                       // the card is shown
+  want_open: bool;                  // the card opens once the session is read, if that says logged out
+  generation: int; next_op: int;
+  wait_op: int; wait_kind: int;     // the request whose answer the flow waits for (0: none)
+  logout_op: int;                   // the last logout: its answer changes nothing
+  unknown: int;                     // the kind of request whose outcome is not known (0: none)
+  resend: bool;                     // the code request in flight is a resend
+  email: [LF_EMAIL_MAX] u8; email_n: int;
+  code: [LF_CODE_MAX] u8; code_n: int;
+  words: [ALF_WORDS] u8; words_n: int; failure: bool;
+  who: [ALF_WHO] u8; who_n: int;
+  focus: int;                       // the field that holds the keyboard (LF_FIELD_*)
+  intent: int; intent_arg: int;     // what asked for the login, kept while the card is open
+  offer: int; offer_arg: int;       // the intent after the login: offered, never run
+  queue: [LF_QUEUE] LoginRequest; queue_n: int;
+  dropped: int;                     // late answers dropped
+  draft_rev: int;                   // counts changes to what lf_draft keeps
+}
+
+// ---- reads, for the card and for the rest of the app
+
+lf_logged_in :: (l: [] LoginFlow) -> bool { return l[0].state == ALF_IN; }
+// Whether the host has said yet. Until it has, lf_logged_in is false and means "not known".
+lf_known :: (l: [] LoginFlow) -> bool { return l[0].known; }
+// The account's display identity while logged in ("" otherwise): the masked email.
+lf_who :: (l: [] LoginFlow) -> string { return cast(string) l[0].who[0..<l[0].who_n]; }
+// The owner generation: it changes on each login, logout and cancel.
+lf_generation :: (l: [] LoginFlow) -> int { return l[0].generation; }
+lf_email :: (l: [] LoginFlow) -> string { return cast(string) l[0].email[0..<l[0].email_n]; }
+lf_code :: (l: [] LoginFlow) -> string { return cast(string) l[0].code[0..<l[0].code_n]; }
+lf_words :: (l: [] LoginFlow) -> string { return cast(string) l[0].words[0..<l[0].words_n]; }
+lf_busy :: (l: [] LoginFlow) -> bool { return l[0].wait_op != 0; }
+// The intent offered after a login (0: none) and its argument; the app clears it when the person acts on it or moves on.
+lf_offer :: (l: [] LoginFlow) -> int { return l[0].offer; }
+lf_offer_arg :: (l: [] LoginFlow) -> int { return l[0].offer_arg; }
+lf_offer_clear :: (l: [] LoginFlow) { l[0].offer = 0; l[0].offer_arg = 0; }
+
+// Whether the typed email can be sent a code: the shared rule (al_email_start_body).
+lf_email_ok :: (l: [] LoginFlow) -> bool {
+  body: [ALF_BODY] u8;
+  return al_email_start_body(lf_email(l), body[..]) >= 0;
+}
+lf_step :: (l: [] LoginFlow) -> int {
+  if !l[0].known { return LF_READING; }
+  if l[0].state == ALF_IN { return LF_IN; }
+  if l[0].wait_kind == LS_START { return LF_REQUESTING; }
+  if l[0].wait_kind == LS_VERIFY { return LF_VERIFYING; }
+  if l[0].wait_kind == LS_SESSION { return LF_CHECKING; }
+  if l[0].state == ALF_CODE { return LF_CODE; }
+  return ifx lf_email_ok(l) then LF_EMAIL else LF_OUT;
+}
+
+// ---- inside
+
+lf_say :: (l: [] LoginFlow, words: string, failure: bool) {
+  l[0].words_n = ls_put(l[0].words[..], words);
+  l[0].failure = failure && l[0].words_n > 0;
+}
+// A request onto the queue: its operation ID, or 0 when it did not fit.
+lf_push :: (l: [] LoginFlow, kind: int, text: string) -> int {
+  if l[0].queue_n >= LF_QUEUE || text.count > LS_TEXT { return 0; }
+  l[0].next_op += 1;
+  q: LoginRequest; q.op = l[0].next_op; q.generation = l[0].generation; q.kind = kind;
+  for i: 0..<text.count { q.text[i] = text[i]; }
+  q.text_n = text.count;
+  l[0].queue[l[0].queue_n] = q; l[0].queue_n += 1;
+  return q.op;
+}
+// A request the flow waits on.
+lf_ask :: (l: [] LoginFlow, kind: int, text: string) -> bool {
+  op := lf_push(l, kind, text);
+  if op == 0 { lf_say(l, AL_FALLBACK, true); return false; }
+  l[0].wait_op = op; l[0].wait_kind = kind; l[0].unknown = 0;
+  return true;
+}
+// A new generation: nothing is waited for, and requests not yet taken are withdrawn (a logout
+// stays). forget: the host is asked to forget a login the old generation may have left.
+lf_fence :: (l: [] LoginFlow, forget: bool) {
+  l[0].generation += 1; l[0].wait_op = 0; l[0].wait_kind = 0; l[0].unknown = 0;
+  kept := 0; has_logout := false;
+  for i: 0..<l[0].queue_n {
+    if l[0].queue[i].kind != LS_LOGOUT || has_logout { continue; }
+    l[0].queue[kept] = l[0].queue[i]; kept += 1; has_logout = true;
+  }
+  l[0].queue_n = kept;
+  if forget && !has_logout { l[0].logout_op = lf_push(l, LS_LOGOUT, ""); }
+}
+lf_show :: (l: [] LoginFlow) {
+  if l[0].open { return; }
+  l[0].open = true; l[0].want_open = false;
+  l[0].focus = ifx l[0].state == ALF_CODE then LF_FIELD_CODE else LF_FIELD_EMAIL;
+}
+// Logged in: the card closes, what was typed goes, and the kept intent is offered.
+lf_in :: (l: [] LoginFlow, who: string) {
+  l[0].generation += 1;
+  l[0].state = ALF_IN; l[0].known = true; l[0].open = false; l[0].want_open = false; l[0].focus = LF_FIELD_NONE;
+  l[0].who_n = ls_put(l[0].who[..], who);
+  l[0].email_n = 0; l[0].code_n = 0; l[0].unknown = 0; lf_say(l, "", false); l[0].draft_rev += 1;
+  l[0].offer = l[0].intent; l[0].offer_arg = l[0].intent_arg; l[0].intent = 0; l[0].intent_arg = 0;
+}
+// A refusal: the service's words; when it gave none, the shared fallback for its status (al_words).
+lf_refused :: (l: [] LoginFlow, r: [] LoginResult) {
+  if r[0].words_n > 0 { lf_say(l, cast(string) r[0].words[0..<r[0].words_n], true); return; }
+  w: [ALF_WORDS] u8; n := al_words(r[0].status, "", w[..]);
+  lf_say(l, ifx n > 0 then cast(string) w[0..<n] else AL_FALLBACK, true);
+}
+lf_start :: (l: [] LoginFlow, resend: bool) {
+  // the shared rule and its words for an email that can't be sent to (alf_email)
+  f: [1] AlFlow;
+  if !alf_email(f[..], lf_email(l)) { lf_say(l, alf_words(f[..]), true); l[0].focus = LF_FIELD_EMAIL; return; }
+  if resend { l[0].code_n = 0; }
+  lf_say(l, "", false); l[0].resend = resend;
+  _ := lf_ask(l, LS_START, al_trim(lf_email(l)));
+}
+lf_verify :: (l: [] LoginFlow) {
+  // the shared rule and its words for a code that isn't six digits (alf_code); the handle here is a stand-in
+  f: [1] AlFlow; f[0].state = ALF_CODE; f[0].pending[0] = 'p'; f[0].pending_n = 1;
+  if !alf_code(f[..], lf_code(l)) { lf_say(l, alf_words(f[..]), true); l[0].focus = LF_FIELD_CODE; return; }
+  d: [6] u8; n := 0;
+  for c: lf_code(l) { if c != ' ' && n < 6 { d[n] = c; n += 1; } }
+  lf_say(l, "", false);
+  _ := lf_ask(l, LS_VERIFY, cast(string) d[0..<n]);
+}
+// Whether the generation that is ending may leave a login on the host.
+lf_may_hold :: (l: [] LoginFlow) -> bool {
+  return l[0].state == ALF_IN || l[0].wait_kind == LS_VERIFY || l[0].unknown == LS_VERIFY || (l[0].wait_kind == LS_SESSION && l[0].known);
+}
+lf_cancel :: (l: [] LoginFlow) {
+  lf_fence(l, lf_may_hold(l));
+  l[0].open = false; l[0].want_open = false; l[0].focus = LF_FIELD_NONE;
+  if l[0].state == ALF_CODE { l[0].state = ALF_OUT; }
+  l[0].code_n = 0; lf_say(l, "", false);
+  l[0].intent = 0; l[0].intent_arg = 0;
+}
+
+// ---- what the app calls
+
+// At launch: ask the host whether it holds a login.
+lf_begin :: (l: [] LoginFlow) {
+  fresh: LoginFlow; l[0] = fresh;
+  _ := lf_ask(l, LS_SESSION, "");
+}
+// The next request for the outbox, oldest first; false when there is none.
+lf_take :: (l: [] LoginFlow, out: [] LoginRequest) -> bool {
+  if l[0].queue_n == 0 || out.count < 1 { return false; }
+  out[0] = l[0].queue[0];
+  for i: 1..<l[0].queue_n { l[0].queue[i - 1] = l[0].queue[i]; }
+  l[0].queue_n -= 1;
+  return true;
+}
+// An action that needs an account. LF_GO: logged in, go on. LF_ASKED: the card is open and
+// the intent is kept. LF_WAIT: the session is still being read; the intent is kept, and the
+// card opens if that says logged out. intent is the app's own number (not 0), arg its argument.
+lf_need :: (l: [] LoginFlow, intent: int, arg: int) -> int {
+  if l[0].state == ALF_IN { return LF_GO; }
+  l[0].intent = intent; l[0].intent_arg = arg; l[0].offer = 0; l[0].offer_arg = 0;
+  if !l[0].known {
+    l[0].want_open = true;
+    if l[0].wait_op == 0 { _ := lf_ask(l, LS_SESSION, ""); }
+    return LF_WAIT;
+  }
+  lf_show(l);
+  return LF_ASKED;
+}
+// "Log in" pressed somewhere: the card, with no intent.
+lf_open :: (l: [] LoginFlow) {
+  if l[0].state == ALF_IN { return; }
+  if !l[0].known { l[0].want_open = true; if l[0].wait_op == 0 { _ := lf_ask(l, LS_SESSION, ""); } return; }
+  lf_show(l);
+}
+// A press on a part of the card (LF_ACT_*). True when it did something.
+lf_press :: (l: [] LoginFlow, act: int) -> bool {
+  if !l[0].open { return false; }
+  busy := l[0].wait_op != 0;
+  if act == LF_ACT_CANCEL { lf_cancel(l); return true; }
+  if busy { return false; }
+  code_step := l[0].state == ALF_CODE;
+  if act == LF_ACT_EMAIL && !code_step { l[0].focus = LF_FIELD_EMAIL; return true; }
+  if act == LF_ACT_CODE && code_step { l[0].focus = LF_FIELD_CODE; return true; }
+  if (act == LF_ACT_SEND && !code_step) || (act == LF_ACT_RESEND && code_step && l[0].unknown != LS_VERIFY) { lf_start(l, code_step); return true; }
+  if act == LF_ACT_VERIFY && code_step {
+    // after an unknown outcome the press asks what the host holds; it does not send the code again
+    if l[0].unknown == LS_VERIFY { lf_say(l, "", false); _ := lf_ask(l, LS_SESSION, ""); return true; }
+    lf_verify(l); return true;
+  }
+  if act == LF_ACT_CHANGE && code_step {
+    if l[0].unknown == LS_VERIFY { lf_fence(l, true); }
+    l[0].state = ALF_OUT; l[0].code_n = 0; l[0].unknown = 0; lf_say(l, "", false); l[0].focus = LF_FIELD_EMAIL;
+    return true;
+  }
+  return false;
+}
+// Return in the editor: the step's action.
+lf_submit :: (l: [] LoginFlow) -> bool { return lf_press(l, ifx l[0].state == ALF_CODE then LF_ACT_VERIFY else LF_ACT_SEND); }
+// The whole value of a field after an edit in the platform editor. False when it is not taken
+// (the card is closed or busy, the field is not this step's, or the value is too long): the
+// editor then shows the flow's value again.
+lf_set :: (l: [] LoginFlow, field: int, text: string) -> bool {
+  if !l[0].open || l[0].wait_op != 0 { return false; }
+  if field == LF_FIELD_EMAIL && l[0].state != ALF_CODE && text.count <= LF_EMAIL_MAX {
+    if text != lf_email(l) {
+      // typing answers a failure: its notice goes
+      if l[0].failure || l[0].unknown == LS_START { lf_say(l, "", false); l[0].unknown = 0; }
+      for i: 0..<text.count { l[0].email[i] = text[i]; }
+      l[0].email_n = text.count; l[0].draft_rev += 1;
+    }
+    return true;
+  }
+  if field == LF_FIELD_CODE && l[0].state == ALF_CODE && text.count <= LF_CODE_MAX {
+    if text != lf_code(l) {
+      if l[0].failure && l[0].unknown == 0 { lf_say(l, "", false); }
+      for i: 0..<text.count { l[0].code[i] = text[i]; }
+      l[0].code_n = text.count;
+    }
+    return true;
+  }
+  return false;
+}
+// The platform says the keyboard went away.
+lf_blur :: (l: [] LoginFlow) { l[0].focus = LF_FIELD_NONE; }
+// "Log out": forgotten here at once, and the host is asked to forget and tell the server. True when a login ended.
+lf_logout :: (l: [] LoginFlow) -> bool {
+  was := l[0].state == ALF_IN;
+  lf_fence(l, lf_may_hold(l) || !l[0].known);
+  l[0].state = ALF_OUT; l[0].known = true; l[0].who_n = 0; l[0].email_n = 0; l[0].code_n = 0; lf_say(l, "", false); l[0].draft_rev += 1;
+  l[0].open = false; l[0].want_open = false; l[0].focus = LF_FIELD_NONE;
+  l[0].intent = 0; l[0].intent_arg = 0; l[0].offer = 0; l[0].offer_arg = 0;
+  return was;
+}
+// The service ended the login (another request was refused with 401, and the host forgot the
+// tokens): logged out here, with the service's words on the card when it next opens.
+lf_ended :: (l: [] LoginFlow, words: string) {
+  if l[0].state != ALF_IN { return; }
+  lf_fence(l, false);
+  l[0].state = ALF_OUT; l[0].who_n = 0; l[0].offer = 0; l[0].offer_arg = 0;
+  lf_say(l, words, true);
+}
+// A completion from the outbox. False: it is not the awaited answer (a late one after a cancel,
+// a logout or a login, or a logout's own) and it changed nothing.
+lf_result :: (l: [] LoginFlow, r: [] LoginResult) -> bool {
+  if r[0].op != 0 && r[0].op == l[0].logout_op { return false; }
+  if r[0].op == 0 || r[0].op != l[0].wait_op || r[0].generation != l[0].generation { l[0].dropped += 1; return false; }
+  kind := l[0].wait_kind; l[0].wait_op = 0; l[0].wait_kind = 0;
+  who := cast(string) r[0].who[0..<r[0].who_n];
+  first := kind == LS_SESSION && !l[0].known;
+  if first {
+    // the read at launch: anything but "logged in" is logged out
+    l[0].known = true;
+    if r[0].outcome == LS_DONE && r[0].logged_in { lf_in(l, who); return true; }
+    l[0].state = ALF_OUT;
+    if r[0].outcome != LS_DONE { lf_say(l, LF_UNREAD, true); }
+    if l[0].want_open { lf_show(l); }
+    return true;
+  }
+  if r[0].outcome == LS_UNKNOWN {
+    // shown as unknown; nothing is sent again until the person presses
+    l[0].unknown = ifx kind == LS_START then LS_START else LS_VERIFY;
+    lf_say(l, ifx kind == LS_START then LF_UNKNOWN_START else LF_UNKNOWN_VERIFY, true);
+    return true;
+  }
+  if kind == LS_SESSION {
+    // the check after an unknown outcome
+    if r[0].outcome == LS_DONE && r[0].logged_in { lf_in(l, who); return true; }
+    if r[0].outcome == LS_DONE { lf_say(l, LF_NOT_YET, true); } else { lf_refused(l, r); }
+    l[0].focus = LF_FIELD_CODE;
+    return true;
+  }
+  if kind == LS_START {
+    if r[0].outcome == LS_DONE {
+      l[0].state = ALF_CODE; l[0].code_n = 0; l[0].focus = LF_FIELD_CODE;
+      lf_say(l, ifx r[0].words_n > 0 then cast(string) r[0].words[0..<r[0].words_n] else ifx l[0].resend then LF_RESENT else ALF_SENT, false);
+      return true;
+    }
+    lf_refused(l, r);
+    l[0].focus = ifx l[0].state == ALF_CODE then LF_FIELD_CODE else LF_FIELD_EMAIL;
+    return true;
+  }
+  if kind == LS_VERIFY {
+    if r[0].outcome == LS_DONE && r[0].logged_in { lf_in(l, who); return true; }
+    // a wrong or ended code: the field is cleared for the next try
+    l[0].code_n = 0; lf_refused(l, r); l[0].focus = LF_FIELD_CODE;
+    return true;
+  }
+  return true;
+}
+
+// ---- the draft across a relaunch
+//
+// The typed email is kept while logged out, so a relaunch shows it again. The
+// code and the code step are not kept: the host's pending handle does not
+// survive a relaunch, so the person asks for a new code. The host stores the
+// bytes as they are (they hold no secret) and saves again when
+// lf_draft_rev changes.
+
+lf_draft_rev :: (l: [] LoginFlow) -> int { return l[0].draft_rev; }
+// The bytes to keep into out: their count, 0 for nothing to keep (logged in, nothing typed, or out too small).
+lf_draft :: (l: [] LoginFlow, out: [] u8) -> int {
+  t: string = LF_DRAFT_TAG; n := t.count + l[0].email_n;
+  if l[0].state == ALF_IN || l[0].email_n == 0 || out.count < n { return 0; }
+  for c, i: t { out[i] = c; }
+  for i: 0..<l[0].email_n { out[t.count + i] = l[0].email[i]; }
+  return n;
+}
+// After lf_begin, before the session read answers: put back kept bytes. False, and nothing
+// changed, when they are not a draft, the flow is logged in, or the person has typed already.
+lf_restore :: (l: [] LoginFlow, kept: string) -> bool {
+  t: string = LF_DRAFT_TAG;
+  if kept.count <= t.count || kept.count > LF_DRAFT_MAX || l[0].state == ALF_IN || l[0].email_n > 0 { return false; }
+  for c, i: t { if kept[i] != c { return false; } }
+  for i: t.count..<kept.count { if kept[i] == '\n' { return false; } }
+  for i: t.count..<kept.count { l[0].email[i - t.count] = kept[i]; }
+  l[0].email_n = kept.count - t.count;
+  return true;
+}
+
+// ---------------------------------------------------------------- checks
+
+// The next request, which must be of a kind; and an answer to it.
+lf_t_take :: (l: [] LoginFlow, kind: int) -> LoginRequest {
+  q: [1] LoginRequest;
+  if !lf_take(l, q[..]) || q[0].kind != kind { none: LoginRequest; return none; }
+  return q[0];
+}
+lf_t_answer :: (l: [] LoginFlow, q: LoginRequest, outcome: int, status: int, logged_in: bool, words: string, who: string) -> bool {
+  r := [1] LoginResult.[ls_result(q, outcome, status, logged_in, words, who)];
+  return lf_result(l, r[..]);
+}
+// A flow whose session read said logged out.
+lf_t_out :: (l: [] LoginFlow) {
+  lf_begin(l);
+  q := lf_t_take(l, LS_SESSION);
+  _ := lf_t_answer(l, q, LS_DONE, 200, false, "", "");
+}
+LF_T_SEND :: 41;   // an app's intent number
+
+#test "every step in order: reading, out, email typed, code requested, the code, verifying, in" {
+  l: [1] LoginFlow; lf_begin(l[..]);
+  #assert lf_step(l[..]) == LF_READING && !lf_known(l[..]) && !lf_logged_in(l[..]) && lf_busy(l[..]);
+  q := lf_t_take(l[..], LS_SESSION);
+  #assert q.op == 1 && q.generation == 0 && q.text_n == 0 && lf_t_answer(l[..], q, LS_DONE, 200, false, "", "");
+  #assert lf_step(l[..]) == LF_OUT && lf_known(l[..]) && !l[0].open && !lf_busy(l[..]);
+  lf_open(l[..]);
+  #assert l[0].open && l[0].focus == LF_FIELD_EMAIL && lf_step(l[..]) == LF_OUT;
+  #assert lf_set(l[..], LF_FIELD_EMAIL, " ada@example.com ") && lf_step(l[..]) == LF_EMAIL && !lf_set(l[..], LF_FIELD_CODE, "1");
+  #assert lf_press(l[..], LF_ACT_SEND) && lf_step(l[..]) == LF_REQUESTING && lf_busy(l[..]);
+  q = lf_t_take(l[..], LS_START);
+  #assert q.op == 2 && q.generation == 0 && cast(string) q.text[0..<q.text_n] == "ada@example.com";
+  // pending: nothing but Cancel can be pressed, and an edit is not taken
+  #assert !lf_press(l[..], LF_ACT_SEND) && !lf_press(l[..], LF_ACT_EMAIL) && !lf_set(l[..], LF_FIELD_EMAIL, "x") && lf_email(l[..]) == " ada@example.com ";
+  empty: [1] LoginRequest; #assert !lf_take(l[..], empty[..]);
+  #assert lf_t_answer(l[..], q, LS_DONE, 200, false, "", "");
+  #assert lf_step(l[..]) == LF_CODE && l[0].state == ALF_CODE && lf_words(l[..]) == ALF_SENT && !l[0].failure && l[0].focus == LF_FIELD_CODE;
+  #assert lf_set(l[..], LF_FIELD_CODE, "123 456") && !lf_set(l[..], LF_FIELD_EMAIL, "b@c.d");
+  #assert lf_submit(l[..]) && lf_step(l[..]) == LF_VERIFYING;
+  q = lf_t_take(l[..], LS_VERIFY);
+  #assert q.op == 3 && cast(string) q.text[0..<q.text_n] == "123456" && lf_words(l[..]) == "";
+  #assert lf_t_answer(l[..], q, LS_DONE, 200, true, "", "a...@example.com");
+  #assert lf_step(l[..]) == LF_IN && lf_logged_in(l[..]) && lf_who(l[..]) == "a...@example.com" && !l[0].open && l[0].focus == LF_FIELD_NONE;
+  // what was typed is gone, the generation is new, and nothing more is asked of the host
+  #assert lf_email(l[..]) == "" && lf_code(l[..]) == "" && lf_generation(l[..]) == 1 && !lf_take(l[..], empty[..]) && l[0].dropped == 0;
+  // logged in: the card does not open and nothing can be pressed
+  lf_open(l[..]); #assert !l[0].open && !lf_press(l[..], LF_ACT_SEND) && lf_need(l[..], LF_T_SEND, 0) == LF_GO;
+}
+
+#test "the host holds a login at launch: logged in with its identity, and no card" {
+  l: [1] LoginFlow; lf_begin(l[..]);
+  #assert lf_t_answer(l[..], lf_t_take(l[..], LS_SESSION), LS_DONE, 200, true, "", "a...@example.com");
+  #assert lf_logged_in(l[..]) && lf_known(l[..]) && lf_who(l[..]) == "a...@example.com" && !l[0].open && lf_offer(l[..]) == 0;
+}
+
+#test "each refusal: no email, an email the service refuses, no connection, no code, a wrong code, an ended code" {
+  l: [1] LoginFlow; lf_t_out(l[..]); lf_open(l[..]);
+  empty: [1] LoginRequest;
+  // nothing typed: the shared rule's words, and nothing is asked
+  #assert lf_press(l[..], LF_ACT_SEND) && lf_words(l[..]) == "Type your email." && l[0].failure && !lf_busy(l[..]) && !lf_take(l[..], empty[..]);
+  #assert lf_set(l[..], LF_FIELD_EMAIL, "ab") && !l[0].failure && lf_press(l[..], LF_ACT_SEND) && lf_words(l[..]) == "Type your email.";
+  // typing answers the failure
+  #assert lf_set(l[..], LF_FIELD_EMAIL, "ada@example.com") && lf_words(l[..]) == "";
+  // the service's own words, whole
+  #assert lf_press(l[..], LF_ACT_SEND) && lf_t_answer(l[..], lf_t_take(l[..], LS_START), LS_FAILED, 400, false, "We can't send email to that address.", "");
+  #assert lf_step(l[..]) == LF_EMAIL && lf_words(l[..]) == "We can't send email to that address." && l[0].failure && l[0].focus == LF_FIELD_EMAIL;
+  // no words: the shared fallback; nothing reached: the shared words for that
+  #assert lf_press(l[..], LF_ACT_SEND) && lf_t_answer(l[..], lf_t_take(l[..], LS_START), LS_FAILED, 502, false, "", "") && lf_words(l[..]) == AL_FALLBACK;
+  #assert lf_press(l[..], LF_ACT_SEND) && lf_t_answer(l[..], lf_t_take(l[..], LS_START), LS_FAILED, 0, false, "", "") && lf_words(l[..]) == AL_UNREACHABLE && lf_step(l[..]) == LF_EMAIL;
+  #assert lf_press(l[..], LF_ACT_SEND) && lf_t_answer(l[..], lf_t_take(l[..], LS_START), LS_DONE, 200, false, "", "") && lf_step(l[..]) == LF_CODE;
+  // no code, and a code that isn't six digits: the shared rule's words, nothing asked
+  #assert lf_press(l[..], LF_ACT_VERIFY) && lf_words(l[..]) == "Type the 6-digit code from the email." && l[0].failure && !lf_busy(l[..]);
+  #assert lf_set(l[..], LF_FIELD_CODE, "12345") && lf_words(l[..]) == "" && lf_press(l[..], LF_ACT_VERIFY) && !lf_busy(l[..]) && !lf_take(l[..], empty[..]);
+  #assert lf_set(l[..], LF_FIELD_CODE, "12345a") && lf_press(l[..], LF_ACT_VERIFY) && !lf_busy(l[..]);
+  // a wrong code: the service's words with the tries left; the field is cleared and keeps the keyboard
+  #assert lf_set(l[..], LF_FIELD_CODE, "111111") && lf_press(l[..], LF_ACT_VERIFY);
+  #assert lf_t_answer(l[..], lf_t_take(l[..], LS_VERIFY), LS_FAILED, 400, false, "That code isn't right. 4 tries left.", "");
+  #assert lf_step(l[..]) == LF_CODE && lf_words(l[..]) == "That code isn't right. 4 tries left." && l[0].failure && lf_code(l[..]) == "" && l[0].focus == LF_FIELD_CODE;
+  // an ended code: the service says so, and a new one can be asked for
+  #assert lf_set(l[..], LF_FIELD_CODE, "222222") && lf_press(l[..], LF_ACT_VERIFY);
+  #assert lf_t_answer(l[..], lf_t_take(l[..], LS_VERIFY), LS_FAILED, 410, false, "That code has ended: 5 tries or 10 minutes. Ask for a new one.", "");
+  #assert lf_step(l[..]) == LF_CODE && lf_words(l[..]) == "That code has ended: 5 tries or 10 minutes. Ask for a new one." && lf_code(l[..]) == "";
+  #assert lf_press(l[..], LF_ACT_RESEND) && lf_step(l[..]) == LF_REQUESTING;
+  // an answer that says done with no login is no login
+  #assert lf_t_answer(l[..], lf_t_take(l[..], LS_START), LS_DONE, 200, false, "", "") && lf_set(l[..], LF_FIELD_CODE, "333333") && lf_press(l[..], LF_ACT_VERIFY);
+  #assert lf_t_answer(l[..], lf_t_take(l[..], LS_VERIFY), LS_DONE, 200, false, "", "") && !lf_logged_in(l[..]) && lf_words(l[..]) == AL_FALLBACK && lf_step(l[..]) == LF_CODE;
+  #assert l[0].dropped == 0;
+}
+
+#test "resend: a new code, the service's limit in its own words, and the code step kept" {
+  l: [1] LoginFlow; lf_t_out(l[..]); lf_open(l[..]);
+  #assert lf_set(l[..], LF_FIELD_EMAIL, "ada@example.com") && lf_press(l[..], LF_ACT_SEND);
+  #assert !lf_press(l[..], LF_ACT_RESEND);     // not in the code step
+  #assert lf_t_answer(l[..], lf_t_take(l[..], LS_START), LS_DONE, 200, false, "", "") && lf_set(l[..], LF_FIELD_CODE, "12");
+  #assert lf_press(l[..], LF_ACT_RESEND) && lf_code(l[..]) == "" && lf_step(l[..]) == LF_REQUESTING && l[0].state == ALF_CODE;
+  q := lf_t_take(l[..], LS_START);
+  #assert cast(string) q.text[0..<q.text_n] == "ada@example.com" && !lf_press(l[..], LF_ACT_RESEND);
+  #assert lf_t_answer(l[..], q, LS_DONE, 200, false, "", "") && lf_words(l[..]) == LF_RESENT && !l[0].failure && lf_step(l[..]) == LF_CODE;
+  // the limit: the service's words whole, the code step and its code kept
+  #assert lf_press(l[..], LF_ACT_RESEND);
+  #assert lf_t_answer(l[..], lf_t_take(l[..], LS_START), LS_FAILED, 429, false, "Too many codes for this address. Try again in 42 minutes.", "");
+  #assert lf_step(l[..]) == LF_CODE && lf_words(l[..]) == "Too many codes for this address. Try again in 42 minutes." && l[0].failure && l[0].focus == LF_FIELD_CODE;
+  // what the service says about a sent code is shown in place of the flow's words
+  #assert lf_press(l[..], LF_ACT_RESEND) && lf_t_answer(l[..], lf_t_take(l[..], LS_START), LS_DONE, 200, false, "Code sent. It works for 10 minutes.", "") && lf_words(l[..]) == "Code sent. It works for 10 minutes." && !l[0].failure;
+  // change email: back to the email, the code gone, the email kept
+  #assert lf_set(l[..], LF_FIELD_CODE, "99") && lf_press(l[..], LF_ACT_CHANGE) && lf_step(l[..]) == LF_EMAIL && lf_code(l[..]) == "" && lf_email(l[..]) == "ada@example.com" && l[0].focus == LF_FIELD_EMAIL && lf_words(l[..]) == "";
+  #assert !lf_press(l[..], LF_ACT_CHANGE) && !lf_press(l[..], LF_ACT_VERIFY) && !lf_press(l[..], LF_ACT_CODE);
+}
+
+#test "an action that needs an account opens the card and keeps the intent; after the login it is offered, never run" {
+  l: [1] LoginFlow; lf_t_out(l[..]);
+  #assert lf_need(l[..], LF_T_SEND, 7) == LF_ASKED && l[0].open && l[0].intent == LF_T_SEND && lf_offer(l[..]) == 0;
+  #assert lf_set(l[..], LF_FIELD_EMAIL, "ada@example.com") && lf_press(l[..], LF_ACT_SEND) && lf_t_answer(l[..], lf_t_take(l[..], LS_START), LS_DONE, 200, false, "", "");
+  #assert lf_set(l[..], LF_FIELD_CODE, "123456") && lf_press(l[..], LF_ACT_VERIFY) && lf_t_answer(l[..], lf_t_take(l[..], LS_VERIFY), LS_DONE, 200, true, "", "a...@example.com");
+  #assert lf_logged_in(l[..]) && lf_offer(l[..]) == LF_T_SEND && lf_offer_arg(l[..]) == 7 && l[0].intent == 0;
+  // nothing was sent for it: the queue holds no request, and the offer stays until the app clears it
+  empty: [1] LoginRequest; #assert !lf_take(l[..], empty[..]) && lf_need(l[..], LF_T_SEND, 7) == LF_GO && lf_offer(l[..]) == LF_T_SEND;
+  lf_offer_clear(l[..]); #assert lf_offer(l[..]) == 0 && lf_offer_arg(l[..]) == 0;
+  // a card opened with no intent offers nothing
+  _ := lf_logout(l[..]); lf_open(l[..]);
+  #assert lf_set(l[..], LF_FIELD_EMAIL, "ada@example.com") && lf_press(l[..], LF_ACT_SEND);
+  _ := lf_t_take(l[..], LS_LOGOUT);
+  #assert lf_t_answer(l[..], lf_t_take(l[..], LS_START), LS_DONE, 200, false, "", "");
+  #assert lf_set(l[..], LF_FIELD_CODE, "123456") && lf_press(l[..], LF_ACT_VERIFY) && lf_t_answer(l[..], lf_t_take(l[..], LS_VERIFY), LS_DONE, 200, true, "", "a");
+  #assert lf_logged_in(l[..]) && lf_offer(l[..]) == 0;
+}
+
+#test "an action before the session is read waits: logged in offers it, logged out opens the card" {
+  l: [1] LoginFlow; lf_begin(l[..]);
+  #assert lf_need(l[..], LF_T_SEND, 0) == LF_WAIT && !l[0].open && l[0].want_open;
+  #assert lf_t_answer(l[..], lf_t_take(l[..], LS_SESSION), LS_DONE, 200, true, "", "a") && lf_offer(l[..]) == LF_T_SEND && !l[0].open;
+  m: [1] LoginFlow; lf_begin(m[..]);
+  #assert lf_need(m[..], LF_T_SEND, 0) == LF_WAIT;
+  #assert lf_t_answer(m[..], lf_t_take(m[..], LS_SESSION), LS_DONE, 200, false, "", "") && m[0].open && m[0].intent == LF_T_SEND && m[0].focus == LF_FIELD_EMAIL;
+  // a read that fails or is unknown is logged out, and says so on the card
+  n: [1] LoginFlow; lf_begin(n[..]); lf_open(n[..]);
+  #assert !n[0].open && lf_t_answer(n[..], lf_t_take(n[..], LS_SESSION), LS_UNKNOWN, 0, false, "", "") && n[0].open && lf_known(n[..]) && lf_words(n[..]) == LF_UNREAD && lf_step(n[..]) == LF_OUT;
+  // a flow never begun asks for the read itself
+  o: [1] LoginFlow; #assert lf_need(o[..], LF_T_SEND, 0) == LF_WAIT && lf_t_take(o[..], LS_SESSION).op == 1;
+}
+
+#test "cancel: the card closes, the intent goes, and a late answer is dropped" {
+  // a code request in flight
+  l: [1] LoginFlow; lf_t_out(l[..]);
+  #assert lf_need(l[..], LF_T_SEND, 0) == LF_ASKED && lf_set(l[..], LF_FIELD_EMAIL, "ada@example.com") && lf_press(l[..], LF_ACT_SEND);
+  q := lf_t_take(l[..], LS_START);
+  #assert lf_press(l[..], LF_ACT_CANCEL) && !l[0].open && l[0].intent == 0 && !lf_busy(l[..]) && lf_generation(l[..]) == 1 && lf_step(l[..]) == LF_EMAIL;
+  empty: [1] LoginRequest; #assert !lf_take(l[..], empty[..]);      // a code request leaves no login: nothing to forget
+  #assert !lf_t_answer(l[..], q, LS_DONE, 200, false, "", "") && l[0].dropped == 1 && l[0].state == ALF_OUT && !l[0].open && lf_words(l[..]) == "";
+  // the same answer again, and an answer to nothing
+  none: LoginRequest;
+  #assert !lf_t_answer(l[..], q, LS_FAILED, 500, false, "late", "") && !lf_t_answer(l[..], none, LS_DONE, 200, true, "", "x") && l[0].dropped == 3 && !lf_logged_in(l[..]);
+  // a verify in flight: the late "logged in" is dropped, and the host is asked to forget what it made
+  lf_open(l[..]);
+  #assert lf_email(l[..]) == "ada@example.com" && lf_press(l[..], LF_ACT_SEND) && lf_t_answer(l[..], lf_t_take(l[..], LS_START), LS_DONE, 200, false, "", "");
+  #assert lf_set(l[..], LF_FIELD_CODE, "123456") && lf_press(l[..], LF_ACT_VERIFY);
+  v := lf_t_take(l[..], LS_VERIFY);
+  #assert lf_press(l[..], LF_ACT_CANCEL) && !l[0].open && l[0].state == ALF_OUT && lf_code(l[..]) == "";
+  out := lf_t_take(l[..], LS_LOGOUT);
+  #assert out.op > v.op && out.generation == lf_generation(l[..]) && out.generation > v.generation;
+  #assert !lf_t_answer(l[..], v, LS_DONE, 200, true, "", "a...@example.com") && !lf_logged_in(l[..]) && lf_who(l[..]) == "" && l[0].dropped == 4;
+  // the logout's own answer changes nothing and is not counted as late
+  #assert !lf_t_answer(l[..], out, LS_DONE, 200, false, "", "") && l[0].dropped == 4;
+  // a request cancelled before the outbox took it is withdrawn
+  lf_open(l[..]); #assert lf_press(l[..], LF_ACT_SEND) && lf_press(l[..], LF_ACT_CANCEL) && !lf_take(l[..], empty[..]);
+}
+
+#test "an unknown outcome is shown as unknown and never sent again by itself" {
+  l: [1] LoginFlow; lf_t_out(l[..]); lf_open(l[..]);
+  empty: [1] LoginRequest;
+  #assert lf_set(l[..], LF_FIELD_EMAIL, "ada@example.com") && lf_press(l[..], LF_ACT_SEND);
+  #assert lf_t_answer(l[..], lf_t_take(l[..], LS_START), LS_UNKNOWN, 0, false, "", "");
+  #assert lf_step(l[..]) == LF_EMAIL && l[0].unknown == LS_START && lf_words(l[..]) == LF_UNKNOWN_START && l[0].failure && !lf_busy(l[..]) && !lf_take(l[..], empty[..]);
+  // the person sends it again
+  #assert lf_press(l[..], LF_ACT_SEND) && l[0].unknown == 0 && lf_t_answer(l[..], lf_t_take(l[..], LS_START), LS_DONE, 200, false, "", "");
+  #assert lf_set(l[..], LF_FIELD_CODE, "123456") && lf_press(l[..], LF_ACT_VERIFY);
+  #assert lf_t_answer(l[..], lf_t_take(l[..], LS_VERIFY), LS_UNKNOWN, 0, false, "", "");
+  #assert lf_step(l[..]) == LF_CODE && l[0].unknown == LS_VERIFY && lf_words(l[..]) == LF_UNKNOWN_VERIFY && !lf_logged_in(l[..]) && !lf_take(l[..], empty[..]);
+  // typing keeps it unknown, and no new code is asked for over it
+  #assert lf_set(l[..], LF_FIELD_CODE, "654321") && l[0].unknown == LS_VERIFY && lf_words(l[..]) == LF_UNKNOWN_VERIFY && !lf_press(l[..], LF_ACT_RESEND);
+  // the press asks what the host holds; the code is not sent again
+  #assert lf_press(l[..], LF_ACT_VERIFY) && lf_step(l[..]) == LF_CHECKING;
+  q := lf_t_take(l[..], LS_SESSION);
+  #assert q.text_n == 0 && lf_t_answer(l[..], q, LS_UNKNOWN, 0, false, "", "") && l[0].unknown == LS_VERIFY && lf_step(l[..]) == LF_CODE;
+  // not logged in: back at the code, known again
+  #assert lf_press(l[..], LF_ACT_VERIFY) && lf_t_answer(l[..], lf_t_take(l[..], LS_SESSION), LS_DONE, 200, false, "", "");
+  #assert l[0].unknown == 0 && lf_words(l[..]) == LF_NOT_YET && lf_step(l[..]) == LF_CODE && l[0].focus == LF_FIELD_CODE;
+  // unknown again, and this time the host holds the login
+  #assert lf_press(l[..], LF_ACT_VERIFY) && lf_t_answer(l[..], lf_t_take(l[..], LS_VERIFY), LS_UNKNOWN, 0, false, "", "");
+  #assert lf_press(l[..], LF_ACT_VERIFY) && lf_t_answer(l[..], lf_t_take(l[..], LS_SESSION), LS_DONE, 200, true, "", "a...@example.com") && lf_logged_in(l[..]) && !l[0].open;
+  // cancel over an unknown verify asks the host to forget what it may hold; change email does too
+  m: [1] LoginFlow; lf_t_out(m[..]); lf_open(m[..]);
+  #assert lf_set(m[..], LF_FIELD_EMAIL, "ada@example.com") && lf_press(m[..], LF_ACT_SEND) && lf_t_answer(m[..], lf_t_take(m[..], LS_START), LS_DONE, 200, false, "", "");
+  #assert lf_set(m[..], LF_FIELD_CODE, "123456") && lf_press(m[..], LF_ACT_VERIFY) && lf_t_answer(m[..], lf_t_take(m[..], LS_VERIFY), LS_UNKNOWN, 0, false, "", "");
+  #assert lf_press(m[..], LF_ACT_CHANGE) && m[0].unknown == 0 && lf_t_take(m[..], LS_LOGOUT).op > 0 && lf_step(m[..]) == LF_EMAIL && m[0].open;
+}
+
+#test "log out: forgotten at once, the host told, a late answer dropped; the service ending the login says why" {
+  l: [1] LoginFlow; lf_begin(l[..]);
+  #assert lf_t_answer(l[..], lf_t_take(l[..], LS_SESSION), LS_DONE, 200, true, "", "a...@example.com");
+  g := lf_generation(l[..]);
+  #assert lf_logout(l[..]) && !lf_logged_in(l[..]) && lf_known(l[..]) && lf_who(l[..]) == "" && lf_generation(l[..]) == g + 1 && lf_step(l[..]) == LF_OUT;
+  q := lf_t_take(l[..], LS_LOGOUT);
+  #assert q.op > 0 && q.generation == g + 1 && !lf_t_answer(l[..], q, LS_UNKNOWN, 0, false, "", "") && l[0].dropped == 0 && lf_words(l[..]) == "";
+  // logged out already: nothing more to forget
+  empty: [1] LoginRequest; #assert !lf_logout(l[..]) && !lf_take(l[..], empty[..]);
+  // a logout while a verify is in flight: its late "logged in" is dropped
+  lf_open(l[..]);
+  #assert lf_set(l[..], LF_FIELD_EMAIL, "ada@example.com") && lf_press(l[..], LF_ACT_SEND) && lf_t_answer(l[..], lf_t_take(l[..], LS_START), LS_DONE, 200, false, "", "");
+  #assert lf_set(l[..], LF_FIELD_CODE, "123456") && lf_press(l[..], LF_ACT_VERIFY);
+  v := lf_t_take(l[..], LS_VERIFY);
+  #assert !lf_logout(l[..]) && !l[0].open && lf_email(l[..]) == "" && lf_t_take(l[..], LS_LOGOUT).op > v.op;
+  #assert !lf_t_answer(l[..], v, LS_DONE, 200, true, "", "a") && !lf_logged_in(l[..]) && l[0].dropped == 1;
+  // a logout before the session is read settles it: logged out, the host told
+  m: [1] LoginFlow; lf_begin(m[..]); s := lf_t_take(m[..], LS_SESSION);
+  #assert !lf_logout(m[..]) && lf_known(m[..]) && lf_t_take(m[..], LS_LOGOUT).op > 0 && !lf_t_answer(m[..], s, LS_DONE, 200, true, "", "a") && !lf_logged_in(m[..]);
+  // the service ends the login: logged out, its words on the card when it opens, an offer withdrawn
+  n: [1] LoginFlow; lf_begin(n[..]);
+  #assert lf_need(n[..], LF_T_SEND, 0) == LF_WAIT && lf_t_answer(n[..], lf_t_take(n[..], LS_SESSION), LS_DONE, 200, true, "", "a") && lf_offer(n[..]) == LF_T_SEND;
+  lf_ended(n[..], "Log in again.");
+  #assert !lf_logged_in(n[..]) && lf_who(n[..]) == "" && lf_offer(n[..]) == 0 && !n[0].open && !lf_take(n[..], empty[..]);
+  #assert lf_need(n[..], LF_T_SEND, 0) == LF_ASKED && lf_words(n[..]) == "Log in again." && n[0].failure;
+  lf_ended(n[..], "again"); #assert lf_words(n[..]) == "Log in again.";
+}
+
+#test "values past their bounds are refused whole, and the queue never holds more than it can" {
+  l: [1] LoginFlow; lf_t_out(l[..]); lf_open(l[..]);
+  long: [LF_EMAIL_MAX + 1] u8; for i: 0..<long.count { long[i] = 'a'; }
+  #assert !lf_set(l[..], LF_FIELD_EMAIL, cast(string) long[..]) && lf_email(l[..]) == "" && lf_set(l[..], LF_FIELD_EMAIL, cast(string) long[0..<LF_EMAIL_MAX]);
+  #assert lf_press(l[..], LF_ACT_SEND) && lf_t_answer(l[..], lf_t_take(l[..], LS_START), LS_DONE, 200, false, "", "");
+  #assert !lf_set(l[..], LF_FIELD_CODE, cast(string) long[0..<LF_CODE_MAX + 1]) && lf_code(l[..]) == "";
+  // many cancels and logouts with nothing taken: one logout waits, never more
+  for i: 0..<6 {
+    lf_open(l[..]); _ := lf_set(l[..], LF_FIELD_EMAIL, "ada@example.com"); _ := lf_press(l[..], LF_ACT_SEND); _ := lf_logout(l[..]);
+  }
+  #assert l[0].queue_n <= 1;
+}
+
+#test "the typed email survives a relaunch; the code does not, and nothing is kept once logged in" {
+  l: [1] LoginFlow; lf_t_out(l[..]); lf_open(l[..]);
+  out: [LF_DRAFT_MAX] u8; empty: [1] LoginRequest;
+  #assert lf_draft(l[..], out[..]) == 0 && lf_draft_rev(l[..]) == 0;
+  #assert lf_set(l[..], LF_FIELD_EMAIL, "ada@example.com") && lf_draft_rev(l[..]) == 1;
+  #assert lf_press(l[..], LF_ACT_SEND) && lf_t_answer(l[..], lf_t_take(l[..], LS_START), LS_DONE, 200, false, "", "") && lf_set(l[..], LF_FIELD_CODE, "123");
+  n := lf_draft(l[..], out[..]);
+  kept := cast(string) out[0..<n];
+  #assert n == 29 && kept == "login-draft 1\nada@example.com";
+  // a relaunch: a fresh flow, the draft put back before the session read answers
+  m: [1] LoginFlow; lf_begin(m[..]);
+  #assert lf_restore(m[..], kept) && lf_email(m[..]) == "ada@example.com" && lf_code(m[..]) == "" && !lf_restore(m[..], kept);
+  #assert lf_t_answer(m[..], lf_t_take(m[..], LS_SESSION), LS_DONE, 200, false, "", "");
+  lf_open(m[..]);
+  #assert lf_step(m[..]) == LF_EMAIL && m[0].state == ALF_OUT && m[0].focus == LF_FIELD_EMAIL && !lf_take(m[..], empty[..]);
+  // bytes that are not a draft change nothing
+  o: [1] LoginFlow; lf_begin(o[..]);
+  #assert !lf_restore(o[..], "") && !lf_restore(o[..], "login-draft 1\n") && !lf_restore(o[..], "login-draft 2\nada@example.com") && !lf_restore(o[..], "login-draft 1\na\nb") && lf_email(o[..]) == "";
+  // logged in: the email goes, and so does the draft
+  #assert lf_set(m[..], LF_FIELD_EMAIL, "ada@example.com") && lf_press(m[..], LF_ACT_SEND) && lf_t_answer(m[..], lf_t_take(m[..], LS_START), LS_DONE, 200, false, "", "");
+  r := lf_draft_rev(m[..]);
+  #assert lf_set(m[..], LF_FIELD_CODE, "123456") && lf_press(m[..], LF_ACT_VERIFY) && lf_t_answer(m[..], lf_t_take(m[..], LS_VERIFY), LS_DONE, 200, true, "", "a");
+  #assert lf_draft(m[..], out[..]) == 0 && lf_draft_rev(m[..]) > r && !lf_restore(m[..], kept);
+  // the keyboard going away keeps what was typed
+  lf_blur(l[..]); #assert l[0].focus == LF_FIELD_NONE && lf_email(l[..]) == "ada@example.com" && lf_code(l[..]) == "123";
+}

@@ -1,0 +1,239 @@
+// The login flow over the shared app core (GitHub #13645). This file is the
+// one place the login reads the core's names (apps/shared/app/core/): the
+// flow (flow.coax) asks for LS_ requests, the bridge turns each into the
+// core's ACT_LOGIN_ actions, the core puts the FX_AUTH_ effects in its
+// outbox, and when the core has the host's completion the bridge reads how
+// the operation ended (fx_state) and the core's login state, and hands the
+// flow its result as a later action. The flow never calls the host, and no
+// token or pending handle is here or in the core.
+//
+// The root calls lfc_step after every app_dispatch it makes, and after
+// lf_press, lf_set, lf_need and lf_open:
+//
+//   b: [1] LoginBridge; l: [1] LoginFlow; lf_begin(l[..]);
+//   _ := lf_restore(l[..], kept);                     // the draft the host kept, if any
+//   ... app_host_launch(c, ...) ...
+//   lfc_step(b[..], l[..], c);                         // after each event
+//   if lf_draft_rev(l[..]) != saved { n := lf_draft(l[..], buf[..]); ... the host keeps buf[0..<n] ... }
+//
+// What it does each step:
+//   - LS_SESSION: answered by the core's login-state read (EV_LAUNCH and
+//     every foreground ask for one); with none in flight, by what the core
+//     already knows.
+//   - LS_START: ACT_LOGIN_EMAIL. LS_VERIFY: ACT_LOGIN_CODE. A refused action
+//     answers failed at once with the shared fallback words.
+//   - LS_LOGOUT: ACT_LOGOUT while the core is logged in. While a verify is in
+//     flight, the bridge waits and logs out if that verify logs in.
+//   - The flow back at the email step while the core is at the code step
+//     (Change email, Cancel): ACT_LOGIN_BACK, so the host forgets the attempt.
+//   - A send while logged out (the core's login_wanted) opens the card; the
+//     card closing puts the core's request away (ACT_LOGIN_SHOW false).
+//   - The core logging in or out by itself (a foreground read, a 401) moves
+//     the flow with it.
+//   coax/bin/coax test apps/shared/app/login/bridge.coax --library --traversal 1000000000
+
+#load "card.coax";
+#load "../core/core.coax";
+
+LoginBridge :: struct {
+  req: LoginRequest;          // the flow's request the bridge works on (op 0: none)
+  core_op: int;               // the core's account operation that carries it (0: not yet made)
+  forget: bool;               // log out if the verify in flight logs in
+  open_was: bool;             // whether the card was open at the last step
+}
+
+// One action into the core, at the core's own last clock.
+lfc_act :: (c: [] AppCore, code: int, text: string, flag: bool) -> int {
+  return app_dispatch(c, AppEvent.{kind = EV_ACTION, code = code, text = text, flag = flag, mono_ms = c[0].mono_ms, wall_ms = c[0].wall_ms});
+}
+lfc_answer :: (l: [] LoginFlow, q: LoginRequest, outcome: int, status: int, logged_in: bool, words: string, who: string) {
+  r := [1] LoginResult.[ls_result(q, outcome, status, logged_in, words, who)];
+  _ := lf_result(l, r[..]);
+}
+// How a finished core operation ended, as the flow's outcome.
+lfc_outcome :: (c: [] AppCore, op: int) -> int {
+  st := fx_state(c[0].out[..], op);
+  return ifx st == FX_DONE then LS_DONE else ifx st == FX_UNKNOWN then LS_UNKNOWN else LS_FAILED;
+}
+lfc_state_op :: (c: [] AppCore) -> int { return ifx c[0].account_op != 0 && c[0].account_purpose == FX_AUTH_STATE then c[0].account_op else 0; }
+
+// Start the flow's next request in the core.
+lfc_start :: (b: [] LoginBridge, l: [] LoginFlow, c: [] AppCore) {
+  q := b[0].req; text := cast(string) b[0].req.text[0..<b[0].req.text_n];
+  if q.kind == LS_SESSION {
+    op := lfc_state_op(c);
+    if op != 0 { b[0].core_op = op; return; }
+    if c[0].auth == AUTH_UNKNOWN { return; }        // the next launch or foreground reads it
+    b[0].req = LoginRequest.{};
+    lfc_answer(l, q, LS_DONE, 200, c[0].auth == AUTH_IN, "", app_email(c));
+    return;
+  }
+  code := ifx q.kind == LS_START then ACT_LOGIN_EMAIL else ACT_LOGIN_CODE;
+  // a read in flight (the launch's) goes first; the action waits for it
+  if c[0].account_op != 0 { return; }
+  if lfc_act(c, code, text, false) < 0 { b[0].req = LoginRequest.{}; lfc_answer(l, q, LS_FAILED, 500, false, "", ""); return; }
+  b[0].core_op = c[0].account_op;
+}
+// The core finished the operation that carries the flow's request: its result.
+lfc_settle :: (b: [] LoginBridge, l: [] LoginFlow, c: [] AppCore) {
+  q := b[0].req; op := b[0].core_op;
+  if op == 0 || c[0].account_op == op { return; }
+  outcome := lfc_outcome(c, op);
+  b[0].req = LoginRequest.{}; b[0].core_op = 0;
+  words := app_words(c);
+  if q.kind == LS_SESSION { lfc_answer(l, q, outcome, 0, outcome == LS_DONE && c[0].auth == AUTH_IN, "", app_email(c)); return; }
+  if q.kind == LS_START {
+    if outcome == LS_DONE && c[0].login == LOGIN_CODE { lfc_answer(l, q, LS_DONE, 200, false, "", ""); return; }
+    lfc_answer(l, q, outcome, 0, false, ifx outcome == LS_UNKNOWN then "" else words, "");
+    return;
+  }
+  if q.kind == LS_VERIFY {
+    if c[0].auth == AUTH_IN { lfc_answer(l, q, LS_DONE, 200, true, "", app_email(c)); return; }
+    lfc_answer(l, q, outcome, 0, false, ifx outcome == LS_UNKNOWN then "" else words, "");
+  }
+}
+
+// After every event: move requests and results between the flow and the core.
+lfc_step :: (b: [] LoginBridge, l: [] LoginFlow, c: [] AppCore) {
+  if c.count < 1 || !c[0].ready { return; }
+  for pass: 0..<4 {
+    lfc_settle(b, l, c);
+    // the core moved by itself: a foreground read logged in, or the service ended the login
+    if c[0].auth == AUTH_IN && !lf_logged_in(l) && b[0].req.op == 0 && !b[0].forget && l[0].known && !lf_busy(l) { lf_in(l, app_email(c)); }
+    if c[0].auth == AUTH_OUT && lf_logged_in(l) { lf_ended(l, app_note(c)); }
+    // a verify the flow walked away from logged in: end it
+    if b[0].forget && c[0].account_op == 0 {
+      b[0].forget = false;
+      if c[0].auth == AUTH_IN { _ := lfc_act(c, ACT_LOGOUT, "", false); }
+    }
+    // the flow left the code step: the host forgets the attempt
+    if l[0].state == ALF_OUT && c[0].login == LOGIN_CODE && c[0].account_op == 0 { _ := lfc_act(c, ACT_LOGIN_BACK, "", false); }
+    // the next request: a logout at once, anything else when the one before has its answer. A
+    // request the flow fenced (cancel, logout) still waits for the core's answer, which the flow drops
+    q: [1] LoginRequest;
+    if l[0].queue_n > 0 && (b[0].req.op == 0 || l[0].queue[0].kind == LS_LOGOUT) && lf_take(l, q[..]) {
+      if q[0].kind == LS_LOGOUT {
+        if c[0].auth == AUTH_IN { _ := lfc_act(c, ACT_LOGOUT, "", false); }
+        else if c[0].login == LOGIN_VERIFYING { b[0].forget = true; }
+      } else { b[0].req = q[0]; b[0].core_op = 0; }
+    }
+    if b[0].req.op != 0 && b[0].core_op == 0 { lfc_start(b, l, c); }
+    // the card and the core's wish to show it
+    if l[0].open != b[0].open_was {
+      if !l[0].open && c[0].login_wanted { _ := lfc_act(c, ACT_LOGIN_SHOW, "", false); }
+    } else if c[0].login_wanted && !l[0].open && c[0].auth == AUTH_OUT { lf_open(l); }
+    b[0].open_was = l[0].open;
+  }
+}
+
+// ---------------------------------------------------------------- checks
+
+// The host's side, as the fakes give it: the next request's kind, answered with an outcome.
+lfc_t_host :: (c: [] AppCore, t: int, outcome: int, flag: bool, text: string) -> int {
+  op := app_host_next(c); if op < 1 { return -1; }
+  f: [APP_HOST_FIELDS] int; if !app_host_request(c, op, f[..]) { return -2; }
+  if app_host_taken(c, t, t, op, true) != APP_OK { return -3; }
+  if app_host_done(c, t, t, op, f[APP_HOST_GENERATION], outcome, 0, flag, text, "", 0) != APP_OK { return -4; }
+  return f[APP_HOST_KIND];
+}
+// Whether the next request's text is want.
+lfc_t_text :: (c: [] AppCore, want: string) -> bool {
+  buf: [256] u8; n := app_host_text(c, app_host_next(c), buf[..]);
+  return n >= 0 && cast(string) buf[0..<n] == want;
+}
+
+#test "the card's login runs through the core's outbox: launch, the code, logged in" {
+  a: [1] AppCore; c := a[..]; b: [1] LoginBridge; l: [1] LoginFlow;
+  #assert app_host_init(c) && app_host_launch(c, 1, 1000, "") == APP_OK;
+  lf_begin(l[..]); lfc_step(b[..], l[..], c);
+  #assert lf_step(l[..]) == LF_READING && b[0].core_op != 0;
+  #assert lfc_t_host(c, 2, FXO_DONE, false, "") == FX_AUTH_STATE;
+  lfc_step(b[..], l[..], c);
+  #assert lf_step(l[..]) == LF_OUT && lf_known(l[..]) && !l[0].open;
+  // a send while logged out opens the card
+  #assert app_host_action(c, 3, 1000, ACT_DRAFT, false, "fix the build", "") == APP_OK && app_host_action(c, 4, 1000, ACT_SEND, false, "", "") == APP_LOGIN;
+  lfc_step(b[..], l[..], c);
+  #assert l[0].open && lf_set(l[..], LF_FIELD_EMAIL, "ada@example.com") && lf_press(l[..], LF_ACT_SEND);
+  lfc_step(b[..], l[..], c);
+  #assert c[0].login == LOGIN_SENDING && lf_step(l[..]) == LF_REQUESTING && lfc_t_text(c, "ada@example.com");
+  #assert lfc_t_host(c, 5, FXO_DONE, false, "") == FX_AUTH_EMAIL;
+  lfc_step(b[..], l[..], c);
+  #assert lf_step(l[..]) == LF_CODE && lf_words(l[..]) == ALF_SENT;
+  #assert lf_set(l[..], LF_FIELD_CODE, "123 456") && lf_press(l[..], LF_ACT_VERIFY);
+  lfc_step(b[..], l[..], c);
+  #assert c[0].login == LOGIN_VERIFYING && lfc_t_text(c, "123456") && lfc_t_host(c, 6, FXO_DONE, true, "") == FX_AUTH_VERIFY;
+  lfc_step(b[..], l[..], c);
+  #assert lf_logged_in(l[..]) && c[0].auth == AUTH_IN && !l[0].open && !c[0].login_wanted && app_draft(c) == "fix the build" && app_host_next(c) == 0;
+}
+
+#test "the service's words, an unknown verify settled by the core's read, and Change email forgetting the attempt" {
+  a: [1] AppCore; c := a[..]; b: [1] LoginBridge; l: [1] LoginFlow;
+  #assert app_host_init(c) && app_host_launch(c, 1, 1000, "") == APP_OK;
+  lf_begin(l[..]); lfc_step(b[..], l[..], c);
+  #assert lfc_t_host(c, 2, FXO_DONE, false, "") == FX_AUTH_STATE;
+  lfc_step(b[..], l[..], c); lf_open(l[..]);
+  #assert lf_set(l[..], LF_FIELD_EMAIL, "ada@example.com") && lf_press(l[..], LF_ACT_SEND);
+  lfc_step(b[..], l[..], c);
+  #assert lfc_t_host(c, 3, FXO_FAILED, false, "Too many codes for this address. Try again later.") == FX_AUTH_EMAIL;
+  lfc_step(b[..], l[..], c);
+  #assert lf_step(l[..]) == LF_EMAIL && lf_words(l[..]) == "Too many codes for this address. Try again later." && l[0].failure;
+  #assert lf_press(l[..], LF_ACT_SEND); lfc_step(b[..], l[..], c);
+  #assert lfc_t_host(c, 4, FXO_DONE, false, "") == FX_AUTH_EMAIL;
+  lfc_step(b[..], l[..], c);
+  #assert lf_set(l[..], LF_FIELD_CODE, "123456") && lf_press(l[..], LF_ACT_VERIFY); lfc_step(b[..], l[..], c);
+  #assert lfc_t_host(c, 5, FXO_UNKNOWN, false, "") == FX_AUTH_VERIFY;
+  lfc_step(b[..], l[..], c);
+  // unknown is shown as unknown; the core reads the truth, and it says logged in
+  #assert l[0].unknown == LS_VERIFY && lf_words(l[..]) == LF_UNKNOWN_VERIFY && !lf_logged_in(l[..]);
+  #assert lfc_t_host(c, 6, FXO_DONE, true, "") == FX_AUTH_STATE;
+  lfc_step(b[..], l[..], c);
+  #assert lf_logged_in(l[..]) && !l[0].open;
+  // a fresh flow in the code step: Change email asks the host to forget the attempt
+  m: [1] AppCore; d := m[..]; e: [1] LoginBridge; k: [1] LoginFlow;
+  #assert app_host_init(d) && app_host_launch(d, 1, 1000, "") == APP_OK;
+  lf_begin(k[..]); lfc_step(e[..], k[..], d);
+  #assert lfc_t_host(d, 2, FXO_DONE, false, "") == FX_AUTH_STATE;
+  lfc_step(e[..], k[..], d); lf_open(k[..]);
+  #assert lf_set(k[..], LF_FIELD_EMAIL, "ada@example.com") && lf_press(k[..], LF_ACT_SEND); lfc_step(e[..], k[..], d);
+  #assert lfc_t_host(d, 3, FXO_DONE, false, "") == FX_AUTH_EMAIL;
+  lfc_step(e[..], k[..], d);
+  #assert lf_press(k[..], LF_ACT_CHANGE); lfc_step(e[..], k[..], d);
+  #assert d[0].login == LOGIN_IDLE && lfc_t_host(d, 4, FXO_DONE, false, "") == FX_AUTH_CANCEL && lf_step(k[..]) == LF_EMAIL;
+}
+
+#test "cancel during a verify: a late login is logged out; the card closing puts the core's request away" {
+  a: [1] AppCore; c := a[..]; b: [1] LoginBridge; l: [1] LoginFlow;
+  #assert app_host_init(c) && app_host_launch(c, 1, 1000, "") == APP_OK;
+  lf_begin(l[..]); lfc_step(b[..], l[..], c);
+  #assert lfc_t_host(c, 2, FXO_DONE, false, "") == FX_AUTH_STATE;
+  lfc_step(b[..], l[..], c);
+  #assert app_host_action(c, 3, 1000, ACT_DRAFT, false, "hello", "") == APP_OK && app_host_action(c, 4, 1000, ACT_SEND, false, "", "") == APP_LOGIN;
+  lfc_step(b[..], l[..], c);
+  #assert l[0].open && lf_set(l[..], LF_FIELD_EMAIL, "ada@example.com") && lf_press(l[..], LF_ACT_SEND); lfc_step(b[..], l[..], c);
+  #assert lfc_t_host(c, 5, FXO_DONE, false, "") == FX_AUTH_EMAIL;
+  lfc_step(b[..], l[..], c);
+  #assert lf_set(l[..], LF_FIELD_CODE, "123456") && lf_press(l[..], LF_ACT_VERIFY); lfc_step(b[..], l[..], c);
+  #assert lf_press(l[..], LF_ACT_CANCEL); lfc_step(b[..], l[..], c);
+  #assert !l[0].open && !c[0].login_wanted && b[0].forget && app_draft(c) == "hello";
+  // the verify the person walked away from logs in: the bridge logs it out
+  #assert lfc_t_host(c, 6, FXO_DONE, true, "") == FX_AUTH_VERIFY;
+  lfc_step(b[..], l[..], c);
+  #assert !lf_logged_in(l[..]) && c[0].auth == AUTH_OUT && !b[0].forget && lfc_t_host(c, 7, FXO_DONE, false, "") == FX_AUTH_LOGOUT;
+  lfc_step(b[..], l[..], c);
+  #assert !lf_logged_in(l[..]) && !l[0].open && app_host_next(c) == 0;
+}
+
+#test "the service ending the login moves the flow out; the card then says why" {
+  a: [1] AppCore; c := a[..]; b: [1] LoginBridge; l: [1] LoginFlow;
+  #assert app_host_init(c) && app_host_launch(c, 1, 1000, "") == APP_OK;
+  lf_begin(l[..]); lfc_step(b[..], l[..], c);
+  #assert lfc_t_host(c, 2, FXO_DONE, true, "") == FX_AUTH_STATE;
+  lfc_step(b[..], l[..], c);
+  #assert lf_logged_in(l[..]);
+  // a foreground read that says logged out
+  #assert app_host_lifecycle(c, 3, 1000, LIFE_FOREGROUND) == APP_OK && lfc_t_host(c, 4, FXO_DONE, false, "") == FX_AUTH_STATE;
+  lfc_step(b[..], l[..], c);
+  #assert !lf_logged_in(l[..]) && c[0].auth == AUTH_OUT;
+  lf_open(l[..]);
+  #assert lf_words(l[..]) == "Log in again to continue." && l[0].failure;
+}

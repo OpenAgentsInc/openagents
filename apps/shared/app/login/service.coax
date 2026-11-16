@@ -1,0 +1,72 @@
+// The auth service as the login flow sees it (GitHub #13645): the requests the
+// flow gives the app's effect outbox and the results that come back as later
+// actions. flow.coax reads only these; bridge.coax maps them onto the shared
+// app core (apps/shared/app/core/), and a fake or a check can answer them
+// directly.
+//
+// A request names an operation and the owner generation it was made under.
+// The host's native auth adapter performs it and answers with the same two
+// numbers. No token, pending handle or key is in a request or a result: the
+// host keeps the pending handle between LS_START and LS_VERIFY, and the
+// tokens after a login.
+//
+//   LS_SESSION  does the host hold a login? done: logged_in and who
+//   LS_START    send a code to `text` (the email, trimmed). The host keeps the
+//               pending handle; a later LS_START replaces it. A refused resend
+//               keeps the handle it had
+//   LS_VERIFY   check `text` (the code's six digits) against the pending
+//               handle. done with logged_in: the host holds the login; who is
+//               the account's display identity
+//   LS_LOGOUT   forget the login and tell the server. The host runs requests
+//               in the order given, so a logout given while a verify is in
+//               flight also ends a login that verify makes
+//
+// An outcome is done, failed or unknown. Failed carries the HTTP status (0:
+// the request reached nothing) and the server's own words ("" when it gave
+// none). Unknown means the request left and no answer came: the flow shows
+// it and never sends the request again by itself.
+
+LS_SESSION :: 1; LS_START :: 2; LS_VERIFY :: 3; LS_LOGOUT :: 4;
+LS_DONE :: 1; LS_FAILED :: 2; LS_UNKNOWN :: 3;
+LS_TEXT :: 254;      // an email's most bytes
+LS_WORDS :: 400;     // the server's words
+LS_WHO :: 160;       // the account's display identity
+
+LoginRequest :: struct {
+  op: int;                 // the operation's ID: the result names it
+  generation: int;         // the owner generation it was made under
+  kind: int;               // LS_SESSION, LS_START, LS_VERIFY, LS_LOGOUT
+  text: [LS_TEXT] u8; text_n: int;
+}
+LoginResult :: struct {
+  op: int; generation: int;
+  outcome: int;            // LS_DONE, LS_FAILED, LS_UNKNOWN
+  status: int;             // failed: the HTTP status, 0 when nothing was reached
+  logged_in: bool;         // done, LS_SESSION and LS_VERIFY: the host holds a login
+  words: [LS_WORDS] u8; words_n: int;   // failed: the server's words. Done, LS_START: what the service says about the code, if anything
+  who: [LS_WHO] u8; who_n: int;         // logged in: the display identity (the masked email)
+}
+
+ls_text :: (q: [] LoginRequest) -> string { return cast(string) q[0].text[0..<q[0].text_n]; }
+// Bytes of s into out, cut at a character when it is too long.
+ls_put :: (out: [] u8, s: string) -> int {
+  n := ifx s.count < out.count then s.count else out.count;
+  while n > 0 && n < s.count && (s[n] & 0xC0) == 0x80 { n -= 1; }
+  for i: 0..<n { out[i] = s[i]; }
+  return n;
+}
+// A result for a request, as a host or a fake makes one.
+ls_result :: (q: LoginRequest, outcome: int, status: int, logged_in: bool, words: string, who: string) -> LoginResult {
+  r: LoginResult;
+  r.op = q.op; r.generation = q.generation; r.outcome = outcome; r.status = status; r.logged_in = logged_in;
+  r.words_n = ls_put(r.words[..], words); r.who_n = ls_put(r.who[..], who);
+  return r;
+}
+
+#test "a result names its request; long words are cut at a character" {
+  q: LoginRequest; q.op = 7; q.generation = 3; q.kind = LS_START;
+  r := ls_result(q, LS_FAILED, 429, false, "Too many codes for this address.", "");
+  #assert r.op == 7 && r.generation == 3 && r.outcome == LS_FAILED && r.status == 429 && !r.logged_in && cast(string) r.words[0..<r.words_n] == "Too many codes for this address." && r.who_n == 0;
+  out: [4] u8; dots := [5] u8.['a', 'b', 'c', 0xc3, 0xa9];
+  #assert ls_put(out[..], cast(string) dots[..]) == 3 && ls_put(out[..], "ab") == 2 && ls_put(out[0..<0], "ab") == 0;
+}
