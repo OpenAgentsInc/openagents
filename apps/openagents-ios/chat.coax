@@ -7,9 +7,9 @@
 //
 // The drawer slides in from the left over a scrim; a press on the scrim or a
 // swipe to the left closes it, a swipe right from the left edge opens it. It
-// holds Log in, or the account and Log out. Log in opens the login flow's
-// card (apps/shared/app/login/), which works through the shared app core
-// the host attaches (chat_attach). Send does nothing yet: the chat view
+// holds the account and Log out once logged in; Log in is hidden for now.
+// The login flow's card (apps/shared/app/login/) stays, and works through
+// the shared app core the host attaches (chat_attach). Send does nothing yet: the chat view
 // replaces this page when it lands.
 //
 // The keyboard rule is the kit's (kit/frame.coax): the page keeps
@@ -133,7 +133,8 @@ ch_layout_cover :: (s: [] ChatPage, f: [] UiFrame, w: f32, h: f32) {
     _ := uiframe_semantic(f, "login.cover", EL_REGION, "", 0, 0, w, h, 0, 0);
     _ := lf_card(f, l, (w - cw) / 2, top + 56 / u, cw, s[0].focused && ch_login_field(ch_focus(s)) != LF_FIELD_NONE);
   }
-  // the drawer: Log in, or the account and Log out
+  // the drawer: the account and Log out once logged in. Log in is hidden for now (owner, 2026-11-16):
+  // the login flow stays, with no entry point in the drawer.
   in := app_drawer(f, "drawer", "drawer.scrim", w, h, top, s[0].share, "Menu", CH_HIT_SCRIM);
   if in.w > 0 {
     a := k.app; y := in.y + k.app.nav;
@@ -142,8 +143,6 @@ ch_layout_cover :: (s: [] ChatPage, f: [] UiFrame, w: f32, h: f32) {
       who := lf_who(l);
       y += app_text(f, "drawer.account", in.x, y, in.w, APP_TEXT_CAPTION, ifx who.count > 0 then who else "Logged in") + a.gap;
       _ := app_button(f, "drawer.logout", in.x, y, in.w, -1, "Log out", APP_BUTTON_DEFAULT, 0, CH_HIT_LOGOUT);
-    } else {
-      _ := app_button(f, "drawer.login", in.x, y, in.w, -1, "Log in", APP_BUTTON_PRIMARY, 0, CH_HIT_LOGIN);
     }
     app_drawer_end(f, in);
   }
@@ -374,23 +373,24 @@ ch_test_tap :: (s: [] ChatPage, id: string) -> bool {
 
 ch_test_has :: (s: [] ChatPage, id: string) -> bool { return surface_find(ch_sf(s, 0), id) >= 0 || surface_find(ch_sf(s, 1), id) >= 0; }
 
-#test "chat page: the menu button opens the drawer; the scrim and a swipe close it; Log in opens the login card; a tap outside a field takes the keyboard" #steps 2000000000 {
+#test "chat page: the menu button opens the drawer, with no Log in; the scrim and a swipe close it; the login card opens from the flow; a tap outside a field takes the keyboard" #steps 2000000000 {
   s: [1] ChatPage; o: [1] ChOut; ch_test_atlas(s[0].atlas[..]);
   _ := ch_test_frame(s[..], o[..]);
   #assert ch_test_has(s[..], "nav.menu") && !ch_test_has(s[..], "drawer") && !ch_test_has(s[..], "drawer.login");
   #assert ch_test_tap(s[..], "nav.menu") && s[0].drawer; _ := ch_test_frame(s[..], o[..]);
-  #assert ch_test_has(s[..], "drawer") && ch_test_has(s[..], "drawer.scrim") && ch_test_has(s[..], "drawer.login") && !ch_test_has(s[..], "drawer.logout") && chat_refused(s[..]) == 0;
+  #assert ch_test_has(s[..], "drawer") && ch_test_has(s[..], "drawer.scrim") && !ch_test_has(s[..], "drawer.login") && !ch_test_has(s[..], "drawer.logout") && chat_refused(s[..]) == 0;
   #assert ch_test_tap(s[..], "drawer.scrim") && !s[0].drawer; _ := ch_test_frame(s[..], o[..]);
-  #assert !ch_test_has(s[..], "drawer.login");
+  #assert !ch_test_has(s[..], "drawer");
   // a swipe right from the left edge opens it, a swipe left closes it
   _ := chat_pointer(s[..], 3, 900, 0); _ := chat_pointer(s[..], 200, 900, 1); _ := chat_pointer(s[..], 200, 900, 2);
   #assert s[0].drawer; _ := ch_test_frame(s[..], o[..]);
   _ := chat_pointer(s[..], 600, 900, 0); _ := chat_pointer(s[..], 300, 900, 1); _ := chat_pointer(s[..], 300, 900, 2);
   #assert !s[0].drawer; _ := ch_test_frame(s[..], o[..]);
-  // Log in: the drawer closes and the login card opens on the email step
+  // the drawer has no Log in for now; the login card still opens from the flow, on the email step
   lf_t_out(s[0].lf[..]);   // the host answered: nobody is logged in
   #assert chat_activate(s[..], "nav.menu"); _ := ch_test_frame(s[..], o[..]);
-  #assert chat_activate(s[..], "drawer.login") && !s[0].drawer && s[0].lf[0].open; _ := ch_test_frame(s[..], o[..]);
+  #assert !ch_test_has(s[..], "drawer.login") && chat_activate(s[..], "drawer.scrim") && !s[0].drawer; _ := ch_test_frame(s[..], o[..]);
+  lf_open(s[0].lf[..]); ch_step(s[..]); #assert s[0].lf[0].open; _ := ch_test_frame(s[..], o[..]);
   #assert ch_test_has(s[..], "login") && ch_test_has(s[..], "login.email") && ch_test_has(s[..], "login.send") && ch_test_has(s[..], "login.cancel");
   // a press on the email field gives it the keyboard; the host reads its box and sets its value
   #assert ch_test_tap(s[..], "login.email"); _ := ch_test_frame(s[..], o[..]);

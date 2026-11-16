@@ -69,7 +69,7 @@ import UIKit
     override func viewDidAppear(_ animated:Bool) {
         super.viewDidAppear(animated);wake()
         #if DEBUG
-        // Debug builds: `-OAPress nav.menu,drawer.login` presses those rows in turn after launch, as
+        // Debug builds: `-OAPress nav.menu,drawer.scrim` presses those rows in turn after launch, as
         // VoiceOver would, so a screen can be reached and captured without a hand on the simulator.
         if let ids=UserDefaults.standard.string(forKey:"OAPress"),!pressedAtLaunch {
             pressedAtLaunch=true

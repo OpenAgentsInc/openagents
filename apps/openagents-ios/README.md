@@ -1,8 +1,8 @@
 # OpenAgents for iOS
 
 The iOS app is one screen: the chat page. Today it is a title over the
-composer, with the navigation button at the top left: it opens the drawer, whose Log in opens the
-email login card. You can type in the composer; Send does nothing yet. The page is compiled Coax drawn
+composer, with the navigation button at the top left: it opens the drawer (Log in is hidden
+from it for now). You can type in the composer; Send does nothing yet. The page is compiled Coax drawn
 by the shared GPU component kit in one Metal view. The app compiles nothing
 to JavaScript or WebAssembly, has no web view and no Updates path. The plan
 is in [components/gpu-components.md](../../components/gpu-components.md#the-ios-app-grown-screen-by-screen):

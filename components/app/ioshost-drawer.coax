@@ -40,8 +40,11 @@ app_drawer :: (f: [] UiFrame, id: string, scrim_id: string, w: f32, h: f32, top:
   sheet_fill(sh, 0, 0, w, h, 0, opacity(black, APP_DRAWER_DIM * share));
   scrim := uiframe_semantic(f, scrim_id, EL_BUTTON, "Close menu", x + pw, 0, w - x - pw, h, 0, close);
   sheet_hit(sh, UIFRAME_HIT, scrim, 0, x + pw, 0, w - x - pw, h);
-  sheet_under(sh, uiskin_float(sh[0].under, sh[0].nu, s, x, -a.card_radius, pw, h + 2 * a.card_radius, a.card_radius));
-  _ := sheet_box(sh, x, -a.card_radius, pw, h + 2 * a.card_radius, a.card_radius, s.border, s.surface, s.hover);
+  // the panel's box runs past the screen's left, top and bottom edges, so only its right edge shows
+  // a border: it sits flush with the left edge
+  out := a.card_radius + 4;
+  sheet_under(sh, uiskin_float(sh[0].under, sh[0].nu, s, x - out, -out, pw + out, h + 2 * out, a.card_radius));
+  _ := sheet_box(sh, x - out, -out, pw + out, h + 2 * out, a.card_radius, s.border, s.surface, s.hover);
   panel := uiframe_semantic(f, id, EL_REGION, label, x, 0, pw, h, 0, 0);
   sheet_hit(sh, UIFRAME_HIT, panel, 0, x, 0, pw, h);
   uiframe_open(f, panel);
