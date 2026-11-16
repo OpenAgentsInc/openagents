@@ -11,7 +11,10 @@
 //   - the jam's farm rules with real keys and clicks (jrc_farm_rules, jam/jam-farm.coax): a battery from a
 //     charge point, the farm robot hit down and harvested with a held click.
 //
-//   coax/web/tool.sh metaverse/splice-bots/tools/jam-run-check.coax PACK
+//   coax/web/tool.sh metaverse/splice-bots/tools/jam-run-check.coax PACK [CHARS]
+//
+// With CHARS, the characters pack (tools/jam-chars-pack.coax), it also checks the cast (jrc_chars):
+// the Director with her ten clips, the six raider bodies, and the 16 raiders in the ring that wear them.
 //
 // It prints the route it read and a line a run: 0 is a pass, else the number of the beat that failed
 // (the beats are numbered in g_run_to_garage, g_run_from_garage and sp_keys_play). It exits 1 when a run
@@ -21,6 +24,7 @@
 #load "../../../coax/lib/sys/tool.coax";
 #load "../../../coax/lib/sys/fs.coax";
 #load "../../../metaverse-engine/editor/pack.coax";
+#load "../jam/jam-chars.coax";
 
 
 jrc_line :: (what: string, r: int) { print("%: % %\n", what, r, ifx r == 0 then "(pass)" else "(failed at that beat)"); }
@@ -73,9 +77,30 @@ jrc_farm_rules :: (g: [] SpGame) -> int {
   return 0;
 }
 
+// ---- the characters pack (jam/jam-chars.coax): her body and the raiders' for the jam's ring. 0 is a pass,
+// else 1 to 4: not read, no Director, a clip of hers missing, a raider body missing, fewer than 16 raiders.
+jrc_chars :: (path: string, j: [] SjJam) -> int {
+  b: [16777216] u8; n := fs_size(path);
+  if n < 0 || n > b.count || fs_read(path, b[0..<n]) != n { tool_errln("jam-run-check: could not read the characters pack"); return 1; }
+  pack := cast(string) b[0..<n]; rd: [1] PackRead;
+  if !pack_read(pack, rd[..]) { tool_err("jam-run-check: the characters pack is refused: "); tool_errln(rd[0].why); return 1; }
+  c: [1] SjcCast;
+  if !sjc_read(c[..], pack_bytes(pack, rd[..], 0)) { tool_err("jam-run-check: not a characters pack: "); tool_errln(c[0].why); return 1; }
+  print("characters: %, % clips, % palette frames\n", c[0].n, c[0].clip_n, c[0].frames);
+  her := sjc_find(c[..], "director");
+  if her < 0 { print("  no director\n"); return 2; }
+  for r: 0..<SJC_ROLES { if c[0].chars[her].clip[r] < 0 { print("  the director has no %\n", SJC_ROLE[r]); return 2; } }
+  names := [6] string.["raider-1", "raider-2", "raider-3", "raider-4", "raider-5", "raider-6"];
+  for k: 0..<6 { if sjc_find(c[..], names[k]) < 0 { print("  no %\n", names[k]); return 3; } }
+  ring := 0;
+  for i: 0..<SJ_ACTORS { if sj_nth(j, SJ_RAIDER, SJ_RING, i) < 0 { break; } ring += 1; }
+  print("raiders in the ring: %\n", ring);
+  return ifx ring >= 16 then 0 else 4;
+}
+
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
-  if !args_load(a[..]) || args_count(a[..]) != 1 { print("usage: jam-run-check PACK\n"); return 2; }
+  if !args_load(a[..]) || args_count(a[..]) < 1 || args_count(a[..]) > 2 { print("usage: jam-run-check PACK [CHARS]\n"); return 2; }
   pack_b: [268435456] u8; path := args_at(a[..], 0); pn := fs_size(path);
   if pn < 0 || pn > pack_b.count || fs_read(path, pack_b[0..<pn]) != pn { tool_errln("jam-run-check: could not read the pack"); return 1; }
   pack := cast(string) pack_b[0..<pn]; rd: [1] PackRead;
@@ -117,6 +142,8 @@ tool_main :: () -> int #export_c #effects(all) {
   r = jrc_farm_rules(g[..]); jrc_line("the farm's rules: a charge point, the farm robot down and harvested", r); failed = failed || r != 0;
   // the route walk (jam/jam-walk.coax): every stop explained by a collider the realm draws
   failed = jrc_route_walk(g[..], s[..], cat) || failed;
+  // the characters: her body and the raiders' (jam/jam-chars.coax)
+  if args_count(a[..]) == 2 { r = jrc_chars(args_at(a[..], 1), s[0].jam[..]); jrc_line("the characters: the Director, six raiders, 16 in the ring", r); failed = failed || r != 0; }
   return ifx failed then 1 else 0;
 }
 // The route walk scene by scene, and a solar bank stood against and on: whether anything failed.

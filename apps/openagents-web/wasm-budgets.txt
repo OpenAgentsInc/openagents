@@ -410,8 +410,10 @@ painted 200000
 # the jam realm's draw guards and actor names (#13653): about 1% room.
 splice-bots 1045000
 # /worlds/splice-bots-jam (unlisted): the same game with the jam world drawn (splice-jam.coax, jam/jam-draw.coax):
-# 1,036,848 bytes measured 2026-11-16 on a Mac; about 1.3% room.
-splice-jam 1050000
+# 1,036,848 bytes measured 2026-11-16 on a Mac. With the jam's farm rules (jam/jam-farm.coax, 1,062,206 bytes)
+# and its characters (jam/jam-cast.coax, jam/jam-chars.coax: her body and the raiders'), 1,075,441 bytes
+# measured 2026-11-16 on a Mac after the route walk landed; about 0.4% room.
+splice-jam 1080000
 # /worlds on the frames set drawn by the browser (worlds-web.coax, beside the side): 91,057 bytes measured
 # 2026-11-13 on a Mac, about 9% room. It replaces realmlist (70,076 bytes and its 16,279-byte shader).
 worlds-web 100000
