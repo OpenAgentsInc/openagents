@@ -37,6 +37,8 @@
 #load "jetpack.coax";
 #load "card-queue.coax";
 #load "enemy-plan.coax";
+#load "drill-mech.coax";
+#load "hardpoints.coax";
 
 #load "data-checks.coax" #test;
 #load "robot-payload-checks.coax" #test;
@@ -59,3 +61,5 @@
 #load "night-exit-checks.coax" #test;
 #load "encounter-checks.coax" #test;
 #load "card-enemy-checks.coax" #test;
+#load "drill-mech-checks.coax" #test;
+#load "hardpoints-checks.coax" #test;

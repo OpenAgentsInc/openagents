@@ -1,0 +1,107 @@
+// Splice Bots rules: robot parts on named hardpoint sockets (SpliceHardpoints.h, S-08; GDD 04 6.6
+// UE-PART-01, -02, -05, -07; decision 15). hp_core is the core socket and hp_feed where a battery goes
+// in: neither takes a part. Slot limit 1 per part hardpoint is INFERRED in the C++. The robot's parts
+// kit is laid out in hardpoint order; stats are always recomputed from the frame's base plus every part.
+#load "robot-types.coax";
+#load "heat.coax";   // sr_maxi
+
+// ESpliceHardpointType.
+SR_HP_NONE :: 0; SR_HP_ARM :: 1; SR_HP_MOVE :: 2; SR_HP_SENSOR :: 3; SR_HP_BACK :: 4;
+SrHardpointDef :: struct { socket: string; accepts: int; slot_limit: int; }
+SR_HARDPOINT_COUNT :: 7;
+SR_HARDPOINTS :: [SR_HARDPOINT_COUNT] SrHardpointDef.[
+  SrHardpointDef.{socket = "hp_arm_l", accepts = SR_HP_ARM, slot_limit = 1},
+  SrHardpointDef.{socket = "hp_arm_r", accepts = SR_HP_ARM, slot_limit = 1},
+  SrHardpointDef.{socket = "hp_move", accepts = SR_HP_MOVE, slot_limit = 1},
+  SrHardpointDef.{socket = "hp_sensor", accepts = SR_HP_SENSOR, slot_limit = 1},
+  SrHardpointDef.{socket = "hp_back", accepts = SR_HP_BACK, slot_limit = 1},
+  SrHardpointDef.{socket = "hp_core", accepts = SR_HP_NONE, slot_limit = 0},   // GDD 04 6.3
+  SrHardpointDef.{socket = "hp_feed", accepts = SR_HP_NONE, slot_limit = 0},   // UE-FEED-05
+];
+SrRobotStats :: struct { health_max: f32; move_speed: f32; attack_damage: f32; attack_range: f32; can_drill: bool; }
+// A hardpoint part (USplicePartDef as a rules row); numeric changes add to the frame's base.
+SrPartDef :: struct { item: string; kind: int; health_max_add: f32; move_speed_add: f32; attack_damage_add: f32; attack_range_add: f32; enables_drill: bool; }
+// The built-in part table: of items.csv's parts only ITEM_DRILL_HARDWARE is a hardpoint part (GDD 04
+// 6.2.2); its numeric changes have no GDD value, so 0. What it enables: drilling rock.
+SR_HARDPOINT_PARTS :: [1] SrPartDef.[SrPartDef.{item = ITEM_DRILL_HARDWARE, kind = SR_HP_ARM, enables_drill = true}];
+SrHardpointResult :: struct { refusal: int; robot: SrRobotState; stats: SrRobotStats; removed: SrStack; }
+
+// Index into SR_HARDPOINTS, or -1.
+sr_find_hardpoint :: (socket: string) -> int { if socket == "" { return -1; } for h, k: SR_HARDPOINTS { if h.socket == socket { return k; } } return -1; }
+// Index into catalog, or -1.
+sr_find_part :: (item: string, catalog: [] const SrPartDef) -> int { if item == "" { return -1; } for p, k: catalog { if p.item == item { return k; } } return -1; }
+sr_hardpoint_total_slots :: () -> int { n := 0; for h: SR_HARDPOINTS { n += h.slot_limit; } return n; }
+// An empty parts kit in hardpoint order, every slot filtered to parts.
+sr_make_parts_kit :: () -> SrKit { k := sr_make_kit(sr_hardpoint_total_slots()); for i: 0..<k.size { k.filter[i] = sr_filter_bit(SR_CAT_PART); } return k; }
+sr_first_slot_of :: (socket: string) -> int { i := 0; for h: SR_HARDPOINTS { if h.socket == socket { return i; } i += h.slot_limit; } return -1; }
+// The frame's stats with no parts, from its robots.csv row (first value of a multi-value cell; empty 0).
+sr_base_stats_from_row :: (row: SrRobotRow) -> SrRobotStats {
+  return SrRobotStats.{health_max = ifx row.has_health then row.health else 0.0, move_speed = ifx row.move_speed.n > 0 then row.move_speed.v[0] else 0.0,
+    attack_damage = ifx row.has_attack_damage then row.attack_damage else 0.0, attack_range = ifx row.attack_range.n > 0 then row.attack_range.v[0] else 0.0};
+}
+// Fits by type (room is checked by apply): SR_REFUSE_NONE or SR_REFUSE_WRONG_SLOT.
+sr_hardpoint_fit :: (p: SrPartDef, h: SrHardpointDef) -> int {
+  if p.item == "" || p.kind == SR_HP_NONE || h.slot_limit <= 0 || h.accepts != p.kind { return SR_REFUSE_WRONG_SLOT; }
+  return SR_REFUSE_NONE;
+}
+sr_max0 :: (x: f32) -> f32 { return ifx x > 0.0 then x else 0.0; }
+// Base plus every part in the robot's kit found in catalog; never below 0.
+sr_compute_stats :: (base: SrRobotStats, r: SrRobotState, catalog: [] const SrPartDef) -> SrRobotStats {
+  s := base;
+  for i: 0..<r.parts.size {
+    if sr_stack_empty(r.parts.slots[i]) { continue; }
+    k := sr_find_part(r.parts.slots[i].item, catalog);
+    if k < 0 { continue; }
+    p := catalog[k];
+    s.health_max += p.health_max_add; s.move_speed += p.move_speed_add; s.attack_damage += p.attack_damage_add; s.attack_range += p.attack_range_add;
+    s.can_drill = s.can_drill || p.enables_drill;
+  }
+  s.health_max = sr_max0(s.health_max); s.move_speed = sr_max0(s.move_speed); s.attack_damage = sr_max0(s.attack_damage); s.attack_range = sr_max0(s.attack_range);
+  return s;
+}
+sr_hardpoint_refuse :: (base: SrRobotStats, r: SrRobotState, catalog: [] const SrPartDef, why: int) -> SrHardpointResult {
+  return SrHardpointResult.{refusal = why, robot = r, stats = sr_compute_stats(base, r, catalog)};
+}
+sr_hardpoint_accept :: (base: SrRobotStats, r: SrRobotState, catalog: [] const SrPartDef) -> SrHardpointResult {
+  o := SrHardpointResult.{robot = r, stats = sr_compute_stats(base, r, catalog)};
+  o.robot.health_max = o.stats.health_max;
+  h := o.robot.health; o.robot.health = ifx h < 0.0 then 0.0 else ifx h > o.robot.health_max then o.robot.health_max else h;
+  return o;
+}
+// An empty kit is laid out; a wrong size is refused.
+sr_parts_laid_out :: (k: SrKit, out: [] SrKit) -> bool {
+  if k.size == 0 { out[0] = sr_make_parts_kit(); return true; }
+  if k.size != sr_hardpoint_total_slots() { return false; }
+  out[0] = k; return true;
+}
+// Puts the part on the hardpoint: WRONG_SLOT (unknown hardpoint, wrong type, not in catalog, bad
+// layout) or FULL. On success health_max follows the stats and health is clamped to it.
+sr_apply_part :: (base: SrRobotStats, r: SrRobotState, hardpoint: string, p: SrPartDef, catalog: [] const SrPartDef) -> SrHardpointResult {
+  hi := sr_find_hardpoint(hardpoint);
+  if hi < 0 || sr_hardpoint_fit(p, SR_HARDPOINTS[hi]) != SR_REFUSE_NONE || sr_find_part(p.item, catalog) < 0 { return sr_hardpoint_refuse(base, r, catalog, SR_REFUSE_WRONG_SLOT); }
+  next := r; kit: [1] SrKit;
+  if !sr_parts_laid_out(r.parts, kit[..]) { return sr_hardpoint_refuse(base, r, catalog, SR_REFUSE_WRONG_SLOT); }
+  next.parts = kit[0];
+  first := sr_first_slot_of(hardpoint);
+  for i: first..<first + SR_HARDPOINTS[hi].slot_limit {
+    if sr_stack_empty(next.parts.slots[i]) { next.parts.slots[i] = sr_stack(p.item, 1); return sr_hardpoint_accept(base, next, catalog); }
+  }
+  return sr_hardpoint_refuse(base, r, catalog, SR_REFUSE_FULL);
+}
+// Takes the last part off the hardpoint: WRONG_SLOT for an unknown hardpoint, bad layout or nothing on it.
+sr_remove_part :: (base: SrRobotStats, r: SrRobotState, hardpoint: string, catalog: [] const SrPartDef) -> SrHardpointResult {
+  hi := sr_find_hardpoint(hardpoint);
+  kit: [1] SrKit;
+  if hi < 0 || SR_HARDPOINTS[hi].slot_limit <= 0 || !sr_parts_laid_out(r.parts, kit[..]) { return sr_hardpoint_refuse(base, r, catalog, SR_REFUSE_WRONG_SLOT); }
+  next := r; next.parts = kit[0];
+  first := sr_first_slot_of(hardpoint);
+  i := first + SR_HARDPOINTS[hi].slot_limit - 1;
+  while i >= first {
+    if !sr_stack_empty(next.parts.slots[i]) {
+      taken := next.parts.slots[i]; next.parts.slots[i] = SrStack.{};
+      o := sr_hardpoint_accept(base, next, catalog); o.removed = taken; return o;
+    }
+    i -= 1;
+  }
+  return sr_hardpoint_refuse(base, r, catalog, SR_REFUSE_WRONG_SLOT);
+}

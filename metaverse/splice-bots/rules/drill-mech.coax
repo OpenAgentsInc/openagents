@@ -1,0 +1,100 @@
+// Splice Bots rules: the drill mech (SpliceDrillMechRules.h, B-12; GDD 04 UE-CORE-11, UE-WALL-04,
+// UE-AI-18; GDD 03 WORLD-HALL-03 three plugs, 3.0 s then 1.5 s and 1.5 s; GDD 02 19.x SB_DRILL_TIME,
+// SB_AUTO_DRILL 10 m, stand-off 2.6 m; GDD 02 17.13 the mech is found dark, health 45). Built on
+// core-socket.coax and rock-wall.coax (the same drill unit, 10 a second; INFERRED in the C++).
+#load "core-socket.coax";
+#load "rock-wall.coax";
+
+SR_HALL_PLUG_COUNT :: 3;
+SR_HALL_FIRST_PLUG_SECONDS :: 3.0;
+SR_HALL_LATER_PLUG_SECONDS :: 1.5;   // INFERRED, part 2 owns it
+SR_MECH_DRILL_DPS :: SR_WALL_DRILL_DPS;
+SR_MECH_AUTO_START_RANGE :: 10.0;    // m, SB_AUTO_DRILL
+SR_MECH_TOLD_RANGE :: 20.0;          // m, her click on the hallway
+SR_MECH_STAND_OFF :: 2.6;
+SR_MECH_STOP_SHORT :: 0.3;
+SR_MECH_WALK_SPEED :: 7.0;           // m/s, SB_MECH_SPEED
+SR_MECH_HEALTH :: 45.0;
+
+sr_hall_plug_seconds :: (i: int) -> f32 { return ifx i <= 0 then SR_HALL_FIRST_PLUG_SECONDS else SR_HALL_LATER_PLUG_SECONDS; }
+// Digger with ITEM_DRILL_CARD in his card strip.
+sr_digger_has_drill_card :: (s: SrRobotState) -> bool {
+  if s.robot_id != ROBOT_DIGGER { return false; }
+  for k: 0..<s.cards.size { if !sr_stack_empty(s.cards.slots[k]) && s.cards.slots[k].item == ITEM_DRILL_CARD { return true; } }
+  return false;
+}
+// UE-AI-18: a live robot of hers that is the mech, or Digger with the Drill card.
+sr_can_drill_rock_wall :: (r: SrSocketRobot) -> bool {
+  if !sr_socket_awake(r) || r.owner != SR_OWNER_HER { return false; }
+  return r.state.robot_id == ROBOT_DRILL_MECH || sr_digger_has_drill_card(r.state);
+}
+// UE-WALL-04: only the live mech with her core drills the hallway. Never Digger.
+sr_can_drill_hallway :: (r: SrSocketRobot) -> bool { return sr_socket_awake(r) && r.owner == SR_OWNER_HER && r.state.robot_id == ROBOT_DRILL_MECH; }
+// It can drill, it is on follow, and she told it (within 20 m) or it is within 10 m of the first plug.
+sr_should_start_hallway_drill :: (can_drill: bool, mode: int, told: bool, distance: f32) -> bool {
+  if !can_drill || mode != SR_MODE_FOLLOW { return false; }
+  range : f32 = ifx told then SR_MECH_TOLD_RANGE else SR_MECH_AUTO_START_RANGE;
+  return distance <= range;
+}
+sr_in_drill_reach :: (distance_to_face: f32) -> bool { return distance_to_face <= SR_MECH_STAND_OFF + SR_MECH_STOP_SHORT; }
+
+// The hallway's plugs (FSpliceHallway): the mech drills the one at the cursor, the rest carrying on;
+// open once every plug is gone.
+SR_HALL_PLUGS_MAX :: 8;
+SrHallway :: struct { n: int; health: [SR_HALL_PLUGS_MAX] f32; drill_dps: f32 = SR_MECH_DRILL_DPS; cursor: int; }
+sr_hallway_init :: (count: int, dps: f32) -> SrHallway {
+  h := SrHallway.{drill_dps = dps};
+  h.n = sr_mini(sr_maxi(count, 0), SR_HALL_PLUGS_MAX);
+  for i: 0..<h.n { h.health[i] = sr_hall_plug_seconds(i) * dps; }
+  return h;
+}
+sr_hallway_plug_broken :: (h: SrHallway, i: int) -> bool { return i >= 0 && i < h.n && h.health[i] <= 0.0; }
+sr_hallway_num_broken :: (h: SrHallway) -> int { n := 0; for i: 0..<h.n { if h.health[i] <= 0.0 { n += 1; } } return n; }
+// Every plug gone (GDD 02 SYS-CLOCK-04: night falls at this moment). Stays true.
+sr_hallway_is_open :: (h: SrHallway) -> bool { return sr_hallway_num_broken(h) == h.n; }
+sr_hallway_progress :: (h: SrHallway) -> f32 {
+  total : f32 = 0.0; left : f32 = 0.0;
+  for i: 0..<h.n { total += sr_hall_plug_seconds(i) * h.drill_dps; left += ifx h.health[i] > 0.0 then h.health[i] else 0.0; }
+  if total <= 0.0 { return 1.0; }
+  p := 1.0 - left / total;
+  return ifx p < 0.0 then 0.0 else ifx p > 1.0 then 1.0 else p;
+}
+// The mech drilled for `seconds`: broken plugs appended to broken (broken_n[0] counts). Returns how many.
+sr_hallway_drill :: (h: [] SrHallway, seconds: f32, broken: [] int, broken_n: [] int) -> int {
+  if seconds <= 0.0 || h[0].drill_dps <= 0.0 { return 0; }
+  damage := seconds * h[0].drill_dps; n := 0;
+  while damage > 0.0 && h[0].cursor < h[0].n {
+    c := h[0].cursor;
+    if h[0].health[c] <= 0.0 { h[0].cursor += 1; continue; }
+    if damage < h[0].health[c] { h[0].health[c] -= damage; break; }
+    damage -= h[0].health[c]; h[0].health[c] = 0.0;
+    if broken_n[0] < broken.count { broken[broken_n[0]] = c; broken_n[0] += 1; }
+    n += 1; h[0].cursor += 1;
+  }
+  return n;
+}
+
+// Moving a core between Digger and the mech (UE-CORE-11).
+SrMechCoreMove :: struct { ok: bool; refusal: int; from_body: SrItemStack; into: SrSocketRobot; popped_core: SrStack; became_hers: bool; }
+// Digger's core into the mech. crew_count counts Digger; his body item still counts, so the mech is one more.
+sr_move_digger_core_into_mech :: (digger: SrSocketRobot, mech: SrSocketRobot, crew_count: int) -> SrMechCoreMove {
+  o := SrMechCoreMove.{into = mech};
+  taken := sr_core_out(digger, ITEM_BODY_DIGGER);
+  if !taken.ok { o.refusal = taken.refusal; return o; }
+  inn := sr_take_control(mech, taken.core, crew_count, true, SR_DEFAULT_TAKE_WAKE_SHARE);
+  if !inn.ok { o.refusal = inn.refusal; return o; }
+  o.ok = true; o.from_body = taken.body; o.into = inn.robot; o.popped_core = inn.popped_core; o.became_hers = inn.became_hers;
+  return o;
+}
+// And back: core out of the mech, Digger's body placed, the core in. A swap, so the crew is one fewer.
+sr_move_core_back_to_digger :: (mech: SrSocketRobot, digger_body: SrItemStack, crew_count: int) -> SrMechCoreMove {
+  o: SrMechCoreMove;
+  taken := sr_core_out(mech, ITEM_BODY_DRILL_MECH);
+  if !taken.ok { o.refusal = taken.refusal; return o; }
+  placed := sr_place_item(digger_body, true);
+  if !placed.ok { o.refusal = placed.refusal; return o; }
+  inn := sr_take_control(placed.robot, taken.core, sr_maxi(0, crew_count - 1), true, SR_DEFAULT_TAKE_WAKE_SHARE);
+  if !inn.ok { o.refusal = inn.refusal; return o; }
+  o.ok = true; o.from_body = taken.body; o.into = inn.robot; o.popped_core = inn.popped_core; o.became_hers = inn.became_hers;
+  return o;
+}

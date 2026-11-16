@@ -1,0 +1,77 @@
+// Parity checks for drill-mech.coax: SpliceTests/Rules/SpliceDrillMechTests.cpp.
+// rules.coax loads this file with `#load ... #test;`.
+
+dm_live_digger :: (card: string) -> SrSocketRobot {
+  r: SrSocketRobot;
+  r.state.robot_id = ROBOT_DIGGER; r.state.name = "Digger"; r.state.health = 10.0; r.state.health_max = 10.0;
+  r.state.cards = sr_make_kit(2);
+  if card != "" { r.state.cards.slots[0] = sr_stack(card, 1); }
+  r.state.has_core = true; r.state.core = sr_stack(ITEM_SMALL_CORE, 1);
+  r.owner = SR_OWNER_HER;
+  return r;
+}
+dm_found_mech :: () -> SrSocketRobot {
+  r: SrSocketRobot;
+  r.state.robot_id = ROBOT_DRILL_MECH; r.state.name = "Drill mech"; r.state.health = SR_MECH_HEALTH; r.state.health_max = SR_MECH_HEALTH;
+  return r;
+}
+#test "Splice.Rules.DrillMech.Digger's core moves into the mech and back" {
+  digger := dm_live_digger(ITEM_DRILL_CARD); mech := dm_found_mech();
+  #assert !sr_socket_has_core(mech) && mech.owner == SR_OWNER_NONE;
+  inn := sr_move_digger_core_into_mech(digger, mech, 1);
+  #assert inn.ok && sr_socket_has_core(inn.into) && inn.into.state.core.item == ITEM_SMALL_CORE && inn.into.owner == SR_OWNER_HER;
+  #assert inn.into.mode == SR_MODE_FOLLOW && sr_socket_awake(inn.into) && inn.into.state.robot_id == ROBOT_DRILL_MECH && inn.into.state.health == SR_MECH_HEALTH;
+  #assert inn.became_hers && sr_is_robot_body(inn.from_body) && !sr_body_has_core(inn.from_body) && inn.from_body.item == ITEM_BODY_DIGGER;
+  back := sr_move_core_back_to_digger(inn.into, inn.from_body, 2);
+  #assert back.ok && back.into.state.robot_id == ROBOT_DIGGER && sr_socket_has_core(back.into) && back.into.owner == SR_OWNER_HER;
+  #assert sr_digger_has_drill_card(back.into.state) && sr_is_robot_body(back.from_body) && back.from_body.item == ITEM_BODY_DRILL_MECH;
+  foe := dm_found_mech(); foe.state.has_core = true; foe.state.core = sr_stack(ITEM_SMALL_CORE, 1); foe.owner = SR_OWNER_OTHER;
+  refused := sr_move_digger_core_into_mech(digger, foe, 1);
+  #assert !refused.ok && refused.refusal == SR_REFUSE_BRING_TO_ZERO_FIRST;
+  fourth := sr_move_digger_core_into_mech(digger, mech, 3);
+  #assert !fourth.ok && fourth.refusal == SR_REFUSE_CREW_LIMIT;
+  not_hers := digger; not_hers.owner = SR_OWNER_OTHER;
+  #assert !sr_move_digger_core_into_mech(not_hers, mech, 1).ok;
+}
+#test "Splice.Rules.DrillMech.the mech opens the hallway after the GDD's drilling" {
+  #assert sr_hall_plug_seconds(0) == 3.0 && sr_hall_plug_seconds(1) == 1.5 && sr_hall_plug_seconds(2) == 1.5;
+  h := [1] SrHallway.[sr_hallway_init(SR_HALL_PLUG_COUNT, SR_MECH_DRILL_DPS)];
+  broken: [8] int; bn := [1] int.[0];
+  #assert h[0].n == SR_HALL_PLUG_COUNT && !sr_hallway_is_open(h[0]);
+  #assert sr_hallway_drill(h[..], 2.5, broken[..], bn[..]) == 0;
+  #assert sr_hallway_drill(h[..], 0.5, broken[..], bn[..]) == 1 && bn[0] == 1 && broken[0] == 0 && !sr_hallway_is_open(h[0]);
+  #assert sr_hallway_drill(h[..], 1.5, broken[..], bn[..]) == 1 && !sr_hallway_is_open(h[0]);
+  #assert sr_hallway_drill(h[..], 1.4, broken[..], bn[..]) == 0 && !sr_hallway_is_open(h[0]);
+  #assert sr_hallway_drill(h[..], 0.1, broken[..], bn[..]) == 1 && sr_hallway_is_open(h[0]) && bn[0] == 3 && sr_hallway_progress(h[0]) == 1.0;
+  #assert sr_hallway_drill(h[..], 5.0, broken[..], bn[..]) == 0 && sr_hallway_is_open(h[0]);
+  fast := [1] SrHallway.[sr_hallway_init(SR_HALL_PLUG_COUNT, SR_MECH_DRILL_DPS)]; fb: [8] int; fbn := [1] int.[0];
+  #assert sr_hallway_drill(fast[..], 6.0, fb[..], fbn[..]) == 3 && sr_hallway_is_open(fast[0]);
+  mech := dm_found_mech();
+  #assert !sr_can_drill_hallway(mech);
+  mech.state.has_core = true; mech.state.core = sr_stack(ITEM_SMALL_CORE, 1); mech.owner = SR_OWNER_HER;
+  #assert sr_can_drill_hallway(mech);
+  mech.powered_down = true;
+  #assert !sr_can_drill_hallway(mech) && !sr_can_drill_hallway(dm_live_digger(ITEM_DRILL_CARD));
+  #assert sr_should_start_hallway_drill(true, SR_MODE_FOLLOW, false, 10.0) && !sr_should_start_hallway_drill(true, SR_MODE_FOLLOW, false, 10.5);
+  #assert sr_should_start_hallway_drill(true, SR_MODE_FOLLOW, true, 20.0) && !sr_should_start_hallway_drill(true, SR_MODE_FOLLOW, true, 21.0);
+  #assert !sr_should_start_hallway_drill(true, SR_MODE_STAY, true, 1.0) && !sr_should_start_hallway_drill(false, SR_MODE_FOLLOW, true, 1.0);
+  #assert sr_in_drill_reach(SR_MECH_STAND_OFF) && !sr_in_drill_reach(4.0);
+}
+dm_dig :: (r: SrSocketRobot, seconds: f32) -> bool {
+  w := [1] SrRockWall.[sr_rock_wall_init(SR_WALL_DEFAULT_CHUNKS, SR_WALL_DEFAULT_CHUNK_HEALTH, SR_WALL_DRILL_DPS)];
+  broken: [32] int; bn := [1] int.[0];
+  if sr_can_drill_rock_wall(r) { _ = sr_rock_wall_apply(w[..], SR_WALL_HIT_DRILL, seconds, broken[..], bn[..]); }
+  else { _ = sr_rock_wall_apply(w[..], SR_WALL_HIT_ATTACK, 1000.0, broken[..], bn[..]); }
+  return sr_rock_wall_is_open(w[0]);
+}
+#test "Splice.Rules.DrillMech.Digger drills the rock wall only with the Drill card" {
+  bare := dm_live_digger(""); jump := dm_live_digger(ITEM_JUMP_CARD); drill := dm_live_digger(ITEM_DRILL_CARD);
+  #assert !sr_can_drill_rock_wall(bare) && !sr_can_drill_rock_wall(jump) && sr_can_drill_rock_wall(drill);
+  down := drill; down.powered_down = true;
+  foe := drill; foe.owner = SR_OWNER_OTHER;
+  other := drill; other.state.robot_id = ROBOT_DINOSAUR;
+  #assert !sr_can_drill_rock_wall(down) && !sr_can_drill_rock_wall(foe) && !sr_can_drill_rock_wall(other);
+  mech := dm_found_mech(); mech.state.has_core = true; mech.state.core = sr_stack(ITEM_SMALL_CORE, 1); mech.owner = SR_OWNER_HER;
+  #assert sr_can_drill_rock_wall(mech);
+  #assert dm_dig(drill, SR_WALL_DIG_SECONDS) && !dm_dig(drill, 2.3) && !dm_dig(bare, 1000.0);
+}

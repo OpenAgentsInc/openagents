@@ -1,0 +1,49 @@
+// Parity checks for hardpoints.coax: SpliceTests/Rules/SpliceHardpointsTests.cpp.
+// rules.coax loads this file with `#load ... #test;`.
+
+hp_digger_base :: () -> SrRobotStats {
+  row := SrRobotRow.{robot_id = ROBOT_DIGGER, has_health = true, health = 10.0, has_attack_damage = true, attack_damage = 1.0};
+  row.move_speed.n = 1; row.move_speed.v[0] = 7.5; row.attack_range.n = 1; row.attack_range.v[0] = 1.4;
+  return sr_base_stats_from_row(row);
+}
+hp_digger :: () -> SrRobotState { return SrRobotState.{robot_id = ROBOT_DIGGER, health = 10.0, health_max = 10.0}; }
+HP_HEAVY_ARM :: SrPartDef.{item = "TEST_HEAVY_ARM", kind = SR_HP_ARM, health_max_add = 5.0, attack_damage_add = 2.0, move_speed_add = -1.5};
+HP_CATALOG :: [2] SrPartDef.[SrPartDef.{item = ITEM_DRILL_HARDWARE, kind = SR_HP_ARM, enables_drill = true}, HP_HEAVY_ARM];
+
+#test "Splice.Rules.Hardpoints.PartFitsItsHardpoint" {
+  k := sr_find_part(ITEM_DRILL_HARDWARE, SR_HARDPOINT_PARTS[..]);
+  #assert k >= 0 && sr_find_hardpoint("hp_arm_r") >= 0;
+  drill := SR_HARDPOINT_PARTS[k];
+  #assert sr_hardpoint_fit(drill, SR_HARDPOINTS[sr_find_hardpoint("hp_arm_r")]) == SR_REFUSE_NONE && sr_hardpoint_fit(drill, SR_HARDPOINTS[sr_find_hardpoint("hp_arm_l")]) == SR_REFUSE_NONE;
+  r := sr_apply_part(hp_digger_base(), hp_digger(), "hp_arm_r", drill, SR_HARDPOINT_PARTS[..]);
+  #assert r.refusal == SR_REFUSE_NONE && r.robot.parts.slots[sr_first_slot_of("hp_arm_r")].item == ITEM_DRILL_HARDWARE && r.stats.can_drill && r.stats.health_max == 10.0;
+}
+#test "Splice.Rules.Hardpoints.WrongKindIsRefused" {
+  drill := SR_HARDPOINT_PARTS[0];
+  #assert sr_hardpoint_fit(drill, SR_HARDPOINTS[sr_find_hardpoint("hp_move")]) == SR_REFUSE_WRONG_SLOT;
+  r := sr_apply_part(hp_digger_base(), hp_digger(), "hp_move", drill, SR_HARDPOINT_PARTS[..]);
+  #assert r.refusal == SR_REFUSE_WRONG_SLOT && !r.stats.can_drill && r.robot.parts.size == 0;
+  #assert sr_hardpoint_fit(drill, SR_HARDPOINTS[sr_find_hardpoint("hp_core")]) == SR_REFUSE_WRONG_SLOT;
+  #assert sr_find_part(ITEM_SCRAP_PART, SR_HARDPOINT_PARTS[..]) < 0 && sr_find_hardpoint("hp_tail") < 0;
+}
+#test "Splice.Rules.Hardpoints.SwapChangesTheStats" {
+  base := hp_digger_base();
+  with := sr_apply_part(base, hp_digger(), "hp_arm_r", HP_CATALOG[0], HP_CATALOG[..]);
+  #assert with.refusal == SR_REFUSE_NONE;
+  off := sr_remove_part(base, with.robot, "hp_arm_r", HP_CATALOG[..]);
+  #assert off.refusal == SR_REFUSE_NONE && off.removed.item == ITEM_DRILL_HARDWARE && !off.stats.can_drill;
+  sw := sr_apply_part(base, off.robot, "hp_arm_r", HP_HEAVY_ARM, HP_CATALOG[..]);
+  #assert sw.refusal == SR_REFUSE_NONE && !sw.stats.can_drill && sw.stats.health_max == 15.0 && sw.stats.attack_damage == 3.0 && sw.stats.move_speed == 6.0;
+  #assert sw.robot.health_max == 15.0 && sr_compute_stats(base, sw.robot, HP_CATALOG[..]).health_max == 15.0;
+  bare := sr_remove_part(base, sw.robot, "hp_arm_r", HP_CATALOG[..]);
+  #assert bare.stats.health_max == 10.0 && bare.robot.health == 10.0;
+}
+#test "Splice.Rules.Hardpoints.FullHardpointRefusesASecondPart" {
+  base := hp_digger_base();
+  #assert SR_HARDPOINTS[sr_find_hardpoint("hp_arm_r")].slot_limit == 1;
+  first := sr_apply_part(base, hp_digger(), "hp_arm_r", HP_CATALOG[0], HP_CATALOG[..]);
+  #assert first.refusal == SR_REFUSE_NONE;
+  second := sr_apply_part(base, first.robot, "hp_arm_r", HP_HEAVY_ARM, HP_CATALOG[..]);
+  #assert second.refusal == SR_REFUSE_FULL && second.robot.parts.slots[sr_first_slot_of("hp_arm_r")].item == ITEM_DRILL_HARDWARE && second.stats.can_drill && second.stats.health_max == 10.0;
+  #assert sr_apply_part(base, first.robot, "hp_arm_l", HP_HEAVY_ARM, HP_CATALOG[..]).refusal == SR_REFUSE_NONE;
+}
