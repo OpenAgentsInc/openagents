@@ -1,0 +1,12 @@
+// Splice Bots rules: the software cards' effects (SpliceCardEffects.h, package S-13; GDD 04 6.5 to 6.7,
+// UE-CARD-01; addendum 2026-11-14 section 4). Not ported yet: BannedPieceHeat, which sums through
+// SpliceHeat (it lands with the Heat port).
+#load "item-types.coax";
+#load "robot-types.coax";
+
+// UE-CARD-01: Digger jumps when she jumps only with ITEM_JUMP_CARD on its card strip.
+sr_can_digger_jump :: (r: SrRobotState) -> bool {
+  if r.robot_id != ROBOT_DIGGER { return false; }
+  for k: 0..<r.cards.size { s := r.cards.slots[k]; if !sr_stack_empty(s) && s.item == ITEM_JUMP_CARD { return true; } }
+  return false;
+}

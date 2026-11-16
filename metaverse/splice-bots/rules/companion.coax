@@ -1,0 +1,150 @@
+// Splice Bots rules: the companion brain (SpliceCompanion.h, package B-03; GDD 04 5.2 UE-AI-10 to 15,
+// UE-AI-19, UE-AI-19b, UE-AI-51; Docs/decisions/B-01-statetree.md 4.2, 4.5). Positions are metres;
+// distances are on the ground plane. The caller owns the memory, feeds the inputs each tick and steers
+// toward the move target (navigation is the caller's; sr_steer_step is the straight-line stand-in).
+#load "formation.coax";
+
+// ESpliceCompanionState. Jump is its own short state: from take-off until he is back on the ground.
+SR_COMPANION_FOLLOW :: 0; SR_COMPANION_STAY :: 1; SR_COMPANION_ATTACK :: 2; SR_COMPANION_JUMP :: 3; SR_COMPANION_POWERED_DOWN :: 4;
+
+SR_FOLLOW_SPEED :: 7.5;        // T_FOLLOW, m/s
+SR_ATTACK_MOVE_SPEED :: 6.5;   // T_BOT_GO
+SR_ARRIVE_RADIUS :: 0.15;
+SR_PACE_DISTANCE :: 1.5; SR_PACE_MIN :: 0.15; SR_PACE_MAX :: 1.6;
+SR_DASH_START :: 12.0; SR_DASH_GAIN :: 3.0;
+SR_JUMP_RADIUS :: 6.0;
+SR_JUMP_MIN_TIME :: 0.2;
+SR_DEFAULT_ATTACK_PERIOD :: 0.9;   // Digger's strike interval (robots.csv notes)
+SR_FETCH_RANGE :: 4.0; SR_FETCH_RANGE_SENSOR :: 8.0; SR_FETCH_REACH :: 0.8; SR_FETCH_SPEED :: 6.5;
+SR_FETCH_LEASH :: 45.0; SR_DROP_IGNORE :: 5.0; SR_FETCH_SCAN_PERIOD :: 0.2;
+
+// One loose item near him (FSpliceFetchCandidate).
+SrFetchCandidate :: struct { location: D3; part: bool = true; fits: bool = true; her_drop: bool; clear_way: bool = true; }
+// Kept between ticks (FSpliceCompanionMemory).
+SrCompanionMemory :: struct { state: int = SR_COMPANION_FOLLOW; mode: int = SR_MODE_FOLLOW; time_in_state: f64; attack_cooldown: f64; }
+// Told each tick (FSpliceCompanionInputs).
+SrCompanionInputs :: struct {
+  dt: f64;
+  her: D3; her_forward: D3 = D3.{x = 1.0}; her_speed: f64;
+  her_jumped: bool; her_takeoff_speed: f64;
+  has_crew_target: bool; crew_target: D3;          // already filtered: hostile, live, not hers
+  bot: D3; bot_on_ground: bool = true;
+  slot: int;                                       // from sr_assign_follower_slots
+  size: int = SR_SIZE_SMALL;
+  no_path_seconds: f64;
+  view: SrViewCone;
+  attack_reach: f64 = 1.0; attack_period: f64 = SR_DEFAULT_ATTACK_PERIOD;
+  toggle_order: bool;                              // a right click resolved to ToggleFollow (UE-AI-13)
+  powered_down: bool;                              // SrVitals.powered_down
+  jump_card_spliced: bool;                         // sr_can_digger_jump
+  has_fetch_target: bool; fetch: D3;               // sr_pick_fetch's pick; Follow with no crew target only
+}
+// What the robot does now (FSpliceCompanionOutput).
+SrCompanionOutput :: struct {
+  state: int = SR_COMPANION_FOLLOW; state_changed: bool;
+  move: bool; move_target: D3; move_speed: f64; accept_radius: f64 = SR_ARRIVE_RADIUS;
+  attack_crew_target: bool; strike: bool;
+  jump_now: bool; jump_speed: f64;
+  teleport: bool; teleport_target: D3;
+  fetching: bool;
+}
+SrCompanionResult :: struct { memory: SrCompanionMemory; out: SrCompanionOutput; }
+
+sr_toggled_mode :: (mode: int) -> int { return ifx mode == SR_MODE_FOLLOW then SR_MODE_STAY else SR_MODE_FOLLOW; }
+sr_ground_distance :: (a: D3, b: D3) -> f64 { return sqrt(sr_dist2d2(a, b)); }
+// UE-AI-12: a crew slot (clamped), or a pet's own row.
+sr_follow_slot :: (her: D3, forward: D3, slot: int) -> D3 {
+  return ifx sr_is_pet_slot(slot) then sr_pet_slot_position(her, forward, slot - SR_PET_SLOT_INDEX) else sr_slot_position(her, forward, slot);
+}
+// UE-AI-11, prototype g_bot: max(T_FOLLOW, her) x clamp(d / 1.5, 0.15, 1.6), plus 3 m/s per metre past 12.
+sr_follow_speed_for :: (distance: f64, her_speed: f64) -> f64 {
+  d := ifx distance > 0.0 then distance else 0.0;
+  base := ifx her_speed > SR_FOLLOW_SPEED then her_speed else SR_FOLLOW_SPEED;
+  pace := d / SR_PACE_DISTANCE; pace = ifx pace < SR_PACE_MIN then SR_PACE_MIN else ifx pace > SR_PACE_MAX then SR_PACE_MAX else pace;
+  return base * pace + (ifx d > SR_DASH_START then d - SR_DASH_START else 0.0) * SR_DASH_GAIN;
+}
+SrPick :: struct { state: int; start_jump: bool; }
+sr_pick_companion_state :: (m: SrCompanionMemory, in: SrCompanionInputs) -> SrPick {
+  if in.powered_down { return SrPick.{state = SR_COMPANION_POWERED_DOWN}; }
+  if m.mode == SR_MODE_STAY { return SrPick.{state = SR_COMPANION_STAY}; }
+  if m.state == SR_COMPANION_JUMP && !(in.bot_on_ground && m.time_in_state >= SR_JUMP_MIN_TIME) { return SrPick.{state = SR_COMPANION_JUMP}; }
+  if in.has_crew_target { return SrPick.{state = SR_COMPANION_ATTACK}; }
+  // UE-AI-19 (Jump card, on the ground, within 6 m); a Large robot never jumps (UE-AI-07).
+  if m.state == SR_COMPANION_FOLLOW && in.her_jumped && in.jump_card_spliced && in.bot_on_ground && in.size != SR_SIZE_LARGE
+    && sr_ground_distance(in.bot, in.her) <= SR_JUMP_RADIUS { return SrPick.{state = SR_COMPANION_JUMP, start_jump = true}; }
+  return SrPick.{state = SR_COMPANION_FOLLOW};
+}
+sr_steer_to_slot :: (in: SrCompanionInputs, out: [] SrCompanionOutput) {
+  slot := ifx in.size == SR_SIZE_LARGE then sr_large_slot_position(in.her, in.her_forward, ifx in.slot - SR_LARGE_SLOT_INDEX > 0 then in.slot - SR_LARGE_SLOT_INDEX else 0)
+    else sr_follow_slot(in.her, in.her_forward, in.slot);
+  d := sr_ground_distance(in.bot, slot);
+  out[0].move_target = slot; out[0].accept_radius = SR_ARRIVE_RADIUS;
+  out[0].move = d > SR_ARRIVE_RADIUS;
+  out[0].move_speed = ifx out[0].move then sr_follow_speed_for(d, in.her_speed) else 0.0;
+}
+// One tick. Priority (B-01 4.5): powered down, Stay, a jump in the air, Attack, Follow. A toggle flips
+// the mode first unless powered down. Stay is passive. Attack walks to reach and strikes every period.
+// Follow walks to its slot (or its fetch target) and applies the leash (sr_leash, UE-AI-17).
+sr_companion_advance :: (memory: SrCompanionMemory, in: SrCompanionInputs) -> SrCompanionResult {
+  m := memory; o: [1] SrCompanionOutput;
+  dt := ifx in.dt > 0.0 then in.dt else 0.0;
+  m.time_in_state += dt;
+  m.attack_cooldown = ifx m.attack_cooldown - dt > 0.0 then m.attack_cooldown - dt else 0.0;
+  if in.toggle_order && !in.powered_down { m.mode = sr_toggled_mode(m.mode); }
+  pick := sr_pick_companion_state(m, in);
+  if pick.state != m.state { m.state = pick.state; m.time_in_state = 0.0; o[0].state_changed = true; }
+  o[0].state = m.state;
+  if m.state == SR_COMPANION_POWERED_DOWN || m.state == SR_COMPANION_STAY {
+    o[0].move_target = in.bot;
+  } else if m.state == SR_COMPANION_ATTACK {
+    o[0].attack_crew_target = true;
+    reach := ifx in.attack_reach > 0.0 then in.attack_reach else 0.0;
+    d := sr_ground_distance(in.bot, in.crew_target);
+    o[0].move_target = in.crew_target; o[0].accept_radius = reach;
+    o[0].move = d > reach; o[0].move_speed = ifx o[0].move then SR_ATTACK_MOVE_SPEED else 0.0;
+    if !o[0].move && m.attack_cooldown <= 0.0 { o[0].strike = true; m.attack_cooldown = ifx in.attack_period > 0.0 then in.attack_period else 0.0; }
+  } else if m.state == SR_COMPANION_JUMP {
+    if pick.start_jump { o[0].jump_now = true; o[0].jump_speed = ifx in.her_takeoff_speed > 0.0 then in.her_takeoff_speed else 0.0; }
+    sr_steer_to_slot(in, o[..]);
+  } else {
+    if in.has_fetch_target {
+      d := sr_ground_distance(in.bot, in.fetch);
+      o[0].fetching = true; o[0].move_target = in.fetch; o[0].accept_radius = SR_FETCH_REACH * 0.5;
+      o[0].move = d > o[0].accept_radius; o[0].move_speed = ifx o[0].move then SR_FETCH_SPEED else 0.0;
+    } else { sr_steer_to_slot(in, o[..]); }
+    l: SrLeashInputs;
+    l.in_follow = true; l.bot = in.bot; l.her = in.her; l.her_forward = in.her_forward; l.slot = in.slot;
+    l.size = in.size; l.no_path_seconds = in.no_path_seconds; l.view = in.view;
+    lr := sr_leash(l);
+    o[0].teleport = lr.teleport; o[0].teleport_target = lr.target;
+  }
+  return SrCompanionResult.{memory = m, out = o[0]};
+}
+// A straight step toward target at speed for dt on the ground plane, stopping at accept (never past).
+sr_steer_step :: (from: D3, target: D3, speed: f64, dt: f64, accept: f64) -> D3 {
+  delta := d3(target.x - from.x, target.y - from.y, 0.0);
+  d := d3_len(delta);
+  room := d - (ifx accept > 0.0 then accept else 0.0);
+  if room <= 0.0 || speed <= 0.0 || dt <= 0.0 { return from; }
+  step := ifx room < speed * dt then room else speed * dt;
+  return d3_add(from, d3_scale(delta, step / d));
+}
+sr_fetch_range_for :: (sensor_card: bool) -> f64 { return ifx sensor_card then SR_FETCH_RANGE_SENSOR else SR_FETCH_RANGE; }
+// UE-AI-51, GDD 02 12.6: the item he fetches (index into items, or -1): the nearest to him that is a
+// part, fits, is not her fresh drop, has a clear way, is less than range from him and within
+// SR_FETCH_LEASH of her.
+sr_pick_fetch :: (bot: D3, her: D3, items: [] const SrFetchCandidate, range: f64) -> int {
+  best := -1; best_d := range;
+  for c, i: items {
+    if !c.part || !c.fits || c.her_drop || !c.clear_way { continue; }
+    d := sr_ground_distance(bot, c.location);
+    if d >= best_d || sr_ground_distance(her, c.location) > SR_FETCH_LEASH { continue; }
+    best = i; best_d = d;
+  }
+  return best;
+}
+// The one key that orders all her robots (G, pad X): any following, all stay; else all follow.
+sr_crew_toggle_mode :: (modes: [] const int) -> int {
+  for m: modes { if m == SR_MODE_FOLLOW { return SR_MODE_STAY; } }
+  return SR_MODE_FOLLOW;
+}

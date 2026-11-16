@@ -15,6 +15,9 @@
 #load "checkpoint.coax";
 #load "run-stats.coax";
 #load "formation.coax";
+#load "vitals.coax";
+#load "card-effects.coax";
+#load "companion.coax";
 
 #load "data-checks.coax" #test;
 #load "robot-payload-checks.coax" #test;
@@ -23,3 +26,6 @@
 #load "checkpoint-checks.coax" #test;
 #load "run-stats-checks.coax" #test;
 #load "formation-checks.coax" #test;
+#load "vitals-checks.coax" #test;
+#load "card-effects-checks.coax" #test;
+#load "companion-checks.coax" #test;

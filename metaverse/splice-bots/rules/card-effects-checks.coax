@@ -1,0 +1,20 @@
+// Parity checks for card-effects.coax: SpliceTests/Rules/SpliceCardEffectsTests.cpp. The "through the
+// real splice action" halves wait for the SpliceSplice port; BannedPieceHeatComesFromHeatRules waits
+// for Heat. rules.coax loads this file with `#load ... #test;`.
+
+ce_robot :: (id: string, slots: int) -> SrRobotState { r: SrRobotState; r.robot_id = id; r.cards = sr_make_kit(slots); return r; }
+
+#test "Splice.Rules.CardEffects.DiggerJumpsOnlyWithJumpCard" {
+  d := ce_robot(ROBOT_DIGGER, 2);
+  #assert !sr_can_digger_jump(d);
+  d.cards.slots[0] = sr_stack(ITEM_DRILL_CARD, 1);
+  #assert !sr_can_digger_jump(d);
+  d.cards.slots[1] = sr_stack(ITEM_JUMP_CARD, 1);
+  #assert sr_can_digger_jump(d);
+}
+#test "Splice.Rules.CardEffects.OtherRobotNeverJumpsFromCard" {
+  for id: [3] string.[ROBOT_IMPERIAL, ROBOT_DRILL_MECH, ROBOT_DINOSAUR] {
+    r := ce_robot(id, 2); r.cards.slots[0] = sr_stack(ITEM_JUMP_CARD, 1);
+    #assert !sr_can_digger_jump(r);
+  }
+}

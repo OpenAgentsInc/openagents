@@ -1,0 +1,305 @@
+// Parity checks for companion.coax: SpliceTests/Rules/SpliceCompanionTests.cpp, SpliceCrewTests.cpp
+// (CrewKeyRowsMatchTheCsv is the player controller's, not a rule), and the SpliceCompanion halves of
+// SpliceFormationTests.cpp and SpliceLargeFollowerTests.cpp, including their two ring walks.
+// Uses fm_* helpers from formation-checks.coax. rules.coax loads this file with `#load ... #test;`.
+
+CP_DT :: 1.0 / 60.0;
+CP_DIGGER_REACH :: 1.4;
+CP_DIGGER_DAMAGE :: 1.0;
+
+// The tests' FSim: her, Digger, one tick of the brain and a straight-line step.
+CpSim :: struct { memory: SrCompanionMemory; in: SrCompanionInputs; out: SrCompanionOutput; }
+cp_sim :: () -> CpSim {
+  s: CpSim; s.in.dt = CP_DT; s.in.bot = d3(-3.0, 0.0, 0.0); s.in.attack_reach = CP_DIGGER_REACH;
+  return s;
+}
+cp_tick :: (s: [] CpSim) {
+  r := sr_companion_advance(s[0].memory, s[0].in);
+  s[0].memory = r.memory; s[0].out = r.out;
+  if r.out.move { s[0].in.bot = sr_steer_step(s[0].in.bot, r.out.move_target, r.out.move_speed, s[0].in.dt, r.out.accept_radius); }
+  s[0].in.toggle_order = false; s[0].in.her_jumped = false;
+}
+cp_run :: (s: [] CpSim, ticks: int) { for i: 0..<ticks { cp_tick(s); } }
+cp_to_her :: (s: CpSim) -> f64 { return sr_ground_distance(s.in.bot, s.in.her); }
+
+#test "Splice.Rules.Companion.FollowsHerAndKeepsDistance" {
+  slot := sr_follow_slot(d3(0.0, 0.0, 0.0), d3(1.0, 0.0, 0.0), 0);
+  #assert abs(slot.y + 1.5) < 0.0001 && abs(slot.x - 0.4) < 0.0001;
+  #assert abs(sr_follow_slot(d3(0.0, 0.0, 0.0), d3(1.0, 0.0, 0.0), 1).y - 1.5) < 0.0001;
+  behind := sr_follow_slot(d3(0.0, 0.0, 0.0), d3(1.0, 0.0, 0.0), 2);
+  #assert behind.x < 0.0 && abs(behind.y) < 0.0001;
+  slot_d := sqrt(1.5 * 1.5 + 0.4 * 0.4);
+  s := [1] CpSim.[cp_sim()]; s[0].in.bot = d3(-8.0, 4.0, 0.0);
+  cp_run(s[..], 180);
+  #assert s[0].out.state == SR_COMPANION_FOLLOW && sr_ground_distance(s[0].in.bot, slot) <= SR_ARRIVE_RADIUS + 0.001 && !s[0].out.move;
+  worst := 0.0;
+  for k: 0..<240 {
+    s[0].in.her_speed = 5.0; s[0].in.her.x += 5.0 * CP_DT; cp_tick(s[..]);
+    if k > 30 { e := abs(cp_to_her(s[0]) - slot_d); if e > worst { worst = e; } }
+  }
+  #assert worst < 0.5;
+  #assert abs(sr_follow_speed_for(1.5, 0.0) - 7.5) < 0.0001 && abs(sr_follow_speed_for(1.5, 22.0) - 22.0) < 0.0001;
+  #assert sr_follow_speed_for(20.0, 0.0) > 7.5 * 1.6;
+}
+
+#test "Splice.Rules.Companion.PrototypeNeverJumpsToHerSide" {
+  s := [1] CpSim.[cp_sim()]; s[0].in.bot = sr_follow_slot(s[0].in.her, s[0].in.her_forward, 0);
+  most := 0.0;
+  for k: 0..<2400 {
+    u := cast(f64) k / 120.0; u = ifx u > 1.0 then 1.0 else u;
+    s[0].in.her_speed = ifx k < 120 then 5.0 else 0.0;
+    s[0].in.her = d3(u * 10.0, 0.0, 0.0);
+    before := s[0].in.bot; cp_tick(s[..]);
+    d := sr_ground_distance(before, s[0].in.bot); if d > most { most = d; }
+  }
+  #assert most < SR_FOLLOW_SPEED * 1.6 * CP_DT + 0.05 && cp_to_her(s[0]) < 3.0;
+}
+
+#test "Splice.Rules.Companion.RightClickTogglesStayAndBack" {
+  #assert sr_toggled_mode(SR_MODE_FOLLOW) == SR_MODE_STAY && sr_toggled_mode(SR_MODE_STAY) == SR_MODE_FOLLOW;
+  s := [1] CpSim.[cp_sim()]; cp_run(s[..], 60);
+  #assert s[0].out.state == SR_COMPANION_FOLLOW;
+  s[0].in.toggle_order = true; cp_tick(s[..]);
+  #assert s[0].out.state == SR_COMPANION_STAY && s[0].memory.mode == SR_MODE_STAY && s[0].out.state_changed;
+  held := s[0].in.bot;
+  for k: 0..<240 { s[0].in.her.x += 5.0 * CP_DT; cp_tick(s[..]); #assert !s[0].out.move; }
+  #assert fm_near(s[0].in.bot, held, 0.0) && s[0].out.state == SR_COMPANION_STAY;
+  s[0].in.toggle_order = true; cp_tick(s[..]);
+  #assert s[0].out.state == SR_COMPANION_FOLLOW && s[0].out.move;
+  cp_run(s[..], 300);
+  #assert cp_to_her(s[0]) < 2.0;
+}
+
+#test "Splice.Rules.Companion.AttacksWhatSheAttacks" {
+  s := [1] CpSim.[cp_sim()]; cp_run(s[..], 60);
+  farm := sr_make_vitals(12.0, 10.0); at := d3(10.0, 6.0, 0.0);
+  s[0].in.has_crew_target = true; s[0].in.crew_target = at; cp_tick(s[..]);
+  #assert s[0].out.state == SR_COMPANION_ATTACK && s[0].out.attack_crew_target && s[0].out.move && fm_near(s[0].out.move_target, at, 0.0) && !s[0].out.strike;
+  strikes := 0; last := -1.0; k := 0;
+  while k < 1800 && !farm.powered_down {
+    cp_tick(s[..]);
+    if s[0].out.strike {
+      #assert sr_ground_distance(s[0].in.bot, at) <= CP_DIGGER_REACH + 0.001;
+      t := cast(f64) k * CP_DT;
+      if last >= 0.0 { #assert t - last >= SR_DEFAULT_ATTACK_PERIOD - CP_DT; }
+      last = t; farm = sr_apply_damage(farm, CP_DIGGER_DAMAGE); strikes += 1;
+    }
+    k += 1;
+  }
+  #assert farm.powered_down && strikes == 12;
+  s[0].in.has_crew_target = false; cp_tick(s[..]);
+  #assert s[0].out.state == SR_COMPANION_FOLLOW && !s[0].out.attack_crew_target;
+}
+
+#test "Splice.Rules.Companion.DoesNotAttackWhenStaying" {
+  s := [1] CpSim.[cp_sim()]; s[0].in.toggle_order = true; cp_tick(s[..]);
+  #assert s[0].out.state == SR_COMPANION_STAY;
+  s[0].in.has_crew_target = true; s[0].in.crew_target = d3_add(s[0].in.bot, d3(1.0, 0.0, 0.0));
+  for k: 0..<300 { cp_tick(s[..]); #assert s[0].out.state == SR_COMPANION_STAY && !s[0].out.attack_crew_target && !s[0].out.strike && !s[0].out.move; }
+  s[0].in.toggle_order = true; cp_tick(s[..]);
+  #assert s[0].out.state == SR_COMPANION_ATTACK;
+  s[0].in.toggle_order = true; cp_tick(s[..]);
+  #assert s[0].out.state == SR_COMPANION_STAY && !s[0].out.attack_crew_target;
+}
+
+#test "Splice.Rules.Companion.JumpsOnlyWithJumpCard" {
+  no_card := ce_robot(ROBOT_DIGGER, 2); card := ce_robot(ROBOT_DIGGER, 2); card.cards.slots[1] = sr_stack(ITEM_JUMP_CARD, 1);
+  #assert !sr_can_digger_jump(no_card) && sr_can_digger_jump(card);
+  s := [1] CpSim.[cp_sim()]; s[0].in.jump_card_spliced = sr_can_digger_jump(no_card); cp_run(s[..], 60);
+  s[0].in.her_jumped = true; s[0].in.her_takeoff_speed = 6.0; cp_tick(s[..]);
+  #assert !s[0].out.jump_now && s[0].out.state == SR_COMPANION_FOLLOW;
+  j := [1] CpSim.[cp_sim()]; j[0].in.jump_card_spliced = sr_can_digger_jump(card); cp_run(j[..], 60);
+  j[0].in.her_jumped = true; j[0].in.her_takeoff_speed = 6.0; cp_tick(j[..]);
+  #assert j[0].out.jump_now && abs(j[0].out.jump_speed - 6.0) < 0.0001 && j[0].out.state == SR_COMPANION_JUMP;
+  j[0].in.bot_on_ground = false; cp_run(j[..], 30);
+  #assert j[0].out.state == SR_COMPANION_JUMP && !j[0].out.jump_now;
+  j[0].in.bot_on_ground = true; cp_tick(j[..]);
+  #assert j[0].out.state == SR_COMPANION_FOLLOW;
+  f := [1] CpSim.[cp_sim()]; f[0].in.jump_card_spliced = true; f[0].in.bot = d3(-20.0, 0.0, 0.0); f[0].in.her_jumped = true; cp_tick(f[..]);
+  #assert !f[0].out.jump_now;
+  a := [1] CpSim.[cp_sim()]; a[0].in.jump_card_spliced = true; cp_run(a[..], 60); a[0].in.bot_on_ground = false; a[0].in.her_jumped = true; cp_tick(a[..]);
+  #assert !a[0].out.jump_now;
+  st := [1] CpSim.[cp_sim()]; st[0].in.jump_card_spliced = true; cp_run(st[..], 60); st[0].in.toggle_order = true; cp_tick(st[..]);
+  st[0].in.her_jumped = true; cp_tick(st[..]);
+  #assert !st[0].out.jump_now;
+}
+
+#test "Splice.Rules.Companion.PoweredDownStopsEverything" {
+  s := [1] CpSim.[cp_sim()]; s[0].in.jump_card_spliced = true; s[0].in.has_crew_target = true; s[0].in.crew_target = d3_add(s[0].in.bot, d3(1.0, 0.0, 0.0));
+  cp_run(s[..], 10);
+  #assert s[0].out.state == SR_COMPANION_ATTACK;
+  s[0].in.powered_down = true; at := s[0].in.bot;
+  for k: 0..<180 {
+    s[0].in.her.x += 5.0 * CP_DT; s[0].in.her_jumped = k % 30 == 0; s[0].in.toggle_order = k % 45 == 0;
+    cp_tick(s[..]);
+    #assert s[0].out.state == SR_COMPANION_POWERED_DOWN && !s[0].out.move && !s[0].out.attack_crew_target && !s[0].out.strike && !s[0].out.jump_now;
+  }
+  #assert fm_near(s[0].in.bot, at, 0.0) && s[0].memory.mode == SR_MODE_FOLLOW;
+}
+
+cp_part :: (x: f64, y: f64) -> SrFetchCandidate { return SrFetchCandidate.{location = d3(x, y, 0.0)}; }
+#test "Splice.Rules.Companion.FetchPicksNearestPartInRange" {
+  bot := d3(0.0, 0.0, 0.0); her := d3(10.0, 0.0, 0.0);
+  plain := sr_fetch_range_for(false); sensor := sr_fetch_range_for(true);
+  #assert plain == 4.0 && sensor == 8.0;
+  lit1 := [1] SrFetchCandidate.[cp_part(-3.9, 0.0)];
+  #assert sr_pick_fetch(bot, her, lit1[..], plain) == 0;
+  lit2 := [1] SrFetchCandidate.[cp_part(-4.1, 0.0)];
+  #assert sr_pick_fetch(bot, her, lit2[..], plain) == -1;
+  lit3 := [1] SrFetchCandidate.[cp_part(-7.9, 0.0)];
+  #assert sr_pick_fetch(bot, her, lit3[..], sensor) == 0;
+  lit4 := [3] SrFetchCandidate.[cp_part(3.0, 0.0), cp_part(0.0, 1.5), cp_part(-2.0, 0.0)];
+  #assert sr_pick_fetch(bot, her, lit4[..], plain) == 1;
+  body := cp_part(0.0, 2.0); body.part = false;
+  lit5 := [1] SrFetchCandidate.[body];
+  #assert sr_pick_fetch(bot, her, lit5[..], plain) == -1;
+  full := cp_part(0.0, 2.0); full.fits = false;
+  lit6 := [1] SrFetchCandidate.[full];
+  #assert sr_pick_fetch(bot, her, lit6[..], plain) == -1;
+  drop := cp_part(0.0, 2.0); drop.her_drop = true;
+  lit7 := [1] SrFetchCandidate.[drop];
+  #assert sr_pick_fetch(bot, her, lit7[..], plain) == -1;
+  wall := cp_part(0.0, 2.0); wall.clear_way = false;
+  lit8 := [1] SrFetchCandidate.[wall];
+  #assert sr_pick_fetch(bot, her, lit8[..], plain) == -1;
+  lit9 := [2] SrFetchCandidate.[wall, cp_part(3.0, 0.0)];
+  #assert sr_pick_fetch(bot, her, lit9[..], plain) == 1;
+  lit10 := [1] SrFetchCandidate.[cp_part(-2.0, 0.0)];
+  #assert sr_pick_fetch(bot, d3(50.0, 0.0, 0.0), lit10[..], plain) == -1;
+}
+
+#test "Splice.Rules.Companion.FetchWalksToThePartOnFollowOnly" {
+  in: SrCompanionInputs; in.dt = CP_DT; in.bot = d3(-2.0, 2.0, 0.0); in.attack_reach = 1.4;
+  in.has_fetch_target = true; in.fetch = d3(-5.0, 3.0, 0.0);
+  r := sr_companion_advance(SrCompanionMemory.{}, in);
+  #assert r.out.fetching && r.out.move && fm_near(r.out.move_target, in.fetch, 0.0) && r.out.move_speed == SR_FETCH_SPEED;
+  mem := r.memory;
+  for i: 0..<120 {
+    st := sr_companion_advance(mem, in); mem = st.memory;
+    if st.out.move { in.bot = sr_steer_step(in.bot, st.out.move_target, st.out.move_speed, in.dt, st.out.accept_radius); }
+  }
+  #assert sr_ground_distance(in.bot, in.fetch) <= SR_FETCH_REACH;
+  in.bot = d3(-2.0, 2.0, 0.0);
+  r = sr_companion_advance(SrCompanionMemory.{mode = SR_MODE_STAY, state = SR_COMPANION_STAY}, in);
+  #assert !(r.out.fetching || r.out.move);
+  in.has_crew_target = true; in.crew_target = d3(6.0, 0.0, 0.0);
+  r = sr_companion_advance(SrCompanionMemory.{}, in);
+  #assert r.out.state == SR_COMPANION_ATTACK && !r.out.fetching && fm_near(r.out.move_target, in.crew_target, 0.0);
+}
+
+#test "Splice.Rules.Companion.CrewKeyStaysAllOrFollowsAll" {
+  lit11 := [2] int.[SR_MODE_FOLLOW, SR_MODE_FOLLOW];
+  #assert sr_crew_toggle_mode(lit11[..]) == SR_MODE_STAY;
+  lit12 := [2] int.[SR_MODE_STAY, SR_MODE_FOLLOW];
+  #assert sr_crew_toggle_mode(lit12[..]) == SR_MODE_STAY;
+  lit13 := [2] int.[SR_MODE_STAY, SR_MODE_STAY];
+  #assert sr_crew_toggle_mode(lit13[..]) == SR_MODE_FOLLOW;
+  none: [1] int;
+  #assert sr_crew_toggle_mode(none[0..<0]) == SR_MODE_FOLLOW;
+}
+
+// The brain halves of the formation tests.
+#test "Splice.Rules.Formation.SlotsTurnWithHerHeading (companion slot)" {
+  #assert fm_near(sr_follow_slot(d3(2.0, 3.0, 0.0), fm_heading(40.0), 2), sr_slot_position(d3(2.0, 3.0, 0.0), fm_heading(40.0), 2), 0.0);
+}
+#test "Splice.Rules.Formation.PastLeashIsTeleported (brain)" {
+  her := d3(10.0, 4.0, 0.0);
+  in: SrCompanionInputs; in.dt = CP_DT; in.her = her; in.her_forward = fm_heading(0.0); in.bot = d3_sub(her, d3(40.0, 0.0, 0.0));
+  in.slot = 1; in.view = fm_camera_behind(her, in.her_forward);
+  c := sr_companion_advance(SrCompanionMemory.{}, in);
+  #assert c.out.teleport && c.out.state == SR_COMPANION_FOLLOW;
+  p := sr_leash_point(in.her, in.her_forward, 1, in.view);
+  #assert fm_near(c.out.teleport_target, p.p, 0.0001);
+}
+#test "Splice.Rules.Formation.InsideLeashIsNotTeleported (brain)" {
+  in: SrCompanionInputs; in.dt = CP_DT; in.bot = d3(-40.0, 0.0, 0.0); in.has_crew_target = true; in.crew_target = d3(-45.0, 0.0, 0.0);
+  c := sr_companion_advance(SrCompanionMemory.{}, in);
+  #assert c.out.state == SR_COMPANION_ATTACK && !c.out.teleport;
+  in.has_crew_target = false;
+  m := c.memory; m.mode = SR_MODE_STAY;
+  c = sr_companion_advance(m, in);
+  #assert !c.out.teleport;
+  m = c.memory; m.mode = SR_MODE_FOLLOW; in.bot = d3(-20.0, 0.0, 0.0);
+  c = sr_companion_advance(m, in);
+  #assert c.out.move && !c.out.teleport;
+}
+#test "Splice.Rules.LargeFollower.TakesRearSlotAt8m (brain)" {
+  her := d3(5.0, -3.0, 2.0);
+  in: SrCompanionInputs; in.dt = CP_DT; in.her = her; in.her_forward = fm_heading(30.0); in.bot = d3_add(her, d3(20.0, 0.0, 0.0));
+  in.size = SR_SIZE_LARGE; in.slot = SR_LARGE_SLOT_INDEX;
+  rear := d3_sub(her, d3_scale(fm_heading(30.0), 8.0));
+  m: SrCompanionMemory;
+  r := sr_companion_advance(m, in); m = r.memory;
+  #assert r.out.move && fm_near(r.out.move_target, rear, 0.001);
+  in.slot = 0; r = sr_companion_advance(m, in); m = r.memory;
+  #assert fm_near(r.out.move_target, rear, 0.001);
+  in.her_jumped = true; in.jump_card_spliced = true; in.bot = rear;
+  r = sr_companion_advance(m, in);
+  #assert !r.out.jump_now;
+}
+#test "Splice.Rules.LargeFollower.LeashUsesLargeDistance (brain)" {
+  her := d3(-4.0, 9.0, 0.0);
+  in: SrCompanionInputs; in.dt = CP_DT; in.her = her; in.her_forward = fm_heading(0.0); in.view = fm_camera_behind(her, in.her_forward);
+  in.size = SR_SIZE_LARGE; in.slot = SR_LARGE_SLOT_INDEX; in.bot = d3_sub(her, d3(40.0, 0.0, 0.0));
+  c := sr_companion_advance(SrCompanionMemory.{}, in);
+  #assert c.out.move && !c.out.teleport;
+  in.bot = d3_sub(her, d3(50.0, 0.0, 0.0));
+  c = sr_companion_advance(c.memory, in);
+  #assert c.out.teleport && abs(fm_behind(c.out.teleport_target, her, in.her_forward) - 8.0) < 0.001;
+}
+
+#test "Splice.Rules.Formation.ThreeFollowThroughTheRing" {
+  radius := 10.0; speed := 5.0;
+  mem: [3] SrCompanionMemory;
+  bots := [3] D3.[d3(8.0, -3.0, 0.0), d3(9.0, -2.0, 0.0), d3(7.0, -4.0, 0.0)];
+  slots := [3] int.[-1, -1, -1];
+  ticks := cast(int) -floor(-(2.0 * 2.0 * PI_D * radius / speed / CP_DT));
+  closest := 1e300; farthest := 0.0; teleports := 0;
+  for t: 0..<ticks {
+    ang := speed / radius * cast(f64) t * CP_DT;
+    her := d3(radius * cos(ang), radius * sin(ang), 0.0); fwd := d3(-sin(ang), cos(ang), 0.0);
+    sl: [3] D3; n := sr_formation_slots(her, fwd, 3, sl[..]);
+    was := slots; sr_assign_slots(was[..], bots[..], sl[0..<n], slots[..]);
+    for b: 0..<3 {
+      in: SrCompanionInputs; in.dt = CP_DT; in.her = her; in.her_forward = fwd; in.her_speed = speed; in.bot = bots[b]; in.slot = slots[b];
+      r := sr_companion_advance(mem[b], in); mem[b] = r.memory;
+      if r.out.teleport { teleports += 1; }
+      if r.out.move { bots[b] = sr_steer_step(bots[b], r.out.move_target, r.out.move_speed, CP_DT, r.out.accept_radius); }
+    }
+    if cast(f64) t * CP_DT > 2.0 {
+      g := fm_min_gap(bots[..]); if g < closest { closest = g; }
+      for p: bots { d := fm_dist2d(p, her); if d > farthest { farthest = d; } }
+    }
+  }
+  has := [3] bool.[false, false, false]; for s: slots { if s >= 0 && s < 3 { has[s] = true; } }
+  #assert has[0] && has[1] && has[2];
+  #assert closest >= SR_MIN_SLOT_GAP && farthest < 3.5 && teleports == 0;
+}
+
+#test "Splice.Rules.LargeFollower.FollowsTheRingWithoutTeleport" {
+  radius := 25.0; speed := 6.0;
+  sizes := [3] int.[SR_SIZE_SMALL, SR_SIZE_LARGE, SR_SIZE_SMALL];
+  mem: [3] SrCompanionMemory;
+  bots := [3] D3.[d3(24.0, -2.0, 0.0), d3(23.0, -3.0, 0.0), d3(22.0, -4.0, 0.0)];
+  slots := [3] int.[-1, -1, -1];
+  ticks := cast(int) -floor(-(2.0 * 2.0 * PI_D * radius / speed / CP_DT));
+  teleports := 0; min_behind := 1e300; min_gap := 1e300;
+  for t: 0..<ticks {
+    ang := speed / radius * cast(f64) t * CP_DT;
+    her := d3(radius * cos(ang), radius * sin(ang), 0.0); fwd := d3(-sin(ang), cos(ang), 0.0);
+    was := slots; sr_assign_follower_slots(was[..], bots[..], sizes[..], her, fwd, slots[..]);
+    for b: 0..<3 {
+      in: SrCompanionInputs; in.dt = CP_DT; in.her = her; in.her_forward = fwd; in.her_speed = speed; in.bot = bots[b];
+      in.slot = slots[b]; in.size = sizes[b]; in.view = fm_camera_behind(her, fwd);
+      r := sr_companion_advance(mem[b], in); mem[b] = r.memory;
+      if r.out.teleport { teleports += 1; }
+      if r.out.move { bots[b] = sr_steer_step(bots[b], r.out.move_target, r.out.move_speed, CP_DT, r.out.accept_radius); }
+    }
+    if cast(f64) t * CP_DT > 4.0 {
+      bh := fm_behind(bots[1], her, fwd); if bh < min_behind { min_behind = bh; }
+      g0 := fm_dist2d(bots[1], bots[0]); g2 := fm_dist2d(bots[1], bots[2]);
+      g := ifx g0 < g2 then g0 else g2; if g < min_gap { min_gap = g; }
+    }
+  }
+  #assert teleports == 0 && slots[1] == SR_LARGE_SLOT_INDEX && min_behind > 6.0 && min_gap > 5.0;
+}

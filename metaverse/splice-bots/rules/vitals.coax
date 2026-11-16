@@ -1,0 +1,46 @@
+// Splice Bots rules: health and move energy (SpliceVitals.h, package R-07; GDD 04 6.4 UE-CARD-02, -04,
+// -06, 6.8 UE-FEED-07, -08, UE-Q-31; GDD 02 section 25, batteries).
+// The C++ default arguments are the SR_DEFAULT_* constants here; pass them explicitly.
+
+SrVitals :: struct { health: f32; health_max: f32; move_energy: f32; move_energy_max: f32; powered_down: bool; }
+// ESpliceFeedResult.
+SR_FEED_FED :: 0; SR_FEED_REFUSED_FULL :: 1; SR_FEED_REFUSED_DOWN :: 2;
+
+SR_DEFAULT_BATTERY_HEALTH_SHARE :: 0.4;   // INFERRED (UE-FEED-07; UE-Q-31 open)
+SR_DEFAULT_ATTACK_ENERGY_COST :: 0.0;     // INFERRED (UE-CARD-04): the one attack is free
+
+sr_maxf :: (a: f32, b: f32) -> f32 { return ifx a > b then a else b; }
+sr_minf :: (a: f32, b: f32) -> f32 { return ifx a < b then a else b; }
+// Full health and full energy.
+sr_make_vitals :: (health_max: f32, move_energy_max: f32) -> SrVitals {
+  v: SrVitals; v.health_max = sr_maxf(0.0, health_max); v.health = v.health_max;
+  v.move_energy_max = sr_maxf(0.0, move_energy_max); v.move_energy = v.move_energy_max;
+  return v;
+}
+sr_vitals_full :: (v: SrVitals) -> bool { return v.health >= v.health_max && v.move_energy >= v.move_energy_max; }
+// Negative damage is 0; health clamps at 0, where it powers down for good.
+sr_apply_damage :: (v: SrVitals, damage: f32) -> SrVitals {
+  o := v; o.health = sr_minf(sr_maxf(v.health - sr_maxf(0.0, damage), 0.0), v.health_max);
+  if o.health <= 0.0 { o.health = 0.0; o.powered_down = true; }
+  return o;
+}
+// Spends move energy if enough is held (never when powered down); otherwise false, unchanged.
+sr_try_spend_move_energy :: (v: [] SrVitals, cost: f32) -> bool {
+  c := sr_maxf(0.0, cost);
+  if v[0].powered_down || v[0].move_energy < c { return false; }
+  v[0].move_energy -= c; return true;
+}
+sr_can_attack :: (v: SrVitals, cost: f32) -> bool { return !v.powered_down && v.move_energy >= sr_maxf(0.0, cost); }
+sr_try_pay_attack :: (v: [] SrVitals, cost: f32) -> bool {
+  if !sr_can_attack(v[0], cost) { return false; }
+  v[0].move_energy -= sr_maxf(0.0, cost); return true;
+}
+// One battery: share of max health (clamped) and all move energy. Full refuses; powered down refuses
+// (INFERRED: GDD 04 and GDD 02 28 disagree).
+sr_try_feed_battery :: (v: [] SrVitals, share: f32) -> int {
+  if v[0].powered_down || v[0].health <= 0.0 { return SR_FEED_REFUSED_DOWN; }
+  if sr_vitals_full(v[0]) { return SR_FEED_REFUSED_FULL; }
+  v[0].health = sr_minf(v[0].health_max, v[0].health + sr_maxf(0.0, share) * v[0].health_max);
+  v[0].move_energy = v[0].move_energy_max;
+  return SR_FEED_FED;
+}

@@ -1,0 +1,41 @@
+// Parity checks for vitals.coax: SpliceTests/Rules/SpliceVitalsTests.cpp.
+// rules.coax loads this file with `#load ... #test;`.
+
+#test "Splice.Rules.Vitals.DamageReducesHealth" {
+  v := sr_make_vitals(10.0, 10.0); after := sr_apply_damage(v, 3.0);
+  #assert after.health == 7.0 && !after.powered_down && sr_apply_damage(v, -5.0).health == 10.0;
+}
+#test "Splice.Rules.Vitals.damage to 0 powers down and stays down" {
+  v := sr_apply_damage(sr_make_vitals(10.0, 10.0), 25.0);
+  #assert v.health == 0.0 && v.powered_down;
+  v = sr_apply_damage(v, 1.0);
+  #assert v.health == 0.0 && v.powered_down;
+}
+#test "Splice.Rules.Vitals.BatteryRefillsFortyPercentAndAllEnergy" {
+  v := [1] SrVitals.[sr_apply_damage(sr_make_vitals(10.0, 10.0), 8.0)]; v[0].move_energy = 1.0;
+  #assert sr_try_feed_battery(v[..], SR_DEFAULT_BATTERY_HEALTH_SHARE) == SR_FEED_FED && v[0].health == 6.0 && v[0].move_energy == 10.0;
+  v[0].health = 9.0; v[0].move_energy = 0.0;
+  #assert sr_try_feed_battery(v[..], SR_DEFAULT_BATTERY_HEALTH_SHARE) == SR_FEED_FED && v[0].health == 10.0;
+}
+#test "Splice.Rules.Vitals.a full robot refuses a battery" {
+  v := [1] SrVitals.[sr_make_vitals(10.0, 10.0)];
+  #assert sr_try_feed_battery(v[..], SR_DEFAULT_BATTERY_HEALTH_SHARE) == SR_FEED_REFUSED_FULL && v[0].health == 10.0 && v[0].move_energy == 10.0;
+  v[0].move_energy = 3.0;
+  #assert sr_try_feed_battery(v[..], SR_DEFAULT_BATTERY_HEALTH_SHARE) == SR_FEED_FED && v[0].move_energy == 10.0;
+}
+#test "Splice.Rules.Vitals.PoweredDownRobotIsNotFed" {
+  v := [1] SrVitals.[sr_apply_damage(sr_make_vitals(10.0, 10.0), 10.0)];
+  #assert sr_try_feed_battery(v[..], SR_DEFAULT_BATTERY_HEALTH_SHARE) == SR_FEED_REFUSED_DOWN && v[0].health == 0.0;
+}
+#test "Splice.Rules.Vitals.MoveEnergySpendIsRefusedWhenShort" {
+  v := [1] SrVitals.[sr_make_vitals(10.0, 5.0)];
+  #assert sr_try_spend_move_energy(v[..], 3.0) && v[0].move_energy == 2.0;
+  #assert !sr_try_spend_move_energy(v[..], 3.0) && v[0].move_energy == 2.0;
+}
+#test "Splice.Rules.Vitals.AttackCostAndZeroEnergyStillAttacks" {
+  v := [1] SrVitals.[sr_make_vitals(10.0, 5.0)]; v[0].move_energy = 0.0;
+  #assert sr_can_attack(v[0], SR_DEFAULT_ATTACK_ENERGY_COST) && !sr_can_attack(v[0], 2.0);
+  v[0].move_energy = 5.0;
+  #assert sr_try_pay_attack(v[..], 2.0) && v[0].move_energy == 3.0;
+  #assert !sr_can_attack(sr_apply_damage(v[0], 99.0), SR_DEFAULT_ATTACK_ENERGY_COST);
+}
