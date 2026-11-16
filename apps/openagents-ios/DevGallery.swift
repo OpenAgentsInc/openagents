@@ -34,6 +34,8 @@ import UIKit
     init(_ screen:UIViewController) {self.screen=screen}
     @objc func open() {
         guard let screen,screen.presentedViewController==nil else {return}
+        // At launch viewDidLoad runs before the screen is in a window, and a present then does nothing.
+        if screen.view.window==nil {DispatchQueue.main.asyncAfter(deadline:.now()+0.1) { [weak self] in self?.open() };return}
         let gallery=DevGalleryScreen();gallery.modalPresentationStyle = .fullScreen;screen.present(gallery,animated:true)
     }
 }
