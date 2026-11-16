@@ -1,0 +1,256 @@
+// Parity checks for night-exit.coax and exit-tuning.coax: SpliceTests/Rules/SpliceNightExitTests.cpp
+// and SpliceExitTuningTests.cpp. The harness is the C++ test's player model: she walks at 5.6 m/s in
+// 0.1 s ticks, blows land on her (1 heart of 3) or a robot of hers (2), and with fight her robots strike
+// the nearest chasing Imperial robot within 6 m while she waits. The C++ asks USpliceHeatSubsystem for
+// each alert's calls; it answers sr_reinforcements_to_call(heat, calls_made), the rules' default here.
+// Not ported: ShippedIniHasTheSectionAtTheDefaults (reads the game's Config/DefaultSpliceTuning.ini,
+// which is not in the import bundle). rules.coax loads this file with `#load ... #test;`.
+
+NX_DT :: 0.1;
+NX_WALK :: 5.6;
+NxHarness :: struct {
+  s: SrNightExitState;
+  heat: int = SR_HEAT_HIGH;
+  sneak: bool;
+  fight: bool;
+  hearts: int = 3;
+  her: D2 = D2.{x = 0.0, y = -332.0};   // the hallway mouth
+  crew_n: int;
+  crew: [SR_EXIT_CREW_MAX] SrExitCrewMember;
+  offset: [SR_EXIT_CREW_MAX] D2;
+  health: [SR_EXIT_CREW_MAX] f64;
+  dps: [SR_EXIT_CREW_MAX] f64;
+  alerts: int; hits_on_her: int; hits_on_crew: int; max_sensing: int;
+  won: bool; lost: bool;
+}
+nx_make :: (floor_count: int, out: [] NxHarness) {
+  h: NxHarness;
+  st := [1] SrNightExitState.[h.s];
+  sr_night_exit_begin(floor_count, sr_exit_tuning_defaults(), st[..]);
+  h.s = st[0];
+  out[0] = h;
+}
+nx_add_crew :: (h: [] NxHarness, health: f64, dps: f64, offset: D2) {
+  k := h[0].crew_n;
+  h[0].crew[k] = SrExitCrewMember.{pos = d2_add(h[0].her, offset)}; h[0].offset[k] = offset; h[0].health[k] = health; h[0].dps[k] = dps;
+  h[0].crew_n += 1;
+}
+// Digger 10, the drill mech 45, the dinosaur 72 (GDD 02 29.9).
+nx_add_full_crew :: (h: [] NxHarness) { nx_add_crew(h, 10.0, 1.1, d2(-1.5, -1.0)); nx_add_crew(h, 45.0, 3.3, d2(1.5, -1.0)); nx_add_crew(h, 72.0, 2.5, d2(0.0, -3.0)); }
+nx_done :: (h: NxHarness) -> bool { return h.s.outcome != SR_EXIT_RUNNING; }
+nx_threatened :: (h: NxHarness) -> bool {
+  for k: 0..<h.s.n { r := h.s.robots[k]; if sr_exit_is_enemy(r) && r.mode == SR_EXIT_MODE_CHASE && d2_dist(r.pos, h.her) <= 10.0 { return true; } }
+  return false;
+}
+nx_tick :: (h: [] NxHarness) {
+  for c: 0..<h[0].crew_n { h[0].crew[c].pos = d2_add(h[0].her, h[0].offset[c]); }
+  inp := SrNightExitInputs.{dt = NX_DT, her_pos = h[0].her, her_dead = h[0].hearts <= 0, heat = h[0].heat, sneaking = h[0].sneak, crew_n = h[0].crew_n};
+  for c: 0..<h[0].crew_n { inp.crew[c] = h[0].crew[c]; }
+  st := [1] SrNightExitState.[h[0].s];
+  step := sr_night_exit_advance(st[..], inp);
+  h[0].alerts += step.alerts_n;
+  if step.won { h[0].won = true; }
+  if step.lost { h[0].lost = true; }
+  for b: 0..<step.blows_n {
+    bl := step.blows[b];
+    if bl.crew < 0 { h[0].hearts -= 1; h[0].hits_on_her += 1; }
+    else { h[0].hits_on_crew += 1; h[0].health[bl.crew] -= SR_EXIT_BLOW_DAMAGE; h[0].crew[bl.crew].alive = h[0].health[bl.crew] > 0.0; }
+  }
+  sensing := 0; for k: 0..<st[0].n { if st[0].robots[k].senses { sensing += 1; } }
+  if sensing > h[0].max_sensing { h[0].max_sensing = sensing; }
+  if h[0].fight {
+    taken: [SR_EXIT_ROBOTS_MAX] bool;
+    for c: 0..<h[0].crew_n {
+      if !h[0].crew[c].alive { continue; }
+      best := -1; best_d := 6.0; best_taken := true;
+      for i: 0..<st[0].n {
+        r := st[0].robots[i];
+        if !sr_exit_is_enemy(r) || r.mode != SR_EXIT_MODE_CHASE { continue; }
+        d := d2_dist(r.pos, h[0].crew[c].pos); is_taken := taken[i];
+        if d <= 6.0 && (best < 0 || (best_taken && !is_taken) || (best_taken == is_taken && d < best_d)) { best = i; best_d = d; best_taken = is_taken; }
+      }
+      if best >= 0 { taken[best] = true; sr_exit_damage_robot(st[..], best, h[0].dps[c] * NX_DT, true); }
+    }
+  }
+  h[0].s = st[0];
+}
+nx_stand :: (h: [] NxHarness, seconds: f64) { t := 0.0; while t < seconds && !nx_done(h[0]) { nx_tick(h); t += NX_DT; } }
+nx_walk :: (h: [] NxHarness, points: [] const D2) {
+  t := 0.0;
+  for p: points {
+    while !nx_done(h[0]) && t < 600.0 && d2_dist(h[0].her, p) > 0.01 {
+      if !(h[0].fight && nx_threatened(h[0])) {
+        d := d2_sub(p, h[0].her); dl := d2_len(d);
+        go := ifx NX_WALK * NX_DT < dl then NX_WALK * NX_DT else dl;
+        h[0].her = d2_add(h[0].her, d2_scale(d, go / dl));
+      }
+      nx_tick(h); t += NX_DT;
+    }
+  }
+}
+// The long way: into E1, west round the bays on their middle line (r 149.3) to A1, out through the opening.
+nx_hallways_route :: (through_exit: bool, out: [] D2) -> int {
+  n := 0;
+  for k: 0..<25 {
+    phi := PI_D * cast(f64) k / 24.0;
+    out[n] = d2_add(SR_EXIT_FIELD_CENTRE, d2(-149.3 * sin(phi), -149.3 * cos(phi))); n += 1;
+  }
+  if through_exit { out[n] = d2(0.0, -30.0); out[n + 1] = d2(0.0, -17.0); n += 2; }
+  return n;
+}
+NX_RAVE_ROUTE :: [8] D2.[D2.{x = 10.0, y = -300.0}, D2.{x = 10.0, y = -172.0}, D2.{x = 10.0, y = -124.0}, D2.{x = 10.0, y = -76.0},
+  D2.{x = 0.0, y = -60.0}, D2.{x = 0.0, y = -47.0}, D2.{x = 0.0, y = -30.0}, D2.{x = 0.0, y = -17.0}];
+
+#test "Splice.Rules.NightExit.Census" {
+  s: [1] SrNightExitState; sr_night_exit_begin(-1, sr_exit_tuning_defaults(), s[..]);
+  #assert s[0].outcome == SR_EXIT_RUNNING && sr_exit_count_role(s[0], SR_EXIT_ROLE_FLOOR, true) == 4 && sr_exit_count_role(s[0], SR_EXIT_ROLE_GUARD, true) == 2 && s[0].calls_made == 0;
+  for k: 0..<s[0].n {
+    r := s[0].robots[k];
+    #assert r.health == SR_EXIT_IMPERIAL_HEALTH;
+    if r.post.role == SR_EXIT_ROLE_FLOOR { #assert sr_exit_route_at(r.post.a) == SR_ROUTE_RAVE && sr_exit_route_at(r.post.b) == SR_ROUTE_RAVE; }
+    else { #assert d2_dist(r.pos, d2(0.0, -39.0)) <= 10.0; }
+  }
+  sr_night_exit_begin(5, sr_exit_tuning_defaults(), s[..]);
+  #assert sr_exit_count_role(s[0], SR_EXIT_ROLE_FLOOR, true) == 5;
+  sr_night_exit_begin(3, sr_exit_tuning_defaults(), s[..]);
+  #assert sr_exit_count_role(s[0], SR_EXIT_ROLE_FLOOR, true) == 3 && sr_exit_count_role(s[0], SR_EXIT_ROLE_GUARD, true) == 2;
+  for k: 0..<s[0].n { #assert s[0].robots[k].post.id != "I3"; }
+}
+#test "Splice.Rules.NightExit.HallwaysWon" {
+  h: [1] NxHarness; nx_make(-1, h[..]); h[0].heat = SR_HEAT_HIGH; h[0].fight = true; nx_add_full_crew(h[..]);
+  full: [32] D2; n := nx_hallways_route(true, full[..]);
+  nx_walk(h[..], full[0..<20]);   // up to bay H1's side, before A1
+  #assert h[0].s.route == SR_ROUTE_HALLWAYS && h[0].alerts == 0;
+  nx_walk(h[..], full[19..<n]);
+  #assert h[0].won && h[0].s.outcome == SR_EXIT_WON && h[0].s.route == SR_ROUTE_HALLWAYS && h[0].hearts > 0 && h[0].s.crew_out >= 1;
+  for k: 0..<h[0].s.n {
+    r := h[0].s.robots[k];
+    if r.post.role == SR_EXIT_ROLE_FLOOR { #assert r.mode == SR_EXIT_MODE_POST; }
+    if r.post.role == SR_EXIT_ROLE_GUARD { #assert r.mode == SR_EXIT_MODE_POWERED_DOWN; }
+  }
+  #assert h[0].s.calls_made >= 1 && h[0].s.calls_made <= SR_EXIT_REINFORCEMENT_CAP;
+}
+#test "Splice.Rules.NightExit.RaveWon" {
+  h: [1] NxHarness; nx_make(-1, h[..]); h[0].heat = SR_HEAT_LOW; h[0].sneak = true; nx_add_crew(h[..], 10.0, 1.1, d2(-1.0, -1.0));
+  nx_walk(h[..], NX_RAVE_ROUTE[..]);
+  #assert h[0].won && h[0].s.route == SR_ROUTE_RAVE && h[0].max_sensing == 0 && h[0].hits_on_her == 0 && h[0].s.calls_made == 0 && h[0].s.crew_out == 1;
+  b: [1] NxHarness; nx_make(-1, b[..]); b[0].heat = SR_HEAT_LOW; b[0].sneak = true; nx_add_crew(b[..], 10.0, 1.1, d2(0.0, -30.0));
+  nx_walk(b[..], NX_RAVE_ROUTE[..]);
+  #assert !b[0].won;
+  b[0].offset[0] = d2(0.0, -2.0);
+  nx_stand(b[..], 0.2);
+  #assert b[0].won;
+}
+#test "Splice.Rules.NightExit.HallwaysLost" {
+  h: [1] NxHarness; nx_make(-1, h[..]); h[0].heat = SR_HEAT_HIGH;
+  way: [32] D2; n := nx_hallways_route(false, way[..]); way[n] = d2(0.0, -50.0); n += 1;
+  nx_walk(h[..], way[0..<n]); nx_stand(h[..], 60.0);
+  #assert h[0].lost && h[0].s.outcome == SR_EXIT_LOST && h[0].s.route == SR_ROUTE_HALLWAYS && h[0].s.deaths_in_exit == 1;
+  #assert h[0].s.deaths_on_route[SR_ROUTE_HALLWAYS] == 1 && h[0].hits_on_her >= 3;
+}
+#test "Splice.Rules.NightExit.RaveLost" {
+  h: [1] NxHarness; nx_make(-1, h[..]); h[0].heat = SR_HEAT_HIGH; h[0].her = d2(0.0, -172.0);
+  to := [1] D2.[d2(0.0, -124.0)];
+  nx_walk(h[..], to[..]); nx_stand(h[..], 60.0);
+  #assert h[0].lost && h[0].s.route == SR_ROUTE_RAVE && h[0].s.deaths_on_route[SR_ROUTE_RAVE] == 1;
+  // Over the platforms (x 14, tops 3.4 m) the floor robots below cannot strike her (29.8 rule 5).
+  top: [1] SrNightExitState; sr_night_exit_begin(-1, sr_exit_tuning_defaults(), top[..]);
+  inp := SrNightExitInputs.{dt = NX_DT, her_height = 3.4, heat = SR_HEAT_HIGH};
+  hits := 0; most := 0; y := -168.0;
+  while y <= -84.0 {
+    inp.her_pos = d2(14.0, y);
+    hits += sr_exit_hearts_lost(sr_night_exit_advance(top[..], inp));
+    sensing := 0; for k: 0..<top[0].n { if top[0].robots[k].senses { sensing += 1; } }
+    if sensing > most { most = sensing; }
+    y += 4.7 * NX_DT;
+  }
+  #assert hits == 0 && most >= 1 && top[0].used_platforms && top[0].outcome == SR_EXIT_RUNNING;
+}
+#test "Splice.Rules.NightExit.ReinforcementsFollowHeat" {
+  // High: the drill mech and the dinosaur, 3 + 5 = 8.
+  #assert sr_heat_level(SR_HEAT_PER_DRILL_MECH + SR_HEAT_PER_DINOSAUR) == SR_HEAT_HIGH;
+  h: [1] NxHarness; nx_make(-1, h[..]); h[0].heat = SR_HEAT_HIGH; h[0].her = d2(30.0, -330.0);
+  nx_tick(h[..]);
+  #assert h[0].alerts == 0;
+  h[0].her = d2(-18.0, -196.0);   // I1 alone senses her (36 m, inside High's 40 m)
+  nx_tick(h[..]);
+  #assert h[0].alerts == 1 && h[0].s.calls_made == 1 && h[0].s.nq == 1;
+  #assert abs(h[0].s.call_queue[0].arrive_at - h[0].s.clock - SR_EXIT_CALL_DELAY) < 0.001 && h[0].s.call_queue[0].door_index == 3;
+  h[0].her = d2(30.0, -330.0);
+  nx_stand(h[..], 5.85);
+  #assert sr_exit_count_role(h[0].s, SR_EXIT_ROLE_CALLED, true) == 0;
+  nx_stand(h[..], 0.2);
+  #assert sr_exit_count_role(h[0].s, SR_EXIT_ROLE_CALLED, true) == 1;
+  // Close to the whole floor: every other robot alerts at once; the cap stops the calls at 3.
+  a: [1] NxHarness; nx_make(-1, a[..]); a[0].heat = SR_HEAT_HIGH; a[0].her = d2(-5.0, -130.0);
+  nx_tick(a[..]);
+  #assert a[0].alerts >= 4 && a[0].s.calls_made == SR_EXIT_REINFORCEMENT_CAP;
+  a[0].her = d2(30.0, -330.0); nx_stand(a[..], 20.0);
+  a[0].her = d2(-5.0, -130.0); before := a[0].alerts; nx_stand(a[..], 1.0);
+  #assert a[0].alerts > before && a[0].s.calls_made == 3 && sr_exit_count_role(a[0].s, SR_EXIT_ROLE_CALLED, false) == 3;
+  seen: [SR_EXIT_DOOR_COUNT] bool; doors := 0;
+  for k: 0..<a[0].s.n { r := a[0].s.robots[k]; if r.post.role == SR_EXIT_ROLE_CALLED && !seen[r.door_index] { seen[r.door_index] = true; doors += 1; } }
+  #assert doors == 3 && a[0].s.n == 9;
+  // Medium (the dinosaur alone) and Low (Digger): alerts, no calls.
+  for crew_heat: [2] int.[SR_HEAT_PER_DINOSAUR, SR_HEAT_PER_DIGGER] {
+    lv := sr_heat_level(crew_heat);
+    #assert lv != SR_HEAT_HIGH;
+    m: [1] NxHarness; nx_make(-1, m[..]); m[0].heat = lv; m[0].her = d2(0.0, -140.0);
+    nx_stand(m[..], 10.0);
+    #assert m[0].alerts >= 1 && m[0].s.calls_made == 0;
+  }
+}
+#test "Splice.Rules.NightExit.LossRestoresCheckpoint" {
+  at: [1] SrCheckpointState; sr_make_checkpoint_state(at[..]);
+  at[0].her_health = 3.0; at[0].her_transform = sr_transform_at(D3.{x = 0.0, y = -33200.0, z = 100.0});
+  tags: [1] SrNames; _ = sr_names_add(tags[..], "World.Boss.Down"); at[0].world_tags = tags[0];
+  at[0].current_objective = "Objective.ReachSniper"; at[0].run_timer_seconds = 1234.0; at[0].deaths = 0;
+  boss: [1] SrRunSave; sr_build_run_save(CHECKPOINT_BEAT_BOSS, at[0], boss[..]);
+  h: [1] NxHarness; nx_make(-1, h[..]); h[0].heat = SR_HEAT_HIGH; h[0].her = d2(0.0, -172.0);
+  st := [1] SrNightExitState.[h[0].s]; sr_exit_damage_robot(st[..], 4, SR_EXIT_IMPERIAL_HEALTH, false); h[0].s = st[0];   // I5 down
+  to := [1] D2.[d2(0.0, -124.0)];
+  nx_walk(h[..], to[..]); nx_stand(h[..], 60.0);
+  #assert h[0].lost && h[0].s.calls_made > 0;
+  loaded: [1] SrRunSave; sr_exit_record_after_loss(boss[0], loaded[..]);
+  #assert loaded[0].checkpoint == CHECKPOINT_BEAT_BOSS && loaded[0].deaths == boss[0].deaths + 1;
+  same := [1] SrRunSave.[loaded[0]]; same[0].deaths = boss[0].deaths;
+  #assert sr_run_saves_eq(same[0], boss[0]);
+  back: [1] SrCheckpointState; sr_restore_run_save(loaded[0], at[0].inventory, back[..]);
+  #assert d3_dist(back[0].her_transform.pos, at[0].her_transform.pos) <= 1.0;
+  st[0] = h[0].s; sr_exit_restore_at_checkpoint(st[..]); h[0].s = st[0];
+  #assert h[0].s.outcome == SR_EXIT_RUNNING && h[0].s.n == 6;
+  for k: 0..<h[0].s.n {
+    r := h[0].s.robots[k];
+    #assert r.health == SR_EXIT_IMPERIAL_HEALTH && r.mode == SR_EXIT_MODE_POST && d2_dist(r.pos, r.post.a) < 0.01 && !r.senses;
+  }
+  #assert h[0].s.calls_made == 0 && h[0].s.nq == 0 && h[0].s.route == SR_ROUTE_UNDECIDED;
+  for d: h[0].s.door_used { #assert !d; }
+  #assert h[0].s.deaths_in_exit == 1 && h[0].s.deaths_on_route[SR_ROUTE_RAVE] == 1;
+  h[0].hearts = 3; h[0].lost = false; h[0].her = d2(-5.0, -130.0);
+  nx_tick(h[..]);
+  #assert h[0].s.calls_made == SR_EXIT_REINFORCEMENT_CAP;
+}
+
+#test "Splice.Rules.ExitTuning.IniOverridesDefaults" {
+  d := sr_exit_tuning_defaults();
+  #assert d.floor_robots == SR_EXIT_FLOOR_ROBOTS && d.reinforcement_cap == SR_EXIT_REINFORCEMENT_CAP;
+  none := sr_exit_tuning_from_ini("");
+  #assert none.floor_robots == d.floor_robots && none.reinforcement_cap == d.reinforcement_cap;
+  tuned := sr_exit_tuning_from_ini("[/Script/SpliceRules.Tuning_exit]\nEXIT_FLOOR_ROBOTS=3\nEXIT_CALL_MAX=1\n");
+  #assert tuned.floor_robots == 3 && tuned.reinforcement_cap == 1;
+  half := sr_exit_tuning_from_ini("[/Script/SpliceRules.Tuning_exit]\nEXIT_CALL_MAX=2\n");
+  #assert half.floor_robots == d.floor_robots && half.reinforcement_cap == 2;
+  wild := sr_exit_tuning_from_ini("[/Script/SpliceRules.Tuning_exit]\nEXIT_FLOOR_ROBOTS=99\nEXIT_CALL_MAX=-4\n");
+  #assert wild.floor_robots == SR_EXIT_FLOOR_MAX && wild.reinforcement_cap == 0;
+  other := sr_exit_tuning_from_ini("[Other]\nEXIT_FLOOR_ROBOTS=3\n");
+  #assert other.floor_robots == d.floor_robots;
+}
+#test "Splice.Rules.ExitTuning.TunedPatrolCountReachesTheRules" {
+  s: [1] SrNightExitState;
+  sr_night_exit_begin(-1, SrExitTuning.{floor_robots = 2, reinforcement_cap = 3}, s[..]);
+  #assert s[0].floor_count == 2;
+  sr_night_exit_begin(5, SrExitTuning.{floor_robots = 2, reinforcement_cap = 3}, s[..]);
+  #assert s[0].floor_count == 5;
+  sr_night_exit_begin(-1, sr_exit_tuning_defaults(), s[..]);
+  #assert s[0].floor_count == SR_EXIT_FLOOR_ROBOTS;
+}

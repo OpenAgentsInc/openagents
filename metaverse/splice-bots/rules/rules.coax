@@ -29,6 +29,9 @@
 #load "flow.coax";
 #load "music.coax";
 #load "beat.coax";
+#load "sight.coax";
+#load "exit-tuning.coax";
+#load "night-exit.coax";
 
 #load "data-checks.coax" #test;
 #load "robot-payload-checks.coax" #test;
@@ -48,3 +51,4 @@
 #load "time-of-day-checks.coax" #test;
 #load "flow-checks.coax" #test;
 #load "beat-checks.coax" #test;
+#load "night-exit-checks.coax" #test;

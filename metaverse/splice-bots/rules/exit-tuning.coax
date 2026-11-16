@@ -1,0 +1,56 @@
+// Splice Bots rules: the night exit's two tuning numbers (SpliceExitTuning.h, package B-14; GDD 04
+// UE-EXIT-10, risk 9: "the patrol count and the reinforcement cap"), from the
+// [/Script/SpliceRules.Tuning_exit] section of DefaultSpliceTuning.ini. A missing section or key keeps
+// the default. The C++ keeps one live copy loaded on first use; here the caller holds the value and
+// hands it to sr_night_exit_begin, so there is no global and no scoped override.
+#load "formation.coax";   // sr_clampi
+
+SR_EXIT_TUNING_SECTION :: "/Script/SpliceRules.Tuning_exit";
+SR_EXIT_KEY_FLOOR_ROBOTS :: "EXIT_FLOOR_ROBOTS";
+SR_EXIT_KEY_REINFORCEMENT_CAP :: "EXIT_CALL_MAX";
+// The night exit's constants (SpliceNightExit::FloorRobots, ::ReinforcementCap = SpliceHeat::CallMax).
+SR_EXIT_FLOOR_ROBOTS :: 4;
+SR_EXIT_REINFORCEMENT_CAP :: 3;
+SR_EXIT_FLOOR_MIN :: 2;
+SR_EXIT_FLOOR_MAX :: 5;   // EXIT_FLOOR_MAX is 7 in GDD 02, but WORLD-EXIT-08 marks one spare line: 5 lines
+
+SrExitTuning :: struct { floor_robots: int = SR_EXIT_FLOOR_ROBOTS; reinforcement_cap: int = SR_EXIT_REINFORCEMENT_CAP; }
+sr_exit_tuning_defaults :: () -> SrExitTuning { return SrExitTuning.{}; }
+
+// One INI lookup: the integer at key in [section]; found false when the section or key is missing.
+SrIniInt :: struct { found: bool; value: int; }
+sr_ini_space :: (c: u8) -> bool { return c == 32 || c == 9 || c == 13; }
+sr_ini_get_int :: (text: string, section: string, key: string) -> SrIniInt {
+  r: SrIniInt; in_section := false; i := 0;
+  while i < text.count {
+    e := i; while e < text.count && text[e] != 10 { e += 1; }
+    a := i; b := e;
+    while a < b && sr_ini_space(text[a]) { a += 1; }
+    while b > a && sr_ini_space(text[b - 1]) { b -= 1; }
+    if b > a && text[a] == 91 && text[b - 1] == 93 {
+      in_section = b - a - 2 == section.count;
+      if in_section { for k: 0..<section.count { if text[a + 1 + k] != section[k] { in_section = false; break; } } }
+    } else if in_section && b - a > key.count && text[a + key.count] == 61 {
+      same := true;
+      for k: 0..<key.count { if text[a + k] != key[k] { same = false; break; } }
+      if same {
+        p := a + key.count + 1; neg := false;
+        if p < b && text[p] == 45 { neg = true; p += 1; }
+        v := 0; digits := 0;
+        while p < b && text[p] >= 48 && text[p] <= 57 { v = v * 10 + cast(int) text[p] - 48; p += 1; digits += 1; }
+        if digits > 0 { r.found = true; r.value = ifx neg then -v else v; }
+      }
+    }
+    i = e + 1;
+  }
+  return r;
+}
+// The two numbers an INI text gives (FromConfig): patrols clamped to the lines that exist, the cap to 0..9.
+sr_exit_tuning_from_ini :: (text: string) -> SrExitTuning {
+  t := sr_exit_tuning_defaults();
+  f := sr_ini_get_int(text, SR_EXIT_TUNING_SECTION, SR_EXIT_KEY_FLOOR_ROBOTS);
+  if f.found { t.floor_robots = sr_clampi(f.value, SR_EXIT_FLOOR_MIN, SR_EXIT_FLOOR_MAX); }
+  c := sr_ini_get_int(text, SR_EXIT_TUNING_SECTION, SR_EXIT_KEY_REINFORCEMENT_CAP);
+  if c.found { t.reinforcement_cap = sr_clampi(c.value, 0, 9); }
+  return t;
+}

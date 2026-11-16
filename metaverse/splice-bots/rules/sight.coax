@@ -1,0 +1,23 @@
+// Splice Bots rules: how far an enemy senses her (SpliceSight.h; UE-AI-21 sneaking halves it,
+// UE-HEAT-03 the radius follows Heat and the lose-sight radius is 1.25 times it).
+#load "heat.coax";
+
+SR_SIGHT_RADIUS_LOW :: 6.0;      // metres, "up close"
+SR_SIGHT_RADIUS_MEDIUM :: 18.0;  // "across a room"
+SR_SIGHT_RADIUS_HIGH :: 40.0;    // "on sight"
+SR_SNEAK_FACTOR :: 0.5;
+SR_LOSE_SIGHT_FACTOR :: 1.25;
+
+sr_sight_radius_for_heat :: (level: int) -> f64 {
+  return ifx level == SR_HEAT_HIGH then SR_SIGHT_RADIUS_HIGH else ifx level == SR_HEAT_MEDIUM then SR_SIGHT_RADIUS_MEDIUM else SR_SIGHT_RADIUS_LOW;
+}
+// heat_aware false: a robot that ignores Heat (a raider) or is on the recharge plan uses Low's radius.
+sr_sight_radius :: (level: int, heat_aware: bool, sneaking: bool) -> f64 {
+  base := ifx heat_aware then sr_sight_radius_for_heat(level) else SR_SIGHT_RADIUS_LOW;
+  return ifx sneaking then base * SR_SNEAK_FACTOR else base;
+}
+sr_lose_sight_radius :: (level: int, heat_aware: bool, sneaking: bool) -> f64 { return sr_sight_radius(level, heat_aware, sneaking) * SR_LOSE_SIGHT_FACTOR; }
+// The edge counts as inside; a negative distance is 0.
+sr_can_see :: (distance: f64, level: int, heat_aware: bool, sneaking: bool) -> bool {
+  return (ifx distance < 0.0 then 0.0 else distance) <= sr_sight_radius(level, heat_aware, sneaking);
+}

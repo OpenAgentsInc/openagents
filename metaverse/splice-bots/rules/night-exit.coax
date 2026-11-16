@@ -1,0 +1,361 @@
+// Splice Bots rules: the night exit through the rave (SpliceNightExit.h, package B-13; GDD 04 5.8
+// UE-EXIT-01..12, GDD 02 section 29, GDD 03 2.5 WORLD-EXIT / WORLD-ARENA / WORLD-RAVE, addendum 6:
+// "Rave floor: 4 Imperial robots on patrol, 2 at the exit opening. At High Heat, each alert calls 1
+// more, up to 3 more"). The director owns the state, feeds the inputs each tick and applies the
+// answer. Coordinates are the GDD's metres on the ground plane: x is the GDD's x, y the GDD's z
+// (Unreal X = x * 100, Unreal Y = z * 100). Height is metres above the field floor.
+#load "../../../metaverse-engine/core/math-d.coax";
+#load "sight.coax";
+#load "exit-tuning.coax";
+#load "run-stats.coax";
+#load "checkpoint.coax";
+
+// ESpliceExitRole, ESpliceExitRobotMode, ESpliceExitOutcome. Routes are SR_ROUTE_* (run-stats.coax).
+SR_EXIT_ROLE_FLOOR :: 0; SR_EXIT_ROLE_GUARD :: 1; SR_EXIT_ROLE_CALLED :: 2;
+SR_EXIT_MODE_POST :: 0; SR_EXIT_MODE_CHASE :: 1; SR_EXIT_MODE_RETURN :: 2; SR_EXIT_MODE_POWERED_DOWN :: 3; SR_EXIT_MODE_GONE :: 4;
+SR_EXIT_INACTIVE :: 0; SR_EXIT_RUNNING :: 1; SR_EXIT_WON :: 2; SR_EXIT_LOST :: 3;
+
+// Counts (GDD 02 29.13) and robots (29.4, robots.csv ROBOT_IMPERIAL).
+SR_EXIT_GUARD_ROBOTS :: 2;
+SR_EXIT_IMPERIAL_HEALTH :: 20.0;
+SR_EXIT_PATROL_SPEED :: 1.8;        // m/s, WORLD-EXIT-07
+SR_EXIT_CHASE_SPEED_LOW :: 3.0;
+SR_EXIT_CHASE_SPEED_MEDIUM :: 4.0;
+SR_EXIT_CHASE_SPEED_HIGH :: 4.5;
+SR_EXIT_BLOW_EVERY :: 1.6;          // s
+SR_EXIT_BLOW_DAMAGE :: 2.0;         // to a robot of hers; on her it is 1 heart
+SR_EXIT_BLOW_REACH :: 1.6;          // m (robots.csv; UE-EXIT-05's 2.5 m is the CONFLICT noted there)
+SR_EXIT_BODY_RADIUS :: 0.45;
+SR_EXIT_IMPACT_SPACING :: 0.45;     // s, no two impacts closer
+SR_EXIT_CREW_HIT_MEMORY :: 3.0;     // s
+SR_EXIT_ALERT_SHARE :: 20.0;        // m
+SR_EXIT_CALL_DELAY :: 6.0;          // s
+SR_EXIT_DOOR_CLEAR :: 10.0;         // m, INFERRED
+SR_EXIT_TOP_HEIGHT :: 2.2;          // m: at or above, a robot on the floor cannot strike her
+// Places (GDD 03 2.5).
+SR_EXIT_FIELD_CENTRE :: D2.{x = 0.0, y = -195.0};
+SR_EXIT_FIELD_RADIUS :: 133.5;
+SR_EXIT_END_BAY_HALF_WIDTH :: 20.0;
+SR_EXIT_RAVE_MIN :: D2.{x = -30.0, y = -172.0};
+SR_EXIT_RAVE_MAX :: D2.{x = 30.0, y = -76.0};
+SR_EXIT_OPENING_Y :: -39.0;
+SR_EXIT_OPENING_HALF_WIDTH :: 7.0;
+SR_EXIT_SNIPER_PARKED :: D2.{x = 12.0, y = 7.0};
+SR_EXIT_SNIPER_SAFE :: 20.0;
+SR_EXIT_CREW_GATHER :: 20.0;        // INFERRED
+// The four reinforcement doors' thresholds B1, D1, F1, H1 (WORLD-ARENA-05).
+SR_EXIT_DOOR_COUNT :: 4;
+SR_EXIT_DOORS :: [SR_EXIT_DOOR_COUNT] D2.[D2.{x = 109.425, y = -85.575}, D2.{x = 109.425, y = -304.425}, D2.{x = -109.425, y = -304.425}, D2.{x = -109.425, y = -85.575}];
+SR_EXIT_SMALL :: 0.0001;            // KINDA_SMALL_NUMBER
+
+// One post (GDD 03 WORLD-EXIT table). A stand has a == b.
+SrExitPost :: struct { id: string; role: int; a: D2; b: D2; facing_yaw_deg: f64; }
+sr_exit_post_patrols :: (p: SrExitPost) -> bool { return d2_dist(p.a, p.b) > 0.01; }
+SrExitRobot :: struct {
+  post: SrExitPost;
+  pos: D2;
+  goal: D2;                  // where it is heading after the last tick
+  crew_target: int = -1;     // the robot of hers it fights, or -1
+  mode: int;
+  health: f64 = SR_EXIT_IMPERIAL_HEALTH;
+  patrol_time: f64;
+  blow_in: f64;
+  since_crew_hit: f64 = 1000000.0;
+  senses: bool;
+  hunting: bool;             // called only: comes at her until it first senses her
+  door_index: int = -1;      // called only
+}
+sr_exit_is_enemy :: (r: SrExitRobot) -> bool { return r.mode != SR_EXIT_MODE_POWERED_DOWN && r.mode != SR_EXIT_MODE_GONE; }
+SrExitCall :: struct { arrive_at: f64; door_index: int = -1; }
+SrExitCrewMember :: struct { pos: D2; following: bool = true; alive: bool = true; }
+
+SR_EXIT_ROBOTS_MAX :: 12;   // 5 floor + 2 guards + 3 called, with room
+SR_EXIT_CALLS_MAX :: 4;
+SR_EXIT_CREW_MAX :: 4;
+// The encounter (GDD 02 29.3). Owned by the caller. reinforcement_cap is the tuned EXIT_CALL_MAX taken at Begin.
+SrNightExitState :: struct {
+  outcome: int = SR_EXIT_INACTIVE;
+  route: int = SR_ROUTE_UNDECIDED;
+  used_platforms: bool;
+  floor_count: int = SR_EXIT_FLOOR_ROBOTS;
+  reinforcement_cap: int = SR_EXIT_REINFORCEMENT_CAP;
+  clock: f64;
+  last_impact_at: f64 = -1000000.0;
+  n: int;                                // robots: floor first, then the guards, then the called ones
+  robots: [SR_EXIT_ROBOTS_MAX] SrExitRobot;
+  calls_made: int;
+  nq: int;
+  call_queue: [SR_EXIT_CALLS_MAX] SrExitCall;
+  door_used: [SR_EXIT_DOOR_COUNT] bool;
+  fed_in_exit: int;
+  deaths_in_exit: int;
+  fed_on_route: [SR_ROUTE_COUNT] int;
+  deaths_on_route: [SR_ROUTE_COUNT] int;
+  crew_out: int;
+}
+// What the caller tells the rules each tick. los[i] for i < los_n overrides sr_exit_default_line_of_sight.
+// ask_calls: robots each own alert calls (the Heat subsystem's RequestReinforcements); -1 uses R-06's
+// rule, sr_reinforcements_to_call(heat, calls_made). The rules never queue past the cap or with no free door.
+SrNightExitInputs :: struct {
+  dt: f64;
+  her_pos: D2;
+  her_height: f64;
+  her_dead: bool;
+  heat: int = SR_HEAT_LOW;
+  sneaking: bool;
+  los_n: int;
+  los: [SR_EXIT_ROBOTS_MAX] bool;
+  crew_n: int;
+  crew: [SR_EXIT_CREW_MAX] SrExitCrewMember;
+  batteries_fed: int;
+  ask_calls: int = -1;
+}
+SrExitBlow :: struct { robot: int = -1; crew: int = -1; }   // crew -1: on her (1 heart)
+SrNightExitStep :: struct {
+  alerts_n: int; alerts: [SR_EXIT_ROBOTS_MAX] int;   // robots whose own alert began this tick
+  arrived_n: int; arrived: [SR_EXIT_CALLS_MAX] int;  // called robots that came in this tick
+  blows_n: int; blows: [SR_EXIT_ROBOTS_MAX] SrExitBlow;
+  calls_raised: int;
+  won: bool;
+  lost: bool;
+}
+sr_exit_hearts_lost :: (s: SrNightExitStep) -> int { n := 0; for k: 0..<s.blows_n { if s.blows[k].crew < 0 { n += 1; } } return n; }
+
+sr_exit_in_side_bays :: (p: D2) -> bool { return d2_dist(p, SR_EXIT_FIELD_CENTRE) > SR_EXIT_FIELD_RADIUS && abs(p.x) > SR_EXIT_END_BAY_HALF_WIDTH; }
+sr_exit_in_bays :: (p: D2) -> bool { return d2_dist(p, SR_EXIT_FIELD_CENTRE) > SR_EXIT_FIELD_RADIUS; }
+// atan2 in degrees, from math-d's atan_d (FMath::Atan2).
+sr_atan2_deg :: (y: f64, x: f64) -> f64 {
+  if x > 0.0 { return atan_d(y / x) * 180.0 / PI_D; }
+  if x < 0.0 { return (atan_d(y / x) + (ifx y >= 0.0 then PI_D else -PI_D)) * 180.0 / PI_D; }
+  return ifx y > 0.0 then 90.0 else ifx y < 0.0 then -90.0 else 0.0;
+}
+sr_exit_yaw_toward :: (from: D2, to: D2) -> f64 {
+  d := d2_sub(to, from);
+  return ifx d2_len2(d) < 0.00000001 then 0.0 else sr_atan2_deg(d.y, d.x);
+}
+// Moves pos toward target by at most step, stopping `stop` short. True when it got there.
+sr_exit_move_toward :: (pos: [] D2, target: D2, step: f64, stop: f64) -> bool {
+  d := d2_sub(target, pos[0]); dl := d2_len(d);
+  if dl <= stop + SR_EXIT_SMALL { return true; }
+  go := ifx step < dl - stop then step else dl - stop;
+  pos[0] = d2_add(pos[0], d2_scale(d, go / dl));
+  return go >= dl - stop - SR_EXIT_SMALL;
+}
+
+sr_exit_make_post :: (id: string, role: int, a: D2, b: D2, yaw: f64) -> SrExitPost { return SrExitPost.{id = id, role = role, a = a, b = b, facing_yaw_deg = yaw}; }
+// The posts in GDD 03 order: I1..I4 floor (I7 the spare line when floor_count is 5), then the guards
+// I5, I6. Below 4, I3 goes first, then I1 (WORLD-EXIT-08). Returns how many it wrote.
+sr_exit_posts :: (floor_count: int, out: [] SrExitPost) -> int {
+  fc := sr_clampi(floor_count, SR_EXIT_FLOOR_MIN, SR_EXIT_FLOOR_MAX);
+  n := 0;
+  if fc > 2 { out[n] = sr_exit_make_post("I1", SR_EXIT_ROLE_FLOOR, d2(-18.0, -160.0), d2(6.0, -160.0), 0.0); n += 1; }     // WORLD-EXIT-01
+  out[n] = sr_exit_make_post("I2", SR_EXIT_ROLE_FLOOR, d2(0.0, -145.0), d2(0.0, -115.0), 90.0); n += 1;                   // WORLD-EXIT-02
+  if fc > 3 { out[n] = sr_exit_make_post("I3", SR_EXIT_ROLE_FLOOR, d2(-22.0, -128.0), d2(-22.0, -98.0), 90.0); n += 1; }  // WORLD-EXIT-03
+  out[n] = sr_exit_make_post("I4", SR_EXIT_ROLE_FLOOR, d2(6.0, -100.0), d2(-14.0, -84.0), sr_exit_yaw_toward(d2(6.0, -100.0), d2(-14.0, -84.0))); n += 1;
+  if fc >= 5 { out[n] = sr_exit_make_post("I7", SR_EXIT_ROLE_FLOOR, d2(18.0, -112.0), d2(-10.0, -112.0), 180.0); n += 1; } // WORLD-EXIT-08
+  out[n] = sr_exit_make_post("I5", SR_EXIT_ROLE_GUARD, d2(-5.0, -47.0), d2(-5.0, -47.0), -90.0); n += 1;                  // WORLD-EXIT-05
+  out[n] = sr_exit_make_post("I6", SR_EXIT_ROLE_GUARD, d2(5.0, -47.0), d2(5.0, -47.0), -90.0); n += 1;                    // WORLD-EXIT-06
+  return n;
+}
+sr_exit_chase_speed :: (level: int) -> f64 {
+  return ifx level == SR_HEAT_HIGH then SR_EXIT_CHASE_SPEED_HIGH else ifx level == SR_HEAT_MEDIUM then SR_EXIT_CHASE_SPEED_MEDIUM else SR_EXIT_CHASE_SPEED_LOW;
+}
+// Where a patrol stands after t seconds: a cosine ease from a to b and back, mean speed PatrolSpeed.
+sr_exit_patrol_point :: (p: SrExitPost, t: f64) -> D2 {
+  span := d2_dist(p.a, p.b);
+  if span <= SR_EXIT_SMALL { return p.a; }
+  period := 2.0 * span / SR_EXIT_PATROL_SPEED;
+  u := 0.5 - 0.5 * cos(2.0 * PI_D * t / period);
+  return d2_lerp(p.a, p.b, u);
+}
+// Which route a point is on; undecided on the open field and in the end bays (E1, A1).
+sr_exit_route_at :: (p: D2) -> int {
+  if sr_exit_in_side_bays(p) { return SR_ROUTE_HALLWAYS; }
+  if p.x >= SR_EXIT_RAVE_MIN.x && p.x <= SR_EXIT_RAVE_MAX.x && p.y >= SR_EXIT_RAVE_MIN.y && p.y <= SR_EXIT_RAVE_MAX.y { return SR_ROUTE_RAVE; }
+  return SR_ROUTE_UNDECIDED;
+}
+sr_exit_route_name :: (route: int) -> string { return ifx route == SR_ROUTE_HALLWAYS then "hallways" else ifx route == SR_ROUTE_RAVE then "rave" else "undecided"; }
+// No trace: both on the field or both under the bays' roofs, or within AlertShare. The director traces.
+sr_exit_default_line_of_sight :: (robot: D2, her: D2) -> bool { return d2_dist(robot, her) <= SR_EXIT_ALERT_SHARE || sr_exit_in_bays(robot) == sr_exit_in_bays(her); }
+// The Heat level's radius, at most Medium's without line of sight, halved sneaking.
+sr_exit_sense_radius :: (level: int, sneaking: bool, los: bool) -> f64 {
+  r := sr_sight_radius(level, true, sneaking);
+  if !los { m := sr_sight_radius(SR_HEAT_MEDIUM, true, sneaking); if m < r { r = m; } }
+  return r;
+}
+// Past the exit opening, into the entrance room (the entry floor is |x| < 44, W-08).
+sr_exit_past_exit :: (p: D2) -> bool { return p.y >= SR_EXIT_OPENING_Y && abs(p.x) <= 44.0; }
+// The nearest unused door to `from` not within DoorClear of her; else the nearest unused; -1 when all used.
+sr_exit_pick_door :: (s: SrNightExitState, from: D2, her: D2) -> int {
+  best := -1; fallback := -1; best_d := 1.0e30; fallback_d := 1.0e30;
+  for i: 0..<SR_EXIT_DOOR_COUNT {
+    if s.door_used[i] { continue; }
+    di := d2_dist(SR_EXIT_DOORS[i], from);
+    if di < fallback_d { fallback_d = di; fallback = i; }
+    if d2_dist(SR_EXIT_DOORS[i], her) > SR_EXIT_DOOR_CLEAR && di < best_d { best_d = di; best = i; }
+  }
+  return ifx best >= 0 then best else fallback;
+}
+// The night exit begins (the dinosaur at 0 at night, 29.4 rule 7). floor_count -1 takes the tuned count.
+sr_night_exit_begin :: (floor_count: int, tuning: SrExitTuning, out: [] SrNightExitState) {
+  s: SrNightExitState;
+  s.outcome = SR_EXIT_RUNNING;
+  s.floor_count = sr_clampi(ifx floor_count < 0 then tuning.floor_robots else floor_count, SR_EXIT_FLOOR_MIN, SR_EXIT_FLOOR_MAX);
+  s.reinforcement_cap = tuning.reinforcement_cap;
+  posts: [8] SrExitPost;
+  n := sr_exit_posts(s.floor_count, posts[..]);
+  for k: 0..<n { s.robots[k] = SrExitRobot.{post = posts[k], pos = posts[k].a, goal = posts[k].a}; }
+  s.n = n;
+  out[0] = s;
+}
+sr_exit_count_role :: (s: SrNightExitState, role: int, enemies_only: bool) -> int {
+  n := 0; for k: 0..<s.n { r := s.robots[k]; if r.post.role == role && (!enemies_only || sr_exit_is_enemy(r)) { n += 1; } } return n;
+}
+
+// One tick (Advance).
+sr_night_exit_advance :: (st: [] SrNightExitState, inp: SrNightExitInputs) -> SrNightExitStep {
+  step: SrNightExitStep;
+  if st[0].outcome != SR_EXIT_RUNNING { return step; }
+  dt := ifx inp.dt > 0.0 then inp.dt else 0.0;
+  st[0].clock += dt;
+  here := sr_exit_route_at(inp.her_pos);
+  if here != SR_ROUTE_UNDECIDED { st[0].route = here; }
+  if st[0].route == SR_ROUTE_RAVE && inp.her_height >= SR_EXIT_TOP_HEIGHT { st[0].used_platforms = true; }
+  if inp.batteries_fed > 0 { st[0].fed_in_exit += inp.batteries_fed; st[0].fed_on_route[st[0].route] += inp.batteries_fed; }
+  if inp.her_dead {
+    st[0].outcome = SR_EXIT_LOST; st[0].deaths_in_exit += 1; st[0].deaths_on_route[st[0].route] += 1;
+    step.lost = true; return step;
+  }
+  // Arrivals (29.5 rule 4): CALL_DELAY after the alert, at the door, coming at her. Newest queued first, as the C++.
+  c := st[0].nq - 1;
+  while c >= 0 {
+    call := st[0].call_queue[c];
+    if call.arrive_at <= st[0].clock + SR_EXIT_SMALL && st[0].n < SR_EXIT_ROBOTS_MAX {
+      at := ifx call.door_index >= 0 && call.door_index < SR_EXIT_DOOR_COUNT then SR_EXIT_DOORS[call.door_index] else SR_EXIT_FIELD_CENTRE;
+      r := SrExitRobot.{pos = at, goal = inp.her_pos, mode = SR_EXIT_MODE_CHASE, hunting = true, door_index = call.door_index};
+      r.post = sr_exit_make_post("Called", SR_EXIT_ROLE_CALLED, at, at, sr_exit_yaw_toward(at, inp.her_pos));
+      st[0].robots[st[0].n] = r;
+      if step.arrived_n < SR_EXIT_CALLS_MAX { step.arrived[step.arrived_n] = st[0].n; step.arrived_n += 1; }
+      st[0].n += 1;
+      for k: c..<st[0].nq - 1 { st[0].call_queue[k] = st[0].call_queue[k + 1]; }
+      st[0].nq -= 1;
+    }
+    c -= 1;
+  }
+  // Sensing: enter at the radius, lose at 1.25 times it.
+  n := st[0].n;
+  now: [SR_EXIT_ROBOTS_MAX] bool;
+  own: [SR_EXIT_ROBOTS_MAX] int; own_n := 0;
+  for i: 0..<n {
+    r := st[0].robots[i];
+    if !sr_exit_is_enemy(r) { continue; }
+    los := ifx i < inp.los_n then inp.los[i] else sr_exit_default_line_of_sight(r.pos, inp.her_pos);
+    radius := sr_exit_sense_radius(inp.heat, inp.sneaking, los);
+    d := d2_dist(r.pos, inp.her_pos);
+    now[i] = ifx r.senses then d <= radius * SR_LOSE_SIGHT_FACTOR else d <= radius;
+    if r.hunting { st[0].robots[i].hunting = !now[i]; now[i] = true; }
+    else if now[i] && !r.senses { own[own_n] = i; own_n += 1; }
+  }
+  // Alerts spread within AlertShare; they raise no call of their own (29.5 rule 2).
+  for o: 0..<own_n {
+    a := own[o];
+    for j: 0..<n {
+      if j != a && !now[j] && sr_exit_is_enemy(st[0].robots[j]) && d2_dist(st[0].robots[a].pos, st[0].robots[j].pos) <= SR_EXIT_ALERT_SHARE { now[j] = true; }
+    }
+  }
+  // Calls at High Heat (UE-HEAT-05, 29.5): per own alert, capped for the area, each door once.
+  for o: 0..<own_n {
+    a := own[o];
+    step.alerts[step.alerts_n] = a; step.alerts_n += 1;
+    asked := ifx inp.ask_calls >= 0 then inp.ask_calls else sr_reinforcements_to_call(inp.heat, st[0].calls_made);
+    allowed := sr_mini(sr_maxi(0, asked), st[0].reinforcement_cap - st[0].calls_made);
+    for k: 0..<allowed {
+      door := sr_exit_pick_door(st[0], st[0].robots[a].pos, inp.her_pos);
+      if door < 0 || st[0].nq >= SR_EXIT_CALLS_MAX { break; }
+      st[0].door_used[door] = true;
+      st[0].call_queue[st[0].nq] = SrExitCall.{arrive_at = st[0].clock + SR_EXIT_CALL_DELAY, door_index = door}; st[0].nq += 1;
+      st[0].calls_made += 1; step.calls_raised += 1;
+    }
+  }
+  // Moves and blows.
+  chase := sr_exit_chase_speed(inp.heat);
+  reach := SR_EXIT_BLOW_REACH + SR_EXIT_BODY_RADIUS;
+  for i: 0..<n {
+    r := st[0].robots[i];
+    if !sr_exit_is_enemy(r) { continue; }
+    r.blow_in = ifx r.blow_in - dt > 0.0 then r.blow_in - dt else 0.0;
+    r.since_crew_hit += dt;
+    crew_target := -1;
+    if r.since_crew_hit < SR_EXIT_CREW_HIT_MEMORY {
+      best := 1.0e30;
+      for k: 0..<inp.crew_n { dc := d2_dist(r.pos, inp.crew[k].pos); if inp.crew[k].alive && dc < best { best = dc; crew_target = k; } }
+    }
+    r.crew_target = crew_target;
+    if now[i] || crew_target >= 0 { r.mode = SR_EXIT_MODE_CHASE; }
+    else if r.mode == SR_EXIT_MODE_CHASE { r.mode = SR_EXIT_MODE_RETURN; }
+    if r.mode == SR_EXIT_MODE_CHASE {
+      target := ifx crew_target >= 0 then inp.crew[crew_target].pos else inp.her_pos;
+      r.goal = target;
+      before := r.pos;
+      p := [1] D2.[r.pos];
+      _ = sr_exit_move_toward(p[..], target, chase * dt, reach * 0.8);
+      r.pos = p[0];
+      // SNIPER_SAFE (29.4 rule 5): it never comes this near Sniper; it gives up and goes back.
+      if d2_dist(r.pos, SR_EXIT_SNIPER_PARKED) < SR_EXIT_SNIPER_SAFE {
+        r.pos = before; r.mode = SR_EXIT_MODE_RETURN; now[i] = false; r.hunting = false;
+      } else {
+        on_her := crew_target < 0;
+        can_reach := d2_dist(r.pos, target) <= reach && (!on_her || inp.her_height < SR_EXIT_TOP_HEIGHT);
+        if can_reach && r.blow_in <= 0.0 && st[0].clock - st[0].last_impact_at >= SR_EXIT_IMPACT_SPACING && step.blows_n < SR_EXIT_ROBOTS_MAX {
+          step.blows[step.blows_n] = SrExitBlow.{robot = i, crew = crew_target}; step.blows_n += 1;
+          r.blow_in = SR_EXIT_BLOW_EVERY; st[0].last_impact_at = st[0].clock;
+        }
+      }
+    } else if r.mode == SR_EXIT_MODE_RETURN {
+      home := sr_exit_patrol_point(r.post, r.patrol_time);
+      r.goal = home;
+      p := [1] D2.[r.pos];
+      if sr_exit_move_toward(p[..], home, SR_EXIT_PATROL_SPEED * dt, 0.0) { r.mode = SR_EXIT_MODE_POST; }
+      r.pos = p[0];
+    } else {
+      if sr_exit_post_patrols(r.post) { r.patrol_time += dt; }
+      r.pos = sr_exit_patrol_point(r.post, r.patrol_time); r.goal = r.pos;
+    }
+    r.senses = now[i];
+    st[0].robots[i] = r;
+  }
+  // Win (UE-EXIT-09): past the opening, and every robot of hers on follow is with her.
+  if sr_exit_past_exit(inp.her_pos) {
+    all := true; with := 0;
+    for k: 0..<inp.crew_n {
+      m := inp.crew[k];
+      if !m.following || !m.alive { continue; }
+      if sr_exit_past_exit(m.pos) || d2_dist(m.pos, inp.her_pos) <= SR_EXIT_CREW_GATHER { with += 1; } else { all = false; }
+    }
+    if all { st[0].outcome = SR_EXIT_WON; st[0].crew_out = with; step.won = true; }
+  }
+  return step;
+}
+// Damage from her or her crew. by_crew: it then fights her crew for CrewHitMemory. At 0 it powers down.
+sr_exit_damage_robot :: (st: [] SrNightExitState, i: int, damage: f64, by_crew: bool) {
+  if i < 0 || i >= st[0].n || !sr_exit_is_enemy(st[0].robots[i]) || damage <= 0.0 { return; }
+  h := st[0].robots[i].health - damage;
+  st[0].robots[i].health = ifx h > 0.0 then h else 0.0;
+  if by_crew { st[0].robots[i].since_crew_hit = 0.0; }
+  if st[0].robots[i].health <= 0.0 { st[0].robots[i].mode = SR_EXIT_MODE_POWERED_DOWN; st[0].robots[i].senses = false; st[0].robots[i].hunting = false; }
+}
+// A powered-down robot harvested or taken (UE-EXIT-08).
+sr_exit_remove_robot :: (st: [] SrNightExitState, i: int) {
+  if i >= 0 && i < st[0].n && st[0].robots[i].mode == SR_EXIT_MODE_POWERED_DOWN { st[0].robots[i].mode = SR_EXIT_MODE_GONE; }
+}
+// The checkpoint restore after a loss (29.3, 29.10, SYS-EXIT-10): fresh posts, calls and doors cleared,
+// route undecided, running. Keeps the telemetry, floor_count and the cap.
+sr_exit_restore_at_checkpoint :: (st: [] SrNightExitState) {
+  fresh: [1] SrNightExitState;
+  sr_night_exit_begin(st[0].floor_count, SrExitTuning.{floor_robots = st[0].floor_count, reinforcement_cap = st[0].reinforcement_cap}, fresh[..]);
+  fresh[0].fed_in_exit = st[0].fed_in_exit; fresh[0].deaths_in_exit = st[0].deaths_in_exit;
+  fresh[0].fed_on_route = st[0].fed_on_route; fresh[0].deaths_on_route = st[0].deaths_on_route;
+  st[0] = fresh[0];
+}
+// The record her death loads: the last checkpoint with deaths one higher (C-05's rule).
+sr_exit_record_after_loss :: (last: SrRunSave, out: [] SrRunSave) { sr_record_after_death(last, out); }
