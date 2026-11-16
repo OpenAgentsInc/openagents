@@ -1,0 +1,108 @@
+// Splice Bots rules: what a click does, the use and attack answers in resolution order
+// (SpliceClickRules.h, C-03, defined by R-04; GDD 04 6.1 UE-INT-03 to -08, UE-CORE-02/04/06/07/09;
+// GDD 02 21.6, 21.7, 28.5, 28.6; addendum Decisions 14 Nov), and whether the answer can be undone
+// (SpliceClickSafety.h, R-04; GDD 04 risk 7 "nothing irreversible is on a click").
+// Readings kept from the C++: left click attacks only an awake robot that is not hers; core out needs
+// a hand with no battery and no core; a robot harvest and a body shrink need a hold.
+#load "core-socket.coax";
+
+// ESpliceClickVerb.
+SR_VERB_NONE :: 0;
+SR_VERB_FEED :: 1; SR_VERB_CORE_IN :: 2; SR_VERB_CORE_OUT :: 3; SR_VERB_ENTER :: 4; SR_VERB_OPEN_STATION :: 5;
+SR_VERB_TOGGLE_FOLLOW :: 6; SR_VERB_PLACE_BODY :: 7; SR_VERB_RIDE_BOARD :: 8;            // right click (use)
+SR_VERB_HARVEST :: 9; SR_VERB_BREAK :: 10; SR_VERB_ATTACK :: 11; SR_VERB_SHRINK_BODY :: 12; // left click (attack)
+
+// UE-INT-03: yes with a prompt key (a string-table key), or no with a reason (shown pale, UE-INT-06).
+// A refusal names the verb it refused.
+SrClickAnswer :: struct { yes: bool; verb: int; prompt_key: string; refusal: int; }
+// What the rules know about the thing under the reticle (FSpliceTargetFacts).
+SrTargetFacts :: struct {
+  has_target: bool; is_ground: bool; is_robot: bool; is_hers: bool; awake: bool; powered_down: bool; has_core: bool;
+  energy_full: bool; enterable: bool; station: bool; harvestable_ready: bool; breakable: bool; can_break: bool;
+  counted_in_crew: bool;   // already one of her 3 (C1 rule 8)
+}
+// Everything one click is resolved from (FSpliceClickInput). held_category -1: no definition row.
+SrClickInput :: struct {
+  held: SrItemStack; held_category: int = -1; shift_held: bool;
+  target: SrTargetFacts;
+  crew_count: int; crew_limit: int = 3;
+  experimental_core_ready: bool; place_has_room: bool; board_allowed_here: bool = true;
+}
+// FSpliceClickSafety: reversible means nothing she has or can still get is lost; hold_seconds is the
+// confirmation (the button stays down that long on the same target), 0 acts at once.
+SrClickSafety :: struct { reversible: bool = true; hold_seconds: f32; }
+
+SR_HELD_EMPTY :: 0; SR_HELD_BATTERY :: 1; SR_HELD_CORE :: 2; SR_HELD_BODY :: 3; SR_HELD_BOARD :: 4; SR_HELD_OTHER :: 5;
+sr_classify_held :: (in: SrClickInput) -> int {
+  if sr_item_empty(in.held) || in.held_category < 0 { return SR_HELD_EMPTY; }
+  c := in.held_category;
+  if c == SR_CAT_CONSUMABLE { return SR_HELD_BATTERY; }   // the slice's one consumable
+  if c == SR_CAT_CORE { return SR_HELD_CORE; }
+  if c == SR_CAT_ROBOT_BODY { return SR_HELD_BODY; }
+  if c == SR_CAT_TOOL { return SR_HELD_BOARD; }           // the slice's one tool
+  return SR_HELD_OTHER;
+}
+sr_is_her_live_robot :: (t: SrTargetFacts) -> bool { return t.has_target && t.is_robot && t.is_hers && t.has_core && !t.powered_down; }
+sr_is_her_coreless_body :: (t: SrTargetFacts) -> bool { return t.has_target && t.is_robot && t.is_hers && !t.has_core; }
+sr_click_yes :: (verb: int, key: string) -> SrClickAnswer { return SrClickAnswer.{yes = true, verb = verb, prompt_key = key}; }
+sr_click_refuse :: (verb: int, why: int) -> SrClickAnswer { return SrClickAnswer.{verb = verb, refusal = why}; }
+
+SrClickTry :: struct { answered: bool; answer: SrClickAnswer; }
+// UE-CORE-02, -08; GDD 02 21.6 rows 3, 5, 6 and notes 2, 3.
+sr_try_core_in :: (in: SrClickInput) -> SrClickTry {
+  t := in.target;
+  if !t.has_target || !t.is_robot { return SrClickTry.{}; }
+  if !t.is_hers && t.has_core && !t.powered_down { return SrClickTry.{answered = true, answer = sr_click_refuse(SR_VERB_CORE_IN, SR_REFUSE_BRING_TO_ZERO_FIRST)}; }
+  if in.held.item == ITEM_EXPERIMENTAL_CORE && !in.experimental_core_ready { return SrClickTry.{answered = true, answer = sr_click_refuse(SR_VERB_CORE_IN, SR_REFUSE_CORE_NOT_READY)}; }
+  if !t.counted_in_crew && in.crew_count >= in.crew_limit { return SrClickTry.{answered = true, answer = sr_click_refuse(SR_VERB_CORE_IN, SR_REFUSE_CREW_LIMIT)}; }
+  return SrClickTry.{answered = true, answer = sr_click_yes(SR_VERB_CORE_IN, "CORE_IN")};
+}
+// UE-INT-05 right click. Shift on her live robot with no battery or core in hand: core out. Then the
+// first yes wins: (1) a use that needs the held item, (2) the target's own use, (3) the held item's use.
+sr_resolve_right_click :: (in: SrClickInput) -> SrClickAnswer {
+  t := in.target; held := sr_classify_held(in);
+  if in.shift_held && sr_is_her_live_robot(t) && held != SR_HELD_BATTERY && held != SR_HELD_CORE { return sr_click_yes(SR_VERB_CORE_OUT, "CORE_OUT"); }
+  if held == SR_HELD_BATTERY && sr_is_her_live_robot(t) {
+    // A full robot refuses and the press does not fall through (the battery is never spent for nothing).
+    if t.energy_full { return sr_click_refuse(SR_VERB_FEED, SR_REFUSE_FULL); }
+    return sr_click_yes(SR_VERB_FEED, "FEED");
+  }
+  if held == SR_HELD_CORE { c := sr_try_core_in(in); if c.answered { return c.answer; } }
+  if t.has_target && t.enterable { return sr_click_yes(SR_VERB_ENTER, "ENTER"); }
+  if t.has_target && t.station { return sr_click_yes(SR_VERB_OPEN_STATION, "OPEN"); }
+  if sr_is_her_live_robot(t) { return sr_click_yes(SR_VERB_TOGGLE_FOLLOW, "FOLLOW_STAY"); }
+  if held == SR_HELD_BODY && t.is_ground {
+    if !in.place_has_room { return sr_click_refuse(SR_VERB_PLACE_BODY, SR_REFUSE_NO_ROOM); }
+    return sr_click_yes(SR_VERB_PLACE_BODY, "PLACE");
+  }
+  if held == SR_HELD_BOARD && (t.is_ground || !t.has_target) {
+    if !in.board_allowed_here { return sr_click_refuse(SR_VERB_RIDE_BOARD, SR_REFUSE_NOT_ALLOWED_HERE); }
+    return sr_click_yes(SR_VERB_RIDE_BOARD, "RIDE");
+  }
+  return SrClickAnswer.{};   // nothing: no error line, no sound (SYS-USE-11)
+}
+// UE-INT-05 left click: harvest (never hers), else break, else shrink her coreless body, else attack an
+// awake robot that is not hers.
+sr_resolve_left_click :: (in: SrClickInput) -> SrClickAnswer {
+  t := in.target;
+  if !t.has_target { return SrClickAnswer.{}; }
+  if !t.is_hers && (t.harvestable_ready || (t.is_robot && t.powered_down)) { return sr_click_yes(SR_VERB_HARVEST, "HARVEST"); }
+  if t.breakable {
+    if !t.can_break { return sr_click_refuse(SR_VERB_BREAK, SR_REFUSE_NEEDS_DRILL_CARD); }
+    return sr_click_yes(SR_VERB_BREAK, "BREAK");
+  }
+  if sr_is_her_coreless_body(t) { return sr_click_yes(SR_VERB_SHRINK_BODY, "SHRINK"); }
+  if t.is_robot && !t.is_hers && !t.powered_down { return sr_click_yes(SR_VERB_ATTACK, "ATTACK"); }
+  return SrClickAnswer.{};
+}
+// Classifies an answer for the same input. A no is always reversible. Feeding spends the battery; a
+// robot harvest is gone for good (a 1 s hold); a body shrink asks for a 0.5 s hold; a charge point
+// harvest regrows (one click). Everything else undoes.
+sr_click_safety :: (in: SrClickInput, a: SrClickAnswer) -> SrClickSafety {
+  s: SrClickSafety;
+  if !a.yes { return s; }
+  if a.verb == SR_VERB_FEED { s.reversible = false; }
+  else if a.verb == SR_VERB_HARVEST && in.target.is_robot { s.reversible = false; s.hold_seconds = SR_CLICK_HOLD_HARVEST_ROBOT_SECONDS; }
+  else if a.verb == SR_VERB_SHRINK_BODY { s.hold_seconds = SR_CLICK_HOLD_SHRINK_BODY_SECONDS; }
+  return s;
+}

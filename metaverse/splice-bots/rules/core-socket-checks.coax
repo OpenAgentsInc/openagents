@@ -1,0 +1,104 @@
+// Parity checks for core-socket.coax and harvest.coax: SpliceTests/Rules/SpliceCoreSocketTests.cpp and
+// SpliceHarvestTests.cpp. rules.coax loads this file with `#load ... #test;`.
+
+CS_BODY :: "ITEM_BODY_DIGGER";
+cs_live_digger :: () -> SrSocketRobot {
+  r: SrSocketRobot;
+  r.state.robot_id = "digger"; r.state.name = "Digger";
+  r.state.parts = sr_make_kit(3); r.state.parts.slots[0] = sr_stack(ITEM_SCRAP_PART, 1); r.state.parts.slots[2] = sr_stack(ITEM_SCRAP_PART, 1);
+  r.state.cards = sr_make_kit(2); r.state.cards.slots[0] = sr_stack("ITEM_CARD_DRILL", 1);
+  r.state.health = 3.0; r.state.health_max = 10.0; r.state.move_energy = 4.5;
+  r.state.has_core = true; r.state.core = sr_stack(ITEM_SMALL_CORE, 1);
+  r.owner = SR_OWNER_HER; r.mode = SR_MODE_STAY;
+  return r;
+}
+cs_imperial :: (down: bool) -> SrSocketRobot {
+  r: SrSocketRobot;
+  r.state.robot_id = ROBOT_IMPERIAL; r.state.name = "Imperial robot"; r.state.health_max = 20.0;
+  r.state.health = ifx down then 0.0 else 20.0;
+  r.state.has_core = true; r.state.core = sr_stack(ITEM_SMALL_CORE, 1);
+  r.owner = SR_OWNER_OTHER; r.powered_down = down;
+  return r;
+}
+cs_same_body :: (a: SrRobotState, b: SrRobotState) -> bool {
+  return a.robot_id == b.robot_id && a.name == b.name && a.health == b.health && a.health_max == b.health_max
+    && a.move_energy == b.move_energy && sr_kits_eq(a.parts, b.parts) && sr_kits_eq(a.cards, b.cards);
+}
+
+#test "Splice.Rules.CoreSocket.CoreOutShrinksBodyKeepsPayload" {
+  in := cs_live_digger(); out := sr_core_out(in, CS_BODY);
+  #assert out.ok && out.core.item == ITEM_SMALL_CORE && out.core.count == 1 && out.body.item == CS_BODY && out.body.count == 1;
+  #assert sr_is_robot_body(out.body) && !sr_body_has_core(out.body);
+  p: [1] SrRobotState;
+  #assert sr_unpack_robot(out.body, p[..]) && cs_same_body(p[0], in.state);
+  #assert !sr_core_out(cs_imperial(false), CS_BODY).ok && !sr_core_out(cs_imperial(true), CS_BODY).ok;
+  dark := in; dark.state.has_core = false; dark.state.core = SrStack.{}; dark.owner = SR_OWNER_NONE;
+  #assert !sr_core_out(dark, CS_BODY).ok;
+}
+#test "Splice.Rules.CoreSocket.PlaceItemRestoresRobotLifeCycle" {
+  in := cs_live_digger(); out := sr_core_out(in, CS_BODY);
+  #assert out.ok;
+  no_room := sr_place_item(out.body, false);
+  #assert !no_room.ok && no_room.refusal == SR_REFUSE_NO_ROOM;
+  placed := sr_place_item(out.body, true);
+  #assert placed.ok && !sr_socket_has_core(placed.robot) && placed.robot.owner == SR_OWNER_NONE && cs_same_body(placed.robot.state, in.state);
+  back := sr_take_control(placed.robot, out.core, 0, false, SR_DEFAULT_TAKE_WAKE_SHARE);
+  #assert back.ok && back.new_owner == SR_OWNER_HER && sr_stack_empty(back.popped_core) && cs_same_body(back.robot.state, in.state);
+  #assert sr_socket_has_core(back.robot) && back.robot.state.core.item == in.state.core.item && back.robot.mode == SR_MODE_FOLLOW;
+  crafted := in.state; crafted.has_core = false; crafted.core = SrStack.{};
+  cp := sr_place_item(sr_pack_crafted_body(CS_BODY, crafted, sr_stack(ITEM_SMALL_CORE, 1)), true);
+  #assert cp.ok && sr_socket_has_core(cp.robot) && cp.robot.owner == SR_OWNER_HER;
+  #assert !sr_place_item(sr_item(ITEM_SMALL_CORE, 1), true).ok;
+}
+#test "Splice.Rules.CoreSocket.TakeControlOfPoweredDownSucceeds" {
+  down := cs_imperial(true);
+  r := sr_take_control(down, sr_stack(ITEM_LARGE_CORE, 1), 1, false, SR_DEFAULT_TAKE_WAKE_SHARE);
+  #assert r.ok && r.new_owner == SR_OWNER_HER && r.became_hers && !r.robot.powered_down;
+  #assert r.popped_core.item == ITEM_SMALL_CORE && r.robot.state.core.item == ITEM_LARGE_CORE && r.robot.state.health == 4.0;
+  #assert sr_take_control(down, sr_stack(ITEM_SMALL_CORE, 1), 3, false, SR_DEFAULT_TAKE_WAKE_SHARE).refusal == SR_REFUSE_CREW_LIMIT;
+  #assert sr_take_control(down, sr_stack(ITEM_EXPERIMENTAL_CORE, 1), 0, false, SR_DEFAULT_TAKE_WAKE_SHARE).refusal == SR_REFUSE_CORE_NOT_READY;
+  own := sr_take_control(cs_live_digger(), sr_stack(ITEM_LARGE_CORE, 1), 3, false, SR_DEFAULT_TAKE_WAKE_SHARE);
+  #assert own.ok && !own.became_hers && own.robot.state.health == 3.0;
+}
+#test "Splice.Rules.CoreSocket.ForeignAwakeRobotRefuses" {
+  r := sr_take_control(cs_imperial(false), sr_stack(ITEM_SMALL_CORE, 1), 0, true, SR_DEFAULT_TAKE_WAKE_SHARE);
+  #assert !r.ok && r.refusal == SR_REFUSE_BRING_TO_ZERO_FIRST && r.new_owner == SR_OWNER_OTHER && sr_stack_empty(r.popped_core);
+  #assert r.robot.state.core.item == ITEM_SMALL_CORE;
+}
+
+hv_farm_robot_down :: () -> SrHarvestInput {
+  in: SrHarvestInput;
+  in.robot.state.robot_id = ROBOT_IMPERIAL; in.robot.state.health_max = 20.0;
+  in.robot.state.has_core = true; in.robot.state.core = sr_stack(ITEM_SMALL_CORE, 1);
+  in.robot.owner = SR_OWNER_OTHER; in.robot.powered_down = true;
+  in.held_seconds = SR_CLICK_HOLD_HARVEST_ROBOT_SECONDS;
+  return in;
+}
+#test "Splice.Rules.Harvest.FarmRobotYieldsCore" {
+  r := sr_harvest(hv_farm_robot_down());
+  #assert sr_harvest_ok(r) && sr_harvest_count(r, ITEM_SMALL_CORE) == 1 && r.n > 0 && r.drops[0].item == ITEM_SMALL_CORE;
+}
+#test "Splice.Rules.Harvest.AwakeRefuses" {
+  in := hv_farm_robot_down(); in.robot.powered_down = false;
+  r := sr_harvest(in);
+  #assert r.refusal == SR_HARVEST_NOT_POWERED_DOWN && r.n == 0;
+}
+#test "Splice.Rules.Harvest.SecondHarvestRefuses" {
+  in := hv_farm_robot_down();
+  #assert sr_harvest_ok(sr_harvest(in));
+  in.already_harvested = true;
+  r := sr_harvest(in);
+  #assert r.refusal == SR_HARVEST_ALREADY_HARVESTED && r.n == 0;
+}
+#test "Splice.Rules.Harvest.DropsIncludeParts" {
+  in := hv_farm_robot_down(); in.robot.state.parts = sr_make_kit(2); in.robot.state.parts.slots[1] = sr_stack(ITEM_DRILL_HARDWARE, 1);
+  r := sr_harvest(in);
+  #assert sr_harvest_ok(r) && sr_harvest_count(r, ITEM_DRILL_HARDWARE) == 1 && sr_harvest_count(r, ITEM_IMPERIAL_PART) == 3 && sr_harvest_count(r, ITEM_BANNED_PIECE) == 0;
+  in.prior_harvests = 2;
+  #assert sr_harvest_count(sr_harvest(in), ITEM_BANNED_PIECE) == 1;
+}
+#test "Splice.Rules.Harvest.ShortHoldRefuses" {
+  in := hv_farm_robot_down(); in.held_seconds = SR_CLICK_HOLD_HARVEST_ROBOT_SECONDS - 0.1;
+  r := sr_harvest(in);
+  #assert r.refusal == SR_HARVEST_HOLD_INCOMPLETE && r.n == 0;
+}

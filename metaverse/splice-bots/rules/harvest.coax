@@ -1,0 +1,29 @@
+// Splice Bots rules: harvest, a left click held on a powered-down robot that is not hers
+// (SpliceHarvest.h, package S-09; GDD 04 6.4 UE-CORE-09; addendum 14 Nov "Harvest"; robots.csv
+// ROBOT_IMPERIAL notes). Pure: the caller places the drops and records the robot's spawn id.
+#load "core-socket.coax";
+
+// ESpliceHarvestRefusal.
+SR_HARVEST_OK :: 0; SR_HARVEST_ALREADY_HARVESTED :: 1; SR_HARVEST_NOT_POWERED_DOWN :: 2; SR_HARVEST_HOLD_INCOMPLETE :: 3;
+SR_HARVEST_BANNED_PIECE_EVERY :: 3;   // every third harvest adds a banned piece (Imperial)
+SR_IMPERIAL_HARVEST_PART_COUNT :: 3;
+SR_HARVEST_DROPS_MAX :: SR_KIT_MAX + 3;
+
+SrHarvestInput :: struct { robot: SrSocketRobot; already_harvested: bool; held_seconds: f32; prior_harvests: int; }
+SrHarvestResult :: struct { refusal: int; n: int; drops: [SR_HARVEST_DROPS_MAX] SrStack; }   // core first, parts, a banned piece when due
+sr_harvest_ok :: (r: SrHarvestResult) -> bool { return r.refusal == SR_HARVEST_OK; }
+sr_harvest_count :: (r: SrHarvestResult, id: string) -> int { n := 0; for k: 0..<r.n { if r.drops[k].item == id { n += r.drops[k].count; } } return n; }
+sr_harvest :: (in: SrHarvestInput) -> SrHarvestResult {
+  r: SrHarvestResult;
+  if in.already_harvested { r.refusal = SR_HARVEST_ALREADY_HARVESTED; return r; }
+  if !in.robot.powered_down { r.refusal = SR_HARVEST_NOT_POWERED_DOWN; return r; }
+  if in.held_seconds < SR_CLICK_HOLD_HARVEST_ROBOT_SECONDS { r.refusal = SR_HARVEST_HOLD_INCOMPLETE; return r; }
+  st := in.robot.state;
+  r.drops[r.n] = ifx sr_socket_has_core(in.robot) then sr_stack(st.core.item, 1) else sr_stack(ITEM_SMALL_CORE, 1); r.n += 1;
+  for k: 0..<st.parts.size { if !sr_stack_empty(st.parts.slots[k]) { r.drops[r.n] = st.parts.slots[k]; r.n += 1; } }
+  if st.robot_id == ROBOT_IMPERIAL {
+    r.drops[r.n] = sr_stack(ITEM_IMPERIAL_PART, SR_IMPERIAL_HARVEST_PART_COUNT); r.n += 1;
+    if (in.prior_harvests + 1) % SR_HARVEST_BANNED_PIECE_EVERY == 0 { r.drops[r.n] = sr_stack(ITEM_BANNED_PIECE, 1); r.n += 1; }
+  }
+  return r;
+}

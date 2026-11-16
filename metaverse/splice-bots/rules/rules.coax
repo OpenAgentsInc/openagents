@@ -22,6 +22,9 @@
 #load "splice.coax";
 #load "charge-point.coax";
 #load "recharge.coax";
+#load "core-socket.coax";
+#load "harvest.coax";
+#load "click-rules.coax";
 
 #load "data-checks.coax" #test;
 #load "robot-payload-checks.coax" #test;
@@ -36,3 +39,5 @@
 #load "heat-checks.coax" #test;
 #load "splice-checks.coax" #test;
 #load "charge-point-checks.coax" #test;
+#load "core-socket-checks.coax" #test;
+#load "click-rules-checks.coax" #test;

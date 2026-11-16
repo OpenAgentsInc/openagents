@@ -1,0 +1,148 @@
+// Parity checks for click-rules.coax: SpliceTests/Rules/SpliceClickRulesTests.cpp, one row per pairing
+// of held item and target, both buttons, the modifier rows and the safety checks over all of them.
+// rules.coax loads this file with `#load ... #test;`.
+
+// Held: Empty, Part, Card, Battery, Core, ExpCore, Body, Board.
+CKH_HELD_COUNT :: 8;
+// Targets: Nothing, Ground, HerRobotHurt, HerRobotFull, HerBody, FoeAwake, FoeDown, ChargeReady,
+// ChargeEmpty, Breakable, Door, Station.
+CKH_TGT_COUNT :: 12;
+CKH_HER_HURT :: 2; CKH_HER_FULL :: 3; CKH_HER_BODY :: 4; CKH_FOE_AWAKE :: 5; CKH_FOE_DOWN :: 6; CKH_CHARGE_READY :: 7;
+CKH_GROUND :: 1; CKH_BREAKABLE :: 9; CKH_DOOR :: 10;
+CKH_EMPTY :: 0; CKH_PART :: 1; CKH_BATTERY :: 3; CKH_CORE :: 4; CKH_EXP_CORE :: 5; CKH_BODY :: 6; CKH_BOARD :: 7;
+
+ck_input :: (held: int, tgt: int) -> SrClickInput {
+  in: SrClickInput; in.crew_count = 1; in.crew_limit = 3; in.place_has_room = true; in.board_allowed_here = true;
+  ids := [CKH_HELD_COUNT] string.["", ITEM_SCRAP_PART, ITEM_DRILL_CARD, ITEM_BATTERY, ITEM_SMALL_CORE, ITEM_EXPERIMENTAL_CORE, "ITEM_BODY_DIGGER", "ITEM_HOVERBOARD"];
+  cats := [CKH_HELD_COUNT] int.[-1, SR_CAT_PART, SR_CAT_CARD, SR_CAT_CONSUMABLE, SR_CAT_CORE, SR_CAT_CORE, SR_CAT_ROBOT_BODY, SR_CAT_TOOL];
+  if held != CKH_EMPTY { in.held = sr_item(ids[held], 1); in.held_category = cats[held]; }
+  f: SrTargetFacts;
+  if tgt == CKH_GROUND { f.is_ground = true; }
+  if tgt == CKH_HER_HURT || tgt == CKH_HER_FULL { f.has_target = true; f.is_robot = true; f.is_hers = true; f.awake = true; f.has_core = true; f.counted_in_crew = true; f.energy_full = tgt == CKH_HER_FULL; }
+  if tgt == CKH_HER_BODY { f.has_target = true; f.is_robot = true; f.is_hers = true; }
+  if tgt == CKH_FOE_AWAKE { f.has_target = true; f.is_robot = true; f.awake = true; f.has_core = true; }
+  if tgt == CKH_FOE_DOWN { f.has_target = true; f.is_robot = true; f.powered_down = true; f.has_core = true; f.harvestable_ready = true; }
+  if tgt == CKH_CHARGE_READY { f.has_target = true; f.harvestable_ready = true; }
+  if tgt == 8 { f.has_target = true; }
+  if tgt == CKH_BREAKABLE { f.has_target = true; f.breakable = true; f.can_break = true; }
+  if tgt == CKH_DOOR { f.has_target = true; f.enterable = true; }
+  if tgt == 11 { f.has_target = true; f.station = true; }
+  in.target = f;
+  return in;
+}
+// An outcome: verb and refusal; yes is a verb with no refusal (the table's Y), no a refusal (N) or no verb.
+CkOut :: struct { verb: int; refusal: int; }
+ckh_y :: (verb: int) -> CkOut { return CkOut.{verb = verb}; }
+ckh_n :: (verb: int, why: int) -> CkOut { return CkOut.{verb = verb, refusal = why}; }
+CKH_NO :: CkOut.{};
+ck_matches :: (a: SrClickAnswer, w: CkOut) -> bool {
+  want_yes := w.verb != SR_VERB_NONE && w.refusal == SR_REFUSE_NONE;
+  return a.verb == w.verb && a.yes == want_yes && a.refusal == w.refusal && (!a.yes || a.prompt_key != "");
+}
+// Left click ignores the held item: one outcome per target.
+ck_left_for :: (tgt: int) -> CkOut {
+  if tgt == CKH_HER_BODY { return ckh_y(SR_VERB_SHRINK_BODY); }
+  if tgt == CKH_FOE_AWAKE { return ckh_y(SR_VERB_ATTACK); }
+  if tgt == CKH_FOE_DOWN || tgt == CKH_CHARGE_READY { return ckh_y(SR_VERB_HARVEST); }
+  if tgt == CKH_BREAKABLE { return ckh_y(SR_VERB_BREAK); }
+  return CKH_NO;
+}
+// The right-click column of the 96-row table, held by held.
+ck_right_table :: () -> [CKH_HELD_COUNT] [CKH_TGT_COUNT] CkOut {
+  tog := ckh_y(SR_VERB_TOGGLE_FOLLOW); ent := ckh_y(SR_VERB_ENTER); opn := ckh_y(SR_VERB_OPEN_STATION);
+  plain := [CKH_TGT_COUNT] CkOut.[CKH_NO, CKH_NO, tog, tog, CKH_NO, CKH_NO, CKH_NO, CKH_NO, CKH_NO, CKH_NO, ent, opn];
+  t: [CKH_HELD_COUNT] [CKH_TGT_COUNT] CkOut;
+  t[0] = plain; t[1] = plain; t[2] = plain;
+  t[3] = [CKH_TGT_COUNT] CkOut.[CKH_NO, CKH_NO, ckh_y(SR_VERB_FEED), ckh_n(SR_VERB_FEED, SR_REFUSE_FULL), CKH_NO, CKH_NO, CKH_NO, CKH_NO, CKH_NO, CKH_NO, ent, opn];
+  ci := ckh_y(SR_VERB_CORE_IN);
+  t[4] = [CKH_TGT_COUNT] CkOut.[CKH_NO, CKH_NO, ci, ci, ci, ckh_n(SR_VERB_CORE_IN, SR_REFUSE_BRING_TO_ZERO_FIRST), ci, CKH_NO, CKH_NO, CKH_NO, ent, opn];
+  nr := ckh_n(SR_VERB_CORE_IN, SR_REFUSE_CORE_NOT_READY);
+  t[5] = [CKH_TGT_COUNT] CkOut.[CKH_NO, CKH_NO, nr, nr, nr, ckh_n(SR_VERB_CORE_IN, SR_REFUSE_BRING_TO_ZERO_FIRST), nr, CKH_NO, CKH_NO, CKH_NO, ent, opn];
+  t[6] = [CKH_TGT_COUNT] CkOut.[CKH_NO, ckh_y(SR_VERB_PLACE_BODY), tog, tog, CKH_NO, CKH_NO, CKH_NO, CKH_NO, CKH_NO, CKH_NO, ent, opn];
+  t[7] = [CKH_TGT_COUNT] CkOut.[ckh_y(SR_VERB_RIDE_BOARD), ckh_y(SR_VERB_RIDE_BOARD), tog, tog, CKH_NO, CKH_NO, CKH_NO, CKH_NO, CKH_NO, CKH_NO, ent, opn];
+  return t;
+}
+// The modifier rows: one condition changed from the defaults.
+CKH_MOD_SHIFT :: 0; CKH_MOD_AT_LIMIT :: 1; CKH_MOD_EXP_READY :: 2; CKH_MOD_NO_ROOM :: 3; CKH_MOD_NO_BOARD :: 4; CKH_MOD_CANT_BREAK :: 5; CKH_MOD_EMPTY_STACK :: 6;
+CkModRow :: struct { held: int; tgt: int; left: bool; mod: int; expect: CkOut; }
+ck_mod_rows :: () -> [19] CkModRow {
+  return [19] CkModRow.[
+    CkModRow.{held = CKH_EMPTY, tgt = CKH_HER_HURT, mod = CKH_MOD_SHIFT, expect = ckh_y(SR_VERB_CORE_OUT)},
+    CkModRow.{held = CKH_PART, tgt = CKH_HER_FULL, mod = CKH_MOD_SHIFT, expect = ckh_y(SR_VERB_CORE_OUT)},
+    CkModRow.{held = CKH_BOARD, tgt = CKH_HER_HURT, mod = CKH_MOD_SHIFT, expect = ckh_y(SR_VERB_CORE_OUT)},
+    CkModRow.{held = CKH_BATTERY, tgt = CKH_HER_HURT, mod = CKH_MOD_SHIFT, expect = ckh_y(SR_VERB_FEED)},
+    CkModRow.{held = CKH_CORE, tgt = CKH_HER_HURT, mod = CKH_MOD_SHIFT, expect = ckh_y(SR_VERB_CORE_IN)},
+    CkModRow.{held = CKH_EMPTY, tgt = CKH_HER_BODY, mod = CKH_MOD_SHIFT, expect = CKH_NO},
+    CkModRow.{held = CKH_EMPTY, tgt = CKH_FOE_DOWN, mod = CKH_MOD_SHIFT, expect = CKH_NO},
+    CkModRow.{held = CKH_CORE, tgt = CKH_FOE_DOWN, mod = CKH_MOD_AT_LIMIT, expect = ckh_n(SR_VERB_CORE_IN, SR_REFUSE_CREW_LIMIT)},
+    CkModRow.{held = CKH_CORE, tgt = CKH_HER_BODY, mod = CKH_MOD_AT_LIMIT, expect = ckh_n(SR_VERB_CORE_IN, SR_REFUSE_CREW_LIMIT)},
+    CkModRow.{held = CKH_CORE, tgt = CKH_HER_HURT, mod = CKH_MOD_AT_LIMIT, expect = ckh_y(SR_VERB_CORE_IN)},
+    CkModRow.{held = CKH_CORE, tgt = CKH_FOE_AWAKE, mod = CKH_MOD_AT_LIMIT, expect = ckh_n(SR_VERB_CORE_IN, SR_REFUSE_BRING_TO_ZERO_FIRST)},
+    CkModRow.{held = CKH_EXP_CORE, tgt = CKH_FOE_DOWN, mod = CKH_MOD_EXP_READY, expect = ckh_y(SR_VERB_CORE_IN)},
+    CkModRow.{held = CKH_EXP_CORE, tgt = CKH_FOE_AWAKE, mod = CKH_MOD_EXP_READY, expect = ckh_n(SR_VERB_CORE_IN, SR_REFUSE_BRING_TO_ZERO_FIRST)},
+    CkModRow.{held = CKH_BODY, tgt = CKH_GROUND, mod = CKH_MOD_NO_ROOM, expect = ckh_n(SR_VERB_PLACE_BODY, SR_REFUSE_NO_ROOM)},
+    CkModRow.{held = CKH_BOARD, tgt = CKH_GROUND, mod = CKH_MOD_NO_BOARD, expect = ckh_n(SR_VERB_RIDE_BOARD, SR_REFUSE_NOT_ALLOWED_HERE)},
+    CkModRow.{held = CKH_BOARD, tgt = CKH_DOOR, mod = CKH_MOD_NO_BOARD, expect = ckh_y(SR_VERB_ENTER)},
+    CkModRow.{held = CKH_BATTERY, tgt = CKH_HER_HURT, mod = CKH_MOD_EMPTY_STACK, expect = ckh_y(SR_VERB_TOGGLE_FOLLOW)},
+    CkModRow.{held = CKH_EMPTY, tgt = CKH_BREAKABLE, left = true, mod = CKH_MOD_CANT_BREAK, expect = ckh_n(SR_VERB_BREAK, SR_REFUSE_NEEDS_DRILL_CARD)},
+    CkModRow.{held = CKH_EMPTY, tgt = CKH_FOE_AWAKE, left = true, mod = CKH_MOD_SHIFT, expect = ckh_y(SR_VERB_ATTACK)},
+  ];
+}
+ck_mod_input :: (r: CkModRow) -> SrClickInput {
+  in := ck_input(r.held, r.tgt);
+  if r.mod == CKH_MOD_SHIFT { in.shift_held = true; }
+  if r.mod == CKH_MOD_AT_LIMIT { in.crew_count = 3; }
+  if r.mod == CKH_MOD_EXP_READY { in.experimental_core_ready = true; }
+  if r.mod == CKH_MOD_NO_ROOM { in.place_has_room = false; }
+  if r.mod == CKH_MOD_NO_BOARD { in.board_allowed_here = false; }
+  if r.mod == CKH_MOD_CANT_BREAK { in.target.can_break = false; }
+  if r.mod == CKH_MOD_EMPTY_STACK { in.held.count = 0; }
+  return in;
+}
+
+#test "Splice.Rules.ClickRules.TableCoversEveryPairing" {
+  t := ck_right_table();
+  #assert t.count * t[0].count == 96;
+}
+#test "Splice.Rules.ClickRules.RightClickEveryPairing" {
+  t := ck_right_table();
+  for h: 0..<CKH_HELD_COUNT { for g: 0..<CKH_TGT_COUNT { #assert ck_matches(sr_resolve_right_click(ck_input(h, g)), t[h][g]); } }
+}
+#test "Splice.Rules.ClickRules.LeftClickEveryPairing" {
+  for h: 0..<CKH_HELD_COUNT { for g: 0..<CKH_TGT_COUNT { #assert ck_matches(sr_resolve_left_click(ck_input(h, g)), ck_left_for(g)); } }
+}
+#test "Splice.Rules.ClickRules.ModifiersShiftCrewRoomBoardDrill" {
+  for r: ck_mod_rows() {
+    in := ck_mod_input(r);
+    a := ifx r.left then sr_resolve_left_click(in) else sr_resolve_right_click(in);
+    #assert ck_matches(a, r.expect);
+  }
+}
+ck_left_safe :: (in: SrClickInput) -> bool {
+  a := sr_resolve_left_click(in); s := sr_click_safety(in, a);
+  return !a.yes || s.reversible || s.hold_seconds > 0.0;
+}
+#test "Splice.Rules.ClickRules.NoIrreversibleLeftClickWithoutConfirmation" {
+  for h: 0..<CKH_HELD_COUNT { for g: 0..<CKH_TGT_COUNT { #assert ck_left_safe(ck_input(h, g)); } }
+  for r: ck_mod_rows() { #assert ck_left_safe(ck_mod_input(r)); }
+  down := ck_input(CKH_EMPTY, CKH_FOE_DOWN); ds := sr_click_safety(down, sr_resolve_left_click(down));
+  #assert !ds.reversible && ds.hold_seconds == SR_CLICK_HOLD_HARVEST_ROBOT_SECONDS;
+  charge := ck_input(CKH_EMPTY, CKH_CHARGE_READY); cs := sr_click_safety(charge, sr_resolve_left_click(charge));
+  #assert cs.reversible && cs.hold_seconds == 0.0;
+}
+ck_right_safe :: (in: SrClickInput) -> bool {
+  a := sr_resolve_right_click(in); s := sr_click_safety(in, a);
+  if a.yes && !s.reversible && (a.verb != SR_VERB_FEED || in.target.energy_full) { return false; }
+  if a.yes && a.verb == SR_VERB_CORE_IN && !s.reversible { return false; }
+  return true;
+}
+#test "Splice.Rules.ClickRules.RightClickSpendsOnlyAUsefulBattery" {
+  for h: 0..<CKH_HELD_COUNT { for g: 0..<CKH_TGT_COUNT { #assert ck_right_safe(ck_input(h, g)); } }
+  for r: ck_mod_rows() { #assert ck_right_safe(ck_mod_input(r)); }
+}
+#test "Splice.Rules.ClickRules.RefusalChangesNothing" {
+  full := ck_input(CKH_BATTERY, CKH_HER_FULL); a := sr_resolve_right_click(full);
+  #assert !a.yes;
+  s := sr_click_safety(full, a);
+  #assert s.reversible && s.hold_seconds == 0.0;
+}

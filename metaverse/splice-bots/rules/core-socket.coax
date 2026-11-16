@@ -1,0 +1,71 @@
+// Splice Bots rules: the core socket, core out, placing a body, taking control (SpliceCoreSocketRules.h,
+// package S-04; GDD 04 6.3 UE-CORE-01 to -06, -08; GDD 02 28.4, 28.5 C1, C3, C10, 28.6 C4, C13),
+// and the click hold times (SpliceClickSafety.h, R-04; GDD 02 21.7, SYS-USE-04).
+// Ownership (UE-CORE-01): the core in the socket decides whose a robot is; a coreless body is nobody's.
+#load "robot-payload.coax";
+
+SR_CLICK_HOLD_HARVEST_ROBOT_SECONDS :: 1.0;   // harvesting a powered-down robot: a hold of 1 s
+SR_CLICK_HOLD_SHRINK_BODY_SECONDS :: 0.5;     // shrinking a placed coreless body: a hold of 0.5 s
+
+// ESpliceCoreOwner.
+SR_OWNER_NONE :: 0; SR_OWNER_HER :: 1; SR_OWNER_OTHER :: 2;
+SR_DEFAULT_TAKE_WAKE_SHARE :: 0.2;   // TAKE_WAKE, C10 (INFERRED; GDD 04 says 50 %, part 2 says 20 %)
+
+// A robot standing in the world, as the socket sees it (FSpliceSocketRobot); state.core is the socket.
+SrSocketRobot :: struct { state: SrRobotState; owner: int = SR_OWNER_NONE; powered_down: bool; mode: int = SR_MODE_FOLLOW; }
+sr_socket_has_core :: (r: SrSocketRobot) -> bool { return r.state.has_core && !sr_stack_empty(r.state.core); }
+sr_socket_awake :: (r: SrSocketRobot) -> bool { return sr_socket_has_core(r) && !r.powered_down; }
+
+SrCoreOutResult :: struct { ok: bool; refusal: int; core: SrStack; body: SrItemStack; }
+SrPlaceResult :: struct { ok: bool; refusal: int; robot: SrSocketRobot; }
+SrTakeControlResult :: struct { ok: bool; refusal: int; new_owner: int; robot: SrSocketRobot; popped_core: SrStack; became_hers: bool; }
+
+// Core out (C3): her live robot only (else NOT_ALLOWED_HERE); the body keeps everything but the core.
+sr_core_out :: (r: SrSocketRobot, body_item: string) -> SrCoreOutResult {
+  o: SrCoreOutResult;
+  if r.owner != SR_OWNER_HER || !sr_socket_awake(r) || body_item == "" { o.refusal = SR_REFUSE_NOT_ALLOWED_HERE; return o; }
+  p := sr_pack_robot(body_item, r.state);
+  if !p.ok { o.refusal = SR_REFUSE_NOT_ALLOWED_HERE; return o; }
+  o.ok = true; o.core = p.core; o.body = p.body;
+  return o;
+}
+// Placing a body item (C4): not a body, NOT_ALLOWED_HERE; no room, NO_ROOM (the item stays). A
+// coreless body stands dark, nobody's; a crafted body (C13) is live and hers. Mode is always Follow.
+sr_place_item :: (item: SrItemStack, has_room: bool) -> SrPlaceResult {
+  o: SrPlaceResult;
+  st: [1] SrRobotState;
+  if !sr_unpack_robot(item, st[..]) { o.refusal = SR_REFUSE_NOT_ALLOWED_HERE; return o; }
+  if !has_room { o.refusal = SR_REFUSE_NO_ROOM; return o; }
+  o.robot.state = st[0]; o.robot.powered_down = false; o.robot.mode = SR_MODE_FOLLOW;
+  o.robot.owner = ifx sr_socket_has_core(o.robot) then SR_OWNER_HER else SR_OWNER_NONE;
+  if !sr_socket_has_core(o.robot) { o.robot.state.has_core = false; o.robot.state.core = SrStack.{}; }
+  o.ok = true;
+  return o;
+}
+// Taking control with a held core (C1). An empty core does nothing (ok false, no refusal). Refusals,
+// first that applies: awake and not hers, BRING_TO_ZERO_FIRST; the experimental core before its
+// memory, CORE_NOT_READY; a fourth robot, CREW_LIMIT (her own live robot is already counted). On
+// success: hers, on follow, awake; the old core pops out; a powered-down robot wakes at take_wake of
+// its health max. Move energy is the caller's (the state has no energy max).
+sr_take_control :: (r: SrSocketRobot, core: SrStack, crew_count: int, experimental_ready: bool, take_wake: f32) -> SrTakeControlResult {
+  o: SrTakeControlResult; o.robot = r; o.new_owner = r.owner;
+  if sr_stack_empty(core) { return o; }
+  if r.owner != SR_OWNER_HER && sr_socket_awake(r) { o.refusal = SR_REFUSE_BRING_TO_ZERO_FIRST; return o; }
+  if core.item == ITEM_EXPERIMENTAL_CORE && !experimental_ready { o.refusal = SR_REFUSE_CORE_NOT_READY; return o; }
+  counted := r.owner == SR_OWNER_HER && sr_socket_awake(r);
+  crew := sr_can_add_to_crew(crew_count, counted);
+  if crew != SR_REFUSE_NONE { o.refusal = crew; return o; }
+  after := r;
+  if sr_socket_has_core(r) { o.popped_core = r.state.core; }
+  after.state.has_core = true; after.state.core = sr_stack(core.item, 1);
+  if r.powered_down {
+    hmax := ifx after.state.health_max > 0.0 then after.state.health_max else 0.0;
+    share := ifx take_wake < 0.0 then 0.0 else ifx take_wake > 1.0 then 1.0 else take_wake;
+    wake := share * hmax;
+    h := ifx after.state.health > wake then after.state.health else wake;
+    after.state.health = ifx h < 0.0 then 0.0 else ifx h > hmax then hmax else h;
+  }
+  after.powered_down = false; after.owner = SR_OWNER_HER; after.mode = SR_MODE_FOLLOW;
+  o.ok = true; o.new_owner = SR_OWNER_HER; o.robot = after; o.became_hers = !counted;
+  return o;
+}
