@@ -165,7 +165,7 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
             else if let tool=control as? NativeTool {tool.press={ [weak self] id in self?.following=false;self?.press?(id) };tool.render(e)}
             else if let message=control as? NativeMessage {message.press={ [weak self] id in self?.press?(id) };message.render(e)}
             else if let b=control as? NativeButton {
-                b.reference=sidebarMode;b.ruled = !sidebarMode
+                b.reference=sidebarMode || e.attrs["_nativeReference"]=="true";b.ruled = !sidebarMode
                 // The kit says which button this is (its class and state); the skin says how each looks.
                 let state=e.attrs["data-state"],select=e.hasClass("sel")
                 b.variant=e.hasClass("sw") ? .toggle:state=="rail" ? .rail:e.hasClass("ib") ? .icon:e.hasClass("lk") || select || e.label.isEmpty ? .quiet:e.hasClass("row") ? .list:state=="primary" ? .primary:state=="destructive" ? .destructive:.plain
@@ -177,7 +177,7 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
                 if text.text != e.value {let selection=text.selectedRange;text.text=e.value;text.selectedRange=NSRange(location:min(selection.location,(e.value as NSString).length),length:0)}
                 text.font=e.attrs["data-lang"] != nil ? NativeTypography.font(15,code:true):NativeTypography.font(16)
             } else if let f=control as? UITextField {
-                (f as? NativeField)?.reference=sidebarMode
+                (f as? NativeField)?.reference=sidebarMode || e.attrs["_nativeReference"]=="true"
                 f.placeholder=e.label; f.accessibilityLabel=e.label; f.isEnabled = !e.disabled
                 let sensitive=e.type=="secret" || e.type=="secret-output"
                 (f as? NativeField)?.sensitive=sensitive
@@ -189,7 +189,7 @@ final class NativeControls: UIViewController,UIScrollViewDelegate,UIGestureRecog
                 // A page's title reads as text. A section's name, a small fact and a figure are chrome: the skin's label type.
                 let t=NativeSkin.tokens
                 if e.role=="status",let glyph=NativeSkin.status(e) {l.attributedText=glyph}
-                else if sidebarMode && (e.role=="heading" || e.hasClass("meta")) {l.attributedText=nil;l.text=e.label;l.font=NativeTypography.font(14);l.textColor=NativeSkin.color(t.ink_muted)}
+                else if sidebarMode && (e.role=="heading" || e.hasClass("meta")) || e.attrs["_nativeReference"]=="true" && e.hasClass("meta") {l.attributedText=nil;l.text=e.label;l.font=NativeTypography.font(14);l.textColor=NativeSkin.color(t.ink_muted)}
                 else if e.role=="heading" && e.type != "h1" {l.attributedText=NativeSkin.label(e.label,size:12,ink:t.ink_muted)}
                 else if e.hasClass("meta") {l.attributedText=NativeSkin.label(e.label,ink:t.ink_muted)}
                 else if e.hasClass("amount") {l.attributedText=NativeSkin.label(e.label,size:24,track:0.02,ink:t.ink_bright,upper:false)}

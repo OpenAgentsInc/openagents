@@ -99,10 +99,11 @@ import JavaScriptCore
                         var next=path;next.insert(key)
                         return NativeElement(id:node.id,role:node.tag,label:node.text,children:node.children.compactMap {semantic($0,next)},classes:node.classes,attrs:node.attrs)
                     }
-        func visit(_ slot:Int,_ inside:Bool,_ inNavigation:Bool=false,_ placement:String="") {
+        func visit(_ slot:Int,_ inside:Bool,_ inNavigation:Bool=false,_ placement:String="",_ inReference:Bool=false) {
             guard seen.insert(slot).inserted,let n=nodes[slot] else {return}
             if n.attrs["hidden"] != nil || n.attrs["aria-hidden"]=="true" {return}
             let isDialog=inside || n.attrs["role"]=="dialog"
+            let reference=inReference || n.classes.split(separator:" ").contains("reference-form")
             let side=n.classes.split(separator:" ").contains("side"),isNavigation=inNavigation || side
             if side && !navigation {
                 if !dialog {result.append(NativeElement(id:n.id,role:"navigation",label:n.attrs["aria-label"] ?? "Chats",attrs:n.attrs))};return
@@ -130,12 +131,12 @@ import JavaScriptCore
                 let field=n.tag=="input" || n.tag=="textarea"
                 let role=n.tag=="img" ? "image" : n.tag=="button" ? "button" : field ? "field" : n.tag=="h1" || n.tag=="h2" ? "heading" : "text"
                 if field || n.tag=="img" || n.tag=="button" || !n.text.isEmpty {
-                    var attrs=n.attrs;if !place.isEmpty {attrs["_nativePlacement"]=place}
+                    var attrs=n.attrs;if !place.isEmpty {attrs["_nativePlacement"]=place};if reference {attrs["_nativeReference"]="true"}
                     result.append(NativeElement(id:n.id,role:role,label:field ? n.attrs["aria-label"] ?? n.attrs["placeholder"] ?? "" : n.tag=="button" ? said(slot):n.text,value:n.attrs["value"] ?? n.value,disabled:n.attrs["disabled"] != nil,complete:n.attrs["autocomplete"] ?? "",type:n.tag.hasPrefix("h") ? n.tag:n.tag=="textarea" ? "multiline":n.attrs["type"] ?? "",children:n.children.compactMap {semantic($0)},classes:n.classes,attrs:attrs))
                 }
             }
             if n.tag=="button" || n.tag=="input" {return}
-            for child in n.children {visit(child,isDialog,isNavigation,place)}
+            for child in n.children {visit(child,isDialog,isNavigation,place,reference)}
         }
         for root in roots {visit(root,false)}
         return result

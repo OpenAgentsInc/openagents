@@ -85,7 +85,7 @@
 		7AF8A667DDA6EC805E8356D3 /* OpenagentsAppUnit.c in Sources */ = {isa = PBXBuildFile; fileRef = A06EC60CB2CB2474370174C3 /* OpenagentsAppUnit.c */; };
 		7D6894FC51AC087B87D7926C /* DMSans-BoldItalic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = B041C1F00C1751C3053A0E44 /* DMSans-BoldItalic.ttf */; };
 		7D945870E3AD12214ABA574E /* DMSans-Italic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E6BDE16B17DBA408B5A72A1F /* DMSans-Italic.ttf */; };
-		7FAFE0A840AB71D35F54394D /* NativePasskey.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBABC7D52E5BD89513705FE4 /* NativePasskey.swift */; };
+		7FAFE0A840AB71D35F54394D /* NativePasskey.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBABC7D52E5BD89513805FE4 /* NativePasskey.swift */; };
 		7FFD4ECD2F77851EF905BDBA /* native-audio.c in Sources */ = {isa = PBXBuildFile; fileRef = 1FA713933D36CAF22171CD05 /* native-audio.c */; settings = {COMPILER_FLAGS = "-Wno-unused-function -Wno-unused-variable -Wno-unknown-attributes -ffp-contract=off -fno-fast-math"; }; };
 		8DE30B3F5DF892DF49D5AC6F /* NativeComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 033B6D98AB0D0F48E2D8084F /* NativeComponents.swift */; };
 		8E4F97485AF1AF831DCB39E9 /* bip39-english.txt in Resources */ = {isa = PBXBuildFile; fileRef = 131BDA8ADB97609206195533 /* bip39-english.txt */; };
@@ -317,7 +317,7 @@
 		ADCF74771C3BEC58D423659D /* NativePlayerBind.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = NativePlayerBind.c; sourceTree = "<group>"; };
 		B041C1F00C1751C3053A0E44 /* DMSans-BoldItalic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "DMSans-BoldItalic.ttf"; sourceTree = "<group>"; };
 		BA0FC513FFA5C6691E003921 /* SettingsUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsUITests.swift; sourceTree = "<group>"; };
-		BBABC7D52E5BD89513705FE4 /* NativePasskey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativePasskey.swift; sourceTree = "<group>"; };
+		BBABC7D52E5BD89513805FE4 /* NativePasskey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativePasskey.swift; sourceTree = "<group>"; };
 		BC347727510CEB5F0963D925 /* Everglade-step.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "Everglade-step.c"; sourceTree = "<group>"; };
 		BCFF9E80B2B385BCA6700E60 /* precomputed_ecmult_gen.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = precomputed_ecmult_gen.c; sourceTree = "<group>"; };
 		BD9C289E57EEE12AFEDDC339 /* NativeMessaging.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeMessaging.swift; sourceTree = "<group>"; };
@@ -546,7 +546,7 @@
 				01C83152B91DFEEF873AAD56 /* NativeHost.swift */,
 				7284237748CD21A99F8480AC /* NativeMessage.swift */,
 				BD9C289E57EEE12AFEDDC339 /* NativeMessaging.swift */,
-				BBABC7D52E5BD89513705FE4 /* NativePasskey.swift */,
+				BBABC7D52E5BD89513805FE4 /* NativePasskey.swift */,
 				09C29607A719DC46C635E2BB /* NativeProgram.swift */,
 				061619840F40E0836F925635 /* NativeRelay.swift */,
 				EB3A54860A68487AA4BBDAEB /* NativeRemoteImage.swift */,
@@ -1296,7 +1296,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = OpenAgents/OpenAgents.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 1371;
+				CURRENT_PROJECT_VERSION = 1380;
 				GCC_OPTIMIZATION_LEVEL = 2;
 				GENERATE_INFOPLIST_FILE = YES;
 				HEADER_SEARCH_PATHS = (
@@ -1576,7 +1576,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1371;
+				CURRENT_PROJECT_VERSION = 1380;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = HQWSG26L43;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -1653,7 +1653,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = OpenAgents/OpenAgents.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 1371;
+				CURRENT_PROJECT_VERSION = 1380;
 				EXPORTED_SYMBOLS_FILE = "$(SRCROOT)/../../metaverse-engine/host/apple/page-host.exports";
 				GCC_OPTIMIZATION_LEVEL = 2;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -1857,7 +1857,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1371;
+				CURRENT_PROJECT_VERSION = 1380;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = HQWSG26L43;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;

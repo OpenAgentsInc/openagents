@@ -313,7 +313,7 @@ st_frame :: (s:[]Starter,dt:f32,reduced:bool)->int #export_c #effects(all) {
     n:=mono_css(s[0].css[..]);n=mc(s[0].css[..],n,"body{padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}.account-app{max-width:600px;margin:auto;padding:88px 24px 40px;display:flex;flex-direction:column;gap:22px}.account-app>*{margin:0}.account-app h1{font-size:32px;line-height:1.2}.account-app p{color:var(--ink-muted)}.account-app .btn{min-height:48px}.account-app .chat-row{text-align:left;text-transform:none;letter-spacing:normal}.account-app .note{white-space:pre-wrap}.account-app input{font-size:18px}.account-app footer{display:flex;flex-direction:column;gap:12px;margin-top:32px}");dm_style(d,cast(string)s[0].css[0..<n]);
   }
   // Account fields stay still while the keyboard moves and code replies arrive.
-  ui_begin(u,s[0].time,true);tr_begin(t);root:=tr_open(t,"account.app",TG_MAIN,"account-app");
+  ui_begin(u,s[0].time,true);tr_begin(t);root:=tr_open(t,"account.app",TG_MAIN,ifx s[0].page==0 || s[0].page==1 then "account-app reference-form" else "account-app");
   if !s[0].workspace && s[0].page!=3 && !(s[0].page==4 && s[0].environments[0].page==2) {x:=k_text(t,u,"account.brand",TG_P,"meta","OPENAGENTS");}x:= -1;busy:=s[0].flight!=0;
   if s[0].workspace && s[0].account_ready && s[0].page>=2 {na_nav_render(s,t,u);}
   if s[0].usage[0].active {pu_render(s[0].usage[..],t,u,s[0].usage[0].intent_host>=0);}
