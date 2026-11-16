@@ -648,7 +648,8 @@ void AAethyrHUD::DrawHUD()
 {
 	Super::DrawHUD();
 	AAethyrGame* Game = nullptr;
-	for (TActorIterator<AAethyrGame> It(GetWorld()); It; ++It) { Game = *It; break; }
+	// the first game actor; written without a loop that breaks at once, which strict warning settings refuse
+	if (TActorIterator<AAethyrGame> It(GetWorld()); It) { Game = *It; }
 	if (!Game || !Canvas) { return; }
 	const TArray<float>& U = Game->UniformBlock();
 	const bool bGray = Game->FxAt + 2 < U.Num() && U[Game->FxAt + 2] < -0.5f;

@@ -8,6 +8,9 @@
 #include "StaticMeshResources.h"
 #include "Materials/MaterialInterface.h"
 #include "Materials/Material.h"
+#include "PhysicsEngine/BodySetup.h"
+#include "PhysicsEngine/AggregateGeom.h"
+#include "Animation/Skeleton.h"
 #if WITH_EDITOR
 #include "AssetCompilingManager.h"
 #include "ShaderCompiler.h"
@@ -89,4 +92,45 @@ TArray<FString> UAethyrEditorChecks::MaterialErrors(UMaterialInterface* Material
 	}
 #endif
 	return Errors;
+}
+
+bool UAethyrEditorChecks::ReadConvex(UStaticMesh* Mesh, TArray<FVector>& Vertices, TArray<int32>& Counts)
+{
+	Vertices.Reset();
+	Counts.Reset();
+	UBodySetup* Body = Mesh ? Mesh->GetBodySetup() : nullptr;
+	if (!Body)
+	{
+		return false;
+	}
+	for (const FKConvexElem& Hull : Body->AggGeom.ConvexElems)
+	{
+		const FTransform Transform = Hull.GetTransform();
+		for (const FVector& Point : Hull.VertexData)
+		{
+			Vertices.Add(Transform.TransformPosition(Point));
+		}
+		Counts.Add(Hull.VertexData.Num());
+	}
+	return true;
+}
+
+bool UAethyrEditorChecks::ReadBones(USkeleton* Skeleton, TArray<FString>& Names, TArray<int32>& Parents, TArray<FTransform>& Rest)
+{
+	Names.Reset();
+	Parents.Reset();
+	Rest.Reset();
+	if (!Skeleton)
+	{
+		return false;
+	}
+	const FReferenceSkeleton& Reference = Skeleton->GetReferenceSkeleton();
+	const TArray<FTransform>& Pose = Reference.GetRefBonePose();
+	for (int32 I = 0; I < Reference.GetNum(); I++)
+	{
+		Names.Add(Reference.GetBoneName(I).ToString());
+		Parents.Add(Reference.GetParentIndex(I));
+		Rest.Add(Pose[I]);
+	}
+	return true;
 }
