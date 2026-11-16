@@ -1,0 +1,213 @@
+// Parity checks for trail.coax: SpliceTests/Rules/SpliceTrailTests.cpp. The drive harness steps the cab
+// with sr_trail_step_cab at 0.02 s as the C++ test does. HitchDistances' FRandomStream(13505) is ported as
+// tr_rand (UE's FRandomStream: seed * 196314165 + 907633515, the top 23 bits as the fraction).
+// rules.coax loads this file with `#load ... #test;`.
+
+TR_DT :: 0.02;
+TR_HUGE :: 1000000000000.0;
+
+tr_step :: (cab: SrCabPose, speed: f64, yaw_rate: f64) -> SrCabPose { return sr_trail_step_cab(cab, speed, yaw_rate, TR_DT); }
+tr_max_abs_hitch :: (pose: SrTrainPose) -> f64 {
+  m := 0.0;
+  for i: 0..<SR_TRAIL_FOLLOW_CARS { m = fmax(m, abs(sr_trail_hitch_angle_deg(pose, i))); }
+  return m;
+}
+// The worst distance from a car's hitch to the polyline points[0..n).
+tr_off_trail :: (pose: SrTrainPose, points: [] const D2, n: int) -> f64 {
+  worst := 0.0;
+  for c: 0..<SR_TRAIL_FOLLOW_CARS {
+    hs := [2] D3.[pose.cars[c].front_hitch, pose.cars[c].rear_hitch];
+    for h: hs {
+      q := sr_flat(h);
+      best := TR_HUGE;
+      for k: 1..<n { best = fmin(best, sr_trail_dist_to_segment(q, points[k - 1], points[k])); }
+      worst = fmax(worst, best);
+    }
+  }
+  return worst;
+}
+tr_off_live_trail :: (pose: SrTrainPose, t: [] const SrTrail) -> f64 {
+  pts: [SR_TRAIL_POINTS_MAX] D2;
+  n := sr_trail_points(t, pts[..]);
+  return tr_off_trail(pose, pts[..], n);
+}
+tr_safe_normal3 :: (v: D3) -> D3 { l2 := d3_len2(v); return ifx l2 < SR_TRAIL_SMALL then D3_ZERO else d3_scale(v, 1.0 / sqrt(l2)); }
+// Every hitch joint holds: car 0 on the cab's rear hitch, each car on the one ahead, each car one HitchSpacing
+// long, its middle between its hitches and its yaw along them.
+tr_hitches_hold :: (pose: SrTrainPose) -> bool {
+  ok := d3_dist(pose.cars[0].front_hitch, sr_trail_cab_rear_hitch(pose.cab)) < 0.001;
+  for c: 0..<SR_TRAIL_FOLLOW_CARS {
+    car := pose.cars[c];
+    ok = ok && abs(d3_dist(car.front_hitch, car.rear_hitch) - SR_TRAIL_HITCH_SPACING) < 0.001;
+    ok = ok && d3_dist(car.location, d3_scale(d3_add(car.front_hitch, car.rear_hitch), 0.5)) < 0.001;
+    ok = ok && d3_dist(tr_safe_normal3(d3_sub(car.front_hitch, car.rear_hitch)), sr_trail_forward(car.yaw_deg)) < 0.001;
+    if c > 0 { ok = ok && d3_dist(car.front_hitch, pose.cars[c - 1].rear_hitch) < 0.001; }
+  }
+  return ok;
+}
+// UE's FRandomStream: FRandRange(lo, hi) = lo + (hi - lo) * FRand().
+tr_frand_range :: (seed: [] int, lo: f64, hi: f64) -> f64 {
+  seed[0] = (seed[0] * 196314165 + 907633515) % 4294967296;
+  return lo + (hi - lo) * (cast(f64) (seed[0] / 512) / 8388608.0);
+}
+
+#test "Splice.Rules.Trail.Layout" {
+  cab := SrCabPose.{location = d3(12.0, -7.0, 0.0), yaw_deg = 30.0};
+  t: [1] SrTrail;
+  sr_trail_reset(t[..], cab);
+  pose := sr_trail_place_cars(t[..], cab);
+  f := sr_trail_forward(cab.yaw_deg);
+  // drive.coax:726-729: zf from the nose, each piece's middle at zf - l/2, then zf -= l + gap.
+  zf := SR_TRAIL_CAB_LENGTH * 0.5;
+  zf -= SR_TRAIL_CAB_LENGTH + SR_TRAIL_GAP;
+  for c: 0..<SR_TRAIL_FOLLOW_CARS {
+    m := zf - SR_TRAIL_CAR_LENGTH * 0.5;
+    zf -= SR_TRAIL_CAR_LENGTH + SR_TRAIL_GAP;
+    #assert d3_dist(pose.cars[c].location, d3_add(cab.location, d3_scale(f, m))) < 0.001;
+    #assert abs(sr_trail_hitch_angle_deg(pose, c)) < 0.001;
+  }
+  nose := d3_add(cab.location, d3_scale(f, SR_TRAIL_CAB_LENGTH * 0.5));
+  tail := d3_sub(pose.cars[SR_TRAIL_FOLLOW_CARS - 1].location, d3_scale(f, SR_TRAIL_CAR_LENGTH * 0.5));
+  #assert abs(d3_dist(nose, tail) - SR_TRAIL_TRAIN_LENGTH) <= 0.001;
+  #assert SR_TRAIL_FOLLOW_CARS == 2;
+  #assert !pose.clamped;
+  #assert tr_hitches_hold(pose);
+}
+
+#test "Splice.Rules.Trail.Sampling" {
+  cab: SrCabPose;
+  t: [1] SrTrail;
+  sr_trail_reset(t[..], cab);
+  #assert sr_trail_num(t[..]) >= SR_TRAIL_MIN_SAMPLES;
+  before := sr_trail_num(t[..]);
+  for i: 0..<250 { cab = tr_step(cab, 5.0, 20.0 * sin(cast(f64) i * 0.05)); sr_trail_update(t[..], cab); }   // 25 m
+  laid := sr_trail_num(t[..]) - before;
+  #assert laid >= 98 && laid <= 102;
+  head := sr_trail_head(t[..]);
+  #assert d2_dist(head, sr_flat(sr_trail_cab_rear_hitch(cab))) < 0.000001;
+  #assert d2_dist(head, sr_trail_sample(t[..], 0)) < SR_TRAIL_SAMPLE_SPACING;
+  spaced := true;
+  for i: 1..<sr_trail_num(t[..]) { spaced = spaced && abs(d2_dist(sr_trail_sample(t[..], i - 1), sr_trail_sample(t[..], i)) - SR_TRAIL_SAMPLE_SPACING) < 0.0001; }
+  #assert spaced;
+}
+
+// A full-lock turn at crawl speed: with the limiter no hitch passes 40 degrees and the cars stay on the trail;
+// without it, the clamp still holds every hitch at 40 degrees.
+#test "Splice.Rules.Trail.NoJackKnifeTightTurn" {
+  {
+    cab: SrCabPose;
+    t: [1] SrTrail;
+    sr_trail_reset(t[..], cab);
+    worst := 0.0; worst_off := 0.0;
+    limited := false; ever_clamped := false; held := true;
+    for i: 0..<1000 {   // 20 s, both ways round
+      wanted := ifx i < 500 then 120.0 else -120.0;
+      rate := sr_trail_limit_yaw_rate(t[..], cab, 3.0, wanted, 120.0, TR_DT);
+      if abs(rate - wanted) > 0.001 { limited = true; }
+      cab = tr_step(cab, 3.0, rate);
+      sr_trail_update(t[..], cab);
+      pose := sr_trail_place_cars(t[..], cab);
+      worst = fmax(worst, tr_max_abs_hitch(pose));
+      worst_off = fmax(worst_off, tr_off_live_trail(pose, t[..]));
+      if pose.clamped { ever_clamped = true; }
+      held = held && tr_hitches_hold(pose);
+    }
+    #assert limited;
+    #assert worst <= SR_TRAIL_MAX_HITCH_DEG + 0.01;
+    #assert worst_off < 0.01;
+    #assert !ever_clamped;
+    #assert held;
+  }
+  {
+    // No limiter: the cab spins nearly in place. The clamp holds; the cars never fold onto the cab.
+    cab: SrCabPose;
+    t: [1] SrTrail;
+    sr_trail_reset(t[..], cab);
+    worst := 0.0;
+    ever_clamped := false; apart := true; held := true;
+    for i: 0..<500 {
+      cab = tr_step(cab, 0.5, 90.0);
+      sr_trail_update(t[..], cab);
+      pose := sr_trail_place_cars(t[..], cab);
+      worst = fmax(worst, tr_max_abs_hitch(pose));
+      if pose.clamped { ever_clamped = true; }
+      apart = apart && d3_dist(pose.cars[1].location, cab.location) > SR_TRAIL_CAB_LENGTH * 0.5 + SR_TRAIL_CAR_LENGTH * 0.5;
+      held = held && tr_hitches_hold(pose);
+    }
+    #assert ever_clamped;
+    #assert worst <= SR_TRAIL_MAX_HITCH_DEG + 0.001;
+    #assert apart;
+    #assert held;
+  }
+}
+
+TR_REVERSE_STEPS :: 600;
+// Drive an S-curve forward, then back up along the same cab poses: at each pose the cars stand where they
+// stood going forward, on the trail laid going forward. Then back past the oldest sample: straight on behind.
+#test "Splice.Rules.Trail.ReverseStaysOnTrail" {
+  cab: SrCabPose;
+  t: [1] SrTrail;
+  sr_trail_reset(t[..], cab);
+  cabs: [TR_REVERSE_STEPS + 1] SrCabPose;
+  fwd: [TR_REVERSE_STEPS + 1] SrTrainPose;
+  cabs[0] = cab;
+  fwd[0] = sr_trail_place_cars(t[..], cab);
+  for i: 0..<TR_REVERSE_STEPS {   // 36 m of S-curve
+    cab = tr_step(cab, 3.0, 20.0 * sin(cast(f64) i * 0.015));
+    sr_trail_update(t[..], cab);
+    cabs[i + 1] = cab;
+    fwd[i + 1] = sr_trail_place_cars(t[..], cab);
+  }
+  laid: [SR_TRAIL_POINTS_MAX] D2;
+  laid_n := sr_trail_points(t[..], laid[..]);
+
+  worst_match := 0.0; worst_off := 0.0; worst_hitch := 0.0; held := true;
+  for j: 0..<TR_REVERSE_STEPS {
+    i := TR_REVERSE_STEPS - 1 - j;
+    sr_trail_update(t[..], cabs[i]);
+    pose := sr_trail_place_cars(t[..], cabs[i]);
+    for c: 0..<SR_TRAIL_FOLLOW_CARS {
+      worst_match = fmax(worst_match, d3_dist(pose.cars[c].location, fwd[i].cars[c].location));
+      worst_match = fmax(worst_match, abs(sr_unwind_deg(pose.cars[c].yaw_deg - fwd[i].cars[c].yaw_deg)) * 0.01);
+    }
+    worst_off = fmax(worst_off, tr_off_trail(pose, laid[..], laid_n));
+    worst_hitch = fmax(worst_hitch, tr_max_abs_hitch(pose));
+    held = held && tr_hitches_hold(pose);
+  }
+  #assert worst_match < 0.001;
+  #assert worst_off < 0.01;
+  #assert worst_hitch <= SR_TRAIL_MAX_HITCH_DEG;
+  #assert held;
+
+  // Back past the trail's start: 30 m straight back from where it began.
+  cab = cabs[0];
+  for i: 0..<500 { cab = tr_step(cab, -3.0, 0.0); sr_trail_update(t[..], cab); }
+  back := sr_trail_place_cars(t[..], cab);
+  #assert sr_trail_num(t[..]) >= SR_TRAIL_MIN_SAMPLES - 1;
+  #assert tr_max_abs_hitch(back) < 0.01;
+  #assert d3_dist(back.cars[1].location, d3_sub(cab.location, d3_scale(sr_trail_forward(cab.yaw_deg), SR_TRAIL_CAB_REAR_HITCH_OFFSET + SR_TRAIL_HITCH_SPACING * 1.5))) < 0.01;
+  #assert tr_hitches_hold(back);
+}
+
+// A long mixed drive (curves forward, reversing with steering, spins in place): every hitch joint stays joined
+// and every car one hitch spacing long, every step.
+#test "Splice.Rules.Trail.HitchDistances" {
+  cab := SrCabPose.{location = d3(-50.0, 20.0, 1.0), yaw_deg = -60.0};
+  t: [1] SrTrail;
+  sr_trail_reset(t[..], cab);
+  seed := [1] int.[13505];
+  all := true;
+  for leg: 0..<40 {
+    speed := tr_frand_range(seed[..], -6.0, 12.0);
+    yaw := tr_frand_range(seed[..], -90.0, 90.0);
+    for i: 0..<100 {
+      cab = tr_step(cab, speed, sr_trail_limit_yaw_rate(t[..], cab, speed, yaw, 90.0, TR_DT));
+      sr_trail_update(t[..], cab);
+      pose := sr_trail_place_cars(t[..], cab);
+      all = all && tr_hitches_hold(pose);
+      all = all && tr_max_abs_hitch(pose) <= SR_TRAIL_MAX_HITCH_DEG + 0.001;
+      all = all && abs(pose.cars[1].location.z - cab.location.z) < 0.00000001;
+    }
+  }
+  #assert all;
+}

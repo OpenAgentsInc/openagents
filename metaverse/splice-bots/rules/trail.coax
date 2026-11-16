@@ -1,0 +1,316 @@
+// Splice Bots rules: Sniper's trail-following maths (SpliceTrail.h, package R-11; GDD 04 4.1, decision 9,
+// UE-VEH-02, UE-VEH-03). The cab drives; the cars behind it follow the trail its rear hitch has travelled.
+// Driving forward lays trail; reversing retraces it, so reversing never jack-knifes. The hitch angle is
+// clamped to +-40 degrees. The prototype has no trail: drive.coax draws the train as one rigid piece (GDD 01
+// GAME-FB-09); its sizes come from metaverse-engine/kit/machines.coax:429 (kit_train).
+// Units: metres and degrees on the ground plane (x, y). z is carried from the cab. Yaw as Unreal: 0 faces
+// +x, 90 faces +y; forward is (cos yaw, sin yaw). The trail itself is kept flat (D2).
+#load "../../../metaverse-engine/core/math-d.coax";
+#load "night-exit.coax";   // sr_atan2_deg
+#load "heat.coax";         // sr_mini
+
+SR_TRAIL_CAB_LENGTH :: 4.0;    // machines.coax:429 TRAIN_CAB
+SR_TRAIL_CAR_LENGTH :: 3.4;    // TRAIN_CAR
+SR_TRAIL_GAP :: 0.5;           // TRAIN_GAP: a coupler; the hitch is at its middle
+// CONFLICT: machines.coax:429 has TRAIN_CARS 3; GDD 04 UE-VEH-02, decision 9 and GDD 01 GAME-Q-15 give
+// the cab and two cars. The GDD wins.
+SR_TRAIL_FOLLOW_CARS :: 2;
+SR_TRAIL_SAMPLE_SPACING :: 0.25;   // UE-VEH-02
+SR_TRAIL_MAX_HITCH_DEG :: 40.0;    // UE-VEH-03 (INFERRED there)
+// Derived: the cab's rear hitch behind its middle; a car's hitch to hitch; nose to tail standing straight.
+SR_TRAIL_CAB_REAR_HITCH_OFFSET :: 2.25;   // CabLength / 2 + Gap / 2
+SR_TRAIL_HITCH_SPACING :: 3.9;            // CarLength + Gap
+SR_TRAIL_TRAIN_LENGTH :: 11.8;            // CabLength + FollowCars * (CarLength + Gap)
+// Ring size: 128 m of trail to retrace in reverse; past that the cars back up straight.
+SR_TRAIL_CAPACITY :: 512;
+SR_TRAIL_POINTS_MAX :: 513;               // the head and every sample
+// The least samples held: the cars' length behind the head and 2 m more. int((2 * 3.9 + 2) / 0.25) + 2.
+SR_TRAIL_MIN_SAMPLES :: 41;
+// INFERRED (V-02): how far back along the trail the reversing cab aims its rear hitch, m.
+SR_TRAIL_RETRACE_LOOKAHEAD :: 0.75;
+SR_TRAIL_SMALL :: 0.00000001;      // UE_SMALL_NUMBER, UE_DOUBLE_SMALL_NUMBER
+SR_TRAIL_KINDA_SMALL :: 0.0001;    // UE_KINDA_SMALL_NUMBER
+
+SrCabPose :: struct { location: D3; yaw_deg: f64; }
+SrCarPose :: struct { location: D3; yaw_deg: f64; front_hitch: D3; rear_hitch: D3; }
+// The whole train at one moment. clamped: a car was swung in to the hitch clamp, off the trail.
+SrTrainPose :: struct { cab: SrCabPose; cars: [SR_TRAIL_FOLLOW_CARS] SrCarPose; clamped: bool; }
+// The trail of the cab's rear hitch: samples every SampleSpacing (newest last in the ring) with the cab's
+// heading when each was laid, plus the live head (the hitch now, less than a spacing past the newest).
+// 12 KB: pass it as a one-element view.
+SrTrail :: struct { ring: [SR_TRAIL_CAPACITY] D2; ring_yaw: [SR_TRAIL_CAPACITY] f64; first: int; count: int; live: D2; }
+
+// FMath::UnwindDegrees: into -180..180.
+sr_unwind_deg :: (a: f64) -> f64 { x := a; while x > 180.0 { x -= 360.0; } while x < -180.0 { x += 360.0; } return x; }
+sr_signf :: (x: f64) -> f64 { return ifx x > 0.0 then 1.0 else ifx x < 0.0 then -1.0 else 0.0; }
+sr_deg_to_rad :: (d: f64) -> f64 { return d * PI_D / 180.0; }
+sr_rad_to_deg :: (r: f64) -> f64 { return r * 180.0 / PI_D; }
+// asin on [-1, 1], from atan_d.
+sr_asin :: (s: f64) -> f64 { x := fclamp(s, -1.0, 1.0); c := sqrt(1.0 - x * x); return ifx c <= 0.0 then sr_signf(x) * PI_D / 2.0 else atan_d(x / c); }
+sr_flat :: (v: D3) -> D2 { return d2(v.x, v.y); }
+// FVector::GetSafeNormal on the ground plane.
+sr_safe_normal2 :: (v: D2) -> D2 { l2 := d2_len2(v); return ifx l2 < SR_TRAIL_SMALL then d2(0.0, 0.0) else d2_scale(v, 1.0 / sqrt(l2)); }
+sr_yaw_of :: (v: D2) -> f64 { return sr_atan2_deg(v.y, v.x); }
+
+// Forward on the ground plane for a yaw in degrees.
+sr_trail_forward :: (yaw_deg: f64) -> D3 { r := sr_deg_to_rad(yaw_deg); return d3(cos(r), sin(r), 0.0); }
+// The cab's rear hitch, CabRearHitchOffset behind its middle.
+sr_trail_cab_rear_hitch :: (cab: SrCabPose) -> D3 { return d3_sub(cab.location, d3_scale(sr_trail_forward(cab.yaw_deg), SR_TRAIL_CAB_REAR_HITCH_OFFSET)); }
+
+sr_trail_num :: (t: [] const SrTrail) -> int { return t[0].count; }
+sr_trail_head :: (t: [] const SrTrail) -> D2 { return t[0].live; }
+// Sample i, 0 the newest.
+sr_trail_sample :: (t: [] const SrTrail, from_newest: int) -> D2 { return t[0].ring[(t[0].first + t[0].count - 1 - from_newest) % SR_TRAIL_CAPACITY]; }
+// The cab's heading when sample i was laid (V-02; carried on past the oldest).
+sr_trail_sample_yaw :: (t: [] const SrTrail, from_newest: int) -> f64 { return t[0].ring_yaw[(t[0].first + t[0].count - 1 - from_newest) % SR_TRAIL_CAPACITY]; }
+// Vertex k of the polyline: 0 the head, k sample k - 1.
+sr_trail_vertex :: (t: [] const SrTrail, k: int) -> D2 { return ifx k == 0 then t[0].live else sr_trail_sample(t, k - 1); }
+
+sr_trail_push_newest :: (t: [] SrTrail, p: D2, yaw_deg: f64) {
+  if t[0].count == SR_TRAIL_CAPACITY { t[0].first = (t[0].first + 1) % SR_TRAIL_CAPACITY; t[0].count -= 1; }   // the oldest falls off
+  i := (t[0].first + t[0].count) % SR_TRAIL_CAPACITY;
+  t[0].ring[i] = p; t[0].ring_yaw[i] = yaw_deg; t[0].count += 1;
+}
+sr_trail_pop_newest :: (t: [] SrTrail) { if t[0].count > 0 { t[0].count -= 1; } }
+sr_trail_push_oldest :: (t: [] SrTrail, p: D2, yaw_deg: f64) {
+  if t[0].count == SR_TRAIL_CAPACITY { return; }
+  t[0].first = (t[0].first + SR_TRAIL_CAPACITY - 1) % SR_TRAIL_CAPACITY;
+  t[0].ring[t[0].first] = p; t[0].ring_yaw[t[0].first] = yaw_deg; t[0].count += 1;
+}
+sr_trail_extend_tail :: (t: [] SrTrail) {
+  n := t[0].count;
+  oldest := sr_trail_sample(t, n - 1);
+  dir := sr_safe_normal2(d2_sub(oldest, sr_trail_sample(t, n - 2)));
+  sr_trail_push_oldest(t, d2_add(oldest, d2_scale(dir, SR_TRAIL_SAMPLE_SPACING)), sr_trail_sample_yaw(t, n - 1));
+}
+
+// A fresh trail laid straight behind the cab, MinSamples long: the train stands straight.
+sr_trail_reset :: (t: [] SrTrail, cab: SrCabPose) {
+  t[0].first = 0; t[0].count = 0;
+  t[0].live = sr_flat(sr_trail_cab_rear_hitch(cab));
+  back := d2_scale(sr_flat(sr_trail_forward(cab.yaw_deg)), -1.0);
+  for k: 0..<SR_TRAIL_MIN_SAMPLES {
+    i := SR_TRAIL_MIN_SAMPLES - 1 - k;
+    sr_trail_push_newest(t, d2_add(t[0].live, d2_scale(back, SR_TRAIL_SAMPLE_SPACING * cast(f64) i)), cab.yaw_deg);
+  }
+}
+
+// The cab has moved. Forward, the trail grows at the head; backward, samples the hitch has gone back past
+// are taken off, so the cars retrace the way they came. Past the oldest sample it is extended straight on.
+sr_trail_update :: (t: [] SrTrail, cab: SrCabPose) {
+  if t[0].count < 2 { sr_trail_reset(t, cab); return; }
+  t[0].live = sr_flat(sr_trail_cab_rear_hitch(cab));
+  while t[0].count >= 2 {
+    s0 := sr_trail_sample(t, 0); s1 := sr_trail_sample(t, 1);
+    if d2_dot(d2_sub(t[0].live, s0), d2_sub(s0, s1)) >= 0.0 { break; }
+    if t[0].count <= SR_TRAIL_MIN_SAMPLES { sr_trail_extend_tail(t); }
+    sr_trail_pop_newest(t);
+  }
+  s0 := sr_trail_sample(t, 0);
+  while d2_dist(t[0].live, s0) >= SR_TRAIL_SAMPLE_SPACING {
+    sr_trail_push_newest(t, d2_add(s0, d2_scale(sr_safe_normal2(d2_sub(t[0].live, s0)), SR_TRAIL_SAMPLE_SPACING)), cab.yaw_deg);
+    s0 = sr_trail_sample(t, 0);
+  }
+  while t[0].count < SR_TRAIL_MIN_SAMPLES { sr_trail_extend_tail(t); }
+}
+
+// The head and every sample, newest first. out holds SR_TRAIL_POINTS_MAX. Returns how many.
+sr_trail_points :: (t: [] const SrTrail, out: [] D2) -> int {
+  for k: 0..<t[0].count + 1 { out[k] = sr_trail_vertex(t, k); }
+  return t[0].count + 1;
+}
+sr_trail_dist_to_segment :: (p: D2, a: D2, b: D2) -> f64 {
+  d := d2_sub(b, a); l2 := d2_len2(d);
+  u := ifx l2 < SR_TRAIL_SMALL then 0.0 else fclamp(d2_dot(d2_sub(p, a), d) / l2, 0.0, 1.0);
+  return d2_dist(p, d2_add(a, d2_scale(d, u)));
+}
+// Distance on the ground plane from p to the trail's polyline.
+sr_trail_distance_to :: (t: [] const SrTrail, p: D3) -> f64 {
+  q := sr_flat(p);
+  best := d2_dist(q, t[0].live);
+  for k: 1..<t[0].count + 1 { best = fmin(best, sr_trail_dist_to_segment(q, sr_trail_vertex(t, k - 1), sr_trail_vertex(t, k))); }
+  return best;
+}
+// The far u >= 0 where a + u (b - a) is `distance` from p, given a is nearer than that.
+sr_trail_solve_out :: (a: D2, b: D2, p: D2, distance: f64) -> f64 {
+  d := d2_sub(b, a); m := d2_sub(a, p);
+  qa := d2_len2(d);
+  if qa < SR_TRAIL_SMALL { return 0.0; }
+  qb := 2.0 * d2_dot(d, m);
+  qc := d2_len2(m) - distance * distance;
+  disc := fmax(0.0, qb * qb - 4.0 * qa * qc);
+  return (-qb + sqrt(disc)) / (2.0 * qa);
+}
+// The first point on the trail behind p, along the polyline from vertex[0] (0 the head, k sample k - 1), at
+// straight distance `distance` from p. vertex[0] becomes the vertex starting the segment the point lies on.
+// Past the oldest sample the trail's last direction is carried on.
+sr_trail_find_behind :: (t: [] const SrTrail, p: D2, vertex: [] int, distance: f64) -> D2 {
+  a := p;
+  k := vertex[0] + 1;
+  while k <= t[0].count {
+    b := sr_trail_vertex(t, k);
+    if d2_dist(b, p) >= distance {
+      vertex[0] = k - 1;
+      return d2_add(a, d2_scale(d2_sub(b, a), fmin(1.0, sr_trail_solve_out(a, b, p, distance))));
+    }
+    a = b; k += 1;
+  }
+  n := t[0].count;
+  dir := ifx n >= 1 then sr_safe_normal2(d2_sub(sr_trail_vertex(t, n), sr_trail_vertex(t, n - 1))) else d2(-1.0, 0.0);
+  vertex[0] = n;
+  return d2_add(a, d2_scale(dir, sr_trail_solve_out(a, d2_add(a, dir), p, distance)));
+}
+
+// Each car's front hitch on the rear hitch of the one ahead; its rear hitch on the trail HitchSpacing behind.
+// A car that would pass the hitch clamp is swung in to it about its front hitch (UE-VEH-03, clamped).
+sr_trail_place_cars :: (t: [] const SrTrail, cab: SrCabPose) -> SrTrainPose {
+  pose: SrTrainPose;
+  pose.cab = cab;
+  z := cab.location.z;
+  front := t[0].live;
+  ahead_yaw := cab.yaw_deg;
+  vertex := [1] int.[0];
+  for c: 0..<SR_TRAIL_FOLLOW_CARS {
+    rear := sr_trail_find_behind(t, front, vertex[..], SR_TRAIL_HITCH_SPACING);
+    yaw := sr_yaw_of(d2_sub(front, rear));
+    angle := sr_unwind_deg(ahead_yaw - yaw);
+    if abs(angle) > SR_TRAIL_MAX_HITCH_DEG {
+      yaw = sr_unwind_deg(ahead_yaw - sr_signf(angle) * SR_TRAIL_MAX_HITCH_DEG);
+      rear = d2_sub(front, d2_scale(sr_flat(sr_trail_forward(yaw)), SR_TRAIL_HITCH_SPACING));
+      pose.clamped = true;
+    }
+    car: SrCarPose;
+    car.front_hitch = d3(front.x, front.y, z);
+    car.rear_hitch = d3(rear.x, rear.y, z);
+    car.location = d3_scale(d3_add(car.front_hitch, car.rear_hitch), 0.5);
+    car.yaw_deg = yaw;
+    pose.cars[c] = car;
+    front = rear;
+    ahead_yaw = yaw;
+  }
+  return pose;
+}
+
+// Hitch `index`'s angle: 0 the cab and car 0, 1 car 0 and car 1. Positive when the piece ahead is turned
+// left (yaw up) of the one behind.
+sr_trail_hitch_angle_deg :: (pose: SrTrainPose, index: int) -> f64 {
+  ahead := ifx index == 0 then pose.cab.yaw_deg else pose.cars[index - 1].yaw_deg;
+  return sr_unwind_deg(ahead - pose.cars[index].yaw_deg);
+}
+
+// The train after the cab moves to `next`, the trail untouched. True when no car is clamped.
+sr_trail_preview :: (t: [] const SrTrail, next: SrCabPose, out: [] SrTrainPose) -> bool {
+  copy := [1] SrTrail.[t[0]];
+  sr_trail_update(copy[..], next);
+  out[0] = sr_trail_place_cars(copy[..], next);
+  return !out[0].clamped;
+}
+
+// The cab's step as the limiter models it: turn yaw_rate * dt, then move speed * dt along the new heading.
+sr_trail_step_cab :: (cab: SrCabPose, speed: f64, yaw_rate_deg_per_sec: f64, dt: f64) -> SrCabPose {
+  next := cab;
+  next.yaw_deg = sr_unwind_deg(cab.yaw_deg + yaw_rate_deg_per_sec * dt);
+  next.location = d3_add(cab.location, d3_scale(sr_trail_forward(next.yaw_deg), speed * dt));
+  return next;
+}
+
+// How bent the trail is at its head: the angle between the chord from the head back `chord` metres and the
+// chord on behind that.
+sr_trail_head_bend_deg :: (t: [] const SrTrail, chord: f64) -> f64 {
+  x := t[0].live;
+  vertex := [1] int.[0];
+  y := sr_trail_find_behind(t, x, vertex[..], chord);
+  z := sr_trail_find_behind(t, y, vertex[..], chord);
+  return abs(sr_unwind_deg(sr_yaw_of(d2_sub(x, y)) - sr_yaw_of(d2_sub(y, z))));
+}
+// The most bend a car can follow at that chord: on the tightest circle that keeps two HitchSpacing chords
+// within MaxHitchAngleDeg. sr_trail_max_bend_deg(HitchSpacing) is MaxHitchAngleDeg.
+sr_trail_max_bend_deg :: (chord: f64) -> f64 {
+  s := fclamp(chord / SR_TRAIL_HITCH_SPACING * sin(sr_deg_to_rad(SR_TRAIL_MAX_HITCH_DEG * 0.5)), 0.0, 1.0);
+  return sr_rad_to_deg(2.0 * sr_asin(s));
+}
+
+// A step the limiter accepts: no car clamped, and (laying trail) the head no more bent than a car can follow.
+sr_trail_step_keeps_clear :: (t: [] const SrTrail, next: SrCabPose, reversing: bool) -> bool {
+  copy := [1] SrTrail.[t[0]];
+  sr_trail_update(copy[..], next);
+  if sr_trail_place_cars(copy[..], next).clamped { return false; }
+  if reversing { return true; }
+  chords := [3] f64.[SR_TRAIL_HITCH_SPACING * 0.25, SR_TRAIL_HITCH_SPACING * 0.5, SR_TRAIL_HITCH_SPACING];
+  for chord: chords { if sr_trail_head_bend_deg(copy[..], chord) > sr_trail_max_bend_deg(chord) + 0.01 { return false; } }
+  return true;
+}
+sr_trail_rate_clear :: (t: [] const SrTrail, cab: SrCabPose, speed: f64, rate: f64, dt: f64, reversing: bool) -> bool {
+  return sr_trail_step_keeps_clear(t, sr_trail_step_cab(cab, speed, rate, dt), reversing);
+}
+
+// UE-VEH-03: at the clamp the cab's steering is limited. The yaw rate (deg/s, within +-max) nearest the
+// wanted one whose step leaves no car clamped and the head no more bent than MaxBendDeg at a quarter, a half
+// and a whole HitchSpacing. On a curve at that limit the nearest clear rate can carry on round it for a moment
+// against the wanted one. When nothing keeps clear, 0 (PlaceCars' clamp then holds the cars).
+// Reversing (V-02): the wanted rate is taken on top of sr_trail_retrace_yaw_rate_deg, so with the steering
+// centred the rear hitch backs along the trail it laid; no trail is laid, so only the clamp is checked.
+sr_trail_limit_yaw_rate :: (t: [] const SrTrail, cab: SrCabPose, speed: f64, wanted_rate: f64, max_rate: f64, dt: f64) -> f64 {
+  mx := abs(max_rate);
+  reversing := speed < -SR_TRAIL_KINDA_SMALL;
+  base := ifx reversing then sr_trail_retrace_yaw_rate_deg(t, cab, speed) else 0.0;
+  wanted := fclamp(base + wanted_rate, -mx, mx);
+  if dt <= 0.0 { return wanted; }
+  if sr_trail_rate_clear(t, cab, speed, wanted, dt, reversing) { return wanted; }
+  // The clear rate nearest the wanted one, over the cab's whole steering range, coarse first.
+  steps := 32;
+  found := 0.0; got := false;
+  k := 1;
+  while k <= 2 * steps && !got {
+    off := (2.0 * mx) * cast(f64) ((k + 1) / 2) / cast(f64) steps;
+    rate := wanted + (ifx k % 2 == 1 then -off else off) * (ifx wanted >= 0.0 then 1.0 else -1.0);
+    if rate >= -mx - 0.001 && rate <= mx + 0.001 && sr_trail_rate_clear(t, cab, speed, rate, dt, reversing) { found = rate; got = true; }
+    k += 1;
+  }
+  if !got { return 0.0; }
+  // Then bisect between it and the wanted rate.
+  good := found; bad := wanted;
+  for i: 0..<8 {
+    mid := (good + bad) * 0.5;
+    if sr_trail_rate_clear(t, cab, speed, mid, dt, reversing) { good = mid; } else { bad = mid; }
+  }
+  return good;
+}
+
+// V-02: the yaw rate that, at speed < 0, swings the cab so its rear hitch (the head) moves towards the point
+// on the trail RetraceLookahead behind it. The hitch leads backing up, so this is the stable way round, as a
+// car's front axle steering. 0 when not reversing.
+sr_trail_retrace_yaw_rate_deg :: (t: [] const SrTrail, cab: SrCabPose, speed: f64) -> f64 {
+  if speed >= -SR_TRAIL_KINDA_SMALL || t[0].count < 2 { return 0.0; }
+  // The hitch moves at speed * F - offset * w * L (L = dF/dyaw). Pick w so it points at the target.
+  hitch := sr_flat(sr_trail_cab_rear_hitch(cab));
+  vertex := [1] int.[0];
+  target := sr_trail_find_behind(t, t[0].live, vertex[..], SR_TRAIL_RETRACE_LOOKAHEAD);
+  d := sr_safe_normal2(d2_sub(target, hitch));
+  if abs(d.x) <= SR_TRAIL_KINDA_SMALL && abs(d.y) <= SR_TRAIL_KINDA_SMALL { return 0.0; }
+  n := d2(-d.y, d.x);
+  f := sr_flat(sr_trail_forward(cab.yaw_deg));
+  l := sr_flat(sr_trail_forward(cab.yaw_deg + 90.0));
+  ln := d2_dot(l, n);
+  // The target square to the cab (or ahead of it): turn as hard as asked, the caller clamps it.
+  if abs(ln) < 0.05 { ln = ifx ln < 0.0 then -0.05 else 0.05; }
+  w := speed * d2_dot(f, n) / (SR_TRAIL_CAB_REAR_HITCH_OFFSET * ln);
+  return sr_rad_to_deg(w);
+}
+
+// V-02: how tightly the cab must turn (1/m of its middle's travel) to retrace the next `ahead` metres: the most
+// its recorded heading changes per metre of hitch travel over 1 m windows, converted to the cab's middle.
+sr_trail_retrace_curvature :: (t: [] const SrTrail, ahead: f64) -> f64 {
+  window := 4;   // 1 m of samples
+  last := sr_mini(t[0].count - 1, cast(int) floor(ahead / SR_TRAIL_SAMPLE_SPACING) + window);
+  worst := 0.0;
+  i := 0;
+  while i + window <= last {
+    per_hitch_metre := abs(sr_deg_to_rad(sr_unwind_deg(sr_trail_sample_yaw(t, i) - sr_trail_sample_yaw(t, i + window)))) / (cast(f64) window * SR_TRAIL_SAMPLE_SPACING);
+    // Kh = Kc / sqrt(1 + (offset Kc)^2), so Kc = Kh / sqrt(1 - (offset Kh)^2).
+    lean := fmin(SR_TRAIL_CAB_REAR_HITCH_OFFSET * per_hitch_metre, 0.97);
+    worst = fmax(worst, per_hitch_metre / sqrt(1.0 - lean * lean));
+    i += 1;
+  }
+  return worst;
+}

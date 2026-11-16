@@ -43,6 +43,7 @@
 #load "anim-state.coax";
 #load "boss.coax";
 #load "gait.coax";
+#load "trail.coax";
 
 #load "data-checks.coax" #test;
 #load "robot-payload-checks.coax" #test;
@@ -71,3 +72,4 @@
 #load "anim-state-checks.coax" #test;
 #load "boss-checks.coax" #test;
 #load "gait-checks.coax" #test;
+#load "trail-checks.coax" #test;
