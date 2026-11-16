@@ -89,18 +89,20 @@ cp_step :: (r: [] CpRun, p: [] ChatPage, v: [] f32, d: [] GdDrive, code: int) {
 // One operation; its answer is then gd_answer(d). (cp_drive returns no view of its own: a procedure
 // that draws the page and returns a string view passes the checker's budget, E0381.) False when the
 // operation did not finish.
+// The layer that takes presses: the drawer, the login page or the picker while one shows, else the page.
+cp_keyed :: (p: [] ChatPage) -> [] KeyedStore { l := ch_layer(p); return p[0].keyed[l..<l + 1]; }
 cp_drive :: (r: [] CpRun, p: [] ChatPage, v: [] f32, d: [] GdDrive, op: string) -> bool {
   // the page's first frame comes before the first operation; the surface is read again at each step,
   // so no view of the page outlives a call that writes it
-  code := ifx p[0].surface[0].generation == 0 then GD_FRAME else gd_drive(d, p[0].surface[..], p[0].keyed[..], op);
+  code := ifx p[0].surface[0].generation == 0 then GD_FRAME else gd_drive(d, ch_live(p), cp_keyed(p), op);
   first := code == GD_FRAME;
   guard := 0;
   while code != GD_DONE && guard < CP_GUARD {
     guard += 1;
     if code == GD_FRAME { cp_draw(r, p, v, d); } else { cp_step(r, p, v, d, code); }
     cp_actions(r, p, v, d);
-    if first { first = false; code = gd_drive(d, p[0].surface[..], p[0].keyed[..], op); continue; }
-    code = gd_resume(d, p[0].surface[..], p[0].keyed[..]);
+    if first { first = false; code = gd_drive(d, ch_live(p), cp_keyed(p), op); continue; }
+    code = gd_resume(d, ch_live(p), cp_keyed(p));
   }
   return guard < CP_GUARD;
 }

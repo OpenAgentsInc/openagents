@@ -2,8 +2,9 @@
 
 The iOS app is one screen: the chat page, the shared transcript over the
 composer (apps/shared/app/view/page.coax). The navigation button at the top left opens the sidebar,
-which pushes the page right; it holds New chat, and the account once logged in (Log in is hidden for
-now). The page is compiled Coax drawn
+which pushes the page right; it holds New chat, Log in while logged out, and the account and Log out
+once logged in. Log in pushes a full login page with a Back button; a Send on Default while logged out
+opens the same page (a paired computer needs no account). The page is compiled Coax drawn
 by the shared GPU component kit in one Metal view. The app compiles nothing
 to JavaScript or WebAssembly, has no web view and no Updates path. The plan
 is in [components/gpu-components.md](../../components/gpu-components.md#the-ios-app-grown-screen-by-screen):

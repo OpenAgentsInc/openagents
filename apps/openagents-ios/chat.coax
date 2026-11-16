@@ -2,16 +2,20 @@
 // the whole screen, compiled Coax drawn by the shared GPU kit in one Metal
 // view: the shared chat page (apps/shared/app/view/page.coax, the transcript
 // over the composer), the navigation button at the top left that opens the
-// drawer, and the login card. Nothing here runs in JavaScript
+// drawer, and the login page. Nothing here runs in JavaScript
 // and nothing is a platform control except the platform editor over the field
 // that holds the keyboard, and, on the phone, the menu button and the chips' picker (chat_native:
 // the host draws them as Liquid Glass system controls, GlassChrome.swift).
 //
 // The drawer slides in from the left over a scrim; a press on the scrim or a
 // swipe to the left closes it, a swipe right from the left edge opens it. It
-// holds the account and Log out once logged in; Log in is hidden for now.
-// The login flow's card (apps/shared/app/login/) stays, and works through
-// the shared app core the host attaches (chat_attach). The chat page reads
+// holds Log in while logged out, and the account and Log out once logged in.
+// Log in is a full page over the chat, not a card over it: the login flow's
+// form (apps/shared/app/login/, lf_card) under a Back button where the menu
+// button was. Only Default (where we choose) needs an account, so a Send on
+// Default while logged out opens the same page. Back, a swipe right from the
+// left edge, or Cancel close it. The flow works through the shared app core
+// the host attaches (chat_attach). The chat page reads
 // the same core; its presses go to the core as actions (view_press,
 // view_dispatch), and the composer's text is the core's draft.
 //
@@ -41,7 +45,7 @@ CH_P_UNDER :: 2048; CH_P_OVER :: 8192; CH_P_LINES :: 4096; CH_P_HITS :: 256; CH_
 CH_MOVE :: 8.0;     // layout units a touch travels before it scrolls instead of pressing
 CH_ACT_NONE :: 0; CH_ACT_FOCUS :: 1;
 // The page's own actions start at 100: the login card's rows carry the flow's LF_ACT_ values (1 to 7).
-CH_HIT_TEXT :: 101; CH_HIT_SEND :: 102; CH_HIT_MENU :: 103; CH_HIT_SCRIM :: 104; CH_HIT_LOGIN :: 105; CH_HIT_LOGOUT :: 106; CH_HIT_NEW :: 107; CH_HIT_ACCOUNT :: 108; CH_HIT_ENV :: 109; CH_HIT_REPO :: 110;
+CH_HIT_TEXT :: 101; CH_HIT_SEND :: 102; CH_HIT_MENU :: 103; CH_HIT_SCRIM :: 104; CH_HIT_LOGIN :: 105; CH_HIT_LOGOUT :: 106; CH_HIT_NEW :: 107; CH_HIT_ENV :: 109; CH_HIT_REPO :: 110; CH_HIT_BACK :: 111;
 CH_SWIPE :: 30.0;   // layout units a swipe travels to close or open the drawer
 CH_EDGE :: 18.0;    // the left edge a swipe that opens the drawer starts in
 
@@ -67,7 +71,6 @@ ChatPage :: struct {
   focus: [EL_ID] u8; focus_n: int;
   // the drawer: whether it is open, and how far it is out
   drawer: bool; share: f32;
-  account: bool;   // the account's Log out shows over the avatar
   initials: [4] u8; initials_n: int;
   // the environment and repository chips over the composer, and their picker (apps/shared/app/environment/)
   env: [1] EnvSelect; eb: [1] EsBridge; picker: EsPickerSize;
@@ -186,30 +189,42 @@ ch_layout_cover :: (s: [] ChatPage, f: [] UiFrame, w: f32, h: f32) {
     if s[0].native { sh[0].nu = nu; sh[0].no = no; sh[0].nl = nl; }
   }
   l := s[0].lf[..];
-  if l[0].open {
-    sheet_fill(f[0].sheet, 0, 0, w, h, 0, opacity(Rgba.{r = 0, g = 0, b = 0, a = 1}, APP_SIDEBAR_DIM));
-    cw := ifx w - 32 / u > 360 then 360.0f32 else w - 32 / u;
-    // the card holds every press while it shows: a press beside it lands on the cover, which does nothing
-    _ := uiframe_semantic(f, "login.cover", EL_REGION, "", 0, 0, w, h, 0, 0);
-    _ := lf_card(f, l, (w - cw) / 2, top + 56 / u, cw, s[0].focused && ch_login_field(ch_focus(s)) != LF_FIELD_NONE);
-  }
-  // the sidebar: it pushes the page right. Only what works shows: New chat, and the account's
-  // avatar (with Log out over it) once logged in. Search keeps its slot until it works. Log in is
-  // hidden for now (owner, 2026-11-16): the login flow stays, with no entry point here. The core
-  // keeps only the current conversation, so there are no history rows yet.
+  if l[0].open { ch_login_page(s, f, w, h); }
+  // the sidebar: it pushes the page right. Only what works shows: New chat; Log in while logged
+  // out; the account's avatar and Log out once logged in. Search keeps its slot until it works.
+  // The core keeps only the current conversation, so there are no history rows yet.
   in := app_sidebar(f, "drawer", "drawer.scrim", 0, 0, w, h, top, s[0].share, "Menu", CH_HIT_SCRIM);
   if in.w > 0 {
     a := k.app;
     _ := app_sidebar_head(f, "drawer.title", in.x, in.y + 4 / u, in.w, "OpenAgents", "drawer.search", ICON_MAGNIFER, 0);
     by := h - s[0].safe_bottom / u - a.gap * 2 - k.control_h;
+    iy := in.y + 4 / u + a.icon_button + a.gap * 2;
     if lf_logged_in(l) {
       who := lf_who(l); s[0].initials_n = app_initials(who, s[0].initials[..]);
-      if s[0].account { _ := app_button(f, "drawer.logout", in.x, by - k.control_h - a.gap, in.w, -1, "Log out", APP_BUTTON_DEFAULT, 0, CH_HIT_LOGOUT); }
-      _ := app_sidebar_avatar(f, "drawer.account", in.x + in.w - k.control_h, by, cast(string) s[0].initials[0..<s[0].initials_n], ifx who.count > 0 then who else "Account", CH_HIT_ACCOUNT);
+      _ := app_button(f, "drawer.logout", in.x, by - k.control_h - a.gap, in.w, -1, "Log out", APP_BUTTON_DEFAULT, 0, CH_HIT_LOGOUT);
+      _ := app_sidebar_avatar(f, "drawer.account", in.x + in.w - k.control_h, by, cast(string) s[0].initials[0..<s[0].initials_n], ifx who.count > 0 then who else "Account", 0);
+    } else if lf_known(l) {
+      _ := app_sidebar_item(f, "drawer.login", in.x, iy, in.w, -1, "Log in", 0, CH_HIT_LOGIN);
     }
     _ := app_sidebar_new(f, "drawer.new", in.x, by, ICON_COMPOSE, "New chat", CH_HIT_NEW);
     app_sidebar_end(f, in);
   }
+}
+// The login page: the whole screen over the chat, its Back button where the menu button was, and the
+// login flow's form under it. It holds every press while it shows.
+ch_login_page :: (s: [] ChatPage, f: [] UiFrame, w: f32, h: f32) {
+  k := f[0].skin; u: f32 = ARCADE_PHONE_SCALE; top := s[0].safe_top / u; l := s[0].lf[..];
+  sheet_fill(f[0].sheet, 0, 0, w, h, 0, k.canvas);
+  _ := uiframe_semantic(f, "login.page", EL_REGION, "Log in", 0, 0, w, h, 0, 0);
+  _ := app_icon_button(f, "login.back", s[0].menu_x, top + 4 / u, ICON_BACK, "Back", APP_BUTTON_DEFAULT, 0, CH_HIT_BACK);
+  cw := ifx w - 32 / u > 480 then 480.0f32 else w - 32 / u;
+  _ := lf_card(f, l, (w - cw) / 2, top + 4 / u + k.app.icon_button + 24 / u, cw, s[0].focused && ch_login_field(ch_focus(s)) != LF_FIELD_NONE);
+}
+// Close the login page: the flow's Cancel ends the attempt, and a login field gives up the keyboard.
+ch_login_close :: (s: [] ChatPage) -> bool {
+  l := s[0].lf[..]; done := lf_press(l, LF_ACT_CANCEL); ch_step(s);
+  if ch_login_field(ch_focus(s)) != LF_FIELD_NONE { s[0].focus_n = 0; }
+  return done || !l[0].open;
 }
 ch_stamp :: (s: [] ChatPage) -> int {
   t := [1] ElTable.[ch_rows(s)];
@@ -247,8 +262,8 @@ ch_press :: (s: [] ChatPage, row: int) -> bool {
   if act == CH_HIT_MENU { s[0].drawer = !s[0].drawer; return true; }
   if act == CH_HIT_SCRIM { s[0].drawer = false; return true; }
   if act == CH_HIT_LOGIN { s[0].drawer = false; lf_open(l); ch_step(s); return true; }
+  if act == CH_HIT_BACK { return ch_login_close(s); }
   if act == CH_HIT_LOGOUT { s[0].drawer = false; _ := lf_logout(l); ch_step(s); return true; }
-  if act == CH_HIT_ACCOUNT { s[0].account = !s[0].account; return true; }
   // New chat: a new, empty conversation in the core, and the sidebar closes onto it
   if act == CH_HIT_NEW {
     c := s[0].core; if c.count < 1 { return false; }
@@ -292,7 +307,6 @@ chat_frame :: (s: [] ChatPage, out: [] f32, width: f32, height: f32, dpr: f32, d
   v := paint_quad(out, 0, d, 0, 0, w, h, 0, 0, ground, ground);
   if !a[0].ready { return v; }
   live := ch_layer(s);
-  if !s[0].drawer { s[0].account = false; }
   shift := app_sidebar_shift(w, s[0].share);
   ch_take_flow_focus(s);
   moving := s[0].share != (ifx s[0].drawer then 1.0f32 else 0.0f32);
@@ -340,6 +354,8 @@ chat_pointer :: (s: [] ChatPage, x: f32, y: f32, phase: int) -> bool #export_c #
     // a swipe left closes the open drawer; a swipe right from the left edge opens it
     if !s[0].swiped && s[0].drawer && ux - s[0].down_x < -CH_SWIPE { s[0].drawer = false; s[0].swiped = true; s[0].pressed_n = 0; }
     if !s[0].swiped && !s[0].drawer && !s[0].lf[0].open && !ch_picking(s) && s[0].down_x < CH_EDGE && ux - s[0].down_x > CH_SWIPE { s[0].drawer = true; s[0].swiped = true; s[0].pressed_n = 0; }
+    // on the login page the same swipe goes back to the chat
+    if !s[0].swiped && s[0].lf[0].open && s[0].down_x < CH_EDGE && ux - s[0].down_x > CH_SWIPE { _ := ch_login_close(s); s[0].swiped = true; s[0].pressed_n = 0; }
     // on the page, a touch that travels up or down scrolls the transcript (up: toward the latest message)
     if !s[0].swiped && ch_layer(s) == 0 && (s[0].scrolling || abs(uy - s[0].down_y) > CH_MOVE) {
       s[0].scrolling = true; s[0].pressed_n = 0;
@@ -527,11 +543,12 @@ ch_test_tap :: (s: [] ChatPage, id: string) -> bool {
 
 ch_test_has :: (s: [] ChatPage, id: string) -> bool { return surface_find(ch_sf(s, 0), id) >= 0 || surface_find(ch_sf(s, 1), id) >= 0; }
 
-#test "chat page: the menu button opens the drawer, with no Log in; the scrim and a swipe close it; the login card opens from the flow; a tap outside a field takes the keyboard" #steps 2000000000 {
+#test "chat page: the menu button opens the drawer; the scrim and a swipe close it; logged out it holds Log in, which pushes the login page; Back and a swipe go back; a tap outside a field takes the keyboard" #steps 2000000000 {
   s: [1] ChatPage; o: [1] ChOut; ch_test_atlas(s[0].atlas[..]);
   _ := ch_test_frame(s[..], o[..]);
   #assert ch_test_has(s[..], "nav.menu") && !ch_test_has(s[..], "drawer") && !ch_test_has(s[..], "drawer.login");
   #assert ch_test_tap(s[..], "nav.menu") && s[0].drawer; _ := ch_test_frame(s[..], o[..]);
+  // before the host says who is logged in, neither Log in nor Log out shows
   #assert ch_test_has(s[..], "drawer") && ch_test_has(s[..], "drawer.scrim") && !ch_test_has(s[..], "drawer.login") && !ch_test_has(s[..], "drawer.logout") && chat_refused(s[..]) == 0;
   // only what works: New chat; no search button, no avatar while logged out
   #assert ch_test_has(s[..], "drawer.new") && ch_test_has(s[..], "drawer.title") && !ch_test_has(s[..], "drawer.search") && !ch_test_has(s[..], "drawer.account");
@@ -542,23 +559,46 @@ ch_test_has :: (s: [] ChatPage, id: string) -> bool { return surface_find(ch_sf(
   #assert s[0].drawer; _ := ch_test_frame(s[..], o[..]);
   _ := chat_pointer(s[..], 600, 900, 0); _ := chat_pointer(s[..], 300, 900, 1); _ := chat_pointer(s[..], 300, 900, 2);
   #assert !s[0].drawer; _ := ch_test_frame(s[..], o[..]);
-  // the drawer has no Log in for now; the login card still opens from the flow, on the email step
+  // logged out, the drawer holds Log in; it closes the drawer and pushes the login page
   lf_t_out(s[0].lf[..]);   // the host answered: nobody is logged in
   #assert chat_activate(s[..], "nav.menu"); _ := ch_test_frame(s[..], o[..]);
-  #assert !ch_test_has(s[..], "drawer.login") && chat_activate(s[..], "drawer.scrim") && !s[0].drawer; _ := ch_test_frame(s[..], o[..]);
-  lf_open(s[0].lf[..]); ch_step(s[..]); #assert s[0].lf[0].open; _ := ch_test_frame(s[..], o[..]);
-  #assert ch_test_has(s[..], "login") && ch_test_has(s[..], "login.email") && ch_test_has(s[..], "login.send") && ch_test_has(s[..], "login.cancel");
+  #assert ch_test_has(s[..], "drawer.login") && !ch_test_has(s[..], "drawer.logout");
+  #assert ch_test_tap(s[..], "drawer.login") && !s[0].drawer && s[0].lf[0].open; _ := ch_test_frame(s[..], o[..]); _ := ch_test_frame(s[..], o[..]);
+  #assert ch_test_has(s[..], "login.page") && ch_test_has(s[..], "login.back") && ch_test_has(s[..], "login.email") && ch_test_has(s[..], "login.send") && !ch_test_has(s[..], "drawer");
+  // the menu button hides while the page shows: Back stands where it was
+  m: [6] f32; #assert chat_menu(s[..], m[..]) && m[5] == 1;
   // a press on the email field gives it the keyboard; the host reads its box and sets its value
   #assert ch_test_tap(s[..], "login.email"); _ := ch_test_frame(s[..], o[..]);
   id: [EL_ID] u8; n := chat_focus(s[..], id[..]); #assert cast(string) id[0..<n] == "login.email" && s[0].lf[0].focus == LF_FIELD_EMAIL;
   box: [4] f32; #assert chat_field_box(s[..], box[..]) && box[2] > 100;
   #assert chat_set_field(s[..], "a@b.test") && lf_email(s[0].lf[..]) == "a@b.test" && chat_draft_rev(s[..]) > 0;
   // a tap outside the field takes the keyboard away
-  _ := chat_pointer(s[..], 600, 300, 0); _ := chat_pointer(s[..], 600, 300, 2); _ := ch_test_frame(s[..], o[..]);
+  _ := chat_pointer(s[..], 600, 2000, 0); _ := chat_pointer(s[..], 600, 2000, 2); _ := ch_test_frame(s[..], o[..]);
   #assert chat_focus(s[..], id[..]) == 0 && s[0].lf[0].focus == LF_FIELD_NONE;
-  // Cancel closes the card
+  // Back goes back to the chat
+  #assert ch_test_tap(s[..], "login.back") && !s[0].lf[0].open; _ := ch_test_frame(s[..], o[..]);
+  #assert !ch_test_has(s[..], "login.page") && ch_test_has(s[..], "nav.menu");
+  // so does a swipe right from the left edge, and Cancel
+  lf_open(s[0].lf[..]); ch_step(s[..]); _ := ch_test_frame(s[..], o[..]);
+  _ := chat_pointer(s[..], 3, 900, 0); _ := chat_pointer(s[..], 200, 900, 1); _ := chat_pointer(s[..], 200, 900, 2);
+  #assert !s[0].lf[0].open && !s[0].drawer; _ := ch_test_frame(s[..], o[..]);
+  lf_open(s[0].lf[..]); ch_step(s[..]); _ := ch_test_frame(s[..], o[..]);
   #assert ch_test_tap(s[..], "login.cancel") && !s[0].lf[0].open; _ := ch_test_frame(s[..], o[..]);
-  #assert !ch_test_has(s[..], "login");
+  #assert !ch_test_has(s[..], "login.page");
+  // logged in: the drawer has the account and Log out, with no Log in
+  lf_in(s[0].lf[..], "ada@example.com");
+  #assert chat_activate(s[..], "nav.menu"); _ := ch_test_frame(s[..], o[..]);
+  #assert ch_test_has(s[..], "drawer.account") && ch_test_has(s[..], "drawer.logout") && !ch_test_has(s[..], "drawer.login") && ch_test_text(s[..], "A") == 1;
+}
+
+#test "chat page: a Send on Default while logged out pushes the login page and keeps the draft" #steps 2000000000 {
+  s: [1] ChatPage; o: [1] ChOut; ch_test_atlas(s[0].atlas[..]);
+  core: [1] AppCore; app_init(core[..]);
+  chat_attach(s[..], core[..], "");
+  core[0].auth = AUTH_OUT; chat_step(s[..]); _ := ch_test_frame(s[..], o[..]);
+  #assert chat_set_text(s[..], "Fix the build"); _ := ch_test_frame(s[..], o[..]);
+  #assert ch_test_tap(s[..], "chat.composer.send"); _ := ch_test_frame(s[..], o[..]);
+  #assert s[0].lf[0].open && ch_test_has(s[..], "login.page") && ch_test_has(s[..], "login.back") && app_draft(core[..]) == "Fix the build";
 }
 
 #test "chat page: the shared chat page over the core: the empty title and the composer, the text asks for the keyboard, the draft is the core's" #steps 2000000000 {
