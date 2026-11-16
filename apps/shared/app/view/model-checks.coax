@@ -1,0 +1,122 @@
+// Checks for model.coax. Example data only: a synthetic conversation, turn
+// and task built field by field. No account data.
+
+VIEW_T_CNV :: "cnv_0123456789abcdef0123456789abcdef";
+VIEW_T_TURN :: "trn_0123456789abcdef0123456789abcdef";
+VIEW_T_OLD :: "trn_fedcba9876543210fedcba9876543210";
+// A saved page: an earlier turn (question and answer), then the person's message of the turn in flight.
+VIEW_T_PAGE :: "{\"schema\":\"openagents.chat.conversation.v2alpha1\",\"id\":\"cnv_0123456789abcdef0123456789abcdef\",\"revision\":3,\"project_id\":null,\"legacy_thread_id\":null,\"legacy_thread_revision\":null,\"messages\":[{\"id\":\"trn_fedcba9876543210fedcba9876543210.user\",\"turn_id\":\"trn_fedcba9876543210fedcba9876543210\",\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"What changed?\"}],\"created_at_ms\":10},{\"id\":\"trn_fedcba9876543210fedcba9876543210.assistant\",\"turn_id\":\"trn_fedcba9876543210fedcba9876543210\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"Two **files**.\"}],\"created_at_ms\":11},{\"id\":\"trn_0123456789abcdef0123456789abcdef.user\",\"turn_id\":\"trn_0123456789abcdef0123456789abcdef\",\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Run the checks\"}],\"created_at_ms\":20}],\"active_turn_id\":\"trn_0123456789abcdef0123456789abcdef\",\"created_at_ms\":1,\"updated_at_ms\":20,\"next_cursor\":null}";
+
+ViewTestChat :: struct { d: [1] DurableChat; vm: [1] ViewModel; pool: [4096] u8; }
+
+view_test_open :: (t: [] ViewTestChat) {
+  d := t[0].d[..];
+  d[0].enabled = true; d[0].id_n = el_copy(d[0].id[..], VIEW_T_CNV);
+  #assert ctr_history_read(VIEW_T_PAGE, d[0].history[..]);
+  d[0].loaded = true;
+}
+view_test_turn :: (t: [] ViewTestChat, state: int, reply: string) {
+  d := t[0].d[..];
+  #assert ct_view_begin(d[0].view[..], VIEW_T_CNV, VIEW_T_TURN);
+  d[0].view[0].state = state; d[0].view[0].bytes = el_copy(d[0].view[0].content[..], reply); d[0].has_view = true;
+}
+// A task bound to the turn in flight, its session holding one finished read and one command that asks.
+view_test_task :: (t: [] ViewTestChat, state: int) {
+  n := t[0].d[0].native[..];
+  n[0].selected = true; n[0].bound = true; n[0].has_status = true;
+  _ := el_copy(n[0].turn[..], VIEW_T_TURN); _ := el_copy(n[0].conversation[..], VIEW_T_CNV);
+  n[0].status[0].state = state;
+  s := n[0].shown[..];
+  s_init(s, t[0].pool[..]);
+  s[0].parts[0] = SPart.{kind = P_USER};
+  s[0].parts[1] = SPart.{kind = P_TOOL, id = "call_1", tk = TK_READ, arg = "README.md", input = "{\"path\":\"README.md\"}", output = "# OpenAgents", resolved = true};
+  s[0].parts[2] = SPart.{kind = P_TOOL, id = "call_2", tk = TK_EXEC, arg = "coax test", input = "{\"command\":\"coax test\"}"};
+  s[0].n = 3; s[0].asking = ifx state == XT_WAITING then 2 else -1;
+  n[0].has_session = true;
+}
+view_test_kinds :: (vm: [] ViewModel, kinds: [] int) -> bool {
+  if vm[0].n != kinds.count { return false; }
+  for i: 0..<kinds.count { if vm[0].rows[i].kind != kinds[i] { return false; } }
+  return true;
+}
+
+#test "an empty chat has no rows and shows the empty state" #steps 2000000000 {
+  t: [1] ViewTestChat;
+  view_build(t[0].vm[..], t[0].d[..], ViewFacts.{});
+  #assert t[0].vm[0].n == 0 && t[0].vm[0].empty && !t[0].vm[0].rejoining;
+}
+#test "a conversation that is open and not read yet is rejoining, not empty" #steps 2000000000 {
+  t: [1] ViewTestChat;
+  t[0].d[0].id_n = el_copy(t[0].d[0].id[..], VIEW_T_CNV);
+  view_build(t[0].vm[..], t[0].d[..], ViewFacts.{});
+  #assert t[0].vm[0].n == 0 && !t[0].vm[0].empty && t[0].vm[0].rejoining;
+}
+#test "saved messages come in order under stable ids, and a streaming answer follows the turn's message" #steps 2000000000 {
+  t: [1] ViewTestChat; view_test_open(t[..]); view_test_turn(t[..], CT_RUNNING, "Working on");
+  vm := t[0].vm[..];
+  view_build(vm, t[0].d[..], ViewFacts.{});
+  k1 := [4] int.[VK_MESSAGE, VK_MESSAGE, VK_MESSAGE, VK_REPLY]; #assert view_test_kinds(vm, k1[..]);
+  #assert view_row_id(vm, 0) == "m.fedcba9876543210.u" && view_row_id(vm, 1) == "m.fedcba9876543210.a" && view_row_id(vm, 2) == "m.0123456789abcdef.u";
+  #assert !vm[0].rows[0].assistant && vm[0].rows[1].assistant && vm[0].rows[1].index == 1 && vm[0].rows[3].stamp == 10;
+  // the answer grows: its stamp moves, the ids do not
+  t[0].d[0].view[0].bytes = el_copy(t[0].d[0].view[0].content[..], "Working on it");
+  view_build(vm, t[0].d[..], ViewFacts.{});
+  #assert vm[0].n == 4 && vm[0].rows[3].stamp == 13 && view_row_id(vm, 3) == "chat.reply" && vm[0].saved_n == 3;
+  // nothing arrived yet: the typing mark stands in for the answer
+  t[0].d[0].view[0].bytes = 0;
+  view_build(vm, t[0].d[..], ViewFacts.{});
+  #assert vm[0].rows[3].kind == VK_TYPING;
+}
+#test "the task sits under its turn's message: header, tool calls, the prompt after the call it asks about, then the state line" #steps 2000000000 {
+  t: [1] ViewTestChat; view_test_open(t[..]); view_test_turn(t[..], CT_RUNNING, ""); view_test_task(t[..], XT_WAITING);
+  vm := t[0].vm[..];
+  view_build(vm, t[0].d[..], ViewFacts.{permit = VIEW_PERMIT_READY});
+  k2 := [8] int.[VK_MESSAGE, VK_MESSAGE, VK_MESSAGE, VK_TASK_HEAD, VK_TOOL, VK_TOOL, VK_PERMISSION, VK_TASK_STATE]; #assert view_test_kinds(vm, k2[..]);
+  #assert view_row_id(vm, 4) == "tool.0123456789abcdef.1" && vm[0].rows[5].index == 2 && vm[0].rows[6].index == 2 && view_row_id(vm, 6) == "task.0123456789abcdef.permission";
+  // no typing mark: the task's state line speaks for the turn
+  #assert view_find(vm, "chat.typing") < 0;
+  // answered: the prompt goes, the call keeps its row
+  t[0].d[0].native[0].status[0].state = XT_RUNNING;
+  view_build(vm, t[0].d[..], ViewFacts.{});
+  #assert view_find(vm, "task.0123456789abcdef.permission") < 0 && view_find(vm, "tool.0123456789abcdef.2") >= 0;
+  // it ends: the result line follows the state line
+  t[0].d[0].native[0].status[0].state = XT_COMPLETED;
+  view_build(vm, t[0].d[..], ViewFacts.{});
+  #assert vm[0].rows[vm[0].n - 1].kind == VK_TASK_RESULT && vm[0].rows[vm[0].n - 2].kind == VK_TASK_STATE;
+}
+#test "a task for another turn is not shown" #steps 2000000000 {
+  t: [1] ViewTestChat; view_test_open(t[..]); view_test_turn(t[..], CT_RUNNING, ""); view_test_task(t[..], XT_RUNNING);
+  _ := el_copy(t[0].d[0].native[0].turn[..], VIEW_T_OLD);
+  view_build(t[0].vm[..], t[0].d[..], ViewFacts.{});
+  #assert view_find(t[0].vm[..], "task.0123456789abcdef.head") < 0 && view_find(t[0].vm[..], "chat.typing") >= 0;
+}
+#test "a message being sent shows at once; an unknown outcome offers Try again and the note asks to reconnect" #steps 2000000000 {
+  t: [1] ViewTestChat; d := t[0].d[..]; vm := t[0].vm[..];
+  d[0].pending = 1; d[0].submitted_n = el_copy(d[0].submitted[..], "Hello");
+  view_build(vm, d, ViewFacts.{});
+  k3 := [1] int.[VK_SENT]; #assert view_test_kinds(vm, k3[..]) && !vm[0].empty;
+  d[0].uncertain = true;
+  view_build(vm, d, ViewFacts.{});
+  #assert vm[0].n == 2 && vm[0].rows[1].kind == VK_NOTICE && vm[0].rows[1].act == VIEW_DO_RETRY && vm[0].rows[1].text == VIEW_W_SEND_UNSURE;
+  // a Stop whose outcome is unknown says so instead
+  d[0].pending = 0; d[0].uncertain = false;
+  view_test_open(t[..]); view_test_turn(t[..], CT_RUNNING, "Part");
+  view_build(vm, d, ViewFacts.{stop = VIEW_STOP_UNCERTAIN, note = "We could not reach OpenAgents."});
+  last := vm[0].rows[vm[0].n - 1]; unsure := vm[0].rows[vm[0].n - 2];
+  #assert unsure.text == VIEW_W_STOP_UNSURE && unsure.act == VIEW_DO_RETRY && last.text == "We could not reach OpenAgents." && last.act == VIEW_DO_RECONNECT;
+}
+#test "a failed answer says why, a lost one offers to reconnect, and a saved answer is not shown twice" #steps 2000000000 {
+  t: [1] ViewTestChat; view_test_open(t[..]); view_test_turn(t[..], CT_FAILED, "");
+  vm := t[0].vm[..];
+  t[0].d[0].view[0].ne = el_copy(t[0].d[0].view[0].error[..], "The model is not available.");
+  view_build(vm, t[0].d[..], ViewFacts.{});
+  #assert vm[0].rows[vm[0].n - 1].text == "The model is not available." && vm[0].rows[vm[0].n - 1].act == VIEW_DO_NONE;
+  t[0].d[0].view[0].state = CT_UNKNOWN;
+  view_build(vm, t[0].d[..], ViewFacts.{});
+  #assert vm[0].rows[vm[0].n - 1].text == VIEW_W_LOST && vm[0].rows[vm[0].n - 1].act == VIEW_DO_RECONNECT;
+  // the turn of the saved answer is the one in flight: only the saved message shows
+  #assert ct_view_begin(t[0].d[0].view[..], VIEW_T_CNV, VIEW_T_OLD);
+  t[0].d[0].view[0].state = CT_COMPLETED; t[0].d[0].view[0].bytes = el_copy(t[0].d[0].view[0].content[..], "Two **files**.");
+  view_build(vm, t[0].d[..], ViewFacts.{});
+  #assert view_find(vm, "chat.reply") < 0 && vm[0].n == 3;
+}

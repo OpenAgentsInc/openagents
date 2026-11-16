@@ -1,0 +1,277 @@
+// A virtualized keyed list (components/gpu-components.md, "State and
+// invalidation": lists realize only visible rows; GitHub #13645). It keeps
+// one height for each row under the row's stable id, places the rows that
+// meet the viewport, and holds the scroll position as an anchor: a row id
+// and how far that row's top is from the viewport's top. The position is
+// never a pixel offset into the content, so a row that grows, an insertion
+// or a new estimate above the viewport does not move what a person reads.
+//
+// The caller owns two row arrays (one frame's and the frame before's); their
+// count is the capacity. One frame:
+//
+//   vlist_begin(l);
+//   for each row in data order { _ := vlist_row(l, id, stamp); }   // stamp: changes when the row's height may have
+//   vlist_place(l, viewport_h, overscan);
+//   while true { i := vlist_need(l); if i < 0 { break; } vlist_measured(l, i, HEIGHT_OF(i)); vlist_place(l, viewport_h, overscan); }
+//   for i: l.first..<l.last { paint row i at vlist_y(l, i) }
+//   vlist_settle(l, slack);
+//
+// Rules:
+// - A row's height follows its id through insertion and reordering. A row
+//   whose stamp changed keeps its old height as an estimate until measured.
+// - While `follow` is set the end of the content stays at the viewport's
+//   end (core/scroll.coax owns the at-end rule). A scroll away from the end
+//   clears it; reaching the end again, or vlist_jump, sets it.
+// - vlist_pin holds a row where it is on screen while it changes height (a
+//   tool row that expands).
+// - vlist_viewport keeps the content at the viewport's bottom edge in place
+//   when the viewport's height changes (the composer grows, the keyboard
+//   opens).
+// - A row that does not fit the capacity is counted in `lost`.
+//   coax/bin/coax test apps/shared/app/view/list.coax
+
+#load "../../../../components/core/elements.coax";     // EL_ID, el_copy
+#load "../../../../components/core/scroll.coax";       // scroll_max, scroll_at_end
+
+VRow :: struct {
+  id: [EL_ID] u8; id_n: int;
+  stamp: int;                      // what the height was measured for
+  h: f32;                          // its height: measured, or the estimate it had
+  known: bool;                     // measured for this stamp
+}
+VList :: struct {
+  a: [] VRow; b: [] VRow;          // the caller's arrays: this frame's rows and the frame before's
+  side: int;                       // which holds this frame's
+  n: int; before: int;             // rows this frame, and the frame before
+  cursor: int;                     // where the next id is expected in the frame before
+  estimate: f32;                   // the height of a row never measured
+  viewport: f32;
+  follow: bool;                    // the end stays at the viewport's end
+  anchor: [EL_ID] u8; anchor_n: int;
+  anchor_off: f32;                 // the anchor row's top, from the viewport's top
+  top: f32; content: f32;          // placed: the content offset at the viewport's top; the content's height
+  first: int; last: int;           // placed: rows first..<last meet the viewport and its overscan
+  lost: int;                       // rows that did not fit, since the list was made
+}
+
+vlist_over :: (a: [] VRow, b: [] VRow, estimate: f32) -> VList {
+  return VList.{a = a, b = b, estimate = estimate, follow = true};
+}
+vlist_rows :: (l: [] VList) -> [] VRow { return ifx l[0].side == 0 then l[0].a else l[0].b; }
+vlist_old :: (l: [] VList) -> [] VRow { return ifx l[0].side == 0 then l[0].b else l[0].a; }
+vlist_id :: (l: [] VList, i: int) -> string {
+  r := vlist_rows(l);
+  if i < 0 || i >= l[0].n { return ""; }
+  return cast(string) r[i].id[0..<r[i].id_n];
+}
+vlist_find :: (l: [] VList, id: string) -> int {
+  r := vlist_rows(l);
+  key := ifx id.count > EL_ID then cast(string) id[0..<EL_ID] else id;
+  for i: 0..<l[0].n { if r[i].id_n == key.count && cast(string) r[i].id[0..<r[i].id_n] == key { return i; } }
+  return -1;
+}
+
+// A frame's rows start: the frame before's are kept to read heights from.
+vlist_begin :: (l: [] VList) {
+  l[0].side = 1 - l[0].side;
+  l[0].before = l[0].n; l[0].n = 0; l[0].cursor = 0;
+}
+// The next row in data order. Its height is the one its id had. Returns its
+// index, or -1 when the list is full (counted).
+vlist_row :: (l: [] VList, id: string, stamp: int) -> int {
+  r := vlist_rows(l); old := vlist_old(l);
+  if l[0].n >= r.count { l[0].lost += 1; return -1; }
+  key := ifx id.count > EL_ID then cast(string) id[0..<EL_ID] else id;
+  row: VRow;
+  row.id_n = el_copy(row.id[..], key);
+  row.stamp = stamp; row.h = l[0].estimate;
+  // the id is most often where the last one left off; otherwise search
+  at := -1;
+  c := l[0].cursor;
+  if c < l[0].before && old[c].id_n == key.count && cast(string) old[c].id[0..<old[c].id_n] == key { at = c; }
+  else { for i: 0..<l[0].before { if old[i].id_n == key.count && cast(string) old[i].id[0..<old[i].id_n] == key { at = i; break; } } }
+  if at >= 0 {
+    row.h = old[at].h;
+    row.known = old[at].known && old[at].stamp == stamp;
+    l[0].cursor = at + 1;
+  }
+  i := l[0].n;
+  r[i] = row; l[0].n += 1;
+  return i;
+}
+vlist_height :: (l: [] VList, i: int) -> f32 {
+  r := vlist_rows(l);
+  if i < 0 || i >= l[0].n { return 0; }
+  return r[i].h;
+}
+// The content offset of row i's top.
+vlist_offset :: (l: [] VList, i: int) -> f32 {
+  r := vlist_rows(l);
+  at: f32 = 0;
+  for k: 0..<i { if k < l[0].n { at += r[k].h; } }
+  return at;
+}
+// Places the rows for a viewport: the content's height, the offset at the
+// viewport's top (the end while following, else from the anchor, kept inside
+// the content) and the rows that meet the viewport and `overscan` past it.
+vlist_place :: (l: [] VList, viewport: f32, overscan: f32) {
+  r := vlist_rows(l);
+  l[0].viewport = viewport;
+  content: f32 = 0; anchor_at: f32 = -1;
+  anchor := cast(string) l[0].anchor[0..<l[0].anchor_n];
+  for i: 0..<l[0].n {
+    if anchor_at < 0 && l[0].anchor_n > 0 && r[i].id_n == l[0].anchor_n && cast(string) r[i].id[0..<r[i].id_n] == anchor { anchor_at = content; }
+    content += r[i].h;
+  }
+  l[0].content = content;
+  most := scroll_max(content, viewport);
+  top := l[0].top;
+  if l[0].follow { top = most; }
+  else if anchor_at >= 0 { top = anchor_at - l[0].anchor_off; }
+  if top > most { top = most; }
+  if top < 0 { top = 0; }
+  l[0].top = top;
+  first := l[0].n; last := l[0].n;
+  at: f32 = 0;
+  for i: 0..<l[0].n {
+    if first == l[0].n && at + r[i].h > top - overscan { first = i; }
+    if at >= top + viewport + overscan { last = i; break; }
+    at += r[i].h;
+  }
+  l[0].first = first; l[0].last = last;
+}
+// A placed row whose height is not measured for its stamp, or -1.
+vlist_need :: (l: [] VList) -> int {
+  r := vlist_rows(l);
+  for i: l[0].first..<l[0].last { if !r[i].known { return i; } }
+  return -1;
+}
+vlist_measured :: (l: [] VList, i: int, h: f32) {
+  r := vlist_rows(l);
+  if i < 0 || i >= l[0].n { return; }
+  r[i].h = ifx h > 0 then h else 0.0f32; r[i].known = true;
+}
+// Row i's top in the viewport's coordinates (0: the viewport's top).
+vlist_y :: (l: [] VList, i: int) -> f32 { return vlist_offset(l, i) - l[0].top; }
+// After the last vlist_place of a frame: the anchor becomes the first row
+// that reaches into the viewport, and the list follows the end when it is
+// there (within `slack`).
+vlist_settle :: (l: [] VList, slack: f32) {
+  r := vlist_rows(l);
+  at: f32 = 0;
+  l[0].anchor_n = 0; l[0].anchor_off = 0;
+  for i: 0..<l[0].n {
+    if at + r[i].h > l[0].top {
+      l[0].anchor_n = el_copy(l[0].anchor[..], cast(string) r[i].id[0..<r[i].id_n]);
+      l[0].anchor_off = at - l[0].top;
+      break;
+    }
+    at += r[i].h;
+  }
+  if scroll_at_end(l[0].content, l[0].viewport, l[0].top, slack) { l[0].follow = true; }
+}
+// A scroll by dy (positive: toward the end). It takes effect at the next vlist_place.
+vlist_scroll :: (l: [] VList, dy: f32) {
+  if l[0].n == 0 || dy == 0 { return; }
+  l[0].follow = false;
+  l[0].anchor_off -= dy;
+  l[0].top += dy;
+}
+// A scroll to an absolute content offset (a platform scroll view drives it).
+vlist_scroll_to :: (l: [] VList, top: f32) { vlist_scroll(l, top - l[0].top); }
+// Back to the end, following it.
+vlist_jump :: (l: [] VList) { l[0].follow = true; }
+// Holds a row where it is on screen while its height changes.
+vlist_pin :: (l: [] VList, id: string) {
+  i := vlist_find(l, id);
+  if i < 0 { return; }
+  l[0].follow = false;
+  l[0].anchor_n = el_copy(l[0].anchor[..], vlist_id(l, i));
+  l[0].anchor_off = vlist_offset(l, i) - l[0].top;
+}
+// The viewport's height changes: what is at its bottom edge stays there.
+vlist_viewport :: (l: [] VList, viewport: f32) {
+  if !l[0].follow && l[0].viewport > 0 { d := l[0].viewport - viewport; l[0].anchor_off -= d; l[0].top += d; }
+  l[0].viewport = viewport;
+}
+
+// ---------------------------------------------------------------- checks
+
+VListStore :: struct { a: [32] VRow; b: [32] VRow; }
+// One frame over ids, every placed row measured as `h` plus its stamp. Returns the rows realized.
+vlist_test_frame :: (l: [] VList, ids: [] string, stamps: [] int, viewport: f32, h: f32) -> int {
+  vlist_begin(l);
+  for k: 0..<ids.count { _ := vlist_row(l, ids[k], stamps[k]); }
+  vlist_place(l, viewport, 0);
+  guard := 0;
+  r := vlist_rows(l);
+  while guard < 64 { i := vlist_need(l); if i < 0 { break; } vlist_measured(l, i, h + cast(f32) r[i].stamp); vlist_place(l, viewport, 0); guard += 1; }
+  vlist_settle(l, 1);
+  return l[0].last - l[0].first;
+}
+
+#test "only the rows that meet the viewport are realized, and the list follows the end" {
+  st: [1] VListStore; ls := [1] VList.[vlist_over(st[0].a[..], st[0].b[..], 20)]; l := ls[..];
+  ids := [8] string.["message.1", "message.2", "tool.a", "message.3", "message.4", "message.5", "message.6", "message.7"];
+  stamps: [8] int;
+  n := vlist_test_frame(l, ids[..], stamps[..], 50, 20);
+  #assert l[0].n == 8 && l[0].content == 160 && l[0].top == 110 && l[0].follow && n == 3 && l[0].first == 5 && l[0].last == 8;
+  #assert vlist_y(l, 7) == 30 && vlist_y(l, 5) == -10;
+  // the first five were never measured: their height is the estimate
+  #assert !vlist_rows(l)[0].known && vlist_rows(l)[7].known;
+  // one more row arrives: the end is still at the viewport's end
+  more := [9] string.["message.1", "message.2", "tool.a", "message.3", "message.4", "message.5", "message.6", "message.7", "message.8"]; ms: [9] int;
+  _ := vlist_test_frame(l, more[..], ms[..], 50, 20);
+  #assert l[0].top == 130 && l[0].follow && l[0].last == 9;
+}
+#test "a height follows its id through insertion and reordering" {
+  st: [1] VListStore; ls := [1] VList.[vlist_over(st[0].a[..], st[0].b[..], 20)]; l := ls[..];
+  ids := [3] string.["a", "b", "c"]; stamps := [3] int.[0, 5, 9];
+  _ := vlist_test_frame(l, ids[..], stamps[..], 500, 20);
+  #assert vlist_height(l, 0) == 20 && vlist_height(l, 1) == 25 && vlist_height(l, 2) == 29;
+  // c first, a new row, then b and a: each keeps its own height and stays measured
+  next := [4] string.["c", "new", "b", "a"]; ns := [4] int.[9, 1, 5, 0];
+  vlist_begin(l); for k: 0..<4 { _ := vlist_row(l, next[k], ns[k]); }
+  #assert vlist_height(l, 0) == 29 && vlist_rows(l)[0].known && vlist_height(l, 2) == 25 && vlist_rows(l)[2].known && vlist_height(l, 3) == 20 && vlist_rows(l)[3].known;
+  #assert vlist_height(l, 1) == 20 && !vlist_rows(l)[1].known;
+  // a changed stamp keeps the old height as the estimate until it is measured again
+  vlist_begin(l); cs := [4] int.[9, 1, 6, 0]; for k: 0..<4 { _ := vlist_row(l, next[k], cs[k]); }
+  #assert vlist_height(l, 2) == 25 && !vlist_rows(l)[2].known && vlist_rows(l)[0].known;
+}
+#test "a reader above the end keeps their place when rows arrive, and a pinned row stays put while it grows" {
+  st: [1] VListStore; ls := [1] VList.[vlist_over(st[0].a[..], st[0].b[..], 20)]; l := ls[..];
+  ids := [6] string.["m1", "m2", "tool.x", "m3", "m4", "m5"]; stamps: [6] int;
+  _ := vlist_test_frame(l, ids[..], stamps[..], 60, 20);
+  #assert l[0].top == 60 && l[0].follow;
+  vlist_scroll(l, -30);
+  _ := vlist_test_frame(l, ids[..], stamps[..], 60, 20);
+  #assert l[0].top == 30 && !l[0].follow && cast(string) l[0].anchor[0..<l[0].anchor_n] == "m2" && l[0].anchor_off == -10;
+  y := vlist_y(l, 2); #assert y == 10;
+  // a row arrives at the end and one is inserted at the start: tool.x does not move
+  grown := [8] string.["m0", "m1", "m2", "tool.x", "m3", "m4", "m5", "m6"]; gs: [8] int;
+  _ := vlist_test_frame(l, grown[..], gs[..], 60, 20);
+  #assert vlist_y(l, 3) == y && !l[0].follow && l[0].top == 50;
+  // the tool row expands by 40: pinned, its top stays and what follows moves down
+  vlist_pin(l, "tool.x"); gs[3] = 40;
+  _ := vlist_test_frame(l, grown[..], gs[..], 60, 20);
+  #assert vlist_y(l, 3) == y && vlist_height(l, 3) == 60 && vlist_y(l, 4) == y + 60;
+  // the viewport loses 20 to the composer: the row at its bottom edge stays at the bottom edge
+  bottom := vlist_y(l, 3) + 60 - 60;
+  vlist_viewport(l, 40);
+  _ := vlist_test_frame(l, grown[..], gs[..], 40, 20);
+  #assert vlist_y(l, 3) + 60 - 40 == bottom;
+  // jump to latest follows the end again; a short scroll back inside the slack still counts as the end
+  vlist_jump(l);
+  _ := vlist_test_frame(l, grown[..], gs[..], 40, 20);
+  #assert l[0].follow && l[0].top == l[0].content - 40;
+}
+#test "content shorter than the viewport starts at the top, an absolute scroll is kept inside the content, and a full list counts what it lost" {
+  st: [1] VListStore; ls := [1] VList.[vlist_over(st[0].a[0..<2], st[0].b[0..<2], 20)]; l := ls[..];
+  ids := [3] string.["a", "b", "c"]; stamps: [3] int;
+  n := vlist_test_frame(l, ids[..], stamps[..], 100, 20);
+  #assert l[0].n == 2 && l[0].lost == 1 && l[0].top == 0 && n == 2 && l[0].follow && vlist_y(l, 1) == 20;
+  vlist_scroll_to(l, 500);
+  _ := vlist_test_frame(l, ids[0..<2], stamps[0..<2], 100, 20);
+  #assert l[0].top == 0 && l[0].follow && vlist_find(l, "b") == 1 && vlist_find(l, "zz") == -1 && vlist_id(l, 9) == "";
+  #assert vlist_test_frame(l, ids[0..<0], stamps[0..<0], 100, 20) == 0 && l[0].content == 0 && vlist_need(l) == -1;
+}

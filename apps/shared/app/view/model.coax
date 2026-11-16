@@ -1,0 +1,231 @@
+// What the chat page shows, as an ordered list of rows (GitHub #13645, for
+// #13620). view_build reads the current conversation (DurableChat: its saved
+// messages, the turn in flight and its task) and a few facts the app core
+// works out (ViewFacts), and writes ViewModel: one ViewRow for each thing on
+// the page, top to bottom, each under a stable id.
+//
+// Nothing here paints, calls a host or changes the conversation. A row holds
+// what kind of thing it is and where its text lives (a saved message's index
+// in the history page, a tool call's part in the task's session); page.coax
+// reads the text when it paints the row. Text the model makes up itself is a
+// constant.
+//
+// The order:
+//   - the saved messages of the history page, oldest first;
+//   - the person's message of the turn in flight while it is not saved yet;
+//   - the task of the turn in flight right after that turn's message: its
+//     header line, each tool call, the permission prompt after the call it
+//     is for, its state line and, once it ends, its result line;
+//   - the answer as it arrives, or the typing mark while there is none and
+//     no task speaks for the turn;
+//   - what went wrong: a failed or lost answer, a request whose outcome is
+//     unknown (with Try again), and the core's note.
+//
+// The facts come in this file's own numbers (VIEW_SEND_* and the rest) so
+// that only core.coax names the app core's.
+//   coax/bin/coax test apps/shared/app/view/model.coax
+
+#load "../../durable-chat.coax";
+#load "../../../../components/core/elements.coax";
+
+VIEW_ROWS :: 384;              // rows one page holds; more are counted in ViewModel.lost
+VIEW_HISTORY :: 32;            // a history page's messages (CtHistory)
+VIEW_MESSAGE_TEXT :: 131087;   // bytes a decoded message can take (ctr_history_read's own scratch)
+
+// Row kinds.
+VK_MESSAGE :: 1;      // a saved message; index: its place in the history page
+VK_SENT :: 2;         // the person's message of the turn in flight, not saved yet
+VK_REPLY :: 3;        // the answer of the turn in flight as it arrives
+VK_TYPING :: 4;       // the turn runs and nothing has arrived
+VK_TASK_HEAD :: 5;    // the task's computer, engine, model and effort
+VK_TOOL :: 6;         // a tool call; index: its part in the task's session
+VK_PERMISSION :: 7;   // the task waits for Allow or Deny; index: the part it asks about (-1: none)
+VK_TASK_STATE :: 8;   // the task's state line
+VK_TASK_RESULT :: 9;  // the ended task's time, calls and cost
+VK_NOTICE :: 10;      // something went wrong; text says what, act what its action does
+
+// What a notice's action asks for.
+VIEW_DO_NONE :: 0;
+VIEW_DO_RETRY :: 1;       // send the kept request again, byte for byte
+VIEW_DO_RECONNECT :: 2;   // read the conversation and its task again
+
+// The composer's Send (the core's app_send_state).
+VIEW_SEND_EMPTY :: 0; VIEW_SEND_LOGIN :: 1; VIEW_SEND_WAIT :: 2; VIEW_SEND_STOP :: 3; VIEW_SEND_READY :: 4;
+// Stop (app_stop_state).
+VIEW_STOP_NONE :: 0; VIEW_STOP_READY :: 1; VIEW_STOP_ASKED :: 2; VIEW_STOP_UNCERTAIN :: 3; VIEW_STOP_SEEN :: 4;
+// The permission prompt (app_permission_state).
+VIEW_PERMIT_NONE :: 0; VIEW_PERMIT_READING :: 1; VIEW_PERMIT_READY :: 2; VIEW_PERMIT_SENT :: 3; VIEW_PERMIT_UNCERTAIN :: 4;
+
+// What the app core works out for the page (core.coax fills it).
+ViewFacts :: struct {
+  send: int;            // VIEW_SEND_*
+  stop: int;            // VIEW_STOP_*
+  permit: int;          // VIEW_PERMIT_*
+  allowing: bool;       // the answer on its way (or uncertain) is Allow
+  note: string;         // what we tell the person about the last thing that went wrong ("": nothing)
+}
+
+// The words of the notices the model makes up.
+VIEW_W_SEND_UNSURE :: "We could not confirm that your message was sent.";
+VIEW_W_STOP_UNSURE :: "We could not confirm that Stop reached the task.";
+VIEW_W_FAILED :: "The reply failed.";
+VIEW_W_LOST :: "We lost track of this reply.";
+VIEW_W_STOPPED :: "Stopped.";
+
+ViewRow :: struct {
+  kind: int;
+  id: [EL_ID] u8; id_n: int;
+  index: int;           // VK_MESSAGE: the history page's message; VK_TOOL, VK_PERMISSION: the session part
+  assistant: bool;      // VK_MESSAGE: the agent wrote it
+  stamp: int;           // changes whenever the row's height may change
+  text: string;         // VK_NOTICE: what to say (a constant, or the core's note)
+  act: int;             // VK_NOTICE: VIEW_DO_*
+}
+
+// One saved message's identity, decoded once for each history page.
+ViewSaved :: struct { id: [EL_ID] u8; id_n: int; turn: [36] u8; turn_n: int; assistant: bool; bytes: int; ok: bool; }
+
+ViewModel :: struct {
+  rows: [VIEW_ROWS] ViewRow; n: int;
+  lost: int;                    // rows that did not fit this build
+  empty: bool;                  // nothing to show: the empty conversation
+  rejoining: bool;              // a conversation is open and not read yet: the reconnecting banner
+  // the decoded identities of the history page, and what they were decoded from
+  saved: [VIEW_HISTORY] ViewSaved; saved_n: int;
+  key_id: [36] u8; key_revision: int; key_raw: int; key_n: int; key_set: bool;
+  scratch: [1] CtMessage; text: [VIEW_MESSAGE_TEXT] u8;
+}
+
+// ---------------------------------------------------------------- ids
+
+view_row_id :: (vm: [] ViewModel, i: int) -> string { return ifx i >= 0 && i < vm[0].n then cast(string) vm[0].rows[i].id[0..<vm[0].rows[i].id_n] else ""; }
+// The last `n` bytes of a reference: enough to tell turns apart inside one conversation.
+view_tail :: (s: string, n: int) -> string { return ifx s.count > n then cast(string) s[s.count - n..<s.count] else s; }
+VIEW_TURN_TAIL :: 16;   // bytes of a turn's reference an id keeps
+
+// A saved message's id: "m.<turn>.u" or "m.<turn>.a"; a message from before turns, "m.<its id's tail>".
+view_saved_id :: (out: [] u8, msg: [] CtMessage) -> int {
+  m := msg[0..<1];
+  if m[0].turn_n > 0 {
+    n := el_put(out, 0, "m."); n = el_put(out, n, view_tail(cast(string) m[0].turn[0..<m[0].turn_n], VIEW_TURN_TAIL));
+    return el_put(out, n, ifx m[0].assistant then ".a" else ".u");
+  }
+  n := el_put(out, 0, "m."); return el_put(out, n, view_tail(cast(string) m[0].id[0..<m[0].id_n], EL_ID - 8));
+}
+// The id of a turn's task row: "task.<turn>.<part>".
+view_task_id :: (out: [] u8, turn: string, part: string) -> int {
+  n := el_put(out, 0, "task."); n = el_put(out, n, view_tail(turn, VIEW_TURN_TAIL)); n = el_put(out, n, "."); return el_put(out, n, part);
+}
+// A tool call's id: "tool.<turn>.<part index>".
+view_tool_id :: (out: [] u8, turn: string, part: int) -> int {
+  n := el_put(out, 0, "tool."); n = el_put(out, n, view_tail(turn, VIEW_TURN_TAIL)); n = el_put(out, n, "."); return el_put_i(out, n, part);
+}
+
+// ---------------------------------------------------------------- building
+
+view_add :: (vm: [] ViewModel, kind: int, id: string, index: int, stamp: int) -> int {
+  if vm[0].n >= VIEW_ROWS { vm[0].lost += 1; return -1; }
+  i := vm[0].n;
+  vm[0].rows[i] = ViewRow.{kind = kind, index = index, stamp = stamp};
+  vm[0].rows[i].id_n = el_copy(vm[0].rows[i].id[..], id);
+  vm[0].n += 1;
+  return i;
+}
+view_notice :: (vm: [] ViewModel, id: string, text: string, act: int) {
+  i := view_add(vm, VK_NOTICE, id, -1, text.count * 4 + act);
+  if i >= 0 { vm[0].rows[i].text = text; vm[0].rows[i].act = act; }
+}
+
+// The history page's identities, decoded again only when the page changed.
+view_saved :: (vm: [] ViewModel, h: [] CtHistory) {
+  id := cast(string) h[0].id[..];
+  if vm[0].key_set && vm[0].key_revision == h[0].revision && vm[0].key_raw == h[0].raw_n && vm[0].key_n == h[0].n && cast(string) vm[0].key_id[..] == id { return; }
+  vm[0].saved_n = 0;
+  count := ifx h[0].n < VIEW_HISTORY then h[0].n else VIEW_HISTORY;
+  for i: 0..<count {
+    s: ViewSaved;
+    if ctr_history_message(h, i, vm[0].scratch[..], vm[0].text[..]) {
+      m := vm[0].scratch[..];
+      s.ok = true; s.assistant = m[0].assistant; s.bytes = m[0].bytes;
+      s.id_n = view_saved_id(s.id[..], m);
+      s.turn_n = el_copy(s.turn[..], cast(string) m[0].turn[0..<m[0].turn_n]);
+    }
+    vm[0].saved[i] = s; vm[0].saved_n += 1;
+  }
+  vm[0].key_set = true; vm[0].key_revision = h[0].revision; vm[0].key_raw = h[0].raw_n; vm[0].key_n = h[0].n;
+  _ := el_copy(vm[0].key_id[..], id);
+}
+view_saved_has :: (vm: [] ViewModel, turn: string, assistant: bool) -> bool {
+  if turn.count == 0 { return false; }
+  for i: 0..<vm[0].saved_n { s := vm[0].saved[i]; if s.ok && s.assistant == assistant && cast(string) s.turn[0..<s.turn_n] == turn { return true; } }
+  return false;
+}
+
+// The task of the turn in flight: whether it speaks for `turn`.
+view_task_shown :: (d: [] DurableChat, turn: string) -> bool {
+  n := d[0].native[..];
+  return turn.count > 0 && n[0].selected && n[0].bound && n[0].has_status && cast(string) n[0].turn[..] == turn;
+}
+view_task_rows :: (vm: [] ViewModel, d: [] DurableChat, turn: string, f: ViewFacts) {
+  n := d[0].native[..]; st := n[0].status[0];
+  id: [EL_ID] u8;
+  _ := view_add(vm, VK_TASK_HEAD, cast(string) id[0..<view_task_id(id[..], turn, "head")], -1, 0);
+  asking := -1;
+  if n[0].has_session {
+    s := n[0].shown[..];
+    if nta_permission(n) { asking = s[0].asking; }
+    for k: 0..<s[0].n {
+      p := s[0].parts[k];
+      if p.kind != P_TOOL { continue; }
+      _ := view_add(vm, VK_TOOL, cast(string) id[0..<view_tool_id(id[..], turn, k)], k, p.output.count * 8 + p.input.count * 2 + (ifx p.resolved then 1 else 0) + (ifx p.failed then 2 else 0) + (ifx k == asking then 4 else 0));
+      if k == asking && f.permit != VIEW_PERMIT_NONE { _ := view_add(vm, VK_PERMISSION, cast(string) id[0..<view_task_id(id[..], turn, "permission")], k, f.permit * 8 + p.arg.count); }
+    }
+  }
+  // a prompt the session does not show yet still asks
+  if f.permit != VIEW_PERMIT_NONE && (asking < 0 || !n[0].has_session) { _ := view_add(vm, VK_PERMISSION, cast(string) id[0..<view_task_id(id[..], turn, "permission")], -1, f.permit * 8); }
+  _ := view_add(vm, VK_TASK_STATE, cast(string) id[0..<view_task_id(id[..], turn, "state")], -1, st.state * 8 + (ifx st.stop then 1 else 0) + st.error.count * 16);
+  if xt_terminal(st.state) && n[0].has_session { _ := view_add(vm, VK_TASK_RESULT, cast(string) id[0..<view_task_id(id[..], turn, "result")], -1, 0); }
+}
+
+// Build the page's rows from the conversation and the core's facts.
+view_build :: (vm: [] ViewModel, d: [] DurableChat, f: ViewFacts) {
+  vm[0].n = 0; vm[0].lost = 0;
+  h := d[0].history[..];
+  if d[0].loaded { view_saved(vm, h); } else { vm[0].saved_n = 0; vm[0].key_set = false; }
+  turn := ifx d[0].has_view then cast(string) d[0].view[0].turn[..] else "";
+  task := view_task_shown(d, turn);
+  task_placed := false;
+  for i: 0..<vm[0].saved_n {
+    s := vm[0].saved[i];
+    if !s.ok { continue; }
+    r := view_add(vm, VK_MESSAGE, cast(string) s.id[0..<s.id_n], i, s.bytes);
+    if r >= 0 { vm[0].rows[r].assistant = s.assistant; }
+    if task && !task_placed && !s.assistant && cast(string) s.turn[0..<s.turn_n] == turn { view_task_rows(vm, d, turn, f); task_placed = true; }
+  }
+  // the person's message of the turn in flight
+  sent := d[0].submitted_n > 0 && (d[0].pending == 1 || (d[0].has_view && !view_saved_has(vm, turn, false)));
+  if sent { _ := view_add(vm, VK_SENT, "chat.sent", -1, d[0].submitted_n); }
+  if task && !task_placed { view_task_rows(vm, d, turn, f); task_placed = true; }
+  // the answer of the turn in flight
+  if d[0].has_view && !view_saved_has(vm, turn, true) {
+    v := d[0].view[..];
+    if v[0].bytes > 0 { _ := view_add(vm, VK_REPLY, "chat.reply", -1, v[0].bytes); }
+    else if dca_working(d) && !task { _ := view_add(vm, VK_TYPING, "chat.typing", -1, 0); }
+    if v[0].state == CT_FAILED { view_notice(vm, "chat.failed", ifx v[0].ne > 0 then cast(string) v[0].error[0..<v[0].ne] else VIEW_W_FAILED, VIEW_DO_NONE); }
+    else if v[0].state == CT_UNKNOWN { view_notice(vm, "chat.lost", VIEW_W_LOST, VIEW_DO_RECONNECT); }
+    else if v[0].state == CT_CANCELLED && !task { view_notice(vm, "chat.stopped", VIEW_W_STOPPED, VIEW_DO_NONE); }
+  }
+  // requests whose outcome is unknown: Try again sends the same bytes
+  if d[0].uncertain && d[0].pending == 1 { view_notice(vm, "chat.unsure", VIEW_W_SEND_UNSURE, VIEW_DO_RETRY); }
+  else if f.stop == VIEW_STOP_UNCERTAIN { view_notice(vm, "chat.unsure", VIEW_W_STOP_UNSURE, VIEW_DO_RETRY); }
+  if f.note.count > 0 { view_notice(vm, "chat.note", f.note, ifx d[0].id_n > 0 then VIEW_DO_RECONNECT else VIEW_DO_NONE); }
+  vm[0].rejoining = d[0].id_n > 0 && !d[0].loaded;
+  vm[0].empty = vm[0].n == 0 && !vm[0].rejoining;
+}
+
+view_find :: (vm: [] ViewModel, id: string) -> int {
+  for i: 0..<vm[0].n { if view_row_id(vm, i) == id { return i; } }
+  return -1;
+}
+
+#load "model-checks.coax" #test;
