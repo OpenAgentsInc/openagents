@@ -391,7 +391,7 @@ pv_at :: (x: [] Px, root: int, path: string) -> int #effects(all) {
 }
 // The value at path in the first of the trees (an export, then its template, then that one's...)
 // that states it, or -1 when none does.
-pv_find :: (x: [] Px, roots: [] int, path: string) -> int #effects(all) {
+pv_find :: (x: [] Px, roots: [] const int, path: string) -> int #effects(all) {
   for root: roots { n := pv_at(x, root, path); if n >= 0 { return n; } }
   return -1;
 }

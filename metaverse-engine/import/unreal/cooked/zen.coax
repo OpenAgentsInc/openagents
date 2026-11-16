@@ -230,7 +230,8 @@ zc_add :: (c: [] Zcat, h: string, file: string, uexp: int, ubulk: int) -> int #e
   if ok && c[0].bulks + pk.bulk_n > c[0].bulk.count { ok = false; }
   for k: 0..<pk.bulk_n {
     if !ok { break; }
-    e: ZcBulk; e.off = zr_s64(r[..]); _ = zr_s64(r[..]); e.size = zr_s64(r[..]);   // a duplicate offset is -1 when there is none e.flags = zr_u32(r[..]); _ = zr_u32(r[..]);
+    e: ZcBulk; e.off = zr_s64(r[..]); _ = zr_s64(r[..]); e.size = zr_s64(r[..]);   // the skipped one: a duplicate offset, -1 when there is none
+    e.flags = zr_u32(r[..]); _ = zr_u32(r[..]);
     c[0].bulk[c[0].bulks + k] = e;
   }
   ok = ok && r[0].ok;
