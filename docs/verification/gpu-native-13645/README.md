@@ -381,3 +381,24 @@ with whitespace/comments removed (preserving string literals); this changes
 verification ownership and adds grammar/property checks, not released behavior.
 The initial 21-mutant policy result above refers to the write/scope rules before
 this relocation.
+
+
+### Production API and resident delivery
+
+Cloud Build `7ee4502b-16c6-415a-8f00-912754ec0837` succeeded. The immutable
+image `us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/oa-api@sha256:42043ea6838e5c8ba7b080befeba9a5bef43155da4602709bad181906799e3da`
+passed migration and verified health/revision/image checks on staging
+`oa-api-staging-00242-rcd`, then production `oa-api-00172-fjj`, both at 100%
+traffic. Source is the same frozen `5651b2c4c5`; the prepared compiler output
+was emitted with the checked compiler on this Mac. This was production
+compilation, not running the API/Postgres test suite on the Mac.
+
+Production now recognizes GET `/api/chat/library/v1` and POST
+`/api/chat/environment/workspace/v1`; unauthenticated probes return 401.
+Account isolation and signed request behavior are covered by the tests above.
+The Mac resident executable SHA-256 is
+`535444a4e6c40ff19212af7702393f5ae9ad26a9ef8bcdbd96e6f62881a06218`;
+launchd points to its immutable version folder, with the prior executable
+preserved. The service was idle (zero busy sessions) before replacement.
+CoderOS remains offline; its upgrade and owner phone acceptance remain the
+explicit actions in `NEEDS_OWNER.md`.
