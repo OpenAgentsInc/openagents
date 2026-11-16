@@ -1,0 +1,51 @@
+// Splice Bots rules: the run's night-exit numbers, batteries fed and deaths per route (SpliceRunStats.h,
+// package B-14; GDD 04 UE-EXIT-10, risk 9). sr_stats_observe takes the night exit's running counts
+// each tick and counts what grew since the last look, per route.
+// The routes are the night exit's (ESpliceExitRoute); they move to night-exit.coax when it is ported.
+
+SR_ROUTE_UNDECIDED :: 0;   // on the open field, in E1 or in A1: both routes pass there
+SR_ROUTE_HALLWAYS :: 1;    // the long way through the west bays (WORLD-ARENA-03)
+SR_ROUTE_RAVE :: 2;        // the short way across the rave (WORLD-ARENA-02)
+SR_ROUTE_COUNT :: 3;
+
+SrRunStats :: struct { fed: [SR_ROUTE_COUNT] int; deaths: [SR_ROUTE_COUNT] int; }
+sr_stats_record_fed :: (s: [] SrRunStats, route: int, count: int) { s[0].fed[route] += ifx count > 0 then count else 0; }
+sr_stats_record_death :: (s: [] SrRunStats, route: int, count: int) { s[0].deaths[route] += ifx count > 0 then count else 0; }
+sr_stats_total_fed :: (s: SrRunStats) -> int { return s.fed[0] + s.fed[1] + s.fed[2]; }
+sr_stats_total_deaths :: (s: SrRunStats) -> int { return s.deaths[0] + s.deaths[1] + s.deaths[2]; }
+
+sr_put_text :: (out: [] u8, n: int, s: string) -> int { k := n; for c: s { if k < out.count { out[k] = c; k += 1; } } return k; }
+sr_put_int :: (out: [] u8, n: int, v: int) -> int {
+  d: [24] u8; m := 0; x := ifx v < 0 then -v else v; k := n;
+  if v < 0 && k < out.count { out[k] = '-'; k += 1; }
+  while true { d[m] = cast,trunc(u8) (48 + x % 10); m += 1; x = x / 10; if x == 0 { break; } }
+  while m > 0 { m -= 1; if k < out.count { out[k] = d[m]; k += 1; } }
+  return k;
+}
+sr_stats_part :: (out: [] u8, n: int, a: [SR_ROUTE_COUNT] int) -> int {
+  k := sr_put_text(out, n, "hallways="); k = sr_put_int(out, k, a[SR_ROUTE_HALLWAYS]);
+  k = sr_put_text(out, k, " rave="); k = sr_put_int(out, k, a[SR_ROUTE_RAVE]);
+  k = sr_put_text(out, k, " undecided="); k = sr_put_int(out, k, a[SR_ROUTE_UNDECIDED]);
+  return k;
+}
+// "fed hallways=1 rave=2 undecided=0; deaths hallways=0 rave=1 undecided=0", into out.
+sr_stats_summary :: (s: SrRunStats, out: [] u8) -> string {
+  k := sr_put_text(out, 0, "fed "); k = sr_stats_part(out, k, s.fed);
+  k = sr_put_text(out, k, "; deaths "); k = sr_stats_part(out, k, s.deaths);
+  return cast(string) out[0..<k];
+}
+
+// Turns the exit state's running counts into events (FSpliceRunStatsObserver).
+SrRunStatsObserver :: struct { totals: SrRunStats; last_fed: [SR_ROUTE_COUNT] int; last_deaths: [SR_ROUTE_COUNT] int; }
+// What grew per route since the last look (also added to the totals). fed and deaths are the night
+// exit state's FedOnRoute and DeathsOnRoute.
+sr_stats_observe :: (o: [] SrRunStatsObserver, fed: [SR_ROUTE_COUNT] int, deaths: [SR_ROUTE_COUNT] int) -> SrRunStats {
+  added: SrRunStats;
+  for r: 0..<SR_ROUTE_COUNT {
+    f := fed[r] - o[0].last_fed[r]; d := deaths[r] - o[0].last_deaths[r];
+    added.fed[r] = ifx f > 0 then f else 0; added.deaths[r] = ifx d > 0 then d else 0;
+    o[0].last_fed[r] = fed[r]; o[0].last_deaths[r] = deaths[r];
+    o[0].totals.fed[r] += added.fed[r]; o[0].totals.deaths[r] += added.deaths[r];
+  }
+  return added;
+}

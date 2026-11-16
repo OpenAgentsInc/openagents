@@ -1,0 +1,77 @@
+// Splice Bots rules: the save record, one checkpoint snapshot whole (SpliceRunSave.h, package C-03;
+// GDD 04 2.6 UE-SAVE-02, -03, -07, UE-INV-06, UE-CARDUI-06; GDD 02 7.4 S1, S2), and its validation
+// (SpliceRules::ValidateRunSave, defined in SpliceCheckpoint.cpp). Not held: Heat, standing enemies,
+// targets, attack timers. The C++ TArray fields are fixed-capacity lists here (SR_*_MAX).
+#load "inventory.coax";
+
+// GDD 04 2.1: the day's phases (ESpliceDayPhase).
+SR_PHASE_DAWN :: 0; SR_PHASE_DAY :: 1; SR_PHASE_DUSK :: 2; SR_PHASE_NIGHT :: 3;
+
+SR_NAMES_MAX :: 64;
+// A list of names (TArray<FName>): world-state tags, learned recipes, cards shown. Order kept.
+SrNames :: struct { n: int; v: [SR_NAMES_MAX] string; }
+sr_names_add :: (l: [] SrNames, s: string) -> bool { if l[0].n >= SR_NAMES_MAX { return false; } l[0].v[l[0].n] = s; l[0].n += 1; return true; }
+sr_names_has :: (l: SrNames, s: string) -> bool { for k: 0..<l.n { if l.v[k] == s { return true; } } return false; }
+sr_names_eq :: (a: SrNames, b: SrNames) -> bool { if a.n != b.n { return false; } for k: 0..<a.n { if a.v[k] != b.v[k] { return false; } } return true; }
+
+// GDD 02 7.4 S1 "Loose items": an item lying in the world that is not a level placement.
+SrLooseItem :: struct { stack: SrItemStack; location: D3; }
+// UE-SAVE-02: a charge point and the seconds left on its regrow timer (0 = ready).
+SrChargePointSave :: struct { id: string; seconds_to_ready: f32; }
+
+SR_ROBOTS_MAX :: 8;
+SR_BODIES_MAX :: 8;
+SR_LOOSE_MAX :: 32;
+SR_CHARGE_MAX :: 16;
+SrRobotList :: struct { n: int; v: [SR_ROBOTS_MAX] SrRobotInWorld; }
+sr_robots_add :: (l: [] SrRobotList, r: SrRobotInWorld) -> bool { if l[0].n >= SR_ROBOTS_MAX { return false; } l[0].v[l[0].n] = r; l[0].n += 1; return true; }
+sr_robots_remove_at :: (l: [] SrRobotList, at: int) { if at < 0 || at >= l[0].n { return; } for k: at..<l[0].n - 1 { l[0].v[k] = l[0].v[k + 1]; } l[0].n -= 1; l[0].v[l[0].n] = SrRobotInWorld.{}; }
+SrLooseList :: struct { n: int; v: [SR_LOOSE_MAX] SrLooseItem; }
+sr_loose_add :: (l: [] SrLooseList, s: SrLooseItem) -> bool { if l[0].n >= SR_LOOSE_MAX { return false; } l[0].v[l[0].n] = s; l[0].n += 1; return true; }
+SrChargeList :: struct { n: int; v: [SR_CHARGE_MAX] SrChargePointSave; }
+sr_charge_add :: (l: [] SrChargeList, c: SrChargePointSave) -> bool { if l[0].n >= SR_CHARGE_MAX { return false; } l[0].v[l[0].n] = c; l[0].n += 1; return true; }
+
+// GDD 02 7.4 S1 header: `splice.run.v2`; a v1 record is refused (S2).
+SR_RUN_SAVE_VERSION :: 2;
+// GDD 04 UE-SAVE-02 `FSpliceRunSave`.
+SrRunSave :: struct {
+  version: int = SR_RUN_SAVE_VERSION;
+  checkpoint: string;                 // SpliceCheckpointTags
+  her_transform: SrTransform;
+  phase: int = SR_PHASE_DAY;
+  world_tags: SrNames;                // walls open, boss down, pickups taken, robots harvested or taken
+  imperial_harvest_count: int;        // every third drops a banned piece
+  sniper_transform: SrTransform;
+  sniper_left_farm: bool;
+  grid: SrContainer;                  // 27
+  hotbar: SrContainer;                // 9
+  selected_hotbar_slot: int;
+  chest: SrContainer;                 // 27 (UE-INV-09)
+  her_robots: SrRobotList;            // every robot of hers in the world, with its core
+  placed_bodies: SrRobotList;         // her placed bodies with no core
+  loose_items: SrLooseList;
+  charge_points: SrChargeList;
+  learned_recipes: SrNames;
+  shown_cards: SrNames;
+  current_objective: string;
+  her_health: f32;
+  run_timer_seconds: f64;
+  deaths: int;
+}
+
+// GDD 02 7.4 S2: a record is read whole or refused. What the record alone can show: its version,
+// the containers' sizes and selected slot, stacks (a count of at least 1, a body of exactly 1), and
+// at most 3 robots with her (the Microduck, a pet, never counts). Stack sizes and unknown ids are the
+// loader's, which has items.csv.
+sr_validate_run_save :: (s: SrRunSave) -> int {
+  if s.version != SR_RUN_SAVE_VERSION { return SR_REFUSE_NOT_ALLOWED_HERE; }
+  if s.grid.size != SR_GRID_SLOTS || s.hotbar.size != SR_HOTBAR_SLOTS || s.chest.size != SR_CHEST_SLOTS
+    || s.selected_hotbar_slot < 0 || s.selected_hotbar_slot >= SR_HOTBAR_SLOTS { return SR_REFUSE_WRONG_SLOT; }
+  for c: [3] SrContainer.[s.grid, s.hotbar, s.chest] {
+    for k: 0..<c.size { t := c.slots[k]; if t.item != "" && (t.count <= 0 || (t.payload && t.count != 1)) { return SR_REFUSE_FULL; } }
+  }
+  crewed := 0;
+  for k: 0..<s.her_robots.n { if !sr_is_pet_robot(s.her_robots.v[k].state.robot_id) { crewed += 1; } }
+  if sr_crew_count(crewed, s.grid, s.hotbar, SrItemStack.{}) > SR_ROBOT_CREW_LIMIT { return SR_REFUSE_CREW_LIMIT; }
+  return SR_REFUSE_NONE;
+}

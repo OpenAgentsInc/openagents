@@ -1,0 +1,198 @@
+// Splice Bots rules: inventory operations (SpliceInventory.h, package R-05; GDD 04 6.2.3, GDD 02 27.3,
+// 27.6). Stack sizes and categories come from the item table (items.csv); an unknown item counts as
+// size 1. Every operation returns an SrInvResult: ok, a refusal, how many moved, the remainder that did
+// not fit and what was dropped (a world item).
+// Main holds the hotbar in slots 0..8 and the grid in 9..35 (GDD 02 27.3). Operations take the
+// container they act on as its own view, as the C++ passes FSpliceContainer&: pass inv[0].main[..]
+// for her own. The C++ refuses a Transfer from a container to itself by address; Coax views have no
+// address, so the caller passes two different containers.
+#load "recipes.coax";
+
+SR_HOTBAR_SLOTS :: 9;    // INV_HOTBAR
+SR_GRID_SLOTS :: 27;     // 9 by 3
+SR_TOTAL_SLOTS :: 36;    // INV_SLOTS
+SR_CHEST_SLOTS :: 27;    // CHEST_SLOTS
+SR_ROBOT_LIMIT :: 3;     // ROBOT_LIMIT
+
+SrInvResult :: struct { ok: bool; refusal: int; moved: int; remainder: SrItemStack; dropped: SrItemStack; }
+// Her inventory (FSpliceInventory): main (36 slots), the stack on the cursor, the selected hotbar
+// slot, and the item table.
+SrInventory :: struct { main: [1] SrContainer; cursor: SrItemStack; selected: int; defs: SrItemDefs; }
+sr_make_inventory :: () -> SrInventory { inv: SrInventory; inv.main[0] = sr_make_container(SR_TOTAL_SLOTS); return inv; }
+
+sr_stack_size_of :: (d: SrItemDefs, id: string) -> int {
+  k := sr_defs_find(d, id);
+  return ifx k >= 0 && d.rows[k].stack_size > 0 then d.rows[k].stack_size else 1;
+}
+sr_normalize :: (s: SrItemStack) -> SrItemStack { if s.item == "" || s.count <= 0 { return SrItemStack.{}; } return s; }
+sr_valid_slot :: (c: SrContainer, slot: int) -> bool { return slot >= 0 && slot < c.size; }
+sr_slot_accepts :: (d: SrItemDefs, c: SrContainer, slot: int, s: SrItemStack) -> bool {
+  if slot < 0 || slot >= c.size || c.filter[slot] == 0 { return true; }
+  k := sr_defs_find(d, s.item);
+  return k >= 0 && (c.filter[slot] & sr_filter_bit(d.rows[k].category)) != 0;
+}
+// GDD 02 27.6 rule 15: a stack-size-1 kind never merges; a payload never merges.
+sr_can_merge :: (d: SrItemDefs, a: SrItemStack, b: SrItemStack) -> bool {
+  return !sr_item_empty(a) && !sr_item_empty(b) && a.item == b.item && !a.payload && !b.payload && sr_stack_size_of(d, a.item) > 1;
+}
+// The number of used slots (the `n / 36` count).
+sr_count_used :: (c: SrContainer) -> int { n := 0; for k: 0..<c.size { if !sr_item_empty(c.slots[k]) { n += 1; } } return n; }
+
+sr_add_in_range :: (d: SrItemDefs, c: [] SrContainer, stack: SrItemStack, begin: int, end: int) -> SrInvResult {
+  r: SrInvResult;
+  rest := sr_normalize(stack);
+  if sr_item_empty(rest) { r.ok = true; return r; }
+  original := rest.count; max := sr_stack_size_of(d, rest.item);
+  e := ifx end < c[0].size then end else c[0].size; b := ifx begin > 0 then begin else 0;
+  // pass 1: merge into stacks of the kind with room
+  for i: b..<e {
+    if rest.count <= 0 { break; }
+    if sr_can_merge(d, c[0].slots[i], rest) {
+      take := max - c[0].slots[i].count; if rest.count < take { take = rest.count; }
+      if take > 0 { c[0].slots[i].count += take; rest.count -= take; }
+    }
+  }
+  // pass 2: the first empty slots that accept it
+  for i: b..<e {
+    if rest.count <= 0 { break; }
+    if sr_item_empty(c[0].slots[i]) && sr_slot_accepts(d, c[0], i, rest) {
+      take := ifx max < rest.count then max else rest.count;
+      c[0].slots[i] = rest; c[0].slots[i].count = take; rest.count -= take;
+    }
+  }
+  rest = sr_normalize(rest);
+  r.moved = original - rest.count; r.remainder = rest; r.ok = sr_item_empty(rest);
+  r.refusal = ifx r.ok then SR_REFUSE_NONE else SR_REFUSE_FULL;
+  return r;
+}
+// Pickup rule 18: merge into stacks with room, then the first empty slot. Overflow in remainder.
+sr_inv_add :: (d: SrItemDefs, c: [] SrContainer, stack: SrItemStack) -> SrInvResult { return sr_add_in_range(d, c, stack, 0, c[0].size); }
+sr_inv_can_add :: (d: SrItemDefs, c: SrContainer, stack: SrItemStack) -> bool { copy := [1] SrContainer.[c]; return sr_add_in_range(d, copy[..], stack, 0, c.size).ok; }
+
+// Left click, held stack, same item: add until full, the rest stays in hand.
+sr_inv_merge :: (inv: [] SrInventory, c: [] SrContainer, slot: int) -> SrInvResult {
+  r: SrInvResult;
+  if !sr_valid_slot(c[0], slot) || !sr_can_merge(inv[0].defs, c[0].slots[slot], inv[0].cursor) { r.refusal = SR_REFUSE_NOT_ALLOWED_HERE; return r; }
+  take := sr_stack_size_of(inv[0].defs, c[0].slots[slot].item) - c[0].slots[slot].count;
+  if inv[0].cursor.count < take { take = inv[0].cursor.count; }
+  if take > 0 { c[0].slots[slot].count += take; inv[0].cursor.count -= take; inv[0].cursor = sr_normalize(inv[0].cursor); }
+  r.ok = true; r.moved = ifx take > 0 then take else 0; r.remainder = inv[0].cursor;
+  return r;
+}
+// Left click, held stack, other item: swap.
+sr_inv_swap :: (inv: [] SrInventory, c: [] SrContainer, slot: int) -> SrInvResult {
+  r: SrInvResult;
+  if !sr_valid_slot(c[0], slot) || sr_item_empty(inv[0].cursor) { r.refusal = SR_REFUSE_NOT_ALLOWED_HERE; return r; }
+  if !sr_slot_accepts(inv[0].defs, c[0], slot, inv[0].cursor) { r.refusal = SR_REFUSE_WRONG_SLOT; return r; }
+  t := c[0].slots[slot]; c[0].slots[slot] = inv[0].cursor; inv[0].cursor = t;
+  r.ok = true; r.moved = c[0].slots[slot].count;
+  return r;
+}
+// Left click on a slot. Empty hand: pick up the stack. Held stack: place, merge or swap.
+sr_inv_click :: (inv: [] SrInventory, c: [] SrContainer, slot: int) -> SrInvResult {
+  r: SrInvResult;
+  if !sr_valid_slot(c[0], slot) { r.refusal = SR_REFUSE_NOT_ALLOWED_HERE; return r; }   // CONTRACT GAP: no bad-index refusal
+  if sr_item_empty(inv[0].cursor) {
+    r.ok = true;
+    if !sr_item_empty(c[0].slots[slot]) { inv[0].cursor = c[0].slots[slot]; r.moved = c[0].slots[slot].count; c[0].slots[slot] = SrItemStack.{}; }
+    return r;
+  }
+  if !sr_slot_accepts(inv[0].defs, c[0], slot, inv[0].cursor) { r.refusal = SR_REFUSE_WRONG_SLOT; return r; }
+  if sr_item_empty(c[0].slots[slot]) {
+    r.ok = true; r.moved = inv[0].cursor.count; c[0].slots[slot] = inv[0].cursor; inv[0].cursor = SrItemStack.{};
+    return r;
+  }
+  return ifx sr_can_merge(inv[0].defs, c[0].slots[slot], inv[0].cursor) then sr_inv_merge(inv, c, slot) else sr_inv_swap(inv, c, slot);
+}
+// Right click, empty hand: take half, rounded up (a body whole).
+sr_inv_split :: (inv: [] SrInventory, c: [] SrContainer, slot: int) -> SrInvResult {
+  r: SrInvResult;
+  if !sr_valid_slot(c[0], slot) || !sr_item_empty(inv[0].cursor) || sr_item_empty(c[0].slots[slot]) { return r; }
+  s := c[0].slots[slot];
+  take := ifx s.payload then s.count else (s.count + 1) / 2;
+  inv[0].cursor = s; inv[0].cursor.count = take;
+  s.count -= take; c[0].slots[slot] = sr_normalize(s);
+  r.ok = true; r.moved = take;
+  return r;
+}
+// Right click, held stack: place one (swap when the item differs).
+sr_inv_place_one :: (inv: [] SrInventory, c: [] SrContainer, slot: int) -> SrInvResult {
+  r: SrInvResult;
+  if !sr_valid_slot(c[0], slot) || sr_item_empty(inv[0].cursor) { return r; }
+  if !sr_slot_accepts(inv[0].defs, c[0], slot, inv[0].cursor) { r.refusal = SR_REFUSE_WRONG_SLOT; return r; }
+  if sr_item_empty(c[0].slots[slot]) {
+    if inv[0].cursor.payload { c[0].slots[slot] = inv[0].cursor; inv[0].cursor = SrItemStack.{}; }
+    else { c[0].slots[slot] = inv[0].cursor; c[0].slots[slot].count = 1; inv[0].cursor.count -= 1; inv[0].cursor = sr_normalize(inv[0].cursor); }
+    r.ok = true; r.moved = 1;
+    return r;
+  }
+  if sr_can_merge(inv[0].defs, c[0].slots[slot], inv[0].cursor) {
+    r.ok = true;
+    if c[0].slots[slot].count < sr_stack_size_of(inv[0].defs, c[0].slots[slot].item) {
+      c[0].slots[slot].count += 1; inv[0].cursor.count -= 1; inv[0].cursor = sr_normalize(inv[0].cursor); r.moved = 1;
+    }
+    return r;
+  }
+  return sr_inv_swap(inv, c, slot);
+}
+// Shift click: source slot into dest, merging first. dest_robots < 0 skips the 3-robot check.
+sr_inv_transfer :: (d: SrItemDefs, source: [] SrContainer, slot: int, dest: [] SrContainer, dest_robots: int) -> SrInvResult {
+  r: SrInvResult;
+  if !sr_valid_slot(source[0], slot) { r.refusal = SR_REFUSE_NOT_ALLOWED_HERE; return r; }
+  s := source[0].slots[slot];
+  if sr_item_empty(s) { return r; }
+  k := sr_defs_find(d, s.item);
+  if dest_robots >= 0 && k >= 0 && d.rows[k].category == SR_CAT_ROBOT_BODY && dest_robots >= SR_ROBOT_LIMIT { r.refusal = SR_REFUSE_CREW_LIMIT; return r; }   // USE-10
+  added := sr_inv_add(d, dest, s);
+  s.count -= added.moved; s = sr_normalize(s); source[0].slots[slot] = s;
+  r.moved = added.moved; r.remainder = s; r.ok = added.moved > 0;
+  r.refusal = ifx r.ok then SR_REFUSE_NONE else SR_REFUSE_FULL;
+  return r;
+}
+// Shift click inside the inventory: hotbar to grid and back.
+sr_inv_quick_move_within :: (d: SrItemDefs, c: [] SrContainer, slot: int) -> SrInvResult {
+  r: SrInvResult;
+  if !sr_valid_slot(c[0], slot) { r.refusal = SR_REFUSE_NOT_ALLOWED_HERE; return r; }
+  if sr_item_empty(c[0].slots[slot]) { return r; }
+  moving := c[0].slots[slot];
+  c[0].slots[slot] = SrItemStack.{};   // free the source so no rule picks it again
+  added := ifx slot < SR_HOTBAR_SLOTS then sr_add_in_range(d, c, moving, SR_HOTBAR_SLOTS, c[0].size) else sr_add_in_range(d, c, moving, 0, SR_HOTBAR_SLOTS);
+  moving.count -= added.moved; moving = sr_normalize(moving);
+  c[0].slots[slot] = moving;   // what did not fit goes back where it was
+  r.moved = added.moved; r.remainder = moving; r.ok = added.moved > 0;
+  r.refusal = ifx r.ok then SR_REFUSE_NONE else SR_REFUSE_FULL;
+  return r;
+}
+// Q (or Ctrl+Q): drop one (or the whole stack) from a slot. Driving refuses it.
+sr_inv_drop :: (c: [] SrContainer, slot: int, whole: bool, driving: bool) -> SrInvResult {
+  r: SrInvResult;
+  if !sr_valid_slot(c[0], slot) || driving { r.refusal = SR_REFUSE_NOT_ALLOWED_HERE; return r; }
+  s := c[0].slots[slot];
+  if sr_item_empty(s) { return r; }
+  n := ifx whole || s.payload then s.count else 1;
+  r.dropped = s; r.dropped.count = n;
+  s.count -= n; c[0].slots[slot] = sr_normalize(s);
+  r.moved = n; r.ok = true;
+  return r;
+}
+// Drop from the selected hotbar slot.
+sr_inv_drop_held :: (inv: [] SrInventory, whole: bool, driving: bool) -> SrInvResult { return sr_inv_drop(inv[0].main[..], inv[0].selected, whole, driving); }
+// Click outside the grids: drop the cursor stack (or one item of it).
+sr_inv_drop_cursor :: (inv: [] SrInventory, whole: bool) -> SrInvResult {
+  r: SrInvResult;
+  if sr_item_empty(inv[0].cursor) { return r; }
+  n := ifx whole || inv[0].cursor.payload then inv[0].cursor.count else 1;
+  r.dropped = inv[0].cursor; r.dropped.count = n;
+  inv[0].cursor.count -= n; inv[0].cursor = sr_normalize(inv[0].cursor);
+  r.moved = n; r.ok = true;
+  return r;
+}
+// The screen closes (27.6 rule 4): the cursor goes back by rule 18, the rest is dropped.
+sr_inv_close_screen :: (inv: [] SrInventory) -> SrInvResult {
+  r: SrInvResult; r.ok = true;
+  if sr_item_empty(inv[0].cursor) { inv[0].cursor = SrItemStack.{}; return r; }
+  added := sr_inv_add(inv[0].defs, inv[0].main[..], inv[0].cursor);
+  r.moved = added.moved; r.dropped = added.remainder;   // no room: it drops in front of her
+  inv[0].cursor = SrItemStack.{};
+  return r;
+}

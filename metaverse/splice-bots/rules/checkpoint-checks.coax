@@ -1,0 +1,136 @@
+// Parity checks for checkpoint.coax and run-save.coax: SpliceTests/Rules/SpliceCheckpointTests.cpp.
+// The parts that drive USpliceSaveSubsystem (its event handler, its slot bytes) and the record's
+// bytes wait for the save subsystem; the rules those parts call are checked here: a death restores
+// the last record whole, twice. rules.coax loads this file with `#load ... #test;`.
+
+CK_CORE :: "ITEM_CORE"; CK_DRILL_CARD :: "ITEM_CARD_DRILL";
+ck_yaw :: (deg: f64, at: D3) -> SrTransform {
+  h := deg * PI_D / 360.0;
+  t: SrTransform; t.rot = DQ.{x = 0.0, y = 0.0, z = sin(h), w = cos(h)}; t.pos = at;
+  return t;
+}
+ck_robot :: (id: string, name: string, health: f32, with_core: bool) -> SrRobotState {
+  r: SrRobotState;
+  r.robot_id = id; r.name = name; r.health = health; r.health_max = 100.0; r.move_energy = 42.5;
+  r.parts = sr_make_kit(4); r.parts.slots[1] = sr_stack(ITEM_SCRAP_PART, 2);
+  r.cards = sr_make_kit(3); r.cards.slots[0] = sr_stack(CK_DRILL_CARD, 1);
+  if with_core { r.has_core = true; r.core = sr_stack(CK_CORE, 1); }
+  return r;
+}
+ck_in_world :: (r: SrRobotState, at: D3, mode: int, spawn: string) -> SrRobotInWorld {
+  return SrRobotInWorld.{state = r, transform = ck_yaw(37.0, at), mode = mode, spawn_id = spawn};
+}
+// Her and the world at the drill mech: two live robots, Digger's body in her grid, things in the
+// hotbar and the chest.
+ck_state :: (s: [] SrCheckpointState) {
+  sr_make_checkpoint_state(s);
+  s[0].her_transform = ck_yaw(90.0, d3(1200.0, -340.0, 88.0)); s[0].her_health = 63.25;
+  m := s[0].inventory.main[..];
+  m[0].slots[0] = sr_item(ITEM_BATTERY, 3); m[0].slots[4] = sr_item(ITEM_SCRAP_PART, 17);
+  m[0].slots[12] = sr_pack_robot(ITEM_BODY_DIGGER, ck_robot(ROBOT_DIGGER, "Digger", 55.0, true)).body;
+  m[0].slots[35] = sr_item(CK_DRILL_CARD, 1);
+  s[0].inventory.selected = 4;
+  s[0].chest = sr_make_container(SR_CHEST_SLOTS); s[0].chest.slots[2] = sr_item(ITEM_SCRAP_PART, 40);
+  rl := [1] SrRobotList.[s[0].her_robots];
+  _ = sr_robots_add(rl[..], ck_in_world(ck_robot(ROBOT_DRILL_MECH, "Mech", 90.0, true), d3(1300.0, -300.0, 88.0), SR_MODE_FOLLOW, ""));
+  _ = sr_robots_add(rl[..], ck_in_world(ck_robot("ROBOT_SCOUT", "Scout", 12.0, true), d3(400.0, 20.0, 0.0), SR_MODE_STAY, "SPAWN_SCOUT_01"));
+  s[0].her_robots = rl[0];
+  pl := [1] SrRobotList.[s[0].placed_bodies];
+  _ = sr_robots_add(pl[..], ck_in_world(ck_robot(ROBOT_DIGGER, "Spare", 5.0, false), d3(10.0, 10.0, 0.0), SR_MODE_STAY, ""));
+  s[0].placed_bodies = pl[0];
+  s[0].phase = SR_PHASE_DUSK;
+  tags := [1] SrNames.[s[0].world_tags]; _ = sr_names_add(tags[..], "World.Wall.Open.A"); _ = sr_names_add(tags[..], "World.Pickup.Taken.P3"); s[0].world_tags = tags[0];
+  s[0].imperial_harvest_count = 2;
+  s[0].sniper_transform = sr_transform_at(d3(-500.0, 0.0, 0.0)); s[0].sniper_left_farm = true;
+  lo := [1] SrLooseList.[s[0].loose_items]; _ = sr_loose_add(lo[..], SrLooseItem.{stack = sr_item(ITEM_SCRAP_PART, 5), location = d3(1.0, 2.0, 3.0)}); s[0].loose_items = lo[0];
+  ch := [1] SrChargeList.[s[0].charge_points]; _ = sr_charge_add(ch[..], SrChargePointSave.{id = "CP_01", seconds_to_ready = 12.5}); s[0].charge_points = ch[0];
+  le := [1] SrNames.[s[0].learned_recipes]; _ = sr_names_add(le[..], RECIPE_DIGGER); _ = sr_names_add(le[..], RECIPE_DRILL_MECH); s[0].learned_recipes = le[0];
+  sc := [1] SrNames.[s[0].shown_cards]; _ = sr_names_add(sc[..], "CARD_TUTORIAL_MOVE"); s[0].shown_cards = sc[0];
+  s[0].current_objective = "OBJ_FIND_LAB"; s[0].run_timer_seconds = 734.125; s[0].deaths = 1;
+}
+
+#test "Splice.Rules.Checkpoint.RoundTripKeepsHealthInventoryAndCrew" {
+  st: [1] SrCheckpointState; ck_state(st[..]); state := st[0];
+  rec: [1] SrRunSave; sr_build_run_save(CHECKPOINT_TOOK_DRILL_MECH, state, rec[..]); record := rec[0];
+  #assert record.version == SR_RUN_SAVE_VERSION && record.hotbar.size == SR_HOTBAR_SLOTS && record.grid.size == SR_GRID_SLOTS;
+  #assert sr_is_robot_body(record.grid.slots[3]) && sr_validate_run_save(record) == SR_REFUSE_NONE;
+  bk: [1] SrCheckpointState; sr_restore_run_save(record, sr_make_inventory(), bk[..]); back := bk[0];
+  #assert back.her_health == state.her_health && sr_transform_eq(back.her_transform, state.her_transform);
+  #assert sr_containers_eq(back.inventory.main[0], state.inventory.main[0]) && back.inventory.selected == state.inventory.selected;
+  #assert sr_containers_eq(back.chest, state.chest) && sr_robot_lists_eq(back.her_robots, state.her_robots) && sr_robot_lists_eq(back.placed_bodies, state.placed_bodies);
+  digger: [1] SrRobotState;
+  #assert sr_unpack_robot(back.inventory.main[0].slots[12], digger[..]) && digger[0].health == 55.0 && digger[0].parts.slots[1].count == 2;
+  again: [1] SrRunSave; sr_build_run_save(record.checkpoint, back, again[..]);
+  #assert sr_run_saves_eq(record, again[0]);
+  // a stack on the cursor is not lost: it goes back into her inventory
+  held := state;
+  held.inventory.main[0].slots[4] = SrItemStack.{}; held.inventory.cursor = sr_item(ITEM_SCRAP_PART, 17);
+  hrs: [1] SrRunSave; sr_build_run_save(record.checkpoint, held, hrs[..]); hr := hrs[0];
+  scrap := sr_count_item(hr.hotbar, ITEM_SCRAP_PART) + sr_count_item(hr.grid, ITEM_SCRAP_PART);
+  #assert scrap == 17 && hr.loose_items.n == state.loose_items.n;
+  // GDD 02 7.4 S2: another version is refused
+  old := record; old.version = 1;
+  #assert sr_validate_run_save(old) == SR_REFUSE_NOT_ALLOWED_HERE;
+}
+#test "Splice.Rules.Checkpoint.CurrentAdvancesAndNeverGoesBack" {
+  cur := "";
+  steps := [13] string.[CHECKPOINT_START, CHECKPOINT_LEFT_SNIPER, CHECKPOINT_LEFT_SNIPER, EV_WALL_BROKE, CHECKPOINT_TOOK_DRILL_MECH, CHECKPOINT_LEFT_SNIPER,
+    CHECKPOINT_BEAT_BOSS, CHECKPOINT_TOOK_DRILL_MECH, CHECKPOINT_START, EV_BOT_TAKEN, "", CHECKPOINT_BEAT_BOSS, "Checkpoint.Nowhere"];
+  saves := [13] bool.[true, true, true, false, true, false, true, false, false, false, false, true, false];
+  after := [13] string.[CHECKPOINT_START, CHECKPOINT_LEFT_SNIPER, CHECKPOINT_LEFT_SNIPER, CHECKPOINT_LEFT_SNIPER, CHECKPOINT_TOOK_DRILL_MECH, CHECKPOINT_TOOK_DRILL_MECH,
+    CHECKPOINT_BEAT_BOSS, CHECKPOINT_BEAT_BOSS, CHECKPOINT_BEAT_BOSS, CHECKPOINT_BEAT_BOSS, CHECKPOINT_BEAT_BOSS, CHECKPOINT_BEAT_BOSS, CHECKPOINT_BEAT_BOSS];
+  for t, k: steps {
+    s := sr_checkpoint_advance(cur, t);
+    #assert s.take_save == saves[k] && s.current == after[k];
+    cur = s.current;
+  }
+  #assert sr_checkpoint_rank(CHECKPOINT_START) == 0 && sr_checkpoint_rank(CHECKPOINT_BEAT_BOSS) == 3 && !sr_is_checkpoint_tag(EV_WALL_BROKE);
+}
+#test "Splice.Rules.Checkpoint.DeathRestoresLastCheckpointExactly" {
+  ws: [1] SrCheckpointState; ck_state(ws[..]); world := ws[0];
+  at := world;
+  sv: [1] SrRunSave; sr_build_run_save(CHECKPOINT_TOOK_DRILL_MECH, world, sv[..]); saved := sv[0];
+  // after the checkpoint: the scout is harvested, its drop lies on the ground, things move, she dies
+  scout := world.her_robots.v[1];
+  rl := [1] SrRobotList.[world.her_robots]; sr_robots_remove_at(rl[..], 1); world.her_robots = rl[0];
+  tg := [1] SrNames.[world.world_tags]; _ = sr_names_add(tg[..], "World.Robot.Harvested.SPAWN_SCOUT_01"); world.world_tags = tg[0];
+  lo := [1] SrLooseList.[world.loose_items]; _ = sr_loose_add(lo[..], SrLooseItem.{stack = sr_item(CK_CORE, 1), location = scout.transform.pos}); world.loose_items = lo[0];
+  world.inventory.main[0].slots[0] = SrItemStack.{}; world.inventory.main[0].slots[20] = sr_item(ITEM_SCRAP_PART, 9); world.inventory.main[0].slots[12] = SrItemStack.{};
+  world.chest.slots[2] = SrItemStack.{}; world.charge_points.v[0].seconds_to_ready = 60.0;
+  sc := [1] SrNames.[world.shown_cards]; _ = sr_names_add(sc[..], "CARD_SNIPER_SAYS_1"); world.shown_cards = sc[0];
+  world.her_transform = sr_transform_at(d3(9000.0, 9000.0, 0.0)); world.her_health = 0.0;
+  // the death: the subsystem's last record, one more death, restored whole
+  last: [1] SrRunSave; sr_record_after_death(saved, last[..]);
+  sr_restore_run_save(last[0], world.inventory, ws[..]); world = ws[0];
+  #assert world.her_health == at.her_health && sr_transform_eq(world.her_transform, at.her_transform);
+  #assert sr_containers_eq(world.inventory.main[0], at.inventory.main[0]) && sr_item_empty(world.inventory.cursor) && sr_containers_eq(world.chest, at.chest);
+  #assert sr_robot_lists_eq(world.her_robots, at.her_robots) && world.loose_items.n == at.loose_items.n && sr_names_eq(world.world_tags, at.world_tags);
+  #assert world.charge_points.v[0].seconds_to_ready == 12.5 && sr_names_eq(world.shown_cards, at.shown_cards) && world.deaths == at.deaths + 1;
+  now: [1] SrRunSave; sr_build_run_save(CHECKPOINT_TOOK_DRILL_MECH, world, now[..]);
+  #assert sr_run_saves_eq(now[0], last[0]);
+  // die twice: the same world again, nothing duplicated
+  world.inventory.main[0].slots[30] = sr_item(ITEM_BATTERY, 1);
+  sr_record_after_death(now[0], last[..]);
+  sr_restore_run_save(last[0], world.inventory, ws[..]); world = ws[0];
+  #assert sr_containers_eq(world.inventory.main[0], at.inventory.main[0]) && world.deaths == at.deaths + 2;
+}
+
+// ---- beyond the C++ tests: every refusal ValidateRunSave gives, and a full inventory's cursor
+#test "a record is refused for its sizes, a bad stack or a fourth robot; a pet never counts" {
+  st: [1] SrCheckpointState; ck_state(st[..]);
+  oks: [1] SrRunSave; sr_build_run_save(CHECKPOINT_START, st[0], oks[..]); ok := oks[0];
+  #assert sr_validate_run_save(ok) == SR_REFUSE_NONE;
+  b := ok; b.grid.size = 26; #assert sr_validate_run_save(b) == SR_REFUSE_WRONG_SLOT;
+  b = ok; b.selected_hotbar_slot = 9; #assert sr_validate_run_save(b) == SR_REFUSE_WRONG_SLOT;
+  b = ok; b.chest.slots[0] = sr_item(ITEM_SCRAP_PART, 0); #assert sr_validate_run_save(b) == SR_REFUSE_FULL;
+  b = ok; b.hotbar.slots[1] = b.grid.slots[3]; b.hotbar.slots[1].count = 2; #assert sr_validate_run_save(b) == SR_REFUSE_FULL;
+  // two live robots and Digger's body: three. One more body is a fourth
+  b = ok; b.hotbar.slots[8] = b.grid.slots[3]; #assert sr_validate_run_save(b) == SR_REFUSE_CREW_LIMIT;
+  b = ok; rl := [1] SrRobotList.[b.her_robots]; _ = sr_robots_add(rl[..], SrRobotInWorld.{state = SrRobotState.{robot_id = ROBOT_MICRODUCK}}); b.her_robots = rl[0];
+  #assert sr_validate_run_save(b) == SR_REFUSE_NONE;
+  fs: [1] SrCheckpointState; ck_state(fs[..]); full := fs[0];
+  for i: 0..<SR_TOTAL_SLOTS { if sr_item_empty(full.inventory.main[0].slots[i]) { full.inventory.main[0].slots[i] = sr_item(ITEM_SMALL_CORE, 1); } }
+  full.inventory.cursor = sr_item(ITEM_BATTERY, 4); full.inventory.selected = 20;
+  rs: [1] SrRunSave; sr_build_run_save(CHECKPOINT_START, full, rs[..]); r := rs[0];
+  #assert r.loose_items.n == 2 && r.loose_items.v[1].stack.count == 4 && r.loose_items.v[1].location.x == 1200.0 && r.selected_hotbar_slot == 8;
+}

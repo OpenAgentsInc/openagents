@@ -1,0 +1,23 @@
+// Parity checks for run-stats.coax: SpliceTests/Rules/SpliceExitTuningTests.cpp
+// RunStatsCountFeedAndDeathOnTheRightRoute (the subsystem's record calls are the stats' own here).
+// rules.coax loads this file with `#load ... #test;`.
+
+#test "Splice.Rules.ExitTuning.RunStatsCountFeedAndDeathOnTheRightRoute" {
+  t: [1] SrRunStats;
+  sr_stats_record_fed(t[..], SR_ROUTE_RAVE, 2); sr_stats_record_death(t[..], SR_ROUTE_HALLWAYS, 1);
+  #assert t[0].fed[SR_ROUTE_RAVE] == 2 && t[0].fed[SR_ROUTE_HALLWAYS] == 0 && t[0].deaths[SR_ROUTE_HALLWAYS] == 1 && t[0].deaths[SR_ROUTE_RAVE] == 0;
+  sr_stats_record_fed(t[..], SR_ROUTE_RAVE, -3);
+  #assert t[0].fed[SR_ROUTE_RAVE] == 2;
+  // from the exit state: only what grew since the last look counts
+  o: [1] SrRunStatsObserver;
+  fed: [SR_ROUTE_COUNT] int; deaths: [SR_ROUTE_COUNT] int;
+  fed[SR_ROUTE_HALLWAYS] = 1;
+  _ = sr_stats_observe(o[..], fed, deaths);
+  fed[SR_ROUTE_HALLWAYS] = 3; deaths[SR_ROUTE_RAVE] = 1;
+  added := sr_stats_observe(o[..], fed, deaths);
+  #assert added.fed[SR_ROUTE_HALLWAYS] == 2 && added.deaths[SR_ROUTE_RAVE] == 1;
+  #assert sr_stats_total_fed(sr_stats_observe(o[..], fed, deaths)) == 0;
+  #assert sr_stats_total_fed(o[0].totals) == 3 && sr_stats_total_deaths(o[0].totals) == 1;
+  out: [128] u8;
+  #assert sr_stats_summary(o[0].totals, out[..]) == "fed hallways=3 rave=0 undecided=0; deaths hallways=0 rave=1 undecided=0";
+}

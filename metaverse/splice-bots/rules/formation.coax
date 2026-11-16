@@ -1,0 +1,215 @@
+// Splice Bots rules: followers' formation slots and the leash teleport (SpliceFormation.h, packages B-08
+// and B-09; GDD 04 5.2 UE-AI-12, UE-AI-13, UE-AI-17, UE-AI-48, UE-RAVE-03).
+// At most 3 robots with her, each in a slot: slot 0 at her left and a little ahead (1.5 m out, 0.4 m
+// ahead), slot 1 at her right, slot 2 behind. A Large follower (the dinosaur) takes the rear slot 8 m
+// behind her with a 45 m leash; pets (the Microduck) take rows of two behind her, outside the crew.
+// A robot in Follow more than 30 m from her, or with no path for 3 s, teleports 3 to 5 m behind her,
+// outside the camera's view. Positions are metres in Unreal's axes (Z up, left handed: facing +X her
+// left is -Y), on her ground plane at her Z. Navmesh projection is the caller's.
+#load "robot-payload.coax";
+
+SR_SIZE_SMALL :: 0; SR_SIZE_LARGE :: 1; SR_SIZE_PET :: 2;   // ESpliceFollowerSize
+
+SR_MAX_FOLLOWERS :: SR_ROBOT_CREW_LIMIT;
+SR_SIDE_OFFSET :: 1.5;      // T_BOT_LEFT
+SR_SIDE_BACK :: -0.4;       // T_BOT_BACK: the side slots are 0.4 m ahead
+SR_REAR_OFFSET :: 1.5;      // INFERRED (B-03)
+SR_MIN_SLOT_GAP :: 1.0;     // INFERRED: twice Digger's 0.5 m half width
+SR_LEASH_DISTANCE :: 30.0;
+SR_LEASH_NO_PATH_SECONDS :: 3.0;
+SR_LEASH_BACK_MIN :: 3.0;
+SR_LEASH_BACK_MAX :: 5.0;
+SR_LEASH_WIDE_SIDE :: 3.0;  // INFERRED
+SR_LARGE_SLOT_INDEX :: SR_MAX_FOLLOWERS;
+SR_LARGE_REAR_OFFSET :: 8.0;
+SR_LARGE_REAR_GAP :: 14.0;  // INFERRED: the dinosaur's 13.5 m, rounded up
+SR_LARGE_LEASH_DISTANCE :: 45.0;   // INFERRED: the prototype's T_LEASH
+SR_LARGE_LEASH_BACK_MIN :: SR_LARGE_REAR_OFFSET;
+SR_LARGE_LEASH_BACK_MAX :: SR_LARGE_REAR_OFFSET + 2.0;
+SR_PET_SLOT_INDEX :: 32;
+SR_PET_BACK :: 2.5; SR_PET_SIDE :: 0.8; SR_PET_ROW_GAP :: 1.1;   // INFERRED (owner request)
+SR_CROWD_PART_RADIUS :: 2.5;
+SR_LARGE_CROWD_PART_RADIUS :: 5.0;
+SR_FOLLOWERS_MAX :: 16;     // robots one assignment takes
+SR_KINDA_SMALL :: 0.0001;   // KINDA_SMALL_NUMBER
+
+// What the camera sees, for "outside the camera's view": a cone round the view direction.
+SrViewCone :: struct { valid: bool; location: D3; forward: D3 = D3.{x = 1.0}; half_angle: f64; }
+// What the leash rule is told about one robot (FSpliceLeashInputs).
+SrLeashInputs :: struct {
+  in_follow: bool = true;
+  bot: D3; her: D3; her_forward: D3 = D3.{x = 1.0};
+  slot: int;
+  size: int = SR_SIZE_SMALL;
+  no_path_seconds: f64;
+  view: SrViewCone;
+}
+SrLeashResult :: struct { past_leash: bool; teleport: bool; target: D3; }
+
+sr_heading :: (f: D3) -> D3 {
+  h := d3(f.x, f.y, 0.0); l := sqrt(h.x * h.x + h.y * h.y);
+  if !(l > 0.00000001) { return d3(1.0, 0.0, 0.0); }
+  return d3(h.x / l, h.y / l, 0.0);
+}
+sr_left_of :: (f: D3) -> D3 { return d3(f.y, -f.x, 0.0); }
+sr_dist2d2 :: (a: D3, b: D3) -> f64 { dx := a.x - b.x; dy := a.y - b.y; return dx * dx + dy * dy; }
+sr_clampi :: (v: int, lo: int, hi: int) -> int { return ifx v < lo then lo else ifx v > hi then hi else v; }
+sr_is_large_slot :: (slot: int) -> bool { return slot >= SR_LARGE_SLOT_INDEX && slot < SR_PET_SLOT_INDEX; }
+sr_is_pet_slot :: (slot: int) -> bool { return slot >= SR_PET_SLOT_INDEX; }
+// The slot's sideways offset, + to her left: +1.5 left, -1.5 right, 0 behind; a pet's own side.
+sr_side_of :: (slot: int) -> f64 {
+  if sr_is_pet_slot(slot) { return ifx (slot - SR_PET_SLOT_INDEX) % 2 == 0 then SR_PET_SIDE else -SR_PET_SIDE; }
+  s := sr_clampi(slot, 0, SR_MAX_FOLLOWERS - 1);
+  return ifx s == 0 then SR_SIDE_OFFSET else ifx s == 1 then -SR_SIDE_OFFSET else 0.0;
+}
+// How many slots n followers fill: 0..3.
+sr_slot_count :: (followers: int) -> int { return sr_clampi(followers, 0, SR_MAX_FOLLOWERS); }
+// UE-AI-12: slot 0 left and a little ahead, 1 right, 2 behind. Out-of-range indices clamp.
+sr_slot_position :: (her: D3, forward: D3, slot: int) -> D3 {
+  f := sr_heading(forward); left := sr_left_of(f);
+  s := sr_clampi(slot, 0, SR_MAX_FOLLOWERS - 1);
+  if s == 0 { return d3_sub(d3_add(her, d3_scale(left, SR_SIDE_OFFSET)), d3_scale(f, SR_SIDE_BACK)); }
+  if s == 1 { return d3_sub(d3_sub(her, d3_scale(left, SR_SIDE_OFFSET)), d3_scale(f, SR_SIDE_BACK)); }
+  return d3_sub(her, d3_scale(f, SR_REAR_OFFSET));
+}
+// FormationSlots: the first sr_slot_count(n) slots into out; returns how many.
+sr_formation_slots :: (her: D3, forward: D3, followers: int, out: [] D3) -> int {
+  n := sr_slot_count(followers);
+  for i: 0..<n { out[i] = sr_slot_position(her, forward, i); }
+  return n;
+}
+// Stable assignment (AssignSlots): out[r] is robot r's slot index, or -1 past the limit. A robot keeps
+// its previous slot while it exists and no robot before it holds it; a robot without one takes the
+// nearest free slot, nearest (robot, slot) pair first. prev may be shorter than bots (missing = -1).
+sr_assign_slots :: (prev: [] int, bots: [] D3, slots: [] D3, out: [] int) {
+  robots := bots.count; n := ifx slots.count < SR_MAX_FOLLOWERS then slots.count else SR_MAX_FOLLOWERS;
+  taken: [SR_MAX_FOLLOWERS] bool;
+  for r: 0..<robots { out[r] = -1; }
+  for r: 0..<robots {
+    p := ifx r < prev.count then prev[r] else -1;
+    if p >= 0 && p < n && !taken[p] { out[r] = p; taken[p] = true; }
+  }
+  while true {
+    best_r := -1; best_s := -1; best_d := 1e300;
+    for r: 0..<robots {
+      if out[r] != -1 { continue; }
+      for s: 0..<n {
+        if taken[s] { continue; }
+        d := sr_dist2d2(bots[r], slots[s]);
+        if d < best_d { best_d = d; best_r = r; best_s = s; }
+      }
+    }
+    if best_r < 0 { break; }
+    out[best_r] = best_s; taken[best_s] = true;
+  }
+}
+// The cone's half angle to the frame's corner, from the vertical field of view (radians) and aspect.
+sr_view_half_angle :: (vertical_fov: f64, aspect: f64) -> f64 {
+  tv := tan((ifx vertical_fov > 0.0 then vertical_fov else 0.0) * 0.5);
+  th := tv * (ifx aspect > 0.0 then aspect else 0.0);
+  return atan_d(sqrt(tv * tv + th * th));
+}
+// True when the point is inside the view cone (an invalid cone sees nothing; the lens itself is out).
+sr_is_in_view :: (p: D3, v: SrViewCone) -> bool {
+  if !v.valid { return false; }
+  to := d3_sub(p, v.location); d := d3_len(to);
+  if d <= SR_KINDA_SMALL { return false; }
+  fl := d3_len(v.forward);
+  if !(fl > 0.00000001) { return false; }
+  c := d3_dot(d3_scale(to, 1.0 / d), d3_scale(v.forward, 1.0 / fl));
+  h := ifx v.half_angle < 0.0 then 0.0 else ifx v.half_angle > PI_D then PI_D else v.half_angle;
+  return c >= cos(h);
+}
+// UE-AI-17: more than 30 m from her (straight line), or no path for 3 s.
+sr_is_past_leash :: (bot: D3, her: D3, no_path_seconds: f64) -> bool {
+  return d3_len(d3_sub(bot, her)) > SR_LEASH_DISTANCE || no_path_seconds >= SR_LEASH_NO_PATH_SECONDS;
+}
+SrPoint :: struct { found: bool; p: D3; }
+sr_first_unseen :: (her: D3, f: D3, left: D3, sides: [3] f64, backs: [3] f64, extra: f64, v: SrViewCone) -> SrPoint {
+  for side: sides { for back: backs {
+    p := d3_add(d3_sub(her, d3_scale(f, back + extra)), d3_scale(left, side));
+    if !sr_is_in_view(p, v) { return SrPoint.{found = true, p = p}; }
+  } }
+  return SrPoint.{};
+}
+// UE-AI-17: where a robot in this slot lands: 3, 4 then 5 m behind her on the slot's own side, then
+// 3 m to each side; the first outside the view. found false when every candidate is in view.
+sr_leash_point :: (her: D3, forward: D3, slot: int, v: SrViewCone) -> SrPoint {
+  f := sr_heading(forward); own := sr_side_of(slot);
+  wide := ifx own < 0.0 then -SR_LEASH_WIDE_SIDE else SR_LEASH_WIDE_SIDE;
+  return sr_first_unseen(her, f, sr_left_of(f), [3] f64.[own, wide, -wide],
+    [3] f64.[SR_LEASH_BACK_MIN, (SR_LEASH_BACK_MIN + SR_LEASH_BACK_MAX) * 0.5, SR_LEASH_BACK_MAX], 0.0, v);
+}
+// B-09: a Large follower lands at its rear slot (8, 9 or 10 m back, plus its rank's gap), centred
+// first, then 3 m to either side.
+sr_large_leash_point :: (her: D3, forward: D3, slot: int, v: SrViewCone) -> SrPoint {
+  f := sr_heading(forward);
+  rank := ifx slot - SR_LARGE_SLOT_INDEX > 0 then slot - SR_LARGE_SLOT_INDEX else 0;
+  return sr_first_unseen(her, f, sr_left_of(f), [3] f64.[0.0, SR_LEASH_WIDE_SIDE, -SR_LEASH_WIDE_SIDE],
+    [3] f64.[SR_LARGE_LEASH_BACK_MIN, (SR_LARGE_LEASH_BACK_MIN + SR_LARGE_LEASH_BACK_MAX) * 0.5, SR_LARGE_LEASH_BACK_MAX], cast(f64) rank * SR_LARGE_REAR_GAP, v);
+}
+sr_leash_distance_for :: (size: int) -> f64 { return ifx size == SR_SIZE_LARGE then SR_LARGE_LEASH_DISTANCE else SR_LEASH_DISTANCE; }
+// UE-AI-17, the whole rule for one robot: teleports only a robot in Follow past the leash, and only
+// when a point outside the view exists (otherwise it keeps walking and is asked again next tick).
+sr_leash :: (in: SrLeashInputs) -> SrLeashResult {
+  r: SrLeashResult;
+  r.past_leash = d3_len(d3_sub(in.bot, in.her)) > sr_leash_distance_for(in.size) || in.no_path_seconds >= SR_LEASH_NO_PATH_SECONDS;
+  if !in.in_follow || !r.past_leash { return r; }
+  p := ifx in.size == SR_SIZE_LARGE then sr_large_leash_point(in.her, in.her_forward, in.slot, in.view) else sr_leash_point(in.her, in.her_forward, in.slot, in.view);
+  r.teleport = p.found; r.target = p.p;
+  return r;
+}
+// The rank-th pet's slot: rows of two behind her, to her left for an even rank, right for an odd one.
+sr_pet_slot_position :: (her: D3, forward: D3, rank: int) -> D3 {
+  f := sr_heading(forward); r := ifx rank > 0 then rank else 0;
+  side := ifx r % 2 == 0 then SR_PET_SIDE else -SR_PET_SIDE;
+  return d3_add(d3_sub(her, d3_scale(f, SR_PET_BACK + cast(f64) (r / 2) * SR_PET_ROW_GAP)), d3_scale(sr_left_of(f), side));
+}
+// UE-AI-12: the rank-th Large follower's rear slot, 8 m (+ rank x 14 m) straight behind her.
+sr_large_slot_position :: (her: D3, forward: D3, rank: int) -> D3 {
+  r := ifx rank > 0 then rank else 0;
+  return d3_sub(her, d3_scale(sr_heading(forward), SR_LARGE_REAR_OFFSET + cast(f64) r * SR_LARGE_REAR_GAP));
+}
+// Any follower's slot position, by its index.
+sr_follower_slot_position :: (her: D3, forward: D3, slot: int) -> D3 {
+  if sr_is_pet_slot(slot) { return sr_pet_slot_position(her, forward, slot - SR_PET_SLOT_INDEX); }
+  if sr_is_large_slot(slot) { return sr_large_slot_position(her, forward, slot - SR_LARGE_SLOT_INDEX); }
+  return sr_slot_position(her, forward, slot);
+}
+// Slot assignment with sizes (AssignFollowerSlots). A Large robot gets SR_LARGE_SLOT_INDEX + its rank
+// among the Large ones; a pet SR_PET_SLOT_INDEX + its rank among the pets (never counted); the small ones
+// share the first min(small, 3 - Large) small slots by sr_assign_slots (a previous Large or pet index
+// counts as none). sizes may be shorter than bots (missing = Small).
+sr_assign_follower_slots :: (prev: [] int, bots: [] D3, sizes: [] int, her: D3, forward: D3, out: [] int) {
+  robots := bots.count;
+  small: [SR_FOLLOWERS_MAX] int; ns := 0; large_rank := 0; pet_rank := 0;
+  for r: 0..<robots {
+    out[r] = -1;
+    sz := ifx r < sizes.count then sizes[r] else SR_SIZE_SMALL;
+    if sz == SR_SIZE_PET { out[r] = SR_PET_SLOT_INDEX + pet_rank; pet_rank += 1; }
+    else if sz != SR_SIZE_LARGE { small[ns] = r; ns += 1; }
+    else if large_rank < SR_MAX_FOLLOWERS { out[r] = SR_LARGE_SLOT_INDEX + large_rank; large_rank += 1; }
+  }
+  sp: [SR_FOLLOWERS_MAX] int; sl: [SR_FOLLOWERS_MAX] D3; got: [SR_FOLLOWERS_MAX] int;
+  for i: 0..<ns {
+    r := small[i]; p := ifx r < prev.count then prev[r] else -1;
+    sp[i] = ifx sr_is_large_slot(p) || sr_is_pet_slot(p) then -1 else p;
+    sl[i] = bots[r];
+  }
+  slots: [SR_MAX_FOLLOWERS] D3;
+  want := ifx ns < SR_MAX_FOLLOWERS - large_rank then ns else SR_MAX_FOLLOWERS - large_rank;
+  n := sr_formation_slots(her, forward, want, slots[..]);
+  sr_assign_slots(sp[0..<ns], sl[0..<ns], slots[0..<n], got[0..<ns]);
+  for i: 0..<ns { out[small[i]] = got[i]; }
+}
+sr_crowd_part_radius_for :: (size: int) -> f64 { return ifx size == SR_SIZE_LARGE then SR_LARGE_CROWD_PART_RADIUS else SR_CROWD_PART_RADIUS; }
+// UE-RAVE-03: a crowd member strictly inside the radius (ground plane) steps straight away by at most
+// max_step, never past the radius; Z kept. One right on the follower steps along +X.
+sr_crowd_part_step :: (crowd: D3, follower: D3, radius: f64, max_step: f64) -> D3 {
+  away := d3(crowd.x - follower.x, crowd.y - follower.y, 0.0);
+  d := d3_len(away);
+  if d >= radius || max_step <= 0.0 { return crowd; }
+  dir := ifx d > SR_KINDA_SMALL then d3_scale(away, 1.0 / d) else d3(1.0, 0.0, 0.0);
+  step := ifx radius - d < max_step then radius - d else max_step;
+  return d3_add(crowd, d3_scale(dir, step));
+}

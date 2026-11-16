@@ -10,7 +10,16 @@
 #load "robot-payload.coax";
 #load "event-tags.coax";
 #load "recipes.coax";
+#load "inventory.coax";
+#load "run-save.coax";
+#load "checkpoint.coax";
+#load "run-stats.coax";
+#load "formation.coax";
 
 #load "data-checks.coax" #test;
 #load "robot-payload-checks.coax" #test;
 #load "recipes-checks.coax" #test;
+#load "inventory-checks.coax" #test;
+#load "checkpoint-checks.coax" #test;
+#load "run-stats-checks.coax" #test;
+#load "formation-checks.coax" #test;

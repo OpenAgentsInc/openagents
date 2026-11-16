@@ -1,0 +1,248 @@
+// Parity checks for formation.coax: SpliceTests/Rules/SpliceFormationTests.cpp and
+// SpliceLargeFollowerTests.cpp. The SpliceCompanion brain lines in these tests (and the two ring
+// walks, ThreeFollowThroughTheRing and FollowsTheRingWithoutTeleport) wait for the Companion port.
+// rules.coax loads this file with `#load ... #test;`.
+
+fm_heading :: (deg: f64) -> D3 { r := deg * PI_D / 180.0; return d3(cos(r), sin(r), 0.0); }
+fm_norm :: (a: D3) -> D3 { l := d3_len(a); return ifx l > 0.0 then d3_scale(a, 1.0 / l) else a; }
+fm_camera_behind :: (her: D3, f: D3) -> SrViewCone {
+  v: SrViewCone; v.valid = true;
+  v.location = d3_add(d3_sub(her, d3_scale(f, 4.5)), d3(0.0, 0.0, 2.0));
+  v.forward = fm_norm(d3_sub(d3_add(her, d3(0.0, 0.0, 1.0)), v.location));
+  v.half_angle = sr_view_half_angle(0.82, 16.0 / 9.0);
+  return v;
+}
+fm_dist2d :: (a: D3, b: D3) -> f64 { return sqrt(sr_dist2d2(a, b)); }
+fm_min_gap :: (p: [] D3) -> f64 {
+  best := 1e300;
+  for a: 0..<p.count { for b: a + 1..<p.count { d := fm_dist2d(p[a], p[b]); if d < best { best = d; } } }
+  return best;
+}
+fm_near :: (a: D3, b: D3, tol: f64) -> bool { return abs(a.x - b.x) <= tol && abs(a.y - b.y) <= tol && abs(a.z - b.z) <= tol; }
+fm_eq :: (a: [] int, b: [] int) -> bool { if a.count != b.count { return false; } for k: 0..<a.count { if a[k] != b[k] { return false; } } return true; }
+fm_behind :: (p: D3, her: D3, f: D3) -> f64 { return -d3_dot(d3_sub(p, her), sr_heading(f)); }
+
+#test "Splice.Rules.Formation.ThreeSlotsNeverOverlap" {
+  s: [3] D3;
+  #assert sr_formation_slots(d3(0.0, 0.0, 0.0), fm_heading(0.0), 1, s[..]) == 1;
+  #assert sr_formation_slots(d3(0.0, 0.0, 0.0), fm_heading(0.0), 3, s[..]) == 3;
+  #assert sr_slot_count(5) == 3 && sr_slot_count(0) == 0;
+  her := d3(12.0, -7.0, 3.0);
+  worst := 1e300; to_her := 1e300; deg := 0.0;
+  while deg < 360.0 {
+    _ = sr_formation_slots(her, fm_heading(deg), 3, s[..]);
+    g := fm_min_gap(s[..]); if g < worst { worst = g; }
+    for p: s { d := fm_dist2d(p, her); if d < to_her { to_her = d; } #assert abs(p.z - her.z) < 0.0001; }
+    deg += 7.5;
+  }
+  #assert worst >= SR_MIN_SLOT_GAP && to_her >= SR_MIN_SLOT_GAP;
+}
+
+#test "Splice.Rules.Formation.SlotsTurnWithHerHeading" {
+  her := d3(2.0, 3.0, 0.0);
+  east: [3] D3; _ = sr_formation_slots(her, fm_heading(0.0), 3, east[..]);
+  #assert fm_near(east[0], d3_add(her, d3(0.4, -1.5, 0.0)), 0.0001);
+  #assert fm_near(east[1], d3_add(her, d3(0.4, 1.5, 0.0)), 0.0001);
+  #assert fm_near(east[2], d3_add(her, d3(-1.5, 0.0, 0.0)), 0.0001);
+  deg := 15.0;
+  while deg < 360.0 {
+    f := fm_heading(deg); turned: [3] D3; _ = sr_formation_slots(her, f, 3, turned[..]);
+    r := deg * PI_D / 180.0;
+    for i: 0..<3 {
+      o := d3_sub(east[i], her);
+      expect := d3_add(her, d3(o.x * cos(r) - o.y * sin(r), o.x * sin(r) + o.y * cos(r), o.z));
+      #assert fm_near(turned[i], expect, 0.001);
+    }
+    left := d3(f.y, -f.x, 0.0);
+    #assert d3_dot(d3_sub(turned[0], her), left) > 1.0 && d3_dot(d3_sub(turned[1], her), left) < -1.0 && d3_dot(d3_sub(turned[2], her), f) < -1.0;
+    deg += 15.0;
+  }
+}
+
+#test "Splice.Rules.Formation.AssignmentStableWhenSheTurns" {
+  her := d3(0.0, 0.0, 0.0);
+  bots := [3] D3.[d3(-2.0, 0.0, 0.0), d3(0.0, -2.0, 0.0), d3(0.0, 2.0, 0.0)];
+  none := [3] int.[-1, -1, -1];
+  sl: [4] D3; n := sr_formation_slots(her, fm_heading(0.0), 3, sl[..]);
+  first: [3] int; sr_assign_slots(none[..], bots[..], sl[0..<n], first[..]);
+  #assert first[0] == 2 && first[1] == 0 && first[2] == 1;
+  deg := 30.0;
+  while deg <= 180.0 {
+    n = sr_formation_slots(her, fm_heading(deg), 3, sl[..]);
+    again: [3] int; sr_assign_slots(first[..], bots[..], sl[0..<n], again[..]);
+    #assert fm_eq(again[..], first[..]);
+    deg += 30.0;
+  }
+  two := [2] D3.[bots[1], bots[2]]; p01 := [2] int.[0, 1];
+  n = sr_formation_slots(her, fm_heading(0.0), 2, sl[..]);
+  ts: [2] int; sr_assign_slots(p01[..], two[..], sl[0..<n], ts[..]);
+  #assert fm_eq(ts[..], p01[..]);
+  three := [3] D3.[bots[1], bots[2], d3(0.0, -1.6, 0.0)]; p3 := [3] int.[0, 1, -1];
+  n = sr_formation_slots(her, fm_heading(0.0), 3, sl[..]);
+  joined: [3] int; sr_assign_slots(p3[..], three[..], sl[0..<n], joined[..]);
+  #assert joined[0] == 0 && joined[1] == 1 && joined[2] == 2;
+  left := [2] D3.[bots[0], bots[2]]; p21 := [2] int.[2, 1];
+  n = sr_formation_slots(her, fm_heading(0.0), 2, sl[..]);
+  after: [2] int; sr_assign_slots(p21[..], left[..], sl[0..<n], after[..]);
+  #assert after[0] == 0 && after[1] == 1;
+  four := [4] D3.[bots[0], bots[1], bots[2], d3(5.0, 5.0, 0.0)];
+  n = sr_formation_slots(her, fm_heading(0.0), 4, sl[..]);
+  capped: [4] int; sr_assign_slots(first[..], four[..], sl[0..<n], capped[..]);
+  #assert capped[3] == -1;
+}
+
+#test "Splice.Rules.Formation.PastLeashIsTeleported" {
+  #assert SR_LEASH_DISTANCE == 30.0;
+  her := d3(10.0, 4.0, 0.0);
+  for slot: 0..<3 {
+    deg := 0.0;
+    while deg < 360.0 {
+      f := fm_heading(deg);
+      l: SrLeashInputs; l.her = her; l.her_forward = f; l.bot = d3_add(her, d3_scale(fm_heading(deg + 100.0), 31.0));
+      l.slot = slot; l.view = fm_camera_behind(her, f);
+      r := sr_leash(l);
+      #assert r.past_leash && r.teleport;
+      back := -d3_dot(d3_sub(r.target, her), f);
+      #assert back >= SR_LEASH_BACK_MIN - 0.001 && back <= SR_LEASH_BACK_MAX + 0.001;
+      #assert !sr_is_in_view(r.target, l.view);
+      if slot < 2 { side := d3_dot(d3_sub(r.target, her), d3(f.y, -f.x, 0.0)); #assert ifx slot == 0 then side > 0.0 else side < 0.0; }
+      deg += 45.0;
+    }
+  }
+  stuck: SrLeashInputs; stuck.her = her; stuck.bot = d3_add(her, d3(-6.0, 0.0, -4.0)); stuck.no_path_seconds = 3.0;
+  #assert sr_leash(stuck).teleport;
+}
+
+#test "Splice.Rules.Formation.InsideLeashIsNotTeleported" {
+  her := d3(0.0, 0.0, 0.0);
+  l: SrLeashInputs; l.her = her; l.bot = d3(-29.9, 0.0, 0.0); l.no_path_seconds = 2.9; l.view = fm_camera_behind(her, l.her_forward);
+  r := sr_leash(l);
+  #assert !r.past_leash && !r.teleport;
+  l.bot = d3(-30.0, 0.0, 0.0); #assert !sr_leash(l).teleport;
+  l.bot = d3(-50.0, 0.0, 0.0); l.in_follow = false; #assert !sr_leash(l).teleport;
+  l.in_follow = true;
+  sees: SrViewCone; sees.valid = true; sees.location = d3(-4.0, 0.0, 40.0); sees.forward = d3(0.0, 0.0, -1.0); sees.half_angle = 60.0 * PI_D / 180.0;
+  l.view = sees; r = sr_leash(l);
+  #assert r.past_leash && !r.teleport;
+}
+
+#test "Splice.Rules.Formation.PetsOutsideCrewNeverStack" {
+  her := d3(10.0, -4.0, 0.0);
+  sizes := [6] int.[SR_SIZE_SMALL, SR_SIZE_PET, SR_SIZE_SMALL, SR_SIZE_SMALL, SR_SIZE_PET, SR_SIZE_PET];
+  bots: [6] D3; for i: 0..<6 { bots[i] = d3_add(her, d3(-2.0 - cast(f64) i, 0.3 * cast(f64) i, 0.0)); }
+  prev := [6] int.[-1, -1, -1, -1, -1, -1];
+  deg := 0.0;
+  while deg < 360.0 {
+    f := fm_heading(deg);
+    slots: [6] int; sr_assign_follower_slots(prev[..], bots[..], sizes[..], her, f, slots[..]);
+    crew := 0; pets := 0; pts: [7] D3;
+    for i: 0..<6 {
+      #assert slots[i] != -1;
+      if sizes[i] == SR_SIZE_PET { pets += 1; #assert sr_is_pet_slot(slots[i]); } else { crew += 1; #assert !sr_is_pet_slot(slots[i]); }
+      p := sr_follower_slot_position(her, f, slots[i]);
+      #assert sizes[i] != SR_SIZE_PET || d3_dot(d3_sub(p, her), f) < 0.0;
+      pts[i] = p;
+    }
+    pts[6] = her;
+    #assert crew == 3 && pets == 3;
+    #assert fm_min_gap(pts[..]) >= SR_MIN_SLOT_GAP - SR_KINDA_SMALL;
+    prev = slots; deg += 15.0;
+  }
+  p0 := sr_pet_slot_position(her, fm_heading(0.0), 0); p1 := sr_pet_slot_position(her, fm_heading(0.0), 1);
+  #assert p0.y < her.y && p1.y > her.y;
+}
+
+#test "Splice.Rules.LargeFollower.TakesRearSlotAt8m" {
+  #assert SR_LARGE_REAR_OFFSET == 8.0;
+  her := d3(5.0, -3.0, 2.0);
+  sizes := [3] int.[SR_SIZE_SMALL, SR_SIZE_LARGE, SR_SIZE_SMALL];
+  bots := [3] D3.[d3(5.0, 3.0, 2.0), d3_add(her, d3(0.4, -1.5, 0.0)), d3(5.0, -9.0, 2.0)];
+  p := [3] int.[-1, 0, -1];
+  slots: [3] int; sr_assign_follower_slots(p[..], bots[..], sizes[..], her, fm_heading(0.0), slots[..]);
+  #assert slots[1] == SR_LARGE_SLOT_INDEX;
+  #assert slots[0] != slots[2] && slots[0] >= 0 && slots[0] < 2 && slots[2] >= 0 && slots[2] < 2;
+  deg := 0.0;
+  while deg < 360.0 {
+    f := fm_heading(deg);
+    was := slots; sr_assign_follower_slots(was[..], bots[..], sizes[..], her, f, slots[..]);
+    #assert slots[1] == SR_LARGE_SLOT_INDEX;
+    rear := sr_follower_slot_position(her, f, slots[1]);
+    #assert fm_near(rear, d3_sub(her, d3_scale(f, 8.0)), 0.001);
+    for i: [2] int.[0, 2] { small := sr_follower_slot_position(her, f, slots[i]); #assert fm_behind(rear, her, f) > fm_behind(small, her, f) + 5.0; }
+    deg += 15.0;
+  }
+  p2 := [3] int.[2, -1, 0];
+  two: [3] int; sr_assign_follower_slots(p2[..], bots[..], sizes[..], her, fm_heading(0.0), two[..]);
+  #assert !(two[0] == 2 || two[2] == 2) && two[1] == SR_LARGE_SLOT_INDEX;
+}
+
+#test "Splice.Rules.LargeFollower.SmallFollowersKeepTheirSlots" {
+  her := d3(0.0, 0.0, 0.0); f := fm_heading(0.0);
+  lft := d3(0.0, -2.0, 0.0); rgt := d3(0.0, 2.0, 0.0);
+  ss := [2] int.[SR_SIZE_SMALL, SR_SIZE_SMALL]; lr := [2] D3.[lft, rgt]; p01 := [2] int.[0, 1];
+  before: [2] int; sr_assign_follower_slots(p01[..], lr[..], ss[..], her, f, before[..]);
+  #assert fm_eq(before[..], p01[..]);
+  three := [3] D3.[d3(0.4, -1.5, 0.0), lft, rgt]; s3 := [3] int.[SR_SIZE_LARGE, SR_SIZE_SMALL, SR_SIZE_SMALL]; pj := [3] int.[-1, 0, 1];
+  joined: [3] int; sr_assign_follower_slots(pj[..], three[..], s3[..], her, f, joined[..]);
+  want := [3] int.[SR_LARGE_SLOT_INDEX, 0, 1];
+  #assert fm_eq(joined[..], want[..]);
+  turned := joined; deg := 30.0;
+  while deg <= 180.0 { was := turned; sr_assign_follower_slots(was[..], three[..], s3[..], her, fm_heading(deg), turned[..]); #assert fm_eq(turned[..], joined[..]); deg += 30.0; }
+  left2: [2] int; sr_assign_follower_slots(p01[..], lr[..], ss[..], her, f, left2[..]);
+  #assert fm_eq(left2[..], p01[..]);
+  pl := [1] int.[SR_LARGE_SLOT_INDEX]; one := [1] D3.[lft]; s1 := [1] int.[SR_SIZE_SMALL];
+  odd: [1] int; sr_assign_follower_slots(pl[..], one[..], s1[..], her, f, odd[..]);
+  #assert odd[0] == 0;
+  four := [4] D3.[d3(-2.0, 0.0, 0.0), lft, rgt, d3(5.0, 5.0, 0.0)]; prev := [4] int.[-1, 0, -1, -1];
+  nos: [1] int;
+  sized: [4] int; sr_assign_follower_slots(prev[..], four[..], nos[0..<0], her, f, sized[..]);
+  sl: [4] D3; n := sr_formation_slots(her, f, 4, sl[..]);
+  plain: [4] int; sr_assign_slots(prev[..], four[..], sl[0..<n], plain[..]);
+  #assert fm_eq(sized[..], plain[..]) && sized[3] == -1;
+  ff := [4] D3.[d3(-8.0, 0.0, 0.0), lft, rgt, d3(-1.5, 0.0, 0.0)]; s4 := [4] int.[SR_SIZE_LARGE, SR_SIZE_SMALL, SR_SIZE_SMALL, SR_SIZE_SMALL];
+  pf := [4] int.[-1, 0, 1, -1];
+  full: [4] int; sr_assign_follower_slots(pf[..], ff[..], s4[..], her, f, full[..]);
+  wf := [4] int.[SR_LARGE_SLOT_INDEX, 0, 1, -1];
+  #assert fm_eq(full[..], wf[..]);
+}
+
+#test "Splice.Rules.LargeFollower.CrowdPartsWithinRadiusOnly" {
+  #assert sr_crowd_part_radius_for(SR_SIZE_LARGE) == 5.0 && sr_crowd_part_radius_for(SR_SIZE_SMALL) == 2.5;
+  dino := d3(10.0, 10.0, 0.0); radius := sr_crowd_part_radius_for(SR_SIZE_LARGE); step := 0.4;
+  near := d3_add(dino, d3(0.0, 3.0, 1.2));
+  pushed := sr_crowd_part_step(near, dino, radius, step);
+  #assert !fm_near(pushed, near, 0.0001);
+  #assert abs(pushed.x - near.x) < 0.0001 && pushed.y > near.y;
+  #assert abs(fm_dist2d(pushed, near) - step) < 0.0001 && abs(pushed.z - near.z) < 0.0001;
+  edge := sr_crowd_part_step(d3_add(dino, d3(4.0, 0.0, 0.0)), dino, radius, 10.0);
+  #assert abs(fm_dist2d(edge, dino) - radius) < 0.001;
+  for d: [4] f64.[5.0, 5.01, 6.0, 30.0] { far := d3_add(dino, d3_scale(fm_heading(37.0), d)); #assert fm_near(sr_crowd_part_step(far, dino, radius, step), far, 0.0); }
+  #assert fm_near(sr_crowd_part_step(near, dino, sr_crowd_part_radius_for(SR_SIZE_SMALL), step), near, 0.0);
+  #assert fm_near(sr_crowd_part_step(dino, dino, radius, step), d3_add(dino, d3(step, 0.0, 0.0)), 0.0001);
+  crowd: [12] D3; for i: 0..<12 { crowd[i] = d3_add(dino, d3_scale(fm_heading(30.0 * cast(f64) i), 0.5 + 0.5 * cast(f64) i)); }
+  for t: 0..<20 { for i: 0..<12 { crowd[i] = sr_crowd_part_step(crowd[i], dino, radius, step); } }
+  closest := 1e300; for c: crowd { d := fm_dist2d(c, dino); if d < closest { closest = d; } }
+  #assert closest >= radius - 0.001;
+}
+
+#test "Splice.Rules.LargeFollower.LeashUsesLargeDistance" {
+  #assert sr_leash_distance_for(SR_SIZE_SMALL) == 30.0 && sr_leash_distance_for(SR_SIZE_LARGE) == SR_LARGE_LEASH_DISTANCE && SR_LARGE_LEASH_DISTANCE > SR_LEASH_DISTANCE;
+  her := d3(-4.0, 9.0, 0.0); deg := 0.0;
+  while deg < 360.0 {
+    f := fm_heading(deg);
+    l: SrLeashInputs; l.her = her; l.her_forward = f; l.view = fm_camera_behind(her, f); l.slot = SR_LARGE_SLOT_INDEX; l.size = SR_SIZE_LARGE;
+    l.bot = d3_sub(her, d3_scale(f, 40.0));
+    #assert !sr_leash(l).past_leash;
+    l.size = SR_SIZE_SMALL; #assert sr_leash(l).teleport; l.size = SR_SIZE_LARGE;
+    l.bot = d3_sub(her, d3_scale(f, SR_LARGE_LEASH_DISTANCE - 0.1)); #assert !sr_leash(l).teleport;
+    l.bot = d3_add(her, d3_scale(fm_heading(deg + 120.0), 46.0));
+    r := sr_leash(l);
+    #assert r.teleport;
+    back := fm_behind(r.target, her, f);
+    #assert back >= SR_LARGE_LEASH_BACK_MIN - 0.001 && back <= SR_LARGE_LEASH_BACK_MAX + 0.001;
+    #assert !sr_is_in_view(r.target, l.view);
+    deg += 45.0;
+  }
+  stuck: SrLeashInputs; stuck.size = SR_SIZE_LARGE; stuck.slot = SR_LARGE_SLOT_INDEX; stuck.her = her; stuck.bot = d3_sub(her, d3(9.0, 0.0, 0.0)); stuck.no_path_seconds = SR_LEASH_NO_PATH_SECONDS;
+  #assert sr_leash(stuck).teleport;
+}

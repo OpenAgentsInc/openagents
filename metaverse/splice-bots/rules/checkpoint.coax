@@ -1,0 +1,171 @@
+// Splice Bots rules: checkpoints and the run save (SpliceCheckpoint.h, package C-05; GDD 04 2.6
+// UE-SAVE-02 what a record holds, UE-SAVE-03 the named checkpoints, LeftSniper every time (UE-Q-43),
+// UE-SAVE-04 dying loads the last one whole, the world rolling back with her; GDD 02 7.4 S1, S2).
+// The save subsystem (the game layer) gathers the live state, calls these and applies the result.
+// Not ported yet: SerializeRunSave, the record's bytes (an FArchive stream in the C++). The record's
+// stored form belongs with the save subsystem; it needs its row in proto/registry.json when it lands.
+#load "run-save.coax";
+
+// The live state a checkpoint snapshots and a load hands back (FSpliceCheckpointState): one field
+// per record field, except her inventory, which is the live SrInventory (main, cursor, selected).
+SrCheckpointState :: struct {
+  her_transform: SrTransform;
+  her_health: f32;
+  inventory: SrInventory;
+  chest: SrContainer;
+  her_robots: SrRobotList;
+  placed_bodies: SrRobotList;
+  phase: int = SR_PHASE_DAY;
+  world_tags: SrNames;
+  imperial_harvest_count: int;
+  sniper_transform: SrTransform;
+  sniper_left_farm: bool;
+  loose_items: SrLooseList;
+  charge_points: SrChargeList;
+  learned_recipes: SrNames;
+  shown_cards: SrNames;
+  current_objective: string;
+  run_timer_seconds: f64;
+  deaths: int;
+}
+// The heavy records (SrCheckpointState, SrRunSave) are written into the caller's view, not returned:
+// the checker's return-borrow summary has a budget a returned record of this many stacks exceeds.
+sr_make_checkpoint_state :: (out: [] SrCheckpointState) { s: SrCheckpointState; s.inventory = sr_make_inventory(); out[0] = s; }
+
+// The answer to one checkpoint event: take a full save now, and the current checkpoint after it.
+SrCheckpointStep :: struct { take_save: bool; current: string; }
+
+SR_CHECKPOINT_ORDER :: [4] string.[CHECKPOINT_START, CHECKPOINT_LEFT_SNIPER, CHECKPOINT_TOOK_DRILL_MECH, CHECKPOINT_BEAT_BOSS];
+// Start 0, LeftSniper 1, TookDrillMech 2, BeatBoss 3; any other name (or "") -1.
+sr_checkpoint_rank :: (tag: string) -> int {
+  if tag == "" { return -1; }
+  for t, k: SR_CHECKPOINT_ORDER { if t == tag { return k; } }
+  return -1;
+}
+sr_is_checkpoint_tag :: (tag: string) -> bool { return sr_checkpoint_rank(tag) >= 0; }
+// UE-SAVE-03 with UE-Q-43: an event at or above the current rank takes a save and becomes current;
+// a lower one is refused and the current stays. A tag that is not a checkpoint never saves.
+sr_checkpoint_advance :: (current: string, event: string) -> SrCheckpointStep {
+  step := SrCheckpointStep.{current = current};
+  rank := sr_checkpoint_rank(event);
+  if rank < 0 || rank < sr_checkpoint_rank(current) { return step; }
+  step.take_save = true; step.current = event;
+  return step;
+}
+
+// Count slots of `from` starting at `begin`, filters too, as a new container.
+sr_slice_container :: (from: SrContainer, begin: int, count: int) -> SrContainer {
+  out := sr_make_container(count);
+  for i: 0..<count {
+    k := begin + i;
+    if k >= 0 && k < from.size { out.slots[i] = from.slots[k]; out.filter[i] = from.filter[k]; }
+  }
+  return out;
+}
+// Writes part into dest from begin (slots and filters).
+sr_place_container :: (dest: [] SrContainer, part: SrContainer, begin: int) {
+  for i: 0..<part.size {
+    k := begin + i;
+    if k >= dest[0].size { break; }
+    dest[0].slots[k] = part.slots[i];
+    if part.filter[i] != 0 { dest[0].filter[k] = part.filter[i]; }
+  }
+}
+
+// The record of a checkpoint (UE-SAVE-02). Her inventory splits into the hotbar (main 0..8) and the
+// grid (main 9..35). A stack still on the cursor goes back by pickup rule 18; whatever does not fit
+// becomes a loose item at her feet, so nothing is lost.
+sr_build_run_save :: (tag: string, state: SrCheckpointState, out: [] SrRunSave) {
+  s: SrRunSave;
+  s.version = SR_RUN_SAVE_VERSION; s.checkpoint = tag;
+  s.her_transform = state.her_transform; s.phase = state.phase; s.world_tags = state.world_tags;
+  s.imperial_harvest_count = state.imperial_harvest_count; s.sniper_transform = state.sniper_transform; s.sniper_left_farm = state.sniper_left_farm;
+  inv := [1] SrInventory.[state.inventory];
+  loose := [1] SrLooseList.[state.loose_items];
+  if !sr_item_empty(inv[0].cursor) {
+    back := sr_inv_add(inv[0].defs, inv[0].main[..], inv[0].cursor);
+    if !sr_item_empty(back.remainder) { _ = sr_loose_add(loose[..], SrLooseItem.{stack = back.remainder, location = state.her_transform.pos}); }
+    inv[0].cursor = SrItemStack.{};
+  }
+  s.loose_items = loose[0];
+  s.hotbar = sr_slice_container(inv[0].main[0], 0, SR_HOTBAR_SLOTS);
+  s.grid = sr_slice_container(inv[0].main[0], SR_HOTBAR_SLOTS, SR_GRID_SLOTS);
+  sel := inv[0].selected;
+  s.selected_hotbar_slot = ifx sel < 0 then 0 else ifx sel > SR_HOTBAR_SLOTS - 1 then SR_HOTBAR_SLOTS - 1 else sel;
+  s.chest = state.chest;
+  s.her_robots = state.her_robots; s.placed_bodies = state.placed_bodies; s.charge_points = state.charge_points;
+  s.learned_recipes = state.learned_recipes; s.shown_cards = state.shown_cards; s.current_objective = state.current_objective;
+  s.her_health = state.her_health; s.run_timer_seconds = state.run_timer_seconds; s.deaths = state.deaths;
+  out[0] = s;
+}
+// The live state a record describes, exactly. The item table is not in the record: the result keeps
+// base's defs; main is rebuilt from the hotbar and grid, the cursor is empty.
+sr_restore_run_save :: (save: SrRunSave, base: SrInventory, out: [] SrCheckpointState) {
+  st: SrCheckpointState;
+  st.her_transform = save.her_transform; st.her_health = save.her_health;
+  st.inventory.defs = base.defs;
+  st.inventory.main[0] = sr_make_container(SR_TOTAL_SLOTS);
+  sr_place_container(st.inventory.main[..], save.hotbar, 0);
+  sr_place_container(st.inventory.main[..], save.grid, SR_HOTBAR_SLOTS);
+  st.inventory.cursor = SrItemStack.{}; st.inventory.selected = save.selected_hotbar_slot;
+  st.chest = save.chest; st.her_robots = save.her_robots; st.placed_bodies = save.placed_bodies;
+  st.phase = save.phase; st.world_tags = save.world_tags; st.imperial_harvest_count = save.imperial_harvest_count;
+  st.sniper_transform = save.sniper_transform; st.sniper_left_farm = save.sniper_left_farm;
+  st.loose_items = save.loose_items; st.charge_points = save.charge_points;
+  st.learned_recipes = save.learned_recipes; st.shown_cards = save.shown_cards; st.current_objective = save.current_objective;
+  st.run_timer_seconds = save.run_timer_seconds; st.deaths = save.deaths;
+  out[0] = st;
+}
+// UE-SAVE-04: her death. The last checkpoint's record, exactly, with deaths one higher.
+sr_record_after_death :: (last: SrRunSave, out: [] SrRunSave) { out[0] = last; out[0].deaths = last.deaths + 1; }
+
+// Deep equality (payloads by value), for checks and the save subsystem.
+sr_plain_stacks_eq :: (a: SrStack, b: SrStack) -> bool {
+  if sr_stack_empty(a) && sr_stack_empty(b) { return true; }
+  return a.item == b.item && a.count == b.count;
+}
+sr_kits_eq :: (a: SrKit, b: SrKit) -> bool {
+  if a.size != b.size { return false; }
+  for k: 0..<a.size { if !sr_plain_stacks_eq(a.slots[k], b.slots[k]) || a.filter[k] != b.filter[k] { return false; } }
+  return true;
+}
+sr_robots_eq :: (a: SrRobotState, b: SrRobotState) -> bool {
+  if a.robot_id != b.robot_id || a.health != b.health || a.health_max != b.health_max || a.move_energy != b.move_energy || a.name != b.name || a.has_core != b.has_core { return false; }
+  if a.has_core && !sr_plain_stacks_eq(a.core, b.core) { return false; }
+  return sr_kits_eq(a.parts, b.parts) && sr_kits_eq(a.cards, b.cards);
+}
+sr_stacks_eq :: (a: SrItemStack, b: SrItemStack) -> bool {
+  if sr_item_empty(a) && sr_item_empty(b) { return true; }
+  if a.item != b.item || a.count != b.count || a.payload != b.payload { return false; }
+  return !a.payload || sr_robots_eq(a.robot, b.robot);
+}
+sr_containers_eq :: (a: SrContainer, b: SrContainer) -> bool {
+  if a.size != b.size { return false; }
+  for k: 0..<a.size { if !sr_stacks_eq(a.slots[k], b.slots[k]) || a.filter[k] != b.filter[k] { return false; } }
+  return true;
+}
+sr_robot_lists_eq :: (a: SrRobotList, b: SrRobotList) -> bool {
+  if a.n != b.n { return false; }
+  for k: 0..<a.n {
+    x := a.v[k]; y := b.v[k];
+    if !sr_robots_eq(x.state, y.state) || !sr_transform_eq(x.transform, y.transform) || x.mode != y.mode || x.spawn_id != y.spawn_id { return false; }
+  }
+  return true;
+}
+sr_run_saves_eq :: (a: SrRunSave, b: SrRunSave) -> bool {
+  if a.version != b.version || a.checkpoint != b.checkpoint || !sr_transform_eq(a.her_transform, b.her_transform) || a.phase != b.phase
+    || !sr_names_eq(a.world_tags, b.world_tags) || a.imperial_harvest_count != b.imperial_harvest_count
+    || !sr_transform_eq(a.sniper_transform, b.sniper_transform) || a.sniper_left_farm != b.sniper_left_farm
+    || a.selected_hotbar_slot != b.selected_hotbar_slot || !sr_names_eq(a.learned_recipes, b.learned_recipes)
+    || !sr_names_eq(a.shown_cards, b.shown_cards) || a.current_objective != b.current_objective || a.her_health != b.her_health
+    || a.run_timer_seconds != b.run_timer_seconds || a.deaths != b.deaths { return false; }
+  if !sr_containers_eq(a.grid, b.grid) || !sr_containers_eq(a.hotbar, b.hotbar) || !sr_containers_eq(a.chest, b.chest) { return false; }
+  if !sr_robot_lists_eq(a.her_robots, b.her_robots) || !sr_robot_lists_eq(a.placed_bodies, b.placed_bodies) { return false; }
+  if a.loose_items.n != b.loose_items.n || a.charge_points.n != b.charge_points.n { return false; }
+  for k: 0..<a.loose_items.n {
+    x := a.loose_items.v[k]; y := b.loose_items.v[k];
+    if !sr_stacks_eq(x.stack, y.stack) || x.location.x != y.location.x || x.location.y != y.location.y || x.location.z != y.location.z { return false; }
+  }
+  for k: 0..<a.charge_points.n { if a.charge_points.v[k].id != b.charge_points.v[k].id || a.charge_points.v[k].seconds_to_ready != b.charge_points.v[k].seconds_to_ready { return false; } }
+  return true;
+}

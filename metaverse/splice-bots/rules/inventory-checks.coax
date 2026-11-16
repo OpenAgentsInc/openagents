@@ -1,0 +1,124 @@
+// Parity checks for inventory.coax: SpliceTests/Rules/SpliceInventoryTests.cpp, case for case. The
+// item rows are the test's own (stack sizes as items.csv has them). rules.coax loads this file with
+// `#load ... #test;`.
+
+ic_make :: () -> SrInventory {
+  inv := [1] SrInventory.[sr_make_inventory()];
+  d := inv[0].defs;
+  dd := [1] SrItemDefs.[d];
+  _ = sr_defs_add(dd[..], sr_def(ITEM_SCRAP_PART, SR_CAT_PART, 64));
+  _ = sr_defs_add(dd[..], sr_def(ITEM_BATTERY, SR_CAT_CONSUMABLE, 16));
+  _ = sr_defs_add(dd[..], sr_def(ITEM_SMALL_CORE, SR_CAT_CORE, 1));
+  _ = sr_defs_add(dd[..], sr_def(ITEM_BODY_DIGGER, SR_CAT_ROBOT_BODY, 1));
+  inv[0].defs = dd[0];
+  return inv[0];
+}
+
+#test "Splice.Rules.Inventory.Split" {
+  inv := [1] SrInventory.[ic_make()]; m := inv[0].main[..];
+  m[0].slots[9] = sr_item(ITEM_BATTERY, 5);
+  r := sr_inv_split(inv[..], m, 9);
+  #assert r.ok && inv[0].cursor.count == 3 && m[0].slots[9].count == 2;
+  #assert !sr_inv_split(inv[..], m, 9).ok;
+  inv[0].cursor = SrItemStack.{};
+  m[0].slots[10] = sr_item(ITEM_BATTERY, 1);
+  _ = sr_inv_split(inv[..], m, 10);
+  #assert inv[0].cursor.count == 1 && sr_item_empty(m[0].slots[10]);
+}
+#test "Splice.Rules.Inventory.Merge" {
+  inv := [1] SrInventory.[ic_make()]; m := inv[0].main[..];
+  m[0].slots[9] = sr_item(ITEM_BATTERY, 12); inv[0].cursor = sr_item(ITEM_BATTERY, 10);
+  r := sr_inv_click(inv[..], m, 9);
+  #assert r.ok && m[0].slots[9].count == 16 && inv[0].cursor.count == 6 && r.moved == 4;
+  inv[0].cursor = sr_item(ITEM_SMALL_CORE, 1); m[0].slots[11] = sr_item(ITEM_SMALL_CORE, 1);
+  _ = sr_inv_click(inv[..], m, 11);
+  #assert m[0].slots[11].count == 1 && inv[0].cursor.count == 1;
+}
+#test "Splice.Rules.Inventory.Swap" {
+  inv := [1] SrInventory.[ic_make()]; m := inv[0].main[..];
+  m[0].slots[0] = sr_item(ITEM_SCRAP_PART, 20); inv[0].cursor = sr_item(ITEM_BATTERY, 4);
+  r := sr_inv_click(inv[..], m, 0);
+  #assert r.ok && m[0].slots[0].item == ITEM_BATTERY && m[0].slots[0].count == 4 && inv[0].cursor.item == ITEM_SCRAP_PART && inv[0].cursor.count == 20;
+  m[0].filter[1] = sr_filter_bit(SR_CAT_CARD);
+  w := sr_inv_click(inv[..], m, 1);
+  #assert !w.ok && w.refusal == SR_REFUSE_WRONG_SLOT && inv[0].cursor.count == 20;
+}
+#test "Splice.Rules.Inventory.PlaceOne" {
+  inv := [1] SrInventory.[ic_make()]; m := inv[0].main[..];
+  inv[0].cursor = sr_item(ITEM_SCRAP_PART, 3);
+  _ = sr_inv_place_one(inv[..], m, 12);
+  #assert m[0].slots[12].count == 1;
+  _ = sr_inv_place_one(inv[..], m, 12);
+  #assert m[0].slots[12].count == 2 && inv[0].cursor.count == 1;
+}
+#test "Splice.Rules.Inventory.Overflow" {
+  inv := [1] SrInventory.[ic_make()]; m := inv[0].main[..]; d := inv[0].defs;
+  m[0].slots[3] = sr_item(ITEM_SCRAP_PART, 60);
+  r := sr_inv_add(d, m, sr_item(ITEM_SCRAP_PART, 70));
+  #assert r.ok && m[0].slots[3].count == 64 && m[0].slots[0].count == 64 && m[0].slots[1].count == 2;
+  tiny := [1] SrContainer.[sr_make_container(1)];
+  tiny[0].slots[0] = sr_item(ITEM_BATTERY, 16);
+  #assert !sr_inv_can_add(d, tiny[0], sr_item(ITEM_BATTERY, 1));
+  f := sr_inv_add(d, tiny[..], sr_item(ITEM_BATTERY, 5));
+  #assert !f.ok && f.refusal == SR_REFUSE_FULL && f.remainder.count == 5;
+  full := [1] SrInventory.[ic_make()];
+  for i: 0..<SR_TOTAL_SLOTS { full[0].main[0].slots[i] = sr_item(ITEM_SMALL_CORE, 1); }
+  full[0].cursor = sr_item(ITEM_BATTERY, 5);
+  c := sr_inv_close_screen(full[..]);
+  #assert c.dropped.count == 5 && sr_item_empty(full[0].cursor);
+  room := [1] SrInventory.[ic_make()];
+  room[0].cursor = sr_item(ITEM_BATTERY, 5);
+  b := sr_inv_close_screen(room[..]);
+  #assert sr_item_empty(b.dropped) && room[0].main[0].slots[0].count == 5;
+}
+#test "Splice.Rules.Inventory.ContainerTransfer" {
+  inv := [1] SrInventory.[ic_make()]; m := inv[0].main[..]; d := inv[0].defs;
+  chest := [1] SrContainer.[sr_make_container(SR_CHEST_SLOTS)];
+  chest[0].slots[0] = sr_item(ITEM_BATTERY, 10); m[0].slots[20] = sr_item(ITEM_BATTERY, 10);
+  r := sr_inv_transfer(d, m, 20, chest[..], -1);
+  #assert r.ok && chest[0].slots[0].count == 16 && chest[0].slots[1].count == 4 && sr_item_empty(m[0].slots[20]);
+  m[0].slots[15] = sr_item(ITEM_SCRAP_PART, 8);
+  _ = sr_inv_quick_move_within(d, m, 15);
+  #assert m[0].slots[0].count == 8 && sr_item_empty(m[0].slots[15]);
+  chest[0].slots[5] = sr_item(ITEM_BODY_DIGGER, 1);
+  l := sr_inv_transfer(d, chest[..], 5, m, 3);
+  #assert !l.ok && l.refusal == SR_REFUSE_CREW_LIMIT && !sr_item_empty(chest[0].slots[5]);
+  tiny := [1] SrContainer.[sr_make_container(1)];
+  tiny[0].slots[0] = sr_item(ITEM_SMALL_CORE, 1);
+  m[0].slots[21] = sr_item(ITEM_SCRAP_PART, 3);
+  f := sr_inv_transfer(d, m, 21, tiny[..], -1);
+  #assert f.refusal == SR_REFUSE_FULL && m[0].slots[21].count == 3;
+}
+#test "Splice.Rules.Inventory.Drop" {
+  inv := [1] SrInventory.[ic_make()]; m := inv[0].main[..];
+  m[0].slots[2] = sr_item(ITEM_BATTERY, 5); inv[0].selected = 2;
+  one := sr_inv_drop_held(inv[..], false, false);
+  #assert one.ok && one.dropped.count == 1 && m[0].slots[2].count == 4;
+  all := sr_inv_drop_held(inv[..], true, false);
+  #assert all.dropped.count == 4 && sr_item_empty(m[0].slots[2]);
+  m[0].slots[2] = sr_item(ITEM_BATTERY, 5);
+  dr := sr_inv_drop_held(inv[..], false, true);
+  #assert !dr.ok && dr.refusal == SR_REFUSE_NOT_ALLOWED_HERE && m[0].slots[2].count == 5;
+  inv[0].cursor = sr_item(ITEM_SCRAP_PART, 10);
+  #assert sr_inv_drop_cursor(inv[..], false).dropped.count == 1 && inv[0].cursor.count == 9;
+  #assert sr_inv_drop_cursor(inv[..], true).dropped.count == 9 && sr_item_empty(inv[0].cursor);
+  m[0].slots[4] = sr_item(ITEM_BODY_DIGGER, 1);
+  #assert sr_inv_drop(m, 4, false, false).dropped.count == 1;
+}
+
+// ---- beyond the C++ tests: a body never splits or merges, bad slots, filters on add
+#test "a body moves whole, bad slots refuse, a filtered slot is skipped by add" {
+  inv := [1] SrInventory.[ic_make()]; m := inv[0].main[..]; d := inv[0].defs;
+  body := sr_pack_robot(ITEM_BODY_DIGGER, SrRobotState.{robot_id = ROBOT_DIGGER, health_max = 10.0}).body;
+  m[0].slots[5] = body;
+  #assert sr_inv_split(inv[..], m, 5).moved == 1 && inv[0].cursor.payload && sr_item_empty(m[0].slots[5]);
+  #assert sr_inv_place_one(inv[..], m, 6).ok && m[0].slots[6].payload && sr_item_empty(inv[0].cursor);
+  #assert !sr_can_merge(d, m[0].slots[6], m[0].slots[6]);
+  #assert sr_inv_click(inv[..], m, 99).refusal == SR_REFUSE_NOT_ALLOWED_HERE && sr_inv_drop(m, -1, false, false).refusal == SR_REFUSE_NOT_ALLOWED_HERE;
+  c := [1] SrContainer.[sr_make_container(2)];
+  c[0].filter[0] = sr_filter_bit(SR_CAT_CORE);
+  #assert sr_inv_add(d, c[..], sr_item(ITEM_BATTERY, 3)).ok && sr_item_empty(c[0].slots[0]) && c[0].slots[1].count == 3;
+  #assert sr_inv_add(d, c[..], sr_item(ITEM_SMALL_CORE, 1)).ok && c[0].slots[0].item == ITEM_SMALL_CORE;
+  #assert sr_count_used(c[0]) == 2 && sr_stack_size_of(d, "ITEM_UNKNOWN") == 1;
+  #assert sr_inv_quick_move_within(d, m, 6).ok && sr_item_empty(m[0].slots[6]);
+}
