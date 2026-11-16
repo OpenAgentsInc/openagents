@@ -33,6 +33,7 @@ Logs below live in the isolated `oa-arcade-dm` worktree's ignored `build/`.
 | Journal replay | 513 mutants: 505 killed, 8 reviewed equivalents, no survivors; canonical shard records retained here | `dm-journal-merged-qualified.log`, `journal-1.rec`, `journal-2.rec` |
 | Delivery receipt wire | 388 mutants: 380 killed, 8 reviewed equivalents, no survivors; canonical records retained here | `dm-delivery-wire-canonical-merged.log`, `delivery-1.rec`, `delivery-2.rec` |
 | Compose intent | 96 mutants: 93 killed, 3 reviewed equivalents, no survivors | `dm-compose-final-qualified.log` |
+| Messenger owner/flight coordinator | 513 sites: 504 killed, 8 compiler-marked equivalents, one separately reviewed folded constant (#13644) | `coordinator-1.rec` through `coordinator-4.rec`; scope notes below |
 | Actual native recipient picker/composer and accessible delivery glyph | Passed on the isolated signed simulator | `dm-native-final-ui-tests.log` |
 | Shared DOM adapter, including complete digest IDs, focus and field values | 19 checks passed | `dm-full-id-modules.log` |
 | Compiled native/web/reference exchange, native cold history-row selection, exact committed-send retry | Passed, signed iOS simulator and real relay/API | `dm-id128-live-tests.log`, `dm-id128-live-reference.log` |
@@ -42,8 +43,8 @@ Logs below live in the isolated `oa-arcade-dm` worktree's ignored `build/`.
 The receipt/coordination checks now also cover closed nested rows, independent
 generation fences, all known open-refusal statuses, exact operation-hash
 vectors, stale revision/offset replacement, native history dispatch, and the
-independent lifecycle prerequisites. The shared coordinator's latest ordinary
-suite passed 1,071 checks (`dm-store-receipt-corrected-tests.log`).
+independent lifecycle prerequisites. The shared coordinator's expanded ordinary
+suite passed 1,105 checks (`dm-owner-gaps-expanded-tests.log`).
 
 Initial mutation diagnostics used bounded shards and, for some runs, the
 documented native mutation profile with a smaller evaluator slot budget.
@@ -108,9 +109,10 @@ production account, limit, key, inbox or service was changed.
 
 ## Merged native regression checks
 
-The app is being regenerated again on November 15 after rebasing onto
-`46c331be3c`, retaining the native task controls and current Microduck/world
-resources. The native regression run covered 55 non-live cases. Two obsolete
+The app was regenerated on November 15 from the merged chat-composer and
+Microduck/world sources at `46c331be3c`, retaining the native task controls.
+The subsequent rebase onto `7b6c5a4ca8` retains the newer Codex catalog work;
+those later changes do not change the iOS program or installed runtime. The native regression run covered 55 non-live cases. Two obsolete
 assertions still attempted to search through the reference drawer’s already
 removed field; those now check actual paging, retention of both computers, and
 refusal of stale input. The focused correction passed both cases. Account
@@ -132,19 +134,66 @@ The isolated prepared API snapshot `6c8d5c9d29` differs from source
 image is `sha256:b13b90c35331507df8d0cc375550cf9de96fb9cfb004642ad975b9069b8f23c1`.
 Staging `oa-api-staging-00233-wj8` and production `oa-api-00170-5v8` passed
 migrations and deployment smoke checks; both serve that same immutable image.
-The API’s new read-position policy had already passed the focused PostgreSQL
-and ASan suite. No production user keys or plaintext messages were loaded for
+Both new POST routes also return 401 without authentication through the public
+production origin (`dm-production-private-routes.log`). The API’s new
+read-position policy had already passed the focused PostgreSQL and ASan suite. No production user keys or plaintext messages were loaded for
 verification.
+
+## Signed program resource bounds
+
+Build 1361 has been archived and exported locally with two Xcode jobs. It has
+not been uploaded yet. The exact archive resources are retained separately from
+working build products under `~/.openagents/releases/arcade-dm-1361-final/`.
+All world modules link without missing dynamic bindings.
+
+The existing CNU1 per-resource ceiling remains 8 MiB. The installed loader now
+uses `coax.native.program-parts.v1`: an 8 MiB first part and an optional second
+part, validated by one Coax admission rule, joined as bytes before a single
+UTF-8 decode. The package contains all four tails, including empty tails.
+Non-executed WebAssembly parity artifacts remain in the app archive and are
+omitted from the 21-resource signed update. The published CNU1 wire contract,
+its 32 MiB total ceiling, and its 24-resource ceiling are unchanged.
+
+The parts admission suite qualified 27 mutants (25 killed, two precisely
+reviewed equality equivalents); the changed installed policy qualified 41
+(39 killed, two reviewed equivalents), both with zero survivors. All 15 native
+loader/package tests passed, including a multibyte UTF-8 character split across
+the resource boundary. Independent WebAssembly and joined JavaScript app/extras
+frames/actions match. Evidence: `dm-program-parts-qualified.log`,
+`dm-parts-installed-policy.log`, `dm-program-parts-test-summary.json`, and
+`dm-program-parts-runtime-oracle.log`.
+
+## Coordinator scope records
+
+The retained owner/flight records come from the same local source checkpoint
+`ba21d7c0bd`. Parts 1, 3 and 4 selected the entry unit with `--unit`; part 2
+selected the entry-source procedures with `--root-only`, retaining all dependency
+checks. These select the same 513 ordered entry-source sites, but the compiler
+includes the scope spelling in its fingerprint. Their original fingerprints and
+scope fields are retained; they are not presented as one formally merged record.
+No source behavior or check was removed to combine the coverage. The subsequent
+changes strengthen dependent oracles and do not change these entry procedures.
+
+## Compiler diagnostic limitation
+
+The coordinator's fixed-array `.count` receiver-index mutation is explicitly
+reviewed in source: the receiver is not evaluated and both forms have the same
+800000-byte type-level count. Its compiled native mutation switch is folded
+away. One dependent secp256k1 table property exceeds the evaluator's traversal
+budget, so the compiler labels this site undecided despite the equivalent
+annotation. This is tracked in [#13644](https://github.com/OpenAgentsInc/openagents/issues/13644).
+It is not recorded as a compiler-qualified kill or used to suppress any other
+undecided site. All live security/ownership guards remain checked.
 
 ## Remaining release work
 
-1. Finish initial mutation qualification of the remaining new coordinator,
-   relay, journal, and receipt-codec/cache units, and the read policy's API move.
-   Retained survivor/timeout reports are not successful qualification.
-2. Rebase onto current main, retain its concurrent app/world work, and run the
-   final touched checks and existing agent/account/environment regressions.
-3. Deploy the API and web page. Generate the complete native release from the
-   final source tree, with its current world resources and runtime fingerprint;
-   the older world binaries copied for simulator tests are not release assets.
-4. Push main and upload a new TestFlight build. Do not wait for Apple processing
-   before continuing the next issue.
+1. Finish the bounded coordinator, store, scheduler and relay mutation jobs.
+   Earlier survivor/timeout reports remain incomplete evidence. Journal,
+   receipt/cache/compose, read policy and parts-loader qualification are done.
+2. Retain canonical qualification records and run the final touched gates on
+   the rebased tree. The independent live exchange and native regressions above
+   have already passed; unchanged passing checks are not repeated.
+3. Publish the matching signed OTA resources and deploy the web page. The API
+   is already deployed as recorded above.
+4. Push main and upload the exported TestFlight build. Do not wait for Apple
+   processing before continuing other work.

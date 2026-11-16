@@ -46,12 +46,14 @@ content cannot become agent/tool actions or executable markup.
 
 The mobile compiler output now exceeds the old per-program 8 MiB ceiling.
 The installed program carrier admits at most 16 MiB, through the shared Coax
-capacity rule. The package keeps its independent 32 MiB bound and exact runtime
-fingerprint check. This requires a new TestFlight runtime; the larger bundle
+capacity rule. Installed [program parts](native-program-parts-v1.md) retain
+the frozen CNU1 8 MiB per-resource bound: the loader validates and joins two
+byte parts before decoding UTF-8. The package keeps its independent 32 MiB
+bound and exact runtime fingerprint check. This requires a new TestFlight runtime; the larger bundle
 must never be published to an older runtime. The browser's complete message
 codecs use the same 8 MiB call-stack reservation as the mobile assembly.
 
-## Remaining integration gates
+## Integration contract
 
 ### Private read positions
 
@@ -88,17 +90,19 @@ IDs. It never calls this an atomic or permanently complete snapshot. Account
 merge ambiguity refuses just as the underlying journal does. Journal wipe
 removes these existing operation rows in the same transaction.
 
-This endpoint is being implemented as part of #13629; the published custody,
+This endpoint is implemented for #13629; the published custody,
 store, result, sealed receipt and authenticated relay envelopes stay frozen.
 
 - Compose live relay reads, authentication, kind-10050 discovery, outbox
   publishing, acknowledgements and durable replay through their existing owners.
 - Use typed `nip17` conversation references in the existing history, transcript
   and simple composer; keep account/agent/environment/project destinations intact.
-- Complete replies, optimistic/exact retry states, unread/read-watermark
+- Preserve replies, optimistic/exact retry states, unread/read-watermark
   persistence and chronological bounded navigation. Any new stored/read-marker
   shape starts in proto with a versioned codec; RXE, account settings and
   existing journal records are not repurposed.
 - Qualify phone ↔ web ↔ independent-client interoperability, crash/reconnect,
   second-client sender history, forgery/wrong-recipient refusal, UI regressions,
   actual renders and delivery before closing #13629.
+
+Implementation and release evidence: [NIP-17 inbox verification](../verification/nostr-direct-messages-13629/README.md).
