@@ -1,0 +1,49 @@
+// Checks for the table readers (item-types.coax sr_items_read, robot-types.coax sr_robots_read):
+// the CSV shapes items.csv and robots.csv use (quoted notes with commas, empty cells, " / " lists),
+// and the refusals. The real tables are read by tools/data-check.coax from the import bundle.
+// rules.coax loads this file with `#load ... #test;`.
+
+DC_ITEMS :: "item_id,name,category,stack_size,slot_kind,source_section,notes\nITEM_A,A,part,64,both,s1,plain\nITEM_B,B,robot_body,1,both,s2,\"a note, with a comma\"\n\nITEM_C,C,tool,1,grid_only,,\n";
+
+#test "items: every column by its header name, quoted notes, an empty line" {
+  d: [1] SrItemDefs;
+  r := sr_items_read(DC_ITEMS, d[..]);
+  #assert r.ok && r.rows == 3 && d[0].n == 3;
+  a := d[0].rows[sr_defs_find(d[0], "ITEM_A")];
+  #assert a.name == "A" && a.category == SR_CAT_PART && a.stack_size == 64 && a.slot_kind == SR_SLOT_BOTH && a.source_section == "s1";
+  b := d[0].rows[sr_defs_find(d[0], "ITEM_B")];
+  #assert b.category == SR_CAT_ROBOT_BODY && b.notes == "a note, with a comma";
+  #assert d[0].rows[sr_defs_find(d[0], "ITEM_C")].slot_kind == SR_SLOT_GRID_ONLY && sr_defs_find(d[0], "ITEM_D") == -1 && sr_defs_find(d[0], "") == -1;
+  // columns in another order still read
+  d2: [1] SrItemDefs;
+  #assert sr_items_read("stack_size,category,item_id\n16,consumable,ITEM_BATTERY\n", d2[..]).ok && d2[0].rows[0].stack_size == 16 && d2[0].rows[0].category == SR_CAT_CONSUMABLE;
+}
+#test "items: a bad category, slot kind, stack size or repeated id refuses the table" {
+  d: [1] SrItemDefs;
+  h := "item_id,category,stack_size,slot_kind\n";
+  bad := [6] string.["ITEM_A,weapon,1,both\n", "ITEM_A,part,1,sideways\n", "ITEM_A,part,0,both\n", "ITEM_A,part,2.5,both\n", "ITEM_A,part,1,both\nITEM_A,part,1,both\n", ",part,1,both\n"];
+  out: [256] u8;
+  for b: bad {
+    n := 0; for c: h { out[n] = c; n += 1; } for c: b { out[n] = c; n += 1; }
+    r := sr_items_read(cast(string) out[0..<n], d[..]);
+    #assert !r.ok && r.bad_line >= 2 && r.why != "";
+  }
+  #assert !sr_items_read("name\nA\n", d[..]).ok;
+}
+DC_ROBOTS :: "robot_id,name,role,health,move_speed,attack_damage,attack_range,sight_radius,agent_size,source_section,notes\nROBOT_A,A,enemy,20,1.8,2,1.6,5 / 18 / 45,small,s,\"n, n\"\nROBOT_B,B,boss,120,1.4 / 2.4 / 14.0,,6.2 / 4.5,,large,s,n\nROBOT_C,C,other,,,,,,,s,n\n";
+#test "robots: optional cells, lists per Heat level or phase" {
+  d: [1] SrRobotRows;
+  r := sr_robots_read(DC_ROBOTS, d[..]);
+  #assert r.ok && r.rows == 3;
+  a := d[0].rows[sr_robots_find(d[0], "ROBOT_A")];
+  #assert a.role == SR_ROLE_ENEMY && a.has_health && a.health == 20.0 && a.move_speed.n == 1 && a.move_speed.v[0] == cast(f32) 1.8;
+  #assert a.has_attack_damage && a.attack_damage == 2.0 && a.sight_radius.n == 3 && a.sight_radius.v[1] == 18.0 && a.agent_size == SR_AGENT_SMALL && a.notes == "n, n";
+  b := d[0].rows[sr_robots_find(d[0], "ROBOT_B")];
+  #assert b.role == SR_ROLE_BOSS && b.move_speed.n == 3 && b.move_speed.v[2] == 14.0 && !b.has_attack_damage && b.attack_range.n == 2 && b.sight_radius.n == 0 && b.agent_size == SR_AGENT_LARGE;
+  c := d[0].rows[sr_robots_find(d[0], "ROBOT_C")];
+  #assert !c.has_health && c.move_speed.n == 0 && c.agent_size == SR_AGENT_UNKNOWN;
+  #assert !sr_robots_read("robot_id,role,health\nROBOT_A,enemy,ten\n", d[..]).ok;
+  #assert !sr_robots_read("robot_id,role\nROBOT_A,pilot\n", d[..]).ok;
+  #assert !sr_robots_read("robot_id,role,move_speed\nROBOT_A,enemy,1 / x\n", d[..]).ok;
+  #assert !sr_robots_read("robot_id,role,health\nROBOT_A,enemy,1 / 2\n", d[..]).ok;
+}

@@ -1,0 +1,93 @@
+// tool.sh: stack-gib 1
+// The Splice Bots rules against the jam build's own tables (GitHub #13653): reads `/Data/items` and
+// `/Data/robots` through the import bundle's manifest (`tables[]`, written by the importer, #13646),
+// or items.csv and robots.csv from the jam build's Data folder, with the rules' own readers, and
+// checks what the rules assume of them:
+//   - both tables read whole (sr_items_read, sr_robots_read), with the row counts the manifest states
+//   - every slice recipe's output is a robot_body item and every ingredient an item of the table
+//   - the robots the rules name (ROBOT_DIGGER, ROBOT_MICRODUCK and the rest) have rows
+//
+//   coax/web/tool.sh metaverse/splice-bots/rules/tools/data-check.coax BUNDLE      # a data.aimport folder
+//   coax/web/tool.sh metaverse/splice-bots/rules/tools/data-check.coax --data DIR  # the jam build's Data folder
+// The default bundle is ~/.openagents/unreal/splice-bots-jam/data.aimport. It prints what it read
+// and exits non-zero on a miss.
+#import "Basic";
+#load "../../../../coax/lib/sys/tool.coax";
+#load "../../../../coax/lib/sys/fs.coax";
+#load "../../../../coax/lib/json/json.coax";
+#load "../../../../coax/lib/sys/proc.coax";
+#load "../recipes.coax";
+
+DCK_NODES :: 65536;
+DCK_TEXT :: 1048576;
+Dck :: struct { bad: int; }
+dck_miss :: (d: [] Dck, what: string, name: string) #effects(all) { tool_err("data-check: "); tool_err(what); tool_err(" "); tool_errln(name); d[0].bad += 1; }
+
+// The manifest's table with this id: its file (relative to the bundle) and its row count, or file "".
+DckTable :: struct { file: string; rows: int; }
+dck_table :: (m: Jv, id: string) -> DckTable #effects(all) {
+  t := jv_get(m, 0, "tables");
+  for k: 0..<jv_len(m, t) {
+    e := jv_at(m, t, k);
+    if jv_raw(m, jv_get(m, e, "id")) == id { return DckTable.{file = jv_raw(m, jv_get(m, e, "file")), rows = jv_int(m, jv_get(m, e, "rows"), -1)}; }
+  }
+  return DckTable.{rows = -1};
+}
+dck_read :: (path: string, out: [] u8) -> string #effects(all) {
+  n := fs_size(path);
+  if n < 0 || n > out.count || fs_read(path, out[0..<n]) != n { return ""; }
+  return cast(string) out[0..<n];
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) > 2 { print("usage: data-check [BUNDLE | --data DIR]\n"); return 2; }
+  pb: [4096] u8; pi: [4096] u8; pr: [4096] u8; hb: [4096] u8;
+  items_path := ""; robots_path := ""; items_rows := -1; robots_rows := -1;
+  if args_count(a[..]) == 2 && args_at(a[..], 0) == "--data" {
+    items_path = fs_join(args_at(a[..], 1), "items.csv", pi[..]);
+    robots_path = fs_join(args_at(a[..], 1), "robots.csv", pr[..]);
+  } else {
+    bundle := "";
+    if args_count(a[..]) == 1 { bundle = args_at(a[..], 0); }
+    else {
+      home := proc_getenv("HOME", hb[..]);
+      bundle = fs_join(home, ".openagents/unreal/splice-bots-jam/data.aimport", pb[..]);
+    }
+    mb: [1048576] u8; mp: [4096] u8;
+    mtext := dck_read(fs_join(bundle, "manifest.json", mp[..]), mb[..]);
+    if mtext == "" { tool_err("data-check: no manifest.json in "); tool_errln(bundle); return 1; }
+    nodes: [DCK_NODES] JvNode; m: [1] Jv;
+    if !jv_parse(m[..], mtext, nodes[..]) { tool_errln("data-check: the manifest is not JSON (or has more than DCK_NODES values)"); return 1; }
+    ti := dck_table(m[0], "/Data/items"); tr := dck_table(m[0], "/Data/robots");
+    if ti.file == "" || tr.file == "" { tool_errln("data-check: the manifest has no /Data/items or /Data/robots table"); return 1; }
+    items_path = fs_join(bundle, ti.file, pi[..]); robots_path = fs_join(bundle, tr.file, pr[..]);
+    items_rows = ti.rows; robots_rows = tr.rows;
+  }
+  dd: [1] Dck; d := dd[..];
+  ib: [DCK_TEXT] u8; rb: [DCK_TEXT] u8;
+  items_csv := dck_read(items_path, ib[..]); robots_csv := dck_read(robots_path, rb[..]);
+  if items_csv == "" || robots_csv == "" { tool_err("data-check: could not read "); tool_errln(ifx items_csv == "" then items_path else robots_path); return 1; }
+  defs: [1] SrItemDefs; rows: [1] SrRobotRows;
+  ri := sr_items_read(items_csv, defs[..]);
+  if !ri.ok { print("data-check: items line %: %\n", ri.bad_line, ri.why); return 1; }
+  rr := sr_robots_read(robots_csv, rows[..]);
+  if !rr.ok { print("data-check: robots line %: %\n", rr.bad_line, rr.why); return 1; }
+  if items_rows >= 0 && items_rows != ri.rows { print("data-check: the manifest says % item rows, the table has %\n", items_rows, ri.rows); d[0].bad += 1; }
+  if robots_rows >= 0 && robots_rows != rr.rows { print("data-check: the manifest says % robot rows, the table has %\n", robots_rows, rr.rows); d[0].bad += 1; }
+  // the recipes against the item table
+  ings := 0;
+  for r: sr_slice_recipes() {
+    o := sr_defs_find(defs[0], r.output_id);
+    if o < 0 { dck_miss(d, "a recipe's output is not in items:", r.output_id); }
+    else if defs[0].rows[o].category != SR_CAT_ROBOT_BODY { dck_miss(d, "a recipe's output is not a robot_body:", r.output_id); }
+    for k: 0..<r.n { ings += 1; if sr_defs_find(defs[0], r.ingredients[k].item) < 0 { dck_miss(d, "an ingredient is not in items:", r.ingredients[k].item); } }
+  }
+  for id: [5] string.[ROBOT_DIGGER, ROBOT_IMPERIAL, ROBOT_DRILL_MECH, ROBOT_DINOSAUR, ROBOT_MICRODUCK] {
+    if sr_robots_find(rows[0], id) < 0 { dck_miss(d, "a robot the rules name has no row:", id); }
+  }
+  print("data-check: % items, % robots read; % recipes, % ingredients checked\n", ri.rows, rr.rows, SR_SLICE_RECIPES, ings);
+  if d[0].bad > 0 { tool_errln("data-check: refused: see above"); return 1; }
+  print("data-check: the tables are what the rules expect\n");
+  return 0;
+}

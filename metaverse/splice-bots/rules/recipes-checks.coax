@@ -1,0 +1,126 @@
+// Parity checks for recipes.coax: SpliceTests/Rules/SpliceRecipesTests.cpp, case for case (the C++
+// test's name is each check's name). rules.coax loads this file with `#load ... #test;`.
+
+// AddStack: a stack appended to the container, which grows by one.
+rc_add :: (c: [] SrContainer, item: string, count: int) { c[0].slots[c[0].size] = sr_item(item, count); c[0].size += 1; }
+// Everything the Digger recipe needs, split over two scrap stacks (1 core, 7 scrap, 1 banned).
+rc_digger_inventory :: () -> SrContainer {
+  c: [1] SrContainer;
+  rc_add(c[..], ITEM_SMALL_CORE, 1); rc_add(c[..], ITEM_SCRAP_PART, 2); rc_add(c[..], ITEM_SCRAP_PART, 5); rc_add(c[..], ITEM_BANNED_PIECE, 1);
+  return c[0];
+}
+rc_digger_known :: () -> SrLearned { l: [1] SrLearned; _ = sr_learn(l[..], RECIPE_DIGGER); return l[0]; }
+rc_duck_inventory :: (batteries: int, scrap: int) -> SrContainer {
+  c: [1] SrContainer;
+  rc_add(c[..], ITEM_HOVERBOARD, 1);
+  if batteries > 0 { rc_add(c[..], ITEM_BATTERY, batteries); }
+  if scrap > 0 { rc_add(c[..], ITEM_SCRAP_PART, scrap); }
+  return c[0];
+}
+
+#test "Splice.Rules.Recipes.BuildsWhenIngredientsPresent" {
+  f := sr_find_slice_recipe(RECIPE_DIGGER);
+  #assert f.found;
+  inv := [1] SrContainer.[rc_digger_inventory()];
+  r := sr_build(f.recipe, rc_digger_known(), inv[..], 0);
+  #assert r.built && r.refusal == SR_BUILD_NONE && r.output_id == ITEM_BODY_DIGGER;
+}
+#test "Splice.Rules.Recipes.RefusesWhenIngredientMissing" {
+  f := sr_find_slice_recipe(RECIPE_DIGGER);
+  inv: [1] SrContainer;
+  rc_add(inv[..], ITEM_SMALL_CORE, 1); rc_add(inv[..], ITEM_SCRAP_PART, 2); rc_add(inv[..], ITEM_BANNED_PIECE, 1);
+  before := sr_count_item(inv[0], ITEM_SCRAP_PART);
+  r := sr_build(f.recipe, rc_digger_known(), inv[..], 0);
+  #assert !r.built && r.refusal == SR_BUILD_MISSING_INGREDIENT && r.missing_item == ITEM_SCRAP_PART && r.missing_count == 1;
+  #assert sr_count_item(inv[0], ITEM_SCRAP_PART) == before && sr_count_item(inv[0], ITEM_SMALL_CORE) == 1;
+}
+#test "Splice.Rules.Recipes.RefusesWhenNotLearned" {
+  f := sr_find_slice_recipe(RECIPE_DIGGER);
+  inv := [1] SrContainer.[rc_digger_inventory()];
+  none: SrLearned;
+  r := sr_build(f.recipe, none, inv[..], 0);
+  #assert !r.built && r.refusal == SR_BUILD_NOT_LEARNED;
+  #assert sr_count_item(inv[0], ITEM_SMALL_CORE) == 1 && sr_count_item(inv[0], ITEM_SCRAP_PART) == 7;
+}
+#test "Splice.Rules.Recipes.ConsumesIngredientsExactlyOnce" {
+  f := sr_find_slice_recipe(RECIPE_DIGGER);
+  inv := [1] SrContainer.[rc_digger_inventory()];
+  known := rc_digger_known();
+  first := sr_build(f.recipe, known, inv[..], 0);
+  #assert first.built;
+  #assert sr_count_item(inv[0], ITEM_SMALL_CORE) == 0 && sr_count_item(inv[0], ITEM_SCRAP_PART) == 4 && sr_count_item(inv[0], ITEM_BANNED_PIECE) == 0;
+  second := sr_build(f.recipe, known, inv[..], 1);
+  #assert !second.built && second.refusal == SR_BUILD_MISSING_INGREDIENT && sr_count_item(inv[0], ITEM_SCRAP_PART) == 4;
+}
+#test "Splice.Rules.Recipes.RefusesAtCrewLimit" {
+  f := sr_find_slice_recipe(RECIPE_DIGGER);
+  inv := [1] SrContainer.[rc_digger_inventory()];
+  r := sr_build(f.recipe, rc_digger_known(), inv[..], SR_MAX_CREW);
+  #assert !r.built && r.refusal == SR_BUILD_CREW_LIMIT && sr_count_item(inv[0], ITEM_SCRAP_PART) == 7;
+}
+#test "Splice.Rules.Recipes.SliceTableMatchesAddendum" {
+  #assert sr_slice_recipes().count == 5;
+  drill := sr_find_slice_recipe(RECIPE_DRILL_MECH);
+  #assert drill.found && drill.recipe.n == 4;
+  dino := sr_find_slice_recipe(RECIPE_DINOSAUR);
+  #assert dino.found && dino.recipe.ingredients[dino.recipe.n - 1].count == 2;
+  sentinel := sr_find_slice_recipe(RECIPE_IMPERIAL_SENTINEL);
+  #assert sentinel.found && !sentinel.recipe.in_slice;
+  #assert !sr_find_slice_recipe("RECIPE_NONE").found;
+}
+#test "Splice.Rules.Recipes.MicroduckIsAPetKnownAtStart" {
+  f := sr_find_slice_recipe(RECIPE_MICRODUCK);
+  #assert f.found;
+  d := f.recipe;
+  #assert d.output_id == ITEM_BODY_MICRODUCK && d.pet && d.in_slice && d.teaching_event == "" && d.n == 2;
+  #assert d.ingredients[0].item == ITEM_BATTERY && d.ingredients[0].count == 1;
+  #assert d.ingredients[1].item == ITEM_SCRAP_PART && d.ingredients[1].count == 3;
+  start := sr_known_at_start();
+  #assert sr_knows(start, RECIPE_MICRODUCK) && sr_knows(start, RECIPE_DIGGER);
+  #assert !sr_knows(start, RECIPE_DRILL_MECH) && !sr_knows(start, RECIPE_DINOSAUR);
+}
+#test "Splice.Rules.Recipes.MicroduckBuildConsumesAndRefuses" {
+  duck := sr_find_slice_recipe(RECIPE_MICRODUCK).recipe;
+  known := sr_known_at_start();
+  inv := [1] SrContainer.[rc_duck_inventory(2, 7)];
+  r := sr_build(duck, known, inv[..], 0);
+  #assert r.built && r.output_id == ITEM_BODY_MICRODUCK && sr_count_item(inv[0], ITEM_BATTERY) == 1 && sr_count_item(inv[0], ITEM_SCRAP_PART) == 4;
+  r = sr_build(duck, known, inv[..], 0);
+  #assert r.built && sr_count_item(inv[0], ITEM_BATTERY) == 0 && sr_count_item(inv[0], ITEM_SCRAP_PART) == 1 && sr_count_item(inv[0], ITEM_HOVERBOARD) == 1;
+  r = sr_build(duck, known, inv[..], 0);
+  #assert !r.built && r.refusal == SR_BUILD_MISSING_INGREDIENT && r.missing_item == ITEM_BATTERY && sr_count_item(inv[0], ITEM_SCRAP_PART) == 1;
+  short := [1] SrContainer.[rc_duck_inventory(1, 2)];
+  r = sr_build(duck, known, short[..], 0);
+  #assert !r.built && r.missing_item == ITEM_SCRAP_PART && r.missing_count == 1 && sr_count_item(short[0], ITEM_BATTERY) == 1;
+  // a pet is not crew: a full crew of 3 does not refuse it
+  full := [1] SrContainer.[rc_duck_inventory(1, 3)];
+  r = sr_build(duck, known, full[..], SR_MAX_CREW);
+  #assert r.built;
+  unknown := [1] SrContainer.[rc_duck_inventory(1, 3)];
+  none: SrLearned;
+  r = sr_build(duck, none, unknown[..], 0);
+  #assert !r.built && r.refusal == SR_BUILD_NOT_LEARNED && sr_count_item(unknown[0], ITEM_SCRAP_PART) == 3;
+}
+
+// ---- beyond the C++ tests: the refusal order and a recipe that names one id twice
+#test "build checks validity, slice, learning, crew and ingredients in that order" {
+  known := sr_known_at_start();
+  inv := [1] SrContainer.[rc_digger_inventory()];
+  bad := sr_find_slice_recipe(RECIPE_DIGGER).recipe; bad.output_id = "";
+  #assert sr_build(bad, known, inv[..], 9).refusal == SR_BUILD_INVALID_RECIPE;
+  bad = sr_find_slice_recipe(RECIPE_DIGGER).recipe; bad.ingredients[1].count = 0;
+  #assert sr_build(bad, known, inv[..], 0).refusal == SR_BUILD_INVALID_RECIPE;
+  sentinel := sr_find_slice_recipe(RECIPE_IMPERIAL_SENTINEL).recipe;
+  #assert sr_build(sentinel, known, inv[..], 9).refusal == SR_BUILD_NOT_IN_SLICE;
+  drill := sr_find_slice_recipe(RECIPE_DRILL_MECH).recipe;
+  #assert sr_build(drill, known, inv[..], 9).refusal == SR_BUILD_NOT_LEARNED;
+  #assert sr_build(sr_find_slice_recipe(RECIPE_DIGGER).recipe, known, inv[..], 3).refusal == SR_BUILD_CREW_LIMIT;
+  #assert sr_count_item(inv[0], ITEM_SCRAP_PART) == 7;
+  twice := sr_make_recipe("RECIPE_TWICE", ITEM_BODY_DIGGER, "", true, false, sr_ing(ITEM_SCRAP_PART, 4), sr_ing(ITEM_SCRAP_PART, 4), SR_NO_ING, SR_NO_ING);
+  l: [1] SrLearned; _ = sr_learn(l[..], "RECIPE_TWICE");
+  r := sr_build(twice, l[0], inv[..], 0);
+  #assert !r.built && r.refusal == SR_BUILD_MISSING_INGREDIENT && r.missing_item == ITEM_SCRAP_PART && r.missing_count == 1 && sr_count_item(inv[0], ITEM_SCRAP_PART) == 7;
+  twice.ingredients[1].count = 3;
+  r = sr_build(twice, l[0], inv[..], 0);
+  #assert r.built && sr_count_item(inv[0], ITEM_SCRAP_PART) == 0 && inv[0].slots[1].item == "" && inv[0].slots[2].item == "";
+}

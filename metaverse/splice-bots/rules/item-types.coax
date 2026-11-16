@@ -1,0 +1,156 @@
+// Splice Bots rules: items, stacks and containers (SpliceItemTypes.h, package C-03; GDD 04 6.2.2,
+// UE-STOW-01). Item ids are the items.csv `item_id` values (ITEM_SCRAP_PART); "" is no item
+// (the C++ NAME_None). The item table is read from that CSV (sr_items_read), never written here.
+//
+// What maps differently from the C++:
+// - A stack's robot payload is held by value (`payload`, `robot`), not behind a shared pointer.
+//   The C++ treats it as immutable and compares it by value, so a copy is the same thing. A
+//   payload's own parts and cards are plain stacks (SrStack in an SrKit): a body inside a body's
+//   parts never happens in the game, and Coax structs do not nest themselves.
+// - A slot filter is a mask of categories (bit 1 << category); 0 takes any category, as an
+//   empty filter does in the C++.
+// - Containers have a fixed capacity (SR_CONTAINER_MAX, SR_KIT_MAX); `size` is the C++ Size.
+#load "../../../coax/lib/text/csv.coax";
+
+// items.csv `category` (ESpliceItemCategory). The values are the C++ enum's order.
+SR_CAT_PART :: 0; SR_CAT_CORE :: 1; SR_CAT_OTHER :: 2; SR_CAT_CONSUMABLE :: 3; SR_CAT_CARD :: 4;
+SR_CAT_ROBOT_BODY :: 5; SR_CAT_TOOL :: 6;
+SR_CAT_COUNT :: 7;
+SR_CATEGORY_NAMES :: [SR_CAT_COUNT] string.["part", "core", "other", "consumable", "card", "robot_body", "tool"];
+// items.csv `slot_kind` (ESpliceSlotKind).
+SR_SLOT_BOTH :: 0; SR_SLOT_GRID_ONLY :: 1; SR_SLOT_HOTBAR_ONLY :: 2;
+SR_SLOT_KIND_NAMES :: [3] string.["both", "grid_only", "hotbar_only"];
+
+// The refusals every operation can give (ESpliceRefusal; GDD 04 6.2.3).
+SR_REFUSE_NONE :: 0;
+SR_REFUSE_FULL :: 1;                 // FULL; UE-INT-06
+SR_REFUSE_CREW_LIMIT :: 2;           // 3 ROBOTS MAX; UE-CORE-08
+SR_REFUSE_NO_ROOM :: 3;              // NO ROOM; UE-CORE-06, UE-BOARD-07
+SR_REFUSE_NEEDS_DRILL_CARD :: 4;     // NEEDS THE DRILL CARD; UE-INT-06
+SR_REFUSE_BRING_TO_ZERO_FIRST :: 5;  // BRING IT TO 0 FIRST; UE-CORE-02
+SR_REFUSE_CORE_NOT_READY :: 6;       // experimental core before its memory; GDD 02 28.3 rule 3
+SR_REFUSE_NOT_ALLOWED_HERE :: 7;     // e.g. the board inside Sniper; UE-BOARD-07
+SR_REFUSE_WRONG_SLOT :: 8;           // the slot filter refuses the item
+
+// The slice's item ids (items.csv item_id), for the rules and checks that name them.
+ITEM_SCRAP_PART :: "ITEM_SCRAP_PART"; ITEM_IMPERIAL_PART :: "ITEM_IMPERIAL_PART"; ITEM_RAIDER_MECH_PART :: "ITEM_RAIDER_MECH_PART";
+ITEM_DRILL_HARDWARE :: "ITEM_DRILL_HARDWARE"; ITEM_SMALL_CORE :: "ITEM_SMALL_CORE"; ITEM_LARGE_CORE :: "ITEM_LARGE_CORE";
+ITEM_EXPERIMENTAL_CORE :: "ITEM_EXPERIMENTAL_CORE"; ITEM_BANNED_PIECE :: "ITEM_BANNED_PIECE"; ITEM_BATTERY :: "ITEM_BATTERY";
+ITEM_DRILL_CARD :: "ITEM_DRILL_CARD"; ITEM_JUMP_CARD :: "ITEM_JUMP_CARD"; ITEM_SENSOR_CARD :: "ITEM_SENSOR_CARD";
+ITEM_BODY_DIGGER :: "ITEM_BODY_DIGGER"; ITEM_BODY_DRILL_MECH :: "ITEM_BODY_DRILL_MECH"; ITEM_BODY_DINOSAUR :: "ITEM_BODY_DINOSAUR";
+ITEM_BODY_IMPERIAL_ROBOT :: "ITEM_BODY_IMPERIAL_ROBOT"; ITEM_HOVERBOARD :: "ITEM_HOVERBOARD"; ITEM_BODY_MICRODUCK :: "ITEM_BODY_MICRODUCK";
+ITEM_JETPACK :: "ITEM_JETPACK";
+
+// One row of items.csv (FSpliceItemDefRow). The strings borrow the CSV text.
+SrItemDef :: struct {
+  item_id: string;
+  name: string;
+  category: int = SR_CAT_OTHER;
+  stack_size: int = 1;
+  slot_kind: int = SR_SLOT_BOTH;
+  source_section: string;
+  notes: string;
+  banned: bool;   // GDD 04 6.2.2 flags; not columns in items.csv yet
+  unique: bool;
+}
+SR_ITEM_DEFS_MAX :: 64;
+// The item table (the C++ TMap<FName, FSpliceItemDefRow> Defs).
+SrItemDefs :: struct { n: int; rows: [SR_ITEM_DEFS_MAX] SrItemDef; }
+
+// A plain stack: an item and a count (a robot's parts, cards and core).
+SrStack :: struct { item: string; count: int; }
+SR_KIT_MAX :: 8;
+// A robot's parts or cards container.
+SrKit :: struct { size: int; slots: [SR_KIT_MAX] SrStack; filter: [SR_KIT_MAX] u8; }
+
+// The robot payload (FSpliceRobotState; UE-STOW-02, GDD 02 28.6): a body item's payload, a robot
+// standing in the world, and the save row. Not kept: follow or stay, target, attack timers.
+SrRobotState :: struct {
+  robot_id: string;   // robots.csv robot_id
+  parts: SrKit;
+  cards: SrKit;
+  health: f32;
+  health_max: f32;
+  move_energy: f32;
+  name: string;
+  has_core: bool;     // the C++ TOptional<FSpliceItemStack> Core: set, and the stack
+  core: SrStack;
+}
+
+// A stack in her inventory, the chest or the world (FSpliceItemStack): item, count, an optional
+// robot payload. A body is one stack, count 1, never stacking (UE-STOW-01).
+SrItemStack :: struct { item: string; count: int; payload: bool; robot: SrRobotState; }
+SR_CONTAINER_MAX :: 36;
+// A container (FSpliceContainer): `size` slots and a filter mask per slot (0 = any category).
+SrContainer :: struct { size: int; slots: [SR_CONTAINER_MAX] SrItemStack; filter: [SR_CONTAINER_MAX] u8; }
+
+sr_stack :: (item: string, count: int) -> SrStack { return SrStack.{item = item, count = count}; }
+sr_item :: (item: string, count: int) -> SrItemStack { return SrItemStack.{item = item, count = count}; }
+sr_stack_empty :: (s: SrStack) -> bool { return s.item == "" || s.count <= 0; }
+sr_item_empty :: (s: SrItemStack) -> bool { return s.item == "" || s.count <= 0; }
+// GDD 04 6.2.2: stacks with a payload never merge.
+sr_item_has_payload :: (s: SrItemStack) -> bool { return s.payload; }
+// A plain stack as an inventory stack (no payload), and back.
+sr_item_of :: (s: SrStack) -> SrItemStack { return sr_item(s.item, s.count); }
+sr_stack_of :: (s: SrItemStack) -> SrStack { return sr_stack(s.item, s.count); }
+sr_filter_bit :: (category: int) -> u8 { return cast(u8) (1 << category); }
+
+// A new container of `size` empty slots with no filters (FSpliceInventory::MakeContainer).
+sr_make_container :: (size: int) -> SrContainer { c: SrContainer; c.size = ifx size < 0 then 0 else ifx size > SR_CONTAINER_MAX then SR_CONTAINER_MAX else size; return c; }
+sr_make_kit :: (size: int) -> SrKit { c: SrKit; c.size = ifx size < 0 then 0 else ifx size > SR_KIT_MAX then SR_KIT_MAX else size; return c; }
+
+// ---- the item table
+
+sr_defs_find :: (d: SrItemDefs, id: string) -> int {
+  if id == "" { return -1; }
+  for k: 0..<d.n { if d.rows[k].item_id == id { return k; } }
+  return -1;
+}
+// Adds or replaces a row (TMap::Add). False when the table is full.
+sr_defs_add :: (d: [] SrItemDefs, row: SrItemDef) -> bool {
+  k := sr_defs_find(d[0], row.item_id);
+  if k >= 0 { d[0].rows[k] = row; return true; }
+  if d[0].n >= SR_ITEM_DEFS_MAX || row.item_id == "" { return false; }
+  d[0].rows[d[0].n] = row; d[0].n += 1;
+  return true;
+}
+sr_def :: (id: string, category: int, stack_size: int) -> SrItemDef { return SrItemDef.{item_id = id, category = category, stack_size = stack_size}; }
+sr_name_index :: (names: [] const string, s: string) -> int { for n, k: names { if n == s { return k; } } return -1; }
+
+// What reading items.csv found: rows read, and the first bad line (0 when none).
+SrReadResult :: struct { ok: bool; rows: int; bad_line: int; why: string; }
+// Reads items.csv (the jam build's Data/items.csv, or the import bundle's `/Data/items` table) into
+// d, by its header's column names. A row with an unknown category or slot kind, a stack size that
+// is not a whole number of at least 1, or a repeated id refuses the whole table.
+sr_items_read :: (csv: string, d: [] SrItemDefs) -> SrReadResult {
+  r: SrReadResult;
+  d[0].n = 0;
+  head := csv_record(csv, 0);
+  c_id := csv_column(head.text, "item_id"); c_name := csv_column(head.text, "name"); c_cat := csv_column(head.text, "category");
+  c_stack := csv_column(head.text, "stack_size"); c_slot := csv_column(head.text, "slot_kind");
+  c_src := csv_column(head.text, "source_section"); c_notes := csv_column(head.text, "notes");
+  if c_id < 0 || c_cat < 0 || c_stack < 0 { r.bad_line = 1; r.why = "no item_id, category or stack_size column"; return r; }
+  at := head.next; line := 1;
+  while at < csv.count {
+    rec := csv_record(csv, at); at = rec.next; line += 1;
+    if rec.text.count == 0 { continue; }
+    row: SrItemDef;
+    row.item_id = csv_at(rec.text, c_id);
+    row.name = ifx c_name >= 0 then csv_at(rec.text, c_name) else "";
+    row.category = sr_name_index(SR_CATEGORY_NAMES[..], csv_at(rec.text, c_cat));
+    n := csv_number(csv_at(rec.text, c_stack));
+    row.slot_kind = ifx c_slot >= 0 then sr_name_index(SR_SLOT_KIND_NAMES[..], csv_at(rec.text, c_slot)) else SR_SLOT_BOTH;
+    row.source_section = ifx c_src >= 0 then csv_at(rec.text, c_src) else "";
+    row.notes = ifx c_notes >= 0 then csv_at(rec.text, c_notes) else "";
+    if row.item_id == "" { r.bad_line = line; r.why = "an empty item_id"; return r; }
+    if row.category < 0 { r.bad_line = line; r.why = "an unknown category"; return r; }
+    if row.slot_kind < 0 { r.bad_line = line; r.why = "an unknown slot_kind"; return r; }
+    if !n.ok || n.v < 1.0 || n.v != cast(f64) (cast(int) n.v) { r.bad_line = line; r.why = "a stack_size that is not a whole number of at least 1"; return r; }
+    row.stack_size = cast(int) n.v;
+    if sr_defs_find(d[0], row.item_id) >= 0 { r.bad_line = line; r.why = "a repeated item_id"; return r; }
+    if !sr_defs_add(d, row) { r.bad_line = line; r.why = "more rows than SR_ITEM_DEFS_MAX"; return r; }
+    r.rows += 1;
+  }
+  r.ok = true;
+  return r;
+}

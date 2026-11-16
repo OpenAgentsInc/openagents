@@ -1,0 +1,134 @@
+// Splice Bots rules: recipes, the learned set, and BUILD (SpliceRecipes.h, package R-09; GDD 04 6.5
+// UE-CRAFT-01, -03, -09; the designer addendum of 2026-11-14 section 3, the recipe table).
+// Build never changes the container unless it succeeds, and then takes each ingredient once.
+// The recipes are the addendum's (they are not a column of any Data table): Digger, the drill
+// mech, the dinosaur (in the slice, shown greyed), the Imperial Sentinel (not in the slice), and
+// the Microduck (15 Nov, owner request): a pet of a battery and 3 scrap parts, known from the start.
+#load "robot-payload.coax";
+#load "event-tags.coax";
+
+RECIPE_DIGGER :: "RECIPE_DIGGER"; RECIPE_DRILL_MECH :: "RECIPE_DRILL_MECH"; RECIPE_DINOSAUR :: "RECIPE_DINOSAUR";
+RECIPE_IMPERIAL_SENTINEL :: "RECIPE_IMPERIAL_SENTINEL"; RECIPE_MICRODUCK :: "RECIPE_MICRODUCK";
+
+SR_INGREDIENTS_MAX :: 4;
+SrIngredient :: struct { item: string; count: int = 1; }
+// One recipe (FSpliceRecipe): the body it makes, its ingredients (the core first; for a pet, what
+// powers it), the event that teaches it ("" = known at the start), whether it is in the slice.
+SrRecipe :: struct {
+  recipe_id: string;
+  output_id: string;
+  n: int; ingredients: [SR_INGREDIENTS_MAX] SrIngredient;
+  teaching_event: string;
+  in_slice: bool = true;
+  pet: bool;   // walks out of the bay and follows her; not one of her crew of 3
+}
+SR_SLICE_RECIPES :: 5;
+sr_ing :: (item: string, count: int) -> SrIngredient { return SrIngredient.{item = item, count = count}; }
+sr_make_recipe :: (id: string, output: string, event: string, in_slice: bool, pet: bool, a: SrIngredient, b: SrIngredient, c: SrIngredient, d: SrIngredient) -> SrRecipe {
+  r := SrRecipe.{recipe_id = id, output_id = output, teaching_event = event, in_slice = in_slice, pet = pet};
+  for x: [4] SrIngredient.[a, b, c, d] { if x.item != "" { r.ingredients[r.n] = x; r.n += 1; } }
+  return r;
+}
+SR_NO_ING :: SrIngredient.{item = "", count = 0};
+// The slice's recipes (GetSliceRecipes), in the C++'s order.
+sr_slice_recipes :: () -> [SR_SLICE_RECIPES] SrRecipe {
+  return [SR_SLICE_RECIPES] SrRecipe.[
+    sr_make_recipe(RECIPE_DIGGER, ITEM_BODY_DIGGER, "", true, false,
+      sr_ing(ITEM_SMALL_CORE, 1), sr_ing(ITEM_SCRAP_PART, 3), sr_ing(ITEM_BANNED_PIECE, 1), SR_NO_ING),
+    sr_make_recipe(RECIPE_DRILL_MECH, ITEM_BODY_DRILL_MECH, EV_BOT_TAKEN_DRILL_MECH, true, false,
+      sr_ing(ITEM_LARGE_CORE, 1), sr_ing(ITEM_RAIDER_MECH_PART, 4), sr_ing(ITEM_DRILL_HARDWARE, 1), sr_ing(ITEM_BANNED_PIECE, 1)),
+    sr_make_recipe(RECIPE_DINOSAUR, ITEM_BODY_DINOSAUR, EV_BOT_TAKEN_DINOSAUR, true, false,
+      sr_ing(ITEM_EXPERIMENTAL_CORE, 1), sr_ing(ITEM_IMPERIAL_PART, 6), sr_ing(ITEM_BANNED_PIECE, 2), SR_NO_ING),
+    sr_make_recipe(RECIPE_IMPERIAL_SENTINEL, ITEM_BODY_IMPERIAL_ROBOT, EV_BOT_HARVESTED_IMPERIAL, false, false,
+      sr_ing(ITEM_SMALL_CORE, 1), sr_ing(ITEM_IMPERIAL_PART, 3), sr_ing(ITEM_BANNED_PIECE, 1), SR_NO_ING),
+    // The farm gives batteries (its charge points regrow) and 8 scrap parts: two Microducks a playthrough.
+    sr_make_recipe(RECIPE_MICRODUCK, ITEM_BODY_MICRODUCK, "", true, true,
+      sr_ing(ITEM_BATTERY, 1), sr_ing(ITEM_SCRAP_PART, 3), SR_NO_ING, SR_NO_ING),
+  ];
+}
+// The slice recipe with that id (FindSliceRecipe), and whether there is one.
+SrRecipeFind :: struct { found: bool; recipe: SrRecipe; }
+sr_find_slice_recipe :: (id: string) -> SrRecipeFind {
+  for r: sr_slice_recipes() { if r.recipe_id == id { return SrRecipeFind.{found = true, recipe = r}; } }
+  return SrRecipeFind.{};
+}
+
+// The recipes she knows (FSpliceLearnedRecipes): saved (UE-CRAFT-02).
+SR_LEARNED_MAX :: 16;
+SrLearned :: struct { n: int; known: [SR_LEARNED_MAX] string; }
+sr_knows :: (l: SrLearned, id: string) -> bool { for k: 0..<l.n { if l.known[k] == id { return true; } } return false; }
+// Learns a recipe (a set: learning one twice keeps one). False when the set is full.
+sr_learn :: (l: [] SrLearned, id: string) -> bool {
+  if sr_knows(l[0], id) { return true; }
+  if l[0].n >= SR_LEARNED_MAX || id == "" { return false; }
+  l[0].known[l[0].n] = id; l[0].n += 1;
+  return true;
+}
+// Every slice recipe with no teaching event (KnownAtStart).
+sr_known_at_start :: () -> SrLearned {
+  l: [1] SrLearned;
+  for r: sr_slice_recipes() { if r.teaching_event == "" { _ = sr_learn(l[..], r.recipe_id); } }
+  return l[0];
+}
+
+// BUILD's refusals (ESpliceBuildRefusal).
+SR_BUILD_NONE :: 0; SR_BUILD_NOT_LEARNED :: 1; SR_BUILD_MISSING_INGREDIENT :: 2; SR_BUILD_CREW_LIMIT :: 3;
+SR_BUILD_NOT_IN_SLICE :: 4; SR_BUILD_INVALID_RECIPE :: 5;
+// GDD 04 UE-CRAFT-09: robots with her at most.
+SR_MAX_CREW :: 3;
+SrBuildResult :: struct { built: bool; refusal: int; output_id: string; missing_item: string; missing_count: int; }
+
+// Total held of an item across the container's slots.
+sr_count_item :: (c: SrContainer, id: string) -> int {
+  n := 0;
+  for k: 0..<c.size { s := c.slots[k]; if !sr_item_empty(s) && s.item == id { n += s.count; } }
+  return n;
+}
+// The first ingredient the container cannot cover: found, its id and how many more are needed.
+SrMissing :: struct { found: bool; item: string; count: int; }
+sr_find_first_missing :: (r: SrRecipe, c: SrContainer) -> SrMissing {
+  for k: 0..<r.n {
+    i := r.ingredients[k]; held := sr_count_item(c, i.item);
+    if held < i.count { return SrMissing.{found = true, item = i.item, count = i.count - held}; }
+  }
+  return SrMissing.{};
+}
+// BUILD. Checks, in order: valid, in slice, learned, crew limit (not for a pet), ingredients. On
+// success the ingredients leave c[0] once, slot by slot in order, and the result carries the output
+// id (the caller makes the robot). On a refusal c[0] is untouched.
+sr_build :: (r: SrRecipe, learned: SrLearned, c: [] SrContainer, crew: int) -> SrBuildResult {
+  res: SrBuildResult;
+  valid := r.output_id != "" && r.n > 0;
+  for k: 0..<r.n { valid = valid && r.ingredients[k].item != "" && r.ingredients[k].count >= 1; }
+  if !valid { res.refusal = SR_BUILD_INVALID_RECIPE; return res; }
+  if !r.in_slice { res.refusal = SR_BUILD_NOT_IN_SLICE; return res; }
+  if !sr_knows(learned, r.recipe_id) { res.refusal = SR_BUILD_NOT_LEARNED; return res; }
+  if !r.pet && crew >= SR_MAX_CREW { res.refusal = SR_BUILD_CREW_LIMIT; return res; }
+  m := sr_find_first_missing(r, c[0]);
+  if m.found { res.refusal = SR_BUILD_MISSING_INGREDIENT; res.missing_item = m.item; res.missing_count = m.count; return res; }
+  // The combined need of each id (a recipe may list one id twice), checked before anything is taken.
+  need_id: [SR_INGREDIENTS_MAX] string; need_n: [SR_INGREDIENTS_MAX] int; kinds := 0;
+  for k: 0..<r.n {
+    i := r.ingredients[k]; at := -1;
+    for j: 0..<kinds { if need_id[j] == i.item { at = j; } }
+    if at < 0 { at = kinds; need_id[at] = i.item; kinds += 1; }
+    need_n[at] += i.count;
+  }
+  for j: 0..<kinds {
+    held := sr_count_item(c[0], need_id[j]);
+    if held < need_n[j] { res.refusal = SR_BUILD_MISSING_INGREDIENT; res.missing_item = need_id[j]; res.missing_count = need_n[j] - held; return res; }
+  }
+  for j: 0..<kinds {
+    left := need_n[j];
+    for k: 0..<c[0].size {
+      if left <= 0 { break; }
+      s := c[0].slots[k];
+      if sr_item_empty(s) || s.item != need_id[j] { continue; }
+      take := ifx s.count < left then s.count else left;
+      c[0].slots[k].count -= take; left -= take;
+      if c[0].slots[k].count <= 0 { c[0].slots[k] = SrItemStack.{}; }
+    }
+  }
+  res.built = true; res.output_id = r.output_id;
+  return res;
+}

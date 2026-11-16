@@ -1,0 +1,16 @@
+// Splice Bots' rules, ported from the jam build's SpliceRules module (GitHub #13653): pure game rules
+// with no engine calls, the same names and meanings as the C++ so a rule can be checked against
+// it, and the C++ rule tests (SpliceTests/Rules) ported as checks beside each module (`X-checks.coax`,
+// each check named after its C++ test). The tables they read (items.csv, robots.csv) come from the
+// import bundle; tools/data-check.coax checks the rules against them. What is ported and what is left
+// is on #13653.
+//   coax/bin/coax test metaverse/splice-bots/rules/rules.coax
+#load "item-types.coax";
+#load "robot-types.coax";
+#load "robot-payload.coax";
+#load "event-tags.coax";
+#load "recipes.coax";
+
+#load "data-checks.coax" #test;
+#load "robot-payload-checks.coax" #test;
+#load "recipes-checks.coax" #test;

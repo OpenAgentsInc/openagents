@@ -1,0 +1,73 @@
+// Parity checks for robot-payload.coax: SpliceTests/Rules/SpliceRobotPayloadTests.cpp, case for case.
+// rules.coax loads this file with `#load ... #test;`.
+
+pc_digger :: () -> SrRobotState {
+  r: SrRobotState;
+  r.robot_id = "digger"; r.name = "Digger";
+  r.parts = sr_make_kit(3); r.parts.slots[0] = sr_stack(ITEM_SCRAP_PART, 1); r.parts.slots[2] = sr_stack(ITEM_SCRAP_PART, 1);
+  r.cards = sr_make_kit(2); r.cards.slots[0] = sr_stack("ITEM_CARD_DRILL", 1); r.cards.slots[1] = sr_stack("ITEM_CARD_JUMP", 1);
+  r.health = 3.0; r.health_max = 10.0; r.move_energy = 4.5;
+  r.has_core = true; r.core = sr_stack(ITEM_SMALL_CORE, 1);
+  return r;
+}
+pc_body :: (id: string) -> SrItemStack { return sr_pack_robot(id, pc_digger()).body; }
+pc_same_kit :: (a: SrKit, b: SrKit) -> bool {
+  if a.size != b.size { return false; }
+  for k: 0..<a.size { if a.slots[k].item != b.slots[k].item || a.slots[k].count != b.slots[k].count { return false; } }
+  return true;
+}
+
+#test "Splice.Rules.RobotPayload.RoundTripKeepsPartsCardsHealthEnergy" {
+  in := pc_digger();
+  packed := sr_pack_robot(ITEM_BODY_DIGGER, in);
+  #assert packed.ok && packed.body.count == 1 && sr_is_robot_body(packed.body) && !sr_body_has_core(packed.body) && packed.core.item == ITEM_SMALL_CORE;
+  out: [1] SrRobotState;
+  #assert sr_unpack_robot(packed.body, out[..]);
+  o := out[0];
+  #assert o.robot_id == in.robot_id && o.name == in.name && pc_same_kit(o.parts, in.parts) && pc_same_kit(o.cards, in.cards);
+  #assert o.health == 3.0 && o.health_max == 10.0 && o.move_energy == 4.5;
+  // a crafted body (GDD 02 C13): the core stays inside
+  fresh := in; fresh.has_core = false; fresh.core = SrStack.{};
+  crafted := sr_pack_crafted_body(ITEM_BODY_DIGGER, fresh, sr_stack(ITEM_SMALL_CORE, 1));
+  #assert sr_body_has_core(crafted);
+  co: [1] SrRobotState;
+  #assert sr_unpack_robot(crafted, co[..]) && co[0].has_core && co[0].core.item == ITEM_SMALL_CORE;
+  untouched: [1] SrRobotState;
+  #assert !sr_unpack_robot(sr_item(ITEM_SCRAP_PART, 4), untouched[..]) && untouched[0].robot_id == "";
+}
+#test "Splice.Rules.RobotPayload.FourthRobotIsRefused" {
+  grid := sr_make_container(27); hotbar := sr_make_container(9);
+  grid.slots[4] = sr_item(ITEM_SCRAP_PART, 5);   // not a body: does not count
+  grid.slots[0] = pc_body(ITEM_BODY_DIGGER);
+  cursor := pc_body(ITEM_BODY_IMPERIAL_ROBOT);
+  #assert sr_crew_count(1, grid, hotbar, cursor) == 3;
+  #assert sr_try_add_to_crew(1, grid, hotbar, cursor, false) == SR_REFUSE_CREW_LIMIT;
+  #assert sr_try_add_to_crew(1, grid, hotbar, cursor, true) == SR_REFUSE_NONE;
+  #assert sr_can_add_to_crew(2, false) == SR_REFUSE_NONE;
+  hotbar.slots[1] = pc_body(ITEM_BODY_DRILL_MECH);
+  #assert sr_crew_count(1, grid, hotbar, cursor) == 4;
+}
+#test "Splice.Rules.RobotPayload.LeavingTheCrewFreesASlot" {
+  grid := sr_make_container(27); hotbar := sr_make_container(9); cursor: SrItemStack;
+  hotbar.slots[2] = pc_body(ITEM_BODY_DIGGER);
+  #assert sr_try_add_to_crew(2, grid, hotbar, cursor, false) == SR_REFUSE_CREW_LIMIT;
+  #assert sr_try_add_to_crew(1, grid, hotbar, cursor, false) == SR_REFUSE_NONE;
+  hotbar.slots[2] = SrItemStack.{};
+  #assert sr_crew_count(2, grid, hotbar, cursor) == 2 && sr_try_add_to_crew(2, grid, hotbar, cursor, false) == SR_REFUSE_NONE;
+}
+
+// ---- beyond the C++ tests: the clean state, the refusals of an empty id or core, pets
+#test "packing clamps health and energy, and refuses an empty body id or core" {
+  r := pc_digger(); r.health = 15.0; r.move_energy = -2.0;
+  p := sr_pack_robot(ITEM_BODY_DIGGER, r);
+  #assert p.body.robot.health == 10.0 && p.body.robot.move_energy == 0.0 && !p.body.robot.has_core;
+  r.health = -1.0; r.health_max = -5.0;
+  p = sr_pack_robot(ITEM_BODY_DIGGER, r);
+  #assert p.body.robot.health == 0.0 && p.body.robot.health_max == 0.0;
+  #assert !sr_pack_robot("", r).ok && sr_item_empty(sr_pack_robot("", r).body);
+  #assert sr_item_empty(sr_pack_crafted_body("", r, sr_stack(ITEM_SMALL_CORE, 1))) && sr_item_empty(sr_pack_crafted_body(ITEM_BODY_DIGGER, r, SrStack.{}));
+  nocore := pc_digger(); nocore.has_core = false;
+  #assert sr_item_empty(SrItemStack.{item = "", count = 0}) && sr_pack_robot(ITEM_BODY_DIGGER, nocore).core.item == "";
+  #assert sr_is_pet_robot(ROBOT_MICRODUCK) && !sr_is_pet_robot(ROBOT_DIGGER);
+  #assert sr_crew_count(-4, sr_make_container(27), sr_make_container(9), SrItemStack.{}) == 0;
+}

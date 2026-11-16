@@ -1,0 +1,83 @@
+// Splice Bots rules: the robot payload and the limit of 3 (SpliceRobotPayload.h, package R-08;
+// GDD 04 6.3 UE-STOW-01, UE-STOW-02, UE-CORE-08; GDD 02 28.4, 28.6 C4, C13).
+// The C++ settles a conflict: a crafted body keeps its core inside (GDD 02 28.6 C13); a body made
+// by taking a core out never holds one. So sr_pack_robot always separates the core and
+// sr_pack_crafted_body keeps it.
+// The limit of 3 counts her live robots that hold a core and the body stacks in her grid, hotbar
+// and cursor (the chest never counts). The Microduck is a pet, never one of the 3.
+#load "robot-types.coax";
+
+// GDD 04 UE-CORE-08, GDD 02 28.4: at most 3 robots with her (ROBOT_LIMIT).
+SR_ROBOT_CREW_LIMIT :: 3;
+
+// The result of packing a robot into a body item (FSpliceRobotPackResult).
+SrRobotPackResult :: struct { ok: bool; body: SrItemStack; core: SrStack; }
+
+// Health clamped to [0, max], max and move energy at least 0.
+sr_clean_state :: (robot: SrRobotState) -> SrRobotState {
+  s := robot;
+  s.health_max = ifx s.health_max > 0.0 then s.health_max else 0.0;
+  s.health = ifx s.health < 0.0 then 0.0 else ifx s.health > s.health_max then s.health_max else s.health;
+  s.move_energy = ifx s.move_energy > 0.0 then s.move_energy else 0.0;
+  return s;
+}
+sr_body_stack :: (body_item: string, state: SrRobotState) -> SrItemStack {
+  return SrItemStack.{item = body_item, count = 1, payload = true, robot = state};   // UE-STOW-01: count 1, never stacking
+}
+
+// Core out (GDD 02 28.4 C3): the robot becomes a body item and its core a separate item. Keeps
+// parts, cards, health, health max, move energy, name and robot id. Fails if body_item is "".
+sr_pack_robot :: (body_item: string, robot: SrRobotState) -> SrRobotPackResult {
+  r: SrRobotPackResult;
+  if body_item == "" { return r; }
+  state := sr_clean_state(robot);
+  if state.has_core && !sr_stack_empty(state.core) { r.core = state.core; }
+  state.has_core = false; state.core = SrStack.{};   // core out: the core is a separate item
+  r.body = sr_body_stack(body_item, state);
+  r.ok = true;
+  return r;
+}
+// A crafted body (GDD 02 28.6 C13): the edit bay's output, its core inside the payload. An empty
+// stack if body_item is "" or the core is empty.
+sr_pack_crafted_body :: (body_item: string, robot: SrRobotState, core: SrStack) -> SrItemStack {
+  if body_item == "" || sr_stack_empty(core) { return SrItemStack.{}; }
+  state := sr_clean_state(robot);
+  state.has_core = true; state.core = core;
+  return sr_body_stack(body_item, state);
+}
+// True when the stack is a robot body (a stack with a robot payload).
+sr_is_robot_body :: (s: SrItemStack) -> bool { return !sr_item_empty(s) && s.payload; }
+// True when the body's payload holds a core (a crafted body, C13).
+sr_body_has_core :: (s: SrItemStack) -> bool { return sr_is_robot_body(s) && s.robot.has_core && !sr_stack_empty(s.robot.core); }
+// Reads the robot back out of a body item into out[0]. False (out unchanged) if it is not a body.
+sr_unpack_robot :: (body: SrItemStack, out: [] SrRobotState) -> bool {
+  if !sr_is_robot_body(body) { return false; }
+  out[0] = body.robot;
+  return true;
+}
+
+sr_count_bodies :: (c: SrContainer) -> int {
+  n := 0;
+  for k: 0..<c.size { if sr_is_robot_body(c.slots[k]) { n += 1; } }
+  return n;
+}
+// GDD 04 UE-CORE-08 (SpliceRules::CrewCount): her live cored robots, plus the body stacks in her
+// grid, hotbar and cursor. The chest is not passed: it never counts.
+sr_crew_count :: (live_cored: int, grid: SrContainer, hotbar: SrContainer, cursor: SrItemStack) -> int {
+  n := ifx live_cored > 0 then live_cored else 0;
+  n += sr_count_bodies(grid) + sr_count_bodies(hotbar);
+  if sr_is_robot_body(cursor) { n += 1; }
+  return n;
+}
+// Whether one more robot may join her crew. already_counted: it is already one of `current`
+// (GDD 02 28.5 C1 rule 8). SR_REFUSE_CREW_LIMIT at the limit, else SR_REFUSE_NONE.
+sr_can_add_to_crew :: (current: int, already_counted: bool) -> int {
+  if already_counted { return SR_REFUSE_NONE; }
+  return ifx current >= SR_ROBOT_CREW_LIMIT then SR_REFUSE_CREW_LIMIT else SR_REFUSE_NONE;
+}
+// sr_crew_count over her containers, then sr_can_add_to_crew.
+sr_try_add_to_crew :: (live_cored: int, grid: SrContainer, hotbar: SrContainer, cursor: SrItemStack, already_counted: bool) -> int {
+  return sr_can_add_to_crew(sr_crew_count(live_cored, grid, hotbar, cursor), already_counted);
+}
+// 15 Nov (owner): the Microduck is a pet, not one of her crew.
+sr_is_pet_robot :: (robot_id: string) -> bool { return robot_id == ROBOT_MICRODUCK; }

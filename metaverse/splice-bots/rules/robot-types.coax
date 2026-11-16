@@ -1,0 +1,116 @@
+// Splice Bots rules: the robot definition row and the robot in the world (SpliceRobotTypes.h,
+// package C-03; GDD 04 6.3, UE-STOW-01, UE-STOW-02, UE-CORE-08; GDD 02 28.3, 28.6). The robot
+// payload itself (SrRobotState) is in item-types.coax, beside the stack that carries it. The rows
+// are read from robots.csv (sr_robots_read), never written here.
+#load "item-types.coax";
+#load "../../../metaverse-engine/core/math-d.coax";
+
+// GDD 02 28.4: a live robot of hers is on follow or on stay (ESpliceRobotMode).
+SR_MODE_FOLLOW :: 0; SR_MODE_STAY :: 1;
+// robots.csv `role` (ESpliceRobotRole).
+SR_ROLE_COMPANION :: 0; SR_ROLE_ENEMY :: 1; SR_ROLE_MECH :: 2; SR_ROLE_BOSS :: 3; SR_ROLE_OTHER :: 4;
+SR_ROLE_NAMES :: [5] string.["companion", "enemy", "mech", "boss", "other"];
+// robots.csv `agent_size` (ESpliceAgentSize): an empty cell is unknown.
+SR_AGENT_UNKNOWN :: 0; SR_AGENT_SMALL :: 1; SR_AGENT_LARGE :: 2;
+SR_AGENT_NAMES :: [3] string.["", "small", "large"];
+
+ROBOT_DIGGER :: "ROBOT_DIGGER"; ROBOT_IMPERIAL :: "ROBOT_IMPERIAL"; ROBOT_DRILL_MECH :: "ROBOT_DRILL_MECH";
+ROBOT_DINOSAUR :: "ROBOT_DINOSAUR"; ROBOT_MICRODUCK :: "ROBOT_MICRODUCK";
+
+// A cell that may hold several values separated by " / " (per Heat level or per phase).
+SR_VALUES_MAX :: 4;
+SrValues :: struct { n: int; v: [SR_VALUES_MAX] f32; }
+// One row of robots.csv (FSpliceRobotRow). An empty cell is not stated: has_* false, or n 0.
+SrRobotRow :: struct {
+  robot_id: string;
+  name: string;
+  role: int = SR_ROLE_OTHER;
+  has_health: bool; health: f32;
+  move_speed: SrValues;          // m/s
+  has_attack_damage: bool; attack_damage: f32;
+  attack_range: SrValues;        // m
+  sight_radius: SrValues;        // m; Low / Medium / High Heat
+  agent_size: int = SR_AGENT_UNKNOWN;
+  source_section: string;
+  notes: string;
+}
+SR_ROBOT_ROWS_MAX :: 32;
+SrRobotRows :: struct { n: int; rows: [SR_ROBOT_ROWS_MAX] SrRobotRow; }
+
+// A transform as FTransform holds it: rotation, translation, scale.
+SrTransform :: struct { rot: DQ; pos: D3; scale: D3 = D3.{x = 1.0, y = 1.0, z = 1.0}; }
+sr_transform_at :: (pos: D3) -> SrTransform { t: SrTransform; t.pos = pos; return t; }
+// FTransform::Equals(B, 0): every component exactly equal.
+sr_transform_eq :: (a: SrTransform, b: SrTransform) -> bool {
+  return a.rot.x == b.rot.x && a.rot.y == b.rot.y && a.rot.z == b.rot.z && a.rot.w == b.rot.w
+    && a.pos.x == b.pos.x && a.pos.y == b.pos.y && a.pos.z == b.pos.z
+    && a.scale.x == b.scale.x && a.scale.y == b.scale.y && a.scale.z == b.scale.z;
+}
+
+// A robot standing in the world, as saved (FSpliceRobotInWorld; UE-SAVE-02).
+SrRobotInWorld :: struct {
+  state: SrRobotState;
+  transform: SrTransform;
+  mode: int = SR_MODE_FOLLOW;
+  spawn_id: string;   // the level spawn id, "" for a robot she placed or built
+}
+
+sr_robots_find :: (d: SrRobotRows, id: string) -> int {
+  if id == "" { return -1; }
+  for k: 0..<d.n { if d.rows[k].robot_id == id { return k; } }
+  return -1;
+}
+// A cell of one or more numbers split by '/': ok false when a part is not a number.
+SrValuesRead :: struct { ok: bool; values: SrValues; }
+sr_values_read :: (cell: string) -> SrValuesRead {
+  r: SrValuesRead; r.ok = true;
+  from := 0; blank := true;
+  for c: cell { if c != ' ' { blank = false; } }
+  if blank { return r; }
+  for k: 0..<cell.count + 1 {
+    if k < cell.count && cell[k] != '/' { continue; }
+    n := csv_number(cell[from..<k]);
+    if !n.ok || r.values.n >= SR_VALUES_MAX { r.ok = false; return r; }
+    r.values.v[r.values.n] = cast(f32) n.v; r.values.n += 1;
+    from = k + 1;
+  }
+  return r;
+}
+// Reads robots.csv (the jam build's Data/robots.csv, or the bundle's `/Data/robots` table) into d.
+// An unknown role or agent size, or a number cell that is not a number, refuses the table.
+sr_robots_read :: (csv: string, d: [] SrRobotRows) -> SrReadResult {
+  r: SrReadResult;
+  d[0].n = 0;
+  head := csv_record(csv, 0);
+  col: [11] int;
+  names := [11] string.["robot_id", "name", "role", "health", "move_speed", "attack_damage", "attack_range", "sight_radius", "agent_size", "source_section", "notes"];
+  for nm, k: names { col[k] = csv_column(head.text, nm); }
+  if col[0] < 0 || col[2] < 0 { r.bad_line = 1; r.why = "no robot_id or role column"; return r; }
+  at := head.next; line := 1;
+  while at < csv.count {
+    rec := csv_record(csv, at); at = rec.next; line += 1;
+    if rec.text.count == 0 { continue; }
+    cell: [11] string;
+    for k: 0..<11 { cell[k] = ifx col[k] >= 0 then csv_at(rec.text, col[k]) else ""; }
+    row: SrRobotRow;
+    row.robot_id = cell[0]; row.name = cell[1];
+    row.role = sr_name_index(SR_ROLE_NAMES[..], cell[2]);
+    row.agent_size = sr_name_index(SR_AGENT_NAMES[..], cell[8]);
+    row.source_section = cell[9]; row.notes = cell[10];
+    if row.robot_id == "" { r.bad_line = line; r.why = "an empty robot_id"; return r; }
+    if row.role < 0 { r.bad_line = line; r.why = "an unknown role"; return r; }
+    if row.agent_size < 0 { r.bad_line = line; r.why = "an unknown agent_size"; return r; }
+    h := sr_values_read(cell[3]); ms := sr_values_read(cell[4]); ad := sr_values_read(cell[5]);
+    ar := sr_values_read(cell[6]); sr := sr_values_read(cell[7]);
+    if !h.ok || !ms.ok || !ad.ok || !ar.ok || !sr.ok || h.values.n > 1 || ad.values.n > 1 { r.bad_line = line; r.why = "a number cell that is not a number"; return r; }
+    row.has_health = h.values.n == 1; row.health = h.values.v[0];
+    row.move_speed = ms.values;
+    row.has_attack_damage = ad.values.n == 1; row.attack_damage = ad.values.v[0];
+    row.attack_range = ar.values; row.sight_radius = sr.values;
+    if sr_robots_find(d[0], row.robot_id) >= 0 { r.bad_line = line; r.why = "a repeated robot_id"; return r; }
+    if d[0].n >= SR_ROBOT_ROWS_MAX { r.bad_line = line; r.why = "more rows than SR_ROBOT_ROWS_MAX"; return r; }
+    d[0].rows[d[0].n] = row; d[0].n += 1; r.rows += 1;
+  }
+  r.ok = true;
+  return r;
+}

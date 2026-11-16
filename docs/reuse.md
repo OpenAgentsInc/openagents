@@ -19,6 +19,7 @@ undo was hand-rolled and had no redo, while the OpenAgents Metaverse Engine's ed
 
 | You need | Use | Where |
 | --- | --- | --- |
+| Reading a CSV table that quotes (records over lines, quoted fields, doubled quotes, header columns by name, plain decimals) | `csv_record`, `csv_field`, `csv_column`, `csv_number`; `uf_field` in `metaverse-engine/import/unreal/files.coax` is for tables with no quoting | `coax/lib/text/csv.coax` |
 | Streaming observation moments and population normalization | Bounded F64 snapshots, staged publication and the Welford arithmetic shared with benchmark statistics; the caller owns freeze/version lifecycle | `psionic/lib/running-stats.coax`, `stats-moments.coax` |
 | IEEE F64 finite admission before arithmetic | Inspect the raw eleven-bit exponent; existing function-layout/Gaussian/oscillator helpers delegate here | `coax/lib/ieee.coax` (`ieee_f64_finite`) |
 | Bounded decoded robot experiments and a joint-angle action map | Psionic experiment admission; compares the complete active map with the expected embodiment, then stages requested/limited targets | `psionic/lib/robotics/experiment-policy.coax`, `experiment-types.coax` |

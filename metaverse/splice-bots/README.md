@@ -39,6 +39,7 @@ for people and agents who change the code.
 | `layer-fixture.coax` | A fixture layer: a piece beside every kept-clear zone |
 | `layer-checks.coax`, `walk-checks.coax` | The checks |
 | `splice-export.coax`, `splice-run.aescript` | The Unreal exporter and its scripted run |
+| `rules/` | The jam build's SpliceRules module ported to Coax (#13653): items, robots, recipes and the rest, named as in the C++, with its rule tests ported as checks (`coax/bin/coax test metaverse/splice-bots/rules/rules.coax`). `rules/tools/data-check.coax` reads the import bundle's items and robots tables and checks the rules against them |
 
 Run the checks:
 

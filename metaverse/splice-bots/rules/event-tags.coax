@@ -1,0 +1,35 @@
+// Splice Bots rules: the event bus and checkpoint tag names (SpliceEventTags.h, SpliceGameEventTags.h,
+// SpliceUiEventTags.h; GDD 04 2.2 UE-FW-01, UE-FW-02, 2.6 UE-SAVE-03). The strings are the C++'s,
+// so a recorded event, a save and a check name the same thing on both builds.
+
+// SpliceEventTags
+EV_BOT_TAKEN :: "Event.Bot.Taken";             // UE-CORE-03: a core went into a robot (the recipe book listens)
+EV_BOT_FED :: "Event.Bot.Fed";                 // 6.8: a battery fed to a robot of hers
+EV_HEAT_CHANGED :: "Event.Heat.Changed";       // 6.7: Heat's sum changed
+EV_HEAT_LEVEL :: "Event.Heat.Level";           // 6.7: its level changed
+EV_RECIPE_LEARNED :: "Event.Recipe.Learned";   // UE-CARDUI-05: a new recipe card
+EV_WALL_BROKE :: "Event.Wall.Broke";           // 1.4: the rock wall broke
+EV_RAVE_BEAT :: "Event.Rave.Beat";             // 5.7: the rave's beat clock
+EV_RAVE_BAR :: "Event.Rave.Bar";
+
+// SpliceCheckpointTags (UE-SAVE-03; GDD 02 7.4 S1 adds Start)
+CHECKPOINT_START :: "Checkpoint.Start";
+CHECKPOINT_LEFT_SNIPER :: "Checkpoint.LeftSniper";
+CHECKPOINT_TOOK_DRILL_MECH :: "Checkpoint.TookDrillMech";
+CHECKPOINT_BEAT_BOSS :: "Checkpoint.BeatBoss";
+
+// SpliceGameEventTags
+EV_NIGHT_EXIT_BEGAN :: "Event.NightExit.Began";
+EV_NIGHT_EXIT_WON :: "Event.NightExit.Won";
+EV_NIGHT_EXIT_LOST :: "Event.NightExit.Lost";
+EV_NIGHT_EXIT_CALL :: "Event.NightExit.Call";
+EV_BOT_TAKEN_DRILL_MECH :: "Event.Bot.Taken.DrillMech";          // R-09: teaches RECIPE_DRILL_MECH (INFERRED name)
+EV_BOT_TAKEN_DINOSAUR :: "Event.Bot.Taken.Dinosaur";              // teaches RECIPE_DINOSAUR
+EV_BOT_HARVESTED_IMPERIAL :: "Event.Bot.Harvested.Imperial";      // teaches RECIPE_IMPERIAL_SENTINEL
+
+// SpliceUiEventTags (U-08; all INFERRED)
+EV_BOSS_AWAKE :: "Event.Boss.Awake";
+EV_SCENE_RESTORED :: "Event.Scene.Restored";
+EV_CHIEF_DRIVE_OFF :: "Event.Sniper.ChiefDriveOff";
+EV_BOSS_DOWN :: "Event.Boss.Down";
+EV_SCENE_TEASER :: "Event.Scene.Teaser";
