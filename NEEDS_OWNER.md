@@ -2,7 +2,7 @@
 
 ## Private Nostr messages, build 1371 (2026-11-15)
 
-- [ ] Once **1371** is available in TestFlight, install it and open the drawer’s
+- [ ] Install **1371** (verified in TestFlight’s **Owner** group) and open the drawer’s
       **Messages** entry. Send to a second client’s npub, reply there, then
       reopen both apps to check history recovery. Native, browser and independent
       client automation passed; the physical-phone check remains pending.

@@ -14,7 +14,9 @@ agent chats and environment sessions keep their existing owners.
 
 The receipts retain the source scope and distinguish compiler results from
 reviewed constant equivalence.
-Logs below live in the isolated `oa-arcade-dm` worktree's ignored `build/`.
+Detailed non-secret logs are retained under
+`~/.openagents/releases/arcade-dm-1371/verification/`; working copies lived in
+the isolated worktree's ignored `build/`.
 
 | Check | Result | Evidence |
 | --- | --- | --- |
@@ -170,7 +172,7 @@ frames/actions match. Evidence: `dm-program-parts-qualified.log`,
 ## Coordinator scope records
 
 The retained owner/flight records come from the same local source checkpoint
-`0ff3b891c1` (original local checkpoint `ba21d7c0bd`). The rebase retained
+`03f92c5ff9` (original local checkpoint `ba21d7c0bd`). The rebase retained
 these units byte for byte. Parts 1, 3 and 4 selected the entry unit with `--unit`; part 2
 selected the entry-source procedures with `--root-only`, retaining all dependency
 checks. These select the same 513 ordered entry-source sites, but the compiler
@@ -193,7 +195,7 @@ undecided site. All live security/ownership guards remain checked.
 ## Final qualification provenance
 
 The store and scheduler canonical records formally merge at source
-`33369b6eac` (original local checkpoint `3a7157b96e`); the rebase retained their
+`4d03e66372` (original local checkpoint `3a7157b96e`); the rebase retained their
 Nostr units and dependencies byte for byte. The original full relay records
 at that same source had one surviving inner `error==NE_OK && verified` node.
 Those flags co-vary in `ne_signed_fast`. The compiler changes the existing
@@ -202,7 +204,7 @@ The outer canonical-decode and public-key-equality AND nodes remain required
 and are independently exercised by the signed wrong-key AUTH fixture.
 
 The only subsequent relay edit adds precise equivalent explanations, with no
-AST or check change. The affected part 7 was run at `63d35e217d` (original
+AST or check change. The affected part 7 was run at `6b794cebe1` (original
 `4d3952319b`): 116 killed, three reviewed equivalents, no survivors.
 `relays-grouped-7.rec` preserves its different fingerprint. The original
 and supplementary records are not presented as one formally merged receipt.
@@ -231,3 +233,31 @@ archive was superseded before Apple upload and is retained only as
 [#13629](https://github.com/OpenAgentsInc/openagents/issues/13629), separately
 from qualification and Apple processing. Physical-phone verification remains
 an owner action in `NEEDS_OWNER.md`.
+
+## Delivery completed (2026-11-15)
+
+- Implementation landed at `43ea04a7ac`; isolated DOM SDK support landed at
+  `a0d98ca983`. Current main’s intervening gateway and reference-control work
+  was retained.
+- TestFlight **1.0.0 (1371)** upload was accepted with no errors, delivery
+  `0d187a01-baad-4b1c-8b50-666603b48fa1`. Apple subsequently reported `VALID` /
+  `IN_BETA_TESTING`, and the existing **Owner** group membership was verified.
+  Processing was checked while web work continued; no processing wait loop ran.
+- The 1371 signed generation-1 feed is published for runtime
+  `50192fe9dcbba0417c9a8bc8d492c50b57112fceffd4d501ffaab1865ce2a635`.
+  Both HTTPS endpoints return the exact signed envelope and all 21 resource
+  hashes from the exported IPA. The signature verifies with the installed key.
+- [Messages](https://openagents.com/messages), Chat and Feed front doors now
+  use qualified isolated DOM runtimes. Their six bare/index objects match the
+  staged bytes. Production Messages and Chat start without runtime errors;
+  the Feed component renders its login state in its checked frame. Root-path
+  DOM loading also passes after the SDK change. See [scoped web delivery](scoped-web.md)
+  and [production Messages](messages-web.png).
+- The whole-site release correctly refused main’s Everglade content pin 3
+  beside production rooms at pin 2. The scoped publication updated only the
+  six Chat/Feed/Messages front-door objects under the site release lock.
+  Shared fixed assets, global release markers and room processes were not
+  replaced. The retained world-page HTTP responses match their earlier hashes.
+
+The physical-phone check remains recorded in `NEEDS_OWNER.md`; the release
+and automated native/browser/reference checks do not claim that hardware run.

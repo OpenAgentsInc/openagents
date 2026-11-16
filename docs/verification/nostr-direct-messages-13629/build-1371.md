@@ -35,3 +35,9 @@ suite passed 57, with one live-network opt-in skipped. Earlier real API/relay
 exchange is recorded in the verification README. All five world modules link.
 Crash symbols are retained by UUID. Apple upload and web promotion receipts
 are recorded on issue #13629.
+
+Upload accepted: `0d187a01-baad-4b1c-8b50-666603b48fa1` (21,750,958 bytes).
+Apple status: `VALID`, internal `IN_BETA_TESTING`; existing Owner group verified.
+The matching runtime-scoped generation-1 feed and all 21 resources verify at
+both advertised HTTPS endpoints. The native binary was not rebuilt for the
+browser-only isolated-asset loader change.
