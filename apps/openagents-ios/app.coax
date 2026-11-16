@@ -7,6 +7,7 @@
 #load "../../components/raster/host-tables.coax";
 #load "chat.coax";
 #load "../shared/app/settings/identity-sdk.coax";
+#load "../../coax/native/account-view-wire.coax";
 // The shared app core (apps/shared/app/README.md): state, dispatch, the effect outbox and the
 // host ABI that core-host.c wraps.
 #load "../shared/app/core/core.coax";

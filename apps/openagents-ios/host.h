@@ -11,6 +11,12 @@ void *oc_open_window(const char *resources,int width,int height,int hidden);
 void *oc_window(void *chat);
 int oc_drive(void *chat,const char *op,char *out,int cap);
 void oc_access_editor(void *chat,const char *id,void *view);
+// Public view preferences use their one Coax codec; no credentials or custody.
+int oa_view_write(const char *email,const char *rejoin,const char *environment,unsigned char *out,int cap);
+int oa_view_read(const unsigned char *raw,int n,int which,char *out,int cap);
+int oa_view_capacity(void);
+int oa_view_value_capacity(void);
+enum { OA_VIEW_EMAIL=0,OA_VIEW_REJOIN=1,OA_VIEW_ENVIRONMENT=2 };
 void *oc_view(void *chat);
 // One frame. Call it while oc_moving says 1, and once after anything changes.
 void oc_frame(void *chat);

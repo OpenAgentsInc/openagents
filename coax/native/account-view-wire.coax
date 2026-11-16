@@ -1,0 +1,57 @@
+// The one codec for public native view preferences; never credentials or custody.
+#load "../lib/json/shape.coax";
+AVK_SCHEMA :: "openagents.account.native-view.v1";
+AVK_EMAIL :: 320; AVK_REJOIN :: 193; AVK_ENV :: 8192; AVK_WIRE :: 65536;
+avk_capacity :: ()->int #export_c #effects(all) {return AVK_WIRE;}
+avk_value_capacity :: ()->int #export_c #effects(all) {return AVK_ENV+1;}
+
+#test "public view bytes round trip including escaped environment choices" {
+ #assert avk_capacity()==65536 && avk_value_capacity()==8193;
+ out:[AVK_WIRE]u8;value:[AVK_ENV]u8;
+ email:="café@example.test";rejoin:="host\tsession";env:="draft\t-\trepo \"quoted\"\n";
+ n:=avk_write(email,rejoin,env,out[..]);#assert n>0;
+ raw:=cast(string)out[0..<n];
+ #assert avk_read(raw,0,value[..])==email.count && cast(string)value[0..<email.count]==email;
+ #assert avk_read(raw,1,value[..])==rejoin.count && cast(string)value[0..<rejoin.count]==rejoin;
+ #assert avk_read(raw,2,value[..])==env.count && cast(string)value[0..<env.count]==env;
+ #assert avk_read(raw,-1,value[..])<0 && avk_read(raw,3,value[..])<0 && avk_read(raw,2,value[0..<1])<0;
+ empty:=avk_write("","","",out[..]);#assert empty>0 && cast(string)out[0..<empty]=="{\"schema\":\"openagents.account.native-view.v1\",\"email\":\"\",\"rejoin\":\"\",\"environment\":\"\"}";
+ #assert avk_write(email,rejoin,env,out[0..<8])<0;
+}
+#test "malformed or expanded records never yield a partial first field" {
+ out:[AVK_ENV]u8;
+ for raw:[7]string.["{}","[]","bad","{\"schema\":\"wrong\",\"email\":\"\",\"rejoin\":\"\",\"environment\":\"\"}",
+ "{\"schema\":\"openagents.account.native-view.v1\",\"email\":\"ok\",\"rejoin\":\"\",\"environment\":null}",
+ "{\"schema\":\"openagents.account.native-view.v1\",\"email\":\"ok\",\"rejoin\":\"\",\"environment\":\"\",\"secret\":\"bad\"}",
+ "{\"schema\":\"openagents.account.native-view.v1\",\"email\":\"ok\",\"rejoin\":\"\",\"environment\":\"\\u0000\"}"] {#assert avk_read(raw,0,out[..])<0;}
+ #assert avk_read("{\"schema\":\"openagents.account.native-view.v1\",\"email\":\"a\",\"email\":\"b\",\"rejoin\":\"\",\"environment\":\"\"}",0,out[..])<0;
+ #assert avk_read("{\"schema\":\"openagents.account.native-view.v1\",\"\\u0065mail\":\"a\",\"rejoin\":\"\",\"environment\":\"\"}",0,out[..])<0;
+}
+#test "view values enforce byte limits and complete NUL-free UTF8" {
+ b:[AVK_ENV+1]u8;out:[AVK_WIRE]u8;for i:0..<b.count {b[i]='a';}
+ #assert avk_write(cast(string)b[0..<AVK_EMAIL],cast(string)b[0..<AVK_REJOIN],cast(string)b[0..<AVK_ENV],out[..])>0;
+ #assert avk_write(cast(string)b[0..<AVK_EMAIL+1],"","",out[..])<0;
+ #assert avk_write("",cast(string)b[0..<AVK_REJOIN+1],"",out[..])<0;
+ #assert avk_write("","",cast(string)b[..],out[..])<0;
+ b[0]=0;#assert avk_write(cast(string)b[0..<1],"","",out[..])<0;
+ b[0]=255;#assert avk_write("",cast(string)b[0..<1],"",out[..])<0;
+}
+
+avk_text :: (s:string,max_bytes:int)->bool {
+ if s.count>max_bytes || !js_utf8(s) {return false;}for c:s {if c==0 {return false;}}return true;
+}
+avk_write :: (email:string,rejoin:string,environment:string,out:[]u8)->int #export_c #effects(all) {
+ if !avk_text(email,AVK_EMAIL) || !avk_text(rejoin,AVK_REJOIN) || !avk_text(environment,AVK_ENV) {return -1;}
+ o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],AVK_SCHEMA);jo_key(o[..],"email");jo_str(o[..],email);jo_key(o[..],"rejoin");jo_str(o[..],rejoin);jo_key(o[..],"environment");jo_str(o[..],environment);jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;
+}
+// Preflight every member before copying any selected value to the platform.
+avk_read :: (raw:string,which:int,out:[]u8)->int #export_c #effects(all) {
+ if raw.count>AVK_WIRE || which<0 || which>2 {return -1;}
+ d:[1]Jv;nodes:[12]JvNode;if !jv_parse(d[..],raw,nodes[..]) {return -1;}
+ v:=d[0];fields:=[4]string.["schema","email","rejoin","environment"];
+ if !js_fields(v,0,fields[..]) || jv_len(v,0)!=4 || jv_raw(v,jv_get(v,0,"schema"))!=AVK_SCHEMA {return -1;}
+ email:[AVK_EMAIL]u8;rejoin:[AVK_REJOIN]u8;env:[AVK_ENV]u8;
+ ne:=js_string(v,jv_get(v,0,"email"),email[..]);nr:=js_string(v,jv_get(v,0,"rejoin"),rejoin[..]);nv:=js_string(v,jv_get(v,0,"environment"),env[..]);
+ if ne<0 || nr<0 || nv<0 {return -1;}
+ return js_copy(out,ifx which==0 then cast(string)email[0..<ne] else ifx which==1 then cast(string)rejoin[0..<nr] else cast(string)env[0..<nv]);
+}

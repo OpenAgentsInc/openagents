@@ -34,6 +34,9 @@ final class KitMacEditor: NSTextView {
     }
     required init?(coder: NSCoder) { fatalError() }
     private func publish() { if inputChange == 0 && !holdingMarked && !hasMarkedText() { committed?(string) } }
+    /// Programmatic synchronization and retirement are not edits from the user.
+    func synchronize(_ apply: () -> Void) { inputChange += 1; defer { inputChange -= 1 }; apply() }
+    func discardComposition() { synchronize { super.unmarkText() }; holdingMarked = false }
     override func didChangeText() { super.didChangeText(); publish() }
     // AppKit can notify didChangeText before updating its marked range. Guard
     // the whole SDK operation, not just the range seen inside that notification.

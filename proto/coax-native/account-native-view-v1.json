@@ -1,0 +1,18 @@
+{
+  "id": "openagents.account.native-view.v1",
+  "stored": "~/.openagents/desktop/native-view-v1.json",
+  "encoding": "closed UTF-8 JSON object; canonical writer key order below; at most 65536 bytes",
+  "fields": {
+    "schema": "openagents.account.native-view.v1",
+    "email": "0..320 UTF-8 bytes; typed login draft, not a login attempt or credential",
+    "rejoin": "0..193 UTF-8 bytes; opaque existing app_host_keep reference; restored through the existing core",
+    "environment": "0..8192 UTF-8 bytes; opaque existing es_save text; restored through es_restore"
+  },
+  "rules": [
+    "All four members are required; extra, duplicate and escaped member names refuse the whole record.",
+    "Values are complete UTF-8 without NUL. No authentication or execution authority comes from this record.",
+    "No tokens, passkey proofs, private keys, backup values, pending identity commands or conversation bodies belong here.",
+    "A malformed record is ignored without changing credentials, pairings, resident-service state or old settings.",
+    "The platform persists complete encoded bytes atomically with owner-only permissions and writes only when they change."
+  ]
+}

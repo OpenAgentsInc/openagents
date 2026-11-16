@@ -42,4 +42,3 @@ import Foundation
         return n > 0 ? String(decoding: out[0..<Int(n)], as: UTF8.self) : ""
     }
 }
-

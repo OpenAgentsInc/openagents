@@ -17,9 +17,11 @@ import QuartzCore
     private var stepping = false
     private var retired = false
     private var watches: [NSObjectProtocol] = []
-    private let defaults: UserDefaults
-    init(resources: String, hidden: Bool, auth: AppAuth, devices: AppDeviceService, defaults: UserDefaults = .standard) throws {
-        self.defaults = defaults
+    private let store: AppViewStore
+    private var saved: AppViewState
+    private var attempted: AppViewState
+    init(resources: String, hidden: Bool, auth: AppAuth, devices: AppDeviceService, store: AppViewStore) throws {
+        let held = store.load(); self.store = store; saved = held; attempted = held
         guard let owner = oc_open_window(resources, 720, 850, hidden ? 1 : 0), let rawView = oc_view(owner), let rawWindow = oc_window(owner) else { throw AppAuth.Failure.said("The GPU surface could not start.") }
         self.owner = owner; canvas = Unmanaged<NSView>.fromOpaque(rawView).takeUnretainedValue(); window = Unmanaged<NSWindow>.fromOpaque(rawWindow).takeUnretainedValue()
         var style = [Float](repeating: 0, count: 14); _ = oc_style(&style)
@@ -28,15 +30,15 @@ import QuartzCore
         guard let runtime = AppRuntime(auth: auth, platform: MacPlatform(), devices: devices, identity: identity) else { oc_close(owner); throw AppAuth.Failure.said("The app core could not start.") }
         self.runtime = runtime
         super.init()
-        secret.isBordered = false; secret.drawsBackground = false; secret.textColor = editor.textColor; secret.font = editor.font; secret.delegate = self
+        secret.isBordered = false; secret.drawsBackground = false; secret.textColor = editor.textColor; secret.font = editor.font; secret.delegate = self; secret.contentType = .password
         secret.setAccessibilityLabel("Private key"); secret.setAccessibilityIdentifier("identity.secret")
         identity.anchor = { [weak self] in self?.window }
         identity.input = { [weak self] in self?.secret.stringValue ?? "" }
         identity.clearInput = { [weak self] in self?.secret.stringValue = ""; self?.backup.string = "" }
         editor.committed = { [weak self] text in self?.commit(text) }
         editor.command = { [weak self] selector in self?.command(selector) ?? false }
-        oc_attach(owner, runtime.core.raw, defaults.string(forKey: "openagents.login-draft") ?? "")
-        oc_env_restore(owner, defaults.string(forKey: "openagents.environment") ?? "")
+        oc_attach(owner, runtime.core.raw, held.email)
+        oc_env_restore(owner, held.environment)
         oc_native_scroll(owner, 1)
         runtime.core.after = { [weak self] in guard let self else { return }; oc_step(self.owner); self.wake() }
         runtime.bridge.changed = { [weak self] in self?.wake() }
@@ -47,7 +49,7 @@ import QuartzCore
         watch(NSApplication.didBecomeActiveNotification) { [weak self] in self?.runtime.bridge.lifecycle(foreground: true); self?.wake() }
         watch(NSApplication.didResignActiveNotification) { [weak self] in self?.keep(); self?.clearPrivate(); self?.runtime.bridge.lifecycle(foreground: false) }
         watches.append(center.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { [weak self] _ in MainActor.assumeIsolated { self?.retire() } })
-        runtime.launch(rejoin: defaults.string(forKey: "openagents.rejoin") ?? "")
+        runtime.launch(rejoin: held.rejoin)
         step()
     }
     func wake() { guard !retired else { return }; display?.isPaused = false }
@@ -58,12 +60,13 @@ import QuartzCore
         oc_env(owner, 0, 0, 0, focused ? 1 : 0, 0, NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 1 : 0)
         oc_frame(owner); runtime.pump(); _ = oc_action(owner)
         followFocus()
-        var draft = [CChar](repeating: 0, count: 600); _ = oc_draft(owner, &draft, Int32(draft.count)); defaults.set(String(cString: draft), forKey: "openagents.login-draft")
+        keep()
         if oc_moving(owner) == 0 { display?.isPaused = true }
     }
     private func read(_ get: (UnsafeMutableRawPointer, UnsafeMutablePointer<CChar>, Int32) -> Int32, cap: Int = 17000) -> String { var b = [CChar](repeating: 0, count: cap); _ = get(owner, &b, Int32(cap)); return String(cString: b) }
     private func rect(_ b: [Float]) -> NSRect { NSRect(x: CGFloat(b[0]), y: canvas.bounds.height - CGFloat(b[1] + b[3]), width: CGFloat(b[2]), height: CGFloat(b[3])) }
-    private func followFocus() {
+    private func followFocus() { editor.synchronize { followFocusNow() } }
+    private func followFocusNow() {
         let id = read(oc_focus, cap: 65), mode = oc_private_mode(owner)
         if mode == 0 { secret.stringValue = ""; backup.string = ""; identity.hideBackup(); oc_secret_ready(owner, 0) }
         let next: NSView?
@@ -72,6 +75,7 @@ import QuartzCore
         else if id == "identity.secret" { next = mode == 2 ? backup : secret }
         else { next = nil }
         if active !== next || activeID != id {
+            editor.discardComposition()
             if active != nil { window.makeFirstResponder(canvas); active?.removeFromSuperview() }
             active = next; activeID = id
             if let next { canvas.addSubview(next); next.setAccessibilityIdentifier(id); next.setAccessibilityLabel(id == "chat.composer" ? "Message" : id == "login.code" ? "Email code" : id == "login.email" ? "Email" : "Private key") }
@@ -103,8 +107,13 @@ import QuartzCore
     }
     func controlTextDidChange(_ notification: Notification) { guard active === secret else { return }; oc_secret_ready(owner, secret.stringValue.isEmpty ? 0 : 1); wake() }
     private func clearPrivate() { identity.clear(); oc_secret_ready(owner, 0); if activeID == "identity.secret" { oc_blur(owner) }; wake() }
-    private func keep() { defaults.set(runtime.core.keep(), forKey: "openagents.rejoin"); defaults.set(read(oc_env_save, cap: 8192), forKey: "openagents.environment") }
-    func retire() { guard !retired else { return }; keep(); clearPrivate(); retired = true; display?.invalidate(); display = nil; runtime.retire(); oc_on_change(owner, nil, nil); oc_access_editor(owner, "", nil); for w in watches { NotificationCenter.default.removeObserver(w) }; watches = [] }
+    private func keep(force: Bool = false) {
+        let next = AppViewState(email: read(oc_draft, cap: 600), rejoin: runtime.core.keep(), environment: read(oc_env_save, cap: 8192))
+        guard next != saved, force || next != attempted else { return }
+        attempted = next
+        if store.save(next) { saved = next }
+    }
+    func retire() { guard !retired else { return }; keep(force: true); clearPrivate(); retired = true; display?.invalidate(); display = nil; runtime.retire(); oc_on_change(owner, nil, nil); oc_access_editor(owner, "", nil); for w in watches { NotificationCenter.default.removeObserver(w) }; watches = [] }
     func drive(_ op: String) -> String {
         if op.hasPrefix("tap ") { _ = oc_activate(owner, String(op.dropFirst(4))); step(); return "" }
         var out = [CChar](repeating: 0, count: 65536); _ = oc_drive(owner, op, &out, Int32(out.count)); step(); return String(cString: out)
@@ -122,6 +131,12 @@ import QuartzCore
         guard read(oc_field_text) == committedBeforeMark else { throw AppAuth.Failure.said("An IME composition escaped the SDK editor.") }
         editor.insertText("日本", replacementRange: NSRange(location: NSNotFound, length: 0)); editor.didChangeText()
         guard read(oc_field_text) == editor.string, !editor.hasMarkedText() else { throw AppAuth.Failure.said("IME commit did not reach Coax.") }
+        let committed = read(oc_field_text), callback = editor.committed
+        var programmaticEdits = 0
+        editor.committed = { _ in programmaticEdits += 1 }
+        editor.synchronize { editor.insertText("SDK-only synchronization", replacementRange: NSRange(location: 0, length: (editor.string as NSString).length)); editor.discardComposition(); editor.string = committed }
+        editor.committed = callback
+        guard programmaticEdits == 0, read(oc_field_text) == committed else { throw AppAuth.Failure.said("Programmatic editor synchronization emitted a user edit.") }
         let ax = drive("ax")
         guard ax.components(separatedBy: "login.email AX").count == 2, ax.contains("login.email AXTextArea") else { throw AppAuth.Failure.said("The active field is missing, duplicated or lacks its text role in accessibility.") }
         oc_blur(owner); step()

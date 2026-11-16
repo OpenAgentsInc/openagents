@@ -697,3 +697,19 @@ real private store. The iOS device SDK build and package check pass; the
 simulator runner also needs a successful test-manager connection before its
 results can be claimed. Earlier successful iOS test results remain recorded
 with the Settings release.
+
+Desktop view persistence is now a separate public record,
+[`openagents.account.native-view.v1`](../docs/protocol/account-native-view-v1.md).
+The one Coax codec preflights the whole record before returning an email
+draft, opaque rejoin reference or existing environment-choice text. The
+desktop carrier writes on change through `AppFileViewStore` under
+`~/.openagents/desktop/`; its qualification target uses memory instead.
+Credentials and pending key changes never enter that record.
+
+Mac identity custody now uses separate owner-only pending files, created
+exclusively and flushed before a private command can be sent. A restarted
+SDK replays the original bytes; the strict Coax command codec checks both
+retry and cancellation before transport. Seven standalone XCTest cases
+cover the original identity cases, file-backed unknown/restart/exact replay,
+atomic view state, existing-folder permissions, exclusive writes and symlink
+refusal. These checks do not replace a real passkey or screen-reader ceremony.

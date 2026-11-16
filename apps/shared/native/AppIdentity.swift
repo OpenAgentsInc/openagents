@@ -30,7 +30,12 @@ import Security
 
     init(auth: AppAuth,protocols:[AnyClass]=[],store:AppIdentityPendingStore?=nil,proof:(() async throws -> Void)?=nil,localProof:(() async throws -> Bool)?=nil) {
         self.auth = auth
-        self.store=store ?? KeychainIdentityPending();self.proof=proof;self.localProof=localProof
+        #if os(macOS)
+        self.store=store ?? AppFileIdentityPending()
+        #else
+        self.store=store ?? KeychainIdentityPending()
+        #endif
+        self.proof=proof;self.localProof=localProof
         http = AppHTTP(policy: .init(origin: auth.origin, admit: { method, path, bytes in
             oi_http(method == "GET" ? 1 : method == "POST" ? 2 : 0, path, Int32(bytes)) != 0
         }), authorize: AppAccount.authorizer(auth),protocols:protocols)
@@ -97,10 +102,12 @@ import Security
                 defer { body.resetBytes(in: 0..<body.count) }
                 if action == "retry" || action == "discard" {
                     guard let kept = pending(account) else { done(.failed, 409, Data()); return }
+                    // A private-store read still goes through the one strict
+                    // command codec before either replay or cancellation.
+                    var out=[UInt8](repeating:0,count:256)
+                    let size=kept.withUnsafeBytes {bytes in oi_cancel(bytes.bindMemory(to:UInt8.self).baseAddress,Int32(kept.count),&out,Int32(out.count))}
+                    guard size>0 else {done(.failed,0,Data());return}
                     if action == "discard" {
-                        var out=[UInt8](repeating:0,count:256)
-                        let size=kept.withUnsafeBytes {bytes in oi_cancel(bytes.bindMemory(to:UInt8.self).baseAddress,Int32(kept.count),&out,Int32(out.count))}
-                        guard size>0 else {done(.failed,0,Data());return}
                         body=Data(out.prefix(Int(size)))
                     }else {body = kept}
                 } else {
@@ -155,6 +162,7 @@ import Security
 }
 
 // Exact pending change request: device-only protected storage, not preferences or a core draft.
+#if os(iOS)
 @MainActor private final class KeychainIdentityPending:AppIdentityPendingStore {
     private func query(_ account: String) -> [String: Any] {
         [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: "com.openagents.app.identity.pending.v1", kSecAttrAccount as String: account, kSecAttrSynchronizable as String: false]
@@ -169,3 +177,4 @@ import Security
     }
     func remove(_ account: String) { SecItemDelete(query(account) as CFDictionary) }
 }
+#endif

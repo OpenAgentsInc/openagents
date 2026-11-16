@@ -102,5 +102,35 @@ private final class IdentityTokens:TokenStore,@unchecked Sendable {
         let changed=AppIdentityNative(auth:account,protocols:[IdentityNetwork.self],store:store,proof:{await account.logout()})
         let cancelled=await run(changed,"rotate",pub)
         XCTAssertTrue(cancelled.0 == .cancelled && IdentityNetwork.seen.isEmpty && changed.backup.isEmpty)
+        let corrupt=IdentityMemory();corrupt.held=Data("not a command".utf8)
+        let invalid=AppIdentityNative(auth:auth(),protocols:[IdentityNetwork.self],store:corrupt,proof:{})
+        let refused=await run(invalid,"retry",pub)
+        XCTAssertTrue(refused.0 == .failed && IdentityNetwork.seen.isEmpty && corrupt.held != nil)
     }
+    #if os(macOS)
+    func testDesktopPendingFileSurvivesUnknownAndReplaysExactBytes() async throws {
+        let folder=FileManager.default.temporaryDirectory.appendingPathComponent("oa-pending-\(UUID().uuidString)")
+        defer {try? FileManager.default.removeItem(at:folder)}
+        let store=AppFileIdentityPending(folder:folder),account=auth()
+        IdentityNetwork.seen=[]
+        let identityState=state,publicIdentity=metadata
+        IdentityNetwork.reply={request,_ in request.httpMethod == "GET" ? (200,identityState,nil):(200,Data(),.networkConnectionLost)}
+        let first=AppIdentityNative(auth:account,protocols:[IdentityNetwork.self],store:store,proof:{})
+        first.input={String(repeating:"0",count:63)+"1"}
+        let uncertain=await run(first,"restore",pub)
+        XCTAssertEqual(uncertain.0,.unknown)
+        let kept=try XCTUnwrap(store.load("fixture"))
+        XCTAssertEqual(IdentityNetwork.seen.first,kept)
+        XCTAssertFalse(store.save(Data("changed".utf8),account:"fixture"))
+        XCTAssertNil(store.load("../other-account"))
+        IdentityNetwork.reply={_,_ in (200,publicIdentity,nil)}
+        let restarted=AppIdentityNative(auth:account,protocols:[IdentityNetwork.self],store:store,proof:{})
+        let replayed=await run(restarted,"retry",pub)
+        XCTAssertEqual(replayed.0,.done)
+        XCTAssertEqual(IdentityNetwork.seen.count,2)
+        XCTAssertEqual(IdentityNetwork.seen.last,kept)
+        XCTAssertNil(store.load("fixture"))
+    }
+    #endif
+
 }

@@ -11,6 +11,11 @@ private struct EmptyTokenStore: TokenStore {
     func pair(_ link: String, done: @escaping (Bool, String) -> Void) { done(false, "Unavailable in qualification") }
     func call(host: String, body: Data, done: @escaping (AppCompletion.State, Data) -> Void) { done(.unsupported, Data()) }
 }
+@MainActor private final class QualifyingViewStore: AppViewStore {
+    private var state = AppViewState()
+    func load() -> AppViewState { state }
+    func save(_ next: AppViewState) -> Bool { state = next; return true }
+}
 @MainActor final class GPUAppDelegate: NSObject, NSApplicationDelegate {
     var controller: GPUWindow?
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
@@ -27,14 +32,13 @@ private struct EmptyTokenStore: TokenStore {
         do {
             let auth = AppAuth(store: EmptyTokenStore(), device: nil)
             let devices: AppDeviceService = EmptyDevices()
-            let suite = "com.openagents.desktop.gpu-qualification.\(UUID().uuidString)"
-            let defaults = UserDefaults(suiteName: suite)!
-            let controller = try GPUWindow(resources: resources, hidden: true, auth: auth, devices: devices, defaults: defaults)
+            let store = QualifyingViewStore()
+            let controller = try GPUWindow(resources: resources, hidden: true, auth: auth, devices: devices, store: store)
             delegate.controller = controller
             // Effects complete on a later main-queue turn, including the initial auth state.
             DispatchQueue.main.async {
-                do { try controller.inspectControls(); defaults.removePersistentDomain(forName: suite); exit(0) }
-                catch { defaults.removePersistentDomain(forName: suite); fputs(("GPU qualification: " + error.localizedDescription + "\n"), stderr); exit(1) }
+                do { try controller.inspectControls(); exit(0) }
+                catch { fputs(("GPU qualification: " + error.localizedDescription + "\n"), stderr); exit(1) }
             }
             app.run()
 

@@ -20,6 +20,14 @@ typedef struct {
 
 static coax_v_t_ChatPage oc_state(Chat *c) { return (coax_v_t_ChatPage){c->s, 1}; }
 static coax_string oc_string(const char *text) { return (coax_string){text ? text : "", text ? (int64_t)strlen(text) : 0}; }
+int oa_view_write(const char *email,const char *rejoin,const char *environment,unsigned char *out,int cap) {
+ return cap<1 ? -1:(int)avk_write(oc_string(email),oc_string(rejoin),oc_string(environment),(coax_v_u8){out,cap});
+}
+int oa_view_capacity(void) {return (int)avk_capacity();}
+int oa_view_value_capacity(void) {return (int)avk_value_capacity();}
+int oa_view_read(const unsigned char *raw,int n,int which,char *out,int cap) {
+ if(n<0 || cap<1)return -1;int got=(int)avk_read((coax_string){(const char *)raw,n},which,(coax_v_u8){(uint8_t *)out,cap-1});if(got>=0)out[got]=0;return got;
+}
 static void oc_changed(Chat *c);
 static void oc_woke(Chat *c);
 int oi_change(int mode,const char *command,const char *expected,const char *account,const unsigned char *state,int state_n,const char *input,char *out,int cap) {
