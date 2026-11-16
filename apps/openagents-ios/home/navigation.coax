@@ -11,7 +11,8 @@
  #assert na_nav_press(s[..],"nav.toggle") && s[0].navigation[0].open && !s[0].navigation[0].rail;
  t:[1]Tree;u:[1]Ui;ui_begin(u[..],0,true);tr_begin(t[..]);na_nav_render(s[..],t[..],u[..]);
  #assert tr_find(t[..],"nav.home")>=0 && tr_find(t[..],"nav.projects")>=0;
- #assert tr_find(t[..],"nav.search")>=0 && tr_find(t[..],"nav.compose")>=0 && tr_find(t[..],"nav.settings")>=0;
+ #assert tr_find(t[..],"nav.search")<0 && tr_find(t[..],"nav.close")<0 && tr_find(t[..],"nav.history")<0;
+ #assert tr_find(t[..],"nav.recents.label")>=0 && tr_find(t[..],"nav.compose")>=0 && tr_find(t[..],"nav.settings")>=0;
  #assert t[0].nodes[tr_find(t[..],"nav.compose")].parent==tr_find(t[..],"nav.footer");
 }
 #test "history selection is deferred while its metadata request owns HTTP" {
@@ -107,11 +108,10 @@ na_nav_render :: (s:[]Starter,t:[]Tree,u:[]Ui) {
   x=k_icon_button(t,"nav.recent",IC_HISTORY,"Recent chats");tr_attr(t,x,AT_STATE,"rail");tr_close(t);
   x=tr_open(t,"nav.rail.footer",TG_FOOTER,"side-f");x=k_icon_button(t,"nav.settings",IC_SETTINGS,"Settings");tr_attr(t,x,AT_STATE,"rail");tr_close(t);tr_close(t);return;
  }
- x=k_side_head(t,"nav.header","OpenAgents","/");tr_attr(t,x,AT_ROLE,"toolbar");x=k_icon_button(t,"nav.close",IC_X,"Close navigation");tr_close(t);
+ x=k_side_head(t,"nav.header","OpenAgents","/");tr_attr(t,x,AT_ROLE,"toolbar");tr_close(t);
  x=k_side_places(t,"nav.sidebar");x=k_icon_row(t,u,"nav.home",IC_CHAT,"Chat",s[0].page<5);x=k_icon_row(t,u,"nav.projects",IC_FOLDER,"Projects",((s[0].page>=5 && s[0].page<=9) || s[0].page==11));if s[0].worlds_available {x=k_icon_row(t,u,"world.library",IC_GLOBE,"Worlds",s[0].page==10);}x=k_icon_row(t,u,"nav.feed",IC_NEWS_PAPER,"Feed",s[0].page==12);tr_close(t);
- x=tr_open(t,"nav.history.header",TG_HEADER,"navigation-search");x=k_link(t,"nav.history","Recents");tr_attr(t,x,AT_EXPANDED,ifx n[0].history_open then "true" else "false");tr_close(t);
- if n[0].history_open {
- x=tr_open(t,"nav.search-wrap",TG_DIV,"navigation-search");x=k_input(t,u,"nav.search","Search chats","Search chats","search","off");tr_close(t);
+ x=tr_open(t,"nav.history.header",TG_HEADER,"navigation-search");x=k_text(t,u,"nav.recents.label",TG_H3,"meta","Recents");tr_close(t);
+ {
  x=k_side_folds(t,"nav.sidebar");visible:=0;account_matches:=0;for i:0..<s[0].chats[0].n {r:=s[0].chats[0].items[i];if nav_match(n,cast(string)r.title[0..<r.title_n],"Account") {account_matches+=1;}}
  n[0].page_size=nav_page_size(n,account_matches>0);budget:=n[0].page_size;
  if n[0].creating {x=k_text(t,u,"nav.new.title",TG_H2,"","Choose computer");}
@@ -120,7 +120,7 @@ na_nav_render :: (s:[]Starter,t:[]Tree,u:[]Ui) {
   for i:0..<n[0].n {r:=n[0].rows[i];if r.host==host && nav_match(n,cast(string)r.session.title[0..<r.session.nt],name) {count+=1;}}
   if n[0].creating {id:[96]u8;x=k_row(t,u,tr_join(id[..],"nav.new.",host),name,"Claude Code",false);continue;}
   if n[0].nq>0 && count==0 {continue;}
-  id:[96]u8;x=k_side_mark(t,tr_join(id[..],"nav.group.",host),name,count);
+  
   if !g.loaded {a:[96]u8;x=k_text(t,u,tr_join(a[..],"nav.loading.",host),TG_P,"meta","Loading chats…");}
   else if g.failed {a:[96]u8;x=k_text(t,u,tr_join(a[..],"nav.failed.",host),TG_P,"meta","Offline");}
   else if count==0 {a:[96]u8;x=k_text(t,u,tr_join(a[..],"nav.empty.",host),TG_P,"meta",ifx g.complete then "No chats yet" else "Incomplete history");}
@@ -134,8 +134,7 @@ na_nav_render :: (s:[]Starter,t:[]Tree,u:[]Ui) {
  }
  if n[0].creating {x=k_row(t,u,"nav.account.new","OpenAgents","Account chat",false);}
  else {
-  x=k_side_mark(t,"nav.rich.heading","OpenAgents",s[0].durable_index[0].n);na_durable_rows(s,t,u,false);
-  x=k_side_mark(t,"nav.account.heading","Earlier account chats",s[0].chats[0].n);
+  na_durable_rows(s,t,u,false);
   matched:=0;shown:=0;for i:0..<s[0].chats[0].n {r:=s[0].chats[0].items[i];if visible>=NAV_VISIBLE || !nav_match(n,cast(string)r.title[0..<r.title_n],"Account") {continue;}matched+=1;if matched<=n[0].account_at || shown>=budget {continue;}shown+=1;id:[96]u8;x=k_row(t,u,tr_join(id[..],"nav.account.",i),cast(string)r.title[0..<r.title_n],"",s[0].page==3 && cast(string)s[0].thread[0].id[0..<s[0].thread[0].id_n]==cast(string)r.id[0..<r.id_n]);visible+=1;}
   if n[0].account_at>0 {x=k_link(t,"nav.account.latest","Latest");}
   if account_matches>n[0].account_at+shown {x=k_link(t,"nav.account.older","Earlier");}

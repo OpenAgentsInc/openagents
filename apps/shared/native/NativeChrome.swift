@@ -282,7 +282,7 @@ final class NativeButton:UIButton {
         drawerPaint();if variant == .toggle {accessibilityValue=current ? "On":"Off"};invalidateIntrinsicContentSize();setNeedsLayout()
     }
     /// Room at a label's end for a mark beside it (a select's chevron).
-    private var mark:CGFloat {!variant.square && symbol != nil ? CGFloat(style.icon)+6:0}
+    private var mark:CGFloat {!variant.square && symbol != nil ? CGFloat(style.icon)+(reference && variant == .list ? 16:6):0}
     private func textHeight(_ width:CGFloat)->CGFloat {ceil(caption.sizeThatFits(CGSize(width:max(1,width),height:.greatestFiniteMagnitude)).height)}
     override var intrinsicContentSize:CGSize {
         let s=style,hit=CGFloat(NativeSkin.tokens.hit)
@@ -304,7 +304,7 @@ final class NativeButton:UIButton {
         let tall=min(bounds.height,max(CGFloat(s.height),text+16))
         chrome.frame=CGRect(x:0,y:(bounds.height-tall)/2,width:bounds.width,height:tall).integral
         caption.frame=CGRect(x:pad+(variant == .list ? mark:0),y:(bounds.height-text)/2,width:inner,height:text)
-        glyph.frame=CGRect(x:variant == .list ? pad:bounds.width-pad-mark+6,y:0,width:max(0,mark-6),height:bounds.height)
+        glyph.frame=CGRect(x:variant == .list ? pad:bounds.width-pad-mark+6,y:0,width:CGFloat(s.icon),height:bounds.height)
         rule.frame=CGRect(x:0,y:bounds.height-CGFloat(NativeSkin.tokens.hairline),width:bounds.width,height:CGFloat(NativeSkin.tokens.hairline))
         if abs(intrinsicContentSize.height-bounds.height)>0.5 {invalidateIntrinsicContentSize()}
     }

@@ -14,7 +14,7 @@ final class NavigationUITests:XCTestCase {
         XCTAssertFalse(app.buttons["projects.refresh"].exists);XCTAssertTrue(app.buttons["projects.new"].exists);attach(app,"Centered Projects")
         app.buttons["nav.toggle"].tap();app.buttons["world.library"].tap()
         XCTAssertTrue(app.buttons["worlds.splice"].waitForExistence(timeout:15));XCTAssertTrue(app.buttons["nav.toggle"].exists);XCTAssertFalse(app.buttons["worlds.refresh"].exists);XCTAssertEqual(app.sheets.count,0);attach(app,"Worlds in the workspace")
-        app.showChatHistory();XCTAssertTrue(app.textFields["Search chats"].waitForExistence(timeout:10));XCTAssertFalse(app.buttons["nav.refresh"].exists);attach(app,"Single line history")
+        app.showChatHistory();XCTAssertTrue(app.staticTexts["Recents"].waitForExistence(timeout:10));XCTAssertFalse(app.textFields["Search chats"].exists);XCTAssertFalse(app.buttons["nav.close"].exists);XCTAssertFalse(app.buttons["nav.refresh"].exists);attach(app,"Single line history")
         app.buttons["nav.home"].tap();XCTAssertTrue(app.textViews["chat.composer"].waitForExistence(timeout:10))
     }
     func testSearchSwitchChatsAndUseComposerFromHistory() {
@@ -34,13 +34,10 @@ final class NavigationUITests:XCTestCase {
         app.showChatHistory();app.buttons["nav.projects"].tap()
         XCTAssertTrue(app.buttons["projects.item.0"].waitForExistence(timeout:10));attach(app,"Account projects")
         app.showChatHistory();app.buttons["nav.home"].tap();app.showChatHistory()
-        let search=app.textFields["nav.search"];XCTAssertTrue(search.waitForExistence(timeout:20))
         let mac=app.buttons.matching(NSPredicate(format:"identifier BEGINSWITH %@ AND label == %@","nav.chat.","Transcript fixture")).firstMatch
         let coder=app.buttons.matching(NSPredicate(format:"identifier BEGINSWITH %@ AND label == %@","nav.chat.","CoderOS task")).firstMatch
         XCTAssertTrue(mac.waitForExistence(timeout:20));XCTAssertTrue(coder.waitForExistence(timeout:20))
         attach(app,"History groups and fixed navigation")
-        search.tap();search.typeText("coder");XCTAssertTrue(coder.exists);XCTAssertFalse(mac.exists)
-        search.tap();search.typeText(String(repeating:XCUIKeyboardKey.delete.rawValue,count:5))
         XCTAssertTrue(mac.waitForExistence(timeout:5));mac.tap()
         let field=app.textViews["env.composer"];XCTAssertTrue(field.waitForExistence(timeout:10));field.tap();field.typeText("Keep my draft")
         app.showChatHistory();XCTAssertTrue(search.waitForExistence(timeout:5));XCTAssertFalse(app.keyboards.firstMatch.exists)
