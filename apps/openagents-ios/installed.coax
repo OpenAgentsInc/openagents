@@ -1,0 +1,8 @@
+// The compiled screens installed in the iOS app, one generated library
+// (components/gpu-components.md, stage G1; GitHub #13645): the component
+// gallery (Settings, Components) and the login screen. They share the kit,
+// the GPU backend and the atlas builder, so each is linked once.
+// coax/native/generate.sh compiles this file to Generated/gallery.c;
+// components/gallery/linux/main.c and apps/shared/login/host.c are its host.
+#load "../../components/gallery/linux.coax";
+#load "../shared/login/screen.coax";

@@ -24,6 +24,9 @@ import Security
     private var programs:[NativeProgram]=[]
     private var clock:Timer?
     private var worldLibrary:NativeWorldLibrary?
+    // The compiled GPU login (NativeLogin, #13645) covers this runtime while nobody is logged in.
+    private var login:NativeLogin?
+    private var loginKeyMode=false,loginKeyDialog=false
     init(updates:NativeUpdates,auth:AppAuth = .shared) {self.updates=updates;self.auth=auth;accountServices=NativeAccountServices(auth:auth);super.init(nibName:nil,bundle:nil)}
     required init?(coder:NSCoder) { fatalError() }
     deinit {clock?.invalidate();health?.cancel()}
@@ -42,6 +45,56 @@ import Security
             }
         }
         load()
+        NotificationCenter.default.addObserver(self,selector:#selector(sessionChanged),name:AppAuth.didChangeSession,object:auth)
+        syncLogin()
+    }
+    // MARK: the compiled login screen (components/gpu-components.md, stage G1)
+    //
+    // The login screen is compiled Coax on the GPU component host; every other screen still runs
+    // in this runtime. The two share one thing, the session, and AppAuth owns it: the login screen
+    // calls AppAuth, which stores the tokens; this runtime's programs ask AppAuth (auth.state) when
+    // they start. So after a login the programs are loaded again and start logged in. No token
+    // crosses into either Coax runtime.
+    @objc private func sessionChanged() {Task { @MainActor [weak self] in self?.syncLogin() }}
+    private static var loginScene:Bool {
+        #if DEBUG
+        if UserDefaults.standard.object(forKey:"OALoginScene") != nil {return UserDefaults.standard.bool(forKey:"OALoginScene")}
+        #endif
+        return true
+    }
+    private func syncLogin() {
+        guard isViewLoaded else {return}
+        if auth.loggedIn {
+            guard let screen=login else {loginKeyMode=false;loginKeyDialog=false;return}
+            // A key login ran in this runtime's own dialog and its program already knows. An email
+            // login ran in the compiled screen, so the programs start again and read the session.
+            let restart = !loginKeyMode
+            login=nil;loginKeyMode=false;loginKeyDialog=false
+            workspace.view.isHidden=false
+            if restart {load()}
+            UIView.animate(withDuration:NativeLogin.reducedMotion ? 0:0.25,animations:{screen.view.alpha=0}) { _ in
+                // The scene, its atlas and its Metal objects are released here.
+                screen.close();screen.willMove(toParent:nil);screen.view.removeFromSuperview();screen.removeFromParent()
+            }
+            return
+        }
+        guard login==nil,!loginKeyMode else {return}
+        let screen=NativeLogin(auth:auth,scene:Self.loginScene,done:{ [weak self] in self?.syncLogin() },useKey:{ [weak self] in self?.loginWithKey() })
+        login=screen;addChild(screen);screen.view.frame=view.bounds;screen.view.autoresizingMask=[.flexibleWidth,.flexibleHeight]
+        view.addSubview(screen.view);screen.didMove(toParent:self)
+        // This runtime's own login page is under the cover: out of sight and out of the accessibility tree.
+        workspace.view.isHidden=true
+    }
+    /// "Use a Nostr key" has not moved to the compiled screen: this runtime's dialog does it.
+    private func loginWithKey() {
+        guard let screen=login,!loginKeyMode else {return}
+        loginKeyMode=true;loginKeyDialog=false;screen.view.isHidden=true;workspace.view.isHidden=false
+        input("login.key")
+    }
+    private func endKeyLogin() {
+        loginKeyMode=false;loginKeyDialog=false
+        guard !auth.loggedIn,let screen=login else {syncLogin();return}
+        workspace.view.isHidden=true;screen.view.isHidden=false;screen.wake()
     }
     func load() {
         epoch=UUID();relayEpoch=UUID();messagingServices.retire();relayServices.reset();health?.cancel();documents.release();programs=[]
@@ -91,6 +144,13 @@ import Security
                 dialog=vc;present(vc,animated:true)
             }
             dialog?.render(modal)
+        }
+        if loginKeyMode {
+            // The key login is this runtime's: a dialog, or a page in place of its own login page.
+            // When neither is up any more and nobody logged in, the compiled screen returns.
+            func shows(_ list:[NativeElement],_ id:String)->Bool {list.contains {$0.id==id || shows($0.children,id)}}
+            let keyUp = !modal.isEmpty || !shows(primary,"login.send")
+            if keyUp {loginKeyDialog=true}else if loginKeyDialog {endKeyLogin()}
         }
         for p in programs {
             if let slot=p.focus,let id=p.nodes[slot]?.id {

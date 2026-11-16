@@ -32,12 +32,13 @@
 		1F3972F80AD727788C1649CC /* NostrSign.c in Sources */ = {isa = PBXBuildFile; fileRef = 0B12460F6D71E6EC127D760A /* NostrSign.c */; };
 		2423078B067528A80731C519 /* BIP39.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BAFA692F7A2D8501CD6985F /* BIP39.swift */; };
 		25D77A06C2C3817884BE22C4 /* Sticks.c in Sources */ = {isa = PBXBuildFile; fileRef = 6859E9B70EB7323043C45276 /* Sticks.c */; };
+		292D6FD626A2EE6C79A224EB /* LoginUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 528E8F1A9541DE54786EB361 /* LoginUITests.swift */; };
 		2C15AE18F335A39F71D3ECC5 /* NativeMarkdownTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60B45606871D43D59D25E310 /* NativeMarkdownTests.swift */; };
 		2CC0D955E1B50A311219BE38 /* SparkHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F41D56BF7ED365348CE324E /* SparkHost.swift */; };
 		2DA485D5475D62C7827367D5 /* gallery.c in Sources */ = {isa = PBXBuildFile; fileRef = 550581B2872EB638FBFB4619 /* gallery.c */; settings = {COMPILER_FLAGS = "-Wno-unused-function -Wno-unused-variable -Wno-unknown-attributes -ffp-contract=off -fno-fast-math"; }; };
 		335ACC89190205BA908FF0D1 /* DMSans-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 31159A6F8D0AE4A71EC70DB3 /* DMSans-Regular.ttf */; };
 		33F85B946B4265C65AEDD9E8 /* Guard-guide-policy.c in Sources */ = {isa = PBXBuildFile; fileRef = CE9324D75198B7D6E3A84F99 /* Guard-guide-policy.c */; settings = {COMPILER_FLAGS = "-Dinput_runs=guard_guide_input_runs"; }; };
-		356C79ECD7093B4A053F18F7 /* main.c in Sources */ = {isa = PBXBuildFile; fileRef = 8D7450B781EC0703F345FA9F /* main.c */; settings = {COMPILER_FLAGS = "-DCOMPONENTS_EMBEDDED=1 -IGenerated -I../shared/host/linux"; }; };
+		356C79ECD7093B4A053F18F7 /* main.c in Sources */ = {isa = PBXBuildFile; fileRef = 8D7450B781EC0703F345FA9F /* main.c */; settings = {COMPILER_FLAGS = "-DCOMPONENTS_EMBEDDED=1 -DCOMPONENTS_LOGIN=1 -IGenerated -I../shared/host/linux"; }; };
 		3624F02116295A64E7E4CCAE /* EvergladeRuntime.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 43575EA619337B30779C47AD /* EvergladeRuntime.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		370177B40FC83B533F660A4C /* NostrKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0083B1697095508B0B534B8B /* NostrKey.swift */; };
 		388C74DDAF1E79D078022159 /* NativeWorldAssets.swift in Sources */ = {isa = PBXBuildFile; fileRef = A76CCABCDB810512F41B3CB4 /* NativeWorldAssets.swift */; };
@@ -87,6 +88,7 @@
 		7D945870E3AD12214ABA574E /* DMSans-Italic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E6BDE16B17DBA408B5A72A1F /* DMSans-Italic.ttf */; };
 		7FAFE0A840AB71D35F54394D /* NativePasskey.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBABC7D52E5BD89513705FE4 /* NativePasskey.swift */; };
 		7FFD4ECD2F77851EF905BDBA /* native-audio.c in Sources */ = {isa = PBXBuildFile; fileRef = 1FA713933D36CAF22171CD05 /* native-audio.c */; settings = {COMPILER_FLAGS = "-Wno-unused-function -Wno-unused-variable -Wno-unknown-attributes -ffp-contract=off -fno-fast-math"; }; };
+		83DD06E8ECB1B701F647B961 /* ui-scene.m in Sources */ = {isa = PBXBuildFile; fileRef = 9BD87254A633400846EA56EE /* ui-scene.m */; };
 		8DE30B3F5DF892DF49D5AC6F /* NativeComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 033B6D98AB0D0F48E2D8084F /* NativeComponents.swift */; };
 		8E4F97485AF1AF831DCB39E9 /* bip39-english.txt in Resources */ = {isa = PBXBuildFile; fileRef = 131BDA8ADB97609206195533 /* bip39-english.txt */; };
 		9032E72477D42E6F48D6BB4E /* NavigationUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E4AB3936542305917B3BC82 /* NavigationUITests.swift */; };
@@ -105,6 +107,8 @@
 		AD751202F9DD8187E36837E4 /* ComponentsHost.m in Sources */ = {isa = PBXBuildFile; fileRef = C6F4AFFB9B751E6D6F603036 /* ComponentsHost.m */; };
 		AF77409D07EA217012468952 /* DMSans-Medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 3462DD345AFA66B75FD4E0DE /* DMSans-Medium.ttf */; };
 		AF9268D3718198DF3C9A447F /* splice-bots.face.c in Sources */ = {isa = PBXBuildFile; fileRef = EE83E3BBB4A5E7F30389A371 /* splice-bots.face.c */; };
+		B28F7256ED412A0135DB5A81 /* scene-host.c in Sources */ = {isa = PBXBuildFile; fileRef = B8215FE3A870DA0D6D199A1E /* scene-host.c */; settings = {COMPILER_FLAGS = "-IGenerated"; }; };
+		B7C430F19C8C1005B514FB5B /* NativeLogin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77AB9861ECB6E6CE861F6FDA /* NativeLogin.swift */; };
 		B8F46A110910EFA234713835 /* myrealm.face.c in Sources */ = {isa = PBXBuildFile; fileRef = 0AACACD5A7200A22E0D99877 /* myrealm.face.c */; };
 		B90F7595EC11FE241CB77910 /* NativeHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01C83152B91DFEEF873AAD56 /* NativeHost.swift */; };
 		BBCD33281D47033AC1DB4BF7 /* PageHost.m in Sources */ = {isa = PBXBuildFile; fileRef = 02972CD305F4FD3F384DE808 /* PageHost.m */; };
@@ -134,6 +138,7 @@
 		DE56E2C6256E7DF31BC84955 /* NativeWorldConversation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D6F9ED8D49C3CB4C705C0A7 /* NativeWorldConversation.swift */; };
 		DF0737A262C615800A175C31 /* TranscriptUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DB2D6E0FD423967C52276CF /* TranscriptUITests.swift */; };
 		E04C681B8BB7D9243AFB2BAE /* NativeComposer.c in Sources */ = {isa = PBXBuildFile; fileRef = D1522134FBE4A368E4ED10E6 /* NativeComposer.c */; settings = {COMPILER_FLAGS = "-Wno-unused-function -Wno-unused-variable"; }; };
+		E5B593DC07D512DC089B6B70 /* login-scene.c in Sources */ = {isa = PBXBuildFile; fileRef = 0D24CACA32255859BDC0FDA9 /* login-scene.c */; settings = {COMPILER_FLAGS = "-Wno-unused-function -Wno-unused-variable -Wno-unknown-attributes -ffp-contract=off -fno-fast-math"; }; };
 		E784872B3FD92AF20B7F0A57 /* ComponentsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7E18B67249601E408BA51BC /* ComponentsUITests.swift */; };
 		ECDFE75FB85014389B5354CF /* EmailLoginUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDB48A2A187EC9ADCAC59E7D /* EmailLoginUITests.swift */; };
 		F1758E0384C0E7DF3B886192 /* myrealm.c in Sources */ = {isa = PBXBuildFile; fileRef = DBD3A25436338CDD9D50E691 /* myrealm.c */; };
@@ -232,6 +237,7 @@
 		0AACACD5A7200A22E0D99877 /* myrealm.face.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = myrealm.face.c; sourceTree = "<group>"; };
 		0B12460F6D71E6EC127D760A /* NostrSign.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = NostrSign.c; sourceTree = "<group>"; };
 		0C7E58D455D3499DCC49CA03 /* NativeFeedTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeFeedTests.swift; sourceTree = "<group>"; };
+		0D24CACA32255859BDC0FDA9 /* login-scene.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "login-scene.c"; sourceTree = "<group>"; };
 		0E7F5C8EB27EE39789891728 /* NativeAccountTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAccountTests.swift; sourceTree = "<group>"; };
 		0ED6598EDE69B5D065A7D102 /* BalanceUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BalanceUITests.swift; sourceTree = "<group>"; };
 		12732C0F80796C53136B0DC3 /* NativeComposer-T3-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "NativeComposer-T3-LICENSE.txt"; sourceTree = "<group>"; };
@@ -271,6 +277,7 @@
 		4A3EDDA42FA80D738F2AF2B3 /* NativeTranscriptTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTranscriptTests.swift; sourceTree = "<group>"; };
 		4D8BFCC6AB5673870A5A904E /* NativeWorkspace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeWorkspace.swift; sourceTree = "<group>"; };
 		4F02E0025BA832B0D18645FA /* MadeRealmRuntime.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = MadeRealmRuntime.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		528E8F1A9541DE54786EB361 /* LoginUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginUITests.swift; sourceTree = "<group>"; };
 		550581B2872EB638FBFB4619 /* gallery.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = gallery.c; sourceTree = "<group>"; };
 		56E9C5471E75811CB4C59AC9 /* LookUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LookUITests.swift; sourceTree = "<group>"; };
 		5995A6D421346543098BA23D /* NativeChrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeChrome.swift; sourceTree = "<group>"; };
@@ -287,6 +294,7 @@
 		7284237748CD21A99F8480AC /* NativeMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeMessage.swift; sourceTree = "<group>"; };
 		7375466F7AAF56C1CB56F434 /* NativePackageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativePackageTests.swift; sourceTree = "<group>"; };
 		776F82566A59AA4CF6654437 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		77AB9861ECB6E6CE861F6FDA /* NativeLogin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeLogin.swift; sourceTree = "<group>"; };
 		77B06C5399D3C53DAFA386F6 /* NativeWorldEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeWorldEditor.swift; sourceTree = "<group>"; };
 		7A935338A51BFCABE0AA113A /* nostr-inboxes.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "nostr-inboxes.json"; sourceTree = "<group>"; };
 		806FA1794392F02814D56A4B /* NativeAccount.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAccount.swift; sourceTree = "<group>"; };
@@ -305,6 +313,7 @@
 		9399FC48E429A1D3E4E5FAB5 /* PhoneSignIn.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneSignIn.swift; sourceTree = "<group>"; };
 		93CE4D9A643E98E31E87C926 /* NativeWorldProgram-test.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NativeWorldProgram-test.swift"; sourceTree = "<group>"; };
 		9BD4840ED2FA15B3276B9A93 /* SharedAppViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedAppViewController.swift; sourceTree = "<group>"; };
+		9BD87254A633400846EA56EE /* ui-scene.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "ui-scene.m"; sourceTree = "<group>"; };
 		9CF10D05CEBE1FF96A9E94F6 /* everglade5e.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = everglade5e.c; sourceTree = "<group>"; };
 		9DC4C63FE7746025804A2FA9 /* DeviceKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceKey.swift; sourceTree = "<group>"; };
 		9EE12087F6CBB97147B8BD05 /* NativeWorldTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeWorldTests.swift; sourceTree = "<group>"; };
@@ -316,6 +325,7 @@
 		ACCC09AD9788F1149290D2CE /* DMSans-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "DMSans-Bold.ttf"; sourceTree = "<group>"; };
 		ADCF74771C3BEC58D423659D /* NativePlayerBind.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = NativePlayerBind.c; sourceTree = "<group>"; };
 		B041C1F00C1751C3053A0E44 /* DMSans-BoldItalic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "DMSans-BoldItalic.ttf"; sourceTree = "<group>"; };
+		B8215FE3A870DA0D6D199A1E /* scene-host.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "scene-host.c"; sourceTree = "<group>"; };
 		BA0FC513FFA5C6691E003921 /* SettingsUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsUITests.swift; sourceTree = "<group>"; };
 		BBABC7D52E5BD89513705FE4 /* NativePasskey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativePasskey.swift; sourceTree = "<group>"; };
 		BC347727510CEB5F0963D925 /* Everglade-step.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "Everglade-step.c"; sourceTree = "<group>"; };
@@ -403,6 +413,15 @@
 			path = Generated/Worlds/microduck;
 			sourceTree = "<group>";
 		};
+		35B155389D37400FF6D9C776 /* login */ = {
+			isa = PBXGroup;
+			children = (
+				B8215FE3A870DA0D6D199A1E /* scene-host.c */,
+			);
+			name = login;
+			path = ../shared/login;
+			sourceTree = "<group>";
+		};
 		45340D2B8E725CB0B0DB38F7 /* splice-bots */ = {
 			isa = PBXGroup;
 			children = (
@@ -429,6 +448,7 @@
 			children = (
 				F1D217C6F37EE5CCCA813BE7 /* engine-core-face.c */,
 				550581B2872EB638FBFB4619 /* gallery.c */,
+				0D24CACA32255859BDC0FDA9 /* login-scene.c */,
 				1FA713933D36CAF22171CD05 /* native-audio.c */,
 				D1522134FBE4A368E4ED10E6 /* NativeComposer.c */,
 				ADCF74771C3BEC58D423659D /* NativePlayerBind.c */,
@@ -544,6 +564,7 @@
 				68A32BEE57050EF541CA1A16 /* NativeControls.swift */,
 				C1AA3819D538A01C3EBF524A /* NativeDocuments.swift */,
 				01C83152B91DFEEF873AAD56 /* NativeHost.swift */,
+				77AB9861ECB6E6CE861F6FDA /* NativeLogin.swift */,
 				7284237748CD21A99F8480AC /* NativeMessage.swift */,
 				BD9C289E57EEE12AFEDDC339 /* NativeMessaging.swift */,
 				BBABC7D52E5BD89513705FE4 /* NativePasskey.swift */,
@@ -630,6 +651,7 @@
 				9DC4C63FE7746025804A2FA9 /* DeviceKey.swift */,
 				D53AE5A2D45A0A6B3D45B8D4 /* phone-drive.c */,
 				AB5CDBC2AEE9079B64FC914A /* PhoneTurn.swift */,
+				9BD87254A633400846EA56EE /* ui-scene.m */,
 			);
 			name = apple;
 			path = ../shared/host/apple;
@@ -651,6 +673,7 @@
 				8B07580CC0A27104C07B9B5C /* ChatUITests.swift */,
 				C7E18B67249601E408BA51BC /* ComponentsUITests.swift */,
 				FDB48A2A187EC9ADCAC59E7D /* EmailLoginUITests.swift */,
+				528E8F1A9541DE54786EB361 /* LoginUITests.swift */,
 				56E9C5471E75811CB4C59AC9 /* LookUITests.swift */,
 				1E4AB3936542305917B3BC82 /* NavigationUITests.swift */,
 				2CD892177F785608B4FF583C /* ProjectUITests.swift */,
@@ -715,6 +738,7 @@
 				89D0EDCD22386A706365DFDC /* fonts */,
 				5B366C12F710C7D176CACD52 /* Generated */,
 				CE39949D08373FFAF4241801 /* linux */,
+				35B155389D37400FF6D9C776 /* login */,
 				28D83DA525816205B067A26C /* microduck */,
 				0D74ACE8D1983E05C4020491 /* myrealm */,
 				ABD48D4B1B28A57624675E53 /* native */,
@@ -1015,6 +1039,7 @@
 				790A92BCF9A5C6628FA9E10E /* NativeControls.swift in Sources */,
 				514CF680606D1D6BE5BCB654 /* NativeDocuments.swift in Sources */,
 				B90F7595EC11FE241CB77910 /* NativeHost.swift in Sources */,
+				B7C430F19C8C1005B514FB5B /* NativeLogin.swift in Sources */,
 				BFE34625B35451186BA445E4 /* NativeMessage.swift in Sources */,
 				188C6B4AA4BC88228ACF134E /* NativeMessaging.swift in Sources */,
 				7602ED0EF160C7F0A85F185B /* NativeMessagingUnit.c in Sources */,
@@ -1054,12 +1079,15 @@
 				4CB209058C8426EE597A92F4 /* apple.c in Sources */,
 				F9ED72543EBFA15EB2EE96F0 /* engine-core-face.c in Sources */,
 				2DA485D5475D62C7827367D5 /* gallery.c in Sources */,
+				E5B593DC07D512DC089B6B70 /* login-scene.c in Sources */,
 				356C79ECD7093B4A053F18F7 /* main.c in Sources */,
 				7FFD4ECD2F77851EF905BDBA /* native-audio.c in Sources */,
 				C77117B7CBCFC4CC0576E57C /* phone-drive.c in Sources */,
 				5FCD0C43CB70DA62BB5DE214 /* precomputed_ecmult.c in Sources */,
 				6367A5818F65ABDE05883A8E /* precomputed_ecmult_gen.c in Sources */,
+				B28F7256ED412A0135DB5A81 /* scene-host.c in Sources */,
 				A82532704621FA268D0CA249 /* secp256k1.c in Sources */,
+				83DD06E8ECB1B701F647B961 /* ui-scene.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1080,6 +1108,7 @@
 				0F64B5AFCEDD256C035DF6D8 /* ChatUITests.swift in Sources */,
 				E784872B3FD92AF20B7F0A57 /* ComponentsUITests.swift in Sources */,
 				ECDFE75FB85014389B5354CF /* EmailLoginUITests.swift in Sources */,
+				292D6FD626A2EE6C79A224EB /* LoginUITests.swift in Sources */,
 				4ABB8E0033250A5AD954D6A0 /* LookUITests.swift in Sources */,
 				9032E72477D42E6F48D6BB4E /* NavigationUITests.swift in Sources */,
 				01122364B289DF707A54AFA6 /* ProjectUITests.swift in Sources */,

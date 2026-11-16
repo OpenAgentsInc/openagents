@@ -16,6 +16,7 @@
 #include "../../metaverse-engine/host/apple/audio-host.h"
 
 #include "../../components/gallery/apple/embedded.h"
+#include "../shared/login/host.h"
 
 #include "../../components/native/apple.h"
 

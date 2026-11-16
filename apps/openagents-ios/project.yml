@@ -25,8 +25,14 @@ targets:
     sources:
       - StarterApp.swift
       - path: ../../components/gallery/linux/main.c
-        compilerFlags: "-DCOMPONENTS_EMBEDDED=1 -IGenerated -I../shared/host/linux"
+        compilerFlags: "-DCOMPONENTS_EMBEDDED=1 -DCOMPONENTS_LOGIN=1 -IGenerated -I../shared/host/linux"
       - ComponentsHost.m
+      # The compiled login screen (#13645): its scene layer, its scene's carrier and library.
+      - ../shared/host/apple/ui-scene.m
+      - path: ../shared/login/scene-host.c
+        compilerFlags: "-IGenerated"
+      - path: Generated/login-scene.c
+        compilerFlags: "-Wno-unused-function -Wno-unused-variable -Wno-unknown-attributes -ffp-contract=off -fno-fast-math"
       - NativePresentationUnit.c
       - NativeAccountUnit.c
       - NativeRelayUnit.c
@@ -432,6 +438,15 @@ schemes:
       targets:
         - name: OpenAgentsUITests
           selectedTests: [ComponentsUITests]
+
+  CoaxNativeLogin:
+    build:
+      targets:
+        OpenAgents: all
+    test:
+      targets:
+        - name: OpenAgentsUITests
+          selectedTests: [LoginUITests]
 
   CoaxNativeArcade:
     build:
