@@ -11,8 +11,9 @@
 // the C++ (the checks compare exact f32 values).
 #load "night-exit.coax";   // sr_atan2_deg (FMath::Atan2)
 
-// FMath::Atan2 in radians.
-sr_atan2 :: (y: f32, x: f32) -> f32 { return cast(f32) (sr_atan2_deg(cast(f64) y, cast(f64) x) * PI_D / 180.0); }
+// FMath::Atan2 in radians, f64 and f32.
+sr_atan2_rad :: (y: f64, x: f64) -> f64 { return sr_atan2_deg(y, x) * PI_D / 180.0; }
+sr_atan2 :: (y: f32, x: f32) -> f32 { return cast(f32) sr_atan2_rad(cast(f64) y, cast(f64) x); }
 
 // FSpliceWalkTuning: every number her movement is tuned with, at the prototype's values except where
 // marked "15 Nov playtest" (Kiki: "jumps should go further, running should feel faster"; Docs/decisions/

@@ -1,0 +1,489 @@
+// Parity checks for camera-boom.coax: SpliceTests/Rules/SpliceCameraBoomTests.cpp, every test ported. Those
+// are one test per check in the prototype's camera-checks.coax, with the same thresholds, each on a small
+// stand-in world with the sizes the prototype names (her walk and turn, Digger, the drill mech, the boss).
+// What the C++ left out (the game's vertex buffers, the place store, the cabin's desk, the pause screen's
+// click, Digger's and the mech's AI past their follow) is left out here too. The C++ test world implements
+// ISpliceCameraWorld; here it is the data world SrCamWorld, with Digger and the mech written into its bodies
+// each step. rules.coax loads this file with `#load ... #test;`.
+
+BM_SLACK :: 0.05;          // camera-checks.coax:519 CC_SLACK, m: the room is found to a few centimetres
+BM_FRAME :: 0.016666666666666666;
+BM_PI :: 3.14159265;
+BM_T_WALK :: 5.6;          // splice-game.coax:51 T_WALK
+BM_T_TURN :: 2.5;          // T_TURN
+BM_T_RADIUS :: 0.45;       // T_RADIUS
+BM_BOT_R :: 0.55;          // :350 T_BOT_R
+BM_BOT_TOP :: 1.3;         // :350 T_BOT_TOP
+BM_BOT_BACK :: -0.4;       // :349 T_BOT_BACK
+BM_BOT_LEFT :: 1.5;        // :349 T_BOT_LEFT
+BM_FOLLOW :: 7.5;          // :65 T_FOLLOW
+BM_BOT_GO :: 6.5;          // :65 T_BOT_GO
+BM_MECH_R :: 1.85;         // splice-battle.coax:47 SB_MECH_R
+BM_MECH_TOP :: 4.6;        // SB_MECH_TOP
+BM_MECH_SPEED :: 7.0;      // SB_MECH_SPEED
+BM_MECH_REACH :: 3.5;      // SB_MECH_REACH
+BM_MECH_GAP :: 1.4;        // SB_MECH_GAP
+BM_MECH_AHEAD :: 0.6;      // SB_MECH_AHEAD
+BM_BIG_NEAR :: 3.0;        // splice-game.coax:1347 G_BIG_NEAR
+BM_GATE_TOP :: 6.0;        // layer.coax:338 SL_GATE_TOP, the rock wall's top
+BM_PANEL_TOP :: 1.34;      // feel.coax:781 a solar row's top
+BM_RUBBLE_Z :: -34.0;      // splice-game.coax:1623 rubble_z
+BM_HALL_HALF :: 3.2;       // garage.coax:30 GA_HALL
+BM_STEP_UP :: 0.3;         // feel.coax:785 FL_STEP
+
+bm_flat :: (ax: f64, az: f64, bx: f64, bz: f64) -> f64 { return sqrt((ax - bx) * (ax - bx) + (az - bz) * (az - bz)); }
+
+BmWatch :: struct { jump: f64; near: f64 = 1000.0; in_body: bool; moved: f64; }
+// Her, the world and the boom, stepped as splice-game.coax g_step steps them.
+BmSim :: struct {
+  t: SrCamTuning; world: SrCamWorld; s: SrCamState; her: SrCamSubject;
+  fwd: bool; turn_l: bool; turn_r: bool; riding: bool;
+  speed: f64 = BM_T_WALK; foot_goal: f64;
+  bot: bool; bot_x: f64; bot_z: f64; mech: bool; mech_x: f64; mech_z: f64;
+  mech_follows: bool; bot_follows: bool; bot_drill: bool; drill_x: f64; drill_z: f64;
+}
+// splice-game.coax:1348 g_big_ahead, the drill mech's part.
+bm_big_ahead :: (g: BmSim) -> f64 {
+  if !g.mech { return 0.0; }
+  fx := sin(g.her.yaw); fz := cos(g.her.yaw);
+  along := (g.mech_x - g.her.x) * fx + (g.mech_z - g.her.z) * fz;
+  off := abs((g.mech_x - g.her.x) * fz - (g.mech_z - g.her.z) * fx);
+  if along < 0.0 || along > 12.0 || off >= BM_MECH_R + 1.5 { return 0.0; }
+  return fmin(1.0, (BM_MECH_R + 1.5 - off) / 1.5) * fmin(1.0, (12.0 - along) / 4.0) * fclamp((along - BM_MECH_R - 1.5) / BM_BIG_NEAR, 0.0, 1.0);
+}
+bm_refresh :: (g: [] BmSim) {
+  w := [1] SrCamWorld.[g[0].world];
+  w[0].bodies_n = 0;
+  if g[0].bot { sr_cam_world_add_body(w[..], g[0].bot_x, g[0].bot_z, BM_BOT_R, BM_BOT_TOP); }
+  if g[0].mech { sr_cam_world_add_body(w[..], g[0].mech_x, g[0].mech_z, BM_MECH_R, BM_MECH_TOP); }
+  w[0].her_x = g[0].her.x; w[0].her_z = g[0].her.z;
+  g[0].world = w[0];
+  g[0].her.foot_goal = g[0].foot_goal; g[0].her.boss_near = 0.0; g[0].her.boss_ahead = 0.0;
+  if g[0].world.boss {
+    // camera.coax:158 cm_boss_near and :151 cm_boss_ahead
+    bx := g[0].world.boss_x; bz := g[0].world.boss_z;
+    d := bm_flat(bx, bz, g[0].her.x, g[0].her.z);
+    g[0].her.boss_near = fclamp((22.0 - d) / 8.0, 0.0, 1.0);
+    dx := bx - g[0].her.x; dz := bz - g[0].her.z;
+    if d >= 0.001 { g[0].her.boss_ahead = g[0].her.boss_near * fclamp((dx * sin(g[0].her.yaw) + dz * cos(g[0].her.yaw)) / d * 2.0, 0.0, 1.0); }
+    g[0].her.boss_x = bx; g[0].her.boss_z = bz;
+  }
+  g[0].her.reach = sr_cam_reach(g[0].t, g[0].her.village, false, g[0].riding, 0.0, g[0].her.boss_ahead);
+  g[0].her.big_ahead = bm_big_ahead(g[0]);
+}
+bm_push_round :: (g: [] BmSim, x: f64, z: f64, r: f64) {
+  d := bm_flat(g[0].her.x, g[0].her.z, x, z); keep := r + BM_T_RADIUS;
+  if d < keep && d > 0.0001 { g[0].her.x = x + (g[0].her.x - x) / d * keep; g[0].her.z = z + (g[0].her.z - z) / d * keep; }
+}
+// Her circle pushed out of what is taller than a step.
+bm_collide :: (g: [] BmSim) {
+  for k: 0..<g[0].world.boxes_n {
+    b := g[0].world.boxes[k];
+    if b.hi.y <= BM_STEP_UP { continue; }
+    cx := fclamp(g[0].her.x, b.lo.x, b.hi.x); cz := fclamp(g[0].her.z, b.lo.z, b.hi.z);
+    d := bm_flat(g[0].her.x, g[0].her.z, cx, cz);
+    if d < BM_T_RADIUS {
+      if d < 0.0001 {
+        // inside: out by the nearest face
+        l := g[0].her.x - b.lo.x; r := b.hi.x - g[0].her.x; bk := g[0].her.z - b.lo.z; f := b.hi.z - g[0].her.z;
+        m := fmin(fmin(l, r), fmin(bk, f));
+        if m == l { g[0].her.x = b.lo.x - BM_T_RADIUS; } else if m == r { g[0].her.x = b.hi.x + BM_T_RADIUS; }
+        else if m == bk { g[0].her.z = b.lo.z - BM_T_RADIUS; } else { g[0].her.z = b.hi.z + BM_T_RADIUS; }
+      } else {
+        g[0].her.x = cx + (g[0].her.x - cx) / d * BM_T_RADIUS; g[0].her.z = cz + (g[0].her.z - cz) / d * BM_T_RADIUS;
+      }
+    }
+  }
+  for k: 0..<g[0].world.posts_n { c := g[0].world.posts[k]; if c.top > BM_STEP_UP { bm_push_round(g, c.x, c.z, c.r); } }
+  if g[0].mech { bm_push_round(g, g[0].mech_x, g[0].mech_z, BM_MECH_R); }
+  if g[0].world.boss { bm_push_round(g, g[0].world.boss_x, g[0].world.boss_z, g[0].world.boss_r); }
+}
+bm_toward :: (x: f64, z: f64, tx: f64, tz: f64, step: f64) -> D2 {
+  d := bm_flat(x, z, tx, tz);
+  if d <= step || d < 0.0001 { return d2(tx, tz); }
+  return d2(x + (tx - x) / d * step, z + (tz - z) / d * step);
+}
+// splice-battle.coax:536, the mech following her (without the garage's ways).
+bm_step_mech :: (g: [] BmSim, dt: f64) {
+  t := g[0].t;
+  h := sr_cam_follow_spot(t, g[0].s, g[0].her, g[0].mech_x, g[0].mech_z, BM_MECH_R, BM_MECH_R + BM_MECH_GAP, BM_MECH_AHEAD);
+  pace := sr_cam_follow_pace(t, g[0].s, g[0].her, g[0].mech_x, g[0].mech_z, BM_MECH_R, fclamp(bm_flat(g[0].mech_x, g[0].mech_z, h.x, h.z) / 3.0, 0.2, 1.6));
+  p := bm_toward(g[0].mech_x, g[0].mech_z, h.x, h.z, BM_MECH_SPEED * pace * dt);
+  q := sr_cam_keep_off(t, g[0].her, p.x, p.y, BM_MECH_R);
+  g[0].mech_x = q.x; g[0].mech_z = q.z;
+}
+// splice-game.coax:474, Digger following her (without the farm's aisles).
+bm_step_bot :: (g: [] BmSim, dt: f64, her_speed: f64) {
+  t := g[0].t; p: D2;
+  if g[0].bot_drill { p = bm_toward(g[0].bot_x, g[0].bot_z, g[0].drill_x, g[0].drill_z, BM_BOT_GO * dt); }
+  else {
+    h := sr_cam_follow_spot(t, g[0].s, g[0].her, g[0].bot_x, g[0].bot_z, BM_BOT_R, BM_BOT_LEFT, -BM_BOT_BACK);
+    d := bm_flat(g[0].bot_x, g[0].bot_z, h.x, h.z);
+    pace := sr_cam_follow_pace(t, g[0].s, g[0].her, g[0].bot_x, g[0].bot_z, BM_BOT_R, fclamp(d / 1.5, 0.15, 1.6));
+    p = bm_toward(g[0].bot_x, g[0].bot_z, h.x, h.z, (fmax(BM_FOLLOW, her_speed) * pace + fmax(0.0, d - 12.0) * 3.0) * dt);
+  }
+  q := sr_cam_keep_off(t, g[0].her, p.x, p.y, BM_BOT_R);
+  g[0].bot_x = q.x; g[0].bot_z = q.z;
+}
+// splice-game.coax:351 g_bot_spot
+bm_bot_home :: (g: [] BmSim) {
+  y := g[0].her.yaw;
+  g[0].bot_x = g[0].her.x - sin(y) * BM_BOT_BACK + cos(y) * BM_BOT_LEFT;
+  g[0].bot_z = g[0].her.z - cos(y) * BM_BOT_BACK - sin(y) * BM_BOT_LEFT;
+}
+bm_step_frame :: (g: [] BmSim, dt: f64) {
+  g[0].her.yaw += ((ifx g[0].turn_l then 1.0 else 0.0) - (ifx g[0].turn_r then 1.0 else 0.0)) * BM_T_TURN * dt;
+  x0 := g[0].her.x; z0 := g[0].her.z;
+  if g[0].fwd { g[0].her.x += sin(g[0].her.yaw) * g[0].speed * dt; g[0].her.z += cos(g[0].her.yaw) * g[0].speed * dt; }
+  bm_collide(g);
+  her_speed := bm_flat(x0, z0, g[0].her.x, g[0].her.z) / dt;
+  if g[0].mech_follows && g[0].mech { bm_step_mech(g, dt); }
+  if g[0].bot_follows && g[0].bot { bm_step_bot(g, dt, her_speed); }
+  bm_refresh(g);
+  g[0].s = sr_cam_step(g[0].t, g[0].world, g[0].s, g[0].her, dt);
+}
+bm_camera :: (g: [] BmSim) -> SrCamView { bm_refresh(g); return sr_cam_follow(g[0].t, g[0].world, g[0].s, g[0].her); }
+bm_pivot_now :: (g: [] BmSim) -> D3 { bm_refresh(g); return sr_cam_pivot(g[0].t, g[0].s, g[0].her); }
+bm_body_at :: (g: BmSim, p: D3) -> bool { return sr_cam_body_at(g.t, g.world, p, 0.0); }
+// Put somewhere new, as g_reset does: the boom starts there. The wheel's zoom is kept.
+bm_reset :: (g: [] BmSim, x: f64, z: f64, yaw: f64) {
+  zoom := g[0].her.zoom;
+  g[0].s = SrCamState.{};
+  g[0].her = SrCamSubject.{zoom = zoom, x = x, z = z, yaw = yaw};
+  g[0].fwd = false; g[0].turn_l = false; g[0].turn_r = false;
+  bm_refresh(g);
+}
+// A fresh world (FCamTestWorld()): nothing in it, and no robots or followers.
+bm_clear_world :: (g: [] BmSim) {
+  g[0].world = SrCamWorld.{};
+  g[0].bot = false; g[0].mech = false; g[0].bot_follows = false; g[0].mech_follows = false; g[0].bot_drill = false;
+}
+// camera-checks.coax:504 cc_watch: steps frames of 1/60 s and keeps the worst.
+bm_watch :: (g: [] BmSim, frames: int, w: BmWatch) -> BmWatch {
+  o := w;
+  c0 := bm_camera(g); p0 := bm_pivot_now(g);
+  r0 := d3_dist(c0.eye, p0); y0 := c0.eye.y - p0.y; e0 := c0.eye;
+  for i: 0..<frames {
+    bm_step_frame(g, BM_FRAME);
+    c := bm_camera(g); p := bm_pivot_now(g);
+    r := d3_dist(c.eye, p); y := c.eye.y - p.y;
+    o.jump = fmax(o.jump, fmax(abs(r - r0), abs(y - y0)));
+    o.near = fmin(o.near, r);
+    o.moved = fmax(o.moved, d3_dist(c.eye, e0));
+    if bm_body_at(g[0], c.eye) { o.in_body = true; }
+    r0 = r; y0 = y; e0 = c.eye;
+  }
+  return o;
+}
+// The solar farm (camera-checks.coax:520 cc_farm): rows of panels up to a solar row's top with aisles between,
+// two chargers and the rover train standing in the field. Her start is in an aisle.
+bm_build_farm :: (g: [] BmSim) {
+  bm_clear_world(g);
+  w := [1] SrCamWorld.[g[0].world];
+  for row: -3..<4 { z := cast(f64) row * 4.5; sr_cam_world_add_box(w[..], d3(-16.0, 0.4, z - 0.7), d3(16.0, BM_PANEL_TOP, z + 0.7), false); }
+  sr_cam_world_add_post(w[..], -5.0, 2.25, 0.4, 2.2);
+  sr_cam_world_add_post(w[..], 4.0, -2.25, 0.4, 2.2);
+  sr_cam_world_add_box(w[..], d3(9.0, 0.0, -8.0), d3(11.0, 2.4, 0.0), false);
+  g[0].world = w[0];
+  bm_reset(g, 0.0, 2.25, 0.0);
+}
+// The tunnel's end at the rock wall (stage 5): the wall across it up to the gate's top, rock either side.
+bm_build_rock_wall :: (g: [] BmSim) {
+  bm_clear_world(g);
+  w := [1] SrCamWorld.[g[0].world];
+  sr_cam_world_add_box(w[..], d3(-8.0, 0.0, BM_RUBBLE_Z - 3.0), d3(8.0, BM_GATE_TOP, BM_RUBBLE_Z), false);
+  sr_cam_world_add_box(w[..], d3(-12.0, 0.0, BM_RUBBLE_Z - 3.0), d3(-4.5, 12.0, BM_RUBBLE_Z + 40.0), false);
+  sr_cam_world_add_box(w[..], d3(4.5, 0.0, BM_RUBBLE_Z - 3.0), d3(12.0, 12.0, BM_RUBBLE_Z + 40.0), false);
+  g[0].world = w[0];
+}
+
+#test "Splice.Rules.Camera.FarmStillAndEases" {
+  g: [1] BmSim; t := g[0].t;
+  bm_build_farm(g[..]);
+  w := bm_watch(g[..], 600, BmWatch.{});
+  #assert w.moved == 0.0;   // ten seconds standing: not a hair
+  for a: 0..<4 {
+    bm_build_farm(g[..]);
+    g[0].her.yaw = cast(f64) a * 1.571 + 0.785; g[0].fwd = true; g[0].turn_l = true;
+    w = bm_watch(g[..], 240, BmWatch.{});
+    #assert w.jump < 0.25 && w.near >= t.min - BM_SLACK && !w.in_body;
+  }
+}
+
+#test "Splice.Rules.Camera.DiggerAtRockWall" {
+  g: [1] BmSim; t := g[0].t;
+  bm_build_rock_wall(g[..]);
+  bm_reset(g[..], 0.0, BM_RUBBLE_Z + 1.5, BM_PI);   // at the wall
+  g[0].bot = true; bm_bot_home(g[..]); g[0].bot_follows = true;
+  g[0].bot_drill = true; g[0].drill_x = 1.2; g[0].drill_z = BM_RUBBLE_Z + BM_BOT_R + 0.1;   // g_deploy: Digger runs past her and drills
+  w := bm_watch(g[..], 600, BmWatch.{});
+  #assert w.jump < 0.25 && w.near >= t.min - BM_SLACK && !w.in_body;
+  // her back to the wall, a step from it: the camera is over her head, not in it
+  g[0].her.yaw = 0.0; g[0].s.ready = false;
+  _ = bm_watch(g[..], 60, BmWatch.{});
+  c := bm_camera(g[..]); p := bm_pivot_now(g[..]);
+  #assert d3_dist(c.eye, p) >= t.min - BM_SLACK && c.eye.y > p.y + 2.0;
+}
+
+#test "Splice.Rules.Camera.Hoverboard" {
+  g: [1] BmSim; t := g[0].t;
+  bm_build_farm(g[..]);
+  g[0].riding = true; g[0].foot_goal = 0.25; g[0].speed = 7.0; g[0].fwd = true;   // the board's hover; FL_M_BOARD
+  w := bm_watch(g[..], 120, BmWatch.{});
+  #assert sr_cam_want(t, g[0].her.reach, g[0].her.zoom) >= 6.5 + t.board_back;   // further back than on foot
+  #assert w.near >= t.min - BM_SLACK;
+  // on the board against the rock wall in the tunnel: never her head filling the view
+  bm_build_rock_wall(g[..]);
+  bm_reset(g[..], 0.0, BM_RUBBLE_Z + 1.6, BM_PI);
+  g[0].riding = true; g[0].foot_goal = 0.25; g[0].turn_l = true;
+  w = bm_watch(g[..], 160, BmWatch.{});
+  #assert w.near >= t.min - BM_SLACK && !w.in_body;
+}
+
+#test "Splice.Rules.Camera.HallwayTurn" {
+  g: [1] BmSim; t := g[0].t;
+  bm_clear_world(g[..]);
+  wl := [1] SrCamWorld.[g[0].world];
+  wl[0].roof = t.hall_roof;
+  sr_cam_world_add_box(wl[..], d3(-BM_HALL_HALF - 10.0, 0.0, -40.0), d3(-BM_HALL_HALF, 16.0, 40.0), false);
+  sr_cam_world_add_box(wl[..], d3(BM_HALL_HALF, 0.0, -40.0), d3(BM_HALL_HALF + 10.0, 16.0, 40.0), false);
+  g[0].world = wl[0];
+  bm_reset(g[..], 0.0, 0.0, BM_PI * 0.5);
+  g[0].turn_l = true;
+  steep := 0.0; under_roof := true; w: BmWatch;
+  for i: 0..<240 {
+    w = bm_watch(g[..], 1, w);
+    c := bm_camera(g[..]); p := bm_pivot_now(g[..]);
+    r := d3_dist(c.eye, p);
+    steep = fmax(steep, (c.eye.y - p.y) / fmax(r, 0.01));
+    if !(c.eye.y < t.hall_roof - t.clear + BM_SLACK) { under_roof = false; }
+  }
+  #assert under_roof && w.near >= t.min - BM_SLACK && !w.in_body && steep < 0.8;
+}
+
+#test "Splice.Rules.Camera.MechFollows" {
+  g: [1] BmSim; t := g[0].t;
+  bm_clear_world(g[..]);
+  g[0].mech = true; g[0].mech_x = 0.0; g[0].mech_z = 20.0;
+  bm_reset(g[..], g[0].mech_x + 2.0, g[0].mech_z, BM_PI);
+  g[0].mech_follows = true;   // the core is in
+  #assert BM_MECH_TOP < BM_BOT_TOP * 4.0 && BM_MECH_TOP > 1.7 * 2.0;   // about twice her height
+  for i: 0..<30 { bm_step_frame(g[..], BM_FRAME); }   // it steps off her first
+  closest := 1000.0; w: BmWatch;
+  for leg: 0..<4 {
+    g[0].fwd = true; g[0].turn_l = leg % 2 == 0; g[0].turn_r = leg == 1;
+    for i: 0..<45 { w = bm_watch(g[..], 1, w); closest = fmin(closest, bm_flat(g[0].mech_x, g[0].mech_z, g[0].her.x, g[0].her.z)); }
+    g[0].fwd = false; g[0].turn_l = false; g[0].turn_r = false;
+    for i: 0..<20 { w = bm_watch(g[..], 1, w); closest = fmin(closest, bm_flat(g[0].mech_x, g[0].mech_z, g[0].her.x, g[0].her.z)); }
+  }
+  #assert closest >= BM_MECH_R + BM_T_RADIUS && !w.in_body && w.near >= t.min - BM_SLACK;
+  // standing, it settles at her left, a stride out from its own side (sb_mech_spot)
+  for i: 0..<120 { bm_step_frame(g[..], 1.0 / 30.0); }
+  y := g[0].her.yaw; side_off := BM_MECH_R + BM_MECH_GAP;
+  hx := g[0].her.x + sin(y) * BM_MECH_AHEAD + cos(y) * side_off;
+  hz := g[0].her.z + cos(y) * BM_MECH_AHEAD - sin(y) * side_off;
+  #assert bm_flat(g[0].mech_x, g[0].mech_z, hx, hz) < 0.5;
+}
+
+#test "Splice.Rules.Camera.MechBayNeverTopDown" {
+  g: [1] BmSim; t := g[0].t;
+  bm_clear_world(g[..]);
+  g[0].mech = true; g[0].mech_x = 0.0; g[0].mech_z = -30.0;
+  wl := [1] SrCamWorld.[g[0].world];
+  sr_cam_world_add_box(wl[..], d3(-6.0, 0.0, -36.0), d3(6.0, 8.0, -33.0), false);   // its bay: the back wall behind it
+  g[0].world = wl[0];
+  mx := g[0].mech_x; mz := g[0].mech_z;
+  bm_reset(g[..], mx, mz + 14.0, BM_PI);   // 14 m out toward the ring's middle, facing it
+  for i: 0..<30 { bm_step_frame(g[..], BM_FRAME); }
+  steep := 0.0; w: BmWatch;
+  g[0].fwd = true;
+  for i: 0..<600 {
+    w = bm_watch(g[..], 1, w); steep = fmax(steep, g[0].s.rise);
+    if bm_flat(g[0].her.x, g[0].her.z, mx, mz) < BM_MECH_REACH - 0.5 { break; }
+  }
+  g[0].fwd = false;
+  for i: 0..<60 { w = bm_watch(g[..], 1, w); steep = fmax(steep, g[0].s.rise); }
+  #assert bm_flat(g[0].her.x, g[0].her.z, mx, mz) < BM_MECH_REACH;   // standing at it, in reach of E
+  // walking on into it: its body stops her, and the camera still never looks down on her
+  g[0].fwd = true; stopped := true;
+  for i: 0..<120 {
+    w = bm_watch(g[..], 1, w); steep = fmax(steep, g[0].s.rise);
+    if bm_flat(g[0].her.x, g[0].her.z, mx, mz) < BM_MECH_R + BM_T_RADIUS - 0.01 { stopped = false; }
+  }
+  g[0].fwd = false;
+  #assert stopped && steep <= t.steep + 0.05 && !w.in_body && w.near >= t.min - BM_SLACK;
+}
+
+#test "Splice.Rules.Camera.WheelZoom" {
+  g: [1] BmSim; t := g[0].t;
+  bm_build_farm(g[..]);
+  rest := sr_cam_want(t, g[0].her.reach, g[0].her.zoom);
+  for i: 0..<40 { g[0].her.zoom = sr_cam_wheel(t, g[0].her.zoom, -120.0, g[0].her.reach); }   // forty notches in
+  #assert sr_cam_want(t, g[0].her.reach, g[0].her.zoom) == t.zoom_near;
+  w := bm_watch(g[..], 120, BmWatch.{});
+  #assert w.near >= t.min - BM_SLACK && w.near < t.zoom_near + 0.3 && !w.in_body;   // in close, never in her head
+  for i: 0..<40 { g[0].her.zoom = sr_cam_wheel(t, g[0].her.zoom, 120.0, g[0].her.reach); }
+  #assert abs(sr_cam_want(t, g[0].her.reach, g[0].her.zoom) - rest * t.zoom_far) < 0.01;
+  g[0].her.zoom = sr_cam_wheel(t, g[0].her.zoom, -120.0, g[0].her.reach);
+  z := g[0].her.zoom;
+  bm_build_farm(g[..]);
+  #assert g[0].her.zoom == z && g[0].her.zoom < t.zoom_far;   // a respawn keeps it
+}
+
+#test "Splice.Rules.Camera.FollowersOutOfLine" {
+  g: [1] BmSim; t := g[0].t;
+  bm_clear_world(g[..]);
+  bm_reset(g[..], 0.0, -48.0, 0.0);
+  g[0].bot = true; bm_bot_home(g[..]); g[0].bot_follows = true;
+  in_line := 0; frames := 0; clear := true;
+  for leg: 0..<4 {
+    g[0].turn_l = leg % 2 == 0; g[0].turn_r = leg % 2 == 1; g[0].fwd = leg >= 2;
+    for i: 0..<90 {
+      bm_step_frame(g[..], BM_FRAME); frames += 1;
+      if sr_cam_in_line(t, sr_cam_line(t, g[0].s, g[0].her), g[0].bot_x, g[0].bot_z, BM_BOT_R) { in_line += 1; }
+      if bm_flat(g[0].bot_x, g[0].bot_z, g[0].her.x, g[0].her.z) < BM_BOT_R + BM_T_RADIUS { clear = false; }
+    }
+  }
+  #assert clear && in_line * 20 < frames;   // Digger never on her; he steps out of the line at once
+  // standing, the drill mech a few metres straight behind her steps out to her side
+  g[0].mech = true; g[0].mech_follows = true;
+  g[0].turn_l = false; g[0].turn_r = false; g[0].fwd = false;
+  g[0].mech_x = g[0].her.x - sin(g[0].her.yaw) * 4.5; g[0].mech_z = g[0].her.z - cos(g[0].her.yaw) * 4.5;
+  #assert sr_cam_in_line(t, sr_cam_line(t, g[0].s, g[0].her), g[0].mech_x, g[0].mech_z, BM_MECH_R);
+  for i: 0..<120 { bm_step_frame(g[..], BM_FRAME); }
+  #assert !sr_cam_in_line(t, sr_cam_line(t, g[0].s, g[0].her), g[0].mech_x, g[0].mech_z, BM_MECH_R);
+  #assert bm_flat(g[0].mech_x, g[0].mech_z, g[0].her.x, g[0].her.z) >= BM_MECH_R + BM_T_RADIUS;
+}
+
+bm_build_lab :: (g: [] BmSim) {
+  bm_clear_world(g);
+  g[0].world.roof = g[0].t.lab_roof;
+  g[0].world.boss = true; g[0].world.boss_x = 0.0; g[0].world.boss_z = -406.0;   // splice-game.coax:1623 boss_z
+  g[0].world.round_wall = 24.0; g[0].world.round_x = 0.0; g[0].world.round_z = -406.0;
+}
+#test "Splice.Rules.Camera.BossFight" {
+  g: [1] BmSim; t := g[0].t;
+  for k: 0..<8 {
+    for h: 0..<2 {
+      bm_build_lab(g[..]);
+      bx := g[0].world.boss_x; bz := g[0].world.boss_z;
+      a := cast(f64) k * BM_PI * 0.25;
+      px := bx + sin(a) * 7.0; pz := bz + cos(a) * 7.0;   // 7 m from it, all round
+      yaw := ifx h == 0 then sr_atan2_rad(bx - px, bz - pz) else sr_atan2_rad(px - bx, pz - bz);
+      bm_reset(g[..], px, pz, yaw);
+      w := bm_watch(g[..], 40, BmWatch.{});
+      c := bm_camera(g[..]);
+      d := d3_sub(c.at, c.eye); dl := d3_len(d);
+      #assert !w.in_body && w.near >= t.min - BM_SLACK && c.eye.y < t.lab_roof - t.clear;
+      #assert -d.y / dl < 0.3;   // looking down under about 17 degrees
+      if h == 0 {
+        // facing it: she and the boss both near the middle of the view
+        bv := d3_sub(d3(bx, 1.8, bz), c.eye);
+        hv := d3_sub(d3(g[0].her.x, sr_cam_feet(t, g[0].s, g[0].her) + 1.0, g[0].her.z), c.eye);
+        #assert d3_dot(bv, d) / (d3_len(bv) * dl) > 0.95;
+        #assert d3_dot(hv, d) / (d3_len(hv) * dl) > 0.95;
+      }
+    }
+  }
+  // she circles it: never inside the boss
+  bm_build_lab(g[..]);
+  bm_reset(g[..], g[0].world.boss_x + 7.0, g[0].world.boss_z, 0.0);
+  g[0].fwd = true; g[0].turn_l = true;
+  w := bm_watch(g[..], 300, BmWatch.{});
+  #assert !w.in_body && w.near >= t.min - 0.1;
+}
+
+// camera.coax:388 cm_rover_near: her middle within 2.5 m of the shell.
+bm_rover_near :: (g: BmSim, shell: SrCamBox) -> bool {
+  pad := 2.5; x := g.her.x; z := g.her.z; y := 1.0;
+  return x > shell.lo.x - pad && x < shell.hi.x + pad && z > shell.lo.z - pad && z < shell.hi.z + pad && y < shell.hi.y + pad;
+}
+#test "Splice.Rules.Camera.SniperShellFades" {
+  g: [1] BmSim; t := g[0].t;
+  bm_clear_world(g[..]);
+  // Sniper parked, its long axis along Z: half-width hx, 6 m long, its shell's top at 2.4 m
+  rx := 0.0; rz := 10.0; hx := 1.4;
+  shell := SrCamBox.{lo = d3(rx - hx, 0.0, rz - 3.0), hi = d3(rx + hx, 2.4, rz + 3.0), shell = true};
+  g[0].world.boxes[0] = shell; g[0].world.boxes_n = 1;
+  // at its side, facing away from it
+  bm_reset(g[..], rx + hx + 0.6, rz, BM_PI * 0.5);
+  w: BmWatch;
+  for i: 0..<90 { g[0].her.rover_near = bm_rover_near(g[0], shell); w = bm_watch(g[..], 1, w); }
+  c := bm_camera(g[..]); p := bm_pivot_now(g[..]);
+  r := d3_dist(c.eye, p);
+  #assert g[0].s.ghost && g[0].s.fade == 1.0;   // it sees through the shell, fully faded
+  #assert (c.eye.y - p.y) / r < 0.8 && w.near >= t.min - BM_SLACK;
+  // a few steps away from it: the camera no longer sees through it, and it fades back in
+  g[0].fwd = true;
+  for i: 0..<60 { g[0].her.rover_near = bm_rover_near(g[0], shell); w = bm_watch(g[..], 1, w); }
+  g[0].fwd = false;
+  for i: 0..<30 { g[0].her.rover_near = bm_rover_near(g[0], shell); w = bm_watch(g[..], 1, w); }
+  #assert !g[0].s.ghost && g[0].s.fade == 0.0;
+}
+
+// The mix check's frame: tick the mix with this camera's raw view, then mix it.
+BmMix :: struct { m: SrCamMixState; hearts: int = 3; calm: bool; }
+bm_mix_frame :: (x: [] BmMix, t: SrCamTuning, src: int, raw: SrCamView, walk_share: f64, drive_share: f64, put_new: bool) -> SrCamView {
+  in := SrCamTickInputs.{src = src, raw_eye = raw.eye, on_foot = src == 0, driving = src == 1, calm = x[0].calm, hearts = x[0].hearts,
+    walk_speed_share = walk_share, drive_speed_share = drive_share, put_somewhere_new = put_new};
+  x[0].m = sr_cam_tick(t, x[0].m, in, BM_FRAME);
+  return sr_cam_mix(t, x[0].m, raw, x[0].calm);
+}
+bm_foot_raw :: (g: [] BmSim) -> SrCamView { bm_step_frame(g, BM_FRAME); return bm_camera(g); }
+// The drive's camera: a fixed view on the road outside, far from the cabin.
+bm_drive_raw :: (g: BmSim) -> SrCamView {
+  return SrCamView.{eye = d3(g.her.x + 40.0, 6.0, g.her.z - 13.0), at = d3(g.her.x + 40.0, 1.0, g.her.z), fov = 0.82};
+}
+#test "Splice.Rules.Camera.BlendWidenKick" {
+  g: [1] BmSim; t := g[0].t;
+  bm_clear_world(g[..]);
+  bm_reset(g[..], 0.0, 0.0, 0.0);
+  x := [1] BmMix.[BmMix.{}]; x[0].m.hearts = 3;
+  for i: 0..<3 { sv := bm_mix_frame(x[..], t, 0, bm_foot_raw(g[..]), 0.0, 0.0, false); x[0].m = sr_cam_seen(x[0].m, sv); }
+  _ = bm_mix_frame(x[..], t, 1, bm_drive_raw(g[0]), 0.0, 0.0, false);
+  #assert x[0].m.blend == 0.0;   // the cabin to the road outside: a cut
+  for i: 0..<150 { sv := bm_mix_frame(x[..], t, 1, bm_drive_raw(g[0]), 0.0, 1.0, false); x[0].m = sr_cam_seen(x[0].m, sv); }
+  #assert sr_cam_mix(t, x[0].m, bm_drive_raw(g[0]), x[0].calm).fov > 0.8 + t.drive_fov * 0.2;   // at speed the drive's view is wider
+  for i: 0..<120 { sv := bm_mix_frame(x[..], t, 1, bm_drive_raw(g[0]), 0.0, 0.0, false); x[0].m = sr_cam_seen(x[0].m, sv); }
+  // she steps out: the drive's camera eases round to hers, no snap. Sniper parked beside her.
+  was := sr_cam_mix(t, x[0].m, bm_drive_raw(g[0]), x[0].calm).eye;
+  bm_reset(g[..], g[0].her.x + 40.0, g[0].her.z - 6.0, 0.0);
+  v := bm_mix_frame(x[..], t, 0, bm_foot_raw(g[..]), 0.0, 0.0, false);
+  #assert x[0].m.blend > 0.9 && d3_dist(v.eye, was) < 1.0;   // the blend starts; no snap
+  // put somewhere new mid-blend: the view cuts to her there, as the boom does
+  k := [1] BmSim.[g[0]]; km := x[0].m;
+  k[0].her.x += 12.0; k[0].her.z += 12.0;
+  cut := sr_cam_is_cut(k[0].t, k[0].s, k[0].her);
+  bm_step_frame(k[..], BM_FRAME);
+  kraw := bm_camera(k[..]);
+  km = sr_cam_tick(t, km, SrCamTickInputs.{src = 0, raw_eye = kraw.eye, put_somewhere_new = cut, hearts = x[0].hearts}, BM_FRAME);
+  #assert km.blend == 0.0 && d3_dist(sr_cam_mix(t, km, kraw, x[0].calm).eye, kraw.eye) < 0.2;
+  most := 0.0; e0 := v.eye;
+  for i: 0..<45 {
+    v = bm_mix_frame(x[..], t, 0, bm_foot_raw(g[..]), 0.0, 0.0, false);
+    most = fmax(most, d3_dist(v.eye, e0)); e0 = v.eye;
+    x[0].m = sr_cam_seen(x[0].m, v);
+  }
+  #assert x[0].m.blend == 0.0 && most < 1.0;   // the blend ends with no step over a metre
+  // walking: a little wider
+  g[0].fwd = true;
+  for i: 0..<60 { v = bm_mix_frame(x[..], t, 0, bm_foot_raw(g[..]), 1.0, 0.0, false); }
+  g[0].fwd = false;
+  #assert v.fov > t.fov + t.run_fov * 0.5;
+  for i: 0..<90 { v = bm_mix_frame(x[..], t, 0, bm_foot_raw(g[..]), 0.0, 0.0, false); }
+  #assert v.fov < t.fov + 0.002;   // standing, it narrows again
+  // a hit kicks the view sideways for a moment, then it is still again
+  a := v.eye;
+  x[0].hearts -= 1;
+  for i: 0..<3 { v = bm_mix_frame(x[..], t, 0, bm_foot_raw(g[..]), 0.0, 0.0, false); }
+  #assert d3_dist(v.eye, a) > 0.02;
+  for i: 0..<30 { v = bm_mix_frame(x[..], t, 0, bm_foot_raw(g[..]), 0.0, 0.0, false); }
+  #assert d3_dist(v.eye, a) < 0.001;
+  // reduced motion: no kick, no widening
+  x[0].calm = true; x[0].hearts -= 1; g[0].fwd = true;
+  for i: 0..<3 { v = bm_mix_frame(x[..], t, 0, bm_foot_raw(g[..]), 1.0, 0.0, false); }
+  g[0].fwd = false;
+  #assert x[0].m.kick_t >= t.kick_time || x[0].m.kick == 0.0;
+  for i: 0..<60 { v = bm_mix_frame(x[..], t, 0, bm_foot_raw(g[..]), 0.0, 0.0, false); }
+  #assert abs(v.fov - t.fov) <= 0.0001;   // TestEqual's float tolerance (KINDA_SMALL_NUMBER)
+}

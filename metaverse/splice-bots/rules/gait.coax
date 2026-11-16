@@ -11,7 +11,7 @@
 // Metres, seconds, radians. World axes: X and Y on the ground, Z up. Yaw 0 faces +X, +yaw turns toward +Y.
 // f64 throughout (the C++ keeps its scalars in f32 and its vectors in UE5's double FVector).
 #load "../../../metaverse-engine/core/math-d.coax";
-#load "night-exit.coax";   // sr_atan2_deg (FMath::Atan2)
+#load "walk.coax";   // sr_atan2_rad (FMath::Atan2)
 
 // ESpliceGaitLeg, in the prototype's order (digger-mesh.coax bones 4 to 7).
 SR_GAIT_FRONT_LEFT :: 0; SR_GAIT_FRONT_RIGHT :: 1; SR_GAIT_HIND_LEFT :: 2; SR_GAIT_HIND_RIGHT :: 3;
@@ -80,7 +80,7 @@ SrGaitState :: struct {
 }
 
 sr_gait_clamp01 :: (v: f64) -> f64 { return fclamp(v, 0.0, 1.0); }
-sr_gait_wrap :: (a: f64) -> f64 { return sr_atan2_deg(sin(a), cos(a)) * PI_D / 180.0; }
+sr_gait_wrap :: (a: f64) -> f64 { return sr_atan2_rad(sin(a), cos(a)); }
 sr_gait_flat :: (v: D3) -> D3 { return d3(v.x, v.y, 0.0); }
 // Each leg's start in the stride (dg_pose: legs 0 and 3 at 0, legs 1 and 2 half a stride on).
 sr_gait_leg_offset :: (leg: int) -> f64 { return ifx leg == 0 || leg == 3 then 0.0 else PI_D; }

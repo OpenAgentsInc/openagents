@@ -1,0 +1,471 @@
+// Splice Bots rules: the follow camera's boom (SpliceCameraBoom.h, package R-03). The C++ was ported from
+// the prototype's camera.coax (playtest 2); the comments give its line numbers. The prototype's cm_* take the
+// whole game (SpGame); of them only cm_dir, cm_flat_gap, cm_along and cm_side compute exactly what the
+// pure sr_cam_dir, sr_cam_flat_gap, sr_cam_along and sr_cam_side do here.
+//
+// A boom from her head out behind her. Each step it looks for room along the boom; where the boom has no
+// room it swings up before it comes in, and never nearer her head than min where any way has room. Angle
+// and length ease on a critically damped spring. Drawn, the eye is never further out than the room the
+// boom has this frame.
+//
+// Frame: the prototype's, in metres. X and Z are the ground plane, Y is up. Her yaw 0 faces +Z, and forward
+// is (sin yaw, cos yaw) in X/Z. The caller converts to engine space at the boundary.
+//
+// The world (what blocks the eye): the C++ takes an interface the game implements (ISpliceCameraWorld:
+// IsBlocked, GetRoof, IsOpen). Coax has no callbacks, so the world is data (SrCamWorld): the ground, boxes
+// (Sniper's shell among them), posts, robot bodies, the lab's round wall, the boss's body and tail, and the
+// roof, tested by sr_cam_blocked as camera.coax cm_blocked / cm_body_at / cm_boss_in do. The game fills it
+// each step from its scene. IsOpen, an optional fast path the C++ world defaults to false, is left out.
+// f64 throughout (the C++ is f32 with double FVectors).
+#load "../../../metaverse-engine/core/math-d.coax";
+#load "walk.coax";   // sr_atan2_rad
+
+// The prototype's numbers. Each names its source line in camera.coax unless noted.
+SrCamTuning :: struct {
+  clear: f64 = 0.3;          // :16 CM_CLEAR, m the eye keeps from a wall or a body
+  early: f64 = 0.6;          // :17 CM_EARLY, m wider the step looks
+  min: f64 = 2.6;            // :18 CM_MIN, nearest the eye comes to her head while any way has room
+  start: f64 = 0.5;          // :19 CM_START, m out from her head the boom is first looked along
+  sample: f64 = 0.4;         // :20 CM_SAMPLE, m between looks along the boom
+  rise_step: f64 = 0.2;      // :21 CM_RISE_STEP, radians between angles tried
+  rise_max: f64 = 1.55;      // :22 CM_RISE_MAX, the steepest the boom swings up
+  over: f64 = 0.45;          // :23 CM_OVER, radians up to see over a big body ahead
+  rise_time: f64 = 0.3;      // :24 CM_RISE_TIME, s, the spring's time for the angle
+  out_time: f64 = 0.45;      // :25 CM_OUT_TIME, s, backing out once a wall lets go
+  in_time: f64 = 0.12;       // :26 CM_IN_TIME, s, coming in before a wall
+  cut: f64 = 6.0;            // :27 CM_CUT, m moved in a step that is a cut
+  look_ahead: f64 = 0.3;     // :28 CM_LOOK_AHEAD, s of her turning the boom looks ahead
+  head: f64 = 1.7;           // :29 CM_HEAD, m, the pivot over her feet
+  fov: f64 = 0.82;           // :30 CM_FOV, radians
+  board_back: f64 = 1.5;     // :31 CM_BOARD_BACK, m further back on the hoverboard
+  foot_time: f64 = 0.15;     // :32 CM_FOOT_TIME, s, the spring's time for the followed height
+  zoom_near: f64 = 3.0;      // :33 CM_ZOOM_NEAR, m, the nearest the wheel brings the eye
+  zoom_far: f64 = 1.6;       // :34 CM_ZOOM_FAR, times the rest
+  zoom_step: f64 = 0.0012;   // :35 CM_ZOOM_STEP, change per CSS pixel of wheel
+  blend: f64 = 0.6;          // :36 CM_BLEND, s, one camera eases into the next
+  blend_far: f64 = 25.0;     // :37 CM_BLEND_FAR, m, an eye further than this from the last is a cut
+  run_fov: f64 = 0.035;      // :38 CM_RUN_FOV, radians wider at her walking speed
+  drive_fov: f64 = 0.1;      // :39 CM_DRIVE_FOV, radians wider at Sniper's top speed
+  fov_time: f64 = 0.35;      // :40 CM_FOV_TIME, s
+  kick_hard: f64 = 10.0;     // :41 CM_KICK_HARD, m/s down, a landing harder kicks
+  kick_land: f64 = 0.025;    // :42 CM_KICK_LAND, m per m/s past kick_hard
+  kick_hit: f64 = 0.09;      // :43 CM_KICK_HIT, m, a hit on her, sideways
+  kick_claw: f64 = 0.16;     // :44 CM_KICK_CLAW, m, a claw on Sniper, sideways
+  kick_max: f64 = 0.14;      // :45 CM_KICK_MAX, m
+  kick_time: f64 = 0.32;     // :46 CM_KICK_TIME, s a kick lasts
+  kick_rate: f64 = 34.0;     // :47 CM_KICK_RATE, radians a second it swings
+  fade_time: f64 = 0.2;      // :48 CM_FADE_TIME, s, Sniper's shell fades out or back
+  fade_left: f64 = 0.0;      // :49 CM_FADE_LEFT, share of the shell left at most fade
+  ghost_gain: f64 = 0.2;     // :50 CM_GHOST_GAIN, radians lower to see through the shell
+  boss_back: f64 = 1.5;      // :147 CM_BOSS_BACK, m further back with the boss ahead
+  boss_look: f64 = 0.6;      // :148 CM_BOSS_LOOK, how far the look turns toward the boss
+  boss_rise: f64 = 0.2;      // :149 CM_BOSS_RISE, radians up by the boss while min holds
+  lab_roof: f64 = 9.0;       // :165 CM_LAB_ROOF, m
+  hall_roof: f64 = 10.0;     // :165 CM_HALL_ROOF, m
+  rise_cost: f64 = 3.0;      // :233 CM_RISE_COST, m of length per radian up
+  stay: f64 = 1.5;           // :233 CM_STAY, m per radian away from where it is now
+  short_k: f64 = 4.0;        // :233 CM_SHORT, times the cost short of min
+  steep: f64 = 0.8;          // :236 CM_STEEP, radians
+  steep_cost: f64 = 6.0;     // :236 CM_STEEP_COST, more per radian past steep
+  hand: f64 = 0.3;           // :338 CM_HAND, m a body keeps off her circle
+  too_near: f64 = 1.2;       // :347 CM_TOO_NEAR, m, nearer than this she is not drawn
+  line_pad: f64 = 0.4;       // :454 CM_LINE_PAD, m between a body and the camera's line
+  village_reach: f64 = 4.0;  // :95 cm_reach, m in the dome village
+  reach: f64 = 6.5;          // :95 cm_reach, m elsewhere
+  village_lift: f64 = 0.18;  // :111 cm_base, in the village
+  lift: f64 = 0.33;          // :111 cm_base, elsewhere
+  spring_time: f64 = 0.1;    // :69 the engine spring's own time (cam/follow.coax FOLLOW_SPRING_TIME)
+  her_radius: f64 = 0.45;    // splice-game.coax:51 T_RADIUS, m, her circle (used by keep off)
+  cabin_reach: f64 = 3.6;    // drive.coax:67 DV_ROOM_REACH, m, in the rover's cabin
+}
+
+// ---- the world, as data (see the header).
+SR_CAM_BOXES_MAX :: 16;
+SR_CAM_POSTS_MAX :: 8;
+SR_CAM_BODIES_MAX :: 4;
+SrCamBox :: struct { lo: D3; hi: D3; shell: bool; }    // shell: Sniper's, seen through when the camera ghosts
+SrCamPost :: struct { x: f64; z: f64; r: f64; top: f64; }   // an upright round from the ground to top
+SrCamWorld :: struct {
+  ground: f64;                         // the ground's height
+  roof: f64 = 1000000.0;               // cm_roof: the ceiling over her, or a large number outdoors
+  boxes: [SR_CAM_BOXES_MAX] SrCamBox; boxes_n: int;
+  posts: [SR_CAM_POSTS_MAX] SrCamPost; posts_n: int;    // pieces: in the way, not bodies
+  bodies: [SR_CAM_BODIES_MAX] SrCamPost; bodies_n: int; // robots (Digger, the drill mech): cm_body_at
+  round_wall: f64;                     // the lab's round wall, its radius about (round_x, round_z) (0: none)
+  round_x: f64; round_z: f64;
+  // The boss (cm_boss_in): its body's round and its tail's stadium behind it (splice-battle.coax:74-81).
+  boss: bool; boss_x: f64; boss_z: f64; boss_face: f64 = 1.5707963267948966;
+  boss_r: f64 = 2.1; boss_tail_r: f64 = 0.5; boss_tail_from: f64 = 2.3;
+  boss_tip: f64 = 8.0; boss_tall: f64 = 6.0;   // kit_dino is not in the prototype tree: a ~6 m tall boss with an 8 m tail
+  her_x: f64; her_z: f64;              // where she stands (a boss's tail she is inside does not block)
+}
+sr_cam_world_add_box :: (w: [] SrCamWorld, lo: D3, hi: D3, shell: bool) { if w[0].boxes_n < SR_CAM_BOXES_MAX { w[0].boxes[w[0].boxes_n] = SrCamBox.{lo = lo, hi = hi, shell = shell}; w[0].boxes_n += 1; } }
+sr_cam_world_add_post :: (w: [] SrCamWorld, x: f64, z: f64, r: f64, top: f64) { if w[0].posts_n < SR_CAM_POSTS_MAX { w[0].posts[w[0].posts_n] = SrCamPost.{x = x, z = z, r = r, top = top}; w[0].posts_n += 1; } }
+sr_cam_world_add_body :: (w: [] SrCamWorld, x: f64, z: f64, r: f64, top: f64) { if w[0].bodies_n < SR_CAM_BODIES_MAX { w[0].bodies[w[0].bodies_n] = SrCamPost.{x = x, z = z, r = r, top = top}; w[0].bodies_n += 1; } }
+
+sr_cam_dist2d :: (ax: f64, az: f64, bx: f64, bz: f64) -> f64 { dx := ax - bx; dz := az - bz; return sqrt(dx * dx + dz * dz); }
+// :222 cm_flat_gap: the ground distance from (px, pz) to the segment a-b (the prototype's computes the same).
+sr_cam_flat_gap :: (ax: f64, az: f64, bx: f64, bz: f64, px: f64, pz: f64) -> f64 {
+  dx := bx - ax; dz := bz - az; l := dx * dx + dz * dz;
+  k := ifx l < 0.000001 then 0.0 else fclamp(((px - ax) * dx + (pz - az) * dz) / l, 0.0, 1.0);
+  return sr_cam_dist2d(px, pz, ax + dx * k, az + dz * k);
+}
+// sb_boss_gap: how far (x, z) is outside the boss's body and tail.
+sr_cam_boss_gap :: (w: SrCamWorld, x: f64, z: f64) -> f64 {
+  fx := sin(w.boss_face); fz := cos(w.boss_face);
+  body := sr_cam_dist2d(x, z, w.boss_x, w.boss_z) - w.boss_r;
+  tail := sr_cam_flat_gap(w.boss_x - fx * w.boss_tail_from, w.boss_z - fz * w.boss_tail_from, w.boss_x - fx * w.boss_tip, w.boss_z - fz * w.boss_tip, x, z) - w.boss_tail_r;
+  return fmin(body, tail);
+}
+// :137 cm_boss_in
+sr_cam_boss_in :: (t: SrCamTuning, w: SrCamWorld, x: f64, z: f64, pad: f64) -> bool {
+  if sr_cam_dist2d(x, z, w.boss_x, w.boss_z) < (w.boss_r - t.her_radius) + pad { return true; }
+  if sr_cam_boss_gap(w, w.her_x, w.her_z) < t.clear { return false; }
+  return sr_cam_boss_gap(w, x, z) < pad;
+}
+// :128 cm_body_at: a robot's body or the boss's.
+sr_cam_body_at :: (t: SrCamTuning, w: SrCamWorld, p: D3, pad: f64) -> bool {
+  for k: 0..<w.bodies_n { b := w.bodies[k]; if p.y < b.top + pad && sr_cam_dist2d(p.x, p.z, b.x, b.z) < b.r + pad { return true; } }
+  if w.boss && p.y < w.boss_tall + 0.3 + pad && sr_cam_boss_in(t, w, p.x, p.z, pad) { return true; }
+  return false;
+}
+// :118 cm_blocked: whether a point, padded by pad, is in something (ground, walls, pieces up to their top,
+// bodies) or within pad of roof. ghost: the camera sees through Sniper's shell.
+sr_cam_blocked :: (t: SrCamTuning, w: SrCamWorld, p: D3, pad: f64, roof: f64, ghost: bool) -> bool {
+  if p.y < w.ground + pad || p.y > roof - pad { return true; }
+  if w.round_wall > 0.0 && sr_cam_dist2d(p.x, p.z, w.round_x, w.round_z) > w.round_wall - pad { return true; }
+  for k: 0..<w.boxes_n {
+    b := w.boxes[k];
+    if ghost && b.shell { continue; }
+    if p.x > b.lo.x - pad && p.x < b.hi.x + pad && p.z > b.lo.z - pad && p.z < b.hi.z + pad && p.y > b.lo.y - pad && p.y < b.hi.y + pad { return true; }
+  }
+  for k: 0..<w.posts_n { c := w.posts[k]; if p.y < c.top + pad && sr_cam_dist2d(p.x, p.z, c.x, c.z) < c.r + pad { return true; } }
+  return sr_cam_body_at(t, w, p, pad);
+}
+
+// Her, this step, as the camera reads her. The game fills it.
+SrCamSubject :: struct {
+  x: f64; z: f64; yaw: f64;
+  pitch: f64;            // the view's look down (cm_base)
+  foot_goal: f64;        // cm_foot_goal: her height the camera follows
+  reach: f64 = 6.5;      // cm_reach: the boom's rest before the wheel (sr_cam_reach)
+  zoom: f64 = 1.0;       // the wheel's scale (sr_cam_wheel)
+  village: bool;         // in the dome village (lower lift)
+  big_ahead: f64;        // g_big_ahead: 0 to 1, a big body ahead to see over
+  boss_near: f64;        // cm_boss_near: 0 to 1
+  boss_ahead: f64;       // cm_boss_ahead: 0 to 1
+  boss_x: f64; boss_z: f64;   // the standing boss's middle, for the look
+  rover_near: bool;      // cm_rover_near: her back near Sniper's shell
+}
+// The camera's eased state (camera.coax SpCam, the boom part).
+SrCamState :: struct {
+  ready: bool;
+  rise: f64; rise_v: f64; dist: f64; dist_v: f64; over: f64; over_v: f64;
+  x: f64; z: f64; yaw: f64; yaw_v: f64;
+  foot: f64; foot_v: f64;
+  ghost: bool; fade: f64;
+}
+SrCamView :: struct { eye: D3; at: D3; fov: f64 = 0.82; }
+// The camera mix's state (camera.coax SpCam, the blend, widening and kick part).
+SrCamMixState :: struct {
+  src: int;
+  blend: f64;            // the blend's share left
+  blend_from: SrCamView; last: SrCamView; seen: bool;
+  run: f64;              // the speed's widening, eased (radians)
+  kick: f64; kick_t: f64 = 1000.0; kick_side: bool;
+  hearts: int; sniper_hp: f64;
+}
+// What happened this step, for the mix (camera.coax cm_tick).
+SrCamTickInputs :: struct {
+  src: int;                // which camera is drawn (0 on foot)
+  raw_eye: D3;             // that camera's eye this step, before the mix
+  put_somewhere_new: bool; // on foot, the boom's state is a cut (sr_cam_is_cut)
+  landed: bool; impact: f64;   // m/s down of the landing
+  on_foot: bool = true;    // M_PLAY
+  driving: bool;           // M_DRIVE
+  riding: bool;            // on the hoverboard
+  calm: bool;              // reduced motion
+  hearts: int; sniper_hp: f64;
+  drive_speed_share: f64;  // |Sniper's speed| / its top, 0 to 1
+  walk_speed_share: f64;   // her speed / T_WALK, 0 to 1
+}
+SrCamAim :: struct { rise: f64; dist: f64 = -1.0; }
+// The camera's line to her on the ground (camera.coax CmLine).
+SrCamLine :: struct { x: f64; z: f64; dx: f64; dz: f64; span: f64; }
+// A spring's step: where it is and its new velocity (the C++ passes the velocity by reference).
+SrCamSpring :: struct { at: f64; vel: f64; }
+
+// The engine's critically damped spring, one step (cam/follow.coax follow_spring_axis): omega 2 / time,
+// stepped with the rational fit of e^-x, and stopped at the target rather than past it. Never overshoots.
+sr_cam_spring :: (cur: f64, vel: f64, dest: f64, dt: f64, spring_time: f64) -> SrCamSpring {
+  if dt <= 0.0 { return SrCamSpring.{at = cur, vel = vel}; }
+  omega := 2.0 / spring_time; x := omega * dt;
+  e := 1.0 / (1.0 + x + 0.48 * x * x + 0.235 * x * x * x);
+  change := cur - dest;
+  temp := (vel + omega * change) * dt;
+  new_vel := (vel - omega * temp) * e;
+  out := dest + (change + temp) * e;
+  if (dest - cur > 0.0) == (out > dest) && dest != cur { out = dest; new_vel = 0.0; }
+  return SrCamSpring.{at = out, vel = new_vel};
+}
+// :71 cm_ease: that spring run on a clock scaled to time.
+sr_cam_ease :: (t: SrCamTuning, cur: f64, vel: f64, dest: f64, dt: f64, time: f64) -> SrCamSpring {
+  k := t.spring_time / time;
+  s := sr_cam_spring(cur, vel / k, dest, dt * k, t.spring_time);
+  return SrCamSpring.{at = s.at, vel = s.vel * k};
+}
+// :94 cm_reach (zone and board inputs from the game; board_extra is board_back's extra).
+sr_cam_reach :: (t: SrCamTuning, village: bool, in_cabin: bool, riding: bool, board_extra: f64, boss_ahead: f64) -> f64 {
+  r := ifx village then t.village_reach else t.reach;
+  if in_cabin { r = t.cabin_reach; }
+  if riding { r += t.board_back + board_extra; }
+  return r + t.boss_back * boss_ahead;
+}
+// :101 cm_want
+sr_cam_want :: (t: SrCamTuning, reach: f64, zoom: f64) -> f64 { return fmax(t.zoom_near, reach * zoom); }
+// :104 cm_wheel: the new zoom after a wheel of dy CSS pixels (down is out). The mode test is the caller's.
+sr_cam_wheel :: (t: SrCamTuning, zoom: f64, dy: f64, reach: f64) -> f64 {
+  z := zoom * (1.0 + fclamp(dy * t.zoom_step, -0.3, 0.3));
+  return fclamp(z, t.zoom_near / reach, t.zoom_far);
+}
+// :110 cm_base: the resting angle.
+sr_cam_base :: (t: SrCamTuning, want: f64, village: bool, pitch: f64) -> f64 {
+  lift := ifx village then t.village_lift else t.lift;
+  return sr_atan2_rad(0.2 + want * (lift + pitch * 0.6), want);
+}
+// :114 cm_dir (the prototype's computes the same).
+sr_cam_dir :: (yaw: f64, rise: f64) -> D3 { c := cos(rise); return d3(-sin(yaw) * c, sin(rise), -cos(yaw) * c); }
+sr_cam_is_cut :: (t: SrCamTuning, s: SrCamState, her: SrCamSubject) -> bool { return !s.ready || sr_cam_dist2d(s.x, s.z, her.x, her.z) > t.cut; }
+// :87 cm_feet and :92 cm_pivot.
+sr_cam_feet :: (t: SrCamTuning, s: SrCamState, her: SrCamSubject) -> f64 { return ifx sr_cam_is_cut(t, s, her) then her.foot_goal else s.foot; }
+sr_cam_pivot :: (t: SrCamTuning, s: SrCamState, her: SrCamSubject) -> D3 { return d3(her.x, sr_cam_feet(t, s, her) + t.head, her.z); }
+
+// :192 cm_hit: near her head the pad narrows.
+sr_cam_hit :: (t: SrCamTuning, w: SrCamWorld, ghost: bool, from: D3, dir: D3, d: f64, pad: f64, roof: f64) -> bool {
+  return sr_cam_blocked(t, w, d3_add(from, d3_scale(dir, d)), fmin(pad, 0.1 + d * 0.25), roof, ghost);
+}
+// :173 cm_room: how far out along dir from from the eye has room, up to far.
+sr_cam_room :: (t: SrCamTuning, w: SrCamWorld, ghost: bool, from: D3, dir: D3, far: f64, pad: f64) -> f64 {
+  roof := w.roof;
+  dist := t.start; free := 0.0;
+  while true {
+    if dist > far { dist = far; }
+    if sr_cam_hit(t, w, ghost, from, dir, dist, pad, roof) {
+      // between the last free point and this one, halved five times
+      hit_at := dist;
+      for k: 0..<5 { m := (free + hit_at) * 0.5; if sr_cam_hit(t, w, ghost, from, dir, m, pad, roof) { hit_at = m; } else { free = m; } }
+      return free;
+    }
+    free = dist;
+    if dist >= far { return far; }
+    dist += t.sample;
+  }
+  return free;
+}
+// :237 cm_aim: the angle and length the boom should be at.
+sr_cam_aim :: (t: SrCamTuning, w: SrCamWorld, s: SrCamState, her: SrCamSubject, over: f64, now: f64, ahead: f64, ghost: bool) -> SrCamAim {
+  p := sr_cam_pivot(t, s, her);
+  want := sr_cam_want(t, her.reach, her.zoom);
+  base_a := sr_cam_base(t, want, her.village, her.pitch) + over * t.over;
+  best := SrCamAim.{rise = base_a, dist = -1.0};
+  cost := 1000000.0; low_kept := false;
+  near_boss := her.boss_near;
+  rise_cost := t.rise_cost * (1.0 + near_boss);
+  a := base_a;
+  while a <= t.rise_max + 0.001 {
+    if (a - base_a) * t.rise_cost >= cost { break; }   // no steeper angle can cost less
+    if near_boss > 0.5 && a - base_a > t.boss_rise && best.dist >= t.min { break; }
+    d := sr_cam_dir(her.yaw, a);
+    r := sr_cam_room(t, w, ghost, p, d, want, t.clear + t.early);
+    if abs(ahead) > 0.05 { r = fmin(r, sr_cam_room(t, w, ghost, p, sr_cam_dir(her.yaw + ahead, a), want, t.clear + t.early)); }
+    kept := r >= t.min;
+    if kept && a <= t.steep { low_kept = true; }
+    if r < t.min { r = fmin(sr_cam_room(t, w, ghost, p, d, want, t.clear), t.min); }
+    c := (want - r) + fmax(0.0, t.min - r) * t.short_k + (a - base_a) * (ifx kept then rise_cost else t.rise_cost)
+      + (ifx low_kept then fmax(0.0, a - t.steep) * t.steep_cost else 0.0)
+      + (ifx now < 0.0 then 0.0 else abs(a - now) * t.stay);
+    if c < cost { cost = c; best.rise = a; best.dist = r; }
+    if a < t.rise_max && a + t.rise_step > t.rise_max { a = t.rise_max; } else { a += t.rise_step; }
+  }
+  return best;
+}
+// :262 cm_step: one step of the boom.
+sr_cam_step :: (t: SrCamTuning, w: SrCamWorld, in: SrCamState, her: SrCamSubject, dt: f64) -> SrCamState {
+  s := in;
+  over_goal := her.big_ahead;
+  cut := sr_cam_is_cut(t, s, her);
+  if cut { s.foot = her.foot_goal; s.foot_v = 0.0; }
+  else { e := sr_cam_ease(t, s.foot, s.foot_v, her.foot_goal, dt, t.foot_time); s.foot = e.at; s.foot_v = e.vel; }
+  s.ready = true; s.x = her.x; s.z = her.z;
+  if cut { s.over = over_goal; s.over_v = 0.0; }
+  else { e := sr_cam_ease(t, s.over, s.over_v, over_goal, dt, t.rise_time); s.over = e.at; s.over_v = e.vel; }
+  // how fast she turns, eased, for the look ahead
+  turn := ifx cut then 0.0 else sr_atan2_rad(sin(her.yaw - s.yaw), cos(her.yaw - s.yaw)) / fmax(dt, 0.001);
+  s.yaw_v = ifx cut then 0.0 else s.yaw_v + (turn - s.yaw_v) * fmin(1.0, dt * 12.0);
+  now := ifx cut then -1.0 else s.rise;
+  ahead := fclamp(s.yaw_v * t.look_ahead, -0.8, 0.8);
+  was := s.ghost;
+  s.ghost = false;
+  a := sr_cam_aim(t, w, s, her, s.over, now, ahead, false);
+  // her back to Sniper's shell: the boom stays low and the shell fades
+  if a.rise > t.steep - (ifx was then 0.25 else 0.0) && her.rover_near {
+    s.ghost = true;
+    low := sr_cam_aim(t, w, s, her, s.over, now, ahead, true);
+    if low.rise < a.rise - t.ghost_gain || (was && low.rise < a.rise) { a = low; } else { s.ghost = false; }
+  }
+  s.fade = fclamp(s.fade + (ifx s.ghost then dt else -dt) / t.fade_time, 0.0, 1.0);
+  if cut { s.rise = a.rise; s.dist = a.dist; s.rise_v = 0.0; s.dist_v = 0.0; }
+  else {
+    // pulled in short of min, it swings up as fast as it came in
+    up_time := ifx s.dist < t.min && a.rise > s.rise then t.in_time else t.rise_time;
+    r := sr_cam_ease(t, s.rise, s.rise_v, a.rise, dt, up_time); s.rise = r.at; s.rise_v = r.vel;
+    d := sr_cam_ease(t, s.dist, s.dist_v, a.dist, dt, ifx a.dist < s.dist then t.in_time else t.out_time); s.dist = d.at; s.dist_v = d.vel;
+  }
+  s.ready = true; s.x = her.x; s.z = her.z; s.yaw = her.yaw;
+  return s;
+}
+// :296 cm_follow: the camera as drawn (no board shake; the game adds it).
+sr_cam_follow :: (t: SrCamTuning, w: SrCamWorld, in: SrCamState, her: SrCamSubject) -> SrCamView {
+  c := in;
+  if sr_cam_is_cut(t, in, her) {
+    // not stepped since she was put here: where the step would ease to
+    c.over = her.big_ahead;
+    a := sr_cam_aim(t, w, in, her, c.over, -1.0, 0.0, in.ghost);
+    c.rise = a.rise; c.dist = a.dist;
+  }
+  p := sr_cam_pivot(t, in, her);
+  d := sr_cam_dir(her.yaw, c.rise);
+  ln := fmin(c.dist, sr_cam_room(t, w, in.ghost, p, d, c.dist, t.clear));
+  // a wall swept in faster than the boom eased: up, not into her head
+  need := fmin(c.dist, t.min);
+  if ln < need {
+    a := c.rise + t.rise_step; best := ln; best_dir := d;
+    while a <= t.rise_max + t.rise_step && best < need {
+      e := sr_cam_dir(her.yaw, fmin(a, t.rise_max));
+      r := fmin(c.dist, sr_cam_room(t, w, in.ghost, p, e, c.dist, t.clear));
+      if r > best { best = r; best_dir = e; }
+      a += t.rise_step;
+    }
+    ln = best; d = best_dir;
+    c.rise = fmax(c.rise, sr_atan2_rad(d.y, sqrt(d.x * d.x + d.z * d.z)));
+  }
+  v: SrCamView;
+  v.eye = d3_add(p, d3_scale(d, ln));
+  // the look: ahead of her at chest height; swung up, it comes back toward her
+  y := sr_cam_feet(t, in, her);
+  ahead_pt := d3(her.x + sin(her.yaw) * 3.0, y + 1.5, her.z + cos(her.yaw) * 3.0);
+  k := fclamp((c.rise - sr_cam_base(t, sr_cam_want(t, her.reach, her.zoom), her.village, her.pitch)) / 0.8, 0.0, 1.0) * 0.7;
+  at := d3(ahead_pt.x + (her.x - ahead_pt.x) * k, ahead_pt.y + (y + 1.1 - ahead_pt.y) * k, ahead_pt.z + (her.z - ahead_pt.z) * k);
+  // the standing boss ahead: the look goes part way to it
+  b := her.boss_ahead * t.boss_look;
+  if b > 0.0 { mid := d3((her.x + her.boss_x) * 0.5, y + 1.8, (her.z + her.boss_z) * 0.5); at = d3_add(at, d3_scale(d3_sub(mid, at), b)); }
+  v.at = at; v.fov = t.fov;
+  return v;
+}
+// :348 cm_too_near
+sr_cam_too_near :: (t: SrCamTuning, eye: D3, pivot: D3) -> bool { return d3_dist(eye, pivot) < t.too_near; }
+// :339 cm_keep_off: a body of radius r pushed off her. Returns (x, 0, z).
+sr_cam_keep_off :: (t: SrCamTuning, her: SrCamSubject, x: f64, z: f64, r: f64) -> D3 {
+  dx := x - her.x; dz := z - her.z; d := sqrt(dx * dx + dz * dz);
+  keep := r + t.her_radius + t.hand;
+  if d >= keep { return d3(x, 0.0, z); }
+  if d < 0.0001 { dx = cos(her.yaw); dz = -sin(her.yaw); d = 1.0; }
+  return d3(her.x + dx / d * keep, 0.0, her.z + dz / d * keep);
+}
+// :457 cm_line and the follow rules after it.
+sr_cam_line :: (t: SrCamTuning, s: SrCamState, her: SrCamSubject) -> SrCamLine {
+  out := ifx s.ready then s.dist * cos(s.rise) else sr_cam_want(t, her.reach, her.zoom);
+  dx := -sin(her.yaw) * out; dz := -cos(her.yaw) * out;
+  span := sqrt(dx * dx + dz * dz);
+  l := SrCamLine.{x = her.x, z = her.z};
+  if span < 0.0001 { return l; }
+  l.dx = dx / span; l.dz = dz / span; l.span = span;
+  return l;
+}
+// :465 cm_along and :466 cm_side (the prototype's compute the same).
+sr_cam_along :: (l: SrCamLine, x: f64, z: f64) -> f64 { return (x - l.x) * l.dx + (z - l.z) * l.dz; }
+sr_cam_side :: (l: SrCamLine, x: f64, z: f64) -> f64 { return (x - l.x) * l.dz - (z - l.z) * l.dx; }
+// :468 cm_in_line
+sr_cam_in_line :: (t: SrCamTuning, l: SrCamLine, x: f64, z: f64, r: f64) -> bool {
+  if l.span < 0.0001 { return false; }
+  a := sr_cam_along(l, x, z);
+  if a < 0.0 || a > l.span + r { return false; }
+  return abs(sr_cam_side(l, x, z)) < r + t.line_pad;
+}
+// :478 cm_follow_spot: where a follower of radius r at (bx, bz) goes, side_off to her side and ahead_off ahead.
+sr_cam_follow_spot :: (t: SrCamTuning, s: SrCamState, her: SrCamSubject, bx: f64, bz: f64, r: f64, side_off: f64, ahead_off: f64) -> D3 {
+  y := her.yaw;
+  l := sr_cam_line(t, s, her);
+  left := d3(her.x + sin(y) * ahead_off + cos(y) * side_off, 0.0, her.z + cos(y) * ahead_off - sin(y) * side_off);
+  right := d3(her.x + sin(y) * ahead_off - cos(y) * side_off, 0.0, her.z + cos(y) * ahead_off + sin(y) * side_off);
+  if l.span < 0.0001 { return left; }
+  sd := sr_cam_side(l, bx, bz);
+  if sr_cam_in_line(t, l, bx, bz, r) {
+    // out past the line, and up toward her as it goes
+    a := sr_cam_along(l, bx, bz) * 0.5;
+    k := ifx sd >= 0.0 then 1.0 else -1.0;
+    out := r + t.line_pad + t.hand * 2.0;
+    return d3(l.x + l.dx * a + l.dz * out * k, 0.0, l.z + l.dz * a - l.dx * out * k);
+  }
+  on_left := (sd >= 0.0) == (sr_cam_side(l, left.x, left.z) >= 0.0);
+  pick := ifx on_left || abs(sd) < 0.05 then left else right;
+  if sr_cam_in_line(t, l, pick.x, pick.z, r) { pick = ifx pick.x == left.x && pick.z == left.z then right else left; }
+  return pick;
+}
+// :496 cm_follow_pace
+sr_cam_follow_pace :: (t: SrCamTuning, s: SrCamState, her: SrCamSubject, bx: f64, bz: f64, r: f64, pace: f64) -> f64 {
+  return ifx sr_cam_in_line(t, sr_cam_line(t, s, her), bx, bz, r) then 1.6 else pace;
+}
+
+// :424 cm_kick
+sr_cam_kick :: (t: SrCamTuning, m: SrCamMixState, size: f64, side: bool, calm: bool) -> SrCamMixState {
+  o := m;
+  if calm || (m.kick_t < t.kick_time && m.kick > size) { return o; }
+  o.kick = fmin(size, t.kick_max * (ifx side then 1.2 else 1.0)); o.kick_t = 0.0; o.kick_side = side;
+  return o;
+}
+// :407 cm_tick
+sr_cam_tick :: (t: SrCamTuning, m: SrCamMixState, in: SrCamTickInputs, dt: f64) -> SrCamMixState {
+  o := m;
+  if in.src != o.src && o.seen && d3_dist(o.last.eye, in.raw_eye) < t.blend_far { o.blend = 1.0; o.blend_from = o.last; }
+  // on foot with no change of camera, she was put somewhere new: the boom cuts, so the blend does too
+  if in.src == o.src && in.src == 0 && in.put_somewhere_new { o.blend = 0.0; }
+  o.src = in.src;
+  o.blend = fmax(0.0, o.blend - dt / t.blend);
+  o.kick_t += dt;
+  if in.landed && in.impact > t.kick_hard && in.on_foot { o = sr_cam_kick(t, o, (in.impact - t.kick_hard) * t.kick_land, false, in.calm); }
+  if in.hearts < o.hearts { o = sr_cam_kick(t, o, t.kick_hit, true, in.calm); }
+  if in.sniper_hp < o.sniper_hp && in.driving { o = sr_cam_kick(t, o, t.kick_claw, true, in.calm); }
+  o.hearts = in.hearts; o.sniper_hp = in.sniper_hp;
+  want_fov := 0.0;
+  if !in.calm {
+    if in.driving { want_fov = t.drive_fov * fclamp(in.drive_speed_share, 0.0, 1.0); }
+    else if in.on_foot && !in.riding { want_fov = t.run_fov * fclamp(in.walk_speed_share, 0.0, 1.0); }
+  }
+  o.run += (want_fov - o.run) * fmin(1.0, dt * 3.0 / t.fov_time);
+  return o;
+}
+// :430 cm_mix
+sr_cam_mix :: (t: SrCamTuning, m: SrCamMixState, raw: SrCamView, calm: bool) -> SrCamView {
+  v := raw;
+  if m.blend > 0.0 {
+    k := 1.0 - m.blend; k = k * k * (3.0 - 2.0 * k);
+    v.eye = d3_add(m.blend_from.eye, d3_scale(d3_sub(v.eye, m.blend_from.eye), k));
+    v.at = d3_add(m.blend_from.at, d3_scale(d3_sub(v.at, m.blend_from.at), k));
+    v.fov = m.blend_from.fov + (v.fov - m.blend_from.fov) * k;
+  }
+  v.fov += m.run;
+  if m.kick_t < t.kick_time && !calm {
+    u := 1.0 - m.kick_t / t.kick_time;
+    a := m.kick * u * u * sin(m.kick_t * t.kick_rate);
+    dd := d3_sub(v.at, v.eye);
+    sd := d3(dd.z, 0.0, -dd.x);
+    sl := d3_len(sd);
+    sd = ifx sl > 0.000001 then d3_scale(sd, 1.0 / sl) else d3(1.0, 0.0, 0.0);
+    off := ifx m.kick_side then d3_scale(sd, a) else d3(0.0, -a, 0.0);
+    v.eye = d3_add(v.eye, off); v.at = d3_add(v.at, off);
+  }
+  return v;
+}
+// :443 cm_seen
+sr_cam_seen :: (m: SrCamMixState, v: SrCamView) -> SrCamMixState { o := m; o.last = v; o.seen = true; return o; }
