@@ -80,7 +80,7 @@ ckt_login :: (c: [] AppCore) -> bool {
   a: [1] AppCore; c := a[..]; #assert ckt_login(c);
   #assert app_host_action(c, 10, 1, ACT_DRAFT, false, "hi", "") == APP_OK && app_host_action(c, 11, 1, ACT_SEND, false, "", "") == APP_OK;
   op := app_host_next(c); g := ckt_gen(c, op); #assert app_host_taken(c, 12, 1, op, true) == APP_OK;
-  #assert app_host_action(c, 13, 1, ACT_LOGOUT, false, "", "") == APP_OK && c[0].auth == AUTH_OUT && app_draft(c) == "";
+  #assert app_host_action(c, 13, 1, ACT_LOGOUT, false, "", "") == APP_OK && c[0].auth == AUTH_OUT && app_conversation(c) == "";
   #assert app_host_cancel_next(c) == op && app_host_cancel_next(c) == 0;
   out := app_host_next(c); #assert ckt_kind(c, out) == FX_AUTH_LOGOUT;
   #assert app_host_done(c, 14, 1, op, g, FXO_DONE, 0, false, "0123456789abcdef0123456789abcdef", "0123456789abcdef0123456789abcdef", 1) == APP_R_LATE;
@@ -108,4 +108,23 @@ ckt_login :: (c: [] AppCore) -> bool {
   #assert ckt_answer(c, 2, true, 0, "", "", 0) == FX_AUTH_STATE && app_conversation(c) == "cnv_0123456789abcdef0123456789abcdef";
   n := app_host_keep(c, buf[..]); #assert cast(string) buf[0..<n] == "cnv_0123456789abcdef0123456789abcdef";
   op := app_host_next(c); #assert ckt_kind(c, op) == FX_HTTP && ckt_field(c, op, APP_HOST_METHOD) == UP_GET;
+}
+#test "closing login fences a verify in flight so its late result cannot log in" {
+  a: [1] AppCore; c := a[..];
+  #assert app_host_init(c) && app_host_launch(c, 1, 1, "") == APP_OK && ckt_answer(c, 2, false, 0, "", "", 0) == FX_AUTH_STATE;
+  #assert app_host_action(c, 3, 1, ACT_LOGIN_EMAIL, false, "a@b.test", "") == APP_OK && ckt_answer(c, 4, false, 0, "", "", 0) == FX_AUTH_EMAIL;
+  #assert app_host_action(c, 5, 1, ACT_LOGIN_CODE, false, "123456", "") == APP_OK;
+  op := app_host_next(c); g := ckt_gen(c, op); #assert ckt_kind(c, op) == FX_AUTH_VERIFY && app_host_taken(c, 6, 1, op, true) == APP_OK;
+  #assert app_host_action(c, 7, 1, ACT_LOGIN_SHOW, false, "", "") == APP_OK && c[0].login == LOGIN_IDLE && !c[0].login_wanted;
+  #assert app_host_cancel_next(c) == op;
+  #assert ckt_answer(c, 8, false, 0, "", "", 0) == FX_AUTH_CANCEL;
+  #assert app_host_done(c, 9, 1, op, g, FXO_DONE, 0, true, "", "", 0) == APP_R_LATE && c[0].auth == AUTH_OUT;
+  // closing with no attempt asks the host for nothing
+  #assert app_host_action(c, 10, 1, ACT_LOGIN_SHOW, true, "", "") == APP_OK && app_host_action(c, 11, 1, ACT_LOGIN_SHOW, false, "", "") == APP_OK && app_host_next(c) == 0;
+}
+#test "log out keeps the new chat's draft and forgets the account's conversations" {
+  a: [1] AppCore; c := a[..]; #assert ckt_login(c);
+  #assert app_draft_keep(c, "cnv_0123456789abcdef0123456789abcdef", "saved") && app_host_action(c, 3, 1, ACT_DRAFT, false, "new", "") == APP_OK;
+  #assert app_host_action(c, 4, 1, ACT_LOGOUT, false, "", "") == APP_OK;
+  #assert app_draft(c) == "new" && app_draft_of(c, "cnv_0123456789abcdef0123456789abcdef") == "";
 }

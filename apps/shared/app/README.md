@@ -47,6 +47,11 @@ decides when to make a request and hands each result to them.
   result of the old generation is dropped (`APP_R_LATE`).
 - A refused event changes nothing and counts in `AppCore.refusals`.
 - Tokens, keys and the email attempt never enter Coax.
+- Closing the login flow (`ACT_LOGIN_SHOW` with flag false) ends the attempt:
+  an email or verify in flight is fenced, so its late result cannot log in,
+  and the host gets `FX_AUTH_CANCEL`.
+- A log out forgets the drafts of the account's saved conversations and keeps
+  the new chat's draft.
 
 ## Integration
 

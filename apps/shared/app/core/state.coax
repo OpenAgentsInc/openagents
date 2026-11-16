@@ -126,7 +126,10 @@ app_draft_keep :: (c: [] AppCore, key: string, text: string) -> bool {
   c[0].draft_clock += 1; c[0].drafts[at].touched = c[0].draft_clock;
   return true;
 }
-app_drafts_clear :: (c: [] AppCore) { for i: 0..<APP_DRAFTS { c[0].drafts[i].used = false; c[0].drafts[i].n = 0; c[0].drafts[i].key_n = 0; } }
+// Forget drafts. keep_new: keep the new chat's draft (key ""), which belongs to no conversation.
+app_drafts_clear :: (c: [] AppCore, keep_new: bool) {
+  for i: 0..<APP_DRAFTS { if keep_new && c[0].drafts[i].used && c[0].drafts[i].key_n == 0 { continue; } c[0].drafts[i].used = false; c[0].drafts[i].n = 0; c[0].drafts[i].key_n = 0; }
+}
 
 // ---------------------------------------------------------------- selections
 
