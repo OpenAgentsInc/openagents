@@ -111,6 +111,20 @@ pb_touch_json :: (kind:string,points:[]PbContact,out:[]u8)->int {
 pb_touch :: (c:[]Cdp,kind:string,points:[]PbContact)->bool {
   out:[2048]u8;n:=pb_touch_json(kind,points,out[..]);return n>0 && cdp_call(c,"Input.dispatchTouchEvent",cast(string)out[0..<n],PB_CALL_MS)>=0;
 }
+pb_touch_send :: (c:[]Cdp,kind:string,points:[]PbContact)->int {
+  out:[2048]u8;n:=pb_touch_json(kind,points,out[..]);return ifx n>0 then cdp_send(c,"Input.dispatchTouchEvent",cast(string)out[0..<n]) else -1;
+}
+// Release is scheduled by the player's real-time action, not by renderer ACK
+// latency. Still require every native command's successful acknowledgement.
+pb_touch_replies :: (c:[]Cdp,ids:[]int,dir:string)->bool {
+  if ids.count<1 || ids.count>4 {return false;}for id:ids {if id<0 {return false;}}
+  seen:[4]bool;left:=ids.count;ok:=true;end:=proc_now_ms()+PB_CALL_MS;
+  while left>0 && proc_now_ms()<end {
+    if !pb_heartbeat(dir) {return false;}reply:=cdp_poll(c,50);if reply==CDP_CLOSED || reply==CDP_FAIL {return false;}if reply!=CDP_GOT {continue;}d:=cdp_doc(c);id:=cdp_reply_id(d);
+    for i:0..<ids.count {if ids[i]==id && !seen[i] {seen[i]=true;left-=1;if cdp_reply_result(d)<0 {ok=false;}}}
+  }
+  if left>0 {return cdp_fail(c,"touch acknowledgement timed out","");}if !ok {return cdp_fail(c,"native touch command was rejected","");}return true;
+}
 pb_touch_tap :: (c:[]Cdp,x:int,y:int)->bool {
   p:=[1]PbContact.[PbContact.{id=1,x=x,y=y}];down:=pb_touch(c,"touchStart",p[..]);proc_sleep(50);up:=pb_touch(c,"touchEnd",p[..]);return down && up;
 }
@@ -121,13 +135,13 @@ pb_stick :: (c:[]Cdp,keys:string,ms:int,jump:bool,look:int,dir:string)->bool {
   dx:=(ifx cdp_contains(keys,"d") then 55 else 0)-(ifx cdp_contains(keys,"a") then 55 else 0);
   dy:=(ifx cdp_contains(keys,"s") then 55 else 0)-(ifx cdp_contains(keys,"w") then 55 else 0);
   p:=[2]PbContact.[PbContact.{id=1,x=w/4,y=h*3/5},PbContact.{id=2,x=w*4/5,y=h*2/5}];n:=ifx jump || look!=0 then 2 else 1;
-  if !pb_touch(c,"touchStart",p[0..<n]) {return false;}_:=pb_wait(dir,25);p[0].x+=dx;p[0].y+=dy;p[1].x+=look;
-  moved:=pb_touch(c,"touchMove",p[0..<n]);_=pb_wait(dir,25);
+  ids:[4]int;used:=0;ids[used]=pb_touch_send(c,"touchStart",p[0..<n]);used+=1;_=pb_wait(dir,25);p[0].x+=dx;p[0].y+=dy;p[1].x+=look;
+  ids[used]=pb_touch_send(c,"touchMove",p[0..<n]);used+=1;_=pb_wait(dir,25);
   // dispatchTouchEvent names the contacts that changed, including those lifted.
   // Lift the right finger while the left keeps moving, then lift the left.
-  lifted:=true;if n==2 {lifted=pb_touch(c,"touchEnd",p[1..<2]);}
-  waited:=pb_wait(dir,ms);released:=pb_touch(c,"touchEnd",p[0..<1]);ok:=moved && lifted && waited && released;
-  if !ok {_:=pb_touch(c,"touchCancel",p[0..<0]);}return ok;
+  if n==2 {ids[used]=pb_touch_send(c,"touchEnd",p[1..<2]);used+=1;}
+  waited:=pb_wait(dir,ms);ids[used]=pb_touch_send(c,"touchEnd",p[0..<1]);used+=1;ok:=pb_touch_replies(c,ids[0..<used],dir) && waited;
+  if !ok {reason:[512]u8;rn:=ws_put(reason[..],0,cdp_error(c));_=pb_touch(c,"touchCancel",p[0..<0]);_=cdp_fail(c,"touch sequence failed: ",ifx rn>0 then cast(string)reason[0..<rn] else "release or wait failed");}return ok;
 }
 pb_type :: (c: [] Cdp, text: string) -> bool {
   b: [8192] u8; o: [1] Jo; jo_start(o[..],b[..]); jo_obj(o[..]); jo_key(o[..],"text"); jo_str(o[..],text); jo_end(o[..]);

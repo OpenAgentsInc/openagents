@@ -18,6 +18,16 @@ W3C action chain with an explicit release. `wd_stick` describes synchronized
 touch sources; a server must actually support them before a product may qualify
 touch gameplay. Successful protocol delivery alone is not a gameplay verdict.
 
+`pb_stick` queues native touch down, movement and independent finger releases
+on its real-time deadline before collecting renderer acknowledgements. A slow
+touch-move acknowledgement must not postpone finger-up or consume the input
+watchdog's lease. Every command must still acknowledge successfully; rejection
+or a missing reply fails the action. `pb_touch_send` and `pb_touch_replies`
+support that already-released batch; do not wait for a batch while input is
+still held. The headless `player-touch-check.coax` fixture stalls its local
+pointer-move handler for 350 ms, requires both fingers released within 500 ms,
+and proves a rejected native command cannot pass.
+
 The caller owns a private evidence directory and renews a one-second input
 lease. Run `pb_watchdog` or `wd_watchdog` in a separate process. It releases
 inputs on expiry, and closes only its dedicated browser session if the owner

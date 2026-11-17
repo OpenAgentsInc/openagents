@@ -1,0 +1,15 @@
+// Native touch scheduling against a deliberately busy local browser fixture.
+#import "Basic";
+#load "player-browser.coax";
+tool_main :: ()->int #export_c #effects(all) {
+  a:[1]Args;if !args_load(a[..]) {return 2;}dir:=args_value(a[..],"--out","coax/web/build/player-touch-check");if !fs_mkdir_private(dir) {return 2;}
+  c:[1]Cdp;if !cdp_launch_live_headless(c[..],800,600,"coax-touch-fixture-") {return 1;}defer cdp_close(c[..]);
+  _:=cdp_call(c[..],"Emulation.setTouchEmulationEnabled","{\"enabled\":true,\"maxTouchPoints\":5}",PB_CALL_MS);
+  r:=cdp_call(c[..],"Page.getFrameTree","{}",PB_CALL_MS);frame:[256]u8;fn:=ifx r>=0 then jv_str(cdp_doc(c[..]),jv_path(cdp_doc(c[..]),r,"frameTree.frame.id"),frame[..]) else -1;if fn<1 {return 1;}
+  b:[8192]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_obj(o[..]);jo_key(o[..],"frameId");jo_str(o[..],cast(string)frame[0..<fn]);jo_key(o[..],"html");
+  jo_str(o[..],"<!doctype html><meta name=viewport content='width=device-width,initial-scale=1'><style>html,body{margin:0;width:100%;height:100%;touch-action:none;background:#135}</style><script>window.down=0;window.up=0;window.busy=true;window.contacts=new Set();window.max=0;window.independent=false;addEventListener('pointerdown',e=>{down=performance.now();contacts.add(e.pointerId);max=Math.max(max,contacts.size)});addEventListener('pointermove',e=>{if(busy){busy=false;const end=performance.now()+350;while(performance.now()<end){}}});addEventListener('pointerup',e=>{const n=contacts.size;contacts.delete(e.pointerId);if(n===2&&contacts.size===1&&e.clientX>innerWidth/2)independent=true;up=performance.now()});</script>");jo_end(o[..]);if cdp_call(c[..],"Page.setDocumentContent",jo_text(o[..]),PB_CALL_MS)<0 {return 1;}proc_sleep(100);
+  sent:=pb_stick(c[..],"s",200,true,0,dir);duration:=pb_number(c[..],"up-down",99999);released:=pb_bool(c[..],"contacts.size===0&&max===2&&independent&&up>down");
+  bad:=[1]int.[cdp_send(c[..],"Input.dispatchTouchEvent","{\"type\":\"invalid\",\"touchPoints\":[]}")];rejected:=!pb_touch_replies(c[..],bad[..],dir);
+  print("native touch: sent %, independently released %, duration % ms, invalid command rejected %\n",sent,released,duration,rejected);
+  return ifx sent && released && duration>=340 && duration<500 && rejected then 0 else 1;
+}
