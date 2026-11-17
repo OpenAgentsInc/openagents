@@ -796,3 +796,6 @@ The 512-account fixture checks exact content height after scrolling. UIKit,
 AppKit and shared native normal/sanitized qualifications are recorded in the
 [verification log](../docs/verification/gpu-native-13645/README.md). This does
 not complete G3, physical-phone G4 acceptance or production desktop adoption.
+
+The science-fiction hotbar uses at least 44 × 44 CSS pixel slots in narrow
+windows, preserving touch targets while its flex layout wraps when necessary.

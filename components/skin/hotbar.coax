@@ -28,7 +28,7 @@ HbSkin :: struct {
 hb_scifi :: () -> HbSkin {
   s: HbSkin;
   s.name = "scifi"; s.frame = 2; s.mark = "hud";
-  s.slot = 52; s.gap = 10; s.group_gap = 22; s.small = 40;
+  s.slot = 52; s.gap = 10; s.group_gap = 22; s.small = 44;
   s.glyph_size = 18; s.key_size = 10; s.label_size = 9;   // (names always: HB_LABEL_ALWAYS is what a skin starts as)
   s.opt = 26; s.opt_gap = 6; s.opt_rise = 10; s.opt_pad = 9; s.opt_size = 10;
   s.face = "inherit"; s.key_face = "var(--mono, ui-monospace, monospace)";
@@ -179,7 +179,7 @@ hbs_has :: (hay: string, needle: string) -> bool {
 #test "science fiction's numbers, a skin's own glyph for a slot id, and the stylesheet written from a skin: another skin is other data" {
   buf: [8192] u8;
   s: [1] HbSkin; s[0] = hb_scifi();
-  #assert s[0].name == "scifi" && s[0].frame == 2 && s[0].mark == "hud" && s[0].slot == 52 && s[0].small == 40 && s[0].gap == 10 && s[0].labels == HB_LABEL_ALWAYS && s[0].label_size == 9 && s[0].glyph_size == 18 && s[0].key_size == 10 && s[0].group_gap == 22 && s[0].fill == "rgba(0,0,0,.28)" && s[0].n == 0;
+  #assert s[0].name == "scifi" && s[0].frame == 2 && s[0].mark == "hud" && s[0].slot == 52 && s[0].small == 44 && s[0].gap == 10 && s[0].labels == HB_LABEL_ALWAYS && s[0].label_size == 9 && s[0].glyph_size == 18 && s[0].key_size == 10 && s[0].group_gap == 22 && s[0].fill == "rgba(0,0,0,.28)" && s[0].n == 0;
   #assert s[0].face == "inherit" && s[0].key_face == "var(--mono, ui-monospace, monospace)" && s[0].ink == "rgba(255,255,255,.78)" && s[0].dim == "rgba(255,255,255,.28)" && s[0].lit == "#fff" && s[0].fill_hot == "rgba(255,255,255,.1)" && s[0].fill_lit == "rgba(255,255,255,.22)" && s[0].edge == "transparent" && s[0].edge_lit == "rgba(255,255,255,.7)" && s[0].divider == "rgba(255,255,255,.22)" && s[0].pad == 0 && s[0].corner == 0;
   #assert HB_LABEL_ALWAYS == 0 && HB_LABEL_HOVER == 1 && HB_LABEL_NEVER == 2;
   #assert s[0].opt == 26 && s[0].opt_gap == 6 && s[0].opt_rise == 10 && s[0].opt_pad == 9 && s[0].opt_size == 10;
@@ -202,7 +202,7 @@ hbs_has :: (hay: string, needle: string) -> bool {
   #assert hbs_has(css, ".hb-scifi .hb-s:disabled{cursor:default;background:rgba(0,0,0,.28);color:rgba(255,255,255,.28)}");
   #assert hbs_has(css, ".hb-scifi .hb-g{font-size:18px;") && hbs_has(css, "}.hb-scifi .hb-l{font-family:var(--mono, ui-monospace, monospace);font-size:9px;line-height:1;") && hbs_has(css, "}.hb-scifi .hb-lh{display:none}.hb-scifi .hb-s:hover .hb-lh,.hb-scifi .hb-s:focus-visible .hb-lh{display:block}.hb-scifi .hb-k{") && hbs_has(css, ".hb-scifi .hb-k{position:absolute;left:5px;top:4px;font-family:var(--mono, ui-monospace, monospace);font-size:10px;");
   #assert hbs_has(css, ".hb-scifi .hb-d{flex:none;align-self:stretch;width:1px;margin:6px 6px;background:rgba(255,255,255,.22)}");
-  #assert hbs_has(css, "@media (max-width:640px){.hb-scifi .hb-s{width:40px;height:40px}.hb-scifi{gap:5px}.hb-scifi .hb-d{margin:6px 3px}}");
+  #assert hbs_has(css, "@media (max-width:640px){.hb-scifi .hb-s{width:44px;height:44px}.hb-scifi{gap:5px}.hb-scifi .hb-d{margin:6px 3px}}");
   #assert hbs_has(css, ".hb-scifi .hb-s.hb-busy .hb-g{animation:hb-busy") && hbs_has(css, ".hb-scifi .hb-s.hb-cool::after{") && hbs_has(css, "background:rgba(255,255,255,.22);pointer-events:none}");
   // a slot's options: the wrapper the row is placed against, the row over the slot, a button an option in its states; and the ball a skin draws
   #assert hbs_has(css, "}}.hb-scifi .hb-w{position:relative;flex:none;display:flex}.hb-scifi .hb-o{position:absolute;left:50%;bottom:calc(100% + 10px);transform:translateX(-50%);display:flex;gap:6px;white-space:nowrap}");

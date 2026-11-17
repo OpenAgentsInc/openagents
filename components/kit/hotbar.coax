@@ -575,7 +575,7 @@ hb_has :: (hay: string, needle: string) -> bool {
 #test "a skin is data: science fiction's numbers, its own glyph for a slot id, and a stylesheet written from it" {
   t: [1] HbTest;
   s: [1] HbSkin; s[0] = hb_scifi();
-  #assert s[0].name == "scifi" && s[0].frame == 2 && s[0].mark == "hud" && s[0].slot == 52 && s[0].small == 40 && s[0].gap == 10 && s[0].labels == HB_LABEL_ALWAYS && s[0].label_size == 9 && s[0].glyph_size == 18 && s[0].group_gap == 22 && s[0].fill == "rgba(0,0,0,.28)" && s[0].n == 0;
+  #assert s[0].name == "scifi" && s[0].frame == 2 && s[0].mark == "hud" && s[0].slot == 52 && s[0].small == 44 && s[0].gap == 10 && s[0].labels == HB_LABEL_ALWAYS && s[0].label_size == 9 && s[0].glyph_size == 18 && s[0].group_gap == 22 && s[0].fill == "rgba(0,0,0,.28)" && s[0].n == 0;
   // a slot shows its own glyph until the skin has one for its id; a second for the same id replaces it
   slot := HbSlot.{id = "block", glyph = "▢"};
   #assert hb_glyph(s[0], slot) == "▢";
@@ -596,7 +596,7 @@ hb_has :: (hay: string, needle: string) -> bool {
   #assert hb_has(css, ".hb-scifi .hb-s:disabled{cursor:default;background:rgba(0,0,0,.28);color:rgba(255,255,255,.28)}");
   #assert hb_has(css, ".hb-scifi .hb-g{font-size:18px;") && hb_has(css, "}.hb-scifi .hb-l{font-family:var(--mono, ui-monospace, monospace);font-size:9px;line-height:1;") && hb_has(css, "}.hb-scifi .hb-lh{display:none}.hb-scifi .hb-s:hover .hb-lh,.hb-scifi .hb-s:focus-visible .hb-lh{display:block}.hb-scifi .hb-k{") && hb_has(css, ".hb-scifi .hb-k{position:absolute;left:5px;top:4px;font-family:var(--mono, ui-monospace, monospace);font-size:10px;");
   #assert hb_has(css, ".hb-scifi .hb-d{flex:none;align-self:stretch;width:1px;margin:6px 6px;background:rgba(255,255,255,.22)}");
-  #assert hb_has(css, "@media (max-width:640px){.hb-scifi .hb-s{width:40px;height:40px}.hb-scifi{gap:5px}.hb-scifi .hb-d{margin:6px 3px}}");
+  #assert hb_has(css, "@media (max-width:640px){.hb-scifi .hb-s{width:44px;height:44px}.hb-scifi{gap:5px}.hb-scifi .hb-d{margin:6px 3px}}");
   #assert hb_has(css, ".hb-scifi .hb-s.hb-busy .hb-g{animation:hb-busy") && hb_has(css, ".hb-scifi .hb-s.hb-cool::after{") && hb_has(css, "background:rgba(255,255,255,.22);pointer-events:none}");
   // another skin is other data: its name, sizes and colours are what is written, and nothing of science fiction's
   f := hb_scifi(); f.name = "fantasy"; f.slot = 60; f.corner = 6; f.fill = "#201810"; f.ink = "#e8d8b0"; f.pad = 8; f.gap = 6; f.group_gap = 30; f.small = 44; f.glyph_size = 24; f.key_size = 11; f.label_size = 12;
