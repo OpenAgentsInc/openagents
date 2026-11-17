@@ -24,6 +24,10 @@
 //                        fixed is a density of nothing
 //   grass.height         a blade's height, m (StyLook.blade); grass.density: times the blades a
 //                        square metre (StyLook.grass_cell, by its square root)
+//   world.physics        whether the things are simulated (physics/sim/bodies.coax): off, every
+//                        body is given a density of nothing (bd_material), as thing.fixed does for
+//                        one, so nothing falls or is pushed and each holds where it is; the walker
+//                        still walks on them. On again, they wake and fall from where they are
 // Numbers are hundredths, as tunables.coax keeps them.
 //   coax/bin/coax test metaverse-engine/state/world-tunables.coax
 //   coax/bin/coax mutate metaverse-engine/state/world-tunables.coax --root-only
@@ -37,7 +41,8 @@ TW_AIR_JUMPS :: 5; TW_FLY :: 6; TW_RUN_SPEED :: 7; TW_JUMP_HEIGHT :: 8; TW_PUSH 
 TW_VIEW :: 10; TW_DISTANCE :: 11; TW_FOV :: 12;
 TW_BOUNCE :: 13; TW_FRICTION :: 14; TW_DENSITY :: 15; TW_FIXED :: 16;
 TW_GRASS_HEIGHT :: 17; TW_GRASS_DENSITY :: 18;
-TW_N :: 19;
+TW_PHYSICS :: 19;
+TW_N :: 20;
 // The kinds of thing a path may name before a thing's row ("balls.bounce"), in the order of the
 // rigid bodies' own kinds (Bd_Kind: a box, a ball).
 TW_KINDS :: [2] string.["blocks", "balls"];
@@ -64,6 +69,7 @@ TW_ROWS :: [TW_N] Tunable.[
   Tunable.{path = "thing.fixed", kind = TUN_BOOL, scope = TUN_THING, low = 0, high = 1, hint = "cannot be moved", about = "whether a thing stays exactly where it is: it does not fall and nothing pushes it"},
   Tunable.{path = "grass.height", kind = TUN_NUMBER, scope = TUN_WORLD, low = 10, high = 120, step = 2, def = 46, unit = "m", hint = "how tall the grass is", about = "how tall the grass grows"},
   Tunable.{path = "grass.density", kind = TUN_NUMBER, scope = TUN_WORLD, low = 50, high = 150, step = 10, def = 100, unit = "x", hint = "how thick the grass is", about = "how thickly the grass grows: more blades in a smaller field, or fewer in a wider one"},
+  Tunable.{path = "world.physics", kind = TUN_BOOL, scope = TUN_WORLD, low = 0, high = 1, def = 1, hint = "physics: things fall and get pushed", about = "whether the things in the world are simulated: off turns physics off, so nothing falls, rolls or gets pushed and everything holds exactly where it is (you still walk and jump on them); on again, they fall from where they are"},
 ];
 // book:end world-tunables
 
@@ -71,15 +77,15 @@ TW_ROWS :: [TW_N] Tunable.[
 
 #test "the world's table is well made, its names are its rows, and its index is what a model is given" {
   r: [] const Tunable = TW_ROWS[..];
-  #assert tun_ok(r) && r.count == TW_N && TW_N == 19;
+  #assert tun_ok(r) && r.count == TW_N && TW_N == 20;
   names := [TW_N] string.["world.gravity", "world.time_scale", "world.wind", "world.time_of_day", "world.haze", "player.air_jumps", "player.fly", "player.run_speed", "player.jump_height", "player.push_strength",
-                          "camera.view", "camera.distance", "camera.fov", "thing.bounce", "thing.friction", "thing.density", "thing.fixed", "grass.height", "grass.density"];
-  at := [TW_N] int.[TW_GRAVITY, TW_TIME_SCALE, TW_WIND, TW_TIME_OF_DAY, TW_HAZE, TW_AIR_JUMPS, TW_FLY, TW_RUN_SPEED, TW_JUMP_HEIGHT, TW_PUSH, TW_VIEW, TW_DISTANCE, TW_FOV, TW_BOUNCE, TW_FRICTION, TW_DENSITY, TW_FIXED, TW_GRASS_HEIGHT, TW_GRASS_DENSITY];
+                          "camera.view", "camera.distance", "camera.fov", "thing.bounce", "thing.friction", "thing.density", "thing.fixed", "grass.height", "grass.density", "world.physics"];
+  at := [TW_N] int.[TW_GRAVITY, TW_TIME_SCALE, TW_WIND, TW_TIME_OF_DAY, TW_HAZE, TW_AIR_JUMPS, TW_FLY, TW_RUN_SPEED, TW_JUMP_HEIGHT, TW_PUSH, TW_VIEW, TW_DISTANCE, TW_FOV, TW_BOUNCE, TW_FRICTION, TW_DENSITY, TW_FIXED, TW_GRASS_HEIGHT, TW_GRASS_DENSITY, TW_PHYSICS];
   for k: 0..<TW_N { #assert at[k] == k && tun_prop(r, names[k]) == k; }
   out: [2048] u8;
   n := tun_index(r, "", out[..], 0);
-  #assert cast(string) out[0..<n] == "world: gravity (how hard things fall), time_scale (slow motion, fast forward), wind (how hard the wind blows), time_of_day (night, sunrise, day), haze (fog in the distance)\nplayer: air_jumps (double jump), fly (flying), run_speed (how fast you run), jump_height (how high you jump), push_strength (how hard you push things)\ncamera: view (orbit, follow, first person, top-down), distance (how far back the camera is), fov (how wide the view is)\nthing: bounce (how bouncy it is), friction (grippy or slippery), density (how heavy it is), fixed (cannot be moved)\ngrass: height (how tall the grass is), density (how thick the grass is)\n";
-  n = tun_groups(r, out[..], 0); #assert cast(string) out[0..<n] == "world 5, player 5, camera 3, thing 4, grass 2";
+  #assert cast(string) out[0..<n] == "world: gravity (how hard things fall), time_scale (slow motion, fast forward), wind (how hard the wind blows), time_of_day (night, sunrise, day), haze (fog in the distance), physics (physics: things fall and get pushed)\nplayer: air_jumps (double jump), fly (flying), run_speed (how fast you run), jump_height (how high you jump), push_strength (how hard you push things)\ncamera: view (orbit, follow, first person, top-down), distance (how far back the camera is), fov (how wide the view is)\nthing: bounce (how bouncy it is), friction (grippy or slippery), density (how heavy it is), fixed (cannot be moved)\ngrass: height (how tall the grass is), density (how thick the grass is)\n";
+  n = tun_groups(r, out[..], 0); #assert cast(string) out[0..<n] == "world 6, player 5, camera 3, thing 4, grass 2";
 }
 #test "each row's kind, scope, range, step and default, as a rule that reads it expects them" {
   r: [] const Tunable = TW_ROWS[..];
@@ -90,8 +96,9 @@ TW_ROWS :: [TW_N] Tunable.[
     "player.jump_height: 0 to 10 m, step 0.01, default 1.67, now 1.67. ", "player.push_strength: 0 to 3 x, step 0.1, default 1, now 1. ",
     "camera.view: one of orbit, follow, first_person, top_down, default orbit, now orbit. ", "camera.distance: 1.5 to 12 m, step 0.5, default 9.5, now 9.5. ", "camera.fov: whole number 20 to 110 degrees, default 60, now 60. ",
     "thing.bounce: 0 to 1, step 0.05, default 0.15, now 0.15. ", "thing.friction: 0 to 1.5, step 0.05, default 0.5, now 0.5. ", "thing.density: whole number 5 to 5000 kg a cubic metre, default 200, now 200. ",
-    "thing.fixed: on or off, default off, now off. ", "grass.height: 0.1 to 1.2 m, step 0.02, default 0.46, now 0.46. ", "grass.density: 0.5 to 1.5 x, step 0.1, default 1, now 1. "];
-  scope := [TW_N] int.[TUN_WORLD, TUN_WORLD, TUN_WORLD, TUN_WORLD, TUN_WORLD, TUN_PLAYER, TUN_PLAYER, TUN_PLAYER, TUN_PLAYER, TUN_PLAYER, TUN_PLAYER, TUN_PLAYER, TUN_PLAYER, TUN_THING, TUN_THING, TUN_THING, TUN_THING, TUN_WORLD, TUN_WORLD];
+    "thing.fixed: on or off, default off, now off. ", "grass.height: 0.1 to 1.2 m, step 0.02, default 0.46, now 0.46. ", "grass.density: 0.5 to 1.5 x, step 0.1, default 1, now 1. ",
+    "world.physics: on or off, default on, now on. "];
+  scope := [TW_N] int.[TUN_WORLD, TUN_WORLD, TUN_WORLD, TUN_WORLD, TUN_WORLD, TUN_PLAYER, TUN_PLAYER, TUN_PLAYER, TUN_PLAYER, TUN_PLAYER, TUN_PLAYER, TUN_PLAYER, TUN_PLAYER, TUN_THING, TUN_THING, TUN_THING, TUN_THING, TUN_WORLD, TUN_WORLD, TUN_WORLD];
   out: [512] u8;
   for k: 0..<TW_N {
     n := tun_detail(r[k], r[k].def, r[k].def, out[..], 0);

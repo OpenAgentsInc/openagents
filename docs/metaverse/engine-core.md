@@ -114,14 +114,16 @@ changes nothing and says why: `TUN_UNKNOWN`, `TUN_BAD`, `TUN_RANGE`, `TUN_FULL`)
 `tun_index` and `tun_groups` (a compact index for whoever must choose rows: names and a few
 words, no ranges), `tun_save` and `tun_load` (the map as text: whole or not at all) and
 `tun_digest`. The same map is the same bytes and the same digest. A world's own table is data:
-`metaverse-engine/state/world-tunables.coax` holds nineteen rows (gravity, time scale, wind, time
-of day, haze; air jumps, flying, run speed, jump height, push strength; the camera's view,
+`metaverse-engine/state/world-tunables.coax` holds twenty rows (gravity, time scale, wind, time
+of day, haze, whether physics runs at all; air jumps, flying, run speed, jump height, push strength; the camera's view,
 distance and lens; a thing's bounce, friction, density and whether it is fixed; the grass's
 height and density) and names what reads each one.
 
 A thing's material reaches the bodies through `bd_material` (`physics/sim/bodies.coax`):
 friction, bounce and density at once, the same half, a density of nothing for a fixed body, and
-every body woken. `bd_digest` now hashes each body's inverse mass, friction and bounce too, so a
+every body woken. `world.physics` off is that density of nothing for every body at once: nothing
+falls, rolls or is pushed and each holds where it is, while a walker still stands and walks on
+them; on again, each takes its own material back and falls from where it is. `bd_digest` now hashes each body's inverse mass, friction and bounce too, so a
 material change is part of the deterministic scene state.
 
 GameBuilder is the first consumer (its `web/props.coax`, `web/hud.coax` and the settings
