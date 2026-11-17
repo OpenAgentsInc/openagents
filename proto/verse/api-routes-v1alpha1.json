@@ -475,7 +475,9 @@
   {"fn": "auth_gate", "file": "coax/web/api/auth.c", "method": "POST", "path": "/api/chat/route/v1", "status": 401, "kind": "json", "message": ".openagents.api.v1alpha1.AuthGateLimitPostRefusal", "list": false},
   {"fn": "auth_gate", "file": "coax/web/api/auth.c", "method": "POST", "path": "/api/chat/library/v1", "status": 401, "kind": "json", "message": ".openagents.api.v1alpha1.AuthGateLimitPostRefusal", "list": false},
   {"fn": "auth_gate", "file": "coax/web/api/auth.c", "method": "POST", "path": "/api/auth/settings/v1", "status": 401, "kind": "json", "message": ".openagents.api.v1alpha1.AuthGateLimitPostRefusal", "list": false},
-  {"fn": "auth_gate", "file": "coax/web/api/auth.c", "method": "POST", "path": "/api/agents/revoke-all", "status": 401, "kind": "json", "message": ".openagents.api.v1alpha1.AuthGateLimitPostRefusal", "list": false}
+  {"fn": "auth_gate", "file": "coax/web/api/auth.c", "method": "POST", "path": "/api/agents/revoke-all", "status": 401, "kind": "json", "message": ".openagents.api.v1alpha1.AuthGateLimitPostRefusal", "list": false},
+  {"fn": "auth_api_route", "file": "coax/web/api/auth.c", "method": "POST", "path": "/api/auth/cli/code", "status": 200, "kind": "json", "message": ".openagents.api.v1alpha1.AuthCliCodePost", "list": false},
+  {"fn": "auth_api_route", "file": "coax/web/api/auth.c", "method": "POST", "path": "/api/auth/cli/redeem", "status": 200, "kind": "json", "message": ".openagents.api.v1alpha1.AuthEmailVerifyPost", "list": false}
  ],
  "goldens": [
   {"route": 0, "body": "F|realm_invites|0\n"},
@@ -1015,6 +1017,8 @@
   {"route": 470, "body": "{\"error\":\"You logged in with email, and this account has a key. Log in with your key to change it, or ask for recovery.\",\"step_up\":\"L2\",\"methods\":[\"nostr\"],\"limited\":true,\"level\":\"L1\",\"recovery\":{\"state\":\"none\",\"asked_ms\":0,\"ready_ms\":0,\"cancelled_ms\":0,\"done_ms\":0,\"now_ms\":0,\"wait_hours\":72}}"},
   {"route": 471, "body": "{\"error\":\"You logged in with email, and this account has a key. Log in with your key to change it, or ask for recovery.\",\"step_up\":\"L2\",\"methods\":[\"nostr\"],\"limited\":true,\"level\":\"L1\",\"recovery\":{\"state\":\"none\",\"asked_ms\":0,\"ready_ms\":0,\"cancelled_ms\":0,\"done_ms\":0,\"now_ms\":0,\"wait_hours\":72}}"},
   {"route": 472, "body": "{\"error\":\"You logged in with email, and this account has a key. Log in with your key to change it, or ask for recovery.\",\"step_up\":\"L2\",\"methods\":[\"nostr\"],\"limited\":true,\"level\":\"L1\",\"recovery\":{\"state\":\"none\",\"asked_ms\":0,\"ready_ms\":0,\"cancelled_ms\":0,\"done_ms\":0,\"now_ms\":0,\"wait_hours\":72}}"},
-  {"route": 473, "body": "{\"error\":\"You logged in with email, and this account has a key. Log in with your key to change it, or ask for recovery.\",\"step_up\":\"L2\",\"methods\":[\"nostr\"],\"limited\":true,\"level\":\"L1\",\"recovery\":{\"state\":\"none\",\"asked_ms\":0,\"ready_ms\":0,\"cancelled_ms\":0,\"done_ms\":0,\"now_ms\":0,\"wait_hours\":72}}"}
+  {"route": 473, "body": "{\"error\":\"You logged in with email, and this account has a key. Log in with your key to change it, or ask for recovery.\",\"step_up\":\"L2\",\"methods\":[\"nostr\"],\"limited\":true,\"level\":\"L1\",\"recovery\":{\"state\":\"none\",\"asked_ms\":0,\"ready_ms\":0,\"cancelled_ms\":0,\"done_ms\":0,\"now_ms\":0,\"wait_hours\":72}}"},
+  {"route": 474, "body": "{\"state\":\"code\",\"code\":\"9f2c4e1a7b3d5f60812a4c6e8b0d2f41\",\"expires_in\":300}"},
+  {"route": 475, "body": "{\"state\":\"logged-in\",\"account\":\"acct_q3w7e2r5t8y1u4i6o9p0a3s5d7\",\"new\":false,\"access_token\":\"oa_at_6b1d9e4f2a7c3e8b5d0f1a6c9e2b4d7f\",\"refresh_token\":\"oa_rt_3e8b1d6f9a2c5e0b7d4f1a8c3e6b9d2f\",\"expires_in\":3600,\"device_bound\":false,\"player\":null}"}
  ]
 }

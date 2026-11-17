@@ -1166,6 +1166,54 @@ END $$;
 
 
 --
+-- Name: cli_carry(text, timestamp with time zone); Type: FUNCTION; Schema: auth; Owner: -
+--
+
+CREATE FUNCTION auth.cli_carry(sid text, l1 timestamp with time zone) RETURNS void
+    LANGUAGE sql
+    AS $$
+  UPDATE auth.sessions SET l1_at = l1 WHERE id = sid AND level = 'L1'
+$$;
+
+
+--
+-- Name: cli_start(text, text, text); Type: FUNCTION; Schema: auth; Owner: -
+--
+
+CREATE FUNCTION auth.cli_start(id_ text, code_sha text, sid text) RETURNS text
+    LANGUAGE plpgsql
+    AS $$
+DECLARE s auth.sessions;
+BEGIN
+  SELECT * INTO s FROM auth.sessions x WHERE x.id = sid;
+  IF s.id IS NULL OR s.via_kind <> 'email' OR s.client <> 'web' THEN RETURN 'none'; END IF;
+  DELETE FROM auth.pending WHERE kind = 'cli' AND session = sid AND done_at IS NULL;
+  DELETE FROM auth.pending WHERE expires_at < now() - interval '1 day';
+  INSERT INTO auth.pending (id, kind, code_sha256, account, session, client, expires_at)
+  VALUES (id_, 'cli', code_sha, s.account, sid, 'app', now() + interval '5 minutes');
+  RETURN 'ok';
+END $$;
+
+
+--
+-- Name: cli_take(text); Type: FUNCTION; Schema: auth; Owner: -
+--
+
+CREATE FUNCTION auth.cli_take(code_sha text, OUT state text, OUT account text, OUT via_id bigint, OUT l1_at timestamp with time zone) RETURNS record
+    LANGUAGE plpgsql
+    AS $$
+DECLARE p auth.pending; s auth.sessions;
+BEGIN
+  SELECT * INTO p FROM auth.pending x WHERE x.kind = 'cli' AND x.code_sha256 = code_sha FOR UPDATE;
+  IF p.id IS NULL OR p.done_at IS NOT NULL OR p.expires_at <= now() THEN state := 'none'; RETURN; END IF;
+  UPDATE auth.pending SET done_at = now() WHERE id = p.id;
+  SELECT * INTO s FROM auth.sessions x WHERE x.id = p.session;
+  IF s.id IS NULL OR s.account <> p.account OR s.via_kind <> 'email' THEN state := 'ended'; RETURN; END IF;
+  state := 'ok'; account := s.account; via_id := s.via_id; l1_at := s.l1_at;
+END $$;
+
+
+--
 -- Name: code_new(text, bytea, bytea); Type: FUNCTION; Schema: auth; Owner: -
 --
 
@@ -20452,7 +20500,7 @@ CREATE TABLE auth.pending (
     done_at timestamp with time zone,
     session text,
     CONSTRAINT pending_client_check CHECK ((client = ANY (ARRAY['web'::text, 'app'::text]))),
-    CONSTRAINT pending_kind_check CHECK ((kind = ANY (ARRAY['email'::text, 'nostr'::text, 'phone'::text, 'passkey'::text]))),
+    CONSTRAINT pending_kind_check CHECK ((kind = ANY (ARRAY['email'::text, 'nostr'::text, 'phone'::text, 'passkey'::text, 'cli'::text]))),
     CONSTRAINT pending_purpose_check CHECK ((purpose = ANY (ARRAY['login'::text, 'link'::text, 'stepup'::text, 'finish'::text, 'merge'::text])))
 );
 
@@ -26222,6 +26270,13 @@ CREATE INDEX notices_account ON auth.notices USING btree (account, at);
 --
 
 CREATE INDEX passkeys_account ON auth.passkeys USING btree (account);
+
+
+--
+-- Name: pending_cli_code; Type: INDEX; Schema: auth; Owner: -
+--
+
+CREATE INDEX pending_cli_code ON auth.pending USING btree (code_sha256) WHERE (kind = 'cli'::text);
 
 
 --

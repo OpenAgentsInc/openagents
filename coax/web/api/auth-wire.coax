@@ -12,6 +12,7 @@
 //   auw_elsewhere_write, .._lines           409 from POST /api/auth/email/link: the code to type
 //   auw_challenge_write, .._lines           200 from POST /api/auth/nostr/challenge
 //   auw_phone_write, auw_phone_lines        200 from POST /api/auth/phone/start
+//   auw_cli_code_write, auw_cli_code_lines  200 from POST /api/auth/cli/code: the command line's code
 //   auw_pair_write, auw_pair_lines          200 from POST /api/auth/refresh
 //   auw_logout_all_write, .._lines          200 from POST /api/auth/logout-everywhere
 //   auw_sessions_write                      200 from GET /api/auth/sessions (the rows are jsonb's text)
@@ -223,6 +224,20 @@ auw_phone_lines :: (challenge: string, poll: string, origin: string, out: [] u8)
   jo_put(o[..], "challenge "); jo_put(o[..], challenge); jo_put(o[..], "\npoll "); jo_put(o[..], poll);
   jo_put(o[..], "\nurl "); jo_put(o[..], origin); jo_put(o[..], "/login#c="); jo_put(o[..], challenge);
   jo_put(o[..], "\nexpires_in 300\n");
+  return aw_len(o[..]);
+}
+
+// ---- a command line logs in from a browser
+// {"state":"code","code":"C","expires_in":300}: the one-time code the browser shows, to paste where
+// the command line asks (POST /api/auth/cli/redeem spends it).
+auw_cli_code_write :: (code: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"state\":\"code\",\"code\":"); jo_quoted(o[..], code); jo_put(o[..], ",\"expires_in\":300}");
+  return aw_len(o[..]);
+}
+auw_cli_code_lines :: (code: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "state code\ncode "); jo_put(o[..], code); jo_put(o[..], "\nexpires_in 300\n");
   return aw_len(o[..]);
 }
 
@@ -665,4 +680,14 @@ auw_test_left :: (out: [] u8) -> string #effects(all) {
   keys := "[{\"label\": \"app\", \"pubkey\": \"ab12\"}]";
   k := auw_me_pubkey_at(keys, 0);
   #assert k == 29 && keys[k..<k + 4] == "ab12" && auw_me_pubkey_at(keys, k + 1) == -1 && auw_me_pubkey_at("[]", 0) == -1;
+}
+
+#test "the command line's code: its state, the code and its five minutes, in JSON and as lines" {
+  b: [256] u8;
+  n := auw_cli_code_write("0123456789abcdef0123456789abcdef", b[..]);
+  #assert cast(string) b[0..<n] == "{\"state\":\"code\",\"code\":\"0123456789abcdef0123456789abcdef\",\"expires_in\":300}";
+  #assert auw_cli_code_write("0123456789abcdef0123456789abcdef", b[0..<n - 1]) == -1;
+  n = auw_cli_code_lines("0123456789abcdef0123456789abcdef", b[..]);
+  #assert cast(string) b[0..<n] == "state code\ncode 0123456789abcdef0123456789abcdef\nexpires_in 300\n";
+  #assert auw_cli_code_lines("0123456789abcdef0123456789abcdef", b[0..<n - 1]) == -1;
 }

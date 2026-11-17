@@ -32,6 +32,10 @@
 //   POST /api/auth/phone/start            the phone QR's challenge and the page's poll token
 //   POST /api/auth/phone/approve {challenge}   the app, NIP-98 signed by its account's key
 //   POST /api/auth/phone/poll {poll}      waiting | expired | logged in
+//   POST /api/auth/cli/code               a browser logged in by email: a one-time code (5 minutes) for a
+//                                         command line, shown to copy (ap_cli_mint)
+//   POST /api/auth/cli/redeem {code}      the command line, no Origin: the code, once -> an app's login, the
+//                                         browser's email at L1 with its email proof time (ap_cli_redeem)
 //   POST /api/auth/refresh {refresh_token}     an app's next pair; a reused one ends the family; a login
 //                                         bound to a device key needs OA-Device-Proof (auth-device.c, #13216)
 //   POST /api/auth/logout                 this session (none: the cookie is cleared all the same)
@@ -45,8 +49,9 @@
 //   OA_API_SITE_ORIGINS     other first-party sites whose own pages may log in by email code: exact origins
 //                           between commas ("https://gamebuilder.org"), unset for none. Such a site's load
 //                           balancer sends its /api/auth/ here; its pages may POST email/start (a plain browser
-//                           login), email/verify, logout and /api/chat/complete/v1 (the account chat), and
-//                           nothing else (auth-policy.coax ap_site)
+//                           login), email/verify, logout, cli/code (a command line's code, made by the
+//                           logged-in browser) and /api/chat/complete/v1 (the account chat), and nothing
+//                           else (auth-policy.coax ap_site)
 //   OA_EMAIL_ALLOW          (email.c) staging's allowlist of addresses mail may go to
 //
 // An agent (agents.c, agent-policy.coax, #13211) is refused on every human, L2, L2-fresh and admin
@@ -111,6 +116,8 @@ static const auth_rule RULES[] = {
   R("POST", "/api/auth/phone/start", false, AP_PUBLIC, "the phone QR"),
   R("POST", "/api/auth/phone/approve", false, AP_HUMAN, "the app approves with its account's key"),
   R("POST", "/api/auth/phone/poll", false, AP_PUBLIC, "the page that showed the QR"),
+  R("POST", "/api/auth/cli/code", false, AP_HUMAN, "a browser logged in by email makes a command line's one-time code (ap_cli_mint)"),
+  R("POST", "/api/auth/cli/redeem", false, AP_PUBLIC, "a command line spends that code, with no Origin, for an app's login at L1 (ap_cli_redeem)"),
   R("POST", "/api/auth/refresh", false, AP_PUBLIC, "an app's refresh token"),
   R("POST", "/api/auth/logout", false, AP_PUBLIC, "ends this session, if any"),
   R("POST", "/api/auth/logout-everywhere", false, AP_L2, "ends every session of the account"),
@@ -937,8 +944,10 @@ void auth_device_name(const request *q, char *out, size_t cap) { device_name(q, 
 
 // A logged-in answer: a session (cookie for the web, a token pair for an app), the guest's player
 // attached, the audit row. made: the account is new. Answers the request.
-void auth_logged_in(const request *q, PGconn *db, const char *acct, const char *via_kind, const char *via_id, const char *level,
-                    bool app, bool made, const char *action, const char *extra_json, const char *extra_lines) {
+// l1_from: the email proof time the new session carries instead of now (a command line's login from a
+// browser carries the browser's, auth.cli_carry); NULL for a login proved here and now.
+static void logged_in(const request *q, PGconn *db, const char *acct, const char *via_kind, const char *via_id, const char *level,
+                      bool app, bool made, const char *action, const char *extra_json, const char *extra_lines, const char *l1_from) {
   char tok[160], dig[65], name[96], country[8] = "";
   // An app's device key (#13216), checked before there is a session: one we can't hold refuses the login.
   auth_device_ask device;
@@ -962,6 +971,19 @@ void auth_logged_in(const request *q, PGconn *db, const char *acct, const char *
   char sid[32], vacct[160]; bool team = !strcmp(PQgetvalue(r, 0, 1), "t");
   snprintf(sid, sizeof sid, "%s", PQgetvalue(r, 0, 0)); snprintf(vacct, sizeof vacct, "%s", PQgetvalue(r, 0, 2));
   PQclear(r);
+  // A login handed from a browser is no fresher a proof of the email than the browser's own.
+  if (l1_from) {
+    const char *c[2] = {sid, l1_from[0] ? l1_from : NULL};
+    PGresult *x = PQexecParams(db, "SELECT auth.cli_carry($1, $2::timestamptz)", 2, NULL, c, NULL, NULL, 0);
+    bool ok = PQresultStatus(x) == PGRES_TUPLES_OK;
+    PQclear(x);
+    if (!ok) {
+      const char *e[1] = {sid};
+      PQclear(PQexecParams(db, "SELECT auth.session_end($1)", 1, NULL, e, NULL, NULL, 0));
+      refuse(q, 500, "That didn't work. Try again.");
+      return;
+    }
+  }
   // The guest's player joins the account once.
   char player[160], pjson[600] = "null";
   api_header(q, "X-Verse-Player", player, sizeof player);
@@ -1003,6 +1025,10 @@ void auth_logged_in(const request *q, PGconn *db, const char *acct, const char *
 #endif
   answer_n(q, 200, headers, json, auw_login_web_write(cs(acct), made, cs(pjson), cs(extra_json), OUT(json)),
            lines, auw_login_web_lines(cs(acct), made, cs(extra_lines), OUT(lines)));
+}
+void auth_logged_in(const request *q, PGconn *db, const char *acct, const char *via_kind, const char *via_id, const char *level,
+                    bool app, bool made, const char *action, const char *extra_json, const char *extra_lines) {
+  logged_in(q, db, acct, via_kind, via_id, level, app, made, action, extra_json, extra_lines, NULL);
 }
 
 static char *body_text(const request *q) {
@@ -1353,6 +1379,67 @@ static void phone_poll(const request *q, PGconn *db, const char *body) {
   if (!strcmp(state, "waiting")) { answer_state(q, 200, NULL, "waiting"); return; }
   if (!strcmp(state, "ok")) { key_login(q, db, pk, "phone", false, "login.phone"); return; }
   refuse(q, 410, "That code has ended. Show a new one.");
+}
+
+// ---- a command line logs in from a browser (docs/auth/sessions-and-tokens.md, "A command line logs in
+// from a browser"; INVARIANTS.md). The browser, logged in by email, makes a one-time code it shows
+// to copy; the command line pastes it and spends it, once, within 5 minutes, for an app's login of
+// its own. That login is what typing the email's code into the command line gives: the same email,
+// at L1, limited when the account has a stronger way in (ap_limited), with the browser's email
+// proof time. No key, device or other way in is linked, so it needs no L2 (ap_limited_handoff).
+static void cli_code(const request *q, PGconn *db) {
+  const auth_principal *p = auth_principal_of(q);
+  char from[256]; int site = site_of(q, from);
+  if (!p || !ap_cli_mint(site, p->kind, p->credential == AUTH_COOKIE, !strcmp(p->via, "email"))) {
+    refuse(q, 403, "Make this code in your browser, logged in with your email.");
+    return;
+  }
+  long long until = 0; char ipk[65]; visitor_key(q, ipk);
+  if (!limit_hit(db, L_AGENT_ASK, ipk, &until)) { refuse_limit(q, L_AGENT_ASK, until); return; }
+  char id[33], code[33], code_sha[65];
+  if (!random_hex(id, 16) || !random_hex(code, 16)) { refuse(q, 503, "No randomness here. Try again."); return; }
+  sha_hex(code, code_sha);
+  const char *v[3] = {id, code_sha, p->session};
+  PGresult *r = PQexecParams(db, "SELECT auth.cli_start($1, $2, $3)", 3, NULL, v, NULL, NULL, 0);
+  bool ok = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 && !strcmp(PQgetvalue(r, 0, 0), "ok");
+  if (PQresultStatus(r) != PGRES_TUPLES_OK) api_log("auth: cli code: %s", PQerrorMessage(db));
+  PQclear(r);
+  if (!ok) { memset(code, 0, sizeof code); refuse(q, 403, "Make this code in your browser, logged in with your email."); return; }
+  char d[400];
+  audit(db, p->account, p->session, "login.cli_code", "ok", detail_of(d, auw_purpose_write(cs("cli"), cs(site == AP_SITE_LISTED ? from : ""), OUT(d))));
+  char json[200], lines[200];
+  answer_n(q, 200, NULL, json, auw_cli_code_write(cs(code), OUT(json)), lines, auw_cli_code_lines(cs(code), OUT(lines)));
+  memset(code, 0, sizeof code); memset(json, 0, sizeof json); memset(lines, 0, sizeof lines);
+}
+static void cli_redeem(const request *q, PGconn *db, const char *body) {
+  char from[256];
+  if (!ap_cli_redeem(site_of(q, from))) { refuse(q, 403, "Not from this site."); return; }
+  long long until = 0; char ipk[65]; visitor_key(q, ipk);
+  if (!limit_hit(db, L_AGENT_ASK, ipk, &until)) { refuse_limit(q, L_AGENT_ASK, until); return; }
+  char code[80], code_sha[65];
+  int64_t n = auw_ask_code(cs(body), ASK(code));
+  if (n < 0 || !ap_cli_code_ok((coax_string){code, n})) { memset(code, 0, sizeof code); refuse(q, 400, "Paste the code the page shows."); return; }
+  sha_hex(code, code_sha); memset(code, 0, sizeof code);
+  const char *v[1] = {code_sha};
+  PGresult *r = PQexecParams(db, "SELECT state, coalesce(account, ''), coalesce(via_id::text, ''), coalesce(l1_at::text, '') FROM auth.cli_take($1)",
+                             1, NULL, v, NULL, NULL, 0);
+  char state[16] = "", acct[40] = "", via[24] = "", l1[64] = "";
+  if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) {
+    snprintf(state, sizeof state, "%s", PQgetvalue(r, 0, 0)); snprintf(acct, sizeof acct, "%s", PQgetvalue(r, 0, 1));
+    snprintf(via, sizeof via, "%s", PQgetvalue(r, 0, 2)); snprintf(l1, sizeof l1, "%s", PQgetvalue(r, 0, 3));
+  } else api_log("auth: cli take: %s", PQerrorMessage(db));
+  PQclear(r);
+  if (!strcmp(state, "ended")) {
+    audit_why(db, acct, NULL, "login.cli", "refused", "browser logged out");
+    refuse(q, 410, "That browser has logged out since. Log in there and make a new code.");
+    return;
+  }
+  if (strcmp(state, "ok")) {
+    audit_why(db, NULL, NULL, "login.cli", "refused", "no code");
+    refuse(q, 410, "That code was used or has ended. Make a new one on the page.");
+    return;
+  }
+  logged_in(q, db, acct, "email", via[0] ? via : NULL, "L1", true, false, "login.cli", NULL, NULL, l1);
 }
 
 // ---- app tokens
@@ -1740,7 +1827,7 @@ bool auth_api_route(const request *q) {
   api_route_at("auth_api_route");
   bool get = !strcmp(q->method, "GET");
   static const char *const posts[] = {"email/start", "email/verify", "email/link", "nostr/challenge", "nostr", "phone/start", "phone/approve",
-                                      "phone/poll", "refresh", "logout", "logout-everywhere", "freeze", NULL};
+                                      "phone/poll", "cli/code", "cli/redeem", "refresh", "logout", "logout-everywhere", "freeze", NULL};
   bool known_post = false;
   for (const char *const *o = posts; *o; o++) if (!strcmp(op, *o)) known_post = true;
   bool remove = !strncmp(op, "sessions/", 9) && strstr(op, "/remove");
@@ -1765,6 +1852,8 @@ bool auth_api_route(const request *q) {
   else if (!strcmp(op, "phone/start")) phone_start(q, db);
   else if (!strcmp(op, "phone/approve")) phone_approve(q, db, body);
   else if (!strcmp(op, "phone/poll")) phone_poll(q, db, body);
+  else if (!strcmp(op, "cli/code")) cli_code(q, db);
+  else if (!strcmp(op, "cli/redeem")) cli_redeem(q, db, body);
   else if (!strcmp(op, "refresh")) refresh(q, db, body);
   else if (!strcmp(op, "logout")) logout(q, db);
   else if (!strcmp(op, "logout-everywhere")) logout_everywhere(q, db, body);

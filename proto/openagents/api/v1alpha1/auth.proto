@@ -101,7 +101,7 @@ message AuthEmailStartPostRefusal {
   optional int64 until_ms = 5 [json_name = "until_ms"];
 }
 
-// POST /api/auth/email/verify 200
+// POST /api/auth/email/verify 200; POST /api/auth/cli/redeem 200 (the same logged-in answer, an app's)
 message AuthEmailVerifyPost {
   optional string state = 1 [json_name = "state"];
   optional string account = 2 [json_name = "account"];
@@ -158,6 +158,13 @@ message AuthNostrChallengePost {
   optional string method = 3 [json_name = "method"];
   optional string body = 4 [json_name = "body"];
   optional int64 expires_in = 5 [json_name = "expires_in"];
+}
+
+// POST /api/auth/cli/code 200: a browser's one-time code for a command line's login
+message AuthCliCodePost {
+  optional string state = 1 [json_name = "state"];
+  optional string code = 2 [json_name = "code"];
+  optional int64 expires_in = 3 [json_name = "expires_in"];
 }
 
 // POST /api/auth/refresh 200

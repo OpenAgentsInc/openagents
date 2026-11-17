@@ -911,8 +911,8 @@ Checks: `coax/web/api/tests/agent_checks.coax` (device login);
 A browser write to `/api/auth/` needs this site's `Origin` (`OA_API_ORIGIN`);
 apps and tools send none. `OA_API_SITE_ORIGINS` (unset by default; production
 lists `https://gamebuilder.org`, `coax/web/api/deploy.sh`) names other
-first-party sites whose load balancers send five of their own paths to this
-API. An `Origin` is a listed site only when it equals one entry byte for
+first-party sites whose load balancers send six of their own paths to this
+API (and the command line's two, below, which carry no `Origin`). An `Origin` is a listed site only when it equals one entry byte for
 byte, and an entry counts only as `https://host[:port]` in lower case (or the
 dev server's `http://127.0.0.1[:port]`, `http://localhost[:port]`): no
 wildcard, suffix, prefix, path, slash, space or capital is forgiven. Unset,
@@ -920,8 +920,9 @@ every answer is as it was.
 
 A request with a listed site's `Origin` reaches `GET /api/auth/account`,
 `POST /api/auth/email/start`, `POST /api/auth/email/verify`,
-`POST /api/auth/logout`, `POST /api/chat/complete/v1` and a GameBuilder build
-agent's three routes (`POST /api/gamebuilder/agents/v1`,
+`POST /api/auth/logout`, `POST /api/auth/cli/code` (a command line's code,
+made by the logged-in browser: next section), `POST /api/chat/complete/v1` and a
+GameBuilder build agent's three routes (`POST /api/gamebuilder/agents/v1`,
 `GET /api/gamebuilder/agent/v1`, `GET /api/gamebuilder/agent/events/v1`), and is
 `403 Not from this site.` on every other route of the API, at the gate, before
 the route runs. The account chat keeps its own rules there as on this site
@@ -954,6 +955,54 @@ link is ours, the audit rows name the site). Not covered: a GET the other site's
 no `Origin`, so it is answered as this site's own; that balancer must send
 only those paths ([sessions and tokens](docs/auth/sessions-and-tokens.md#a-second-first-party-site)).
 
+## A command line's login from a browser is the browser's email login, no more
+
+A command line (GameBuilder's `gamebuilder login`) may log in from a browser
+already logged in by email, on this site or a listed one, without the
+L2 that linking a device's key needs. The browser's page posts
+`POST /api/auth/cli/code`; the answer is a one-time code (128 random bits as 32
+hex digits, `{"state":"code","code":...,"expires_in":300}`) that the page shows
+with a Copy button. The command line, with no `Origin`, posts it to
+`POST /api/auth/cli/redeem {code}` and gets an app's login (access and refresh
+tokens) of its own.
+
+- Only a person's own web session from an email login makes a code: its
+  credential is the session cookie, its `Origin` ours or a listed site's, its
+  `via` email (`ap_cli_mint`). An app's token, a signature, an agent, another
+  site, a request with no `Origin`, and a session from a key or passkey make
+  none (a key's L2 never becomes something a code carries).
+- Only a request with no `Origin` spends one (`ap_cli_redeem`): an app's
+  tokens never reach a page, ours or a listed site's.
+- A code is kept as its SHA-256, works once and for 5 minutes, and a new one
+  ends the same browser session's unspent ones (`auth.cli_start`,
+  `auth.cli_take`, migration 0212). A code whose browser session has ended
+  since (logout, removal, logout everywhere) logs nobody in.
+- The login it makes is exactly what typing the email's code into the command
+  line makes: the same account and email row (`via` email), at **L1**, an app
+  session bound to no device, with no key, passkey, device or other way in
+  linked. It is limited (`ap_limited`) whenever the account has a stronger way
+  in, as the browser's session is. Its email proof time is the browser
+  session's, never now (`auth.cli_carry`), so a code is not a fresh email code
+  for the routes that accept one (`al_proof`).
+- So a limited session may make a code (`ap_limited_handoff`): it is the one
+  login write a limited session makes, and the login it hands over is no more
+  than that session. Linking the computer's key, approving a device and every
+  other way in still need L2.
+- Both routes count against `agent_ask`, the computer login requests from one
+  network address (30 an hour).
+
+The decisions are `ap_cli_mint`, `ap_cli_redeem`, `ap_cli_code_ok` and
+`ap_limited_handoff` (`coax/web/api/auth-policy.coax`, `#authority`); the rows
+are migration 0212's. Checks: that file's `#test`s;
+`coax/web/api/tests/auth_checks.coax` `ac_site_checks` ("cli:": nobody, another
+site, no `Origin` and an app's token make no code; the site's page makes one;
+it is kept as its digest; a page, ours or the site's, cannot spend it; an email
+code and an unknown code are refused; the command line spends it once for an
+app login on the same account at L1, via email, with the browser's `l1_at`,
+bound to no device, no key linked; the audit rows; a code from a browser that
+logged out since is refused). Not covered by the suite: a limited session
+making a code (the policy's `#test`s cover `ap_limited_route`).
+
 ## A limited session writes only the account chat's stateless completions and a build agent
 
 A limited session (an email login, L1, on an account with a key, passkey,
@@ -970,7 +1019,9 @@ against the account's own daily inference quota and never reads or charges
 credit, sats or a wallet. The route's own rules still apply (`act_funded`,
 the body's shape). Saving a thread, binding a player, project chats,
 settings, identity, the wallet, agents, exports, deletion and every
-authenticator change stay refused, and recovery still waits 72 hours. From a
+authenticator change stay refused, and recovery still waits 72 hours. Its one
+login write is a command line's code (`ap_limited_handoff`, the section
+above), whose login is no more than the session. From a
 listed first-party site only the first route is reachable. Checks: that
 file's `#test`s; `coax/web/api/tests/auth_recover_checks.coax` (a limited
 session reaches the three routes' own answer; nine other ordinary writes,

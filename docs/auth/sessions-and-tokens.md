@@ -210,7 +210,7 @@ auth_resolve(request) -> principal | refusal
 5. Writes from a cookie need our `Origin` (as today) and `SameSite=Lax`
    cookies; GETs never change state. One exception, off unless set:
    [a second first-party site](#a-second-first-party-site) may log in by
-   email code and ask the account chat.
+   email code, make a command line's code and ask the account chat.
 6. Log one line per refusal: route, rule, principal kind. Never the token.
 
 **Admins** are accounts with the `admin` role, granted only by a root
@@ -224,7 +224,8 @@ counts as a signature made when it signed in.
 
 Another website of ours (GameBuilder, `https://gamebuilder.org`) logs
 people in to the same accounts from its own `/login` page, and its default
-agent is our account chat. Its load balancer sends its paths (below) to this API, so the browser's
+agent is our account chat. Its load balancer sends its paths (below) to this API (and
+the command line's two, which carry no `Origin`), so the browser's
 requests are same-origin there: they carry `Origin: https://gamebuilder.org`,
 and the session cookie the API sets is host-only on `gamebuilder.org`
 (our cookies have no `Domain`, and `__Host-` cookies can't have one). No
@@ -242,6 +243,8 @@ Unset, the default, means there are none and every rule is as before.
 - A request with a listed site's `Origin` reaches these routes of the whole
   API: `GET /api/auth/account`, `POST /api/auth/email/start`,
   `POST /api/auth/email/verify`, `POST /api/auth/logout`,
+  `POST /api/auth/cli/code` ([a command line logs in from a
+  browser](#a-command-line-logs-in-from-a-browser)),
   `POST /api/chat/complete/v1`, and a GameBuilder build agent's
   `POST /api/gamebuilder/agents/v1`, `GET /api/gamebuilder/agent/v1` and
   `GET /api/gamebuilder/agent/events/v1`
@@ -273,7 +276,36 @@ Unset, the default, means there are none and every rule is as before.
 
 The decision is `ap_site`, `ap_site_route`, `ap_site_post`,
 `ap_site_login` and `ap_site_pending` in `coax/web/api/auth-policy.coax`. The other site's load
-balancer should send only those paths. A same-origin GET carries no
+balancer should send only those paths, and the command line's two.
+
+### A command line logs in from a browser
+
+A command line (GameBuilder's `gamebuilder login`) opens a page of a site of
+ours (`https://gamebuilder.org/login/cli`). Once the browser is logged in by
+email there, the person presses a button and the page shows a one-time code
+with a Copy button. They paste it where the command line asks, and the command
+line has a login of its own.
+
+| Step | Request | Who may |
+| --- | --- | --- |
+| Make a code | `POST /api/auth/cli/code` → `{"state":"code","code":"<32 hex>","expires_in":300}` | A person's own web session from an email login, by its cookie, from our site or a listed one (`ap_cli_mint`) |
+| Spend it | `POST /api/auth/cli/redeem {"code"}` → an app's login, as `email/verify` answers an app | Only with no `Origin`: an app or a tool (`ap_cli_redeem`) |
+
+Why it needs no L2: approving a device (`/api/auth/device/approve`) links
+that computer's key to the account, a new way in, so it needs L2 and an email
+login can't do it. A code links nothing. The login it makes is the one typing
+the email's code into the command line makes: the same account and email, at
+L1, an app session bound to no device, limited when the account has a stronger
+way in. Its email proof time is the browser's, not now, so it is not a fresh
+email code either. A limited session may make a code for that reason
+(`ap_limited_handoff`); it is its only login write.
+
+A code is 128 random bits, kept as its SHA-256, good once and for 5 minutes. A
+new code ends the same browser's unspent one, and a code whose browser session
+ended since (logout, removal, logout everywhere) logs nobody in. Both routes
+count against `agent_ask` (computer login requests from one network address).
+The command line's login is then an ordinary app login: `refresh`, `logout`,
+and the devices list, where it can be removed. A same-origin GET carries no
 `Origin`, so a read it forwards is answered as our own site's would be.
 
 ### Step-up

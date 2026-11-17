@@ -176,7 +176,7 @@ ac_site_checks :: (parent: [] Ap, dir: string) {
   st = ac_from(t, AC_GB, "203.0.113.144", "/api/chat/complete/v1", AC_CHAT, auth);
   ap_check(t, "listed: a logged-in person who is not on the team reaches the account chat's own rule, and it refuses", st == 403
            && ap_member(ap_body(t), "error", eb[..]) == "Agent chat is currently available to the team beta.", ap_body(t));
-  paths := [30] string.["/api/chat/world/complete/v1", "/api/chat/delegated/complete/v1", "/api/chat/project/v1", "/api/chat/project/complete/v1",
+  paths := [31] string.["/api/auth/cli/redeem", "/api/chat/world/complete/v1", "/api/chat/delegated/complete/v1", "/api/chat/project/v1", "/api/chat/project/complete/v1",
                         "/api/chat/thread/v1", "/api/chat/world/player/v1", "/api/chat/complete", "/api/chat/route/v1",
                         "/api/auth/nostr/challenge", "/api/auth/nostr", "/api/auth/phone/start", "/api/auth/phone/poll", "/api/auth/refresh",
                         "/api/auth/logout-everywhere", "/api/auth/freeze", "/api/auth/sessions/ses_none/remove", "/api/auth/passkey/login/options",
@@ -200,6 +200,54 @@ ac_site_checks :: (parent: [] Ap, dir: string) {
   st = ac_call(t, "GET", "/api/auth/account", "", auth, "", "");
   ap_check(t, "listed: the refused writes changed nothing: the session is still logged in", st == 200 && ap_member(ap_body(t), "logged_in", eb[..]) == "true", ap_body(t));
 
+  // ---- a command line logs in from the site's page (INVARIANTS.md "A command line's login from a browser is the browser's email login, no more")
+  xr: [1] Sb;
+  st = ac_from(t, AC_GB, "203.0.113.147", "/api/auth/cli/code", "{}", "");
+  ap_check(t, "cli: nobody logged in makes no code", st == 401 && ap_member(ap_body(t), "error", eb[..]) == "Log in first.", ap_body(t));
+  st = ac_from(t, "https://evil.example", "203.0.113.147", "/api/auth/cli/code", "{}", auth);
+  ap_check(t, "cli: another site's page makes no code with the session", st == 403, ap_body(t));
+  st = ac_call(t, "POST", "/api/auth/cli/code", "{}", auth, "", "");
+  ap_check(t, "cli: a request with no Origin (an app) makes no code with a browser's cookie", st == 403, ap_body(t));
+  st = ac_from(t, AC_GB, "203.0.113.147", "/api/auth/cli/code", "{}", auth);
+  cb: [64] u8; K := ap_member(ap_body(t), "code", cb[..]);
+  ap_check(t, "cli: the logged-in page makes a code: 32 hex digits, five minutes, and no token", st == 200 && ap_member(ap_body(t), "state", eb[..]) == "code"
+           && K.count == 32 && ap_member(ap_body(t), "expires_in", eb[..]) == "300" && !ap_has(ap_body(t), "access_token") && !ap_has(ap_body(t), "refresh"), ap_body(t));
+  sb_clear(q[..]); sb(q[..], "SELECT count(*) FROM auth.pending WHERE kind = 'cli' AND account = '"); sb(q[..], acct); sb(q[..], "' AND code_sha256 <> '"); sb(q[..], K); sb(q[..], "' AND code_sha256 IS NOT NULL");
+  ap_check(t, "cli: the code is kept only as its SHA-256", ap_sql(t, sb_text(q[..]), out[..]) == "1", "");
+  rb: [1] Sb; sb(rb[..], "{\"code\":\""); sb(rb[..], K); sb(rb[..], "\"}");
+  st = ac_from(t, AC_GB, "203.0.113.147", "/api/auth/cli/redeem", sb_text(rb[..]), "");
+  ap_check(t, "cli: the site's page cannot spend the code", st == 403 && ap_member(ap_body(t), "error", eb[..]) == "Not from this site.", ap_body(t));
+  st = ac_from(t, ours, "203.0.113.147", "/api/auth/cli/redeem", sb_text(rb[..]), "");
+  ap_check(t, "cli: nor can our own site's page: an app's tokens never reach a page", st == 403, ap_body(t));
+  st = ac_call(t, "POST", "/api/auth/cli/redeem", "{\"code\":\"482913\"}", ac_ip("203.0.113.148", xr[..]), "", "");
+  ap_check(t, "cli: an email code is not a command line's code", st == 400, ap_body(t));
+  st = ac_call(t, "POST", "/api/auth/cli/redeem", "{\"code\":\"0123456789abcdef0123456789abcdef\"}", ac_ip("203.0.113.148", xr[..]), "", "");
+  ap_check(t, "cli: a code nobody made is refused", st == 410, ap_body(t));
+  st = ac_call(t, "POST", "/api/auth/cli/redeem", sb_text(rb[..]), ac_ip("203.0.113.148", xr[..]), "", "");
+  atb: [160] u8; AT := ap_member(ap_body(t), "access_token", atb[..]); rtb: [160] u8; RT := ap_member(ap_body(t), "refresh_token", rtb[..]);
+  ap_check(t, "cli: the command line spends the code for an app's login of its own, on the same account", st == 200 && ap_starts(AT, "oa_at_") && ap_starts(RT, "oa_rt_")
+           && ap_member(ap_body(t), "account", eb[..]) == acct && ap_member(ap_body(t), "device_bound", eb[..]) == "false" && ap_member(ap_body(t), "new", eb[..]) == "false", "");
+  sb_clear(q[..]); sb(q[..], "SELECT count(*) FROM auth.sessions a JOIN auth.sessions b ON b.account = a.account AND b.client = 'web' AND b.via_kind = 'email' AND b.via_id = a.via_id AND b.l1_at = a.l1_at WHERE a.account = '");
+  sb(q[..], acct); sb(q[..], "' AND a.client = 'app' AND a.level = 'L1' AND a.via_kind = 'email' AND a.device IS NULL");
+  ap_check(t, "cli: that login is the browser's email at L1, with the browser's email proof time, bound to no device", ap_sql(t, sb_text(q[..]), out[..]) == "1", "");
+  sb_clear(q[..]); sb(q[..], "SELECT count(*) FROM auth.nostr_keys WHERE account = '"); sb(q[..], acct); sb(q[..], "'");
+  ap_check(t, "cli: and it linked no key to the account", ap_sql(t, sb_text(q[..]), out[..]) == "0", "");
+  bh: [1] Sb; sb(bh[..], "Authorization: Bearer "); sb(bh[..], AT);
+  st = ac_call(t, "GET", "/api/auth/account", "", sb_text(bh[..]), "", "");
+  ap_check(t, "cli: the command line's token is that account", st == 200 && ap_member(ap_body(t), "account", eb[..]) == acct, ap_body(t));
+  st = ac_call(t, "POST", "/api/auth/cli/code", "{}", sb_text(bh[..]), "", "");
+  ap_check(t, "cli: an app's token makes no code of its own", st == 403, ap_body(t));
+  st = ac_call(t, "POST", "/api/auth/cli/redeem", sb_text(rb[..]), ac_ip("203.0.113.148", xr[..]), "", "");
+  ap_check(t, "cli: a code is spent once", st == 410, ap_body(t));
+  sb_clear(q[..]); sb(q[..], "SELECT count(*) FROM auth.audit WHERE account = '"); sb(q[..], acct);
+  sb(q[..], "' AND ((action = 'login.cli_code' AND detail->>'site' = 'https://gamebuilder.org') OR (action = 'login.cli' AND result = 'ok' AND detail->>'client' = 'app'))");
+  ap_check(t, "cli: the audit rows say the site made the code and an app logged in", ap_sql(t, sb_text(q[..]), out[..]) == "2", "");
+  // a code made before the browser logs out is no good after
+  st = ac_from(t, AC_GB, "203.0.113.147", "/api/auth/cli/code", "{}", auth);
+  kb2: [64] u8; K2 := ap_member(ap_body(t), "code", kb2[..]);
+  rb2: [1] Sb; sb(rb2[..], "{\"code\":\""); sb(rb2[..], K2); sb(rb2[..], "\"}");
+  ap_check(t, "cli: a second code for the logout check", st == 200 && K2.count == 32, ap_body(t));
+
   // ---- logout, and our own site as before
   st = ac_from(t, "https://evil.example", "203.0.113.145", "/api/auth/logout", "{}", auth);
   ap_check(t, "listed: another site cannot log the session out", st == 403, ap_body(t));
@@ -207,6 +255,8 @@ ac_site_checks :: (parent: [] Ap, dir: string) {
   ap_check(t, "listed: the site's page logs out", st == 200 && ap_member(ap_body(t), "state", eb[..]) == "logged-out", ap_body(t));
   st = ac_call(t, "GET", "/api/auth/account", "", auth, "", "");
   ap_check(t, "listed: and the session has ended", st == 200 && ap_member(ap_body(t), "logged_in", eb[..]) == "false", ap_body(t));
+  st = ac_call(t, "POST", "/api/auth/cli/redeem", sb_text(rb2[..]), ac_ip("203.0.113.148", xr[..]), "", "");
+  ap_check(t, "cli: a code from a browser that has logged out since logs nobody in", st == 410 && !ap_has(ap_body(t), "access_token"), ap_body(t));
   st = ac_from(t, ours, "203.0.113.146", "/api/auth/nostr/challenge", "{}", "");
   ap_check(t, "listed: our own site's writes are as before", st == 200, ap_body(t));
   st = ac_from(t, ours, "203.0.113.146", "/api/auth/email/start", "{\"email\":\"site@example.com\"}", "");

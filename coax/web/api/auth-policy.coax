@@ -23,16 +23,22 @@
 //                    ours (OA_API_ORIGIN), a listed first-party site (one entry of
 //                    OA_API_SITE_ORIGINS, byte for byte), or another
 //   ap_site_route    the routes a listed site's page reaches at all, on the whole API: GET
-//                    /api/auth/account, the three writes below, POST /api/chat/complete/v1
+//                    /api/auth/account, the four writes below, POST /api/chat/complete/v1
 //                    (the account chat, whose own rules are account-chat.c's), and a GameBuilder
 //                    build agent: POST /api/gamebuilder/agents/v1 starts one, GET
 //                    /api/gamebuilder/agent/v1 and /api/gamebuilder/agent/events/v1 read it
 //   ap_site_post     the auth writes a site may send: ours and no Origin, all of them; a listed
-//                    site, only email/start, email/verify and logout; another site, none
+//                    site, only email/start, email/verify, logout and cli/code; another site, none
 //   ap_site_login    a listed site's email code is a plain browser login: never a link, a merge
 //                    or an app's tokens
 //   ap_site_pending  a listed site's code is typed in the browser that asked: the pending login
 //                    is its cookie, never a value in the body
+//   ap_cli_mint      who may make a command line's login code: a person's own browser session
+//                    (the cookie) from an email login, on our site or a listed one
+//   ap_cli_redeem    who may spend that code for an app's tokens: an app or a tool (no Origin),
+//                    never a page
+//   ap_limited_handoff  the one login write a limited session may make: that code, whose login
+//                    is an email login too, at L1, and so no more than the session already is
 #authority;
 
 // Route rules (auth.c's table names one for every route).
@@ -331,8 +337,11 @@ AP_APP_IDLE_MS :: 90 * AP_DAY_MS;         // an app's login unused this long has
     #assert ap_site_post(AP_SITE_LISTED, op) == (i < 3);
   }
   #assert !ap_site_post(AP_SITE_LISTED, "email/start/") && !ap_site_post(AP_SITE_LISTED, "Logout") && !ap_site_post(AP_SITE_LISTED, "logout ");
+  // and the command line's code, which the browser makes; spending it is an app's, never a site's
+  #assert ap_site_post(AP_SITE_LISTED, "cli/code") && !ap_site_post(AP_SITE_LISTED, "cli/redeem") && !ap_site_post(AP_SITE_LISTED, "cli/code/") && !ap_site_post(AP_SITE_OTHER, "cli/code");
+  #assert ap_site_post(AP_SITE_NONE, "cli/redeem") && ap_site_post(AP_SITE_OURS, "cli/code");
 }
-#test "a listed site's page reaches its login, the account chat and a build agent's three routes, and nothing else of the API; every other site value passes to the route's own checks" {
+#test "a listed site's page reaches its login, a command line's code, the account chat and a build agent's three routes, and nothing else of the API; every other site value passes to the route's own checks" {
   #assert ap_site_route(AP_SITE_LISTED, "POST", "/api/gamebuilder/agents/v1") && !ap_site_route(AP_SITE_LISTED, "GET", "/api/gamebuilder/agents/v1");
   #assert ap_site_route(AP_SITE_LISTED, "GET", "/api/gamebuilder/agent/v1") && ap_site_route(AP_SITE_LISTED, "GET", "/api/gamebuilder/agent/events/v1");
   #assert !ap_site_route(AP_SITE_LISTED, "POST", "/api/gamebuilder/agent/v1") && !ap_site_route(AP_SITE_LISTED, "POST", "/api/gamebuilder/agent/events/v1") && !ap_site_route(AP_SITE_LISTED, "PUT", "/api/gamebuilder/agents/v1");
@@ -342,6 +351,8 @@ AP_APP_IDLE_MS :: 90 * AP_DAY_MS;         // an app's login unused this long has
   #assert !ap_site_route(AP_SITE_LISTED, "POST", "/api/auth/account") && !ap_site_route(AP_SITE_LISTED, "GET", "/api/auth/email/start");
   #assert !ap_site_route(AP_SITE_LISTED, "GET", "/api/auth/email/verify") && !ap_site_route(AP_SITE_LISTED, "GET", "/api/auth/logout");
   #assert ap_site_route(AP_SITE_LISTED, "POST", "/api/chat/complete/v1") && !ap_site_route(AP_SITE_LISTED, "GET", "/api/chat/complete/v1");
+  #assert ap_site_route(AP_SITE_LISTED, "POST", "/api/auth/cli/code") && !ap_site_route(AP_SITE_LISTED, "GET", "/api/auth/cli/code") && !ap_site_route(AP_SITE_LISTED, "PUT", "/api/auth/cli/code");
+  #assert !ap_site_route(AP_SITE_LISTED, "POST", "/api/auth/cli/redeem") && !ap_site_route(AP_SITE_LISTED, "POST", "/api/auth/cli/code/") && !ap_site_route(AP_SITE_LISTED, "POST", "/api/auth/cli");
   #assert !ap_site_route(AP_SITE_LISTED, "PUT", "/api/chat/complete/v1") && !ap_site_route(AP_SITE_LISTED, "", "/api/chat/complete/v1");
   #assert !ap_site_route(AP_SITE_LISTED, "PUT", "/api/auth/logout") && !ap_site_route(AP_SITE_LISTED, "DELETE", "/api/auth/account") && !ap_site_route(AP_SITE_LISTED, "", "/api/auth/account");
   chats := [16] string.["/api/chat/complete", "/api/chat/complete/", "/api/chat/complete/v1/", "/api/chat/complete/v2", "/api/chat/complete/v", "/api/chat/world/complete/v1",
@@ -424,9 +435,16 @@ ap_limited_write :: (method: string, path: string) -> bool #export_c #effects(al
   if method != "POST" { return false; }
   return path == "/api/chat/complete/v1" || path == "/api/chat/world/complete/v1" || path == "/api/chat/delegated/complete/v1" || path == "/api/gamebuilder/agents/v1";
 }
+// A limited session may make a command line's login code (POST /api/auth/cli/code): the login
+// the code becomes is an email login at L1 on the same account, limited the same way, with the
+// browser session's own email proof time, so the command line holds no more than this session.
+// It adds no way in, links nothing and changes nothing the account owns.
+ap_limited_handoff :: (method: string, path: string) -> bool #export_c #effects(all) {
+  return method == "POST" && path == "/api/auth/cli/code";
+}
 // The gate's question for a limited session: ap_limited_admit, and on a human route the writes above.
 ap_limited_route :: (rule: int, write: bool, limited: bool, method: string, path: string) -> int #export_c #effects(all) {
-  if rule == AP_HUMAN && ap_limited_write(method, path) { return AP_OK; }
+  if rule == AP_HUMAN && (ap_limited_write(method, path) || ap_limited_handoff(method, path)) { return AP_OK; }
   return ap_limited_admit(rule, write, limited);
 }
 ap_need :: (rule: int) -> int #export_c #effects(all) {
@@ -533,14 +551,16 @@ ap_site :: (has: bool, from: string, ours: string, listed: string) -> int #expor
 }
 
 // The gate's question, before any route runs: a listed site's page reaches GET /api/auth/account,
-// its three login writes and the account chat's one completion route; with its Origin on anything
+// its three login writes, the command line's code (made by the logged-in browser) and the account
+// chat's one completion route; with its Origin on anything
 // else, on any route file, it is refused. Every other site value goes on to the route's own Origin
 // check, as before.
 ap_site_route :: (site: int, method: string, path: string) -> bool #export_c #effects(all) {
   if site != AP_SITE_LISTED { return true; }
   if method == "GET" { return path == "/api/auth/account" || path == "/api/gamebuilder/agent/v1" || path == "/api/gamebuilder/agent/events/v1"; }
   if method != "POST" { return false; }
-  return path == "/api/auth/email/start" || path == "/api/auth/email/verify" || path == "/api/auth/logout" || path == "/api/chat/complete/v1" || path == "/api/gamebuilder/agents/v1";
+  return path == "/api/auth/email/start" || path == "/api/auth/email/verify" || path == "/api/auth/logout" || path == "/api/chat/complete/v1" || path == "/api/gamebuilder/agents/v1"
+      || path == "/api/auth/cli/code";
 }
 
 // op: the route under /api/auth/ of a POST in auth.c's own table (the other auth files keep
@@ -548,7 +568,7 @@ ap_site_route :: (site: int, method: string, path: string) -> bool #export_c #ef
 ap_site_post :: (site: int, op: string) -> bool #export_c #effects(all) {
   if site == AP_SITE_NONE || site == AP_SITE_OURS { return true; }
   if site != AP_SITE_LISTED { return false; }
-  return op == "email/start" || op == "email/verify" || op == "logout";
+  return op == "email/start" || op == "email/verify" || op == "logout" || op == "cli/code";
 }
 
 // login: the email code's purpose is a login (not a link or a merge); app: the client asked for an
@@ -567,4 +587,64 @@ ap_site_pending :: (site: int, cookie: bool) -> bool #export_c #effects(all) {
   if site == AP_SITE_NONE || site == AP_SITE_OURS { return true; }
   if site != AP_SITE_LISTED { return false; }
   return cookie;
+}
+
+// ---- a command line logs in from a browser (docs/auth/sessions-and-tokens.md, "A command line
+// logs in from a browser"). The browser, logged in, makes a one-time code; the command line spends
+// it for an app's login of its own.
+// site: ap_site; kind: the principal's; cookie: its credential is the session cookie; email: that
+// session is an email login. Only a person's own browser session from an email login, on our site
+// or a listed one: never an app's token, a signature, an agent, or a session from a key or passkey
+// (its L2 must not become something a code carries).
+ap_cli_mint :: (site: int, kind: int, cookie: bool, email: bool) -> bool #export_c #effects(all) {
+  if site != AP_SITE_OURS && site != AP_SITE_LISTED { return false; }
+  return kind == AP_PERSON && cookie && email;
+}
+// The code is spent by an app or a tool, which sends no Origin. A page (ours, a listed site's or
+// another) never receives an app's tokens.
+ap_cli_redeem :: (site: int) -> bool #export_c #effects(all) {
+  return site == AP_SITE_NONE;
+}
+
+// A command line's code as the page shows it: 32 lower-case hex digits (128 random bits), nothing else.
+ap_cli_code_ok :: (code: string) -> bool #export_c #effects(all) {
+  if code.count != 32 { return false; }
+  for c: code {
+    if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; }
+  }
+  return true;
+}
+
+#test "a command line's code is 32 lower-case hex digits" {
+  #assert ap_cli_code_ok("0123456789abcdef0123456789abcdef") && ap_cli_code_ok("ffffffffffffffffffffffffffffffff") && ap_cli_code_ok("00000000000000000000000000000000");
+  #assert !ap_cli_code_ok("0123456789abcdef0123456789abcde") && !ap_cli_code_ok("0123456789abcdef0123456789abcdef0") && !ap_cli_code_ok("");
+  #assert !ap_cli_code_ok("0123456789ABCDEF0123456789abcdef") && !ap_cli_code_ok("0123456789abcdeg0123456789abcdef") && !ap_cli_code_ok("0123456789abcdef 123456789abcdef");
+  #assert !ap_cli_code_ok("/123456789abcdef0123456789abcdef") && !ap_cli_code_ok(":123456789abcdef0123456789abcdef") && !ap_cli_code_ok("`123456789abcdef0123456789abcdef");
+  #assert !ap_cli_code_ok("482913");
+}
+#test "a command line's code is made by a person's own email browser session, on our site or a listed one" {
+  #assert ap_cli_mint(AP_SITE_LISTED, AP_PERSON, true, true) && ap_cli_mint(AP_SITE_OURS, AP_PERSON, true, true);
+  #assert !ap_cli_mint(AP_SITE_NONE, AP_PERSON, true, true) && !ap_cli_mint(AP_SITE_OTHER, AP_PERSON, true, true);
+  #assert !ap_cli_mint(4, AP_PERSON, true, true) && !ap_cli_mint(-1, AP_PERSON, true, true);
+  for site: 1..<3 {
+    #assert !ap_cli_mint(site, AP_PERSON, false, true) && !ap_cli_mint(site, AP_PERSON, true, false) && !ap_cli_mint(site, AP_PERSON, false, false);
+    for kind: 0..<5 { if kind != AP_PERSON { #assert !ap_cli_mint(site, kind, true, true); } }
+  }
+}
+#test "a command line's code is spent only with no Origin: by an app or a tool, never a page" {
+  #assert ap_cli_redeem(AP_SITE_NONE);
+  #assert !ap_cli_redeem(AP_SITE_OURS) && !ap_cli_redeem(AP_SITE_LISTED) && !ap_cli_redeem(AP_SITE_OTHER) && !ap_cli_redeem(4) && !ap_cli_redeem(-1);
+}
+#test "a limited session may make a command line's code, by POST, and that is its only login write" {
+  #assert ap_limited_handoff("POST", "/api/auth/cli/code");
+  methods := [5] string.["GET", "PUT", "DELETE", "post", ""];
+  for m: methods { #assert !ap_limited_handoff(m, "/api/auth/cli/code"); }
+  paths := [10] string.["/api/auth/cli/redeem", "/api/auth/cli/code/", "/api/auth/cli", "/api/auth/device/approve", "/api/auth/link/nostr",
+                        "/api/auth/passkey/register", "/api/auth/email/start", "/api/chat/complete/v1", "/api/auth/cli/codes", ""];
+  for path: paths { #assert !ap_limited_handoff("POST", path); }
+  #assert ap_limited_route(AP_HUMAN, true, true, "POST", "/api/auth/cli/code") == AP_OK;
+  for rule: -1..<11 {
+    if rule != AP_HUMAN { #assert ap_limited_route(rule, true, true, "POST", "/api/auth/cli/code") == ap_limited_admit(rule, true, true); }
+  }
+  #assert ap_limited_route(AP_HUMAN, true, true, "PUT", "/api/auth/cli/code") == AP_LIMITED && ap_limited_route(AP_HUMAN, true, true, "POST", "/api/auth/device/approve") == AP_LIMITED;
 }
