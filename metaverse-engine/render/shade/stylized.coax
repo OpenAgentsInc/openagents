@@ -36,6 +36,16 @@
 //                 stylized-frame.coax's sty_sunrise)
 //   reveal        ground and grass that spread from a place over a bare graybox floor with a grid
 //                 (sty_reveal_at, sty_floor)
+//   the air       with a look's `air` over 0 the sky is the engine's atmosphere (atmosphere.coax): the
+//                 air's colour from the sun's place, a small sun many times brighter than white with
+//                 its glare, soft clouds the sun lights and shades, and haze the colour of the far
+//                 air, so the land meets the sky with no band; grass takes a low sun through its
+//                 blades (sty_grass_through); and everything is toned by a curve that leaves the
+//                 painted colours as they are and rolls the bright sky off (sty_tone)
+//   film          stylized_film_bg_fs / _scene_fs / _grass_fs with stylized_bloom_fs and
+//                 stylized_post_fs: the same picture drawn as light, so a host with a post pass
+//                 (coax/web/host.js: a module that has post_fs) blooms the sun and the bright sky and
+//                 tones the frame once. Name them as bg_fs, scene_fs, grass_fs, bloom_fs and post_fs
 //
 // The frame's numbers are metaverse-engine/render/shade/stylized-frame.coax's (the look, the camera, the sun's box,
 // the grass field, the ground table, the paths), at metaverse-engine/render/shade/stylized-layout.coax's offsets.
@@ -48,6 +58,8 @@
 #load "stylized-layout.coax";
 #load "../../arch/palette.coax";
 #load "vegetation.coax";
+#load "post.coax";
+#load "atmosphere.coax";
 
 StyObj :: struct {a:V4; b:V4; c:V4; d:V4;}
 // info: the material, the record's value, its phase.
@@ -243,8 +255,92 @@ stylized_bg_vs :: (i:u32,_iid:u32)->V4 {
   p:[3]V2=[3]V2.[v2(-1.0f32,-3.0f32),v2(-1.0f32,1.0f32),v2(3.0f32,1.0f32)];
   return v4(p[cast(int)i].x,p[cast(int)i].y,1.0f32,1.0f32);
 }
+// ---- the air, the tone and the film
+// A bright value rolled off: as it is up to 0.6, then bending slowly toward 1 (0.6 + 0.4 (1 - exp(-(x - 0.6) / 1.2));
+// 0.87 at 2 whites, 0.99 at 5), so the colours a world is painted in are untouched and a sky
+// brighter than white still has light and shade in it under a sun that is brighter again.
+sty_tone1 :: (x:f32)->f32 {
+  if (x<=0.6f32) {return fmax(x,0.0f32);} // mutant: equivalent (at 0.6 exactly the curve below gives 0.6 too)
+  return 0.6f32+0.4f32*(1.0f32-exp((0.6f32-x)/1.2f32));
+}
+// Light toned for the display. A colour brighter than the curve can show is rolled off two ways and
+// the two are mixed: each channel by itself (which takes a bright colour toward white, as a camera
+// does: the sun's core) and all three by the brightest's roll-off (which keeps its hue: a low
+// sun stays orange), 0.55 of the first.
+sty_tone :: (c:V3)->V3 {
+  hi:f32=fmax(c.x,fmax(c.y,c.z));
+  if (hi<=0.6f32) {return v3(fmax(c.x,0.0f32),fmax(c.y,0.0f32),fmax(c.z,0.0f32));} // mutant: equivalent (with the brightest channel at 0.6 exactly both roll-offs below leave every channel as it is)
+  k:f32=sty_tone1(hi)/hi;
+  return mix3(v3(fmax(c.x,0.0f32)*k,fmax(c.y,0.0f32)*k,fmax(c.z,0.0f32)*k),v3(sty_tone1(c.x),sty_tone1(c.y),sty_tone1(c.z)),0.55f32);
+}
+// The light as it goes to the eye: exposed (the look's air) when the look has air, as it is when not.
+sty_exposed :: (c:V3,u:[]f32)->V3 {
+  if (u[STY_U_AIR]>0.0f32) {return scale3(c,u[STY_U_AIR]);}
+  return c;
+}
+// To the screen in one pass (no post pass): toned when the look has air, then encoded.
+sty_present :: (c:V3,u:[]f32)->V3 {
+  if (u[STY_U_AIR]>0.0f32) {return sty_encode(sty_tone(sty_exposed(c,u)));}
+  return sty_encode(c);
+}
+// The sky's light along a ray: the atmosphere when the look has air, else the painted sky.
+sty_sky_light :: (rd:V3,u:[]f32)->V3 {
+  if (u[STY_U_AIR]>0.0f32) {
+    return atmo_dome(rd,wg_at3(u,STY_U_SUN),u[STY_U_SUN_DISC],1.5f32/fmax(u[STY_U_EYE+3],1.0f32),u[STY_U_ZENITH+3],u[STY_U_HORIZON+3],u[STY_U_SIZE+2]);
+  }
+  return sty_decode(sty_sky(rd,u));
+}
+// A frame's two targets when a host has a post pass: the light (its alpha the share of it that
+// blooms: what is brighter than white, with a soft knee from 0.6) and a second, unused here.
+StyFilm :: struct {light:V4; aux:V4;}
+sty_film :: (c:V3,u:[]f32)->StyFilm {
+  e:V3=sty_exposed(c,u);
+  o:StyFilm;
+  o.light=v4(e.x,e.y,e.z,metaverse_style_bloom_share(e.x*0.2126f32+e.y*0.7152f32+e.z*0.0722f32,1.0f32,0.4f32));
+  return o;
+}
 stylized_bg_fs :: (pos:V4,u:[]f32)->V4 {
-  c:V3=sty_encode(sty_decode(sty_sky(sty_ray(pos,u),u)));
+  c:V3=sty_present(sty_sky_light(sty_ray(pos,u),u),u);
+  return v4(c.x,c.y,c.z,1.0f32);
+}
+stylized_film_bg_fs :: (pos:V4,u:[]f32)->StyFilm {return sty_film(sty_sky_light(sty_ray(pos,u),u),u);}
+// The bloom's five steps (coax/web/host.js postLayouts): the bright share of the light to a quarter
+// of the size, then blurred across and down, twice, the second time to an eighth.
+stylized_bloom_fs :: (pos:V4,bloom_src:Tex2D,bloom_lin:Sampler,bloom_step:[]f32)->V4 {
+  texel:V2=v2(1.0f32/cast(f32)gpu_width(bloom_src),1.0f32/cast(f32)gpu_height(bloom_src));
+  uv:V2=v2(pos.x*bloom_step[3]*texel.x,pos.y*bloom_step[3]*texel.y);
+  if (bloom_step[2]<0.5f32) {
+    c:V3=v3(0.0f32,0.0f32,0.0f32);
+    for k:0..<4 {
+      ox:f32=cast(f32)(k&1)*2.0f32-1.0f32; oy:f32=cast(f32)(k>>1)*2.0f32-1.0f32;
+      t:V4=gpu_sample_level(bloom_src,bloom_lin,v2(uv.x+ox*texel.x,uv.y+oy*texel.y),0.0f32); // mutant: equivalent (the four taps are the four corners round the pixel: with either sign turned they are the same four)
+      // a pixel's share, and no single pixel more than 16 whites: the sun's core glares, it does not flood
+      c=add3(c,scale3(v3(fmin(t.x,16.0f32),fmin(t.y,16.0f32),fmin(t.z,16.0f32)),saturate(t.w)));
+    }
+    return v4(c.x*0.25f32,c.y*0.25f32,c.z*0.25f32,1.0f32);
+  }
+  dx:f32=bloom_step[0]*texel.x; dy:f32=bloom_step[1]*texel.y;
+  m:V4=gpu_sample_level(bloom_src,bloom_lin,uv,0.0f32);
+  a:V4=gpu_sample_level(bloom_src,bloom_lin,v2(uv.x+dx*1.385f32,uv.y+dy*1.385f32),0.0f32);
+  b:V4=gpu_sample_level(bloom_src,bloom_lin,v2(uv.x-dx*1.385f32,uv.y-dy*1.385f32),0.0f32);
+  e:V4=gpu_sample_level(bloom_src,bloom_lin,v2(uv.x+dx*3.231f32,uv.y+dy*3.231f32),0.0f32);
+  f:V4=gpu_sample_level(bloom_src,bloom_lin,v2(uv.x-dx*3.231f32,uv.y-dy*3.231f32),0.0f32);
+  return v4(m.x*0.227f32+(a.x+b.x)*0.316f32+(e.x+f.x)*0.070f32,m.y*0.227f32+(a.y+b.y)*0.316f32+(e.y+f.y)*0.070f32,m.z*0.227f32+(a.z+b.z)*0.316f32+(e.z+f.z)*0.070f32,1.0f32);
+}
+// How much of the blurred bright light is laid back over the frame.
+STY_BLOOM :: 0.35f32;
+// The frame's light with its bloom, toned and encoded: `light` a pixel's own, `quarter` and `eighth`
+// the blurred bright light at the two sizes.
+sty_post :: (light:V3,quarter:V3,eighth:V3)->V3 {
+  b:V3=add3(scale3(quarter,0.55f32),scale3(eighth,0.45f32));
+  return sty_encode(sty_tone(add3(light,scale3(b,STY_BLOOM))));
+}
+stylized_post_fs :: (pos:V4,u:[]f32,post_light:Tex2D,post_quarter:Tex2D,post_eighth:Tex2D,post_lin:Sampler)->V4 {
+  light:V4=gpu_load(post_light,cast(s32)pos.x,cast(s32)pos.y,0); // mutant: equivalent (for the level: the frame's light has one level, and so have the checks' textures)
+  uv:V2=v2(pos.x/u[STY_U_SIZE],pos.y/u[STY_U_SIZE+1]);
+  q:V4=gpu_sample_level(post_quarter,post_lin,uv,0.0f32);
+  e:V4=gpu_sample_level(post_eighth,post_lin,uv,0.0f32);
+  c:V3=sty_post(v3(light.x,light.y,light.z),v3(q.x,q.y,q.z),v3(e.x,e.y,e.z));
   return v4(c.x,c.y,c.z,1.0f32);
 }
 
@@ -275,11 +371,17 @@ sty_haze_ink :: (to:V3,u:[]f32)->V3 {
   glow:V3=v3(u[STY_U_GLOW_R],u[STY_U_GLOW_G],u[STY_U_GLOW_B]);
   return add3(wg_at3(u,STY_U_HAZE),scale3(glow,sty_sun_glow(dot3(to,wg_at3(u,STY_U_SUN)),0.0f32)));
 }
+// The haze's light along the way `to`: the far air's when the look has air (atmo_far), else the
+// look's haze colour with the sun's glow.
+sty_haze_light :: (to:V3,u:[]f32)->V3 {
+  if (u[STY_U_AIR]>0.0f32) {return atmo_far(to,wg_at3(u,STY_U_SUN));}
+  return sty_decode(sty_haze_ink(to,u));
+}
 sty_haze :: (c:V3,p:V3,u:[]f32)->V3 {
   to:V3=sub3(p,wg_at3(u,STY_U_EYE));
   d:f32=length3(to);
   f:f32=1.0f32-exp(0.0f32-fmax(d-u[STY_U_HAZE_INFO],0.0f32)*u[STY_U_HAZE+3]);
-  return mix3(c,sty_decode(sty_haze_ink(scale3(to,1.0f32/fmax(d,0.0001f32)),u)),fmin(f,u[STY_U_HAZE_INFO+1]));
+  return mix3(c,sty_haze_light(scale3(to,1.0f32/fmax(d,0.0001f32)),u),fmin(f,u[STY_U_HAZE_INFO+1]));
 }
 // A surface lit: its colour under the banded sun, its shadow, and the light of the sky and the ground.
 sty_lit :: (albedo:V3,n:V3,ndl:f32,shadow:f32,u:[]f32)->V3 {
@@ -716,7 +818,8 @@ sty_stand :: (id:u32,instance:u32,u:[]f32,mesh:[]f32,objects:[]StyObj)->StyS {
   return s;
 }
 stylized_scene_vs :: (id:u32,instance:u32,u:[]f32,mesh:[]f32,objects:[]StyObj)->StyS {return sty_stand(id,instance,u,mesh,objects);}
-stylized_scene_fs :: (s:StyS,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->V4 {
+// A surface's light, hazed: what the scene's fragment shows.
+sty_scene_light :: (s:StyS,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->V3 {
   n:V3=normalize3(s.normal);
   sun:V3=wg_at3(u,STY_U_SUN);
   floor_:V2=sty_floor(s.world,u);
@@ -729,9 +832,13 @@ stylized_scene_fs :: (s:StyS,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompa
   // and another crown's shadow only dims it.
   if (sty_is(s.info.x,ARCH_M_LEAF)||sty_is(s.info.x,ARCH_M_PETAL)) { ndl=1.0f32; shadow=mix(0.5f32,1.0f32,shadow); }
   c:V3=add3(sty_lit(albedo,n,ndl,shadow,u),sty_decode(m.glow));
-  c=sty_encode(sty_haze(c,s.world,u));
+  return sty_haze(c,s.world,u);
+}
+stylized_scene_fs :: (s:StyS,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->V4 {
+  c:V3=sty_present(sty_scene_light(s,u,shadow_map,shadow_cmp),u);
   return v4(c.x,c.y,c.z,1.0f32);
 }
+stylized_film_scene_fs :: (s:StyS,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->StyFilm {return sty_film(sty_scene_light(s,u,shadow_map,shadow_cmp),u);}
 // The water pass: a world's wet parts (rivers, pools, falls, spray, a rainbow), drawn after
 // everything else in two halves. The first keeps of what lies behind the share the water lets
 // through; the second adds the water's own colour, lit, shadowed and hazed.
@@ -846,15 +953,38 @@ stylized_grass_vs :: (v:u32,i:u32,u:[]f32,mesh:[]f32,objects:[]StyObj,heights:[]
   o.pos=sty_clip(w,u,STY_U_VIEW);
   return o;
 }
-stylized_grass_fs :: (g:StyBlade,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->V4 {
+// How much of a low sun a blade lets through to an eye that looks toward the sun: `cos_t` the cosine
+// between the eye's ray and the way to the sun, `sun_up` the sun's height (its sine), `along` how far
+// up the blade (0 root, 1 tip). Most at the tip, looking at a sun just over the horizon (4); none looking
+// away from it, at the root, or under a sun 30 degrees up. A blade is thin: a low sun behind a
+// meadow lights it from within, which is the rim of light a field has at dawn.
+sty_grass_through :: (cos_t:f32,sun_up:f32,along:f32)->f32 {
+  toward:f32=saturate(cos_t*0.5f32+0.5f32);
+  low:f32=1.0f32-smoothstep(0.05f32,0.5f32,sun_up);
+  return 4.0f32*toward*toward*toward*low*along*along*smoothstep(0.0f32-0.04f32,0.03f32,sun_up);
+}
+// A blade's light, hazed.
+sty_grass_light :: (g:StyBlade,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->V3 {
   up:V3=v3(0.0f32,1.0f32,0.0f32);
   shadow:f32=sty_shadow(g.world,up,u,shadow_map,shadow_cmp);
   // A blade stands in its neighbours' shade at the root and in the sun at its tip.
   root:f32=0.78f32+0.22f32*g.along;
-  c:V3=scale3(sty_lit(sty_decode(g.colour),up,wg_at3(u,STY_U_SUN).y,shadow,u),root);
-  c=sty_encode(sty_haze(c,g.world,u));
+  sun:V3=wg_at3(u,STY_U_SUN);
+  albedo:V3=sty_decode(g.colour);
+  c:V3=scale3(sty_lit(albedo,up,sun.y,shadow,u),root);
+  if (u[STY_U_AIR]>0.0f32) {
+    // with air, a low sun comes through the blades toward the eye, in the sun's own colour there
+    to:V3=normalize3(sub3(g.world,wg_at3(u,STY_U_EYE)));
+    through:f32=sty_grass_through(dot3(to,sun),sun.y,g.along)*mix(1.0f32,shadow,u[STY_U_SUN+3]);
+    c=add3(c,scale3(mul3(albedo,wg_at3(u,STY_U_SUN_COLOUR)),through));
+  }
+  return sty_haze(c,g.world,u);
+}
+stylized_grass_fs :: (g:StyBlade,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->V4 {
+  c:V3=sty_present(sty_grass_light(g,u,shadow_map,shadow_cmp),u);
   return v4(c.x,c.y,c.z,1.0f32);
 }
+stylized_film_grass_fs :: (g:StyBlade,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->StyFilm {return sty_film(sty_grass_light(g,u,shadow_map,shadow_cmp),u);}
 
 #test "the bands of light rise from shade to sun, with a half tone between" {
   #assert sty_bands(-1.0f32,0.3f32)==0.0f32 && sty_bands(1.0f32,0.3f32)==1.0f32;
@@ -1310,4 +1440,149 @@ stylized_grass_fs :: (g:StyBlade,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerC
   u[STY_U_CUMULUS+3]=0.0f32; u[STY_U_SUN]=0.0f32; u[STY_U_SUN+1]=0.0f32; u[STY_U_SUN+2]=0.0f32-1.0f32; u[STY_U_SUN_DISC]=0.03f32;
   dead:V3=sty_sky(v3(0.0f32,0.0f32,0.0f32-1.0f32),u[..]); ink:V3=sty_sun_ink(0.0f32);
   #assert abs(dead.x-ink.x)<0.0001f32 && abs(dead.y-ink.y)<0.0001f32 && abs(dead.z-ink.z)<0.0001f32;
+}
+
+#test "the tone leaves painted colours as they are and rolls a bright light off, toward white and toward its own hue" {
+  #assert sty_tone1(0.0f32)==0.0f32 && sty_tone1(0.3f32)==0.3f32 && sty_tone1(0.6f32)==0.6f32 && sty_tone1(0.0f32-2.0f32)==0.0f32;
+  #assert abs(sty_tone1(1.8f32)-(0.6f32+0.4f32*(1.0f32-exp(0.0f32-1.0f32))))<0.00001f32 && abs(sty_tone1(3.0f32)-(0.6f32+0.4f32*(1.0f32-exp(0.0f32-2.0f32))))<0.00001f32;
+  #assert sty_tone1(0.61f32)>0.6f32 && sty_tone1(0.61f32)<0.61f32 && sty_tone1(50.0f32)>0.999f32 && sty_tone1(50.0f32)<=1.0f32;
+  // under 0.6 every channel is itself (and none is under 0)
+  same:V3=sty_tone(v3(0.2f32,0.5f32,0.6f32)); #assert same.x==0.2f32 && same.y==0.5f32 && same.z==0.6f32;
+  neg:V3=sty_tone(v3(0.0f32-1.0f32,0.3f32,0.0f32-0.2f32)); #assert neg.x==0.0f32 && neg.y==0.3f32 && neg.z==0.0f32;
+  // a bright orange (a low sun: 12, 4, 0.2): 0.55 each channel's own roll-off, 0.45 its hue kept under the brightest's
+  o:V3=sty_tone(v3(12.0f32,4.0f32,0.2f32)); k:f32=sty_tone1(12.0f32)/12.0f32;
+  #assert abs(o.x-sty_tone1(12.0f32))<0.00001f32 && abs(o.y-(0.45f32*4.0f32*k+0.55f32*sty_tone1(4.0f32)))<0.00001f32 && abs(o.z-(0.45f32*0.2f32*k+0.55f32*0.2f32))<0.00001f32;
+  #assert o.x>0.99f32 && o.y<0.72f32 && o.y>0.6f32 && o.z<0.13f32;
+  // a bright cream (a high sun) is white; green or blue the brightest is handled the same
+  w:V3=sty_tone(v3(44.0f32,42.0f32,37.0f32)); #assert w.x>0.999f32 && w.y>0.97f32 && w.z>0.92f32 && w.z<w.y;
+  g:V3=sty_tone(v3(0.1f32,3.0f32,0.2f32)); #assert abs(g.y-sty_tone1(3.0f32))<0.00001f32 && g.x<0.1f32 && g.x>0.05f32;
+  b:V3=sty_tone(v3(0.1f32,0.2f32,3.0f32)); #assert abs(b.z-sty_tone1(3.0f32))<0.00001f32 && b.y<0.2f32 && b.y>0.1f32;
+  n:V3=sty_tone(v3(0.0f32-1.0f32,0.0f32-1.0f32,3.0f32)); #assert n.x==0.0f32 && n.y==0.0f32;
+  // just past 0.6 nothing jumps
+  j:V3=sty_tone(v3(0.6001f32,0.3f32,0.1f32)); #assert abs(j.x-0.6001f32)<0.0001f32 && abs(j.y-0.3f32)<0.0001f32 && abs(j.z-0.1f32)<0.0001f32;
+}
+#test "a look with air is exposed, toned and its sky is the atmosphere's; one without is as it was" {
+  u:[STY_UNIFORM_FLOATS]f32;
+  c:V3=v3(0.2f32,2.0f32,0.5f32);
+  // no air: the light as it is, encoded as before
+  e:V3=sty_exposed(c,u[..]); #assert e.x==0.2f32 && e.y==2.0f32 && e.z==0.5f32;
+  p0:V3=sty_present(c,u[..]); q0:V3=sty_encode(c); #assert p0.x==q0.x && p0.y==q0.y && p0.z==q0.z;
+  // air: the exposure scales the light, and it is toned before it is encoded
+  u[STY_U_AIR]=0.5f32;
+  h:V3=sty_exposed(c,u[..]); #assert h.x==0.1f32 && h.y==1.0f32 && h.z==0.25f32;
+  p1:V3=sty_present(c,u[..]); q1:V3=sty_encode(sty_tone(v3(0.1f32,1.0f32,0.25f32))); #assert p1.x==q1.x && p1.y==q1.y && p1.z==q1.z && p1.y<1.0f32;
+  // the sky: the painted one without air, the atmosphere's dome with it (its sun, its cloud cover and size, the clock)
+  u[STY_U_AIR]=0.0f32;
+  u[STY_U_ZENITH]=0.3f32; u[STY_U_ZENITH+1]=0.5f32; u[STY_U_ZENITH+2]=0.9f32; u[STY_U_HORIZON]=0.7f32; u[STY_U_HORIZON+1]=0.8f32; u[STY_U_HORIZON+2]=0.95f32; u[STY_U_HORIZON+3]=1.2f32;
+  sun:V3=normalize3(v3(0.4f32,0.67f32,0.0f32-0.6f32)); u[STY_U_SUN]=sun.x; u[STY_U_SUN+1]=sun.y; u[STY_U_SUN+2]=sun.z; u[STY_U_EYE+3]=900.0f32; u[STY_U_SIZE+2]=30.0f32;
+  rd:V3=normalize3(v3(0.2f32,0.5f32,0.0f32-1.0f32));
+  painted:V3=sty_sky_light(rd,u[..]); want:V3=sty_decode(sty_sky(rd,u[..])); #assert painted.x==want.x && painted.z==want.z;
+  u[STY_U_AIR]=1.0f32; u[STY_U_ZENITH+3]=0.4f32; u[STY_U_SUN_DISC]=0.02f32;
+  air:V3=sty_sky_light(rd,u[..]); dome:V3=atmo_dome(rd,sun,0.02f32,1.5f32/900.0f32,0.4f32,1.2f32,30.0f32); #assert air.x==dome.x && air.y==dome.y && air.z==dome.z && air.x!=painted.x;
+  // dead at the sun: the disc, many times a white; its edge is a pixel and a half at this focal length or a fifth of it
+  at:V3=sty_sky_light(sun,u[..]); #assert at.x>10.0f32;
+  u[STY_U_EYE+3]=0.0f32; wide:V3=sty_sky_light(sun,u[..]); #assert wide.x<at.x*0.8f32 && wide.x>1.0f32; u[STY_U_EYE+3]=900.0f32;
+  // the haze's light: the far air's with air, the look's haze colour without
+  u[STY_U_HAZE]=0.5f32; u[STY_U_HAZE+1]=0.6f32; u[STY_U_HAZE+2]=0.7f32;
+  to:V3=normalize3(v3(0.3f32,0.0f32-0.2f32,0.0f32-1.0f32));
+  ha:V3=sty_haze_light(to,u[..]); fa:V3=atmo_far(to,sun); #assert ha.x==fa.x && ha.y==fa.y && ha.z==fa.z;
+  u[STY_U_AIR]=0.0f32; hp:V3=sty_haze_light(to,u[..]); #assert abs(hp.x-pow(0.5f32,2.2f32))<0.0001f32 && abs(hp.z-pow(0.7f32,2.2f32))<0.0001f32;
+}
+#test "the film: light exposed with the share of it that blooms, and the frame toned once with its bloom laid back" {
+  u:[STY_UNIFORM_FLOATS]f32; u[STY_U_AIR]=2.0f32;
+  // a dim colour blooms nothing; one over a white blooms what is over it; the knee starts at 0.6
+  dim:StyFilm=sty_film(v3(0.1f32,0.2f32,0.05f32),u[..]); #assert dim.light.x==0.2f32 && dim.light.y==0.4f32 && dim.light.z==0.1f32 && dim.light.w==0.0f32 && dim.aux.x==0.0f32 && dim.aux.w==0.0f32;
+  lum:f32=4.0f32*0.2126f32+2.0f32*0.7152f32+1.0f32*0.0722f32;
+  hot:StyFilm=sty_film(v3(2.0f32,1.0f32,0.5f32),u[..]); #assert hot.light.x==4.0f32 && abs(hot.light.w-metaverse_style_bloom_share(lum,1.0f32,0.4f32))<0.00001f32 && hot.light.w>0.5f32 && hot.light.w<0.7f32;
+  knee:StyFilm=sty_film(v3(0.4f32,0.4f32,0.4f32),u[..]); #assert knee.light.w>0.0f32 && knee.light.w<0.1f32;
+  green:StyFilm=sty_film(v3(0.0f32,1.0f32,0.0f32),u[..]); red:StyFilm=sty_film(v3(1.0f32,0.0f32,0.0f32),u[..]); blue:StyFilm=sty_film(v3(0.0f32,0.0f32,1.0f32),u[..]);
+  #assert green.light.w>red.light.w && red.light.w==0.0f32 && blue.light.w==0.0f32 && abs(green.light.w-metaverse_style_bloom_share(1.4304f32,1.0f32,0.4f32))<0.00001f32;
+  far:StyFilm=sty_film(v3(0.0f32,0.0f32,8.0f32),u[..]); #assert abs(far.light.w-metaverse_style_bloom_share(16.0f32*0.0722f32,1.0f32,0.4f32))<0.00001f32;
+  rf:StyFilm=sty_film(v3(4.0f32,0.0f32,0.0f32),u[..]); #assert abs(rf.light.w-metaverse_style_bloom_share(8.0f32*0.2126f32,1.0f32,0.4f32))<0.00001f32;
+  // the frame: its light and STY_BLOOM of its blurred bright light (0.55 the quarter, 0.45 the eighth), toned and encoded
+  l:V3=v3(0.3f32,0.2f32,0.1f32); q:V3=v3(1.0f32,0.5f32,0.2f32); e8:V3=v3(0.4f32,0.8f32,0.6f32);
+  got:V3=sty_post(l,q,e8);
+  want:V3=sty_encode(sty_tone(v3(0.3f32+STY_BLOOM*(0.55f32+0.18f32),0.2f32+STY_BLOOM*(0.275f32+0.36f32),0.1f32+STY_BLOOM*(0.11f32+0.27f32))));
+  #assert abs(got.x-want.x)<0.00001f32 && abs(got.y-want.y)<0.00001f32 && abs(got.z-want.z)<0.00001f32 && STY_BLOOM==0.35f32;
+  plain:V3=sty_post(l,v3(0.0f32,0.0f32,0.0f32),v3(0.0f32,0.0f32,0.0f32)); enc:V3=sty_encode(l); #assert plain.x==enc.x && plain.y==enc.y && plain.z==enc.z;
+  // the post pass reads the pixel's own light and the two blurs at the pixel's place in the picture
+  u[STY_U_SIZE]=4.0f32; u[STY_U_SIZE+1]=2.0f32;
+  lp:[8]V4; for i:0..<8 { lp[i]=v4(0.1f32*cast(f32)i,0.05f32,0.02f32,1.0f32); }
+  qp:[2]V4=[2]V4.[v4(1.0f32,0.0f32,0.0f32,1.0f32),v4(0.0f32,1.0f32,0.0f32,1.0f32)];
+  ep:[1]V4=[1]V4.[v4(0.0f32,0.0f32,2.0f32,1.0f32)];
+  lt:Tex2D=Tex2D.{width=4,height=2,texels=lp[..]}; qt:Tex2D=Tex2D.{width=2,height=1,texels=qp[..]}; et:Tex2D=Tex2D.{width=1,height=1,texels=ep[..]};
+  lin:Sampler=Sampler.{linear=true};
+  // the pixel at (2.5, 1.5): the light's texel (2, 1), the quarter three eighths of the way across, the eighth's one texel
+  px:V4=stylized_post_fs(v4(2.5f32,1.5f32,0.0f32,1.0f32),u[..],lt,qt,et,lin);
+  pw:V3=sty_post(v3(0.6f32,0.05f32,0.02f32),v3(0.25f32,0.75f32,0.0f32),v3(0.0f32,0.0f32,2.0f32));
+  #assert abs(px.x-pw.x)<0.0001f32 && abs(px.y-pw.y)<0.0001f32 && abs(px.z-pw.z)<0.0001f32 && px.w==1.0f32;
+  p2:V4=stylized_post_fs(v4(0.5f32,0.5f32,0.0f32,1.0f32),u[..],lt,qt,et,lin);
+  w2:V3=sty_post(v3(0.0f32,0.05f32,0.02f32),v3(1.0f32,0.0f32,0.0f32),v3(0.0f32,0.0f32,2.0f32)); #assert abs(p2.x-w2.x)<0.0001f32 && abs(p2.y-w2.y)<0.0001f32;
+  // (and down the picture: a quarter two texels tall, read a quarter of the way down)
+  tp:[2]V4=[2]V4.[v4(1.0f32,0.0f32,0.0f32,1.0f32),v4(0.0f32,1.0f32,0.0f32,1.0f32)]; tall:Tex2D=Tex2D.{width=1,height=2,texels=tp[..]};
+  p3:V4=stylized_post_fs(v4(0.5f32,0.5f32,0.0f32,1.0f32),u[..],lt,tall,et,lin);
+  w3:V3=sty_post(v3(0.0f32,0.05f32,0.02f32),v3(1.0f32,0.0f32,0.0f32),v3(0.0f32,0.0f32,2.0f32)); #assert abs(p3.x-w3.x)<0.0001f32 && abs(p3.y-w3.y)<0.0001f32;
+}
+#test "the bloom's steps: the bright share of four pixels to one, no pixel more than 16 whites, then a blur across or down" {
+  // a 4 by 4 source: one pixel 40 whites and all of it blooming, one a half-blooming grey, the rest dark
+  sp:[16]V4; for i:0..<16 { sp[i]=v4(0.0f32,0.0f32,0.0f32,0.0f32); }
+  sp[0]=v4(40.0f32,8.0f32,1.0f32,1.0f32); sp[1]=v4(2.0f32,2.0f32,2.0f32,0.5f32); sp[5]=v4(4.0f32,4.0f32,4.0f32,3.0f32); sp[10]=v4(1.0f32,2.0f32,3.0f32,0.0f32-1.0f32); sp[13]=v4(8.0f32,6.0f32,4.0f32,1.0f32);
+  src:Tex2D=Tex2D.{width=4,height=4,texels=sp[..]}; lin:Sampler=Sampler.{linear=true};
+  take:[4]f32=[4]f32.[0.0f32,0.0f32,0.0f32,4.0f32];
+  // the target is a quarter of the source: its one pixel (0.5, 0.5) is the source's middle, and its four taps are the four inner texel corners
+  t:V4=stylized_bloom_fs(v4(0.5f32,0.5f32,0.0f32,1.0f32),src,lin,take[..]);
+  // each tap is the mean of four texels; the texel (1, 1) with a share over 1 counts once, the one with a share under 0 not at all
+  a:V4=gpu_sample_level(src,lin,v2(0.25f32,0.25f32),0.0f32); b:V4=gpu_sample_level(src,lin,v2(0.75f32,0.25f32),0.0f32);
+  c:V4=gpu_sample_level(src,lin,v2(0.25f32,0.75f32),0.0f32); d:V4=gpu_sample_level(src,lin,v2(0.75f32,0.75f32),0.0f32);
+  wx:f32=(fmin(a.x,16.0f32)*saturate(a.w)+fmin(b.x,16.0f32)*saturate(b.w)+fmin(c.x,16.0f32)*saturate(c.w)+fmin(d.x,16.0f32)*saturate(d.w))*0.25f32;
+  wy:f32=(fmin(a.y,16.0f32)*saturate(a.w)+fmin(b.y,16.0f32)*saturate(b.w)+fmin(c.y,16.0f32)*saturate(c.w)+fmin(d.y,16.0f32)*saturate(d.w))*0.25f32;
+  wz:f32=(fmin(a.z,16.0f32)*saturate(a.w)+fmin(b.z,16.0f32)*saturate(b.w)+fmin(c.z,16.0f32)*saturate(c.w)+fmin(d.z,16.0f32)*saturate(d.w))*0.25f32;
+  #assert abs(t.x-wx)<0.0001f32 && abs(t.y-wy)<0.0001f32 && abs(t.z-wz)<0.0001f32 && t.w==1.0f32 && t.x>1.0f32 && a.x>11.0f32;
+  // a single hot texel is held to 16: a source that is one pixel of 40
+  hp:[1]V4=[1]V4.[v4(40.0f32,50.0f32,60.0f32,1.0f32)]; hot:Tex2D=Tex2D.{width=1,height=1,texels=hp[..]};
+  h:V4=stylized_bloom_fs(v4(0.5f32,0.5f32,0.0f32,1.0f32),hot,lin,take[..]); #assert h.x==16.0f32 && h.y==16.0f32 && h.z==16.0f32;
+  // the blur: nine taps' weights add to 1 (0.227 + 2 (0.316 + 0.070)), across or down by the step
+  fp:[1]V4=[1]V4.[v4(2.0f32,3.0f32,4.0f32,1.0f32)]; flat:Tex2D=Tex2D.{width=1,height=1,texels=fp[..]};
+  across:[4]f32=[4]f32.[1.0f32,0.0f32,1.0f32,1.0f32];
+  f:V4=stylized_bloom_fs(v4(0.5f32,0.5f32,0.0f32,1.0f32),flat,lin,across[..]); #assert abs(f.x-2.0f32*0.999f32)<0.0001f32 && abs(f.y-3.0f32*0.999f32)<0.0001f32 && abs(f.z-4.0f32*0.999f32)<0.0001f32 && f.w==1.0f32;
+  // an 8 wide row with one lit texel: across spreads it along the row, down does not
+  rp:[8]V4; for i:0..<8 { rp[i]=v4(0.0f32,0.0f32,0.0f32,1.0f32); } rp[4]=v4(1.0f32,2.0f32,3.0f32,1.0f32);
+  row:Tex2D=Tex2D.{width=8,height=1,texels=rp[..]}; near:Sampler=Sampler.{linear=false};
+  mid:V4=stylized_bloom_fs(v4(4.5f32,0.5f32,0.0f32,1.0f32),row,near,across[..]); #assert abs(mid.x-0.227f32)<0.0001f32 && abs(mid.y-0.454f32)<0.0001f32 && abs(mid.z-0.681f32)<0.0001f32;
+  one:V4=stylized_bloom_fs(v4(3.5f32,0.5f32,0.0f32,1.0f32),row,near,across[..]); #assert abs(one.x-0.316f32)<0.0001f32;
+  other:V4=stylized_bloom_fs(v4(5.5f32,0.5f32,0.0f32,1.0f32),row,near,across[..]); #assert abs(other.x-0.316f32)<0.0001f32;
+  three:V4=stylized_bloom_fs(v4(1.5f32,0.5f32,0.0f32,1.0f32),row,near,across[..]); #assert abs(three.x-0.070f32)<0.0001f32;
+  back:V4=stylized_bloom_fs(v4(7.5f32,0.5f32,0.0f32,1.0f32),row,near,across[..]); #assert abs(back.x-0.070f32)<0.0001f32;
+  far:V4=stylized_bloom_fs(v4(0.5f32,0.5f32,0.0f32,1.0f32),row,near,across[..]); #assert far.x==0.0f32;
+  down:[4]f32=[4]f32.[0.0f32,1.0f32,1.0f32,1.0f32];
+  dn:V4=stylized_bloom_fs(v4(3.5f32,0.5f32,0.0f32,1.0f32),row,near,down[..]); #assert dn.x==0.0f32;
+  dm:V4=stylized_bloom_fs(v4(4.5f32,0.5f32,0.0f32,1.0f32),row,near,down[..]); #assert abs(dm.x-0.999f32)<0.0001f32;
+  // a column: down spreads it
+  cp:[8]V4; for i:0..<8 { cp[i]=v4(0.0f32,0.0f32,0.0f32,1.0f32); } cp[4]=v4(1.0f32,0.0f32,0.0f32,1.0f32);
+  col:Tex2D=Tex2D.{width=1,height=8,texels=cp[..]};
+  c1:V4=stylized_bloom_fs(v4(0.5f32,3.5f32,0.0f32,1.0f32),col,near,down[..]); c2:V4=stylized_bloom_fs(v4(0.5f32,5.5f32,0.0f32,1.0f32),col,near,down[..]); c3:V4=stylized_bloom_fs(v4(0.5f32,1.5f32,0.0f32,1.0f32),col,near,down[..]); c4:V4=stylized_bloom_fs(v4(0.5f32,7.5f32,0.0f32,1.0f32),col,near,down[..]);
+  #assert abs(c1.x-0.316f32)<0.0001f32 && abs(c2.x-0.316f32)<0.0001f32 && abs(c3.x-0.070f32)<0.0001f32 && abs(c4.x-0.070f32)<0.0001f32;
+  // across does not spread down a column, and a step that is neither (0.5) is a blur
+  ca:V4=stylized_bloom_fs(v4(0.5f32,3.5f32,0.0f32,1.0f32),col,near,across[..]); #assert ca.x==0.0f32;
+  between:[4]f32=[4]f32.[1.0f32,0.0f32,0.5f32,1.0f32];
+  bt:V4=stylized_bloom_fs(v4(4.5f32,0.5f32,0.0f32,1.0f32),row,near,between[..]); #assert abs(bt.x-0.227f32)<0.0001f32;
+  // to an eighth: a target pixel spans two source texels
+  half:[4]f32=[4]f32.[1.0f32,0.0f32,1.0f32,2.0f32];
+  hm:V4=stylized_bloom_fs(v4(2.25f32,0.25f32,0.0f32,1.0f32),row,near,half[..]); #assert abs(hm.x-0.227f32)<0.0001f32;
+}
+#test "grass lets a low sun through its tips toward the eye, and nothing of a high sun, a sun behind the eye or at its root" {
+  // most: the tip, looking straight at a sun just over the horizon
+  top:f32=sty_grass_through(1.0f32,0.04f32,1.0f32); #assert abs(top-4.0f32)<0.0001f32;
+  // looking away from the sun: none; square to it: an eighth
+  #assert sty_grass_through(0.0f32-1.0f32,0.04f32,1.0f32)==0.0f32 && abs(sty_grass_through(0.0f32,0.04f32,1.0f32)-0.5f32)<0.0001f32;
+  // down the blade it falls by the square: a quarter half way, none at the root
+  #assert abs(sty_grass_through(1.0f32,0.04f32,0.5f32)-1.0f32)<0.0001f32 && sty_grass_through(1.0f32,0.04f32,0.0f32)==0.0f32;
+  // a sun 30 degrees up gives none; between, less the higher it is
+  #assert sty_grass_through(1.0f32,0.5f32,1.0f32)==0.0f32 && sty_grass_through(1.0f32,0.7f32,1.0f32)==0.0f32;
+  mid:f32=sty_grass_through(1.0f32,0.275f32,1.0f32); #assert abs(mid-2.0f32)<0.0001f32;
+  // a sun under the horizon: none by 2.3 degrees under, half of it on the horizon's line a little under
+  #assert sty_grass_through(1.0f32,0.0f32-0.04f32,1.0f32)==0.0f32 && sty_grass_through(1.0f32,0.0f32-0.1f32,1.0f32)==0.0f32;
+  #assert abs(sty_grass_through(1.0f32,0.0f32-0.005f32,1.0f32)-2.0f32)<0.0001f32 && abs(sty_grass_through(1.0f32,0.03f32,1.0f32)-4.0f32)<0.0001f32;
+  // a cosine past 1 is 1
+  #assert sty_grass_through(1.5f32,0.04f32,1.0f32)==top;
 }

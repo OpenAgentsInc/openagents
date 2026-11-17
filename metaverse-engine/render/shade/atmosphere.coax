@@ -1,0 +1,460 @@
+// The Metaverse Engine's atmosphere: a sky from the sun's place alone. Written in Coax and emitted for
+// each GPU; every number is light's own scale (linear, 1 a bright diffuse white; the sun's disc is
+// far over 1), so a realm tones and blooms it (stylized.coax's film entries do; a realm with its own
+// post pass uses its own). No texture, cubemap or pack: all of it is arithmetic on the view ray.
+//
+//   atmo_sky        the air's light along a ray: blue overhead and pale at the horizon by day, gold
+//                   and rose round a low sun under a deep blue, a red glow before the sun is up,
+//                   and nothing at all once the sun is ATMO_NIGHT under the horizon
+//   atmo_sunlight   the sun's own colour after the air it has come through: white-gold high, deep
+//                   orange-red on the horizon (the disc's colour, and the colour it lights clouds)
+//   atmo_sun        the sun's disc and the glare round it: a small core many times brighter than
+//                   white (a bloom pass makes its glare), darker toward its limb, flattened and
+//                   reddened on the horizon
+//   atmo_clouds     two layers of cloud on the dome, in perspective to the horizon, with no join
+//                   anywhere round it: soft heaped cloud that shades itself away from the sun and
+//                   is lit along its sunward edges, and thin high streaks; warm from under at dawn
+//   atmo_dome       the three together: the sky a realm draws behind its world
+//   atmo_far        the air's colour where the land ends, along a ray laid flat: what distance
+//                   fades to, so far ground meets the sky with no band
+//   coax/bin/coax test --library metaverse-engine/render/shade/atmosphere.coax
+#load "../../gpu/shader.coax";
+#load "../noise.coax";
+
+// The sine of the sun's height at which the air has no light left: 14 degrees under the horizon.
+ATMO_NIGHT :: -0.2419219f32;
+// What a unit of air takes out of light by scattering it (red, green, blue: blue most, which is why
+// the sky is blue and a low sun red), and what its haze takes out of every colour alike.
+ATMO_AIR_R :: 0.0245f32; ATMO_AIR_G :: 0.0571f32; ATMO_AIR_B :: 0.14f32;
+ATMO_HAZE :: 0.012f32;
+ATMO_GLOW :: 0.17f32;        // how much of the air's light its haze throws forward, round the sun
+ATMO_SUN :: 1.55f32;         // the sun's light on the air, in the scale above
+ATMO_CORE :: 48.0f32;        // the sun's disc, times a bright white
+
+atmo_air3 :: ()->V3 {return v3(ATMO_AIR_R,ATMO_AIR_G,ATMO_AIR_B);}
+atmo_exp3 :: (a:V3)->V3 {return v3(exp(a.x),exp(a.y),exp(a.z));}
+// How much air a ray looks through by how high it looks (the sine of its height): 1 a little under
+// straight up, 12.5 along the horizon and under it.
+atmo_mass :: (up:f32)->f32 {return 1.0f32/(fmax(up,0.0f32)+0.08f32);}
+// How much air the sun's light has come through by the sun's height: 0.97 overhead, 36 on the
+// horizon, and more and more once it is under it (150 a unit of sine: the air it still reaches is
+// the high air, by a long way round).
+atmo_sun_mass :: (sun_up:f32)->f32 {
+  if (sun_up<0.0f32) {return 36.0f32-sun_up*150.0f32;} // mutant: equivalent (on the horizon exactly both lines give 36)
+  return 1.0f32/(sun_up+0.0277778f32);
+}
+// What is left of light after `mass` of air: each colour by its own loss.
+atmo_through :: (mass:f32)->V3 {
+  return atmo_exp3(scale3(v3(ATMO_AIR_R+ATMO_HAZE,ATMO_AIR_G+ATMO_HAZE,ATMO_AIR_B+ATMO_HAZE),0.0f32-mass));
+}
+// The sun's colour as it arrives: white-gold high, deep orange-red on the horizon.
+atmo_sunlight :: (sun_up:f32)->V3 {return atmo_through(atmo_sun_mass(sun_up));}
+// How much of the day is left by the sun's height: 0 at ATMO_NIGHT and under, 1 from the horizon up,
+// by the cube of the way between (first light is a small share of the day's).
+atmo_day :: (sun_up:f32)->f32 {
+  t:f32=saturate((sun_up-ATMO_NIGHT)/(0.0f32-ATMO_NIGHT));
+  return t*t*t;
+}
+// The air's way of scattering by the angle from the sun (its cosine): evenly, a little more toward
+// and away from it (1 square to it, 2 along it).
+atmo_even :: (cos_t:f32)->f32 {return 0.5f32*(1.0f32+cos_t*cos_t)+0.5f32;}
+// Its haze's way: strongly forward, the glow round the sun (1 at 37 degrees, 21 dead at it, 0.08
+// away from it).
+atmo_forward :: (cos_t:f32)->f32 {
+  g:f32=0.76f32;
+  d:f32=fmax(1.0f32+g*g-2.0f32*g*cos_t,0.0001f32);
+  return (1.0f32-g*g)/(d*sqrt(d))*0.29f32;
+}
+// The air's light along the unit ray `rd`, the sun along the unit `sun`. Under the horizon it is
+// the horizon's (the land hides it; atmo_far is what the land fades to).
+atmo_sky :: (rd:V3,sun:V3)->V3 {
+  up:f32=saturate(rd.y);
+  cos_t:f32=dot3(rd,sun);
+  day:f32=atmo_day(sun.y);
+  // the sun's light where this ray's air scatters it: a ray that looks higher scatters higher,
+  // where the light has come through less air
+  reach:V3=atmo_through(atmo_sun_mass(sun.y)*mix(1.0f32,0.3f32,sqrt(up)));
+  // how much of that this ray's own air scatters toward the eye
+  mass:f32=atmo_mass(up);
+  took:V3=v3(1.0f32-exp(0.0f32-(ATMO_AIR_R+ATMO_HAZE)*mass),1.0f32-exp(0.0f32-(ATMO_AIR_G+ATMO_HAZE)*mass),1.0f32-exp(0.0f32-(ATMO_AIR_B+ATMO_HAZE)*mass));
+  air:V3=scale3(v3(ATMO_AIR_R/(ATMO_AIR_R+ATMO_HAZE),ATMO_AIR_G/(ATMO_AIR_G+ATMO_HAZE),ATMO_AIR_B/(ATMO_AIR_B+ATMO_HAZE)),atmo_even(cos_t));
+  // (and, low in the sky, a wide band of it along the horizon either side of the sun: dawn's band)
+  haze:f32=ATMO_GLOW*(atmo_forward(cos_t)+2.8f32*exp(0.0f32-fmax(1.0f32-cos_t,0.0f32)*2.2f32)*exp(0.0f32-up*7.0f32));
+  // (a sun under the horizon lights the low air toward it first: overhead its direct light comes later)
+  first:f32=mix(smoothstep(0.0f32-0.14f32,0.02f32,sun.y),1.0f32,exp(0.0f32-up*6.0f32));
+  once:V3=scale3(mul3(mul3(reach,took),add3(air,v3(haze,haze,haze))),first);
+  // light the air has scattered more than once: the blue that fills a sky the sun does not reach
+  // directly (the deep blue over a sunset, the sky before sunrise)
+  // (under a low sun there is more of it overhead, where the direct light is thin, and little of it
+  // low in the sky, where the long way through the air takes it out again: the horizon keeps its gold)
+  low:f32=1.0f32-saturate(sun.y*5.0f32+0.15f32);
+  again:V3=scale3(mul3(v3(0.03f32,0.07f32,0.21f32),took),mix(1.0f32,2.6f32*mix(0.12f32,1.0f32,smoothstep(0.0f32,0.45f32,up)),low));
+  return scale3(add3(once,again),ATMO_SUN*day);
+}
+// What distance fades to along the unit ray `rd`: the air's light along it laid flat on the horizon.
+atmo_far :: (rd:V3,sun:V3)->V3 {
+  l:f32=sqrt(rd.x*rd.x+rd.z*rd.z);
+  if (l<0.0001f32) {return atmo_sky(v3(0.0f32,0.0f32,0.0f32-1.0f32),sun);}
+  return atmo_sky(v3(rd.x/l,0.0f32,rd.z/l),sun);
+}
+// The sun in the sky along `rd`: its disc of `radius` radians (0: none), `soft` radians of edge,
+// and the glare round it. The disc is flattened by a fifth on the horizon and round by 12 degrees
+// up; its light is the sun's own after its air (atmo_sunlight).
+atmo_sun :: (rd:V3,sun:V3,radius:f32,soft:f32)->V3 {
+  if (radius<=0.0f32) {return v3(0.0f32,0.0f32,0.0f32);}
+  light:V3=scale3(atmo_sunlight(sun.y),atmo_day(sun.y));
+  d:V3=sub3(rd,sun);
+  flat:f32=1.0f32/(1.0f32-0.2f32*exp(0.0f32-fmax(sun.y,0.0f32)*14.0f32));
+  dv:f32=d.y*flat;
+  a:f32=sqrt(fmax(dot3(d,d)-d.y*d.y+dv*dv,0.0f32));
+  // (it looks half as large again on the horizon as it does high)
+  r:f32=radius*(1.0f32+0.5f32*exp(0.0f32-fmax(sun.y,0.0f32)*9.0f32));
+  // its edge is soft: a fifth of its radius, or `soft` when that is wider (a pixel or two), so the
+  // core runs into its glare with no ring
+  w:f32=fmax(soft,r*0.2f32);
+  disc:f32=1.0f32-smoothstep(r-w,r+w,a);
+  near:f32=a/r;
+  limb:f32=1.0f32-0.45f32*saturate(near)*saturate(near);
+  glare:f32=2.0f32/(1.0f32+near*near*near*0.9f32)+0.5f32*exp(0.0f32-near*0.3f32);
+  return scale3(light,ATMO_CORE*disc*limb+glare);
+}
+
+// ---- cloud: value noise on the engine's lattice hash (metaverse-engine/render/noise.coax)
+atmo_cell :: (x:f32)->u32 {return cast,trunc(u32)(cast(s32)floor(fmin(fmax(x,0.0f32-33554432.0f32),33554430.0f32)));}
+atmo_hash2 :: (x:f32,y:f32)->f32 {return render_noise_unit(render_noise_mix2(atmo_cell(x),atmo_cell(y)));}
+atmo_noise2 :: (x:f32,y:f32)->f32 {
+  ix:f32=floor(x); iy:f32=floor(y); fx:f32=x-ix; fy:f32=y-iy;
+  sx:f32=fx*fx*(3.0f32-2.0f32*fx); sy:f32=fy*fy*(3.0f32-2.0f32*fy);
+  return mix(mix(atmo_hash2(ix,iy),atmo_hash2(ix+1.0f32,iy),sx),mix(atmo_hash2(ix,iy+1.0f32),atmo_hash2(ix+1.0f32,iy+1.0f32),sx),sy);
+}
+// Five octaves, each twice as fine and half as strong, turned a little so they do not line up: 0 to 1.
+atmo_fbm2 :: (x:f32,y:f32)->f32 {
+  v:f32=0.0f32; a:f32=0.5f32; px:f32=x; py:f32=y;
+  for k:0..<5 { v+=a*atmo_noise2(px,py); qx:f32=px*1.62f32+py*1.18f32+3.7f32; py=py*1.62f32-px*1.18f32+9.2f32; px=qx; a*=0.5f32; }
+  return v/0.96875f32;
+}
+// How thick the heaped layer is at a place on it: 0 clear, 1 full. `cover` is how much of the sky
+// it takes (0 none, 0.4 fair weather, 1 overcast).
+atmo_heap :: (x:f32,y:f32,cover:f32)->f32 {
+  n:f32=atmo_fbm2(x,y);
+  lo:f32=0.74f32-0.5f32*saturate(cover);
+  return smoothstep(lo,lo+0.2f32,n)*smoothstep(0.0f32,0.05f32,cover);
+}
+// The clouds along `rd`: their light (not yet laid over the sky) and how much of the sky they hide.
+// `sky` is the air's light behind them, `cover` and `scale` the heaped layer's cover and size (1 is
+// usual), `drift` how far the wind has carried them (seconds of it).
+AtmoCloud :: struct {light:V3; hide:f32;}
+atmo_clouds :: (rd:V3,sun:V3,sky:V3,cover:f32,scale:f32,drift:f32)->AtmoCloud {
+  o:AtmoCloud;
+  if (rd.y<=0.004f32||cover<=0.0f32) {return o;} // mutant: equivalent (a ray this low has no cloud by `far` and the streaks' own fade, and no cover is none by the heap's and the streaks' own factor: the guard saves the work)
+  day:f32=atmo_day(sun.y);
+  // (the sun reaches cloud later than it reaches the high air: not until it is 4 degrees under)
+  sunlight:V3=scale3(atmo_sunlight(sun.y),day*1.5f32*smoothstep(0.0f32-0.07f32,0.02f32,sun.y));
+  // the light that is not the sun's: the sky's own, cooler and dimmer under a cloud
+  fill:V3=scale3(add3(atmo_sky(v3(0.0f32,1.0f32,0.0f32),sun),scale3(sky,0.35f32)),0.9f32);
+  cos_t:f32=dot3(rd,sun);
+  size:f32=fmax(scale,0.05f32);
+  // the heaped layer: the dome laid flat, so clouds shrink and crowd toward the horizon
+  k:f32=1.7f32/(size*(rd.y+0.16f32));
+  x:f32=rd.x*k+drift*0.006f32; y:f32=rd.z*k+drift*0.0025f32;
+  thick:f32=atmo_heap(x,y,cover);
+  // a step toward the sun: thick there, and this part is in the cloud's own shade
+  sl:f32=sqrt(fmax(sun.x*sun.x+sun.z*sun.z,0.0001f32));
+  toward:f32=atmo_heap(x+sun.x/sl*0.22f32,y+sun.z/sl*0.22f32,cover);
+  open:f32=1.0f32-0.75f32*toward*smoothstep(0.0f32,0.6f32,thick);
+  // its thin edges let the sun through, most when the eye looks toward the sun
+  edge:f32=thick*(1.0f32-thick)*4.0f32;
+  through:f32=edge*(0.25f32+1.6f32*pow(saturate(cos_t),6.0f32));
+  // a low sun lights it from under and the side: warm, and stronger on what faces it
+  heap:V3=add3(scale3(sunlight,0.2f32+0.95f32*open+through),scale3(fill,0.5f32+0.25f32*(1.0f32-thick)));
+  // far cloud takes the air's colour, and none stands on the horizon itself
+  far:f32=smoothstep(0.01f32,0.11f32,rd.y);
+  heap=mix3(sky,heap,0.55f32+0.45f32*smoothstep(0.01f32,0.16f32,rd.y));
+  hide:f32=smoothstep(0.0f32,0.55f32,thick)*far;
+  // the high layer: thin streaks, drawn out along the wind, that take the sun's colour first at dawn
+  hk:f32=0.75f32/(size*(rd.y+0.3f32));
+  hx:f32=(rd.x*0.42f32+rd.z*0.3f32)*hk+drift*0.002f32; hy:f32=(rd.z*1.0f32-rd.x*0.6f32)*hk;
+  wisp:f32=smoothstep(0.52f32,0.86f32,atmo_fbm2(hx,hy))*0.42f32*smoothstep(0.0f32,0.05f32,cover)*smoothstep(0.03f32,0.2f32,rd.y);
+  high:V3=add3(scale3(sunlight,0.75f32+0.9f32*pow(saturate(cos_t),4.0f32)),scale3(fill,0.3f32));
+  // the heaps are in front of the streaks
+  o.hide=hide+(1.0f32-hide)*wisp;
+  o.light=add3(scale3(heap,hide),scale3(high,(1.0f32-hide)*wisp));
+  return o;
+}
+// The whole sky along `rd`: the air, the sun's disc and glare (hidden by cloud), and the clouds.
+atmo_dome :: (rd:V3,sun:V3,radius:f32,soft:f32,cover:f32,scale:f32,drift:f32)->V3 {
+  sky:V3=atmo_sky(rd,sun);
+  if (rd.y<0.0f32) {return sky;}
+  c:AtmoCloud=atmo_clouds(rd,sun,sky,cover,scale,drift);
+  behind:V3=add3(sky,atmo_sun(rd,sun,radius,soft));
+  return add3(scale3(behind,1.0f32-c.hide),c.light);
+}
+
+// ---- checks
+#test "the air: how much of it a ray and the sun's light go through, and what is left of light after it" {
+  // a ray: 12.5 along the horizon and under it, a little under 1 straight up
+  #assert abs(atmo_mass(0.0f32)-12.5f32)<0.0001f32 && atmo_mass(0.0f32-0.5f32)==atmo_mass(0.0f32) && abs(atmo_mass(1.0f32)-0.9259259f32)<0.0001f32 && abs(atmo_mass(0.42f32)-2.0f32)<0.0001f32;
+  // the sun's light: 36 on the horizon, 0.97 overhead, and 150 more a unit of sine under the horizon
+  #assert abs(atmo_sun_mass(0.0f32)-36.0f32)<0.001f32 && abs(atmo_sun_mass(1.0f32)-0.972973f32)<0.0001f32 && abs(atmo_sun_mass(0.0722222f32)-10.0f32)<0.001f32;
+  #assert abs(atmo_sun_mass(0.0f32-0.1f32)-51.0f32)<0.001f32 && abs(atmo_sun_mass(0.0f32-0.0001f32)-36.015f32)<0.001f32;
+  // what is left: each colour by its own loss, blue least
+  t:V3=atmo_through(10.0f32);
+  #assert abs(t.x-exp(0.0f32-0.365f32))<0.00001f32 && abs(t.y-exp(0.0f32-0.691f32))<0.00001f32 && abs(t.z-exp(0.0f32-1.52f32))<0.00001f32;
+  none:V3=atmo_through(0.0f32); #assert none.x==1.0f32 && none.y==1.0f32 && none.z==1.0f32;
+  a:V3=atmo_air3(); #assert a.x==ATMO_AIR_R && a.y==ATMO_AIR_G && a.z==ATMO_AIR_B;
+  e:V3=atmo_exp3(v3(0.0f32,1.0f32,0.0f32-1.0f32)); #assert e.x==1.0f32 && abs(e.y-2.7182817f32)<0.00001f32 && abs(e.z-0.36787945f32)<0.00001f32;
+  // the sun as it arrives: deep orange-red on the horizon, white-gold high
+  low:V3=atmo_sunlight(0.0f32); high:V3=atmo_sunlight(0.67f32);
+  #assert abs(low.x-exp(0.0f32-36.0f32*0.0365f32))<0.00001f32 && low.x>low.y*3.0f32 && low.y>low.z*15.0f32 && low.x>0.25f32;
+  #assert high.x>0.94f32 && high.y>0.9f32 && high.z>0.8f32 && high.x>high.y && high.y>high.z;
+}
+#test "the day by the sun's height, and the two ways the air scatters" {
+  #assert atmo_day(ATMO_NIGHT)==0.0f32 && atmo_day(0.0f32-0.5f32)==0.0f32 && atmo_day(0.0f32)==1.0f32 && atmo_day(0.7f32)==1.0f32;
+  // by the cube of the way: an eighth halfway
+  #assert abs(atmo_day(ATMO_NIGHT*0.5f32)-0.125f32)<0.00001f32 && abs(atmo_day(ATMO_NIGHT*0.25f32)-0.421875f32)<0.00001f32;
+  #assert atmo_even(0.0f32)==1.0f32 && atmo_even(1.0f32)==1.5f32 && atmo_even(0.0f32-1.0f32)==1.5f32 && abs(atmo_even(0.5f32)-1.125f32)<0.00001f32;
+  // forward: 21 dead at the sun, about 1 at 37 degrees, little away from it
+  #assert abs(atmo_forward(1.0f32)-0.29f32*0.4224f32/(0.0576f32*0.24f32))<0.01f32 && abs(atmo_forward(0.8f32)-0.29f32*0.4224f32/(0.3616f32*sqrt(0.3616f32)))<0.0001f32;
+  #assert abs(atmo_forward(0.0f32-1.0f32)-0.29f32*0.4224f32/(3.0976f32*1.76f32))<0.0001f32 && atmo_forward(0.0f32)<0.07f32 && atmo_forward(0.0f32)>0.06f32;
+  // a cosine past 1 (rounding) breaks nothing
+  #assert atmo_forward(1.5f32)>0.0f32;
+}
+#test "the sky: nothing at night, blue by day and paler at the horizon, gold round a low sun under blue, and the horizon's own under it" {
+  day:V3=normalize3(v3(0.4f32,0.67f32,0.0f32-0.6f32));
+  top:V3=atmo_sky(v3(0.0f32,1.0f32,0.0f32),day); edge:V3=atmo_sky(v3(0.0f32,0.0f32,1.0f32),day);
+  #assert top.z>top.x*3.0f32 && top.z>top.y*1.5f32 && top.z>0.25f32 && top.z<0.8f32;
+  #assert edge.z>top.z && edge.x>top.x*3.0f32 && edge.z>edge.y && edge.y>edge.x && edge.z<edge.x*8.0f32;
+  // at night: nothing at all, any way the eye looks
+  night:V3=v3(0.0f32,ATMO_NIGHT,0.0f32-sqrt(1.0f32-ATMO_NIGHT*ATMO_NIGHT));
+  n1:V3=atmo_sky(v3(0.0f32,1.0f32,0.0f32),night); n2:V3=atmo_sky(v3(0.0f32,0.0f32,0.0f32-1.0f32),night);
+  #assert n1.x==0.0f32 && n1.y==0.0f32 && n1.z==0.0f32 && n2.x==0.0f32 && n2.y==0.0f32 && n2.z==0.0f32;
+  // the sun on the horizon along -z: gold and red low toward it, blue overhead and behind, dimmer than day
+  low:V3=v3(0.0f32,0.0f32,0.0f32-1.0f32);
+  at:V3=atmo_sky(normalize3(v3(0.1f32,0.03f32,0.0f32-1.0f32)),low); over:V3=atmo_sky(v3(0.0f32,1.0f32,0.0f32),low); back:V3=atmo_sky(normalize3(v3(0.0f32,0.3f32,1.0f32)),low);
+  #assert at.x>at.z*1.5f32 && at.x>at.y && at.x>0.3f32 && over.z>over.x*1.5f32 && over.z<top.z && back.z>back.x;
+  // before sunrise (6 degrees under): a red glow low toward the sun, a dark blue overhead, darker than at sunrise
+  pre:V3=normalize3(v3(0.0f32,0.0f32-0.1045f32,0.0f32-1.0f32));
+  glow:V3=atmo_sky(normalize3(v3(0.0f32,0.02f32,0.0f32-1.0f32)),pre); dark:V3=atmo_sky(v3(0.0f32,1.0f32,0.0f32),pre);
+  #assert glow.x>glow.z*2.0f32 && glow.x>0.03f32 && glow.x<at.x && dark.z>dark.x*3.0f32 && dark.z<over.z && dark.z>0.005f32;
+  // under the horizon it is the horizon's
+  under:V3=atmo_sky(normalize3(v3(0.3f32,0.0f32-0.4f32,0.0f32-1.0f32)),day); flat:V3=atmo_sky(normalize3(v3(0.3f32,0.0f32,0.0f32-1.0f32)),day);
+  #assert abs(under.x-flat.x)<flat.x*0.4f32 && abs(under.z-flat.z)<flat.z*0.4f32;
+  // what distance fades to is the sky along the ray laid flat; a ray straight down has the sky ahead
+  far:V3=atmo_far(normalize3(v3(0.3f32,0.0f32-0.4f32,0.0f32-1.0f32)),day); #assert abs(far.x-flat.x)<0.00001f32 && abs(far.y-flat.y)<0.00001f32 && abs(far.z-flat.z)<0.00001f32;
+  up:V3=atmo_far(normalize3(v3(0.3f32,0.9f32,0.0f32-1.0f32)),day); #assert abs(up.z-flat.z)<0.00001f32;
+  down:V3=atmo_far(v3(0.0f32,0.0f32-1.0f32,0.0f32),day); ahead:V3=atmo_sky(v3(0.0f32,0.0f32,0.0f32-1.0f32),day); #assert down.x==ahead.x && down.z==ahead.z;
+  nearly:V3=atmo_far(normalize3(v3(0.00005f32,0.0f32-1.0f32,0.0f32)),day); #assert nearly.x==ahead.x;
+}
+#test "the sun: a core many times a white, its own colour, soft at its limb, larger and flatter on the horizon, with glare round it; none without a radius or at night" {
+  high:V3=normalize3(v3(0.0f32,0.6f32,0.0f32-0.8f32));
+  light:V3=atmo_sunlight(high.y);
+  core:V3=atmo_sun(high,high,0.02f32,0.001f32);
+  // dead on it: the core and the glare's most (2.5), in the sun's own colour
+  #assert abs(core.x-light.x*(ATMO_CORE+2.5f32))<0.01f32 && abs(core.z-light.z*(ATMO_CORE+2.5f32))<0.01f32;
+  // half way out the limb is darker: 0.45 of a quarter less
+  half:V3=atmo_sun(normalize3(v3(0.0f32,0.6f32+0.008f32,0.0f32-0.8f32+0.006f32)),high,0.02f32,0.001f32);
+  #assert half.x<core.x*0.92f32 && half.x>core.x*0.84f32;
+  // two radii out: only glare, a small share of the core
+  out:V3=atmo_sun(normalize3(v3(0.04f32,0.6f32,0.0f32-0.8f32)),high,0.02f32,0.001f32);
+  #assert out.x<core.x*0.02f32 && out.x>light.x*0.4f32 && out.x<light.x*0.7f32;
+  // far from it: nearly nothing
+  far:V3=atmo_sun(v3(0.0f32,0.6f32,0.8f32),high,0.02f32,0.001f32); #assert far.x<0.001f32 && far.x>=0.0f32;
+  // no radius is no sun; at night there is none
+  zero:V3=atmo_sun(high,high,0.0f32,0.001f32); #assert zero.x==0.0f32 && zero.y==0.0f32 && zero.z==0.0f32;
+  neg:V3=atmo_sun(high,high,0.0f32-0.01f32,0.001f32); #assert neg.x==0.0f32;
+  night:V3=v3(0.0f32,ATMO_NIGHT,0.0f32-sqrt(1.0f32-ATMO_NIGHT*ATMO_NIGHT)); gone:V3=atmo_sun(night,night,0.02f32,0.001f32); #assert gone.x==0.0f32;
+  // on the horizon it is half as large again: a ray 1.3 radii to its side is still in its disc, and is not when it is high
+  low:V3=v3(0.0f32,0.0f32,0.0f32-1.0f32);
+  beside:V3=atmo_sun(normalize3(v3(0.026f32,0.0f32,0.0f32-1.0f32)),low,0.02f32,0.001f32); lowlight:V3=atmo_sunlight(0.0f32);
+  #assert beside.x>lowlight.x*ATMO_CORE*0.5f32;
+  highside:V3=atmo_sun(normalize3(v3(0.026f32,0.6f32,0.0f32-0.8f32)),high,0.02f32,0.001f32); #assert highside.x<light.x*4.0f32;
+  // and flatter: the same way above it is outside the disc
+  above:V3=atmo_sun(normalize3(v3(0.0f32,0.0265f32,0.0f32-1.0f32)),normalize3(v3(0.0f32,0.0005f32,0.0f32-1.0f32)),0.02f32,0.001f32);
+  #assert above.x<beside.x*0.75f32;
+  // its edge is a fifth of its radius wide, or the width it is told when that is wider
+  in_:V3=atmo_sun(normalize3(v3(0.0185f32,0.6f32,0.0f32-0.8f32)),high,0.02f32,0.0001f32); #assert in_.x<core.x*0.6f32 && in_.x>core.x*0.2f32;
+  wide:V3=atmo_sun(normalize3(v3(0.03f32,0.6f32,0.0f32-0.8f32)),high,0.02f32,0.02f32); thin:V3=atmo_sun(normalize3(v3(0.03f32,0.6f32,0.0f32-0.8f32)),high,0.02f32,0.0001f32);
+  #assert wide.x>thin.x*3.0f32;
+}
+#test "cloud noise stays in 0 to 1, is a lattice point's own number there, and the heaped layer grows with its cover" {
+  for i:0..<120 { x:f32=cast(f32)i*0.173f32-9.0f32; y:f32=cast(f32)i*0.311f32+4.0f32;
+    n:f32=atmo_noise2(x,y); f:f32=atmo_fbm2(x,y); h:f32=atmo_hash2(x,y);
+    #assert n>=0.0f32 && n<=1.0f32 && f>=0.0f32 && f<=1.0f32 && h>=0.0f32 && h<1.0f32;
+    #assert abs(atmo_noise2(x+0.001f32,y)-n)<0.02f32;
+    t:f32=atmo_heap(x,y,0.5f32); #assert t>=0.0f32 && t<=1.0f32 && atmo_heap(x,y,0.0f32)==0.0f32 && atmo_heap(x,y,0.9f32)>=t && atmo_heap(x,y,0.5f32)>=atmo_heap(x,y,0.2f32);
+  }
+  #assert atmo_noise2(3.0f32,5.0f32)==atmo_hash2(3.0f32,5.0f32) && atmo_noise2(3.5f32,5.0f32)==(atmo_hash2(3.0f32,5.0f32)+atmo_hash2(4.0f32,5.0f32))*0.5f32;
+  #assert atmo_noise2(3.0f32,5.5f32)==(atmo_hash2(3.0f32,5.0f32)+atmo_hash2(3.0f32,6.0f32))*0.5f32 && atmo_hash2(3.2f32,5.7f32)==atmo_hash2(3.0f32,5.0f32) && atmo_hash2(0.0f32-0.5f32,0.0f32)==atmo_hash2(0.0f32-1.0f32,0.0f32);
+  #assert atmo_cell(2.7f32)==2 && atmo_cell(0.0f32-0.5f32)==atmo_cell(0.0f32-1.0f32) && atmo_cell(1.0e12f32)==atmo_cell(33554430.0f32) && atmo_cell(0.0f32-1.0e12f32)==atmo_cell(0.0f32-33554432.0f32);
+  // one octave's share: the first is half of 0.96875
+  one:f32=atmo_noise2(1.3f32,2.9f32); all:f32=atmo_fbm2(1.3f32,2.9f32); #assert abs(all-one*0.516129f32)<0.5f32 && all!=one;
+  // the heap: clear under its threshold, full a fifth of a unit over it; an overcast's threshold is lower
+  some:f32=0.0f32; full:f32=0.0f32; clear:f32=0.0f32;
+  for i:0..<400 { v:f32=atmo_heap(cast(f32)i*0.37f32,cast(f32)i*0.19f32,0.5f32); if (v>0.0f32&&v<1.0f32) {some+=1.0f32;} if (v==1.0f32) {full+=1.0f32;} if (v==0.0f32) {clear+=1.0f32;} }
+  #assert some>10.0f32 && full>2.0f32 && clear>50.0f32;
+  #assert atmo_heap(1.0f32,1.0f32,0.02f32)<=atmo_heap(1.0f32,1.0f32,0.05f32);
+}
+#test "the clouds: none under the horizon or with no cover, never more than all of the sky, the same all round with no join, and dark at night" {
+  day:V3=normalize3(v3(0.4f32,0.67f32,0.0f32-0.6f32)); sky:V3=v3(0.2f32,0.3f32,0.5f32);
+  none:AtmoCloud=atmo_clouds(normalize3(v3(0.3f32,0.4f32,0.0f32-1.0f32)),day,sky,0.0f32,1.0f32,0.0f32); #assert none.hide==0.0f32 && none.light.x==0.0f32;
+  under:AtmoCloud=atmo_clouds(normalize3(v3(0.3f32,0.0f32-0.2f32,0.0f32-1.0f32)),day,sky,0.6f32,1.0f32,0.0f32); #assert under.hide==0.0f32 && under.light.z==0.0f32;
+  edge:AtmoCloud=atmo_clouds(normalize3(v3(0.3f32,0.004f32,0.0f32-1.0f32)),day,sky,0.6f32,1.0f32,0.0f32); #assert edge.hide==0.0f32;
+  night:V3=v3(0.0f32,ATMO_NIGHT,0.0f32-sqrt(1.0f32-ATMO_NIGHT*ATMO_NIGHT));
+  seen:f32=0.0f32; lit:f32=0.0f32;
+  for i:0..<72 { for j:0..<5 {
+    a:f32=cast(f32)i/72.0f32*6.2831853f32; e:f32=0.08f32+0.25f32*cast(f32)j;
+    rd:V3=v3(sin(a)*cos(e),sin(e),0.0f32-cos(a)*cos(e));
+    c:AtmoCloud=atmo_clouds(rd,day,sky,0.6f32,1.0f32,0.0f32);
+    #assert c.hide>=0.0f32 && c.hide<=1.0f32 && c.light.x>=0.0f32 && c.light.x<6.0f32;
+    if (c.hide>0.5f32) { seen+=1.0f32; if (c.light.x>c.hide*0.7f32) {lit+=1.0f32;} }
+    // a quarter of a degree round, nothing jumps: there is no join anywhere round the dome
+    b:f32=a+0.0044f32; d:AtmoCloud=atmo_clouds(v3(sin(b)*cos(e),sin(e),0.0f32-cos(b)*cos(e)),day,sky,0.6f32,1.0f32,0.0f32);
+    #assert abs(d.hide-c.hide)<0.4f32;
+    // at night they hide the sky as much and have no light
+    n:AtmoCloud=atmo_clouds(rd,night,v3(0.0f32,0.0f32,0.0f32),0.6f32,1.0f32,0.0f32);
+    #assert abs(n.hide-c.hide)<0.00001f32 && n.light.x==0.0f32 && n.light.y==0.0f32 && n.light.z==0.0f32;
+  } }
+  // a fair share of the dome is cloud at this cover, and most of that is lit bright by day
+  #assert seen>60.0f32 && seen<300.0f32 && lit>seen*0.5f32;
+}
+#test "the dome is the air, the sun where no cloud hides it, and the clouds; under the horizon it is the air alone" {
+  day:V3=normalize3(v3(0.4f32,0.67f32,0.0f32-0.6f32));
+  // with no cloud: the air and the sun
+  rd:V3=normalize3(v3(0.41f32,0.67f32,0.0f32-0.6f32));
+  d:V3=atmo_dome(rd,day,0.02f32,0.001f32,0.0f32,1.0f32,0.0f32); s:V3=add3(atmo_sky(rd,day),atmo_sun(rd,day,0.02f32,0.001f32));
+  #assert abs(d.x-s.x)<0.0001f32 && abs(d.z-s.z)<0.0001f32 && d.x>20.0f32;
+  // under the horizon: the air alone, no sun (a sun under the horizon is not drawn through the ground)
+  low:V3=normalize3(v3(0.0f32,0.0f32-0.05f32,0.0f32-1.0f32));
+  u:V3=atmo_dome(low,low,0.02f32,0.001f32,0.5f32,1.0f32,0.0f32); a:V3=atmo_sky(low,low); #assert u.x==a.x && u.y==a.y && u.z==a.z;
+  // where cloud is thick the sun is hidden behind it: find such a ray and put the sun there
+  found:bool=false;
+  for i:0..<200 {
+    e:f32=0.5f32+cast(f32)(i%7)*0.1f32; b:f32=cast(f32)i*0.31f32;
+    q:V3=v3(sin(b)*cos(e),sin(e),0.0f32-cos(b)*cos(e));
+    c:AtmoCloud=atmo_clouds(q,q,atmo_sky(q,q),0.9f32,1.0f32,0.0f32);
+    if (c.hide>0.97f32&&!found) {
+      found=true;
+      hid:V3=atmo_dome(q,q,0.02f32,0.001f32,0.9f32,1.0f32,0.0f32); bare:V3=atmo_dome(q,q,0.02f32,0.001f32,0.0f32,1.0f32,0.0f32);
+      #assert hid.x<bare.x*0.1f32 && hid.x>0.2f32;
+      want:V3=add3(scale3(add3(atmo_sky(q,q),atmo_sun(q,q,0.02f32,0.001f32)),1.0f32-c.hide),c.light);
+      #assert abs(hid.x-want.x)<0.001f32 && abs(hid.z-want.z)<0.001f32;
+    }
+  }
+  #assert found;
+  // a sun exactly on the horizon is drawn: the ray dead at it is its disc, not the air alone
+  flat:V3=v3(0.0f32,0.0f32,0.0f32-1.0f32); on:V3=atmo_dome(flat,flat,0.02f32,0.001f32,0.5f32,1.0f32,0.0f32); air:V3=atmo_sky(flat,flat); #assert on.x>air.x*5.0f32;
+}
+#test "the atmosphere is pinned: the sky, what distance fades to, the sun, the clouds and the dome add up to what they did, by day, at sunrise, before it and at night" #steps 400000000 {
+  for pass:0..<4 {
+    sun:V3=v3(0.0f32,0.0f32,0.0f32-1.0f32);
+    if (pass==0) { sun=normalize3(v3(0.4f32,0.67f32,0.0f32-0.6f32)); }
+    if (pass==1) { sun=normalize3(v3(0.3f32,0.06f32,0.0f32-1.0f32)); }
+    if (pass==2) { sun=normalize3(v3(0.0f32-0.5f32,0.0f32-0.08f32,0.0f32-1.0f32)); }
+    if (pass==3) { sun=normalize3(v3(0.0f32,0.0f32-0.2f32,1.0f32)); }
+    sum:V3=v3(0.0f32,0.0f32,0.0f32);
+    for i:0..<20 { for j:0..<6 {
+      a:f32=(cast(f32)i+0.5f32)/20.0f32*6.2831853f32; e:f32=0.0f32-0.15f32+1.6f32*(cast(f32)j+0.5f32)/6.0f32;
+      rd:V3=v3(sin(a)*cos(e),sin(e),0.0f32-cos(a)*cos(e));
+      c:V3=atmo_sky(rd,sun);
+      sum=add3(sum,scale3(c,1.0f32+cast(f32)((i*7+j*3)%5)));
+    } }
+    want:[4]V3=[4]V3.[v3(52.747272f32,107.46995f32,215.76788f32),v3(43.510468f32,70.96099f32,109.93412f32),v3(4.5827475f32,5.60697f32,18.937538f32),v3(0.04002333f32,0.066798694f32,0.35393828f32)];
+    #assert abs(sum.x-want[pass].x)<0.004f32+abs(want[pass].x)*0.00002f32 && abs(sum.y-want[pass].y)<0.004f32+abs(want[pass].y)*0.00002f32 && abs(sum.z-want[pass].z)<0.004f32+abs(want[pass].z)*0.00002f32;
+  }
+  for pass:0..<4 {
+    sun:V3=v3(0.0f32,0.0f32,0.0f32-1.0f32);
+    if (pass==0) { sun=normalize3(v3(0.4f32,0.67f32,0.0f32-0.6f32)); }
+    if (pass==1) { sun=normalize3(v3(0.3f32,0.06f32,0.0f32-1.0f32)); }
+    if (pass==2) { sun=normalize3(v3(0.0f32-0.5f32,0.0f32-0.08f32,0.0f32-1.0f32)); }
+    if (pass==3) { sun=normalize3(v3(0.0f32,0.0f32-0.2f32,1.0f32)); }
+    sum:V3=v3(0.0f32,0.0f32,0.0f32);
+    for i:0..<20 { for j:0..<6 {
+      a:f32=(cast(f32)i+0.5f32)/20.0f32*6.2831853f32; e:f32=0.0f32-0.15f32+1.6f32*(cast(f32)j+0.5f32)/6.0f32;
+      rd:V3=v3(sin(a)*cos(e),sin(e),0.0f32-cos(a)*cos(e));
+      c:V3=atmo_far(rd,sun);
+      sum=add3(sum,scale3(c,1.0f32+cast(f32)((i*7+j*3)%5)));
+    } }
+    want:[4]V3=[4]V3.[v3(175.92569f32,330.12512f32,543.0076f32),v3(150.03389f32,199.11292f32,173.36218f32),v3(15.048806f32,8.290807f32,11.08819f32),v3(0.14738992f32,0.07758894f32,0.2112596f32)];
+    #assert abs(sum.x-want[pass].x)<0.004f32+abs(want[pass].x)*0.00002f32 && abs(sum.y-want[pass].y)<0.004f32+abs(want[pass].y)*0.00002f32 && abs(sum.z-want[pass].z)<0.004f32+abs(want[pass].z)*0.00002f32;
+  }
+  for pass:0..<4 {
+    sun:V3=v3(0.0f32,0.0f32,0.0f32-1.0f32);
+    if (pass==0) { sun=normalize3(v3(0.4f32,0.67f32,0.0f32-0.6f32)); }
+    if (pass==1) { sun=normalize3(v3(0.3f32,0.06f32,0.0f32-1.0f32)); }
+    if (pass==2) { sun=normalize3(v3(0.0f32-0.5f32,0.0f32-0.08f32,0.0f32-1.0f32)); }
+    if (pass==3) { sun=normalize3(v3(0.0f32,0.0f32-0.2f32,1.0f32)); }
+    sum:V3=v3(0.0f32,0.0f32,0.0f32);
+    for i:0..<20 { for j:0..<6 {
+      a:f32=(cast(f32)i+0.5f32)/20.0f32*6.2831853f32; e:f32=0.0f32-0.15f32+1.6f32*(cast(f32)j+0.5f32)/6.0f32;
+      rd:V3=v3(sin(a)*cos(e),sin(e),0.0f32-cos(a)*cos(e));
+      c:V3=atmo_sun(rd,sun,0.3f32,0.01f32);
+      sum=add3(sum,scale3(c,1.0f32+cast(f32)((i*7+j*3)%5)));
+    } }
+    want:[4]V3=[4]V3.[v3(630.7848f32,602.4164f32,535.8916f32),v3(318.53293f32,217.21432f32,82.05084f32),v3(44.85978f32,9.785812f32,0.20372733f32),v3(0.19722027f32,0.023376085f32,0.00010316865f32)];
+    #assert abs(sum.x-want[pass].x)<0.004f32+abs(want[pass].x)*0.00002f32 && abs(sum.y-want[pass].y)<0.004f32+abs(want[pass].y)*0.00002f32 && abs(sum.z-want[pass].z)<0.004f32+abs(want[pass].z)*0.00002f32;
+  }
+  for pass:0..<4 {
+    sun:V3=v3(0.0f32,0.0f32,0.0f32-1.0f32);
+    if (pass==0) { sun=normalize3(v3(0.4f32,0.67f32,0.0f32-0.6f32)); }
+    if (pass==1) { sun=normalize3(v3(0.3f32,0.06f32,0.0f32-1.0f32)); }
+    if (pass==2) { sun=normalize3(v3(0.0f32-0.5f32,0.0f32-0.08f32,0.0f32-1.0f32)); }
+    if (pass==3) { sun=normalize3(v3(0.0f32,0.0f32-0.2f32,1.0f32)); }
+    sum:V3=v3(0.0f32,0.0f32,0.0f32);
+    for i:0..<20 { for j:0..<6 {
+      a:f32=(cast(f32)i+0.5f32)/20.0f32*6.2831853f32; e:f32=0.0f32-0.15f32+1.6f32*(cast(f32)j+0.5f32)/6.0f32;
+      rd:V3=v3(sin(a)*cos(e),sin(e),0.0f32-cos(a)*cos(e));
+      c:V3=atmo_clouds(rd,sun,v3(0.2f32,0.3f32,0.5f32),0.5f32,1.3f32,40.0f32).light;
+      sum=add3(sum,scale3(c,1.0f32+cast(f32)((i*7+j*3)%5)));
+    } }
+    want:[4]V3=[4]V3.[v3(123.278435f32,121.823074f32,118.769066f32),v3(73.75964f32,54.77203f32,32.84224f32),v3(3.0196729f32,4.6866918f32,8.818025f32),v3(2.8449001f32,4.270506f32,7.140096f32)];
+    #assert abs(sum.x-want[pass].x)<0.004f32+abs(want[pass].x)*0.00002f32 && abs(sum.y-want[pass].y)<0.004f32+abs(want[pass].y)*0.00002f32 && abs(sum.z-want[pass].z)<0.004f32+abs(want[pass].z)*0.00002f32;
+  }
+  for pass:0..<4 {
+    sun:V3=v3(0.0f32,0.0f32,0.0f32-1.0f32);
+    if (pass==0) { sun=normalize3(v3(0.4f32,0.67f32,0.0f32-0.6f32)); }
+    if (pass==1) { sun=normalize3(v3(0.3f32,0.06f32,0.0f32-1.0f32)); }
+    if (pass==2) { sun=normalize3(v3(0.0f32-0.5f32,0.0f32-0.08f32,0.0f32-1.0f32)); }
+    if (pass==3) { sun=normalize3(v3(0.0f32,0.0f32-0.2f32,1.0f32)); }
+    sum:V3=v3(0.0f32,0.0f32,0.0f32);
+    for i:0..<20 { for j:0..<6 {
+      a:f32=(cast(f32)i+0.5f32)/20.0f32*6.2831853f32; e:f32=0.0f32-0.15f32+1.6f32*(cast(f32)j+0.5f32)/6.0f32;
+      rd:V3=v3(sin(a)*cos(e),sin(e),0.0f32-cos(a)*cos(e));
+      c:V3=v3(atmo_clouds(rd,sun,v3(0.2f32,0.3f32,0.5f32),0.5f32,1.3f32,40.0f32).hide,atmo_clouds(rd,sun,v3(0.2f32,0.3f32,0.5f32),0.8f32,0.7f32,0.0f32).hide,atmo_clouds(rd,sun,v3(0.2f32,0.3f32,0.5f32),0.2f32,1.0f32,900.0f32).hide);
+      sum=add3(sum,scale3(c,1.0f32+cast(f32)((i*7+j*3)%5)));
+    } }
+    want:[4]V3=[4]V3.[v3(78.33318f32,202.7232f32,56.048862f32),v3(78.33318f32,202.7232f32,56.048862f32),v3(78.33318f32,202.7232f32,56.048862f32),v3(78.33318f32,202.7232f32,56.048862f32)];
+    #assert abs(sum.x-want[pass].x)<0.004f32+abs(want[pass].x)*0.00002f32 && abs(sum.y-want[pass].y)<0.004f32+abs(want[pass].y)*0.00002f32 && abs(sum.z-want[pass].z)<0.004f32+abs(want[pass].z)*0.00002f32;
+  }
+  for pass:0..<4 {
+    sun:V3=v3(0.0f32,0.0f32,0.0f32-1.0f32);
+    if (pass==0) { sun=normalize3(v3(0.4f32,0.67f32,0.0f32-0.6f32)); }
+    if (pass==1) { sun=normalize3(v3(0.3f32,0.06f32,0.0f32-1.0f32)); }
+    if (pass==2) { sun=normalize3(v3(0.0f32-0.5f32,0.0f32-0.08f32,0.0f32-1.0f32)); }
+    if (pass==3) { sun=normalize3(v3(0.0f32,0.0f32-0.2f32,1.0f32)); }
+    sum:V3=v3(0.0f32,0.0f32,0.0f32);
+    for i:0..<20 { for j:0..<6 {
+      a:f32=(cast(f32)i+0.5f32)/20.0f32*6.2831853f32; e:f32=0.0f32-0.15f32+1.6f32*(cast(f32)j+0.5f32)/6.0f32;
+      rd:V3=v3(sin(a)*cos(e),sin(e),0.0f32-cos(a)*cos(e));
+      c:V3=atmo_clouds(normalize3(v3(rd.x,0.03f32+0.02f32*cast(f32)j,rd.z)),sun,v3(0.2f32,0.3f32,0.5f32),0.8f32,1.0f32,5.0f32).light;
+      sum=add3(sum,scale3(c,1.0f32+cast(f32)((i*7+j*3)%5)));
+    } }
+    want:[4]V3=[4]V3.[v3(203.1631f32,204.80876f32,208.71661f32),v3(143.16293f32,110.32712f32,75.000145f32),v3(10.397486f32,15.925379f32,28.650743f32),v3(10.031504f32,15.053863f32,25.137068f32)];
+    #assert abs(sum.x-want[pass].x)<0.004f32+abs(want[pass].x)*0.00002f32 && abs(sum.y-want[pass].y)<0.004f32+abs(want[pass].y)*0.00002f32 && abs(sum.z-want[pass].z)<0.004f32+abs(want[pass].z)*0.00002f32;
+  }
+  for pass:0..<4 {
+    sun:V3=v3(0.0f32,0.0f32,0.0f32-1.0f32);
+    if (pass==0) { sun=normalize3(v3(0.4f32,0.67f32,0.0f32-0.6f32)); }
+    if (pass==1) { sun=normalize3(v3(0.3f32,0.06f32,0.0f32-1.0f32)); }
+    if (pass==2) { sun=normalize3(v3(0.0f32-0.5f32,0.0f32-0.08f32,0.0f32-1.0f32)); }
+    if (pass==3) { sun=normalize3(v3(0.0f32,0.0f32-0.2f32,1.0f32)); }
+    sum:V3=v3(0.0f32,0.0f32,0.0f32);
+    for i:0..<20 { for j:0..<6 {
+      a:f32=(cast(f32)i+0.5f32)/20.0f32*6.2831853f32; e:f32=0.0f32-0.15f32+1.6f32*(cast(f32)j+0.5f32)/6.0f32;
+      rd:V3=v3(sin(a)*cos(e),sin(e),0.0f32-cos(a)*cos(e));
+      c:V3=atmo_dome(rd,sun,0.2f32,0.01f32,0.45f32,1.0f32,12.0f32);
+      sum=add3(sum,scale3(c,1.0f32+cast(f32)((i*7+j*3)%5)));
+    } }
+    want:[4]V3=[4]V3.[v3(430.71793f32,465.47867f32,526.8647f32),v3(182.19763f32,163.12825f32,139.074f32),v3(6.8906064f32,5.78991f32,17.423399f32),v3(0.058431707f32,0.0638992f32,0.32424796f32)];
+    #assert abs(sum.x-want[pass].x)<0.004f32+abs(want[pass].x)*0.00002f32 && abs(sum.y-want[pass].y)<0.004f32+abs(want[pass].y)*0.00002f32 && abs(sum.z-want[pass].z)<0.004f32+abs(want[pass].z)*0.00002f32;
+  }
+}

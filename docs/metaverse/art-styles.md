@@ -811,6 +811,50 @@ for the clouds within 0.6 radians of straight behind. First used by
 gamebuilder.org's world: the sky starts black and the sun comes up ahead of
 the character in twelve seconds.
 
+**The stylized look's air and film** (built November 17, after the sunrise
+above was judged against Everglade's sky and found flat: a hard-edged disc
+with no glare, cartoon heaps, a washed sky). What Everglade's sky is: the
+painterly pipeline of sections 5 and 6, all procedural, no cubemap or pack.
+A two-colour gradient by `pow(up, 0.55)` with a 6 degree band, a disc with a
+two-term halo (`metaverse_style_halo`), one layer of two-octave noise cloud
+in two tones (`render/shade/sky.coax`), stars; drawn as linear light into a
+16-bit target, bloomed by the host's five-step post pass (threshold 0.85,
+knee 0.25), light shafts from the aux target, an exposure and a tone curve.
+What makes it better than a painted sky is the last part: light kept in its
+own scale, so the sun can be many times a white, and one bloom and tone over
+the whole frame. The stylized look now has that, and an atmosphere the
+painterly sky does not have:
+
+- **`render/shade/atmosphere.coax`** (new, usable by any realm). `atmo_sky`:
+  the air's light from the sun's place alone, by how much air the ray and the
+  sun's light go through (`atmo_mass`, `atmo_sun_mass`, `atmo_through`: blue
+  is scattered most, 0.14 a unit of air against red's 0.0245), with a forward
+  glow round the sun (`atmo_forward`), a wide band of it low along the
+  horizon, and the blue the air scatters more than once. It is day at a
+  glance, sunrise at the horizon, and black once the sun is 14 degrees under
+  (`atmo_day`). `atmo_sun`: the disc 48 times a white with a soft limb and
+  glare, in `atmo_sunlight`'s colour, larger and flatter on the horizon.
+  `atmo_clouds`: five-octave noise on the dome laid flat (so clouds crowd
+  toward the horizon and there is no join anywhere), shaded by the cloud a
+  step toward the sun, lit through its thin edges, under thin high streaks;
+  the sun reaches them 4 degrees before it rises. `atmo_far`: the far air's
+  light along a ray laid flat. `atmo_dome`: all of it.
+- **`StyLook.air`** (the exposure; 0 is the painted sky, as before). With
+  air the sky is `atmo_dome`, distance fades to `atmo_far` (no band where the
+  land ends), and grass lets a low sun through its tips toward the eye
+  (`sty_grass_through`: up to 4 times the sun's colour at the tip, looking at
+  a sun just up; none of a sun 30 degrees up).
+- **The film entries** (`stylized_film_bg_fs`, `_scene_fs`, `_grass_fs`,
+  `stylized_bloom_fs`, `stylized_post_fs`): the frame as light, the share over
+  a white blooming (knee from 0.6), the host's bloom steps, and `sty_tone`,
+  which leaves colours up to 0.6 as they are and rolls the rest off slowly,
+  0.55 each channel by itself (a bright colour goes to white) and 0.45 by the
+  brightest's roll-off (a low sun stays orange).
+
+Not carried over from the painterly sky: light shafts and stars. The
+sunrise's clock is unchanged (`sty_sunrise`); with air its sky colours are
+not used, its lights are.
+
 ### 14. The phone tier
 
 `metaverse_style_preset(style, PHONE)` (a coarse pointer, or a canvas under

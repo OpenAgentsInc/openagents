@@ -502,6 +502,34 @@ sky without a line. The sky is a whole dome: the cloud field is joined where
 its two ends meet behind the camera (`sty_cloud_round`). A look that names no
 disc, glow or dimming draws as it did before.
 
+### Air, and the frame as light
+
+That sky is painted: two colours, a flat disc, crisp cloud. Give the look
+`air` (an exposure, 1 is usual) and the sky is the engine's atmosphere
+instead ([`render/shade/atmosphere.coax`](../render/shade/atmosphere.coax)),
+worked out from the sun's place alone and kept in light's own scale:
+
+```jai
+day.air = 1; day.sun_disc = 0.017; day.cloud = 0.42;   // the rest of the look's sky colours are not used
+look := sty_sunrise(day, seconds / 12, 0, -1);
+```
+
+| Piece | What it is |
+| --- | --- |
+| `atmo_sky(rd, sun)` | The air's light along a ray: blue by day, gold and rose round a low sun under a deep blue, a red glow before sunrise, nothing 14 degrees under |
+| `atmo_sun(rd, sun, radius, soft)` | The disc, 48 times a white, soft at its limb, with glare; deep orange-red on the horizon, where it is larger and flatter |
+| `atmo_clouds(rd, sun, sky, cover, scale, drift)` | Soft cloud on the dome laid flat, shaded away from the sun and lit through its edges, under high streaks; no join round the dome |
+| `atmo_far(rd, sun)` | What distance fades to: the far air's light that way, so land and sky meet with no band |
+
+A sun 48 times a white needs a frame that can hold it. Name the look's film
+entries in the world's `.module` (`stylized_film_bg_fs` as `bg_fs`,
+`stylized_film_scene_fs`, `stylized_film_grass_fs`, `stylized_bloom_fs`,
+`stylized_post_fs`) and the web host draws the frame as light into a 16-bit
+target, blooms what is over a white and tones it once (`sty_tone`). The tone
+leaves colours up to 0.6 alone, so the world's painted colours stay as they
+were. Grass takes a low sun through its blades toward the eye
+(`sty_grass_through`), the rim of light a meadow has at dawn.
+
 ## What exists today
 
 - [metaverse-engine/world/path-graph.coax](../world/path-graph.coax): the hills and the

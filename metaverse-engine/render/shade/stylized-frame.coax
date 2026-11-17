@@ -53,6 +53,12 @@ StyLook :: struct {
   sun_disc: f32 = 0.0;               // the disc's radius, radians (0.03 is a big painted sun; 0: none)
   glow_r: f32 = 0.0; glow_g: f32 = 0.0; glow_b: f32 = 0.0;   // the glow low in the sky toward the sun: dawn's colour
   cloud_dim: f32 = 0.0;              // how much of the clouds' daylight is gone: 0 white, 1 black
+  // The air: 0 is the painted sky above. Over 0, the engine's atmosphere draws the sky from the sun's
+  // place alone (atmosphere.coax: the air's colour at any height of the sun, the sun's bright disc
+  // and glare, soft clouds lit by it, haze the colour of the far air), and this is the exposure it
+  // is shown at (1 is usual). The zenith's, the horizon's and the haze's colours, the glow and
+  // cloud_dim are then not used; cloud, cloud_scale and sun_disc are.
+  air: f32 = 0.0;
 }
 
 // A camera: where it is, the way it looks (yaw 0 looks along -z and turns toward +x; pitch up) and
@@ -91,7 +97,7 @@ sty_frame :: (u: [] f32, width: f32, height: f32, time: f32, c: StyCamera, look:
   sty_put3(u, STY_U_SUN, look.sun_x / sl, look.sun_y / sl, look.sun_z / sl, look.shadow);
   sty_put3(u, STY_U_SUN_COLOUR, look.sun_r, look.sun_g, look.sun_b, look.band);
   sty_put3(u, STY_U_SKY_LIGHT, look.sky_r, look.sky_g, look.sky_b, look.cloud_dim);
-  sty_put3(u, STY_U_GROUND_LIGHT, look.ground_r, look.ground_g, look.ground_b, 0);
+  sty_put3(u, STY_U_GROUND_LIGHT, look.ground_r, look.ground_g, look.ground_b, look.air);
   sty_put3(u, STY_U_HAZE, look.haze_r, look.haze_g, look.haze_b, look.haze);
   sty_put3(u, STY_U_HAZE_INFO, look.haze_start, look.haze_most, look.cloud_turn, look.sun_disc);
   sty_put3(u, STY_U_ZENITH, look.zenith_r, look.zenith_g, look.zenith_b, look.cloud);
@@ -131,6 +137,7 @@ sty_look_mix :: (a: StyLook, b: StyLook, t: f32) -> StyLook {
   o.sun_disc = sty_mixf(a.sun_disc, b.sun_disc, t);
   o.glow_r = sty_mixf(a.glow_r, b.glow_r, t); o.glow_g = sty_mixf(a.glow_g, b.glow_g, t); o.glow_b = sty_mixf(a.glow_b, b.glow_b, t);
   o.cloud_dim = sty_mixf(a.cloud_dim, b.cloud_dim, t);
+  o.air = sty_mixf(a.air, b.air, t);
   return o;
 }
 
@@ -411,7 +418,7 @@ sty_project :: (u: [] f32, x: f32, y: f32, z: f32) -> StyOnScreen {
   b.cloud = a.cloud + 27; b.cloud_scale = a.cloud_scale + 28; b.cloud_turn = a.cloud_turn + 29;
   b.blade = a.blade + 30; b.blade_wide = a.blade_wide + 31; b.grass_cell = a.grass_cell + 32; b.grass_reach = a.grass_reach + 33;
   b.path_soft = a.path_soft + 34; b.meadow_dry = a.meadow_dry + 35; b.meadow_shift = a.meadow_shift + 36;
-  b.sun_disc = a.sun_disc + 37; b.glow_r = a.glow_r + 38; b.glow_g = a.glow_g + 39; b.glow_b = a.glow_b + 40; b.cloud_dim = a.cloud_dim + 41;
+  b.sun_disc = a.sun_disc + 37; b.glow_r = a.glow_r + 38; b.glow_g = a.glow_g + 39; b.glow_b = a.glow_b + 40; b.cloud_dim = a.cloud_dim + 41; b.air = a.air + 44;
   for i: 0..<STY_CUMULI * 4 { a.cumulus[i] = cast(f32) i; b.cumulus[i] = cast(f32) i + 42 + cast(f32) i; }
   m := sty_look_mix(a, b, 0.25);
   e: f32 = 0.0001;
@@ -426,7 +433,7 @@ sty_project :: (u: [] f32, x: f32, y: f32, z: f32) -> StyOnScreen {
   #assert abs(m.cloud - a.cloud - 6.75) < e && abs(m.cloud_scale - a.cloud_scale - 7) < e && abs(m.cloud_turn - a.cloud_turn - 7.25) < e;
   #assert abs(m.blade - a.blade - 7.5) < e && abs(m.blade_wide - a.blade_wide - 7.75) < e && abs(m.grass_cell - a.grass_cell - 8) < e && abs(m.grass_reach - a.grass_reach - 8.25) < e;
   #assert abs(m.path_soft - a.path_soft - 8.5) < e && abs(m.meadow_dry - a.meadow_dry - 8.75) < e && abs(m.meadow_shift - a.meadow_shift - 9) < e;
-  #assert abs(m.sun_disc - 9.25) < e && abs(m.glow_r - 9.5) < e && abs(m.glow_g - 9.75) < e && abs(m.glow_b - 10) < e && abs(m.cloud_dim - 10.25) < e;
+  #assert abs(m.sun_disc - 9.25) < e && abs(m.glow_r - 9.5) < e && abs(m.glow_g - 9.75) < e && abs(m.glow_b - 10) < e && abs(m.cloud_dim - 10.25) < e && abs(m.air - 11) < e;
   for i: 0..<STY_CUMULI * 4 { #assert abs(m.cumulus[i] - (cast(f32) i + (42 + cast(f32) i) * 0.25)) < e; }
   // held at its ends, and a share that is not a number is the first look
   nan: f32 = 0; nan = nan / nan;
@@ -458,6 +465,7 @@ sty_project :: (u: [] f32, x: f32, y: f32, z: f32) -> StyOnScreen {
   #assert n.zenith_r == 0 && n.zenith_g == 0 && n.zenith_b == 0 && n.horizon_r == 0 && n.horizon_g == 0 && n.horizon_b == 0 && n.haze_r == 0 && n.haze_g == 0 && n.haze_b == 0;
   #assert n.glow_r == 0 && n.glow_g == 0 && n.glow_b == 0 && n.cloud_dim == 1 && abs(n.sun_y - STY_SUNRISE_UNDER) < 0.00001;
   // what is not light is the day's from the start: the haze's reach, the clouds, the grass, the disc
+  aired := day; aired.air = 1.5; #assert sty_sunrise(aired, 0, 0, -1).air == 1.5 && sty_sunrise(aired, 0.5, 0, -1).air == 1.5;
   #assert n.haze == day.haze && n.haze_start == day.haze_start && n.cloud == 0.4 && n.blade == day.blade && n.sun_disc == 0.03 && n.shadow == day.shadow && n.band == day.band;
   before := sty_sunrise(day, -2, 0, -1); #assert before.zenith_b == 0 && before.sun_y == n.sun_y && before.cloud_dim == 1;
   // the day, to the bit, at the end, after it, and for a share that is not a number
@@ -552,7 +560,8 @@ sty_project :: (u: [] f32, x: f32, y: f32, z: f32) -> StyOnScreen {
   #assert abs(u[STY_U_SUN] - 3.0 / 13.0) < 0.00001 && abs(u[STY_U_SUN + 1] - 4.0 / 13.0) < 0.00001 && abs(u[STY_U_SUN + 2] - 12.0 / 13.0) < 0.00001 && u[STY_U_SUN + 3] == 0.8;
   #assert u[STY_U_SUN_COLOUR] == 0.11 && u[STY_U_SUN_COLOUR + 1] == 0.12 && u[STY_U_SUN_COLOUR + 2] == 0.13 && u[STY_U_SUN_COLOUR + 3] == 0.14;
   #assert u[STY_U_SKY_LIGHT] == 0.21 && u[STY_U_SKY_LIGHT + 1] == 0.22 && u[STY_U_SKY_LIGHT + 2] == 0.23;
-  #assert u[STY_U_GROUND_LIGHT] == 0.31 && u[STY_U_GROUND_LIGHT + 1] == 0.32 && u[STY_U_GROUND_LIGHT + 2] == 0.33 && u[STY_U_GROUND_LIGHT + 3] == 0;
+  #assert u[STY_U_GROUND_LIGHT] == 0.31 && u[STY_U_GROUND_LIGHT + 1] == 0.32 && u[STY_U_GROUND_LIGHT + 2] == 0.33 && u[STY_U_AIR] == 0 && STY_U_AIR == STY_U_GROUND_LIGHT + 3;
+  look.air = 1.25; #assert sty_frame(full[..], 8, 8, 0, c, look) && full[STY_U_AIR] == 1.25; look.air = 0;
   #assert u[STY_U_HAZE] == 0.41 && u[STY_U_HAZE + 1] == 0.42 && u[STY_U_HAZE + 2] == 0.43 && u[STY_U_HAZE + 3] == 0.44;
   #assert u[STY_U_HAZE_INFO] == 45 && u[STY_U_HAZE_INFO + 1] == 0.46 && u[STY_U_HAZE_INFO + 2] == 0.47;
   #assert u[STY_U_ZENITH] == 0.51 && u[STY_U_ZENITH + 1] == 0.52 && u[STY_U_ZENITH + 2] == 0.53 && u[STY_U_ZENITH + 3] == 0.54;
