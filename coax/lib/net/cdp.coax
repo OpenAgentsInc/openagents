@@ -520,8 +520,16 @@ cdp_launch_once_profile :: (c: [] Cdp, w: int, h: int, prefix: string,background
 // time; a browser an earlier launcher left on it is stopped first. cdp_browser_url is the
 // browser's ws:// URL for a later cdp_connect from another process.
 cdp_launch_at :: (c: [] Cdp, w: int, h: int, profile: string, background: bool) -> bool {
+  return cdp_launch_at_mode(c,w,h,profile,background,false);
+}
+// Dedicated player fixtures can retain their own UI-created session without
+// enabling screenshot-tool WebGPU flags or ever creating a visible window.
+cdp_launch_player_at :: (c:[]Cdp,w:int,h:int,profile:string)->bool {
+  return cdp_launch_at_mode(c,w,h,profile,false,true);
+}
+cdp_launch_at_mode :: (c:[]Cdp,w:int,h:int,profile:string,background:bool,player:bool)->bool {
   c[0].visible=false;
-  c[0].live_headless=false;
+  c[0].live_headless=player;
   c[0].proc = -1; c[0].h = -1; c[0].used = 0; c[0].id = 0; c[0].err_n = 0; c[0].profile_n = 0;
   bin: [4096] u8;
   chrome := cdp_chrome(bin[..]);
