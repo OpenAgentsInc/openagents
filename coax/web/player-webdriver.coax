@@ -39,9 +39,25 @@ wd_open :: (w:[]PlayerWd,endpoint:string,caps:string)->bool {
   w[0].session_n=jv_str(w[0].doc[0],jv_get(w[0].doc[0],w[0].value,"sessionId"),w[0].session[..]);return w[0].session_n>0;
 }
 wd_read :: (w:[]PlayerWd,expression:string)->int {
-  b:[32768]u8;script:[16384]u8;n:=ws_put(script[..],0,"return ");n=ws_put(script[..],n,expression);if n<=0 {return -1;}
+  // The iOS remote inspector's object serializer can replace nested property
+  // values with null. Carry a JSON string over WebDriver, then parse locally;
+  // primitive reads and structured reads now have the same lossless path.
+  b:[32768]u8;script:[16384]u8;n:=ws_put(script[..],0,"return JSON.stringify((");n=ws_put(script[..],n,expression);n=ws_put(script[..],n,"))??'null'");if n<=0 {return -1;}
   o:[1]Jo;jo_start(o[..],b[..]);jo_obj(o[..]);jo_key(o[..],"script");jo_str(o[..],cast(string)script[0..<n]);jo_key(o[..],"args");jo_arr(o[..]);jo_end(o[..]);jo_end(o[..]);
-  return ifx !o[0].bad && wd_call(w,"POST","/execute/sync",jo_text(o[..])) then w[0].value else -1;
+  if o[0].bad || !wd_call(w,"POST","/execute/sync",jo_text(o[..])) {return -1;}
+  return wd_unpack(w);
+}
+wd_unpack :: (w:[]PlayerWd)->int {
+  if jv_kind(w[0].doc[0],w[0].value)!=JV_STRING {return -1;}
+  n:=jv_str(w[0].doc[0],w[0].value,w[0].large_raw[..]);
+  if n<=0 || !jv_parse(w[0].doc[..],cast(string)w[0].large_raw[0..<n],w[0].nodes[..]) {return -1;}
+  w[0].value=0;return 0;
+}
+#test "WebDriver observation envelope preserves nested values and refuses malformed records" {
+  w:[1]PlayerWd;
+  #assert jv_parse(w[0].doc[..],"{\"value\":\"{\\\"frame\\\":{\\\"x\\\":42},\\\"keys\\\":[true,0]}\"}",w[0].nodes[..]);
+  w[0].value=jv_get(w[0].doc[0],0,"value");#assert wd_unpack(w[..])==0 && jv_int(w[0].doc[0],jv_path(w[0].doc[0],0,"frame.x"),-1)==42;
+  #assert jv_parse(w[0].doc[..],"{\"value\":\"not JSON\"}",w[0].nodes[..]);w[0].value=jv_get(w[0].doc[0],0,"value");#assert wd_unpack(w[..])==-1;
 }
 wd_bool :: (w:[]PlayerWd,e:string)->bool {r:=wd_read(w,e);return r>=0 && jv_bool(w[0].doc[0],r);}
 wd_number :: (w:[]PlayerWd,e:string,fallback:f64)->f64 {r:=wd_read(w,e);if r<0 {return fallback;}n:=args_number(jv_raw(w[0].doc[0],r));return ifx n.ok then n.value else fallback;}
