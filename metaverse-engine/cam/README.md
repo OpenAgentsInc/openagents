@@ -100,3 +100,13 @@ coax/bin/coax test metaverse-engine/cam/kinds.coax --library
 coax/bin/coax test metaverse-engine/cam/overhead.coax --library
 coax/bin/coax test --library everglade/client/client.coax
 ```
+
+### Fitting a board without turning it
+
+`frame_orbit_fit` reuses an orbit's actual shot, including its shoulder, and
+finds the nearest zoom that contains up to 64 bounding subjects inside a
+normalized rectangle. Pass a board's eight corners, the current viewport
+aspect and lens, and a bounded near/far search. It preserves pivot, yaw and
+pitch; `fits: false` reports an invalid request or an insufficient far limit.
+GameBuilder uses it to keep each crate room in view on portrait phones and
+after rotation, while retaining the shared top-down orbit.

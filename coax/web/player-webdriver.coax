@@ -193,3 +193,23 @@ wd_close :: (w:[]PlayerWd) {
   if w[0].session_n>0 {_:=wd_release(w);_=wd_call(w,"DELETE","","");}
   if w[0].process>=0 {_:=proc_kill(w[0].process,PROC_SIGTERM);_=proc_release(w[0].process);w[0].process=-1;}
 }
+
+#test "desktop WebDriver drag uses a bounded mouse action timeline" {
+  b:[2048]u8;n:=wd_drag_json(10,20,80,60,100,b[..]);d:[1]Jv;nodes:[64]JvNode;
+  #assert n>0 && jv_parse(d[..],cast(string)b[0..<n],nodes[..]);
+  #assert jv_len(d[0],jv_get(d[0],jv_at(d[0],jv_get(d[0],0,"actions"),0),"actions"))==4;
+  #assert wd_drag_json(-1,20,80,60,100,b[..])==-1 && wd_drag_json(10,20,80,60,1001,b[..])==-1;
+}
+wd_drag_json :: (x0:int,y0:int,x1:int,y1:int,ms:int,out:[]u8)->int {
+  if x0<0 || y0<0 || x1<0 || y1<0 || ms<0 || ms>1000 {return -1;}
+  o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"actions");jo_arr(o[..]);jo_obj(o[..]);jo_key(o[..],"type");jo_str(o[..],"pointer");jo_key(o[..],"id");jo_str(o[..],"player-mouse");jo_key(o[..],"parameters");jo_obj(o[..]);jo_key(o[..],"pointerType");jo_str(o[..],"mouse");jo_end(o[..]);jo_key(o[..],"actions");jo_arr(o[..]);
+  jo_obj(o[..]);jo_key(o[..],"type");jo_str(o[..],"pointerMove");jo_key(o[..],"origin");jo_str(o[..],"viewport");jo_key(o[..],"x");jo_int(o[..],x0);jo_key(o[..],"y");jo_int(o[..],y0);jo_key(o[..],"duration");jo_int(o[..],0);jo_end(o[..]);
+  jo_obj(o[..]);jo_key(o[..],"type");jo_str(o[..],"pointerDown");jo_key(o[..],"button");jo_int(o[..],0);jo_end(o[..]);
+  jo_obj(o[..]);jo_key(o[..],"type");jo_str(o[..],"pointerMove");jo_key(o[..],"origin");jo_str(o[..],"viewport");jo_key(o[..],"x");jo_int(o[..],x1);jo_key(o[..],"y");jo_int(o[..],y1);jo_key(o[..],"duration");jo_int(o[..],ms);jo_end(o[..]);
+  jo_obj(o[..]);jo_key(o[..],"type");jo_str(o[..],"pointerUp");jo_key(o[..],"button");jo_int(o[..],0);jo_end(o[..]);
+  jo_end(o[..]);jo_end(o[..]);jo_end(o[..]);jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;
+}
+wd_drag :: (w:[]PlayerWd,x0:int,y0:int,x1:int,y1:int,ms:int)->bool {
+  if w[0].native_sdk {return false;} // native canvas paths must use CSS-to-screen mapping
+  b:[2048]u8;n:=wd_drag_json(x0,y0,x1,y1,ms,b[..]);return n>0 && wd_call(w,"POST","/actions",cast(string)b[0..<n]);
+}

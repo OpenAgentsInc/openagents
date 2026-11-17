@@ -112,8 +112,8 @@ pb_stick :: (c:[]Cdp,keys:string,ms:int,jump:bool,look:int,dir:string)->bool {
   dx:=(ifx cdp_contains(keys,"d") then 55 else 0)-(ifx cdp_contains(keys,"a") then 55 else 0);
   dy:=(ifx cdp_contains(keys,"s") then 55 else 0)-(ifx cdp_contains(keys,"w") then 55 else 0);
   p:=[2]PbContact.[PbContact.{id=1,x=w/4,y=h*3/5},PbContact.{id=2,x=w*4/5,y=h*2/5}];n:=ifx jump || look!=0 then 2 else 1;
-  if !pb_touch(c,"touchStart",p[0..<n]) {return false;}_:=pb_wait(dir,50);p[0].x+=dx;p[0].y+=dy;p[1].x+=look;
-  moved:=pb_touch(c,"touchMove",p[0..<n]);_=pb_wait(dir,50);
+  if !pb_touch(c,"touchStart",p[0..<n]) {return false;}_:=pb_wait(dir,25);p[0].x+=dx;p[0].y+=dy;p[1].x+=look;
+  moved:=pb_touch(c,"touchMove",p[0..<n]);_=pb_wait(dir,25);
   // dispatchTouchEvent names the contacts that changed, including those lifted.
   // Lift the right finger while the left keeps moving, then lift the left.
   lifted:=true;if n==2 {lifted=pb_touch(c,"touchEnd",p[1..<2]);}

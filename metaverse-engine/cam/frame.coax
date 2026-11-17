@@ -9,6 +9,7 @@
 //   coax/bin/coax test metaverse-engine/cam/frame.coax --library
 
 #load "../core/points.coax";
+#load "camera.coax";
 
 FrameSubject :: struct { at: Point; radius: f32; }     // a bounding sphere's centre and radius
 FrameRect :: struct { x0: f32 = -0.8; x1: f32 = 0.8; y0: f32 = -0.75; y1: f32 = 0.75; }   // normalized device coordinates
@@ -77,4 +78,30 @@ frame_two :: (a: FrameSubject, b: FrameSubject, l: FrameLens, r: FrameRect, yaw_
   // the yaw turns toward the pair at most yaw_rate a second
   g := frame_two(you, FrameSubject.{at = v3(5, 1, 0), radius = 0.5}, FrameLens.{}, r, 0, 2, 0.1, 0.35, 1.5, 60);
   #assert abs(g.yaw - 0.2) < 0.0001;
+}
+
+#test "orbit framing fits a whole board in portrait and landscape without changing its bearing" {
+  subjects:[8]FrameSubject;
+  for i:0..<8 {subjects[i]=FrameSubject.{at=v3(ifx (i&1)==0 then -6.75 else 6.75,ifx (i&2)==0 then 0 else 2.4,ifx (i&4)==0 then -5.25 else 5.25)};}
+  orbit:=metaverse_orbit_start(v3(0,0,0),f32(PI));orbit.pitch=1.1;
+  for aspect:[4]f32.[0.35,0.5,1.0,1.8] {lens:=FrameLens.{fov=0.7895822,aspect=aspect};fit:=frame_orbit_fit(orbit,subjects[..],lens,FrameRect.{x0=-0.88,x1=0.88,y0=-0.82,y1=0.82},12,120);
+    #assert fit.fits && fit.yaw==orbit.yaw && fit.distance>=12 && fit.distance<=120;
+    for subject:subjects {#assert frame_inside(fit.shot,lens,FrameRect.{x0=-0.88,x1=0.88,y0=-0.82,y1=0.82},subject);}
+  }
+  bad:=frame_orbit_fit(orbit,subjects[..],FrameLens.{aspect=0},FrameRect.{},12,120);#assert !bad.fits;
+  empty:=frame_orbit_fit(orbit,subjects[0..<0],FrameLens.{},FrameRect.{},12,120);#assert !empty.fits;
+}
+// Fit bounded subjects from an existing orbit's pivot, bearing and pitch. Unlike
+// two-subject aiming, fitting a board must preserve its fixed screen directions.
+// Consumers retain their own zoom range; this only returns the required zoom.
+frame_orbit_fit :: (orbit:Orbit,subjects:[]FrameSubject,lens:FrameLens,rect:FrameRect,near:f32,far:f32)->FrameResult {
+  out:=FrameResult.{distance=far,yaw=orbit.yaw};o:=orbit;o.want=far;o.zoom=far;o.shown=metaverse_orbit_ray(o).far;out.shot=metaverse_orbit_shot(o);
+  if subjects.count<1 || subjects.count>64 || !finite(near) || !finite(far) || near<=0 || far<near || !finite(lens.aspect) || lens.aspect<=0 || !finite(lens.fov) || lens.fov<=0 || lens.fov>=f32(PI) {return out;}
+  if !frame_subjects_inside(out.shot,lens,rect,subjects) {return out;}
+  low:=near;high:=far;
+  for i:0..<24 {mid:=(low+high)*0.5;o.want=mid;o.zoom=mid;o.shown=metaverse_orbit_ray(o).far;if frame_subjects_inside(metaverse_orbit_shot(o),lens,rect,subjects) {high=mid;}else {low=mid;}}
+  o.want=high;o.zoom=high;o.shown=metaverse_orbit_ray(o).far;out.shot=metaverse_orbit_shot(o);out.distance=high;out.fits=true;return out;
+}
+frame_subjects_inside :: (shot:Shot,lens:FrameLens,rect:FrameRect,subjects:[]FrameSubject)->bool {
+  for subject:subjects {if !frame_inside(shot,lens,rect,subject) {return false;}}return true;
 }
