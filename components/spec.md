@@ -351,6 +351,23 @@ the Metaverse's are the realm HUD's FANTASY and SCIFI tokens, held equal by
 the `everglade` and `verse` skins (`gallery/hud-cards.coax`): press a slot,
 strike the wolf, answer Mira.
 
+**The hotbar** (`kit/hotbar.coax`) is the one row of slots at the foot of a
+game's window, for every game and realm, built in a page's tree. A `Hotbar`
+holds up to 12 `HbSlot`s: each a tool (one is picked at a time, and pressed
+again is put down), a toggle or an action, with a glyph, a name, a key, a
+group (a divider stands where it changes) and its state (on, disabled, hidden,
+busy, a cooldown's share). It changes only through `hb_press`, `hb_key` and
+`hb_escape`, which say what happened (`HbPress`); the game fills it each
+frame and keeps its own state. Every look is an `HbSkin`, as data: sizes,
+colours, the ARWES frame family round a slot and the class a host's frame
+drawer looks for, the faces, and the skin's own glyph for a slot id.
+`hb_scifi` is the first skin; another genre is another `HbSkin` and no code.
+`hb_css` writes a skin's stylesheet and `k_hotbar` the nodes. It takes no
+layout from the page: the page places the bar. Its first mutation pass: 420
+mutants, 0 survived. The display-list action bar above (`hk_action_bar`) is
+the realm pass's; this is the page tree's. gamebuilder.org's world is its
+first consumer.
+
 The rules both HUDs follow are one file, `core/hud.coax`: a bar's fill and
 damage trail over time (`HudTrail`, `hud_trail_step`), a banner's fade
 (`hud_banner_alpha`) and the map ring's projection (`hud_map_project`).

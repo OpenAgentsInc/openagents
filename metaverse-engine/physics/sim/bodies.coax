@@ -99,8 +99,8 @@ BD_HISTORY :: 64;            // steps a history keeps: a little over a second at
 BD_REWIND :: 16;             // of them, the newest steps kept whole, contact impulses and all: a rewind to one repeats exactly
 BD_HISTORY_WARM :: 128;      // contact impulses such a step keeps; a step with more is kept without them (bd_exact)
 BD_SNAPSHOT_MAGIC :: 0x31534442;   // "BDS1"
-BD_SNAPSHOT_VERSION :: 1;
-BD_SNAPSHOT_HEAD :: 24;      // bytes: magic u32, version u16, record size u16, step u64, records u32, 0 u32
+BD_SNAPSHOT_VERSION :: 2;    // 2: the header carries the scene's gravity
+BD_SNAPSHOT_HEAD :: 32;      // bytes: magic u32, version u16, record size u16, step u64, records u32, 0 u32, gravity f64
 BD_SNAPSHOT_RECORD :: 112;   // bytes a body: id u32, sleep group u32, then 13 f64: position, attitude x y z w, velocity, spin (body frame)
 
 Bd_Kind :: enum u8 { box; ball; }
@@ -260,6 +260,14 @@ bd_ball :: (b: [] Bodies, id: int, pos: D3, radius: f64, density: f64, friction:
 }
 // Marks body i local-only decoration, or shared again.
 bd_local :: (b: [] Bodies, i: int, local: bool) { b[0].local[i] = local; }
+// The scene's gravity (m/s^2 along y, down is negative): a setting a game may change as it runs.
+// A change wakes every body, so what was resting on a slope, a stack or the ground answers to it at
+// the next step. It is part of the scene's state: in the digest, the snapshot and the history.
+bd_gravity :: (b: [] Bodies, gravity: f64) {
+  if gravity == b[0].gravity || !(gravity == gravity) { return; }
+  b[0].gravity = gravity;
+  for i: 0..<bd_count(b) { b[0].label[i] = 0; b[0].quiet[i] = 0.0; }
+}
 // Wakes a body and every body that fell asleep with it.
 bd_wake :: (b: [] Bodies, i: int) {
   l := b[0].label[i];
@@ -831,6 +839,7 @@ bd_digest_of :: (b: [] Bodies, shared_only: bool) -> u64 {
   h: u64 = 14695981039346656037;
   s := b[0].set[..];
   h = bd_hash(h, cast(u64) b[0].steps);
+  h = bd_hash(h, f64_bits(b[0].gravity));
   for i: 0..<s[0].count {
     if shared_only && b[0].local[i] { continue; }
     v := [13] f64.[s[0].pos[i].x, s[0].pos[i].y, s[0].pos[i].z, s[0].att[i].x, s[0].att[i].y, s[0].att[i].z, s[0].att[i].w,
@@ -853,6 +862,7 @@ bd_digest_shared :: (b: [] Bodies) -> u64 { return bd_digest_of(b, true); }
 //   8  u64  the step the state is of
 //   16 u32  records
 //   20 u32  0
+//   24 f64  the scene's gravity
 // then one record of BD_SNAPSHOT_RECORD bytes for each shared body, in id order:
 //   0  u32  id
 //   4  u32  sleep group: 0 awake, else a number shared by the bodies that sleep (and wake) together
@@ -888,6 +898,7 @@ bd_snapshot_write :: (b: [] Bodies, out: [] u8) -> int {
   bd_put64(out, 8, cast(u64) b[0].steps);
   bd_put32(out, 16, cast(u64) bd_shared(b));
   bd_put32(out, 20, 0);
+  bd_put64(out, 24, f64_bits(b[0].gravity));
   s := b[0].set[..];
   // sleep groups are numbered from 1 in the order they are met, so the bytes do not carry this scene's own labels
   groups: [BD_MAX] int; group_n := 0;
@@ -919,6 +930,7 @@ bd_snapshot_read :: (b: [] Bodies, in: [] u8) -> int {
   if record < BD_SNAPSHOT_RECORD || records > BD_MAX || in.count < BD_SNAPSHOT_HEAD + records * record { return -1; }
   s := b[0].set[..];
   b[0].steps = cast(int) bd_get(in, 8, 8);
+  b[0].gravity = f64_from_bits(bd_get(in, 24, 8));
   b[0].acc = 0.0; b[0].count_w = 0; b[0].count_m = 0; b[0].count_l = 0;
   for i: 0..<s[0].count { b[0].quiet[i] = 0.0; b[0].load[i] = 0.0; }
   // the groups become labels above any this scene has given
@@ -960,6 +972,7 @@ Bd_Frame :: struct {
   pos: [BD_MAX] D3; att: [BD_MAX] DQ; vel: [BD_MAX] D3; omega: [BD_MAX] D3;
   label: [BD_MAX] int; quiet: [BD_MAX] f64; load: [BD_MAX] f64;
   labels: int;
+  gravity: f64;
 }
 // What a step kept for the next, for the newest BD_REWIND steps.
 Bd_Deep :: struct { used: bool; step: int; count_w: int; warm: [BD_HISTORY_WARM] Bd_Warm; }
@@ -973,7 +986,7 @@ bd_deep :: (step: int) -> int { return ((step % BD_REWIND) + BD_REWIND) % BD_REW
 bd_record :: (b: [] Bodies, h: [] Bd_History) {
   f := h[0].frame[bd_slot(b[0].steps)..<bd_slot(b[0].steps) + 1];
   s := b[0].set[..];
-  f[0].used = true; f[0].step = b[0].steps; f[0].count = s[0].count; f[0].labels = b[0].labels;
+  f[0].used = true; f[0].step = b[0].steps; f[0].count = s[0].count; f[0].labels = b[0].labels; f[0].gravity = b[0].gravity;
   for i: 0..<s[0].count {
     f[0].id[i] = b[0].id[i];
     f[0].pos[i] = s[0].pos[i]; f[0].att[i] = s[0].att[i]; f[0].vel[i] = s[0].vel[i]; f[0].omega[i] = s[0].omega[i];
@@ -1028,7 +1041,7 @@ bd_rewind :: (b: [] Bodies, h: [] Bd_History, step: int) -> bool {
     b[0].label[i] = f[0].label[i]; b[0].quiet[i] = f[0].quiet[i]; b[0].load[i] = f[0].load[i];
     b[0].was_pos[i] = f[0].pos[i]; b[0].was_att[i] = f[0].att[i];
   }
-  b[0].labels = f[0].labels; b[0].steps = step; b[0].acc = 0.0;
+  b[0].labels = f[0].labels; b[0].steps = step; b[0].acc = 0.0; b[0].gravity = f[0].gravity;
   b[0].count_m = 0; b[0].count_l = 0;
   b[0].count_w = 0;
   if bd_exact(h, step) {
@@ -1875,17 +1888,17 @@ BdTestRun :: struct { b: [1] Bodies; log: [2048] BdTestInput; n: int; hash: [600
   // some of the shared ones asleep, some not
   asleep := bd_sleeping(a) - (ifx bd_awake(a, bd_index(a, 33)) then 0 else 1);
   n := bd_snapshot_write(a, bytes[..]);
-  // 24 bytes of header and 112 a shared body: 15 of them, the local one left out
-  #assert n == 24 + 15 * 112 && n == bd_snapshot_size(a) && BD_SNAPSHOT_HEAD == 24 && BD_SNAPSHOT_RECORD == 112 && bd_snapshot_write(a, bytes[0..<n - 1]) == 0;
-  // the header: "BDS1", version 1, the record's size, the step, the count
-  #assert bytes[0] == 'B' && bytes[1] == 'D' && bytes[2] == 'S' && bytes[3] == '1' && bytes[4] == 1 && bytes[5] == 0 && bytes[6] == 112 && bytes[7] == 0 && bd_get(bytes[..], 8, 8) == 230 && bd_get(bytes[..], 16, 4) == 15 && bd_get(bytes[..], 20, 4) == 0;
+  // 32 bytes of header and 112 a shared body: 15 of them, the local one left out
+  #assert n == 32 + 15 * 112 && n == bd_snapshot_size(a) && BD_SNAPSHOT_HEAD == 32 && BD_SNAPSHOT_RECORD == 112 && bd_snapshot_write(a, bytes[0..<n - 1]) == 0;
+  // the header: "BDS1", version 2, the record's size, the step, the count
+  #assert bytes[0] == 'B' && bytes[1] == 'D' && bytes[2] == 'S' && bytes[3] == '1' && bytes[4] == 2 && bytes[5] == 0 && bytes[6] == 112 && bytes[7] == 0 && bd_get(bytes[..], 8, 8) == 230 && bd_get(bytes[..], 16, 4) == 15 && bd_get(bytes[..], 20, 4) == 0 && f64_from_bits(bd_get(bytes[..], 24, 8)) == a[0].gravity;
   // the first record: the ball, id 5, then its state in f64, little-endian; the records are in id order
   s := a[0].set[..];
-  #assert bd_get(bytes[..], 24, 4) == 5 && f64_from_bits(bd_get(bytes[..], 24 + 8, 8)) == s[0].pos[0].x && f64_from_bits(bd_get(bytes[..], 24 + 24, 8)) == s[0].pos[0].z && f64_from_bits(bd_get(bytes[..], 24 + 56, 8)) == s[0].att[0].w && f64_from_bits(bd_get(bytes[..], 24 + 72, 8)) == s[0].vel[0].y && f64_from_bits(bd_get(bytes[..], 24 + 104, 8)) == s[0].omega[0].z;
-  #assert bd_get(bytes[..], 24 + 112, 4) == 10 && bd_get(bytes[..], 24 + 14 * 112, 4) == 140;
+  #assert bd_get(bytes[..], 32, 4) == 5 && f64_from_bits(bd_get(bytes[..], 32 + 8, 8)) == s[0].pos[0].x && f64_from_bits(bd_get(bytes[..], 32 + 24, 8)) == s[0].pos[0].z && f64_from_bits(bd_get(bytes[..], 32 + 56, 8)) == s[0].att[0].w && f64_from_bits(bd_get(bytes[..], 32 + 72, 8)) == s[0].vel[0].y && f64_from_bits(bd_get(bytes[..], 32 + 104, 8)) == s[0].omega[0].z;
+  #assert bd_get(bytes[..], 32 + 112, 4) == 10 && bd_get(bytes[..], 32 + 14 * 112, 4) == 140;
   // a sleeping body's group is not 0, and bodies that sleep together share it
   groups := 0;
-  for r: 0..<15 { g := cast(int) bd_get(bytes[..], 24 + r * 112 + 4, 4); i := bd_index(a, cast(int) bd_get(bytes[..], 24 + r * 112, 4)); #assert (g == 0) == bd_awake(a, i); if g > groups { groups = g; } }
+  for r: 0..<15 { g := cast(int) bd_get(bytes[..], 32 + r * 112 + 4, 4); i := bd_index(a, cast(int) bd_get(bytes[..], 32 + r * 112, 4)); #assert (g == 0) == bd_awake(a, i); if g > groups { groups = g; } }
   #assert asleep > 0 && asleep < 15 && groups >= 1 && groups <= asleep;
   // a fresh scene with the same shared bodies somewhere else entirely (and its own decoration), and the writer itself: both read it
   c := t[1].b[..];
@@ -1919,21 +1932,93 @@ BdTestRun :: struct { b: [1] Bodies; log: [2048] BdTestInput; n: int; hash: [600
   // bytes that are not a snapshot change nothing: short, another magic, another version, a record too small, more records than bytes
   before := bd_digest(c);
   bad := bytes;
-  #assert bd_snapshot_read(c, bytes[0..<23]) == -1 && bd_snapshot_read(c, bytes[0..<n - 1]) == -1;
+  #assert bd_snapshot_read(c, bytes[0..<31]) == -1 && bd_snapshot_read(c, bytes[0..<n - 1]) == -1;
   bad[0] = 'X'; #assert bd_snapshot_read(c, bad[0..<n]) == -1; bad[0] = 'B';
-  bad[4] = 2; #assert bd_snapshot_read(c, bad[0..<n]) == -1; bad[4] = 1;
+  bad[4] = 1; #assert bd_snapshot_read(c, bad[0..<n]) == -1; bad[4] = 3; #assert bd_snapshot_read(c, bad[0..<n]) == -1; bad[4] = 2;
   bad[6] = 111; #assert bd_snapshot_read(c, bad[0..<n]) == -1; bad[6] = 112;
   bad[16] = 65; #assert bd_snapshot_read(c, bad[0..<n]) == -1; bad[16] = 16; #assert bd_snapshot_read(c, bad[0..<n]) == -1;
   #assert bd_digest(c) == before && c[0].steps == 230;
   // a later version's longer record is stepped over by its size
   wide: [8192] u8;
-  for k: 0..<24 { wide[k] = bytes[k]; }
+  for k: 0..<32 { wide[k] = bytes[k]; }
   wide[6] = 120;
-  for r: 0..<15 { for k: 0..<112 { wide[24 + r * 120 + k] = bytes[24 + r * 112 + k]; } }
-  #assert bd_snapshot_read(a, wide[0..<24 + 15 * 120]) == 15 && bd_snapshot_read(a, wide[0..<24 + 15 * 120 - 1]) == -1;
+  for r: 0..<15 { for k: 0..<112 { wide[32 + r * 120 + k] = bytes[32 + r * 112 + k]; } }
+  #assert bd_snapshot_read(a, wide[0..<32 + 15 * 120]) == 15 && bd_snapshot_read(a, wide[0..<32 + 15 * 120 - 1]) == -1;
 }
 
 BdTestPast :: struct { b: [1] Bodies; h: [1] Bd_History; hash: [400] u64; }
+#test "gravity is the scene's own setting: things fall by it, a change wakes what sleeps, and it is in the digest, the snapshot and the history, so a run with a change in it repeats bit for bit" #steps 4000000000 {
+  t: [6] BdTest; bytes: [8192] u8;
+  // two balls dropped from the same height for the same half second, one under a tenth of gravity, one under five times it:
+  // each has fallen g t t / 2 (to within the step's first-order error), so fifty times as far under five as under a tenth
+  a := t[0].b[..]; c := t[1].b[..];
+  bd_reset(a); bd_reset(c);
+  #assert a[0].gravity == -9.81;
+  bd_gravity(a, -0.981); bd_gravity(c, -49.05);
+  ia := bd_test_ball(a, d3(0.0, 100.0, 0.0), 0.3, 40.0, 0.6, 0.5, 0.06); ic := bd_test_ball(c, d3(0.0, 100.0, 0.0), 0.3, 40.0, 0.6, 0.5, 0.06);
+  bd_test_run(a, 30); bd_test_run(c, 30);
+  fa := 100.0 - a[0].set[0].pos[ia].y; fc := 100.0 - c[0].set[0].pos[ic].y;
+  #assert abs(fa - 0.5 * 0.981 * 0.25) < 0.01 && abs(fc - 0.5 * 49.05 * 0.25) < 0.45 && abs(fc / fa - 50.0) < 0.001;
+  #assert abs(a[0].set[0].vel[ia].y + 0.981 * 0.5) < 0.000001 && abs(c[0].set[0].vel[ic].y + 49.05 * 0.5) < 0.000001;
+  // a heap left to sleep: the same gravity again wakes nothing; another wakes every body, and they move
+  h := t[2].b[..];
+  bd_test_heap(h, 6, 0);
+  bd_test_run(h, 600);
+  n := bd_count(h);
+  #assert bd_sleeping(h) == n && n > 3;
+  bd_gravity(h, -9.81); #assert bd_sleeping(h) == n;
+  bd_gravity(h, 0.0 / 0.0 * 0.0 + (1e308 * 10.0 - 1e308 * 10.0)); #assert h[0].gravity == -9.81 && bd_sleeping(h) == n;   // not a number: not taken
+  was := bd_digest(h);
+  bd_gravity(h, 9.81);
+  #assert h[0].gravity == 9.81 && bd_sleeping(h) == 0 && bd_digest(h) != was;
+  for i: 0..<n { #assert h[0].quiet[i] == 0.0; }
+  top := h[0].set[0].pos[n - 1].y;
+  bd_test_run(h, 30);
+  #assert h[0].set[0].pos[n - 1].y > top + 0.5;   // up they go
+  // the digest tells two scenes apart by their gravity alone
+  x := t[4].b[..]; y := t[5].b[..];
+  bd_test_heap(x, 5, 0); bd_test_heap(y, 5, 0);
+  #assert bd_digest(x) == bd_digest(y);
+  bd_gravity(y, -1.0); #assert bd_digest(x) != bd_digest(y) && bd_digest_shared(x) != bd_digest_shared(y);
+  // a run with a change in the middle, made twice: the same bits at every step
+  bd_test_heap(x, 8, 0); bd_test_heap(y, 8, 0); bd_gravity(y, -9.81);
+  same := true;
+  for k: 0..<400 {
+    if k == 120 { bd_gravity(x, -2.0); bd_gravity(y, -2.0); }
+    if k == 260 { bd_gravity(x, -40.0); bd_gravity(y, -40.0); }
+    bd_step(x); bd_step(y);
+    if bd_digest(x) != bd_digest(y) { same = false; }
+  }
+  #assert same && x[0].gravity == -40.0;
+  // the snapshot carries it: a scene that reads one has the writer's gravity, and goes on as the writer does
+  m := bd_snapshot_write(x, bytes[..]);
+  z := t[3].b[..];
+  bd_test_heap(z, 8, 0);
+  #assert z[0].gravity == -9.81 && bd_snapshot_read(z, bytes[0..<m]) == bd_shared(x) && z[0].gravity == -40.0;
+  took := bd_snapshot_read(x, bytes[0..<m]);
+  for k: 0..<120 { bd_step(x); bd_step(z); }
+  #assert bd_digest(x) == bd_digest(z);
+}
+
+#test "a rewind puts the scene's gravity back with its bodies: a change after the stored step is undone, and the steps made again with the change come out bit for bit" #steps 4000000000 {
+  t: [2] BdTest; hist: [1] Bd_History;
+  a := t[0].b[..];
+  bd_test_heap(a, 6, 0);
+  for k: 0..<40 { bd_step(a); bd_record(a, hist[..]); }
+  bd_gravity(a, -1.5);
+  marks: [8] u64;
+  for k: 0..<8 { bd_step(a); bd_record(a, hist[..]); marks[k] = bd_digest(a); }
+  // back to the step before the change: the old gravity is back
+  #assert bd_rewind(a, hist[..], 40) && a[0].gravity == -9.81 && a[0].steps == 40;
+  // made again with the change at the same step: the same bits
+  bd_gravity(a, -1.5);
+  again := true;
+  for k: 0..<8 { bd_step(a); if bd_digest(a) != marks[k] { again = false; } }
+  #assert again;
+  // back to a step after the change: the changed gravity is what is stored there
+  #assert bd_rewind(a, hist[..], 44) && a[0].gravity == -1.5;
+}
+
 #test "the history keeps a second of steps: where a body was at a step and between two, and a rewind to a stored step from which the same steps come out bit for bit" #steps 4000000000 {
   t: [1] BdTestPast;
   b := t[0].b[..]; h := t[0].h[..]; s := b[0].set[..];

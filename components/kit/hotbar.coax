@@ -1,0 +1,408 @@
+// The hotbar: one row of slots at the foot of a game's window, the same in every game and realm
+// and skinned by genre. A slot is a tool (one is picked at a time), a toggle (on or off) or an
+// action (pressed and done); it has a glyph, a name, a key that presses it, and may be disabled,
+// busy, hidden or part-way through a cooldown. Slots stand in groups with a divider between.
+//
+// Three parts, and a game uses all three:
+//   the bar     Hotbar and HbSlot: what the slots are and which tool is picked. hb_press, hb_key
+//               and hb_escape are the only ways it changes, and each says what happened (HbPress)
+//               for the game to act on. It keeps no game state: the game fills it each frame.
+//   the skin    HbSkin: every look as data (sizes, colours, the frame family round a slot, the
+//               face, and glyphs by slot id). hb_scifi is the first; a fantasy bar is another
+//               HbSkin and nothing else. hb_css writes a skin's stylesheet.
+//   the tree    k_hotbar builds the bar's nodes in a page's tree (core/tree.coax): a toolbar of
+//               buttons the browser backend draws, each carrying the classes a host's frame
+//               drawer looks for (the ARWES frame family the skin names).
+//
+// The GPU display-list action bar for a realm's own pass is kit/hud.coax (hk_action_bar, with
+// skin/hud.coax's slot measures); this is the page-tree one. gamebuilder.org's world is its first
+// consumer (a page outside this repository): build tools, the model's button and the camera's.
+//   coax/bin/coax test components/kit/hotbar.coax
+//   coax/bin/coax mutate components/kit/hotbar.coax --root-only
+
+#load "../core/tree.coax";
+
+HB_SLOTS :: 12;
+HB_TOOL :: 0; HB_TOGGLE :: 1; HB_ACTION :: 2;   // what a press of a slot does
+
+// A slot. `group` is which run of slots it stands in (a divider is drawn where it changes).
+HbSlot :: struct {
+  id: string; glyph: string; label: string; key: string;
+  kind: int; group: int;
+  on: bool;          // a toggle that is on
+  off: bool;         // disabled: shown dim, takes no press
+  hidden: bool;      // not shown, and takes no press (a slot that does not apply here)
+  busy: bool;        // working: shown so, takes no press
+  share: f32;        // a cooldown, 0 (none) to 1 (just begun): takes no press while above 0
+}
+Hotbar :: struct { n: int; slots: [HB_SLOTS] HbSlot; picked: int = -1; }
+// What a press did: which slot (-1: nothing was pressed), its kind, and for a tool whether it is
+// now picked, for a toggle whether it is now on.
+HbPress :: struct { slot: int = -1; kind: int; picked: bool; on: bool; }
+
+// Adds a slot. Its index, or -1 when the bar is full.
+hb_add :: (b: [] Hotbar, s: HbSlot) -> int {
+  if b[0].n >= HB_SLOTS { return -1; }
+  b[0].slots[b[0].n] = s; b[0].n += 1;
+  return b[0].n - 1;
+}
+hb_find :: (b: [] Hotbar, id: string) -> int { for i: 0..<b[0].n { if b[0].slots[i].id == id { return i; } } return -1; }
+// Whether slot i takes a press now.
+hb_can :: (b: [] Hotbar, i: int) -> bool {
+  if i < 0 || i >= b[0].n { return false; }
+  s := b[0].slots[i];
+  return !s.off && !s.hidden && !s.busy && !(s.share > 0);
+}
+// A press of slot i: a tool is picked (the picked tool pressed again is put down), a toggle
+// turns, an action only reports. A slot that takes no press reports nothing.
+hb_press :: (b: [] Hotbar, i: int) -> HbPress {
+  out: HbPress;
+  if !hb_can(b, i) { return out; }
+  out.slot = i; out.kind = b[0].slots[i].kind;
+  if out.kind == HB_TOOL { b[0].picked = ifx b[0].picked == i then -1 else i; out.picked = b[0].picked == i; }
+  if out.kind == HB_TOGGLE { b[0].slots[i].on = !b[0].slots[i].on; out.on = b[0].slots[i].on; }
+  return out;
+}
+// A key: the first slot whose key it is is pressed.
+hb_key :: (b: [] Hotbar, key: string) -> HbPress {
+  none: HbPress;
+  if key.count == 0 { return none; }
+  for i: 0..<b[0].n { if b[0].slots[i].key == key { return hb_press(b, i); } }
+  return none;
+}
+// Escape: the picked tool is put down. True when one was.
+hb_escape :: (b: [] Hotbar) -> bool { had := b[0].picked >= 0; b[0].picked = -1; return had; }
+// The bar's picked tool, as the game says it is (a tool that is gone, or takes no press, is not picked).
+hb_pick :: (b: [] Hotbar, i: int) { b[0].picked = ifx hb_can(b, i) && b[0].slots[i].kind == HB_TOOL then i else -1; }
+
+// ---------------------------------------------------------------- the skin
+
+HB_GLYPHS :: 16;
+// A skin: every look of the bar, as data. Lengths are CSS pixels; colours are CSS colours.
+HbSkin :: struct {
+  name: string;                 // the bar's class is "hb hb-NAME"
+  frame: int;                   // the ARWES frame family round a slot (components/core/arwes: 0 underline to 8 circle)
+  mark: string;                 // the class a host's frame drawer looks for ("hud"): "" draws none
+  slot: int; gap: int; group_gap: int; pad: int; corner: int; small: int;   // a slot's side, between two, between groups, the bar's padding, a slot's rounding, a slot's side in a narrow window
+  glyph_size: int; key_size: int;
+  face: string; key_face: string;
+  ink: string; dim: string; lit: string;          // a glyph idle, disabled, and picked or on
+  fill: string; fill_hot: string; fill_lit: string;   // a slot's ground idle, under the pointer, and picked or on
+  edge: string; edge_lit: string;                 // its own line (when the host draws no frame), idle and lit
+  divider: string;
+  n: int; ids: [HB_GLYPHS] string; glyphs: [HB_GLYPHS] string;   // the skin's own glyph for a slot id, when it has one
+}
+// Science fiction: thin white lines over a faint shade, the world showing through; lit, a slot fills a little.
+hb_scifi :: () -> HbSkin {
+  s: HbSkin;
+  s.name = "scifi"; s.frame = 2; s.mark = "hud";
+  s.slot = 52; s.gap = 10; s.group_gap = 22; s.small = 40;
+  s.glyph_size = 20; s.key_size = 10;
+  s.face = "inherit"; s.key_face = "var(--mono, ui-monospace, monospace)";
+  s.ink = "rgba(255,255,255,.78)"; s.dim = "rgba(255,255,255,.28)"; s.lit = "#fff";
+  s.fill = "rgba(0,0,0,.28)"; s.fill_hot = "rgba(255,255,255,.1)"; s.fill_lit = "rgba(255,255,255,.22)";
+  s.edge = "transparent"; s.edge_lit = "rgba(255,255,255,.7)";
+  s.divider = "rgba(255,255,255,.22)";
+  return s;
+}
+// Gives a skin its own glyph for a slot id. False when it holds HB_GLYPHS already.
+hb_skin_glyph :: (s: [] HbSkin, id: string, glyph: string) -> bool {
+  for k: 0..<s[0].n { if s[0].ids[k] == id { s[0].glyphs[k] = glyph; return true; } }
+  if s[0].n >= HB_GLYPHS { return false; }
+  s[0].ids[s[0].n] = id; s[0].glyphs[s[0].n] = glyph; s[0].n += 1;
+  return true;
+}
+// The glyph a slot shows in a skin: the skin's for its id, else the slot's own.
+hb_glyph :: (s: HbSkin, slot: HbSlot) -> string {
+  for k: 0..<s.n { if s.ids[k] == slot.id { return s.glyphs[k]; } }
+  return slot.glyph;
+}
+
+hb_put :: (out: [] u8, n: int, s: string) -> int { k := n; for c: s { if k < out.count { out[k] = c; k += 1; } } return k; }
+hb_px :: (out: [] u8, n: int, v: int) -> int {
+  k := n; a := v;
+  digits: [24] u8; m := 0;
+  if !(a > 0) { digits[0] = '0'; m = 1; }   // nothing, and anything below it
+  while a > 0 { digits[m] = cast(u8) ('0' + a % 10); m += 1; a /= 10; }
+  while m > 0 { m -= 1; if k < out.count { out[k] = digits[m]; k += 1; } }
+  return hb_put(out, k, "px");
+}
+// A skin's stylesheet, written from `n` in out: the bar, a slot in each of its states, the key, the
+// glyph, the divider, and the narrow window's sizes. Returns where it ends (out.count when out was too small).
+hb_css :: (s: HbSkin, out: [] u8, from: int) -> int {
+  n := from;
+  n = hb_put(out, n, ".hb-"); n = hb_put(out, n, s.name);
+  n = hb_put(out, n, "{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:"); n = hb_px(out, n, s.gap);
+  n = hb_put(out, n, ";padding:"); n = hb_px(out, n, s.pad); n = hb_put(out, n, ";margin:0;user-select:none;-webkit-user-select:none}");
+  n = hb_put(out, n, ".hb-"); n = hb_put(out, n, s.name);
+  n = hb_put(out, n, " .hb-s{appearance:none;position:relative;flex:none;display:flex;align-items:center;justify-content:center;margin:0;padding:0;cursor:pointer;width:"); n = hb_px(out, n, s.slot);
+  n = hb_put(out, n, ";height:"); n = hb_px(out, n, s.slot);
+  n = hb_put(out, n, ";border-radius:"); n = hb_px(out, n, s.corner);
+  n = hb_put(out, n, ";border:1px solid "); n = hb_put(out, n, s.edge);
+  n = hb_put(out, n, ";background:"); n = hb_put(out, n, s.fill);
+  n = hb_put(out, n, ";color:"); n = hb_put(out, n, s.ink);
+  n = hb_put(out, n, ";font-family:"); n = hb_put(out, n, s.face); n = hb_put(out, n, ";outline:0;-webkit-tap-highlight-color:transparent}");
+  n = hb_put(out, n, ".hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, " .hb-s:hover,.hb-"); n = hb_put(out, n, s.name);
+  n = hb_put(out, n, " .hb-s:focus-visible{background:"); n = hb_put(out, n, s.fill_hot); n = hb_put(out, n, ";color:"); n = hb_put(out, n, s.lit); n = hb_put(out, n, "}");
+  n = hb_put(out, n, ".hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, " .hb-s.hb-on{background:"); n = hb_put(out, n, s.fill_lit);
+  n = hb_put(out, n, ";color:"); n = hb_put(out, n, s.lit); n = hb_put(out, n, ";border-color:"); n = hb_put(out, n, s.edge_lit); n = hb_put(out, n, "}");
+  n = hb_put(out, n, ".hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, " .hb-s:disabled{cursor:default;background:"); n = hb_put(out, n, s.fill);
+  n = hb_put(out, n, ";color:"); n = hb_put(out, n, s.dim); n = hb_put(out, n, "}");
+  // busy: the glyph breathes; a cooldown: a shade that drains from the top (--p, 1 to 0)
+  n = hb_put(out, n, ".hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, " .hb-s.hb-busy .hb-g{animation:hb-busy 1s ease-in-out infinite alternate}@keyframes hb-busy{from{opacity:1}to{opacity:.25}}");
+  n = hb_put(out, n, ".hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, " .hb-s.hb-cool::after{content:'';position:absolute;left:0;right:0;bottom:0;height:calc(var(--p,0)*100%);background:"); n = hb_put(out, n, s.fill_lit); n = hb_put(out, n, ";pointer-events:none}");
+  n = hb_put(out, n, ".hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, " .hb-g{font-size:"); n = hb_px(out, n, s.glyph_size); n = hb_put(out, n, ";line-height:1;pointer-events:none}");
+  n = hb_put(out, n, ".hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, " .hb-k{position:absolute;left:5px;top:4px;font-family:"); n = hb_put(out, n, s.key_face);
+  n = hb_put(out, n, ";font-size:"); n = hb_px(out, n, s.key_size); n = hb_put(out, n, ";line-height:1;opacity:.6;pointer-events:none}");
+  n = hb_put(out, n, ".hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, " .hb-d{flex:none;align-self:stretch;width:1px;margin:6px "); n = hb_px(out, n, (s.group_gap - s.gap) / 2);
+  n = hb_put(out, n, ";background:"); n = hb_put(out, n, s.divider); n = hb_put(out, n, "}");
+  n = hb_put(out, n, "@media (max-width:640px){.hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, " .hb-s{width:"); n = hb_px(out, n, s.small);
+  n = hb_put(out, n, ";height:"); n = hb_px(out, n, s.small); n = hb_put(out, n, "}.hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, "{gap:"); n = hb_px(out, n, s.gap / 2);
+  n = hb_put(out, n, "}.hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, " .hb-d{margin:6px "); n = hb_px(out, n, (s.group_gap - s.gap) / 4); n = hb_put(out, n, "}}");
+  return n;
+}
+
+// ---------------------------------------------------------------- the tree
+
+HB_DIGITS :: [HB_SLOTS] string.["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11"];
+HB_FRAMES :: [9] string.[" k0", " k1", " k2", " k3", " k4", " k5", " k6", " k7", " k8"];
+// The bar in a page's tree, under the node that is open: a toolbar named `label`, a button a slot
+// that is not hidden (id "ID.s.N", N its index in the bar), a divider where the group changes.
+// A slot's classes say its state (hb-on: a picked tool or a toggle that is on; hb-busy; hb-cool)
+// and carry the host's frame mark and family; its name and key are its title. Returns the bar's node.
+k_hotbar :: (t: [] Tree, id: string, label: string, b: [] Hotbar, s: HbSkin) -> int {
+  ida: [96] u8; idb: [96] u8; cls: [96] u8; tip: [96] u8;
+  digits := HB_DIGITS; frames := HB_FRAMES;
+  n := hb_put(cls[..], 0, "hb hb-"); n = hb_put(cls[..], n, s.name);
+  bar := tr_open(t, id, TG_DIV, cast(string) cls[0..<n]);
+  tr_attr(t, bar, AT_ROLE, "toolbar"); tr_attr(t, bar, AT_LABEL, label);
+  prev := -1;   // the slot shown before this one
+  for i: 0..<b[0].n {
+    sl := b[0].slots[i];
+    if sl.hidden { continue; }
+    if prev >= 0 && sl.group != b[0].slots[prev].group { d := tr_leaf(t, tr_cat(ida[..], tr_cat(idb[..], id, ".d."), digits[i]), TG_SPAN, "hb-d", ""); tr_attr(t, d, AT_HIDDEN, "true"); }
+    prev = i;
+    lit := (sl.kind == HB_TOOL && b[0].picked == i) || (sl.kind == HB_TOGGLE && sl.on);
+    n = hb_put(cls[..], 0, "hb-s");
+    if lit { n = hb_put(cls[..], n, " hb-on"); }
+    if sl.busy { n = hb_put(cls[..], n, " hb-busy"); }
+    if sl.share > 0 { n = hb_put(cls[..], n, " hb-cool"); }
+    if s.mark.count > 0 { n = hb_put(cls[..], n, " "); n = hb_put(cls[..], n, s.mark); n = hb_put(cls[..], n, frames[ifx s.frame < 0 || s.frame > 8 then 2 else s.frame]); }
+    one := tr_open(t, tr_cat(ida[..], tr_cat(idb[..], id, ".s."), digits[i]), TG_BUTTON, cast(string) cls[0..<n]);
+    m := hb_put(tip[..], 0, sl.label);
+    if sl.key.count > 0 { m = hb_put(tip[..], m, " ("); m = hb_put(tip[..], m, sl.key); m = hb_put(tip[..], m, ")"); }
+    tr_attr(t, one, AT_LABEL, sl.label); tr_attr(t, one, AT_TITLE, cast(string) tip[0..<m]);
+    if sl.kind != HB_ACTION { tr_attr(t, one, AT_PRESSED, ifx lit then "true" else "false"); }
+    if !hb_can(b, i) { tr_attr(t, one, AT_DISABLED, "true"); }
+    if sl.share > 0 { tr_attr(t, one, AT_VARS, ifx sl.share >= 0.75 then "--p:1" else ifx sl.share >= 0.5 then "--p:.75" else ifx sl.share >= 0.25 then "--p:.5" else "--p:.25"); }
+    if sl.key.count > 0 { k := tr_leaf(t, tr_cat(ida[..], tr_cat(idb[..], id, ".k."), digits[i]), TG_SPAN, "hb-k", sl.key); }
+    g := tr_leaf(t, tr_cat(ida[..], tr_cat(idb[..], id, ".g."), digits[i]), TG_SPAN, "hb-g", hb_glyph(s, sl));
+    tr_close(t);
+  }
+  tr_close(t);
+  return bar;
+}
+// Which slot a node of the bar `id` is, by its id ("ID.s.3", or a part of that button: "ID.g.3", "ID.k.3"): -1, none.
+hb_slot_of :: (id: string, node: string) -> int {
+  if node.count < id.count + 4 || cast(string) node[0..<id.count] != id || node[id.count] != '.' || node[id.count + 2] != '.' { return -1; }
+  part := node[id.count + 1];
+  if part != 's' && part != 'g' && part != 'k' { return -1; }
+  v := 0;
+  for k: id.count + 3..<node.count { c := node[k]; if c < '0' || c > '9' { return -1; } v = v * 10 + cast(int) (c - '0'); if v >= HB_SLOTS { return -1; } }
+  return v;
+}
+
+// ---------------------------------------------------------------- checks
+
+HbTest :: struct { b: [1] Hotbar; t: [1] Tree; css: [8192] u8; }
+hb_test_bar :: (b: [] Hotbar) {
+  a := hb_add(b, HbSlot.{id = "block", glyph = "▢", label = "block", key = "1"});
+  c := hb_add(b, HbSlot.{id = "move", glyph = "✥", label = "move", key = "2"});
+  d := hb_add(b, HbSlot.{id = "ask", glyph = "✦", label = "decide", key = "3", kind = HB_ACTION, group = 1});
+  e := hb_add(b, HbSlot.{id = "cam", glyph = "◎", label = "follow camera", key = "4", kind = HB_TOGGLE, group = 1});
+}
+hb_has :: (hay: string, needle: string) -> bool {
+  if needle.count == 0 || needle.count > hay.count { return false; }
+  for i: 0..<hay.count - needle.count + 1 { if cast(string) hay[i..<i + needle.count] == needle { return true; } }
+  return false;
+}
+#test "the checks' own search finds a piece of text, and only one that is there" {
+  #assert hb_has("abc", "abc") && hb_has("abc", "a") && hb_has("abc", "c") && hb_has("abc", "bc") && hb_has("abc", "b");
+  #assert !hb_has("abc", "") && !hb_has("ab", "abc") && !hb_has("abc", "d") && !hb_has("", "a") && !hb_has("abc", "ac") && !hb_has("", "");
+}
+
+#test "a bar holds its slots in order, finds them by id, and is full at HB_SLOTS" {
+  t: [1] HbTest; b := t[0].b[..];
+  #assert b[0].picked == -1 && b[0].n == 0 && hb_find(b, "block") == -1;
+  hb_test_bar(b);
+  #assert b[0].n == 4 && hb_find(b, "block") == 0 && hb_find(b, "cam") == 3 && hb_find(b, "none") == -1 && b[0].slots[2].kind == HB_ACTION && b[0].slots[1].group == 0 && b[0].slots[3].group == 1;
+  for k: 4..<HB_SLOTS { #assert hb_add(b, HbSlot.{id = "x"}) == k; }
+  #assert hb_add(b, HbSlot.{id = "y"}) == -1 && b[0].n == HB_SLOTS && hb_find(b, "y") == -1;
+}
+
+#test "a press picks a tool and puts it down again, turns a toggle, and only reports an action; one tool at a time" {
+  t: [1] HbTest; b := t[0].b[..];
+  hb_test_bar(b);
+  p := hb_press(b, 0); #assert p.slot == 0 && p.kind == HB_TOOL && p.picked && !p.on && b[0].picked == 0;
+  p = hb_press(b, 1); #assert p.slot == 1 && p.picked && b[0].picked == 1;
+  p = hb_press(b, 1); #assert p.slot == 1 && !p.picked && b[0].picked == -1;
+  p = hb_press(b, 0);
+  // an action and a toggle leave the picked tool alone
+  p = hb_press(b, 2); #assert p.slot == 2 && p.kind == HB_ACTION && !p.picked && !p.on && b[0].picked == 0;
+  p = hb_press(b, 3); #assert p.slot == 3 && p.kind == HB_TOGGLE && p.on && b[0].slots[3].on && b[0].picked == 0 && !p.picked;
+  p = hb_press(b, 3); #assert p.slot == 3 && !p.on && !b[0].slots[3].on;
+  // no such slot
+  p = hb_press(b, 4); #assert p.slot == -1; p = hb_press(b, -1); #assert p.slot == -1 && b[0].picked == 0;
+  // Escape puts the tool down, once
+  #assert hb_escape(b) && b[0].picked == -1 && !hb_escape(b) && b[0].picked == -1;
+}
+
+#test "a slot that is disabled, hidden, busy or cooling down takes no press, by pointer or by key" {
+  t: [1] HbTest; b := t[0].b[..];
+  hb_test_bar(b);
+  #assert hb_can(b, 0) && hb_can(b, 3) && !hb_can(b, 4) && !hb_can(b, -1);
+  b[0].slots[0].off = true; #assert !hb_can(b, 0) && hb_press(b, 0).slot == -1 && hb_key(b, "1").slot == -1 && b[0].picked == -1;
+  b[0].slots[0].off = false; b[0].slots[0].hidden = true; #assert !hb_can(b, 0) && hb_press(b, 0).slot == -1;
+  b[0].slots[0].hidden = false; b[0].slots[0].busy = true; #assert !hb_can(b, 0) && hb_press(b, 0).slot == -1;
+  b[0].slots[0].busy = false; b[0].slots[0].share = 0.01; #assert !hb_can(b, 0) && hb_press(b, 0).slot == -1;
+  b[0].slots[0].share = 0; #assert hb_can(b, 0) && hb_press(b, 0).slot == 0;
+  b[0].slots[3].off = true; #assert hb_press(b, 3).slot == -1 && !b[0].slots[3].on;
+  // the game says which tool is picked: one that takes no press, is no tool or is not there is not
+  hb_pick(b, 1); #assert b[0].picked == 1;
+  hb_pick(b, 2); #assert b[0].picked == -1;
+  hb_pick(b, 1); hb_pick(b, 9); #assert b[0].picked == -1;
+  b[0].slots[1].off = true; hb_pick(b, 1); #assert b[0].picked == -1;
+  hb_pick(b, 0); #assert b[0].picked == 0; hb_pick(b, -1); #assert b[0].picked == -1;
+}
+
+#test "a key presses the slot whose key it is; a key no slot has, or no key, presses nothing" {
+  t: [1] HbTest; b := t[0].b[..];
+  hb_test_bar(b);
+  p := hb_key(b, "1"); #assert p.slot == 0 && p.picked && b[0].picked == 0;
+  p = hb_key(b, "2"); #assert p.slot == 1 && p.picked && b[0].picked == 1;
+  p = hb_key(b, "4"); #assert p.slot == 3 && p.on;
+  p = hb_key(b, "3"); #assert p.slot == 2 && p.kind == HB_ACTION;
+  p = hb_key(b, "9"); #assert p.slot == -1 && b[0].picked == 1;
+  p = hb_key(b, ""); #assert p.slot == -1;
+  // a slot with no key is not the answer to no key
+  n := hb_add(b, HbSlot.{id = "nokey", glyph = "x", label = "x"});
+  p = hb_key(b, ""); #assert p.slot == -1;
+  // two slots with one key: the first
+  m := hb_add(b, HbSlot.{id = "again", glyph = "y", label = "y", key = "2"});
+  p = hb_key(b, "2"); #assert p.slot == 1;
+}
+
+#test "a skin is data: science fiction's numbers, its own glyph for a slot id, and a stylesheet written from it" {
+  t: [1] HbTest;
+  s: [1] HbSkin; s[0] = hb_scifi();
+  #assert s[0].name == "scifi" && s[0].frame == 2 && s[0].mark == "hud" && s[0].slot == 52 && s[0].small == 40 && s[0].gap == 10 && s[0].group_gap == 22 && s[0].fill == "rgba(0,0,0,.28)" && s[0].n == 0;
+  // a slot shows its own glyph until the skin has one for its id; a second for the same id replaces it
+  slot := HbSlot.{id = "block", glyph = "▢"};
+  #assert hb_glyph(s[0], slot) == "▢";
+  #assert hb_skin_glyph(s[..], "block", "⬚") && s[0].n == 1 && hb_glyph(s[0], slot) == "⬚" && hb_glyph(s[0], HbSlot.{id = "move", glyph = "m"}) == "m";
+  #assert hb_skin_glyph(s[..], "block", "■") && s[0].n == 1 && hb_glyph(s[0], slot) == "■";
+  for k: 1..<HB_GLYPHS { #assert hb_skin_glyph(s[..], HB_DIGITS[k % HB_SLOTS], "g") || k >= HB_SLOTS; }
+  full: [1] HbSkin; full[0] = hb_scifi();
+  ids := [HB_GLYPHS] string.["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p"];
+  for k: 0..<HB_GLYPHS { #assert hb_skin_glyph(full[..], ids[k], "g"); }
+  #assert full[0].n == HB_GLYPHS && !hb_skin_glyph(full[..], "q", "g") && hb_skin_glyph(full[..], "p", "z") && hb_glyph(full[0], HbSlot.{id = "p", glyph = "0"}) == "z" && hb_glyph(full[0], HbSlot.{id = "q", glyph = "0"}) == "0";
+  // the stylesheet: every rule is under the skin's own class, with its sizes and colours
+  n := hb_css(hb_scifi(), t[0].css[..], 0);
+  css := cast(string) t[0].css[0..<n];
+  #assert n > 600 && n < t[0].css.count && hb_has(css, ".hb-scifi{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:10px;padding:0px;");
+  #assert hb_has(css, "-webkit-user-select:none}.hb-scifi .hb-s{appearance:none;") && hb_has(css, "width:52px;height:52px;border-radius:0px;border:1px solid transparent;background:rgba(0,0,0,.28);color:rgba(255,255,255,.78);font-family:inherit;");
+  #assert hb_has(css, ".hb-scifi .hb-s:hover,.hb-scifi .hb-s:focus-visible{background:rgba(255,255,255,.1);color:#fff}");
+  #assert hb_has(css, ".hb-scifi .hb-s.hb-on{background:rgba(255,255,255,.22);color:#fff;border-color:rgba(255,255,255,.7)}");
+  #assert hb_has(css, ".hb-scifi .hb-s:disabled{cursor:default;background:rgba(0,0,0,.28);color:rgba(255,255,255,.28)}");
+  #assert hb_has(css, ".hb-scifi .hb-g{font-size:20px;") && hb_has(css, ".hb-scifi .hb-k{position:absolute;left:5px;top:4px;font-family:var(--mono, ui-monospace, monospace);font-size:10px;");
+  #assert hb_has(css, ".hb-scifi .hb-d{flex:none;align-self:stretch;width:1px;margin:6px 6px;background:rgba(255,255,255,.22)}");
+  #assert hb_has(css, "@media (max-width:640px){.hb-scifi .hb-s{width:40px;height:40px}.hb-scifi{gap:5px}.hb-scifi .hb-d{margin:6px 3px}}");
+  #assert hb_has(css, ".hb-scifi .hb-s.hb-busy .hb-g{animation:hb-busy") && hb_has(css, ".hb-scifi .hb-s.hb-cool::after{") && hb_has(css, "background:rgba(255,255,255,.22);pointer-events:none}");
+  // another skin is other data: its name, sizes and colours are what is written, and nothing of science fiction's
+  f := hb_scifi(); f.name = "fantasy"; f.slot = 60; f.corner = 6; f.fill = "#201810"; f.ink = "#e8d8b0"; f.pad = 8; f.gap = 6; f.group_gap = 30; f.small = 44; f.glyph_size = 24; f.key_size = 11;
+  f.lit = "#fff8e0"; f.dim = "#806040"; f.fill_hot = "#302418"; f.fill_lit = "#503820"; f.edge = "#806040"; f.edge_lit = "#ffd880"; f.divider = "#604830"; f.face = "serif"; f.key_face = "cursive";
+  m := hb_css(f, t[0].css[..], 0); other := cast(string) t[0].css[0..<m];
+  #assert !hb_has(other, "scifi") && hb_has(other, ".hb-fantasy{display:flex;") && hb_has(other, "gap:6px;padding:8px;") && hb_has(other, "width:60px;height:60px;border-radius:6px;border:1px solid #806040;background:#201810;color:#e8d8b0;font-family:serif;");
+  #assert hb_has(other, ".hb-s:focus-visible{background:#302418;color:#fff8e0}") && hb_has(other, ".hb-s.hb-on{background:#503820;color:#fff8e0;border-color:#ffd880}") && hb_has(other, ":disabled{cursor:default;background:#201810;color:#806040}");
+  #assert hb_has(other, "font-size:24px;") && hb_has(other, "font-family:cursive;font-size:11px;") && hb_has(other, "margin:6px 12px;background:#604830}") && hb_has(other, ".hb-s{width:44px;height:44px}.hb-fantasy{gap:3px}.hb-fantasy .hb-d{margin:6px 6px}}");
+  #assert hb_has(other, ".hb-cool::after{content:'';position:absolute;left:0;right:0;bottom:0;height:calc(var(--p,0)*100%);background:#503820;");
+  // it is written from where it is told to, and stops at the end of a buffer too small for it
+  at := hb_css(hb_scifi(), t[0].css[..], 100); #assert at == n + 100 && t[0].css[100] == '.';
+  small: [64] u8; #assert hb_css(hb_scifi(), small[..], 0) == 64;
+  // a pixel count: no sign, and nothing below nothing
+  px: [16] u8; k := hb_px(px[..], 0, 0); #assert cast(string) px[0..<k] == "0px";
+  k = hb_px(px[..], 0, -5); #assert cast(string) px[0..<k] == "0px";
+  k = hb_px(px[..], 2, 1203); #assert cast(string) px[2..<k] == "1203px";
+  k = hb_px(px[..], 0, 1); #assert cast(string) px[0..<k] == "1px";
+  k = hb_px(px[..], 0, 90); #assert cast(string) px[0..<k] == "90px";
+}
+
+#test "the bar in a tree: a toolbar of buttons, a divider between groups, each slot's state in its classes and attributes" {
+  t: [1] HbTest; b := t[0].b[..]; tr := t[0].t[..];
+  hb_test_bar(b);
+  p := hb_press(b, 1); q := hb_press(b, 3);
+  b[0].slots[2].busy = true;
+  tr_begin(tr);
+  root := tr_open(tr, "page", TG_MAIN, "");
+  bar := k_hotbar(tr, "hot", "tools", b, hb_scifi());
+  tr_close(tr);
+  #assert tr[0].lost == 0 && tr[0].depth == 0 && tr_class(tr, bar) == "hb hb-scifi" && tr_attr_of(tr, bar, AT_ROLE) == "toolbar" && tr_attr_of(tr, bar, AT_LABEL) == "tools" && tr_id(tr, bar) == "hot";
+  s0 := tr_find(tr, "hot.s.0"); s1 := tr_find(tr, "hot.s.1"); s2 := tr_find(tr, "hot.s.2"); s3 := tr_find(tr, "hot.s.3");
+  #assert s0 > bar && s1 > s0 && s2 > s1 && s3 > s2 && tr_find(tr, "hot.s.4") < 0;
+  // idle, picked, busy, on: the classes carry the host's frame mark and the skin's frame family
+  #assert tr_class(tr, s0) == "hb-s hud k2" && tr_class(tr, s1) == "hb-s hb-on hud k2" && tr_class(tr, s2) == "hb-s hb-busy hud k2" && tr_class(tr, s3) == "hb-s hb-on hud k2";
+  #assert tr_attr_of(tr, s0, AT_PRESSED) == "false" && tr_attr_of(tr, s1, AT_PRESSED) == "true" && tr_attr_of(tr, s3, AT_PRESSED) == "true" && !tr_has(tr, s2, AT_PRESSED);
+  #assert !tr_has(tr, s0, AT_DISABLED) && tr_attr_of(tr, s2, AT_DISABLED) == "true" && !tr_has(tr, s0, AT_VARS);
+  #assert tr_attr_of(tr, s0, AT_LABEL) == "block" && tr_attr_of(tr, s0, AT_TITLE) == "block (1)" && tr_attr_of(tr, s3, AT_TITLE) == "follow camera (4)";
+  // its key and its glyph inside it, and one divider, before the second group
+  #assert tr_text_of(tr, tr_find(tr, "hot.k.0")) == "1" && tr_class(tr, tr_find(tr, "hot.k.0")) == "hb-k" && tr_text_of(tr, tr_find(tr, "hot.g.1")) == "✥" && tr_class(tr, tr_find(tr, "hot.g.1")) == "hb-g";
+  d := tr_find(tr, "hot.d.2");
+  #assert d > s1 && d < s2 && tr_class(tr, d) == "hb-d" && tr_attr_of(tr, d, AT_HIDDEN) == "true" && tr_find(tr, "hot.d.0") < 0 && tr_find(tr, "hot.d.1") < 0 && tr_find(tr, "hot.d.3") < 0;
+  #assert tr[0].nodes[bar].tag == TG_DIV && tr[0].nodes[s0].tag == TG_BUTTON && tr[0].nodes[s3].tag == TG_BUTTON && tr[0].nodes[d].tag == TG_SPAN && tr[0].nodes[tr_find(tr, "hot.k.0")].tag == TG_SPAN && tr[0].nodes[tr_find(tr, "hot.g.1")].tag == TG_SPAN;
+  #assert tr[0].nodes[tr_find(tr, "hot.g.1")].parent == s1 && tr[0].nodes[s1].parent == bar && tr[0].nodes[d].parent == bar && tr[0].nodes[bar].parent == root;
+  // hidden: no button for it, and no divider for a group that begins with it; disabled; cooling; no key; the skin's glyph; no mark
+  b[0].slots[2].hidden = true; b[0].slots[2].busy = false; b[0].slots[0].off = true; b[0].slots[1].share = 0.6; b[0].slots[3].key = "";
+  sk: [1] HbSkin; sk[0] = hb_scifi(); sk[0].mark = ""; sk[0].frame = 7; g := hb_skin_glyph(sk[..], "block", "⬚");
+  tr_begin(tr);
+  bar = k_hotbar(tr, "hot", "tools", b, sk[0]);
+  #assert tr_find(tr, "hot.s.2") < 0 && tr_find(tr, "hot.d.2") < 0 && tr_find(tr, "hot.d.3") > 0 && tr_find(tr, "hot.k.3") < 0;
+  #assert tr_class(tr, tr_find(tr, "hot.s.0")) == "hb-s" && tr_attr_of(tr, tr_find(tr, "hot.s.0"), AT_DISABLED) == "true" && tr_text_of(tr, tr_find(tr, "hot.g.0")) == "⬚";
+  #assert tr_class(tr, tr_find(tr, "hot.s.1")) == "hb-s hb-on hb-cool" && tr_attr_of(tr, tr_find(tr, "hot.s.1"), AT_VARS) == "--p:.75" && tr_attr_of(tr, tr_find(tr, "hot.s.1"), AT_DISABLED) == "true";
+  #assert tr_attr_of(tr, tr_find(tr, "hot.s.3"), AT_TITLE) == "follow camera";
+  // the frame family is the skin's; one out of range is the corners; and a cooldown's share is said in quarters
+  sk[0].mark = "hud";
+  tr_begin(tr); bar = k_hotbar(tr, "hot", "tools", b, sk[0]); #assert tr_class(tr, tr_find(tr, "hot.s.0")) == "hb-s hud k7";
+  sk[0].frame = 9; tr_begin(tr); bar = k_hotbar(tr, "hot", "tools", b, sk[0]); #assert tr_class(tr, tr_find(tr, "hot.s.0")) == "hb-s hud k2";
+  sk[0].frame = -1; tr_begin(tr); bar = k_hotbar(tr, "hot", "tools", b, sk[0]); #assert tr_class(tr, tr_find(tr, "hot.s.0")) == "hb-s hud k2";
+  sk[0].frame = 0; tr_begin(tr); bar = k_hotbar(tr, "hot", "tools", b, sk[0]); #assert tr_class(tr, tr_find(tr, "hot.s.0")) == "hb-s hud k0";
+  sk[0].frame = 8; tr_begin(tr); bar = k_hotbar(tr, "hot", "tools", b, sk[0]); #assert tr_class(tr, tr_find(tr, "hot.s.0")) == "hb-s hud k8";
+  shares := [5] f32.[1.0, 0.75, 0.5, 0.25, 0.1]; says := [5] string.["--p:1", "--p:1", "--p:.75", "--p:.5", "--p:.25"];
+  for k: 0..<5 { b[0].slots[1].share = shares[k]; tr_begin(tr); bar = k_hotbar(tr, "hot", "tools", b, sk[0]); #assert tr_attr_of(tr, tr_find(tr, "hot.s.1"), AT_VARS) == says[k]; }
+  // a toggle that is off and a tool that is not picked are not lit; an action is never pressed
+  b[0].slots[1].share = 0; b[0].slots[3].on = false; b[0].picked = -1; b[0].slots[2].hidden = false; b[0].slots[2].on = true;
+  tr_begin(tr); bar = k_hotbar(tr, "hot", "tools", b, sk[0]);
+  #assert tr_class(tr, tr_find(tr, "hot.s.1")) == "hb-s hud k8" && tr_class(tr, tr_find(tr, "hot.s.3")) == "hb-s hud k8" && tr_class(tr, tr_find(tr, "hot.s.2")) == "hb-s hud k8" && tr_attr_of(tr, tr_find(tr, "hot.s.3"), AT_PRESSED) == "false";
+  // a bar whose first slot stands in a later group has no divider before it; one after a hidden first slot neither
+  b[0].slots[0].group = 5; b[0].slots[1].group = 5; b[0].slots[0].off = false;
+  tr_begin(tr); bar = k_hotbar(tr, "hot", "tools", b, sk[0]);
+  #assert tr_find(tr, "hot.d.0") < 0 && tr_find(tr, "hot.d.1") < 0 && tr_find(tr, "hot.d.2") > 0 && tr_find(tr, "hot.d.3") < 0;
+  b[0].slots[1].group = 6;
+  tr_begin(tr); bar = k_hotbar(tr, "hot", "tools", b, sk[0]);
+  #assert tr_find(tr, "hot.d.0") < 0 && tr_find(tr, "hot.d.1") > 0 && tr_find(tr, "hot.d.2") > 0;
+  b[0].slots[0].hidden = true; b[0].slots[1].group = 0;
+  tr_begin(tr); bar = k_hotbar(tr, "hot", "tools", b, sk[0]);
+  #assert tr_find(tr, "hot.d.1") < 0 && tr_find(tr, "hot.d.2") > 0;
+  b[0].slots[0].hidden = false; b[0].slots[0].group = 0;
+  // a mark of one letter is a mark
+  sk[0].mark = "h"; tr_begin(tr); bar = k_hotbar(tr, "hot", "tools", b, sk[0]); #assert tr_class(tr, tr_find(tr, "hot.s.0")) == "hb-s h k8";
+  sk[0].mark = "hud";
+  // a tool whose `on` is set is not lit by it: only the picked one is
+  b[0].slots[1].on = true; tr_begin(tr); bar = k_hotbar(tr, "hot", "tools", b, sk[0]); #assert tr_class(tr, tr_find(tr, "hot.s.1")) == "hb-s hud k8";
+}
+
+#test "a node's id says which slot it is: the button or a part of it, of this bar only" {
+  #assert hb_slot_of("hot", "hot.s.0") == 0 && hb_slot_of("hot", "hot.s.7") == 7 && hb_slot_of("hot", "hot.g.3") == 3 && hb_slot_of("hot", "hot.k.11") == 11;
+  #assert hb_slot_of("hot", "hot.s.12") == -1 && hb_slot_of("hot", "hot.s.") == -1 && hb_slot_of("hot", "hot.d.2") == -1 && hb_slot_of("hot", "hot.s.x") == -1 && hb_slot_of("hot", "hot.s.1x") == -1 && hb_slot_of("hot", "hot.s.:") == -1 && hb_slot_of("hot", "hot.s./") == -1 && hb_slot_of("hot", "hot.s.9") == 9;
+  #assert hb_slot_of("hot", "hat.s.1") == -1 && hb_slot_of("hot", "hots.s.1") == -1 && hb_slot_of("hot", "hot") == -1 && hb_slot_of("hot", "") == -1 && hb_slot_of("hot", "hot.s") == -1 && hb_slot_of("hot", "hot/s.1") == -1 && hb_slot_of("hot", "hot.s/1") == -1;
+  #assert hb_slot_of("a.bar", "a.bar.s.4") == 4 && hb_slot_of("a.bar", "a.bar.g.10") == 10 && hb_slot_of("", ".s.2") == 2 && hb_slot_of("hot", "hot.s.007") == 7 && hb_slot_of("hot", "hot.s.120") == -1;
+}
