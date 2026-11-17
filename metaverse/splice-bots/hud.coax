@@ -606,12 +606,28 @@ hv_bay :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui) -> int {
   n = hv_mid(out, n, F_MONO, ifx core then "PRESS X" else "NEEDS THE BANNED CORE", (kx0 + kx1) * 0.5, (by0 + by1) * 0.5 + 18 * k, 5.5 * k, ifx core then HV_PANEL() else dim, 1);
   // the keys
   n = hv_right(out, n, F_TITLE, "DRAG TO SLOT    C CLEAR    ESC CLOSE", w - 54 * k, h - 19 * k, 6 * k, cream, 1);
+  if sjp_available(g) { n = hv_microduck_build(g, out, n, q); }
   // what is being dragged follows the pointer
   if g[0].drag >= 0 {
     dt := d_kind_name(g[0].drag); dw := ui_w(F_TITLE, dt, 8 * k) + 30 * k;
     n = hv_rect(out, n, g[0].drag_x - dw * 0.5, g[0].drag_y - 16 * k, g[0].drag_x + dw * 0.5, g[0].drag_y + 16 * k, ifx hv_banned_kind(g[0].drag) then orange else cream, 1);
     n = hv_mid(out, n, F_TITLE, dt, g[0].drag_x, g[0].drag_y + 4 * k, 8 * k, HV_DARK(), 1);
   }
+  return n;
+}
+
+hv_microduck_build :: (g: [] SpGame, out: [] f32, at: int, q: Ui) -> int {
+  k := q.k; x0 := 72 * k; x1 := 312 * k; y0 := q.h - 58 * k; y1 := q.h - 12 * k;
+  r := sjp_recipe(); inv := g[0].jx[0].inv[0].main[0]; more := sr_find_first_missing(r, inv);
+  b: [64] u8;
+  words := ifx g[0].pets[0].n >= SJP_MAX then num(b[..], "Pet limit ", SJP_MAX, "") else
+    ifx g[0].pets[0].built then "Microduck built" else ifx more.found then
+    num(b[..], "Need ", more.count, ifx more.item == ITEM_BATTERY then " more battery" else " more scrap") else "1 battery + 3 scrap";
+  n := hv_rect(out, at, x0, y0, x1, y1, HV_DARK(), 0.94);
+  n = hv_frame(out, n, x0, y0, x1, y1, 1.5 * k, HV_LINE(), 1);
+  n = hv_mid(out, n, F_TITLE, "BUILD MICRODUCK [B]", (x0 + x1) * 0.5, y0 + 17 * k, 8 * k, HV_CREAM(), 1);
+  n = hv_mid(out, n, F_MONO, words, (x0 + x1) * 0.5, y0 + 35 * k, 7 * k, HV_CREAM(), 1);
+  g_hot(g, x0, y0, x1, y1, 'b');
   return n;
 }
 

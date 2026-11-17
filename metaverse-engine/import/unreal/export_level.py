@@ -13,6 +13,7 @@
 #   AIMPORT_PROJECT, AIMPORT_REVISION, AIMPORT_PLAN_SHA256   copied into manifest.source (the plan's SHA-256 is required)
 #   AIMPORT_SOURCE_RIGS=1 for a playable map export, with rigs and clips imported
 #   separately. It carries the meshes, materials and textures the maps reference.
+#   AIMPORT_ASSETS    optional JSON profile for dynamic meshes and offline MetaSounds
 # Material baking needs a renderer: under -nullrhi the glTF exporter bakes nothing and says
 # nothing, so the script refuses -nullrhi rather than write unbaked materials as baked.
 # Simple-collision convex hulls and skeleton parents are not readable from Python; the
@@ -317,6 +318,9 @@ class Export:
         aethyr = [t for t in tags if t.startswith('aethyr.')]
         for t in aethyr:
             rows['spots'].append({'name': t[len('aethyr.'):], 'kind': 'tag', 'translation_cm': actor_t[0], 'rotation': actor_t[1], 'tags': tags})
+        for t in self.profile.get('spot_tags', []):
+            if t in tags:
+                rows['spots'].append({'name': t, 'kind': 'tag', 'translation_cm': actor_t[0], 'rotation': actor_t[1], 'tags': tags})
         if isinstance(actor, unreal.PlayerStart):
             rows['spots'].append({'name': name, 'kind': 'player_start', 'translation_cm': actor_t[0], 'rotation': actor_t[1], 'tags': tags})
         elif isinstance(actor, unreal.TargetPoint):
@@ -803,6 +807,35 @@ class Export:
         return {'id': path, 'file': file_rel, 'seconds': num(wave.get_editor_property('duration')), 'channels': channels,
                 'rate': rate, 'origin': origin_of(path)}
 
+    def bake_sound_row(self, path, file_rel, spec):
+        destination = os.path.join(OUT, file_rel)
+        if not self.checks.bake_meta_sound(unreal.load_asset(path), destination, spec['seconds'], spec['loop']):
+            raise Refusal('MetaSound offline render failed: ' + path)
+        channels, rate = wav_header(destination)
+        return {'id': path, 'file': file_rel, 'seconds': num(spec['seconds']), 'channels': channels,
+                'rate': rate, 'origin': origin_of(path)}
+
+    def asset_profile(self, flat):
+        for item in self.profile.get('dynamic_meshes', []):
+            asset, map_id, actor = item['asset'], item['map'], item['actor']
+            mesh = unreal.load_asset(asset) if carried(asset) else None
+            if map_id not in flat or not isinstance(mesh, unreal.StaticMesh):
+                raise Refusal('dynamic mesh or its template map is missing: ' + asset)
+            self.static_ids.add(asset)
+            flat[map_id]['placements'].append({
+                'name': actor + '/Mesh', 'actor': actor, 'actor_class': '/Script/Engine.StaticMeshActor',
+                'component': 'Mesh', 'kind': 'static', 'asset': asset, 'instance': -1,
+                'materials': [], 'collision': 'none', 'visible': True, 'cast_shadow': True, 'tags': [],
+                '_t': ([0, 0, 0], [0, 0, 0, 1], [1, 1, 1]),
+            })
+        sounds = {}
+        for item in self.profile.get('metasounds', []):
+            path = item['asset']
+            if not path.startswith('/Game/') or path in sounds or not 0.1 <= item['seconds'] <= 60 or type(item['loop']) is not bool:
+                raise Refusal('invalid MetaSound export row: ' + path)
+            sounds[path] = item
+        return sounds
+
     def run(self):
         if not OUT or not os.path.isdir(OUT) or os.listdir(OUT):
             raise Refusal('AIMPORT_OUT must name an existing empty folder')
@@ -813,6 +846,11 @@ class Export:
             raise Refusal('AIMPORT_PLAN_SHA256 is not a plan\'s SHA-256 (64 lower-case hex): every bundle comes from a plan')
         if not self.checks or not hasattr(self.checks, 'read_convex') or not hasattr(self.checks, 'read_bones'):
             raise Refusal('the AethyrBridge plugin (UAethyrEditorChecks.ReadConvex, ReadBones) is not loaded')
+        self.profile = {}
+        profile_path = os.environ.get('AIMPORT_ASSETS', '')
+        if profile_path:
+            with open(profile_path, encoding='utf-8') as f:
+                self.profile = json.load(f)
         maps = self.map_list()
         if not maps:
             raise Refusal('no maps to export')
@@ -829,6 +867,7 @@ class Export:
                 if inst['world'] not in self.maps:
                     queue.append(inst['world'])
         flat = {m: self.flatten(m, (m,)) for m in maps}
+        baked_sounds = self.asset_profile(flat)
         source_rigs = os.environ.get('AIMPORT_SOURCE_RIGS') == '1'
         # The full export also retains unplaced library assets for authoring.
         for cls, ids in (('StaticMesh', self.static_ids), ('SkeletalMesh', self.skeletal_ids)):
@@ -867,7 +906,9 @@ class Export:
             elif cls in ('IKRigDefinition', 'IKRetargeter'):
                 script = '/Script/IKRig'
             for a in self.assets_of(cls, script):
-                self.skip('', '', script + '.' + cls, '', reason, detail, str(a.package_name) + '.' + str(a.asset_name))
+                path = str(a.package_name) + '.' + str(a.asset_name)
+                if path not in baked_sounds:
+                    self.skip('', '', script + '.' + cls, '', reason, detail, path)
 
         manifest = {'aimport': 1, 'source': {
             'route': 'editor', 'project': os.environ.get('AIMPORT_PROJECT') or unreal.SystemLibrary.get_game_name(),
@@ -927,7 +968,13 @@ class Export:
             else:
                 tex = unreal.load_asset(path)
                 textures.append(self.texture_row(tex, path, file_rel))
-        sounds = [self.sound_row(unreal.load_asset(p), p, 'sounds/%04d.wav' % (k + 1)) for k, p in enumerate(sorted(self.sound_ids))]
+        sounds = []
+        for k, path in enumerate(sorted(self.sound_ids | set(baked_sounds))):
+            file_rel = 'sounds/%04d.wav' % (k + 1)
+            if path in baked_sounds:
+                sounds.append(self.bake_sound_row(path, file_rel, baked_sounds[path]))
+            else:
+                sounds.append(self.sound_row(unreal.load_asset(path), path, file_rel))
 
         map_rows = []
         for m in maps:

@@ -13,7 +13,7 @@ public class AethyrBridge : ModuleRules
 		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "ProceduralMeshComponent", "HTTP", "Slate", "SlateCore", "RenderCore", "RHI", "Niagara" });
 		if (Target.bBuildEditor)
 		{
-			PrivateDependencyModuleNames.AddRange(new string[] { "UnrealEd", "RenderCore", "RHI" });
+			PrivateDependencyModuleNames.AddRange(new string[] { "UnrealEd", "RenderCore", "RHI", "MetasoundEngine" });
 		}
 		string Rules = Path.Combine(ModuleDirectory, "Private", "Rules");
 		bool bHasRules = File.Exists(Path.Combine(Rules, "aethyr_host.h"));

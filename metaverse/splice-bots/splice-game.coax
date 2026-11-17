@@ -33,6 +33,7 @@
 #load "sound.coax";                // the sound table and the moments each sound plays (#13505)
 #load "jam/jam-world.coax";         // the jam build's world: the imported levels' landmarks and colliders (#13653)
 #load "jam/jam-rules.coax";
+#load "jam/jam-pet.coax";
 #load "jam/jam-data.coax";         // the jam build's rules on the game, in the jam world (#13653)
 #load "jam/jam-walk.coax";          // the jam world's route walk: every stop explained by what is drawn (#13653)
 #load "jam/jam-checks.coax" #test;
@@ -126,6 +127,7 @@ SpGame :: struct {
   jr: [1] SjJam;              // and its route: the maps, their starts and the game actors (sj_read); outlives a reset
   jway: [SJ_WAYS] SjWay;      // the drill mech's way round the jam world's walls (jam/jam-world.coax sj_way)
   jx: [1] SjRules;            // the jam's rules in the jam world: her inventory, the charge points, the farm robot, her crew, Heat (jam/jam-farm.coax)
+  pets: [1] SjpPets;
   jf: [1] SjFx;               // the jam's jetpack, and the jam's sound moments (jam/jam-fx.coax)
   jd: string;                 // the jam's Data tables: the jam pack's catalog, kept by the page (jam/jam-data.coax); "" without it
   mode: int; zone: int; phase: int; t: f32;
@@ -697,7 +699,10 @@ g_step :: (g: [] SpGame, dt: f32) {
   if g[0].mode == M_MEMORY { g[0].mem_t += dt; if g[0].mem_t >= T_MEMORY { g[0].mode = M_RESTORED; g_event(g, EV_RESTORED); } return; }
   if g[0].mode == M_BAY { if g[0].heat > 0 { g[0].heat = hi(0, g[0].heat - T_HEAT_COOL * dt); } return; }
   dv_sync(g);   // which placed rover is hidden: the one she drives, or the farm's once Sniper has left it (drive.coax)
-  if g[0].mode == M_DRIVE { dv_step(g, dt); return; }   // she drives Sniper (drive.coax)
+  if g[0].mode == M_DRIVE {
+    if sjx_on(g) && g[0].jr[0].source_audio { sjs_step(g, dt); }
+    dv_step(g, dt); return;   // she drives Sniper (drive.coax)
+  }
   if g[0].mode == M_RIDE {
     // the rover follows the rail; W and S change its speed; the sensor ping stops it halfway
     want := ifx g[0].fwd then T_RAIL_FAST else ifx g[0].back then T_RAIL_SLOW else T_RAIL_SPEED;
@@ -735,6 +740,7 @@ g_step :: (g: [] SpGame, dt: f32) {
   // As shipped, raiders dance where they stand and fight only if you hit them; Imperial robots patrol,
   // notice you (from further at higher Heat), chase, and give up at the catwalk or far away
   sjx_step(g, dt);   // the jam's rules: pickups, charge points, the farm robot, her crew (jam/jam-farm.coax)
+  sjp_step(g, dt);
   sjf_step(g, dt);   // the jam's jetpack where it lies, and its exhaust (jam/jam-fx.coax)
   g_foes_step(g, dt);
   d_post(g, dt);   // Heat's floor, and Digger's own errands (director.coax)
@@ -949,6 +955,7 @@ g_key :: (g: [] SpGame, key: int, down: bool) -> bool {
     return false;
   }
   if g[0].mode == M_BAY {
+    if (key == 'b' || key == 'B') && sjp_available(g) { _ = sjp_build(g); return true; }
     if key == -15 || key == -1 || key == 'e' || key == 'E' {
       g[0].mode = M_PLAY; g[0].look_free = false;
       if g_job(g) > 0 && g_cut_ok(g) && !d_down(g) { g[0].msg = MSG_OFFER; g[0].msg_t = 6; }   // the order and its key, not left to guess (playtest 3)
@@ -1027,7 +1034,7 @@ g_look :: (g: [] SpGame, dx: f32, dy: f32) {
 g_lock :: (g: [] SpGame, status: int) { d_lock(g, status); g[0].look_free = status != 1; }
 
 // A moment of the run to stand in (the page's message 640, "N"): for stills and checks of each beat.
-g_stage :: (g: [] SpGame, n: int) { g_stage_set(g, n); g_foes(g); if g[0].bot { g_bot_home(g); } sb_stage(g, n); dv_stage(g, n); cm_stage(g, n); bl_stage(g, n); mr_stage(g, n); d_stage(g, n); sjf_stage(g, n); }
+g_stage :: (g: [] SpGame, n: int) { g_stage_set(g, n); g_foes(g); if g[0].bot { g_bot_home(g); } sb_stage(g, n); dv_stage(g, n); cm_stage(g, n); bl_stage(g, n); mr_stage(g, n); d_stage(g, n); sjf_stage(g, n); sjp_stage(g, n); }
 g_stage_set :: (g: [] SpGame, n: int) {
   g_reset(g); g[0].mode = M_PLAY;
   if n == 0 { g[0].mode = M_TITLE; return; }

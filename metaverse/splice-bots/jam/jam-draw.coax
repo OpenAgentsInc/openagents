@@ -119,6 +119,40 @@ sjd_build :: (d: [] SjDraw, s: [] SjStore, objects: [] f32) #effects(all) {
     objects[o + 31] = cast(f32) (1 + r % 250);   // its ink number: a line where two pieces meet
   }
   d[0].rows = rows;
+  if j[0].pet_mesh { sjd_pet_mesh(d, w, objects); }
+}
+
+// The template mesh is stored in a map outside the rendered route. Use its
+// same engine material and geometry for each pet; visibility and pose update
+// through the same actor store as the other moving imported actors.
+sjd_pet_mesh :: (d: [] SjDraw, w: [] IwWorld, objects: [] f32) {
+  for k: 0..<w[0].ni {
+    p := w[0].inst[k];
+    if p.actor != iw_hash(SJP_ACTOR) { continue; }
+    r := d[0].rows;
+    if d[0].draw_n >= SJD_DRAWS || (r + SJP_MAX) * IW_OBJECT > objects.count { return; }
+    sc := w[0].sections[p.section]; i := d[0].draw_n * 4;
+    d[0].draws[i] = cast(u32) sc.first; d[0].draws[i + 1] = cast(u32) sc.count;
+    d[0].draws[i + 2] = cast(u32) (SJD_BASE + r); d[0].draws[i + 3] = cast(u32) SJP_MAX;
+    for n: 0..<SJP_MAX {
+      at := (r + n) * IW_OBJECT; iw_object(w, k, objects, at);
+      objects[at + 29] = cast(f32) (SJ_ACTORS - SJP_MAX + n + 1);
+      objects[at + 30] = SJD_MAT_WORLD;
+      objects[at + 31] = cast(f32) (1 + (r + n) % 250);
+    }
+    d[0].draw_n += 1; d[0].rows += SJP_MAX;
+  }
+}
+sjd_pet_poses :: (g: [] SpGame, out: [] f32) {
+  if !g[0].jr[0].pet_mesh || out.count < SJ_ACTORS * SJD_ACTOR_FLOATS { return; }
+  for i: 0..<SJP_MAX {
+    a := (SJ_ACTORS - SJP_MAX + i) * SJD_ACTOR_FLOATS;
+    p := g[0].pets[0].pets[i]; yaw := p.yaw + PI * 0.5;
+    out[a] = p.x; out[a + 1] = p.y + p.bob; out[a + 2] = p.z;
+    out[a + 3] = ifx i < g[0].pets[0].n && g[0].mode == M_PLAY then 1.0f32 else 0.0f32;
+    out[a + 4] = 0; out[a + 5] = 0; out[a + 6] = 0; out[a + 7] = 0;
+    out[a + 8] = cos(yaw); out[a + 9] = sin(yaw); out[a + 10] = 0; out[a + 11] = 0;
+  }
 }
 // The actor store from the game's route (g[0].jr: its actors as the game left them this frame): how many
 // floats are written.

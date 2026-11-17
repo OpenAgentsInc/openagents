@@ -1,0 +1,16 @@
+#test "the jam's edit bay spends one battery and three scrap per Microduck, and a refusal spends nothing" #steps 300000000 {
+  g: [1] SpGame;
+  g[0].jam = true; g[0].jr[0].pet_mesh = true; g[0].mode = M_BAY;
+  g[0].jx[0].ok = true;
+  g[0].jx[0].inv[0] = sr_make_inventory();
+  #assert sjx_give(g[..], sr_stack(ITEM_BATTERY, 2)) && sjx_give(g[..], sr_stack(ITEM_SCRAP_PART, 6));
+  #assert sjp_available(g[..]) && sjp_build(g[..]) && g[0].pets[0].n == 1;
+  #assert sjx_count(g[..], ITEM_BATTERY) == 1 && sjx_count(g[..], ITEM_SCRAP_PART) == 3;
+  #assert sjp_build(g[..]) && !sjp_build(g[..]) && g[0].pets[0].n == 2;
+  #assert sjx_count(g[..], ITEM_BATTERY) == 0 && sjx_count(g[..], ITEM_SCRAP_PART) == 0;
+  #assert g[0].pets[0].pets[0].x != g[0].pets[0].pets[1].x;
+  g[0].mode = M_PLAY; g[0].pz += 6;
+  before := g[0].pets[0].pets[0].z;
+  sjp_step(g[..], 0.2);
+  #assert g[0].pets[0].pets[0].z > before;
+}

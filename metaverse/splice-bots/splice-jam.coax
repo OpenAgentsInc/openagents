@@ -68,6 +68,7 @@ splice_jam_frame :: (s: [] SpliceJam, out: [] f32, u: [] f32, width: f32, height
   if m > 0 { s[0].draw_n = sjc_frame(s[0].chars[..], g, ifx still then 0.0f32 else dt, actors, s[0].draws[..], s[0].draw_n); }
   sj_openings_set(g);   // the rock wall, the barricade and the walls the one world walks through (jam-world.coax)
   _ := sjd_actor_rows(g[0].jr[..], actors);
+  sjd_pet_poses(g, actors);
   return n;
 }
 splice_jam_draw_count :: (s: [] SpliceJam) -> int #export_c #effects(all) { return s[0].draw_n; }
@@ -79,7 +80,7 @@ splice_jam_store_bytes :: (s: [] SpliceJam, k: int) -> int #export_c #effects(al
 splice_jam_store_version :: (s: [] SpliceJam) -> int #export_c #effects(all) { return s[0].jam[0].store_gen; }
 // For a headless check: 0 the game is in the jam world, 1 to 4 each pack part's bytes, 5 rows, 6 draws,
 // 7 actors, 8 skies, 9 twins, 10 actors' parts drawn; the characters (jam-cast.coax): 11 their pack is in,
-// 12 bodies drawn this frame, 13 hers is drawn, 14 the characters the pack has.
+// 12 bodies drawn this frame, 13 hers is drawn, 14 the characters the pack has; 15 to 18 the pets, scrap and first pet's position.
 splice_jam_fact :: (s: [] SpliceJam, k: int) -> int #export_c #effects(all) {
   d := s[0].jam[..]; g := s[0].page[0].game[..];
   if k == 0 { return ifx g[0].jam then 1 else 0; }
@@ -89,6 +90,9 @@ splice_jam_fact :: (s: [] SpliceJam, k: int) -> int #export_c #effects(all) {
   c := s[0].chars[..];
   if k == 11 { return ifx sjc_ready(c) then 1 else 0; } if k == 12 { return c[0].shown; }
   if k == 13 { return ifx c[0].on[SJC_HER] then 1 else 0; } if k == 14 { return c[0].crew[0].n; }
+  if k == 15 { return g[0].pets[0].n; }
+  if k == 16 { return sjx_count(g, ITEM_SCRAP_PART); }
+  if k == 17 || k == 18 { p := g[0].pets[0].pets[0]; return we_cm(ifx k == 17 then p.x else p.z); }
   return -1;
 }
 

@@ -101,3 +101,20 @@ sck_in :: (name: string, phase: int) -> SndAt { return sck_at(name, M_BAY, Z_MIN
   g_say(g[..], MSG_BAD_CUT);
   #assert sck_heard(g[..], "glitch") == 1 && g[0].events[1] == SND_EVENT_BASE + SND_GLITCH;
 }
+#test "project MetaSounds select one music bed and play Sniper cards once when shown" #steps 300000000 {
+  g: [1] SpGame;
+  g[0].jam = true; g[0].jr[0].source_audio = true; g[0].mode = M_TITLE;
+  snd_tick(g[..], 0.02);
+  #assert g[0].snd[0].on[SND_META_TITLE] && !g[0].snd[0].on[SND_META_DESERT];
+  g[0].mode = M_PLAY;
+  snd_tick(g[..], 0.02);
+  #assert g[0].snd[0].on[SND_META_DESERT] && !g[0].snd[0].on[SND_META_TITLE];
+  g[0].mode = M_BAY;
+  snd_tick(g[..], 0.02);
+  #assert g[0].snd[0].on[SND_META_CABIN] && !g[0].snd[0].on[SND_META_DESERT];
+  g[0].snd[0].q_n = 0;
+  q := g[0].jx[0].story[0].q[..];
+  #assert sr_card_enqueue(q, SrCardRequest.{card_id = "T21", lane = SR_LANE_SNIPER, text_key = "CARD_S04"});
+  sjs_voice(g[..]); sjs_voice(g[..]);
+  #assert g[0].snd[0].fired[SND_CHIRP_T21] == 1 && g[0].snd[0].q_n == 1;
+}

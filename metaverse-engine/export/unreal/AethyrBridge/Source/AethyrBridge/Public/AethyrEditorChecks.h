@@ -11,6 +11,7 @@
 class UStaticMesh;
 class UMaterialInterface;
 class USkeleton;
+class USoundBase;
 
 UCLASS()
 class AETHYRBRIDGE_API UAethyrEditorChecks : public UBlueprintFunctionLibrary
@@ -39,4 +40,8 @@ public:
 	// transform a bone, in the reference skeleton's order.
 	UFUNCTION(BlueprintCallable, Category = "Aethyr")
 	static bool ReadBones(USkeleton* Skeleton, TArray<FString>& Names, TArray<int32>& Parents, TArray<FTransform>& Rest);
+
+	// Render a mono MetaSound at its authored default parameters without an audio device.
+	UFUNCTION(BlueprintCallable, Category = "Aethyr")
+	static bool BakeMetaSound(USoundBase* Sound, const FString& Destination, float Seconds, bool bLoop);
 };

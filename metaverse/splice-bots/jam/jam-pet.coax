@@ -1,0 +1,59 @@
+// The project Microduck uses the same recipe, inventory and pet slots as Unreal.
+#load "../rules/recipes.coax";
+#load "jam-pet-checks.coax" #test;
+
+SJP_MAX :: 16;
+SJP_ACTOR :: "AethyrMicroduck";
+SJP_STAGE_BUILD :: 71;  // the edit bay with one recipe's worth of materials, for the browser check
+SJP_RADIUS :: 0.16;
+SJP_SPEED :: 2.8;
+SjpPet :: struct { x: f32; y: f32; z: f32; yaw: f32; stride: f32; bob: f32; }
+SjpPets :: struct { n: int; pets: [SJP_MAX] SjpPet; built: bool; }
+
+sjp_recipe :: () -> SrRecipe { return sr_find_slice_recipe(RECIPE_MICRODUCK).recipe; }
+sjp_available :: (g: [] SpGame) -> bool { return sjx_on(g) && g[0].jr[0].pet_mesh && !g[0].at_crate; }
+sjp_stage :: (g: [] SpGame, n: int) {
+  if n != SJP_STAGE_BUILD || !g[0].jam || !g[0].jr[0].pet_mesh { return; }
+  g_stage_set(g, 1); g_foes(g);
+  _ := sjx_give(g, sr_stack(ITEM_BATTERY, 1));
+  _ = sjx_give(g, sr_stack(ITEM_SCRAP_PART, 3));
+  g[0].mode = M_BAY;
+}
+sjp_build :: (g: [] SpGame) -> bool {
+  p := g[0].pets[..]; p[0].built = false;
+  if g[0].mode != M_BAY || !sjp_available(g) || p[0].n >= SJP_MAX { return false; }
+  result := sr_build(sjp_recipe(), sr_known_at_start(), g[0].jx[0].inv[0].main[..], 0);
+  if !result.built { return false; }
+  n := p[0].n;
+  her := d3(cast(f64) g[0].px, cast(f64) g[0].pz, 0);
+  target := sr_pet_slot_position(her, d3(cast(f64) sin(g[0].yaw), cast(f64) cos(g[0].yaw), 0), n);
+  x := cast(f32) target.x; z := cast(f32) target.y;
+  y := g_ground(g, x, z);
+  p[0].pets[n] = SjpPet.{x = x, y = y, z = z, yaw = g[0].yaw};
+  p[0].n += 1; p[0].built = true;
+  snd_play(g, SND_PICKUP);
+  return true;
+}
+
+sjp_step :: (g: [] SpGame, dt: f32) {
+  p := g[0].pets[..];
+  her := d3(cast(f64) g[0].px, cast(f64) g[0].pz, 0);
+  fwd := d3(cast(f64) sin(g[0].yaw + g[0].face_off), cast(f64) cos(g[0].yaw + g[0].face_off), 0);
+  for i: 0..<p[0].n {
+    pet := p[0].pets[i]; target := sr_pet_slot_position(her, fwd, i);
+    old := d3(cast(f64) pet.x, cast(f64) pet.z, 0);
+    // Portal and rover moves can carry the Director across the whole world.
+    warp := d3_len(d3_sub(old, her)) > sr_leash_distance_for(SR_SIZE_SMALL);
+    step := ifx warp then target else sr_steer_step(old, target, SJP_SPEED, cast(f64) dt, 0.2);
+    x := cast(f32) step.x; z := cast(f32) step.y;
+    y := g_ground(g, x, z);
+    y = sj_floor(g, x, z, ifx warp then y else pet.y, y);
+    point := sj_push(g, x, z, SJP_RADIUS, y + 0.04);
+    dx := point.x - pet.x; dz := point.z - pet.z;
+    distance := sqrt(dx * dx + dz * dz);
+    if !warp && distance > 0.001 { pet.yaw = atan2(dx, dz); pet.stride += distance * 16; }
+    pet.bob = ifx !warp && distance > 0.001 then abs(sin(pet.stride)) * 0.025 else 0;
+    pet.x = point.x; pet.y = y; pet.z = point.z;
+    p[0].pets[i] = pet;
+  }
+}

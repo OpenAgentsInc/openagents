@@ -16,7 +16,8 @@ SJS_PAIRS :: [24] string.[
   "CARD_T10", "TUT_FEED_ROBOT", "CARD_T11", "TUT_HEAT",
   "CARD_N01", "CARD_NEW_ITEM_SCRAP_PART", "CARD_N02", "CARD_NEW_ITEM_JUMP_CARD", "CARD_N03", "CARD_NEW_ITEM_SMALL_CORE",
   "CARD_N04", "CARD_NEW_ITEM_BATTERY", "CARD_N10", "CARD_NEW_ITEM_IMPERIAL_PART", "CARD_N12", "CARD_NEW_ITEM_BANNED_PIECE"];
-SJS_SNIPER :: [8] string.["CARD_S01", "SNIPER_0001", "CARD_S02", "SNIPER_0002", "CARD_S03", "SNIPER_0003", "CARD_S04", "SNIPER_0004"];
+SJS_SNIPER :: [10] string.["CARD_S01", "SNIPER_0001", "CARD_S02", "SNIPER_0002", "CARD_S03", "SNIPER_0003", "CARD_S04", "SNIPER_0004", "CARD_S06", "CARD_RAIDER_CHIEF_01"];
+SJS_CHIRP_CARDS :: [7] string.["T02", "T07", "T20", "T21", "T22", "T23", "T33"];
 // The jam's own lines (SpliceFarmStory.cpp SetEntry), for the cards whose words it writes in code.
 SJS_OWN :: [4] string.["CARD_S05", "That's a Bot Mandate. The Empire's limit on robots. We're already over it.",
                        "CARD_S07", "Not without a drill. Find the DRILL card first."];
@@ -27,6 +28,7 @@ SjStory :: struct {
   clock: f32;                 // s in play
   start_heat: int = -1;
   battery_ever: bool;
+  sniper: string;
 }
 
 // A card row's words: the strings table's text by the pairing above, or the jam's own line; "" when none.
@@ -52,6 +54,16 @@ sjs_now :: (g: [] SpGame, lane: int) -> string {
   return ifx t.found then sjs_text(g[0].jd, t.card.text_key) else "";
 }
 
+sjs_voice :: (g: [] SpGame) {
+  if !g[0].jr[0].source_audio { return; }
+  s := g[0].jx[0].story[..];
+  front := sr_card_peek(s[0].q[0], SR_LANE_SNIPER);
+  id := ifx front.found then front.card.card_id else "";
+  if id == s[0].sniper { return; }
+  s[0].sniper = id;
+  for card, i: SJS_CHIRP_CARDS { if card == id { snd_play(g, SND_CHIRP_T02 + i); return; } }
+}
+
 // Each step in play: the lanes' cards age and leave, then the farm's triggers (the jam's order).
 sjs_step :: (g: [] SpGame, dt: f32) {
   s := g[0].jx[0].story[..];
@@ -63,12 +75,20 @@ sjs_step :: (g: [] SpGame, dt: f32) {
   // the desk refuses the drive before the DRILL card (drive.coax MSG_NO_DRILL): Sniper's card, once a visit
   if sp_in_room(g) && g[0].msg == MSG_NO_DRILL { sjs_show(g, "T33"); }
   if !sp_in_room(g) && sr_card_has_played(s[0].q[0], "T33") { sr_card_forget_played(s[0].q[..], "T33"); }
+  if g[0].jr[0].source_audio && g[0].mode == M_DRIVE && g[0].phase == PH_NIGHT && g[0].have[H_CORE] { sjs_show(g, "T23"); }
+  defer { sjs_voice(g); }
   if g[0].mode != M_PLAY { return; }
   s[0].clock += dt;
   if s[0].clock < SJS_START { return; }
   since := s[0].clock - SJS_START;
   sjs_show(g, "T01");
   if since > 1 { sjs_show(g, "T02"); }
+  if g[0].jr[0].source_audio {
+    b := g[0].bt[0]; mandate := g[0].jr[0].mandate;
+    if g[0].core_taken && g[0].phase == PH_NIGHT { sjs_show(g, "T20"); }
+    if g[0].rubble_gone && !b.mech_used && ga_inside(g, g[0].px, g[0].pz) && dist2(g[0].px, g[0].pz, b.mech_x, b.mech_z) < 8 { sjs_show(g, "T21"); }
+    if mandate.ok && !sp_in_room(g) && dist2(g[0].px, g[0].pz, mandate.x, mandate.z) < 6 { sjs_show(g, "T22"); }
+  }
   if sjx_count(g, ITEM_SCRAP_PART) > 0 { sjs_show(g, "T03"); }
   if sjx_count(g, ITEM_JUMP_CARD) > 0 { sjs_show(g, "T06"); sjs_show(g, "T07"); }
   if sjx_count(g, ITEM_BANNED_PIECE) > 0 { sjs_show(g, "T26"); }

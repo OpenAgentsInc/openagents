@@ -70,6 +70,8 @@ SjActor :: struct {
 SjSpawn :: struct { x: f32; y: f32; z: f32; yaw: f32; ok: bool; }
 SjJam :: struct {
   ok: bool; why: string;
+  pet_mesh: bool; source_audio: bool;
+  mandate: SjSpawn;
   map: [SJ_MAPS] int;               // each route map's number in the catalog, or -1
   spawn: [SJ_MAPS] SjSpawn;         // each route map's player start
   actors: [SJ_ACTORS] SjActor; n: int; over: int;
@@ -175,6 +177,21 @@ sj_near :: (j: [] SjJam, kind: int, x: f32, z: f32) -> int {
 sj_load :: (s: [] SjStore, catalog: string) -> bool {
   if !iw_admit(s[0].world[..], catalog) { sj_clear(s[0].jam[..]); return sj_refuse(s[0].jam[..], s[0].world[0].why); }
   if !sj_read(s[0].jam[..], catalog) { return false; }
+  j := s[0].jam[..]; w := s[0].world[..];
+  for k: 0..<w[0].ni { if w[0].inst[k].actor == iw_hash(SJP_ACTOR) && j[0].n <= SJ_ACTORS - SJP_MAX { j[0].pet_mesh = true; break; } }
+  at := 0;
+  while at < catalog.count {
+    e := at; while e < catalog.count && catalog[e] != '\n' { e += 1; }
+    line := catalog[at..<e]; at = e + 1;
+    if iw_field(line, 0) == "S" && sj_starts(iw_field(line, 1), "ms-mus-title-") { j[0].source_audio = true; break; }
+  }
+  for k: 0..<w[0].nspot {
+    spot := w[0].spots[k];
+    if spot.map == j[0].map[SJ_FARM] && cast(string) spot.name[0..<spot.name_n] == "mandate_notice" {
+      j[0].mandate = SjSpawn.{x = spot.at[0], y = spot.at[1], z = spot.at[2], ok = true};
+      break;
+    }
+  }
   for r: 0..<SJ_MAPS { m := s[0].jam[0].map[r]; if m >= 0 { iw_colliders(s[0].world[..], m, s[0].cols[r..<r + 1]); sj_gates_last(s, r); } }
   return true;
 }
