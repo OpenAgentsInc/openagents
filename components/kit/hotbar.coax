@@ -8,9 +8,10 @@
 //   the bar     Hotbar and HbSlot: what the slots are and which tool is picked. hb_press, hb_key
 //               and hb_escape are the only ways it changes, and each says what happened (HbPress)
 //               for the game to act on. It keeps no game state: the game fills it each frame.
-//   the skin    HbSkin: every look as data (sizes, colours, the frame family round a slot, the
-//               face, and glyphs by slot id). hb_scifi is the first; a fantasy bar is another
-//               HbSkin and nothing else. hb_css writes a skin's stylesheet.
+//   the skin    HbSkin (skin/hotbar.coax): every look as data (sizes, colours, the frame family
+//               round a slot, the face, when names show, and glyphs by slot id). hb_scifi is the
+//               first; a fantasy bar is another HbSkin and nothing else. hb_css writes a skin's
+//               stylesheet. Nothing in this file names a colour or a size.
 //   the tree    k_hotbar builds the bar's nodes in a page's tree (core/tree.coax): a toolbar of
 //               buttons the browser backend draws, each carrying the classes a host's frame
 //               drawer looks for (the ARWES frame family the skin names).
@@ -22,6 +23,7 @@
 //   coax/bin/coax mutate components/kit/hotbar.coax --root-only
 
 #load "../core/tree.coax";
+#load "../skin/hotbar.coax";   // HbSkin: every look of the bar, and its stylesheet
 
 HB_SLOTS :: 12;
 HB_TOOL :: 0; HB_TOGGLE :: 1; HB_ACTION :: 2;   // what a press of a slot does
@@ -77,99 +79,8 @@ hb_escape :: (b: [] Hotbar) -> bool { had := b[0].picked >= 0; b[0].picked = -1;
 // The bar's picked tool, as the game says it is (a tool that is gone, or takes no press, is not picked).
 hb_pick :: (b: [] Hotbar, i: int) { b[0].picked = ifx hb_can(b, i) && b[0].slots[i].kind == HB_TOOL then i else -1; }
 
-// ---------------------------------------------------------------- the skin
-
-HB_GLYPHS :: 16;
-HB_LABEL_ALWAYS :: 0; HB_LABEL_HOVER :: 1; HB_LABEL_NEVER :: 2;   // when a slot's name is shown under its glyph
-// A skin: every look of the bar, as data. Lengths are CSS pixels; colours are CSS colours.
-HbSkin :: struct {
-  name: string;                 // the bar's class is "hb hb-NAME"
-  frame: int;                   // the ARWES frame family round a slot (components/core/arwes: 0 underline to 8 circle)
-  mark: string;                 // the class a host's frame drawer looks for ("hud"): "" draws none
-  slot: int; gap: int; group_gap: int; pad: int; corner: int; small: int;   // a slot's side, between two, between groups, the bar's padding, a slot's rounding, a slot's side in a narrow window
-  glyph_size: int; key_size: int;
-  labels: int; label_size: int;                   // when a slot's name shows under its glyph (HB_LABEL_*), and how big
-  face: string; key_face: string;
-  ink: string; dim: string; lit: string;          // a glyph idle, disabled, and picked or on
-  fill: string; fill_hot: string; fill_lit: string;   // a slot's ground idle, under the pointer, and picked or on
-  edge: string; edge_lit: string;                 // its own line (when the host draws no frame), idle and lit
-  divider: string;
-  n: int; ids: [HB_GLYPHS] string; glyphs: [HB_GLYPHS] string;   // the skin's own glyph for a slot id, when it has one
-}
-// Science fiction: thin white lines over a faint shade, the world showing through; lit, a slot fills a little.
-hb_scifi :: () -> HbSkin {
-  s: HbSkin;
-  s.name = "scifi"; s.frame = 2; s.mark = "hud";
-  s.slot = 52; s.gap = 10; s.group_gap = 22; s.small = 40;
-  s.glyph_size = 18; s.key_size = 10; s.label_size = 9;   // (names always: HB_LABEL_ALWAYS is what a skin starts as)
-  s.face = "inherit"; s.key_face = "var(--mono, ui-monospace, monospace)";
-  s.ink = "rgba(255,255,255,.78)"; s.dim = "rgba(255,255,255,.28)"; s.lit = "#fff";
-  s.fill = "rgba(0,0,0,.28)"; s.fill_hot = "rgba(255,255,255,.1)"; s.fill_lit = "rgba(255,255,255,.22)";
-  s.edge = "transparent"; s.edge_lit = "rgba(255,255,255,.7)";
-  s.divider = "rgba(255,255,255,.22)";
-  return s;
-}
-// Gives a skin its own glyph for a slot id. False when it holds HB_GLYPHS already.
-hb_skin_glyph :: (s: [] HbSkin, id: string, glyph: string) -> bool {
-  for k: 0..<s[0].n { if s[0].ids[k] == id { s[0].glyphs[k] = glyph; return true; } }
-  if s[0].n >= HB_GLYPHS { return false; }
-  s[0].ids[s[0].n] = id; s[0].glyphs[s[0].n] = glyph; s[0].n += 1;
-  return true;
-}
 // The glyph a slot shows in a skin: the skin's for its id, else the slot's own.
-hb_glyph :: (s: HbSkin, slot: HbSlot) -> string {
-  for k: 0..<s.n { if s.ids[k] == slot.id { return s.glyphs[k]; } }
-  return slot.glyph;
-}
-
-hb_put :: (out: [] u8, n: int, s: string) -> int { k := n; for c: s { if k < out.count { out[k] = c; k += 1; } } return k; }
-hb_px :: (out: [] u8, n: int, v: int) -> int {
-  k := n; a := v;
-  digits: [24] u8; m := 0;
-  if !(a > 0) { digits[0] = '0'; m = 1; }   // nothing, and anything below it
-  while a > 0 { digits[m] = cast(u8) ('0' + a % 10); m += 1; a /= 10; }
-  while m > 0 { m -= 1; if k < out.count { out[k] = digits[m]; k += 1; } }
-  return hb_put(out, k, "px");
-}
-// A skin's stylesheet, written from `n` in out: the bar, a slot in each of its states, the key, the
-// glyph, the divider, and the narrow window's sizes. Returns where it ends (out.count when out was too small).
-hb_css :: (s: HbSkin, out: [] u8, from: int) -> int {
-  n := from;
-  n = hb_put(out, n, ".hb-"); n = hb_put(out, n, s.name);
-  n = hb_put(out, n, "{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:"); n = hb_px(out, n, s.gap);
-  n = hb_put(out, n, ";padding:"); n = hb_px(out, n, s.pad); n = hb_put(out, n, ";margin:0;user-select:none;-webkit-user-select:none}");
-  n = hb_put(out, n, ".hb-"); n = hb_put(out, n, s.name);
-  n = hb_put(out, n, " .hb-s{appearance:none;position:relative;flex:none;display:flex;flex-direction:column;gap:4px;align-items:center;justify-content:center;margin:0;padding:0;cursor:pointer;width:"); n = hb_px(out, n, s.slot);
-  n = hb_put(out, n, ";height:"); n = hb_px(out, n, s.slot);
-  n = hb_put(out, n, ";border-radius:"); n = hb_px(out, n, s.corner);
-  n = hb_put(out, n, ";border:1px solid "); n = hb_put(out, n, s.edge);
-  n = hb_put(out, n, ";background:"); n = hb_put(out, n, s.fill);
-  n = hb_put(out, n, ";color:"); n = hb_put(out, n, s.ink);
-  n = hb_put(out, n, ";font-family:"); n = hb_put(out, n, s.face); n = hb_put(out, n, ";outline:0;-webkit-tap-highlight-color:transparent}");
-  n = hb_put(out, n, ".hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, " .hb-s:hover,.hb-"); n = hb_put(out, n, s.name);
-  n = hb_put(out, n, " .hb-s:focus-visible{background:"); n = hb_put(out, n, s.fill_hot); n = hb_put(out, n, ";color:"); n = hb_put(out, n, s.lit); n = hb_put(out, n, "}");
-  n = hb_put(out, n, ".hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, " .hb-s.hb-on{background:"); n = hb_put(out, n, s.fill_lit);
-  n = hb_put(out, n, ";color:"); n = hb_put(out, n, s.lit); n = hb_put(out, n, ";border-color:"); n = hb_put(out, n, s.edge_lit); n = hb_put(out, n, "}");
-  n = hb_put(out, n, ".hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, " .hb-s:disabled{cursor:default;background:"); n = hb_put(out, n, s.fill);
-  n = hb_put(out, n, ";color:"); n = hb_put(out, n, s.dim); n = hb_put(out, n, "}");
-  // busy: the glyph breathes; a cooldown: a shade that drains from the top (--p, 1 to 0)
-  n = hb_put(out, n, ".hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, " .hb-s.hb-busy .hb-g{animation:hb-busy 1s ease-in-out infinite alternate}@keyframes hb-busy{from{opacity:1}to{opacity:.25}}");
-  n = hb_put(out, n, ".hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, " .hb-s.hb-cool::after{content:'';position:absolute;left:0;right:0;bottom:0;height:calc(var(--p,0)*100%);background:"); n = hb_put(out, n, s.fill_lit); n = hb_put(out, n, ";pointer-events:none}");
-  n = hb_put(out, n, ".hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, " .hb-g{font-size:"); n = hb_px(out, n, s.glyph_size); n = hb_put(out, n, ";line-height:1;pointer-events:none}");
-  // a slot's name under its glyph, in the key's face; a hover-only name shows under the pointer or the focus
-  n = hb_put(out, n, ".hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, " .hb-l{font-family:"); n = hb_put(out, n, s.key_face);
-  n = hb_put(out, n, ";font-size:"); n = hb_px(out, n, s.label_size); n = hb_put(out, n, ";line-height:1;letter-spacing:.04em;pointer-events:none}");
-  n = hb_put(out, n, ".hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, " .hb-lh{display:none}.hb-"); n = hb_put(out, n, s.name);
-  n = hb_put(out, n, " .hb-s:hover .hb-lh,.hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, " .hb-s:focus-visible .hb-lh{display:block}");
-  n = hb_put(out, n, ".hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, " .hb-k{position:absolute;left:5px;top:4px;font-family:"); n = hb_put(out, n, s.key_face);
-  n = hb_put(out, n, ";font-size:"); n = hb_px(out, n, s.key_size); n = hb_put(out, n, ";line-height:1;opacity:.6;pointer-events:none}");
-  n = hb_put(out, n, ".hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, " .hb-d{flex:none;align-self:stretch;width:1px;margin:6px "); n = hb_px(out, n, (s.group_gap - s.gap) / 2);
-  n = hb_put(out, n, ";background:"); n = hb_put(out, n, s.divider); n = hb_put(out, n, "}");
-  n = hb_put(out, n, "@media (max-width:640px){.hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, " .hb-s{width:"); n = hb_px(out, n, s.small);
-  n = hb_put(out, n, ";height:"); n = hb_px(out, n, s.small); n = hb_put(out, n, "}.hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, "{gap:"); n = hb_px(out, n, s.gap / 2);
-  n = hb_put(out, n, "}.hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, " .hb-d{margin:6px "); n = hb_px(out, n, (s.group_gap - s.gap) / 4); n = hb_put(out, n, "}}");
-  return n;
-}
+hb_glyph :: (s: HbSkin, slot: HbSlot) -> string { return hb_skin_shows(s, slot.id, slot.glyph); }
 
 // ---------------------------------------------------------------- the tree
 
@@ -198,14 +109,14 @@ k_hotbar :: (t: [] Tree, id: string, label: string, b: [] Hotbar, s: HbSkin) -> 
     if lit { n = hb_put(cls[..], n, " hb-on"); }
     if sl.busy { n = hb_put(cls[..], n, " hb-busy"); }
     if sl.share > 0 { n = hb_put(cls[..], n, " hb-cool"); }
-    if s.mark.count > 0 { n = hb_put(cls[..], n, " "); n = hb_put(cls[..], n, s.mark); n = hb_put(cls[..], n, frames[ifx s.frame < 0 || s.frame > 8 then 2 else s.frame]); }
+    if s.mark.count > 0 { n = hb_put(cls[..], n, " "); n = hb_put(cls[..], n, s.mark); n = hb_put(cls[..], n, frames[ifx s.frame < 0 || s.frame > 8 then 2 else s.frame]); }   // not a size
     one := tr_open(t, tr_cat(ida[..], tr_cat(idb[..], id, ".s."), digits[i]), TG_BUTTON, cast(string) cls[0..<n]);
     m := hb_put(tip[..], 0, ifx sl.tip.count > 0 then sl.tip else sl.label);
     if sl.key.count > 0 { m = hb_put(tip[..], m, " ("); m = hb_put(tip[..], m, sl.key); m = hb_put(tip[..], m, ")"); }
     tr_attr(t, one, AT_LABEL, sl.label); tr_attr(t, one, AT_TITLE, cast(string) tip[0..<m]);
     if sl.kind != HB_ACTION { tr_attr(t, one, AT_PRESSED, ifx lit then "true" else "false"); }
     if !hb_can(b, i) { tr_attr(t, one, AT_DISABLED, "true"); }
-    if sl.share > 0 { tr_attr(t, one, AT_VARS, ifx sl.share >= 0.75 then "--p:1" else ifx sl.share >= 0.5 then "--p:.75" else ifx sl.share >= 0.25 then "--p:.5" else "--p:.25"); }
+    if sl.share > 0 { tr_attr(t, one, AT_VARS, ifx sl.share >= 0.75 then "--p:1" else ifx sl.share >= 0.5 then "--p:.75" else ifx sl.share >= 0.25 then "--p:.5" else "--p:.25"); }   // not a size
     if sl.key.count > 0 { k := tr_leaf(t, tr_cat(ida[..], tr_cat(idb[..], id, ".k."), digits[i]), TG_SPAN, "hb-k", sl.key); }
     g := tr_leaf(t, tr_cat(ida[..], tr_cat(idb[..], id, ".g."), digits[i]), TG_SPAN, "hb-g", hb_glyph(s, sl));
     if s.labels != HB_LABEL_NEVER { l := tr_leaf(t, tr_cat(ida[..], tr_cat(idb[..], id, ".l."), digits[i]), TG_SPAN, ifx s.labels == HB_LABEL_HOVER then "hb-l hb-lh" else "hb-l", sl.label); }
@@ -216,11 +127,11 @@ k_hotbar :: (t: [] Tree, id: string, label: string, b: [] Hotbar, s: HbSkin) -> 
 }
 // Which slot a node of the bar `id` is, by its id ("ID.s.3", or a part of that button: "ID.g.3", "ID.k.3", "ID.l.3"): -1, none.
 hb_slot_of :: (id: string, node: string) -> int {
-  if node.count < id.count + 4 || cast(string) node[0..<id.count] != id || node[id.count] != '.' || node[id.count + 2] != '.' { return -1; }
+  if node.count < id.count + 4 || cast(string) node[0..<id.count] != id || node[id.count] != '.' || node[id.count + 2] != '.' { return -1; }   // not a size
   part := node[id.count + 1];
   if part != 's' && part != 'g' && part != 'k' && part != 'l' { return -1; }
   v := 0;
-  for k: id.count + 3..<node.count { c := node[k]; if c < '0' || c > '9' { return -1; } v = v * 10 + cast(int) (c - '0'); if v >= HB_SLOTS { return -1; } }
+  for k: id.count + 3..<node.count { c := node[k]; if c < '0' || c > '9' { return -1; } v = v * 10 + cast(int) (c - '0'); if v >= HB_SLOTS { return -1; } }   // not a size
   return v;
 }
 

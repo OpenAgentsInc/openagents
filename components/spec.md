@@ -360,7 +360,7 @@ tooltip line that says what it does, a key, a
 group (a divider stands where it changes) and its state (on, disabled, hidden,
 busy, a cooldown's share). It changes only through `hb_press`, `hb_key` and
 `hb_escape`, which say what happened (`HbPress`); the game fills it each
-frame and keeps its own state. Every look is an `HbSkin`, as data: sizes,
+frame and keeps its own state. Every look is an `HbSkin` (`skin/hotbar.coax`, where its stylesheet is written too: the kit file names no colour and no size, and `components-check` holds it to that), as data: sizes,
 colours, the ARWES frame family round a slot and the class a host's frame
 drawer looks for, the faces, and the skin's own glyph for a slot id.
 `hb_scifi` is the first skin; another genre is another `HbSkin` and no code.

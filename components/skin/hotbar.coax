@@ -1,0 +1,155 @@
+// The hotbar's skins (components/kit/hotbar.coax): every look of the bar as data, and the
+// stylesheet written from it. A skin is a genre: science fiction is the first, and another is
+// another HbSkin and no code. The kit's hotbar reads all of its sizes, colours and faces from here.
+//   coax/bin/coax test components/skin/hotbar.coax
+//   coax/bin/coax mutate components/skin/hotbar.coax --root-only
+
+
+HB_GLYPHS :: 16;
+HB_LABEL_ALWAYS :: 0; HB_LABEL_HOVER :: 1; HB_LABEL_NEVER :: 2;   // when a slot's name is shown under its glyph
+// A skin: every look of the bar, as data. Lengths are CSS pixels; colours are CSS colours.
+HbSkin :: struct {
+  name: string;                 // the bar's class is "hb hb-NAME"
+  frame: int;                   // the ARWES frame family round a slot (components/core/arwes: 0 underline to 8 circle)
+  mark: string;                 // the class a host's frame drawer looks for ("hud"): "" draws none
+  slot: int; gap: int; group_gap: int; pad: int; corner: int; small: int;   // a slot's side, between two, between groups, the bar's padding, a slot's rounding, a slot's side in a narrow window
+  glyph_size: int; key_size: int;
+  labels: int; label_size: int;                   // when a slot's name shows under its glyph (HB_LABEL_*), and how big
+  face: string; key_face: string;
+  ink: string; dim: string; lit: string;          // a glyph idle, disabled, and picked or on
+  fill: string; fill_hot: string; fill_lit: string;   // a slot's ground idle, under the pointer, and picked or on
+  edge: string; edge_lit: string;                 // its own line (when the host draws no frame), idle and lit
+  divider: string;
+  n: int; ids: [HB_GLYPHS] string; glyphs: [HB_GLYPHS] string;   // the skin's own glyph for a slot id, when it has one
+}
+// Science fiction: thin white lines over a faint shade, the world showing through; lit, a slot fills a little.
+hb_scifi :: () -> HbSkin {
+  s: HbSkin;
+  s.name = "scifi"; s.frame = 2; s.mark = "hud";
+  s.slot = 52; s.gap = 10; s.group_gap = 22; s.small = 40;
+  s.glyph_size = 18; s.key_size = 10; s.label_size = 9;   // (names always: HB_LABEL_ALWAYS is what a skin starts as)
+  s.face = "inherit"; s.key_face = "var(--mono, ui-monospace, monospace)";
+  s.ink = "rgba(255,255,255,.78)"; s.dim = "rgba(255,255,255,.28)"; s.lit = "#fff";
+  s.fill = "rgba(0,0,0,.28)"; s.fill_hot = "rgba(255,255,255,.1)"; s.fill_lit = "rgba(255,255,255,.22)";
+  s.edge = "transparent"; s.edge_lit = "rgba(255,255,255,.7)";
+  s.divider = "rgba(255,255,255,.22)";
+  return s;
+}
+// Gives a skin its own glyph for a slot id. False when it holds HB_GLYPHS already.
+hb_skin_glyph :: (s: [] HbSkin, id: string, glyph: string) -> bool {
+  for k: 0..<s[0].n { if s[0].ids[k] == id { s[0].glyphs[k] = glyph; return true; } }
+  if s[0].n >= HB_GLYPHS { return false; }
+  s[0].ids[s[0].n] = id; s[0].glyphs[s[0].n] = glyph; s[0].n += 1;
+  return true;
+}
+// The glyph a skin shows for a slot id: its own for that id, else the one given.
+hb_skin_shows :: (s: HbSkin, id: string, glyph: string) -> string {
+  for k: 0..<s.n { if s.ids[k] == id { return s.glyphs[k]; } }
+  return glyph;
+}
+
+hb_put :: (out: [] u8, n: int, s: string) -> int { k := n; for c: s { if k < out.count { out[k] = c; k += 1; } } return k; }
+hb_px :: (out: [] u8, n: int, v: int) -> int {
+  k := n; a := v;
+  digits: [24] u8; m := 0;
+  if !(a > 0) { digits[0] = '0'; m = 1; }   // nothing, and anything below it
+  while a > 0 { digits[m] = cast(u8) ('0' + a % 10); m += 1; a /= 10; }
+  while m > 0 { m -= 1; if k < out.count { out[k] = digits[m]; k += 1; } }
+  return hb_put(out, k, "px");
+}
+// A skin's stylesheet, written from `n` in out: the bar, a slot in each of its states, the key, the
+// glyph, the divider, and the narrow window's sizes. Returns where it ends (out.count when out was too small).
+hb_css :: (s: HbSkin, out: [] u8, from: int) -> int {
+  n := from;
+  n = hb_put(out, n, ".hb-"); n = hb_put(out, n, s.name);
+  n = hb_put(out, n, "{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:"); n = hb_px(out, n, s.gap);
+  n = hb_put(out, n, ";padding:"); n = hb_px(out, n, s.pad); n = hb_put(out, n, ";margin:0;user-select:none;-webkit-user-select:none}");
+  n = hb_put(out, n, ".hb-"); n = hb_put(out, n, s.name);
+  n = hb_put(out, n, " .hb-s{appearance:none;position:relative;flex:none;display:flex;flex-direction:column;gap:4px;align-items:center;justify-content:center;margin:0;padding:0;cursor:pointer;width:"); n = hb_px(out, n, s.slot);
+  n = hb_put(out, n, ";height:"); n = hb_px(out, n, s.slot);
+  n = hb_put(out, n, ";border-radius:"); n = hb_px(out, n, s.corner);
+  n = hb_put(out, n, ";border:1px solid "); n = hb_put(out, n, s.edge);
+  n = hb_put(out, n, ";background:"); n = hb_put(out, n, s.fill);
+  n = hb_put(out, n, ";color:"); n = hb_put(out, n, s.ink);
+  n = hb_put(out, n, ";font-family:"); n = hb_put(out, n, s.face); n = hb_put(out, n, ";outline:0;-webkit-tap-highlight-color:transparent}");
+  n = hb_put(out, n, ".hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, " .hb-s:hover,.hb-"); n = hb_put(out, n, s.name);
+  n = hb_put(out, n, " .hb-s:focus-visible{background:"); n = hb_put(out, n, s.fill_hot); n = hb_put(out, n, ";color:"); n = hb_put(out, n, s.lit); n = hb_put(out, n, "}");
+  n = hb_put(out, n, ".hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, " .hb-s.hb-on{background:"); n = hb_put(out, n, s.fill_lit);
+  n = hb_put(out, n, ";color:"); n = hb_put(out, n, s.lit); n = hb_put(out, n, ";border-color:"); n = hb_put(out, n, s.edge_lit); n = hb_put(out, n, "}");
+  n = hb_put(out, n, ".hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, " .hb-s:disabled{cursor:default;background:"); n = hb_put(out, n, s.fill);
+  n = hb_put(out, n, ";color:"); n = hb_put(out, n, s.dim); n = hb_put(out, n, "}");
+  // busy: the glyph breathes; a cooldown: a shade that drains from the top (--p, 1 to 0)
+  n = hb_put(out, n, ".hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, " .hb-s.hb-busy .hb-g{animation:hb-busy 1s ease-in-out infinite alternate}@keyframes hb-busy{from{opacity:1}to{opacity:.25}}");
+  n = hb_put(out, n, ".hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, " .hb-s.hb-cool::after{content:'';position:absolute;left:0;right:0;bottom:0;height:calc(var(--p,0)*100%);background:"); n = hb_put(out, n, s.fill_lit); n = hb_put(out, n, ";pointer-events:none}");
+  n = hb_put(out, n, ".hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, " .hb-g{font-size:"); n = hb_px(out, n, s.glyph_size); n = hb_put(out, n, ";line-height:1;pointer-events:none}");
+  // a slot's name under its glyph, in the key's face; a hover-only name shows under the pointer or the focus
+  n = hb_put(out, n, ".hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, " .hb-l{font-family:"); n = hb_put(out, n, s.key_face);
+  n = hb_put(out, n, ";font-size:"); n = hb_px(out, n, s.label_size); n = hb_put(out, n, ";line-height:1;letter-spacing:.04em;pointer-events:none}");
+  n = hb_put(out, n, ".hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, " .hb-lh{display:none}.hb-"); n = hb_put(out, n, s.name);
+  n = hb_put(out, n, " .hb-s:hover .hb-lh,.hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, " .hb-s:focus-visible .hb-lh{display:block}");
+  n = hb_put(out, n, ".hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, " .hb-k{position:absolute;left:5px;top:4px;font-family:"); n = hb_put(out, n, s.key_face);
+  n = hb_put(out, n, ";font-size:"); n = hb_px(out, n, s.key_size); n = hb_put(out, n, ";line-height:1;opacity:.6;pointer-events:none}");
+  n = hb_put(out, n, ".hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, " .hb-d{flex:none;align-self:stretch;width:1px;margin:6px "); n = hb_px(out, n, (s.group_gap - s.gap) / 2);
+  n = hb_put(out, n, ";background:"); n = hb_put(out, n, s.divider); n = hb_put(out, n, "}");
+  n = hb_put(out, n, "@media (max-width:640px){.hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, " .hb-s{width:"); n = hb_px(out, n, s.small);
+  n = hb_put(out, n, ";height:"); n = hb_px(out, n, s.small); n = hb_put(out, n, "}.hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, "{gap:"); n = hb_px(out, n, s.gap / 2);
+  n = hb_put(out, n, "}.hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, " .hb-d{margin:6px "); n = hb_px(out, n, (s.group_gap - s.gap) / 4); n = hb_put(out, n, "}}");
+  return n;
+}
+
+// ---------------------------------------------------------------- checks
+
+hbs_has :: (hay: string, needle: string) -> bool {
+  if needle.count == 0 || needle.count > hay.count { return false; }
+  for i: 0..<hay.count - needle.count + 1 { if cast(string) hay[i..<i + needle.count] == needle { return true; } }
+  return false;
+}
+#test "the checks' own search finds a piece of text, and only one that is there" {
+  #assert hbs_has("abc", "abc") && hbs_has("abc", "a") && hbs_has("abc", "c") && hbs_has("abc", "bc") && hbs_has("abc", "b");
+  #assert !hbs_has("abc", "") && !hbs_has("ab", "abc") && !hbs_has("abc", "d") && !hbs_has("", "a") && !hbs_has("abc", "ac") && !hbs_has("", "");
+}
+#test "science fiction's numbers, a skin's own glyph for a slot id, and the stylesheet written from a skin: another skin is other data" {
+  buf: [8192] u8;
+  s: [1] HbSkin; s[0] = hb_scifi();
+  #assert s[0].name == "scifi" && s[0].frame == 2 && s[0].mark == "hud" && s[0].slot == 52 && s[0].small == 40 && s[0].gap == 10 && s[0].labels == HB_LABEL_ALWAYS && s[0].label_size == 9 && s[0].glyph_size == 18 && s[0].key_size == 10 && s[0].group_gap == 22 && s[0].fill == "rgba(0,0,0,.28)" && s[0].n == 0;
+  #assert s[0].face == "inherit" && s[0].key_face == "var(--mono, ui-monospace, monospace)" && s[0].ink == "rgba(255,255,255,.78)" && s[0].dim == "rgba(255,255,255,.28)" && s[0].lit == "#fff" && s[0].fill_hot == "rgba(255,255,255,.1)" && s[0].fill_lit == "rgba(255,255,255,.22)" && s[0].edge == "transparent" && s[0].edge_lit == "rgba(255,255,255,.7)" && s[0].divider == "rgba(255,255,255,.22)" && s[0].pad == 0 && s[0].corner == 0;
+  #assert HB_LABEL_ALWAYS == 0 && HB_LABEL_HOVER == 1 && HB_LABEL_NEVER == 2;
+  // a slot id shows the glyph given until the skin has one for it; a second for the same id replaces it
+  #assert hb_skin_shows(s[0], "block", "a") == "a";
+  #assert hb_skin_glyph(s[..], "block", "b") && s[0].n == 1 && hb_skin_shows(s[0], "block", "a") == "b" && hb_skin_shows(s[0], "move", "m") == "m";
+  #assert hb_skin_glyph(s[..], "block", "c") && s[0].n == 1 && hb_skin_shows(s[0], "block", "a") == "c";
+  #assert hb_skin_glyph(s[..], "move", "d") && s[0].n == 2 && hb_skin_shows(s[0], "move", "m") == "d" && hb_skin_shows(s[0], "block", "a") == "c";
+  full: [1] HbSkin; full[0] = hb_scifi();
+  ids := [HB_GLYPHS] string.["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p"];
+  for k: 0..<HB_GLYPHS { #assert hb_skin_glyph(full[..], ids[k], "g"); }
+  #assert full[0].n == HB_GLYPHS && !hb_skin_glyph(full[..], "q", "g") && hb_skin_glyph(full[..], "p", "z") && hb_skin_shows(full[0], "p", "0") == "z" && hb_skin_shows(full[0], "q", "0") == "0" && hb_skin_shows(full[0], "a", "0") == "g";
+  // the stylesheet: every rule is under the skin's own class, with its sizes and colours
+  n := hb_css(hb_scifi(), buf[..], 0);
+  css := cast(string) buf[0..<n];
+  #assert n > 600 && n < buf.count && hbs_has(css, ".hb-scifi{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:10px;padding:0px;");
+  #assert hbs_has(css, "-webkit-user-select:none}.hb-scifi .hb-s{appearance:none;position:relative;flex:none;display:flex;flex-direction:column;gap:4px;") && hbs_has(css, "width:52px;height:52px;border-radius:0px;border:1px solid transparent;background:rgba(0,0,0,.28);color:rgba(255,255,255,.78);font-family:inherit;");
+  #assert hbs_has(css, ".hb-scifi .hb-s:hover,.hb-scifi .hb-s:focus-visible{background:rgba(255,255,255,.1);color:#fff}");
+  #assert hbs_has(css, ".hb-scifi .hb-s.hb-on{background:rgba(255,255,255,.22);color:#fff;border-color:rgba(255,255,255,.7)}");
+  #assert hbs_has(css, ".hb-scifi .hb-s:disabled{cursor:default;background:rgba(0,0,0,.28);color:rgba(255,255,255,.28)}");
+  #assert hbs_has(css, ".hb-scifi .hb-g{font-size:18px;") && hbs_has(css, "}.hb-scifi .hb-l{font-family:var(--mono, ui-monospace, monospace);font-size:9px;line-height:1;") && hbs_has(css, "}.hb-scifi .hb-lh{display:none}.hb-scifi .hb-s:hover .hb-lh,.hb-scifi .hb-s:focus-visible .hb-lh{display:block}.hb-scifi .hb-k{") && hbs_has(css, ".hb-scifi .hb-k{position:absolute;left:5px;top:4px;font-family:var(--mono, ui-monospace, monospace);font-size:10px;");
+  #assert hbs_has(css, ".hb-scifi .hb-d{flex:none;align-self:stretch;width:1px;margin:6px 6px;background:rgba(255,255,255,.22)}");
+  #assert hbs_has(css, "@media (max-width:640px){.hb-scifi .hb-s{width:40px;height:40px}.hb-scifi{gap:5px}.hb-scifi .hb-d{margin:6px 3px}}");
+  #assert hbs_has(css, ".hb-scifi .hb-s.hb-busy .hb-g{animation:hb-busy") && hbs_has(css, ".hb-scifi .hb-s.hb-cool::after{") && hbs_has(css, "background:rgba(255,255,255,.22);pointer-events:none}");
+  // another skin is other data: its name, sizes and colours are what is written, and nothing of science fiction's
+  f := hb_scifi(); f.name = "fantasy"; f.slot = 60; f.corner = 6; f.fill = "#201810"; f.ink = "#e8d8b0"; f.pad = 8; f.gap = 6; f.group_gap = 30; f.small = 44; f.glyph_size = 24; f.key_size = 11; f.label_size = 12;
+  f.lit = "#fff8e0"; f.dim = "#806040"; f.fill_hot = "#302418"; f.fill_lit = "#503820"; f.edge = "#806040"; f.edge_lit = "#ffd880"; f.divider = "#604830"; f.face = "serif"; f.key_face = "cursive";
+  m := hb_css(f, buf[..], 0); other := cast(string) buf[0..<m];
+  #assert !hbs_has(other, "scifi") && hbs_has(other, ".hb-fantasy{display:flex;") && hbs_has(other, "gap:6px;padding:8px;") && hbs_has(other, "width:60px;height:60px;border-radius:6px;border:1px solid #806040;background:#201810;color:#e8d8b0;font-family:serif;");
+  #assert hbs_has(other, ".hb-s:focus-visible{background:#302418;color:#fff8e0}") && hbs_has(other, ".hb-s.hb-on{background:#503820;color:#fff8e0;border-color:#ffd880}") && hbs_has(other, ":disabled{cursor:default;background:#201810;color:#806040}");
+  #assert hbs_has(other, "font-size:24px;") && hbs_has(other, ".hb-fantasy .hb-l{font-family:cursive;font-size:12px;") && hbs_has(other, ".hb-fantasy .hb-lh{display:none}.hb-fantasy .hb-s:hover .hb-lh,.hb-fantasy .hb-s:focus-visible .hb-lh{display:block}") && hbs_has(other, "font-family:cursive;font-size:11px;") && hbs_has(other, "margin:6px 12px;background:#604830}") && hbs_has(other, ".hb-s{width:44px;height:44px}.hb-fantasy{gap:3px}.hb-fantasy .hb-d{margin:6px 6px}}");
+  #assert hbs_has(other, ".hb-cool::after{content:'';position:absolute;left:0;right:0;bottom:0;height:calc(var(--p,0)*100%);background:#503820;");
+  // it is written from where it is told to, and stops at the end of a buffer too small for it
+  at := hb_css(hb_scifi(), buf[..], 100); #assert at == n + 100 && buf[100] == '.';
+  small: [64] u8; #assert hb_css(hb_scifi(), small[..], 0) == 64;
+  // a pixel count: no sign, and nothing below nothing
+  px: [16] u8; k := hb_px(px[..], 0, 0); #assert cast(string) px[0..<k] == "0px";
+  k = hb_px(px[..], 0, -5); #assert cast(string) px[0..<k] == "0px";
+  k = hb_px(px[..], 2, 1203); #assert cast(string) px[2..<k] == "1203px";
+  k = hb_px(px[..], 0, 1); #assert cast(string) px[0..<k] == "1px";
+  k = hb_px(px[..], 0, 90); #assert cast(string) px[0..<k] == "90px";
+}
