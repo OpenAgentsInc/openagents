@@ -1,0 +1,41 @@
+{
+  "profile": "gamebuilder.agent.start.v1",
+  "version": 1,
+  "codec": "coax/web/api/gamebuilder-agent-wire.coax",
+  "transport": "POST /api/gamebuilder/agents/v1, authenticated first-party JSON; read replies reuse chat ControlReply, Turn and EventPage v2alpha1.",
+  "fields": [
+    {
+      "name": "schema",
+      "type": "string",
+      "constant": "gamebuilder.agent.start.v1"
+    },
+    {
+      "name": "operation_id",
+      "type": "UTF-8 string",
+      "minBytes": 1,
+      "maxBytes": 80
+    },
+    {
+      "name": "game",
+      "type": "UTF-8 string",
+      "minBytes": 1,
+      "maxBytes": 64
+    },
+    {
+      "name": "job",
+      "type": "UTF-8 string",
+      "minBytes": 1,
+      "maxBytes": 1200
+    },
+    {
+      "name": "brief",
+      "type": "UTF-8 string",
+      "minBytes": 1,
+      "maxBytes": 14000
+    }
+  ],
+  "additionalProperties": false,
+  "maxRequestBytes": 32768,
+  "request": "{\"schema\":\"gamebuilder.agent.start.v1\",\"operation_id\":\"gb_fixture\",\"game\":\"test world\",\"job\":\"make a platform\",\"brief\":\"Only plan lines. World: empty.\"}",
+  "submit": "{\"schema\":\"openagents.chat.submit.v2alpha1\",\"operation_id\":\"gb_fixture\",\"conversation_id\":\"\",\"expected_revision\":0,\"project_id\":null,\"expected_project_revision\":null,\"legacy_thread_id\":null,\"legacy_thread_revision\":null,\"content\":[{\"type\":\"text\",\"text\":\"GameBuilder build agent. Game: test world\\nThe job, in the person's words: make a platform\\nYou are one build agent working on this game alone. You have no tools: the only thing you can change is the level, and only with the plan lines described below (each line starting with `+ `). Do the whole job in this one answer: say in one or two short lines what you did, then every plan line. If the job cannot be done with those lines, say so plainly in one line and make none.\"},{\"type\":\"text\",\"text\":\"Only plan lines. World: empty.\"}]}"
+}

@@ -1,0 +1,13 @@
+// Exact start-request and durable-submit goldens for the GameBuilder adapter.
+#load "gamebuilder-agent-wire.coax";
+#load "../../lib/sys/tool.coax";
+#load "../../lib/sys/fs.coax";
+#import "Basic";
+tool_main :: () -> int #export_c #effects(all) {
+ b:[8192]u8;n:=fs_read("proto/coder/gamebuilder-agent-v1.json",b[..]);d:[1]Jv;nodes:[512]JvNode;
+ if n<1 || !jv_parse(d[..],cast(string)b[0..<n],nodes[..]) {return 1;}
+ request:[1024]u8;expected:[4096]u8;rn:=jv_str(d[0],jv_get(d[0],0,"request"),request[..]);en:=jv_str(d[0],jv_get(d[0],0,"submit"),expected[..]);out:[32768]u8;
+ got:=ifx rn>0 then gba_submit(cast(string)request[0..<rn],out[..]) else -1;
+ if got<1 || en<1 || cast(string)out[0..<got]!=cast(string)expected[0..<en] {print("GameBuilder start golden: FAIL\n");return 1;}
+ print("GameBuilder start golden: exact request admitted and exact durable submit written\n");return 0;
+}
