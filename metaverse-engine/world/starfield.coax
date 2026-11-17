@@ -1,0 +1,172 @@
+// A star field: the sky of a place in space, made from a seed. Nothing here draws; a realm makes
+// the field once and draws each star where it says (a small bright quad far off, a point sprite,
+// a texel of a sky box), and bloom does the rest.
+//
+//   star_field       the stars from a seed: `n` directions on the sphere, each a size, a brightness and
+//                    a warmth (0 a blue-white star, 1 an orange one). A share of them lie in a band: a
+//                    galaxy seen edge on, a great circle round the sky (the band's pole is the axis it
+//                    turns round), thickest along its middle and thinning to its edges. Bright stars
+//                    are few and faint ones many, as in a real sky.
+//   star_in_band     how far a direction (a unit vector) is from the band's middle, as a share of the
+//                    band's half width (the sines of the angles): 0 on its middle line, 1 at its edge,
+//                    more outside it
+//   star_hash        the field's noise: a number in [0, 1) from a seed and an index, the same always
+//
+// The same seed, count and band make the same field, star for star.
+//   coax/bin/coax test metaverse-engine/world/starfield.coax --library
+//   coax/bin/coax mutate metaverse-engine/world/starfield.coax --library --root-only
+
+STAR_MAX :: 4096;
+
+// A star: the way to it (a unit vector), its size (radians across), its brightness (0 to 1) and warmth.
+Star :: struct { x: f32; y: f32; z: f32; size: f32; bright: f32; warm: f32; }
+StarField :: struct { n: int; band: int; star: [STAR_MAX] Star; }
+
+star_hash :: (seed: int, k: int) -> f32 {
+  h: u32 = add_wrap(mul_wrap(cast,trunc(u32) seed, 374761393), mul_wrap(cast,trunc(u32) k, 668265263));
+  h = h ^ (h >> 13); h = mul_wrap(h, 1274126177); h = h ^ (h >> 16);
+  return cast(f32) (h & 0xFFFFFF) / 16777216.0;
+}
+
+star_unit :: (x: f32, y: f32, z: f32) -> [3] f32 {
+  l := sqrt(x * x + y * y + z * z);
+  if !(l > 0.000001) { return [3] f32.[0, 1, 0]; } // mutant: equivalent (a length of exactly a millionth is never met)
+  return [3] f32.[x / l, y / l, z / l];
+}
+
+star_in_band :: (pole: [3] f32, half: f32, x: f32, y: f32, z: f32) -> f32 {
+  p := star_unit(pole[0], pole[1], pole[2]);
+  return abs(p[0] * x + p[1] * y + p[2] * z) / sin(half);
+}
+
+// `n` stars (up to STAR_MAX) from `seed`; `share` of them (0 to 1) in the band round `pole` (any
+// length but not none), `half` radians either side of its middle (more than none, under a right
+// angle). False, and the field left as it was, when any of that is not so.
+star_field :: (seed: int, n: int, pole: [3] f32, share: f32, half: f32, out: [] StarField) -> bool {
+  if n < 0 || n > STAR_MAX || !(share >= 0 && share <= 1) || !(half > 0 && half < 1.5707963) { return false; }
+  if !(pole[0] * pole[0] + pole[1] * pole[1] + pole[2] * pole[2] > 0.000001) { return false; } // mutant: equivalent (a square length of exactly a millionth is never met)
+  p := star_unit(pole[0], pole[1], pole[2]);
+  // two axes across the pole: the band's own plane
+  a := ifx abs(p[1]) < 0.9 then star_unit(p[2], 0, -p[0]) else star_unit(0, -p[2], p[1]); // mutant: equivalent (at exactly 0.9 either pair of axes is across the pole)
+  b := [3] f32.[p[1] * a[2] - p[2] * a[1], p[2] * a[0] - p[0] * a[2], p[0] * a[1] - p[1] * a[0]];
+  in := cast(int) (cast(f32) n * share + 0.5);
+  for k: 0..<n {
+    u := star_hash(seed, k * 5); v := star_hash(seed, k * 5 + 1);
+    s: Star;
+    if k < in {
+      // round the band's middle line, an angle from it heaped toward the middle (two draws averaged)
+      t := u * 6.2831853;
+      lat := (v + star_hash(seed, k * 5 + 2) - 1) * half;
+      c := cos(lat);
+      d := star_unit((a[0] * cos(t) + b[0] * sin(t)) * c + p[0] * sin(lat), (a[1] * cos(t) + b[1] * sin(t)) * c + p[1] * sin(lat), (a[2] * cos(t) + b[2] * sin(t)) * c + p[2] * sin(lat));
+      s.x = d[0]; s.y = d[1]; s.z = d[2];
+    } else {
+      // anywhere, evenly: a height and a turn round
+      yy := u * 2 - 1; r := sqrt(1 - yy * yy); t := v * 6.2831853;
+      d := star_unit(r * cos(t), yy, r * sin(t));
+      s.x = d[0]; s.y = d[1]; s.z = d[2];
+    }
+    // few bright, many faint: a fourth power; the bright ones a little larger
+    g := star_hash(seed, k * 5 + 3);
+    s.bright = 0.15 + 0.85 * g * g * g * g;
+    s.size = 0.0012 + 0.0028 * s.bright;
+    s.warm = star_hash(seed, k * 5 + 4);
+    out[0].star[k] = s;
+  }
+  out[0].n = n; out[0].band = in;
+  return true;
+}
+
+// Checks.
+
+#test "a field is the same from the same seed, star for star, and another seed makes another" #steps 200000000 {
+  f: [1] StarField; g: [1] StarField;
+  #assert star_field(7, 600, [3] f32.[0, 1, 0.3], 0.5, 0.2, f[..]) && star_field(7, 600, [3] f32.[0, 1, 0.3], 0.5, 0.2, g[..]);
+  #assert f[0].n == 600 && f[0].band == 300;
+  same := true; for k: 0..<600 { a := f[0].star[k]; b := g[0].star[k]; if a.x != b.x || a.y != b.y || a.z != b.z || a.size != b.size || a.bright != b.bright || a.warm != b.warm { same = false; } }
+  #assert same;
+  #assert star_field(8, 600, [3] f32.[0, 1, 0.3], 0.5, 0.2, g[..]);
+  moved := 0; for k: 0..<600 { if f[0].star[k].x != g[0].star[k].x { moved += 1; } }
+  #assert moved > 590;
+  // the noise: in [0, 1), spread, and its own for each index and seed
+  lo := 1.0f32; hi := 0.0f32; sum := 0.0f32;
+  for k: 0..<4000 { h := star_hash(3, k); #assert h >= 0 && h < 1; if h < lo { lo = h; } if h > hi { hi = h; } sum += h; }
+  #assert lo < 0.01 && hi > 0.99 && abs(sum / 4000 - 0.5) < 0.02 && star_hash(3, 1) != star_hash(4, 1) && star_hash(3, 1) != star_hash(3, 2);
+}
+
+#test "every star is a way to look (a unit vector) with a size, a brightness and a warmth in their ranges; few are bright" #steps 200000000 {
+  f: [1] StarField;
+  #assert star_field(11, 2000, [3] f32.[0.2, 0.9, -0.4], 0.4, 0.25, f[..]);
+  bright := 0; warm := 0;
+  for k: 0..<2000 {
+    s := f[0].star[k];
+    #assert abs(s.x * s.x + s.y * s.y + s.z * s.z - 1) < 0.0001;
+    #assert s.bright >= 0.15 && s.bright <= 1 && s.size >= 0.0012 && s.size <= 0.004 && s.warm >= 0 && s.warm < 1;
+    #assert abs(s.size - (0.0012 + 0.0028 * s.bright)) < 0.000001;
+    if s.bright > 0.6 { bright += 1; }
+    if s.warm > 0.5 { warm += 1; }
+  }
+  // a fourth power: about one in ten over 0.6 (0.53 of the noise and more), and the warmth half and half
+  #assert bright > 100 && bright < 300 && warm > 900 && warm < 1100;
+}
+
+#test "the band: its share of the stars lies in it, heaped toward its middle; the rest are all over the sky" #steps 400000000 {
+  f: [1] StarField; pole := [3] f32.[0, 0, 2];   // (any length: the band is the sky's x-y circle)
+  #assert star_field(5, 3000, pole, 0.6, 0.3, f[..]) && f[0].band == 1800;
+  mid := 0; for k: 0..<1800 { s := f[0].star[k]; e := star_in_band(pole, 0.3, s.x, s.y, s.z); #assert e <= 1.0001; if e < 0.5 { mid += 1; } }
+  // two draws averaged: three quarters within half its width of the middle line
+  #assert mid > 1250 && mid < 1450;
+  // round the whole circle, not one arc of it: every quarter has its stars
+  q := [4] int.[0, 0, 0, 0];
+  for k: 0..<1800 { s := f[0].star[k]; i := ifx s.x >= 0 then (ifx s.y >= 0 then 0 else 1) else (ifx s.y >= 0 then 2 else 3); q[i] += 1; }
+  for i: 0..<4 { #assert q[i] > 360; }
+  // the rest evenly: as many up as down, a share in the band as its area is (sin 0.3, about 0.3)
+  up := 0; inside := 0;
+  for k: 1800..<3000 { s := f[0].star[k]; if s.z > 0 { up += 1; } if star_in_band(pole, 0.3, s.x, s.y, s.z) <= 1 { inside += 1; } }
+  #assert up > 540 && up < 660 && inside > 300 && inside < 410;
+  // another pole: a band round it
+  #assert star_field(5, 400, [3] f32.[0, 1, 0], 1, 0.1, f[..]);
+  for k: 0..<400 { #assert abs(f[0].star[k].y) <= sin(0.1f32) + 0.0001; }
+  // where a way to look is from a band's middle: on it, at its edge, at the pole
+  #assert star_in_band(pole, 0.3, 1, 0, 0) < 0.0001 && abs(star_in_band(pole, 0.3, cos(0.3f32), 0, sin(0.3f32)) - 1) < 0.001 && abs(star_in_band(pole, 0.5, 0, 0, -1) - 1 / sin(0.5f32)) < 0.001;
+}
+
+#test "no field from a count past what it holds, a share or a width out of range, or no pole; the field kept" #steps 100000000 {
+  f: [1] StarField; pole := [3] f32.[0, 1, 0];
+  #assert star_field(1, 10, pole, 0.5, 0.2, f[..]) && f[0].n == 10;
+  #assert !star_field(1, -1, pole, 0.5, 0.2, f[..]) && !star_field(1, STAR_MAX + 1, pole, 0.5, 0.2, f[..]);
+  #assert !star_field(1, 10, pole, -0.01, 0.2, f[..]) && !star_field(1, 10, pole, 1.01, 0.2, f[..]);
+  #assert !star_field(1, 10, pole, 0.5, 0, f[..]) && !star_field(1, 10, pole, 0.5, 1.5707964, f[..]);
+  #assert !star_field(1, 10, [3] f32.[0, 0, 0], 0.5, 0.2, f[..]) && !star_field(1, 10, [3] f32.[0.0005, 0, 0], 0.5, 0.2, f[..]);
+  #assert f[0].n == 10;
+  // the ends of what it takes: none, as many as it holds, all in the band or none
+  #assert star_field(1, 0, pole, 0.5, 0.2, f[..]) && f[0].n == 0 && f[0].band == 0;
+  #assert star_field(1, STAR_MAX, pole, 1, 0.2, f[..]) && f[0].n == STAR_MAX && f[0].band == STAR_MAX;
+  #assert star_field(1, 9, pole, 0, 0.2, f[..]) && f[0].band == 0;
+  // a pole along y (the other pair of axes across it) makes a band as well as one off it
+  #assert star_field(2, 50, [3] f32.[0, -3, 0], 1, 0.05, f[..]);
+  for k: 0..<50 { s := f[0].star[k]; #assert abs(s.y) <= sin(0.05f32) + 0.0001 && abs(s.x * s.x + s.y * s.y + s.z * s.z - 1) < 0.0001; }
+}
+
+#test "the stars are where the seed puts them (worked again outside the engine from the same numbers), and a band round any pole holds its stars" #steps 400000000 {
+  f: [1] StarField; pole := [3] f32.[0.3, 0.5, 0.8];
+  #assert star_field(9, 6, pole, 0.5, 0.3, f[..]) && f[0].band == 3;
+  want := [6] [6] f32.[[6] f32.[-0.03107, -0.90381, 0.42680, 0.002759, 0.55696, 0.70485], [6] f32.[-0.65615, 0.71445, -0.24296, 0.001620, 0.15001, 0.15361],
+    [6] f32.[-0.22387, 0.91564, -0.33390, 0.001726, 0.18791, 0.68249], [6] f32.[0.76309, 0.26217, -0.59072, 0.001625, 0.15187, 0.56221],
+    [6] f32.[-0.67775, 0.69701, -0.23416, 0.001678, 0.17067, 0.32511], [6] f32.[-0.82305, -0.36448, 0.43560, 0.001620, 0.15006, 0.24864]];
+  for k: 0..<6 { a := f[0].star[k]; w := want[k]; #assert abs(a.x - w[0]) < 0.0003 && abs(a.y - w[1]) < 0.0003 && abs(a.z - w[2]) < 0.0003 && abs(a.size - w[3]) < 0.000002 && abs(a.bright - w[4]) < 0.00002 && abs(a.warm - w[5]) < 0.00002; }
+  #assert abs(star_hash(3, 0) - 0.0795726) < 0.0000002 && abs(star_hash(3, 1) - 0.8411934) < 0.0000002 && abs(star_hash(3, 2) - 0.2627293) < 0.0000002;
+  // a band round a pole off every axis
+  #assert star_field(13, 500, pole, 1, 0.2, f[..]);
+  for k: 0..<500 { a := f[0].star[k]; #assert star_in_band(pole, 0.2, a.x, a.y, a.z) <= 1.0001; }
+  // from the middle of a band round (1, 2, 2): along it, partly off it, at its pole
+  q := [3] f32.[1, 2, 2]; r5 := sqrt(5.0f32);
+  #assert star_in_band(q, 0.4, 2 / r5, -1 / r5, 0) < 0.000001 && abs(star_in_band(q, 0.4, 0.6, 0.8, 0) - (2.2 / 3) / sin(0.4f32)) < 0.0001 && abs(star_in_band(q, 0.4, 0, 0.6, -0.8) - (0.4 / 3) / sin(0.4f32)) < 0.0001;
+  // a pole just long enough, and ones just too short along each axis; a half width of exactly a right angle is too wide
+  #assert star_field(1, 5, [3] f32.[0.0009, 0.0005, 0.0001], 0.5, 0.2, f[..]) && !star_field(1, 5, [3] f32.[0, 0, 0.0009], 0.5, 0.2, f[..]) && !star_field(1, 5, [3] f32.[0, 0.0009, 0], 0.5, 0.2, f[..]);
+  #assert !star_field(1, 5, pole, 0.5, 1.5707963, f[..]) && f[0].n == 5;
+  // a pole near y (the other pair of axes across it), leaning
+  o := [3] f32.[0.1, 1, 0.3];
+  #assert star_field(14, 500, o, 1, 0.15, f[..]);
+  for k: 0..<500 { a := f[0].star[k]; #assert star_in_band(o, 0.15, a.x, a.y, a.z) <= 1.0001; }
+}

@@ -1,0 +1,152 @@
+// A ring course: rings to fly through, one after another, laid from a seed. Nothing here draws or
+// moves a body; a realm makes the course once, draws each ring where it is, and asks whether a step
+// went through one with metaverse-engine/world/course.coax (course_through: a ring is its round gate,
+// its middle, its way through and its radius; which ring is next is the course's run).
+//
+//   rings_make       the course from a seed: from a start, heading a way, each ring a step on from the
+//                    last (a little more or less), the heading turned between them by up to `turn`
+//                    radians across and up to half that up or down (never climbing or diving steeper
+//                    than `climb`), so the line winds but can be flown. Each ring faces along the
+//                    line through it: its way through is halfway between the way in and the way out
+//   rings_length     the course's length: from the start through every ring's middle in turn
+//
+// Units are metres; any axes (y up for `climb`).
+//   coax/bin/coax test metaverse-engine/world/rings.coax --library
+//   coax/bin/coax mutate metaverse-engine/world/rings.coax --library --root-only
+
+#load "../core/angle.coax";
+
+RINGS_MAX :: 64;
+
+// A ring: its middle, the way through it (a unit vector) and its radius.
+Ring :: struct { x: f32; y: f32; z: f32; nx: f32; ny: f32; nz: f32; r: f32; }
+RingCourse :: struct { n: int; ring: [RINGS_MAX] Ring; start: [3] f32; }
+
+rings_hash :: (seed: int, k: int) -> f32 {
+  h: u32 = add_wrap(mul_wrap(cast,trunc(u32) seed, 2246822519), mul_wrap(cast,trunc(u32) k, 3266489917));
+  h = h ^ (h >> 15); h = mul_wrap(h, 668265263); h = h ^ (h >> 13);
+  return cast(f32) (h & 0xFFFFFF) / 16777216.0;
+}
+
+rings_unit :: (x: f32, y: f32, z: f32) -> [3] f32 {
+  l := sqrt(x * x + y * y + z * z);
+  if !(l > 0.000001) { return [3] f32.[0, 0, 1]; } // mutant: equivalent (a length of exactly a millionth is never met)
+  return [3] f32.[x / l, y / l, z / l];
+}
+
+// `n` rings (1 to RINGS_MAX) from `seed`, the first `step` on from `start` along `ahead` (any length
+// but none), `step` (more than 0) apart give or take a fifth, the heading turning by up to `turn`
+// (0 to a right angle) a ring, its climb held within `climb` (0 to a right angle), each `radius`
+// across (more than 0). False, and the course left as it was, when any of that is not so.
+rings_make :: (seed: int, n: int, start: [3] f32, ahead: [3] f32, step: f32, turn: f32, climb: f32, radius: f32, out: [] RingCourse) -> bool {
+  if n < 1 || n > RINGS_MAX || !(step > 0) || !(turn >= 0 && turn <= 1.5707964) || !(climb >= 0 && climb <= 1.5707964) || !(radius > 0) { return false; }
+  if !(ahead[0] * ahead[0] + ahead[1] * ahead[1] + ahead[2] * ahead[2] > 0.000001) { return false; } // mutant: equivalent (a square length of exactly a millionth is never met)
+  d := rings_unit(ahead[0], ahead[1], ahead[2]);
+  yaw := angle_atan2(d[0], d[2]);
+  pitch := asin_of(d[1]);
+  if pitch > climb { pitch = climb; } if pitch < -climb { pitch = -climb; } // mutant: equivalent (at the climb exactly, held to it is the same)
+  at := start;
+  dirs: [RINGS_MAX + 1] [3] f32;
+  for k: 0..<n + 1 {
+    dirs[k] = [3] f32.[cos(pitch) * sin(yaw), sin(pitch), cos(pitch) * cos(yaw)];
+    yaw += (rings_hash(seed, k * 3) * 2 - 1) * turn;
+    pitch += (rings_hash(seed, k * 3 + 1) * 2 - 1) * turn * 0.5;
+    if pitch > climb { pitch = climb; } if pitch < -climb { pitch = -climb; } // mutant: equivalent (at the climb exactly, held to it is the same)
+  }
+  for k: 0..<n {
+    far := step * (0.8 + 0.4 * rings_hash(seed, k * 3 + 2));
+    at = [3] f32.[at[0] + dirs[k][0] * far, at[1] + dirs[k][1] * far, at[2] + dirs[k][2] * far];
+    w := rings_unit(dirs[k][0] + dirs[k + 1][0], dirs[k][1] + dirs[k + 1][1], dirs[k][2] + dirs[k + 1][2]);
+    out[0].ring[k] = Ring.{x = at[0], y = at[1], z = at[2], nx = w[0], ny = w[1], nz = w[2], r = radius};
+  }
+  out[0].n = n; out[0].start = start;
+  return true;
+}
+
+// The angle whose sine is s (held within -1 to 1).
+asin_of :: (s: f32) -> f32 {
+  if s >= 1 { return 1.5707964; } if s <= -1 { return -1.5707964; } // mutant: equivalent (at exactly 1 or -1 the angle is a right angle either way)
+  return angle_atan2(s, sqrt(1 - s * s));
+}
+
+rings_length :: (c: [] RingCourse) -> f32 {
+  sum: f32 = 0; at := c[0].start;
+  for k: 0..<c[0].n {
+    g := c[0].ring[k];
+    dx := g.x - at[0]; dy := g.y - at[1]; dz := g.z - at[2];
+    sum += sqrt(dx * dx + dy * dy + dz * dz);
+    at = [3] f32.[g.x, g.y, g.z];
+  }
+  return sum;
+}
+
+// Checks.
+
+// (how steeply a ring stands over the origin: the sine of its climb from there)
+rings_sine :: (g: Ring) -> f32 { return g.y / sqrt(g.x * g.x + g.y * g.y + g.z * g.z); } // mutant: equivalent (the checks use it only on rings with x 0)
+
+#test "a course is the same from the same seed, and winds: rings a step apart, each facing along the line, turns within bounds" #steps 400000000 {
+  c: [1] RingCourse; d: [1] RingCourse;
+  st := [3] f32.[10, 20, 30];
+  #assert rings_make(4, 12, st, [3] f32.[0, 0, 2], 60, 0.5, 0.4, 7, c[..]) && rings_make(4, 12, st, [3] f32.[0, 0, 2], 60, 0.5, 0.4, 7, d[..]);
+  #assert c[0].n == 12 && c[0].start[1] == 20;
+  for k: 0..<12 { a := c[0].ring[k]; b := d[0].ring[k]; #assert a.x == b.x && a.y == b.y && a.z == b.z && a.nx == b.nx && a.r == 7; }
+  // the first a step on along ahead, more or less
+  f := c[0].ring[0]; #assert f.z - 30 >= 48 && f.z - 30 <= 72 && f.x == 10 && f.y == 20;
+  prev := st; turned := 0.0f32; most := 0.0f32;
+  for k: 0..<12 {
+    g := c[0].ring[k];
+    dx := g.x - prev[0]; dy := g.y - prev[1]; dz := g.z - prev[2]; l := sqrt(dx * dx + dy * dy + dz * dz);
+    #assert l >= 48 - 0.01 && l <= 72 + 0.01;
+    // never steeper than the climb allows
+    #assert abs(dy / l) <= sin(0.4f32) + 0.0001;
+    // its way through: a unit vector, and the way in is through it (within the turn between two rings)
+    #assert abs(g.nx * g.nx + g.ny * g.ny + g.nz * g.nz - 1) < 0.0001;
+    cosin := (dx * g.nx + dy * g.ny + dz * g.nz) / l; #assert cosin > cos(0.5f32 * 0.8f32);
+    if k > 0 { p := c[0].ring[k - 1]; t := p.nx * g.nx + p.ny * g.ny + p.nz * g.nz; if t < 0.9999 { turned += 1; } if 1 - t > most { most = 1 - t; } }
+    prev = [3] f32.[g.x, g.y, g.z];
+  }
+  // it winds (not a straight line), and no two rings face more than two turns apart
+  #assert turned >= 10 && most < 1 - cos(1.0f32 * 1.12f32);
+  // another seed, another course; the length is the sum of the steps
+  #assert rings_make(5, 12, st, [3] f32.[0, 0, 2], 60, 0.5, 0.4, 7, d[..]) && d[0].ring[3].x != c[0].ring[3].x;
+  #assert rings_length(c[..]) >= 12 * 48 && rings_length(c[..]) <= 12 * 72;
+  // no turn: a straight line along ahead
+  #assert rings_make(4, 5, st, [3] f32.[1, 0, 0], 50, 0, 0, 5, d[..]);
+  for k: 0..<5 { g := d[0].ring[k]; #assert abs(g.y - 20) < 0.001 && abs(g.z - 30) < 0.001 && abs(g.nx - 1) < 0.0001; }
+  #assert abs(rings_length(d[..]) - (d[0].ring[4].x - 10)) < 0.01;
+}
+
+#test "no course from no rings or more than it holds, no step, a turn or climb out of range, no radius, or no way ahead; the course kept" #steps 100000000 {
+  c: [1] RingCourse; st := [3] f32.[0, 0, 0]; a := [3] f32.[0, 0, 1];
+  #assert rings_make(1, 3, st, a, 10, 0.2, 0.2, 2, c[..]) && c[0].n == 3;
+  #assert !rings_make(1, 0, st, a, 10, 0.2, 0.2, 2, c[..]) && !rings_make(1, RINGS_MAX + 1, st, a, 10, 0.2, 0.2, 2, c[..]);
+  #assert !rings_make(1, 3, st, a, 0, 0.2, 0.2, 2, c[..]) && !rings_make(1, 3, st, a, 10, -0.01, 0.2, 2, c[..]) && !rings_make(1, 3, st, a, 10, 1.58, 0.2, 2, c[..]);
+  #assert !rings_make(1, 3, st, a, 10, 0.2, -0.01, 2, c[..]) && !rings_make(1, 3, st, a, 10, 0.2, 1.58, 2, c[..]) && !rings_make(1, 3, st, a, 10, 0.2, 0.2, 0, c[..]);
+  #assert !rings_make(1, 3, st, [3] f32.[0, 0, 0], 10, 0.2, 0.2, 2, c[..]) && !rings_make(1, 3, st, [3] f32.[0, 0.0005, 0], 10, 0.2, 0.2, 2, c[..]);
+  #assert c[0].n == 3;
+  // the ends it takes: one ring, as many as it holds, a right angle's turn and climb
+  #assert rings_make(1, 1, st, a, 10, 0.2, 0.2, 2, c[..]) && c[0].n == 1 && rings_make(1, RINGS_MAX, st, a, 10, 1.5707964, 1.5707964, 2, c[..]) && c[0].n == RINGS_MAX;
+  // started steeper than the climb allows: held to it
+  #assert rings_make(1, 4, st, [3] f32.[0, 1, 1], 10, 0, 0.2, 2, c[..]) && abs(rings_sine(c[0].ring[0]) - sin(0.2f32)) < 0.001;
+  #assert rings_make(1, 4, st, [3] f32.[0, -1, 1], 10, 0, 0.2, 2, c[..]) && abs(rings_sine(c[0].ring[0]) + sin(0.2f32)) < 0.001;
+  #assert abs(asin_of(1) - 1.5707964) < 0.00001 && abs(asin_of(-2) + 1.5707964) < 0.00001 && abs(asin_of(0.5) - 0.5235988) < 0.00001;
+}
+
+#test "the rings are where the seed puts them (worked again outside the engine from the same numbers), and a winding course never climbs past its climb" #steps 400000000 {
+  c: [1] RingCourse;
+  #assert rings_make(4, 4, [3] f32.[10, 20, 30], [3] f32.[0.3, 0.2, 1], 60, 0.5, 0.4, 7, c[..]);
+  want := [4] [6] f32.[[6] f32.[24.9182, 29.9455, 79.7274, 0.40687, 0.11152, 0.90666], [6] f32.[59.0490, 32.0606, 135.4078, 0.45405, 0.11539, 0.88347],
+    [6] f32.[84.8805, 45.4476, 196.8294, 0.41532, 0.18359, 0.89096], [6] f32.[107.2779, 53.9071, 240.4775, 0.57740, 0.23366, 0.78231]];
+  for k: 0..<4 { g := c[0].ring[k]; w := want[k]; #assert abs(g.x - w[0]) < 0.01 && abs(g.y - w[1]) < 0.01 && abs(g.z - w[2]) < 0.01 && abs(g.nx - w[3]) < 0.0002 && abs(g.ny - w[4]) < 0.0002 && abs(g.nz - w[5]) < 0.0002 && g.r == 7; }
+  #assert abs(rings_length(c[..]) - 235.9509) < 0.02;
+  #assert abs(rings_hash(3, 0) - 0.3405156) < 0.0000002 && abs(rings_hash(3, 1) - 0.1226142) < 0.0000002 && abs(rings_hash(3, 2) - 0.3247941) < 0.0000002;
+  // a winding course with a tight climb: no step climbs or dives past it
+  for seed: 0..<6 {
+    #assert rings_make(seed, 30, [3] f32.[0, 0, 0], [3] f32.[0, 0, 1], 20, 1.5, 0.1, 3, c[..]);
+    at := [3] f32.[0, 0, 0];
+    for k: 0..<30 { h := c[0].ring[k]; dx := h.x - at[0]; dy := h.y - at[1]; dz := h.z - at[2]; #assert abs(dy) <= sin(0.1f32) * sqrt(dx * dx + dy * dy + dz * dz) + 0.001; at = [3] f32.[h.x, h.y, h.z]; }
+  }
+  // ways ahead just too short along each axis
+  #assert !rings_make(1, 3, [3] f32.[0, 0, 0], [3] f32.[0.0009, 0, 0], 10, 0.2, 0.2, 2, c[..]) && !rings_make(1, 3, [3] f32.[0, 0, 0], [3] f32.[0, 0, 0.0009], 10, 0.2, 0.2, 2, c[..]);
+}

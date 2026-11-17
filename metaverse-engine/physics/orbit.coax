@@ -407,14 +407,14 @@ orbit_burn_time :: (isp: f64, m0: f64, thrust: f64, dv: f64) -> f64 {
 
 // A finite burn: position, velocity and mass under gravity mu and thrust
 // along dir, one RK4 step of dt. Mass flows at thrust / (Isp g0).
-Burn :: struct { r: D3; v: D3; m: f64; }
+OrbitBurn :: struct { r: D3; v: D3; m: f64; }   // (not Burn: thrust.coax has that name, and a ship loads both)
 burn_accel :: (r: D3, v: D3, m: f64, mu: f64, thrust: f64, dir: D3) -> D3 {
   a := d3_scale(dir, thrust / m);
   rl := d3_len(r);
   if mu > 0.0 && rl > 0.0 { a = d3_add(a, d3_scale(r, -mu / (rl * rl * rl))); }
   return a;
 }
-orbit_burn_step :: (b: Burn, mu: f64, thrust: f64, isp: f64, dir: D3, dt: f64) -> Burn {
+orbit_burn_step :: (b: OrbitBurn, mu: f64, thrust: f64, isp: f64, dir: D3, dt: f64) -> OrbitBurn {
   md := -thrust / (isp * G0);
   k1r := b.v; k1v := burn_accel(b.r, b.v, b.m, mu, thrust, dir);
   r2 := d3_add(b.r, d3_scale(k1r, dt / 2.0)); v2 := d3_add(b.v, d3_scale(k1v, dt / 2.0)); m2 := b.m + md * dt / 2.0;
@@ -423,7 +423,7 @@ orbit_burn_step :: (b: Burn, mu: f64, thrust: f64, isp: f64, dir: D3, dt: f64) -
   k3r := v3; k3v := burn_accel(r3, v3, m2, mu, thrust, dir);
   r4 := d3_add(b.r, d3_scale(k3r, dt)); v4 := d3_add(b.v, d3_scale(k3v, dt)); m4 := b.m + md * dt;
   k4r := v4; k4v := burn_accel(r4, v4, m4, mu, thrust, dir);
-  out: Burn;
+  out: OrbitBurn;
   out.r = d3_add(b.r, d3_scale(d3_add(d3_add(k1r, d3_scale(k2r, 2.0)), d3_add(d3_scale(k3r, 2.0), k4r)), dt / 6.0));
   out.v = d3_add(b.v, d3_scale(d3_add(d3_add(k1v, d3_scale(k2v, 2.0)), d3_add(d3_scale(k3v, 2.0), k4v)), dt / 6.0));
   out.m = m4;
@@ -537,7 +537,7 @@ rel_near :: (a: f64, b: f64, tolerance: f64) -> bool { return abs(a - b) <= tole
 }
 
 #test "a finite burn gives the rocket equation's delta-v" {
-  b := Burn.{r = d3(0.0, 0.0, 0.0), v = D3_ZERO, m = 98400.0};
+  b := OrbitBurn.{r = d3(0.0, 0.0, 0.0), v = D3_ZERO, m = 98400.0};
   // Lagrange 2's tug: 120 kN at Isp 330 s, burning 20 t of its 49 t of propellant.
   isp := 330.0; thrust := 120000.0;
   dt := 1.0;
@@ -555,7 +555,7 @@ rel_near :: (a: f64, b: f64, tolerance: f64) -> bool { return abs(a - b) <= tole
   // Under gravity, a short prograde burn in a circular orbit raises its energy by about v dv.
   mu := 398600435507000.0;
   r0 := 7000000.0; v0 := sqrt(mu / r0);
-  g := Burn.{r = d3(r0, 0.0, 0.0), v = d3(0.0, v0, 0.0), m = 1000.0};
+  g := OrbitBurn.{r = d3(r0, 0.0, 0.0), v = d3(0.0, v0, 0.0), m = 1000.0};
   e0 := v0 * v0 / 2.0 - mu / r0;
   for k: 0..<10 { g = orbit_burn_step(g, mu, 1000.0, 300.0, d3_unit(g.v), 1.0); }
   dv := orbit_delta_v(300.0, 1000.0, g.m);
