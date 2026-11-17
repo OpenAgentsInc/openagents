@@ -120,6 +120,10 @@ function apply(at, length) {
       const el = els[slot], key = c[2], value = c[3];
       if (key === "src" && (!value.startsWith("/") || value.startsWith("//") || value.startsWith("/\\"))) continue;
       el.setAttribute(key, key === "src" || key === "href" || key === "poster" ? mounted(value) : value);
+      // A user edit sets the browser's dirty-value flag. Updating the value
+      // attribute then changes only defaultValue; an explicit Coax update owns
+      // the live control too (notably a slider's reset). File inputs stay OS-owned.
+      if (key === "value" && el.tagName === "INPUT" && el.type !== "file") el.value = value;
       if (key === "data-frame") frameOf(el);
       if (key === "autofocus") queueMicrotask(() => el.focus());
       if (key === "data-lang" && el.tagName === "TEXTAREA") { el.spellcheck = false; el.wrap = "off"; el.autocapitalize = "off"; }

@@ -221,3 +221,8 @@ to erase the explanation. Ordinary static pages retain the in-flow notice.
 The two-module GameBuilder loopback check forces an absent WebGPU API before
 navigation and verifies the actual alert remains inside the viewport; its
 separate real device-destruction check verifies replacement and new frames.
+
+When Coax emits a new input `value` attribute, the DOM adapter also updates
+the live value (except OS-owned file inputs). After a user edit the browser's
+dirty-value flag otherwise makes `setAttribute` change only `defaultValue`:
+a slider could show its old thumb position beside a correctly reset label.
