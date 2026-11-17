@@ -459,7 +459,7 @@ wc_known_owner :: (owner: string) -> bool {
     || owner == "items" || owner == "quests" || owner == "room-session" || owner == "realm-authoring"
     || owner == "identity" || owner == "payments" || owner == "coder" || owner == "chat"
     || owner == "projects" || owner == "nostr" || owner == "psionic" || owner == "engine"
-    || owner == "protocol" || owner == "toolchain" || owner == "ops" || owner == "realm-tools" || owner == "realms";
+    || owner == "protocol" || owner == "toolchain" || owner == "ops" || owner == "realm-tools" || owner == "realms" || owner == "splice";
 }
 #test "account chat codecs belong to Chat and cannot masquerade as generic tooling" {
   #assert wc_owner_has("chat","coax/web/api/account-chat-wire.coax");
@@ -501,6 +501,7 @@ wc_owner_has :: (owner: string, codec: string) -> bool {
   if owner == "psionic" { return wc_under(codec, "psionic/") || wc_under(codec, "coax/lib/systemone/") || wc_under(codec, "coax/web/api/inference.c") || wc_starts(codec, "coax/web/api/mesh"); }   // /api/v1/systemone is a System One door
   if owner == "engine" { return wc_under(codec, "metaverse-engine/") && !wc_under(codec, "metaverse-engine/session/") && !wc_under(codec, "metaverse-engine/net/") && !wc_under(codec, "metaverse-engine/editor/"); }
   if owner == "realm-tools" { return wc_under(codec, "metaverse/tools/"); }
+  if owner == "splice" { return wc_under(codec, "metaverse/splice-bots/"); }
   // the realms that keep records of their own (contexts.txt): Haunted House, the iOS home, Ice Cream's checks, the native realm host
   if owner == "realms" { return wc_starts(codec, "metaverse/haunt") || codec == "metaverse/home.coax" || wc_under(codec, "metaverse/icecream/") || wc_under(codec, "metaverse/gpu/"); }
   if owner == "protocol" { return wc_under(codec, "proto/"); }
@@ -539,6 +540,7 @@ wc_owner_has :: (owner: string, codec: string) -> bool {
   #assert wc_owner_has("nostr", "nostr/a") && wc_owner_has("nostr", "coax/lib/nostr/a") && !wc_owner_has("nostr", "coax/lib/nostr/vault-wallet.coax");
   #assert wc_owner_has("psionic", "psionic/a") && wc_owner_has("psionic", "coax/lib/systemone/a") && wc_owner_has("psionic", "coax/web/api/inference.c") && wc_owner_has("psionic", "coax/web/api/mesh-x");
   #assert wc_owner_has("realms", "metaverse/haunt-x") && wc_owner_has("protocol", "proto/a") && !wc_owner_has("protocol", "coax/web/a");
+  #assert wc_known_owner("splice") && wc_owner_has("splice", "metaverse/splice-bots/front.coax") && !wc_owner_has("splice", "metaverse/home.coax");
   #assert wc_owner_has("ops", "coax/web/api/analytics.c") && wc_owner_has("ops", "coax/web/api/email.c") && wc_owner_has("ops", "coax/web/api/jobs.c") && wc_owner_has("ops", "coax/web/api/access.c");
   #assert !wc_owner_has("ops", "coax/web/api/chat.c") && !wc_owner_has("nobody", "coax/web/api/analytics.c") && !wc_owner_has("nobody", "coax/web/a");
   // toolchain: everything under coax/ except each named path, and nothing outside coax/

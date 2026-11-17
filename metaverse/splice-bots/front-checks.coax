@@ -143,6 +143,46 @@ fc_answer :: (out: [] u8, status: int, text: string) -> string {
   #assert fr_store_wants(g[..]) == FR_KEEP_RUN && g[0].fr[0].run_n == 0;
 }
 
+#test "a crafted Microduck and the debited inventory share one saved checkpoint through Continue" #steps 300000000 {
+  g: [1] SpGame; fc_fresh(g[..]);
+  g[0].jam = true; g[0].jr[0].pet_mesh = true; g_begin(g[..]);
+  g[0].fr[0].run_get = 0; g[0].fr[0].crew_get = 0;
+  g[0].mode = M_BAY;
+  #assert sjx_give(g[..], sr_stack(ITEM_BATTERY, 2)) && sjx_give(g[..], sr_stack(ITEM_SCRAP_PART, 4));
+  g[0].jx[0].inv[0].selected = 4;
+  g[0].jx[0].chest[0].slots[3] = sr_item(ITEM_JUMP_CARD, 1);
+  #assert sjp_build(g[..]);
+  fr_autosave(g[..], 0);
+  #assert fr_store_wants(g[..]) == FR_KEEP_RUN;
+  text := fr_store_text(g[..], FR_KEEP_RUN);
+  tail := "ducks 1\nhotbar 4\npicked 0000000000000000\nmain 0 ITEM_BATTERY 1\nmain 1 ITEM_SCRAP_PART 1\nchest 3 ITEM_JUMP_CARD 1\nend\n";
+  #assert text.count > tail.count && text[0..<FR_RUN_PROJECT.count] == FR_RUN_PROJECT && text[text.count - tail.count..<text.count] == tail;
+  #assert !fr_run_read(text[0..<text.count - 1]).ok;
+  h: [1] SpGame;
+  h[0].jam = true; h[0].jr[0].pet_mesh = true; g_reset(h[..]); fr_start(h[..]);
+  a: [FR_RUN_TEXT + 16] u8;
+  fr_stored(h[..], 1, fc_answer(a[..], 0, fr_store_text(g[..], FR_KEEP_RUN)));
+  for i: 0..<a.count { a[i] = 0; }
+  #assert g_key(h[..], -2, true) && h[0].mode == M_PLAY && h[0].pets[0].n == 1;
+  #assert sjx_count(h[..], ITEM_BATTERY) == 1 && sjx_count(h[..], ITEM_SCRAP_PART) == 1;
+  #assert h[0].jx[0].inv[0].selected == 4 && h[0].jx[0].chest[0].slots[3].item == ITEM_JUMP_CARD;
+  #assert dist2(h[0].px, h[0].pz, h[0].pets[0].pets[0].x, h[0].pets[0].pets[0].z) < 5;
+}
+
+#test "a new run clears the old Microduck save after an outstanding write completes" #steps 300000000 {
+  g: [1] SpGame; fc_fresh(g[..]); g_begin(g[..]);
+  g[0].fr[0].run_get = 0; g[0].fr[0].crew_get = 0;
+  fr_autosave(g[..], FR_SAVE_EVERY); fr_store_asked(g[..], FR_KEEP_RUN, true);
+  n := g[0].fr[0].run_n;
+  #assert n > 0 && g[0].fr[0].run_put == 2;
+  fr_clear_run(g[..]);
+  #assert g[0].fr[0].run_n == n && fr_store_wants(g[..]) == 0;
+  a: [16] u8; fr_stored(g[..], 1, fc_answer(a[..], 0, ""));
+  #assert !g[0].fr[0].run[0].ok && fr_store_wants(g[..]) == FR_KEEP_RUN && g[0].fr[0].run_n == 0;
+  fr_store_asked(g[..], FR_KEEP_RUN, true); fr_stored(g[..], 1, fc_answer(a[..], 0, ""));
+  #assert !g[0].fr[0].run_clear && g[0].fr[0].kept_n == 0;
+}
+
 #test "each front screen draws inside the panel budget, and the title's rows follow the menu table" #steps 400000000 {
   g := [1] SpGame.[SpGame.{}]; fc_fresh(g[..]);
   out: [200000] f32; u: [UNIFORM_FLOATS] f32;

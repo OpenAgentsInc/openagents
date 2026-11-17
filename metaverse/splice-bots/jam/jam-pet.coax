@@ -5,6 +5,7 @@
 SJP_MAX :: 16;
 SJP_ACTOR :: "AethyrMicroduck";
 SJP_STAGE_BUILD :: 71;  // the edit bay with one recipe's worth of materials, for the browser check
+SJP_STAGE_SAVE :: 72;   // two recipes and a leftover stack, for the reload check
 SJP_RADIUS :: 0.16;
 SJP_SPEED :: 2.8;
 SjpPet :: struct { x: f32; y: f32; z: f32; yaw: f32; stride: f32; bob: f32; }
@@ -13,10 +14,15 @@ SjpPets :: struct { n: int; pets: [SJP_MAX] SjpPet; built: bool; }
 sjp_recipe :: () -> SrRecipe { return sr_find_slice_recipe(RECIPE_MICRODUCK).recipe; }
 sjp_available :: (g: [] SpGame) -> bool { return sjx_on(g) && g[0].jr[0].pet_mesh && !g[0].at_crate; }
 sjp_stage :: (g: [] SpGame, n: int) {
-  if n != SJP_STAGE_BUILD || !g[0].jam || !g[0].jr[0].pet_mesh { return; }
+  if (n != SJP_STAGE_BUILD && n != SJP_STAGE_SAVE) || !g[0].jam || !g[0].jr[0].pet_mesh { return; }
   g_stage_set(g, 1); g_foes(g);
-  _ := sjx_give(g, sr_stack(ITEM_BATTERY, 1));
-  _ = sjx_give(g, sr_stack(ITEM_SCRAP_PART, 3));
+  saving := n == SJP_STAGE_SAVE;
+  _ := sjx_give(g, sr_stack(ITEM_BATTERY, ifx saving then 2 else 1));
+  _ = sjx_give(g, sr_stack(ITEM_SCRAP_PART, ifx saving then 7 else 3));
+  if saving {
+    g[0].jx[0].inv[0].selected = 4;
+    g[0].jx[0].chest[0].slots[3] = sr_item(ITEM_JUMP_CARD, 1);
+  }
   g[0].mode = M_BAY;
 }
 sjp_build :: (g: [] SpGame) -> bool {
@@ -24,15 +30,25 @@ sjp_build :: (g: [] SpGame) -> bool {
   if g[0].mode != M_BAY || !sjp_available(g) || p[0].n >= SJP_MAX { return false; }
   result := sr_build(sjp_recipe(), sr_known_at_start(), g[0].jx[0].inv[0].main[..], 0);
   if !result.built { return false; }
-  n := p[0].n;
-  her := d3(cast(f64) g[0].px, cast(f64) g[0].pz, 0);
-  target := sr_pet_slot_position(her, d3(cast(f64) sin(g[0].yaw), cast(f64) cos(g[0].yaw), 0), n);
-  x := cast(f32) target.x; z := cast(f32) target.y;
-  y := g_ground(g, x, z);
-  p[0].pets[n] = SjpPet.{x = x, y = y, z = z, yaw = g[0].yaw};
+  p[0].pets[p[0].n] = sjp_spawn(g, p[0].n);
   p[0].n += 1; p[0].built = true;
+  g[0].fr[0].save_t = FR_SAVE_EVERY;   // schedule the roster and its recipe debit together
+  fr_autosave(g, 0);
   snd_play(g, SND_PICKUP);
   return true;
+}
+
+sjp_spawn :: (g: [] SpGame, slot: int) -> SjpPet {
+  her := d3(cast(f64) g[0].px, cast(f64) g[0].pz, 0);
+  target := sr_pet_slot_position(her, d3(cast(f64) sin(g[0].yaw), cast(f64) cos(g[0].yaw), 0), slot);
+  x := cast(f32) target.x; z := cast(f32) target.y;
+  y := g_ground(g, x, z);
+  return SjpPet.{x = x, y = y, z = z, yaw = g[0].yaw};
+}
+sjp_restore :: (g: [] SpGame, count: int) {
+  p := g[0].pets[..];
+  p[0].n = count;
+  for i: 0..<count { p[0].pets[i] = sjp_spawn(g, i); }
 }
 
 sjp_step :: (g: [] SpGame, dt: f32) {

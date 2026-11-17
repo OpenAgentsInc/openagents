@@ -41,6 +41,7 @@ SjRules :: struct {
   ok: bool;
   inv: [1] SrInventory;
   chest: [1] SrContainer;
+  saved_items: [FR_RUN_TEXT] u8;   // backing bytes for the restored main and chest item names
   pick_actor: [SJX_PICKS] int; pick_item: [SJX_PICKS] string; pick_taken: [SJX_PICKS] bool; pick_n: int;
   charge_actor: [SJX_CHARGES] int; charge: [SJX_CHARGES] SrChargePoint; charge_n: int;
   bots: [SJX_BOTS] SjxBot; bot_n: int;

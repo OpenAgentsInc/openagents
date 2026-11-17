@@ -71,6 +71,7 @@ The rows of `proto/registry.json` whose codec or files are this realm's (under `
 
 | Id | Kind | Owner | Schema |
 | --- | --- | --- | --- |
+| `splice.run.v2` | local | splice | `proto/metaverse/splice-run-v2.json` |
 | `aethyr.content.v1` | profile | engine | `proto/aethyr/content-v1.json` |
 | `realm-frame.v1` | profile | engine | `proto/verse/realm-frame-v1.json` |
 | `world.edit.v1` | profile | realm-authoring | `proto/world/edit-v1.json` |
@@ -206,4 +207,4 @@ table actors id name:text
 1|Raider 1
 ```
 
-reference sha256: 53b318193e69ce164dac9c146c97c17f5ae325d5e9b4bbdb4dc63c87a3744340
+reference sha256: 86823537d9a37723642cc099572839a434c7346fd55139649d7d7f8bb7fa8244

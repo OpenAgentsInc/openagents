@@ -156,19 +156,28 @@ EXPORT("coaxial_store_version") uint32_t coaxial_store_version(cx_face_addr stat
 #endif
 
 // Keys and the pointer go to the game (WASD, E, F, the edit bay's keys and buttons).
-EXPORT("coaxial_key") uint32_t coaxial_key(cx_face_addr state, int32_t key, int32_t mods) { (void)mods; return splice_key(at(state), key, true) ? 1u : 0u; }
+EXPORT("coaxial_key") uint32_t coaxial_key(cx_face_addr state, int32_t key, int32_t mods) {
+  (void)mods;
+  bool took = splice_key(at(state), key, true);
+  if (took) store(state);
+  return took ? 1u : 0u;
+}
 EXPORT("coaxial_key_up") uint32_t coaxial_key_up(cx_face_addr state, int32_t key, int32_t mods) { (void)mods; return splice_key(at(state), key, false) ? 1u : 0u; }
 // Focus lost (alt-tab, a click outside): every held key, finger and button lets go (#13552).
 EXPORT("coaxial_blur") void coaxial_blur(cx_face_addr state) { splice_blur(at(state)); }
 EXPORT("coaxial_pointer") uint32_t coaxial_pointer(cx_face_addr state, float x, float y, int32_t phase, int32_t kind, int32_t id) {
-  return (kind ? splice_touch(at(state),x,y,phase,id) : splice_pointer(at(state), x, y, phase)) ? 1u : 0u;
+  bool took = kind ? splice_touch(at(state), x, y, phase, id) : splice_pointer(at(state), x, y, phase);
+  if (took) store(state);
+  return took ? 1u : 0u;
 }
 // Mouse look: the host holds the pointer while the smuggler walks and frees it in the edit bay.
 EXPORT("coaxial_mouselook") uint32_t coaxial_mouselook(cx_face_addr state) { return (uint32_t)splice_mouselook(at(state)); }
 EXPORT("coaxial_look_delta") void coaxial_look_delta(cx_face_addr state, float dx, float dy) { splice_look(at(state), dx, dy); }
 // The same with the DOM button (0 left, 2 right; -1 on a move), so a right click can be the jam's Use.
 EXPORT("coaxial_pointer_buttons_v1") uint32_t coaxial_pointer_buttons_v1(cx_face_addr state, float x, float y, int32_t phase, int32_t kind, int32_t id, int32_t button) {
-  return (kind ? splice_touch(at(state),x,y,phase,id) : splice_pointer_button(at(state), x, y, phase, button)) ? 1u : 0u;
+  bool took = kind ? splice_touch(at(state), x, y, phase, id) : splice_pointer_button(at(state), x, y, phase, button);
+  if (took) store(state);
+  return took ? 1u : 0u;
 }
 EXPORT("coaxial_pointer_lock") void coaxial_pointer_lock(cx_face_addr state, int32_t status) { splice_lock(at(state), status); }
 // The wheel or a trackpad's two fingers zoom the camera (camera.coax cm_wheel).

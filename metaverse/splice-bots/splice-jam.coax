@@ -80,7 +80,8 @@ splice_jam_store_bytes :: (s: [] SpliceJam, k: int) -> int #export_c #effects(al
 splice_jam_store_version :: (s: [] SpliceJam) -> int #export_c #effects(all) { return s[0].jam[0].store_gen; }
 // For a headless check: 0 the game is in the jam world, 1 to 4 each pack part's bytes, 5 rows, 6 draws,
 // 7 actors, 8 skies, 9 twins, 10 actors' parts drawn; the characters (jam-cast.coax): 11 their pack is in,
-// 12 bodies drawn this frame, 13 hers is drawn, 14 the characters the pack has; 15 to 18 the pets, scrap and first pet's position.
+// 12 bodies drawn this frame, 13 hers is drawn, 14 the characters the pack has; 15 to 18 the pets, scrap and first pet's position,
+// 19 the pet count in the browser's acknowledged project checkpoint.
 splice_jam_fact :: (s: [] SpliceJam, k: int) -> int #export_c #effects(all) {
   d := s[0].jam[..]; g := s[0].page[0].game[..];
   if k == 0 { return ifx g[0].jam then 1 else 0; }
@@ -93,6 +94,7 @@ splice_jam_fact :: (s: [] SpliceJam, k: int) -> int #export_c #effects(all) {
   if k == 15 { return g[0].pets[0].n; }
   if k == 16 { return sjx_count(g, ITEM_SCRAP_PART); }
   if k == 17 || k == 18 { p := g[0].pets[0].pets[0]; return we_cm(ifx k == 17 then p.x else p.z); }
+  if k == 19 && g[0].fr[0].run[0].ok && g[0].fr[0].run[0].project { return g[0].fr[0].run[0].ducks; }
   return -1;
 }
 

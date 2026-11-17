@@ -157,9 +157,12 @@ same demo.
 
 Sniper, the rover, is the checkpoint (#13505): standing by it keeps what you carry. Each second in
 the mine the checkpoint's inventory and what is open (the rubble, the boss wall, the banned bot, the
-core) is written as `splice.run.v1` when it changed. CONTINUE puts you back beside Sniper with them
-(at night once the boss is down). SCENE RESTORED and a new run let
-it go.
+core) is written when it changed. The full Unreal project port writes a
+`splice.run.v2` checkpoint with the inventory slots, cabin chest, selected
+hotbar slot, farm pickups and crafted Microduck count. Crafting queues that
+checkpoint with the ingredient debit. CONTINUE reads either version and puts
+you back at the checkpoint with your Microducks in formation. SCENE RESTORED
+and a new run clear the checkpoint.
 
 ## The camera
 

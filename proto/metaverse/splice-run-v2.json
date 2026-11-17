@@ -1,0 +1,32 @@
+{
+  "id": "splice.run.v2",
+  "encoding": "ASCII with LF line endings",
+  "storage": {
+    "namespace": "splice",
+    "version": 1,
+    "key": "run",
+    "maxBytes": 6144
+  },
+  "fields": [
+    {"line": "splice.run.v2", "type": "header"},
+    {"line": "have BITS", "type": "legacy carried parts and cards"},
+    {"line": "taken BITS", "type": "legacy pickups"},
+    {"line": "slot BITS", "length": 3},
+    {"line": "strip CARD CARD CARD LENGTH", "lengthMax": 3},
+    {"line": "held SCRAP CELLS", "min": 0, "max": 99},
+    {"line": "open BITS", "length": 4, "order": ["rubble", "wall", "boss", "core"]},
+    {"line": "ducks COUNT", "min": 0, "max": 16},
+    {"line": "hotbar INDEX", "min": 0, "max": 8},
+    {"line": "picked BITS", "length": 16, "order": "Farm pickup order in the imported route"},
+    {"line": "main INDEX ITEM_ID COUNT", "indexMax": 35, "repeat": "in ascending unique slot order"},
+    {"line": "chest INDEX ITEM_ID COUNT", "indexMax": 26, "repeat": "in ascending unique slot order"},
+    {"line": "end", "type": "terminator"}
+  ],
+  "stack": {
+    "idPattern": "^[A-Z0-9_]{1,64}$",
+    "countMin": 1,
+    "countMax": 2147483647,
+    "emptySlots": "Omitted"
+  },
+  "restore": "Spawn saved Microducks in their follow formation by the restored Director checkpoint. Restore slot positions and stack counts together with the roster."
+}

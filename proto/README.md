@@ -169,6 +169,7 @@ Owning contexts (`owner` slugs, from [`docs/architecture/contexts.md`](../docs/a
 | `engine` | Engine (the Metaverse Engine) | `metaverse-engine/` (outside `rules/`, `session/`, `net/`, `forge/`) |
 | `realm-tools` | Realm import tools | `metaverse/tools/` |
 | `realms` | Realms with records of their own | `metaverse/haunt*` (Haunted House), `metaverse/home.coax` (the iOS home), `metaverse/icecream/` (Ice Cream's checks), `metaverse/gpu/` (the native realm host) |
+| `splice` | SPLICEBOTS | `metaverse/splice-bots/` |
 | `protocol` | Protocol (published language) | `proto/` |
 | `toolchain` | Coax toolchain | `coax/` (outside folders owned by a narrower context) |
 | `ops` | Analytics, email, jobs, access | `coax/web/api/analytics.c`, `coax/web/api/email.c`, `coax/web/api/jobs.c`, `coax/web/api/access.c` |

@@ -621,7 +621,7 @@ hv_microduck_build :: (g: [] SpGame, out: [] f32, at: int, q: Ui) -> int {
   r := sjp_recipe(); inv := g[0].jx[0].inv[0].main[0]; more := sr_find_first_missing(r, inv);
   b: [64] u8;
   words := ifx g[0].pets[0].n >= SJP_MAX then num(b[..], "Pet limit ", SJP_MAX, "") else
-    ifx g[0].pets[0].built then "Microduck built" else ifx more.found then
+    ifx g[0].pets[0].built then (ifx g[0].fr[0].run[0].project && g[0].fr[0].run[0].ducks == g[0].pets[0].n then "Microduck saved" else "Saving Microduck...") else ifx more.found then
     num(b[..], "Need ", more.count, ifx more.item == ITEM_BATTERY then " more battery" else " more scrap") else "1 battery + 3 scrap";
   n := hv_rect(out, at, x0, y0, x1, y1, HV_DARK(), 0.94);
   n = hv_frame(out, n, x0, y0, x1, y1, 1.5 * k, HV_LINE(), 1);
