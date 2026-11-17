@@ -15,6 +15,7 @@
 // On iOS an app owns its UIApplication and window, so ui_open(app, 0) makes a view
 // (ui-host-apple.h: ui_view) the app puts in its window; touches are the pointer (the first
 // finger), the app's display link calls ui_frame, and the rest is the same as the Mac's.
+// A Mac app with a window of its own does the same with UiApp.embedded: a view and no window.
 #include <TargetConditionals.h>
 #if TARGET_OS_OSX
 #import <AppKit/AppKit.h>
@@ -901,7 +902,7 @@ int ui_copy(UiHost *h, const char *bytes, size_t n) {
   return [h->pasteboard setString:s forType:NSPasteboardTypeString] ? 1 : 0;
 }
 int ui_mods(UiHost *h) { return h->offscreen ? 0 : ui_mods_of(NSEvent.modifierFlags); }
-int ui_focused(UiHost *h) { return h->offscreen ? 0 : (h->window.isKeyWindow && NSApp.isActive); }
+int ui_focused(UiHost *h) { return h->offscreen ? 0 : (h->view.window.isKeyWindow && NSApp.isActive); }
 int ui_paste_text(UiHost *h, char *out, size_t cap) {
   NSString *s = [h->pasteboard stringForType:NSPasteboardTypeString];
   const char *u = s.UTF8String;
@@ -975,7 +976,7 @@ void ui_menu_key(UiHost *h, int id, const char *key, int mods) {
       if (i.target == h->menu_target && i.tag == id) { i.keyEquivalent = [NSString stringWithUTF8String:key]; i.keyEquivalentModifierMask = ui_flags(mods); }
 }
 // No one sees a panel or a menu: offscreen, a hidden window, or coax drive's socket listening (#13182).
-static int ui_unseen(UiHost *h) { return h->offscreen || h->app.hidden || !h->view || !h->window.isVisible || h->drive.listen_fd > 0; }
+static int ui_unseen(UiHost *h) { return h->offscreen || h->app.hidden || !h->view || !h->view.window.isVisible || h->drive.listen_fd > 0; }
 void ui_popup(UiHost *h, const UiMenuItem *items, int n, float x, float y, int checked) {
   if (ui_unseen(h)) return;
   NSMenu *m = [NSMenu new];
@@ -1005,7 +1006,7 @@ int ui_choose(UiHost *h, int request, int folders, int many, const char *message
     if (r != NSModalResponseOK) return;
     for (NSURL *u in p.URLs) h->app.file(h->app.user, request, u.path.fileSystemRepresentation);
   };
-  [p beginSheetModalForWindow:h->window completionHandler:done];
+  [p beginSheetModalForWindow:h->view.window completionHandler:done];
   return 1;
 }
 int ui_window_frame(UiHost *h, float f[4]) {
@@ -1016,7 +1017,7 @@ int ui_window_frame(UiHost *h, float f[4]) {
 }
 void ui_quit(UiHost *h) { h->closed = 1; }
 void ui_child(UiHost *h, void *view, int above) {
-  if (h->offscreen || !view) return;
+  if (h->offscreen || !view || !h->window) return;   // an embedded view's app places its own views
   NSView *v = (__bridge NSView *)view;
   if (!h->root) {
     // the content view becomes a plain view holding the host's and the app's
@@ -1151,7 +1152,15 @@ UiHost *ui_open(const UiApp *app, int offscreen) {
   // a picture's Copy and Paste use a pasteboard of the app's own, never the one you copy to
   h->pasteboard = offscreen ? [NSPasteboard pasteboardWithName:[NSString stringWithFormat:@"%s.shot", app->app_id ? app->app_id : "ui-host"]] : NSPasteboard.generalPasteboard;
   UiMenuTarget *target = [UiMenuTarget new]; target.host = h; h->menu_target = target;
-  if (!offscreen) {
+  if (!offscreen && app->embedded) {
+    // a view for the app's own window: no window, no Dock icon, no menu, no run loop of ours
+    h->layer = [CAMetalLayer layer];
+    h->layer.device = h->dev; h->layer.pixelFormat = MTLPixelFormatBGRA8Unorm; h->layer.framebufferOnly = YES;
+    h->layer.opaque = !app->transparent;
+    h->view = [[UiView alloc] initWithFrame:NSMakeRect(0, 0, app->width, app->height)];
+    h->view.host = h; h->view.wantsLayer = YES;
+    h->dpr = (float)(NSScreen.mainScreen ? NSScreen.mainScreen.backingScaleFactor : 1);
+  } else if (!offscreen) {
     [NSApplication sharedApplication];
     [NSApp setActivationPolicy:app->hidden ? NSApplicationActivationPolicyProhibited : NSApplicationActivationPolicyRegular];
     NSRect r = NSMakeRect(0, 0, app->width, app->height);
@@ -1220,12 +1229,13 @@ int ui_frame(UiHost *h) {
     int every = h->layered && !h->layer_of.changed;   // a layer that changes every frame (a world)
     NSDate *until = h->app.external_clock || h->stale || every ? NSDate.distantPast : [NSDate dateWithTimeIntervalSinceNow:1 / 60.0];
     NSEvent *e;
-    while (!h->app.external_clock && (e = [NSApp nextEventMatchingMask:NSEventMaskAny untilDate:until inMode:NSDefaultRunLoopMode dequeue:YES])) {
+    while (!h->app.external_clock && !h->app.embedded && (e = [NSApp nextEventMatchingMask:NSEventMaskAny untilDate:until inMode:NSDefaultRunLoopMode dequeue:YES])) {
       [NSApp sendEvent:e];
       until = NSDate.distantPast;
     }
     if (h->closed) return 0;
-    h->dpr = (float)h->window.backingScaleFactor;
+    NSWindow *shown = h->window ? h->window : h->view.window;
+    if (shown) h->dpr = (float)shown.backingScaleFactor;
 #else
     // iOS: UIKit delivers the touches; this is one frame, called by the app's display link
     h->dpr = (float)h->view.contentScaleFactor;

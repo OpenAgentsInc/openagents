@@ -104,6 +104,11 @@ typedef struct {
   int (*activate)(void *user, const char *id);
   // An Apple SDK display link owns scheduling: ui_frame never waits for an event.
   int external_clock;
+  // The Mac's embedded view (apps/shared/host/apple/): ui_open(app, 0) makes the view and no
+  // window, as on iOS. The app puts ui_view in a window of its own, its run loop delivers the
+  // events, and its clock calls ui_frame. No Dock icon, menu or activation policy is touched.
+  // Other hosts ignore it.
+  int embedded;
   void (*changed)(void *user); // window geometry changed; request one frame
   // Wayland text-input transactions: complete commit + provisional text and
   // byte cursor offsets. owner changes fence delayed replies between fields.
