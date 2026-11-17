@@ -420,6 +420,15 @@ shot_orbit :: (ray: ShotRay, shown: f32, yaw: f32, pitch: f32) -> CameraShot {
 }
 ```
 
+**When your body is left out.** `metaverse_orbit_unseen` is the one rule a
+realm asks before it draws you. It is true when the eye is in your head
+(`metaverse_orbit_inside`: 0.6 of the way in), and when scenery has pulled the
+eye in closer than 0.9 m along its line (`FREE_CLOAK`: a narrow room, a wall
+at your back), where it would look out through your own hood and back. The
+rule was Everglade's own (`you_inside`); Everglade and gamebuilder.org's world
+(a web page outside this repository, which draws through the same orbit with a
+drag, the wheel and a pinch from `cam/chase.coax`) both call the engine's.
+
 ### The dive
 
 The dive takes the camera from a shot far away, such as a page's overview,

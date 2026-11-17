@@ -142,6 +142,7 @@ FREE_EYE :: ash.SHOT_ORBIT_EYE;    // first person: your eyes, above your feet
 FREE_FACE :: ash.SHOT_ORBIT_FACE;  // and this far in front of the pivot, clear of your face
 FREE_INSIDE :: 0.6;          // past this share of the way in your body is out of the shot
 FREE_FIRST_PITCH :: 1.45;    // first person: radians up or down it can look
+FREE_CLOAK :: 0.9;           // metres along the ray: scenery pulling the eye in closer than this hides your body
 SPHERE :: 4;                 // numbers per sphere: centre x, y, z, radius
 BOX :: 6;                    // numbers per box: min x, y, z, max x, y, z
 
@@ -315,6 +316,15 @@ metaverse_orbit_limit :: (o: Orbit, room: f32, dt: f32) -> Orbit #export_c #effe
   else { next.shown = lerp(o.shown, free, settle(f32(FREE_OUT), t)); }
   next.shown = lo(next.shown, far);
   return next;
+}
+
+// Your body is left out of the shot: the eye is in your head (metaverse_orbit_inside), or scenery
+// has pulled it in to your shoulders (a narrow room, a wall at your back: metaverse_orbit_limit),
+// closer than FREE_CLOAK along the ray, where it would look out through your own hood and back.
+// First written in Everglade (you_inside), which calls it, as gamebuilder.org's world does.
+metaverse_orbit_unseen :: (o: Orbit) -> bool #export_c #effects(all) {
+  pulled := finite(o.shown) && o.shown < lo(f32(FREE_CLOAK), metaverse_orbit_ray(o).far - 0.1);
+  return metaverse_orbit_inside(o) || pulled;
 }
 
 // What to draw: the eye on the ray, looking forward.
@@ -638,6 +648,30 @@ settled :: (o: Orbit) -> Orbit {
   #assert near(metaverse_orbit_look(s, 0, 99).pitch, -f32(FREE_FIRST_PITCH), 0.0001);
   #assert near(metaverse_orbit_look(s, 0, -99).pitch, f32(FREE_FIRST_PITCH), 0.0001);
   #assert !metaverse_orbit_inside(settled(o));
+}
+
+#test "your body is left out in your head, and when scenery pulls the eye in to your shoulders" {
+  o := metaverse_orbit_start(v3(0, 0, 0), 0);
+  #assert !metaverse_orbit_unseen(o);
+  // a wall close behind: the eye comes in at once, and under FREE_CLOAK along the ray you are left out
+  wall := metaverse_orbit_limit(o, 0.6, 1.0 / 60.0);
+  #assert near(wall.shown, 0.6, 0.0001) && metaverse_orbit_unseen(wall) && !metaverse_orbit_inside(wall);
+  at := o; at.shown = f32(FREE_CLOAK); #assert !metaverse_orbit_unseen(at);
+  at.shown = f32(FREE_CLOAK) - 0.001; #assert metaverse_orbit_unseen(at);
+  // in your head: left out, whatever the room
+  s := o; s.want = 0; s.zoom = 0; s.shown = 0;
+  #assert metaverse_orbit_inside(s) && metaverse_orbit_unseen(s);
+  s.shown = 5; #assert metaverse_orbit_unseen(s);
+  // a line shorter than FREE_CLOAK (nearly in your head): only an eye more than 0.1 m short of its end is pulled in
+  short := o; short.zoom = 0.7;
+  far := metaverse_orbit_ray(short).far;
+  #assert far < f32(FREE_CLOAK) + 0.1 && !metaverse_orbit_inside(short);
+  short.shown = far; #assert !metaverse_orbit_unseen(short);
+  short.shown = far - 0.099; #assert !metaverse_orbit_unseen(short);
+  short.shown = far - 0.101; #assert metaverse_orbit_unseen(short);
+  // a distance it can't use leaves you in the shot (the limit repairs it next frame)
+  bad := o; bad.shown = f32(1.0 / 0.0); #assert !metaverse_orbit_unseen(bad);
+  bad.shown = -bad.shown; #assert !metaverse_orbit_unseen(bad);
 }
 
 #test "zooming out of your head comes back to the closest, smoothly" {
