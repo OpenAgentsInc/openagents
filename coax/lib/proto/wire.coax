@@ -375,5 +375,3 @@ PB_copy_checked :: (wire:[] u8,out:[] u8,overlap:bool)->PB_View #effects(all) {
   expected:=(a<128 && b<128) || (a>=194 && a<=223 && b>=128 && b<=191);
   #assert PB_utf8(bytes[..])==expected;
 }
-
-main :: () {}
