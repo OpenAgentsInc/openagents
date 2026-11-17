@@ -1848,6 +1848,7 @@ async function loadPack(pack) {
       if (session) bytes = await privatePack(session, bytes);
       loadMark("pack-decoded");send(PACK_KIND, `${loaded} ${loaded}`);
     }
+    if (!pack.broker) await rememberAsset(pack.url, bytes);
     if (renderUrl) await renderReload;if (!parts.every(currentAsset)) return;
     // Optional pack gate v1: SHA256 is a platform effect; acceptance stays in the realm's Coax.
     const packGate = engine.exports;
