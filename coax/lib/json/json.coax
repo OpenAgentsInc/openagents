@@ -521,6 +521,7 @@ jv_write :: (d: Jv, at: int, o: [] Jo) #effects(all) {
   jo_end(o);
 }
 // Raw string bytes (escaped as they came) written as a quoted string with jo_quoted's escapes.
+// Like jo_quoted it writes the string alone: a caller writing it as a value calls jo_value first.
 jo_requote :: (o: [] Jo, raw: string) #effects(all) {
   jo_byte(o, '"');
   i := 0;

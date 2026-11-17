@@ -323,7 +323,8 @@ mcp_argv :: (v: [] McpArgv, cfg: McpCfg, c: CliCommand, d: Jv, args: int, shot_o
 // ---- JSON-RPC ------------------------------------------------------------------------
 
 mcp_id :: (o: [] Jo, d: Jv, id: int) {
-  if jv_kind(d, id) == JV_STRING { jo_requote(o, jv_raw(d, id)); }
+  // jo_requote writes the string alone; jo_value first marks the key's value written, so the next key gets its comma
+  if jv_kind(d, id) == JV_STRING { jo_value(o); jo_requote(o, jv_raw(d, id)); }
   else if jv_kind(d, id) == JV_NUMBER { jo_raw(o, jv_raw(d, id)); }
   else { jo_null(o); }
 }
@@ -483,7 +484,10 @@ mcp_handle :: (line: string, cfg: McpCfg, out: [] u8, run: bool) -> string {
   #assert acct_has(s, "\"protocolVersion\":\"2025-03-26\"") && acct_has(s, "\"tools\":{}") && acct_has(s, "\"id\":1");
   #assert mcp_handle("{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}", cfg, out[..], false) == "";
   s = mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":\"a\",\"method\":\"ping\"}", cfg, out[..], false);
-  #assert acct_has(s, "\"id\":\"a\"") && acct_has(s, "\"result\":{}");
+  #assert acct_has(s, "\"id\":\"a\",\"result\":{}");
+  // a string id is a value like any other: the key after it has its comma
+  s = mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":\"q\\\"1\",\"method\":\"nope\"}", cfg, out[..], false);
+  #assert acct_has(s, "\"id\":\"q\\\"1\",\"error\":{");
   #assert acct_has(mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"nope\"}", cfg, out[..], false), "-32601");
   #assert acct_has(mcp_handle("not json", cfg, out[..], false), "-32700");
   // the instructions name realm_find only where the list is the short one
