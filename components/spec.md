@@ -354,7 +354,9 @@ strike the wolf, answer Mira.
 **The hotbar** (`kit/hotbar.coax`) is the one row of slots at the foot of a
 game's window, for every game and realm, built in a page's tree. A `Hotbar`
 holds up to 12 `HbSlot`s: each a tool (one is picked at a time, and pressed
-again is put down), a toggle or an action, with a glyph, a name, a key, a
+again is put down), a toggle or an action, with a glyph, a short name (shown
+under the glyph always, only under the pointer, or never: the skin's word), a
+tooltip line that says what it does, a key, a
 group (a divider stands where it changes) and its state (on, disabled, hidden,
 busy, a cooldown's share). It changes only through `hb_press`, `hb_key` and
 `hb_escape`, which say what happened (`HbPress`); the game fills it each
