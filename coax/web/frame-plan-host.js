@@ -2,13 +2,16 @@
 // The frame plan for a page whose engine exports no coaxial_frame_plan_v1 (GitHub #13451):
 // build/frame-plan.wasm is metaverse-engine/render/graph/frame-plan.coax's frame_plan_host. host.js reads the
 // page's counts from its exports, asks here, and walks the operations as it walks a page's own plan.
+import { rememberAsset } from "./loader.js";
 const wasmURL = new URL("../build/frame-plan.wasm", import.meta.url);
 let opened;
 export function openFramePlan() {
   opened ??= (async () => {
     const response = await fetch(wasmURL, { cache: "no-store" });
     if (!response.ok) throw Error(`frame plan reactor: ${response.status}`);
-    const module = await WebAssembly.compile(await response.arrayBuffer());
+    const loaded = await response.arrayBuffer();
+    await rememberAsset(response.url, loaded);
+    const module = await WebAssembly.compile(loaded);
     const memory = new WebAssembly.Memory({ initial: 32, maximum: 256 });
     const imports = { env: { memory } };
     for (const imp of WebAssembly.Module.imports(module))

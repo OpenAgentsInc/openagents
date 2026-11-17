@@ -11,6 +11,20 @@
 
 const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 
+// Identity of bytes actually handed to WebAssembly/WebGPU, never a second fetch.
+// No headers, request bodies, auth URLs or mutable engine state enter this receipt.
+const loadedAssets = new Map();
+Object.defineProperty(globalThis, "coaxialAssetReceipts", { get: () => Object.freeze(Object.fromEntries(loadedAssets)) });
+export async function rememberAsset(url, data) {
+  const u = new URL(url, location.href);
+  if (u.origin !== location.origin || !/^\/build\/[a-z0-9-]+\.(wasm|wgsl)$/.test(u.pathname)) return;
+  const bytes = typeof data === "string" ? new TextEncoder().encode(data) : data;
+  if (!globalThis.crypto?.subtle) return;
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  loadedAssets.set(u.pathname.slice(7), Object.freeze({ bytes: bytes.byteLength,
+    sha256: [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, "0")).join("") }));
+}
+
 // The new lander's tokens (apps/openagents-web/newland.coax, new-land/index.html): four greys and
 // Arwes's electric blue for the bar only. The frame: a faint outline cut at 45° on two corners,
 // bright brackets on the others.

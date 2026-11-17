@@ -6,7 +6,6 @@
 #load "query.coax";
 #load "../../sys/proc-foreign.coax";
 
-cxproc_group_alive :: (pgid: int) -> int #foreign #effects(all);
 
 CL_EOF :: -1;
 CL_TIMEOUT :: -2;

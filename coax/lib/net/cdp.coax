@@ -63,6 +63,7 @@ Cdp :: struct {
   events: int;                                      // events seen while awaiting replies
   err: [512] u8; err_n: int;                        // what went wrong (cdp_error)
   keep_profile: bool;                               // cdp_close leaves the profile directory (cdp_launch_at)
+  visible: bool;                                   // opt-in only: a user-requested live-player qualification window
   port: int;                                        // the browser's DevTools port, once launched
   browser_url: [512] u8; browser_url_n: int;        // the browser's own ws:// URL (Target.* commands), from DevToolsActivePort
 }
@@ -164,6 +165,31 @@ cdp_flags :: (a: [] Args, os: int, chrome: string, profile: string, w: int, h: i
 cdp_background_flags :: (a:[]Args,os:int,chrome:string,profile:string,w:int,h:int)->bool {
   base:[1]Args;if !cdp_flags(base[..],os,chrome,profile,w,h) {return false;}
   for k:0..<args_count(base[..]) {arg:=args_at(base[..],k);if arg.count>=14 && arg[0..<14]=="--window-size=" {continue;}if arg=="--remote-debugging-port=0" {for flag:[3]string.["--disable-background-timer-throttling","--disable-renderer-backgrounding","--disable-backgrounding-occluded-windows"] {if !args_add(a,flag) {return false;}}}if !args_add(a,arg) {return false;}}return true;
+}
+
+#test "live player launch is explicitly visible, muted and uses ordinary WebGPU" {
+  a: [1] Args;
+  #assert cdp_live_flags(a[..], TOOL_MAC, "/chrome", "/profile", 1440, 900);
+  #assert args_has(a[..], "--mute-audio") && args_has(a[..], "--use-angle=metal");
+  #assert !args_has(a[..], "--headless=new") && !args_has(a[..], "--hide-scrollbars") && !args_has(a[..], "--enable-unsafe-webgpu");
+  b: [1] Args; #assert !cdp_live_flags(b[..], CDP_OS_SWIFTSHADER, "/c", "/p", 1, 1);
+}
+// Only for explicitly requested live-player runs. Ordinary tools remain headless.
+cdp_live_flags :: (a: [] Args, os: int, chrome: string, profile: string, w: int, h: int) -> bool {
+  if os == CDP_OS_SWIFTSHADER { return false; }
+  base: [1] Args;
+  if !cdp_flags(base[..], os, chrome, profile, w, h) { return false; }
+  for i: 0..<args_count(base[..]) {
+    arg := args_at(base[..], i);
+    if arg == "--headless=new" || arg == "--hide-scrollbars" || arg == "--enable-unsafe-webgpu" { continue; }
+    if !args_add(a, arg) { return false; }
+  }
+  return true;
+}
+
+cdp_launch_live :: (c: [] Cdp, w: int, h: int, prefix: string) -> bool {
+  c[0].visible = true;
+  return cdp_launch_profile(c, w, h, prefix, false);
 }
 // ---- which WebGPU adapter a page gets ----------------------------------------
 
@@ -450,8 +476,8 @@ cdp_next_wait :: (attempt: int, waited_ms: int, limit_ms: int) -> int {
 // labelled with the owner PID and caller prefix) and connects to its first page. False with cdp_error
 // set; whatever was started is closed again. A launch that fails (no
 // DevTools port, no page target, no connection) is tried once more.
-cdp_launch :: (c: [] Cdp, w: int, h: int, prefix: string) -> bool {return cdp_launch_profile(c,w,h,prefix,false);}
-cdp_launch_background :: (c:[]Cdp,w:int,h:int,prefix:string)->bool {return cdp_launch_profile(c,w,h,prefix,true);}
+cdp_launch :: (c: [] Cdp, w: int, h: int, prefix: string) -> bool {c[0].visible=false;return cdp_launch_profile(c,w,h,prefix,false);}
+cdp_launch_background :: (c:[]Cdp,w:int,h:int,prefix:string)->bool {c[0].visible=false;return cdp_launch_profile(c,w,h,prefix,true);}
 cdp_launch_profile :: (c: [] Cdp, w: int, h: int, prefix: string,background:bool) -> bool {
   for attempt: 0..<CDP_LAUNCH_TRIES {
     if cdp_launch_once_profile(c, w, h, prefix,background) { return true; }
@@ -484,6 +510,7 @@ cdp_launch_once_profile :: (c: [] Cdp, w: int, h: int, prefix: string,background
 // time; a browser an earlier launcher left on it is stopped first. cdp_browser_url is the
 // browser's ws:// URL for a later cdp_connect from another process.
 cdp_launch_at :: (c: [] Cdp, w: int, h: int, profile: string, background: bool) -> bool {
+  c[0].visible=false;
   c[0].proc = -1; c[0].h = -1; c[0].used = 0; c[0].id = 0; c[0].err_n = 0; c[0].profile_n = 0;
   bin: [4096] u8;
   chrome := cdp_chrome(bin[..]);
@@ -508,7 +535,7 @@ cdp_browser_url :: (c: [] Cdp) -> string { return cast(string) c[0].browser_url[
 cdp_start_in :: (c: [] Cdp, chrome: string, profile: string, w: int, h: int, background: bool) -> bool {
   a: [1] Args;
   wg: [32] u8; os := cdp_os(proc_getenv("CDP_WEBGPU", wg[..]), cxtool_os());
-  fitted:=ifx background then cdp_background_flags(a[..],os,chrome,profile,w,h) else cdp_flags(a[..],os,chrome,profile,w,h);
+  fitted:=ifx c[0].visible then cdp_live_flags(a[..],os,chrome,profile,w,h) else ifx background then cdp_background_flags(a[..],os,chrome,profile,w,h) else cdp_flags(a[..],os,chrome,profile,w,h);
   if !fitted { cdp_close(c); return cdp_fail(c, "the browser's arguments do not fit", ""); }
   p := proc_new();
   ok := p >= 0;

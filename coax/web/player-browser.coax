@@ -1,0 +1,185 @@
+// Live-player input over the shared CDP transport. No clock, fetch interception,
+// Wasm calls, injected DOM events or world edits. Product journeys live downstream.
+#load "../lib/net/cdp.coax";
+
+PB_CALL_MS :: 2000;
+// The WebSocket header helper holds eight digits; timestamps use the JSON integer writer.
+pb_decimal :: (out: [] u8, at: int, value: int) -> int {
+  b: [64] u8; o: [1] Jo; jo_start(o[..],b[..]); jo_int(o[..],value);
+  return ws_put(out,at,jo_text(o[..]));
+}
+#test "player deadlines retain full host timestamps" {
+  b:[32]u8;n:=pb_decimal(b[..],0,1794920000000);#assert n==13 && cast(string)b[0..<n]=="1794920000000";
+}
+PB_KEYS :: [16] string.["w", "a", "s", "d", " ", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "1", "2", "3", "4", "5", "6", "Shift"];
+PB_CODES :: [16] string.["KeyW", "KeyA", "KeyS", "KeyD", "Space", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Digit1", "Digit2", "Digit3", "Digit4", "Digit5", "Digit6", "ShiftLeft"];
+
+#test "live URLs exclude agent clocks, credentials and non-HTTPS origins" {
+  #assert pb_url_ok("https://gamebuilder.org/") && pb_url_ok("https://example.com/login");
+  #assert !pb_url_ok("http://gamebuilder.org/") && !pb_url_ok("https://u:p@host/");
+  #assert !pb_url_ok("https://host/?agent") && !pb_url_ok("https://host/?clip") && !pb_url_ok("https://host/?x=1&agent=1");
+  #assert !pb_url_ok("https://host/?%61gent=1") && pb_url_ok("https://host/?observe=1");
+}
+pb_url_ok :: (url: string) -> bool {
+  if url.count < 9 || url[0..<8] != "https://" { return false; }
+  for c: url { if c <= 32 || c == '@' || c == '#' { return false; } }
+  for i:0..<url.count {if url[i]=='?' && url[i..<url.count]!="?observe=1" {return false;}}
+  for bad: [4] string.["?agent", "&agent", "?clip", "&clip"] { if cdp_contains(url, bad) { return false; } }
+  return true;
+}
+
+// Evaluate a read-only expression with a short, bounded call. Not exposed as a CLI operation.
+pb_read :: (c: [] Cdp, expression: string) -> int {
+  b: [32768] u8; o: [1] Jo; jo_start(o[..], b[..]); jo_obj(o[..]);
+  jo_key(o[..], "expression"); jo_str(o[..], expression); jo_key(o[..], "returnByValue"); jo_bool(o[..], true);
+  jo_key(o[..], "awaitPromise"); jo_bool(o[..], true); jo_end(o[..]);
+  if o[0].bad { return -1; }
+  r := cdp_call(c, "Runtime.evaluate", jo_text(o[..]), PB_CALL_MS);
+  return ifx r >= 0 then jv_path(cdp_doc(c), r, "result.value") else -1;
+}
+pb_bool :: (c: [] Cdp, expression: string) -> bool { r := pb_read(c, expression); return r >= 0 && jv_bool(cdp_doc(c), r); }
+pb_text :: (c: [] Cdp, expression: string, out: [] u8) -> int {
+  r := pb_read(c, expression); return ifx r >= 0 then jv_str(cdp_doc(c), r, out) else -1;
+}
+pb_number :: (c: [] Cdp, expression: string, fallback: f64) -> f64 {
+  r := pb_read(c, expression);
+  if r < 0 { return fallback; }
+  n := args_number(jv_raw(cdp_doc(c), r)); return ifx n.ok then n.value else fallback;
+}
+pb_go :: (c: [] Cdp, url: string) -> bool {
+  if !pb_url_ok(url) { return false; }
+  b: [4096] u8; o: [1] Jo; jo_start(o[..], b[..]); jo_obj(o[..]); jo_key(o[..], "url"); jo_str(o[..], url); jo_end(o[..]);
+  r := cdp_call(c, "Page.navigate", jo_text(o[..]), PB_CALL_MS);
+  return r >= 0 && jv_get(cdp_doc(c), r, "errorText") < 0;
+}
+pb_key :: (c: [] Cdp, key: string, code: string, down: bool) -> bool {
+  b: [512] u8; o: [1] Jo; jo_start(o[..], b[..]); jo_obj(o[..]);
+  jo_key(o[..], "type"); jo_str(o[..], ifx down then "keyDown" else "keyUp");
+  jo_key(o[..], "key"); jo_str(o[..], key); jo_key(o[..], "code"); jo_str(o[..], code);
+  vk := ifx key == "Enter" then 13 else ifx key == "Escape" then 27 else ifx key == "Tab" then 9 else ifx key == "Delete" then 46 else ifx key == "Backspace" then 8 else ifx key == " " then 32 else ifx key=="End" then 35 else ifx key=="Home" then 36 else ifx key=="ArrowLeft" then 37 else ifx key=="ArrowUp" then 38 else ifx key=="ArrowRight" then 39 else ifx key=="ArrowDown" then 40 else ifx key.count == 1 then cast(int) key[0] else 0;
+  if key.count == 1 && key[0] >= 'a' && key[0] <= 'z' { vk -= 32; }
+  jo_key(o[..], "windowsVirtualKeyCode"); jo_int(o[..], vk); jo_end(o[..]);
+  return cdp_call(c, "Input.dispatchKeyEvent", jo_text(o[..]), PB_CALL_MS) >= 0;
+}
+pb_press :: (c: [] Cdp, key: string, code: string) -> bool { a := pb_key(c,key,code,true); b := pb_key(c,key,code,false); return a && b; }
+pb_mouse :: (c: [] Cdp, kind: string, x: int, y: int, button: string, buttons: int, dy: int) -> bool {
+  b: [512] u8; o: [1] Jo; jo_start(o[..], b[..]); jo_obj(o[..]);
+  jo_key(o[..], "type"); jo_str(o[..], kind); jo_key(o[..], "x"); jo_int(o[..], x); jo_key(o[..], "y"); jo_int(o[..], y);
+  jo_key(o[..], "button"); jo_str(o[..], button); jo_key(o[..], "buttons"); jo_int(o[..], buttons);
+  if kind == "mousePressed" || kind == "mouseReleased" { jo_key(o[..], "clickCount"); jo_int(o[..], 1); }
+  if kind == "mouseWheel" { jo_key(o[..], "deltaX"); jo_int(o[..], 0); jo_key(o[..], "deltaY"); jo_int(o[..], dy); }
+  jo_end(o[..]); return cdp_call(c, "Input.dispatchMouseEvent", jo_text(o[..]), PB_CALL_MS) >= 0;
+}
+pb_click :: (c: [] Cdp, x: int, y: int) -> bool {
+  a := pb_mouse(c,"mouseMoved",x,y,"none",0,0); b := pb_mouse(c,"mousePressed",x,y,"left",1,0); d := pb_mouse(c,"mouseReleased",x,y,"left",0,0); return a && b && d;
+}
+// Hit-test the current visible rectangle before input. No scrollIntoView or DOM click.
+pb_target :: (c: [] Cdp, id: string) -> int {
+  b: [8192] u8; o: [1] Jo; jo_start(o[..], b[..]); jo_str(o[..], id);
+  js: [16384] u8; n := ws_put(js[..],0,"(()=>{const e=document.getElementById("); n = ws_put(js[..],n,jo_text(o[..]));
+  n = ws_put(js[..],n,");if(!e||e.disabled)return null;const r=e.getBoundingClientRect(),s=getComputedStyle(e);const x=r.x+r.width/2,y=r.y+r.height/2,t=document.elementFromPoint(x,y);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'&&x>=0&&y>=0&&x<innerWidth&&y<innerHeight&&(t===e||e.contains(t))?{x:Math.round(x),y:Math.round(y)}:null})()");
+  return ifx n >= 0 then pb_read(c, cast(string) js[0..<n]) else -1;
+}
+pb_tap :: (c: [] Cdp, id: string) -> bool {
+  r := pb_target(c,id); if r < 0 || jv_kind(cdp_doc(c),r) != JV_OBJECT { return false; }
+  d := cdp_doc(c); x := jv_int(d,jv_get(d,r,"x"),-1); y := jv_int(d,jv_get(d,r,"y"),-1);
+  return x >= 0 && y >= 0 && pb_click(c,x,y);
+}
+pb_type :: (c: [] Cdp, text: string) -> bool {
+  b: [8192] u8; o: [1] Jo; jo_start(o[..],b[..]); jo_obj(o[..]); jo_key(o[..],"text"); jo_str(o[..],text); jo_end(o[..]);
+  return !o[0].bad && cdp_call(c,"Input.insertText",jo_text(o[..]),PB_CALL_MS) >= 0;
+}
+pb_select_all :: (c: [] Cdp) -> bool {
+  modifiers:=ifx cxtool_os()==TOOL_MAC then 4 else 2;
+  b:[256]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_obj(o[..]);jo_key(o[..],"type");jo_str(o[..],"keyDown");jo_key(o[..],"key");jo_str(o[..],"a");jo_key(o[..],"code");jo_str(o[..],"KeyA");jo_key(o[..],"windowsVirtualKeyCode");jo_int(o[..],65);jo_key(o[..],"modifiers");jo_int(o[..],modifiers);jo_end(o[..]);
+  a:=cdp_call(c,"Input.dispatchKeyEvent",jo_text(o[..]),PB_CALL_MS)>=0;b0:=pb_key(c,"a","KeyA",false);return a && b0;
+}
+pb_release :: (c: [] Cdp) -> bool {
+  ok := true; keys := PB_KEYS; codes := PB_CODES;
+  for i: 0..<16 { sent := pb_key(c,keys[i],codes[i],false); ok = sent && ok; }
+  a := pb_mouse(c,"mouseReleased",0,0,"left",0,0); b := pb_mouse(c,"mouseReleased",0,0,"right",0,0);
+  t := cdp_call(c,"Input.dispatchTouchEvent","{\"type\":\"touchCancel\",\"touchPoints\":[]}",PB_CALL_MS);
+  return ok && a && b && t >= 0;
+}
+pb_page_url :: (c: [] Cdp, out: [] u8) -> string {
+  r := cdp_call(c,"Target.getTargetInfo","{}",PB_CALL_MS); if r < 0 { return ""; }
+  id: [128] u8; k := jv_str(cdp_doc(c),jv_path(cdp_doc(c),r,"targetInfo.targetId"),id[..]); if k <= 0 { return ""; }
+  n := ws_put(out,0,"ws://127.0.0.1:"); n = pb_decimal(out,n,c[0].port); n = ws_put(out,n,"/devtools/page/"); n = ws_put(out,n,cast(string)id[0..<k]); return ifx n > 0 then cast(string)out[0..<n] else "";
+}
+pb_heartbeat :: (dir: string) -> bool {
+  p: [4096] u8; b: [32] u8; n := pb_decimal(b[..],0,proc_now_ms()+1000);
+  return fs_write(fs_join(dir,"lease",p[..]),cast(string)b[0..<n]);
+}
+pb_wait :: (dir: string, ms: int) -> bool {
+  until := proc_now_ms()+ms;
+  while proc_now_ms()<until { if !pb_heartbeat(dir) { return false; } proc_sleep(50); }
+  return pb_heartbeat(dir);
+}
+// One real-time frame. Shared by CDP and WebDriver recorders.
+pb_capture_frame :: (dir:string,name:string,bytes:[]u8,delta:int)->bool {
+  path:[4096]u8;if !fs_write(fs_join(dir,name,path[..]),cast(string)bytes) {return false;}
+  b:[512]u8;n:=0;
+  if delta>=0 {
+    n=ws_put(b[..],n,"duration ");n=pb_decimal(b[..],n,delta/1000);n=ws_put(b[..],n,".");frac:[3]u8;ms:=delta%1000;
+    frac[0]=cast(u8)('0'+ms/100);frac[1]=cast(u8)('0'+ms/10%10);frac[2]=cast(u8)('0'+ms%10);n=ws_put(b[..],n,cast(string)frac[..]);n=ws_put(b[..],n,"\n");
+  }
+  n=ws_put(b[..],n,"file '");n=ws_put(b[..],n,name);n=ws_put(b[..],n,"'\n");return n>0 && fs_append(fs_join(dir,"capture.ffconcat",path[..]),cast(string)b[0..<n]);
+}
+// Independent process: it can release input even while the policy is killed or hung.
+pb_watchdog :: (url: string, dir: string) -> int {
+  c: [1] Cdp; if !cdp_connect(c[..],url) { return 1; }
+  p: [4096] u8; b: [64] u8; expires := proc_now_ms()+2000; end := proc_now_ms()+900000; released := false;
+  while proc_now_ms()<end {
+    owner:[32]u8;on:=fs_read(fs_join(dir,"owner.pid",p[..]),owner[..]);
+    if on>0 {pid:=args_whole(cast(string)owner[0..<on]);if pid>1 && cxproc_pid_alive(pid)==0 {_:=pb_release(c[..]);_=cdp_call(c[..],"Browser.close","{}",PB_CALL_MS);cdp_shut(c[..]);return 0;}}
+    n := fs_read(fs_join(dir,"lease",p[..]),b[..]);
+    if n > 0 { text := cast(string)b[0..<n]; if text == "stop" { _ := pb_release(c[..]); cdp_shut(c[..]); return 0; } v := args_whole(text); if v > 0 { expires = v; } }
+    if proc_now_ms()<=expires { released = false; }
+    if proc_now_ms()>expires && !released { _ := pb_release(c[..]); _ = fs_append(fs_join(dir,"watchdog-fired",p[..]),"input released\n"); released = true; }
+    proc_sleep(50);
+  }
+  _ := pb_release(c[..]); cdp_shut(c[..]); return 1;
+}
+// A separate CDP connection records presented frames on the real wall clock.
+// Start only after secret entry. Duration is reconstructed from event receipt times.
+pb_record :: (url: string, dir: string) -> int {
+  c: [1] Cdp; if !cdp_connect(c[..],url) { return 1; }
+  _ := cdp_call(c[..],"Page.enable","{}",PB_CALL_MS);
+  _ := cdp_call(c[..],"Network.enable","{}",PB_CALL_MS);
+  _ := cdp_call(c[..],"Runtime.enable","{}",PB_CALL_MS);
+  id := cdp_send(c[..],"Page.startScreencast","{\"format\":\"jpeg\",\"quality\":65,\"maxWidth\":1440,\"maxHeight\":900,\"everyNthFrame\":2}");
+  png: [4194304] u8; p: [4096] u8; frame: [64] u8; buf: [8192] u8;
+  script := fs_join(dir,"capture.ffconcat",p[..]); _ := fs_write(script,"ffconcat version 1.0\n");
+  count := 0; last := 0; began := proc_now_ms();total_bytes:=0;
+  while proc_now_ms()-began<900000 {
+    stop: [4096] u8; if fs_exists(fs_join(dir,"record.stop",stop[..])) { break; }
+    k := cdp_poll(c[..],200); if k == CDP_CLOSED || k == CDP_FAIL { break; } if k != CDP_GOT { continue; }
+    d := cdp_doc(c[..]); method:=cdp_event_method(d);
+    if method != "Page.screencastFrame" {
+      if method=="Network.responseReceived" || method=="Network.loadingFailed" || method=="Runtime.exceptionThrown" || method=="Network.webSocketCreated" || method=="Network.webSocketClosed" {
+        // Only method, public path and numeric status. No request/response bodies,
+        // headers, console arguments, cookies or full exception descriptions.
+        event:[4096]u8;ev:[1]Jo;jo_start(ev[..],event[..]);jo_obj(ev[..]);jo_key(ev[..],"at_ms");jo_int(ev[..],proc_now_ms()-began);jo_key(ev[..],"method");jo_str(ev[..],method);
+        u:=jv_raw(d,jv_path(d,0,"params.response.url"));end:=0;while end<u.count && u[end]!='?' && u[end]!='#' {end+=1;}
+        jo_key(ev[..],"url");jo_str(ev[..],u[0..<end]);jo_key(ev[..],"status");jo_int(ev[..],jv_int(d,jv_path(d,0,"params.response.status"),0));jo_end(ev[..]);
+        file:[4096]u8;_=fs_append(fs_join(dir,"network.jsonl",file[..]),jo_text(ev[..]));_=fs_append(fs_join(dir,"network.jsonl",file[..]),"\n");
+      }
+      continue;
+    }
+    sid := jv_int(d,jv_path(d,0,"params.sessionId"),-1); a: [256] u8; o: [1] Jo;
+    jo_start(o[..],a[..]); jo_obj(o[..]); jo_key(o[..],"sessionId"); jo_int(o[..],sid); jo_end(o[..]);
+    data := jv_raw(d,jv_path(d,0,"params.data")); now := proc_now_ms();
+    pause:[4096]u8;paused:=fs_exists(fs_join(dir,"record.pause",pause[..]));
+    if !paused && (last == 0 || now-last>=100) {
+      n := b64_decode(data,png[..]); fn := ws_put(frame[..],0,"frame-"); fn = pb_decimal(frame[..],fn,count); fn = ws_put(frame[..],fn,".jpg");
+      name := cast(string)frame[0..<fn];
+      if n<=0 || !pb_capture_frame(dir,name,png[0..<n],ifx last>0 then now-last else -1) { cdp_shut(c[..]); return 1; }
+      count += 1; last = now;total_bytes+=n;if total_bytes>536870912 {cdp_shut(c[..]);return 1;}
+    }
+    _ := cdp_send(c[..],"Page.screencastFrameAck",jo_text(o[..]));
+  }
+  _ := cdp_call(c[..],"Page.stopScreencast","{}",PB_CALL_MS); cdp_shut(c[..]);
+  _ := fs_append(script,"duration 0.1\n");
+  result: [128] u8; rn := pb_decimal(result[..],0,count); rn = ws_put(result[..],rn," frames in "); rn = pb_decimal(result[..],rn,proc_now_ms()-began); rn = ws_put(result[..],rn," ms\n");
+  _ := fs_write(fs_join(dir,"capture.txt",p[..]),cast(string)result[0..<rn]); return ifx count>1 then 0 else 1;
+}

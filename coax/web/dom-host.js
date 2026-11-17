@@ -44,6 +44,7 @@
 // loaded only then. A module that imports dom_facts() is told the browser's name and the page's address as it
 // starts (event 16: "USER AGENT\nADDRESS").
 import "./tree-commands.js";
+import { rememberAsset } from "./loader.js";
 import { shellTakes, shellHost, shellHeld, shellGo, shellDrawn } from "./shell.js";
 const named = new URL(import.meta.url).searchParams;
 const script = named.has("app") ? null : document.querySelector("script[data-app]");
@@ -364,7 +365,9 @@ function fileStep(urlAt, urlLen, headAt, headLen, step) {
 
 async function start() {
   const response = await fetch(new URL(`../build/${app}.wasm`, import.meta.url), { cache: location.hostname === "127.0.0.1" || location.hostname === "localhost" ? "no-store" : "default" });
-  const module = await WebAssembly.compile(await response.arrayBuffer());
+  const loaded = await response.arrayBuffer();
+  await rememberAsset(response.url, loaded);
+  const module = await WebAssembly.compile(loaded);
   memory = new WebAssembly.Memory({ initial: 256, maximum: 1024 });
   const keptKey = `coaxial.dom.${app}.kept`;
   const keep = (at, len) => { if (len > 4096) return; try { localStorage.setItem(keptKey, text.decode(new Uint8Array(memory.buffer, at, len))); } catch { /* refused: kept for this visit only */ } };

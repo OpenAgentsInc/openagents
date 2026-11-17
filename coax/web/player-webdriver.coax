@@ -1,0 +1,146 @@
+// W3C WebDriver transport for Safari and dedicated Appium Safari devices.
+// Coax owns scheduling and predicates; the existing platform server owns OS input.
+// tool.sh: tls
+#load "../lib/net/http.coax";
+#load "player-browser.coax";
+
+PlayerWd :: struct {
+  origin:[512]u8;origin_n:int;session:[256]u8;session_n:int;process:int=-1;
+  work:[1]HttpWork;body:[8388608]u8;large_raw:[16777216]u8;nodes:[32768]JvNode;doc:[1]Jv;value:int=-1;status:int;
+}
+#test "WebDriver keys use the standard private-use values" {
+  #assert wd_key_value("Enter")=="" && wd_key_value("Escape")=="";
+  #assert wd_key_value("w")=="w" && wd_key_value("ArrowLeft")=="";
+}
+wd_key_value :: (key:string)->string {
+  if key=="Enter" {return "";}if key=="Escape" {return "";}if key=="Tab" {return "";}
+  if key=="Backspace" {return "";}if key=="Delete" {return "";}if key=="End" {return "";}if key=="Home" {return "";}
+  if key=="ArrowLeft" {return "";}if key=="ArrowUp" {return "";}if key=="ArrowRight" {return "";}if key=="ArrowDown" {return "";}return key;
+}
+wd_call :: (w:[]PlayerWd,method:string,path:string,body:string)->bool {
+  url:[4096]u8;n:=ws_put(url[..],0,cast(string)w[0].origin[0..<w[0].origin_n]);
+  if path!="/session" {n=ws_put(url[..],n,"/session/");n=ws_put(url[..],n,cast(string)w[0].session[0..<w[0].session_n]);}
+  n=ws_put(url[..],n,path);if n<=0 {return false;}
+  headers:=[1]string.["Content-Type: application/json"];
+  w[0].work[0].external_raw=w[0].large_raw[..];w[0].work[0].body_limit=8388608;
+  r:=http_do(w[0].work[..],method,cast(string)url[0..<n],headers[..],body,10000,0,w[0].body[..]);w[0].status=r.code;w[0].value=-1;
+  if r.error!=HTTP_OK || !jv_parse(w[0].doc[..],cast(string)w[0].body[0..<r.n],w[0].nodes[..]) {return false;}
+  w[0].value=jv_get(w[0].doc[0],0,"value");return r.code==200 && jv_get(w[0].doc[0],w[0].value,"error")<0;
+}
+wd_attach :: (w:[]PlayerWd,origin:string,session:string)->bool {
+  if origin.count>512 || session.count>256 || session.count==0 {return false;}
+  w[0].origin_n=ws_put(w[0].origin[..],0,origin);w[0].session_n=ws_put(w[0].session[..],0,session);return true;
+}
+wd_open :: (w:[]PlayerWd,endpoint:string,caps:string)->bool {
+  w[0].origin_n=ws_put(w[0].origin[..],0,endpoint);if w[0].origin_n<=0 {return false;}
+  if !wd_call(w,"POST","/session",caps) {return false;}
+  w[0].session_n=jv_str(w[0].doc[0],jv_get(w[0].doc[0],w[0].value,"sessionId"),w[0].session[..]);return w[0].session_n>0;
+}
+wd_read :: (w:[]PlayerWd,expression:string)->int {
+  b:[32768]u8;script:[16384]u8;n:=ws_put(script[..],0,"return ");n=ws_put(script[..],n,expression);if n<=0 {return -1;}
+  o:[1]Jo;jo_start(o[..],b[..]);jo_obj(o[..]);jo_key(o[..],"script");jo_str(o[..],cast(string)script[0..<n]);jo_key(o[..],"args");jo_arr(o[..]);jo_end(o[..]);jo_end(o[..]);
+  return ifx !o[0].bad && wd_call(w,"POST","/execute/sync",jo_text(o[..])) then w[0].value else -1;
+}
+wd_bool :: (w:[]PlayerWd,e:string)->bool {r:=wd_read(w,e);return r>=0 && jv_bool(w[0].doc[0],r);}
+wd_number :: (w:[]PlayerWd,e:string,fallback:f64)->f64 {r:=wd_read(w,e);if r<0 {return fallback;}n:=args_number(jv_raw(w[0].doc[0],r));return ifx n.ok then n.value else fallback;}
+wd_go :: (w:[]PlayerWd,url:string)->bool {
+  if !pb_url_ok(url) {return false;}b:[4096]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_obj(o[..]);jo_key(o[..],"url");jo_str(o[..],url);jo_end(o[..]);return wd_call(w,"POST","/url",jo_text(o[..]));
+}
+wd_key :: (w:[]PlayerWd,key:string,down:bool)->bool {
+  b:[512]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_obj(o[..]);jo_key(o[..],"actions");jo_arr(o[..]);jo_obj(o[..]);jo_key(o[..],"type");jo_str(o[..],"key");jo_key(o[..],"id");jo_str(o[..],"player-keyboard");jo_key(o[..],"actions");jo_arr(o[..]);jo_obj(o[..]);jo_key(o[..],"type");jo_str(o[..],ifx down then "keyDown" else "keyUp");jo_key(o[..],"value");jo_str(o[..],wd_key_value(key));jo_end(o[..]);jo_end(o[..]);jo_end(o[..]);jo_end(o[..]);jo_end(o[..]);return wd_call(w,"POST","/actions",jo_text(o[..]));
+}
+wd_hold :: (w:[]PlayerWd,key:string,ms:int)->bool {
+  if ms<0 || ms>1000 {return false;}
+  b:[1024]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_obj(o[..]);jo_key(o[..],"actions");jo_arr(o[..]);jo_obj(o[..]);jo_key(o[..],"type");jo_str(o[..],"key");jo_key(o[..],"id");jo_str(o[..],"player-keyboard");jo_key(o[..],"actions");jo_arr(o[..]);
+  jo_obj(o[..]);jo_key(o[..],"type");jo_str(o[..],"keyDown");jo_key(o[..],"value");jo_str(o[..],wd_key_value(key));jo_end(o[..]);
+  jo_obj(o[..]);jo_key(o[..],"type");jo_str(o[..],"pause");jo_key(o[..],"duration");jo_int(o[..],ms);jo_end(o[..]);
+  jo_obj(o[..]);jo_key(o[..],"type");jo_str(o[..],"keyUp");jo_key(o[..],"value");jo_str(o[..],wd_key_value(key));jo_end(o[..]);
+  jo_end(o[..]);jo_end(o[..]);jo_end(o[..]);jo_end(o[..]);ok:=wd_call(w,"POST","/actions",jo_text(o[..]));released:=wd_release(w);return ok && released;
+}
+wd_press :: (w:[]PlayerWd,key:string)->bool {return wd_hold(w,key,0);}
+wd_click :: (w:[]PlayerWd,x:int,y:int,touch:bool)->bool {
+  b:[2048]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_obj(o[..]);jo_key(o[..],"actions");jo_arr(o[..]);jo_obj(o[..]);jo_key(o[..],"type");jo_str(o[..],"pointer");jo_key(o[..],"id");jo_str(o[..],"player-pointer");jo_key(o[..],"parameters");jo_obj(o[..]);jo_key(o[..],"pointerType");jo_str(o[..],ifx touch then "touch" else "mouse");jo_end(o[..]);jo_key(o[..],"actions");jo_arr(o[..]);
+  jo_obj(o[..]);jo_key(o[..],"type");jo_str(o[..],"pointerMove");jo_key(o[..],"duration");jo_int(o[..],0);jo_key(o[..],"x");jo_int(o[..],x);jo_key(o[..],"y");jo_int(o[..],y);jo_key(o[..],"origin");jo_str(o[..],"viewport");jo_end(o[..]);
+  for kind:[2]string.["pointerDown","pointerUp"] {jo_obj(o[..]);jo_key(o[..],"type");jo_str(o[..],kind);jo_key(o[..],"button");jo_int(o[..],0);jo_end(o[..]);}
+  jo_end(o[..]);jo_end(o[..]);jo_end(o[..]);jo_end(o[..]);return wd_call(w,"POST","/actions",jo_text(o[..]));
+}
+wd_tap :: (w:[]PlayerWd,id:string,touch:bool)->bool {
+  b:[512]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_str(o[..],id);
+  js:[4096]u8;n:=ws_put(js[..],0,"(()=>{const e=document.getElementById(");n=ws_put(js[..],n,jo_text(o[..]));n=ws_put(js[..],n,");if(!e||e.disabled)return null;const r=e.getBoundingClientRect(),x=r.x+r.width/2,y=r.y+r.height/2,t=document.elementFromPoint(x,y);return r.width>0&&r.height>0&&(t===e||e.contains(t))?{x:Math.round(x),y:Math.round(y)}:null})()");
+  r:=wd_read(w,cast(string)js[0..<n]);if r<0 || jv_kind(w[0].doc[0],r)!=JV_OBJECT {return false;}
+  // Safari's standard element click is browser input, and is more reliable for
+  // form controls than a zero-duration pointer source. The hit test above is
+  // still required; offscreen/covered targets never get scrolled into success.
+  selector:[1024]u8;sn:=ws_put(selector[..],0,"[id=\"");sn=ws_put(selector[..],sn,id);sn=ws_put(selector[..],sn,"\"]");
+  jo_start(o[..],b[..]);jo_obj(o[..]);jo_key(o[..],"using");jo_str(o[..],"css selector");jo_key(o[..],"value");jo_str(o[..],cast(string)selector[0..<sn]);jo_end(o[..]);
+  if !wd_call(w,"POST","/element",jo_text(o[..])) {return false;}
+  element:[256]u8;en:=jv_str(w[0].doc[0],jv_get(w[0].doc[0],w[0].value,"element-6066-11e4-a52e-4f735466cecf"),element[..]);if en<=0 {return false;}
+  path:[512]u8;pn:=ws_put(path[..],0,"/element/");pn=ws_put(path[..],pn,cast(string)element[0..<en]);pn=ws_put(path[..],pn,"/click");return wd_call(w,"POST",cast(string)path[0..<pn],"{}");
+}
+wd_type :: (w:[]PlayerWd,text:string)->bool {
+  // The platform's focused element and send-keys path, not value assignment.
+  if !wd_call(w,"GET","/element/active","") {return false;}
+  id:[256]u8;n:=jv_str(w[0].doc[0],jv_get(w[0].doc[0],w[0].value,"element-6066-11e4-a52e-4f735466cecf"),id[..]);if n<=0 {return false;}
+  path:[512]u8;pn:=ws_put(path[..],0,"/element/");pn=ws_put(path[..],pn,cast(string)id[0..<n]);pn=ws_put(path[..],pn,"/value");
+  b:[8192]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_obj(o[..]);jo_key(o[..],"text");jo_str(o[..],text);jo_end(o[..]);return wd_call(w,"POST",cast(string)path[0..<pn],jo_text(o[..]));
+}
+wd_clear_active :: (w:[]PlayerWd)->bool {
+  // Safari's element-clear can leave a controlled editor's input state stale.
+  // Select through native keys and erase, preserving its actual editing events.
+  if !wd_call(w,"GET","/element/active","") {return false;}
+  r:=wd_read(w,"document.activeElement?.value?.length||0");if r<0 {return false;}n:=jv_int(w[0].doc[0],r,0);if n>1200 {return false;}
+  b:[4096]u8;at:=0;for i:0..<n {at=ws_put(b[..],at,"");}return ifx at>0 then wd_type(w,cast(string)b[0..<at]) else true;
+}
+wd_screenshot :: (w:[]PlayerWd,out:[]u8)->int {
+  if !wd_call(w,"GET","/screenshot","") {return -1;}return b64_decode(jv_raw(w[0].doc[0],w[0].value),out);
+}
+wd_release :: (w:[]PlayerWd)->bool {return wd_call(w,"DELETE","/actions","");}
+wd_touch_source :: (o:[]Jo,id:string,x:int,y:int,dx:int,dy:int,ms:int,right:bool) {
+  jo_obj(o);jo_key(o,"type");jo_str(o,"pointer");jo_key(o,"id");jo_str(o,id);jo_key(o,"parameters");jo_obj(o);jo_key(o,"pointerType");jo_str(o,"touch");jo_end(o);jo_key(o,"actions");jo_arr(o);
+  jo_obj(o);jo_key(o,"type");jo_str(o,"pointerMove");jo_key(o,"duration");jo_int(o,0);jo_key(o,"origin");jo_str(o,"viewport");jo_key(o,"x");jo_int(o,x);jo_key(o,"y");jo_int(o,y);jo_end(o);
+  jo_obj(o);jo_key(o,"type");jo_str(o,"pointerDown");jo_key(o,"button");jo_int(o,0);jo_end(o);
+  jo_obj(o);jo_key(o,"type");jo_str(o,"pointerMove");jo_key(o,"duration");jo_int(o,100);jo_key(o,"origin");jo_str(o,"viewport");jo_key(o,"x");jo_int(o,x+dx);jo_key(o,"y");jo_int(o,y+dy);jo_end(o);
+  if !right {jo_obj(o);jo_key(o,"type");jo_str(o,"pause");jo_key(o,"duration");jo_int(o,ms);jo_end(o);}
+  jo_obj(o);jo_key(o,"type");jo_str(o,"pointerUp");jo_key(o,"button");jo_int(o,0);jo_end(o);
+  if right {jo_obj(o);jo_key(o,"type");jo_str(o,"pause");jo_key(o,"duration");jo_int(o,ms);jo_end(o);}
+  jo_end(o);jo_end(o);
+}
+// Independent fingers in one W3C action timeline. A stationary right finger taps to jump.
+wd_stick :: (w:[]PlayerWd,key:string,ms:int,jump:bool,look:int)->bool {
+  width:=cast(int)wd_number(w,"innerWidth",0);height:=cast(int)wd_number(w,"innerHeight",0);
+  if width<=0 || height<=0 || ms<0 || ms>1000 {return false;}
+  dx:=ifx key=="a" then -55 else ifx key=="d" then 55 else 0;dy:=ifx key=="w" then -55 else ifx key=="s" then 55 else 0;
+  b:[4096]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_obj(o[..]);jo_key(o[..],"actions");jo_arr(o[..]);
+  wd_touch_source(o[..],"player-left",width/4,height*3/5,dx,dy,ms,false);
+  if jump || look!=0 {wd_touch_source(o[..],"player-right",width*4/5,height*2/5,look,0,ms,true);}
+  jo_end(o[..]);jo_end(o[..]);return !o[0].bad && wd_call(w,"POST","/actions",jo_text(o[..]));
+}
+wd_watchdog :: (endpoint:string,session:string,dir:string)->int {
+  w:[1]PlayerWd;if !wd_attach(w[..],endpoint,session) {return 1;}path:[4096]u8;buf:[64]u8;end:=proc_now_ms()+900000;released:=false;
+  while proc_now_ms()<end {
+    owner:[32]u8;on:=fs_read(fs_join(dir,"owner.pid",path[..]),owner[..]);
+    if on>0 {pid:=args_whole(cast(string)owner[0..<on]);if pid>1 && cxproc_pid_alive(pid)==0 {_:=wd_release(w[..]);_=wd_call(w[..],"DELETE","","");return 0;}}
+    n:=fs_read(fs_join(dir,"lease",path[..]),buf[..]);
+    if n>0 {s:=cast(string)buf[0..<n];if s=="stop" {_:=wd_release(w[..]);return 0;}deadline:=args_whole(s);if deadline>0 && proc_now_ms()>deadline && !released {_:=wd_release(w[..]);released=true;}if deadline>proc_now_ms() {released=false;}}
+    proc_sleep(50);
+  }_=wd_release(w[..]);return 1;
+}
+wd_record :: (endpoint:string,session:string,dir:string)->int {
+  w:[1]PlayerWd;if !wd_attach(w[..],endpoint,session) {return 1;}
+  path:[4096]u8;_=fs_write(fs_join(dir,"capture.ffconcat",path[..]),"ffconcat version 1.0\n");
+  image:[8388608]u8;name:[64]u8;count:=0;last:=0;began:=proc_now_ms();total_bytes:=0;
+  while proc_now_ms()-began<900000 {
+    if fs_exists(fs_join(dir,"record.stop",path[..])) {break;}
+    if fs_exists(fs_join(dir,"record.pause",path[..])) {proc_sleep(100);continue;}
+    n:=wd_screenshot(w[..],image[..]);now:=proc_now_ms();if n<=0 {return 1;}
+    k:=ws_put(name[..],0,"frame-");k=pb_decimal(name[..],k,count);k=ws_put(name[..],k,".png");
+    if !pb_capture_frame(dir,cast(string)name[0..<k],image[0..<n],ifx last>0 then now-last else -1) {return 1;}
+    count+=1;last=now;total_bytes+=n;if total_bytes>536870912 {return 1;}proc_sleep(100);
+  }
+  _:=fs_append(fs_join(dir,"capture.ffconcat",path[..]),"duration 0.1\n");
+  text:[128]u8;n:=pb_decimal(text[..],0,count);n=ws_put(text[..],n," frames in ");n=pb_decimal(text[..],n,proc_now_ms()-began);n=ws_put(text[..],n," ms\n");_=fs_write(fs_join(dir,"capture.txt",path[..]),cast(string)text[0..<n]);return ifx count>1 then 0 else 1;
+}
+wd_close :: (w:[]PlayerWd) {
+  if w[0].session_n>0 {_:=wd_release(w);_=wd_call(w,"DELETE","","");}
+  if w[0].process>=0 {_:=proc_kill(w[0].process,PROC_SIGTERM);_=proc_release(w[0].process);w[0].process=-1;}
+}

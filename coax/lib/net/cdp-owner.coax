@@ -7,7 +7,6 @@
 
 cxproc_self_pid :: ()->int #foreign #effects(all);
 cxproc_pid_alive :: (pid:int)->int #foreign #effects(all);
-cxproc_group_alive :: (pid:int)->int #foreign #effects(all);
 cxproc_group_signal :: (pid:int,sig:int)->int #foreign #effects(all);
 cxproc_pid_signal :: (pid:int,sig:int)->int #foreign #effects(all);
 

@@ -571,12 +571,26 @@ http_same_origin :: (a: string, b: string) -> bool {
 // raw: what came back; head: the final response's head (for http_header);
 // url: the final URL. Reused by each call.
 HttpWork :: struct {
+  external_raw: [] u8; body_limit: int; // opt-in caller-owned large replies; zero keeps the 1 MiB default
   raw: [HTTP_RAW] u8; used: int;
   head: [HTTP_HEAD_MAX] u8; head_n: int;
   req: [HTTP_HEAD_MAX] u8;
   url: [HTTP_URL_MAX] u8; url_n: int;
   next: [HTTP_URL_MAX] u8;
   h: int = -1; tls: bool;
+}
+
+#test "large HTTP replies require explicit bounded caller storage" {
+  #assert http_body_capacity(0,HTTP_RAW,2000000)==HTTP_BODY_MAX;
+  #assert http_body_capacity(8388608,16777216,8388608)==8388608;
+  #assert http_body_capacity(8388608,HTTP_RAW,8388608)==-1;
+  #assert http_body_capacity(16777217,33554432,33554432)==-1;
+  #assert http_body_capacity(-1,HTTP_RAW,10)==-1;
+}
+http_body_capacity :: (requested:int,storage:int,output:int)->int {
+  limit:=ifx requested==0 then HTTP_BODY_MAX else requested;
+  if limit<1 || limit>16777216 || storage<limit+HTTP_HEAD_MAX+HTTP_READ_MAX {return -1;}
+  return ifx output<limit then output else limit;
 }
 // error: HTTP_*; code: the final status; n: body bytes in out; redirects
 // followed; unverified_end: the body ended with the stream, on a transport
@@ -604,6 +618,7 @@ hx_flush :: (w: [] HttpWork, deadline: int) -> bool {
 // More bytes into raw: their count, 0 at a clean or unverified end (-12 noted),
 // or an HTTP_E_* error as a negative number.
 hx_fill :: (w: [] HttpWork, deadline: int, r: [] HttpResult) -> int {
+  raw:=ifx w[0].external_raw.count>0 then w[0].external_raw else w[0].raw[..];
   while true {
     left := hx_left(deadline);
     if left <= 0 { return -HTTP_E_TIMEOUT; }
@@ -612,10 +627,10 @@ hx_fill :: (w: [] HttpWork, deadline: int, r: [] HttpResult) -> int {
     if n == -1 { return 0; }
     if n == -12 { r[0].unverified_end = true; return 0; }
     if n < 0 { return -HTTP_E_READ; }
-    if w[0].used + n > HTTP_RAW { return -HTTP_E_TOO_BIG; }
+    if w[0].used + n > raw.count { return -HTTP_E_TOO_BIG; }
     for i: 0..<n {
       b := ifx w[0].tls then cxtls_byte(w[0].h, i) else cxsock_byte(w[0].h, i);
-      w[0].raw[w[0].used + i] = cast,trunc(u8) b;
+      raw[w[0].used + i] = cast,trunc(u8) b;
     }
     w[0].used += n;
     return n;
@@ -625,7 +640,10 @@ hx_fill :: (w: [] HttpWork, deadline: int, r: [] HttpResult) -> int {
 
 // One exchange with the URL in w[0].url: connect, send, read the head and the body.
 hx_once :: (w: [] HttpWork, method: string, headers: [] string, body: string, has_body: bool, drop_auth: bool, deadline: int, out: [] u8) -> HttpResult {
+  raw:=ifx w[0].external_raw.count>0 then w[0].external_raw else w[0].raw[..];
   r: [1] HttpResult;
+  cap := http_body_capacity(w[0].body_limit,raw.count,out.count);
+  if cap<0 {r[0].error=HTTP_E_TOO_BIG;return r[0];}
   url := cast(string) w[0].url[0..<w[0].url_n];
   u := http_url(url);
   if !u.ok { r[0].error = HTTP_E_URL; return r[0]; }
@@ -648,14 +666,13 @@ hx_once :: (w: [] HttpWork, method: string, headers: [] string, body: string, ha
     r[0].error = ifx hx_left(deadline) <= 0 then HTTP_E_TIMEOUT else HTTP_E_SEND;
     return r[0];
   }
-  cap := ifx out.count < HTTP_BODY_MAX then out.count else HTTP_BODY_MAX;
   head: HttpHead;
   // The head; 1xx interim heads are dropped.
   while true {
-    head = http_head(cast(string) w[0].raw[0..<w[0].used]);
+    head = http_head(cast(string) raw[0..<w[0].used]);
     if head.status == HH_OK && head.code >= 100 && head.code < 200 && head.code != 101 {
       k := head.head_n;
-      for i: k..<w[0].used { w[0].raw[i - k] = w[0].raw[i]; }
+      for i: k..<w[0].used { raw[i - k] = raw[i]; }
       w[0].used -= k;
       continue;
     }
@@ -665,14 +682,14 @@ hx_once :: (w: [] HttpWork, method: string, headers: [] string, body: string, ha
     if got < 0 { hx_shut(w); r[0].error = -got; return r[0]; }
     if got == 0 { hx_shut(w); r[0].error = ifx w[0].used == 0 then HTTP_E_READ else HTTP_E_TRUNCATED; return r[0]; }
   }
-  for i: 0..<head.head_n { w[0].head[i] = w[0].raw[i]; }
+  for i: 0..<head.head_n { w[0].head[i] = raw[i]; }
   w[0].head_n = head.head_n;
   r[0].code = head.code;
   hn := head.head_n;
   if method == "HEAD" || head.code == 204 || head.code == 304 || head.code == 101 { hx_shut(w); return r[0]; }
   if head.chunked {
     while true {
-      c := http_dechunk(cast(string) w[0].raw[hn..<w[0].used], out[0..<cap]);
+      c := http_dechunk(cast(string) raw[hn..<w[0].used], out[0..<cap]);
       if c.status == HC_OK { r[0].n = c.n; hx_shut(w); return r[0]; }
       if c.status == HC_BAD { hx_shut(w); r[0].error = HTTP_E_RESPONSE; return r[0]; }
       if c.status == HC_TOO_BIG { hx_shut(w); r[0].error = HTTP_E_TOO_BIG; return r[0]; }
@@ -688,7 +705,7 @@ hx_once :: (w: [] HttpWork, method: string, headers: [] string, body: string, ha
       if got < 0 { hx_shut(w); r[0].error = -got; return r[0]; }
       if got == 0 { hx_shut(w); r[0].error = HTTP_E_TRUNCATED; return r[0]; }
     }
-    for i: 0..<head.length { out[i] = w[0].raw[hn + i]; }
+    for i: 0..<head.length { out[i] = raw[hn + i]; }
     r[0].n = head.length;
     hx_shut(w);
     return r[0];
@@ -702,7 +719,7 @@ hx_once :: (w: [] HttpWork, method: string, headers: [] string, body: string, ha
   }
   n := w[0].used - hn;
   if n > cap { hx_shut(w); r[0].error = HTTP_E_TOO_BIG; return r[0]; }
-  for i: 0..<n { out[i] = w[0].raw[hn + i]; }
+  for i: 0..<n { out[i] = raw[hn + i]; }
   r[0].n = n;
   hx_shut(w);
   return r[0];

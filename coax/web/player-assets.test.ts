@@ -1,0 +1,21 @@
+// Firm reason: 2 (independent browser-crypto oracle for loaded byte provenance).
+import { readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import assert from 'node:assert/strict';
+globalThis.location = { href: 'https://example.com/', origin: 'https://example.com' };
+const source = await readFile(new URL('./loader.js', import.meta.url), 'utf8');
+const { rememberAsset } = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
+const bytes = new Uint8Array([0, 1, 255, 0]);
+await rememberAsset('https://example.com/build/scene.wasm', bytes);
+const receipts = globalThis.coaxialAssetReceipts;
+assert.equal(receipts['scene.wasm'].sha256, createHash('sha256').update(bytes).digest('hex'));
+assert.equal(receipts['scene.wasm'].bytes, 4);
+assert.ok(Object.isFrozen(receipts) && Object.isFrozen(receipts['scene.wasm']));
+await rememberAsset('https://example.com/api/auth/account', bytes);
+await rememberAsset('https://other.com/build/foreign.wasm', bytes);
+assert.deepEqual(Object.keys(globalThis.coaxialAssetReceipts), ['scene.wasm']);
+bytes[0] = 42;
+assert.equal(globalThis.coaxialAssetReceipts['scene.wasm'].sha256, receipts['scene.wasm'].sha256);
+await rememberAsset('/build/scene.wgsl', 'shader text');
+assert.equal(globalThis.coaxialAssetReceipts['scene.wgsl'].sha256, createHash('sha256').update('shader text').digest('hex'));
+console.log('loaded asset receipts: exact bytes, immutable copies, same-origin public assets only');

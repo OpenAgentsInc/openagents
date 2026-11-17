@@ -282,7 +282,7 @@ import { startVoice, VOICE_KIND, ACT_VOICE, ACT_VOICE_TO, ACT_VOICE_SAY } from "
 import { localRoomSocket } from "./room-worker.js";
 import { wtSocket } from "./room-wt.js";
 import { startGpui } from "./gpui.js";
-import { startLoading, readBytes } from "./loader.js";
+import { startLoading, readBytes, rememberAsset } from "./loader.js";
 import { layerFeatures, layerPolicy, warmLayerPolicy, layerBuild, blockLayout, layerTier } from "./layers-host.js";
 import { makeHttpRequests } from "./http-requests.js";
 import { makeHostTransport } from "./host-transport.js";
@@ -1370,6 +1370,7 @@ async function loadShadersOnce() {
     return true;
   }
   const code = await (await fetch(wgslUrl, { cache: dev ? "no-store" : "default" })).text();
+  await rememberAsset(wgslUrl, code);
   if (/var\s+sans_atlas\b/.test(code)) useSans();
   if (/var\s+gpui_atlas\b/.test(code)) useGpui();
   if (/var<storage,\s*read>\s+mesh\b/.test(code)) useMesh();
@@ -4654,6 +4655,7 @@ async function fetchEngine(generation) {
   const response = await fetch(wasmUrl, { cache: dev ? "no-store" : "default" });
   if (!response.ok) throw new Error(`engine: ${response.status}`);
   const bytes = await readBytes(response, (l, t) => loading.engine(l, t));
+  await rememberAsset(response.url, bytes);
   loading.step("compile");
   // One queue owns destructive engine and shader installation. Asset effects
   // await this same queue, so none can publish through a retired facade.
