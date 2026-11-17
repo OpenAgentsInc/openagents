@@ -6,6 +6,7 @@
 
 PlayerWd :: struct {
   origin:[512]u8;origin_n:int;session:[256]u8;session_n:int;process:int=-1;
+  native_sdk:bool; // explicit XCUITest capabilities: OS keyboard, never web atoms
   work:[1]HttpWork;body:[8388608]u8;large_raw:[16777216]u8;nodes:[32768]JvNode;doc:[1]Jv;value:int=-1;status:int;
 }
 #test "WebDriver keys use the standard private-use values" {
@@ -32,6 +33,7 @@ wd_attach :: (w:[]PlayerWd,origin:string,session:string)->bool {
   w[0].origin_n=ws_put(w[0].origin[..],0,origin);w[0].session_n=ws_put(w[0].session[..],0,session);return true;
 }
 wd_open :: (w:[]PlayerWd,endpoint:string,caps:string)->bool {
+  w[0].native_sdk=cdp_contains(caps,"XCUITest");
   w[0].origin_n=ws_put(w[0].origin[..],0,endpoint);if w[0].origin_n<=0 {return false;}
   if !wd_call(w,"POST","/session",caps) {return false;}
   w[0].session_n=jv_str(w[0].doc[0],jv_get(w[0].doc[0],w[0].value,"sessionId"),w[0].session[..]);return w[0].session_n>0;
@@ -78,6 +80,10 @@ wd_tap :: (w:[]PlayerWd,id:string,touch:bool)->bool {
   path:[512]u8;pn:=ws_put(path[..],0,"/element/");pn=ws_put(path[..],pn,cast(string)element[0..<en]);pn=ws_put(path[..],pn,"/click");return wd_call(w,"POST",cast(string)path[0..<pn],"{}");
 }
 wd_type :: (w:[]PlayerWd,text:string)->bool {
+  if w[0].native_sdk {
+    backspace:[1]u8;backspace[0]=8;
+    b:[8192]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_obj(o[..]);jo_key(o[..],"script");jo_str(o[..],"mobile: keys");jo_key(o[..],"args");jo_arr(o[..]);jo_obj(o[..]);jo_key(o[..],"keys");jo_arr(o[..]);jo_str(o[..],ifx text=="" then "\n" else ifx text=="" then cast(string)backspace[..] else text);jo_end(o[..]);jo_end(o[..]);jo_end(o[..]);jo_end(o[..]);return !o[0].bad && wd_call(w,"POST","/execute/sync",jo_text(o[..]));
+  }
   // The focused element receives real keyboard actions. Safari's element-value
   // command can return success without delivering input to controlled editors.
   if text.count==1 {return wd_press(w,text);}
@@ -92,7 +98,7 @@ wd_clear_active :: (w:[]PlayerWd)->bool {
   // Select through native keys and erase, preserving its actual editing events.
   if !wd_call(w,"GET","/element/active","") {return false;}
   r:=wd_read(w,"document.activeElement?.value?.length||0");if r<0 {return false;}n:=jv_int(w[0].doc[0],r,0);if n>1200 {return false;}
-  b:[4096]u8;at:=0;for i:0..<n {at=ws_put(b[..],at,"");}return ifx at>0 then wd_type(w,cast(string)b[0..<at]) else true;
+  for i:0..<n {if !wd_type(w,"") {return false;}}return true;
 }
 wd_screenshot :: (w:[]PlayerWd,out:[]u8)->int {
   if !wd_call(w,"GET","/screenshot","") {return -1;}return b64_decode(jv_raw(w[0].doc[0],w[0].value),out);
