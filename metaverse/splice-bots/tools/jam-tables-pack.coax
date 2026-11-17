@@ -6,7 +6,8 @@
 // as private:splice-bots-jam-tables@catalog (coax/web/host.js), its catalog alone, and nothing of it goes to
 // the GPU. It holds no meshes, so no model (the Microduck's included) is in it.
 //
-//   coax/web/tool.sh metaverse/splice-bots/tools/jam-tables-pack.coax DATA_PACK OUT.pack
+//   coax/web/tool.sh metaverse/splice-bots/tools/jam-tables-pack.coax DATA_PACK OUT.pack [--project]
+// --project permits an editor checkout to omit the shipping-only messages table.
 //
 // DATA_PACK is ~/.openagents/unreal/splice-bots-jam/import-data/splice-bots-jam.pack; OUT is
 // ~/.openagents/verse/private-build/web/splice-bots-jam-tables.pack, which coax/web/serve.c serves at
@@ -20,57 +21,21 @@
 #load "../../../coax/lib/sys/args.coax";
 
 JTP_TABLES :: [9] string.["/Data/strings", "/Data/card_triggers", "/Data/cards", "/Data/pickups", "/Data/items", "/Data/robots",
-                          "/Data/sounds", "/Data/messages", "/Config/DefaultSpliceTuning"];
+                          "/Data/sounds", "/Config/DefaultSpliceTuning", "/Data/messages"];
 JTP_IN :: 16000000; JTP_CAT :: 2000000; JTP_BUDGET :: 4000000;
 
 jtp_put :: (out: [] u8, at: int, t: string) -> int { for c, k: t { out[at + k] = c; } return at + t.count; }
 jtp_int :: (out: [] u8, at: int, v: int) -> int { b: [24] u8; n := 0; x := v; if x == 0 { b[0] = '0'; n = 1; } while x > 0 { b[n] = cast(u8) ('0' + x % 10); x /= 10; n += 1; } for k: 0..<n { out[at + k] = b[n - 1 - k]; } return at + n; }
-jtp_kept :: (name: string) -> bool { for t: JTP_TABLES { if t == name { return true; } } return false; }
-
-tool_main :: () -> int #export_c #effects(all) {
-  a: [1] Args;
-  if !args_load(a[..]) || args_count(a[..]) != 2 { tool_errln("usage: jam-tables-pack DATA_PACK OUT.pack"); return 2; }
-  inp := args_at(a[..], 0); outp := args_at(a[..], 1);
-  src: [JTP_IN] u8; n := fs_read(inp, src[..]);
-  if n <= 0 { tool_err("jam-tables-pack: cannot read "); tool_errln(inp); return 1; }
-  p := cast(string) src[0..<n]; r: [1] PackRead;
-  if !pack_read(p, r[..]) { tool_err("jam-tables-pack: the data pack is refused: "); tool_errln(r[0].why); return 1; }
-  cat := pack_bytes(p, r[..], 0);
-  // the kept tables' lines: each "table" line and its "X" lines, the table numbered again from 0
-  body: [JTP_CAT] u8; bn := 0; keep: [64] int; for k: 0..<64 { keep[k] = -1; } tables := 0; lines := 0;
-  at := 0;
-  while at < cat.count {
-    e := at; while e < cat.count && cat[e] != '\n' { e += 1; }
-    l := cat[at..<e]; at = e + 1;
-    if pack_field(l, 0) == "table" {
-      k := pack_number(pack_field(l, 1));
-      if k < 0 || k >= 64 || !jtp_kept(pack_field(l, 2)) { continue; }
-      keep[k] = tables;
-      bn = jtp_put(body[..], bn, "table "); bn = jtp_int(body[..], bn, tables); bn = jtp_put(body[..], bn, l[6 + pack_field(l, 1).count..<l.count]); bn = jtp_put(body[..], bn, "\n");
-      tables += 1;
-    } else if pack_field(l, 0) == "X" {
-      k := pack_number(pack_field(l, 1));
-      if k < 0 || k >= 64 || keep[k] < 0 { continue; }
-      bn = jtp_put(body[..], bn, "X "); bn = jtp_int(body[..], bn, keep[k]); bn = jtp_put(body[..], bn, l[2 + pack_field(l, 1).count..<l.count]); bn = jtp_put(body[..], bn, "\n");
-      lines += 1;
-    }
-  }
-  if tables != JTP_TABLES.count { tool_err("jam-tables-pack: the data pack lacks some of the tables; found "); print("%\n", tables); return 1; }
-  // the catalog states the pack's size: write it until the size it states is the size it is
-  catalog: [JTP_CAT] u8; cn := 0; total := 0; s: [3] PackSource;
-  for pass: 0..<5 {
-    cn = jtp_put(catalog[..], 0, "pack splice-bots-jam-tables\nbudget "); cn = jtp_int(catalog[..], cn, JTP_BUDGET);
-    cn = jtp_put(catalog[..], cn, "\nbytes "); cn = jtp_int(catalog[..], cn, total);
-    cn = jtp_put(catalog[..], cn, "\nL 0 Splice Bots jam data tables|private, the owner's|https://openagents.com/worlds/splice-bots-jam\n");
-    for c, k: body[0..<bn] { catalog[cn + k] = c; } cn += bn;
-    s[0] = PackSource.{kind = PACK_CATALOG, licence = PACK_MANY, name = "catalog", data = cast(string) catalog[0..<cn]};
-    s[1] = PackSource.{kind = PACK_VERTICES, licence = PACK_MANY, name = "vertices", data = ""};
-    s[2] = PackSource.{kind = PACK_INDICES, licence = PACK_MANY, name = "indices", data = ""};
-    total = pack_size(s[..]);
-  }
-  out: [JTP_BUDGET] u8; size := pack_write(s[..], JTP_BUDGET, out[..]); back: [1] PackRead;
-  if size < 1 || !pack_read(cast(string) out[0..<size], back[..]) { tool_err("jam-tables-pack: the pack is refused: "); tool_errln(back[0].why); return 1; }
-  if !fs_write(outp, cast(string) out[0..<size]) { tool_err("jam-tables-pack: cannot write "); tool_errln(outp); return 1; }
-  print("splice-bots-jam-tables: % tables, % lines, % bytes: %\n", tables, lines, size, outp);
-  return 0;
+#test "only the shipping messages table is optional for a project" {
+  #assert jtp_complete(511, false) && jtp_complete(511, true);
+  #assert !jtp_complete(255, false) && jtp_complete(255, true);
+  #assert !jtp_complete(383, true) && !jtp_complete(254, true) && !jtp_complete(510, false);
+  #assert jtp_index("/Data/strings") == 0 && jtp_index("/Data/messages") == 8 && jtp_index("/Data/unused") == -1;
 }
+jtp_index :: (name: string) -> int { for t, k: JTP_TABLES { if t == name { return k; } } return -1; }
+jtp_complete :: (seen: int, project: bool) -> bool {
+  required := (1 << (JTP_TABLES.count - (ifx project then 1 else 0))) - 1;
+  return (seen & required) == required;
+}
+
+#load "jam-tables-pack-host.coax";

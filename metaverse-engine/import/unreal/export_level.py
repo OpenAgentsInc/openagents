@@ -11,6 +11,8 @@
 #   AIMPORT_EXCLUDE   comma-separated /Game folders whose maps are not taken (default Test, Dev,
 #                     ThirdPerson templates)
 #   AIMPORT_PROJECT, AIMPORT_REVISION, AIMPORT_PLAN_SHA256   copied into manifest.source (the plan's SHA-256 is required)
+#   AIMPORT_SOURCE_RIGS=1 when the caller imports rigs and clips from source files separately.
+#   Level instances still carry the skeletal meshes they reference.
 # Material baking needs a renderer: under -nullrhi the glTF exporter bakes nothing and says
 # nothing, so the script refuses -nullrhi rather than write unbaked materials as baked.
 # Simple-collision convex hulls and skeleton parents are not readable from Python; the
@@ -830,10 +832,19 @@ class Export:
         # every asset of a carried class under /Game, plus what the maps reference elsewhere
         for a in self.assets_of('StaticMesh'):
             self.static_ids.add(str(a.package_name) + '.' + str(a.asset_name))
+        source_rigs = os.environ.get('AIMPORT_SOURCE_RIGS') == '1'
         for a in self.assets_of('SkeletalMesh'):
-            self.skeletal_ids.add(str(a.package_name) + '.' + str(a.asset_name))
+            path = str(a.package_name) + '.' + str(a.asset_name)
+            if source_rigs and path not in self.skeletal_ids:
+                self.skip('', '', '/Script/Engine.SkeletalMesh', '', 'unsupported', 'unplaced mesh, caller imports rigs separately', path)
+            else:
+                self.skeletal_ids.add(path)
         for a in self.assets_of('AnimSequence'):
-            self.anim_ids.add(str(a.package_name) + '.' + str(a.asset_name))
+            path = str(a.package_name) + '.' + str(a.asset_name)
+            if source_rigs:
+                self.skip('', '', '/Script/Engine.AnimSequence', '', 'unsupported', 'caller imports animations separately', path)
+            else:
+                self.anim_ids.add(path)
         for a in self.assets_of('SoundWave'):
             self.sound_ids.add(str(a.package_name) + '.' + str(a.asset_name))
         for a in self.assets_of('Texture2D'):

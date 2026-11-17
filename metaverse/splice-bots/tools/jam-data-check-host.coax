@@ -1,0 +1,98 @@
+// The command-line host reads and writes the files for jam-data-check.coax.
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) { return 2; }
+  argc := args_count(a[..]);
+  project := argc >= 3 && args_at(a[..], argc - 1) == "--project";
+  if project { argc -= 1; }
+  if !(argc == 2 || (argc == 4 && args_at(a[..], 2) == "--source")) { print("usage: jam-data-check DATA_DIR PACK [--source SRC_DIR] [--project]\n"); return 2; }
+  src := ifx argc == 4 then args_at(a[..], 3) else "";
+  data := args_at(a[..], 0);
+  pack_b: [268435456] u8; pn := fs_size(args_at(a[..], 1));
+  if pn < 0 || pn > pack_b.count || fs_read(args_at(a[..], 1), pack_b[0..<pn]) != pn { tool_errln("jam-data-check: could not read the pack"); return 1; }
+  pack := cast(string) pack_b[0..<pn]; rd: [1] PackRead;
+  if !pack_read(pack, rd[..]) { tool_err("jam-data-check: the pack is refused: "); tool_errln(rd[0].why); return 1; }
+  jj: [1] Jdc; j := jj[..]; j[0].cat = pack_bytes(pack, rd[..], 0);
+  at := 0; while at < j[0].cat.count { l := uf_line(j[0].cat, at); if j[0].n >= JDC_LINES { tool_errln("jam-data-check: a catalog over JDC_LINES lines"); return 1; } j[0].line[j[0].n] = at; j[0].len[j[0].n] = l.text.count; j[0].n += 1; at = l.next; }
+  // ---- level_layout.csv
+  pb: [4096] u8; text: [4194304] u8;
+  tn := fs_size(fs_join(data, "level_layout.csv", pb[..]));
+  if tn < 0 || tn > text.count || fs_read(fs_join(data, "level_layout.csv", pb[..]), text[0..<tn]) != tn { tool_errln("jam-data-check: could not read level_layout.csv"); return 1; }
+  csv := cast(string) text[0..<tn]; at = uf_line(csv, 0).next;
+  while at < csv.count {
+    l := uf_line(csv, at); at = l.next;
+    if l.text.count == 0 { continue; }
+    level := -1; for nm, k: JDC_LEVELS { if uf_field(l.text, 0) == nm { level = k; } }
+    kind := 7; for nm, k: JDC_KINDS { if uf_field(l.text, 2) == nm { kind = k; } }
+    name := uf_field(l.text, 1);
+    if level < 0 { tool_err("jam-data-check: a row of no level: "); tool_errln(name); return 1; }
+    j[0].counts[level][kind].rows += 1;
+    v: [7] f64; stated := true; need := ifx kind == JDC_MARKER then 3 else 7;
+    for k: 0..<7 { u := uf_value(uf_field(l.text, 3 + k)); v[k] = u.v; if k < need && !u.ok { stated = false; } }
+    if kind == JDC_MARKER && !uf_value(uf_field(l.text, 9)).ok { stated = false; }
+    if !stated {
+      j[0].counts[level][kind].unstated += 1;
+      // and the pack must not carry it
+      if jdc_named(j, "P", level, name) != -1 || jdc_named(j, "spot", level, name) != -1 { jdc_miss(j, level, name, "carried though a field is not stated"); j[0].counts[level][kind].wrong += 1; }
+      continue;
+    }
+    ok := false;
+    if kind == JDC_MARKER {
+      s := jdc_named(j, "spot", level, name);
+      if s < 0 { jdc_miss(j, level, name, "no named spot"); }
+      else { sl := jdc_line(j, s); ok = jdc_pos(j, sl, 3, v); if !ok { jdc_miss(j, level, name, "its spot is off by more than 0.1 mm"); } }
+    } else if kind == JDC_LIGHT {
+      ok = jdc_light(j, level, v); if !ok { jdc_miss(j, level, name, "no light within 0.1 mm of it"); }
+    } else {
+      ok = jdc_box(j, level, name, v);
+    }
+    if ok { j[0].counts[level][kind].found += 1; } else { j[0].counts[level][kind].wrong += 1; }
+  }
+  // ---- the counts: per level, every pack row a CSV row's
+  for level: 0..<4 {
+    boxes := 0; marks := 0; lights := 0;
+    for kind: 0..<8 { c := j[0].counts[level][kind]; if kind == JDC_MARKER { marks += c.found; } else if kind == JDC_LIGHT { lights += c.found; } else { boxes += c.found; } }
+    p := 0; cc := 0; s := 0; li := 0;
+    for k: 0..<j[0].n { l := jdc_line(j, k); w := pack_field(l, 0); if cast(int) jdc_num(l, 1) != level { continue; } if w == "P" { p += 1; } if w == "col" { cc += 1; } if w == "spot" { s += 1; } if w == "light" { li += 1; } }
+    if p != boxes || cc != boxes || s != marks || li != lights { tool_err("jam-data-check: "); tool_err(JDC_LEVELS[level]); tool_errln(": the pack has rows the CSV doesn't"); j[0].bad += 1; }
+  }
+  // ---- sounds, icons, tables
+  wl: [1] FsList; wn := 0; wav := fs_join(data, "audio/wav", pb[..]);
+  if fs_list(wav, wl[..]) >= 0 { for k: 0..<wl[0].n { e := fs_entry(wl[..], k); if e.count > 4 && e[e.count - 4..<e.count] == ".wav" { wn += 1; } } }
+  sounds := jdc_count_kind(j, "S"); layers := jdc_count_kind(j, "T");
+  icons := -1; tables := 0; table_bad := 0; from_source := 0;
+  for k: 0..<j[0].n {
+    l := jdc_line(j, k); if pack_field(l, 0) != "table" { continue; }
+    tables += 1;
+    id := pack_field(l, 2); fmt := pack_field(l, 3); lines := cast(int) jdc_num(l, 5);
+    config := id.count > 8 && id[0..<8] == "/Config/";
+    if !(id.count >= 7 && id[0..<6] == "/Data/") && !(config && src.count > 0) { table_bad += 1; continue; }
+    rel: [512] u8; rn := 0; for c: id[ifx config then 8 else 6..<id.count] { rel[rn] = c; rn += 1; } rel[rn] = '.'; rn += 1; for c: fmt { rel[rn] = c; rn += 1; }
+    sb: [4096] u8; sp2: [4096] u8;
+    first := ifx config then fs_join(src, "Config", sb[..]) else data;
+    ok := jdc_table_same(j, k, lines, fs_join(first, cast(string) rel[0..<rn], pb[..]), text[..]);
+    if !ok && !config && src.count > 0 { ok = jdc_table_same(j, k, lines, fs_join(fs_join(src, "Data", sb[..]), cast(string) rel[0..<rn], sp2[..]), text[..]); if ok { from_source += 1; } }
+    if !ok { tool_err("jam-data-check: table "); tool_err(id); tool_errln(" is not carried line for line"); table_bad += 1; }
+    if id == "/Data/icons/icons" { icons = cast(int) jdc_num(l, 4); }
+  }
+  // ---- the table
+  out: [16384] u8; n := 0;
+  for c: "level  kind         rows   carried  not stated  mismatched\n" { out[n] = c; n += 1; }
+  totals: JdcCount;
+  for level: 0..<4 { for kind: 0..<8 {
+    c := j[0].counts[level][kind]; if c.rows == 0 { continue; }
+    totals.rows += c.rows; totals.found += c.found; totals.unstated += c.unstated; totals.wrong += c.wrong;
+    nb: [24] u8;
+    for ch: JDC_LEVELS[level] { out[n] = ch; n += 1; } for k: JDC_LEVELS[level].count..<7 { out[n] = ' '; n += 1; }
+    for ch: JDC_KINDS[kind] { out[n] = ch; n += 1; } for k: JDC_KINDS[kind].count..<9 { out[n] = ' '; n += 1; }
+    n = jdc_pad(out[..], n, uf_num_text(cast(f64) c.rows, nb[..]), 7); n = jdc_pad(out[..], n, uf_num_text(cast(f64) c.found, nb[..]), 10);
+    n = jdc_pad(out[..], n, uf_num_text(cast(f64) c.unstated, nb[..]), 12); n = jdc_pad(out[..], n, uf_num_text(cast(f64) c.wrong, nb[..]), 12); out[n] = '\n'; n += 1;
+  } }
+  print("%", cast(string) out[0..<n]);
+  print("all levels: % rows, % carried, % not stated, % mismatched; the worst difference % m (tolerance % m)\n", totals.rows, totals.found, totals.unstated, totals.wrong, j[0].worst, JDC_TOLERANCE);
+  print("sounds: % WAVs in audio/wav, % in the pack; icons: % rows in icons/icons.csv, % colour layers; tables: % carried (% of /Data from the source), % not line for line\n", wn, sounds, icons, layers, tables, from_source, table_bad);
+  if !jdc_inventory_matches(wn, sounds, icons, layers, project) || table_bad != 0 { j[0].bad += 1; }
+  if j[0].bad > 0 { tool_err("jam-data-check: "); tool_errln("refused: see above"); return 1; }
+  print("jam-data-check: the pack matches the CSVs\n");
+  return 0;
+}

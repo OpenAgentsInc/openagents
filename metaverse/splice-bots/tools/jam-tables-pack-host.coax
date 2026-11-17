@@ -1,0 +1,54 @@
+// The command-line host reads and writes the files for jam-tables-pack.coax.
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || !(args_count(a[..]) == 2 || (args_count(a[..]) == 3 && args_at(a[..], 2) == "--project")) {
+    tool_errln("usage: jam-tables-pack DATA_PACK OUT.pack [--project]"); return 2;
+  }
+  project := args_count(a[..]) == 3;
+  inp := args_at(a[..], 0); outp := args_at(a[..], 1);
+  src: [JTP_IN] u8; n := fs_read(inp, src[..]);
+  if n <= 0 { tool_err("jam-tables-pack: cannot read "); tool_errln(inp); return 1; }
+  p := cast(string) src[0..<n]; r: [1] PackRead;
+  if !pack_read(p, r[..]) { tool_err("jam-tables-pack: the data pack is refused: "); tool_errln(r[0].why); return 1; }
+  cat := pack_bytes(p, r[..], 0);
+  // the kept tables' lines: each "table" line and its "X" lines, the table numbered again from 0
+  body: [JTP_CAT] u8; bn := 0; keep: [64] int; for k: 0..<64 { keep[k] = -1; } tables := 0; lines := 0; seen := 0;
+  at := 0;
+  while at < cat.count {
+    e := at; while e < cat.count && cat[e] != '\n' { e += 1; }
+    l := cat[at..<e]; at = e + 1;
+    if pack_field(l, 0) == "table" {
+      k := pack_number(pack_field(l, 1));
+      i := jtp_index(pack_field(l, 2));
+      if k < 0 || k >= 64 || i < 0 { continue; }
+      if (seen & (1 << i)) != 0 { tool_errln("jam-tables-pack: a gameplay table is present twice"); return 1; }
+      seen |= 1 << i;
+      keep[k] = tables;
+      bn = jtp_put(body[..], bn, "table "); bn = jtp_int(body[..], bn, tables); bn = jtp_put(body[..], bn, l[6 + pack_field(l, 1).count..<l.count]); bn = jtp_put(body[..], bn, "\n");
+      tables += 1;
+    } else if pack_field(l, 0) == "X" {
+      k := pack_number(pack_field(l, 1));
+      if k < 0 || k >= 64 || keep[k] < 0 { continue; }
+      bn = jtp_put(body[..], bn, "X "); bn = jtp_int(body[..], bn, keep[k]); bn = jtp_put(body[..], bn, l[2 + pack_field(l, 1).count..<l.count]); bn = jtp_put(body[..], bn, "\n");
+      lines += 1;
+    }
+  }
+  if !jtp_complete(seen, project) { tool_err("jam-tables-pack: the data pack lacks some of the required tables; found "); print("%\n", tables); return 1; }
+  // the catalog states the pack's size: write it until the size it states is the size it is
+  catalog: [JTP_CAT] u8; cn := 0; total := 0; s: [3] PackSource;
+  for pass: 0..<5 {
+    cn = jtp_put(catalog[..], 0, "pack splice-bots-jam-tables\nbudget "); cn = jtp_int(catalog[..], cn, JTP_BUDGET);
+    cn = jtp_put(catalog[..], cn, "\nbytes "); cn = jtp_int(catalog[..], cn, total);
+    cn = jtp_put(catalog[..], cn, "\nL 0 Splice Bots jam data tables|private, the owner's|https://openagents.com/worlds/splice-bots-jam\n");
+    for c, k: body[0..<bn] { catalog[cn + k] = c; } cn += bn;
+    s[0] = PackSource.{kind = PACK_CATALOG, licence = PACK_MANY, name = "catalog", data = cast(string) catalog[0..<cn]};
+    s[1] = PackSource.{kind = PACK_VERTICES, licence = PACK_MANY, name = "vertices", data = ""};
+    s[2] = PackSource.{kind = PACK_INDICES, licence = PACK_MANY, name = "indices", data = ""};
+    total = pack_size(s[..]);
+  }
+  out: [JTP_BUDGET] u8; size := pack_write(s[..], JTP_BUDGET, out[..]); back: [1] PackRead;
+  if size < 1 || !pack_read(cast(string) out[0..<size], back[..]) { tool_err("jam-tables-pack: the pack is refused: "); tool_errln(back[0].why); return 1; }
+  if !fs_write(outp, cast(string) out[0..<size]) { tool_err("jam-tables-pack: cannot write "); tool_errln(outp); return 1; }
+  print("splice-bots-jam-tables: % tables, % lines, % bytes: %\n", tables, lines, size, outp);
+  return 0;
+}
