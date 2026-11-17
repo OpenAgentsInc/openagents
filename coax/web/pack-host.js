@@ -1,7 +1,8 @@
 // Firm reason: 1 (browser SDK: measured stream copies, cancellation, WebCrypto and decompression; Coax owns admission).
+import {rememberAsset} from './loader.js';
 const wasmURL=new URL('../build/host-packs.wasm',import.meta.url);
 let compiled,opened,moduleBytes=0,moduleSourceCleared=false;
-async function packModule(){compiled??=(async()=>{const r=await fetch(wasmURL,{cache:'no-store'});if(!r.ok)throw Error(`pack reactor:${r.status}`);const bytes=await r.arrayBuffer();moduleBytes=bytes.byteLength;try{return await WebAssembly.compile(bytes);}finally{new Uint8Array(bytes).fill(0);moduleSourceCleared=true;}})().catch(e=>{compiled=null;throw e;});return compiled;}
+async function packModule(){compiled??=(async()=>{const r=await fetch(wasmURL,{cache:'no-store'});if(!r.ok)throw Error(`pack reactor:${r.status}`);const bytes=await r.arrayBuffer();moduleBytes=bytes.byteLength;try{await rememberAsset(r.url,bytes);return await WebAssembly.compile(bytes);}finally{new Uint8Array(bytes).fill(0);moduleSourceCleared=true;}})().catch(e=>{compiled=null;throw e;});return compiled;}
 function instance(module,onMemory){
  const memory=new WebAssembly.Memory({initial:128,maximum:1024});
  try{
@@ -98,6 +99,7 @@ export async function openPackHost(){
      if(!x.pack_stream_open(BigInt(session.source),1)||!x.pack_stream_offer(BigInt(gzip.byteLength),0)||!x.pack_stream_finish())throw Error('Coax refused SDK decrypt output extent');
      const source=new ReadableStream({start(c){c.enqueue(gzip);c.close();}});plain=await read(op,source.pipeThrough(new DecompressionStream('gzip')),session.plain,false,false);gzip.fill(0);op.buffers.splice(op.buffers.indexOf(gzip),1);op.free(gzTicket);
     }else plain=await read(op,response.body,pack.bytes??0,false);
+    if(!session)await rememberAsset(response.url,plain.target);
     op.check();const {x,memory}=op.context;if(!x.pack_admit(Number(!!session)))throw Error('Coax refused complete pack identity, layout or catalog');
     const entries=[];for(let i=0;i<x.pack_entry_count();i++){const fields=[0,1,2,3,4,5].map(f=>Number(x.pack_entry(i,f)));entries.push(Object.freeze({kind:fields[0],licence:fields[1],name:new TextDecoder().decode(new Uint8Array(memory.buffer,fields[4],fields[5])),bytes:plain.target.subarray(fields[2],fields[2]+fields[3])}));}
     op.published=true;const result=Object.freeze({entries:Object.freeze(entries),source:plain.target,bytes:plain.target.byteLength,owner,close:()=>op.abort(),async use(fn){op.check();op.borrowers++;try{const answer=await fn(result);op.check();return answer;}finally{op.borrowers--;op.dispose();}}});return result;

@@ -18,4 +18,6 @@ bytes[0] = 42;
 assert.equal(globalThis.coaxialAssetReceipts['scene.wasm'].sha256, receipts['scene.wasm'].sha256);
 await rememberAsset('/build/scene.wgsl', 'shader text');
 assert.equal(globalThis.coaxialAssetReceipts['scene.wgsl'].sha256, createHash('sha256').update('shader text').digest('hex'));
+await rememberAsset('/assets/public.pack', bytes);
+assert.equal(globalThis.coaxialAssetReceipts['assets/public.pack'].sha256, createHash('sha256').update(bytes).digest('hex'));
 console.log('loaded asset receipts: exact bytes, immutable copies, same-origin public assets only');

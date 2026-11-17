@@ -23,7 +23,7 @@ wd_call :: (w:[]PlayerWd,method:string,path:string,body:string)->bool {
   n=ws_put(url[..],n,path);if n<=0 {return false;}
   headers:=[1]string.["Content-Type: application/json"];
   w[0].work[0].external_raw=w[0].large_raw[..];w[0].work[0].body_limit=8388608;
-  r:=http_do(w[0].work[..],method,cast(string)url[0..<n],headers[..],body,10000,0,w[0].body[..]);w[0].status=r.code;w[0].value=-1;
+  r:=http_do(w[0].work[..],method,cast(string)url[0..<n],headers[..],body,ifx path=="/session" then 120000 else 10000,0,w[0].body[..]);w[0].status=r.code;w[0].value=-1;
   if r.error!=HTTP_OK || !jv_parse(w[0].doc[..],cast(string)w[0].body[0..<r.n],w[0].nodes[..]) {return false;}
   w[0].value=jv_get(w[0].doc[0],0,"value");return r.code==200 && jv_get(w[0].doc[0],w[0].value,"error")<0;
 }
@@ -78,11 +78,14 @@ wd_tap :: (w:[]PlayerWd,id:string,touch:bool)->bool {
   path:[512]u8;pn:=ws_put(path[..],0,"/element/");pn=ws_put(path[..],pn,cast(string)element[0..<en]);pn=ws_put(path[..],pn,"/click");return wd_call(w,"POST",cast(string)path[0..<pn],"{}");
 }
 wd_type :: (w:[]PlayerWd,text:string)->bool {
-  // The platform's focused element and send-keys path, not value assignment.
-  if !wd_call(w,"GET","/element/active","") {return false;}
-  id:[256]u8;n:=jv_str(w[0].doc[0],jv_get(w[0].doc[0],w[0].value,"element-6066-11e4-a52e-4f735466cecf"),id[..]);if n<=0 {return false;}
-  path:[512]u8;pn:=ws_put(path[..],0,"/element/");pn=ws_put(path[..],pn,cast(string)id[0..<n]);pn=ws_put(path[..],pn,"/value");
-  b:[8192]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_obj(o[..]);jo_key(o[..],"text");jo_str(o[..],text);jo_end(o[..]);return wd_call(w,"POST",cast(string)path[0..<pn],jo_text(o[..]));
+  // The focused element receives real keyboard actions. Safari's element-value
+  // command can return success without delivering input to controlled editors.
+  if text.count==1 {return wd_press(w,text);}
+  if text=="" {return wd_press(w,"Enter");}
+  if text=="" {return wd_press(w,"Backspace");}
+  // Only the ASCII test vocabulary and standard Backspace are needed here.
+  for i:0..<text.count {if text[i]>=128 {if text.count%3!=0 {return false;}for j:0..<text.count/3 {if text[j*3..<j*3+3]!="" || !wd_press(w,"Backspace") {return false;}}return true;}}
+  ch:[1]u8;for i:0..<text.count {ch[0]=text[i];if !wd_press(w,cast(string)ch[..]) {return false;}}return true;
 }
 wd_clear_active :: (w:[]PlayerWd)->bool {
   // Safari's element-clear can leave a controlled editor's input state stale.

@@ -17,11 +17,11 @@ const loadedAssets = new Map();
 Object.defineProperty(globalThis, "coaxialAssetReceipts", { get: () => Object.freeze(Object.fromEntries(loadedAssets)) });
 export async function rememberAsset(url, data) {
   const u = new URL(url, location.href);
-  if (u.origin !== location.origin || !/^\/build\/[a-z0-9-]+\.(wasm|wgsl)$/.test(u.pathname)) return;
+  if (u.origin !== location.origin || !/^\/(build\/[a-z0-9-]+\.(wasm|wgsl)|assets\/[a-z0-9-]+\.pack)$/.test(u.pathname)) return;
   const bytes = typeof data === "string" ? new TextEncoder().encode(data) : data;
   if (!globalThis.crypto?.subtle) return;
   const digest = await crypto.subtle.digest("SHA-256", bytes);
-  loadedAssets.set(u.pathname.slice(7), Object.freeze({ bytes: bytes.byteLength,
+  loadedAssets.set(u.pathname.startsWith('/build/') ? u.pathname.slice(7) : u.pathname.slice(1), Object.freeze({ bytes: bytes.byteLength,
     sha256: [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, "0")).join("") }));
 }
 
