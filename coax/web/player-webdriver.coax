@@ -42,9 +42,9 @@ wd_read :: (w:[]PlayerWd,expression:string)->int {
   // The iOS remote inspector's object serializer can replace nested property
   // values with null. Carry a JSON string over WebDriver, then parse locally;
   // primitive reads and structured reads now have the same lossless path.
-  b:[32768]u8;script:[16384]u8;n:=ws_put(script[..],0,"return JSON.stringify((");n=ws_put(script[..],n,expression);n=ws_put(script[..],n,"))??'null'");if n<=0 {return -1;}
+  b:[32768]u8;script:[16384]u8;n:=ws_put(script[..],0,"const done=arguments[arguments.length-1];try{Promise.resolve((");n=ws_put(script[..],n,expression);n=ws_put(script[..],n,")).then(v=>done(JSON.stringify(v)??'null'),()=>done('null'))}catch{done('null')}");if n<=0 {return -1;}
   o:[1]Jo;jo_start(o[..],b[..]);jo_obj(o[..]);jo_key(o[..],"script");jo_str(o[..],cast(string)script[0..<n]);jo_key(o[..],"args");jo_arr(o[..]);jo_end(o[..]);jo_end(o[..]);
-  if o[0].bad || !wd_call(w,"POST","/execute/sync",jo_text(o[..])) {return -1;}
+  if o[0].bad || !wd_call(w,"POST","/execute/async",jo_text(o[..])) {return -1;}
   return wd_unpack(w);
 }
 wd_unpack :: (w:[]PlayerWd)->int {
@@ -77,8 +77,18 @@ wd_hold :: (w:[]PlayerWd,key:string,ms:int)->bool {
 }
 wd_press :: (w:[]PlayerWd,key:string)->bool {return wd_hold(w,key,0);}
 wd_click :: (w:[]PlayerWd,x:int,y:int,touch:bool)->bool {
+  element:[256]u8;en:=0;px:=x;py:=y;
+  if w[0].native_sdk {
+    // XCUITest's viewport origin is the OS screen, including Safari chrome.
+    // An element origin goes through Appium's CSS-to-native conversion.
+    cx:=wd_number(w,"(()=>{const r=document.querySelector('canvas')?.getBoundingClientRect();return r?r.x+r.width/2:-1})()",-1);
+    cy:=wd_number(w,"(()=>{const r=document.querySelector('canvas')?.getBoundingClientRect();return r?r.y+r.height/2:-1})()",-1);
+    if cx<0 || cy<0 || !wd_call(w,"POST","/element","{\"using\":\"css selector\",\"value\":\"canvas\"}") {return false;}
+    en=jv_str(w[0].doc[0],jv_get(w[0].doc[0],w[0].value,"element-6066-11e4-a52e-4f735466cecf"),element[..]);if en<=0 {return false;}
+    px=x-cast(int)cx;py=y-cast(int)cy;
+  }
   b:[2048]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_obj(o[..]);jo_key(o[..],"actions");jo_arr(o[..]);jo_obj(o[..]);jo_key(o[..],"type");jo_str(o[..],"pointer");jo_key(o[..],"id");jo_str(o[..],"player-pointer");jo_key(o[..],"parameters");jo_obj(o[..]);jo_key(o[..],"pointerType");jo_str(o[..],ifx touch then "touch" else "mouse");jo_end(o[..]);jo_key(o[..],"actions");jo_arr(o[..]);
-  jo_obj(o[..]);jo_key(o[..],"type");jo_str(o[..],"pointerMove");jo_key(o[..],"duration");jo_int(o[..],0);jo_key(o[..],"x");jo_int(o[..],x);jo_key(o[..],"y");jo_int(o[..],y);jo_key(o[..],"origin");jo_str(o[..],"viewport");jo_end(o[..]);
+  jo_obj(o[..]);jo_key(o[..],"type");jo_str(o[..],"pointerMove");jo_key(o[..],"duration");jo_int(o[..],0);jo_key(o[..],"x");jo_int(o[..],px);jo_key(o[..],"y");jo_int(o[..],py);jo_key(o[..],"origin");if en>0 {jo_obj(o[..]);jo_key(o[..],"element-6066-11e4-a52e-4f735466cecf");jo_str(o[..],cast(string)element[0..<en]);jo_end(o[..]);}else {jo_str(o[..],"viewport");}jo_end(o[..]);
   for kind:[2]string.["pointerDown","pointerUp"] {jo_obj(o[..]);jo_key(o[..],"type");jo_str(o[..],kind);jo_key(o[..],"button");jo_int(o[..],0);jo_end(o[..]);}
   jo_end(o[..]);jo_end(o[..]);jo_end(o[..]);jo_end(o[..]);return wd_call(w,"POST","/actions",jo_text(o[..]));
 }
@@ -136,7 +146,7 @@ wd_touch_source :: (o:[]Jo,id:string,x:int,y:int,dx:int,dy:int,ms:int,right:bool
 wd_stick :: (w:[]PlayerWd,key:string,ms:int,jump:bool,look:int)->bool {
   width:=cast(int)wd_number(w,"innerWidth",0);height:=cast(int)wd_number(w,"innerHeight",0);
   if width<=0 || height<=0 || ms<0 || ms>1000 {return false;}
-  dx:=ifx key=="a" then -55 else ifx key=="d" then 55 else 0;dy:=ifx key=="w" then -55 else ifx key=="s" then 55 else 0;
+  dx:=wd_stick_axis(key,"a","d");dy:=wd_stick_axis(key,"w","s");
   element:[256]u8;en:=0;
   if w[0].native_sdk {
     if !wd_call(w,"POST","/element","{\"using\":\"css selector\",\"value\":\"canvas\"}") {return false;}
@@ -146,6 +156,13 @@ wd_stick :: (w:[]PlayerWd,key:string,ms:int,jump:bool,look:int)->bool {
   wd_touch_source(o[..],"player-left",ifx en>0 then -width/4 else width/4,ifx en>0 then height/10 else height*3/5,dx,dy,ms,false,cast(string)element[0..<en]);
   if jump || look!=0 {wd_touch_source(o[..],"player-right",ifx en>0 then width*3/10 else width*4/5,ifx en>0 then -height/10 else height*2/5,look,0,ms,true,cast(string)element[0..<en]);}
   jo_end(o[..]);jo_end(o[..]);return !o[0].bad && wd_call(w,"POST","/actions",jo_text(o[..]));
+}
+wd_stick_axis :: (keys:string,minus:string,plus:string)->int {
+  return (ifx cdp_contains(keys,plus) then 55 else 0)-(ifx cdp_contains(keys,minus) then 55 else 0);
+}
+#test "touch stick accepts simultaneous diagonal axes and cancels opposites" {
+  #assert wd_stick_axis("wa","a","d")==-55 && wd_stick_axis("wa","w","s")==-55;
+  #assert wd_stick_axis("ad","a","d")==0 && wd_stick_axis("","w","s")==0;
 }
 wd_watchdog :: (endpoint:string,session:string,dir:string)->int {
   w:[1]PlayerWd;if !wd_attach(w[..],endpoint,session) {return 1;}path:[4096]u8;buf:[64]u8;end:=proc_now_ms()+900000;released:=false;
