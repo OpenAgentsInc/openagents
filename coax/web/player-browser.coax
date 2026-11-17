@@ -218,3 +218,18 @@ pb_record :: (url: string, dir: string) -> int {
   result: [128] u8; rn := pb_decimal(result[..],0,count); rn = ws_put(result[..],rn," frames in "); rn = pb_decimal(result[..],rn,proc_now_ms()-began); rn = ws_put(result[..],rn," ms\n");
   _ := fs_write(fs_join(dir,"capture.txt",p[..]),cast(string)result[0..<rn]); return ifx count>1 then 0 else 1;
 }
+
+// Read-only inspection of a same-origin frame. Expressions are trusted observer
+// code, never model-provided actions. The frame's normal input still comes
+// through the browser at the rendered coordinates.
+pb_frame_read :: (c:[]Cdp,frame:string,expression:string)->int {
+  b:[32768]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_arr(o[..]);jo_str(o[..],frame);jo_str(o[..],expression);jo_end(o[..]);if o[0].bad {return -1;}
+  js:[49152]u8;n:=ws_put(js[..],0,"(()=>{try{const [id,expression]=");n=ws_put(js[..],n,jo_text(o[..]));n=ws_put(js[..],n,";const f=document.getElementById(id);return f?.contentWindow?f.contentWindow.eval(expression):null}catch{return null}})()");return ifx n>0 then pb_read(c,cast(string)js[0..<n]) else -1;
+}
+pb_frame_bool :: (c:[]Cdp,frame:string,expression:string)->bool {r:=pb_frame_read(c,frame,expression);return r>=0 && jv_bool(cdp_doc(c),r);}
+pb_frame_number :: (c:[]Cdp,frame:string,expression:string,fallback:f64)->f64 {r:=pb_frame_read(c,frame,expression);if r<0 {return fallback;}v:=args_number(jv_raw(cdp_doc(c),r));return ifx v.ok then v.value else fallback;}
+pb_frame_tap :: (c:[]Cdp,frame:string,id:string)->bool {
+  b:[1024]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_arr(o[..]);jo_str(o[..],frame);jo_str(o[..],id);jo_end(o[..]);if o[0].bad {return false;}
+  js:[4096]u8;n:=ws_put(js[..],0,"(()=>{try{const [fid,id]=");n=ws_put(js[..],n,jo_text(o[..]));n=ws_put(js[..],n,";const f=document.getElementById(fid),d=f?.contentDocument,e=d?.getElementById(id);if(!e||e.disabled)return null;const a=f.getBoundingClientRect(),r=e.getBoundingClientRect(),cx=r.x+r.width/2,cy=r.y+r.height/2,t=d.elementFromPoint(cx,cy),x=a.x+cx,y=a.y+cy;return r.width>0&&r.height>0&&(t===e||e.contains(t))&&document.elementFromPoint(x,y)===f?{x:Math.round(x),y:Math.round(y)}:null}catch{return null}})()");
+  r:=ifx n>0 then pb_read(c,cast(string)js[0..<n]) else -1;if r<0 || jv_kind(cdp_doc(c),r)!=JV_OBJECT {return false;}d:=cdp_doc(c);x:=jv_int(d,jv_get(d,r,"x"),-1);y:=jv_int(d,jv_get(d,r,"y"),-1);return x>=0 && y>=0 && pb_click(c,x,y);
+}
