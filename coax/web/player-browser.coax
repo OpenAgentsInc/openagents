@@ -62,14 +62,23 @@ pb_key :: (c: [] Cdp, key: string, code: string, down: bool) -> bool {
   return cdp_call(c, "Input.dispatchKeyEvent", jo_text(o[..]), PB_CALL_MS) >= 0;
 }
 pb_press :: (c: [] Cdp, key: string, code: string) -> bool { a := pb_key(c,key,code,true); b := pb_key(c,key,code,false); return a && b; }
-pb_mouse :: (c: [] Cdp, kind: string, x: int, y: int, button: string, buttons: int, dy: int) -> bool {
-  b: [512] u8; o: [1] Jo; jo_start(o[..], b[..]); jo_obj(o[..]);
+pb_mouse :: (c:[]Cdp,kind:string,x:int,y:int,button:string,buttons:int,dy:int)->bool {return pb_mouse_mod(c,kind,x,y,button,buttons,dy,0);}
+pb_mouse_mod :: (c:[]Cdp,kind:string,x:int,y:int,button:string,buttons:int,dy:int,modifiers:int)->bool {
+ b:[512]u8;n:=pb_mouse_json(kind,x,y,button,buttons,dy,modifiers,b[..]);return n>0 && cdp_call(c,"Input.dispatchMouseEvent",cast(string)b[0..<n],PB_CALL_MS)>=0;
+}
+pb_mouse_json :: (kind:string,x:int,y:int,button:string,buttons:int,dy:int,modifiers:int,b:[]u8)->int {
+  if modifiers<0 || modifiers>15 {return -1;} o: [1] Jo; jo_start(o[..], b); jo_obj(o[..]);
   jo_key(o[..], "type"); jo_str(o[..], kind); jo_key(o[..], "x"); jo_int(o[..], x); jo_key(o[..], "y"); jo_int(o[..], y);
   jo_key(o[..], "button"); jo_str(o[..], button); jo_key(o[..], "buttons"); jo_int(o[..], buttons);
   if kind == "mousePressed" || kind == "mouseReleased" { jo_key(o[..], "clickCount"); jo_int(o[..], 1); }
   if kind == "mouseWheel" { jo_key(o[..], "deltaX"); jo_int(o[..], 0); jo_key(o[..], "deltaY"); jo_int(o[..], dy); }
-  jo_end(o[..]); return cdp_call(c, "Input.dispatchMouseEvent", jo_text(o[..]), PB_CALL_MS) >= 0;
+  jo_key(o[..],"modifiers");jo_int(o[..],modifiers);jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;
 }
+#test "player mouse modifiers reach real Shift-drag input and reject invalid masks" {
+ b:[512]u8;d:[1]Jv;nodes:[32]JvNode;n:=pb_mouse_json("mousePressed",100,200,"left",1,0,8,b[..]);#assert n>0 && jv_parse(d[..],cast(string)b[0..<n],nodes[..]) && jv_int(d[0],jv_get(d[0],0,"modifiers"),0)==8;
+ #assert pb_mouse_json("mouseMoved",100,200,"none",0,0,16,b[..])<0;
+}
+
 pb_click :: (c: [] Cdp, x: int, y: int) -> bool {
   a := pb_mouse(c,"mouseMoved",x,y,"none",0,0); b := pb_mouse(c,"mousePressed",x,y,"left",1,0); d := pb_mouse(c,"mouseReleased",x,y,"left",0,0); return a && b && d;
 }
@@ -161,9 +170,11 @@ pb_capture_frame :: (dir:string,name:string,bytes:[]u8,delta:int)->bool {
   n=ws_put(b[..],n,"file '");n=ws_put(b[..],n,name);n=ws_put(b[..],n,"'\n");return n>0 && fs_append(fs_join(dir,"capture.ffconcat",path[..]),cast(string)b[0..<n]);
 }
 // Independent process: it can release input even while the policy is killed or hung.
-pb_watchdog :: (url: string, dir: string) -> int {
+pb_watchdog :: (url:string,dir:string)->int {return pb_watchdog_for(url,dir,900000);}
+pb_watchdog_for :: (url:string,dir:string,budget_ms:int)->int {
+  if budget_ms<1000 || budget_ms>7200000 {return 1;}
   c: [1] Cdp; if !cdp_connect(c[..],url) { return 1; }
-  p: [4096] u8; b: [64] u8; expires := proc_now_ms()+2000; end := proc_now_ms()+900000; released := false;
+  p: [4096] u8; b: [64] u8; expires := proc_now_ms()+2000; end := proc_now_ms()+budget_ms; released := false;
   while proc_now_ms()<end {
     owner:[32]u8;on:=fs_read(fs_join(dir,"owner.pid",p[..]),owner[..]);
     if on>0 {pid:=args_whole(cast(string)owner[0..<on]);if pid>1 && cxproc_pid_alive(pid)==0 {_:=pb_release(c[..]);_=cdp_call(c[..],"Browser.close","{}",PB_CALL_MS);cdp_shut(c[..]);return 0;}}
@@ -177,7 +188,9 @@ pb_watchdog :: (url: string, dir: string) -> int {
 }
 // A separate CDP connection records presented frames on the real wall clock.
 // Start only after secret entry. Duration is reconstructed from event receipt times.
-pb_record :: (url: string, dir: string) -> int {
+pb_record :: (url:string,dir:string)->int {return pb_record_with(url,dir,900000,100);}
+pb_record_with :: (url:string,dir:string,budget_ms:int,frame_ms:int)->int {
+  if budget_ms<1000 || budget_ms>3600000 || frame_ms<100 || frame_ms>1000 {return 1;}
   c: [1] Cdp; if !cdp_connect(c[..],url) { return 1; }
   _ := cdp_call(c[..],"Page.enable","{}",PB_CALL_MS);
   _ := cdp_call(c[..],"Network.enable","{}",PB_CALL_MS);
@@ -185,9 +198,9 @@ pb_record :: (url: string, dir: string) -> int {
   id := cdp_send(c[..],"Page.startScreencast","{\"format\":\"jpeg\",\"quality\":65,\"maxWidth\":1440,\"maxHeight\":900,\"everyNthFrame\":2}");
   png: [4194304] u8; p: [4096] u8; frame: [64] u8; buf: [8192] u8;
   script := fs_join(dir,"capture.ffconcat",p[..]); _ := fs_write(script,"ffconcat version 1.0\n");
-  count := 0; last := 0; began := proc_now_ms();total_bytes:=0;
-  while proc_now_ms()-began<900000 {
-    stop: [4096] u8; if fs_exists(fs_join(dir,"record.stop",stop[..])) { break; }
+  count := 0; last := 0; began := proc_now_ms();total_bytes:=0;completed:=false;
+  while proc_now_ms()-began<budget_ms {
+    stop: [4096] u8; if fs_exists(fs_join(dir,"record.stop",stop[..])) {completed=true;break;}
     k := cdp_poll(c[..],200); if k == CDP_CLOSED || k == CDP_FAIL { break; } if k != CDP_GOT { continue; }
     d := cdp_doc(c[..]); method:=cdp_event_method(d);
     if method != "Page.screencastFrame" {
@@ -205,7 +218,7 @@ pb_record :: (url: string, dir: string) -> int {
     jo_start(o[..],a[..]); jo_obj(o[..]); jo_key(o[..],"sessionId"); jo_int(o[..],sid); jo_end(o[..]);
     data := jv_raw(d,jv_path(d,0,"params.data")); now := proc_now_ms();
     pause:[4096]u8;paused:=fs_exists(fs_join(dir,"record.pause",pause[..]));
-    if !paused && (last == 0 || now-last>=100) {
+    if !paused && (last == 0 || now-last>=frame_ms) {
       n := b64_decode(data,png[..]); fn := ws_put(frame[..],0,"frame-"); fn = pb_decimal(frame[..],fn,count); fn = ws_put(frame[..],fn,".jpg");
       name := cast(string)frame[0..<fn];
       if n<=0 || !pb_capture_frame(dir,name,png[0..<n],ifx last>0 then now-last else -1) { cdp_shut(c[..]); return 1; }
@@ -216,7 +229,7 @@ pb_record :: (url: string, dir: string) -> int {
   _ := cdp_call(c[..],"Page.stopScreencast","{}",PB_CALL_MS); cdp_shut(c[..]);
   _ := fs_append(script,"duration 0.1\n");
   result: [128] u8; rn := pb_decimal(result[..],0,count); rn = ws_put(result[..],rn," frames in "); rn = pb_decimal(result[..],rn,proc_now_ms()-began); rn = ws_put(result[..],rn," ms\n");
-  _ := fs_write(fs_join(dir,"capture.txt",p[..]),cast(string)result[0..<rn]); return ifx count>1 then 0 else 1;
+  _ := fs_write(fs_join(dir,"capture.txt",p[..]),cast(string)result[0..<rn]); return ifx completed && count>1 then 0 else 1;
 }
 
 // Read-only inspection of a same-origin frame. Expressions are trusted observer
