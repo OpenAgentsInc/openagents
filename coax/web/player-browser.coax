@@ -103,7 +103,7 @@ pb_touch :: (c:[]Cdp,kind:string,points:[]PbContact)->bool {
   out:[2048]u8;n:=pb_touch_json(kind,points,out[..]);return n>0 && cdp_call(c,"Input.dispatchTouchEvent",cast(string)out[0..<n],PB_CALL_MS)>=0;
 }
 pb_touch_tap :: (c:[]Cdp,x:int,y:int)->bool {
-  p:=[1]PbContact.[PbContact.{id=1,x=x,y=y}];down:=pb_touch(c,"touchStart",p[..]);proc_sleep(50);up:=pb_touch(c,"touchEnd",p[0..<0]);return down && up;
+  p:=[1]PbContact.[PbContact.{id=1,x=x,y=y}];down:=pb_touch(c,"touchStart",p[..]);proc_sleep(50);up:=pb_touch(c,"touchEnd",p[..]);return down && up;
 }
 // Real-time independent contacts for emulated touch lanes. These lanes report
 // their engine explicitly and never stand in for Safari or a software keyboard.
@@ -114,8 +114,11 @@ pb_stick :: (c:[]Cdp,keys:string,ms:int,jump:bool,look:int,dir:string)->bool {
   p:=[2]PbContact.[PbContact.{id=1,x=w/4,y=h*3/5},PbContact.{id=2,x=w*4/5,y=h*2/5}];n:=ifx jump || look!=0 then 2 else 1;
   if !pb_touch(c,"touchStart",p[0..<n]) {return false;}_:=pb_wait(dir,50);p[0].x+=dx;p[0].y+=dy;p[1].x+=look;
   moved:=pb_touch(c,"touchMove",p[0..<n]);_=pb_wait(dir,50);
-  if n==2 {_:=pb_touch(c,"touchEnd",p[0..<1]);}
-  waited:=pb_wait(dir,ms);released:=pb_touch(c,"touchEnd",p[0..<0]);return moved && waited && released;
+  // dispatchTouchEvent names the contacts that changed, including those lifted.
+  // Lift the right finger while the left keeps moving, then lift the left.
+  lifted:=true;if n==2 {lifted=pb_touch(c,"touchEnd",p[1..<2]);}
+  waited:=pb_wait(dir,ms);released:=pb_touch(c,"touchEnd",p[0..<1]);ok:=moved && lifted && waited && released;
+  if !ok {_:=pb_touch(c,"touchCancel",p[0..<0]);}return ok;
 }
 pb_type :: (c: [] Cdp, text: string) -> bool {
   b: [8192] u8; o: [1] Jo; jo_start(o[..],b[..]); jo_obj(o[..]); jo_key(o[..],"text"); jo_str(o[..],text); jo_end(o[..]);
