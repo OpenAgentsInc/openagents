@@ -62,7 +62,7 @@ The attitude update multiplies by the exponential of the rotation
 
 ## What runs today
 
-[`metaverse-engine/physics/sim/rigid.coax`](../physics/sim/rigid.coax) holds up to 64
+[`metaverse-engine/physics/sim/rigid.coax`](../physics/sim/rigid.coax) holds up to 1,024
 bodies as a `Rigid_Set`: arrays of position, attitude, linear velocity,
 body-frame angular velocity, mass and inverse mass, principal moments and
 their inverses, and a world-frame force and torque that each step clears.
@@ -218,6 +218,7 @@ consumer (its blocks and its ball).
 | Shared and local | A body is shared (consequential: what a server replicates) unless marked local (decoration). A local body is moved by shared ones and never moves, wakes or keeps awake a shared one, and has its own share of the contact room: the shared bodies' state is the same bits with any local bodies or none. |
 | Snapshot | `bd_snapshot_write` and `bd_snapshot_read`: a 32-byte header (`BDS1`, version 2, record size, step, count, the scene's gravity) and a 112-byte record a shared body (id, sleep group, position, attitude, velocity, body-frame spin, as little-endian f64), in id order. Reading clears what a step keeps between steps, so every scene that reads one snapshot goes on bit for bit the same. |
 | Gravity | `bd_gravity`: the scene's gravity is a setting a game may change as it runs. A change wakes every body. It is in the digest, the snapshot's header and each stored step of the history, so a run with a change in it repeats bit for bit and a rewind puts it back (gamebuilder.org's world settings: a slider from a tenth to five times the normal) |
+| Scale | 1,024 bodies (gamebuilder.org's world holds a thousand things). Sleepers are static to the broad phase, so a sleeping pair costs no contact; up to 2,048 manifolds a step. Measured by `metaverse-engine/tools/bodies-bench.coax` on an Apple M-series Mac, native release: a step of 1,000 resting bodies 0.32 ms, with 50 of them awake 0.36 ms, a pile of 200 all awake 2.2 ms (most 803 manifolds); keeping each step in the history adds under 0.01 ms. A `Bodies` is 3.8 MB and a `Bd_History` 9.3 MB. |
 | History | `Bd_History` keeps the last 64 steps of every body (`bd_at`, `bd_between`), and for the newest 16 the contact impulses too: `bd_rewind` to one of those and stepping again with the same movers repeats the first run bit for bit. |
 
 What it measures, in its checks: a box dropped 4 m lands without entering
@@ -245,7 +246,7 @@ prediction. For shared worlds the next steps are snapshot interpolation
 [`docs/research/2026-11-17-shared-physics-multiplayer-plan.md`](../../docs/research/2026-11-17-shared-physics-multiplayer-plan.md).
 
 Not built: joints, hulls and capsules as bodies, continuous collision
-between two fast bodies, more than 64 bodies, device kernels, the network.
+between two fast bodies, more than 1,024 bodies, device kernels, the network.
 The Physics Lab (chapter 37) still measures the older kernel composition
 against Rapier and Jolt, not this module.
 
@@ -254,7 +255,7 @@ against Rapier and Jolt, not this module.
 A world has things that never move: a house, a rock, a room's walls. They are
 not bodies. `bd_wall(b, lo, hi)` adds a fixed box square to the world by its
 low and high corners (up to `BD_WALLS`, 512), and `bd_walls_clear` takes them
-all away. A wall takes none of the 64 bodies, is never stepped, woken or put
+all away. A wall takes none of the 1,024 bodies, is never stepped, woken or put
 to sleep, and two walls are never tested against each other: each awake body
 is tested only against the walls its own swept box overlaps, after its ground
 contact and its pairs, in the walls' order. A ball meets a wall by its nearest

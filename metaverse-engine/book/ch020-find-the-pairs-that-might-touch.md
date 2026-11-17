@@ -50,7 +50,7 @@ which on a GPU can beat both for a few thousand objects.
 
 ## What runs today
 
-[`metaverse-engine/physics/sim/broad.coax`](../physics/sim/broad.coax) holds up to 128
+[`metaverse-engine/physics/sim/broad.coax`](../physics/sim/broad.coax) holds up to 1,024
 bodies as a `Broad_Set`: one box per body, and the filter fields (a static
 flag, the joint parent link, a collision group and a mask). `broad_box`
 builds a body's box for one step: the box at the start of the step joined
@@ -67,8 +67,11 @@ runs one of three methods, each a named profile:
   from its own index, with no dependence on the others), fits the boxes
   bottom-up, and walks the tree once per body.
 
-Each method writes pairs as the key `i * 128 + j` with `i < j` and then
+Each method writes pairs as the key `i * 1024 + j` with `i < j` and then
 sorts the keys, so every method returns the same list in the same order.
+A call keeps at most `BROAD_PAIRS` (16,384) pairs: a full set all
+overlapping would be 523,776. Past the room the rest are left out and
+counted (`lost`), and which are kept then follows the method's own order.
 Each call also counts its box tests, the part of its cost that does not
 depend on the machine.
 
@@ -177,8 +180,8 @@ coax/bin/coax test metaverse-engine/physics/sim/broad.coax --library
 ```
 
 They compare every method with a reference that tests separation on each
-axis, on random scenes of every size from 0 to 39 bodies and on full sets of
-128, on degenerate scenes (all boxes equal, a row touching face to face, a
+axis, on random scenes of every size from 0 to 39 bodies and on sets of
+128 and a full set of 1,024 (where the pairs past the room are counted), on degenerate scenes (all boxes equal, a row touching face to face, a
 column on `y`) and on empty and one-body sets. They check that a bullet that
 passes through a thin wall within one step is reported although neither end
 of its motion touches the wall, that static pairs, joint links and masked

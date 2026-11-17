@@ -1,0 +1,65 @@
+// tool.sh: release
+// What a step of the engine's rigid bodies (physics/sim/bodies.coax) costs on this machine with a
+// thousand things in the scene: the scenes gamebuilder.org's world reaches at its cap.
+//   coax/web/tool.sh metaverse-engine/tools/bodies-bench.coax
+// Four scenes, each a thousand bodies or two hundred:
+//   resting   1,000 boxes and balls on a grid, all asleep
+//   fifty     the same, with 50 of them dropped from 3 m (awake until they settle)
+//   pile      200 boxes dropped into a 4 m square: a heap, all awake together
+//   history   the resting scene, each step kept in a Bd_History (bd_record)
+// Each prints the mean and the slowest step in milliseconds, the most manifolds a step made, and
+// what was left out for want of room (manifolds, broad pairs); then the sizes of a Bodies and a
+// Bd_History. Times are the machine's, not the engine's promise: the step's results are the same bits
+// on every machine.
+#import "Basic";
+#load "../physics/sim/bodies.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/proc.coax";
+
+Bench :: struct { b: [1] Bodies; h: [1] Bd_History; }
+
+bench_grid :: (b: [] Bodies, n: int) {
+  bd_reset(b);
+  for k: 0..<n {
+    x := cast(f64) (k % 32) * 2.5 - 40.0; z := cast(f64) (k / 32) * 2.5 - 40.0;
+    i := ifx k % 8 == 7 then bd_ball(b, k + 1, d3(x, 0.4, z), 0.4, 40.0, 0.6, 0.55, 0.06)
+         else bd_box(b, k + 1, d3(x, 0.5, z), DQ.{}, d3(0.5, 0.5, 0.5), 200.0, 0.5, 0.15);
+    bd_still(b, i);
+  }
+}
+bench_run :: (name: string, b: [] Bodies, h: [] Bd_History, steps: int, keep: bool) {
+  total := 0; worst := 0; most := 0; lost := 0;
+  dropped := b[0].dropped;
+  for k: 0..<steps {
+    t0 := cxproc_now_ns();
+    bd_step(b);
+    if keep { bd_record(b, h); }
+    t := cxproc_now_ns() - t0;
+    total += t; if t > worst { worst = t; }
+    if b[0].count_m > most { most = b[0].count_m; }
+    lost += b[0].bp[0].lost;
+  }
+  print("%: % bodies, % awake at the end, % steps: mean % us, slowest % us; most manifolds % (room %), left out % manifolds, % pairs\n",
+        name, bd_count(b), bd_count(b) - bd_sleeping(b), steps, total / steps / 1000, worst / 1000, most, BD_MANIFOLDS, b[0].dropped - dropped, lost);
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  t: [1] Bench; b := t[0].b[..]; h := t[0].h[..];
+  bench_grid(b, 1000);
+  bench_run("resting", b, h, 600, false);
+  bench_grid(b, 1000);
+  for k: 0..<50 { i := bd_index(b, k * 19 + 3); bd_place(b, i, d3(b[0].set[0].pos[i].x, 3.0, b[0].set[0].pos[i].z), dq_y(cast(f64) k * 0.3)); bd_wake(b, i); }
+  bench_run("fifty", b, h, 60, false);
+  bench_run("fifty, settling", b, h, 240, false);
+  bd_reset(b);
+  for k: 0..<200 {
+    x := cast(f64) (k % 5) * 0.8 - 1.6; z := cast(f64) ((k / 5) % 5) * 0.8 - 1.6; y := 0.6 + cast(f64) (k / 25) * 1.1;
+    i := bd_box(b, k + 1, d3(x, y, z), dq_y(cast(f64) k * 0.37), d3(0.35, 0.3, 0.35), 200.0, 0.5, 0.15);
+  }
+  bench_run("pile", b, h, 120, false);
+  bench_run("pile, settling", b, h, 480, false);
+  bench_grid(b, 1000);
+  bench_run("history", b, h, 600, true);
+  print("sizes: Bodies % bytes, Bd_History % bytes (% steps of % bodies)\n", size_of(Bodies), size_of(Bd_History), BD_HISTORY, BD_MAX);
+  return 0;
+}

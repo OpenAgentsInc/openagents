@@ -83,9 +83,9 @@
 #load "broad.coax";
 #load "../../core/math.coax";
 
-BD_MAX :: RIGID_BODIES;      // 64 bodies
+BD_MAX :: RIGID_BODIES;      // 1,024 bodies
 BD_POINTS :: 4;              // contact points a manifold
-BD_MANIFOLDS :: 256;         // manifolds a step; more are left out and counted
+BD_MANIFOLDS :: 2048;        // manifolds a step; more are left out and counted (a pile of 200 awake needs about a thousand)
 BD_LOCAL_ROOM :: 64;         // of them, at most this many that touch a local body: the rest are the shared bodies' own
 BD_MOVERS :: 8;              // movers at once
 BD_GROUND :: -1;             // a manifold's second body: the ground plane
@@ -1095,7 +1095,7 @@ bd_record :: (b: [] Bodies, h: [] Bd_History) {
   for k: 0..<d[0].count_w { d[0].warm[k] = b[0].warm[k]; }
 }
 // Whether the history has the step, and whether a rewind to it would repeat exactly.
-bd_has :: (h: [] Bd_History, step: int) -> bool { f := h[0].frame[bd_slot(step)]; return f.used && f.step == step; }
+bd_has :: (h: [] Bd_History, step: int) -> bool { f := h[0].frame[bd_slot(step)..<bd_slot(step) + 1]; return f[0].used && f[0].step == step; }   // (a view: a step of a thousand bodies is not copied to ask)
 bd_exact :: (h: [] Bd_History, step: int) -> bool { d := h[0].deep[bd_deep(step)..<bd_deep(step) + 1]; return bd_has(h, step) && d[0].used && d[0].step == step; }
 // The body with this id at a step; ok is false when the history has not the step or the body was not there then.
 bd_at :: (h: [] Bd_History, id: int, step: int) -> Bd_State {
@@ -1745,7 +1745,7 @@ bd_test_walk :: (b: [] Bodies, i: int, half_z: f64, at: f64) -> f64 {
 
 #test "more contacts than there is room for are left out and counted, and boxes all put in one place still come to rest" #steps 4000000000 {
   t: [1] BdTest; b := t[0].b[..];
-  // sixty-four in one place: 64 ground contacts and 2016 pairs, room for 192 (and 64 more that only local bodies may use)
+  // sixty-four in one place: 64 ground contacts and 2016 pairs, room for 1,984 (and 64 more that only local bodies may use)
   for k: 0..<64 { i := bd_test_cube(b, cast(f64) (k % 8) * 0.05, 0.5 + cast(f64) (k / 8) * 0.05, 0.0, 0.5); }
   s := b[0].set[..];
   bd_step(b);
@@ -2432,4 +2432,26 @@ BdTestPast :: struct { b: [1] Bodies; h: [1] Bd_History; hash: [400] u64; }
   // the first body, asleep, wakes when another's material changes
   i2 := bd_test_cube(g, 5.0, 0.5, 0.0, 0.5); bd_still(g, 0); bd_still(g, 1); #assert bd_sleeping(g) == 2;
   bd_material(g, 1, 100.0, 0.5, 0.15); #assert bd_sleeping(g) == 0 && bd_awake(g, 0);
+}
+
+#test "a thousand bodies: resting ones cost no contacts, fifty dropped among them land and sleep, and two runs, added in other orders, are the same bits at every step" #steps 40000000000 #traversal 4000000000 {
+  t: [2] BdTest; a := t[0].b[..]; c := t[1].b[..];
+  for r: 0..<2 {
+    b := t[r].b[..];
+    for q: 0..<1000 {
+      k := ifx r == 0 then q else 999 - q;   // the second scene adds them last first
+      x := cast(f64) (k % 32) * 2.5 - 40.0; z := cast(f64) (k / 32) * 2.5 - 40.0;
+      i := ifx k % 8 == 7 then bd_ball(b, k + 1, d3(x, 0.4, z), 0.4, 40.0, 0.6, 0.55, 0.06) else bd_box(b, k + 1, d3(x, 0.5, z), DQ.{}, d3(0.5, 0.5, 0.5), 200.0, 0.5, 0.15);
+      bd_still(b, bd_index(b, k + 1));
+    }
+  }
+  #assert bd_count(a) == 1000 && bd_count(c) == 1000 && bd_sleeping(a) == 1000;
+  bd_step(a); bd_step(c);
+  #assert a[0].count_m == 0 && bd_digest(a) == bd_digest(c);
+  for r: 0..<2 { b := t[r].b[..]; for k: 0..<50 { i := bd_index(b, k * 19 + 3); bd_place(b, i, d3(b[0].set[0].pos[i].x, 3.0, b[0].set[0].pos[i].z), dq_y(cast(f64) k * 0.3)); bd_wake(b, i); } }
+  for s: 0..<240 { bd_step(a); bd_step(c); #assert bd_digest(a) == bd_digest(c); }
+  #assert bd_sleeping(a) == 1000 && a[0].dropped == 0 && a[0].faults == 0 && a[0].lifted == 0 && a[0].bp[0].lost == 0;
+  // the store full at 1,024: one more is refused
+  for k: 1000..<BD_MAX { #assert bd_box(a, k + 1, d3(cast(f64) (k - 1000) * 2.5, 0.5, 60.0), DQ.{}, d3(0.5, 0.5, 0.5), 200.0, 0.5, 0.15) >= 0; }
+  #assert bd_count(a) == BD_MAX && bd_box(a, 5000, d3(0.0, 0.5, 70.0), DQ.{}, d3(0.5, 0.5, 0.5), 200.0, 0.5, 0.15) == -1 && BD_MAX == 1024;
 }

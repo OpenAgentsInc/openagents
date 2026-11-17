@@ -73,11 +73,11 @@ no baselines. Quantisation follows Fiedler, "Snapshot Compression" (2015).
 
 | Field | Bits | Encoding |
 | --- | --- | --- |
-| Body id | 6 | 0 to 63 (`RIGID_BODIES` is 64) |
+| Body id | 10 | 0 to 1023 (`RIGID_BODIES` is 1,024 since 2026-11-17) |
 | Position | 46 | x and z in ±64 m at 1/512 m (16 bits each), y in 0 to 32 m (14 bits). Fiedler uses 512 values a metre, about 2 mm |
 | Orientation | 29 | Smallest three: "2 + 9 + 9 + 9 = 29 bits per-orientation (down from 128 bits)" |
 | Linear velocity | 33 | ±32 m/s, 1/32 m/s steps, 11 bits a component (Fiedler's bounds) |
-| **Moving body, Stage 1** | **114** | 14.25 bytes |
+| **Moving body, Stage 1** | **118** | 14.75 bytes |
 | Angular velocity (Stage 2, predicted bodies only) | 33 | As linear, in rad/s |
 | Finer orientation (Stage 2, predicted bodies only) | +18 | 15 bits a component. Fiedler needed this once both sides simulate |
 | Player row | 100 | seat 3, position 46, yaw 10, velocity 33, flags 8 |

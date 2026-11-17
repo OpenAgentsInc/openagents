@@ -252,7 +252,7 @@ ledger_error :: (l: Ledger, now: Momentum) -> LedgerError {
 
 // ---- many bodies at once (book chapter 18)
 
-RIGID_BODIES :: 64;
+RIGID_BODIES :: 1024;      // a scene of a thousand resting things (gamebuilder.org) and some room
 
 Rigid_Profile :: enum u8 { explicit_euler; semi_implicit; implicit_gyro; }
 

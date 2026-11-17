@@ -15,15 +15,19 @@
 // All three return the same thing: the pairs (i, j) with i < j as keys
 // i * BROAD_BODIES + j, sorted ascending, which is lexicographic order. The
 // contact solver's iteration order depends on that order, so the method is a
-// cost choice and never changes a result. Each call counts the box tests it
+// cost choice and never changes a result, while the pairs fit in BROAD_PAIRS:
+// past that the rest are left out and counted (lost), and which are kept
+// follows the method's own order. Each call counts the box tests it
 // made, the deterministic part of its cost. CPU only, f64; device kernels are
 // not built yet.
 //   coax/bin/coax test --library metaverse-engine/physics/sim/broad.coax
 #load "../../core/math-d.coax";
 
-BROAD_BODIES :: 128;
-BROAD_PAIRS :: 8128;   // 128 * 127 / 2: every pair of a full set fits
-BROAD_NODES :: 255;    // 127 internal nodes, then 128 leaves
+BROAD_BODIES :: 1024;
+BROAD_BITS :: 10;      // a body's index in a key's low bits: BROAD_BODIES is 1 << BROAD_BITS
+BROAD_PAIRS :: 16384;  // pairs a call keeps; more are left out and counted (lost). A full set of 1,024 boxes all
+                       // overlapping would be 523,776 pairs: a scene of resting things has a few per body
+BROAD_NODES :: 2047;   // 1023 internal nodes, then 1024 leaves
 
 Broad_Method :: enum u8 { all_pairs; sweep_prune; lbvh; }
 
@@ -50,6 +54,7 @@ Broad_Pairs :: struct {
   key: [BROAD_PAIRS] int;        // i * BROAD_BODIES + j, i < j, ascending
   scratch: [BROAD_PAIRS] int;
   tests: int;                    // box tests made
+  lost: int;                     // pairs left out for want of room
   swaps: int;                    // sweep and prune's insertion-sort swaps
 }
 
@@ -88,6 +93,7 @@ broad_allowed :: (s: [] Broad_Set, i: int, j: int) -> bool {
 }
 
 broad_emit :: (out: [] Broad_Pairs, i: int, j: int) {
+  if out[0].count == BROAD_PAIRS { out[0].lost += 1; return; }
   a := ifx i < j then i else j; b := ifx i < j then j else i;   // mutant: equivalent (i != j here: no body pairs with itself)
   out[0].key[out[0].count] = a * BROAD_BODIES + b;
   out[0].count += 1;
@@ -179,7 +185,7 @@ broad_clz :: (v: int) -> int {
   return 64;
 }
 Broad_Tree :: struct {
-  key: [BROAD_BODIES] int;         // (code << 7) | body, sorted: unique
+  key: [BROAD_BODIES] int;         // (code << BROAD_BITS) | body, sorted: unique
   left: [BROAD_BODIES] int;        // node index: below n - 1 internal, else leaf n - 1 + k
   right: [BROAD_BODIES] int;
   box: [BROAD_NODES] Box;
@@ -200,7 +206,7 @@ broad_build :: (s: [] Broad_Set, t: [] Broad_Tree) {
   for i: 1..<n { bound = broad_join(bound, s[0].box[i]); }
   for i: 0..<n {
     c := d3_scale(d3_add(s[0].box[i].lo, s[0].box[i].hi), 0.5);
-    t[0].key[i] = (broad_morton(c, bound) << 7) | i;   // mutant: equivalent (the body index stays in the low 7 bits and the key order is unchanged)
+    t[0].key[i] = (broad_morton(c, bound) << BROAD_BITS) | i;   // mutant: equivalent (the body index stays in the low bits and the key order is unchanged)
   }
   // Insertion sort; the keys are unique.
   for k: 1..<n {
@@ -209,7 +215,7 @@ broad_build :: (s: [] Broad_Set, t: [] Broad_Tree) {
       x := t[0].key[m]; t[0].key[m] = t[0].key[m - 1]; t[0].key[m - 1] = x; m -= 1;
     }
   }
-  for k: 0..<n { t[0].box[n - 1 + k] = s[0].box[t[0].key[k] & 127]; }
+  for k: 0..<n { t[0].box[n - 1 + k] = s[0].box[t[0].key[k] & (BROAD_BODIES - 1)]; }
   // Each internal node i covers a range of sorted leaves with i at one end;
   // its split is where the common prefix first shrinks.
   for i: 0..<n - 1 {
@@ -261,7 +267,7 @@ broad_lbvh :: (s: [] Broad_Set, out: [] Broad_Pairs) {
       out[0].tests += 1;
       if !broad_overlap(t[0].box[v], s[0].box[i]) { continue; }
       if v >= n - 1 {
-        j := t[0].key[v - (n - 1)] & 127;
+        j := t[0].key[v - (n - 1)] & (BROAD_BODIES - 1);
         if j > i && broad_allowed(s, i, j) { broad_emit(out, i, j); }
       } else {
         stack[top] = t[0].left[v]; stack[top + 1] = t[0].right[v]; top += 2;
@@ -273,7 +279,7 @@ broad_lbvh :: (s: [] Broad_Set, out: [] Broad_Pairs) {
 
 // The candidate pairs of the set by method m into out[0], which is cleared.
 broad_pairs :: (s: [] Broad_Set, m: Broad_Method, out: [] Broad_Pairs) {
-  out[0].count = 0; out[0].tests = 0; out[0].swaps = 0;
+  out[0].count = 0; out[0].tests = 0; out[0].swaps = 0; out[0].lost = 0;
   if m == Broad_Method.all_pairs { broad_all_pairs(s, out); }
   else if m == Broad_Method.sweep_prune { broad_sweep_prune(s, out); }
   else { broad_lbvh(s, out); }
@@ -331,8 +337,8 @@ all_agree :: (s: [] Broad_Set) -> bool {
     #assert all_agree(s[..]);
   }
   for seed: 1..<6 {
-    broad_test_scene(s[..], BROAD_BODIES, seed, 20.0); #assert all_agree(s[..]);
-    broad_test_scene(s[..], BROAD_BODIES, seed, 8.0); #assert all_agree(s[..]);
+    broad_test_scene(s[..], 128, seed, 20.0); #assert all_agree(s[..]);
+    broad_test_scene(s[..], 128, seed, 8.0); #assert all_agree(s[..]);
   }
   out: [1] Broad_Pairs;
   broad_test_scene(s[..], 64, 3, 8.0); broad_pairs(s[..], Broad_Method.all_pairs, out[..]);
@@ -341,9 +347,9 @@ all_agree :: (s: [] Broad_Set) -> bool {
 
 #test "degenerate scenes: all boxes equal, all on one line, all touching at a face" #steps 200000000 {
   s: [1] Broad_Set; out: [1] Broad_Pairs;
-  for i: 0..<BROAD_BODIES { _ := broad_add(s[..], broad_box(d3(1.0, 2.0, 3.0), d3(0.5, 0.5, 0.5), D3_ZERO, 0.0, 0.0)); }
+  for i: 0..<128 { _ := broad_add(s[..], broad_box(d3(1.0, 2.0, 3.0), d3(0.5, 0.5, 0.5), D3_ZERO, 0.0, 0.0)); }
   #assert all_agree(s[..]);
-  for m: 0..<3 { broad_pairs(s[..], cast(Broad_Method) m, out[..]); #assert out[0].count == BROAD_PAIRS; }
+  for m: 0..<3 { broad_pairs(s[..], cast(Broad_Method) m, out[..]); #assert out[0].count == 128 * 127 / 2 && out[0].lost == 0; }
   // A row on x of unit boxes one apart: neighbours touch at a face, and
   // touching counts.
   s[0].count = 0;
@@ -447,7 +453,7 @@ all_agree :: (s: [] Broad_Set) -> bool {
 
 #test "the hierarchy prunes: far fewer box tests than all pairs on a sparse scene" {
   s: [1] Broad_Set; out: [1] Broad_Pairs;
-  broad_test_scene(s[..], BROAD_BODIES, 2, 40.0);
+  broad_test_scene(s[..], 128, 2, 40.0);
   broad_pairs(s[..], Broad_Method.all_pairs, out[..]); all := out[0].tests;
   broad_pairs(s[..], Broad_Method.lbvh, out[..]); #assert out[0].tests * 2 < all;
   broad_pairs(s[..], Broad_Method.sweep_prune, out[..]); #assert out[0].tests * 4 < all;
@@ -505,9 +511,28 @@ all_agree :: (s: [] Broad_Set) -> bool {
 
 #test "box tests: each method's cost on a fixed scene" {
   s: [1] Broad_Set; out: [1] Broad_Pairs;
-  broad_test_scene(s[..], BROAD_BODIES, 2, 40.0);
+  broad_test_scene(s[..], 128, 2, 40.0);
   broad_pairs(s[..], Broad_Method.lbvh, out[..]); #assert out[0].tests == LBVH_TESTS;
   broad_pairs(s[..], Broad_Method.sweep_prune, out[..]); #assert out[0].tests == SWEEP_TESTS;
   broad_test_scene(s[..], 7, 9, 3.0);
   broad_pairs(s[..], Broad_Method.lbvh, out[..]); #assert out[0].tests == LBVH_SMALL;
+}
+
+#test "a full set: 1,024 bodies, every method agrees on a sparse scene; all overlapping, the pairs past the room are counted, not kept" #steps 4000000000 #traversal 400000000 {
+  s: [1] Broad_Set; out: [1] Broad_Pairs;
+  broad_test_scene(s[..], BROAD_BODIES, 3, 160.0); #assert s[0].count == BROAD_BODIES && all_agree(s[..]);
+  broad_pairs(s[..], Broad_Method.all_pairs, out[..]); all := out[0].tests; #assert all == 1024 * 1023 / 2 && out[0].lost == 0;
+  broad_pairs(s[..], Broad_Method.sweep_prune, out[..]); #assert out[0].tests * 20 < all && out[0].lost == 0;
+  // (the last body's index fills the key's low bits: it decodes back)
+  #assert (out[0].key[out[0].count - 1] & (BROAD_BODIES - 1)) == out[0].key[out[0].count - 1] % BROAD_BODIES && BROAD_BODIES == 1 << BROAD_BITS;
+  s[0].count = 0;
+  for i: 0..<BROAD_BODIES { _ := broad_add(s[..], broad_box(d3(1.0, 2.0, 3.0), d3(0.5, 0.5, 0.5), D3_ZERO, 0.0, 0.0)); }
+  for m: 0..<3 {
+    broad_pairs(s[..], cast(Broad_Method) m, out[..]);
+    #assert out[0].count == BROAD_PAIRS && out[0].lost == 1024 * 1023 / 2 - BROAD_PAIRS;
+    for k: 1..<out[0].count { #assert out[0].key[k - 1] < out[0].key[k]; }
+  }
+  // all pairs keeps the first rows whole: body 0's 1,023 pairs, then 1's, ..., and 136 of body 16's
+  broad_pairs(s[..], Broad_Method.all_pairs, out[..]); last := out[0].key[BROAD_PAIRS - 1];
+  #assert out[0].key[0] == 1 && last == 16 * BROAD_BODIES + 152;
 }
