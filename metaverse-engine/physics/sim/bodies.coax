@@ -47,6 +47,7 @@
 //   bd_box / bd_ball        add a body under an id: its mass is its volume times a density (0: fixed)
 //   bd_index                the index a body's id has now (indices move when bodies come and go)
 //   bd_place / bd_resize    put a body somewhere; give a box a new size, its lowest point where it was
+//   bd_still                put a body to sleep where it is: a thing set down at rest, not dropped
 //   bd_remove               take one out
 //   bd_local                mark a body local-only decoration
 //   bd_mover / bd_mover_off where a mover is and how it moves, for the steps that follow
@@ -280,6 +281,18 @@ bd_place :: (b: [] Bodies, i: int, pos: D3, att: DQ) {
   bd_wake(b, i);
   b[0].set[0].pos[i] = pos; b[0].set[0].att[i] = att; b[0].set[0].vel[i] = D3_ZERO; b[0].set[0].omega[i] = D3_ZERO;
   b[0].was_pos[i] = pos; b[0].was_att[i] = att;
+}
+// Puts body i to sleep where it is, still, in a sleep group of its own: a thing set down at rest
+// (a builder's block put exactly in its place) and not dropped. It is not stepped, so it stays
+// exactly where it was put, beside and on top of others, until something wakes it as it wakes any
+// sleeper: a moving body or a mover against it, a change of gravity, bd_place, bd_resize, an
+// impulse. A fixed body needs none of this and is left alone.
+bd_still :: (b: [] Bodies, i: int) {
+  if i < 0 || i >= bd_count(b) || bd_fixed(b, i) { return; }
+  b[0].set[0].vel[i] = D3_ZERO; b[0].set[0].omega[i] = D3_ZERO;
+  b[0].was_pos[i] = b[0].set[0].pos[i]; b[0].was_att[i] = b[0].set[0].att[i];
+  b[0].quiet[i] = BD_SLEEP_TIME;
+  b[0].label[i] = b[0].labels + 1; b[0].labels += BD_MAX;   // (a label no island has had, or will)
 }
 // A box's new half extents (a ball's new radius in x), its mass by `density`: its lowest point and
 // the middle of its footprint stay where they were, so one that rests goes on resting there.
@@ -1947,6 +1960,77 @@ BdTestRun :: struct { b: [1] Bodies; log: [2048] BdTestInput; n: int; hash: [600
 }
 
 BdTestPast :: struct { b: [1] Bodies; h: [1] Bd_History; hash: [400] u64; }
+#test "a body put to sleep where it is stays exactly there, beside and on top of others, for ten seconds; a push, a landing body and a change of gravity wake it as they wake any sleeper" #steps 4000000000 {
+  t: [1] Bodies; b := t[0..<1];
+  bd_reset(b);
+  // a row of three cubes touching side by side on the ground, one on top of the middle one, and a ball on top of that: all set down asleep
+  a := bd_test_cube(b, 0, 0.5, 0, 0.5); c := bd_test_cube(b, 1, 0.5, 0, 0.5); e := bd_test_cube(b, 2, 0.5, 0, 0.5);
+  f := bd_test_cube(b, 1, 1.5, 0, 0.5); g := bd_test_ball(b, d3(1, 2.3, 0), 0.3, 40.0, 0.6, 0.55, 0.06);
+  for i: 0..<5 { b[0].set[0].vel[i] = d3(1, 2, 3); b[0].set[0].omega[i] = d3(0.5, 0, 0); b[0].was_pos[i] = d3(7, 7, 7); b[0].was_att[i] = dq_y(1.0); bd_still(b, i); }
+  for i: 0..<5 { #assert d3_eq(b[0].was_pos[i], b[0].set[0].pos[i]) && b[0].was_att[i].w == 1.0 && d3_eq(b[0].set[0].vel[i], D3_ZERO) && d3_eq(b[0].set[0].omega[i], D3_ZERO) && b[0].quiet[i] == BD_SLEEP_TIME; }
+  #assert b[0].labels == 5 * BD_MAX && b[0].label[a] == 1 && b[0].label[c] == BD_MAX + 1 && b[0].label[g] == 4 * BD_MAX + 1;
+  #assert bd_sleeping(b) == 5 && !bd_awake(b, a) && !bd_awake(b, g) && d3_eq(b[0].set[0].vel[c], D3_ZERO) && d3_eq(b[0].set[0].omega[c], D3_ZERO) && b[0].quiet[e] == BD_SLEEP_TIME;
+  // each in a sleep group of its own: waking one wakes no other
+  #assert b[0].label[a] != b[0].label[c] && b[0].label[c] != b[0].label[e] && b[0].label[f] != b[0].label[g] && b[0].label[a] != b[0].label[g];
+  was: [5] D3; for i: 0..<5 { was[i] = b[0].set[0].pos[i]; }
+  d0 := bd_digest(b);
+  bd_test_run(b, 600);
+  #assert bd_sleeping(b) == 5;
+  for i: 0..<5 { #assert d3_eq(b[0].set[0].pos[i], was[i]) && d3_eq(b[0].was_pos[i], was[i]) && b[0].set[0].att[i].w == 1.0; }
+  // one alone woken: it is the only one awake, and resting where it is it sleeps again
+  bd_wake(b, e); #assert bd_awake(b, e) && bd_sleeping(b) == 4;
+  bd_test_run(b, 120); #assert bd_sleeping(b) == 5 && near_d(b[0].set[0].pos[e].x, 2, 0.001) && near_d(b[0].set[0].pos[e].y, 0.5, 0.002);
+  // a mover running into the end cube wakes and moves it
+  bd_test_mover(b, d3(-1.2, 0, 0), 1.8, 0.3, d3(3, 0, 0), 12000.0, 6.9, 12.0);
+  for k: 0..<60 { ok := bd_mover(b, 1, d3(-1.2 + 3.0 * b[0].dt * cast(f64) k, 0, 0), 1.8, 0.3, d3(3, 0, 0), 12000.0, 6.9, 12.0); bd_step(b); }
+  #assert b[0].set[0].pos[a].x > 0.05;
+  bd_mover_off(b, 1); bd_test_run(b, 300);
+  // a body dropped onto the pile wakes what it lands on
+  s2: [1] Bodies; q := s2[0..<1]; bd_reset(q);
+  low := bd_test_cube(q, 0, 0.5, 0, 0.5); bd_still(q, low);
+  top := bd_test_cube(q, 0.2, 3, 0, 0.5);
+  woke := false; for k: 0..<120 { bd_step(q); if bd_awake(q, low) { woke = true; } }
+  #assert woke && q[0].set[0].pos[top].y < 2.0;
+  // a change of gravity wakes one set down asleep in the air, and it falls
+  s3: [1] Bodies; r := s3[0..<1]; bd_reset(r);
+  air := bd_test_cube(r, 0, 5, 0, 0.5); bd_still(r, air); bd_test_run(r, 120);
+  #assert !bd_awake(r, air) && r[0].set[0].pos[air].y == 5.0;
+  bd_gravity(r, -20.0); bd_test_run(r, 30); #assert bd_awake(r, air) && r[0].set[0].pos[air].y < 4.0;
+  // no such body, and a fixed one: nothing happens
+  n0 := r[0].labels; bd_still(r, 1); bd_still(r, 5); bd_still(r, -1); #assert r[0].labels == n0 && bd_count(r) == 1;
+  // (nor what a body that was taken out left behind, just past the last)
+  x1 := bd_test_cube(r, 30, 0.5, 0, 0.5); gone := bd_remove(r, 0); #assert gone && bd_count(r) == 1;
+  bd_still(r, 1); #assert r[0].labels == n0;
+  // (the last body there is can be put to sleep: the bound is the count itself)
+  bd_wake(r, 0); bd_still(r, 0); #assert !bd_awake(r, 0) && r[0].labels == n0 + BD_MAX; bd_wake(r, 0); n0 = r[0].labels;
+  fx := bd_test_box(r, d3(9, 0.5, 0), DQ.{}, d3(0.5, 0.5, 0.5), 0.0, 0.5, 0.1); bd_still(r, bd_index(r, r[0].id[fx])); #assert r[0].labels == n0 && bd_awake(r, fx);
+  // a body far from the middle sleeps the same: 200 m out, dropped, it lands, rests and sleeps where it fell
+  s4: [1] Bodies; w := s4[0..<1]; bd_reset(w);
+  far := bd_test_cube(w, 200, 3.5, -200, 0.5); bd_test_run(w, 240);
+  #assert !bd_awake(w, far) && near_d(w[0].set[0].pos[far].y, 0.5, 0.002) && near_d(w[0].set[0].pos[far].x, 200, 0.001) && near_d(w[0].set[0].pos[far].z, -200, 0.001);
+}
+
+#test "no gravity: nothing falls, a body at rest stays and sleeps, one in the air hangs, a pushed one moves, and nothing is not a number" #steps 4000000000 {
+  t: [1] Bodies; b := t[0..<1];
+  bd_reset(b);
+  bd_test_heap(b, 8, 0); bd_test_run(b, 400);
+  n := bd_count(b); #assert bd_sleeping(b) == n;
+  was: [BD_MAX] D3; for i: 0..<n { was[i] = b[0].set[0].pos[i]; }
+  bd_gravity(b, 0.0);
+  #assert b[0].gravity == 0.0 && bd_sleeping(b) == 0;
+  hang := bd_test_cube(b, 20, 6, 0, 0.5);
+  bd_test_run(b, 600);
+  // the heap is where it was, to a millimetre, and asleep again; the one in the air has not moved at all, and sleeps
+  #assert bd_sleeping(b) == n + 1 && b[0].set[0].pos[bd_index(b, b[0].id[hang])].y == 6.0;
+  for i: 0..<n { p := b[0].set[0].pos[i]; #assert near_d(p.x, was[i].x, 0.002) && near_d(p.y, was[i].y, 0.002) && near_d(p.z, was[i].z, 0.002) && p.x == p.x && p.y == p.y && p.z == p.z; }
+  // an impulse still moves a body: it drifts at the speed it was given, level, with nothing to pull it down
+  bd_impulse(b, hang, d3(100, 0, 0), b[0].set[0].pos[hang]);
+  bd_test_run(b, 60);
+  #assert bd_awake(b, hang) && near_d(b[0].set[0].pos[hang].x, 21, 0.02) && b[0].set[0].pos[hang].y == 6.0 && near_d(b[0].set[0].vel[hang].x, 1.0, 1e-9);
+  // gravity back: it falls
+  bd_gravity(b, -9.81); bd_test_run(b, 60); #assert b[0].set[0].pos[hang].y < 2.5;
+}
+
 #test "gravity is the scene's own setting: things fall by it, a change wakes what sleeps, and it is in the digest, the snapshot and the history, so a run with a change in it repeats bit for bit" #steps 4000000000 {
   t: [6] BdTest; bytes: [8192] u8;
   // two balls dropped from the same height for the same half second, one under a tenth of gravity, one under five times it:

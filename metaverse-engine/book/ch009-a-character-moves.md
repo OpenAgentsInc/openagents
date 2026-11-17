@@ -397,6 +397,47 @@ root mutants killed with no survivors or waivers. Dependency gates retain
 their own scope. The [chapter evidence](../../docs/verification/data/aethyr-ch9-2026-11-01/requirements.json)
 records the C facade parity, actual scene checks and complete Wasm links.
 
+## Creative flight
+
+A building game lets its builder fly: press jump twice quickly and gravity
+lets go. [`metaverse-engine/move/creative-fly.coax`](../move/creative-fly.coax)
+is that rule on its own, beside the walk and not inside it.
+
+<!-- source: metaverse-engine/move/creative-fly.coax creative-fly -->
+```coax
+FlyTuning :: struct {
+  tap: f32 = 0.3;      // s: two presses of the jump control no further apart than this toggle flying
+  speed: f32 = 12.0;   // m/s level, with a direction held (a run is 6 to 7)
+  rise: f32 = 8.0;     // m/s up while the jump is held
+  sink: f32 = 8.0;     // m/s down while the descend control is held
+}
+// Whether you fly, and what the double press needs: the jump control's last level and how long
+// ago it last went down.
+Fly :: struct { on: bool; held: bool; since: f32 = FLY_NEVER; }
+// The velocity asked of someone flying.
+FlyVelocity :: struct { x: f32; y: f32; z: f32; }
+```
+
+- `fly_press` takes the jump control's level each frame. A press no later
+  than `tap` after the one before toggles flying; the press that toggled is
+  not the first of another pair, so three quick presses fly and four do not.
+  A single press is left to the realm's jump.
+- `fly_velocity` is what is asked of you while flying: the level direction
+  your keys mean at `speed` (a diagonal is no faster), `rise` up while the
+  jump is held, `sink` down while the descend control is held, and nothing at
+  all the moment nothing is held. Gravity is not in it, so it is the same at
+  any gravity, none included.
+- `fly_ground` ends the flight when you are on the ground and were sinking.
+  Flying level along the ground, or rising from it, goes on.
+
+The realm does the rest: it sweeps that velocity against its own colliders as
+it sweeps its walk, says when your feet are on something, and decides which
+of its game types fly. It is not `move/flight.coax`, the walker's wings
+(beats, a glide and a dive under gravity). Its checks cover the single press,
+the double within the tap and the slow second press, the speeds and the stop,
+the landing, and the realm's own stop; its first mutation pass had 44 mutants,
+41 killed and 3 marked equivalent with their reasons.
+
 ## The module and the realm boundary
 
 `metaverse-engine/move/walk.coax` owns Body (what the step reads and writes, and all a

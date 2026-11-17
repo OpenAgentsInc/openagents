@@ -29,7 +29,7 @@ a second set of native-only components.
 | Display-list forms: field, full-width action, quiet action, notice, heading | `kit/form.coax` (and its `ctx_*` forms); phone sizes in `skin/arcade.coax` (`arcade_phone_skin`) |
 | Display-list controls, Markdown and game HUD | `kit/controls.coax` (and its `ctx_*` forms on the frame context), `kit/markdown.coax`, `kit/hud.coax` |
 | Tree-based forms, chat and settings | `kit/frames.coax`, `kit/settings.coax`, `kit/dock.coax`, `kit/work.coax` |
-| The hotbar every game and realm uses (page tree): slots that are tools, toggles or actions, in groups, pressed by pointer or key, skinned by genre as data (`HbSkin`; `hb_scifi` first) | `kit/hotbar.coax`, its skins and stylesheet in `skin/hotbar.coax` |
+| The hotbar every game and realm uses (page tree): slots that are tools, toggles or actions, in groups, pressed by pointer or key, a slot's options in a row over it while it is selected, skinned by genre as data (`HbSkin`; `hb_scifi` first) | `kit/hotbar.coax`, its skins and stylesheet in `skin/hotbar.coax` |
 | GPU drawing and shader math | `backend/gpu.coax`, `backend/gpu-shader.coax` |
 | Browser tree output or terminal drawing | `backend/dom.coax`, `backend/terminal.coax` |
 | Existing desktop chat set and its adapters | `zeron/` |

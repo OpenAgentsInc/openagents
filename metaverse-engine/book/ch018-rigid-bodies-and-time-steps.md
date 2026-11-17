@@ -256,6 +256,7 @@ against Rapier and Jolt, not this module.
 - f32 device profiles with compensated sums where measurement shows they
   are needed, each with its own error budget.
 - This chapter's batched profiles have no sleeping; `bodies.coax` (above) has islands that sleep.
+- A thing set down at rest and not dropped is `bd_still`: the body sleeps where it is, in a sleep group of its own, and stays exactly there (beside and on top of others, checked over ten seconds of steps) until a mover, a moving body, a change of gravity or an impulse wakes it. With no gravity (`bd_gravity(b, 0)`) nothing falls: what rests stays and sleeps, what is in the air hangs, an impulse still moves a body; nothing in a step divides by gravity.
 - Chapter 17's scene stepping its rigid solver through these arrays instead
   of its falling centre of mass.
 

@@ -1,0 +1,186 @@
+// The Metaverse Engine's creative flight: a builder's fly mode, as a building game has it. Two quick
+// presses of the jump control turn it on and off. While it is on nothing pulls you down, at any
+// gravity: you move level the way your keys say at a flying speed, rise while the jump is held,
+// sink while the descend control is held, and stop the moment you let go. Touching the ground while
+// you sink ends it, and so do two more quick presses, after which you fall as the world's gravity
+// has it.
+//
+// This file is the rule and nothing else. It does not move you through a world: the realm sweeps
+// the velocity it gives against its own colliders (as it does its walk) and says when your feet
+// are on something. It keeps no clock but the time since the last press.
+//
+//   fly_press      the jump control's level this frame: a second press within `tap` toggles flying
+//   fly_tick       time passes
+//   fly_velocity   the velocity asked of you while flying: level by your keys, up or down by the holds
+//   fly_ground     you are on the ground: sinking onto it ends the flight
+//   fly_stop       the realm ends it (a game type that does not fly, a world left)
+//
+// It is not the wings of move/flight.coax (a walker's hook: beats, a glide and a dive under
+// gravity). GameBuilder's web world (another repository) is its first consumer.
+// Units are metres and seconds, +Y up.
+//   coax/bin/coax test metaverse-engine/move/creative-fly.coax
+//   coax/bin/coax mutate metaverse-engine/move/creative-fly.coax
+
+#module "metaverse.engine.creative_fly";
+
+FLY_NEVER :: 1000.0;   // seconds since a press that never was
+
+// book:begin creative-fly
+FlyTuning :: struct {
+  tap: f32 = 0.3;      // s: two presses of the jump control no further apart than this toggle flying
+  speed: f32 = 12.0;   // m/s level, with a direction held (a run is 6 to 7)
+  rise: f32 = 8.0;     // m/s up while the jump is held
+  sink: f32 = 8.0;     // m/s down while the descend control is held
+}
+// Whether you fly, and what the double press needs: the jump control's last level and how long
+// ago it last went down.
+Fly :: struct { on: bool; held: bool; since: f32 = FLY_NEVER; }
+// The velocity asked of someone flying.
+FlyVelocity :: struct { x: f32; y: f32; z: f32; }
+// book:end creative-fly
+
+// The jump control's level this frame. A press (the level rising) no later than `tap` after the
+// press before it toggles flying, and is then no first press of another pair: a third quick press
+// starts again. `toggled` says this press turned flying on or off.
+FlyPress :: struct { fly: Fly; toggled: bool; }
+fly_press :: (f: Fly, down: bool, t: FlyTuning) -> FlyPress {
+  out := FlyPress.{fly = f};
+  if down && !f.held {
+    if f.since <= t.tap { out.fly.on = !f.on; out.fly.since = FLY_NEVER; out.toggled = true; }
+    else { out.fly.since = 0.0; }
+  }
+  out.fly.held = down;
+  return out;
+}
+// Time passes: the last press is `dt` longer ago (and one from long ago stays at never).
+fly_tick :: (f: Fly, dt: f32) -> Fly {
+  n := f;
+  add := ifx dt > 0.0 then dt else 0.0; // mutant: equivalent — at no time at all both arms add nothing
+  since := f.since + add;
+  n.since = ifx since < FLY_NEVER then since else FLY_NEVER; // mutant: equivalent — at exactly never both arms are never
+  return n;
+}
+// The velocity asked while flying. (dx, dz) is the level direction the keys mean, in the world: at
+// most one long (a longer one is cut to one, so a diagonal is no faster); `up` is the jump held,
+// `down` the descend control. Nothing held: nothing, at once.
+fly_velocity :: (dx: f32, dz: f32, up: bool, down: bool, t: FlyTuning) -> FlyVelocity {
+  x := dx; z := dz;
+  ln := sqrt(x * x + z * z);
+  if ln > 1.0 { x /= ln; z /= ln; } // mutant: equivalent — at a length of exactly one, dividing by it changes nothing
+  v := FlyVelocity.{x = x * t.speed, z = z * t.speed};
+  if up { v.y += t.rise; }
+  if down { v.y -= t.sink; }
+  return v;
+}
+// You are on the ground (`grounded`) and were sinking (`sinking`: the descend control held and the
+// jump not): the flight is over. Flying level along the ground, or rising from it, goes on.
+fly_ground :: (f: Fly, grounded: bool, sinking: bool) -> Fly {
+  n := f;
+  if grounded && sinking { n.on = false; }
+  return n;
+}
+// The realm ends it: not flying, and no press of a pair waiting.
+fly_stop :: (f: Fly) -> Fly { n := f; n.on = false; n.since = FLY_NEVER; return n; }
+
+// ---------------------------------------------------------------- checks
+
+fly_near :: (a: f32, b: f32, by: f32) -> bool { return a - b <= by && b - a <= by; }
+// A press and its release, `gap` seconds after the press before it.
+fly_test_tap :: (f: Fly, gap: f32, t: FlyTuning) -> Fly {
+  n := fly_tick(f, gap);
+  n = fly_press(n, true, t).fly;
+  return fly_press(n, false, t).fly;
+}
+
+#test "the checks' own nearness: within the margin either way, the margin itself included" {
+  #assert fly_near(1.0, 1.25, 0.25) && fly_near(1.25, 1.0, 0.25) && fly_near(2.0, 2.0, 0.0) && !fly_near(1.0, 1.5, 0.25) && !fly_near(1.5, 1.0, 0.25);
+}
+#test "the tuning's own numbers, and someone who has never pressed" {
+  t: FlyTuning; f: Fly;
+  #assert t.tap == 0.3 && t.speed == 12.0 && t.rise == 8.0 && t.sink == 8.0;
+  #assert !f.on && !f.held && f.since == FLY_NEVER && FLY_NEVER == 1000.0;
+}
+
+#test "one press does not fly; a second within the tap does; a slow second does not, and is the first of the next pair" {
+  t: FlyTuning; f: Fly;
+  p := fly_press(f, true, t);
+  #assert !p.fly.on && !p.toggled && p.fly.held && p.fly.since == 0.0;
+  // held: no more presses, however long
+  p = fly_press(fly_tick(p.fly, 0.1), true, t); #assert !p.fly.on && !p.toggled && fly_near(p.fly.since, 0.1, 0.00001);
+  p = fly_press(p.fly, false, t); #assert !p.fly.held && !p.fly.on && !p.toggled && fly_near(p.fly.since, 0.1, 0.00001);
+  // the second press 0.25 s after the first: flying, and it says so
+  p = fly_press(fly_tick(p.fly, 0.15), true, t);
+  #assert p.fly.on && p.toggled && p.fly.held && p.fly.since == FLY_NEVER;
+  // a slow second press: 0.31 s is too late, and it counts as a first
+  g: Fly;
+  g = fly_test_tap(g, 5, t); #assert !g.on && g.since == 0.0;
+  g = fly_test_tap(g, 0.31, t); #assert !g.on && g.since == 0.0;
+  g = fly_test_tap(g, 0.29, t); #assert g.on;
+  // exactly the tap apart still counts
+  e: Fly; e = fly_test_tap(e, 0, t); e.since = 0.3;
+  q := fly_press(e, true, t); #assert q.fly.on && q.toggled;
+  e.since = 0.30001; q = fly_press(e, true, t); #assert !q.fly.on && !q.toggled && q.fly.since == 0.0;
+  // another tuning's tap is the one that counts
+  w := FlyTuning.{tap = 0.5};
+  d: Fly; d = fly_test_tap(d, 0, w); d = fly_test_tap(d, 0.45, w); #assert d.on;
+  n: FlyTuning; n.tap = 0.1;
+  d = fly_stop(d); d = fly_test_tap(d, 0, n); d = fly_test_tap(d, 0.2, n); #assert !d.on;
+}
+
+#test "two quick presses again end it; the press that toggled is no first press of a pair, so three quick presses fly and four do not" {
+  t: FlyTuning; f: Fly;
+  f = fly_test_tap(f, 0, t); f = fly_test_tap(f, 0.1, t); #assert f.on && f.since == FLY_NEVER;
+  // the third quick press is a first again: still flying
+  f = fly_test_tap(f, 0.1, t); #assert f.on && f.since == 0.0;
+  // the fourth pairs with it: not flying
+  p := fly_press(fly_tick(f, 0.1), true, t); #assert !p.fly.on && p.toggled && p.fly.since == FLY_NEVER;
+  f = fly_press(p.fly, false, t).fly;
+  // and on again later
+  f = fly_test_tap(f, 2, t); f = fly_test_tap(f, 0.2, t); #assert f.on;
+  // held through it, flying goes on: a hold is not a press
+  for k: 0..<200 { f = fly_press(fly_tick(f, 0.01), true, t).fly; #assert f.on; }
+}
+
+#test "time only moves the last press away, never past never, and no time or time backwards changes nothing" {
+  f: Fly;
+  #assert fly_tick(f, 5).since == FLY_NEVER;
+  f.since = 0.0;
+  #assert fly_tick(f, 0.25).since == 0.25 && fly_tick(f, 0).since == 0.0 && fly_tick(f, -1).since == 0.0;
+  f.since = 999.5; #assert fly_tick(f, 0.25).since == 999.75 && fly_tick(f, 0.5).since == FLY_NEVER && fly_tick(f, 3).since == FLY_NEVER;
+  g := Fly.{on = true, held = true, since = 0.5}; h := fly_tick(g, 0.5);
+  #assert h.on && h.held && h.since == 1.0;
+}
+
+#test "flying: level by the keys at the flying speed, a diagonal no faster, up on the jump, down on the descend, and nothing held is a stop at once" {
+  t: FlyTuning;
+  v := fly_velocity(0, 0, false, false, t); #assert v.x == 0 && v.y == 0 && v.z == 0;
+  v = fly_velocity(0, 1, false, false, t); #assert v.x == 0 && v.y == 0 && v.z == 12.0;
+  v = fly_velocity(-1, 0, false, false, t); #assert v.x == -12.0 && v.y == 0 && v.z == 0;
+  // a diagonal of both keys is cut to one long
+  v = fly_velocity(1, 1, false, false, t); #assert fly_near(v.x, 8.485281, 0.0001) && fly_near(v.z, 8.485281, 0.0001) && fly_near(sqrt(v.x * v.x + v.z * v.z), 12.0, 0.0001);
+  v = fly_velocity(3, -4, false, false, t); #assert fly_near(v.x, 7.2, 0.0001) && fly_near(v.z, -9.6, 0.0001);
+  // a stick pushed part of the way flies part of the speed; exactly one long is not cut
+  v = fly_velocity(0.5, 0, false, false, t); #assert v.x == 6.0 && v.z == 0;
+  v = fly_velocity(0.6, 0.8, false, false, t); #assert fly_near(v.x, 7.2, 0.0001) && fly_near(v.z, 9.6, 0.0001);
+  // up, down, and both at once (they cancel); with a direction too
+  v = fly_velocity(0, 0, true, false, t); #assert v.y == 8.0 && v.x == 0 && v.z == 0;
+  v = fly_velocity(0, 0, false, true, t); #assert v.y == -8.0;
+  v = fly_velocity(0, 0, true, true, t); #assert v.y == 0;
+  v = fly_velocity(0, -1, true, false, t); #assert v.y == 8.0 && v.z == -12.0;
+  // another tuning: its own speeds, each its own
+  w := FlyTuning.{speed = 20, rise = 5, sink = 3};
+  v = fly_velocity(1, 0, true, false, w); #assert v.x == 20.0 && v.y == 5.0;
+  v = fly_velocity(0, 1, false, true, w); #assert v.z == 20.0 && v.y == -3.0;
+  v = fly_velocity(0, 0, true, true, w); #assert v.y == 2.0;
+}
+
+#test "sinking onto the ground ends the flight; flying level along it or rising from it does not; and the realm can end it" {
+  f := Fly.{on = true, since = 0.1};
+  #assert !fly_ground(f, true, true).on && fly_ground(f, true, true).since == 0.1;
+  #assert fly_ground(f, true, false).on && fly_ground(f, false, true).on && fly_ground(f, false, false).on;
+  g: Fly; #assert !fly_ground(g, true, true).on && !fly_ground(g, false, false).on;
+  s := fly_stop(Fly.{on = true, held = true, since = 0.1});
+  #assert !s.on && s.held && s.since == FLY_NEVER;
+  // stopped, the press that follows is a first press, not the second of a pair
+  t: FlyTuning; p := fly_press(Fly.{since = FLY_NEVER}, true, t); #assert !p.fly.on && !p.toggled;
+}

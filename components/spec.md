@@ -358,7 +358,14 @@ again is put down), a toggle or an action, with a glyph, a short name (shown
 under the glyph always, only under the pointer, or never: the skin's word), a
 tooltip line that says what it does, a key, a
 group (a divider stands where it changes) and its state (on, disabled, hidden,
-busy, a cooldown's share). It changes only through `hb_press`, `hb_key` and
+busy, a cooldown's share). A slot may carry up to four options (`HbOption`:
+a placing tool's modes, say), one active: while the slot is selected (a
+picked tool, a toggle that is on) a row of option buttons stands directly
+over it, anchored to it, the active one lit; pressing one (`hb_choose`) or
+stepping through them with a key (`hb_cycle`) leaves the slot selected, and
+the game keeps the choice. A slot's glyph may be one the skin draws (`art`:
+`sphere`, a shaded ball) instead of text. It changes only through `hb_press`,
+`hb_key`, `hb_choose`, `hb_cycle` and
 `hb_escape`, which say what happened (`HbPress`); the game fills it each
 frame and keeps its own state. Every look is an `HbSkin` (`skin/hotbar.coax`, where its stylesheet is written too: the kit file names no colour and no size, and `components-check` holds it to that), as data: sizes,
 colours, the ARWES frame family round a slot and the class a host's frame
