@@ -60,6 +60,9 @@ ar_prove :: (t: [] Ap, session: string, keyfile: string, purpose: string, label:
   b: [1] Sb; sb(b[..], "{\"proof\":\""); sb(b[..], sig); sb(b[..], "\",\"label\":\""); sb(b[..], label); sb(b[..], "\"}");
   return ac_call(t, "POST", url, sb_text(b[..]), ac_cookie_header("__Host-oa_session", session, c1[..]), "", "");
 }
+AR_LIM :: "You logged in with email, and this account has a key. Log in with your key to change it, or ask for recovery.";
+AR_CH :: "{\"schema\":\"openagents.chat.thread.v1\",\"id\":\"\",\"revision\":0,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}";
+AR_TEAM :: "Agent chat is currently available to the team beta.";
 ar_with :: (t: [] Ap, method: string, path: string, body: string, session: string) -> int {
   c1: [1] Sb;
   return ac_call(t, method, path, body, ac_cookie_header("__Host-oa_session", session, c1[..]), "", "");
@@ -138,6 +141,24 @@ ar_checks :: (t: [] Ap, dir: string) {
   ap_check(t, "email takeover: a limited session can't link an email", st == 401 && ap_member(ap_body(t), "error", eb[..]) == "Log in again with your key or passkey to do this.", ap_body(t));
   st = ar_with(t, "POST", "/api/auth/recovery-code", "{}", SE);
   ap_check(t, "email takeover: a limited session can't make a recovery code", st == 401 && ap_member(ap_body(t), "step_up", eb[..]) == "L2-fresh", ap_body(t));
+  // The account chat's three stateless completions are the writes a limited session may make
+  // (auth-policy.coax ap_limited_write): the gate lets them through, and the route's own rule answers
+  // (this account is not on the team). Every other ordinary write keeps the limited refusal.
+  st = ar_with(t, "POST", "/api/chat/complete/v1", AR_CH, SE);
+  through := st == 403 && ap_member(ap_body(t), "error", eb[..]) == AR_TEAM;
+  st = ar_with(t, "POST", "/api/chat/world/complete/v1", AR_CH, SE);
+  through = through && st == 403 && ap_member(ap_body(t), "error", eb[..]) == AR_TEAM;
+  st = ar_with(t, "POST", "/api/chat/delegated/complete/v1", AR_CH, SE);
+  ap_check(t, "email takeover: a limited session passes the gate on the account chat's completions, and the route's own rule answers",
+           through && st == 403 && ap_member(ap_body(t), "error", eb[..]) == AR_TEAM, ap_body(t));
+  lim := [9] string.["/api/chat/thread/v1", "/api/chat/world/player/v1", "/api/chat/project/v1", "/api/chat/project/complete/v1", "/api/chat/route/v1",
+                     "/api/chat/library/v1", "/api/auth/settings/v1", "/api/auth/passkey/register/options", "/api/agents/revoke-all"];
+  kept := 0; firstb: [1] Sb;
+  for path: lim {
+    st = ar_with(t, "POST", path, AR_CH, SE);
+    if st == 401 && ap_member(ap_body(t), "error", eb[..]) == AR_LIM { kept += 1; } else if firstb[0].n == 0 { sb(firstb[..], path); sb(firstb[..], " "); sb_int(firstb[..], st); sb(firstb[..], " "); sb(firstb[..], ap_body(t)); }
+  }
+  ap_check(t, "email takeover: a limited session's other ordinary writes are still refused, in the limited words", kept == lim.count, sb_text(firstb[..]));
   ap_check(t, "email takeover: a limited session carries no key, so it is no admin and owns no key's things",
            ar_with(t, "GET", "/api/auth/account", "", SE) == 200 && ap_member(ap_body(t), "admin", eb[..]) == "false", ap_body(t));
 

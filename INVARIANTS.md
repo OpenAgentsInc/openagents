@@ -952,6 +952,28 @@ link is ours, the audit rows name the site). Not covered: a GET the other site's
 no `Origin`, so it is answered as this site's own; that balancer must send
 only the five paths ([sessions and tokens](docs/auth/sessions-and-tokens.md#a-second-first-party-site)).
 
+## A limited session writes only the account chat's stateless completions
+
+A limited session (an email login, L1, on an account with a key, passkey,
+device or unspent recovery code) reads and plays, and is refused every write
+on an account, human, scope, L2 or admin route (`ap_limited_admit`), but for
+an explicit list: `POST /api/chat/complete/v1`,
+`POST /api/chat/world/complete/v1` and `POST /api/chat/delegated/complete/v1`,
+and only while their rule is `human` (`ap_limited_write`, `ap_limited_route`,
+`coax/web/api/auth-policy.coax`, `#authority`, mutation-checked). The default
+is deny: a route not named stays refused. Each named route stores nothing,
+changes nothing the account owns or how it logs in, and asks the model with a
+free key (`account-chat.c`, `inference_ask(..., true)`), so it counts only
+against the account's own daily inference quota and never reads or charges
+credit, sats or a wallet. The route's own rules still apply (`act_funded`,
+the body's shape). Saving a thread, binding a player, project chats,
+settings, identity, the wallet, agents, exports, deletion and every
+authenticator change stay refused, and recovery still waits 72 hours. From a
+listed first-party site only the first route is reachable. Checks: that
+file's `#test`s; `coax/web/api/tests/auth_recover_checks.coax` (a limited
+session reaches the three routes' own answer; nine other ordinary writes,
+linking a key and logging out everywhere are refused as before).
+
 ## Anime words become directions only through the catalogue holder
 
 `POST /api/playtest/labs/anime/direct` admits a site session with matching

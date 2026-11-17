@@ -9,6 +9,10 @@
 //   ap_limited       an email (L1) session on an account that also has a key, passkey, device or
 //                    recovery code: it may read and play, never change the account (#13212)
 //   ap_limited_admit what a limited session may do under a route's rule
+//   ap_limited_write the few ordinary writes a limited session may make: the account chat's three
+//                    stateless completions, which store nothing and only count against the
+//                    account's own free daily inference quota
+//   ap_limited_route ap_limited_admit, with those writes let through on a human route
 //   ap_need          the level a step-up asks for under a rule: L2 or L2-fresh
 //   ap_session       a session's clocks: good, due for a new token, or ended
 //   ap_limit_ok      a rate limit's window: allowed while the count is within the limit
@@ -148,6 +152,38 @@ AP_APP_IDLE_MS :: 90 * AP_DAY_MS;         // an app's login unused this long has
   #assert ap_limited_admit(AP_ADMIN, false, true) == AP_LIMITED && ap_limited_admit(AP_ADMIN, true, true) == AP_LIMITED;
   #assert ap_limited_admit(AP_ADMIN_FRESH, false, true) == AP_LIMITED && ap_limited_admit(AP_ADMIN_FRESH, true, true) == AP_LIMITED;
   #assert ap_limited_admit(10, false, true) == AP_LIMITED && ap_limited_admit(-1, false, true) == AP_LIMITED;
+}
+#test "a limited session's writes are the account chat's three completions, by POST, and no other route" {
+  #assert ap_limited_write("POST", "/api/chat/complete/v1") && ap_limited_write("POST", "/api/chat/world/complete/v1") && ap_limited_write("POST", "/api/chat/delegated/complete/v1");
+  methods := [5] string.["GET", "PUT", "DELETE", "post", ""];
+  for m: methods {
+    #assert !ap_limited_write(m, "/api/chat/complete/v1") && !ap_limited_write(m, "/api/chat/world/complete/v1") && !ap_limited_write(m, "/api/chat/delegated/complete/v1");
+  }
+  paths := [24] string.["/api/chat/thread/v1", "/api/chat/world/player/v1", "/api/chat/project/v1", "/api/chat/project/complete/v1", "/api/chat/route/v1",
+                        "/api/chat/library/v1", "/api/chat/submit/v2alpha1", "/api/chat/environment/v1", "/api/chat/complete", "/api/chat/complete/", "/api/chat/complete/v1/",
+                        "/api/chat/complete/v2", "/api/chat/world/complete", "/api/chat/delegated/complete/v1x", "/api/auth/settings/v1", "/api/auth/link/nostr",
+                        "/api/auth/passkey/register", "/api/auth/logout-everywhere", "/api/wallet/spend", "/api/agents", "/api/v1/inference/credit", "/chat/complete/v1", "/", ""];
+  for path: paths { #assert !ap_limited_write("POST", path) && !ap_limited_write("GET", path); }
+}
+#test "a limited session passes the gate on those writes under a human rule only; everything else is as ap_limited_admit says" {
+  chat := "/api/chat/complete/v1";
+  #assert ap_limited_route(AP_HUMAN, true, true, "POST", chat) == AP_OK;
+  #assert ap_limited_route(AP_HUMAN, true, true, "POST", "/api/chat/world/complete/v1") == AP_OK && ap_limited_route(AP_HUMAN, true, true, "POST", "/api/chat/delegated/complete/v1") == AP_OK;
+  // the same path under any other rule (were the table to change) keeps the refusal
+  for rule: -1..<11 {
+    if rule != AP_HUMAN { #assert ap_limited_route(rule, true, true, "POST", chat) == ap_limited_admit(rule, true, true); }
+  }
+  #assert ap_limited_route(AP_ACCOUNT, true, true, "POST", chat) == AP_LIMITED && ap_limited_route(AP_L2, true, true, "POST", chat) == AP_LIMITED;
+  #assert ap_limited_route(AP_SCOPE, true, true, "POST", chat) == AP_LIMITED && ap_limited_route(AP_ADMIN, true, true, "POST", chat) == AP_LIMITED;
+  // another method or path on a human route is still refused
+  #assert ap_limited_route(AP_HUMAN, true, true, "PUT", chat) == AP_LIMITED && ap_limited_route(AP_HUMAN, true, true, "POST", "/api/chat/thread/v1") == AP_LIMITED;
+  #assert ap_limited_route(AP_HUMAN, true, true, "POST", "/api/auth/settings/v1") == AP_LIMITED && ap_limited_route(AP_HUMAN, true, true, "POST", "/api/auth/link/nostr") == AP_LIMITED;
+  // reads, and sessions that are not limited, are untouched
+  for rule: 0..<10 {
+    #assert ap_limited_route(rule, false, true, "GET", chat) == ap_limited_admit(rule, false, true);
+    #assert ap_limited_route(rule, true, false, "POST", chat) == AP_OK && ap_limited_route(rule, true, false, "POST", "/api/agents") == AP_OK;
+    #assert ap_limited_route(rule, true, true, "POST", "/api/agents") == ap_limited_admit(rule, true, true);
+  }
 }
 #test "a step-up asks for L2, or for L2 within five minutes" {
   #assert ap_need(AP_L2) == AP_NEED_L2 && ap_need(AP_ADMIN) == AP_NEED_L2;
@@ -368,6 +404,19 @@ ap_limited_admit :: (rule: int, write: bool, limited: bool) -> int #export_c #ef
   if rule == AP_PUBLIC || rule == AP_GUEST || rule == AP_RECOVER { return AP_OK; }
   if !write && (rule == AP_ACCOUNT || rule == AP_HUMAN || rule == AP_SCOPE) { return AP_OK; }
   return AP_LIMITED;
+}
+// The ordinary writes a limited session may make. Default deny: a route not named here keeps
+// ap_limited_admit's refusal. Each one stores nothing, changes nothing the account owns or how it
+// logs in, and spends only the account's own free daily inference quota (account-chat.c:
+// inference_ask with a free key, so no credit, sats or wallet is read or charged).
+ap_limited_write :: (method: string, path: string) -> bool #export_c #effects(all) {
+  if method != "POST" { return false; }
+  return path == "/api/chat/complete/v1" || path == "/api/chat/world/complete/v1" || path == "/api/chat/delegated/complete/v1";
+}
+// The gate's question for a limited session: ap_limited_admit, and on a human route the writes above.
+ap_limited_route :: (rule: int, write: bool, limited: bool, method: string, path: string) -> int #export_c #effects(all) {
+  if rule == AP_HUMAN && ap_limited_write(method, path) { return AP_OK; }
+  return ap_limited_admit(rule, write, limited);
 }
 ap_need :: (rule: int) -> int #export_c #effects(all) {
   if rule == AP_L2_FRESH || rule == AP_ADMIN_FRESH { return AP_NEED_FRESH; }

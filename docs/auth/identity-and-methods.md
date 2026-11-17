@@ -270,7 +270,10 @@ same shape with `kind = service` and owner `acct_openagents`.
 
 **The delayed path.** When the account has passkeys or keys you've lost,
 email alone could be a hacked inbox. So an L1 login on an account with stronger factors gets a limited session: it can
-read and play, but not spend, export or change authenticators. To lift
+read and play, but not spend, export or change authenticators. It may also
+ask the account chat (the three stateless completions listed in
+[sessions and tokens](sessions-and-tokens.md#step-up)), which stores nothing
+and counts only against the account's own free daily inference quota. To lift
 that, you ask for recovery; we wait 72 hours and notify every channel,
 and any channel can cancel. After 72 hours you may replace the lost
 factors. No staff member can skip the wait (decision D10).

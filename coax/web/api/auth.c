@@ -832,6 +832,7 @@ void auth_init(void) {
          && ap_session(false, 200LL * 86400000LL, 0, 0, 0) == AP_SESSION_ENDED && agents_init()
          && ap_admit(AP_ADMIN_FRESH, AP_PERSON, 2, 400000, true, false) == AP_STEP_UP && ap_admit(AP_RECOVER, AP_PERSON, 1, -1, false, false) == AP_OK
          && ap_limited_admit(AP_L2, false, true) == AP_LIMITED && ap_status(AP_LIMITED) == 401
+         && ap_limited_route(AP_HUMAN, true, true, cs("POST"), cs("/api/auth/settings/v1")) == AP_LIMITED
          && ap_site(true, cs("https://a.example"), cs("https://b.example"), cs("https://a.example")) == AP_SITE_LISTED
          && ap_site(true, cs("https://a.example"), cs("https://b.example"), cs("")) == AP_SITE_OTHER
          && ap_site(false, cs(""), cs("https://b.example"), cs("")) == AP_SITE_NONE && ap_site(true, cs("https://b.example"), cs("https://b.example"), cs("")) == AP_SITE_OURS;
@@ -901,7 +902,7 @@ bool auth_gate(const request *q) {
   if (!p) verdict = current.refused == 400 ? AP_TWO_CREDENTIALS : AP_LOG_IN;
   else verdict = (int)ap_admit(rule->rule, p->kind, p->level, p->l2_age_ms, p->admin, p->kind == AP_AGENT && agents_scoped(p, rule->scope));
   bool write = strcmp(q->method, "GET") && strcmp(q->method, "HEAD");
-  if (verdict == AP_OK && p) verdict = (int)ap_limited_admit(rule->rule, write, p->limited);
+  if (verdict == AP_OK && p) verdict = (int)ap_limited_route(rule->rule, write, p->limited, cs(q->method), cs(q->path));
   if (verdict == AP_OK) { if (p->kind == AP_AGENT) agents_used(q, api_db(), p); return false; }
   api_log("auth: refused %s %s: rule %s, %s", q->method, q->path, rule_name(rule->rule),
           !p ? "a refused credential" : p->kind == AP_PERSON ? "person" : p->kind == AP_AGENT ? "agent" : p->kind == AP_SERVICE ? "service" : p->kind == AP_KIND_GUEST ? "guest" : "nobody");

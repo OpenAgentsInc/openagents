@@ -287,8 +287,29 @@ refusal (`coax/web/api/auth-recover.c`, rules in `auth-policy.coax`):
 `step_up` is `L2` or `L2-fresh`, and `methods` lists what the account can
 confirm with. A **limited** session is an email login (L1) on an account
 with a strong way in (a key, passkey or unspent recovery
-code). It reads and plays, but every write except recovery and logging
-out is refused, and it carries no key, so it owns nothing a key owns.
+code). It reads and plays, but every write except recovery, logging out
+and the writes listed below is refused, and it carries no key, so it owns
+nothing a key owns.
+
+A limited session may make these writes, and no others
+(`ap_limited_write`, `auth-policy.coax`; a route not on the list is
+refused):
+
+| Write | Why it is allowed |
+| --- | --- |
+| `POST /api/chat/complete/v1` | The account chat's answer. Stores nothing; counts against the account's free daily inference quota |
+| `POST /api/chat/world/complete/v1` | The same chat as a typed world turn. Stores nothing, grants no write; the same quota |
+| `POST /api/chat/delegated/complete/v1` | The same chat with a routing note. Starts nothing, stores nothing; the same quota |
+
+Someone who took over the inbox of such an account can use up that day's
+free quota (`OA_INFERENCE_DAILY_REQUESTS`, `OA_INFERENCE_DAILY_USD_MICROS`)
+and nothing else: these routes ask with a free key, so no credit, sats or
+wallet is read or charged, and they read nothing a limited session could
+not already read. Saving a thread, binding a player, project chats,
+settings, identity, the wallet, agents and every authenticator change stay
+refused. The route's own rules still apply (the team's funding, the body's
+shape). From a listed first-party site only the first of the three is
+reachable.
 
 To step up, a logged-in page asks `POST /api/auth/proof/challenge
 {purpose}` (`stepup`, `link` or `finish`), has the key sign a NIP-98 event
