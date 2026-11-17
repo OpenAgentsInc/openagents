@@ -1,0 +1,308 @@
+// Rooms from a grid of characters: a small level format for tile puzzles and blockouts, and the
+// rules a crate-and-pad puzzle needs. A room is rows of text, a character a square tile:
+//
+//   #  a wall            .  floor             (space)  nothing: outside the room
+//   c  a crate on floor  o  a pressure pad    *  a crate standing on a pad
+//   @  where the player starts                >  the gate: a wall until the room is solved
+//
+// Rows end with '/' or a newline; the first row is the far (north) side. The room is centred on the
+// origin of a flat floor: x runs east along a row, z runs north (the first row has the greatest z),
+// a tile is `cell` metres square. A realm keeps its rooms as strings, so another room is only data.
+//
+//   room_read        the text into a Room: its tiles, its crates, pads, start and gate; false when
+//                    the text is not a room (ragged rows, too big, no start, no gate, crates and
+//                    pads that do not match in number, or none)
+//   room_at          a tile's middle on the floor
+//   room_walls       the walls as boxes on the floor (low x, low z, high x, high z), each run of
+//                    wall tiles along a row one box, and runs that repeat down the rows one box
+//   room_gate        the gate's box
+//   room_pad_holds   whether a thing whose middle is at (x, z) rests on a pad: within `reach` of
+//                    the pad's middle along both axes (a pressure pad's trigger volume)
+//   room_lit         which pads hold a thing, as bits, from the things' places
+//   room_solved      every pad holds a thing
+//   room_through     whether a mover at (x, z) has gone through the gate: past the gate tile's
+//                    middle line, on the outside, within the tile's width
+//
+// gamebuilder.org's crates puzzle (a page outside this repository) builds its rooms with it; the
+// crates themselves are bodies of physics/sim/bodies.coax and the walls are colliders of
+// physics/query.coax, both the realm's to make from what this file says.
+//   coax/bin/coax test metaverse-engine/world/room-grid.coax --library
+//   coax/bin/coax mutate metaverse-engine/world/room-grid.coax --library --root-only
+
+ROOM_SIDE :: 24;            // tiles a side at most
+ROOM_THINGS :: 16;          // crates (and pads) at most
+ROOM_VOID :: 0; ROOM_FLOOR :: 1; ROOM_WALL :: 2; ROOM_GATE :: 3;
+
+Room :: struct {
+  cols: int; rows: int;
+  tile: [ROOM_SIDE * ROOM_SIDE] u8;                   // ROOM_VOID, ROOM_FLOOR, ROOM_WALL or ROOM_GATE, row by row from the north
+  crates: int; crate_col: [ROOM_THINGS] int; crate_row: [ROOM_THINGS] int;
+  pads: int; pad_col: [ROOM_THINGS] int; pad_row: [ROOM_THINGS] int;
+  start_col: int; start_row: int;
+  gate_col: int; gate_row: int;
+  gate_dx: int; gate_dz: int;                         // the way out through the gate: one step east, west, north or south (x, z)
+}
+RoomPoint :: struct { x: f32; z: f32; }
+
+// The text into a room. False (and the room is left empty) when it is not one.
+room_read :: (text: string, r: [] Room) -> bool {
+  r[0] = Room.{};
+  g: [1] Room; col := 0; starts := 0; gates := 0; width: int;
+  for i: 0..<text.count + 1 { // mutant: equivalent (one more turn past the text's end is one more end of row with nothing in it)
+    c: u8 = ifx i < text.count then text[i] else '/';
+    if c == '/' || c == '\n' {
+      if col == 0 { continue; }                       // an empty row (a trailing end of row) is no row
+      if g[0].rows == 0 { width = col; }
+      if col != width { return false; }
+      g[0].rows += 1; col = 0;
+      continue;
+    }
+    if col >= ROOM_SIDE || g[0].rows >= ROOM_SIDE { return false; }
+    k := g[0].rows * ROOM_SIDE + col;
+    t: u8 = ROOM_FLOOR;
+    if c == '#' { t = ROOM_WALL; }
+    else if c == ' ' { t = ROOM_VOID; }
+    else if c == '>' { t = ROOM_GATE; g[0].gate_col = col; g[0].gate_row = g[0].rows; gates += 1; }
+    else if c == '@' { g[0].start_col = col; g[0].start_row = g[0].rows; starts += 1; }
+    else if c == 'c' || c == 'o' || c == '*' {
+      if c != 'o' { if g[0].crates >= ROOM_THINGS { return false; } g[0].crate_col[g[0].crates] = col; g[0].crate_row[g[0].crates] = g[0].rows; g[0].crates += 1; }
+      if c != 'c' { if g[0].pads >= ROOM_THINGS { return false; } g[0].pad_col[g[0].pads] = col; g[0].pad_row[g[0].pads] = g[0].rows; g[0].pads += 1; }
+    }
+    else if c != '.' { return false; }
+    g[0].tile[k] = t;
+    col += 1;
+  }
+  g[0].cols = width;
+  if starts != 1 || gates != 1 || g[0].crates < 1 || g[0].crates != g[0].pads { return false; }
+  // the way out: away from the floor tile beside the gate (the first found: east, west, north, south of it)
+  found := false;
+  dx := [4] int.[1, -1, 0, 0]; dz := [4] int.[0, 0, 1, -1];
+  for q: 0..<4 {
+    if found { break; }
+    // the tile on the inside is the one opposite the way out
+    if room_tile(g[..], g[0].gate_col - dx[q], g[0].gate_row + dz[q]) == ROOM_FLOOR { g[0].gate_dx = dx[q]; g[0].gate_dz = dz[q]; found = true; }
+  }
+  if !found { return false; }
+  r[0] = g[0];
+  return true;
+}
+// What a tile is; outside the room it is nothing.
+room_tile :: (r: [] Room, col: int, row: int) -> int {
+  if col < 0 || row < 0 || col >= r[0].cols || row >= r[0].rows { return ROOM_VOID; }
+  return cast(int) r[0].tile[row * ROOM_SIDE + col];
+}
+// A tile's middle on the floor: the room is centred on the origin, the first row the furthest north.
+room_at :: (r: [] Room, cell: f32, col: int, row: int) -> RoomPoint {
+  return RoomPoint.{x = (cast(f32) col - cast(f32) (r[0].cols - 1) * 0.5) * cell, z = (cast(f32) (r[0].rows - 1) * 0.5 - cast(f32) row) * cell};
+}
+// Whether a run of wall tiles (cols a to b of a row) is whole walls and ends where the wall ends.
+room_run :: (r: [] Room, row: int, a: int, b: int) -> bool {
+  for c: a..<b + 1 { if room_tile(r, c, row) != ROOM_WALL { return false; } }
+  return room_tile(r, a - 1, row) != ROOM_WALL && room_tile(r, b + 1, row) != ROOM_WALL;
+}
+// The walls as boxes on the floor, four floats each (low x, low z, high x, high z), into `out`.
+// How many (those that do not fit are left out).
+room_walls :: (r: [] Room, cell: f32, out: [] f32) -> int {
+  n := 0;
+  for row: 0..<r[0].rows {
+    col := 0;
+    while col < r[0].cols { // mutant: equivalent (the tile one past the row's end is nothing: the turn only steps on)
+      if room_tile(r, col, row) != ROOM_WALL { col += 1; continue; }
+      end := col;
+      while room_tile(r, end + 1, row) == ROOM_WALL { end += 1; }
+      // a run the row above has too is already part of that row's box
+      if !room_run(r, row - 1, col, end) {
+        last := row;
+        while room_run(r, last + 1, col, end) { last += 1; }
+        if (n + 1) * 4 <= out.count {
+          a := room_at(r, cell, col, last); b := room_at(r, cell, end, row);
+          out[n * 4] = a.x - cell * 0.5; out[n * 4 + 1] = a.z - cell * 0.5; out[n * 4 + 2] = b.x + cell * 0.5; out[n * 4 + 3] = b.z + cell * 0.5;
+          n += 1;
+        }
+      }
+      col = end + 1; // mutant: equivalent (the tile after a run's end is no wall: stepping over it changes nothing)
+    }
+  }
+  return n;
+}
+// The gate's box on the floor: low x, low z, high x, high z.
+room_gate :: (r: [] Room, cell: f32) -> [4] f32 {
+  g := room_at(r, cell, r[0].gate_col, r[0].gate_row);
+  return [4] f32.[g.x - cell * 0.5, g.z - cell * 0.5, g.x + cell * 0.5, g.z + cell * 0.5];
+}
+// A pad's trigger: a thing whose middle is at (x, z) rests on the pad at (px, pz) when it is within `reach` of it along both axes.
+room_pad_holds :: (px: f32, pz: f32, reach: f32, x: f32, z: f32) -> bool { return abs(x - px) <= reach && abs(z - pz) <= reach; }
+// Which pads hold a thing, as bits (pad 0 the lowest): `at` is the things' places, x then z each.
+room_lit :: (r: [] Room, cell: f32, reach: f32, at: [] f32) -> int {
+  bits := 0;
+  for p: 0..<r[0].pads {
+    m := room_at(r, cell, r[0].pad_col[p], r[0].pad_row[p]);
+    for k: 0..<at.count / 2 { if room_pad_holds(m.x, m.z, reach, at[k * 2], at[k * 2 + 1]) { bits |= 1 << p; break; } }
+  }
+  return bits;
+}
+// How many bits are set.
+room_count :: (bits: int) -> int { n := 0; for k: 0..<ROOM_THINGS { if (bits & (1 << k)) != 0 { n += 1; } } return n; }
+// Every pad holds a thing.
+room_solved :: (r: [] Room, bits: int) -> bool { return r[0].pads > 0 && bits == (1 << r[0].pads) - 1; }
+// Whether a mover at (x, z) has gone out through the gate: beyond the gate tile's middle, the way out, within the tile's width.
+room_through :: (r: [] Room, cell: f32, x: f32, z: f32) -> bool {
+  g := room_at(r, cell, r[0].gate_col, r[0].gate_row);
+  along := (x - g.x) * cast(f32) r[0].gate_dx + (z - g.z) * cast(f32) r[0].gate_dz;
+  across := (x - g.x) * cast(f32) r[0].gate_dz + (z - g.z) * cast(f32) r[0].gate_dx; // mutant: equivalent (one of the two ways is 0 and only the size of `across` is used: the sum's sign does not matter)
+  return along > 0 && along < cell * 1.5 && abs(across) < cell * 0.5;
+}
+
+// ---- Checks ----
+
+ROOM_TEST :: "#####/#o.c#/#.@.>/#c.o#/#####";
+
+#test "a room is read from its rows: tiles, crates, pads, the start and the gate with its way out" {
+  r: [1] Room;
+  #assert room_read(ROOM_TEST, r[..]);
+  #assert r[0].cols == 5 && r[0].rows == 5 && r[0].crates == 2 && r[0].pads == 2 && r[0].start_col == 2 && r[0].start_row == 2;
+  #assert r[0].crate_col[0] == 3 && r[0].crate_row[0] == 1 && r[0].crate_col[1] == 1 && r[0].crate_row[1] == 3;
+  #assert r[0].pad_col[0] == 1 && r[0].pad_row[0] == 1 && r[0].pad_col[1] == 3 && r[0].pad_row[1] == 3;
+  #assert r[0].gate_col == 4 && r[0].gate_row == 2 && r[0].gate_dx == 1 && r[0].gate_dz == 0;
+  #assert room_tile(r[..], 0, 0) == ROOM_WALL && room_tile(r[..], 1, 1) == ROOM_FLOOR && room_tile(r[..], 2, 2) == ROOM_FLOOR && room_tile(r[..], 4, 2) == ROOM_GATE && room_tile(r[..], 3, 1) == ROOM_FLOOR;
+  #assert room_tile(r[..], -1, 0) == ROOM_VOID && room_tile(r[..], 5, 0) == ROOM_VOID && room_tile(r[..], 0, 5) == ROOM_VOID && room_tile(r[..], 0, -1) == ROOM_VOID;
+  // newlines end rows too, a trailing end of row is nothing, a space is outside, and a crate may start on a pad
+  s: [1] Room;
+  #assert !room_read("####\n#*@>\n#### \n", s[..]);
+  #assert room_read(" ####\n #*@>\n ####\n", s[..]) && s[0].cols == 5 && s[0].rows == 3 && s[0].crates == 1 && s[0].pads == 1 && s[0].crate_col[0] == 2 && s[0].pad_col[0] == 2 && room_tile(s[..], 0, 1) == ROOM_VOID;
+  // a gate in each wall: the way out is away from the floor beside it
+  #assert room_read("#>#/#@#/#*#/###", s[..]) && s[0].gate_dx == 0 && s[0].gate_dz == 1;
+  #assert room_read("###/#*#/#@#/#>#", s[..]) && s[0].gate_dx == 0 && s[0].gate_dz == -1;
+  #assert room_read("####/>@*#/####", s[..]) && s[0].gate_dx == -1 && s[0].gate_dz == 0;
+}
+
+#test "what is not a room is refused and leaves nothing: ragged rows, no start, two gates, crates without pads, a strange tile, too big" {
+  r: [1] Room;
+  #assert !room_read("", r[..]) && r[0].cols == 0 && r[0].rows == 0;
+  // a room read, then a text that is none: nothing of the room is left
+  #assert room_read(ROOM_TEST, r[..]) && r[0].cols == 5 && !room_read("####/#*.>/####", r[..]) && r[0].cols == 0 && r[0].rows == 0 && r[0].crates == 0;
+  #assert !room_read("####/#*@>/###", r[..]) && r[0].cols == 0;       // ragged
+  #assert !room_read("####/#*.>/####", r[..]);                         // no start
+  #assert !room_read("####/#@@>/####", r[..]);                         // two starts, and no crate
+  #assert !room_read("#>##/#*@>/####", r[..]);                         // two gates
+  #assert !room_read("####/#*@#/####", r[..]);                         // no gate
+  #assert !room_read("#####/#c@.>/#####", r[..]);                      // a crate and no pad
+  #assert !room_read("#####/#o@.>/#####", r[..]);                      // a pad and no crate
+  #assert !room_read("#####/#.@.>/#####", r[..]);                      // neither
+  #assert !room_read("#####/#*@x>/#####", r[..]);                      // a strange tile
+  #assert room_read("####/#*@#/##>#", r[..]) && r[0].gate_dz == -1 && r[0].gate_dx == 0;   // (a gate under the start reads)
+  #assert !room_read("#*@#>", r[..]);                                  // a gate with no floor beside it
+  // 24 tiles a side is the most
+  wide: [64] u8; n := 0;
+  for k: 0..<21 { wide[n] = '.'; n += 1; }
+  wide[n] = '*'; wide[n + 1] = '@'; wide[n + 2] = '>'; n += 3;
+  #assert room_read(cast(string) wide[0..<n], r[..]) && r[0].cols == 24;
+  wide[n] = '#'; #assert !room_read(cast(string) wide[0..<n + 1], r[..]);
+  // and 24 rows: the tile past a 24-wide row's end, or under the last row, is nothing
+  big: [700] u8; m := 0;
+  for k: 0..<21 { big[m] = '#'; m += 1; }
+  big[m] = '*'; big[m + 1] = '@'; big[m + 2] = '>'; big[m + 3] = '/'; m += 4;
+  for row: 1..<24 { for k: 0..<24 { big[m] = '#'; m += 1; } big[m] = '/'; m += 1; }
+  #assert room_read(cast(string) big[0..<m], r[..]) && r[0].cols == 24 && r[0].rows == 24;
+  #assert room_tile(r[..], 23, 0) == ROOM_GATE && room_tile(r[..], 24, 0) == ROOM_VOID && room_tile(r[..], 0, 1) == ROOM_WALL && room_tile(r[..], 0, 23) == ROOM_WALL && room_tile(r[..], 0, 24) == ROOM_VOID;
+  for k: 0..<24 { big[m] = '#'; m += 1; }
+  #assert !room_read(cast(string) big[0..<m], r[..]);                 // a 25th row
+  // seventeen crates are too many
+  many: [64] u8; q := 0;
+  for k: 0..<16 { many[q] = '*'; q += 1; }
+  many[q] = '@'; many[q + 1] = '>'; q += 2;
+  #assert room_read(cast(string) many[0..<q], r[..]) && r[0].crates == 16;
+  for k: 0..<17 { many[k] = '*'; }
+  many[17] = '@'; many[18] = '>';
+  #assert !room_read(cast(string) many[0..<19], r[..]);
+  for k: 0..<17 { many[k] = 'c'; }
+  #assert !room_read(cast(string) many[0..<19], r[..]);
+  for k: 0..<17 { many[k] = 'o'; }
+  #assert !room_read(cast(string) many[0..<19], r[..]);
+}
+
+#test "a tile's middle: the room is centred, x east along a row, the first row furthest north" {
+  r: [1] Room; ok := room_read(ROOM_TEST, r[..]);
+  a := room_at(r[..], 2, 2, 2); #assert a.x == 0 && a.z == 0;
+  b := room_at(r[..], 2, 0, 0); #assert b.x == -4 && b.z == 4;
+  c := room_at(r[..], 2, 4, 4); #assert c.x == 4 && c.z == -4;
+  d := room_at(r[..], 1.5, 3, 1); #assert d.x == 1.5 && d.z == 1.5;
+  // an even room's middle is between tiles
+  s: [1] Room; ok = room_read("####/#*@>", s[..]);
+  e := room_at(s[..], 2, 0, 0); #assert e.x == -3 && e.z == 1;
+  f := room_at(s[..], 2, 3, 1); #assert f.x == 3 && f.z == -1;
+}
+
+#test "the walls are boxes: a run along a row is one, runs that repeat down the rows are one, and the gate has its own" {
+  r: [1] Room; ok := room_read(ROOM_TEST, r[..]);
+  w: [64] f32;
+  n := room_walls(r[..], 2, w[..]);
+  // the north wall, the west wall's three tiles, the east wall above the gate, the east wall below it, the south wall
+  #assert n == 5;
+  #assert w[0] == -5 && w[1] == 3 && w[2] == 5 && w[3] == 5;
+  #assert w[4] == -5 && w[5] == -3 && w[6] == -3 && w[7] == 3;
+  #assert w[8] == 3 && w[9] == 1 && w[10] == 5 && w[11] == 3;
+  #assert w[12] == 3 && w[13] == -3 && w[14] == 5 && w[15] == -1;
+  #assert w[16] == -5 && w[17] == -5 && w[18] == 5 && w[19] == -3;
+  g := room_gate(r[..], 2); #assert g[0] == 3 && g[1] == -1 && g[2] == 5 && g[3] == 1;
+  // every wall tile is in exactly one box, and no box holds a tile that is not a wall
+  for row: 0..<r[0].rows { for col: 0..<r[0].cols {
+    m := room_at(r[..], 2, col, row); in := 0;
+    for k: 0..<n { if m.x > w[k * 4] && m.x < w[k * 4 + 2] && m.z > w[k * 4 + 1] && m.z < w[k * 4 + 3] { in += 1; } }
+    #assert in == (ifx room_tile(r[..], col, row) == ROOM_WALL then 1 else 0);
+  } }
+  // a short buffer takes what fits
+  #assert room_walls(r[..], 2, w[0..<8]) == 2 && room_walls(r[..], 2, w[0..<7]) == 1 && room_walls(r[..], 2, w[0..<0]) == 0;
+  // a pillar in the floor is its own box; a wide block two rows deep is one; a run that only partly repeats is not merged
+  s: [1] Room; ok = room_read("######/#*@..>/#.##.#/#.##.#/#.#..#/######", s[..]);
+  n = room_walls(s[..], 1, w[..]);
+  #assert n == 6;
+  // (the block: cols 2 to 3, rows 2 to 3; the lone tile under its left half is another box)
+  found := 0;
+  for k: 0..<n { if w[k * 4] == -1 && w[k * 4 + 2] == 1 && w[k * 4 + 1] == -1 && w[k * 4 + 3] == 1 { found += 1; } if w[k * 4] == -1 && w[k * 4 + 2] == 0 && w[k * 4 + 1] == -2 && w[k * 4 + 3] == -1 { found += 10; } }
+  #assert found == 11;
+}
+
+#test "a pad holds a thing within its reach along both axes; the lit pads are bits; solved is every pad" {
+  #assert room_pad_holds(2, 4, 0.5, 2, 4) && room_pad_holds(2, 4, 0.5, 2.5, 4.5) && room_pad_holds(2, 4, 0.5, 1.5, 3.5);
+  #assert !room_pad_holds(2, 4, 0.5, 2.51, 4) && !room_pad_holds(2, 4, 0.5, 2, 4.51) && !room_pad_holds(2, 4, 0.5, 1.49, 4) && !room_pad_holds(2, 4, 0.5, 2, 3.49);
+  r: [1] Room; ok := room_read(ROOM_TEST, r[..]);
+  // the pads are at (-2, 2) and (2, -2); the crates start at (2, 2) and (-2, -2): none lit
+  at := [4] f32.[2, 2, -2, -2];
+  #assert room_lit(r[..], 2, 0.5, at[..]) == 0 && !room_solved(r[..], 0);
+  at[0] = -1.6; at[1] = 2.3;
+  #assert room_lit(r[..], 2, 0.5, at[..]) == 1 && !room_solved(r[..], 1);
+  at[2] = 2.4; at[3] = -2;
+  #assert room_lit(r[..], 2, 0.5, at[..]) == 3 && room_solved(r[..], 3);
+  // either crate lights either pad; two crates on one pad light one
+  at = [4] f32.[2, -2, -2, 2];
+  #assert room_lit(r[..], 2, 0.5, at[..]) == 3;
+  at = [4] f32.[2, -2, 2.2, -2.2];
+  #assert room_lit(r[..], 2, 0.5, at[..]) == 2 && !room_solved(r[..], 2);
+  #assert room_lit(r[..], 2, 0.5, at[0..<2]) == 2 && room_lit(r[..], 2, 0.5, at[0..<0]) == 0 && room_lit(r[..], 2, 0.5, at[0..<3]) == 2;
+  #assert room_count(0) == 0 && room_count(1) == 1 && room_count(3) == 2 && room_count(0x8001) == 2 && room_count(0xffff) == 16 && room_count(0x10000) == 0;
+  e: [1] Room; #assert !room_solved(e[..], 0);
+  // a room of one pad is solved by its one bit
+  one: [1] Room; ok = room_read("####/#*@>/####", one[..]); #assert room_solved(one[..], 1) && !room_solved(one[..], 0) && !room_solved(one[..], 3);
+}
+
+#test "through the gate: past its middle on the way out, within its width, and no further than a tile and a half" {
+  r: [1] Room; ok := room_read(ROOM_TEST, r[..]);
+  // the gate is at (4, 0), the way out east
+  #assert !room_through(r[..], 2, 0, 0) && !room_through(r[..], 2, 3.9, 0) && !room_through(r[..], 2, 4, 0);
+  #assert room_through(r[..], 2, 4.1, 0) && room_through(r[..], 2, 5, 0.9) && room_through(r[..], 2, 6.9, -0.9);
+  #assert !room_through(r[..], 2, 4.5, 1) && !room_through(r[..], 2, 4.5, -1) && !room_through(r[..], 2, 7, 0) && !room_through(r[..], 2, 9, 0);
+  // a gate in the north wall: the way out is north
+  s: [1] Room; ok = room_read("#>#/#@#/#*#/###", s[..]);
+  #assert room_through(s[..], 2, 0, 3.5) && !room_through(s[..], 2, 0, 2.9) && !room_through(s[..], 2, 1.1, 3.5) && !room_through(s[..], 2, 0, 6.1);
+  // south, and west
+  ok = room_read("###/#*#/#@#/#>#", s[..]);
+  #assert room_through(s[..], 2, 0.5, -3.5) && !room_through(s[..], 2, 0, -2.9) && !room_through(s[..], 2, 0, 3.5);
+  ok = room_read("####/>@*#/####", s[..]);
+  #assert room_through(s[..], 2, -3.5, 0.5) && !room_through(s[..], 2, -2.9, 0) && !room_through(s[..], 2, 3.5, 0);
+  // a gate off the room's middle: its own width counts, not the room's
+  ok = room_read("###>/#*@./#..#/#..#", s[..]);      // north wall, east end: the gate is at (3, 3)
+  #assert s[0].gate_dz == 1 && room_through(s[..], 2, 3, 3.5) && room_through(s[..], 2, 3.9, 3.5) && !room_through(s[..], 2, 0, 3.5) && !room_through(s[..], 2, -3, 3.5) && !room_through(s[..], 2, 4.1, 3.5);
+  ok = room_read("####/#*@>/#..#/#..#", s[..]);      // east wall, north end: the gate is at (3, 1)
+  #assert s[0].gate_dx == 1 && room_through(s[..], 2, 3.5, 1) && room_through(s[..], 2, 3.5, 1.9) && !room_through(s[..], 2, 3.5, -1) && !room_through(s[..], 2, 3.5, -0.1) && !room_through(s[..], 2, 3.5, 2.1);
+}

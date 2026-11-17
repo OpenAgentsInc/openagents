@@ -249,6 +249,31 @@ between two fast bodies, more than 64 bodies, device kernels, the network.
 The Physics Lab (chapter 37) still measures the older kernel composition
 against Rapier and Jolt, not this module.
 
+### Walls
+
+A world has things that never move: a house, a rock, a room's walls. They are
+not bodies. `bd_wall(b, lo, hi)` adds a fixed box square to the world by its
+low and high corners (up to `BD_WALLS`, 512), and `bd_walls_clear` takes them
+all away. A wall takes none of the 64 bodies, is never stepped, woken or put
+to sleep, and two walls are never tested against each other: each awake body
+is tested only against the walls its own swept box overlaps, after its ground
+contact and its pairs, in the walls' order. A ball meets a wall by its nearest
+point and a box by the faces that meet, with the finders a pair of bodies
+uses; the contact's friction and bounce are the body's own, as on the ground,
+and its impulses are kept between steps under a key past every body's id, so
+a box rests on a roof without jitter. Things land on a wall's top, rest
+against its side, bounce off it and fall when the walls are cleared (every
+body wakes then, and when a wall is added). A mover's push does not put a box
+through one.
+
+Walls are scene setup, like the ground's height and gravity: they are in the
+digest (a scene with other walls, or the same walls in another order, is
+another scene) and not in a snapshot or the history: a room that reads a
+snapshot has built the same walls. A run with walls repeats bit for bit.
+gamebuilder.org's village gives each building's solids (some two hundred
+boxes: walls, filled rooms, stepped roofs, hanging eaves) to the scene this
+way.
+
 ## What it still builds
 
 - Generated CUDA and Metal kernels for `rigid_set_step` through Psionic

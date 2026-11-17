@@ -24,6 +24,13 @@
 //                                 another parts from it and stops
 //   sleeping islands              bodies joined by contacts sleep together once all have been still for
 //                                 BD_SLEEP_TIME, and wake together when something moving touches one
+//   walls                         fixed boxes square to the world (a building's solids, a room's walls): bodies
+//                                 land on them, rest against them and bounce off them as they do the ground.
+//                                 They are not bodies: they take none of the BD_MAX bodies, are never
+//                                 stepped, woken or put to sleep, and two of them are never tested against
+//                                 each other; a body meets only the walls its own box reaches. They are scene
+//                                 setup, like the ground's height and gravity: in the digest, not in a snapshot
+//                                 (a room that reads a snapshot has built the same walls)
 //   movers                        kinematic upright capsules (characters), each with an id, taken in id
 //                                 order: a mover shoves what it walks into, with a force that falls as
 //                                 the body gets away (bd_push_share); bodies never move a mover, and it
@@ -50,6 +57,7 @@
 //   bd_still                put a body to sleep where it is: a thing set down at rest, not dropped
 //   bd_remove               take one out
 //   bd_local                mark a body local-only decoration
+//   bd_wall / bd_walls_clear  add a wall (a fixed box by its low and high corners); take them all away
 //   bd_mover / bd_mover_off where a mover is and how it moves, for the steps that follow
 //   bd_advance / bd_step    time
 //   bd_pose                 a body's place and attitude for drawing
@@ -81,6 +89,8 @@ BD_LOCAL_ROOM :: 64;         // of them, at most this many that touch a local bo
 BD_MOVERS :: 8;              // movers at once
 BD_GROUND :: -1;             // a manifold's second body: the ground plane
 BD_MOVER :: -2;              // or a mover: -2 the first in id order, -3 the next, ...
+BD_WALL :: -16;              // or a wall: -16 the first added, -17 the next, ... (below every mover)
+BD_WALLS :: 512;             // walls at once
 BD_ITERATIONS :: 10;         // velocity solves a step
 BD_PUSH_ITERATIONS :: 4;     // positional solves a step
 BD_SLOP :: 0.005;            // m of overlap left alone
@@ -120,7 +130,7 @@ Bd_Point :: struct {
   push: f64;                 // the pseudo-speed the positional solve reaches at least
 }
 Bd_Manifold :: struct {
-  a: int; b: int;            // b: a body, BD_GROUND, or BD_MOVER and below
+  a: int; b: int;            // b: a body, BD_GROUND, a mover (BD_MOVER down to BD_WALL + 1) or a wall (BD_WALL and below)
   count: int;
   normal: D3;                // from b toward a
   t: [2] D3;
@@ -175,6 +185,7 @@ Bodies :: struct {
   lifted: int;               // bodies lifted back from under the ground, ever
   faults: int;               // steps of a body undone because its pose was not a number, ever
   count_v: int; movers: [BD_MOVERS] Bd_Mover;   // in id order
+  count_x: int; wall: [BD_WALLS] Box;           // the walls, in the order they were added
   bs: [1] Broad_Set; bp: [1] Broad_Pairs;
 }
 
@@ -210,7 +221,7 @@ bd_index :: (b: [] Bodies, id: int) -> int {
 
 // Nothing of the old scene is left that a step reads: no body, contact, mover or time.
 bd_reset :: (b: [] Bodies) {
-  b[0].set[0].count = 0; b[0].count_m = 0; b[0].count_l = 0; b[0].count_w = 0; b[0].count_v = 0; b[0].acc = 0.0; b[0].steps = 0; b[0].labels = 0;
+  b[0].set[0].count = 0; b[0].count_m = 0; b[0].count_l = 0; b[0].count_w = 0; b[0].count_v = 0; b[0].count_x = 0; b[0].acc = 0.0; b[0].steps = 0; b[0].labels = 0;
 }
 // Bodies i and j change places, with everything that is theirs.
 bd_swap :: (b: [] Bodies, i: int, j: int) {
@@ -261,6 +272,24 @@ bd_ball :: (b: [] Bodies, id: int, pos: D3, radius: f64, density: f64, friction:
 }
 // Marks body i local-only decoration, or shared again.
 bd_local :: (b: [] Bodies, i: int, local: bool) { b[0].local[i] = local; }
+// A wall: a fixed box square to the world, from its low corner to its high one. Its index, or -1
+// when there is no room or it is not a box (a corner that is not a number, or no size along an
+// axis). Bodies near it wake: something has been put where they rest.
+bd_wall :: (b: [] Bodies, lo: D3, hi: D3) -> int {
+  if b[0].count_x >= BD_WALLS || !(hi.x > lo.x && hi.y > lo.y && hi.z > lo.z) { return -1; }
+  k := b[0].count_x;
+  b[0].wall[k] = Box.{lo = lo, hi = hi}; b[0].count_x += 1;
+  for i: 0..<bd_count(b) { bd_wake(b, i); }
+  return k;
+}
+// Every wall goes, and every body wakes: what rested on one falls.
+bd_walls_clear :: (b: [] Bodies) {
+  if b[0].count_x == 0 { return; }
+  b[0].count_x = 0;
+  for i: 0..<bd_count(b) { bd_wake(b, i); }
+}
+// Whether a manifold's second body is a mover.
+bd_is_mover :: (other: int) -> bool { return other <= BD_MOVER && other > BD_WALL; }
 // The scene's gravity (m/s^2 along y, down is negative): a setting a game may change as it runs.
 // A change wakes every body, so what was resting on a slope, a stack or the ground answers to it at
 // the next step. It is part of the scene's state: in the digest, the snapshot and the history.
@@ -431,6 +460,29 @@ bd_ground :: (b: [] Bodies, i: int, m: [] Bd_Manifold) {
     bd_point(m, r, D3_ZERO, b[0].ground - (pos.y + r.y), k);
   }
 }
+// Body i against wall k: a ball by its nearest point, a box by the faces that meet, as against a
+// fixed box (bd_pair's finders), the normal from the wall toward the body.
+bd_walled :: (b: [] Bodies, i: int, k: int, m: [] Bd_Manifold) {
+  s := b[0].set[..]; pi := s[0].pos[i]; w := b[0].wall[k];
+  pj := d3_scale(d3_add(w.lo, w.hi), 0.5); hj := d3_scale(d3_sub(w.hi, w.lo), 0.5);
+  m[0].a = i; m[0].b = BD_WALL - k; m[0].count = 0;
+  reach := bd_reach(b, d3_len(s[0].vel[i]));
+  if b[0].kind[i] == Bd_Kind.ball {
+    c := contact_sphere_box(pi, b[0].half[i].x + reach, pj, DQ.{}, hj);
+    if c.hit {
+      m[0].normal = c.normal;
+      at := d3_sub(pi, d3_scale(c.normal, b[0].half[i].x));
+      bd_point(m, d3_sub(at, pi), d3_sub(at, pj), c.depth - reach, 0);
+    }
+    return;
+  }
+  grow := d3(reach * 0.5, reach * 0.5, reach * 0.5);
+  f := narrow_box_box(narrow_box(pi, s[0].att[i], d3_add(b[0].half[i], grow)), narrow_box(pj, DQ.{}, d3_add(hj, grow)));
+  m[0].normal = f.normal;
+  for q: 0..<f.count {
+    if f.distance[q] <= 0.0 { bd_point(m, d3_sub(f.point[q], pi), d3_sub(f.point[q], pj), -f.distance[q] - reach, f.feature[q]); }
+  }
+}
 // Bodies i < j against each other.
 bd_pair :: (b: [] Bodies, i: int, j: int, m: [] Bd_Manifold) {
   s := b[0].set[..]; pi := s[0].pos[i]; pj := s[0].pos[j];
@@ -489,8 +541,10 @@ bd_pushed :: (b: [] Bodies, i: int, k: int, m: [] Bd_Manifold) {
   if high > low { at.y = (low + high) * 0.5; }
   bd_point(m, d3_sub(at, pos), D3_ZERO, -f.distance[0], 0);
 }
-// A pair's key: by the two bodies' ids, so it holds when indices move. The ground is -1.
-bd_key :: (b: [] Bodies, a: int, other: int) -> int { return b[0].id[a] * (BD_ID_ROOM * 2) + (ifx other >= 0 then b[0].id[other] else -1) + 1; }
+// A pair's key: by the two bodies' ids, so it holds when indices move. The ground is -1, and a wall
+// is past every body's id, in the walls' order: a body's manifolds are in key order (the ground,
+// its pairs, its walls).
+bd_key :: (b: [] Bodies, a: int, other: int) -> int { return b[0].id[a] * (BD_ID_ROOM * 2) + (ifx other >= 0 then b[0].id[other] else ifx other <= BD_WALL then BD_ID_ROOM + (BD_WALL - other) else -1) + 1; }
 // Keeps a manifold that touches: which of its bodies it moves, its tangents and friction, and last
 // step's impulses for the points with the same features. False when there was no room: the shared
 // bodies' manifolds have BD_MANIFOLDS less BD_LOCAL_ROOM to themselves, so no local body can crowd
@@ -507,8 +561,8 @@ bd_keep :: (b: [] Bodies, m: [] Bd_Manifold) -> bool {
   n := m[0].normal;
   m[0].t[0] = d3_unit(d3_cross(n, ifx abs(n.x) < 0.9 then D3_X else D3_Y));
   m[0].t[1] = d3_cross(n, m[0].t[0]);
-  m[0].mu = ifx other >= 0 then sqrt(b[0].friction[a] * b[0].friction[other]) else ifx other == BD_GROUND then b[0].friction[a] else 0.0;
-  if other > BD_MOVER {
+  m[0].mu = ifx other >= 0 then sqrt(b[0].friction[a] * b[0].friction[other]) else ifx other == BD_GROUND || other <= BD_WALL then b[0].friction[a] else 0.0;
+  if !bd_is_mover(other) {
     key := bd_key(b, a, other);
     // both lists are in key order: a binary search finds last step's
     lo := 0; hi := b[0].count_w;
@@ -528,7 +582,7 @@ bd_keep :: (b: [] Bodies, m: [] Bd_Manifold) -> bool {
   return true;
 }
 // Every manifold of this step, in id order: for each body its ground contact, then its pairs with
-// later bodies; then each mover's, in the movers' id order. A sleeper touched by a waking body
+// later bodies, then the walls it reaches; then each mover's, in the movers' id order. A sleeper touched by a waking body
 // wakes with its island (but a local body wakes no shared one): the count of bodies woken, and the
 // caller finds the contacts again when it is not 0.
 bd_collide :: (b: [] Bodies) -> int {
@@ -559,6 +613,15 @@ bd_collide :: (b: [] Bodies) -> int {
       if !bd_awake(b, i) && (b[0].local[i] || !b[0].local[j]) { bd_wake(b, i); woke += 1; }
       if !bd_awake(b, j) && (b[0].local[j] || !b[0].local[i]) { bd_wake(b, j); woke += 1; }
       kept := bd_keep(b, m[..]);
+    }
+    // the walls its own box reaches (a sleeper sleeps on against one; two walls never meet)
+    if bd_awake(b, i) && !bd_fixed(b, i) {
+      for k: 0..<b[0].count_x {
+        if !broad_overlap(bs[0].box[i], b[0].wall[k]) { continue; }
+        blank: Bd_Manifold; m[0] = blank;
+        bd_walled(b, i, k, m[..]);
+        kept := bd_keep(b, m[..]);
+      }
     }
   }
   for k: 0..<b[0].count_v {
@@ -625,7 +688,7 @@ bd_prepare :: (b: [] Bodies) {
         p.mt[t] = bd_mass(b, m, k, m[0].t[t], p.at[t], p.bt[t]);
       }
       closing := -d3_dot(bd_rel(b, m, k), n);
-      if o <= BD_MOVER {
+      if bd_is_mover(o) {
         // the body is driven to the mover's speed along the normal, and thrown on by its bounce
         // when the mover runs into it; the force falls off as the body gets away
         u := b[0].movers[BD_MOVER - o];
@@ -674,7 +737,7 @@ bd_solve :: (b: [] Bodies) {
       }
       was := m[0].p[k].pn;
       now := fmax(was - m[0].p[k].mn * (d3_dot(bd_rel(b, m, k), n) - m[0].p[k].target), 0.0);
-      if m[0].b <= BD_MOVER { now = fmin(now, m[0].cap); }
+      if bd_is_mover(m[0].b) { now = fmin(now, m[0].cap); }
       m[0].p[k].pn = now;
       bd_push(b, m, n, m[0].p[k].an, m[0].p[k].bn, now - was);
     }
@@ -714,7 +777,7 @@ bd_settle :: (b: [] Bodies) {
     for k: 0..<m.count { sum += m.p[k].pn; }
     b[0].load[m.a] += sum * m.wa;
     if m.b >= 0 { b[0].load[m.b] += sum * m.wb; }
-    if m.b <= BD_MOVER { b[0].movers[BD_MOVER - m.b].pushed += sum; continue; }
+    if bd_is_mover(m.b) { b[0].movers[BD_MOVER - m.b].pushed += sum; continue; }
     w: Bd_Warm; w.key = bd_key(b, m.a, m.b); w.count = m.count;
     for k: 0..<m.count { w.feature[k] = m.p[k].feature; w.pn[k] = m.p[k].pn; w.pt[k * 2] = m.p[k].pt[0]; w.pt[k * 2 + 1] = m.p[k].pt[1]; w.due[k] = m.p[k].due; }
     b[0].warm[b[0].count_w] = w;
@@ -853,6 +916,11 @@ bd_digest_of :: (b: [] Bodies, shared_only: bool) -> u64 {
   s := b[0].set[..];
   h = bd_hash(h, cast(u64) b[0].steps);
   h = bd_hash(h, f64_bits(b[0].gravity));
+  // (the walls are part of the scene: a scene with other walls is another scene)
+  for k: 0..<b[0].count_x {
+    w := b[0].wall[k];
+    for x: [6] f64.[w.lo.x, w.lo.y, w.lo.z, w.hi.x, w.hi.y, w.hi.z] { h = bd_hash(h, f64_bits(x)); }
+  }
   for i: 0..<s[0].count {
     if shared_only && b[0].local[i] { continue; }
     v := [13] f64.[s[0].pos[i].x, s[0].pos[i].y, s[0].pos[i].z, s[0].att[i].x, s[0].att[i].y, s[0].att[i].z, s[0].att[i].w,
@@ -2164,4 +2232,111 @@ BdTestPast :: struct { b: [1] Bodies; h: [1] Bd_History; hash: [400] u64; }
   bd_test_run(b, 5);
   bd_record(b, h);
   #assert b[0].count_w > BD_HISTORY_WARM && bd_has(h, 5) && !bd_exact(h, 5) && !bd_exact(h, 7) && bd_rewind(b, h, 5) && b[0].count_w == 0;
+}
+
+// ---- walls
+
+#test "a wall is a fixed box that takes no body: a ball thrown at it bounces back, a box pushed at it stops against it, and both come to rest outside it" #steps 4000000000 {
+  t: [1] Bodies; b := t[..];
+  // nothing that is not a box is a wall
+  #assert bd_wall(b, d3(0.0, 0.0, 0.0), d3(0.0, 1.0, 1.0)) == -1 && bd_wall(b, d3(0.0, 0.0, 0.0), d3(1.0, 0.0, 1.0)) == -1 && bd_wall(b, d3(0.0, 0.0, 0.0), d3(1.0, 1.0, 0.0)) == -1 && bd_wall(b, d3(2.0, 0.0, 0.0), d3(1.0, 1.0, 1.0)) == -1 && b[0].count_x == 0;
+  nan := 0.0 / 0.0;
+  #assert bd_wall(b, d3(nan, 0.0, 0.0), d3(1.0, 1.0, 1.0)) == -1 && bd_wall(b, d3(0.0, 0.0, 0.0), d3(1.0, nan, 1.0)) == -1;
+  // a wall from x 4 to 5, 3 m high, 6 m long
+  #assert bd_wall(b, d3(4.0, 0.0, -3.0), d3(5.0, 3.0, 3.0)) == 0 && b[0].count_x == 1 && bd_count(b) == 0;
+  ball := bd_test_ball(b, d3(0.0, 0.3, 0.0), 0.3, 40.0, 0.6, 0.55, 0.06);
+  b[0].set[0].vel[ball] = d3(6.0, 0.0, 0.0);
+  near := 0.0; back := false;
+  for k: 0..<240 { bd_step(b); x := b[0].set[0].pos[ball].x; if x > near { near = x; } if b[0].set[0].vel[ball].x < -0.5 { back = true; } }
+  // it reached the wall's face (its middle a radius short of x 4), never went in, and came back
+  #assert near > 3.6 && near < 3.72 && back && b[0].set[0].pos[ball].x < 3.5 && abs(b[0].set[0].pos[ball].z) < 0.01;
+  // a box slid at the wall stops against it, square on, and sleeps there
+  box := bd_test_box(b, d3(1.0, 0.5, 1.5), DQ.{}, d3(0.5, 0.5, 0.5), 100.0, 0.3, 0.0);
+  b[0].set[0].vel[box] = d3(8.0, 0.0, 0.0);
+  far := 0.0;
+  for k: 0..<400 { bd_step(b); x := b[0].set[0].pos[box].x; if x > far { far = x; } }
+  #assert far > 3.4 && far < 3.52 && b[0].set[0].pos[box].x > 3.3 && b[0].set[0].pos[box].x <= 3.51 && !bd_awake(b, box) && abs(b[0].set[0].pos[box].y - 0.5) < 0.01;
+  // it took none of the bodies' room, and a full scene of walls refuses one more
+  #assert bd_count(b) == 2;
+  for k: 1..<BD_WALLS { ok := bd_wall(b, d3(100.0 + cast(f64) k, 0.0, 0.0), d3(100.5 + cast(f64) k, 1.0, 1.0)); }
+  #assert b[0].count_x == BD_WALLS && bd_wall(b, d3(0.0, 9.0, 0.0), d3(1.0, 10.0, 1.0)) == -1;
+  bd_reset(b); #assert b[0].count_x == 0 && bd_count(b) == 0;
+}
+
+#test "things land on a wall's top and rest there: a box dropped on a roof does not pass through, a ball rolls off its edge, and what rests on a wall falls when the walls go" #steps 4000000000 {
+  t: [1] Bodies; b := t[..];
+  // a roof: a slab from 2 to 2.4 m up, 4 m square, with nothing under it
+  roof := bd_wall(b, d3(-2.0, 2.0, -2.0), d3(2.0, 2.4, 2.0));
+  box := bd_test_box(b, d3(0.5, 6.0, 0.0), DQ.{}, d3(0.4, 0.4, 0.4), 200.0, 0.5, 0.1);
+  low := 100.0;
+  for k: 0..<300 { bd_step(b); y := b[0].set[0].pos[box].y; if y < low { low = y; } }
+  // its underside never went under the roof's top by more than the slop, and it sleeps on it
+  #assert low > 2.4 + 0.4 - 0.02 && abs(b[0].set[0].pos[box].y - 2.8) < 0.01 && !bd_awake(b, box) && abs(b[0].set[0].pos[box].x - 0.5) < 0.01;
+  // a ball dropped on the roof beside it, moving toward the edge, rolls off and lands on the ground
+  ball := bd_test_ball(b, d3(-0.8, 2.75, 0.0), 0.3, 40.0, 0.6, 0.3, 0.0);
+  b[0].set[0].vel[ball] = d3(-3.0, 0.0, 0.0);
+  on := false;
+  for k: 0..<500 { bd_step(b); p := b[0].set[0].pos[ball]; if p.x > -1.9 && p.x < -1.2 && abs(p.y - 2.7) < 0.05 { on = true; } }
+  #assert on && b[0].set[0].pos[ball].x < -2.3 && abs(b[0].set[0].pos[ball].y - 0.3) < 0.02;
+  // a ball thrown up from under the roof meets its underside and comes down again
+  under := bd_test_ball(b, d3(1.0, 0.3, 1.0), 0.3, 40.0, 0.6, 0.3, 0.0);
+  b[0].set[0].vel[under] = d3(0.0, 9.0, 0.0);
+  high := 0.0;
+  for k: 0..<120 { bd_step(b); y := b[0].set[0].pos[under].y; if y > high { high = y; } }
+  #assert high > 1.6 && high < 1.72;
+  // the walls go: the box, asleep on the roof, wakes and falls to the ground
+  #assert !bd_awake(b, box);
+  bd_walls_clear(b); #assert b[0].count_x == 0 && bd_awake(b, box);
+  bd_test_run(b, 200);
+  #assert abs(b[0].set[0].pos[box].y - 0.4) < 0.01;
+  // clearing no walls wakes nothing; a wall added wakes what sleeps
+  bd_test_run(b, 60); #assert !bd_awake(b, box);
+  bd_walls_clear(b); #assert !bd_awake(b, box);
+  again := bd_wall(b, d3(5.0, 0.0, 5.0), d3(6.0, 1.0, 6.0)); #assert again == 0 && bd_awake(b, box);
+}
+
+#test "a wall's friction is the body's own, as the ground's; a mover pushes a box against a wall and it stays outside; the walls are in the digest and a run with them repeats" #steps 4000000000 {
+  t: [1] Bodies; b := t[..];
+  // a platform 1 m high: a box sliding on its top slows as on the ground, by its own friction
+  top := bd_wall(b, d3(-10.0, 0.0, -2.0), d3(10.0, 1.0, 2.0));
+  box := bd_test_box(b, d3(-5.0, 1.5, 0.0), DQ.{}, d3(0.5, 0.5, 0.5), 100.0, 0.5, 0.0);
+  bd_test_run(b, 30);
+  b[0].set[0].vel[box] = d3(4.0, 0.0, 0.0);
+  bd_test_run(b, 240);
+  // v^2 / (2 mu g) = 16 / 9.81 = 1.63 m
+  #assert abs(b[0].set[0].pos[box].x - (-5.0 + 1.63)) < 0.12 && abs(b[0].set[0].pos[box].y - 1.5) < 0.01 && !bd_awake(b, box);
+  // a mover walks a box into a wall: the box stops at the wall and the mover's push does not put it through
+  u: [1] Bodies; c := u[..];
+  w := bd_wall(c, d3(3.0, 0.0, -2.0), d3(4.0, 2.0, 2.0));
+  crate := bd_test_box(c, d3(1.0, 0.5, 0.0), DQ.{}, d3(0.5, 0.5, 0.5), 200.0, 0.5, 0.05);
+  bd_test_run(c, 20);
+  x := -0.5;
+  for k: 0..<300 {
+    if x < 1.65 { x += 6.9 / 60.0; }
+    bd_test_mover(c, d3(x, 0.0, 0.0), 1.8, 0.3, d3(6.9, 0.0, 0.0), 12000.0, 6.9, 12.0);
+    bd_step(c);
+    #assert c[0].set[0].pos[crate].x < 2.56;
+  }
+  #assert c[0].set[0].pos[crate].x > 2.4;
+  // the digest: the same scene with and without a wall far from everything differs; the same run twice is the same bits
+  d1: [1] Bodies; d2: [1] Bodies; d3_: [1] Bodies;
+  for q: 0..<3 {
+    e := ifx q == 0 then d1[..] else ifx q == 1 then d2[..] else d3_[..];
+    if q < 2 { r := bd_wall(e, d3(2.0, 0.0, -1.0), d3(3.0, 1.5, 1.0)); r = bd_wall(e, d3(-3.0, 0.5, -1.0), d3(-2.0, 0.9, 1.0)); }
+    ball := bd_test_ball(e, d3(0.0, 1.0, 0.2), 0.3, 40.0, 0.6, 0.55, 0.06); e[0].set[0].vel[ball] = d3(5.0, 0.0, 0.3);
+    bx := bd_test_box(e, d3(-1.0, 2.0, 0.0), dq_y(0.4), d3(0.3, 0.3, 0.3), 200.0, 0.5, 0.15); e[0].set[0].vel[bx] = d3(-3.0, 0.0, 0.0);
+  }
+  for k: 0..<300 { bd_step(d1[..]); bd_step(d2[..]); bd_step(d3_[..]); #assert bd_digest(d1[..]) == bd_digest(d2[..]); }
+  #assert bd_digest(d1[..]) != bd_digest(d3_[..]) && d1[0].set[0].pos[0].x < 2.0 && d3_[0].set[0].pos[0].x > 2.5;
+  // walls alone change the digest, and their order is part of it
+  f1: [1] Bodies; f2: [1] Bodies; f3: [1] Bodies;
+  #assert bd_digest(f1[..]) == bd_digest(f2[..]);
+  r1 := bd_wall(f1[..], d3(0.0, 0.0, 0.0), d3(1.0, 1.0, 1.0)); #assert bd_digest(f1[..]) != bd_digest(f2[..]);
+  r1 = bd_wall(f1[..], d3(2.0, 0.0, 0.0), d3(3.0, 1.0, 1.0));
+  r1 = bd_wall(f2[..], d3(2.0, 0.0, 0.0), d3(3.0, 1.0, 1.0)); r1 = bd_wall(f2[..], d3(0.0, 0.0, 0.0), d3(1.0, 1.0, 1.0));
+  #assert bd_digest(f1[..]) != bd_digest(f2[..]);
+  r1 = bd_wall(f3[..], d3(0.0, 0.0, 0.0), d3(1.0, 1.0, 1.0)); r1 = bd_wall(f3[..], d3(2.0, 0.0, 0.0), d3(3.0, 1.0, 1.0));
+  #assert bd_digest(f1[..]) == bd_digest(f3[..]);
+  r1 = bd_wall(f3[..], d3(2.0, 0.0, 0.0), d3(3.0, 1.0, 1.5)); bd_walls_clear(f1[..]); r1 = bd_wall(f1[..], d3(0.0, 0.0, 0.0), d3(1.0, 1.0, 1.0));
+  #assert bd_is_mover(BD_MOVER) && bd_is_mover(BD_MOVER - BD_MOVERS + 1) && bd_is_mover(BD_WALL + 1) && !bd_is_mover(BD_WALL) && !bd_is_mover(BD_GROUND) && !bd_is_mover(0) && !bd_is_mover(BD_WALL - 5);
 }
