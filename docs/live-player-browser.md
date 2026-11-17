@@ -7,6 +7,10 @@ query parameters. `pb_tap` hit-tests the current target before mouse input;
 `pb_type` uses the browser's input transport. Read-only observation expressions
 are internal library calls, never a user-supplied script operation.
 
+`cdp_launch_live_headless` uses the same hardware-only player policy without a
+window. Both player modes omit unsafe WebGPU enabling and refuse SwiftShader;
+ordinary non-player tooling retains its existing defaults.
+
 `player-webdriver.coax` provides the same transport for Safari on macOS and
 dedicated Safari simulators/devices. The caller supplies standard capabilities.
 Safari must have Remote Automation enabled. Keyboard holds are one bounded
