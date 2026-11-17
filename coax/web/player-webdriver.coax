@@ -82,7 +82,9 @@ wd_tap :: (w:[]PlayerWd,id:string,touch:bool)->bool {
 wd_type :: (w:[]PlayerWd,text:string)->bool {
   if w[0].native_sdk {
     backspace:[1]u8;backspace[0]=8;
-    b:[8192]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_obj(o[..]);jo_key(o[..],"script");jo_str(o[..],"mobile: keys");jo_key(o[..],"args");jo_arr(o[..]);jo_obj(o[..]);jo_key(o[..],"keys");jo_arr(o[..]);jo_str(o[..],ifx text=="" then "\n" else ifx text=="" then cast(string)backspace[..] else text);jo_end(o[..]);jo_end(o[..]);jo_end(o[..]);jo_end(o[..]);return !o[0].bad && wd_call(w,"POST","/execute/sync",jo_text(o[..]));
+    // XCUITest's /keys maps directly to WDA /wda/keys (typeText), including
+    // web contexts. It never invokes the web atom's value assignment.
+    b:[8192]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_obj(o[..]);jo_key(o[..],"value");jo_arr(o[..]);jo_str(o[..],ifx text=="" then "\n" else ifx text=="" then cast(string)backspace[..] else text);jo_end(o[..]);jo_end(o[..]);return !o[0].bad && wd_call(w,"POST","/keys",jo_text(o[..]));
   }
   // The focused element receives real keyboard actions. Safari's element-value
   // command can return success without delivering input to controlled editors.
