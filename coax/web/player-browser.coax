@@ -199,8 +199,16 @@ pb_watchdog_for :: (url:string,dir:string,budget_ms:int)->int {
 // A separate CDP connection records presented frames on the real wall clock.
 // Start only after secret entry. Duration is reconstructed from event receipt times.
 pb_record :: (url:string,dir:string)->int {return pb_record_with(url,dir,900000,100);}
-pb_record_with :: (url:string,dir:string,budget_ms:int,frame_ms:int)->int {
-  if budget_ms<1000 || budget_ms>3600000 || frame_ms<100 || frame_ms>1000 {return 1;}
+pb_record_with :: (url:string,dir:string,budget_ms:int,frame_ms:int)->int {return pb_record_limited(url,dir,budget_ms,frame_ms,536870912);}
+pb_capture_limits :: (budget_ms:int,frame_ms:int,max_bytes:int)->bool {return budget_ms>=1000 && budget_ms<=3600000 && frame_ms>=100 && frame_ms<=1000 && max_bytes>=1048576 && max_bytes<=1073741824;}
+#test "capture limits reject unbounded duration, rate and disk usage" {
+  #assert pb_capture_limits(1800000,200,1073741824) && pb_capture_limits(900000,100,536870912);
+  #assert !pb_capture_limits(3600001,200,1073741824) && !pb_capture_limits(1800000,0,1073741824) && !pb_capture_limits(1800000,200,1073741825) && !pb_capture_limits(1800000,200,0);
+}
+// A downstream long journey can select its measured disk allowance. Ordinary
+// callers retain 512 MiB; even explicit allowances stop at one GiB.
+pb_record_limited :: (url:string,dir:string,budget_ms:int,frame_ms:int,max_bytes:int)->int {
+  if !pb_capture_limits(budget_ms,frame_ms,max_bytes) {return 1;}
   c: [1] Cdp; if !cdp_connect(c[..],url) { return 1; }
   _ := cdp_call(c[..],"Page.enable","{}",PB_CALL_MS);
   _ := cdp_call(c[..],"Network.enable","{}",PB_CALL_MS);
@@ -242,7 +250,7 @@ pb_record_with :: (url:string,dir:string,budget_ms:int,frame_ms:int)->int {
       n := b64_decode(data,png[..]); fn := ws_put(frame[..],0,"frame-"); fn = pb_decimal(frame[..],fn,count); fn = ws_put(frame[..],fn,".jpg");
       name := cast(string)frame[0..<fn];
       if n<=0 || !pb_capture_frame(dir,name,png[0..<n],ifx last>0 then now-last else -1) { cdp_shut(c[..]); return 1; }
-      count += 1; last = now;total_bytes+=n;if total_bytes>536870912 {cdp_shut(c[..]);return 1;}
+      count += 1; last = now;total_bytes+=n;if total_bytes>max_bytes {cdp_shut(c[..]);return 1;}
     }
     _ := cdp_send(c[..],"Page.screencastFrameAck",jo_text(o[..]));
   }

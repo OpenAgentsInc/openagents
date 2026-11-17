@@ -12,7 +12,7 @@ prc_visibility :: (c:[]Cdp,hidden:bool,focus_required:bool)->bool {
   end:=proc_now_ms()+2000;while proc_now_ms()<end {if pb_bool(c,expression) {return true;}proc_sleep(25);}return false;
 }
 tool_main :: ()->int #export_c #effects(all) {
-  a:[1]Args;if !args_load(a[..]) {return 2;}if args_at(a[..],0)=="--record" {return pb_record_with(args_at(a[..],1),args_at(a[..],2),15000,200);}
+  a:[1]Args;if !args_load(a[..]) {return 2;}if args_at(a[..],0)=="--record" {return pb_record_limited(args_at(a[..],1),args_at(a[..],2),15000,200,1073741824);}
   dir:=args_value(a[..],"--out","coax/web/build/player-record-check");path:[4096]u8;if fs_exists(fs_join(dir,"capture.ffconcat",path[..])) || !fs_mkdir_private(dir) {return 2;}
   c:[1]Cdp;if !cdp_launch_live_headless(c[..],800,600,"coax-record-fixture-") {return 1;}defer cdp_close(c[..]);_=cdp_call(c[..],"Page.enable","{}",PB_CALL_MS);
   if args_has(a[..],"--metrics") {_:=cdp_call(c[..],"Emulation.setDeviceMetricsOverride","{\"width\":800,\"height\":600,\"deviceScaleFactor\":1,\"mobile\":false}",PB_CALL_MS);}

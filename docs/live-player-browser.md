@@ -50,3 +50,8 @@ with a release catalog; missing or mismatched receipts prevent qualification.
 Native checks: `coax test coax/web/player-browser.coax --library` and
 `coax test coax/web/player-webdriver.coax --library`. Product-specific journeys,
 accounts and assertions belong downstream.
+
+`pb_record_limited` accepts an explicit raw-byte allowance from 1 MiB to
+1 GiB; the ordinary recorder wrappers retain their 512 MiB default. Duration
+stays at most one hour and frame spacing at least 100 ms. The native capture
+fixture exercises the explicit-budget entry point, suspension and completion.
