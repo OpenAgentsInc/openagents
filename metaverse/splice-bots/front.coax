@@ -70,10 +70,11 @@ fr_front :: (g: [] SpGame) -> bool { m := g[0].mode; return m == M_TITLE || m ==
 // ---- the kept run: a few lines of text
 
 fr_bits :: (out: [] u8, n: int, b: [] bool) -> int { m := n; for v: b { m = ct_put(out, m, ifx v then "1" else "0"); } return m; }
-// The run as g's checkpoint holds it, into out; its length.
+// Serialize the browser checkpoint. In a project run, Digger's progress comes from the
+// same live run as the inventory and pets, even when the rover's respawn snapshot is older.
 fr_run_write :: (g: [] SpGame, out: [] u8) -> int {
-  s := g[0].save;
   project := sjx_on(g) && g[0].jr[0].pet_mesh;
+  s := ifx project then g_progress(g) else g[0].save;
   n := ct_put(out, 0, ifx project then FR_RUN_PROJECT else FR_RUN_HEAD);
   n = ct_put(out, n, "\nhave "); n = fr_bits(out, n, s.have[..]);
   n = ct_put(out, n, "\ntaken "); n = fr_bits(out, n, s.taken[..]);

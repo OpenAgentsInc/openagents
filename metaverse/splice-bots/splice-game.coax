@@ -310,12 +310,11 @@ weak_at :: (g: [] SpGame, i: int) -> Point { return sb_weak_at(g, i); }
 rail_at :: (g: [] SpGame, s: f32) -> Point { return v3(g[0].at.rail_x + sin(s * 0.03) * 8, 0, g[0].at.rail_z + s); }
 rail_yaw :: (g: [] SpGame, s: f32) -> f32 { a := rail_at(g, s); b := rail_at(g, s + 1); return atan2(b.x - a.x, b.z - a.z); }
 
-g_keep :: (g: [] SpGame) {
-  for i: 0..<HAVES { g[0].save.have[i] = g[0].have[i]; }
-  for i: 0..<PICKS { g[0].save.taken[i] = g[0].taken[i]; }
-  for i: 0..<3 { g[0].save.slot[i] = g[0].slot[i]; g[0].save.strip[i] = g[0].strip[i]; }
-  g[0].save.strip_n = g[0].strip_n; g[0].save.scrap = g[0].scrap; g[0].save.cells = g[0].cells;
+g_progress :: (g: [] SpGame) -> SpSave {
+  return SpSave.{have = g[0].have, taken = g[0].taken, slot = g[0].slot, strip = g[0].strip,
+    strip_n = g[0].strip_n, scrap = g[0].scrap, cells = g[0].cells};
 }
+g_keep :: (g: [] SpGame) { g[0].save = g_progress(g); }
 // Back at Sniper, the rover, which is the checkpoint (#13505), with the inventory you had when you last left it: what was picked up
 // since is lost and lies where it was.
 g_respawn :: (g: [] SpGame) {

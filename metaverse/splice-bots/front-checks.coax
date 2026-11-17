@@ -79,11 +79,12 @@ fc_answer :: (out: [] u8, status: int, text: string) -> string {
   g := [1] SpGame.[SpGame.{}]; fc_fresh(g[..]);
   g[0].have[H_BATTERY] = true; g[0].taken[H_BATTERY] = true; g_enter_mine(g[..]);
   g[0].have[H_ARM] = true; g[0].taken[H_ARM] = true; g[0].scrap = 2; g_keep(g[..]);
+  g_take(g[..], H_DRILL);   // the v1 browser still keeps the rover snapshot
   g[0].rubble_gone = true;
   t: [FR_RUN_TEXT] u8; n := fr_run_write(g[..], t[..]);
   #assert n > 0;
   r := fr_run_read(cast(string) t[0..<n]);
-  #assert r.ok && r.save.have[H_ARM] && r.save.have[H_BATTERY] && r.save.scrap == 2 && r.open[0] && !r.open[1];
+  #assert r.ok && r.save.have[H_ARM] && r.save.have[H_BATTERY] && !r.save.have[H_DRILL] && r.save.scrap == 2 && r.open[0] && !r.open[1];
   #assert r.percent == 5 * 100 / 12;   // battery, the mine, the battery in hand, the arm, the rubble
   // every shorter text, and one changed byte in each field, is refused
   for k: 0..<n { #assert !fr_run_read(cast(string) t[0..<k]).ok; }
@@ -143,15 +144,22 @@ fc_answer :: (out: [] u8, status: int, text: string) -> string {
   #assert fr_store_wants(g[..]) == FR_KEEP_RUN && g[0].fr[0].run_n == 0;
 }
 
-#test "a crafted Microduck and the debited inventory share one saved checkpoint through Continue" #steps 300000000 {
+#test "Digger unlocks, a crafted Microduck and its inventory debit share one saved checkpoint through Continue" #steps 300000000 {
   g: [1] SpGame; fc_fresh(g[..]);
   g[0].jam = true; g[0].jr[0].pet_mesh = true; g_begin(g[..]);
   g[0].fr[0].run_get = 0; g[0].fr[0].crew_get = 0;
   g[0].mode = M_BAY;
+  unlocks := [4] int.[H_ARM, H_TREADS, H_MOVE, H_DRILL];
+  for i: unlocks {
+    #assert !g[0].save.have[i] && !g[0].save.taken[i];
+    g_take(g[..], i);
+  }
+  g_place(g[..], H_ARM, -1); g_place(g[..], H_MOVE, -1);
   #assert sjx_give(g[..], sr_stack(ITEM_BATTERY, 2)) && sjx_give(g[..], sr_stack(ITEM_SCRAP_PART, 4));
   g[0].jx[0].inv[0].selected = 4;
   g[0].jx[0].chest[0].slots[3] = sr_item(ITEM_JUMP_CARD, 1);
   #assert sjp_build(g[..]);
+  for i: unlocks { #assert !g[0].save.have[i] && !g[0].save.taken[i]; }   // crafting does not move the death checkpoint
   fr_autosave(g[..], 0);
   #assert fr_store_wants(g[..]) == FR_KEEP_RUN;
   text := fr_store_text(g[..], FR_KEEP_RUN);
@@ -164,6 +172,8 @@ fc_answer :: (out: [] u8, status: int, text: string) -> string {
   fr_stored(h[..], 1, fc_answer(a[..], 0, fr_store_text(g[..], FR_KEEP_RUN)));
   for i: 0..<a.count { a[i] = 0; }
   #assert g_key(h[..], -2, true) && h[0].mode == M_PLAY && h[0].pets[0].n == 1;
+  for i: unlocks { #assert h[0].have[i] && h[0].taken[i]; }
+  #assert h[0].slot[0] && !h[0].slot[1] && h[0].strip_n == 1 && h[0].strip[0] == H_MOVE;
   #assert sjx_count(h[..], ITEM_BATTERY) == 1 && sjx_count(h[..], ITEM_SCRAP_PART) == 1;
   #assert h[0].jx[0].inv[0].selected == 4 && h[0].jx[0].chest[0].slots[3].item == ITEM_JUMP_CARD;
   #assert dist2(h[0].px, h[0].pz, h[0].pets[0].pets[0].x, h[0].pets[0].pets[0].z) < 5;
