@@ -104,11 +104,11 @@ wd_screenshot :: (w:[]PlayerWd,out:[]u8)->int {
   if !wd_call(w,"GET","/screenshot","") {return -1;}return b64_decode(jv_raw(w[0].doc[0],w[0].value),out);
 }
 wd_release :: (w:[]PlayerWd)->bool {return wd_call(w,"DELETE","/actions","");}
-wd_touch_source :: (o:[]Jo,id:string,x:int,y:int,dx:int,dy:int,ms:int,right:bool) {
+wd_touch_source :: (o:[]Jo,id:string,x:int,y:int,dx:int,dy:int,ms:int,right:bool,element:string) {
   jo_obj(o);jo_key(o,"type");jo_str(o,"pointer");jo_key(o,"id");jo_str(o,id);jo_key(o,"parameters");jo_obj(o);jo_key(o,"pointerType");jo_str(o,"touch");jo_end(o);jo_key(o,"actions");jo_arr(o);
-  jo_obj(o);jo_key(o,"type");jo_str(o,"pointerMove");jo_key(o,"duration");jo_int(o,0);jo_key(o,"origin");jo_str(o,"viewport");jo_key(o,"x");jo_int(o,x);jo_key(o,"y");jo_int(o,y);jo_end(o);
+  jo_obj(o);jo_key(o,"type");jo_str(o,"pointerMove");jo_key(o,"duration");jo_int(o,0);jo_key(o,"origin");if element.count>0 {jo_obj(o);jo_key(o,"element-6066-11e4-a52e-4f735466cecf");jo_str(o,element);jo_end(o);}else {jo_str(o,"viewport");}jo_key(o,"x");jo_int(o,x);jo_key(o,"y");jo_int(o,y);jo_end(o);
   jo_obj(o);jo_key(o,"type");jo_str(o,"pointerDown");jo_key(o,"button");jo_int(o,0);jo_end(o);
-  jo_obj(o);jo_key(o,"type");jo_str(o,"pointerMove");jo_key(o,"duration");jo_int(o,100);jo_key(o,"origin");jo_str(o,"viewport");jo_key(o,"x");jo_int(o,x+dx);jo_key(o,"y");jo_int(o,y+dy);jo_end(o);
+  jo_obj(o);jo_key(o,"type");jo_str(o,"pointerMove");jo_key(o,"duration");jo_int(o,100);jo_key(o,"origin");jo_str(o,"pointer");jo_key(o,"x");jo_int(o,dx);jo_key(o,"y");jo_int(o,dy);jo_end(o);
   if !right {jo_obj(o);jo_key(o,"type");jo_str(o,"pause");jo_key(o,"duration");jo_int(o,ms);jo_end(o);}
   jo_obj(o);jo_key(o,"type");jo_str(o,"pointerUp");jo_key(o,"button");jo_int(o,0);jo_end(o);
   if right {jo_obj(o);jo_key(o,"type");jo_str(o,"pause");jo_key(o,"duration");jo_int(o,ms);jo_end(o);}
@@ -119,9 +119,14 @@ wd_stick :: (w:[]PlayerWd,key:string,ms:int,jump:bool,look:int)->bool {
   width:=cast(int)wd_number(w,"innerWidth",0);height:=cast(int)wd_number(w,"innerHeight",0);
   if width<=0 || height<=0 || ms<0 || ms>1000 {return false;}
   dx:=ifx key=="a" then -55 else ifx key=="d" then 55 else 0;dy:=ifx key=="w" then -55 else ifx key=="s" then 55 else 0;
+  element:[256]u8;en:=0;
+  if w[0].native_sdk {
+    if !wd_call(w,"POST","/element","{\"using\":\"css selector\",\"value\":\"canvas\"}") {return false;}
+    en=jv_str(w[0].doc[0],jv_get(w[0].doc[0],w[0].value,"element-6066-11e4-a52e-4f735466cecf"),element[..]);if en<=0 {return false;}
+  }
   b:[4096]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_obj(o[..]);jo_key(o[..],"actions");jo_arr(o[..]);
-  wd_touch_source(o[..],"player-left",width/4,height*3/5,dx,dy,ms,false);
-  if jump || look!=0 {wd_touch_source(o[..],"player-right",width*4/5,height*2/5,look,0,ms,true);}
+  wd_touch_source(o[..],"player-left",ifx en>0 then -width/4 else width/4,ifx en>0 then height/10 else height*3/5,dx,dy,ms,false,cast(string)element[0..<en]);
+  if jump || look!=0 {wd_touch_source(o[..],"player-right",ifx en>0 then width*3/10 else width*4/5,ifx en>0 then -height/10 else height*2/5,look,0,ms,true,cast(string)element[0..<en]);}
   jo_end(o[..]);jo_end(o[..]);return !o[0].bad && wd_call(w,"POST","/actions",jo_text(o[..]));
 }
 wd_watchdog :: (endpoint:string,session:string,dir:string)->int {
