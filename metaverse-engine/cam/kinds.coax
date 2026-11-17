@@ -1,0 +1,228 @@
+// The camera by kind of game: third person, first person, top down and side on, each the free orbit
+// (camera.coax) held to that kind's rules, so a realm that lets the player pick a kind of game keeps
+// one camera and one step (chase.coax's cam_chase_orbit) and no camera of its own.
+//
+//   third person   the orbit as it is: the player turns, tilts and zooms it, and into the head
+//   first person   the orbit kept in the head: the player looks, and nothing zooms it out
+//   top down       fixed high over the mover, looking steeply down, the game's ahead up the screen:
+//                  it never turns or tilts, and zooms within a range
+//   side on        fixed beside the mover, level with it, the game's ahead to the right of the
+//                  screen, through a long lens: it never turns or tilts, zooms within a range, and
+//                  the mover is held on a line across the view (cam_kind_line)
+//
+// A frame, for any kind: cam_kind_in filters the frame's input, cam_chase_orbit steps the orbit,
+// cam_kind_keep holds it to the kind, then the realm's room and metaverse_orbit_limit as ever. The
+// wheel and a pinch go through cam_kind_wheel and cam_kind_pinch. `ahead` is the orbit yaw of the
+// game's forward (the way W runs as the world opens).
+//
+// gamebuilder.org's world (a page outside this repository) wires it: its entrance by game type.
+//   coax/bin/coax test metaverse-engine/cam/kinds.coax --library
+//   coax/bin/coax mutate metaverse-engine/cam/kinds.coax --library --root-only
+
+#load "chase.coax";
+
+CAM_KIND_THIRD :: 0; CAM_KIND_FIRST :: 1; CAM_KIND_TOP :: 2; CAM_KIND_SIDE :: 3;
+CAM_KINDS :: 4;
+CAM_KIND_FOV :: 0.7895822;      // radians, upright: the lens every kind but side on looks through (2 atan(1 / 2.4))
+CAM_KIND_TOP_PITCH :: 1.1;      // radians down a top-down view looks (63 degrees)
+CAM_KIND_TOP_NEAR :: 6.0;       // metres: the closest and furthest a top-down view zooms
+CAM_KIND_TOP_FAR :: FREE_FAR;   // as far as the orbit goes
+CAM_KIND_SIDE_FOV :: 0.5;       // radians: side on, a long lens, so the mover's line reads flat
+CAM_KIND_SIDE_NEAR :: 7.0;      // metres: the closest and furthest a side-on view zooms
+CAM_KIND_SIDE_FAR :: FREE_FAR;
+CAM_KIND_SIDE_TURN :: 1.5707963; // radians left of ahead a side-on view looks: ahead is to its right
+
+// A kind's rules: where the orbit starts (its turn from ahead, tilt and distance), the range a zoom
+// keeps to, the lens, whether the player turns and tilts it (else it is fixed), whether it zooms,
+// whether it is kept in the head, and whether the mover is held on a line across the view.
+CamKind :: struct {
+  id: int;
+  turn: f32; pitch: f32 = FREE_PITCH; dist: f32 = FREE_DIST;
+  near: f32 = FREE_NEAR; far: f32 = FREE_FAR;
+  fov: f32 = CAM_KIND_FOV;
+  looks: bool = true; zooms: bool = true; inside: bool; planar: bool;
+}
+// The kind for an id; an id that is none of them is third person.
+cam_kind :: (id: int) -> CamKind {
+  k: CamKind;
+  if id == CAM_KIND_FIRST { k.id = id; k.dist = 0; k.zooms = false; k.inside = true; }
+  if id == CAM_KIND_TOP {
+    k.id = id; k.pitch = f32(CAM_KIND_TOP_PITCH); k.dist = f32(CAM_KIND_TOP_FAR);
+    k.near = f32(CAM_KIND_TOP_NEAR); k.looks = false;
+  }
+  if id == CAM_KIND_SIDE {
+    k.id = id; k.turn = f32(CAM_KIND_SIDE_TURN); k.pitch = 0; k.dist = f32(CAM_KIND_SIDE_FAR);
+    k.near = f32(CAM_KIND_SIDE_NEAR); k.fov = f32(CAM_KIND_SIDE_FOV);
+    k.looks = false; k.planar = true;
+  }
+  return k;
+}
+
+// The orbit a kind starts as, round a mover at feet: turned, tilted and as far out as the kind says,
+// the eye already at the end of its line.
+cam_kind_start :: (k: CamKind, feet: Point, ahead: f32) -> Orbit {
+  o := metaverse_orbit_start(feet, ahead + k.turn);
+  o.pitch = k.pitch; o.want = k.dist; o.zoom = k.dist;
+  o.shown = metaverse_orbit_ray(o).far;
+  return o;
+}
+// What of the frame's input a kind takes. A fixed kind takes no look, turn or tilt, and holds its
+// tilt against the walk's recentring; a kind that does not zoom takes no zoom key.
+cam_kind_in :: (k: CamKind, in: CamChaseIn) -> CamChaseIn {
+  out := in;
+  if !k.looks { out.look_yaw = 0; out.look_pitch = 0; out.turn = 0; out.tilt = 0; out.held = true; out.behind = false; }
+  if !k.zooms { out.zoom = 0; }
+  return out;
+}
+// A zoom asked for (metaverse_orbit_zoom's metres), as the kind allows: none in the head, within its
+// range when fixed (never on into the head), the orbit's own otherwise.
+cam_kind_zoom :: (k: CamKind, o: Orbit, delta: f32) -> Orbit {
+  if !k.zooms { return o; }
+  if k.looks { return metaverse_orbit_zoom(o, delta); }
+  if !finite(delta) { return o; }
+  next := o;
+  next.want = clamp(o.want + delta, k.near, k.far); next.push = 0;
+  return next;
+}
+// The wheel (CSS px, down is out, at most CAM_WHEEL_MAX of one turn) and a pinch, by the kind.
+cam_kind_wheel :: (k: CamKind, o: Orbit, dy: f32) -> Orbit {
+  if !finite(dy) { return o; }
+  return cam_kind_zoom(k, o, clamp(dy, -f32(CAM_WHEEL_MAX), f32(CAM_WHEEL_MAX)) * f32(CAM_WHEEL_ZOOM));
+}
+cam_kind_pinch :: (k: CamKind, o: Orbit, zoom: f32) -> Orbit { return cam_kind_zoom(k, o, zoom * f32(CAM_WHEEL_ZOOM)); }
+// The orbit held to its kind after the frame's step: a fixed kind looks the way it started and
+// keeps to its range; one kept in the head stays there. Third person is left as it is.
+cam_kind_keep :: (k: CamKind, o: Orbit, ahead: f32) -> Orbit {
+  next := o;
+  if k.inside { next.want = 0; next.push = 0; }
+  if !k.looks {
+    next.yaw = wrap_angle(ahead + k.turn); next.pitch = k.pitch;
+    next.want = clamp(o.want, k.near, k.far); next.zoom = clamp(o.zoom, k.near, k.far); next.push = 0;
+  }
+  return next;
+}
+// A planar kind holds the mover on a line: the one through `from` along the game's ahead, which runs
+// across the view. Where `at` is on it (its height kept). Any other kind leaves `at` alone.
+cam_kind_line :: (k: CamKind, at: Point, from: Point, ahead: f32) -> Point {
+  if !k.planar || !finite3(at) || !finite3(from) || !finite(ahead) { return at; }
+  fx := sin(ahead); fz := cos(ahead);
+  along := (at.x - from.x) * fx + (at.z - from.z) * fz;
+  return v3(from.x + fx * along, at.y, from.z + fz * along);
+}
+
+// ---- Checks ----
+
+#test "the kinds: third person is the orbit as it is, and an id that is none of them is third person" {
+  t := cam_kind(CAM_KIND_THIRD);
+  #assert t.id == 0 && t.turn == 0 && t.pitch == f32(FREE_PITCH) && t.dist == f32(FREE_DIST) && t.near == f32(FREE_NEAR) && t.far == f32(FREE_FAR);
+  #assert t.fov == f32(CAM_KIND_FOV) && t.looks && t.zooms && !t.inside && !t.planar;
+  for id: [3] int.[-1, 4, 99] { u := cam_kind(id); #assert u.id == 0 && u.looks && u.zooms && !u.inside && !u.planar && u.dist == f32(FREE_DIST) && u.turn == 0; }
+  f := cam_kind(CAM_KIND_FIRST);
+  #assert f.id == 1 && f.dist == 0 && f.looks && !f.zooms && f.inside && !f.planar && f.turn == 0 && f.fov == f32(CAM_KIND_FOV) && f.pitch == f32(FREE_PITCH);
+  p := cam_kind(CAM_KIND_TOP);
+  #assert p.id == 2 && p.pitch == f32(CAM_KIND_TOP_PITCH) && p.dist == 12 && p.near == 6 && p.far == 12 && !p.looks && p.zooms && !p.inside && !p.planar && p.turn == 0 && p.fov == f32(CAM_KIND_FOV);
+  s := cam_kind(CAM_KIND_SIDE);
+  #assert s.id == 3 && s.turn == f32(CAM_KIND_SIDE_TURN) && s.pitch == 0 && s.dist == 12 && s.near == 7 && s.far == 12 && s.fov == f32(CAM_KIND_SIDE_FOV) && !s.looks && s.zooms && !s.inside && s.planar;
+  // every fixed range is inside the orbit's own, and steeper than straight down is never asked for
+  for id: 0..<CAM_KINDS { k := cam_kind(id); #assert k.near >= f32(FREE_NEAR) && k.far <= f32(FREE_FAR) && k.near <= k.far && k.pitch <= f32(FREE_PITCH_MAX) && k.pitch >= f32(FREE_PITCH_MIN) && k.fov > 0.3 && k.fov < 1.2; }
+}
+
+#test "each kind starts where it says: behind, in the head, high above looking down, beside and level" {
+  feet := v3(3, 0, -2); ahead := f32(PI);   // the game's forward is -z
+  t := cam_kind_start(cam_kind(CAM_KIND_THIRD), feet, ahead); ts := metaverse_orbit_shot(t);
+  #assert near(t.yaw, -f32(PI), 0.0001) && t.pitch == f32(FREE_PITCH) && t.want == f32(FREE_DIST) && t.zoom == f32(FREE_DIST) && t.shown == metaverse_orbit_ray(t).far;
+  #assert ts.eye.z > feet.z + 4 && ts.eye.y > 2.5 && same(t.pivot, v3(3, f32(FREE_HEIGHT), -2), 0.0001);
+  // first person: the eye where the mover's eyes are, looking ahead
+  f := cam_kind_start(cam_kind(CAM_KIND_FIRST), feet, ahead); fs := metaverse_orbit_shot(f);
+  #assert f.want == 0 && f.zoom == 0 && metaverse_orbit_inside(f) && same(fs.eye, v3(3, f32(FREE_EYE), -2 - f32(FREE_FACE)), 0.001) && fs.at.z < fs.eye.z - 4;
+  // top down: 12 m out at 63 degrees, so some 10.7 m up and 5.4 m back, ahead up the screen
+  p := cam_kind_start(cam_kind(CAM_KIND_TOP), feet, ahead); ps := metaverse_orbit_shot(p);
+  #assert near(ps.eye.y, f32(FREE_HEIGHT) + 12 * sin(1.1), 0.01) && near(ps.eye.z, -2 + 12 * cos(1.1), 0.01) && near(ps.eye.x, 3 + f32(FREE_SHOULDER), 0.001);
+  d := unit_or(sub(ps.at, ps.eye), v3(0, 0, 0)); #assert near(d.y, -sin(1.1), 0.001) && d.z < 0 && near(d.x, 0, 0.0001);
+  // side on: level with the pivot, 12 m to the mover's right, looking across; ahead (-z) is to the view's right
+  s := cam_kind_start(cam_kind(CAM_KIND_SIDE), feet, ahead); ss := metaverse_orbit_shot(s);
+  #assert near(ss.eye.x, 3 + 12, 0.001) && near(ss.eye.y, f32(FREE_HEIGHT), 0.001) && near(ss.eye.z, -2 - f32(FREE_SHOULDER), 0.001);
+  l := unit_or(sub(ss.at, ss.eye), v3(0, 0, 0)); #assert near(l.x, -1, 0.0001) && near(l.y, 0, 0.0001);
+  r := metaverse_orbit_right(s); #assert near(r.z, -1, 0.0001) && near(r.x, 0, 0.0001);
+  // another forward turns them all with it
+  e := cam_kind_start(cam_kind(CAM_KIND_SIDE), feet, 0); #assert near(e.yaw, f32(CAM_KIND_SIDE_TURN), 0.0001);
+}
+
+#test "a fixed kind takes no look, turn or tilt and holds its tilt; a kind that does not zoom takes no zoom key; third person takes it all" {
+  in: CamChaseIn; in.look_yaw = 0.4; in.look_pitch = -0.3; in.turn = 1; in.tilt = -1; in.zoom = 1; in.behind = true; in.behind_heading = 2; in.moving = true; in.feet = v3(1, 2, 3); in.heading = 0.5;
+  t := cam_kind_in(cam_kind(CAM_KIND_THIRD), in);
+  #assert t.look_yaw == 0.4 && t.look_pitch == -0.3 && t.turn == 1 && t.tilt == -1 && t.zoom == 1 && t.behind && !t.held && t.moving && t.feet.y == 2 && t.heading == 0.5 && t.behind_heading == 2;
+  f := cam_kind_in(cam_kind(CAM_KIND_FIRST), in);
+  #assert f.look_yaw == 0.4 && f.look_pitch == -0.3 && f.turn == 1 && f.tilt == -1 && f.zoom == 0 && f.behind && !f.held;
+  for id: [2] int.[CAM_KIND_TOP, CAM_KIND_SIDE] {
+    p := cam_kind_in(cam_kind(id), in);
+    #assert p.look_yaw == 0 && p.look_pitch == 0 && p.turn == 0 && p.tilt == 0 && p.held && !p.behind && p.zoom == 1 && p.moving && p.feet.x == 1 && p.feet.z == 3;
+  }
+}
+
+#test "zoom by kind: none in the head, a fixed kind within its range and never into the head, third person the orbit's own" {
+  feet := v3(0, 0, 0);
+  t := cam_kind_start(cam_kind(CAM_KIND_THIRD), feet, 0);
+  #assert cam_kind_zoom(cam_kind(CAM_KIND_THIRD), t, 1.5).want == metaverse_orbit_zoom(t, 1.5).want && cam_kind_zoom(cam_kind(CAM_KIND_THIRD), t, -100).want == f32(FREE_NEAR);
+  in := cam_kind_zoom(cam_kind(CAM_KIND_THIRD), cam_kind_zoom(cam_kind(CAM_KIND_THIRD), t, -100), -f32(FREE_PUSH)); #assert in.want == 0;
+  f := cam_kind_start(cam_kind(CAM_KIND_FIRST), feet, 0);
+  #assert cam_kind_zoom(cam_kind(CAM_KIND_FIRST), f, 5).want == 0 && cam_kind_wheel(cam_kind(CAM_KIND_FIRST), f, 400).want == 0 && cam_kind_pinch(cam_kind(CAM_KIND_FIRST), f, 400).want == 0;
+  kp := cam_kind(CAM_KIND_TOP); p := cam_kind_start(kp, feet, 0);
+  #assert cam_kind_zoom(kp, p, 3).want == 12 && cam_kind_zoom(kp, p, -2).want == 10 && cam_kind_zoom(kp, p, -100).want == 6;
+  // at its closest more of the wheel does nothing: no push toward the head is kept
+  low := cam_kind_zoom(kp, p, -100); low.push = 0.5; more := cam_kind_zoom(kp, low, -5);
+  #assert more.want == 6 && more.push == 0;
+  bad := cam_kind_zoom(kp, p, f32(1.0 / 0.0)); #assert bad.want == 12;
+  ks := cam_kind(CAM_KIND_SIDE); s := cam_kind_start(ks, feet, 0);
+  #assert cam_kind_zoom(ks, s, -100).want == 7 && cam_kind_zoom(ks, s, -1).want == 11;
+  // the wheel: CAM_WHEEL_ZOOM metres a unit, at most CAM_WHEEL_MAX of one turn, either way; a pinch the same metres, uncapped
+  #assert near(cam_kind_wheel(kp, p, -100).want, 12 - 100 * f32(CAM_WHEEL_ZOOM), 0.0001) && near(cam_kind_wheel(kp, p, -5000).want, 12 - f32(CAM_WHEEL_MAX) * f32(CAM_WHEEL_ZOOM), 0.0001);
+  q := cam_kind_zoom(kp, p, -5);
+  #assert near(cam_kind_wheel(kp, q, 5000).want, 7 + f32(CAM_WHEEL_MAX) * f32(CAM_WHEEL_ZOOM), 0.0001) && near(cam_kind_wheel(kp, q, 100).want, 7.6, 0.0001);
+  #assert cam_kind_wheel(kp, p, f32(1.0 / 0.0)).want == 12 && cam_kind_wheel(kp, q, -f32(1.0 / 0.0)).want == 7;
+  #assert near(cam_kind_pinch(kp, p, -500).want, 12 - 500 * f32(CAM_WHEEL_ZOOM), 0.0001) && near(cam_kind_pinch(cam_kind(CAM_KIND_THIRD), t, 100).want, f32(FREE_DIST) + 100 * f32(CAM_WHEEL_ZOOM), 0.0001);
+}
+
+#test "kept to its kind over a walk: top down and side on never turn or tilt whatever is asked, first person stays in the head, third person is the orbit's" {
+  feet := v3(0, 0, 0); ahead := f32(PI);
+  in: CamChaseIn; in.look_yaw = 0.2; in.look_pitch = 0.1; in.turn = 1; in.tilt = 1; in.zoom = -1; in.moving = true; in.feet = v3(2, 0, -9); in.heading = 1;
+  for id: [2] int.[CAM_KIND_TOP, CAM_KIND_SIDE] {
+    k := cam_kind(id); start := cam_kind_start(k, feet, ahead);
+    m: CamMode; o := start;
+    for i: 0..<300 { o = cam_kind_keep(k, cam_chase_orbit(m, o, cam_kind_in(k, in), 1.0f32 / 60), ahead); }
+    #assert near(wrap_angle(o.yaw - start.yaw), 0, 0.00001) && o.pitch == k.pitch && o.want == k.near && near(o.zoom, k.near, 0.001);
+    #assert same(o.pivot, v3(2, f32(FREE_HEIGHT), -9), 0.01);   // and it follows the mover
+  }
+  // a fixed kind knocked off its look or its range is put back
+  kp := cam_kind(CAM_KIND_TOP); off := cam_kind_start(kp, feet, ahead); off.yaw = 1; off.pitch = 0.2; off.want = 3; off.push = 0.4;
+  back := cam_kind_keep(kp, off, ahead); #assert near(back.yaw, -f32(PI), 0.0001) && back.pitch == f32(CAM_KIND_TOP_PITCH) && back.want == 6 && back.push == 0;
+  off.zoom = 2; #assert cam_kind_keep(kp, off, ahead).zoom == 6;
+  off.want = 30; off.zoom = 31; #assert cam_kind_keep(kp, off, ahead).want == 12 && cam_kind_keep(kp, off, ahead).zoom == 12;
+  // first person: looks, and is in the head after anything
+  kf := cam_kind(CAM_KIND_FIRST); mf: CamMode; f := cam_kind_start(kf, feet, ahead);
+  for i: 0..<120 { f = cam_kind_keep(kf, cam_chase_orbit(mf, f, cam_kind_in(kf, in), 1.0f32 / 60), ahead); }
+  #assert metaverse_orbit_inside(f) && f.want == 0 && abs(wrap_angle(f.yaw - ahead)) > 1;
+  out := f; out.want = 5; out.push = 0.3; kept := cam_kind_keep(kf, out, ahead); #assert kept.want == 0 && kept.push == 0 && kept.yaw == f.yaw && kept.pitch == f.pitch;
+  // third person: exactly the orbit's own step
+  kt := cam_kind(CAM_KIND_THIRD); m: CamMode; t0 := cam_kind_start(kt, feet, ahead);
+  a := cam_kind_keep(kt, cam_chase_orbit(m, t0, cam_kind_in(kt, in), 1.0f32 / 60), ahead); b := cam_chase_orbit(m, t0, in, 1.0f32 / 60);
+  #assert a.yaw == b.yaw && a.pitch == b.pitch && a.want == b.want && a.zoom == b.zoom && a.push == b.push;
+  tp := t0; tp.push = 0.3; tp.want = 4; kp2 := cam_kind_keep(kt, tp, ahead); #assert kp2.push == 0.3 && kp2.want == 4 && kp2.yaw == tp.yaw;
+}
+
+#test "side on holds the mover on its line: along the game's ahead through where it began, its height its own; no other kind does" {
+  ks := cam_kind(CAM_KIND_SIDE); from := v3(2, 0, 5);
+  // ahead is -z: the line is x = 2
+  p := cam_kind_line(ks, v3(3.5, 1.2, -4), from, f32(PI)); #assert same(p, v3(2, 1.2, -4), 0.0001);
+  q := cam_kind_line(ks, v3(-7, 0, 9), from, f32(PI)); #assert same(q, v3(2, 0, 9), 0.0001);
+  // ahead is +x: the line is z = 5
+  r := cam_kind_line(ks, v3(8, 0.5, 1), from, f32(PI) / 2); #assert same(r, v3(8, 0.5, 5), 0.0001);
+  // a slanted ahead: the point's nearest on the line
+  d := cam_kind_line(ks, v3(2, 0, 7), from, f32(PI) / 4); #assert same(d, v3(3, 0, 6), 0.0001);
+  // on the line already, it stays
+  #assert same(cam_kind_line(ks, v3(2, 3, -30), from, f32(PI)), v3(2, 3, -30), 0.0001);
+  for id: [3] int.[CAM_KIND_THIRD, CAM_KIND_FIRST, CAM_KIND_TOP] { a := cam_kind_line(cam_kind(id), v3(3.5, 1.2, -4), from, f32(PI)); #assert a.x == 3.5 && a.y == 1.2 && a.z == -4; }
+  // numbers it can't use leave the mover where it is
+  nan := f32(1.0 / 0.0);
+  #assert cam_kind_line(ks, v3(3.5, 0, -4), from, nan).x == 3.5 && cam_kind_line(ks, v3(3.5, 0, -4), v3(nan, 0, 0), 0).x == 3.5 && cam_kind_line(ks, v3(nan, 0, -4), from, 0).z == -4;
+}

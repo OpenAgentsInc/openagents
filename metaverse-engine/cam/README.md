@@ -18,6 +18,7 @@ colliders.
 | `chase.coax` | The follow layer a zone wires (#13087): one step of the orbit from the frame's look, keys and walk (`cam_chase_orbit`; with `look_up`, the centred mode's look up past the horizon, held until the walk recentres), its room over the ground ring and before trunks (`cam_trunk`, `cam_chase_settle`) or over a level floor (`cam_chase_floor`), a drag's turn (`cam_drag`), the wheel and a pinch (`cam_wheel`, `cam_pinch`) and mouselook's over-the-shoulder framing (`cam_shoulder_shot`) |
 | `studio.coax` | Character Create's cameras: the studio (`cam_studio`, `cam_studio_shot`), the run into the world (`cam_run_track`, then `cam_run_show` through a retain cinematic and its hand-back), a phone's gap lens (`cam_gap_lens`) and the walk behind you down the road (`cam_walk_view`, `cam_right_up`); a zone holds the eye over its own land (`cam_hold_eye`) |
 | `boom.coax` | The over-the-shoulder boom: mouselook and a drawn bow over your right shoulder, first person zoomed all the way in (`cam_boom`), pulled in before walls (`cam_boom_walls`) and before the land along its whole length (`CamSweep`, fed the realm's heights) |
+| `kinds.coax` | The camera by kind of game, each the free orbit held to that kind's rules (`CamKind`, `cam_kind`): third person (the orbit as it is), first person (kept in the head, no zoom out), top down (fixed 12 m out at 63 degrees, ahead up the screen, zoom 6 to 12 m) and side on (fixed beside the mover and level with it, ahead to the right, a long lens, zoom 7 to 12 m, the mover held on a line across the view: `cam_kind_line`). A frame is `cam_kind_in`, `cam_chase_orbit`, `cam_kind_keep`; the wheel and a pinch are `cam_kind_wheel` and `cam_kind_pinch`; `cam_kind_start` is where a kind begins. gamebuilder.org's world wires it |
 | `gyro.coax` | The phone's turn as look and aim (#13189): off, while aiming (the default) or always; a speed (0.5x to 3x) and inverted up-down; a deadzone for tremor, a cap for spikes, recentring when the finger lifts; the host's word on the sensor (live, refused, none); the menu's rows and the player's kept record (`g1 m=1 s=2 i=0`). A zone wires it (`everglade/zone.coax`); the browser feeds it from `devicemotion` (`coax/web/host.js`), the iPhone app from CoreMotion through the page host |
 | `overhead.coax` | A spectator's overhead orbit over a board: its home view, zoom between near and far, and a pan that moves the ground with the pointer |
 
@@ -95,6 +96,7 @@ coax/bin/coax test metaverse-engine/cam/track.coax --library
 coax/bin/coax test metaverse-engine/cam/chase.coax --library
 coax/bin/coax test metaverse-engine/cam/studio.coax --library
 coax/bin/coax test metaverse-engine/cam/boom.coax --library
+coax/bin/coax test metaverse-engine/cam/kinds.coax --library
 coax/bin/coax test metaverse-engine/cam/overhead.coax --library
 coax/bin/coax test --library everglade/client/client.coax
 ```

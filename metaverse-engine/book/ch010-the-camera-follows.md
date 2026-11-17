@@ -429,6 +429,20 @@ rule was Everglade's own (`you_inside`); Everglade and gamebuilder.org's world
 (a web page outside this repository, which draws through the same orbit with a
 drag, the wheel and a pinch from `cam/chase.coax`) both call the engine's.
 
+**One orbit, four kinds of game.** `metaverse-engine/cam/kinds.coax` holds
+the same orbit to a kind's rules, so a realm that lets the player pick a kind
+of game keeps one camera and one step. Third person is the orbit as it is.
+First person keeps it in the head: the player looks, and nothing zooms out.
+Top down fixes it 12 m out at 1.1 radians down (63 degrees) with the game's
+forward up the screen, and lets it zoom between 6 and 12 m. Side on fixes it
+beside the mover and level with it, the game's forward to the right, through a
+0.5 radian lens, zooming between 7 and 12 m, and holds the mover on the line
+that runs across the view (`cam_kind_line`). A fixed kind takes no look, turn
+or tilt (`cam_kind_in`) and is put back on its look and its range after each
+step (`cam_kind_keep`); the wheel goes through `cam_kind_wheel`. Its first
+mutation pass: 79 mutants, 0 survived. gamebuilder.org's world (outside this
+repository) is its consumer: an entrance by game type.
+
 ### The dive
 
 The dive takes the camera from a shot far away, such as a page's overview,
