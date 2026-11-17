@@ -210,7 +210,7 @@ auth_resolve(request) -> principal | refusal
 5. Writes from a cookie need our `Origin` (as today) and `SameSite=Lax`
    cookies; GETs never change state. One exception, off unless set:
    [a second first-party site](#a-second-first-party-site) may log in by
-   email code.
+   email code and ask the account chat.
 6. Log one line per refusal: route, rule, principal kind. Never the token.
 
 **Admins** are accounts with the `admin` role, granted only by a root
@@ -223,8 +223,8 @@ counts as a signature made when it signed in.
 ### A second first-party site
 
 Another website of ours (GameBuilder, `https://gamebuilder.org`) logs
-people in to the same accounts from its own `/login` page. Its load
-balancer sends its `/api/auth/` paths to this API, so the browser's
+people in to the same accounts from its own `/login` page, and its default
+agent is our account chat. Its load balancer sends five paths to this API, so the browser's
 requests are same-origin there: they carry `Origin: https://gamebuilder.org`,
 and the session cookie the API sets is host-only on `gamebuilder.org`
 (our cookies have no `Domain`, and `__Host-` cookies can't have one). No
@@ -239,10 +239,18 @@ Unset, the default, means there are none and every rule is as before.
   is ignored.
 - An `Origin` is a listed site only when it is one entry byte for byte.
   No suffix, prefix, scheme or port is forgiven.
-- A request with a listed site's `Origin` reaches four routes of the whole
+- A request with a listed site's `Origin` reaches five routes of the whole
   API: `GET /api/auth/account`, `POST /api/auth/email/start`,
-  `POST /api/auth/email/verify` and `POST /api/auth/logout`. On any other
-  route it is `403 Not from this site.`, before the route runs.
+  `POST /api/auth/email/verify`, `POST /api/auth/logout` and
+  `POST /api/chat/complete/v1`. On any other route it is
+  `403 Not from this site.`, before the route runs.
+- The account chat (`POST /api/chat/complete/v1`) answers there by its own
+  rules, the same as on our site: a person's session (401 without), the
+  team's funding (403 without), a body `act_read` accepts (at most 65,536
+  bytes, 32 messages, 48,000 bytes of text; 400 otherwise) and
+  `inference.c`'s daily quotas, counted to the account. No other chat route
+  is reached: not the world, delegated or project turns, not the saved
+  threads, and no GET.
 - From a listed site the email code is a plain browser login. Linking an
   email, merging accounts and an app's tokens (`link`, `merge`,
   `client: "app"`) are refused, at the start and again when the code is
@@ -262,7 +270,7 @@ Unset, the default, means there are none and every rule is as before.
 
 The decision is `ap_site`, `ap_site_route`, `ap_site_post`,
 `ap_site_login` and `ap_site_pending` in `coax/web/api/auth-policy.coax`. The other site's load
-balancer should send only those four paths. A same-origin GET carries no
+balancer should send only those five paths. A same-origin GET carries no
 `Origin`, so a read it forwards is answered as our own site's would be.
 
 ### Step-up

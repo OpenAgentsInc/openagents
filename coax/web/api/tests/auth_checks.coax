@@ -61,9 +61,9 @@ ac_identity_faults :: (t:[]Ap,dir:string) {
 }
 
 // A second first-party site (OA_API_SITE_ORIGINS; INVARIANTS.md "A listed first-party site logs in by
-// email code, and does nothing else"). test.sh's API has no list: the other site is another site
-// there. A second API on the same database lists https://gamebuilder.org: its pages log in by email
-// code and log out, and reach nothing else. WAKE_PORT + 3 is free in test.sh's block of 8.
+// email code, may ask the account chat, and does nothing else"). test.sh's API has no list: the
+// other site is another site there. A second API on the same database lists https://gamebuilder.org:
+// its pages log in by email code, log out and ask the account chat, and reach nothing else. WAKE_PORT + 3 is free in test.sh's block of 8.
 ac_site_api :: (t: [] Ap, port: int, ours: string) -> int {
   h := proc_new(); p: [1] Sb; sb(p[..], "127.0.0.1:"); sb_int(p[..], port);
   e: [1] Sb; sb(e[..], "OA_API_ORIGIN="); sb(e[..], ours);
@@ -81,6 +81,7 @@ ac_site_api :: (t: [] Ap, port: int, ours: string) -> int {
   return -1;
 }
 AC_GB :: "https://gamebuilder.org";
+AC_CHAT :: "{\"schema\":\"openagents.chat.thread.v1\",\"id\":\"\",\"revision\":0,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}";
 // A POST from a page of site (its Origin), from ip, with this cookie header ("" for none).
 ac_from :: (t: [] Ap, site: string, ip: string, path: string, body: string, cookie: string) -> int {
   o: [1] Sb; sb(o[..], "Origin: "); sb(o[..], site); x: [1] Sb;
@@ -90,6 +91,8 @@ ac_site_checks :: (parent: [] Ap, dir: string) {
   eb: [1024] u8; out: [1024] u8; c1: [1] Sb; code: [6] u8; link: [64] u8;
   st := ac_from(parent, AC_GB, "203.0.113.140", "/api/auth/email/start", "{\"email\":\"site@example.com\"}", "");
   ap_check(parent, "no list: another first-party site's page is another site, as before", st == 403 && ap_member(ap_body(parent), "error", eb[..]) == "Not from this site.", ap_body(parent));
+  st = ac_from(parent, AC_GB, "203.0.113.140", "/api/chat/complete/v1", AC_CHAT, "");
+  ap_check(parent, "no list: the account chat has no Origin check of its own, and no session is 401, as before", st == 401, ap_body(parent));
   // The second harness owns its URL for its whole life (as durable_chat_checks.coax's does).
   second: [1] Ap;
   if !ap_open(second[..]) || ap_env(parent, "API_BIN") == "" || ap_env(parent, "WAKE_PORT") == "" { ap_check(parent, "the listed-site checks have test.sh's API_BIN and WAKE_PORT", false, ""); return; }
@@ -100,6 +103,11 @@ ac_site_checks :: (parent: [] Ap, dir: string) {
   api := ac_site_api(t, port, ours);
   ap_check(t, "a second API lists https://gamebuilder.org", api >= 0, "");
   if api < 0 { parent[0].checks += t[0].checks; parent[0].failed += t[0].failed; return; }
+  // ---- the account chat: the gate lets the listed site's page reach it, and the route's own rules answer
+  st = ac_from(t, AC_GB, "203.0.113.147", "/api/chat/complete/v1", AC_CHAT, "");
+  ap_check(t, "listed: the account chat from the site with no session asks you to log in", st == 401 && ap_member(ap_body(t), "error", eb[..]) == "Log in first.", ap_body(t));
+  st = ac_from(t, "https://evil.example", "203.0.113.147", "/api/chat/complete/v1", AC_CHAT, "");
+  ap_check(t, "listed: the account chat has no Origin check of its own: another site with no session is 401 too, as before", st == 401, ap_body(t));
 
   // ---- who may ask for a code
   st = ac_from(t, "https://evil.example", "203.0.113.141", "/api/auth/email/start", "{\"email\":\"site@example.com\"}", "");
@@ -165,22 +173,27 @@ ac_site_checks :: (parent: [] Ap, dir: string) {
 
   // ---- and nothing else: every other write of a logged-in session is refused from the listed site
   auth := ac_cookie_header("__Host-oa_session", S, c1[..]);
-  paths := [22] string.["/api/auth/nostr/challenge", "/api/auth/nostr", "/api/auth/phone/start", "/api/auth/phone/poll", "/api/auth/refresh",
+  st = ac_from(t, AC_GB, "203.0.113.144", "/api/chat/complete/v1", AC_CHAT, auth);
+  ap_check(t, "listed: a logged-in person who is not on the team reaches the account chat's own rule, and it refuses", st == 403
+           && ap_member(ap_body(t), "error", eb[..]) == "Agent chat is currently available to the team beta.", ap_body(t));
+  paths := [30] string.["/api/chat/world/complete/v1", "/api/chat/delegated/complete/v1", "/api/chat/project/v1", "/api/chat/project/complete/v1",
+                        "/api/chat/thread/v1", "/api/chat/world/player/v1", "/api/chat/complete", "/api/chat/route/v1",
+                        "/api/auth/nostr/challenge", "/api/auth/nostr", "/api/auth/phone/start", "/api/auth/phone/poll", "/api/auth/refresh",
                         "/api/auth/logout-everywhere", "/api/auth/freeze", "/api/auth/sessions/ses_none/remove", "/api/auth/passkey/login/options",
                         "/api/auth/passkey/register/options", "/api/auth/passkey/step-up/options", "/api/auth/recovery/start", "/api/auth/recovery/cancel",
                         "/api/auth/recovery-code/login", "/api/auth/link/nostr", "/api/auth/device/look", "/api/auth/device/approve",
                         "/api/auth/settings/v1", "/api/auth/identity/change/v1", "/api/auth/nostr/custody/v1alpha1", "/api/agents", "/api/auth/email/link"];
   refused := 0; first: [1] Sb;
   for path: paths {
-    st = ac_from(t, AC_GB, "203.0.113.144", path, "{}", auth);
-    if st == 403 { refused += 1; } else if first[0].n == 0 { sb(first[..], path); sb(first[..], " "); sb_int(first[..], st); }
+    st = ac_from(t, AC_GB, "203.0.113.144", path, AC_CHAT, auth);
+    if st == 403 && ap_member(ap_body(t), "error", eb[..]) == "Not from this site." { refused += 1; } else if first[0].n == 0 { sb(first[..], path); sb(first[..], " "); sb_int(first[..], st); }
   }
-  ap_check(t, "listed: every other auth write, and a write outside /api/auth, is refused from the site", refused == paths.count, sb_text(first[..]));
-  gets := [6] string.["/api/auth/sessions", "/api/auth/viewer", "/api/auth/settings/v1", "/api/auth/life", "/api/auth/identity/v1", "/api/wallet"];
+  ap_check(t, "listed: the chat's neighbours, every other auth write and a write outside both are refused from the site", refused == paths.count, sb_text(first[..]));
+  gets := [9] string.["/api/chat/complete/v1", "/api/chat/thread/v1", "/api/chat/history/v1", "/api/auth/sessions", "/api/auth/viewer", "/api/auth/settings/v1", "/api/auth/life", "/api/auth/identity/v1", "/api/wallet"];
   refused = 0; sb_clear(first[..]); ob: [1] Sb; sb(ob[..], "Origin: "); sb(ob[..], AC_GB);
   for path: gets {
     st = ac_call(t, "GET", path, "", auth, sb_text(ob[..]), "");
-    if st == 403 { refused += 1; } else if first[0].n == 0 { sb(first[..], path); sb(first[..], " "); sb_int(first[..], st); }
+    if st == 403 && ap_member(ap_body(t), "error", eb[..]) == "Not from this site." { refused += 1; } else if first[0].n == 0 { sb(first[..], path); sb(first[..], " "); sb_int(first[..], st); }
   }
   ap_check(t, "listed: a read that carries the site's Origin is refused too, but for who is logged in", refused == gets.count
            && ac_call(t, "GET", "/api/auth/account", "", auth, sb_text(ob[..]), "") == 200 && ap_member(ap_body(t), "account", eb[..]) == acct, sb_text(first[..]));

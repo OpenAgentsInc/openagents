@@ -45,7 +45,8 @@
 //   OA_API_SITE_ORIGINS     other first-party sites whose own pages may log in by email code: exact origins
 //                           between commas ("https://gamebuilder.org"), unset for none. Such a site's load
 //                           balancer sends its /api/auth/ here; its pages may POST email/start (a plain browser
-//                           login), email/verify and logout, and nothing else (auth-policy.coax ap_site)
+//                           login), email/verify, logout and /api/chat/complete/v1 (the account chat), and
+//                           nothing else (auth-policy.coax ap_site)
 //   OA_EMAIL_ALLOW          (email.c) staging's allowlist of addresses mail may go to
 //
 // An agent (agents.c, agent-policy.coax, #13211) is refused on every human, L2, L2-fresh and admin
@@ -844,7 +845,7 @@ const char *auth_extra_headers(void) { return set_cookie; }
 // The site a request's Origin names (auth-policy.coax ap_site): ours, a listed first-party site
 // (OA_API_SITE_ORIGINS, whole and byte for byte), another, or none (apps and tools send no Origin).
 // from: the Origin as sent. Every other route file keeps auth_same_site: ours or none, and the gate
-// refuses a listed site everywhere but its four routes (ap_site_route).
+// refuses a listed site everywhere but its five routes (ap_site_route).
 static int site_of(const request *q, char from[256]) {
   bool has = api_header(q, "Origin", from, 256) != NULL;
   return (int)ap_site(has, cs(from), cs(origin()), cs(env_or("OA_API_SITE_ORIGINS", "")));
@@ -860,7 +861,7 @@ bool auth_gate(const request *q) {
     api_error(q->fd, 404, "not found");
     return true;
   }
-  // A listed first-party site's page reaches its four routes and no other, on any route file.
+  // A listed first-party site's page reaches its five routes and no other, on any route file.
   char from[256];
   if (!ap_site_route(site_of(q, from), cs(q->method), cs(q->path))) {
     api_log("auth: refused %s %s: a listed site outside its routes", q->method, q->path);

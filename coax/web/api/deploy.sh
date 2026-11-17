@@ -215,10 +215,10 @@ deploy() {  # service runtime-secret host agent-projects-secret runner-service d
   local sfx=""; [[ "$6" == staging ]] && sfx="-staging"
   if gcloud secrets describe "oa-auth-seal-key$sfx" --project "$project" >/dev/null 2>&1; then secrets+=",OA_AUTH_SEAL_KEY=oa-auth-seal-key$sfx:latest"; fi
   if gcloud secrets describe "oa-auth-lookup-pepper$sfx" --project "$project" >/dev/null 2>&1; then secrets+=",OA_AUTH_LOOKUP_PEPPER=oa-auth-lookup-pepper$sfx:latest"; fi
-  # Other first-party sites whose own pages log in by email code (auth.c, auth-policy.coax ap_site;
-  # INVARIANTS.md "A listed first-party site logs in by email code, and does nothing else"): exact
-  # origins between commas. Production lists GameBuilder's site, whose load balancer sends its
-  # /api/auth/ here; staging lists none.
+  # Other first-party sites whose own pages log in by email code and ask the account chat (auth.c,
+  # auth-policy.coax ap_site; INVARIANTS.md "A listed first-party site logs in by email code, may ask
+  # the account chat, and does nothing else"): exact origins between commas. Production lists
+  # GameBuilder's site, whose load balancer sends those five paths here; staging lists none.
   [[ "$6" != production ]] || env+="~OA_API_SITE_ORIGINS=https://gamebuilder.org"
   # Security notices as NIP-17 messages (auth-recover.c): our notice key, one per environment.
   if gcloud secrets describe "oa-auth-notice-nsec$sfx" --project "$project" >/dev/null 2>&1; then secrets+=",OA_AUTH_NOTICE_NSEC=oa-auth-notice-nsec$sfx:latest"; fi

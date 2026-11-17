@@ -17,7 +17,8 @@
 //                    ours (OA_API_ORIGIN), a listed first-party site (one entry of
 //                    OA_API_SITE_ORIGINS, byte for byte), or another
 //   ap_site_route    the routes a listed site's page reaches at all, on the whole API: GET
-//                    /api/auth/account and the three writes below
+//                    /api/auth/account, the three writes below, and POST /api/chat/complete/v1
+//                    (the account chat, whose own rules are account-chat.c's)
 //   ap_site_post     the auth writes a site may send: ours and no Origin, all of them; a listed
 //                    site, only email/start, email/verify and logout; another site, none
 //   ap_site_login    a listed site's email code is a plain browser login: never a link, a merge
@@ -288,12 +289,21 @@ AP_APP_IDLE_MS :: 90 * AP_DAY_MS;         // an app's login unused this long has
   }
   #assert !ap_site_post(AP_SITE_LISTED, "email/start/") && !ap_site_post(AP_SITE_LISTED, "Logout") && !ap_site_post(AP_SITE_LISTED, "logout ");
 }
-#test "a listed site's page reaches four routes of the whole API; every other site value passes to the route's own checks" {
+#test "a listed site's page reaches five routes of the whole API; every other site value passes to the route's own checks" {
   #assert ap_site_route(AP_SITE_LISTED, "GET", "/api/auth/account") && ap_site_route(AP_SITE_LISTED, "POST", "/api/auth/email/start");
   #assert ap_site_route(AP_SITE_LISTED, "POST", "/api/auth/email/verify") && ap_site_route(AP_SITE_LISTED, "POST", "/api/auth/logout");
   #assert !ap_site_route(AP_SITE_LISTED, "POST", "/api/auth/account") && !ap_site_route(AP_SITE_LISTED, "GET", "/api/auth/email/start");
   #assert !ap_site_route(AP_SITE_LISTED, "GET", "/api/auth/email/verify") && !ap_site_route(AP_SITE_LISTED, "GET", "/api/auth/logout");
+  #assert ap_site_route(AP_SITE_LISTED, "POST", "/api/chat/complete/v1") && !ap_site_route(AP_SITE_LISTED, "GET", "/api/chat/complete/v1");
+  #assert !ap_site_route(AP_SITE_LISTED, "PUT", "/api/chat/complete/v1") && !ap_site_route(AP_SITE_LISTED, "", "/api/chat/complete/v1");
   #assert !ap_site_route(AP_SITE_LISTED, "PUT", "/api/auth/logout") && !ap_site_route(AP_SITE_LISTED, "DELETE", "/api/auth/account") && !ap_site_route(AP_SITE_LISTED, "", "/api/auth/account");
+  chats := [16] string.["/api/chat/complete", "/api/chat/complete/", "/api/chat/complete/v1/", "/api/chat/complete/v2", "/api/chat/complete/v", "/api/chat/world/complete/v1",
+                        "/api/chat/delegated/complete/v1", "/api/chat/project/v1", "/api/chat/project/complete/v1", "/api/chat/thread/v1", "/api/chat/world/player/v1",
+                        "/api/chat/route/v1", "/api/chat/library/v1", "/api/chat/history/v1", "/api/chat/submit/v2alpha1", "/chat/complete/v1"];
+  for path: chats {
+    #assert !ap_site_route(AP_SITE_LISTED, "GET", path) && !ap_site_route(AP_SITE_LISTED, "POST", path);
+    #assert ap_site_route(AP_SITE_OURS, "POST", path) && ap_site_route(AP_SITE_NONE, "GET", path) && ap_site_route(AP_SITE_OTHER, "POST", path);
+  }
   paths := [16] string.["/api/auth/email/link", "/api/auth/logout-everywhere", "/api/auth/sessions", "/api/auth/viewer", "/api/auth/me", "/api/auth/settings/v1",
                         "/api/auth/identity/change/v1", "/api/auth/nostr/custody/v1alpha1", "/api/auth/passkey/register", "/api/auth/recovery/start",
                         "/api/auth/freeze", "/api/auth/account/", "/api/auth/logout/", "/api/chat", "/api/auth", ""];
@@ -462,14 +472,15 @@ ap_site :: (has: bool, from: string, ours: string, listed: string) -> int #expor
   return AP_SITE_OTHER;
 }
 
-// The gate's question, before any route runs: a listed site's page reaches GET /api/auth/account
-// and its three writes; with its Origin on anything else, on any route file, it is refused. Every
-// other site value goes on to the route's own Origin check, as before.
+// The gate's question, before any route runs: a listed site's page reaches GET /api/auth/account,
+// its three login writes and the account chat's one completion route; with its Origin on anything
+// else, on any route file, it is refused. Every other site value goes on to the route's own Origin
+// check, as before.
 ap_site_route :: (site: int, method: string, path: string) -> bool #export_c #effects(all) {
   if site != AP_SITE_LISTED { return true; }
   if method == "GET" { return path == "/api/auth/account"; }
   if method != "POST" { return false; }
-  return path == "/api/auth/email/start" || path == "/api/auth/email/verify" || path == "/api/auth/logout";
+  return path == "/api/auth/email/start" || path == "/api/auth/email/verify" || path == "/api/auth/logout" || path == "/api/chat/complete/v1";
 }
 
 // op: the route under /api/auth/ of a POST in auth.c's own table (the other auth files keep

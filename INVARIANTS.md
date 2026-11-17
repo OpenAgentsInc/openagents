@@ -906,22 +906,27 @@ Checks: `coax/web/api/tests/agent_checks.coax` (device login);
 `coax/web/api/test_realm_edit.py` and `test_access.py` (the old routes are 404);
 `apps/openagents-web/private.coax` (page 7 approves only on the press).
 
-## A listed first-party site logs in by email code, and does nothing else
+## A listed first-party site logs in by email code, may ask the account chat, and does nothing else
 
 A browser write to `/api/auth/` needs this site's `Origin` (`OA_API_ORIGIN`);
 apps and tools send none. `OA_API_SITE_ORIGINS` (unset by default; production
 lists `https://gamebuilder.org`, `coax/web/api/deploy.sh`) names other
-first-party sites whose load balancers send their own `/api/auth/` paths to
-this API. An `Origin` is a listed site only when it equals one entry byte for
+first-party sites whose load balancers send five of their own paths to this
+API. An `Origin` is a listed site only when it equals one entry byte for
 byte, and an entry counts only as `https://host[:port]` in lower case (or the
 dev server's `http://127.0.0.1[:port]`, `http://localhost[:port]`): no
 wildcard, suffix, prefix, path, slash, space or capital is forgiven. Unset,
 every answer is as it was.
 
 A request with a listed site's `Origin` reaches `GET /api/auth/account`,
-`POST /api/auth/email/start`, `POST /api/auth/email/verify` and
-`POST /api/auth/logout`, and is `403 Not from this site.` on every other
-route of the API, at the gate, before the route runs. Its email code is a
+`POST /api/auth/email/start`, `POST /api/auth/email/verify`,
+`POST /api/auth/logout` and `POST /api/chat/complete/v1`, and is
+`403 Not from this site.` on every other route of the API, at the gate, before
+the route runs. The account chat keeps its own rules there as on this site
+(`account-chat.c`: a person's session or 401, `act_funded` or 403, `act_read`'s
+shape and sizes or 400, `inference.c`'s quotas); no other chat route is
+reached, not the world, delegated or project turns, the saved threads, nor
+any GET. Its email code is a
 plain browser login: `link`, `merge` and `client: "app"` are refused at the
 start and when the code is typed, and the pending login is the browser's
 cookie, never a value in the body (a page of the listed site that posts to
@@ -940,11 +945,12 @@ that file's `#test`s (exact match, wrong scheme, suffix, prefix, port, case,
 slash, whitespace, wildcard, empty list, several entries);
 `coax/web/api/tests/auth_checks.coax` `ac_site_checks` (no list: 403; listed:
 the code is asked for, typed and logged out from the site; the link, merge,
-app, a pending value in the body, every other write, a read with its `Origin`
-and every other site are refused; no CORS header, no `Domain`, the mail's
+app, a pending value in the body, the chat's neighbours, every other write, a read with its `Origin`
+and every other site are refused; the account chat with no session is 401 and
+for a person off the team its own 403; no CORS header, no `Domain`, the mail's
 link is ours, the audit rows name the site). Not covered: a GET the other site's load balancer forwards carries
 no `Origin`, so it is answered as this site's own; that balancer must send
-only the four paths ([sessions and tokens](docs/auth/sessions-and-tokens.md#a-second-first-party-site)).
+only the five paths ([sessions and tokens](docs/auth/sessions-and-tokens.md#a-second-first-party-site)).
 
 ## Anime words become directions only through the catalogue holder
 
