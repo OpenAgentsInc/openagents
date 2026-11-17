@@ -36,6 +36,12 @@
 //                 stylized-frame.coax's sty_sunrise)
 //   reveal        ground and grass that spread from a place over a bare graybox floor with a grid
 //                 (sty_reveal_at, sty_floor)
+//   lush grass    with a look's `lush` over 0 the blades are curved (three triangles: sty_lush_level,
+//                 sty_lush_side), grow in tufts (sty_lush_tuft), have their own colour (sty_lush_colour:
+//                 deep roots, bright tips, lusher and drier patches, a hue each, pale seed stalks),
+//                 are lit across their bend, dark toward the root and glint in the sun
+//                 (sty_lush_light), and the ground under them and beyond them is the field's own
+//                 colour (sty_lush_ground), so the field has no edge
 //   the air       with a look's `air` over 0 the sky is the engine's atmosphere (atmosphere.coax): the
 //                 air's colour from the sun's place, a small sun many times brighter than white with
 //                 its glare, soft clouds the sun lights and shades, and haze the colour of the far
@@ -65,7 +71,10 @@ StyObj :: struct {a:V4; b:V4; c:V4; d:V4;}
 // info: the material, the record's value, its phase.
 StyS :: struct {pos:V4; world:V3; normal:V3; uv:V2; tint:V3; wash:V3; info:V4 #flat;}
 StyShade :: struct {pos:V4;}
-StyBlade :: struct {pos:V4; world:V3; colour:V3; along:f32;}
+// A blade's vertex: where it is, its root, its colour, how far up the blade it is, and (the lush
+// grass) its normal and three numbers: which side of the blade it is on (-1 to 1; 0 its midrib),
+// how much its across faces the sun (-1 to 1), and whether it is a seed stalk (1).
+StyBlade :: struct {pos:V4; world:V3; colour:V3; along:f32; n:V3; info:V3;}
 
 STY_TAU :: 6.2831853f32;
 
@@ -406,19 +415,29 @@ sty_table :: (x:f32,z:f32,field:int,u:[]f32,heights:[]f32)->f32 {
 // How far a place is outside the nearest dirt path's edge, in metres (below 0: on the path), the
 // edge wandering a little so it never runs straight.
 sty_path :: (x:f32,z:f32,u:[]f32)->f32 {
-  d:f32=1000.0f32;
+  return sty_lines(x,z,u).x+(sty_noise2(x*0.4f32,z*0.4f32)-0.5f32)*0.5f32+(sty_noise2(x*2.1f32+5.0f32,z*2.1f32)-0.5f32)*0.22f32;
+}
+// How far a place is outside the nearest of the frame's lines, in metres (below 0: on it; 1000 with
+// none): x the nearest dirt path's edge, y the nearest rest's (stylized-frame.coax: sty_path_add,
+// sty_rest_add; a line's sixth float is 1 for a rest).
+sty_lines :: (x:f32,z:f32,u:[]f32)->V2 {
+  d:f32=1000.0f32; r:f32=1000.0f32;
   count:s32=cast(s32)u[STY_U_PATH_INFO];
-  for i:0..<STY_PATHS {
+  for i:0..<STY_PATHS { // mutant: equivalent (the frame never counts more than STY_PATHS lines, so a turn past them reads none)
     if (cast(s32)i<count) {
       o:int=STY_U_PATH+i*STY_PATH_FLOATS;
       ax:f32=u[o]; az:f32=u[o+1]; bx:f32=u[o+2]-ax; bz:f32=u[o+3]-az;
       t:f32=saturate(((x-ax)*bx+(z-az)*bz)/fmax(bx*bx+bz*bz,0.0001f32));
       ex:f32=x-ax-bx*t; ez:f32=z-az-bz*t;
-      d=fmin(d,sqrt(ex*ex+ez*ez)-u[o+4]);
+      e:f32=sqrt(ex*ex+ez*ez)-u[o+4];
+      if (u[o+5]>0.5f32) { r=fmin(r,e); } else { d=fmin(d,e); }
     }
   }
-  return d+(sty_noise2(x*0.4f32,z*0.4f32)-0.5f32)*0.5f32+(sty_noise2(x*2.1f32+5.0f32,z*2.1f32)-0.5f32)*0.22f32;
+  return v2(d,r);
 }
+// How much of a blade stands by a rest (a thing lying on the ground): none on it, all of it 0.35 m
+// clear of its edge, so a thing sits in the grass. 1 with no rest.
+sty_rest_clear :: (past:f32)->f32 {return smoothstep(0.0f32,0.35f32,past);}
 // How much of a place is dirt path: 1 on it, 0 off it, soft between.
 sty_path_share :: (x:f32,z:f32,u:[]f32)->f32 {
   soft:f32=fmax(u[STY_U_PATH_INFO+1],0.02f32);
@@ -432,6 +451,34 @@ sty_grass_colour :: (x:f32,z:f32,along:f32,u:[]f32)->V3 {
   // Tips run from deep green to a dry olive yellow, patch by patch.
   tip:V3=mix3(v3(0.2f32,0.36f32,0.19f32),v3(0.66f32,0.68f32,0.39f32),smoothstep(0.34f32,0.7f32,k));
   return mix3(root,tip,along);
+}
+// ---- the lush grass's colours (a look's `lush`)
+// How dry the lush field is at a place, 0 lush to 1 dry: the meadow's broad patches, and patches a
+// few metres across over them.
+sty_lush_dry :: (x:f32,z:f32,u:[]f32)->f32 {
+  return saturate(sty_meadow(x,z,u)*0.75f32+(sty_noise2(x*0.21f32+11.0f32,z*0.21f32+5.0f32)-0.5f32)*0.7f32+0.1f32);
+}
+// A lush blade's colour `along` it (0 root, 1 tip) where the field is `dry` (0 to 1): a deep green
+// root in its neighbours' shade, a bright tip that runs from a fresh green where the field is lush
+// to a dry gold-green where it is dry. `stalk` (0 or 1) is a seed stalk: its top is straw.
+sty_lush_colour :: (along:f32,dry:f32,stalk:f32)->V3 {
+  root:V3=mix3(v3(0.11f32,0.24f32,0.07f32),v3(0.2f32,0.27f32,0.1f32),dry);
+  tip:V3=mix3(v3(0.4f32,0.66f32,0.17f32),v3(0.74f32,0.74f32,0.33f32),smoothstep(0.25f32,0.8f32,dry));
+  tip=mix3(tip,v3(0.86f32,0.78f32,0.5f32),saturate(stalk)*smoothstep(0.45f32,0.9f32,along));
+  return mix3(root,tip,pow(saturate(along),0.8f32));
+}
+// The ground of a lush field at `p`: under the blades the dark earth between their roots; past
+// where the blades thin out (from 0.45 of the field's reach to its reach) the colour the blades
+// themselves show from far off, a little streaked, so the field goes on to the horizon as grass.
+sty_lush_ground :: (p:V3,u:[]f32)->V3 {
+  dry:f32=sty_lush_dry(p.x,p.z,u);
+  under:V3=scale3(sty_lush_colour(0.3f32,dry,0.0f32),0.8f32);
+  eye:V3=wg_at3(u,STY_U_EYE);
+  dx:f32=p.x-eye.x; dz:f32=p.z-eye.z;
+  reach:f32=u[STY_U_GRASS_INFO+3];
+  far:f32=smoothstep(reach*0.45f32,reach,sqrt(dx*dx+dz*dz));
+  streak:f32=0.88f32+0.24f32*sty_noise2(p.x*1.7f32,p.z*1.7f32+3.0f32);
+  return mix3(under,scale3(sty_lush_colour(0.5f32,dry,0.0f32),streak*0.9f32),far);
 }
 // How dry the meadow is at a place: 0 lush to 1 dry, in broad patches.
 sty_meadow :: (x:f32,z:f32,u:[]f32)->f32 {
@@ -476,9 +523,10 @@ sty_ground :: (p:V3,cover:f32,paved:f32,u:[]f32)->V3 {
   dirt:V3=scale3(mix3(v3(0.57f32,0.44f32,0.29f32),v3(0.67f32,0.52f32,0.35f32),soil),0.96f32+0.07f32*grit);
   // The earth between the blades: a mid green, a little lighter than their roots.
   grass:V3=mix3(v3(0.29f32,0.4f32,0.22f32),v3(0.42f32,0.48f32,0.27f32),sty_meadow(x,z,u));
+  if (u[STY_U_LUSH]>0.0f32) { grass=sty_lush_ground(p,u); }
   path:f32=sty_path_share(x,z,u);
   c:V3=mix3(dirt,grass,saturate(cover)*(1.0f32-path));
-  if (paved>0.01f32) {
+  if (paved>0.01f32) { // mutant: equivalent (with so little paving its share below is 0 and the ground is left as it was: the guard only saves work)
     // Flagstones: many-sided flags about a metre across, each its own warm grey, with dark joints.
     // The paving's edge follows whole stones' worth of noise, not a straight line.
     f:V3=sty_flags(x*1.2f32,z*1.2f32);
@@ -904,25 +952,132 @@ sty_blade_wind :: (x:f32,z:f32,tall:f32,u:[]f32)->V2 {
   bend:f32=metaverse_style_bend(theta+amp*0.5f32,tall,1.0f32);
   return v2(wx*bend,wz*bend);
 }
+// ---- the lush grass's blades
+// A lush blade is nine vertices, three triangles: its root to its middle (a quad), its middle to its
+// tip. How far up the blade vertex `v` (0 to 8) is: 0 the root, 0.5 the middle, 1 the tip.
+sty_lush_level :: (v:int)->f32 {
+  if (v==8) {return 1.0f32;}
+  if (v==2||v==4||v==5||v==6||v==7) {return 0.5f32;}
+  return 0.0f32;
+}
+// And which side of the blade it is on: -1 or 1, and 0 at the tip.
+sty_lush_side :: (v:int)->f32 {
+  if (v==8) {return 0.0f32;}
+  if (v==1||v==3||v==4||v==7) {return 1.0f32;}
+  return 0.0f32-1.0f32;
+}
+// How wide a blade is `along` it, as a share of its root's width: it holds its width to the middle
+// and comes to a point (1, 0.82 at the middle, 0 at the tip).
+sty_lush_wide :: (along:f32)->f32 {return 1.0f32-pow(saturate(along),2.5f32);}
+// The tuft a place belongs to: tufts are half a metre apart, each with a middle of its own. x, z:
+// the tuft's middle; w: the tuft's own number (0 to 1: how tall and how dry it is).
+sty_lush_tuft :: (x:f32,z:f32)->V3 {
+  kx:f32=floor(x*2.0f32); kz:f32=floor(z*2.0f32);
+  return v3((kx+0.25f32+0.5f32*sty_hash2(kx+101.0f32,kz+7.0f32))*0.5f32,(kz+0.25f32+0.5f32*sty_hash2(kx+13.0f32,kz+211.0f32))*0.5f32,sty_hash2(kx+31.0f32,kz+57.0f32));
+}
+// Whether a blade whose middle is at clip place `q` is outside the picture with room to spare: more
+// than 3 past its side, top or foot (in the clip's own measure, about two metres), or more than
+// 1.5 behind the eye.
+sty_lush_unseen :: (q:V4)->bool {
+  return q.w<0.0f32-1.5f32||abs(q.x)>abs(q.w)+3.0f32||abs(q.y)>abs(q.w)+3.0f32;
+}
+// One lush blade: vertex `v` of the nine of the blade whose cell is (gx, gz) and whose scattered
+// place is (x, z). It is drawn toward its tuft's middle (0.38 of the way), leans out from it,
+// stands by the tuft's own height, bends through its middle (the bend goes with the square of the
+// height, so the root stays put), and carries its colour, its normal and its side.
+sty_lush_blade :: (v:int,x0:f32,z0:f32,gx:f32,gz:f32,u:[]f32,heights:[]f32)->StyBlade {
+  o:StyBlade;
+  o.pos=v4(0.0f32,0.0f32,2.0f32,1.0f32);
+  tuft:V3=sty_lush_tuft(x0,z0);
+  x:f32=mix(x0,tuft.x,0.38f32); z:f32=mix(z0,tuft.y,0.38f32);
+  y:f32=sty_table(x,z,0,u,heights);
+  // a blade well outside the picture (two metres or so past its edge, or behind the eye) is not
+  // worked out: most of a field that lies all round the eye is not in view
+  if (sty_lush_unseen(sty_clip(v3(x,y+0.3f32,z),u,STY_U_VIEW))) {return o;}
+  eye:V3=wg_at3(u,STY_U_EYE);
+  ex:f32=x-eye.x; ez:f32=z-eye.z; dist:f32=sqrt(ex*ex+ez*ez);
+  reach:f32=u[STY_U_GRASS_INFO+3];
+  grown:f32=sty_table(x,z,1,u,heights);
+  cover:f32=fmin(grown,1.0f32)*(1.0f32-sty_table(x,z,2,u,heights));
+  clear:f32=smoothstep(0.0f32-0.1f32,0.5f32,sty_path(x,z,u))*sty_rest_clear(sty_lines(x,z,u).y);
+  rnd:f32=sty_hash2(gx+7.0f32,gz+91.0f32);
+  // one blade in thirty is a seed stalk: half as tall again, thin, straw at its top
+  stalk:f32=0.0f32; if (sty_hash2(gx+43.0f32,gz+17.0f32)>0.9667f32) {stalk=1.0f32;}
+  thin:f32=1.0f32-smoothstep(reach*0.45f32,reach,dist);
+  tall:f32=u[STY_U_GRASS_INFO+1]*fmax(grown,1.0f32)*(0.6f32+0.55f32*rnd)*(0.62f32+0.76f32*tuft.z)*(1.0f32+0.5f32*stalk)*clear*smoothstep(0.35f32,0.7f32,cover)*smoothstep(0.0f32,0.25f32,thin-rnd*0.55f32+0.2f32);
+  tall=tall*sty_blade_reveal(x,z,rnd,u);
+  parted:V3=sty_blade_part(x,z,tall,u);
+  tall=parted.z;
+  if (tall<0.03f32) {return o;}
+  // it leans out from its tuft's middle, a little its own way
+  ox:f32=x0-tuft.x; oz:f32=z0-tuft.y; ol:f32=sqrt(ox*ox+oz*oz);
+  ang:f32=sty_hash2(gx+19.0f32,gz+5.0f32)*STY_TAU;
+  lx:f32=cos(ang)*0.35f32; lz:f32=sin(ang)*0.35f32;
+  if (ol>0.0001f32) { lx=lx+ox/ol; lz=lz+oz/ol; }
+  lean:f32=tall*(0.14f32+0.3f32*sty_hash2(gx+23.0f32,gz+71.0f32));
+  sway:f32=sin(u[STY_U_SIZE+2]*1.3f32+x*0.7f32+z*0.5f32)*0.035f32;
+  blow:V2=sty_blade_wind(x,z,tall,u);
+  // where its tip is carried from above its root
+  bx:f32=lx*lean+sway+blow.x+parted.x; bz:f32=lz*lean+blow.y+parted.y;
+  along:f32=sty_lush_level(v); side:f32=sty_lush_side(v);
+  // across the blade: level, and square to the way to the eye; wider near the eye's far reach so it still covers
+  il:f32=1.0f32/fmax(dist,0.001f32);
+  wide:f32=u[STY_U_GRASS_INFO+2]*(0.75f32+0.5f32*sty_hash2(gx+3.0f32,gz+41.0f32))*(1.0f32-0.45f32*stalk)*(1.0f32+dist*0.05f32)*sty_lush_wide(along);
+  ax:f32=(0.0f32-ez)*il; az:f32=ex*il;
+  // bent through its middle: the tip's carry by the square of the height, and it droops as it bends
+  bend:f32=sqrt(bx*bx+bz*bz)/tall;
+  w:V3=v3(x+bx*along*along+ax*wide*0.5f32*side,y+tall*along*(1.0f32-0.22f32*fmin(bend,1.0f32)*along),z+bz*along*along+az*wide*0.5f32*side);
+  o.world=v3(x,y,z);
+  o.along=along;
+  // its normal: up, tilted the way it bends (more toward the tip), so a field bent by the wind takes the light in waves
+  o.n=normalize3(v3(bx*(0.4f32+0.9f32*along),tall,bz*(0.4f32+0.9f32*along)));
+  sun:V3=wg_at3(u,STY_U_SUN);
+  o.info=v3(side,ax*sun.x+az*sun.z,stalk);
+  dry:f32=saturate(sty_lush_dry(x,z,u)+(tuft.z-0.5f32)*0.35f32);
+  c:V3=sty_lush_colour(along,dry,stalk);
+  // a hue of its own (red and blue apart by up to 9 percent) and a brightness of its own
+  h:f32=sty_hash2(gx+61.0f32,gz+29.0f32);
+  c=v3(metaverse_style_jitter(c.x,0.0f32,h,0.09f32),c.y,metaverse_style_jitter(c.z,2.0f32,h,0.09f32));
+  o.colour=scale3(c,0.86f32+0.28f32*rnd);
+  o.pos=sty_clip(w,u,STY_U_VIEW);
+  return o;
+}
+// A lush blade's light: its colour under the sun across its bent normal, the sky and the ground,
+// darker toward its root (0.34 of it there: the field's depth), its midrib a little lighter than
+// its edges and its two halves a little apart by which faces the sun, and a glint of the sun along
+// its upper half where it mirrors it to the eye. `to` is the unit way from the eye to the blade.
+sty_lush_light :: (albedo:V3,n:V3,along:f32,side:f32,facing:f32,to:V3,shadow:f32,u:[]f32)->V3 {
+  sun:V3=wg_at3(u,STY_U_SUN);
+  deep:f32=0.34f32+0.66f32*smoothstep(0.0f32,0.75f32,along);
+  rib:f32=(0.93f32+0.12f32*(1.0f32-abs(side)))*(1.0f32+0.14f32*side*facing);
+  c:V3=scale3(sty_lit(albedo,n,dot3(n,sun),shadow,u),deep*rib);
+  half:V3=sub3(sun,to);
+  hl:f32=length3(half);
+  if (hl<0.0001f32) {return c;}
+  glint:f32=pow(saturate(dot3(n,half)/hl),24.0f32)*0.3f32*smoothstep(0.3f32,1.0f32,along)*smoothstep(0.0f32,0.1f32,sun.y)*mix(1.0f32,shadow,u[STY_U_SUN+3]);
+  return add3(c,scale3(wg_at3(u,STY_U_SUN_COLOUR),glint));
+}
 // One blade a cell of the field: a tapered triangle rooted on the ground table, turned to face the
 // eye, leaning its own way and swaying a little. No blade grows on a path, on paving, on bare
 // ground or past the field's reach.
 stylized_grass_vs :: (v:u32,i:u32,u:[]f32,mesh:[]f32,objects:[]StyObj,heights:[]f32)->StyBlade {
   o:StyBlade;
-  o.pos=v4(0.0f32,0.0f32,2.0f32,1.0f32); o.world=v3(0.0f32,0.0f32,0.0f32); o.colour=v3(0.0f32,0.0f32,0.0f32); o.along=0.0f32;
+  o.pos=v4(0.0f32,0.0f32,2.0f32,1.0f32); o.world=v3(0.0f32,0.0f32,0.0f32); o.colour=v3(0.0f32,0.0f32,0.0f32); o.along=0.0f32; // mutant: equivalent (for the three after the place: a new blade's numbers are 0 already)
   cols:u32=wg_max_u(wg_u32_f(u[STY_U_GRASS+3]),1);
   cx:f32=cast(f32)(i%cols); cz:f32=cast(f32)(i/cols);
   cell:f32=u[STY_U_GRASS+2];
   // Where the cell is in the world decides its blade, so the field can move with the eye.
   gx:f32=floor(u[STY_U_GRASS]/cell)+cx; gz:f32=floor(u[STY_U_GRASS+1]/cell)+cz;
   x:f32=(gx+sty_hash2(gx,gz))*cell; z:f32=(gz+sty_hash2(gx+57.0f32,gz+13.0f32))*cell;
+  if (u[STY_U_LUSH]>0.0f32) {return sty_lush_blade(cast(int)v,x,z,gx,gz,u,heights);}
+  o.n=v3(0.0f32,1.0f32,0.0f32);
   eye:V3=wg_at3(u,STY_U_EYE);
   ex:f32=x-eye.x; ez:f32=z-eye.z; dist:f32=sqrt(ex*ex+ez*ez);
   reach:f32=u[STY_U_GRASS_INFO+3];
   // The table's grass cover: up to 1 how much grows, and above 1 how long it grows.
   grown:f32=sty_table(x,z,1,u,heights);
   cover:f32=fmin(grown,1.0f32)*(1.0f32-sty_table(x,z,2,u,heights));
-  clear:f32=smoothstep(0.0f32-0.1f32,0.5f32,sty_path(x,z,u));
+  clear:f32=smoothstep(0.0f32-0.1f32,0.5f32,sty_path(x,z,u))*sty_rest_clear(sty_lines(x,z,u).y);
   // Tufts: taller where a slow noise says, and thinning out with distance and at the field's edge.
   tuft:f32=0.7f32+0.5f32*sty_noise2(x*1.4f32,z*1.4f32);
   rnd:f32=sty_hash2(gx+7.0f32,gz+91.0f32);
@@ -972,9 +1127,10 @@ sty_grass_light :: (g:StyBlade,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCom
   sun:V3=wg_at3(u,STY_U_SUN);
   albedo:V3=sty_decode(g.colour);
   c:V3=scale3(sty_lit(albedo,up,sun.y,shadow,u),root);
+  to:V3=normalize3(sub3(g.world,wg_at3(u,STY_U_EYE)));
+  if (u[STY_U_LUSH]>0.0f32) { c=sty_lush_light(albedo,normalize3(g.n),g.along,g.info.x,g.info.y,to,shadow,u); }
   if (u[STY_U_AIR]>0.0f32) {
     // with air, a low sun comes through the blades toward the eye, in the sun's own colour there
-    to:V3=normalize3(sub3(g.world,wg_at3(u,STY_U_EYE)));
     through:f32=sty_grass_through(dot3(to,sun),sun.y,g.along)*mix(1.0f32,shadow,u[STY_U_SUN+3]);
     c=add3(c,scale3(mul3(albedo,wg_at3(u,STY_U_SUN_COLOUR)),through));
   }
@@ -1585,4 +1741,307 @@ stylized_film_grass_fs :: (g:StyBlade,u:[]f32,shadow_map:TexDepth,shadow_cmp:Sam
   #assert abs(sty_grass_through(1.0f32,0.0f32-0.005f32,1.0f32)-2.0f32)<0.0001f32 && abs(sty_grass_through(1.0f32,0.03f32,1.0f32)-4.0f32)<0.0001f32;
   // a cosine past 1 is 1
   #assert sty_grass_through(1.5f32,0.04f32,1.0f32)==top;
+}
+
+#test "a lush blade is nine vertices: a quad from its root to its middle and a triangle to its tip, as wide as its root to the middle and a point at the tip" {
+  // the three triangles: (root left, root right, middle left), (root right, middle right, middle left), (middle left, middle right, tip)
+  lv:[9]f32=[9]f32.[0.0f32,0.0f32,0.5f32,0.0f32,0.5f32,0.5f32,0.5f32,0.5f32,1.0f32];
+  sd:[9]f32=[9]f32.[0.0f32-1.0f32,1.0f32,0.0f32-1.0f32,1.0f32,1.0f32,0.0f32-1.0f32,0.0f32-1.0f32,1.0f32,0.0f32];
+  for v:0..<9 { #assert sty_lush_level(v)==lv[v] && sty_lush_side(v)==sd[v]; }
+  #assert STY_LUSH_VERTICES==9;
+  #assert sty_lush_wide(0.0f32)==1.0f32 && sty_lush_wide(1.0f32)==0.0f32 && abs(sty_lush_wide(0.5f32)-(1.0f32-pow(0.5f32,2.5f32)))<0.00001f32 && sty_lush_wide(0.5f32)>0.8f32 && sty_lush_wide(2.0f32)==0.0f32 && sty_lush_wide(0.0f32-1.0f32)==1.0f32;
+}
+#test "tufts are half a metre apart, each with a middle and a number of its own, the same for every place in it" {
+  for i:0..<60 {
+    x:f32=cast(f32)i*0.37f32-7.0f32; z:f32=cast(f32)i*0.23f32+2.0f32;
+    t:V3=sty_lush_tuft(x,z);
+    // its middle is inside the tuft's own half-metre square, a quarter in from its sides
+    kx:f32=floor(x*2.0f32)*0.5f32; kz:f32=floor(z*2.0f32)*0.5f32;
+    #assert t.x>=kx+0.125f32 && t.x<kx+0.375f32 && t.y>=kz+0.125f32 && t.y<kz+0.375f32 && t.z>=0.0f32 && t.z<1.0f32;
+    // another place in the same square is the same tuft
+    o:V3=sty_lush_tuft(kx+0.01f32,kz+0.49f32); #assert o.x==t.x && o.y==t.y && o.z==t.z;
+    // the next square is another
+    n:V3=sty_lush_tuft(x+0.5f32,z); #assert n.x!=t.x && n.x>=kx+0.625f32 && n.x<kx+0.875f32;
+    m:V3=sty_lush_tuft(x,z+0.5f32); #assert m.y!=t.y && m.y>=kz+0.625f32 && m.y<kz+0.875f32;
+  }
+  a:V3=sty_lush_tuft(0.1f32,0.1f32);
+  #assert a.x==(0.25f32+0.5f32*sty_hash2(101.0f32,7.0f32))*0.5f32 && a.y==(0.25f32+0.5f32*sty_hash2(13.0f32,211.0f32))*0.5f32 && a.z==sty_hash2(31.0f32,57.0f32);
+  b:V3=sty_lush_tuft(1.1f32,2.6f32);
+  #assert b.x==(2.0f32+0.25f32+0.5f32*sty_hash2(103.0f32,12.0f32))*0.5f32 && b.y==(5.0f32+0.25f32+0.5f32*sty_hash2(15.0f32,216.0f32))*0.5f32 && b.z==sty_hash2(33.0f32,62.0f32);
+}
+#test "the lush grass's colours: a deep root, a bright tip that runs fresh green to dry gold, straw on a seed stalk, and a ground that is earth under the blades and the field's colour beyond them" {
+  u:[STY_UNIFORM_FLOATS]f32; u[STY_U_PATH_INFO+2]=0.5f32; u[STY_U_GRASS_INFO+3]=40.0f32;
+  // the root and the tip, lush and dry
+  r0:V3=sty_lush_colour(0.0f32,0.0f32,0.0f32); r1:V3=sty_lush_colour(0.0f32,1.0f32,0.0f32);
+  #assert r0.x==0.11f32 && r0.y==0.24f32 && r0.z==0.07f32 && r1.x==0.2f32 && r1.y==0.27f32 && r1.z==0.1f32;
+  t0:V3=sty_lush_colour(1.0f32,0.0f32,0.0f32); t1:V3=sty_lush_colour(1.0f32,1.0f32,0.0f32);
+  #assert abs(t0.x-0.4f32)<0.00001f32 && abs(t0.y-0.66f32)<0.00001f32 && abs(t0.z-0.17f32)<0.00001f32 && abs(t1.x-0.74f32)<0.00001f32 && abs(t1.y-0.74f32)<0.00001f32 && abs(t1.z-0.33f32)<0.00001f32;
+  // the tip turns dry between a quarter and four fifths dry: half way at 0.525, not at all at 0.25
+  th:V3=sty_lush_colour(1.0f32,0.525f32,0.0f32); #assert abs(th.x-0.57f32)<0.0001f32 && abs(th.y-0.7f32)<0.0001f32;
+  tq:V3=sty_lush_colour(1.0f32,0.25f32,0.0f32); #assert abs(tq.x-0.4f32)<0.00001f32; rh:V3=sty_lush_colour(0.0f32,0.5f32,0.0f32); #assert abs(rh.x-0.155f32)<0.00001f32 && abs(rh.z-0.085f32)<0.00001f32;
+  // up the blade: by the 0.8 power of the height (a little brighter than straight)
+  m:V3=sty_lush_colour(0.5f32,0.0f32,0.0f32); k:f32=pow(0.5f32,0.8f32);
+  #assert abs(m.x-(0.11f32+(0.4f32-0.11f32)*k))<0.00001f32 && abs(m.y-(0.24f32+(0.66f32-0.24f32)*k))<0.00001f32 && m.y>0.45f32;
+  #assert abs(sty_lush_colour(2.0f32,0.0f32,0.0f32).y-0.66f32)<0.00001f32 && abs(sty_lush_colour(0.0f32-1.0f32,0.0f32,0.0f32).y-0.24f32)<0.00001f32;
+  // a seed stalk: straw at its tip, as any blade under 0.45 of its height, half way to straw at 0.675
+  s1:V3=sty_lush_colour(1.0f32,0.0f32,1.0f32); #assert abs(s1.x-0.86f32)<0.00001f32 && abs(s1.y-0.78f32)<0.00001f32 && abs(s1.z-0.5f32)<0.00001f32;
+  s0:V3=sty_lush_colour(0.45f32,0.0f32,1.0f32); p0:V3=sty_lush_colour(0.45f32,0.0f32,0.0f32); #assert s0.x==p0.x && s0.y==p0.y;
+  sh:V3=sty_lush_colour(0.675f32,0.0f32,1.0f32); kk:f32=pow(0.675f32,0.8f32); #assert abs(sh.x-(0.11f32+(0.63f32-0.11f32)*kk))<0.0001f32 && abs(sh.z-(0.07f32+(0.335f32-0.07f32)*kk))<0.0001f32;
+  #assert sty_lush_colour(1.0f32,0.0f32,5.0f32).x==s1.x;
+  // how dry a place is: the meadow's patches and finer ones, 0 to 1
+  lo:f32=1.0f32; hi:f32=0.0f32;
+  for i:0..<200 { d:f32=sty_lush_dry(cast(f32)i*1.7f32,cast(f32)i*0.9f32-40.0f32,u[..]); #assert d>=0.0f32 && d<=1.0f32; lo=fmin(lo,d); hi=fmax(hi,d); }
+  #assert lo<0.15f32 && hi>0.6f32;
+  d0:f32=sty_lush_dry(3.0f32,4.0f32,u[..]); #assert abs(d0-saturate(sty_meadow(3.0f32,4.0f32,u[..])*0.75f32+(sty_noise2(3.0f32*0.21f32+11.0f32,4.0f32*0.21f32+5.0f32)-0.5f32)*0.7f32+0.1f32))<0.00001f32;
+  // the ground: under the blades (near the eye) 0.8 of a blade's colour 0.3 up; past the field's reach the colour 0.5 up, streaked 0.79 to 1.01
+  u[STY_U_EYE]=10.0f32; u[STY_U_EYE+2]=20.0f32;
+  near:V3=sty_lush_ground(v3(12.0f32,0.0f32,21.0f32),u[..]); dn:f32=sty_lush_dry(12.0f32,21.0f32,u[..]); wn:V3=scale3(sty_lush_colour(0.3f32,dn,0.0f32),0.8f32);
+  #assert abs(near.x-wn.x)<0.00001f32 && abs(near.y-wn.y)<0.00001f32 && abs(near.z-wn.z)<0.00001f32;
+  far:V3=sty_lush_ground(v3(10.0f32,0.0f32,90.0f32),u[..]); df:f32=sty_lush_dry(10.0f32,90.0f32,u[..]); wf:V3=scale3(sty_lush_colour(0.5f32,df,0.0f32),(0.88f32+0.24f32*sty_noise2(17.0f32,153.0f32+3.0f32))*0.9f32);
+  #assert abs(far.x-wf.x)<0.00001f32 && abs(far.y-wf.y)<0.00001f32 && far.y>near.y;
+  // between 0.45 of the reach (18 m) and the reach (40 m) it goes from one to the other: at 29 m, half way (the distance is along the ground, either way)
+  mid:V3=sty_lush_ground(v3(39.0f32,5.0f32,20.0f32),u[..]); dm:f32=sty_lush_dry(39.0f32,20.0f32,u[..]);
+  a:V3=scale3(sty_lush_colour(0.3f32,dm,0.0f32),0.8f32); b:V3=scale3(sty_lush_colour(0.5f32,dm,0.0f32),(0.88f32+0.24f32*sty_noise2(39.0f32*1.7f32,20.0f32*1.7f32+3.0f32))*0.9f32);
+  #assert abs(mid.y-(a.y+b.y)*0.5f32)<0.0001f32;
+  mz:V3=sty_lush_ground(v3(10.0f32,0.0f32,49.0f32),u[..]); dz:f32=sty_lush_dry(10.0f32,49.0f32,u[..]);
+  az:V3=scale3(sty_lush_colour(0.3f32,dz,0.0f32),0.8f32); bz:V3=scale3(sty_lush_colour(0.5f32,dz,0.0f32),(0.88f32+0.24f32*sty_noise2(17.0f32,49.0f32*1.7f32+3.0f32))*0.9f32);
+  #assert abs(mz.y-(az.y+bz.y)*0.5f32)<0.0001f32;
+  at18:V3=sty_lush_ground(v3(28.0f32,0.0f32,20.0f32),u[..]); d18:f32=sty_lush_dry(28.0f32,20.0f32,u[..]); #assert abs(at18.y-sty_lush_colour(0.3f32,d18,0.0f32).y*0.8f32)<0.00001f32;
+  // the ground material takes it when the look is lush, and is the plain meadow when it is not
+  plain:V3=sty_ground(v3(12.0f32,0.0f32,21.0f32),1.0f32,0.0f32,u[..]); #assert abs(plain.x-near.x)>0.02f32;
+  u[STY_U_LUSH]=1.0f32; lush:V3=sty_ground(v3(12.0f32,0.0f32,21.0f32),1.0f32,0.0f32,u[..]); #assert abs(lush.x-near.x)<0.00001f32 && abs(lush.y-near.y)<0.00001f32;
+}
+#test "a lush blade's light: across its bent normal, dark at the root, its midrib lighter, its halves apart by which faces the sun, and a glint where it mirrors the sun" {
+  u:[STY_UNIFORM_FLOATS]f32;
+  u[STY_U_SUN]=0.6f32; u[STY_U_SUN+1]=0.8f32; u[STY_U_SUN+3]=1.0f32;
+  u[STY_U_SUN_COLOUR]=1.0f32; u[STY_U_SUN_COLOUR+1]=0.9f32; u[STY_U_SUN_COLOUR+2]=0.8f32; u[STY_U_SUN_COLOUR+3]=0.3f32;
+  u[STY_U_SKY_LIGHT]=0.2f32; u[STY_U_SKY_LIGHT+1]=0.3f32; u[STY_U_SKY_LIGHT+2]=0.4f32;
+  al:V3=v3(0.3f32,0.5f32,0.1f32); up:V3=v3(0.0f32,1.0f32,0.0f32);
+  away:V3=v3(0.0f32,1.0f32,0.0f32);   // the eye looks straight up at the blade from under it: no glint off an upright normal
+  lit:V3=sty_lit(al,up,0.8f32,1.0f32,u[..]);
+  // the tip, on the midrib: all of the light, 1.05 for the rib
+  tip:V3=sty_lush_light(al,up,1.0f32,0.0f32,0.0f32,v3(0.0f32,0.0f32,1.0f32),1.0f32,u[..]);
+  #assert abs(tip.x-lit.x*1.05f32)<0.02f32 && tip.y>lit.y;
+  // the root: 0.34 of it; half way to full at 0.375 up
+  root:V3=sty_lush_light(al,up,0.0f32,0.0f32,0.0f32,v3(0.0f32,0.0f32,1.0f32),1.0f32,u[..]); #assert abs(root.x-lit.x*0.34f32*1.05f32)<0.00001f32 && abs(root.y-lit.y*0.34f32*1.05f32)<0.00001f32;
+  low:V3=sty_lush_light(al,up,0.375f32,0.0f32,0.0f32,v3(0.0f32,0.0f32,1.0f32),1.0f32,u[..]); #assert abs(low.x-lit.x*0.67f32*1.05f32)<0.001f32;
+  // its edges: 0.93; the half that faces the sun 1.14 of that, the other 0.86
+  edge:V3=sty_lush_light(al,up,0.0f32,1.0f32,0.0f32,v3(0.0f32,0.0f32,1.0f32),1.0f32,u[..]); #assert abs(edge.x-lit.x*0.34f32*0.93f32)<0.00001f32;
+  other:V3=sty_lush_light(al,up,0.0f32,0.0f32-1.0f32,0.0f32,v3(0.0f32,0.0f32,1.0f32),1.0f32,u[..]); #assert abs(other.x-edge.x)<0.00001f32;
+  sunny:V3=sty_lush_light(al,up,0.0f32,1.0f32,1.0f32,v3(0.0f32,0.0f32,1.0f32),1.0f32,u[..]); shady:V3=sty_lush_light(al,up,0.0f32,0.0f32-1.0f32,1.0f32,v3(0.0f32,0.0f32,1.0f32),1.0f32,u[..]);
+  #assert abs(sunny.x-lit.x*0.34f32*0.93f32*1.14f32)<0.00001f32 && abs(shady.x-lit.x*0.34f32*0.93f32*0.86f32)<0.00001f32;
+  half:V3=sty_lush_light(al,up,0.0f32,0.5f32,0.0f32,v3(0.0f32,0.0f32,1.0f32),1.0f32,u[..]); #assert abs(half.x-lit.x*0.34f32*0.99f32)<0.00001f32;
+  // a normal bent toward the sun takes more of it than one bent away
+  to_sun:V3=normalize3(v3(0.5f32,1.0f32,0.0f32)); from_sun:V3=normalize3(v3(0.0f32-0.5f32,1.0f32,0.0f32));
+  a:V3=sty_lush_light(al,to_sun,0.0f32,0.0f32,0.0f32,away,1.0f32,u[..]); b:V3=sty_lush_light(al,from_sun,0.0f32,0.0f32,0.0f32,away,1.0f32,u[..]);
+  #assert a.x>b.x*1.05f32 && abs(a.x-sty_lit(al,to_sun,dot3(to_sun,wg_at3(u[..],STY_U_SUN)),1.0f32,u[..]).x*0.34f32*1.05f32)<0.00001f32;
+  // in shadow the sun's share goes
+  dark:V3=sty_lush_light(al,up,0.0f32,0.0f32,0.0f32,v3(0.0f32,0.0f32,1.0f32),0.0f32,u[..]); #assert abs(dark.x-sty_lit(al,up,0.8f32,0.0f32,u[..]).x*0.34f32*1.05f32)<0.00001f32 && dark.x<root.x;
+  // the glint: the eye where the blade mirrors the sun (looking along the sun's way mirrored in the normal) sees 0.3 of the sun's colour at the tip
+  mirror:V3=v3(0.6f32,0.0f32-0.8f32,0.0f32);
+  g:V3=sty_lush_light(al,up,1.0f32,0.0f32,0.0f32,mirror,1.0f32,u[..]); n:V3=sty_lush_light(al,up,1.0f32,0.0f32,0.0f32,away,1.0f32,u[..]);
+  #assert abs((g.x-n.x)-0.3f32)<0.0001f32 && abs((g.y-n.y)-0.27f32)<0.0001f32 && abs((g.z-n.z)-0.24f32)<0.0001f32 && abs(n.x-lit.x*1.05f32)<0.00001f32;
+  // none under 0.3 of the blade, half of it at 0.65; none in shadow; none from a sun on the horizon; it is narrow
+  g0:V3=sty_lush_light(al,up,0.3f32,0.0f32,0.0f32,mirror,1.0f32,u[..]); n0:V3=sty_lush_light(al,up,0.3f32,0.0f32,0.0f32,away,1.0f32,u[..]); #assert abs(g0.x-n0.x)<0.00001f32;
+  g1:V3=sty_lush_light(al,up,0.65f32,0.0f32,0.0f32,mirror,1.0f32,u[..]); n1:V3=sty_lush_light(al,up,0.65f32,0.0f32,0.0f32,away,1.0f32,u[..]); #assert abs((g1.x-n1.x)-0.15f32)<0.0001f32;
+  gs:V3=sty_lush_light(al,up,1.0f32,0.0f32,0.0f32,mirror,0.0f32,u[..]); ns:V3=sty_lush_light(al,up,1.0f32,0.0f32,0.0f32,away,0.0f32,u[..]); #assert abs(gs.x-ns.x)<0.00001f32;
+  u[STY_U_SUN+3]=0.0f32; gk:V3=sty_lush_light(al,up,1.0f32,0.0f32,0.0f32,mirror,0.0f32,u[..]); nk:V3=sty_lush_light(al,up,1.0f32,0.0f32,0.0f32,away,0.0f32,u[..]); #assert abs((gk.x-nk.x)-0.3f32)<0.0001f32; u[STY_U_SUN+3]=1.0f32;
+  side:V3=normalize3(v3(1.6f32,0.0f32-0.8f32,0.0f32)); gw:V3=sty_lush_light(al,up,1.0f32,0.0f32,0.0f32,side,1.0f32,u[..]); #assert gw.x-n.x<0.2f32 && gw.x-n.x>0.1f32;
+  u[STY_U_SUN]=1.0f32; u[STY_U_SUN+1]=0.0f32; flat:V3=v3(1.0f32,0.0f32,0.0f32);
+  gh:V3=sty_lush_light(al,normalize3(v3(1.0f32,1.0f32,0.0f32)),1.0f32,0.0f32,0.0f32,v3(0.0f32,0.0f32-1.0f32,0.0f32),1.0f32,u[..]); u[STY_U_SUN_COLOUR]=0.0f32; u[STY_U_SUN_COLOUR+1]=0.0f32; u[STY_U_SUN_COLOUR+2]=0.0f32;
+  nh:V3=sty_lush_light(al,normalize3(v3(1.0f32,1.0f32,0.0f32)),1.0f32,0.0f32,0.0f32,v3(0.0f32,0.0f32-1.0f32,0.0f32),1.0f32,u[..]); #assert gh.y-nh.y<0.5f32;
+  u[STY_U_SUN]=0.9987f32; u[STY_U_SUN+1]=0.05f32; u[STY_U_SUN_COLOUR]=1.0f32;
+  gq:V3=sty_lush_light(v3(0.0f32,0.0f32,0.0f32),up,1.0f32,0.0f32,0.0f32,v3(0.9987f32,0.0f32-0.05f32,0.0f32),1.0f32,u[..]); #assert abs(gq.x-0.15f32)<0.001f32;
+  // an eye that looks dead along the way to the sun (the sun straight behind the blade) has no mirror to see: no glint, and nothing breaks
+  u[STY_U_SUN]=0.6f32; u[STY_U_SUN+1]=0.8f32;
+  dead:V3=sty_lush_light(v3(0.0f32,0.0f32,0.0f32),up,1.0f32,0.0f32,0.0f32,v3(0.6f32,0.8f32,0.0f32),1.0f32,u[..]); #assert dead.x==0.0f32 && dead.y==0.0f32;
+}
+#test "the frame's lines: a dirt path and a rest are told apart, the grass keeps off both, and only the path is dirt" {
+  u:[STY_UNIFORM_FLOATS]f32;
+  none:V2=sty_lines(3.0f32,4.0f32,u[..]); #assert none.x==1000.0f32 && none.y==1000.0f32 && sty_rest_clear(none.y)==1.0f32;
+  // a path along x at z 0, 1 m either side; a rest that is a spot of 0.5 m at (10, 10); a second rest, a line
+  u[STY_U_PATH_INFO]=3.0f32;
+  u[STY_U_PATH]=0.0f32-5.0f32; u[STY_U_PATH+1]=0.0f32; u[STY_U_PATH+2]=5.0f32; u[STY_U_PATH+3]=0.0f32; u[STY_U_PATH+4]=1.0f32;
+  u[STY_U_PATH+8]=10.0f32; u[STY_U_PATH+9]=10.0f32; u[STY_U_PATH+10]=10.0f32; u[STY_U_PATH+11]=10.0f32; u[STY_U_PATH+12]=0.5f32; u[STY_U_PATH+13]=1.0f32;
+  u[STY_U_PATH+16]=20.0f32; u[STY_U_PATH+17]=2.0f32; u[STY_U_PATH+18]=20.0f32; u[STY_U_PATH+19]=8.0f32; u[STY_U_PATH+20]=0.25f32; u[STY_U_PATH+21]=1.0f32;
+  a:V2=sty_lines(0.0f32,3.0f32,u[..]); #assert abs(a.x-2.0f32)<0.00001f32 && abs(a.y-(sqrt(149.0f32)-0.5f32))<0.0001f32;
+  b:V2=sty_lines(10.0f32,12.0f32,u[..]); #assert abs(b.y-1.5f32)<0.00001f32 && abs(b.x-(sqrt(169.0f32)-1.0f32))<0.0001f32;
+  on:V2=sty_lines(10.0f32,10.2f32,u[..]); #assert abs(on.y+0.3f32)<0.00001f32;
+  c:V2=sty_lines(21.0f32,3.0f32,u[..]); #assert abs(c.y-0.75f32)<0.00001f32; e:V2=sty_lines(20.0f32,10.0f32,u[..]); #assert abs(e.y-1.75f32)<0.00001f32; e0:V2=sty_lines(20.5f32,0.0f32,u[..]); #assert abs(e0.y-(sqrt(4.25f32)-0.25f32))<0.0001f32;
+  past:V2=sty_lines(7.0f32,0.0f32,u[..]); #assert abs(past.x-1.0f32)<0.00001f32;
+  // a line past the count is not read; a sixth float of exactly a half is a path
+  u[STY_U_PATH_INFO]=1.0f32; one:V2=sty_lines(10.0f32,12.0f32,u[..]); #assert one.y==1000.0f32; u[STY_U_PATH_INFO]=3.0f32;
+  u[STY_U_PATH+13]=0.5f32; hp:V2=sty_lines(10.0f32,12.0f32,u[..]); #assert abs(hp.x-1.5f32)<0.00001f32 && abs(hp.y-(sqrt(116.0f32)-0.25f32))<0.0001f32; u[STY_U_PATH+13]=1.0f32;
+  // the path's own distance wanders; the rest's does not
+  p:f32=sty_path(0.0f32,3.0f32,u[..]); #assert abs(p-(2.0f32+(sty_noise2(0.0f32,1.2f32)-0.5f32)*0.5f32+(sty_noise2(5.0f32,6.3f32)-0.5f32)*0.22f32))<0.00001f32;
+  // the grass by a rest: none on it, all of it 0.35 m clear, half way half
+  #assert sty_rest_clear(0.0f32-0.2f32)==0.0f32 && sty_rest_clear(0.0f32)==0.0f32 && sty_rest_clear(0.35f32)==1.0f32 && sty_rest_clear(0.175f32)==0.5f32 && sty_rest_clear(3.0f32)==1.0f32;
+  // only the path is dirt: the ground on the rest is the meadow's, the ground on the path is earth
+  rest:V3=sty_ground(v3(10.0f32,0.0f32,10.0f32),1.0f32,0.0f32,u[..]); u[STY_U_PATH_INFO]=0.0f32; bare:V3=sty_ground(v3(10.0f32,0.0f32,10.0f32),1.0f32,0.0f32,u[..]); u[STY_U_PATH_INFO]=3.0f32;
+  #assert rest.x==bare.x && rest.y==bare.y;
+  dirt:V3=sty_ground(v3(0.0f32,0.0f32,0.0f32),1.0f32,0.0f32,u[..]); #assert dirt.x>dirt.y;
+}
+#test "the ground is pinned: earth, meadow, path and paving, plain and lush, add up to what they did" #steps 400000000 {
+  for pass:0..<4 {
+    u:[STY_UNIFORM_FLOATS]f32; u[STY_U_PATH_INFO+1]=0.35f32; u[STY_U_PATH_INFO+2]=0.5f32; u[STY_U_GRASS_INFO+3]=20.0f32; u[STY_U_EYE]=4.0f32; u[STY_U_EYE+2]=3.0f32;
+    if (pass>=1) { u[STY_U_PATH_INFO]=1.0f32; u[STY_U_PATH]=0.0f32-3.0f32; u[STY_U_PATH+1]=2.0f32; u[STY_U_PATH+2]=14.0f32; u[STY_U_PATH+3]=6.0f32; u[STY_U_PATH+4]=1.2f32; }
+    if (pass==3) { u[STY_U_LUSH]=1.0f32; }
+    sum:V3=v3(0.0f32,0.0f32,0.0f32);
+    for i:0..<24 { for j:0..<16 {
+      p:V3=v3(cast(f32)i*0.83f32-4.0f32,0.0f32,cast(f32)j*0.71f32-2.0f32);
+      cover:f32=cast(f32)((i+j)%4)*0.34f32; paved:f32=0.0f32; if (pass==2) { paved=cast(f32)((i*3+j)%5)*0.25f32; }
+      c:V3=sty_ground(p,cover,paved,u[..]);
+      sum=add3(sum,scale3(c,1.0f32+cast(f32)((i*7+j*3)%5)));
+    } }
+    want:[4]V3=[4]V3.[v3(552.27637f32,524.61127f32,321.77774f32),v3(586.0913f32,529.6298f32,331.17328f32),v3(623.379f32,581.6492f32,454.68857f32),v3(539.2757f32,486.25f32,273.4748f32)];
+    #assert abs(sum.x-want[pass].x)<0.004f32 && abs(sum.y-want[pass].y)<0.004f32 && abs(sum.z-want[pass].z)<0.004f32;
+  }
+}
+#test "a field one cell wide puts each blade in the next row, and a new blade is nothing until it grows" {
+  u:[STY_UNIFORM_FLOATS]f32; mesh:[1]f32; objects:[1]StyObj; heights:[1]f32;
+  u[STY_U_VIEW]=1.0f32; u[STY_U_VIEW+5]=1.0f32; u[STY_U_VIEW+10]=1.0f32; u[STY_U_VIEW+15]=1.0f32; u[STY_U_EYE+2]=30.0f32; u[STY_U_SUN+1]=1.0f32;
+  u[STY_U_GRASS+2]=0.15f32; u[STY_U_GRASS+3]=1.0f32; u[STY_U_GRASS_INFO]=50.0f32; u[STY_U_GRASS_INFO+1]=0.4f32; u[STY_U_GRASS_INFO+2]=0.03f32; u[STY_U_GRASS_INFO+3]=200.0f32;
+  grew:f32=0.0f32;
+  for i:0..<30 {
+    b:StyBlade=stylized_grass_vs(2,cast(u32)i,u[..],mesh[..],objects[..],heights[..]);
+    // every blade of a one-cell-wide field is in the first column, and blade i in row i
+    if (b.pos.y>0.05f32) { grew+=1.0f32; #assert b.world.x>=0.0f32 && b.world.x<0.15f32 && b.world.z>=cast(f32)i*0.15f32 && b.world.z<cast(f32)(i+1)*0.15f32; }
+  }
+  #assert grew>20.0f32;
+  // no cells across at all is one
+  u[STY_U_GRASS+3]=0.0f32; z:StyBlade=stylized_grass_vs(2,3,u[..],mesh[..],objects[..],heights[..]); #assert z.world.x<0.15f32 && z.world.z>=0.45f32 && z.world.z<0.6f32;
+  // a blade past the field's reach is put outside the picture, and all of it is 0
+  u[STY_U_GRASS+3]=1.0f32; u[STY_U_GRASS_INFO+3]=5.0f32;
+  n:StyBlade=stylized_grass_vs(2,3,u[..],mesh[..],objects[..],heights[..]); #assert n.pos.z==2.0f32 && n.pos.x==0.0f32 && n.pos.w==1.0f32 && n.world.z==0.0f32 && n.colour.y==0.0f32 && n.along==0.0f32 && n.info.x==0.0f32;
+}
+#test "the lush blades are pinned: where their nine vertices stand, their colours, normals and sides, bare, in the wind, parted and sprouting" #steps 2000000000 {
+  for pass:0..<5 {
+    u:[STY_UNIFORM_FLOATS]f32; mesh:[1]f32; objects:[1]StyObj; heights:[100]f32;
+    // a frame: the eye 1.6 m up at (3, -2) looking along -z, a field of 40 by 40 cells of 0.15 m from (0, -8),
+    // blades 0.4 m by 0.03 m to 30 m, a sun, wind, a mover and a reveal (passes 2 and 3)
+    u[STY_U_SIZE]=800.0f32; u[STY_U_SIZE+1]=600.0f32; u[STY_U_SIZE+2]=3.0f32; u[STY_U_EYE]=3.0f32; u[STY_U_EYE+1]=1.6f32; u[STY_U_EYE+2]=0.0f32-2.0f32; u[STY_U_EYE+3]=500.0f32;
+    u[STY_U_VIEW]=1.25f32; u[STY_U_VIEW+3]=0.0f32-3.75f32; u[STY_U_VIEW+5]=1.6667f32; u[STY_U_VIEW+7]=0.0f32-2.6667f32; u[STY_U_VIEW+10]=0.0f32-1.0f32; u[STY_U_VIEW+11]=0.0f32-2.1f32; u[STY_U_VIEW+14]=0.0f32-1.0f32; u[STY_U_VIEW+15]=0.0f32-2.0f32;
+    u[STY_U_SUN]=0.5f32; u[STY_U_SUN+1]=0.7f32; u[STY_U_SUN+2]=0.0f32-0.5099f32; u[STY_U_SUN+3]=0.8f32;
+    u[STY_U_GRASS]=1.6f32; u[STY_U_GRASS+1]=0.0f32-8.0f32; u[STY_U_GRASS+2]=0.15f32; u[STY_U_GRASS+3]=40.0f32;
+    u[STY_U_GRASS_INFO]=37.0f32; u[STY_U_GRASS_INFO+1]=0.4f32; u[STY_U_GRASS_INFO+2]=0.03f32; u[STY_U_GRASS_INFO+3]=30.0f32;
+    u[STY_U_PATH_INFO+2]=0.4f32;
+    if (pass>=1) { u[STY_U_WIND]=0.8f32; u[STY_U_WIND+1]=0.6f32; u[STY_U_WIND+2]=0.3f32; u[STY_U_WIND+3]=3.0f32; }
+    if (pass>=2) { u[STY_U_MOVER]=3.0f32; u[STY_U_MOVER+1]=0.0f32-5.0f32; u[STY_U_MOVER+2]=1.5f32; }
+    if (pass>=2) { u[STY_U_PATH_INFO]=1.0f32; u[STY_U_PATH]=1.0f32; u[STY_U_PATH+1]=0.0f32-6.5f32; u[STY_U_PATH+2]=9.0f32; u[STY_U_PATH+3]=0.0f32-5.5f32; u[STY_U_PATH+4]=0.4f32; }
+    if (pass==3) { u[STY_U_REVEAL]=3.0f32; u[STY_U_REVEAL+1]=0.0f32-5.0f32; u[STY_U_REVEAL+2]=3.0f32; u[STY_U_REVEAL+3]=2.0f32; u[STY_U_GRASS_INFO+3]=7.0f32; }
+    if (pass==4) {
+      // a ground table: 4 cells of 2 m from (1, -9), its nodes' height, grass cover (0 to 1.6), bare share and a spare
+      u[STY_U_GROUND]=1.0f32; u[STY_U_GROUND+1]=0.0f32-9.0f32; u[STY_U_GROUND+2]=2.0f32; u[STY_U_GROUND+3]=4.0f32;
+      for k:0..<25 { heights[k*4]=0.1f32*cast(f32)(k%5)+0.05f32*cast(f32)(k/5); heights[k*4+1]=0.4f32*cast(f32)((k*3)%5); heights[k*4+2]=0.22f32*cast(f32)((k*2)%4); heights[k*4+3]=7.0f32; }
+    }
+    u[STY_U_LUSH]=1.0f32;
+    sum:V3=v3(0.0f32,0.0f32,0.0f32); more:V3=v3(0.0f32,0.0f32,0.0f32); drawn:f32=0.0f32;
+    for i:0..<1600 { for v:0..<9 {
+      b:StyBlade=stylized_grass_vs(cast(u32)v,cast(u32)i,u[..],mesh[..],objects[..],heights[..]);
+      if (!(b.pos.z==2.0f32&&b.pos.x==0.0f32&&b.pos.y==0.0f32)) {   // (a blade that does not grow is put outside the picture)
+        w:f32=1.0f32+cast(f32)((i*7+v*3)%5);
+        sum=add3(sum,scale3(v3(b.pos.x,b.pos.y,b.pos.w),w)); more=add3(more,scale3(add3(b.colour,add3(scale3(b.n,0.5f32),scale3(b.info,0.25f32))),w)); drawn+=1.0f32; more.x+=w*b.info.x*b.pos.x*3.0f32;   // (and how wide it is: its two sides apart)
+      }
+    } }
+    wa:[5]V3=[5]V3.[v3(66368.555f32,-97903.96f32,131015.59f32),v3(67113.164f32,-97955.33f32,130568.69f32),v3(56735.816f32,-83288.84f32,104664.54f32),v3(8793.346f32,-46391.168f32,48661.016f32),v3(52251.07f32,-55675.84f32,86150.2f32)];
+    wb:[5]V3=[5]V3.[v3(12974.475f32,40044.477f32,7011.15f32),v3(14991.026f32,39883.133f32,8711.129f32),v3(12308.864f32,33321.195f32,7310.889f32),v3(7472.903f32,18521.9f32,4097.7583f32),v3(9482.279f32,26976.47f32,5930.734f32)];
+    wn:[5]f32=[5]f32.[13374.0f32,13374.0f32,11241.0f32,6084.0f32,9126.0f32];
+    #assert drawn==wn[pass];
+    #assert abs(sum.x-wa[pass].x)<0.02f32+abs(wa[pass].x)*0.00002f32 && abs(sum.y-wa[pass].y)<0.02f32+abs(wa[pass].y)*0.00002f32 && abs(sum.z-wa[pass].z)<0.02f32+abs(wa[pass].z)*0.00002f32;
+    #assert abs(more.x-wb[pass].x)<0.02f32+abs(wb[pass].x)*0.00002f32 && abs(more.y-wb[pass].y)<0.02f32+abs(wb[pass].y)*0.00002f32 && abs(more.z-wb[pass].z)<0.02f32+abs(wb[pass].z)*0.00002f32;
+  }
+}
+#test "the plain blades are pinned too: a look that is not lush draws the grass it drew" #steps 2000000000 {
+  for pass:0..<5 {
+    u:[STY_UNIFORM_FLOATS]f32; mesh:[1]f32; objects:[1]StyObj; heights:[100]f32;
+    // a frame: the eye 1.6 m up at (3, -2) looking along -z, a field of 40 by 40 cells of 0.15 m from (0, -8),
+    // blades 0.4 m by 0.03 m to 30 m, a sun, wind, a mover and a reveal (passes 2 and 3)
+    u[STY_U_SIZE]=800.0f32; u[STY_U_SIZE+1]=600.0f32; u[STY_U_SIZE+2]=3.0f32; u[STY_U_EYE]=3.0f32; u[STY_U_EYE+1]=1.6f32; u[STY_U_EYE+2]=0.0f32-2.0f32; u[STY_U_EYE+3]=500.0f32;
+    u[STY_U_VIEW]=1.25f32; u[STY_U_VIEW+3]=0.0f32-3.75f32; u[STY_U_VIEW+5]=1.6667f32; u[STY_U_VIEW+7]=0.0f32-2.6667f32; u[STY_U_VIEW+10]=0.0f32-1.0f32; u[STY_U_VIEW+11]=0.0f32-2.1f32; u[STY_U_VIEW+14]=0.0f32-1.0f32; u[STY_U_VIEW+15]=0.0f32-2.0f32;
+    u[STY_U_SUN]=0.5f32; u[STY_U_SUN+1]=0.7f32; u[STY_U_SUN+2]=0.0f32-0.5099f32; u[STY_U_SUN+3]=0.8f32;
+    u[STY_U_GRASS]=1.6f32; u[STY_U_GRASS+1]=0.0f32-8.0f32; u[STY_U_GRASS+2]=0.15f32; u[STY_U_GRASS+3]=40.0f32;
+    u[STY_U_GRASS_INFO]=37.0f32; u[STY_U_GRASS_INFO+1]=0.4f32; u[STY_U_GRASS_INFO+2]=0.03f32; u[STY_U_GRASS_INFO+3]=30.0f32;
+    u[STY_U_PATH_INFO+2]=0.4f32;
+    if (pass>=1) { u[STY_U_WIND]=0.8f32; u[STY_U_WIND+1]=0.6f32; u[STY_U_WIND+2]=0.3f32; u[STY_U_WIND+3]=3.0f32; }
+    if (pass>=2) { u[STY_U_MOVER]=3.0f32; u[STY_U_MOVER+1]=0.0f32-5.0f32; u[STY_U_MOVER+2]=1.5f32; }
+    if (pass>=2) { u[STY_U_PATH_INFO]=1.0f32; u[STY_U_PATH]=1.0f32; u[STY_U_PATH+1]=0.0f32-6.5f32; u[STY_U_PATH+2]=9.0f32; u[STY_U_PATH+3]=0.0f32-5.5f32; u[STY_U_PATH+4]=0.4f32; }
+    if (pass==3) { u[STY_U_REVEAL]=3.0f32; u[STY_U_REVEAL+1]=0.0f32-5.0f32; u[STY_U_REVEAL+2]=3.0f32; u[STY_U_REVEAL+3]=2.0f32; u[STY_U_GRASS_INFO+3]=7.0f32; }
+    if (pass==4) {
+      // a ground table: 4 cells of 2 m from (1, -9), its nodes' height, grass cover (0 to 1.6), bare share and a spare
+      u[STY_U_GROUND]=1.0f32; u[STY_U_GROUND+1]=0.0f32-9.0f32; u[STY_U_GROUND+2]=2.0f32; u[STY_U_GROUND+3]=4.0f32;
+      for k:0..<25 { heights[k*4]=0.1f32*cast(f32)(k%5)+0.05f32*cast(f32)(k/5); heights[k*4+1]=0.4f32*cast(f32)((k*3)%5); heights[k*4+2]=0.22f32*cast(f32)((k*2)%4); heights[k*4+3]=7.0f32; }
+    }
+    sum:V3=v3(0.0f32,0.0f32,0.0f32); more:V3=v3(0.0f32,0.0f32,0.0f32); drawn:f32=0.0f32;
+    for i:0..<1600 { for v:0..<3 {
+      b:StyBlade=stylized_grass_vs(cast(u32)v,cast(u32)i,u[..],mesh[..],objects[..],heights[..]);
+      if (!(b.pos.z==2.0f32&&b.pos.x==0.0f32&&b.pos.y==0.0f32)) {   // (a blade that does not grow is put outside the picture)
+        w:f32=1.0f32+cast(f32)((i*7+v*3)%5);
+        sum=add3(sum,scale3(v3(b.pos.x,b.pos.y,b.pos.w),w)); more=add3(more,scale3(add3(b.colour,v3(b.along,b.world.x*0.1f32,b.world.z*0.1f32)),w)); drawn+=1.0f32; if (v==0) { more.x-=w*b.pos.x*3.0f32; } if (v==1) { more.x+=w*b.pos.x*3.0f32; }   // (and how wide it is: its two sides apart)
+      }
+    } }
+    wa:[5]V3=[5]V3.[v3(27563.176f32,-35863.72f32,44647.082f32),v3(27848.324f32,-35863.72f32,44475.95f32),v3(24565.625f32,-30897.756f32,36016.535f32),v3(2993.6536f32,-15511.68f32,15994.541f32),v3(22396.656f32,-20909.426f32,30254.254f32)];
+    wb:[5]V3=[5]V3.[v3(7831.3696f32,11557.952f32,-4539.13f32),v3(7831.3696f32,11557.952f32,-4539.13f32),v3(6768.2886f32,9956.812f32,-3672.3828f32),v3(3346.5815f32,4168.619f32,-1627.5198f32),v3(5308.4307f32,8475.392f32,-3082.0886f32)];
+    wn:[5]f32=[5]f32.[4800.0f32,4800.0f32,4098.0f32,2022.0f32,3393.0f32];
+    #assert drawn==wn[pass];
+    #assert abs(sum.x-wa[pass].x)<0.02f32+abs(wa[pass].x)*0.00002f32 && abs(sum.y-wa[pass].y)<0.02f32+abs(wa[pass].y)*0.00002f32 && abs(sum.z-wa[pass].z)<0.02f32+abs(wa[pass].z)*0.00002f32;
+    #assert abs(more.x-wb[pass].x)<0.02f32+abs(wb[pass].x)*0.00002f32 && abs(more.y-wb[pass].y)<0.02f32+abs(wb[pass].y)*0.00002f32 && abs(more.z-wb[pass].z)<0.02f32+abs(wb[pass].z)*0.00002f32;
+  }
+}
+#test "a lush blade stands on its root, bends through its middle, leans out of its tuft and thins to nothing; a rest and a path keep it off" #steps 400000000 {
+  u:[STY_UNIFORM_FLOATS]f32; mesh:[1]f32; objects:[1]StyObj; heights:[1]f32;
+  // a plain view: clip is the world's own x, y, z (so a vertex's place can be read back) and a w of 100 (the whole field is well inside the picture), the eye far off along +z
+  u[STY_U_VIEW]=1.0f32; u[STY_U_VIEW+5]=1.0f32; u[STY_U_VIEW+10]=1.0f32; u[STY_U_VIEW+15]=100.0f32;
+  u[STY_U_EYE]=2.0f32; u[STY_U_EYE+1]=1.0f32; u[STY_U_EYE+2]=30.0f32;
+  u[STY_U_SUN+1]=1.0f32;
+  u[STY_U_GRASS]=0.0f32; u[STY_U_GRASS+1]=0.0f32; u[STY_U_GRASS+2]=0.15f32; u[STY_U_GRASS+3]=30.0f32; u[STY_U_GRASS_INFO]=30.0f32; u[STY_U_GRASS_INFO+1]=0.4f32; u[STY_U_GRASS_INFO+2]=0.03f32; u[STY_U_GRASS_INFO+3]=200.0f32;
+  u[STY_U_LUSH]=1.0f32;
+  stalks:f32=0.0f32; stood:f32=0.0f32;
+  for i:0..<900 {
+    p:[9]StyBlade; for v:0..<9 { p[v]=stylized_grass_vs(cast(u32)v,cast(u32)i,u[..],mesh[..],objects[..],heights[..]); }
+    if (p[8].pos.z==2.0f32&&p[8].pos.x==0.0f32&&p[8].pos.y==0.0f32) { continue; }   // (a blade that does not grow is put outside the picture)
+    stood+=1.0f32;
+    root:V3=p[0].world; tall:f32=p[8].pos.y;
+    // every vertex carries the blade's root; the two root vertices stand on the ground, either side of it, level
+    for v:0..<9 { #assert p[v].world.x==root.x && p[v].world.z==root.z && p[v].world.y==0.0f32 && p[v].along==sty_lush_level(v) && p[v].info.x==sty_lush_side(v) && p[v].info.z==p[0].info.z; }
+    #assert p[0].pos.y==0.0f32 && p[1].pos.y==0.0f32 && abs((p[0].pos.x+p[1].pos.x)*0.5f32-root.x)<0.0001f32 && p[1].pos.x>p[0].pos.x && abs(p[0].pos.z-p[1].pos.z)<0.02f32;
+    // it is its tuft's blade: its root is between where it was scattered and its tuft's middle, in or beside the tuft's square
+    t:V3=sty_lush_tuft(root.x,root.z); #assert abs(root.x-t.x)<0.45f32 && abs(root.z-t.y)<0.45f32;
+    // it stands up to 0.95 m (0.4 by its own number, its tuft's and a stalk's half again), and a stalk is thinner
+    #assert tall>0.03f32 && tall<0.96f32;
+    wide:f32=p[1].pos.x-p[0].pos.x; #assert wide>0.012f32 && wide<0.2f32;
+    if (p[0].info.z>0.5f32) { stalks+=1.0f32; #assert p[8].colour.x>p[8].colour.y*0.95f32; } else { #assert p[8].colour.y>p[8].colour.x; }
+    // the middle: half way up or a little under (it droops as it bends), a quarter of the tip's carry out, 0.82 of the root's width
+    mx:f32=(p[2].pos.x+p[4].pos.x)*0.5f32; mz:f32=(p[2].pos.z+p[4].pos.z)*0.5f32; tx:f32=p[8].pos.x-root.x; tz:f32=p[8].pos.z-root.z;
+    #assert abs((mx-root.x)-tx*0.25f32)<0.0005f32 && abs((mz-root.z)-tz*0.25f32)<0.0005f32;
+    #assert p[2].pos.y==p[4].pos.y && p[2].pos.y<=tall*0.64f32 && p[2].pos.y>tall*0.5f32 && abs((p[4].pos.x-p[2].pos.x)-wide*sty_lush_wide(0.5f32))<0.0005f32;
+    // the two triangles of the quad share its diagonal, and the tip's triangle its top
+    #assert p[3].pos.x==p[1].pos.x && p[5].pos.x==p[2].pos.x && p[6].pos.x==p[2].pos.x && p[7].pos.x==p[4].pos.x && p[5].pos.y==p[2].pos.y && p[7].pos.y==p[4].pos.y;
+    // its tip leans no further than its height, and its colour runs from a dark root to a brighter tip
+    #assert sqrt(tx*tx+tz*tz)<tall*1.2f32 && p[8].colour.y>p[0].colour.y*1.5f32 && p[0].colour.y<0.33f32;
+    // its normal is a unit vector, mostly up, tilted the way the tip is carried, more at the tip
+    nl:f32=length3(p[8].n); #assert abs(nl-1.0f32)<0.0001f32 && p[8].n.y>0.55f32 && p[8].n.x*tx>=0.0f32 && p[8].n.z*tz>=0.0f32 && p[0].n.y>=p[8].n.y;
+  }
+  // most cells grow a blade, and about one in thirty is a seed stalk
+  #assert stood>800.0f32 && stalks>12.0f32 && stalks<55.0f32;
+  // the same cell in a frame with a rest over the whole field grows none; with a path, none; past its reach, none
+  full:StyBlade=stylized_grass_vs(8,455,u[..],mesh[..],objects[..],heights[..]); #assert full.pos.y>0.1f32;
+  u[STY_U_PATH_INFO]=1.0f32; u[STY_U_PATH]=0.0f32-50.0f32; u[STY_U_PATH+2]=50.0f32; u[STY_U_PATH+4]=40.0f32; u[STY_U_PATH+5]=1.0f32;
+  rested:StyBlade=stylized_grass_vs(8,455,u[..],mesh[..],objects[..],heights[..]); #assert rested.pos.z==2.0f32 && rested.pos.y==0.0f32;
+  u[STY_U_PATH+5]=0.0f32; pathed:StyBlade=stylized_grass_vs(8,455,u[..],mesh[..],objects[..],heights[..]); #assert pathed.pos.z==2.0f32 && pathed.pos.y==0.0f32;
+  u[STY_U_PATH_INFO]=0.0f32; u[STY_U_GRASS_INFO+3]=10.0f32; far:StyBlade=stylized_grass_vs(8,455,u[..],mesh[..],objects[..],heights[..]); #assert far.pos.z==2.0f32 && far.pos.y==0.0f32; u[STY_U_GRASS_INFO+3]=200.0f32;
+  // a blade outside the picture is not worked out: 3 past its side, its top or its foot, or 1.5 behind the eye; nearer than that it is
+  #assert !sty_lush_unseen(v4(0.0f32,0.0f32,0.5f32,1.0f32)) && !sty_lush_unseen(v4(3.9f32,0.0f32,0.5f32,1.0f32)) && sty_lush_unseen(v4(4.1f32,0.0f32,0.5f32,1.0f32)) && sty_lush_unseen(v4(0.0f32-4.1f32,0.0f32,0.5f32,1.0f32));
+  #assert !sty_lush_unseen(v4(0.0f32,3.9f32,0.5f32,1.0f32)) && sty_lush_unseen(v4(0.0f32,4.1f32,0.5f32,1.0f32)) && sty_lush_unseen(v4(0.0f32,0.0f32-4.1f32,0.5f32,1.0f32)) && !sty_lush_unseen(v4(12.9f32,0.0f32,0.5f32,10.0f32)) && sty_lush_unseen(v4(13.1f32,0.0f32,0.5f32,10.0f32));
+  #assert !sty_lush_unseen(v4(0.0f32,0.0f32,0.5f32,0.0f32-1.4f32)) && sty_lush_unseen(v4(0.0f32,0.0f32,0.5f32,0.0f32-1.6f32)) && !sty_lush_unseen(v4(4.3f32,0.0f32,0.5f32,0.0f32-1.4f32)) && sty_lush_unseen(v4(4.5f32,0.0f32,0.5f32,0.0f32-1.4f32));
+  // (exactly 3 past an edge, or exactly 1.5 behind, is still worked out)
+  #assert !sty_lush_unseen(v4(4.0f32,0.0f32,0.5f32,1.0f32)) && !sty_lush_unseen(v4(0.0f32,0.0f32-4.0f32,0.5f32,1.0f32)) && !sty_lush_unseen(v4(0.0f32,0.0f32,0.5f32,0.0f32-1.5f32));
+  u[STY_U_LUSH]=1.0f32; u[STY_U_PATH_INFO]=0.0f32;
+  inview:StyBlade=stylized_grass_vs(8,475,u[..],mesh[..],objects[..],heights[..]); #assert inview.pos.y>0.05f32 && inview.world.x>3.5f32;
+  u[STY_U_VIEW+15]=0.2f32;
+  outside:StyBlade=stylized_grass_vs(8,475,u[..],mesh[..],objects[..],heights[..]); #assert outside.pos.z==2.0f32 && outside.pos.y==0.0f32 && outside.world.x==0.0f32;
+  u[STY_U_VIEW+15]=100.0f32; u[STY_U_VIEW+7]=0.0f32-104.0f32;
+  under:StyBlade=stylized_grass_vs(8,475,u[..],mesh[..],objects[..],heights[..]); #assert under.pos.z==2.0f32 && under.pos.y==0.0f32; u[STY_U_VIEW+7]=0.0f32;
+  // a plain look's blade keeps off a rest too, and has an upright normal and no side
+  u[STY_U_LUSH]=0.0f32; plain:StyBlade=stylized_grass_vs(2,455,u[..],mesh[..],objects[..],heights[..]); #assert plain.pos.y>0.1f32 && plain.n.y==1.0f32 && plain.n.x==0.0f32 && plain.info.x==0.0f32 && plain.info.z==0.0f32;
+  u[STY_U_PATH_INFO]=1.0f32; u[STY_U_PATH+5]=1.0f32; off:StyBlade=stylized_grass_vs(2,455,u[..],mesh[..],objects[..],heights[..]); #assert off.pos.z==2.0f32 && off.pos.y==0.0f32;
 }

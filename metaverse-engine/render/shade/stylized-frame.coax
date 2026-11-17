@@ -9,6 +9,7 @@
 //   sty_grass_field  the patch of ground that grows blades
 //   sty_ground_table where the ground's table lies (metaverse-engine/arch/flora.coax ArchGround)
 //   sty_path_clear, sty_path_add   the dirt paths
+//   sty_rest_add     where a thing lies on the ground: no grass on it, the ground still the field's
 //   sty_reveal       grass that grows outward from a place: where, how far its front has come, how wide it is
 //   sty_mover        the one mover the grass parts round
 //   sty_wind         the wind that bends the blades
@@ -59,6 +60,13 @@ StyLook :: struct {
   // is shown at (1 is usual). The zenith's, the horizon's and the haze's colours, the glow and
   // cloud_dim are then not used; cloud, cloud_scale and sun_disc are.
   air: f32 = 0.0;
+  // The grass: 0 is the plain blades (one flat triangle each, the meadow's two greens). Over 0 it is
+  // the lush grass: curved blades that grow in tufts, each of sty_grass_vertices vertices, deep at
+  // the root and bright at the tip, in the field's patches of lusher and drier grass with a hue of
+  // their own, a pale seed stalk here and there, lit across their bend (so the wind's waves roll
+  // light over the field), dark toward the roots, and a ground under them and past them that is
+  // the field's own colour. A host must draw sty_grass_vertices(look) vertices a blade.
+  lush: f32 = 0.0;
 }
 
 // A camera: where it is, the way it looks (yaw 0 looks along -z and turns toward +x; pitch up) and
@@ -107,6 +115,7 @@ sty_frame :: (u: [] f32, width: f32, height: f32, time: f32, c: StyCamera, look:
   sty_put3(u, STY_U_FORWARD, f[0], f[1], f[2], look.glow_b);
   u[STY_U_PATH_INFO + 1] = look.path_soft; u[STY_U_PATH_INFO + 2] = look.meadow_dry; u[STY_U_PATH_INFO + 3] = look.meadow_shift;
   for i: 0..<STY_CUMULI * 4 { u[STY_U_CUMULUS + i] = look.cumulus[i]; }
+  u[STY_U_LUSH] = look.lush;
   return true;
 }
 
@@ -138,6 +147,7 @@ sty_look_mix :: (a: StyLook, b: StyLook, t: f32) -> StyLook {
   o.glow_r = sty_mixf(a.glow_r, b.glow_r, t); o.glow_g = sty_mixf(a.glow_g, b.glow_g, t); o.glow_b = sty_mixf(a.glow_b, b.glow_b, t);
   o.cloud_dim = sty_mixf(a.cloud_dim, b.cloud_dim, t);
   o.air = sty_mixf(a.air, b.air, t);
+  o.lush = sty_mixf(a.lush, b.lush, t);
   return o;
 }
 
@@ -261,6 +271,10 @@ sty_shadow_box :: (u: [] f32, cx: f32, cy: f32, cz: f32, radius: f32, depth: f32
   return true;
 }
 
+// How many vertices a host draws for each blade of the look's grass: 3 for the plain blades,
+// STY_LUSH_VERTICES for the lush ones.
+sty_grass_vertices :: (look: StyLook) -> int { return ifx look.lush > 0 then STY_LUSH_VERTICES else 3; }
+
 // The patch of ground that grows blades: `cols` cells across from x0 and `rows` deep from z0, a
 // blade a cell. Returns how many blades that is (0: none).
 sty_grass_field :: (u: [] f32, look: StyLook, x0: f32, z0: f32, cols: int, rows: int) -> int {
@@ -272,6 +286,16 @@ sty_grass_field :: (u: [] f32, look: StyLook, x0: f32, z0: f32, cols: int, rows:
 sty_ground_table :: (u: [] f32, x0: f32, z0: f32, cell: f32, n: int) { sty_put3(u, STY_U_GROUND, x0, z0, cell, cast(f32) n); }
 
 sty_path_clear :: (u: [] f32) { u[STY_U_PATH_INFO] = 0; }
+// A rest: where a thing lies on the ground, from (ax, az) to (bx, bz), `half` its half width (a spot
+// when the two ends are one place). No grass grows on it and the blades thin toward its edge, but
+// the ground stays the field's own: it is not a worn path. Rests and paths share the frame's
+// STY_PATHS lines. False when they are all in.
+sty_rest_add :: (u: [] f32, ax: f32, az: f32, bx: f32, bz: f32, half: f32) -> bool {
+  n := cast(int) u[STY_U_PATH_INFO];
+  if !sty_path_add(u, ax, az, bx, bz, half) { return false; }
+  u[STY_U_PATH + n * STY_PATH_FLOATS + 5] = 1;
+  return true;
+}
 // A dirt path from (ax, az) to (bx, bz), `half` its half width. False when STY_PATHS are in.
 sty_path_add :: (u: [] f32, ax: f32, az: f32, bx: f32, bz: f32, half: f32) -> bool {
   n := cast(int) u[STY_U_PATH_INFO];
@@ -296,7 +320,7 @@ sty_reveal :: (u: [] f32, cx: f32, cz: f32, radius: f32, edge: f32) -> bool {
 // lower, fully at the mover. A radius of 0 is no mover.
 sty_mover :: (u: [] f32, x: f32, z: f32, radius: f32) -> bool {
   if u.count < STY_UNIFORM_FLOATS || !(radius >= 0) || !(x == x) || !(z == z) { return false; }
-  sty_put3(u, STY_U_MOVER, x, z, radius, 0);
+  u[STY_U_MOVER] = x; u[STY_U_MOVER + 1] = z; u[STY_U_MOVER + 2] = radius;   // (the fourth float there is the look's lush grass)
   return true;
 }
 // The wind: the way it blows (it need not be a unit vector), how far it bends a blade (radians: the
@@ -370,6 +394,11 @@ sty_project :: (u: [] f32, x: f32, y: f32, z: f32) -> StyOnScreen {
   sty_path_clear(u[..]);
   for i: 0..<STY_PATHS { #assert sty_path_add(u[..], cast(f32) i, 0, cast(f32) i, 10, 2); }
   #assert !sty_path_add(u[..], 0, 0, 1, 1, 1) && u[STY_U_PATH_INFO] == STY_PATHS && u[STY_U_PATH + 8] == 1 && u[STY_U_PATH + 12] == 2;
+  // a rest is a line like a path, marked as one; a path after it is a path; and a thirteenth of either is refused
+  #assert !sty_rest_add(u[..], 0, 0, 1, 1, 1) && u[STY_U_PATH_INFO] == STY_PATHS;
+  sty_path_clear(u[..]);
+  #assert sty_path_add(u[..], 1, 2, 3, 4, 0.5) && sty_rest_add(u[..], 5, 6, 7, 8, 0.25) && sty_path_add(u[..], 9, 9, 9, 9, 1) && u[STY_U_PATH_INFO] == 3;
+  #assert u[STY_U_PATH + 5] == 0 && u[STY_U_PATH + 8] == 5 && u[STY_U_PATH + 9] == 6 && u[STY_U_PATH + 10] == 7 && u[STY_U_PATH + 11] == 8 && u[STY_U_PATH + 12] == 0.25 && u[STY_U_PATH + 13] == 1 && u[STY_U_PATH + 21] == 0;
   #assert STY_U_PATH + STY_PATHS * STY_PATH_FLOATS == STY_U_CUMULUS && STY_U_CUMULUS + STY_CUMULI * 4 == STY_U_REVEAL && STY_U_BARE_LINE + 4 == STY_UNIFORM_FLOATS && STY_UNIFORM_FLOATS % 4 == 0;
   // A heaped cloud goes where the sky's shader reads it; with none placed, none is drawn.
   #assert u[STY_U_CUMULUS + 3] == 0;
@@ -389,6 +418,10 @@ sty_project :: (u: [] f32, x: f32, y: f32, z: f32) -> StyOnScreen {
   #assert u[STY_U_REVEAL + 2] == 12.5 && u[STY_U_REVEAL + 3] == 2;
   #assert sty_reveal(u[..], 0, 0, 0, 0) && u[STY_U_REVEAL + 3] == 0;
   #assert sty_mover(u[..], 4, 5, 0.7) && u[STY_U_MOVER] == 4 && u[STY_U_MOVER + 1] == 5 && u[STY_U_MOVER + 2] == 0.7 && u[STY_U_MOVER + 3] == 0;
+  // the look's lush grass rides beside the mover: the frame writes it, the mover leaves it, and a blade has 3 vertices or 9
+  look.lush = 1; #assert sty_frame(u[..], 800, 600, 1, c, look) && u[STY_U_LUSH] == 1 && STY_U_LUSH == STY_U_MOVER + 3 && sty_mover(u[..], 4, 5, 0.7) && u[STY_U_LUSH] == 1 && u[STY_U_MOVER + 2] == 0.7;
+  #assert sty_grass_vertices(look) == 9 && STY_LUSH_VERTICES == 9; look.lush = 0; #assert sty_grass_vertices(look) == 3 && sty_frame(u[..], 800, 600, 1, c, look) && u[STY_U_LUSH] == 0;
+  look.lush = 0.001; #assert sty_grass_vertices(look) == 9; look.lush = -1; #assert sty_grass_vertices(look) == 3; look.lush = 0;
   #assert !sty_mover(u[..], 4, 5, -0.1) && !sty_mover(u[..], nan, 5, 1) && !sty_mover(u[..], 4, nan, 1) && !sty_mover(u[..], 4, 5, nan) && u[STY_U_MOVER + 2] == 0.7;
   #assert sty_mover(u[..], 1, 2, 0) && u[STY_U_MOVER + 2] == 0;
   // the wind's way is made a unit vector; no way at all is no bend
@@ -418,7 +451,7 @@ sty_project :: (u: [] f32, x: f32, y: f32, z: f32) -> StyOnScreen {
   b.cloud = a.cloud + 27; b.cloud_scale = a.cloud_scale + 28; b.cloud_turn = a.cloud_turn + 29;
   b.blade = a.blade + 30; b.blade_wide = a.blade_wide + 31; b.grass_cell = a.grass_cell + 32; b.grass_reach = a.grass_reach + 33;
   b.path_soft = a.path_soft + 34; b.meadow_dry = a.meadow_dry + 35; b.meadow_shift = a.meadow_shift + 36;
-  b.sun_disc = a.sun_disc + 37; b.glow_r = a.glow_r + 38; b.glow_g = a.glow_g + 39; b.glow_b = a.glow_b + 40; b.cloud_dim = a.cloud_dim + 41; b.air = a.air + 44;
+  b.sun_disc = a.sun_disc + 37; b.glow_r = a.glow_r + 38; b.glow_g = a.glow_g + 39; b.glow_b = a.glow_b + 40; b.cloud_dim = a.cloud_dim + 41; b.air = a.air + 44; b.lush = a.lush + 48;
   for i: 0..<STY_CUMULI * 4 { a.cumulus[i] = cast(f32) i; b.cumulus[i] = cast(f32) i + 42 + cast(f32) i; }
   m := sty_look_mix(a, b, 0.25);
   e: f32 = 0.0001;
@@ -433,7 +466,7 @@ sty_project :: (u: [] f32, x: f32, y: f32, z: f32) -> StyOnScreen {
   #assert abs(m.cloud - a.cloud - 6.75) < e && abs(m.cloud_scale - a.cloud_scale - 7) < e && abs(m.cloud_turn - a.cloud_turn - 7.25) < e;
   #assert abs(m.blade - a.blade - 7.5) < e && abs(m.blade_wide - a.blade_wide - 7.75) < e && abs(m.grass_cell - a.grass_cell - 8) < e && abs(m.grass_reach - a.grass_reach - 8.25) < e;
   #assert abs(m.path_soft - a.path_soft - 8.5) < e && abs(m.meadow_dry - a.meadow_dry - 8.75) < e && abs(m.meadow_shift - a.meadow_shift - 9) < e;
-  #assert abs(m.sun_disc - 9.25) < e && abs(m.glow_r - 9.5) < e && abs(m.glow_g - 9.75) < e && abs(m.glow_b - 10) < e && abs(m.cloud_dim - 10.25) < e && abs(m.air - 11) < e;
+  #assert abs(m.sun_disc - 9.25) < e && abs(m.glow_r - 9.5) < e && abs(m.glow_g - 9.75) < e && abs(m.glow_b - 10) < e && abs(m.cloud_dim - 10.25) < e && abs(m.air - 11) < e && abs(m.lush - 12) < e;
   for i: 0..<STY_CUMULI * 4 { #assert abs(m.cumulus[i] - (cast(f32) i + (42 + cast(f32) i) * 0.25)) < e; }
   // held at its ends, and a share that is not a number is the first look
   nan: f32 = 0; nan = nan / nan;

@@ -646,6 +646,46 @@ the sky without a seam.
   writes none of them draws as before. First used by gamebuilder.org's world:
   the grass spreads from the character's feet to the horizon in five seconds.
 
+**The stylized look's lush grass** (built November 17). The stylized look
+(`render/shade/stylized.coax`) drew a blade as one flat triangle in the
+meadow's two greens, lit as if it faced straight up: from near, dark flat
+spikes; from far, a plain. `StyLook.lush` over 0 is the lush grass, for any
+realm that draws with the look:
+
+- **Shape.** Nine vertices a blade (`STY_LUSH_VERTICES`): a quad from root to
+  middle and a triangle to the tip, as wide as its root to the middle
+  (`sty_lush_wide`), bent through the middle with the square of the height and
+  drooping as it bends. The web host draws as many vertices a blade as the
+  module asks (`coaxial_grass_vertices_v1`, 3 by default).
+- **Tufts** (`sty_lush_tuft`). Half a metre apart, each with a middle and a
+  number of its own. A blade is drawn 0.38 of the way to its tuft's middle,
+  leans out from it, and stands 0.62 to 1.38 of its height by the tuft's
+  number. One blade in thirty is a seed stalk: half as tall again, 0.55 as
+  wide, straw (0.86, 0.78, 0.5) at its top.
+- **Colour** (`sty_lush_colour`, `sty_lush_dry`). Root (0.11, 0.24, 0.07) to
+  (0.2, 0.27, 0.1); tip from a fresh green (0.4, 0.66, 0.17) to a dry gold
+  (0.74, 0.74, 0.33) as the field runs dry, in the meadow's broad patches and
+  patches a few metres across, shifted by the tuft's number; each blade's red
+  and blue apart by up to 9 percent (`metaverse_style_jitter`) and its
+  brightness 0.86 to 1.14.
+- **Light** (`sty_lush_light`). The banded sun across the blade's own normal
+  (up, tilted the way it bends, more at the tip: the wind's waves roll light
+  over the field), 0.34 of it at the root rising to all of it 0.75 up (the
+  field's depth), the midrib 12 percent lighter than the edges, the two
+  halves 14 percent apart by which faces the sun, and a glint of the sun's
+  colour (0.3, a 24th power) on the upper blade where it mirrors the sun.
+  With air, a low sun still comes through the tips (`sty_grass_through`).
+- **Ground** (`sty_lush_ground`). Under the blades the earth is 0.8 of a
+  blade's colour 0.3 up; from 0.45 of the field's reach to its reach it goes
+  to the colour 0.5 up, streaked, which is what the blades show from far off.
+- **Rests** (`sty_rest_add`): a thing lying on the ground keeps the grass off
+  it and thins it toward its edge, and the ground stays the field's.
+
+All of it is off by default: a look that is not lush draws the grass it drew
+(the plain blades are pinned by a check, and Painted Village's opening shot is
+the same to the pixel with the shader from before and after). First used by
+gamebuilder.org's world.
+
 ### 9. Palette and tone
 
 - **Albedo rules** (checked on packs and on a realm's constant colours):

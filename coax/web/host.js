@@ -222,6 +222,8 @@
 //   coaxial_grass_range_count_v1(state)  at most 128 ordered, nonoverlapping ranges
 //   coaxial_grass_range_v1(state, range, field)  field 0 first instance, 1 instance count
 // Coax bounds/selects the ranges; the SDK issues draw(3, count, 0, first).
+// Optional: coaxial_grass_vertices_v1(state), how many vertices grass_vs draws a blade (3 to 48, in
+// threes; absent or anything else: 3). The stylized look's lush grass has 9 (stylized-layout.coax).
 // A traced page's surface (the water lab's clipmap sea), when the page has no scene, its WGSL has
 // surface_vs and surface_fs and the app exports coaxial_surface_vertices: the page gets a depth buffer,
 // bg_fs writes its depth (@builtin(frag_depth)), and that many vertices (no buffer, bg's group) draw right
@@ -3185,14 +3187,17 @@ function draw(now) {
   const texture = context.getCurrentTexture();
   const screen = () => target(texture.createView());
   const blades = gpu.grass && (gpu.caster || gpu.sceneGroup) ? x.coaxial_grass_instances(arena.state) : 0;
+  // a blade is one triangle unless the module says how many vertices its blades have (3 to 48, in threes)
+  const asked = blades && x.coaxial_grass_vertices_v1 ? x.coaxial_grass_vertices_v1(arena.state) >>> 0 : 3;
+  const bladeVertices = asked >= 3 && asked <= 48 && asked % 3 === 0 ? asked : 3;
   const grassInto = (pass) => {
     if (!blades) return;
     if (!gpu.caster) { pass.setBindGroup(1, gpu.sceneGroup); if (gpu.shadow) pass.setBindGroup(2, gpu.shadowGroup); }
     pass.setPipeline(gpu.grass);
     if (x.coaxial_grass_range_count_v1 && x.coaxial_grass_range_v1) {
       const count = x.coaxial_grass_range_count_v1(arena.state);
-      for (let i = 0; i < count; i++) pass.draw(3, x.coaxial_grass_range_v1(arena.state, i, 1), 0, x.coaxial_grass_range_v1(arena.state, i, 0));
-    } else pass.draw(3, blades);
+      for (let i = 0; i < count; i++) pass.draw(bladeVertices, x.coaxial_grass_range_v1(arena.state, i, 1), 0, x.coaxial_grass_range_v1(arena.state, i, 0));
+    } else pass.draw(bladeVertices, blades);
   };
   // The particles' rows, uploaded when they changed; false when there is nothing to draw them with.
   const sparksInto = (count) => {

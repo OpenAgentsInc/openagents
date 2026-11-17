@@ -468,6 +468,28 @@ carries one mover the blades part round (`sty_mover`, with
 `metaverse_style_part`, `_part_push` and `_part_keep`) and the wind that bends
 them (`sty_wind`). A frame that writes none of these draws as it did before.
 
+### Lush grass
+
+The look's plain blade is one flat triangle. `StyLook.lush` over 0 draws the
+lush grass instead ([`render/shade/stylized.coax`](../render/shade/stylized.coax)):
+
+| Piece | What it is |
+| --- | --- |
+| `sty_lush_blade` | Nine vertices: a quad from root to middle, a triangle to the tip, bent through the middle; in a tuft (`sty_lush_tuft`), leaning out of it; one in thirty a seed stalk |
+| `sty_lush_colour`, `sty_lush_dry` | A deep root, a tip from fresh green to dry gold by the field's patches, a hue of each blade's own |
+| `sty_lush_light` | The sun across the bent normal, dark toward the root, a lighter midrib, a glint where the blade mirrors the sun |
+| `sty_lush_ground` | Earth under the blades; past them, the colour the blades show from far off |
+| `sty_rest_add` | Where a thing lies: no grass on it, the ground still the field's |
+
+```jai
+look.lush = 1;
+blades := sty_grass_field(u, look, x0, z0, cols, rows);
+vertices := sty_grass_vertices(look);          // 9: what the host draws a blade
+sty_rest_add(u, ax, az, bx, bz, half);         // a block lying in the field
+```
+
+The reveal, the wind and the mover work on lush blades as on plain ones.
+
 ### A sunrise over it
 
 The same look can start in the dark. `sty_sunrise(day, t, rise_x, rise_z)`

@@ -44,6 +44,8 @@
 //   STY_U_GLOW_R, _G, _B   the glow the sun puts low in the sky round the horizon, most toward the
 //                     sun (0: none): dawn's and dusk's colour
 //   STY_U_CLOUD_DIM   how much of the clouds' daylight is gone (0: white daylight clouds, 1: black)
+//   STY_U_LUSH        the lush grass (0: the plain blades above; over 0: curved blades in tufts, of
+//                     STY_LUSH_VERTICES vertices each, with their own colour, light and seed stalks)
 //   STY_U_AIR         the air (metaverse-engine/render/shade/atmosphere.coax): 0, the painted sky above; over
 //                     0, the sky, its sun, its clouds and the haze's colour come from the sun's place
 //                     alone, in light's own scale, and this is the exposure it is shown at (1 is usual)
@@ -84,6 +86,11 @@ STY_U_GLOW_G :: 79;            // STY_U_UP + 3
 STY_U_GLOW_B :: 83;            // STY_U_FORWARD + 3
 STY_U_CLOUD_DIM :: 51;         // STY_U_SKY_LIGHT + 3
 STY_U_AIR :: 55;               // STY_U_GROUND_LIGHT + 3
+STY_U_LUSH :: 227;             // STY_U_MOVER + 3
+
+// A lush blade's vertices: three triangles (root to its middle, a quad; its middle to its tip). A
+// plain blade is one triangle, 3. A host draws this many a blade.
+STY_LUSH_VERTICES :: 9;
 
 // The shadow map's bias: how far along its normal a surface is moved before it is looked up (m),
 // and how much nearer the sun it must be than what the map holds (a share of the map's depth).
