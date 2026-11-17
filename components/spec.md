@@ -363,7 +363,9 @@ a placing tool's modes, say), one active: while the slot is selected (a
 picked tool, a toggle that is on) a row of option buttons stands directly
 over it, anchored to it, the active one lit; pressing one (`hb_choose`) or
 stepping through them with a key (`hb_cycle`) leaves the slot selected, and
-the game keeps the choice. A slot's glyph may be one the skin draws (`art`:
+the game keeps the choice. The options may be of two groups (a tool's shape,
+and how it places): each has its own active one and its own key
+(`hb_cycle_in`), and a line stands between the groups in the row. A slot's glyph may be one the skin draws (`art`:
 `sphere`, a shaded ball) instead of text. It changes only through `hb_press`,
 `hb_key`, `hb_choose`, `hb_cycle` and
 `hb_escape`, which say what happened (`HbPress`); the game fills it each

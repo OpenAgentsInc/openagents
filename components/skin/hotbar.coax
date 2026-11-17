@@ -112,6 +112,9 @@ hb_css :: (s: HbSkin, out: [] u8, from: int) -> int {
   n = hb_put(out, n, " .hb-ob:focus-visible{background:"); n = hb_put(out, n, s.fill_hot); n = hb_put(out, n, ";color:"); n = hb_put(out, n, s.lit); n = hb_put(out, n, "}");
   n = hb_put(out, n, ".hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, " .hb-ob.hb-on{background:"); n = hb_put(out, n, s.fill_lit);
   n = hb_put(out, n, ";color:"); n = hb_put(out, n, s.lit); n = hb_put(out, n, ";border-color:"); n = hb_put(out, n, s.edge_lit); n = hb_put(out, n, "}");
+  // the line between two groups of options
+  n = hb_put(out, n, ".hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, " .hb-od{flex:none;align-self:stretch;width:1px;margin:0 "); n = hb_px(out, n, s.opt_gap);
+  n = hb_put(out, n, ";background:"); n = hb_put(out, n, s.divider); n = hb_put(out, n, "}");
   // a glyph the skin draws: a ball, shaded from its lit side to its dark edge, the glyph's size
   n = hb_put(out, n, ".hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, " .hb-a-sphere{display:block;width:"); n = hb_px(out, n, s.glyph_size);
   n = hb_put(out, n, ";height:"); n = hb_px(out, n, s.glyph_size); n = hb_put(out, n, ";border-radius:50%;background:radial-gradient(circle at 34% 30%,"); n = hb_put(out, n, s.lit);
@@ -162,6 +165,7 @@ hbs_has :: (hay: string, needle: string) -> bool {
   #assert hbs_has(css, "}}.hb-scifi .hb-w{position:relative;flex:none;display:flex}.hb-scifi .hb-o{position:absolute;left:50%;bottom:calc(100% + 10px);transform:translateX(-50%);display:flex;gap:6px;white-space:nowrap}");
   #assert hbs_has(css, ".hb-scifi .hb-ob{appearance:none;flex:none;margin:0;cursor:pointer;height:26px;min-width:26px;padding:0 9px;border-radius:0px;border:1px solid rgba(255,255,255,.22);background:rgba(0,0,0,.28);color:rgba(255,255,255,.78);font-family:var(--mono, ui-monospace, monospace);font-size:10px;line-height:1;letter-spacing:.04em;outline:0;-webkit-tap-highlight-color:transparent}");
   #assert hbs_has(css, ".hb-scifi .hb-ob:hover,.hb-scifi .hb-ob:focus-visible{background:rgba(255,255,255,.1);color:#fff}.hb-scifi .hb-ob.hb-on{background:rgba(255,255,255,.22);color:#fff;border-color:rgba(255,255,255,.7)}");
+  #assert hbs_has(css, "border-color:rgba(255,255,255,.7)}.hb-scifi .hb-od{flex:none;align-self:stretch;width:1px;margin:0 6px;background:rgba(255,255,255,.22)}.hb-scifi .hb-a-sphere{");
   #assert hbs_has(css, ".hb-scifi .hb-a-sphere{display:block;width:18px;height:18px;border-radius:50%;background:radial-gradient(circle at 34% 30%,#fff 0,rgba(255,255,255,.78) 38%,rgba(255,255,255,.28) 100%)}") && css[n - 1] == '}';
   // another skin is other data: its name, sizes and colours are what is written, and nothing of science fiction's
   f := hb_scifi(); f.name = "fantasy"; f.slot = 60; f.corner = 6; f.fill = "#201810"; f.ink = "#e8d8b0"; f.pad = 8; f.gap = 6; f.group_gap = 30; f.small = 44; f.glyph_size = 24; f.key_size = 11; f.label_size = 12;
@@ -171,6 +175,7 @@ hbs_has :: (hay: string, needle: string) -> bool {
   #assert hbs_has(other, ".hb-fantasy .hb-w{position:relative;") && hbs_has(other, ".hb-fantasy .hb-o{position:absolute;left:50%;bottom:calc(100% + 14px);transform:translateX(-50%);display:flex;gap:4px;");
   #assert hbs_has(other, ".hb-fantasy .hb-ob{appearance:none;flex:none;margin:0;cursor:pointer;height:30px;min-width:30px;padding:0 12px;border-radius:6px;border:1px solid #604830;background:#201810;color:#e8d8b0;font-family:cursive;font-size:13px;");
   #assert hbs_has(other, ".hb-fantasy .hb-ob:hover,.hb-fantasy .hb-ob:focus-visible{background:#302418;color:#fff8e0}.hb-fantasy .hb-ob.hb-on{background:#503820;color:#fff8e0;border-color:#ffd880}");
+  #assert hbs_has(other, ".hb-fantasy .hb-od{flex:none;align-self:stretch;width:1px;margin:0 4px;background:#604830}");
   #assert hbs_has(other, ".hb-fantasy .hb-a-sphere{display:block;width:24px;height:24px;border-radius:50%;background:radial-gradient(circle at 34% 30%,#fff8e0 0,#e8d8b0 38%,#806040 100%)}");
   #assert !hbs_has(other, "scifi") && hbs_has(other, ".hb-fantasy{display:flex;") && hbs_has(other, "gap:6px;padding:8px;") && hbs_has(other, "width:60px;height:60px;border-radius:6px;border:1px solid #806040;background:#201810;color:#e8d8b0;font-family:serif;");
   #assert hbs_has(other, ".hb-s:focus-visible{background:#302418;color:#fff8e0}") && hbs_has(other, ".hb-s.hb-on{background:#503820;color:#fff8e0;border-color:#ffd880}") && hbs_has(other, ":disabled{cursor:default;background:#201810;color:#806040}");

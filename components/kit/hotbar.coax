@@ -5,7 +5,9 @@
 // cooldown. Slots stand in groups with a divider between. A slot may carry a few options (a placing
 // tool's modes, say), one of them active: while the slot is selected (a picked tool, a toggle that
 // is on) a small row of option buttons stands directly over it, the active one lit. Pressing an
-// option does not put the slot down, and a key steps through them (hb_cycle).
+// option does not put the slot down, and a key steps through them (hb_cycle). The options may be
+// of two groups (a tool's shape, and how it places): each group has its own active one, a line
+// stands between the groups in the row, and each has its own keys (hb_cycle_in).
 //
 // Three parts, and a game uses all three:
 //   the bar     Hotbar and HbSlot: what the slots are and which tool is picked. hb_press, hb_key,
@@ -30,10 +32,12 @@
 
 HB_SLOTS :: 12;
 HB_TOOL :: 0; HB_TOGGLE :: 1; HB_ACTION :: 2;   // what a press of a slot does
-HB_OPTIONS :: 4;                                // options a slot may carry
+HB_OPTIONS :: 8;                                // options a slot may carry
+HB_GROUPS :: 2;                                 // groups they may be of: each has its own active one
 
-// One option of a slot: what is shown on its button (its glyph, else its name) and the line that says what it does.
-HbOption :: struct { id: string; glyph: string; label: string; tip: string; }
+// One option of a slot: what is shown on its button (its glyph, else its name), the line that says
+// what it does, and which group it is of (0 or 1; any other counts as 0).
+HbOption :: struct { id: string; glyph: string; label: string; tip: string; group: int; }
 
 // A slot. `group` is which run of slots it stands in (a divider is drawn where it changes).
 HbSlot :: struct {
@@ -46,14 +50,15 @@ HbSlot :: struct {
   busy: bool;        // working: shown so, takes no press
   share: f32;        // a cooldown, 0 (none) to 1 (just begun): takes no press while above 0
   art: string;       // its glyph drawn by the skin and not as text ("sphere": a shaded ball); "": the glyph's own text
-  opt: int;          // which of its options is active (the game's to keep: the bar is filled each frame)
+  opt: int;          // which of its options is active in the first group (the game's to keep: the bar is filled each frame)
+  opt_b: int;        // and which in the second group
   opt_n: int; opts: [HB_OPTIONS] HbOption;
 }
 Hotbar :: struct { n: int; slots: [HB_SLOTS] HbSlot; picked: int = -1; }
 // What a press did: which slot (-1: nothing was pressed), its kind, and for a tool whether it is
 // now picked, for a toggle whether it is now on; and, when an option was chosen (hb_choose,
-// hb_cycle), which is now the slot's active one (else -1).
-HbPress :: struct { slot: int = -1; kind: int; picked: bool; on: bool; option: int = -1; }
+// hb_cycle), which is now active in its group, and that group (else -1 and 0).
+HbPress :: struct { slot: int = -1; kind: int; picked: bool; on: bool; option: int = -1; group: int; }
 
 // Adds a slot. Its index, or -1 when the bar is full.
 hb_add :: (b: [] Hotbar, s: HbSlot) -> int {
@@ -67,12 +72,19 @@ hb_option :: (b: [] Hotbar, i: int, o: HbOption) -> int {
   b[0].slots[i].opts[b[0].slots[i].opt_n] = o; b[0].slots[i].opt_n += 1;
   return b[0].slots[i].opt_n - 1;
 }
-// The slot's active option: the one the game named, or the first when that is none of its options. -1: it has none.
-hb_active :: (b: [] Hotbar, i: int) -> int {
-  if i < 0 || i >= b[0].n || b[0].slots[i].opt_n <= 0 { return -1; }
-  k := b[0].slots[i].opt;
-  return ifx k > -1 && k < b[0].slots[i].opt_n then k else 0; // mutant: equivalent — at k == 0 both arms give 0, so where the lower bound sits between -1 and 0 cannot be seen
+// The group an option is of: the second when it says 1, else the first.
+hb_group :: (o: HbOption) -> int { return ifx o.group == 1 then 1 else 0; }
+// The slot's active option in a group: the one the game named when it is an option of that group,
+// else the group's first. -1: the slot has none in that group.
+hb_active_in :: (b: [] Hotbar, i: int, group: int) -> int {
+  if i < 0 || i >= b[0].n { return -1; }
+  s := b[0].slots[i]; k := ifx group == 1 then s.opt_b else s.opt;
+  if k > -1 && k < s.opt_n && hb_group(s.opts[k]) == group { return k; } // mutant: equivalent — the first option, when it is of the group, is also what the search below finds first
+  for q: 0..<s.opt_n { if hb_group(s.opts[q]) == group { return q; } }
+  return -1;
 }
+// The slot's active option in the first group.
+hb_active :: (b: [] Hotbar, i: int) -> int { return hb_active_in(b, i, 0); }
 hb_find :: (b: [] Hotbar, id: string) -> int { for i: 0..<b[0].n { if b[0].slots[i].id == id { return i; } } return -1; }
 // Whether slot i takes a press now.
 hb_can :: (b: [] Hotbar, i: int) -> bool {
@@ -104,19 +116,25 @@ hb_opened :: (b: [] Hotbar) -> int { for i: 0..<b[0].n { if hb_open(b, i) { retu
 hb_choose :: (b: [] Hotbar, i: int, k: int) -> HbPress {
   out: HbPress;
   if !hb_open(b, i) || k < 0 || k >= b[0].slots[i].opt_n { return out; }
-  b[0].slots[i].opt = k;
+  out.group = hb_group(b[0].slots[i].opts[k]);
+  if out.group == 1 { b[0].slots[i].opt_b = k; } else { b[0].slots[i].opt = k; }
   out.slot = i; out.kind = b[0].slots[i].kind; out.picked = b[0].picked == i; out.on = b[0].slots[i].on; out.option = k;
   return out;
 }
-// A key that steps through the options that show: the next (by above 0) or the one before
-// (anything else), round from the last to the first and back. No options showing: nothing.
-hb_cycle :: (b: [] Hotbar, by: int) -> HbPress {
+// A key that steps through one group of the options that show: the next of that group (by above
+// 0) or the one before (anything else), round from its last to its first and back. No options of
+// that group showing: nothing.
+hb_cycle_in :: (b: [] Hotbar, group: int, by: int) -> HbPress {
   none: HbPress;
   i := hb_opened(b);
-  if i < 0 { return none; }
-  n := b[0].slots[i].opt_n; k := hb_active(b, i) + (ifx by > 0 then 1 else -1);
-  return hb_choose(b, i, ifx k >= n then 0 else ifx k < 0 then n - 1 else k);
+  k := hb_active_in(b, i, group);
+  if k < 0 { return none; }
+  n := b[0].slots[i].opt_n; step := ifx by > 0 then 1 else n - 1;
+  for q: 0..<n { k = (k + step) % n; if hb_group(b[0].slots[i].opts[k]) == group { break; } }
+  return hb_choose(b, i, k);
 }
+// The same for the first group.
+hb_cycle :: (b: [] Hotbar, by: int) -> HbPress { return hb_cycle_in(b, 0, by); }
 // A key: the first slot whose key it is is pressed.
 hb_key :: (b: [] Hotbar, key: string) -> HbPress {
   none: HbPress;
@@ -144,8 +162,9 @@ HB_FRAMES :: [9] string.[" k0", " k1", " k2", " k3", " k4", " k5", " k6", " k7",
 // class hb-lh when only under the pointer). A glyph the skin draws carries its class (hb-a-ART).
 // A slot with options stands in a wrapper (id "ID.w.N", class hb-w) the row is placed against;
 // while its options show, the row (id "ID.o.N", class hb-o, a radio group named for the slot)
-// holds a button an option (id "ID.o.N.K", class hb-ob, hb-on the active one), showing the
-// option's glyph, else its name. Returns the bar's node.
+// holds a button an option (id "ID.o.N.K", class hb-ob, hb-on the active one of its group),
+// showing the option's glyph, else its name, with a line (id "ID.x.N.K", class hb-od) before the
+// first option of another group than the one before it. Returns the bar's node.
 k_hotbar :: (t: [] Tree, id: string, label: string, b: [] Hotbar, s: HbSkin) -> int {
   ida: [96] u8; idb: [96] u8; idc: [96] u8; cls: [96] u8; tip: [160] u8;
   digits := HB_DIGITS; frames := HB_FRAMES;
@@ -183,7 +202,8 @@ k_hotbar :: (t: [] Tree, id: string, label: string, b: [] Hotbar, s: HbSkin) -> 
       row := tr_open(t, tr_cat(ida[..], tr_cat(idb[..], id, ".o."), digits[i]), TG_DIV, "hb-o");
       tr_attr(t, row, AT_ROLE, "radiogroup"); tr_attr(t, row, AT_LABEL, sl.label);
       for k: 0..<sl.opt_n {
-        o := sl.opts[k]; active := hb_active(b, i) == k;
+        o := sl.opts[k]; active := hb_active_in(b, i, hb_group(o)) == k;
+        if k > 0 && hb_group(o) != hb_group(sl.opts[k - 1]) { dv := tr_leaf(t, tr_cat(idc[..], tr_cat(idb[..], tr_cat(ida[..], tr_cat(idb[..], id, ".x."), digits[i]), "."), digits[k]), TG_SPAN, "hb-od", ""); tr_attr(t, dv, AT_HIDDEN, "true"); }
         ob := tr_leaf(t, tr_cat(idc[..], tr_cat(idb[..], tr_cat(ida[..], tr_cat(idb[..], id, ".o."), digits[i]), "."), digits[k]), TG_BUTTON, ifx active then "hb-ob hb-on" else "hb-ob", ifx o.glyph.count > 0 then o.glyph else o.label);
         tr_attr(t, ob, AT_LABEL, o.label); tr_attr(t, ob, AT_TITLE, ifx o.tip.count > 0 then o.tip else o.label);
         tr_attr(t, ob, AT_PRESSED, ifx active then "true" else "false");
@@ -421,18 +441,21 @@ hb_has :: (hay: string, needle: string) -> bool {
   #assert hb_active(b, 0) == -1 && hb_active(b, -1) == -1 && hb_active(b, 4) == -1 && !hb_open(b, 0) && hb_opened(b) == -1;
   #assert hb_option(b, 0, HbOption.{id = "snap", label = "snap", tip = "on the grid"}) == 0 && hb_option(b, 0, HbOption.{id = "free", glyph = "f", label = "free"}) == 1 && hb_option(b, 0, HbOption.{id = "drop", label = "drop"}) == 2;
   #assert b[0].slots[0].opt_n == 3 && b[0].slots[0].opts[1].id == "free" && b[0].slots[0].opts[2].label == "drop" && b[0].slots[1].opt_n == 0;
-  #assert hb_option(b, 0, HbOption.{id = "d"}) == 3 && hb_option(b, 0, HbOption.{id = "e"}) == -1 && b[0].slots[0].opt_n == HB_OPTIONS && hb_option(b, 4, HbOption.{id = "x"}) == -1 && hb_option(b, -1, HbOption.{id = "x"}) == -1;
+  #assert hb_option(b, 0, HbOption.{id = "d"}) == 3 && b[0].slots[0].opt_n == 4 && hb_option(b, 4, HbOption.{id = "x"}) == -1 && hb_option(b, -1, HbOption.{id = "x"}) == -1;
   #assert hb_option(b, 3, HbOption.{id = "near"}) == 0 && hb_option(b, 3, HbOption.{id = "far"}) == 1 && b[0].slots[3].opt_n == 2 && b[0].slots[0].opt_n == 4;
+  // a slot holds HB_OPTIONS and no more
+  for k: 2..<HB_OPTIONS { #assert hb_option(b, 3, HbOption.{id = "more"}) == k; }
+  #assert hb_option(b, 3, HbOption.{id = "over"}) == -1 && b[0].slots[3].opt_n == HB_OPTIONS && HB_OPTIONS == 8 && HB_GROUPS == 2;
   // the active one: the game's, when it is one; else the first
   #assert hb_active(b, 0) == 0;
   b[0].slots[0].opt = 3; #assert hb_active(b, 0) == 3;
   b[0].slots[0].opt = 4; #assert hb_active(b, 0) == 0;
   b[0].slots[0].opt = -1; #assert hb_active(b, 0) == 0;
   b[0].slots[0].opt = 2; #assert hb_active(b, 0) == 2 && hb_active(b, 1) == -1 && hb_active(b, 3) == 0;
-  b[0].slots[3].opt = 1; #assert hb_active(b, 3) == 1; b[0].slots[3].opt = 2; #assert hb_active(b, 3) == 0;
+  b[0].slots[3].opt = 1; #assert hb_active(b, 3) == 1; b[0].slots[3].opt = 8; #assert hb_active(b, 3) == 0; b[0].slots[3].opt = 7; #assert hb_active(b, 3) == 7;
   // a slot with one option has it; what lies past the bar's last slot is no slot, whatever was left there
   #assert hb_option(b, 1, HbOption.{id = "only"}) == 0 && hb_active(b, 1) == 0;
-  b[0].slots[4].opt_n = 2; b[0].slots[4].opt = 1; #assert hb_active(b, 4) == -1 && hb_active(b, 3) == 0;
+  b[0].slots[4].opt_n = 2; b[0].slots[4].opt = 1; #assert hb_active(b, 4) == -1 && hb_active(b, 3) == 7;
 }
 
 #test "a slot's options show while it is selected; pressing one makes it the active one and leaves the slot as it was; a key steps through them, round and round" {
@@ -535,15 +558,69 @@ hb_has :: (hay: string, needle: string) -> bool {
   #assert tr_find(tr, "hot.w.0") > 0 && tr_find(tr, "hot.o.0") < 0 && tr[0].depth == 0;
 }
 
+#test "options of two groups: each group has its own active one, a press sets its own group's, each has its own key, and a line stands between them in the row" {
+  t: [1] HbTest; b := t[0].b[..]; tr := t[0].t[..];
+  hb_test_bar(b);
+  // a tool with three shapes (the first group) and two ways of placing (the second); a group that is neither 0 nor 1 counts as the first
+  s0 := hb_option(b, 0, HbOption.{id = "cube", label = "cube"}); s1 := hb_option(b, 0, HbOption.{id = "ball", label = "ball", group = 0}); s2 := hb_option(b, 0, HbOption.{id = "slab", label = "slab", group = 5});
+  m0 := hb_option(b, 0, HbOption.{id = "snap", label = "snap", group = 1}); m1 := hb_option(b, 0, HbOption.{id = "drop", label = "drop", group = 1});
+  #assert hb_group(b[0].slots[0].opts[2]) == 0 && hb_group(b[0].slots[0].opts[3]) == 1 && hb_group(HbOption.{group = -1}) == 0 && hb_group(HbOption.{group = 2}) == 0;
+  // each group's active one: its first, until the game names one of that group; one of the other group, or none at all, is not it
+  #assert hb_active_in(b, 0, 0) == 0 && hb_active_in(b, 0, 1) == 3 && hb_active(b, 0) == 0 && hb_active_in(b, 1, 1) == -1 && hb_active_in(b, 1, 0) == -1 && hb_active_in(b, -1, 0) == -1 && hb_active_in(b, 4, 1) == -1;
+  b[0].slots[0].opt = 2; b[0].slots[0].opt_b = 4; #assert hb_active_in(b, 0, 0) == 2 && hb_active_in(b, 0, 1) == 4;
+  b[0].slots[0].opt = 3; b[0].slots[0].opt_b = 1; #assert hb_active_in(b, 0, 0) == 0 && hb_active_in(b, 0, 1) == 3;
+  b[0].slots[0].opt = 5; b[0].slots[0].opt_b = -1; #assert hb_active_in(b, 0, 0) == 0 && hb_active_in(b, 0, 1) == 3;
+  b[0].slots[0].opt = 0; b[0].slots[0].opt_b = 0;
+  // a slot whose options are all of the second group has none in the first
+  o3 := hb_option(b, 3, HbOption.{id = "x", group = 1}); #assert hb_active_in(b, 3, 0) == -1 && hb_active_in(b, 3, 1) == 0 && hb_active(b, 3) == -1;
+  // a press of an option sets its own group's active one and says which group; the other group's stays
+  p := hb_press(b, 0);
+  p = hb_choose(b, 0, 4); #assert p.slot == 0 && p.option == 4 && p.group == 1 && p.picked && b[0].slots[0].opt_b == 4 && b[0].slots[0].opt == 0;
+  p = hb_choose(b, 0, 1); #assert p.option == 1 && p.group == 0 && b[0].slots[0].opt == 1 && b[0].slots[0].opt_b == 4;
+  p = hb_choose(b, 0, 2); #assert p.group == 0 && b[0].slots[0].opt == 2;   // (a group that is neither is the first)
+  // each group's key steps within its group, round and round, and never into the other
+  p = hb_cycle_in(b, 0, 1); #assert p.option == 0 && p.group == 0 && b[0].slots[0].opt_b == 4;
+  p = hb_cycle_in(b, 0, 1); #assert p.option == 1; p = hb_cycle_in(b, 0, 1); #assert p.option == 2; p = hb_cycle(b, 1); #assert p.option == 0;
+  p = hb_cycle_in(b, 0, -1); #assert p.option == 2; p = hb_cycle(b, -1); #assert p.option == 1; p = hb_cycle_in(b, 0, 0); #assert p.option == 0;
+  p = hb_cycle_in(b, 1, 1); #assert p.option == 3 && p.group == 1 && b[0].slots[0].opt == 0;
+  p = hb_cycle_in(b, 1, 1); #assert p.option == 4; p = hb_cycle_in(b, 1, -1); #assert p.option == 3; p = hb_cycle_in(b, 1, -1); #assert p.option == 4 && b[0].slots[0].opt_b == 4;
+  // a group with one option stays on it; a group the open slot has none of: nothing; nothing open: nothing
+  q := hb_press(b, 3); q = hb_press(b, 0);
+  p = hb_cycle_in(b, 1, 1); #assert p.slot == 3 && p.option == 0 && p.group == 1; p = hb_cycle_in(b, 1, -1); #assert p.option == 0;
+  p = hb_cycle_in(b, 0, 1); #assert p.slot == -1 && p.option == -1;
+  q = hb_press(b, 3); #assert hb_cycle_in(b, 1, 1).slot == -1 && hb_cycle_in(b, 0, 1).slot == -1;
+  // the row: the five buttons, each group's active one lit, and one line before the first of the second group
+  q = hb_press(b, 0); b[0].slots[0].opt = 1; b[0].slots[0].opt_b = 4;
+  tr_begin(tr); bar := k_hotbar(tr, "hot", "tools", b, hb_scifi());
+  row := tr_find(tr, "hot.o.0"); dv := tr_find(tr, "hot.x.0.3");
+  #assert tr[0].lost == 0 && tr[0].depth == 0 && row > 0 && dv > tr_find(tr, "hot.o.0.2") && dv < tr_find(tr, "hot.o.0.3") && tr[0].nodes[dv].parent == row && tr[0].nodes[dv].tag == TG_SPAN && tr_class(tr, dv) == "hb-od" && tr_attr_of(tr, dv, AT_HIDDEN) == "true";
+  #assert tr_find(tr, "hot.x.0.0") < 0 && tr_find(tr, "hot.x.0.1") < 0 && tr_find(tr, "hot.x.0.2") < 0 && tr_find(tr, "hot.x.0.4") < 0;
+  #assert tr_class(tr, tr_find(tr, "hot.o.0.0")) == "hb-ob" && tr_class(tr, tr_find(tr, "hot.o.0.1")) == "hb-ob hb-on" && tr_class(tr, tr_find(tr, "hot.o.0.2")) == "hb-ob" && tr_class(tr, tr_find(tr, "hot.o.0.3")) == "hb-ob" && tr_class(tr, tr_find(tr, "hot.o.0.4")) == "hb-ob hb-on";
+  #assert tr_attr_of(tr, tr_find(tr, "hot.o.0.4"), AT_PRESSED) == "true" && tr_attr_of(tr, tr_find(tr, "hot.o.0.3"), AT_PRESSED) == "false" && tr_attr_of(tr, tr_find(tr, "hot.o.0.1"), AT_PRESSED) == "true";
+  // one option of each group, side by side: the line stands before the second, and each group's key stays on its own one
+  two: [1] HbTest; c := two[0].b[..]; hb_test_bar(c);
+  c0 := hb_option(c, 0, HbOption.{id = "a", label = "a"}); c1 := hb_option(c, 0, HbOption.{id = "b", label = "b", group = 1}); c2 := hb_option(c, 0, HbOption.{id = "c", label = "c", group = 1}); c3 := hb_option(c, 0, HbOption.{id = "d", label = "d", group = 1});
+  w := hb_press(c, 0);
+  p = hb_cycle_in(c, 0, 1); #assert p.slot == 0 && p.option == 0 && p.group == 0 && c[0].slots[0].opt == 0 && c[0].slots[0].opt_b == 0;
+  p = hb_cycle_in(c, 0, -1); #assert p.option == 0 && p.group == 0;
+  tr_begin(tr); bar = k_hotbar(tr, "hot", "tools", c, hb_scifi());
+  #assert tr_find(tr, "hot.x.0.1") > tr_find(tr, "hot.o.0.0") && tr_find(tr, "hot.x.0.1") < tr_find(tr, "hot.o.0.1") && tr_find(tr, "hot.x.0.2") < 0 && tr_class(tr, tr_find(tr, "hot.o.0.1")) == "hb-ob hb-on";
+  // groups that alternate have a line at each change; the line is no slot and no option
+  n5 := hb_option(b, 0, HbOption.{id = "late", label = "late"});
+  tr_begin(tr); bar = k_hotbar(tr, "hot", "tools", b, hb_scifi());
+  #assert tr_find(tr, "hot.x.0.3") > 0 && tr_find(tr, "hot.x.0.5") > 0 && tr_find(tr, "hot.x.0.4") < 0 && hb_slot_of("hot", "hot.x.0.3") == -1 && hb_option_of("hot", "hot.x.0.3").slot == -1;
+}
+
 #test "a node's id says which option it is: of this bar, of a slot and an option that can be" {
   a := hb_option_of("hot", "hot.o.0.0"); #assert a.slot == 0 && a.option == 0;
   a = hb_option_of("hot", "hot.o.3.1"); #assert a.slot == 3 && a.option == 1;
   a = hb_option_of("hot", "hot.o.11.3"); #assert a.slot == 11 && a.option == 3;
+  a = hb_option_of("hot", "hot.o.0.7"); #assert a.slot == 0 && a.option == 7;
   a = hb_option_of("a.bar", "a.bar.o.2.2"); #assert a.slot == 2 && a.option == 2;
   a = hb_option_of("", ".o.1.2"); #assert a.slot == 1 && a.option == 2;
   a = hb_option_of("hot", "hot.o.07.1"); #assert a.slot == 7 && a.option == 1;
   a = hb_option_of("hot", "hot.o.9.0"); #assert a.slot == 9 && a.option == 0;
-  bad := [25] string.["hot.o..0", "hot.o.0", "hot.o.0.", "hot.o.12.0", "hot.o.0.4", "hot.o.0.0.0", "hot.s.0.0", "hot.o.x.0", "hot.o.0.x", "hat.o.0.0", "hot.o.0/0", "hot/o.0.0", "hot.o/0.0", "", "hot", "hot.o.", "hots.o.0.0", "hot.o.0.:", "hot.o./.0", "hot.o.0.0.", "hot.p.0.0", "hot.o.1.10", "hot.o.0./", "hot.o.:.0", "hot.o.0.9"];
+  bad := [25] string.["hot.o..0", "hot.o.0", "hot.o.0.", "hot.o.12.0", "hot.o.0.8", "hot.o.0.0.0", "hot.s.0.0", "hot.o.x.0", "hot.o.0.x", "hat.o.0.0", "hot.o.0/0", "hot/o.0.0", "hot.o/0.0", "", "hot", "hot.o.", "hots.o.0.0", "hot.o.0.:", "hot.o./.0", "hot.o.0.0.", "hot.p.0.0", "hot.o.1.10", "hot.o.0./", "hot.o.:.0", "hot.o.0.9"];
   for id: bad { a = hb_option_of("hot", id); #assert a.slot == -1 && a.option == -1; }
   // the row itself and a slot are not options, and an option is no slot
   #assert hb_slot_of("hot", "hot.o.0.1") == -1 && hb_slot_of("hot", "hot.w.0") == -1 && hb_slot_of("hot", "hot.o.0") == -1;
