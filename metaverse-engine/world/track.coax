@@ -1,0 +1,315 @@
+// A track: a closed ribbon laid along a smooth line through a few points, whatever runs on it: a
+// racing circuit, a rail, a road round a hill. Nothing here draws or moves a body; a realm keeps its
+// points as data, makes the ribbon once, and asks it where a thing is on it.
+//
+//   track_make       the ribbon from its points (each a place and a bank): a closed Catmull-Rom line
+//                    through them, sampled `per` times between each two, its length measured along
+//                    it, and at every sample a frame: ahead (the tangent), right and up. Up leans into
+//                    a turn by the point's bank (the outside of the turn is raised), and not at all on
+//                    a straight; a bank is eased in as a turn tightens, so it never flips sides.
+//   track_near       where a point is on the ribbon: the nearest place along it (searched near a hint,
+//                    the last answer, or everywhere), how far along (s, metres from the first point),
+//                    how far to the right of the line and how high over its surface
+//   track_at         the ribbon's frame at a distance along it (any distance: it goes round)
+//   track_point      a point off the ribbon's line, in its frame: to the right and up
+//   track_passed     whether a step along the ribbon, from one distance to the next, went forward
+//                    over a mark (a gate across the track; round the end and back to the start too)
+//
+// Units are metres, in the engine's axes (y up). Right is ahead crossed with up: looking along +z
+// with y up, right is -x (the vehicle's own convention, metaverse-engine/physics/vehicle.coax).
+// gamebuilder.org's circuit (a page outside this repository) is laid with it.
+//   coax/bin/coax test metaverse-engine/world/track.coax --library
+//   coax/bin/coax mutate metaverse-engine/world/track.coax --library --root-only
+
+TRACK_MAX :: 1024;          // samples a ribbon holds
+TRACK_EASE :: 25.0;         // a turn of this curvature (1/m) times the bank's own reach takes the whole bank: a radius of 25 m and less
+
+// A point the line goes through: its place, and how far the ribbon leans into the turn there (radians).
+TrackPoint :: struct { x: f32; y: f32; z: f32; bank: f32; }
+// The ribbon: its samples, each a place on the line, the distance to it along the line, and a frame.
+Track :: struct {
+  n: int;                    // samples (0: no ribbon)
+  length: f32;               // metres round
+  at: [TRACK_MAX] [3] f32;   // the line
+  s: [TRACK_MAX] f32;        // metres along it from the first sample
+  ahead: [TRACK_MAX] [3] f32; right: [TRACK_MAX] [3] f32; up: [TRACK_MAX] [3] f32;
+  bend: [TRACK_MAX] f32;     // how fast it turns there, 1/m: to the right is more than 0
+}
+// Where a point is on the ribbon: the sample before it and how far on to the next (0 to 1), the
+// distance along, how far right of the line and how high over its surface, and the frame there
+// (`at` the line's own point beside it).
+TrackAt :: struct { i: int; f: f32; s: f32; side: f32; over: f32; at: [3] f32; ahead: [3] f32; right: [3] f32; up: [3] f32; }
+
+track_v :: (x: f32, y: f32, z: f32) -> [3] f32 { return [3] f32.[x, y, z]; }
+track_add :: (a: [3] f32, b: [3] f32) -> [3] f32 { return [3] f32.[a[0] + b[0], a[1] + b[1], a[2] + b[2]]; }
+track_sub :: (a: [3] f32, b: [3] f32) -> [3] f32 { return [3] f32.[a[0] - b[0], a[1] - b[1], a[2] - b[2]]; }
+track_mul :: (a: [3] f32, k: f32) -> [3] f32 { return [3] f32.[a[0] * k, a[1] * k, a[2] * k]; }
+track_dot :: (a: [3] f32, b: [3] f32) -> f32 { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
+track_cross :: (a: [3] f32, b: [3] f32) -> [3] f32 { return [3] f32.[a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]; }
+track_unit :: (a: [3] f32) -> [3] f32 {
+  l := sqrt(track_dot(a, a));
+  if !(l > 0.000001) { return [3] f32.[0, 0, 1]; } // mutant: equivalent (a length of exactly a millionth is never met)
+  return track_mul(a, 1 / l);
+}
+track_mix :: (a: [3] f32, b: [3] f32, t: f32) -> [3] f32 { return track_add(a, track_mul(track_sub(b, a), t)); }
+// A value of a Catmull-Rom segment from b to c (a before it, d after) at t, 0 to 1.
+track_cr :: (a: f32, b: f32, c: f32, d: f32, t: f32) -> f32 {
+  return 0.5 * (2 * b + (c - a) * t + (2 * a - 5 * b + 4 * c - d) * t * t + (3 * b - a - 3 * c + d) * t * t * t);
+}
+
+// The ribbon through `points`, closed (the last goes on to the first), `per` samples between each
+// two. False (and no ribbon) for fewer than three points, `per` under one, or more samples than it holds.
+track_make :: (points: [] TrackPoint, per: int, out: [] Track) -> bool {
+  out[0].n = 0; out[0].length = 0;
+  m := points.count;
+  if m < 3 || per < 1 || m * per > TRACK_MAX { return false; }
+  n := m * per;
+  for i: 0..<m {
+    a := points[(i + m - 1) % m]; b := points[i]; c := points[(i + 1) % m]; d := points[(i + 2) % m];
+    for k: 0..<per {
+      t := cast(f32) k / cast(f32) per;
+      out[0].at[i * per + k] = track_v(track_cr(a.x, b.x, c.x, d.x, t), track_cr(a.y, b.y, c.y, d.y, t), track_cr(a.z, b.z, c.z, d.z, t));
+      out[0].bend[i * per + k] = track_cr(a.bank, b.bank, c.bank, d.bank, t);   // (the bank, for now: it is turned into the lean below)
+    }
+  }
+  // the distance along, and ahead: the way from the sample before to the sample after
+  s: f32 = 0;
+  for i: 0..<n {
+    out[0].s[i] = s;
+    s += sqrt(track_dot(track_sub(out[0].at[(i + 1) % n], out[0].at[i]), track_sub(out[0].at[(i + 1) % n], out[0].at[i])));
+    out[0].ahead[i] = track_unit(track_sub(out[0].at[(i + 1) % n], out[0].at[(i + n - 1) % n]));
+  }
+  out[0].length = s;
+  // the frame: right is ahead crossed with the world's up, made level; the bend is how fast ahead turns toward it
+  lean: [TRACK_MAX] f32;
+  for i: 0..<n {
+    r := track_unit(track_cross(out[0].ahead[i], track_v(0, 1, 0)));
+    span := out[0].s[(i + 1) % n] - out[0].s[(i + n - 1) % n]; if i == 0 { span += s; } if i == n - 1 { span += s; }
+    turn := track_sub(out[0].ahead[(i + 1) % n], out[0].ahead[(i + n - 1) % n]);
+    bend := ifx span > 0 then track_dot(turn, r) / span else 0.0f32;
+    k := bend * TRACK_EASE; if k > 1 { k = 1; } if k < -1 { k = -1; } // mutant: equivalent (at exactly 1 or -1 it is that either way)
+    lean[i] = out[0].bend[i] * k;
+    out[0].bend[i] = bend;
+    out[0].right[i] = r;
+  }
+  for i: 0..<n {
+    // up leans toward the inside of the turn: the outside is raised
+    flat := track_unit(track_cross(out[0].right[i], out[0].ahead[i]));
+    up := track_unit(track_add(track_mul(flat, cos(lean[i])), track_mul(out[0].right[i], sin(lean[i]))));
+    out[0].up[i] = up;
+    out[0].right[i] = track_unit(track_cross(out[0].ahead[i], up));
+  }
+  out[0].n = n;
+  return true;
+}
+
+// The frame between sample i and the next, f of the way.
+track_frame :: (t: [] Track, i: int, f: f32) -> TrackAt {
+  n := t[0].n; j := (i + 1) % n;
+  a := TrackAt.{i = i, f = f};
+  ds := t[0].s[j] - t[0].s[i]; if j == 0 { ds += t[0].length; }
+  a.s = t[0].s[i] + ds * f;
+  a.at = track_mix(t[0].at[i], t[0].at[j], f);
+  a.ahead = track_unit(track_mix(t[0].ahead[i], t[0].ahead[j], f));
+  a.up = track_unit(track_mix(t[0].up[i], t[0].up[j], f));
+  a.right = track_unit(track_cross(a.ahead, a.up));
+  return a;
+}
+
+// Where (x, y, z) is on the ribbon. The samples searched are those within `reach` of `hint` (the last
+// answer's i); a hint under 0 searches them all. Nearest is nearest on the level, a metre of height
+// counting as four, so a ribbon that passes over itself is still told apart.
+track_near :: (t: [] Track, x: f32, y: f32, z: f32, hint: int, reach: int) -> TrackAt {
+  n := t[0].n;
+  if n == 0 { return TrackAt.{}; }
+  all := hint < 0 || reach * 2 + 1 >= n; // mutant: equivalent (once a window would cover them all, searching it finds what searching them all does)
+  from := ifx all then 0 else hint - reach; // mutant: equivalent (searching them all, where it starts is nothing)
+  count := ifx all then n else reach * 2 + 1;
+  best := -1; best_f: f32 = 0; best_d: f32 = 0;
+  for k: 0..<count {
+    i := ((from + k) % n + n) % n; j := (i + 1) % n;
+    a := t[0].at[i]; b := t[0].at[j];
+    ex := b[0] - a[0]; ez := b[2] - a[2];
+    ll := ex * ex + ez * ez;
+    f := ifx ll > 0 then ((x - a[0]) * ex + (z - a[2]) * ez) / ll else 0.0f32;
+    if f < 0 { f = 0; } if f > 1 { f = 1; } // mutant: equivalent (at exactly 0 or 1 it is that either way)
+    dx := x - (a[0] + ex * f); dz := z - (a[2] + ez * f); dy := y - (a[1] + (b[1] - a[1]) * f);
+    d := dx * dx + dz * dz + 16 * dy * dy;
+    if best < 0 || d < best_d { best = i; best_f = f; best_d = d; }
+  }
+  r := track_frame(t, best, best_f);
+  off := track_sub(track_v(x, y, z), r.at);
+  r.side = track_dot(off, r.right); r.over = track_dot(off, r.up);
+  return r;
+}
+
+// The frame at `s` metres along (any distance: it goes round, either way).
+track_at :: (t: [] Track, s: f32) -> TrackAt {
+  n := t[0].n;
+  if n == 0 || !(t[0].length > 0) { return TrackAt.{}; }
+  w := s - floor(s / t[0].length) * t[0].length;
+  lo := 0; hi := n - 1;   // the last sample at or before w
+  while lo < hi { mid := (lo + hi + 1) / 2; // mutant: equivalent (any middle that leaves the range smaller finds the same sample)
+    if t[0].s[mid] <= w { lo = mid; } else { hi = mid - 1; } }
+  j := (lo + 1) % n;
+  ds := t[0].s[j] - t[0].s[lo]; if j == 0 { ds += t[0].length; }
+  return track_frame(t, lo, ifx ds > 0 then (w - t[0].s[lo]) / ds else 0.0f32); // mutant: equivalent (a sample of no length is never the last at or before a distance: the one after it, at the same distance, is)
+}
+
+// A point `side` metres right of the line and `up` over its surface, in the frame a.
+track_point :: (a: TrackAt, side: f32, up: f32) -> [3] f32 { return track_add(a.at, track_add(track_mul(a.right, side), track_mul(a.up, up))); }
+
+// Whether going from s0 to s1 metres along (a step: less than half the way round) went forward over
+// the mark at `mark` metres: from before it to it or past it. Round the end: from near the length to
+// near 0 is forward too, and back over a mark is not a pass.
+track_passed :: (s0: f32, s1: f32, mark: f32, length: f32) -> bool {
+  if !(length > 0) { return false; }
+  step := s1 - s0;
+  if step > length * 0.5 { step -= length; }
+  if step < -length * 0.5 { step += length; }
+  if !(step > 0) { return false; } // mutant: equivalent (a step of nothing passes nothing either way)
+  // how far ahead of s0 the mark is, 0 to the length
+  ahead := mark - s0; ahead -= floor(ahead / length) * length;
+  return ahead > 0 && ahead <= step;
+}
+
+// ---------------------------------------------------------------- checks
+
+track_test_near :: (a: f32, b: f32, e: f32) -> bool { return abs(a - b) <= e; } // mutant: equivalent (a check's own tolerance: nothing compared is exactly that far off)
+// A ring of `m` points `radius` round the origin at height y, banked `bank`, going round counter-clockwise seen from above (+y).
+track_test_ring :: (m: int, radius: f32, y: f32, bank: f32, out: [] TrackPoint) {
+  for i: 0..<m { a := 6.2831853 * cast(f32) i / cast(f32) m; out[i] = TrackPoint.{x = radius * cos(a), y = y, z = -radius * sin(a), bank = bank}; }
+}
+
+#test "a ring of points makes a round ribbon: its length the circle's, its samples on the circle, its frames square" {
+  p: [12] TrackPoint; track_test_ring(12, 40, 2, 0, p[..]);
+  t: [1] Track;
+  #assert track_make(p[..], 8, t[..]) && t[0].n == 96;
+  #assert track_test_near(t[0].length, 6.2831853 * 40, 0.6) && t[0].s[0] == 0 && t[0].s[48] > t[0].s[47];
+  for i: 0..<t[0].n {
+    a := t[0].at[i];
+    #assert track_test_near(sqrt(a[0] * a[0] + a[2] * a[2]), 40, 0.25) && a[1] == 2;
+    #assert track_test_near(track_dot(t[0].ahead[i], t[0].right[i]), 0, 0.001) && track_test_near(track_dot(t[0].ahead[i], t[0].up[i]), 0, 0.001) && track_test_near(track_dot(t[0].right[i], t[0].up[i]), 0, 0.001);
+    #assert track_test_near(track_dot(t[0].up[i], t[0].up[i]), 1, 0.001) && t[0].up[i][1] > 0.999;
+    // counter-clockwise from above: it turns left all the way, its bend a fortieth of a metre
+    #assert t[0].bend[i] < 0 && track_test_near(t[0].bend[i], -1.0 / 40.0, 0.004);
+  }
+  // the first sample is the first point, and right of the line is out of the ring (it turns left)
+  #assert t[0].at[0][0] == 40 && t[0].at[0][2] == 0 && t[0].right[0][0] > 0.99;
+  // looking along +z with y up, right is -x
+  q := [4] TrackPoint.[TrackPoint.{x = 0, z = 0}, TrackPoint.{x = 0, z = 10}, TrackPoint.{x = 0, z = 20}, TrackPoint.{x = 0, z = 30}];
+  #assert track_make(q[..], 2, t[..]) && t[0].right[1][0] < -0.99 && t[0].ahead[1][2] > 0.99;
+}
+
+#test "too few points, no samples between, or more than it holds is no ribbon" {
+  p: [600] TrackPoint; track_test_ring(600, 100, 0, 0, p[..]);
+  t: [1] Track; t[0].n = 5; t[0].length = 5;
+  #assert !track_make(p[0..<2], 4, t[..]) && t[0].n == 0 && t[0].length == 0;
+  #assert !track_make(p[0..<205], 5, t[..]) && t[0].n == 0;
+  #assert !track_make(p[0..<3], 0, t[..]) && t[0].n == 0;
+  #assert !track_make(p[0..<513], 2, t[..]) && t[0].n == 0;
+  #assert track_make(p[0..<512], 2, t[..]) && t[0].n == TRACK_MAX;
+  #assert track_make(p[0..<3], 1, t[..]) && t[0].n == 3;
+  // nothing to ask of no ribbon
+  t[0].n = 0; a := track_near(t[..], 1, 2, 3, -1, 4); #assert a.i == 0 && a.s == 0 && a.side == 0;
+  b := track_at(t[..], 7); #assert b.s == 0 && b.i == 0;
+  // three points in one place: a ribbon of no length, no bend and no lean (nothing divided by nothing)
+  same := [3] TrackPoint.[TrackPoint.{x = 1, bank = 0.2}, TrackPoint.{x = 1, bank = 0.2}, TrackPoint.{x = 1, bank = 0.2}];
+  #assert track_make(same[..], 2, t[..]) && t[0].length == 0 && t[0].bend[0] == 0 && t[0].bend[5] == 0 && t[0].up[3][1] == 1;
+  #assert track_near(t[..], 1, 0, 0, -1, 0).f == 0 && track_at(t[..], 3).f == 0 && track_at(t[..], 3).s == 0 && track_at(t[..], 3).i == 0;
+  #assert track_cross(track_v(1, 2, 3), track_v(4, 5, 6))[2] == -3 && track_cross(track_v(1, 2, 3), track_v(4, 5, 6))[0] == -3 && track_cross(track_v(1, 2, 3), track_v(4, 5, 6))[1] == 6;
+}
+
+#test "a bank leans the ribbon into a turn: the outside raised, more as it tightens, none on a straight" {
+  p: [12] TrackPoint; track_test_ring(12, 20, 0, 0.2, p[..]);
+  t: [1] Track; #assert track_make(p[..], 6, t[..]);
+  // a left turn: the inside is the ring's middle, so up leans in toward it (the outer edge is higher)
+  for i: 0..<t[0].n {
+    a := t[0].at[i]; inward := track_unit(track_v(-a[0], 0, -a[2]));
+    #assert track_test_near(track_dot(t[0].up[i], inward), sin(0.2), 0.01) && track_test_near(t[0].up[i][1], cos(0.2), 0.01);
+    out := track_point(track_frame(t[..], i, 0), 5, 0); in := track_point(track_frame(t[..], i, 0), -5, 0);
+    #assert out[1] > in[1] + 1.5;
+    // and its frame is square still
+    #assert track_test_near(track_dot(t[0].right[i], t[0].up[i]), 0, 0.001) && track_test_near(track_dot(t[0].right[i], t[0].ahead[i]), 0, 0.001);
+  }
+  // a wide ring (radius 100: a quarter of the curvature that takes the whole bank) leans a quarter as far
+  track_test_ring(12, 100, 0, 0.2, p[..]); #assert track_make(p[..], 6, t[..]);
+  #assert track_test_near(t[0].up[3][1], cos(0.2 * 0.25), 0.002) && t[0].up[3][1] > cos(0.2f32) + 0.01;
+  // a turn the other way leans the other way: clockwise, a right turn, up leans in all the same
+  for i: 0..<12 { p[i].z = -p[i].z; } #assert track_make(p[..], 6, t[..]);
+  a := t[0].at[2]; #assert t[0].bend[2] > 0 && track_test_near(track_dot(t[0].up[2], track_unit(track_v(-a[0], 0, -a[2]))), sin(0.05f32), 0.004);
+  // a straight (points in a row, then back round a wide end) has no lean along its middle
+  q := [6] TrackPoint.[TrackPoint.{x = 0, z = 0, bank = 0.3}, TrackPoint.{x = 0, z = 100, bank = 0.3}, TrackPoint.{x = 0, z = 200, bank = 0.3}, TrackPoint.{x = 0, z = 300, bank = 0.3}, TrackPoint.{x = -150, z = 300, bank = 0.3}, TrackPoint.{x = -150, z = 0, bank = 0.3}];
+  #assert track_make(q[..], 10, t[..]) && t[0].up[15][1] > 0.9999 && abs(t[0].bend[15]) < 0.0001 && t[0].up[15][0] == 0;
+}
+
+#test "where a point is: along, to the right and over, near a hint or anywhere, and the frame at any distance" {
+  p: [12] TrackPoint; track_test_ring(12, 40, 3, 0, p[..]);
+  t: [1] Track; #assert track_make(p[..], 8, t[..]);
+  // a quarter of the way round (counter-clockwise from +x, seen from above: at -z), 2 m out and 1 m up
+  q := track_v(0, 4, -42);
+  a := track_near(t[..], q[0], q[1], q[2], -1, 0);
+  #assert track_test_near(a.s, t[0].length * 0.25, 0.3) && track_test_near(a.side, 2, 0.05) && track_test_near(a.over, 1, 0.01) && a.i == 23 || a.i == 24;
+  #assert track_test_near(a.f, ifx a.i == 23 then 1.0f32 else 0.0f32, 0.05);
+  #assert a.ahead[0] < -0.99 && a.right[2] < -0.99 && a.up[1] > 0.99;
+  // the point back: the line's own point, then right and up
+  back := track_point(a, a.side, a.over); #assert track_test_near(back[0], q[0], 0.01) && track_test_near(back[1], q[1], 0.01) && track_test_near(back[2], q[2], 0.01);
+  // a hint near it finds the same; a hint far from it (and a small reach) finds the best of what it searched
+  #assert track_near(t[..], q[0], q[1], q[2], 26, 4).i == a.i && track_near(t[..], q[0], q[1], q[2], 26, 200).i == a.i;
+  far := track_near(t[..], q[0], q[1], q[2], 70, 3); #assert far.i == 67 && far.f == 0 && abs(far.side) > 10;
+  // the window is its hint and `reach` either side, no more and no less: its last sample, its first, and a wide one that leaves the answer out
+  w := track_near(t[..], q[0], q[1], q[2], 18, 3); #assert w.i == 21 && w.f == 1;
+  w = track_near(t[..], 0, 3, -40, 27, 3); #assert w.i == 24 && w.f == 0;
+  w = track_near(t[..], q[0], q[1], q[2], 70, 32); #assert w.i == 38 && w.f == 0;
+  w = track_near(t[..], q[0], q[1], q[2], 0, 3); #assert w.i <= 3 || w.i >= 93;
+  // a hint round the end: the search goes round too
+  z := track_near(t[..], 40, 3, 0.5, 95, 3); #assert z.i == 95 || z.i == 0;
+  #assert track_test_near(z.s, ifx z.i == 0 then 0.0f32 else t[0].length, 0.6);
+  // between two samples: f of the way, its distance in between
+  m := track_frame(t[..], 10, 0.5); #assert m.s > t[0].s[10] && m.s < t[0].s[11] && track_test_near(m.s, (t[0].s[10] + t[0].s[11]) * 0.5, 0.001);
+  e := track_frame(t[..], 95, 0.5); #assert e.s > t[0].s[95] && e.s < t[0].length;
+  // height counts four times: a ribbon that comes back over itself 10 m higher and a metre aside: a point at the upper's height is on the upper
+  two := [6] TrackPoint.[TrackPoint.{z = 0}, TrackPoint.{z = 50}, TrackPoint.{z = 100}, TrackPoint.{x = -1, y = 10, z = 100}, TrackPoint.{x = -1, y = 10, z = 50}, TrackPoint.{x = -1, y = 10, z = 0}];
+  u: [1] Track; #assert track_make(two[..], 8, u[..]);
+  hi := track_near(u[..], -0.3, 10, 50, -1, 0); lo := track_near(u[..], -0.3, 0, 50, -1, 0);
+  #assert track_test_near(hi.at[1], 10, 0.01) && track_test_near(hi.over, 0, 0.01) && track_test_near(lo.at[1], 0, 0.01) && track_test_near(lo.side, 0.3, 0.01);
+  // on a straight that runs neither along x nor along z: exactly where between two samples, how far right
+  st := [6] TrackPoint.[TrackPoint.{x = 0, z = 0}, TrackPoint.{x = 30, z = 40}, TrackPoint.{x = 60, z = 80}, TrackPoint.{x = 90, z = 120}, TrackPoint.{x = -40, z = 200}, TrackPoint.{x = -80, z = 60}];
+  #assert track_make(st[..], 10, u[..]);
+  g := u[0].at[15]; gd := track_sub(u[0].at[16], g); seg := sqrt(track_dot(gd, gd));
+  at := track_add(track_add(g, track_mul(u[0].ahead[15], seg * 0.3)), track_mul(u[0].right[15], 2));
+  o := track_near(u[..], at[0], at[1], at[2], 15, 2);
+  // exactly on a sample: the segment that ends there (the first found); on the first segment, the first
+  #assert track_near(t[..], t[0].at[40][0], t[0].at[40][1], t[0].at[40][2], -1, 0).i == 39 && track_near(t[..], t[0].at[40][0], t[0].at[40][1], t[0].at[40][2], -1, 0).f == 1;
+  h0 := track_mix(t[0].at[0], t[0].at[1], 0.5); #assert track_near(t[..], h0[0], h0[1], h0[2], -1, 0).i == 0;
+  // half way along a segment a little out: that segment, half way (where along x and z both count)
+  h1 := track_add(track_mix(t[0].at[12], t[0].at[13], 0.5), track_mul(t[0].right[12], 0.5));
+  n1 := track_near(t[..], h1[0], h1[1], h1[2], -1, 0); #assert n1.i == 12 && track_test_near(n1.f, 0.5, 0.02);
+  // on a ramp, height along the segment counts: half way up, half way along
+  ramp := [6] TrackPoint.[TrackPoint.{z = 0}, TrackPoint.{y = 10, z = 50}, TrackPoint.{y = 20, z = 100}, TrackPoint.{y = 30, z = 150}, TrackPoint.{x = -80, y = 15, z = 160}, TrackPoint.{x = -80, y = 5, z = -10}];
+  r: [1] Track; #assert track_make(ramp[..], 10, r[..]);
+  h2 := track_mix(r[0].at[15], r[0].at[16], 0.5); n2 := track_near(r[..], h2[0], h2[1], h2[2], -1, 0);
+  #assert n2.i == 15 && track_test_near(n2.f, 0.5, 0.01) && track_test_near(n2.over, 0, 0.01);
+  #assert o.i == 15 && track_test_near(o.f, 0.3, 0.001) && track_test_near(o.side, 2, 0.001) && track_test_near(o.over, 0, 0.001) && track_test_near(o.s, u[0].s[15] + seg * 0.3, 0.001);
+  // the frame at a distance: any distance, round and round, either way
+  b := track_at(t[..], t[0].length * 0.25);
+  #assert track_test_near(b.at[0], 0, 0.3) && track_test_near(b.at[2], -40, 0.3) && track_test_near(b.s, t[0].length * 0.25, 0.001);
+  c := track_at(t[..], t[0].length * 1.25); #assert track_test_near(c.at[0], b.at[0], 0.01) && track_test_near(c.at[2], b.at[2], 0.01);
+  d := track_at(t[..], -t[0].length * 0.75); #assert track_test_near(d.at[0], b.at[0], 0.01) && track_test_near(d.at[2], b.at[2], 0.01);
+  #assert track_at(t[..], 0).i == 0 && track_at(t[..], 0).f == 0 && track_at(t[..], t[0].s[40]).i == 40 && track_at(t[..], t[0].s[40] - 0.01).i == 39;
+  l := track_at(t[..], t[0].length - 0.01); #assert l.i == 95 && l.f > 0.99;
+}
+
+#test "a mark is passed going forward over it, round the end too, and never going back" {
+  #assert track_passed(9, 11, 10, 100) && track_passed(9, 10, 10, 100) && !track_passed(10, 11, 10, 100) && !track_passed(8, 9.5, 10, 100);
+  #assert !track_passed(11, 9, 10, 100) && !track_passed(10, 9, 10, 100) && !track_passed(9, 9, 10, 100);
+  // round the end: from 99 to 1 is forward over 0 and over 99.5; from 1 back to 99 is not
+  #assert track_passed(99, 1, 0, 100) && track_passed(99, 1, 99.5, 100) && track_passed(99, 1, 0.5, 100) && !track_passed(1, 99, 0, 100) && !track_passed(99, 1, 2, 100);
+  // a mark given round the length is the same mark
+  #assert track_passed(9, 11, 110, 100) && track_passed(9, 11, -90, 100);
+  // more than half the way round is a step back the other way
+  #assert !track_passed(0, 60, 30, 100) && track_passed(0, 40, 30, 100);
+  #assert !track_passed(1, 2, 1.5, 0);
+  // exactly half the way round is forward, and exactly half back is back
+  #assert track_passed(0, 50, 30, 100) && !track_passed(50, 0, 70, 100) && !track_passed(50, 0, 30, 100);
+}
