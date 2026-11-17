@@ -183,6 +183,7 @@ enum { AP_PUBLIC = 0, AP_GUEST = 1, AP_ACCOUNT = 2, AP_HUMAN = 3, AP_L2 = 4, AP_
 enum { AP_NOBODY = 0, AP_KIND_GUEST = 1, AP_PERSON = 2, AP_AGENT = 3, AP_SERVICE = 4 };
 enum { AP_OK = 0, AP_LOG_IN = 1, AP_HUMAN_ONLY = 2, AP_STEP_UP = 3, AP_NOT_ADMIN = 4, AP_NO_SCOPE = 5, AP_BAD_RULE = 6, AP_TWO_CREDENTIALS = 7, AP_LIMITED = 8 };
 enum { AP_SESSION_GOOD = 0, AP_SESSION_ROTATE = 1, AP_SESSION_ENDED = 2 };
+enum { AP_SITE_NONE = 0, AP_SITE_OURS = 1, AP_SITE_LISTED = 2, AP_SITE_OTHER = 3 };   // the site a write's Origin names (ap_site)
 enum { AUTH_NONE = 0, AUTH_NOSTR = 1, AUTH_BEARER = 2, AUTH_COOKIE = 3 };
 typedef struct {
   int kind;               // AP_NOBODY .. AP_SERVICE

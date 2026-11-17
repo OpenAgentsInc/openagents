@@ -906,6 +906,46 @@ Checks: `coax/web/api/tests/agent_checks.coax` (device login);
 `coax/web/api/test_realm_edit.py` and `test_access.py` (the old routes are 404);
 `apps/openagents-web/private.coax` (page 7 approves only on the press).
 
+## A listed first-party site logs in by email code, and does nothing else
+
+A browser write to `/api/auth/` needs this site's `Origin` (`OA_API_ORIGIN`);
+apps and tools send none. `OA_API_SITE_ORIGINS` (unset by default; production
+lists `https://gamebuilder.org`, `coax/web/api/deploy.sh`) names other
+first-party sites whose load balancers send their own `/api/auth/` paths to
+this API. An `Origin` is a listed site only when it equals one entry byte for
+byte, and an entry counts only as `https://host[:port]` in lower case (or the
+dev server's `http://127.0.0.1[:port]`, `http://localhost[:port]`): no
+wildcard, suffix, prefix, path, slash, space or capital is forgiven. Unset,
+every answer is as it was.
+
+A request with a listed site's `Origin` reaches `GET /api/auth/account`,
+`POST /api/auth/email/start`, `POST /api/auth/email/verify` and
+`POST /api/auth/logout`, and is `403 Not from this site.` on every other
+route of the API, at the gate, before the route runs. Its email code is a
+plain browser login: `link`, `merge` and `client: "app"` are refused at the
+start and when the code is typed, and the pending login is the browser's
+cookie, never a value in the body (a page of the listed site that posts to
+this site's host carries no cookie, so it logs nobody in there). Passkeys,
+keys, recovery, logout everywhere, freezing, devices, settings, the wallet
+and agents stay on this site. No answer names the caller's origin: no CORS
+header is added, cookies keep no `Domain`, and the email's link is
+`OA_API_ORIGIN`'s. The audit rows `email.code` and `login.email` say which
+site (`"site"`). Every other route file keeps `auth_same_site`: this site's
+`Origin` or none.
+
+The decisions are `ap_site`, `ap_site_route`, `ap_site_post`, `ap_site_login`
+and `ap_site_pending` (`coax/web/api/auth-policy.coax`, `#authority`,
+mutation-checked); `auth.c` moves the header and the two variables in. Checks:
+that file's `#test`s (exact match, wrong scheme, suffix, prefix, port, case,
+slash, whitespace, wildcard, empty list, several entries);
+`coax/web/api/tests/auth_checks.coax` `ac_site_checks` (no list: 403; listed:
+the code is asked for, typed and logged out from the site; the link, merge,
+app, a pending value in the body, every other write, a read with its `Origin`
+and every other site are refused; no CORS header, no `Domain`, the mail's
+link is ours, the audit rows name the site). Not covered: a GET the other site's load balancer forwards carries
+no `Origin`, so it is answered as this site's own; that balancer must send
+only the four paths ([sessions and tokens](docs/auth/sessions-and-tokens.md#a-second-first-party-site)).
+
 ## Anime words become directions only through the catalogue holder
 
 `POST /api/playtest/labs/anime/direct` admits a site session with matching

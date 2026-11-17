@@ -42,6 +42,10 @@
 //   OA_AUTH_SEAL_KEY        "1:<64 hex>[,2:<64 hex>...]": the newest seals, every one opens (Secret Manager oa-auth-seal-key)
 //   OA_AUTH_LOOKUP_PEPPER   "1:<64 hex>[,...]": the email lookup's HMAC key (oa-auth-lookup-pepper)
 //   OA_API_ORIGIN           this site, for NIP-98 URLs and the email link
+//   OA_API_SITE_ORIGINS     other first-party sites whose own pages may log in by email code: exact origins
+//                           between commas ("https://gamebuilder.org"), unset for none. Such a site's load
+//                           balancer sends its /api/auth/ here; its pages may POST email/start (a plain browser
+//                           login), email/verify and logout, and nothing else (auth-policy.coax ap_site)
 //   OA_EMAIL_ALLOW          (email.c) staging's allowlist of addresses mail may go to
 //
 // An agent (agents.c, agent-policy.coax, #13211) is refused on every human, L2, L2-fresh and admin
@@ -826,7 +830,10 @@ void auth_init(void) {
          && ap_credentials(true, false, true) == AP_TWO_CREDENTIALS && ap_status(AP_LOG_IN) == 401
          && ap_session(false, 200LL * 86400000LL, 0, 0, 0) == AP_SESSION_ENDED && agents_init()
          && ap_admit(AP_ADMIN_FRESH, AP_PERSON, 2, 400000, true, false) == AP_STEP_UP && ap_admit(AP_RECOVER, AP_PERSON, 1, -1, false, false) == AP_OK
-         && ap_limited_admit(AP_L2, false, true) == AP_LIMITED && ap_status(AP_LIMITED) == 401;
+         && ap_limited_admit(AP_L2, false, true) == AP_LIMITED && ap_status(AP_LIMITED) == 401
+         && ap_site(true, cs("https://a.example"), cs("https://b.example"), cs("https://a.example")) == AP_SITE_LISTED
+         && ap_site(true, cs("https://a.example"), cs("https://b.example"), cs("")) == AP_SITE_OTHER
+         && ap_site(false, cs(""), cs("https://b.example"), cs("")) == AP_SITE_NONE && ap_site(true, cs("https://b.example"), cs("https://b.example"), cs("")) == AP_SITE_OURS;
   if (!ok || !auth_recover_init() || !auth_life_init() || !passkeys_init() || !auth_device_init() || !wallet_init()) { fprintf(stderr, "api: auth.c and auth-policy.coax disagree on their numbers\n"); exit(2); }
 }
 
@@ -834,12 +841,30 @@ void auth_init(void) {
 void auth_reset(void) { resolved = false; resolved_for = NULL; set_cookie[0] = 0; memset(&current, 0, sizeof current); }
 const char *auth_extra_headers(void) { return set_cookie; }
 
+// The site a request's Origin names (auth-policy.coax ap_site): ours, a listed first-party site
+// (OA_API_SITE_ORIGINS, whole and byte for byte), another, or none (apps and tools send no Origin).
+// from: the Origin as sent. Every other route file keeps auth_same_site: ours or none, and the gate
+// refuses a listed site everywhere but its four routes (ap_site_route).
+static int site_of(const request *q, char from[256]) {
+  bool has = api_header(q, "Origin", from, 256) != NULL;
+  return (int)ap_site(has, cs(from), cs(origin()), cs(env_or("OA_API_SITE_ORIGINS", "")));
+}
+// The listed site a request came from, for the audit row's detail; "" from ours and from apps.
+static const char *listed_site(const request *q, char from[256]) { return site_of(q, from) == AP_SITE_LISTED ? from : ""; }
+
 // The gate: true when it answered (a refusal), false to let the route run.
 bool auth_gate(const request *q) {
   const auth_rule *rule = rule_for(q->method, q->path);
   if (!rule) {
     api_log("auth: no rule for %s %s", q->method, q->path);
     api_error(q->fd, 404, "not found");
+    return true;
+  }
+  // A listed first-party site's page reaches its four routes and no other, on any route file.
+  char from[256];
+  if (!ap_site_route(site_of(q, from), cs(q->method), cs(q->path))) {
+    api_log("auth: refused %s %s: a listed site outside its routes", q->method, q->path);
+    refuse(q, 403, "Not from this site.");
     return true;
   }
   // A request with an Authorization header is resolved on every route, public ones too, so an
@@ -946,8 +971,8 @@ void auth_logged_in(const request *q, PGconn *db, const char *acct, const char *
     refuse(q, 500, "That didn't work. Try again.");
     return;
   }
-  char detail[200];
-  audit(db, acct, sid, action, "ok", detail_of(detail, auw_login_detail_write(cs(via_kind), cs(app ? "app" : "web"), made, device.bind, OUT(detail))));
+  char detail[500], from[256];
+  audit(db, acct, sid, action, "ok", detail_of(detail, auw_login_detail_write(cs(via_kind), cs(app ? "app" : "web"), made, device.bind, cs(listed_site(q, from)), OUT(detail))));
   if (!strcmp(level, "L2")) auth_recover_strong_login(db, acct, sid);   // a pending recovery ends (#13213)
   if (!extra_json) extra_json = "";
   if (!extra_lines) extra_lines = "";
@@ -972,13 +997,6 @@ void auth_logged_in(const request *q, PGconn *db, const char *acct, const char *
            lines, auw_login_web_lines(cs(acct), made, cs(extra_lines), OUT(lines)));
 }
 
-// Our Origin on a cookie write (as every route here); apps and tools send no Origin.
-static bool same_site(const request *q) {
-  char from[256];
-  if (!api_header(q, "Origin", from, sizeof from)) return true;
-  return !strcmp(from, origin());
-}
-
 static char *body_text(const request *q) {
   char *b = malloc(q->body_len + 1);
   if (!b) return NULL;
@@ -1001,6 +1019,9 @@ static void email_start(const request *q, PGconn *db, const char *body) {
   bool app = !strcmp(client, "app");
   bool link = auw_ask_link(cs(body));
   bool merge = auw_ask_merge(cs(body));   // the other account's email proves it to a merge (auth-life.c)
+  // A listed first-party site's page asks for a plain browser login only: no link, merge or app tokens.
+  char from[256]; int site = site_of(q, from);
+  if (!ap_site_login(site, !link && !merge, app)) { refuse(q, 403, "Not from this site."); return; }
   if (auw_ask_email(cs(body), ASK(raw)) < 0) { refuse(q, 400, "Type your email address."); return; }
   int64_t n = as_email_normalize((coax_v_u8){(uint8_t *)raw, (int64_t)strlen(raw)}, (coax_v_u8){(uint8_t *)email, (int64_t)sizeof email - 1});
   if (n < 0) { refuse(q, 400, "That isn't an email address."); return; }
@@ -1061,9 +1082,9 @@ static void email_start(const request *q, PGconn *db, const char *body) {
     refuse(q, s == 400 ? 400 : 502, s == 400 ? "We can't send email to that address." : "The email didn't send. Try again.");
     return;
   }
-  char purpose[64];
+  char purpose[400];
   audit(db, link || merge ? p->account : NULL, link || merge ? p->session : NULL, "email.code", "ok",
-        detail_of(purpose, auw_purpose_write(cs(merge ? "merge" : link ? "link" : "login"), OUT(purpose))));
+        detail_of(purpose, auw_purpose_write(cs(merge ? "merge" : link ? "link" : "login"), cs(site == AP_SITE_LISTED ? from : ""), OUT(purpose))));
   char headers[300] = "", json[400], lines[300];
   // An app gets the pending value in the answer; a browser gets it as a cookie.
   if (!app) snprintf(headers, sizeof headers, "Set-Cookie: %s=%s; Path=/; Max-Age=600; HttpOnly; Secure; SameSite=Lax\r\n", PENDING_COOKIE, pending);
@@ -1088,6 +1109,13 @@ static void email_finish(const request *q, PGconn *db, PGresult *r) {
   snprintf(id, sizeof id, "%s", PQgetvalue(r, 0, 1)); snprintf(sealed_p, sizeof sealed_p, "%s", PQgetvalue(r, 0, 2));
   snprintf(lookup, sizeof lookup, "%s", PQgetvalue(r, 0, 3)); snprintf(purpose, sizeof purpose, "%s", PQgetvalue(r, 0, 4));
   snprintf(link_acct, sizeof link_acct, "%s", PQgetvalue(r, 0, 5)); snprintf(client, sizeof client, "%s", PQgetvalue(r, 0, 6));
+  // A listed first-party site finishes only what it may start: a plain browser login (ap_site_login).
+  char from[256];
+  if (!ap_site_login(site_of(q, from), !strcmp(purpose, "login"), !strcmp(client, "app"))) {
+    audit_why(db, NULL, NULL, "login.email", "refused", "site");
+    refuse(q, 403, "Not from this site.");
+    return;
+  }
   if (!strcmp(purpose, "merge")) { auth_life_merge_email(q, db, link_acct, lookup); return; }   // #13214
   snprintf(ad, sizeof ad, "auth.pending|target_sealed|%s", id);
   if (!unseal(ad, sealed_p, email, sizeof email)) { refuse(q, 500, "That didn't work. Ask for a new code."); return; }
@@ -1157,6 +1185,9 @@ static void email_verify(const request *q, PGconn *db, const char *body) {
   for (const char *s = code; *s && k < 7; s++) if (*s != ' ') c[k++] = *s;
   c[k] = 0;
   if (!ap_code_ok((coax_string){c, (int64_t)k})) { refuse(q, 400, "Type the 6 digits from the email."); return; }
+  // From a listed first-party site the pending login is this browser's cookie, never the body's value.
+  char from[256], held[80]; cookie(q, PENDING_COOKIE, held, sizeof held);
+  if (!ap_site_pending(site_of(q, from), held[0] != 0)) { refuse(q, 409, "Ask for a code in this browser first."); return; }
   if (!pending_sha(q, body, psha)) { refuse(q, 409, "Ask for a code in this browser first."); return; }
   const char *v[2] = {psha, c};
   PGresult *r = PQexecParams(db, "SELECT state, id, sealed, lookup, purpose, account, client, tries_left FROM auth.email_code($1, $2)", 2, NULL, v, NULL, NULL, 0);
@@ -1713,7 +1744,8 @@ bool auth_api_route(const request *q) {
   if (!strcmp(op, "viewer") || !strcmp(op, "me")) { if (!get) { refuse(q, 405, "GET this."); return true; } viewer(q, db, op[0] == 'v'); return true; }
   if (!strcmp(op, "sessions")) { if (!get) { refuse(q, 405, "GET this."); return true; } sessions(q, db); return true; }
   if (get || strcmp(q->method, "POST")) { refuse(q, 405, "POST this."); return true; }
-  if (!same_site(q)) { refuse(q, 403, "Not from this site."); return true; }
+  char from[256];
+  if (!ap_site_post(site_of(q, from), cs(op))) { refuse(q, 403, "Not from this site."); return true; }
   if (remove) { session_remove(q, db); return true; }
   char *body = body_text(q);
   if (!body) { refuse(q, 500, "Out of memory."); return true; }

@@ -208,7 +208,9 @@ auth_resolve(request) -> principal | refusal
    table, not code in each route, so a test can list every route and its
    rule.
 5. Writes from a cookie need our `Origin` (as today) and `SameSite=Lax`
-   cookies; GETs never change state.
+   cookies; GETs never change state. One exception, off unless set:
+   [a second first-party site](#a-second-first-party-site) may log in by
+   email code.
 6. Log one line per refusal: route, rule, principal kind. Never the token.
 
 **Admins** are accounts with the `admin` role, granted only by a root
@@ -217,6 +219,51 @@ deploy, so no database write can create a root admin. Admin reads need
 `L2`; an admin change (any `POST /api/admin/...`) needs `L2-fresh` and a
 human principal. An `oa_admin` session from `admin.sh`'s signed link
 counts as a signature made when it signed in.
+
+### A second first-party site
+
+Another website of ours (GameBuilder, `https://gamebuilder.org`) logs
+people in to the same accounts from its own `/login` page. Its load
+balancer sends its `/api/auth/` paths to this API, so the browser's
+requests are same-origin there: they carry `Origin: https://gamebuilder.org`,
+and the session cookie the API sets is host-only on `gamebuilder.org`
+(our cookies have no `Domain`, and `__Host-` cookies can't have one). No
+CORS header is sent, and none is needed.
+
+`OA_API_SITE_ORIGINS` lists such sites: exact origins between commas.
+Unset, the default, means there are none and every rule is as before.
+
+- An entry is `https://host` or `https://host:port`, in lower case, or the
+  dev server's `http://127.0.0.1[:port]` and `http://localhost[:port]`.
+  Anything else (a wildcard, a path, a trailing slash, a space, capitals)
+  is ignored.
+- An `Origin` is a listed site only when it is one entry byte for byte.
+  No suffix, prefix, scheme or port is forgiven.
+- A request with a listed site's `Origin` reaches four routes of the whole
+  API: `GET /api/auth/account`, `POST /api/auth/email/start`,
+  `POST /api/auth/email/verify` and `POST /api/auth/logout`. On any other
+  route it is `403 Not from this site.`, before the route runs.
+- From a listed site the email code is a plain browser login. Linking an
+  email, merging accounts and an app's tokens (`link`, `merge`,
+  `client: "app"`) are refused, at the start and again when the code is
+  typed.
+- The code is typed in the browser that asked: from a listed site the
+  pending login is its cookie, never a `pending` value in the body. So a
+  page of the other site that posts to `openagents.com` (which sends no
+  `SameSite=Lax` cookie) can't log that browser in to someone else's
+  account there.
+- Everything else needs our own site: passkeys, Nostr keys, recovery,
+  logout everywhere, freezing, devices, settings, the wallet, agents.
+- The email's link still opens our own site (`OA_API_ORIGIN`). Opened in
+  the browser that asked on the other site it has no pending cookie, so it
+  shows the code to type there.
+- The audit rows `email.code` and `login.email` carry `"site"` with the
+  listed origin. Rate limits are the same ones, by address and by visitor.
+
+The decision is `ap_site`, `ap_site_route`, `ap_site_post`,
+`ap_site_login` and `ap_site_pending` in `coax/web/api/auth-policy.coax`. The other site's load
+balancer should send only those four paths. A same-origin GET carries no
+`Origin`, so a read it forwards is answered as our own site's would be.
 
 ### Step-up
 

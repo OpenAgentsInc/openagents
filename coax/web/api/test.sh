@@ -205,7 +205,8 @@ fi
 # The run's TCP ports (port_locks.coax, #13331): one block for each service below, free when taken
 # and locked for this run until it ends, so neither another run beside it nor an outgoing connection
 # (the ranges are under the kernels' ephemeral ports) takes one before its server binds it. WAKE's
-# block is 8 wide (test_private_runner.py's runner on WAKE_PORT + 1, test_room.py's on + 7), CHAT's 3
+# block is 8 wide (test_private_runner.py's runner on WAKE_PORT + 1, test_room.py's on + 7, a second API of
+# tests/durable_chat_checks.coax on + 2 and of tests/auth_checks.coax on + 3), CHAT's 3
 # (test_zchat.py's fake on CHAT_PORT + 1 and runner on + 2).
 "$here/../tool.sh" "$here/port_locks.coax" "$work/ports" $$ API_PORT:7000:1 NPC_PORT:7800:1 PIECE_PORT:8600:1 BUILDER_PORT:9400:1 \
   GCS_PORT:10200:1 RELAY_PORT:11000:1 NOTICE_RELAY_PORT:11800:1 WAKE_PORT:12600:8 INFER_PORT:13400:1 SPARK_PORT:14200:1 \

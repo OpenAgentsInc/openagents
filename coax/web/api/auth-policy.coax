@@ -13,6 +13,17 @@
 //   ap_session       a session's clocks: good, due for a new token, or ended
 //   ap_limit_ok      a rate limit's window: allowed while the count is within the limit
 //   ap_code_ok       an email code's shape: exactly six digits
+//   ap_site          which site a request's Origin names: none (an app or a tool sends no Origin),
+//                    ours (OA_API_ORIGIN), a listed first-party site (one entry of
+//                    OA_API_SITE_ORIGINS, byte for byte), or another
+//   ap_site_route    the routes a listed site's page reaches at all, on the whole API: GET
+//                    /api/auth/account and the three writes below
+//   ap_site_post     the auth writes a site may send: ours and no Origin, all of them; a listed
+//                    site, only email/start, email/verify and logout; another site, none
+//   ap_site_login    a listed site's email code is a plain browser login: never a link, a merge
+//                    or an app's tokens
+//   ap_site_pending  a listed site's code is typed in the browser that asked: the pending login
+//                    is its cookie, never a value in the body
 #authority;
 
 // Route rules (auth.c's table names one for every route).
@@ -27,6 +38,8 @@ AP_OK :: 0; AP_LOG_IN :: 1; AP_HUMAN_ONLY :: 2; AP_STEP_UP :: 3; AP_NOT_ADMIN ::
 AP_TWO_CREDENTIALS :: 7; AP_LIMITED :: 8;
 // What a step-up asks for (ap_need): nothing, L2, or L2-fresh.
 AP_NEED_NONE :: 0; AP_NEED_L2 :: 2; AP_NEED_FRESH :: 3;
+// The site a request's Origin names (ap_site).
+AP_SITE_NONE :: 0; AP_SITE_OURS :: 1; AP_SITE_LISTED :: 2; AP_SITE_OTHER :: 3;
 // Session states.
 AP_SESSION_GOOD :: 0; AP_SESSION_ROTATE :: 1; AP_SESSION_ENDED :: 2;
 
@@ -186,6 +199,125 @@ AP_APP_IDLE_MS :: 90 * AP_DAY_MS;         // an app's login unused this long has
   #assert !ap_code_ok("/82913") && !ap_code_ok(":82913") && !ap_code_ok("48291:") && !ap_code_ok(" 82913");
 }
 
+#test "no Origin is an app or a tool; our own Origin is ours, whatever the list says" {
+  #assert ap_site(false, "", "https://openagents.com", "") == AP_SITE_NONE;
+  #assert ap_site(false, "https://evil.example", "https://openagents.com", "https://evil.example") == AP_SITE_NONE;
+  #assert ap_site(true, "https://openagents.com", "https://openagents.com", "") == AP_SITE_OURS;
+  #assert ap_site(true, "https://openagents.com", "https://openagents.com", "https://gamebuilder.org") == AP_SITE_OURS;
+  #assert ap_site(true, "http://127.0.0.1:7000", "http://127.0.0.1:7000", "") == AP_SITE_OURS;
+}
+#test "an empty list is today's rule: every other Origin is another site" {
+  #assert ap_site(true, "https://gamebuilder.org", "https://openagents.com", "") == AP_SITE_OTHER;
+  #assert ap_site(true, "https://evil.example", "https://openagents.com", "") == AP_SITE_OTHER;
+  #assert ap_site(true, "", "https://openagents.com", "") == AP_SITE_OTHER;
+  #assert ap_site(true, "null", "https://openagents.com", "") == AP_SITE_OTHER;
+  #assert ap_site(true, "", "https://openagents.com", ",") == AP_SITE_OTHER;
+}
+#test "a listed site is its entry byte for byte: no suffix, prefix, scheme, port, case or slash is forgiven" {
+  one := "https://gamebuilder.org"; ours := "https://openagents.com";
+  #assert ap_site(true, "https://gamebuilder.org", ours, one) == AP_SITE_LISTED;
+  #assert ap_site(true, "https://evil.example", ours, one) == AP_SITE_OTHER;
+  #assert ap_site(true, "https://gamebuilder.org.evil.com", ours, one) == AP_SITE_OTHER;
+  #assert ap_site(true, "https://evilgamebuilder.org", ours, one) == AP_SITE_OTHER;
+  #assert ap_site(true, "https://evil.gamebuilder.org", ours, one) == AP_SITE_OTHER;
+  #assert ap_site(true, "https://gamebuilder.or", ours, one) == AP_SITE_OTHER;
+  #assert ap_site(true, "https://gamebuilder.orgg", ours, one) == AP_SITE_OTHER;
+  #assert ap_site(true, "http://gamebuilder.org", ours, one) == AP_SITE_OTHER;
+  #assert ap_site(true, "https://gamebuilder.org:443", ours, one) == AP_SITE_OTHER;
+  #assert ap_site(true, "https://gamebuilder.org/", ours, one) == AP_SITE_OTHER;
+  #assert ap_site(true, "https://GameBuilder.org", ours, one) == AP_SITE_OTHER;
+  #assert ap_site(true, "https://gamebuilder.org ", ours, one) == AP_SITE_OTHER;
+  #assert ap_site(true, " https://gamebuilder.org", ours, one) == AP_SITE_OTHER;
+  #assert ap_site(true, "gamebuilder.org", ours, one) == AP_SITE_OTHER;
+  #assert ap_site(true, "https://gamebuilder.org,https://evil.example", ours, one) == AP_SITE_OTHER;
+}
+#test "several entries: each is its own site, in any place of the list" {
+  list := "https://gamebuilder.org,https://second.example:8443,http://127.0.0.1:47920"; ours := "https://openagents.com";
+  #assert ap_site(true, "https://gamebuilder.org", ours, list) == AP_SITE_LISTED;
+  #assert ap_site(true, "https://second.example:8443", ours, list) == AP_SITE_LISTED;
+  #assert ap_site(true, "http://127.0.0.1:47920", ours, list) == AP_SITE_LISTED;
+  #assert ap_site(true, "https://second.example", ours, list) == AP_SITE_OTHER;
+  #assert ap_site(true, "https://gamebuilder.org,https://second.example:8443", ours, list) == AP_SITE_OTHER;
+  #assert ap_site(true, "org,https://second.example:8443", ours, list) == AP_SITE_OTHER;
+  #assert ap_site(true, "https://evil.example", ours, list) == AP_SITE_OTHER;
+  #assert ap_site(true, "https://gamebuilder.org", ours, ",,https://gamebuilder.org,") == AP_SITE_LISTED;
+  #assert ap_site(true, "https://gamebuilder.org", ours, ",https://gamebuilder.org") == AP_SITE_LISTED;
+}
+#test "an entry that is not a plain origin is ignored, even for an Origin that spells it" {
+  ours := "https://openagents.com";
+  // whitespace, a wildcard, a path or a trailing slash, capitals, a user, an empty host: none is ever a site
+  #assert ap_site(true, " https://gamebuilder.org", ours, " https://gamebuilder.org") == AP_SITE_OTHER;
+  #assert ap_site(true, "https://gamebuilder.org ", ours, "https://gamebuilder.org ") == AP_SITE_OTHER;
+  #assert ap_site(true, "https://gamebuilder.org", ours, "https://gamebuilder.org, https://second.example") == AP_SITE_LISTED;
+  #assert ap_site(true, "https://second.example", ours, "https://gamebuilder.org, https://second.example") == AP_SITE_OTHER;
+  #assert ap_site(true, "https://*.gamebuilder.org", ours, "https://*.gamebuilder.org") == AP_SITE_OTHER;
+  #assert ap_site(true, "https://x.gamebuilder.org", ours, "https://*.gamebuilder.org") == AP_SITE_OTHER;
+  #assert ap_site(true, "*", ours, "*") == AP_SITE_OTHER;
+  #assert ap_site(true, "https://gamebuilder.org/", ours, "https://gamebuilder.org/") == AP_SITE_OTHER;
+  #assert ap_site(true, "https://gamebuilder.org", ours, "https://gamebuilder.org/") == AP_SITE_OTHER;
+  #assert ap_site(true, "https://GameBuilder.org", ours, "https://GameBuilder.org") == AP_SITE_OTHER;
+  #assert ap_site(true, "https://a@gamebuilder.org", ours, "https://a@gamebuilder.org") == AP_SITE_OTHER;
+  #assert ap_site(true, "https://", ours, "https://") == AP_SITE_OTHER;
+  #assert ap_site(true, "null", ours, "null") == AP_SITE_OTHER;
+  #assert ap_site(true, "gamebuilder.org", ours, "gamebuilder.org") == AP_SITE_OTHER;
+}
+#test "an entry is https, or http on this computer for the dev server, and nothing else" {
+  #assert ap_site_entry("https://gamebuilder.org") && ap_site_entry("https://a.b-c.example") && ap_site_entry("https://x") && ap_site_entry("https://9.example");
+  #assert ap_site_entry("https://gamebuilder.org:8443") && ap_site_entry("https://gamebuilder.org:1");
+  #assert ap_site_entry("http://127.0.0.1") && ap_site_entry("http://localhost") && ap_site_entry("http://127.0.0.1:47920") && ap_site_entry("http://localhost:8080");
+  #assert !ap_site_entry("http://gamebuilder.org") && !ap_site_entry("http://127.0.0.2") && !ap_site_entry("http://localhost.evil.example") && !ap_site_entry("http://127.0.0.1.evil.example");
+  #assert !ap_site_entry("http://localhostx") && !ap_site_entry("http://127.0.0.1x") && !ap_site_entry("http://") && !ap_site_entry("http://:80");
+  #assert !ap_site_entry("http://localhostx80") && !ap_site_entry("http://127.0.0.1:") && !ap_site_entry("http://localhost:x8") && !ap_site_entry("http://localhost:8a");
+  #assert ap_site_entry("http://localhost:8") && ap_site_entry("http://127.0.0.1:65535") && !ap_site_entry("http://127.0.0.1:655350");
+  #assert !ap_site_entry("ftp://gamebuilder.org") && !ap_site_entry("https:/gamebuilder.org") && !ap_site_entry("ttps://gamebuilder.org") && !ap_site_entry("");
+  #assert !ap_site_entry("https://") && !ap_site_entry("https://:443") && !ap_site_entry("https://gamebuilder.org:") && !ap_site_entry("https://gamebuilder.org:80:80");
+  #assert !ap_site_entry("https://gamebuilder.org:8a") && !ap_site_entry("https://gamebuilder.org:/") && !ap_site_entry("https://gamebuilder.org::") && !ap_site_entry("https://gamebuilder.org:123456");
+  #assert ap_site_entry("https://gamebuilder.org:12345") && ap_site_entry("https://gamebuilder.org:09");
+  #assert !ap_site_entry("https://gamebuilder.org/") && !ap_site_entry("https://gamebuilder.org/login") && !ap_site_entry("https://game builder.org") && !ap_site_entry("https://gamebuilder.org ");
+  #assert !ap_site_entry("https://Gamebuilder.org") && !ap_site_entry("https://gamebuilder.orG") && !ap_site_entry("https://gamebuilderZorg") && !ap_site_entry("https://*.gamebuilder.org");
+  #assert !ap_site_entry("https://a@b") && !ap_site_entry("https://a[b") && !ap_site_entry("https://a`b") && !ap_site_entry("https://a{b") && !ap_site_entry("https://a,b");
+  #assert ap_site_entry("https://az09") && ap_site_entry("https://a-z.0-9") && !ap_site_entry("https://a/b") && !ap_site_entry("https://a:b") && !ap_site_entry("https://a+b");
+}
+#test "our own pages and apps send every auth write; a listed site only the email login and logout" {
+  ops := [15] string.["email/start", "email/verify", "logout", "email/link", "nostr/challenge", "nostr", "phone/start", "phone/approve", "phone/poll",
+                      "refresh", "logout-everywhere", "freeze", "sessions/12/remove", "", "email"];
+  for op, i: ops {
+    #assert ap_site_post(AP_SITE_NONE, op) && ap_site_post(AP_SITE_OURS, op);
+    #assert !ap_site_post(AP_SITE_OTHER, op) && !ap_site_post(4, op) && !ap_site_post(-1, op);
+    #assert ap_site_post(AP_SITE_LISTED, op) == (i < 3);
+  }
+  #assert !ap_site_post(AP_SITE_LISTED, "email/start/") && !ap_site_post(AP_SITE_LISTED, "Logout") && !ap_site_post(AP_SITE_LISTED, "logout ");
+}
+#test "a listed site's page reaches four routes of the whole API; every other site value passes to the route's own checks" {
+  #assert ap_site_route(AP_SITE_LISTED, "GET", "/api/auth/account") && ap_site_route(AP_SITE_LISTED, "POST", "/api/auth/email/start");
+  #assert ap_site_route(AP_SITE_LISTED, "POST", "/api/auth/email/verify") && ap_site_route(AP_SITE_LISTED, "POST", "/api/auth/logout");
+  #assert !ap_site_route(AP_SITE_LISTED, "POST", "/api/auth/account") && !ap_site_route(AP_SITE_LISTED, "GET", "/api/auth/email/start");
+  #assert !ap_site_route(AP_SITE_LISTED, "GET", "/api/auth/email/verify") && !ap_site_route(AP_SITE_LISTED, "GET", "/api/auth/logout");
+  #assert !ap_site_route(AP_SITE_LISTED, "PUT", "/api/auth/logout") && !ap_site_route(AP_SITE_LISTED, "DELETE", "/api/auth/account") && !ap_site_route(AP_SITE_LISTED, "", "/api/auth/account");
+  paths := [16] string.["/api/auth/email/link", "/api/auth/logout-everywhere", "/api/auth/sessions", "/api/auth/viewer", "/api/auth/me", "/api/auth/settings/v1",
+                        "/api/auth/identity/change/v1", "/api/auth/nostr/custody/v1alpha1", "/api/auth/passkey/register", "/api/auth/recovery/start",
+                        "/api/auth/freeze", "/api/auth/account/", "/api/auth/logout/", "/api/chat", "/api/auth", ""];
+  for path: paths {
+    #assert !ap_site_route(AP_SITE_LISTED, "GET", path) && !ap_site_route(AP_SITE_LISTED, "POST", path);
+    #assert ap_site_route(AP_SITE_NONE, "POST", path) && ap_site_route(AP_SITE_OURS, "POST", path) && ap_site_route(AP_SITE_OTHER, "POST", path);
+    #assert ap_site_route(AP_SITE_NONE, "GET", path) && ap_site_route(AP_SITE_OURS, "GET", path) && ap_site_route(AP_SITE_OTHER, "GET", path);
+  }
+  #assert ap_site_route(4, "POST", "/api/chat") && ap_site_route(-1, "GET", "/api/chat");
+}
+#test "a listed site's email code logs a browser in: no link, no merge, no app tokens" {
+  #assert ap_site_login(AP_SITE_LISTED, true, false);
+  #assert !ap_site_login(AP_SITE_LISTED, false, false) && !ap_site_login(AP_SITE_LISTED, true, true) && !ap_site_login(AP_SITE_LISTED, false, true);
+  for site: 0..<2 {
+    #assert ap_site_login(site, true, false) && ap_site_login(site, false, false) && ap_site_login(site, true, true) && ap_site_login(site, false, true);
+  }
+  #assert !ap_site_login(AP_SITE_OTHER, true, false) && !ap_site_login(AP_SITE_OTHER, false, true) && !ap_site_login(4, true, false) && !ap_site_login(-1, true, false);
+}
+#test "a listed site's code needs the pending cookie; ours and apps may send the value in the body" {
+  #assert ap_site_pending(AP_SITE_LISTED, true) && !ap_site_pending(AP_SITE_LISTED, false);
+  #assert ap_site_pending(AP_SITE_NONE, false) && ap_site_pending(AP_SITE_NONE, true) && ap_site_pending(AP_SITE_OURS, false) && ap_site_pending(AP_SITE_OURS, true);
+  #assert !ap_site_pending(AP_SITE_OTHER, true) && !ap_site_pending(AP_SITE_OTHER, false) && !ap_site_pending(4, true) && !ap_site_pending(-1, true);
+}
+
 ap_credentials :: (nostr: bool, bearer: bool, cookie: bool) -> int #export_c #effects(all) {
   n := 0;
   if nostr { n += 1; }
@@ -276,4 +408,92 @@ ap_code_ok :: (code: string) -> bool #export_c #effects(all) {
     if code[i] < '0' || code[i] > '9' { return false; }
   }
   return true;
+}
+
+// ---- sites (docs/auth/sessions-and-tokens.md, "A second first-party site")
+// A host's bytes: lower-case letters, digits, dots and hyphens.
+ap_host_byte :: (c: u8) -> bool #effects(all) {
+  return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '.' || c == '-';
+}
+// A port: 1 to 5 digits.
+ap_port :: (s: string) -> bool #effects(all) {
+  if s.count < 1 || s.count > 5 { return false; }
+  for c: s {
+    if c < '0' || c > '9' { return false; }
+  }
+  return true;
+}
+// HOST or HOST:PORT. Nothing else: no path, slash, space, capital or wildcard.
+ap_host_port :: (s: string) -> bool #effects(all) {
+  n := 0;
+  while n < s.count && ap_host_byte(s[n]) { n += 1; }
+  if n == 0 { return false; }
+  if n == s.count { return true; }
+  return s[n] == ':' && ap_port(s[n + 1..<s.count]);
+}
+ap_site_starts :: (s: string, p: string) -> bool #effects(all) { return s.count >= p.count && s[0..<p.count] == p; }
+// One entry of OA_API_SITE_ORIGINS that counts: https://HOST[:PORT], or the dev server's
+// http://127.0.0.1[:PORT] and http://localhost[:PORT].
+ap_site_entry :: (e: string) -> bool #export_c #effects(all) {
+  if ap_site_starts(e, "https://") { return ap_host_port(e[8..<e.count]); }
+  if ap_site_starts(e, "http://127.0.0.1") { return ap_site_local(e[16..<e.count]); }
+  if ap_site_starts(e, "http://localhost") { return ap_site_local(e[16..<e.count]); }
+  return false;
+}
+// What follows a loopback name: nothing, or :PORT.
+ap_site_local :: (rest: string) -> bool #effects(all) {
+  if rest.count == 0 { return true; }
+  return rest[0] == ':' && ap_port(rest[1..<rest.count]);
+}
+
+// has: the request carries an Origin header; from: its bytes; ours: OA_API_ORIGIN; listed:
+// OA_API_SITE_ORIGINS as set, entries between commas. An entry matches only when it is the whole
+// Origin, byte for byte, and counts as an entry at all (ap_site_entry).
+ap_site :: (has: bool, from: string, ours: string, listed: string) -> int #export_c #effects(all) {
+  if !has { return AP_SITE_NONE; }
+  if from == ours { return AP_SITE_OURS; }
+  at := 0;
+  for i: 0..<listed.count + 1 {
+    if i == listed.count || listed[i] == ',' {
+      if listed[at..<i] == from && ap_site_entry(from) { return AP_SITE_LISTED; }
+      at = i + 1;
+    }
+  }
+  return AP_SITE_OTHER;
+}
+
+// The gate's question, before any route runs: a listed site's page reaches GET /api/auth/account
+// and its three writes; with its Origin on anything else, on any route file, it is refused. Every
+// other site value goes on to the route's own Origin check, as before.
+ap_site_route :: (site: int, method: string, path: string) -> bool #export_c #effects(all) {
+  if site != AP_SITE_LISTED { return true; }
+  if method == "GET" { return path == "/api/auth/account"; }
+  if method != "POST" { return false; }
+  return path == "/api/auth/email/start" || path == "/api/auth/email/verify" || path == "/api/auth/logout";
+}
+
+// op: the route under /api/auth/ of a POST in auth.c's own table (the other auth files keep
+// auth_same_site: ours or no Origin, nothing listed).
+ap_site_post :: (site: int, op: string) -> bool #export_c #effects(all) {
+  if site == AP_SITE_NONE || site == AP_SITE_OURS { return true; }
+  if site != AP_SITE_LISTED { return false; }
+  return op == "email/start" || op == "email/verify" || op == "logout";
+}
+
+// login: the email code's purpose is a login (not a link or a merge); app: the client asked for an
+// app's tokens. From ours or with no Origin, every purpose and client as before.
+ap_site_login :: (site: int, login: bool, app: bool) -> bool #export_c #effects(all) {
+  if site == AP_SITE_NONE || site == AP_SITE_OURS { return true; }
+  if site != AP_SITE_LISTED { return false; }
+  return login && !app;
+}
+
+// cookie: the request carries the pending cookie. A page of a listed site that posts to another
+// host of ours (a form on gamebuilder.org sent to openagents.com) carries the listed Origin and no
+// cookie (SameSite=Lax); a pending value in its body is one somebody else asked for, so it is not a
+// login in this browser.
+ap_site_pending :: (site: int, cookie: bool) -> bool #export_c #effects(all) {
+  if site == AP_SITE_NONE || site == AP_SITE_OURS { return true; }
+  if site != AP_SITE_LISTED { return false; }
+  return cookie;
 }

@@ -60,6 +60,149 @@ ac_identity_faults :: (t:[]Ap,dir:string) {
  ap_check(t,"the oldest identity still decrypts after its account changes in a merge",st==200 && ap_member(ap_body(t),"account",eb[..])==dst && ap_member(ap_body(t),"pubkey",eb[..])==pk,ap_body(t));
 }
 
+// A second first-party site (OA_API_SITE_ORIGINS; INVARIANTS.md "A listed first-party site logs in by
+// email code, and does nothing else"). test.sh's API has no list: the other site is another site
+// there. A second API on the same database lists https://gamebuilder.org: its pages log in by email
+// code and log out, and reach nothing else. WAKE_PORT + 3 is free in test.sh's block of 8.
+ac_site_api :: (t: [] Ap, port: int, ours: string) -> int {
+  h := proc_new(); p: [1] Sb; sb(p[..], "127.0.0.1:"); sb_int(p[..], port);
+  e: [1] Sb; sb(e[..], "OA_API_ORIGIN="); sb(e[..], ours);
+  r: [1] Sb; sb(r[..], "OA_RESEND_URL=http://127.0.0.1:"); sb(r[..], ap_env(t, "RESEND_PORT")); sb(r[..], "/emails");
+  ok := h >= 0 && proc_arg(h, ap_env(t, "API_BIN")) && proc_arg(h, "--listen") && proc_arg(h, sb_text(p[..])) && proc_env(h, sb_text(e[..]))
+        && proc_env(h, sb_text(r[..])) && proc_env(h, "OA_RESEND_API_KEY=test-resend")
+        && proc_env(h, "OA_API_SITE_ORIGINS=https://gamebuilder.org,https://*.example,https://second.example/") && proc_quiet(h);
+  if !ok || proc_start(h) != 0 { if h >= 0 { _ = proc_release(h); } return -1; }
+  deadline := proc_now_ms() + 15000;
+  while proc_now_ms() < deadline && proc_wait(h, 0) == PROC_RUNNING {
+    if ac_call(t, "GET", "/api/playtest/health", "", "", "", "") == 200 { return h; }
+    _ = proc_wait(h, 25);
+  }
+  _ = proc_release(h);
+  return -1;
+}
+AC_GB :: "https://gamebuilder.org";
+// A POST from a page of site (its Origin), from ip, with this cookie header ("" for none).
+ac_from :: (t: [] Ap, site: string, ip: string, path: string, body: string, cookie: string) -> int {
+  o: [1] Sb; sb(o[..], "Origin: "); sb(o[..], site); x: [1] Sb;
+  return ac_call(t, "POST", path, body, ac_ip(ip, x[..]), sb_text(o[..]), cookie);
+}
+ac_site_checks :: (parent: [] Ap, dir: string) {
+  eb: [1024] u8; out: [1024] u8; c1: [1] Sb; code: [6] u8; link: [64] u8;
+  st := ac_from(parent, AC_GB, "203.0.113.140", "/api/auth/email/start", "{\"email\":\"site@example.com\"}", "");
+  ap_check(parent, "no list: another first-party site's page is another site, as before", st == 403 && ap_member(ap_body(parent), "error", eb[..]) == "Not from this site.", ap_body(parent));
+  // The second harness owns its URL for its whole life (as durable_chat_checks.coax's does).
+  second: [1] Ap;
+  if !ap_open(second[..]) || ap_env(parent, "API_BIN") == "" || ap_env(parent, "WAKE_PORT") == "" { ap_check(parent, "the listed-site checks have test.sh's API_BIN and WAKE_PORT", false, ""); return; }
+  t := second[..];
+  ours := parent[0].api;
+  port := ap_whole(ap_env(t, "WAKE_PORT")) + 3; url: [1] Sb; sb(url[..], "http://127.0.0.1:"); sb_int(url[..], port);
+  t[0].api = sb_text(url[..]);
+  api := ac_site_api(t, port, ours);
+  ap_check(t, "a second API lists https://gamebuilder.org", api >= 0, "");
+  if api < 0 { parent[0].checks += t[0].checks; parent[0].failed += t[0].failed; return; }
+
+  // ---- who may ask for a code
+  st = ac_from(t, "https://evil.example", "203.0.113.141", "/api/auth/email/start", "{\"email\":\"site@example.com\"}", "");
+  ap_check(t, "listed: a site that is not on the list is still refused", st == 403, ap_body(t));
+  st = ac_from(t, "https://gamebuilder.org.evil.com", "203.0.113.141", "/api/auth/email/start", "{\"email\":\"site@example.com\"}", "");
+  bad := st == 403;
+  st = ac_from(t, "https://evilgamebuilder.org", "203.0.113.141", "/api/auth/email/start", "{\"email\":\"site@example.com\"}", "");
+  bad = bad && st == 403;
+  st = ac_from(t, "http://gamebuilder.org", "203.0.113.141", "/api/auth/email/start", "{\"email\":\"site@example.com\"}", "");
+  bad = bad && st == 403;
+  st = ac_from(t, "https://gamebuilder.org/", "203.0.113.141", "/api/auth/email/start", "{\"email\":\"site@example.com\"}", "");
+  bad = bad && st == 403;
+  st = ac_from(t, "https://GameBuilder.org", "203.0.113.141", "/api/auth/email/start", "{\"email\":\"site@example.com\"}", "");
+  ap_check(t, "listed: a longer, shorter, http, slashed or capital spelling of the site is refused", bad && st == 403, ap_body(t));
+  st = ac_from(t, "https://x.example", "203.0.113.141", "/api/auth/email/start", "{\"email\":\"site@example.com\"}", "");
+  bad = st == 403;
+  st = ac_from(t, "https://*.example", "203.0.113.141", "/api/auth/email/start", "{\"email\":\"site@example.com\"}", "");
+  bad = bad && st == 403;
+  st = ac_from(t, "https://second.example", "203.0.113.141", "/api/auth/email/start", "{\"email\":\"site@example.com\"}", "");
+  bad = bad && st == 403;
+  st = ac_from(t, "https://second.example/", "203.0.113.141", "/api/auth/email/start", "{\"email\":\"site@example.com\"}", "");
+  ap_check(t, "listed: a wildcard entry and an entry with a slash name no site at all", bad && st == 403, ap_body(t));
+  st = ac_from(t, AC_GB, "203.0.113.142", "/api/auth/email/start", "{\"email\":\"site@example.com\",\"link\":true}", "");
+  bad = st == 403;
+  st = ac_from(t, AC_GB, "203.0.113.142", "/api/auth/email/start", "{\"email\":\"site@example.com\",\"merge\":true}", "");
+  bad = bad && st == 403;
+  st = ac_from(t, AC_GB, "203.0.113.142", "/api/auth/email/start", "{\"email\":\"site@example.com\",\"client\":\"app\"}", "");
+  ap_check(t, "listed: the site may not link an email, merge accounts or take an app's tokens", bad && st == 403, ap_body(t));
+  ap_check(t, "listed: nothing refused left a site on the audit log",
+           ap_sql(t, "SELECT count(*) FROM auth.audit WHERE detail->>'site' IS NOT NULL", out[..]) == "0", "");
+
+  // ---- the email login, from the listed site's page
+  st = ac_from(t, AC_GB, "203.0.113.143", "/api/auth/email/start", "{\"email\":\"site@example.com\"}", "");
+  pb: [128] u8; P := ac_cookie(t, "__Host-oa_pending", pb[..]); head := ac_head(t);
+  ap_check(t, "listed: the site's page asks for a code and gets the pending cookie", st == 200 && P.count == 64 && ap_member(ap_body(t), "state", eb[..]) == "sent", ap_body(t));
+  ap_check(t, "listed: the answer names no origin: no CORS header, and the cookie has no Domain",
+           ac_find(head, "Access-Control") < 0 && ac_find(head, "gamebuilder") < 0 && ac_find(head, "Domain=") < 0 && ac_find(head, "omain=") < 0, head);
+  got := ac_mail(dir, code[..], link[..]);
+  lb: [1100] u8; m: [16384] u8; mn := fs_read(fs_join(dir, "last", lb[..]), m[..]); mail := cast(string) m[0..<ifx mn > 0 then mn else 0];
+  want: [1] Sb; sb(want[..], ours); sb(want[..], "/login/email#t=");
+  ap_check(t, "listed: the mail's link is our own site's, never the listed site's", got && ac_find(mail, sb_text(want[..])) >= 0 && ac_find(mail, "gamebuilder") < 0, "");
+  ap_check(t, "listed: the audit row says which site asked",
+           ap_sql(t, "SELECT count(*) FROM auth.audit WHERE action = 'email.code' AND result = 'ok' AND detail = '{\"purpose\":\"login\",\"site\":\"https://gamebuilder.org\"}'", out[..]) == "1", "");
+  vb: [1] Sb; sb(vb[..], "{\"code\":\""); sb(vb[..], cast(string) code[..]); sb(vb[..], "\"}");
+  st = ac_from(t, "https://evil.example", "203.0.113.143", "/api/auth/email/verify", sb_text(vb[..]), ac_cookie_header("__Host-oa_pending", P, c1[..]));
+  ap_check(t, "listed: another site cannot type the code", st == 403, ap_body(t));
+  vp: [1] Sb; sb(vp[..], "{\"code\":\""); sb(vp[..], cast(string) code[..]); sb(vp[..], "\",\"pending\":\""); sb(vp[..], P); sb(vp[..], "\"}");
+  st = ac_from(t, AC_GB, "203.0.113.143", "/api/auth/email/verify", sb_text(vp[..]), "");
+  ap_check(t, "listed: the pending login is the browser's cookie, never a value in the body", st == 409, ap_body(t));
+  lk: [1] Sb; sb(lk[..], "{\"t\":\""); sb(lk[..], cast(string) link[..]); sb(lk[..], "\"}");
+  st = ac_from(t, AC_GB, "203.0.113.143", "/api/auth/email/link", sb_text(lk[..]), ac_cookie_header("__Host-oa_pending", P, c1[..]));
+  ap_check(t, "listed: the mail's link is not the listed site's to open", st == 403, ap_body(t));
+  st = ac_from(t, AC_GB, "203.0.113.143", "/api/auth/email/verify", sb_text(vb[..]), ac_cookie_header("__Host-oa_pending", P, c1[..]));
+  sb_: [160] u8; S := ac_cookie(t, "__Host-oa_session", sb_[..]); head = ac_head(t);
+  ab: [64] u8; acct := ap_member(ap_body(t), "account", ab[..]);
+  ap_check(t, "listed: the code typed on the site's page logs in, with a host-only session cookie", st == 200 && ap_starts(S, "oas_") && ap_starts(acct, "acct_")
+           && ac_find(head, "Access-Control") < 0 && ac_find(head, "omain=") < 0 && !ap_has(ap_body(t), "access_token"), ap_body(t));
+  q: [1] Sb; sb(q[..], "SELECT count(*) FROM auth.audit WHERE action = 'login.email' AND result = 'ok' AND account = '"); sb(q[..], acct);
+  sb(q[..], "' AND detail->>'site' = 'https://gamebuilder.org' AND detail->>'client' = 'web'");
+  ap_check(t, "listed: the login's audit row says which site it came from", ap_sql(t, sb_text(q[..]), out[..]) == "1", "");
+  st = ac_call(t, "GET", "/api/auth/account", "", ac_cookie_header("__Host-oa_session", S, c1[..]), "", "");
+  ap_check(t, "listed: the site's page reads who is logged in", st == 200 && ap_member(ap_body(t), "logged_in", eb[..]) == "true" && ap_member(ap_body(t), "account", eb[..]) == acct, ap_body(t));
+
+  // ---- and nothing else: every other write of a logged-in session is refused from the listed site
+  auth := ac_cookie_header("__Host-oa_session", S, c1[..]);
+  paths := [22] string.["/api/auth/nostr/challenge", "/api/auth/nostr", "/api/auth/phone/start", "/api/auth/phone/poll", "/api/auth/refresh",
+                        "/api/auth/logout-everywhere", "/api/auth/freeze", "/api/auth/sessions/ses_none/remove", "/api/auth/passkey/login/options",
+                        "/api/auth/passkey/register/options", "/api/auth/passkey/step-up/options", "/api/auth/recovery/start", "/api/auth/recovery/cancel",
+                        "/api/auth/recovery-code/login", "/api/auth/link/nostr", "/api/auth/device/look", "/api/auth/device/approve",
+                        "/api/auth/settings/v1", "/api/auth/identity/change/v1", "/api/auth/nostr/custody/v1alpha1", "/api/agents", "/api/auth/email/link"];
+  refused := 0; first: [1] Sb;
+  for path: paths {
+    st = ac_from(t, AC_GB, "203.0.113.144", path, "{}", auth);
+    if st == 403 { refused += 1; } else if first[0].n == 0 { sb(first[..], path); sb(first[..], " "); sb_int(first[..], st); }
+  }
+  ap_check(t, "listed: every other auth write, and a write outside /api/auth, is refused from the site", refused == paths.count, sb_text(first[..]));
+  gets := [6] string.["/api/auth/sessions", "/api/auth/viewer", "/api/auth/settings/v1", "/api/auth/life", "/api/auth/identity/v1", "/api/wallet"];
+  refused = 0; sb_clear(first[..]); ob: [1] Sb; sb(ob[..], "Origin: "); sb(ob[..], AC_GB);
+  for path: gets {
+    st = ac_call(t, "GET", path, "", auth, sb_text(ob[..]), "");
+    if st == 403 { refused += 1; } else if first[0].n == 0 { sb(first[..], path); sb(first[..], " "); sb_int(first[..], st); }
+  }
+  ap_check(t, "listed: a read that carries the site's Origin is refused too, but for who is logged in", refused == gets.count
+           && ac_call(t, "GET", "/api/auth/account", "", auth, sb_text(ob[..]), "") == 200 && ap_member(ap_body(t), "account", eb[..]) == acct, sb_text(first[..]));
+  st = ac_call(t, "GET", "/api/auth/account", "", auth, "", "");
+  ap_check(t, "listed: the refused writes changed nothing: the session is still logged in", st == 200 && ap_member(ap_body(t), "logged_in", eb[..]) == "true", ap_body(t));
+
+  // ---- logout, and our own site as before
+  st = ac_from(t, "https://evil.example", "203.0.113.145", "/api/auth/logout", "{}", auth);
+  ap_check(t, "listed: another site cannot log the session out", st == 403, ap_body(t));
+  st = ac_from(t, AC_GB, "203.0.113.145", "/api/auth/logout", "{}", auth);
+  ap_check(t, "listed: the site's page logs out", st == 200 && ap_member(ap_body(t), "state", eb[..]) == "logged-out", ap_body(t));
+  st = ac_call(t, "GET", "/api/auth/account", "", auth, "", "");
+  ap_check(t, "listed: and the session has ended", st == 200 && ap_member(ap_body(t), "logged_in", eb[..]) == "false", ap_body(t));
+  st = ac_from(t, ours, "203.0.113.146", "/api/auth/nostr/challenge", "{}", "");
+  ap_check(t, "listed: our own site's writes are as before", st == 200, ap_body(t));
+  st = ac_from(t, ours, "203.0.113.146", "/api/auth/email/start", "{\"email\":\"site@example.com\"}", "");
+  ap_check(t, "listed: our own site's login leaves no site on its audit row", st == 200
+           && ap_sql(t, "SELECT count(*) FROM auth.audit WHERE action = 'email.code' AND detail = '{\"purpose\":\"login\"}' AND at > now() - interval '5 seconds'", out[..]) != "0", ap_body(t));
+  _ = proc_kill(api, PROC_SIGTERM); _ = proc_wait(api, 5000); _ = proc_release(api);
+  parent[0].checks += t[0].checks; parent[0].failed += t[0].failed; parent[0].sql_bad += t[0].sql_bad;
+}
+
 ac_checks :: (t: [] Ap, dir: string) {
   out: [8192] u8; eb: [1024] u8;
   c1: [1] Sb; c2: [1] Sb; c3: [1] Sb;
@@ -262,6 +405,7 @@ ac_checks :: (t: [] Ap, dir: string) {
   // ---- every rule the gate keeps is on a route that exists; Origin is checked on writes
   st = ac_call(t, "POST", "/api/auth/nostr/challenge", "{}", "Origin: https://evil.example", "", "");
   ap_check(t, "a write from another site's page is refused", st == 403, ap_body(t));
+  ac_site_checks(t, dir);
   ac_identity_faults(t,dir);
 }
 tool_main :: () -> int #export_c #effects(all) {
