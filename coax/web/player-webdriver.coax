@@ -170,7 +170,7 @@ wd_watchdog :: (endpoint:string,session:string,dir:string)->int {
     owner:[32]u8;on:=fs_read(fs_join(dir,"owner.pid",path[..]),owner[..]);
     if on>0 {pid:=args_whole(cast(string)owner[0..<on]);if pid>1 && cxproc_pid_alive(pid)==0 {_:=wd_release(w[..]);_=wd_call(w[..],"DELETE","","");return 0;}}
     n:=fs_read(fs_join(dir,"lease",path[..]),buf[..]);
-    if n>0 {s:=cast(string)buf[0..<n];if s=="stop" {_:=wd_release(w[..]);return 0;}deadline:=args_whole(s);if deadline>0 && proc_now_ms()>deadline && !released {_:=wd_release(w[..]);released=true;}if deadline>proc_now_ms() {released=false;}}
+    if n>0 {s:=cast(string)buf[0..<n];if s=="stop" {_:=wd_release(w[..]);return 0;}deadline:=pb_milliseconds(s);if deadline>0 && proc_now_ms()>deadline && !released {_:=wd_release(w[..]);released=true;}if deadline>proc_now_ms() {released=false;}}
     proc_sleep(50);
   }_=wd_release(w[..]);return 1;
 }

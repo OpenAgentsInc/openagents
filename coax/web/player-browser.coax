@@ -154,6 +154,16 @@ pb_heartbeat :: (dir: string) -> bool {
   p: [4096] u8; b: [32] u8; n := pb_decimal(b[..],0,proc_now_ms()+1000);
   return fs_write(fs_join(dir,"lease",p[..]),cast(string)b[0..<n]);
 }
+// Monotonic deadlines outlive the CLI's intentionally nine-digit option
+// parser after eleven days of uptime. Lease transport uses the full clock.
+#test "input lease deadlines retain long monotonic uptime and reject malformed clocks" {
+  #assert pb_milliseconds("1000000000")==1000000000 && pb_milliseconds("1794940000000")==1794940000000;
+  #assert pb_milliseconds("42")==42 && pb_milliseconds("999999999999999")==999999999999999;
+  #assert pb_milliseconds("")<0 && pb_milliseconds("1000000000000000")<0 && pb_milliseconds("12x")<0 && pb_milliseconds("-1")<0;
+}
+pb_milliseconds :: (text:string)->int {
+  if text.count<1 || text.count>15 {return -1;}value:=0;for c:text {if c<'0' || c>'9' {return -1;}value=value*10+cast(int)(c-'0');}return value;
+}
 pb_wait :: (dir: string, ms: int) -> bool {
   until := proc_now_ms()+ms;
   while proc_now_ms()<until { if !pb_heartbeat(dir) { return false; } proc_sleep(50); }
@@ -179,7 +189,7 @@ pb_watchdog_for :: (url:string,dir:string,budget_ms:int)->int {
     owner:[32]u8;on:=fs_read(fs_join(dir,"owner.pid",p[..]),owner[..]);
     if on>0 {pid:=args_whole(cast(string)owner[0..<on]);if pid>1 && cxproc_pid_alive(pid)==0 {_:=pb_release(c[..]);_=cdp_call(c[..],"Browser.close","{}",PB_CALL_MS);cdp_shut(c[..]);return 0;}}
     n := fs_read(fs_join(dir,"lease",p[..]),b[..]);
-    if n > 0 { text := cast(string)b[0..<n]; if text == "stop" { _ := pb_release(c[..]); cdp_shut(c[..]); return 0; } v := args_whole(text); if v > 0 { expires = v; } }
+    if n > 0 { text := cast(string)b[0..<n]; if text == "stop" { _ := pb_release(c[..]); cdp_shut(c[..]); return 0; } v := pb_milliseconds(text); if v > 0 { expires = v; } }
     if proc_now_ms()<=expires { released = false; }
     if proc_now_ms()>expires && !released { _ := pb_release(c[..]); _ = fs_append(fs_join(dir,"watchdog-fired",p[..]),"input released\n"); released = true; }
     proc_sleep(50);
