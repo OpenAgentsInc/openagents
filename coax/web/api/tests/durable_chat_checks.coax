@@ -216,12 +216,30 @@ dc_stream_checks :: (t:[]Ap,auth:string,stranger:string,account:string,conversat
  dc_recovery_checks(t,auth);
  dc_legacy_checks(t,auth,stranger);
 }
+// A GameBuilder build agent is one durable turn started from its own route; it is
+// stopped while queued so the worker checks below see only their own attempts.
+dc_gamebuilder_checks :: (t:[]Ap,auth:string,stranger:string) {
+ start:="{\"schema\":\"gamebuilder.agent.start.v1\",\"operation_id\":\"gb_check\",\"game\":\"gamebuilder.org world\",\"job\":\"disable physics\",\"brief\":\"world now: blocks: none\"}";
+ ap_check(t,"a build agent needs a login",ac_call(t,"POST","/api/gamebuilder/agents/v1",start,"","","")==401,ap_body(t));
+ ap_check(t,"a build agent refuses a request that is not its start request",ac_call(t,"POST","/api/gamebuilder/agents/v1","{\"schema\":\"gamebuilder.agent.start.v1\"}",auth,"","")==400,ap_body(t));
+ ap_check(t,"a build agent refuses a cross-site start",ac_call(t,"POST","/api/gamebuilder/agents/v1",start,auth,"Origin: https://elsewhere.example","")==403,ap_body(t));
+ arena:[72]u8;control:[1]CtControl;st:=ac_call(t,"POST","/api/gamebuilder/agents/v1",start,auth,"","");ok:=st==202 && ctr_control_read(ap_body(t),control[..],arena[..]) && control[0].state==CT_QUEUED;
+ ap_check(t,"a build agent starts as one queued durable turn",ok,ap_body(t));if !ok {return;}
+ id:[36]u8;_=js_copy(id[..],control[0].turn);turn:=cast(string)id[..];
+ ap_check(t,"a retried start is the same build agent",ac_call(t,"POST","/api/gamebuilder/agents/v1",start,auth,"","")==202 && ctr_control_read(ap_body(t),control[..],arena[..]) && control[0].turn==turn,ap_body(t));
+ st=dc_get(t,auth,"/api/gamebuilder/agent/v1",turn,0);ap_check(t,"its owner reads the build agent's turn",st==200 && ap_has(ap_body(t),"\"state\":\"queued\""),ap_body(t));
+ ap_check(t,"another account cannot read a build agent",dc_get(t,stranger,"/api/gamebuilder/agent/v1",turn,0)==404,ap_body(t));
+ st=dc_get(t,auth,"/api/chat/input/v2alpha1",turn,0);ap_check(t,"the agent's input names the game, the job and that it has no tools, then the brief",st==200 && ap_has(ap_body(t),"Game: gamebuilder.org world") && ap_has(ap_body(t),"disable physics") && ap_has(ap_body(t),"You have no tools") && ap_has(ap_body(t),"world now: blocks: none"),ap_body(t));
+ st=dc_stop(t,auth,"gb_stop",turn);ap_check(t,"a queued build agent stops without a model call",st==200 && ctr_control_read(ap_body(t),control[..],arena[..]) && control[0].state==CT_CANCELLED,ap_body(t));
+ st=dc_get(t,auth,"/api/gamebuilder/agent/events/v1",turn,0);ap_check(t,"its events replay through its own route",st==200 && ap_has(ap_body(t),"\"type\":\"cancelled\""),ap_body(t));
+}
 dc_checks :: (t:[]Ap,mail:string) {
  authb:[512]u8;otherb:[512]u8;accountb:[80]u8;otheraccount:[80]u8;arena:[72]u8;control:[1]CtControl;
  ok:=ac_person_login(t,mail,"durablechat@example.com","203.0.113.131",authb[..],accountb[..]) && ac_person_login(t,mail,"durablestranger@example.com","203.0.113.132",otherb[..],otheraccount[..]);ap_check(t,"durable chat uses verified independent account logins",ok,"");if !ok {return;}auth:=dc_z(authb[..]);stranger:=dc_z(otherb[..]);account:=dc_z(accountb[..]);
  ap_check(t,"durable conversation index requires an account",dc_get(t,"","/api/chat/conversations/v2alpha1","",0)==401,ap_body(t));
  ap_check(t,"durable submission retains the existing funded beta gate",dc_post(t,auth,"unfunded","",0,"",-1,"Hello")==403,ap_body(t));
  q:[1]Sb;sb(q[..],"UPDATE auth.accounts SET team=true WHERE id IN ('");sb(q[..],account);sb(q[..],"','");sb(q[..],dc_z(otheraccount[..]));sb(q[..],"')");ap_do(t,sb_text(q[..]));
+ dc_gamebuilder_checks(t,auth,stranger);
  st:=dc_post(t,auth,"first","",0,"",-1,"First café");ok=st==202 && ctr_control_read(ap_body(t),control[..],arena[..]);ap_check(t,"submission saves one queued durable turn before responding",ok && control[0].state==CT_QUEUED && control[0].cursor==0 && control[0].revision==1,ap_body(t));if !ok {return;}
  cid:[36]u8;tid:[36]u8;_=js_copy(cid[..],control[0].conversation);_=js_copy(tid[..],control[0].turn);conversation:=cast(string)cid[..];turn:=cast(string)tid[..];
  st=dc_post(t,auth,"first","",0,"",-1,"First café");ap_check(t,"exact operation replay returns its existing turn",st==202 && ctr_control_read(ap_body(t),control[..],arena[..]) && control[0].turn==turn && control[0].conversation==conversation,ap_body(t));

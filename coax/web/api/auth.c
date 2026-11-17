@@ -207,6 +207,10 @@ static const auth_rule RULES[] = {
   R("*", "/api/chat/conversations/v2alpha1", false, AP_ACCOUNT, "owned durable conversation index"),
   R("*", "/api/chat/conversation/v2alpha1", false, AP_ACCOUNT, "paged owned durable conversation"),
   R("*", "/api/chat/runner/v2alpha1", false, AP_PUBLIC, "trusted signed runner only; fenced durable queue claims"),
+  // ---- a GameBuilder build agent: one durable turn on the hosted runner (gamebuilder-agents.c)
+  R("POST", "/api/gamebuilder/agents/v1", false, AP_HUMAN, "start a build agent on a game; team-funded, free key, a limited session too (ap_limited_write)"),
+  R("GET", "/api/gamebuilder/agent/v1", false, AP_ACCOUNT, "an owned build agent's turn: state and answer"),
+  R("GET", "/api/gamebuilder/agent/events/v1", false, AP_ACCOUNT, "an owned build agent's events after a cursor"),
   R("*",    "/api/chat/delegated/complete/v1", false, AP_HUMAN, "the same chat, told where its task would run; same admission and quotas"),
   R("*",    "/api/chat/route/v1", false, AP_HUMAN, "which computer and agent would take a task; team-funded, one decision a call"),
   R("*",    "/api/chat/world/complete/v1", false, AP_HUMAN, "team-funded typed world turn; same account quotas, no write grant"),
@@ -846,12 +850,14 @@ const char *auth_extra_headers(void) { return set_cookie; }
 // The site a request's Origin names (auth-policy.coax ap_site): ours, a listed first-party site
 // (OA_API_SITE_ORIGINS, whole and byte for byte), another, or none (apps and tools send no Origin).
 // from: the Origin as sent. Every other route file keeps auth_same_site: ours or none, and the gate
-// refuses a listed site everywhere but its five routes (ap_site_route).
+// refuses a listed site everywhere but its own routes (ap_site_route).
 static int site_of(const request *q, char from[256]) {
   bool has = api_header(q, "Origin", from, 256) != NULL;
   return (int)ap_site(has, cs(from), cs(origin()), cs(env_or("OA_API_SITE_ORIGINS", "")));
 }
 // The listed site a request came from, for the audit row's detail; "" from ours and from apps.
+// No Origin, ours, or a listed first-party site: a write a listed site's page may make (its routes are ap_site_route's).
+bool auth_first_party(const request *q) { char from[256]; int s = site_of(q, from); return s == AP_SITE_NONE || s == AP_SITE_OURS || s == AP_SITE_LISTED; }
 static const char *listed_site(const request *q, char from[256]) { return site_of(q, from) == AP_SITE_LISTED ? from : ""; }
 
 // The gate: true when it answered (a refusal), false to let the route run.
@@ -862,7 +868,7 @@ bool auth_gate(const request *q) {
     api_error(q->fd, 404, "not found");
     return true;
   }
-  // A listed first-party site's page reaches its five routes and no other, on any route file.
+  // A listed first-party site's page reaches its own routes (ap_site_route) and no other, on any route file.
   char from[256];
   if (!ap_site_route(site_of(q, from), cs(q->method), cs(q->path))) {
     api_log("auth: refused %s %s: a listed site outside its routes", q->method, q->path);

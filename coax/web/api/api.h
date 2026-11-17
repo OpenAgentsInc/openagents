@@ -64,6 +64,7 @@ bool api_object_id(char out[37],const char *prefix);
 int projects_context(PGconn *db,const char *account,const char *id,const char *conversation,const char *operation,long long revision,long long now,project_context *out);
 void projects_context_free(project_context *context);
 bool account_chat_turn_route(const request *q);
+bool gamebuilder_agents_route(const request *q);   // gamebuilder-agents.c (in account-chat-turns.c): a GameBuilder build agent as a durable turn
 int chat_runner_who(const request *q,PGconn *db,char pubkey[65]);
 bool chat_wake(void);
 bool account_chat_route(const request *q); // account-owned mobile chat
@@ -226,6 +227,7 @@ bool auth_new_key(char id[9], char *out, size_t cap, char digest[65]);   // a ne
 void auth_visitor(const request *q, char ip[128]);
 bool auth_limited(const request *q, PGconn *db);             // true when it refused (agent_ask)
 bool auth_same_site(const request *q);
+bool auth_first_party(const request *q);   // auth.c: no Origin, ours, or a listed first-party site (OA_API_SITE_ORIGINS)
 const char *auth_origin(void);
 
 // Agents, their grants and keys, and `openagents login` (agents.c, agent-policy.coax, #13211).

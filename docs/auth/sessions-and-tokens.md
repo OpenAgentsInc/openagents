@@ -224,7 +224,7 @@ counts as a signature made when it signed in.
 
 Another website of ours (GameBuilder, `https://gamebuilder.org`) logs
 people in to the same accounts from its own `/login` page, and its default
-agent is our account chat. Its load balancer sends five paths to this API, so the browser's
+agent is our account chat. Its load balancer sends its paths (below) to this API, so the browser's
 requests are same-origin there: they carry `Origin: https://gamebuilder.org`,
 and the session cookie the API sets is host-only on `gamebuilder.org`
 (our cookies have no `Domain`, and `__Host-` cookies can't have one). No
@@ -239,10 +239,13 @@ Unset, the default, means there are none and every rule is as before.
   is ignored.
 - An `Origin` is a listed site only when it is one entry byte for byte.
   No suffix, prefix, scheme or port is forgiven.
-- A request with a listed site's `Origin` reaches five routes of the whole
+- A request with a listed site's `Origin` reaches these routes of the whole
   API: `GET /api/auth/account`, `POST /api/auth/email/start`,
-  `POST /api/auth/email/verify`, `POST /api/auth/logout` and
-  `POST /api/chat/complete/v1`. On any other route it is
+  `POST /api/auth/email/verify`, `POST /api/auth/logout`,
+  `POST /api/chat/complete/v1`, and a GameBuilder build agent's
+  `POST /api/gamebuilder/agents/v1`, `GET /api/gamebuilder/agent/v1` and
+  `GET /api/gamebuilder/agent/events/v1`
+  ([gamebuilder-agent-v1](../protocol/gamebuilder-agent-v1.md)). On any other route it is
   `403 Not from this site.`, before the route runs.
 - The account chat (`POST /api/chat/complete/v1`) answers there by its own
   rules, the same as on our site: a person's session (401 without), the
@@ -270,7 +273,7 @@ Unset, the default, means there are none and every rule is as before.
 
 The decision is `ap_site`, `ap_site_route`, `ap_site_post`,
 `ap_site_login` and `ap_site_pending` in `coax/web/api/auth-policy.coax`. The other site's load
-balancer should send only those five paths. A same-origin GET carries no
+balancer should send only those paths. A same-origin GET carries no
 `Origin`, so a read it forwards is answered as our own site's would be.
 
 ### Step-up
@@ -300,6 +303,7 @@ refused):
 | `POST /api/chat/complete/v1` | The account chat's answer. Stores nothing; counts against the account's free daily inference quota |
 | `POST /api/chat/world/complete/v1` | The same chat as a typed world turn. Stores nothing, grants no write; the same quota |
 | `POST /api/chat/delegated/complete/v1` | The same chat with a routing note. Starts nothing, stores nothing; the same quota |
+| `POST /api/gamebuilder/agents/v1` | A GameBuilder build agent: one durable text turn in the account's own chat, no tools, the same free key and quota. The durable submit admits a limited session only on this path |
 
 Someone who took over the inbox of such an account can use up that day's
 free quota (`OA_INFERENCE_DAILY_REQUESTS`, `OA_INFERENCE_DAILY_USD_MICROS`)

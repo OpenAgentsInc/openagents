@@ -5,6 +5,7 @@
 #include "account-chat-wire.generated.h"
 #include "projects-wire.generated.h"
 #include "environment-process.h"
+#include "auth-policy.generated.h"
 #include <stdlib.h>
 #include <string.h>
 #define CT_CAP (1u<<20)
@@ -46,7 +47,9 @@ static void submit(const request *q,PGconn *db,const auth_principal *p){
  tx=exec_sql(db,"BEGIN",0,NULL);if(!tx||!operation_lock(db,p->account,op)){goto done;}
  int prior=operation(db,p->account,op,q->path,hash,tid);if(prior<0){goto done;}if(prior==0){status=409;why="Operation ID already has different contents.";goto done;}
  if(prior==2){r=turn_row(db,p->account,tid,false);n=control(r,v,out,CT_CAP);if(n<1){goto done;}status=202;reply(q,status,out,(size_t)n);goto replied;}
- if(!ct_admit(true,act_funded(p->kind,ts(p->account),p->team),p->limited,p->frozen!=0,false,true,true)){status=403;why="Agent chat is currently available to the unrestricted team beta.";goto done;}
+ // A limited session submits only where ap_limited_write names this route (a GameBuilder build agent; never /api/chat/submit/v2alpha1).
+ bool limited=p->limited&&!ap_limited_write(ts(q->method),ts(q->path));
+ if(!ct_admit(true,act_funded(p->kind,ts(p->account),p->team),limited,p->frozen!=0,false,true,true)){status=403;why="Agent chat is currently available to the unrestricted team beta.";goto done;}
  const char *owner[]={p->account};if(!exec_sql(db,"SELECT pg_advisory_xact_lock(hashtextextended('durable-account:'||$1,0))",1,owner)){goto done;}r=PQexecParams(db,"SELECT count(*) FROM chat.turns_v2 WHERE account=$1 AND state IN (1,2)",1,NULL,owner,NULL,NULL,0);bool capacity=tuples(r)&&PQntuples(r)==1&&ctw_queue(number(r,0,0));PQclear(r);r=NULL;if(!capacity){status=429;why="Stop or finish an active chat before queuing more.";goto done;}
  bool fresh=!*cid;if(fresh&&!api_object_id(cid,"cnv_")){goto done;}if(!api_object_id(tid,"trn_")){goto done;}long long now=(long long)api_now_ms();num(ms,now);
  if(*project){status=projects_context(db,p->account,project,cid,op,s->project_revision,now,&context);if(status!=200){why=status==404?"not found":status==409?"Project changed. Reopen it before sending.":"The complete Project context does not fit.";goto done;}status=503;}
@@ -58,7 +61,7 @@ static void submit(const request *q,PGconn *db,const auth_principal *p){
  for(int i=0;i<PQntuples(r);i++){if(!ct_terminal(number(r,i,2)))active=true;if(input)input=cti_history((coax_v_t_CtInput){h,1},ts(PQgetvalue(r,i,0)),ts(PQgetvalue(r,i,1)),number(r,i,2));}PQclear(r);r=NULL;
  if(active){status=409;why="This conversation already has an active turn.";goto done;}
  input=input&&cti_submit((coax_v_t_CtInput){h,1},tn(q->body,q->body_len));n=input?cti_write((coax_v_t_CtInput){h,1},ts(context.instructions),ts(context.reference),tb(out,CT_CAP)):-1;
- if(!ct_admit(true,true,p->limited,p->frozen!=0,active,n>0,true)){status=413;why="The complete conversation and Project context do not fit. Start a new conversation.";goto done;}out[n]=0;
+ if(!ct_admit(true,true,limited,p->frozen!=0,active,n>0,true)){status=413;why="The complete conversation and Project context do not fit. Start a new conversation.";goto done;}out[n]=0;
  int64_t native_n=ctn_input((coax_v_bool){h->roles.e,128},(coax_v_s64){h->starts.e,128},(coax_v_s64){h->counts.e,128},tn(h->data.e,h->bytes),h->n,ts(context.instructions),ts(context.reference),tb(native,CT_CAP));
  if(native_n<1){status=413;why="The complete native conversation and Project context do not fit.";goto done;}native[native_n]=0;
  int64_t title_n=cti_title(tn(q->body,q->body_len),tb(title,160));if(title_n<0){goto done;}num(revision,before+1);num(legacy_revision,s->legacy_revision);
@@ -232,3 +235,4 @@ static void hosted_model_run(const request *q,const char *account,const char *tu
  free(m.stream);
 }
 #include "account-chat-tasks.c"
+#include "gamebuilder-agents.c"

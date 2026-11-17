@@ -435,6 +435,7 @@ static void handle(client *cl, char *head_end, size_t body_len) {
   ROUTE(voice_edit_route);
   ROUTE(router_route);
   ROUTE(account_chat_turn_route);
+  ROUTE(gamebuilder_agents_route);
   ROUTE(account_chat_route);
   ROUTE(environment_route);
   ROUTE(account_chat_library_route);

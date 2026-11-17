@@ -1,0 +1,97 @@
+// A GameBuilder build agent (docs/protocol/gamebuilder-agent-v1.md): gamebuilder.org asks for one
+// piece of work on one game, in the person's words, and it runs as one durable account turn on the
+// hosted runner (account-chat-turns.c, docs/protocol/account-chat-turn-v2alpha1.md). This file reads
+// the page's start request and writes the durable SubmitRequest it becomes; nothing else.
+//
+//   gba_submit   POST /api/gamebuilder/agents/v1's body -> the SubmitRequest admitted for it, or -1
+//
+// The start request, every field present and nothing else:
+//   {"schema":"gamebuilder.agent.start.v1","operation_id":OP,"game":GAME,"job":JOB,"brief":BRIEF}
+// OP is the page's idempotency key (1-80 bytes, as a durable operation). GAME names the game (1-64
+// bytes), JOB is the job as the person said it (1-1200 bytes), BRIEF is what the page knows that
+// the agent needs (the level as it stands and the typed edits it may make: 1-14000 bytes). The agent
+// has no tools: its only effect is the plan lines of its answer, which the page checks against the
+// engine's registry and the level's limits before it makes any. The turn is a new conversation; its
+// first block names the game and the job (and is its title).
+//   coax test coax/web/api/gamebuilder-agent-wire.coax --library
+#load "account-chat-turn-wire.coax";
+#authority;
+
+GBA_START :: "gamebuilder.agent.start.v1";
+GBA_GAME :: 64; GBA_JOB :: 1200; GBA_BRIEF :: 14000;
+GBA_HEAD_A :: "GameBuilder build agent. Game: ";
+GBA_HEAD_B :: "\nThe job, in the person's words: ";
+GBA_HEAD_C :: "\nYou are one build agent working on this game alone. You have no tools: the only thing you can change is the level, and only with the plan lines described below (each line starting with `+ `). Do the whole job in this one answer: say in one or two short lines what you did, then every plan line. If the job cannot be done with those lines, say so plainly in one line and make none.";
+
+gba_submit :: (raw: string, out: []u8) -> int #export_c #effects(all) {
+  d: [1]Jv; nodes: [16]JvNode;
+  if raw.count > 32768 || !jv_parse(d[..], raw, nodes[..]) { return -1; }
+  v := d[0];
+  keys := [5]string.["schema", "operation_id", "game", "job", "brief"];
+  if !js_fields(v, 0, keys[..]) || jv_len(v, 0) != keys.count || jv_raw(v, jv_get(v, 0, "schema")) != GBA_START { return -1; } // mutant: equivalent (with an unknown key in place of a known one, the missing field's js_string refuses)
+  op: [80]u8; game: [GBA_GAME]u8; ask: [GBA_JOB]u8; brief: [GBA_BRIEF]u8;
+  no := js_string(v, jv_get(v, 0, "operation_id"), op[..]);
+  ng := js_string(v, jv_get(v, 0, "game"), game[..]);
+  nj := js_string(v, jv_get(v, 0, "job"), ask[..]);
+  nb := js_string(v, jv_get(v, 0, "brief"), brief[..]);
+  if no < 1 || ng < 1 || nj < 1 || nb < 1 { return -1; }
+  head: [2048]u8; nh := 0;
+  nh = gba_put(head[..], nh, GBA_HEAD_A); nh = gba_put(head[..], nh, cast(string) game[0..<ng]);
+  nh = gba_put(head[..], nh, GBA_HEAD_B); nh = gba_put(head[..], nh, cast(string) ask[0..<nj]);
+  nh = gba_put(head[..], nh, GBA_HEAD_C);   // (at most 1,800 bytes: the game and the job are bounded above)
+  texts := [2]string.[cast(string) head[0..<nh], cast(string) brief[0..<nb]];
+  return ct_submit_write(cast(string) op[0..<no], "", 0, "", -1, "", -1, texts[..], out);
+}
+// s after the first n bytes of out; -1 when it does not fit (or n already is).
+gba_put :: (out: []u8, n: int, s: string) -> int #effects(all) {
+  if n < 0 || n + s.count > out.count { return -1; }
+  for i: 0..<s.count { out[n + i] = s[i]; }
+  return n + s.count;
+}
+
+#test "a start request becomes a new durable turn: the game and the job first, the brief second, the operation kept" {
+  out: [32768]u8;
+  n := gba_submit("{\"schema\":\"gamebuilder.agent.start.v1\",\"operation_id\":\"gb_1\",\"game\":\"gamebuilder.org world\",\"job\":\"disable physics\",\"brief\":\"world now: blocks: none\"}", out[..]);
+  #assert n > 0;
+  r: [1]CtSubmit; arena: [174]u8;
+  #assert ct_submit_read(cast(string) out[0..<n], r[..], arena[..]);
+  #assert r[0].operation == "gb_1" && r[0].conversation.count == 0 && r[0].revision == 0 && r[0].project.count == 0 && r[0].legacy.count == 0 && r[0].blocks == 2;
+  first := cast(string) r[0].data[r[0].starts[0]..<r[0].starts[0] + r[0].counts[0]];
+  second := cast(string) r[0].data[r[0].starts[1]..<r[0].starts[1] + r[0].counts[1]];
+  #assert first.count > GBA_HEAD_A.count && cast(string) first[0..<GBA_HEAD_A.count + 21] == "GameBuilder build agent. Game: gamebuilder.org world";
+  #assert second == "world now: blocks: none";
+}
+#test "the head says the game, the job and that there are no tools, exactly; one-byte fields and a request of exactly 32,768 bytes are taken" {
+  out: [32768]u8;
+  n := gba_submit("{\"schema\":\"gamebuilder.agent.start.v1\",\"operation_id\":\"a\",\"game\":\"g\",\"job\":\"j\",\"brief\":\"b\"}", out[..]);
+  #assert n > 0;
+  r: [1]CtSubmit; arena: [174]u8;
+  #assert ct_submit_read(cast(string) out[0..<n], r[..], arena[..]) && r[0].operation == "a";
+  first := cast(string) r[0].data[r[0].starts[0]..<r[0].starts[0] + r[0].counts[0]];
+  want: [2048]u8; w := gba_put(want[..], 0, GBA_HEAD_A); w = gba_put(want[..], w, "g"); w = gba_put(want[..], w, GBA_HEAD_B); w = gba_put(want[..], w, "j"); w = gba_put(want[..], w, GBA_HEAD_C);
+  #assert first == cast(string) want[0..<w] && cast(string) r[0].data[r[0].starts[1]..<r[0].starts[1] + r[0].counts[1]] == "b";
+  // padded with spaces to the limit, and one past it
+  raw: [32769]u8; m := gba_put(raw[..], 0, "{\"schema\":\"gamebuilder.agent.start.v1\",\"operation_id\":\"a\",\"game\":\"g\",\"job\":\"j\",\"brief\":\"b\"");
+  for i: m..<32768 { raw[i] = ' '; } raw[32767] = '}';
+  #assert gba_submit(cast(string) raw[0..<32768], out[..]) > 0;
+  raw[32767] = ' '; raw[32768] = '}';
+  #assert gba_submit(cast(string) raw[0..<32769], out[..]) < 0;
+}
+#test "anything else is refused whole: another schema, a missing or extra field, an empty or too long one" {
+  out: [32768]u8;
+  #assert gba_submit("{\"schema\":\"gamebuilder.agent.start.v2\",\"operation_id\":\"a\",\"game\":\"g\",\"job\":\"j\",\"brief\":\"b\"}", out[..]) < 0;
+  #assert gba_submit("{\"schema\":\"gamebuilder.agent.start.v1\",\"operation_id\":\"a\",\"game\":\"g\",\"job\":\"j\"}", out[..]) < 0;
+  #assert gba_submit("{\"schema\":\"gamebuilder.agent.start.v1\",\"operation_id\":\"a\",\"game\":\"g\",\"job\":\"j\",\"brief\":\"b\",\"tools\":\"shell\"}", out[..]) < 0;
+  #assert gba_submit("{\"schema\":\"gamebuilder.agent.start.v1\",\"operation_id\":\"a\",\"game\":\"\",\"job\":\"j\",\"brief\":\"b\"}", out[..]) < 0;
+  #assert gba_submit("{\"schema\":\"gamebuilder.agent.start.v1\",\"operation_id\":\"\",\"game\":\"g\",\"job\":\"j\",\"brief\":\"b\"}", out[..]) < 0;
+  #assert gba_submit("{\"schema\":\"gamebuilder.agent.start.v1\",\"operation_id\":\"a\",\"game\":\"g\",\"job\":\"j\",\"brief\":3}", out[..]) < 0;
+  #assert gba_submit("not json", out[..]) < 0;
+  // a game name past 64 bytes
+  long: [200]u8; n := gba_put(long[..], 0, "{\"schema\":\"gamebuilder.agent.start.v1\",\"operation_id\":\"a\",\"game\":\"");
+  for i: 0..<65 { long[n + i] = 'g'; } n += 65; n = gba_put(long[..], n, "\",\"job\":\"j\",\"brief\":\"b\"}");
+  #assert n > 0 && gba_submit(cast(string) long[0..<n], out[..]) < 0;
+  // no room for the answer
+  small: [64]u8;
+  #assert gba_submit("{\"schema\":\"gamebuilder.agent.start.v1\",\"operation_id\":\"a\",\"game\":\"g\",\"job\":\"j\",\"brief\":\"b\"}", small[..]) < 0;
+  #assert gba_put(small[..], -1, "x") < 0 && gba_put(small[..], 60, "xxxxx") < 0 && gba_put(small[..], 59, "xxxxx") == 64;
+}

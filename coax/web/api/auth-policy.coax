@@ -11,7 +11,9 @@
 //   ap_limited_admit what a limited session may do under a route's rule
 //   ap_limited_write the few ordinary writes a limited session may make: the account chat's three
 //                    stateless completions, which store nothing and only count against the
-//                    account's own free daily inference quota
+//                    account's own free daily inference quota; and starting a GameBuilder build
+//                    agent, one durable text turn in the account's own chat, asked with the same
+//                    free key and quota (gamebuilder-agent-wire.coax)
 //   ap_limited_route ap_limited_admit, with those writes let through on a human route
 //   ap_need          the level a step-up asks for under a rule: L2 or L2-fresh
 //   ap_session       a session's clocks: good, due for a new token, or ended
@@ -21,8 +23,10 @@
 //                    ours (OA_API_ORIGIN), a listed first-party site (one entry of
 //                    OA_API_SITE_ORIGINS, byte for byte), or another
 //   ap_site_route    the routes a listed site's page reaches at all, on the whole API: GET
-//                    /api/auth/account, the three writes below, and POST /api/chat/complete/v1
-//                    (the account chat, whose own rules are account-chat.c's)
+//                    /api/auth/account, the three writes below, POST /api/chat/complete/v1
+//                    (the account chat, whose own rules are account-chat.c's), and a GameBuilder
+//                    build agent: POST /api/gamebuilder/agents/v1 starts one, GET
+//                    /api/gamebuilder/agent/v1 and /api/gamebuilder/agent/events/v1 read it
 //   ap_site_post     the auth writes a site may send: ours and no Origin, all of them; a listed
 //                    site, only email/start, email/verify and logout; another site, none
 //   ap_site_login    a listed site's email code is a plain browser login: never a link, a merge
@@ -153,8 +157,10 @@ AP_APP_IDLE_MS :: 90 * AP_DAY_MS;         // an app's login unused this long has
   #assert ap_limited_admit(AP_ADMIN_FRESH, false, true) == AP_LIMITED && ap_limited_admit(AP_ADMIN_FRESH, true, true) == AP_LIMITED;
   #assert ap_limited_admit(10, false, true) == AP_LIMITED && ap_limited_admit(-1, false, true) == AP_LIMITED;
 }
-#test "a limited session's writes are the account chat's three completions, by POST, and no other route" {
+#test "a limited session's writes are the account chat's three completions and starting a GameBuilder build agent, by POST, and no other route" {
   #assert ap_limited_write("POST", "/api/chat/complete/v1") && ap_limited_write("POST", "/api/chat/world/complete/v1") && ap_limited_write("POST", "/api/chat/delegated/complete/v1");
+  #assert ap_limited_write("POST", "/api/gamebuilder/agents/v1") && !ap_limited_write("GET", "/api/gamebuilder/agents/v1") && !ap_limited_write("PUT", "/api/gamebuilder/agents/v1");
+  #assert !ap_limited_write("POST", "/api/gamebuilder/agent/v1") && !ap_limited_write("POST", "/api/gamebuilder/agents/v1/") && !ap_limited_write("POST", "/api/gamebuilder/agents") && !ap_limited_write("POST", "/api/gamebuilder/agents/v2");
   methods := [5] string.["GET", "PUT", "DELETE", "post", ""];
   for m: methods {
     #assert !ap_limited_write(m, "/api/chat/complete/v1") && !ap_limited_write(m, "/api/chat/world/complete/v1") && !ap_limited_write(m, "/api/chat/delegated/complete/v1");
@@ -169,6 +175,7 @@ AP_APP_IDLE_MS :: 90 * AP_DAY_MS;         // an app's login unused this long has
   chat := "/api/chat/complete/v1";
   #assert ap_limited_route(AP_HUMAN, true, true, "POST", chat) == AP_OK;
   #assert ap_limited_route(AP_HUMAN, true, true, "POST", "/api/chat/world/complete/v1") == AP_OK && ap_limited_route(AP_HUMAN, true, true, "POST", "/api/chat/delegated/complete/v1") == AP_OK;
+  #assert ap_limited_route(AP_HUMAN, true, true, "POST", "/api/gamebuilder/agents/v1") == AP_OK && ap_limited_route(AP_L2, true, true, "POST", "/api/gamebuilder/agents/v1") == AP_LIMITED;
   // the same path under any other rule (were the table to change) keeps the refusal
   for rule: -1..<11 {
     if rule != AP_HUMAN { #assert ap_limited_route(rule, true, true, "POST", chat) == ap_limited_admit(rule, true, true); }
@@ -325,7 +332,11 @@ AP_APP_IDLE_MS :: 90 * AP_DAY_MS;         // an app's login unused this long has
   }
   #assert !ap_site_post(AP_SITE_LISTED, "email/start/") && !ap_site_post(AP_SITE_LISTED, "Logout") && !ap_site_post(AP_SITE_LISTED, "logout ");
 }
-#test "a listed site's page reaches five routes of the whole API; every other site value passes to the route's own checks" {
+#test "a listed site's page reaches its login, the account chat and a build agent's three routes, and nothing else of the API; every other site value passes to the route's own checks" {
+  #assert ap_site_route(AP_SITE_LISTED, "POST", "/api/gamebuilder/agents/v1") && !ap_site_route(AP_SITE_LISTED, "GET", "/api/gamebuilder/agents/v1");
+  #assert ap_site_route(AP_SITE_LISTED, "GET", "/api/gamebuilder/agent/v1") && ap_site_route(AP_SITE_LISTED, "GET", "/api/gamebuilder/agent/events/v1");
+  #assert !ap_site_route(AP_SITE_LISTED, "POST", "/api/gamebuilder/agent/v1") && !ap_site_route(AP_SITE_LISTED, "POST", "/api/gamebuilder/agent/events/v1") && !ap_site_route(AP_SITE_LISTED, "PUT", "/api/gamebuilder/agents/v1");
+  #assert !ap_site_route(AP_SITE_LISTED, "GET", "/api/gamebuilder/agent/v1/") && !ap_site_route(AP_SITE_LISTED, "GET", "/api/gamebuilder/agents") && !ap_site_route(AP_SITE_LISTED, "POST", "/api/agents") && !ap_site_route(AP_SITE_LISTED, "GET", "/api/agents");
   #assert ap_site_route(AP_SITE_LISTED, "GET", "/api/auth/account") && ap_site_route(AP_SITE_LISTED, "POST", "/api/auth/email/start");
   #assert ap_site_route(AP_SITE_LISTED, "POST", "/api/auth/email/verify") && ap_site_route(AP_SITE_LISTED, "POST", "/api/auth/logout");
   #assert !ap_site_route(AP_SITE_LISTED, "POST", "/api/auth/account") && !ap_site_route(AP_SITE_LISTED, "GET", "/api/auth/email/start");
@@ -411,7 +422,7 @@ ap_limited_admit :: (rule: int, write: bool, limited: bool) -> int #export_c #ef
 // inference_ask with a free key, so no credit, sats or wallet is read or charged).
 ap_limited_write :: (method: string, path: string) -> bool #export_c #effects(all) {
   if method != "POST" { return false; }
-  return path == "/api/chat/complete/v1" || path == "/api/chat/world/complete/v1" || path == "/api/chat/delegated/complete/v1";
+  return path == "/api/chat/complete/v1" || path == "/api/chat/world/complete/v1" || path == "/api/chat/delegated/complete/v1" || path == "/api/gamebuilder/agents/v1";
 }
 // The gate's question for a limited session: ap_limited_admit, and on a human route the writes above.
 ap_limited_route :: (rule: int, write: bool, limited: bool, method: string, path: string) -> int #export_c #effects(all) {
@@ -527,9 +538,9 @@ ap_site :: (has: bool, from: string, ours: string, listed: string) -> int #expor
 // check, as before.
 ap_site_route :: (site: int, method: string, path: string) -> bool #export_c #effects(all) {
   if site != AP_SITE_LISTED { return true; }
-  if method == "GET" { return path == "/api/auth/account"; }
+  if method == "GET" { return path == "/api/auth/account" || path == "/api/gamebuilder/agent/v1" || path == "/api/gamebuilder/agent/events/v1"; }
   if method != "POST" { return false; }
-  return path == "/api/auth/email/start" || path == "/api/auth/email/verify" || path == "/api/auth/logout" || path == "/api/chat/complete/v1";
+  return path == "/api/auth/email/start" || path == "/api/auth/email/verify" || path == "/api/auth/logout" || path == "/api/chat/complete/v1" || path == "/api/gamebuilder/agents/v1";
 }
 
 // op: the route under /api/auth/ of a POST in auth.c's own table (the other auth files keep

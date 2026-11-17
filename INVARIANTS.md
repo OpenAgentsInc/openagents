@@ -920,7 +920,9 @@ every answer is as it was.
 
 A request with a listed site's `Origin` reaches `GET /api/auth/account`,
 `POST /api/auth/email/start`, `POST /api/auth/email/verify`,
-`POST /api/auth/logout` and `POST /api/chat/complete/v1`, and is
+`POST /api/auth/logout`, `POST /api/chat/complete/v1` and a GameBuilder build
+agent's three routes (`POST /api/gamebuilder/agents/v1`,
+`GET /api/gamebuilder/agent/v1`, `GET /api/gamebuilder/agent/events/v1`), and is
 `403 Not from this site.` on every other route of the API, at the gate, before
 the route runs. The account chat keeps its own rules there as on this site
 (`account-chat.c`: a person's session or 401, `act_funded` or 403, `act_read`'s
@@ -950,9 +952,9 @@ and every other site are refused; the account chat with no session is 401 and
 for a person off the team its own 403; no CORS header, no `Domain`, the mail's
 link is ours, the audit rows name the site). Not covered: a GET the other site's load balancer forwards carries
 no `Origin`, so it is answered as this site's own; that balancer must send
-only the five paths ([sessions and tokens](docs/auth/sessions-and-tokens.md#a-second-first-party-site)).
+only those paths ([sessions and tokens](docs/auth/sessions-and-tokens.md#a-second-first-party-site)).
 
-## A limited session writes only the account chat's stateless completions
+## A limited session writes only the account chat's stateless completions and a build agent
 
 A limited session (an email login, L1, on an account with a key, passkey,
 device or unspent recovery code) reads and plays, and is refused every write
@@ -973,6 +975,16 @@ listed first-party site only the first route is reachable. Checks: that
 file's `#test`s; `coax/web/api/tests/auth_recover_checks.coax` (a limited
 session reaches the three routes' own answer; nine other ordinary writes,
 linking a key and logging out everywhere are refused as before).
+
+The one stored write on the list is `POST /api/gamebuilder/agents/v1`
+(2026-11-17): it starts a GameBuilder build agent, one durable text turn in the
+account's own durable chat (`gamebuilder-agents.c`, its body made a
+SubmitRequest by `gba_submit`, `gamebuilder-agent-wire.coax`), asked by the
+hosted runner with the same free key and the same daily quota, with no tools:
+its only effect is text the page reads. It changes nothing the account owns
+beyond that conversation and nothing of how it logs in. The durable submit
+admits a limited session only where `ap_limited_write` names the request's own
+path, so `POST /api/chat/submit/v2alpha1` stays refused to it.
 
 ## Anime words become directions only through the catalogue holder
 
