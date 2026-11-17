@@ -53,7 +53,7 @@ wd_unpack :: (w:[]PlayerWd)->int {
   if n<=0 || !jv_parse(w[0].doc[..],cast(string)w[0].large_raw[0..<n],w[0].nodes[..]) {return -1;}
   w[0].value=0;return 0;
 }
-#test "WebDriver observation envelope preserves nested values and refuses malformed records" {
+#test "WebDriver observation envelope preserves nested values and refuses malformed records" #steps 100000000 {
   w:[1]PlayerWd;
   #assert jv_parse(w[0].doc[..],"{\"value\":\"{\\\"frame\\\":{\\\"x\\\":42},\\\"keys\\\":[true,0]}\"}",w[0].nodes[..]);
   w[0].value=jv_get(w[0].doc[0],0,"value");#assert wd_unpack(w[..])==0 && jv_int(w[0].doc[0],jv_path(w[0].doc[0],0,"frame.x"),-1)==42;
