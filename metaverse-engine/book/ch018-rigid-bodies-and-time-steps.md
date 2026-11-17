@@ -197,7 +197,7 @@ reports its own error budget rather than inheriting the CPU's.
 ## Bodies that touch
 
 [`metaverse-engine/physics/sim/bodies.coax`](../physics/sim/bodies.coax)
-(80 checks with the kernels it loads; its first mutation pass is running and its result is not recorded here yet) is the first solver here that holds a world of things
+(2,095 mutants on its first pass, 2026-11-17: 1,814 killed, 281 survive, 272 of them in the module and 9 in its checks' helpers; they are not yet killed or marked, most of them in `bd_snapshot_read`, `bd_rest`, `bd_keep`, `bd_swap`, `bd_collide`, `bd_prepare` and `bd_step`, so the engine's zero-survivor standard is not met for this module yet) is the first solver here that holds a world of things
 together: boxes and balls on a ground plane that fall, land, stack, tip,
 roll and sleep, pushed by characters, at a fixed step, in a form a second
 machine can repeat. It composes this chapter's store and its implicit
