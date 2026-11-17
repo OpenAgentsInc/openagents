@@ -9,6 +9,10 @@
 //   sty_grass_field  the patch of ground that grows blades
 //   sty_ground_table where the ground's table lies (metaverse-engine/arch/flora.coax ArchGround)
 //   sty_path_clear, sty_path_add   the dirt paths
+//   sty_reveal       grass that grows outward from a place: where, how far its front has come, how wide it is
+//   sty_mover        the one mover the grass parts round
+//   sty_wind         the wind that bends the blades
+//   sty_bare         the graybox floor the reveal has not reached: its colour and its grid
 //   sty_project      a world point on the screen, as the shaders place it (for checks and picking)
 //   coax/bin/coax test --library metaverse-engine/render/shade/stylized-frame.coax
 #module "metaverse.engine.render.stylized_frame";
@@ -132,6 +136,41 @@ sty_path_add :: (u: [] f32, ax: f32, az: f32, bx: f32, bz: f32, half: f32) -> bo
   return true;
 }
 
+// The reveal: grass (blades and the ground's cover) stands only behind a front `radius` metres from
+// (cx, cz), `edge` metres wide; beyond it the ground is the bare floor (sty_bare). The caller moves
+// the radius: over how long, with what easing and how far "the horizon" is are its own. An edge of 0
+// turns the reveal off (the whole field stands), which is how a block nobody has written reads.
+// False when the block is too short or a number is not one (nothing is written then).
+sty_reveal :: (u: [] f32, cx: f32, cz: f32, radius: f32, edge: f32) -> bool {
+  if u.count < STY_UNIFORM_FLOATS || !(radius >= 0) || !(edge >= 0) || !(cx == cx) || !(cz == cz) { return false; }
+  sty_put3(u, STY_U_REVEAL, cx, cz, radius, edge);
+  return true;
+}
+// The mover the grass parts round, at (x, z): blades within `radius` lean away from it and lie
+// lower, fully at the mover. A radius of 0 is no mover.
+sty_mover :: (u: [] f32, x: f32, z: f32, radius: f32) -> bool {
+  if u.count < STY_UNIFORM_FLOATS || !(radius >= 0) || !(x == x) || !(z == z) { return false; }
+  sty_put3(u, STY_U_MOVER, x, z, radius, 0);
+  return true;
+}
+// The wind: the way it blows (it need not be a unit vector), how far it bends a blade (radians: the
+// engine's 0.30) and how fast its waves travel (m/s: 3). A bend of 0, or no direction, is no wind.
+sty_wind :: (u: [] f32, wx: f32, wz: f32, bend: f32, speed: f32) -> bool {
+  if u.count < STY_UNIFORM_FLOATS || !(bend >= 0) || !(speed >= 0) { return false; }
+  l := sqrt(wx * wx + wz * wz);
+  if !(l > 0) { sty_put3(u, STY_U_WIND, 1, 0, 0, speed); return true; }
+  sty_put3(u, STY_U_WIND, wx / l, wz / l, bend, speed);
+  return true;
+}
+// The bare floor: its colour, the size of its grid's squares (m; 0: no lines), the lines' own light
+// and how many squares apart a second grid's lines are (0: none).
+sty_bare :: (u: [] f32, r: f32, g: f32, b: f32, cell: f32, line_r: f32, line_g: f32, line_b: f32, major: int) -> bool {
+  if u.count < STY_UNIFORM_FLOATS || !(cell >= 0) || major < 0 { return false; }
+  sty_put3(u, STY_U_BARE, r, g, b, cell);
+  sty_put3(u, STY_U_BARE_LINE, line_r, line_g, line_b, cast(f32) major);
+  return true;
+}
+
 // A world point through four rows at `rows`: clip x, y, z, w.
 sty_rows :: (u: [] f32, rows: int, x: f32, y: f32, z: f32) -> [4] f32 {
   o: [4] f32;
@@ -185,9 +224,36 @@ sty_project :: (u: [] f32, x: f32, y: f32, z: f32) -> StyOnScreen {
   sty_path_clear(u[..]);
   for i: 0..<STY_PATHS { #assert sty_path_add(u[..], cast(f32) i, 0, cast(f32) i, 10, 2); }
   #assert !sty_path_add(u[..], 0, 0, 1, 1, 1) && u[STY_U_PATH_INFO] == STY_PATHS && u[STY_U_PATH + 8] == 1 && u[STY_U_PATH + 12] == 2;
-  #assert STY_U_PATH + STY_PATHS * STY_PATH_FLOATS == STY_U_CUMULUS && STY_U_CUMULUS + STY_CUMULI * 4 == STY_UNIFORM_FLOATS && STY_UNIFORM_FLOATS % 4 == 0;
+  #assert STY_U_PATH + STY_PATHS * STY_PATH_FLOATS == STY_U_CUMULUS && STY_U_CUMULUS + STY_CUMULI * 4 == STY_U_REVEAL && STY_U_BARE_LINE + 4 == STY_UNIFORM_FLOATS && STY_UNIFORM_FLOATS % 4 == 0;
   // A heaped cloud goes where the sky's shader reads it; with none placed, none is drawn.
   #assert u[STY_U_CUMULUS + 3] == 0;
   look.cumulus[4] = -0.4; look.cumulus[5] = 0.3; look.cumulus[6] = 0.5; look.cumulus[7] = 0.28;
   #assert sty_frame(u[..], 800, 600, 0, c, look) && u[STY_U_CUMULUS + 4] == -0.4 && u[STY_U_CUMULUS + 7] == 0.28 && u[STY_U_CUMULUS + 3] == 0;
+}
+#test "the reveal, the mover, the wind and the bare floor go where the shaders read them, off until written, and bad numbers are refused" {
+  u: [STY_UNIFORM_FLOATS] f32; c: StyCamera; look: StyLook;
+  #assert sty_frame(u[..], 800, 600, 0, c, look);
+  // a frame nobody has written a reveal into has none: an edge of 0
+  #assert u[STY_U_REVEAL + 3] == 0 && u[STY_U_MOVER + 2] == 0 && u[STY_U_WIND + 2] == 0 && u[STY_U_BARE + 3] == 0;
+  #assert sty_reveal(u[..], 3, -7, 12.5, 2) && u[STY_U_REVEAL] == 3 && u[STY_U_REVEAL + 1] == -7 && u[STY_U_REVEAL + 2] == 12.5 && u[STY_U_REVEAL + 3] == 2;
+  // the frame's own numbers leave it alone
+  #assert sty_frame(u[..], 800, 600, 1, c, look) && u[STY_U_REVEAL + 2] == 12.5;
+  nan: f32 = 0; nan = nan / nan;
+  #assert !sty_reveal(u[..], 0, 0, -1, 2) && !sty_reveal(u[..], 0, 0, 1, -2) && !sty_reveal(u[..], nan, 0, 1, 2) && !sty_reveal(u[..], 0, nan, 1, 2) && !sty_reveal(u[..], 0, 0, nan, 2) && !sty_reveal(u[..], 0, 0, 1, nan);
+  #assert u[STY_U_REVEAL + 2] == 12.5 && u[STY_U_REVEAL + 3] == 2;
+  #assert sty_reveal(u[..], 0, 0, 0, 0) && u[STY_U_REVEAL + 3] == 0;
+  #assert sty_mover(u[..], 4, 5, 0.7) && u[STY_U_MOVER] == 4 && u[STY_U_MOVER + 1] == 5 && u[STY_U_MOVER + 2] == 0.7 && u[STY_U_MOVER + 3] == 0;
+  #assert !sty_mover(u[..], 4, 5, -0.1) && !sty_mover(u[..], nan, 5, 1) && !sty_mover(u[..], 4, nan, 1) && !sty_mover(u[..], 4, 5, nan) && u[STY_U_MOVER + 2] == 0.7;
+  #assert sty_mover(u[..], 1, 2, 0) && u[STY_U_MOVER + 2] == 0;
+  // the wind's way is made a unit vector; no way at all is no bend
+  #assert sty_wind(u[..], 3, -4, 0.3, 3) && abs(u[STY_U_WIND] - 0.6) < 0.0001 && abs(u[STY_U_WIND + 1] + 0.8) < 0.0001 && u[STY_U_WIND + 2] == 0.3 && u[STY_U_WIND + 3] == 3;
+  #assert sty_wind(u[..], 0, 0, 0.3, 3) && u[STY_U_WIND + 2] == 0 && u[STY_U_WIND] == 1 && u[STY_U_WIND + 3] == 3;
+  #assert !sty_wind(u[..], 1, 0, -0.3, 3) && !sty_wind(u[..], 1, 0, 0.3, -3) && !sty_wind(u[..], 1, 0, nan, 3) && !sty_wind(u[..], 1, 0, 0.3, nan) && u[STY_U_WIND + 2] == 0;
+  #assert sty_wind(u[..], 0, 2, 0, 0) && u[STY_U_WIND + 1] == 1 && u[STY_U_WIND + 2] == 0;
+  #assert sty_bare(u[..], 0.01, 0.02, 0.03, 1, 0.17, 0.18, 0.19, 4) && u[STY_U_BARE] == 0.01 && u[STY_U_BARE + 1] == 0.02 && u[STY_U_BARE + 2] == 0.03 && u[STY_U_BARE + 3] == 1;
+  #assert u[STY_U_BARE_LINE] == 0.17 && u[STY_U_BARE_LINE + 1] == 0.18 && u[STY_U_BARE_LINE + 2] == 0.19 && u[STY_U_BARE_LINE + 3] == 4;
+  #assert !sty_bare(u[..], 0, 0, 0, -1, 1, 1, 1, 4) && !sty_bare(u[..], 0, 0, 0, 1, 1, 1, 1, -1) && !sty_bare(u[..], 0, 0, 0, nan, 1, 1, 1, 0) && u[STY_U_BARE + 3] == 1 && u[STY_U_BARE_LINE + 3] == 4;
+  #assert sty_bare(u[..], 0, 0, 0, 0, 0, 0, 0, 0) && u[STY_U_BARE + 3] == 0;
+  short: [STY_UNIFORM_FLOATS - 1] f32;
+  #assert !sty_reveal(short[..], 0, 0, 1, 1) && !sty_mover(short[..], 0, 0, 1) && !sty_wind(short[..], 1, 0, 0.3, 3) && !sty_bare(short[..], 0, 0, 0, 1, 1, 1, 1, 4);
 }

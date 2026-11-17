@@ -8,7 +8,10 @@
 //                                            painted by its material, lit in soft bands, shadowed, hazed
 //   stylized_shadow_vs / stylized_shadow_fs  the same parts from the sun, into its shadow map
 //   stylized_grass_vs / stylized_grass_fs    painterly grass: a blade a cell of the grass field, grown from the
-//                                            ground table, kept off paths, paving and bare ground
+//                                            ground table, kept off paths, paving and bare ground; bent by
+//                                            the wind, parted round a mover, and grown outward from a place
+//                                            when the frame has a reveal (stylized-frame.coax: sty_wind,
+//                                            sty_mover, sty_reveal; the maths is vegetation.coax's)
 //   stylized_water_vs / stylized_water_transmit_fs / stylized_water_emit_fs
 //                                            the water pass: a world's wet parts (metaverse-engine/arch/palette.coax,
 //                                            ARCH_M_WET and up), drawn last and blended over the rest. A
@@ -26,6 +29,8 @@
 //                 at the shore and where the table's fourth field says it churns; sty_falls: a
 //                 waterfall's falling streaks; spray and a rainbow (sty_wet)
 //   sky, clouds   sty_sky
+//   reveal        ground and grass that spread from a place over a bare graybox floor with a grid
+//                 (sty_reveal_at, sty_floor)
 //
 // The frame's numbers are metaverse-engine/render/shade/stylized-frame.coax's (the look, the camera, the sun's box,
 // the grass field, the ground table, the paths), at metaverse-engine/render/shade/stylized-layout.coax's offsets.
@@ -37,6 +42,7 @@
 #load "../noise.coax";
 #load "stylized-layout.coax";
 #load "../../arch/palette.coax";
+#load "vegetation.coax";
 
 StyObj :: struct {a:V4; b:V4; c:V4; d:V4;}
 // info: the material, the record's value, its phase.
@@ -307,9 +313,53 @@ sty_ground :: (p:V3,cover:f32,paved:f32,u:[]f32)->V3 {
   return c;
 }
 
+// ---- the reveal (metaverse-engine/render/shade/vegetation.coax: metaverse_style_reveal)
+// How much of the grass stands at a place: 1 with no reveal in the frame.
+sty_reveal_at :: (x:f32,z:f32,u:[]f32)->f32 {
+  dx:f32=x-u[STY_U_REVEAL]; dz:f32=z-u[STY_U_REVEAL+1];
+  return metaverse_style_reveal(sqrt(dx*dx+dz*dz),u[STY_U_REVEAL+2],u[STY_U_REVEAL+3]);
+}
+// How much of a grid line `cell` apart covers a place `q` along one axis, where a pixel spans `w`
+// of that axis: a line about a pixel wide however far it is, fading out once the squares are
+// smaller than six pixels, so far ground goes plain and never shimmers.
+sty_grid_axis :: (q:f32,cell:f32,w:f32)->f32 {
+  c:f32=fmax(cell,0.0001f32); px:f32=fmax(w,0.000001f32);
+  f:f32=fract(q/c); d:f32=fmin(f,1.0f32-f)*c;
+  return (1.0f32-smoothstep(px*0.5f32,px*1.5f32,d))*saturate(c/(px*6.0f32));
+}
+// The bare floor's lines at a place: 0 none to 1 on a line (and up to 2 where both grids' lines lie).
+// `wx` and `wz` are how much of x and z a pixel spans there. No lines without a cell size.
+sty_floor_lines :: (x:f32,z:f32,wx:f32,wz:f32,u:[]f32)->f32 {
+  cell:f32=u[STY_U_BARE+3];
+  if (cell<=0.0f32) {return 0.0f32;}
+  k:f32=fmax(sty_grid_axis(x,cell,wx),sty_grid_axis(z,cell,wz));
+  major:f32=u[STY_U_BARE_LINE+3];
+  if (major>=1.0f32) { k=k+fmax(sty_grid_axis(x,cell*major,wx),sty_grid_axis(z,cell*major,wz)); }
+  return k;
+}
+// The bare floor at a ground point, for the fragment that shades it: how bright its lines are there
+// (x) and how much of the place is still bare (y: 0 with no reveal, 1 ahead of the front). It takes
+// screen derivatives, so a fragment shader calls it before it branches on anything that varies.
+sty_floor :: (p:V3,u:[]f32)->V2 {
+  wx:f32=gpu_fwidth(p.x); wz:f32=gpu_fwidth(p.z);
+  return v2(sty_floor_lines(p.x,p.z,wx,wz,u),1.0f32-sty_reveal_at(p.x,p.z,u));
+}
+
 // ---- the materials
 // A surface's own colour and its own light. `flat` is 1 for a surface that is all its own light.
 StySurface :: struct {albedo:V3; glow:V3;}
+// Ground the reveal has not reached is the bare floor: `floor_` is sty_floor's answer for the place
+// (its lines' brightness, how bare it is). The surface's colour goes to the floor's by that share
+// and the grid's lines give their own light there. Ground the reveal has passed (or a frame with
+// none: a share of 0) keeps its colour, and any other material is left as it was.
+sty_floor_over :: (m:StySurface,material:f32,floor_:V2,u:[]f32)->StySurface {
+  o:StySurface=m;
+  if (sty_is(material,ARCH_M_GROUND)) {
+    o.albedo=mix3(m.albedo,wg_at3(u,STY_U_BARE),floor_.y);
+    o.glow=scale3(wg_at3(u,STY_U_BARE_LINE),floor_.x*floor_.y);
+  }
+  return o;
+}
 sty_surface :: (s:StyS,u:[]f32)->StySurface {
   o:StySurface; o.glow=v3(0.0f32,0.0f32,0.0f32); o.albedo=v3(0.6f32,0.6f32,0.6f32);
   m:f32=s.info.x; a:f32=s.uv.x; b:f32=s.uv.y; p:V3=s.world;
@@ -594,7 +644,8 @@ stylized_scene_vs :: (id:u32,instance:u32,u:[]f32,mesh:[]f32,objects:[]StyObj)->
 stylized_scene_fs :: (s:StyS,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->V4 {
   n:V3=normalize3(s.normal);
   sun:V3=wg_at3(u,STY_U_SUN);
-  m:StySurface=sty_surface(s,u);
+  floor_:V2=sty_floor(s.world,u);
+  m:StySurface=sty_floor_over(sty_surface(s,u),s.info.x,floor_,u);
   albedo:V3=sty_decode(mul3(m.albedo,s.wash));
   ndl:f32=dot3(n,sun);
   // Leaves take the sun round their edges: the crown reads as one soft mass.
@@ -641,6 +692,36 @@ stylized_shadow_vs :: (id:u32,instance:u32,u:[]f32,mesh:[]f32,objects:[]StyObj)-
 stylized_shadow_fs :: (s:StyShade) {}
 
 // ---- the grass
+// A blade's share of its height under the frame's reveal (1 with none): it sprouts behind the
+// front, a little early or late by its own number `rnd` (0 to 1), so the front is ragged and not a line.
+sty_blade_reveal :: (x:f32,z:f32,rnd:f32,u:[]f32)->f32 {
+  edge:f32=u[STY_U_REVEAL+3];
+  if (edge<=0.0f32) {return 1.0f32;} // mutant: equivalent (at an edge of exactly 0 metaverse_style_reveal answers 1 itself and the rise of 1 is 1; the guard only saves the square root)
+  rx:f32=x-u[STY_U_REVEAL]; rz:f32=z-u[STY_U_REVEAL+1];
+  return metaverse_style_reveal_rise(metaverse_style_reveal(sqrt(rx*rx+rz*rz)+(rnd-0.5f32)*edge*0.5f32,u[STY_U_REVEAL+2],edge));
+}
+// A blade `tall` metres high rooted at (x, z), parted by the frame's mover: how far its tip is pushed
+// along x and z (away from the mover) and the height it keeps (z). Unparted with no mover.
+sty_blade_part :: (x:f32,z:f32,tall:f32,u:[]f32)->V3 {
+  radius:f32=u[STY_U_MOVER+2];
+  if (radius<=0.0f32) {return v3(0.0f32,0.0f32,tall);}
+  mx:f32=x-u[STY_U_MOVER]; mz:f32=z-u[STY_U_MOVER+1]; md:f32=sqrt(mx*mx+mz*mz);
+  part:f32=metaverse_style_part(md,radius);
+  kept:f32=tall*metaverse_style_part_keep(part,0.45f32);
+  push:f32=metaverse_style_part_push(part,0.8f32)*kept/fmax(md,0.05f32);
+  return v3(mx*push,mz*push,kept);
+}
+// How far the frame's wind carries that blade's tip along x and z: the engine's one wave and its
+// gusts (vegetation.coax: a 12 m wave, gusts 25 m across) round a steady lean half the bend
+// downwind. Nothing with no wind.
+sty_blade_wind :: (x:f32,z:f32,tall:f32,u:[]f32)->V2 {
+  amp:f32=u[STY_U_WIND+2];
+  if (amp<=0.0f32) {return v2(0.0f32,0.0f32);} // mutant: equivalent (a bend of exactly 0 gives a wave of 0 and a lean of 0, so sin(0) times the height: 0 either way; the guard only saves the gust's noise)
+  t:f32=u[STY_U_SIZE+2]; wx:f32=u[STY_U_WIND]; wz:f32=u[STY_U_WIND+1]; speed:f32=u[STY_U_WIND+3];
+  theta:f32=metaverse_style_wind(x*wx+z*wz,metaverse_style_gust(x,z,t,wx,wz,speed,0.04f32),t,amp,12.0f32,speed);
+  bend:f32=metaverse_style_bend(theta+amp*0.5f32,tall,1.0f32);
+  return v2(wx*bend,wz*bend);
+}
 // One blade a cell of the field: a tapered triangle rooted on the ground table, turned to face the
 // eye, leaning its own way and swaying a little. No blade grows on a path, on paving, on bare
 // ground or past the field's reach.
@@ -665,6 +746,10 @@ stylized_grass_vs :: (v:u32,i:u32,u:[]f32,mesh:[]f32,objects:[]StyObj,heights:[]
   rnd:f32=sty_hash2(gx+7.0f32,gz+91.0f32);
   thin:f32=1.0f32-smoothstep(reach*0.45f32,reach,dist);
   tall:f32=u[STY_U_GRASS_INFO+1]*fmax(grown,1.0f32)*(0.55f32+0.6f32*rnd)*tuft*clear*smoothstep(0.35f32,0.7f32,cover)*smoothstep(0.0f32,0.25f32,thin-rnd*0.55f32+0.2f32);
+  // A reveal: blades sprout behind its front. A mover parts them: they lie lower and lean away.
+  tall=tall*sty_blade_reveal(x,z,rnd,u);
+  parted:V3=sty_blade_part(x,z,tall,u);
+  tall=parted.z;
   if (tall<0.03f32) {return o;}
   y:f32=sty_table(x,z,0,u,heights);
   // Across the blade: level, and square to the way to the eye.
@@ -677,7 +762,10 @@ stylized_grass_vs :: (v:u32,i:u32,u:[]f32,mesh:[]f32,objects:[]StyObj,heights:[]
   w:V3=v3(x,y,z);
   if (v==0) { w=v3(x-ax,y,z-az); }
   else if (v==1) { w=v3(x+ax,y,z+az); }
-  else { w=v3(x+cos(ang)*lean+sway,y+tall,z+sin(ang)*lean); o.along=1.0f32; }
+  else {
+    blow:V2=sty_blade_wind(x,z,tall,u);
+    w=v3(x+cos(ang)*lean+sway+blow.x+parted.x,y+tall,z+sin(ang)*lean+blow.y+parted.y); o.along=1.0f32;
+  }
   o.world=v3(x,y,z);
   o.colour=scale3(sty_grass_colour(x,z,o.along,u),0.88f32+0.24f32*rnd);
   o.pos=sty_clip(w,u,STY_U_VIEW);
@@ -820,4 +908,131 @@ stylized_grass_fs :: (g:StyBlade,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerC
   s.info=v4(cast(f32)ARCH_M_CLIFF,0.0f32,0.0f32,0.0f32); face:StySurface=sty_surface(s,u[..]);
   s.normal=v3(0.0f32,1.0f32,0.0f32); top:StySurface=sty_surface(s,u[..]);
   #assert abs(face.albedo.x-face.albedo.z)<0.15f32 && face.albedo.z>=face.albedo.x && top.albedo.y>top.albedo.x+0.08f32 && top.albedo.y>top.albedo.z+0.15f32;
+}
+#test "a reveal: grass stands behind its front and the bare floor lies ahead of it; no reveal, all grass" {
+  u:[STY_UNIFORM_FLOATS]f32;
+  #assert sty_reveal_at(50.0f32,0.0f32,u[..])==1.0f32 && sty_floor(v3(50.0f32,0.0f32,3.0f32),u[..]).y==0.0f32;
+  u[STY_U_REVEAL]=2.0f32; u[STY_U_REVEAL+1]=0.0f32-1.0f32; u[STY_U_REVEAL+2]=10.0f32; u[STY_U_REVEAL+3]=2.0f32;
+  #assert sty_reveal_at(2.0f32,0.0f32-1.0f32,u[..])==1.0f32 && sty_reveal_at(2.0f32+7.9f32,0.0f32-1.0f32,u[..])==1.0f32;
+  #assert sty_reveal_at(2.0f32,0.0f32-1.0f32-10.0f32,u[..])==0.0f32 && sty_reveal_at(2.0f32+30.0f32,0.0f32-1.0f32,u[..])==0.0f32;
+  #assert abs(sty_reveal_at(2.0f32-9.0f32,0.0f32-1.0f32,u[..])-0.5f32)<0.001f32 && abs(sty_reveal_at(2.0f32,8.0f32,u[..])-0.5f32)<0.001f32;
+  // measured round its own centre, not the origin
+  #assert sty_reveal_at(0.0f32-7.9f32,0.0f32-1.0f32,u[..])<0.01f32 && sty_reveal_at(11.4f32,0.0f32-1.0f32,u[..])<1.0f32 && sty_reveal_at(11.4f32,0.0f32-1.0f32,u[..])>0.0f32;
+  #assert sty_floor(v3(2.0f32,0.0f32,0.0f32-1.0f32),u[..]).y==0.0f32 && sty_floor(v3(40.0f32,0.0f32,0.0f32-1.0f32),u[..]).y==1.0f32;
+}
+#test "the bare floor's grid: a line on each square's edge a pixel wide, a second grid over it, gone when squares are finer than pixels" {
+  // on a line, between lines, and a pixel and a half off it
+  #assert sty_grid_axis(3.0f32,1.0f32,0.01f32)==1.0f32 && sty_grid_axis(3.5f32,1.0f32,0.01f32)==0.0f32 && sty_grid_axis(0.0f32-2.0f32,1.0f32,0.01f32)==1.0f32;
+  #assert sty_grid_axis(3.004f32,1.0f32,0.01f32)==1.0f32 && sty_grid_axis(3.016f32,1.0f32,0.01f32)==0.0f32;
+  near:f32=sty_grid_axis(3.01f32,1.0f32,0.01f32); #assert near>0.3f32 && near<0.7f32;
+  // squares of 2: lines at even places only
+  #assert sty_grid_axis(4.0f32,2.0f32,0.01f32)==1.0f32 && sty_grid_axis(3.0f32,2.0f32,0.01f32)==0.0f32;
+  // a pixel spanning a sixth of a square is the last full line; past it they fade, to nothing
+  #assert sty_grid_axis(3.0f32,1.0f32,1.0f32/6.0f32)>0.999f32 && abs(sty_grid_axis(3.0f32,1.0f32,1.0f32/3.0f32)-0.5f32)<0.001f32 && sty_grid_axis(3.0f32,1.0f32,100.0f32)<0.002f32;
+  u:[STY_UNIFORM_FLOATS]f32;
+  #assert sty_floor_lines(3.0f32,0.5f32,0.01f32,0.01f32,u[..])==0.0f32;
+  u[STY_U_BARE+3]=1.0f32;
+  #assert sty_floor_lines(3.0f32,0.5f32,0.01f32,0.01f32,u[..])==1.0f32 && sty_floor_lines(3.5f32,7.0f32,0.01f32,0.01f32,u[..])==1.0f32 && sty_floor_lines(3.5f32,7.5f32,0.01f32,0.01f32,u[..])==0.0f32;
+  u[STY_U_BARE_LINE+3]=4.0f32;
+  #assert sty_floor_lines(4.0f32,0.5f32,0.01f32,0.01f32,u[..])==2.0f32 && sty_floor_lines(3.0f32,0.5f32,0.01f32,0.01f32,u[..])==1.0f32 && sty_floor_lines(3.5f32,8.0f32,0.01f32,0.01f32,u[..])==2.0f32;
+  u[STY_U_BARE_LINE+3]=0.5f32; #assert sty_floor_lines(4.0f32,0.5f32,0.01f32,0.01f32,u[..])==1.0f32;
+  // a second grid a square apart lies on the first: twice the line
+  u[STY_U_BARE_LINE+3]=1.0f32; #assert sty_floor_lines(3.0f32,0.5f32,0.01f32,0.01f32,u[..])==2.0f32;
+  // just short of a line and just past it are the same distance from it, either side of the origin
+  #assert abs(sty_grid_axis(2.99f32,1.0f32,0.01f32)-sty_grid_axis(3.01f32,1.0f32,0.01f32))<0.001f32 && abs(sty_grid_axis(0.0f32-0.01f32,1.0f32,0.01f32)-sty_grid_axis(0.01f32,1.0f32,0.01f32))<0.001f32;
+  #assert sty_grid_axis(2.99f32,1.0f32,0.01f32)>0.3f32 && sty_grid_axis(2.99f32,1.0f32,0.01f32)<0.7f32 && sty_grid_axis(2.75f32,1.0f32,0.01f32)==0.0f32 && sty_grid_axis(3.25f32,1.0f32,0.01f32)==0.0f32;
+  // squares half a metre wide: a line at the half
+  #assert sty_grid_axis(3.5f32,0.5f32,0.01f32)==1.0f32 && sty_grid_axis(3.25f32,0.5f32,0.01f32)==0.0f32;
+}
+#test "the bare floor replaces only ground the reveal has not reached, and its lines are their own light" {
+  u:[STY_UNIFORM_FLOATS]f32;
+  u[STY_U_BARE]=0.1f32; u[STY_U_BARE+1]=0.2f32; u[STY_U_BARE+2]=0.3f32; u[STY_U_BARE_LINE]=0.5f32; u[STY_U_BARE_LINE+1]=0.6f32; u[STY_U_BARE_LINE+2]=0.7f32;
+  m:StySurface; m.albedo=v3(0.9f32,0.8f32,0.7f32); m.glow=v3(0.0f32,0.0f32,0.0f32);
+  ground:f32=cast(f32)ARCH_M_GROUND;
+  // wholly bare, on a line: the floor's colour, the line's light
+  bare:StySurface=sty_floor_over(m,ground,v2(1.0f32,1.0f32),u[..]);
+  #assert abs(bare.albedo.x-0.1f32)<0.0001f32 && abs(bare.albedo.y-0.2f32)<0.0001f32 && abs(bare.albedo.z-0.3f32)<0.0001f32 && abs(bare.glow.x-0.5f32)<0.0001f32 && abs(bare.glow.y-0.6f32)<0.0001f32 && abs(bare.glow.z-0.7f32)<0.0001f32;
+  // off a line: no light; half bare, on a line: half of each
+  off:StySurface=sty_floor_over(m,ground,v2(0.0f32,1.0f32),u[..]); #assert off.glow.x==0.0f32 && abs(off.albedo.x-0.1f32)<0.0001f32;
+  half:StySurface=sty_floor_over(m,ground,v2(1.0f32,0.5f32),u[..]); #assert abs(half.albedo.x-0.5f32)<0.0001f32 && abs(half.albedo.z-0.5f32)<0.0001f32 && abs(half.glow.x-0.25f32)<0.0001f32 && abs(half.glow.z-0.35f32)<0.0001f32;
+  // where both grids' lines cross the light is twice a line's
+  both:StySurface=sty_floor_over(m,ground,v2(2.0f32,1.0f32),u[..]); #assert abs(both.glow.y-1.2f32)<0.0001f32;
+  // the reveal has passed (or there is none): untouched; and so is anything that is not ground
+  grown:StySurface=sty_floor_over(m,ground,v2(1.0f32,0.0f32),u[..]); #assert grown.albedo.x==0.9f32 && grown.albedo.y==0.8f32 && grown.glow.x==0.0f32;
+  wall:StySurface=sty_floor_over(m,cast(f32)ARCH_M_ASHLAR,v2(1.0f32,1.0f32),u[..]); #assert wall.albedo.x==0.9f32 && wall.albedo.z==0.7f32 && wall.glow.y==0.0f32;
+  plaster:StySurface=sty_floor_over(m,cast(f32)ARCH_M_PLASTER,v2(1.0f32,1.0f32),u[..]); #assert plaster.albedo.x==0.9f32 && plaster.glow.x==0.0f32;
+}
+#test "a blade under a reveal sprouts behind the front, ragged by its own number; with none it stands" {
+  u:[STY_UNIFORM_FLOATS]f32;
+  #assert sty_blade_reveal(50.0f32,3.0f32,0.5f32,u[..])==1.0f32;
+  u[STY_U_REVEAL]=2.0f32; u[STY_U_REVEAL+1]=0.0f32-1.0f32; u[STY_U_REVEAL+2]=10.0f32; u[STY_U_REVEAL+3]=2.0f32;
+  // well behind the front all of it, at and past it none (round the reveal's own centre, on x and on z)
+  #assert sty_blade_reveal(2.0f32,0.0f32-1.0f32,0.5f32,u[..])==1.0f32 && sty_blade_reveal(2.0f32+7.0f32,0.0f32-1.0f32,0.5f32,u[..])==1.0f32 && sty_blade_reveal(2.0f32,0.0f32-1.0f32-7.0f32,0.5f32,u[..])==1.0f32;
+  #assert sty_blade_reveal(2.0f32+10.5f32,0.0f32-1.0f32,0.5f32,u[..])==0.0f32 && sty_blade_reveal(2.0f32,0.0f32-1.0f32+10.5f32,0.5f32,u[..])==0.0f32 && sty_blade_reveal(0.0f32-8.5f32,0.0f32-1.0f32,0.5f32,u[..])==0.0f32;
+  // in the middle of the front: half revealed, three quarters of its height (it sprouts fast)
+  #assert abs(sty_blade_reveal(2.0f32+9.0f32,0.0f32-1.0f32,0.5f32,u[..])-0.75f32)<0.001f32;
+  // its own number moves it half an edge either way: an early blade is up where a late one is not yet
+  early:f32=sty_blade_reveal(2.0f32+9.0f32,0.0f32-1.0f32,0.0f32,u[..]); late:f32=sty_blade_reveal(2.0f32+9.0f32,0.0f32-1.0f32,1.0f32,u[..]);
+  #assert early>0.75f32 && late<0.75f32 && abs(early-sty_blade_reveal(2.0f32+8.5f32,0.0f32-1.0f32,0.5f32,u[..]))<0.0001f32 && abs(late-sty_blade_reveal(2.0f32+9.5f32,0.0f32-1.0f32,0.5f32,u[..]))<0.0001f32;
+  // a wider front moves a blade's own share with it
+  u[STY_U_REVEAL+3]=4.0f32; #assert abs(sty_blade_reveal(2.0f32+8.0f32,0.0f32-1.0f32,0.0f32,u[..])-sty_blade_reveal(2.0f32+7.0f32,0.0f32-1.0f32,0.5f32,u[..]))<0.0001f32;
+}
+#test "a mover parts the grass: blades by it lie lower and lean away from it, and beyond its radius they stand" {
+  u:[STY_UNIFORM_FLOATS]f32;
+  none:V3=sty_blade_part(1.0f32,2.0f32,0.4f32,u[..]); #assert none.x==0.0f32 && none.y==0.0f32 && none.z==0.4f32;
+  // (no radius is no mover, even for a blade rooted exactly where the mover's place is written)
+  u[STY_U_MOVER]=1.0f32; u[STY_U_MOVER+1]=2.0f32; same:V3=sty_blade_part(1.0f32,2.0f32,0.4f32,u[..]); #assert same.z==0.4f32 && same.x==0.0f32;
+  u[STY_U_MOVER]=3.0f32; u[STY_U_MOVER+1]=0.0f32-2.0f32; u[STY_U_MOVER+2]=0.8f32;
+  // beyond its radius: untouched
+  far:V3=sty_blade_part(3.0f32+0.9f32,0.0f32-2.0f32,0.4f32,u[..]); #assert far.x==0.0f32 && far.y==0.0f32 && far.z==0.4f32;
+  away:V3=sty_blade_part(3.0f32,0.0f32-2.0f32+5.0f32,0.4f32,u[..]); #assert away.z==0.4f32 && away.y==0.0f32;
+  // half way in, on its +x side: 0.725 of its height, pushed +x by 0.4 of that, not along z
+  east:V3=sty_blade_part(3.4f32,0.0f32-2.0f32,0.4f32,u[..]);
+  #assert abs(east.z-0.29f32)<0.0001f32 && abs(east.x-0.116f32)<0.0001f32 && abs(east.y)<0.0001f32;
+  // on its -z side it is pushed -z; on its -x side, -x: always away
+  north:V3=sty_blade_part(3.0f32,0.0f32-2.4f32,0.4f32,u[..]); #assert abs(north.y+0.116f32)<0.0001f32 && abs(north.x)<0.0001f32 && abs(north.z-0.29f32)<0.0001f32;
+  west:V3=sty_blade_part(2.6f32,0.0f32-2.0f32,0.4f32,u[..]); #assert abs(west.x+0.116f32)<0.0001f32;
+  // diagonally: along both, by the same rule
+  diag:V3=sty_blade_part(3.3f32,0.0f32-1.6f32,0.4f32,u[..]); #assert diag.x>0.0f32 && diag.y>0.0f32 && abs(diag.y/diag.x-4.0f32/3.0f32)<0.001f32 && abs(diag.z-0.4f32*(1.0f32-0.55f32*0.375f32))<0.0001f32;
+  // nearer, lower and further over; right at the mover it lies at 0.45 of its height
+  near_:V3=sty_blade_part(3.1f32,0.0f32-2.0f32,0.4f32,u[..]); #assert near_.z<east.z && near_.x>east.x;
+  on:V3=sty_blade_part(3.0f32,0.0f32-2.0f32,0.4f32,u[..]); #assert abs(on.z-0.18f32)<0.0001f32 && on.x==0.0f32 && on.y==0.0f32;
+  // very near, the push is bounded: no further than 0.8 of a blade's own kept height for each 0.05 m
+  close:V3=sty_blade_part(3.01f32,0.0f32-2.0f32,0.4f32,u[..]); #assert close.x>0.0f32 && close.x<0.8f32*close.z*0.01f32/0.05f32+0.0001f32 && abs(close.x-0.8f32*(1.0f32-0.01f32/0.8f32)*close.z*0.01f32/0.05f32)<0.0001f32;
+  // a taller blade is pushed further
+  tall:V3=sty_blade_part(3.4f32,0.0f32-2.0f32,0.8f32,u[..]); #assert abs(tall.x-0.232f32)<0.0001f32 && abs(tall.z-0.58f32)<0.0001f32;
+}
+#test "the wind carries a blade's tip downwind, more for a taller blade, in waves that pass; none with no wind" {
+  u:[STY_UNIFORM_FLOATS]f32;
+  still:V2=sty_blade_wind(4.0f32,7.0f32,0.4f32,u[..]); #assert still.x==0.0f32 && still.y==0.0f32;
+  u[STY_U_WIND]=1.0f32; u[STY_U_WIND+1]=0.0f32; u[STY_U_WIND+2]=0.3f32; u[STY_U_WIND+3]=3.0f32;
+  // blowing +x: never against the wind (its lean is half the bend, the wave at most the bend back), never across it
+  lo:f32=10.0f32; hi:f32=0.0f32-10.0f32;
+  for i:0..<200 {
+    b:V2=sty_blade_wind(cast(f32)i*0.37f32,cast(f32)i*0.11f32,0.4f32,u[..]);
+    #assert b.y==0.0f32 && b.x>=sin(0.0f32-0.15001f32)*0.4f32 && b.x<=sin(0.45001f32)*0.4f32;
+    lo=fmin(lo,b.x); hi=fmax(hi,b.x);
+  }
+  // the field is not bent as one: blades differ, and mostly lean downwind
+  #assert hi-lo>0.05f32 && hi>0.08f32 && lo+hi>0.0f32;
+  // exactly the engine's wave, gust and bend
+  here:V2=sty_blade_wind(4.0f32,7.0f32,0.4f32,u[..]);
+  theta:f32=metaverse_style_wind(4.0f32,metaverse_style_gust(4.0f32,7.0f32,0.0f32,1.0f32,0.0f32,3.0f32,0.04f32),0.0f32,0.3f32,12.0f32,3.0f32);
+  #assert abs(here.x-metaverse_style_bend(theta+0.15f32,0.4f32,1.0f32))<0.00001f32;
+  // a blade twice as tall is carried twice as far
+  twice:V2=sty_blade_wind(4.0f32,7.0f32,0.8f32,u[..]); #assert abs(twice.x-2.0f32*here.x)<0.00001f32;
+  // it moves with the clock: a second later the same blade is elsewhere, and the wave has gone 3 m downwind
+  u[STY_U_SIZE+2]=1.0f32; later:V2=sty_blade_wind(4.0f32,7.0f32,0.4f32,u[..]); moved:V2=sty_blade_wind(7.0f32,7.0f32,0.4f32,u[..]);
+  #assert abs(later.x-here.x)>0.001f32 && abs(moved.x-here.x)<0.0001f32;
+  // across z it blows along z; and along both by its unit way
+  u[STY_U_SIZE+2]=0.0f32; u[STY_U_WIND]=0.0f32; u[STY_U_WIND+1]=1.0f32;
+  south:V2=sty_blade_wind(7.0f32,4.0f32,0.4f32,u[..]); #assert south.x==0.0f32 && abs(south.y-metaverse_style_bend(metaverse_style_wind(4.0f32,metaverse_style_gust(7.0f32,4.0f32,0.0f32,0.0f32,1.0f32,3.0f32,0.04f32),0.0f32,0.3f32,12.0f32,3.0f32)+0.15f32,0.4f32,1.0f32))<0.00001f32 && abs(south.y)>0.0001f32;
+  u[STY_U_WIND]=0.6f32; u[STY_U_WIND+1]=0.8f32;
+  both:V2=sty_blade_wind(4.0f32,7.0f32,0.4f32,u[..]); #assert abs(both.y*0.6f32-both.x*0.8f32)<0.00001f32 && abs(both.x)>0.0001f32;
+  along:f32=4.0f32*0.6f32+7.0f32*0.8f32;
+  #assert abs(both.x-0.6f32*metaverse_style_bend(metaverse_style_wind(along,metaverse_style_gust(4.0f32,7.0f32,0.0f32,0.6f32,0.8f32,3.0f32,0.04f32),0.0f32,0.3f32,12.0f32,3.0f32)+0.15f32,0.4f32,1.0f32))<0.00001f32;
+  // a stronger wind bends it further; a faster one moves its waves
+  u[STY_U_WIND+2]=0.6f32; strong:V2=sty_blade_wind(4.0f32,7.0f32,0.4f32,u[..]); #assert abs(strong.x)>abs(both.x);
+  u[STY_U_WIND+2]=0.3f32; u[STY_U_WIND+3]=6.0f32; u[STY_U_SIZE+2]=1.0f32; fast:V2=sty_blade_wind(4.0f32,7.0f32,0.4f32,u[..]);
+  u[STY_U_WIND+3]=3.0f32; slow:V2=sty_blade_wind(4.0f32,7.0f32,0.4f32,u[..]); #assert abs(fast.x-slow.x)>0.0001f32;
 }

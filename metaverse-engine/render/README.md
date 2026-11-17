@@ -78,7 +78,11 @@ To use it in a world:
    floats.
 4. Each frame, fill the block with `stylized-frame.coax`: `sty_frame` (the
    picture, the clock, a `StyCamera` and a `StyLook`), `sty_shadow_box`,
-   `sty_ground_table`, `sty_path_add` and `sty_grass_field`.
+   `sty_ground_table`, `sty_path_add` and `sty_grass_field`. Optionally:
+   `sty_wind` (the wind that bends the blades), `sty_mover` (one mover they
+   part round), `sty_reveal` (grass that grows outward from a place) and
+   `sty_bare` (the graybox floor the reveal has not reached). A frame that
+   writes none of them draws as before.
 
 | What it draws | How |
 | --- | --- |
@@ -87,7 +91,8 @@ To use it in a world:
 | Shadows | `sty_shadow`: twelve taps of the sun's shadow map on a spiral. `sty_shadow_box` says which box of the world the map covers |
 | Haze | `sty_haze`: distance fades to the haze's colour, from `haze_start` metres, never more than `haze_most` |
 | Ground | `sty_ground`: grass, dirt paths with soft wandering edges (`sty_path_add`, at most `STY_PATHS`), many-sided flagstones where the ground table says paved (`sty_flags`), and a meadow that runs lush or dry in patches (`meadow_dry`, `meadow_shift`) |
-| Grass | `stylized_grass_vs`: one tapered blade a cell of the grass field, rooted on the ground table, facing the eye, swaying, and kept off paths, paving and bare ground (`blade`, `blade_wide`, `grass_cell`, `grass_reach`). Where the table's grass cover is above 1 the blades grow that much longer |
+| Grass | `stylized_grass_vs`: one tapered blade a cell of the grass field, rooted on the ground table, facing the eye, swaying, and kept off paths, paving and bare ground (`blade`, `blade_wide`, `grass_cell`, `grass_reach`). Where the table's grass cover is above 1 the blades grow that much longer. With `sty_wind` they bend in the engine's wind (`vegetation.coax`: one 12 m wave and its gusts); with `sty_mover` those near the mover lie lower and lean away from it |
+| Reveal | `sty_reveal(u, cx, cz, radius, edge)`: grass stands only behind a front `radius` metres from a centre (`metaverse_style_reveal`); blades sprout as it passes, and the ground ahead of it is the bare floor of `sty_bare`: a colour and a grid with lines a pixel wide at any distance (`sty_floor`). The caller moves the radius; an edge of 0 is no reveal |
 | Water | The water pass draws a world's wet parts after everything else, blended over it. `sty_river`: clear turquoise in the shallows and blue in the depths (from the ground table under the surface), pale ripples that wind downstream, foam along the shore and wherever the table's fourth field says the water churns (under a fall, round a rock). `sty_falls`: a waterfall's falling white streaks. Spray is soft puffs and a rainbow a band of the spectrum (`sty_wet`) |
 | Sky | `sty_sky`: zenith to horizon; a field of cloud (`cloud`, `cloud_scale`, `cloud_turn`; `cloud` 0 is none); and up to `STY_CUMULI` (six) heaped clouds placed by hand (`StyLook.cumulus`: where round the horizon, how high its flat base, half its width, its height), each crisp-edged, white above and blue-grey toward its base (`sty_cumulus`) |
 

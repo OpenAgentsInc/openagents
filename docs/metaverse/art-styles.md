@@ -596,6 +596,16 @@ the sky without a seam.
   blades' normals tilt toward the light by up to 20°.
 - **Parting**: blades within 0.7 m of a mover (the player, pets, NPCs, up to
   8 from a uniform list) lean away from it.
+- **Reveal** (grass that grows from a point): a field can spread outward
+  from a place, the way grass springs up round someone who has just arrived.
+  The frame carries a centre, how far the front has reached and how wide the
+  front is. Behind the front the grass stands and the ground is meadow; at the
+  front and beyond it there are no blades and the ground is the realm's bare
+  floor (a graybox plane with a grid). A blade sprouts as the front passes,
+  quickly at first (`1 − (1 − r)²` of its height for a reveal share `r`), each
+  a little early or late by its own hash, so the front is ragged and not a
+  line. The caller owns the clock: how long the spread takes, its easing and
+  how far "the horizon" is. A front width of 0 is no reveal.
 - **Where**: the realm gives a mask: no grass on paths, streets, paved
   squares, floors, water, under buildings or in plots it marks (a uniform
   of capsules and the path distance the shaders already compute).
@@ -620,6 +630,21 @@ the sky without a seam.
   path behind the shapes and an earth bank round the pond; its main pass
   costs 0.17 ms more at 1440×900 and 0.10 ms more on a 390×844 phone canvas
   (M-series, headless).
+- **Built** (November 16, the reveal): `render/shade/vegetation.coax` holds the
+  front (`metaverse_style_reveal(d, radius, edge)`: all of the grass an edge
+  behind the front, none at it or past it), the sprout (`_reveal_rise`) and the
+  parting's two numbers (`_part_push`, `_part_keep`: a parted blade's tip goes
+  0.8 of its height away from the mover and the blade keeps 0.45 of its height
+  at the mover). The stylized look (`render/shade/stylized.coax`) reads them
+  from its frame: `sty_reveal`, `sty_mover`, `sty_wind` and `sty_bare` in
+  `stylized-frame.coax` write the reveal, one mover, the wind and the bare
+  floor (its colour, its grid's square, the lines' light, a second grid every
+  N squares). Its grass now bends in the engine's wind and parts round the
+  mover, and its ground material is the bare floor ahead of the front
+  (`sty_floor`, `sty_floor_over`, `sty_grid_axis`: lines a pixel wide at any
+  distance that fade out once a square is under six pixels). A frame that
+  writes none of them draws as before. First used by gamebuilder.org's world:
+  the grass spreads from the character's feet to the horizon in five seconds.
 
 ### 9. Palette and tone
 

@@ -26,6 +26,17 @@
 //   STY_U_CUMULUS     STY_CUMULI heaped clouds, four floats each: where it stands round the horizon (radians,
 //                     0 along -z, turning toward +x), how high its flat base is (radians above the horizon),
 //                     half its width and its height (radians; 0: no cloud)
+//   STY_U_REVEAL      the grass's reveal (metaverse-engine/render/shade/vegetation.coax, metaverse_style_reveal):
+//                     its centre's x and z, how far its front has reached (m) and how wide the front is
+//                     (m; 0: no reveal, the whole field stands)
+//   STY_U_MOVER       one mover the grass parts round: its x and z, the parting's radius (m; 0: none),
+//                     one spare
+//   STY_U_WIND        the wind over the grass: the way it blows (x, z, a unit vector), its bend (radians;
+//                     0: the blades only sway a little, as before there was wind) and its speed (m/s)
+//   STY_U_BARE        the ground the reveal has not reached, a graybox floor: its colour, and the size of
+//                     its grid's squares (m; 0: no lines)
+//   STY_U_BARE_LINE   that grid's lines: their own light (r, g, b), and how many squares apart the
+//                     second, wider grid's lines are (0: none)
 
 STY_U_SIZE :: 0;
 STY_U_EYE :: 4;
@@ -51,7 +62,12 @@ STY_PATHS :: 12;
 STY_PATH_FLOATS :: 8;
 STY_U_CUMULUS :: 196;          // STY_U_PATH + STY_PATHS * STY_PATH_FLOATS
 STY_CUMULI :: 6;
-STY_UNIFORM_FLOATS :: 220;     // STY_U_CUMULUS + STY_CUMULI * 4
+STY_U_REVEAL :: 220;           // STY_U_CUMULUS + STY_CUMULI * 4
+STY_U_MOVER :: 224;
+STY_U_WIND :: 228;
+STY_U_BARE :: 232;
+STY_U_BARE_LINE :: 236;
+STY_UNIFORM_FLOATS :: 240;
 
 // The shadow map's bias: how far along its normal a surface is moved before it is looked up (m),
 // and how much nearer the sun it must be than what the map holds (a share of the map's depth).

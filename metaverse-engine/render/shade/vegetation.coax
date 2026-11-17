@@ -48,6 +48,26 @@ metaverse_style_segment :: (x:f32,z:f32,ax:f32,az:f32,bx:f32,bz:f32)->f32 #expor
 }
 // A mover parts the grass: a blade within `radius` (0.7 m) leans away, fully at the mover, by this share.
 metaverse_style_part :: (d:f32,radius:f32)->f32 #export_c #effects(all) {return st_sat(1.0f32-d/st_max(radius,0.001f32));}
+// ---- The reveal (art-styles.md 8, "Grass that grows from a point"): a field that spreads outward
+// from a place, the way grass springs up round someone who has just arrived. The caller owns the
+// clock: it moves the front's `radius` out as it likes (how long it takes, the easing, how far the
+// horizon is); this is only the shape of the front.
+// How much of the grass stands at distance d (metres) from the reveal's centre while the front has
+// reached `radius` and is `edge` metres wide: all of it `edge` behind the front, none at the front
+// or beyond it, rising smoothly between. An edge of 0 or less is no reveal: everything stands.
+metaverse_style_reveal :: (d:f32,radius:f32,edge:f32)->f32 #export_c #effects(all) {
+ if edge<=0.0f32 {return 1.0f32;}
+ return 1.0f32-metaverse_style_soft_step(radius-edge*0.5f32,edge*0.5f32,d);
+}
+// A blade's share of its height for a reveal share r (0 to 1): it sprouts quickly and settles, so
+// the front reads as grass rising and not as a line sweeping over grown grass: 1 - (1 - r)^2.
+metaverse_style_reveal_rise :: (r:f32)->f32 #export_c #effects(all) {k:=1.0f32-st_sat(r);return 1.0f32-k*k;}
+// How far a parted blade's tip is pushed along the way from the mover, as a share of its height,
+// for a parting share p (metaverse_style_part): none unparted, `most` (0.8) at the mover.
+metaverse_style_part_push :: (p:f32,most:f32)->f32 #export_c #effects(all) {return most*st_sat(p);}
+// And how much of its height a parted blade keeps: all of it unparted, `least` (0.45) at the mover,
+// so the grass lies down under feet.
+metaverse_style_part_keep :: (p:f32,least:f32)->f32 #export_c #effects(all) {return 1.0f32-(1.0f32-least)*st_sat(p);}
 // One channel of a blade's tip: the ground's colour lifted 15% and warmed (the brush stroke's lifted
 // end), red and green up, blue held.
 metaverse_style_tip :: (c:f32,ch:f32,lift:f32)->f32 #export_c #effects(all) {
@@ -140,4 +160,28 @@ metaverse_style_near_width :: (d:f32,reach:f32)->f32 #export_c #effects(all) {re
  #assert abs(metaverse_style_canopy_sway(-0.15f32,0.3f32,0.05f32,0.5f32)+0.0125f32)<0.00001f32;
  #assert metaverse_style_canopy_sway(0.9f32,0.3f32,0.05f32,2.0f32)==0.05f32;
  #assert metaverse_style_canopy_open(0.1f32,0.3f32)==1.0f32 && metaverse_style_canopy_open(0.3f32,0.3f32)==0.0f32 && metaverse_style_canopy_open(0.5f32,0.0f32)==0.0f32;
+}
+
+#test "the reveal: nothing at or past the front, everything an edge behind it, half way in the middle, and no reveal with no edge" {
+ #assert metaverse_style_reveal(10.0f32,10.0f32,2.0f32)==0.0f32 && metaverse_style_reveal(40.0f32,10.0f32,2.0f32)==0.0f32;
+ #assert metaverse_style_reveal(8.0f32,10.0f32,2.0f32)==1.0f32 && metaverse_style_reveal(0.0f32,10.0f32,2.0f32)==1.0f32;
+ #assert abs(metaverse_style_reveal(9.0f32,10.0f32,2.0f32)-0.5f32)<0.0001f32;
+ #assert metaverse_style_reveal(9.5f32,10.0f32,2.0f32)<0.5f32 && metaverse_style_reveal(8.5f32,10.0f32,2.0f32)>0.5f32;
+ // before it starts nothing stands, even at the centre
+ #assert metaverse_style_reveal(0.0f32,0.0f32,2.0f32)==0.0f32;
+ // the front moves with the radius, and its width is the edge
+ #assert metaverse_style_reveal(29.0f32,30.0f32,2.0f32)==metaverse_style_reveal(9.0f32,10.0f32,2.0f32);
+ #assert abs(metaverse_style_reveal(8.0f32,10.0f32,4.0f32)-0.5f32)<0.0001f32 && metaverse_style_reveal(6.0f32,10.0f32,4.0f32)==1.0f32;
+ // no edge: no reveal, whatever the radius
+ #assert metaverse_style_reveal(50.0f32,0.0f32,0.0f32)==1.0f32 && metaverse_style_reveal(50.0f32,10.0f32,0.0f32-1.0f32)==1.0f32;
+ // it never leaves 0..1 and never rises with distance
+ for i:0..<200 {d:=cast(f32)i*0.1f32; r:=metaverse_style_reveal(d,10.0f32,3.0f32); #assert r>=0.0f32 && r<=1.0f32 && r>=metaverse_style_reveal(d+0.1f32,10.0f32,3.0f32);}
+}
+#test "a revealed blade sprouts fast and settles; a parted blade is pushed 0.8 of its height and keeps 0.45 of it at the mover" {
+ #assert metaverse_style_reveal_rise(0.0f32)==0.0f32 && metaverse_style_reveal_rise(1.0f32)==1.0f32 && abs(metaverse_style_reveal_rise(0.5f32)-0.75f32)<0.0001f32;
+ #assert metaverse_style_reveal_rise(0.0f32-1.0f32)==0.0f32 && metaverse_style_reveal_rise(3.0f32)==1.0f32;
+ #assert metaverse_style_part_push(0.0f32,0.8f32)==0.0f32 && abs(metaverse_style_part_push(1.0f32,0.8f32)-0.8f32)<0.0001f32 && abs(metaverse_style_part_push(0.5f32,0.8f32)-0.4f32)<0.0001f32 && abs(metaverse_style_part_push(2.0f32,0.8f32)-0.8f32)<0.0001f32;
+ #assert metaverse_style_part_push(0.0f32-1.0f32,0.8f32)==0.0f32;
+ #assert metaverse_style_part_keep(0.0f32,0.45f32)==1.0f32 && abs(metaverse_style_part_keep(1.0f32,0.45f32)-0.45f32)<0.0001f32 && abs(metaverse_style_part_keep(0.5f32,0.45f32)-0.725f32)<0.0001f32;
+ #assert abs(metaverse_style_part_keep(4.0f32,0.45f32)-0.45f32)<0.0001f32 && metaverse_style_part_keep(0.0f32-1.0f32,0.45f32)==1.0f32;
 }

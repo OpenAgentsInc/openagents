@@ -439,7 +439,34 @@ distance fades, path masks and mover parting. The compatibility layer
 `metaverse/style.coax` loads it for existing shaders. Noise and clouds come from
 [`render/shade/sky.coax`](../render/shade/sky.coax). This is render-side integration;
 it does not migrate generation, keep-outs or streamed-cell ownership.
-The vegetation module's 92 root mutants and the sky module's 54 are killed.
+The vegetation module's 105 root mutants and the sky module's 54 are killed.
+
+### Grass that grows from a point
+
+A field can be revealed outward from a place. `metaverse_style_reveal(d, radius,
+edge)` is the share of the grass that stands `d` metres from the reveal's
+centre while its front has reached `radius` and is `edge` metres wide: 1 an
+edge behind the front, 0 at the front and beyond it, smooth between. An edge
+of 0 is no reveal. `metaverse_style_reveal_rise(r)` turns that share into a
+blade's height, `1 - (1 - r)^2`, so a blade sprouts quickly and settles.
+
+The primitive is only the shape of the front. The caller moves the radius: how
+long the spread takes, its easing and how far the horizon is are the realm's.
+
+```jai
+// each frame, with the realm's own clock
+sty_reveal(u, feet_x, feet_z, front_metres, edge_metres);   // stylized-frame.coax
+sty_bare(u, 0, 0, 0, 1, 0.17, 0.17, 0.17, 4);               // the floor it has not reached
+```
+
+The stylized look ([`render/shade/stylized.coax`](../render/shade/stylized.coax))
+reads the reveal from its frame. Its blades use the share (each early or late
+by its own hash, so the front is ragged), and its ground material becomes the
+bare floor ahead of the front: a plain colour with a grid whose lines stay a
+pixel wide at any distance (`sty_floor`, `sty_grid_axis`). The same frame
+carries one mover the blades part round (`sty_mover`, with
+`metaverse_style_part`, `_part_push` and `_part_keep`) and the wind that bends
+them (`sty_wind`). A frame that writes none of these draws as it did before.
 
 ## What exists today
 
