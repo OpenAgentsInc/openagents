@@ -13,6 +13,9 @@
 //   sty_mover        the one mover the grass parts round
 //   sty_wind         the wind that bends the blades
 //   sty_bare         the graybox floor the reveal has not reached: its colour and its grid
+//   sty_look_mix     a look between two looks: every number of it, a share of the way from one to the other
+//   sty_sunrise      the look at a share of a sunrise that ends as a day's look: pitch black, first light,
+//                    the sun's disc through the horizon where the caller says, golden light, the day
 //   sty_project      a world point on the screen, as the shaders place it (for checks and picking)
 //   coax/bin/coax test --library metaverse-engine/render/shade/stylized-frame.coax
 #module "metaverse.engine.render.stylized_frame";
@@ -46,6 +49,10 @@ StyLook :: struct {
   path_soft: f32 = 0.35;             // how soft a dirt path's edge is, metres
   meadow_dry: f32 = 0.5;             // the grass: 0 lush deep green, 1 dry olive yellow
   meadow_shift: f32 = 0.0;           // its patches of greener and drier grass, moved this many metres
+  // The sun in the sky. All 0 by default: no disc, no glow, daylight clouds, as before they were here.
+  sun_disc: f32 = 0.0;               // the disc's radius, radians (0.03 is a big painted sun; 0: none)
+  glow_r: f32 = 0.0; glow_g: f32 = 0.0; glow_b: f32 = 0.0;   // the glow low in the sky toward the sun: dawn's colour
+  cloud_dim: f32 = 0.0;              // how much of the clouds' daylight is gone: 0 white, 1 black
 }
 
 // A camera: where it is, the way it looks (yaw 0 looks along -z and turns toward +x; pitch up) and
@@ -74,7 +81,7 @@ sty_frame :: (u: [] f32, width: f32, height: f32, time: f32, c: StyCamera, look:
   sty_put3(u, STY_U_EYE, c.x, c.y, c.z, focal);
   f := sty_forward(c); r := sty_right(c); up := sty_up(c);
   sx := 2 * focal / width; sy := 2 * focal / height; k := c.far / (c.far - c.near);
-  er := r[0] * c.x + r[1] * c.y + r[2] * c.z; eu := up[0] * c.x + up[1] * c.y + up[2] * c.z; ef := f[0] * c.x + f[1] * c.y + f[2] * c.z;
+  er := r[0] * c.x + r[1] * c.y + r[2] * c.z; eu := up[0] * c.x + up[1] * c.y + up[2] * c.z; ef := f[0] * c.x + f[1] * c.y + f[2] * c.z; // mutant: equivalent (for the sign before `r[1] * c.y`: the eye's right has no height, r[1] is always 0)
   sty_put3(u, STY_U_VIEW, r[0] * sx, r[1] * sx, r[2] * sx, -er * sx);
   sty_put3(u, STY_U_VIEW + 4, up[0] * sy, up[1] * sy, up[2] * sy, -eu * sy);
   sty_put3(u, STY_U_VIEW + 8, f[0] * k, f[1] * k, f[2] * k, (-ef - c.near) * k);
@@ -83,18 +90,150 @@ sty_frame :: (u: [] f32, width: f32, height: f32, time: f32, c: StyCamera, look:
   if sl < 0.0001 { sl = 1; }
   sty_put3(u, STY_U_SUN, look.sun_x / sl, look.sun_y / sl, look.sun_z / sl, look.shadow);
   sty_put3(u, STY_U_SUN_COLOUR, look.sun_r, look.sun_g, look.sun_b, look.band);
-  sty_put3(u, STY_U_SKY_LIGHT, look.sky_r, look.sky_g, look.sky_b, 0);
+  sty_put3(u, STY_U_SKY_LIGHT, look.sky_r, look.sky_g, look.sky_b, look.cloud_dim);
   sty_put3(u, STY_U_GROUND_LIGHT, look.ground_r, look.ground_g, look.ground_b, 0);
   sty_put3(u, STY_U_HAZE, look.haze_r, look.haze_g, look.haze_b, look.haze);
-  sty_put3(u, STY_U_HAZE_INFO, look.haze_start, look.haze_most, look.cloud_turn, 0);
+  sty_put3(u, STY_U_HAZE_INFO, look.haze_start, look.haze_most, look.cloud_turn, look.sun_disc);
   sty_put3(u, STY_U_ZENITH, look.zenith_r, look.zenith_g, look.zenith_b, look.cloud);
   sty_put3(u, STY_U_HORIZON, look.horizon_r, look.horizon_g, look.horizon_b, look.cloud_scale);
-  sty_put3(u, STY_U_RIGHT, r[0], r[1], r[2], 0);
-  sty_put3(u, STY_U_UP, up[0], up[1], up[2], 0);
-  sty_put3(u, STY_U_FORWARD, f[0], f[1], f[2], 0);
+  sty_put3(u, STY_U_RIGHT, r[0], r[1], r[2], look.glow_r);
+  sty_put3(u, STY_U_UP, up[0], up[1], up[2], look.glow_g);
+  sty_put3(u, STY_U_FORWARD, f[0], f[1], f[2], look.glow_b);
   u[STY_U_PATH_INFO + 1] = look.path_soft; u[STY_U_PATH_INFO + 2] = look.meadow_dry; u[STY_U_PATH_INFO + 3] = look.meadow_shift;
   for i: 0..<STY_CUMULI * 4 { u[STY_U_CUMULUS + i] = look.cumulus[i]; }
   return true;
+}
+
+// ---- a look between looks, and a sunrise
+sty_mixf :: (a: f32, b: f32, t: f32) -> f32 { return a + (b - a) * t; }
+// The look a share `t` of the way from `a` to `b`: every number of it, straight between the two (0 is
+// `a`, 1 is `b`; a share outside 0 to 1 is held at the nearer end, and one that is not a number is `a`).
+// The way to the sun is mixed as it is written, so mix two suns that are not opposite each other.
+sty_look_mix :: (a: StyLook, b: StyLook, t: f32) -> StyLook {
+  if !(t > 0) { return a; }
+  if t >= 1 { return b; }
+  o: StyLook;
+  o.sun_x = sty_mixf(a.sun_x, b.sun_x, t); o.sun_y = sty_mixf(a.sun_y, b.sun_y, t); o.sun_z = sty_mixf(a.sun_z, b.sun_z, t);
+  o.shadow = sty_mixf(a.shadow, b.shadow, t);
+  o.sun_r = sty_mixf(a.sun_r, b.sun_r, t); o.sun_g = sty_mixf(a.sun_g, b.sun_g, t); o.sun_b = sty_mixf(a.sun_b, b.sun_b, t);
+  o.band = sty_mixf(a.band, b.band, t);
+  o.sky_r = sty_mixf(a.sky_r, b.sky_r, t); o.sky_g = sty_mixf(a.sky_g, b.sky_g, t); o.sky_b = sty_mixf(a.sky_b, b.sky_b, t);
+  o.ground_r = sty_mixf(a.ground_r, b.ground_r, t); o.ground_g = sty_mixf(a.ground_g, b.ground_g, t); o.ground_b = sty_mixf(a.ground_b, b.ground_b, t);
+  o.haze_r = sty_mixf(a.haze_r, b.haze_r, t); o.haze_g = sty_mixf(a.haze_g, b.haze_g, t); o.haze_b = sty_mixf(a.haze_b, b.haze_b, t);
+  o.haze = sty_mixf(a.haze, b.haze, t); o.haze_start = sty_mixf(a.haze_start, b.haze_start, t); o.haze_most = sty_mixf(a.haze_most, b.haze_most, t);
+  o.zenith_r = sty_mixf(a.zenith_r, b.zenith_r, t); o.zenith_g = sty_mixf(a.zenith_g, b.zenith_g, t); o.zenith_b = sty_mixf(a.zenith_b, b.zenith_b, t);
+  o.horizon_r = sty_mixf(a.horizon_r, b.horizon_r, t); o.horizon_g = sty_mixf(a.horizon_g, b.horizon_g, t); o.horizon_b = sty_mixf(a.horizon_b, b.horizon_b, t);
+  o.cloud = sty_mixf(a.cloud, b.cloud, t); o.cloud_scale = sty_mixf(a.cloud_scale, b.cloud_scale, t); o.cloud_turn = sty_mixf(a.cloud_turn, b.cloud_turn, t);
+  for i: 0..<STY_CUMULI * 4 { o.cumulus[i] = sty_mixf(a.cumulus[i], b.cumulus[i], t); }
+  o.blade = sty_mixf(a.blade, b.blade, t); o.blade_wide = sty_mixf(a.blade_wide, b.blade_wide, t);
+  o.grass_cell = sty_mixf(a.grass_cell, b.grass_cell, t); o.grass_reach = sty_mixf(a.grass_reach, b.grass_reach, t);
+  o.path_soft = sty_mixf(a.path_soft, b.path_soft, t); o.meadow_dry = sty_mixf(a.meadow_dry, b.meadow_dry, t); o.meadow_shift = sty_mixf(a.meadow_shift, b.meadow_shift, t);
+  o.sun_disc = sty_mixf(a.sun_disc, b.sun_disc, t);
+  o.glow_r = sty_mixf(a.glow_r, b.glow_r, t); o.glow_g = sty_mixf(a.glow_g, b.glow_g, t); o.glow_b = sty_mixf(a.glow_b, b.glow_b, t);
+  o.cloud_dim = sty_mixf(a.cloud_dim, b.cloud_dim, t);
+  return o;
+}
+
+// A sunrise, as shares of its length: pitch black at 0, first light, the middle of the sun's disc on
+// the horizon, golden light, and the day at 1. The caller owns the clock: how long a sunrise is and
+// how its share moves with time.
+STY_SUNRISE_FIRST :: 0.15;
+STY_SUNRISE_HORIZON :: 0.42;
+STY_SUNRISE_GOLDEN :: 0.62;
+// How high the sun is at those shares, as the sine of its height: 14 degrees under the horizon in the
+// black, 6 under at first light, on it, 7 degrees up in golden light (or the day's own height, when
+// that is lower), straight between them.
+STY_SUNRISE_UNDER :: -0.2419219;
+STY_SUNRISE_FIRST_UNDER :: -0.1045285;
+STY_SUNRISE_GOLDEN_UP :: 0.1218693;
+sty_sunrise_height :: (t: f32, day_up: f32) -> f32 {
+  golden: f32 = ifx day_up < STY_SUNRISE_GOLDEN_UP then day_up else STY_SUNRISE_GOLDEN_UP; // mutant: equivalent (when the two are equal either is the same number)
+  if !(t > 0) { return STY_SUNRISE_UNDER; } // mutant: equivalent (a share of exactly 0 is STY_SUNRISE_UNDER by the next line too: none of the way from it)
+  if t < STY_SUNRISE_FIRST { return sty_mixf(STY_SUNRISE_UNDER, STY_SUNRISE_FIRST_UNDER, t / STY_SUNRISE_FIRST); } // mutant: equivalent (exactly at first light both lines give STY_SUNRISE_FIRST_UNDER: they meet there)
+  if t < STY_SUNRISE_HORIZON { return sty_mixf(STY_SUNRISE_FIRST_UNDER, 0, (t - STY_SUNRISE_FIRST) / (STY_SUNRISE_HORIZON - STY_SUNRISE_FIRST)); }
+  if t < STY_SUNRISE_GOLDEN { return sty_mixf(0, golden, (t - STY_SUNRISE_HORIZON) / (STY_SUNRISE_GOLDEN - STY_SUNRISE_HORIZON)); }
+  if t < 1 { return sty_mixf(golden, day_up, (t - STY_SUNRISE_GOLDEN) / (1 - STY_SUNRISE_GOLDEN)); } // mutant: equivalent (exactly at 1 this line gives the day's height too: all the way to it)
+  return day_up;
+}
+// The sunrise's own looks before the day: 0 the black, 1 first light, 2 the sun on the horizon, 3
+// golden light. Each is `day` (its haze's reach, its clouds, its grass, its disc) with the sunrise's
+// light and colours: nothing at all in the black; a deep blue sky and a little cold light at first
+// light; a rose horizon under a blue zenith, an orange glow and the first red sun on the horizon; a
+// warm low sun, a gold horizon and the clouds nearly white in golden light. The haze is the
+// horizon's colour, so far ground meets the sky without a line.
+sty_sunrise_key :: (day: StyLook, i: int) -> StyLook {
+  k := day;
+  k.sun_r = 0; k.sun_g = 0; k.sun_b = 0;
+  k.sky_r = 0; k.sky_g = 0; k.sky_b = 0;
+  k.ground_r = 0; k.ground_g = 0; k.ground_b = 0;
+  k.zenith_r = 0; k.zenith_g = 0; k.zenith_b = 0;
+  k.horizon_r = 0; k.horizon_g = 0; k.horizon_b = 0;
+  k.glow_r = 0; k.glow_g = 0; k.glow_b = 0;
+  k.cloud_dim = 1;
+  if i == 1 {
+    k.sky_r = 0.035; k.sky_g = 0.05; k.sky_b = 0.10;
+    k.ground_r = 0.01; k.ground_g = 0.012; k.ground_b = 0.02;
+    k.zenith_r = 0.008; k.zenith_g = 0.016; k.zenith_b = 0.05;
+    k.horizon_r = 0.05; k.horizon_g = 0.08; k.horizon_b = 0.17;
+    k.glow_r = 0.16; k.glow_g = 0.07; k.glow_b = 0.05;
+    k.cloud_dim = 0.93;
+  }
+  if i == 2 {
+    k.sun_r = 0.30; k.sun_g = 0.13; k.sun_b = 0.05;
+    k.sky_r = 0.13; k.sky_g = 0.15; k.sky_b = 0.24;
+    k.ground_r = 0.05; k.ground_g = 0.045; k.ground_b = 0.05;
+    k.zenith_r = 0.07; k.zenith_g = 0.13; k.zenith_b = 0.33;
+    k.horizon_r = 0.52; k.horizon_g = 0.40; k.horizon_b = 0.42;
+    k.glow_r = 0.95; k.glow_g = 0.42; k.glow_b = 0.12;
+    k.cloud_dim = 0.6;
+  }
+  if i == 3 {
+    k.sun_r = 0.86; k.sun_g = 0.52; k.sun_b = 0.26;
+    k.sky_r = 0.22; k.sky_g = 0.27; k.sky_b = 0.34;
+    k.ground_r = 0.14; k.ground_g = 0.12; k.ground_b = 0.10;
+    k.zenith_r = 0.22; k.zenith_g = 0.42; k.zenith_b = 0.74;
+    k.horizon_r = 0.90; k.horizon_g = 0.74; k.horizon_b = 0.60;
+    k.glow_r = 0.55; k.glow_g = 0.26; k.glow_b = 0.08;
+    k.cloud_dim = 0.2;
+  }
+  k.haze_r = k.horizon_r; k.haze_g = k.horizon_g; k.haze_b = k.horizon_b;
+  return k;
+}
+// The look at share `t` of a sunrise that ends as `day`: pitch black at 0 (no light, no sky, no
+// haze, no cloud to be seen), then first light, the sun's disc through the horizon, golden light and
+// long shadows, and `day` itself, to the bit, at 1 and after (and for a share that is not a number).
+// The sun comes up along the ground's (rise_x, rise_z) (it need not be a unit vector; none at all is
+// the day's own bearing) and turns to the day's bearing as it climbs to the day's height. Every
+// colour and light between runs straight from one of the sunrise's looks to the next
+// (sty_sunrise_key), so nothing jumps.
+sty_sunrise :: (day: StyLook, t: f32, rise_x: f32, rise_z: f32) -> StyLook {
+  if !(t < 1) { return day; }
+  o: StyLook;
+  // (each of these four comparisons) mutant: equivalent (at a share exactly on a look's own share both sides give that look: sty_look_mix holds its ends, 0 the first look and 1 the second)
+  if !(t > 0) { o = sty_sunrise_key(day, 0); } // mutant: equivalent (see above)
+  else if t < STY_SUNRISE_FIRST { o = sty_look_mix(sty_sunrise_key(day, 0), sty_sunrise_key(day, 1), t / STY_SUNRISE_FIRST); } // mutant: equivalent (see above)
+  else if t < STY_SUNRISE_HORIZON { o = sty_look_mix(sty_sunrise_key(day, 1), sty_sunrise_key(day, 2), (t - STY_SUNRISE_FIRST) / (STY_SUNRISE_HORIZON - STY_SUNRISE_FIRST)); } // mutant: equivalent (see above)
+  else if t < STY_SUNRISE_GOLDEN { o = sty_look_mix(sty_sunrise_key(day, 2), sty_sunrise_key(day, 3), (t - STY_SUNRISE_HORIZON) / (STY_SUNRISE_GOLDEN - STY_SUNRISE_HORIZON)); } // mutant: equivalent (see above)
+  else { o = sty_look_mix(sty_sunrise_key(day, 3), day, (t - STY_SUNRISE_GOLDEN) / (1 - STY_SUNRISE_GOLDEN)); }
+  // the day's sun: how high it stands, and its bearing along the ground
+  flat := sqrt(day.sun_x * day.sun_x + day.sun_z * day.sun_z);
+  whole := sqrt(flat * flat + day.sun_y * day.sun_y);
+  day_up: f32 = ifx whole > 0.0001 then day.sun_y / whole else 1.0f32;
+  dx: f32 = 0; dz: f32 = -1;
+  if flat > 0.0001 { dx = day.sun_x / flat; dz = day.sun_z / flat; }
+  rise := sqrt(rise_x * rise_x + rise_z * rise_z);
+  rx := dx; rz := dz;
+  if rise > 0.0001 { rx = rise_x / rise; rz = rise_z / rise; }
+  up := sty_sunrise_height(t, day_up);
+  // it turns from where it rose to the day's bearing as it climbs, slowly at both ends
+  w: f32 = ifx up > 0 && day_up > 0.0001 then up / day_up else 0.0f32; // mutant: equivalent (for `up > 0`: on the horizon exactly, 0 over the day's height is the 0 the other side gives)
+  w = w * w * (3 - 2 * w);
+  bx := sty_mixf(rx, dx, w); bz := sty_mixf(rz, dz, w);
+  bl := sqrt(bx * bx + bz * bz);
+  if bl < 0.0001 { bx = rx; bz = rz; bl = 1; }
+  along := sqrt(ifx up * up < 1 then 1 - up * up else 0.0f32); // mutant: equivalent (straight overhead, 1 - 1 is the 0 the other side gives)
+  o.sun_x = bx / bl * along; o.sun_y = up; o.sun_z = bz / bl * along;
+  return o;
 }
 
 // The box the sun's shadow map covers: about (cx, cy, cz), `radius` across each way and `depth`
@@ -256,4 +395,222 @@ sty_project :: (u: [] f32, x: f32, y: f32, z: f32) -> StyOnScreen {
   #assert sty_bare(u[..], 0, 0, 0, 0, 0, 0, 0, 0) && u[STY_U_BARE + 3] == 0;
   short: [STY_UNIFORM_FLOATS - 1] f32;
   #assert !sty_reveal(short[..], 0, 0, 1, 1) && !sty_mover(short[..], 0, 0, 1) && !sty_wind(short[..], 1, 0, 0.3, 3) && !sty_bare(short[..], 0, 0, 0, 1, 1, 1, 1, 4);
+}
+
+#test "a look between two looks is every number a share of the way, held at its ends" {
+  a: StyLook; b: StyLook;
+  // every number of `b` is its own distance from `a`'s
+  b.sun_x = a.sun_x + 1; b.sun_y = a.sun_y + 2; b.sun_z = a.sun_z + 3; b.shadow = a.shadow + 4;
+  b.sun_r = a.sun_r + 5; b.sun_g = a.sun_g + 6; b.sun_b = a.sun_b + 7; b.band = a.band + 8;
+  b.sky_r = a.sky_r + 9; b.sky_g = a.sky_g + 10; b.sky_b = a.sky_b + 11;
+  b.ground_r = a.ground_r + 12; b.ground_g = a.ground_g + 13; b.ground_b = a.ground_b + 14;
+  b.haze_r = a.haze_r + 15; b.haze_g = a.haze_g + 16; b.haze_b = a.haze_b + 17;
+  b.haze = a.haze + 18; b.haze_start = a.haze_start + 19; b.haze_most = a.haze_most + 20;
+  b.zenith_r = a.zenith_r + 21; b.zenith_g = a.zenith_g + 22; b.zenith_b = a.zenith_b + 23;
+  b.horizon_r = a.horizon_r + 24; b.horizon_g = a.horizon_g + 25; b.horizon_b = a.horizon_b + 26;
+  b.cloud = a.cloud + 27; b.cloud_scale = a.cloud_scale + 28; b.cloud_turn = a.cloud_turn + 29;
+  b.blade = a.blade + 30; b.blade_wide = a.blade_wide + 31; b.grass_cell = a.grass_cell + 32; b.grass_reach = a.grass_reach + 33;
+  b.path_soft = a.path_soft + 34; b.meadow_dry = a.meadow_dry + 35; b.meadow_shift = a.meadow_shift + 36;
+  b.sun_disc = a.sun_disc + 37; b.glow_r = a.glow_r + 38; b.glow_g = a.glow_g + 39; b.glow_b = a.glow_b + 40; b.cloud_dim = a.cloud_dim + 41;
+  for i: 0..<STY_CUMULI * 4 { a.cumulus[i] = cast(f32) i; b.cumulus[i] = cast(f32) i + 42 + cast(f32) i; }
+  m := sty_look_mix(a, b, 0.25);
+  e: f32 = 0.0001;
+  #assert abs(m.sun_x - a.sun_x - 0.25) < e && abs(m.sun_y - a.sun_y - 0.5) < e && abs(m.sun_z - a.sun_z - 0.75) < e && abs(m.shadow - a.shadow - 1) < e;
+  #assert abs(m.sun_r - a.sun_r - 1.25) < e && abs(m.sun_g - a.sun_g - 1.5) < e && abs(m.sun_b - a.sun_b - 1.75) < e && abs(m.band - a.band - 2) < e;
+  #assert abs(m.sky_r - a.sky_r - 2.25) < e && abs(m.sky_g - a.sky_g - 2.5) < e && abs(m.sky_b - a.sky_b - 2.75) < e;
+  #assert abs(m.ground_r - a.ground_r - 3) < e && abs(m.ground_g - a.ground_g - 3.25) < e && abs(m.ground_b - a.ground_b - 3.5) < e;
+  #assert abs(m.haze_r - a.haze_r - 3.75) < e && abs(m.haze_g - a.haze_g - 4) < e && abs(m.haze_b - a.haze_b - 4.25) < e;
+  #assert abs(m.haze - a.haze - 4.5) < e && abs(m.haze_start - a.haze_start - 4.75) < e && abs(m.haze_most - a.haze_most - 5) < e;
+  #assert abs(m.zenith_r - a.zenith_r - 5.25) < e && abs(m.zenith_g - a.zenith_g - 5.5) < e && abs(m.zenith_b - a.zenith_b - 5.75) < e;
+  #assert abs(m.horizon_r - a.horizon_r - 6) < e && abs(m.horizon_g - a.horizon_g - 6.25) < e && abs(m.horizon_b - a.horizon_b - 6.5) < e;
+  #assert abs(m.cloud - a.cloud - 6.75) < e && abs(m.cloud_scale - a.cloud_scale - 7) < e && abs(m.cloud_turn - a.cloud_turn - 7.25) < e;
+  #assert abs(m.blade - a.blade - 7.5) < e && abs(m.blade_wide - a.blade_wide - 7.75) < e && abs(m.grass_cell - a.grass_cell - 8) < e && abs(m.grass_reach - a.grass_reach - 8.25) < e;
+  #assert abs(m.path_soft - a.path_soft - 8.5) < e && abs(m.meadow_dry - a.meadow_dry - 8.75) < e && abs(m.meadow_shift - a.meadow_shift - 9) < e;
+  #assert abs(m.sun_disc - 9.25) < e && abs(m.glow_r - 9.5) < e && abs(m.glow_g - 9.75) < e && abs(m.glow_b - 10) < e && abs(m.cloud_dim - 10.25) < e;
+  for i: 0..<STY_CUMULI * 4 { #assert abs(m.cumulus[i] - (cast(f32) i + (42 + cast(f32) i) * 0.25)) < e; }
+  // held at its ends, and a share that is not a number is the first look
+  nan: f32 = 0; nan = nan / nan;
+  first := sty_look_mix(a, b, 0); under := sty_look_mix(a, b, -3); last := sty_look_mix(a, b, 1); over := sty_look_mix(a, b, 7); bad := sty_look_mix(a, b, nan);
+  #assert first.glow_b == a.glow_b && first.haze == a.haze && under.haze == a.haze && under.cumulus[5] == 5 && bad.haze == a.haze && bad.sun_x == a.sun_x;
+  #assert last.glow_b == b.glow_b && last.haze == b.haze && over.haze == b.haze && over.cumulus[5] == b.cumulus[5];
+  // a share just inside an end is just inside it
+  near := sty_look_mix(a, b, 0.999); #assert near.haze < b.haze && near.haze > b.haze - 0.05;
+  #assert sty_mixf(2, 6, 0.25) == 3;
+}
+#test "the sun in the sky goes where the shaders read it, and a look that names none writes none" {
+  u: [STY_UNIFORM_FLOATS] f32; c: StyCamera; look: StyLook;
+  for i: 0..<STY_UNIFORM_FLOATS { u[i] = 9; }
+  #assert sty_frame(u[..], 800, 600, 0, c, look);
+  #assert u[STY_U_SUN_DISC] == 0 && u[STY_U_GLOW_R] == 0 && u[STY_U_GLOW_G] == 0 && u[STY_U_GLOW_B] == 0 && u[STY_U_CLOUD_DIM] == 0;
+  look.sun_disc = 0.03; look.glow_r = 0.9; look.glow_g = 0.4; look.glow_b = 0.1; look.cloud_dim = 0.6;
+  #assert sty_frame(u[..], 800, 600, 0, c, look);
+  #assert u[STY_U_SUN_DISC] == 0.03 && u[STY_U_GLOW_R] == 0.9 && u[STY_U_GLOW_G] == 0.4 && u[STY_U_GLOW_B] == 0.1 && u[STY_U_CLOUD_DIM] == 0.6;
+  // they ride in the block's spare floats: beside the haze, the eye's axes and the sky's light, none moved
+  #assert STY_U_SUN_DISC == STY_U_HAZE_INFO + 3 && STY_U_GLOW_R == STY_U_RIGHT + 3 && STY_U_GLOW_G == STY_U_UP + 3 && STY_U_GLOW_B == STY_U_FORWARD + 3 && STY_U_CLOUD_DIM == STY_U_SKY_LIGHT + 3;
+  #assert u[STY_U_HAZE_INFO + 2] == look.cloud_turn && u[STY_U_RIGHT] == 1 && u[STY_U_SKY_LIGHT + 2] == look.sky_b && STY_UNIFORM_FLOATS == 240;
+}
+#test "a sunrise is pitch black, then first light, the sun through the horizon, golden light, and the day to the bit" {
+  day: StyLook; day.sun_disc = 0.03; day.cloud = 0.4;
+  day.sun_x = 0.5; day.sun_y = 0.6; day.sun_z = -0.6;
+  // the black: no light from anywhere, no sky, no haze colour, clouds dark, the sun well under the ground
+  n := sty_sunrise(day, 0, 0, -1);
+  #assert n.sun_r == 0 && n.sun_g == 0 && n.sun_b == 0 && n.sky_r == 0 && n.sky_g == 0 && n.sky_b == 0 && n.ground_r == 0 && n.ground_g == 0 && n.ground_b == 0;
+  #assert n.zenith_r == 0 && n.zenith_g == 0 && n.zenith_b == 0 && n.horizon_r == 0 && n.horizon_g == 0 && n.horizon_b == 0 && n.haze_r == 0 && n.haze_g == 0 && n.haze_b == 0;
+  #assert n.glow_r == 0 && n.glow_g == 0 && n.glow_b == 0 && n.cloud_dim == 1 && abs(n.sun_y - STY_SUNRISE_UNDER) < 0.00001;
+  // what is not light is the day's from the start: the haze's reach, the clouds, the grass, the disc
+  #assert n.haze == day.haze && n.haze_start == day.haze_start && n.cloud == 0.4 && n.blade == day.blade && n.sun_disc == 0.03 && n.shadow == day.shadow && n.band == day.band;
+  before := sty_sunrise(day, -2, 0, -1); #assert before.zenith_b == 0 && before.sun_y == n.sun_y && before.cloud_dim == 1;
+  // the day, to the bit, at the end, after it, and for a share that is not a number
+  nan: f32 = 0; nan = nan / nan;
+  d := sty_sunrise(day, 1, 0, -1); late := sty_sunrise(day, 5, 0, -1); bad := sty_sunrise(day, nan, 0, -1);
+  #assert d.sun_x == 0.5 && d.sun_y == 0.6 && d.sun_z == -0.6 && d.zenith_b == day.zenith_b && d.sun_r == day.sun_r && d.cloud_dim == 0 && d.glow_r == 0;
+  #assert late.sun_x == 0.5 && late.zenith_b == day.zenith_b && bad.sun_x == 0.5 && bad.sun_r == day.sun_r;
+  // first light: a deep blue sky, cold light from above, no sun yet, the sun 6 degrees under
+  f := sty_sunrise(day, STY_SUNRISE_FIRST, 0, -1);
+  #assert f.zenith_b > f.zenith_r * 4 && f.horizon_b > f.zenith_b && f.sky_b > f.sky_r && f.sky_b > 0.05 && f.sun_r == 0 && abs(f.sun_y - STY_SUNRISE_FIRST_UNDER) < 0.00001;
+  #assert abs(f.sky_r - 0.035) < 0.00001 && abs(f.sky_g - 0.05) < 0.00001 && abs(f.ground_r - 0.01) < 0.00001 && abs(f.ground_g - 0.012) < 0.00001 && abs(f.ground_b - 0.02) < 0.00001;
+  #assert abs(f.zenith_r - 0.008) < 0.00001 && abs(f.zenith_g - 0.016) < 0.00001 && abs(f.horizon_r - 0.05) < 0.00001 && abs(f.horizon_g - 0.08) < 0.00001 && abs(f.glow_r - 0.16) < 0.00001 && abs(f.glow_g - 0.07) < 0.00001 && abs(f.glow_b - 0.05) < 0.00001 && abs(f.cloud_dim - 0.93) < 0.00001;
+  // halfway to it from the black is half of it
+  h := sty_sunrise(day, STY_SUNRISE_FIRST * 0.5, 0, -1); #assert abs(h.horizon_b - f.horizon_b * 0.5) < 0.00001 && abs(h.sun_y - (STY_SUNRISE_UNDER + STY_SUNRISE_FIRST_UNDER) * 0.5) < 0.00001;
+  // the sun on the horizon, dead along the way it rises: a warm glow, a rose horizon under a blue zenith, the first red light
+  r := sty_sunrise(day, STY_SUNRISE_HORIZON, 0, -1);
+  #assert abs(r.sun_y) < 0.00001 && abs(r.sun_x) < 0.00001 && abs(r.sun_z + 1) < 0.00001;
+  #assert r.glow_r > 0.9 && r.glow_r > r.glow_g * 2 && r.glow_g > r.glow_b * 2 && r.horizon_r > r.horizon_b && r.zenith_b > r.zenith_r * 3 && r.sun_r > r.sun_b * 4 && r.sun_r > 0.2 && r.sun_r < 0.4;
+  #assert abs(r.sun_g - 0.13) < 0.00001 && abs(r.sky_r - 0.13) < 0.00001 && abs(r.sky_g - 0.15) < 0.00001 && abs(r.sky_b - 0.24) < 0.00001 && abs(r.ground_r - 0.05) < 0.00001 && abs(r.ground_g - 0.045) < 0.00001 && abs(r.ground_b - 0.05) < 0.00001;
+  #assert abs(r.zenith_r - 0.07) < 0.00001 && abs(r.zenith_g - 0.13) < 0.00001 && abs(r.horizon_g - 0.40) < 0.00001 && abs(r.horizon_b - 0.42) < 0.00001 && abs(r.cloud_dim - 0.6) < 0.00001;
+  // between first light and the horizon it is between them
+  q := sty_sunrise(day, (STY_SUNRISE_FIRST + STY_SUNRISE_HORIZON) * 0.5, 0, -1);
+  #assert abs(q.glow_r - (f.glow_r + r.glow_r) * 0.5) < 0.0001 && abs(q.sun_y - STY_SUNRISE_FIRST_UNDER * 0.5) < 0.0001 && abs(q.sun_z + sqrt(1 - q.sun_y * q.sun_y)) < 0.0001;
+  // golden light: the sun 7 degrees up and strong and warm, the clouds nearly white, still near where it rose
+  g := sty_sunrise(day, STY_SUNRISE_GOLDEN, 0, -1);
+  #assert abs(g.sun_y - STY_SUNRISE_GOLDEN_UP) < 0.00001 && g.sun_r > 0.8 && g.sun_r > g.sun_b * 3 && g.cloud_dim < 0.25 && g.zenith_b > 0.7 && g.sun_z < -0.95 && g.sun_x > 0 && g.sun_x < 0.1;
+  #assert abs(g.sun_g - 0.52) < 0.00001 && abs(g.sky_r - 0.22) < 0.00001 && abs(g.sky_g - 0.27) < 0.00001 && abs(g.sky_b - 0.34) < 0.00001 && abs(g.ground_r - 0.14) < 0.00001 && abs(g.ground_g - 0.12) < 0.00001 && abs(g.ground_b - 0.10) < 0.00001;
+  #assert abs(g.zenith_r - 0.22) < 0.00001 && abs(g.zenith_g - 0.42) < 0.00001 && abs(g.horizon_r - 0.90) < 0.00001 && abs(g.horizon_g - 0.74) < 0.00001 && abs(g.horizon_b - 0.60) < 0.00001 && abs(g.glow_r - 0.55) < 0.00001 && abs(g.glow_g - 0.26) < 0.00001 && abs(g.glow_b - 0.08) < 0.00001;
+  m := sty_sunrise(day, (STY_SUNRISE_HORIZON + STY_SUNRISE_GOLDEN) * 0.5, 0, -1); #assert abs(m.sun_r - (r.sun_r + g.sun_r) * 0.5) < 0.0001 && abs(m.sun_y - STY_SUNRISE_GOLDEN_UP * 0.5) < 0.0001;
+  // then on to the day: halfway there the light is half the day's, and the sun has turned toward the day's bearing
+  l := sty_sunrise(day, (STY_SUNRISE_GOLDEN + 1) * 0.5, 0, -1);
+  #assert abs(l.zenith_b - (g.zenith_b + day.zenith_b) * 0.5) < 0.0001 && l.sun_x > g.sun_x + 0.1 && l.sun_y > g.sun_y && l.sun_y < d.sun_y / 0.98489;
+  // through the whole of it: the haze is the horizon's colour, the way to the sun is a unit vector, it only climbs, and no colour jumps
+  last := n;
+  for i: 1..<400 {
+    t := cast(f32) i / 400;
+    k := sty_sunrise(day, t, 0, -1);
+    #assert k.haze_r == k.horizon_r && k.haze_g == k.horizon_g && k.haze_b == k.horizon_b || t >= STY_SUNRISE_GOLDEN;
+    #assert abs(k.sun_x * k.sun_x + k.sun_y * k.sun_y + k.sun_z * k.sun_z - 1) < 0.0001 && k.sun_y > last.sun_y;
+    #assert abs(k.zenith_b - last.zenith_b) < 0.01 && abs(k.horizon_r - last.horizon_r) < 0.01 && abs(k.sun_r - last.sun_r) < 0.01 && abs(k.glow_r - last.glow_r) < 0.012 && abs(k.sun_x - last.sun_x) < 0.01 && abs(k.sun_y - last.sun_y) < 0.01 && abs(k.cloud_dim - last.cloud_dim) < 0.006;
+    last = k;
+  }
+  #assert abs(d.zenith_b - last.zenith_b) < 0.01 && abs(d.sun_x / 0.98489 - last.sun_x) < 0.01;
+}
+#test "a sunrise rises where it is told, or on the day's own bearing, and a low day's sun stops at the day's height" {
+  day: StyLook; day.sun_x = 3; day.sun_y = 4; day.sun_z = 0;
+  // told to rise along +z (any length): on the horizon it is dead along +z
+  r := sty_sunrise(day, STY_SUNRISE_HORIZON, 0, 5); #assert abs(r.sun_z - 1) < 0.00001 && abs(r.sun_x) < 0.00001;
+  r = sty_sunrise(day, STY_SUNRISE_HORIZON, -2, 0); #assert abs(r.sun_x + 1) < 0.00001 && abs(r.sun_z) < 0.00001;
+  // told nothing: the day's own bearing, +x
+  own := sty_sunrise(day, STY_SUNRISE_HORIZON, 0, 0); #assert abs(own.sun_x - 1) < 0.00001 && abs(own.sun_z) < 0.00001;
+  // just before the day the sun is nearly the day's: its bearing and its height (the day's is 3, 4, 0 over 5)
+  late := sty_sunrise(day, 0.999, 0, 5); #assert abs(late.sun_x - 0.6) < 0.01 && abs(late.sun_y - 0.8) < 0.01 && abs(late.sun_z) < 0.01;
+  // a sun straight overhead has no bearing of its own: it rises along -z when told nothing
+  day.sun_x = 0; day.sun_y = 1; day.sun_z = 0;
+  top := sty_sunrise(day, STY_SUNRISE_HORIZON, 0, 0); #assert abs(top.sun_z + 1) < 0.00001 && abs(top.sun_x) < 0.00001;
+  high := sty_sunrise(day, 0.9999, 0, 0); #assert high.sun_y > 0.99;
+  // a day whose sun is opposite where it rose: the bearing passes through nothing, and the rise's is kept there
+  day.sun_x = 0; day.sun_y = 0.5; day.sun_z = 1;
+  #assert abs(sty_sunrise_height(1, 0.3) - 0.3) < 0.00001 && abs(sty_sunrise_height(2, 0.3) - 0.3) < 0.00001;
+  // a low day (its sun 3 degrees up): golden light is at the day's height, not above it
+  #assert abs(sty_sunrise_height(STY_SUNRISE_GOLDEN, 0.0523) - 0.0523) < 0.00001 && abs(sty_sunrise_height(0.8, 0.0523) - 0.0523) < 0.00001;
+  #assert abs(sty_sunrise_height(STY_SUNRISE_GOLDEN, 0.5) - STY_SUNRISE_GOLDEN_UP) < 0.00001 && abs(sty_sunrise_height(0.81, 0.5) - (STY_SUNRISE_GOLDEN_UP + 0.5) * 0.5) < 0.00001;
+  #assert sty_sunrise_height(0, 0.5) == STY_SUNRISE_UNDER && sty_sunrise_height(-1, 0.5) == STY_SUNRISE_UNDER;
+  // a look with no sun at all (0, 0, 0) takes the sun as overhead
+  day.sun_x = 0; day.sun_y = 0; day.sun_z = 0;
+  none := sty_sunrise(day, 0.9999, 1, 0); #assert none.sun_y > 0.99;
+}
+
+#test "a frame's every number goes where the shaders read it, from any camera, and the smallest frame that can be is taken" {
+  u: [STY_UNIFORM_FLOATS] f32; c: StyCamera; look: StyLook;
+  // the smallest picture, the narrowest field and the thinnest range that are allowed, and the first that are not
+  #assert sty_frame(u[..], 1, 1, 0, c, look) && !sty_frame(u[..], 0.5, 1, 0, c, look) && !sty_frame(u[..], 1, 0.5, 0, c, look);
+  c.fov = 0.01; #assert !sty_frame(u[..], 8, 8, 0, c, look); c.fov = 0.011; #assert sty_frame(u[..], 8, 8, 0, c, look); c.fov = 1.0472;
+  c.far = c.near; #assert !sty_frame(u[..], 8, 8, 0, c, look); c.far = c.near + 0.001; #assert sty_frame(u[..], 8, 8, 0, c, look);
+  full: [STY_UNIFORM_FLOATS] f32; #assert sty_frame(full[..], 8, 8, 0, c, look);
+  // a camera away from the middle, turned and tilted, with a near and far of its own
+  c.x = 3; c.y = 2; c.z = -5; c.yaw = 0.7; c.pitch = 0.3; c.near = 1; c.far = 100;
+  for i: 0..<STY_UNIFORM_FLOATS { u[i] = -7; }
+  look.sun_x = 3; look.sun_y = 4; look.sun_z = 12; look.shadow = 0.8;
+  look.sun_r = 0.11; look.sun_g = 0.12; look.sun_b = 0.13; look.band = 0.14;
+  look.sky_r = 0.21; look.sky_g = 0.22; look.sky_b = 0.23; look.ground_r = 0.31; look.ground_g = 0.32; look.ground_b = 0.33;
+  look.haze_r = 0.41; look.haze_g = 0.42; look.haze_b = 0.43; look.haze = 0.44; look.haze_start = 45; look.haze_most = 0.46; look.cloud_turn = 0.47;
+  look.zenith_r = 0.51; look.zenith_g = 0.52; look.zenith_b = 0.53; look.cloud = 0.54; look.horizon_r = 0.61; look.horizon_g = 0.62; look.horizon_b = 0.63; look.cloud_scale = 0.64;
+  look.path_soft = 0.71; look.meadow_dry = 0.72; look.meadow_shift = 0.73;
+  for i: 0..<STY_CUMULI * 4 { look.cumulus[i] = 0.8 + cast(f32) i * 0.01; }
+  #assert sty_frame(u[..], 800, 600, 9, c, look);
+  focal: f32 = 300.0 / tan(1.0472 * 0.5);
+  #assert u[STY_U_SIZE] == 800 && u[STY_U_SIZE + 1] == 600 && u[STY_U_SIZE + 2] == 9 && u[STY_U_SIZE + 3] == 1;
+  #assert u[STY_U_EYE] == 3 && u[STY_U_EYE + 1] == 2 && u[STY_U_EYE + 2] == -5 && abs(u[STY_U_EYE + 3] - focal) < 0.01;
+  // the sun's way is a unit vector (3, 4, 12 over 13); the look's colours and numbers, each in its place
+  #assert abs(u[STY_U_SUN] - 3.0 / 13.0) < 0.00001 && abs(u[STY_U_SUN + 1] - 4.0 / 13.0) < 0.00001 && abs(u[STY_U_SUN + 2] - 12.0 / 13.0) < 0.00001 && u[STY_U_SUN + 3] == 0.8;
+  #assert u[STY_U_SUN_COLOUR] == 0.11 && u[STY_U_SUN_COLOUR + 1] == 0.12 && u[STY_U_SUN_COLOUR + 2] == 0.13 && u[STY_U_SUN_COLOUR + 3] == 0.14;
+  #assert u[STY_U_SKY_LIGHT] == 0.21 && u[STY_U_SKY_LIGHT + 1] == 0.22 && u[STY_U_SKY_LIGHT + 2] == 0.23;
+  #assert u[STY_U_GROUND_LIGHT] == 0.31 && u[STY_U_GROUND_LIGHT + 1] == 0.32 && u[STY_U_GROUND_LIGHT + 2] == 0.33 && u[STY_U_GROUND_LIGHT + 3] == 0;
+  #assert u[STY_U_HAZE] == 0.41 && u[STY_U_HAZE + 1] == 0.42 && u[STY_U_HAZE + 2] == 0.43 && u[STY_U_HAZE + 3] == 0.44;
+  #assert u[STY_U_HAZE_INFO] == 45 && u[STY_U_HAZE_INFO + 1] == 0.46 && u[STY_U_HAZE_INFO + 2] == 0.47;
+  #assert u[STY_U_ZENITH] == 0.51 && u[STY_U_ZENITH + 1] == 0.52 && u[STY_U_ZENITH + 2] == 0.53 && u[STY_U_ZENITH + 3] == 0.54;
+  #assert u[STY_U_HORIZON] == 0.61 && u[STY_U_HORIZON + 1] == 0.62 && u[STY_U_HORIZON + 2] == 0.63 && u[STY_U_HORIZON + 3] == 0.64;
+  #assert u[STY_U_PATH_INFO + 1] == 0.71 && u[STY_U_PATH_INFO + 2] == 0.72 && u[STY_U_PATH_INFO + 3] == 0.73 && u[STY_U_PATH_INFO] == -7;
+  for i: 0..<STY_CUMULI * 4 { #assert u[STY_U_CUMULUS + i] == look.cumulus[i]; }
+  // the eye's own axes, as the camera's
+  f := sty_forward(c); r := sty_right(c); up := sty_up(c);
+  #assert u[STY_U_RIGHT] == r[0] && u[STY_U_RIGHT + 1] == r[1] && u[STY_U_RIGHT + 2] == r[2] && u[STY_U_UP] == up[0] && u[STY_U_UP + 1] == up[1] && u[STY_U_UP + 2] == up[2];
+  #assert u[STY_U_FORWARD] == f[0] && u[STY_U_FORWARD + 1] == f[1] && u[STY_U_FORWARD + 2] == f[2] && r[2] > 0.6 && up[0] < -0.1 && f[0] > 0.6 && f[1] > 0.29;
+  // a point 10 m dead ahead of that camera is the middle of the picture, at the depth its near and far give
+  mid := sty_project(u[..], 3 + f[0] * 10, 2 + f[1] * 10, -5 + f[2] * 10);
+  #assert mid.ahead && abs(mid.x - 400) < 0.01 && abs(mid.y - 300) < 0.01 && abs(mid.depth - 9.0 * 100.0 / 99.0 / 10.0) < 0.0001;
+  // a metre to its right and a metre up from there are a tenth of the focal length right and up
+  right := sty_project(u[..], 3 + f[0] * 10 + r[0], 2 + f[1] * 10 + r[1], -5 + f[2] * 10 + r[2]);
+  high := sty_project(u[..], 3 + f[0] * 10 + up[0], 2 + f[1] * 10 + up[1], -5 + f[2] * 10 + up[2]);
+  #assert abs(right.x - 400 - focal / 10) < 0.01 && abs(right.y - 300) < 0.01 && abs(high.y - 300 + focal / 10) < 0.01 && abs(high.x - 400) < 0.01;
+  // a look with no way to the sun writes none, and breaks nothing
+  look.sun_x = 0; look.sun_y = 0; look.sun_z = 0;
+  #assert sty_frame(u[..], 800, 600, 9, c, look) && u[STY_U_SUN] == 0 && u[STY_U_SUN + 1] == 0 && u[STY_U_SUN + 2] == 0;
+  // and the shortest way that counts as one (0.0001) is made a unit vector
+  look.sun_y = 0.0001; #assert sty_frame(u[..], 800, 600, 9, c, look) && u[STY_U_SUN + 1] == 1;
+}
+#test "a look between looks and a sunrise hold at their edges: exact ends, lights that start from nothing, bearings told at any length" {
+  a: StyLook; b: StyLook;
+  // exactly the second look at 1, where adding the difference would lose it; exactly the first at 0, where the difference is too big to hold
+  a.haze = 100000000; b.haze = 0.1; #assert sty_look_mix(a, b, 1).haze == 0.1;
+  a.haze = 3.0e38; b.haze = -3.0e38; #assert sty_look_mix(a, b, 0).haze == 3.0e38;
+  // the sun's height at each of the sunrise's own shares is that share's own, exactly
+  #assert sty_sunrise_height(STY_SUNRISE_FIRST, 0.5) == STY_SUNRISE_FIRST_UNDER && sty_sunrise_height(STY_SUNRISE_HORIZON, 0.5) == 0 && sty_sunrise_height(STY_SUNRISE_GOLDEN, 0.5) == STY_SUNRISE_GOLDEN_UP && sty_sunrise_height(1, 0.37) == 0.37;
+  // a day that has a glow of its own: the sunrise's looks before it have the sunrise's, and the black has none
+  day: StyLook; day.glow_r = 0.3; day.glow_g = 0.3; day.glow_b = 0.3;
+  n := sty_sunrise_key(day, 0); #assert n.glow_r == 0 && n.glow_g == 0 && n.glow_b == 0;
+  k2 := sty_sunrise_key(day, 2); k3 := sty_sunrise_key(day, 3);
+  #assert abs(k2.sun_b - 0.05) < 0.00001 && abs(k2.glow_b - 0.12) < 0.00001 && abs(k3.sun_b - 0.26) < 0.00001 && abs(k2.glow_g - 0.42) < 0.00001;
+  // the way it rises is a way, at any length: 25 m along +z is +z, also once the sun has begun to turn
+  day = StyLook.{}; day.sun_x = 3; day.sun_y = 4; day.sun_z = 0;
+  one := sty_sunrise(day, 0.8, 0, 1); long := sty_sunrise(day, 0.8, 0, 25); short := sty_sunrise(day, 0.8, 0, 0.01);
+  #assert abs(one.sun_x - long.sun_x) < 0.00001 && abs(one.sun_z - long.sun_z) < 0.00001 && abs(one.sun_x - short.sun_x) < 0.00001 && one.sun_z > 0.3 && one.sun_x > 0.3;
+  side := sty_sunrise(day, 0.8, 25, 25); unit := sty_sunrise(day, 0.8, 0.70710678, 0.70710678); #assert abs(side.sun_x - unit.sun_x) < 0.00001 && abs(side.sun_z - unit.sun_z) < 0.00001;
+  // a day whose sun is dead opposite where it rose: halfway up, where the bearing passes through nothing, it keeps the rise's
+  day.sun_x = 0; day.sun_y = 0.5; day.sun_z = 0.8660254;
+  half := sty_sunrise(day, 0.74893, 0, -1);
+  #assert half.sun_x == half.sun_x && half.sun_z == half.sun_z && abs(half.sun_y - 0.25) < 0.001 && abs(abs(half.sun_z) - sqrt(1 - half.sun_y * half.sun_y)) < 0.0001 && half.sun_x == 0;
+  // a day whose sun is barely over the horizon (0.0001) has no climb to turn through: it stays where it rose
+  day.sun_x = 1; day.sun_y = 0.0001; day.sun_z = 0;
+  flat := sty_sunrise(day, 0.8, 0, -1); #assert abs(flat.sun_z + 1) < 0.0001 && abs(flat.sun_x) < 0.0001;
+  // the shortest day's sun that counts as one (0.0001 long): along the ground it has a bearing but no height
+  day.sun_x = 0.0001; day.sun_y = 0; day.sun_z = 0;
+  tiny := sty_sunrise(day, 0.9999, 0, 0); #assert tiny.sun_y > 0.99;
+  bearing := sty_sunrise(day, STY_SUNRISE_HORIZON, 0, 0); #assert abs(bearing.sun_z + 1) < 0.00001 && abs(bearing.sun_x) < 0.00001;
+  // a day whose sun is dead opposite where it rose and twice golden light's height: in golden light it is exactly halfway
+  // round, where the bearing between the two is nothing, and it keeps the rise's
+  day.sun_x = -0.5819043; day.sun_y = 0.2437386; day.sun_z = 0.7758724;
+  turn := sty_sunrise(day, STY_SUNRISE_GOLDEN, 0.6, -0.8);
+  along := sqrt(1 - turn.sun_y * turn.sun_y);
+  #assert abs(turn.sun_y - STY_SUNRISE_GOLDEN_UP) < 0.00001 && abs(turn.sun_x - 0.6 * along) < 0.0001 && abs(turn.sun_z + 0.8 * along) < 0.0001;
+  // and the shortest rise that counts (0.0001) is not a rise: the day's bearing is used
+  day.sun_x = 3; day.sun_y = 4; day.sun_z = 0;
+  least := sty_sunrise(day, STY_SUNRISE_HORIZON, 0, 0.0001); #assert abs(least.sun_x - 1) < 0.00001 && abs(least.sun_z) < 0.00001;
 }

@@ -3,7 +3,8 @@
 // architecture kit (metaverse-engine/arch/) draws with it: load this file from the world's gpu module and
 // name these entries (the world's .module strips the `stylized_` prefix):
 //
-//   stylized_bg_vs / stylized_bg_fs          the sky: a painted gradient, big puffy clouds lit from the sun's side
+//   stylized_bg_vs / stylized_bg_fs          the sky: a painted gradient, big puffy clouds lit from the sun's side,
+//                                            and, when the look names them, the sun's disc and its glow
 //   stylized_scene_vs / stylized_scene_fs    the parts: a vertex pulled from the mesh, stood by its record,
 //                                            painted by its material, lit in soft bands, shadowed, hazed
 //   stylized_shadow_vs / stylized_shadow_fs  the same parts from the sun, into its shadow map
@@ -28,7 +29,11 @@
 //   water         sty_river: depth tint from the ground table under it, ripples that run downstream, foam
 //                 at the shore and where the table's fourth field says it churns; sty_falls: a
 //                 waterfall's falling streaks; spray and a rainbow (sty_wet)
-//   sky, clouds   sty_sky
+//   sky, clouds   sty_sky: the whole dome, every way the eye can look
+//   the sun       its disc in the sky, red on the horizon and white-gold once up (sty_sun_disc,
+//                 sty_sun_ink), the glow it puts low in the sky (sty_sun_glow) and on the clouds, and
+//                 clouds that go dark with the light (StyLook.sun_disc, glow, cloud_dim; a sunrise is
+//                 stylized-frame.coax's sty_sunrise)
 //   reveal        ground and grass that spread from a place over a bare graybox floor with a grid
 //                 (sty_reveal_at, sty_floor)
 //
@@ -97,6 +102,21 @@ sty_cloud_field :: (ax:f32,ay:f32,cover:f32)->f32 {
   puff:f32=sty_noise2(ax*7.0f32+11.0f32,ay*7.0f32+3.0f32);
   return mass*0.62f32+billow*0.34f32+(puff-0.5f32)*0.07f32+(cover-0.5f32)*0.36f32;
 }
+// The cloud field round the whole horizon: at bearing `az` (radians, -pi to pi: 0 along -z, the two
+// ends meeting behind, along +z), `k` of the field's own measure a radian, moved `off` along it. The
+// field itself does not repeat round the horizon, so within STY_CLOUD_JOIN radians of the join it is
+// mixed with the field one whole turn away, half and half at the join: the two sides meet there at
+// the same value and no cloud is cut by a line. Away from the join it is the field, untouched.
+STY_CLOUD_JOIN :: 0.6f32;
+sty_cloud_round :: (az:f32,k:f32,off:f32,ay:f32,cover:f32)->f32 {
+  d:f32=sty_cloud_field(az*k+off,ay,cover);
+  t:f32=saturate((abs(az)-(STY_TAU*0.5f32-STY_CLOUD_JOIN))/STY_CLOUD_JOIN);
+  if (t>0.0f32) { // mutant: equivalent (at a share of exactly 0 the mix below takes none of the other end: the guard only saves work)
+    turn:f32=STY_TAU; if (az>0.0f32) {turn=0.0f32-STY_TAU;} // mutant: equivalent (a bearing of exactly 0 is never within the join, so this line is not reached with it)
+    d=mix(d,sty_cloud_field((az+turn)*k+off,ay,cover),0.5f32*t);
+  }
+  return d;
+}
 // How far inside a heaped cloud a point is, in the cloud's own measure (its height 1, its flat
 // base along y 0, `wide` half its width): above 0 inside. A heap is nine round puffs, six along
 // its base, larger toward the middle, and three piled on them, with billows on its edge.
@@ -118,33 +138,81 @@ sty_cumulus :: (px:f32,py:f32,wide:f32,seed:f32)->f32 {
   d=d+(sty_noise2(px*5.0f32+seed*13.0f32,py*5.0f32)-0.5f32)*0.09f32+(sty_noise2(px*13.0f32,py*13.0f32+seed)-0.5f32)*0.035f32;
   return fmin(d,py*1.6f32+0.02f32);
 }
+// ---- the sun in the sky
+// How much of the sun's disc a ray is in: all of it inside `radius` (radians) of the way to the sun
+// (`cos_t` is the cosine of the angle between them), none outside, with an edge `soft` radians wide.
+// A radius of 0 is no disc.
+sty_sun_disc :: (cos_t:f32,radius:f32,soft:f32)->f32 {
+  if (radius<=0.0f32) {return 0.0f32;}
+  // the angle itself, from its cosine: for a small angle, the square root of 2 (1 - cos)
+  a:f32=sqrt(fmax(2.0f32-2.0f32*cos_t,0.0f32));
+  w:f32=fmax(soft,0.00001f32);
+  return 1.0f32-smoothstep(radius-w,radius+w,a);
+}
+// The disc's colour by how high the sun stands (the sine of its height): a deep orange-red on the
+// horizon, white-gold by 20 degrees up.
+sty_sun_ink :: (sun_up:f32)->V3 {
+  return mix3(v3(1.0f32,0.42f32,0.16f32),v3(1.0f32,0.97f32,0.86f32),smoothstep(0.0f32,0.34f32,sun_up));
+}
+// How much of the sun's glow a ray takes: `cos_t` the cosine of its angle from the sun, `up` how
+// high it looks (the sine, 0 at the horizon and under it). Most low in the sky toward the sun (1.3
+// at the sun on the horizon), a wide wash round it, a faint band all round the horizon, and nothing
+// overhead.
+sty_sun_glow :: (cos_t:f32,up:f32)->f32 {
+  away:f32=fmax(1.0f32-cos_t,0.0f32);
+  low:f32=exp(0.0f32-up*5.0f32);
+  return low*(0.62f32*exp(0.0f32-away*2.2f32)+0.08f32)+0.6f32*exp(0.0f32-away*16.0f32)*exp(0.0f32-up*1.5f32);
+}
+// A cloud's colour under the frame's light: dimmed by the look's cloud_dim (0 daylight, 1 black) and
+// warmed by the sun's glow, most on the parts that face the light (`bright`, 0 to 1) and toward the
+// sun, and less the darker the clouds are (a cloud before dawn is a dark shape with a little warmth).
+sty_cloud_light :: (cloud:V3,bright:f32,cos_t:f32,u:[]f32)->V3 {
+  glow:V3=v3(u[STY_U_GLOW_R],u[STY_U_GLOW_G],u[STY_U_GLOW_B]);
+  day:f32=1.0f32-saturate(u[STY_U_CLOUD_DIM]);
+  near:f32=0.35f32+0.65f32*exp(0.0f32-fmax(1.0f32-cos_t,0.0f32)*1.4f32);
+  return add3(scale3(cloud,day),scale3(glow,(0.3f32+0.6f32*saturate(bright))*near*(0.25f32+0.75f32*day)));
+}
 sty_sky :: (rd:V3,u:[]f32)->V3 {
   zenith:V3=wg_at3(u,STY_U_ZENITH); horizon:V3=wg_at3(u,STY_U_HORIZON);
   up:f32=saturate(rd.y);
   c:V3=mix3(horizon,zenith,pow(up,0.62f32));
+  // The sun: its glow low in the sky, then its disc with a little light round it. A look that names
+  // neither (all 0) adds nothing here.
+  sun_at:V3=wg_at3(u,STY_U_SUN);
+  cos_t:f32=dot3(rd,sun_at);
+  glow:V3=scale3(v3(u[STY_U_GLOW_R],u[STY_U_GLOW_G],u[STY_U_GLOW_B]),sty_sun_glow(cos_t,up));
+  c=add3(c,glow);
+  under:V3=c;
+  if (u[STY_U_SUN_DISC]>0.0f32) {
+    ink:V3=sty_sun_ink(sun_at.y);
+    r:f32=u[STY_U_SUN_DISC];
+    halo:f32=exp(0.0f32-fmax(1.0f32-cos_t,0.0f32)/(r*r*3.0f32))*0.35f32;
+    c=add3(c,scale3(ink,halo));
+    c=mix3(c,ink,sty_sun_disc(cos_t,r,1.5f32/fmax(u[STY_U_EYE+3],1.0f32)));
+  }
   // Clouds, painted on the dome: crisp-edged heaps, bright where they face the sun and the sky
   // above them, soft blue-grey beneath, thinning to the horizon.
   size:f32=fmax(u[STY_U_HORIZON+3],0.05f32);
   az:f32=wg_atan2(rd.x,0.0f32-rd.z);
-  ax:f32=(az+u[STY_U_HAZE_INFO+2])*2.2f32/size+u[STY_U_SIZE+2]*0.003f32; ay:f32=up*3.4f32/size;
+  ak:f32=2.2f32/size; aoff:f32=u[STY_U_HAZE_INFO+2]*ak+u[STY_U_SIZE+2]*0.003f32; ay:f32=up*3.4f32/size;
   cover:f32=u[STY_U_ZENITH+3];
-  d:f32=sty_cloud_field(ax,ay,cover);
+  d:f32=sty_cloud_round(az,ak,aoff,ay,cover);
   band:f32=smoothstep(0.04f32,0.22f32,up)*(1.0f32-smoothstep(0.7f32,0.98f32,up));
   // A crisp edge, about two pixels wide whatever the clouds' size.
   wide:f32=fmax(gpu_fwidth(d),0.0005f32);
   edge:f32=smoothstep(0.5f32-wide,0.5f32+wide,d)*band*smoothstep(0.0f32,0.04f32,cover);
-  if (edge>0.0f32) {
+  if (edge>0.0f32) { // mutant: equivalent (with an edge of 0 the mix at the end of this block leaves the sky as it was: the guard only saves work)
     sun:V3=wg_at3(u,STY_U_SUN);
     saz:f32=wg_atan2(sun.x,0.0f32-sun.z);
     turn:f32=saz-az; turn=turn-STY_TAU*floor(turn/STY_TAU+0.5f32);
     toward:f32=0.09f32*clampf(turn*2.5f32,0.0f32-1.0f32,1.0f32);
     // The field a step up and toward the sun: thinner there means this side faces the light.
-    lit:f32=d-sty_cloud_field(ax+toward,ay+0.16f32,cover);
+    lit:f32=d-sty_cloud_round(az,ak,aoff+toward,ay+0.16f32,cover);
     bright:f32=smoothstep(0.0f32-0.01f32,0.045f32,lit);
     shade:V3=v3(0.74f32,0.8f32,0.9f32);
     white:V3=v3(1.0f32,0.99f32,0.96f32);
-    cloud:V3=mix3(shade,white,saturate(bright*0.85f32+0.12f32));
-    cloud=mix3(horizon,cloud,smoothstep(0.02f32,0.3f32,up));
+    cloud:V3=sty_cloud_light(mix3(shade,white,saturate(bright*0.85f32+0.12f32)),bright,cos_t,u);
+    cloud=mix3(add3(horizon,glow),cloud,smoothstep(0.02f32,0.3f32,up));
     c=mix3(c,cloud,edge);
   }
   // Heaped clouds, each placed by hand: a crisp edge a pixel or two wide, white above, soft
@@ -155,7 +223,7 @@ sty_sky :: (rd:V3,u:[]f32)->V3 {
     if (tall>0.001f32) {
       turn:f32=az-u[o]; turn=turn-STY_TAU*floor(turn/STY_TAU+0.5f32);
       px:f32=turn*cos(u[o+1])/tall; py:f32=(el-u[o+1])/tall; half:f32=u[o+2]/tall;
-      if (abs(px)<half+0.9f32&&py>0.0f32-0.2f32&&py<1.7f32) {
+      if (abs(px)<half+0.9f32&&py>0.0f32-0.2f32&&py<1.7f32) { // mutant: equivalent (outside this box sty_cumulus is below 0 by more than an edge: no puff reaches past 0.85 of the half width plus its radius, above 1.2 or under the base. The guard only saves work)
         seed:f32=cast(f32)i+1.0f32;
         in_:f32=sty_cumulus(px,py,half,seed);
         w:f32=1.5f32/(fmax(u[STY_U_EYE+3],1.0f32)*tall);
@@ -163,12 +231,12 @@ sty_sky :: (rd:V3,u:[]f32)->V3 {
         rim:f32=smoothstep(0.0f32-0.02f32,0.1f32,in_-sty_cumulus(px+0.03f32,py+0.14f32,half,seed));
         body:f32=smoothstep(0.06f32,0.62f32,py+(sty_noise2(px*2.2f32+seed,py*2.2f32)-0.5f32)*0.4f32);
         heap:V3=mix3(v3(0.78f32,0.85f32,0.94f32),v3(1.0f32,0.995f32,0.97f32),saturate(body*0.9f32+rim*0.45f32));
-        c=mix3(c,heap,over);
+        c=mix3(c,sty_cloud_light(heap,saturate(body*0.9f32+rim*0.45f32),cos_t,u),over);
       }
     }
   }
-  // Below the horizon: the haze the land fades into.
-  if (rd.y<0.0f32) {return mix3(horizon,wg_at3(u,STY_U_HAZE),saturate(0.0f32-rd.y*8.0f32));}
+  // Below the horizon: the haze the land fades into (the horizon's glow goes with it).
+  if (rd.y<0.0f32) {return mix3(under,sty_haze_ink(rd,u),saturate(0.0f32-rd.y*8.0f32));}
   return c;
 }
 stylized_bg_vs :: (i:u32,_iid:u32)->V4 {
@@ -201,10 +269,17 @@ sty_shadow :: (p:V3,n:V3,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare)-
   return lit/12.0f32;
 }
 // Distance fades to the haze.
+// The haze's colour along the way `to` (a unit vector from the eye): the look's haze, and the sun's
+// glow as the sky's horizon takes it that way, so far ground toward a low sun meets the sky's glow.
+sty_haze_ink :: (to:V3,u:[]f32)->V3 {
+  glow:V3=v3(u[STY_U_GLOW_R],u[STY_U_GLOW_G],u[STY_U_GLOW_B]);
+  return add3(wg_at3(u,STY_U_HAZE),scale3(glow,sty_sun_glow(dot3(to,wg_at3(u,STY_U_SUN)),0.0f32)));
+}
 sty_haze :: (c:V3,p:V3,u:[]f32)->V3 {
-  d:f32=length3(sub3(wg_at3(u,STY_U_EYE),p));
+  to:V3=sub3(p,wg_at3(u,STY_U_EYE));
+  d:f32=length3(to);
   f:f32=1.0f32-exp(0.0f32-fmax(d-u[STY_U_HAZE_INFO],0.0f32)*u[STY_U_HAZE+3]);
-  return mix3(c,sty_decode(wg_at3(u,STY_U_HAZE)),fmin(f,u[STY_U_HAZE_INFO+1]));
+  return mix3(c,sty_decode(sty_haze_ink(scale3(to,1.0f32/fmax(d,0.0001f32)),u)),fmin(f,u[STY_U_HAZE_INFO+1]));
 }
 // A surface lit: its colour under the banded sun, its shadow, and the light of the sky and the ground.
 sty_lit :: (albedo:V3,n:V3,ndl:f32,shadow:f32,u:[]f32)->V3 {
@@ -1035,4 +1110,204 @@ stylized_grass_fs :: (g:StyBlade,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerC
   u[STY_U_WIND+2]=0.6f32; strong:V2=sty_blade_wind(4.0f32,7.0f32,0.4f32,u[..]); #assert abs(strong.x)>abs(both.x);
   u[STY_U_WIND+2]=0.3f32; u[STY_U_WIND+3]=6.0f32; u[STY_U_SIZE+2]=1.0f32; fast:V2=sty_blade_wind(4.0f32,7.0f32,0.4f32,u[..]);
   u[STY_U_WIND+3]=3.0f32; slow:V2=sty_blade_wind(4.0f32,7.0f32,0.4f32,u[..]); #assert abs(fast.x-slow.x)>0.0001f32;
+}
+
+#test "the sun's disc is whole inside its radius, gone outside it, soft at its edge, and red low and white-gold high" {
+  r:f32=0.03f32;
+  // dead on the sun, and well inside the disc
+  #assert sty_sun_disc(1.0f32,r,0.001f32)==1.0f32 && sty_sun_disc(cos(0.02f32),r,0.001f32)==1.0f32;
+  // outside it, and far from it
+  #assert sty_sun_disc(cos(0.04f32),r,0.001f32)==0.0f32 && sty_sun_disc(0.0f32,r,0.001f32)==0.0f32 && sty_sun_disc(0.0f32-1.0f32,r,0.001f32)==0.0f32;
+  // on its edge it is half, and the edge is as wide as it is told
+  edge:f32=sty_sun_disc(cos(r),r,0.004f32); #assert abs(edge-0.5f32)<0.03f32;
+  inner:f32=sty_sun_disc(cos(r-0.003f32),r,0.004f32); outer:f32=sty_sun_disc(cos(r+0.003f32),r,0.004f32);
+  #assert inner>0.8f32 && inner<1.0f32 && outer<0.2f32 && outer>0.0f32;
+  #assert sty_sun_disc(cos(r-0.003f32),r,0.001f32)==1.0f32 && sty_sun_disc(cos(r+0.003f32),r,0.001f32)==0.0f32;
+  // no radius is no disc, even dead on the sun; an edge of no width is still an edge
+  #assert sty_sun_disc(1.0f32,0.0f32,0.001f32)==0.0f32 && sty_sun_disc(1.0f32,0.0f32-0.01f32,0.001f32)==0.0f32 && sty_sun_disc(1.0f32,r,0.0f32)==1.0f32 && sty_sun_disc(cos(0.05f32),r,0.0f32)==0.0f32;
+  // twice the angle is twice as far: the angle is taken from the cosine, not the cosine itself
+  #assert sty_sun_disc(cos(0.055f32),0.06f32,0.001f32)==1.0f32 && sty_sun_disc(cos(0.065f32),0.06f32,0.001f32)==0.0f32;
+  low:V3=sty_sun_ink(0.0f32); high:V3=sty_sun_ink(0.5f32); under:V3=sty_sun_ink(0.0f32-0.2f32); mid:V3=sty_sun_ink(0.17f32);
+  #assert low.x==1.0f32 && abs(low.y-0.42f32)<0.0001f32 && abs(low.z-0.16f32)<0.0001f32 && under.y==low.y;
+  #assert high.x==1.0f32 && abs(high.y-0.97f32)<0.0001f32 && abs(high.z-0.86f32)<0.0001f32 && sty_sun_ink(0.34f32).z==high.z;
+  #assert abs(mid.y-0.695f32)<0.001f32 && abs(mid.z-0.51f32)<0.001f32;
+}
+#test "the sun's glow is most at the sun on the horizon, falls away from it and up the sky, and leaves a faint band all round" {
+  at:f32=sty_sun_glow(1.0f32,0.0f32); #assert abs(at-1.3f32)<0.0001f32;
+  // away from the sun along the horizon it falls; opposite the sun only the faint band is left
+  side:f32=sty_sun_glow(0.0f32,0.0f32); back:f32=sty_sun_glow(0.0f32-1.0f32,0.0f32);
+  #assert abs(side-(0.62f32*exp(0.0f32-2.2f32)+0.08f32))<0.0001f32 && abs(back-(0.62f32*exp(0.0f32-4.4f32)+0.08f32+0.6f32*exp(0.0f32-32.0f32)))<0.0001f32 && back>0.08f32 && back<0.09f32;
+  near:f32=sty_sun_glow(0.9f32,0.0f32); #assert abs(near-(0.62f32*exp(0.0f32-0.22f32)+0.08f32+0.6f32*exp(0.0f32-1.6f32)))<0.0001f32 && near<at && near>side;
+  // up the sky it goes: the wash and the band fast, the light round the sun itself slowly
+  up:f32=sty_sun_glow(1.0f32,0.2f32); #assert abs(up-(0.7f32*exp(0.0f32-1.0f32)+0.6f32*exp(0.0f32-0.3f32)))<0.0001f32;
+  top:f32=sty_sun_glow(0.0f32,1.0f32); #assert top<0.005f32 && top>0.0f32;
+  // a cosine past 1 (rounding) is dead on the sun
+  #assert sty_sun_glow(1.001f32,0.0f32)==at;
+}
+#test "clouds go dark with the light and take the sun's glow, most on their lit side toward the sun, and a look that names neither leaves them as they were" {
+  u:[STY_UNIFORM_FLOATS]f32;
+  white:V3=v3(1.0f32,0.99f32,0.96f32);
+  same:V3=sty_cloud_light(white,1.0f32,1.0f32,u[..]); #assert same.x==1.0f32 && same.y==0.99f32 && same.z==0.96f32;
+  u[STY_U_CLOUD_DIM]=1.0f32;
+  black:V3=sty_cloud_light(white,1.0f32,1.0f32,u[..]); #assert black.x==0.0f32 && black.y==0.0f32 && black.z==0.0f32;
+  u[STY_U_CLOUD_DIM]=3.0f32; over:V3=sty_cloud_light(white,1.0f32,1.0f32,u[..]); #assert over.x==0.0f32;
+  u[STY_U_CLOUD_DIM]=0.25f32;
+  dim:V3=sty_cloud_light(white,1.0f32,1.0f32,u[..]); #assert abs(dim.x-0.75f32)<0.0001f32 && abs(dim.z-0.72f32)<0.0001f32;
+  // the glow: red here, so only the red moves. Lit and toward the sun in daylight takes 0.9 of it
+  u[STY_U_CLOUD_DIM]=0.0f32; u[STY_U_GLOW_R]=0.5f32;
+  grey:V3=v3(0.2f32,0.2f32,0.2f32);
+  lit:V3=sty_cloud_light(grey,1.0f32,1.0f32,u[..]); #assert abs(lit.x-0.65f32)<0.0001f32 && lit.y==0.2f32 && lit.z==0.2f32;
+  // its shaded side takes a third of that, and a brightness past 1 is 1
+  shade:V3=sty_cloud_light(grey,0.0f32,1.0f32,u[..]); #assert abs(shade.x-0.35f32)<0.0001f32;
+  #assert sty_cloud_light(grey,4.0f32,1.0f32,u[..]).x==lit.x;
+  // away from the sun it takes less: 0.35 of it opposite, and the falloff is the angle's
+  away:V3=sty_cloud_light(grey,1.0f32,0.0f32-1.0f32,u[..]); #assert abs(away.x-(0.2f32+0.45f32*(0.35f32+0.65f32*exp(0.0f32-2.8f32))))<0.0001f32;
+  beside:V3=sty_cloud_light(grey,1.0f32,0.0f32,u[..]); #assert abs(beside.x-(0.2f32+0.45f32*(0.35f32+0.65f32*exp(0.0f32-1.4f32))))<0.0001f32;
+  #assert sty_cloud_light(grey,1.0f32,1.2f32,u[..]).x==lit.x;
+  // a dark cloud takes a quarter of the glow: before dawn it is a dark shape with a little warmth
+  u[STY_U_CLOUD_DIM]=1.0f32; night:V3=sty_cloud_light(grey,1.0f32,1.0f32,u[..]); #assert abs(night.x-0.1125f32)<0.0001f32 && night.y==0.0f32;
+  u[STY_U_CLOUD_DIM]=0.5f32; half:V3=sty_cloud_light(grey,1.0f32,1.0f32,u[..]); #assert abs(half.x-(0.1f32+0.45f32*0.625f32))<0.0001f32;
+  // green and blue glows go to their own channels
+  u[STY_U_CLOUD_DIM]=0.0f32; u[STY_U_GLOW_R]=0.0f32; u[STY_U_GLOW_G]=0.5f32; g:V3=sty_cloud_light(grey,1.0f32,1.0f32,u[..]); #assert g.x==0.2f32 && abs(g.y-0.65f32)<0.0001f32 && g.z==0.2f32;
+  u[STY_U_GLOW_G]=0.0f32; u[STY_U_GLOW_B]=0.5f32; b:V3=sty_cloud_light(grey,1.0f32,1.0f32,u[..]); #assert b.x==0.2f32 && b.y==0.2f32 && abs(b.z-0.65f32)<0.0001f32;
+}
+#test "the sky with a sun: its disc where the sun is, its glow low toward it and into the haze under the horizon, nothing overhead, and none of it unless the look names it" {
+  u:[STY_UNIFORM_FLOATS]f32;
+  u[STY_U_ZENITH]=0.1f32; u[STY_U_ZENITH+1]=0.2f32; u[STY_U_ZENITH+2]=0.5f32; u[STY_U_ZENITH+3]=0.0f32;
+  u[STY_U_HORIZON]=0.3f32; u[STY_U_HORIZON+1]=0.3f32; u[STY_U_HORIZON+2]=0.4f32; u[STY_U_HORIZON+3]=1.0f32;
+  u[STY_U_HAZE]=0.2f32; u[STY_U_HAZE+1]=0.25f32; u[STY_U_HAZE+2]=0.3f32; u[STY_U_EYE+3]=1000.0f32;
+  // the sun 0.1 up (about 6 degrees), dead ahead along -z
+  sun:V3=normalize3(v3(0.0f32,0.1f32,0.0f32-1.0f32));
+  u[STY_U_SUN]=sun.x; u[STY_U_SUN+1]=sun.y; u[STY_U_SUN+2]=sun.z;
+  plain:V3=sty_sky(sun,u[..]); aside:V3=sty_sky(normalize3(v3(1.0f32,0.1f32,0.0f32)),u[..]);
+  #assert abs(plain.x-aside.x)<0.0001f32 && plain.x<0.3f32;
+  // a disc: the sun's ink where the sun is, the plain sky a disc's width away but for the light round it
+  u[STY_U_SUN_DISC]=0.03f32;
+  ink:V3=sty_sun_ink(sun.y);
+  on:V3=sty_sky(sun,u[..]); #assert abs(on.x-ink.x)<0.0001f32 && abs(on.y-ink.y)<0.0001f32 && abs(on.z-ink.z)<0.0001f32;
+  by:V3=sty_sky(normalize3(v3(0.06f32,0.1f32,0.0f32-1.0f32)),u[..]); #assert by.x>plain.x+0.05f32 && by.x<plain.x+0.2f32 && by.y<ink.y-0.1f32;
+  off:V3=sty_sky(normalize3(v3(1.0f32,0.1f32,0.0f32)),u[..]); #assert abs(off.x-aside.x)<0.0001f32;
+  // the halo round it is the ink's colour, 0.35 of it at the disc, a third of that a disc and a half out
+  out:V3=sty_sky(normalize3(v3(0.0f32,0.1f32+0.0453f32,0.0f32-1.0f32)),u[..]);
+  clear:V3=v3(0.0f32,0.0f32,0.0f32); u[STY_U_SUN_DISC]=0.0f32; clear=sty_sky(normalize3(v3(0.0f32,0.1f32+0.0453f32,0.0f32-1.0f32)),u[..]); u[STY_U_SUN_DISC]=0.03f32;
+  #assert abs((out.x-clear.x)-0.35f32*exp(0.0f32-0.375f32))<0.01f32 && abs((out.y-clear.y)-ink.y*0.35f32*exp(0.0f32-0.375f32))<0.01f32;
+  // the edge is a pixel and a half wide at this focal length: 0.0015 radians, so 0.004 inside is whole and 0.004 outside is not the disc
+  inside:V3=sty_sky(normalize3(v3(0.026f32,0.1f32,0.0f32-1.0f32)),u[..]); outside:V3=sty_sky(normalize3(v3(0.0345f32,0.1f32,0.0f32-1.0f32)),u[..]);
+  #assert abs(inside.y-ink.y)<0.0001f32 && outside.y<ink.y-0.05f32;
+  // a glow: red, so only red moves. Low toward the sun it is strong, opposite the sun faint, overhead none
+  u[STY_U_SUN_DISC]=0.0f32; u[STY_U_GLOW_R]=0.5f32;
+  low:V3=sty_sky(normalize3(v3(0.3f32,0.02f32,0.0f32-1.0f32)),u[..]); base:V3=v3(0.0f32,0.0f32,0.0f32);
+  u[STY_U_GLOW_R]=0.0f32; base=sty_sky(normalize3(v3(0.3f32,0.02f32,0.0f32-1.0f32)),u[..]); u[STY_U_GLOW_R]=0.5f32;
+  #assert low.x>base.x+0.3f32 && low.y==base.y && low.z==base.z;
+  behind:V3=sty_sky(normalize3(v3(0.0f32,0.02f32,1.0f32)),u[..]); #assert behind.x>0.3f32+0.01f32 && behind.x<0.3f32+0.04f32;
+  top:V3=sty_sky(v3(0.0f32,1.0f32,0.0f32),u[..]); #assert abs(top.x-0.1f32)<0.003f32;
+  // under the horizon the glow goes on into the haze: just under it is the horizon's, well under the haze with its own glow that way
+  just:V3=sty_sky(normalize3(v3(0.0f32,0.0f32-0.0001f32,0.0f32-1.0f32)),u[..]); over:V3=sty_sky(normalize3(v3(0.0f32,0.0001f32,0.0f32-1.0f32)),u[..]);
+  #assert abs(just.x-over.x)<0.01f32 && just.x>0.3f32+0.5f32;
+  deep:V3=normalize3(v3(0.0f32,0.0f32-0.5f32,0.0f32-1.0f32)); under:V3=sty_sky(deep,u[..]);
+  want:V3=sty_haze_ink(deep,u[..]); #assert abs(under.x-want.x)<0.0001f32 && under.y==0.25f32 && want.x>0.2f32+0.2f32;
+  // the haze's ink: the haze alone with no glow, and with one the sky's horizon glow that way
+  ahead:V3=sty_haze_ink(v3(0.0f32,0.0f32,0.0f32-1.0f32),u[..]); back:V3=sty_haze_ink(v3(0.0f32,0.0f32,1.0f32),u[..]);
+  #assert abs(ahead.x-(0.2f32+0.5f32*sty_sun_glow(0.0f32-sun.z,0.0f32)))<0.0001f32 && ahead.y==0.25f32 && ahead.z==0.3f32 && back.x<ahead.x-0.4f32 && back.x>0.2f32;
+  u[STY_U_GLOW_R]=0.0f32; u[STY_U_GLOW_G]=0.5f32; gg:V3=sty_haze_ink(v3(0.0f32,0.0f32,0.0f32-1.0f32),u[..]); #assert gg.x==0.2f32 && gg.y>0.25f32+0.5f32 && gg.z==0.3f32;
+  u[STY_U_GLOW_G]=0.0f32; u[STY_U_GLOW_B]=0.5f32; gb:V3=sty_haze_ink(v3(0.0f32,0.0f32,0.0f32-1.0f32),u[..]); #assert gb.x==0.2f32 && gb.y==0.25f32 && gb.z>0.3f32+0.5f32;
+  sk:V3=sty_sky(normalize3(v3(0.3f32,0.02f32,0.0f32-1.0f32)),u[..]); #assert sk.z>base.z+0.3f32 && sk.x==base.x;
+  u[STY_U_GLOW_B]=0.0f32; u[STY_U_GLOW_G]=0.5f32; sg:V3=sty_sky(normalize3(v3(0.3f32,0.02f32,0.0f32-1.0f32)),u[..]); #assert sg.y>base.y+0.3f32 && sg.x==base.x;
+  u[STY_U_GLOW_G]=0.0f32;
+  // far ground toward the sun fades to that ink, and with no glow to the haze as before
+  u[STY_U_HAZE+3]=1.0f32; u[STY_U_HAZE_INFO]=0.0f32; u[STY_U_HAZE_INFO+1]=1.0f32;
+  far:V3=sty_haze(v3(0.0f32,0.0f32,0.0f32),v3(0.0f32,0.0f32,0.0f32-500.0f32),u[..]); #assert abs(far.x-pow(0.2f32,2.2f32))<0.0001f32;
+  u[STY_U_GLOW_R]=0.5f32;
+  warm:V3=sty_haze(v3(0.0f32,0.0f32,0.0f32),v3(0.0f32,0.0f32,0.0f32-500.0f32),u[..]); #assert abs(warm.x-pow(ahead.x,2.2f32))<0.0001f32 && abs(warm.y-pow(0.25f32,2.2f32))<0.0001f32;
+  cold:V3=sty_haze(v3(0.0f32,0.0f32,0.0f32),v3(0.0f32,0.0f32,500.0f32),u[..]); #assert cold.x<warm.x-0.3f32;
+  // a point at the eye itself is not hazed and breaks nothing
+  here:V3=sty_haze(v3(0.4f32,0.5f32,0.6f32),wg_at3(u[..],STY_U_EYE),u[..]); #assert here.x==0.4f32 && here.y==0.5f32;
+}
+#test "the cloud field goes round the whole horizon: untouched away from the join behind, and the same on both sides of it" {
+  k:f32=2.2f32;
+  // away from the join it is the field itself
+  for i:0..<40 {
+    az:f32=(cast(f32)i/40.0f32-0.5f32)*2.0f32*(STY_TAU*0.5f32-STY_CLOUD_JOIN);
+    #assert sty_cloud_round(az,k,0.3f32,0.4f32,0.5f32)==sty_cloud_field(az*k+0.3f32,0.4f32,0.5f32);
+  }
+  // at the join the two sides meet: half of each end of the field
+  pi:f32=STY_TAU*0.5f32;
+  for j:0..<12 {
+    ay:f32=0.1f32+cast(f32)j*0.27f32;
+    a:f32=sty_cloud_round(pi,k,0.3f32,ay,0.5f32); b:f32=sty_cloud_round(0.0f32-pi,k,0.3f32,ay,0.5f32);
+    #assert abs(a-b)<0.0001f32;
+    #assert abs(a-(sty_cloud_field(pi*k+0.3f32,ay,0.5f32)+sty_cloud_field(0.3f32-pi*k,ay,0.5f32))*0.5f32)<0.0001f32;
+    // and nothing jumps on the way to it, from either side
+    last:f32=sty_cloud_round(pi-STY_CLOUD_JOIN-0.01f32,k,0.3f32,ay,0.5f32);
+    for s:0..<123 { v:f32=sty_cloud_round(pi-STY_CLOUD_JOIN-0.01f32+cast(f32)(s+1)*0.005f32,k,0.3f32,ay,0.5f32); #assert abs(v-last)<0.03f32; last=v; }
+    #assert abs(last-a)<0.03f32;
+    last=sty_cloud_round(STY_CLOUD_JOIN+0.01f32-pi,k,0.3f32,ay,0.5f32);
+    for s:0..<123 { v:f32=sty_cloud_round(STY_CLOUD_JOIN+0.01f32-pi-cast(f32)(s+1)*0.005f32,k,0.3f32,ay,0.5f32); #assert abs(v-last)<0.03f32; last=v; }
+    #assert abs(last-b)<0.03f32;
+  }
+  // halfway into the join it is a quarter of the far end's
+  h:f32=pi-STY_CLOUD_JOIN*0.5f32;
+  #assert abs(sty_cloud_round(h,k,0.0f32,0.4f32,0.5f32)-(sty_cloud_field(h*k,0.4f32,0.5f32)*0.75f32+sty_cloud_field((h-STY_TAU)*k,0.4f32,0.5f32)*0.25f32))<0.0001f32;
+  #assert abs(sty_cloud_round(0.0f32-h,k,0.0f32,0.4f32,0.5f32)-(sty_cloud_field(0.0f32-h*k,0.4f32,0.5f32)*0.75f32+sty_cloud_field((STY_TAU-h)*k,0.4f32,0.5f32)*0.25f32))<0.0001f32;
+  // the sky is sky every way the eye can turn: a whole dome, its zenith's blue all round at one height
+  u:[STY_UNIFORM_FLOATS]f32;
+  u[STY_U_ZENITH]=0.1f32; u[STY_U_ZENITH+1]=0.2f32; u[STY_U_ZENITH+2]=0.5f32; u[STY_U_HORIZON]=0.3f32; u[STY_U_HORIZON+1]=0.3f32; u[STY_U_HORIZON+2]=0.4f32; u[STY_U_HORIZON+3]=1.0f32;
+  u[STY_U_SUN+1]=1.0f32; u[STY_U_EYE+3]=900.0f32;
+  first:V3=sty_sky(normalize3(v3(0.0f32,0.5f32,0.0f32-1.0f32)),u[..]);
+  for i:0..<64 { a:f32=cast(f32)i/64.0f32*STY_TAU; c:V3=sty_sky(normalize3(v3(sin(a),0.5f32,0.0f32-cos(a))),u[..]); #assert abs(c.z-first.z)<0.0001f32 && c.z>0.4f32; }
+}
+
+#test "the painted sky is pinned: its field of cloud and its heaps, over the whole dome, with and without a glow, add up to what they did" #steps 200000000 {
+  // A sky with clouds over more than half of it, turned and larger than usual, six heaps round the
+  // horizon, the sun to one side, and numbers after the heaps that would be a seventh. Its colours
+  // are added up over bearings round the whole horizon and a range of heights, each ray weighed 1
+  // to 5 by where it is, so two rays cannot trade places unseen. Five passes: the whole dome; low in
+  // the sky; the field alone (no heap has a height); the heaps alone (no cover); and low again,
+  // down under the horizon, with a glow and the clouds dimmed.
+  for pass:0..<5 {
+    u:[STY_UNIFORM_FLOATS]f32;
+    u[STY_U_ZENITH]=0.1f32; u[STY_U_ZENITH+1]=0.3f32; u[STY_U_ZENITH+2]=0.8f32; u[STY_U_ZENITH+3]=0.55f32;
+    u[STY_U_HORIZON]=0.6f32; u[STY_U_HORIZON+1]=0.7f32; u[STY_U_HORIZON+2]=0.9f32; u[STY_U_HORIZON+3]=1.3f32;
+    u[STY_U_HAZE]=0.5f32; u[STY_U_HAZE+1]=0.6f32; u[STY_U_HAZE+2]=0.7f32;
+    u[STY_U_HAZE_INFO+2]=0.4f32; u[STY_U_SIZE+2]=100.0f32; u[STY_U_EYE+3]=900.0f32;
+    sun:V3=normalize3(v3(0.6f32,0.5f32,0.0f32-0.6f32));
+    u[STY_U_SUN]=sun.x; u[STY_U_SUN+1]=sun.y; u[STY_U_SUN+2]=sun.z;
+    for i:0..<STY_CUMULI {
+      o:int=STY_U_CUMULUS+i*4;
+      u[o]=cast(f32)i*1.05f32-2.6f32; u[o+1]=0.06f32+0.03f32*cast(f32)i; u[o+2]=0.2f32+0.04f32*cast(f32)i; u[o+3]=0.16f32+0.03f32*cast(f32)i;
+    }
+    u[STY_U_REVEAL]=0.2f32; u[STY_U_REVEAL+1]=0.5f32; u[STY_U_REVEAL+2]=0.3f32; u[STY_U_REVEAL+3]=0.3f32;
+    n:int=64; m:int=8; lo:f32=0.02f32; hi:f32=0.9f32;
+    if (pass==0) { n=48; m=12; lo=0.0f32; hi=1.5f32; }
+    if (pass==1) { hi=0.5f32; }
+    if (pass==2) { for i:0..<STY_CUMULI { u[STY_U_CUMULUS+i*4+3]=0.0f32; } }
+    if (pass==3) { u[STY_U_ZENITH+3]=0.0f32; }
+    if (pass==4) { lo=0.0f32-0.3f32; hi=0.6f32; u[STY_U_GLOW_R]=0.5f32; u[STY_U_GLOW_G]=0.3f32; u[STY_U_GLOW_B]=0.1f32; u[STY_U_CLOUD_DIM]=0.3f32; }
+    sum:V3=v3(0.0f32,0.0f32,0.0f32);
+    for i:0..<n { for j:0..<m {
+      a:f32=(cast(f32)i+0.5f32)/cast(f32)n*STY_TAU-STY_TAU*0.5f32; e:f32=lo+(hi-lo)*(cast(f32)j+0.5f32)/cast(f32)m;
+      c:V3=sty_sky(v3(sin(a)*cos(e),sin(e),0.0f32-cos(a)*cos(e)),u[..]);
+      sum=add3(sum,scale3(c,1.0f32+cast(f32)((i*7+j*3)%5)));
+    } }
+    want:[5]V3=[5]V3.[v3(696.58826f32,927.9621f32,1477.6311f32),v3(990.28925f32,1116.8137f32,1384.2751f32),v3(790.4461f32,958.8561f32,1341.9601f32),v3(592.6399f32,808.4278f32,1313.8754f32),v3(947.5903f32,1017.3969f32,1191.2145f32)];
+    #assert abs(sum.x-want[pass].x)<0.02f32 && abs(sum.y-want[pass].y)<0.02f32 && abs(sum.z-want[pass].z)<0.02f32;
+  }
+  // a heap at most a thousandth of a radian tall is no heap, even for a ray inside where it would be
+  u:[STY_UNIFORM_FLOATS]f32;
+  u[STY_U_ZENITH]=0.1f32; u[STY_U_ZENITH+1]=0.3f32; u[STY_U_ZENITH+2]=0.8f32; u[STY_U_HORIZON]=0.6f32; u[STY_U_HORIZON+1]=0.7f32; u[STY_U_HORIZON+2]=0.9f32; u[STY_U_HORIZON+3]=1.0f32;
+  u[STY_U_SUN+1]=1.0f32; u[STY_U_EYE+3]=900.0f32;
+  ray:V3=v3(0.0f32,sin(0.3004f32),0.0f32-cos(0.3004f32));
+  plain:V3=sty_sky(ray,u[..]);
+  u[STY_U_CUMULUS]=0.0f32; u[STY_U_CUMULUS+1]=0.3f32; u[STY_U_CUMULUS+2]=0.01f32; u[STY_U_CUMULUS+3]=0.001f32;
+  none:V3=sty_sky(ray,u[..]); #assert none.x==plain.x && none.z==plain.z;
+  u[STY_U_CUMULUS+3]=0.0011f32; some:V3=sty_sky(ray,u[..]); #assert some.x>plain.x+0.1f32;
+  // a heap that stands just short of straight behind is seen from just past it: bearings go round
+  u[STY_U_CUMULUS]=3.1f32; u[STY_U_CUMULUS+1]=0.3f32; u[STY_U_CUMULUS+2]=0.5f32; u[STY_U_CUMULUS+3]=0.3f32;
+  past:V3=sty_sky(v3(sin(0.0f32-3.1f32)*cos(0.42f32),sin(0.42f32),0.0f32-cos(0.0f32-3.1f32)*cos(0.42f32)),u[..]);
+  clear:V3=sty_sky(v3(sin(0.0f32-1.5f32)*cos(0.42f32),sin(0.42f32),0.0f32-cos(0.0f32-1.5f32)*cos(0.42f32)),u[..]);
+  #assert past.x>clear.x+0.2f32 && past.x>0.75f32;
+  // the sun's disc on the horizon exactly: the ray dead at it is the disc, not the haze under it
+  u[STY_U_CUMULUS+3]=0.0f32; u[STY_U_SUN]=0.0f32; u[STY_U_SUN+1]=0.0f32; u[STY_U_SUN+2]=0.0f32-1.0f32; u[STY_U_SUN_DISC]=0.03f32;
+  dead:V3=sty_sky(v3(0.0f32,0.0f32,0.0f32-1.0f32),u[..]); ink:V3=sty_sun_ink(0.0f32);
+  #assert abs(dead.x-ink.x)<0.0001f32 && abs(dead.y-ink.y)<0.0001f32 && abs(dead.z-ink.z)<0.0001f32;
 }

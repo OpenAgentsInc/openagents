@@ -773,6 +773,44 @@ rim is a moonlit blue kept under the key (section 2).
 A realm with a real moon (Hecate's) keeps its own moon direction and phase.
 The preset gives colours and strengths, and the realm gives where the light is.
 
+**The stylized look's sunrise** (built November 17). The stylized shading
+(`render/shade/stylized.coax`, the hand-painted look Painted Village and
+gamebuilder.org draw with) has one `StyLook` a frame and no clock of its own.
+It now has what a day needs:
+
+- **The sun in the sky.** `StyLook.sun_disc` (radians; 0 none) draws the
+  sun's disc where the look's sun is: orange-red (1, 0.42, 0.16) on the
+  horizon, white-gold (1, 0.97, 0.86) by 20 degrees up, an edge a pixel and a
+  half wide, 0.35 of its colour as light round it (`sty_sun_disc`,
+  `sty_sun_ink`).
+- **Its glow.** `glow_r, g, b` is added low in the sky: 1.3 of it at the sun
+  on the horizon, a wide wash round it, 0.08 of it all round the horizon,
+  nothing overhead (`sty_sun_glow`). Clouds take it on their lit side
+  (`sty_cloud_light`), and the haze takes it the same way the sky's horizon
+  does (`sty_haze_ink`), so far ground toward a low sun fades into the glow
+  and the horizon has no line.
+- **Clouds that go dark.** `cloud_dim` 0 is daylight white, 1 is black: a
+  cloud before dawn is a dark shape with a little warmth.
+- **A look between looks.** `sty_look_mix(a, b, t)`: every number of a look,
+  straight between two.
+- **A sunrise.** `sty_sunrise(day, t, rise_x, rise_z)` is the look at share
+  `t` of a sunrise that ends as `day`: pitch black at 0, first light at 0.15,
+  the middle of the disc on the horizon at 0.42 dead along (`rise_x`,
+  `rise_z`), golden light at 0.62, and `day` to the bit at 1. The sun's
+  height runs -14, -6, 0 and 7 degrees through those shares and on to the
+  day's; its bearing turns from where it rose to the day's as it climbs. The
+  caller owns the clock, as with the grass's reveal.
+- **A whole dome.** The cloud field did not repeat round the horizon, so a
+  line cut the clouds straight behind the camera (+z). `sty_cloud_round`
+  mixes the field with itself one turn away within 0.6 radians of that join;
+  elsewhere the clouds are as they were.
+
+These ride in five floats the frame block already had spare (240 floats, no
+offset moved), all 0 by default: a look that names none draws as before but
+for the clouds within 0.6 radians of straight behind. First used by
+gamebuilder.org's world: the sky starts black and the sun comes up ahead of
+the character in twelve seconds.
+
 ### 14. The phone tier
 
 `metaverse_style_preset(style, PHONE)` (a coarse pointer, or a canvas under

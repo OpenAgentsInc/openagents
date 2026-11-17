@@ -468,6 +468,40 @@ carries one mover the blades part round (`sty_mover`, with
 `metaverse_style_part`, `_part_push` and `_part_keep`) and the wind that bends
 them (`sty_wind`). A frame that writes none of these draws as it did before.
 
+### A sunrise over it
+
+The same look can start in the dark. `sty_sunrise(day, t, rise_x, rise_z)`
+([`render/shade/stylized-frame.coax`](../render/shade/stylized-frame.coax)) is
+the look at share `t` of a sunrise that ends as the look `day`:
+
+| Share | What |
+| --- | --- |
+| 0 | Pitch black: no light, no sky, no haze colour, clouds dark. The sun is 14 degrees under the horizon |
+| 0.15 (`STY_SUNRISE_FIRST`) | First light: a deep blue sky, a little cold light from above, the sun 6 degrees under |
+| 0.42 (`STY_SUNRISE_HORIZON`) | The middle of the sun's disc on the horizon, dead along (`rise_x`, `rise_z`): a rose horizon, an orange glow, the first red light |
+| 0.62 (`STY_SUNRISE_GOLDEN`) | Golden light: the sun 7 degrees up, warm and strong, long shadows, the clouds nearly white |
+| 1 and after | `day`, to the bit |
+
+Between them every colour runs straight from one look to the next
+(`sty_sunrise_key`, `sty_look_mix`), the haze is the horizon's colour, and
+the sun only climbs, turning from where it rose to the day's bearing. As with
+the reveal, the primitive is the shape and the caller owns the clock:
+
+```jai
+day: StyLook; day.sun_disc = 0.03;              // a look with a sun to see
+look := sty_sunrise(day, seconds / 12, 0, -1);  // rises along -z, ahead of a camera that looks that way
+sty_frame(u, width, height, time, camera, look);
+```
+
+What draws it is in the sky and the haze
+([`render/shade/stylized.coax`](../render/shade/stylized.coax)): the disc
+(`sty_sun_disc`, `sty_sun_ink`), the glow low toward the sun (`sty_sun_glow`),
+clouds that go dark and take the glow (`sty_cloud_light`), and haze that takes
+the glow the way the horizon does (`sty_haze_ink`), so the land meets a dawn
+sky without a line. The sky is a whole dome: the cloud field is joined where
+its two ends meet behind the camera (`sty_cloud_round`). A look that names no
+disc, glow or dimming draws as it did before.
+
 ## What exists today
 
 - [metaverse-engine/world/path-graph.coax](../world/path-graph.coax): the hills and the

@@ -82,7 +82,10 @@ To use it in a world:
    `sty_wind` (the wind that bends the blades), `sty_mover` (one mover they
    part round), `sty_reveal` (grass that grows outward from a place) and
    `sty_bare` (the graybox floor the reveal has not reached). A frame that
-   writes none of them draws as before.
+   writes none of them draws as before. For a look that changes with time,
+   `sty_look_mix(a, b, t)` is the look a share of the way between two, and
+   `sty_sunrise(day, t, rise_x, rise_z)` is a whole sunrise that ends as
+   `day` (below).
 
 | What it draws | How |
 | --- | --- |
@@ -94,7 +97,9 @@ To use it in a world:
 | Grass | `stylized_grass_vs`: one tapered blade a cell of the grass field, rooted on the ground table, facing the eye, swaying, and kept off paths, paving and bare ground (`blade`, `blade_wide`, `grass_cell`, `grass_reach`). Where the table's grass cover is above 1 the blades grow that much longer. With `sty_wind` they bend in the engine's wind (`vegetation.coax`: one 12 m wave and its gusts); with `sty_mover` those near the mover lie lower and lean away from it |
 | Reveal | `sty_reveal(u, cx, cz, radius, edge)`: grass stands only behind a front `radius` metres from a centre (`metaverse_style_reveal`); blades sprout as it passes, and the ground ahead of it is the bare floor of `sty_bare`: a colour and a grid with lines a pixel wide at any distance (`sty_floor`). The caller moves the radius; an edge of 0 is no reveal |
 | Water | The water pass draws a world's wet parts after everything else, blended over it. `sty_river`: clear turquoise in the shallows and blue in the depths (from the ground table under the surface), pale ripples that wind downstream, foam along the shore and wherever the table's fourth field says the water churns (under a fall, round a rock). `sty_falls`: a waterfall's falling white streaks. Spray is soft puffs and a rainbow a band of the spectrum (`sty_wet`) |
-| Sky | `sty_sky`: zenith to horizon; a field of cloud (`cloud`, `cloud_scale`, `cloud_turn`; `cloud` 0 is none); and up to `STY_CUMULI` (six) heaped clouds placed by hand (`StyLook.cumulus`: where round the horizon, how high its flat base, half its width, its height), each crisp-edged, white above and blue-grey toward its base (`sty_cumulus`) |
+| Sun | A look's `sun_disc` (its radius in radians; 0.03 is a big painted sun, 0 none) draws the sun where `sun_x, y, z` point: orange-red on the horizon, white-gold by 20 degrees up, with a little light round it (`sty_sun_disc`, `sty_sun_ink`). `glow_r, g, b` is the colour the sun puts low in the sky, most toward it, with a faint band all round the horizon (`sty_sun_glow`); clouds take it on their lit side and far ground hazes into it (`sty_haze_ink`), so the land meets a dawn sky without a line. `cloud_dim` darkens the clouds (0 daylight white, 1 black). All are 0 by default and ride in floats the frame block had spare: a look that names none draws as before |
+| Sunrise | `sty_sunrise(day, t, rise_x, rise_z)`: the look at share `t` of a sunrise that ends as `day`. Pitch black at 0; first light at `STY_SUNRISE_FIRST` (0.15: a deep blue sky, a little cold light, the sun 6 degrees under); the middle of the disc on the horizon at `STY_SUNRISE_HORIZON` (0.42), dead along the ground's (`rise_x`, `rise_z`), under a rose horizon and an orange glow; golden light at `STY_SUNRISE_GOLDEN` (0.62: the sun 7 degrees up, long shadows); `day` itself, to the bit, at 1 and after. The sun turns from where it rose to the day's bearing as it climbs. Colours run straight from one of its looks to the next (`sty_sunrise_key`, `sty_look_mix`), so nothing jumps. The caller owns the clock: how long it lasts and how `t` moves |
+| Sky | The whole dome, every way the eye turns (the cloud field is joined behind, along +z: `sty_cloud_round`). `sty_sky`: zenith to horizon; a field of cloud (`cloud`, `cloud_scale`, `cloud_turn`; `cloud` 0 is none); and up to `STY_CUMULI` (six) heaped clouds placed by hand (`StyLook.cumulus`: where round the horizon, how high its flat base, half its width, its height), each crisp-edged, white above and blue-grey toward its base (`sty_cumulus`) |
 
 Colours are authored as they should look on the display. The shaders decode
 them once, light them, and encode once on the way out.

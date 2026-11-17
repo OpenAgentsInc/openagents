@@ -12,7 +12,7 @@
 //   STY_U_SKY_LIGHT   the light from the sky, on faces that look up; STY_U_GROUND_LIGHT from below
 //   STY_U_HAZE        the haze's colour, and how much of it a metre adds
 //   STY_U_HAZE_INFO   where the haze starts (m), the most it hides (0 to 1), how far the clouds are turned
-//                     round the horizon (radians), and one spare
+//                     round the horizon (radians), and the sun's disc (STY_U_SUN_DISC)
 //   STY_U_ZENITH      the sky overhead, and the cloud cover (0 clear, 1 overcast)
 //   STY_U_HORIZON     the sky at the horizon, and the clouds' size
 //   STY_U_RIGHT, STY_U_UP, STY_U_FORWARD   the eye's own axes
@@ -37,6 +37,13 @@
 //                     its grid's squares (m; 0: no lines)
 //   STY_U_BARE_LINE   that grid's lines: their own light (r, g, b), and how many squares apart the
 //                     second, wider grid's lines are (0: none)
+//
+// The sun in the sky rides in floats the block already had spare, so the block's size and every
+// other offset stay as they were and a frame that writes none of them draws no sun (all 0):
+//   STY_U_SUN_DISC    the sun's disc: its radius, radians (0: no disc)
+//   STY_U_GLOW_R, _G, _B   the glow the sun puts low in the sky round the horizon, most toward the
+//                     sun (0: none): dawn's and dusk's colour
+//   STY_U_CLOUD_DIM   how much of the clouds' daylight is gone (0: white daylight clouds, 1: black)
 
 STY_U_SIZE :: 0;
 STY_U_EYE :: 4;
@@ -68,6 +75,11 @@ STY_U_WIND :: 228;
 STY_U_BARE :: 232;
 STY_U_BARE_LINE :: 236;
 STY_UNIFORM_FLOATS :: 240;
+STY_U_SUN_DISC :: 63;          // STY_U_HAZE_INFO + 3
+STY_U_GLOW_R :: 75;            // STY_U_RIGHT + 3
+STY_U_GLOW_G :: 79;            // STY_U_UP + 3
+STY_U_GLOW_B :: 83;            // STY_U_FORWARD + 3
+STY_U_CLOUD_DIM :: 51;         // STY_U_SKY_LIGHT + 3
 
 // The shadow map's bias: how far along its normal a surface is moved before it is looked up (m),
 // and how much nearer the sun it must be than what the map holds (a share of the map's depth).
