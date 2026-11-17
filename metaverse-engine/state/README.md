@@ -21,6 +21,15 @@ and operation watermark, never caches, pointers or resource claims. A temporary
 retry copies only fields declaring retry participation. External committed
 progress remains in its existing domain and is never part of that snapshot.
 
+## Settings a person can change
+
+`tunables.coax` is a separate, smaller registry: rows a person or a model may change at play
+(gravity, air jumps, a thing's bounce), each with a path, a kind, a range, a default, a few words
+and a line of what it does, and a sparse sorted map of what differs. It is not the declared
+schema above: it carries no save, retry or ownership semantics. `world-tunables.coax` is the
+world's own table. See [engine-core](../../docs/metaverse/engine-core.md#settings-a-person-can-change-metaverse-enginestatetunablescoax)
+and [chapter 3](../book/ch003-state-starts-from-its-defaults.md#settings-a-person-can-change).
+
 ## Wire and migration
 
 FST1 format 1 has 18 header words, 16 words per saved field, and eight SHA-256

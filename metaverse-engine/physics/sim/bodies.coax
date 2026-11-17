@@ -55,6 +55,7 @@
 //   bd_index                the index a body's id has now (indices move when bodies come and go)
 //   bd_place / bd_resize    put a body somewhere; give a box a new size, its lowest point where it was
 //   bd_still                put a body to sleep where it is: a thing set down at rest, not dropped
+//   bd_material             a body's density, friction and bounce changed as the scene runs (density 0: fixed)
 //   bd_remove               take one out
 //   bd_local                mark a body local-only decoration
 //   bd_wall / bd_walls_clear  add a wall (a fixed box by its low and high corners); take them all away
@@ -336,6 +337,19 @@ bd_resize :: (b: [] Bodies, i: int, half: D3, density: f64) {
   b[0].set[0].inv_inertia[i] = ifx mass > 0.0 then d3(1.0 / inertia.x, 1.0 / inertia.y, 1.0 / inertia.z) else D3_ZERO;
   b[0].set[0].pos[i].y += bd_extent(b, i).y - before;
   b[0].was_pos[i] = b[0].set[0].pos[i];
+}
+// A body's material changed as the scene runs: its mass by a new density (0: it is fixed, and
+// stays where it is whatever lands on it or runs into it, until it is given a density again), its
+// friction and its bounce. Its size, its place and its attitude stay. Every body wakes, so what
+// rested on it, or it on them, answers at the next step. A body made fixed stops where it is.
+// Like a body's size, its material is the scene's description: in the digest, and not in a
+// snapshot or the history (a room that reads a snapshot has made the same changes).
+bd_material :: (b: [] Bodies, i: int, density: f64, friction: f64, bounce: f64) {
+  if i < 0 || i >= bd_count(b) { return; }
+  b[0].friction[i] = friction; b[0].bounce[i] = bounce;
+  bd_resize(b, i, b[0].half[i], density);
+  if bd_fixed(b, i) { b[0].set[0].vel[i] = D3_ZERO; b[0].set[0].omega[i] = D3_ZERO; }
+  for k: 0..<bd_count(b) { b[0].label[k] = 0; b[0].quiet[k] = 0.0; }
 }
 // Takes body i out; the bodies after it move down one, still in id order. What rested on it is
 // awake. False when there is no such body.
@@ -927,6 +941,8 @@ bd_digest_of :: (b: [] Bodies, shared_only: bool) -> u64 {
                    s[0].vel[i].x, s[0].vel[i].y, s[0].vel[i].z, s[0].omega[i].x, s[0].omega[i].y, s[0].omega[i].z];
     h = bd_hash(h, cast(u64) b[0].id[i]);
     for x: v { h = bd_hash(h, f64_bits(x)); }
+    // (and its material, which a game may change as it runs: bd_material)
+    for x: [3] f64.[s[0].inv_mass[i], b[0].friction[i], b[0].bounce[i]] { h = bd_hash(h, f64_bits(x)); }
     h = bd_hash(h, ifx b[0].label[i] != 0 then 1 else 0);
   }
   return h;
@@ -2339,4 +2355,81 @@ BdTestPast :: struct { b: [1] Bodies; h: [1] Bd_History; hash: [400] u64; }
   #assert bd_digest(f1[..]) == bd_digest(f3[..]);
   r1 = bd_wall(f3[..], d3(2.0, 0.0, 0.0), d3(3.0, 1.0, 1.5)); bd_walls_clear(f1[..]); r1 = bd_wall(f1[..], d3(0.0, 0.0, 0.0), d3(1.0, 1.0, 1.0));
   #assert bd_is_mover(BD_MOVER) && bd_is_mover(BD_MOVER - BD_MOVERS + 1) && bd_is_mover(BD_WALL + 1) && !bd_is_mover(BD_WALL) && !bd_is_mover(BD_GROUND) && !bd_is_mover(0) && !bd_is_mover(BD_WALL - 5);
+}
+
+#test "a body's material changed as the scene runs: its bounce, its friction and its weight answer at once, one made fixed stays whatever lands on it and falls when it is freed, everything wakes, the digest tells, and a run with a change in it repeats" #steps 4000000000 {
+  t: [6] BdTest;
+  a := t[0].b[..]; c := t[1].b[..];
+  // two balls dropped from the same height: the one made bouncy in the air comes back up most of the way, the other barely
+  ia := bd_test_ball(a, d3(0.0, 2.0, 0.0), 0.3, 40.0, 0.6, 0.2, 0.06); ic := bd_test_ball(c, d3(0.0, 2.0, 0.0), 0.3, 40.0, 0.6, 0.2, 0.06);
+  #assert bd_digest(a) == bd_digest(c);
+  bd_material(c, ic, 40.0, 0.6, 0.9);
+  #assert c[0].bounce[ic] == 0.9 && c[0].friction[ic] == 0.6 && c[0].set[0].mass[ic] == a[0].set[0].mass[ia] && c[0].set[0].pos[ic].y == 2.0 && bd_digest(a) != bd_digest(c);
+  pa := 0.0; pc := 0.0; ua := false; uc := false;
+  for k: 0..<240 {
+    bd_step(a); bd_step(c);
+    if a[0].set[0].vel[ia].y > 0.0 { ua = true; } if c[0].set[0].vel[ic].y > 0.0 { uc = true; }
+    if ua && a[0].set[0].pos[ia].y > pa { pa = a[0].set[0].pos[ia].y; }
+    if uc && c[0].set[0].pos[ic].y > pc { pc = c[0].set[0].pos[ic].y; }
+  }
+  #assert pa < 0.5 && pc > 1.4 && pc < 2.0;
+  // the digest tells two scenes apart by one body's friction alone, its bounce alone, and its weight alone
+  x := t[2].b[..]; y := t[3].b[..];
+  ix := bd_test_cube(x, 0.0, 0.5, 0.0, 0.5); iy := bd_test_cube(y, 0.0, 0.5, 0.0, 0.5);
+  #assert bd_digest(x) == bd_digest(y);
+  bd_material(y, iy, 100.0, 0.4, 0.15); #assert bd_digest(x) != bd_digest(y) && y[0].friction[iy] == 0.4 && y[0].bounce[iy] == 0.15;
+  bd_material(y, iy, 100.0, 0.5, 0.25); #assert bd_digest(x) != bd_digest(y);
+  bd_material(y, iy, 100.0, 0.5, 0.15); #assert bd_digest(x) == bd_digest(y);
+  bd_material(y, iy, 1000.0, 0.5, 0.15); #assert bd_digest(x) != bd_digest(y) && near_d(y[0].set[0].mass[iy], 1000.0, 1e-9) && near_d(y[0].set[0].inv_mass[iy], 0.001, 1e-12) && near_d(y[0].set[0].inertia[iy].x, 10.0 * x[0].set[0].inertia[ix].x, 1e-9) && y[0].set[0].pos[iy].y == 0.5;
+  // no such body: nothing changes
+  d := bd_digest(y); bd_material(y, -1, 5.0, 0.0, 1.0); bd_material(y, 1, 5.0, 0.0, 1.0); #assert bd_digest(y) == d;
+  // less friction: a sliding cube goes further
+  bd_material(y, iy, 100.0, 0.5, 0.15);
+  bd_material(y, iy, 100.0, 0.1, 0.15);
+  x[0].set[0].vel[ix] = d3(4.0, 0.0, 0.0); y[0].set[0].vel[iy] = d3(4.0, 0.0, 0.0);
+  bd_test_run(x, 400); bd_test_run(y, 400);
+  #assert x[0].set[0].pos[ix].x > 1.0 && y[0].set[0].pos[iy].x > x[0].set[0].pos[ix].x * 3.0;
+  // made fixed in the air, moving and spinning: it stops there and stays, and a cube dropped on it rests on it
+  f := t[4].b[..];
+  low := bd_test_cube(f, 0.0, 3.0, 0.0, 0.5);
+  f[0].set[0].vel[low] = d3(1.0, -2.0, 0.5); f[0].set[0].omega[low] = d3(0.0, 3.0, 0.0);
+  bd_material(f, low, 0.0, 0.5, 0.15);
+  #assert bd_fixed(f, low) && f[0].set[0].vel[low].x == 0.0 && f[0].set[0].vel[low].y == 0.0 && f[0].set[0].vel[low].z == 0.0 && f[0].set[0].omega[low].y == 0.0 && f[0].set[0].inv_mass[low] == 0.0;
+  top := bd_test_cube(f, 0.0, 5.0, 0.0, 0.5);
+  bd_test_run(f, 300);
+  #assert f[0].set[0].pos[low].y == 3.0 && f[0].set[0].pos[low].x == 0.0 && near_d(f[0].set[0].pos[top].y, 4.0, 0.02) && !bd_awake(f, top);
+  // a body that is not fixed keeps its speed through a change of material
+  go := bd_test_cube(f, 9.0, 0.5, 0.0, 0.5); f[0].set[0].vel[go] = d3(2.0, 0.0, 0.0); f[0].set[0].omega[go] = d3(0.0, 1.0, 0.0);
+  bd_material(f, go, 50.0, 0.5, 0.15); #assert f[0].set[0].vel[go].x == 2.0 && f[0].set[0].omega[go].y == 1.0 && !bd_fixed(f, go);
+  // freed again, everything wakes (the cube asleep on it too, its rest timer from nothing) and both come down
+  f[0].quiet[top] = 0.3;
+  bd_material(f, low, 100.0, 0.5, 0.15);
+  #assert !bd_fixed(f, low) && bd_sleeping(f) == 0 && f[0].quiet[top] == 0.0 && f[0].label[top] == 0;
+  bd_test_run(f, 400);
+  #assert near_d(f[0].set[0].pos[low].y, 0.5, 0.02) && near_d(f[0].set[0].pos[top].y, 1.5, 0.03);
+  // a run with a change in the middle, made twice: the same bits at every step
+  p := t[0].b[..]; q := t[1].b[..];
+  bd_reset(p); bd_reset(q); bd_test_heap(p, 8, 0); bd_test_heap(q, 8, 0);
+  same := true;
+  for k: 0..<300 {
+    if k == 90 { bd_material(p, 2, 600.0, 0.2, 0.7); bd_material(q, 2, 600.0, 0.2, 0.7); }
+    if k == 180 { bd_material(p, 4, 0.0, 0.5, 0.1); bd_material(q, 4, 0.0, 0.5, 0.1); }
+    bd_step(p); bd_step(q);
+    if bd_digest(p) != bd_digest(q) { same = false; }
+  }
+  #assert same && bd_fixed(p, 4);
+  // the digest itself, to the bit: an empty scene's, one cube's awake and asleep; another id or another place is another scene
+  g := t[5].b[..];
+  #assert bd_digest(g) == 17595520909940374592;
+  ig := bd_test_cube(g, 0.0, 0.5, 0.0, 0.5);
+  #assert bd_digest(g) == 4696554039984967465;
+  bd_still(g, ig); #assert bd_digest(g) == 4696552940473339254;
+  bd_wake(g, ig); #assert bd_digest(g) == 4696554039984967465;
+  g[0].id[ig] = 2; #assert bd_digest(g) != 4696554039984967465; g[0].id[ig] = 1;
+  bd_place(g, ig, d3(0.0, 0.5, 1.0), DQ.{}); #assert bd_digest(g) != 4696554039984967465;
+  // a place past the last body is no body: nothing is written there
+  bd_material(g, 1, 5.0, 0.7, 1.0); #assert g[0].friction[1] != 0.7 && g[0].bounce[1] != 1.0;
+  // the first body, asleep, wakes when another's material changes
+  i2 := bd_test_cube(g, 5.0, 0.5, 0.0, 0.5); bd_still(g, 0); bd_still(g, 1); #assert bd_sleeping(g) == 2;
+  bd_material(g, 1, 100.0, 0.5, 0.15); #assert bd_sleeping(g) == 0 && bd_awake(g, 0);
 }

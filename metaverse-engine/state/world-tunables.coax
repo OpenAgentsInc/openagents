@@ -1,0 +1,110 @@
+// The tunables of a world a person stands in (state/tunables.coax is what is done with them): the
+// world's gravity, time, wind, sky and haze; how the player runs, jumps, flies and pushes; the
+// camera; what a thing is made of; the grass. One row each. A realm that runs such a world loads
+// this table, keeps a TunStore of what differs, and reads each value where its rule already takes
+// a number: the row says only what may be asked for, in what range, in plain words.
+//
+// To add one: a row here (and its TW_ name), and the place its rule reads it. Nothing else knows
+// the list: a settings panel is drawn from the table, and a model is given its index.
+//
+// What each row means to the engine's own modules:
+//   world.gravity        times the scene's gravity (physics/sim/bodies.coax bd_gravity) and the walk's
+//   world.time_scale     times the seconds a frame hands the walk and the bodies
+//   world.wind           times the wind's bend (render/shade/stylized-frame.coax sty_wind)
+//   world.time_of_day    how far the look's sunrise goes (sty_sunrise): TW_DAY_SHARE of it
+//   world.haze           times the look's haze a metre (StyLook.haze)
+//   player.air_jumps     jumps again in the air; player.fly: whether creative flight
+//                        (move/creative-fly.coax) may be turned on. While flight may be, the realm
+//                        gives it the second press and allows no air jump
+//   player.run_speed     the walk's speed on foot, m/s; player.jump_height: metres a jump rises at
+//                        normal gravity; player.push_strength: times the mover's force (bd_mover)
+//   camera.view          which camera (cam/kinds.coax): orbit, follow behind, first person, top-down; camera.distance: metres the orbit is asked to stand
+//                        off (cam/camera.coax Orbit.want); camera.fov: the lens, degrees
+//   thing.bounce, thing.friction, thing.density, thing.fixed    a body's material (bd_material):
+//                        fixed is a density of nothing
+//   grass.height         a blade's height, m (StyLook.blade); grass.density: times the blades a
+//                        square metre (StyLook.grass_cell, by its square root)
+// Numbers are hundredths, as tunables.coax keeps them.
+//   coax/bin/coax test metaverse-engine/state/world-tunables.coax
+//   coax/bin/coax mutate metaverse-engine/state/world-tunables.coax --root-only
+
+#module "metaverse.engine.world_tunables";
+#load "tunables.coax";
+
+// book:begin world-tunables
+TW_GRAVITY :: 0; TW_TIME_SCALE :: 1; TW_WIND :: 2; TW_TIME_OF_DAY :: 3; TW_HAZE :: 4;
+TW_AIR_JUMPS :: 5; TW_FLY :: 6; TW_RUN_SPEED :: 7; TW_JUMP_HEIGHT :: 8; TW_PUSH :: 9;
+TW_VIEW :: 10; TW_DISTANCE :: 11; TW_FOV :: 12;
+TW_BOUNCE :: 13; TW_FRICTION :: 14; TW_DENSITY :: 15; TW_FIXED :: 16;
+TW_GRASS_HEIGHT :: 17; TW_GRASS_DENSITY :: 18;
+TW_N :: 19;
+// The kinds of thing a path may name before a thing's row ("balls.bounce"), in the order of the
+// rigid bodies' own kinds (Bd_Kind: a box, a ball).
+TW_KINDS :: [2] string.["blocks", "balls"];
+// world.time_of_day's choices, and the share of the look's sunrise each one is (sty_sunrise's t).
+TW_DAY_SHARE :: [5] f32.[0.0, 0.2, 0.46, 0.66, 1.0];
+
+TW_ROWS :: [TW_N] Tunable.[
+  Tunable.{path = "world.gravity", kind = TUN_NUMBER, scope = TUN_WORLD, low = 0, high = 500, step = 10, def = 100, unit = "x", hint = "how hard things fall", about = "how hard everything falls, as a multiple of normal: 0.5 is floaty, 2 is heavy, and at 0 nothing falls and a jump keeps rising"},
+  Tunable.{path = "world.time_scale", kind = TUN_NUMBER, scope = TUN_WORLD, low = 25, high = 200, step = 5, def = 100, unit = "x", hint = "slow motion, fast forward", about = "how fast the world runs: 0.5 is slow motion, 2 is double speed"},
+  Tunable.{path = "world.wind", kind = TUN_NUMBER, scope = TUN_WORLD, low = 0, high = 200, step = 10, def = 100, unit = "x", hint = "how hard the wind blows", about = "how hard the wind bends the grass: 0 is still air, 2 is a gale"},
+  Tunable.{path = "world.time_of_day", kind = TUN_CHOICE, scope = TUN_WORLD, low = 0, high = 4, def = 4, hint = "night, sunrise, day", about = "the time of day the sky settles at: the sun comes up as far as that and stays", names = [TUN_NAMES] string.["night", "dawn", "sunrise", "morning", "day", ""]},
+  Tunable.{path = "world.haze", kind = TUN_NUMBER, scope = TUN_WORLD, low = 0, high = 300, step = 10, def = 100, unit = "x", hint = "fog in the distance", about = "how thick the haze in the distance is: 0 is clear air, 3 is fog"},
+  Tunable.{path = "player.air_jumps", kind = TUN_WHOLE, scope = TUN_PLAYER, low = 0, high = 2, def = 1, hint = "double jump", about = "how many times you may jump again in the air (the double jump): 0 turns it off. it is used when flying is off, and in the side-scroller, which never flies"},
+  Tunable.{path = "player.fly", kind = TUN_BOOL, scope = TUN_PLAYER, low = 0, high = 1, def = 1, hint = "flying", about = "whether pressing jump twice quickly flies (never in the side-scroller). while it is on it takes the place of the air jump"},
+  Tunable.{path = "player.run_speed", kind = TUN_NUMBER, scope = TUN_PLAYER, low = 100, high = 2000, step = 10, def = 690, unit = "m/s", hint = "how fast you run", about = "how fast you run"},
+  Tunable.{path = "player.jump_height", kind = TUN_NUMBER, scope = TUN_PLAYER, low = 0, high = 1000, def = 167, unit = "m", hint = "how high you jump", about = "how high a jump rises at normal gravity: 0 is no jump at all"},
+  Tunable.{path = "player.push_strength", kind = TUN_NUMBER, scope = TUN_PLAYER, low = 0, high = 300, step = 10, def = 100, unit = "x", hint = "how hard you push things", about = "how hard you push the things you run into: 0 pushes nothing, 3 shoves heavy things along"},
+  Tunable.{path = "camera.view", kind = TUN_CHOICE, scope = TUN_PLAYER, low = 0, high = 3, hint = "orbit, follow, first person, top-down", about = "which camera: orbit around you, follow behind you, first person, or seen from straight above", names = [TUN_NAMES] string.["orbit", "follow", "first_person", "top_down", "", ""]},
+  Tunable.{path = "camera.distance", kind = TUN_NUMBER, scope = TUN_PLAYER, low = 150, high = 1200, step = 50, def = 950, unit = "m", hint = "how far back the camera is", about = "how far back the camera stands, within what the game type allows; the wheel still zooms from there"},
+  Tunable.{path = "camera.fov", kind = TUN_WHOLE, scope = TUN_PLAYER, low = 20, high = 110, def = 60, unit = "degrees", hint = "how wide the view is", about = "the camera's field of view: small is a long lens, large is a wide one"},
+  Tunable.{path = "thing.bounce", kind = TUN_NUMBER, scope = TUN_THING, low = 0, high = 100, step = 5, def = 15, hint = "how bouncy it is", about = "how much of its speed a thing keeps when it lands: 0 lands dead, 0.9 is very bouncy"},
+  Tunable.{path = "thing.friction", kind = TUN_NUMBER, scope = TUN_THING, low = 0, high = 150, step = 5, def = 50, hint = "grippy or slippery", about = "how much a thing grips what it rests on: 0 is ice, 1 or more hardly slides"},
+  Tunable.{path = "thing.density", kind = TUN_WHOLE, scope = TUN_THING, low = 5, high = 5000, step = 5, def = 200, unit = "kg a cubic metre", hint = "how heavy it is", about = "a thing's weight for its size: 20 is very light, 2000 very heavy (hard to push)"},
+  Tunable.{path = "thing.fixed", kind = TUN_BOOL, scope = TUN_THING, low = 0, high = 1, hint = "cannot be moved", about = "whether a thing stays exactly where it is: it does not fall and nothing pushes it"},
+  Tunable.{path = "grass.height", kind = TUN_NUMBER, scope = TUN_WORLD, low = 10, high = 120, step = 2, def = 46, unit = "m", hint = "how tall the grass is", about = "how tall the grass grows"},
+  Tunable.{path = "grass.density", kind = TUN_NUMBER, scope = TUN_WORLD, low = 50, high = 150, step = 10, def = 100, unit = "x", hint = "how thick the grass is", about = "how thickly the grass grows: more blades in a smaller field, or fewer in a wider one"},
+];
+// book:end world-tunables
+
+// ---------------------------------------------------------------- checks
+
+#test "the world's table is well made, its names are its rows, and its index is what a model is given" {
+  r: [] const Tunable = TW_ROWS[..];
+  #assert tun_ok(r) && r.count == TW_N && TW_N == 19;
+  names := [TW_N] string.["world.gravity", "world.time_scale", "world.wind", "world.time_of_day", "world.haze", "player.air_jumps", "player.fly", "player.run_speed", "player.jump_height", "player.push_strength",
+                          "camera.view", "camera.distance", "camera.fov", "thing.bounce", "thing.friction", "thing.density", "thing.fixed", "grass.height", "grass.density"];
+  at := [TW_N] int.[TW_GRAVITY, TW_TIME_SCALE, TW_WIND, TW_TIME_OF_DAY, TW_HAZE, TW_AIR_JUMPS, TW_FLY, TW_RUN_SPEED, TW_JUMP_HEIGHT, TW_PUSH, TW_VIEW, TW_DISTANCE, TW_FOV, TW_BOUNCE, TW_FRICTION, TW_DENSITY, TW_FIXED, TW_GRASS_HEIGHT, TW_GRASS_DENSITY];
+  for k: 0..<TW_N { #assert at[k] == k && tun_prop(r, names[k]) == k; }
+  out: [2048] u8;
+  n := tun_index(r, "", out[..], 0);
+  #assert cast(string) out[0..<n] == "world: gravity (how hard things fall), time_scale (slow motion, fast forward), wind (how hard the wind blows), time_of_day (night, sunrise, day), haze (fog in the distance)\nplayer: air_jumps (double jump), fly (flying), run_speed (how fast you run), jump_height (how high you jump), push_strength (how hard you push things)\ncamera: view (orbit, follow, first person, top-down), distance (how far back the camera is), fov (how wide the view is)\nthing: bounce (how bouncy it is), friction (grippy or slippery), density (how heavy it is), fixed (cannot be moved)\ngrass: height (how tall the grass is), density (how thick the grass is)\n";
+  n = tun_groups(r, out[..], 0); #assert cast(string) out[0..<n] == "world 5, player 5, camera 3, thing 4, grass 2";
+}
+#test "each row's kind, scope, range, step and default, as a rule that reads it expects them" {
+  r: [] const Tunable = TW_ROWS[..];
+  want := [TW_N] string.[
+    "world.gravity: 0 to 5 x, step 0.1, default 1, now 1. ", "world.time_scale: 0.25 to 2 x, step 0.05, default 1, now 1. ", "world.wind: 0 to 2 x, step 0.1, default 1, now 1. ",
+    "world.time_of_day: one of night, dawn, sunrise, morning, day, default day, now day. ", "world.haze: 0 to 3 x, step 0.1, default 1, now 1. ",
+    "player.air_jumps: whole number 0 to 2, default 1, now 1. ", "player.fly: on or off, default on, now on. ", "player.run_speed: 1 to 20 m/s, step 0.1, default 6.9, now 6.9. ",
+    "player.jump_height: 0 to 10 m, step 0.01, default 1.67, now 1.67. ", "player.push_strength: 0 to 3 x, step 0.1, default 1, now 1. ",
+    "camera.view: one of orbit, follow, first_person, top_down, default orbit, now orbit. ", "camera.distance: 1.5 to 12 m, step 0.5, default 9.5, now 9.5. ", "camera.fov: whole number 20 to 110 degrees, default 60, now 60. ",
+    "thing.bounce: 0 to 1, step 0.05, default 0.15, now 0.15. ", "thing.friction: 0 to 1.5, step 0.05, default 0.5, now 0.5. ", "thing.density: whole number 5 to 5000 kg a cubic metre, default 200, now 200. ",
+    "thing.fixed: on or off, default off, now off. ", "grass.height: 0.1 to 1.2 m, step 0.02, default 0.46, now 0.46. ", "grass.density: 0.5 to 1.5 x, step 0.1, default 1, now 1. "];
+  scope := [TW_N] int.[TUN_WORLD, TUN_WORLD, TUN_WORLD, TUN_WORLD, TUN_WORLD, TUN_PLAYER, TUN_PLAYER, TUN_PLAYER, TUN_PLAYER, TUN_PLAYER, TUN_PLAYER, TUN_PLAYER, TUN_PLAYER, TUN_THING, TUN_THING, TUN_THING, TUN_THING, TUN_WORLD, TUN_WORLD];
+  out: [512] u8;
+  for k: 0..<TW_N {
+    n := tun_detail(r[k], r[k].def, r[k].def, out[..], 0);
+    #assert n > want[k].count && cast(string) out[0..<want[k].count] == want[k] && r[k].scope == scope[k] && r[k].about.count > 8;
+  }
+  // a thing's rows are reached by a kind's name, in the bodies' own order of kinds, and by an id
+  k: [] const string = TW_KINDS[..];
+  a := tun_at(r, k, "blocks.density"); #assert a.prop == TW_DENSITY && a.target == -1;
+  a = tun_at(r, k, "balls.bounce"); #assert a.prop == TW_BOUNCE && a.target == -2;
+  a = tun_at(r, k, "b3.fixed"); #assert a.prop == TW_FIXED && a.target == 3;
+  a = tun_at(r, k, "things.friction"); #assert a.prop == TW_FRICTION && a.target == TUN_ALL;
+  // the times of day rise from night to the whole sunrise, one share a choice
+  s := TW_DAY_SHARE;
+  #assert s[0] == 0.0 && s[4] == 1.0 && r[TW_TIME_OF_DAY].high == 4;
+  for i: 1..<5 { #assert s[i] > s[i - 1]; }
+}

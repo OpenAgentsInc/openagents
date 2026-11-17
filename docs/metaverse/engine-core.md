@@ -98,6 +98,36 @@ constructors run;
 a realm with no defaults has nothing to apply. `metaverse-engine/core/loop.coax`'s clock
 also takes its default step, frame clamp and step cap on its first frame if it was zeroed, so it never freezes.
 
+## Settings a person can change (`metaverse-engine/state/tunables.coax`)
+
+A setting a person (or a model acting for them) may change is a row of a table, not a verb. A row
+(`Tunable`) has a dotted path (`world.gravity`, `player.air_jumps`, `thing.bounce`), a kind (on or
+off, a whole number, a number in hundredths with a step, or one of up to six names), a range, a
+default, a unit, a few words for an index, one line that says what it does, and a scope: the
+world, the player, or things. A thing's row is set for one thing (`b3.bounce`), a kind of thing
+(`balls.bounce`) or every thing (`things.bounce`), and is looked up in that order, then in what
+the world starts from, then the default.
+
+What differs from the defaults is a sparse, sorted `TunStore`: `tun_set` (validated; refused, it
+changes nothing and says why: `TUN_UNKNOWN`, `TUN_BAD`, `TUN_RANGE`, `TUN_FULL`), `tun_reset`,
+`tun_read` and `tun_text` (a value from and to text), `tun_detail` (one row in full),
+`tun_index` and `tun_groups` (a compact index for whoever must choose rows: names and a few
+words, no ranges), `tun_save` and `tun_load` (the map as text: whole or not at all) and
+`tun_digest`. The same map is the same bytes and the same digest. A world's own table is data:
+`metaverse-engine/state/world-tunables.coax` holds nineteen rows (gravity, time scale, wind, time
+of day, haze; air jumps, flying, run speed, jump height, push strength; the camera's view,
+distance and lens; a thing's bounce, friction, density and whether it is fixed; the grass's
+height and density) and names what reads each one.
+
+A thing's material reaches the bodies through `bd_material` (`physics/sim/bodies.coax`):
+friction, bounce and density at once, the same half, a density of nothing for a fixed body, and
+every body woken. `bd_digest` now hashes each body's inverse mass, friction and bounce too, so a
+material change is part of the deterministic scene state.
+
+GameBuilder is the first consumer (its `web/props.coax`, `web/hud.coax` and the settings
+panel drawn from the table). The rule for a new setting: a row in the table and the place its
+rule reads it, never a new verb.
+
 ## Input (`metaverse-engine/core/input.coax`)
 
 Keys, touch and pads become one `Intent` a frame (`input_keys`,

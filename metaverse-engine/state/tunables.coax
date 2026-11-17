@@ -1,0 +1,680 @@
+// The Metaverse Engine's tunables: the things about a running world that a person, a settings panel
+// or a model may change, declared as data. A tunable is one row: a stable dotted path
+// ("world.gravity", "player.air_jumps", "thing.bounce"), a kind (on or off; a whole number in a
+// range; a number in a range with a step; one of a few named choices), a default, a unit, a few
+// words for an index and one plain line that says what it does, and a scope (the world, the
+// player, or a thing). The rows are a realm's own table (state/world-tunables.coax is the one the
+// engine's worlds share); this file is what is done with any such table, and nothing else.
+//
+// A world's settings are the sparse map of what differs from the defaults (a TunStore): a row and
+// a target, and the value there. The target is who it is for:
+//   TUN_ALL (0)   the world, the player, or every thing
+//   N > 0         the thing with id N
+//   -1 - K        every thing of kind K (the realm numbers its kinds: 0, 1, ...)
+// A thing's value is looked up nearest first: its own, its kind's, every thing's, then the same in
+// a second store the realm may give (its base: what this world starts from, a ball's bounce being
+// more than a block's), then the row's default. A value set for every thing clears what single
+// things and kinds had of it. A world's or the player's value that is set back to what it would be
+// anyway is no longer kept.
+//
+//   tun_ok                  a table is well made: every rule a row must keep
+//   tun_at                  a path as written to who it is for: "world.gravity", "things.friction"
+//                           (every thing), "balls.bounce" (a kind), "b3.bounce" (thing 3)
+//   tun_read                a value from text, by the row's kind, in its range, on its step
+//   tun_set / tun_reset     one value set (already read) or put back; tun_clear, all of them
+//   tun_value / tun_thing   the value now: the world's or the player's; a thing's
+//   tun_text / tun_detail   a value as text; a row in full, for whoever must choose a value
+//   tun_index / tun_groups  the whole table in a few words a row, a group a line; the groups alone
+//   tun_save / tun_load     the map as text and back: sorted, so the same map is the same bytes
+//   tun_digest              the map as a number, for a scene's digest
+//
+// Values are whole numbers throughout: a number's are hundredths (2.5 is 250), so the same value
+// is the same bits in a page, a room and a save; a whole number's are as they are; on or off is 1
+// or 0; a choice is its place in the row's names. Nothing here routes or matches words a person
+// typed: a path is one of the table's or it is unknown, and a value is read only after its row is
+// known. It is not the declared state of state/declarations.coax (a fixed schema of saved quest
+// facts and their lifetimes): a tunable is a setting with a range and words for a person, kept
+// only while it differs.
+//   coax/bin/coax test metaverse-engine/state/tunables.coax
+//   coax/bin/coax mutate metaverse-engine/state/tunables.coax
+
+#module "metaverse.engine.tunables";
+
+// book:begin tunables
+TUN_BOOL :: 0; TUN_WHOLE :: 1; TUN_NUMBER :: 2; TUN_CHOICE :: 3;   // a row's kind
+TUN_WORLD :: 0; TUN_PLAYER :: 1; TUN_THING :: 2;                    // and its scope
+TUN_OK :: 0;
+TUN_UNKNOWN :: 1;      // no such path
+TUN_BAD :: 2;          // the text is no value of the row's kind
+TUN_RANGE :: 3;        // a number outside the row's range
+TUN_FULL :: 4;         // no room for another value that differs
+TUN_ROOM :: 256;       // values that differ, at most
+TUN_ALL :: 0;          // a target: the world, the player, every thing
+TUN_NAMES :: 6;        // a choice's names at most
+TUN_PATH :: 48;        // bytes of a path at most
+TUN_LIMIT :: 100000000;   // a row's numbers are within this of nothing
+
+Tunable :: struct {
+  path: string;                 // "group.name": lowercase letters, digits and underscores, one dot
+  kind: int; scope: int;
+  low: int; high: int; step: int = 1; def: int;
+  unit: string;                 // what a value counts ("x", "m/s"), or nothing
+  hint: string;                 // a few words, for an index
+  about: string;                // one plain line: what it does
+  names: [TUN_NAMES] string;    // a choice's values, low to high
+}
+// What differs from the defaults, sorted by row and then by target.
+TunStore :: struct { n: int; rev: int; prop: [TUN_ROOM] int; target: [TUN_ROOM] int; value: [TUN_ROOM] int; }
+// A path as written, found: the row (-1: unknown) and who it is for.
+TunAt :: struct { prop: int = -1; target: int; }
+TunRead :: struct { status: int; value: int; }
+// book:end tunables
+
+tun_put :: (out: [] u8, n: int, s: string) -> int { k := n; for c: s { if k < out.count { out[k] = c; k += 1; } } return k; }
+// A whole number as text.
+tun_put_int :: (out: [] u8, n: int, v: int) -> int {
+  k := n; a := v;
+  if a < 0 { k = tun_put(out, k, "-"); a = -a; }
+  digits: [20] u8; m := 0;
+  if a == 0 { digits[0] = '0'; m = 1; }
+  while a > 0 { digits[m] = cast(u8) ('0' + a % 10); m += 1; a /= 10; }
+  while m > 0 { m -= 1; if k < out.count { out[k] = digits[m]; k += 1; } }
+  return k;
+}
+// Hundredths as a decimal: 250 is "2.5", -100 is "-1", 5 is "0.05".
+tun_put_num :: (out: [] u8, n: int, v: int) -> int {
+  k := n; a := v;
+  if a < 0 { k = tun_put(out, k, "-"); a = -a; }
+  k = tun_put_int(out, k, a / 100);
+  part := a % 100;
+  if part == 0 { return k; }
+  k = tun_put(out, k, ".");
+  k = tun_put_int(out, k, part / 10);
+  if part % 10 != 0 { k = tun_put_int(out, k, part % 10); }
+  return k;
+}
+// Where a byte first is in the first `end` bytes of some text: -1, nowhere.
+tun_byte :: (text: string, byte: u8, end: int) -> int { for i: 0..<end { if text[i] == byte { return i; } } return -1; }
+// Where a path's dot is: -1, none.
+tun_dot :: (path: string) -> int { return tun_byte(path, '.', path.count); }
+// A path's group (before its dot) and its name (after it).
+tun_group :: (path: string) -> string { d := tun_dot(path); return ifx d < 0 then path else cast(string) path[0..<d]; }
+tun_name :: (path: string) -> string { d := tun_dot(path); return cast(string) path[d + 1..<path.count]; }
+// The row with exactly this path: -1, none.
+tun_prop :: (reg: [] const Tunable, path: string) -> int { for t, i: reg { if t.path == path { return i; } } return -1; }
+// A thing's id from a word like "b3": one lowercase letter and up to seven digits. 0: not one.
+tun_id :: (word: string) -> int {
+  if word.count < 2 || word.count > 8 || word[0] < 'a' || word[0] > 'z' { return 0; }
+  v := 0;
+  for i: 1..<word.count { if word[i] < '0' || word[i] > '9' { return 0; } v = v * 10 + cast(int) (word[i] - '0'); }
+  return v;
+}
+// A path as written, to its row and who it is for. A table's own path is the world's, the
+// player's, or every thing's. Before the name of a thing's row may also stand: the group and an s
+// ("things.bounce": every thing), one of the realm's kinds ("balls.bounce"), or a thing's id
+// ("b3.bounce").
+tun_at :: (reg: [] const Tunable, kinds: [] const string, path: string) -> TunAt {
+  at: TunAt;
+  own := tun_prop(reg, path);
+  if own >= 0 { return TunAt.{prop = own}; }
+  d := tun_dot(path);
+  if d < 1 { return at; }
+  head := cast(string) path[0..<d]; name := cast(string) path[d + 1..<path.count];
+  for t, i: reg {
+    if t.scope != TUN_THING || tun_name(t.path) != name { continue; }
+    g := tun_group(t.path);
+    if head.count == g.count + 1 && head[g.count] == 's' && cast(string) head[0..<g.count] == g { at.prop = i; return at; }
+    for kind, k: kinds { if kind == head { at.prop = i; at.target = -1 - k; return at; } }
+    id := tun_id(head);
+    if id > 0 { at.prop = i; at.target = id; return at; }
+  }
+  return at;
+}
+// Where a store keeps a row's value for a target: -1, it does not.
+tun_find :: (s: [] const TunStore, prop: int, target: int) -> int {
+  for i: 0..<s[0].n { if s[0].prop[i] == prop && s[0].target[i] == target { return i; } }
+  return -1;
+}
+// A thing's value of a row: its own, its kind's, every thing's, then the base's for its kind and
+// for every thing, then the row's default. `kind` is the realm's number for what the thing is.
+tun_thing :: (reg: [] const Tunable, base: [] const TunStore, over: [] const TunStore, prop: int, id: int, kind: int) -> int {
+  i := tun_find(over, prop, id);
+  if i < 0 { i = tun_find(over, prop, -1 - kind); }
+  if i < 0 { i = tun_find(over, prop, TUN_ALL); }
+  if i >= 0 { return over[0].value[i]; }
+  i = tun_find(base, prop, -1 - kind);
+  if i < 0 { i = tun_find(base, prop, TUN_ALL); }
+  if i >= 0 { return base[0].value[i]; }
+  return reg[prop].def;
+}
+// The world's or the player's value of a row (and, of a thing's row, what every thing has that
+// has nothing nearer).
+tun_value :: (reg: [] const Tunable, base: [] const TunStore, over: [] const TunStore, prop: int) -> int { return tun_thing(reg, base, over, prop, TUN_ALL, -1); }
+// A decimal with at most two places read ("2", "-1.5", ".25"; further places are dropped) as
+// hundredths. TUN_BAD when it is not a number of that shape.
+tun_number :: (text: string) -> TunRead {
+  i := 0; neg := false;
+  if text.count > 0 && text[0] == '-' { neg = true; i = 1; } // mutant: equivalent — a minus alone is no number, read as a sign or not
+  whole := 0; seen := false;
+  while i < text.count && text[i] >= '0' && text[i] <= '9' {
+    whole = whole * 10 + cast(int) (text[i] - '0'); seen = true; i += 1;
+    if whole > TUN_LIMIT { return TunRead.{status = TUN_BAD}; }
+  }
+  part := 0; places := 0;
+  if i < text.count && text[i] == '.' {
+    i += 1;
+    while i < text.count && text[i] >= '0' && text[i] <= '9' {
+      if places < 2 { part = part * 10 + cast(int) (text[i] - '0'); places += 1; }
+      seen = true; i += 1;
+    }
+    if places == 1 { part *= 10; }
+  }
+  if !seen || i != text.count { return TunRead.{status = TUN_BAD}; }
+  v := whole * 100 + part;
+  return TunRead.{value = ifx neg then -v else v};
+}
+// A value of a row from text. On or off: "on", "off", "true", "false", "yes", "no", "1", "0". A
+// choice: one of its names. A whole number: no decimals. A number: taken to the nearest step. A
+// number outside the row's range is TUN_RANGE and never brought into it.
+tun_read :: (t: Tunable, text: string) -> TunRead {
+  if t.kind == TUN_BOOL {
+    if text == "on" || text == "true" || text == "yes" || text == "1" { return TunRead.{value = 1}; }
+    if text == "off" || text == "false" || text == "no" || text == "0" { return TunRead.{value = 0}; }
+    return TunRead.{status = TUN_BAD};
+  }
+  if t.kind == TUN_CHOICE {
+    for k: 0..<t.high + 1 { if t.names[k] == text { return TunRead.{value = k}; } }
+    return TunRead.{status = TUN_BAD};
+  }
+  r := tun_number(text);
+  if r.status != TUN_OK { return r; }
+  if t.kind == TUN_WHOLE {
+    if r.value % 100 != 0 { return TunRead.{status = TUN_BAD}; }
+    r.value /= 100;
+  }
+  if r.value < t.low || r.value > t.high { return TunRead.{status = TUN_RANGE}; }
+  r.value = t.low + (r.value - t.low + t.step / 2) / t.step * t.step;
+  return r;
+}
+// Keeps a value for a row and a target, in its sorted place. False when there is no room.
+tun_keep :: (s: [] TunStore, prop: int, target: int, value: int) -> bool {
+  i := 0;
+  while i < s[0].n && (s[0].prop[i] < prop || (s[0].prop[i] == prop && s[0].target[i] < target)) { i += 1; }
+  if i < s[0].n && s[0].prop[i] == prop && s[0].target[i] == target {
+    if s[0].value[i] != value { s[0].value[i] = value; s[0].rev += 1; }
+    return true;
+  }
+  if s[0].n >= TUN_ROOM { return false; }
+  k := s[0].n;
+  while k > i { s[0].prop[k] = s[0].prop[k - 1]; s[0].target[k] = s[0].target[k - 1]; s[0].value[k] = s[0].value[k - 1]; k -= 1; }
+  s[0].prop[i] = prop; s[0].target[i] = target; s[0].value[i] = value;
+  s[0].n += 1; s[0].rev += 1;
+  return true;
+}
+// Forgets what a store keeps at place i.
+tun_cut :: (s: [] TunStore, i: int) {
+  for k: i..<s[0].n - 1 { s[0].prop[k] = s[0].prop[k + 1]; s[0].target[k] = s[0].target[k + 1]; s[0].value[k] = s[0].value[k + 1]; }
+  s[0].n -= 1; s[0].rev += 1;
+}
+// Forgets a row's value for one target. True when there was one.
+tun_drop :: (s: [] TunStore, prop: int, target: int) -> bool {
+  i := tun_find(s, prop, target);
+  if i < 0 { return false; }
+  tun_cut(s, i);
+  return true;
+}
+// Forgets every value of a row, whoever it was for. How many there were.
+tun_sweep :: (s: [] TunStore, prop: int) -> int {
+  gone := 0; i := 0;
+  while i < s[0].n { if s[0].prop[i] == prop { tun_cut(s, i); gone += 1; } else { i += 1; } }
+  return gone;
+}
+// Sets a value that tun_read gave. For every thing: no single thing or kind keeps its own. For the
+// world or the player: a value that is what it would be anyway is not kept. TUN_OK, TUN_UNKNOWN
+// (no such row, or a target that is not the row's to have) or TUN_FULL.
+tun_set :: (reg: [] const Tunable, base: [] const TunStore, over: [] TunStore, at: TunAt, value: int) -> int {
+  if at.prop < 0 || at.prop >= reg.count { return TUN_UNKNOWN; }
+  if reg[at.prop].scope != TUN_THING {
+    if at.target != TUN_ALL { return TUN_UNKNOWN; }
+    was := tun_drop(over, at.prop, TUN_ALL);
+    if value == tun_value(reg, base, over, at.prop) { return TUN_OK; }
+  } else if at.target == TUN_ALL { gone := tun_sweep(over, at.prop); }
+  return ifx tun_keep(over, at.prop, at.target, value) then TUN_OK else TUN_FULL;
+}
+// Puts a row back for a target: every thing's goes back with every single thing's and kind's.
+// True when anything was kept.
+tun_reset :: (reg: [] const Tunable, over: [] TunStore, at: TunAt) -> bool {
+  if at.prop < 0 || at.prop >= reg.count { return false; }
+  if reg[at.prop].scope == TUN_THING && at.target == TUN_ALL { return tun_sweep(over, at.prop) > 0; }
+  return tun_drop(over, at.prop, at.target);
+}
+// Everything back as the table has it.
+tun_clear :: (s: [] TunStore) { if s[0].n > 0 { s[0].n = 0; s[0].rev += 1; } }
+
+// A row's value as text: "on" or "off", a choice's name, a number.
+tun_text :: (t: Tunable, value: int, out: [] u8, n: int) -> int {
+  if t.kind == TUN_BOOL { return tun_put(out, n, ifx value != 0 then "on" else "off"); }
+  if t.kind == TUN_CHOICE { return tun_put(out, n, ifx value >= 0 && value <= t.high then t.names[value] else "?"); }
+  if t.kind == TUN_WHOLE { return tun_put_int(out, n, value); }
+  return tun_put_num(out, n, value);
+}
+// A row in full, on one line, for whoever must choose a value: its path, what it takes, its
+// default, what it is now, and what it does. The caller says the default and the value now, since
+// a thing's depend on which thing.
+//   world.gravity: 0 to 5 x, step 0.1, default 1, now 0.3. how hard everything falls
+tun_detail :: (t: Tunable, def: int, now: int, out: [] u8, n: int) -> int {
+  k := tun_put(out, n, t.path); k = tun_put(out, k, ": ");
+  if t.kind == TUN_BOOL { k = tun_put(out, k, "on or off"); }
+  else if t.kind == TUN_CHOICE {
+    k = tun_put(out, k, "one of ");
+    for i: 0..<t.high + 1 { if i > 0 { k = tun_put(out, k, ", "); } k = tun_put(out, k, t.names[i]); }
+  } else {
+    if t.kind == TUN_WHOLE { k = tun_put(out, k, "whole number "); }
+    k = tun_text(t, t.low, out, k); k = tun_put(out, k, " to "); k = tun_text(t, t.high, out, k);
+    if t.unit.count > 0 { k = tun_put(out, k, " "); k = tun_put(out, k, t.unit); }
+    if t.kind == TUN_NUMBER { k = tun_put(out, k, ", step "); k = tun_put_num(out, k, t.step); }
+  }
+  k = tun_put(out, k, ", default "); k = tun_text(t, def, out, k);
+  k = tun_put(out, k, ", now "); k = tun_text(t, now, out, k);
+  k = tun_put(out, k, ". "); k = tun_put(out, k, t.about);
+  return k;
+}
+// Whether row i is the first of its group in the table.
+tun_first :: (reg: [] const Tunable, i: int) -> bool {
+  g := tun_group(reg[i].path);
+  for k: 0..<i { if tun_group(reg[k].path) == g { return false; } }
+  return true;
+}
+// The table as an index: a line a group, its rows' names each with its few words. No ranges and no
+// values: enough to choose which rows a request is about. `only` names one group, or is empty for
+// all of them.
+//   world: gravity (how hard things fall), wind (how hard the grass blows)
+tun_index :: (reg: [] const Tunable, only: string, out: [] u8, n: int) -> int {
+  k := n;
+  for t, i: reg {
+    g := tun_group(t.path);
+    if !tun_first(reg, i) || (only.count > 0 && g != only) { continue; }
+    k = tun_put(out, k, g); k = tun_put(out, k, ":");
+    some := false;
+    for u: reg {
+      if tun_group(u.path) != g { continue; }
+      k = tun_put(out, k, ifx some then ", " else " "); some = true;
+      k = tun_put(out, k, tun_name(u.path)); k = tun_put(out, k, " ("); k = tun_put(out, k, u.hint); k = tun_put(out, k, ")");
+    }
+    k = tun_put(out, k, "\n");
+  }
+  return k;
+}
+// The groups alone, each with how many rows it has: "world 5, player 4". For a table too long to
+// index whole: the groups are chosen first, then tun_index of each chosen one.
+tun_groups :: (reg: [] const Tunable, out: [] u8, n: int) -> int {
+  k := n; some := false;
+  for t, i: reg {
+    if !tun_first(reg, i) { continue; }
+    g := tun_group(t.path); rows := 0;
+    for u: reg { if tun_group(u.path) == g { rows += 1; } }
+    if some { k = tun_put(out, k, ", "); }
+    some = true;
+    k = tun_put(out, k, g); k = tun_put(out, k, " "); k = tun_put_int(out, k, rows);
+  }
+  return k;
+}
+
+// The map as text, a line a value in the store's own order: "path=value", or "path@target=value"
+// when it is for a thing or a kind. The same map is the same bytes.
+//   world.gravity=0.3
+//   thing.bounce@-2=0.4
+//   thing.bounce@3=0.9
+tun_save :: (reg: [] const Tunable, s: [] const TunStore, out: [] u8) -> int {
+  k := 0;
+  for i: 0..<s[0].n {
+    t := reg[s[0].prop[i]];
+    k = tun_put(out, k, t.path);
+    if s[0].target[i] != TUN_ALL { k = tun_put(out, k, "@"); k = tun_put_int(out, k, s[0].target[i]); }
+    k = tun_put(out, k, "="); k = tun_text(t, s[0].value[i], out, k); k = tun_put(out, k, "\n");
+  }
+  return k;
+}
+// A whole number, with a sign or without, from text. TUN_BAD when it is not one.
+tun_whole :: (text: string) -> TunRead {
+  r := tun_number(text);   // (what is no number at all comes through as it is: TUN_BAD)
+  if r.value % 100 != 0 || tun_dot(text) >= 0 { return TunRead.{status = TUN_BAD}; }
+  r.value /= 100;
+  return r;
+}
+// The map back from text. Whole or not at all: a line that is no value of this table (a path it
+// lacks, a value out of its range, a target the row cannot have) leaves the store as it was and
+// gives false. Empty lines are passed over. A store that already holds exactly this is not changed.
+tun_load :: (reg: [] const Tunable, s: [] TunStore, text: string) -> bool {
+  got: [1] TunStore;
+  at := 0;
+  while at < text.count { // mutant: equivalent — past the text's end is an empty line, and those are passed over
+    end := at; while end < text.count && text[end] != '\n' { end += 1; }
+    line := cast(string) text[at..<end];
+    at = end + 1;
+    if line.count == 0 { continue; }
+    eq := tun_byte(line, '=', line.count);
+    if eq < 0 { return false; } // mutant: equivalent — a line that begins with its equals sign names no row, and is refused for that next
+    stop := eq; target := TUN_ALL;
+    mark := tun_byte(line, '@', eq);
+    if mark >= 0 { // mutant: equivalent — a line that begins with its @ names no row either way
+      who := tun_whole(cast(string) line[mark + 1..<eq]);
+      if who.status != TUN_OK || who.value == TUN_ALL { return false; }
+      stop = mark; target = who.value;
+    }
+    prop := tun_prop(reg, cast(string) line[0..<stop]);
+    if prop < 0 || (target != TUN_ALL && reg[prop].scope != TUN_THING) { return false; }
+    v := tun_read(reg[prop], cast(string) line[eq + 1..<line.count]);
+    if v.status != TUN_OK || !tun_keep(got[..], prop, target, v.value) { return false; }
+  }
+  same := got[0].n == s[0].n;
+  for i: 0..<got[0].n { if same && (got[0].prop[i] != s[0].prop[i] || got[0].target[i] != s[0].target[i] || got[0].value[i] != s[0].value[i]) { same = false; } }
+  if same { return true; }
+  for i: 0..<got[0].n { s[0].prop[i] = got[0].prop[i]; s[0].target[i] = got[0].target[i]; s[0].value[i] = got[0].value[i]; }
+  s[0].n = got[0].n; s[0].rev += 1;
+  return true;
+}
+// The map as one number (FNV-1a over how many values and each one's row, target and value): two
+// worlds with the same settings have the same one. A scene whose rules read a tunable mixes this
+// into its own digest.
+tun_digest :: (s: [] const TunStore) -> u64 {
+  h: u64 = 14695981039346656037;
+  h = mul_wrap(h ^ cast(u64) s[0].n, 1099511628211);
+  for i: 0..<s[0].n {
+    for word: [3] int.[s[0].prop[i], s[0].target[i], s[0].value[i]] { h = mul_wrap(h ^ cast(u64) (word + TUN_LIMIT * 2), 1099511628211); }
+  }
+  return h;
+}
+
+// Whether a path is made as a row's must be: lowercase letters, digits and underscores round one
+// dot, something each side of it, no longer than TUN_PATH.
+tun_path_ok :: (path: string) -> bool {
+  d := tun_dot(path);
+  if d < 1 || d >= path.count - 1 || path.count > TUN_PATH { return false; }
+  for c, i: path {
+    if i == d { continue; }
+    if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_') { return false; }
+  }
+  return true;
+}
+// Whether a table is well made. Every row: a path of the right shape that no other row has; a kind
+// and a scope there are; a few words and a line; a range with its low end no higher than its high,
+// both within TUN_LIMIT; a step of one or more that divides the range, with the default in the
+// range and on a step; on or off is 0 to 1; a choice starts at 0 and has a name for each value.
+tun_ok :: (reg: [] const Tunable) -> bool {
+  for t, i: reg {
+    if !tun_path_ok(t.path) || tun_prop(reg, t.path) != i { return false; }
+    if t.kind < TUN_BOOL || t.kind > TUN_CHOICE || t.scope < TUN_WORLD || t.scope > TUN_THING { return false; }
+    if t.hint.count == 0 || t.about.count == 0 { return false; }
+    if t.low > t.high || t.low < -TUN_LIMIT || t.high > TUN_LIMIT || t.step < 1 { return false; }
+    if (t.high - t.low) % t.step != 0 || t.def < t.low || t.def > t.high || (t.def - t.low) % t.step != 0 { return false; }
+    if t.kind == TUN_BOOL && (t.low != 0 || t.high != 1) { return false; }
+    if t.kind == TUN_CHOICE {
+      if t.low != 0 || t.high >= TUN_NAMES || t.step != 1 { return false; }
+      for k: 0..<t.high + 1 { if t.names[k].count == 0 { return false; } }
+    }
+  }
+  return true;
+}
+
+// ---------------------------------------------------------------- checks
+
+TUN_T_KINDS :: [2] string.["blocks", "balls"];
+// A small table with a row of every kind and scope.
+TUN_T :: [6] Tunable.[
+  Tunable.{path = "world.gravity", kind = TUN_NUMBER, scope = TUN_WORLD, low = 0, high = 500, step = 10, def = 100, unit = "x", hint = "how hard things fall", about = "how hard everything falls: 1 is normal, 0 is none"},
+  Tunable.{path = "player.air_jumps", kind = TUN_WHOLE, scope = TUN_PLAYER, low = 0, high = 2, def = 1, hint = "jumps in the air", about = "how many times you may jump again before landing"},
+  Tunable.{path = "player.fly", kind = TUN_BOOL, scope = TUN_PLAYER, low = 0, high = 1, def = 1, hint = "whether you can fly", about = "whether a double press of jump flies"},
+  Tunable.{path = "world.light", kind = TUN_CHOICE, scope = TUN_WORLD, low = 0, high = 2, def = 2, hint = "time of day", about = "where the sun is", names = [TUN_NAMES] string.["night", "dawn", "day", "", "", ""]},
+  Tunable.{path = "thing.bounce", kind = TUN_NUMBER, scope = TUN_THING, low = 0, high = 100, step = 5, def = 15, hint = "how much it bounces", about = "how much of its speed a thing keeps when it lands"},
+  Tunable.{path = "thing.fixed", kind = TUN_BOOL, scope = TUN_THING, low = 0, high = 1, hint = "cannot be moved", about = "whether nothing can move it"},
+];
+TunTest :: struct { base: [1] TunStore; over: [1] TunStore; out: [2048] u8; }
+tun_test_num :: (v: int, want: string) -> bool { out: [24] u8; n := tun_put_num(out[..], 0, v); return cast(string) out[0..<n] == want; }
+tun_test_save :: (t: [] TunTest) -> string { n := tun_save(TUN_T[..], t[0].over[..], t[0].out[..]); return cast(string) t[0].out[0..<n]; }
+// Reads and sets in one go, as a caller does: the status of whichever refused.
+tun_test_set :: (t: [] TunTest, path: string, text: string) -> int {
+  at := tun_at(TUN_T[..], TUN_T_KINDS[..], path);
+  if at.prop < 0 { return TUN_UNKNOWN; }
+  r := tun_read(TUN_T[at.prop], text);
+  if r.status != TUN_OK { return r.status; }
+  return tun_set(TUN_T[..], t[0].base[..], t[0].over[..], at, r.value);
+}
+
+#test "numbers as text: whole numbers, hundredths as decimals, and text that stops at the room it is given" {
+  out: [24] u8;
+  n := tun_put_int(out[..], 0, 0); #assert cast(string) out[0..<n] == "0";
+  n = tun_put_int(out[..], 0, 9076); #assert cast(string) out[0..<n] == "9076";
+  n = tun_put_int(out[..], 2, -45); #assert cast(string) out[2..<n] == "-45" && n == 5;
+  #assert tun_test_num(250, "2.5") && tun_test_num(-100, "-1") && tun_test_num(5, "0.05") && tun_test_num(-125, "-1.25") && tun_test_num(0, "0") && tun_test_num(1010, "10.1") && tun_test_num(99, "0.99");
+  small: [3] u8;
+  #assert tun_put(small[..], 0, "abcdef") == 3 && cast(string) small[0..<3] == "abc" && tun_put(small[..], 2, "xy") == 3 && small[2] == 'x' && tun_put_int(small[..], 1, 12345) == 3 && cast(string) small[0..<3] == "a12";
+}
+#test "a path's dot, group and name; a row by its exact path; a thing's id from a letter and digits" {
+  #assert tun_dot("world.gravity") == 5 && tun_dot("gravity") == -1 && tun_dot(".x") == 0 && tun_dot("a.b.c") == 1;
+  #assert tun_group("world.gravity") == "world" && tun_name("world.gravity") == "gravity" && tun_group("alone") == "alone" && tun_name("alone") == "alone" && tun_group(".x") == "" && tun_name(".x") == "x";
+  #assert tun_byte("a=b=c", '=', 5) == 1 && tun_byte("a=b=c", '=', 1) == -1 && tun_byte("a=b=c", '=', 2) == 1 && tun_byte("=", '=', 1) == 0 && tun_byte("", '=', 0) == -1 && tun_byte("abc", 'c', 3) == 2;
+  #assert tun_prop(TUN_T[..], "world.gravity") == 0 && tun_prop(TUN_T[..], "thing.fixed") == 5 && tun_prop(TUN_T[..], "world.Gravity") == -1 && tun_prop(TUN_T[..], "gravity") == -1 && tun_prop(TUN_T[..], "") == -1;
+  #assert tun_id("b3") == 3 && tun_id("a1") == 1 && tun_id("z9999999") == 9999999 && tun_id("b10") == 10 && tun_id("b0") == 0;
+  #assert tun_id("b") == 0 && tun_id("3") == 0 && tun_id("B3") == 0 && tun_id("b3x") == 0 && tun_id("bb3") == 0 && tun_id("b12345678") == 0 && tun_id("") == 0 && tun_id("{3") == 0 && tun_id("`3") == 0 && tun_id("b/") == 0 && tun_id("b:") == 0;
+}
+#test "a path as written: the table's own, every thing by the group and an s, a kind by its name, one thing by its id; anything else is unknown" {
+  r: [] const Tunable = TUN_T[..]; k: [] const string = TUN_T_KINDS[..];
+  a := tun_at(r, k, "world.gravity"); #assert a.prop == 0 && a.target == TUN_ALL;
+  a = tun_at(r, k, "thing.bounce"); #assert a.prop == 4 && a.target == TUN_ALL;
+  a = tun_at(r, k, "things.bounce"); #assert a.prop == 4 && a.target == TUN_ALL;
+  a = tun_at(r, k, "things.fixed"); #assert a.prop == 5 && a.target == TUN_ALL;
+  a = tun_at(r, k, "blocks.bounce"); #assert a.prop == 4 && a.target == -1;
+  a = tun_at(r, k, "balls.fixed"); #assert a.prop == 5 && a.target == -2;
+  a = tun_at(r, k, "b3.bounce"); #assert a.prop == 4 && a.target == 3;
+  a = tun_at(r, k, "b12.fixed"); #assert a.prop == 5 && a.target == 12;
+  a = tun_at(r, k, "b1.bounce"); #assert a.prop == 4 && a.target == 1;
+  // a kind may have a name of one letter
+  short := [1] string.["x"];
+  a = tun_at(r, short[..], "x.bounce"); #assert a.prop == 4 && a.target == -1;
+  // a thing's id before a row that is not a thing's, a name no thing's row has, a head that is nothing, no dot, a dot first
+  bad := [12] string.["b3.gravity", "balls.gravity", "worlds.gravity", "b3.bouncy", "things.gravity", "thingx.bounce", "thing.bounc", "bounce", ".bounce", "", "thingss.bounce", "b0.bounce"];
+  for path: bad { a = tun_at(r, k, path); #assert a.prop == -1 && a.target == TUN_ALL; }
+  // with no kinds named, a kind's name is unknown and an id still reads
+  none: [1] string;
+  a = tun_at(r, none[0..<0], "balls.bounce"); #assert a.prop == -1;
+  a = tun_at(r, none[0..<0], "b7.bounce"); #assert a.prop == 4 && a.target == 7;
+}
+#test "a value from text: a decimal to two places, on its step, in its range; a whole number; on or off; a choice by name" {
+  r := tun_number("2"); #assert r.status == TUN_OK && r.value == 200;
+  #assert tun_number("-1.5").value == -150 && tun_number("0.25").value == 25 && tun_number("3.").value == 300 && tun_number(".5").value == 50 && tun_number("1.239").value == 123 && tun_number("100000000").value == 10000000000 && tun_number("-0").value == 0 && tun_number("09").value == 900;
+  for text: [11] string.["", "-", "two", "1,5", "1e3", "b2", "100000001", "1.2.3", " 1", "1 ", "+1"] { #assert tun_number(text).status == TUN_BAD && tun_number(text).value == 0; }
+  #assert tun_number("/").status == TUN_BAD && tun_number(":").status == TUN_BAD && tun_number("1./").status == TUN_BAD && tun_number("1.:").status == TUN_BAD;
+  g := TUN_T[0];
+  // a number: in the range, its ends included, to the nearest step
+  r = tun_read(g, "0.3"); #assert r.status == TUN_OK && r.value == 30;
+  #assert tun_read(g, "0").value == 0 && tun_read(g, "0").status == TUN_OK && tun_read(g, "5").value == 500 && tun_read(g, "5").status == TUN_OK && tun_read(g, "0.34").value == 30 && tun_read(g, "0.35").value == 40 && tun_read(g, "0.04").value == 0 && tun_read(g, "4.96").value == 500;
+  #assert tun_read(g, "5.01").status == TUN_RANGE && tun_read(g, "-0.01").status == TUN_RANGE && tun_read(g, "5.01").value == 0 && tun_read(g, "x").status == TUN_BAD && tun_read(g, "").status == TUN_BAD;
+  // a step is counted from the low end, not from nothing
+  odd := Tunable.{path = "a.b", kind = TUN_NUMBER, low = 25, high = 125, step = 50, def = 25};
+  #assert tun_read(odd, "0.25").value == 25 && tun_read(odd, "0.49").value == 25 && tun_read(odd, "0.5").value == 75 && tun_read(odd, "1.25").value == 125 && tun_read(odd, "0.24").status == TUN_RANGE;
+  // a whole number: no decimals, as it is
+  j := TUN_T[1];
+  #assert tun_read(j, "2").value == 2 && tun_read(j, "2").status == TUN_OK && tun_read(j, "0").value == 0 && tun_read(j, "2.0").value == 2 && tun_read(j, "1.5").status == TUN_BAD && tun_read(j, "3").status == TUN_RANGE && tun_read(j, "-1").status == TUN_RANGE && tun_read(j, "many").status == TUN_BAD;
+  // on or off
+  f := TUN_T[2];
+  for text: [4] string.["on", "true", "yes", "1"] { #assert tun_read(f, text).value == 1 && tun_read(f, text).status == TUN_OK; }
+  for text: [4] string.["off", "false", "no", "0"] { #assert tun_read(f, text).value == 0 && tun_read(f, text).status == TUN_OK; }
+  #assert tun_read(f, "2").status == TUN_BAD && tun_read(f, "ON").status == TUN_BAD && tun_read(f, "").status == TUN_BAD;
+  // a choice: one of its names, and only those the row has
+  l := TUN_T[3];
+  #assert tun_read(l, "night").value == 0 && tun_read(l, "night").status == TUN_OK && tun_read(l, "day").value == 2 && tun_read(l, "day").status == TUN_OK && tun_read(l, "noon").status == TUN_BAD && tun_read(l, "").status == TUN_BAD && tun_read(l, "2").status == TUN_BAD;
+}
+#test "what differs is kept sorted by row and target; a value kept twice is one; a full store takes no more; dropping and sweeping forget" {
+  t: [1] TunTest; s := t[0].over[..];
+  #assert tun_keep(s, 4, 3, 90) && tun_keep(s, 0, 0, 30) && tun_keep(s, 4, -2, 40) && tun_keep(s, 4, 0, 20) && tun_keep(s, 2, 0, 0) && s[0].n == 5 && s[0].rev == 5;
+  #assert tun_test_save(t[..]) == "world.gravity=0.3\nplayer.fly=off\nthing.bounce@-2=0.4\nthing.bounce=0.2\nthing.bounce@3=0.9\n";
+  #assert tun_find(s, 4, 3) == 4 && tun_find(s, 4, -2) == 2 && tun_find(s, 0, 0) == 0 && tun_find(s, 4, 9) == -1 && tun_find(s, 1, 0) == -1 && tun_find(s, 3, 3) == -1;
+  // the same again changes nothing; another value in the same place replaces it
+  #assert tun_keep(s, 4, 3, 90) && s[0].n == 5 && s[0].rev == 5 && tun_keep(s, 4, 3, 95) && s[0].n == 5 && s[0].rev == 6 && s[0].value[4] == 95;
+  // dropped: the rest close up, in order
+  #assert tun_drop(s, 2, 0) && !tun_drop(s, 2, 0) && s[0].n == 4 && s[0].rev == 7 && tun_test_save(t[..]) == "world.gravity=0.3\nthing.bounce@-2=0.4\nthing.bounce=0.2\nthing.bounce@3=0.95\n";
+  // swept: every value of the row, whoever it was for, and no other row's
+  #assert tun_keep(s, 5, 1, 1) && tun_sweep(s, 4) == 3 && s[0].n == 2 && tun_sweep(s, 4) == 0 && tun_test_save(t[..]) == "world.gravity=0.3\nthing.fixed@1=on\n";
+  // a sweep that empties the store stops at its end
+  tun_clear(s); #assert tun_keep(s, 4, 1, 10) && tun_keep(s, 4, 2, 20) && tun_sweep(s, 4) == 2 && s[0].n == 0;
+  // a full store: no more, and a value already in it can still change
+  #assert tun_keep(s, 4, 1, 10); before := s[0].rev;
+  tun_clear(s); #assert s[0].n == 0 && s[0].rev == before + 1; rev := s[0].rev; tun_clear(s); #assert s[0].rev == rev;
+  for id: 1..<TUN_ROOM + 1 { #assert tun_keep(s, 4, id, 50); }
+  #assert s[0].n == TUN_ROOM && !tun_keep(s, 4, TUN_ROOM + 1, 50) && !tun_keep(s, 0, 0, 50) && s[0].n == TUN_ROOM && tun_keep(s, 4, 7, 55) && s[0].value[6] == 55 && s[0].target[TUN_ROOM - 1] == TUN_ROOM;
+  // the last one cut leaves the rest as they were
+  #assert tun_drop(s, 4, TUN_ROOM) && s[0].n == TUN_ROOM - 1 && s[0].target[TUN_ROOM - 2] == TUN_ROOM - 1 && tun_drop(s, 4, 1) && s[0].target[0] == 2 && s[0].value[5] == 55;
+}
+#test "a thing's value is the nearest one: its own, its kind's, every thing's, the base's for its kind, the base's for all, the default" {
+  t: [1] TunTest; r: [] const Tunable = TUN_T[..]; b := t[0].base[..]; o := t[0].over[..];
+  #assert tun_thing(r, b, o, 4, 3, 1) == 15 && tun_value(r, b, o, 4) == 15 && tun_value(r, b, o, 0) == 100;
+  #assert tun_keep(b, 4, TUN_ALL, 20) && tun_thing(r, b, o, 4, 3, 1) == 20 && tun_thing(r, b, o, 4, 3, 0) == 20 && tun_value(r, b, o, 4) == 20;
+  #assert tun_keep(b, 4, -2, 55) && tun_thing(r, b, o, 4, 3, 1) == 55 && tun_thing(r, b, o, 4, 3, 0) == 20 && tun_value(r, b, o, 4) == 20;
+  #assert tun_keep(o, 4, TUN_ALL, 30) && tun_thing(r, b, o, 4, 3, 1) == 30 && tun_thing(r, b, o, 4, 3, 0) == 30 && tun_value(r, b, o, 4) == 30;
+  #assert tun_keep(o, 4, -2, 40) && tun_thing(r, b, o, 4, 3, 1) == 40 && tun_thing(r, b, o, 4, 3, 0) == 30;
+  #assert tun_keep(o, 4, 3, 90) && tun_thing(r, b, o, 4, 3, 1) == 90 && tun_thing(r, b, o, 4, 4, 1) == 40 && tun_thing(r, b, o, 4, 3, 0) == 90;
+  // another row is not touched by any of it
+  #assert tun_thing(r, b, o, 5, 3, 1) == 0 && tun_value(r, b, o, 1) == 1;
+  // a thing's own value alone, first in the store: it is the one
+  tun_clear(o); tun_clear(b);
+  #assert tun_keep(o, 4, 3, 90) && tun_thing(r, b, o, 4, 3, 1) == 90 && tun_thing(r, b, o, 4, 4, 1) == 15;
+  // what every thing has is not what thing 1 has, nor what the first kind has
+  #assert tun_keep(o, 4, 1, 77) && tun_keep(o, 4, -1, 66) && tun_value(r, b, o, 4) == 15 && tun_thing(r, b, o, 4, 1, 1) == 77 && tun_thing(r, b, o, 4, 9, 0) == 66;
+  // the base's alone, first in its store, each in turn
+  tun_clear(o);
+  #assert tun_keep(b, 4, -2, 55) && tun_thing(r, b, o, 4, 3, 1) == 55 && tun_thing(r, b, o, 4, 3, 0) == 15; tun_clear(b);
+  #assert tun_keep(b, 4, TUN_ALL, 20) && tun_thing(r, b, o, 4, 3, 1) == 20;
+}
+#test "setting: the world's value that is the default again is not kept; every thing's clears single things' and kinds'; a target a row cannot have is refused" {
+  t: [1] TunTest; o := t[0].over[..];
+  #assert tun_test_set(t[..], "world.gravity", "0.3") == TUN_OK && tun_test_set(t[..], "player.air_jumps", "0") == TUN_OK && tun_test_set(t[..], "player.fly", "off") == TUN_OK && tun_test_set(t[..], "world.light", "dawn") == TUN_OK;
+  #assert tun_test_save(t[..]) == "world.gravity=0.3\nplayer.air_jumps=0\nplayer.fly=off\nworld.light=dawn\n" && tun_value(TUN_T[..], t[0].base[..], o, 1) == 0;
+  // what is refused changes nothing, and says why
+  rev := o[0].rev;
+  #assert tun_test_set(t[..], "world.gravity", "9") == TUN_RANGE && tun_test_set(t[..], "world.gravity", "lots") == TUN_BAD && tun_test_set(t[..], "world.weather", "rain") == TUN_UNKNOWN && tun_test_set(t[..], "b3.gravity", "1") == TUN_UNKNOWN && o[0].rev == rev;
+  #assert tun_set(TUN_T[..], t[0].base[..], o, TunAt.{prop = 0, target = 3}, 100) == TUN_UNKNOWN && tun_set(TUN_T[..], t[0].base[..], o, TunAt.{prop = -1}, 1) == TUN_UNKNOWN && tun_set(TUN_T[..], t[0].base[..], o, TunAt.{prop = 6}, 1) == TUN_UNKNOWN && o[0].rev == rev;
+  // back at the default: gone from the map. The same value again: one change, not two
+  #assert tun_test_set(t[..], "world.gravity", "1") == TUN_OK && tun_test_set(t[..], "player.fly", "on") == TUN_OK && tun_test_save(t[..]) == "player.air_jumps=0\nworld.light=dawn\n";
+  // with a base, the default is the base's: a value equal to it is not kept, the table's own default is
+  #assert tun_keep(t[0].base[..], 0, TUN_ALL, 50) && tun_test_set(t[..], "world.gravity", "0.5") == TUN_OK && tun_find(o, 0, TUN_ALL) < 0 && tun_test_set(t[..], "world.gravity", "1") == TUN_OK && tun_find(o, 0, TUN_ALL) >= 0;
+  tun_clear(o); tun_clear(t[0].base[..]);
+  // things: one thing's, a kind's, then every thing's, which clears both; a thing's is kept even at the default
+  #assert tun_test_set(t[..], "b3.bounce", "0.9") == TUN_OK && tun_test_set(t[..], "balls.bounce", "0.4") == TUN_OK && tun_test_set(t[..], "b4.bounce", "0.15") == TUN_OK && tun_test_set(t[..], "b3.fixed", "on") == TUN_OK;
+  #assert tun_test_save(t[..]) == "thing.bounce@-2=0.4\nthing.bounce@3=0.9\nthing.bounce@4=0.15\nthing.fixed@3=on\n";
+  #assert tun_test_set(t[..], "things.bounce", "0.15") == TUN_OK && tun_test_save(t[..]) == "thing.bounce=0.15\nthing.fixed@3=on\n";
+  // a full store says so
+  tun_clear(o);
+  for id: 1..<TUN_ROOM + 1 { #assert tun_keep(o, 5, id, 1); }
+  #assert tun_test_set(t[..], "world.gravity", "2") == TUN_FULL && tun_test_set(t[..], "b3.bounce", "0.5") == TUN_FULL && tun_test_set(t[..], "b3.fixed", "off") == TUN_OK;
+}
+#test "resetting: one target's value goes; every thing's goes with every single thing's and kind's; nothing kept is nothing reset" {
+  t: [1] TunTest; r: [] const Tunable = TUN_T[..]; k: [] const string = TUN_T_KINDS[..]; o := t[0].over[..];
+  #assert tun_test_set(t[..], "world.gravity", "2") == TUN_OK && tun_test_set(t[..], "b3.bounce", "0.9") == TUN_OK && tun_test_set(t[..], "balls.bounce", "0.4") == TUN_OK && tun_test_set(t[..], "b3.fixed", "on") == TUN_OK;
+  #assert tun_reset(r, o, tun_at(r, k, "world.gravity")) && !tun_reset(r, o, tun_at(r, k, "world.gravity")) && tun_find(o, 0, TUN_ALL) < 0;
+  #assert tun_reset(r, o, tun_at(r, k, "b3.bounce")) && tun_test_save(t[..]) == "thing.bounce@-2=0.4\nthing.fixed@3=on\n" && !tun_reset(r, o, tun_at(r, k, "b9.bounce"));
+  #assert tun_test_set(t[..], "b3.bounce", "0.9") == TUN_OK && tun_reset(r, o, tun_at(r, k, "things.bounce")) && tun_test_save(t[..]) == "thing.fixed@3=on\n" && !tun_reset(r, o, tun_at(r, k, "things.bounce"));
+  // every thing's alone is still something to reset
+  #assert tun_test_set(t[..], "things.bounce", "0.5") == TUN_OK && tun_reset(r, o, tun_at(r, k, "things.bounce")) && o[0].n == 1;
+  // an unknown path resets nothing, and a row past the table's end is no row
+  #assert !tun_reset(r, o, tun_at(r, k, "world.weather")) && !tun_reset(r, o, TunAt.{prop = 6}) && o[0].n == 1;
+  #assert tun_keep(o, 5, TUN_ALL, 1) && tun_reset(r, o, TunAt.{prop = 5, target = 3}) && o[0].n == 1 && tun_find(o, 5, TUN_ALL) == 0;
+}
+#test "a value as text, and a row in full for whoever must choose a value" {
+  t: [1] TunTest; out := t[0].out[..];
+  n := tun_text(TUN_T[0], 30, out, 0); #assert cast(string) out[0..<n] == "0.3";
+  n = tun_text(TUN_T[1], 2, out, 0); #assert cast(string) out[0..<n] == "2";
+  n = tun_text(TUN_T[2], 1, out, 0); #assert cast(string) out[0..<n] == "on";
+  n = tun_text(TUN_T[2], 0, out, 0); #assert cast(string) out[0..<n] == "off";
+  n = tun_text(TUN_T[3], 1, out, 0); #assert cast(string) out[0..<n] == "dawn";
+  n = tun_text(TUN_T[3], 0, out, 0); #assert cast(string) out[0..<n] == "night";
+  n = tun_text(TUN_T[3], 2, out, 0); #assert cast(string) out[0..<n] == "day";
+  n = tun_text(TUN_T[3], 3, out, 0); #assert cast(string) out[0..<n] == "?";
+  n = tun_text(TUN_T[3], -1, out, 0); #assert cast(string) out[0..<n] == "?";
+  n = tun_detail(TUN_T[0], 100, 30, out, 0); #assert cast(string) out[0..<n] == "world.gravity: 0 to 5 x, step 0.1, default 1, now 0.3. how hard everything falls: 1 is normal, 0 is none";
+  n = tun_detail(TUN_T[1], 1, 0, out, 0); #assert cast(string) out[0..<n] == "player.air_jumps: whole number 0 to 2, default 1, now 0. how many times you may jump again before landing";
+  n = tun_detail(TUN_T[2], 1, 0, out, 0); #assert cast(string) out[0..<n] == "player.fly: on or off, default on, now off. whether a double press of jump flies";
+  n = tun_detail(TUN_T[3], 2, 1, out, 0); #assert cast(string) out[0..<n] == "world.light: one of night, dawn, day, default day, now dawn. where the sun is";
+  // the default and the value now are the caller's to say: a ball's bounce is not a block's. It goes on from where it is told to
+  n = tun_detail(TUN_T[4], 55, 90, out, 3); #assert cast(string) out[3..<n] == "thing.bounce: 0 to 1, step 0.05, default 0.55, now 0.9. how much of its speed a thing keeps when it lands";
+}
+#test "the index: a line a group in the table's order, a few words a row; one group alone; the groups with their counts" {
+  t: [1] TunTest; out := t[0].out[..]; r: [] const Tunable = TUN_T[..];
+  #assert tun_first(r, 0) && tun_first(r, 1) && !tun_first(r, 2) && !tun_first(r, 3) && tun_first(r, 4) && !tun_first(r, 5);
+  n := tun_index(r, "", out, 0);
+  #assert cast(string) out[0..<n] == "world: gravity (how hard things fall), light (time of day)\nplayer: air_jumps (jumps in the air), fly (whether you can fly)\nthing: bounce (how much it bounces), fixed (cannot be moved)\n";
+  n = tun_index(r, "player", out, 0); #assert cast(string) out[0..<n] == "player: air_jumps (jumps in the air), fly (whether you can fly)\n";
+  n = tun_index(r, "thing", out, 2); #assert cast(string) out[2..<n] == "thing: bounce (how much it bounces), fixed (cannot be moved)\n";
+  n = tun_index(r, "sky", out, 0); #assert n == 0;
+  n = tun_groups(r, out, 0); #assert cast(string) out[0..<n] == "world 2, player 2, thing 2";
+  n = tun_groups(r[0..<1], out, 1); #assert cast(string) out[1..<n] == "world 1";
+  // a group may have a name of one letter
+  tiny := [2] Tunable.[Tunable.{path = "a.b", hint = "one"}, Tunable.{path = "c.d", hint = "two"}];
+  n = tun_index(tiny[..], "c", out, 0); #assert cast(string) out[0..<n] == "c: d (two)\n";
+}
+#test "the map as text and back: the same map is the same bytes, a load is whole or not at all, and the same again changes nothing" {
+  t: [1] TunTest; r: [] const Tunable = TUN_T[..]; o := t[0].over[..];
+  text := "world.gravity=0.3\nplayer.air_jumps=0\nplayer.fly=off\nworld.light=dawn\nthing.bounce@-2=0.4\nthing.bounce@3=0.9\nthing.fixed@3=on\n";
+  #assert tun_load(r, o, text) && o[0].n == 7 && o[0].rev == 1 && tun_test_save(t[..]) == text;
+  // again: nothing changes. In another order, with empty lines and no last newline: the same map
+  #assert tun_load(r, o, text) && o[0].rev == 1;
+  #assert tun_load(r, o, "\nthing.fixed@3=on\nthing.bounce@3=0.9\n\nplayer.fly=off\nworld.light=dawn\nthing.bounce@-2=0.4\nplayer.air_jumps=0\nworld.gravity=0.3") && o[0].rev == 1 && tun_test_save(t[..]) == text;
+  // a value changed, one fewer, one other: each is another map
+  #assert tun_load(r, o, "world.gravity=0.4\nplayer.air_jumps=0\nplayer.fly=off\nworld.light=dawn\nthing.bounce@-2=0.4\nthing.bounce@3=0.9\nthing.fixed@3=on\n") && o[0].rev == 2 && o[0].value[0] == 40;
+  #assert tun_load(r, o, "world.gravity=0.4\nplayer.air_jumps=0\nplayer.fly=off\nworld.light=dawn\nthing.bounce@-2=0.4\nthing.bounce@3=0.9\nthing.fixed@4=on\n") && o[0].rev == 3 && o[0].target[6] == 4;
+  #assert tun_load(r, o, "world.gravity=0.4\nplayer.air_jumps=0\nplayer.fly=off\nworld.light=dawn\nthing.bounce@-2=0.4\nthing.bounce@3=0.9\nworld.light@0=x") == false && o[0].rev == 3;
+  #assert tun_load(r, o, "player.air_jumps=0\nplayer.air_jumps=2\nplayer.fly=off\nworld.light=dawn\nthing.bounce@-2=0.4\nthing.bounce@3=0.9\nthing.fixed@4=on\n") && o[0].rev == 4 && o[0].n == 6 && o[0].prop[0] == 1 && o[0].value[0] == 2;
+  // the last of a row twice wins; a load of fewer leaves no more than it said
+  #assert tun_load(r, o, "world.gravity=2\n") && o[0].n == 1 && o[0].rev == 5 && tun_test_save(t[..]) == "world.gravity=2\n";
+  // what is not a map of this table changes nothing
+  bad := [14] string.["world.weather=rain", "world.gravity", "=1", "world.gravity=9", "world.gravity=x", "world.gravity@3=1", "thing.bounce@x=0.5", "thing.bounce@0=0.5", "thing.bounce@1.5=0.5", "thing.bounce@=0.5", "world.gravity=1\nnonsense", "thing.bounce@3.0=0.5", "thing.bounce@3=0.5=1", "world.light@1=day"];
+  for line: bad { #assert !tun_load(r, o, line) && o[0].n == 1 && o[0].rev == 5 && o[0].value[0] == 200; }
+  // nothing at all is the empty map
+  #assert tun_load(r, o, "") && o[0].n == 0 && o[0].rev == 6 && tun_load(r, o, "\n\n") && o[0].rev == 6;
+  // a default is kept when it is loaded: the map is taken as written
+  #assert tun_load(r, o, "world.gravity=1\nthing.bounce@-1=1\n") && o[0].n == 2 && o[0].target[1] == -1 && o[0].value[1] == 100;
+  // more than the store has room for is no map
+  big: [8192] u8; n := 0;
+  for id: 1..<TUN_ROOM + 2 { n = tun_put(big[..], n, "thing.fixed@"); n = tun_put_int(big[..], n, id); n = tun_put(big[..], n, "=on\n"); }
+  #assert !tun_load(r, o, cast(string) big[0..<n]) && o[0].n == 2;
+  #assert tun_whole("12").value == 12 && tun_whole("-3").value == -3 && tun_whole("-3").status == TUN_OK && tun_whole("3.0").status == TUN_BAD && tun_whole("3.5").status == TUN_BAD && tun_whole("x").status == TUN_BAD && tun_whole("3.").status == TUN_BAD && tun_whole(".0").status == TUN_BAD && tun_whole("").status == TUN_BAD;
+}
+#test "the digest: the same map is the same number, and a row, a target, a value or one more is another" {
+  a: [1] TunTest; b: [1] TunTest; x := a[0].over[..]; y := b[0].over[..];
+  #assert tun_digest(x) == tun_digest(y) && tun_digest(x) == 12638153115695167455;
+  #assert tun_keep(x, 4, 3, 90) && tun_digest(x) != tun_digest(y) && tun_keep(y, 4, 3, 90) && tun_digest(x) == tun_digest(y);
+  d := tun_digest(x); #assert d == 573737012288199969;
+  #assert tun_keep(y, 4, 3, 91) && tun_digest(y) != d && tun_drop(y, 4, 3) && tun_keep(y, 4, 4, 90) && tun_digest(y) != d && tun_drop(y, 4, 4) && tun_keep(y, 5, 3, 90) && tun_digest(y) != d;
+  #assert tun_keep(x, 4, -2, 40) && tun_digest(x) != d && tun_keep(x, 0, 0, 0) && tun_drop(x, 4, -2) && tun_digest(x) != d;
+  // the order things were set in does not enter: the map is sorted
+  tun_clear(x); tun_clear(y);
+  #assert tun_keep(x, 0, 0, 30) && tun_keep(x, 4, 3, 90) && tun_keep(y, 4, 3, 90) && tun_keep(y, 0, 0, 30) && tun_digest(x) == tun_digest(y) && tun_digest(x) != d;
+}
+#test "a table is well made: this one is, and a row that breaks any one rule is not" {
+  #assert tun_ok(TUN_T[..]) && TUN_ROOM == 256 && TUN_NAMES == 6 && TUN_PATH == 48 && TUN_LIMIT == 100000000;
+  #assert tun_path_ok("a.b") && tun_path_ok("world.time_scale2") && tun_path_ok("az09_.az09_") && tun_path_ok("abcdefghijklmnopqrstuvwx.abcdefghijklmnopqrstuvw");
+  for path: [14] string.["", "ab", ".b", "a.", "a.b.c", "A.b", "a.B", "a-b.c", "a.b c", "abcdefghijklmnopqrstuvwx.abcdefghijklmnopqrstuvwx", "a.{", "a.`", "a./", "a.:"] { #assert !tun_path_ok(path); }
+  good := Tunable.{path = "a.b", kind = TUN_NUMBER, scope = TUN_THING, low = -100000000, high = 100000000, step = 100000000, def = 0, hint = "h", about = "a"};
+  one: [1] Tunable; one[0] = good; #assert tun_ok(one[..]);
+  bad: [20] Tunable; for i: 0..<20 { bad[i] = good; }
+  bad[0].path = "a"; bad[1].kind = -1; bad[2].kind = 4; bad[3].scope = -1; bad[4].scope = 3; bad[5].hint = ""; bad[6].about = "";
+  bad[7].low = 1; bad[7].high = 0; bad[7].def = 1; bad[8].low = -100000001; bad[8].step = 1; bad[9].high = 100000001; bad[9].step = 1; bad[10].step = 0;
+  bad[11].step = 3; bad[12].def = -100000001; bad[12].step = 1; bad[13].def = 100000001; bad[13].step = 1; bad[14].def = 1;
+  bad[15].kind = TUN_BOOL; bad[15].low = 0; bad[15].high = 2; bad[15].step = 1; bad[16].kind = TUN_BOOL; bad[16].low = -1; bad[16].high = 1; bad[16].step = 1;
+  bad[17].kind = TUN_CHOICE; bad[17].low = 0; bad[17].high = 6; bad[17].step = 1; bad[17].names = [TUN_NAMES] string.["a", "b", "c", "d", "e", "f"];
+  bad[18].kind = TUN_CHOICE; bad[18].low = 0; bad[18].high = 2; bad[18].step = 1; bad[18].names = [TUN_NAMES] string.["a", "b", "", "", "", ""];
+  bad[19].kind = TUN_CHOICE; bad[19].low = -1; bad[19].high = 1; bad[19].step = 1; bad[19].names = [TUN_NAMES] string.["a", "b", "c", "", "", ""];
+  for i: 0..<20 { one[0] = bad[i]; #assert !tun_ok(one[..]); }
+  // a choice with a step of two, one whose every name is there, and the same path twice
+  ch := good; ch.kind = TUN_CHOICE; ch.low = 0; ch.high = 2; ch.step = 1; ch.names = [TUN_NAMES] string.["a", "b", "c", "", "", ""]; one[0] = ch; #assert tun_ok(one[..]);
+  ch.step = 2; one[0] = ch; #assert !tun_ok(one[..]);
+  ch.step = 1; ch.high = 5; ch.names = [TUN_NAMES] string.["a", "b", "c", "d", "e", "f"]; one[0] = ch; #assert tun_ok(one[..]);
+  fl := good; fl.kind = TUN_BOOL; fl.low = 0; fl.high = 1; fl.step = 1; one[0] = fl; #assert tun_ok(one[..]);
+  // a range of one value; a range and a default counted from a low end that is not nothing; a choice needs its first name too
+  one[0] = Tunable.{path = "a.b", kind = TUN_WHOLE, low = 7, high = 7, def = 7, hint = "h", about = "a"}; #assert tun_ok(one[..]);
+  one[0] = Tunable.{path = "a.b", kind = TUN_NUMBER, low = 5, high = 25, step = 20, def = 5, hint = "h", about = "a"}; #assert tun_ok(one[..]);
+  one[0] = Tunable.{path = "a.b", kind = TUN_NUMBER, low = 5, high = 45, step = 20, def = 25, hint = "h", about = "a"}; #assert tun_ok(one[..]);
+  ch.high = 1; ch.names = [TUN_NAMES] string.["", "b", "", "", "", ""]; one[0] = ch; #assert !tun_ok(one[..]);
+  two: [2] Tunable; two[0] = good; two[1] = good; #assert !tun_ok(two[..]); two[1].path = "a.c"; #assert tun_ok(two[..]);
+  none: [1] Tunable; #assert tun_ok(none[0..<0]);
+}

@@ -246,3 +246,45 @@ when restoring.
 ## Declared-state adoption (#12991)
 
 Construction now also has a bounded semantic schema: full field IDs/names, typed defaults, scopes and reset masks. NEW and every reset use the same admitted defaults, independent of native/Wasm zeroed storage. See [the runtime guide](../state/README.md) and [qualification](../../docs/verification/declared-state-12991/README.md). This addition does not promote the chapter’s remaining teaching or qualification scope.
+
+## Settings a person can change
+
+Defaults are also where a person's settings start. A setting is a row of a table, and what a
+person changed is only what differs from that table:
+
+<!-- source: metaverse-engine/state/tunables.coax tunables -->
+```jai
+TUN_BOOL :: 0; TUN_WHOLE :: 1; TUN_NUMBER :: 2; TUN_CHOICE :: 3;   // a row's kind
+TUN_WORLD :: 0; TUN_PLAYER :: 1; TUN_THING :: 2;                    // and its scope
+TUN_OK :: 0;
+TUN_UNKNOWN :: 1;      // no such path
+TUN_BAD :: 2;          // the text is no value of the row's kind
+TUN_RANGE :: 3;        // a number outside the row's range
+TUN_FULL :: 4;         // no room for another value that differs
+TUN_ROOM :: 256;       // values that differ, at most
+TUN_ALL :: 0;          // a target: the world, the player, every thing
+TUN_NAMES :: 6;        // a choice's names at most
+TUN_PATH :: 48;        // bytes of a path at most
+TUN_LIMIT :: 100000000;   // a row's numbers are within this of nothing
+
+Tunable :: struct {
+  path: string;                 // "group.name": lowercase letters, digits and underscores, one dot
+  kind: int; scope: int;
+  low: int; high: int; step: int = 1; def: int;
+  unit: string;                 // what a value counts ("x", "m/s"), or nothing
+  hint: string;                 // a few words, for an index
+  about: string;                // one plain line: what it does
+  names: [TUN_NAMES] string;    // a choice's values, low to high
+}
+// What differs from the defaults, sorted by row and then by target.
+TunStore :: struct { n: int; rev: int; prop: [TUN_ROOM] int; target: [TUN_ROOM] int; value: [TUN_ROOM] int; }
+// A path as written, found: the row (-1: unknown) and who it is for.
+TunAt :: struct { prop: int = -1; target: int; }
+TunRead :: struct { status: int; value: int; }
+```
+
+Numbers are kept in hundredths, so a value is an integer and its text is exact both ways. A set is
+checked against its row before anything changes, and a store already holding exactly the text it
+is loaded from is not changed, so the same settings are always the same bytes and the same
+digest. `world-tunables.coax` is one world's table; its check proves each row is well made and
+that the index a model chooses from is a few hundred bytes, not every row's detail.
