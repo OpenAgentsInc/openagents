@@ -194,13 +194,67 @@ f64 is the reference precision. Apple GPUs have no f64; the device profile
 uses f32 with compensated sums where measurement shows they are needed, and
 reports its own error budget rather than inheriting the CPU's.
 
+## Bodies that touch
+
+[`metaverse-engine/physics/sim/bodies.coax`](../physics/sim/bodies.coax)
+(80 checks with the kernels it loads; its first mutation pass is running and its result is not recorded here yet) is the first solver here that holds a world of things
+together: boxes and balls on a ground plane that fall, land, stack, tip,
+roll and sleep, pushed by characters, at a fixed step, in a form a second
+machine can repeat. It composes this chapter's store and its implicit
+gyroscopic step with chapter 20's sweep and prune and chapter 21's box
+manifolds, and adds the rest. GameBuilder's web world is its first
+consumer (its blocks and its ball).
+
+| Piece | What it does |
+| --- | --- |
+| Order | Every body has an id from its owner, and bodies are kept in id order. The broad phase, the contacts, the solver and the islands run in that order, whatever order bodies were added in and whatever was removed between. |
+| Contacts | The four lowest corners of a box against the ground, clipped face manifolds between boxes (each grown by half the reach, so resting faces always meet in a whole manifold), a ball against a box or a ball. A point that is still short of touching may close its gap in the step and no more; the bounce it is owed is paid the next step. Nothing passes through the ground. |
+| Solver | Sequential impulses, 10 passes, warm started from the last step's impulses matched by feature: a normal impulse that only pushes, Coulomb friction on two tangents, restitution above 1 m/s. Every target is read before any warm start is applied. |
+| Overlap | Pushed out by a second solve on pseudo-velocities (split impulses), 0.2 of the overlap past a 5 mm slop a step, 3 m/s at most. The push never becomes speed, so a body put inside another parts from it and stops. |
+| Sleep | Islands (bodies joined by contacts) sleep together after half a second of stillness and wake together when something moving touches one. A sleeper is where it was to the bit. |
+| Movers | Kinematic upright capsules, each with an id, taken in id order: the characters. A mover drives what it walks into toward its own speed with a capped force, `bd_push_share`: all of the force on a standing body, none on one already going at the mover's shove speed, and between them `(1 - v) / (1 + curve v)`. Bodies never move a mover, and it does not push what is low enough to step onto. Two movers on one block are two capped constraints in one solve: the stronger wins, equal ones hold it. |
+| Rolling | A ball's spin is opposed by a torque of its `roll` length times its load. |
+| Time | `bd_advance` takes seconds and makes whole steps of 1/60 s from an accumulator, four a call at most; `bd_pose` blends the last two steps for drawing. |
+| Shared and local | A body is shared (consequential: what a server replicates) unless marked local (decoration). A local body is moved by shared ones and never moves, wakes or keeps awake a shared one, and has its own share of the contact room: the shared bodies' state is the same bits with any local bodies or none. |
+| Snapshot | `bd_snapshot_write` and `bd_snapshot_read`: a 24-byte header (`BDS1`, version, record size, step, count) and a 112-byte record a shared body (id, sleep group, position, attitude, velocity, body-frame spin, as little-endian f64), in id order. Reading clears what a step keeps between steps, so every scene that reads one snapshot goes on bit for bit the same. |
+| History | `Bd_History` keeps the last 64 steps of every body (`bd_at`, `bd_between`), and for the newest 16 the contact impulses too: `bd_rewind` to one of those and stepping again with the same movers repeats the first run bit for bit. |
+
+What it measures, in its checks: a box dropped 4 m lands without entering
+the ground, rebounds to its restitution squared, and sleeps within two
+seconds; a stack of three stays to the bit while it sleeps; a tall box
+tilted short of its balance angle rights itself and past it falls; friction
+stops a slide in `v^2 / 2 mu g`; a mover shoves a cube at the speed where
+its force curve meets the cube's friction; 48 boxes and a ball dropped in a
+heap are all asleep within ten seconds, never deeper than 4 cm in the
+ground at any step; a recorded run of 600 steps (two movers, bodies added,
+placed and removed) replays into a fresh scene with the same state hash at
+every step, whatever order the bodies were first added in and however the
+seconds were cut into frames.
+
+What is promised across machines: a step uses only IEEE add, subtract,
+multiply, divide and square root, and turns a body with the engine's strict
+sine and cosine (`bd_exp`, on `core/math.coax`), never the host's. So two
+copies of one build agree, and a native room and a wasm page are expected
+to. That last has not yet been run for this module: until it has, a client
+treats a server's snapshot as the truth and its own stepping as a
+prediction. For shared worlds the next steps are snapshot interpolation
+(pages draw shared bodies from snapshots a little in the past, with
+`bd_between`), then prediction of the whole island a player's mover touches
+(`bd_rewind` and re-step when a snapshot disagrees); see
+[`docs/research/2026-11-17-shared-physics-multiplayer-plan.md`](../../docs/research/2026-11-17-shared-physics-multiplayer-plan.md).
+
+Not built: joints, hulls and capsules as bodies, continuous collision
+between two fast bodies, more than 64 bodies, device kernels, the network.
+The Physics Lab (chapter 37) still measures the older kernel composition
+against Rapier and Jolt, not this module.
+
 ## What it still builds
 
 - Generated CUDA and Metal kernels for `rigid_set_step` through Psionic
   chapter 37's compute subset, checked against the CPU profiles.
 - f32 device profiles with compensated sums where measurement shows they
   are needed, each with its own error budget.
-- Sleeping as a profile option.
+- This chapter's batched profiles have no sleeping; `bodies.coax` (above) has islands that sleep.
 - Chapter 17's scene stepping its rigid solver through these arrays instead
   of its falling centre of mass.
 

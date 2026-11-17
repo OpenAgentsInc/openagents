@@ -187,6 +187,7 @@ The engine modules that were in `metaverse/` moved here in one scripted commit
 | `core/sticks.coax` | The touch controls: move stick, look finger, pinch, tap, the hotbar's slot |
 | `anim/figure.coax`, `anim/motion.coax`, `anim/skin.coax` | Soft figures, keyframed motions, skinned clips |
 | `core/math-d.coax` | Vectors and quaternions in f64 (`D2`, `D3`, `DQ`), which orbits, the space camera, water and the simulation package share |
+| `physics/sim/bodies.coax` | Rigid bodies that touch: boxes and balls on a ground plane that fall, stack, tip, roll and sleep, pushed by movers (characters), at a fixed step, in id order; shared and local bodies, a snapshot of the shared set, a history with rewind. [Book chapter 18, "Bodies that touch"](book/ch018-rigid-bodies-and-time-steps.md) |
 | `physics/sim/rigid.coax`, `physics/sim/contact.coax`, `physics/gravity.coax`, `physics/thrust.coax`, `physics/vehicle.coax`, `physics/orbit.coax` | Rigid bodies, contacts, gravity fields, thrusters, wheeled vehicles, orbits |
 | `render/particles.coax`, `render/particle-motion.coax` | Particle emitters and their stateless motion |
 | `core/command.coax` | Selection, groups and order queues for commanding units |

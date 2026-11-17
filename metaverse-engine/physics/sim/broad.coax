@@ -306,12 +306,12 @@ reference_same :: (s: [] Broad_Set, out: [] Broad_Pairs) -> bool {
   }
   return k == out[0].count;
 }
-test_unit :: (seed: int, n: int) -> f64 { return cast(f64) (cast(int) (cast(u64) (seed * 2654435761 + n * 40503) % 1000003)) / 1000003.0; }   // mutant: equivalent (the scene generator: any change still makes a valid scene, which the reference checks)
-test_scene :: (s: [] Broad_Set, n: int, seed: int, spread: f64) {
+broad_test_unit :: (seed: int, n: int) -> f64 { return cast(f64) (cast(int) (cast(u64) (seed * 2654435761 + n * 40503) % 1000003)) / 1000003.0; }   // mutant: equivalent (the scene generator: any change still makes a valid scene, which the reference checks)
+broad_test_scene :: (s: [] Broad_Set, n: int, seed: int, spread: f64) {
   s[0].count = 0;
   for i: 0..<n {
-    c := d3(test_unit(seed, 3 * i) * spread, test_unit(seed, 3 * i + 1) * spread, test_unit(seed, 3 * i + 2) * spread);   // mutant: equivalent (the scene generator: any change still makes a valid scene, which the reference checks)
-    h := 0.2 + 0.6 * test_unit(seed + 7, i);   // mutant: equivalent (the scene generator: any change still makes a valid scene, which the reference checks)
+    c := d3(broad_test_unit(seed, 3 * i) * spread, broad_test_unit(seed, 3 * i + 1) * spread, broad_test_unit(seed, 3 * i + 2) * spread);   // mutant: equivalent (the scene generator: any change still makes a valid scene, which the reference checks)
+    h := 0.2 + 0.6 * broad_test_unit(seed + 7, i);   // mutant: equivalent (the scene generator: any change still makes a valid scene, which the reference checks)
     _ := broad_add(s, broad_box(c, d3(h, h, h), D3_ZERO, 0.0, 0.0));
   }
 }
@@ -327,15 +327,15 @@ all_agree :: (s: [] Broad_Set) -> bool {
 #test "every method returns the reference's pairs on random scenes of every size" #steps 400000000 {
   s: [1] Broad_Set;
   for n: 0..<40 {
-    test_scene(s[..], n, n + 1, 6.0);
+    broad_test_scene(s[..], n, n + 1, 6.0);
     #assert all_agree(s[..]);
   }
   for seed: 1..<6 {
-    test_scene(s[..], BROAD_BODIES, seed, 20.0); #assert all_agree(s[..]);
-    test_scene(s[..], BROAD_BODIES, seed, 8.0); #assert all_agree(s[..]);
+    broad_test_scene(s[..], BROAD_BODIES, seed, 20.0); #assert all_agree(s[..]);
+    broad_test_scene(s[..], BROAD_BODIES, seed, 8.0); #assert all_agree(s[..]);
   }
   out: [1] Broad_Pairs;
-  test_scene(s[..], 64, 3, 8.0); broad_pairs(s[..], Broad_Method.all_pairs, out[..]);
+  broad_test_scene(s[..], 64, 3, 8.0); broad_pairs(s[..], Broad_Method.all_pairs, out[..]);
   #assert out[0].count > 50 && out[0].count < 1000 && out[0].tests == 64 * 63 / 2;
 }
 
@@ -410,7 +410,7 @@ all_agree :: (s: [] Broad_Set) -> bool {
 
 #test "sweep and prune keeps its order: a still scene needs no swaps" {
   s: [1] Broad_Set; out: [1] Broad_Pairs;
-  test_scene(s[..], 100, 4, 10.0);
+  broad_test_scene(s[..], 100, 4, 10.0);
   broad_pairs(s[..], Broad_Method.sweep_prune, out[..]);
   first := out[0].swaps; #assert first > 1000;
   broad_pairs(s[..], Broad_Method.sweep_prune, out[..]);
@@ -447,7 +447,7 @@ all_agree :: (s: [] Broad_Set) -> bool {
 
 #test "the hierarchy prunes: far fewer box tests than all pairs on a sparse scene" {
   s: [1] Broad_Set; out: [1] Broad_Pairs;
-  test_scene(s[..], BROAD_BODIES, 2, 40.0);
+  broad_test_scene(s[..], BROAD_BODIES, 2, 40.0);
   broad_pairs(s[..], Broad_Method.all_pairs, out[..]); all := out[0].tests;
   broad_pairs(s[..], Broad_Method.lbvh, out[..]); #assert out[0].tests * 2 < all;
   broad_pairs(s[..], Broad_Method.sweep_prune, out[..]); #assert out[0].tests * 4 < all;
@@ -488,14 +488,14 @@ all_agree :: (s: [] Broad_Set) -> bool {
   for i: 0..<3 { #assert broad_add(s[..], broad_box(d3(cast(f64) (2 - i) * 10.0, 0.0, 0.0), d3(0.5, 0.5, 0.5), D3_ZERO, 0.0, 0.0)) == i; }
   broad_pairs(s[..], Broad_Method.sweep_prune, out[..]);
   #assert out[0].swaps == 3 && s[0].order[0] == 2 && s[0].order[1] == 1 && s[0].order[2] == 0;
-  test_scene(s[..], 100, 4, 10.0);
+  broad_test_scene(s[..], 100, 4, 10.0);
   broad_pairs(s[..], Broad_Method.sweep_prune, out[..]);
   for k: 1..<100 { #assert broad_before(s[..], s[0].order[k - 1], s[0].order[k]); }
 }
 
 #test "the reference rejects a wrong answer" {
   s: [1] Broad_Set; out: [1] Broad_Pairs;
-  test_scene(s[..], 30, 5, 6.0);
+  broad_test_scene(s[..], 30, 5, 6.0);
   broad_pairs(s[..], Broad_Method.all_pairs, out[..]);
   #assert out[0].count > 3 && reference_same(s[..], out[..]);
   out[0].count -= 1; #assert !reference_same(s[..], out[..]);
@@ -505,9 +505,9 @@ all_agree :: (s: [] Broad_Set) -> bool {
 
 #test "box tests: each method's cost on a fixed scene" {
   s: [1] Broad_Set; out: [1] Broad_Pairs;
-  test_scene(s[..], BROAD_BODIES, 2, 40.0);
+  broad_test_scene(s[..], BROAD_BODIES, 2, 40.0);
   broad_pairs(s[..], Broad_Method.lbvh, out[..]); #assert out[0].tests == LBVH_TESTS;
   broad_pairs(s[..], Broad_Method.sweep_prune, out[..]); #assert out[0].tests == SWEEP_TESTS;
-  test_scene(s[..], 7, 9, 3.0);
+  broad_test_scene(s[..], 7, 9, 3.0);
   broad_pairs(s[..], Broad_Method.lbvh, out[..]); #assert out[0].tests == LBVH_SMALL;
 }

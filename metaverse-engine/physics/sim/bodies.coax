@@ -1,0 +1,1998 @@
+// Rigid bodies that touch (book chapter 18, "Bodies that touch"): boxes and balls on a ground
+// plane, with weight, friction, bounce and spin, stepped at a fixed rate, in a form a second
+// machine can repeat. It composes the kernels beside it and adds what a shared world of resting,
+// stacked, pushed things needs:
+//
+//   rigid.coax    the store (Rigid_Set) and the integrator (the implicit gyroscopic step)
+//   broad.coax    which pairs might touch (sweep and prune)
+//   narrow.coax   where two boxes touch (SAT and clipping, with feature IDs), a capsule against anything
+//   contact.coax  a ball against a box, a ball against a ball
+//
+// and here:
+//
+//   bodies in the order of their ids   every body has an id its owner gives it, and the bodies are
+//                                 kept in id order: the broad phase, the contacts, the solver and
+//                                 the islands all run in that order, whatever order the bodies were
+//                                 added in and whatever was removed between
+//   contacts kept between steps   each pair's manifold, matched by feature, so last step's impulses
+//                                 start this step's solve (warm starting): a stack rests without jitter
+//   one solve for every contact   sequential impulses over all manifolds, BD_ITERATIONS times: normal
+//                                 impulses that only push, Coulomb friction on two tangents, restitution
+//                                 above BD_REST_SPEED
+//   overlap pushed out apart      by a second, positional solve on pseudo-velocities (split impulses):
+//                                 the push moves bodies and never becomes speed, so a body put inside
+//                                 another parts from it and stops
+//   sleeping islands              bodies joined by contacts sleep together once all have been still for
+//                                 BD_SLEEP_TIME, and wake together when something moving touches one
+//   movers                        kinematic upright capsules (characters), each with an id, taken in id
+//                                 order: a mover shoves what it walks into, with a force that falls as
+//                                 the body gets away (bd_push_share); bodies never move a mover, and it
+//                                 does not push what is low enough to step onto
+//   rolling resistance            a ball's spin is opposed by a torque of `roll` metres times its load
+//   a fixed step                  bd_advance takes seconds and makes whole steps of dt from an
+//                                 accumulator; bd_pose blends the last two steps for drawing
+//   shared and local bodies       a body is consequential (shared: what a server would replicate, what
+//                                 can block or push a player) unless it is marked local (decoration a
+//                                 client makes for itself). A local body is moved by the shared ones
+//                                 and never moves them, wakes them or keeps them awake: the shared
+//                                 bodies' state is the same bits with any local bodies or none
+//   a snapshot of the shared set  bd_snapshot_write / bd_snapshot_read: a versioned header and one
+//                                 fixed record a shared body (id, sleep group, position, attitude,
+//                                 velocity, spin), little-endian f64: what a server sends
+//   a history                     Bd_History keeps the last BD_HISTORY steps whole: bd_at and
+//                                 bd_between answer where a body was at a step or between two, and
+//                                 bd_rewind puts the scene back at a stored step, from which stepping
+//                                 again with the same movers gives the same bits as the first time
+//
+//   bd_box / bd_ball        add a body under an id: its mass is its volume times a density (0: fixed)
+//   bd_index                the index a body's id has now (indices move when bodies come and go)
+//   bd_place / bd_resize    put a body somewhere; give a box a new size, its lowest point where it was
+//   bd_remove               take one out
+//   bd_local                mark a body local-only decoration
+//   bd_mover / bd_mover_off where a mover is and how it moves, for the steps that follow
+//   bd_advance / bd_step    time
+//   bd_pose                 a body's place and attitude for drawing
+//
+// What is promised: the same bodies (by id), the same calls at the same steps, and the same build
+// give the same bits: f64, fixed orders, no clock, no frame rate (time enters only as whole steps),
+// no state left from before (bd_reset and bd_snapshot_read leave nothing of the old scene that a
+// step reads). Across builds: a step uses only IEEE add, subtract, multiply, divide and square
+// root, which WebAssembly and C both define exactly; it calls no sin, cos or other library
+// function (the attitude's turn is bd_exp, on the engine's strict math). So two copies of one
+// .wasm are expected to agree on any browser and CPU, and a native room and a wasm page are
+// expected to agree as far as the native compiler forms no fused multiply-add (the engine's walk
+// has that parity, metaverse-engine/tests/replay-walk.coax). Neither has been run for this module
+// on a second machine or against a wasm build yet: until it has, a client should treat a server's
+// snapshot as the truth and its own stepping as a prediction.
+// Normals point from the second body toward the first, as in contact.coax. Units: metres, seconds,
+// kilograms, radians; +Y is up. Not built: joints, hulls and capsules as bodies, continuous collision
+// between two fast bodies, device kernels, the network itself.
+//   coax/bin/coax test --library metaverse-engine/physics/sim/bodies.coax
+//   coax/bin/coax mutate --library --root-only metaverse-engine/physics/sim/bodies.coax
+#load "narrow.coax";
+#load "broad.coax";
+#load "../../core/math.coax";
+
+BD_MAX :: RIGID_BODIES;      // 64 bodies
+BD_POINTS :: 4;              // contact points a manifold
+BD_MANIFOLDS :: 256;         // manifolds a step; more are left out and counted
+BD_LOCAL_ROOM :: 64;         // of them, at most this many that touch a local body: the rest are the shared bodies' own
+BD_MOVERS :: 8;              // movers at once
+BD_GROUND :: -1;             // a manifold's second body: the ground plane
+BD_MOVER :: -2;              // or a mover: -2 the first in id order, -3 the next, ...
+BD_ITERATIONS :: 10;         // velocity solves a step
+BD_PUSH_ITERATIONS :: 4;     // positional solves a step
+BD_SLOP :: 0.005;            // m of overlap left alone
+BD_MARGIN :: 0.01;           // m: nearer than this is a contact already (it may close the gap, no more)
+BD_BETA :: 0.2;              // the share of the overlap past the slop pushed out each step
+BD_PUSH_OUT :: 3.0;          // m/s at most: how fast deep overlap parts
+BD_REST_SPEED :: 1.0;        // m/s: slower approaches don't bounce
+BD_TOUCH :: 0.001;           // m: a gap under this is touching
+BD_SLEEP_LINEAR :: 0.05;     // m/s: slower than this counts as still
+BD_SLEEP_ANGULAR :: 0.1;     // rad/s
+BD_SLEEP_TIME :: 0.5;        // s still before an island sleeps
+BD_SINK :: 0.05;             // m: a body found lower than this under the ground is lifted back
+BD_STEPS_MAX :: 4;           // steps one bd_advance makes at most; time beyond them is dropped
+BD_PUSH_UPRIGHT :: 0.3;      // a mover's contact whose normal is less level than this pushes nothing
+BD_ID_ROOM :: 1048576;       // ids are 0 up to this
+BD_HISTORY :: 64;            // steps a history keeps: a little over a second at 60 a second
+BD_REWIND :: 16;             // of them, the newest steps kept whole, contact impulses and all: a rewind to one repeats exactly
+BD_HISTORY_WARM :: 128;      // contact impulses such a step keeps; a step with more is kept without them (bd_exact)
+BD_SNAPSHOT_MAGIC :: 0x31534442;   // "BDS1"
+BD_SNAPSHOT_VERSION :: 1;
+BD_SNAPSHOT_HEAD :: 24;      // bytes: magic u32, version u16, record size u16, step u64, records u32, 0 u32
+BD_SNAPSHOT_RECORD :: 112;   // bytes a body: id u32, sleep group u32, then 13 f64: position, attitude x y z w, velocity, spin (body frame)
+
+Bd_Kind :: enum u8 { box; ball; }
+
+Bd_Point :: struct {
+  ra: D3; rb: D3;            // from each body's centre to the point
+  depth: f64;                // overlap; negative is a gap
+  feature: int;              // what made it, to match it next step
+  an: D3; bn: D3;            // what a unit impulse along the normal does to each spin: I^-1 (r x n)
+  at: [2] D3; bt: [2] D3;    // and along each tangent
+  mn: f64; mt: [2] f64;      // effective masses
+  pn: f64; pt: [2] f64;      // impulses so far
+  pp: f64;                   // the positional solve's
+  target: f64;               // the normal speed the solve reaches at least
+  due: f64;                  // the bounce owed by a point that was still short of touching last step
+  push: f64;                 // the pseudo-speed the positional solve reaches at least
+}
+Bd_Manifold :: struct {
+  a: int; b: int;            // b: a body, BD_GROUND, or BD_MOVER and below
+  count: int;
+  normal: D3;                // from b toward a
+  t: [2] D3;
+  mu: f64;
+  cap: f64;                  // a mover's: the most impulse it gives this step
+  wa: f64; wb: f64;          // 1 when the contact moves that body, 0 when it does not: a shared body against a local one
+  p: [BD_POINTS] Bd_Point;
+}
+// What is kept of a manifold for the next step.
+Bd_Warm :: struct { key: int; count: int; feature: [BD_POINTS] int; pn: [BD_POINTS] f64; pt: [BD_POINTS * 2] f64; due: [BD_POINTS] f64; }
+
+Bd_Mover :: struct {
+  id: int;
+  low: D3;                   // the foot of its axis
+  top: f64;                  // the height of its head
+  radius: f64;
+  skin: f64 = 0.06;          // it pushes what is this near
+  step: f64 = 0.55;          // it steps onto what is no higher than this above its foot, and does not push it
+  vel: D3;
+  force: f64;                // N, against a body standing still
+  speed: f64;                // m/s: a body already going this fast away gets no more
+  curve: f64;                // how fast the force falls with the body's speed: 0 a straight line, more a deeper sag
+  touching: int = -1;        // the id of the last body it pushed, or -1
+  pushed: f64;               // N s it gave in the last step
+}
+
+Bodies :: struct {
+  set: [1] Rigid_Set;
+  id: [BD_MAX] int;          // ascending: the order everything runs in
+  local: [BD_MAX] bool;      // decoration: moved by the shared bodies, never moving them
+  kind: [BD_MAX] Bd_Kind;
+  half: [BD_MAX] D3;         // a box's half extents; a ball's radius in x
+  friction: [BD_MAX] f64;
+  bounce: [BD_MAX] f64;      // restitution
+  roll: [BD_MAX] f64;        // m: a ball's rolling resistance
+  label: [BD_MAX] int;       // 0 awake; else the island it fell asleep with
+  quiet: [BD_MAX] f64;       // s it has been still
+  load: [BD_MAX] f64;        // N s of normal impulse on it in the last step
+  wv: [BD_MAX] D3;           // spin in the world frame, during a step
+  pv: [BD_MAX] D3; pw: [BD_MAX] D3;   // pseudo-velocities
+  was_pos: [BD_MAX] D3; was_att: [BD_MAX] DQ;   // the pose before the last step
+  root: [BD_MAX] int;
+  count_m: int; count_l: int; man: [BD_MANIFOLDS] Bd_Manifold;   // this step's manifolds, and how many of them touch a local body
+  count_w: int; warm: [BD_MANIFOLDS] Bd_Warm;
+  ground: f64;               // the ground plane's height
+  gravity: f64 = -9.81;
+  dt: f64 = 0.016666666666666666;
+  acc: f64;                  // seconds not yet stepped
+  steps: int;
+  labels: int;               // the last island label given
+  dropped: int;              // manifolds left out for want of room, ever
+  lifted: int;               // bodies lifted back from under the ground, ever
+  faults: int;               // steps of a body undone because its pose was not a number, ever
+  count_v: int; movers: [BD_MOVERS] Bd_Mover;   // in id order
+  bs: [1] Broad_Set; bp: [1] Broad_Pairs;
+}
+
+bd_count :: (b: [] Bodies) -> int { return b[0].set[0].count; }
+bd_awake :: (b: [] Bodies, i: int) -> bool { return b[0].label[i] == 0; }
+bd_fixed :: (b: [] Bodies, i: int) -> bool { return b[0].set[0].inv_mass[i] == 0.0; }
+bd_volume :: (kind: Bd_Kind, half: D3) -> f64 {
+  if kind == Bd_Kind.ball { return 4.0 / 3.0 * PI_D * half.x * half.x * half.x; }
+  return 8.0 * half.x * half.y * half.z;
+}
+bd_inertia :: (kind: Bd_Kind, half: D3, mass: f64) -> D3 {
+  if kind == Bd_Kind.ball { i := 0.4 * mass * half.x * half.x; return d3(i, i, i); }
+  return rigid_box_inertia(mass, d3_scale(half, 2.0));
+}
+// How far the body reaches from its centre along each world axis.
+bd_extent :: (b: [] Bodies, i: int) -> D3 {
+  h := b[0].half[i];
+  if b[0].kind[i] == Bd_Kind.ball { return d3(h.x, h.x, h.x); }
+  q := b[0].set[0].att[i];
+  x := dq_rotate(q, D3_X); y := dq_rotate(q, D3_Y); z := dq_rotate(q, D3_Z);
+  return d3(abs(x.x) * h.x + abs(y.x) * h.y + abs(z.x) * h.z, abs(x.y) * h.x + abs(y.y) * h.y + abs(z.y) * h.z, abs(x.z) * h.x + abs(y.z) * h.y + abs(z.z) * h.z);
+}
+bd_shape :: (b: [] Bodies, i: int) -> Shape {
+  if b[0].kind[i] == Bd_Kind.ball { return narrow_sphere(b[0].set[0].pos[i], b[0].half[i].x); }
+  return narrow_box(b[0].set[0].pos[i], b[0].set[0].att[i], b[0].half[i]);
+}
+// The index of the body with this id, or -1: a binary search, the ids being in order.
+bd_index :: (b: [] Bodies, id: int) -> int {
+  lo := 0; hi := bd_count(b);
+  while lo < hi { mid := (lo + hi) / 2; if b[0].id[mid] < id { lo = mid + 1; } else { hi = mid; } }
+  return ifx lo < bd_count(b) && b[0].id[lo] == id then lo else -1;
+}
+
+// Nothing of the old scene is left that a step reads: no body, contact, mover or time.
+bd_reset :: (b: [] Bodies) {
+  b[0].set[0].count = 0; b[0].count_m = 0; b[0].count_l = 0; b[0].count_w = 0; b[0].count_v = 0; b[0].acc = 0.0; b[0].steps = 0; b[0].labels = 0;
+}
+// Bodies i and j change places, with everything that is theirs.
+bd_swap :: (b: [] Bodies, i: int, j: int) {
+  s := b[0].set[..];
+  p := s[0].pos[i]; s[0].pos[i] = s[0].pos[j]; s[0].pos[j] = p;
+  q := s[0].att[i]; s[0].att[i] = s[0].att[j]; s[0].att[j] = q;
+  v := s[0].vel[i]; s[0].vel[i] = s[0].vel[j]; s[0].vel[j] = v;
+  w := s[0].omega[i]; s[0].omega[i] = s[0].omega[j]; s[0].omega[j] = w;
+  m := s[0].mass[i]; s[0].mass[i] = s[0].mass[j]; s[0].mass[j] = m;
+  im := s[0].inv_mass[i]; s[0].inv_mass[i] = s[0].inv_mass[j]; s[0].inv_mass[j] = im;
+  mo := s[0].inertia[i]; s[0].inertia[i] = s[0].inertia[j]; s[0].inertia[j] = mo;
+  ii := s[0].inv_inertia[i]; s[0].inv_inertia[i] = s[0].inv_inertia[j]; s[0].inv_inertia[j] = ii;
+  f := s[0].force[i]; s[0].force[i] = s[0].force[j]; s[0].force[j] = f;
+  tq := s[0].torque[i]; s[0].torque[i] = s[0].torque[j]; s[0].torque[j] = tq;
+  id := b[0].id[i]; b[0].id[i] = b[0].id[j]; b[0].id[j] = id;
+  lc := b[0].local[i]; b[0].local[i] = b[0].local[j]; b[0].local[j] = lc;
+  k := b[0].kind[i]; b[0].kind[i] = b[0].kind[j]; b[0].kind[j] = k;
+  h := b[0].half[i]; b[0].half[i] = b[0].half[j]; b[0].half[j] = h;
+  fr := b[0].friction[i]; b[0].friction[i] = b[0].friction[j]; b[0].friction[j] = fr;
+  bo := b[0].bounce[i]; b[0].bounce[i] = b[0].bounce[j]; b[0].bounce[j] = bo;
+  ro := b[0].roll[i]; b[0].roll[i] = b[0].roll[j]; b[0].roll[j] = ro;
+  la := b[0].label[i]; b[0].label[i] = b[0].label[j]; b[0].label[j] = la;
+  qu := b[0].quiet[i]; b[0].quiet[i] = b[0].quiet[j]; b[0].quiet[j] = qu;
+  lo := b[0].load[i]; b[0].load[i] = b[0].load[j]; b[0].load[j] = lo;
+  wp := b[0].was_pos[i]; b[0].was_pos[i] = b[0].was_pos[j]; b[0].was_pos[j] = wp;
+  wa := b[0].was_att[i]; b[0].was_att[i] = b[0].was_att[j]; b[0].was_att[j] = wa;
+}
+// A body under `id` (0 up to BD_ID_ROOM, not in use). It takes its place in id order: its index
+// now, or -1 when the set is full or the id is taken or out of range.
+bd_add :: (b: [] Bodies, id: int, kind: Bd_Kind, pos: D3, att: DQ, half: D3, density: f64, friction: f64, bounce: f64, roll: f64) -> int {
+  if id < 0 || id >= BD_ID_ROOM || bd_index(b, id) >= 0 { return -1; }
+  mass := density * bd_volume(kind, half);
+  i := rigid_add(b[0].set[..], mass, bd_inertia(kind, half, mass), pos, att);
+  if i < 0 { return -1; }
+  b[0].id[i] = id; b[0].local[i] = false;
+  b[0].kind[i] = kind; b[0].half[i] = half; b[0].friction[i] = friction; b[0].bounce[i] = bounce; b[0].roll[i] = roll;
+  b[0].label[i] = 0; b[0].quiet[i] = 0.0; b[0].load[i] = 0.0;
+  b[0].was_pos[i] = pos; b[0].was_att[i] = att;
+  while i > 0 && b[0].id[i - 1] > id { bd_swap(b, i, i - 1); i -= 1; }
+  return i;
+}
+// A box of half extents `half`, its mass its volume times `density` (0: it never moves).
+bd_box :: (b: [] Bodies, id: int, pos: D3, att: DQ, half: D3, density: f64, friction: f64, bounce: f64) -> int {
+  return bd_add(b, id, Bd_Kind.box, pos, att, half, density, friction, bounce, 0.0);
+}
+bd_ball :: (b: [] Bodies, id: int, pos: D3, radius: f64, density: f64, friction: f64, bounce: f64, roll: f64) -> int {
+  return bd_add(b, id, Bd_Kind.ball, pos, DQ.{}, d3(radius, 0.0, 0.0), density, friction, bounce, roll);
+}
+// Marks body i local-only decoration, or shared again.
+bd_local :: (b: [] Bodies, i: int, local: bool) { b[0].local[i] = local; }
+// Wakes a body and every body that fell asleep with it.
+bd_wake :: (b: [] Bodies, i: int) {
+  l := b[0].label[i];
+  b[0].quiet[i] = 0.0;
+  if l == 0 { return; }
+  for k: 0..<bd_count(b) { if b[0].label[k] == l { b[0].label[k] = 0; b[0].quiet[k] = 0.0; } }
+}
+// Puts a body somewhere, still, and awake.
+bd_place :: (b: [] Bodies, i: int, pos: D3, att: DQ) {
+  bd_wake(b, i);
+  b[0].set[0].pos[i] = pos; b[0].set[0].att[i] = att; b[0].set[0].vel[i] = D3_ZERO; b[0].set[0].omega[i] = D3_ZERO;
+  b[0].was_pos[i] = pos; b[0].was_att[i] = att;
+}
+// A box's new half extents (a ball's new radius in x), its mass by `density`: its lowest point and
+// the middle of its footprint stay where they were, so one that rests goes on resting there.
+bd_resize :: (b: [] Bodies, i: int, half: D3, density: f64) {
+  bd_wake(b, i);
+  before := bd_extent(b, i).y;
+  b[0].half[i] = half;
+  mass := density * bd_volume(b[0].kind[i], half);
+  inertia := bd_inertia(b[0].kind[i], half, mass);
+  b[0].set[0].mass[i] = mass; b[0].set[0].inertia[i] = inertia;
+  b[0].set[0].inv_mass[i] = ifx mass > 0.0 then 1.0 / mass else 0.0;
+  b[0].set[0].inv_inertia[i] = ifx mass > 0.0 then d3(1.0 / inertia.x, 1.0 / inertia.y, 1.0 / inertia.z) else D3_ZERO;
+  b[0].set[0].pos[i].y += bd_extent(b, i).y - before;
+  b[0].was_pos[i] = b[0].set[0].pos[i];
+}
+// Takes body i out; the bodies after it move down one, still in id order. What rested on it is
+// awake. False when there is no such body.
+bd_remove :: (b: [] Bodies, i: int) -> bool {
+  n := bd_count(b);
+  if i < 0 || i >= n { return false; }
+  for k: 0..<n { b[0].label[k] = 0; b[0].quiet[k] = 0.0; }
+  for k: i..<n - 1 { bd_swap(b, k, k + 1); }
+  b[0].set[0].count = n - 1;
+  return true;
+}
+// An impulse (N s) at a world point, now: it wakes the body.
+bd_impulse :: (b: [] Bodies, i: int, impulse: D3, point: D3) {
+  if bd_fixed(b, i) { return; }
+  bd_wake(b, i);
+  s := b[0].set[..]; q := s[0].att[i];
+  s[0].vel[i] = d3_add(s[0].vel[i], d3_scale(impulse, s[0].inv_mass[i]));
+  turn := d3_cross(d3_sub(point, s[0].pos[i]), impulse);
+  s[0].omega[i] = d3_add(s[0].omega[i], d3_mul(s[0].inv_inertia[i], dq_rotate(dq_conj(q), turn)));
+}
+// Where the mover with this id is among the movers, or -1.
+bd_mover_index :: (b: [] Bodies, id: int) -> int {
+  for k: 0..<b[0].count_v { if b[0].movers[k].id == id { return k; } }
+  return -1;
+}
+// A mover for the steps that follow: an upright capsule from `low` (its foot) to the height `top`,
+// moving at `vel`. `force` is what it pushes a standing body with, `speed` the speed of a body at
+// which it pushes no more, and `curve` how the force falls between the two (bd_push_share). A new
+// id takes its place in id order; false when there are BD_MOVERS already.
+bd_mover :: (b: [] Bodies, id: int, low: D3, top: f64, radius: f64, vel: D3, force: f64, speed: f64, curve: f64) -> bool {
+  k := bd_mover_index(b, id);
+  if k < 0 {
+    if b[0].count_v == BD_MOVERS { return false; }
+    k = b[0].count_v; b[0].count_v += 1;
+    while k > 0 && b[0].movers[k - 1].id > id { b[0].movers[k] = b[0].movers[k - 1]; k -= 1; }
+    fresh: Bd_Mover; fresh.id = id;
+    b[0].movers[k] = fresh;
+  }
+  b[0].movers[k].low = low; b[0].movers[k].top = top; b[0].movers[k].radius = radius;
+  b[0].movers[k].vel = vel; b[0].movers[k].force = force; b[0].movers[k].speed = speed; b[0].movers[k].curve = curve;
+  return true;
+}
+bd_mover_off :: (b: [] Bodies, id: int) {
+  k := bd_mover_index(b, id);
+  if k < 0 { return; }
+  for j: k..<b[0].count_v - 1 { b[0].movers[j] = b[0].movers[j + 1]; }
+  b[0].count_v -= 1;
+}
+// The share of its force a mover has left for a body already moving away at `away` m/s: all of
+// it at rest, none at `speed`, and between them (1 - v) / (1 + curve v) for v = away / speed: a
+// straight line for curve 0, and for more the sag of a muscle's force against its speed (Hill,
+// 1938), so that what is light is run along with, what is heavy is leaned on slowly, and nothing
+// in between is pushed at a run.
+bd_push_share :: (away: f64, speed: f64, curve: f64) -> f64 {
+  v := fclamp(away / speed, 0.0, 1.0);
+  return (1.0 - v) / (1.0 + curve * v);
+}
+
+// A body's world spin, and its pose for drawing: the last two steps blended by how far the
+// accumulator is into the next.
+bd_spin :: (b: [] Bodies, i: int) -> D3 { return dq_rotate(b[0].set[0].att[i], b[0].set[0].omega[i]); }
+Bd_Pose :: struct { pos: D3; att: DQ; }
+// A pose between two: positions on the line, attitudes by the nearer way round.
+bd_blend :: (p: D3, q: DQ, np: D3, nq: DQ, t: f64) -> Bd_Pose {
+  sign := ifx q.x * nq.x + q.y * nq.y + q.z * nq.z + q.w * nq.w < 0.0 then -1.0 else 1.0;
+  out: Bd_Pose;
+  out.pos = d3_add(p, d3_scale(d3_sub(np, p), t));
+  out.att = dq_unit(dq(q.x + (nq.x * sign - q.x) * t, q.y + (nq.y * sign - q.y) * t, q.z + (nq.z * sign - q.z) * t, q.w + (nq.w * sign - q.w) * t));
+  return out;
+}
+bd_pose :: (b: [] Bodies, i: int) -> Bd_Pose {
+  return bd_blend(b[0].was_pos[i], b[0].was_att[i], b[0].set[0].pos[i], b[0].set[0].att[i], fclamp(b[0].acc / b[0].dt, 0.0, 1.0));
+}
+// Kinetic energy of every body.
+bd_energy :: (b: [] Bodies) -> f64 {
+  e := 0.0;
+  for i: 0..<bd_count(b) { e += rigid_energy(b[0].set[0], i); }
+  return e;
+}
+bd_sleeping :: (b: [] Bodies) -> int {
+  n := 0;
+  for i: 0..<bd_count(b) { if !bd_awake(b, i) { n += 1; } }
+  return n;
+}
+
+// ---- contacts
+
+// I^-1 v in the world frame; zero for a fixed body.
+bd_inv :: (b: [] Bodies, i: int, v: D3) -> D3 {
+  q := b[0].set[0].att[i];
+  return dq_rotate(q, d3_mul(b[0].set[0].inv_inertia[i], dq_rotate(dq_conj(q), v)));
+}
+// Adds a point to a manifold, keeping the deepest BD_POINTS (ties to the one that came first).
+bd_point :: (m: [] Bd_Manifold, ra: D3, rb: D3, depth: f64, feature: int) {
+  p: Bd_Point; p.ra = ra; p.rb = rb; p.depth = depth; p.feature = feature;
+  n := m[0].count;
+  if n == BD_POINTS {
+    if !(depth > m[0].p[n - 1].depth) { return; }
+    n -= 1;
+  }
+  k := n;
+  while k > 0 && m[0].p[k - 1].depth < depth { m[0].p[k] = m[0].p[k - 1]; k -= 1; }
+  m[0].p[k] = p;
+  m[0].count = n + 1;
+}
+// How near a point counts as a contact already: the margin, and as far as it falls toward the
+// other side in one step at `closing` m/s, so a fast body is met before it has gone in.
+bd_reach :: (b: [] Bodies, closing: f64) -> f64 { return BD_MARGIN + fmax(closing, 0.0) * b[0].dt; }
+// Body i against the ground: a ball's lowest point, a box's four lowest corners. Once the body is
+// within its own size of the ground (and as far again as it falls in a step) they are contacts
+// whatever their gaps: a corner may close its gap in a step and no more, so a box struck and sent
+// spinning by another still cannot swing a corner through the ground.
+bd_ground :: (b: [] Bodies, i: int, m: [] Bd_Manifold) {
+  s := b[0].set[..]; pos := s[0].pos[i]; h := b[0].half[i];
+  m[0].a = i; m[0].b = BD_GROUND; m[0].count = 0; m[0].normal = D3_Y;
+  size := ifx b[0].kind[i] == Bd_Kind.ball then h.x else d3_len(h);
+  if pos.y - b[0].ground > 2.0 * size + bd_reach(b, -s[0].vel[i].y) { return; }
+  if b[0].kind[i] == Bd_Kind.ball { bd_point(m, d3(0.0, -h.x, 0.0), D3_ZERO, b[0].ground - (pos.y - h.x), 0); return; }
+  q := s[0].att[i];
+  for k: 0..<8 {
+    r := dq_rotate(q, d3(ifx (k & 1) != 0 then h.x else -h.x, ifx (k & 2) != 0 then h.y else -h.y, ifx (k & 4) != 0 then h.z else -h.z));
+    bd_point(m, r, D3_ZERO, b[0].ground - (pos.y + r.y), k);
+  }
+}
+// Bodies i < j against each other.
+bd_pair :: (b: [] Bodies, i: int, j: int, m: [] Bd_Manifold) {
+  s := b[0].set[..]; pi := s[0].pos[i]; pj := s[0].pos[j];
+  m[0].a = i; m[0].b = j; m[0].count = 0;
+  ball_i := b[0].kind[i] == Bd_Kind.ball; ball_j := b[0].kind[j] == Bd_Kind.ball;
+  // two bodies are met from as far off as they close in a step
+  reach := bd_reach(b, d3_len(d3_sub(s[0].vel[i], s[0].vel[j])));
+  if ball_i && ball_j {
+    c := contact_sphere_sphere(pi, b[0].half[i].x + reach, pj, b[0].half[j].x);
+    if c.hit {
+      m[0].normal = c.normal;
+      at := d3_add(pj, d3_scale(c.normal, b[0].half[j].x));
+      bd_point(m, d3_sub(at, pi), d3_sub(at, pj), c.depth - reach, 0);
+    }
+    return;
+  }
+  if ball_i || ball_j {
+    ball := ifx ball_i then i else j; box := ifx ball_i then j else i;
+    c := contact_sphere_box(s[0].pos[ball], b[0].half[ball].x + reach, s[0].pos[box], s[0].att[box], b[0].half[box]);
+    if c.hit {
+      // the finder's normal pushes the ball out of the box
+      m[0].normal = ifx ball_i then c.normal else d3_neg(c.normal);
+      // the point on the ball's surface, however deep it is
+      at := d3_sub(s[0].pos[ball], d3_scale(c.normal, b[0].half[ball].x));
+      bd_point(m, d3_sub(at, pi), d3_sub(at, pj), c.depth - reach, 0);
+    }
+    return;
+  }
+  // two boxes, each grown by half the reach: faces that rest on each other with no overlap at
+  // all still meet in a whole manifold, so what rests is held by its corners every step, and a
+  // box that lands on another is met by a whole face before it has gone in
+  grow := d3(reach * 0.5, reach * 0.5, reach * 0.5);
+  f := narrow_box_box(narrow_box(pi, s[0].att[i], d3_add(b[0].half[i], grow)), narrow_box(pj, s[0].att[j], d3_add(b[0].half[j], grow)));
+  m[0].normal = f.normal;
+  for k: 0..<f.count {
+    if f.distance[k] <= 0.0 { bd_point(m, d3_sub(f.point[k], pi), d3_sub(f.point[k], pj), -f.distance[k] - reach, f.feature[k]); }
+  }
+}
+// Body i against mover k: one point, its normal level, at the middle of the height they share.
+bd_pushed :: (b: [] Bodies, i: int, k: int, m: [] Bd_Manifold) {
+  p := b[0].movers[k];
+  m[0].a = i; m[0].b = BD_MOVER - k; m[0].count = 0;
+  pos := b[0].set[0].pos[i]; reach := bd_extent(b, i).y;
+  if pos.y + reach <= p.low.y + p.step { return; }
+  tall := p.top - p.low.y;
+  core := fmax(tall * 0.5 - p.radius, 0.0);
+  mid := d3(p.low.x, p.low.y + tall * 0.5, p.low.z);
+  f := narrow_pair(bd_shape(b, i), narrow_capsule(mid, DQ.{}, core, p.radius));
+  if f.count == 0 || !(f.distance[0] < p.skin) { return; }
+  level := d3(f.normal.x, 0.0, f.normal.z);
+  flat := d3_len(level);
+  if flat < BD_PUSH_UPRIGHT { return; }
+  m[0].normal = d3_scale(level, 1.0 / flat);
+  low := fmax(p.low.y, pos.y - reach); high := fmin(p.top, pos.y + reach);
+  at := f.point[0];
+  if high > low { at.y = (low + high) * 0.5; }
+  bd_point(m, d3_sub(at, pos), D3_ZERO, -f.distance[0], 0);
+}
+// A pair's key: by the two bodies' ids, so it holds when indices move. The ground is -1.
+bd_key :: (b: [] Bodies, a: int, other: int) -> int { return b[0].id[a] * (BD_ID_ROOM * 2) + (ifx other >= 0 then b[0].id[other] else -1) + 1; }
+// Keeps a manifold that touches: which of its bodies it moves, its tangents and friction, and last
+// step's impulses for the points with the same features. False when there was no room: the shared
+// bodies' manifolds have BD_MANIFOLDS less BD_LOCAL_ROOM to themselves, so no local body can crowd
+// one out.
+bd_keep :: (b: [] Bodies, m: [] Bd_Manifold) -> bool {
+  if m[0].count == 0 { return true; }
+  a := m[0].a; other := m[0].b;
+  local := b[0].local[a] || (other >= 0 && b[0].local[other]);
+  full := ifx local then b[0].count_l == BD_LOCAL_ROOM else b[0].count_m - b[0].count_l == BD_MANIFOLDS - BD_LOCAL_ROOM;
+  if full { b[0].dropped += 1; return false; }
+  // a shared body is not moved by a local one
+  m[0].wa = ifx other >= 0 && b[0].local[other] && !b[0].local[a] then 0.0 else 1.0;
+  m[0].wb = ifx other >= 0 && b[0].local[a] && !b[0].local[other] then 0.0 else 1.0;
+  n := m[0].normal;
+  m[0].t[0] = d3_unit(d3_cross(n, ifx abs(n.x) < 0.9 then D3_X else D3_Y));
+  m[0].t[1] = d3_cross(n, m[0].t[0]);
+  m[0].mu = ifx other >= 0 then sqrt(b[0].friction[a] * b[0].friction[other]) else ifx other == BD_GROUND then b[0].friction[a] else 0.0;
+  if other > BD_MOVER {
+    key := bd_key(b, a, other);
+    // both lists are in key order: a binary search finds last step's
+    lo := 0; hi := b[0].count_w;
+    while lo < hi { mid := (lo + hi) / 2; if b[0].warm[mid].key < key { lo = mid + 1; } else { hi = mid; } }
+    if lo < b[0].count_w && b[0].warm[lo].key == key {
+      w := b[0].warm[lo];
+      for k: 0..<m[0].count {
+        for o: 0..<w.count {
+          if w.feature[o] == m[0].p[k].feature { m[0].p[k].pn = w.pn[o]; m[0].p[k].pt[0] = w.pt[o * 2]; m[0].p[k].pt[1] = w.pt[o * 2 + 1]; m[0].p[k].due = w.due[o]; break; }
+        }
+      }
+    }
+  }
+  b[0].man[b[0].count_m] = m[0];
+  b[0].count_m += 1;
+  if local { b[0].count_l += 1; }
+  return true;
+}
+// Every manifold of this step, in id order: for each body its ground contact, then its pairs with
+// later bodies; then each mover's, in the movers' id order. A sleeper touched by a waking body
+// wakes with its island (but a local body wakes no shared one): the count of bodies woken, and the
+// caller finds the contacts again when it is not 0.
+bd_collide :: (b: [] Bodies) -> int {
+  s := b[0].set[..]; n := s[0].count; dt := b[0].dt;
+  b[0].count_m = 0; b[0].count_l = 0;
+  woke := 0;
+  bs := b[0].bs[..];
+  bs[0].count = 0;
+  for i: 0..<n {
+    k := broad_add(bs, broad_box(s[0].pos[i], bd_extent(b, i), s[0].vel[i], dt, BD_MARGIN));
+    bs[0].fixed[i] = !bd_awake(b, i) || bd_fixed(b, i);
+  }
+  broad_pairs(bs, Broad_Method.sweep_prune, b[0].bp[..]);
+  m: [1] Bd_Manifold;
+  at := 0;
+  for i: 0..<n {
+    if bd_awake(b, i) && !bd_fixed(b, i) {
+      blank: Bd_Manifold; m[0] = blank;
+      bd_ground(b, i, m[..]);
+      kept := bd_keep(b, m[..]);
+    }
+    while at < b[0].bp[0].count && b[0].bp[0].key[at] / BROAD_BODIES == i {
+      j := b[0].bp[0].key[at] % BROAD_BODIES; at += 1;
+      // a sleeping shared body and a local one: the sleeper sleeps on, and holds the local one up
+      blank: Bd_Manifold; m[0] = blank;
+      bd_pair(b, i, j, m[..]);
+      if m[0].count == 0 { continue; }
+      if !bd_awake(b, i) && (b[0].local[i] || !b[0].local[j]) { bd_wake(b, i); woke += 1; }
+      if !bd_awake(b, j) && (b[0].local[j] || !b[0].local[i]) { bd_wake(b, j); woke += 1; }
+      kept := bd_keep(b, m[..]);
+    }
+  }
+  for k: 0..<b[0].count_v {
+    p := b[0].movers[k];
+    b[0].movers[k].touching = -1;
+    reach := p.radius + p.skin;
+    box := Box.{lo = d3(p.low.x - reach, p.low.y, p.low.z - reach), hi = d3(p.low.x + reach, p.top, p.low.z + reach)};
+    for i: 0..<n {
+      if bd_fixed(b, i) || !broad_overlap(box, bs[0].box[i]) { continue; }
+      blank: Bd_Manifold; m[0] = blank;
+      bd_pushed(b, i, k, m[..]);
+      if m[0].count == 0 { continue; }
+      toward := d3_dot(p.vel, m[0].normal);
+      if !bd_awake(b, i) {
+        if !(toward > BD_SLEEP_LINEAR) { continue; }   // standing against a sleeper leaves it asleep
+        bd_wake(b, i); woke += 1;
+      }
+      if bd_keep(b, m[..]) { b[0].movers[k].touching = b[0].id[i]; }
+    }
+  }
+  return woke;
+}
+
+// ---- the solve
+
+bd_vel_at :: (b: [] Bodies, i: int, r: D3) -> D3 { return d3_add(b[0].set[0].vel[i], d3_cross(b[0].wv[i], r)); }
+// The speed of a's point past b's.
+bd_rel :: (b: [] Bodies, m: [] Bd_Manifold, k: int) -> D3 {
+  v := bd_vel_at(b, m[0].a, m[0].p[k].ra);
+  if m[0].b >= 0 { v = d3_sub(v, bd_vel_at(b, m[0].b, m[0].p[k].rb)); }
+  return v;
+}
+// An impulse of size `size` along `dir`: on a, and its opposite on b, each only if the contact moves it.
+bd_push :: (b: [] Bodies, m: [] Bd_Manifold, dir: D3, on_a: D3, on_b: D3, size: f64) {
+  s := b[0].set[..]; a := m[0].a; o := m[0].b;
+  s[0].vel[a] = d3_add(s[0].vel[a], d3_scale(dir, size * s[0].inv_mass[a] * m[0].wa));
+  b[0].wv[a] = d3_add(b[0].wv[a], d3_scale(on_a, size));
+  if o >= 0 {
+    s[0].vel[o] = d3_sub(s[0].vel[o], d3_scale(dir, size * s[0].inv_mass[o] * m[0].wb));
+    b[0].wv[o] = d3_sub(b[0].wv[o], d3_scale(on_b, size));
+  }
+}
+// The effective mass of a constraint along `dir` at a point: 1 / (1/ma + 1/mb + what the spins add).
+bd_mass :: (b: [] Bodies, m: [] Bd_Manifold, k: int, dir: D3, on_a: D3, on_b: D3) -> f64 {
+  a := m[0].a; o := m[0].b;
+  sum := b[0].set[0].inv_mass[a] * m[0].wa + d3_dot(d3_cross(on_a, m[0].p[k].ra), dir);
+  if o >= 0 { sum += b[0].set[0].inv_mass[o] * m[0].wb + d3_dot(d3_cross(on_b, m[0].p[k].rb), dir); }
+  return ifx sum > 0.0 then 1.0 / sum else 0.0;
+}
+// Before the solve: each point's masses and the speed it must reach, then last step's impulses applied.
+bd_prepare :: (b: [] Bodies) {
+  dt := b[0].dt;
+  for c: 0..<b[0].count_m {
+    m := b[0].man[c..<c + 1];
+    a := m[0].a; o := m[0].b; n := m[0].normal;
+    for k: 0..<m[0].count {
+      p := m[0].p[k];
+      p.an = d3_scale(bd_inv(b, a, d3_cross(p.ra, n)), m[0].wa);
+      if o >= 0 { p.bn = d3_scale(bd_inv(b, o, d3_cross(p.rb, n)), m[0].wb); }
+      p.mn = bd_mass(b, m, k, n, p.an, p.bn);
+      for t: 0..<2 {
+        p.at[t] = d3_scale(bd_inv(b, a, d3_cross(p.ra, m[0].t[t])), m[0].wa);
+        if o >= 0 { p.bt[t] = d3_scale(bd_inv(b, o, d3_cross(p.rb, m[0].t[t])), m[0].wb); }
+        p.mt[t] = bd_mass(b, m, k, m[0].t[t], p.at[t], p.bt[t]);
+      }
+      closing := -d3_dot(bd_rel(b, m, k), n);
+      if o <= BD_MOVER {
+        // the body is driven to the mover's speed along the normal, and thrown on by its bounce
+        // when the mover runs into it; the force falls off as the body gets away
+        u := b[0].movers[BD_MOVER - o];
+        toward := d3_dot(u.vel, n);
+        meet := toward + closing;
+        p.target = toward + (ifx meet > BD_REST_SPEED then b[0].bounce[a] * meet else 0.0);
+        m[0].cap = u.force * dt * bd_push_share(-closing, u.speed, u.curve);
+        p.push = 0.0; p.due = 0.0;
+      } else {
+        e := ifx o >= 0 then fmax(b[0].bounce[a], b[0].bounce[o]) else b[0].bounce[a];
+        // a bounce above the rest speed. A point still short of touching may close its gap and no
+        // more, and its bounce is owed to the next step, when it has arrived
+        bounce := ifx closing > BD_REST_SPEED then e * closing else 0.0;
+        if p.depth < -BD_TOUCH { p.target = p.depth / dt; p.due = bounce; }
+        else { p.target = fmax(bounce, p.due); p.due = 0.0; }
+        p.push = fmin(BD_PUSH_OUT, BD_BETA / dt * fmax(p.depth - BD_SLOP, 0.0));
+      }
+      p.pp = 0.0;
+      m[0].p[k] = p;
+    }
+  }
+  // only now last step's impulses: every target above was read from the speeds before any of them
+  for c: 0..<b[0].count_m {
+    m := b[0].man[c..<c + 1];
+    for k: 0..<m[0].count {
+      p := m[0].p[k];
+      bd_push(b, m, m[0].normal, p.an, p.bn, p.pn);
+      for t: 0..<2 { bd_push(b, m, m[0].t[t], p.at[t], p.bt[t], p.pt[t]); }
+    }
+  }
+}
+// One pass over every contact: friction within mu times the normal impulse, then the normal
+// impulse, which only pushes (and a mover's, within its cap).
+bd_solve :: (b: [] Bodies) {
+  for c: 0..<b[0].count_m {
+    m := b[0].man[c..<c + 1];
+    n := m[0].normal;
+    for k: 0..<m[0].count {
+      for t: 0..<2 {
+        dir := m[0].t[t];
+        limit := m[0].mu * m[0].p[k].pn;
+        was := m[0].p[k].pt[t];
+        now := fclamp(was - m[0].p[k].mt[t] * d3_dot(bd_rel(b, m, k), dir), -limit, limit);
+        m[0].p[k].pt[t] = now;
+        bd_push(b, m, dir, m[0].p[k].at[t], m[0].p[k].bt[t], now - was);
+      }
+      was := m[0].p[k].pn;
+      now := fmax(was - m[0].p[k].mn * (d3_dot(bd_rel(b, m, k), n) - m[0].p[k].target), 0.0);
+      if m[0].b <= BD_MOVER { now = fmin(now, m[0].cap); }
+      m[0].p[k].pn = now;
+      bd_push(b, m, n, m[0].p[k].an, m[0].p[k].bn, now - was);
+    }
+  }
+}
+// One pass of the positional solve, on the pseudo-velocities.
+bd_part :: (b: [] Bodies) {
+  s := b[0].set[..];
+  for c: 0..<b[0].count_m {
+    m := b[0].man[c..<c + 1];
+    a := m[0].a; o := m[0].b; n := m[0].normal;
+    for k: 0..<m[0].count {
+      p := m[0].p[k];
+      if !(p.push > 0.0) && !(p.pp > 0.0) { continue; }
+      v := d3_add(b[0].pv[a], d3_cross(b[0].pw[a], p.ra));
+      if o >= 0 { v = d3_sub(v, d3_add(b[0].pv[o], d3_cross(b[0].pw[o], p.rb))); }
+      now := fmax(p.pp - p.mn * (d3_dot(v, n) - p.push), 0.0);
+      size := now - p.pp;
+      m[0].p[k].pp = now;
+      b[0].pv[a] = d3_add(b[0].pv[a], d3_scale(n, size * s[0].inv_mass[a] * m[0].wa));
+      b[0].pw[a] = d3_add(b[0].pw[a], d3_scale(p.an, size));
+      if o >= 0 {
+        b[0].pv[o] = d3_sub(b[0].pv[o], d3_scale(n, size * s[0].inv_mass[o] * m[0].wb));
+        b[0].pw[o] = d3_sub(b[0].pw[o], d3_scale(p.bn, size));
+      }
+    }
+  }
+}
+// After the solve: what each body bore, what each mover gave, and the impulses kept for next step.
+bd_settle :: (b: [] Bodies) {
+  for i: 0..<bd_count(b) { b[0].load[i] = 0.0; }
+  for k: 0..<b[0].count_v { b[0].movers[k].pushed = 0.0; }
+  b[0].count_w = 0;
+  for c: 0..<b[0].count_m {
+    m := b[0].man[c];
+    sum := 0.0;
+    for k: 0..<m.count { sum += m.p[k].pn; }
+    b[0].load[m.a] += sum * m.wa;
+    if m.b >= 0 { b[0].load[m.b] += sum * m.wb; }
+    if m.b <= BD_MOVER { b[0].movers[BD_MOVER - m.b].pushed += sum; continue; }
+    w: Bd_Warm; w.key = bd_key(b, m.a, m.b); w.count = m.count;
+    for k: 0..<m.count { w.feature[k] = m.p[k].feature; w.pn[k] = m.p[k].pn; w.pt[k * 2] = m.p[k].pt[0]; w.pt[k * 2 + 1] = m.p[k].pt[1]; w.due[k] = m.p[k].due; }
+    b[0].warm[b[0].count_w] = w;
+    b[0].count_w += 1;
+  }
+}
+// A ball's spin is opposed by a torque of its `roll` times the load on it; it stops a slow spin dead.
+bd_rolling :: (b: [] Bodies) {
+  s := b[0].set[..];
+  for i: 0..<s[0].count {
+    if b[0].kind[i] != Bd_Kind.ball || !bd_awake(b, i) || !(b[0].roll[i] > 0.0) || !(b[0].load[i] > 0.0) { continue; }
+    w := b[0].wv[i];
+    spin := d3_len(w);
+    if !(spin > 0.0) { continue; }
+    drop := b[0].roll[i] * b[0].load[i] * s[0].inv_inertia[i].x;
+    b[0].wv[i] = ifx drop >= spin then D3_ZERO else d3_scale(w, 1.0 - drop / spin);
+  }
+}
+bd_find :: (b: [] Bodies, i: int) -> int {
+  r := i;
+  while b[0].root[r] != r { r = b[0].root[r]; }
+  return r;
+}
+// Islands: bodies joined by contacts (shared with shared, local with local). One whose every body
+// has been still for BD_SLEEP_TIME sleeps.
+bd_rest :: (b: [] Bodies) {
+  s := b[0].set[..]; n := s[0].count; dt := b[0].dt;
+  for i: 0..<n { b[0].root[i] = i; }
+  for c: 0..<b[0].count_m {
+    m := b[0].man[c];
+    if m.b < 0 || bd_fixed(b, m.a) || bd_fixed(b, m.b) || b[0].local[m.a] != b[0].local[m.b] { continue; }
+    ra := bd_find(b, m.a); rb := bd_find(b, m.b);
+    if ra != rb { b[0].root[ifx ra < rb then rb else ra] = ifx ra < rb then ra else rb; }
+  }
+  for i: 0..<n {
+    if !bd_awake(b, i) || bd_fixed(b, i) { continue; }
+    // (a body still being pushed out of another is not still, though the push is no speed of its own)
+    still := d3_len(s[0].vel[i]) < BD_SLEEP_LINEAR && d3_len(s[0].omega[i]) < BD_SLEEP_ANGULAR && d3_len(b[0].pv[i]) < BD_SLEEP_LINEAR;
+    b[0].quiet[i] = ifx still then b[0].quiet[i] + dt else 0.0;
+  }
+  // an island's least quiet time, kept at its root: pv is free after the step
+  for i: 0..<n { b[0].pv[i] = d3(1e300, 0.0, 0.0); }
+  for i: 0..<n {
+    if !bd_awake(b, i) || bd_fixed(b, i) { continue; }
+    r := bd_find(b, i);
+    b[0].pv[r].x = fmin(b[0].pv[r].x, b[0].quiet[i]);
+  }
+  slept := false;
+  for i: 0..<n {
+    if !bd_awake(b, i) || bd_fixed(b, i) { continue; }
+    r := bd_find(b, i);
+    if b[0].pv[r].x >= BD_SLEEP_TIME {
+      b[0].label[i] = b[0].labels + 1 + r;
+      s[0].vel[i] = D3_ZERO; s[0].omega[i] = D3_ZERO;
+      slept = true;
+    }
+  }
+  if slept { b[0].labels += BD_MAX; }
+}
+
+// exp(v / 2) as a unit quaternion: a turn by |v| about v, as rigid.coax's rigid_exp, but by the
+// engine's strict sine and cosine (core/math.coax: +, -, *, / only), so a native room and a wasm
+// page turn a body by the same bits. They hold for a half turn angle up to pi/4: a turn of more
+// than a quarter turn in one step (94 rad/s at 60 steps a second) is made a quarter turn.
+bd_exp :: (v: D3) -> DQ {
+  h := d3_len(v) * 0.5;
+  k := ifx h > 0.7853981633974483 then 0.7853981633974483 / h else 1.0;
+  r := h * k;
+  s := ifx r > 0.0001 then math_sin_near(r) / h else (1.0 - r * r / 6.0) * k;
+  return dq(v.x * 0.5 * s, v.y * 0.5 * s, v.z * 0.5 * s, math_cos_near(r));
+}
+// One step of dt.
+bd_step :: (b: [] Bodies) {
+  s := b[0].set[..]; n := s[0].count; dt := b[0].dt;
+  for i: 0..<n { b[0].was_pos[i] = s[0].pos[i]; b[0].was_att[i] = s[0].att[i]; }
+  // the contacts, again when a sleeper woke: its own contacts are wanted too
+  for pass: 0..<4 { if bd_collide(b) == 0 { break; } }
+  // gravity, and each spin in the world frame
+  for i: 0..<n {
+    if bd_awake(b, i) && !bd_fixed(b, i) { s[0].vel[i].y += b[0].gravity * dt; }
+    b[0].wv[i] = bd_spin(b, i);
+    b[0].pv[i] = D3_ZERO; b[0].pw[i] = D3_ZERO;
+  }
+  bd_prepare(b);
+  for k: 0..<BD_ITERATIONS { bd_solve(b); }
+  for k: 0..<BD_PUSH_ITERATIONS { bd_part(b); }
+  bd_settle(b);
+  bd_rolling(b);
+  // the spins back to the body frame, and the integrator's step (rigid.coax's implicit gyroscopic
+  // profile: the place by the new velocity, the spin by one Newton step, the attitude by the new
+  // spin), with the turn's sine and cosine the engine's strict ones
+  for i: 0..<n {
+    if !bd_awake(b, i) || bd_fixed(b, i) { continue; }   // a sleeper is where it was, to the bit
+    q := s[0].att[i];
+    w := rigid_gyro_implicit(dq_rotate(dq_conj(q), b[0].wv[i]), s[0].inertia[i], s[0].inv_inertia[i], D3_ZERO, dt);
+    s[0].omega[i] = w;
+    s[0].pos[i] = d3_add(s[0].pos[i], d3_scale(s[0].vel[i], dt));
+    s[0].att[i] = dq_unit(dq_mul(q, bd_exp(d3_scale(w, dt))));
+    // the positional push
+    s[0].pos[i] = d3_add(s[0].pos[i], d3_scale(b[0].pv[i], dt));
+    s[0].att[i] = dq_unit(dq_mul(bd_exp(d3_scale(b[0].pw[i], dt)), s[0].att[i]));
+    // never a pose that is not a number, never under the ground
+    if !d3_finite(s[0].pos[i]) || !d3_finite(s[0].vel[i]) || !d3_finite(s[0].omega[i]) || !is_finite(s[0].att[i].x + s[0].att[i].y + s[0].att[i].z + s[0].att[i].w) {
+      s[0].pos[i] = b[0].was_pos[i]; s[0].att[i] = b[0].was_att[i]; s[0].vel[i] = D3_ZERO; s[0].omega[i] = D3_ZERO;
+      b[0].faults += 1;
+    }
+    low := s[0].pos[i].y - bd_extent(b, i).y;
+    if low < b[0].ground - BD_SINK {
+      s[0].pos[i].y += b[0].ground - BD_SINK - low;
+      if s[0].vel[i].y < 0.0 { s[0].vel[i].y = 0.0; }
+      b[0].lifted += 1;
+    }
+  }
+  bd_rest(b);
+  b[0].steps += 1;
+}
+// `seconds` more of time: as many whole steps as the accumulator holds, BD_STEPS_MAX at most (time
+// beyond them is dropped, so a stalled frame is not made up). How many it made.
+bd_advance :: (b: [] Bodies, seconds: f64) -> int {
+  if !(seconds > 0.0) { return 0; }
+  b[0].acc += seconds;
+  made := 0;
+  while b[0].acc >= b[0].dt && made < BD_STEPS_MAX {
+    bd_step(b);
+    b[0].acc -= b[0].dt;
+    made += 1;
+  }
+  if b[0].acc >= b[0].dt { b[0].acc = 0.0; }
+  return made;
+}
+bd_hash :: (h: u64, word: u64) -> u64 { return mul_wrap(h ^ word, 1099511628211); }
+// FNV-1a over the step count and every body's id and state (every body's, or only the shared
+// ones'), to compare two runs.
+bd_digest_of :: (b: [] Bodies, shared_only: bool) -> u64 {
+  h: u64 = 14695981039346656037;
+  s := b[0].set[..];
+  h = bd_hash(h, cast(u64) b[0].steps);
+  for i: 0..<s[0].count {
+    if shared_only && b[0].local[i] { continue; }
+    v := [13] f64.[s[0].pos[i].x, s[0].pos[i].y, s[0].pos[i].z, s[0].att[i].x, s[0].att[i].y, s[0].att[i].z, s[0].att[i].w,
+                   s[0].vel[i].x, s[0].vel[i].y, s[0].vel[i].z, s[0].omega[i].x, s[0].omega[i].y, s[0].omega[i].z];
+    h = bd_hash(h, cast(u64) b[0].id[i]);
+    for x: v { h = bd_hash(h, f64_bits(x)); }
+    h = bd_hash(h, ifx b[0].label[i] != 0 then 1 else 0);
+  }
+  return h;
+}
+bd_digest :: (b: [] Bodies) -> u64 { return bd_digest_of(b, false); }
+bd_digest_shared :: (b: [] Bodies) -> u64 { return bd_digest_of(b, true); }
+
+// ---- the snapshot of the shared set
+//
+// What a server sends and a client reads. Little-endian. A header of BD_SNAPSHOT_HEAD bytes:
+//   0  u32  BD_SNAPSHOT_MAGIC ("BDS1")
+//   4  u16  BD_SNAPSHOT_VERSION
+//   6  u16  BD_SNAPSHOT_RECORD: a reader steps by it, so a later version may add to a record's end
+//   8  u64  the step the state is of
+//   16 u32  records
+//   20 u32  0
+// then one record of BD_SNAPSHOT_RECORD bytes for each shared body, in id order:
+//   0  u32  id
+//   4  u32  sleep group: 0 awake, else a number shared by the bodies that sleep (and wake) together
+//   8  f64 x 3   position
+//   32 f64 x 4   attitude x, y, z, w
+//   64 f64 x 3   velocity
+//   88 f64 x 3   spin, in the body's frame
+// A body's shape, size, mass and material are not in it: they are the scene's description, sent
+// when the body is made. Local bodies are not in it. What a step derives and keeps between steps
+// (the contact impulses, the rest timers) is not in it either: reading a snapshot clears it, so two
+// scenes that read the same snapshot go on bit for bit the same, and a scene that goes on without
+// reading agrees with them only closely (its contacts start warm, theirs cold).
+
+bd_put32 :: (out: [] u8, at: int, v: u64) { for k: 0..<4 { out[at + k] = cast,trunc(u8) (v >> cast(u64) (8 * k)); } }
+bd_put64 :: (out: [] u8, at: int, v: u64) { for k: 0..<8 { out[at + k] = cast,trunc(u8) (v >> cast(u64) (8 * k)); } }
+bd_get :: (in: [] u8, at: int, bytes: int) -> u64 {
+  v: u64 = 0;
+  for k: 0..<bytes { v = v | (cast(u64) in[at + k] << cast(u64) (8 * k)); }
+  return v;
+}
+bd_shared :: (b: [] Bodies) -> int {
+  n := 0;
+  for i: 0..<bd_count(b) { if !b[0].local[i] { n += 1; } }
+  return n;
+}
+bd_snapshot_size :: (b: [] Bodies) -> int { return BD_SNAPSHOT_HEAD + bd_shared(b) * BD_SNAPSHOT_RECORD; }
+// Writes the snapshot: its bytes, or 0 when `out` has not the room.
+bd_snapshot_write :: (b: [] Bodies, out: [] u8) -> int {
+  size := bd_snapshot_size(b);
+  if out.count < size { return 0; }
+  bd_put32(out, 0, BD_SNAPSHOT_MAGIC);
+  bd_put32(out, 4, cast(u64) (BD_SNAPSHOT_VERSION + BD_SNAPSHOT_RECORD * 65536));
+  bd_put64(out, 8, cast(u64) b[0].steps);
+  bd_put32(out, 16, cast(u64) bd_shared(b));
+  bd_put32(out, 20, 0);
+  s := b[0].set[..];
+  // sleep groups are numbered from 1 in the order they are met, so the bytes do not carry this scene's own labels
+  groups: [BD_MAX] int; group_n := 0;
+  at := BD_SNAPSHOT_HEAD;
+  for i: 0..<s[0].count {
+    if b[0].local[i] { continue; }
+    group := 0;
+    if b[0].label[i] != 0 {
+      for g: 0..<group_n { if groups[g] == b[0].label[i] { group = g + 1; } }
+      if group == 0 { groups[group_n] = b[0].label[i]; group_n += 1; group = group_n; }
+    }
+    bd_put32(out, at, cast(u64) b[0].id[i]);
+    bd_put32(out, at + 4, cast(u64) group);
+    v := [13] f64.[s[0].pos[i].x, s[0].pos[i].y, s[0].pos[i].z, s[0].att[i].x, s[0].att[i].y, s[0].att[i].z, s[0].att[i].w,
+                   s[0].vel[i].x, s[0].vel[i].y, s[0].vel[i].z, s[0].omega[i].x, s[0].omega[i].y, s[0].omega[i].z];
+    for k: 0..<13 { bd_put64(out, at + 8 + k * 8, f64_bits(v[k])); }
+    at += BD_SNAPSHOT_RECORD;
+  }
+  return size;
+}
+// Reads a snapshot into the scene: each record's body, found by its id, takes the record's state,
+// and the scene's step is the snapshot's. Everything a step keeps between steps is cleared (the
+// contact impulses, the rest timers, the time not yet stepped), for every body. A record whose id
+// the scene has not got, or whose body is local here, is passed over. How many bodies took their
+// state; -1 when the bytes are not a snapshot this version reads (nothing is changed then).
+bd_snapshot_read :: (b: [] Bodies, in: [] u8) -> int {
+  if in.count < BD_SNAPSHOT_HEAD || bd_get(in, 0, 4) != BD_SNAPSHOT_MAGIC || bd_get(in, 4, 2) != BD_SNAPSHOT_VERSION { return -1; }
+  record := cast(int) bd_get(in, 6, 2); records := cast(int) bd_get(in, 16, 4);
+  if record < BD_SNAPSHOT_RECORD || records > BD_MAX || in.count < BD_SNAPSHOT_HEAD + records * record { return -1; }
+  s := b[0].set[..];
+  b[0].steps = cast(int) bd_get(in, 8, 8);
+  b[0].acc = 0.0; b[0].count_w = 0; b[0].count_m = 0; b[0].count_l = 0;
+  for i: 0..<s[0].count { b[0].quiet[i] = 0.0; b[0].load[i] = 0.0; }
+  // the groups become labels above any this scene has given
+  base := b[0].labels; most := 0;
+  took := 0;
+  for r: 0..<records {
+    at := BD_SNAPSHOT_HEAD + r * record;
+    i := bd_index(b, cast(int) bd_get(in, at, 4));
+    if i < 0 || b[0].local[i] { continue; }
+    group := cast(int) bd_get(in, at + 4, 4);
+    v: [13] f64;
+    for k: 0..<13 { v[k] = f64_from_bits(bd_get(in, at + 8 + k * 8, 8)); }
+    s[0].pos[i] = d3(v[0], v[1], v[2]); s[0].att[i] = dq(v[3], v[4], v[5], v[6]);
+    s[0].vel[i] = d3(v[7], v[8], v[9]); s[0].omega[i] = d3(v[10], v[11], v[12]);
+    b[0].label[i] = ifx group == 0 then 0 else base + group;
+    if group > most { most = group; }
+    b[0].was_pos[i] = s[0].pos[i]; b[0].was_att[i] = s[0].att[i];
+    took += 1;
+  }
+  b[0].labels = base + most;
+  return took;
+}
+
+// ---- the history
+//
+// The last BD_HISTORY steps of a scene, whole: every body's state at each step, and what the step
+// kept for the next (the rest timers; and for the newest BD_REWIND steps the contact impulses), in
+// rings by step number. Its owner
+// records each step after making it. bd_at and bd_between read a body's state at a step and
+// between two (to draw a remote body a little in the past, or to ask where a body was when a
+// late message says something hit it); bd_rewind puts the scene back at a stored step, and stepping
+// on from there with the same movers gives the same bits as the first time (rollback).
+
+Bd_Frame :: struct {
+  used: bool;
+  step: int;
+  count: int;
+  id: [BD_MAX] int;
+  pos: [BD_MAX] D3; att: [BD_MAX] DQ; vel: [BD_MAX] D3; omega: [BD_MAX] D3;
+  label: [BD_MAX] int; quiet: [BD_MAX] f64; load: [BD_MAX] f64;
+  labels: int;
+}
+// What a step kept for the next, for the newest BD_REWIND steps.
+Bd_Deep :: struct { used: bool; step: int; count_w: int; warm: [BD_HISTORY_WARM] Bd_Warm; }
+Bd_History :: struct { frame: [BD_HISTORY] Bd_Frame; deep: [BD_REWIND] Bd_Deep; }
+// A body's state at a step.
+Bd_State :: struct { ok: bool; pos: D3; att: DQ; vel: D3; omega: D3; asleep: bool; }
+
+bd_slot :: (step: int) -> int { return ((step % BD_HISTORY) + BD_HISTORY) % BD_HISTORY; }
+bd_deep :: (step: int) -> int { return ((step % BD_REWIND) + BD_REWIND) % BD_REWIND; }
+// Keeps the scene as it stands (after its step number b.steps) in the history.
+bd_record :: (b: [] Bodies, h: [] Bd_History) {
+  f := h[0].frame[bd_slot(b[0].steps)..<bd_slot(b[0].steps) + 1];
+  s := b[0].set[..];
+  f[0].used = true; f[0].step = b[0].steps; f[0].count = s[0].count; f[0].labels = b[0].labels;
+  for i: 0..<s[0].count {
+    f[0].id[i] = b[0].id[i];
+    f[0].pos[i] = s[0].pos[i]; f[0].att[i] = s[0].att[i]; f[0].vel[i] = s[0].vel[i]; f[0].omega[i] = s[0].omega[i];
+    f[0].label[i] = b[0].label[i]; f[0].quiet[i] = b[0].quiet[i]; f[0].load[i] = b[0].load[i];
+  }
+  d := h[0].deep[bd_deep(b[0].steps)..<bd_deep(b[0].steps) + 1];
+  d[0].used = b[0].count_w <= BD_HISTORY_WARM; d[0].step = b[0].steps;
+  d[0].count_w = ifx d[0].used then b[0].count_w else 0;
+  for k: 0..<d[0].count_w { d[0].warm[k] = b[0].warm[k]; }
+}
+// Whether the history has the step, and whether a rewind to it would repeat exactly.
+bd_has :: (h: [] Bd_History, step: int) -> bool { f := h[0].frame[bd_slot(step)]; return f.used && f.step == step; }
+bd_exact :: (h: [] Bd_History, step: int) -> bool { d := h[0].deep[bd_deep(step)..<bd_deep(step) + 1]; return bd_has(h, step) && d[0].used && d[0].step == step; }
+// The body with this id at a step; ok is false when the history has not the step or the body was not there then.
+bd_at :: (h: [] Bd_History, id: int, step: int) -> Bd_State {
+  out: Bd_State;
+  if !bd_has(h, step) { return out; }
+  f := h[0].frame[bd_slot(step)..<bd_slot(step) + 1];
+  lo := 0; hi := f[0].count;
+  while lo < hi { mid := (lo + hi) / 2; if f[0].id[mid] < id { lo = mid + 1; } else { hi = mid; } }
+  if lo >= f[0].count || f[0].id[lo] != id { return out; }
+  out.ok = true; out.pos = f[0].pos[lo]; out.att = f[0].att[lo]; out.vel = f[0].vel[lo]; out.omega = f[0].omega[lo]; out.asleep = f[0].label[lo] != 0;
+  return out;
+}
+// The body between `step` and the step after, `t` of the way (0 to 1): its place on the line, its
+// attitude by the nearer way round, the speeds blended. ok needs both steps.
+bd_between :: (h: [] Bd_History, id: int, step: int, t: f64) -> Bd_State {
+  a := bd_at(h, id, step); z := bd_at(h, id, step + 1);
+  out: Bd_State;
+  if !a.ok || !z.ok { return out; }
+  u := fclamp(t, 0.0, 1.0);
+  pose := bd_blend(a.pos, a.att, z.pos, z.att, u);
+  out.ok = true; out.pos = pose.pos; out.att = pose.att;
+  out.vel = d3_add(a.vel, d3_scale(d3_sub(z.vel, a.vel), u)); out.omega = d3_add(a.omega, d3_scale(d3_sub(z.omega, a.omega), u));
+  out.asleep = a.asleep && z.asleep;
+  return out;
+}
+// Puts the scene back as it stood after `step`: every body's state, and what that step kept for
+// the next. The bodies must be the ones that were there then (the same ids): false, and nothing
+// changed, when the history has not the step or the bodies differ. Movers are not state: the caller
+// gives them again as it steps on. When bd_exact(h, step) (one of the newest BD_REWIND steps, about
+// a quarter of a second) the steps that follow repeat the first run bit for bit; else they start
+// with cold contacts, and agree closely.
+bd_rewind :: (b: [] Bodies, h: [] Bd_History, step: int) -> bool {
+  if !bd_has(h, step) { return false; }
+  f := h[0].frame[bd_slot(step)..<bd_slot(step) + 1];
+  s := b[0].set[..];
+  if f[0].count != s[0].count { return false; }
+  for i: 0..<s[0].count { if f[0].id[i] != b[0].id[i] { return false; } }
+  for i: 0..<s[0].count {
+    s[0].pos[i] = f[0].pos[i]; s[0].att[i] = f[0].att[i]; s[0].vel[i] = f[0].vel[i]; s[0].omega[i] = f[0].omega[i];
+    b[0].label[i] = f[0].label[i]; b[0].quiet[i] = f[0].quiet[i]; b[0].load[i] = f[0].load[i];
+    b[0].was_pos[i] = f[0].pos[i]; b[0].was_att[i] = f[0].att[i];
+  }
+  b[0].labels = f[0].labels; b[0].steps = step; b[0].acc = 0.0;
+  b[0].count_m = 0; b[0].count_l = 0;
+  b[0].count_w = 0;
+  if bd_exact(h, step) {
+    d := h[0].deep[bd_deep(step)..<bd_deep(step) + 1];
+    b[0].count_w = d[0].count_w;
+    for k: 0..<d[0].count_w { b[0].warm[k] = d[0].warm[k]; }
+  }
+  return true;
+}
+// bd_advance, keeping every step it makes in the history.
+bd_advance_kept :: (b: [] Bodies, h: [] Bd_History, seconds: f64) -> int {
+  if !(seconds > 0.0) { return 0; }
+  b[0].acc += seconds;
+  made := 0;
+  while b[0].acc >= b[0].dt && made < BD_STEPS_MAX {
+    bd_step(b);
+    bd_record(b, h);
+    b[0].acc -= b[0].dt;
+    made += 1;
+  }
+  if b[0].acc >= b[0].dt { b[0].acc = 0.0; }
+  return made;
+}
+
+// ---- checks
+
+BdTest :: struct { b: [1] Bodies; }
+bd_test_run :: (b: [] Bodies, steps: int) { for k: 0..<steps { bd_step(b); } }
+// The next id after the last: the checks' bodies are named in the order they are made.
+bd_test_id :: (b: [] Bodies) -> int { n := bd_count(b); return ifx n == 0 then 1 else b[0].id[n - 1] + 1; }
+bd_test_box :: (b: [] Bodies, pos: D3, att: DQ, half: D3, density: f64, friction: f64, bounce: f64) -> int { return bd_box(b, bd_test_id(b), pos, att, half, density, friction, bounce); }
+bd_test_ball :: (b: [] Bodies, pos: D3, radius: f64, density: f64, friction: f64, bounce: f64, roll: f64) -> int { return bd_ball(b, bd_test_id(b), pos, radius, density, friction, bounce, roll); }
+bd_test_cube :: (b: [] Bodies, x: f64, y: f64, z: f64, half: f64) -> int { return bd_test_box(b, d3(x, y, z), DQ.{}, d3(half, half, half), 100.0, 0.5, 0.15); }
+// The one mover of most checks, id 1; and the index of the body it last pushed, or -1.
+bd_test_mover :: (b: [] Bodies, low: D3, top: f64, radius: f64, vel: D3, force: f64, speed: f64, curve: f64) { ok := bd_mover(b, 1, low, top, radius, vel, force, speed, curve); }
+bd_test_touching :: (b: [] Bodies) -> int { return ifx b[0].count_v == 0 || b[0].movers[0].touching < 0 then -1 else bd_index(b, b[0].movers[0].touching); }
+// The lowest point of any body.
+bd_test_low :: (b: [] Bodies) -> f64 {
+  low := 1e300;
+  for i: 0..<bd_count(b) { low = fmin(low, b[0].set[0].pos[i].y - bd_extent(b, i).y); }
+  return low;
+}
+// A walker toward +z at 6.9 m/s that stops short of body i's near face, as a character's own
+// collision would stop it; it pushes with 3000 N and shoves at 2.5 m/s. Where it got to.
+bd_test_walk :: (b: [] Bodies, i: int, half_z: f64, at: f64) -> f64 {
+  z := fmin(at + 6.9 * b[0].dt, b[0].set[0].pos[i].z - half_z - 0.3 - 0.02);
+  bd_test_mover(b, d3(0.0, 0.0, z), 1.8, 0.3, d3(0.0, 0.0, 6.9), 3000.0, 2.5, 0.0);
+  bd_step(b);
+  return z;
+}
+
+#test "mass is volume times density, a box's and a ball's moments are the solids', and a set of 64 is full" #steps 4000000000 {
+  t: [1] BdTest; b := t[0].b[..];
+  i := bd_test_box(b, d3(0.0, 10.0, 0.0), DQ.{}, d3(1.0, 0.5, 0.25), 100.0, 0.5, 0.15);
+  j := bd_test_ball(b, d3(5.0, 10.0, 0.0), 0.5, 80.0, 0.6, 0.55, 0.06);
+  f := bd_test_box(b, d3(9.0, 10.0, 0.0), DQ.{}, d3(1.0, 1.0, 1.0), 0.0, 0.5, 0.15);
+  s := b[0].set[..];
+  #assert i == 0 && j == 1 && f == 2 && bd_count(b) == 3;
+  #assert s[0].mass[i] == 100.0 && near_d(s[0].inertia[i].x, 100.0 * (1.0 + 0.25) / 12.0, 1e-12) && near_d(s[0].inertia[i].y, 100.0 * (4.0 + 0.25) / 12.0, 1e-12) && near_d(s[0].inertia[i].z, 100.0 * 5.0 / 12.0, 1e-12);
+  m := 80.0 * 4.0 / 3.0 * PI_D * 0.125;
+  #assert near_d(s[0].mass[j], m, 1e-9) && near_d(s[0].inertia[j].x, 0.4 * m * 0.25, 1e-9) && s[0].inertia[j].x == s[0].inertia[j].z;
+  #assert bd_fixed(b, f) && !bd_fixed(b, i) && b[0].kind[j] == Bd_Kind.ball && b[0].kind[i] == Bd_Kind.box && b[0].roll[j] == 0.06 && b[0].roll[i] == 0.0 && b[0].friction[j] == 0.6 && b[0].bounce[j] == 0.55;
+  // how far each reaches along the world's axes: a box turned a quarter about z swaps x and y
+  #assert d3_eq(bd_extent(b, i), d3(1.0, 0.5, 0.25)) && d3_eq(bd_extent(b, j), d3(0.5, 0.5, 0.5));
+  bd_place(b, i, d3(0.0, 10.0, 0.0), dq_z(PI_D / 2.0));
+  e := bd_extent(b, i);
+  #assert near_d(e.x, 0.5, 1e-12) && near_d(e.y, 1.0, 1e-12) && near_d(e.z, 0.25, 1e-12);
+  // an impulse off the centre: the momentum is the impulse, the spin the impulse's moment over the inertia
+  bd_place(b, i, d3(0.0, 10.0, 0.0), DQ.{});
+  bd_impulse(b, i, d3(0.0, 0.0, 50.0), d3(1.0, 10.0, 0.0));
+  #assert near_d(s[0].vel[i].z, 0.5, 1e-12) && near_d(s[0].omega[i].y, -50.0 / s[0].inertia[i].y, 1e-12) && s[0].omega[i].x == 0.0 && near_d(bd_spin(b, i).y, s[0].omega[i].y, 1e-12);
+  bd_impulse(b, f, d3(0.0, 0.0, 50.0), d3(9.0, 10.0, 0.0));
+  #assert d3_eq(s[0].vel[f], D3_ZERO);
+  // gravity moves what has mass and leaves the fixed where it is; kinetic energy is the bodies'
+  b[0].set[0].vel[i] = D3_ZERO; b[0].set[0].omega[i] = D3_ZERO;
+  bd_step(b);
+  #assert near_d(s[0].vel[i].y, -9.81 / 60.0, 1e-12) && near_d(s[0].vel[j].y, -9.81 / 60.0, 1e-12) && d3_eq(s[0].pos[f], d3(9.0, 10.0, 0.0)) && d3_eq(s[0].vel[f], D3_ZERO);
+  #assert near_d(bd_energy(b), 0.5 * (100.0 + m) * (9.81 / 60.0) * (9.81 / 60.0), 1e-9) && b[0].steps == 1;
+  bd_reset(b);
+  #assert bd_count(b) == 0 && b[0].steps == 0;
+  for k: 0..<BD_MAX { #assert bd_test_cube(b, cast(f64) k * 3.0, 0.5, 0.0, 0.5) == k; }
+  #assert bd_test_cube(b, 0.0, 9.0, 0.0, 0.5) == -1 && bd_test_ball(b, D3_ZERO, 0.3, 40.0, 0.6, 0.55, 0.06) == -1 && bd_count(b) == BD_MAX;
+}
+
+#test "a box dropped from four metres never goes into the ground, bounces by its restitution, rests at its half height and sleeps" #steps 4000000000 {
+  t: [1] BdTest; b := t[0].b[..];
+  i := bd_test_cube(b, 0.0, 4.5, 0.0, 0.5);
+  low := 9.0; top := 0.0; hit := -1; slept := -1;
+  for k: 0..<200 {
+    bd_step(b);
+    y := b[0].set[0].pos[i].y;
+    low = fmin(low, y - 0.5);
+    if hit < 0 && y < 0.501 { hit = k; }
+    if hit >= 0 && k > hit { top = fmax(top, y); }
+    if slept < 0 && !bd_awake(b, i) { slept = k; }
+  }
+  // 4 m takes 0.903 s: 54 steps. It arrives at 8.86 m/s and leaves at 0.15 of that: 9 cm up.
+  #assert hit >= 52 && hit <= 55 && low > -0.0001 && near_d(top, 0.5 + 0.15 * 0.15 * 4.0, 0.02);
+  // at rest within two seconds, at its half height, level, asleep, with nothing lifted or undone
+  #assert slept > hit && slept < 120 && near_d(b[0].set[0].pos[i].y, 0.5, 0.0005) && near_d(b[0].set[0].att[i].w, 1.0, 1e-9);
+  #assert bd_sleeping(b) == 1 && bd_energy(b) == 0.0 && b[0].lifted == 0 && b[0].faults == 0 && b[0].dropped == 0 && b[0].count_m == 0;
+  // tilted, it lands on a corner, tumbles, and comes to rest on a face
+  bd_reset(b);
+  i = bd_test_box(b, d3(0.0, 4.5, 0.0), dq_euler_xyz(0.3, 0.2, 0.5), d3(0.5, 0.5, 0.5), 100.0, 0.5, 0.15);
+  low = 9.0; turned := 0.0;
+  for k: 0..<300 { bd_step(b); low = fmin(low, bd_test_low(b)); turned = fmax(turned, d3_len(b[0].set[0].omega[i])); }
+  #assert low > -0.002 && turned > 1.0 && !bd_awake(b, i) && near_d(b[0].set[0].pos[i].y, 0.5, 0.001) && near_d(bd_extent(b, i).y, 0.5, 0.001);
+}
+
+#test "a ball bounces to its restitution squared of the height, on the ground and on a box, and rests where it lands" #steps 4000000000 {
+  t: [1] BdTest; b := t[0].b[..];
+  i := bd_test_ball(b, d3(0.0, 3.3, 0.0), 0.3, 40.0, 0.6, 0.55, 0.06);
+  low := 9.0; top := 0.0; hit := false;
+  for k: 0..<400 {
+    bd_step(b);
+    y := b[0].set[0].pos[i].y;
+    low = fmin(low, y);
+    if y < 0.301 { hit = true; }
+    if hit { top = fmax(top, y); }
+  }
+  #assert low > 0.2999 && near_d(top, 0.3 + 3.0 * 0.55 * 0.55, 0.06) && !bd_awake(b, i) && near_d(b[0].set[0].pos[i].y, 0.3, 0.0005) && b[0].set[0].pos[i].x == 0.0;
+  // onto a box: the higher restitution of the two; it does not go into the box, and comes to rest on it
+  bd_reset(b);
+  box := bd_test_box(b, d3(0.0, 0.5, 0.0), DQ.{}, d3(1.0, 0.5, 1.0), 100.0, 0.5, 0.15);
+  i = bd_test_ball(b, d3(0.2, 3.0, 0.1), 0.3, 40.0, 0.6, 0.55, 0.06);
+  low = 9.0; top = 0.0; hit = false;
+  for k: 0..<500 {
+    bd_step(b);
+    y := b[0].set[0].pos[i].y;
+    low = fmin(low, y);
+    if y < 1.301 { hit = true; }
+    if hit { top = fmax(top, y); }
+  }
+  #assert low > 1.2995 && near_d(top, 1.3 + 1.7 * 0.55 * 0.55, 0.06) && bd_sleeping(b) == 2 && near_d(b[0].set[0].pos[i].y, 1.3, 0.001) && near_d(b[0].set[0].pos[i].x, 0.2, 0.01) && near_d(b[0].set[0].pos[box].y, 0.5, 0.001);
+  // the box first in the pair or second, the ball is pushed the same way: up
+  bd_reset(b);
+  i = bd_test_ball(b, d3(0.2, 1.31, 0.1), 0.3, 40.0, 0.6, 0.55, 0.06);
+  box = bd_test_box(b, d3(0.0, 0.5, 0.0), DQ.{}, d3(1.0, 0.5, 1.0), 100.0, 0.5, 0.15);
+  bd_test_run(b, 120);
+  #assert bd_sleeping(b) == 2 && near_d(b[0].set[0].pos[i].y, 1.3, 0.001) && near_d(b[0].set[0].pos[box].y, 0.5, 0.001);
+}
+
+#test "two balls head on share their momentum by the restitution, and a ball against a fixed box comes back" #steps 4000000000 {
+  t: [1] BdTest; b := t[0].b[..];
+  b[0].gravity = 0.0;
+  i := bd_test_ball(b, d3(-1.0, 5.0, 0.0), 0.3, 40.0, 0.6, 0.5, 0.0);
+  j := bd_test_ball(b, d3(1.0, 5.0, 0.0), 0.3, 40.0, 0.6, 0.2, 0.0);
+  b[0].set[0].vel[i] = d3(3.0, 0.0, 0.0); b[0].set[0].vel[j] = d3(-1.0, 0.0, 0.0);
+  gap := 9.0;
+  for k: 0..<120 { bd_step(b); gap = fmin(gap, b[0].set[0].pos[j].x - b[0].set[0].pos[i].x - 0.6); }
+  // equal masses closing at 4 with e = 0.5 (the higher of the two): they part at 2, about a mean of 1
+  #assert near_d(b[0].set[0].vel[i].x, 0.0, 1e-9) && near_d(b[0].set[0].vel[j].x, 2.0, 1e-9) && gap > -1e-9 && gap < 0.001;
+  // the one that stopped has gone to sleep, in mid air: nothing pulls it
+  #assert b[0].set[0].vel[i].y == 0.0 && b[0].set[0].pos[i].y == 5.0 && !bd_awake(b, i) && bd_awake(b, j);
+  // a heavy and a light ball: the momentum is kept
+  bd_reset(b);
+  i = bd_test_ball(b, d3(-1.0, 5.0, 0.0), 0.5, 40.0, 0.6, 0.5, 0.0);
+  j = bd_test_ball(b, d3(1.0, 5.2, 0.1), 0.25, 40.0, 0.6, 0.5, 0.0);
+  b[0].set[0].vel[i] = d3(3.0, 0.0, 0.0);
+  s := b[0].set[..];
+  before := rigid_linear(s[0]);
+  bd_test_run(b, 120);
+  after := rigid_linear(s[0]);
+  #assert d3_dist(before, after) < 1e-9 * d3_len(before) && s[0].vel[j].x > 3.0 && s[0].vel[j].y > 0.5 && s[0].vel[i].x < 3.0 && s[0].vel[i].x > 2.0;
+  // against a box that never moves, it comes back at e times its speed, and the box is where it was
+  bd_reset(b);
+  wall := bd_test_box(b, d3(2.0, 5.0, 0.0), DQ.{}, d3(0.5, 2.0, 2.0), 0.0, 0.5, 0.15);
+  i = bd_test_ball(b, d3(0.0, 5.0, 0.0), 0.3, 40.0, 0.6, 0.5, 0.0);
+  s[0].vel[i] = d3(4.0, 0.0, 0.0);
+  far := 0.0;
+  for k: 0..<60 { bd_step(b); far = fmax(far, s[0].pos[i].x); }
+  #assert near_d(s[0].vel[i].x, -2.0, 1e-9) && near_d(far, 1.2, 0.001) && d3_eq(s[0].pos[wall], d3(2.0, 5.0, 0.0)) && d3_eq(s[0].vel[wall], D3_ZERO);
+}
+
+#test "friction stops a sliding box in v squared over 2 mu g, and less friction lets it go further" #steps 4000000000 {
+  t: [1] BdTest; b := t[0].b[..];
+  i := bd_test_box(b, d3(0.0, 0.25, 0.0), DQ.{}, d3(0.5, 0.25, 0.5), 100.0, 0.5, 0.15);
+  j := bd_test_box(b, d3(0.0, 0.25, 5.0), DQ.{}, d3(0.5, 0.25, 0.5), 100.0, 0.25, 0.15);
+  b[0].set[0].vel[i] = d3(4.0, 0.0, 0.0); b[0].set[0].vel[j] = d3(4.0, 0.0, 0.0);
+  bd_test_run(b, 400);
+  s := b[0].set[..];
+  #assert near_d(s[0].pos[i].x, 16.0 / (2.0 * 0.5 * 9.81), 0.06) && near_d(s[0].pos[j].x, 16.0 / (2.0 * 0.25 * 9.81), 0.12) && bd_sleeping(b) == 2;
+  // straight, level and on the ground all the way
+  #assert near_d(s[0].att[i].w, 1.0, 1e-6) && near_d(s[0].pos[i].y, 0.25, 0.001) && near_d(s[0].pos[i].z, 0.0, 1e-6) && near_d(s[0].pos[j].z, 5.0, 1e-6);
+  // a box on a box: the friction between them is the geometric mean, so the upper one rides along on
+  // a rough one and is left behind on a slick one
+  for slick: 0..<2 {
+    bd_reset(b);
+    under := bd_test_box(b, d3(0.0, 0.25, 0.0), DQ.{}, d3(2.0, 0.25, 1.0), 100.0, 0.5, 0.0);
+    over := bd_test_box(b, d3(0.0, 0.75, 0.0), DQ.{}, d3(0.25, 0.25, 0.25), 100.0, ifx slick == 1 then 0.0 else 0.5, 0.0);
+    bd_test_run(b, 30);
+    s[0].vel[under] = d3(1.5, 0.0, 0.0);
+    bd_test_run(b, 240);
+    carried := s[0].pos[over].x;
+    #assert near_d(s[0].pos[over].y, 0.75, 0.001) && s[0].pos[under].x > 0.1;
+    if slick == 1 { #assert abs(carried) < 0.001; } else { #assert carried > 0.05 && carried < s[0].pos[under].x; }
+  }
+}
+
+#test "a tall box tilted short of its balance rights itself, and tilted past it falls over" #steps 4000000000 {
+  t: [1] BdTest; b := t[0].b[..];
+  // 1 by 3 by 1: it balances on an edge at atan(0.5 / 1.5), 0.3217 radians
+  for past: 0..<2 {
+    bd_reset(b);
+    angle := ifx past == 1 then 0.4 else 0.25;
+    i := bd_test_box(b, d3(0.0, 1.5 * cos(angle) + 0.5 * sin(angle), 0.0), dq_z(angle), d3(0.5, 1.5, 0.5), 100.0, 0.5, 0.15);
+    low := 9.0;
+    for k: 0..<500 { bd_step(b); low = fmin(low, bd_test_low(b)); }
+    up := dq_rotate(b[0].set[0].att[i], D3_Y);
+    #assert !bd_awake(b, i) && low > -0.003;
+    if past == 1 { #assert abs(up.y) < 0.01 && near_d(b[0].set[0].pos[i].y, 0.5, 0.002) && b[0].set[0].pos[i].x < -1.0; }
+    else { #assert up.y > 0.9999 && near_d(b[0].set[0].pos[i].y, 1.5, 0.002) && b[0].set[0].pos[i].x > 0.2 && b[0].set[0].pos[i].x < 0.5; }
+  }
+}
+
+#test "a stack of three rests where it was put, sleeps as one island, and stays to the bit while it sleeps" #steps 4000000000 {
+  t: [1] BdTest; b := t[0].b[..];
+  a0 := bd_test_box(b, d3(0.0, 0.5, 0.0), DQ.{}, d3(1.0, 0.5, 1.0), 100.0, 0.5, 0.15);
+  a1 := bd_test_cube(b, 0.1, 1.5, 0.0, 0.5);
+  a2 := bd_test_box(b, d3(0.1, 2.3, 0.1), dq_y(0.4), d3(0.3, 0.3, 0.3), 100.0, 0.5, 0.15);
+  alone := bd_test_cube(b, 6.0, 0.5, 0.0, 0.5);
+  s := b[0].set[..];
+  moved := 0.0;
+  for k: 0..<120 { bd_step(b); moved = fmax(moved, bd_energy(b)); }
+  // a jolt of gravity's first step at most: a hundredth of a joule for 530 kg
+  #assert moved < 0.2 && bd_sleeping(b) == 4 && bd_energy(b) == 0.0;
+  #assert near_d(s[0].pos[a0].y, 0.5, 0.001) && near_d(s[0].pos[a1].y, 1.5, 0.002) && near_d(s[0].pos[a2].y, 2.3, 0.003) && near_d(s[0].pos[a1].x, 0.1, 0.001) && near_d(s[0].pos[a2].z, 0.1, 0.001) && near_d(s[0].att[a2].y, sin(0.2), 0.001);
+  // the three share a label, the one that stands alone has its own
+  #assert b[0].label[a0] != 0 && b[0].label[a0] == b[0].label[a1] && b[0].label[a1] == b[0].label[a2] && b[0].label[alone] != 0 && b[0].label[alone] != b[0].label[a0];
+  digest := bd_digest(b);
+  bd_test_run(b, 600);
+  // (the digest takes the step count in: at the same count it is the same)
+  #assert b[0].steps == 720 && bd_digest(b) != digest;
+  b[0].steps = 120;
+  #assert bd_digest(b) == digest && bd_sleeping(b) == 4;
+  b[0].steps = 720;
+  // bd_wake wakes the whole island and nothing else; still, they sleep again in half a second
+  bd_wake(b, a1);
+  #assert bd_awake(b, a0) && bd_awake(b, a1) && bd_awake(b, a2) && !bd_awake(b, alone) && bd_sleeping(b) == 1;
+  bd_test_run(b, 20);
+  #assert bd_sleeping(b) == 1;
+  bd_test_run(b, 15);
+  #assert bd_sleeping(b) == 4 && near_d(s[0].pos[a2].y, 2.3, 0.003);
+}
+
+#test "a sleeping stack wakes together when a ball hits it, what stands apart sleeps on, and all of it comes to rest again" #steps 4000000000 {
+  t: [1] BdTest; b := t[0].b[..];
+  a0 := bd_test_cube(b, 0.0, 0.5, 0.0, 0.5);
+  a1 := bd_test_cube(b, 0.0, 1.3, 0.0, 0.3);
+  far := bd_test_cube(b, 8.0, 0.5, 0.0, 0.5);
+  bd_test_run(b, 90);
+  #assert bd_sleeping(b) == 3;
+  ball := bd_test_ball(b, d3(-3.0, 0.5, 0.0), 0.3, 40.0, 0.6, 0.55, 0.06);
+  s := b[0].set[..];
+  s[0].vel[ball] = d3(8.0, 0.0, 0.0);
+  woke := -1;
+  for k: 0..<60 {
+    bd_step(b);
+    if woke < 0 && bd_awake(b, a0) {
+      woke = k;
+      // the ball has just reached the lower box: both boxes of the stack are awake, the far one is not
+      #assert bd_awake(b, a1) && !bd_awake(b, far) && near_d(s[0].pos[ball].x, -0.8, 0.14);
+    }
+  }
+  #assert woke > 10 && woke < 20;
+  bd_test_run(b, 400);
+  // the ball came back off it, the box was knocked on a little, and everything sleeps
+  #assert bd_sleeping(b) == 4 && s[0].pos[ball].x < -1.0 && s[0].pos[a0].x > 0.001 && s[0].pos[a0].x < 0.1 && near_d(s[0].pos[a1].y, 1.3, 0.002) && near_d(s[0].pos[far].x, 8.0, 1e-5) && !bd_awake(b, far);
+}
+
+#test "rolling resistance brings a rolling ball to rest, and without it the ball rolls on" #steps 4000000000 {
+  t: [1] BdTest; b := t[0].b[..];
+  i := bd_test_ball(b, d3(0.0, 0.3, 0.0), 0.3, 40.0, 0.6, 0.55, 0.06);
+  j := bd_test_ball(b, d3(0.0, 0.3, 4.0), 0.3, 40.0, 0.6, 0.55, 0.0);
+  s := b[0].set[..];
+  s[0].vel[i] = d3(5.0, 0.0, 0.0); s[0].vel[j] = d3(5.0, 0.0, 0.0);
+  bd_test_run(b, 60);
+  // sliding has become rolling: v = w r, at 5/7 of the speed for the one nothing resists
+  #assert near_d(s[0].vel[j].x, 5.0 * 5.0 / 7.0, 0.01) && near_d(-bd_spin(b, j).z * 0.3, s[0].vel[j].x, 0.01);
+  #assert s[0].vel[i].x < 2.5 && s[0].vel[i].x > 1.8 && -bd_spin(b, i).z * 0.3 < s[0].vel[i].x + 0.001;
+  bd_test_run(b, 240);
+  // five seconds: the resisted one stopped within 5 m and sleeps; the other is still rolling at 5/7
+  #assert !bd_awake(b, i) && s[0].pos[i].x > 4.0 && s[0].pos[i].x < 5.5 && near_d(s[0].pos[i].y, 0.3, 0.0005);
+  #assert bd_awake(b, j) && near_d(s[0].vel[j].x, 5.0 * 5.0 / 7.0, 0.01) && s[0].pos[j].x > 18.0;
+  // twice the resistance stops it sooner
+  bd_reset(b);
+  i = bd_test_ball(b, d3(0.0, 0.3, 0.0), 0.3, 40.0, 0.6, 0.55, 0.12);
+  s[0].vel[i] = d3(5.0, 0.0, 0.0);
+  bd_test_run(b, 300);
+  #assert !bd_awake(b, i) && s[0].pos[i].x > 2.5 && s[0].pos[i].x < 4.0;
+}
+
+#test "the pusher shoves a cube at the speed its force and the cube's friction allow, barely moves a wall, and kicks a ball" #steps 4000000000 {
+  t: [1] BdTest; b := t[0].b[..];
+  i := bd_test_cube(b, 0.0, 0.5, 2.0, 0.5);
+  bd_test_run(b, 60);
+  #assert !bd_awake(b, i);
+  s := b[0].set[..];
+  at := 0.0;
+  for k: 0..<240 { at = bd_test_walk(b, i, 0.5, at); if k == 30 { #assert bd_awake(b, i) && bd_test_touching(b) == i && b[0].movers[0].pushed > 0.0; } }
+  // 100 kg on friction 0.5 takes 490.5 N; the push is 3000 N less its share of 2.5 m/s: v = 2.5 (1 - 490.5 / 3000)
+  #assert near_d(s[0].vel[i].z, 2.5 * (1.0 - 490.5 / 3000.0), 0.002) && near_d(b[0].movers[0].pushed, 490.5 / 60.0, 0.01) && s[0].pos[i].z > 9.0 && s[0].pos[i].z < 10.5;
+  // it stayed level, on the ground and on its line
+  #assert near_d(s[0].pos[i].y, 0.5, 0.001) && abs(s[0].pos[i].x) < 0.001 && near_d(s[0].att[i].w, 1.0, 1e-6);
+  // the pusher gone, friction stops it within half a metre and it sleeps
+  bd_mover_off(b, 1);
+  was := s[0].pos[i].z;
+  bd_test_run(b, 120);
+  #assert !bd_awake(b, i) && s[0].pos[i].z > was + 0.3 && s[0].pos[i].z < was + 0.5 && bd_test_touching(b) == -1 && b[0].count_v == 0;
+  // a wall 12 m long, 2 m high: 2400 kg, 11.8 kN of friction; 3000 N moves it millimetres
+  bd_reset(b);
+  i = bd_test_box(b, d3(0.0, 1.0, 2.0), DQ.{}, d3(6.0, 1.0, 0.5), 100.0, 0.5, 0.15);
+  at = 0.0;
+  for k: 0..<240 { at = bd_test_walk(b, i, 0.5, at); }
+  #assert s[0].pos[i].z >= 2.0 && s[0].pos[i].z < 2.01 && near_d(b[0].movers[0].pushed, 50.0, 0.1) && near_d(s[0].pos[i].y, 1.0, 0.001);
+  // a ball of 4.5 kg is thrown on by its bounce: faster than the walker, and ahead of it
+  bd_reset(b);
+  i = bd_test_ball(b, d3(0.0, 0.3, 2.0), 0.3, 40.0, 0.6, 0.55, 0.06);
+  at = 0.0; fastest := 0.0;
+  for k: 0..<60 { at = bd_test_walk(b, i, 0.3, at); fastest = fmax(fastest, s[0].vel[i].z); }
+  #assert near_d(fastest, 6.9 * 1.55, 0.01) && s[0].pos[i].z > at + 1.0 && near_d(s[0].pos[i].y, 0.3, 0.001) && abs(s[0].pos[i].x) < 1e-9;
+}
+
+#test "the pusher leaves a sleeper it only stands against, does not pull, does not push from above or what it can step onto, and turns what it pushes off its middle" #steps 4000000000 {
+  t: [1] BdTest; b := t[0].b[..];
+  i := bd_test_cube(b, 0.0, 0.5, 2.0, 0.5);
+  bd_test_run(b, 60);
+  s := b[0].set[..];
+  where := s[0].pos[i];
+  // standing against it, a hair off its face
+  bd_test_mover(b, d3(0.0, 0.0, 1.18), 1.8, 0.3, D3_ZERO, 3000.0, 2.5, 0.0);
+  bd_test_run(b, 10);
+  #assert !bd_awake(b, i) && bd_test_touching(b) == -1 && b[0].count_m == 0;
+  // walking away from it
+  bd_test_mover(b, d3(0.0, 0.0, 1.18), 1.8, 0.3, d3(0.0, 0.0, -3.0), 3000.0, 2.5, 0.0);
+  bd_test_run(b, 10);
+  #assert !bd_awake(b, i) && d3_eq(s[0].pos[i], where);
+  // standing on it and running: the contact is under its feet, not level
+  bd_test_mover(b, d3(0.0, 1.0, 2.0), 2.8, 0.3, d3(0.0, 0.0, 3.0), 3000.0, 2.5, 0.0);
+  bd_test_run(b, 10);
+  #assert !bd_awake(b, i) && d3_eq(s[0].pos[i], where) && bd_test_touching(b) == -1;
+  // too far off to touch: the skin is 6 cm
+  bd_test_mover(b, d3(0.0, 0.0, 1.1), 1.8, 0.3, d3(0.0, 0.0, 3.0), 3000.0, 2.5, 0.0);
+  bd_test_run(b, 2);
+  #assert !bd_awake(b, i);
+  bd_test_mover(b, d3(0.0, 0.0, 1.15), 1.8, 0.3, d3(0.0, 0.0, 3.0), 3000.0, 2.5, 0.0);
+  bd_test_run(b, 2);
+  #assert bd_awake(b, i) && bd_test_touching(b) == i && s[0].vel[i].z > 0.1;
+  // a slab half a metre high is a step, not something to push; one of 0.6 m is pushed
+  for tall: 0..<2 {
+    bd_reset(b);
+    h := ifx tall == 1 then 0.3 else 0.25;
+    i = bd_test_box(b, d3(0.0, h, 2.0), DQ.{}, d3(0.5, h, 0.5), 100.0, 0.5, 0.15);
+    at := 0.0;
+    for k: 0..<60 { at = bd_test_walk(b, i, 0.5, at); }
+    if tall == 1 { #assert s[0].pos[i].z > 2.5 && bd_test_touching(b) == i; } else { #assert near_d(s[0].pos[i].z, 2.0, 1e-6) && bd_test_touching(b) == -1; }
+  }
+  // pushed 0.6 m off its middle, a 2 m box turns as it goes
+  bd_reset(b);
+  i = bd_test_box(b, d3(0.6, 0.5, 2.0), DQ.{}, d3(1.0, 0.5, 0.5), 100.0, 0.5, 0.15);
+  at := 0.0;
+  for k: 0..<90 { at = bd_test_walk(b, i, 0.5, at); }
+  along := dq_rotate(s[0].att[i], D3_X);
+  #assert along.z < -0.1 && along.z > -0.3 && abs(along.y) < 0.001 && s[0].pos[i].z > 2.05 && near_d(s[0].pos[i].y, 0.5, 0.001);
+  // a body already going as fast as the shove gets nothing; a slower one gets its share of the force
+  bd_reset(b); b[0].gravity = 0.0;
+  i = bd_test_cube(b, 0.0, 5.0, 2.0, 0.5);
+  s[0].vel[i] = d3(0.0, 0.0, 2.5);
+  bd_test_mover(b, d3(0.0, 4.0, 1.18), 5.8, 0.3, d3(0.0, 0.0, 6.9), 3000.0, 2.5, 0.0);
+  bd_step(b);
+  #assert s[0].vel[i].z == 2.5 && b[0].movers[0].pushed == 0.0;
+  bd_place(b, i, d3(0.0, 5.0, 2.0), DQ.{});
+  s[0].vel[i] = d3(0.0, 0.0, 1.0);
+  bd_step(b);
+  #assert near_d(b[0].movers[0].pushed, 3000.0 / 60.0 * 0.6, 1e-9) && near_d(s[0].vel[i].z, 1.0 + 30.0 / 100.0, 1e-9);
+  // with a curve the force sags between rest and the shove speed: at 0.4 of it, 0.6 / (1 + 4 x 0.4) is left
+  #assert bd_push_share(0.0, 2.5, 4.0) == 1.0 && bd_push_share(2.5, 2.5, 4.0) == 0.0 && bd_push_share(9.0, 2.5, 4.0) == 0.0 && bd_push_share(-3.0, 2.5, 4.0) == 1.0 && near_d(bd_push_share(1.0, 2.5, 4.0), 0.6 / 2.6, 1e-12) && near_d(bd_push_share(1.0, 2.5, 0.0), 0.6, 1e-12);
+  bd_place(b, i, d3(0.0, 5.0, 2.0), DQ.{});
+  s[0].vel[i] = d3(0.0, 0.0, 1.0);
+  bd_test_mover(b, d3(0.0, 4.0, 1.18), 5.8, 0.3, d3(0.0, 0.0, 6.9), 3000.0, 2.5, 4.0);
+  bd_step(b);
+  #assert near_d(b[0].movers[0].pushed, 3000.0 / 60.0 * 0.6 / 2.6, 1e-9) && b[0].movers[0].curve == 4.0;
+  // so a cube that a straight line would shove at 2.09 m/s goes at the speed where the sagging force meets its friction:
+  // (1 - v) / (1 + 4 v) = 490.5 / 3000 gives v = 0.506 of 2.5 m/s
+  bd_reset(b); b[0].gravity = -9.81;
+  i = bd_test_cube(b, 0.0, 0.5, 2.0, 0.5);
+  at = 0.0;
+  for k: 0..<240 {
+    z := fmin(at + 6.9 * b[0].dt, s[0].pos[i].z - 0.5 - 0.3 - 0.02);
+    bd_test_mover(b, d3(0.0, 0.0, z), 1.8, 0.3, d3(0.0, 0.0, 6.9), 3000.0, 2.5, 4.0);
+    bd_step(b);
+    at = z;
+  }
+  #assert near_d(s[0].vel[i].z, 2.5 * (1.0 - 0.1635) / (1.0 + 4.0 * 0.1635), 0.003);
+}
+
+#test "boxes put inside each other part without flying off, and a box put half in the ground comes up" #steps 4000000000 {
+  t: [1] BdTest; b := t[0].b[..];
+  a0 := bd_test_cube(b, 0.0, 0.5, 0.0, 0.5);
+  a1 := bd_test_cube(b, 0.2, 0.6, 0.1, 0.5);
+  a2 := bd_test_cube(b, 5.0, 0.1, 0.0, 0.5);
+  s := b[0].set[..];
+  fastest := 0.0;
+  for k: 0..<240 { bd_step(b); for i: 0..<3 { fastest = fmax(fastest, d3_len(s[0].vel[i])); } }
+  // they are apart (no deeper than the slop), at rest on the ground, and nothing ever went faster than a brisk shove
+  f := narrow_box_box(bd_shape(b, a0), bd_shape(b, a1));
+  deepest := 0.0;
+  for k: 0..<f.count { deepest = fmax(deepest, -f.distance[k]); }
+  #assert deepest < BD_SLOP + 0.001 && fastest < 2.0 && bd_sleeping(b) == 3 && near_d(s[0].pos[a0].y, 0.5, 0.004) && near_d(s[0].pos[a1].y, 0.5, 0.004);
+  #assert s[0].pos[a1].x - s[0].pos[a0].x > 0.9 && near_d(s[0].pos[a2].y, 0.5, 0.006) && near_d(s[0].pos[a2].x, 5.0, 1e-6);
+  // overlap is pushed out by 0.2 of what is past the slop each step: a box 2 cm in the ground comes up 3 mm, and gains no speed by it
+  bd_reset(b);
+  lifted := b[0].lifted;
+  a0 = bd_test_cube(b, 0.0, 0.48, 0.0, 0.5);
+  bd_step(b);
+  #assert near_d(s[0].pos[a0].y, 0.48 + BD_BETA * (0.02 - BD_SLOP), 1e-5) && abs(s[0].vel[a0].y) < 1e-4 && b[0].lifted == lifted && lifted == 1;
+  // and at BD_PUSH_OUT at most: two boxes 40 cm into each other, with nothing else to hold them, part at 3 m/s between them
+  bd_reset(b); b[0].gravity = 0.0;
+  a0 = bd_test_cube(b, 0.0, 9.0, 0.0, 0.5);
+  a1 = bd_test_cube(b, 0.6, 9.0, 0.0, 0.5);
+  bd_step(b);
+  #assert near_d(s[0].pos[a1].x - s[0].pos[a0].x, 0.6 + BD_PUSH_OUT / 60.0, 1e-5) && near_d(s[0].pos[a0].x, -BD_PUSH_OUT / 120.0, 1e-5) && d3_eq(s[0].vel[a0], D3_ZERO) && d3_eq(s[0].vel[a1], D3_ZERO);
+  bd_test_run(b, 40);
+  #assert s[0].pos[a1].x - s[0].pos[a0].x > 1.0 - BD_SLOP - 0.001 && s[0].pos[a1].x - s[0].pos[a0].x < 1.0 && d3_eq(s[0].vel[a0], D3_ZERO);
+  // and they do not sleep while they are still parting: boxes 90 cm into each other are awake until they are apart, then sleep
+  bd_reset(b);
+  a0 = bd_test_cube(b, 0.0, 9.0, 0.0, 0.5);
+  a1 = bd_test_cube(b, 0.1, 9.0, 0.0, 0.5);
+  bd_test_run(b, 15);
+  #assert bd_sleeping(b) == 0 && s[0].pos[a1].x - s[0].pos[a0].x < 0.9 && d3_eq(s[0].vel[a0], D3_ZERO);
+  bd_test_run(b, 80);
+  #assert bd_sleeping(b) == 2 && s[0].pos[a1].x - s[0].pos[a0].x > 1.0 - BD_SLOP - 0.004;
+}
+
+#test "the same bodies and the same calls give the same bits, and other bodies give others" #steps 4000000000 {
+  t: [2] BdTest;
+  for run: 0..<2 {
+    b := t[run].b[..];
+    for k: 0..<12 {
+      i := bd_test_box(b, d3(cast(f64) (k % 3) * 0.7, 1.0 + cast(f64) k * 0.8, cast(f64) (k % 2) * 0.3), dq_y(cast(f64) k * 0.37), d3(0.3 + cast(f64) (k % 3) * 0.1, 0.25, 0.4), 100.0, 0.5, 0.15);
+    }
+    j := bd_test_ball(b, d3(0.3, 12.0, 0.2), 0.3, 40.0, 0.6, 0.55, 0.06);
+  }
+  a := t[0].b[..]; c := t[1].b[..];
+  for k: 0..<300 {
+    bd_test_mover(a, d3(-3.0 + cast(f64) k * 0.02, 0.0, 0.0), 1.8, 0.3, d3(1.2, 0.0, 0.0), 3000.0, 2.5, 0.0);
+    bd_test_mover(c, d3(-3.0 + cast(f64) k * 0.02, 0.0, 0.0), 1.8, 0.3, d3(1.2, 0.0, 0.0), 3000.0, 2.5, 0.0);
+    bd_step(a); bd_step(c);
+    #assert bd_digest(a) == bd_digest(c);
+  }
+  #assert a[0].count_m == c[0].count_m && bd_test_touching(a) == bd_test_touching(c) && a[0].faults == 0 && a[0].dropped == 0;
+  before := bd_digest(a);
+  c[0].set[0].pos[0].x += 1e-9; bd_wake(c, 0);
+  bd_step(a); bd_step(c);
+  #assert bd_digest(a) != bd_digest(c) && bd_digest(a) != before;
+}
+
+#test "a turn's quaternion is made with the engine's strict sine and cosine, agrees with the library's to 1e-13, and a step calls no other" #steps 400000000 {
+  // against rigid.coax's rigid_exp, which calls the host's sin and cos
+  for k: 0..<200 {
+    v := d3(cast(f64) (k % 7) * 0.031 - 0.09, cast(f64) (k % 11) * 0.017, cast(f64) k * 0.0061 - 0.5);
+    a := bd_exp(v); c := rigid_exp(v);
+    #assert abs(a.x - c.x) < 1e-13 && abs(a.y - c.y) < 1e-13 && abs(a.z - c.z) < 1e-13 && abs(a.w - c.w) < 1e-13 && abs(dq_len(a) - 1.0) < 1e-13;
+  }
+  // the smallest turns, where sin(h) / h is its series; none at all is no turn
+  small := bd_exp(d3(0.00002, 0.0, 0.0)); none := bd_exp(D3_ZERO); edge := bd_exp(d3(0.0, 0.0002, 0.0)); over := bd_exp(d3(0.0, 0.00021, 0.0));
+  #assert abs(small.x - 0.00001) < 1e-15 && small.w > 0.99999999 && none.x == 0.0 && none.w == 1.0 && abs(edge.y - 0.0001) < 1e-12 && abs(over.y - 0.000105) < 1e-12 && abs(edge.y - rigid_exp(d3(0.0, 0.0002, 0.0)).y) < 1e-19;
+  // exactly the strict functions: a turn of 1 radian about y
+  one := bd_exp(d3(0.0, 1.0, 0.0));
+  #assert one.y == math_sin_near(0.5) / 0.5 * 0.5 && one.w == math_cos_near(0.5) && one.x == 0.0;
+  // more than a quarter turn in a step is made a quarter turn, about the same axis, still a unit
+  big := bd_exp(d3(0.0, 0.0, 9.0)); quarter := bd_exp(d3(0.0, 0.0, 1.5707963267948966));
+  #assert abs(big.z - quarter.z) < 1e-15 && abs(big.w - quarter.w) < 1e-15 && abs(dq_len(big) - 1.0) < 1e-13 && abs(quarter.z - 0.7071067811865476) < 1e-13 && big.x == 0.0;
+  // a spinning body in free flight turns by its spin: 3 rad/s about y for a second is 3 radians, and its place is untouched
+  t: [1] BdTest; b := t[0].b[..];
+  b[0].gravity = 0.0;
+  i := bd_test_cube(b, 0.0, 5.0, 0.0, 0.5);
+  b[0].set[0].omega[i] = d3(0.0, 3.0, 0.0);
+  bd_test_run(b, 60);
+  q := b[0].set[0].att[i];
+  #assert abs(q.y - 0.9974949866040544) < 1e-9 && abs(q.w - 0.0707372016677029) < 1e-9 && d3_eq(b[0].set[0].pos[i], d3(0.0, 5.0, 0.0)) && abs(b[0].set[0].omega[i].y - 3.0) < 1e-12;
+}
+
+#test "time comes in seconds and goes in whole steps: an accumulator, four steps a call at most, and a pose blended between the last two" #steps 4000000000 {
+  t: [1] BdTest; b := t[0].b[..];
+  i := bd_test_cube(b, 0.0, 50.0, 0.0, 0.5);
+  s := b[0].set[..];
+  #assert b[0].dt == 1.0 / 60.0;
+  // half a step: none made; the rest of it: one
+  #assert bd_advance(b, 1.0 / 120.0) == 0 && b[0].steps == 0 && s[0].pos[i].y == 50.0;
+  #assert bd_advance(b, 1.0 / 120.0) == 1 && b[0].steps == 1 && b[0].acc < 1e-12;
+  #assert bd_advance(b, 0.0) == 0 && bd_advance(b, -1.0) == 0 && bd_advance(b, 0.0 / 0.0) == 0 && b[0].steps == 1;
+  // two and a half steps: two made, half a step kept
+  #assert bd_advance(b, 2.5 / 60.0) == 2 && near_d(b[0].acc, 0.5 / 60.0, 1e-12) && b[0].steps == 3;
+  // the pose for drawing is half way between the last two steps
+  p := bd_pose(b, i);
+  #assert near_d(p.pos.y, (b[0].was_pos[i].y + s[0].pos[i].y) * 0.5, 1e-12) && p.pos.y > s[0].pos[i].y && p.pos.y < b[0].was_pos[i].y && near_d(p.att.w, 1.0, 1e-12);
+  // a second at once: four steps, and the rest is dropped, not owed
+  #assert bd_advance(b, 1.0) == BD_STEPS_MAX && b[0].acc == 0.0 && b[0].steps == 7;
+  #assert d3_eq(bd_pose(b, i).pos, b[0].was_pos[i]);
+  // free fall for 7 steps from rest: g dt^2 (1 + 2 + ... + 7)
+  #assert near_d(s[0].pos[i].y, 50.0 - 9.81 / 3600.0 * 28.0, 1e-9);
+  // a turning body's pose turns with it, by the shorter way
+  bd_reset(b); b[0].gravity = 0.0;
+  i = bd_test_cube(b, 0.0, 50.0, 0.0, 0.5);
+  s[0].omega[i] = d3(0.0, 3.0, 0.0);
+  #assert bd_advance(b, 1.5 / 60.0) == 1;
+  q := bd_pose(b, i).att;
+  #assert near_d(q.y, sin(0.0125), 1e-6) && near_d(q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w, 1.0, 1e-12);
+  b[0].was_att[i] = dq(-b[0].was_att[i].x, -b[0].was_att[i].y, -b[0].was_att[i].z, -b[0].was_att[i].w);
+  r := bd_pose(b, i).att;
+  #assert near_d(abs(r.y), sin(0.0125), 1e-6) && near_d(abs(r.w), cos(0.0125), 1e-6);
+}
+
+#test "a box resized keeps its lowest point and its footprint's middle, a body placed is still and awake, and one removed gives its index to the last" #steps 4000000000 {
+  t: [1] BdTest; b := t[0].b[..];
+  a0 := bd_test_cube(b, 0.0, 0.5, 0.0, 0.5);
+  a1 := bd_test_cube(b, 3.0, 0.5, 0.0, 0.5);
+  a2 := bd_test_ball(b, d3(6.0, 0.3, 0.0), 0.3, 40.0, 0.6, 0.55, 0.06);
+  bd_test_run(b, 60);
+  s := b[0].set[..];
+  #assert bd_sleeping(b) == 3;
+  // taller and narrower: its bottom stays on the ground, it wakes, its mass and moments are the new size's
+  bd_resize(b, a0, d3(0.25, 1.5, 0.25), 100.0);
+  #assert bd_awake(b, a0) && !bd_awake(b, a1) && near_d(s[0].pos[a0].y, 1.5, 0.001) && abs(s[0].pos[a0].x) < 1e-5 && near_d(s[0].mass[a0], 75.0, 1e-9) && near_d(s[0].inv_mass[a0], 1.0 / 75.0, 1e-12);
+  #assert near_d(s[0].inertia[a0].x, 75.0 * (9.0 + 0.25) / 12.0, 1e-9) && near_d(s[0].inv_inertia[a0].y, 12.0 / (75.0 * 0.5), 1e-9) && d3_eq(b[0].was_pos[a0], s[0].pos[a0]);
+  bd_test_run(b, 60);
+  #assert bd_sleeping(b) == 3 && near_d(s[0].pos[a0].y, 1.5, 0.001);
+  // a ball's new radius; no density makes a body fixed
+  bd_resize(b, a2, d3(0.5, 0.0, 0.0), 40.0);
+  #assert near_d(s[0].pos[a2].y, 0.5, 0.001) && near_d(s[0].mass[a2], 40.0 * 4.0 / 3.0 * PI_D * 0.125, 1e-9);
+  bd_resize(b, a1, d3(0.5, 0.5, 0.5), 0.0);
+  #assert bd_fixed(b, a1) && d3_eq(s[0].inv_inertia[a1], D3_ZERO) && s[0].pos[a1].y == s[0].pos[a1].y;
+  // placed: there, still, awake, and drawn there at once
+  s[0].vel[a0] = d3(1.0, 2.0, 3.0); s[0].omega[a0] = d3(1.0, 0.0, 0.0);
+  bd_test_run(b, 60);
+  bd_place(b, a0, d3(-4.0, 3.0, 1.0), dq_y(0.5));
+  #assert d3_eq(s[0].pos[a0], d3(-4.0, 3.0, 1.0)) && d3_eq(s[0].vel[a0], D3_ZERO) && d3_eq(s[0].omega[a0], D3_ZERO) && bd_awake(b, a0) && d3_eq(bd_pose(b, a0).pos, d3(-4.0, 3.0, 1.0)) && near_d(bd_pose(b, a0).att.y, sin(0.25), 1e-12);
+  // removed: the bodies after it move down one, each with everything that is its own, still in id order; out of range removes nothing
+  #assert !bd_remove(b, 7) && !bd_remove(b, -1) && bd_count(b) == 3;
+  radius := b[0].half[a2].x; mass := s[0].mass[a2]; where := s[0].pos[a2];
+  #assert bd_remove(b, a0) && bd_count(b) == 2 && b[0].id[0] == 2 && b[0].id[1] == 3 && bd_index(b, 3) == 1 && bd_index(b, 1) == -1 && bd_fixed(b, 0);
+  #assert b[0].kind[1] == Bd_Kind.ball && b[0].half[1].x == radius && s[0].mass[1] == mass && d3_eq(s[0].pos[1], where) && b[0].roll[1] == 0.06 && b[0].bounce[1] == 0.55 && b[0].friction[1] == 0.6;
+  #assert near_d(s[0].inv_mass[1], 1.0 / mass, 1e-12) && s[0].inertia[1].x == 0.4 * mass * 0.25 && near_d(s[0].inv_inertia[1].x, 1.0 / (0.4 * mass * 0.25), 1e-9) && d3_eq(b[0].was_pos[1], where) && bd_awake(b, 0) && bd_awake(b, 1);
+  #assert bd_remove(b, 1) && bd_count(b) == 1 && b[0].id[0] == 2 && bd_remove(b, 0) && bd_count(b) == 0 && !bd_remove(b, 0);
+}
+
+#test "what a stack stands on taken away, it wakes and falls; a pose that is not a number is undone and counted; a body under the ground is lifted" #steps 4000000000 {
+  t: [1] BdTest; b := t[0].b[..];
+  a0 := bd_test_cube(b, 0.0, 0.5, 0.0, 0.5);
+  a1 := bd_test_cube(b, 0.0, 1.5, 0.0, 0.5);
+  bd_test_run(b, 60);
+  s := b[0].set[..];
+  #assert bd_sleeping(b) == 2;
+  #assert bd_remove(b, a0) && bd_count(b) == 1 && bd_awake(b, 0) && near_d(s[0].pos[0].y, 1.5, 0.001);
+  bd_test_run(b, 120);
+  #assert !bd_awake(b, 0) && near_d(s[0].pos[0].y, 0.5, 0.001);
+  // a speed that is not a number: the step is undone for that body, it stands still, and it is counted
+  bd_wake(b, 0);
+  where := s[0].pos[0];
+  s[0].vel[0] = d3(0.0 / 0.0, 0.0, 0.0);
+  bd_step(b);
+  #assert b[0].faults == 1 && d3_eq(s[0].pos[0], where) && d3_eq(s[0].vel[0], D3_ZERO) && d3_eq(s[0].omega[0], D3_ZERO);
+  s[0].omega[0] = d3(0.0, 1e308 * 10.0, 0.0);
+  bd_wake(b, 0);
+  bd_step(b);
+  #assert b[0].faults == 2 && d3_eq(s[0].pos[0], where) && d3_finite(s[0].omega[0]) && near_d(s[0].att[0].w, 1.0, 1e-6);
+  // put 40 cm under the ground (here at -2 m) and falling: lifted at once to BD_SINK under it, falling no more, and counted
+  bd_reset(b);
+  b[0].ground = -2.0;
+  i := bd_test_cube(b, 0.0, -1.9, 0.0, 0.5);
+  s[0].vel[i] = d3(0.0, -5.0, 0.0);
+  bd_step(b);
+  #assert near_d(bd_test_low(b), -2.0 - BD_SINK, 1e-12) && s[0].vel[i].y >= 0.0 && b[0].lifted == 1;
+  // from there the overlap is pushed out, and it rests on the ground where the ground is
+  bd_test_run(b, 120);
+  #assert b[0].lifted == 1 && !bd_awake(b, i) && near_d(s[0].pos[i].y, -1.5, 0.006);
+}
+
+#test "forty-eight boxes and a ball dropped in a heap: never under the ground, never not a number, all asleep within fifteen seconds" #steps 4000000000 {
+  t: [1] BdTest; b := t[0].b[..];
+  for k: 0..<48 {
+    x := cast(f64) (k % 4) * 0.9 - 1.4; z := cast(f64) ((k / 4) % 3) * 0.9; y := 1.0 + cast(f64) (k / 12) * 1.6 + cast(f64) (k % 5) * 0.1;
+    i := bd_test_box(b, d3(x, y, z), dq_y(cast(f64) k * 0.37), d3(0.3 + cast(f64) (k % 3) * 0.1, 0.25 + cast(f64) (k % 2) * 0.2, 0.4), 100.0, 0.5, 0.15);
+  }
+  ball := bd_test_ball(b, d3(0.3, 9.0, 0.5), 0.3, 40.0, 0.6, 0.55, 0.06);
+  s := b[0].set[..];
+  low := 9.0; most := 0; fastest := 0.0; slept := -1;
+  for k: 0..<900 {
+    bd_step(b);
+    low = fmin(low, bd_test_low(b));
+    if b[0].count_m > most { most = b[0].count_m; }
+    for i: 0..<49 { #assert d3_finite(s[0].pos[i]) && d3_finite(s[0].vel[i]); fastest = fmax(fastest, d3_len(s[0].vel[i])); }
+    if slept < 0 && bd_sleeping(b) == 49 { slept = k; }
+  }
+  // nothing deeper than four centimetres in the ground at any step (under the heap's blows); nothing lifted, undone or left out; nothing faster than its fall
+  #assert low > -0.04 && b[0].lifted == 0 && b[0].faults == 0 && b[0].dropped == 0 && most > 60 && most < BD_MANIFOLDS && fastest < 13.5;
+  #assert slept > 150 && slept < 600 && bd_energy(b) == 0.0 && bd_test_low(b) > -0.008;
+  // the heap is a heap: within four metres of where it fell, some of it off the ground
+  high := 0.0;
+  for i: 0..<49 { #assert abs(s[0].pos[i].x) < 5.0 && abs(s[0].pos[i].z) < 5.0; high = fmax(high, s[0].pos[i].y); }
+  #assert high > 0.9 && high < 5.0;
+}
+
+#test "more contacts than there is room for are left out and counted, and boxes all put in one place still come to rest" #steps 4000000000 {
+  t: [1] BdTest; b := t[0].b[..];
+  // sixty-four in one place: 64 ground contacts and 2016 pairs, room for 192 (and 64 more that only local bodies may use)
+  for k: 0..<64 { i := bd_test_cube(b, cast(f64) (k % 8) * 0.05, 0.5 + cast(f64) (k / 8) * 0.05, 0.0, 0.5); }
+  s := b[0].set[..];
+  bd_step(b);
+  #assert b[0].count_m == BD_MANIFOLDS - BD_LOCAL_ROOM && b[0].count_l == 0 && b[0].dropped == 64 + 2016 - (BD_MANIFOLDS - BD_LOCAL_ROOM) && b[0].faults == 0;
+  for i: 0..<64 { #assert d3_finite(s[0].pos[i]) && d3_len(s[0].vel[i]) < 3.0; }
+  // twelve in one place part, never faster than a fall of a metre or two, and rest on the ground
+  bd_reset(b);
+  for k: 0..<12 { i := bd_test_cube(b, cast(f64) (k % 4) * 0.05, 0.5 + cast(f64) (k / 4) * 0.05, 0.0, 0.5); }
+  dropped := b[0].dropped;
+  fastest := 0.0;
+  for k: 0..<600 { bd_step(b); for i: 0..<12 { #assert d3_finite(s[0].pos[i]); fastest = fmax(fastest, d3_len(s[0].vel[i])); } }
+  #assert fastest < 6.0 && b[0].faults == 0 && b[0].dropped == dropped && bd_sleeping(b) == 12 && bd_test_low(b) > -0.01;
+}
+
+// A scene for the checks that follow: `n` boxes of several sizes and turns and a ball, falling into
+// a heap, under ids 10, 20, 30, ...; the ball is 5. Added in the order given (0 ascending, 1
+// descending, 2 from the middle out).
+bd_test_heap :: (b: [] Bodies, n: int, order: int) {
+  for q: 0..<n + 1 {
+    k := ifx order == 0 then q else ifx order == 1 then n - q else (q * 5) % (n + 1);
+    if k == n { i := bd_ball(b, 5, d3(0.3, 7.0, 0.2), 0.3, 40.0, 0.6, 0.55, 0.06); continue; }
+    i := bd_box(b, 10 + k * 10, d3(cast(f64) (k % 3) * 0.7, 1.0 + cast(f64) k * 0.8, cast(f64) (k % 2) * 0.3), dq_y(cast(f64) k * 0.37), d3(0.3 + cast(f64) (k % 3) * 0.1, 0.25, 0.4), 100.0, 0.5, 0.15);
+  }
+}
+// What a recorded run is made of: at a step, a mover's motion, or a body added, placed or removed.
+BdTestInput :: struct { step: int; what: int; id: int; a: D3; v: D3; }
+BD_TEST_MOVE :: 0; BD_TEST_ADD :: 1; BD_TEST_PLACE :: 2; BD_TEST_REMOVE :: 3;
+bd_test_apply :: (b: [] Bodies, x: BdTestInput) {
+  if x.what == BD_TEST_MOVE { ok := bd_mover(b, x.id, x.a, x.a.y + 1.8, 0.3, x.v, 3000.0, 2.5, 4.0); }
+  if x.what == BD_TEST_ADD { i := bd_box(b, x.id, x.a, DQ.{}, d3(0.4, 0.3, 0.5), 100.0, 0.5, 0.15); }
+  if x.what == BD_TEST_PLACE { bd_place(b, bd_index(b, x.id), x.a, dq_y(0.3)); }
+  if x.what == BD_TEST_REMOVE { gone := bd_remove(b, bd_index(b, x.id)); }
+}
+BdTestRun :: struct { b: [1] Bodies; log: [2048] BdTestInput; n: int; hash: [600] u64; }
+
+#test "bodies run in the order of their ids: the same bodies added in any order, with others removed between, give the same bits" #steps 4000000000 {
+  t: [3] BdTest;
+  for order: 0..<3 {
+    b := t[order].b[..];
+    if order == 2 {
+      // a scene used before, with bodies that are then taken out again
+      for k: 0..<5 { i := bd_test_cube(b, cast(f64) k, 0.5, 0.0, 0.4); }
+      bd_test_run(b, 20);
+      bd_reset(b);
+      extra := bd_box(b, 15, d3(9.0, 9.0, 9.0), DQ.{}, d3(1.0, 1.0, 1.0), 100.0, 0.5, 0.15);
+    }
+    bd_test_heap(b, 12, order);
+    if order == 2 { #assert bd_remove(b, bd_index(b, 15)); }
+    #assert bd_count(b) == 13 && b[0].id[0] == 5 && b[0].id[1] == 10 && b[0].id[12] == 120 && bd_index(b, 70) == 7 && bd_index(b, 71) == -1 && bd_index(b, 4) == -1 && bd_index(b, 500) == -1;
+    for i: 1..<13 { #assert b[0].id[i] > b[0].id[i - 1]; }
+  }
+  a := t[0].b[..]; c := t[1].b[..]; e := t[2].b[..];
+  #assert bd_digest(a) == bd_digest(c) && bd_digest(a) == bd_digest(e);
+  for k: 0..<300 {
+    bd_step(a); bd_step(c); bd_step(e);
+    #assert bd_digest(a) == bd_digest(c) && bd_digest(a) == bd_digest(e);
+  }
+  #assert a[0].count_m == c[0].count_m && a[0].count_w == e[0].count_w && bd_sleeping(a) == bd_sleeping(e);
+  // an id is one body's: taken, out of range, or with no room, nothing is added
+  #assert bd_box(a, 70, D3_ZERO, DQ.{}, d3(1.0, 1.0, 1.0), 100.0, 0.5, 0.15) == -1 && bd_box(a, -1, D3_ZERO, DQ.{}, d3(1.0, 1.0, 1.0), 100.0, 0.5, 0.15) == -1 && bd_box(a, BD_ID_ROOM, D3_ZERO, DQ.{}, d3(1.0, 1.0, 1.0), 100.0, 0.5, 0.15) == -1 && bd_count(a) == 13;
+  // a body added between two takes its place between them, and the others keep everything that is theirs
+  where := a[0].set[0].pos[bd_index(a, 70)]; asleep := !bd_awake(a, bd_index(a, 70));
+  #assert bd_box(a, 65, d3(20.0, 0.5, 0.0), DQ.{}, d3(0.5, 0.5, 0.5), 100.0, 0.5, 0.15) == 7 && bd_index(a, 70) == 8 && d3_eq(a[0].set[0].pos[8], where) && !bd_awake(a, 8) == asleep && bd_awake(a, 7) && a[0].half[7].x == 0.5 && a[0].id[13] == 120 && bd_box(a, BD_ID_ROOM - 1, d3(30.0, 0.5, 0.0), DQ.{}, d3(0.5, 0.5, 0.5), 100.0, 0.5, 0.15) == 14;
+}
+
+#test "a recorded run replays: the movers' motion each step and the bodies added, placed and removed, given again to a fresh scene, give the same state hash at every step" #steps 4000000000 {
+  t: [2] BdTestRun;
+  a := t[0].b[..];
+  bd_test_heap(a, 20, 0);
+  // six hundred steps: two movers walking through the heap on their own paths, and at set steps bodies added, placed again and removed
+  n := 0;
+  for k: 0..<600 {
+    u := cast(f64) k / 60.0;
+    t[0].log[n] = BdTestInput.{step = k, what = BD_TEST_MOVE, id = 2, a = d3(-4.0 + u * 1.3, 0.0, 0.2), v = d3(1.3, 0.0, 0.0)}; n += 1;
+    t[0].log[n] = BdTestInput.{step = k, what = BD_TEST_MOVE, id = 1, a = d3(0.5, 0.0, 5.0 - u * 1.1), v = d3(0.0, 0.0, -1.1)}; n += 1;
+    if k == 90 || k == 200 || k == 333 { t[0].log[n] = BdTestInput.{step = k, what = BD_TEST_ADD, id = 7 + k, a = d3(0.4, 4.0, 0.1)}; n += 1; }
+    if k == 150 { t[0].log[n] = BdTestInput.{step = k, what = BD_TEST_PLACE, id = 60, a = d3(1.0, 3.0, 1.0)}; n += 1; }
+    if k == 260 || k == 400 { t[0].log[n] = BdTestInput.{step = k, what = BD_TEST_REMOVE, id = ifx k == 260 then 30 else 97}; n += 1; }
+  }
+  t[0].n = n;
+  at := 0; moved := 0.0;
+  start := a[0].set[0].pos[bd_index(a, 10)];
+  for k: 0..<600 {
+    while at < n && t[0].log[at].step == k { bd_test_apply(a, t[0].log[at]); at += 1; }
+    bd_step(a);
+    t[0].hash[k] = bd_digest(a);
+  }
+  // the run did something: bodies came and went, the movers pushed, and the heap is not where it began
+  #assert bd_count(a) == 21 + 3 - 2 && bd_index(a, 30) == -1 && bd_index(a, 97) == -1 && bd_index(a, 207) >= 0 && a[0].count_v == 2 && a[0].movers[0].id == 1 && a[0].movers[1].id == 2;
+  #assert d3_dist(a[0].set[0].pos[bd_index(a, 10)], start) > 0.2 && a[0].faults == 0 && a[0].dropped == 0;
+  // the replay: a fresh scene, the same first bodies (added in another order), the same inputs at the same steps
+  c := t[1].b[..];
+  bd_test_heap(c, 20, 1);
+  at = 0;
+  for k: 0..<600 {
+    while at < n && t[0].log[at].step == k { bd_test_apply(c, t[0].log[at]); at += 1; }
+    bd_step(c);
+    #assert bd_digest(c) == t[0].hash[k];
+  }
+  // and the time a frame takes does not enter: the same steps made by bd_advance in uneven pieces are the same steps
+  e := t[1].b[..];
+  bd_reset(e);
+  bd_test_heap(e, 20, 2);
+  at = 0; done := 0; piece := 0;
+  while done < 600 {
+    while at < n && t[0].log[at].step == done { bd_test_apply(e, t[0].log[at]); at += 1; }
+    // a third of a step, then two thirds, then a third again...: every whole step comes out one at a time
+    made := bd_advance(e, e[0].dt * (ifx piece % 2 == 0 then 0.34 else 0.67)); piece += 1;
+    if made == 1 { #assert bd_digest(e) == t[0].hash[done]; done += 1; }
+    #assert made <= 1;
+  }
+  // one input left out, and the hashes part
+  g := t[1].b[..];
+  bd_reset(g);
+  bd_test_heap(g, 20, 0);
+  at = 0; same := true;
+  for k: 0..<200 {
+    while at < n && t[0].log[at].step == k { if !(k == 120 && t[0].log[at].id == 2) { bd_test_apply(g, t[0].log[at]); } at += 1; }
+    bd_step(g);
+    if bd_digest(g) != t[0].hash[k] { same = false; #assert k >= 120; }
+  }
+  #assert !same;
+}
+
+#test "two movers push one block from two sides: taken in id order whichever was named first, the stronger wins, equal ones hold it, and each says what it pushed" #steps 4000000000 {
+  t: [2] BdTest;
+  for run: 0..<2 {
+    b := t[run].b[..];
+    i := bd_box(b, 40, d3(0.0, 0.5, 0.0), DQ.{}, d3(0.5, 0.5, 0.5), 100.0, 0.5, 0.15);
+    j := bd_box(b, 50, d3(9.0, 0.5, 0.0), DQ.{}, d3(0.5, 0.5, 0.5), 100.0, 0.5, 0.15);
+    bd_test_run(b, 60);
+  }
+  a := t[0].b[..]; c := t[1].b[..]; s := a[0].set[..];
+  for k: 0..<180 {
+    // mover 7 walks at it from -z with 3000 N, mover 3 from +z with 2000 N; each stops at its face as a character would
+    z := s[0].pos[0].z;
+    #assert bd_mover(a, 7, d3(0.0, 0.0, z - 0.82), 1.8, 0.3, d3(0.0, 0.0, 3.0), 3000.0, 2.5, 0.0) && bd_mover(a, 3, d3(0.1, 0.0, z + 0.82), 1.8, 0.3, d3(0.0, 0.0, -3.0), 2000.0, 2.5, 0.0);
+    #assert bd_mover(c, 3, d3(0.1, 0.0, z + 0.82), 1.8, 0.3, d3(0.0, 0.0, -3.0), 2000.0, 2.5, 0.0) && bd_mover(c, 7, d3(0.0, 0.0, z - 0.82), 1.8, 0.3, d3(0.0, 0.0, 3.0), 3000.0, 2.5, 0.0);
+    bd_step(a); bd_step(c);
+    #assert bd_digest(a) == bd_digest(c);
+  }
+  // in id order: 3 then 7, in both scenes; both touch the block (id 40), neither the one far off
+  #assert a[0].count_v == 2 && a[0].movers[0].id == 3 && a[0].movers[1].id == 7 && c[0].movers[0].id == 3 && bd_mover_index(a, 7) == 1 && bd_mover_index(a, 4) == -1;
+  #assert a[0].movers[0].touching == 40 && a[0].movers[1].touching == 40 && !bd_awake(a, 1) && d3_eq(s[0].pos[1], c[0].set[0].pos[1]);
+  // the block goes the stronger one's way, slower than that one alone would shove it (2.09 m/s), and the weaker pushes all it has against it
+  #assert s[0].vel[0].z > 0.2 && s[0].vel[0].z < 1.5 && s[0].pos[0].z > 0.5 && near_d(a[0].movers[0].pushed, 2000.0 / 60.0, 0.01) && a[0].movers[1].pushed > a[0].movers[0].pushed + 490.5 / 60.0 - 0.5;
+  // 3000 N less its share lost to the block's speed, against 2000 N and 490.5 N of friction: 3000 (1 - v / 2.5) = 2490.5
+  #assert near_d(s[0].vel[0].z, 2.5 * (1.0 - 2490.5 / 3000.0), 0.01);
+  // equal movers: it stays where it is, pressed from both sides, awake while they push
+  bd_place(a, 0, d3(0.0, 0.5, 0.0), DQ.{});
+  for k: 0..<120 {
+    ok := bd_mover(a, 7, d3(0.0, 0.0, -0.82), 1.8, 0.3, d3(0.0, 0.0, 3.0), 3000.0, 2.5, 0.0) && bd_mover(a, 3, d3(0.0, 0.0, 0.82), 1.8, 0.3, d3(0.0, 0.0, -3.0), 3000.0, 2.5, 0.0);
+    bd_step(a);
+  }
+  #assert abs(s[0].pos[0].z) < 0.01 && abs(s[0].vel[0].z) < 0.01 && bd_awake(a, 0) && a[0].movers[0].pushed > 10.0 && near_d(a[0].movers[0].pushed, a[0].movers[1].pushed, 0.5);
+  // one gone: the other has it to itself, and is the first mover now; no more than eight at once
+  bd_mover_off(a, 3); bd_mover_off(a, 99);
+  #assert a[0].count_v == 1 && a[0].movers[0].id == 7;
+  for k: 0..<60 { ok := bd_mover(a, 7, d3(0.0, 0.0, s[0].pos[0].z - 0.82), 1.8, 0.3, d3(0.0, 0.0, 3.0), 3000.0, 2.5, 0.0); bd_step(a); }
+  #assert s[0].pos[0].z > 0.5 && a[0].movers[0].touching == 40;
+  for k: 0..<7 { #assert bd_mover(a, 100 - k, D3_ZERO, 1.8, 0.3, D3_ZERO, 1.0, 1.0, 0.0); }
+  #assert a[0].count_v == BD_MOVERS && !bd_mover(a, 200, D3_ZERO, 1.8, 0.3, D3_ZERO, 1.0, 1.0, 0.0) && a[0].movers[0].id == 7 && a[0].movers[1].id == 94 && a[0].movers[7].id == 100;
+  bd_reset(a);
+  #assert a[0].count_v == 0;
+}
+
+#test "local bodies are decoration: the shared bodies push them, rest under them and sleep, and their own state is the same bits with any local bodies or none" #steps 4000000000 {
+  t: [2] BdTest;
+  a := t[0].b[..]; c := t[1].b[..];
+  bd_test_heap(a, 10, 0); bd_test_heap(c, 10, 0);
+  // into the second scene, debris: twenty small boxes and balls among and above the heap, their ids between the shared ones'
+  for k: 0..<20 {
+    i := -1;
+    if k % 2 == 0 { i = bd_box(c, 11 + k * 5, d3(cast(f64) (k % 4) * 0.5 - 0.3, 0.6 + cast(f64) k * 0.5, 0.1), dq_y(cast(f64) k), d3(0.12, 0.08, 0.1), 100.0, 0.5, 0.15); }
+    else { i = bd_ball(c, 11 + k * 5, d3(cast(f64) (k % 3) * 0.4, 0.8 + cast(f64) k * 0.5, 0.3), 0.1, 40.0, 0.6, 0.55, 0.06); }
+    #assert i >= 0;
+    bd_local(c, i, true);
+  }
+  #assert bd_count(c) == 31 && bd_shared(c) == 11 && bd_shared(a) == 11 && c[0].local[bd_index(c, 11)] && !c[0].local[bd_index(c, 10)] && bd_digest_shared(a) == bd_digest_shared(c) && bd_digest(a) != bd_digest(c);
+  touched := 0; most := 0;
+  for k: 0..<400 {
+    // a mover walks through both
+    ok := bd_mover(a, 1, d3(-3.0 + cast(f64) k * 0.02, 0.0, 0.2), 1.8, 0.3, d3(1.2, 0.0, 0.0), 3000.0, 2.5, 4.0) && bd_mover(c, 1, d3(-3.0 + cast(f64) k * 0.02, 0.0, 0.2), 1.8, 0.3, d3(1.2, 0.0, 0.0), 3000.0, 2.5, 4.0);
+    bd_step(a); bd_step(c);
+    #assert bd_digest_shared(a) == bd_digest_shared(c);
+    touched += c[0].count_l; if c[0].count_l > most { most = c[0].count_l; }
+  }
+  // the debris was in it: it touched shared bodies and the ground thousands of times, never more than its room, and none of it
+  // went through the ground (what a shared body lands on is pressed into it and lifted back: decoration gives way)
+  #assert touched > 2000 && most > 10 && most <= BD_LOCAL_ROOM && bd_test_low(c) > -BD_SINK - 1e-9 && c[0].faults == 0 && a[0].lifted == 0;
+  // the mover gone, the shared bodies sleep when they would alone, whatever lies on them
+  bd_mover_off(a, 1); bd_mover_off(c, 1);
+  for k: 0..<200 { bd_step(a); bd_step(c); #assert bd_digest_shared(a) == bd_digest_shared(c); }
+  #assert bd_sleeping(a) == 11;
+  for i: 0..<bd_count(c) { if !c[0].local[i] { #assert !bd_awake(c, i); } }
+  // a local ball thrown at a sleeping shared box bounces off it and leaves it asleep, unmoved; thrown at a local box it wakes and moves that
+  bd_reset(a);
+  box := bd_box(a, 1, d3(0.0, 0.5, 0.0), DQ.{}, d3(0.5, 0.5, 0.5), 100.0, 0.5, 0.15);
+  dust := bd_box(a, 2, d3(0.0, 0.2, 3.0), DQ.{}, d3(0.2, 0.2, 0.2), 100.0, 0.5, 0.15);
+  bd_local(a, dust, true);
+  bd_test_run(a, 60);
+  s := a[0].set[..];
+  #assert bd_sleeping(a) == 2 && a[0].label[box] != a[0].label[dust];
+  where := s[0].pos[box];
+  shot := bd_ball(a, 3, d3(-3.0, 0.5, 0.0), 0.2, 400.0, 0.6, 0.5, 0.0);
+  bd_local(a, shot, true);
+  s[0].vel[shot] = d3(9.0, 0.0, 0.0);
+  bd_test_run(a, 40);
+  #assert !bd_awake(a, box) && d3_eq(s[0].pos[box], where) && s[0].vel[shot].x < -1.0 && s[0].pos[shot].x < -0.7;
+  bd_place(a, shot, d3(0.0, 0.3, 0.5), DQ.{});
+  s[0].vel[shot] = d3(0.0, 0.0, 9.0);
+  bd_test_run(a, 40);
+  #assert s[0].pos[dust].z > 3.2 && !bd_awake(a, box) && d3_eq(s[0].pos[box], where);
+  // the same ball shared: it knocks the shared box on
+  bd_local(a, shot, false);
+  bd_place(a, shot, d3(-3.0, 0.5, 0.0), DQ.{});
+  s[0].vel[shot] = d3(9.0, 0.0, 0.0);
+  bd_test_run(a, 40);
+  #assert s[0].pos[box].x > 0.02;
+  // a local body resting on a shared one is held up by it, and sleeps there, while the shared one sleeps under it
+  bd_reset(a);
+  box = bd_box(a, 1, d3(0.0, 0.5, 0.0), DQ.{}, d3(0.5, 0.5, 0.5), 100.0, 0.5, 0.15);
+  bd_test_run(a, 60);
+  dust = bd_box(a, 2, d3(0.1, 1.5, 0.0), DQ.{}, d3(0.2, 0.2, 0.2), 100.0, 0.5, 0.15);
+  bd_local(a, dust, true);
+  bd_test_run(a, 120);
+  #assert bd_sleeping(a) == 2 && near_d(s[0].pos[dust].y, 1.2, 0.002) && near_d(s[0].pos[box].y, 0.5, 0.001);
+}
+
+#test "the snapshot is the shared bodies and nothing else, in a fixed record each: read into a fresh scene and into the one that wrote it, both go on bit for bit the same" #steps 4000000000 {
+  t: [3] BdTest; bytes: [8192] u8;
+  a := t[0].b[..];
+  bd_test_heap(a, 14, 0);
+  dust := bd_box(a, 33, d3(0.2, 9.0, 0.2), DQ.{}, d3(0.1, 0.1, 0.1), 100.0, 0.5, 0.15);
+  bd_local(a, dust, true);
+  for k: 0..<230 { ok := bd_mover(a, 1, d3(-2.0 + cast(f64) k * 0.02, 0.0, 0.2), 1.8, 0.3, d3(1.2, 0.0, 0.0), 3000.0, 2.5, 4.0); bd_step(a); }
+  // some of the shared ones asleep, some not
+  asleep := bd_sleeping(a) - (ifx bd_awake(a, bd_index(a, 33)) then 0 else 1);
+  n := bd_snapshot_write(a, bytes[..]);
+  // 24 bytes of header and 112 a shared body: 15 of them, the local one left out
+  #assert n == 24 + 15 * 112 && n == bd_snapshot_size(a) && BD_SNAPSHOT_HEAD == 24 && BD_SNAPSHOT_RECORD == 112 && bd_snapshot_write(a, bytes[0..<n - 1]) == 0;
+  // the header: "BDS1", version 1, the record's size, the step, the count
+  #assert bytes[0] == 'B' && bytes[1] == 'D' && bytes[2] == 'S' && bytes[3] == '1' && bytes[4] == 1 && bytes[5] == 0 && bytes[6] == 112 && bytes[7] == 0 && bd_get(bytes[..], 8, 8) == 230 && bd_get(bytes[..], 16, 4) == 15 && bd_get(bytes[..], 20, 4) == 0;
+  // the first record: the ball, id 5, then its state in f64, little-endian; the records are in id order
+  s := a[0].set[..];
+  #assert bd_get(bytes[..], 24, 4) == 5 && f64_from_bits(bd_get(bytes[..], 24 + 8, 8)) == s[0].pos[0].x && f64_from_bits(bd_get(bytes[..], 24 + 24, 8)) == s[0].pos[0].z && f64_from_bits(bd_get(bytes[..], 24 + 56, 8)) == s[0].att[0].w && f64_from_bits(bd_get(bytes[..], 24 + 72, 8)) == s[0].vel[0].y && f64_from_bits(bd_get(bytes[..], 24 + 104, 8)) == s[0].omega[0].z;
+  #assert bd_get(bytes[..], 24 + 112, 4) == 10 && bd_get(bytes[..], 24 + 14 * 112, 4) == 140;
+  // a sleeping body's group is not 0, and bodies that sleep together share it
+  groups := 0;
+  for r: 0..<15 { g := cast(int) bd_get(bytes[..], 24 + r * 112 + 4, 4); i := bd_index(a, cast(int) bd_get(bytes[..], 24 + r * 112, 4)); #assert (g == 0) == bd_awake(a, i); if g > groups { groups = g; } }
+  #assert asleep > 0 && asleep < 15 && groups >= 1 && groups <= asleep;
+  // a fresh scene with the same shared bodies somewhere else entirely (and its own decoration), and the writer itself: both read it
+  c := t[1].b[..];
+  for k: 0..<3 { i := bd_test_cube(c, cast(f64) k * 2.0, 0.5, 5.0, 0.3); }
+  bd_test_run(c, 40);
+  bd_reset(c);
+  bd_test_heap(c, 14, 1);
+  for i: 0..<bd_count(c) { bd_place(c, i, d3(cast(f64) i * 3.0, 20.0, -40.0), dq_x(0.4)); }
+  other := bd_box(c, 34, d3(50.0, 0.5, 0.0), DQ.{}, d3(0.1, 0.1, 0.1), 100.0, 0.5, 0.15);
+  bd_local(c, other, true);
+  e := t[2].b[..];
+  e[0] = a[0];   // the scene that wrote it, as it goes on untouched
+  #assert bd_snapshot_read(c, bytes[0..<n]) == 15 && bd_snapshot_read(a, bytes[0..<n]) == 15;
+  #assert c[0].steps == 230 && bd_digest_shared(c) == bd_digest_shared(a) && bd_digest_shared(c) == bd_digest_shared(e) && bd_sleeping(c) == asleep + (ifx bd_awake(c, bd_index(c, 34)) then 0 else 1) && c[0].count_w == 0 && c[0].acc == 0.0;
+  // sleepers that slept together wake together there too
+  for i: 0..<bd_count(a) { for j: 0..<bd_count(a) { if !a[0].local[i] && !a[0].local[j] && !bd_awake(a, i) && !bd_awake(a, j) { #assert (e[0].label[i] == e[0].label[j]) == (c[0].label[bd_index(c, a[0].id[i])] == c[0].label[bd_index(c, a[0].id[j])]); } } }
+  apart := 0.0;
+  for k: 0..<300 {
+    ok := bd_mover(a, 1, d3(2.6 + cast(f64) k * 0.02, 0.0, 0.2), 1.8, 0.3, d3(1.2, 0.0, 0.0), 3000.0, 2.5, 4.0) && bd_mover(c, 1, d3(2.6 + cast(f64) k * 0.02, 0.0, 0.2), 1.8, 0.3, d3(1.2, 0.0, 0.0), 3000.0, 2.5, 4.0) && bd_mover(e, 1, d3(2.6 + cast(f64) k * 0.02, 0.0, 0.2), 1.8, 0.3, d3(1.2, 0.0, 0.0), 3000.0, 2.5, 4.0);
+    bd_step(a); bd_step(c); bd_step(e);
+    #assert bd_digest_shared(a) == bd_digest_shared(c) && a[0].steps == c[0].steps;
+    if k == 20 { for i: 0..<bd_count(a) { if !a[0].local[i] { apart = fmax(apart, d3_dist(a[0].set[0].pos[i], e[0].set[0].pos[i])); } } }
+  }
+  // the scene that went on without reading had its contacts warm: a third of a second on it is within 3 cm of the two that read
+  #assert apart < 0.03 && a[0].faults == 0 && c[0].faults == 0;
+  // a record whose body the reader has not got, or has as a local one, is passed over
+  gone := bd_remove(c, bd_index(c, 70));
+  bd_local(c, bd_index(c, 80), true);
+  kept := c[0].set[0].pos[bd_index(c, 80)];
+  #assert bd_snapshot_read(c, bytes[0..<n]) == 13 && d3_eq(c[0].set[0].pos[bd_index(c, 80)], kept) && c[0].steps == 230;
+  // bytes that are not a snapshot change nothing: short, another magic, another version, a record too small, more records than bytes
+  before := bd_digest(c);
+  bad := bytes;
+  #assert bd_snapshot_read(c, bytes[0..<23]) == -1 && bd_snapshot_read(c, bytes[0..<n - 1]) == -1;
+  bad[0] = 'X'; #assert bd_snapshot_read(c, bad[0..<n]) == -1; bad[0] = 'B';
+  bad[4] = 2; #assert bd_snapshot_read(c, bad[0..<n]) == -1; bad[4] = 1;
+  bad[6] = 111; #assert bd_snapshot_read(c, bad[0..<n]) == -1; bad[6] = 112;
+  bad[16] = 65; #assert bd_snapshot_read(c, bad[0..<n]) == -1; bad[16] = 16; #assert bd_snapshot_read(c, bad[0..<n]) == -1;
+  #assert bd_digest(c) == before && c[0].steps == 230;
+  // a later version's longer record is stepped over by its size
+  wide: [8192] u8;
+  for k: 0..<24 { wide[k] = bytes[k]; }
+  wide[6] = 120;
+  for r: 0..<15 { for k: 0..<112 { wide[24 + r * 120 + k] = bytes[24 + r * 112 + k]; } }
+  #assert bd_snapshot_read(a, wide[0..<24 + 15 * 120]) == 15 && bd_snapshot_read(a, wide[0..<24 + 15 * 120 - 1]) == -1;
+}
+
+BdTestPast :: struct { b: [1] Bodies; h: [1] Bd_History; hash: [400] u64; }
+#test "the history keeps a second of steps: where a body was at a step and between two, and a rewind to a stored step from which the same steps come out bit for bit" #steps 4000000000 {
+  t: [1] BdTestPast;
+  b := t[0].b[..]; h := t[0].h[..]; s := b[0].set[..];
+  bd_test_heap(b, 14, 0);
+  bd_record(b, h);
+  #assert bd_has(h, 0) && !bd_has(h, 1) && !bd_has(h, -64) && bd_at(h, 5, 0).ok && d3_eq(bd_at(h, 5, 0).pos, d3(0.3, 7.0, 0.2)) && !bd_at(h, 6, 0).ok && !bd_at(h, 5, 1).ok;
+  ball_at: [400] D3;
+  for k: 0..<300 {
+    ok := bd_mover(b, 1, d3(-3.0 + cast(f64) k * 0.02, 0.0, 0.2), 1.8, 0.3, d3(1.2, 0.0, 0.0), 3000.0, 2.5, 4.0);
+    bd_step(b);
+    bd_record(b, h);
+    t[0].hash[b[0].steps] = bd_digest(b);
+    ball_at[b[0].steps] = s[0].pos[0];
+  }
+  // the last 64 steps are there, each as it was; older ones are gone
+  #assert b[0].steps == 300 && bd_has(h, 300) && bd_has(h, 237) && !bd_has(h, 236) && !bd_has(h, 301) && BD_HISTORY == 64;
+  for k: 237..<301 { st := bd_at(h, 5, k); #assert st.ok && d3_eq(st.pos, ball_at[k]) && bd_exact(h, k) == (k > 300 - BD_REWIND); }
+  now := bd_at(h, 140, 300);
+  i := bd_index(b, 140);
+  #assert now.ok && d3_eq(now.pos, s[0].pos[i]) && d3_eq(now.vel, s[0].vel[i]) && d3_eq(now.omega, s[0].omega[i]) && now.att.w == s[0].att[i].w && now.att.y == s[0].att[i].y && now.asleep == !bd_awake(b, i) && !bd_at(h, 141, 300).ok && !bd_at(h, 4, 300).ok && !bd_at(h, 999, 300).ok;
+  // between two steps: on the line between them, at the ends the steps themselves, and none past the last step kept
+  mid := bd_between(h, 5, 250, 0.25);
+  #assert mid.ok && near_d(mid.pos.x, ball_at[250].x + (ball_at[251].x - ball_at[250].x) * 0.25, 1e-12) && near_d(mid.pos.z, ball_at[250].z * 0.75 + ball_at[251].z * 0.25, 1e-12);
+  #assert d3_eq(bd_between(h, 5, 250, 0.0).pos, ball_at[250]) && d3_dist(bd_between(h, 5, 250, 1.0).pos, ball_at[251]) < 1e-12 && d3_eq(bd_between(h, 5, 250, -3.0).pos, ball_at[250]) && d3_dist(bd_between(h, 5, 250, 7.0).pos, ball_at[251]) < 1e-12 && !bd_between(h, 5, 300, 0.5).ok && !bd_between(h, 5, 236, 0.5).ok;
+  q := bd_between(h, 5, 250, 0.5).att;
+  #assert near_d(q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w, 1.0, 1e-12) && near_d(bd_between(h, 5, 250, 0.5).vel.x, (bd_at(h, 5, 250).vel.x + bd_at(h, 5, 251).vel.x) * 0.5, 1e-12);
+  // rollback: back to step 285 (the oldest kept whole), and the same movers again: steps 286 to 300 come out with the hashes they had
+  #assert BD_REWIND == 16 && bd_exact(h, 284) == false && bd_rewind(b, h, 285) && b[0].steps == 285 && b[0].acc == 0.0 && bd_digest(b) == t[0].hash[285] && d3_eq(s[0].pos[0], ball_at[285]) && b[0].count_w > 0;
+  for k: 285..<300 {
+    ok := bd_mover(b, 1, d3(-3.0 + cast(f64) k * 0.02, 0.0, 0.2), 1.8, 0.3, d3(1.2, 0.0, 0.0), 3000.0, 2.5, 4.0);
+    bd_step(b);
+    #assert bd_digest(b) == t[0].hash[b[0].steps];
+  }
+  // back to an older step, kept without its contact impulses: the state is that step's exactly, and the steps after it agree closely with the first run, not to the bit
+  #assert bd_rewind(b, h, 250) && bd_digest(b) == t[0].hash[250] && b[0].count_w == 0;
+  for k: 250..<300 { ok := bd_mover(b, 1, d3(-3.0 + cast(f64) k * 0.02, 0.0, 0.2), 1.8, 0.3, d3(1.2, 0.0, 0.0), 3000.0, 2.5, 4.0); bd_step(b); }
+  #assert d3_dist(s[0].pos[0], ball_at[300]) < 0.05;
+  // back again, and a different push this time: the steps differ from the first run's, as they should
+  #assert bd_rewind(b, h, 290);
+  bd_impulse(b, 0, d3(0.0, 0.0, 30.0), s[0].pos[0]);
+  for k: 290..<300 { ok := bd_mover(b, 1, d3(-3.0 + cast(f64) k * 0.02, 0.0, 0.2), 1.8, 0.3, d3(1.2, 0.0, 0.0), 3000.0, 2.5, 4.0); bd_step(b); bd_record(b, h); }
+  #assert bd_digest(b) != t[0].hash[300] && d3_eq(bd_at(h, 5, 300).pos, s[0].pos[0]);
+  // a step the history has not got, or a scene whose bodies are not the ones of that step, is not rewound to: nothing changes
+  before := bd_digest(b);
+  #assert !bd_rewind(b, h, 200) && !bd_rewind(b, h, 301) && bd_digest(b) == before;
+  extra := bd_box(b, 77, d3(40.0, 0.5, 0.0), DQ.{}, d3(0.5, 0.5, 0.5), 100.0, 0.5, 0.15);
+  #assert !bd_rewind(b, h, 290) && b[0].steps == 300;
+  #assert bd_remove(b, extra) && bd_remove(b, bd_index(b, 60));
+  other := bd_box(b, 61, d3(40.0, 0.5, 0.0), DQ.{}, d3(0.5, 0.5, 0.5), 100.0, 0.5, 0.15);
+  #assert !bd_rewind(b, h, 290) && b[0].steps == 300;
+  // bd_advance_kept is bd_advance that records each step it makes
+  bd_reset(b);
+  j0 := bd_test_cube(b, 0.0, 9.0, 0.0, 0.5);
+  #assert bd_advance_kept(b, h, 0.5 / 60.0) == 0 && bd_advance_kept(b, h, -1.0) == 0 && !bd_has(h, 1) && bd_advance_kept(b, h, 2.0 / 60.0) == 2 && near_d(b[0].acc, 0.5 / 60.0, 1e-12) && bd_has(h, 1) && bd_has(h, 2) && !bd_has(h, 3);
+  #assert d3_eq(bd_at(h, 1, 2).pos, s[0].pos[0]) && bd_at(h, 1, 1).pos.y > s[0].pos[0].y && bd_advance_kept(b, h, 1.0) == BD_STEPS_MAX && b[0].acc == 0.0 && bd_has(h, 6) && near_d(s[0].pos[0].y, 9.0 - 9.81 / 3600.0 * 21.0, 1e-9);
+  // a step with more contact impulses than a frame keeps is kept without them, and says so
+  bd_reset(b);
+  for k: 0..<40 { j := bd_box(b, k + 1, d3(cast(f64) (k % 8) * 0.9, 0.3 + cast(f64) (k / 8) * 0.6, 0.0), DQ.{}, d3(0.5, 0.3, 0.5), 100.0, 0.5, 0.15); }
+  bd_test_run(b, 5);
+  bd_record(b, h);
+  #assert b[0].count_w > BD_HISTORY_WARM && bd_has(h, 5) && !bd_exact(h, 5) && !bd_exact(h, 7) && bd_rewind(b, h, 5) && b[0].count_w == 0;
+}
