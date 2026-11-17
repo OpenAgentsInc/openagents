@@ -24,6 +24,15 @@ inputs on expiry, and closes only its dedicated browser session if the owner
 dies. No input may remain held during model/network waits. Recorders capture
 real-time presented frames, preserve receipt timing in ffconcat, and honor
 `record.pause`/`record.stop`; credentials must be entered before recording.
+`record.suspend` instead releases the screencast itself and acknowledges with
+`record.suspended`. Removing the request restarts capture and removes the
+acknowledgement. Chromium capture keeps pages visible, so this handshake is
+required before testing real background visibility/focus loss. The recorder
+keeps wall-clock receipt timing and writes `capture-lifecycle.jsonl`; encoded
+video holds its last visible frame during that explicitly logged interval.
+`record.pause` alone drops frames while retaining capture, for privacy rather
+than lifecycle. The headless `player-record-check.coax` fixture proves actual
+hidden/restored states with capture suspended, then clean recording completion.
 Caller orchestration owns budgets, account leases, retention, assertions,
 encoding and qualification. These helpers do not constitute a passing test.
 

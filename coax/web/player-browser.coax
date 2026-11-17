@@ -195,12 +195,22 @@ pb_record_with :: (url:string,dir:string,budget_ms:int,frame_ms:int)->int {
   _ := cdp_call(c[..],"Page.enable","{}",PB_CALL_MS);
   _ := cdp_call(c[..],"Network.enable","{}",PB_CALL_MS);
   _ := cdp_call(c[..],"Runtime.enable","{}",PB_CALL_MS);
-  id := cdp_send(c[..],"Page.startScreencast","{\"format\":\"jpeg\",\"quality\":65,\"maxWidth\":1440,\"maxHeight\":900,\"everyNthFrame\":2}");
+  capture_options := "{\"format\":\"jpeg\",\"quality\":65,\"maxWidth\":1440,\"maxHeight\":900,\"everyNthFrame\":2}";
+  if cdp_call(c[..],"Page.startScreencast",capture_options,PB_CALL_MS)<0 {cdp_shut(c[..]);return 1;}
   png: [4194304] u8; p: [4096] u8; frame: [64] u8; buf: [8192] u8;
   script := fs_join(dir,"capture.ffconcat",p[..]); _ := fs_write(script,"ffconcat version 1.0\n");
-  count := 0; last := 0; began := proc_now_ms();total_bytes:=0;completed:=false;
+  count := 0; last := 0; began := proc_now_ms();total_bytes:=0;completed:=false;active:=true;
   while proc_now_ms()-began<budget_ms {
     stop: [4096] u8; if fs_exists(fs_join(dir,"record.stop",stop[..])) {completed=true;break;}
+    // Capturing makes Chromium keep a page visible. A lifecycle journey must
+    // release that capture, not merely discard frames, before hiding a page.
+    suspend:[4096]u8;ack:[4096]u8;wanted:=!fs_exists(fs_join(dir,"record.suspend",suspend[..]));
+    acknowledged:=fs_join(dir,"record.suspended",ack[..]);
+    if wanted!=active {
+      if cdp_call(c[..],ifx wanted then "Page.startScreencast" else "Page.stopScreencast",ifx wanted then capture_options else "{}",PB_CALL_MS)<0 {cdp_shut(c[..]);return 1;}
+      active=wanted;if active {_:=fs_remove(acknowledged);}else if !fs_write(acknowledged,"capture released") {cdp_shut(c[..]);return 1;}
+      event:[256]u8;ev:[1]Jo;jo_start(ev[..],event[..]);jo_obj(ev[..]);jo_key(ev[..],"at_ms");jo_int(ev[..],proc_now_ms()-began);jo_key(ev[..],"state");jo_str(ev[..],ifx active then "recording" else "suspended");jo_end(ev[..]);file:[4096]u8;_=fs_append(fs_join(dir,"capture-lifecycle.jsonl",file[..]),jo_text(ev[..]));_=fs_append(fs_join(dir,"capture-lifecycle.jsonl",file[..]),"\n");
+    }
     k := cdp_poll(c[..],200); if k == CDP_CLOSED || k == CDP_FAIL { break; } if k != CDP_GOT { continue; }
     d := cdp_doc(c[..]); method:=cdp_event_method(d);
     if method != "Page.screencastFrame" {
@@ -218,7 +228,7 @@ pb_record_with :: (url:string,dir:string,budget_ms:int,frame_ms:int)->int {
     jo_start(o[..],a[..]); jo_obj(o[..]); jo_key(o[..],"sessionId"); jo_int(o[..],sid); jo_end(o[..]);
     data := jv_raw(d,jv_path(d,0,"params.data")); now := proc_now_ms();
     pause:[4096]u8;paused:=fs_exists(fs_join(dir,"record.pause",pause[..]));
-    if !paused && (last == 0 || now-last>=frame_ms) {
+    if active && !paused && (last == 0 || now-last>=frame_ms) {
       n := b64_decode(data,png[..]); fn := ws_put(frame[..],0,"frame-"); fn = pb_decimal(frame[..],fn,count); fn = ws_put(frame[..],fn,".jpg");
       name := cast(string)frame[0..<fn];
       if n<=0 || !pb_capture_frame(dir,name,png[0..<n],ifx last>0 then now-last else -1) { cdp_shut(c[..]); return 1; }
