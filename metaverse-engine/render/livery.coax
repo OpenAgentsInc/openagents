@@ -57,11 +57,11 @@ livery_group :: (j: int) -> int {
 // the back is the pack.
 livery_refine :: (part: int, dx: f32, dy: f32, dz: f32) -> int {
   if part == LIVERY_CAP {
-    if dz > 0.035 && dy < 0.045 { return LIVERY_SKIN; }
+    if dz > 0.015 && dy < 0.045 { return LIVERY_SKIN; }
     if abs(dx) < 0.024 && dy > 0.02 { return LIVERY_STRIPE; }
     return LIVERY_CAP;
   }
-  if part == LIVERY_JACKET && dz < -0.06 && abs(dx) < 0.16 && dy > -0.2 { return LIVERY_PACK; }
+  if part == LIVERY_JACKET && dz < -0.04 && abs(dx) < 0.16 && dy > -0.2 { return LIVERY_PACK; }
   return part;
 }
 // How much a part swells about its group's middle: the head a third, the hands more, the feet a quarter.
@@ -118,16 +118,16 @@ engine_livery_rim :: (ndv: f32) -> f32 { return LIVERY_RIM * smoothstep(0.45, 0.
 #test "a part refined: the face under the cap, a stripe over it, a pack on the jacket's back" {
   #assert livery_refine(LIVERY_CAP, 0.05, 0.0, 0.08) == LIVERY_SKIN && livery_refine(LIVERY_CAP, 0.05, 0.05, 0.08) == LIVERY_CAP;
   #assert livery_refine(LIVERY_CAP, 0.0, 0.06, 0.0) == LIVERY_STRIPE && livery_refine(LIVERY_CAP, 0.03, 0.06, 0.0) == LIVERY_CAP && livery_refine(LIVERY_CAP, 0.01, 0.01, -0.05) == LIVERY_CAP;
-  #assert livery_refine(LIVERY_CAP, 0.05, 0.0, 0.03) == LIVERY_CAP && livery_refine(LIVERY_CAP, -0.02, 0.025, 0.0) == LIVERY_STRIPE;
-  #assert livery_refine(LIVERY_JACKET, 0.0, 0.0, -0.08) == LIVERY_PACK && livery_refine(LIVERY_JACKET, 0.0, 0.0, -0.05) == LIVERY_JACKET;
-  #assert livery_refine(LIVERY_JACKET, 0.2, 0.0, -0.08) == LIVERY_JACKET && livery_refine(LIVERY_JACKET, 0.0, -0.25, -0.08) == LIVERY_JACKET && livery_refine(LIVERY_JACKET, -0.15, -0.19, -0.07) == LIVERY_PACK;
+  #assert livery_refine(LIVERY_CAP, 0.05, 0.0, 0.01) == LIVERY_CAP && livery_refine(LIVERY_CAP, -0.02, 0.025, 0.0) == LIVERY_STRIPE;
+  #assert livery_refine(LIVERY_JACKET, 0.0, 0.0, -0.08) == LIVERY_PACK && livery_refine(LIVERY_JACKET, 0.0, 0.0, -0.03) == LIVERY_JACKET;
+  #assert livery_refine(LIVERY_JACKET, 0.2, 0.0, -0.08) == LIVERY_JACKET && livery_refine(LIVERY_JACKET, 0.0, -0.25, -0.08) == LIVERY_JACKET && livery_refine(LIVERY_JACKET, -0.15, -0.19, -0.05) == LIVERY_PACK;
   #assert livery_refine(LIVERY_BOOT, 0.0, 0.0, -0.08) == LIVERY_BOOT && livery_refine(LIVERY_LEGS, 0.0, 0.06, 0.0) == LIVERY_LEGS;
 }
 
 #test "a part's edges: just at a bound, the part it was" {
-  #assert livery_refine(LIVERY_CAP, 0.05, 0.0, 0.035) == LIVERY_CAP && livery_refine(LIVERY_CAP, 0.05, 0.045, 0.08) == LIVERY_CAP;
+  #assert livery_refine(LIVERY_CAP, 0.05, 0.0, 0.015) == LIVERY_CAP && livery_refine(LIVERY_CAP, 0.05, 0.045, 0.08) == LIVERY_CAP;
   #assert livery_refine(LIVERY_CAP, 0.024, 0.06, 0.0) == LIVERY_CAP && livery_refine(LIVERY_CAP, 0.0, 0.02, 0.0) == LIVERY_CAP;
-  #assert livery_refine(LIVERY_JACKET, 0.0, 0.0, -0.06) == LIVERY_JACKET && livery_refine(LIVERY_JACKET, 0.16, 0.0, -0.08) == LIVERY_JACKET && livery_refine(LIVERY_JACKET, 0.0, -0.2, -0.08) == LIVERY_JACKET;
+  #assert livery_refine(LIVERY_JACKET, 0.0, 0.0, -0.04) == LIVERY_JACKET && livery_refine(LIVERY_JACKET, 0.16, 0.0, -0.08) == LIVERY_JACKET && livery_refine(LIVERY_JACKET, 0.0, -0.2, -0.08) == LIVERY_JACKET;
 }
 
 #test "every colour of every part in each livery, as written" {
