@@ -799,3 +799,7 @@ not complete G3, physical-phone G4 acceptance or production desktop adoption.
 
 The science-fiction hotbar uses at least 44 × 44 CSS pixel slots in narrow
 windows, preserving touch targets while its flex layout wraps when necessary.
+
+Narrow hotbar option lists are centered over the complete bar and wrap inside
+a 16-pixel viewport margin. Coarse-pointer option controls retain a minimum
+44-pixel target while larger skin sizes remain effective.

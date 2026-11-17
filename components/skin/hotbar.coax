@@ -121,6 +121,10 @@ hb_css :: (s: HbSkin, out: [] u8, from: int) -> int {
   n = hb_put(out, n, ".hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, " .hb-a-sphere{display:block;width:"); n = hb_px(out, n, s.glyph_size);
   n = hb_put(out, n, ";height:"); n = hb_px(out, n, s.glyph_size); n = hb_put(out, n, ";border-radius:50%;background:radial-gradient(circle at 34% 30%,"); n = hb_put(out, n, s.lit);
   n = hb_put(out, n, " 0,"); n = hb_put(out, n, s.ink); n = hb_put(out, n, " 38%,"); n = hb_put(out, n, s.dim); n = hb_put(out, n, " 100%)}");
+  // In a narrow viewport the options stand over the bar, keeping the first
+  // slot's choices reachable. Long lists wrap inside the viewport margin.
+  n = hb_put(out,n,"@media (max-width:640px){.hb-");n=hb_put(out,n,s.name);n=hb_put(out,n,"{position:relative}.hb-");n=hb_put(out,n,s.name);n=hb_put(out,n," .hb-w{position:static}.hb-");n=hb_put(out,n,s.name);n=hb_put(out,n," .hb-o{width:max-content;max-width:calc(100vw - 32px);flex-wrap:wrap;justify-content:center;white-space:normal}}");
+  n = hb_put(out,n,"@media (pointer:coarse){.hb-");n=hb_put(out,n,s.name);n=hb_put(out,n," .hb-ob{min-width:max(44px,");n=hb_px(out,n,s.opt);n=hb_put(out,n,");min-height:44px}}");
   return n;
 }
 
@@ -204,6 +208,8 @@ hbs_has :: (hay: string, needle: string) -> bool {
   #assert hbs_has(css, ".hb-scifi .hb-d{flex:none;align-self:stretch;width:1px;margin:6px 6px;background:rgba(255,255,255,.22)}");
   #assert hbs_has(css, "@media (max-width:640px){.hb-scifi .hb-s{width:44px;height:44px}.hb-scifi{gap:5px}.hb-scifi .hb-d{margin:6px 3px}}");
   #assert hbs_has(css, ".hb-scifi .hb-s.hb-busy .hb-g{animation:hb-busy") && hbs_has(css, ".hb-scifi .hb-s.hb-cool::after{") && hbs_has(css, "background:rgba(255,255,255,.22);pointer-events:none}");
+  #assert hbs_has(css,"@media (max-width:640px){.hb-scifi{position:relative}.hb-scifi .hb-w{position:static}.hb-scifi .hb-o{width:max-content;max-width:calc(100vw - 32px);flex-wrap:wrap;justify-content:center;white-space:normal}}");
+  #assert hbs_has(css,"@media (pointer:coarse){.hb-scifi .hb-ob{min-width:max(44px,26px);min-height:44px}}");
   // a slot's options: the wrapper the row is placed against, the row over the slot, a button an option in its states; and the ball a skin draws
   #assert hbs_has(css, "}}.hb-scifi .hb-w{position:relative;flex:none;display:flex}.hb-scifi .hb-o{position:absolute;left:50%;bottom:calc(100% + 10px);transform:translateX(-50%);display:flex;gap:6px;white-space:nowrap}");
   #assert hbs_has(css, ".hb-scifi .hb-ob{appearance:none;flex:none;margin:0;cursor:pointer;height:26px;min-width:26px;padding:0 9px;border-radius:0px;border:1px solid rgba(255,255,255,.22);background:rgba(0,0,0,.28);color:rgba(255,255,255,.78);font-family:var(--mono, ui-monospace, monospace);font-size:10px;line-height:1;letter-spacing:.04em;outline:0;-webkit-tap-highlight-color:transparent}");
