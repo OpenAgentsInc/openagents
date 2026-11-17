@@ -263,6 +263,7 @@ separate from the shared renderer's resource ledger and pack transport.
 
 | Export | Meaning |
 | --- | --- |
+| `coaxial_pack_wait_v1(state)` | While this answers 1 nothing of the page's `pack:` asset is fetched; the first frame or input after it answers anything else begins the load as ever. For a page whose pack only one of its worlds needs (gamebuilder.org's village). Such an app marks the pack's parts optional so its scene draws meanwhile. |
 | `coaxial_asset_optional_v1(asset)` | A nonzero result permits the realm's complete root scene to render before this asset arrives; a 16-byte GPU placeholder occupies its storage binding. |
 | `coaxial_asset_extent_v1(asset, held, incoming)` | Coax admits each stream chunk before retention; false cancels the stream. |
 | `coaxial_asset_digest_v1(state, asset)` | Zero means ordinary legacy loading; otherwise a writable 32-byte SHA-256 destination inside Wasm memory. |

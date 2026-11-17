@@ -151,6 +151,10 @@
 //                 streamed, that stands for four assets in its place, its catalog (data), vertices
 //                 (storage), indices (index) and texture layers (layers), and adds its sounds by name.
 //                 While it streams the app hears message 605, "LOADED TOTAL" bytes. One pack a page.
+//                 An app that exports coaxial_pack_wait_v1(state) holds it back: while that answers 1
+//                 nothing of the pack is fetched (a page whose pack only one of its worlds needs:
+//                 gamebuilder.org's village); once it answers 0 the pack loads as ever. Such an app
+//                 says its parts are optional (coaxial_asset_optional_v1) so its scene draws meanwhile.
 //   private:NAME  a private pack (a MetaHuman's, docs/metaverse/metahuman-support.md) that never ships as a
 //                 file: on openagents.com (and its subdomains) always, a session from the broker
 //                 (POST /api/verse/packs/NAME, coax/web/api/verse_packs.c) whose bytes are opened in
@@ -4421,6 +4425,7 @@ function after(gesture, tap = false) {
     else if (code === 5) { try { const p = JSON.parse(text); if (p && typeof p.key === "string") localStorage.setItem("verse.player", text); } catch {} }
     else dispatchEvent(new CustomEvent("coaxial", { detail: { code, text } }));
   }
+  if (packHeld && !packWaits()) { packHeld = false; for (const pack of firstPacks) loadPack(pack); }
   syncLook();
   const cursor = ["", "pointer", "crosshair", "text", "none"][call("coaxial_cursor")] || "";
   if ((canvas.dataset.cursor || "") !== cursor) canvas.dataset.cursor = cursor;   // the page's CSS turns data-cursor into the cursor (realms.ts)
@@ -4545,6 +4550,11 @@ for (const [type, phase] of [["pointerdown", 0], ["pointermove", 1], ["pointerup
 // is the app's to answer (its drag orbit), never an error here. Dev pages can stand in for the
 // browser's lock (coaxial.pointerLock) so headless checks can drive it.
 let lookHeld = false, lookAsked = false, lookFake = false;
+// A page that holds its pack back (coaxial_pack_wait_v1): nothing of the pack is fetched while the app
+// answers 1; the first frame or input after it answers 0 begins the load (after()). Its parts are
+// then optional assets (coaxial_asset_optional_v1), so the scene draws without them meanwhile.
+let packHeld = false;
+const packWaits = () => !!engine?.exports.coaxial_pack_wait_v1 && call("coaxial_pack_wait_v1") === 1;
 const looking = () => lookHeld || lookFake;
 function syncLook() {
   const want = call("coaxial_mouselook");
@@ -4818,7 +4828,7 @@ async function main() {
     await fetchEngine(beginEngine());
     loadMark("engine-installed");
     // The world's public packs start coming in now, beside the font, the GPU and the shaders.
-    if (!hostTransport && navigator.gpu) for (const pack of firstPacks) if (!pack.broker && !pack.urls && !pack.away && !packIncoming.has(pack.url)) packIncoming.set(pack.url, packBytes(pack));
+    if (!hostTransport && navigator.gpu && !packWaits()) for (const pack of firstPacks) if (!pack.broker && !pack.urls && !pack.away && !packIncoming.has(pack.url)) packIncoming.set(pack.url, packBytes(pack));
     await loadPageFont();
     // No usable WebGPU after all: show the page's text, as written (a realm's loader says so).
     loading.step("gpu");
@@ -4837,7 +4847,7 @@ async function main() {
     // The heavy ones first; sounds are fetched when first played.
     loading.step("assets");
     for (const a of firstAssets) loadAsset(a);
-    for (const pack of firstPacks) loadPack(pack);
+    if (packWaits()) packHeld = true; else for (const pack of firstPacks) loadPack(pack);
   } catch (e) {
     document.documentElement.classList.remove("gpu"); shellDrawn();
     loading.fail(`${gpu || /gpu|adapter|device/i.test(e.message) ? "GPU" : "ENGINE"} FAILED: ${e.message}`);

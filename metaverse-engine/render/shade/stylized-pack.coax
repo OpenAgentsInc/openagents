@@ -1,0 +1,162 @@
+// The stylized look's painted surfaces: a pack's textured mesh (a building, a rock: metaverse-engine/editor/pack.coax,
+// the 48-byte vertex of pack-import.coax) drawn in the same frame as the architecture kit's parts,
+// stood by the same records, under the same sun, shadow map, sky light, haze and film. The kit's
+// parts paint themselves from a material id (stylized.coax sty_surface); a painted surface takes
+// its colour from a layer of the pack's texture array instead, and everything after the colour is
+// the look's own.
+//
+//   sty_pack_stand   a pack vertex (12 u32 words: position, normal, uv as f32 bits, then rgba8 with
+//                    its layer in the top byte) where its record stands it, as sty_stand stands a
+//                    kit vertex: scaled, turned about the upright, moved. Its info.w is
+//                    STY_PACK_LAYER plus the layer, so a fragment knows a painted surface and its layer
+//   sty_pack_layer   that layer, or -1 for a surface that is not a pack's
+//   sty_painted      a painted surface's light: the layer's colour (linear, as the host's sRGB
+//                    array samples) times the vertex's tint and the record's wash, lit by the banded
+//                    sun through its shadow, the sky's and the ground's light, then hazed
+//
+// A page's scene shader samples the layer (render_sample_layer8, at the top of the fragment: a
+// sample needs uniform control flow), asks sty_shadow for the sun's share and hands both here.
+// gamebuilder.org's village (a page outside this repository) draws its buildings this way.
+//   coax/bin/coax test metaverse-engine/render/shade/stylized-pack.coax --library
+//   coax/bin/coax mutate metaverse-engine/render/shade/stylized-pack.coax --library --root-only
+
+#load "stylized.coax";
+
+STY_PACK_WORDS :: 12;       // u32 words a pack vertex is (48 bytes)
+STY_PACK_LAYER :: 2.0;      // a painted surface's info.w is this plus its layer (0 a kit part; 1 is a page's own)
+
+sty_pack_word :: (i:u32,vertices:[]u32)->f32 {return f32_from_bits(vertices[cast(int)i]);}
+// A pack's vertex `id` where record `instance` stands it.
+sty_pack_stand :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]StyObj)->StyS {
+  m:StyObj=objects[cast(int)instance];
+  b:u32=mul_wrap(id,cast(u32)STY_PACK_WORDS);
+  local:V3=scale3(v3(sty_pack_word(b,vertices),sty_pack_word(add_wrap(b,cast(u32)1),vertices),sty_pack_word(add_wrap(b,cast(u32)2),vertices)),m.b.x);
+  n:V3=v3(sty_pack_word(add_wrap(b,cast(u32)3),vertices),sty_pack_word(add_wrap(b,cast(u32)4),vertices),sty_pack_word(add_wrap(b,cast(u32)5),vertices));
+  c:f32=cos(m.a.w); sn:f32=sin(m.a.w);
+  w:V3=v3(local.x*c+local.z*sn+m.a.x,local.y+m.a.y,(0.0f32-local.x)*sn+local.z*c+m.a.z);
+  ink:u32=vertices[cast(int)add_wrap(b,cast(u32)8)];
+  s:StyS;
+  s.world=w;
+  s.normal=v3(n.x*c+n.z*sn,n.y,(0.0f32-n.x)*sn+n.z*c);
+  s.uv=v2(sty_pack_word(add_wrap(b,cast(u32)6),vertices),sty_pack_word(add_wrap(b,cast(u32)7),vertices));
+  s.tint=v3(cast(f32)(ink&cast(u32)255)/255.0f32,cast(f32)((ink>>cast(u32)8)&cast(u32)255)/255.0f32,cast(f32)((ink>>cast(u32)16)&cast(u32)255)/255.0f32);
+  s.wash=v3(m.c.x,m.c.y,m.c.z);
+  s.info=v4(0.0f32,m.c.w,m.b.z,STY_PACK_LAYER+cast(f32)(ink>>cast(u32)24));
+  s.pos=sty_clip(w,u,STY_U_VIEW);
+  return s;
+}
+// The layer a painted surface is painted from; -1 when the surface is not a pack's.
+sty_pack_layer :: (s:StyS)->s32 {
+  if (s.info.w<STY_PACK_LAYER-0.5f32) {return 0-1;}
+  return cast(s32)floor(s.info.w-STY_PACK_LAYER+0.5f32);
+}
+// A painted surface's light: `paint` is its layer's colour there (linear), `shadow` the sun's share
+// that reaches it (sty_shadow: 1 lit, 0 shadowed).
+sty_painted :: (s:StyS,paint:V3,shadow:f32,u:[]f32)->V3 {
+  n:V3=normalize3(s.normal);
+  albedo:V3=mul3(mul3(paint,s.tint),s.wash);
+  return sty_haze(sty_lit(albedo,n,dot3(n,wg_at3(u,STY_U_SUN)),shadow,u),s.world,u);
+}
+
+// ---- Checks ----
+
+sty_pack_test_words :: (v:[]u32,at:int,p:V3,n:V3,uv:V2,ink:u32) {
+  o:int=at*STY_PACK_WORDS;
+  v[o]=f32_bits(p.x); v[o+1]=f32_bits(p.y); v[o+2]=f32_bits(p.z);
+  v[o+3]=f32_bits(n.x); v[o+4]=f32_bits(n.y); v[o+5]=f32_bits(n.z);
+  v[o+6]=f32_bits(uv.x); v[o+7]=f32_bits(uv.y); v[o+8]=ink;
+}
+sty_pack_test_near :: (a:f32,b:f32)->bool {return abs(a-b)<0.0001f32;} // mutant: equivalent (no check here compares two numbers exactly a ten-thousandth apart)
+// A frame block whose view is the identity rows: clip = (x, y, z, 1).
+sty_pack_test_frame :: (u:[]f32) {
+  u[STY_U_VIEW]=1.0f32; u[STY_U_VIEW+5]=1.0f32; u[STY_U_VIEW+10]=1.0f32; u[STY_U_VIEW+15]=1.0f32;
+}
+
+#test "a pack vertex is read from its twelve words: place, normal, uv, tint and layer; the second vertex is the next twelve" {
+  v:[24]u32; u:[STY_UNIFORM_FLOATS]f32; sty_pack_test_frame(u[..]);
+  sty_pack_test_words(v[..],0,v3(1.0f32,2.0f32,3.0f32),v3(0.0f32,1.0f32,0.0f32),v2(0.25f32,0.75f32),cast(u32)0x05ff8000);
+  sty_pack_test_words(v[..],1,v3(4.0f32,5.0f32,6.0f32),v3(1.0f32,0.0f32,0.0f32),v2(0.5f32,0.125f32),cast(u32)0x00336699);
+  o:[1]StyObj; o[0].b.x=1.0f32; o[0].c=v4(1.0f32,0.5f32,0.25f32,7.0f32); o[0].b.z=3.0f32;
+  s:StyS=sty_pack_stand(cast(u32)0,cast(u32)0,u[..],v[..],o[..]);
+  #assert s.world.x==1.0f32 && s.world.y==2.0f32 && s.world.z==3.0f32 && s.normal.x==0.0f32 && s.normal.y==1.0f32 && s.normal.z==0.0f32;
+  #assert s.uv.x==0.25f32 && s.uv.y==0.75f32 && s.tint.x==0.0f32 && sty_pack_test_near(s.tint.y,128.0f32/255.0f32) && s.tint.z==1.0f32;
+  #assert s.wash.x==1.0f32 && s.wash.y==0.5f32 && s.wash.z==0.25f32 && s.info.x==0.0f32 && s.info.y==7.0f32 && s.info.z==3.0f32 && s.info.w==STY_PACK_LAYER+5.0f32;
+  #assert s.pos.x==1.0f32 && s.pos.y==2.0f32 && s.pos.z==3.0f32 && s.pos.w==1.0f32 && sty_pack_layer(s)==5;
+  t:StyS=sty_pack_stand(cast(u32)1,cast(u32)0,u[..],v[..],o[..]);
+  #assert t.world.x==4.0f32 && t.world.y==5.0f32 && t.world.z==6.0f32 && t.normal.x==1.0f32 && t.uv.x==0.5f32 && t.uv.y==0.125f32;
+  #assert sty_pack_test_near(t.tint.x,153.0f32/255.0f32) && sty_pack_test_near(t.tint.y,102.0f32/255.0f32) && sty_pack_test_near(t.tint.z,51.0f32/255.0f32) && sty_pack_layer(t)==0 && t.info.w==STY_PACK_LAYER;
+}
+
+#test "its record stands it as a kit part is stood: scaled, turned a quarter about the upright, then moved; the second record is its own" {
+  v:[12]u32; u:[STY_UNIFORM_FLOATS]f32; sty_pack_test_frame(u[..]);
+  sty_pack_test_words(v[..],0,v3(1.0f32,2.0f32,3.0f32),v3(0.6f32,0.0f32,0.8f32),v2(0.0f32,0.0f32),cast(u32)0x01ffffff);
+  o:[2]StyObj;
+  o[0].b.x=1.0f32;
+  o[1].a=v4(10.0f32,20.0f32,30.0f32,1.5707963f32); o[1].b.x=2.0f32;
+  s:StyS=sty_pack_stand(cast(u32)0,cast(u32)1,u[..],v[..],o[..]);
+  // (2, 4, 6) turned a quarter: x' = z, z' = -x
+  #assert sty_pack_test_near(s.world.x,16.0f32) && sty_pack_test_near(s.world.y,24.0f32) && sty_pack_test_near(s.world.z,28.0f32);
+  #assert sty_pack_test_near(s.normal.x,0.8f32) && sty_pack_test_near(s.normal.z,0.0f32-0.6f32) && s.normal.y==0.0f32;
+  #assert sty_pack_test_near(s.pos.x,16.0f32) && sty_pack_test_near(s.pos.y,24.0f32) && sty_pack_test_near(s.pos.z,28.0f32);
+  // the same stand as the kit's own, vertex for vertex
+  mesh:[12]f32; mesh[0]=1.0f32; mesh[1]=2.0f32; mesh[2]=3.0f32; mesh[3]=0.6f32; mesh[5]=0.8f32;
+  k:StyS=sty_stand(cast(u32)0,cast(u32)1,u[..],mesh[..],o[..]);
+  #assert k.world.x==s.world.x && k.world.y==s.world.y && k.world.z==s.world.z && k.normal.x==s.normal.x && k.normal.z==s.normal.z;
+  plain:StyS=sty_pack_stand(cast(u32)0,cast(u32)0,u[..],v[..],o[..]);
+  #assert plain.world.x==1.0f32 && plain.world.z==3.0f32 && plain.normal.x==0.6f32 && plain.normal.z==0.8f32;
+}
+
+#test "a surface's layer: a kit part and a page's own surface have none; a painted one has its own, to the last" {
+  s:StyS;
+  #assert sty_pack_layer(s)==0-1;
+  s.info.w=1.0f32; #assert sty_pack_layer(s)==0-1;
+  s.info.w=1.4f32; #assert sty_pack_layer(s)==0-1;
+  s.info.w=1.5f32; #assert sty_pack_layer(s)==0;
+  s.info.w=1.6f32; #assert sty_pack_layer(s)==0;
+  s.info.w=STY_PACK_LAYER; #assert sty_pack_layer(s)==0;
+  s.info.w=STY_PACK_LAYER+1.0f32; #assert sty_pack_layer(s)==1;
+  s.info.w=STY_PACK_LAYER+254.6f32; #assert sty_pack_layer(s)==255;
+  s.info.w=STY_PACK_LAYER+255.0f32; #assert sty_pack_layer(s)==255;
+}
+
+#test "a painted surface is lit as the look lights any surface: its paint times its tint and wash, under the sun, its shadow and the sky, then hazed" {
+  u:[STY_UNIFORM_FLOATS]f32; sty_pack_test_frame(u[..]);
+  u[STY_U_SUN]=0.0f32; u[STY_U_SUN+1]=1.0f32; u[STY_U_SUN+2]=0.0f32; u[STY_U_SUN+3]=1.0f32;
+  u[STY_U_SUN_COLOUR]=1.0f32; u[STY_U_SUN_COLOUR+1]=0.5f32; u[STY_U_SUN_COLOUR+2]=0.25f32; u[STY_U_SUN_COLOUR+3]=0.3f32;
+  u[STY_U_SKY_LIGHT]=0.2f32; u[STY_U_SKY_LIGHT+1]=0.2f32; u[STY_U_SKY_LIGHT+2]=0.4f32;
+  u[STY_U_GROUND_LIGHT]=0.1f32; u[STY_U_GROUND_LIGHT+1]=0.1f32; u[STY_U_GROUND_LIGHT+2]=0.1f32;
+  s:StyS; s.normal=v3(0.0f32,2.0f32,0.0f32); s.tint=v3(1.0f32,1.0f32,1.0f32); s.wash=v3(1.0f32,1.0f32,1.0f32); s.world=v3(0.0f32,0.0f32,0.0f32-5.0f32);
+  paint:V3=v3(0.5f32,0.8f32,0.2f32);
+  // facing the sun, lit: the sky's light (the normal is up) and the whole sun; no haze set
+  lit:V3=sty_painted(s,paint,1.0f32,u[..]);
+  full:f32=sty_bands(1.0f32,0.3f32);
+  #assert sty_pack_test_near(lit.x,0.5f32*(0.2f32+1.0f32*full)) && sty_pack_test_near(lit.y,0.8f32*(0.2f32+0.5f32*full)) && sty_pack_test_near(lit.z,0.2f32*(0.4f32+0.25f32*full));
+  same:V3=sty_lit(paint,v3(0.0f32,1.0f32,0.0f32),1.0f32,1.0f32,u[..]);
+  #assert sty_pack_test_near(lit.x,same.x) && sty_pack_test_near(lit.y,same.y) && sty_pack_test_near(lit.z,same.z);
+  // in shadow only the sky's light is left
+  dark:V3=sty_painted(s,paint,0.0f32,u[..]);
+  #assert sty_pack_test_near(dark.x,0.1f32) && sty_pack_test_near(dark.y,0.16f32) && sty_pack_test_near(dark.z,0.08f32);
+  // half shadowed is between the two
+  half:V3=sty_painted(s,paint,0.5f32,u[..]);
+  #assert half.x>dark.x+0.1f32 && half.x<lit.x-0.1f32;
+  // the tint and the wash each multiply the paint
+  s.tint=v3(0.5f32,1.0f32,0.0f32); s.wash=v3(1.0f32,0.25f32,1.0f32);
+  both:V3=sty_painted(s,paint,0.0f32,u[..]);
+  #assert sty_pack_test_near(both.x,0.05f32) && sty_pack_test_near(both.y,0.04f32) && both.z==0.0f32;
+  s.tint=v3(1.0f32,1.0f32,1.0f32); s.wash=v3(1.0f32,1.0f32,1.0f32);
+  // a face turned from the sun takes the ground's light and none of the sun's
+  s.normal=v3(0.0f32,0.0f32-1.0f32,0.0f32);
+  under:V3=sty_painted(s,paint,1.0f32,u[..]);
+  #assert sty_pack_test_near(under.x,0.05f32) && sty_pack_test_near(under.y,0.08f32) && sty_pack_test_near(under.z,0.02f32);
+  // a side face: the sun is level with it (ndl 0), the light half sky and half ground
+  s.normal=v3(1.0f32,0.0f32,0.0f32);
+  side:V3=sty_painted(s,paint,1.0f32,u[..]);
+  edge:f32=sty_bands(0.0f32,0.3f32);
+  #assert sty_pack_test_near(side.x,0.5f32*(0.15f32+edge)) && sty_pack_test_near(side.z,0.2f32*(0.25f32+0.25f32*edge));
+  // hazed with distance, as the look hazes everything: wholly, far enough off
+  s.normal=v3(0.0f32,1.0f32,0.0f32);
+  u[STY_U_HAZE]=0.5f32; u[STY_U_HAZE+1]=0.5f32; u[STY_U_HAZE+2]=0.5f32; u[STY_U_HAZE+3]=10.0f32; u[STY_U_HAZE_INFO+1]=1.0f32;
+  far:V3=sty_painted(s,paint,1.0f32,u[..]);
+  grey:f32=pow(0.5f32,2.2f32);
+  #assert sty_pack_test_near(far.x,grey) && sty_pack_test_near(far.y,grey) && sty_pack_test_near(far.z,grey);
+}
