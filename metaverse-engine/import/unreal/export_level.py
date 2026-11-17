@@ -11,8 +11,8 @@
 #   AIMPORT_EXCLUDE   comma-separated /Game folders whose maps are not taken (default Test, Dev,
 #                     ThirdPerson templates)
 #   AIMPORT_PROJECT, AIMPORT_REVISION, AIMPORT_PLAN_SHA256   copied into manifest.source (the plan's SHA-256 is required)
-#   AIMPORT_SOURCE_RIGS=1 when the caller imports rigs and clips from source files separately.
-#   Level instances still carry the skeletal meshes they reference.
+#   AIMPORT_SOURCE_RIGS=1 for a playable map export, with rigs and clips imported
+#   separately. It carries the meshes, materials and textures the maps reference.
 # Material baking needs a renderer: under -nullrhi the glTF exporter bakes nothing and says
 # nothing, so the script refuses -nullrhi rather than write unbaked materials as baked.
 # Simple-collision convex hulls and skeleton parents are not readable from Python; the
@@ -829,16 +829,15 @@ class Export:
                 if inst['world'] not in self.maps:
                     queue.append(inst['world'])
         flat = {m: self.flatten(m, (m,)) for m in maps}
-        # every asset of a carried class under /Game, plus what the maps reference elsewhere
-        for a in self.assets_of('StaticMesh'):
-            self.static_ids.add(str(a.package_name) + '.' + str(a.asset_name))
         source_rigs = os.environ.get('AIMPORT_SOURCE_RIGS') == '1'
-        for a in self.assets_of('SkeletalMesh'):
-            path = str(a.package_name) + '.' + str(a.asset_name)
-            if source_rigs and path not in self.skeletal_ids:
-                self.skip('', '', '/Script/Engine.SkeletalMesh', '', 'unsupported', 'unplaced mesh, caller imports rigs separately', path)
-            else:
-                self.skeletal_ids.add(path)
+        # The full export also retains unplaced library assets for authoring.
+        for cls, ids in (('StaticMesh', self.static_ids), ('SkeletalMesh', self.skeletal_ids)):
+            for a in self.assets_of(cls):
+                path = str(a.package_name) + '.' + str(a.asset_name)
+                if source_rigs and path not in ids:
+                    self.skip('', '', '/Script/Engine.' + cls, '', 'unsupported', 'mesh not placed in a selected map', path)
+                else:
+                    ids.add(path)
         for a in self.assets_of('AnimSequence'):
             path = str(a.package_name) + '.' + str(a.asset_name)
             if source_rigs:
@@ -847,11 +846,12 @@ class Export:
                 self.anim_ids.add(path)
         for a in self.assets_of('SoundWave'):
             self.sound_ids.add(str(a.package_name) + '.' + str(a.asset_name))
-        for a in self.assets_of('Texture2D'):
-            self.texture_ids.add(str(a.package_name) + '.' + str(a.asset_name))
-        for cls in ('Material', 'MaterialInstanceConstant'):
-            for a in self.assets_of(cls):
-                self.material_ids.add(str(a.package_name) + '.' + str(a.asset_name))
+        if not source_rigs:
+            for a in self.assets_of('Texture2D'):
+                self.texture_ids.add(str(a.package_name) + '.' + str(a.asset_name))
+            for cls in ('Material', 'MaterialInstanceConstant'):
+                for a in self.assets_of(cls):
+                    self.material_ids.add(str(a.package_name) + '.' + str(a.asset_name))
         for cls, (reason, detail) in sorted(ASSET_SKIPS.items()):
             script = '/Script/Engine'
             if cls == 'MetaSoundSource':
@@ -903,6 +903,13 @@ class Export:
                     row['baked'] = baked
             row = dict((key, row[key]) for key in ['id', 'parent', 'root', 'blend', 'two_sided', 'shading', 'textures', 'scalars', 'vectors', 'baked', 'origin'] if key in row)
             materials.append(row)
+        if source_rigs:
+            for cls, ids in (('Material', self.material_ids), ('MaterialInstanceConstant', self.material_ids),
+                             ('Texture2D', self.texture_ids)):
+                for a in self.assets_of(cls):
+                    path = str(a.package_name) + '.' + str(a.asset_name)
+                    if path not in ids:
+                        self.skip('', '', '/Script/Engine.' + cls, '', 'unsupported', 'asset has no reference from a selected map', path)
         textures = []
         ids = sorted(self.texture_ids | set(baked_textures))
         for k, path in enumerate(ids):
