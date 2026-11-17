@@ -1,0 +1,262 @@
+// A course: the small rules a timed run needs, whatever is run: a platforming course on foot, a
+// circuit in a car, rings flown through in space. Nothing here draws or moves a body; a realm keeps
+// its course as data and asks these questions each step.
+//
+//   Slide            a thing that slides to and fro between two points (a moving platform, a
+//                    sweeping hazard, a drifting ring): where it is at a time, how fast it is going,
+//                    and how far it moves over a step (what a rider standing on it is carried by).
+//                    It eases at both ends (a cosine), a whole to-and-fro each `period` seconds.
+//   Run              gates passed in order, lap after lap, against the clock: a gate counts only
+//                    when it is the next one (cutting the course gains nothing), the last gate of a
+//                    lap ends the lap, the last lap ends the run; the run's time, each lap's time,
+//                    the best lap, and the gate to go back to (the last one passed: a checkpoint)
+//   course_in_box    whether a point is in a box (a checkpoint's or a hazard's volume)
+//   course_through   whether a step from one point to another went through a round gate (a ring,
+//                    a finish line with a width): crossed its plane, the right way, within its radius
+//   course_take      collectibles: which of them a mover is near enough to take now
+//
+// gamebuilder.org's platformer (a page outside this repository) runs its course with it.
+//   coax/bin/coax test metaverse-engine/world/course.coax --library
+//   coax/bin/coax mutate metaverse-engine/world/course.coax --library --root-only
+
+COURSE_TAU :: 6.2831853;
+
+// A slide between a and b: at time 0 (and every `period` after) it is at a, half a period later at b.
+// `phase` shifts it, as a share of a period (0.5 starts it at b). A period of 0 or less never moves: it stays at a.
+Slide :: struct { ax: f32; ay: f32; az: f32; bx: f32; by: f32; bz: f32; period: f32; phase: f32; }
+// How far along from a to b it is at `time`, 0 to 1.
+course_slide_share :: (s: Slide, time: f32) -> f32 {
+  if !(s.period > 0) { return 0; }
+  return 0.5 - 0.5 * cos(COURSE_TAU * (time / s.period + s.phase));
+}
+// Where it is at `time`.
+course_slide_at :: (s: Slide, time: f32) -> [3] f32 {
+  u := course_slide_share(s, time);
+  return [3] f32.[s.ax + (s.bx - s.ax) * u, s.ay + (s.by - s.ay) * u, s.az + (s.bz - s.az) * u];
+}
+// How fast it is going at `time`, metres a second.
+course_slide_speed :: (s: Slide, time: f32) -> [3] f32 {
+  if !(s.period > 0) { return [3] f32.[0, 0, 0]; }
+  d := 0.5 * COURSE_TAU / s.period * sin(COURSE_TAU * (time / s.period + s.phase));
+  return [3] f32.[(s.bx - s.ax) * d, (s.by - s.ay) * d, (s.bz - s.az) * d];
+}
+// How far it moves from `time` over `step` seconds: what a rider on it is carried by.
+course_slide_step :: (s: Slide, time: f32, step: f32) -> [3] f32 {
+  a := course_slide_at(s, time); b := course_slide_at(s, time + step);
+  return [3] f32.[b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+}
+
+// A run: `gates` gates passed in order, `laps` times round.
+Run :: struct {
+  gates: int; laps: int;
+  next: int;                 // the gate to pass next
+  lap: int;                  // laps finished
+  clock: f32;                // seconds since it started
+  lap_clock: f32;            // seconds into this lap
+  last_lap: f32;             // the lap just finished took this long (0: none yet)
+  best_lap: f32;             // the fastest lap so far (0: none yet)
+  done: bool;                // every lap finished: the clock has stopped
+  going: bool;               // the clock runs (a run waits for its start)
+}
+// A run not yet started: no gates or no laps is no run (it is done at once).
+course_run :: (gates: int, laps: int) -> Run {
+  r := Run.{gates = ifx gates > 0 then gates else 0, laps = ifx laps > 0 then laps else 0}; // mutant: equivalent (none is 0 either way)
+  r.done = r.gates == 0 || r.laps == 0;
+  return r;
+}
+// The clock starts.
+course_go :: (r: Run) -> Run { n := r; if !n.done { n.going = true; } return n; }
+// Time passes: only while the run is going and not done.
+course_tick :: (r: Run, step: f32) -> Run {
+  n := r;
+  if !n.going || n.done || !(step > 0) { return n; } // mutant: equivalent (a step of no time adds none)
+  n.clock += step; n.lap_clock += step;
+  return n;
+}
+// What passing a gate did.
+COURSE_NOTHING :: 0; COURSE_GATE :: 1; COURSE_LAP :: 2; COURSE_FINISH :: 3;
+CoursePass :: struct { run: Run; what: int; }
+// The mover is at gate `gate`: it counts only when the run is going and it is the next gate. The
+// last gate of a lap ends the lap (its time is kept, and the best); the last lap ends the run.
+course_pass :: (r: Run, gate: int) -> CoursePass {
+  n := r;
+  if !n.going || n.done || gate != n.next { return CoursePass.{run = n, what = COURSE_NOTHING}; }
+  n.next += 1;
+  if n.next < n.gates { return CoursePass.{run = n, what = COURSE_GATE}; }
+  n.next = 0; n.lap += 1;
+  n.last_lap = n.lap_clock; n.lap_clock = 0;
+  if !(n.best_lap > 0) || n.last_lap < n.best_lap { n.best_lap = n.last_lap; } // mutant: equivalent (a lap as long as the best leaves the same best)
+  if n.lap < n.laps { return CoursePass.{run = n, what = COURSE_LAP}; }
+  n.done = true; n.going = false;
+  return CoursePass.{run = n, what = COURSE_FINISH};
+}
+// The gate to go back to: the last one passed (a checkpoint), or -1 before the first of the run.
+course_back :: (r: Run) -> int {
+  if r.gates == 0 || (r.next == 0 && r.lap == 0) { return -1; }
+  return (r.next + r.gates - 1) % r.gates;
+}
+
+// Whether a point is in a box, its faces counted in.
+course_in_box :: (x: f32, y: f32, z: f32, lo: [3] f32, hi: [3] f32) -> bool {
+  return x >= lo[0] && x <= hi[0] && y >= lo[1] && y <= hi[1] && z >= lo[2] && z <= hi[2];
+}
+// Whether a step from `from` to `to` went through a round gate: a disc at `at` facing along `way`
+// (it need not be a unit vector), `radius` wide. The step must cross the disc's plane the way the
+// gate faces (from behind it to in front of it, or onto it), where it crosses within the radius.
+course_through :: (from: [3] f32, to: [3] f32, at: [3] f32, way: [3] f32, radius: f32) -> bool {
+  // (how far each end is in front of the plane, times the way's length: only their signs and their ratio are used.
+  // A way of no length puts both on the plane: no crossing)
+  a := (from[0] - at[0]) * way[0] + (from[1] - at[1]) * way[1] + (from[2] - at[2]) * way[2];
+  b := (to[0] - at[0]) * way[0] + (to[1] - at[1]) * way[1] + (to[2] - at[2]) * way[2];
+  if !(a < 0 && b >= 0) { return false; }
+  t := a / (a - b);
+  x := from[0] + (to[0] - from[0]) * t - at[0]; y := from[1] + (to[1] - from[1]) * t - at[1]; z := from[2] + (to[2] - from[2]) * t - at[2];
+  return x * x + y * y + z * z <= radius * radius;
+}
+// Collectibles: `places` holds each one's place (x, y, z), `taken` whether it has been taken. Every
+// one not yet taken that is within `reach` of (x, y, z) is taken now. How many were.
+course_take :: (places: [] f32, taken: [] bool, x: f32, y: f32, z: f32, reach: f32) -> int {
+  got := 0;
+  for i: 0..<taken.count {
+    if taken[i] || (i + 1) * 3 > places.count { continue; }
+    dx := places[i * 3] - x; dy := places[i * 3 + 1] - y; dz := places[i * 3 + 2] - z;
+    if dx * dx + dy * dy + dz * dz <= reach * reach { taken[i] = true; got += 1; }
+  }
+  return got;
+}
+// How many have been taken.
+course_taken :: (taken: [] bool) -> int { n := 0; for t: taken { if t { n += 1; } } return n; }
+
+// ---- Checks ----
+
+course_test_near :: (a: f32, b: f32) -> bool { return abs(a - b) < 0.0005; } // mutant: equivalent (a check's own tolerance: nothing compared is exactly that far off)
+
+#test "a slide is at a, then b half a period on, then a again; it eases at its ends and is fastest in the middle" {
+  s := Slide.{ax = 1, ay = 2, az = 3, bx = 5, by = 2, bz = -1, period = 4};
+  a := course_slide_at(s, 0); #assert a[0] == 1 && a[1] == 2 && a[2] == 3;
+  b := course_slide_at(s, 2); #assert course_test_near(b[0], 5) && b[1] == 2 && course_test_near(b[2], -1);
+  c := course_slide_at(s, 4); #assert course_test_near(c[0], 1) && course_test_near(c[2], 3);
+  m := course_slide_at(s, 1); #assert course_test_near(m[0], 3) && course_test_near(m[2], 1);
+  #assert course_slide_share(s, 0) == 0 && course_test_near(course_slide_share(s, 1), 0.5) && course_test_near(course_slide_share(s, 2), 1) && course_test_near(course_slide_share(s, 3), 0.5);
+  // eased: a quarter of the way through the half period it has gone less than a quarter of the way
+  #assert course_slide_share(s, 0.5) < 0.25 && course_slide_share(s, 0.5) > 0.1 && course_slide_share(s, 1.5) > 0.75;
+  // its speed: none at the ends, the most in the middle (the distance times pi over the period), back the other way on the return
+  v0 := course_slide_speed(s, 0); #assert course_test_near(v0[0], 0) && v0[1] == 0 && course_test_near(v0[2], 0);
+  v1 := course_slide_speed(s, 1); #assert course_test_near(v1[0], 4 * 3.14159265 / 4) && v1[1] == 0 && course_test_near(v1[2], -4 * 3.14159265 / 4);
+  v3 := course_slide_speed(s, 3); #assert course_test_near(v3[0], -3.14159265) && course_test_near(v3[2], 3.14159265);
+  // the phase shifts it by a share of a period: half starts it at b
+  s.phase = 0.5; h := course_slide_at(s, 0); #assert course_test_near(h[0], 5) && course_test_near(h[2], -1);
+  s.phase = 0.25; q := course_slide_at(s, 0); #assert course_test_near(q[0], 3);
+  // (a quarter ahead: a second on it is at b, a second back it was at a, and it is moving toward b at the start)
+  q = course_slide_at(s, 1); #assert course_test_near(q[0], 5); q = course_slide_at(s, -1); #assert course_test_near(q[0], 1);
+  vq := course_slide_speed(s, 0); #assert course_test_near(vq[0], 3.14159265); vq = course_slide_speed(s, 1); #assert course_test_near(vq[0], 0); vq = course_slide_speed(s, 2); #assert course_test_near(vq[0], -3.14159265);
+  // a slide up and down
+  up := Slide.{ay = 1, by = 4, period = 2}; t := course_slide_at(up, 1); #assert t[0] == 0 && course_test_near(t[1], 4) && t[2] == 0;
+}
+#test "a slide's step is how far it moves over that time, and a slide with no period stays at a" {
+  s := Slide.{ax = 0, bx = 8, by = 2, bz = 4, period = 4};
+  d := course_slide_step(s, 0.5, 0.5); a := course_slide_at(s, 0.5); b := course_slide_at(s, 1.0);
+  #assert d[0] == b[0] - a[0] && d[1] == b[1] - a[1] && d[2] == b[2] - a[2] && d[0] > 0 && d[1] > 0 && d[2] > 0;
+  // over a short step it is its speed times the step
+  v := course_slide_speed(s, 1); e := course_slide_step(s, 1 - 0.005, 0.01);
+  #assert abs(e[0] - v[0] * 0.01) < 0.0002 && abs(e[1] - v[1] * 0.01) < 0.0002 && abs(e[2] - v[2] * 0.01) < 0.0002;
+  // over a whole period it is back where it was
+  w := course_slide_step(s, 0.7, 4); #assert course_test_near(w[0], 0) && course_test_near(w[1], 0) && course_test_near(w[2], 0);
+  still := Slide.{ax = 2, ay = 3, az = 4, bx = 9, by = 9, bz = 9};
+  p := course_slide_at(still, 7); v0 := course_slide_speed(still, 7); d0 := course_slide_step(still, 1, 3);
+  #assert p[0] == 2 && p[1] == 3 && p[2] == 4 && v0[0] == 0 && v0[1] == 0 && v0[2] == 0 && d0[0] == 0 && d0[1] == 0 && d0[2] == 0 && course_slide_share(still, 3) == 0;
+  still.period = -2; p = course_slide_at(still, 1); v0 = course_slide_speed(still, 0.5);
+  #assert p[0] == 2 && p[2] == 4 && v0[0] == 0 && v0[2] == 0;
+}
+#test "a run counts gates only in order, a lap at its last gate, and ends at the last lap; the clock runs only while it is going" {
+  r := course_run(3, 2);
+  #assert r.gates == 3 && r.laps == 2 && !r.done && !r.going && r.next == 0 && r.lap == 0 && course_back(r) == -1;
+  // before the start: no time passes, no gate counts
+  r = course_tick(r, 1); #assert r.clock == 0;
+  p := course_pass(r, 0); #assert p.what == COURSE_NOTHING && p.run.next == 0;
+  r = course_go(r); #assert r.going;
+  r = course_tick(r, 1.5); #assert r.clock == 1.5 && r.lap_clock == 1.5;
+  r = course_tick(r, 0); r = course_tick(r, -1); #assert r.clock == 1.5;
+  // a gate out of turn is nothing
+  p = course_pass(r, 1); #assert p.what == COURSE_NOTHING && p.run.next == 0;
+  p = course_pass(r, 2); #assert p.what == COURSE_NOTHING;
+  p = course_pass(r, -1); #assert p.what == COURSE_NOTHING;
+  p = course_pass(r, 0); #assert p.what == COURSE_GATE && p.run.next == 1 && p.run.lap == 0; r = p.run;
+  #assert course_back(r) == 0;
+  p = course_pass(r, 0); #assert p.what == COURSE_NOTHING;      // the same gate again
+  p = course_pass(r, 1); #assert p.what == COURSE_GATE && p.run.next == 2; r = p.run; #assert course_back(r) == 1;
+  r = course_tick(r, 2.5);
+  // the last gate of the lap: a lap, timed
+  p = course_pass(r, 2); r = p.run;
+  #assert p.what == COURSE_LAP && r.next == 0 && r.lap == 1 && r.last_lap == 4 && r.best_lap == 4 && r.lap_clock == 0 && r.clock == 4 && !r.done && course_back(r) == 2;
+  // the second lap, faster: it is the best; and it ends the run
+  r = course_pass(r, 0).run; r = course_pass(r, 1).run; r = course_tick(r, 3);
+  p = course_pass(r, 2); r = p.run;
+  #assert p.what == COURSE_FINISH && r.done && !r.going && r.lap == 2 && r.last_lap == 3 && r.best_lap == 3 && r.clock == 7;
+  // done: no more time, no more gates
+  r = course_tick(r, 5); #assert r.clock == 7;
+  p = course_pass(r, 0); #assert p.what == COURSE_NOTHING && p.run.lap == 2;
+  r = course_go(r); #assert !r.going;
+  // a slower lap after a faster one leaves the best
+  s := course_go(course_run(1, 3));
+  s = course_tick(s, 2); s = course_pass(s, 0).run; s = course_tick(s, 5); q := course_pass(s, 0); s = q.run;
+  #assert q.what == COURSE_LAP && s.last_lap == 5 && s.best_lap == 2 && s.lap == 2;
+  s = course_tick(s, 1); q = course_pass(s, 0); #assert q.what == COURSE_FINISH && q.run.best_lap == 1 && q.run.clock == 8;
+}
+#test "no gates or no laps is no run: done before it starts" {
+  a := course_run(0, 3); b := course_run(4, 0); c := course_run(-2, -1);
+  #assert a.done && b.done && c.done && c.gates == 0 && c.laps == 0 && course_back(a) == -1;
+  a = course_go(a); #assert !a.going && course_pass(a, 0).what == COURSE_NOTHING && course_tick(a, 1).clock == 0;
+  one := course_go(course_run(1, 1)); p := course_pass(one, 0); #assert p.what == COURSE_FINISH && p.run.done && course_back(p.run) == 0;
+}
+#test "a point is in a box up to and on its faces" {
+  lo := [3] f32.[-1, 0, 2]; hi := [3] f32.[1, 3, 5];
+  #assert course_in_box(0, 1, 3, lo, hi) && course_in_box(-1, 0, 2, lo, hi) && course_in_box(1, 3, 5, lo, hi);
+  #assert !course_in_box(-1.01, 1, 3, lo, hi) && !course_in_box(1.01, 1, 3, lo, hi) && !course_in_box(0, -0.01, 3, lo, hi) && !course_in_box(0, 3.01, 3, lo, hi) && !course_in_box(0, 1, 1.99, lo, hi) && !course_in_box(0, 1, 5.01, lo, hi);
+}
+#test "through a round gate: across its plane the way it faces, within its radius, and not back through it" {
+  at := [3] f32.[10, 2, 0]; way := [3] f32.[1, 0, 0];
+  #assert course_through([3] f32.[9, 2, 0], [3] f32.[11, 2, 0], at, way, 3);
+  #assert course_through([3] f32.[9, 4.9, 0], [3] f32.[11, 4.9, 0], at, way, 3) && !course_through([3] f32.[9, 5.1, 0], [3] f32.[11, 5.1, 0], at, way, 3);
+  #assert course_through([3] f32.[9, 2, 2.9], [3] f32.[11, 2, 2.9], at, way, 3) && !course_through([3] f32.[9, 2, 3.1], [3] f32.[11, 2, 3.1], at, way, 3);
+  #assert !course_through([3] f32.[9, 2, -3.1], [3] f32.[11, 2, -3.1], at, way, 3) && !course_through([3] f32.[9, -1.1, 0], [3] f32.[11, -1.1, 0], at, way, 3);
+  // the wrong way, short of it, already past it: nothing
+  #assert !course_through([3] f32.[11, 2, 0], [3] f32.[9, 2, 0], at, way, 3) && !course_through([3] f32.[7, 2, 0], [3] f32.[9, 2, 0], at, way, 3) && !course_through([3] f32.[10.5, 2, 0], [3] f32.[12, 2, 0], at, way, 3);
+  // onto the plane counts; starting on it does not (it was counted on the way in)
+  #assert course_through([3] f32.[9, 2, 0], [3] f32.[10, 2, 0], at, way, 3) && !course_through([3] f32.[10, 2, 0], [3] f32.[11, 2, 0], at, way, 3);
+  // where it crosses is what counts: a slanting step that starts wide and crosses inside, and one that starts inside and crosses wide
+  #assert course_through([3] f32.[8, 8, 0], [3] f32.[11, 2, 0], at, way, 3) && !course_through([3] f32.[9, 2, 0], [3] f32.[10.5, 11, 0], at, way, 3);
+  // the way it faces at any length, and along any axis; none at all is no gate
+  #assert course_through([3] f32.[9, 2, 0], [3] f32.[11, 2, 0], at, [3] f32.[5, 0, 0], 3) && !course_through([3] f32.[9, 2, 0], [3] f32.[11, 2, 0], at, [3] f32.[0, 0, 0], 3);
+  up := [3] f32.[0, 0, 0]; #assert course_through([3] f32.[1, -1, 1], [3] f32.[1, 1, 1], up, [3] f32.[0, 2, 0], 1.5) && !course_through([3] f32.[1, -1, 1], [3] f32.[1, 1, 1], up, [3] f32.[0, 2, 0], 1.4);
+  #assert course_through([3] f32.[0.5, 0, 3], [3] f32.[0.5, 0, -3], up, [3] f32.[0, 0, -1], 1) && !course_through([3] f32.[0.5, 0, -3], [3] f32.[0.5, 0, 3], up, [3] f32.[0, 0, -1], 1);
+  // a gate off every axis's origin, facing up, then along z: each of its own coordinates counts
+  off := [3] f32.[1, 2, 3];
+  #assert course_through([3] f32.[1, 1, 3], [3] f32.[1, 3, 3], off, [3] f32.[0, 1, 0], 1) && !course_through([3] f32.[1, 3, 3], [3] f32.[1, 5, 3], off, [3] f32.[0, 1, 0], 1) && !course_through([3] f32.[1, -3, 3], [3] f32.[1, 1, 3], off, [3] f32.[0, 1, 0], 1);
+  #assert course_through([3] f32.[1, 2, 2], [3] f32.[1, 2, 4], off, [3] f32.[0, 0, 1], 1) && !course_through([3] f32.[1, 2, 4], [3] f32.[1, 2, 6], off, [3] f32.[0, 0, 1], 1) && !course_through([3] f32.[1, 2, -4], [3] f32.[1, 2, 2], off, [3] f32.[0, 0, 1], 1);
+  #assert course_through([3] f32.[0, 2, 3.9], [3] f32.[2, 2, 3.9], off, [3] f32.[1, 0, 0], 1) && !course_through([3] f32.[0, 2, 4.1], [3] f32.[2, 2, 4.1], off, [3] f32.[1, 0, 0], 1) && !course_through([3] f32.[0, 2, -3], [3] f32.[2, 2, -3], off, [3] f32.[1, 0, 0], 1);
+  // (short steps beside it: one that stops just short of it, one that starts just past it, one that ends just past it)
+  #assert !course_through([3] f32.[1, 1.5, 3], [3] f32.[1, 1.9, 3], off, [3] f32.[0, 1, 0], 1) && !course_through([3] f32.[1, 2.5, 3], [3] f32.[1, 4, 3], off, [3] f32.[0, 1, 0], 1) && course_through([3] f32.[1, 1, 3], [3] f32.[1, 2.5, 3], off, [3] f32.[0, 1, 0], 1);
+  #assert !course_through([3] f32.[1, 2, 2.5], [3] f32.[1, 2, 2.9], off, [3] f32.[0, 0, 1], 1) && course_through([3] f32.[1, 2, 2.5], [3] f32.[1, 2, 3.4], off, [3] f32.[0, 0, 1], 1);
+  // on the rim exactly is through
+  #assert course_through([3] f32.[9, 5, 0], [3] f32.[11, 5, 0], at, way, 3) && course_through([3] f32.[9, 2, -3], [3] f32.[11, 2, -3], at, way, 3);
+  // a slanting gate: across (1, 1, 0)
+  #assert course_through([3] f32.[-1, -1, 0], [3] f32.[1, 1, 0], up, [3] f32.[1, 1, 0], 0.5) && !course_through([3] f32.[-1, 1, 0], [3] f32.[-2, 2, 0], up, [3] f32.[1, 1, 0], 5);
+}
+#test "collectibles within reach are taken once, and counted" {
+  places := [12] f32.[0, 1, 0, 3, 1, 0, 0, 1, 4, 10, 10, 10];
+  taken: [4] bool;
+  #assert course_take(places[..], taken[..], 0, 0, 0, 1) == 1 && taken[0] && !taken[1] && !taken[2] && course_taken(taken[..]) == 1;
+  #assert course_take(places[..], taken[..], 0, 0, 0, 1) == 0;                    // already taken
+  #assert course_take(places[..], taken[..], 0, 1, 0, 0.99) == 0 && course_take(places[..], taken[..], 1.5, 1, 2, 2.5) == 2 && taken[1] && taken[2] && !taken[3];
+  // each axis counts: just out of reach along x, y and z
+  fresh: [4] bool;
+  #assert course_take(places[..], fresh[..], 11.1, 10, 10, 1) == 0 && course_take(places[..], fresh[..], 10, 11.1, 10, 1) == 0 && course_take(places[..], fresh[..], 10, 10, 8.9, 1) == 0;
+  #assert course_take(places[..], fresh[..], 11, 10, 10, 1) == 1 && fresh[3] && course_taken(fresh[..]) == 1;
+  // (far off along one axis alone, either side: not taken)
+  far: [4] bool;
+  #assert course_take(places[..], far[..], 0, 1, 9.5, 1) == 0 && course_take(places[..], far[..], 0, 1, -9.5, 1) == 0 && course_take(places[..], far[..], 9, 1, 0, 1) == 0 && course_take(places[..], far[..], -9, 1, 0, 1) == 0 && course_take(places[..], far[..], 0, 9, 0, 1) == 0 && course_take(places[..], far[..], 0, -9, 0, 1) == 0;
+  // places for fewer than there are flags: the rest are never taken; no flags, nothing
+  short: [4] bool;
+  #assert course_take(places[0..<5], short[..], 3, 1, 0, 9) == 1 && short[0] && !short[1] && course_take(places[..], short[0..<0], 0, 0, 0, 99) == 0 && course_taken(short[0..<0]) == 0;
+}
