@@ -21,6 +21,7 @@ HbSkin :: struct {
   fill: string; fill_hot: string; fill_lit: string;   // a slot's ground idle, under the pointer, and picked or on
   edge: string; edge_lit: string;                 // its own line (when the host draws no frame), idle and lit
   divider: string;
+  pal: int; pal_cell: int; pal_fill: string;      // the palette ("more"): its width, an item's least width, its ground
   n: int; ids: [HB_GLYPHS] string; glyphs: [HB_GLYPHS] string;   // the skin's own glyph for a slot id, when it has one
 }
 // Science fiction: thin white lines over a faint shade, the world showing through; lit, a slot fills a little.
@@ -35,6 +36,7 @@ hb_scifi :: () -> HbSkin {
   s.fill = "rgba(0,0,0,.28)"; s.fill_hot = "rgba(255,255,255,.1)"; s.fill_lit = "rgba(255,255,255,.22)";
   s.edge = "transparent"; s.edge_lit = "rgba(255,255,255,.7)";
   s.divider = "rgba(255,255,255,.22)";
+  s.pal = 640; s.pal_cell = 190; s.pal_fill = "rgba(6,8,12,.84)";
   return s;
 }
 // Gives a skin its own glyph for a slot id. False when it holds HB_GLYPHS already.
@@ -122,6 +124,47 @@ hb_css :: (s: HbSkin, out: [] u8, from: int) -> int {
   return n;
 }
 
+// The palette's stylesheet (kit/hotbar.coax's k_hb_palette: every item, by set), written from `n`
+// in out: the panel over the bar, a set's heading over its grid of items, an item (its glyph to the
+// left of its name and its line) in its states, its key when it is on the bar, a drag of the bar's
+// slots and the palette's items, and the narrow window's. Returns where it ends (out.count when out
+// was too small).
+hb_palette_css :: (s: HbSkin, out: [] u8, from: int) -> int {
+  n := from;
+  n = hb_put(out, n, ".hb-p.hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, "{display:block;box-sizing:border-box;width:min("); n = hb_px(out, n, s.pal);
+  n = hb_put(out, n, ",calc(100vw - 32px));max-height:min(60vh,560px);overflow:auto;margin:0 auto 12px;padding:14px 14px 2px;background:"); n = hb_put(out, n, s.pal_fill);
+  n = hb_put(out, n, ";border:1px solid "); n = hb_put(out, n, s.divider); n = hb_put(out, n, ";border-radius:"); n = hb_px(out, n, s.corner);
+  n = hb_put(out, n, ";text-align:left;pointer-events:auto}");
+  n = hb_put(out, n, ".hb-p.hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, " .hb-pc{display:grid;grid-template-columns:repeat(auto-fill,minmax("); n = hb_px(out, n, s.pal_cell);
+  n = hb_put(out, n, ",1fr));gap:6px;margin:0 0 12px}");
+  n = hb_put(out, n, ".hb-p.hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, " .hb-ph{grid-column:1/-1;font-family:"); n = hb_put(out, n, s.key_face);
+  n = hb_put(out, n, ";font-size:"); n = hb_px(out, n, s.label_size); n = hb_put(out, n, ";line-height:1;letter-spacing:.12em;text-transform:uppercase;color:"); n = hb_put(out, n, s.dim); n = hb_put(out, n, ";margin:2px 0}");
+  n = hb_put(out, n, ".hb-p.hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, " .hb-pi{appearance:none;position:relative;display:grid;grid-template-columns:"); n = hb_px(out, n, s.glyph_size + 6);
+  n = hb_put(out, n, " 1fr;column-gap:10px;row-gap:3px;align-items:center;text-align:left;margin:0;padding:8px 10px;min-height:44px;border:1px solid "); n = hb_put(out, n, s.edge);
+  n = hb_put(out, n, ";border-radius:"); n = hb_px(out, n, s.corner); n = hb_put(out, n, ";background:"); n = hb_put(out, n, s.fill); n = hb_put(out, n, ";color:"); n = hb_put(out, n, s.ink);
+  n = hb_put(out, n, ";font-family:"); n = hb_put(out, n, s.face); n = hb_put(out, n, ";cursor:pointer;outline:0;-webkit-tap-highlight-color:transparent}");
+  n = hb_put(out, n, ".hb-p.hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, " .hb-pi .hb-g{grid-row:1/3;justify-self:center}");
+  n = hb_put(out, n, ".hb-p.hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, " .hb-pn{font-size:12px;line-height:1.2;color:"); n = hb_put(out, n, s.lit); n = hb_put(out, n, ";pointer-events:none}");
+  n = hb_put(out, n, ".hb-p.hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, " .hb-pt{font-size:11px;line-height:1.3;opacity:.72;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;pointer-events:none}");
+  // on the bar: its line drawn; under the pointer, or focused: lit (after, so it wins)
+  n = hb_put(out, n, ".hb-p.hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, " .hb-pi.hb-pon{border-color:"); n = hb_put(out, n, s.divider); n = hb_put(out, n, "}");
+  n = hb_put(out, n, ".hb-p.hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, " .hb-pi:hover,.hb-p.hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, " .hb-pi:focus-visible,.hb-p.hb-"); n = hb_put(out, n, s.name);
+  n = hb_put(out, n, " .hb-pi.hb-pf{background:"); n = hb_put(out, n, s.fill_hot); n = hb_put(out, n, ";color:"); n = hb_put(out, n, s.lit); n = hb_put(out, n, ";border-color:"); n = hb_put(out, n, s.edge_lit); n = hb_put(out, n, "}");
+  n = hb_put(out, n, ".hb-p.hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, " .hb-pk{position:absolute;right:6px;top:5px;font-family:"); n = hb_put(out, n, s.key_face);
+  n = hb_put(out, n, ";font-size:"); n = hb_px(out, n, s.key_size); n = hb_put(out, n, ";line-height:1;padding:2px 4px;border:1px solid "); n = hb_put(out, n, s.divider); n = hb_put(out, n, ";pointer-events:none}");
+  // a drag: while Shift is held over the bar or the palette (the host puts hb-shift on a node above
+  // them), what can be lifted says so; the slot lifted fades where it stood, the others slide to make
+  // room, and the ghost under the pointer (hb-ghost) goes faint when a drop there would take it off
+  n = hb_put(out, n, ".hb-shift .hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, " .hb-s:not(.hb-fix),.hb-shift .hb-p.hb-"); n = hb_put(out, n, s.name);
+  n = hb_put(out, n, " .hb-pi{cursor:grab;outline:1px dashed "); n = hb_put(out, n, s.divider); n = hb_put(out, n, ";outline-offset:2px}");
+  n = hb_put(out, n, ".hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, " .hb-s{transition:transform .12s ease-out}.hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, " .hb-s.hb-lift{opacity:.25}");
+  n = hb_put(out, n, ".hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, " .hb-s.hb-ghost{position:fixed;left:0;top:0;z-index:60;margin:0;pointer-events:none;transition:none;opacity:.92;cursor:grabbing;border-color:"); n = hb_put(out, n, s.edge_lit);
+  n = hb_put(out, n, "}.hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, " .hb-s.hb-ghost.hb-out{opacity:.35;border-style:dashed}");
+  n = hb_put(out, n, "@media (max-width:640px){.hb-p.hb-"); n = hb_put(out, n, s.name); n = hb_put(out, n, "{max-height:52vh;padding:10px 10px 0}.hb-p.hb-"); n = hb_put(out, n, s.name);
+  n = hb_put(out, n, " .hb-pc{grid-template-columns:repeat(auto-fill,minmax("); n = hb_px(out, n, s.pal_cell * 3 / 4); n = hb_put(out, n, ",1fr))}}");
+  return n;
+}
+
 // ---------------------------------------------------------------- checks
 
 hbs_has :: (hay: string, needle: string) -> bool {
@@ -190,4 +233,27 @@ hbs_has :: (hay: string, needle: string) -> bool {
   k = hb_px(px[..], 2, 1203); #assert cast(string) px[2..<k] == "1203px";
   k = hb_px(px[..], 0, 1); #assert cast(string) px[0..<k] == "1px";
   k = hb_px(px[..], 0, 90); #assert cast(string) px[0..<k] == "90px";
+}
+
+#test "the palette's stylesheet: the panel, a set's heading over its grid, an item in its states and its key on the bar, all from the skin" {
+  buf: [8192] u8;
+  s := hb_scifi(); #assert s.pal == 640 && s.pal_cell == 190 && s.pal_fill == "rgba(6,8,12,.84)";
+  n := hb_palette_css(s, buf[..], 0); css := cast(string) buf[0..<n];
+  #assert n > 600 && n < buf.count && css[n - 1] == '}' && hbs_has(css, ".hb-p.hb-scifi{display:block;box-sizing:border-box;width:min(640px,calc(100vw - 32px));max-height:min(60vh,560px);overflow:auto;margin:0 auto 12px;padding:14px 14px 2px;background:rgba(6,8,12,.84);border:1px solid rgba(255,255,255,.22);border-radius:0px;text-align:left;pointer-events:auto}");
+  #assert hbs_has(css, "}.hb-p.hb-scifi .hb-pc{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:6px;margin:0 0 12px}.hb-p.hb-scifi .hb-ph{grid-column:1/-1;font-family:var(--mono, ui-monospace, monospace);font-size:9px;line-height:1;letter-spacing:.12em;text-transform:uppercase;color:rgba(255,255,255,.28);margin:2px 0}");
+  #assert hbs_has(css, ".hb-p.hb-scifi .hb-pi{appearance:none;position:relative;display:grid;grid-template-columns:24px 1fr;column-gap:10px;row-gap:3px;align-items:center;text-align:left;margin:0;padding:8px 10px;min-height:44px;border:1px solid transparent;border-radius:0px;background:rgba(0,0,0,.28);color:rgba(255,255,255,.78);font-family:inherit;cursor:pointer;outline:0;-webkit-tap-highlight-color:transparent}");
+  #assert hbs_has(css, "}.hb-p.hb-scifi .hb-pi .hb-g{grid-row:1/3;justify-self:center}.hb-p.hb-scifi .hb-pn{font-size:12px;line-height:1.2;color:#fff;pointer-events:none}.hb-p.hb-scifi .hb-pt{font-size:11px;");
+  #assert hbs_has(css, "}.hb-p.hb-scifi .hb-pi.hb-pon{border-color:rgba(255,255,255,.22)}.hb-p.hb-scifi .hb-pi:hover,.hb-p.hb-scifi .hb-pi:focus-visible,.hb-p.hb-scifi .hb-pi.hb-pf{background:rgba(255,255,255,.1);color:#fff;border-color:rgba(255,255,255,.7)}");
+  #assert hbs_has(css, ".hb-p.hb-scifi .hb-pk{position:absolute;right:6px;top:5px;font-family:var(--mono, ui-monospace, monospace);font-size:10px;line-height:1;padding:2px 4px;border:1px solid rgba(255,255,255,.22);pointer-events:none}");
+  #assert hbs_has(css, "pointer-events:none}.hb-shift .hb-scifi .hb-s:not(.hb-fix),.hb-shift .hb-p.hb-scifi .hb-pi{cursor:grab;outline:1px dashed rgba(255,255,255,.22);outline-offset:2px}.hb-scifi .hb-s{transition:transform .12s ease-out}.hb-scifi .hb-s.hb-lift{opacity:.25}");
+  #assert hbs_has(css, ".hb-scifi .hb-s.hb-ghost{position:fixed;left:0;top:0;z-index:60;margin:0;pointer-events:none;transition:none;opacity:.92;cursor:grabbing;border-color:rgba(255,255,255,.7)}.hb-scifi .hb-s.hb-ghost.hb-out{opacity:.35;border-style:dashed}");
+  #assert hbs_has(css, "}@media (max-width:640px){.hb-p.hb-scifi{max-height:52vh;padding:10px 10px 0}.hb-p.hb-scifi .hb-pc{grid-template-columns:repeat(auto-fill,minmax(142px,1fr))}}");
+  f := hb_scifi(); f.name = "fantasy"; f.pal = 720; f.pal_cell = 200; f.pal_fill = "#100c08"; f.corner = 6; f.glyph_size = 24; f.key_size = 11; f.label_size = 12; f.dim = "#806040"; f.lit = "#fff8e0"; f.ink = "#e8d8b0"; f.fill = "#201810"; f.fill_hot = "#302418"; f.edge = "#806040"; f.edge_lit = "#ffd880"; f.divider = "#604830"; f.face = "serif"; f.key_face = "cursive";
+  m := hb_palette_css(f, buf[..], 0); other := cast(string) buf[0..<m];
+  #assert !hbs_has(other, "scifi") && hbs_has(other, ".hb-p.hb-fantasy{display:block;box-sizing:border-box;width:min(720px,") && hbs_has(other, "background:#100c08;border:1px solid #604830;border-radius:6px;") && hbs_has(other, "minmax(200px,1fr));gap:6px") && hbs_has(other, "minmax(150px,1fr))}}");
+  #assert hbs_has(other, ".hb-ph{grid-column:1/-1;font-family:cursive;font-size:12px;") && hbs_has(other, "color:#806040;margin:2px 0}") && hbs_has(other, "grid-template-columns:30px 1fr;") && hbs_has(other, "border:1px solid #806040;border-radius:6px;background:#201810;color:#e8d8b0;font-family:serif;cursor:pointer");
+  #assert hbs_has(other, ".hb-shift .hb-fantasy .hb-s:not(.hb-fix),.hb-shift .hb-p.hb-fantasy .hb-pi{cursor:grab;outline:1px dashed #604830;") && hbs_has(other, ".hb-fantasy .hb-s{transition:") && hbs_has(other, ".hb-fantasy .hb-s.hb-lift{") && hbs_has(other, "cursor:grabbing;border-color:#ffd880}.hb-fantasy .hb-s.hb-ghost.hb-out{");
+  #assert hbs_has(other, ".hb-pn{font-size:12px;line-height:1.2;color:#fff8e0;") && hbs_has(other, ".hb-pon{border-color:#604830}") && hbs_has(other, ".hb-pf{background:#302418;color:#fff8e0;border-color:#ffd880}") && hbs_has(other, "font-family:cursive;font-size:11px;line-height:1;padding:2px 4px;border:1px solid #604830;");
+  at := hb_palette_css(hb_scifi(), buf[..], 50); #assert at == n + 50 && buf[50] == '.';
+  small: [64] u8; #assert hb_palette_css(hb_scifi(), small[..], 0) == 64;
 }

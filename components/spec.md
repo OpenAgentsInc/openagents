@@ -358,7 +358,7 @@ again is put down), a toggle or an action, with a glyph, a short name (shown
 under the glyph always, only under the pointer, or never: the skin's word), a
 tooltip line that says what it does, a key, a
 group (a divider stands where it changes) and its state (on, disabled, hidden,
-busy, a cooldown's share). A slot may carry up to four options (`HbOption`:
+busy, a cooldown's share). A slot may carry up to eight options (`HbOption`:
 a placing tool's modes, say), one active: while the slot is selected (a
 picked tool, a toggle that is on) a row of option buttons stands directly
 over it, anchored to it, the active one lit; pressing one (`hb_choose`) or
@@ -378,6 +378,31 @@ layout from the page: the page places the bar. Its first mutation pass: 420
 mutants, 0 survived. The display-list action bar above (`hk_action_bar`) is
 the realm pass's; this is the page tree's. gamebuilder.org's world is its
 first consumer.
+
+A game may have more to do than its bar shows. Its **catalogue**
+(`HbCatalog`: up to 48 items, each an `HbSlot`, in up to 8 named sets such as
+build, place, edit, camera, world, agent; `hb_set`, `hb_item`) is everything,
+filled each frame like the bar; the bar is a **layout** (`HbLayout`), an
+ordered few of those items, at most 9, which a person arranges and the game
+keeps. `hb_fill` puts the layout on the bar with keys 1 to 9 by place, then
+the **more** slot (three dots, key 0, `fixed`: it is never lifted or
+removed, and a divider stands before it). Pressed, it opens the **palette**
+(`HbPalette`, `k_hb_palette`, its stylesheet `hb_palette_css`): every item
+the catalogue shows, by set, with its glyph, name and line, the ones on the
+bar marked with their key. A click there uses an item once without adding it
+(`hb_pal_use`); the arrows move the focus, Enter uses the focused item, a
+number gives it that place on the bar and Escape shuts it (`hb_pal_key`). A
+drag is the layout's operations: `hb_lay_move` (lift, the others close up,
+drop), `hb_lay_remove`, `hb_lay_insert` (room made), `hb_lay_swap`,
+`hb_lay_add` (out of the palette: in with room made, or in a full bar's
+stead) and `hb_lay_assign` (a number key). `hb_lay_text` and `hb_lay_read`
+write the layout as its ids and read it back checked against the catalogue
+(unknown ids, ids twice and any past nine left out), for a game to keep where
+it likes. While a drag runs, the host marks the lifted slot `hb-lift` and the
+ghost under the pointer `hb-ghost` (`hb-out` where a drop would take it
+off), and puts `hb-shift` above the bar while Shift is held over it. The
+kit's mutation pass with these: 1,000 mutants, 0 survived, 9 marked
+equivalent; the skin's: 415, 0 survived.
 
 The rules both HUDs follow are one file, `core/hud.coax`: a bar's fill and
 damage trail over time (`HudTrail`, `hud_trail_step`), a banner's fade

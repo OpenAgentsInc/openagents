@@ -50,7 +50,8 @@ HbSlot :: struct {
   busy: bool;        // working: shown so, takes no press
   share: f32;        // a cooldown, 0 (none) to 1 (just begun): takes no press while above 0
   art: string;       // its glyph drawn by the skin and not as text ("sphere": a shaded ball); "": the glyph's own text
-  opt: int;          // which of its options is active in the first group (the game's to keep: the bar is filled each frame)
+  fixed: bool;       // it keeps its place: a drag does not lift it ("more" is)
+  opt: int;         // which of its options is active in the first group (the game's to keep: the bar is filled each frame)
   opt_b: int;        // and which in the second group
   opt_n: int; opts: [HB_OPTIONS] HbOption;
 }
@@ -150,13 +151,199 @@ hb_pick :: (b: [] Hotbar, i: int) { b[0].picked = ifx hb_can(b, i) && b[0].slots
 // The glyph a slot shows in a skin: the skin's for its id, else the slot's own.
 hb_glyph :: (s: HbSkin, slot: HbSlot) -> string { return hb_skin_shows(s, slot.id, slot.glyph); }
 
+// ---------------------------------------------------------------- the catalogue, the bar's order, and "more"
+// A game may have more things to do than its bar shows. The catalogue is every item it has: each a
+// slot (filled each frame from the game's state, as the bar is), in a named set ("build",
+// "camera"). The layout is the bar itself: an ordered few of the items, at most HB_BAR, which a
+// person rearranges and the game keeps (hb_lay_text and hb_lay_read write and read it, checked
+// against the catalogue). hb_fill puts the layout's items on the bar, their keys 1 to 9 by
+// position, and after them, always last and in a group of its own, the "more" slot (three dots):
+// pressed, it opens the palette, every item by set, with its glyph, name and line, the ones on the
+// bar marked with their place. There an item is used once without being added (a click, or Enter
+// on the focused one), the arrows move the focus, a number key gives the focused item that place on
+// the bar, and Escape shuts it. The layout's operations (hb_lay_move, hb_lay_remove, hb_lay_add,
+// hb_lay_swap, hb_lay_assign) are what a drag on the bar or out of the palette does.
+HB_ITEMS :: 48;           // items a catalogue holds
+HB_SETS :: 8;             // the sets it holds them in
+HB_BAR :: 9;              // items on the bar, before "more"
+HB_MORE :: "more";        // the id of the slot that opens the palette
+HB_MORE_GROUP :: -1;      // its group: no item's, so a divider stands before it
+HB_KEYS :: [HB_BAR] string.["1", "2", "3", "4", "5", "6", "7", "8", "9"];
+
+HbCatalog :: struct { n: int; items: [HB_ITEMS] HbSlot; set: [HB_ITEMS] int; sets: int; names: [HB_SETS] string; }
+HbLayout :: struct { n: int; at: [HB_BAR] int; }   // the bar's items, in order: indices in the catalogue
+HbPalette :: struct { open: bool; at: int = -1; }  // whether it shows, and the item focused in it
+
+// A set of the catalogue by its name: the one of that name, else a new one. -1 when it holds HB_SETS.
+hb_set :: (c: [] HbCatalog, name: string) -> int {
+  for k: 0..<c[0].sets { if c[0].names[k] == name { return k; } }
+  if c[0].sets >= HB_SETS { return -1; }
+  c[0].names[c[0].sets] = name; c[0].sets += 1;
+  return c[0].sets - 1;
+}
+// Adds an item to a set. Its index, or -1 (no such set, no id, or the catalogue holds HB_ITEMS).
+hb_item :: (c: [] HbCatalog, set: int, s: HbSlot) -> int {
+  if set < 0 || set >= c[0].sets || c[0].n >= HB_ITEMS || s.id.count == 0 { return -1; }
+  c[0].items[c[0].n] = s; c[0].set[c[0].n] = set; c[0].n += 1;
+  return c[0].n - 1;
+}
+// Gives item i one more option, as hb_option gives a slot one. Its index, or -1.
+hb_item_option :: (c: [] HbCatalog, i: int, o: HbOption) -> int {
+  if i < 0 || i >= c[0].n || c[0].items[i].opt_n >= HB_OPTIONS { return -1; }
+  c[0].items[i].opts[c[0].items[i].opt_n] = o; c[0].items[i].opt_n += 1;
+  return c[0].items[i].opt_n - 1;
+}
+hb_item_find :: (c: [] HbCatalog, id: string) -> int { for i: 0..<c[0].n { if c[0].items[i].id == id { return i; } } return -1; }
+// Whether item i is one the palette shows (there, and not hidden).
+hb_shows :: (c: [] HbCatalog, i: int) -> bool { return i >= 0 && i < c[0].n && !c[0].items[i].hidden; }
+
+// Where an item stands on the bar: its place, or -1.
+hb_lay_at :: (l: [] HbLayout, item: int) -> int { for k: 0..<l[0].n { if l[0].at[k] == item { return k; } } return -1; }
+// Puts an item on the bar at a place (before the one there; past the last: at the end), the ones
+// after it moving up one. False when the bar is full, the item is on it already, or is no item.
+hb_lay_insert :: (l: [] HbLayout, pos: int, item: int) -> bool {
+  if item < 0 || l[0].n >= HB_BAR || hb_lay_at(l, item) >= 0 { return false; }
+  p := ifx pos < 0 then 0 else ifx pos > l[0].n then l[0].n else pos;   // mutant: equivalent (at 0 and at n both forms give the same place)
+  k := l[0].n;
+  while k > p { l[0].at[k] = l[0].at[k - 1]; k -= 1; }
+  l[0].at[p] = item; l[0].n += 1;
+  return true;
+}
+// Takes the item at a place off the bar, the ones after it moving down one. The item, or -1.
+hb_lay_remove :: (l: [] HbLayout, pos: int) -> int {
+  if pos < 0 || pos >= l[0].n { return -1; }
+  x := l[0].at[pos];
+  for k: pos..<l[0].n - 1 { l[0].at[k] = l[0].at[k + 1]; }
+  l[0].n -= 1;
+  return x;
+}
+// A drag along the bar: the item at `from` is lifted, the others close up, and it is dropped at
+// `to`, its place on the bar as it is after (past the last: at the end). False: no item at `from`.
+hb_lay_move :: (l: [] HbLayout, from: int, to: int) -> bool {
+  x := hb_lay_remove(l, from);
+  if x < 0 { return false; }
+  return hb_lay_insert(l, to, x);
+}
+// An item put at a place in the one there's stead: on the bar already, the two change places. The
+// item that was at the place, or -1 (no such place, or no item).
+hb_lay_swap :: (l: [] HbLayout, pos: int, item: int) -> int {
+  if pos < 0 || pos >= l[0].n || item < 0 { return -1; }
+  was := l[0].at[pos]; q := hb_lay_at(l, item);
+  if q >= 0 { l[0].at[q] = was; }
+  l[0].at[pos] = item;
+  return was;
+}
+// A drag out of the palette onto the bar, dropped at a place: an item on the bar already moves
+// there; else it goes in with room made; on a full bar it takes the place of the one there (the
+// nearest place, past the ends).
+hb_lay_add :: (l: [] HbLayout, pos: int, item: int) -> bool {
+  if item < 0 { return false; }
+  q := hb_lay_at(l, item);
+  if q >= 0 { return hb_lay_move(l, q, pos); }
+  if l[0].n < HB_BAR { return hb_lay_insert(l, pos, item); }
+  at := ifx pos < 0 then 0 else ifx pos >= HB_BAR then HB_BAR - 1 else pos;   // mutant: equivalent (at 0 both forms give 0)
+  return hb_lay_swap(l, at, item) >= 0;
+}
+// A number key in the palette: the focused item to that place (0 for the key 1). One there already
+// is replaced, and goes where the item was when it was on the bar; a place past the last is the end.
+hb_lay_assign :: (l: [] HbLayout, pos: int, item: int) -> bool {
+  if pos < 0 || pos >= HB_BAR || item < 0 { return false; }
+  if pos < l[0].n { return hb_lay_swap(l, pos, item) >= 0; }
+  return hb_lay_add(l, HB_BAR, item);   // mutant: equivalent (any place past the last is the end)
+}
+// The layout as text, the items' ids with a comma between ("shapes,edit,camera"), into out from 0: its length.
+hb_lay_text :: (l: [] HbLayout, c: [] HbCatalog, out: [] u8) -> int {
+  n := 0;
+  for k: 0..<l[0].n {
+    x := l[0].at[k];
+    if x < 0 || x >= c[0].n { continue; }
+    if n > 0 { n = hb_put(out, n, ","); }
+    n = hb_put(out, n, c[0].items[x].id);
+  }
+  return n;
+}
+// A layout read from that text, checked against the catalogue: an id it has not, one said twice
+// and any past the HB_BAR-th are left out. How many items it holds.
+hb_lay_read :: (l: [] HbLayout, c: [] HbCatalog, text: string) -> int {
+  l[0].n = 0; a := 0;
+  for k: 0..<text.count + 1 {   // mutant: equivalent (a segment that ends at 0 is empty, and no item's id is)
+    if k < text.count && text[k] != ',' { continue; }
+    x := hb_item_find(c, cast(string) text[a..<k]);
+    a = k + 1;
+    if x >= 0 { put := hb_lay_insert(l, HB_BAR, x); }   // mutant: equivalent (any place past the last is the end)
+  }
+  return l[0].n;
+}
+// The bar from the layout: its items in order, keyed 1 to 9 by place, then "more" (key 0, lit
+// while the palette shows, `tip` its line).
+hb_fill :: (b: [] Hotbar, c: [] HbCatalog, l: [] HbLayout, p: [] HbPalette, tip: string) {
+  keys := HB_KEYS;
+  for k: 0..<l[0].n {
+    x := l[0].at[k];
+    if x < 0 || x >= c[0].n { continue; }
+    s := c[0].items[x]; s.key = keys[k];
+    i := hb_add(b, s);
+  }
+  m := hb_add(b, HbSlot.{id = HB_MORE, glyph = "⋯", label = "more", key = "0", kind = HB_TOGGLE, group = HB_MORE_GROUP, on = p[0].open, tip = tip, fixed = true});
+}
+
+// The palette's order: by set, and in each the catalogue's order; hidden items are not in it. How many, into out.
+hb_pal_order :: (c: [] HbCatalog, out: [] int) -> int {
+  n := 0;
+  for g: 0..<c[0].sets { for i: 0..<c[0].n { if c[0].set[i] == g && hb_shows(c, i) && n < out.count { out[n] = i; n += 1; } } }
+  return n;
+}
+// Opens the palette, the focus where it was when that item still shows, else on its first.
+hb_pal_open :: (p: [] HbPalette, c: [] HbCatalog) {
+  p[0].open = true;
+  if hb_shows(c, p[0].at) { return; }
+  o: [HB_ITEMS] int; n := hb_pal_order(c, o[..]);
+  p[0].at = ifx n > 0 then o[0] else -1;
+}
+// Shuts it. True when it was open.
+hb_pal_close :: (p: [] HbPalette) -> bool { was := p[0].open; p[0].open = false; return was; }
+// The focus `by` items on in the palette's order, round from the last to the first and back.
+hb_pal_move :: (p: [] HbPalette, c: [] HbCatalog, by: int) {
+  o: [HB_ITEMS] int; n := hb_pal_order(c, o[..]);
+  if n == 0 { p[0].at = -1; return; }
+  q := -1;
+  for k: 0..<n { if o[k] == p[0].at { q = k; } }
+  if q < 0 { p[0].at = o[0]; return; }
+  p[0].at = o[(q + by % n + n) % n];
+}
+// Item i used from the open palette, once: it is focused and the palette shuts. The item, or -1
+// (the palette is shut, or the item is not one it shows).
+hb_pal_use :: (p: [] HbPalette, c: [] HbCatalog, i: int) -> int {
+  if !p[0].open || !hb_shows(c, i) { return -1; }
+  p[0].at = i; p[0].open = false;
+  return i;
+}
+// What a key did in the open palette: the item used (-1: none), the place on the bar the focused
+// item was given (-1: none), whether it shut, whether the focus moved.
+HbPalKey :: struct { used: int = -1; placed: int = -1; closed: bool; moved: bool; }
+// A key while the palette is open: Escape shuts it; the arrows move the focus (down and right on,
+// up and left back); Enter uses the focused item; 1 to 9 gives it that place on the bar. Shut, or
+// another key: nothing.
+hb_pal_key :: (p: [] HbPalette, c: [] HbCatalog, l: [] HbLayout, key: string) -> HbPalKey {
+  out: HbPalKey;
+  if !p[0].open { return out; }
+  if key == "Escape" { out.closed = hb_pal_close(p); return out; }
+  if key == "ArrowDown" || key == "ArrowRight" { hb_pal_move(p, c, 1); out.moved = true; return out; }
+  if key == "ArrowUp" || key == "ArrowLeft" { hb_pal_move(p, c, -1); out.moved = true; return out; }
+  if key == "Enter" { out.used = hb_pal_use(p, c, p[0].at); out.closed = out.used >= 0; return out; }
+  // (one character: its place, counted from '1'; hb_lay_assign refuses any but 0 to 8)
+  pos := ifx key.count == 1 then cast(int) key[0] - cast(int) '1' else -1;
+  if hb_shows(c, p[0].at) && hb_lay_assign(l, pos, p[0].at) { out.placed = pos; }
+  return out;
+}
+
 // ---------------------------------------------------------------- the tree
 
 HB_DIGITS :: [HB_SLOTS] string.["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11"];
 HB_FRAMES :: [9] string.[" k0", " k1", " k2", " k3", " k4", " k5", " k6", " k7", " k8"];
 // The bar in a page's tree, under the node that is open: a toolbar named `label`, a button a slot
 // that is not hidden (id "ID.s.N", N its index in the bar), a divider where the group changes.
-// A slot's classes say its state (hb-on: a picked tool or a toggle that is on; hb-busy; hb-cool)
+// A slot's classes say its state (hb-on: a picked tool or a toggle that is on; hb-busy; hb-cool; hb-fix: it keeps its place)
 // and carry the host's frame mark and family; its tooltip is the line that says what it does (else
 // its name) and its key; its name stands under its glyph when the skin shows names (id "ID.l.N";
 // class hb-lh when only under the pointer). A glyph the skin draws carries its class (hb-a-ART).
@@ -182,6 +369,7 @@ k_hotbar :: (t: [] Tree, id: string, label: string, b: [] Hotbar, s: HbSkin) -> 
     if lit { n = hb_put(cls[..], n, " hb-on"); }
     if sl.busy { n = hb_put(cls[..], n, " hb-busy"); }
     if sl.share > 0 { n = hb_put(cls[..], n, " hb-cool"); }
+    if sl.fixed { n = hb_put(cls[..], n, " hb-fix"); }
     if s.mark.count > 0 { n = hb_put(cls[..], n, " "); n = hb_put(cls[..], n, s.mark); n = hb_put(cls[..], n, frames[ifx s.frame < 0 || s.frame > 8 then 2 else s.frame]); }   // not a size
     if sl.opt_n > 0 { wrap := tr_open(t, tr_cat(ida[..], tr_cat(idb[..], id, ".w."), digits[i]), TG_SPAN, "hb-w"); }
     one := tr_open(t, tr_cat(ida[..], tr_cat(idb[..], id, ".s."), digits[i]), TG_BUTTON, cast(string) cls[0..<n]);
@@ -235,6 +423,73 @@ hb_option_of :: (id: string, node: string) -> HbAt {
   v := 0;
   for k: id.count + 3..<node.count - 2 { c := node[k]; if c < '0' || c > '9' { return none; } v = v * 10 + cast(int) (c - '0'); if v >= HB_SLOTS { return none; } }   // not a size
   return HbAt.{slot = v, option = cast(int) (last - '0')};
+}
+
+// "ID.PART.N" into out: a node's id, N a number from 0.
+hb_id :: (out: [] u8, id: string, part: string, v: int) -> string {
+  n := hb_put(out, 0, id); n = hb_put(out, n, "."); n = hb_put(out, n, part); n = hb_put(out, n, ".");
+  digits: [24] u8; m := 0; a := v;
+  if a <= 0 { digits[0] = '0'; m = 1; }
+  while a > 0 { digits[m] = cast(u8) ('0' + a % 10); m += 1; a /= 10; }   // not a size
+  while m > 0 { m -= 1; n = hb_put(out, n, cast(string) digits[m..<m + 1]); }
+  return cast(string) out[0..<n];
+}
+// The palette in a page's tree, while it is open (else nothing, and -1): a dialog named `label`
+// (id ID, class "hb-p hb-SKIN"); in it a group a set that shows any item (id "ID.c.G", its name a
+// heading "ID.h.G"), and in that a button an item (id "ID.p.N", N its index in the catalogue; class
+// hb-pi, hb-pf the focused one, hb-pon one on the bar) holding its glyph ("ID.pg.N", as the bar
+// draws it), its name ("ID.pn.N"), its line ("ID.pt.N", its name when it has none) and, when it is on
+// the bar, its key there ("ID.pk.N"). Its tooltip is its line. Returns the dialog's node.
+k_hb_palette :: (t: [] Tree, id: string, label: string, c: [] HbCatalog, l: [] HbLayout, p: [] HbPalette, s: HbSkin) -> int {
+  if !p[0].open { return -1; }
+  ida: [96] u8; cls: [96] u8;
+  keys := HB_KEYS;
+  n := hb_put(cls[..], 0, "hb-p hb-"); n = hb_put(cls[..], n, s.name);
+  box := tr_open(t, id, TG_DIV, cast(string) cls[0..<n]);
+  tr_attr(t, box, AT_ROLE, "dialog"); tr_attr(t, box, AT_LABEL, label);
+  for g: 0..<c[0].sets {
+    any := false;
+    for i: 0..<c[0].n { if c[0].set[i] == g && hb_shows(c, i) { any = true; } }
+    if !any { continue; }
+    grp := tr_open(t, hb_id(ida[..], id, "c", g), TG_DIV, "hb-pc");
+    tr_attr(t, grp, AT_ROLE, "group"); tr_attr(t, grp, AT_LABEL, c[0].names[g]);
+    h := tr_leaf(t, hb_id(ida[..], id, "h", g), TG_SPAN, "hb-ph", c[0].names[g]);
+    for i: 0..<c[0].n {
+      if c[0].set[i] != g || !hb_shows(c, i) { continue; }
+      q := hb_lay_at(l, i);
+      n = hb_put(cls[..], 0, "hb-pi");
+      if p[0].at == i { n = hb_put(cls[..], n, " hb-pf"); }
+      if q >= 0 { n = hb_put(cls[..], n, " hb-pon"); }
+      one := tr_open(t, hb_id(ida[..], id, "p", i), TG_BUTTON, cast(string) cls[0..<n]);
+      line := ifx c[0].items[i].tip.count > 0 then c[0].items[i].tip else c[0].items[i].label;
+      tr_attr(t, one, AT_LABEL, c[0].items[i].label); tr_attr(t, one, AT_TITLE, line);
+      n = hb_put(cls[..], 0, "hb-g");
+      if c[0].items[i].art.count > 0 { n = hb_put(cls[..], n, " hb-a-"); n = hb_put(cls[..], n, c[0].items[i].art); }
+      gl := tr_leaf(t, hb_id(ida[..], id, "pg", i), TG_SPAN, cast(string) cls[0..<n], ifx c[0].items[i].art.count > 0 then "" else hb_glyph(s, c[0].items[i]));
+      nm := tr_leaf(t, hb_id(ida[..], id, "pn", i), TG_SPAN, "hb-pn", c[0].items[i].label);
+      ln := tr_leaf(t, hb_id(ida[..], id, "pt", i), TG_SPAN, "hb-pt", line);
+      if q >= 0 { pk := tr_leaf(t, hb_id(ida[..], id, "pk", i), TG_SPAN, "hb-pk", keys[q]); }
+      tr_close(t);
+    }
+    tr_close(t);
+  }
+  tr_close(t);
+  return box;
+}
+// Which item a node of the palette `id` is, by its id ("ID.p.4", or a part of that button: "ID.pg.4",
+// "ID.pn.4", "ID.pt.4", "ID.pk.4"): its index in the catalogue, or -1.
+hb_pal_of :: (id: string, node: string) -> int {
+  if node.count < id.count + 4 || cast(string) node[0..<id.count] != id || node[id.count] != '.' || node[id.count + 1] != 'p' { return -1; }   // not a size
+  k := id.count + 2;
+  if node[k] != '.' {
+    part := node[k];
+    if part != 'g' && part != 'n' && part != 't' && part != 'k' { return -1; }
+    k += 1;
+  }
+  if k >= node.count - 1 || node[k] != '.' { return -1; }
+  v := 0;
+  for q: k + 1..<node.count { c := node[q]; if c < '0' || c > '9' { return -1; } v = v * 10 + cast(int) (c - '0'); if v >= HB_ITEMS { return -1; } }   // not a size
+  return v;
 }
 
 // ---------------------------------------------------------------- checks
@@ -631,4 +886,214 @@ hb_has :: (hay: string, needle: string) -> bool {
   #assert hb_slot_of("hot", "hot.s.12") == -1 && hb_slot_of("hot", "hot.s.") == -1 && hb_slot_of("hot", "hot.d.2") == -1 && hb_slot_of("hot", "hot.s.x") == -1 && hb_slot_of("hot", "hot.s.1x") == -1 && hb_slot_of("hot", "hot.s.:") == -1 && hb_slot_of("hot", "hot.s./") == -1 && hb_slot_of("hot", "hot.s.9") == 9;
   #assert hb_slot_of("hot", "hat.s.1") == -1 && hb_slot_of("hot", "hots.s.1") == -1 && hb_slot_of("hot", "hot") == -1 && hb_slot_of("hot", "") == -1 && hb_slot_of("hot", "hot.s") == -1 && hb_slot_of("hot", "hot/s.1") == -1 && hb_slot_of("hot", "hot.s/1") == -1;
   #assert hb_slot_of("a.bar", "a.bar.s.4") == 4 && hb_slot_of("a.bar", "a.bar.g.10") == 10 && hb_slot_of("", ".s.2") == 2 && hb_slot_of("hot", "hot.s.007") == 7 && hb_slot_of("hot", "hot.s.120") == -1;
+}
+
+// ---------------------------------------------------------------- checks: the catalogue, the layout, "more" and the palette
+
+HbCatTest :: struct { c: [1] HbCatalog; l: [1] HbLayout; p: [1] HbPalette; b: [1] Hotbar; t: [1] Tree; text: [256] u8; }
+// sets build, edit, camera, agent; items: 0 shapes, 1 edit, 2 camera, 3 decide, 4 ball (drawn by the skin), 5 slab, 6 reset (hidden), 7 sky (edit)
+hb_test_cat :: (c: [] HbCatalog) {
+  build := hb_set(c, "build"); edit := hb_set(c, "edit"); cam := hb_set(c, "camera"); agent := hb_set(c, "agent");
+  i0 := hb_item(c, build, HbSlot.{id = "shapes", glyph = "▢", label = "shapes", tip = "place a shape"});
+  i1 := hb_item(c, edit, HbSlot.{id = "edit", glyph = "✎", label = "edit", kind = HB_TOGGLE});
+  i2 := hb_item(c, cam, HbSlot.{id = "camera", glyph = "◎", label = "camera", kind = HB_TOGGLE, group = 1});
+  i3 := hb_item(c, agent, HbSlot.{id = "decide", glyph = "✦", label = "decide", kind = HB_ACTION, group = 1, tip = "the agent builds"});
+  i4 := hb_item(c, build, HbSlot.{id = "ball", glyph = "●", label = "ball", art = "sphere"});
+  i5 := hb_item(c, build, HbSlot.{id = "slab", glyph = "▭", label = "slab"});
+  i6 := hb_item(c, edit, HbSlot.{id = "reset", glyph = "↺", label = "reset", hidden = true});
+  i7 := hb_item(c, edit, HbSlot.{id = "sky", glyph = "☀", label = "sky", tip = "s", art = "x"});
+}
+// The layout as its items' digits ("402"; "?" for one that is not 0 to 9), for the checks.
+hb_test_lay :: (l: [] HbLayout, out: [] u8) -> string {
+  n := 0;
+  for k: 0..<l[0].n { v := l[0].at[k]; n = hb_put(out, n, ifx v < 0 || v > 9 then "?" else HB_DIGITS[v]); }
+  return cast(string) out[0..<n];
+}
+
+#test "a catalogue: its sets by name, its items in sets, an item's options, found by id; full at HB_SETS and HB_ITEMS" {
+  t: [1] HbCatTest; c := t[0].c[..];
+  #assert hb_set(c, "build") == 0 && hb_set(c, "edit") == 1 && hb_set(c, "build") == 0 && c[0].sets == 2 && c[0].names[1] == "edit";
+  #assert hb_item(c, -1, HbSlot.{id = "x"}) == -1 && hb_item(c, 2, HbSlot.{id = "x"}) == -1 && c[0].n == 0;
+  #assert hb_item(c, 1, HbSlot.{id = "a", label = "A"}) == 0 && hb_item(c, 0, HbSlot.{id = "b"}) == 1 && c[0].n == 2 && c[0].set[0] == 1 && c[0].set[1] == 0 && c[0].items[0].label == "A";
+  #assert hb_item_find(c, "b") == 1 && hb_item_find(c, "a") == 0 && hb_item_find(c, "c") == -1 && hb_item_find(c, "") == -1;
+  #assert hb_item_option(c, 0, HbOption.{id = "o1"}) == 0 && hb_item_option(c, 0, HbOption.{id = "o2"}) == 1 && c[0].items[0].opt_n == 2 && c[0].items[0].opts[1].id == "o2" && c[0].items[1].opt_n == 0;
+  #assert hb_item_option(c, 2, HbOption.{id = "x"}) == -1 && hb_item_option(c, -1, HbOption.{id = "x"}) == -1;
+  for k: 2..<HB_OPTIONS { #assert hb_item_option(c, 0, HbOption.{id = "o"}) == k; }
+  #assert hb_item_option(c, 0, HbOption.{id = "over"}) == -1 && c[0].items[0].opt_n == HB_OPTIONS;
+  for k: 2..<HB_SETS { #assert hb_set(c, HB_DIGITS[k]) == k; }
+  #assert hb_set(c, "more") == -1 && c[0].sets == HB_SETS && hb_set(c, "edit") == 1 && hb_set(c, HB_DIGITS[HB_SETS - 1]) == HB_SETS - 1;
+  for k: 2..<HB_ITEMS { #assert hb_item(c, HB_SETS - 1, HbSlot.{id = "i"}) == k; }
+  #assert hb_item(c, 0, HbSlot.{id = "over"}) == -1 && c[0].n == HB_ITEMS && hb_item_find(c, "over") == -1 && HB_ITEMS == 48 && HB_BAR == 9;
+  // an item the palette shows: there, and not hidden
+  u: [1] HbCatTest; d := u[0].c[..]; hb_test_cat(d);
+  #assert hb_shows(d, 0) && hb_shows(d, 7) && !hb_shows(d, 6) && !hb_shows(d, 8) && !hb_shows(d, -1) && d[0].n == 8;
+  #assert d[0].items[1].kind == HB_TOGGLE && d[0].items[2].kind == HB_TOGGLE && d[0].items[3].kind == HB_ACTION && d[0].items[0].kind == HB_TOOL && d[0].items[2].group == 1 && d[0].items[3].group == 1 && d[0].items[1].group == 0;
+  // an item has an id
+  #assert hb_item(d, 0, HbSlot.{label = "nameless"}) == -1 && d[0].n == 8;
+}
+
+#test "the bar's order: put in with room made, taken off with the gap closed, lifted and dropped, swapped; never twice, never past HB_BAR" {
+  t: [1] HbCatTest; l := t[0].l[..]; o := t[0].text[..];
+  #assert hb_lay_insert(l, 0, 3) && hb_lay_insert(l, 5, 1) && hb_lay_insert(l, 0, 0) && hb_lay_insert(l, 1, 2) && hb_lay_insert(l, -4, 4) && hb_test_lay(l, o) == "40231";
+  #assert hb_lay_insert(l, 4, 5) && hb_test_lay(l, o) == "402351" && hb_lay_insert(l, 6, 6) && hb_test_lay(l, o) == "4023516";
+  // not twice, not a negative item
+  #assert !hb_lay_insert(l, 0, 3) && !hb_lay_insert(l, 0, -1) && hb_test_lay(l, o) == "4023516" && hb_lay_at(l, 5) == 4 && hb_lay_at(l, 4) == 0 && hb_lay_at(l, 6) == 6 && hb_lay_at(l, 9) == -1;
+  #assert hb_lay_insert(l, 7, 7) && hb_lay_insert(l, 3, 8) && l[0].n == HB_BAR && hb_test_lay(l, o) == "402835167" && !hb_lay_insert(l, 0, 9) && l[0].n == HB_BAR;
+  // taken off: the item, the rest closing up; no such place: -1
+  #assert hb_lay_remove(l, 3) == 8 && hb_test_lay(l, o) == "40235167" && hb_lay_remove(l, 0) == 4 && hb_lay_remove(l, 6) == 7 && hb_test_lay(l, o) == "023516" && hb_lay_remove(l, 6) == -1 && hb_lay_remove(l, -1) == -1 && l[0].n == 6;
+  // lifted and dropped: its place as the bar is after; past the end is the end; before the start is the start
+  #assert hb_lay_move(l, 0, 2) && hb_test_lay(l, o) == "230516" && hb_lay_move(l, 4, 1) && hb_test_lay(l, o) == "213056";
+  #assert hb_lay_move(l, 1, 9) && hb_test_lay(l, o) == "230561" && hb_lay_move(l, 5, -2) && hb_test_lay(l, o) == "123056" && hb_lay_move(l, 2, 2) && hb_test_lay(l, o) == "123056";
+  #assert !hb_lay_move(l, 6, 0) && !hb_lay_move(l, -1, 0) && hb_test_lay(l, o) == "123056";
+  // swapped: the one there comes back; one on the bar changes places with it
+  #assert hb_lay_swap(l, 0, 9) == 1 && hb_test_lay(l, o) == "923056" && hb_lay_swap(l, 1, 6) == 2 && hb_test_lay(l, o) == "963052";
+  #assert hb_lay_swap(l, 6, 4) == -1 && hb_lay_swap(l, -1, 4) == -1 && hb_lay_swap(l, 0, -1) == -1 && hb_test_lay(l, o) == "963052" && hb_lay_swap(l, 5, 2) == 2 && hb_test_lay(l, o) == "963052";
+  // the item at the first place, put at another: the one there goes to the first
+  #assert hb_lay_swap(l, 3, 9) == 0 && hb_test_lay(l, o) == "063952";
+}
+
+#test "out of the palette onto the bar: with room it goes in, on a full bar it takes the place, on the bar already it moves; a number key gives a place" {
+  t: [1] HbCatTest; l := t[0].l[..]; o := t[0].text[..];
+  #assert hb_lay_add(l, 0, 1) && hb_lay_add(l, 9, 2) && hb_lay_add(l, 1, 3) && hb_test_lay(l, o) == "132" && !hb_lay_add(l, 0, -1);
+  #assert hb_lay_add(l, 0, 2) && hb_test_lay(l, o) == "213" && hb_lay_add(l, 9, 2) && hb_test_lay(l, o) == "132";
+  for k: 4..<10 { #assert hb_lay_add(l, 1, k); }
+  #assert hb_test_lay(l, o) == "198765432" && l[0].n == HB_BAR;
+  // full: it takes the place it is dropped on, the nearest past the ends
+  #assert hb_lay_add(l, 2, 0) && hb_test_lay(l, o) == "190765432" && l[0].n == HB_BAR;
+  z: [1] HbLayout; z[0] = l[0];
+  #assert hb_lay_add(z[..], 2, 8) && hb_test_lay(z[..], o) == "198765432";   // (the one it takes the place of is item 0)
+  m: [1] HbLayout; m[0] = l[0];
+  #assert hb_lay_add(m[..], -3, 8) && hb_test_lay(m[..], o) == "890765432" && hb_lay_add(m[..], 9, 1) && hb_test_lay(m[..], o) == "890765431" && hb_lay_add(m[..], 8, 6) && hb_test_lay(m[..], o) == "890754316" && hb_lay_add(m[..], 12, 2) && hb_test_lay(m[..], o) == "890754312";
+  // a number key: the place, the one there going where it was, or the end when the place is past the last
+  a: [1] HbLayout;
+  #assert hb_lay_assign(a[..], 4, 5) && hb_test_lay(a[..], o) == "5" && hb_lay_assign(a[..], 0, 7) && hb_test_lay(a[..], o) == "7" && hb_lay_assign(a[..], 1, 3) && hb_test_lay(a[..], o) == "73";
+  #assert hb_lay_assign(a[..], 8, 7) && hb_test_lay(a[..], o) == "37" && hb_lay_assign(a[..], 0, 7) && hb_test_lay(a[..], o) == "73" && hb_lay_assign(a[..], 1, 1) && hb_test_lay(a[..], o) == "71";
+  #assert !hb_lay_assign(a[..], 9, 4) && !hb_lay_assign(a[..], -1, 4) && !hb_lay_assign(a[..], 0, -1) && hb_test_lay(a[..], o) == "71" && hb_lay_assign(a[..], 2, 4) && hb_test_lay(a[..], o) == "714";
+  #assert hb_test_lay(a[..], o) != "?" && a[0].n == 3;
+  a[0].at[1] = 10; a[0].at[2] = -1; #assert hb_test_lay(a[..], o) == "7??";
+}
+
+#test "the layout as text and back, checked against the catalogue: unknown ids, ids said twice and any past nine are left out" {
+  t: [1] HbCatTest; c := t[0].c[..]; l := t[0].l[..]; hb_test_cat(c); o: [32] u8;
+  #assert hb_lay_read(l, c, "camera,shapes,decide") == 3 && hb_test_lay(l, o[..]) == "203";
+  n := hb_lay_text(l, c, t[0].text[..]); #assert cast(string) t[0].text[0..<n] == "camera,shapes,decide";
+  #assert hb_lay_read(l, c, "") == 0 && l[0].n == 0 && hb_lay_text(l, c, t[0].text[..]) == 0;
+  #assert hb_lay_read(l, c, "x,edit,,edit,sky,shapes,") == 3 && hb_test_lay(l, o[..]) == "170";
+  #assert hb_lay_read(l, c, "slab") == 1 && hb_test_lay(l, o[..]) == "5" && hb_lay_read(l, c, ",") == 0 && hb_lay_read(l, c, "shapes,edi") == 1 && hb_lay_read(l, c, "shapesx") == 0;
+  // a hidden item is still the catalogue's: it may stand on the bar (hidden there)
+  #assert hb_lay_read(l, c, "reset,ball") == 2 && hb_test_lay(l, o[..]) == "64";
+  // nine at most: the rest left out
+  big: [1] HbCatTest; d := big[0].c[..]; s := hb_set(d, "a");
+  for k: 0..<12 { i := hb_item(d, s, HbSlot.{id = HB_DIGITS[k]}); }
+  #assert hb_lay_read(l, d, "11,0,1,2,3,4,5,6,7,8,9,10") == HB_BAR && hb_lay_at(l, 11) == 0 && hb_lay_at(l, 7) == 8 && hb_lay_at(l, 8) == -1;
+  #assert hb_lay_read(l, d, "0,1") == 2; n = hb_lay_text(l, d, t[0].text[..]); #assert cast(string) t[0].text[0..<n] == "0,1";
+  // written: what is not an item of the catalogue is left out
+  l[0].n = 3; l[0].at[0] = 2; l[0].at[1] = 8; l[0].at[2] = -1;
+  n = hb_lay_text(l, c, t[0].text[..]); #assert cast(string) t[0].text[0..<n] == "camera";
+  l[0].at[0] = -1; l[0].at[2] = 7; n = hb_lay_text(l, c, t[0].text[..]); #assert cast(string) t[0].text[0..<n] == "sky";
+}
+
+#test "the bar from the layout: its items in order keyed 1 to 9 by place, then more, last, in a group of its own, lit while the palette is open" {
+  t: [1] HbCatTest; c := t[0].c[..]; l := t[0].l[..]; p := t[0].p[..]; b := t[0].b[..]; hb_test_cat(c);
+  r := hb_lay_read(l, c, "camera,shapes,reset,decide");
+  hb_fill(b, c, l, p, "every tool");
+  #assert b[0].n == 5 && b[0].slots[0].id == "camera" && b[0].slots[0].key == "1" && b[0].slots[1].id == "shapes" && b[0].slots[1].key == "2" && b[0].slots[2].hidden && b[0].slots[2].key == "3" && b[0].slots[3].key == "4" && b[0].slots[3].kind == HB_ACTION && b[0].slots[0].group == 1;
+  m := b[0].slots[4];
+  #assert m.id == HB_MORE && m.id == "more" && m.glyph == "⋯" && m.label == "more" && m.key == "0" && m.kind == HB_TOGGLE && m.group == HB_MORE_GROUP && !m.on && m.tip == "every tool" && hb_key(b, "4").slot == 3;
+  // an item the catalogue no longer has is left out, and the keys stay by place
+  l[0].at[1] = 8; l[0].at[2] = -2; b[0].n = 0; p[0].open = true;
+  hb_fill(b, c, l, p, "");
+  #assert b[0].n == 3 && b[0].slots[0].key == "1" && b[0].slots[1].id == "decide" && b[0].slots[1].key == "4" && b[0].slots[2].on && b[0].slots[2].id == "more";
+  // nine and more: ten slots
+  l[0].n = 0; for k: 0..<8 { put := hb_lay_insert(l, 9, k); } b[0].n = 0; hb_fill(b, c, l, p, "");
+  #assert b[0].n == 9 && b[0].slots[7].key == "8" && b[0].slots[8].id == "more" && HB_KEYS[8] == "9";
+  // in the tree: "more" keeps its place (hb-fix), lit while the palette is open, and a divider stands before it
+  tr := t[0].t[..]; tr_begin(tr); bar := k_hotbar(tr, "hot", "tools", b, hb_scifi());
+  #assert b[0].slots[8].fixed && !b[0].slots[0].fixed && tr_class(tr, tr_find(tr, "hot.s.8")) == "hb-s hb-on hb-fix hud k2" && tr_class(tr, tr_find(tr, "hot.s.7")) == "hb-s hud k2" && tr_find(tr, "hot.d.8") > 0 && tr_text_of(tr, tr_find(tr, "hot.k.8")) == "0";
+  b[0].slots[8].busy = true; b[0].slots[8].share = 0.5; tr_begin(tr); bar = k_hotbar(tr, "hot", "tools", b, hb_scifi());
+  #assert tr_class(tr, tr_find(tr, "hot.s.8")) == "hb-s hb-on hb-busy hb-cool hb-fix hud k2";
+}
+
+#test "the palette: by set, hidden items not in it; opened on its first, it keeps its focus; arrows go round; a click or Enter uses one and shuts it" {
+  t: [1] HbCatTest; c := t[0].c[..]; p := t[0].p[..]; l := t[0].l[..]; hb_test_cat(c); w: [32] u8;
+  o: [HB_ITEMS] int; n := hb_pal_order(c, o[..]);
+  #assert n == 7 && o[0] == 0 && o[1] == 4 && o[2] == 5 && o[3] == 1 && o[4] == 7 && o[5] == 2 && o[6] == 3;
+  small: [3] int; #assert hb_pal_order(c, small[..]) == 3 && small[2] == 5;
+  #assert !p[0].open && p[0].at == -1 && hb_pal_key(p, c, l, "Enter").used == -1 && !hb_pal_close(p);
+  hb_pal_open(p, c); #assert p[0].open && p[0].at == 0 && hb_pal_close(p) && !p[0].open;
+  p[0].at = 7; hb_pal_open(p, c); #assert p[0].at == 7;
+  p[0].at = 6; hb_pal_open(p, c); #assert p[0].at == 0;
+  p[0].at = 9; hb_pal_open(p, c); #assert p[0].at == 0;
+  hb_pal_move(p, c, 1); #assert p[0].at == 4; hb_pal_move(p, c, -2); #assert p[0].at == 3; hb_pal_move(p, c, 1); #assert p[0].at == 0;
+  hb_pal_move(p, c, 9); #assert p[0].at == 5; hb_pal_move(p, c, -15); #assert p[0].at == 4; hb_pal_move(p, c, 0); #assert p[0].at == 4;
+  p[0].at = 6; hb_pal_move(p, c, 1); #assert p[0].at == 0;
+  // the keys
+  k := hb_pal_key(p, c, l, "ArrowRight"); #assert k.moved && p[0].at == 4 && k.used == -1 && k.placed == -1 && !k.closed;
+  k = hb_pal_key(p, c, l, "ArrowDown"); #assert k.moved && p[0].at == 5;
+  k = hb_pal_key(p, c, l, "ArrowUp"); #assert k.moved && p[0].at == 4;
+  k = hb_pal_key(p, c, l, "ArrowLeft"); #assert k.moved && p[0].at == 0;
+  k = hb_pal_key(p, c, l, "3"); #assert k.placed == 2 && !k.moved && hb_test_lay(l, w[..]) == "0";
+  k = hb_pal_key(p, c, l, "ArrowRight"); k = hb_pal_key(p, c, l, "1"); #assert k.placed == 0 && hb_test_lay(l, w[..]) == "4";
+  k = hb_pal_key(p, c, l, "9"); #assert k.placed == 8 && hb_test_lay(l, w[..]) == "4";   // (the only one: at the end is where it is)
+  k = hb_pal_key(p, c, l, "ArrowRight"); k = hb_pal_key(p, c, l, "9"); #assert k.placed == 8 && hb_test_lay(l, w[..]) == "45";
+  k = hb_pal_key(p, c, l, "0"); #assert k.placed == -1 && !k.moved && k.used == -1 && p[0].open && hb_test_lay(l, w[..]) == "45";
+  k = hb_pal_key(p, c, l, "12"); #assert k.placed == -1; k = hb_pal_key(p, c, l, "x"); #assert k.placed == -1 && !k.moved && p[0].open;
+  k = hb_pal_key(p, c, l, ":"); #assert k.placed == -1 && hb_test_lay(l, w[..]) == "45";
+  k = hb_pal_key(p, c, l, "Enter"); #assert k.used == 5 && k.closed && !p[0].open && p[0].at == 5;
+  k = hb_pal_key(p, c, l, "Escape"); #assert !k.closed && !k.moved;
+  hb_pal_open(p, c); k = hb_pal_key(p, c, l, "Escape"); #assert k.closed && !p[0].open && k.used == -1;
+  // a click: used once, focused, shut; a hidden item or none is not used, and a shut palette uses nothing
+  hb_pal_open(p, c);
+  #assert hb_pal_use(p, c, 6) == -1 && p[0].open && hb_pal_use(p, c, 8) == -1 && hb_pal_use(p, c, 3) == 3 && !p[0].open && p[0].at == 3 && hb_pal_use(p, c, 2) == -1;
+  // the focus on a hidden item: Enter and a number do nothing
+  hb_pal_open(p, c); p[0].at = 6; k = hb_pal_key(p, c, l, "Enter"); #assert k.used == -1 && !k.closed && p[0].open; k = hb_pal_key(p, c, l, "2"); #assert k.placed == -1 && hb_test_lay(l, w[..]) == "45";
+  // the first item used by Enter is used, and shuts it
+  p[0].at = 0; k = hb_pal_key(p, c, l, "Enter"); #assert k.used == 0 && k.closed && !p[0].open;
+  // an empty catalogue: no focus
+  e: [1] HbCatTest; hb_pal_open(e[0].p[..], e[0].c[..]); #assert e[0].p[0].open && e[0].p[0].at == -1;
+  e[0].p[0].at = 3; hb_pal_move(e[0].p[..], e[0].c[..], 1); #assert e[0].p[0].at == -1;
+  // one item: the focus is on it
+  one := hb_set(e[0].c[..], "a"); only := hb_item(e[0].c[..], one, HbSlot.{id = "only"}); e[0].p[0].at = 5; hb_pal_open(e[0].p[..], e[0].c[..]); #assert e[0].p[0].at == 0;
+}
+
+#test "the palette in a tree: a dialog, a group a set with its name, a button an item with its glyph, name, line and its key on the bar; nothing while shut" {
+  t: [1] HbCatTest; c := t[0].c[..]; p := t[0].p[..]; l := t[0].l[..]; tr := t[0].t[..]; hb_test_cat(c);
+  r := hb_lay_read(l, c, "slab,camera");
+  tr_begin(tr); #assert k_hb_palette(tr, "pal", "every tool", c, l, p, hb_scifi()) == -1 && tr[0].n == 0;
+  hb_pal_open(p, c); hb_pal_move(p, c, 1);
+  s: [1] HbSkin; s[0] = hb_scifi(); g := hb_skin_glyph(s[..], "slab", "▬");
+  tr_begin(tr); root := tr_open(tr, "page", TG_MAIN, ""); box := k_hb_palette(tr, "pal", "every tool", c, l, p, s[0]); tr_close(tr);
+  #assert tr[0].lost == 0 && tr[0].depth == 0 && box > root && tr_id(tr, box) == "pal" && tr_class(tr, box) == "hb-p hb-scifi" && tr_attr_of(tr, box, AT_ROLE) == "dialog" && tr_attr_of(tr, box, AT_LABEL) == "every tool" && tr[0].nodes[box].parent == root && tr[0].nodes[box].tag == TG_DIV;
+  g0 := tr_find(tr, "pal.c.0"); g1 := tr_find(tr, "pal.c.1"); g2 := tr_find(tr, "pal.c.2"); g3 := tr_find(tr, "pal.c.3");
+  #assert g0 > box && g1 > g0 && g2 > g1 && g3 > g2 && tr_find(tr, "pal.c.4") < 0 && tr_class(tr, g1) == "hb-pc" && tr_attr_of(tr, g1, AT_ROLE) == "group" && tr_attr_of(tr, g1, AT_LABEL) == "edit" && tr[0].nodes[g1].parent == box && tr[0].nodes[g1].tag == TG_DIV;
+  h1 := tr_find(tr, "pal.h.1"); #assert h1 > g1 && tr[0].nodes[h1].parent == g1 && tr_text_of(tr, h1) == "edit" && tr_class(tr, h1) == "hb-ph" && tr[0].nodes[h1].tag == TG_SPAN && tr_text_of(tr, tr_find(tr, "pal.h.3")) == "agent";
+  // the items by set, in order; the hidden one not there
+  p0 := tr_find(tr, "pal.p.0"); p4 := tr_find(tr, "pal.p.4"); p5 := tr_find(tr, "pal.p.5"); p1 := tr_find(tr, "pal.p.1"); p7 := tr_find(tr, "pal.p.7");
+  #assert p0 > g0 && p4 > p0 && p5 > p4 && p1 > p5 && p7 > p1 && tr_find(tr, "pal.p.6") < 0 && tr[0].nodes[p0].parent == g0 && tr[0].nodes[p7].parent == g1 && tr[0].nodes[p0].tag == TG_BUTTON;
+  // focused, on the bar, neither; the label and the tooltip (the line, else the name)
+  #assert tr_class(tr, p4) == "hb-pi hb-pf" && tr_class(tr, p5) == "hb-pi hb-pon" && tr_class(tr, p0) == "hb-pi" && tr_class(tr, tr_find(tr, "pal.p.2")) == "hb-pi hb-pon";
+  #assert tr_attr_of(tr, p0, AT_LABEL) == "shapes" && tr_attr_of(tr, p0, AT_TITLE) == "place a shape" && tr_attr_of(tr, p5, AT_TITLE) == "slab";
+  // inside: the glyph (the skin's, or drawn), the name, the line, and the key on the bar
+  #assert tr_text_of(tr, tr_find(tr, "pal.pg.0")) == "▢" && tr_class(tr, tr_find(tr, "pal.pg.0")) == "hb-g" && tr_text_of(tr, tr_find(tr, "pal.pg.5")) == "▬" && tr_class(tr, tr_find(tr, "pal.pg.4")) == "hb-g hb-a-sphere" && tr_text_of(tr, tr_find(tr, "pal.pg.4")) == "";
+  #assert tr_text_of(tr, tr_find(tr, "pal.pn.3")) == "decide" && tr_class(tr, tr_find(tr, "pal.pn.3")) == "hb-pn" && tr_text_of(tr, tr_find(tr, "pal.pt.3")) == "the agent builds" && tr_class(tr, tr_find(tr, "pal.pt.3")) == "hb-pt" && tr_text_of(tr, tr_find(tr, "pal.pt.1")) == "edit";
+  // a line of one letter is a line; a glyph the skin draws, named in one letter, is drawn
+  #assert tr_text_of(tr, tr_find(tr, "pal.pt.7")) == "s" && tr_attr_of(tr, p7, AT_TITLE) == "s" && tr_class(tr, tr_find(tr, "pal.pg.7")) == "hb-g hb-a-x" && tr_text_of(tr, tr_find(tr, "pal.pg.7")) == "";
+  pk := tr_find(tr, "pal.pk.5");
+  #assert tr_text_of(tr, pk) == "1" && tr_class(tr, pk) == "hb-pk" && tr[0].nodes[pk].parent == p5 && tr_text_of(tr, tr_find(tr, "pal.pk.2")) == "2" && tr_find(tr, "pal.pk.0") < 0 && tr[0].nodes[tr_find(tr, "pal.pn.3")].parent == tr_find(tr, "pal.p.3");
+  #assert tr[0].nodes[tr_find(tr, "pal.pg.0")].tag == TG_SPAN && tr[0].nodes[tr_find(tr, "pal.pn.0")].tag == TG_SPAN && tr[0].nodes[tr_find(tr, "pal.pt.0")].tag == TG_SPAN && tr[0].nodes[pk].tag == TG_SPAN;
+  // a set with nothing shown has no group
+  c[0].items[3].hidden = true; tr_begin(tr); box = k_hb_palette(tr, "pal", "x", c, l, p, s[0]);
+  #assert tr_find(tr, "pal.c.3") < 0 && tr_find(tr, "pal.h.3") < 0 && tr_find(tr, "pal.c.2") > 0 && tr[0].depth == 0;
+  // a set whose only item shown is the catalogue's first
+  c[0].items[4].hidden = true; c[0].items[5].hidden = true; tr_begin(tr); box = k_hb_palette(tr, "pal", "x", c, l, p, s[0]);
+  #assert tr_find(tr, "pal.c.0") > 0 && tr_find(tr, "pal.p.0") > tr_find(tr, "pal.c.0") && tr_find(tr, "pal.p.4") < 0;
+}
+
+#test "a node's id says which item of the palette it is: the button or a part of it, of this palette only; and ids are written" {
+  #assert hb_pal_of("pal", "pal.p.0") == 0 && hb_pal_of("pal", "pal.p.47") == 47 && hb_pal_of("pal", "pal.pg.3") == 3 && hb_pal_of("pal", "pal.pn.12") == 12 && hb_pal_of("pal", "pal.pt.9") == 9 && hb_pal_of("pal", "pal.pk.5") == 5;
+  bad := [22] string.["pal.p.48", "pal.p.", "pal.pg.", "pal.px.1", "pal.pgg.1", "pal.p.1x", "pal.p.:", "pal.p./", "pal.c.1", "pal.h.1", "pa.p.1", "pals.p.1", "pal", "", "pal.p", "pal/p.1", "pal.q.1", "pal.p/1", "pal.pg/1", "pal.pa.1", "pal.ps.1", "pal.p.100"];
+  for id: bad { #assert hb_pal_of("pal", id) == -1; }
+  #assert hb_pal_of("a.b", "a.b.p.2") == 2 && hb_pal_of("", ".p.2") == 2 && hb_pal_of("pal", "pal.p.007") == 7 && hb_pal_of("hot", "hot.s.1") == -1 && hb_slot_of("hot", "hot.pg.1") == -1 && hb_slot_of("hot", "hot.p.1") == -1;
+  out: [32] u8;
+  #assert hb_id(out[..], "x", "p", 0) == "x.p.0" && hb_id(out[..], "pal", "pg", 47) == "pal.pg.47" && hb_id(out[..], "a", "c", 7) == "a.c.7" && hb_id(out[..], "a", "c", -3) == "a.c.0" && hb_id(out[..], "", "h", 120) == ".h.120";
 }
