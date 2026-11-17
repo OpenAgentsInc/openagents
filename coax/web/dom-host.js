@@ -50,6 +50,12 @@ const named = new URL(import.meta.url).searchParams;
 const script = named.has("app") ? null : document.querySelector("script[data-app]");
 if (shellTakes(script)) await new Promise(() => {});   // this page is the shell's now: its own module never starts
 const app = named.get("app") || script.dataset.app;
+// A pinned release can mount the unchanged app beneath a same-origin path.
+// API requests retain their original origin/path; only UI routes/resources move.
+const mount = named.get("mount") || "";
+if (mount && (!/^\/[a-zA-Z0-9/_-]+$/.test(mount) || mount.endsWith("/") || mount.includes(".."))) throw new Error("Invalid app mount");
+const mounted = (url) => mount && url.startsWith("/") && !url.startsWith("//") && !url.startsWith("/api/") && url !== mount && !url.startsWith(mount + "/") ? mount + (url === "/" ? "" : url) : url;
+const unmounted = (url) => { if (!mount || !(url === mount || url.startsWith(mount + "/") || url.startsWith(mount + "?"))) return url; const rest = url.slice(mount.length); return !rest || rest.startsWith("?") ? "/" + rest : rest; };
 const top = !named.has("app") || named.has("top");   // the page's own module, not a part opened by another
 const nested = named.has("nest");   // opened for a node of another module's (k_module): it stops when that node goes
 // A held copy draws in the very node it was opened for, handed over by the host that holds it (by the time it runs,
@@ -113,7 +119,7 @@ function apply(at, length) {
     else if (op === 6) {
       const el = els[slot], key = c[2], value = c[3];
       if (key === "src" && (!value.startsWith("/") || value.startsWith("//") || value.startsWith("/\\"))) continue;
-      el.setAttribute(key, value);
+      el.setAttribute(key, key === "src" || key === "href" || key === "poster" ? mounted(value) : value);
       if (key === "data-frame") frameOf(el);
       if (key === "autofocus") queueMicrotask(() => el.focus());
       if (key === "data-lang" && el.tagName === "TEXTAREA") { el.spellcheck = false; el.wrap = "off"; el.autocapitalize = "off"; }
@@ -139,7 +145,7 @@ function apply(at, length) {
       const sheet = named.has("app") ? `coaxial-style-${app}` : "coaxial-style";
       let style = document.getElementById(sheet);
       if (!style) { style = document.createElement("style"); style.id = sheet; document.head.appendChild(style); }
-      style.textContent = c[1];
+      style.textContent = mount ? c[1].replace(/url\(([\'"]?)\/(?!\/|api\/)/g, (_, quote) => `url(${quote}${mount}/`) : c[1];
     } else if (op === 10) { els[slot].value = c[2]; fit(els[slot]); }
     else if (op === 11) els[slot].focus();
   }
@@ -372,7 +378,7 @@ async function start() {
   const keptKey = `coaxial.dom.${app}.kept`;
   const keep = (at, len) => { if (len > 4096) return; try { localStorage.setItem(keptKey, text.decode(new Uint8Array(memory.buffer, at, len))); } catch { /* refused: kept for this visit only */ } };
   const go = (at, len, push) => {
-    const url = text.decode(new Uint8Array(memory.buffer, at, len));
+    const url = mounted(text.decode(new Uint8Array(memory.buffer, at, len)));
     if (!url.startsWith("/") || url.startsWith("//")) return;
     if (!push || fixed) { if (!(top && shellGo(url))) location.assign(url); return; }   // in the shell's frame, the shell's
     pushed = true;
@@ -419,7 +425,7 @@ async function start() {
   if (WebAssembly.Module.imports(module).some((i) => i.name === "dom_facts")) send(16, 0, `${navigator.userAgent}\n${location.href}`);
   const going = WebAssembly.Module.imports(module).some((i) => i.name === "dom_go"), shell = going && !fixed;
   if (fixed) send(13, 0, fixed);
-  const here = () => (top ? location.pathname + location.search : location.pathname);
+  const here = () => unmounted(top ? location.pathname + location.search : location.pathname);
   if (shell && top && !shellHeld) shellHost(own, root);   // before the first address: the frame it draws talks to it
   if (shell) { send(13, 0, here()); addEventListener("popstate", () => send(13, 0, here())); }
   root.addEventListener("click", (e) => {

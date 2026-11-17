@@ -198,3 +198,16 @@ rows in place of its GPU page: a new section in `settings-web.coax`, its slug in
   `coax/lib/qr`).
 - **Wallet** and **Agents** (`wallet.coax`, `agents.coax`) were not in this
   pass's four; they are GPU pages with no script of their own.
+
+### A same-origin release mount
+
+`dom-host.js?app=NAME&root=ELEMENT&mount=/PREFIX` carries the app's
+absolute UI addresses beneath a validated path prefix. The core still sees
+`/`, `/login`, and its other ordinary routes. Anchor/image attributes and
+root-relative CSS resources use that prefix; `/api/` and external addresses
+keep their ordinary destinations. The GPU host's existing `data-root`,
+`data-wasm`, `data-wgsl` and asset URLs select the matching immutable files.
+This is URL transport, with no state, input, clock or service substitution.
+Loaded-byte receipts accept only their host module's own resource prefix
+and retain canonical build/pack keys. A pinned copy can therefore use the
+real origin's sessions and APIs while main continues deploying.

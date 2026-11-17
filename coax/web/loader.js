@@ -17,11 +17,13 @@ const loadedAssets = new Map();
 Object.defineProperty(globalThis, "coaxialAssetReceipts", { get: () => Object.freeze(Object.fromEntries(loadedAssets)) });
 export async function rememberAsset(url, data) {
   const u = new URL(url, location.href);
-  if (u.origin !== location.origin || !/^\/(build\/[a-z0-9-]+\.(wasm|wgsl)|assets\/[a-z0-9-]+\.pack)$/.test(u.pathname)) return;
+  const base = new URL("../", import.meta.url).pathname.replace(/\/$/, "");
+  const path = base && u.pathname.startsWith(base + "/") ? u.pathname.slice(base.length) : u.pathname;
+  if (u.origin !== location.origin || (base && !u.pathname.startsWith(base + "/")) || !/^\/(build\/[a-z0-9-]+\.(wasm|wgsl)|assets\/[a-z0-9-]+\.pack)$/.test(path)) return;
   const bytes = typeof data === "string" ? new TextEncoder().encode(data) : data;
   if (!globalThis.crypto?.subtle) return;
   const digest = await crypto.subtle.digest("SHA-256", bytes);
-  loadedAssets.set(u.pathname.startsWith('/build/') ? u.pathname.slice(7) : u.pathname.slice(1), Object.freeze({ bytes: bytes.byteLength,
+  loadedAssets.set(path.startsWith('/build/') ? path.slice(7) : path.slice(1), Object.freeze({ bytes: bytes.byteLength,
     sha256: [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, "0")).join("") }));
 }
 
