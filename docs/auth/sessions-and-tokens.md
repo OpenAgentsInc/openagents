@@ -343,8 +343,9 @@ and nothing else: these routes ask with a free key, so no credit, sats or
 wallet is read or charged, and they read nothing a limited session could
 not already read. Saving a thread, binding a player, project chats,
 settings, identity, the wallet, agents and every authenticator change stay
-refused. The route's own rules still apply (the team's funding, the body's
-shape). From a listed first-party site only the first of the three is
+refused. The route's own rules still apply (the funding rule: the team's,
+or any person's account when the first route is asked from a listed
+first-party site; the body's shape). From a listed first-party site only the first of the three is
 reachable.
 
 To step up, a logged-in page asks `POST /api/auth/proof/challenge

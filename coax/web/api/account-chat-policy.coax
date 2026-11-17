@@ -23,6 +23,19 @@ act_bind :: (kind:int,session:bool,account:string,previous:string,found:bool,lim
   #assert act_funded(2,"a",true);#assert !act_funded(2,"a",false) && !act_funded(2,"",true);
   for k:0..<6 {if k!=2 {#assert !act_funded(k,"a",true);}}
 }
+// GameBuilder's chat is for every account (owner, 2026-11-17; INVARIANTS.md "A listed first-party site logs in
+// by email code, may ask the account chat, and does nothing else"): the plain stateless completion
+// (POST /api/chat/complete/v1) asked from a listed first-party site's page is funded for any person's own
+// account. Everywhere else, and on every other chat route, funding is the team's as before.
+// listed: the request's Origin is a listed site (auth-policy.coax ap_site). plain: the route is that completion.
+#test "a listed first-party site's page funds only the plain completion, and only a person's own account" {
+  #assert act_funded_from(2,"a",false,true,true);
+  #assert !act_funded_from(2,"a",false,false,true) && !act_funded_from(2,"a",false,true,false) && !act_funded_from(2,"a",false,false,false);
+  #assert !act_funded_from(2,"",false,true,true) && !act_funded_from(2,"",true,true,true);
+  for k:0..<6 {if k!=2 {#assert !act_funded_from(k,"a",false,true,true) && !act_funded_from(k,"a",true,true,true) && !act_funded_from(k,"a",true,false,false);}}
+  // the team's funding is what it was, whatever the site or the route
+  #assert act_funded_from(2,"a",true,false,false) && act_funded_from(2,"a",true,false,true) && act_funded_from(2,"a",true,true,false) && act_funded_from(2,"a",true,true,true);
+}
 #test "save bounds and compare-and-swap revisions" {
   #assert act_save(0,0,1,1) && act_save(7,7,32,48000);
   #assert !act_save(0,1,1,1) && !act_save(-1,-1,1,1);
@@ -31,4 +44,5 @@ act_bind :: (kind:int,session:bool,account:string,previous:string,found:bool,lim
 }
 act_owns :: (kind:int,account:string,owner:string)->bool #export_c #effects(all) {return kind==2 && account.count>0 && account==owner;}
 act_funded :: (kind:int,account:string,team:bool)->bool #export_c #effects(all) {return kind==2 && account.count>0 && team;}
+act_funded_from :: (kind:int,account:string,team:bool,listed:bool,plain:bool)->bool #export_c #effects(all) {return kind==2 && account.count>0 && (team || (listed && plain));}
 act_save :: (revision:int,current:int,messages:int,bytes:int)->bool #export_c #effects(all) {return revision>=0 && revision==current && messages>=1 && messages<=32 && bytes>=1 && bytes<=48000;}

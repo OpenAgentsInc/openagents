@@ -926,8 +926,21 @@ GameBuilder build agent's three routes (`POST /api/gamebuilder/agents/v1`,
 `GET /api/gamebuilder/agent/v1`, `GET /api/gamebuilder/agent/events/v1`), and is
 `403 Not from this site.` on every other route of the API, at the gate, before
 the route runs. The account chat keeps its own rules there as on this site
-(`account-chat.c`: a person's session or 401, `act_funded` or 403, `act_read`'s
-shape and sizes or 400, `inference.c`'s quotas); no other chat route is
+(`account-chat.c`: a person's session or 401, `act_read`'s shape and sizes or
+400, `inference.c`'s quotas), but for one: who is funded. The site's chat is
+for every account (owner, 2026-11-17, GameBuilder issue 15): asked with a
+listed site's `Origin`, `POST /api/chat/complete/v1` answers any person's own
+account, on the team beta or not (`act_funded_from`,
+`coax/web/api/account-chat-policy.coax`, `#authority`, mutation-checked).
+Everywhere else the funding is the team's as before (`act_funded` or 403):
+this site's own page, an app or tool with no `Origin`, the world, delegated
+and project turns, the durable turns and so a GameBuilder build agent. What
+bounds an account there is what bounds the team: the free key (no credit,
+sats or wallet is read or charged), the account's own day
+(`OA_INFERENCE_DAILY_REQUESTS`, 500 requests, and
+`OA_INFERENCE_DAILY_USD_MICROS`, $2.00; `inference.request`, whose 429 says
+the limit with its number since migration 0213), the answer's 2,048 tokens
+(`act_completion`) and the thread's shape and sizes (`act_read`). No other chat route is
 reached, not the world, delegated or project turns, the saved threads, nor
 any GET. Its email code is a
 plain browser login: `link`, `merge` and `client: "app"` are refused at the
@@ -949,9 +962,20 @@ slash, whitespace, wildcard, empty list, several entries);
 `coax/web/api/tests/auth_checks.coax` `ac_site_checks` (no list: 403; listed:
 the code is asked for, typed and logged out from the site; the link, merge,
 app, a pending value in the body, the chat's neighbours, every other write, a read with its `Origin`
-and every other site are refused; the account chat with no session is 401 and
-for a person off the team its own 403; no CORS header, no `Domain`, the mail's
-link is ours, the audit rows name the site). Not covered: a GET the other site's load balancer forwards carries
+and every other site are refused; the account chat with no session is 401;
+a person off the team is asked of the model from the site's page, the ask
+counts against that account's day, a bad shape is 400 and the day's limit is
+429 in words with its number, while the same session from this site's own
+page, with no `Origin`, and on the world and delegated turns keeps the
+team's 403 and counts nothing; no CORS header, no `Domain`, the mail's
+link is ours, the audit rows name the site); `account-chat-policy.coax`'s
+`#test` (only the plain completion, only a listed site, only a person's own
+account; the team's funding unchanged). Not covered: an `Origin` is what the
+caller sends, so a tool that sends the listed site's `Origin` with a person's
+own login is answered as the site's page is; the bound is that account's own
+day, as it is on the page. A new account is an email address, so the total is
+bounded per account, not across accounts (the email login's own rate limits
+apply). Not covered: a GET the other site's load balancer forwards carries
 no `Origin`, so it is answered as this site's own; that balancer must send
 only those paths ([sessions and tokens](docs/auth/sessions-and-tokens.md#a-second-first-party-site)).
 
@@ -1016,8 +1040,9 @@ is deny: a route not named stays refused. Each named route stores nothing,
 changes nothing the account owns or how it logs in, and asks the model with a
 free key (`account-chat.c`, `inference_ask(..., true)`), so it counts only
 against the account's own daily inference quota and never reads or charges
-credit, sats or a wallet. The route's own rules still apply (`act_funded`,
-the body's shape). Saving a thread, binding a player, project chats,
+credit, sats or a wallet. The route's own rules still apply (the funding
+rule, `act_funded_from`: the team's, or any person's account when the first
+route is asked from a listed first-party site; the body's shape). Saving a thread, binding a player, project chats,
 settings, identity, the wallet, agents, exports, deletion and every
 authenticator change stay refused, and recovery still waits 72 hours. Its one
 login write is a command line's code (`ap_limited_handoff`, the section

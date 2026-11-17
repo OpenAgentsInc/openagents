@@ -70,7 +70,10 @@ ac_site_api :: (t: [] Ap, port: int, ours: string) -> int {
   r: [1] Sb; sb(r[..], "OA_RESEND_URL=http://127.0.0.1:"); sb(r[..], ap_env(t, "RESEND_PORT")); sb(r[..], "/emails");
   ok := h >= 0 && proc_arg(h, ap_env(t, "API_BIN")) && proc_arg(h, "--listen") && proc_arg(h, sb_text(p[..])) && proc_env(h, sb_text(e[..]))
         && proc_env(h, sb_text(r[..])) && proc_env(h, "OA_RESEND_API_KEY=test-resend")
-        && proc_env(h, "OA_API_SITE_ORIGINS=https://gamebuilder.org,https://*.example,https://second.example/") && proc_quiet(h);
+        && proc_env(h, "OA_API_SITE_ORIGINS=https://gamebuilder.org,https://*.example,https://second.example/")
+        // The account chat's model here is a closed port (the answer is 502, never a real model), and its day is two requests.
+        && proc_env(h, "OA_INFERENCE_URL=http://127.0.0.1:9/chat/completions") && proc_env(h, "OA_INFERENCE_TOKEN=test-token")
+        && proc_env(h, "OA_INFERENCE_DAILY_REQUESTS=2") && proc_quiet(h);
   if !ok || proc_start(h) != 0 { if h >= 0 { _ = proc_release(h); } return -1; }
   deadline := proc_now_ms() + 15000;
   while proc_now_ms() < deadline && proc_wait(h, 0) == PROC_RUNNING {
@@ -173,9 +176,30 @@ ac_site_checks :: (parent: [] Ap, dir: string) {
 
   // ---- and nothing else: every other write of a logged-in session is refused from the listed site
   auth := ac_cookie_header("__Host-oa_session", S, c1[..]);
+  // The site's chat is for every account (GameBuilder issue 15; account-chat-policy.coax act_funded_from): a person
+  // who is not on the team is asked of the model from the listed site's page (502 here: this API's model is a
+  // closed port), and the call counts against the account's own day. From this site's own page, from an app (no
+  // Origin) and on the world and delegated turns the same session keeps the team's refusal.
+  team_words := "Agent chat is currently available to the team beta.";
+  st = ac_call(t, "POST", "/api/chat/complete/v1", AC_CHAT, auth, "", "");
+  team := st == 403 && ap_member(ap_body(t), "error", eb[..]) == team_words;
+  st = ac_from(t, ours, "203.0.113.144", "/api/chat/complete/v1", AC_CHAT, auth);
+  team = team && st == 403 && ap_member(ap_body(t), "error", eb[..]) == team_words;
+  st = ac_from(t, ours, "203.0.113.144", "/api/chat/world/complete/v1", AC_CHAT, auth);
+  team = team && st == 403 && ap_member(ap_body(t), "error", eb[..]) == team_words;
+  st = ac_from(t, ours, "203.0.113.144", "/api/chat/delegated/complete/v1", AC_CHAT, auth);
+  ap_check(t, "listed: off the team, this site's own page, an app and the world and delegated turns keep the team's refusal", team && st == 403 && ap_member(ap_body(t), "error", eb[..]) == team_words, ap_body(t));
+  dq: [1] Sb; sb(dq[..], "SELECT coalesce(sum(n), 0) FROM inference.account_day WHERE pubkey = encode(sha256(convert_to('openagents.account-chat.v1:"); sb(dq[..], acct); sb(dq[..], "', 'UTF8')), 'hex')");
+  ap_check(t, "listed: a refused ask counts nothing against the account's day", ap_sql(t, sb_text(dq[..]), out[..]) == "0", "");
   st = ac_from(t, AC_GB, "203.0.113.144", "/api/chat/complete/v1", AC_CHAT, auth);
-  ap_check(t, "listed: a logged-in person who is not on the team reaches the account chat's own rule, and it refuses", st == 403
-           && ap_member(ap_body(t), "error", eb[..]) == "Agent chat is currently available to the team beta.", ap_body(t));
+  ap_check(t, "listed: a logged-in person who is not on the team is asked of the model from the site's page", st == 502 || st == 200, ap_body(t));
+  ap_check(t, "listed: that ask is one of the account's own day", ap_sql(t, sb_text(dq[..]), out[..]) == "1", "");
+  st = ac_from(t, AC_GB, "203.0.113.144", "/api/chat/complete/v1", "{\"schema\":\"openagents.chat.thread.v1\"}", auth);
+  ap_check(t, "listed: the chat's shape is still held", st == 400, ap_body(t));
+  st = ac_from(t, AC_GB, "203.0.113.144", "/api/chat/complete/v1", AC_CHAT, auth);
+  st = ac_from(t, AC_GB, "203.0.113.144", "/api/chat/complete/v1", AC_CHAT, auth);
+  ap_check(t, "listed: the account's day is held, and the refusal says the limit with its number", st == 429
+           && ap_member(ap_body(t), "error", eb[..]) == "this account's 2 requests for today are used up", ap_body(t));
   paths := [31] string.["/api/auth/cli/redeem", "/api/chat/world/complete/v1", "/api/chat/delegated/complete/v1", "/api/chat/project/v1", "/api/chat/project/complete/v1",
                         "/api/chat/thread/v1", "/api/chat/world/player/v1", "/api/chat/complete", "/api/chat/route/v1",
                         "/api/auth/nostr/challenge", "/api/auth/nostr", "/api/auth/phone/start", "/api/auth/phone/poll", "/api/auth/refresh",

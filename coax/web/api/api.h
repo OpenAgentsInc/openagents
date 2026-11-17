@@ -228,6 +228,7 @@ void auth_visitor(const request *q, char ip[128]);
 bool auth_limited(const request *q, PGconn *db);             // true when it refused (agent_ask)
 bool auth_same_site(const request *q);
 bool auth_first_party(const request *q);   // auth.c: no Origin, ours, or a listed first-party site (OA_API_SITE_ORIGINS)
+bool auth_listed_site(const request *q);  // auth.c: the Origin is a listed first-party site (ap_site AP_SITE_LISTED), never ours or none
 const char *auth_origin(void);
 
 // Agents, their grants and keys, and `openagents login` (agents.c, agent-policy.coax, #13211).

@@ -865,6 +865,9 @@ static int site_of(const request *q, char from[256]) {
 // The listed site a request came from, for the audit row's detail; "" from ours and from apps.
 // No Origin, ours, or a listed first-party site: a write a listed site's page may make (its routes are ap_site_route's).
 bool auth_first_party(const request *q) { char from[256]; int s = site_of(q, from); return s == AP_SITE_NONE || s == AP_SITE_OURS || s == AP_SITE_LISTED; }
+// The request's Origin is a listed first-party site, whole and byte for byte (ap_site): what account-chat.c's
+// funding rule (account-chat-policy.coax act_funded_from) is told. No Origin, ours and any other site are false.
+bool auth_listed_site(const request *q) { char from[256]; return site_of(q, from) == AP_SITE_LISTED; }
 static const char *listed_site(const request *q, char from[256]) { return site_of(q, from) == AP_SITE_LISTED ? from : ""; }
 
 // The gate: true when it answered (a refusal), false to let the route run.

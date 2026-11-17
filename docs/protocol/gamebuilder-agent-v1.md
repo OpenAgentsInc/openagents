@@ -32,7 +32,11 @@ has no tools, and whose second is the brief. Anything else is 400.
 Admission is the durable turn's: a person's session, the team beta's funding
 (`act_funded`, 403 otherwise), at most 32 active turns an account, the fixed
 model's 2,048 output-token cap, and `inference.c`'s free key and daily quotas.
-Nothing is charged. A limited session (an email login on an account with a key
+Nothing is charged. The site's chat (`POST /api/chat/complete/v1` from
+`gamebuilder.org`) is for every account since 2026-11-17 (`act_funded_from`);
+a build agent is not yet: its turn is admitted again when the hosted runner
+takes it up (`ctw_grant`), where no `Origin` is known, so an account off the
+team beta is told 403 at the start. A limited session (an email login on an account with a key
 or passkey) may start one: `ap_limited_write` names this path, and the durable
 submit honours it only on this path (INVARIANTS.md, "A limited session writes
 only the account chat's stateless completions and a build agent"). A POST

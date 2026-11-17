@@ -110,7 +110,9 @@ bool account_chat_route(const request *q) {
   if (player) {ac_player(q,p);return true;}
   if (complete) {
     if (strcmp(q->method,"POST")) {api_error(q->fd,405,"POST this");return true;}
-    if (!act_funded(p->kind,acs(p->account),p->team)) {api_error(q->fd,403,"Agent chat is currently available to the team beta.");return true;}
+    // A listed first-party site's page (gamebuilder.org) asks the plain completion for any person's own
+    // account; every other caller and the world and delegated turns keep the team's funding (act_funded_from).
+    if (!act_funded_from(p->kind,acs(p->account),p->team,auth_listed_site(q),!world && !delegated)) {api_error(q->fd,403,"Agent chat is currently available to the team beta.");return true;}
     // A namespaced metering subject, never a Nostr key/authenticator. Quotas and
     // usage receipts are inference.c's existing account_day/finish path.
     char subject[96],who[65];unsigned char digest[32];snprintf(subject,sizeof subject,"openagents.account-chat.v1:%s",p->account);
