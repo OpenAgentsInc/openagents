@@ -17,7 +17,7 @@
 
 AU :: 149597870700.0;               // m
 GM_SUN :: 132712440018000000000.0;  // m^3/s^2 (DE440)
-G0 :: 9.80665;                      // m/s^2: Isp in seconds to exhaust speed
+ORBIT_G0 :: 9.80665;                // m/s^2: Isp in seconds to exhaust speed (thrust.coax names its own G0)
 DAY :: 86400.0;
 YEAR :: 31557600.0;                 // Julian year, s
 ORBIT_2200 :: 6311433600.0;         // 2200-01-01 12:00 TDB: 73049 days after J2000
@@ -395,14 +395,14 @@ orbit_hohmann_time :: (a1: f64, a2: f64, mu: f64) -> f64 { return orbit_hohmann(
 // ---- the rocket
 
 // Delta-v from a mass ratio: Isp g0 ln(m0 / m1).
-orbit_delta_v :: (isp: f64, m0: f64, m1: f64) -> f64 { return isp * G0 * log(m0 / m1); }
+orbit_delta_v :: (isp: f64, m0: f64, m1: f64) -> f64 { return isp * ORBIT_G0 * log(m0 / m1); }
 // Propellant to give dv to a ship whose mass after the burn is m1.
-orbit_propellant :: (isp: f64, m1: f64, dv: f64) -> f64 { return m1 * (exp(dv / (isp * G0)) - 1.0); }
+orbit_propellant :: (isp: f64, m1: f64, dv: f64) -> f64 { return m1 * (exp(dv / (isp * ORBIT_G0)) - 1.0); }
 // Propellant to give dv to a ship of mass m0 before the burn.
-orbit_propellant_from :: (isp: f64, m0: f64, dv: f64) -> f64 { return m0 * (1.0 - exp(-dv / (isp * G0))); }
+orbit_propellant_from :: (isp: f64, m0: f64, dv: f64) -> f64 { return m0 * (1.0 - exp(-dv / (isp * ORBIT_G0))); }
 // How long a burn of dv takes at thrust (N) from mass m0.
 orbit_burn_time :: (isp: f64, m0: f64, thrust: f64, dv: f64) -> f64 {
-  return orbit_propellant_from(isp, m0, dv) * isp * G0 / thrust;
+  return orbit_propellant_from(isp, m0, dv) * isp * ORBIT_G0 / thrust;
 }
 
 // A finite burn: position, velocity and mass under gravity mu and thrust
@@ -415,7 +415,7 @@ burn_accel :: (r: D3, v: D3, m: f64, mu: f64, thrust: f64, dir: D3) -> D3 {
   return a;
 }
 orbit_burn_step :: (b: OrbitBurn, mu: f64, thrust: f64, isp: f64, dir: D3, dt: f64) -> OrbitBurn {
-  md := -thrust / (isp * G0);
+  md := -thrust / (isp * ORBIT_G0);
   k1r := b.v; k1v := burn_accel(b.r, b.v, b.m, mu, thrust, dir);
   r2 := d3_add(b.r, d3_scale(k1r, dt / 2.0)); v2 := d3_add(b.v, d3_scale(k1v, dt / 2.0)); m2 := b.m + md * dt / 2.0;
   k2r := v2; k2v := burn_accel(r2, v2, m2, mu, thrust, dir);
@@ -543,7 +543,7 @@ rel_near :: (a: f64, b: f64, tolerance: f64) -> bool { return abs(a - b) <= tole
   dt := 1.0;
   t := 0.0;
   while b.m > 78400.0 + 0.001 {
-    piece := fmin(dt, (b.m - 78400.0) * isp * G0 / thrust);
+    piece := fmin(dt, (b.m - 78400.0) * isp * ORBIT_G0 / thrust);
     b = orbit_burn_step(b, 0.0, thrust, isp, D3_X, piece);
     t += piece;
   }
