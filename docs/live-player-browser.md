@@ -33,6 +33,11 @@ video holds its last visible frame during that explicitly logged interval.
 `record.pause` alone drops frames while retaining capture, for privacy rather
 than lifecycle. The headless `player-record-check.coax` fixture proves actual
 hidden/restored states with capture suspended, then clean recording completion.
+Its `--metrics`, `--shot` and `--held` probes isolate viewport overrides,
+still captures and held protocol input. Chrome 157 can report `hidden: true`
+while retaining its focused flag after protocol keyboard input. The held-input
+probe therefore checks actual visibility and reports focus separately; real
+frame-focus loss requires a separate native outside-click check downstream.
 Caller orchestration owns budgets, account leases, retention, assertions,
 encoding and qualification. These helpers do not constitute a passing test.
 

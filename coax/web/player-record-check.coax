@@ -7,18 +7,23 @@ prc_file :: (dir:string,name:string,present:bool)->bool {
 prc_window :: (c:[]Cdp,id:int,state:string)->bool {
   b:[256]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_obj(o[..]);jo_key(o[..],"windowId");jo_int(o[..],id);jo_key(o[..],"bounds");jo_obj(o[..]);jo_key(o[..],"windowState");jo_str(o[..],state);jo_end(o[..]);jo_end(o[..]);return cdp_call(c,"Browser.setWindowBounds",jo_text(o[..]),PB_CALL_MS)>=0;
 }
-prc_visibility :: (c:[]Cdp,hidden:bool)->bool {
-  end:=proc_now_ms()+2000;while proc_now_ms()<end {if pb_bool(c,ifx hidden then "document.hidden && !document.hasFocus()" else "!document.hidden && document.hasFocus()") {return true;}proc_sleep(25);}return false;
+prc_visibility :: (c:[]Cdp,hidden:bool,focus_required:bool)->bool {
+  expression:=ifx hidden then (ifx focus_required then "document.hidden && !document.hasFocus()" else "document.hidden") else "!document.hidden && document.hasFocus()";
+  end:=proc_now_ms()+2000;while proc_now_ms()<end {if pb_bool(c,expression) {return true;}proc_sleep(25);}return false;
 }
 tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) {return 2;}if args_at(a[..],0)=="--record" {return pb_record_with(args_at(a[..],1),args_at(a[..],2),15000,200);}
-  dir:=args_value(a[..],"--out","build/player-record-check");path:[4096]u8;if fs_exists(fs_join(dir,"capture.ffconcat",path[..])) || !fs_mkdir_private(dir) {return 2;}
+  dir:=args_value(a[..],"--out","coax/web/build/player-record-check");path:[4096]u8;if fs_exists(fs_join(dir,"capture.ffconcat",path[..])) || !fs_mkdir_private(dir) {return 2;}
   c:[1]Cdp;if !cdp_launch_live_headless(c[..],800,600,"coax-record-fixture-") {return 1;}defer cdp_close(c[..]);_=cdp_call(c[..],"Page.enable","{}",PB_CALL_MS);
+  if args_has(a[..],"--metrics") {_:=cdp_call(c[..],"Emulation.setDeviceMetricsOverride","{\"width\":800,\"height\":600,\"deviceScaleFactor\":1,\"mobile\":false}",PB_CALL_MS);}
   r:=cdp_call(c[..],"Page.getFrameTree","{}",PB_CALL_MS);frame:[256]u8;fn:=ifx r>=0 then jv_str(cdp_doc(c[..]),jv_path(cdp_doc(c[..]),r,"frameTree.frame.id"),frame[..]) else -1;if fn<1 {return 1;}
   b:[4096]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_obj(o[..]);jo_key(o[..],"frameId");jo_str(o[..],cast(string)frame[0..<fn]);jo_key(o[..],"html");jo_str(o[..],"<!doctype html><style>body{margin:0;background:#123}div{width:100px;height:100px;background:#5f9;animation:slide 1s linear infinite alternate}@keyframes slide{to{transform:translateX(600px)}}</style><div></div>");jo_end(o[..]);if cdp_call(c[..],"Page.setDocumentContent",jo_text(o[..]),PB_CALL_MS)<0 {return 1;}
   ws:[512]u8;url:=pb_page_url(c[..],ws[..]);self:[4096]u8;h:=proc_new();if h<0 || !proc_arg(h,tool_self(self[..])) || !proc_arg(h,"--record") || !proc_arg(h,url) || !proc_arg(h,dir) || !proc_quiet(h) || proc_start(h)!=0 {return 1;}
   started:=prc_file(dir,"frame-1.jpg",true);_=fs_write(fs_join(dir,"record.suspend",path[..]),"lifecycle fixture");ack:=prc_file(dir,"record.suspended",true);
-  r=cdp_call(c[..],"Browser.getWindowForTarget","{}",PB_CALL_MS);id:=ifx r>=0 then jv_int(cdp_doc(c[..]),jv_get(cdp_doc(c[..]),r,"windowId"),-1) else -1;hidden:=id>=0 && prc_window(c[..],id,"minimized") && prc_visibility(c[..],true);proc_sleep(300);hidden=hidden && prc_visibility(c[..],true);
-  restored:=prc_window(c[..],id,"normal");_=cdp_call(c[..],"Page.bringToFront","{}",PB_CALL_MS);restored=restored && prc_visibility(c[..],false);_=fs_remove(fs_join(dir,"record.suspend",path[..]));resumed:=prc_file(dir,"record.suspended",false);proc_sleep(500);_=fs_write(fs_join(dir,"record.stop",path[..]),"stop");status:=proc_wait(h,3000);if status<0 {_:=proc_kill(h,PROC_SIGTERM);}_=proc_release(h);
+  if args_has(a[..],"--shot") {image:[4194304]u8;n:=cdp_screenshot(c[..],image[..]);if n>0 {_:=fs_write(fs_join(dir,"before-minimize.png",path[..]),cast(string)image[0..<n]);}}
+  if args_has(a[..],"--held") {_:=pb_key(c[..],"a","KeyA",true);proc_sleep(100);}
+  focus_required:=!args_has(a[..],"--held");r=cdp_call(c[..],"Browser.getWindowForTarget","{}",PB_CALL_MS);id:=ifx r>=0 then jv_int(cdp_doc(c[..]),jv_get(cdp_doc(c[..]),r,"windowId"),-1) else -1;hidden:=id>=0 && prc_window(c[..],id,"minimized") && prc_visibility(c[..],true,focus_required);proc_sleep(300);hidden=hidden && prc_visibility(c[..],true,focus_required);
+  facts:=pb_read(c[..],"({hidden:document.hidden,focused:document.hasFocus()})");if facts>=0 {print("window state: %\n",jv_raw(cdp_doc(c[..]),facts));}
+  restored:=prc_window(c[..],id,"normal");_=cdp_call(c[..],"Page.bringToFront","{}",PB_CALL_MS);restored=restored && prc_visibility(c[..],false,true);_=pb_release(c[..]);_=fs_remove(fs_join(dir,"record.suspend",path[..]));resumed:=prc_file(dir,"record.suspended",false);proc_sleep(500);_=fs_write(fs_join(dir,"record.stop",path[..]),"stop");status:=proc_wait(h,3000);if status<0 {_:=proc_kill(h,PROC_SIGTERM);}_=proc_release(h);
   print("record lifecycle: frames %, suspend acknowledged %, genuinely hidden %, restored %, capture resumed %, recorder clean %\n",started,ack,hidden,restored,resumed,status==0);return ifx started && ack && hidden && restored && resumed && status==0 then 0 else 1;
 }
