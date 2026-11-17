@@ -5732,7 +5732,7 @@ $$;
 
 CREATE FUNCTION inference.request(who text, body text, cap_n integer, cap_usd_micros bigint) RETURNS jsonb
     LANGUAGE plpgsql
-    AS $$
+    AS $_$
 DECLARE
   b jsonb;
   m inference.models;
@@ -5748,15 +5748,19 @@ BEGIN
   IF NOT FOUND THEN RETURN '{"status":400,"error":"this route does not serve that model"}'; END IF;
   INSERT INTO inference.account_day AS a (pubkey, day, n) VALUES (who, current_date, 1)
   ON CONFLICT (pubkey, day) DO UPDATE SET n = a.n + 1 RETURNING * INTO d;
-  IF d.n > cap_n THEN RETURN '{"status":429,"error":"this account''s requests for today are used up"}'; END IF;
-  IF d.usd_micros >= cap_usd_micros THEN RETURN '{"status":429,"error":"this account''s spend for today is used up"}'; END IF;
+  IF d.n > cap_n THEN
+    RETURN jsonb_build_object('status', 429, 'error', format('this account''s %s requests for today are used up', cap_n));
+  END IF;
+  IF d.usd_micros >= cap_usd_micros THEN
+    RETURN jsonb_build_object('status', 429, 'error', format('this account''s $%s spend for today is used up', to_char(cap_usd_micros / 1000000.0, 'FM999999999990.00')));
+  END IF;
   stream := coalesce(b->'stream' = 'true'::jsonb, false);
   cap := least(coalesce(CASE WHEN jsonb_typeof(b->'max_tokens') = 'number' THEN (b->>'max_tokens')::numeric END,
                         CASE WHEN jsonb_typeof(b->'max_completion_tokens') = 'number' THEN (b->>'max_completion_tokens')::numeric END, 8192), 8192)::int;
   b := (b - 'store' - 'max_completion_tokens' - 'user') || jsonb_build_object('model', m.upstream, 'max_tokens', greatest(cap, 1));
   IF stream THEN b := b || '{"stream_options":{"include_usage":true}}'; END IF;
   RETURN jsonb_build_object('status', 200, 'request', b, 'model', m.name, 'stream', stream);
-END $$;
+END $_$;
 
 
 --

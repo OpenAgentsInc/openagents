@@ -97,10 +97,12 @@ infer_codes = [infer(infer_ask)[0] for _ in range(3)]
 check("inference: an account's day is five requests here; the sixth is a 429 and never reaches Vertex", infer_codes == [200, 200, 429], infer_codes)
 check("inference: the day's count and spend are the account's",
       sql(f"select n||'|'||usd_micros from inference.account_day where pubkey = '{infer_user}'") == "6|15000")
+infer_words = [sql("select coalesce(x->>'error', x->>'status') from inference.request('limit-words-check', '{\"model\":\"google/gemini-4-hydrogen\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}', 2, 1000000) x") for _ in range(3)]
+check("inference: the day's request limit is said with its number", infer_words == ["200", "200", "this account's 2 requests for today are used up"], infer_words)
 infer_admin = infer_pubkey(os.environ["ADMIN_KEY"])
 sql(f"update inference.account_day set usd_micros = 2000000 where pubkey = '{infer_admin}'")
 s, b, _ = infer(infer_ask, keyfile=os.environ["ADMIN_KEY"])
-check("inference: an account whose day's spend is used up gets a 429", s == 429 and b"spend" in b, b)
+check("inference: an account whose day's spend is used up gets a 429 that says the limit", s == 429 and json.loads(b) == {"error": "this account's $2.00 spend for today is used up"}, b)
 
 # /api/v1/inference/credit (NIP-X402 openagents:spark-receiver:1): credit bought over Lightning
 # from a fake Spark wallet on SPARK_PORT, then spent on the route by a key that isn't listed.
