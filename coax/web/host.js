@@ -4821,8 +4821,16 @@ function noGpuNotice() {
   note.textContent = navigator.gpu
     ? "This page is drawn with WebGPU, and this browser has no graphics adapter for it. Use a current Chrome, Edge or Safari with hardware acceleration turned on. In Chrome on Linux, start it with --enable-unsafe-webgpu."
     : "This page is drawn with WebGPU, which this browser doesn't have. Use a current Chrome, Edge or Safari.";
-  const text = document.querySelector("main") || document.body;
-  text.prepend(note);
+  // A DOM module owns and replaces its root's children. Keep a GPU failure
+  // outside that tree so a concurrent first render or later route cannot erase
+  // the explanation. Overlay pages also position their root over normal flow.
+  const domRoot = document.getElementById("coaxial-root");
+  if (domRoot) {
+    note.style.cssText += ";position:fixed;left:16px;right:16px;bottom:16px;z-index:2147483647;max-height:40vh;overflow:auto";
+    document.body.append(note);
+  } else {
+    (document.querySelector("main") || document.body).prepend(note);
+  }
 }
 
 async function main() {

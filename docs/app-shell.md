@@ -211,3 +211,13 @@ This is URL transport, with no state, input, clock or service substitution.
 Loaded-byte receipts accept only their host module's own resource prefix
 and retain canonical build/pack keys. A pinned copy can therefore use the
 real origin's sessions and APIs while main continues deploying.
+
+### An unavailable GPU on a DOM page
+
+The host's `coaxial-no-gpu` alert lives outside `coaxial-root`, with a fixed
+visible position on overlay pages. A DOM module replaces its root's children;
+putting this platform error inside that tree allowed a concurrent first draw
+to erase the explanation. Ordinary static pages retain the in-flow notice.
+The two-module GameBuilder loopback check forces an absent WebGPU API before
+navigation and verifies the actual alert remains inside the viewport; its
+separate real device-destruction check verifies replacement and new frames.
