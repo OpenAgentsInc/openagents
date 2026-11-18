@@ -1,5 +1,7 @@
 // A durable candidate is a complete signed public original. This check does
 // not assert the author of a NIP-59 inner seal or any live relay permission.
+// coax test coax/native/nostr-operation-admit.coax --library --run-steps 250000000
+#run_steps 250000000;   // secp256k1 base-point table, built at compile time (secp_mult_base_web.coax)
 #load "nostr-operation-wire.coax";
 #load "nostr-send-wire.coax";
 #load "../lib/nostr/event_verify_fast.coax";

@@ -1,5 +1,7 @@
 // Atomic NIP-17 preparation. No socket effect exists until this entire result
 // and its operation receipt have committed under the account journal lock.
+// coax test coax/native/nostr-send.coax --library --run-steps 250000000
+#run_steps 250000000;   // secp256k1 base-point table, built at compile time (secp_mult_base_web.coax)
 #load "nostr-send-wire.coax";
 #load "nostr-custody-crypto.coax";
 #load "messaging-state.coax";
