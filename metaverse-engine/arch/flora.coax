@@ -6,6 +6,12 @@
 //   arch_tree       a tree from a spec: a broadleaf is a thick trunk and boughs under a crown of
 //                   leafy masses, each a dark heart under layers of pointed leaves; a conifer is
 //                   tiers of drooping boughs
+//   arch_tree_hearts, arch_tree_leaves, arch_tree_low
+//                   a tree in layers: its wood and each mass's heart (the whole tree from far
+//                   off), its leaves alone (to draw near the eye, over the hearts), and the tree
+//                   in a few facets (a small screen). A cypress, a stone pine and an olive have
+//                   only these; every species but the pine has them
+//   arch_sprays     a conifer's upswept foliage over one mass
 //   arch_bush       a low bush of the same leaves
 //   arch_clump      one lump of leaves;  arch_leaves  the leaves that clothe one
 //   arch_peak       a far hill or a mountain: a dome or a peak with a ragged outline
@@ -22,6 +28,9 @@ ARCH_OAK :: 0;       // broad and round
 ARCH_MAPLE :: 1;     // taller, a fuller top
 ARCH_POPLAR :: 2;    // narrow and tall
 ARCH_PINE :: 3;      // a conifer: tiers of cones
+ARCH_CYPRESS :: 4;     // a Mediterranean cypress: a narrow dark flame, clothed to the ground (layers only: arch_tree_hearts)
+ARCH_STONE_PINE :: 5;  // an umbrella pine: a tall bare trunk under a wide flat crown (layers only)
+ARCH_OLIVE :: 6;       // low and wide on a short thick trunk, grey-green (layers only)
 ARCH_SUMMER :: 0;    // greens
 ARCH_AUTUMN :: 1;    // red and orange
 ARCH_GOLD :: 2;      // yellow and gold
@@ -50,10 +59,16 @@ arch_tree_spec :: (species: int, season: int, seed: int) -> ArchTree {
   if species == ARCH_MAPLE { t.height = 10.5 * k; t.crown = 4.2 * k; t.squash = 0.85; t.trunk = 0.4 * k; t.clumps = 24; }
   else if species == ARCH_POPLAR { t.height = 12 * k; t.crown = 2.2 * k; t.squash = 1.9; t.trunk = 0.28 * k; t.clumps = 16; }
   else if species == ARCH_PINE { t.height = 11 * k; t.crown = 2.4 * k; t.trunk = 0.24 * k; t.clumps = 7; }
+  else if species == ARCH_CYPRESS { t.height = 11 * k; t.crown = 1.15 * k; t.trunk = 0.2 * k; t.clumps = 13; t.tufts = 14; t.leaf = 0.55; }
+  else if species == ARCH_STONE_PINE { t.height = 13 * k; t.crown = 4.6 * k; t.trunk = 0.34 * k; t.clumps = 11; t.tufts = 16; t.leaf = 0.34; }
+  else if species == ARCH_OLIVE { t.height = 5.5 * k; t.crown = 2.9 * k; t.squash = 0.62; t.trunk = 0.3 * k; t.clumps = 9; t.tufts = 16; t.leaf = 0.3; }
   else { t.height = 9 * k; t.crown = 4.3 * k; t.squash = 0.7; t.trunk = 0.42 * k; t.clumps = 22; }
   if season == ARCH_AUTUMN { t.leaf_r = 0.66; t.leaf_g = 0.27; t.leaf_b = 0.10; t.leaf2_r = 0.80; t.leaf2_g = 0.41; t.leaf2_b = 0.13; }
   else if season == ARCH_GOLD { t.leaf_r = 0.86; t.leaf_g = 0.62; t.leaf_b = 0.14; t.leaf2_r = 0.93; t.leaf2_g = 0.78; t.leaf2_b = 0.25; }
   else if season == ARCH_SPRING { t.leaf_r = 0.42; t.leaf_g = 0.64; t.leaf_b = 0.22; t.leaf2_r = 0.58; t.leaf2_g = 0.74; t.leaf2_b = 0.30; }
+  if season == ARCH_SUMMER && species == ARCH_CYPRESS { t.leaf_r = 0.13; t.leaf_g = 0.24; t.leaf_b = 0.14; t.leaf2_r = 0.18; t.leaf2_g = 0.3; t.leaf2_b = 0.16; }
+  if season == ARCH_SUMMER && species == ARCH_STONE_PINE { t.leaf_r = 0.17; t.leaf_g = 0.33; t.leaf_b = 0.15; t.leaf2_r = 0.24; t.leaf2_g = 0.4; t.leaf2_b = 0.18; }
+  if season == ARCH_SUMMER && species == ARCH_OLIVE { t.leaf_r = 0.36; t.leaf_g = 0.44; t.leaf_b = 0.32; t.leaf2_r = 0.46; t.leaf2_g = 0.52; t.leaf2_b = 0.4; }
   if species == ARCH_PINE && season == ARCH_SUMMER { t.leaf_r = 0.13; t.leaf_g = 0.34; t.leaf_b = 0.20; t.leaf2_r = 0.20; t.leaf2_g = 0.44; t.leaf2_b = 0.24; }
   return t;
 }
@@ -242,6 +257,146 @@ arch_tree :: (p: [] ArchPen, t: ArchTree) -> ArchPart {
   return arch_part(p, from);
 }
 
+// ---- a tree in layers
+// A far tree and a near one are the same tree. arch_tree_hearts is its wood and each mass's heart:
+// the whole tree from far off. arch_tree_leaves is the leaves alone, over the same masses: a realm
+// draws them only near the eye, and may fold them into the hearts as they go (the photoreal
+// style does: docs/metaverse/photoreal.md). arch_tree_low is the tree in a few facets, for a
+// small screen. All three follow arch_tree_mass, so they agree. Every species but the pine has
+// layers; a cypress, a stone pine and an olive have only these.
+ArchMass :: struct { c: [3] f32; r: [3] f32; heart: [3] f32; tint: [3] f32; seed: int; }
+arch_tree_masses :: (t: ArchTree) -> int { return ifx t.clumps < 1 then 1 else t.clumps; }
+// A cypress's radius at a height: a flame, widest a third of the way up, a point at its top.
+arch_cypress_r :: (t: ArchTree, y: f32) -> f32 {
+  q := arch_lowf(arch_highf(y / t.height, 0), 1);
+  return t.crown * 1.25 * sqrt(arch_lowf(arch_highf((q - 0.03) * 9, 0), 1)) * pow(1 - q, 0.6);
+}
+// Mass k of a tree's foliage: its middle, its radii, the point its leaves face away from, its colour.
+arch_tree_mass :: (t: ArchTree, k: int) -> ArchMass {
+  m: ArchMass; n := arch_tree_masses(t); seed := t.seed;
+  mix := 0.3 + 0.4 * arch_hash(seed, 100 + k); shade := arch_vary(seed, 150 + k, 0.9, 1.1);
+  m.tint = [3] f32.[(t.leaf_r + (t.leaf2_r - t.leaf_r) * mix) * shade, (t.leaf_g + (t.leaf2_g - t.leaf_g) * mix) * shade, (t.leaf_b + (t.leaf2_b - t.leaf_b) * mix) * shade];
+  m.seed = seed * 31 + k * 17 + 7;
+  a := cast(f32) k * 2.39996 + arch_hash(seed, 200 + k);
+  if t.species == ARCH_CYPRESS {
+    // masses up the stem, each a little off it, so the flame's outline is not a lathe's
+    y := t.height * (0.08 + 0.84 * (cast(f32) k + 0.5) / cast(f32) n); r := arch_highf(arch_cypress_r(t, y), t.crown * 0.16);
+    m.c = arch_v(cos(a) * r * 0.2, y, sin(a) * r * 0.2);
+    m.r = arch_v(r * 0.88, t.height * 0.12, r * 0.88);
+    m.heart = arch_v(0, y - t.height * 0.1, 0);
+    return m;
+  }
+  if t.species == ARCH_STONE_PINE {
+    // a flat disc of masses, lower toward its rim: an umbrella
+    ry := t.crown * 0.2; rho := t.crown * 0.74 * sqrt(cast(f32) k / cast(f32) n);
+    size := t.crown * arch_vary(seed, 300 + k, 0.3, 0.4);
+    m.c = arch_v(cos(a) * rho, t.height - ry * 1.15 - t.crown * 0.2 * (rho / t.crown) * (rho / t.crown), sin(a) * rho);
+    m.r = arch_v(size, ry * arch_vary(seed, 350 + k, 0.85, 1.1), size);
+    m.heart = arch_v(0, t.height - t.crown * 0.75, 0);
+    return m;
+  }
+  // a broadleaf's crown, as arch_tree lays it out
+  ry := t.crown * t.squash; m.heart = arch_v(0, t.height - ry * 1.02, 0);
+  if k == 0 || n < 2 { m.c = arch_v(0, m.heart[1] + ry * 0.1, 0); m.r = arch_v(t.crown * 0.62, ry * 0.66, t.crown * 0.62); return m; }
+  s := (cast(f32) k - 0.5) / cast(f32) (n - 1);
+  up := 1 - 1.75 * s; flat := sqrt(arch_highf(1 - up * up, 0.05));
+  reach := arch_vary(seed, 250 + k, 0.56, 0.72);
+  size := t.crown * arch_vary(seed, 300 + k, 0.28, 0.4) * (1 - 0.25 * s);
+  m.c = arch_v(cos(a) * flat * t.crown * reach, m.heart[1] + up * ry * reach, sin(a) * flat * t.crown * reach);
+  m.r = arch_v(size, size * arch_vary(seed, 350 + k, 0.72, 0.9), size);
+  return m;
+}
+// A layered tree's trunk and boughs, each limb `sides` round.
+arch_tree_wood :: (p: [] ArchPen, t: ArchTree, sides: int) {
+  seed := t.seed;
+  p[0].material = ARCH_M_BARK; p[0].tint = [3] f32.[t.bark_r, t.bark_g, t.bark_b];
+  lean_x := arch_vary(seed, 2, -0.35, 0.35); lean_z := arch_vary(seed, 3, -0.35, 0.35);
+  if t.species == ARCH_CYPRESS {
+    arch_limb(p, 0, -0.1, 0, 0, t.height * 0.3, 0, t.trunk * 1.2, t.trunk * 0.7, sides);
+    arch_limb(p, 0, t.height * 0.3, 0, 0, t.height * 0.9, 0, t.trunk * 0.7, t.trunk * 0.15, sides);
+    return;
+  }
+  if t.species == ARCH_STONE_PINE {
+    // a bare trunk, leaning, that forks under the crown into spreading boughs
+    fy := t.height - t.crown * 0.62; lx := lean_x * 2; lz := lean_z * 2;
+    arch_limb(p, 0, -0.1, 0, lx * 0.35, fy * 0.5, lz * 0.35, t.trunk * 1.3, t.trunk, sides);
+    arch_limb(p, lx * 0.35, fy * 0.5, lz * 0.35, lx, fy, lz, t.trunk, t.trunk * 0.75, sides);
+    for k: 0..<5 {
+      a := f32(ARCH_TAU) * (cast(f32) k + arch_hash(seed, 20 + k) * 0.6) / 5.0; r := t.crown * arch_vary(seed, 30 + k, 0.45, 0.7);
+      arch_limb(p, lx, fy - 0.1, lz, cos(a) * r, t.height - t.crown * 0.32, sin(a) * r, t.trunk * 0.5, t.trunk * 0.16, 5);
+    }
+    return;
+  }
+  ry := t.crown * t.squash; hy := t.height - ry * 1.02;
+  fork_y := arch_highf(hy - ry * 0.75, t.height * 0.22);
+  arch_limb(p, 0, -0.1, 0, 0, 0.45, 0, t.trunk * 1.55, t.trunk * 1.05, sides);
+  arch_limb(p, 0, 0.45, 0, lean_x, fork_y, lean_z, t.trunk * 1.05, t.trunk * 0.78, sides);
+  for k: 0..<4 {
+    a := f32(ARCH_TAU) * (cast(f32) k + arch_hash(seed, 20 + k) * 0.6) / 4.0; r := t.crown * arch_vary(seed, 30 + k, 0.4, 0.62);
+    arch_limb(p, lean_x, fork_y - 0.1, lean_z, cos(a) * r, hy - ry * arch_vary(seed, 40 + k, 0.05, 0.4), sin(a) * r, t.trunk * 0.55, t.trunk * 0.2, 5);
+  }
+}
+// A conifer's foliage over one mass: `tufts` fans of two pointed sprays that sweep up its sides
+// and stand a little off it, each `leaf` long. Their normals are the way out from the stem.
+arch_sprays :: (p: [] ArchPen, m: ArchMass, crown_high: f32, tufts: int, leaf: f32) {
+  for t: 0..<tufts {
+    up := 0.9 - 1.8 * (cast(f32) t + 0.5) / cast(f32) tufts;
+    flat := sqrt(arch_highf(1 - up * up, 0.0)); az := cast(f32) t * 2.39996 + arch_hash(m.seed, 3000 + t) * 0.9;
+    at := arch_v(m.c[0] + cos(az) * flat * m.r[0] * 0.92, m.c[1] + up * m.r[1] * 0.92, m.c[2] + sin(az) * flat * m.r[2] * 0.92);
+    out := arch_v(at[0] - m.heart[0], 0, at[2] - m.heart[2]);
+    if arch_vlen(out) < 0.05 { out = arch_v(cos(az), 0, sin(az)); }
+    out = arch_vnorm(out);
+    side := arch_vcross(out, arch_v(0, 1, 0));
+    n := arch_vnorm(arch_v(out[0] * 0.85, 0.45, out[2] * 0.85));
+    v := arch_hash(m.seed, 3500 + t);
+    for k: 0..<2 {
+      long := leaf * arch_vary(m.seed, 5000 + t * 2 + k, 0.8, 1.3);
+      lean := (ifx k == 0 then -0.32f32 else 0.32f32) + arch_vary(m.seed, 4500 + t * 2 + k, -0.2, 0.2);
+      base := arch_v(at[0] - out[0] * long * 0.06, at[1] - long * 0.25, at[2] - out[2] * long * 0.06);
+      tip := arch_v(at[0] + side[0] * lean * long + out[0] * long * 0.16, at[1] + long * 0.85, at[2] + side[2] * lean * long + out[2] * long * 0.16);
+      mid := arch_v(at[0] + side[0] * lean * long * 0.4 + out[0] * long * 0.2, at[1] + long * 0.2, at[2] + side[2] * lean * long * 0.4 + out[2] * long * 0.2);
+      wide := long * 0.34;
+      ub := arch_lowf(arch_highf(base[1] / crown_high, 0), 1); ut := arch_lowf(arch_highf(tip[1] / crown_high, 0), 1);
+      qb := arch_at(base[0], base[1], base[2], n[0], n[1], n[2], ub, v); qt := arch_at(tip[0], tip[1], tip[2], n[0], n[1], n[2], ut, v);
+      arch_tri(p, qb, arch_at(mid[0] + side[0] * wide, mid[1], mid[2] + side[2] * wide, n[0], n[1], n[2], (ub + ut) * 0.5, v), qt);
+      arch_tri(p, qb, qt, arch_at(mid[0] - side[0] * wide, mid[1], mid[2] - side[2] * wide, n[0], n[1], n[2], (ub + ut) * 0.5, v));
+    }
+  }
+}
+// The whole tree from far off: its wood and each mass's heart, a little darker than its leaves.
+arch_tree_hearts :: (p: [] ArchPen, t: ArchTree) -> ArchPart {
+  from := p[0].n; arch_tree_wood(p, t, 8);
+  p[0].material = ARCH_M_LEAF;
+  for k: 0..<arch_tree_masses(t) {
+    m := arch_tree_mass(t, k); p[0].tint = [3] f32.[m.tint[0] * 0.82, m.tint[1] * 0.82, m.tint[2] * 0.82];
+    arch_clump_of(p, m.c[0], m.c[1], m.c[2], m.r[0] * 0.9, m.r[1] * 0.9, m.r[2] * 0.9, m.heart, 0, t.height, 0.2, m.seed, true);
+  }
+  return arch_part(p, from);
+}
+// Its leaves alone, to lay over arch_tree_hearts.
+arch_tree_leaves :: (p: [] ArchPen, t: ArchTree) -> ArchPart {
+  from := p[0].n; p[0].material = ARCH_M_LEAF;
+  for k: 0..<arch_tree_masses(t) {
+    m := arch_tree_mass(t, k); p[0].tint = m.tint;
+    leaf := arch_lowf(arch_highf(t.leaf * (m.r[0] + m.r[2]) * 0.5, 0.26), 1.2);
+    if t.species == ARCH_CYPRESS { arch_sprays(p, m, t.height, t.tufts, leaf); }
+    else { arch_leaves(p, m.c[0], m.c[1], m.c[2], m.r[0], m.r[1], m.r[2], m.heart, 0, t.height, t.tufts, leaf, m.seed); }
+  }
+  return arch_part(p, from);
+}
+// The tree in a few facets: thin wood, and a plain lump for each mass (every other one of many).
+arch_tree_low :: (p: [] ArchPen, t: ArchTree) -> ArchPart {
+  from := p[0].n; arch_tree_wood(p, t, 5);
+  p[0].material = ARCH_M_LEAF;
+  n := arch_tree_masses(t); step := ifx n > 6 then 2 else 1;
+  for k: 0..<n {
+    if k % step != 0 { continue; }
+    m := arch_tree_mass(t, k); p[0].tint = m.tint;
+    arch_ellipsoid(p, m.c[0], m.c[1], m.c[2], m.r[0] * 1.05, m.r[1] * (ifx step == 2 then 1.3f32 else 1.05f32), m.r[2] * 1.05, 6, 4);
+  }
+  return arch_part(p, from);
+}
+
 // A far hill or a mountain about the origin: `r` across at its foot and `h` high. `sharp` below 1
 // is a dome and above 1 a peak; `ragged` pushes its outline in and out. u is how high up it a
 // point is (0 its foot, 1 its top), for green slopes under pale rock.
@@ -350,6 +505,31 @@ arch_ground :: (p: [] ArchPen, g: ArchGround, table: [] f32) -> ArchPart {
   bush := arch_bush(p[..], 0.9, 1.1, 0.2, 0.4, 0.15, 3); bb: [2] f32;
   for i: 0..<bush.count { o := (bush.first + i) * ARCH_VERTEX_FLOATS; #assert buf[o + 6] == ARCH_M_LEAF; bb[0] = arch_highf(bb[0], buf[o + 1]); bb[1] = arch_highf(bb[1], sqrt(buf[o] * buf[o] + buf[o + 2] * buf[o + 2])); }
   #assert !p[0].full && bush.solids == 1 && bb[0] > 0.9 && bb[0] < 1.7 && bb[1] > 0.8 && bb[1] < 1.9;
+}
+#test "a layered tree: hearts, leaves and the low tree agree on one shape, a cypress a narrow flame and a stone pine an umbrella" #steps 400000000 {
+  out: [60000 * ARCH_VERTEX_FLOATS] f32; pen: [1] ArchPen; p := pen[..]; arch_pen(p, out[..]);
+  c := arch_tree_spec(ARCH_CYPRESS, ARCH_SUMMER, 5);
+  hearts := arch_tree_hearts(p, c); leaves := arch_tree_leaves(p, c); low := arch_tree_low(p, c);
+  #assert !p[0].full && hearts.count > 300 && leaves.count > hearts.count && low.count < hearts.count && low.count > 60;
+  rh := arch_reach(out[..], hearts); rl := arch_reach(out[..], leaves); ro := arch_reach(out[..], low);
+  // a flame: several times taller than wide, and its leaves stand a little outside its hearts
+  #assert rh.high > c.height * 0.85 && rh.high < c.height * 1.1 && rh.out < c.crown * 1.5 && rh.high > 4 * rh.out;
+  #assert rl.out > rh.out && rl.out < rh.out + 1.5 && rl.high < c.height * 1.2 && rl.low > 0;
+  #assert abs(ro.high - rh.high) < c.height * 0.12 && abs(ro.out - rh.out) < c.crown * 0.5;
+  // the cypress is widest low down: its radius at a third of its height is more than at two thirds, and its top is a point
+  #assert arch_cypress_r(c, c.height * 0.3) > arch_cypress_r(c, c.height * 0.66) * 1.3 && arch_cypress_r(c, c.height) == 0;
+  // a stone pine: its foliage is all in the top third, wider than it is deep
+  s := arch_tree_spec(ARCH_STONE_PINE, ARCH_SUMMER, 5);
+  sl := arch_reach(out[..], arch_tree_leaves(p, s));
+  #assert sl.low > s.height * 0.55 && sl.out * 2 > 2.2 * (sl.high - sl.low);
+  // an olive is low and wide, and the same call twice writes the same tree
+  o := arch_tree_spec(ARCH_OLIVE, ARCH_SUMMER, 5);
+  #assert o.height < c.height * 0.7 && o.crown > c.crown;
+  a := arch_tree_hearts(p, o); b := arch_tree_hearts(p, o);
+  #assert a.count == b.count && !p[0].full;
+  for i: 0..<a.count * ARCH_VERTEX_FLOATS { #assert out[a.first * ARCH_VERTEX_FLOATS + i] == out[b.first * ARCH_VERTEX_FLOATS + i]; }
+  // every mass is finite and has a size
+  for k: 0..<arch_tree_masses(o) { m := arch_tree_mass(o, k); #assert m.r[0] > 0.05 && m.r[1] > 0.05 && m.c[1] > 0 && m.c[1] < o.height; }
 }
 #test "a peak rises from its foot to its top, a dome wider than a peak half way up" {
   buf: [4000 * ARCH_VERTEX_FLOATS] f32; p: [1] ArchPen; arch_pen(p[..], buf[..]);
