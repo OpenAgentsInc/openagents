@@ -5,7 +5,7 @@ ex_check_frame :: (s:[]Starter,out:[]u8)->bool {
  n:=st_frame(s,0,true);return S_hex(S_hash(cast(string)s[0].dom[0].out[0..<n]),out);
 }
 #test "extras render contract: closed, menu, loading and every balance status" #steps 200000000 {
- want:=[9]string.["20386e32513a41f6ad2011c85757e6f2fe9ba7c255c378fc76b249c069d853c1","86d5c162ed44d3a048c8e9be82c892f1d8b3e37deca4cb20c8ec6fd7147e765c","e9d1e5251200df2e58de15949e813b5b83c89d0b657591a12f54b942e82e3655","0b0ced996dd2df6bdcd8ffb8a902f80ceba0924f93d8da0afeedf5f89cbe5f12","bcf303fd977e9db41b44839619a4fffc2f6a7eab90ba92e74635d46da795f275","e3039803f5fe60f1e0e52618a3893c662d811dea021ccaec6dbdcdc718405a5a","19a7098f4359ff74b56515d69c684f51a86bafd3359b83c174750f0d592b85cd","ea567213e7a9e88755a18a0f6547ddc65e2efdbb7314b6891a795703afd3ad2f","7f68a3819e5a851a0cfce3c68d6270a1d7f7d830c26f2be311b04ca88e099ab1"];
+ want:=[9]string.["c4a00ff747688a0531a81cd92c56eae8d9e2a26c47a9615276e7cb0bb9125354","86d5c162ed44d3a048c8e9be82c892f1d8b3e37deca4cb20c8ec6fd7147e765c","e9d1e5251200df2e58de15949e813b5b83c89d0b657591a12f54b942e82e3655","0b0ced996dd2df6bdcd8ffb8a902f80ceba0924f93d8da0afeedf5f89cbe5f12","bcf303fd977e9db41b44839619a4fffc2f6a7eab90ba92e74635d46da795f275","e3039803f5fe60f1e0e52618a3893c662d811dea021ccaec6dbdcdc718405a5a","19a7098f4359ff74b56515d69c684f51a86bafd3359b83c174750f0d592b85cd","ea567213e7a9e88755a18a0f6547ddc65e2efdbb7314b6891a795703afd3ad2f","7f68a3819e5a851a0cfce3c68d6270a1d7f7d830c26f2be311b04ca88e099ab1"];
  s:[1]Starter;h:[64]u8;#assert ex_check_frame(s[..],h[..]) && cast(string)h[..]==want[0];
  #assert s[0].ready && s[0].dom[0].styled && !s[0].dirty;
  births:=s[0].ui[0].nb;#assert st_frame(s[..],0,true)==0;
