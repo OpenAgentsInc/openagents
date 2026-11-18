@@ -1317,3 +1317,46 @@ moorings). Issue 13688 asked for these.
 - The hull is rigid and its added mass doesn't couple its motions (no Munk
   moment).
 
+
+### The construction, simulated
+
+Measured on November 18, 2026, from the checks in
+`metaverse/slab-build.coax`, `metaverse/slab-build-view.coax` and
+`metaverse-engine/physics/afloat.coax`. Issue 13682 asked for these (its
+phases 0 to 2). The method, with every number marked sourced or assumed, is
+in [slab-construction-method.md](slab-construction-method.md).
+
+`slab-build.coax` is a seeded simulation of the build in three-hour steps:
+six casting cells sharing one concrete supply, pairs of caissons towed from
+Ingleside by tugs on towlines, joins at sea that wait for a calm, the
+sea-wall lining, the upper structure rising bay by bay, barges and lifts
+for the city, storm stand-downs and the final ballast. It reads the hull
+from `hull.coax`. The timelapse on the page still draws the earlier
+schedule in `slab-construction.coax`; drawing this simulation is the
+issue's later phases.
+
+| Result (seed 1, default settings) | Value |
+| --- | --- |
+| Days from the first pour to commissioned | 1,510 (4.1 years) |
+| Placement days at 3,000 m³ a day | 1,275.58 for this hull's 3,826,744 m³; 804 for the feasibility note's 2.41 million m³ |
+| Tows and joints at sea | 60 pairs of caissons, 59 joints |
+| Days on which weather held some work | 314 |
+| Storm stand-downs | 2, one a hurricane (6.8 m, 35.7 m/s on day 1,298) |
+| A tow | 13 hours; towline 1.65 MN at worst against 2.94 MN; 4.2 m under the keel and 36 m to the channel edge at least |
+| Hull-girder stress in the design storm | 9.4 MPa head on and 3.6 MPa sideways, against 10 MPa of prestress |
+| Row-by-row assembly | fails: 19.1 MPa sideways |
+| Least GM of anything afloat | 2.09 m (a dry caisson); the joined hull's least is 143 m |
+| The end state | 15,374,950 t at 24.9999 m, level: the ledger's hull |
+
+**The moorings need storm lines.** The sixteen lines hold the growing hull
+in working weather (the finished hull moves 10.9 m, worst line 11.8 MN).
+The design storm pushes the finished hull with 211 MN beam on, 139 MN of it
+wind on the 143 m wall, and a line breaks at 114 MN. The simulation makes
+storm lines fast at each storm warning: 20 more chains of the same kind for
+the finished hull, square to its sides. With them the default run's
+hurricane loads the worst chain to 16 MN. Without them a line breaks and
+the run stops. This agrees with "about twice the lines" above.
+
+**What is placed and not integrated:** moves inside the yard, a pair's
+approach from stand-by to its joint, and tugs and barges on passage. The
+method note lists the other limits.

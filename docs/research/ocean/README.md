@@ -31,6 +31,9 @@ as of November 18, 2026.
    simulated world. The [construction film and frame review](slab-construction-review.md)
    follows the hull from the casting basin to the first seam, the Brownsville freight
    deliveries and the commissioned platform.
+   [How SLAB is built](slab-construction-method.md) is the construction method the
+   build simulation follows: the yard, the tow, the joints, the moorings, the upper
+   structure, the weather, with every number marked sourced or assumed.
 7. [slab-world-audit.md](slab-world-audit.md): what the built world is like
    for a new visitor, and what to change.
 
