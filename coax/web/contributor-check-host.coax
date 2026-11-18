@@ -1,0 +1,93 @@
+// The effects of coax/web/contributor-check.coax (GitHub #13663): running git and each check as a
+// child process, and the program's main. Its decisions (which checks, their commands, the verdict) are
+// in contributor-check.coax with their checks; this file only starts programs and prints.
+// Runs argv to its end, prints its output (stderr with it) as it comes, and answers its status
+// (-1: it didn't start, -2: stopped at the limit). Into out, when given, its stdout; got[0] is
+// how many bytes of it.
+cc_run :: (argv: [] string, show: bool, out: [] u8, got: [] int) -> int {
+  h := proc_new(); if h < 0 { return -1; }
+  ok := proc_env(h, "OA_REMOTE=0");
+  for a: argv { ok = ok && proc_arg(h, a); }
+  // captured: stderr stays in the child's buffer, unread; shown: it joins stdout, in order
+  if show { ok = ok && proc_err_to_out(h) && proc_gentle(h); }
+  if !ok || proc_start(h) != 0 { r := proc_release(h); return -1; }
+  deadline := proc_now_ms() + CC_LIMIT_MS; line: [65536] u8; n := 0; stopped := false;
+  while true {
+    k := proc_line(h, proc_left(deadline, proc_now_ms()), line[..]);
+    if k == PROC_EOF || k == PROC_ERROR { break; }
+    if k == PROC_TIMEOUT { stopped = true; break; }
+    if k == PROC_TOO_LONG { continue; }
+    text := cast(string) line[0..<k];
+    if show { print("  %\n", text); }
+    for c: text { if n < out.count { out[n] = c; n += 1; } }
+    if n < out.count { out[n] = '\n'; n += 1; }
+  }
+  if stopped { killed := proc_kill(h, PROC_SIGKILL); }
+  status := proc_wait(h, ifx stopped then 2000 else proc_left(deadline, proc_now_ms()));
+  if status == PROC_RUNNING { stopped = true; killed := proc_kill(h, PROC_SIGKILL); status = proc_wait(h, 2000); }
+  r := proc_release(h);
+  got[0] = n;
+  if stopped { return -2; }
+  return status;
+}
+// git's one-line answer into out; "" when it fails.
+cc_git :: (argv: [] string, out: [] u8) -> string {
+  got: [1] int;
+  if cc_run(argv, false, out, got[..]) != 0 { return ""; }
+  n := 0; while n < got[0] && out[n] != '\n' { n += 1; }
+  return cast(string) out[0..<n];
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args; if !args_load(a[..]) { return 2; }
+  if args_has(a[..], "--help") { print("usage: scripts/check.sh [--base REF] [--list]\n"); return 0; }
+  ref := args_value(a[..], "--base", "");
+  rb: [256] u8;
+  if ref == "" {
+    for r: [2] string.["upstream/main", "origin/main"] {
+      v := [5] string.["git", "rev-parse", "--verify", "--quiet", r];
+      if cc_git(v[..], rb[..]) != "" { ref = r; break; }
+    }
+  }
+  if ref == "" {
+    tool_errln("contributor-check: no upstream/main or origin/main. Fix: git remote add upstream https://github.com/OpenAgentsInc/openagents.git && git fetch upstream main, or pass --base REF");
+    return 2;
+  }
+  bb: [256] u8;
+  mb := [4] string.["git", "merge-base", "HEAD", ref];
+  base := cc_git(mb[..], bb[..]);
+  if base == "" { tool_errln("contributor-check: git merge-base HEAD found no common commit with the base. Fix: git fetch upstream main, or pass --base REF"); return 2; }
+  changed: [1048576] u8; cn := 0;
+  // committed and uncommitted changes since the base, and new files git doesn't ignore
+  df := [4] string.["git", "diff", "--name-only", base];
+  un := [4] string.["git", "ls-files", "--others", "--exclude-standard"];
+  for i: 0..<2 {
+    part: [524288] u8; got: [1] int;
+    s := ifx i == 0 then cc_run(df[..], false, part[..], got[..]) else cc_run(un[..], false, part[..], got[..]);
+    if s != 0 { tool_errln("contributor-check: git could not list the changed files"); return 2; }
+    for c: part[0..<got[0]] { if cn < changed.count { changed[cn] = c; cn += 1; } }
+  }
+  p: [1] CcPlan; cc_plan(p[..], base, cast(string) changed[0..<cn]);
+  print("contributor-check: base % (git merge-base HEAD %)\n", cast(string) base[0..<ifx base.count > 10 then 10 else base.count], ref);
+  cmd: [1024] u8;
+  if args_has(a[..], "--list") {
+    for k: 0..<p[0].n { print("%\n", cc_command(p[..], k, cmd[..])); }
+    return 0;
+  }
+  failed: [CC_MAX] bool;
+  for k: 0..<p[0].n {
+    print("contributor-check: % (%)\n", p[0].name[k], cc_command(p[..], k, cmd[..]));
+    started := proc_now_ms();
+    none: [1] u8; got: [1] int;
+    status := cc_run(p[0].argv[k][0..<p[0].argc[k]], true, none[0..<0], got[..]);
+    secs := (proc_now_ms() - started) / 1000;
+    if status == 0 { print("contributor-check: % passed (% s)\n", p[0].name[k], secs); }
+    else if status == -2 { failed[k] = true; print("contributor-check: % FAILED: still running after 15 minutes\n", p[0].name[k]); }
+    else if status == -1 { failed[k] = true; print("contributor-check: % FAILED: it did not start\n", p[0].name[k]); }
+    else { failed[k] = true; print("contributor-check: % FAILED (status %, % s)\n", p[0].name[k], status, secs); }
+  }
+  v: [1024] u8;
+  print("%\n", cc_verdict(p[0].name[0..<p[0].n], failed[0..<p[0].n], v[..]));
+  for k: 0..<p[0].n { if failed[k] { return 1; } }
+  return 0;
+}

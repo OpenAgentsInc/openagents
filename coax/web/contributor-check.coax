@@ -1,0 +1,129 @@
+// The one check an outside contributor runs before a pull request (CONTRIBUTING.md, GitHub #13663).
+// It runs the pre-push check's local checks (coax/web/prepush.coax), on this machine, against the
+// point where your branch left main, and nothing that needs a secret, a login or a private host:
+//   tools-check, everglade-parity, wire-check --base B, layer-check --base B, agent-reference --check,
+//   the wgsl check when you change Coax or a shader, changelog-page --check when you change the
+//   changelog, the engine book's chapter registry (coax/book/check-structure.py --registry aethyr)
+//   when you change the engine book, and `coax test` of the suites your change touches, with `coax mutate --changed B` for
+//   the #authority ones (tool.sh suites --since B --mutate-changed B).
+// It leaves out what needs the team's machines or extra tools: the stale-snapshot and Agent: rules
+// (they judge pushes to main), the state-keep test (bun), drive-hit-check (headless Chrome) and the
+// API suite (Postgres, coax/web/api/test.sh). The after-landing check runs those once a change is
+// merged.
+//   scripts/check.sh [--base REF] [--list]   installs the compiler (coax/build.sh), then runs this
+//   coax/web/tool.sh contributor-check [--base REF] [--list]
+//   coax/bin/coax test coax/web/contributor-check.coax --library
+// B is `git merge-base HEAD REF`. REF is --base, else upstream/main, else origin/main. --list prints
+// the commands and runs none. Each command stops after 15 minutes. Exits 0 when every check
+// passed, 1 when one failed, 2 when it couldn't start.
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/proc.coax";
+#load "contributor-check-host.coax";
+
+CC_MAX :: 10;              // checks in a plan
+CC_ARGS :: 6;              // words in one check's command
+CC_LIMIT_MS :: 900000;     // one command's limit: 15 minutes (AGENTS.md, "Check duration")
+
+CcPlan :: struct {
+  n: int;
+  name: [CC_MAX] string;
+  argv: [CC_MAX][CC_ARGS] string;
+  argc: [CC_MAX] int;
+}
+
+cc_has :: (s: string, p: string) -> bool {
+  for k: 0..<s.count - p.count + 1 { if cast(string) s[k..<k + p.count] == p { return true; } }
+  return false;
+}
+
+// The same rules as the pre-push check (prepush.coax pp_shaders, pp_changelog).
+cc_shaders :: (changed: string) -> bool {
+  return cc_has(changed, ".coax") || cc_has(changed, ".wgsl") || cc_has(changed, ".module") || cc_has(changed, ".bindings") || cc_has(changed, "connect-pylon-page.ts");
+}
+cc_changelog :: (changed: string) -> bool {
+  return cc_has(changed, "coax/CHANGELOG.md") || cc_has(changed, "coax/web/changelog-page.coax") || cc_has(changed, "changelog-content.coax") || cc_has(changed, "apps/openagents-web/coax/changelog/");
+}
+
+cc_add :: (p: [] CcPlan, name: string, argv: [] string) {
+  k := p[0].n; p[0].name[k] = name; p[0].argc[k] = argv.count;
+  for a, i: argv { p[0].argv[k][i] = a; }
+  p[0].n += 1;
+}
+// The checks for a change that left main at base and changes the files in changed (one a line).
+cc_plan :: (p: [] CcPlan, base: string, changed: string) {
+  p[0].n = 0;
+  tc := [2] string.["coax/web/tool.sh", "tools-check"]; cc_add(p, "tools-check", tc[..]);
+  ep := [2] string.["coax/web/tool.sh", "everglade-parity"]; cc_add(p, "everglade-parity", ep[..]);
+  wc := [4] string.["coax/web/tool.sh", "wire-check", "--base", base]; cc_add(p, "wire-check", wc[..]);
+  lc := [4] string.["coax/web/tool.sh", "layer-check", "--base", base]; cc_add(p, "layer-check", lc[..]);
+  ar := [3] string.["coax/web/tool.sh", "agent-reference", "--check"]; cc_add(p, "agent-reference", ar[..]);
+  if cc_shaders(changed) {
+    wg := [4] string.["coax/web/tool.sh", "coax/web/wgsl-module.coax", "--site", "--check"]; cc_add(p, "wgsl", wg[..]);
+  }
+  if cc_changelog(changed) {
+    cl := [3] string.["coax/web/tool.sh", "changelog-page", "--check"]; cc_add(p, "changelog-page", cl[..]);
+  }
+  if cc_has(changed, "metaverse-engine/book/") {
+    bk := [4] string.["python3", "coax/book/check-structure.py", "--registry", "aethyr"]; cc_add(p, "engine-book", bk[..]);
+  }
+  su := [6] string.["coax/web/tool.sh", "suites", "--since", base, "--mutate-changed", base]; cc_add(p, "suites", su[..]);
+}
+// s after the n bytes already in out; the new count. What doesn't fit is dropped.
+cc_put :: (out: [] u8, n: int, s: string) -> int {
+  m := n;
+  for c: s { if m < out.count { out[m] = c; m += 1; } }
+  return m;
+}
+cc_command :: (p: [] CcPlan, k: int, out: [] u8) -> string {
+  n := 0;
+  for i: 0..<p[0].argc[k] {
+    if i > 0 { n = cc_put(out, n, " "); }
+    n = cc_put(out, n, p[0].argv[k][i]);
+  }
+  return cast(string) out[0..<n];
+}
+
+#test "a change to a Markdown file runs the five tree checks and the touched suites" {
+  p: [1] CcPlan; cc_plan(p[..], "B", "CONTRIBUTING.md\n");
+  #assert p[0].n == 6 && p[0].name[0] == "tools-check" && p[0].name[4] == "agent-reference" && p[0].name[5] == "suites";
+  b: [256] u8;
+  #assert cc_command(p[..], 2, b[..]) == "coax/web/tool.sh wire-check --base B";
+  #assert cc_command(p[..], 3, b[..]) == "coax/web/tool.sh layer-check --base B";
+  #assert cc_command(p[..], 5, b[..]) == "coax/web/tool.sh suites --since B --mutate-changed B";
+}
+#test "a change to Coax adds the wgsl check, to the changelog its page, to the engine book its registry" {
+  p: [1] CcPlan; cc_plan(p[..], "B", "metaverse-engine/core/loop.coax\n");
+  #assert p[0].n == 7 && p[0].name[5] == "wgsl" && p[0].name[6] == "suites";
+  cc_plan(p[..], "B", "coax/CHANGELOG.md\n");
+  #assert p[0].n == 7 && p[0].name[5] == "changelog-page";
+  cc_plan(p[..], "B", "a.wgsl\ncoax/CHANGELOG.md\n");
+  #assert p[0].n == 8 && p[0].name[5] == "wgsl" && p[0].name[6] == "changelog-page" && p[0].name[7] == "suites";
+  cc_plan(p[..], "B", "metaverse-engine/book/chapters.json\n");
+  #assert p[0].n == 7 && p[0].name[5] == "engine-book" && p[0].name[6] == "suites";
+  cc_plan(p[..], "B", "metaverse-engine/book/x.coax\ncoax/CHANGELOG.md\n");
+  #assert p[0].n == 9 && p[0].name[5] == "wgsl" && p[0].name[6] == "changelog-page" && p[0].name[7] == "engine-book" && p[0].name[8] == "suites";
+  #assert !cc_shaders("") && !cc_shaders("README.md\n") && cc_shaders("x.bindings\n") && !cc_changelog("docs/a.md\n");
+}
+#test "text: a part anywhere in it, and what fits in a buffer" {
+  #assert cc_has("abc", "abc") && cc_has("xabc", "bc") && cc_has("a", "a") && !cc_has("ab", "abc") && !cc_has("abd", "abc");
+  o: [3] u8;
+  #assert cc_put(o[..], 0, "abcd") == 3 && cast(string) o[..] == "abc" && cc_put(o[..], 1, "z") == 2 && cc_put(o[..], 3, "q") == 3;
+}
+
+// The last line of a summary: what passed, or which checks failed.
+cc_verdict :: (names: [] string, failed: [] bool, out: [] u8) -> string {
+  n := 0; any := false;
+  for f: failed { any = any || f; }
+  if !any { n = cc_put(out, n, "contributor-check: every check passed. Paste this output into your pull request."); return cast(string) out[0..<n]; }
+  n = cc_put(out, n, "contributor-check: FAILED:");
+  for name, i: names { if failed[i] { n = cc_put(out, n, " "); n = cc_put(out, n, name); } }
+  n = cc_put(out, n, ". Fix them and run scripts/check.sh again.");
+  return cast(string) out[0..<n];
+}
+#test "the verdict names the failed checks" {
+  names := [3] string.["a", "b", "c"]; ok := [3] bool.[false, false, false]; bad := [3] bool.[false, true, true];
+  o: [256] u8;
+  #assert cc_verdict(names[..], ok[..], o[..]) == "contributor-check: every check passed. Paste this output into your pull request.";
+  #assert cc_verdict(names[..], bad[..], o[..]) == "contributor-check: FAILED: b c. Fix them and run scripts/check.sh again.";
+}
