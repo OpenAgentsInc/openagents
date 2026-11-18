@@ -6,6 +6,8 @@ I researched the announcement and follow-up replies, an earlier recorded intervi
 
 [SLAB_Research_Report_2026-11-18.pdf](SLAB_Research_Report_2026-11-18.pdf)
 
+The original post and its image: [palmer-luckey-post.md](palmer-luckey-post.md).
+
 *Research current as of November 18, 2026.*
 
 ## 1. What SLAB actually is—and what has been disclosed
