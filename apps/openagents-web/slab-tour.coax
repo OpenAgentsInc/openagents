@@ -1,0 +1,516 @@
+// The SLAB world's guided tour (GitHub #13685): seven stops of about fifteen seconds, each one
+// sentence and one number, then "Your turn". A first visit opens on it (the pane remembers the
+// visitor in the browser's storage: slab-hud.coax, "hud.visit"); a returning visitor lands in
+// Explore, and the Tour button in the bar starts it again.
+//
+// The camera flies metaverse-engine/cam/track.coax: at each stop a track of three keys, from where
+// the camera was, to the stop's view, to where it drifts by the stop's end. slab_frame asks
+// tour_camera for the view once a frame; the sixth stop is the build view's own camera.
+//
+// The stops, and what each uses of the world as it is today:
+//   1 the claim       Luckey's picture over the world from the camera fitted to it, fading out
+//   2 the size        the largest floating structure built, the largest container ships and a 100 m
+//                     tower drawn beside it as outlines, then taken away
+//   3 why it floats   the section view, its parts named (slab-labels.coax)
+//   4 what holds it   the sea from under the hull at noon, in the survey view's clearer water
+//                     (slab-sea.coax), with the 16 lines and their anchors drawn in
+//   5 what runs on it the flow overlay, with the power as it is
+//   6 how it is built the timelapse, all of it in twenty seconds
+//   7 where it could go  the sites as choices to press (a map, when one is in the world, goes here)
+//
+// The address: ?tour=0 no tour, ?tour=1 to 8 opens at that stop (8 is "Your turn"), and &hold=SECONDS
+// holds that stop at a moment, for a picture. ?intro=0 and ?intro=1, the stopgap card's words, mean
+// ?tour=0 and ?tour=1.
+//
+//   coax/bin/coax test apps/openagents-web/slab.coax --only "tour"
+
+#load "../../metaverse-engine/cam/track.coax" as trk;
+
+TOUR_STOPS :: 7;           // the stops; stop TOUR_STOPS is "Your turn"
+TOUR_SECONDS :: [8] f32.[15, 15, 15, 15, 15, 20, 15, 0];
+TOUR_MOVE :: 2.5f32;       // seconds the camera takes to reach a stop's view
+TOUR_PICTURE :: "/worlds/slab/pictures/concept.jpg";
+TOUR_BUILD :: 5;           // the stop that is the timelapse
+TOUR_UNDER :: 3;
+
+SlabTour :: struct {
+  on: bool;
+  stop: int;
+  at: f32;                 // seconds into the stop
+  from: [6] f32;           // where the camera was when the stop began: eye, look
+  cut: bool;               // the camera jumps to this stop's view (out of the sea, out of the build view)
+  held: bool;              // the visitor pressed something in the stop: it waits for Next
+  hold: f32 = -1;          // ?hold=: the stop stays at this second
+  wanted: bool;            // the address is the plain one: a first visit opens on the tour
+  asked: bool;             // ?intro=1: the tour opens when the pane does, whoever visits
+  hour: f64;               // the visitor's hour, put back after the underwater stop
+  down: bool; down_x: f32; down_y: f32;   // a press on the scene, which is a tap if it does not move
+}
+
+// A stop's two views as the orbit has them: the point looked at, how far, the turn and the tilt.
+// The camera reaches the first by TOUR_MOVE and drifts to the second by the stop's end.
+TourShot :: struct { x: f32; y: f32; z: f32; dist: f32; yaw: f32; pitch: f32; }
+// The opening view: the whole platform with its skyline, at 1440 x 900 and at 390 x 844. (The
+// camera fitted to Luckey's picture crops the towers as the picture does; that one is stop 1's and
+// "The view in Luckey's picture".)
+TOUR_OPEN :: TourShot.{x = 120, y = 100, z = 80, dist = 1330, yaw = 0.802, pitch = 0.42};
+tour_shot :: (stop: int, last: bool) -> TourShot {
+  // 1: the camera fitted to Luckey's picture, held under it, then a slow push in
+  if stop == 0 { return ifx last then TourShot.{x = 174, y = 0, z = 110, dist = 1080, yaw = 0.86, pitch = 0.42} else TourShot.{x = 174, y = 0, z = 110, dist = 1164, yaw = 0.802, pitch = 0.438}; }
+  // 2: from the north, high, with room beside the north wall for the three outlines
+  if stop == 1 { return ifx last then TourShot.{x = 60, y = 0, z = 420, dist = 1650, yaw = 0.62, pitch = 0.5} else TourShot.{x = 60, y = 0, z = 420, dist = 1750, yaw = 0.42, pitch = 0.52}; }
+  // 3: square on to the cut, a little above the deck
+  if stop == 2 { return ifx last then TourShot.{x = 0, y = 45, z = 0, dist = 1250, yaw = 0.16, pitch = 0.1} else TourShot.{x = 0, y = 45, z = 0, dist = 1350, yaw = 0.02, pitch = 0.12}; }
+  // 4: in the sea off the north-east corner, the keel overhead, then back and down until the whole
+  // spread of lines and their anchors is in view
+  if stop == 3 { return ifx last then TourShot.{x = 0, y = -1250, z = 0, dist = 6000, yaw = 0.95, pitch = 0.13} else TourShot.{x = 200, y = -431, z = 100, dist = 1900, yaw = 0.8, pitch = 0.04}; }
+  // 5: over the deck, steep, so the flows read as a plan
+  // (the point looked at is south of the middle, so the platform stands above the caption)
+  if stop == 4 { return ifx last then TourShot.{x = 20, y = SLAB_DECK, z = 190, dist = 1600, yaw = 0.34, pitch = 0.86} else TourShot.{x = 0, y = SLAB_DECK, z = 190, dist = 1700, yaw = 0.2, pitch = 0.9}; }
+  // 7: far off and low, the platform small on the sea, above the caption and its seven places
+  if stop == 6 { return ifx last then TourShot.{x = 0, y = -250, z = 0, dist = 2600, yaw = 1.12, pitch = 0.2} else TourShot.{x = 0, y = -250, z = 0, dist = 2400, yaw = 0.9, pitch = 0.2}; }
+  // "Your turn", and anything else: the opening view
+  return TOUR_OPEN;
+}
+// The shot's eye and the point it looks at.
+tour_eye :: (v: TourShot) -> [6] f32 {
+  cy := cos(v.pitch);
+  fx := -sin(v.yaw) * cy; fz := -cos(v.yaw) * cy; fy := -sin(v.pitch);
+  return [6] f32.[v.x - fx * v.dist, v.y - fy * v.dist, v.z - fz * v.dist, v.x, v.y, v.z];
+}
+// The stop's track: from where the camera was, to the stop's view, to the end of its drift. The
+// first stop holds its view until the picture has faded.
+tour_track :: (t: SlabTour) -> trk.CamTrack {
+  a := tour_eye(tour_shot(t.stop, false)); b := tour_eye(tour_shot(t.stop, true));
+  long := hi_f32(TOUR_SECONDS[t.stop], TOUR_MOVE + 1);
+  rows: [4 * trk.CAM_TRACK_ROW] f32;
+  n := 0;
+  if !t.cut {
+    rows[n] = 0; for i: 0..<6 { rows[n + 1 + i] = t.from[i]; } rows[n + 7] = cast(f32) trk.EASE_SMOOTH; n += trk.CAM_TRACK_ROW;
+    rows[n] = TOUR_MOVE; for i: 0..<6 { rows[n + 1 + i] = a[i]; } rows[n + 7] = cast(f32) trk.EASE_SMOOTH; n += trk.CAM_TRACK_ROW;
+  } else {
+    rows[n] = 0; for i: 0..<6 { rows[n + 1 + i] = a[i]; } rows[n + 7] = cast(f32) (trk.EASE_SMOOTH + trk.CAM_TRACK_CUT); n += trk.CAM_TRACK_ROW;
+  }
+  if t.stop == 0 { rows[n] = TOUR_PLATE_GONE; for i: 0..<6 { rows[n + 1 + i] = a[i]; } rows[n + 7] = cast(f32) trk.EASE_SMOOTH; n += trk.CAM_TRACK_ROW; }
+  rows[n] = long; for i: 0..<6 { rows[n + 1 + i] = b[i]; } rows[n + 7] = cast(f32) trk.EASE_SMOOTH; n += trk.CAM_TRACK_ROW;
+  return trk.cam_track_load(rows[0..<n], 0.5, 0);
+}
+
+// ---------------------------------------------------------------- moving through it
+
+// What a stop turns on is turned off before the next one.
+tour_clear :: (s: [] Slab) {
+  if s[0].build.on { build_toggle(s); }
+  if s[0].under { s[0].under = false; s[0].hour = s[0].hp.tour.hour; }
+  s[0].section = false; s[0].flow = false;
+  s[0].selected = -1; s[0].first = false;
+}
+tour_go :: (s: [] Slab, stop: int) {
+  k := ifx stop < 0 then 0 else ifx stop > TOUR_STOPS then TOUR_STOPS else stop;
+  was := s[0].hp.tour.stop; began := s[0].hp.tour.on;
+  // out of the sea or the build view, and into them, the camera jumps: there is no path between
+  cut := !began || was == TOUR_UNDER || was == TOUR_BUILD || k == TOUR_UNDER || k == TOUR_BUILD;
+  e := s[0].eye; f := s[0].fwd; reach := hi_f32(s[0].dist, 200);
+  tour_clear(s);
+  if s[0].layout != LAYOUT_PRIME { set_layout(s, LAYOUT_PRIME); cut = true; }
+  if s[0].mode != CAM_ORBIT { set_mode(s, CAM_ORBIT); }
+  s[0].intro = 0;
+  s[0].hp.tour.on = true; s[0].hp.tour.stop = k; s[0].hp.tour.at = 0; s[0].hp.tour.held = false; s[0].hp.tour.cut = cut;
+  s[0].hp.tour.from = [6] f32.[e[0], e[1], e[2], e[0] + f[0] * reach, e[1] + f[1] * reach, e[2] + f[2] * reach];
+  if k == 2 { s[0].section = true; s[0].tz = 0; }
+  if k == TOUR_UNDER { s[0].under = true; s[0].hp.tour.hour = s[0].hour; s[0].hour = 12.5; }
+  if k == 4 { s[0].flow = true; }
+  if k == TOUR_BUILD { build_toggle(s); s[0].build.play = false; build_seek(s, 0); }
+  sb_open(s, "");
+}
+tour_start :: (s: [] Slab) { s[0].hp.tour.on = false; tour_go(s, 0); }
+// Leaving: everything the tour turned on is off, and the camera is the opening view's.
+tour_end :: (s: [] Slab) {
+  if !s[0].hp.tour.on { return; }
+  tour_clear(s);
+  s[0].hp.tour.on = false;
+  tour_opening(s);
+}
+tour_opening :: (s: [] Slab) {
+  v := TOUR_OPEN;
+  s[0].tx = v.x; s[0].ty = v.y; s[0].tz = v.z; s[0].dist = v.dist; s[0].yaw = v.yaw; s[0].pitch = v.pitch;
+}
+
+// The tour's camera for this frame, after `step` more seconds: eye and forward, and whether it has
+// the camera at all (the build stop's camera is the build view's own). slab_frame calls it once.
+TourCamera :: struct { on: bool; eye: [3] f32; fwd: [3] f32; }
+tour_camera :: (s: [] Slab, step: f32) -> TourCamera {
+  c: TourCamera;
+  if !s[0].hp.tour.on { return c; }
+  t := s[0].hp.tour;
+  long := TOUR_SECONDS[t.stop];
+  if t.hold >= 0 { s[0].hp.tour.at = t.hold; }
+  else {
+    s[0].hp.tour.at = t.at + step;
+    if long > 0 && s[0].hp.tour.at >= long {
+      if t.held { s[0].hp.tour.at = long; } else { tour_go(s, t.stop + 1); }
+    }
+  }
+  t = s[0].hp.tour;
+  if t.stop == TOUR_BUILD {
+    // the whole film in the stop's twenty seconds
+    build_seek(s, sim_clamp(f64(t.at / hi_f32(TOUR_SECONDS[TOUR_BUILD], 1)) * 90, 0, 90));
+    s[0].build.play = false;
+    return c;
+  }
+  v := trk.cam_track_at(tour_track(t), t.at);
+  ax := v.lx - v.ex; ay := v.ly - v.ey; az := v.lz - v.ez;
+  al := hi_f32(sqrt(ax * ax + ay * ay + az * az), 0.01);
+  c.on = true;
+  c.eye = [3] f32.[v.ex, v.ey, v.ez];
+  c.fwd = tour_lift(s, [3] f32.[ax / al, ay / al, az / al]);
+  // the orbit follows, so the section cuts where the camera looks and leaving is not a jump
+  s[0].tx = v.lx; s[0].tz = v.lz; s[0].dist = clamp32(al, 25, 9000);
+  return c;
+}
+
+// On a tall screen the caption covers the lower half, so the camera tips down and what it looks at
+// stands in the upper half. Not at the first stop (its view lies under Luckey's picture, which is
+// centred) and not at "Your turn" (the view the visitor is left with).
+TOUR_LIFT :: 0.45f32;   // how far above the middle, as a share of half the screen's height
+tour_lift :: (s: [] Slab, f: [3] f32) -> [3] f32 {
+  t := s[0].hp.tour;
+  if t.stop == 0 || t.stop >= TOUR_STOPS || !(s[0].aspect > 0) || s[0].aspect >= 1 { return f; }
+  share := TOUR_LIFT * clamp32((1 - s[0].aspect) / 0.5, 0, 1);
+  // out of the first stop the lift comes in with the move, so the camera does not jump
+  if t.stop == 1 { share *= clamp32(t.at / TOUR_MOVE, 0, 1); }
+  a := angle_atan2(share * s[0].tanh, 1);
+  // the camera's up: the world's, less what lies along the view
+  d := f[1];
+  ux := -f[0] * d; uy := 1 - f[1] * d; uz := -f[2] * d;
+  ul := hi_f32(sqrt(ux * ux + uy * uy + uz * uz), 0.001);
+  ca := cos(a); sa := sin(a);
+  return [3] f32.[f[0] * ca - ux / ul * sa, f[1] * ca - uy / ul * sa, f[2] * ca - uz / ul * sa];
+}
+
+// A press on the scene during the tour: a tap goes on to the next stop, and a drag does nothing (the
+// camera is the tour's). True while the tour has the pointer.
+tour_pointer :: (s: [] Slab, x: f32, y: f32, phase: int) -> bool {
+  if !s[0].hp.tour.on || s[0].hp.tour.stop >= TOUR_STOPS { return false; }
+  if phase == 0 { s[0].hp.tour.down = true; s[0].hp.tour.down_x = x; s[0].hp.tour.down_y = y; return true; }
+  if phase == 2 && s[0].hp.tour.down {
+    dx := x - s[0].hp.tour.down_x; dy := y - s[0].hp.tour.down_y; slack := 12 * s[0].dpr;
+    if dx * dx + dy * dy < slack * slack { tour_go(s, s[0].hp.tour.stop + 1); }
+  }
+  if phase >= 2 { s[0].hp.tour.down = false; }
+  return true;
+}
+// A key during the tour: right, Space or Enter go on, left goes back, Esc leaves.
+tour_key :: (s: [] Slab, key: int) -> bool {
+  if !s[0].hp.tour.on { return false; }
+  if key == KEY_ESCAPE { tour_end(s); return true; }
+  if key == KEY_RIGHT || key == ' ' || key == KEY_ENTER { if s[0].hp.tour.stop >= TOUR_STOPS { tour_end(s); } else { tour_go(s, s[0].hp.tour.stop + 1); } return true; }
+  if key == KEY_LEFT { tour_go(s, s[0].hp.tour.stop - 1); return true; }
+  return true;   // the tour has the keys: W would walk the orbit's point out from under its camera
+}
+// A press in the HUD that is the tour's. Anything else pressed in a stop (a site at the last one)
+// makes the stop wait.
+tour_act :: (s: [] Slab, id: string) -> bool {
+  if id == "mode.tour" || id == "tour.again" { tour_start(s); return true; }
+  if !s[0].hp.tour.on { return false; }
+  if id == "tour.next" { if s[0].hp.tour.stop >= TOUR_STOPS { tour_end(s); } else { tour_go(s, s[0].hp.tour.stop + 1); } return true; }
+  if id == "tour.back" { tour_go(s, s[0].hp.tour.stop - 1); return true; }
+  if id == "tour.leave" || id == "mode.explore" { tour_end(s); return true; }
+  if id == "mode.build" { tour_end(s); return false; }
+  s[0].hp.tour.held = true;
+  return false;
+}
+
+// Whether a first visit by this address opens on the tour: the plain address does; a link that
+// places the view, holds a moment, opens a cutaway, another layout or the build view goes straight
+// there. ?tour=N opens at stop N whoever visits; ?tour=0 never.
+tour_address :: (s: [] Slab, url: string) {
+  s[0].hp.tour.wanted = s[0].intro > 0 && s[0].hud && !s[0].build.on && s[0].layout == LAYOUT_PRIME && s[0].mode == CAM_ORBIT && !s[0].section && !s[0].flow && !s[0].under && s[0].fixed < 0;
+  // an address that places no camera opens on the whole platform
+  placed := query_number(url, "yaw", -99) != -99 || query_number(url, "pitch", -99) != -99 || query_number(url, "dist", -99) != -99 || query_number(url, "x", -99) != -99 || query_number(url, "y", -99) != -99 || query_number(url, "z", -99) != -99;
+  if !placed && s[0].layout == LAYOUT_PRIME && s[0].mode == CAM_ORBIT && !s[0].build.on { tour_opening(s); }
+  k := query_number(url, "tour", -1);
+  // the first screen's old words: ?intro=0 is no tour, ?intro=1 the tour from its start
+  if k < 0 && query_number(url, "intro", -1) == 0 { k = 0; }
+  s[0].hp.tour.asked = k < 0 && query_number(url, "intro", -1) == 1;
+  if k == 0 { s[0].hp.tour.wanted = false; }
+  s[0].hp.tour.hold = cast(f32) query_number(url, "hold", -1);
+  if k >= 1 && s[0].hud { s[0].hp.tour.on = false; tour_go(s, cast(int) k - 1); s[0].hp.tour.cut = true; }
+}
+
+// ---------------------------------------------------------------- what it says
+
+TOUR_PLATE_HOLD :: 4.0f32;   // seconds Luckey's picture stays whole
+TOUR_PLATE_GONE :: 9.0f32;   // and the second it is gone by
+tour_plate :: (at: f32) -> f32 { return clamp32((TOUR_PLATE_GONE - at) / (TOUR_PLATE_GONE - TOUR_PLATE_HOLD), 0, 1); }
+
+// What stands beside the platform at the second stop, for scale: its length, width and height over
+// the water (m), and where its middle is (hull frame). Each is drawn in, then all are taken away.
+TourThing :: struct { name: string; l: f32; b: f32; h: f32; x: f32; z: f32; }
+TOUR_THINGS :: 3;
+tour_thing :: (i: int) -> TourThing {
+  // Shell's Prelude: 488 m long, 74 m wide (Shell); drawn 25 m out of the water, about its deck
+  if i == 0 { return TourThing.{name = "Prelude: 488 m", l = 488, b = 74, h = 25, x = 0, z = 440}; }
+  // the largest container ships are 400 m long and about 61 m wide; 40 m to the top of their boxes
+  if i == 1 { return TourThing.{name = "A container ship: 400 m", l = 400, b = 61, h = 40, x = 0, z = 600}; }
+  return TourThing.{name = "A tower: 100 m", l = 30, b = 30, h = 100, x = 600, z = 240};
+}
+// How much of thing i is drawn at `at` seconds: each grows in over a second and a half, one after
+// another, and all go in the stop's last two seconds.
+tour_shown :: (i: int, at: f32) -> f32 {
+  grow := clamp32((at - (TOUR_MOVE + cast(f32) i * 1.5f32)) / 1.5f32, 0, 1);
+  go := clamp32((TOUR_SECONDS[1] - 0.5f32 - at) / 1.5f32, 0, 1);
+  return grow * go;
+}
+// The outlines, as lines on the canvas.
+// A mooring line's two ends in the hull's frame: its fairlead at the keel and its anchor on the
+// seabed (the hull barely moves, so the anchor is drawn where the level hull would have it).
+TourLine :: struct { a: [3] f32; b: [3] f32; }
+// The moorings as the hull has them in the water it is moored in (slab-moor.coax; the hull's own
+// depth, which follows the site when the world gives it the site's); before its first step, the rig
+// it will lay.
+tour_rig :: (s: [] Slab) -> MoorRig {
+  if s[0].hull.rig[0].built { return s[0].hull.rig[0]; }
+  return sim_rig_of(sim_prime_shape(), s[0].hull.depth);
+}
+tour_line :: (s: [] Slab, i: int) -> TourLine {
+  l := tour_rig(s);
+  return TourLine.{a = v3f(f32(l.fx[i]), f32(l.fair_y), f32(l.fz[i])), b = v3f(f32(l.ax[i]), -f32(l.depth), f32(l.az[i]))};
+}
+tour_lines :: (s: [] Slab, out: [] f32, at: int) -> int {
+  n := at;
+  if s[0].hp.tour.on && s[0].hp.tour.stop == TOUR_UNDER {
+    // the sixteen lines, and a cross on the seabed at each anchor
+    for i: 0..<tour_rig(s).count {
+      l := tour_line(s, i); r := 60.0f32;
+      n = stroke3(s, out, n, l.a, l.b, 1, 1, 1, 1.4);
+      n = stroke3(s, out, n, v3f(l.b[0] - r, l.b[1], l.b[2]), v3f(l.b[0] + r, l.b[1], l.b[2]), 1, 1, 1, 2);
+      n = stroke3(s, out, n, v3f(l.b[0], l.b[1], l.b[2] - r), v3f(l.b[0], l.b[1], l.b[2] + r), 1, 1, 1, 2);
+    }
+    return n;
+  }
+  if !s[0].hp.tour.on || s[0].hp.tour.stop != 1 { return n; }
+  for i: 0..<TOUR_THINGS {
+    g := tour_shown(i, s[0].hp.tour.at);
+    if !(g > 0) { continue; }
+    t := tour_thing(i);
+    x0 := t.x - t.l / 2; x1 := x0 + t.l * g; z0 := t.z - t.b / 2; z1 := t.z + t.b / 2; y0 := 0.5f32; y1 := t.h * g;
+    w := 1.6f32;
+    // the waterline's rectangle, the top's, and the four corners between
+    n = stroke3(s, out, n, v3f(x0, y0, z0), v3f(x1, y0, z0), 1, 1, 1, w); n = stroke3(s, out, n, v3f(x0, y0, z1), v3f(x1, y0, z1), 1, 1, 1, w);
+    n = stroke3(s, out, n, v3f(x0, y0, z0), v3f(x0, y0, z1), 1, 1, 1, w); n = stroke3(s, out, n, v3f(x1, y0, z0), v3f(x1, y0, z1), 1, 1, 1, w);
+    n = stroke3(s, out, n, v3f(x0, y1, z0), v3f(x1, y1, z0), 1, 1, 1, w); n = stroke3(s, out, n, v3f(x0, y1, z1), v3f(x1, y1, z1), 1, 1, 1, w);
+    n = stroke3(s, out, n, v3f(x0, y1, z0), v3f(x0, y1, z1), 1, 1, 1, w); n = stroke3(s, out, n, v3f(x1, y1, z0), v3f(x1, y1, z1), 1, 1, 1, w);
+    n = stroke3(s, out, n, v3f(x0, y0, z0), v3f(x0, y1, z0), 1, 1, 1, w); n = stroke3(s, out, n, v3f(x1, y0, z0), v3f(x1, y1, z0), 1, 1, 1, w);
+    n = stroke3(s, out, n, v3f(x0, y0, z1), v3f(x0, y1, z1), 1, 1, 1, w); n = stroke3(s, out, n, v3f(x1, y0, z1), v3f(x1, y1, z1), 1, 1, 1, w);
+  }
+  return n;
+}
+
+// A whole number rounded to the nearest `to`: 173,333 to the nearest 10,000 is 170,000.
+tour_round :: (v: f64, to: f64) -> f64 { return floor(v / to + 0.5) * to; }
+
+// The tour's part of the HUD: the picture, the names of what is drawn for scale, and the caption
+// with its sentence, its number and the ways on.
+tour_say :: (s: [] Slab, h: [] SceneHud) {
+  t := s[0].hp.tour; k := s[0].dpr;
+  ts: [1] SbText; a: SbText; ls: [1] SbText; b: SbText;
+  ids: [SH_ID] u8;
+  if t.stop == 0 && tour_plate(t.at) > 0 { sh_plate(h, TOUR_PICTURE, "The one picture of SLAB that Palmer Luckey has published", tour_plate(t.at)); }
+  if t.stop == 1 {
+    for i: 0..<TOUR_THINGS {
+      g := tour_shown(i, t.at);
+      if !(g > 0) { continue; }
+      th := tour_thing(i);
+      _ = lab_put(s, h, sb_id(ids[..], "scale.", i), th.name, th.x, th.h + 45, th.z, g, false);
+    }
+  }
+  if t.stop == TOUR_UNDER && t.at > TOUR_MOVE {
+    // name the keel, one line and one anchor: the nearest corner's
+    g := clamp32((t.at - TOUR_MOVE) / 1.5, 0, 1);
+    // the line whose anchor is nearest the middle of the view, above the caption
+    best := 0; near := 1e9f32;
+    for i: 0..<tour_rig(s).count {
+      q := tour_line(s, i); e := screen_of(s, q.b[0], q.b[1], q.b[2]);
+      if e[2] < 1 || e[1] > s[0].height * 0.62 { continue; }
+      d := abs(e[0] - s[0].width / 2);
+      if d < near { near = d; best = i; }
+    }
+    _ = lab_put(s, h, "moor.keel", "The keel", 0, -SLAB_DRAFT, 0, g, false);
+    a = SbText.{}; a = sb_w(a, "A mooring line, "); a = sb_n(a, tour_rig(s).line.length / 1000, 1); a = sb_w(a, " km long"); ts[0] = a;
+    m := tour_line(s, best);
+    _ = lab_put(s, h, "moor.line", sb_s(ts[..]), (m.a[0] + m.b[0]) / 2, (m.a[1] + m.b[1]) / 2, (m.a[2] + m.b[2]) / 2, g, false);
+    _ = lab_put(s, h, "moor.anchor", "An anchor on the seabed", m.b[0], m.b[1], m.b[2], g, false);
+  }
+  long := TOUR_SECONDS[t.stop];
+  sh_caption(h, "tour", "The tour", t.stop, ifx t.stop < TOUR_STOPS then TOUR_STOPS else 0, ifx long > 0 then clamp32(t.at / long, 0, 1) else 0);
+  hs := hull_prime(); led := hull_ledger(hs);
+  if t.stop == 0 {
+    sh_lead(h, "Palmer Luckey says he is building this: SLAB, a floating platform for heavy industry.");
+    sh_say(h, "He has published this one picture and no design. What you are about to see is our reconstruction from the picture: every size and system in it is our assumption.");
+    sh_number(h, "1,000 years", "How long he says it is designed to last", "Rome's Pantheon, also concrete, has stood for about 1,900.", SH_CLAIM);
+  } else if t.stop == 1 {
+    a = SbText.{}; a = sb_w(a, "It is "); a = sb_n(a, hs.l, 0); a = sb_w(a, " m long and "); a = sb_n(a, hs.b, 0); a = sb_w(a, " m wide. Nothing afloat today comes close."); ts[0] = a;
+    sh_lead(h, sb_s(ts[..]));
+    a = SbText.{}; a = sb_n(a, led.deck_height, 0); a = sb_w(a, " m"); ts[0] = a;
+    b = SbText.{}; b = sb_w(b, "As tall as a "); b = sb_n(b, tour_round(led.deck_height / 3.4, 1), 0); b = sb_w(b, "-storey building."); ls[0] = b;
+    sh_number(h, sb_s(ts[..]), "How far the wall stands out of the sea", sb_s(ls[..]), SH_OURS);
+    sh_say(h, "Drawn beside it: Shell's Prelude, the largest floating structure yet built; the largest kind of container ship; and a 100 m tower.");
+  } else if t.stop == 2 {
+    a = SbText.{}; a = sb_w(a, "The lowest "); a = sb_n(a, hs.hull, 0); a = sb_w(a, " m is a hollow hull. It floats as a steel ship does: it sinks until the water it pushes aside weighs what it does. The "); a = sb_n(a, hull_upper(hs), 0); a = sb_w(a, " m above is open structure that carries the deck."); ts[0] = a;
+    sh_lead(h, sb_s(ts[..]));
+    a = SbText.{}; a = sb_n(a, led.mass / 1e9, 1); a = sb_w(a, " million tonnes"); ts[0] = a;
+    b = SbText.{}; b = sb_w(b, "About "); b = sb_n(b, tour_round(led.mass / 1e8, 10), 0); b = sb_w(b, " of the largest aircraft carriers."); ls[0] = b;
+    sh_number(h, sb_s(ts[..]), "What the hull, the city and its ballast water weigh", sb_s(ls[..]), SH_OURS);
+  } else if t.stop == 3 {
+    a = SbText.{}; a = sb_n(a, f64(tour_rig(s).count), 0); a = sb_w(a, " lines hold it in place, each anchored to the seabed far below."); ts[0] = a;
+    sh_lead(h, sb_s(ts[..]));
+    a = SbText.{}; a = sb_n(a, tour_rig(s).depth, 0); a = sb_w(a, " m"); ts[0] = a;
+    b = SbText.{}; b = sb_w(b, "About "); b = sb_n(b, tour_round(tour_rig(s).depth / 381.0, 1), 0); b = sb_w(b, " Empire State Buildings, one on top of another."); ls[0] = b;
+    sh_number(h, sb_s(ts[..]), "The depth of water we moor it in", sb_s(ls[..]), SH_OURS);
+    sh_say(h, "The sea is drawn clearer than it is, and the lines thicker, so you can see them.");
+  } else if t.stop == 4 {
+    pw := s[0].power;
+    hybrid := s[0].plant.power == POWER_HYBRID; nuclear := s[0].plant.power == POWER_NUCLEAR;
+    sh_lead(h, ifx nuclear then "Small reactors make its power. The lines show where the power goes."
+      else ifx hybrid then "Cold water piped up from a kilometre down runs one power plant, and two small reactors run beside it. The lines show where the water and the power go."
+      else "Cold water piped up from a kilometre down runs its power plant. The lines show where the water and the power go.");
+    a = SbText.{}; a = sb_n(a, pw.supply, 0); a = sb_w(a, " MW"); ts[0] = a;
+    b = SbText.{}; b = sb_w(b, "Megawatts. Enough for about "); b = sb_n(b, tour_round(pw.supply * 1000.0 / 1.2, 10000), 0); b = sb_w(b, " American homes."); ls[0] = b;
+    sh_number(h, sb_s(ts[..]), "The power it is making now, in our model", sb_s(ls[..]), SH_OURS);
+    if sim_fixed_short(s[0].plant, pw) { sh_say(h, "That is less than it needs, so some of it is switched off."); }
+  } else if t.stop == TOUR_BUILD {
+    a = SbText.{}; a = sb_w(a, "It is too wide for any ship channel, so it is built in "); a = sb_n(a, f64(BUILD_UNITS), 0); a = sb_w(a, " pieces: cast ashore, towed out one at a time and joined at sea."); ts[0] = a;
+    sh_lead(h, sb_s(ts[..]));
+    a = SbText.{}; a = sb_w(a, "About "); a = sb_n(a, tour_round(BUILD_DONE / 365.25, 1), 0); a = sb_w(a, " years"); ts[0] = a;
+    sh_number(h, sb_s(ts[..]), "From the first pour to the finished deck, in our plan", "The Channel Tunnel took six.", SH_OURS);
+    sh_say(h, sb_s(sb_build_now(s, ls[..])));
+  } else if t.stop == 6 {
+    sh_lead(h, "Where could it go? We try it in seven places, from warm water off Guam to a fjord in Norway.");
+    sh_number(h, "3 nautical miles", "Where California's own waters end and federal waters begin", "5.6 km: near enough to see its towers from the beach.", SH_SOURCE);
+    sh_choices(h, "tour.site", "Move it and see");
+      sites := SB_SITES;
+      for i: 0..<SITES { sh_option(h, sb_id(ids[..], "site.", i), sites[i], "", s[0].site == i); }
+    sh_end_of(h);
+  } else {
+    sh_lead(h, "Your turn.");
+    sh_say(h, "Drag to look around. Click or tap anything to learn what it is. Change the sea, the power or the place, cut it open, or break something.");
+  }
+  if t.stop >= TOUR_STOPS {
+    sh_action(h, "tour.next", "Explore", true);
+    sh_action(h, "mode.build", "Watch it built", false);
+    sh_action(h, "tour.again", "See the tour again", false);
+  } else {
+    if t.stop > 0 { sh_action(h, "tour.back", "Back", false); }
+    sh_action(h, "tour.next", "Next", true);
+    sh_action(h, "tour.leave", "Leave the tour", false);
+  }
+}
+
+// ---------------------------------------------------------------- checks
+
+#test "tour: a first visit by the plain address opens on it; a returning visitor and a deep link do not" {
+  xs: [1] SbTest; x := xs[..]; s := x[0].s[..];
+  sb_test_open(x);
+  #assert !s[0].hp.tour.on && s[0].hp.tour.wanted;
+  sb_act(s, "hud.visit 1");
+  #assert s[0].hp.tour.on && s[0].hp.tour.stop == 0;
+  ys: [1] SbTest; y := ys[..]; r := y[0].s[..];
+  sb_test_open(y);
+  sb_act(r, "hud.visit 0");
+  #assert !r[0].hp.tour.on;
+  as: [1] SbTest; a := as[0].s[..];
+  slab_reset(a);
+  slab_message(a, HOST_FACTS, "url=https://openagents.com/worlds/slab?view=section\n");
+  sb_act(a, "hud.visit 1");
+  #assert a[0].section && !a[0].hp.tour.wanted && !a[0].hp.tour.on;
+  bs: [1] SbTest; b := bs[0].s[..];
+  slab_reset(b);
+  slab_message(b, HOST_FACTS, "url=https://openagents.com/worlds/slab?tour=0\n");
+  sb_act(b, "hud.visit 1");
+  #assert !b[0].hp.tour.on;
+  cs: [1] SbTest; c := cs[0].s[..];
+  slab_reset(c);
+  slab_message(c, HOST_FACTS, "url=https://openagents.com/worlds/slab?tour=4&hold=6\n");
+  #assert c[0].hp.tour.on && c[0].hp.tour.stop == 3 && c[0].under;
+}
+#test "tour: seven stops, each a sentence and a number with where it is from, then Your turn" {
+  xs: [1] SbTest; x := xs[..]; s := x[0].s[..];
+  sb_test_open(x);
+  sb_act(s, "mode.tour");
+  for k: 0..<TOUR_STOPS {
+    #assert s[0].hp.tour.on && s[0].hp.tour.stop == k;
+    sb_say(s);
+    #assert !s[0].hp.said[0].lost && sb_test_has(s, 'U', "tour", "The tour") && sb_test_count(s, 'J') == 1 && sb_test_count(s, 'Q') == 1;
+    #assert sb_test_has(s, 'A', "tour.next", "Next") && sb_test_has(s, 'A', "tour.leave", "Leave the tour");
+    #assert sb_test_has(s, 'A', "tour.back", "Back") == (k > 0);
+    // the tour has the bar to itself: the groups wait
+    #assert sb_test_has(s, 'M', "mode.tour", "Tour") && !sb_test_has(s, 'G', "look", "") && !sb_test_has(s, 'G', "build", "");
+    #assert s[0].section == (k == 2) && s[0].under == (k == 3) && s[0].flow == (k == 4) && s[0].build.on == (k == TOUR_BUILD);
+    sb_act(s, "tour.next");
+  }
+  sb_say(s);
+  #assert s[0].hp.tour.stop == TOUR_STOPS && sb_test_has(s, 'A', "tour.next", "Explore") && sb_test_count(s, 'Q') == 0;
+  sb_act(s, "tour.next");
+  sb_say(s);
+  #assert !s[0].hp.tour.on && !s[0].build.on && !s[0].section && sb_test_has(s, 'G', "look", "Look") && s[0].dist == TOUR_OPEN.dist && s[0].ty == TOUR_OPEN.y;
+}
+#test "tour: the numbers' comparisons are worked from the numbers" {
+  xs: [1] SbTest; x := xs[..]; s := x[0].s[..];
+  sb_test_open(x);
+  sb_act(s, "mode.tour");
+  sb_act(s, "tour.next"); sb_say(s);
+  // 118 m of wall at 3.4 m a storey is 35 storeys
+  #assert sb_test_field(s, 'Q', "118 m", 2) == "As tall as a 35-storey building.";
+  sb_act(s, "tour.next"); sb_say(s);
+  // 15.4 million tonnes over a 100,000 t carrier is 154: about 150
+  #assert sb_test_field(s, 'Q', "15.4 million tonnes", 2) == "About 150 of the largest aircraft carriers.";
+  sb_act(s, "tour.next"); sb_say(s);
+  // the hull's moorings are laid in 1,500 m of water: over the Empire State Building's 381 m that is 3.9, about 4
+  #assert s[0].hull.depth == 1500;
+  #assert sb_test_field(s, 'Q', "1,500 m", 2) == "About 4 Empire State Buildings, one on top of another.";
+  sb_act(s, "tour.next");
+  _ = tour_camera(s, 0.016);
+  s[0].power = sim_power(slab_plant(s), sim_site(s[0].site), s[0].month);
+  sb_say(s);
+  // the homes are the megawatts over 1.2 kW a home, to the nearest ten thousand
+  homes := tour_round(s[0].power.supply * 1000.0 / 1.2, 10000);
+  #assert s[0].power.supply > 150 && homes > 120000 && homes < 200000 && sb_test_count(s, 'Q') == 1;
+  sb_act(s, "tour.next"); sb_say(s);
+  // 1,783 days is 4.9 years: about 5
+  #assert sb_test_field(s, 'Q', "About 5 years", 0) == "About 5 years";
+}
+#test "tour: the camera flies a track to each stop, time moves it on, and a tap or a key steps it" {
+  xs: [1] SbTest; x := xs[..]; s := x[0].s[..];
+  sb_test_open(x);
+  s[0].eye = [3] f32.[2000, 300, 2000]; s[0].fwd = [3] f32.[-0.7, -0.1, -0.7]; s[0].dpr = 1;
+  sb_act(s, "mode.tour");
+  c := tour_camera(s, 0);
+  #assert c.on && c.eye[0] != 2000 || s[0].hp.tour.cut;
+  // by the time it has moved, the camera is at the first stop's view: the one fitted to the picture
+  want := tour_eye(tour_shot(0, false));
+  c = tour_camera(s, TOUR_MOVE + 0.01);
+  #assert abs(c.eye[0] - want[0]) < 2 && abs(c.eye[1] - want[1]) < 2 && abs(c.eye[2] - want[2]) < 2;
+  // fifteen seconds on, it is at the second stop
+  for i: 0..<140 { c = tour_camera(s, 0.1); }
+  #assert s[0].hp.tour.stop == 1 && c.on;
+  // a tap goes on, a drag does not, and the tour keeps the pointer either way
+  #assert slab_pointer(s, 100, 100, 0, 1, 3) && slab_pointer(s, 180, 100, 1, 1, 3) && slab_pointer(s, 180, 100, 2, 1, 3);
+  #assert s[0].hp.tour.stop == 1;
+  #assert slab_pointer(s, 100, 100, 0, 1, 4) && slab_pointer(s, 102, 101, 2, 1, 4);
+  #assert s[0].hp.tour.stop == 2 && s[0].section && s[0].selected == -1;
+  #assert slab_key(s, KEY_LEFT, true) && s[0].hp.tour.stop == 1 && slab_key(s, ' ', true) && s[0].hp.tour.stop == 2;
+  // under the sea the camera is below the water, and the build stop leaves the camera to the build view
+  _ = slab_key(s, KEY_RIGHT, true);
+  c = tour_camera(s, 5);
+  #assert s[0].hp.tour.stop == TOUR_UNDER && c.on && c.eye[1] < -20 && s[0].under;
+  _ = slab_key(s, KEY_RIGHT, true); _ = slab_key(s, KEY_RIGHT, true);
+  c = tour_camera(s, 10);
+  #assert s[0].hp.tour.stop == TOUR_BUILD && !c.on && s[0].build.on && abs(s[0].build.cursor - 45) < 1;
+  // a site pressed at the last stop makes it wait
+  _ = slab_key(s, KEY_RIGHT, true);
+  sb_act(s, "site.4");
+  for i: 0..<200 { c = tour_camera(s, 0.1); }
+  #assert s[0].hp.tour.stop == 6 && s[0].site == SITE_CALIFORNIA && s[0].hp.tour.held;
+  #assert slab_key(s, KEY_ESCAPE, true) && !s[0].hp.tour.on && !s[0].under && !s[0].build.on;
+}

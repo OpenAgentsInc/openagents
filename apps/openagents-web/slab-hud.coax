@@ -36,6 +36,8 @@
 //   coax/bin/coax test apps/openagents-web/slab.coax --only "HUD"
 
 #load "scene-hud.coax";
+#load "slab-tour.coax";
+#load "slab-labels.coax";   // the guided tour: its stops, its camera and its caption
 
 SB_PANE :: "scene-pane";   // the pane's module (scene-pane.coax)
 HUD_LOOK :: 0; HUD_INSIDE :: 1; HUD_CHANGE :: 2; HUD_BUILD :: 3;
@@ -50,6 +52,28 @@ SlabHud :: struct {
   want: [SH_ID] u8; want_n: int; serial: int;   // the tab the pane is asked to open, and how many times it was asked
   toast: [SB_TEXT] u8; toast_n: int; toast_at: f64;
   touch: bool;             // the last press on the scene was a finger's
+  tour: SlabTour;          // the guided tour (slab-tour.coax)
+  lab: SlabLabels;         // the names in the scene (slab-labels.coax)
+  short_s: f64;            // seconds of the world's clock the data halls have been short of power
+  backup: SimBackup;       // what their batteries and generators carry now (slab-sim.coax, spec 6.2)
+}
+
+// ---------------------------------------------------------------- the data halls' backup
+
+// Once a frame, after the power is worked out: `dt` more seconds of the world's clock have passed.
+// While the halls are short the clock of their batteries runs; with all their power back it is
+// wound back to nothing (we do not model the recharge).
+sb_backup_step :: (s: [] Slab, dt: f64) {
+  pw := s[0].power;
+  if pw.data_on_backup { s[0].hp.short_s += dt; } else { s[0].hp.short_s = 0; }
+  s[0].hp.backup = sim_backup(pw, s[0].hp.short_s);
+}
+// The state of the backup in one plain line.
+sb_backup_words :: (b: SimBackup) -> string {
+  if b.dark > 0 { return "Batteries spent: the generators carry 40 MW and the rest of the halls are dark"; }
+  if b.batteries > 0 && b.generators > 0 { return "Short of power: generators and batteries carry the halls"; }
+  if b.batteries > 0 { return "Short of power: batteries carry the halls while the generators start"; }
+  return "Short of power: the generators carry the halls";
 }
 
 // ---------------------------------------------------------------- the two lists
@@ -109,7 +133,7 @@ SB_STATIONS :: [9] string.["The temples", "The power plant", "The data halls", "
 // titles with the chart: when the world loads that file, read the titles from it and drop this table).
 SB_SITES :: [SITES] string.["Guam, west coast", "Puerto Rico, off Yabucoa", "Hawaii, off Kona", "The equator, by Baker Island", "California, three miles out", "Texas, the Gulf of Mexico", "Norway, Yrkefjorden"];
 SB_STORMS :: [SITES] string.["Typhoons pass here.", "Hurricanes and earthquakes happen here.", "Hurricanes are rare here.", "No hurricanes form this close to the equator.", "Winter storms come through.", "Hurricanes come from June to November.", "A sheltered fjord: a place to join the hull, not to run it."];
-SB_SEAS :: [SEAS] string.["Calm", "Trade wind", "The equator's roughest", "Winter", "Gale", "Hurricane"];
+SB_SEAS :: [SEAS] string.["Calm", "Trade wind", "The equator's roughest", "Rough", "Gale", "Hurricane"];
 SB_MONTHS :: [12] string.["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
 sb_clock :: (hour: f64) -> SbText {
@@ -184,6 +208,12 @@ sb_now :: (s: [] Slab, h: [] SceneHud) {
     sh_fact(h, "Made", sb_s(ts[..]), SH_NONE);
     t = SbText.{}; t = sb_n(t, pw.data, 1); t = sb_w(t, " of "); t = sb_n(t, pw.data_load, 0); t = sb_w(t, " MW"); ts[0] = t;
     sh_fact(h, "Data halls", sb_s(ts[..]), SH_NONE);
+    if pw.data_on_backup {
+      bk := s[0].hp.backup;
+      sh_say(h, sb_backup_words(bk));
+      if bk.batteries > 0 { t = SbText.{}; t = sb_n(t, floor((bk.left + 59) / 60), 0); t = sb_w(t, " min"); ts[0] = t; sh_fact(h, "Battery left", sb_s(ts[..]), SH_OURS); }
+      if bk.dark > 0 { t = SbText.{}; t = sb_n(t, bk.dark, 0); t = sb_w(t, " of "); t = sb_n(t, pw.data_load, 0); t = sb_w(t, " MW"); ts[0] = t; sh_fact(h, "Halls dark", sb_s(ts[..]), SH_OURS); }
+    }
     if !s[0].plant.demo10 {
       t = SbText.{}; t = sb_n(t, pw.desal, 1); t = sb_w(t, " of "); t = sb_n(t, SIM_DESAL, 0); t = sb_w(t, " MW"); ts[0] = t;
       sh_fact(h, "Fresh water plant", sb_s(ts[..]), SH_NONE);
@@ -249,15 +279,19 @@ sb_change :: (s: [] Slab, h: [] SceneHud) {
   sb_more(s, h, HUD_CHANGE);
 }
 
+// The film's day and what is being done on it (slab-construction.coax's own names), written into ts.
+sb_build_now :: (s: [] Slab, ts: [] SbText) -> [] SbText {
+  b := build_at(build_day(s[0].build.cursor));
+  stage := BUILD_PHASES[b.phase];
+  if b.phase == BUILD_JOIN && b.approach >= 0.65 { stage = ifx b.joined == 0 then "Secure the first moorings" else "Connect and test the seam"; }
+  t: SbText; t = sb_w(t, "Day "); t = sb_n(t, floor(b.day) + 1, 0); t = sb_w(t, ". "); t = sb_w(t, stage); t = sb_w(t, "."); ts[0] = t;
+  return ts;
+}
 sb_build :: (s: [] Slab, h: [] SceneHud) {
   ts: [1] SbText; t: SbText;
   b := build_at(build_day(s[0].build.cursor)); tow := build_tow();
   sh_group(h, "build", "Build it");
-  // the day and what is being done on it (slab-construction.coax's own names)
-  stage := BUILD_PHASES[b.phase];
-  if b.phase == BUILD_JOIN && b.approach >= 0.65 { stage = ifx b.joined == 0 then "Secure the first moorings" else "Connect and test the seam"; }
-  t = SbText.{}; t = sb_w(t, "Day "); t = sb_n(t, floor(b.day) + 1, 0); t = sb_w(t, ". "); t = sb_w(t, stage); t = sb_w(t, "."); ts[0] = t;
-  sh_lead(h, sb_s(ts[..]));
+  sh_lead(h, sb_s(sb_build_now(s, ts[..])));
   sh_button(h, "build.play", ifx s[0].build.play then "Pause" else ifx s[0].build.cursor >= 90 then "Play again" else "Play", !s[0].build.play);
   t = SbText.{}; t = sb_n(t, s[0].build.cursor, 0); t = sb_w(t, " of 90 seconds"); ts[0] = t;
   sh_slider(h, "build.at", "Where in the film", sb_s(ts[..]), 0, 90, 1, cast(int) floor(s[0].build.cursor));
@@ -319,20 +353,6 @@ sb_help :: (s: [] Slab, h: [] SceneHud) {
   sh_link(h, "What Luckey said", cast(string) b[0..<n]);
 }
 
-// The first screen (slab-intro.coax's words, until the tour replaces it): what this is, and two ways on.
-// Clicking anything in the world closes it.
-sb_first :: (s: [] Slab, h: [] SceneHud) {
-  if s[0].selected != -1 || s[0].build.on { s[0].first = false; }
-  if !s[0].first { return; }
-  sh_caption(h, "intro", "What is this?", 0, 0, 0);
-  sh_heading(h, "What is this?");
-  sh_lead(h, INTRO_WHAT);
-  sh_say(h, INTRO_OURS);
-  sh_say(h, INTRO_DO);
-  sh_action(h, "intro.look", "Look around", true);
-  sh_action(h, "mode.build", "Watch it built", false);
-}
-
 // The card about what was clicked: the lines slab_card writes, until the cards are rewritten to one
 // pattern (#13685, the cards' change).
 sb_card :: (s: [] Slab, h: [] SceneHud) {
@@ -354,12 +374,18 @@ sb_say :: (s: [] Slab) {
   if s[0].hp.pane && s[0].hud && !s[0].golden {
     sh_scene(h, "SLAB", "From Luckey", "Close", "Back");
     sh_open(h, cast(string) s[0].hp.want[0..<s[0].hp.want_n], s[0].hp.serial);
-    sh_mode(h, "mode.explore", "Explore", !s[0].build.on);
-    sh_mode_of(h, "mode.build", "Build it", s[0].build.on, "build");
-    if s[0].build.on { sb_build(s, h); } else { sb_look(s, h); sb_inside(s, h); sb_change(s, h); }
+    touring := s[0].hp.tour.on;
+    s[0].hp.lab.boxes = 0;   // the names in the scene are placed afresh (lab_put)
+    sh_mode(h, "mode.tour", "Tour", touring);
+    sh_mode(h, "mode.explore", "Explore", !touring && !s[0].build.on);
+    sh_mode_of(h, "mode.build", "Build it", !touring && s[0].build.on, "build");
+    // the tour has the screen to itself: its caption, and the bar to leave by
+    if touring { tour_say(s, h); }
+    else if s[0].build.on { sb_build(s, h); }
+    else { sb_look(s, h); sb_inside(s, h); sb_change(s, h); }
+    lab_say(s, h);
     sb_help(s, h);
-    sb_card(s, h);
-    sb_first(s, h);
+    if !touring { sb_card(s, h); }
     chart_tags(s, h);   // the chart's names (slab-chart.coax)
     place_tags(s, h);   // the lines on the water and the dock (slab-place.coax)
     foot: [200] u8;
@@ -374,10 +400,16 @@ sb_say :: (s: [] Slab) {
 sb_act :: (s: [] Slab, body: string) {
   p := sh_pressed(body);
   id := p.id;
-  if id == "hud.visit" { s[0].hp.visit = ifx p.has && p.value == 1 then 1 else 0; return; }
+  if id == "hud.visit" {
+    // a first visit by the plain address opens on the tour; the stopgap's first screen (slab-intro.coax) is the canvas HUD's
+    s[0].hp.visit = ifx p.has && p.value == 1 then 1 else 0;
+    s[0].first = false;
+    if ((s[0].hp.visit == 1 && s[0].hp.tour.wanted) || s[0].hp.tour.asked) && !s[0].hp.tour.on { s[0].hp.tour.asked = false; tour_start(s); }
+    return;
+  }
+  if tour_act(s, id) { return; }
+  if lab_act(s, id) { return; }
   if sb_act_more(s, id, p.value) { return; }
-  if id == "intro.look" { s[0].first = false; return; }
-  s[0].first = false;   // any press is a way on from the first screen
   if id == "mode.explore" { if s[0].build.on { build_toggle(s); } sb_open(s, ""); return; }
   if id == "mode.build" { if !s[0].build.on { build_toggle(s); } sb_open(s, "build"); return; }
   if id == "card.x" { s[0].selected = -1; return; }
@@ -437,9 +469,11 @@ sb_act :: (s: [] Slab, body: string) {
 // and the construction view's own strip until it moves to the HUD.
 sb_lines :: (s: [] Slab, out: [] f32) -> int {
   s[0].button_count = 0;
+  s[0].hp.lab.flow_n = 0;   // the flow view's names are handed over again each frame (lab_flow)
   // the build view's words are in the pane's sheet (sb_build): its canvas panel and slider are not drawn
   if s[0].build.on { s[0].build.left = 0; s[0].build.right = 0; return 0; }
   n := 0;
+  n = tour_lines(s, out, n);
   if s[0].flow { n = flow_overlay(s, out, n); }
   if s[0].section { n = bend_overlay(s, out, n); }
   return n;
@@ -449,7 +483,9 @@ sb_lines :: (s: [] Slab, out: [] f32) -> int {
 // blind through the sites, seas, powers and layouts open Change, where every choice is listed; I and ?
 // open the sheets that hold what the old panels said; Esc shuts the open sheet.
 sb_key :: (s: [] Slab, key: int) -> bool {
-  if !s[0].hp.pane || !s[0].hud || s[0].build.on { return false; }
+  if !s[0].hp.pane || !s[0].hud { return false; }
+  if tour_key(s, key) { return true; }
+  if s[0].build.on { return false; }
   if key == 'n' || key == 'N' || key == 'm' || key == 'M' || key == 'p' || key == 'P' || key == 'k' || key == 'K' { sb_open(s, "change"); return true; }
   if key == 'i' || key == 'I' { sb_open(s, "inside"); return true; }
   if key == '?' { sb_open(s, "help"); return true; }
@@ -467,6 +503,7 @@ sb_touch :: (s: [] Slab, phase: int, kind: int) {
 sb_address :: (s: [] Slab, url: string) {
   s[0].hp.pane = true;
   if s[0].build.on { sb_open(s, "build"); }
+  tour_address(s, url);
 }
 // The pane the browser draws beside the canvas, its last saying and how many there have been (the
 // face's coaxial_pane, coaxial_pane_model and coaxial_pane_rev).
@@ -494,6 +531,13 @@ sb_test_has :: (s: [] Slab, kind: u8, a: string, b: string) -> bool {
   return false;
 }
 // The field `k` of the first line of `kind` whose first field is `a`.
+// How many lines of `kind` the saying has.
+sb_test_count :: (s: [] Slab, kind: u8) -> int {
+  text := sh_text(s[0].hp.said[..]);
+  i := 0; n := 0;
+  while i < text.count { l := sh_read(text, i); i = l.next; if l.kind == kind { n += 1; } }
+  return n;
+}
 sb_test_field :: (s: [] Slab, kind: u8, a: string, k: int) -> string {
   text := sh_text(s[0].hp.said[..]);
   i := 0;
@@ -504,6 +548,30 @@ sb_test_field :: (s: [] Slab, kind: u8, a: string, k: int) -> string {
   return "";
 }
 
+#test "HUD: short of power, the data halls say what carries them, and the rest go dark when the batteries are spent" {
+  xs: [1] SbTest; x := xs[..]; s := x[0].s[..];
+  sb_test_open(x);
+  // off California the ocean plant alone gives the halls almost nothing
+  s[0].plant.power = POWER_OTEC; s[0].site = SITE_CALIFORNIA; s[0].month = 1.5;
+  s[0].power = sim_power(slab_plant(s), sim_site(s[0].site), s[0].month);
+  #assert s[0].power.data_on_backup && s[0].power.data_load - s[0].power.data > SIM_BACKUP_GEN;
+  sb_backup_step(s, 0);
+  #assert s[0].hp.backup.lit == 1 && sb_backup_words(s[0].hp.backup) == "Short of power: batteries carry the halls while the generators start";
+  sb_backup_step(s, 120);
+  #assert s[0].hp.backup.generators == SIM_BACKUP_GEN && s[0].hp.backup.lit == 1 && sb_backup_words(s[0].hp.backup) == "Short of power: generators and batteries carry the halls";
+  sb_say(s);
+  #assert sb_test_has(s, 'F', "Battery left", "13 min") && !sb_test_has(s, 'F', "Halls dark", "");
+  // fifteen minutes of the world's clock after they went short, the batteries are spent
+  sb_backup_step(s, SIM_BACKUP_BATTERY);
+  #assert s[0].hp.backup.dark > 0 && s[0].hp.backup.lit < 1 && sb_backup_words(s[0].hp.backup) == "Batteries spent: the generators carry 40 MW and the rest of the halls are dark";
+  sb_say(s);
+  #assert sb_test_has(s, 'F', "Halls dark", "") && !sb_test_has(s, 'F', "Battery left", "");
+  // the power back, the halls are whole again and the batteries' clock is wound back
+  s[0].plant.power = POWER_NUCLEAR;
+  s[0].power = sim_power(slab_plant(s), sim_site(s[0].site), s[0].month);
+  sb_backup_step(s, 1);
+  #assert !s[0].power.data_on_backup && s[0].hp.short_s == 0 && s[0].hp.backup.lit == 1;
+}
 #test "HUD: the world asks for its pane once it has read its address, and not with the HUD off" {
   xs: [1] SbTest; x := xs[..]; s := x[0].s[..];
   slab_reset(s);

@@ -65,9 +65,11 @@ Try the other sites: Puerto Rico, Kona in Hawaii, the equator, California, the G
 
 ## In the world
 
-When it opens, a short card says what you are looking at. **Look** lists nine places to go, and **Build it** plays the construction.
+The first time you open it, a guided tour of seven stops takes about two minutes: the picture it comes from, how big it is, why it floats, what holds it, what runs on it, how it could be built and where it could go. Each stop is one sentence and one number. Tap or press Next to go on, Back to go back, and "Leave the tour" at any stop. After that the world opens in **Explore**, and **Tour** in the bar plays it again.
 
-- The `prime` layout, built to match the concept image: a concrete platform 1,000 m long and 600 m wide, with sharp corners. A watertight hull 50 m deep floats it, and a lighter structure of columns on that hull puts the deck 143 m over the keel. It floats with 25 m under the water and its wall 118 m above it, as in the picture. It opens on the picture's own view, at its golden hour.
+The names of the districts stand over the deck while you are high above it. Press one in a box, such as "Tower district", and the camera goes there. **Look** lists nine places to go, and **Build it** plays the construction.
+
+- The `prime` layout, built to match the concept image: a concrete platform 1,000 m long and 600 m wide, with sharp corners. A watertight hull 50 m deep floats it, and a lighter structure of columns on that hull puts the deck 143 m over the keel. It floats with 25 m under the water and its wall 118 m above it, as in the picture. It opens on the whole platform from the picture's side, at its golden hour.
 - The deck's districts, from west to east:
   - the OTEC power plant's turbine halls, moonpools and ammonia tanks along the north wall;
   - industry, with process units, a tank farm, a desalination plant and eight stacks of 70 to 95 m;
@@ -79,9 +81,9 @@ When it opens, a short card says what you are looking at. **Look** lists nine pl
 - The power runs. The world opens on both: a 120 MW ocean thermal (OTEC) plant and two nuclear modules, which together carry the data halls, desalination, industry and most of the miners. Switch to OTEC alone (or open [`?power=otec`](/worlds/slab?power=otec)) and the dispatcher sheds load: the stacks stop smoking and the data halls go to backup. **Change**, **Power source** also runs four modules alone, and the report's 10 MW demonstration plant.
 - Damage control: **Change**, **Break something** can hole cell A1, the south-west corner cell, and pump ballast to the opposite corner to level the hull again.
 - Two cutaway views:
-  - **Section** (V): the hull cut open across, with its concrete walls, bulkheads every 50 m, the ballast water in blue, a flooded cell in red, the waterline, and the columns that carry the deck above the 50 m hull.
+  - **Section** (V): the hull cut open across, with its concrete walls, bulkheads every 50 m, the ballast water in blue, a flooded cell in red, the waterline, and the columns that carry the deck above the 50 m hull. Its parts are named on the cut.
   - **Under the sea** (U): swim under the hull to see its bottom, the four cold-water pipes hanging 1,000 m down and the sixteen mooring lines.
-- The flow overlay (L) draws the plant's warm and cold water, its discharge at −60 m and a power line to each load, with their flows.
+- The flow overlay (L) draws the plant's warm and cold water, its used water going out 60 m down and a power line to each load, each named with its megawatts.
 - The section also draws the hull's bending, 100 times exaggerated: in a gale the ends of the 50 m hull flex 8 to 15 cm.
 - Two more layouts (K, or `?layout=dome` and `?layout=cluster`):
   - **Dome**: one Silone dome, 122 m across, with five planted terraces and a glass lantern. It heaves and rolls with the swell: its roll period falls inside the band of common wave periods.
@@ -94,7 +96,7 @@ When it opens, a short card says what you are looking at. **Look** lists nine pl
   - **Fly** (F): W, A, S and D along the view, Space or E to rise, Shift or Q to drop, the arrow keys to turn, the wheel to set the speed.
   - **Walk** (G): GameBuilder's character controller on the deck, which moves with the hull. Space jumps; Space twice flies.
 - The controls are a bar at the top, in plain words, with a sheet under it (at the foot of a phone):
-  - **Explore** and **Build it** are the two ways to be in the world.
+  - **Tour**, **Explore** and **Build it** are the three ways to be in the world.
   - **Look**: orbit, walk or fly, closer and farther, and a list of nine places to go.
   - **See inside**: cut it open, go underwater, water and power, and what the platform is doing now.
   - **Change**: where it floats, the sea, the hour and month, the power source, the shape, and things to break.
@@ -108,7 +110,7 @@ When it opens, a short card says what you are looking at. **Look** lists nine pl
   - `?mode=fly` or `walk` starts moving; `?view=section` or `under` opens a cutaway; `?hole=1` holes cell A1; `?flow=1` shows the flow overlay.
   - `?t=` holds one moment.
   - `?yaw=`, `?pitch=`, `?dist=`, `?x=`, `?y=` and `?z=` place the view.
-  - `?hud=0` hides the panels; `?intro=0` skips the opening card and `?intro=1` shows it.
+  - `?hud=0` hides the panels; `?tour=0` skips the tour, and `?tour=1` to `?tour=8` opens it at that stop (`?intro=0` and `?intro=1` still work: no tour, and the tour from its start).
   - `?tier=phone` draws the phone's waves on any screen.
 - Without WebGPU, the page shows only its name and a link here.
 

@@ -736,6 +736,18 @@ load. This is ours, following the report's point that critical loads need
 independent backup. A hall drops out only when both its share of OTEC
 power and the backup are gone.
 
+The world runs this (`sim_backup` in `metaverse/slab-sim.coax`). When the
+plant gives the halls less than they draw, the batteries carry the gap at
+once and the generators take up to 40 MW of it after 60 seconds. Fifteen
+minutes of the world's clock after the halls went short, the batteries are
+spent: what the plant and the generators cannot carry goes dark, and the
+halls' lights dim by that share. "What it is doing now" says which of the
+three states the halls are in, the battery minutes left and the megawatts
+dark. With OTEC alone off Guam the gap is under 40 MW, so the generators
+carry it and nothing goes dark; off California the plant gives almost
+nothing, and 80 MW of the 120 go dark. When the power is back the halls are
+whole at once: the recharge is not modelled.
+
 Halls are lit when running.
 
 ### 6.3 Bitcoin mining yard
@@ -989,10 +1001,17 @@ control to the player on the gardens promenade.
   cap of 2,000 m.
 - **Travel.** Number keys 1 to 9 jump to stations: the temples, OTEC plant,
   data halls, mining yard, towers, fountain, the bow, the concept image's
-  view, and the 1.5 km view.
+  view, and the 1.5 km view. Each station's camera has its subject in view:
+  the plant is seen from the sea to its west, and the data halls and the
+  mining yard from the north wall, so no tower stands in front of them.
 
-**Opening view.** The world opens on the concept image's camera (yaw 0.802,
-pitch 0.438, 1,164 m out, aimed at the waterline) in the `rough` sea
+**Opening view.** The plain address opens on the whole platform: the concept
+image's bearing (yaw 0.802), pitch 0.42, 1,330 m out, aimed 100 m over the
+waterline, so the skyline and both near walls are in view at 1440 × 900 and
+at 390 × 844 (`TOUR_OPEN` in `slab-tour.coax`). The concept image's own
+camera (yaw 0.802, pitch 0.438, 1,164 m out, aimed at the waterline) crops
+the towers as the picture does; it is the tour's first stop and the station
+"The view in Luckey's picture". The world opens in the `rough` sea
 (4 m; section 5.2 says why, and that Guam's own sea is `trade`), in June
 at 17:51 off Guam: the sun at about 297°, 10° up, lights the long north
 wall as the picture does. The golden-hour grade lifts the exposure and adds
@@ -1018,7 +1037,7 @@ lists its choices; no control steps through values unseen.
 
 | In the bar | Holds |
 |---|---|
-| Explore, Build it | The ways to be in the world. Build it is the construction timelapse, and its sheet holds the day, the step under way, play and pause, a place in the film, and the first tow, the first join and fitting out |
+| Tour, Explore, Build it | The ways to be in the world. Tour is the guided tour below. Build it is the construction timelapse, and its sheet holds the day, the step under way, play and pause, a place in the film, and the first tow, the first join and fitting out |
 | Look | Orbit, walk or fly (not offered to a finger, which orbits and pinches); closer and farther; a list of the nine stations |
 | See inside | Cut it open, go underwater, water and power; "What it is doing now" holds the sea, the hull's motion and the power balance in plain words |
 | Change | Where it floats, the sea, the hour and the month, stop the clock, the power source, sea-water cooling, the shape; "Break something" holds the pipe trip, the refuelling, the holed cell and the halving |
@@ -1043,17 +1062,53 @@ first lines say how another file adds a control, a menu entry or a panel.
 SLAB's real design is unpublished." Help opens with the full sentence: the
 sizes and the systems are our assumptions, worked out from the picture.
 
-**First screen.** The plain address opens a small card, "What is this?",
-with three short paragraphs: what SLAB is, that this world is our
-reconstruction from the concept picture, and what to do next. "Look around"
-closes it; so does Escape, any press in the HUD, or clicking anything in the
-world. "Watch it built" opens the build view. A link that places the view,
-holds a moment, opens a cutaway, another layout or the build view goes
-straight there without the card; `?intro=1` shows it and `?intro=0` hides
-it. The HUD draws the card over the foot of the scene. Its words and the
-rule for when it opens are in `apps/openagents-web/slab-intro.coax`, a
-stopgap that a guided tour replaces: the file's header says which lines of
-`slab.coax` to take out with it.
+**The tour.** A first visit by the plain address opens on a guided tour of
+seven stops (`apps/openagents-web/slab-tour.coax`). Each stop is one
+sentence and one number with a comparison, and the tag that says where the
+number is from. The camera flies a track of
+`metaverse-engine/cam/track.coax` to each stop. A stop moves on by itself
+after about fifteen seconds; Next, Back and "Leave the tour" are always
+there, a tap on the scene or the right arrow goes on, the left arrow goes
+back, and Escape leaves. Pressing anything inside a stop makes it wait.
+
+| Stop | Shows | Its number |
+|---|---|---|
+| 1 | Luckey's concept picture, fading to the world from the camera fitted to it. The caption says in full that this is our reconstruction | 1,000 years, the life he claims (from Luckey) |
+| 2 | The platform from the north, with Shell's Prelude (488 × 74 m), a 400 m container ship and a 100 m tower drawn beside it as outlines, then taken away | 118 m of wall over the sea: a 35-storey building |
+| 3 | The section view, with its parts named | 15.4 million tonnes: about 150 of the largest aircraft carriers |
+| 4 | The sea from under the hull in the survey view (section 12), the mooring lines and their anchors drawn in from the hull's own rig. The sea is drawn clearer than it is, and the caption says so | The depth the hull's moorings are laid in (1,500 m): about 4 Empire State Buildings |
+| 5 | The flow view from above | The megawatts made now: homes at 1.2 kW each |
+| 6 | The construction timelapse, the whole film in twenty seconds | About 5 years; the Channel Tunnel took six |
+| 7 | The platform far off, and the seven sites as buttons that move it | 3 nautical miles, where California's waters end (from a source) |
+
+It ends on "Your turn", with Explore, "Watch it built" and "See the tour
+again". The pane keeps one flag in the viewer's browser (`localStorage`,
+read and written inside try/catch), so a returning visitor lands in
+Explore; without storage the tour simply opens again. A link that places
+the view, holds a moment, opens a cutaway, another layout or the build view
+goes straight there. `?tour=0` never opens the tour, `?tour=1` to `?tour=8`
+opens at that stop, and `&hold=SECONDS` holds the stop at that second, for
+a picture. On a tall screen the caption covers the lower half, so the
+tour's camera tips down and its subject stands in the upper half.
+
+The first-screen card of `apps/openagents-web/slab-intro.coax` was a stopgap
+for the tour. The canvas HUD still draws it when the page has no pane; the
+pane never shows it.
+
+**Names in the scene** (`apps/openagents-web/slab-labels.coax`). The pane
+draws names over the canvas in the kit's body size:
+
+- The nine districts' names over the deck while the camera is more than
+  400 m over it, fading out by 220 m. A district that holds a station is a
+  button that takes the camera there, and so are the fountain and the bow.
+- In the section view: the deck, the open structure and its 93 m, the hull
+  and its 50 m, the waterline, the ballast and its depth, a cell, a
+  bulkhead, the keel, and "Empty" on empty cells. The figures are the
+  ledger's.
+- In the flow view: each flow and each load with its megawatts.
+
+No two names overlap: each takes its own place or the nearest clear row
+above or below it, and one with no clear place is left out.
 
 **Narrow screens and touch.** At 390 px the bar wraps to two rows and a
 sheet opens at the foot of the screen, so the platform stays in view above

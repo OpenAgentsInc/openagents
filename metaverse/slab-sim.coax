@@ -232,6 +232,35 @@ sim_fixed_short :: (p: SimPlant, o: SimPower) -> bool {
   if p.demo10 { return o.data_on_backup || o.industry < SIM_DEMO_UTILITY; }
   return o.data_on_backup || o.desal < SIM_DESAL || o.industry < SIM_INDUSTRY;
 }
+// The data halls' backup (spec 6.2). When the plant gives the halls less than they draw, their
+// batteries carry the gap at once, and a 40 MW generator plant starts within 60 seconds and takes
+// what it can of it. The batteries last 15 minutes from when the halls went short (carrying less
+// than the whole load would stretch them; the 15 minutes is the stated figure, kept as it is).
+// After that the halls have the plant and the generators only, and what those cannot carry is
+// dark. `short` is how long the halls have been short, in seconds.
+SIM_BACKUP_GEN :: 40.0;        // MW of generators
+SIM_BACKUP_START :: 60.0;      // s until they carry load
+SIM_BACKUP_BATTERY :: 900.0;   // s the batteries last
+SimBackup :: struct {
+  gap: f64;          // MW the plant does not give the halls
+  generators: f64;   // MW the generators carry now
+  batteries: f64;    // MW the batteries carry now
+  dark: f64;         // MW of halls with no power
+  lit: f64 = 1;      // the share of the halls running (0..1)
+  left: f64;         // s of battery left while the batteries are in use
+}
+sim_backup :: (o: SimPower, short: f64) -> SimBackup {
+  b: SimBackup;
+  if o.data_load <= 0 { return b; }
+  b.gap = sim_max(o.data_load - o.data, 0);
+  if b.gap <= 0 { return b; }
+  b.generators = ifx short >= SIM_BACKUP_START then sim_min(SIM_BACKUP_GEN, b.gap) else 0.0;
+  rest := b.gap - b.generators;
+  if short < SIM_BACKUP_BATTERY { b.batteries = rest; b.left = ifx rest > 0 then SIM_BACKUP_BATTERY - short else 0.0; }
+  else { b.dark = rest; }
+  b.lit = (o.data_load - b.dark) / o.data_load;
+  return b;
+}
 
 // ---------------------------------------------------------------- the hull (spec 3.1, 4)
 // prime's figures are hull.coax's: SIM_D is the watertight hull's depth (the deck stands on the
@@ -1002,6 +1031,35 @@ sim_same_pose :: (a: SimHull, b: SimHull) -> bool {
   #assert sim_power(p, cal, 7.5).no_cold && gulf.no_cold && gulf.otec_net == 0 && gulf.cold_flow == 0 && gulf.surface > 29.5;
   cal.depth = 1500;
   #assert abs(sim_power(p, cal, 7.5).otec_net - 19) < 1.0 && !sim_power(p, sim_site(SITE_GUAM), 7.5).no_cold;
+}
+#test "8c: short of power, the halls run on batteries for 15 minutes and 40 MW of generators; then the rest go dark" {
+  p: SimPlant;
+  // OTEC alone off Guam in February: the halls get less than their 120 MW
+  o := sim_power(p, sim_site(SITE_GUAM), 1.5);
+  gap := o.data_load - o.data;
+  #assert o.data_on_backup && gap > 0 && gap < SIM_BACKUP_GEN;
+  // at once the batteries carry the gap; a minute on the generators have it; nothing is dark
+  b := sim_backup(o, 0);
+  #assert b.batteries == gap && b.generators == 0 && b.dark == 0 && b.lit == 1 && b.left == SIM_BACKUP_BATTERY;
+  b = sim_backup(o, SIM_BACKUP_START);
+  #assert b.generators == gap && b.batteries == 0 && b.dark == 0 && b.lit == 1 && b.left == 0;
+  #assert sim_backup(o, 3600).dark == 0;
+  // twice the halls: the gap is more than the generators' 40 MW
+  big := p; big.data_mw = 240;
+  q := sim_power(big, sim_site(SITE_GUAM), 1.5);
+  wide := q.data_load - q.data;
+  #assert wide > SIM_BACKUP_GEN;
+  b = sim_backup(q, 120);
+  #assert b.generators == SIM_BACKUP_GEN && abs(b.batteries - (wide - SIM_BACKUP_GEN)) < 1e-9 && b.dark == 0 && b.lit == 1 && b.left == SIM_BACKUP_BATTERY - 120;
+  // when the 15 minutes are up, what the plant and the generators cannot carry is dark
+  b = sim_backup(q, SIM_BACKUP_BATTERY);
+  #assert b.batteries == 0 && abs(b.dark - (wide - SIM_BACKUP_GEN)) < 1e-9 && abs(b.lit - (q.data + SIM_BACKUP_GEN) / q.data_load) < 1e-9 && b.lit < 1 && b.lit > 0;
+  // with all the power they draw, there is no backup in use; with no halls aboard, none either
+  full := p; full.power = POWER_HYBRID;
+  f := sim_backup(sim_power(full, sim_site(SITE_GUAM), 7.5), 5000);
+  #assert f.gap == 0 && f.lit == 1 && f.generators == 0 && f.batteries == 0;
+  none := p; none.data_mw = 0;
+  #assert sim_backup(sim_power(none, sim_site(SITE_GUAM), 1.5), 5000).lit == 1;
 }
 #test "8: dispatch sheds mining, then industry, then desalination" {
   p: SimPlant;

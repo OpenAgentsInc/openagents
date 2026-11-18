@@ -1,0 +1,270 @@
+// SLAB's names in the scene (issue 13685, audit finding 5): what a visitor is looking at, said where
+// it is. Each is a tag of the kit (components/kit/scene.coax's k_scene_tag) that the HUD's pane
+// draws over the canvas at the point's place in the window, in the kit's body size.
+//
+//   - The districts' names over the deck while the camera is high, fading as it comes down. A
+//     district that holds a station is a place you can press: the camera goes there. The fountain
+//     and the bow, the two stations that are not districts, are places too. (All nine stations are
+//     also listed by name in Look.)
+//   - The section view's parts: the deck, the open structure, the hull, the waterline, the ballast,
+//     a cell, a bulkhead, the keel, and "Empty" on empty cells. The hull's figures are the ledger's
+//     (metaverse/hull.coax).
+//   - The flow view's names and megawatts, and the section's bending note. slab.coax's flow_label
+//     hands each to lab_flow here instead of drawing small text on the canvas.
+//
+// No two tags overlap: each is placed where its box is clear of those placed before it, most
+// important first: at its point, or the nearest clear row above or below. None goes under the bar at the top
+// or the line at the foot, and one with no clear place is left out.
+//
+// Loaded by slab-hud.coax. To add a name from another file, call lab_put from your own *_say.
+//
+//   coax/bin/coax test apps/openagents-web/slab.coax --only "labels"
+
+LAB_MAX :: 48;        // tags in one frame
+LAB_FLOW :: 16;       // the flow view's names in one frame
+LAB_TEXT :: 56;       // bytes of one of them
+LAB_HIGH :: 400.0f32; // the camera this far over the deck shows the districts whole
+LAB_LOW :: 220.0f32;  // and this far over it, not at all
+LAB_TRIES :: 9;       // a tag's own place, then up to four rows above and below it
+
+LabBox :: struct { x0: f32; y0: f32; x1: f32; y1: f32; }
+LabFlow :: struct { p: [3] f32; text: [LAB_TEXT] u8; n: int; }
+SlabLabels :: struct {
+  box: [LAB_MAX] LabBox; boxes: int;
+  flow: [LAB_FLOW] LabFlow; flow_n: int;
+}
+
+// A tag at a point of the hull's frame, if the point is in view and the tag's box is clear. True
+// when it was placed.
+lab_put :: (s: [] Slab, h: [] SceneHud, id: string, text: string, x: f32, y: f32, z: f32, show: f32, press: bool) -> bool {
+  return lab_put_within(s, h, id, text, x, y, z, show, press, LAB_TRIES);
+}
+// The same, trying only `tries` places: 1 is the point itself, 3 a row above or below it too.
+lab_put_within :: (s: [] Slab, h: [] SceneHud, id: string, text: string, x: f32, y: f32, z: f32, show: f32, press: bool, tries: int) -> bool {
+  if s[0].hp.lab.boxes >= LAB_MAX || !(show > 0.05) { return false; }
+  k := hi_f32(s[0].dpr, 0.5);
+  q := screen_of(s, x, y, z);
+  if q[2] < 5 { return false; }
+  cx := q[0] / k; cy := q[1] / k; wide := s[0].width / k; tall := s[0].height / k;
+  // the kit's body size: about 7.6 px a letter; a place that can be pressed has a box round it
+  w := cast(f32) text.count * 7.6f32 + (ifx press then 24.0f32 else 8.0f32);
+  t := ifx !press then 22.0f32 else ifx s[0].hp.touch then 46.0f32 else 36.0f32;
+  if cx - w / 2 < 4 || cx + w / 2 > wide - 4 { return false; }
+  // at its point, or the nearest clear row above or below it
+  for step: 0..<tries {
+    row := cast(f32) ((step + 1) / 2) * (ifx step % 2 == 1 then -1.0f32 else 1.0f32);
+    ty := cy + row * (t + 2);
+    b := LabBox.{x0 = cx - w / 2, y0 = ty - t / 2, x1 = cx + w / 2, y1 = ty + t / 2};
+    if b.y0 < 60 || b.y1 > tall - 44 { continue; }
+    clear := true;
+    for i: 0..<s[0].hp.lab.boxes {
+      o := s[0].hp.lab.box[i];
+      if b.x0 < o.x1 && b.x1 > o.x0 && b.y0 < o.y1 && b.y1 > o.y0 { clear = false; break; }
+    }
+    if !clear { continue; }
+    s[0].hp.lab.box[s[0].hp.lab.boxes] = b; s[0].hp.lab.boxes += 1;
+    sh_tag(h, id, text, cx, ty, show, press);
+    return true;
+  }
+  return false;
+}
+
+// slab.coax's flow_label hands its label here: true when the pane will draw it as a tag.
+lab_flow :: (s: [] Slab, p: [3] f32, label: string) -> bool {
+  if !s[0].hp.pane || !s[0].hud { return false; }
+  if s[0].hp.lab.flow_n >= LAB_FLOW { return true; }
+  f: LabFlow; f.p = p;
+  for c: label { if f.n < LAB_TEXT { f.text[f.n] = c; f.n += 1; } }
+  s[0].hp.lab.flow[s[0].hp.lab.flow_n] = f; s[0].hp.lab.flow_n += 1;
+  return true;
+}
+
+// A name written all in capitals as a sentence writes it: "OTEC PLANT DISTRICT" is "OTEC plant
+// district". (district() in slab.coax is where the names are.)
+lab_plain :: (out: [] u8, name: string) -> string {
+  n := 0;
+  for i: 0..<name.count {
+    c := name[i];
+    keep := i == 0 || (name.count >= 4 && i < 4 && cast(string) name[0..<4] == "OTEC");
+    if !keep && c >= 'A' && c <= 'Z' { c += 32; }
+    if n < out.count { out[n] = c; n += 1; }
+  }
+  return cast(string) out[0..<n];
+}
+
+// Where each district's name stands (hull frame, and how far over the deck), and the station the
+// camera goes to when it is pressed (-1: it is a name only). Then the two stations that are not
+// districts. The name itself is district()'s for the point.
+LAB_DISTRICTS :: 9;
+LAB_PLACES :: 11;
+LabPlace :: struct { x: f32; z: f32; up: f32; station: int; name: string; }
+lab_place :: (i: int) -> LabPlace {
+  if i == 0 { return LabPlace.{x = -60, z = -60, up = 190, station = 4}; }    // the towers
+  if i == 1 { return LabPlace.{x = -430, z = 40, up = 80, station = 1}; }     // the power plant
+  if i == 2 { return LabPlace.{x = 330, z = 80, up = 40, station = 0}; }      // the temples
+  if i == 3 { return LabPlace.{x = 115, z = -230, up = 60, station = 2}; }    // the data halls
+  if i == 4 { return LabPlace.{x = 275, z = -275, up = 40, station = 3}; }    // the mining yard
+  if i == 5 { return LabPlace.{x = -290, z = -60, up = 60, station = -1}; }
+  if i == 6 { return LabPlace.{x = 60, z = 200, up = 30, station = -1}; }
+  if i == 7 { return LabPlace.{x = 120, z = 85, up = 50, station = -1}; }
+  if i == 8 { return LabPlace.{x = 275, z = -200, up = 50, station = -1}; }
+  if i == 9 { return LabPlace.{x = 382, z = 225, up = 30, station = 5, name = "The fountain"}; }
+  return LabPlace.{x = 470, z = 0, up = 30, station = 6, name = "The bow"};
+}
+
+// How much the districts show for a camera this far over the deck.
+lab_high :: (over: f32) -> f32 { return clamp32((over - LAB_LOW) / (LAB_HIGH - LAB_LOW), 0, 1); }
+
+// The section's names, on the cut.
+lab_section :: (s: [] Slab, h: [] SceneHud) {
+  hs := hull_prime(); led := hull_ledger(hs);
+  z := section_cut(s);
+  half := SLAB_LENGTH / 2; keel := -SLAB_DRAFT; top := keel + f32(hs.hull);
+  ts: [1] SbText; a: SbText;
+  a = SbText.{}; a = sb_w(a, "The hull: "); a = sb_n(a, hs.hull, 0); a = sb_w(a, " m of sealed cells. This part floats."); ts[0] = a;
+  _ = lab_put(s, h, "lab.s.hull", sb_s(ts[..]), -200, top + 9, z, 1, false);
+  a = SbText.{}; a = sb_w(a, "Open structure, "); a = sb_n(a, hull_upper(hs), 0); a = sb_w(a, " m: columns and girders"); ts[0] = a;
+  _ = lab_put(s, h, "lab.s.upper", sb_s(ts[..]), 120, (top + SLAB_DECK) / 2, z, 1, false);
+  _ = lab_put(s, h, "lab.s.water", "Waterline", half + 70, 0, z, 1, false);
+  _ = lab_put(s, h, "lab.s.water2", "Waterline", -half - 70, 0, z, 1, false);
+  _ = lab_put(s, h, "lab.s.deck", "The deck", 380, SLAB_DECK + 14, z, 1, false);
+  _ = lab_put(s, h, "lab.s.keel", "The keel", 300, keel - 14, z, 1, false);
+  a = SbText.{}; a = sb_w(a, "Ballast: sea water, "); a = sb_n(a, led.ballast_top, 1); a = sb_w(a, " m deep"); ts[0] = a;
+  _ = lab_put(s, h, "lab.s.ballast", sb_s(ts[..]), -250, keel - 14, z, 1, false);
+  // the cells are 50 m apart: one is named, a wall between two is named, and others say only "Empty"
+  cell := f32(hs.cell);
+  _ = lab_put(s, h, "lab.s.cell", "A cell", -half + cell * 2.5f32, 8, z, 1, false);
+  _ = lab_put(s, h, "lab.s.wall", "A bulkhead", -half + cell * 6, -8, z, 1, false);
+  ids: [SH_ID] u8;
+  for i: 0..<4 { _ = lab_put(s, h, sb_id(ids[..], "lab.s.empty.", i), "Empty", -half + cell * (9.5f32 + cast(f32) i * 3), 8, z, 1, false); }
+}
+
+// The names in the scene for this frame. sb_say calls it.
+lab_say :: (s: [] Slab, h: [] SceneHud) {
+  if s[0].build.on || s[0].layout != LAYOUT_PRIME { return; }
+  ids: [SH_ID] u8;
+  if s[0].section { lab_section(s, h); }
+  if s[0].flow || s[0].section {
+    for i: 0..<s[0].hp.lab.flow_n {
+      f := s[0].hp.lab.flow[i];
+      _ = lab_put(s, h, sb_id(ids[..], "lab.f.", i), cast(string) f.text[0..<f.n], f.p[0], f.p[1], f.p[2], 1, false);
+    }
+  }
+  if s[0].hp.tour.on || s[0].section || s[0].flow || s[0].under || s[0].mode == CAM_WALK { return; }
+  show := lab_high(s[0].eye[1] - SLAB_DECK);
+  if !(show > 0.05) { return; }
+  name: [LAB_TEXT] u8;
+  for i: 0..<LAB_PLACES {
+    p := lab_place(i);
+    text := ifx i < LAB_DISTRICTS then lab_plain(name[..], district(p.x, p.z)) else p.name;
+    // a district's name stays by its district: its own place or the row beside it, or not at all
+    if p.station >= 0 { _ = lab_put_within(s, h, sb_id(ids[..], "at.", p.station), text, p.x, SLAB_DECK + p.up, p.z, show, true, 3); }
+    else { _ = lab_put_within(s, h, sb_id(ids[..], "lab.d.", i), text, p.x, SLAB_DECK + p.up, p.z, show, false, 3); }
+  }
+}
+// A place pressed in the scene: the camera goes to its station.
+lab_act :: (s: [] Slab, id: string) -> bool {
+  k := sb_index(id, "at.");
+  if k < 0 || k >= 9 { return false; }
+  names := SB_STATIONS;
+  travel(s, k); sb_toast(s, names[k]);
+  return true;
+}
+
+// ---------------------------------------------------------------- checks
+
+// The camera as slab_frame leaves it for an orbit's view on a screen this size.
+lab_test_view :: (s: [] Slab, v: TourShot, width: f32, height: f32) {
+  s[0].width = width; s[0].height = height; s[0].dpr = 1;
+  slab_pose(s);
+  e := tour_eye(v);
+  fx := e[3] - e[0]; fy := e[4] - e[1]; fz := e[5] - e[2];
+  l := sqrt(fx * fx + fy * fy + fz * fz); fx /= l; fy /= l; fz /= l;
+  rl := hi_f32(sqrt(fx * fx + fz * fz), 1e-4);
+  rx := -fz / rl; rz := fx / rl;
+  s[0].eye = [3] f32.[e[0], e[1], e[2]]; s[0].fwd = [3] f32.[fx, fy, fz]; s[0].right = [3] f32.[rx, 0, rz];
+  s[0].up = [3] f32.[-(rz * fy), rz * fx - rx * fz, rx * fy];
+  s[0].tanh = hi_f32(0.319f32, 0.4735f32 * height / width); s[0].aspect = width / height;
+  s[0].tx = v.x; s[0].ty = v.y; s[0].tz = v.z; s[0].dist = v.dist; s[0].yaw = v.yaw; s[0].pitch = v.pitch;
+}
+// Whether any two of the frame's tags overlap.
+lab_test_clash :: (s: [] Slab) -> bool {
+  for i: 0..<s[0].hp.lab.boxes {
+    for j: 0..<i {
+      a := s[0].hp.lab.box[i]; b := s[0].hp.lab.box[j];
+      if a.x0 < b.x1 && a.x1 > b.x0 && a.y0 < b.y1 && a.y1 > b.y0 { return true; }
+    }
+  }
+  return false;
+}
+
+#test "labels: each district's name stands in its district, written as a sentence writes it" {
+  out: [LAB_TEXT] u8;
+  #assert lab_plain(out[..], "OTEC PLANT DISTRICT") == "OTEC plant district";
+  #assert lab_plain(out[..], "GARDENS AND TEMPLES") == "Gardens and temples";
+  // nine districts, nine different names
+  for i: 0..<LAB_DISTRICTS {
+    for j: 0..<i {
+      a := lab_place(i); b := lab_place(j);
+      #assert district(a.x, a.z) != district(b.x, b.z);
+    }
+  }
+  // a district that can be pressed holds the station it goes to
+  for i: 0..<LAB_DISTRICTS {
+    p := lab_place(i);
+    if p.station >= 0 { #assert district(p.x, p.z) == district(STATION_X[p.station], STATION_Z[p.station]); }
+  }
+}
+#test "labels: the districts show from high up and fade on the way down; a place pressed takes the camera there" {
+  xs: [1] SbTest; x := xs[..]; s := x[0].s[..];
+  sb_test_open(x);
+  lab_test_view(s, TOUR_OPEN, 1440, 900);
+  sb_say(s);
+  #assert !s[0].hp.said[0].lost && sb_test_has(s, 'W', "at.4", "Tower district") && sb_test_has(s, 'W', "at.1", "OTEC plant district");
+  // a district with no station is a name only (where two would overlap, the first placed stays)
+  #assert sb_test_has(s, 'W', "lab.d.5", "Industry district") || sb_test_has(s, 'W', "lab.d.6", "Canal and parterre") || sb_test_has(s, 'W', "lab.d.7", "Civic quarter") || sb_test_has(s, 'W', "lab.d.8", "Medical campus");
+  #assert sb_test_field(s, 'W', "at.4", 5) == "1" && sb_test_field(s, 'W', "at.4", 4) == "100";
+  #assert s[0].hp.lab.boxes >= 7 && !lab_test_clash(s);
+  // on a phone there is room for fewer, and still none overlap
+  lab_test_view(s, TOUR_OPEN, 390, 844);
+  sb_say(s);
+  #assert s[0].hp.lab.boxes >= 3 && !lab_test_clash(s) && sb_test_has(s, 'W', "at.4", "Tower district");
+  // half way down they are half there; low over the deck they are gone
+  #assert lab_high(LAB_HIGH + 50) == 1 && lab_high((LAB_HIGH + LAB_LOW) / 2) == 0.5 && lab_high(LAB_LOW - 10) == 0;
+  lab_test_view(s, TourShot.{x = 385, y = SLAB_DECK, z = 42, dist = 230, yaw = 0.6, pitch = 0.35}, 1440, 900);
+  sb_say(s);
+  #assert sb_test_count(s, 'W') == 0;
+  // a press goes to the station
+  sb_act(s, "at.1");
+  #assert s[0].tx == STATION_X[1] && s[0].dist == STATION_DIST[1];
+}
+#test "labels: the section names its parts with the ledger's figures, and the flow view's names are tags" {
+  xs: [1] SbTest; x := xs[..]; s := x[0].s[..];
+  sb_test_open(x);
+  s[0].section = true; s[0].tz = 0;
+  lab_test_view(s, tour_shot(2, false), 1440, 900);
+  sb_say(s);
+  #assert !s[0].hp.said[0].lost && !lab_test_clash(s);
+  #assert sb_test_has(s, 'W', "lab.s.hull", "The hull: 50 m of sealed cells. This part floats.") && sb_test_has(s, 'W', "lab.s.upper", "Open structure, 93 m: columns and girders");
+  #assert sb_test_has(s, 'W', "lab.s.water", "Waterline") && sb_test_has(s, 'W', "lab.s.deck", "The deck") && sb_test_has(s, 'W', "lab.s.keel", "The keel");
+  #assert sb_test_has(s, 'W', "lab.s.cell", "A cell") && sb_test_has(s, 'W', "lab.s.wall", "A bulkhead") && sb_test_has(s, 'W', "lab.s.empty.0", "Empty");
+  #assert sb_test_field(s, 'W', "lab.s.ballast", 1) != "";
+  // the districts wait while the hull is cut open
+  #assert !sb_test_has(s, 'W', "at.4", "");
+  // the flow view: what flow_label is handed is a tag, and nothing is drawn for it on the canvas
+  s[0].section = false; s[0].flow = true;
+  s[0].power = sim_power(slab_plant(s), sim_site(s[0].site), s[0].month);
+  lab_test_view(s, tour_shot(4, false), 1440, 900);
+  out: [4096] f32;
+  n := sb_lines(s, out[..]);
+  sb_say(s);
+  #assert s[0].hp.lab.flow_n >= 8 && !lab_test_clash(s) && sb_test_has(s, 'W', "lab.f.0", "");
+  // every one of them has a place at 1440 x 900
+  #assert s[0].hp.lab.flow_n == 11;
+  #assert sb_test_count(s, 'W') == s[0].hp.lab.flow_n;
+  // no capitals run through a name: the second letter of each is small, or a space or a figure
+  for i: 0..<s[0].hp.lab.flow_n {
+    f := s[0].hp.lab.flow[i];
+    #assert f.n > 3 && !(f.text[1] >= 'A' && f.text[1] <= 'Z' && f.text[2] >= 'A' && f.text[2] <= 'Z' && f.text[3] >= 'A' && f.text[3] <= 'Z') || cast(string) f.text[0..<4] == "OTEC";
+  }
+}

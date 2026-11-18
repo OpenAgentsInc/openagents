@@ -467,11 +467,12 @@ inside_any :: (s: [] Slab, x: f32, y: f32, z: f32) -> bool {
 }
 
 // Travel stations (spec section 8): the keys 1 to 9.
-STATION_X :: [9] f32.[385, -420, 115, 228, -60, 382, 470, 174, 0];
+STATION_X :: [9] f32.[385, -400, 115, 228, -60, 382, 470, 174, 0];
 STATION_Z :: [9] f32.[42, 0, -230, -262, -60, 225, 0, 110, 0];
-STATION_DIST :: [9] f32.[230, 420, 300, 220, 640, 300, 520, 1164, 1900];
-STATION_YAW :: [9] f32.[0.6, 1.9, 0.5, 0.5, 0.9, 1.2, 1.57, 0.802, 0.9];
-STATION_PITCH :: [9] f32.[0.35, 0.4, 0.5, 0.55, 0.3, 0.45, 0.25, 0.438, 0.12];
+STATION_DIST :: [9] f32.[230, 560, 340, 260, 640, 300, 520, 1164, 1900];
+// (the plant from the sea to its west, the halls and the yard from the north wall: no tower stands between)
+STATION_YAW :: [9] f32.[0.6, -1.1, 2.7, 2.6, 0.9, 1.2, 1.57, 0.802, 0.9];
+STATION_PITCH :: [9] f32.[0.35, 0.42, 0.5, 0.55, 0.3, 0.45, 0.25, 0.438, 0.12];
 STATION_NAME :: [9] string.["THE TEMPLES", "THE OTEC PLANT", "THE DATA HALLS", "THE MINING YARD", "THE TOWERS", "THE FOUNTAIN", "THE BOW", "THE CONCEPT VIEW", "1.5 KM OUT"];
 travel :: (s: [] Slab, i: int) {
   if i < 0 || i >= 9 { return; }
@@ -854,6 +855,7 @@ slab_frame :: (s: [] Slab, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
   }
   s[0].bend = ifx s[0].layout == LAYOUT_PRIME then sim_bending(s[0].tile[0].height[..], TILE_N, c0.patch, s[0].hull) else 0.0;
   s[0].power = sim_power(slab_plant(s), site, s[0].month);
+  sb_backup_step(s, ifx frozen || s[0].paused || s[0].fixed >= 0 then 0.0 else f64(step) * s[0].rate);   // the data halls' batteries and generators (slab-hud.coax)
   // the camera
   ex: f32; ey: f32; ez: f32; fx: f32; fy: f32; fz: f32;
   turn := 1.0f32 * step;
@@ -932,6 +934,8 @@ slab_frame :: (s: [] Slab, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
     al := sqrt(ax * ax + ay * ay + az * az);
     fx = ax / al; fy = ay / al; fz = az / al;
   }
+  tc := tour_camera(s, ifx frozen then 0.0f32 else step);   // the guided tour's camera (slab-tour.coax)
+  if tc.on { ex = tc.eye[0]; ey = tc.eye[1]; ez = tc.eye[2]; fx = tc.fwd[0]; fy = tc.fwd[1]; fz = tc.fwd[2]; }
   for i: 0..<UNIFORM_FLOATS { u[i] = 0; }
   u[U_SIZE] = width; u[U_SIZE + 1] = height; u[U_SIZE + 2] = f32(s[0].time); u[U_SIZE + 3] = 1;
   u[U_MODE] = ifx still then 1.0f32 else 0.0f32; u[U_MODE + 1] = ifx phone then 1.0f32 else 0.0f32;
@@ -1076,7 +1080,7 @@ slab_state_params :: (s: [] Slab, u: [] f32, sun: SimSun) {
   u[P + P_GAIT + 2] = ifx shown then 1.0f32 else 0.0f32; u[P + P_GAIT + 3] = ifx s[0].foot.jump.on_ground then 0.0f32 else 1.0f32;
   u[P + P_PICK] = f32(s[0].selected); u[P + P_PICK + 1] = f32(s[0].hovered); u[P + P_PICK + 2] = f32(s[0].time - s[0].selected_at);
   // (the spray up the walls is simulated: slab-water.coax)
-  u[P + P_SPRAY + 2] = f32(pw.containers); u[P + P_SPRAY + 3] = f32(pw.data / pw.data_load);
+  u[P + P_SPRAY + 2] = f32(pw.containers); u[P + P_SPRAY + 3] = f32(ifx pw.data_load > 0 then s[0].hp.backup.lit else 0.0);
   u[P + P_SYSTEMS] = f32(pw.industry / SIM_INDUSTRY); u[P + P_SYSTEMS + 1] = 7.5;
   if s[0].section {
     cut := section_cut(s);
@@ -1361,7 +1365,7 @@ slab_card :: (s: [] Slab, i: int, c: [] Card) {
     ln(c, ST_BODY, "SEAWATER COOLING TAKES 2.93 M3/S OF COLD WATER");
     ln(c, ST_HEAD, "NOW");
     l := line(c, ST_LIVE, "DRAWING "); num(c, l, pw.data, 1); more(c, l, " OF "); num(c, l, pw.data_load, 0); more(c, l, " MW FROM THE PLANT");
-    if pw.data_on_backup { ln(c, ST_WARN, "SHORT OF POWER: BATTERIES AND GENERATORS CARRY THE REST"); }
+    if pw.data_on_backup { ln(c, ST_WARN, sb_backup_words(s[0].hp.backup)); }
     l = line(c, ST_LIVE, ifx s[0].plant.swac then "SEAWATER COOLING ON: " else "SEAWATER COOLING OFF");
     if s[0].plant.swac { num(c, l, pw.cooling_share * 100, 1); more(c, l, "% OF THE COLD FLOW"); }
     return;
@@ -1569,6 +1573,7 @@ flow_leg :: (s: [] Slab, out: [] f32, at: int, a: [3] f32, b: [3] f32, p: FlowPe
 v3f :: (x: f32, y: f32, z: f32) -> [3] f32 { return [3] f32.[x, y, z]; }
 // A label at a hull-frame point, if it is in front of the eye.
 flow_label :: (s: [] Slab, out: [] f32, at: int, p: [3] f32, label: string, pen: FlowPen) -> int {
+  if lab_flow(s, p, label) { return at; }   // the HUD's pane draws it, as a tag (slab-labels.coax)
   q := screen_of(s, p[0], p[1], p[2]);
   if q[2] < 5 || q[0] < 0 || q[0] > s[0].width || q[1] < 0 || q[1] > s[0].height { return at; }
   k := s[0].dpr;
@@ -1603,11 +1608,9 @@ flow_overlay :: (s: [] Slab, out: [] f32, at: int) -> int {
       n = flow_leg(s, out, n, v3f(-450, -25, z), v3f(-450, -60, z), FLOW_OUT, share);
       n = flow_leg(s, out, n, v3f(-450, -60, z), v3f(-560, -60, z), FLOW_OUT, share);
     }
-    m = put(b[..], 0, "WARM IN "); m = putf(b[..], m, 564.0 * pw.scale * f64(share), 0); m = put(b[..], m, " M3/S AT -20 M");
-    n = flow_label(s, out, n, v3f(-560, -20, -150), cast(string) b[0..<m], FLOW_WARM);
-    m = put(b[..], 0, "COLD UP "); m = putf(b[..], m, pw.cold_flow, 0); m = put(b[..], m, " M3/S FROM 1,000 M");
-    n = flow_label(s, out, n, v3f(-389, -200, 75), cast(string) b[0..<m], FLOW_COLD);
-    n = flow_label(s, out, n, v3f(-500, -60, 225), "DISCHARGE AT -60 M", FLOW_OUT);
+    n = flow_label(s, out, n, v3f(-560, -20, -150), "Warm sea water in", FLOW_WARM);
+    n = flow_label(s, out, n, v3f(-389, -200, 75), "Cold water up from 1,000 m", FLOW_COLD);
+    n = flow_label(s, out, n, v3f(-500, -60, 225), "Used water out, 60 m down", FLOW_OUT);
   }
   // power: from the plant (and the nuclear modules below the industry) to each load
   src := v3f(plant_x, deck, 0);
@@ -1616,24 +1619,24 @@ flow_overlay :: (s: [] Slab, out: [] f32, at: int) -> int {
     n = flow_leg(s, out, n, v3f(-325, deck, -175), nz, FLOW_POWER, 0.8);
     n = flow_leg(s, out, n, v3f(-325, deck, 175), nz, FLOW_POWER, 0.8);
     if pl.power == POWER_NUCLEAR { src = nz; }
-    m = put(b[..], 0, "NUCLEAR "); m = putf(b[..], m, pw.nuclear_net, 0); m = put(b[..], m, " MW");
+    m = put(b[..], 0, "Reactors "); m = putf(b[..], m, pw.nuclear_net, 0); m = put(b[..], m, " MW");
     n = flow_label(s, out, n, v3f(-325, deck, -175), cast(string) b[0..<m], FLOW_POWER);
   }
   if otec {
-    m = put(b[..], 0, "OTEC "); m = putf(b[..], m, pw.otec_net, 1); m = put(b[..], m, " MW NET");
+    m = put(b[..], 0, "Ocean thermal plant "); m = putf(b[..], m, pw.otec_net, 0); m = put(b[..], m, " MW");
     n = flow_label(s, out, n, v3f(plant_x, deck + 30, 0), cast(string) b[0..<m], FLOW_POWER);
   }
   loads := [6] f64.[pw.data, pw.desal, pw.industry, pw.mining, pw.hotel * 0.5, pw.hotel * 0.5];
   full := [6] f64.[pw.data_load, SIM_DESAL, SIM_INDUSTRY, 25.0, SIM_HOTEL * 0.5, SIM_HOTEL * 0.5];
   lx := [6] f32.[115, -468, -410, 228, -60, 380];
   lz := [6] f32.[-230, -88, -195, -262, -60, 40];
-  names := [6] string.["DATA", "DESAL", "INDUSTRY", "MINING", "TOWERS", "GARDENS"];
+  names := [6] string.["Data halls", "Fresh water", "Industry", "Mining", "Towers", "Gardens"];
   for i: 0..<6 {
     mid := v3f(src[0], deck, lz[i]);
     sh := f32(loads[i] / hi_f64(full[i], 0.1));
     n = flow_leg(s, out, n, src, mid, FLOW_POWER, sh);
     n = flow_leg(s, out, n, mid, v3f(lx[i], deck, lz[i]), FLOW_POWER, sh);
-    m = put(b[..], 0, names[i]); m = put(b[..], m, " "); m = putf(b[..], m, loads[i], 1); m = put(b[..], m, " MW");
+    m = put(b[..], 0, names[i]); m = put(b[..], m, " "); m = putf(b[..], m, loads[i], 0); m = put(b[..], m, " MW");
     n = flow_label(s, out, n, v3f(lx[i], deck + 4, lz[i]), cast(string) b[0..<m], FLOW_POWER);
   }
   return n;
@@ -1667,8 +1670,8 @@ bend_overlay :: (s: [] Slab, out: [] f32, at: int) -> int {
     n = stroke3(s, out, n, v3f(x0, SLAB_DECK + p0, z), v3f(x1, SLAB_DECK + p1, z), 1, 0.35, 0.85, 0.9);
     n = stroke3(s, out, n, v3f(x0, -SLAB_DRAFT + p0, z), v3f(x1, -SLAB_DRAFT + p1, z), 1, 0.35, 0.85, 0.9);
   }
-  b: [LINE_W] u8; m := put(b[..], 0, "BENDING X 100: THE ENDS ");
-  m = putf(b[..], m, s[0].bend * 100.0, 1); m = put(b[..], m, " CM");
+  b: [LINE_W] u8; m := put(b[..], 0, "Bending, drawn 100 times larger: the ends move ");
+  m = putf(b[..], m, s[0].bend * 100.0, 1); m = put(b[..], m, " cm");
   return flow_label(s, out, n, v3f(-SLAB_LENGTH / 4, SLAB_DECK + 12, z), cast(string) b[0..<m], FlowPen.{r = 1, g = 0.45, b = 0.9});
 }
 
@@ -1776,7 +1779,7 @@ hud :: (s: [] Slab, out: [] f32) -> int {
       m = put(b[..], m, "  DESAL "); m = putf(b[..], m, pw.desal, 0); m = put(b[..], m, "/15  INDUSTRY "); m = putf(b[..], m, pw.industry, 0); m = put(b[..], m, "/20  HOTEL "); m = putf(b[..], m, pw.hotel, 0);
     }
     n = text(out, n, cast(string) b[0..<m], lx, yy, ifx sim_fixed_short(s[0].plant, pw) then warn else body); yy += 11 * k;
-    if pw.data_on_backup { n = text(out, n, "DATA HALLS SHORT: BATTERIES AND GENERATORS CARRY THEM", lx, yy, warn); yy += 11 * k; }
+    if pw.data_on_backup { n = text(out, n, sb_backup_words(s[0].hp.backup), lx, yy, warn); yy += 11 * k; }
     m = put(b[..], 0, "MINERS "); m = putf(b[..], m, f64(pw.containers), 0); m = put(b[..], m, "/50  "); m = putf(b[..], m, pw.hashrate, 2); m = put(b[..], m, " EH/S  $"); m = putf(b[..], m, pw.revenue, 1); m = put(b[..], m, "/MWH");
     n = text(out, n, cast(string) b[0..<m], lx, yy, body); yy += 14 * k;
     // the plant's switches
@@ -1998,6 +2001,7 @@ slab_pointer :: (s: [] Slab, x: f32, y: f32, phase: int, kind: int, id: int) -> 
   if !s[0].started { slab_reset(s); }
   s[0].px = x; s[0].py = y;
   sb_touch(s, phase, kind);
+  if tour_pointer(s, x, y, phase) { return true; }
   if s[0].build.on && s[0].hud {
     if phase == 0 && !s[0].build.scrubbing && build_over_slider(s, x, y) {
       s[0].build.scrubbing = true; s[0].build.pointer = id; s[0].dragging = false;
