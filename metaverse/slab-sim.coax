@@ -41,7 +41,7 @@ sim_site :: (i: int) -> SimSite {
   if i == SITE_PUERTO_RICO { return SimSite.{key = "puerto-rico", name = "PUERTO RICO, OFF YABUCOA", latitude = 18.0, surface_min = 26.5, surface_max = 29.0, sea = SEA_TRADE, storms = "HURRICANES, EARTHQUAKES", depth = 1440}; }
   if i == SITE_KONA { return SimSite.{key = "kona", name = "KONA, NELHA", latitude = 19.7, surface_min = 24.0, surface_max = 27.0, sea = SEA_TRADE, storms = "RARE HURRICANES", depth = 1725}; }
   if i == SITE_EQUATOR { return SimSite.{key = "equator", name = "EQUATOR, NEAR BAKER ISLAND", latitude = 0.2, surface_min = 28.0, surface_max = 29.5, sea = SEA_TRADE, storms = "NONE: HURRICANE-FREE BELT", depth = 1448}; }
-  if i == SITE_CALIFORNIA { return SimSite.{key = "california", name = "CALIFORNIA, SAN CLEMENTE BASIN", latitude = 32.8, surface_min = 15.2, surface_max = 20.9, sourced = true, sea = SEA_WINTER, storms = "WINTER STORMS", depth = 607}; }
+  if i == SITE_CALIFORNIA { return SimSite.{key = "california", name = "CALIFORNIA, SAN CLEMENTE BASIN", latitude = 32.8, surface_min = 15.2, surface_max = 20.9, sourced = true, sea = SEA_ROUGH, storms = "WINTER STORMS", depth = 607}; }
   // the Gulf of Mexico 40 nautical miles off Port Aransas, where the timelapse's tow ends; and Yrkefjorden,
   // where Norway's deep concrete platforms were mated. Surface water: NASA JPL MUR SST monthly means, 2015 to 2024
   if i == SITE_TEXAS { return SimSite.{key = "texas", name = "TEXAS, 40 NM OFF PORT ARANSAS", latitude = 27.55, surface_min = 20.5, surface_max = 29.9, sourced = true, sea = SEA_TRADE, storms = "HURRICANES, JUNE TO NOVEMBER", depth = 89}; }
@@ -49,14 +49,15 @@ sim_site :: (i: int) -> SimSite {
   return SimSite.{key = "guam", name = "GUAM, WEST COAST", latitude = 13.4, surface_min = 27.7, surface_max = 29.2, sourced = true, sea = SEA_TRADE, storms = "TYPHOONS", depth = 1408};
 }
 
-SEA_CALM :: 0; SEA_TRADE :: 1; SEA_EQUATOR_MAX :: 2; SEA_WINTER :: 3; SEA_GALE :: 4; SEA_HURRICANE :: 5;
+SEA_CALM :: 0; SEA_TRADE :: 1; SEA_EQUATOR_MAX :: 2; SEA_ROUGH :: 3; SEA_GALE :: 4; SEA_HURRICANE :: 5;
+SEA_WINTER :: SEA_ROUGH;      // its name before: a 4 m sea is California's winter, but it is no season at Guam
 SEAS :: 6;
 SimSea :: struct { key: string; name: string; hs: f64; wind: f64; }
 // Each sea's wind gives its significant height under Pierson-Moskowitz, Hs = 0.21 U^2 / g.
 sim_sea :: (i: int) -> SimSea {
   if i == SEA_CALM { return SimSea.{key = "calm", name = "CALM", hs = 0.5, wind = 4.8}; }
   if i == SEA_EQUATOR_MAX { return SimSea.{key = "equator-max", name = "EQUATOR MAX", hs = 2.8, wind = 11.4}; }
-  if i == SEA_WINTER { return SimSea.{key = "winter", name = "WINTER", hs = 4.0, wind = 13.7}; }
+  if i == SEA_ROUGH { return SimSea.{key = "rough", name = "ROUGH", hs = 4.0, wind = 13.7}; }
   if i == SEA_GALE { return SimSea.{key = "gale", name = "GALE", hs = 10.0, wind = 21.6}; }
   if i == SEA_HURRICANE { return SimSea.{key = "hurricane", name = "HURRICANE", hs = 14.0, wind = 25.6}; }
   return SimSea.{key = "trade", name = "TRADE WIND", hs = 1.5, wind = 8.4};

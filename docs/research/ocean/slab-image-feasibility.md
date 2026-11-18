@@ -30,6 +30,8 @@ Take a rectangular hull **1,000 m long, 600 m wide and 50 m deep**, floating 25 
 | 0.5 million t of process liquids, fuel and fresh water | Tank locations and fill states determine heel, trim and how much liquid is free to move when the hull inclines. The operating manual needs approved loading sequences. |
 | About 6.85 million t of seawater ballast | The mass that closes this illustrative ledger, after rounding. Only ballast that can safely be discharged while preserving trim, stability, hull stresses and mooring geometry can be exchanged for cargo. |
 
+This account is for the 50 m hull alone. The simulation has since added the picture's 118 m wall as a lighter structure of columns on that hull, cast at the berth. Its ledger therefore carries 9.57 million t of concrete (3.83 million m³) and 3.31 million t of ballast at the same 15.375 million t. [The simulation's ledger, §3.1](slab-world-spec.md)
+
 **One metre of additional immersion carries 615,000 t** over this waterplane. Another 100,000 t distributed evenly with ballast held fixed adds about 16 cm of draft in calm water. Conversely, the assumed 6.03 million t of bare hull alone draws about 9.8 m. It could be floated out lighter than its operating draft if its temporary structure and stability allow. Its **600 m width persists at every draft**. Those two numbers lead to different conclusions about which yards and channels could handle it. A separate pilot, assumed here to be 100 × 50 m at 5 m draft, displaces about 25,600 t in the same water, including its own hull. That is a practical size to investigate with a port.
 
 ## The structure under the streets

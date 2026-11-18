@@ -26,9 +26,9 @@ The deck is 1,000 m long and 600 m wide: 60 hectares, a twelve-minute walk end t
 
 Concrete sinks, but a hollow concrete box floats, as a steel ship does. It settles until the water it pushes aside weighs as much as it does. For this hull that is 25 m down: a block of seawater 1,000 by 600 by 25 m, about 15.4 million tonnes. So that is what the hull, the city and the ballast water together weigh.
 
-Inside, walls every 50 m divide the hull into cells. Some hold ballast water, which pumps move from cell to cell to keep the deck level. Sixteen mooring lines hold it in place.
+The part that floats is the lowest 50 m: a hull whose inside walls, every 50 m, divide it into cells. Above it, columns carry the deck up to the height of the wall in the picture. Some cells hold ballast water, which pumps move from cell to cell to keep the deck level. Sixteen mooring lines hold it in place.
 
-It is so wide and heavy that waves barely move it. In the 4 m winter sea the world opens on, the model lifts and drops the deck by a few centimetres. You can hole a corner cell, watch the hull lean, and pump ballast to level it again.
+It is so wide and heavy that waves barely move it. In the rough 4 m sea the world opens on, the model lifts and drops the deck by a few centimetres. You can hole a corner cell, watch the hull lean, and pump ballast to level it again.
 
 ## How it is built
 
@@ -37,8 +37,8 @@ Nothing this wide fits through a ship channel, so in our scenario it is built in
 1. A yard at Corpus Christi, Texas casts one piece every eight days. Each starts as an 8 m shell that floats at the quay while crews raise its walls.
 2. Two tugs tow each piece 48 nautical miles to a berth in 40 m of water in the Gulf of Mexico.
 3. Crews join the pieces afloat, one seam at a time. The 120th joins on day 983.
-4. A freight barge from Brownsville brings 25,000 tonnes a trip for the towers and plant, and ballast brings the hull down to its 25 m.
-5. The deck is finished on day 1,383, a little under four years in.
+4. A freight barge from Brownsville brings about 26,800 tonnes a trip, 200 trips in all. The first 107 bring concrete: crews thicken the sea walls and raise the deck on columns, from 50 m to 143 m over the keel. The rest bring the towers and plant. Ballast brings the hull down to its 25 m.
+5. The deck is finished on day 1,783, a little under five years in.
 
 Watch it in 90 seconds: https://openagents.com/worlds/slab?view=build
 
@@ -59,7 +59,7 @@ Try the other sites: Puerto Rico, Kona in Hawaii, the equator, California, the G
 
 When it opens, a short card says what you are looking at. The row "Go to" under the toolbar takes you to nine places, and "Watch it built" plays the construction.
 
-- The `prime` layout, built to match the concept image: a concrete hull 1,000 m long, 600 m wide and 143 m deep, with sharp corners. It floats with 25 m under the water and its wall 118 m above it, as in the picture. It opens on the picture's own view, at its golden hour.
+- The `prime` layout, built to match the concept image: a concrete platform 1,000 m long and 600 m wide, with sharp corners. A watertight hull 50 m deep floats it, and a lighter structure of columns on that hull puts the deck 143 m over the keel. It floats with 25 m under the water and its wall 118 m above it, as in the picture. It opens on the picture's own view, at its golden hour.
 - The deck's districts, from west to east:
   - the OTEC power plant's turbine halls, moonpools and ammonia tanks along the north wall;
   - industry, with process units, a tank farm, a desalination plant and eight stacks of 70 to 95 m;
@@ -71,10 +71,10 @@ When it opens, a short card says what you are looking at. The row "Go to" under 
 - The power runs. The world opens on both: a 120 MW ocean thermal (OTEC) plant and two nuclear modules, which together carry the data halls, desalination, industry and most of the miners. Switch to OTEC alone (or open [`?power=otec`](/worlds/slab?power=otec)) and the dispatcher sheds load: the stacks stop smoking and the data halls go to backup. The power button also runs four modules alone, and the report's 10 MW demonstration plant.
 - Damage control: the stats panel can hole cell A1, the south-west corner cell, and pump ballast to the opposite corner to level the hull again.
 - Two cutaway views:
-  - **Section** (V): the hull cut open across, with its concrete walls, bulkheads every 50 m, the ballast water in blue, a flooded cell in red and the waterline.
+  - **Section** (V): the hull cut open across, with its concrete walls, bulkheads every 50 m, the ballast water in blue, a flooded cell in red, the waterline, and the columns that carry the deck above the 50 m hull.
   - **Under the sea** (U): swim under the hull to see its bottom, the four cold-water pipes hanging 1,000 m down and the sixteen mooring lines.
 - The flow overlay (L) draws the plant's warm and cold water, its discharge at −60 m and a power line to each load, with their flows.
-- The section also draws the hull's bending, 1,000 times exaggerated: the deep hull is stiff, and in a gale its ends flex 1 to 1.5 cm.
+- The section also draws the hull's bending, 100 times exaggerated: in a gale the ends of the 50 m hull flex 8 to 15 cm.
 - Two more layouts (K, or `?layout=dome` and `?layout=cluster`):
   - **Dome**: one Silone dome, 122 m across, with five planted terraces and a glass lantern. It heaves and rolls with the swell: its roll period falls inside the band of common wave periods.
   - **Cluster**: seven domes joined by twelve bridges with sliding joints. Each bridge's card gives its slide and hinge; in a 5 m swell the joints run into their stops.
@@ -109,8 +109,8 @@ The cluster's domes are drawn level: their heave and drift show, their small til
 | [Corpus Christi casting yard](/worlds/slab?view=build&day=14) | An 8 m starter shell floats at the quay. As crews raise the walls, place the deck and load low ballast, the caisson draws more water. |
 | [First Gulf tow](/worlds/slab?view=build&day=30.28) | Two tugs take one 100 × 50 m caisson through an assumed 8 nautical miles of channel at 3 knots and 40 offshore at 4 knots. A 20 m/s headwind holds the first departure for two days. |
 | [Assembly berth](/worlds/slab?view=build&day=503.8) | Tugs warp each caisson along an open row. The first caisson takes the moorings. A work barge attends each subsequent joint. Only a completed connection adds that unit to the joined displacement. The 120th joins on day 983. |
-| [Brownsville freight run](/worlds/slab?view=build&day=984.6) | A separate 120 × 32 m lighter brings 25,000 t per call. The route assumes 15 nautical miles of channel and 130 offshore. Watch the lighter rise as cargo transfers to the hull, its towers go up and ballast brings it to operating draft. |
-| [Commissioned deck](/worlds/slab?view=build&day=1383) | At 25 m draft the joined hull displaces 15.375 million metric tonnes. The sequence ends at the original skyline. The 40 m berth rules out the main world's kilometre-long OTEC pipes. |
+| [Brownsville freight run](/worlds/slab?view=build&day=984.6) | A separate 120 × 32 m lighter brings about 26,800 t per call, 200 calls in all. The first 107 land concrete for the lining of the sea walls and for the structure that raises the deck from 50 m to 143 m over the keel. The rest land the buildings and liquids. The route assumes 15 nautical miles of channel and 130 offshore. Watch the lighter rise as cargo transfers to the hull, its towers go up and ballast brings it to operating draft. |
+| [Commissioned deck](/worlds/slab?view=build&day=1783) | At 25 m draft the joined hull displaces 15.375 million metric tonnes. The sequence ends at the original skyline. The 40 m berth rules out the main world's kilometre-long OTEC pipes. |
 
 **What the numbers mean.** The project assumes parallel casting positions producing one closed unit every eight days. Each needs about 22,372 m³ of reinforced concrete at 2.5 t/m³, including the separate end walls needed during tow. With 3,000 t of low ballast the tow weighs about 58,931 t, draws 11.50 m in seawater and has an initial transverse metacentric height of 2.48 m under the assumed mass distribution. At 4 knots in a 10 m/s headwind, the steady drag estimate including a 30% margin calls for 1.73 MN of the assumed 2 MN available underway. At 20 m/s it exceeds that allowance. The port’s published channel is 530 ft wide and 54 ft deep. The assumed screening margins are 10 m on each side and 2 m below the keel. The 600 m assembled beam excludes a tow of the finished city through that channel. [Corpus Christi channel dimensions](https://portofcc.com/wp-content/uploads/PCCA-Press-Release-CIP-Completion-vf.pdf) · [Brownsville port directory](https://www.portofbrownsville.com/wp-content/uploads/2026/01/Port-of-Brownsville-Directory-2025-Web-V1.pdf)
 

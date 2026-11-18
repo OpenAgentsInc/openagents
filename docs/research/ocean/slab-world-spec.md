@@ -11,7 +11,9 @@ a card for anything clicked. Cell A1 can be holed and the ballast pumped
 against it; the section view (V) cuts the hull open and the underwater view
 (U) shows the bottom, the cold-water pipes and the moorings; the flow
 overlay (L) animates the plant's water and the power lines; the section draws
-the hull's first bending mode 1,000 times exaggerated. The `dome` and
+the hull's first bending mode 100 times exaggerated. One ledger,
+`metaverse/hull.coax`, weighs the hull for the world, its cards, the section
+and the construction timelapse (section 3.1). The `dome` and
 `cluster` layouts (K) draw the Silone domes, their bridges and, with nuclear
 power, the moored powership. The golden is still to be taken on staging. Measured numbers are in section 12. The spec was
 revised the same day with sourced OTEC figures from [otec.md](otec.md).
@@ -136,57 +138,133 @@ The default is `prime`.
 
 ### 3.1 `prime`: the monolith (default)
 
-This is a rectangular, cellular concrete hull read from the concept image.
+This is a rectangular concrete platform read from the concept image. A
+watertight cellular hull 50 m deep does all the floating. On it stands a
+lighter structure that carries the city deck 93 m higher, to where the
+picture's wall ends.
 
-| Dimension | Value |
-|---|---|
-| Length L (X) | 1,000 m |
-| Beam B (Z) | 600 m |
-| Hull depth D | 143 m (was 50 m; see the note below) |
-| Design draft T | 25 m |
-| Freeboard (deck above calm water) | 118 m (was 25 m) |
-| Deck area | 600,000 m² (60 ha) |
-| Corners | Sharp, 1.5 m radius in plan (was 40 m) |
-| Displacement at T | 1,000 × 600 × 25 × 1,025 kg/m³ = **15.4 Mt** |
+Every figure in this section comes from one ledger, `metaverse/hull.coax`.
+The simulation, the hull's card, the section view and the construction
+timelapse all read it, and checks fail if any of them gives a different
+depth, concrete volume, mass or ballast. To change a figure, change the
+ledger's shape (`HullShape`) and rerun its checks.
+
+Each figure is marked **picture** (read from the concept image), **assumed**
+(our planning value) or **follows** (arithmetic on the others). SLAB has
+published none of them.
+
+| Dimension | Value | From |
+|---|---|---|
+| Length L (X) | 1,000 m | Assumed |
+| Beam B (Z) | 600 m | Assumed; the picture's fit gives about 550 m |
+| Watertight hull depth | 50 m | Assumed |
+| City deck over the keel D | 143 m | Follows from the draft and the picture's wall |
+| Design draft T | 25 m | Assumed |
+| Deck above calm water | 118 m | Picture |
+| Hull's top above calm water | 25 m | Follows |
+| Deck area | 600,000 m² (60 ha) | Follows |
+| Corners | Sharp, 1.5 m radius in plan | Picture |
+| Sea water, concrete | 1,025 and 2,500 kg/m³ | Standard values |
+| Displacement at T | (1,000 × 600 − 1.9 m² of corners) × 25 × 1,025 = **15.375 Mt** | Follows |
 
 **Following the picture (2026-11-18).** The owner's direction for the first
-version is parity with the concept image, walls included, over this spec. A
-camera fitted to the picture's deck corners (about 5 px RMS, a 51° horizontal
-field) puts its wall about 118 m over the water on a beam of about 550 m. The
-world therefore raises the deck to 118 m and squares the corners, and keeps
-the 1,000 × 600 m plan, the 25 m draft and the mass budget below. The tables
-in this section are still the 50 m hull's; the hull-bending section modulus
-(section 4.6) and the wind area use the 143 m depth. The picture's horizon
-sits higher than its slab's perspective allows, so no single camera matches
-both; the world matches the slab.
+version is parity with the concept image, walls included. A camera fitted to
+the picture's deck corners (about 5 px RMS, a 51° horizontal field) puts its
+wall about 118 m over the water on a beam of about 550 m. The world therefore
+puts the deck 118 m over the water and squares the corners, and keeps the
+1,000 × 600 m plan and the 25 m draft. The picture's horizon sits higher than
+its slab's perspective allows, so no single camera matches both; the world
+matches the slab.
 
-**Structure.** Reinforced and prestressed concrete at 2,500 kg/m³:
+**Which hull (decided 2026-11-18).** A deck 143 m over the keel can be
+carried two ways. Both were weighed at the 25 m draft with 2.5 Mt of
+buildings and liquids:
+
+| | A: one structural hull 143 m deep | B: a 50 m hull with a lighter structure on it |
+|---|---|---|
+| Cast in one piece | 2.41 + 0.45 (outer wall) + 1.25 (bulkheads) = 4.11 million m³, 10.3 Mt; 2.6 Mt of ballast left | — |
+| Built from 100 × 50 m caissons, as the timelapse builds | 5.40 million m³, 13.5 Mt; no ballast left; floats at 26.0 m | 3.83 million m³, 9.57 Mt; **3.31 Mt of ballast left** |
+| One caisson afloat with 3,000 t of tow ballast | 104,254 t, draws 20.9 m, GM −45 m: it capsizes | 58,931 t, draws 11.50 m, GM +2.48 m |
+| Transverse GM of the finished body | positive | **+1,159 m** |
+
+The world uses **B**. Nothing can cast a kilometre in one piece, and a
+caisson 143 m tall neither floats upright nor passes a 16.5 m channel. B is
+what the timelapse can build: it closes at the drawn draft with ballast to
+spare and positive GM, and the bulkheads' upper 93 m, which would hold out
+no water, become columns.
+
+**The hull** (watertight, keel to 50 m). Reinforced and prestressed concrete.
+It is 120 caissons of 100 × 50 × 50 m, cast in a yard, towed and joined
+(all thicknesses assumed):
+
+| Part of one caisson | Size | Volume |
+|---|---|---|
+| Bottom slab | 100 × 50 m, 1.5 m thick | 7,500 m³ |
+| Top slab | 1.0 m thick | 5,000 m³ |
+| Walls | 0.6 m all round and one 0.6 m web across the middle, 207.84 m² in plan, 47.5 m tall | 9,872 m³ |
+| **One caisson** | | **22,372 m³ = 55,931 t** |
+
+| The hull | | Volume |
+|---|---|---|
+| 120 caissons | 120 × 22,372.4 | 2,684,688 m³ |
+| Sea-wall lining | The outer walls thickened from 0.6 m to 1.5 m from inside, at the berth: 2,818 m² in plan, 47.5 m tall | 133,876 m³ |
+| **Hull concrete** | | **2,818,564 m³ = 7.05 Mt** |
+
+The sea walls are lined after joining because a caisson cast with 1.5 m sea
+walls cannot be towed: a corner one would draw 14.5 m and float top-heavy
+(GM below zero). Every caisson is therefore the same on tow.
+
+Joined, the caissons' walls pair into bulkheads every 100 m along the hull
+and every 50 m across it, with the webs between them. They form **240
+cells**, each 50 × 50 m in plan and 47.5 m clear inside, labelled by column
+A–T (X, west to east) and row 1–12 (Z, south to north).
+
+**The upper structure** (50 m to the deck at 143 m; all sizes assumed). It is
+open inside: columns stand on the hull's bulkhead crossings, so their load
+goes straight down the walls below. It is cast at the berth, after joining.
 
 | Part | Size | Volume |
 |---|---|---|
-| Bottom slab | 1.5 m thick | 900,000 m³ |
-| Deck slab | 1.0 m thick | 600,000 m³ |
-| Outer walls | 1.5 m thick, 50 m tall | 240,000 m³ |
-| Longitudinal bulkheads | 11, every 50 m, 0.6 m thick | 330,000 m³ |
-| Transverse bulkheads | 19, every 50 m, 0.6 m thick | 342,000 m³ |
-| **Total** | | **2.41 million m³ ≈ 6.0 Mt** |
+| Outer wall | 0.8 m thick, 92.4 m tall, around the edge | 236,307 m³ |
+| Columns | 209 (11 × 19 crossings), 15 m² each, 89.4 m tall | 280,269 m³ |
+| Girders | 2 m wide and 3 m deep under the deck, on every bulkhead line (22.4 km) | 131,604 m³ |
+| Deck slab | 0.6 m thick | 360,000 m³ |
+| **Upper structure** | | **1,008,180 m³ = 2.52 Mt** |
 
-The bulkheads form **240 cells**, each 50 × 50 × 50 m, labelled by column
-A–T (X, west to east) and row 1–12 (Z, south to north).
+The columns carry the deck, the girders and the buildings at about 12 MPa at
+their feet. That is a first-pass check that the sizes are plausible, not a
+design.
 
 **Mass budget at the design draft:**
 
-| Item | Mass |
-|---|---|
-| Hull concrete | 6.0 Mt |
-| Topsides: buildings, plant, equipment | 2.0 Mt |
-| Liquids: process tanks, fuel, fresh water | 0.5 Mt |
-| Seawater ballast in the lower cells | 6.9 Mt |
-| **Total** | **15.4 Mt** |
+| Item | Mass | From |
+|---|---|---|
+| Hull concrete | 7.05 Mt | 2,818,564 m³ |
+| Upper structure | 2.52 Mt | 1,008,180 m³ |
+| *All concrete* | *9.57 Mt* | *3,826,744 m³* |
+| Topsides: buildings, plant, equipment | 2.0 Mt | Assumed |
+| Liquids: process tanks, fuel, fresh water | 0.5 Mt | Assumed |
+| Seawater ballast in the cells | 3.31 Mt | What is left: 15.375 − 9.567 − 2.5 |
+| **Total** | **15.375 Mt** | The displacement at 25 m |
 
-Ballast is the trim variable. Adding or removing topside load is balanced by
-pumping ballast, so the draft stays at 25 m. The vertical centre of gravity
-is KG = 25 m above the keel; the ballast sits low and the topsides sit high.
+Each metre of draft carries 615,000 t. The concrete alone floats at 15.6 m.
+Ballast is the trim variable: adding or removing topside load is balanced by
+pumping ballast, so the draft stays at 25 m. The 3.31 Mt is 3.23 million m³
+of sea water, 5.64 m deep over the cells' 572,241 m² of floor. Its surface is
+7.14 m over the keel, 17.9 m under the sea's, and the section view draws it
+there. Another 3.31 Mt of topsides would use it all; past that the draft
+grows.
+
+**Centre of gravity.** Moments about the keel:
+
+| Item | Mass | Height of its centre | Moment |
+|---|---|---|---|
+| Hull concrete | 7.05 Mt | 22.6 m | 159 Mt·m |
+| Upper structure | 2.52 Mt | 118.2 m | 298 Mt·m |
+| Topsides | 2.0 Mt | 168 m: 25 m over the deck (assumed) | 336 Mt·m |
+| Liquids | 0.5 Mt | 30 m (assumed) | 15 Mt·m |
+| Ballast | 3.31 Mt | 4.3 m | 14 Mt·m |
+| **Total** | **15.375 Mt** | **KG = 53.5 m** | 822 Mt·m |
 
 **Hydrostatics** (rectangular-barge formulas, used as test targets in
 section 9):
@@ -196,14 +274,26 @@ section 9):
 | KB | T/2 | 12.5 m |
 | Transverse BM | B²/(12T) | 1,200 m |
 | Longitudinal BM | L²/(12T) | 3,333 m |
-| Transverse GM | KB + BM − KG | ≈ 1,188 m |
-| Longitudinal GM | | ≈ 3,321 m |
+| Transverse GM | KB + BM − KG | **1,159 m** |
+| Longitudinal GM | | **3,292 m** |
 | Heave natural period | 2π √(T(1+Cₐ)/g) | 10.0 s with Cₐ = 0; 14.2 s with Cₐ = 1 |
-| Roll natural period | 2π k / √(g·GM), k = 0.35B | ≈ 12.2 s |
-| Pitch natural period | k = 0.29L | ≈ 10.1 s |
+| Roll natural period | 2π k / √(g·GM), k = 0.35B (assumed) | 12.4 s; 14.1 s with Cₐ = 0.3 on rotation |
+| Pitch natural period | k = 0.29L (assumed) | 10.1 s; 11.6 s with Cₐ = 0.3 |
 
 Cₐ is the added-mass coefficient. It is a parameter (section 4.2), not a
-measured value.
+measured value. The raised deck lifts KG from 25 m to 53.5 m, which costs
+29 m of a GM over a thousand metres: the platform is still very stiff.
+
+**The timelapse builds this hull.** `metaverse/slab-construction.coax` tows
+the ledger's caisson (58,931 t with its tow ballast, 11.50 m of draft) and
+joins the 120th on day 983. A lighter then makes 200 calls of 26,776 t over
+800 days: first 2.86 Mt of concrete for the sea-wall lining and the upper
+structure, cast at the berth while the deck rises from 50 m to 143 m, then
+the 2.5 Mt of buildings and liquids. Ballast is pumped as the load comes
+aboard. It ends on day 1,783 at the ledger's figures: 3,826,744 m³ of
+concrete, 3.31 Mt of ballast, 15.375 Mt, 25.0 m of draft and the deck 118 m
+over the water. The check "the timelapse ends on the world's hull" in that
+file fails if any of these differs from the world's.
 
 **Wave averaging.** At 1 km by 600 m the hull spans many wavelengths of an
 equatorial sea: an 8 s wave is about 100 m long. Wave forces largely cancel
@@ -330,6 +420,20 @@ momentum ledger under `water.buoyancy` and `water.drag`, as `water_record`
 does. The existing `water_submerged` handles clipped cuboids, so a column
 can call it directly if that is cheaper than the closed form above.
 
+**As built (2026-11-18).** `prime` stands on the 10 m grid, 6,000 columns, on
+every device. Until that day the code used a 25 m grid of 960 columns, which
+cannot see a wave shorter than 50 m; the `trade` sea's tile carries waves
+down to 31 m. The finer grid costs less than the coarse one did. Because the
+columns stand on a regular grid, the code adds them up as one weighted pass
+over the sea's 64 × 64 tile: each texel's weight is the share of the columns
+that read it. A check holds that sum to the sum over all 6,000 columns to one
+part in 10⁹. The sea's sideways push is the same heights on the four walls.
+One tick costs about 2 µs in a native release build, against 16 µs for the
+25 m grid, and the frame times in headless Chrome did not change within the
+machine's noise. The buoyancy is linearised about the design draft
+(section 12), and the simulation keeps its own ledger of impulses
+(`SimHull.imp`) rather than the engine's `water_record`.
+
 ### 4.2 The rigid body
 
 Use the 6-degree-of-freedom body in `metaverse-engine/physics/sim/rigid.coax`.
@@ -381,6 +485,15 @@ from the fairlead to the anchor, fading out with depth.
   silhouettes. For `prime` side-on, A ≈ 1,000 m × 85 m.
   - At U = 20 m/s this gives ≈ 21 MN. The moorings must hold the offset
     under 5% of depth (75 m).
+  - **Not yet agreed with the drawn wall.** The 85 m is the 50 m hull's:
+    25 m of freeboard and 60 m of buildings (`SIM_WINDAGE`). The drawn wall
+    stands 118 m over the water, so the honest area is 1,000 m × 178 m and
+    the force at 20 m/s is ≈ 44 MN. The present sixteen lines hold 21 MN at
+    69 m of offset; under 44 MN they would give about 120 m, over the 75 m
+    limit. The wind area therefore changes together with the lines, in the
+    mooring work of #13688, so that test 6 keeps a limit the lines were
+    sized for. Until then the world's wind force and offset are those of a
+    25 m wall.
 - **Current:** 0.5 m/s by default, from the east (the North Equatorial
   Current at `guam`), with quadratic drag on the submerged area, C_d = 1.0.
 
@@ -406,9 +519,11 @@ visual-only bending mode: the deck's vertical deflection along X, computed as
 the first beam mode, driven by the difference between column buoyancy and
 weight along the length. Show it exaggerated 100× in the section view.
 
-With the 143 m hull (section 3.1) the section is far stiffer (I ≈ 9.7e6 m⁴
-per the simulation): a gale flexes the ends about 1–1.5 cm, so the world
-draws it 1,000× exaggerated instead.
+The hull girder is the 50 m watertight hull alone: its bottom and top slabs,
+the 1.5 m sea walls and the lengthwise walls about their own neutral axis,
+I = 1.04 × 10⁶ m⁴ (`hull_section_i`). The upper structure's columns and
+jointed deck are taken to carry no bending. A gale flexes the ends about
+8–15 cm, drawn 100× exaggerated.
 
 ## 5. Sites and sea states
 
@@ -460,9 +575,17 @@ Hs ≈ 0.21U²/g:
 | `calm` | 0.5 m | 4.8 m/s | — |
 | `trade` | 1.5 m | 8.4 m/s | `guam`, `puerto-rico`, `kona`, `equator` |
 | `equator-max` | 2.8 m (a 5.2 m / 17 ft maximum wave) | 11.4 m/s | Silone's design case |
-| `winter` | 4.0 m | 13.7 m/s | `california` |
+| `rough` | 4.0 m | 13.7 m/s | `california`, and the opening view |
 | `gale` | 10 m | 21.6 m/s | `california` extreme |
 | `hurricane` | 14 m | 25.6 m/s | The storm case at `guam` (a typhoon) and `puerto-rico`. The cost models in otec.md assume hurricane-free moorings, so this is where the world tests what they leave out |
+
+**The opening sea.** The world opens on `rough` at Guam in June, for parity
+with the concept image's breaking sea. That is not Guam's ordinary sea.
+Guam's default is `trade` (1.5 m), and choosing Guam from the site button or
+with `?site=guam` sets it. This sea was named `winter` until November 18,
+2026. A 4 m sea is California's winter, but it is no season at Guam, so it
+is now `rough`: 4 m is the top of the World Meteorological Organization's
+"rough" band. `?sea=winter` still opens it.
 
 Check the spectral sea's working range: the water lab's default wind is
 7–8 m/s. If `gale` and `hurricane` break the tiles (patch size, cascades or
@@ -520,8 +643,9 @@ flow overlay is on, draw the water flows as animated arrows.
 
 ### 6.2 AI data center
 
-The data hall district (section 7) holds 4 halls of 25 MW IT each, 100 MW
-IT in total. PUE is 1.20 by default, the report's baseline, giving **120 MW**.
+The data hall district (section 7) holds 2 halls of 50 MW IT each, 100 MW
+IT in total: the two halls the deck draws and the card names. (This spec
+first said four halls of 25 MW; the total is unchanged.) PUE is 1.20 by default, the report's baseline, giving **120 MW**.
 
 **Seawater cooling,** following otec.md §7:
 - Turn it on with `?swac=1` or from the world panel.
@@ -757,7 +881,10 @@ Z from −300 to 300.
 | Civic | 348 to 468 | −268 to −172 | A colonnaded hall |
 
 The cranes are gone and the dock notch (section 3.1) stays uncut: the
-picture shows neither.
+picture shows neither. The cranes' card, which nothing could open, went with
+them. The plan keeps the crane's kind number (`SLAB_KIND_CRANE`) and the
+shader its paint, so the dock's work (#13686) can put cranes back without
+renumbering.
 Temples and the tholos are traced as distance fields in the shader
 (`slab_temple_sd`, `slab_tholos_sd`), and cypresses as cones, so the
 colonnades have real columns.
@@ -788,7 +915,8 @@ control to the player on the gardens promenade.
   view, and the 1.5 km view.
 
 **Opening view.** The world opens on the concept image's camera (yaw 0.802,
-pitch 0.438, 1,164 m out, aimed at the waterline) in a winter sea, in June
+pitch 0.438, 1,164 m out, aimed at the waterline) in the `rough` sea
+(4 m; section 5.2 says why, and that Guam's own sea is `trade`), in June
 at 17:51 off Guam: the sun at about 297°, 10° up, lights the long north
 wall as the picture does. The golden-hour grade lifts the exposure and adds
 sepia. The spray stands about nine times the significant height up the
@@ -874,16 +1002,18 @@ the column approximation.
 | 6 | Mooring | Steady 20 m/s beam wind with no waves on `prime`: offset under 75 m and peak line tension under 40 MN |
 | 7 | OTEC model | Net output at every ΔT in section 6.1's table matches to ± 0.5 MW. At ΔT 20 °C, net is 56.3% ± 0.2% of design (otec.md §2). Each site's yearly range matches section 5.1's table to ± 1 MW. `california` gives 0 in February |
 | 8 | Dispatch | At `guam` with `?otec=1`, shedding goes mining, then industry, then desalination. The data center draws OTEC power whenever net output is at least its load, and switches to backup otherwise. With `?otec=1.75` nothing sheds in any month. With `?plant=demo10`, the loads match section 6.5's table |
-| 9 | Determinism | Two runs from the same seed give identical hull poses bit for bit at tick 10,000; a late joiner at tick 10,000 gets the same pose |
-| 10 | Ledger | Over 600 s in `trade`, the momentum ledger balances: buoyancy, drag, mooring, wind and gravity sum to the body's change in momentum |
+| 9 | Determinism | Two runs from the same start give identical hull poses bit for bit at tick 10,000; the second is handed to a late joiner at tick 5,000, who gets the same pose |
+| 10 | Ledger | Over 600 s in a `trade` sea, the momentum ledger balances: buoyancy, gravity, damping, drag, mooring, wind, current and the sea's push sum to the body's change in momentum |
 | 11 | Mining revenue | With the default inputs, R = $79.1 ± 0.5/MWh and the power budget is $30.7 ± 0.5/MWh. The halving toggle gives 50.3% ± 0.5% of R |
 | 12 | Pipe trip | Tripping one pipe cuts net output by 25% ± 2%. The data halls stay up on backup through the 60 s generator start, with no gap |
 | 13 | Nuclear dispatch | With `?power=nuclear` at `california`, net is 192 MW in every month and mining runs 29 containers. "Refuel a module" gives 144 MW net, with mining at 0 and industry shedding 19 MW. `hybrid` at `guam` gives 191–212 MW over the year |
 | 14 | Module figures | Each module reports 50 MWe gross, 48 MW net, 31.25% efficiency and 2.68 ± 0.05 m³/s of condenser flow. In `dome`, choosing `nuclear` adds the separate powership, not modules inside the dome |
 
 **Performance targets** (measure with `frametime.ts`, as water.md does):
-- Physics (6,000 columns) under 1.5 ms of CPU a tick on desktop. On phone,
-  use a 20 m grid (1,500 columns) under 1.5 ms.
+- Physics (6,000 columns) under 1.5 ms of CPU a tick on desktop and on
+  phone. The phone uses the same 10 m grid: the weighted pass (section 4.1)
+  costs the same for any grid, so the 20 m phone grid this spec first asked
+  for is not needed.
 - Desktop at 1440×900, DPR 2: GPU under 12 ms.
 - Phone tier at 390×844: GPU under 8 ms.
 
@@ -929,18 +1059,23 @@ in sections 3–9 are unchanged.
 
 | Quantity | Target | Measured |
 |---|---|---|
-| Displacement | 15.4 Mt | 15.34 Mt (the corners are rounded) |
-| Transverse and longitudinal GM | ≈ 1,188 m and ≈ 3,321 m | 1,187.5 m and 3,320.8 m |
+| Displacement | 15.375 Mt | 15.375 Mt; the simulation's mass is the ledger's to the kilogram |
+| Hull ledger (section 3.1) | closes at 25 m with ballast left and positive GM | 3,826,744 m³ of concrete (9.57 Mt), 3.31 Mt of ballast, KG 53.5 m; the hull's card, the section's ballast line and the simulation give the same figures (checked) |
+| Timelapse and world | the same hull | the timelapse ends at 143 m of deck over the keel, 25.0 m of draft, 3,826,744 m³ of concrete, 3.31 Mt of ballast and 15.375 Mt, the ledger's figures (checked) |
+| Transverse and longitudinal GM | 1,159 m and 3,292 m | 1,159.0 m and 3,292.3 m |
 | Heave period (Cₐ = 1) | 14.2 s | 14.2 s; free decay rings at it within 15%, ζ within 0.03 of 0.08 |
-| Roll and pitch periods | 12.2 s and 10.1 s without added inertia | 12.2 s and 10.1 s; with Cₐ 0.3 on rotation the body rings at 13.9 s and 11.5 s |
+| Roll and pitch periods | 12.4 s and 10.1 s without added inertia | 12.4 s and 10.1 s; with Cₐ 0.3 on rotation the body rings at 14.1 s and 11.6 s |
 | Calm equilibrium (test 1) | design draft, no heel or trim | heave under 0.25 m, heel and trim under 0.01° |
 | Short sea (test 4) | averaged away | a 1.5 m, 100 m wave moves the hull under 0.15 m |
-| 20 m/s beam wind (test 6) | within 5% of depth | 20.8 MN of wind, offset under 75 m, the peak line under its breaking load |
+| 20 m/s beam wind (test 6) | within 5% of depth | 20.8 MN of wind on the 85 m wind height, 69 m of offset, 8.0 MN in the peak line of a 40 MN breaking load. Section 4.4 says what the drawn 118 m wall changes |
+| Buoyancy grid (section 4.1) | 6,000 columns on 10 m, under 1.5 ms a tick | 6,000 columns; about 2 µs a tick in a native release build (16 µs on the earlier 25 m grid). Headless Chrome, 10 s on the `trade` sea, frames drawn before and after: 3,295 and 3,058 at 1440 × 900, 12,726 and 12,531 at 390 × 844 as a phone, with other builds loading the machine; not timed on a real phone |
+| Determinism (test 9) | the same pose bit for bit at tick 10,000 | two runs on a moving 1.5 m sea agree in every bit, the second through a late joiner at tick 5,000; at tick 10,000 the hull has moved 0.82 m east and 1.78 m north |
+| Momentum ledger (test 10) | balances over 600 s in `trade` | up: lift +9.04968 × 10¹³ N·s, weight −9.04970 × 10¹³, heave damping +7.8 × 10⁶, which sum to the hull's −1.239 × 10⁸ within 15 N·s. North: wind +1.428 × 10⁹, moorings −7.74 × 10⁸, drag −2.77 × 10⁸, the sea's push +5.6 × 10⁵, which sum to the hull's +3.777 × 10⁸. East, with the current's −1.153 × 10⁹, likewise |
 | OTEC net at ΔT 24, 20 and 12 °C (test 7) | 120, 67.6 and 0 MW | the same within 0.5 MW; Guam 95–116 MW over the year |
 | Dispatch (tests 8 and 13) | sheds mining, then industry, then desalination | as targeted; nuclear 192 MW with 29 MW of miners, 144 MW refuelling, hybrid at Guam 191–212 MW |
 | Pipe trip (test 12) | net down a quarter | 0.75 of net |
 | Cell A1 holed on `prime` (test 5) | about 64,000 t, sinkage ≈ 0.10 m, heel ≈ 0.06° | 64,000–66,000 m³ in, sinkage and heel within 0.03 of the targets; pumping half the floodwater to the opposite corner takes heel and trim back under 0.005° |
-| Hull bending in `gale` (S7) | visible ×100 in the section | the first mode's ends flex 0.10–0.15 m over a minute of the gale (EI = 3.4 × 10¹⁶ N·m²), 10–15 m as drawn |
+| Hull bending in `gale` (S7) | visible ×100 in the section | the first mode's ends flex 0.08–0.15 m over a minute of the gale (EI = 3.6 × 10¹⁶ N·m², the 50 m hull girder), 8–15 m as drawn |
 | `demo10` preset | 10 MW net at the site's best | 10 MW at its best; IT 3.45, utility 4.0 and mining 1.0 MW leave a 1.55 MW margin |
 | Frame time | 60 FPS | 60 FPS, p95 16.7 ms, at 1440×900 (dpr 1 and 2) and on a 390×844 phone, from `realm-perf` on an Apple M-series GPU; the section and underwater views were checked by eye, not timed |
 
@@ -959,11 +1094,19 @@ in sections 3–9 are unchanged.
   206.5 MW in June against 163 MW, every fixed load carried, 43 of 50
   mining containers on, and the stacks smoking as in the concept image.
 
+- Column buoyancy is linearised about the design draft: each column adds the
+  sea's rise over it times its area. Columns do not clip at the keel or the
+  hull's top, so a sea that would wash over the 25 m hull top is not modelled.
+- Test 9 shows that the same hull and the same sea give the same step in
+  every bit. The world steps the hull on each frame's sea tile, so two
+  browsers at different frame rates see the sea at different instants and do
+  not hold the same pose. Nothing shares a hull between browsers yet.
+- The wind area is still the 50 m hull's (section 4.4).
 - A holed cell's 4 m² orifice takes about 24 minutes to fill 64,000 m³, so
   the spec's 60 s is not consistent with its orifice law. The world keeps the
   orifice law and runs the flood and the pumps 24 times faster than real
   time, so the cell fills in about a minute.
-- Ballast is drawn as one level across the inner bottom (−12.2 m, 6.9 Mt);
+- Ballast is drawn as one level across the inner bottom (−17.9 m, 3.31 Mt);
   the pumps are modelled as moving half the floodwater's mass from the
   damaged corner to the opposite one, which balances its moments.
 - The flow overlay's key is L, since O already returns to the orbit. Its
