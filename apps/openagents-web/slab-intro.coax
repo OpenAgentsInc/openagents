@@ -1,0 +1,285 @@
+// SLAB's first screen (issue 13683), a stopgap until the guided tour and the HUD on
+// components/kit (issue 13685) replace it:
+//   - a "what is this" card: what SLAB is, that it has no published design, what you can do here;
+//   - the nine stations as a row of named places, with the build view's button beside them;
+//   - the toolbar's cursor, which wraps at the right edge so a phone cuts nothing off;
+//   - the hint and the reconstruction sentence at a size that reads.
+// Its words are in the system sans (metaverse-engine/ui/font.coax, "the system sans"), which sets
+// lowercase; the rest of the HUD is still Filament's capitals.
+//
+// To remove it: delete this file and its #load in slab.coax, and in slab.coax the lines marked
+// "intro:" (the Slab fields, and the calls in hud, press, slab_key, slab_message and hit_button).
+// The sans branch in gpu/slab.coax's slab_fx_fs and slab.bindings' two lines can stay or go with it.
+
+INTRO_LOOK :: 60; INTRO_BUILD :: 61; INTRO_PLACE :: 70;   // button ids: 70..78 are the stations
+INTRO_BODY :: 13.0f32;   // CSS pixels: the reading size
+PLACE_NAME :: [9] string.["Temples", "Power plant", "Data halls", "Mining yard", "Towers", "Fountain", "Bow", "The picture's view", "From 1.5 km"];
+INTRO_WHAT :: "SLAB is a floating platform for heavy industry that Palmer Luckey says he has been developing.";
+INTRO_OURS :: "He has published no design. This is our reconstruction from his concept picture: every size and system here is our assumption.";
+INTRO_DO :: "Drag to look around, click or tap anything for its numbers, or watch it being built.";
+INTRO_RECONSTRUCTION :: "Reconstruction: SLAB's real design is unpublished. Sizes and systems are this world's assumptions.";
+
+// Sans ink, and the cap height (device pixels) that sets it at a font size in CSS pixels.
+sans :: (k: f32, r: f32, g: f32, b: f32) -> Ink { return Ink.{core = 0.55, light = 1, glow = 0, red = r, green = g, blue = b, mode = MODE_STROKE, scale = k, sans = true}; }
+sans_cap :: (px: f32, k: f32) -> f32 { return px * SANS_CAP / SANS_SCALE * k; }
+sans_w :: (t: string, px: f32, k: f32) -> f32 { return sans_width(t, px * k); }
+sans_text :: (out: [] f32, at: int, t: string, x: f32, base: f32, px: f32, k: f32, ink: Ink) -> int {
+  return draw_text(out, at, t, x, base, sans_cap(px, k), GAP, SPACE, ink, false, false);
+}
+// How many lines t takes wrapped to width (device pixels).
+sans_lines :: (t: string, width: f32, px: f32, k: f32) -> int {
+  ink := sans(k, 1, 1, 1); next: [1] int; from := 0; lines := 0;
+  while from < t.count && lines < 40 {
+    _ = wrap_ink(t, from, width, sans_cap(px, k), GAP, SPACE, ink, next[..]);
+    lines += 1;
+    if next[0] <= from { break; }
+    from = next[0];
+  }
+  return lines;
+}
+// t wrapped to width, its first baseline at y + lead and each next one lead further down.
+// Returns the vertex count; the last baseline is y + lead * sans_lines(...).
+sans_para :: (out: [] f32, at: int, t: string, x: f32, y: f32, width: f32, px: f32, lead: f32, k: f32, ink: Ink) -> int {
+  n := at; next: [1] int; from := 0; yy := y; lines := 0;
+  while from < t.count && lines < 40 {
+    end := wrap_ink(t, from, width, sans_cap(px, k), GAP, SPACE, ink, next[..]);
+    yy += lead; lines += 1;
+    n = sans_text(out, n, t[from..<end], x, yy, px, k, ink);
+    if next[0] <= from { break; }
+    from = next[0];
+  }
+  return n;
+}
+
+// A chip: a pill with a sentence-case label, kept for the press like slab.coax's button.
+chip_w :: (label: string, k: f32) -> f32 { return sans_w(label, 12.5, k) + 18 * k; }
+chip :: (s: [] Slab, out: [] f32, at: int, label: string, x: f32, y: f32, primary: bool, id: int) -> int {
+  k := s[0].dpr; w := chip_w(label, k); h := 22 * k;
+  n := at;
+  if primary { n = panel(out, n, x, y, x + w, y + h, 6 * k, 0.98, 0.88, 0.70, 0.94, 0.35); }
+  else { n = panel(out, n, x, y, x + w, y + h, 6 * k, 0.06, 0.07, 0.09, 0.62, 0.35); }
+  ink := ifx primary then sans(k, 0.1, 0.08, 0.05) else sans(k, 0.95, 0.93, 0.88);
+  n = sans_text(out, n, label, x + 9 * k, y + h * 0.5f32 + sans_cap(12.5, k) * 0.5f32, 12.5, k, ink);
+  if s[0].button_count < MAX_BUTTONS {
+    o := s[0].button_count * 5;
+    s[0].buttons[o] = x; s[0].buttons[o + 1] = y; s[0].buttons[o + 2] = x + w; s[0].buttons[o + 3] = y + h; s[0].buttons[o + 4] = f32(id);
+    s[0].button_count += 1;
+  }
+  return n;
+}
+
+// The toolbar's cursor: each control goes after the last and starts a new row at the right edge.
+TOOL_ROW :: 28.0f32;   // a row's height: a 22 px control and a gap, CSS pixels
+tool_start :: (s: [] Slab, y: f32) { s[0].tool_x = 12 * s[0].dpr; s[0].tool_y = y; }
+tool_fit :: (s: [] Slab, w: f32) {
+  k := s[0].dpr;
+  if s[0].tool_x + w > s[0].width - 12 * k && s[0].tool_x > 12 * k { s[0].tool_x = 12 * k; s[0].tool_y += TOOL_ROW * k; }
+}
+tool_row :: (s: [] Slab) { if s[0].tool_x > 12 * s[0].dpr { s[0].tool_x = 12 * s[0].dpr; s[0].tool_y += TOOL_ROW * s[0].dpr; } }
+// One of slab.coax's buttons at the cursor, then `gap` CSS pixels.
+tool :: (s: [] Slab, out: [] f32, at: int, label: string, on: bool, id: int, gap: f32) -> int {
+  k := s[0].dpr; w := button_w(label, k);
+  tool_fit(s, w);
+  n := button(s, out, at, label, s[0].tool_x, s[0].tool_y, k, on, id);
+  s[0].tool_x += w + gap * k;
+  return n;
+}
+tool_chip :: (s: [] Slab, out: [] f32, at: int, label: string, primary: bool, id: int, gap: f32) -> int {
+  k := s[0].dpr; w := chip_w(label, k);
+  tool_fit(s, w);
+  n := chip(s, out, at, label, s[0].tool_x, s[0].tool_y, primary, id);
+  s[0].tool_x += w + gap * k;
+  return n;
+}
+
+// The places row, under the toolbar: the nine stations by name (the monolith's; a dome has none)
+// and the build view. It leaves the cursor on the row it ended.
+intro_places :: (s: [] Slab, out: [] f32, at: int) -> int {
+  k := s[0].dpr; n := at;
+  tool_row(s);
+  if s[0].layout == LAYOUT_PRIME {
+    label := "Go to";
+    lw := sans_w(label, 12.5, k) + 14 * k;
+    n = panel(out, n, s[0].tool_x, s[0].tool_y, s[0].tool_x + lw, s[0].tool_y + 22 * k, 6 * k, 0.06, 0.07, 0.09, 0.62, 0);
+    n = sans_text(out, n, label, s[0].tool_x + 7 * k, s[0].tool_y + 11 * k + sans_cap(12.5, k) * 0.5f32, 12.5, k, sans(k, 1, 0.9, 0.72));
+    s[0].tool_x += lw + 5 * k;
+    for i: 0..<9 { n = tool_chip(s, out, n, PLACE_NAME[i], false, INTRO_PLACE + i, 5); }
+    s[0].tool_x += 5 * k;
+  }
+  n = tool_chip(s, out, n, "Watch it built", true, INTRO_BUILD, 5);
+  return n;
+}
+
+// Whether the card opens: a first visit by the plain address. A link that places the view, holds a
+// moment, opens a cutaway, another layout or the build view goes straight there; ?intro=1 and
+// ?intro=0 say so outright.
+intro_wanted :: (s: [] Slab, url: string) -> bool {
+  if query_word(url, "intro=1") { return true; }
+  if query_word(url, "intro=0") { return false; }
+  return s[0].intro > 0 && s[0].hud && !s[0].build.on && s[0].layout == LAYOUT_PRIME && s[0].mode == CAM_ORBIT && !s[0].section && !s[0].flow;
+}
+
+// The "what is this" card: on a wide screen under the toolbar, on a narrow one along the bottom.
+// Returns the vertex count. A card for something clicked, the stats or the help closes it.
+intro_card :: (s: [] Slab, out: [] f32, at: int, top: f32) -> int {
+  if s[0].selected != -1 || s[0].stats || s[0].help { s[0].first = false; }
+  if !s[0].first { return at; }
+  k := s[0].dpr; W := s[0].width; H := s[0].height; pad := 12 * k;
+  narrow := W / k < 720;
+  w := ifx narrow then W - 2 * pad else 404 * k;
+  inner := w - 32 * k; lead := 19 * k; gap := 9 * k;
+  lines := sans_lines(INTRO_WHAT, inner, INTRO_BODY, k) + sans_lines(INTRO_OURS, inner, INTRO_BODY, k) + sans_lines(INTRO_DO, inner, INTRO_BODY, k);
+  h := 40 * k + f32(lines) * lead + 2 * gap + 48 * k;
+  x := pad; y := ifx narrow then H - pad - h else top + 6 * k;
+  n := panel(out, at, x, y, x + w, y + h, 10 * k, 0.035, 0.04, 0.055, 0.9, 0.45);
+  tx := x + 16 * k;
+  n = sans_text(out, n, "What is this?", tx, y + 27 * k, 16, k, sans(k, 1, 0.9, 0.72));
+  yy := y + 40 * k - lead * 0.25f32;
+  body := sans(k, 0.94, 0.95, 0.96);
+  n = sans_para(out, n, INTRO_WHAT, tx, yy, inner, INTRO_BODY, lead, k, body); yy += f32(sans_lines(INTRO_WHAT, inner, INTRO_BODY, k)) * lead + gap;
+  n = sans_para(out, n, INTRO_OURS, tx, yy, inner, INTRO_BODY, lead, k, sans(k, 1, 0.86, 0.6)); yy += f32(sans_lines(INTRO_OURS, inner, INTRO_BODY, k)) * lead + gap;
+  n = sans_para(out, n, INTRO_DO, tx, yy, inner, INTRO_BODY, lead, k, body);
+  by := y + h - 36 * k;
+  n = chip(s, out, n, "Look around", tx, by, true, INTRO_LOOK);
+  n = chip(s, out, n, "Watch it built", tx + chip_w("Look around", k) + 8 * k, by, false, INTRO_BUILD);
+  return n;
+}
+
+// The hint for the way you are moving and the reconstruction sentence (spec section 8), always on
+// screen, along the bottom. On a narrow screen the open card already says both, so they wait.
+intro_foot :: (s: [] Slab, out: [] f32, at: int) -> int {
+  k := s[0].dpr; W := s[0].width; H := s[0].height; pad := 12 * k;
+  narrow := W / k < 720;
+  if narrow && s[0].first { return at; }
+  hint := ifx s[0].mode == CAM_FLY then "Flying: W, A, S, D to move, Space up, Shift down, scroll for speed, drag to look."
+    else ifx s[0].mode == CAM_WALK then "On foot: W, A, S, D to walk, Space to jump, Space twice to fly, drag to turn, scroll to zoom."
+    else ifx narrow then "Drag to turn, pinch to zoom, tap anything to learn about it. The places above take you closer."
+    else "Drag to turn, scroll to zoom, W, A, S, D to move. Click anything to learn about it.";
+  px := 12.5f32; lead := 17 * k;
+  w := lo_f32(W - 2 * pad, 660 * k); inner := w - 24 * k;
+  a := sans_lines(hint, inner, px, k); b := sans_lines(INTRO_RECONSTRUCTION, inner, px, k);
+  h := f32(a + b) * lead + 14 * k;
+  y := H - pad - h;
+  n := panel(out, at, pad, y, pad + w, H - pad, 7 * k, 0.04, 0.05, 0.07, 0.62, 0.2);
+  yy := y + 3 * k;
+  n = sans_para(out, n, hint, pad + 12 * k, yy, inner, px, lead, k, sans(k, 1, 0.9, 0.72)); yy += f32(a) * lead;
+  n = sans_para(out, n, INTRO_RECONSTRUCTION, pad + 12 * k, yy, inner, px, lead, k, sans(k, 0.9, 0.91, 0.93));
+  return n;
+}
+
+// Two fingers. The first finger down drags as a mouse does. A second one turns the drag into a
+// pinch: the view zooms by how far the fingers move apart (as the wheel zooms it; flying has no
+// zoom), and neither finger's lift counts as a tap. True when the event is the pinch's.
+intro_touch :: (s: [] Slab, x: f32, y: f32, phase: int, id: int) -> bool {
+  if phase == 0 {
+    if s[0].touch_a == -1 || s[0].touch_a == id { s[0].touch_a = id; s[0].touch_b = -1; s[0].touch_ax = x; s[0].touch_ay = y; return false; }
+    s[0].touch_b = id; s[0].touch_bx = x; s[0].touch_by = y;
+    s[0].dragging = false;
+    return true;
+  }
+  if phase == 1 {
+    if s[0].touch_b == -1 { if id == s[0].touch_a { s[0].touch_ax = x; s[0].touch_ay = y; } return false; }
+    was := sqrt((s[0].touch_ax - s[0].touch_bx) * (s[0].touch_ax - s[0].touch_bx) + (s[0].touch_ay - s[0].touch_by) * (s[0].touch_ay - s[0].touch_by));
+    if id == s[0].touch_a { s[0].touch_ax = x; s[0].touch_ay = y; } else if id == s[0].touch_b { s[0].touch_bx = x; s[0].touch_by = y; } else { return true; }
+    now := sqrt((s[0].touch_ax - s[0].touch_bx) * (s[0].touch_ax - s[0].touch_bx) + (s[0].touch_ay - s[0].touch_by) * (s[0].touch_ay - s[0].touch_by));
+    if was > 1 && now > 1 && s[0].mode != CAM_FLY { slab_wheel(s, (was / now - 1) * 1000); }
+    return true;
+  }
+  if s[0].touch_b == -1 { if id == s[0].touch_a { s[0].touch_a = -1; } return false; }
+  // one of the two lifts: the other stays down and does nothing more until it lifts too
+  if id == s[0].touch_a { s[0].touch_a = s[0].touch_b; s[0].touch_ax = s[0].touch_bx; s[0].touch_ay = s[0].touch_by; }
+  s[0].touch_b = -1;
+  s[0].dragging = false;
+  return true;
+}
+// How far past a control's edge a press still counts, up and down: a finger's reach on a narrow
+// screen, half the gap between two rows.
+intro_reach :: (s: [] Slab) -> f32 { return ifx s[0].width / hi_f32(s[0].dpr, 0.5) < 720 then 3 * s[0].dpr else 0.0f32; }
+
+// A press on one of this file's buttons; false for anyone else's.
+intro_press :: (s: [] Slab, id: int) -> bool {
+  if id == INTRO_LOOK { s[0].first = false; return true; }
+  if id == INTRO_BUILD { s[0].first = false; build_toggle(s); return true; }
+  if id >= INTRO_PLACE && id < INTRO_PLACE + 9 {
+    s[0].first = false;
+    if s[0].under { go_under(s, false); }
+    travel(s, id - INTRO_PLACE);
+    return true;
+  }
+  return false;
+}
+
+#test "the first screen: the card opens on the plain address, and a press or a deep link closes it" {
+  s: [1]Slab;
+  slab_message(s[..], HOST_FACTS, "url=/worlds/slab\n");
+  #assert s[0].first;
+  #assert intro_press(s[..], INTRO_LOOK) && !s[0].first;
+  #assert !intro_press(s[..], BTN_STATS);
+  d: [1]Slab;
+  slab_message(d[..], HOST_FACTS, "url=/worlds/slab?view=build&day=31\n");
+  #assert !d[0].first && d[0].build.on;
+}
+#test "the first screen stays shut for a placed view and opens when asked" {
+  s: [1]Slab;
+  slab_message(s[..], HOST_FACTS, "url=/worlds/slab?yaw=1.2&dist=400\n");
+  #assert !s[0].first;
+  o: [1]Slab;
+  slab_message(o[..], HOST_FACTS, "url=/worlds/slab?t=40&intro=1\n");
+  #assert o[0].first;
+}
+#test "a place's chip travels there and the build chip opens the build view" {
+  s: [1]Slab;
+  slab_message(s[..], HOST_FACTS, "url=/worlds/slab\n");
+  #assert intro_press(s[..], INTRO_PLACE + 2) && !s[0].first;
+  #assert s[0].tx == STATION_X[2] && s[0].tz == STATION_Z[2] && s[0].dist == STATION_DIST[2];
+  #assert intro_press(s[..], INTRO_BUILD) && s[0].build.on;
+}
+#test "the toolbar's cursor wraps at the right edge and never starts a row with nothing on it" {
+  s: [1]Slab;
+  s[0].dpr = 1; s[0].width = 390;
+  tool_start(s[..], 68);
+  tool_fit(s[..], 500);   // wider than the screen: stays, since the row is empty
+  #assert s[0].tool_x == 12 && s[0].tool_y == 68;
+  s[0].tool_x = 300;
+  tool_fit(s[..], 80);    // 380 is past 378
+  #assert s[0].tool_x == 12 && s[0].tool_y == 68 + TOOL_ROW;
+  s[0].tool_x = 300;
+  tool_fit(s[..], 78);    // 378 fits
+  #assert s[0].tool_x == 300;
+  tool_row(s[..]);
+  #assert s[0].tool_x == 12 && s[0].tool_y == 68 + 2 * TOOL_ROW;
+}
+#test "two fingers pinch the orbit in and out, and lifting them is no tap" {
+  s: [1]Slab;
+  slab_message(s[..], HOST_FACTS, "url=/worlds/slab?t=1\n");
+  s[0].dpr = 1; s[0].width = 390; s[0].height = 844;
+  d := s[0].dist;
+  #assert slab_pointer(s[..], 100, 400, 0, 1, 7) && s[0].dragging;
+  #assert slab_pointer(s[..], 200, 400, 0, 1, 8) && !s[0].dragging;   // the second finger: a pinch
+  _ = slab_pointer(s[..], 300, 400, 1, 1, 8);                          // apart, 100 to 200 px: twice as close
+  #assert abs(s[0].dist - d * 0.5) < 1 && s[0].yaw == 0.802;
+  _ = slab_pointer(s[..], 150, 400, 1, 1, 8);                          // together, 200 to 50 px: four times as far
+  #assert abs(s[0].dist - d * 2) < 4;
+  _ = slab_pointer(s[..], 150, 400, 2, 1, 8);
+  _ = slab_pointer(s[..], 100, 400, 2, 1, 7);
+  #assert s[0].selected == -1 && s[0].touch_a == -1 && s[0].touch_b == -1 && !s[0].dragging;
+  // one finger again drags as before
+  _ = slab_pointer(s[..], 100, 400, 0, 1, 9); _ = slab_pointer(s[..], 150, 400, 1, 1, 9);
+  #assert s[0].yaw != 0.802;
+}
+#test "on a narrow screen a press just above or below a control still reaches it" {
+  s: [1]Slab;
+  s[0].dpr = 1; s[0].width = 390; s[0].button_count = 1;
+  s[0].buttons[0] = 10; s[0].buttons[1] = 100; s[0].buttons[2] = 60; s[0].buttons[3] = 122; s[0].buttons[4] = 5;
+  #assert hit_button(s[..], 30, 98) == 5 && hit_button(s[..], 30, 124.5) == 5 && hit_button(s[..], 30, 126) == 0;
+  s[0].width = 1440;
+  #assert hit_button(s[..], 30, 98) == 0 && hit_button(s[..], 30, 110) == 5;
+}
+#test "the card's words wrap to a phone's width: three short paragraphs, nine lines at most" {
+  w := 390.0f32 - 24 - 32;
+  a := sans_lines(INTRO_WHAT, w, INTRO_BODY, 1); b := sans_lines(INTRO_OURS, w, INTRO_BODY, 1); c := sans_lines(INTRO_DO, w, INTRO_BODY, 1);
+  #assert a >= 1 && b >= 1 && c >= 1 && a + b + c <= 9;
+  // every place's name and the build chip fit a phone's row on their own
+  for i: 0..<9 { #assert chip_w(PLACE_NAME[i], 1) < 366; }
+  #assert chip_w("Watch it built", 1) < 366;
+}

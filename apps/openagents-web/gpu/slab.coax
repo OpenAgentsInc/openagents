@@ -1522,7 +1522,14 @@ slab_fx_vs :: (_vid3:u32,_iid4:u32,in_:slab_fx_vs_in,u:[]f32)->SlabV {
   o.extra=in_.e;
   return o;
 }
-slab_fx_fs :: (v:SlabV,u:[]f32)->V4 {
+slab_fx_fs :: (v:SlabV,u:[]f32,sans_atlas:Tex2D,sans_sampler:Sampler)->V4 {
+  if ((v.tint.w>3.5f32)&&(v.tint.w<4.5f32)) {
+    // a sans glyph (font.coax draw_sans): place is the atlas coordinate, shape.x the em in pixels,
+    // shape.z its brightness; blended over the frame by its coverage like the strokes
+    lod:f32=clampf(wg_log2(64.0f32/fmax(v.shape.x,1.0f32)),0.0f32,4.0f32);
+    sa:f32=pow(gpu_sample_level(sans_atlas,sans_sampler,v.place,lod).w,0.85f32);
+    return v4(v.tint.x,v.tint.y,v.tint.z,clampf(sa*v.shape.z,0.0f32,1.0f32)*u[3]);
+  }
   if (v.tint.w>4.5f32) {
     // a rounded rectangle: its distance from the edge, a hairline border inside it
     q:V2=v2(abs(v.place.x)-(v.shape.x-v.shape.z),abs(v.place.y)-(v.shape.y-v.shape.z));

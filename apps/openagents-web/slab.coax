@@ -31,6 +31,7 @@
 #load "../../metaverse-engine/ui/font.coax";
 #load "../../metaverse/splice-bots/rules/walk.coax";
 #load "../../metaverse-engine/move/creative-fly.coax" as fly;
+#load "slab-intro.coax";   // intro: the first screen, a stopgap (issue 13683)
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, then length, core, light, glow (a rect: half w, half h, radius, alpha), red, green, blue, mode, border, 0, 0, 0
 MAX_VERTICES :: 30000;
@@ -88,7 +89,7 @@ KB_LEFT :: 1; KB_RIGHT :: 2; KB_UP :: 4; KB_DOWN :: 8; KB_IN :: 64; KB_OUT :: 12
 KB_W :: 256; KB_S :: 512; KB_D :: 1024; KB_A :: 2048; KB_SPACE :: 4096; KB_SHIFT :: 8192; KB_E :: 16384; KB_Q :: 32768;
 
 // The buttons the HUD draws this frame, hit on a press.
-MAX_BUTTONS :: 32;
+MAX_BUTTONS :: 48;
 BTN_ORBIT :: 1; BTN_FLY :: 2; BTN_WALK :: 3; BTN_SITE :: 4; BTN_SEA :: 5; BTN_EARLIER :: 6; BTN_LATER :: 7;
 BTN_PAUSE :: 8; BTN_POWER :: 9; BTN_STATS :: 10; BTN_CLOSE :: 11; BTN_REFUEL :: 12; BTN_TRIP :: 13; BTN_SWAC :: 14;
 BTN_HALVING :: 15; BTN_HELP :: 16; BTN_MONTH :: 17; BTN_HOLE :: 18; BTN_PUMP :: 19; BTN_SECTION :: 20; BTN_UNDER :: 21; BTN_FLOW :: 22;
@@ -132,6 +133,8 @@ Slab :: struct {
   hour: f64 = 17.85; month: f64 = 5.5; rate: f64 = 60; paused: bool;
   plant: SimPlant; power: SimPower; hull: SimHull;
   power_chosen: bool;   // the visitor or the address picked the power: a change of layout keeps it (else sim_opening_power)
+  first: bool; tool_x: f32; tool_y: f32;   // intro: the "what is this" card is open; the toolbar's cursor (slab-intro.coax)
+  touch_a: int = -1; touch_b: int = -1; touch_ax: f32; touch_ay: f32; touch_bx: f32; touch_by: f32;   // intro: two fingers down, for the pinch
   layout: int;          // LAYOUT_*: the prime monolith, one Silone dome, or seven joined
   cluster: SimCluster;  // the seven domes and their bridges (LAYOUT_CLUSTER); hull then follows the centre one
   wind: f64;
@@ -1576,36 +1579,30 @@ hud :: (s: [] Slab, out: [] f32) -> int {
   m = put(b[..], m, sea.name); m = put(b[..], m, " SEA  HS "); m = putf(b[..], m, s[0].synth[0].significant, 1);
   m = put(b[..], m, " M  WIND "); m = putf(b[..], m, s[0].wind, 1); m = put(b[..], m, " M/S");
   if !narrow { n = text(out, n, cast(string) b[0..<m], pad + 210 * k, pad + 20 * k, Pen.{k = k, cap = 6.5f32 * k, r = 0.7, g = 0.86, b = 0.95}); }
-  n = button(s, out, n,"BUILD", pad + (ifx narrow then W / k - 85 else 358) * k, pad + 23 * k, k, false, BTN_BUILD);
-  // the camera's modes
-  y := pad + 56 * k;
-  x := pad;
-  n = button(s, out, n, "ORBIT", x, y, k, s[0].mode == CAM_ORBIT, BTN_ORBIT); x += button_w("ORBIT", k) + 5 * k;
-  n = button(s, out, n, "FLY", x, y, k, s[0].mode == CAM_FLY, BTN_FLY); x += button_w("FLY", k) + 5 * k;
-  n = button(s, out, n, "WALK", x, y, k, s[0].mode == CAM_WALK, BTN_WALK); x += button_w("WALK", k) + 12 * k;
-  n = button(s, out, n, "STATS", x, y, k, s[0].stats, BTN_STATS); x += button_w("STATS", k) + 5 * k;
-  n = button(s, out, n, "?", x, y, k, s[0].help, BTN_HELP); x += button_w("?", k) + 5 * k;
-  n = button(s, out, n, "SECTION", x, y, k, s[0].section, BTN_SECTION); x += button_w("SECTION", k) + 5 * k;
-  n = button(s, out, n, "UNDER", x, y, k, s[0].under, BTN_UNDER); x += button_w("UNDER", k) + 5 * k;
-  n = button(s, out, n, "FLOW", x, y, k, s[0].flow, BTN_FLOW); x += button_w("FLOW", k) + 5 * k;
-  // the world's controls
-  y2 := ifx narrow then y + 28 * k else y;
-  x2 := ifx narrow then pad else x + 8 * k;
+  // the camera's modes, the views and the world's controls, wrapping at the right edge (intro: slab-intro.coax's cursor)
+  tool_start(s, pad + 56 * k);
+  n = tool(s, out, n, "ORBIT", s[0].mode == CAM_ORBIT, BTN_ORBIT, 5);
+  n = tool(s, out, n, "FLY", s[0].mode == CAM_FLY, BTN_FLY, 5);
+  n = tool(s, out, n, "WALK", s[0].mode == CAM_WALK, BTN_WALK, 12);
+  n = tool(s, out, n, "STATS", s[0].stats, BTN_STATS, 5);
+  n = tool(s, out, n, "?", s[0].help, BTN_HELP, 5);
+  n = tool(s, out, n, "SECTION", s[0].section, BTN_SECTION, 5);
+  n = tool(s, out, n, "UNDER", s[0].under, BTN_UNDER, 5);
+  n = tool(s, out, n, "FLOW", s[0].flow, BTN_FLOW, 13);
   m = put(b[..], 0, "SITE: "); m = put(b[..], m, site.key);
-  n = button(s, out, n, cast(string) b[0..<m], x2, y2, k, false, BTN_SITE); x2 += button_w(cast(string) b[0..<m], k) + 5 * k;
+  n = tool(s, out, n, cast(string) b[0..<m], false, BTN_SITE, 5);
   m = put(b[..], 0, "SEA: "); m = put(b[..], m, sea.key);
-  n = button(s, out, n, cast(string) b[0..<m], x2, y2, k, false, BTN_SEA); x2 += button_w(cast(string) b[0..<m], k) + 5 * k;
-  n = button(s, out, n, "-1H", x2, y2, k, false, BTN_EARLIER); x2 += button_w("-1H", k) + 3 * k;
-  n = button(s, out, n, "+1H", x2, y2, k, false, BTN_LATER); x2 += button_w("+1H", k) + 3 * k;
-  n = button(s, out, n, "+1MO", x2, y2, k, false, BTN_MONTH); x2 += button_w("+1MO", k) + 3 * k;
-  n = button(s, out, n, ifx s[0].paused then "PLAY" else "PAUSE", x2, y2, k, s[0].paused, BTN_PAUSE); x2 += button_w("PAUSE", k) + 5 * k;
+  n = tool(s, out, n, cast(string) b[0..<m], false, BTN_SEA, 5);
+  n = tool(s, out, n, "-1H", false, BTN_EARLIER, 3);
+  n = tool(s, out, n, "+1H", false, BTN_LATER, 3);
+  n = tool(s, out, n, "+1MO", false, BTN_MONTH, 3);
+  n = tool(s, out, n, ifx s[0].paused then "PLAY" else "PAUSE", s[0].paused, BTN_PAUSE, 5);
   pk := ifx s[0].plant.power == POWER_NUCLEAR then "POWER: NUCLEAR" else ifx s[0].plant.power == POWER_HYBRID then "POWER: HYBRID" else ifx s[0].plant.demo10 then "POWER: 10 MW DEMO" else "POWER: OTEC";
-  if narrow && x2 + button_w(pk, k) > W - pad { y2 += 28 * k; x2 = pad; }
-  n = button(s, out, n, pk, x2, y2, k, false, BTN_POWER); x2 += button_w(pk, k) + 5 * k;
+  n = tool(s, out, n, pk, false, BTN_POWER, 5);
   lk := ifx s[0].layout == LAYOUT_DOME then "LAYOUT: DOME" else ifx s[0].layout == LAYOUT_CLUSTER then "LAYOUT: CLUSTER" else "LAYOUT: PRIME";
-  if x2 + button_w(lk, k) > W - pad { y2 += 28 * k; x2 = pad; }
-  n = button(s, out, n, lk, x2, y2, k, s[0].layout != LAYOUT_PRIME, BTN_LAYOUT); x2 += button_w(lk, k) + 5 * k;
-  top := y2 + 32 * k;
+  n = tool(s, out, n, lk, s[0].layout != LAYOUT_PRIME, BTN_LAYOUT, 5);
+  n = intro_places(s, out, n);   // intro: the stations by name and the build view, on their own row
+  top := s[0].tool_y + 32 * k;
   // the stats
   if s[0].stats {
     pwide := lo_f32(300 * k, W - 2 * pad);
@@ -1757,17 +1754,9 @@ hud :: (s: [] Slab, out: [] f32) -> int {
     n = panel(out, n, tx, ty, tx + tw, ty + 26 * k, 8 * k, 0.04, 0.05, 0.07, 0.75 * a, 0.3 * a);
     n = text(out, n, t, tx + 12 * k, ty + 17 * k, Pen.{k = k, cap = 7 * k, r = 1, g = 0.92, b = 0.78, light = a});
   }
-  // the reconstruction label (spec 8), always, and the mode's hint
-  note := Pen.{k = k, cap = 5.3f32 * k, r = 0.85, g = 0.86, b = 0.88};
-  hint := ifx s[0].mode == CAM_FLY then "FLY: WASD, SPACE UP, SHIFT DOWN, WHEEL SPEED, DRAG TO LOOK" else ifx s[0].mode == CAM_WALK then "WALK: WASD, SPACE JUMP, SPACE TWICE FLY, DRAG TO TURN, WHEEL ZOOM" else "DRAG TO TURN, WHEEL TO ZOOM, WASD TO MOVE, CLICK ANYTHING TO LEARN ABOUT IT";
-  n = panel(out, n, pad, H - pad - (ifx narrow then 44 else 32) * k, lo_f32(W - pad, pad + 560 * k), H - pad, 7 * k, 0.04, 0.05, 0.07, 0.55, 0.2);
-  n = text(out, n, hint, pad + 10 * k, H - pad - (ifx narrow then 30 else 18) * k, Pen.{k = k, cap = 5.6f32 * k, r = 1, g = 0.9, b = 0.72});
-  if narrow {
-    n = text(out, n, "RECONSTRUCTION: SLAB'S REAL DESIGN IS UNPUBLISHED.", pad + 10 * k, H - pad - 18 * k, note);
-    n = text(out, n, "DIMENSIONS AND SYSTEMS ARE THIS WORLD'S ASSUMPTIONS.", pad + 10 * k, H - pad - 7 * k, note);
-  } else {
-    n = text(out, n, "RECONSTRUCTION: SLAB'S REAL DESIGN IS UNPUBLISHED. DIMENSIONS AND SYSTEMS ARE THIS WORLD'S ASSUMPTIONS.", pad + 10 * k, H - pad - 7 * k, note);
-  }
+  // the reconstruction sentence (spec 8), always, and the mode's hint; then the first screen's card
+  n = intro_foot(s, out, n);        // intro:
+  n = intro_card(s, out, n, top);   // intro:
   return n;
 }
 
@@ -1789,6 +1778,7 @@ key_bit :: (key: int) -> int {
   return 0;
 }
 press :: (s: [] Slab, id: int) {
+  if intro_press(s, id) { return; }   // intro:
   if id == BTN_BUILD { build_toggle(s); }
   else if id == BTN_TIMELAPSE { if s[0].build.cursor >= 90 { build_seek(s, 0); } s[0].build.play = !s[0].build.play; }
   else if id == BTN_FIRST_TOW { build_seek(s, 12); }
@@ -1845,7 +1835,7 @@ slab_key :: (s: [] Slab, key: int, down: bool) -> bool #export_c #effects(all) {
     return true;
   }
   if down {
-    if key == KEY_ESCAPE { if s[0].selected != -1 { s[0].selected = -1; return true; } if s[0].help { s[0].help = false; return true; } if s[0].mode != CAM_ORBIT { set_mode(s, CAM_ORBIT); return true; } return false; }
+    if key == KEY_ESCAPE { if s[0].first { s[0].first = false; return true; } if s[0].selected != -1 { s[0].selected = -1; return true; } if s[0].help { s[0].help = false; return true; } if s[0].mode != CAM_ORBIT { set_mode(s, CAM_ORBIT); return true; } return false; }
     if key >= '1' && key <= '9' { travel(s, key - '1'); return true; }
     if key == 'f' || key == 'F' { set_mode(s, ifx s[0].mode == CAM_FLY then CAM_ORBIT else CAM_FLY); return true; }
     if key == 'g' || key == 'G' { set_mode(s, ifx s[0].mode == CAM_WALK then CAM_ORBIT else CAM_WALK); return true; }
@@ -1870,11 +1860,12 @@ slab_key :: (s: [] Slab, key: int, down: bool) -> bool #export_c #effects(all) {
   if down { s[0].held |= b; } else { s[0].held = s[0].held & (65535 - b); }
   return true;
 }
-slab_blur :: (s: [] Slab) #export_c #effects(all) { s[0].held = 0; s[0].dragging = false; s[0].build.scrubbing = false; }
+slab_blur :: (s: [] Slab) #export_c #effects(all) { s[0].held = 0; s[0].dragging = false; s[0].build.scrubbing = false; s[0].touch_a = -1; s[0].touch_b = -1; }
 hit_button :: (s: [] Slab, x: f32, y: f32) -> int {
+  reach := intro_reach(s);   // intro: a finger's reach on a narrow screen
   for i: 0..<s[0].button_count {
     o := i * 5;
-    if x >= s[0].buttons[o] && x <= s[0].buttons[o + 2] && y >= s[0].buttons[o + 1] && y <= s[0].buttons[o + 3] { return cast(int) s[0].buttons[o + 4]; }
+    if x >= s[0].buttons[o] && x <= s[0].buttons[o + 2] && y >= s[0].buttons[o + 1] - reach && y <= s[0].buttons[o + 3] + reach { return cast(int) s[0].buttons[o + 4]; }
   }
   return 0;
 }
@@ -1893,6 +1884,7 @@ slab_pointer :: (s: [] Slab, x: f32, y: f32, phase: int, kind: int, id: int) -> 
       return true;
     }
   }
+  if intro_touch(s, x, y, phase, id) { return true; }   // intro: a second finger pinches
   if phase == 0 {
     b := hit_button(s, x, y);
     if b != 0 { press(s, b); return true; }
@@ -2035,6 +2027,7 @@ slab_message :: (s: [] Slab, kind: int, text: string) #export_c #effects(all) {
     day := query_number(url,"day", -1);
     if day >= 0 { build_seek(s, build_cursor(day)); }
   }
+  s[0].first = intro_wanted(s, url);   // intro:
   s[0].toast_n = 0;
   s[0].built = false;
 }

@@ -6,7 +6,7 @@ SLAB has published no design. The dimensions here are this world's own planning 
 
 ## Build SLAB from the ports
 
-[Play the construction timelapse](/worlds/slab?view=build). In the world, open **Build** or press **B**. Drag the gold timeline in either direction. Space plays or pauses, the arrow keys step through the timeline, and Escape returns to the original camera. **Tow**, **Join** and **Outfit** jump to the first operation of each kind. Drag the scene to orbit and use the wheel to zoom. A link with `?view=build&day=983.8` pauses on that project day.
+[Play the construction timelapse](/worlds/slab?view=build). In the world, press **Watch it built** or **B**. Drag the gold timeline in either direction. Space plays or pauses, the arrow keys step through the timeline, and Escape returns to the original camera. **Tow**, **Join** and **Outfit** jump to the first operation of each kind. Drag the scene to orbit and use the wheel to zoom. A link with `?view=build&day=983.8` pauses on that project day.
 
 | Follow the work | What to watch |
 | --- | --- |

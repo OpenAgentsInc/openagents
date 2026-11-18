@@ -72,7 +72,8 @@ hand. `bun coax/web/realms.ts --check` must pass.
 { "id": "slab", "name": "SLAB SIMULATION", "kind": "open", "listed": false,
   "orbit": { "r": 0.5, "a": 3.6, "size": 0.02 },
   "realm": { "slug": "slab", "title": "SLAB Simulation",
-    "description": "An unlisted reconstruction of SLAB, a proposed floating industrial platform: walk its deck, change the sea and the site, and watch the hull, the OTEC power plant, the data halls and the miners respond.",
+    "description": "A reconstruction of SLAB, the floating platform for industry that Palmer Luckey proposed: a kilometre of concrete carrying a city on open ocean. Walk it, cut it open and watch it built.",
+    "share": "Walk a reconstruction of SLAB, the floating platform for industry Palmer Luckey proposed.",
     "alt": "A kilometre-long concrete platform carrying a city and industrial stacks on open ocean",
     "style": "painterly", "clock": "fixed:0.5", "module": "slab", "slot": "slab",
     "golden": { "lit": 0.3, "settle": 3000, "blocks": 6 }, "assets": [] } }
@@ -801,8 +802,39 @@ walls, every 95 m.
 5.1). `?t=` freezes a moment, as in the water lab; `?month=` holds a month.
 
 **On-screen label.** The bottom-left corner always shows: "Reconstruction:
-SLAB's real design is unpublished. Dimensions and systems are this world's
-assumptions."
+SLAB's real design is unpublished. Sizes and systems are this world's
+assumptions." It is drawn in the system sans at 12.5 px, in sentence case,
+under the one-line hint for the current way of moving. On a screen narrower
+than 720 px both wrap to the screen's width.
+
+**First screen.** The plain address opens a small card, "What is this?",
+with three short paragraphs: what SLAB is, that this world is our
+reconstruction from the concept picture, and what to do next. "Look around"
+closes it; so does Escape, opening the stats or the help, or clicking
+anything in the world. "Watch it built" opens the build view. A link that
+places the view, holds a moment, opens a cutaway, another layout or the
+build view goes straight there without the card; `?intro=1` shows it and
+`?intro=0` hides it. On a wide screen the card sits under the toolbar; on a
+narrow one it sits along the bottom, in place of the hint, until it is
+closed. The card, the places row and the label are in
+`apps/openagents-web/slab-intro.coax`, a stopgap that a guided tour
+replaces: the file's header says which lines of `slab.coax` to take out
+with it.
+
+**Places row.** Under the toolbar a row, "Go to", holds one button for each
+of the nine stations (Temples, Power plant, Data halls, Mining yard, Towers,
+Fountain, Bow, The picture's view, From 1.5 km) and "Watch it built". Each
+does what its number key does. The row shows the stations on the `prime`
+layout only, as the stations are that layout's; "Watch it built" shows on
+every layout.
+
+**Narrow screens and touch.** The toolbar's controls go one after another
+and start a new row at the screen's right edge, so none is cut off at any
+width (four rows at 390 px, and three more for the places). On a screen
+narrower than 720 px a press counts up to 3 px above and below a control,
+half the gap between two rows. One finger drags as the mouse does; two
+fingers pinch to zoom as the wheel does (flying has no zoom), and lifting
+after a pinch is not a tap.
 
 ## 9. Tests
 
