@@ -78,10 +78,9 @@ the tests, one to explain how login works."
 ### Claude sub-agents
 
 When the `claude` command is installed, Microcoder can hand a task to Claude
-Code (#13660). It picks the model: Haiku for a quick lookup, Sonnet for
-everyday coding, Opus for hard work, Fable for the hardest. It does so when
-you ask for Claude or name one of those models, or when a task is harder
-than a complex one. For example: "Have Claude Opus review the last commit."
+Code (#13660). It is told the order of the models, weakest to strongest: Haiku, Sonnet,
+Carbon, Opus, Fable. So it picks Haiku or Sonnet only when you ask for them,
+and Opus or Fable when you ask or when a task needs more than Carbon gives. For example: "Have Claude Opus review the last commit."
 
 A Claude sub-agent runs through the Coax Claude Agent SDK
 (`coax/lib/agent/claude`), in the worker `coder/tui/claudeworker.coax`:
