@@ -21,6 +21,8 @@ as of November 18, 2026.
 
 1. [palmer-luckey-post.md](palmer-luckey-post.md): what SLAB claims to be.
 2. [slab.md](slab.md): whether it holds up.
+   [What it would take to build the city in the image](slab-image-feasibility.md)
+   works through the hull weight, deck plan, construction sequence and candidate sites.
 3. [silone-dome.md](silone-dome.md): one outside design proposal.
 4. [otec.md](otec.md): whether OTEC can power it, and where.
 5. [ocean-atomics-reactor.md](ocean-atomics-reactor.md): the nuclear
