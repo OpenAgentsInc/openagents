@@ -747,6 +747,62 @@ tile: 0.40 (0.44) ms before, 0.62 (2.39) ms after.
 metaverse-engine/render/shade/water-optics.coax` and `coax/bin/coax test
 --library metaverse/water-sea.coax --steps 2000000000`.
 
+## Large floating bodies: the wall, the lee and the wake (SLAB)
+
+A hull a kilometre long changes the sea round it. Four modules work that out
+for any large floating body, and SLAB (`/worlds/slab`) is the first to use
+them. Each states its model at the top of its file and checks it.
+
+| Module | What it gives | Model |
+|---|---|---|
+| `metaverse/water-lee.coax` (`lee_*`) | How much of the open sea's height reaches a point round a body (1 is the open sea). `lee_bake` fills a 24 × 24 grid stretched round the body, with one gain for the long waves and one for the short | Fresnel diffraction round the body's edges (two knife edges, summed as energy over 15 wave trains a band), plus the waves that pass under the hull (Macagno's transmission for a box of that beam and draft). A bay in a wall is a slit |
+| `metaverse/water-wall.coax` (`wall_*`) | The sea in front of a wall, the run-up, and the spray: `wall_water` is the height at a point; `wall_step` reads the sea at stations round the waterline and throws a burst where a breaking crest meets the wall | Method of images: each face sends back its share of the sea travelling toward it, times R from Macagno (R² + Kt² = 1). Sainflou's set-up lifts the standing wave's mean level. A crest breaks at the wall when its sharpness there passes the sea's own whitecap threshold. The jet's speed is the standing wave's rise and the breaker's impact, 0.8 × min(peak phase speed, wind speed), together. Under 5 m/s the water slops and nothing is thrown |
+| `metaverse-engine/fx/spray.coax` (`spray_*`) | Where each puff of a burst is at an age, in closed form, for the CPU's checks and the GPU's vertex stage | Gravity and a drag in proportion to speed: v(t) = vt + (v0 − vt) e^(−t/τ). Two puffs in three are drops (τ 0.9 to 2.5 s), one in three is mist (τ 0.15 to 0.4 s) that the wind carries |
+| `metaverse/water-wake.coax` (`wake_*`, `plume_*`, `moonpool_*`) | The wake's width and slack water downstream, a cold discharge's sinking and reach, a moonpool's surge | A bluff body's turbulent wake (width D √(1 + x/D), Strouhal 0.15); Kelvin waves only where the Froude number allows them; Morton, Taylor and Turner's plume settling at 2.8 B^¼ N^−¾; a piston of water with the mouth's added length and a quadratic loss |
+
+**A page uses them in three steps** (`apps/openagents-web/slab-water.coax` is
+the worked example):
+
+1. Describe each body as a `Floater` (half length, half beam, draft, place,
+   heading, an optional bay) and bake the lee's grid when the sea, the layout
+   or the body's place changes (`lee_band`, `lee_bake`).
+2. Each frame, read the sea at the stations and step the spray
+   (`wall_read`, `wall_step`, `wall_tick`). A burst is one row of 16 floats.
+3. Pack the grid, the faces' reflections and the foam at the walls' feet into
+   the page's uniforms. The shader scales the sea by the lee's gain, adds each
+   face's mirror image in front of it, and draws the white water from the
+   foam cells (`apps/openagents-web/gpu/slab-water.coax`). The spray is the
+   host's particle pass: each instance is one puff of one burst
+   (`apps/openagents-web/gpu/slab-fx.coax`).
+
+The hull's own motion should float on the same water. `ww_height(w, tile,
+patch, x, z)` in `slab-water.coax` is that height: the tile, times the lee's
+gain, plus the walls' reflections.
+
+**Limits, all stated here because nothing on screen says them.** A page keeps
+256 bursts; a desktop draws 24 puffs for each and a phone draws the newest 96
+with 10 puffs each. Stations stand 10 m apart round SLAB's waterline (20 m on
+a phone), so a burst is 10 m of wall. A burst lives 9 seconds. The lee's grid
+holds gains in sixteenths. The reflection is cascade 0's waves only: the
+finer cascades are calmed by the lee but not mirrored.
+
+**What is left out.** Waves the hull's own heave and pitch radiate. Refraction
+by the current. Spray that lands on the deck or wets the wall. Wind shadow
+behind the hull (the lee's short waves are calmed by diffraction only). The
+wake's eddies are a width and a swing, not a simulated flow.
+
+**SLAB's numbers** are in `docs/research/ocean/slab-world-spec.md`, sections
+4.7 and 12.
+
+**Checks.** `coax/bin/coax test metaverse/water-lee.coax`, `coax/bin/coax
+test metaverse/water-wall.coax`, `coax/bin/coax test
+metaverse/water-wake.coax`, `coax/bin/coax test
+metaverse-engine/fx/spray.coax` and `coax/bin/coax test
+apps/openagents-web/slab-water.coax`. They hold that reflection doubles a
+wave that meets a perfect wall squarely, that the lee is calmer than the open
+sea by the model's amount, that spray appears only where and when a wave
+hits, and that a 0.5 m calm throws no white water.
+
 ## W11: measurement (done; real phones are an owner step)
 
 Measured on 2026-10-29 with this change in headless Chrome on an Apple

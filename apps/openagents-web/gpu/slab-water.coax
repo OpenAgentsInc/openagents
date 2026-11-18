@@ -1,0 +1,353 @@
+// SLAB's shaders for what the hull does to the water (gpu/slab.coax loads this; the page's
+// slab-water.coax packs the block these read, and says what each number is). The models are the
+// engine's: metaverse/water-lee.coax (the calm lee), metaverse/water-wall.coax (reflection, the
+// white water at the walls' feet), metaverse/water-wake.coax (wake, discharge plume, moonpools).
+// Every function here is a hook gpu/slab.coax calls by one line:
+//   sw_sea          the sea at a rest point: cascade 0 by the lee's gain, and what the walls send back
+//   sw_short        what is left of the short waves there (the lee, the wake's slack water), and of their breaking
+//   sw_calm_at      the lee's gain there, for the choppy displacement
+//   sw_white        the white water the hull makes: at its walls' feet and shed from its corners
+//   sw_tint         the discharge plume seen from above, and the wake's shear lines
+//   sw_under        the plume and the wake's bubbles seen from under the sea
+//   sw_pool         a moonpool looked down into
+// SLAB_WW is where the block starts in the page's uniforms (floats): slab.coax's U_WATER.
+SLAB_WW :: 15980;
+SW_GRID :: SLAB_WW+44;
+SW_FOAM :: SLAB_WW+188;
+// water-lee.coax's grid (LEE_N, LEE_OUTER, LEE_INNER, LEE_FIRST, LEE_GROW): slab-water.coax checks these match
+SW_N :: 24.0f32;
+SW_OUTER :: 8.0f32;
+SW_INNER :: 7.0f32;
+SW_FIRST :: 25.0f32;
+SW_GROW :: 1.6f32;
+
+// Byte i of the bytes packed from float `base`, as 0 to 1.
+sw_byte :: (base:int,i:u32,u:[]f32)->f32 {
+  w:u32=wg_get_u4(wg_at4u(u,((cast(int)(i>>4))*4)+base),cast(int)((i>>2)&3));
+  return (cast(f32)((w>>mul_wrap(cast(u32)8,(i&3)))&0xff))/255.0f32;
+}
+// Node n of the lee's grid: (the long waves' gain, the short waves'), a byte's two halves.
+sw_gains :: (n:u32,u:[]f32)->V2 {
+  w:u32=wg_get_u4(wg_at4u(u,((cast(int)(n>>4))*4)+SW_GRID),cast(int)((n>>2)&3));
+  b:u32=(w>>mul_wrap(cast(u32)8,(n&3)))&0xff;
+  return v2((cast(f32)(b>>4))/15.0f32,(cast(f32)(b&15))/15.0f32);
+}
+// A world plan point in the frame the block was laid in (the hull's plan at the waterline), and back.
+sw_frame :: (p:V2,u:[]f32)->V2 {
+  dx:f32=p.x-u[SLAB_WW+4]; dz:f32=p.y-u[SLAB_WW+5];
+  return v2((u[SLAB_WW+6]*dx)+(u[SLAB_WW+7]*dz),(u[SLAB_WW+6]*dz)-(u[SLAB_WW+7]*dx));
+}
+sw_world :: (q:V2,u:[]f32)->V2 {
+  return v2((u[SLAB_WW+4]+(u[SLAB_WW+6]*q.x))-(u[SLAB_WW+7]*q.y),u[SLAB_WW+5]+(u[SLAB_WW+7]*q.x)+(u[SLAB_WW+6]*q.y));
+}
+sw_turn :: (d:V2,u:[]f32)->V2 {
+  return v2((u[SLAB_WW+6]*d.x)+(u[SLAB_WW+7]*d.y),(u[SLAB_WW+6]*d.y)-(u[SLAB_WW+7]*d.x));
+}
+sw_node :: (h:f32,x:f32)->f32 {
+  if (abs(x)<=h) { return SW_OUTER+(((x+h)/(2.0f32*h))*SW_INNER); }
+  j:f32=fmin(log(1.0f32+(((abs(x)-h)*(SW_GROW-1.0f32))/SW_FIRST))/log(SW_GROW),SW_OUTER);
+  if (x<0.0f32) { return SW_OUTER-j; }
+  return SW_OUTER+SW_INNER+j;
+}
+// The lee's gains at frame point q: (the waves' heights, the short waves' slopes), 1 in the open sea.
+sw_calm :: (q:V2,u:[]f32)->V2 {
+  if (u[SLAB_WW]<0.5f32) { return v2(1.0f32,1.0f32); }
+  a:f32=sw_node(u[SLAB_WW+36],q.x);
+  b:f32=sw_node(u[SLAB_WW+37],q.y);
+  i:f32=fmin(floor(a),SW_N-2.0f32);
+  j:f32=fmin(floor(b),SW_N-2.0f32);
+  fa:f32=a-i; fb:f32=b-j;
+  n:u32=wg_u32_f((j*SW_N)+i);
+  row:u32=wg_u32_f(SW_N);
+  g00:V2=sw_gains(n,u);
+  g10:V2=sw_gains(add_wrap(n,cast(u32)1),u);
+  g01:V2=sw_gains(add_wrap(n,row),u);
+  g11:V2=sw_gains(add_wrap(add_wrap(n,row),cast(u32)1),u);
+  return v2(mix(mix(g00.x,g10.x,fa),mix(g01.x,g11.x,fa),fb),mix(mix(g00.y,g10.y,fa),mix(g01.y,g11.y,fa),fb));
+}
+sw_calm_at :: (p:V2,u:[]f32)->f32 {
+  return sw_calm(sw_frame(p,u),u).x;
+}
+// Face k of the monolith (0 its +x side, 1 +z, 2 -x, 3 -z): its outward normal in the frame.
+sw_normal :: (k:int)->V2 {
+  if (k==0) { return v2(1.0f32,0.0f32); }
+  if (k==1) { return v2(0.0f32,1.0f32); }
+  if (k==2) { return v2(-1.0f32,0.0f32); }
+  return v2(0.0f32,-1.0f32);
+}
+// The sea at rest point p: cascade 0's height, foam and slopes (slab_coarse) as the hull leaves
+// them: calmer in its lee, and in front of each face the face's mirror image of the sea added
+// (the standing wave: twice the height at a wall that faces the waves squarely).
+sw_sea :: (p:V2,u:[]f32)->V4 {
+  c:V4=slab_coarse(p,u);
+  if (u[SLAB_WW]<0.5f32) { return c; }
+  q:V2=sw_frame(p,u);
+  g:f32=sw_calm(q,u).x;
+  // whitecaps need the whole sea: none where it stands under about two thirds
+  o:V4=v4(c.x*g,c.y*smoothstep(0.5f32,0.9f32,g),c.z*g,c.w*g);
+  if (u[SLAB_WW]>1.5f32) { return o; }
+  hx:f32=u[SLAB_WW+36]; hz:f32=u[SLAB_WW+37];
+  if ((abs(q.x)<hx)&&(abs(q.y)<hz)) { return o; }
+  k:int=0;
+  while k<4 {
+    amp:f32=u[SLAB_WW+8+k];
+    n:V2=sw_normal(k);
+    half:f32=ifx (k==0)||(k==2) then hx else hz;
+    span:f32=ifx (k==0)||(k==2) then 2.0f32*hz else 2.0f32*hx;
+    out:f32=((q.x*n.x)+(q.y*n.y))-half;
+    if ((amp>0.01f32)&&(out>=0.0f32)) {
+      along:f32=(q.y*n.x)-(q.x*n.y);
+      spread:f32=u[SLAB_WW+16+k];
+      from:f32=along-(out*u[SLAB_WW+12+k]);
+      edge:f32=(0.04f32*span)+(out*spread);
+      beam:f32=clampf(0.5f32+(((0.5f32*span)-abs(from))/edge),0.0f32,1.0f32)*sqrt(span/(span+(2.0f32*out*spread)))*amp;
+      if (beam>0.003f32) {
+        r:V4=slab_coarse(sw_world(v2(q.x-(2.0f32*out*n.x),q.y-(2.0f32*out*n.y)),u),u);
+        // the mirror image's slope: its part along the normal turns round
+        s:V2=sw_turn(v2(r.z,r.w),u);
+        along_n:f32=(s.x*n.x)+(s.y*n.y);
+        s=v2(s.x-(2.0f32*along_n*n.x),s.y-(2.0f32*along_n*n.y));
+        o=v4(o.x+(beam*r.x),o.y,o.z+(beam*((u[SLAB_WW+6]*s.x)-(u[SLAB_WW+7]*s.y))),o.w+(beam*((u[SLAB_WW+7]*s.x)+(u[SLAB_WW+6]*s.y))));
+      }
+    }
+    k=k+1;
+  }
+  return o;
+}
+// The wake at frame point q: (how slack the water is inside it, its shear lines), each 0 to 1.
+sw_wake :: (q:V2,u:[]f32)->V2 {
+  speed:f32=u[SLAB_WW+26];
+  if ((u[SLAB_WW]<0.5f32)||(speed<0.02f32)) { return v2(0.0f32,0.0f32); }
+  f:V2=sw_turn(v2(u[SLAB_WW+24],u[SLAB_WW+25]),u);
+  across:f32=fmax(u[SLAB_WW+27],1.0f32);
+  reach:f32=(u[SLAB_WW+36]*abs(f.x))+(u[SLAB_WW+37]*abs(f.y));
+  x:f32=((q.x*f.x)+(q.y*f.y))-reach;
+  if (x<=0.0f32) { return v2(0.0f32,0.0f32); }
+  y:f32=(q.y*f.x)-(q.x*f.y);
+  // metaverse/water-wake.coax: wake_width, wake_deficit, wake_swing, wake_period
+  w:f32=across*sqrt(1.0f32+(x/across));
+  lost:f32=fmin(1.0f32,sqrt((2.0f32*across)/x))*exp((-x)/6000.0f32)*smoothstep(0.02f32,0.3f32,speed);
+  swing:f32=(0.85f32*across)/0.15f32;
+  sway:f32=0.08f32*w*fmin(x/across,1.0f32)*sin(6.2831853f32*((x/swing)-((u[SLAB_WW+2]*0.15f32*speed)/across)));
+  off:f32=abs(y-sway);
+  inside:f32=(1.0f32-smoothstep(0.42f32*w,0.5f32*w,off))*lost;
+  // the shear lines at its edges gather foam: ragged bands that wander, not ruled lines
+  lw:f32=9.0f32+(0.03f32*x);
+  wander:f32=(slab_noise(v2(x*0.006f32,(ifx y>sway then 3.0f32 else 11.0f32)+(u[SLAB_WW+2]*0.004f32)))-0.5f32)*(0.12f32*w);
+  e:f32=((off-(0.5f32*w))-wander)/lw;
+  return v2(inside,exp(-(e*e))*lost*smoothstep(0.0f32,60.0f32,x));
+}
+// What is left of the short waves at rest point p: (their slopes, their breaking), each 0 to 1.
+// The lee takes the short waves' share (ripples under a few metres grow back in the wind within
+// a hundred metres: a quarter stays) and the wake's slack water is a little smoother; nothing
+// breaks where the sea stands under about half its open height.
+sw_short :: (p:V2,u:[]f32)->V2 {
+  if (u[SLAB_WW]<0.5f32) { return v2(1.0f32,1.0f32); }
+  q:V2=sw_frame(p,u);
+  g:V2=sw_calm(q,u);
+  return v2((0.25f32+(0.75f32*g.y))*(1.0f32-(0.35f32*sw_wake(q,u).x)),smoothstep(0.45f32,0.8f32,g.x));
+}
+// The white water at the foot of face k at `along` (m from its middle along its tangent), 0 to 1.
+sw_foot :: (k:int,along:f32,span:f32,u:[]f32)->f32 {
+  a:f32=clampf(((along/span)+0.5f32)*32.0f32,0.0f32,31.999f32)-0.5f32;
+  i:f32=clampf(floor(a),0.0f32,31.0f32);
+  j:f32=fmin(i+1.0f32,31.0f32);
+  base:u32=cast(u32)(k*32);
+  return mix(sw_byte(SW_FOAM,add_wrap(base,wg_u32_f(i)),u),sw_byte(SW_FOAM,add_wrap(base,wg_u32_f(j)),u),clampf(a-i,0.0f32,1.0f32));
+}
+// The white water the hull makes at world rest point p, 0 to 1: a band at the foot of each wall
+// where its stations' spray came down (the simulation's foam cells), and that foam shed from the
+// corners the drift carries it past, streaming off with the drift and thinning.
+sw_white :: (p:V2,t:f32,u:[]f32)->f32 {
+  mode:f32=u[SLAB_WW];
+  if (mode<0.5f32) { return 0.0f32; }
+  q:V2=sw_frame(p,u);
+  hs:f32=u[SLAB_WW+38];
+  dd:V2=sw_turn(v2(u[SLAB_WW+20],u[SLAB_WW+21]),u);
+  // ragged, and drawn out along the drift
+  da:f32=(q.x*dd.x)+(q.y*dd.y); dc:f32=(q.y*dd.x)-(q.x*dd.y);
+  rag:f32=(slab_noise(v2((da*0.05f32)-(t*0.05f32),dc*0.22f32))*0.6f32)+(slab_noise(v2((da*0.21f32)-(t*0.2f32),(dc*0.6f32)+3.0f32))*0.4f32);
+  white:f32=0.0f32;
+  if (mode>1.5f32) {
+    // domes: a ring of 16 cells round each (the plan's first records are the domes)
+    nd:int=ifx u[SLAB_P+60]>2.5f32 then 7 else 1;
+    k:int=0;
+    while k<nd {
+      b:int=SLAB_BOXES+(k*8);
+      c:V2=sw_frame(v2((u[b]+u[b+4])*0.5f32,(u[b+2]+u[b+6])*0.5f32),u);
+      if (nd==1) { c=v2(0.0f32,0.0f32); }
+      rel:V2=v2(q.x-c.x,q.y-c.y);
+      out:f32=wg_length2(rel)-(0.5f32*(u[b+4]-u[b]));
+      if ((out>-1.0f32)&&(out<30.0f32)) {
+        ang:f32=wg_atan2(rel.y,rel.x);
+        cell:f32=floor(fract((ang/6.2831853f32)+1.0f32)*16.0f32);
+        foam:f32=sw_byte(SW_FOAM,add_wrap(cast(u32)(k*16),wg_u32_f(fmin(cell,15.0f32))),u);
+        white=fmax(white,foam*(1.0f32-smoothstep(1.0f32+(0.8f32*hs*rag),3.0f32+(1.6f32*hs),out)));
+      }
+      k=k+1;
+    }
+    return clampf(white*(0.55f32+(0.9f32*rag)),0.0f32,1.0f32);
+  }
+  hx:f32=u[SLAB_WW+36]; hz:f32=u[SLAB_WW+37];
+  width:f32=4.0f32+(2.0f32*hs);
+  reach:f32=fmax(u[SLAB_WW+23],20.0f32);
+  k:int=0;
+  while k<4 {
+    n:V2=sw_normal(k);
+    tg:V2=v2(-n.y,n.x);
+    half:f32=ifx (k==0)||(k==2) then hx else hz;
+    span:f32=ifx (k==0)||(k==2) then 2.0f32*hz else 2.0f32*hx;
+    out:f32=((q.x*n.x)+(q.y*n.y))-half;
+    along:f32=(q.x*tg.x)+(q.y*tg.y);
+    if ((out>-1.5f32)&&(out<width)&&(abs(along)<(0.5f32*span)+width)) {
+      foot:f32=sw_foot(k,along,span,u);
+      white=fmax(white,foot*(1.0f32-smoothstep(width*(0.25f32+(0.5f32*rag)),width,out)));
+    }
+    // the end of this wall the drift slides its foam toward sheds it there
+    slide:f32=(dd.x*tg.x)+(dd.y*tg.y);
+    if (abs(slide)>0.05f32) {
+      e:f32=ifx slide>0.0f32 then 1.0f32 else -1.0f32;
+      corner:V2=v2((n.x*half)+(tg.x*e*0.5f32*span),(n.y*half)+(tg.y*e*0.5f32*span));
+      s:f32=((q.x-corner.x)*dd.x)+((q.y-corner.y)*dd.y);
+      if ((s>0.0f32)&&(s<4.0f32*reach)) {
+        y:f32=((q.y-corner.y)*dd.x)-((q.x-corner.x)*dd.y);
+        w:f32=5.0f32+(0.10f32*s);
+        // what the wall's last quarter holds
+        hold:f32=(sw_foot(k,e*0.47f32*span,span,u)+sw_foot(k,e*0.40f32*span,span,u)+sw_foot(k,e*0.30f32*span,span,u))/3.0f32;
+        g:f32=y/w;
+        white=fmax(white,hold*exp((-s)/reach)*exp(-(g*g))*smoothstep(0.25f32,0.6f32,rag)*abs(slide));
+      }
+    }
+    k=k+1;
+  }
+  return clampf(white*(0.6f32+(0.8f32*rag)),0.0f32,1.0f32);
+}
+// One outlet's plume at frame point q: (its strength there, 0 to 1; its depth under the surface, m).
+sw_plume_at :: (q:V2,k:int,u:[]f32)->V2 {
+  f:V2=sw_turn(v2(u[SLAB_WW+24],u[SLAB_WW+25]),u);
+  // the four diffusers under the west end (the flow overlay's), 150 m apart
+  ox:f32=-450.0f32; oz:f32=-225.0f32+(150.0f32*(cast(f32)(k)));
+  x:f32=((q.x-ox)*f.x)+((q.y-oz)*f.y);
+  y:f32=((q.y-oz)*f.x)-((q.x-ox)*f.y);
+  if (x<-20.0f32) { return v2(0.0f32,u[SLAB_WW+29]); }
+  // metaverse/water-wake.coax: plume_width, plume_strength, plume_sink
+  w:f32=30.0f32+(0.2f32*fmax(x,0.0f32));
+  tt:f32=clampf(x/fmax(u[SLAB_WW+31],1.0f32),0.0f32,1.0f32);
+  depth:f32=u[SLAB_WW+29]+(u[SLAB_WW+30]*tt*tt*(3.0f32-(2.0f32*tt)));
+  g:f32=y/(0.5f32*w);
+  return v2((30.0f32/w)*exp(-(g*g))*smoothstep(-20.0f32,10.0f32,x)*exp((-fmax(x,0.0f32))/900.0f32)*u[SLAB_WW+28],depth);
+}
+// The discharge and the wake seen from above, over the water's colour at world rest point p: the
+// plume as a cold blue-green stain by what the water above it lets through (twice its depth of
+// clear ocean, 80 m to 1/e each way; the flow overlay draws its footprint whole), and the wake's
+// shear lines as thin pale lines of gathered foam.
+sw_tint :: (col:V3,p:V2,foam:V3,t:f32,u:[]f32)->V3 {
+  if (u[SLAB_WW]<0.5f32) { return col; }
+  q:V2=sw_frame(p,u);
+  c:V3=col;
+  if (u[SLAB_WW+28]>0.001f32) {
+    seen:f32=0.0f32;
+    k:int=0;
+    while k<4 {
+      pl:V2=sw_plume_at(q,k,u);
+      seen=fmax(seen,pl.x*mix(exp((-2.0f32*pl.y)/80.0f32),0.75f32,u[SLAB_WW+40]));
+      k=k+1;
+    }
+    c=sb_mix(c,sb_add(sb_mul(col,0.55f32),v3(0.10f32,0.36f32,0.42f32)),clampf(seen*1.6f32,0.0f32,0.8f32));
+  }
+  wk:V2=sw_wake(q,u);
+  line:f32=wk.y*smoothstep(0.35f32,0.75f32,(slab_noise(v2(q.x*0.021f32,(q.y*0.05f32)+(t*0.02f32)))*0.6f32)+(slab_noise(v2(q.x*0.11f32,q.y*0.17f32))*0.4f32));
+  return sb_mix(c,foam,clampf(line*0.3f32,0.0f32,0.3f32));
+}
+// The plume and the wake's bubbles from under the sea: over colour c for the view ray from o
+// along d (the hull's frame, y up from the waterline), as far as `limit`. The plume's water is
+// clear in life: it is tinted here so its path shows, each outlet's as a tube that sinks to its
+// level and drifts off. The wake is a thin layer of bubbles under the surface behind the hull.
+sw_under :: (c:V3,o:V3,d:V3,limit:f32,u:[]f32)->V3 {
+  if ((u[SLAB_WW]<0.5f32)||(u[SLAB_WW]>1.5f32)) { return c; }
+  out:V3=c;
+  // the page's hull frame and the block's are the same at the waterline but for the hull's small heel
+  f:V2=sw_turn(v2(u[SLAB_WW+24],u[SLAB_WW+25]),u);
+  light:f32=0.35f32+(0.65f32*u[SLAB_P+7]);
+  if (u[SLAB_WW+28]>0.001f32) {
+    k:int=0;
+    while k<4 {
+      oz:f32=-225.0f32+(150.0f32*(cast(f32)(k)));
+      carry:f32=fmax(u[SLAB_WW+31],1.0f32);
+      // two straight runs: down to its level over `carry`, then off along the flow
+      seg:int=0;
+      while seg<2 {
+        a:V3=v3(-450.0f32,-u[SLAB_WW+29],oz);
+        run:f32=carry;
+        dir:V3=wg_normalize3(v3(f.x*carry,-u[SLAB_WW+30],f.y*carry));
+        if (seg==1) {
+          a=v3(-450.0f32+(f.x*carry),-(u[SLAB_WW+29]+u[SLAB_WW+30]),oz+(f.y*carry));
+          dir=v3(f.x,0.0f32,f.y);
+          run=900.0f32;
+        } else {
+          run=sqrt((carry*carry)+(u[SLAB_WW+30]*u[SLAB_WW+30]));
+        }
+        w0:V3=sb_sub(o,a);
+        b:f32=wg_dot3(d,dir); dd:f32=wg_dot3(d,w0); e:f32=wg_dot3(dir,w0);
+        den:f32=fmax(1.0f32-(b*b),1e-5f32);
+        s:f32=clampf((e-(b*dd))/den,0.0f32,run);
+        pa:V3=sb_add(a,sb_mul(dir,s));
+        tt:f32=wg_dot3(sb_sub(pa,o),d);
+        if ((tt>0.0f32)&&(tt<limit)) {
+          gone:f32=s+(ifx seg==1 then carry else 0.0f32);
+          r:f32=8.0f32+(0.1f32*gone);
+          dist:f32=wg_length3(sb_sub(sb_add(o,sb_mul(d,tt)),pa));
+          billow:f32=0.6f32+(0.4f32*slab_noise(v2((gone*0.05f32)-(u[2]*0.15f32),(cast(f32)(k)*5.1f32)+(dist*0.07f32))));
+          dens:f32=exp(-((dist/r)*(dist/r))*1.6f32)*(15.0f32/(15.0f32+(0.1f32*gone)))*exp((-gone)/700.0f32)*billow*u[SLAB_WW+28];
+          // seen through tt metres of water
+          a1:f32=(1.0f32-exp(-dens*2.2f32))*0.8f32*exp((-tt)/260.0f32);
+          out=sb_mix(out,sb_mul(v3(0.42f32,0.74f32,0.78f32),light*exp(fmin(pa.y,0.0f32)/160.0f32)),a1);
+        }
+        seg=seg+1;
+      }
+      k=k+1;
+    }
+  }
+  // the wake's bubbles: the top 8 m of water behind the hull
+  if (abs(d.y)>0.01f32) {
+    t0:f32=(-o.y)/d.y; t1:f32=((-8.0f32)-o.y)/d.y;
+    lo:f32=fmax(fmin(t0,t1),0.0f32); hi:f32=fmin(fmax(t0,t1),limit);
+    if (hi>lo) {
+      mid:V3=sb_add(o,sb_mul(d,0.5f32*(lo+hi)));
+      wk:V2=sw_wake(v2(mid.x,mid.z),u);
+      a2:f32=(1.0f32-exp((-(hi-lo))*0.02f32*(wk.x+(1.5f32*wk.y))))*0.5f32*exp((-lo)/200.0f32);
+      out=sb_mix(out,sb_mul(v3(0.55f32,0.78f32,0.80f32),light),a2);
+    }
+  }
+  return out;
+}
+// A moonpool looked down into from the deck: over the deck-water colour c at hull point w along
+// view ray d. The shaft runs down to the sea inside the hull, 6 m in radius; its water stands
+// at the pool's surge (metaverse/water-wake.coax's piston). Returns c for other open water.
+sw_pool :: (c:V3,w:V3,d:V3,u:[]f32)->V3 {
+  if ((u[SLAB_WW]<0.5f32)||(u[SLAB_WW]>1.5f32)||(abs(w.x+389.0f32)>6.5f32)) { return c; }
+  k:f32=floor(((w.z+225.0f32)/150.0f32)+0.5f32);
+  if ((k<0.0f32)||(k>3.0f32)) { return c; }
+  cz:f32=-225.0f32+(150.0f32*k);
+  if (wg_length2(v2(w.x+389.0f32,w.z-cz))>6.3f32) { return c; }
+  level:f32=u[SLAB_WW+32+(cast(int)k)];
+  if (d.y>-0.01f32) { return v3(0.05f32,0.06f32,0.06f32); }
+  t:f32=(w.y-level)/(-d.y);
+  hit:V2=v2((w.x+389.0f32)+(d.x*t),(w.z-cz)+(d.z*t));
+  r:f32=wg_length2(hit);
+  light:f32=0.3f32+(0.7f32*u[SLAB_P+7]);
+  if (r<6.0f32) {
+    // the water at the bottom of the shaft: dark, a pale ring where it works against the wall
+    ring:f32=smoothstep(4.6f32,5.9f32,r)*clampf(abs(level)*0.5f32,0.0f32,1.0f32);
+    return sb_mul(sb_mix(v3(0.03f32,0.13f32,0.16f32),v3(0.7f32,0.78f32,0.78f32),ring*0.7f32),light);
+  }
+  // the shaft's wall, darker the further down the ray meets it, wet near the water
+  hx:f32=w.x+389.0f32; hz:f32=w.z-cz;
+  qa:f32=(d.x*d.x)+(d.z*d.z);
+  qb:f32=(hx*d.x)+(hz*d.z);
+  qc:f32=((hx*hx)+(hz*hz))-36.0f32;
+  tw:f32=((-qb)+sqrt(fmax((qb*qb)-(qa*qc),0.0f32)))/fmax(qa,1e-5f32);
+  down:f32=(-d.y)*tw;
+  wet:f32=1.0f32-smoothstep(0.0f32,6.0f32,(w.y-down)-level);
+  return sb_mul(sb_mix(v3(0.40f32,0.39f32,0.36f32),v3(0.12f32,0.15f32,0.15f32),wet),light*exp((-down)/45.0f32));
+}

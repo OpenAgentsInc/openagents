@@ -1,0 +1,6 @@
+# SLAB's spray's bindings for `coax wgsl apps/openagents-web/gpu/slab-fx.coax` (coax/web/wgsl-module.coax):
+# NAME GROUP BINDING, and `uniform COUNT` for a []f32 read as a uniform block of COUNT vec4fs.
+# They are coax/web/host.js's particlePipeline layouts: group 0 slab.wgsl's uniforms, whole
+# (slab.bindings' count); group 1 the bursts' rows.
+u 0 0 uniform 4050
+rows 1 0

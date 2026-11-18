@@ -1,0 +1,3 @@
+--vertices slabfx_particle_vs,slabfx_particle_over_vs
+--fragments slabfx_particle_fs,slabfx_particle_over_fs
+--bindings apps/openagents-web/gpu/slab-fx.bindings --strip slabfx_

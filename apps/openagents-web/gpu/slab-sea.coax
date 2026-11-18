@@ -107,6 +107,11 @@ slab_sea :: (p:V2,world:V3,d:V3,dist:f32,t:f32,c:V4,u:[]f32)->V4 {
     slope=wg_add_f2f2(slope,wg_mul_f2f(slab_sea_fine(p,patch2,cast(u32)1,u[SLAB_SEA+22],u),keep2));
   }
   sigma2:f32=u[SLAB_SEA+11]+((1.0f32-(keep0*keep0))*u[SLAB_SEA+8])+((1.0f32-(keep1*keep1))*u[SLAB_SEA+9])+((1.0f32-(keep2*keep2))*u[SLAB_SEA+10]);
+  // what the hull does to the short waves (gpu/slab-water.coax sw_short): its lee calms them
+  // (x), and nothing breaks there (y)
+  lee:V2=sw_short(p,u);
+  slope=wg_add_f2f2(wg_mul_f2f(v2(c.z,c.w),keep0),wg_mul_f2f(wg_sub_f2f2(slope,wg_mul_f2f(v2(c.z,c.w),keep0)),lee.x));
+  sigma2=sigma2*(lee.x*lee.x);
   n:V3=wg_normalize3(v3(-slope.x,1.0f32,-slope.y));
   v:V3=sb_mul(d,-1.0f32);
   sun:V3=v3(u[24],u[25],u[26]);
@@ -167,6 +172,8 @@ slab_sea :: (p:V2,world:V3,d:V3,dist:f32,t:f32,c:V4,u:[]f32)->V4 {
   // spindrift: the crests smoke
   smoke:f32=(u[SLAB_SEA+14]*gate)*smoothstep(0.35f32,0.8f32,slab_noise(v2((wa*0.03f32)-(t*1.1f32),wc*0.12f32)));
   white=clampf(fmax(white,smoke*0.7f32),0.0f32,1.0f32);
+  // nothing breaks in the hull's lee, so its whitecaps, streaks and spindrift stop there
+  white=white*lee.y;
   // the bubbles under fresh foam lighten the water round it
   col=sb_add(col,sb_mul(sb_mulv(wo_through(slab_sea_kd(u),3.0f32),light),(0.05f32*smoothstep(0.05f32,0.5f32,foam))*(1.0f32-fres)));
   col=sb_mix(col,slab_sea_foam_lit(ndl,u),white);

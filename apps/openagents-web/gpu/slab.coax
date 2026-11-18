@@ -5,6 +5,7 @@
 #load "../../../metaverse-engine/gpu/wgsl.coax";
 #load "../../../metaverse/style.coax";
 #load "slab-sea.coax";
+#load "slab-water.coax";
 #load "../../../metaverse/hull.coax";
 #load "slab-photoreal.coax";   // the photoreal style's mesh pass, sky and air (docs/metaverse/photoreal.md)
 
@@ -31,6 +32,7 @@
 //   params 1440 the world's light, the hull's pose, the walker, the selection (slab.coax P_*)
 //   words 1504  cascade 0, its displacement, the fine slopes
 //   sea 15840   the water's optics, the finer cascades and the weather (slab-sea.coax)
+//   water 15980 what the hull does to the water (gpu/slab-water.coax, slab-water.coax)
 SLAB_N :: cast(u32)64;
 SLAB_WORDS :: 1504;
 SLAB_GROUPS :: 1312;
@@ -104,7 +106,7 @@ slab_chop :: (p:V2,u:[]f32)->V2 {
       k+=1;
     }
   }
-  return wg_mul_f2f(acc,u[43]);
+  return wg_mul_f2f(acc,u[43]*sw_calm_at(p,u));
 }
 slab_hash2 :: (p:V2)->f32 {
   return render_noise2(p.x,p.y);
@@ -117,7 +119,7 @@ slab_noise :: (p:V2)->f32 {
 }
 // The sea's surface at rest point p: its height over the level (deep water everywhere).
 slab_sea_height :: (p:V2,u:[]f32)->f32 {
-  return u[28]+slab_coarse(p,u).x;
+  return u[28]+sw_sea(p,u).x;
 }
 // How far p lies outside the hull's plan, a rectangle with rounded corners (negative inside).
 slab_hull_plan :: (p:V2,u:[]f32)->f32 {
@@ -208,72 +210,13 @@ slab_shoulder :: (x:f32)->f32 {
   if (x<0.7f32) { return x; }
   return 0.7f32+(0.3f32*(1.0f32-exp(-(x-0.7f32)/0.3f32)));
 }
-// The spray thrown up a wall where the wave groups strike it: (white, the spray's top over y).
-// s runs along the wall, `face` is how squarely the waves meet it.
-slab_spray :: (s:f32,y:f32,face:f32,t:f32,u:[]f32)->f32 {
-  top:f32=u[SLAB_P+44]*face;
-  spacing:f32=u[SLAB_P+45];
-  ph:f32=(s/spacing)-(t*(u[SLAB_P+49]/spacing));
-  cell:f32=floor(ph);
-  h:f32=slab_hash2(v2(cell,7.0f32));
-  local:f32=(fract(ph)-0.5f32)*spacing;
-  // each group rises and falls on its own beat
-  beat:f32=fract((t/9.0f32)+h);
-  pulse:f32=smoothstep(0.0f32,0.15f32,beat)*(1.0f32-smoothstep(0.55f32,1.0f32,beat));
-  height:f32=top*(0.75f32+(0.25f32*h))*(0.5f32+(0.5f32*pulse));
-  h2:f32=slab_hash2(v2(cell,19.0f32));
-  width:f32=spacing*(0.3f32+(0.25f32*h2))*(0.7f32+(0.3f32*pulse));
-  streak:f32=slab_noise(v2(s*0.35f32,(y*0.12f32)-(t*1.5f32)))*0.6f32+(slab_noise(v2(s*1.1f32,(y*0.4f32)-(t*3.0f32)))*0.4f32);
-  // a rounded crown, ragged at its edge, leaning a little with the wind
-  lx:f32=clampf(abs(local+(y*0.12f32*(h2-0.5f32)))/width,0.0f32,1.0f32);
-  shape:f32=height*sqrt(fmax(1.0f32-(lx*lx),0.0f32))*(0.8f32+(0.4f32*streak));
-  plume:f32=1.0f32-smoothstep(shape*(0.85f32+(0.2f32*streak)),shape*(1.1f32+(0.3f32*streak))+1.0f32,y);
-  // and the mist blown off its top
-  plume=fmax(plume,(1.0f32-smoothstep(shape,(shape*1.6f32)+2.0f32,y))*0.4f32*pulse*streak);
-  // and a band of white water at the foot of the wall all along it
-  foot:f32=1.0f32-smoothstep(0.6f32+(1.8f32*face*streak),1.8f32+(3.0f32*face),y);
-  return clampf(fmax(plume*(0.35f32+(0.65f32*streak)),foot*face*0.9f32),0.0f32,1.0f32);
-}
-// The water: the open sea by its optics (slab-sea.coax slab_sea), then the white water along
-// the hull's walls over it.
+// The water: the sea as the hull leaves it (gpu/slab-water.coax sw_sea: calmer in its lee, the
+// walls' reflections added) drawn by its optics (slab-sea.coax slab_sea), then the white water
+// the hull makes, its discharge and its wake over it, all from the simulation.
 slab_water :: (p:V2,world:V3,d:V3,dist:f32,t:f32,u:[]f32)->V3 {
-  c:V4=slab_coarse(p,u);
-  footprint:f32=(((dist*2.0f32)*u[11])/u[1])/fmax(abs(d.y),0.08f32);
-  sea:V4=slab_sea(p,world,d,dist,t,c,u);
-  col:V3=v3(sea.x,sea.y,sea.z);
-  froth:f32=(slab_noise(wg_add_f2f2(wg_mul_f2f(p,0.35f32),v2(t*0.2f32,0.0f32)))*0.6f32)+(slab_noise(wg_mul_f2f(p,1.3f32))*0.4f32);
-  hp:V3=sb_to_hull(world,u);
-  edge:f32=slab_hull_plan(v2(hp.x,hp.z),u);
-  // no monolith: the white water rings each dome instead (60: 1 none, 2 one dome in the hull's
-  // frame, 3 the cluster's seven, whose centres are the first seven records)
-  if (u[SLAB_P+60]>0.5f32) { edge=1e5f32; }
-  if (u[SLAB_P+60]>1.5f32) {
-    nd:int=ifx u[SLAB_P+60]>2.5f32 then 7 else 1;
-    k:int=0;
-    while k<nd {
-      b:int=SLAB_BOXES+(k*8);
-      edge=fmin(edge,wg_length2(v2(hp.x-((u[b]+u[b+4])*0.5f32),hp.z-((u[b+2]+u[b+6])*0.5f32)))-60.96f32);
-      k=k+1;
-    }
-  }
-  // a dome's skirt of white water is a few metres, not the monolith's fifty
-  if (u[SLAB_P+60]>1.5f32) { edge=edge*4.0f32; }
-  // foam drawn out into streaks along the wind (the sea's lace), broken into patches
-  wa:f32=(p.x*u[32])+(p.y*u[33]);
-  wc:f32=(p.y*u[32])-(p.x*u[33]);
-  // thin ridges of the noise, a little drawn out along the wind: a web, not blobs
-  st1:f32=slab_noise(v2((wa*0.035f32)-(t*0.04f32),wc*0.16f32));
-  st2:f32=slab_noise(v2((wa*0.09f32)-(t*0.07f32),(wc*0.4f32)+5.0f32));
-  patch:f32=smoothstep(0.3f32,0.7f32,slab_noise(wg_mul_f2f(p,0.015f32)));
-  thin:f32=0.035f32+(footprint*0.002f32);
-  veins:f32=((1.0f32-smoothstep(0.0f32,thin,abs(st1-0.5f32)))*0.75f32+((1.0f32-smoothstep(0.0f32,thin*0.8f32,abs(st2-0.5f32)))*0.5f32))*(0.3f32+(0.7f32*patch));
-  nearhull:f32=1.0f32-smoothstep(15.0f32,140.0f32+(u[SLAB_P+44]*6.0f32),edge);
-  crest:f32=0.35f32+(0.65f32*smoothstep(-0.4f32,0.5f32,c.x/fmax(u[35],0.2f32)));
-  lace:f32=veins*crest*(nearhull*0.9f32)*(1.0f32-smoothstep(300.0f32,2000.0f32,dist));
-  wash:f32=(1.0f32-smoothstep(0.0f32,14.0f32+(30.0f32*froth)+(u[SLAB_P+44]*0.8f32),edge))*smoothstep(0.2f32,0.5f32,froth+(0.2f32*sin((p.x+p.y)*0.08f32+(t*1.3f32))));
-  white:f32=clampf(fmax(wash*0.95f32,lace*0.4f32),0.0f32,1.0f32);
-  col=sb_mix(col,slab_sea_white(u),white);
-  return col;
+  sea:V4=slab_sea(p,world,d,dist,t,sw_sea(p,u),u);
+  white:V3=slab_sea_white(u);
+  return sw_tint(sb_mix(v3(sea.x,sea.y,sea.z),white,sw_white(p,t,u)),p,white,t,u);
 }
 
 // ---- The platform: metaverse/slab-plan.coax's records, traced in the hull's frame.
@@ -999,15 +942,6 @@ slab_paint :: (hit:SlabHit,w:V3,d:V3,u:[]f32)->SlabPaint {
       streak:f32=slab_noise(v2(along*0.6f32,w.y*0.02f32));
       c=sb_mul(c,0.93f32+(0.07f32*streak));
       c=sb_mix(c,v3(0.30f32,0.34f32,0.30f32),(1.0f32-smoothstep(-1.0f32,2.5f32,w.y))*0.8f32);
-      // the waves meet this wall as squarely as its normal faces into them
-      face:f32=clampf(0.25f32+(-(n.x*u[32])-(n.z*u[33]))*0.9f32,0.15f32,1.0f32);
-      sprayw:f32=slab_spray(along*(ifx (n.x+n.z)>0.0f32 then 1.0f32 else -1.0f32),w.y,face,u[2],u);
-      // under the waterline there is no spray, only the bubbles a few metres down (the view under the sea)
-      sprayw=sprayw*smoothstep(-5.0f32,-0.5f32,w.y);
-      c=sb_mix(c,v3(1.0f32,1.0f32,0.98f32),sprayw);
-      // spray is thin water: it glows with the light through it, most of all against the sun
-      thru:f32=sb_pow(fmax(wg_dot3(d,v3(u[24],u[25],u[26])),0.0f32),3.0f32);
-      emit=sb_mul(sb_add(sb_mul(sb_p(u,12),0.35f32),sb_mul(sb_p(u,4),0.25f32+(0.7f32*thru))),sprayw);
     }
   } else if ((k==2)||(k==20)) {
     c=v3(0.88f32,0.89f32,0.90f32);
@@ -1155,7 +1089,7 @@ slab_paint :: (hit:SlabHit,w:V3,d:V3,u:[]f32)->SlabPaint {
     // water on the deck: the sky in it, its depth's colour
     sky:V3=slab_sky(wg_reflect3(d,v3(0.0f32,1.0f32,0.0f32)),u);
     c=sb_mix(v3(0.06f32,0.26f32,0.32f32),sky,0.45f32);
-    if (!roof) { c=v3(0.82f32,0.80f32,0.74f32); }
+    if (!roof) { c=v3(0.82f32,0.80f32,0.74f32); } else { c=sw_pool(c,w,d,u); }
   } else if (k==15) {
     if (w.y<hit.lo.y+0.45f32) {
       // the lawn under the trees, a hedge round its edge
@@ -1347,6 +1281,7 @@ slab_bg_fs :: (frag:V4,u:[]f32)->SlabOut {
     if ((u[SLAB_P+52]!=0.0f32)&&(abs(hit.n.z)>0.9f32)&&(abs((ho.z+(hd.z*hit.t))-u[SLAB_P+53])<0.6f32)) { under=under*0.12f32; wy=0.0f32; }
     if (under>0.0f32) {
       c=slab_through_water(c,under,wy,fmin(ho.y,0.0f32),hd.y,u);
+      if (ho.y<0.0f32) { c=sw_under(c,ho,hd,hit.t,u); }
       if (ho.y>0.0f32) { c=slab_haze(c,d,hit.t-under,u); }
     } else {
       c=slab_haze(c,d,hit.t,u);
@@ -1366,7 +1301,9 @@ slab_bg_fs :: (frag:V4,u:[]f32)->SlabOut {
   }
   if (slot||((u[SLAB_P+56]>0.5f32)&&((hd.y<0.0f32)||(ho.y<0.0f32)))) {
     // open water all the way: the sea's own light, the sun's shafts, the bed where it is near
-    c:V3=slab_grade(ifx slot then slab_deep_colour(fmin(ho.y,0.0f32),hd.y,u) else slab_sea_open(o,d,u),u);
+    c:V3=ifx slot then slab_deep_colour(fmin(ho.y,0.0f32),hd.y,u) else slab_sea_open(o,d,u);
+    if (ho.y<0.0f32) { c=sw_under(c,ho,hd,4000.0f32,u); }
+    c=slab_grade(c,u);
     return SlabOut.{c=v4(c.x,c.y,c.z,1.0f32),depth=1.0f32};
   }
   c:V3=slab_haze(slab_weather_sky(slab_sky(d,u),d,u),d,40000.0f32*(1.0f32-smoothstep(0.0f32,0.2f32,d.y)),u);
@@ -1460,7 +1397,8 @@ slab_surface_fs :: (v:SlabS,u:[]f32)->V4 {
   }
   if (u[SLAB_P+56]>0.5f32) {
     // from under the sea: the sky through Snell's window, the water mirrored outside it
-    c:V3=slab_grade(slab_sea_below(v.rest,v.world,d,dist,slab_coarse(v.rest,u),u),u);
+    c:V3=slab_sea_below(v.rest,v.world,d,dist,sw_sea(v.rest,u),u);
+    c=slab_grade(sw_under(c,sb_to_hull(v3(u[8],u[9],u[10]),u),sb_dir_to_hull(d,u),dist,u),u);
     return wg_make_f4_f3f(c,1.0f32);
   }
   c:V3=slab_haze(slab_water(v.rest,v.world,d,dist,u[2],u),d,dist*0.4f32,u);

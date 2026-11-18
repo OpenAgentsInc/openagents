@@ -1,4 +1,4 @@
-// SLAB Simulation: what the hull does to the water (docs/research/ocean/slab-world-spec.md 4.6).
+// SLAB Simulation: what the hull does to the water (docs/research/ocean/slab-world-spec.md 4.7).
 // The models are the engine's, for any large floating body: metaverse/water-lee.coax (the calm
 // lee), metaverse/water-wall.coax (reflection, run-up, spray), metaverse/water-wake.coax (wake,
 // discharge plume, moonpool surge) and metaverse-engine/fx/spray.coax (the spray's puffs). This
@@ -12,8 +12,10 @@
 //         28    the discharge: how much (0 to 1), its outlets' depth (m), how far it sinks (m), over what distance (m)
 //         32    the four moonpools' surge (m)
 //         36    the grid's half extents x, z; the sea's significant height (m); the next burst's row
-//   grid  40    the lee's gains as bytes (LEE_N x LEE_N nodes, two bands), four to a float's bits
-//   foam  328   the white water at the walls' feet as bytes: 32 cells a face (or 16 a dome)
+//         40    the flow overlay is on (the plume's footprint is drawn whole), 0, 0, 0
+//   grid  44    the lee's gains, a byte a node (LEE_N x LEE_N nodes; the long waves' gain in sixteenths in the
+//               high four bits, the short waves' in the low), four bytes to a float's bits
+//   foam  188   the white water at the walls' feet as bytes: 32 cells a face (or 16 a dome)
 // The spray's bursts go to the GPU as the page's particles (coax/web/host.js "Particles"):
 // WALL_BURSTS rows of SPRAY_ROW floats, each drawn as WW_PUFFS puffs (WW_PUFFS_PHONE of the newest
 // WW_BURSTS_PHONE on a phone).
@@ -21,9 +23,9 @@
 #load "../../metaverse/water-wall.coax";
 #load "../../metaverse/water-wake.coax";
 
-WW_HEAD :: 40;
+WW_HEAD :: 44;
 WW_GRID :: WW_HEAD;
-WW_GRID_FLOATS :: 2 * LEE_N * LEE_N / 4;
+WW_GRID_FLOATS :: LEE_N * LEE_N / 4;   // a byte a node: the long waves' gain in its high four bits, the short waves' in its low
 WW_FOAM :: WW_GRID + WW_GRID_FLOATS;
 WW_CELLS :: 32;                 // foam cells a face
 WW_FLOATS :: WW_FOAM + 4 * WW_CELLS / 4;
@@ -48,13 +50,15 @@ SlabWater :: struct {
   each: int;                    // a body
   pools: [4] Moonpool;
   // what the grid and the stations were laid for
-  laid: bool; for_wind: f64; for_x: f64; for_z: f64; for_c: f64; for_mode: int; for_phone: bool;
+  laid: bool; for_wind: f64; for_x: f64; for_z: f64; for_c: f64; for_s: f64; for_mode: int; for_phone: bool;
   moment: f64 = -1.0;           // the fixed moment the spray was run up to (-1: the clock runs)
+  warm: bool;                   // it has been run up to a moment once: a page opens with its spray in the air
   phone: bool;
   wind_x: f64; wind_z: f64;     // m/s
   drift: D2;                    // m/s
   flow: D2;                     // the water past the hull, m/s
   discharge: f64;               // of the design flow
+  overlay: bool;                // the flow overlay is on
   sink: f64; carry: f64;        // m
 }
 
@@ -91,11 +95,10 @@ ww_plant :: (w: [] SlabWater, cold: f64, design: f64, dt: f64, current: f64) {
 ww_lay :: (w: [] SlabWater, s: [] Synth, phone: bool) {
   sp := s[0].spectrum;
   f := w[0].frame;
-  same := w[0].laid && w[0].for_wind == sp.wind_speed && w[0].for_mode == w[0].mode * 8 + w[0].count && w[0].for_phone == phone
-    && abs(w[0].for_x - f.x) < 8.0 && abs(w[0].for_z - f.z) < 8.0 && abs(w[0].for_c - f.c) < 0.0002;
-  if same { return; }
+  kept := w[0].laid && w[0].for_wind == sp.wind_speed && w[0].for_mode == w[0].mode * 8 + w[0].count && w[0].for_phone == phone;
+  if kept && abs(w[0].for_x - f.x) < 8.0 && abs(w[0].for_z - f.z) < 8.0 && abs(w[0].for_c - f.c) < 0.0002 && abs(w[0].for_s - f.s) < 0.01 { return; }
   w[0].laid = true; w[0].for_wind = sp.wind_speed; w[0].for_mode = w[0].mode * 8 + w[0].count; w[0].for_phone = phone;
-  w[0].for_x = f.x; w[0].for_z = f.z; w[0].for_c = f.c;
+  w[0].for_x = f.x; w[0].for_z = f.z; w[0].for_c = f.c; w[0].for_s = f.s;
   c0 := s[0].cascades[0];
   long := lee_band(sp, c0.low, c0.high, false);
   short := lee_band(sp, c0.high, 10.0 * c0.high, true);
@@ -107,7 +110,8 @@ ww_lay :: (w: [] SlabWater, s: [] Synth, phone: bool) {
   // a dome's stations stay ten or twenty metres apart too
   w[0].each = ifx w[0].mode == 1 then total else cast(int) fmax(floor(TAU_D * b0.hx / (ifx phone then 20.0 else 10.0)), 8.0);
   w[0].stations = w[0].each * w[0].count;
-  wall_begin(w[0].spray[..], w[0].stations);
+  // a body that has only moved keeps the spray in the air and the foam at its walls
+  if !kept { wall_begin(w[0].spray[..], w[0].stations); }
   for i: 0..<w[0].count { wall_arrange(w[0].spray[..], w[0].bodies[i], w[0].sea, i * w[0].each, w[0].each); }
   w[0].phone = phone;
 }
@@ -152,7 +156,7 @@ ww_frame :: (w: [] SlabWater, s: [] Synth, tile: [] Tile, wind: f64, current: D2
     return false;
   }
   if w[0].moment == moment { return false; }
-  w[0].moment = moment;
+  w[0].moment = moment; w[0].warm = true;
   steps := cast(int) (WW_PREROLL / 0.2);
   for i: 0..<steps {
     t := moment - WW_PREROLL + 0.2 * f64(i + 1);
@@ -162,6 +166,7 @@ ww_frame :: (w: [] SlabWater, s: [] Synth, tile: [] Tile, wind: f64, current: D2
   return true;
 }
 
+ww_nibble :: (v: f64) -> u32 { return cast(u32) fclamp(floor(v * 15.0 + 0.5), 0.0, 15.0); }
 ww_byte :: (v: f64) -> u32 { return cast(u32) fclamp(floor(v * 255.0 + 0.5), 0.0, 255.0); }
 // Bursts drawn and puffs in each.
 ww_bursts :: (w: [] SlabWater) -> int {
@@ -185,7 +190,7 @@ ww_pack :: (w: [] SlabWater, u: [] f32) {
   }
   ds := sqrt(w[0].drift.x * w[0].drift.x + w[0].drift.y * w[0].drift.y);
   u[20] = f32(ifx ds > 0.0001 then w[0].drift.x / ds else 1.0); u[21] = f32(ifx ds > 0.0001 then w[0].drift.y / ds else 0.0);
-  u[22] = f32(ds); u[23] = f32(ds * 90.0);    // foam on the open sea lasts about a minute and a half
+  u[22] = f32(ds); u[23] = f32(ds * 240.0);   // gathered foam lasts about four minutes (our assumption)
   fs := sqrt(w[0].flow.x * w[0].flow.x + w[0].flow.y * w[0].flow.y);
   fx := ifx fs > 0.0001 then w[0].flow.x / fs else 1.0; fz := ifx fs > 0.0001 then w[0].flow.y / fs else 0.0;
   u[24] = f32(fx); u[25] = f32(fz); u[26] = f32(fs);
@@ -193,10 +198,11 @@ ww_pack :: (w: [] SlabWater, u: [] f32) {
   lx := f.c * fx + f.s * fz; lz := -f.s * fx + f.c * fz;
   u[27] = f32(2.0 * (f.hx * abs(lz) + f.hz * abs(lx)));
   u[28] = f32(ifx w[0].mode == 1 then w[0].discharge else 0.0); u[29] = f32(WW_OUTLET); u[30] = f32(w[0].sink); u[31] = f32(w[0].carry);
+  u[40] = ifx w[0].overlay then 1.0f32 else 0.0f32;
   u[36] = f32(w[0].grid[0].hx); u[37] = f32(w[0].grid[0].hz); u[38] = f32(w[0].sea.significant); u[39] = f32(w[0].spray[0].next);
   for i: 0..<WW_GRID_FLOATS {
     word: u32 = 0;
-    for b: 0..<4 { word |= ww_byte(f64(w[0].grid[0].g[4 * i + b])) << cast(u32) (8 * b); }
+    for b: 0..<4 { word |= ((ww_nibble(f64(w[0].grid[0].g[2 * (4 * i + b)])) << 4) | ww_nibble(f64(w[0].grid[0].g[2 * (4 * i + b) + 1]))) << cast(u32) (8 * b); }
     u[WW_GRID + i] = f32_from_bits(word);
   }
   // the foam: a station's white water in its cell (the most of the stations that share it)
@@ -234,7 +240,9 @@ ww_height :: (w: [] SlabWater, tile: [] Tile, patch: f64, wx: f64, wz: f64) -> f
 
 ww_test_sea :: (wind: f64) -> Spectrum { return wall_test_sea(wind, 4.36); }
 #test "the block's layout fits and its bytes round-trip" {
-  #assert WW_FLOATS == 360 && WW_FLOATS % 4 == 0 && WW_GRID_FLOATS == 288;
+  #assert WW_FLOATS == 220 && WW_FLOATS % 4 == 0 && WW_GRID == 44 && WW_GRID_FLOATS == 144 && WW_FOAM == 188;
+  // gpu/slab-water.coax's copies of the grid's shape (SW_N, SW_OUTER, SW_INNER, SW_FIRST, SW_GROW)
+  #assert LEE_N == 24 && LEE_OUTER == 8 && LEE_INNER == 7 && LEE_FIRST == 25.0 && LEE_GROW == 1.6;
   #assert ww_byte(0.0) == 0 && ww_byte(1.0) == 255 && ww_byte(2.0) == 255 && ww_byte(0.5) == 128;
   #assert WW_STATIONS <= WALL_STATIONS && WW_BURSTS_PHONE <= WALL_BURSTS;
 }
@@ -297,8 +305,8 @@ ww_test_sea :: (wind: f64) -> Spectrum { return wall_test_sea(wind, 4.36); }
   for i: 0..<WW_CELLS / 4 { if f32_bits(u[WW_FOAM + i]) != 0 { east += 1; } if f32_bits(u[WW_FOAM + 2 * WW_CELLS / 4 + i]) != 0 { west += 1; } }
   #assert east > 0 && west == 0;
   // the grid's bytes: open water upwind (255), calm behind
-  first := f32_bits(u[WW_GRID + (2 * (12 * LEE_N + LEE_N - 1)) / 4]);
-  #assert ((first >> 16) & 255) == 255 || (first & 255) == 255;
+  first := f32_bits(u[WW_GRID + (12 * LEE_N + LEE_N - 1) / 4]);
+  #assert (first >> 24) == 255;
   // a phone draws fewer, smaller bursts
   w[0].phone = true;
   #assert ww_puffs(w[..]) == WW_PUFFS_PHONE && ww_bursts(w[..]) <= WW_BURSTS_PHONE;

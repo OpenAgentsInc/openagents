@@ -526,6 +526,46 @@ I = 1.04 × 10⁶ m⁴ (`hull_section_i`). The upper structure's columns and
 jointed deck are taken to carry no bending. A gale flexes the ends about
 8–15 cm, drawn 100× exaggerated.
 
+### 4.7 What the hull does to the water
+
+The hull is a wall 1,000 m long in 4,000 m of water, so the sea round it is
+not the open sea. The models are the engine's (`docs/metaverse/water.md`,
+"Large floating bodies") and each is simple and stated.
+
+- **At the weather walls** the waves are sent back. The wind blows from the
+  east-north-east, so the east wall takes 99% of the sea's energy travelling
+  toward it and the north wall 84%. A box 600 m in beam and 25 m in draft
+  passes almost nothing under it at these wave lengths (R = 0.9995), so a wave
+  that meets the east wall squarely stands twice as high there. Where a
+  breaking crest meets a wall it throws a burst of spray. The wind carries the
+  mist up the wall and along it. The white water at a wall's foot is where
+  spray came down in the last 20 seconds, and the drift carries it off the
+  corners.
+- **The lee** is west and south-west of the hull. The sea there is the part
+  that bends round the hull's ends, less than a third of the open sea close
+  to the west wall, and nothing breaks in it. The hull's own motion reads the
+  same water (`ww_height`).
+- **The wake.** The current is 0.5 m/s. The hull's Froude number is 0.005 and
+  the waves it could make are 0.16 m long, so it makes no bow wave and no
+  Kelvin wake. It leaves slack water behind it, a little wider than the hull
+  and widening downstream, with a ragged line of gathered foam along each
+  edge. The lines swing slowly (about once in two hours).
+- **The discharge.** The ocean thermal plant's mixed water leaves 60 m down,
+  about 8 °C colder than the surface water at Guam (the plant's cold and warm
+  flows mixed, a third of the plant's temperature difference plus 0.7 °C). It
+  sinks about 100 m more to its
+  own level within 105 m of the outlets (the stratification, N = 0.015 /s, is
+  an assumption) and drifts off with the current. From above it cannot be
+  seen through 160 m of water, so only the flow overlay draws it there. Under
+  the sea it is drawn as a pale stream from each of four outlets. Its water
+  is clear in life: the colour is drawn so the path shows.
+- **The moonpools** surge like pistons. The water column in each has a
+  natural period of 10.7 s. The waves' pressure 25 m down drives it and the
+  loss at the mouth holds it.
+
+Left out: the waves the hull's own motion makes, the wind's shadow behind the
+hull, spray landing on the deck.
+
 ## 5. Sites and sea states
 
 ### 5.1 Sites (`?site=`)
@@ -920,11 +960,11 @@ pitch 0.438, 1,164 m out, aimed at the waterline) in the `rough` sea
 (4 m; section 5.2 says why, and that Guam's own sea is `trade`), in June
 at 17:51 off Guam: the sun at about 297°, 10° up, lights the long north
 wall as the picture does. The golden-hour grade lifts the exposure and adds
-sepia. The spray stands about nine times the significant height up the
-walls, every 95 m. That height is painted to match the picture; section 12's
-physics gives about four times. The two are left apart on purpose until
-#13688 replaces the painted spray with spray computed from the waves at the
-wall.
+sepia. The spray at the walls is computed from the waves that meet them
+(section 4.7), so in this 4 m sea it is small against a 118 m wall: bursts a
+few metres high, about three every two seconds round the hull. The picture's
+plumes, about 36 m, need a sea between the `gale` and the `hurricane`
+(section 12).
 
 **Views:**
 
@@ -1081,9 +1121,37 @@ in sections 3–9 are unchanged.
 - The sea's heights are scaled to Pierson–Moskowitz (Hs = 0.21 U²/g), so each
   sea state shows the Hs in section 5: the water lab's fetch-limited spectrum
   at 300 km of fetch grows past a fully developed sea (3.4 m at 8.4 m/s).
-- Spray up the windward walls reaches about four times Hs (a standing wave's
-  crest at a vertical wall is about twice the highest wave's height,
-  2 × 1.86 Hs, and the wind lifts the spray above it), capped at 24 m.
+- The spray is not painted to match the picture. It is thrown where and when
+  a breaking crest meets a wall (section 4.7), and the table below is what
+  that gives. The picture's plumes stand about 36 m up the wall. The model
+  reaches that only between the `gale` and the `hurricane` (a significant
+  height of about 11 m). In deep water nothing makes the waves plunge at the
+  wall as they do on a shallow breakwater, so a 4 m sea throws spray about
+  12 m at most.
+
+**The water at the walls, measured** (ten minutes of each sea on the `prime`
+hull; the wind sea in the hull's own wave band; `coax/bin/coax test
+metaverse/water-wall.coax`):
+
+| Sea | Bursts in 10 min | Highest run-up | Highest spray | Fastest jet |
+|---|---|---|---|---|
+| `calm` (4.8 m/s) | 0 | 0.9 m | none | none |
+| `trade` (8.4 m/s) | 48 | 3.0 m | 4.9 m | 6.1 m/s |
+| `equator-max` (11.4 m/s) | 337 | 5.2 m | 8.6 m | 8.4 m/s |
+| `rough` (13.7 m/s) | 950 | 7.5 m | 12.4 m | 10.1 m/s |
+| `gale` (21.6 m/s) | 4,061 | 17.9 m | 28.7 m | 15.0 m/s |
+| `hurricane` (25.6 m/s) | 6,446 | 30.1 m | 44.1 m | 17.0 m/s |
+
+Run-up is about 2.0 to 2.4 times the significant height and the spray's top
+about 3.2 to 3.5 times. The spray's top is the heaviest drops' height; mist
+goes higher on the wind that turns up the wall.
+
+**The lee, measured** (root-mean-square height against the open sea's, in
+the `rough` sea and the `gale`): 0.24 to 0.31 at 60 m off the west wall;
+about 2.0 to 2.2 at the east wall, where the standing wave is; 0.46 to 0.59
+in the dock notch in the south wall. The south wall is only 20° off the
+waves' path, so the notch sees about half the open sea. A notch in the west
+wall would see under a third.
 - The arrival view and the default hour follow the concept image: January at
   17:18, with the sun low in the west-south-west, seen from off the
   north-east corner.

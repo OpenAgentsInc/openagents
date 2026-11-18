@@ -30,6 +30,8 @@ The part that floats is the lowest 50 m: a hull whose inside walls, every 50 m, 
 
 It is so wide and heavy that waves barely move it. In the rough 4 m sea the world opens on, the model lifts and drops the deck by a few centimetres. You can hole a corner cell, watch the hull lean, and pump ballast to level it again.
 
+The hull changes the sea round it. Waves that meet the east and north walls are sent back, so the water at those walls stands about twice as high as in the open sea. Where a breaking crest meets a wall it throws spray. In the 4 m sea the world opens on, that spray is a few metres high, small against a 118 m wall. In the gale it reaches about 29 m. The concept picture's plumes, about 36 m, need a sea between the gale and the hurricane. West of the hull the sea is calm: under a third of the open sea's height close to the wall, with no whitecaps. Behind the hull the current leaves a strip of slack water with a ragged line of foam along each edge. None of this is painted: turn the wind up and it changes.
+
 ## How it is built
 
 Nothing this wide fits through a ship channel, so in our scenario it is built in 120 pieces, each 100 by 50 m.

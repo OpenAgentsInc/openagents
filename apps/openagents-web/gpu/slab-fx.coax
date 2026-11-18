@@ -1,0 +1,133 @@
+// SLAB's spray, the source of apps/openagents-web/slab-fx.wgsl (coax/web/wgsl-module.coax writes it
+// from this with slab-fx.module and slab-fx.bindings beside it). The host draws it as the page's
+// particles (coax/web/host.js "Particles"): after bg_fs and the sea, depth-tested against the
+// traced platform, premultiplied over the picture.
+//
+// Each burst is one row the simulation wrote (metaverse/water-wall.coax throws it where and when a
+// breaking crest meets a wall; apps/openagents-web/slab-water.coax keeps the ring of them), and
+// each instance is one puff of a burst: its place is a closed form of the row, its number and
+// the burst's age (metaverse-engine/fx/spray.coax), so the wind carries the mist over the deck
+// and the heavy drops fall back. A puff is lit by the sun and the sky as the page has them, is
+// dark in the hull's shadow, and takes the scene's haze and grade.
+#load "slab.coax";
+#load "../../../metaverse-engine/fx/spray.coax";
+
+SprayRow :: struct {at:V4; jet:V4; air:V4; wall:V4; }
+// corner: across the quad, -1 to 1; tone: its lit colour and opacity
+SfxP :: struct {pos:V4; corner:V2; tone:V4 #flat; }
+SFX_RING :: cast(u32)256;      // metaverse/water-wall.coax's WALL_BURSTS
+
+sfx_gone :: ()->SfxP {
+  o:SfxP;
+  o.pos=v4(0.0f32,0.0f32,2.0f32,1.0f32);
+  return o;
+}
+slabfx_particle_over_vs :: (v:u32,n:u32,u:[]f32,rows:[]SprayRow)->SfxP {
+  per:u32=wg_u32_f(u[SLAB_WW+3]);
+  // none without the water's block, or seen from under the sea
+  if ((u[SLAB_WW]<0.5f32)||(per<1)||(u[9]<0.0f32)) { return sfx_gone(); }
+  burst:u32=n/per;
+  fi:f32=cast(f32)(n%per);
+  // the newest burst first
+  row:u32=sub_wrap(add_wrap(wg_u32_f(u[SLAB_WW+39]),sub_wrap(mul_wrap(SFX_RING,cast(u32)2),cast(u32)1)),burst)%SFX_RING;
+  e:SprayRow=rows[cast(int)row];
+  age:f32=u[SLAB_WW+2]-e.at.w;
+  seed:f32=e.wall.z;
+  fade:f32=spray_fade(fi,age)*e.wall.w;
+  if (fade<=0.004f32) { return sfx_gone(); }
+  tau:f32=spray_tau(seed,fi);
+  share:f32=spray_share(seed,fi);
+  h2:f32=spray_hash(seed,fi,2.0f32);
+  h3:f32=spray_hash(seed,fi,3.0f32);
+  h4:f32=spray_hash(seed,fi,4.0f32);
+  nw:V2=v2(e.wall.x,e.wall.y);
+  tg:V2=v2(-nw.y,nw.x);
+  speed:f32=wg_length3(v3(e.jet.x,e.jet.y,e.jet.z));
+  // it leaves somewhere along its stretch of wall, a little out from the face
+  sx:f32=e.at.x+(tg.x*(h2-0.5f32)*e.jet.w)+(nw.x*(0.4f32+(1.4f32*h3)));
+  sz:f32=e.at.z+(tg.y*(h2-0.5f32)*e.jet.w)+(nw.y*(0.4f32+(1.4f32*h3)));
+  // with its share of the jet, fanned along the wall and out from it
+  vx:f32=(e.jet.x*share)+(tg.x*(h4-0.5f32)*0.3f32*speed)+(nw.x*h3*0.12f32*speed);
+  vy:f32=e.jet.y*share;
+  vz:f32=(e.jet.z*share)+(tg.y*(h4-0.5f32)*0.3f32*speed)+(nw.y*h3*0.12f32*speed);
+  // the air is gusty: each puff rides its own eddy, a third of the wind either way
+  gust:f32=0.33f32*wg_length3(v3(e.air.x,e.air.y,e.air.z));
+  airx:f32=e.air.x+(gust*(spray_hash(seed,fi,5.0f32)-0.5f32)*2.0f32);
+  airy:f32=(e.air.y+(gust*(spray_hash(seed,fi,6.0f32)-0.5f32)))-(SPRAY_G*tau);
+  airz:f32=e.air.z+(gust*(spray_hash(seed,fi,7.0f32)-0.5f32)*2.0f32);
+  px:f32=sx+spray_travel(vx,airx,tau,age);
+  py:f32=e.at.y+spray_travel(vy,airy,tau,age);
+  pz:f32=sz+spray_travel(vz,airz,tau,age);
+  // back in the sea
+  if (py<u[28]-0.5f32) { return sfx_gone(); }
+  size:f32=spray_radius(fi,e.air.w,age);
+  // the wall stands in its way below the deck: it stays off the face
+  out:f32=((px-e.at.x)*nw.x)+((pz-e.at.z)*nw.y);
+  if ((py<u[38])&&(out<size)) {
+    px=px+(nw.x*(size-out));
+    pz=pz+(nw.y*(size-out));
+  }
+  quad:[6]V2=[6]V2.[v2(-1.0f32,-1.0f32),v2(1.0f32,-1.0f32),v2(-1.0f32,1.0f32),v2(-1.0f32,1.0f32),v2(1.0f32,-1.0f32),v2(1.0f32,1.0f32)];
+  c:V2=quad[cast(int)v];
+  right:V3=v3(u[16],u[17],u[18]);
+  up:V3=v3(u[20],u[21],u[22]);
+  centre:V3=v3(px,py,pz);
+  // a drop's puff is drawn out along the way it flies (a jet is streaks, not balls)
+  slow:f32=exp((-age)/tau);
+  fly:V3=v3(airx+((vx-airx)*slow),airy+((vy-airy)*slow),airz+((vz-airz)*slow));
+  fx:f32=wg_dot3(fly,right); fy:f32=wg_dot3(fly,up);
+  al:f32=sqrt((fx*fx)+(fy*fy));
+  along:V2=ifx al>0.5f32 then v2(fx/al,fy/al) else v2(0.0f32,1.0f32);
+  long:f32=ifx spray_mist(fi) then 1.0f32 else 1.0f32+fmin(al*0.12f32,1.6f32);
+  ox:f32=((-along.y)*c.x)+(along.x*c.y*long);
+  oy:f32=(along.x*c.x)+(along.y*c.y*long);
+  w:V3=sb_add(centre,sb_add(sb_mul(right,ox*size),sb_mul(up,oy*size)));
+  rel:V3=sb_sub(w,v3(u[8],u[9],u[10]));
+  depth:f32=wg_dot3(rel,v3(u[12],u[13],u[14]));
+  aspect:f32=u[0]/u[1];
+  o:SfxP;
+  o.pos=v4(wg_dot3(rel,right)/(u[11]*aspect),wg_dot3(rel,up)/u[11],depth-SLAB_NEAR,depth);
+  o.corner=c;
+  // lit by the sky all round and by the sun, most of all with the sun behind it; dark where the
+  // hull stands between it and the sun
+  toc:V3=sb_sub(centre,v3(u[8],u[9],u[10]));
+  dist:f32=fmax(wg_length3(toc),0.001f32);
+  d:V3=sb_mul(toc,1.0f32/dist);
+  sun:V3=v3(u[24],u[25],u[26]);
+  shade:f32=0.0f32;
+  if (u[SLAB_WW]<1.5f32) {
+    q:V2=sw_frame(v2(px,pz),u);
+    sd:V2=sw_turn(v2(sun.x,sun.z),u);
+    // the ray toward the sun against the hull's box
+    ix:f32=1.0f32/(ifx abs(sd.x)>1e-4f32 then sd.x else 1e-4f32);
+    iy:f32=1.0f32/(ifx abs(sun.y)>1e-4f32 then sun.y else 1e-4f32);
+    iz:f32=1.0f32/(ifx abs(sd.y)>1e-4f32 then sd.y else 1e-4f32);
+    ax:f32=((-u[SLAB_WW+36])-q.x)*ix; bx:f32=(u[SLAB_WW+36]-q.x)*ix;
+    ay:f32=(u[39]-py)*iy; by:f32=(u[38]-py)*iy;
+    az:f32=((-u[SLAB_WW+37])-q.y)*iz; bz:f32=(u[SLAB_WW+37]-q.y)*iz;
+    near:f32=fmax(fmax(fmin(ax,bx),fmin(ay,by)),fmin(az,bz));
+    far:f32=fmin(fmin(fmax(ax,bx),fmax(ay,by)),fmax(az,bz));
+    if ((far>fmax(near,0.0f32))&&(u[25]>0.0f32)) { shade=1.0f32; }
+  }
+  thru:f32=sb_pow(fmax(wg_dot3(d,sun),0.0f32),3.0f32);
+  amb:f32=u[SLAB_P+7];
+  lit:V3=sb_add(sb_mul(sb_add(v3(0.5f32,0.52f32,0.54f32),sb_mul(sb_p(u,12),0.35f32)),0.3f32+(0.6f32*amb)),sb_mul(sb_p(u,4),(0.4f32+(0.55f32*thru))*(1.0f32-shade)));
+  lit=slab_grade(slab_haze(lit,d,dist,u),u);
+  // a puff the eye is inside thins away
+  close:f32=smoothstep(size*0.8f32,(size*2.5f32)+2.0f32,dist);
+  o.tone=v4(lit.x,lit.y,lit.z,fade*close*(ifx spray_mist(fi) then 0.45f32 else 0.9f32));
+  return o;
+}
+slabfx_particle_over_fs :: (p:SfxP,u:[]f32)->V4 {
+  r:f32=wg_length2(p.corner);
+  soft:f32=1.0f32-smoothstep(0.15f32,1.0f32,r);
+  a:f32=p.tone.w*soft*soft;
+  return v4(p.tone.x*a,p.tone.y*a,p.tone.z*a,a);
+}
+// The host's added-light pass: spray adds none.
+slabfx_particle_vs :: (v:u32,n:u32,u:[]f32,rows:[]SprayRow)->SfxP {
+  return sfx_gone();
+}
+slabfx_particle_fs :: (p:SfxP,u:[]f32)->V4 {
+  return v4(0.0f32,0.0f32,0.0f32,0.0f32);
+}

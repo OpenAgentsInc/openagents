@@ -33,6 +33,7 @@
 #load "../../metaverse/slab-plan.coax";
 #load "../../metaverse/slab-construction.coax";
 #load "slab-change.coax";
+#load "slab-water.coax";
 #load "../../metaverse-engine/core/loop.coax";
 #load "../../components/core/slider.coax";
 #load "../../metaverse-engine/core/budget.coax";
@@ -80,7 +81,7 @@ P_CHAR :: 28;     // the character's feet (hull frame) xyz, the way it faces
 P_GAIT :: 32;     // gait phase, speed, shown, airborne
 P_PICK :: 36;     // selected record (-1), hovered record, seconds since selected, night (0..1)
 P_SUNHULL :: 40;  // toward the sun in the hull's frame, the warm grade
-P_SPRAY :: 44;    // the spray's height (m), the wave groups' spacing (m), miners on (0..50), data halls (0..1)
+P_SPRAY :: 44;    // 0, 0 (the painted spray's, gone: slab-water.coax simulates it), miners on (0..50), data halls (0..1)
 P_SYSTEMS :: 48;  // industry (0..1), the waves' speed along the walls, 0, 0
 P_SECTION :: 52;  // the section: which side is cut away (0 none, +1 north of the cut, -1 south), the cut's z, the ballast's top, cell A1's floodwater top
 P_UNDER :: 56;    // under the sea (0/1), a cold-water pipe tripped (0/1), 0, 0
@@ -91,7 +92,8 @@ W_CHOP :: 8192;   //   cascade 0's choppy displacement, two signed bytes a texel
 W_FINE :: 10240;  //   the two finer cascades' slopes (or the phone's baked tile), one word a texel
 TILE_N :: 64;
 WORDS :: W_FINE + TILE_N * TILE_N;
-UNIFORM_FLOATS :: U_WORDS + WORDS + SEAS_FLOATS + PHOTO_FLOATS;   // then the sea block (slab-sea.coax), then the photoreal frame's block (slab-photoreal.coax)
+U_WATER :: U_WORDS + WORDS + SEAS_FLOATS + PHOTO_FLOATS;   // the sea block (slab-sea.coax), the photoreal frame's (slab-photoreal.coax), then what the hull does to the water (slab-water.coax, WW_FLOATS)
+UNIFORM_FLOATS :: U_WATER + WW_FLOATS;
 
 CAM_ORBIT :: 0; CAM_FLY :: 1; CAM_WALK :: 2;
 
@@ -156,6 +158,7 @@ Slab :: struct {
   tile: [1] Tile;
   foam: [4096] f32;     // the foam field over cascade 0
   look: SeaLook;        // the finer cascades, the water's type, the weather (slab-sea.coax)
+  water: [1] SlabWater; // the lee, the walls' spray and foam, the wake, the plume, the moonpools (slab-water.coax)
   baked: [WSP_TILE_FLOATS] f32;
   baked_ready: bool;
   last_tick: u64;
@@ -749,6 +752,40 @@ pick :: (s: [] Slab, x: f32, y: f32) -> int {
   return -1;
 }
 
+// What the hull does to the water (slab-water.coax): lay it for this layout, then step it. At a
+// fixed moment its spray is run up to that moment and the sea's tile is made again after.
+slab_water_frame :: (s: [] Slab, phone: bool, frozen: bool, step: f64) {
+  w := s[0].water[..];
+  h := s[0].hull;
+  if s[0].build.on { w[0].mode = 0; return; }
+  if s[0].layout == LAYOUT_PRIME {
+    // the water follows the hull as drawn: slab_pose does not turn it yet, so no heading here
+    // (when it does, pass cos and sin of h.yaw)
+    ww_monolith(w, f64(SLAB_LENGTH) / 2, f64(SLAB_BEAM) / 2, f64(SLAB_DRAFT), h.surge, h.sway, 1.0, 0.0);
+  } else {
+    centres: [14] f64;
+    n := ifx s[0].layout == LAYOUT_CLUSTER then 7 else 1;
+    for i: 0..<n {
+      d := ifx n == 7 then s[0].cluster.domes[i] else h;
+      centres[2 * i] = d.cx + d.surge; centres[2 * i + 1] = d.cz + d.sway;
+    }
+    ww_domes(w, n, SIM_DOME_R, 12.0, centres[..]);
+  }
+  pw := s[0].power;
+  ww_plant(w, pw.cold_flow, 282.0, pw.dt, SIM_CURRENT);
+  w[0].overlay = s[0].flow;
+  sp := s[0].spectrum;
+  // a fixed moment has the spray of the seconds before it in the air, and so does the world's first frame
+  moment := ifx s[0].fixed >= 0 || frozen || !w[0].warm then s[0].time else -1.0;
+  // the current sets west; the water's flow past the hull is that less the hull's own drift
+  if ww_frame(w, s[0].synth[..], s[0].tile[..], s[0].wind, d2(-SIM_CURRENT - h.surge_v, -h.sway_v), 0.0, moment, step, phone) {
+    wsp_tile(s[0].synth[..], 0, wsp_tick_at(sp, s[0].time) % sp.period, s[0].tile[..]);
+  }
+}
+// The spray's puffs for the host's particle pass (coax/web/host.js "Particles"; slab-fx.wgsl).
+slab_particle_instances :: (s: [] Slab) -> int #export_c #effects(all) { return ifx s[0].started then ww_bursts(s[0].water[..]) * ww_puffs(s[0].water[..]) else 0; }
+slab_particle_version :: (s: [] Slab) -> int #export_c #effects(all) { return s[0].water[0].spray[0].thrown; }
+
 // ---------------------------------------------------------------- the frame
 slab_frame :: (s: [] Slab, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
   if s.count < 1 || u.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
@@ -801,6 +838,7 @@ slab_frame :: (s: [] Slab, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
     }
     s[0].hull = sim_hull_advance(s[0].hull, s[0].tile[0].height[..], TILE_N, c0.patch, s[0].wind, wd.x, wd.y, sim_step);
   }
+  slab_water_frame(s, phone, frozen, f64(step));
   slab_pose(s);
   if world_frame(s) {
     // each dome is drawn where it is: the frame is the world's
@@ -918,6 +956,7 @@ slab_frame :: (s: [] Slab, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
   for i: 0..<s[0].box_count * SLAB_RECORD { u[U_BOXES + i] = s[0].boxes[i]; }
   for i: 0..<s[0].group_count * SLAB_GROUP_FLOATS { u[U_GROUPS + i] = s[0].groups[i]; }
   slab_state_params(s, u, sun);
+  ww_pack(s[0].water[..], u[U_WATER..<U_WATER + WW_FLOATS]);
   if s[0].layout != LAYOUT_PRIME && !s[0].build.on {
     // no monolith: no wash along its walls, no stacks, no section or cut
     u[U_PARAMS + 60] = ifx s[0].layout == LAYOUT_DOME then 2.0f32 else 3.0f32;   // the white water: 1 dome or 7
@@ -1029,12 +1068,7 @@ slab_state_params :: (s: [] Slab, u: [] f32, sun: SimSun) {
   u[P + P_GAIT] = s[0].stride / 1.9f32 * TAU32; u[P + P_GAIT + 1] = s[0].foot.walk.speed;
   u[P + P_GAIT + 2] = ifx shown then 1.0f32 else 0.0f32; u[P + P_GAIT + 3] = ifx s[0].foot.jump.on_ground then 0.0f32 else 1.0f32;
   u[P + P_PICK] = f32(s[0].selected); u[P + P_PICK + 1] = f32(s[0].hovered); u[P + P_PICK + 2] = f32(s[0].time - s[0].selected_at);
-  // the spray up the walls: a vertical wall reflects the sea (clapotis), so the highest waves'
-  // crests stand about twice their height (2 x 1.86 Hs) on it, and the wind carries the spray
-  // higher still where the wave groups strike: about nine times the significant height, the
-  // plumes the concept image draws up its walls
-  hs := s[0].synth[0].significant;
-  u[P + P_SPRAY] = f32(fmin(9.0 * hs + 0.8 * s[0].wind, 60.0)); u[P + P_SPRAY + 1] = 95;
+  // (the spray up the walls is simulated: slab-water.coax)
   u[P + P_SPRAY + 2] = f32(pw.containers); u[P + P_SPRAY + 3] = f32(pw.data / pw.data_load);
   u[P + P_SYSTEMS] = f32(pw.industry / SIM_INDUSTRY); u[P + P_SYSTEMS + 1] = 7.5;
   if s[0].section {

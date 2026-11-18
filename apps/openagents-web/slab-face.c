@@ -63,6 +63,13 @@ EXPORT("coaxial_pointer") uint32_t coaxial_pointer(uint32_t state, float x, floa
 EXPORT("coaxial_wheel") void coaxial_wheel(uint32_t state, float dy) { slab_wheel(at(state), dy); }
 // The pointer's cursor over the HUD's buttons and what can be picked (0 default, 1 link).
 EXPORT("coaxial_cursor") uint32_t coaxial_cursor(uint32_t state) { int64_t c = slab_cursor(at(state)); return c < 0 ? 0u : (uint32_t)c; }
+// The spray thrown at the walls (slab-water.coax): its bursts' rows are the page's particles
+// (host.js "Particles"), drawn by slab-fx.wgsl, uploaded when a new burst is thrown.
+EXPORT("coaxial_particle_cap") uint32_t coaxial_particle_cap(void) { return (uint32_t)sizeof(((coax_t_Slab *)0)->water.e[0].spray.e[0].rows); }
+EXPORT("coaxial_particles") uint32_t coaxial_particles(uint32_t state) { return (uint32_t)(uintptr_t)state_at(state)->water.e[0].spray.e[0].rows.e; }
+EXPORT("coaxial_particle_bytes") uint32_t coaxial_particle_bytes(uint32_t state) { (void)state; return (uint32_t)sizeof(((coax_t_Slab *)0)->water.e[0].spray.e[0].rows); }
+EXPORT("coaxial_particle_instances") uint32_t coaxial_particle_instances(uint32_t state) { int64_t n = slab_particle_instances(at(state)); return n < 0 ? 0u : (uint32_t)n; }
+EXPORT("coaxial_particle_version") uint32_t coaxial_particle_version(uint32_t state) { return (uint32_t)slab_particle_version(at(state)); }
 // The HUD's panels and strokes blend over the frame by their coverage.
 EXPORT("coaxial_fx_alpha_v1") uint32_t coaxial_fx_alpha_v1(void) { return 1; }
 

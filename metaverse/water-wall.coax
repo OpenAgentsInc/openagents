@@ -309,7 +309,9 @@ wall_step :: (w: [] WallSpray, body: Floater, sea: WallSea, first: int, count: i
         w[0].rows[r] = f32(at.x); w[0].rows[r + 1] = f32(level + crest); w[0].rows[r + 2] = f32(at.y); w[0].rows[r + 3] = f32(w[0].time);
         w[0].rows[r + 4] = f32(0.12 * jet * nx); w[0].rows[r + 5] = f32(jet); w[0].rows[r + 6] = f32(0.12 * jet * nz); w[0].rows[r + 7] = f32(spacing);
         w[0].rows[r + 8] = f32(wind_x + 0.7 * into * nx); w[0].rows[r + 9] = f32(WALL_LIFT * into); w[0].rows[r + 10] = f32(wind_z + 0.7 * into * nz);
-        w[0].rows[r + 11] = f32(fclamp(0.5 + 0.06 * jet * jet / (2.0 * WATER_G), 0.6, 3.0));
+        // a puff's size: sixteen drops' puffs, overlapping by half, cover the sheet the jet throws
+        // (its stretch of wall wide, the jet's rise v^2 / 2g tall)
+        w[0].rows[r + 11] = f32(fclamp(sqrt(spacing * (jet * jet / (2.0 * WATER_G)) * 2.0 / (16.0 * PI_D)), 0.8, 3.5));
         w[0].rows[r + 12] = f32(nx); w[0].rows[r + 13] = f32(nz);
         w[0].rows[r + 14] = f32(1 + (w[0].thrown * 7 + i) % 4093); w[0].rows[r + 15] = f32(amount);
         w[0].next = (w[0].next + 1) % WALL_BURSTS;

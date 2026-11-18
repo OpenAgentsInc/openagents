@@ -257,7 +257,7 @@
         "module": "slab",
         "slot": "slab",
         "golden": { "lit": 0.3, "settle": 3000, "blocks": 6 },
-        "assets": []
+        "assets": ["particles:/slab-fx.wgsl"]
       } },
     { "id": "animelab", "name": "ANIME LAB", "kind": "open", "listed": false, "orbit": { "r": 0.26, "a": 5.9, "size": 0.022 },
       "realm": {
