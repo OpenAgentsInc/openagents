@@ -119,6 +119,14 @@ Character Create's frozen save keys. Do not add new app-private source copies.
   ([how to register one](proto/README.md#register-a-wire-shape)).
 - **Downloaded and cloned code is untrusted.** Read it; don't run its
   scripts on this Mac.
+- **Pull requests from forks** ([review rules](docs/contributing/review.md)).
+  Code from a fork is never built or run on a machine that holds secrets, a
+  production login or a wallet, which is every team machine. Read the diff
+  first with `gh pr diff N`, never `gh pr checkout` or `git checkout` a fork
+  branch here (this clone's `core.hooksPath` runs the branch's hooks), and
+  run it only in a throwaway sandbox with no credentials. A review agent
+  posts a first review within one working day; only a maintainer, a person,
+  merges, with Squash and merge so the contributor stays the commit's author.
 - **Three rounds per problem.** After three failed rounds on one problem
   (a bug, a failing check, a build), change approach or ask a person. Don't
   run a fourth round of the same idea with small changes.
@@ -266,6 +274,10 @@ tests for what you touched, not everything.
 ## Git
 
 - Work on `main`. Commit only the files you changed, and push to `main`.
+- This section is for team agents. A contributor outside the team works
+  from a fork and opens a pull request ([CONTRIBUTING.md](CONTRIBUTING.md));
+  their one check is `scripts/check.sh`, the pre-push check's local checks
+  with nothing that needs a secret or a team host.
 - **Never edit files in the main checkout**
   (`/Users/christopherdavid/work/openagents`). It stays clean on `main` so
   anyone can `git pull --ff-only` it. Do every edit, build and test in your
