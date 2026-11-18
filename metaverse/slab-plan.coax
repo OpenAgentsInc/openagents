@@ -1,0 +1,157 @@
+// SLAB's platform plan as data (docs/research/ocean/slab-world-spec.md, sections 3.1 and 7):
+// the `prime` monolith's hull and the masses on its deck, as boxes and upright cylinders the
+// SLAB Simulation realm (apps/openagents-web/slab.coax) packs into its uniforms and
+// slab.wgsl traces. Units are metres; +Y is up; the origin is the platform's centre at the
+// calm waterline; +X runs along the length toward the bow (east), +Z north.
+//
+// A record is 8 floats: min x, y, z, kind, then max x, y, z, shape. Shape 0 is the box;
+// shape 1 is the upright cylinder inscribed in it (centre at the box's middle, radius half
+// its smaller side). Kinds pick the paint (SLAB_KIND_*); the hull's six pieces come first.
+
+SLAB_LENGTH :: 1000.0f32;   // L, along X
+SLAB_BEAM :: 600.0f32;      // B, along Z
+SLAB_DEPTH :: 50.0f32;      // D, keel to deck
+SLAB_DRAFT :: 25.0f32;      // T
+SLAB_CORNER :: 40.0f32;     // plan corner radius
+SLAB_DECK :: SLAB_DEPTH - SLAB_DRAFT;   // the deck's height over the calm water: 25 m
+SLAB_RECORD :: 8;
+SLAB_MAX_BOXES :: 120;
+SLAB_HULL_PIECES :: 6;
+
+SLAB_KIND_HULL :: 0;
+SLAB_KIND_PLANT :: 2;      // OTEC turbine halls and heat exchangers
+SLAB_KIND_INDUSTRY :: 3;
+SLAB_KIND_DATA :: 4;
+SLAB_KIND_TOWER :: 5;
+SLAB_KIND_STACK :: 6;
+SLAB_KIND_PARK :: 7;
+SLAB_KIND_CONTAINERS :: 8;
+SLAB_KIND_CIVIC :: 9;
+SLAB_KIND_TANK :: 10;
+SLAB_KIND_MEDICAL :: 11;
+SLAB_KIND_CRANE :: 12;
+SLAB_KIND_COOLING :: 13;
+SLAB_KIND_POOL :: 14;      // moonpools and the fountain: open water
+
+SLAB_BOX :: 0;
+SLAB_CYLINDER :: 1;
+
+slab_put :: (out: [] f32, n: int, x0: f32, y0: f32, z0: f32, x1: f32, y1: f32, z1: f32, kind: int, shape: int) -> int {
+  if n >= SLAB_MAX_BOXES || (n + 1) * SLAB_RECORD > out.count { return n; }
+  at := n * SLAB_RECORD;
+  out[at] = x0; out[at + 1] = y0; out[at + 2] = z0; out[at + 3] = f32(kind);
+  out[at + 4] = x1; out[at + 5] = y1; out[at + 6] = z1; out[at + 7] = f32(shape);
+  return n + 1;
+}
+// A mass standing on the deck: its footprint and height.
+slab_mass :: (out: [] f32, n: int, x0: f32, z0: f32, x1: f32, z1: f32, height: f32, kind: int) -> int {
+  return slab_put(out, n, x0, SLAB_DECK, z0, x1, SLAB_DECK + height, z1, kind, SLAB_BOX);
+}
+// An upright cylinder on the deck at (x, z).
+slab_drum :: (out: [] f32, n: int, x: f32, z: f32, radius: f32, height: f32, kind: int) -> int {
+  return slab_put(out, n, x - radius, SLAB_DECK, z - radius, x + radius, SLAB_DECK + height, z + radius, kind, SLAB_CYLINDER);
+}
+
+TOWER_HEIGHTS :: [12] f32.[120, 165, 95, 180, 140, 80, 175, 110, 150, 90, 130, 160];
+
+// Writes the `prime` plan into out (SLAB_RECORD floats a record); returns the record count.
+slab_plan :: (out: [] f32) -> int {
+  n := 0;
+  hl := SLAB_LENGTH / 2; hb := SLAB_BEAM / 2; r := SLAB_CORNER;
+  keel := -SLAB_DRAFT;
+  // The hull: a rounded rectangle in plan, as two crossed boxes and four corner drums.
+  n = slab_put(out, n, -hl, keel, -hb + r, hl, SLAB_DECK, hb - r, SLAB_KIND_HULL, SLAB_BOX);
+  n = slab_put(out, n, -hl + r, keel, -hb, hl - r, SLAB_DECK, hb, SLAB_KIND_HULL, SLAB_BOX);
+  for c: 0..<4 {
+    cx := ifx c & 1 == 0 then -hl + r else hl - r;
+    cz := ifx c & 2 == 0 then -hb + r else hb - r;
+    n = slab_put(out, n, cx - r, keel, cz - r, cx + r, SLAB_DECK, cz + r, SLAB_KIND_HULL, SLAB_CYLINDER);
+  }
+  // OTEC plant, X -500 to -350: turbine halls, heat exchangers, moonpools, ammonia tanks.
+  n = slab_mass(out, n, -480, -250, -380, -130, 30, SLAB_KIND_PLANT);
+  n = slab_mass(out, n, -480, 130, -380, 250, 30, SLAB_KIND_PLANT);
+  n = slab_mass(out, n, -470, -100, -400, -20, 20, SLAB_KIND_PLANT);
+  n = slab_mass(out, n, -470, 20, -400, 100, 20, SLAB_KIND_PLANT);
+  for i: 0..<4 {
+    z := -225.0f32 + f32(i) * 150;
+    n = slab_put(out, n, -395, SLAB_DECK - 0.5f32, z - 12, -371, SLAB_DECK + 0.05f32, z + 12, SLAB_KIND_POOL, SLAB_BOX);
+  }
+  for i: 0..<4 {
+    n = slab_drum(out, n, -362, ifx i < 2 then -270.0f32 + f32(i) * 30 else 240.0f32 + f32(i - 2) * 30, 11, 18, SLAB_KIND_TANK);
+  }
+  // Industry, X -350 to -150: process units, six 60 m stacks, a tank farm, the desalination plant.
+  n = slab_mass(out, n, -340, -210, -280, -90, 35, SLAB_KIND_INDUSTRY);
+  n = slab_mass(out, n, -340, -50, -280, 70, 35, SLAB_KIND_INDUSTRY);
+  n = slab_mass(out, n, -265, 120, -205, 240, 28, SLAB_KIND_INDUSTRY);
+  for i: 0..<6 {
+    n = slab_drum(out, n, ifx i < 3 then -240.0f32 else -185.0f32, -235.0f32 + f32(i % 3) * 55, 6, 60, SLAB_KIND_STACK);
+  }
+  for i: 0..<6 {
+    n = slab_drum(out, n, -250.0f32 + f32(i % 3) * 30, -20.0f32 + f32(i / 3) * 34, 12, 16, SLAB_KIND_TANK);
+  }
+  n = slab_mass(out, n, -192, 140, -158, 260, 14, SLAB_KIND_INDUSTRY);
+  // Data halls, X -150 to 50, Z -300 to 0: four halls three storeys (18 m) tall, and their cooling yard.
+  n = slab_mass(out, n, -145, -230, -85, -130, 18, SLAB_KIND_DATA);
+  n = slab_mass(out, n, -75, -230, -15, -130, 18, SLAB_KIND_DATA);
+  n = slab_mass(out, n, -145, -115, -85, -15, 18, SLAB_KIND_DATA);
+  n = slab_mass(out, n, -75, -115, -15, -15, 18, SLAB_KIND_DATA);
+  n = slab_mass(out, n, 0, -230, 40, -15, 7, SLAB_KIND_COOLING);
+  // The dock, X -50 to 50 at the south edge: two cranes, each a leg and a boom.
+  for i: 0..<2 {
+    x := ifx i == 0 then -30.0f32 else 30.0f32;
+    n = slab_put(out, n, x - 4, SLAB_DECK, -288, x + 4, SLAB_DECK + 48, -262, SLAB_KIND_CRANE, SLAB_BOX);
+    n = slab_put(out, n, x - 3, SLAB_DECK + 44, -310, x + 3, SLAB_DECK + 49, -250, SLAB_KIND_CRANE, SLAB_BOX);
+  }
+  // Towers, X -150 to 150, Z 0 to 300: twelve of 80 to 180 m.
+  for i: 0..<12 {
+    x := -120.0f32 + f32(i % 4) * 80;
+    z := 60.0f32 + f32(i / 4) * 90;
+    n = slab_mass(out, n, x - 20, z - 20, x + 20, z + 20, TOWER_HEIGHTS[i], SLAB_KIND_TOWER);
+  }
+  // The mining yard, X 150 to 300, Z -300 to -100: 50 containers in five rows of ten.
+  for row: 0..<5 {
+    z := -280.0f32 + f32(row) * 9;
+    n = slab_put(out, n, 160, SLAB_DECK, z, 296, SLAB_DECK + 2.6f32, z + 2.4f32, SLAB_KIND_CONTAINERS, SLAB_BOX);
+  }
+  // The medical campus, X 150 to 350, Z -100 to 300: hospital and research blocks, 4 to 6 storeys.
+  n = slab_mass(out, n, 170, -80, 230, -20, 18, SLAB_KIND_MEDICAL);
+  n = slab_mass(out, n, 250, -80, 330, -30, 15, SLAB_KIND_MEDICAL);
+  n = slab_mass(out, n, 170, 20, 230, 110, 21, SLAB_KIND_MEDICAL);
+  n = slab_mass(out, n, 250, 10, 330, 90, 18, SLAB_KIND_MEDICAL);
+  n = slab_mass(out, n, 170, 150, 250, 230, 15, SLAB_KIND_MEDICAL);
+  n = slab_mass(out, n, 270, 130, 330, 250, 21, SLAB_KIND_MEDICAL);
+  // Gardens and civic, X 350 to 500: groves, a domed civic hall, a fountain plaza.
+  n = slab_mass(out, n, 360, -270, 470, -90, 0.6f32, SLAB_KIND_PARK);
+  n = slab_mass(out, n, 360, 90, 470, 270, 0.6f32, SLAB_KIND_PARK);
+  n = slab_mass(out, n, 380, -55, 445, 55, 22, SLAB_KIND_CIVIC);
+  n = slab_drum(out, n, 412, 0, 20, 36, SLAB_KIND_CIVIC);
+  n = slab_drum(out, n, 412, -150, 15, 0.8f32, SLAB_KIND_POOL);
+  for i: 0..<8 {
+    n = slab_drum(out, n, 375.0f32 + f32(i % 4) * 28, ifx i < 4 then -200.0f32 else 180.0f32, 7, 12, SLAB_KIND_PARK);
+  }
+  return n;
+}
+
+// Whether a record lies inside the hull's plan (the cranes' booms may overhang the dock edge by 10 m).
+slab_inside :: (out: [] f32, i: int) -> bool {
+  at := i * SLAB_RECORD;
+  reach := ifx cast(int) out[at + 3] == SLAB_KIND_CRANE then 10.0f32 else 0.0f32;
+  return out[at] >= -SLAB_LENGTH / 2 && out[at + 4] <= SLAB_LENGTH / 2 && out[at + 2] >= -SLAB_BEAM / 2 - reach && out[at + 6] <= SLAB_BEAM / 2;
+}
+
+#test "SLAB's plan fits its table and its hull" {
+  boxes: [SLAB_MAX_BOXES * SLAB_RECORD] f32;
+  n := slab_plan(boxes[..]);
+  #assert n > SLAB_HULL_PIECES && n < SLAB_MAX_BOXES;
+  for i: 0..<n {
+    at := i * SLAB_RECORD;
+    #assert boxes[at] < boxes[at + 4] && boxes[at + 1] < boxes[at + 5] && boxes[at + 2] < boxes[at + 6];
+    #assert slab_inside(boxes[..], i);
+  }
+  // the hull spans keel to deck: 50 m deep, 25 m draft
+  #assert boxes[1] == -25 && boxes[5] == 25;
+  // the tallest tower is 180 m over the deck, the stacks 60 m
+  tallest := 0.0f32;
+  for i: SLAB_HULL_PIECES..<n { at := i * SLAB_RECORD; if boxes[at + 5] - SLAB_DECK > tallest { tallest = boxes[at + 5] - SLAB_DECK; } }
+  #assert tallest == 180;
+}

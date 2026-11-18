@@ -245,6 +245,19 @@
         "golden": { "lit": 0.5, "settle": 3000, "blocks": 6 },
         "assets": []
       } },
+    { "id": "slab", "name": "SLAB SIMULATION", "kind": "open", "listed": false, "orbit": { "r": 0.5, "a": 3.6, "size": 0.02 },
+      "realm": {
+        "slug": "slab",
+        "style": "painterly",
+        "clock": "fixed:0.5",
+        "title": "SLAB Simulation",
+        "description": "An unlisted reconstruction of SLAB, a proposed floating industrial platform: a kilometre-long concrete hull with its industry, data halls, towers and gardens on open ocean.",
+        "alt": "A kilometre-long concrete platform carrying a city and industrial stacks on open ocean",
+        "module": "slab",
+        "slot": "slab",
+        "golden": { "lit": 0.3, "settle": 3000, "blocks": 6 },
+        "assets": []
+      } },
     { "id": "animelab", "name": "ANIME LAB", "kind": "open", "listed": false, "orbit": { "r": 0.26, "a": 5.9, "size": 0.022 },
       "realm": {
         "slug": "anime-lab",

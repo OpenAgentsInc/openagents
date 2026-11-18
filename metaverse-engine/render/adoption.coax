@@ -195,12 +195,18 @@ render_adoption :: (slug: string, app: string) -> RenderAdoption #export_c #effe
   if slug == "create-world" && app == "worldbuilder" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "splice-bots" && app == "splice-bots" { return RenderAdoption.{tracked_legacy = true}; }   // Splice: Mars at dusk on Anime Lab's shading (metaverse/splice-bots/splice-bots.coax)   // WorldBuilder: chat a world onto the Grid, on its own passes
   if slug == "crew" && app == "crew" { return RenderAdoption.{tracked_legacy = true}; }   // Crew: character creation on Anime Lab's shading, a studio's paper for a sky (apps/openagents-web/crew.coax, #13462)
+  if slug == "slab" && app == "slab" { return RenderAdoption.{tracked_legacy = true}; }   // SLAB Simulation: the water lab's sea and a traced platform on its own passes (apps/openagents-web/slab.coax)
   return RenderAdoption.{};
 }
 #test "Crew binds Anime Lab's passes only to its own producer" {
   r := render_adoption("crew", "crew");
   #assert r.tracked_legacy && !r.shared && r.profile == -1;
   #assert !render_adoption("crew", "splice").tracked_legacy && !render_adoption("splice", "crew").tracked_legacy && !render_adoption("cre", "crew").tracked_legacy;
+}
+#test "SLAB Simulation binds its passes only to its own producer" {
+  r := render_adoption("slab", "slab");
+  #assert r.tracked_legacy && !r.shared && r.profile == -1;
+  #assert !render_adoption("slab", "waterlab").tracked_legacy && !render_adoption("waterlab", "slab").tracked_legacy && !render_adoption("sla", "slab").tracked_legacy;
 }
 #test "Splice Bots binds its passes only to its own producer" {
   r := render_adoption("splice-bots", "splice-bots");

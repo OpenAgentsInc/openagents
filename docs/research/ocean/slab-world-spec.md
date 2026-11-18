@@ -1,7 +1,11 @@
 # SLAB world: a simulation spec for the Metaverse Engine
 
-Status: spec, November 18, 2026. Nothing here is built yet. Revised the
-same day with sourced OTEC figures from [otec.md](otec.md).
+Status: phase S1 built, November 18, 2026, as **SLAB Simulation** at
+`/realms/slab`. The realm is registered, the sea comes from the water lab,
+and the static `prime` hull and deck districts are in place, viewed with an
+orbit camera. Its golden is still to be taken on staging. Phases S2–S7 are
+not built. The spec was revised the same day with sourced OTEC figures from
+[otec.md](otec.md).
 
 This is the brief for a coding agent to build **SLAB**, an unlisted realm in
 the OpenAgents Metaverse Engine that rebuilds Palmer Luckey's proposed
@@ -56,9 +60,9 @@ Register one row in `apps/openagents-web/realms.json`, then run
 hand. `bun coax/web/realms.ts --check` must pass.
 
 ```json
-{ "id": "slab", "name": "SLAB", "kind": "open", "listed": false,
+{ "id": "slab", "name": "SLAB SIMULATION", "kind": "open", "listed": false,
   "orbit": { "r": 0.5, "a": 3.6, "size": 0.02 },
-  "realm": { "slug": "slab", "title": "SLAB",
+  "realm": { "slug": "slab", "title": "SLAB Simulation",
     "description": "An unlisted reconstruction of SLAB, a proposed floating industrial platform: walk its deck, change the sea and the site, and watch the hull, the OTEC power plant, the data halls and the miners respond.",
     "alt": "A kilometre-long concrete platform carrying a city and industrial stacks on open ocean",
     "style": "painterly", "clock": "fixed:0.5", "module": "slab", "slot": "slab",

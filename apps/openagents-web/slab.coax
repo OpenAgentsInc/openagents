@@ -1,0 +1,382 @@
+// SLAB Simulation (openagents.com/realms/slab): an unlisted reconstruction of SLAB, the proposed
+// floating industrial platform, on open ocean. Phase S1 of
+// docs/research/ocean/slab-world-spec.md: the realm, the sea from the water lab, the static
+// `prime` monolith (1,000 x 600 x 50 m, 25 m draft) with its deck districts, and a camera that
+// flies round it. Hull physics, the deck walk, the power systems and the dome layouts are the
+// spec's later phases.
+//
+// The sea is the water lab's (waterlab.coax): a JONSWAP sea synthesized by the CPU FFT on the
+// water's clock (metaverse/water-spectrum.coax), drawn as a clipmap mesh to the horizon
+// (metaverse/water-ocean.coax), here in deep water everywhere: no beach, no shore cells.
+// The platform is metaverse/slab-plan.coax's records (boxes and upright cylinders), packed into
+// the uniforms each frame and traced by slab.wgsl's bg_fs, which writes their depth so the
+// sea's mesh hides behind the hull.
+//
+// The URL: ?wind=M/S (10), ?t=SECONDS (a fixed moment), ?yaw=, ?pitch=, ?dist= (the camera's
+// orbit), ?x=, ?z= (the point it orbits), ?tier=phone. Drag or the arrow keys turn the camera,
+// the wheel or R and F zoom, W A S D move the point it looks at.
+
+#load "../../metaverse/water-ocean.coax";
+#load "../../metaverse/slab-plan.coax";
+#load "../../metaverse-engine/core/budget.coax";
+
+VERTEX_FLOATS :: 16;
+MAX_VERTICES :: 6;
+HOST_FACTS :: 600;
+KEY_LEFT :: -3; KEY_RIGHT :: -4; KEY_UP :: -1; KEY_DOWN :: -2;
+
+// The uniforms, floats.
+U_SIZE :: 0;      // width, height, time (s), fade
+U_MODE :: 4;      // still, phone (1), boxes, dpr
+U_EYE :: 8;       // x, y, z, tan of half the vertical field
+U_FWD :: 12;      // forward xyz, 0
+U_RIGHT :: 16;    // right xyz, 0
+U_UP :: 20;       // up xyz, 0
+U_SUN :: 24;      // toward the sun xyz, strength
+U_SEA :: 28;      // level, cascade 0's patch (m), the fine patch (m), choppiness
+U_WIND :: 32;     // wind direction x, z, wind speed, significant height
+U_HULL :: 36;     // half length, half beam, deck height, keel height
+U_PACK :: 40;     // scales the packed numbers: height, slope, fine slope, choppy displacement
+U_CLIP :: 44;     // the clipmap: quads a side, levels, morph band (quads), the skirt's reach (m)
+U_LEVELS :: 48;   // a level each: centre x, z, spacing, hole x + 2 hole z (OCEAN_MAX_LEVELS)
+U_BOXES :: 96;    // the plan's records (metaverse/slab-plan.coax), SLAB_RECORD floats each
+U_WORDS :: U_BOXES + SLAB_MAX_BOXES * SLAB_RECORD;   // then the words:
+W_COARSE :: 0;    //   cascade 0: (height, foam), (sx, sz) a texel
+W_CHOP :: 8192;   //   cascade 0's choppy displacement, (dx, dz) as two signed bytes a texel, two texels a word
+W_FINE :: 10240;  //   the fine slopes (or the phone's baked tile), one word a texel
+TILE_N :: 64;
+WORDS :: W_FINE + TILE_N * TILE_N;
+UNIFORM_FLOATS :: U_WORDS + WORDS;
+
+Slab :: struct {
+  started: bool;
+  time: f64;            // s since the page opened, or the fixed moment
+  fixed: f64;           // ?t= (-1: the clock runs)
+  golden: bool;
+  phone_forced: bool;
+  yaw: f32; pitch: f32; dist: f32;
+  tx: f32; tz: f32;     // the point the camera orbits, on the deck's plane
+  held: int;            // keys held, bits
+  dragging: bool; last_x: f32; last_y: f32;
+  wind: f64;
+  spectrum: Spectrum;
+  built: bool;          // the synths for the current wind and tier
+  built_phone: bool;
+  synth: [1] Synth;     // cascade 0 (and the desktop's fine cascade)
+  tile: [1] Tile;
+  foam: [4096] f32;     // the foam field over cascade 0
+  baked: [WSP_TILE_FLOATS] f32;
+  baked_ready: bool;
+  last_tick: u64;
+  have_tick: bool;
+  counted: bool;
+  mesh: int;            // the surface's vertices this frame
+  boxes: [SLAB_MAX_BOXES * SLAB_RECORD] f32;
+  box_count: int;
+}
+
+hi_f32 :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
+
+slab_reset :: (s: [] Slab) {
+  s[0].started = true;
+  s[0].fixed = -1;
+  s[0].yaw = 0.62; s[0].pitch = 0.36; s[0].dist = 1500;
+  s[0].tx = 0; s[0].tz = 0;
+  s[0].wind = 10;
+  s[0].box_count = slab_plan(s[0].boxes[..]);
+}
+
+// Half floats (IEEE binary16), rounded to nearest, for packing tiles.
+half_bits :: (v: f32) -> u32 {
+  b := f32_bits(v);
+  sign := (b >> 16) & 0x8000;
+  e := cast(int) ((b >> 23) & 0xff) - 127 + 15;
+  m := b & 0x7fffff;
+  if e <= 0 {
+    if e < -10 { return sign; }
+    m = m | 0x800000;
+    shift := cast(u32) (14 - e);
+    r := m >> shift;
+    if (m >> (shift - 1)) & 1 == 1 { r += 1; }
+    return sign | r;
+  }
+  if e >= 31 { return sign | 0x7bff; }
+  r := (cast(u32) e << 10) | (m >> 13);
+  if (m >> 12) & 1 == 1 { r += 1; }
+  if r >= 0x7c00 { r = 0x7bff; }
+  return sign | r;
+}
+pack2 :: (a: f32, b: f32) -> f32 { return f32_from_bits(half_bits(a) | (half_bits(b) << 16)); }
+// A signed byte for v in [-1, 1].
+snorm8 :: (v: f32) -> u32 { return cast(u32) (cast(int) floor(wsp_clamp(v, -1, 1) * 127 + 0.5) & 0xff); }
+
+// The open-ocean sea for the wind: a long fetch, deep water.
+slab_spectrum :: (wind: f64) -> Spectrum {
+  return Spectrum.{seed = 23, wind_speed = wind, wind = 2.6, fetch = 300000.0, choppiness = 0.8, spread = 0.8, depth = 4000.0};
+}
+
+slab_build :: (s: [] Slab, phone: bool) {
+  s[0].spectrum = slab_spectrum(s[0].wind);
+  wsp_synth(s[0].synth[..], s[0].spectrum, ifx phone then 1 else 2, TILE_N);
+  s[0].built = s[0].synth[0].ok;
+  s[0].built_phone = phone;
+  for i: 0..<4096 { s[0].foam[i] = 0; }
+  s[0].have_tick = false;
+  if phone && !s[0].baked_ready {
+    // the baked tile needs its own synth for a moment; rebuild the sea after
+    wsp_bake_tile(s[0].synth[..], s[0].tile[..], s[0].baked[..]);
+    s[0].baked_ready = true;
+    wsp_synth(s[0].synth[..], s[0].spectrum, 1, TILE_N);
+  }
+}
+
+// The lowest the eye may go at (x, z): over the sea's crests, or over the deck on the platform.
+slab_floor :: (x: f32, z: f32) -> f32 {
+  over := abs(x) < SLAB_LENGTH / 2 + 6 && abs(z) < SLAB_BEAM / 2 + 6;
+  return ifx over then SLAB_DECK + 4 else 6.0f32;
+}
+
+// Steps the camera and writes the sea's tiles and the platform's records for this tick.
+slab_frame :: (s: [] Slab, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
+  if s.count < 1 || u.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
+  if !s[0].started { slab_reset(s); }
+  phone := s[0].phone_forced || width / hi_f32(dpr, 0.5) < 600;
+  if !s[0].built || s[0].built_phone != phone { slab_build(s, phone); }
+  if !s[0].built { return 0; }
+  step := wsp_clamp(dt, 0, 0.1);
+  if s[0].fixed >= 0 { s[0].time = s[0].fixed; } else if !(still || s[0].golden) { s[0].time += f64(step); }
+  if s[0].golden && s[0].fixed < 0 { s[0].time = 12.0; }
+  turn := 1.0 * step;
+  if s[0].held & 1 != 0 { s[0].yaw -= turn; }
+  if s[0].held & 2 != 0 { s[0].yaw += turn; }
+  if s[0].held & 4 != 0 { s[0].pitch = wsp_clamp(s[0].pitch + turn * 0.6f32, -0.2, 1.45); }
+  if s[0].held & 8 != 0 { s[0].pitch = wsp_clamp(s[0].pitch - turn * 0.6f32, -0.2, 1.45); }
+  if s[0].held & 64 != 0 { s[0].dist = wsp_clamp(s[0].dist * (1 - step), 30, 9000); }
+  if s[0].held & 128 != 0 { s[0].dist = wsp_clamp(s[0].dist * (1 + step), 30, 9000); }
+  // W A S D move the orbit's point over the water, faster the farther the camera
+  pace := hi_f32(s[0].dist, 60) * 0.6f32 * step;
+  hx := -sin(s[0].yaw); hz := -cos(s[0].yaw);
+  if s[0].held & 256 != 0 { s[0].tx += hx * pace; s[0].tz += hz * pace; }
+  if s[0].held & 512 != 0 { s[0].tx -= hx * pace; s[0].tz -= hz * pace; }
+  if s[0].held & 1024 != 0 { s[0].tx += hz * pace; s[0].tz -= hx * pace; }
+  if s[0].held & 2048 != 0 { s[0].tx -= hz * pace; s[0].tz += hx * pace; }
+  s[0].tx = wsp_clamp(s[0].tx, -4000, 4000); s[0].tz = wsp_clamp(s[0].tz, -4000, 4000);
+  for i: 0..<UNIFORM_FLOATS { u[i] = 0; }
+  u[U_SIZE] = width; u[U_SIZE + 1] = height; u[U_SIZE + 2] = f32(s[0].time); u[U_SIZE + 3] = 1;
+  u[U_MODE] = ifx still then 1.0f32 else 0.0f32; u[U_MODE + 1] = ifx phone then 1.0f32 else 0.0f32;
+  u[U_MODE + 2] = f32(s[0].box_count); u[U_MODE + 3] = dpr;
+  // The camera orbits a point on the deck's plane.
+  cy := cos(s[0].pitch); sy := sin(s[0].pitch);
+  fx := -sin(s[0].yaw) * cy; fz := -cos(s[0].yaw) * cy; fy := -sy;
+  tx := s[0].tx; ty := SLAB_DECK; tz := s[0].tz;
+  ex := tx - fx * s[0].dist; ey := ty - fy * s[0].dist; ez := tz - fz * s[0].dist;
+  ey = hi_f32(ey, slab_floor(ex, ez));
+  // aim at the orbit's point from where the eye ended up
+  ax := tx - ex; ay := ty - ey; az := tz - ez;
+  al := sqrt(ax * ax + ay * ay + az * az);
+  fx = ax / al; fy = ay / al; fz = az / al;
+  u[U_EYE] = ex; u[U_EYE + 1] = ey; u[U_EYE + 2] = ez; u[U_EYE + 3] = 0.5;
+  u[U_FWD] = fx; u[U_FWD + 1] = fy; u[U_FWD + 2] = fz;
+  rl := sqrt(fx * fx + fz * fz);
+  rx := -fz / rl; rz := fx / rl;
+  u[U_RIGHT] = rx; u[U_RIGHT + 2] = rz;
+  u[U_UP] = -(rz * fy); u[U_UP + 1] = rz * fx - rx * fz; u[U_UP + 2] = rx * fy;
+  // a high tropical sun, south-east of the platform
+  se := 0.95; sa := 2.3;
+  u[U_SUN] = f32(cos(se) * sin(sa)); u[U_SUN + 1] = f32(sin(se)); u[U_SUN + 2] = f32(cos(se) * cos(sa)); u[U_SUN + 3] = 1;
+  sp := s[0].spectrum;
+  c0 := s[0].synth[0].cascades[0];
+  u[U_SEA] = 0; u[U_SEA + 1] = f32(c0.patch);
+  u[U_SEA + 2] = ifx phone then f32(WSP_TILE_METERS) else f32(s[0].synth[0].cascades[1].patch);
+  u[U_SEA + 3] = f32(sp.choppiness);
+  w := wsp_direction(sp);
+  u[U_WIND] = f32(w.x); u[U_WIND + 1] = f32(w.y); u[U_WIND + 2] = f32(sp.wind_speed); u[U_WIND + 3] = f32(s[0].synth[0].significant);
+  u[U_HULL] = SLAB_LENGTH / 2; u[U_HULL + 1] = SLAB_BEAM / 2; u[U_HULL + 2] = SLAB_DECK; u[U_HULL + 3] = -SLAB_DRAFT;
+  for i: 0..<s[0].box_count * SLAB_RECORD { u[U_BOXES + i] = s[0].boxes[i]; }
+  // The tick (the water's clock), and the tiles at it.
+  tick := wsp_tick_at(sp, s[0].time);
+  fresh := !s[0].have_tick || tick != s[0].last_tick;
+  folded := tick % sp.period;
+  wsp_tile(s[0].synth[..], 0, folded, s[0].tile[..]);
+  if fresh {
+    gap := ifx s[0].have_tick && tick > s[0].last_tick then f32(tick - s[0].last_tick) * f32(sp.tick) else 0.0f32;
+    if !s[0].have_tick && s[0].fixed >= 0 {
+      // a fixed moment: the foam the last four seconds would have left
+      for k: 0..<8 {
+        back := ifx tick > cast(u64) (8 - k) * 60 then tick - cast(u64) (8 - k) * 60 else 0;
+        wsp_tile(s[0].synth[..], 0, back % sp.period, s[0].tile[..]);
+        wsp_foam_step(s[0].foam[..], s[0].tile[..], wsp_whitecap_threshold(s[0].tile[..], sp.wind_speed), 0.6, 0.5);
+      }
+      wsp_tile(s[0].synth[..], 0, folded, s[0].tile[..]);
+    }
+    wsp_foam_step(s[0].foam[..], s[0].tile[..], wsp_whitecap_threshold(s[0].tile[..], sp.wind_speed), 0.6, gap);
+    s[0].last_tick = tick; s[0].have_tick = true;
+  }
+  nn := TILE_N * TILE_N;
+  hs := 0.0f32; ss := 0.0f32;
+  for i: 0..<nn {
+    hs = hi_f32(hs, abs(s[0].tile[0].height[i]));
+    ss = hi_f32(ss, hi_f32(abs(s[0].tile[0].sx[i]), abs(s[0].tile[0].sz[i])));
+  }
+  hs = hi_f32(hs, 0.001); ss = hi_f32(ss, 0.001);
+  u[U_PACK] = hs; u[U_PACK + 1] = ss;
+  co := U_WORDS + W_COARSE;
+  for i: 0..<nn {
+    u[co + 2 * i] = pack2(s[0].tile[0].height[i] / hs, s[0].foam[i]);
+    u[co + 2 * i + 1] = pack2(s[0].tile[0].sx[i] / ss, s[0].tile[0].sz[i] / ss);
+  }
+  ds := 0.001f32;
+  for i: 0..<nn { ds = hi_f32(ds, hi_f32(abs(s[0].tile[0].dx[i]), abs(s[0].tile[0].dz[i]))); }
+  u[U_PACK + 3] = ds;
+  ch := U_WORDS + W_CHOP;
+  for i: 0..<nn / 2 {
+    a := snorm8(s[0].tile[0].dx[2 * i] / ds) | (snorm8(s[0].tile[0].dz[2 * i] / ds) << 8);
+    b := snorm8(s[0].tile[0].dx[2 * i + 1] / ds) | (snorm8(s[0].tile[0].dz[2 * i + 1] / ds) << 8);
+    u[ch + i] = f32_from_bits(a | (b << 16));
+  }
+  // The clipmap round the eye.
+  clip := ocean_clipmap(ocean_tier(phone), f64(ex), f64(ez), f64(ey));
+  u[U_CLIP] = f32(clip.n); u[U_CLIP + 1] = f32(clip.count); u[U_CLIP + 2] = f32(clip.morph); u[U_CLIP + 3] = f32(clip.far);
+  ocean_level_uniforms(clip, u[U_LEVELS..<U_LEVELS + 4 * OCEAN_MAX_LEVELS]);
+  s[0].mesh = ocean_vertices(clip);
+  fine := U_WORDS + W_FINE;
+  if phone {
+    u[U_PACK + 2] = 0.5;
+    for i: 0..<nn { u[fine + i] = pack2(s[0].baked[4 * i] / 0.5, s[0].baked[4 * i + 1] / 0.5); }
+  } else {
+    wsp_tile(s[0].synth[..], 1, folded, s[0].tile[..]);
+    fs := 0.001f32;
+    for i: 0..<nn { fs = hi_f32(fs, hi_f32(abs(s[0].tile[0].sx[i]), abs(s[0].tile[0].sz[i]))); }
+    u[U_PACK + 2] = fs;
+    for i: 0..<nn { u[fine + i] = pack2(s[0].tile[0].sx[i] / fs, s[0].tile[0].sz[i] / fs); }
+  }
+  return 0;
+}
+
+// Input.
+key_bit :: (key: int) -> int {
+  if key == KEY_LEFT { return 1; }
+  if key == KEY_RIGHT { return 2; }
+  if key == KEY_UP { return 4; }
+  if key == KEY_DOWN { return 8; }
+  if key == 'r' || key == 'R' { return 64; }
+  if key == 'f' || key == 'F' { return 128; }
+  if key == 'w' || key == 'W' { return 256; }
+  if key == 's' || key == 'S' { return 512; }
+  if key == 'd' || key == 'D' { return 1024; }
+  if key == 'a' || key == 'A' { return 2048; }
+  return 0;
+}
+slab_key :: (s: [] Slab, key: int, down: bool) -> bool #export_c #effects(all) {
+  if !s[0].started { slab_reset(s); }
+  b := key_bit(key);
+  if b == 0 { return false; }
+  if down { s[0].held |= b; } else { s[0].held = s[0].held & (4095 - b); }
+  return true;
+}
+slab_blur :: (s: [] Slab) #export_c #effects(all) { s[0].held = 0; s[0].dragging = false; }
+slab_pointer :: (s: [] Slab, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
+  if !s[0].started { slab_reset(s); }
+  if phase == 0 { s[0].dragging = true; s[0].last_x = x; s[0].last_y = y; return true; }
+  if phase == 1 && s[0].dragging {
+    s[0].yaw -= (x - s[0].last_x) * 0.004;
+    s[0].pitch = wsp_clamp(s[0].pitch + (y - s[0].last_y) * 0.003, -0.2, 1.45);
+    s[0].last_x = x; s[0].last_y = y;
+    return true;
+  }
+  if phase >= 2 { s[0].dragging = false; }
+  return false;
+}
+slab_wheel :: (s: [] Slab, dy: f32) #export_c #effects(all) {
+  if !s[0].started { slab_reset(s); }
+  s[0].dist = wsp_clamp(s[0].dist * (1 + dy * 0.001), 30, 9000);
+}
+slab_golden :: (s: [] Slab, on: bool) #export_c #effects(all) { if !s[0].started { slab_reset(s); } s[0].golden = on; }
+
+// The page facts (message 600): the URL's query.
+fact :: (facts: string, key: string) -> string {
+  i := 0;
+  while i < facts.count {
+    e := i; while e < facts.count && facts[e] != '\n' { e += 1; }
+    if e - i > key.count && facts[i + key.count] == '=' && facts[i..<i + key.count] == key { return facts[i + key.count + 1..<e]; }
+    i = e + 1;
+  }
+  return "";
+}
+// The decimal after `key` in the URL's query (?key=V), or `otherwise`.
+query_number :: (url: string, key: string, otherwise: f64) -> f64 {
+  i := 0;
+  while i < url.count && url[i] != '?' { i += 1; }
+  while i < url.count && url[i] != '#' {
+    i += 1;
+    e := i; while e < url.count && url[e] != '&' && url[e] != '#' { e += 1; }
+    if e - i > key.count + 1 && url[i..<i + key.count] == key && url[i + key.count] == '=' {
+      v := 0.0; sign := 1.0; scale := 0.0; any := false;
+      for j: i + key.count + 1..<e {
+        c := url[j];
+        if c == '-' && j == i + key.count + 1 { sign = -1; continue; }
+        if c == '.' && scale == 0.0 { scale = 1; continue; }
+        if c < '0' || c > '9' { return otherwise; }
+        any = true;
+        if scale > 0.0 { scale *= 0.1; v += f64(c - '0') * scale; } else { v = v * 10 + f64(c - '0'); }
+      }
+      return ifx any then sign * v else otherwise;
+    }
+    i = e;
+  }
+  return otherwise;
+}
+query_word :: (url: string, pair: string) -> bool {
+  i := 0;
+  while i < url.count && url[i] != '?' { i += 1; }
+  while i < url.count && url[i] != '#' {
+    i += 1;
+    e := i; while e < url.count && url[e] != '&' && url[e] != '#' { e += 1; }
+    if url[i..<e] == pair { return true; }
+    i = e;
+  }
+  return false;
+}
+slab_message :: (s: [] Slab, kind: int, text: string) #export_c #effects(all) {
+  if !s[0].started { slab_reset(s); }
+  if kind != HOST_FACTS || s[0].counted { return; }
+  s[0].counted = true;
+  url := fact(text, "url");
+  s[0].fixed = query_number(url, "t", -1);
+  s[0].wind = fclamp(query_number(url, "wind", 10), 0.5, 30);
+  s[0].yaw = f32(query_number(url, "yaw", 0.62));
+  s[0].pitch = f32(fclamp(query_number(url, "pitch", 0.36), -0.2, 1.45));
+  s[0].dist = f32(fclamp(query_number(url, "dist", 1500), 30, 9000));
+  s[0].tx = f32(fclamp(query_number(url, "x", 0), -4000, 4000));
+  s[0].tz = f32(fclamp(query_number(url, "z", 0), -4000, 4000));
+  s[0].phone_forced = query_word(url, "tier=phone");
+  s[0].built = false;
+}
+
+coaxial_slab_max_vertices :: () -> int #export_c #effects(all) { return MAX_VERTICES; }
+// The clipmap's vertices this frame, drawn by slab.wgsl's surface_vs.
+slab_surface_vertices :: (s: [] Slab) -> int #export_c #effects(all) { return ifx s[0].started then s[0].mesh else 0; }
+coaxial_slab_vertex_floats :: () -> int #export_c #effects(all) { return VERTEX_FLOATS; }
+coaxial_slab_uniform_floats :: () -> int #export_c #effects(all) { return UNIFORM_FLOATS; }
+
+#test "SLAB's uniforms fit one WebGPU uniform block" {
+  // 64 KiB, the default maxUniformBufferBindingSize; slab.bindings declares UNIFORM_FLOATS / 4 vec4s
+  #assert UNIFORM_FLOATS * 4 <= 65536;
+  #assert UNIFORM_FLOATS % 4 == 0 && U_WORDS % 4 == 0;
+  #assert U_BOXES >= U_LEVELS + 4 * OCEAN_MAX_LEVELS;
+}
+#test "The camera never goes under the deck or the waves" {
+  #assert slab_floor(0, 0) > SLAB_DECK;
+  #assert slab_floor(2000, 0) > 0;
+}
+
+// ---------------------------------------------------------------------------------------------
+// The frame budget (metaverse-engine/core/budget.coax, book chapter 16): what one frame of SLAB may use.
+SLAB_BUDGET :: FrameBudget.{steps = 8, vertices = 0, draws = 0, bytes = 2228224};
+
+#test "SLAB's frames fit their declared budget" {
+  #assert budget_declared(SLAB_BUDGET, MAX_VERTICES) == BUDGET_NONE;
+  bm := [1] BudgetMeter.[budget_meter(SLAB_BUDGET)];
+  budget_measure(bm[..], 0, 0, budget_arena_bytes(size_of(Slab), MAX_VERTICES, VERTEX_FLOATS, UNIFORM_FLOATS));
+  #assert budget_ok(bm[0]);
+}
