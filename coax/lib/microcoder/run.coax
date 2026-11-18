@@ -790,8 +790,8 @@ mc_run_answer_owned :: (r:[]McRun,ticket:int,allow:bool,why:string,out:[]McRunEv
   #assert r[0].asking && r[0].ask_ticket==3 && !r[0].ended;
 }
 
-MC_RUN_SPLIT_BARE :: "{\"rationale\":\"split\",\"delegate\":[{\"level\":\"simple\",\"task\":\"count the files\"},{\"level\":\"complex\",\"task\":\"find the bug\"}],\"edits\":[],\"commands\":[],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}";
-MC_RUN_SPLIT :: "{\"rationale\":\"split\",\"delegate\":[{\"level\":\"simple\",\"task\":\"count the files\"},{\"level\":\"complex\",\"task\":\"find the bug\"}],\"edits\":[],\"commands\":[\"true\"],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}";
+MC_RUN_SPLIT_BARE :: "{\"rationale\":\"split\",\"delegate\":[{\"level\":\"hydrogen\",\"task\":\"count the files\"},{\"level\":\"carbon\",\"task\":\"find the bug\"}],\"edits\":[],\"commands\":[],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}";
+MC_RUN_SPLIT :: "{\"rationale\":\"split\",\"delegate\":[{\"level\":\"hydrogen\",\"task\":\"count the files\"},{\"level\":\"carbon\",\"task\":\"find the bug\"}],\"edits\":[],\"commands\":[\"true\"],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}";
 #test "a step's delegated tasks wait for the owner's results, which become the step's results; then its commands run" {
   for gated: [2] bool.[false, true] {
     f: [1] McRunFixture; out: [16] McRunEvent;
@@ -802,7 +802,7 @@ MC_RUN_SPLIT :: "{\"rationale\":\"split\",\"delegate\":[{\"level\":\"simple\",\"
     #assert h.tools && mc_pending(r[0].l[..]).nd == 2;
     n := mc_run_plain(r, out[..], h.k);
     #assert n == 1 && out[0].kind == MR_DELEGATE && out[0].ticket == 1 && r[0].asking && r[0].delegating && !r[0].ended;
-    #assert out[0].text == "[{\"level\":\"simple\",\"task\":\"count the files\"},{\"level\":\"complex\",\"task\":\"find the bug\"}]";
+    #assert out[0].text == "[{\"level\":\"hydrogen\",\"task\":\"count the files\"},{\"level\":\"carbon\",\"task\":\"find the bug\"}]";
     #assert mc_run_poll(r, out[..]) == 0;                                         // waiting
     #assert mc_run_answer(r, true, "", out[..]) == 0 && r[0].delegating;          // a command's answer is not the results
     #assert mc_run_delegated(r, 2, "[]", out[..]) == 0 && r[0].delegating;        // another ticket
@@ -810,7 +810,7 @@ MC_RUN_SPLIT :: "{\"rationale\":\"split\",\"delegate\":[{\"level\":\"simple\",\"
     #assert !r[0].delegating && r[0].delegated && !r[0].ended;
     if !gated {     // the step has ended (a gated one is open until its command is answered): its results are in the state
       state := mc_state_json(r[0].l[0].st[..], r[0].l[0].prompt);
-      #assert ps_count(state, "agent simple: count the files") == 1 && ps_count(state, "12 files") == 1 && ps_count(state, "agent complex: find the bug") == 1 && ps_count(state, "the sub-agent did not run") == 1;
+      #assert ps_count(state, "agent hydrogen: count the files") == 1 && ps_count(state, "12 files") == 1 && ps_count(state, "agent carbon: find the bug") == 1 && ps_count(state, "the sub-agent did not run") == 1;
     }
     if gated { #assert n == 1 && out[0].kind == MR_ASK && out[0].text == "true" && out[0].ticket == 2 && r[0].asking; }
     else { #assert n == 1 && out[0].kind == MR_STEP && !r[0].asking && r[0].calling; }     // no commands (a check cannot run one): the next call

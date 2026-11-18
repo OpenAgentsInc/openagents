@@ -125,7 +125,7 @@ schema, the tools and the limits. The model never sees a key, a path under
   line has `"edits":true`.
 - **`delegate`** (#13655): only in a run whose task line has
   `"agents":true`. Up to 6 tasks a step, each
-  `{"level":"simple"|"complex","task":"..."}`. The worker sends them to its
+  `{"level":"hydrogen"|"carbon","task":"..."}`. The worker sends them to its
   owner in one line, `{"kind":"delegate","tasks":[...],"ticket":N}`, and
   waits. The owner runs them (Coder for desktop: simple on Gemini 4
   Hydrogen, complex on Gemini 4 Carbon, all at once) and answers

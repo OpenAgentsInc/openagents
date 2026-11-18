@@ -63,8 +63,10 @@ Microcoder can still edit files directly (`"edits":true`).
 Microcoder can hand parts of a message to sub-agents (#13655). It picks a
 level for each task:
 
-- **Simple** tasks go to a sub-agent on Gemini 4 Hydrogen.
-- **Complex** tasks go to a sub-agent on Gemini 4 Carbon.
+- **Hydrogen** (Gemini 4 Hydrogen) takes lookups, searches, commands and small changes.
+- **Carbon** (Gemini 4 Carbon) takes work that needs many steps or careful reasoning.
+
+Microcoder knows both by name, so "task it to Carbon" works.
 - **Claude** tasks go to Claude Code, on the model Microcoder picks: Haiku, Sonnet, Opus or Fable. See [Claude sub-agents](#claude-sub-agents).
 
 Sub-agents handed over in one step run at the same time. Each is a row above

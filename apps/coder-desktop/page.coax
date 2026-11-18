@@ -44,7 +44,9 @@ CP_MODEL_COMPLEX :: "gemini-4-carbon";      // a complex task's model; a simple 
 // A sub-agent's level, as Microcoder names it, and the name its row shows. The last four run in
 // Claude Code on the Claude login of this computer (coder/tui/claudeworker.coax, GitHub #13660).
 CP_LEVELS :: 6;
-CP_LEVEL :: [CP_LEVELS] string.["simple", "complex", "haiku", "sonnet", "opus", "fable"];
+CP_LEVEL :: [CP_LEVELS] string.["hydrogen", "carbon", "haiku", "sonnet", "opus", "fable"];
+// What the first two were called before 2026-11-17, as chats kept then have them.
+CP_LEVEL_OLD :: [2] string.["simple", "complex"];
 CP_LEVEL_NAME :: [CP_LEVELS] string.["Hydrogen", "Carbon", "Claude Haiku", "Claude Sonnet", "Claude Opus", "Claude Fable"];
 CP_LEVEL_CLAUDE :: 2;                       // the first Claude level
 CP_PAD :: 16;               // the page's margin
@@ -325,6 +327,7 @@ cp_delegate :: (s: [] CoderPage, i: int, tasks: string, ticket: int) {
     s[0].turns[i].agents[j].task_n = cp_out(s[0].turns[i].agents[j].task[..], cl_str(ar[..], one, "task"));
     level := cl_str(ar[..], one, "level");
     for name, q2: CP_LEVEL { if name == level { s[0].turns[i].agents[j].level = q2; } }
+      for name, q2: CP_LEVEL_OLD { if name == level { s[0].turns[i].agents[j].level = q2; } }
     s[0].turns[i].agents[j].state = CP_RUNNING; s[0].turns[i].agents[j].start_due = true;
     s[0].turns[i].agents[j].began = s[0].clock; s[0].turns[i].agents[j].took = -1;
     s[0].turns[i].nagents = j + 1; s[0].turns[i].round_n += 1;
@@ -602,6 +605,7 @@ coder_page_load :: (s: [] CoderPage, text: string) -> bool #export_c #effects(al
       ar[0].at = 0;
       level := cl_str(ar[..], g, "level");
       for name, q2: CP_LEVEL { if name == level { s[0].turns[i].agents[j].level = q2; } }
+      for name, q2: CP_LEVEL_OLD { if name == level { s[0].turns[i].agents[j].level = q2; } }
       ar[0].at = 0;
       s[0].turns[i].agents[j].task_n = cp_out(s[0].turns[i].agents[j].task[..], cl_str(ar[..], g, "task"));
       ar[0].at = 0;
@@ -1352,7 +1356,7 @@ coder_page_zoom_set :: (s: [] CoderPage, row: int) -> int #export_c #effects(all
   n := coder_page_task(s, "s", "/w", out[..]);
   #assert mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].agents && back[0].edits && back[0].gated && back[0].unlimited;
   #assert coder_page_agent_next(s) == -1;
-  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"simple\",\"task\":\"count files\"},{\"level\":\"complex\",\"task\":\"find the bug\"}],\"ticket\":3}") == MWW_DELEGATE;
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"hydrogen\",\"task\":\"count files\"},{\"level\":\"carbon\",\"task\":\"find the bug\"}],\"ticket\":3}") == MWW_DELEGATE;
   #assert s[0].turns[0].nagents == 2 && s[0].turns[0].waiting && !s[0].results_due;
   #assert coder_page_agent_next(s) == 0 && coder_page_agent_next(s) == 1 && coder_page_agent_next(s) == -1;
   n = coder_page_agent_task(s, 0, "s-a0", "/w", out[..]);
@@ -1376,7 +1380,7 @@ coder_page_zoom_set :: (s: [] CoderPage, row: int) -> int #export_c #effects(all
   #assert cast(string) out[0..<n] == "{\"results\":[{\"exit\":0,\"output\":\"12 files\"},{\"exit\":1,\"output\":\"Its worker stopped.\"}],\"ticket\":3}\n";
   #assert !s[0].turns[0].waiting && coder_page_answer_line(s, out[..]) == 0;
   // a second round, stopped: its sub-agent is stopped with the run and nothing is owed
-  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"simple\",\"task\":\"again\"}],\"ticket\":4}") == MWW_DELEGATE && s[0].turns[0].nagents == 3;
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"hydrogen\",\"task\":\"again\"}],\"ticket\":4}") == MWW_DELEGATE && s[0].turns[0].nagents == 3;
   #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"stopped\",\"text\":\"\"}") == MWW_ENDED;
   #assert s[0].turns[0].agents[2].state == CP_STOPPED && !s[0].results_due && coder_page_agent_next(s) == -1;
   // a new chat's first message shows none of them
@@ -1429,7 +1433,7 @@ coder_page_zoom_set :: (s: [] CoderPage, row: int) -> int #export_c #effects(all
   coder_page_set_claude(s, true);
   n = coder_page_task(s, "s", "/w", out[..]);
   #assert mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].agents && back[0].claude;
-  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"simple\",\"task\":\"count\"},{\"level\":\"opus\",\"task\":\"find the bug\"},{\"level\":\"fable\",\"task\":\"design it\"}],\"ticket\":1}") == MWW_DELEGATE;
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"hydrogen\",\"task\":\"count\"},{\"level\":\"opus\",\"task\":\"find the bug\"},{\"level\":\"fable\",\"task\":\"design it\"}],\"ticket\":1}") == MWW_DELEGATE;
   #assert !coder_page_agent_claude(s, 0) && coder_page_agent_claude(s, 1) && coder_page_agent_claude(s, 2) && !coder_page_agent_claude(s, 3);
   #assert CP_LEVEL_NAME[s[0].turns[0].agents[1].level] == "Claude Opus" && CP_LEVEL_NAME[s[0].turns[0].agents[2].level] == "Claude Fable";
   n = coder_page_agent_task(s, 1, "s-a1", "/w", out[..]);
@@ -1446,7 +1450,7 @@ coder_page_zoom_set :: (s: [] CoderPage, row: int) -> int #export_c #effects(all
   p: [1] CoderPage; s := p[..];
   cp_init(s);
   #assert coder_page_set_text(s, "look") && coder_page_submit(s);
-  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"simple\",\"task\":\"count\"},{\"level\":\"fable\",\"task\":\"read it\"}],\"ticket\":1}") == MWW_DELEGATE;
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"hydrogen\",\"task\":\"count\"},{\"level\":\"fable\",\"task\":\"read it\"}],\"ticket\":1}") == MWW_DELEGATE;
   // Microcoder's worker asks, then ends the command; a file read is a row of its own
   #assert coder_page_agent_line(s, 0, "{\"kind\":\"ask\",\"command\":\"ls\",\"ticket\":1}") == MWW_ASK && s[0].turns[0].agents[0].rows[0].running;
   s[0].clock = 3;

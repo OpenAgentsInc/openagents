@@ -222,7 +222,7 @@ mww_ask :: (o: [] u8, command: string, ticket: int) -> int {
   n = json_raw(o, n, ",\"ticket\":"); n = json_write_int(o, n, ticket);
   return json_raw(o, n, "}");
 }
-// tasks: the delegated tasks' JSON list, [{"level":L,"task":T}]; L is simple or complex, or a Claude model (haiku, sonnet, opus, fable).
+// tasks: the delegated tasks' JSON list, [{"level":L,"task":T}]; L is hydrogen or carbon, or a Claude model (haiku, sonnet, opus, fable).
 mww_delegate :: (o: [] u8, tasks: string, ticket: int) -> int {
   n := json_raw(o, 0, "{\"kind\":\"delegate\",\"tasks\":"); n = json_raw(o, n, tasks);
   n = json_raw(o, n, ",\"ticket\":"); n = json_write_int(o, n, ticket);
@@ -441,10 +441,10 @@ mww_attempt_again :: (ar: [] ClArena, line: string, out: [] u8) -> int {
   #assert mww_request(ar[..], cast(string) o[0..<n - 1], r[..]) == MWW_TASK && !r[0].agents && !r[0].edits;
   n = mww_recall(o[..], "[{\"task\":\"hi\",\"reply\":\"hello\"}]");
   #assert mww_request(ar[..], cast(string) o[0..<n - 1], r[..]) == MWW_RECALL && cl_count(r[0].recall) == 1 && cl_str(ar[..], r[0].recall, "0.reply") == "hello";
-  n = mww_delegate(o[..], "[{\"level\":\"simple\",\"task\":\"a\"}]", 4);
+  n = mww_delegate(o[..], "[{\"level\":\"hydrogen\",\"task\":\"a\"}]", 4);
   l: [1] MwwLine;
-  #assert cast(string) o[0..<n] == "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"simple\",\"task\":\"a\"}],\"ticket\":4}";
-  #assert mww_read(ar[..], cast(string) o[0..<n], l[..]) == MWW_DELEGATE && l[0].ticket.value == 4 && l[0].tasks == "[{\"level\":\"simple\",\"task\":\"a\"}]";
+  #assert cast(string) o[0..<n] == "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"hydrogen\",\"task\":\"a\"}],\"ticket\":4}";
+  #assert mww_read(ar[..], cast(string) o[0..<n], l[..]) == MWW_DELEGATE && l[0].ticket.value == 4 && l[0].tasks == "[{\"level\":\"hydrogen\",\"task\":\"a\"}]";
   n = mww_results(o[..], 4, "[{\"exit\":0,\"output\":\"ok\"}]");
   #assert cast(string) o[0..<n] == "{\"results\":[{\"exit\":0,\"output\":\"ok\"}],\"ticket\":4}\n";
   #assert mww_request(ar[..], cast(string) o[0..<n - 1], r[..]) == MWW_RESULTS && r[0].ticket.value == 4 && r[0].results == "[{\"exit\":0,\"output\":\"ok\"}]";
