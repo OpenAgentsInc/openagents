@@ -244,6 +244,9 @@ slab_water :: (p:V2,world:V3,d:V3,dist:f32,t:f32,u:[]f32)->V3 {
   hh:f32=clampf(c.x/fmax(u[35],0.2f32),-1.0f32,1.0f32);
   col=sb_mul(col,0.7f32+(0.45f32*smoothstep(-1.0f32,1.0f32,hh)));
   col=sb_add(col,sb_mul(v3(0.03f32,0.12f32,0.11f32),smoothstep(0.1f32,0.9f32,hh)*(0.3f32+(0.7f32*amb))));
+  // skylight scattered in the near water: the picture's sea is a warm grey under its haze, not
+  // the deep teal, until it reaches the bright distance
+  col=sb_mix(col,sb_mulv(slab_sky(wg_normalize3(v3(d.x,0.12f32,d.z)),u),v3(0.52f32,0.48f32,0.42f32)),0.42f32*amb*(1.0f32-smoothstep(700.0f32,2200.0f32,dist)));
   v:V3=sb_mul(d,-1.0f32);
   r:V3=wg_reflect3(d,calm);
   fres:f32=0.02f32+(0.98f32*sb_pow(1.0f32-fmax(wg_dot3(calm,v),0.0f32),5.0f32));

@@ -1176,6 +1176,7 @@ fn coax_p_slab_water(p_p: vec2f, p_world: vec3f, p_d: vec3f, p_dist: f32, p_t: f
   l_hh = coax_p_clampf((l_c.x / coax_p_fmax(coax_at_u(i32(35i)), 0x1.99999ap-3f)), (-0x1.000000p0f), 0x1.000000p0f);
   l_col = coax_p_sb_mul(l_col, (0x1.666666p-1f + (0x1.ccccccp-2f * coax_p_smoothstep((-0x1.000000p0f), 0x1.000000p0f, l_hh))));
   l_col = coax_p_sb_add(l_col, coax_p_sb_mul(coax_p_v3(0x1.eb851ep-6f, 0x1.eb851ep-4f, 0x1.c28f5cp-4f), (coax_p_smoothstep(0x1.99999ap-4f, 0x1.ccccccp-1f, l_hh) * (0x1.333334p-2f + (0x1.666666p-1f * l_amb)))));
+  l_col = coax_p_sb_mix(l_col, coax_p_sb_mulv(coax_p_slab_sky(coax_p_wg_normalize3(coax_p_v3(l_d.x, 0x1.eb851ep-4f, l_d.z))), coax_p_v3(0x1.0a3d70p-1f, 0x1.eb851ep-2f, 0x1.ae147ap-2f)), ((0x1.ae147ap-2f * l_amb) * (0x1.000000p0f - coax_p_smoothstep(0x1.5e0000p9f, 0x1.130000p11f, l_dist))));
   l_v = coax_p_sb_mul(l_d, (-0x1.000000p0f));
   l_r = coax_p_wg_reflect3(l_d, l_calm);
   l_fres = (0x1.47ae14p-6f + (0x1.f5c290p-1f * coax_p_sb_pow((0x1.000000p0f - coax_p_fmax(coax_p_wg_dot3(l_calm, l_v), 0.0f)), 0x1.400000p2f)));
