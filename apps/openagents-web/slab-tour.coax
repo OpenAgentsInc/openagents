@@ -16,7 +16,8 @@
 //                     (slab-sea.coax), with the 16 lines and their anchors drawn in
 //   5 what runs on it the flow overlay, with the power as it is
 //   6 how it is built the timelapse, all of it in twenty seconds
-//   7 where it could go  the sites as choices to press (a map, when one is in the world, goes here)
+//   7 where it could go  the chart of the place (slab-chart.coax), which a press moves the platform on, and
+//                     the sites as choices to press
 //
 // The address: ?tour=0 no tour, ?tour=1 to 8 opens at that stop (8 is "Your turn"), and &hold=SECONDS
 // holds that stop at a moment, for a picture. ?intro=0 and ?intro=1, the stopgap card's words, mean
@@ -32,6 +33,7 @@ TOUR_MOVE :: 2.5f32;       // seconds the camera takes to reach a stop's view
 TOUR_PICTURE :: "/worlds/slab/pictures/concept.jpg";
 TOUR_BUILD :: 5;           // the stop that is the timelapse
 TOUR_UNDER :: 3;
+TOUR_WHERE :: 6;
 
 SlabTour :: struct {
   on: bool;
@@ -44,6 +46,7 @@ SlabTour :: struct {
   wanted: bool;            // the address is the plain one: a first visit opens on the tour
   asked: bool;             // ?intro=1: the tour opens when the pane does, whoever visits
   hour: f64;               // the visitor's hour, put back after the underwater stop
+  chart_was: bool;         // whether the chart was shown before the last stop showed it
   down: bool; down_x: f32; down_y: f32;   // a press on the scene, which is a tap if it does not move
 }
 
@@ -100,6 +103,7 @@ tour_track :: (t: SlabTour) -> trk.CamTrack {
 
 // What a stop turns on is turned off before the next one.
 tour_clear :: (s: [] Slab) {
+  if s[0].hp.tour.on && s[0].hp.tour.stop == TOUR_WHERE { chart_show(s, s[0].hp.tour.chart_was); s[0].chart.aside = false; }
   if s[0].build.on { build_toggle(s); }
   if s[0].under { s[0].under = false; s[0].hour = s[0].hp.tour.hour; }
   s[0].section = false; s[0].flow = false;
@@ -121,6 +125,8 @@ tour_go :: (s: [] Slab, stop: int) {
   if k == TOUR_UNDER { s[0].under = true; s[0].hp.tour.hour = s[0].hour; s[0].hour = 12.5; }
   if k == 4 { s[0].flow = true; }
   if k == TOUR_BUILD { build_toggle(s); s[0].build.play = false; build_seek(s, 0); }
+  // the last stop opens the chart of the place (slab-chart.coax): a press on it moves the platform
+  if k == TOUR_WHERE { s[0].hp.tour.chart_was = s[0].chart.on; chart_show(s, true); s[0].chart.aside = true; }
   sb_open(s, "");
 }
 tour_start :: (s: [] Slab) { s[0].hp.tour.on = false; tour_go(s, 0); }
@@ -192,6 +198,11 @@ tour_lift :: (s: [] Slab, f: [3] f32) -> [3] f32 {
 // camera is the tour's). True while the tour has the pointer.
 tour_pointer :: (s: [] Slab, x: f32, y: f32, phase: int) -> bool {
   if !s[0].hp.tour.on || s[0].hp.tour.stop >= TOUR_STOPS { return false; }
+  // a press on the chart is the chart's: the platform goes there, and the stop waits
+  if s[0].hp.tour.stop == TOUR_WHERE && s[0].chart.on && (s[0].chart.held || (phase == 0 && chart_view_holds(s[0].chart.view, x, y))) {
+    s[0].hp.tour.held = true; s[0].hp.tour.down = false;
+    return false;
+  }
   if phase == 0 { s[0].hp.tour.down = true; s[0].hp.tour.down_x = x; s[0].hp.tour.down_y = y; return true; }
   if phase == 2 && s[0].hp.tour.down {
     dx := x - s[0].hp.tour.down_x; dy := y - s[0].hp.tour.down_y; slack := 12 * s[0].dpr;
@@ -387,8 +398,18 @@ tour_say :: (s: [] Slab, h: [] SceneHud) {
     sh_say(h, sb_s(sb_build_now(s, ls[..])));
   } else if t.stop == 6 {
     sh_lead(h, "Where could it go? We try it in seven places, from warm water off Guam to a fjord in Norway.");
-    sh_number(h, "3 nautical miles", "Where California's own waters end and federal waters begin", "5.6 km: near enough to see its towers from the beach.", SH_SOURCE);
-    sh_choices(h, "tour.site", "Move it and see");
+    // how far off the land this place is, and whether the wall would show from the beach: the horizon
+    // of a thing h metres high is 3.57 x sqrt(h) km off, and a person's on the beach is 5 km
+    place := s[0].change[0].facts.place;
+    if s[0].change[0].ready && !place.land {
+      km := place.shore * 1.852;
+      seen := km < 3.57 * sqrt(hull_ledger(hull_prime()).deck_height) + 5.0;
+      a = SbText.{}; a = sb_n(a, place.shore, ifx place.shore < 10 then 1 else 0); a = sb_w(a, " nautical miles"); ts[0] = a;
+      b = SbText.{}; b = sb_n(b, km, 0); b = sb_w(b, ifx seen then " km: on a clear day you could see its wall from the beach." else " km: too far to see from the beach. It is below the horizon."); ls[0] = b;
+      sh_number(h, sb_s(ts[..]), "From this place to the nearest land", sb_s(ls[..]), SH_SOURCE);
+    }
+    sh_say(h, ifx s[0].chart.on then "Press the chart to move it, or choose a place." else "Choose a place to move it there.");
+    sh_menu(h, "tour.site", "Move it and see", "");
       sites := SB_SITES;
       for i: 0..<SITES { sh_option(h, sb_id(ids[..], "site.", i), sites[i], "", s[0].site == i); }
     sh_end_of(h);
@@ -480,7 +501,7 @@ tour_say :: (s: [] Slab, h: [] SceneHud) {
   // 1,783 days is 4.9 years: about 5
   #assert sb_test_field(s, 'Q', "About 5 years", 0) == "About 5 years";
 }
-#test "tour: the camera flies a track to each stop, time moves it on, and a tap or a key steps it" {
+#test "tour: the camera flies a track to each stop, time moves it on, and a tap or a key steps it" #steps 60000000 {
   xs: [1] SbTest; x := xs[..]; s := x[0].s[..];
   sb_test_open(x);
   s[0].eye = [3] f32.[2000, 300, 2000]; s[0].fwd = [3] f32.[-0.7, -0.1, -0.7]; s[0].dpr = 1;
@@ -511,6 +532,15 @@ tour_say :: (s: [] Slab, h: [] SceneHud) {
   _ = slab_key(s, KEY_RIGHT, true);
   sb_act(s, "site.4");
   for i: 0..<200 { c = tour_camera(s, 0.1); }
-  #assert s[0].hp.tour.stop == 6 && s[0].site == SITE_CALIFORNIA && s[0].hp.tour.held;
-  #assert slab_key(s, KEY_ESCAPE, true) && !s[0].hp.tour.on && !s[0].under && !s[0].build.on;
+  #assert s[0].hp.tour.stop == TOUR_WHERE && s[0].site == SITE_CALIFORNIA && s[0].hp.tour.held;
+  // the last stop shows the chart, and a press on it is the chart's, not a tap that moves on
+  #assert s[0].chart.on;
+  vertices: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  s[0].width = 1440; s[0].height = 900;
+  n := chart_draw(s, vertices[..], 0);
+  v := s[0].chart.view;
+  // it stands beside the caption (600 px at the foot's middle), not under it
+  #assert s[0].chart.aside && v.x >= 1020 && v.x + v.w <= 1440;
+  #assert n > 0 && !tour_pointer(s, v.x + v.w / 2, v.y + v.h / 2, 0) && tour_pointer(s, v.x + v.w + 40, v.y + v.h + 40, 0);
+  #assert slab_key(s, KEY_ESCAPE, true) && !s[0].hp.tour.on && !s[0].under && !s[0].build.on && !s[0].chart.on;
 }

@@ -7,7 +7,8 @@
 // own text.
 //
 // For another drawing (the tour's last stop, the construction drawing of #13682): chart_show(s, true)
-// opens this chart on the site the world is at, chart_far(s, true) shows the whole region, and
+// opens this chart on the site the world is at (s[0].chart.aside = true keeps it clear of a caption at
+// the foot), chart_far(s, true) shows the whole region, and
 // chart_draw_in(s, out, n, view) draws it into any rectangle of the canvas; chart_route_tags says
 // the route's names. The lines are made once for a site and a zoom (chart_make) and kept.
 //
@@ -27,6 +28,7 @@ SlabChart :: struct {
   start: [SC_LAYERS + 1] int;      // each layer's first segment, and the end
   view: ChartView;                 // where it is on the canvas, in the canvas's pixels
   held: bool;                      // a press that began on the chart is still down
+  aside: bool;                     // laid out clear of a caption at the foot (the tour's last stop)
 }
 
 sc_grid :: (c: [] Change, far: bool) -> ChartGrid { ch := c[0].where[0].chart; return ifx far then ch.far else ch.near; }
@@ -72,6 +74,13 @@ chart_layout :: (s: [] Slab) -> ChartView {
   x := ifx narrow then 10 * k else 400 * k; y := ifx narrow then 100 * k else 66 * k;
   wide := ifx narrow then w - 20 * k else lo_f32(h * 0.62f32, w - 420 * k);
   tall := ifx narrow then h * 0.54f32 - 152 * k else wide;
+  // aside: beside the 600 px caption at the foot when there is room, else above it
+  if s[0].chart.aside && !narrow {
+    room := (w - 600 * k) / 2 - 32 * k;
+    if room >= 260 * k { wide = lo_f32(h * 0.5f32, room); x = w - wide - 16 * k; }
+    else { wide = lo_f32(h * 0.34f32, w - 20 * k); x = (w - wide) / 2; }
+    tall = wide;
+  }
   if wide < 160 * k { wide = 160 * k; }
   if tall < 160 * k { tall = 160 * k; }
   miles := ifx s[0].chart.far then (g.lat1 - g.lat0) * 60.0 else lo_f64((g.lat1 - g.lat0) * 60.0, SC_NEAR);

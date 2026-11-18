@@ -1090,7 +1090,7 @@ back, and Escape leaves. Pressing anything inside a stop makes it wait.
 | 4 | The sea from under the hull in the survey view (section 12), the mooring lines and their anchors drawn in from the hull's own rig. The sea is drawn clearer than it is, and the caption says so | The depth the hull's moorings are laid in (1,500 m): about 4 Empire State Buildings |
 | 5 | The flow view from above | The megawatts made now: homes at 1.2 kW each |
 | 6 | The construction timelapse, the whole film in twenty seconds | About 5 years; the Channel Tunnel took six |
-| 7 | The platform far off, and the seven sites as buttons that move it | 3 nautical miles, where California's waters end (from a source) |
+| 7 | The platform far off, the chart of the place beside the caption (a press on it moves the platform) and a menu of the seven sites | How far the place is from the nearest land, and whether the wall would show from the beach (from a source: the chart) |
 
 It ends on "Your turn", with Explore, "Watch it built" and "See the tour
 again". The pane keeps one flag in the viewer's browser (`localStorage`,
