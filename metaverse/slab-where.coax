@@ -1,0 +1,251 @@
+// Where SLAB could be (docs/research/ocean/slab-world-spec.md, section 5): each site's position on a
+// real chart, the water under any point of it, how far the nearest land is, and which legal line the
+// point is inside. The world's "Where" control, its chart and its coast on the horizon read this.
+//
+// A site is a place we picked to stand for a claim or a plan (our choice in every case; no source
+// names a berth):
+//   guam         2.3 nautical miles off Guam's west coast, in 1,408 m
+//   puerto-rico  2.6 off Yabucoa, in 1,440 m
+//   kona         3.2 off Keahole Point (the NELHA ocean thermal site), in 1,725 m
+//   equator      2.9 north of Baker Island, in 1,448 m
+//   california   3.5 south-east of San Clemente Island ("three miles", Luckey's reply), in 607 m
+//   texas        40 off the Aransas Pass jetties along the timelapse's tow, in 89 m
+//   fjord        Yrkefjorden at Vats, where Norway mated concrete platforms; over 134 m (a spar that
+//                drew 134 m was moored there: slab-image-feasibility.md). ETOPO1 does not resolve the
+//                fjord, so its depth is that figure, not the chart's
+// Depths are NOAA ETOPO1's at the point, coastlines Natural Earth's (slab-chart-data.coax). Distances
+// to land are to our simplified coastline. The legal lines are drawn from it too: the law measures
+// them from baselines, which run close to the coast but are not the coast, so a line here is right
+// to about a mile. The lines (NOAA, "Maritime Zones and Boundaries"; slab.md section 5):
+//   the state's line   3 nautical miles; 9 off Texas and Puerto Rico
+//   territorial sea    12
+//   contiguous zone    24
+//   exclusive economic zone   200
+//   coax/bin/coax test metaverse/slab-where.coax
+
+#load "slab-sim.coax";
+#load "../metaverse-engine/world/chart.coax";
+#load "slab-chart-data.coax";
+
+WHERE_COAST :: 1800;      // the most coast values a region holds (the fjord's 1,778)
+WhereSite :: struct {
+  title: string;            // the site in plain words
+  lat: f64; lon: f64;       // the place
+  boundary: f64;            // the state's line, nautical miles off the coast (0: there is none here)
+  state: string;            // whose line that is
+  land: string;             // the nearest land
+  port: string;             // the nearest working port
+  lines: bool = true;       // the legal lines are drawn (not inside a fjord, which is internal waters)
+  depth: f64;               // the water at the place itself, m: ETOPO1's own figure there, or a sourced one
+  note: string;             // something a visitor should know before choosing it
+}
+where_site :: (i: int) -> WhereSite {
+  if i == SITE_PUERTO_RICO { return WhereSite.{title = "Puerto Rico, off Yabucoa", lat = 17.983, lon = -65.817, boundary = 9, state = "Puerto Rico", land = "Puerto Rico", port = "Yabucoa", depth = 1440}; }
+  if i == SITE_KONA { return WhereSite.{title = "Hawaii, off Kona", lat = 19.733, lon = -156.117, boundary = 3, state = "Hawaii", land = "Hawaii Island", port = "Kawaihae", depth = 1725}; }
+  if i == SITE_EQUATOR { return WhereSite.{title = "The equator, by Baker Island", lat = 0.267, lon = -176.483, boundary = 0, land = "Baker Island", port = "none within 1,000 miles", depth = 1448, note = "Inside the Pacific Remote Islands Marine National Monument (our reading)."}; }
+  if i == SITE_CALIFORNIA { return WhereSite.{title = "California, three miles out", lat = 32.767, lon = -118.317, boundary = 3, state = "California", land = "San Clemente Island", port = "Long Beach", depth = 607}; }
+  if i == SITE_TEXAS { return WhereSite.{title = "Texas, the Gulf of Mexico", lat = 27.55, lon = -96.367, boundary = 9, state = "Texas", land = "San Jose Island", port = "Corpus Christi", depth = 89}; }
+  if i == SITE_FJORD { return WhereSite.{title = "Norway, Yrkefjorden", lat = 59.42, lon = 5.78, boundary = 0, land = "Vats", port = "Haugesund", lines = false, depth = 134, note = "A sheltered fjord: a place to join the hull, not to run it."}; }
+  return WhereSite.{title = "Guam, west coast", lat = 13.40, lon = 144.60, boundary = 3, state = "Guam", land = "Guam", port = "Apra Harbor", depth = 1408};
+}
+
+// The timelapse's route off Texas (metaverse/slab-construction.coax): the casting yard at Ingleside, the
+// ship channel's mouth between the Aransas Pass jetties, and the berth, which is the texas site.
+// Freight comes from the Port of Brownsville. [lat, lon]
+WHERE_YARD :: [2] f64.[27.82, -97.20];
+WHERE_JETTIES :: [2] f64.[27.834, -97.044];
+WHERE_BROWNSVILLE :: [2] f64.[25.95, -97.40];
+
+// A region's chart needs its coast held somewhere: the caller keeps one of these.
+Where :: struct {
+  site: int = -1;
+  coast: [WHERE_COAST] s16;
+  chart: Chart;
+}
+where_fill :: (w: [] Where, from: [] s16, far: string, near: string, window: [12] f64) {
+  n := ifx from.count > WHERE_COAST then WHERE_COAST else from.count;
+  for i: 0..<n { w[0].coast[i] = from[i]; }
+  w[0].chart = chart_of(w[0].coast[0..<n], far, near, window);
+}
+// Loads a site's chart (a no-op when it is the one loaded).
+where_load :: (w: [] Where, site: int) {
+  if w[0].site == site { return; }
+  w[0].site = site;
+  if site == SITE_PUERTO_RICO { d := CHART_PUERTO_RICO_COAST; where_fill(w, d[..], CHART_PUERTO_RICO_FAR, CHART_PUERTO_RICO_NEAR, CHART_PUERTO_RICO_WINDOW); }
+  else if site == SITE_KONA { d := CHART_KONA_COAST; where_fill(w, d[..], CHART_KONA_FAR, CHART_KONA_NEAR, CHART_KONA_WINDOW); }
+  else if site == SITE_EQUATOR { d := CHART_EQUATOR_COAST; where_fill(w, d[..], CHART_EQUATOR_FAR, CHART_EQUATOR_NEAR, CHART_EQUATOR_WINDOW); }
+  else if site == SITE_CALIFORNIA { d := CHART_CALIFORNIA_COAST; where_fill(w, d[..], CHART_CALIFORNIA_FAR, CHART_CALIFORNIA_NEAR, CHART_CALIFORNIA_WINDOW); }
+  else if site == SITE_TEXAS { d := CHART_TEXAS_COAST; where_fill(w, d[..], CHART_TEXAS_FAR, CHART_TEXAS_NEAR, CHART_TEXAS_WINDOW); }
+  else if site == SITE_FJORD { d := CHART_FJORD_COAST; where_fill(w, d[..], CHART_FJORD_FAR, CHART_FJORD_NEAR, CHART_FJORD_WINDOW); }
+  else { w[0].site = SITE_GUAM; d := CHART_GUAM_COAST; where_fill(w, d[..], CHART_GUAM_FAR, CHART_GUAM_NEAR, CHART_GUAM_WINDOW); }
+}
+
+// ---------------------------------------------------------------- the legal lines
+ZONE_INTERNAL :: 0;    // inside the baselines: a bay, a fjord, a harbour
+ZONE_STATE :: 1;       // inside the state's line
+ZONE_TERRITORIAL :: 2; // to 12 nautical miles
+ZONE_CONTIGUOUS :: 3;  // 12 to 24
+ZONE_ECONOMIC :: 4;    // to 200
+ZONE_HIGH :: 5;        // past 200
+WHERE_TERRITORIAL :: 12.0; WHERE_CONTIGUOUS :: 24.0; WHERE_ECONOMIC :: 200.0;
+// The zone a point `shore` nautical miles off the coast is in. `boundary` is the state's line (0: none).
+where_zone :: (shore: f64, boundary: f64, lines: bool) -> int {
+  if !lines { return ZONE_INTERNAL; }
+  if boundary > 0 && shore < boundary { return ZONE_STATE; }
+  if shore < WHERE_TERRITORIAL { return ZONE_TERRITORIAL; }
+  if shore < WHERE_CONTIGUOUS { return ZONE_CONTIGUOUS; }
+  if shore < WHERE_ECONOMIC { return ZONE_ECONOMIC; }
+  return ZONE_HIGH;
+}
+where_zone_name :: (zone: int) -> string {
+  if zone == ZONE_INTERNAL { return "Internal waters"; }
+  if zone == ZONE_STATE { return "State waters"; }
+  if zone == ZONE_TERRITORIAL { return "Territorial sea"; }
+  if zone == ZONE_CONTIGUOUS { return "Contiguous zone"; }
+  if zone == ZONE_ECONOMIC { return "Exclusive economic zone"; }
+  return "High seas";
+}
+// What the zone means for a platform, in a line (slab.md section 5).
+where_zone_means :: (zone: int) -> string {
+  if zone == ZONE_INTERNAL { return "Inside the country's own waters: every law of the land applies."; }
+  if zone == ZONE_STATE { return "The state owns the seabed here and its rules apply beside federal ones."; }
+  if zone == ZONE_TERRITORIAL { return "Past the state's line but inside the country: federal law applies in full."; }
+  if zone == ZONE_CONTIGUOUS { return "Outside the country's waters, but it still enforces customs, tax, immigration and health rules."; }
+  if zone == ZONE_ECONOMIC { return "The country has the say over platforms, resources and the environment here."; }
+  return "No country's waters. The flag the platform flies decides its law.";
+}
+
+// ---------------------------------------------------------------- a place
+WherePlace :: struct {
+  lat: f64; lon: f64;
+  on_chart: bool;
+  land: bool;               // the point is on land
+  depth: f64;               // the water there, m (0 on land)
+  shore: f64;               // nautical miles to the nearest coast
+  shore_lat: f64; shore_lon: f64;
+  zone: int;
+}
+// What is at a point of a site's chart.
+where_place :: (c: Chart, site: WhereSite, lat: f64, lon: f64) -> WherePlace {
+  o := WherePlace.{lat = lat, lon = lon};
+  o.on_chart = chart_in(c, lat, lon);
+  s := chart_shore(c, lat, lon);
+  o.shore = ifx s.found then s.nmi else 0.0; o.shore_lat = s.lat; o.shore_lon = s.lon;
+  h := chart_height(c, lat, lon);
+  if site.depth > 0 && chart_nmi(lat, lon, site.lat, site.lon) < WHERE_HOME {
+    // at the place itself its own depth stands: the chart rounds a depth to 7%, and can't see the
+    // water at all in a fjord narrower than its grid
+    o.depth = site.depth;
+  } else if o.on_chart {
+    o.land = h >= 0;
+    o.depth = ifx h < 0 then -h else 0.0;
+  }
+  o.zone = where_zone(o.shore, site.boundary, site.lines);
+  return o;
+}
+// The point `nmi` off the coast, on the line from the nearest shore out through (lat, lon): the first
+// point of that line whose nearest land is `nmi` away, or the line's last point on the chart when no
+// point is that far from land. [lat, lon]
+where_off :: (c: Chart, site: WhereSite, lat: f64, lon: f64, nmi: f64) -> [2] f64 {
+  s := chart_shore(c, lat, lon);
+  if !s.found { return [2] f64.[lat, lon]; }
+  // from the shore out through the point; a point on the shore itself goes out through the site
+  tox := ifx s.nmi > 0.05 then lat else site.lat; toy := ifx s.nmi > 0.05 then lon else site.lon;
+  bearing := chart_bearing(s.lat, s.lon, tox, toy);
+  best := [2] f64.[s.lat, s.lon];
+  r := 0.0;
+  while r <= WHERE_REACH {
+    p := chart_move(s.lat, s.lon, bearing, r);
+    if !chart_in(c, p[0], p[1]) { break; }
+    best = p;
+    d := chart_shore(c, p[0], p[1]).nmi;
+    if d >= nmi { break; }
+    // the next step can't pass the asked distance: land is at least nmi - d further off than that
+    r += chart_max(nmi - d, 0.05);
+  }
+  return best;
+}
+WHERE_REACH :: 250.0;     // the far chart reaches about this far from its place
+WHERE_HOME :: 0.5;        // nautical miles round a site's place that take its own depth
+
+// ---------------------------------------------------------------- checks
+#test "every site stands in the water its simulation says, a sane distance off its land" {
+  ws: [1] Where; w := ws[..];
+  // the nautical miles to land we claim for each, to a tenth of the claim or half a mile
+  off := [7] f64.[2.3, 2.6, 3.2, 2.9, 3.5, 39.8, 0.5];
+  for i: 0..<SITES {
+    where_load(w, i);
+    site := where_site(i); sim := sim_site(i);
+    #assert chart_coast_points(w[0].chart) > 4 && w[0].site == i;
+    p := where_place(w[0].chart, site, site.lat, site.lon);
+    #assert p.on_chart && !p.land;
+    #assert p.depth == sim.depth && site.depth == sim.depth;
+    #assert abs(site.lat - sim.latitude) < 0.1;
+    #assert abs(p.shore - off[i]) < 0.15;
+    // a mile further out the chart's own depth is of the same order (it stores a depth to 7%)
+    if i != SITE_FJORD {
+      q := where_off(w[0].chart, site, site.lat, site.lon, p.shore + 1.0);
+      beside := where_place(w[0].chart, site, q[0], q[1]);
+      #assert !beside.land && beside.depth > 0.5 * sim.depth && beside.depth < 2.0 * sim.depth;
+    }
+  }
+  where_load(w, SITE_TEXAS);
+  texas := where_site(SITE_TEXAS);
+  p := where_place(w[0].chart, texas, texas.lat, texas.lon);
+  // 40 miles from the jetties along the tow; the nearest beach is a little closer
+  #assert abs(chart_nmi(WHERE_JETTIES[0], WHERE_JETTIES[1], texas.lat, texas.lon) - 40) < 0.5;
+  #assert p.shore > 30 && p.shore < 40.5 && p.zone == ZONE_ECONOMIC;
+}
+#test "the lines: three miles off California is past the state's line, and Texas keeps nine" {
+  #assert where_zone(2.5, 3, true) == ZONE_STATE && where_zone(3.5, 3, true) == ZONE_TERRITORIAL;
+  #assert where_zone(8, 9, true) == ZONE_STATE && where_zone(8, 3, true) == ZONE_TERRITORIAL;
+  #assert where_zone(12, 3, true) == ZONE_CONTIGUOUS && where_zone(24, 3, true) == ZONE_ECONOMIC && where_zone(199, 9, true) == ZONE_ECONOMIC && where_zone(200, 9, true) == ZONE_HIGH;
+  #assert where_zone(1, 0, true) == ZONE_TERRITORIAL && where_zone(1, 0, false) == ZONE_INTERNAL;
+  ws: [1] Where; w := ws[..];
+  where_load(w, SITE_CALIFORNIA);
+  cal := where_site(SITE_CALIFORNIA);
+  #assert where_place(w[0].chart, cal, cal.lat, cal.lon).zone == ZONE_TERRITORIAL;      // 3.5 miles out
+  where_load(w, SITE_GUAM);
+  guam := where_site(SITE_GUAM);
+  #assert where_place(w[0].chart, guam, guam.lat, guam.lon).zone == ZONE_STATE;         // 2.3 miles out
+  for z: 0..<6 { #assert where_zone_name(z).count > 0 && where_zone_means(z).count > 20; }
+}
+#test "moving out from the shore: the asked distance is the distance to land, and land is land" {
+  ws: [1] Where; w := ws[..];
+  where_load(w, SITE_TEXAS);
+  site := where_site(SITE_TEXAS); c := w[0].chart;
+  for nmi: [5] f64.[3, 9, 12, 24, 100] {
+    p := where_off(c, site, site.lat, site.lon, nmi);
+    #assert abs(where_place(c, site, p[0], p[1]).shore - nmi) < 0.3;
+  }
+  // the Gulf shelves slowly: 9 miles out is under 30 m, 100 miles out is over 500 m
+  near := where_off(c, site, site.lat, site.lon, 9); far := where_off(c, site, site.lat, site.lon, 100);
+  #assert where_place(c, site, near[0], near[1]).depth < 30 && where_place(c, site, far[0], far[1]).depth > 500;
+  // nothing off Texas is 250 miles from land inside the chart: the line stops at the chart's edge
+  edge := where_off(c, site, site.lat, site.lon, 250);
+  #assert chart_in(c, edge[0], edge[1]) && where_place(c, site, edge[0], edge[1]).shore < 250;
+  // at the beach it is land or the surf; Corpus Christi's yard is ashore
+  beach := where_off(c, site, site.lat, site.lon, 0);
+  #assert where_place(c, site, beach[0], beach[1]).shore < 0.05;
+  #assert where_place(c, site, 28.5, -98.0).land;
+  // off the chart altogether
+  #assert !where_place(c, site, 40.0, -96.0).on_chart;
+}
+#test "the fjord keeps its sourced depth where the chart sees only land" {
+  ws: [1] Where; w := ws[..];
+  where_load(w, SITE_FJORD);
+  site := where_site(SITE_FJORD);
+  p := where_place(w[0].chart, site, site.lat, site.lon);
+  #assert p.depth == 134 && !p.land && p.zone == ZONE_INTERNAL && p.shore < 1.0;
+}
+#test "the coast shows from the deck at Guam, California and Baker Island, and not 40 miles off Texas" {
+  ws: [1] Where; w := ws[..];
+  seen := [4] int.[0, 0, 0, 0]; sites := [4] int.[SITE_GUAM, SITE_CALIFORNIA, SITE_TEXAS, SITE_EQUATOR];
+  for k: 0..<4 {
+    where_load(w, sites[k]);
+    site := where_site(sites[k]);
+    for b: 0..<72 { if chart_skyline(w[0].chart, site.lat, site.lon, 118, f64(b) * 5.0, 0.5, 120).seen { seen[k] += 1; } }
+  }
+  // Baker Island is a mile wide and 8 m high: the heights miss it, the coastline does not
+  #assert seen[0] > 15 && seen[1] > 10 && seen[2] == 0 && seen[3] >= 2 && seen[3] < 12;
+}

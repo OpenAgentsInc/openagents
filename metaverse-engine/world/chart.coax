@@ -1,0 +1,430 @@
+// A sea chart: a region's coastline and heights as data, and the sums a world does on them. Where
+// is a point, how deep is the water there, how far is the nearest land, where do the lines a set
+// distance off the coast run, and how high does the land stand on the horizon from a deck at sea.
+// It draws nothing: a page turns its segments into strokes (apps/openagents-web/slab-chart.coax is
+// the first; docs/metaverse/chart.md is the guide).
+//
+// A chart's data is two things, cut from public sources by whoever makes the region
+// (metaverse/slab-chart-data.coax is the first):
+//   coast    s16 pairs, thousandths of a degree east and north of the far window's south-west
+//            corner; a line's first point has 16,000 added to its east value
+//   heights  a far grid and a near grid round the place the chart is about, a printable character
+//            a sample, rows from the south, each row from the west: 33 + code, where codes 0 to 63
+//            are depths of 2 x 1.14^code - 2 m and 64 to 93 are land of 4 x 1.27^(code - 64) m
+// Positions are degrees north and east (west and south negative). Distances are nautical miles on
+// a flat chart at the place's latitude, good to about half a percent across a few hundred miles.
+// A chart must not cross the 180th meridian. Depths are positive metres. Chart accuracy, not for
+// navigation.
+//   coax/bin/coax test metaverse-engine/world/chart.coax
+
+#load "../core/angle.coax";
+
+CHART_PI :: 3.14159265358979;
+CHART_NMI :: 1852.0;          // metres in a nautical mile
+CHART_EARTH :: 6371000.0;     // m
+CHART_FIRST :: 16000;         // added to a coast line's first east value
+CHART_OFF :: -1.0e9;          // a height asked for off the chart
+
+ChartGrid :: struct {
+  lat0: f64; lon0: f64; lat1: f64; lon1: f64;   // its south-west and north-east samples
+  rows: int; cols: int;
+  data: string;
+}
+Chart :: struct {
+  coast: [] s16;
+  far: ChartGrid;
+  near: ChartGrid;
+}
+// A chart from its data: `window` is the far grid's south, west, north, east, rows, columns, then
+// the near grid's the same.
+chart_of :: (coast: [] s16, far: string, near: string, window: [12] f64) -> Chart {
+  c: Chart;
+  c.coast = coast;
+  c.far = ChartGrid.{lat0 = window[0], lon0 = window[1], lat1 = window[2], lon1 = window[3], rows = cast(int) window[4], cols = cast(int) window[5], data = far};
+  c.near = ChartGrid.{lat0 = window[6], lon0 = window[7], lat1 = window[8], lon1 = window[9], rows = cast(int) window[10], cols = cast(int) window[11], data = near};
+  return c;
+}
+
+chart_min :: (a: f64, b: f64) -> f64 { return ifx a < b then a else b; }
+chart_max :: (a: f64, b: f64) -> f64 { return ifx a > b then a else b; }
+chart_clamp :: (a: f64, lo: f64, hi: f64) -> f64 { return chart_min(hi, chart_max(lo, a)); }
+chart_rad :: (degrees: f64) -> f64 { return degrees * CHART_PI / 180.0; }
+
+// ---------------------------------------------------------------- heights
+// A sample's height in metres: land positive, the seabed negative.
+chart_code_height :: (c: u8) -> f64 {
+  code := cast(int) c - 33;
+  if code >= 64 { return 4.0 * pow(1.27, f64(code - 64)); }
+  if code <= 0 { return 0; }
+  return -(2.0 * pow(1.14, f64(code)) - 2.0);
+}
+// The character a height is stored as (the inverse, for whoever cuts a region and for checks).
+chart_height_code :: (h: f64) -> u8 {
+  if h >= 0 {
+    k := ifx h < 4 then 0 else cast(int) floor(log(h / 4.0) / log(1.27) + 0.5);
+    if k > 29 { k = 29; }
+    return cast(u8) (33 + 64 + k);
+  }
+  k := cast(int) floor(log((-h + 2.0) / 2.0) / log(1.14) + 0.5);
+  if k < 1 { k = 1; }
+  if k > 63 { k = 63; }
+  return cast(u8) (33 + k);
+}
+chart_grid_ok :: (g: ChartGrid) -> bool { return g.rows >= 2 && g.cols >= 2 && g.data.count >= g.rows * g.cols && g.lat1 > g.lat0 && g.lon1 > g.lon0; }
+chart_grid_in :: (g: ChartGrid, lat: f64, lon: f64) -> bool { return chart_grid_ok(g) && lat >= g.lat0 && lat <= g.lat1 && lon >= g.lon0 && lon <= g.lon1; }
+chart_grid_sample :: (g: ChartGrid, row: int, col: int) -> f64 { return chart_code_height(g.data[row * g.cols + col]); }
+// The height at a point of a grid, between its four samples; CHART_OFF outside it.
+chart_grid_height :: (g: ChartGrid, lat: f64, lon: f64) -> f64 {
+  if !chart_grid_in(g, lat, lon) { return CHART_OFF; }
+  fy := (lat - g.lat0) / (g.lat1 - g.lat0) * f64(g.rows - 1); fx := (lon - g.lon0) / (g.lon1 - g.lon0) * f64(g.cols - 1);
+  j := cast(int) floor(fy); i := cast(int) floor(fx);
+  if j > g.rows - 2 { j = g.rows - 2; }
+  if i > g.cols - 2 { i = g.cols - 2; }
+  ty := fy - f64(j); tx := fx - f64(i);
+  a := chart_grid_sample(g, j, i); b := chart_grid_sample(g, j, i + 1);
+  c := chart_grid_sample(g, j + 1, i); d := chart_grid_sample(g, j + 1, i + 1);
+  return (a * (1 - tx) + b * tx) * (1 - ty) + (c * (1 - tx) + d * tx) * ty;
+}
+chart_in :: (c: Chart, lat: f64, lon: f64) -> bool { return chart_grid_in(c.far, lat, lon) || chart_grid_in(c.near, lat, lon); }
+// The height at a point: the near grid's where it reaches, else the far grid's; CHART_OFF off the chart.
+chart_height :: (c: Chart, lat: f64, lon: f64) -> f64 {
+  if chart_grid_in(c.near, lat, lon) { return chart_grid_height(c.near, lat, lon); }
+  return chart_grid_height(c.far, lat, lon);
+}
+// The water's depth at a point in metres: 0 on land, -1 off the chart.
+chart_depth :: (c: Chart, lat: f64, lon: f64) -> f64 {
+  h := chart_height(c, lat, lon);
+  if h == CHART_OFF { return -1; }
+  return ifx h < 0 then -h else 0.0;
+}
+
+// ---------------------------------------------------------------- distances
+// Nautical miles between two points, on a flat chart at their middle latitude.
+chart_nmi :: (lat0: f64, lon0: f64, lat1: f64, lon1: f64) -> f64 {
+  dy := (lat1 - lat0) * 60.0; dx := (lon1 - lon0) * 60.0 * cos(chart_rad((lat0 + lat1) * 0.5));
+  return sqrt(dx * dx + dy * dy);
+}
+// The bearing from the first point to the second, degrees clockwise from north (0 to 360).
+chart_bearing :: (lat0: f64, lon0: f64, lat1: f64, lon1: f64) -> f64 {
+  dy := (lat1 - lat0) * 60.0; dx := (lon1 - lon0) * 60.0 * cos(chart_rad((lat0 + lat1) * 0.5));
+  if dx == 0 && dy == 0 { return 0; }
+  b := f64(angle_atan2(f32(dx), f32(dy))) * 180.0 / CHART_PI;
+  return ifx b < 0 then b + 360.0 else b;
+}
+// The point `nmi` from (lat, lon) on a bearing: [lat, lon].
+chart_move :: (lat: f64, lon: f64, bearing: f64, nmi: f64) -> [2] f64 {
+  b := chart_rad(bearing);
+  dlat := nmi * cos(b) / 60.0;
+  dlon := nmi * sin(b) / (60.0 * chart_max(cos(chart_rad(lat + dlat * 0.5)), 0.05));
+  return [2] f64.[lat + dlat, lon + dlon];
+}
+
+// ---------------------------------------------------------------- the coast
+ChartPoint :: struct { lat: f64; lon: f64; first: bool; }
+chart_coast_points :: (c: Chart) -> int { return c.coast.count / 2; }
+chart_coast_point :: (c: Chart, i: int) -> ChartPoint {
+  x := cast(int) c.coast[2 * i]; y := cast(int) c.coast[2 * i + 1];
+  first := x > CHART_FIRST - 4000;
+  if first { x -= CHART_FIRST; }
+  return ChartPoint.{lat = c.far.lat0 + f64(y) / 1000.0, lon = c.far.lon0 + f64(x) / 1000.0, first = first};
+}
+// The nearest point of the coast to (lat, lon), and how far it is.
+ChartShore :: struct { nmi: f64; lat: f64; lon: f64; found: bool; }
+chart_shore :: (c: Chart, lat: f64, lon: f64) -> ChartShore {
+  o := ChartShore.{nmi = 1.0e9};
+  k := cos(chart_rad(lat)) * 60.0;
+  n := chart_coast_points(c);
+  prev: ChartPoint;
+  for i: 0..<n {
+    p := chart_coast_point(c, i);
+    if !p.first && i > 0 {
+      // the segment prev - p in miles round the asked point
+      ax := (prev.lon - lon) * k; ay := (prev.lat - lat) * 60.0;
+      bx := (p.lon - lon) * k; by := (p.lat - lat) * 60.0;
+      dx := bx - ax; dy := by - ay; l2 := dx * dx + dy * dy;
+      t := ifx l2 > 0 then chart_clamp(-(ax * dx + ay * dy) / l2, 0, 1) else 0.0;
+      qx := ax + dx * t; qy := ay + dy * t;
+      d := sqrt(qx * qx + qy * qy);
+      if d < o.nmi { o.nmi = d; o.lat = lat + qy / 60.0; o.lon = lon + qx / k; o.found = true; }
+    }
+    prev = p;
+  }
+  return o;
+}
+
+// ---------------------------------------------------------------- fields and their lines
+// A field is values on a grid over a window (a height at each node, or the miles to land), kept
+// by the caller as rows of f32 from the south, each row from the west.
+ChartField :: struct { lat0: f64; lon0: f64; lat1: f64; lon1: f64; rows: int; cols: int; }
+chart_field_of :: (g: ChartGrid) -> ChartField { return ChartField.{lat0 = g.lat0, lon0 = g.lon0, lat1 = g.lat1, lon1 = g.lon1, rows = g.rows, cols = g.cols}; }
+// A grid's heights as a field: true when `out` held them all.
+chart_field_heights :: (g: ChartGrid, out: [] f32) -> bool {
+  if !chart_grid_ok(g) || out.count < g.rows * g.cols { return false; }
+  for i: 0..<g.rows * g.cols { out[i] = f32(chart_code_height(g.data[i])); }
+  return true;
+}
+// The miles to the nearest coast at each node of a field, on land as at sea.
+chart_field_shore :: (c: Chart, f: ChartField, out: [] f32) -> bool {
+  if f.rows < 2 || f.cols < 2 || out.count < f.rows * f.cols { return false; }
+  for j: 0..<f.rows {
+    lat := f.lat0 + (f.lat1 - f.lat0) * f64(j) / f64(f.rows - 1);
+    for i: 0..<f.cols {
+      lon := f.lon0 + (f.lon1 - f.lon0) * f64(i) / f64(f.cols - 1);
+      out[j * f.cols + i] = f32(chart_shore(c, lat, lon).nmi);
+    }
+  }
+  return true;
+}
+// Keeps the segments whose middle is at sea by the chart's heights (a line a set distance off the
+// coast also runs that far inland: this drops the inland one). Returns how many stay.
+chart_keep_sea :: (c: Chart, segs: [] f32, n: int) -> int {
+  m := 0;
+  for i: 0..<n {
+    h := chart_height(c, f64(segs[i * 4] + segs[i * 4 + 2]) * 0.5, f64(segs[i * 4 + 1] + segs[i * 4 + 3]) * 0.5);
+    if h == CHART_OFF || h >= 0 { continue; }
+    for k: 0..<4 { segs[m * 4 + k] = segs[i * 4 + k]; }
+    m += 1;
+  }
+  return m;
+}
+// The line where a field crosses `level`, by marching squares: segments appended to `out` from
+// segment `n` as lat, lon, lat, lon (f32), at most `most` in all. Returns the new count.
+chart_march :: (f: ChartField, values: [] f32, level: f32, out: [] f32, n: int, most: int) -> int {
+  m := n;
+  if f.rows < 2 || f.cols < 2 || values.count < f.rows * f.cols { return m; }
+  dlat := (f.lat1 - f.lat0) / f64(f.rows - 1); dlon := (f.lon1 - f.lon0) / f64(f.cols - 1);
+  for j: 0..<f.rows - 1 {
+    for i: 0..<f.cols - 1 {
+      a := values[j * f.cols + i] - level; b := values[j * f.cols + i + 1] - level;
+      c := values[(j + 1) * f.cols + i] - level; d := values[(j + 1) * f.cols + i + 1] - level;
+      // where the line crosses each edge: south (a-b), east (b-d), north (c-d), west (a-c)
+      px: [4] f64; py: [4] f64; k := 0;
+      if (a < 0) != (b < 0) { px[k] = f64(a / (a - b)); py[k] = 0; k += 1; }
+      if (b < 0) != (d < 0) { px[k] = 1; py[k] = f64(b / (b - d)); k += 1; }
+      if (c < 0) != (d < 0) { px[k] = f64(c / (c - d)); py[k] = 1; k += 1; }
+      if (a < 0) != (c < 0) { px[k] = 0; py[k] = f64(a / (a - c)); k += 1; }
+      if k < 2 { continue; }
+      lat := f.lat0 + dlat * f64(j); lon := f.lon0 + dlon * f64(i);
+      pairs := ifx k == 4 then 2 else 1;
+      for s: 0..<pairs {
+        if m >= most || (m + 1) * 4 > out.count { return m; }
+        // a saddle: south with east, north with west (either pairing is a fair reading)
+        p := ifx pairs == 2 then s * 2 else 0;
+        out[m * 4] = f32(lat + dlat * py[p]); out[m * 4 + 1] = f32(lon + dlon * px[p]);
+        out[m * 4 + 2] = f32(lat + dlat * py[p + 1]); out[m * 4 + 3] = f32(lon + dlon * px[p + 1]);
+        m += 1;
+      }
+    }
+  }
+  return m;
+}
+
+// ---------------------------------------------------------------- a chart on a screen
+// A window of the chart on a rectangle of the screen, north up, a mile the same length both ways.
+ChartView :: struct {
+  x: f32; y: f32; w: f32; h: f32;       // the rectangle, in the page's pixels
+  lat: f64; lon: f64;                   // the point at its centre
+  miles: f64;                           // nautical miles across its shorter side
+}
+chart_view_scale :: (v: ChartView) -> f64 { return f64(ifx v.w < v.h then v.w else v.h) / chart_max(v.miles, 1.0e-6); }   // pixels a mile
+chart_to_screen :: (v: ChartView, lat: f64, lon: f64) -> [2] f32 {
+  s := chart_view_scale(v);
+  dx := (lon - v.lon) * 60.0 * cos(chart_rad(v.lat)); dy := (lat - v.lat) * 60.0;
+  return [2] f32.[v.x + v.w * 0.5f32 + f32(dx * s), v.y + v.h * 0.5f32 - f32(dy * s)];
+}
+// The point under a pixel: [lat, lon].
+chart_from_screen :: (v: ChartView, px: f32, py: f32) -> [2] f64 {
+  s := chart_view_scale(v);
+  dx := f64(px - v.x - v.w * 0.5f32) / s; dy := -f64(py - v.y - v.h * 0.5f32) / s;
+  return [2] f64.[v.lat + dy / 60.0, v.lon + dx / (60.0 * chart_max(cos(chart_rad(v.lat)), 0.05))];
+}
+chart_view_holds :: (v: ChartView, px: f32, py: f32) -> bool { return px >= v.x && px <= v.x + v.w && py >= v.y && py <= v.y + v.h; }
+// A segment cut to the view's rectangle: false when none of it shows. `seg` is x0, y0, x1, y1.
+chart_clip :: (v: ChartView, seg: [] f32) -> bool {
+  x0 := seg[0]; y0 := seg[1]; x1 := seg[2]; y1 := seg[3];
+  t0 := 0.0f32; t1 := 1.0f32; dx := x1 - x0; dy := y1 - y0;
+  p := [4] f32.[-dx, dx, -dy, dy];
+  q := [4] f32.[x0 - v.x, v.x + v.w - x0, y0 - v.y, v.y + v.h - y0];
+  for i: 0..<4 {
+    if p[i] == 0 { if q[i] < 0 { return false; } continue; }
+    r := q[i] / p[i];
+    if p[i] < 0 { if r > t1 { return false; } if r > t0 { t0 = r; } }
+    else { if r < t0 { return false; } if r < t1 { t1 = r; } }
+  }
+  seg[0] = x0 + dx * t0; seg[1] = y0 + dy * t0; seg[2] = x0 + dx * t1; seg[3] = y0 + dy * t1;
+  return true;
+}
+
+// ---------------------------------------------------------------- land on the horizon
+// How far the sea horizon is from an eye `eye` metres up, in nautical miles (no refraction).
+chart_horizon :: (eye: f64) -> f64 { return sqrt(2.0 * CHART_EARTH * chart_max(eye, 0)) / CHART_NMI; }
+// How far the first coast is along a bearing from a point, in nautical miles; -1 when the line
+// meets none within `reach`.
+chart_ray_coast :: (c: Chart, lat: f64, lon: f64, bearing: f64, reach: f64) -> f64 {
+  k := cos(chart_rad(lat)) * 60.0;
+  b := chart_rad(bearing); ux := sin(b); uy := cos(b);      // east and north, in miles
+  best := -1.0;
+  n := chart_coast_points(c);
+  prev: ChartPoint;
+  for i: 0..<n {
+    p := chart_coast_point(c, i);
+    if !p.first && i > 0 {
+      ax := (prev.lon - lon) * k; ay := (prev.lat - lat) * 60.0;
+      dx := (p.lon - lon) * k - ax; dy := (p.lat - lat) * 60.0 - ay;
+      // the ray t (ux, uy) meets the segment a + s d
+      den := ux * dy - uy * dx;
+      if den != 0 {
+        t := (ax * dy - ay * dx) / den; q := (ax * uy - ay * ux) / den;
+        if t >= 0 && t <= reach && q >= 0 && q <= 1 && (best < 0 || t < best) { best = t; }
+      }
+    }
+    prev = p;
+  }
+  return best;
+}
+CHART_BEACH :: 3.0;       // m: the least a coast stands over the sea (a beach, a reef flat)
+// The land seen along a bearing from a point at sea, by the chart's heights and its coastline (a low
+// island can fall between the heights' samples). `angle` is the highest any of it stands against the
+// level eye, in radians (the sea horizon itself dips below level); `base` is where its nearest
+// waterline is, which is under the horizon when the land is nearer than it; `nmi` is how far that
+// nearest land is. Land nearer than `clear` miles is taken as water. `seen` is false when none
+// shows: it is under the horizon, or off the chart.
+ChartSky :: struct { seen: bool; angle: f64; base: f64; nmi: f64; height: f64; }
+chart_sight :: (eye: f64, height: f64, nmi: f64) -> f64 { m := nmi * CHART_NMI; return (height - eye) / m - m / (2.0 * CHART_EARTH); }
+chart_skyline :: (c: Chart, lat: f64, lon: f64, eye: f64, bearing: f64, clear: f64, reach: f64) -> ChartSky {
+  o: ChartSky;
+  dip := -sqrt(2.0 * chart_max(eye, 0) / CHART_EARTH);   // the sea horizon's angle
+  far := chart_horizon(eye);
+  o.angle = dip; o.base = dip;
+  first := -1.0;
+  // the coastline first: the nearest shore on the line, at a beach's height
+  shore := chart_ray_coast(c, lat, lon, bearing, reach);
+  if shore >= clear {
+    a := chart_sight(eye, CHART_BEACH, shore);
+    if shore <= far || a > dip { o.seen = true; o.angle = a; o.height = CHART_BEACH; first = shore; }
+  }
+  r := chart_max(clear, 0.25);
+  while r <= reach {
+    p := chart_move(lat, lon, bearing, r);
+    h := chart_height(c, p[0], p[1]);
+    if h == CHART_OFF { break; }
+    if h > 0 {
+      a := chart_sight(eye, h, r);
+      if r <= far || a > dip {
+        if first < 0 || r < first { first = r; }
+        if !o.seen || a > o.angle { o.angle = a; o.height = h; }
+        o.seen = true;
+      }
+    }
+    // steps grow with distance: a quarter mile near, a mile and more far out
+    r += chart_max(0.25, r * 0.06);
+  }
+  if o.seen {
+    o.nmi = first;
+    o.base = ifx first < far then chart_sight(eye, 0, first) else dip;
+    if o.angle < o.base { o.angle = o.base; }
+  }
+  return o;
+}
+
+// ---------------------------------------------------------------- checks
+// A hand-made chart: an island 0.4 of a degree square round (10.0 N, 20.0 E), `land` metres high,
+// in `sea` metres of water, on a far grid of 5 x 5 over 2 degrees and a near grid of 9 x 9 over 1.
+ChartTest :: struct { coast: [10] s16; far: [25] u8; near: [81] u8; }
+chart_test_data :: (t: [] ChartTest, land: f64, sea: f64) -> Chart {
+  // a square 9.8-10.2 N, 19.8-20.2 E on a window whose south-west corner is 9.0 N, 19.0 E
+  sq := [10] s16.[16800, 800, 1200, 800, 1200, 1200, 800, 1200, 800, 800];
+  for i: 0..<10 { t[0].coast[i] = sq[i]; }
+  for i: 0..<25 { t[0].far[i] = chart_height_code(-sea); }
+  t[0].far[12] = chart_height_code(land);
+  for j: 0..<9 { for i: 0..<9 { t[0].near[j * 9 + i] = chart_height_code(ifx j >= 3 && j <= 5 && i >= 3 && i <= 5 then land else -sea); } }
+  w := [12] f64.[9, 19, 11, 21, 5, 5, 9.5, 19.5, 10.5, 20.5, 9, 9];
+  return chart_of(t[0].coast[..], cast(string) t[0].far[..], cast(string) t[0].near[..], w);
+}
+#test "a height is stored to about seven percent, and land and sea keep their sides" {
+  for h: [9] f64.[-0.5, -5, -40, -89, -607, -1500, -5468, 12, 3000] {
+    back := chart_code_height(chart_height_code(h));
+    #assert (h < 0) == (back < 0);
+    #assert abs(back - h) <= chart_max(0.08 * abs(h), 3.5);
+  }
+  #assert chart_code_height(chart_height_code(0)) == 4 && chart_code_height(33) == 0;
+  // every code is a printable character that needs no escape but the quote and the backslash
+  #assert chart_height_code(-8000) == 33 + 63 && chart_height_code(9000) == 33 + 93 && 33 + 93 < 127;
+}
+#test "depths come from the grid between its samples, and off the chart says so" {
+  t: [1] ChartTest; c := chart_test_data(t[..], 300, 1000);
+  #assert abs(chart_depth(c, 9.2, 19.2) - 1000) < 80;
+  #assert chart_depth(c, 10.0, 20.0) == 0;                 // the island's top
+  mid := chart_height(c, 10.0, 20.2);                      // part way down its east slope, on the near grid
+  #assert mid < 300 && mid > -1000;
+  #assert chart_depth(c, 12.0, 20.0) == -1 && !chart_in(c, 12.0, 20.0) && chart_in(c, 9.0, 19.0);
+}
+#test "a mile is a minute of latitude, and a minute of longitude shrinks with the cosine" {
+  #assert abs(chart_nmi(10, 20, 11, 20) - 60) < 1e-6;
+  #assert abs(chart_nmi(60, 5, 60, 6) - 30) < 0.01;
+  #assert abs(chart_bearing(10, 20, 11, 20)) < 0.01 && abs(chart_bearing(10, 20, 10, 21) - 90) < 0.01 && abs(chart_bearing(10, 20, 9, 20) - 180) < 0.01 && abs(chart_bearing(10, 20, 10, 19) - 270) < 0.01;
+  p := chart_move(10, 20, 90, 30);
+  #assert abs(chart_nmi(10, 20, p[0], p[1]) - 30) < 0.01 && abs(p[0] - 10) < 1e-9 && p[1] > 20;
+  q := chart_move(10, 20, 225, 12);
+  #assert abs(chart_nmi(10, 20, q[0], q[1]) - 12) < 0.02 && abs(chart_bearing(10, 20, q[0], q[1]) - 225) < 0.2;
+}
+#test "the nearest shore is found on a segment, not only at its ends" {
+  t: [1] ChartTest; c := chart_test_data(t[..], 300, 1000);
+  #assert chart_coast_points(c) == 5 && chart_coast_point(c, 0).first && !chart_coast_point(c, 1).first;
+  #assert abs(chart_coast_point(c, 0).lat - 9.8) < 1e-9 && abs(chart_coast_point(c, 0).lon - 19.8) < 1e-9;
+  s := chart_shore(c, 10.0, 20.5);                         // due east of the east shore's middle
+  #assert s.found && abs(s.lat - 10.0) < 1e-6 && abs(s.lon - 20.2) < 1e-6;
+  #assert abs(s.nmi - 0.3 * 60 * cos(chart_rad(10.0))) < 0.01;
+  far := chart_shore(c, 9.0, 19.0);                        // off the south-west corner
+  #assert abs(far.lat - 9.8) < 1e-6 && abs(far.lon - 19.8) < 1e-6 && far.nmi > 60;
+}
+#test "the three mile line runs three miles off the island all the way round" {
+  t: [1] ChartTest; c := chart_test_data(t[..], 2000, 100);
+  f := ChartField.{lat0 = 9.5, lon0 = 19.5, lat1 = 10.5, lon1 = 20.5, rows = 41, cols = 41};
+  field: [1681] f32; segs: [1600] f32;
+  #assert chart_field_shore(c, f, field[..]);
+  both := chart_march(f, field[..], 3, segs[..], 0, 400);
+  n := chart_keep_sea(c, segs[..], both);                  // the line three miles inland goes
+  #assert n > 40 && n < both;
+  for i: 0..<n {
+    for e: 0..<2 {
+      s := chart_shore(c, f64(segs[i * 4 + e * 2]), f64(segs[i * 4 + e * 2 + 1]));
+      #assert abs(s.nmi - 3) < 0.35;
+    }
+  }
+  // a full buffer stops the line and never writes past it
+  #assert chart_march(f, field[..], 3, segs[..], 0, 5) == 5 && chart_march(f, field[..], 3, segs[0..<8], 0, 200) == 2;
+}
+#test "a chart on a screen: north is up, a click finds its point again, a line is cut to the frame" {
+  v := ChartView.{x = 100, y = 50, w = 400, h = 200, lat = 10, lon = 20, miles = 100};
+  mid := chart_to_screen(v, 10, 20);
+  #assert mid[0] == 300 && mid[1] == 150;
+  north := chart_to_screen(v, 10.5, 20);                   // 30 miles north: 60 px up at 2 px a mile
+  #assert abs(north[0] - 300) < 0.01 && abs(north[1] - 90) < 0.01;
+  back := chart_from_screen(v, 420, 80);
+  again := chart_to_screen(v, back[0], back[1]);
+  #assert abs(again[0] - 420) < 0.01 && abs(again[1] - 80) < 0.01;
+  #assert chart_view_holds(v, 100, 50) && !chart_view_holds(v, 99, 50) && !chart_view_holds(v, 300, 251);
+  seg := [4] f32.[0, 150, 1000, 150];
+  #assert chart_clip(v, seg[..]) && seg[0] == 100 && seg[2] == 500 && seg[1] == 150;
+  out := [4] f32.[0, 0, 50, 300];
+  #assert !chart_clip(v, out[..]);
+}
+#test "land shows over the horizon when it is near and high enough, and not from too far" {
+  t: [1] ChartTest; c := chart_test_data(t[..], 2000, 100);
+  #assert abs(chart_horizon(118) - 20.9) < 0.2;            // a 118 m deck sees the sea 21 miles out
+  near := chart_skyline(c, 10.0, 20.6, 118, 270, 1, 120);  // 21 miles east of its shore, looking west
+  #assert near.seen && near.angle > 0 && near.height > 100 && near.nmi > 15 && near.nmi < 40;
+  away := chart_skyline(c, 10.0, 20.6, 118, 90, 1, 120);   // looking east: open sea
+  #assert !away.seen && away.angle < 0;
+  u: [1] ChartTest; flat := chart_test_data(u[..], 30, 100);
+  low := chart_skyline(flat, 10.9, 20.9, 2, 225, 1, 300);  // a 30 m island from a boat 70 miles off: under the horizon
+  #assert !low.seen;
+  #assert chart_skyline(flat, 10.0, 20.3, 2, 270, 1, 300).seen;   // and from six miles off it shows
+  // from a high deck a low shore inside the horizon shows under the horizon line, down to its waterline
+  deck := chart_skyline(flat, 10.0, 20.3, 118, 270, 1, 300);
+  #assert deck.seen && deck.angle < 0 && deck.base < deck.angle && abs(deck.nmi - 0.1 * 60 * cos(chart_rad(10.0))) < 0.3;
+  // the coastline alone is enough: the line east from inside the island's west meets the shore at 20.2 E
+  #assert abs(chart_ray_coast(c, 10.0, 19.5, 90, 100) - 0.3 * 60 * cos(chart_rad(10.0))) < 0.01;
+  #assert chart_ray_coast(c, 10.0, 19.5, 270, 100) == -1 && chart_ray_coast(c, 10.0, 19.5, 90, 10) == -1;
+}

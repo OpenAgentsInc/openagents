@@ -26,7 +26,8 @@ SIM_RHO_AIR :: 1.225;
 
 // ---------------------------------------------------------------- sites and sea states (spec 5)
 SITE_GUAM :: 0; SITE_PUERTO_RICO :: 1; SITE_KONA :: 2; SITE_EQUATOR :: 3; SITE_CALIFORNIA :: 4;
-SITES :: 5;
+SITE_TEXAS :: 5; SITE_FJORD :: 6;   // where the timelapse builds it, and where a hull this deep could be joined
+SITES :: 7;
 SimSite :: struct {
   key: string; name: string;
   latitude: f64;            // degrees north
@@ -34,13 +35,18 @@ SimSite :: struct {
   sourced: bool;            // the range is sourced (else a planning value)
   sea: int;                 // the default sea state
   storms: string;
+  depth: f64 = 1500.0;      // the water under it, m (NOAA ETOPO1 at the place: metaverse/slab-where.coax)
 }
 sim_site :: (i: int) -> SimSite {
-  if i == SITE_PUERTO_RICO { return SimSite.{key = "puerto-rico", name = "PUERTO RICO, OFF YABUCOA", latitude = 18.0, surface_min = 26.5, surface_max = 29.0, sea = SEA_TRADE, storms = "HURRICANES, EARTHQUAKES"}; }
-  if i == SITE_KONA { return SimSite.{key = "kona", name = "KONA, NELHA", latitude = 19.7, surface_min = 24.0, surface_max = 27.0, sea = SEA_TRADE, storms = "RARE HURRICANES"}; }
-  if i == SITE_EQUATOR { return SimSite.{key = "equator", name = "EQUATOR, NEAR BAKER ISLAND", latitude = 0.2, surface_min = 28.0, surface_max = 29.5, sea = SEA_TRADE, storms = "NONE: HURRICANE-FREE BELT"}; }
-  if i == SITE_CALIFORNIA { return SimSite.{key = "california", name = "CALIFORNIA, SAN CLEMENTE BASIN", latitude = 32.8, surface_min = 15.2, surface_max = 20.9, sourced = true, sea = SEA_WINTER, storms = "WINTER STORMS"}; }
-  return SimSite.{key = "guam", name = "GUAM, WEST COAST", latitude = 13.4, surface_min = 27.7, surface_max = 29.2, sourced = true, sea = SEA_TRADE, storms = "TYPHOONS"};
+  if i == SITE_PUERTO_RICO { return SimSite.{key = "puerto-rico", name = "PUERTO RICO, OFF YABUCOA", latitude = 18.0, surface_min = 26.5, surface_max = 29.0, sea = SEA_TRADE, storms = "HURRICANES, EARTHQUAKES", depth = 1440}; }
+  if i == SITE_KONA { return SimSite.{key = "kona", name = "KONA, NELHA", latitude = 19.7, surface_min = 24.0, surface_max = 27.0, sea = SEA_TRADE, storms = "RARE HURRICANES", depth = 1725}; }
+  if i == SITE_EQUATOR { return SimSite.{key = "equator", name = "EQUATOR, NEAR BAKER ISLAND", latitude = 0.2, surface_min = 28.0, surface_max = 29.5, sea = SEA_TRADE, storms = "NONE: HURRICANE-FREE BELT", depth = 1448}; }
+  if i == SITE_CALIFORNIA { return SimSite.{key = "california", name = "CALIFORNIA, SAN CLEMENTE BASIN", latitude = 32.8, surface_min = 15.2, surface_max = 20.9, sourced = true, sea = SEA_WINTER, storms = "WINTER STORMS", depth = 607}; }
+  // the Gulf of Mexico 40 nautical miles off Port Aransas, where the timelapse's tow ends; and Yrkefjorden,
+  // where Norway's deep concrete platforms were mated. Surface water: NASA JPL MUR SST monthly means, 2015 to 2024
+  if i == SITE_TEXAS { return SimSite.{key = "texas", name = "TEXAS, 40 NM OFF PORT ARANSAS", latitude = 27.55, surface_min = 20.5, surface_max = 29.9, sourced = true, sea = SEA_TRADE, storms = "HURRICANES, JUNE TO NOVEMBER", depth = 89}; }
+  if i == SITE_FJORD { return SimSite.{key = "fjord", name = "NORWAY, YRKEFJORDEN", latitude = 59.42, surface_min = 5.2, surface_max = 16.3, sourced = true, sea = SEA_CALM, storms = "SHELTERED: WINTER GALES OUTSIDE", depth = 134}; }
+  return SimSite.{key = "guam", name = "GUAM, WEST COAST", latitude = 13.4, surface_min = 27.7, surface_max = 29.2, sourced = true, sea = SEA_TRADE, storms = "TYPHOONS", depth = 1408};
 }
 
 SEA_CALM :: 0; SEA_TRADE :: 1; SEA_EQUATOR_MAX :: 2; SEA_WINTER :: 3; SEA_GALE :: 4; SEA_HURRICANE :: 5;
@@ -63,6 +69,7 @@ sim_surface :: (s: SimSite, month: f64) -> f64 {
   return mid - amp * cos(2.0 * SIM_PI * (month - 1.5) / 12.0);
 }
 SIM_DEEP :: 5.0;          // deep water at 1,000 m, every site (a planning value)
+SIM_COLD_DEPTH :: 1000.0; // the cold-water pipes' intake: a site shallower than this has no cold water to pump
 
 // ---------------------------------------------------------------- the sun
 // The sun's direction (x east, y up, z north) at a latitude, on a month (0..12) at an hour (local
@@ -116,6 +123,7 @@ SimPower :: struct {
   condenser_flow: f64;       // each module's condenser seawater, m^3/s
   cold_flow: f64;            // OTEC cold water, m^3/s
   cooling_share: f64;        // the data halls' share of the cold flow with seawater cooling
+  no_cold: bool;             // the water is too shallow for the cold-water pipes: no OTEC here
   margin: f64;               // demo10: the uncommitted margin, MW
   scale: f64;                // the OTEC plant's scale this ran at
 }
@@ -140,7 +148,8 @@ sim_power :: (p: SimPlant, site: SimSite, month: f64) -> SimPower {
   o: SimPower;
   o.surface = sim_surface(site, month);
   o.dt = o.surface - (SIM_DEEP + p.warming);
-  if p.power != POWER_NUCLEAR {
+  o.no_cold = site.depth < SIM_COLD_DEPTH;
+  if p.power != POWER_NUCLEAR && !o.no_cold {
     scale := p.otec_scale;
     if p.demo10 {
       // scaled so the plant nets 10 MW at the site's best delta T
@@ -684,7 +693,7 @@ sim_bending :: (heights: [] f32, n: int, patch: f64, h: SimHull) -> f64 {
   want := [8] f64.[120.0, 106.0, 92.6, 79.8, 67.6, 56.0, 24.8, 0];
   for i: 0..<8 { #assert abs(sim_otec_net(table[i], 1) - want[i]) < 0.5; }
   #assert abs(sim_otec_net(20, 1) / 120.0 - 0.563) < 0.002;
-  lows := [5] f64.[95, 80, 50, 99, 0]; highs := [5] f64.[116, 113, 86, 120, 19];
+  lows := [7] f64.[95, 80, 50, 99, 0, 0, 0]; highs := [7] f64.[116, 113, 86, 120, 0, 0, 0];
   p: SimPlant;
   for s: 0..<SITES {
     lo := 1e9; hi := -1e9;
@@ -692,6 +701,12 @@ sim_bending :: (heights: [] f32, n: int, patch: f64, h: SimHull) -> f64 {
     #assert abs(lo - lows[s]) < 1.0 && abs(hi - highs[s]) < 1.0;
   }
   #assert sim_power(p, sim_site(SITE_CALIFORNIA), 1.5).otec_net == 0;
+  // California's basin is 607 m deep and the Gulf berth 89 m: no cold water, whatever the surface is.
+  // In 1,500 m California's August water would still net only 19 MW
+  cal := sim_site(SITE_CALIFORNIA); gulf := sim_power(p, sim_site(SITE_TEXAS), 7.5);
+  #assert sim_power(p, cal, 7.5).no_cold && gulf.no_cold && gulf.otec_net == 0 && gulf.cold_flow == 0 && gulf.surface > 29.5;
+  cal.depth = 1500;
+  #assert abs(sim_power(p, cal, 7.5).otec_net - 19) < 1.0 && !sim_power(p, sim_site(SITE_GUAM), 7.5).no_cold;
 }
 #test "8: dispatch sheds mining, then industry, then desalination" {
   p: SimPlant;
