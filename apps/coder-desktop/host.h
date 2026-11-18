@@ -31,6 +31,18 @@ void cd_skills(void *page, const char *note);
 void cd_folder(void *page, const char *shown);
 // The answer the worker is owed after a line that asked about a command: its length, 0 for none.
 int cd_answer_line(void *page, char *out, int cap);
+// Sub-agents: Microcoder hands tasks over, and the app runs each on a worker of its own.
+// cd_agent_next: the next one to start a worker for (once each), -1 for none. cd_agent_task: its
+// task line. cd_agent_line: a line its worker wrote. cd_agent_failed: its worker could not start
+// or went away. cd_agent_answer_line: the yes its worker is owed, 0 for none. cd_agent_running:
+// 0 once it has ended (stop its worker). When every one has ended, cd_answer_line gives the
+// results line for Microcoder's worker (give it 300,000 bytes).
+int cd_agent_next(void *page);
+int cd_agent_task(void *page, int agent, const char *session, const char *cwd, char *out, int cap);
+void cd_agent_line(void *page, int agent, const char *line);
+void cd_agent_failed(void *page, int agent, const char *why);
+int cd_agent_answer_line(void *page, int agent, char *out, int cap);
+int cd_agent_running(void *page, int agent);
 int cd_stop_line(char *out, int cap);
 int cd_forget_line(char *out, int cap);
 // One line the worker wrote, without its newline.

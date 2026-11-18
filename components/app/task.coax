@@ -99,6 +99,7 @@ AppTool :: struct {
   state: int;                 // APP_TOOL_*
   input: string;              // what it sent
   output: string;             // what came back ("" while it runs)
+  took: string;               // how long it took or has run so far, as the app words it (12s, 1m 05s); "": not shown
 }
 // How many lines text has (a last line with no newline counts), and line k's bytes.
 app_lines :: (text: string) -> int {
@@ -208,6 +209,11 @@ app_tool :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, t: AppTool, open
   right := x + w - a.tool_pad - a.tool_chevron;
   sheet_icon(sh, ifx is_open then s.icon_chevron else a.icon_disclose, right, mid - a.tool_chevron / 2, a.tool_chevron, s.faint);
   right -= a.gap;
+  if t.took.count > 0 {
+    tw := measure_width(m, s.small.face, t.took); right -= tw;
+    _ := sheet_text(sh, m, -1, right, mid - s.small.line / 2, s.small.line, s.small.face, s.faint, t.took);
+    right -= a.gap;
+  }
   if t.state == APP_TOOL_RUNNING { right -= a.tool_icon; activity(sh, s, right, mid - a.tool_icon / 2, a.tool_icon, f[0].clock, f[0].reduced_motion); right -= a.gap; }
   else if words.count > 0 {
     ww := measure_width(m, s.small.face, words); right -= ww;

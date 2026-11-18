@@ -131,12 +131,9 @@ final class CoderWindow: NSObject {
         worker.line = { [weak self] text in
             guard let self else { return }
             cd_line(self.page, text)
-            // a line that asked about a command is answered at once (the count first: see act)
-            var out = [CChar](repeating: 0, count: 256)
-            let n = cd_answer_line(self.page, &out, Int32(out.count)); self.worker.write(out, count: Int(n))
-            self.wake()
+            self.pump()
         }
-        worker.gone = { [weak self] in guard let self else { return }; cd_failed(self.page, "Microcoder stopped running. Send the message again."); self.wake() }
+        worker.gone = { [weak self] in guard let self else { return }; cd_failed(self.page, "Microcoder stopped running. Send the message again."); self.pump() }
         canvas.postsFrameChangedNotifications = true
         NotificationCenter.default.addObserver(forName: NSView.frameDidChangeNotification, object: canvas, queue: .main) { [weak self] _ in self?.wake() }
         let clock = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in self?.tick() }
@@ -149,6 +146,33 @@ final class CoderWindow: NSObject {
     }
 
     func wake() { owed = 3 }
+
+    /// The sub-agents' workers, by the page's number for each. Microcoder hands tasks over in one
+    /// line; each runs on a worker of its own, all at once, and the page reads every line.
+    private var agents: [Int32: CoderWorker] = [:]
+    /// After any worker's line: answer what is owed, start the sub-agents the page asks for, and
+    /// stop the workers of those that have ended. (Each count is taken before its write: see act.)
+    private func pump() {
+        var out = [CChar](repeating: 0, count: 300_000)
+        while true {
+            let j = cd_agent_next(page)
+            if j < 0 { break }
+            let one = CoderWorker()
+            one.line = { [weak self] text in guard let self, self.agents[j] === one else { return }; cd_agent_line(self.page, j, text); self.pump() }
+            one.gone = { [weak self] in guard let self, self.agents[j] === one else { return }; self.agents[j] = nil; cd_agent_failed(self.page, j, "The sub-agent's worker stopped running."); self.pump() }
+            guard one.start() else { cd_agent_failed(page, j, "The sub-agent's worker could not start."); continue }
+            agents[j] = one
+            let n = cd_agent_task(page, j, session + "-agent-\(j)-" + UUID().uuidString.lowercased(), folder.path, &out, Int32(out.count))
+            one.write(out, count: Int(n))
+        }
+        for (j, one) in agents {
+            let n = cd_agent_answer_line(page, j, &out, Int32(out.count))
+            one.write(out, count: Int(n))
+            if cd_agent_running(page, j) == 0 { agents[j] = nil; one.gone = nil; one.line = nil; one.stop() }
+        }
+        let n = cd_answer_line(page, &out, Int32(out.count)); worker.write(out, count: Int(n))
+        wake()
+    }
     var canNew: Bool { cd_running(page) == 0 }
     /// View > Bigger Text, Smaller Text, Actual Size: by is a row up or down, nil the usual size.
     func zoom(_ by: Int32?) {
@@ -229,7 +253,7 @@ final class CoderWindow: NSObject {
         if editor.frame != frame { editor.frame = frame; wake() }
     }
 
-    func retire() { clock?.invalidate(); clock = nil; worker.gone = nil; worker.stop(); cd_on_change(page, nil, nil); cd_close(page) }
+    func retire() { clock?.invalidate(); clock = nil; worker.gone = nil; worker.stop(); for one in agents.values { one.gone = nil; one.line = nil; one.stop() }; agents = [:]; cd_on_change(page, nil, nil); cd_close(page) }
 }
 
 final class CoderDelegate: NSObject, NSApplicationDelegate {

@@ -6,6 +6,8 @@
 //        {"task":...,"local":true}        the same on the model server on this machine (psionic)
 //        {"stop":true}                    STOP the run
 //        {"forget":true}                  forget the conversation
+//        {"task":...,"agents":true}       the owner runs sub-agents: a step may delegate tasks ({"kind":"delegate","tasks":[...],"ticket":N}) and waits for {"results":[{"exit":N,"output":O}],"ticket":N}
+//        {"task":...,"gated":true,"edits":true}   as gated, but edits are not refused
 //        {"task":...,"gated":true}        each command waits for an answer: {"answer":true,"ticket":N} or {"answer":false,"ticket":N,"why":"..."}
 //        {"task":...,"model":"gemini-4-argon","effort":"low"}   the owner's model and thinking level (Hydrogen and low by default)
 //        {"task":...,"intel":true}        the Coax compiler answers the action's questions, and an edit may name the hash it read
@@ -72,6 +74,7 @@ mw_event :: (e: McRunEvent, o: [] u8) {
   else if e.kind == MR_COMMAND { n = mww_command(o, e.text, e.exit, e.timed_out, e.output); }
   else if e.kind == MR_VIEW { n = mww_view(o, e.text, e.found); }
   else if e.kind == MR_ASK { n = mww_ask(o, e.text, e.ticket); }
+  else if e.kind == MR_DELEGATE { n = mww_delegate(o, e.text, e.ticket); }
   else if e.kind == MR_ENDED { n = mww_ended(o, mc_ending_name(e.ending), e.text); }
   else { return; }
   mw_send(o, n);
@@ -198,6 +201,19 @@ tool_main :: () -> int #export_c #effects(all) {
       mw_embed(k[..], req[0].text, req[0].query, out[..]);
       continue;
     }
+    if what == MWW_RESULTS {
+      if running {
+        ev: [32] McRunEvent;
+        ticket := req[0].ticket;
+        n := mc_run_delegated(run[..], ifx ticket.ok then ticket.value else 0, req[0].results, ev[..]);
+        for i: 0..<n {
+          if ev[i].kind == MR_ENDED { running = false; }
+          mw_event(ev[i], out[..]);
+          if ev[i].kind == MR_ENDED { mw_aware(run[..], out[..]); }
+        }
+      }
+      continue;
+    }
     if what == MWW_ANSWER {
       if running {
         ev: [32] McRunEvent;
@@ -233,7 +249,7 @@ tool_main :: () -> int #export_c #effects(all) {
     h[0].ncur = mk_keep(h[0].cur[..], tk);
     fx := mk_facts(h[..], ifx tool_os() == TOOL_LINUX then "Linux" else "macOS", cd, MK_COMMAND_SECONDS, facts[..]);
     mc_init(run[0].l[..], sb[..], lb[..], fx, tk, "{\"route\":\"other\",\"difficulty\":\"easy\",\"effort\":\"low\",\"local_work\":0.9}", 0.9);
-    run[0].gated = req[0].gated; run[0].asking = false;
+    run[0].gated = req[0].gated; run[0].asking = false; run[0].delegating = false; run[0].delegated = false; run[0].edits_free = req[0].edits;
     profile := req[0].sandbox;
     if profile.count==0 {profile="danger-full-access";}
     np:=mk_keep(profilebuf[..],profile);run[0].profile=cast(string)profilebuf[0..<np];
@@ -259,6 +275,7 @@ tool_main :: () -> int #export_c #effects(all) {
       if why.count > 0 { mw_ended(out[..], "failed", why); continue; }
       run[0].aw = aw[..];
     }
+    if req[0].agents && !mc_agents(run[0].l[..], lb[..]) { mw_ended(out[..], "failed", "the sub-agents' schema does not fit"); continue; }
     context:[32768]u8;nc:=json_raw(context[..],0,"{\"profile\":\"coder-owned-v1\",\"cwd\":");nc=json_write_string(context[..],nc,cd);
     nc=json_raw(context[..],nc,",\"session\":");nc=json_write_string(context[..],nc,req[0].session);
     nc=json_raw(context[..],nc,",\"policy\":");policy:=req[0].policy;nc=json_raw(context[..],nc,ifx policy.count>0 then policy else "null");

@@ -35,6 +35,29 @@ MC_MAX_VIEWS :: 16;
 MC_MAX_EDITS :: 16;
 MC_MAX_QUESTIONS :: 16;
 MC_MAX_NOTES :: 8;
+MC_MAX_DELEGATES :: 6;
+
+// A run whose owner runs sub-agents (GitHub #13655) gets one more member, delegate: up to 6
+// tasks, each with a level (simple or complex). mc_schema_delegate adds it to a run's schema.
+MC_SCHEMA_DELEGATE :: ",\"delegate\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"level\":{\"type\":\"string\",\"enum\":[\"simple\",\"complex\"]},\"task\":{\"type\":\"string\"}},\"required\":[\"level\",\"task\"],\"additionalProperties\":false}}";
+MC_SCHEMA_RATIONALE :: "\"rationale\":{\"type\":\"string\"}";
+MC_SCHEMA_REQUIRED :: "\"required\":[\"rationale\"";
+mc_schema_find :: (text: string, needle: string) -> int {
+  i := 0;
+  while i + needle.count <= text.count { if cast(string) text[i..<i + needle.count] == needle { return i; } i += 1; }
+  return -1;
+}
+// schema (mc_schema's, any modes) with the delegate member after rationale, and required. Into
+// out; "" when it doesn't fit or schema is not one of mc_schema's.
+mc_schema_delegate :: (schema: string, out: [] u8) -> string {
+  a := mc_schema_find(schema, MC_SCHEMA_RATIONALE); b := mc_schema_find(schema, MC_SCHEMA_REQUIRED);
+  if a < 0 || b < a { return ""; }
+  a += MC_SCHEMA_RATIONALE.count; b += MC_SCHEMA_REQUIRED.count;
+  n := json_raw(out, 0, cast(string) schema[0..<a]); n = json_raw(out, n, MC_SCHEMA_DELEGATE);
+  n = json_raw(out, n, cast(string) schema[a..<b]); n = json_raw(out, n, ",\"delegate\""); n = json_raw(out, n, cast(string) schema[b..<schema.count]);
+  if n < 0 { return ""; }
+  return cast(string) out[0..<n];
+}
 
 // The schema for a run: MC_SCHEMA, with questions and each edit's seen and name when intel is
 // on, and notes when memory is on. Into out; "" when it doesn't fit. Each member is where the
@@ -68,8 +91,12 @@ mc_schema :: (out: [] u8, intel: bool, memory: bool) -> string {
 // declaration in path that text replaces whole (old is then not used).
 McEdit :: struct { path: string; old: string; text: string; seen: string; name: string; }   // text: the "new" field
 
+// A task handed to a sub-agent: complex goes to the stronger model.
+McDelegate :: struct { complex: bool; task: string; }
+
 McAction :: struct {
   rationale: string;
+  delegates: [MC_MAX_DELEGATES] McDelegate; nd: int;   // read only by a run whose owner runs sub-agents (mc_action_delegates)
   edits: [MC_MAX_EDITS] McEdit; ne: int;
   commands: [MC_MAX_COMMANDS] string; nc: int;
   view: [MC_MAX_VIEWS] string; nv: int;
@@ -136,6 +163,24 @@ mc_action_parse_as :: (ar: [] ClArena, text: string, a: [] McAction, more: bool)
   return "";
 }
 
+// The reply's delegate member read into a (a run whose owner runs sub-agents; after
+// mc_action_parse_as, which leaves nd 0). The member may be missing. What's wrong with it, or "".
+mc_action_delegates :: (ar: [] ClArena, text: string, a: [] McAction) -> string {
+  a[0].nd = 0;
+  if !cl_valid(text, "?a:delegate ?o:delegate.* ?s:delegate.*.level=simple|complex ?s:delegate.*.task") { return "the reply's delegate does not match the next_action schema"; }
+  ds := cl_raw(text, "delegate");
+  nd := ifx ds.count > 0 then cl_count(ds) else 0;
+  if nd > MC_MAX_DELEGATES { return "the reply delegates more than 6 tasks"; }
+  for i: 0..<nd {
+    d := cl_json(ds, cl_item(ds, i));
+    a[0].delegates[i] = McDelegate.{complex = cl_str(ar, d, "level") == "complex", task = cl_str(ar, d, "task")};
+    if a[0].delegates[i].task.count == 0 { return "a delegated task is empty"; }
+  }
+  if ar[0].full { return "the reply does not fit its buffer"; }
+  a[0].nd = nd;
+  return "";
+}
+
 // A compiler question, one line: the word that says what is asked, then one or two arguments.
 //   defines NAME        uses NAME [FILE]     exports FILE     show NAME [FILE]     check FILE
 //   explain CODE        vocab NAME           effects FILE [PROC]                   depends FILE
@@ -168,6 +213,25 @@ mc_question :: (q: string) -> McQuestion {
 }
 
 // ---------------------------------------------------------------- checks
+
+#test "the delegate member: in the schema of any modes, read from a reply, refused when wrong" {
+  b: [4096] u8; d: [4096] u8;
+  s := mc_schema_delegate(MC_SCHEMA, d[..]);
+  #assert json_valid(s) && cl_raw(s, "properties.delegate.items.properties.level.enum").count > 0 && cl_count(cl_raw(s, "required")) == 8;
+  #assert cl_count(cl_raw(s, "properties.edits.items.required")) == 3 && s.count == MC_SCHEMA.count + MC_SCHEMA_DELEGATE.count + 11;
+  s = mc_schema_delegate(mc_schema(b[..], true, true), d[..]);
+  #assert json_valid(s) && cl_count(cl_raw(s, "required")) == 10 && cl_raw(s, "properties.notes").count > 0 && cl_raw(s, "properties.delegate").count > 0;
+  #assert mc_schema_delegate("{}", d[..]) == "" && mc_schema_delegate(MC_SCHEMA, d[0..<64]) == "";
+  ab: [2048] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  a: [1] McAction;
+  whole := "{\"rationale\":\"split\",\"delegate\":[{\"level\":\"simple\",\"task\":\"count the files\"},{\"level\":\"complex\",\"task\":\"find the bug\"}],\"edits\":[],\"commands\":[],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}";
+  #assert mc_action_parse(ar[..], whole, a[..]) == "" && a[0].nd == 0;
+  #assert mc_action_delegates(ar[..], whole, a[..]) == "" && a[0].nd == 2 && !a[0].delegates[0].complex && a[0].delegates[0].task == "count the files" && a[0].delegates[1].complex;
+  #assert mc_action_delegates(ar[..], "{\"rationale\":\"x\"}", a[..]) == "" && a[0].nd == 0;
+  #assert mc_action_delegates(ar[..], "{\"delegate\":[{\"level\":\"hard\",\"task\":\"x\"}]}", a[..]) != "" && a[0].nd == 0;
+  #assert mc_action_delegates(ar[..], "{\"delegate\":[{\"level\":\"simple\",\"task\":\"\"}]}", a[..]) == "a delegated task is empty";
+  #assert mc_action_delegates(ar[..], "{\"delegate\":[{\"level\":\"simple\",\"task\":\"a\"},{\"level\":\"simple\",\"task\":\"a\"},{\"level\":\"simple\",\"task\":\"a\"},{\"level\":\"simple\",\"task\":\"a\"},{\"level\":\"simple\",\"task\":\"a\"},{\"level\":\"simple\",\"task\":\"a\"},{\"level\":\"simple\",\"task\":\"a\"}]}", a[..]) == "the reply delegates more than 6 tasks";
+}
 
 #test "the schema a run sends: MC_SCHEMA with nothing on, the added members with each mode" {
   b: [4096] u8;

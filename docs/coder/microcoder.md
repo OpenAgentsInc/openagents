@@ -121,7 +121,16 @@ schema, the tools and the limits. The model never sees a key, a path under
 - **`edits`**: exact replacements under the working directory (`old` must
   appear exactly once; an empty `old` writes the whole file), applied by the
   loop itself before the step's commands, so there is nothing to quote. A
-  gated run refuses them and asks for a command instead.
+  gated run refuses them and asks for a command instead, unless its task
+  line has `"edits":true`.
+- **`delegate`** (#13655): only in a run whose task line has
+  `"agents":true`. Up to 6 tasks a step, each
+  `{"level":"simple"|"complex","task":"..."}`. The worker sends them to its
+  owner in one line, `{"kind":"delegate","tasks":[...],"ticket":N}`, and
+  waits. The owner runs them (Coder for desktop: simple on Gemini 4
+  Hydrogen, complex on Gemini 4 Carbon, all at once) and answers
+  `{"results":[{"exit":N,"output":"..."}],"ticket":N}`. Each result is a
+  step result named `agent LEVEL: TASK`. The step's commands run after.
 - **`view`**: read files under the working directory, capped at 64 KB each.
 - **A seeded first step** (#13325): in Coder, before the first call, the
   loop looks up what the task names. The files it mentions that exist under

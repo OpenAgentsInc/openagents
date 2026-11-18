@@ -96,6 +96,15 @@ int cd_task(void *page, const char *session, const char *cwd, char *out, int cap
 void cd_skills(void *page, const char *note) { CoderHost *c = page; if (c) coder_page_skills(cd_state(c), cd_string(note)); }
 void cd_folder(void *page, const char *shown) { CoderHost *c = page; if (c) { cd_changed(c); coder_page_folder(cd_state(c), cd_string(shown)); } }
 int cd_answer_line(void *page, char *out, int cap) { CoderHost *c = page; return c && cap > 0 ? (int)coder_page_answer_line(cd_state(c), (coax_v_u8){(uint8_t *)out, cap}) : 0; }
+int cd_agent_next(void *page) { CoderHost *c = page; return c ? (int)coder_page_agent_next(cd_state(c)) : -1; }
+int cd_agent_task(void *page, int agent, const char *session, const char *cwd, char *out, int cap) {
+  CoderHost *c = page;
+  return c && cap > 0 ? (int)coder_page_agent_task(cd_state(c), agent, cd_string(session), cd_string(cwd), (coax_v_u8){(uint8_t *)out, cap}) : 0;
+}
+void cd_agent_line(void *page, int agent, const char *line) { CoderHost *c = page; if (!c) return; coder_page_agent_line(cd_state(c), agent, cd_string(line)); cd_changed(c); }
+void cd_agent_failed(void *page, int agent, const char *why) { CoderHost *c = page; if (!c) return; coder_page_agent_failed(cd_state(c), agent, cd_string(why)); cd_changed(c); }
+int cd_agent_answer_line(void *page, int agent, char *out, int cap) { CoderHost *c = page; return c && cap > 0 ? (int)coder_page_agent_answer_line(cd_state(c), agent, (coax_v_u8){(uint8_t *)out, cap}) : 0; }
+int cd_agent_running(void *page, int agent) { CoderHost *c = page; return c && coder_page_agent_running(cd_state(c), agent); }
 int cd_stop_line(char *out, int cap) { return cap > 0 ? (int)coder_page_stop_line((coax_v_u8){(uint8_t *)out, cap}) : 0; }
 int cd_forget_line(char *out, int cap) { return cap > 0 ? (int)coder_page_forget_line((coax_v_u8){(uint8_t *)out, cap}) : 0; }
 void cd_line(void *page, const char *line) { CoderHost *c = page; if (!c) return; coder_page_line(cd_state(c), cd_string(line)); cd_changed(c); }

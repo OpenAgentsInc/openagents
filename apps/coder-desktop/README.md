@@ -20,6 +20,7 @@ the typing mark and notices. The shared AppKit editor
 - **The copy icon under a message** copies that message: yours as you wrote it, a reply as its Markdown.
 - **The copy icon in the top right corner**, beside New chat, copies the whole chat: each message under `You:`, each command under `Ran:`, each reply under `Microcoder:`. Command output is not included.
 - **Click a reply** to see who wrote it (Microcoder and its model), beside the reply's copy icon. Click again to hide it.
+- **Sub-agents** take work Microcoder hands over. See [Sub-agents](#sub-agents).
 
 Limits, all shown on screen when you reach them:
 
@@ -29,6 +30,9 @@ Limits, all shown on screen when you reach them:
 - A message shows the first 12 commands and file reads. It says how many more ran.
 - A command's output is shown up to 4,000 bytes.
 - The working folder's name is cut with an ellipsis past 280 points wide.
+- A message runs up to 12 sub-agents, 6 in one step. Microcoder is told when a task is not run for this reason.
+- A sub-agent's task is cut at 1,500 bytes, its list of tool calls at 3,000 bytes and its reply at 8,000 bytes.
+- A run has 15 minutes, with its sub-agents' time included. A command has 120 seconds.
 
 Microcoder runs shell commands as you, starting in the working folder, with
 the `danger-full-access` profile: nothing confines them, and a command can
@@ -41,8 +45,33 @@ activity mark while it runs. The row takes the command's output when it ends.
 A file read shows as a row when it ends. Press a row to open its input and
 output. The reply streams in as the model writes it.
 
+Each row shows on its right how long it took, such as `4s` or `1m 05s`.
+While it runs, the time counts up.
+
 Coder asks the worker to wait before each command (`"gated":true`) so the row
 is on screen first, and then answers yes at once. Coder does not ask you.
+Microcoder can still edit files directly (`"edits":true`).
+
+## Sub-agents
+
+Microcoder can hand parts of a message to sub-agents (#13655). It picks a
+level for each task:
+
+- **Simple** tasks go to a sub-agent on Gemini 4 Hydrogen.
+- **Complex** tasks go to a sub-agent on Gemini 4 Carbon.
+
+Sub-agents handed over in one step run at the same time. Each is a row above
+the reply, named Hydrogen or Carbon, with its task beside the name and its
+elapsed time on the right. While a sub-agent runs, the line under its row
+says how many tool calls it has made and names the newest. Press the row to
+see every tool call and, when it ends, its reply.
+
+When all of them end, Microcoder gets their replies and carries on. A
+sub-agent works in the same working folder, runs commands and edits files as
+Microcoder does, and can't start sub-agents of its own. Stop ends them too.
+
+To ask for them, say so: "Use two sub-agents at the same time: one to count
+the tests, one to explain how login works."
 
 ## Skills and installed commands
 
@@ -66,6 +95,8 @@ The app bundles the Microcoder worker (`coder/tui/mcworker.coax`) and starts
 it on the first message. `App.swift` carries bytes between the worker and the
 page. The page (`page.coax`) writes the task line and reads every reply line
 with the worker's own codec (`coax/lib/agent/engine/mcworker-wire.coax`).
+Each sub-agent is one more worker process, which the app starts when
+Microcoder hands a task over and stops when the task ends.
 The worker reads this machine's credentials as Coder's terminal app does
 (`coder/tui/microcoder_keys.coax`): Vertex first, then the Gemini API, then
 OpenRouter.

@@ -7,6 +7,7 @@
 //     {"task":T,"session":S,"cwd":D[,"local":true],"sandbox":P,"policy":{"enabled":B,"allow":N,"ceiling":N,"roots":R}
 //      [,"gated":true][,"model":M][,"effort":E]}                                   mww_task
 //     {"answer":true,"ticket":N}  {"answer":false,"ticket":N,"why":W}              mww_answer
+//     {"results":[{"exit":N,"output":O}],"ticket":N}   the sub-agents' results    mww_results
 //     {"stop":true}  {"forget":true}                                               MWW_STOP_LINE, MWW_FORGET_LINE
 //     {"embed":TEXT}  {"embed":TEXT,"query":true}                                  mww_embed
 //   the worker writes, the owner reads (mww_read):
@@ -33,8 +34,9 @@ MWW_NONE :: 0;
 // a worker's line
 MWW_JOURNAL :: 1; MWW_READY :: 2; MWW_REPLY :: 3; MWW_ATTEMPT :: 4; MWW_COMMAND :: 5;
 MWW_VIEW :: 6; MWW_ASK :: 7; MWW_ENDED :: 8; MWW_EMBEDDING :: 9;
+MWW_DELEGATE :: 10;            // {"kind":"delegate","tasks":[{"level":L,"task":T}],"ticket":N}: a run with sub-agents hands tasks to its owner (GitHub #13655)
 // an owner's line
-MWW_TASK :: 11; MWW_ANSWER :: 12; MWW_STOP :: 13; MWW_FORGET :: 14; MWW_EMBED :: 15;
+MWW_TASK :: 11; MWW_ANSWER :: 12; MWW_STOP :: 13; MWW_FORGET :: 14; MWW_EMBED :: 15; MWW_RESULTS :: 16;
 
 MWW_STOP_LINE :: "{\"stop\":true}\n";
 MWW_FORGET_LINE :: "{\"forget\":true}\n";
@@ -50,6 +52,8 @@ McTask :: struct {
   policy: bool; allow: int; ceiling: int; roots: string; gated: bool;
   model: string;                 // the owner's --model ("" for the worker's default)
   effort: string;                // low, medium or high ("" for the worker's default, low)
+  agents: bool;                  // the owner runs sub-agents: the run may delegate tasks (MWW_DELEGATE) and waits for mww_results
+  edits: bool;                   // a gated run whose edits are not refused: the owner gates commands only to show each as it starts
 }
 mww_task :: (o: [] u8, t: McTask) -> int {
   n := json_raw(o, 0, "{\"task\":"); n = json_write_string(o, n, t.task);
@@ -62,6 +66,8 @@ mww_task :: (o: [] u8, t: McTask) -> int {
   n = json_raw(o, n, ",\"ceiling\":"); n = json_write_int(o, n, t.ceiling);
   n = json_raw(o, n, ",\"roots\":"); n = json_write_string(o, n, t.roots); n = json_raw(o, n, "}");
   if t.gated { n = json_raw(o, n, ",\"gated\":true"); }
+  if t.agents { n = json_raw(o, n, ",\"agents\":true"); }
+  if t.edits { n = json_raw(o, n, ",\"edits\":true"); }
   if t.model.count > 0 { n = json_raw(o, n, ",\"model\":"); n = json_write_string(o, n, t.model); }
   if t.effort.count > 0 { n = json_raw(o, n, ",\"effort\":"); n = json_write_string(o, n, t.effort); }
   n = json_raw(o, n, "}\n");
@@ -74,6 +80,13 @@ mww_answer :: (o: [] u8, allow: bool, ticket: int, why: string) -> int {
   if !allow { n = json_raw(o, n, ",\"why\":"); n = json_write_string(o, n, ifx why.count > 0 then why else "refused"); }
   n = json_raw(o, n, "}\n");
   return n;
+}
+// The sub-agents' results for the waiting MWW_DELEGATE: results is a JSON list with one
+// {"exit":N,"output":TEXT} for each task, in order.
+mww_results :: (o: [] u8, ticket: int, results: string) -> int {
+  n := json_raw(o, 0, "{\"results\":"); n = json_raw(o, n, results);
+  n = json_raw(o, n, ",\"ticket\":"); n = json_write_int(o, n, ticket);
+  return json_raw(o, n, "}\n");
 }
 // A text to embed: a query's when query is set, else a document's.
 mww_embed :: (o: [] u8, text: string, query: bool) -> int {
@@ -91,7 +104,8 @@ MwwRequest :: struct {
   query: bool;                   // embed: a query's embedding
   allow: bool; ticket: JsonInt; why: string;       // answer
   task: string; cwd: string; session: string; sandbox: string; model: string; effort: string;
-  local: bool; gated: bool;
+  local: bool; gated: bool; agents: bool; edits: bool;
+  results: string;               // results: the list's JSON text
   policy: string;                // the policy member's JSON text, "" when there is none
   policy_on: bool;               // policy.enabled is true
   ceiling: JsonInt;              // policy.ceiling
@@ -108,6 +122,11 @@ mww_request :: (ar: [] ClArena, msg: string, r: [] MwwRequest) -> int {
     r[0].text = cl_str(ar, msg, "embed");
     r[0].kind = MWW_EMBED; return MWW_EMBED;
   }
+  if cl_at(msg, "results").tok == JSON_ARRAY {
+    r[0].results = cl_raw(msg, "results");
+    r[0].ticket = cl_int(msg, "ticket");
+    r[0].kind = MWW_RESULTS; return MWW_RESULTS;
+  }
   ans := cl_bool(msg, "answer");
   if ans.ok {
     r[0].allow = ans.value;
@@ -123,6 +142,8 @@ mww_request :: (ar: [] ClArena, msg: string, r: [] MwwRequest) -> int {
   if !r[0].local { r[0].model = cl_str(ar, msg, "model"); }
   gated := cl_bool(msg, "gated");
   r[0].gated = gated.ok && gated.value;
+  agents := cl_bool(msg, "agents"); edits := cl_bool(msg, "edits");
+  r[0].agents = agents.ok && agents.value; r[0].edits = edits.ok && edits.value;
   r[0].sandbox = cl_str(ar, msg, "sandbox");
   on := cl_bool(msg, "policy.enabled");
   r[0].policy_on = on.ok && on.value;
@@ -143,6 +164,8 @@ mww_task_read :: (ar: [] ClArena, msg: string, t: [] McTask) -> bool {
   t[0].session = cl_str(ar, msg, "session"); t[0].cwd = cl_str(ar, msg, "cwd"); t[0].sandbox = cl_str(ar, msg, "sandbox");
   local := cl_bool(msg, "local"); gated := cl_bool(msg, "gated");
   t[0].local = local.ok && local.value; t[0].gated = gated.ok && gated.value;
+  agents := cl_bool(msg, "agents"); edits := cl_bool(msg, "edits");
+  t[0].agents = agents.ok && agents.value; t[0].edits = edits.ok && edits.value;
   t[0].policy = on.value; t[0].allow = allow.value; t[0].ceiling = ceiling.value; t[0].roots = cl_str(ar, msg, "policy.roots");
   t[0].model = cl_str(ar, msg, "model"); t[0].effort = cl_str(ar, msg, "effort");
   return !ar[0].full;
@@ -178,6 +201,12 @@ mww_view :: (o: [] u8, path: string, found: bool) -> int {
 }
 mww_ask :: (o: [] u8, command: string, ticket: int) -> int {
   n := json_raw(o, 0, "{\"kind\":\"ask\",\"command\":"); n = json_write_string(o, n, command);
+  n = json_raw(o, n, ",\"ticket\":"); n = json_write_int(o, n, ticket);
+  return json_raw(o, n, "}");
+}
+// tasks: the delegated tasks' JSON list, [{"level":"simple"|"complex","task":T}].
+mww_delegate :: (o: [] u8, tasks: string, ticket: int) -> int {
+  n := json_raw(o, 0, "{\"kind\":\"delegate\",\"tasks\":"); n = json_raw(o, n, tasks);
   n = json_raw(o, n, ",\"ticket\":"); n = json_write_int(o, n, ticket);
   return json_raw(o, n, "}");
 }
@@ -217,7 +246,8 @@ MwwLine :: struct {
   exit: JsonInt;                 // command
   timed_out: ClBool;             // command
   found: ClBool;                 // view
-  ticket: JsonInt;               // ask
+  ticket: JsonInt;               // ask, delegate
+  tasks: string;                 // delegate: the tasks' JSON list
   gateway: string; outcome: string; status: JsonInt; usd_micros: JsonInt;   // attempt, what an owner shows
   values: string;                // embedding: the list's JSON text, "" when there is none
   error: string;                 // embedding: the error member's JSON text, "" when there is none
@@ -247,6 +277,7 @@ mww_read :: (ar: [] ClArena, line: string, l: [] MwwLine) -> int {
     l[0].output = cl_str(ar, line, "output");
   }
   else if kind == "view" { k = MWW_VIEW; l[0].path = cl_str(ar, line, "path"); l[0].found = cl_bool(line, "found"); }
+  else if kind == "delegate" { k = MWW_DELEGATE; l[0].ticket = cl_int(line, "ticket"); l[0].tasks = cl_raw(line, "tasks"); }
   else if kind == "ask" { k = MWW_ASK; l[0].ticket = cl_int(line, "ticket"); l[0].command = cl_str(ar, line, "command"); }
   else if kind == "ended" { k = MWW_ENDED; l[0].ending = cl_str(ar, line, "ending"); l[0].text = cl_str(ar, line, "text"); }
   else if kind == "embedding" { k = MWW_EMBEDDING; l[0].error = cl_raw(line, "error"); l[0].values = cl_raw(line, "values"); l[0].why = cl_str(ar, line, "error"); }
@@ -376,4 +407,22 @@ mww_attempt_again :: (ar: [] ClArena, line: string, out: [] u8) -> int {
   o: [MWW_EMBED_MOST + 128] u8;
   n := mww_embedding(o[..], cast(string) big[..]);
   #assert n == 29 + MWW_EMBED_MOST + 1 && o[n - 1] == 125 && o[n - 2] == 49;
+}
+
+#test "sub-agents: a task's agents and edits, the delegate line and the results line, each way" {
+  o: [1024] u8; ab: [1024] u8; ar: [1] ClArena; ar[0].buf = ab[..];
+  t := McTask.{task = "do", session = "s", cwd = "/w", sandbox = "danger-full-access", gated = true, agents = true, edits = true};
+  n := mww_task(o[..], t);
+  r: [1] MwwRequest; back: [1] McTask;
+  #assert n > 0 && mww_request(ar[..], cast(string) o[0..<n - 1], r[..]) == MWW_TASK && r[0].agents && r[0].edits && r[0].gated;
+  #assert mww_task_read(ar[..], cast(string) o[0..<n - 1], back[..]) && back[0].agents && back[0].edits;
+  n = mww_task(o[..], McTask.{task = "do", cwd = "/w"});
+  #assert mww_request(ar[..], cast(string) o[0..<n - 1], r[..]) == MWW_TASK && !r[0].agents && !r[0].edits;
+  n = mww_delegate(o[..], "[{\"level\":\"simple\",\"task\":\"a\"}]", 4);
+  l: [1] MwwLine;
+  #assert cast(string) o[0..<n] == "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"simple\",\"task\":\"a\"}],\"ticket\":4}";
+  #assert mww_read(ar[..], cast(string) o[0..<n], l[..]) == MWW_DELEGATE && l[0].ticket.value == 4 && l[0].tasks == "[{\"level\":\"simple\",\"task\":\"a\"}]";
+  n = mww_results(o[..], 4, "[{\"exit\":0,\"output\":\"ok\"}]");
+  #assert cast(string) o[0..<n] == "{\"results\":[{\"exit\":0,\"output\":\"ok\"}],\"ticket\":4}\n";
+  #assert mww_request(ar[..], cast(string) o[0..<n - 1], r[..]) == MWW_RESULTS && r[0].ticket.value == 4 && r[0].results == "[{\"exit\":0,\"output\":\"ok\"}]";
 }
