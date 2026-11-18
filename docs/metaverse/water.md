@@ -798,8 +798,18 @@ by the current. Spray that lands on the deck or wets the wall. Wind shadow
 behind the hull (the lee's short waves are calmed by diffraction only). The
 wake's eddies are a width and a swing, not a simulated flow.
 
+**Where the sea comes from.** SLAB gives its sea a bearing, the compass
+direction the wind and the waves come from (`slab-bearing.coax`,
+`?winddir=`; each site's normal bearing is in the spec, section 5.3). The
+spectrum's heading is the bearing turned round, and everything above reads
+the spectrum, so the walls that meet the sea, the lee, the wake's drift and
+the hull's wind and wave forces all turn with it. A change of bearing or wind
+lays the stations again and starts the walls' water afresh
+(`WallSpray.{}`, the moonpools at rest), as a world opened in that sea has
+it; a body that has only moved keeps its spray and foam.
+
 **SLAB's numbers** are in `docs/research/ocean/slab-world-spec.md`, sections
-4.7 and 12.
+4.7, 5.3 and 12.
 
 **Checks.** `coax/bin/coax test metaverse/water-lee.coax`, `coax/bin/coax
 test metaverse/water-wall.coax`, `coax/bin/coax test

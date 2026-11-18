@@ -105,7 +105,7 @@ The names of the districts stand over the deck while you are high above it. Pres
   - **Help**: how to get around, the keys, and links to the research.
 - Keys 1 to 9 travel to nine places around the platform: the temples, the power plant, the data halls, the mining yard, the towers, the fountain, the bow, the picture's view and a view from 1.5 km. [ and ] change the hour, V opens the section, U the underwater view, L the flow overlay. N, M, P and K open **Change**, I opens **See inside**, ? opens **Help**, and H hides the controls.
 - Address options:
-  - `?site=guam`, `puerto-rico`, `kona`, `equator`, `california`, `texas` or `fjord` picks a site and `?sea=` a sea state; `?wind=` sets the wind in metres a second.
+  - `?site=guam`, `puerto-rico`, `kona`, `equator`, `california`, `texas` or `fjord` picks a site and `?sea=` a sea state; `?wind=` sets the wind in metres a second and `?winddir=` the bearing it comes from in degrees (225 is Guam's wet-season south-westerly).
   - `?hour=`, `?month=` and `?rate=` set the clock and how fast it runs.
   - `?layout=dome` or `cluster` picks a layout.
   - `?power=hybrid` (the default), `otec` or `nuclear`; `?plant=demo10`; `?otec=` scales the OTEC plant; `?modules=` and `?swac=1`.

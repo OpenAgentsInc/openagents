@@ -17,7 +17,8 @@
 // an info card with its construction, its physics and its numbers now.
 //
 // The URL: ?site=guam|puerto-rico|kona|equator|california|texas|fjord, ?sea=calm|trade|equator-max|rough|
-// gale|hurricane, ?wind=M/S (overrides the sea's), ?hour=H, ?month=M (1-12), ?rate=X (world
+// gale|hurricane, ?wind=M/S (overrides the sea's), ?winddir=DEGREES (where the wind and waves come from;
+// each site has its own, slab-bearing.coax), ?hour=H, ?month=M (1-12), ?rate=X (world
 // seconds a second, 60 by default: a day in 24 minutes), ?power=hybrid|otec|nuclear (hybrid when not given), ?otec=SCALE,
 // ?modules=N, ?swac=1, ?t=SECONDS (a fixed moment), ?yaw=, ?pitch=, ?dist=, ?x=, ?z= (the
 // orbit), ?mode=orbit|fly|walk, ?ex=, ?ey=, ?ez= (metres) and ?eyaw=, ?epitch= (radians: where the
@@ -49,6 +50,7 @@
 #load "slab-place.coax";  // the land on the horizon, the legal lines on the water and the dock's card
 #load "slab-hud.coax";   // the HUD in plain words, drawn by the browser (GitHub #13685)
 #load "slab-sea.coax";
+#load "slab-bearing.coax";   // where the weather comes from: ?winddir=, each site's normal bearing
 #load "slab-photoreal.coax";   // the photoreal style: the platform as meshes under a physical sky (docs/metaverse/photoreal.md)
 #load "slab-lines.coax";   // the hull on its moorings: its sea, its lines, "lose a line" (GitHub #13688)
 
@@ -151,6 +153,7 @@ Slab :: struct {
   px: f32; py: f32;     // the pointer
   // the world
   site: int; sea: int; wind_forced: f64;
+  from_forced: f64; built_from: f64;   // the bearing the weather comes from, when the address or the visitor sets it (slab-bearing.coax)
   hour: f64 = 17.4; month: f64 = 5.5; rate: f64 = 60; paused: bool;
   plant: SimPlant; power: SimPower; hull: SimHull;
   power_chosen: bool;   // the visitor or the address picked the power: a change of layout keeps it (else sim_opening_power)
@@ -205,6 +208,7 @@ slab_reset :: (s: [] Slab) {
   s[0].started = true;
   s[0].fixed = -1;
   s[0].wind_forced = -1;
+  s[0].from_forced = -1;
   s[0].intro = 7;
   s[0].box_count = slab_plan(s[0].boxes[..]);
   s[0].group_count = slab_groups(s[0].boxes[..], s[0].box_count, s[0].groups[..]);
@@ -250,12 +254,13 @@ pack2 :: (a: f32, b: f32) -> f32 { return f32_from_bits(half_bits(a) | (half_bit
 // A signed byte for v in [-1, 1].
 snorm8 :: (v: f32) -> u32 { return cast(u32) (cast(int) floor(wsp_clamp(v, -1, 1) * 127 + 0.5) & 0xff); }
 
-// The open-ocean sea for the wind: a long fetch, deep water, the trades' waves running west-south-west.
-SLAB_WAVES :: 4.36;
+// The open-ocean sea for the wind and the bearing it blows from (degrees; slab-bearing.coax): a long
+// fetch and deep water.
+SLAB_WAVES :: 4.36;   // Guam's trades as a heading, rad (slab_heading(70) to a hundredth): slab-place.coax's check names it
 // JONSWAP's fetch-limited growth runs past a fully developed sea at long fetch, so its heights are
 // scaled to Pierson-Moskowitz's Hs = 0.21 U^2 / g, the spec's sea states (metaverse/slab-sim.coax SIM_SEAS).
-slab_spectrum :: (wind: f64) -> Spectrum {
-  sp := Spectrum.{seed = 23, wind_speed = wind, wind = SLAB_WAVES, fetch = 300000.0, choppiness = 0.8, spread = 0.8, depth = 4000.0};
+slab_spectrum :: (wind: f64, from: f64) -> Spectrum {
+  sp := Spectrum.{seed = 23, wind_speed = wind, wind = slab_heading(from), fetch = 300000.0, choppiness = 0.8, spread = 0.8, depth = 4000.0};
   grown := wsp_significant_height(sp);
   if grown > 0.001 { sp.amplitude = 0.21 * wind * wind / 9.81 / grown; }
   return sp;
@@ -265,7 +270,8 @@ slab_wind :: (s: [] Slab) -> f64 { if s[0].build.on { return 3.5; } return ifx s
 
 slab_build :: (s: [] Slab, phone: bool) {
   s[0].wind = slab_wind(s);
-  s[0].spectrum = slab_spectrum(s[0].wind);
+  s[0].built_from = slab_from(s);
+  s[0].spectrum = slab_spectrum(s[0].wind, s[0].built_from);
   wsp_synth(s[0].synth[..], s[0].spectrum, ifx phone then 1 else SEA_CASCADES, TILE_N);
   s[0].built = s[0].synth[0].ok;
   s[0].built_phone = phone;
@@ -817,7 +823,7 @@ slab_frame :: (s: [] Slab, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
   s[0].width = width; s[0].height = height; s[0].dpr = hi_f32(dpr, 0.5);
   phone := s[0].phone_forced || width / hi_f32(dpr, 0.5) < 600;
   if !s[0].stats_set { s[0].stats = false; s[0].stats_set = true; }
-  if !s[0].built || s[0].built_phone != phone || s[0].wind != slab_wind(s) { slab_build(s, phone); }
+  if !s[0].built || s[0].built_phone != phone || s[0].wind != slab_wind(s) || s[0].built_from != slab_from(s) { slab_build(s, phone); }
   if !s[0].built { return 0; }
   step := wsp_clamp(dt, 0, 0.1);
   frozen := still || s[0].golden;
@@ -2126,6 +2132,7 @@ slab_message :: (s: [] Slab, kind: int, text: string) #export_c #effects(all) {
   if query_word(url, "sea=winter") { s[0].sea = SEA_ROUGH; }   // the rough sea's address before it was renamed
   w := query_number(url, "wind", -1);
   if w > 0 { s[0].wind_forced = fclamp(w, 0.5, 30); }
+  slab_from_address(s, url);
   s[0].hour = fclamp(query_number(url, "hour", 17.4), 0, 23.99);
   mo := query_number(url, "month", -1);
   if mo >= 1 { s[0].month = fclamp(mo, 1, 12.99) - 0.5; }

@@ -532,8 +532,9 @@ The hull is a wall 1,000 m long in 4,000 m of water, so the sea round it is
 not the open sea. The models are the engine's (`docs/metaverse/water.md`,
 "Large floating bodies") and each is simple and stated.
 
-- **At the weather walls** the waves are sent back. The wind blows from the
-  east-north-east, so the east wall takes 99% of the sea's energy travelling
+- **At the weather walls** the waves are sent back. The walls that meet the
+  sea follow its bearing (section 5.3). In the opening sea the wind blows
+  from the east-north-east (70°), so the east wall takes 99% of the sea's energy travelling
   toward it and the north wall 84%. A box 600 m in beam and 25 m in draft
   passes almost nothing under it at these wave lengths (R = 0.9995), so a wave
   that meets the east wall squarely stands twice as high there. Where a
@@ -541,7 +542,8 @@ not the open sea. The models are the engine's (`docs/metaverse/water.md`,
   mist up the wall and along it. The white water at a wall's foot is where
   spray came down in the last 20 seconds, and the drift carries it off the
   corners.
-- **The lee** is west and south-west of the hull. The sea there is the part
+- **The lee** is on the far side from the bearing: west and south-west of
+  the hull in the opening sea. The sea there is the part
   that bends round the hull's ends, less than a third of the open sea close
   to the west wall, and nothing breaks in it. The hull's own motion reads the
   same water (`ww_height`).
@@ -662,6 +664,39 @@ Check the spectral sea's working range: the water lab's default wind is
 7–8 m/s. If `gale` and `hurricane` break the tiles (patch size, cascades or
 foam), extend `metaverse/water-spectrum.coax` with its own checks. Do not
 clamp silently.
+
+### 5.3 Where the sea comes from (`?winddir=`)
+
+The wind and the waves come from one bearing, in degrees clockwise from
+north, as a forecast gives it: a south-westerly comes from 225. The world's
++x is east and +z is north. The bearing turns the spectral sea (its waves
+travel the other way), the wind and wave forces on the hull, which walls meet
+the sea and which lie in its lee, the foam's drift, and the words on the
+dock's card and in the "What would it take?" panel. `?winddir=DEGREES` sets
+it at any site and in any sea; without it each site has its normal bearing
+(`apps/openagents-web/slab-bearing.coax`, `slab_site_from`):
+
+| Site | Bearing | From | Source (the direction is the source's; the round number is ours) |
+|---|---|---|---|
+| `guam` | 70° | east-north-east | The trade winds, easterly to east-north-easterly most of the year (NOAA National Weather Service Guam climate summaries) |
+| `puerto-rico` | 80° | east | The Caribbean's easterly trades (NWS San Juan climate) |
+| `kona` | 60° | north-east | Hawaii's north-easterly trades; Kona's own shore lies in the island's lee of them, which the world does not model (Western Regional Climate Center, Hawaii) |
+| `equator` | 100° | east | The south-east trades reach the line as easterlies (standard trade-wind climatology) |
+| `california` | 300° | west-north-west | The Southern California Bight's prevailing north-westerlies and its winter swell from the west and north-west (NOAA climatology) |
+| `texas` | 135° | south-east | The western Gulf's prevailing south-easterlies (NWS Corpus Christi climate) |
+| `fjord` | 225° | south-west | Western Norway's prevailing south-westerlies; the fjord's sides turn them, which the world does not model |
+
+**The opening uses Guam's trades, 70°.** The opening camera stands
+north-east of the hull and looks at its north and east walls, so the sea
+meets the walls the visitor sees: the east wall squarely and the north wall
+aslant (a cosine of 0.34). In Guam's wet season, July to October, the
+monsoon trough brings surges and swell from the south-west:
+`?winddir=225` shows that sea. Then the south and west walls take it, the
+opening view looks at the hull's lee, and the dock's basin, in the south
+wall, is exposed.
+
+A change of bearing (or of wind) builds the sea again and starts the walls'
+water afresh, as a world opened in that sea would have it.
 
 The sea surface must reach the horizon with detail around the hull. The
 ocean clipmap already covers 3 km in detail and runs a skirt to 40 km, so

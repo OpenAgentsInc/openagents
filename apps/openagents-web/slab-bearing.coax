@@ -1,0 +1,135 @@
+// SLAB: where the weather comes from.
+//
+// A bearing is the direction the wind and the waves come from, in degrees clockwise from north, as
+// a forecast gives it: a south-westerly comes from 225. The world's +x is east and +z is north. One
+// bearing drives all of it: the spectral sea (its waves travel the other way), the wind and wave
+// forces on the hull, which walls the sea meets and which lie in the lee (slab-water.coax), the
+// drift of the foam, the rain's slant and the stacks' plumes.
+//
+// Each site has a normal bearing (docs/research/ocean/slab-world-spec.md section 5.3 gives the
+// sources; the round numbers of degrees are ours). Guam's is the trades', from the east-north-east.
+// The opening camera stands north-east of the hull and looks at its north and east walls, so the
+// world opens with the sea meeting the walls the visitor sees. In Guam's wet season the monsoon
+// trough brings surges from the south-west: ?winddir=225 shows that sea, with the opening view in
+// the hull's lee.
+//
+//   ?winddir=DEGREES   the bearing, whatever the site (0 north, 90 east, 225 south-west)
+//
+//   coax/bin/coax test apps/openagents-web/slab.coax --only bearing
+SLAB_FROM_MONSOON :: 225.0;   // Guam's wet-season surges, for the address
+// The bearing the weather comes from at a site, degrees.
+slab_site_from :: (site: int) -> f64 {
+  if site == SITE_PUERTO_RICO { return 80.0; }    // the Caribbean's easterly trades
+  if site == SITE_KONA { return 60.0; }           // Hawaii's north-easterly trades (Kona's shore lies in the island's lee of them)
+  if site == SITE_EQUATOR { return 100.0; }       // the south-east trades reach the line as easterlies
+  if site == SITE_CALIFORNIA { return 300.0; }    // the coast's north-westerlies and its winter swell
+  if site == SITE_TEXAS { return 135.0; }         // the Gulf's south-easterly sea breeze regime
+  if site == SITE_FJORD { return 225.0; }         // Norway's south-westerlies; the fjord's sides turn them (not modelled)
+  return 70.0;                                    // Guam's trades (the heading the sea had before it had a bearing)
+}
+// A bearing folded into [0, 360).
+slab_from_fold :: (from: f64) -> f64 { return from - 360.0 * floor(from / 360.0); }
+// The spectral sea's heading for a bearing: the way the waves travel, radians (wsp_direction's angle).
+slab_heading :: (from: f64) -> f64 { return slab_from_fold(from + 180.0) * PI_D / 180.0; }
+// The bearing in force: the address's or the panel's, else the site's.
+slab_from :: (s: [] Slab) -> f64 {
+  if s[0].from_forced >= 0.0 { return slab_from_fold(s[0].from_forced); }
+  return slab_site_from(s[0].site);
+}
+// Sets the bearing as the visitor's own (a control's move); a negative one gives it back to the site.
+slab_from_set :: (s: [] Slab, from: f64) { s[0].from_forced = ifx from < 0.0 then -1.0 else slab_from_fold(from); }
+// Reads ?winddir= from the page's address.
+slab_from_address :: (s: [] Slab, url: string) {
+  d := query_number(url, "winddir", -1);
+  if d >= 0 { s[0].from_forced = slab_from_fold(d); }
+}
+
+#test "a bearing is where the sea comes from: the waves travel the other way" {
+  // a south-westerly's waves travel north-east
+  d := wsp_direction(slab_spectrum(13.7, 225.0));
+  #assert abs(d.x - sqrt(0.5)) < 1e-9 && abs(d.y - sqrt(0.5)) < 1e-9;
+  // a northerly's travel south, an easterly's west
+  n := wsp_direction(slab_spectrum(13.7, 0.0)); e := wsp_direction(slab_spectrum(13.7, 90.0));
+  #assert abs(n.x) < 1e-9 && abs(n.y + 1.0) < 1e-9 && abs(e.x + 1.0) < 1e-9 && abs(e.y) < 1e-9;
+  // Guam's trades: the heading the sea had before it had a bearing (4.36 rad, west-south-west)
+  #assert abs(slab_heading(70.0) - 4.36) < 0.01;
+  #assert slab_from_fold(450.0) == 90.0 && slab_from_fold(-90.0) == 270.0 && slab_heading(270.0) == PI_D / 2.0;
+  #assert place_compass(225.0) == "south-west" && place_compass(70.0) == "east-north-east" && place_compass(300.0) == "west-north-west";
+  // the bearing does not change how high the sea is
+  #assert abs(wsp_significant_height(slab_spectrum(13.7, 225.0)) - wsp_significant_height(slab_spectrum(13.7, 70.0))) < 1e-9;
+}
+#test "the bearing: the world opens in Guam's trades, on the north and east walls the camera sees; the address sets it" {
+  s: [1] Slab;
+  slab_message(s[..], HOST_FACTS, "url=/worlds/slab\n");
+  #assert slab_from(s[..]) == 70.0 && s[0].from_forced < 0.0;
+  // it meets the east wall squarely and the north wall aslant (slab-place.coax's walls: 0 north,
+  // 1 east, 2 south, 3 west), the west and south walls are in its lee, and the dock's basin, in the
+  // south wall, is sheltered
+  from := slab_from(s[..]);
+  #assert place_wall_faces(from, 1) > 0.9 && place_wall_faces(from, 0) > 0.3 && place_wall_faces(from, 2) < 0.0 && place_wall_faces(from, 3) < 0.0;
+  #assert !place_dock_exposed(from);
+  // the opening camera stands on the side the sea comes from: it looks at the weather walls
+  #assert sin(f64(s[0].yaw)) > 0.5 && cos(f64(s[0].yaw)) > 0.5;
+  slab_build(s[..], true);
+  d := wsp_direction(s[0].spectrum);
+  #assert d.x < -0.9 && d.y < -0.3 && s[0].built_from == 70.0;
+  // the words on the dock's card and in the panel read the built sea, so they follow the bearing
+  #assert abs(place_sea_from(s[..]) - 70.0) < 1e-6;
+  // every site's bearing is a bearing
+  for i: 0..<SITES { f := slab_site_from(i); #assert f >= 0.0 && f < 360.0; }
+  #assert slab_site_from(SITE_CALIFORNIA) == 300.0 && slab_site_from(SITE_GUAM) == 70.0;
+  // the address's bearing holds at any site and in any sea, folded into the compass
+  a: [1] Slab;
+  slab_message(a[..], HOST_FACTS, "url=/worlds/slab?site=kona&sea=gale&winddir=450\n");
+  #assert slab_from(a[..]) == 90.0;
+  slab_build(a[..], true);
+  #assert wsp_direction(a[0].spectrum).x < -0.99;
+  // Guam's wet-season south-westerly: the south and west walls, and the basin is exposed
+  m: [1] Slab;
+  slab_message(m[..], HOST_FACTS, "url=/worlds/slab?winddir=225\n");
+  #assert slab_from(m[..]) == SLAB_FROM_MONSOON && place_wall_faces(225.0, 2) > 0.7 && place_wall_faces(225.0, 3) > 0.7 && place_dock_exposed(225.0);
+  slab_build(m[..], true);
+  #assert abs(place_sea_from(m[..]) - 225.0) < 1e-6;
+  // a control's move makes it the visitor's own, and gives it back
+  slab_from_set(a[..], 10.0);
+  #assert slab_from(a[..]) == 10.0;
+  slab_from_set(a[..], -1.0);
+  #assert slab_from(a[..]) == 60.0;
+}
+// The stations along a wall with white water at their foot: face 0 east, 1 north, 2 west, 3 south.
+slab_from_test_foam :: (w: [] SlabWater, face: int) -> int {
+  n := 0;
+  for i: 0..<w[0].stations { if wall_station(w[0].frame, w[0].stations, i).face == face && w[0].spray[0].foam[i] > 0.2 { n += 1; } }
+  return n;
+}
+#test "the bearing: a turned sea is built again, and the walls' water is laid for it" #steps 12000000000 {
+  s: [1] Slab;
+  slab_message(s[..], HOST_FACTS, "url=/worlds/slab?t=40\n");
+  slab_build(s[..], true);
+  wsp_tile(s[0].synth[..], 0, 0, s[0].tile[..]);
+  s[0].time = 40.0;
+  slab_water_frame(s[..], true, false, 0.016);
+  w := s[0].water[..];
+  // the opening sea: white water at the foot of the east and north walls, none at the west and south ones
+  #assert slab_from_test_foam(w, 0) > 3 && slab_from_test_foam(w, 2) == 0 && slab_from_test_foam(w, 3) == 0;
+  // the foam drifts with the current (west) and a little down the wind (south)
+  #assert w[0].drift.x < 0.0 && w[0].drift.y < 0.0;
+  // a south-westerly, set by a control: the sea is stale until it is built again, then the other two walls
+  slab_from_set(s[..], 225.0);
+  #assert s[0].built_from == 70.0 && s[0].built_from != slab_from(s[..]);
+  slab_build(s[..], true);
+  s[0].time = 41.0; s[0].fixed = 41.0;
+  slab_water_frame(s[..], true, false, 0.016);
+  #assert s[0].built_from == 225.0 && wsp_direction(s[0].spectrum).x > 0.7 && w[0].drift.y > 0.0;
+  #assert slab_from_test_foam(w, 2) > 3 && slab_from_test_foam(w, 3) > 3;
+  #assert slab_from_test_foam(w, 0) < slab_from_test_foam(w, 3) && slab_from_test_foam(w, 1) < slab_from_test_foam(w, 2);
+  // a world opened in the south-westerly at the same moment has the same water at its walls
+  f: [1] Slab;
+  slab_message(f[..], HOST_FACTS, "url=/worlds/slab?t=41&winddir=225\n");
+  slab_build(f[..], true);
+  wsp_tile(f[0].synth[..], 0, 0, f[0].tile[..]);
+  f[0].time = 41.0;
+  slab_water_frame(f[..], true, false, 0.016);
+  for i: 0..<w[0].stations { #assert w[0].spray[0].foam[i] == f[0].water[0].spray[0].foam[i]; }
+  #assert w[0].spray[0].thrown == f[0].water[0].spray[0].thrown;
+}

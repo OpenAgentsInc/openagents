@@ -138,10 +138,10 @@ panel_hud :: (s: [] Slab, h: [] SceneHud, group: int) {
       panel_slider(s, h, WC_WIND); panel_slider(s, h, WC_MONTH);
       what_num(l, f.surface, 1); what_put(l, " °C"); panel_fact(h, "Sea surface this month", l, ifx f.sim.sourced then WHAT_SOURCE else WHAT_OURS);
       what_num(l, s[0].synth[0].significant, 1); what_put(l, " m"); panel_fact(h, "Waves now (the highest third, on average)", l, WHAT_OURS);
-      // Which way the sea comes from. The bearing is the sea's own for now (place_sea_from reads
-      // the spectrum's heading). When the water takes a bearing from the visitor (?winddir=), its
-      // control goes here, beside the wind's: a slider of 0 to 359 degrees with sh_limits, whose
-      // press sets that bearing; these three facts already follow it.
+      // Which way the sea comes from (place_sea_from reads the built spectrum's heading, which
+      // follows ?winddir= and the site's own bearing, slab-bearing.coax). A control for it goes
+      // here, beside the wind's: a slider of 0 to 359 degrees with sh_limits whose press calls
+      // slab_from_set(s, degrees) (a negative gives it back to the site); these facts follow it.
       from := place_sea_from(s);
       what_put(l, "The "); what_put(l, place_compass(from)); what_put(l, ", "); what_num(l, from, 0); what_put(l, "°"); panel_fact(h, "The sea comes from", l, WHAT_OURS);
       place_weather_walls(l, from); panel_fact(h, "Faces the weather", l, WHAT_OURS);

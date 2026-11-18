@@ -110,8 +110,15 @@ ww_lay :: (w: [] SlabWater, s: [] Synth, phone: bool) {
   // a dome's stations stay ten or twenty metres apart too
   w[0].each = ifx w[0].mode == 1 then total else cast(int) fmax(floor(TAU_D * b0.hx / (ifx phone then 20.0 else 10.0)), 8.0);
   w[0].stations = w[0].each * w[0].count;
-  // a body that has only moved keeps the spray in the air and the foam at its walls
-  if !kept { wall_begin(w[0].spray[..], w[0].stations); }
+  // a body that has only moved keeps the spray in the air and the foam at its walls; a new sea (a
+  // wind, a bearing, a layout) starts the walls' water and the moonpools afresh, as a world opened
+  // in that sea has them, and a fixed moment is run up to again
+  if !kept {
+    w[0].spray[0] = WallSpray.{};
+    for i: 0..<4 { w[0].pools[i] = Moonpool.{}; }
+    w[0].moment = -2.0;
+    wall_begin(w[0].spray[..], w[0].stations);
+  }
   for i: 0..<w[0].count { wall_arrange(w[0].spray[..], w[0].bodies[i], w[0].sea, i * w[0].each, w[0].each); }
   w[0].phone = phone;
 }
