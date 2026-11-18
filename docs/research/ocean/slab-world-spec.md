@@ -1,6 +1,7 @@
 # SLAB world: a simulation spec for the Metaverse Engine
 
-Status: spec, November 18, 2026. Nothing here is built yet.
+Status: spec, November 18, 2026. Nothing here is built yet. Revised the
+same day with sourced OTEC figures from [otec.md](otec.md).
 
 This is the brief for a coding agent to build **SLAB**, an unlisted realm in
 the OpenAgents Metaverse Engine that rebuilds Palmer Luckey's proposed
@@ -17,6 +18,10 @@ Read first:
   (engineering), section 5 (law and location) and section 7 (data centers).
 - [silone-dome.md](silone-dome.md): Ben Silone's floating dome concept and
   the video [silone-dome.mp4](silone-dome.mp4).
+- [otec.md](otec.md): the OTEC assessment (full report:
+  [OTEC_for_SLAB_Research_Report_2026-11-18.pdf](OTEC_for_SLAB_Research_Report_2026-11-18.pdf)).
+  Sections 5 and 6 below take their sites, flows, output model, cooling and
+  mining figures from it.
 - Engine docs: [realm-host.md](../../metaverse/realm-host.md) (how a realm is
   registered), [water.md](../../metaverse/water.md) (the water physics, the
   spectral sea, the ocean clipmap and the water lab).
@@ -26,7 +31,7 @@ Read first:
 SLAB has published **no** dimensions, materials, site, power system or
 layout. This world is a reference design that is consistent with what has
 been said and with basic naval architecture. Mark it as a reconstruction
-inside the world (section 10).
+inside the world (section 8).
 
 | Item | Source |
 |---|---|
@@ -34,8 +39,10 @@ inside the world (section 10).
 | 1,000-year design life | Luckey's post |
 | Rectangular concrete block with sheer walls, a city, towers, gardens and smokestacks on top | The AI-generated concept image (not a design) |
 | Floating concrete dome of about 400 ft (122 m), airform and shotcrete, joinable modules, calm equatorial water (17 ft max wave) | Ben Silone's reply (not confirmed as SLAB) |
-| Every number in sections 3 to 6 | **Ours**, chosen for this world and derived in this doc |
+| Hull, mass, mooring, deck and load numbers (sections 3, 4, 6.4, 7) | **Ours**, chosen for this world and derived in this doc |
 | OTEC as the power source | **Ours**, the owner's direction for this world |
+| OTEC flows, output model, site temperatures and rankings, cooling, mining revenue (sections 5 and 6) | [otec.md](otec.md), which itself separates measured results, engineering models, developer claims and its own calculations. Where this spec still uses a planning value, it says so |
+| OTEC at 120 MW net | **Unproven.** The largest verified net output is about 103 kW (Hawaii, 1990s), and no megawatt-scale plant has run commercially (otec.md section 3) |
 
 ## 2. The realm
 
@@ -152,7 +159,8 @@ the cancellation then happens in the simulation instead of being assumed.
   100 m along the hull, 60 m deep into it, floor at −8 m. This is our
   addition, because the concept image shows no harbour.
 - **Moonpools.** Four 12 m-diameter shafts through cells B3, B10, S3 and S10,
-  open to the sea, carrying the OTEC cold-water pipes (section 6.1).
+  open to the sea, carrying the OTEC cold-water pipes (6.7 m each, section
+  6.1).
 
 ### 3.2 `dome`: one Silone dome
 
@@ -289,8 +297,8 @@ from the fairlead to the anchor, fading out with depth.
   silhouettes. For `prime` side-on, A ≈ 1,000 m × 85 m.
   - At U = 20 m/s this gives ≈ 21 MN. The moorings must hold the offset
     under 5% of depth (75 m).
-- **Current:** 0.5 m/s by default, from the east (the equatorial current),
-  with quadratic drag on the submerged area, C_d = 1.0.
+- **Current:** 0.5 m/s by default, from the east (the North Equatorial
+  Current at `guam`), with quadratic drag on the submerged area, C_d = 1.0.
 
 ### 4.5 Flooding and ballast
 
@@ -319,18 +327,39 @@ weight along the length. Show it exaggerated 100× in the section view.
 ### 5.1 Sites (`?site=`)
 
 Sites change the sea, the water temperatures for OTEC (section 6), the sky
-and the label in the HUD.
+and the label in the HUD. The OTEC report ranks Guam first among U.S. sites,
+so `guam` is the default.
 
-| Site | Where | Surface water | Water at 1,000 m | ΔT | Storms |
-|---|---|---|---|---|---|
-| `equator` (default) | Equatorial Pacific near Baker and Howland Islands (U.S. Minor Outlying Islands), about 0.2°N 176.5°W | 28.5 °C | 4.5 °C | **24 °C** | None (the hurricane-free belt) |
-| `kona` | West of Hawaiʻi Island, about 19.7°N | 26.0 °C | 4.8 °C | 21 °C | Rare hurricanes |
-| `california` | 3.5 nautical miles off California (the "three miles" framing), about 34°N | 15.0 °C | 4.3 °C | 11 °C | Winter storms |
+| Site | Where | OTEC rank (otec.md §6) | Surface water over the year | Storms |
+|---|---|---|---|---|
+| `guam` (default) | West of Guam, about 13.4°N, steep western bathymetry | 1st U.S. site | **27.7–29.2 °C** (historical monthly values, sourced) | Typhoons |
+| `puerto-rico` | Off Yabucoa, south-east Puerto Rico, about 18.0°N; 1,045 m depth reached by about 4.7 km of pipe | 2nd | 26.5–29.0 °C (planning; the report says winter minima need verifying) | Hurricanes, earthquakes |
+| `kona` | West of Hawaiʻi Island at NELHA, about 19.7°N | 3rd; the best research base | 24.0–27.0 °C (planning; the report says the winter margin is narrow) | Rare hurricanes |
+| `equator` | Equatorial Pacific near Baker and Howland Islands (U.S. Minor Outlying Islands), about 0.2°N | Not in the report's atlas | 28.0–29.5 °C (planning) | None: Silone's hurricane-free belt |
+| `california` | 3.5 nautical miles off California (the "three miles" framing), San Clemente Basin | Excluded for OTEC | **15.2 °C in February to 20.9 °C in September** (NOAA climatology, sourced) | Winter storms |
 
-These temperatures are planning values chosen to show the contrast between
-sites. Replace them with the OTEC research's sourced figures when they
-arrive (that research is the follow-up prompts set). In the HUD, label them
-"planning values".
+**Temperatures at the plant.** OTEC works from the temperatures at the plant's
+inlets, not the sea surface (otec.md §6). The world uses:
+- Deep water at 1,000 m: 5.0 °C at every site. This is the report's
+  illustrative value; label it "planning value" in the HUD.
+- Cold-pipe warming: 0.5 °C on the way up the pipe (a parameter, `?warming=`).
+- Plant ΔT = surface temperature − (5.0 + 0.5) °C.
+
+**Seasons.** Surface temperature follows a sine through the site's range
+over the world's year (section 8). It is coldest in February, and every
+site except `equator` is in the northern hemisphere. This gives:
+
+| Site | Plant ΔT over the year | Net output over the year (section 6.1) |
+|---|---|---|
+| `guam` | 22.2–23.7 °C | 95–116 MW |
+| `puerto-rico` | 21.0–23.5 °C | 80–113 MW |
+| `kona` | 18.5–21.5 °C | 50–86 MW |
+| `equator` | 22.5–24.0 °C | 99–120 MW |
+| `california` | 9.7–15.4 °C | 0 in winter, at most 19 MW in September |
+
+The HUD labels each site's temperatures "sourced" or "planning value", as
+in the first table. When better site data arrives, change only this section
+and section 9's test 7.
 
 ### 5.2 Sea states (`?sea=`)
 
@@ -341,11 +370,11 @@ Hs ≈ 0.21U²/g:
 | Sea | Hs | Wind U | Default for |
 |---|---|---|---|
 | `calm` | 0.5 m | 4.8 m/s | — |
-| `trade` | 1.5 m | 8.4 m/s | `equator`, `kona` |
+| `trade` | 1.5 m | 8.4 m/s | `guam`, `puerto-rico`, `kona`, `equator` |
 | `equator-max` | 2.8 m (a 5.2 m / 17 ft maximum wave) | 11.4 m/s | Silone's design case |
 | `winter` | 4.0 m | 13.7 m/s | `california` |
 | `gale` | 10 m | 21.6 m/s | `california` extreme |
-| `hurricane` | 14 m | 25.6 m/s | Stress test only |
+| `hurricane` | 14 m | 25.6 m/s | The storm case at `guam` (a typhoon) and `puerto-rico`. The cost models in otec.md assume hurricane-free moorings, so this is where the world tests what they leave out |
 
 Check the spectral sea's working range: the water lab's default wind is
 7–8 m/s. If `gale` and `hurricane` break the tiles (patch size, cascades or
@@ -359,56 +388,104 @@ the 1 km hull fits.
 ## 6. Systems on board
 
 Every system is a small, deterministic model ticking on the fixed clock,
-with its numbers shown on the HUD's systems panel. These are planning
-figures for this world, not engineering quotes.
+with its numbers shown on the HUD's systems panel. Figures follow
+[otec.md](otec.md). Each section cites the part of the report it uses, and
+those are models and calculations, not measured plant results. The systems
+panel always shows one line: "No OTEC plant has delivered more than about
+0.1 MW net. These figures are engineering models."
 
 ### 6.1 OTEC power plant
 
 Closed-cycle ammonia plant along the west end (columns A–C), with 4
 cold-water pipes:
 
-| Parameter | Value at design ΔT 22 °C |
-|---|---|
-| Gross output | 170 MW |
-| Parasitic load (seawater and working-fluid pumps) | 50 MW, fixed |
-| **Net output** | **120 MW** |
-| Cold-water pipes | 4, each 8 m in diameter and 1,000 m long, hanging from the moonpools |
-| Cold-water flow | 450 m³/s in total (≈ 2.2 m/s in each pipe) |
-| Warm-water flow | 500 m³/s, through intakes on the west wall at −20 m |
-| Discharge | Mixed outflow at −60 m, through 4 diffusers below the hull |
+| Parameter | Value at the design ΔT of 24 °C | Source |
+|---|---|---|
+| Gross output | 171.4 MW | otec.md §2: 120 MW net with pumping at 30% of gross |
+| Parasitic load (seawater and working-fluid pumps) | 51.4 MW, held fixed when ΔT changes | otec.md §2 |
+| **Net output** | **120 MW** | |
+| Cold-water flow | 282 m³/s | otec.md §4, scaled from a peer-reviewed 100 MW-net design (235 m³/s per 100 MW) |
+| Warm-water flow | 564 m³/s, through intakes on the west wall at −20 m | Same scaling (470 m³/s per 100 MW) |
+| Cold-water pipes | 4 pipes, each 6.7 m in diameter and 1,000 m long, hanging from the moonpools. This keeps flow at 2 m/s and matches the report's single 13.4 m equivalent pipe | otec.md §4 |
+| Discharge | Mixed outflow at −60 m, through 4 diffusers below the hull | Ours. otec.md §9 notes that no depth is universally safe |
 
-**Output model:** gross = 170 × (ΔT/22)² MW, and net = gross − 50 MW, with
-a floor of 0. This gives:
+**Output model** (otec.md §2):
 
-| ΔT | 24 °C | 22 °C | 20 °C | 16 °C | 12 °C |
-|---|---|---|---|---|---|
-| Net output | ≈ 152 MW | 120 MW | 90 MW | 40 MW | ≈ 0 MW |
+gross = 171.4 × (ΔT/24)² MW
+net = max(0, gross − 51.4) MW
 
-So the `california` site produces almost nothing, which is the point that
-site makes. Add a seasonal swing of ±1 °C to ΔT over the world's year
-(section 8). Draw the pipes in the section and underwater views. Draw the
-water flows as animated arrows when the flow overlay is on.
+Here ΔT is the plant's inlet ΔT from section 5.1. This reproduces the
+report's check that a 20 °C ΔT leaves 56.3% of design net output.
+
+| ΔT | 24 °C | 23 °C | 22 °C | 21 °C | 20 °C | 19 °C | 16 °C | 12 °C |
+|---|---|---|---|---|---|---|---|---|
+| Net output | 120.0 MW | 106.0 MW | 92.6 MW | 79.8 MW | 67.6 MW | 56.0 MW | 24.8 MW | 0 |
+
+**Pipe trip.** A control on the world panel trips one cold-water pipe. Cold
+flow drops by a quarter, and net output drops in proportion until the pipe
+is restored. The report notes that several turbines sharing one intake
+don't protect against losing that intake (§7). The data halls' backup
+(section 6.2) is what carries them through.
+
+**Drawing.** Draw the pipes in the section and underwater views. When the
+flow overlay is on, draw the water flows as animated arrows.
 
 ### 6.2 AI data center
 
 The data hall district (section 7) holds 4 halls of 25 MW IT each, 100 MW
-IT in total, at PUE 1.15.
+IT in total. PUE is 1.20 by default, the report's baseline, giving **120 MW**.
 
-**Cooling:** the plant's cold effluent (≈ 9 °C after the OTEC condenser)
-feeds the halls' heat exchangers through a closed fresh-water loop.
-- To reject 115 MW at a 10 °C rise needs about 2.8 m³/s of seawater, under
-  1% of the plant's cold flow.
-- Show this ratio on the panel.
+**Seawater cooling,** following otec.md §7:
+- Turn it on with `?swac=1` or from the world panel.
+- A split flow of about 3 m³/s is taken from the cold intake *before* the
+  OTEC condenser and goes to the halls' heat exchangers. A closed fresh-water
+  loop keeps seawater out of the halls.
+- PUE drops to 1.10, so the campus draws **110 MW**. That saves 10 MW, or
+  87.6 GWh a year.
+- To reject 120 MW at a 10 °C rise takes 2.93 m³/s, about 1.0% of the cold
+  flow. Show this ratio on the panel.
+- Taking that share before the condenser costs the plant about 1% of its net
+  output. Apply it.
 
-Halls are lit when running. A hall drops out if its share of power is cut.
+**Backup.** Each hall has 15 minutes of batteries. There is also a 40 MW
+generator plant that starts within 60 seconds, enough for the critical IT
+load. This is ours, following the report's point that critical loads need
+independent backup. A hall drops out only when both its share of OTEC
+power and the backup are gone.
+
+Halls are lit when running.
 
 ### 6.3 Bitcoin mining yard
 
 **Layout:** 50 immersion-cooled 40 ft containers of 1 MW each (12.2 × 2.4 ×
-2.9 m), in 5 rows of 10 on the east deck (section 7).
+2.9 m), in 5 rows of 10 on the east deck (section 7). Facility PUE is 1.05.
 
 **Hashrate:** at a fleet efficiency of 15 J/TH (a parameter, `?jth=`),
-50 MW is 3.3 EH/s.
+50 MW is 3.17 EH/s.
+
+**Revenue,** using the formula in otec.md §8:
+
+R = 6B(S + f)(1 − p) / (e · u · H)
+
+R is in $ per facility MWh. Defaults are Luxor's November 16, 2026
+snapshot:
+
+| Symbol | Meaning | Default |
+|---|---|---|
+| B | Bitcoin price | $65,118 |
+| H | Network hashrate | 967 EH/s |
+| f | Fees | 0.0229 BTC/block |
+| S | Block subsidy | 3.125 BTC |
+| p | Pool fee | 2% |
+| e | Fleet efficiency | 15 J/TH |
+| u | Facility PUE | 1.05 |
+
+These give **$79/MWh**. After hardware ($40.27/MWh) and other operating
+costs ($8/MWh), only **$30.68/MWh** is left to pay for power.
+
+The panel shows hashrate, power, revenue per MWh and that power budget,
+labelled with the snapshot's date. All inputs can be edited. A "halving"
+toggle halves S, which cuts revenue to 50.3% at these inputs.
 
 **Dispatch order:**
 1. Data center.
@@ -417,10 +494,9 @@ Halls are lit when running. A hall drops out if its share of power is cut.
 4. Mining, which takes the remaining power, in 1 MW steps.
 
 When OTEC output falls, miners shut off first, container by container. Their
-lights go out so you can see it happen.
-
-The panel shows hashrate and power. Revenue appears only if the
-viewer enters a BTC price and network hashrate; nothing is baked in.
+lights go out so you can see it happen. The report's conclusion (§8) is the
+design: mining is a flexible buyer of leftover power, not the anchor
+customer.
 
 ### 6.4 Desalination and industry
 
@@ -437,19 +513,36 @@ Net OTEC output must cover all loads; there is no grid.
 
 | Load | Power |
 |---|---|
-| Data center | 115 MW |
+| Data center | 120 MW (110 MW with seawater cooling) |
 | Desalination | 15 MW |
 | Industry | 20 MW |
 | Hotel load (lighting, housing, pumps) | 8 MW |
-| **Fixed loads** | **158 MW** |
+| **Fixed loads** | **163 MW** (153 MW with seawater cooling) |
 | Mining | Takes whatever is left |
 
-At the design ΔT of 22 °C (120 MW net) the fixed loads already exceed
-supply. The dispatcher then sheds mining, then industry, and the panel goes
-amber. At the `equator` site's ΔT of 24 °C (152 MW) the shortfall is small.
-This is intentional: the world shows that a 100 MW AI campus needs a larger
-OTEC plant. Add a `?otec=` scale (1.0 to 3.0) that multiplies the plant
-(gross, parasitic load and flows), and show the extra pipes it would need.
+Even at its best (120 MW net), a 120 MW-net plant can't carry these loads,
+and at `guam` it delivers 95–116 MW over the year. The dispatcher sheds
+mining, then industry, then desalination, and the panel goes amber. This is
+intentional: it matches the report's point that the 100 MW IT illustration
+needs more than 120 MW of delivered capacity *plus* resilience (otec.md §10,
+phase 4).
+
+**`?otec=` scale** (0.05 to 3.0) multiplies the plant: gross, parasitic
+load, flows and pipe count. Show the extra pipes the larger plant needs.
+`?otec=1.75` at `guam` covers the fixed loads all year (95.3 × 1.75 = 167 MW in the coldest month, with 7 pipes).
+
+**`?plant=demo10` preset:** the report's 10 MW commercial demonstration
+(otec.md §10). It sets the scale so that net output is 10 MW at the site's
+best ΔT, and replaces the campus with the report's example allocation:
+
+| Use | Load |
+|---|---|
+| 3 MW IT at PUE 1.15 | 3.45 MW |
+| Utility, industry and water | 4.00 MW |
+| Mining | Up to 1.00 MW, curtailable |
+| Uncommitted margin | 1.55 MW |
+
+This preset shows what the report actually recommends building first.
 
 ## 7. Deck layout (`prime`)
 
@@ -507,16 +600,19 @@ control to the player on the gardens promenade.
 | Panel | Shows |
 |---|---|
 | Motion | Heave, roll and pitch, as now and as a 60 s trace; deck vertical acceleration at the player (with comfort bands of 0.05 g and 0.1 g); draft; trim; GM; mooring offset; peak line tension |
-| Systems | ΔT; OTEC gross, parasitic and net output; each load; mining hashrate and containers on; data-hall state; desalination output; the cooling-flow ratio |
+| Systems | Surface, deep and plant ΔT (each marked sourced or planning); OTEC gross, parasitic and net output; each load; data-hall state and backup; mining hashrate, containers on, revenue per MWh and power budget; desalination output; the cooling-flow ratio; the "engineering models" line from section 6 |
 | World | Site, sea state, wind, current, time of day, layout |
 
-**Controls** in the world panel: site, sea state, layout, time of day, the
-OTEC scale, the mining efficiency, ballast transfer (select a cell and fill
-or empty it), "hole a cell", "repair all" and "reset".
+**Controls** in the world panel:
+- Site, sea state, layout and time of day.
+- OTEC scale, the `demo10` preset, seawater cooling, and "trip a pipe".
+- Mining inputs and the halving toggle.
+- Ballast transfer (select a cell and fill or empty it).
+- "Hole a cell", "repair all" and "reset".
 
 **Time.** The world runs a day in 24 minutes, sun included. A world year of
-6 hours drives the seasonal ±1 °C swing in ΔT. `?t=` freezes a moment, as
-in the water lab.
+6 hours drives each site's seasonal swing in surface temperature (section
+5.1). `?t=` freezes a moment, as in the water lab; `?month=` holds a month.
 
 **On-screen label.** The bottom-left corner always shows: "Reconstruction:
 SLAB's real design is unpublished. Dimensions and systems are this world's
@@ -536,10 +632,12 @@ the column approximation.
 | 4 | Wave averaging | In `trade`, `prime`'s significant heave is less than 10% of the sea's Hs, and `dome`'s is greater than `prime`'s. Record the values; do not tune to pass |
 | 5 | Damage | Holing cell A1 on `prime` gives 0.10 m ± 0.03 sinkage and 0.06° ± 0.03 heel; one `dome` sector gives 3.4° ± 0.7 heel. Both stay afloat |
 | 6 | Mooring | Steady 20 m/s beam wind with no waves on `prime`: offset under 75 m and peak line tension under 40 MN |
-| 7 | OTEC model | Net output at ΔT 24, 22, 20, 16 and 12 °C matches section 6.1's table to ± 1 MW |
-| 8 | Dispatch | At `equator` with `?otec=1`, the order of shedding is mining, then industry; the data center never sheds while net is at least 115 MW |
+| 7 | OTEC model | Net output at every ΔT in section 6.1's table matches to ± 0.5 MW. At ΔT 20 °C, net is 56.3% ± 0.2% of design (otec.md §2). Each site's yearly range matches section 5.1's table to ± 1 MW. `california` gives 0 in February |
+| 8 | Dispatch | At `guam` with `?otec=1`, shedding goes mining, then industry, then desalination. The data center draws OTEC power whenever net output is at least its load, and switches to backup otherwise. With `?otec=1.75` nothing sheds in any month. With `?plant=demo10`, the loads match section 6.5's table |
 | 9 | Determinism | Two runs from the same seed give identical hull poses bit for bit at tick 10,000; a late joiner at tick 10,000 gets the same pose |
 | 10 | Ledger | Over 600 s in `trade`, the momentum ledger balances: buoyancy, drag, mooring, wind and gravity sum to the body's change in momentum |
+| 11 | Mining revenue | With the default inputs, R = $79.1 ± 0.5/MWh and the power budget is $30.7 ± 0.5/MWh. The halving toggle gives 50.3% ± 0.5% of R |
+| 12 | Pipe trip | Tripping one pipe cuts net output by 25% ± 2%. The data halls stay up on backup through the 60 s generator start, with no gap |
 
 **Performance targets** (measure with `frametime.ts`, as water.md does):
 - Physics (6,000 columns) under 1.5 ms of CPU a tick on desktop. On phone,
@@ -554,7 +652,7 @@ the column approximation.
 | S1 Shell | Realm row, page, sea from the water lab, static `prime` hull and deck slab, fly camera, golden | `/realms/slab` opens, the release walk passes, the golden is committed |
 | S2 Hull physics | `metaverse/hull.coax`: columns, rigid body, added mass, damping, moorings, wind and current; motion panel; site and sea selectors | Tests 1–4, 6, 9 and 10 pass |
 | S3 Deck | `metaverse/slab-plan.coax` districts and generated buildings; walking in the deck frame; travel stations | Walk the deck in `gale` without the character sliding off or jittering; draw budgets hold |
-| S4 Systems | OTEC, data halls, mining, desalination, industry, dispatch, systems panel, flow overlay, pipes | Tests 7 and 8 pass; `california` shows the plant near zero |
+| S4 Systems | OTEC, data halls and backup, seawater cooling, mining and revenue, desalination, industry, dispatch, `demo10` preset, systems panel, flow overlay, pipes | Tests 7, 8, 11 and 12 pass; `california` shows the plant at zero in winter |
 | S5 Domes | `dome` and `cluster` layouts, the Silone interior, bridges | Test 3 (dome) passes; bridges show relative motion in `equator-max` |
 | S6 Events and views | Ballast transfer, damage, section view, underwater view | Test 5 passes |
 | S7 Bending | Visual-only hull bending mode | Visible in the section view in `gale`, with no physics change |
