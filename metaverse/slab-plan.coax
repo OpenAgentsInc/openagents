@@ -55,7 +55,11 @@ SLAB_KIND_FOUNTAIN :: 19;
 SLAB_KIND_DESAL :: 20;
 SLAB_KIND_PIPE :: 21;      // the OTEC cold-water pipes, hanging 1,000 m down through the moonpools
 SLAB_KIND_STATUE :: 27;    // 22 to 26 are slab-construction.coax's caissons, lifts, boats, cabins and cargo
-SLAB_KINDS :: 28;
+SLAB_KIND_DOME :: 28;      // a Silone dome module (spec 3.2)
+SLAB_KIND_BRIDGE :: 29;    // a bridge between two domes of the cluster (spec 3.3)
+SLAB_KIND_POWERSHIP :: 30; // the 160 m nuclear powership moored off the dome layouts (spec 3.4)
+SLAB_KIND_CABLE :: 31;     // its power cable to the nearest dome
+SLAB_KINDS :: 32;
 
 SLAB_BOX :: 0;
 SLAB_CYLINDER :: 1;
@@ -69,6 +73,13 @@ SLAB_TEMPLE :: 11;         // a Greek temple: steps, peristyle, cella, entablatu
 SLAB_THOLOS :: 12;         // a round temple: steps, a ring of columns, a domed cella
 SLAB_STATUES :: 13;        // a row of statues on pedestals along both long edges of the box, SLAB_STATUE_GAP apart
 SLAB_STATUE_GAP :: 12.0f32;
+SLAB_SILONE :: 14;         // a Silone dome module: its submerged base ring, 5 stepped terraces, the lantern
+SLAB_BRIDGE :: 15;         // 15 to 18: an 8 m bridge deck between two of the box's corners (as the hawsers)
+SLAB_DOME_R :: 60.96f32;   // 400 ft across
+SLAB_DOME_DRAFT :: 12.0f32; SLAB_DOME_FREEBOARD :: 4.0f32;
+SLAB_TERRACE :: 6.0f32;    // each terrace 6 m high and 6 m deep, 5 of them: the cap rises 30 m
+SLAB_LANTERN_R :: 4.0f32; SLAB_LANTERN_TALL :: 10.0f32;
+SLAB_BRIDGE_HALF :: 4.0f32; SLAB_BRIDGE_DEPTH :: 1.2f32;
 SLAB_STATUE_TALL :: 4.2f32;  // a 1.8 m pedestal, a 2.4 m figure
 
 // Whether (x, z) lies within r of a statue's pedestal in a row over (x0, z0)-(x1, z1). The shader
@@ -84,6 +95,45 @@ slab_statue_near :: (x0: f32, z0: f32, x1: f32, z1: f32, x: f32, z: f32, r: f32)
   s0 := (ifx along_x then z0 else x0) + 1.5f32; s1 := (ifx along_x then z1 else x1) - 1.5f32;
   return abs(a - c) < 0.8f32 + r && (abs(across - s0) < 0.8f32 + r || abs(across - s1) < 0.8f32 + r);
 }
+// The powership: 160 m long and 32 m in the beam, its long side 300 m off a dome's rim along
+// -x, drawing 8 m with 8 m of freeboard; four modules' halls and stacks on deck, the bridge aft,
+// and the cable from its side to the dome's rim (a capsule, as the hawsers draw).
+SLAB_SHIP_LONG :: 160.0f32;
+SLAB_SHIP_BEAM :: 32.0f32;
+SLAB_SHIP_OFF :: 300.0f32;
+slab_powership :: (out: [] f32, n: int, rim_x: f32, cz: f32) -> int {
+  x1 := rim_x - SLAB_SHIP_OFF; x0 := x1 - SLAB_SHIP_BEAM;
+  z0 := cz - SLAB_SHIP_LONG / 2; z1 := cz + SLAB_SHIP_LONG / 2;
+  k := SLAB_KIND_POWERSHIP;
+  m := slab_put(out, n, x0, -8, z0, x1, 8, z1, k, SLAB_BOX);
+  m = slab_put(out, m, x0 + 3, 8, z1 - 30, x1 - 3, 26, z1 - 6, k, SLAB_BOX);            // the bridge and quarters, aft
+  for i: 0..<4 {
+    hz := z0 + 10 + f32(i) * 26;
+    m = slab_put(out, m, x0 + 4, 8, hz, x1 - 4, 18, hz + 22, k, SLAB_GABLE_X);           // a module's turbine hall
+    m = slab_put(out, m, x0 + 13, 18, hz + 8, x0 + 19, 34, hz + 14, k, SLAB_CYLINDER);   // and its stack
+  }
+  // the cable: from the ship's side at its deck down to the dome's rim at its deck
+  return slab_put(out, m, x1, 4, cz - 0.5, rim_x, 8, cz + 0.5, SLAB_KIND_CABLE, 7);
+}
+// A Silone dome module centred on (cx, cz), its waterline at y: the box runs from the keel to
+// the lantern's top (the shader, gpu/slab.coax slab_silone_hit, steps the terraces inside it).
+slab_silone :: (out: [] f32, n: int, cx: f32, y: f32, cz: f32) -> int {
+  top := y + SLAB_DOME_FREEBOARD + 5 * SLAB_TERRACE + SLAB_LANTERN_TALL;
+  return slab_put(out, n, cx - SLAB_DOME_R, y - SLAB_DOME_DRAFT, cz - SLAB_DOME_R, cx + SLAB_DOME_R, top, cz + SLAB_DOME_R, SLAB_KIND_DOME, SLAB_SILONE);
+}
+// A bridge deck from seat a to seat b: the box holds the deck's width and depth round the segment,
+// and the shape says which corners its ends lie toward (bit 1: a's x is the box's high x; bit 2:
+// a's z the high z). a is the higher end.
+slab_bridge :: (out: [] f32, n: int, ax0: f32, ay0: f32, az0: f32, bx0: f32, by0: f32, bz0: f32) -> int {
+  swap := by0 > ay0;
+  ax := ifx swap then bx0 else ax0; ay := ifx swap then by0 else ay0; az := ifx swap then bz0 else az0;
+  bx := ifx swap then ax0 else bx0; by := ifx swap then ay0 else by0; bz := ifx swap then az0 else bz0;
+  m := SLAB_BRIDGE_HALF + 0.5f32; my := SLAB_BRIDGE_DEPTH;
+  shape := SLAB_BRIDGE + (ifx ax > bx then 1 else 0) + (ifx az > bz then 2 else 0);
+  return slab_put(out, n, lo_f32p(ax, bx) - m, by - my, lo_f32p(az, bz) - m, hi_f32p(ax, bx) + m, ay + my, hi_f32p(az, bz) + m, SLAB_KIND_BRIDGE, shape);
+}
+lo_f32p :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
+hi_f32p :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
 slab_statues :: (out: [] f32, n: int, x0: f32, z0: f32, x1: f32, z1: f32) -> int {
   return slab_put(out, n, x0, SLAB_DECK, z0, x1, SLAB_DECK + SLAB_STATUE_TALL, z1, SLAB_KIND_STATUE, SLAB_STATUES);
 }
@@ -284,7 +334,7 @@ slab_tree :: (cx: f32, cz: f32) -> SlabTree {
     at := i * SLAB_RECORD;
     #assert boxes[at] < boxes[at + 4] && boxes[at + 1] < boxes[at + 5] && boxes[at + 2] < boxes[at + 6];
     #assert slab_inside(boxes[..], i);
-    #assert cast(int) boxes[at + 3] < SLAB_KINDS && cast(int) boxes[at + 7] <= SLAB_STATUES;
+    #assert cast(int) boxes[at + 3] < SLAB_KINDS && cast(int) boxes[at + 7] <= SLAB_STATUES;   // the plan has no domes or bridges
   }
   // the hull spans keel to deck: 143 m deep, 25 m draft, 118 m of wall as the image draws it
   #assert boxes[1] == -25 && boxes[5] == 118;
@@ -356,4 +406,29 @@ slab_tree :: (cx: f32, cz: f32) -> SlabTree {
     }
   }
   #assert rows == 6 && statues > 200;
+}
+
+#test "A bridge record gives back its two seats as the shader decodes them" {
+  out: [4 * SLAB_RECORD] f32;
+  seats := [4] [6] f32.[[6] f32.[10, 5, 20, -30, 2, -40], [6] f32.[-30, 2, 20, 10, 5, -40], [6] f32.[0, 1, 0, 70, 3, 5], [6] f32.[70, 3, 5, 0, 1, 0]];
+  for k: 0..<4 {
+    q := seats[k];
+    n := slab_bridge(out[..], k, q[0], q[1], q[2], q[3], q[4], q[5]);
+    #assert n == k + 1;
+    at := k * SLAB_RECORD; sh := cast(int) out[at + 7] - SLAB_BRIDGE;
+    #assert sh >= 0 && sh <= 3 && cast(int) out[at + 3] == SLAB_KIND_BRIDGE;
+    m := SLAB_BRIDGE_HALF + 0.5f32;
+    ax := ifx sh & 1 == 1 then out[at + 4] - m else out[at] + m;
+    az := ifx sh & 2 == 2 then out[at + 6] - m else out[at + 2] + m;
+    ay := out[at + 5] - SLAB_BRIDGE_DEPTH;
+    bx := out[at] + out[at + 4] - ax; bz := out[at + 2] + out[at + 6] - az; by := out[at + 1] + SLAB_BRIDGE_DEPTH;
+    // the higher seat comes back as a
+    hi_first := q[1] >= q[4];
+    ex := ifx hi_first then q[0] else q[3]; ez := ifx hi_first then q[2] else q[5];
+    fx := ifx hi_first then q[3] else q[0]; fz := ifx hi_first then q[5] else q[2];
+    #assert abs(ax - ex) < 0.001 && abs(az - ez) < 0.001 && abs(bx - fx) < 0.001 && abs(bz - fz) < 0.001;
+    #assert abs(ay - hi_f32p(q[1], q[4])) < 0.001 && abs(by - lo_f32p(q[1], q[4])) < 0.001;
+  }
+  n := slab_silone(out[..], 0, 0, 0, 0);
+  #assert n == 1 && out[1] == -12 && out[5] == 44 && abs(out[4] - 60.96f32) < 0.001;
 }

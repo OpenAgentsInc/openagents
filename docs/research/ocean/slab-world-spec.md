@@ -1,6 +1,6 @@
 # SLAB world: a simulation spec for the Metaverse Engine
 
-Status: phases S1–S3, S6 and S7 built and most of S4, November 18, 2026, as
+Status: phases S1–S7 built, November 18, 2026, as
 **SLAB Simulation** at `/realms/slab`. The hull floats on column buoyancy
 with damping, moorings, wind and current (`metaverse/slab-sim.coax`); the
 `prime` deck is built and can be walked with GameBuilder's character
@@ -10,9 +10,9 @@ a card for anything clicked. Cell A1 can be holed and the ballast pumped
 against it; the section view (V) cuts the hull open and the underwater view
 (U) shows the bottom, the cold-water pipes and the moorings; the flow
 overlay (L) animates the plant's water and the power lines; the section draws
-the hull's first bending mode 100 times exaggerated. Still to build: the
-powership (S4) and the dome layouts (S5); the golden is still to be taken on
-staging. Measured numbers are in section 12. The spec was
+the hull's first bending mode 1,000 times exaggerated. The `dome` and
+`cluster` layouts (K) draw the Silone domes, their bridges and, with nuclear
+power, the moored powership. The golden is still to be taken on staging. Measured numbers are in section 12. The spec was
 revised the same day with sourced OTEC figures from [otec.md](otec.md).
 
 This is the brief for a coding agent to build **SLAB**, an unlisted realm in
@@ -234,8 +234,18 @@ world should show this as a finding rather than tune it away.
 **Simulated (metaverse/slab-sim.coax, `sim_dome_shape`):** mass 0.1436 Mt,
 GM 73.4 m; it floats at its 12 m draft within 0.12 m; it heaves more than
 `prime` in the same sea; one flooded sector (cells below the waterline, 12 m
-high) takes on about 18,000 t and heels it 3.4°. The dome physics is built;
-its rendering is not yet.
+high) takes on about 18,000 t and heels it 3.4°.
+
+**Drawn (`?layout=dome`, key K):** the base drum, five terraces stepped 6 m
+in with planters along their edges and glass risers, and the lantern
+(`slab_silone` in slab-plan.coax, `slab_silone_hit` in gpu/slab.coax). The
+dome heaves, rolls and pitches with its simulated motion, and white water
+rings its waterline. Its card gives the live heave, roll, pitch, drift and
+peak line tension. The lantern is drawn 4 m in radius, as given above; the
+atrium and interior are not drawn. Walk, section, underwater and flow belong
+to `prime` only; the HUD says so if they're asked for here. With `nuclear` or
+`hybrid` power the dome is drawn level (it still heaves and drifts) so that
+the moored powership (6.6) does not swing with it.
 
 **Interior,** following the render in silone-dome.md: a central three-storey
 atrium 40 m across with a tree and ring galleries; offices, a gym and homes
@@ -254,6 +264,12 @@ force on its columns as well as the vertical one. In a 5.2 m, 160 m swell
 the domes tilt under 5°, but the bridge hinges swing 30–55° and the sliding
 joints run past ±1.5 m into their stops. Bridges this short do not survive
 that sea without much longer travel.
+
+**Drawn (`?layout=cluster`):** the seven domes where the simulation has
+them, and the twelve bridges between their seats, each an 8 m deck. The domes
+are drawn level: their heave and drift show, their tilts (under 5°) do not.
+Each bridge's card gives its live slide and hinge angle and the most so far,
+and warns when the joint has run into its stops.
 
 ## 4. Physics
 
@@ -623,7 +639,11 @@ compartment and its 25 m turbine room.
   (152 m). The `dome` and `cluster` layouts are smaller (122 m), so for
   them, `nuclear` and `hybrid` add a separate 160 m powership. It is moored
   300 m away and connected by a power cable, like the video's "Powership"
-  scene. The HUD says why.
+  scene. The HUD says why. **Drawn:** a 160 × 32 m hull drawing 8 m, its
+  bridge aft, four turbine halls with their stacks, and the cable from its
+  side to the west dome's rim (`slab_powership`). The cable is drawn above
+  the water so it can be seen and clicked; a real one would hang below the
+  surface. The ship is drawn at rest: its own motion is not simulated.
 
 **Power:**
 

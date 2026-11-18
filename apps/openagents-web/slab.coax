@@ -93,6 +93,8 @@ BTN_ORBIT :: 1; BTN_FLY :: 2; BTN_WALK :: 3; BTN_SITE :: 4; BTN_SEA :: 5; BTN_EA
 BTN_PAUSE :: 8; BTN_POWER :: 9; BTN_STATS :: 10; BTN_CLOSE :: 11; BTN_REFUEL :: 12; BTN_TRIP :: 13; BTN_SWAC :: 14;
 BTN_HALVING :: 15; BTN_HELP :: 16; BTN_MONTH :: 17; BTN_HOLE :: 18; BTN_PUMP :: 19; BTN_SECTION :: 20; BTN_UNDER :: 21; BTN_FLOW :: 22;
 
+BTN_LAYOUT :: 28;
+LAYOUT_PRIME :: 0; LAYOUT_DOME :: 1; LAYOUT_CLUSTER :: 2;   // spec section 3's three layouts (?layout=, key K)
 BTN_BUILD :: 23; BTN_TIMELAPSE :: 24; BTN_FIRST_TOW :: 25; BTN_FIRST_JOIN :: 26; BTN_OUTFIT :: 27;
 BuildView :: struct {
   on: bool; play: bool; cursor: f64; clock: FrameClock;
@@ -129,6 +131,8 @@ Slab :: struct {
   site: int; sea: int; wind_forced: f64;
   hour: f64 = 17.85; month: f64 = 5.5; rate: f64 = 60; paused: bool;
   plant: SimPlant; power: SimPower; hull: SimHull;
+  layout: int;          // LAYOUT_*: the prime monolith, one Silone dome, or seven joined
+  cluster: SimCluster;  // the seven domes and their bridges (LAYOUT_CLUSTER); hull then follows the centre one
   wind: f64;
   spectrum: Spectrum;
   built: bool;          // the synths for the current wind and tier
@@ -273,7 +277,7 @@ rec_shape :: (s: [] Slab, i: int) -> int { return cast(int) rec(s, i, 7); }
 rec_holds :: (s: [] Slab, i: int, x: f32, z: f32, r: f32) -> bool {
   x0 := rec(s, i, 0); z0 := rec(s, i, 2); x1 := rec(s, i, 4); z1 := rec(s, i, 6);
   sh := rec_shape(s, i);
-  if sh == SLAB_CYLINDER || sh == SLAB_DOME {
+  if sh == SLAB_CYLINDER || sh == SLAB_DOME || sh == SLAB_SILONE {
     cx := (x0 + x1) * 0.5; cz := (z0 + z1) * 0.5; rr := lo_f32(x1 - x0, z1 - z0) * 0.5 + r;
     return (x - cx) * (x - cx) + (z - cz) * (z - cz) < rr * rr;
   }
@@ -474,7 +478,63 @@ say :: (s: [] Slab, text: string) {
   for i: 0..<text.count { if n < 64 { s[0].toast[n] = text[i]; n += 1; } }
   s[0].toast_n = n; s[0].toast_at = s[0].time;
 }
+// The records for the layout now: the plan, one dome in its own frame (the pose carries its
+// heave, roll and pitch), or the cluster's domes where the simulation has them and the bridges
+// between their seats. The cluster's domes are drawn level: their heave and drift show, their
+// tilts (under 5 degrees) do not; the bridge cards give the simulated hinge and slide.
+// The domes are under the 152 m hull the modules need (spec 3.4): with nuclear or hybrid power
+// a powership is moored off them, and the dome is then drawn in the world's frame like the
+// cluster's, level, so the ship does not swing with it.
+has_ship :: (s: [] Slab) -> bool { return s[0].layout != LAYOUT_PRIME && s[0].plant.power != POWER_OTEC; }
+world_frame :: (s: [] Slab) -> bool { return s[0].layout == LAYOUT_CLUSTER || has_ship(s); }
+layout_records :: (s: [] Slab) {
+  if s[0].layout == LAYOUT_PRIME { s[0].box_count = slab_plan(s[0].boxes[..]); }
+  else if s[0].layout == LAYOUT_DOME {
+    h := s[0].hull;
+    s[0].box_count = ifx has_ship(s) then slab_silone(s[0].boxes[..], 0, f32(h.surge), f32(h.heave), f32(h.sway)) else slab_silone(s[0].boxes[..], 0, 0, 0, 0);
+    if has_ship(s) { s[0].box_count = slab_powership(s[0].boxes[..], s[0].box_count, f32(h.surge) - SLAB_DOME_R, f32(h.sway)); }
+  } else {
+    n := 0;
+    for i: 0..<SIM_DOMES {
+      d := s[0].cluster.domes[i];
+      n = slab_silone(s[0].boxes[..], n, f32(d.cx + d.surge), f32(d.heave), f32(d.cz + d.sway));
+    }
+    for k: 0..<SIM_BRIDGES {
+      ab := sim_bridge(k); a := s[0].cluster.domes[ab[0]]; b := s[0].cluster.domes[ab[1]];
+      ux := b.cx - a.cx; uz := b.cz - a.cz; ul := sqrt(ux * ux + uz * uz); ux /= ul; uz /= ul;
+      r := f64(SLAB_DOME_R); up := f64(SLAB_DOME_FREEBOARD);
+      n = slab_bridge(s[0].boxes[..], n, f32(a.cx + a.surge + ux * r), f32(a.heave + up), f32(a.cz + a.sway + uz * r),
+        f32(b.cx + b.surge - ux * r), f32(b.heave + up), f32(b.cz + b.sway - uz * r));
+    }
+    d4 := s[0].cluster.domes[4];   // the west dome: the cable runs from its rim
+    if has_ship(s) { n = slab_powership(s[0].boxes[..], n, f32(d4.cx + d4.surge) - SLAB_DOME_R, f32(d4.cz + d4.sway)); }
+    s[0].box_count = n;
+  }
+  s[0].group_count = slab_groups(s[0].boxes[..], s[0].box_count, s[0].groups[..]);
+}
+set_layout :: (s: [] Slab, l: int) {
+  if s[0].build.on { build_toggle(s); }
+  s[0].layout = l;
+  h: SimHull; h.round = l != LAYOUT_PRIME; s[0].hull = h;
+  s[0].cluster = sim_cluster_new();
+  s[0].section = false; s[0].flow = false;
+  if s[0].under { go_under(s, false); }
+  if s[0].mode == CAM_WALK { set_mode(s, CAM_ORBIT); }
+  s[0].selected = -1; s[0].hovered = -1; s[0].intro = 0;
+  prime := l == LAYOUT_PRIME;
+  s[0].tx = ifx prime then 174 else 0; s[0].tz = ifx prime then 110 else 0; s[0].ty = ifx prime then 0 else 8;
+  s[0].dist = ifx prime then 1164 else ifx l == LAYOUT_DOME then 330 else 720;
+  s[0].yaw = 0.802; s[0].pitch = ifx prime then 0.438f32 else 0.36f32;
+  layout_records(s);
+  say(s, ifx l == LAYOUT_DOME then "DOME: ONE SILONE MODULE, 122 M ACROSS" else ifx l == LAYOUT_CLUSTER then "CLUSTER: 7 DOMES, 12 BRIDGES WITH SLIDING JOINTS" else "PRIME: THE MONOLITH OF THE CONCEPT IMAGE");
+}
+prime_only :: (s: [] Slab) -> bool {
+  if s[0].layout == LAYOUT_PRIME { return true; }
+  say(s, "THE PRIME LAYOUT ONLY: K CHANGES THE LAYOUT");
+  return false;
+}
 set_mode :: (s: [] Slab, m: int) {
+  if m == CAM_WALK && !prime_only(s) { return; }
   if m != CAM_FLY && s[0].under { s[0].under = false; }
   if m == s[0].mode { return; }
   if m == CAM_FLY {
@@ -543,6 +603,38 @@ pick :: (s: [] Slab, x: f32, y: f32) -> int {
       }
       if !hitst { continue; }
     }
+    if sh >= 7 && sh <= 10 {
+      // a cable or hawser: only near its line (from one corner of the box to the opposite one)
+      ax := ifx ((sh - 7) & 1) == 1 then hi[0] else lo[0]; az := ifx ((sh - 7) & 2) == 2 then hi[2] else lo[2];
+      bx := lo[0] + hi[0] - ax; bz := lo[2] + hi[2] - az;
+      sx := bx - ax; sy := lo[1] - hi[1]; sz := bz - az; ss := sx * sx + sy * sy + sz * sz;
+      hitw := false;
+      for k: 0..<400 {
+        tt := t + f32(k) * 0.75f32;
+        qx := o[0] + hd[0] * tt; qy := o[1] + hd[1] * tt; qz := o[2] + hd[2] * tt;
+        if qy < lo[1] - 2 || qy > hi[1] + 2 { if k > 0 { break; } }
+        f := fclamp(f64(((qx - ax) * sx + (qy - hi[1]) * sy + (qz - az) * sz) / ss), 0, 1);
+        ex := qx - (ax + f32(f) * sx); ey := qy - (hi[1] + f32(f) * sy); ez := qz - (az + f32(f) * sz);
+        if ex * ex + ey * ey + ez * ez < 2.25f32 { t = tt; hitw = true; break; }
+      }
+      if !hitw { continue; }
+    }
+    if sh == SLAB_SILONE {
+      // the stepped dome: the base drum to 16 m over its keel, then terraces 6 m in each 6 m up,
+      // then the lantern; walk the ray through its box a metre at a time
+      cx := (lo[0] + hi[0]) * 0.5; cz := (lo[2] + hi[2]) * 0.5; R := (hi[0] - lo[0]) * 0.5;
+      hitd := false;
+      for k: 0..<260 {
+        tt := t + f32(k);
+        qx := o[0] + hd[0] * tt; qy := o[1] + hd[1] * tt; qz := o[2] + hd[2] * tt;
+        if qy < lo[1] - 0.1f32 || qy > hi[1] + 0.1f32 { if k > 0 { break; } }
+        up := qy - lo[1] - 16;
+        rr := ifx up < 0 then R else R - SLAB_TERRACE * (floor(up / SLAB_TERRACE) + 1);
+        if up >= SLAB_TERRACE * 5 { rr = SLAB_LANTERN_R; }
+        if (qx - cx) * (qx - cx) + (qz - cz) * (qz - cz) < rr * rr { t = tt; hitd = true; break; }
+      }
+      if !hitd { continue; }
+    }
     if sh == SLAB_CYLINDER || sh == SLAB_DOME {
       // the circle at the hit's height, or at the top
       px := o[0] + hd[0] * t; pz := o[2] + hd[2] * t;
@@ -605,7 +697,13 @@ slab_frame :: (s: [] Slab, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
   wsp_tile(s[0].synth[..], 0, folded, s[0].tile[..]);
   c0 := s[0].synth[0].cascades[0];
   wd := wsp_direction(sp);
-  if !s[0].build.on && (!frozen || s[0].fixed >= 0) {
+  if s[0].layout == LAYOUT_CLUSTER && !s[0].build.on && (!frozen || s[0].fixed >= 0) {
+    if s[0].fixed >= 0 && s[0].cluster.domes[0].time < 20 {
+      for i: 0..<300 { s[0].cluster = sim_cluster_step(s[0].cluster, s[0].tile[0].height[..], TILE_N, c0.patch, s[0].wind, wd.x, wd.y, SIM_STEP); }
+    }
+    s[0].cluster = sim_cluster_advance(s[0].cluster, s[0].tile[0].height[..], TILE_N, c0.patch, s[0].wind, wd.x, wd.y, ifx s[0].fixed >= 0 then 0.0 else f64(step));
+    s[0].hull = s[0].cluster.domes[0];
+  } else if !s[0].build.on && (!frozen || s[0].fixed >= 0) {
     sim_step := ifx s[0].fixed >= 0 then 0.0 else f64(step);
     if s[0].fixed >= 0 && s[0].hull.time < 30 {
       // a fixed moment: let the hull settle onto it
@@ -614,7 +712,13 @@ slab_frame :: (s: [] Slab, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
     s[0].hull = sim_hull_advance(s[0].hull, s[0].tile[0].height[..], TILE_N, c0.patch, s[0].wind, wd.x, wd.y, sim_step);
   }
   slab_pose(s);
-  s[0].bend = sim_bending(s[0].tile[0].height[..], TILE_N, c0.patch, s[0].hull);
+  if world_frame(s) {
+    // each dome is drawn where it is: the frame is the world's
+    for i: 0..<12 { s[0].pose[i] = 0; }
+    s[0].pose[0] = 1; s[0].pose[5] = 1; s[0].pose[10] = 1;
+    layout_records(s);
+  }
+  s[0].bend = ifx s[0].layout == LAYOUT_PRIME then sim_bending(s[0].tile[0].height[..], TILE_N, c0.patch, s[0].hull) else 0.0;
   s[0].power = sim_power(s[0].plant, site, s[0].month);
   // the camera
   ex: f32; ey: f32; ez: f32; fx: f32; fy: f32; fz: f32;
@@ -686,7 +790,7 @@ slab_frame :: (s: [] Slab, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
       dist *= hi_f32(1, 0.92f32 * height / width);
     }
     ex = tx - fx * dist; ey = ty - fy * dist; ez = tz - fz * dist;
-    over := abs(ex) < SLAB_LENGTH / 2 + 6 && abs(ez) < SLAB_BEAM / 2 + 6;
+    over := s[0].layout == LAYOUT_PRIME && abs(ex) < SLAB_LENGTH / 2 + 6 && abs(ez) < SLAB_BEAM / 2 + 6;
     ey = hi_f32(ey, ifx over then SLAB_DECK + 4 else 6.0f32);
     ax := tx - ex; ay := ty - ey; az := tz - ez;
     al := sqrt(ax * ax + ay * ay + az * az);
@@ -720,6 +824,12 @@ slab_frame :: (s: [] Slab, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
   for i: 0..<s[0].box_count * SLAB_RECORD { u[U_BOXES + i] = s[0].boxes[i]; }
   for i: 0..<s[0].group_count * SLAB_GROUP_FLOATS { u[U_GROUPS + i] = s[0].groups[i]; }
   slab_state_params(s, u, sun);
+  if s[0].layout != LAYOUT_PRIME && !s[0].build.on {
+    // no monolith: no wash along its walls, no stacks, no section or cut
+    u[U_PARAMS + 60] = ifx s[0].layout == LAYOUT_DOME then 2.0f32 else 3.0f32;   // the white water: 1 dome or 7
+    u[U_PARAMS + P_COUNTS + 1] = 0; u[U_PARAMS + P_COUNTS + 2] = 0;
+    u[U_PARAMS + P_SECTION] = 0; u[U_PARAMS + P_UNDER] = 0;
+  }
   if s[0].build.on {
     buffer := u[U_BOXES..<U_GROUPS];
     water := build_water(construction, s[0].tile[0].height[..], TILE_N, c0.patch);
@@ -1210,6 +1320,59 @@ slab_card :: (s: [] Slab, i: int, c: [] Card) {
     ln(c, ST_BODY, "FED FROM THE DESALINATION PLANT'S WATER");
     return;
   }
+  if k == SLAB_KIND_DOME {
+    cl := s[0].layout == LAYOUT_CLUSTER;
+    d := ifx cl && i < SIM_DOMES then s[0].cluster.domes[i] else s[0].hull;
+    ln(c, ST_TITLE, "SILONE DOME");
+    ln(c, ST_SUB, ifx cl then (ifx i == 0 then "THE CLUSTER'S CENTRE: NO MOORINGS OF ITS OWN" else "ONE OF 7 IN THE CLUSTER, 130 M APART") else "ONE MODULE, AFTER BEN SILONE'S CONCEPT");
+    ln(c, ST_HEAD, "CONSTRUCTION");
+    ln(c, ST_BODY, "122 M ACROSS: A BASE RING 12 M UNDER AND 4 M OVER THE SEA");
+    ln(c, ST_BODY, "5 PLANTED TERRACES, 6 M HIGH AND 6 M DEEP; A GLASS LANTERN");
+    ln(c, ST_BODY, "27,500 M3 OF CONCRETE (69,000 T); 8 SECTORS AND A CORE");
+    ln(c, ST_HEAD, "PHYSICS");
+    ln(c, ST_BODY, "DISPLACES 144,000 T; KG 10 M, GM 73 M");
+    ln(c, ST_BODY, "ROLLS IN 6.4 S (7.3 S WITH ITS ADDED WATER): INSIDE THE");
+    ln(c, ST_BODY, "BAND OF COMMON WAVE PERIODS, SO A SWELL ROCKS IT");
+    ln(c, ST_HEAD, "NOW");
+    l := line(c, ST_LIVE, "HEAVE "); num(c, l, d.heave, 2); more(c, l, " M  ROLL "); num(c, l, d.roll * 180 / SIM_PI, 2); more(c, l, "°  PITCH "); num(c, l, d.pitch * 180 / SIM_PI, 2); more(c, l, "°");
+    l = line(c, ST_LIVE, "DRIFT "); num(c, l, sqrt(d.surge * d.surge + d.sway * d.sway), 1); more(c, l, " M  PEAK LINE "); num(c, l, d.tension / 1e6, 2); more(c, l, " MN");
+    if d.holed { l = line(c, ST_WARN, "A SECTOR HOLED: "); num(c, l, d.flood * SIM_RHO / 1e6, 0); more(c, l, " T OF WATER IN"); }
+    ln(c, ST_NOTE, "THE RENDER IN SILONE-DOME.MD; DIMENSIONS ARE OURS");
+    return;
+  }
+  if k == SLAB_KIND_POWERSHIP || k == SLAB_KIND_CABLE {
+    nuke := s[0].plant.power == POWER_NUCLEAR;
+    ln(c, ST_TITLE, ifx k == SLAB_KIND_CABLE then "POWER CABLE" else "POWERSHIP");
+    ln(c, ST_SUB, "MOORED 300 M OFF, BECAUSE A DOME IS UNDER THE MODULES' 152 M HULL");
+    ln(c, ST_HEAD, "CONSTRUCTION");
+    ln(c, ST_BODY, "160 M LONG, 32 M IN THE BEAM, DRAWING 8 M");
+    ln(c, ST_BODY, ifx nuke then "ITS MODULES OF 50 MWE, EACH WITH A TURBINE HALL AND STACK" else "2 MODULES OF 50 MWE RUNNING (HYBRID); 4 BERTHS ON DECK");
+    ln(c, ST_BODY, "THE CABLE RUNS 300 M TO THE NEAREST DOME (DRAWN ABOVE THE WATER)");
+    ln(c, ST_HEAD, "POWER");
+    l := line(c, ST_LIVE, "NET "); num(c, l, f64(ifx nuke then s[0].plant.modules else 2) * 48 - f64(s[0].plant.refuelling) * 48, 0); more(c, l, " MW TO THE DOMES");
+    ln(c, ST_BODY, "MODULE FIGURES: 50 MWE GROSS, 48 NET, 31.25% EFFICIENT");
+    ln(c, ST_NOTE, "THE SHIP'S OWN MOTION IS NOT SIMULATED; IT IS DRAWN AT REST");
+    return;
+  }
+  if k == SLAB_KIND_BRIDGE {
+    j := i - SIM_DOMES;
+    cl := s[0].cluster;
+    ln(c, ST_TITLE, "BRIDGE");
+    ln(c, ST_SUB, "8 M WIDE, ACROSS THE 8 M GAP BETWEEN TWO DOMES");
+    ln(c, ST_HEAD, "CONSTRUCTION");
+    ln(c, ST_BODY, "A HINGE AT EACH END AND A SLIDING JOINT IN THE MIDDLE");
+    ln(c, ST_BODY, "THE JOINT TRAVELS 1.5 M EACH WAY, THEN MEETS ITS STOPS");
+    ln(c, ST_HEAD, "PHYSICS");
+    ln(c, ST_BODY, "EACH DOME MOVES ON ITS OWN; THE BRIDGE TAKES THE DIFFERENCE");
+    ln(c, ST_HEAD, "NOW");
+    if j >= 0 && j < SIM_BRIDGES {
+      lj := line(c, ST_LIVE, "SLIDE "); num(c, lj, cl.slide[j], 2); more(c, lj, " M  HINGE "); num(c, lj, cl.hinge[j] * 180 / SIM_PI, 1); more(c, lj, "°");
+    }
+    l := line(c, ST_LIVE, "MOST SO FAR: SLIDE "); num(c, l, cl.most_slide, 2); more(c, l, " M, HINGE "); num(c, l, cl.most_hinge * 180 / SIM_PI, 1); more(c, l, "°");
+    if cl.most_slide > SIM_SLIDE { ln(c, ST_WARN, "PAST ITS TRAVEL: THE STOPS ARE CARRYING THE LOAD"); }
+    ln(c, ST_NOTE, "THE TEST OF 'EASILY JOINED': A 5 M SWELL RUNS THEM TO THE STOPS");
+    return;
+  }
   if k == SLAB_KIND_STATUE {
     ln(c, ST_TITLE, "STATUE");
     ln(c, ST_SUB, district(cx, cz));
@@ -1440,6 +1603,9 @@ hud :: (s: [] Slab, out: [] f32) -> int {
   pk := ifx s[0].plant.power == POWER_NUCLEAR then "POWER: NUCLEAR" else ifx s[0].plant.power == POWER_HYBRID then "POWER: HYBRID" else ifx s[0].plant.demo10 then "POWER: 10 MW DEMO" else "POWER: OTEC";
   if narrow && x2 + button_w(pk, k) > W - pad { y2 += 28 * k; x2 = pad; }
   n = button(s, out, n, pk, x2, y2, k, false, BTN_POWER); x2 += button_w(pk, k) + 5 * k;
+  lk := ifx s[0].layout == LAYOUT_DOME then "LAYOUT: DOME" else ifx s[0].layout == LAYOUT_CLUSTER then "LAYOUT: CLUSTER" else "LAYOUT: PRIME";
+  if x2 + button_w(lk, k) > W - pad { y2 += 28 * k; x2 = pad; }
+  n = button(s, out, n, lk, x2, y2, k, s[0].layout != LAYOUT_PRIME, BTN_LAYOUT); x2 += button_w(lk, k) + 5 * k;
   top := y2 + 32 * k;
   // the stats
   if s[0].stats {
@@ -1539,7 +1705,7 @@ hud :: (s: [] Slab, out: [] f32) -> int {
       "CLICK ANYTHING TO LEARN ABOUT IT; ESC CLOSES THE CARD",
       "N: NEXT SITE   M: NEXT SEA   [ ]: TIME   P: POWER",
       "H: HIDE THE HUD   I: STATS   V: SECTION   U: UNDER THE SEA",
-      "L: THE FLOW OVERLAY (WATER AND POWER)",
+      "L: FLOW OVERLAY   K: LAYOUT (PRIME, ONE DOME, A CLUSTER)",
       "", "SPEC: DOCS/RESEARCH/OCEAN/SLAB-WORLD-SPEC.MD"];
     for i: 0..<12 { n = text(out, n, lines[i], hx + 12 * k, yy, hp); yy += 12 * k; }
   }
@@ -1647,16 +1813,21 @@ press :: (s: [] Slab, id: int) {
     else { s[0].plant.power = (s[0].plant.power + 1) % 3; }
     s[0].plant.refuelling = 0;
     say(s, ifx s[0].plant.demo10 then "POWER: THE REPORT'S 10 MW DEMONSTRATION" else ifx s[0].plant.power == POWER_NUCLEAR then "POWER: 4 NUCLEAR MODULES" else ifx s[0].plant.power == POWER_HYBRID then "POWER: 2 MODULES + OTEC" else "POWER: OTEC");
+    if has_ship(s) { say(s, "A 122 M DOME IS UNDER THE 152 M HULL MODULES NEED: THEY GO ON A POWERSHIP"); }
+    if s[0].layout != LAYOUT_PRIME { layout_records(s); }
   }
   else if id == BTN_TRIP { s[0].plant.pipe_tripped = !s[0].plant.pipe_tripped; }
   else if id == BTN_HOLE {
     if s[0].hull.holed { s[0].hull.holed = false; s[0].hull.flood = 0; s[0].hull.moved = 0; s[0].hull.pumping = false; say(s, "CELL A1 REPAIRED AND PUMPED DRY"); }
+    else if s[0].layout == LAYOUT_CLUSTER { say(s, "HOLE ONE DOME: THE DOME LAYOUT"); }
+    else if s[0].layout == LAYOUT_DOME { s[0].hull.holed = true; say(s, "ONE SECTOR HOLED: 4 M2 BELOW THE WATERLINE"); }
     else { s[0].hull.holed = true; s[0].section = true; s[0].tz = -255; say(s, "CELL A1 HOLED: 4 M2 BELOW THE WATERLINE"); }
   }
   else if id == BTN_PUMP { s[0].hull.pumping = !s[0].hull.pumping; }
-  else if id == BTN_SECTION { s[0].section = !s[0].section; }
-  else if id == BTN_UNDER { go_under(s, !s[0].under); }
-  else if id == BTN_FLOW { s[0].flow = !s[0].flow; }
+  else if id == BTN_SECTION { if prime_only(s) { s[0].section = !s[0].section; } }
+  else if id == BTN_UNDER { if prime_only(s) { go_under(s, !s[0].under); } }
+  else if id == BTN_FLOW { if prime_only(s) { s[0].flow = !s[0].flow; } }
+  else if id == BTN_LAYOUT { set_layout(s, (s[0].layout + 1) % 3); }
   else if id == BTN_REFUEL { s[0].plant.refuelling = ifx s[0].plant.refuelling > 0 then 0 else 1; }
   else if id == BTN_SWAC { s[0].plant.swac = !s[0].plant.swac; }
   else if id == BTN_HALVING { s[0].plant.halving = !s[0].plant.halving; }
@@ -1689,6 +1860,7 @@ slab_key :: (s: [] Slab, key: int, down: bool) -> bool #export_c #effects(all) {
     if key == 'v' || key == 'V' { press(s, BTN_SECTION); return true; }
     if key == 'u' || key == 'U' { press(s, BTN_UNDER); return true; }
     if key == 'l' || key == 'L' { press(s, BTN_FLOW); return true; }
+    if key == 'k' || key == 'K' { press(s, BTN_LAYOUT); return true; }
     if key == 'h' || key == 'H' { s[0].hud = !s[0].hud; return true; }
     if key == '?' { press(s, BTN_HELP); return true; }
   }
@@ -1850,6 +2022,14 @@ slab_message :: (s: [] Slab, kind: int, text: string) #export_c #effects(all) {
   if query_word(url, "view=section") { s[0].intro = 0; s[0].section = true; }
   if query_word(url, "hole=1") { s[0].hull.holed = true; }
   if query_word(url, "view=under") { s[0].intro = 0; go_under(s, true); }
+  if query_word(url, "layout=dome") { set_layout(s, LAYOUT_DOME); }
+  if query_word(url, "layout=cluster") { set_layout(s, LAYOUT_CLUSTER); }
+  if s[0].layout != LAYOUT_PRIME && query_number(url, "dist", -99) != -99 {
+    // a layout sets its own camera; one given in the address wins
+    s[0].yaw = f32(query_number(url, "yaw", 0.802)); s[0].pitch = f32(fclamp(query_number(url, "pitch", 0.36), -0.2, 1.45));
+    s[0].dist = f32(fclamp(query_number(url, "dist", 720), 25, 9000));
+    s[0].tx = f32(query_number(url, "x", 0)); s[0].tz = f32(query_number(url, "z", 0)); s[0].ty = f32(query_number(url, "y", 8));
+  }
   if query_word(url,"view=build") {
     build_toggle(s);
     day := query_number(url,"day", -1);

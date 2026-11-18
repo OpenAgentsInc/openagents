@@ -265,7 +265,20 @@ slab_water :: (p:V2,world:V3,d:V3,dist:f32,t:f32,u:[]f32)->V3 {
   caps:f32=smoothstep(0.3f32,0.65f32,c.y*(0.6f32+froth))*(0.45f32+(0.55f32*smoothstep(0.35f32,0.6f32,fine)))*(1.0f32-smoothstep(500.0f32,2500.0f32,dist));
   hp:V3=sb_to_hull(world,u);
   edge:f32=slab_hull_plan(v2(hp.x,hp.z),u);
+  // no monolith: the white water rings each dome instead (60: 1 none, 2 one dome in the hull's
+  // frame, 3 the cluster's seven, whose centres are the first seven records)
   if (u[SLAB_P+60]>0.5f32) { edge=1e5f32; }
+  if (u[SLAB_P+60]>1.5f32) {
+    nd:int=ifx u[SLAB_P+60]>2.5f32 then 7 else 1;
+    k:int=0;
+    while k<nd {
+      b:int=SLAB_BOXES+(k*8);
+      edge=fmin(edge,wg_length2(v2(hp.x-((u[b]+u[b+4])*0.5f32),hp.z-((u[b+2]+u[b+6])*0.5f32)))-60.96f32);
+      k=k+1;
+    }
+  }
+  // a dome's skirt of white water is a few metres, not the monolith's fifty
+  if (u[SLAB_P+60]>1.5f32) { edge=edge*4.0f32; }
   // foam drawn out into streaks along the wind (the sea's lace), broken into patches
   wa:f32=(p.x*u[32])+(p.y*u[33]);
   wc:f32=(p.y*u[32])-(p.x*u[33]);
@@ -273,11 +286,11 @@ slab_water :: (p:V2,world:V3,d:V3,dist:f32,t:f32,u:[]f32)->V3 {
   st1:f32=slab_noise(v2((wa*0.035f32)-(t*0.04f32),wc*0.16f32));
   st2:f32=slab_noise(v2((wa*0.09f32)-(t*0.07f32),(wc*0.4f32)+5.0f32));
   patch:f32=smoothstep(0.3f32,0.7f32,slab_noise(wg_mul_f2f(p,0.015f32)));
-  thin:f32=0.05f32+(footprint*0.002f32);
+  thin:f32=0.035f32+(footprint*0.002f32);
   veins:f32=((1.0f32-smoothstep(0.0f32,thin,abs(st1-0.5f32)))*0.75f32+((1.0f32-smoothstep(0.0f32,thin*0.8f32,abs(st2-0.5f32)))*0.5f32))*(0.3f32+(0.7f32*patch));
   nearhull:f32=1.0f32-smoothstep(15.0f32,140.0f32+(u[SLAB_P+44]*6.0f32),edge);
   crest:f32=0.35f32+(0.65f32*smoothstep(-0.4f32,0.5f32,c.x/fmax(u[35],0.2f32)));
-  lace:f32=veins*crest*((nearhull*0.9f32)+(clampf(u[35]/3.0f32,0.0f32,1.0f32)*1.5f32))*(1.0f32-smoothstep(300.0f32,2000.0f32,dist));
+  lace:f32=veins*crest*((nearhull*0.9f32)+(clampf(u[35]/3.0f32,0.0f32,1.0f32)*0.6f32*patch))*(1.0f32-smoothstep(300.0f32,2000.0f32,dist));
   wash:f32=(1.0f32-smoothstep(0.0f32,14.0f32+(30.0f32*froth)+(u[SLAB_P+44]*0.8f32),edge))*smoothstep(0.2f32,0.5f32,froth+(0.2f32*sin((p.x+p.y)*0.08f32+(t*1.3f32))));
   white:f32=clampf(fmax(fmax(caps*0.95f32,wash*0.95f32),lace*0.8f32),0.0f32,1.0f32);
   foamc:V3=sb_mul(sb_add(sb_mul(v3(0.9f32,0.92f32,0.92f32),0.35f32+(0.55f32*amb)),sb_mul(scol,0.35f32*fmax(wg_dot3(n,sun),0.0f32))),1.0f32);
@@ -547,6 +560,43 @@ slab_statues_hit :: (o:V3,d:V3,lo:V3,hi:V3,limit:f32)->V4 {
   if (best.x>=limit) { return v4(SLAB_MISS,0.0f32,1.0f32,0.0f32); }
   return best;
 }
+// A Silone dome module (metaverse/slab-plan.coax slab_silone): the base ring from the keel to 4 m
+// over the water, 5 terraces each 6 m high and 6 m in from the one below, the glass lantern.
+slab_silone_hit :: (o:V3,d:V3,lo:V3,hi:V3)->V4 {
+  cx:f32=(lo.x+hi.x)*0.5f32; cz:f32=(lo.z+hi.z)*0.5f32;
+  big:f32=(hi.x-lo.x)*0.5f32;
+  yc:f32=lo.y+16.0f32;
+  best:V4=slab_drum_hit(o,d,lo,v3(hi.x,yc,hi.z));
+  k:s32=0;
+  while k<6 {
+    r:f32=ifx k<5 then big-(6.0f32*(cast(f32)(k)+1.0f32)) else 4.0f32;
+    y0:f32=yc+(6.0f32*cast(f32)(k));
+    y1:f32=ifx k<5 then y0+6.0f32 else y0+10.0f32;
+    h:V4=slab_drum_hit(o,d,v3(cx-r,y0,cz-r),v3(cx+r,y1,cz+r));
+    if ((h.x>0.0f32)&&(h.x<best.x)) { best=h; }
+    k+=1;
+  }
+  return best;
+}
+// A box turned to lie along the segment a-b: half width hw across (level), half depth hh.
+slab_obox_hit :: (o:V3,d:V3,a:V3,b:V3,hw:f32,hh:f32)->V4 {
+  miss:V4=v4(SLAB_MISS,0.0f32,1.0f32,0.0f32);
+  ax:V3=sb_add(b,sb_mul(a,-1.0f32));
+  hl:f32=wg_length3(ax)*0.5f32;
+  if (hl<1e-3f32) { return miss; }
+  e1:V3=sb_mul(ax,0.5f32/hl);
+  wl:f32=fmax(sqrt((e1.x*e1.x)+(e1.z*e1.z)),1e-4f32);
+  e3:V3=v3(-e1.z/wl,0.0f32,e1.x/wl);
+  e2:V3=v3((e3.y*e1.z)-(e3.z*e1.y),(e3.z*e1.x)-(e3.x*e1.z),(e3.x*e1.y)-(e3.y*e1.x));
+  m:V3=sb_mul(sb_add(a,b),0.5f32);
+  p:V3=sb_add(o,sb_mul(m,-1.0f32));
+  lo:V3=v3(wg_dot3(p,e1),wg_dot3(p,e2),wg_dot3(p,e3));
+  ld:V3=v3(wg_dot3(d,e1),wg_dot3(d,e2),wg_dot3(d,e3));
+  h:V4=slab_box_hit(lo,ld,v3(-hl,-hh,-hw),v3(hl,hh,hw));
+  if (h.x>=SLAB_MISS) { return miss; }
+  nw:V3=sb_add(sb_add(sb_mul(e1,h.y),sb_mul(e2,h.z)),sb_mul(e3,h.w));
+  return v4(h.x,nw.x,nw.y,nw.z);
+}
 // The concept image's Greek buildings, traced on their distance fields inside their boxes.
 slab_sd_box :: (p:V3,c:V3,h:V3)->f32 {
   qx:f32=abs(p.x-c.x)-h.x; qy:f32=abs(p.y-c.y)-h.y; qz:f32=abs(p.z-c.z)-h.z;
@@ -668,6 +718,12 @@ slab_record_hit :: (o:V3,d:V3,lo:V3,hi:V3,sh:s32,limit:f32)->V4 {
   if (sh==6) { return slab_dome_hit(o,d,lo,hi); }
   if (sh==11) { return slab_greek_hit(o,d,lo,hi,false,limit); }
   if (sh==13) { return slab_statues_hit(o,d,lo,hi,limit); }
+  if (sh==14) { return slab_silone_hit(o,d,lo,hi); }
+  if ((sh>=15)&&(sh<=18)) {
+    ex:f32=ifx ((sh-15)&1)==1 then hi.x-4.5f32 else lo.x+4.5f32;
+    ez:f32=ifx ((sh-15)&2)==2 then hi.z-4.5f32 else lo.z+4.5f32;
+    return slab_obox_hit(o,d,v3(ex,hi.y-1.2f32,ez),v3(lo.x+hi.x-ex,lo.y+1.2f32,lo.z+hi.z-ez),4.0f32,0.6f32);
+  }
   if (sh==12) { return slab_greek_hit(o,d,lo,hi,true,limit); }
   return slab_box_hit(o,d,lo,hi);
 }
@@ -1140,6 +1196,38 @@ slab_paint :: (hit:SlabHit,w:V3,d:V3,u:[]f32)->SlabPaint {
     // the plaza: rings of paving round the fountain
     rr:f32=wg_length2(v2(w.x-((hit.lo.x+hit.hi.x)*0.5f32),w.z-((hit.lo.z+hit.hi.z)*0.5f32)));
     c=sb_mix(v3(0.88f32,0.85f32,0.78f32),v3(0.72f32,0.70f32,0.66f32),slab_band(rr,6.0f32,0.12f32));
+  } else if (k==28) {
+    // a Silone dome: the concrete base ring (weed at the waterline), planted terraces, glass risers
+    dcx:f32=(hit.lo.x+hit.hi.x)*0.5f32; dcz:f32=(hit.lo.z+hit.hi.z)*0.5f32;
+    rr:f32=sqrt(((w.x-dcx)*(w.x-dcx))+((w.z-dcz)*(w.z-dcz)));
+    yc:f32=hit.lo.y+16.0f32;
+    big:f32=(hit.hi.x-hit.lo.x)*0.5f32;
+    if (w.y<yc-0.05f32) {
+      c=sb_mul(v3(0.82f32,0.80f32,0.75f32),0.94f32+(0.06f32*slab_band(w.y,4.0f32,0.08f32)));
+      c=sb_mix(v3(0.20f32,0.27f32,0.22f32),c,smoothstep(hit.lo.y+11.0f32,hit.lo.y+13.5f32,w.y));
+    } else if (n.y>0.5f32) {
+      tier:f32=wg_round((w.y-yc)/6.0f32);
+      edge:f32=big-(6.0f32*tier);
+      c=v3(0.86f32,0.84f32,0.78f32);
+      if (rr>edge-2.6f32) { c=sb_mix(v3(0.26f32,0.36f32,0.16f32),v3(0.38f32,0.46f32,0.22f32),slab_noise(v2(w.x*0.5f32,w.z*0.5f32))); }
+      if (w.y>yc+29.0f32) { c=ifx rr<4.5f32 then v3(0.9f32,0.9f32,0.88f32) else v3(0.80f32,0.82f32,0.80f32); }
+    } else {
+      ang:f32=wg_atan2(w.z-dcz,w.x-dcx)*rr;
+      mull:f32=fmax(slab_band(ang,3.0f32,0.1f32),slab_band(w.y-yc,3.0f32,0.08f32));
+      c=sb_mix(v3(0.30f32,0.38f32,0.42f32),v3(0.92f32,0.92f32,0.90f32),mull);
+      if (w.y>yc+30.0f32) { c=sb_mix(v3(0.62f32,0.74f32,0.78f32),v3(0.92f32,0.92f32,0.90f32),mull); }
+      emit=sb_mul(v3(1.0f32,0.86f32,0.62f32),(1.0f32-mull)*u[SLAB_P+39]*0.5f32);
+    }
+  } else if (k==30) {
+    // the powership: a dark grey hull, red below its boot-top, white houses, grey stacks
+    c=ifx w.y<0.5f32 then v3(0.45f32,0.12f32,0.09f32) else ifx w.y<8.05f32 then v3(0.24f32,0.26f32,0.29f32) else v3(0.90f32,0.90f32,0.88f32);
+    if ((w.y>8.05f32)&&(n.y<0.5f32)&&(w.y>hit.lo.y+10.0f32)) { c=sb_mix(c,v3(0.20f32,0.26f32,0.32f32),slab_band(w.y,3.0f32,0.35f32)); }
+    if (hit.hi.y>30.0f32) { c=ifx w.y>31.0f32 then v3(0.15f32,0.15f32,0.16f32) else v3(0.62f32,0.63f32,0.64f32); }
+  } else if (k==31) {
+    c=v3(0.10f32,0.10f32,0.10f32);
+  } else if (k==29) {
+    // a bridge: a concrete deck, its edges white rails
+    c=ifx n.y>0.5f32 then v3(0.70f32,0.69f32,0.66f32) else v3(0.58f32,0.57f32,0.55f32);
   } else if (k==27) {
     // the statues: white cast stone, a little darker on the pedestal
     c=ifx w.y<(hit.lo.y+1.8f32) then v3(0.86f32,0.84f32,0.79f32) else v3(0.95f32,0.93f32,0.88f32);
