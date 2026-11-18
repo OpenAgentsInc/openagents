@@ -114,6 +114,37 @@ For a route through the four books, see
 milestones; the Metaverse Engine's [completion milestones](PLAN.md#completion-milestones)
 separate the playable-realm, Forge and advanced simulation goals.
 
+## Contributed chapters
+
+When a pull request from outside the team adds or changes a chapter, the
+chapter credits its contributor (GitHub #13665). Add a `contributed_by` list
+to the chapter's entry in [chapters.json](chapters.json):
+
+```text
+"contributed_by": [{"github": "octo-cat", "pull_request": 13700, "openagents": "octo"}]
+```
+
+- `github` is the contributor's GitHub login. Required.
+- `pull_request` is the pull request's number. Required.
+- `openagents` is the contributor's OpenAgents account, when the pull
+  request names one. Optional.
+
+Put each entry's credit line in the chapter's file, after the status block:
+
+```text
+> Contributed by [octo-cat](https://github.com/octo-cat) in [#13700](https://github.com/OpenAgentsInc/openagents/pull/13700).
+```
+
+The registry check fails when an entry has no line, when a line has no
+entry, or when an entry is malformed. The line is what the published book
+shows. A later contributor to the same chapter adds a second entry and a
+second line.
+
+The credit in the book is in addition to the commit's author, not instead of
+it. A maintainer merges the pull request with **Squash and merge**, so the
+commit on `main` keeps the contributor as its author
+([review rules](../../docs/contributing/review.md#merging)).
+
 ## Writing style
 
 Write chapters to the
@@ -133,7 +164,11 @@ Commands run from the repository root.
 ```shell
 python3 psionic/tests/book.py --book aethyr
 python3 psionic/tests/book.py --book aethyr --coax coax/bin/coax
+python3 coax/book/check-structure.py --registry aethyr
 ```
+
+The third checks only the chapter registry, [chapters.json](chapters.json),
+against the chapter files, including each contributor's credit line.
 
 The first checks structure: chapter files and headings, the contents, local
 links, status markers, one chapter per engine-core task, source listings

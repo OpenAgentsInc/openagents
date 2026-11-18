@@ -1,0 +1,205 @@
+// After an engine pull request is merged: the issue at OpenAgentsInc/gamebuilder that asks to bump
+// GameBuilder's engine pin, naming the commit, the contributor and the chapters it changes
+// (GitHub #13665; CONTRIBUTING.md, "After the merge"; docs/contributing/review.md).
+//   coax/web/tool.sh metaverse-engine/tools/pin-bump-issue.coax --pr N [--dry-run]
+//   coax/web/tool.sh metaverse-engine/tools/pin-bump-issue.coax --commit SHA [--dry-run]
+//   coax/bin/coax test metaverse-engine/tools/pin-bump-issue.coax --library
+// --pr reads the merged pull request with gh (its merge commit, author, title and files). --commit
+// reads a commit on this clone's history with git: its author, and for a merge commit the pull
+// request its subject names ("Merge pull request #N from LOGIN/BRANCH"). Use --pr for a pull
+// request merged by squash or rebase. --dry-run prints the issue's
+// title and body and opens nothing; without it, gh issue create opens the issue, which needs a gh
+// login that can write issues at OpenAgentsInc/gamebuilder (a maintainer's).
+// Exits 0 when it printed or opened the issue, 1 when gh or git refused, 2 on bad arguments.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "pin-bump-issue-host.coax";
+
+PB_REPO :: "OpenAgentsInc/openagents";
+PB_TARGET :: "OpenAgentsInc/gamebuilder";
+PB_FILES :: 10;            // engine files the body lists by name
+
+PbText :: struct { b: [65536] u8; n: int; }
+// The issue is a few lines and at most PB_FILES paths, far below the buffer; a longer one traps.
+pb_add :: (t: [] PbText, s: string) { for c: s { t[0].b[t[0].n] = c; t[0].n += 1; } }
+pb_text :: (t: [] PbText) -> string { return cast(string) t[0].b[0..<t[0].n]; }
+// v >= 0 (pull request and chapter numbers, counts).
+pb_int :: (t: [] PbText, v: int) {
+  d: [24] u8; k := 0; x := v;
+  while true { d[k] = cast(u8) ('0' + x % 10); k += 1; x /= 10; if x == 0 { break; } }
+  for i: 0..<k { one := [1] u8.[d[k - 1 - i]]; pb_add(t, cast(string) one[..]); }
+}
+pb_starts :: (s: string, p: string) -> bool { return p.count <= s.count && cast(string) s[0..<p.count] == p; }
+pb_ends :: (s: string, p: string) -> bool { return p.count <= s.count && cast(string) s[s.count - p.count..<s.count] == p; }
+pb_digit :: (c: u8) -> bool { return c >= '0' && c <= '9'; }
+pb_number :: (s: string) -> int {
+  if s.count > 9 { return 0; }
+  v := 0; for c: s { if !pb_digit(c) { return 0; } v = v * 10 + cast(int) (c - '0'); }
+  return v;
+}
+PB_LINES :: 4096;          // lines of a file list or a body
+// text's lines into out (a last line with no newline counts); how many.
+pb_split :: (text: string, out: [] string) -> int {
+  n := 0; from := 0;
+  for c, i: text { if c == '\n' { out[n] = cast(string) text[from..<i]; n += 1; from = i + 1; } }
+  if from != text.count { out[n] = cast(string) text[from..<text.count]; n += 1; }
+  return n;
+}
+// Line i (from 0) of text; "" past the end.
+pb_line :: (text: string, i: int) -> string {
+  lines: [PB_LINES] string; n := pb_split(text, lines[..]);
+  // lines[n] is still the empty string, so i == n reads the same either way
+  return ifx i < n then lines[i] else "";   // mutant: equivalent
+}
+
+// The GitHub login in a no-reply address ("123+login@users.noreply.github.com" or
+// "login@users.noreply.github.com"); "" for any other address.
+pb_login_of_email :: (email: string) -> string {
+  host := "@users.noreply.github.com";
+  if !pb_ends(email, host) { return ""; }
+  user := cast(string) email[0..<email.count - host.count];
+  for c, i: user { if c == '+' { return cast(string) user[i + 1..<user.count]; } }
+  return user;
+}
+#test "text helpers at their edges" {
+  #assert pb_starts("ab", "ab") && !pb_starts("a", "ab") && pb_ends("ab", "ab") && !pb_ends("b", "ab") && !pb_ends("ab", "a");
+  #assert pb_digit('0') && pb_digit('9') && !pb_digit('/') && !pb_digit(':');
+  #assert pb_number("7") == 7 && pb_number("123456789") == 123456789 && pb_number("1234567890") == 0 && pb_number("1x") == 0 && pb_number("") == 0;
+  #assert pb_line("a\nb", 0) == "a" && pb_line("a\nb", 1) == "b" && pb_line("a", 0) == "a" && pb_line("a\n", 1) == "" && pb_line("a", 1) == "" && pb_line("", 0) == "";
+  t: [1] PbText; pb_int(t[..], 0); pb_add(t[..], " "); pb_int(t[..], 1907);
+  #assert pb_text(t[..]) == "0 1907";
+}
+#test "a GitHub login from a no-reply address, none from another" {
+  #assert pb_login_of_email("123+octo-cat@users.noreply.github.com") == "octo-cat";
+  #assert pb_login_of_email("octo-cat@users.noreply.github.com") == "octo-cat";
+  #assert pb_login_of_email("octo@example.com") == "" && pb_login_of_email("") == "";
+}
+
+// The pull request a merge commit's subject names ("Merge pull request #N from LOGIN/BRANCH"); 0
+// for any other subject. Into login, LOGIN. A "Title (#N)" subject is not read: commits pushed to
+// main name their issue that way, so N may be an issue. Use --pr for a squashed pull request.
+pb_pull_of_subject :: (subject: string, login: [] string) -> int {
+  merge := "Merge pull request #";
+  if !pb_starts(subject, merge) { return 0; }
+  at := merge.count; e := at;
+  while e < subject.count && pb_digit(subject[e]) { e += 1; }
+  n := pb_number(cast(string) subject[at..<e]);
+  from := " from ";
+  if pb_starts(cast(string) subject[e..<subject.count], from) {
+    s := e + from.count; t := s;
+    while t < subject.count && subject[t] != '/' && subject[t] != ' ' { t += 1; }
+    if t < subject.count && subject[t] == '/' { login[0] = cast(string) subject[s..<t]; }
+  }
+  return n;
+}
+#test "the pull request a merge commit's subject names, none from a squash or a direct push" {
+  who := [1] string.[""];
+  #assert pb_pull_of_subject("Merge pull request #42 from octo-cat/water", who[..]) == 42 && who[0] == "octo-cat";
+  who[0] = "";
+  #assert pb_pull_of_subject("Merge pull request #42", who[..]) == 42 && who[0] == "";
+  #assert pb_pull_of_subject("Merge pull request #42 from nobranch", who[..]) == 42 && who[0] == "";
+  #assert pb_pull_of_subject("Engine: water that reflects the sky (#13700)", who[..]) == 0;
+  #assert pb_pull_of_subject("", who[..]) == 0 && pb_pull_of_subject("Merge pull request #x", who[..]) == 0;
+  #assert pb_pull_of_subject("Merge pull request #123 from abc/x", who[..]) == 123 && who[0] == "abc";
+  who[0] = "";
+  #assert pb_pull_of_subject("Merge pull request #1 from octo cat/x", who[..]) == 1 && who[0] == "";
+}
+
+// The engine book chapter a path is ("metaverse-engine/book/ch012-materials.md" is 12), 0 for
+// any other path.
+pb_chapter :: (path: string) -> int {
+  dir := "metaverse-engine/book/ch";
+  if !pb_starts(path, dir) || !pb_ends(path, ".md") { return 0; }
+  at := dir.count; e := at;
+  // the path ends ".md", so the digits stop before its end
+  while e < path.count && pb_digit(path[e]) { e += 1; }   // mutant: equivalent
+  if e == at || path[e] != '-' { return 0; }
+  return pb_number(cast(string) path[at..<e]);
+}
+#test "chapter numbers from book paths" {
+  #assert pb_chapter("metaverse-engine/book/ch012-materials.md") == 12 && pb_chapter("metaverse-engine/book/ch103-x.md") == 103;
+  #assert pb_chapter("metaverse-engine/book/chapters.json") == 0 && pb_chapter("metaverse-engine/book/SUMMARY.md") == 0;
+  #assert pb_chapter("metaverse-engine/book/ch012-x.txt") == 0 && pb_chapter("metaverse-engine/book/ch-x.md") == 0 && pb_chapter("metaverse-engine/book/ch012x.md") == 0;
+  #assert pb_chapter("metaverse-engine/book/ch001-a.md") == 1;
+  #assert pb_chapter("psionic/book/ch012-x.md") == 0 && pb_chapter("metaverse-engine/core/loop.coax") == 0;
+}
+
+// What the issue names.
+PbMerge :: struct {
+  commit: string;      // the commit on main
+  pull: int;           // 0: not known
+  login: string;       // the contributor's GitHub login, "" when only the name is known
+  name: string;        // the contributor's name, when there is no login
+  title: string;       // the pull request's title or the commit's subject
+  files: string;       // the paths it changes, one a line
+}
+pb_title :: (m: PbMerge, t: [] PbText) {
+  pb_add(t, "Bump the engine pin for ");
+  if m.pull > 0 { pb_add(t, "#"); pb_int(t, m.pull); }
+  // at a count of exactly 10 both arms give the whole hash
+  else { pb_add(t, cast(string) m.commit[0..<ifx m.commit.count > 10 then 10 else m.commit.count]); }   // mutant: equivalent
+  pb_add(t, ": "); pb_add(t, m.title);
+}
+pb_body :: (m: PbMerge, t: [] PbText) {
+  pb_add(t, "OpenAgentsInc/openagents merged an engine change. Bump GameBuilder's engine pin so worlds can use it.\n\n");
+  pb_add(t, "- Commit: https://github.com/OpenAgentsInc/openagents/commit/"); pb_add(t, m.commit); pb_add(t, "\n");
+  if m.pull > 0 { pb_add(t, "- Pull request: https://github.com/OpenAgentsInc/openagents/pull/"); pb_int(t, m.pull); pb_add(t, "\n"); }
+  pb_add(t, "- Contributor: ");
+  if m.login.count > 0 { pb_add(t, "["); pb_add(t, m.login); pb_add(t, "](https://github.com/"); pb_add(t, m.login); pb_add(t, ")"); }
+  else { pb_add(t, m.name); }
+  pb_add(t, "\n- Engine book chapters: ");
+  paths: [PB_LINES] string; np := pb_split(m.files, paths[..]);
+  chapters := false; engine := 0;
+  for p: paths[0..<np] {
+    n := pb_chapter(p);
+    if n > 0 { if chapters { pb_add(t, ", "); } pb_int(t, n); chapters = true; }
+    else if pb_starts(p, "metaverse-engine/") { engine += 1; }
+  }
+  if !chapters { pb_add(t, "none"); }
+  pb_add(t, "\n- Engine files: ");
+  if engine == 0 { pb_add(t, "none\n"); }
+  else {
+    pb_int(t, engine); pb_add(t, "\n");
+    shown := 0;
+    for p: paths[0..<np] {
+      if pb_starts(p, "metaverse-engine/") && pb_chapter(p) == 0 && shown < PB_FILES { pb_add(t, "  - `"); pb_add(t, p); pb_add(t, "`\n"); shown += 1; }
+    }
+    if engine > shown { pb_add(t, "  - and "); pb_int(t, engine - shown); pb_add(t, " more\n"); }
+  }
+  pb_add(t, "\nTo bump: `scripts/pin.sh bump ");
+  pb_add(t, m.commit);
+  pb_add(t, "` (it moves `openagents.lock` and remakes `coax/engine-list.coax`), then `scripts/check.sh`, and ship it in the next release. Close this issue with the bump's commit.\n");
+}
+#test "the issue for a merged pull request names its commit, contributor, chapters and files" {
+  m := PbMerge.{commit = "0123456789abcdef", pull = 42, login = "octo-cat", title = "Engine: water",
+    files = "metaverse-engine/book/ch012-materials.md\nmetaverse-engine/render/water.coax\nmetaverse-engine/book/chapters.json\nREADME.md\n"};
+  t: [1] PbText; pb_title(m, t[..]);
+  #assert pb_text(t[..]) == "Bump the engine pin for #42: Engine: water";
+  b: [1] PbText; pb_body(m, b[..]); body := pb_text(b[..]);
+  #assert pb_starts(body, "OpenAgentsInc/openagents merged an engine change. Bump GameBuilder's engine pin so worlds can use it.\n\n- Commit: https://github.com/OpenAgentsInc/openagents/commit/0123456789abcdef\n- Pull request: https://github.com/OpenAgentsInc/openagents/pull/42\n- Contributor: [octo-cat](https://github.com/octo-cat)\n- Engine book chapters: 12\n- Engine files: 2\n  - `metaverse-engine/render/water.coax`\n  - `metaverse-engine/book/chapters.json`\n\nTo bump: `scripts/pin.sh bump 0123456789abcdef`");
+}
+#test "the issue for a bare commit names the author and its short hash" {
+  m := PbMerge.{commit = "0123456789abcdef", name = "Octo Cat", title = "Engine: a fix", files = "README.md"};
+  t: [1] PbText; pb_title(m, t[..]);
+  #assert pb_text(t[..]) == "Bump the engine pin for 0123456789: Engine: a fix";
+  b: [1] PbText; pb_body(m, b[..]); body := pb_text(b[..]);
+  #assert pb_starts(body, "OpenAgentsInc/openagents merged an engine change. Bump GameBuilder's engine pin so worlds can use it.\n\n- Commit: https://github.com/OpenAgentsInc/openagents/commit/0123456789abcdef\n- Contributor: Octo Cat\n- Engine book chapters: none\n- Engine files: none\n");
+}
+#test "pull request 1, a one-letter login and two chapters" {
+  m := PbMerge.{commit = "c", pull = 1, login = "a", title = "t",
+    files = "metaverse-engine/book/ch001-a.md\nmetaverse-engine/book/ch040-b.md"};
+  t: [1] PbText; pb_title(m, t[..]);
+  #assert pb_text(t[..]) == "Bump the engine pin for #1: t";
+  b: [1] PbText; pb_body(m, b[..]); body := pb_text(b[..]);
+  #assert pb_line(body, 3) == "- Pull request: https://github.com/OpenAgentsInc/openagents/pull/1";
+  #assert pb_line(body, 4) == "- Contributor: [a](https://github.com/a)" && pb_line(body, 5) == "- Engine book chapters: 1, 40" && pb_line(body, 6) == "- Engine files: none";
+  lines: [4] string;
+  #assert pb_split("a\n\nb", lines[..]) == 3 && lines[1] == "" && lines[2] == "b" && pb_split("", lines[..]) == 0;
+}
+#test "many engine files: the first ten by name, then a count" {
+  f: [1] PbText; for i: 0..<12 { pb_add(f[..], "metaverse-engine/x/f"); pb_int(f[..], i); pb_add(f[..], ".coax\n"); }
+  m := PbMerge.{commit = "c", login = "a", title = "t", files = pb_text(f[..])};
+  b: [1] PbText; pb_body(m, b[..]); body := pb_text(b[..]);
+  #assert pb_line(body, 5) == "- Engine files: 12" && pb_line(body, 15) == "  - `metaverse-engine/x/f9.coax`" && pb_line(body, 16) == "  - and 2 more";
+}

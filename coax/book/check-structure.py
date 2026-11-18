@@ -85,6 +85,14 @@ PLANNED = "> Note: This feature is planned and not available in `coax0`."
 # Books other than Coax mark a planned chapter with this line instead.
 PLANNED_OTHER = "> **Status: planned.**"
 WRITTEN = "> **Status: written.**"
+# A chapter may name who contributed it from outside the team (CONTRIBUTING.md, GitHub #13665):
+# `contributed_by`, a list of {"github": LOGIN, "pull_request": N} with an optional
+# "openagents": ACCOUNT. Each entry's credit line (credit_line) is in the chapter's file, so
+# the book shows it wherever the chapter is read.
+CONTRIBUTOR = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}")
+ACCOUNT = re.compile(r"[a-z0-9][a-z0-9_.-]{0,63}")
+PULL = "https://github.com/OpenAgentsInc/openagents/pull/"
+CREDIT = re.compile(r"^> Contributed by \[[^\]]+\]\(https://github\.com/[^)]+\) in \[#\d+\]\(" + re.escape(PULL) + r"\d+\)\.$", re.M)
 SUMMARY_LABEL = {"design draft": " — design draft", "partly implemented": " — partly implemented",
                  "planned": " — planned", "written": " — written"}
 
@@ -95,6 +103,34 @@ def readme_label(status, profile, book=None):
     return {"implemented": f"{implemented}: {profile}", "partly implemented": f"Partly implemented: {profile}",
             "design draft": "Unimplemented: design draft", "planned": "Planned",
             "written": f"Written: {profile}"}[status]
+
+
+def credit_line(entry):
+    """The line a chapter's file carries for one contributed_by entry."""
+    login, number = entry["github"], entry["pull_request"]
+    return f"> Contributed by [{login}](https://github.com/{login}) in [#{number}]({PULL}{number})."
+
+
+def contributor_problems(entries):
+    """What is wrong with a chapter's contributed_by list (none when it is well formed)."""
+    if not isinstance(entries, list) or not entries:
+        return ["contributed_by must be a list of one or more contributors"]
+    errors, seen = [], set()
+    for entry in entries:
+        if not isinstance(entry, dict) or not {"github", "pull_request"} <= set(entry) <= {"github", "pull_request", "openagents"}:
+            errors.append("each contributed_by entry has github and pull_request, and may have openagents")
+            continue
+        if not isinstance(entry["github"], str) or not CONTRIBUTOR.fullmatch(entry["github"]):
+            errors.append(f"contributed_by github {entry['github']!r} is not a GitHub login")
+        if type(entry["pull_request"]) is not int or entry["pull_request"] < 1:
+            errors.append(f"contributed_by pull_request {entry['pull_request']!r} is not a pull request number")
+        if "openagents" in entry and not (isinstance(entry["openagents"], str) and ACCOUNT.fullmatch(entry["openagents"])):
+            errors.append(f"contributed_by openagents {entry['openagents']!r} is not an account name")
+        key = (entry["github"], entry["pull_request"])
+        if key in seen:
+            errors.append(f"contributed_by names {entry['github']} in #{entry['pull_request']} twice")
+        seen.add(key)
+    return errors
 
 
 def registry_load(book, root=REPO):
@@ -181,10 +217,15 @@ def registry_problems(book, root=REPO):
     for c in chapters:
         n, status, name = c.get("number"), c.get("status"), c.get("file")
         label = f"{where}: chapter {n}"
-        if set(c) != {"number", "title", "file", "status", "profile", "depends_on", "source",
-                      "qualified_targets", "adopted_by"}:
+        if set(c) - {"contributed_by"} != {"number", "title", "file", "status", "profile", "depends_on", "source",
+                                           "qualified_targets", "adopted_by"}:
             errors.append(f"{label}: unexpected or missing fields")
             continue
+        if "contributed_by" in c:
+            problems_found = contributor_problems(c["contributed_by"])
+            errors.extend(f"{label}: {error}" for error in problems_found)
+            if not problems_found and name is None:
+                errors.append(f"{label}: a chapter with no file has no contributor")
         if status not in STATUSES:
             errors.append(f"{label}: status must be one of {', '.join(STATUSES)}")
             continue
@@ -247,6 +288,13 @@ def registry_problems(book, root=REPO):
                                ("written", WRITTEN)):
             if c["status"] != status and marker in opening:
                 errors.append(f"{name}: has the {status} marker but the registry says {c['status']}")
+        # Each contributor's credit line is in the chapter, and the chapter credits no one else.
+        wanted = {credit_line(e) for e in c.get("contributed_by", []) if not contributor_problems([e])}
+        found = set(CREDIT.findall(text))
+        for line in sorted(wanted - found):
+            errors.append(f"{name}: contributed_by needs the line {line!r}")
+        for line in sorted(found - wanted):
+            errors.append(f"{name}: credits a contributor that chapters.json does not name: {line!r}")
         # Every example and source listing the chapter shows is implemented source.
         shown = set(re.findall(r"<!-- source: ([^ ]+) [^ ]+ -->", text))
         shown |= {BOOKS[book] + "/" + s.strip() for s in re.findall(r"<!-- checked-source: ([^\n]+) -->", text)}
@@ -314,10 +362,14 @@ def registry_problems(book, root=REPO):
 
 
 if __name__ == "__main__":
-    if sys.argv[1:] == ["--registry"]:
-        # Check every registry and print its status counts.
+    if sys.argv[1:2] == ["--registry"]:
+        # Check every registry (or the books named after --registry) and print its status counts.
         failed = False
-        for book in sorted(BOOKS):
+        named = sys.argv[2:]
+        unknown = [b for b in named if b not in BOOKS]
+        if unknown:
+            sys.exit(f"--registry: unknown book {', '.join(unknown)} (one of {', '.join(sorted(BOOKS))})")
+        for book in sorted(named or BOOKS):
             errors = registry_problems(book)
             for error in errors:
                 print(error, file=sys.stderr)

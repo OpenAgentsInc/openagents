@@ -120,5 +120,40 @@ class RegistryIntegration(unittest.TestCase):
         self.assertTrue(any("not a consumer" in x for x in errors), errors)
 
 
+class Contributors(RegistryIntegration):
+    LINE = ("> Contributed by [octo-cat](https://github.com/octo-cat) in "
+            "[#42](https://github.com/OpenAgentsInc/openagents/pull/42).")
+
+    def credit(self, entries, text):
+        chapter = self.registries["aethyr"]["chapters"][0]
+        chapter["contributed_by"] = entries
+        self.write()
+        (self.root / "metaverse-engine/book/ch001-example.md").write_text(text)
+        return structure.registry_problems("aethyr", self.root)
+
+    def test_credited_chapter_with_its_line_passes(self):
+        self.assertEqual(structure.credit_line({"github": "octo-cat", "pull_request": 42}), self.LINE)
+        self.assertEqual(self.credit([{"github": "octo-cat", "pull_request": 42, "openagents": "octo"}],
+                                     f"# 1. Example\n\n{self.LINE}\n\nA scoped example.\n"), [])
+
+    def test_credit_without_its_line_or_a_line_without_credit_fails(self):
+        errors = self.credit([{"github": "octo-cat", "pull_request": 42}], "# 1. Example\n\nA scoped example.\n")
+        self.assertTrue(any("needs the line" in x for x in errors), errors)
+        del self.registries["aethyr"]["chapters"][0]["contributed_by"]
+        self.write()
+        (self.root / "metaverse-engine/book/ch001-example.md").write_text(f"# 1. Example\n\n{self.LINE}\n")
+        errors = structure.registry_problems("aethyr", self.root)
+        self.assertTrue(any("does not name" in x for x in errors), errors)
+
+    def test_malformed_entries_are_refused(self):
+        for entries in [[], "octo-cat", [{"github": "octo-cat"}], [{"github": "-bad", "pull_request": 1}],
+                        [{"github": "octo-cat", "pull_request": 0}], [{"github": "octo-cat", "pull_request": True}],
+                        [{"github": "octo-cat", "pull_request": 1, "email": "x"}],
+                        [{"github": "octo-cat", "pull_request": 1, "openagents": "Has Space"}],
+                        [{"github": "a", "pull_request": 1}, {"github": "a", "pull_request": 1}]]:
+            errors = self.credit(entries, "# 1. Example\n\nA scoped example.\n")
+            self.assertTrue(any("contributed_by" in x for x in errors), (entries, errors))
+
+
 if __name__ == "__main__":
     unittest.main()
