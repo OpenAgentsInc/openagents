@@ -57,3 +57,8 @@ pipeline metaverse-engine/import/unreal/ metaverse-engine/tools/unreal-level-imp
 # Realm scripts (#13467): the module check, the interpreter, the host and the manifest. Until a realm loads the frame
 # codec and a page module loads the host, their consumers are the build tool and the checks.
 adopt metaverse-engine/script/ #13467  # stage 2 loads the host from the page's script module and the frame codec from Splice; stage 4 from the room
+
+# SLAB's architectural and industrial detail (#13687): the street and works kits are loaded by
+# apps/openagents-web/slab-content-city.coax when that content set lands; take these lines out then.
+adopt metaverse-engine/arch/city.coax #13687  # kerbs, lamps, canopies, roof plant: SLAB's streets and blocks
+adopt metaverse-engine/arch/works.coax #13687  # pipe racks, ladders, walkways, cranes: SLAB's industry and dock

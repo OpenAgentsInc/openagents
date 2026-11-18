@@ -13,7 +13,8 @@
 //
 // A record is marked fine (pr_fine) when the picture reads without it: a railing's posts, a far
 // window's frame. The reduced tier (a phone) leaves fine records out; they sit at the end of
-// their part's run, so leaving them out is drawing fewer.
+// their part's run, so leaving them out is drawing fewer. A record may also say how near the eye
+// must be for it to be drawn at all (pr_near): the shader shrinks it away beyond that.
 //   coax/bin/coax test --library metaverse-engine/render/shade/photoreal-scene.coax
 #module "metaverse.engine.render.photoreal_scene";
 #load "../../arch/mesh.coax";
@@ -92,7 +93,7 @@ pr_tint :: (l: [] PrList, r: int, red: f32, green: f32, blue: f32) { pr_set(l, r
 pr_value :: (l: [] PrList, r: int, v: f32) { pr_set(l, r, PR_R_VALUE, v); }
 pr_made_of :: (l: [] PrList, r: int, material: int) { pr_set(l, r, PR_R_MATERIAL, cast(f32) material); }
 pr_motion :: (l: [] PrList, r: int, motion: int, phase: f32) { pr_set(l, r, PR_R_MOTION, cast(f32) motion); pr_set(l, r, PR_R_PHASE, phase); }
-pr_free :: (l: [] PrList, r: int) { pr_set(l, r, PR_R_FREE, 1); }
+pr_free :: (l: [] PrList, r: int) { pr_set(l, r, PR_R_FREE, 1 + pr_near_set(l, r)); }
 pr_laid :: (l: [] PrList, r: int) { pr_set(l, r, PR_R_MOTION, cast(f32) PR_LAID); }   // it lies flat on a surface
 // A box part (one that spans -0.5 to 0.5 along x and z and 0 to 1 up, pr_unit_box) stretched to
 // stand between two corners, of one material. Its record's number, or -1.
@@ -101,6 +102,25 @@ pr_box :: (l: [] PrList, unit_box: int, x0: f32, y0: f32, z0: f32, x1: f32, y1: 
   pr_stretch(l, r, x1 - x0, y1 - y0, z1 - z0);
   pr_made_of(l, r, material);
   return r;
+}
+// Small things: drawn only within `metres` of the eye (three fifths of that on the reduced tier),
+// shrinking to nothing over the last fifth. Give a thing the distance at which it is a pixel or
+// two across, so it is gone before it can shimmer and is never seen to go. 0: at any distance.
+// The distance shares a float with pr_free (photoreal-layout.coax PR_R_NEAR): below zero on a
+// record that rides the platform, over one on a free one.
+pr_near :: (l: [] PrList, r: int, metres: f32) {
+  if r < 0 || r >= l[0].rn { return; }
+  m := ifx metres > 0 then metres else 0.0f32;
+  free := l[0].records[r * PR_RECORD_FLOATS + PR_R_FREE] > 0.5;
+  l[0].records[r * PR_RECORD_FLOATS + PR_R_NEAR] = ifx free then 1 + m else -m;
+}
+// The distance a record was given (0: none).
+pr_near_set :: (l: [] PrList, r: int) -> f32 {
+  if r < 0 || r >= l[0].rn { return 0; }
+  f := l[0].records[r * PR_RECORD_FLOATS + PR_R_NEAR];
+  if f < 0 { return -f; }
+  if f > 1 { return f - 1; }
+  return 0;
 }
 // After the second run: one draw for each part that stands anywhere. On the reduced tier a part's
 // fine records are left out. Returns the draws written.
@@ -229,6 +249,13 @@ pr_test_content :: (l: [] PrList, box: int, drum: int) {
   for i: 0..<5 { if pr_put(l, box, cast(f32) i, 0, 0, 0, 1) >= 0 { n += 1; } }
   #assert n == 2 && records[PR_RECORD_FLOATS] == 1;
   #assert pr_list_draws(l, false) == 1 && draws[3] == 2;
+  // a small thing's distance and whether it rides the platform share a float, in either order
+  pr_near(l, 0, 150); #assert records[PR_R_FREE] == -150 && pr_near_set(l, 0) == 150;
+  pr_free(l, 0); #assert records[PR_R_FREE] == 151 && pr_near_set(l, 0) == 150;
+  pr_near(l, 0, 40); #assert records[PR_R_FREE] == 41;
+  pr_near(l, 0, 0); #assert records[PR_R_FREE] == 1 && pr_near_set(l, 0) == 0;
+  pr_near(l, 1, 0); #assert records[PR_RECORD_FLOATS + PR_R_FREE] == 0;
+  records[PR_R_FREE] = 0;
   // a setter on -1, or past the list, writes nothing
   pr_value(l, -1, 5); pr_value(l, 2, 5);
   #assert records[PR_R_VALUE] == 0 && records[PR_RECORD_FLOATS + PR_R_VALUE] == 0;

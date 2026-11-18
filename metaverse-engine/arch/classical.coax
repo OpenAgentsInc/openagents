@@ -36,6 +36,86 @@ arch_column :: (p: [] ArchPen, radius: f32, height: f32, flutes: int) -> ArchPar
   return arch_part(p, from);
 }
 
+// The same column for a colonnade of hundreds, in about a tenth of the triangles: a base, a
+// shaft that narrows with a slight swell, its `flutes` grooves cut as flat faces that meet in
+// sharp edges (a Doric shaft's arrises: each groove two faces), a flared capital and its slab.
+// It is one metre high and its shaft one metre across at the foot, to be stretched by what
+// places it; the slab reaches 0.62 each way.
+arch_column_lean :: (p: [] ArchPen, flutes: int) -> ArchPart {
+  from := p[0].n;
+  base := [3] ArchTurn.[ArchTurn.{r = 0.6, y = 0}, ArchTurn.{r = 0.6, y = 0.02}, ArchTurn.{r = 0.5, y = 0.035}];
+  arch_lathe(p, base[..], flutes, 0, 0);
+  rows := 2; n := flutes * 2;
+  for j: 0..<rows {
+    t0 := cast(f32) j / cast(f32) rows; t1 := cast(f32) (j + 1) / cast(f32) rows;
+    ra := 0.5 * (1.0 - 0.15 * t0 + 0.03 * sin(t0 * 3.14159265)); rb := 0.5 * (1.0 - 0.15 * t1 + 0.03 * sin(t1 * 3.14159265));
+    y0 := 0.035 + 0.885 * t0; y1 := 0.035 + 0.885 * t1;
+    for i: 0..<n {
+      a := f32(ARCH_TAU) * cast(f32) i / cast(f32) n; b := f32(ARCH_TAU) * cast(f32) (i + 1) / cast(f32) n;
+      // the edges stand at the shaft's radius and the grooves' middles a twelfth of it in
+      ka: f32 = ifx i % 2 == 0 then 1.0 else 0.92; kb: f32 = ifx i % 2 == 0 then 0.92 else 1.0;
+      q0 := [3] f32.[cos(a) * ra * ka, y0, sin(a) * ra * ka]; q1 := [3] f32.[cos(b) * ra * kb, y0, sin(b) * ra * kb];
+      q2 := [3] f32.[cos(b) * rb * kb, y1, sin(b) * rb * kb]; q3 := [3] f32.[cos(a) * rb * ka, y1, sin(a) * rb * ka];
+      // (counter-clockwise from outside: the angle turns from +x toward +z)
+      ex := q1[0] - q0[0]; ez := q1[2] - q0[2]; el := sqrt(ex * ex + ez * ez);
+      na := [3] f32.[ez / el, 0, -ex / el];
+      qa := arch_at(q0[0], q0[1], q0[2], na[0], 0, na[2], 0, t0); qb := arch_at(q1[0], q1[1], q1[2], na[0], 0, na[2], 1, t0);
+      qc := arch_at(q2[0], q2[1], q2[2], na[0], 0, na[2], 1, t1); qd := arch_at(q3[0], q3[1], q3[2], na[0], 0, na[2], 0, t1);
+      arch_quad(p, qb, qa, qd, qc);
+    }
+  }
+  cap := [3] ArchTurn.[ArchTurn.{r = 0.43, y = 0.92}, ArchTurn.{r = 0.47, y = 0.93}, ArchTurn.{r = 0.6, y = 0.955}];
+  arch_lathe(p, cap[..], flutes, 0, 0);
+  arch_box(p, 0, 0.9775, 0, 0.62, 0.0225, 0.62);
+  return arch_part(p, from);
+}
+
+// A flat face with the unit normal n, wound to face along it whatever its corners' order.
+arch_quad_facing :: (p: [] ArchPen, a: [3] f32, b: [3] f32, c: [3] f32, d: [3] f32, n: [3] f32) {
+  ux := b[0] - a[0]; uy := b[1] - a[1]; uz := b[2] - a[2]; vx := c[0] - a[0]; vy := c[1] - a[1]; vz := c[2] - a[2];
+  front := (uy * vz - uz * vy) * n[0] + (uz * vx - ux * vz) * n[1] + (ux * vy - uy * vx) * n[2] >= 0;
+  qa := arch_at(a[0], a[1], a[2], n[0], n[1], n[2], 0, 0); qb := arch_at(b[0], b[1], b[2], n[0], n[1], n[2], 1, 0);
+  qc := arch_at(c[0], c[1], c[2], n[0], n[1], n[2], 1, 1); qd := arch_at(d[0], d[1], d[2], n[0], n[1], n[2], 0, 1);
+  if front { arch_quad(p, qa, qb, qc, qd); } else { arch_quad(p, qa, qd, qc, qb); }
+}
+// A bar at x that runs in the y-z plane from (y0, z0) to (y1, z1): hx thick each way along x and
+// hy each way up, so it keeps its section when a record stretches it along its run.
+arch_rake :: (p: [] ArchPen, x: f32, y0: f32, z0: f32, y1: f32, z1: f32, hx: f32, hy: f32) {
+  dy := y1 - y0; dz := z1 - z0; run := sqrt(dy * dy + dz * dz);
+  if run < 0.00001 { return; }
+  // up from the bar: square to its run, in the y-z plane
+  ny := abs(dz) / run; nz := ifx dz >= 0 then -dy / run else dy / run;
+  a0 := [3] f32.[x - hx, y0 + hy, z0]; a1 := [3] f32.[x + hx, y0 + hy, z0]; b1 := [3] f32.[x + hx, y1 + hy, z1]; b0 := [3] f32.[x - hx, y1 + hy, z1];
+  c0 := [3] f32.[x - hx, y0 - hy, z0]; c1 := [3] f32.[x + hx, y0 - hy, z0]; d1 := [3] f32.[x + hx, y1 - hy, z1]; d0 := [3] f32.[x - hx, y1 - hy, z1];
+  arch_quad_facing(p, a0, a1, b1, b0, [3] f32.[0, ny, nz]);
+  arch_quad_facing(p, c0, c1, d1, d0, [3] f32.[0, -ny, -nz]);
+  arch_quad_facing(p, c1, a1, b1, d1, [3] f32.[1, 0, 0]);
+  arch_quad_facing(p, c0, a0, b0, d0, [3] f32.[-1, 0, 0]);
+}
+// A pediment's trim for a gabled roof one metre each way (eaves along x at z -0.5 and 0.5, the
+// ridge along x one metre up): at each end a raking cornice up both slopes, a level cornice under
+// it and three acroteria; a ridge piece; and `ribs` ribs down both slopes. A record gives it the
+// roof's own stretch, so it sits on that roof whatever its span and rise.
+arch_pediment_trim :: (p: [] ArchPen, ribs: int) -> ArchPart {
+  from := p[0].n;
+  for e: 0..<2 {
+    x: f32 = ifx e == 0 then -0.5 else 0.5;
+    arch_rake(p, x, 0.035, -0.5, 1.035, 0, 0.007, 0.06);
+    arch_rake(p, x, 0.035, 0.5, 1.035, 0, 0.007, 0.06);
+    arch_box(p, x, 0, 0, 0.007, 0.05, 0.515);
+    arch_box(p, x, 1.16, 0, 0.004, 0.1, 0.012);
+    arch_box(p, x, 0.15, -0.5, 0.004, 0.09, 0.01);
+    arch_box(p, x, 0.15, 0.5, 0.004, 0.09, 0.01);
+  }
+  for k: 0..<ribs {
+    x := -0.5 + (cast(f32) k + 0.5) / cast(f32) ribs;
+    arch_rake(p, x, 0.012, -0.5, 1.012, 0, 0.0012, 0.012);
+    arch_rake(p, x, 0.012, 0.5, 1.012, 0, 0.0012, 0.012);
+  }
+  arch_box(p, 0, 1.02, 0, 0.5, 0.025, 0.006);
+  return arch_part(p, from);
+}
+
 // A square block for a column to stand on: `half` each way, `height` tall.
 arch_plinth :: (p: [] ArchPen, half: f32, height: f32) -> ArchPart {
   from := p[0].n;
@@ -113,6 +193,42 @@ arch_band :: (p: [] ArchPen, radius: f32, y: f32, tall: f32, proud: f32) -> Arch
   #assert arch_facing(buf[..], c) > cast(f32) (c.count / 3) * 0.85;
   plain := arch_column(p[..], 0.3, 3.1, 0);
   #assert plain.count < c.count && arch_reach(buf[..], plain).high < 3.1001 && !p[0].full;
+}
+#test "the lean column is a metre high, a metre across its shaft, faces out, and is a tenth of the full one" {
+  buf: [12000 * ARCH_VERTEX_FLOATS] f32; p: [1] ArchPen; arch_pen(p[..], buf[..]);
+  full := arch_column(p[..], 0.5, 1.0, ARCH_FLUTES);
+  c := arch_column_lean(p[..], 16); reach := arch_reach(buf[..], c);
+  #assert !p[0].full && reach.low == 0 && abs(reach.high - 1.0) < 0.0001 && c.count * 8 < full.count && c.count < 1100;
+  #assert reach.out > 0.62 && reach.out < 0.62 * 1.4143 + 0.001;
+  #assert arch_facing(buf[..], c) > cast(f32) (c.count / 3) * 0.9;
+  // every triangle of the shaft winds the way its normal points
+  for t: 0..<c.count / 3 {
+    o := (c.first + t * 3) * ARCH_VERTEX_FLOATS;
+    ax := buf[o + 12] - buf[o]; ay := buf[o + 13] - buf[o + 1]; az := buf[o + 14] - buf[o + 2];
+    bx := buf[o + 24] - buf[o]; by := buf[o + 25] - buf[o + 1]; bz := buf[o + 26] - buf[o + 2];
+    #assert (ay * bz - az * by) * buf[o + 3] + (az * bx - ax * bz) * buf[o + 4] + (ax * by - ay * bx) * buf[o + 5] > 0;
+  }
+}
+#test "a pediment's trim sits on the unit gable: its rakes follow the slopes, every triangle winds the way its normal points" {
+  buf: [1400 * ARCH_VERTEX_FLOATS] f32; p: [1] ArchPen; arch_pen(p[..], buf[..]);
+  trim := arch_pediment_trim(p[..], 12);
+  #assert !p[0].full && trim.count == 4 * 24 + 8 * 36 + 24 * 24 + 36;
+  // the first rake: from the eave at z -0.5 to the ridge, its top face square to the slope
+  #assert abs(buf[4] - 0.4472) < 0.001 && abs(buf[5] + 0.8944) < 0.001;
+  low: f32 = 9; high: f32 = -9; wide: f32 = 0;
+  for i: trim.first..<trim.first + trim.count {
+    o := i * ARCH_VERTEX_FLOATS;
+    if buf[o + 1] < low { low = buf[o + 1]; } if buf[o + 1] > high { high = buf[o + 1]; }
+    if abs(buf[o + 2]) > wide { wide = abs(buf[o + 2]); }
+    #assert abs(buf[o]) <= 0.5071;
+  }
+  #assert abs(low + 0.05) < 0.0001 && abs(high - 1.26) < 0.0001 && abs(wide - 0.515) < 0.0001;
+  for t: 0..<trim.count / 3 {
+    o := (trim.first + t * 3) * ARCH_VERTEX_FLOATS;
+    ax := buf[o + 12] - buf[o]; ay := buf[o + 13] - buf[o + 1]; az := buf[o + 14] - buf[o + 2];
+    bx := buf[o + 24] - buf[o]; by := buf[o + 25] - buf[o + 1]; bz := buf[o + 26] - buf[o + 2];
+    #assert (ay * bz - az * by) * buf[o + 3] + (az * bx - ax * bz) * buf[o + 4] + (ax * by - ay * bx) * buf[o + 5] > 0;
+  }
 }
 #test "the smaller parts stand on the ground to their heights and face out" {
   buf: [11000 * ARCH_VERTEX_FLOATS] f32; p: [1] ArchPen; arch_pen(p[..], buf[..]);

@@ -1,0 +1,378 @@
+// The Metaverse Engine's architecture kit, industrial works: what stands round process plant,
+// tanks and stacks, so a yard of plain drums and boxes reads as a working place. Each generator
+// writes one part at the origin with the ground at y 0, in metres, and takes the rows of a
+// realm's material table as an ArchCityLook (metaverse-engine/arch/city.coax). SLAB is the first
+// user (apps/openagents-web/slab-content-city.coax).
+//
+//   arch_pipe           a pipe one metre long and one across, lying along x: stretch it
+//   arch_pipe_rack      a run of pipe rack: steel bents, tiers of pipes of several sizes
+//   arch_cage_ladder    a ladder up a wall, with its safety cage
+//   arch_ring_walk      a walkway round a tank or a stack of radius 1, with its rail: stretch it
+//   arch_stair_unit     one storey of a steel stair tower: a flight, a landing, columns, rails
+//   arch_valve_station  three pipes over low supports with valves and handwheels
+//   arch_louvre         a louvred vent one metre each way in a wall
+//   arch_fan_bank       a row of fans in a wall (a mining container's side, a cooler's face)
+//   arch_vessel_rack    a rack of pressure vessels: a reverse-osmosis train
+//   arch_dock_crane     a rail-mounted gantry crane with a boom over the water
+//   arch_gangway        a ramp with handrails from a pontoon up to a door
+//   coax/bin/coax test --library metaverse-engine/arch/works.coax
+#module "metaverse.engine.arch.works";
+#load "city.coax";
+
+// A disc of `sides` sides at x, facing along x (`way` +1 or -1), centred on (y, z).
+arch_disc_x :: (p: [] ArchPen, x: f32, y: f32, z: f32, r: f32, sides: int, way: f32) {
+  for i: 0..<sides {
+    a := f32(ARCH_TAU) * cast(f32) i / cast(f32) sides; b := f32(ARCH_TAU) * cast(f32) (i + 1) / cast(f32) sides;
+    q0 := arch_at(x, y, z, way, 0, 0, 0.5, 0.5);
+    q1 := arch_at(x, y + cos(a) * r, z + sin(a) * r, way, 0, 0, 0, 0); q2 := arch_at(x, y + cos(b) * r, z + sin(b) * r, way, 0, 0, 0, 0);
+    if way > 0 { arch_tri(p, q0, q1, q2); } else { arch_tri(p, q0, q2, q1); }
+  }
+}
+// A pipe one metre long along x (-0.5 to 0.5) and one metre across, lying on y 0, its ends
+// closed. A record stretches it to any length and bore. It takes the pen's material.
+arch_pipe :: (p: [] ArchPen, sides: int) -> ArchPart {
+  from := p[0].n;
+  arch_limb(p, -0.5, 0.5, 0, 0.5, 0.5, 0, 0.5, 0.5, sides);
+  arch_disc_x(p, 0.5, 0.5, 0, 0.5, sides, 1);
+  arch_disc_x(p, -0.5, 0.5, 0, 0.5, sides, -1);
+  return arch_part(p, from);
+}
+
+// A run of pipe rack `length` long along x, centred, `width` wide and `height` to its top tier:
+// `bents` steel frames (two or more), `tiers` levels 1.8 m apart, each carrying pipes of several
+// bores and paints, chosen by `seed`.
+arch_pipe_rack :: (p: [] ArchPen, look: ArchCityLook, length: f32, width: f32, height: f32, tiers: int, bents: int, seed: int) -> ArchPart {
+  from := p[0].n; hl := length * 0.5; hw := width * 0.5;
+  nb := ifx bents < 2 then 2 else bents;
+  arch_material(p, look.metal, 0.4, 0.42, 0.44);
+  for k: 0..<nb {
+    x := -hl + 0.15 + (length - 0.3) * cast(f32) k / cast(f32) (nb - 1);
+    for side: 0..<2 { z: f32 = ifx side == 0 then -hw else hw; arch_bar(p, arch_v(x, 0, z), arch_v(x, height, z), 0.11); }
+    for t: 0..<tiers { y := height - 1.8 * cast(f32) t - 0.09; arch_bar(p, arch_v(x, y, -hw), arch_v(x, y, hw), 0.09); }
+  }
+  for side: 0..<2 { z: f32 = ifx side == 0 then -hw else hw; arch_bar(p, arch_v(-hl, height - 0.3, z), arch_v(hl, height - 0.3, z), 0.07); }
+  for t: 0..<tiers {
+    y := height - 1.8 * cast(f32) t; z := -hw + 0.2; k := 0;
+    while z < hw - 0.5 {
+      h := arch_hash(seed + t * 31, k); r := 0.07 + 0.2 * arch_hash(seed + t * 17 + 5, k);
+      if h < 0.55 { arch_material(p, look.metal, 0.66, 0.68, 0.7); }
+      else if h < 0.78 { arch_material(p, look.metal, 0.88, 0.88, 0.85); }
+      else if h < 0.9 { arch_material(p, look.metal, 0.86, 0.66, 0.12); }
+      else { arch_material(p, look.metal, 0.52, 0.24, 0.17); }
+      arch_limb(p, -hl, y + r, z + r, hl, y + r, z + r, r, r, 6);
+      z += 2 * r + 0.14; k += 1;
+    }
+  }
+  for k: 0..<nb {
+    x := -hl + 0.15 + (length - 0.3) * cast(f32) k / cast(f32) (nb - 1);
+    arch_solid_box(p, x - 0.11, 0, -hw - 0.11, x + 0.11, height, -hw + 0.11);
+    arch_solid_box(p, x - 0.11, 0, hw - 0.11, x + 0.11, height, hw + 0.11);
+  }
+  return arch_part(p, from);
+}
+
+// A ladder `height` tall up a wall that stands on z 0 and faces +z: two stringers, rungs every
+// 0.3 m, and a safety cage of hoops and straps from `cage_from` up (0: all the way, an upper
+// length of a long ladder).
+arch_cage_ladder :: (p: [] ArchPen, look: ArchCityLook, height: f32, cage_from: f32) -> ArchPart {
+  from := p[0].n; out: f32 = 0.2;
+  arch_material(p, look.metal, 0.7, 0.72, 0.74);
+  for side: 0..<2 {
+    x: f32 = ifx side == 0 then -0.22 else 0.22;
+    arch_bar(p, arch_v(x, 0, out), arch_v(x, height, out), 0.022);
+    arch_bar(p, arch_v(x, 0.4, 0), arch_v(x, 0.4, out), 0.018);
+    arch_bar(p, arch_v(x, height - 0.4, 0), arch_v(x, height - 0.4, out), 0.018);
+  }
+  rungs := cast(int) floor(height / 0.3);
+  for k: 0..<rungs {
+    y := 0.15 + 0.3 * cast(f32) k;
+    arch_face(p, arch_v(-0.22, y - 0.015, out + 0.01), arch_v(0.22, y - 0.015, out + 0.01), arch_v(0.22, y + 0.015, out + 0.01), arch_v(-0.22, y + 0.015, out + 0.01));
+  }
+  // the cage: half hoops of three chords, 0.36 m out from the ladder, and two straps down them
+  y := cage_from + 0.1;
+  while y < height {
+    for k: 0..<3 {
+      a := 3.14159265 * cast(f32) k / 3; b := 3.14159265 * cast(f32) (k + 1) / 3;
+      arch_bar2(p, arch_v(cos(a) * 0.36, y, out + sin(a) * 0.36), arch_v(cos(b) * 0.36, y, out + sin(b) * 0.36), 0.008, 0.025);
+    }
+    y += 1.5;
+  }
+  for k: 1..<3 {
+    a := 3.14159265 * cast(f32) k / 3;
+    arch_bar(p, arch_v(cos(a) * 0.36, cage_from + 0.1, out + sin(a) * 0.36), arch_v(cos(a) * 0.36, height, out + sin(a) * 0.36), 0.012);
+  }
+  return arch_part(p, from);
+}
+
+// A walkway round a tank or a stack whose radius is 1: its deck from the wall out to 1 + `width`
+// at y 0, brackets under it, posts and a top rail `rail` metres up. A record stretches it to the
+// radius along x and z (its y stays in metres). `sides` steps round.
+arch_ring_walk :: (p: [] ArchPen, look: ArchCityLook, sides: int, width: f32, rail: f32) -> ArchPart {
+  from := p[0].n; r1 := 1 + width; up := arch_v(0, 1, 0);
+  for i: 0..<sides {
+    a := f32(ARCH_TAU) * cast(f32) i / cast(f32) sides; b := f32(ARCH_TAU) * cast(f32) (i + 1) / cast(f32) sides;
+    ca := cos(a); sa := sin(a); cb := cos(b); sb := sin(b);
+    arch_material(p, look.metal, 0.36, 0.37, 0.38);
+    arch_face_to(p, arch_v(ca * 0.96, 0, sa * 0.96), arch_v(ca * r1, 0, sa * r1), arch_v(cb * r1, 0, sb * r1), arch_v(cb * 0.96, 0, sb * 0.96), up);
+    arch_face_to(p, arch_v(ca * 0.96, -0.05, sa * 0.96), arch_v(ca * r1, -0.05, sa * r1), arch_v(cb * r1, -0.05, sb * r1), arch_v(cb * 0.96, -0.05, sb * 0.96), arch_v(0, -1, 0));
+    arch_face_to(p, arch_v(ca * r1, -0.05, sa * r1), arch_v(cb * r1, -0.05, sb * r1), arch_v(cb * r1, 0.12, sb * r1), arch_v(ca * r1, 0.12, sa * r1), arch_v(ca + cb, 0, sa + sb));
+    arch_bar2(p, arch_v(ca * 0.98, -0.9, sa * 0.98), arch_v(ca * r1, -0.05, sa * r1), 0.006, 0.04);
+    arch_material(p, look.metal, 0.82, 0.7, 0.16);
+    arch_bar(p, arch_v(ca * r1, 0, sa * r1), arch_v(ca * r1, rail, sa * r1), 0.006);
+    arch_bar2(p, arch_v(ca * r1, rail, sa * r1), arch_v(cb * r1, rail, sb * r1), 0.006, 0.03);
+    arch_bar2(p, arch_v(ca * r1, rail * 0.5, sa * r1), arch_v(cb * r1, rail * 0.5, sb * r1), 0.004, 0.02);
+  }
+  return arch_part(p, from);
+}
+
+// One storey of a steel stair tower: a flight that climbs `rise` along +x over `run`, on the
+// -z half of a footprint 2 `width` wide, a landing across the +x end at its top, four columns
+// and handrails. The next storey is the same part turned half round and set `rise` higher: its
+// flight starts from this one's landing.
+arch_stair_unit :: (p: [] ArchPen, look: ArchCityLook, rise: f32, run: f32, width: f32) -> ArchPart {
+  from := p[0].n; hr := run * 0.5; w := width; up := arch_v(0, 1, 0);
+  arch_material(p, look.metal, 0.4, 0.42, 0.44);
+  for k: 0..<4 {
+    x: f32 = ifx k & 1 == 0 then -hr - w else hr + w; z: f32 = ifx k & 2 == 0 then -w else w;
+    arch_bar(p, arch_v(x, 0, z), arch_v(x, rise, z), 0.07);
+  }
+  // the stringers and the treads between them
+  for side: 0..<2 { z: f32 = ifx side == 0 then -w + 0.04 else -0.04; arch_bar2(p, arch_v(-hr, -0.08, z), arch_v(hr, rise - 0.08, z), 0.02, 0.11); }
+  treads := cast(int) floor(rise / 0.2 + 0.5);
+  arch_material(p, look.metal, 0.3, 0.31, 0.32);
+  for k: 0..<treads {
+    x0 := -hr + run * cast(f32) k / cast(f32) treads; x1 := x0 + run / cast(f32) treads * 0.9; y := rise * cast(f32) (k + 1) / cast(f32) treads;
+    arch_face_to(p, arch_v(x0, y, -w + 0.06), arch_v(x1, y, -w + 0.06), arch_v(x1, y, -0.06), arch_v(x0, y, -0.06), up);
+    arch_face_to(p, arch_v(x0, y - 0.03, -w + 0.06), arch_v(x1, y - 0.03, -w + 0.06), arch_v(x1, y - 0.03, -0.06), arch_v(x0, y - 0.03, -0.06), arch_v(0, -1, 0));
+  }
+  // the landing
+  arch_slab(p, hr, rise - 0.06, -w, hr + w, rise, w);
+  // handrails: up the flight's outer side, and round the landing
+  arch_material(p, look.metal, 0.82, 0.7, 0.16);
+  arch_bar(p, arch_v(-hr, 1.0, -w), arch_v(hr, rise + 1.0, -w), 0.022);
+  arch_bar(p, arch_v(-hr, 1.0, 0), arch_v(hr, rise + 1.0, 0), 0.022);
+  for k: 0..<3 {
+    x := -hr + run * cast(f32) k / 2; y := rise * cast(f32) k / 2;
+    arch_bar(p, arch_v(x, y, -w), arch_v(x, y + 1.0, -w), 0.018);
+  }
+  arch_bar(p, arch_v(hr + w, rise + 1.0, -w), arch_v(hr + w, rise + 1.0, w), 0.022);
+  arch_bar(p, arch_v(hr, rise + 1.0, w), arch_v(hr + w, rise + 1.0, w), 0.022);
+  arch_solid_box(p, -hr - w, 0, -w, hr + w, rise, w);
+  return arch_part(p, from);
+}
+
+// A valve station 4 m long: three pipes along x over two low supports, each with a valve and a
+// red handwheel, turning down into the ground at both ends.
+arch_valve_station :: (p: [] ArchPen, look: ArchCityLook) -> ArchPart {
+  from := p[0].n;
+  arch_material(p, look.stone, 0, 0, 0);
+  arch_slab(p, -1.4, 0, -1.0, -1.1, 0.4, 1.0);
+  arch_slab(p, 1.1, 0, -1.0, 1.4, 0.4, 1.0);
+  for k: 0..<3 {
+    z := -0.65 + 0.65 * cast(f32) k; r := 0.11 + 0.04 * cast(f32) k; y := 0.4 + r;
+    arch_material(p, look.metal, 0.66, 0.68, 0.7);
+    arch_limb(p, -2, y, z, 2, y, z, r, r, 6);
+    arch_limb(p, -2, 0, z, -2, y + r, z, r, r, 6);
+    arch_limb(p, 2, 0, z, 2, y + r, z, r, r, 6);
+    // flanges and the valve's body
+    arch_box(p, -0.45, y, z, 0.03, r + 0.07, r + 0.07);
+    arch_box(p, 0.45, y, z, 0.03, r + 0.07, r + 0.07);
+    arch_material(p, look.metal, 0.2, 0.3, 0.5);
+    arch_box(p, 0, y, z, 0.2, r + 0.05, r + 0.05);
+    arch_bar(p, arch_v(0, y + r, z), arch_v(0, y + r + 0.5, z), 0.025);
+    arch_material(p, look.metal, 0.75, 0.12, 0.1);
+    arch_box(p, 0, y + r + 0.52, z, 0.2, 0.025, 0.2);
+  }
+  arch_solid_box(p, -2, 0, -1.0, 2, 0.9, 1.0);
+  return arch_part(p, from);
+}
+
+// A louvred vent one metre wide and one high in a wall on z 0 that faces +z, its foot on y 0:
+// a frame, a dark back and `slats` sloping blades. A record stretches it over its opening.
+arch_louvre :: (p: [] ArchPen, look: ArchCityLook, slats: int) -> ArchPart {
+  from := p[0].n;
+  arch_material(p, look.dark, 0, 0, 0);
+  arch_face(p, arch_v(-0.5, 0, 0.01), arch_v(0.5, 0, 0.01), arch_v(0.5, 1, 0.01), arch_v(-0.5, 1, 0.01));
+  arch_material(p, look.metal, 0.7, 0.71, 0.72);
+  arch_bar2(p, arch_v(-0.5, 0, 0.05), arch_v(-0.5, 1, 0.05), 0.03, 0.05);
+  arch_bar2(p, arch_v(0.5, 0, 0.05), arch_v(0.5, 1, 0.05), 0.03, 0.05);
+  arch_bar2(p, arch_v(-0.5, 0.015, 0.05), arch_v(0.5, 0.015, 0.05), 0.05, 0.015);
+  arch_bar2(p, arch_v(-0.5, 0.985, 0.05), arch_v(0.5, 0.985, 0.05), 0.05, 0.015);
+  for k: 0..<slats {
+    y0 := 0.03 + 0.94 * cast(f32) k / cast(f32) slats; y1 := y0 + 0.94 / cast(f32) slats * 0.85;
+    arch_face_to(p, arch_v(-0.47, y0, 0.09), arch_v(0.47, y0, 0.09), arch_v(0.47, y1, 0.02), arch_v(-0.47, y1, 0.02), arch_v(0, 1, 1));
+  }
+  return arch_part(p, from);
+}
+
+// A row of `n` fans in a wall on z 0 that faces +z, each `r` in radius, centred along x, their
+// middles `y` up: a shroud, a dark mouth and a guard's cross.
+arch_fan_bank :: (p: [] ArchPen, look: ArchCityLook, n: int, r: f32, y: f32) -> ArchPart {
+  from := p[0].n; pitch := r * 2.3;
+  for f: 0..<n {
+    cx := (cast(f32) f - cast(f32) (n - 1) * 0.5) * pitch;
+    for i: 0..<8 {
+      a := f32(ARCH_TAU) * cast(f32) i / 8; b := f32(ARCH_TAU) * cast(f32) (i + 1) / 8;
+      ca := cos(a); sa := sin(a); cb := cos(b); sb := sin(b);
+      arch_material(p, look.metal, 0.75, 0.76, 0.77);
+      arch_face_to(p, arch_v(cx + ca * r * 1.05, y + sa * r * 1.05, 0), arch_v(cx + cb * r * 1.05, y + sb * r * 1.05, 0), arch_v(cx + cb * r, y + sb * r, 0.14), arch_v(cx + ca * r, y + sa * r, 0.14), arch_v(ca + cb, sa + sb, 0.2));
+      arch_material(p, look.dark, 0, 0, 0);
+      arch_face_to(p, arch_v(cx, y, 0.04), arch_v(cx + ca * r, y + sa * r, 0.04), arch_v(cx + cb * r, y + sb * r, 0.04), arch_v(cx + cb * r, y + sb * r, 0.04), arch_v(0, 0, 1));
+    }
+    arch_material(p, look.metal, 0.75, 0.76, 0.77);
+    arch_bar2(p, arch_v(cx - r, y, 0.14), arch_v(cx + r, y, 0.14), 0.012, 0.02);
+    arch_bar2(p, arch_v(cx, y - r, 0.14), arch_v(cx, y + r, 0.14), 0.012, 0.02);
+  }
+  return arch_part(p, from);
+}
+
+// A rack of pressure vessels `length` long along x, centred: `cols` across and `rows` high in a
+// steel frame, with a header pipe down each end. A reverse-osmosis train.
+arch_vessel_rack :: (p: [] ArchPen, look: ArchCityLook, rows: int, cols: int, length: f32) -> ArchPart {
+  from := p[0].n; hl := length * 0.5; r: f32 = 0.11; pitch: f32 = 0.34;
+  hw := cast(f32) cols * pitch * 0.5; top := 0.5 + cast(f32) rows * pitch + 0.1;
+  arch_material(p, look.metal, 0.25, 0.36, 0.52);
+  for e: 0..<2 {
+    x: f32 = ifx e == 0 then -hl * 0.7 else hl * 0.7;
+    arch_bar(p, arch_v(x, 0, -hw - 0.1), arch_v(x, top, -hw - 0.1), 0.05);
+    arch_bar(p, arch_v(x, 0, hw + 0.1), arch_v(x, top, hw + 0.1), 0.05);
+    arch_bar(p, arch_v(x, top, -hw - 0.1), arch_v(x, top, hw + 0.1), 0.05);
+    arch_bar(p, arch_v(x, 0.4, -hw - 0.1), arch_v(x, 0.4, hw + 0.1), 0.05);
+  }
+  arch_material(p, look.metal, 0.9, 0.9, 0.88);
+  for j: 0..<rows { for i: 0..<cols {
+    y := 0.5 + (cast(f32) j + 0.5) * pitch; z := -hw + (cast(f32) i + 0.5) * pitch;
+    arch_limb(p, -hl, y, z, hl, y, z, r, r, 6);
+    arch_disc_x(p, hl, y, z, r, 6, 1); arch_disc_x(p, -hl, y, z, r, 6, -1);
+  } }
+  arch_material(p, look.metal, 0.66, 0.68, 0.7);
+  for e: 0..<2 {
+    x: f32 = ifx e == 0 then -hl - 0.25 else hl + 0.25;
+    arch_limb(p, x, 0, 0, x, top, 0, 0.12, 0.12, 6);
+    arch_limb(p, x, top - 0.1, -hw, x, top - 0.1, hw, 0.08, 0.08, 6);
+  }
+  arch_solid_box(p, -hl, 0, -hw, hl, top, hw);
+  return arch_part(p, from);
+}
+
+// A rail-mounted gantry crane for a quay that runs along x, the water on its -z side: two
+// portal legs `gauge` apart, a machinery house on the girder `tall` up, and a boom reaching
+// `reach` out over the water with a trolley and a hoist block.
+arch_dock_crane :: (p: [] ArchPen, look: ArchCityLook, gauge: f32, tall: f32, reach: f32) -> ArchPart {
+  from := p[0].n; hg := gauge * 0.5; w: f32 = 9;
+  arch_material(p, look.metal, 0.9, 0.55, 0.1);
+  for k: 0..<4 {
+    x: f32 = ifx k & 1 == 0 then -w else w; z: f32 = ifx k & 2 == 0 then -hg else hg;
+    arch_bar(p, arch_v(x, 1.0, z), arch_v(x, tall, z), 0.55);
+    arch_solid_box(p, x - 0.55, 0, z - 0.55, x + 0.55, tall, z + 0.55);
+  }
+  for side: 0..<2 {
+    z: f32 = ifx side == 0 then -hg else hg;
+    arch_bar2(p, arch_v(-w - 2, 0.5, z), arch_v(w + 2, 0.5, z), 0.6, 0.5);
+    arch_bar2(p, arch_v(-w, tall * 0.55, z), arch_v(w, tall * 0.55, z), 0.35, 0.45);
+    arch_bar(p, arch_v(-w, 1.4, z), arch_v(w, tall * 0.55, z), 0.25);
+  }
+  for side: 0..<2 { x: f32 = ifx side == 0 then -w else w; arch_bar2(p, arch_v(x, tall, -hg), arch_v(x, tall, hg), 0.6, 0.7); }
+  // the boom: two girders from behind the land leg to `reach` beyond the water leg, tied across
+  for side: 0..<2 {
+    x: f32 = ifx side == 0 then -3 else 3;
+    arch_bar2(p, arch_v(x, tall + 1.2, hg + gauge * 0.5), arch_v(x, tall + 1.2, -hg - reach), 0.5, 0.9);
+  }
+  for k: 0..<6 { z := hg + gauge * 0.5 - (gauge * 1.5 + reach) * cast(f32) k / 5; arch_bar(p, arch_v(-3, tall + 1.2, z), arch_v(3, tall + 1.2, z), 0.3); }
+  // the mast and its stays
+  arch_bar(p, arch_v(-3, tall, -hg), arch_v(0, tall + reach * 0.55, -hg), 0.4);
+  arch_bar(p, arch_v(3, tall, -hg), arch_v(0, tall + reach * 0.55, -hg), 0.4);
+  arch_bar(p, arch_v(0, tall + reach * 0.55, -hg), arch_v(0, tall + 2, -hg - reach * 0.95), 0.16);
+  arch_bar(p, arch_v(0, tall + reach * 0.55, -hg), arch_v(0, tall + 2, hg + gauge * 0.45), 0.16);
+  // the machinery house, the trolley, the cab and the hoist
+  arch_material(p, look.metal, 0.84, 0.85, 0.84);
+  arch_slab(p, -4.5, tall + 2.1, hg * 0.2, 4.5, tall + 6.5, hg + gauge * 0.4);
+  arch_slab(p, -2.5, tall - 0.6, -hg - reach * 0.6, 2.5, tall + 0.3, -hg - reach * 0.6 + 4);
+  arch_material(p, look.glass, 0, 0, 0);
+  arch_slab(p, 2.6, tall - 2.6, -hg - reach * 0.6 + 0.5, 4.8, tall - 0.4, -hg - reach * 0.6 + 3);
+  arch_material(p, look.metal, 0.15, 0.15, 0.16);
+  for side: 0..<2 { x: f32 = ifx side == 0 then -1.5 else 1.5; arch_bar(p, arch_v(x, tall * 0.35, -hg - reach * 0.6 + 2), arch_v(x, tall - 0.6, -hg - reach * 0.6 + 2), 0.06); }
+  arch_material(p, look.metal, 0.9, 0.55, 0.1);
+  arch_slab(p, -3.2, tall * 0.35 - 0.5, -hg - reach * 0.6 + 0.8, 3.2, tall * 0.35, -hg - reach * 0.6 + 3.2);
+  return arch_part(p, from);
+}
+
+// A gangway: a ramp `width` wide that climbs `rise` along +x over `run` from the origin, with a
+// handrail and a knee rail down each side on posts.
+arch_gangway :: (p: [] ArchPen, look: ArchCityLook, run: f32, rise: f32, width: f32) -> ArchPart {
+  from := p[0].n; hw := width * 0.5;
+  arch_material(p, look.metal, 0.4, 0.42, 0.44);
+  arch_bar2(p, arch_v(0, -0.06, 0), arch_v(run, rise - 0.06, 0), hw, 0.06);
+  arch_material(p, look.metal, 0.82, 0.7, 0.16);
+  posts := cast(int) floor(run / 2.5) + 2;
+  for side: 0..<2 {
+    z: f32 = ifx side == 0 then -hw else hw;
+    arch_bar(p, arch_v(0, 1.05, z), arch_v(run, rise + 1.05, z), 0.03);
+    arch_bar(p, arch_v(0, 0.55, z), arch_v(run, rise + 0.55, z), 0.02);
+    for k: 0..<posts { t := cast(f32) k / cast(f32) (posts - 1); arch_bar(p, arch_v(run * t, rise * t, z), arch_v(run * t, rise * t + 1.05, z), 0.025); }
+  }
+  return arch_part(p, from);
+}
+
+// ---- checks
+#test "a pipe is a metre long and a metre across, lying on the ground, closed at both ends" {
+  mesh: [400 * ARCH_VERTEX_FLOATS] f32; pen: [1] ArchPen; p := pen[..]; arch_pen(p, mesh[..]);
+  pipe := arch_pipe(p, 12);
+  b := arch_city_box(mesh[..], pipe);
+  #assert pipe.count == 12 * 6 + 2 * 12 * 3 && arch_city_sound(mesh[..], pipe);
+  #assert b[0] == -0.5 && b[3] == 0.5 && abs(b[1]) < 0.0001 && abs(b[4] - 1) < 0.0001 && abs(b[2] + 0.5) < 0.02 && abs(b[5] - 0.5) < 0.02;
+  // the wall faces away from its axis and the ends face along it
+  for i: pipe.first..<pipe.first + pipe.count {
+    o := i * ARCH_VERTEX_FLOATS;
+    if abs(mesh[o + 3]) > 0.5 { #assert mesh[o + 3] * mesh[o] > 0; } else { #assert mesh[o + 4] * (mesh[o + 1] - 0.5) + mesh[o + 5] * mesh[o + 2] > 0; }
+  }
+}
+#test "the works' parts stand on the ground at their sizes, every triangle sound" {
+  mesh: [12000 * ARCH_VERTEX_FLOATS] f32; pen: [1] ArchPen; p := pen[..]; arch_pen(p, mesh[..]);
+  look := arch_city_look();
+  rack := arch_pipe_rack(p, look, 18, 4, 6.5, 2, 4, 7);
+  b := arch_city_box(mesh[..], rack);
+  #assert arch_city_sound(mesh[..], rack) && rack.count < 1500 && b[0] == -9 && b[3] == 9 && b[1] == 0 && b[4] > 6.5 && b[4] < 7.3 && b[2] > -2.2 && b[5] < 2.2;
+  // a different seed lays different pipes
+  other := arch_pipe_rack(p, look, 18, 4, 6.5, 2, 4, 8);
+  #assert other.count != rack.count || mesh[(rack.first + rack.count - 1) * ARCH_VERTEX_FLOATS + 2] != mesh[(other.first + other.count - 1) * ARCH_VERTEX_FLOATS + 2];
+  p[0].n = other.first;
+  foot := arch_cage_ladder(p, look, 6, 2.2); run := arch_cage_ladder(p, look, 6, 0);
+  b = arch_city_box(mesh[..], foot);
+  #assert arch_city_sound(mesh[..], foot) && arch_city_sound(mesh[..], run) && run.count > foot.count && run.count < 900;
+  #assert b[1] == 0 && b[4] == 6 && b[2] == 0 && b[5] < 0.6 && b[0] > -0.4 && b[3] < 0.4;
+  ring := arch_ring_walk(p, look, 12, 0.16, 1.1);
+  b = arch_city_box(mesh[..], ring);
+  #assert arch_city_sound(mesh[..], ring) && ring.count < 1500 && b[3] > 1.16 && b[3] < 1.21 && abs(b[4] - 1.13) < 0.001 && b[1] < -0.8;
+  // its deck's top faces up at y 0, out to 1.16
+  decks := 0;
+  for i: ring.first..<ring.first + ring.count { o := i * ARCH_VERTEX_FLOATS; if mesh[o + 1] == 0 && mesh[o + 4] > 0.99 { decks += 1; } }
+  #assert decks == 12 * 6;
+  stair := arch_stair_unit(p, look, 3, 4, 1.1);
+  b = arch_city_box(mesh[..], stair);
+  #assert arch_city_sound(mesh[..], stair) && stair.count < 900 && abs(b[0] + 3.17) < 0.001 && abs(b[3] - 3.17) < 0.001 && abs(b[4] - 4.022) < 0.001;
+  // the top tread meets the landing: both at the rise
+  treads := 0;
+  for i: stair.first..<stair.first + stair.count { o := i * ARCH_VERTEX_FLOATS; if mesh[o + 1] == 3 && mesh[o + 4] > 0.99 && mesh[o] < 1.99 { treads += 1; } }
+  #assert treads == 6 && mesh[(stair.first) * ARCH_VERTEX_FLOATS + 1] == 0;
+  valves := arch_valve_station(p, look);
+  #assert arch_city_sound(mesh[..], valves) && valves.count <= 900 && arch_city_box(mesh[..], valves)[1] == 0;
+  louvre := arch_louvre(p, look, 8);
+  b = arch_city_box(mesh[..], louvre);
+  #assert arch_city_sound(mesh[..], louvre) && louvre.count == 6 + 4 * 24 + 8 * 6 && b[1] == 0 && b[4] == 1 && b[2] >= 0;
+  // the blades face out and up
+  for i: louvre.first + 102..<louvre.first + louvre.count { o := i * ARCH_VERTEX_FLOATS; #assert mesh[o + 4] > 0 && mesh[o + 5] > 0; }
+  fans := arch_fan_bank(p, look, 4, 0.9, 1.5);
+  b = arch_city_box(mesh[..], fans);
+  #assert arch_city_sound(mesh[..], fans) && fans.count == 4 * (8 * 9 + 48) && b[2] >= 0 && abs(b[5] - 0.16) < 0.001 && abs(b[0] + b[3]) < 0.001;
+  train := arch_vessel_rack(p, look, 3, 4, 7);
+  b = arch_city_box(mesh[..], train);
+  #assert arch_city_sound(mesh[..], train) && train.count < 1400 && b[1] == 0 && b[4] > 1.6 && b[4] < 1.8;
+  crane := arch_dock_crane(p, look, 18, 32, 30);
+  b = arch_city_box(mesh[..], crane);
+  #assert arch_city_sound(mesh[..], crane) && crane.count < 1500 && b[1] == 0 && b[2] < -38 && b[2] > -40 && b[4] > 45;
+  ramp := arch_gangway(p, look, 12, 5, 1.4);
+  b = arch_city_box(mesh[..], ramp);
+  #assert arch_city_sound(mesh[..], ramp) && ramp.count < 500 && b[0] > -0.1 && b[3] < 12.1 && b[4] > 6 && b[4] < 6.2 && abs(b[5] - 0.725) < 0.01;
+  #assert !p[0].full;
+}

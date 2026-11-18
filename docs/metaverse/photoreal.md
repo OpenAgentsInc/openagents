@@ -203,6 +203,7 @@ moves everything with the hull. What a record can also say:
 | `pr_motion(l, r, PR_SWAY, phase)` | bends in the wind (`PR_BOB`: rises and falls) |
 | `pr_laid(l, r)` | lies flat on a surface (a road marking): drawn a hair nearer so the two never flicker |
 | `pr_free(l, r)` | doesn't ride the platform (a ship beside it): its position is in the world's frame |
+| `pr_near(l, r, metres)` | a small thing: drawn only within that distance of the eye (three fifths of it on a phone) |
 | `pr_value(l, r, v)` | the realm's own number; SLAB's plan parts carry their record's number here |
 | `pr_box(l, ph[0].box, x0, y0, z0, x1, y1, z1, material)` | a box between two corners |
 
@@ -214,6 +215,19 @@ The list is made again only when the plan's records change (a layout, a
 step of the construction view). What moves every frame goes in
 `slab_content_move`: people, vehicles, ships. Those records are sent to
 the GPU every frame, so keep them to what really moves.
+
+Give a small or thin thing (a rail, a lamp post, a ladder) a distance with
+`pr_near`: about where it is two pixels across. A 0.2 m post is two pixels
+at roughly 90 m on a 1440 × 900 view, so 130 m is a fair distance for it.
+Past the distance the vertex shader shrinks the part to a point at its
+record's place, in both the main pass and the shadow pass, over the last
+fifth of the distance. The part is gone before it can shimmer, and you never
+see it go. The shrink is toward the record's place, so put that place inside
+whatever the part is fixed to (a walkway's is the middle of its stack). A
+shrunk part still costs its vertices, so `pr_near` is for how a thing looks,
+and `pr_fine` is for what a phone pays. The distance shares the record's
+float with `pr_free` (`PR_R_NEAR` in `photoreal-layout.coax`): call them in
+either order.
 
 Limits: 16,384 records in all (`PHOTO_RECORDS`).
 

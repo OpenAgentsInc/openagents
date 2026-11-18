@@ -45,6 +45,8 @@ PR_R_TINT :: 8;      // r, g, b: multiplies the material's colour (1, 1, 1 leave
 PR_R_VALUE :: 11;    // the realm's own number: what was clicked, which thing this is
 PR_R_STRETCH :: 12;  // sizes along the part's x, y, z in place of the one scale (0, 0, 0: use the scale)
 PR_R_MATERIAL :: 15; // a material for the whole part in place of its vertices' own (0: keep them)
+PR_R_NEAR :: 7;      // the same float as PR_R_FREE also says how near the eye must be for a small thing to be drawn:
+                     // -d on a record that rides the platform, 1 + d on a free one, d in metres (pr_near; photoreal.coax pr_near_of)
 
 PR_STILL :: 0;
 PR_BOB :: 1;         // rises and falls a little (a buoy, a boat at its mooring)

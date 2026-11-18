@@ -1,0 +1,387 @@
+// The Metaverse Engine's architecture kit, a modern street: what makes a deck of plain masses read
+// as a built place from walking height. Each generator writes one part at the origin with the
+// ground at y 0, in metres (metaverse-engine/arch/mesh.coax). SLAB is the first user
+// (apps/openagents-web/slab-content-city.coax); industrial parts are in works.coax.
+//
+// These parts are for a renderer whose materials are a realm's own table (the photoreal style,
+// docs/metaverse/photoreal.md), so a generator takes an ArchCityLook: the rows to write for
+// metal, glass and the rest. The stylized palette's numbers (palette.coax) are not used here.
+//
+//   arch_bar            a square bar with no end faces: a rail, a post, a frame's member
+//   arch_flat           a flat face on the ground: a road marking
+//   arch_face_to        a flat face that faces a given way, whatever its corners' order
+//   arch_railing        a run of handrail: posts, a top rail, lower rails
+//   arch_street_lamp      a street lamp: a tapered pole, an arm, a head with a lens
+//   arch_sign_post      a pole with a plate in a colour, a pale band across it
+//   arch_canopy         a building's entrance: a portal, glass doors, a canopy on two posts
+//   arch_dashes         a run of a road's dashed line
+//   arch_zebra          a pedestrian crossing's stripes
+//   arch_curb_ring      a square ring one metre across: a roof's parapet, a planter's rim
+//   arch_roof_fan       a fan in its cowl, facing up
+//   arch_roof_unit      a packaged cooling unit: a body, louvred sides, fans on top
+//   arch_mast           a roof's antenna mast with its yards and a beacon
+//   arch_kiosk          a small flat-roofed head house: a stair's or a lift's top
+//   arch_window_frame   a window's surround one metre each way, to stretch over a painted pane
+//   arch_bollard        a round post with a pale band: a street corner's, a quay's
+//   coax/bin/coax test --library metaverse-engine/arch/city.coax
+#module "metaverse.engine.arch.city";
+#load "solid.coax";
+
+// The rows of a realm's material table a generator writes. A row's colour is best white where a
+// tint colours it (metal, paint).
+ArchCityLook :: struct {
+  metal: int;    // painted or galvanised steel: posts, rails, frames, casings (tinted)
+  dark: int;     // dark metal: louvres, grilles, a fan's mouth
+  glass: int;    // glazing: a canopy, a door
+  lamp: int;     // a lamp's lens: a realm makes it glow at night
+  stone: int;    // concrete or stone: bases, walls of a head house
+  paint: int;    // road paint and sign faces (tinted)
+}
+
+// A bar of rectangular section from a to b with no end faces: half_s across (level, square to its
+// run) and half_t the other way. Two thirds of a beam's triangles, for bars whose ends meet
+// something.
+arch_bar2 :: (p: [] ArchPen, a: [3] f32, b: [3] f32, half_s: f32, half_t: f32) {
+  d := arch_vsub(b, a); span := arch_vlen(d);
+  if span < 0.0001 { return; }
+  d = arch_vmul(d, 1 / span);
+  s := arch_vcross(arch_v(0, 1, 0), d);
+  if arch_vlen(s) < 0.01 { s = arch_v(1, 0, 0); }
+  s = arch_vmul(arch_vnorm(s), half_s); t := arch_vmul(arch_vnorm(arch_vcross(d, s)), half_t);
+  o := [4] [3] f32.[arch_vadd(s, t), arch_vsub(t, s), arch_vmul(arch_vadd(s, t), -1), arch_vsub(s, t)];
+  for k: 0..<4 {
+    o0 := o[k]; o1 := o[(k + 1) % 4];
+    arch_face(p, arch_vadd(a, o0), arch_vadd(a, o1), arch_vadd(b, o1), arch_vadd(b, o0));
+  }
+}
+arch_bar :: (p: [] ArchPen, a: [3] f32, b: [3] f32, half: f32) { arch_bar2(p, a, b, half, half); }
+// A flat face `lift` over the ground, facing up: a road marking between two corners.
+arch_flat :: (p: [] ArchPen, x0: f32, z0: f32, x1: f32, z1: f32, lift: f32) {
+  arch_face_uv(p, arch_v(x0, lift, z1), arch_v(x1, lift, z1), arch_v(x1, lift, z0), arch_v(x0, lift, z0), x0, -z1);
+}
+// A flat face that faces `toward`, whatever order its corners come in.
+arch_face_to :: (p: [] ArchPen, a: [3] f32, b: [3] f32, c: [3] f32, d: [3] f32, toward: [3] f32) {
+  n := arch_vcross(arch_vsub(b, a), arch_vsub(c, a));
+  if arch_vdot(n, toward) >= 0 { arch_face(p, a, b, c, d); } else { arch_face(p, a, d, c, b); }
+}
+// A regular polygon's disc facing up at height y, and a round wall between two rings: a cowl, a cap.
+arch_disc :: (p: [] ArchPen, r: f32, y: f32, sides: int) {
+  for i: 0..<sides {
+    a := f32(ARCH_TAU) * cast(f32) i / cast(f32) sides; b := f32(ARCH_TAU) * cast(f32) (i + 1) / cast(f32) sides;
+    arch_tri(p, arch_at(0, y, 0, 0, 1, 0, 0.5, 0.5), arch_at(cos(b) * r, y, sin(b) * r, 0, 1, 0, 0, 0), arch_at(cos(a) * r, y, sin(a) * r, 0, 1, 0, 0, 0));
+  }
+}
+arch_wall_round :: (p: [] ArchPen, r0: f32, y0: f32, r1: f32, y1: f32, sides: int) {
+  for i: 0..<sides {
+    a := f32(ARCH_TAU) * cast(f32) i / cast(f32) sides; b := f32(ARCH_TAU) * cast(f32) (i + 1) / cast(f32) sides;
+    arch_face_n(p, arch_v(cos(b) * r0, y0, sin(b) * r0), arch_v(cos(a) * r0, y0, sin(a) * r0), arch_v(cos(a) * r1, y1, sin(a) * r1), arch_v(cos(b) * r1, y1, sin(b) * r1),
+      arch_v(cos(b), 0, sin(b)), arch_v(cos(a), 0, sin(a)), arch_v(cos(a), 0, sin(a)), arch_v(cos(b), 0, sin(b)), 0, 0);
+  }
+}
+
+// A run of handrail `length` long along x, centred, `height` to its top rail: `posts` posts
+// (two or more, one at each end), and `rails` rails evenly down from the top.
+arch_railing :: (p: [] ArchPen, look: ArchCityLook, length: f32, height: f32, posts: int, rails: int) -> ArchPart {
+  from := p[0].n; hl := length * 0.5;
+  arch_material(p, look.metal, 0, 0, 0);
+  n := ifx posts < 2 then 2 else posts;
+  for k: 0..<n {
+    x := -hl + length * cast(f32) k / cast(f32) (n - 1);
+    arch_bar(p, arch_v(x, 0, 0), arch_v(x, height, 0), 0.022);
+  }
+  for k: 0..<rails {
+    y := height - height * cast(f32) k / cast(f32) (ifx rails < 1 then 1 else rails);
+    arch_bar(p, arch_v(-hl, y, 0), arch_v(hl, y, 0), ifx k == 0 then 0.03f32 else 0.018f32);
+  }
+  return arch_part(p, from);
+}
+
+// A street lamp `height` tall: a base, a tapered pole, an arm reaching `reach` along +x and a
+// head whose lens faces down. The lens is the look's lamp.
+arch_street_lamp :: (p: [] ArchPen, look: ArchCityLook, height: f32, reach: f32) -> ArchPart {
+  from := p[0].n;
+  arch_material(p, look.metal, 0.2, 0.21, 0.22);
+  arch_box(p, 0, 0.3, 0, 0.16, 0.3, 0.16);
+  arch_limb(p, 0, 0.6, 0, 0, height, 0, 0.085, 0.055, 8);
+  arch_bar(p, arch_v(0, height - 0.12, 0), arch_v(reach, height + 0.22, 0), 0.04);
+  arch_box(p, reach + 0.15, height + 0.22, 0, 0.42, 0.06, 0.15);
+  arch_material(p, look.lamp, 0, 0, 0);
+  y := height + 0.155;
+  arch_face(p, arch_v(reach - 0.2, y, -0.11), arch_v(reach + 0.5, y, -0.11), arch_v(reach + 0.5, y, 0.11), arch_v(reach - 0.2, y, 0.11));
+  arch_solid_round(p, 0, 0, 0.16, 0, height);
+  return arch_part(p, from);
+}
+
+// A sign: a pole `height` tall with a plate w by h at its top, facing +z and -z, in a colour, a
+// pale band across its middle. It carries no words.
+arch_sign_post :: (p: [] ArchPen, look: ArchCityLook, height: f32, w: f32, h: f32, r: f32, g: f32, b: f32) -> ArchPart {
+  from := p[0].n;
+  arch_material(p, look.metal, 0.45, 0.46, 0.47);
+  arch_bar(p, arch_v(0, 0, 0), arch_v(0, height - h, 0), 0.035);
+  arch_material(p, look.paint, r, g, b);
+  arch_box(p, 0, height - h * 0.5, 0, w * 0.5, h * 0.5, 0.025);
+  arch_material(p, look.paint, 0.92, 0.92, 0.9);
+  arch_box(p, 0, height - h * 0.5, 0, w * 0.5 - 0.06, h * 0.12, 0.032);
+  return arch_part(p, from);
+}
+
+// An entrance w wide in a wall that stands on z 0 and faces +z: a stone portal `tall` high with
+// glass doors, and a canopy d deep over it on two posts with lights under it.
+arch_canopy :: (p: [] ArchPen, look: ArchCityLook, w: f32, d: f32, tall: f32) -> ArchPart {
+  from := p[0].n; hw := w * 0.5;
+  arch_material(p, look.stone, 0, 0, 0);
+  arch_slab(p, -hw - 0.45, 0, 0, -hw, tall, 0.5);
+  arch_slab(p, hw, 0, 0, hw + 0.45, tall, 0.5);
+  arch_slab(p, -hw - 0.45, tall, 0, hw + 0.45, tall + 0.6, 0.5);
+  arch_material(p, look.glass, 0, 0, 0);
+  arch_slab(p, -hw, 0, 0.12, hw, tall, 0.2);
+  arch_material(p, look.metal, 0.16, 0.17, 0.18);
+  for k: 0..<5 { x := -hw + w * cast(f32) k / 4; arch_bar(p, arch_v(x, 0, 0.22), arch_v(x, tall, 0.22), 0.04); }
+  arch_bar(p, arch_v(-hw, 2.3, 0.22), arch_v(hw, 2.3, 0.22), 0.04);
+  // the canopy: a thin roof with a deeper edge
+  arch_slab(p, -hw - 1.0, tall + 0.2, 0.5, hw + 1.0, tall + 0.34, d);
+  arch_slab(p, -hw - 1.0, tall + 0.05, d - 0.12, hw + 1.0, tall + 0.4, d);
+  for k: 0..<2 {
+    x: f32 = ifx k == 0 then -hw - 0.7 else hw + 0.7;
+    arch_limb(p, x, 0, d - 0.4, x, tall + 0.2, d - 0.4, 0.09, 0.09, 8);
+    arch_solid_round(p, x, d - 0.4, 0.09, 0, tall);
+  }
+  arch_material(p, look.lamp, 0, 0, 0);
+  for k: 0..<3 {
+    x := -hw * 0.6 + hw * 0.6 * cast(f32) k;
+    arch_face(p, arch_v(x - 0.3, tall + 0.19, d * 0.4), arch_v(x + 0.3, tall + 0.19, d * 0.4), arch_v(x + 0.3, tall + 0.19, d * 0.4 + 0.6), arch_v(x - 0.3, tall + 0.19, d * 0.4 + 0.6));
+  }
+  return arch_part(p, from);
+}
+
+// A run of a road's dashed line `length` long along x, centred: dashes `dash` long and `width`
+// wide with `gap` between them, in the look's paint with the pen's tint.
+arch_dashes :: (p: [] ArchPen, look: ArchCityLook, length: f32, dash: f32, gap: f32, width: f32) -> ArchPart {
+  from := p[0].n;
+  arch_material(p, look.paint, 0.9, 0.9, 0.86);
+  n := cast(int) floor((length + gap) / (dash + gap));
+  x0 := -(cast(f32) n * (dash + gap) - gap) * 0.5;
+  for k: 0..<n { x := x0 + cast(f32) k * (dash + gap); arch_flat(p, x, -width * 0.5, x + dash, width * 0.5, 0.012); }
+  return arch_part(p, from);
+}
+// A pedestrian crossing over a road that runs along x: stripes `depth` long along x, half a
+// metre wide and a metre apart, across `width` of road along z.
+arch_zebra :: (p: [] ArchPen, look: ArchCityLook, width: f32, depth: f32) -> ArchPart {
+  from := p[0].n;
+  arch_material(p, look.paint, 0.9, 0.9, 0.86);
+  n := cast(int) floor(width);
+  for k: 0..<n { z := -cast(f32) n * 0.5 + cast(f32) k + 0.25; arch_flat(p, -depth * 0.5, z, depth * 0.5, z + 0.5, 0.012); }
+  return arch_part(p, from);
+}
+
+// A square ring one metre across and one high, its wall `thick` of that: stretched, a roof's
+// parapet or a planter's rim. It takes the pen's material.
+arch_curb_ring :: (p: [] ArchPen, thick: f32) -> ArchPart {
+  from := p[0].n; t := thick;
+  arch_slab(p, -0.5, 0, 0.5 - t, 0.5, 1, 0.5);
+  arch_slab(p, -0.5, 0, -0.5, 0.5, 1, -0.5 + t);
+  arch_slab(p, 0.5 - t, 0, -0.5 + t, 0.5, 1, 0.5 - t);
+  arch_slab(p, -0.5, 0, -0.5 + t, -0.5 + t, 1, 0.5 - t);
+  return arch_part(p, from);
+}
+
+// A fan in its cowl, facing up: `r` to the cowl's rim, `h` high, a dark mouth and a hub.
+arch_fan_up :: (p: [] ArchPen, look: ArchCityLook, cx: f32, y0: f32, cz: f32, r: f32, h: f32) {
+  from := p[0].n;
+  arch_material(p, look.metal, 0.62, 0.64, 0.66);
+  arch_wall_round(p, r * 1.08, 0, r, h, 10);
+  arch_material(p, look.dark, 0, 0, 0);
+  arch_disc(p, r, h - 0.03, 10);
+  arch_material(p, look.metal, 0.5, 0.52, 0.54);
+  arch_disc(p, r * 0.28, h, 6);
+  arch_bar2(p, arch_v(-r, h, 0), arch_v(r, h, 0), 0.03, 0.02);
+  arch_bar2(p, arch_v(0, h, -r), arch_v(0, h, r), 0.03, 0.02);
+  arch_move(p[0].out, arch_part(p, from), cx, y0, cz);
+}
+arch_roof_fan :: (p: [] ArchPen, look: ArchCityLook, r: f32, h: f32) -> ArchPart {
+  from := p[0].n;
+  arch_fan_up(p, look, 0, 0, 0, r, h);
+  return arch_part(p, from);
+}
+// A packaged cooling unit `long` by `wide` by `tall` on a frame: a painted body, louvred long
+// sides and `fans` fans on top. A roof's plant, a data hall's chiller, a generator set.
+arch_roof_unit :: (p: [] ArchPen, look: ArchCityLook, long: f32, wide: f32, tall: f32, fans: int) -> ArchPart {
+  from := p[0].n; hl := long * 0.5; hw := wide * 0.5;
+  arch_material(p, look.metal, 0.3, 0.31, 0.32);
+  arch_slab(p, -hl, 0, -hw + 0.2, hl, 0.25, -hw + 0.4);
+  arch_slab(p, -hl, 0, hw - 0.4, hl, 0.25, hw - 0.2);
+  arch_material(p, look.metal, 0.78, 0.79, 0.78);
+  arch_slab(p, -hl, 0.25, -hw, hl, tall, hw);
+  arch_material(p, look.dark, 0, 0, 0);
+  for side: 0..<2 {
+    z: f32 = ifx side == 0 then hw + 0.02 else -hw - 0.02;
+    a := arch_v(-hl + 0.3, 0.5, z); b := arch_v(hl - 0.3, 0.5, z); c := arch_v(hl - 0.3, tall - 0.3, z); d := arch_v(-hl + 0.3, tall - 0.3, z);
+    if side == 0 { arch_face(p, a, b, c, d); } else { arch_face(p, b, a, d, c); }
+  }
+  for k: 0..<fans {
+    x := -hl + long * (cast(f32) k + 0.5) / cast(f32) fans;
+    arch_fan_up(p, look, x, tall, 0, arch_lowf(hw * 0.78, long / cast(f32) fans * 0.42), 0.22);
+  }
+  arch_solid_box(p, -hl, 0, -hw, hl, tall, hw);
+  return arch_part(p, from);
+}
+
+// A roof's antenna mast `height` tall: a tapered pole, three yards with antennas and a red
+// beacon (the look's lamp, tinted).
+arch_mast :: (p: [] ArchPen, look: ArchCityLook, height: f32) -> ArchPart {
+  from := p[0].n; h := height;
+  arch_material(p, look.metal, 0.82, 0.82, 0.8);
+  arch_limb(p, 0, 0, 0, 0, h, 0, h * 0.02 + 0.05, 0.04, 6);
+  for k: 0..<3 {
+    y := h * (0.5 + 0.17 * cast(f32) k); a := 1.1 * cast(f32) k; half := h * (0.11 - 0.02 * cast(f32) k);
+    arch_bar(p, arch_v(-cos(a) * half, y, -sin(a) * half), arch_v(cos(a) * half, y, sin(a) * half), 0.03);
+    arch_bar(p, arch_v(cos(a) * half, y - 0.6, sin(a) * half), arch_v(cos(a) * half, y + 0.9, sin(a) * half), 0.045);
+    arch_bar(p, arch_v(-cos(a) * half, y - 0.6, -sin(a) * half), arch_v(-cos(a) * half, y + 0.9, -sin(a) * half), 0.045);
+  }
+  arch_material(p, look.lamp, 1, 0.12, 0.08);
+  arch_box(p, 0, h + 0.12, 0, 0.1, 0.12, 0.1);
+  return arch_part(p, from);
+}
+
+// A small flat-roofed head house w wide (x), d deep (z) and `tall` high, its door in the wall
+// that faces +z: a stair's or a lift's top on a deck or a roof.
+arch_kiosk :: (p: [] ArchPen, look: ArchCityLook, w: f32, d: f32, tall: f32) -> ArchPart {
+  from := p[0].n; hw := w * 0.5; hd := d * 0.5;
+  arch_material(p, look.stone, 0, 0, 0);
+  arch_slab(p, -hw, 0, -hd, hw, tall, hd);
+  arch_material(p, look.metal, 0.3, 0.31, 0.33);
+  arch_slab(p, -hw - 0.35, tall, -hd - 0.35, hw + 0.35, tall + 0.22, hd + 0.9);
+  // the door: a dark glazed leaf in a metal frame, a louvre over it
+  arch_material(p, look.glass, 0, 0, 0);
+  arch_face(p, arch_v(-0.9, 0.05, hd + 0.02), arch_v(0.9, 0.05, hd + 0.02), arch_v(0.9, 2.3, hd + 0.02), arch_v(-0.9, 2.3, hd + 0.02));
+  arch_material(p, look.metal, 0.3, 0.31, 0.33);
+  arch_bar(p, arch_v(-0.95, 0, hd + 0.04), arch_v(-0.95, 2.35, hd + 0.04), 0.05);
+  arch_bar(p, arch_v(0.95, 0, hd + 0.04), arch_v(0.95, 2.35, hd + 0.04), 0.05);
+  arch_bar(p, arch_v(0, 0, hd + 0.04), arch_v(0, 2.35, hd + 0.04), 0.03);
+  arch_bar(p, arch_v(-0.95, 2.35, hd + 0.04), arch_v(0.95, 2.35, hd + 0.04), 0.05);
+  arch_material(p, look.dark, 0, 0, 0);
+  arch_face(p, arch_v(-0.9, 2.6, hd + 0.02), arch_v(0.9, 2.6, hd + 0.02), arch_v(0.9, tall - 0.3, hd + 0.02), arch_v(-0.9, tall - 0.3, hd + 0.02));
+  arch_solid_box(p, -hw, 0, -hd, hw, tall, hd);
+  return arch_part(p, from);
+}
+
+// A window's surround one metre wide and one high in a wall on z 0 that faces +z, its foot on
+// y 0: jambs, a head, a deeper sill, and a cross of glazing bars. Stretched over a painted pane.
+arch_window_frame :: (p: [] ArchPen, look: ArchCityLook) -> ArchPart {
+  from := p[0].n;
+  arch_material(p, look.metal, 0.86, 0.86, 0.84);
+  arch_bar2(p, arch_v(-0.5, 0, 0.05), arch_v(-0.5, 1, 0.05), 0.05, 0.03);
+  arch_bar2(p, arch_v(0.5, 0, 0.05), arch_v(0.5, 1, 0.05), 0.05, 0.03);
+  arch_bar2(p, arch_v(-0.53, 1, 0.05), arch_v(0.53, 1, 0.05), 0.05, 0.035);
+  arch_slab(p, -0.55, -0.04, 0, 0.55, 0.02, 0.14);
+  arch_material(p, look.metal, 0.2, 0.21, 0.22);
+  arch_bar2(p, arch_v(0, 0, 0.03), arch_v(0, 1, 0.03), 0.02, 0.012);
+  arch_bar2(p, arch_v(-0.5, 0.62, 0.03), arch_v(0.5, 0.62, 0.03), 0.02, 0.02);
+  return arch_part(p, from);
+}
+
+// A bollard `height` tall and `r` in radius: a round post with a flat cap and a pale band near
+// its top.
+arch_bollard :: (p: [] ArchPen, look: ArchCityLook, height: f32, r: f32) -> ArchPart {
+  from := p[0].n;
+  arch_material(p, look.metal, 0.2, 0.21, 0.22);
+  arch_wall_round(p, r, 0, r, height, 8);
+  arch_disc(p, r, height, 8);
+  arch_material(p, look.paint, 0.92, 0.92, 0.88);
+  arch_wall_round(p, r * 1.06, height * 0.7, r * 1.06, height * 0.86, 8);
+  arch_solid_round(p, 0, 0, r, 0, height);
+  return arch_part(p, from);
+}
+
+// ---- checks
+arch_city_look :: () -> ArchCityLook { return ArchCityLook.{metal = 1, dark = 2, glass = 3, lamp = 4, stone = 5, paint = 6}; }
+// Every triangle of a part has some area and a unit normal that agrees with its winding.
+arch_city_sound :: (mesh: [] f32, part: ArchPart) -> bool {
+  if part.count <= 0 || part.count % 3 != 0 { return false; }
+  for t: 0..<part.count / 3 {
+    o := (part.first + t * 3) * ARCH_VERTEX_FLOATS;
+    ax := mesh[o + 12] - mesh[o]; ay := mesh[o + 13] - mesh[o + 1]; az := mesh[o + 14] - mesh[o + 2];
+    bx := mesh[o + 24] - mesh[o]; by := mesh[o + 25] - mesh[o + 1]; bz := mesh[o + 26] - mesh[o + 2];
+    cx := ay * bz - az * by; cy := az * bx - ax * bz; cz := ax * by - ay * bx;
+    if cx * cx + cy * cy + cz * cz < 0.0000000001 { return false; }
+    for k: 0..<3 {
+      q := o + k * ARCH_VERTEX_FLOATS;
+      nn := mesh[q + 3] * mesh[q + 3] + mesh[q + 4] * mesh[q + 4] + mesh[q + 5] * mesh[q + 5];
+      if abs(nn - 1) > 0.01 { return false; }
+      if cx * mesh[q + 3] + cy * mesh[q + 4] + cz * mesh[q + 5] <= 0 { return false; }
+    }
+  }
+  return true;
+}
+// A part's box: min x, y, z then max.
+arch_city_box :: (mesh: [] f32, part: ArchPart) -> [6] f32 {
+  b := [6] f32.[1e9, 1e9, 1e9, -1e9, -1e9, -1e9];
+  for i: part.first..<part.first + part.count {
+    o := i * ARCH_VERTEX_FLOATS;
+    for a: 0..<3 { if mesh[o + a] < b[a] { b[a] = mesh[o + a]; } if mesh[o + a] > b[3 + a] { b[3 + a] = mesh[o + a]; } }
+  }
+  return b;
+}
+#test "a bar is four faces that face out, along any run" {
+  mesh: [200 * ARCH_VERTEX_FLOATS] f32; pen: [1] ArchPen; p := pen[..]; arch_pen(p, mesh[..]);
+  arch_bar(p, arch_v(0, 0, 0), arch_v(0, 3, 0), 0.05);
+  arch_bar(p, arch_v(1, 1, 1), arch_v(4, 2, -3), 0.05);
+  arch_bar2(p, arch_v(0, 1, 0), arch_v(5, 1, 0), 0.2, 0.1);
+  part := arch_part(p, 0);
+  #assert part.count == 72 && arch_city_sound(mesh[..], part);
+  // the last bar: 0.2 across (z), 0.1 up
+  b := arch_city_box(mesh[..], ArchPart.{first = 48, count = 24});
+  #assert abs(b[2] + 0.2) < 0.0001 && abs(b[5] - 0.2) < 0.0001 && abs(b[1] - 0.9) < 0.0001 && abs(b[4] - 1.1) < 0.0001;
+  // every face's normal is square to the bar's run and points away from its axis
+  for i: 48..<72 {
+    o := i * ARCH_VERTEX_FLOATS;
+    #assert abs(mesh[o + 3]) < 0.0001 && mesh[o + 4] * (mesh[o + 1] - 1) + mesh[o + 5] * mesh[o + 2] > 0;
+  }
+}
+#test "the street's parts stand on the ground at their sizes, every triangle facing out" {
+  mesh: [6000 * ARCH_VERTEX_FLOATS] f32; pen: [1] ArchPen; p := pen[..]; arch_pen(p, mesh[..]);
+  look := arch_city_look();
+  rail := arch_railing(p, look, 12, 1.1, 9, 3);
+  b := arch_city_box(mesh[..], rail);
+  #assert arch_city_sound(mesh[..], rail) && rail.count == (9 + 3) * 24;
+  #assert abs(b[0] + 6.022) < 0.001 && abs(b[3] - 6.022) < 0.001 && b[1] == 0 && abs(b[4] - 1.13) < 0.001;
+  lamp := arch_street_lamp(p, look, 8, 1.6);
+  b = arch_city_box(mesh[..], lamp);
+  #assert arch_city_sound(mesh[..], lamp) && b[1] == 0 && b[4] > 8.2 && b[4] < 8.4 && b[3] > 2.0 && b[3] < 2.3 && lamp.count < 200;
+  // its lens faces down and is the look's lamp
+  lens := 0;
+  for i: lamp.first..<lamp.first + lamp.count { o := i * ARCH_VERTEX_FLOATS; if mesh[o + 6] == 4 { lens += 1; #assert mesh[o + 4] < -0.99; } }
+  #assert lens == 6;
+  sign := arch_sign_post(p, look, 3, 0.9, 0.6, 0.1, 0.3, 0.7);
+  #assert arch_city_sound(mesh[..], sign) && arch_city_box(mesh[..], sign)[4] == 3;
+  door := arch_canopy(p, look, 6, 3.5, 3.6);
+  b = arch_city_box(mesh[..], door);
+  #assert arch_city_sound(mesh[..], door) && b[1] == 0 && b[2] == 0 && abs(b[5] - 3.5) < 0.0001 && b[4] > 4 && b[4] < 4.3;
+  dashes := arch_dashes(p, look, 80, 3, 6, 0.15);
+  b = arch_city_box(mesh[..], dashes);
+  #assert arch_city_sound(mesh[..], dashes) && dashes.count == 9 * 6 && abs(b[0] + 37.5) < 0.001 && abs(b[3] - 37.5) < 0.001 && b[4] < 0.02;
+  zebra := arch_zebra(p, look, 14, 3);
+  b = arch_city_box(mesh[..], zebra);
+  #assert arch_city_sound(mesh[..], zebra) && zebra.count == 14 * 6 && abs(b[2] + 6.75) < 0.001 && abs(b[5] - 6.75) < 0.001;
+  ring := arch_curb_ring(p, 0.02);
+  b = arch_city_box(mesh[..], ring);
+  #assert arch_city_sound(mesh[..], ring) && ring.count == 144 && b[0] == -0.5 && b[3] == 0.5 && b[1] == 0 && b[4] == 1 && b[2] == -0.5 && b[5] == 0.5;
+  fan := arch_roof_fan(p, look, 2.4, 1.2);
+  b = arch_city_box(mesh[..], fan);
+  #assert arch_city_sound(mesh[..], fan) && b[1] == 0 && abs(b[4] - 1.22) < 0.001 && b[3] > 2.4 && b[3] < 2.7;
+  unit := arch_roof_unit(p, look, 6, 2.4, 2.2, 3);
+  b = arch_city_box(mesh[..], unit);
+  #assert arch_city_sound(mesh[..], unit) && b[0] == -3 && b[3] == 3 && b[1] == 0 && b[4] > 2.4 && b[4] < 2.5 && unit.count < 600;
+  mast := arch_mast(p, look, 22);
+  b = arch_city_box(mesh[..], mast);
+  #assert arch_city_sound(mesh[..], mast) && b[1] == 0 && abs(b[4] - 22.24) < 0.001;
+  kiosk := arch_kiosk(p, look, 4, 3, 3.4);
+  #assert arch_city_sound(mesh[..], kiosk) && abs(arch_city_box(mesh[..], kiosk)[4] - 3.62) < 0.001;
+  frame := arch_window_frame(p, look);
+  b = arch_city_box(mesh[..], frame);
+  #assert arch_city_sound(mesh[..], frame) && b[2] >= 0 && b[5] < 0.15 && b[0] > -0.6 && b[3] < 0.6;
+  post := arch_bollard(p, look, 0.9, 0.12);
+  b = arch_city_box(mesh[..], post);
+  #assert arch_city_sound(mesh[..], post) && post.count == 8 * 6 + 8 * 3 + 8 * 6 && b[1] == 0 && abs(b[4] - 0.9) < 0.0001 && b[3] < 0.13;
+  #assert !p[0].full;
+}

@@ -738,6 +738,7 @@ fn coax_p_pr_shadow_stand(p_id: u32, p_instance: u32, p_b: i32) -> coax_t15 {
   {
     l_w = coax_p_pr_posed(l_w, l_b);
   }
+  l_w = coax_p_pr_kept(l_w, l_m, l_b);
   l_s = coax_t15();
   l_s.x = coax_p_pr_light_clip(l_w, l_b);
   return l_s;
@@ -771,6 +772,7 @@ fn coax_p_pr_stand(p_id: u32, p_instance: u32, p_b: i32) -> coax_t16 {
     l_w = coax_p_pr_posed(l_w, l_b);
     l_wn = coax_p_pr_posed_dir(l_wn, l_b);
   }
+  l_w = coax_p_pr_kept(l_w, l_m, l_b);
   l_v = coax_t16();
   l_v.y = l_w;
   l_v.z = coax_p_v3((l_p.x * l_s.x), (l_p.y * l_s.y), (l_p.z * l_s.z));
@@ -3015,6 +3017,26 @@ fn coax_p_pr_posed(p_p: vec3f, p_b: i32) -> vec3f {
   l_o = (l_b + 32i);
   return coax_p_v3(((((coax_at_u(i32(l_o)) * l_p.x) + (coax_at_u(i32((l_o + 1i))) * l_p.y)) + (coax_at_u(i32((l_o + 2i))) * l_p.z)) + coax_at_u(i32((l_o + 3i)))), ((((coax_at_u(i32((l_o + 4i))) * l_p.x) + (coax_at_u(i32((l_o + 5i))) * l_p.y)) + (coax_at_u(i32((l_o + 6i))) * l_p.z)) + coax_at_u(i32((l_o + 7i)))), ((((coax_at_u(i32((l_o + 8i))) * l_p.x) + (coax_at_u(i32((l_o + 9i))) * l_p.y)) + (coax_at_u(i32((l_o + 10i))) * l_p.z)) + coax_at_u(i32((l_o + 11i)))));
 }
+fn coax_p_pr_kept(p_w: vec3f, p_m: coax_t13, p_b: i32) -> vec3f {
+  let l_w: vec3f = p_w;
+  let l_m: coax_t13 = p_m;
+  let l_b: i32 = p_b;
+  var l_near: f32;
+  var l_place: vec3f;
+  var l_k: f32;
+  l_near = coax_p_pr_near_of(l_m);
+  if ((l_near <= 0.0f))
+  {
+    return l_w;
+  }
+  l_place = coax_p_v3(l_m.x.x, l_m.x.y, l_m.x.z);
+  if ((l_m.y.w < 0x1.000000p-1f))
+  {
+    l_place = coax_p_pr_posed(l_place, l_b);
+  }
+  l_k = coax_p_pr_near_keep(l_near, coax_p_length3(coax_p_sub3(l_place, coax_p_pr_at3((l_b + 0i)))), (coax_at_u(i32(((l_b + 24i) + 3i))) > 0x1.000000p-1f));
+  return coax_p_add3(l_place, coax_p_scale3(coax_p_sub3(l_w, l_place), l_k));
+}
 fn coax_p_pr_light_clip(p_w: vec3f, p_b: i32) -> vec4f {
   let l_w: vec3f = p_w;
   let l_b: i32 = p_b;
@@ -4399,6 +4421,26 @@ fn coax_p_wg_snorm8(p_b: u32) -> f32 {
     l_s = (l_s - 0x1.000000p8f);
   }
   return coax_p_fmax((l_s / 0x1.fc0000p6f), (-0x1.000000p0f));
+}
+fn coax_p_pr_near_of(p_m: coax_t13) -> f32 {
+  let l_m: coax_t13 = p_m;
+  if ((l_m.y.w < 0.0f))
+  {
+    return (0.0f - l_m.y.w);
+  }
+  return coax_p_fmax((l_m.y.w - 0x1.000000p0f), 0.0f);
+}
+fn coax_p_pr_near_keep(p_near: f32, p_dist: f32, p_reduced: bool) -> f32 {
+  let l_near: f32 = p_near;
+  let l_dist: f32 = p_dist;
+  let l_reduced: bool = p_reduced;
+  var l_n: f32;
+  if ((l_near <= 0.0f))
+  {
+    return 0x1.000000p0f;
+  }
+  l_n = select(l_near, (l_near * 0x1.333334p-1f), l_reduced);
+  return coax_p_saturate(((l_n - l_dist) / (l_n * 0x1.99999ap-3f)));
 }
 fn coax_p_wg_mul_f2f2(p_a: vec2f, p_b: vec2f) -> vec2f {
   let l_a: vec2f = p_a;

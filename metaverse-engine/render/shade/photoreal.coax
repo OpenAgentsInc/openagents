@@ -88,6 +88,31 @@ pr_sizes :: (m:PrObj)->V3 {
   if (m.d.x==0.0f32&&m.d.y==0.0f32&&m.d.z==0.0f32) {return v3(m.b.x,m.b.x,m.b.x);}
   return v3(m.d.x,m.d.y,m.d.z);
 }
+// How near the eye must be for a record to be drawn (PR_R_NEAR, in the float that says whether
+// it rides the platform): 0 when it is drawn at any distance.
+pr_near_of :: (m:PrObj)->f32 {
+  if (m.b.w<0.0f32) {return 0.0f32-m.b.w;}
+  return fmax(m.b.w-1.0f32,0.0f32);
+}
+// How much of its size a small thing keeps `dist` metres from the eye: all of it out to four
+// fifths of `near` (three fifths as far on the reduced tier, whose pixels are fewer), none
+// beyond it. With no `near` it is whole at any distance.
+pr_near_keep :: (near:f32,dist:f32,reduced:bool)->f32 {
+  if (near<=0.0f32) {return 1.0f32;}
+  n:f32=ifx reduced then near*0.6f32 else near;
+  return saturate((n-dist)/(n*0.2f32));
+}
+// A part's point in the world, drawn in toward its record's place by what the record keeps at
+// its distance from the eye. Beyond `near` a part is one point: no triangle of it reaches a
+// pixel or the shadow map.
+pr_kept :: (w:V3,m:PrObj,u:[]f32,b:int)->V3 {
+  near:f32=pr_near_of(m);
+  if (near<=0.0f32) {return w;}
+  place:V3=v3(m.a.x,m.a.y,m.a.z);
+  if (m.b.w<0.5f32) {place=pr_posed(place,u,b);}
+  k:f32=pr_near_keep(near,length3(sub3(place,pr_at3(u,b+PR_EYE))),u[b+PR_GROUND+3]>0.5f32);
+  return add3(place,scale3(sub3(w,place),k));
+}
 // A part's point where its record puts it, before the platform's pose: sized, moved by its
 // motion, turned about y and set down.
 pr_placed :: (p:V3,m:PrObj,time:f32)->V3 {
@@ -114,6 +139,7 @@ pr_stand :: (id:u32,instance:u32,u:[]f32,b:int,mesh:[]f32,objects:[]PrObj)->PrV 
   w:V3=pr_placed(p,m,u[b+PR_UP+3]);
   wn:V3=v3(n.x*c+n.z*sn,n.y,(0.0f32-n.x)*sn+n.z*c);
   if (m.b.w<0.5f32) {w=pr_posed(w,u,b); wn=pr_posed_dir(wn,u,b);}
+  w=pr_kept(w,m,u,b);
   v:PrV;
   v.world=w;
   v.local=v3(p.x*s.x,p.y*s.y,p.z*s.z);
@@ -134,6 +160,7 @@ pr_shadow_stand :: (id:u32,instance:u32,u:[]f32,b:int,mesh:[]f32,objects:[]PrObj
   o:int=cast(int)id*12;
   w:V3=pr_placed(v3(mesh[o],mesh[o+1],mesh[o+2]),m,u[b+PR_UP+3]);
   if (m.b.w<0.5f32) {w=pr_posed(w,u,b);}
+  w=pr_kept(w,m,u,b);
   s:PrShade;
   s.pos=pr_light_clip(w,u,b);
   return s;
@@ -538,6 +565,30 @@ pr_test_block :: (u:[]f32) {
   m.b.y=2.0f32;
   foot:V3=pr_placed(v3(0.0f32,0.0f32,0.0f32),m,3.0f32); top:V3=pr_placed(v3(0.0f32,1.0f32,0.0f32),m,3.0f32);
   #assert abs(foot.x-100.0f32)<0.0001f32 && abs(top.x-100.0f32)>0.01f32 && abs(top.y-35.0f32)<0.0001f32;
+}
+#test "a small thing is whole near the eye, shrinks over the last fifth of its distance and is a point beyond it" {
+  u:[PR_FLOATS]f32;
+  u[PR_POSE]=1.0f32; u[PR_POSE+5]=1.0f32; u[PR_POSE+10]=1.0f32; u[PR_POSE+3]=50.0f32;
+  u[PR_EYE]=150.0f32; u[PR_EYE+1]=5.0f32;
+  m:PrObj;
+  m.a=v4(0.0f32,5.0f32,0.0f32,0.0f32);
+  // the platform stands 50 m along x: the record's place is at 50 in the world, 100 m from the eye
+  top:V3=v3(50.0f32,7.0f32,0.0f32);
+  // no distance given: whole, wherever the eye is
+  a:V3=pr_kept(top,m,u[..],0);
+  #assert a.y==7.0f32 && pr_near_of(m)==0.0f32;
+  m.b.w=0.0f32-200.0f32; a=pr_kept(top,m,u[..],0); #assert a.y==7.0f32 && pr_near_of(m)==200.0f32;
+  m.b.w=0.0f32-125.0f32; a=pr_kept(top,m,u[..],0); #assert a.y==7.0f32;
+  m.b.w=0.0f32-110.0f32; a=pr_kept(top,m,u[..],0); #assert a.y>5.5f32 && a.y<6.5f32;
+  m.b.w=0.0f32-100.0f32; a=pr_kept(top,m,u[..],0); #assert a.y==5.0f32;
+  m.b.w=0.0f32-60.0f32; a=pr_kept(top,m,u[..],0); #assert a.y==5.0f32 && a.x==50.0f32;
+  // the reduced tier draws it three fifths as far
+  m.b.w=0.0f32-160.0f32; u[PR_GROUND+3]=1.0f32; a=pr_kept(top,m,u[..],0); #assert a.y==5.0f32;
+  u[PR_GROUND+3]=0.0f32; a=pr_kept(top,m,u[..],0); #assert a.y==7.0f32;
+  // a free record measures from its own place: 150 m from this eye
+  m.b.w=1.0f32; a=pr_kept(top,m,u[..],0); #assert a.y==7.0f32 && pr_near_of(m)==0.0f32;
+  m.b.w=161.0f32; a=pr_kept(v3(0.0f32,7.0f32,0.0f32),m,u[..],0); #assert a.y>5.0f32 && a.y<7.0f32 && pr_near_of(m)==160.0f32;
+  #assert pr_near_keep(0.0f32,5000.0f32,false)==1.0f32 && pr_near_keep(100.0f32,80.0f32,false)==1.0f32 && pr_near_keep(100.0f32,90.0f32,false)==0.5f32;
 }
 #test "the display's curve and its inverse; the film keeps middle grey and never passes white" {
   for i:0..<11 {x:f32=cast(f32)i*0.1f32; #assert abs(pr_encode1(pr_decode1(x))-x)<0.0001f32;}
