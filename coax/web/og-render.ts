@@ -57,6 +57,7 @@ const STILLS: Record<string, { path?: string; query?: string; skip?: number; siz
   "sandbox": { size: "2520x957", crop: [220, 0, 2000, 760] },
   "archery-range": { path: "/worlds/archery-range", query: "", crop: [300, 80, 1000, 380] },
   "everglade-experimental": { path: "/worlds/everglade-experimental", query: "", crop: [480, 80, 850, 323] },
+  "dragon-lab": { size: "2520x957", crop: [629, 310, 1263, 480] },
   "painted-village": { crop: [100, 50, 1380, 525] },
   "nostr-lab": { crop: [380, 50, 1300, 494] },
   "coax-lab": { query: "?golden&at=mandelbrot", crop: [314, 48, 830, 315] },

@@ -8,11 +8,15 @@
 //   Space or the jump button: take off, then each press or hold beats the wings up
 //   Shift in the air: dive
 //   Fire Breath: hold its key (or finger) to aim, let go to breathe
+// Dragon Lab (openagents.com/dragon-lab, unlisted) is the same field with one zone setting, `kept`:
+// you arrive as the dragon and stay one (xd_keep). Its bar holds the dragon's five actions only.
 //   coax/bin/coax test --library apps/openagents-web/old/experimental/fivelab.coax --only "druid"
+//   coax/bin/coax test --library apps/openagents-web/old/experimental/fivelab.coax --only "dragon lab"
 #load "shapeshift.coax";
 
 XD_LEVEL :: 17;
 XD_PATHS :: [4] string.["/worlds/druid", "/worlds/druid/", "/druid", "/druid/"];
+XD_KEPT_PATHS :: [4] string.["/worlds/dragon-lab", "/worlds/dragon-lab/", "/dragon-lab", "/dragon-lab/"];   // Dragon Lab
 XD_REND_M :: 4.6;        // m from your middle: Rend's 10 feet of reach from a Huge body's edge
 XD_FLAP_S :: 0.3;        // a phone's jump tap beats the wings this long
 XD_AIM_AHEAD :: 10.0;    // m: the breath's middle meets the ground this far ahead when you breathe from the air
@@ -20,6 +24,8 @@ XD_PAD_DEAD :: 0.2;
 
 XcDruid :: struct {
   on: bool;
+  kept: bool;                          // Dragon Lab: you arrive as the dragon and stay one (xd_keep)
+  arrived: bool;                       // the kept dragon has arrived: the picture started as the dragon, once
   sh: [1] Shapeshift;
   seen_at: f32 = -100;                 // the last frame's clock
   cam_k: f32 = 1;                      // the camera's distance factor applied last
@@ -34,7 +40,9 @@ XcDruid :: struct {
   fly_id: int = -100;
 }
 
-xd_page :: (facts: string) -> bool { for p: XD_PATHS { if cc.page_path(facts, p) { return true; } } return false; }
+// Dragon Lab's page, and either page of the field.
+xd_kept_page :: (facts: string) -> bool { for p: XD_KEPT_PATHS { if cc.page_path(facts, p) { return true; } } return false; }
+xd_page :: (facts: string) -> bool { for p: XD_PATHS { if cc.page_path(facts, p) { return true; } } return xd_kept_page(facts); }
 
 // book:begin druid-form
 // The engine's body, as the shapeshift layer's kinds.
@@ -45,6 +53,7 @@ xd_dragon :: (x: [] XcCombat) -> bool { return x[0].dr.on && x[0].dr.sh[0].form 
 xd_flying_body :: (s: [] EgZone) -> bool { x := s[0].xc[..]; return xd_dragon(x) && !sh_changing(x[0].dr.sh[0], s[0].creator[0].clock); }
 
 // The field's bar: the druid's two changes, then the dragon's five actions (greyed until it is one).
+// Dragon Lab's bar is the five actions alone: its dragon never changes back, so it has no change to press.
 xd_bar :: (x: [] XcCombat) {
   b := x[0].b[..];
   wild := fb_feature(FB_WILD, "Wild Shape", "wild-shape"); wild.tg = FB_SELF; wild.opt = -1;
@@ -56,8 +65,9 @@ xd_bar :: (x: [] XcCombat) {
   buffet := fb_feature(FB_BUFFET, "Wing Buffet", "gust-of-wind"); buffet.tg = FB_SELF;
   roar := fb_feature(FB_ROAR, "Frightful Roar", "thunderwave"); roar.tg = FB_SELF;
   bar := [7] FbAb.[wild, shape, rend, breath, tail, buffet, roar];
-  for i: 0..<bar.count { x[0].bar[i] = bar[i]; }
-  x[0].bar_n = bar.count;
+  skip := ifx x[0].dr.kept then 2 else 0;
+  for i: skip..<bar.count { x[0].bar[i - skip] = bar[i]; }
+  x[0].bar_n = bar.count - skip;
   _ := rs_shapechange_ready(b[0].c[0..<1]);   // a jade circlet, worn: the spell's material
   xd_labels(x);
 }
@@ -76,6 +86,32 @@ xd_enter :: (s: [] EgZone) {
   if x[0].started { xc_set_class(x, FB_CL_DRUID); }
 }
 
+// The page by its address: Dragon Lab keeps the dragon, the druid's field does not.
+xd_enter_page :: (s: [] EgZone, facts: string) {
+  s[0].xc[0].dr.kept = xd_kept_page(facts);
+  xd_enter(s);
+}
+// Dragon Lab's setting: whenever you stand in your own shape, you cast Shapechange again, in a setup
+// turn of your own so your next action stays free. The rules decide as they do for the bar's press;
+// if they refuse (you are down), the next frame asks again. The first cast is the arrival: the
+// picture starts as the dragon, with no change to watch.
+// book:begin dragon-lab-keep
+xd_keep :: (s: [] EgZone) {
+  x := s[0].xc[..]; b := x[0].b[..]; cr := s[0].creator[..];
+  if !x[0].dr.kept || b[0].c[0].shape_form != 0 || !rs_can_act(b[0].c[0]) { return; }
+  setup: [1] FbSeat; setup[0].me = 0;
+  fb_seat_in(b, setup[..]);
+  ok := rs_shapechange(b, 0, MON_ADULT_RED_DRAGON);
+  fb_seat_out(b, setup[..]);
+  if !ok || x[0].dr.arrived { return; }
+  x[0].dr.arrived = true;
+  sh := x[0].dr.sh[..];
+  sh_arrive(sh, xd_form(b[0].c[0]), cr[0].clock);
+  sh[0].wing.x = cr[0].player_x; sh[0].wing.z = cr[0].player_z; sh[0].wing.y = cr[0].player_y; sh[0].wing.yaw = cr[0].player_face;
+  sh[0].wing.phase = WING_GROUND;
+}
+// book:end dragon-lab-keep
+
 // Each frame (xc_frame): the body follows the engine's, its change's moments play, the dragon flies,
 // burning monsters show their flames, the camera eases out round the dragon.
 xd_frame :: (s: [] EgZone, dt: f32) {
@@ -91,6 +127,7 @@ xd_frame :: (s: [] EgZone, dt: f32) {
     if b[0].c[0].uses[RS_USE_WILD] <= 0 { b[0].c[0].uses[RS_USE_WILD] = 1; }
     _ := rs_shapechange_ready(b[0].c[0..<1]);
   }
+  xd_keep(s);
   want := xd_form(b[0].c[0]);
   if want != sh[0].form {
     from := sh[0].form;
@@ -411,4 +448,45 @@ xd_run :: (s: [] EgZone, seconds: f32) {
   xd_run(s[..], 2);
   #assert x[0].dr.sh[0].wing.phase == WING_AIR && s[0].creator[0].player_y > 3;
   #assert xd_pointer(s[..], f[0], f[1], 2, 8) && xd_pointer(s[..], 150, 850, 2, 7) && x[0].dr.pad_id == -100;
+}
+// Dragon Lab as its page starts it: the kept field, then the first frame.
+xd_kept_lab :: (s: [] EgZone) {
+  s[0].creator[0].experimental = true; s[0].creator[0].clock = 1;
+  xd_enter_page(s, "url=https://openagents.com/dragon-lab");
+  xc_start(s[0].xc[..], FB_CL_DRUID);
+  xd_frame(s, 1.0 / 30.0);
+}
+#test "dragon lab: its addresses are the kept field's, and the druid's are not" {
+  #assert xd_kept_page("url=https://openagents.com/dragon-lab") && xd_kept_page("url=https://openagents.com/worlds/dragon-lab/") && xd_page("url=https://openagents.com/dragon-lab");
+  #assert xd_page("url=https://openagents.com/druid") && !xd_kept_page("url=https://openagents.com/druid") && !xd_kept_page("url=https://openagents.com/worlds/everglade-experimental");
+}
+#test "dragon lab: on the first frame you are the dragon, by the rules, with its change already done and its five actions on the bar" {
+  s: [1] EgZone; xd_kept_lab(s[..]);
+  x := s[0].xc[..]; c := x[0].b[0].c[0]; now := s[0].creator[0].clock;
+  // the engine's creature cast Shapechange: its 9th-level slot, Concentration and the dragon's block
+  #assert c.shape_form == MON_ADULT_RED_DRAGON && c.conc == SP_SHAPECHANGE && c.slots[9] == 0 && c.temp == rs_monster_block(MON_ADULT_RED_DRAGON).hp;
+  // the picture is the dragon, whole, with no change under way and the camera already out round it
+  #assert x[0].dr.sh[0].form == SH_DRAGON && !sh_changing(x[0].dr.sh[0], now) && xd_flying_body(s[..]);
+  #assert sh_body(x[0].dr.sh[0], now).kind == SH_DRAGON && sh_body(x[0].dr.sh[0], now).show == 1 && sh_body(x[0].dr.sh[0], now).scale == 1;
+  #assert s[0].creator[0].body_hidden && abs(s[0].creator[0].cam_k - f32(SH_CAM_DRAGON)) < 0.01;
+  // the bar: the dragon's actions, and neither of the druid's changes
+  names := [5] string.["Rend", "Fire Breath", "Tail Sweep", "Wing Buffet", "Frightful Roar"];
+  #assert x[0].bar_n == 5 && xd_slot(x, FB_SHAPECHANGE) < 0 && xd_slot(x, FB_WILD) < 0;
+  for i: 0..<5 { #assert x[0].bar[i].name == names[i]; }
+  // the setup turn took the cast's Action: yours is free, and Fire Breath is ready
+  #assert !x[0].seat[0].turn.action && rs_breath_ready(c);
+}
+#test "dragon lab: Jump takes off from the first frame" {
+  s: [1] EgZone; xd_kept_lab(s[..]); x := s[0].xc[..];
+  #assert x[0].dr.sh[0].wing.phase == WING_GROUND && s[0].creator[0].player_y == 0;
+  s[0].held = HOLD_JUMP; xd_run(s[..], 2);
+  #assert x[0].dr.sh[0].wing.phase == WING_AIR && s[0].creator[0].player_y > 3;
+}
+#test "dragon lab: when Concentration ends, the lab casts again before the next picture, so the dragon never leaves" {
+  s: [1] EgZone; xd_kept_lab(s[..]); x := s[0].xc[..];
+  rs_end_concentration(x[0].b[..], 0, "");
+  #assert x[0].b[0].c[0].shape_form == 0;
+  xd_frame(s[..], 1.0 / 30.0);
+  now := s[0].creator[0].clock;
+  #assert x[0].b[0].c[0].shape_form == MON_ADULT_RED_DRAGON && x[0].dr.sh[0].form == SH_DRAGON && !sh_changing(x[0].dr.sh[0], now) && s[0].creator[0].body_hidden;
 }

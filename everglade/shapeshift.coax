@@ -67,6 +67,14 @@ sh_begin :: (s: [] Shapeshift, to: int, now: f32) -> bool {
   return true;
 }
 
+// Arrive already in body `to`: no change plays, and none of its moments. For a zone whose player
+// starts changed (Dragon Lab).
+sh_arrive :: (s: [] Shapeshift, to: int, now: f32) {
+  if to < SH_DRUID || to > SH_DRAGON { return; }
+  s[0].from = to; s[0].form = to; s[0].at = now - 1000;
+  s[0].aiming = false; s[0].breath_at = -100; s[0].act = SH_ACT_NONE;
+}
+
 // What to draw now: the body, its scale (1 its own), its extra spin about its feet and how much of
 // it shows (1 whole, 0 dissolved).
 ShBody :: struct { kind: int; scale: f32 = 1; spin: f32; show: f32 = 1; }
@@ -220,6 +228,13 @@ sh_battle :: (b: [] RsBattle) {
   #assert sh_moments(s[0], 21.5, 21.7) == 0;   // no roar for the druid
   #assert abs(sh_cam_scale(s[0], 22) - 1) < 0.001;
   #assert b[0].c[0].shape_form == 0 && b[0].c[0].ac == own.ac && b[0].c[0].temp == 0 && b[0].c[0].fly == 0;
+}
+#test "arriving in a body plays no change: it is whole at once, with none of the change's moments" {
+  s: [1] Shapeshift;
+  sh_arrive(s[..], SH_DRAGON, 1);
+  #assert s[0].form == SH_DRAGON && !sh_changing(s[0], 1) && sh_moments(s[0], -100, 1) == 0 && sh_moments(s[0], 1, 5) == 0;
+  bd := sh_body(s[0], 1);
+  #assert bd.kind == SH_DRAGON && bd.scale == 1 && bd.show == 1 && bd.spin == 0 && abs(sh_cam_scale(s[0], 1) - f32(SH_CAM_DRAGON)) < 0.001;
 }
 #test "Wild Shape's wolf is a body too, with its own camera" {
   b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); sh_battle(b[..]);

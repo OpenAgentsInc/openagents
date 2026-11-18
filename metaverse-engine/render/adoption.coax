@@ -72,6 +72,7 @@ render_memory_pages :: (app:string)->int #effects(all) {return ifx app=="animati
   #assert !render_adoption("everglade-experimental", "everglade").tracked_legacy;
   #assert !render_adoption("everglade-experiment", "fivelab").tracked_legacy;
   #assert render_adoption("druid", "fivelab").tracked_legacy && !render_adoption("druid", "everglade").tracked_legacy;
+  #assert render_adoption("dragon-lab", "fivelab").tracked_legacy && !render_adoption("dragon-lab", "everglade2").tracked_legacy;
   #assert render_adoption("archery-range", "everglade2").tracked_legacy && !render_adoption("archery-range", "fivelab").tracked_legacy && !render_adoption("archery-range", "archery-range").tracked_legacy;
 }
 #test "Everglade on the 5E module and Everglade Classic are tracked legacy consumers" {
@@ -181,6 +182,7 @@ render_adoption :: (slug: string, app: string) -> RenderAdoption #export_c #effe
   if slug == "5e-mmo" && app == "fivemmo" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "everglade-experimental" && app == "fivelab" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "druid" && app == "fivelab" { return RenderAdoption.{tracked_legacy = true}; }   // the druid's grove: Experimental's world and passes
+  if slug == "dragon-lab" && app == "fivelab" { return RenderAdoption.{tracked_legacy = true}; }   // Dragon Lab: the druid's field, arriving as the dragon (#13668)
   if slug == "archery-range" && app == "everglade2" { return RenderAdoption.{tracked_legacy = true}; }   // the Archery Range: a place in Everglade II (#13507; was a module of its own)
   if slug == "everglade" && app == "everglade5e" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "everglade-classic" && app == "everglade" { return RenderAdoption.{tracked_legacy = true}; }

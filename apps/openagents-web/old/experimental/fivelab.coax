@@ -3365,7 +3365,7 @@ lab_pointer :: (s: [] Lab, x: f32, y: f32, phase: int, kind: int, id: int) -> bo
 }
 lab_message :: (s: [] Lab, kind: int, t: string) #export_c #effects(all) {
   if zone_message(s[0].w[..], kind, t) { return; }   // the driver, the bar's order, your character and its kept appearance
-  if kind==HOST_PAGE && (cc.experimental_page(t) || xd_page(t)) {if xd_page(t) {xd_enter(s[0].w[..]);}zone_enter(s[0].w[..],t);s[0].started=true;s[0].view=VIEW_GLADE;lab_stage(s,t);if s[0].w[0].creator[0].dev_animations {lab_dev_cell(s,t);}return;}
+  if kind==HOST_PAGE && (cc.experimental_page(t) || xd_page(t)) {if xd_page(t) {xd_enter_page(s[0].w[..],t);}zone_enter(s[0].w[..],t);s[0].started=true;s[0].view=VIEW_GLADE;lab_stage(s,t);if s[0].w[0].creator[0].dev_animations {lab_dev_cell(s,t);}return;}
   if kind==HOST_PAGE && cc.page(t) {s[0].w[0].creator[0].on=true;s[0].w[0].creator[0].scene_only=cc.scene_capture(t);s[0].started=true;s[0].view=VIEW_GLADE;cc.ensure(s[0].w[0].creator[..]);return;}
   lab_start(s);
   if kind == HOST_PAGE { changed := url_sizes(s, t); }

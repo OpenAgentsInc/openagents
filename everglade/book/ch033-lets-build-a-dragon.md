@@ -11,7 +11,8 @@
 > The body's change, flight and breath are
 > [`everglade/shapeshift.coax`](../../everglade/shapeshift.coax), and the
 > field at `/druid` is
-> [`everglade/zone-shapechange.coax`](../zone-shapechange.coax).
+> [`everglade/zone-shapechange.coax`](../zone-shapechange.coax). Dragon Lab at
+> `/dragon-lab` is the same field, where you arrive as the dragon.
 > Riding the dragon as a mount is a design draft: see
 > [`everglade/docs/mounts-spec.md`](../docs/mounts-spec.md).
 
@@ -235,6 +236,56 @@ xd_form :: (c: RsCreature) -> int { return ifx c.shape_form == MON_ADULT_RED_DRA
 So the picture can't disagree with the rules. If a monster breaks your
 Concentration, the dragon becomes a druid again on the next frame.
 
+## Dragon Lab: arrive as the dragon
+
+Dragon Lab is at `/dragon-lab`. Open it to walk, fly and fight as the dragon
+without casting anything first. It is the druid's field with one zone setting,
+`kept`, which the page's address turns on. Nothing else is copied: the meadow,
+the monsters, the flight, the breath and the rules are the same code.
+
+Three things differ:
+
+- **You arrive as the dragon.** On the first frame, the zone casts Shapechange
+  for you through the same rule the bar's button calls, `rs_shapechange`. The
+  cast spends your 9th-level slot and takes Concentration, as it does at
+  `/druid`. The zone casts it in a setup turn, so your own Action is still free.
+- **The change doesn't play.** `sh_arrive` in `everglade/shapeshift.coax` puts
+  the picture in the dragon's body with the change already finished: no rune
+  circle, no flash and no roar. The dragon is standing there when the page
+  opens.
+- **You stay a dragon.** The bar holds only Rend, Fire Breath, Tail Sweep, Wing
+  Buffet and Frightful Roar. It has no Wild Shape and no Return to Form. If
+  Concentration ends, because a monster breaks it or the spell's hour runs out,
+  the zone gives the slot back and casts again before the next picture. You
+  never see the druid.
+
+The zone still holds no rules. It decides when to ask for the spell; the engine
+decides whether the cast succeeds. If the engine refuses, for example while you
+are at 0 Hit Points, the zone asks again on the next frame.
+
+The setting's whole procedure:
+
+<!-- source: everglade/zone-shapechange.coax dragon-lab-keep -->
+```jai
+xd_keep :: (s: [] EgZone) {
+  x := s[0].xc[..]; b := x[0].b[..]; cr := s[0].creator[..];
+  if !x[0].dr.kept || b[0].c[0].shape_form != 0 || !rs_can_act(b[0].c[0]) { return; }
+  setup: [1] FbSeat; setup[0].me = 0;
+  fb_seat_in(b, setup[..]);
+  ok := rs_shapechange(b, 0, MON_ADULT_RED_DRAGON);
+  fb_seat_out(b, setup[..]);
+  if !ok || x[0].dr.arrived { return; }
+  x[0].dr.arrived = true;
+  sh := x[0].dr.sh[..];
+  sh_arrive(sh, xd_form(b[0].c[0]), cr[0].clock);
+  sh[0].wing.x = cr[0].player_x; sh[0].wing.z = cr[0].player_z; sh[0].wing.y = cr[0].player_y; sh[0].wing.yaw = cr[0].player_face;
+  sh[0].wing.phase = WING_GROUND;
+}
+```
+
+The headless captures are in
+[`docs/verification/dragon-lab-2026-11-17/`](../../docs/verification/dragon-lab-2026-11-17/).
+
 ## Riding it as a mount
 
 > **Design draft.** The mounts are being built now.
@@ -273,6 +324,14 @@ has the SRD's mounted-combat rules that the mounts follow.
   Fire Breath held and let go burns the monsters in its cone and none behind"`
   and `#test "druid: the dragon takes off with Jump, flies faster than it walks,
   and glides down to land"`.
+- `apps/openagents-web/old/experimental/fivelab.coax` runs `everglade/zone-shapechange.coax`'s `#test "dragon
+  lab: on the first frame you are the dragon, by the rules, with its change
+  already done and its five actions on the bar"`, `#test "dragon lab: Jump
+  takes off from the first frame"` and `#test "dragon lab: when Concentration
+  ends, the lab casts again before the next picture, so the dragon never
+  leaves"`.
+- `everglade/shapeshift.coax`, `#test "arriving in a body plays no change: it
+  is whole at once, with none of the change's moments"`.
 - `metaverse-engine/fx/puff.coax` runs `dragon.coax`'s `#test "dragon: the breath's fire
   stays inside its cone, half as wide as it is far"`.
 
@@ -281,6 +340,7 @@ coax/bin/coax test --library metaverse-engine/action/flight.coax
 coax/bin/coax test --library rules/srd/battle.coax --only "Shapechange"
 coax/bin/coax test --library everglade/shapeshift.coax
 coax/bin/coax test --library apps/openagents-web/old/experimental/fivelab.coax --only "druid"
+coax/bin/coax test --library apps/openagents-web/old/experimental/fivelab.coax --only "dragon lab"
 ```
 
 The headless captures are in
