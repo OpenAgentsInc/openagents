@@ -130,6 +130,8 @@ gcloud builds submit "$stage" --project "$project" --region "$region" --tag "$ta
 image="$(python3 "$here/deploy_verify.py" build-image "$work/build.json" "$tag")"
 admins="$(grep -v '^#' "$here/admins.conf" | grep -E '^[0-9a-f]{64}$' | paste -sd, - || true)"
 runners="$(grep -v '^#' "$here/runners.conf" 2>/dev/null | grep -E '^[0-9a-f]{64}$' | paste -sd, - || true)"
+# Keys allowed into /api/v1/inference besides the admins' (inference.conf), as OA_INFERENCE_PUBKEYS.
+inference="$(grep -v '^#' "$here/inference.conf" 2>/dev/null | grep -E '^[0-9a-f]{64}$' | paste -sd, - || true)"
 # Our team (team.conf): kind:value,... ; its visits are our own testing, not usage.
 team="$(grep -v '^#' "$here/team.conf" 2>/dev/null | awk 'NF == 2 && ($1 == "player" || $1 == "email_sha256" || $1 == "pubkey") { print $1 ":" $2 }' | paste -sd, - || true)"
 
@@ -163,6 +165,7 @@ deploy() {  # service runtime-secret host agent-projects-secret runner-service d
   # The load checks' slow query (api.c fault_slow, #13300): staging answers it, signed as a room's
   # `fault` write; production never has the route.
   [[ "$6" != staging ]] || env+="~OA_API_FAULTS=1"
+  [[ -z "$inference" ]] || env+="~OA_INFERENCE_PUBKEYS=$inference"
   if gcloud secrets describe "$4" --project "$project" >/dev/null 2>&1; then secrets+=",OA_AGENT_PROJECTS=$4:latest"; fi
   # Publishing a project from a drop (drops.c, rc-publish): the key that seals project keys, the relay,
   # the site's bucket; staging's projects go on the relay as private, so no list shows them.
