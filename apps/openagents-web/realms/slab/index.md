@@ -11,26 +11,36 @@ SLAB has published no design. The dimensions here are this world's own planning 
   - the OTEC power plant's turbine halls, heat exchangers, moonpools and ammonia tanks;
   - industry, with process units, a tank farm, a desalination plant and six 60 m stacks;
   - four data halls with their cooling yard;
-  - twelve towers of 80 to 180 m;
+  - twenty towers of 80 to 180 m;
   - a mining yard of fifty containers;
   - a medical campus;
-  - gardens around a domed civic hall.
-- The sea is the water lab's: waves from a wind-sea spectrum, made fresh every frame, with whitecaps and white water along the hull.
-- Drag, or use the arrow keys, to turn the view.
-- The mouse wheel, or R and F, brings it closer or takes it back.
-- W, A, S and D move the point it looks at.
+  - a canal, colonnades and gardens around a domed civic hall.
+- The hull floats. It rides on the waves under it, held by sixteen mooring lines, pushed by the wind and a current. The motion panel shows its heave, roll, pitch and offset.
+- The power runs. OTEC, or nuclear modules, or both, feed the data halls, desalination, industry and the miners, and the dispatcher sheds load when the power falls short.
+- Click anything for a card: what it is, how it is built, and its live numbers. Click the sea for the sea state.
+- Five sites (Guam, Puerto Rico, Kona, the equator, California) and six sea states, from calm to a hurricane. The sun follows the site, the month and the hour.
+- Three ways to move:
+  - **Orbit**: drag or the arrow keys turn the view, the wheel or R and F zoom, W, A, S and D move.
+  - **Fly** (F): W, A, S and D along the view, Space or E to rise, Shift or Q to drop, the arrow keys to turn, the wheel to set the speed.
+  - **Walk** (G): GameBuilder's character controller on the deck, which moves with the hull. Space jumps; Space twice flies.
+- Keys 1 to 9 travel to stations around the platform. N and M change the site and the sea, [ and ] the hour, P the power, I the stats, H hides the panels, ? shows the help.
 - Address options:
-  - `?wind=` sets the wind in metres a second (10 by default).
+  - `?site=` and `?sea=` pick a site and a sea state; `?wind=` sets the wind in metres a second.
+  - `?hour=`, `?month=` and `?rate=` set the clock and how fast it runs.
+  - `?power=otec`, `nuclear` or `hybrid`; `?otec=` scales the OTEC plant; `?modules=` and `?swac=1`.
+  - `?mode=fly` or `walk` starts moving.
   - `?t=` holds one moment.
   - `?yaw=`, `?pitch=`, `?dist=`, `?x=` and `?z=` place the view.
+  - `?hud=0` hides the panels.
   - `?tier=phone` draws the phone's waves on any screen.
 - Without WebGPU (a current Chrome, Edge or Safari), the page shows only its name and a link here.
 
-This is the first phase of the world spec. The hull doesn't move with the waves yet. The power plant, data halls and miners don't run yet. The dome layouts aren't built.
+The physics and power are engineering models, not measurements. No OTEC plant has delivered more than about 0.1 MW net. The dome layouts, the section and underwater views and the flow overlay aren't built yet.
 
 ## How it is made
 
 - `metaverse/slab-plan.coax` is the platform as data: the hull's pieces and the masses on its deck, with its checks.
+- `metaverse/slab-sim.coax` is the physics and the power: the sites, sea states, hull motion, moorings and dispatch, with the spec's tests.
 - `apps/openagents-web/slab.coax` is the world.
 - `slab-face.c` binds it for the browser, and `slab.wgsl` (from `gpu/slab.coax`) draws it.
 - `docs/research/ocean/` in the OpenAgents repository holds the research:

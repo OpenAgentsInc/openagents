@@ -46,6 +46,10 @@ EXPORT("coaxial_pointer") uint32_t coaxial_pointer(uint32_t state, float x, floa
   return slab_pointer(at(state), x, y, phase, kind, id) ? 1u : 0u;
 }
 EXPORT("coaxial_wheel") void coaxial_wheel(uint32_t state, float dy) { slab_wheel(at(state), dy); }
+// The pointer's cursor over the HUD's buttons and what can be picked (0 default, 1 link).
+EXPORT("coaxial_cursor") uint32_t coaxial_cursor(uint32_t state) { int64_t c = slab_cursor(at(state)); return c < 0 ? 0u : (uint32_t)c; }
+// The HUD's panels and strokes blend over the frame by their coverage.
+EXPORT("coaxial_fx_alpha_v1") uint32_t coaxial_fx_alpha_v1(void) { return 1; }
 
 EXPORT("coaxial_inbox") uint32_t coaxial_inbox(uint32_t state) { (void)state; return (uint32_t)(uintptr_t)inbox; }
 EXPORT("coaxial_inbox_cap") uint32_t coaxial_inbox_cap(void) { return sizeof inbox; }

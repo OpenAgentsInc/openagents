@@ -1,0 +1,453 @@
+// SLAB's simulation (docs/research/ocean/slab-world-spec.md, sections 3.1, 4, 5 and 6): the
+// sites and sea states, the sun over a site, the hull's motion on the waves and its moorings, and
+// the power systems on board (OTEC, the nuclear option, the data halls, desalination, industry,
+// the hotel load and the bitcoin miners) with the dispatcher that sheds them. No platform effects:
+// the SLAB Simulation realm (apps/openagents-web/slab.coax) steps it and draws what it says.
+//
+// The hull is the `prime` monolith, a rigid body in heave, roll and pitch, plus surge and sway on
+// its moorings. Buoyancy comes from columns: the sea's height at each column's centre, a 25 m
+// grid under the hull (960 columns), summed into a force and two moments (spec 4.1, linearised
+// about the design draft), with added mass and radiation damping at zeta = 0.08 (spec 4.2). Wind,
+// current and sixteen taut mooring lines hold it in the horizontal (spec 4.3, 4.4).
+// Units: metres, seconds, kilograms, newtons; MW and degrees C in the systems.
+//   coax/bin/coax test metaverse/slab-sim.coax
+
+#load "../metaverse-engine/core/angle.coax";
+
+SIM_PI :: 3.14159265358979;
+sim_max :: (a: f64, b: f64) -> f64 { return ifx a > b then a else b; }
+sim_min :: (a: f64, b: f64) -> f64 { return ifx a < b then a else b; }
+sim_atan2 :: (y: f64, x: f64) -> f64 { return f64(angle_atan2(f32(y), f32(x))); }
+sim_clamp :: (a: f64, lo: f64, hi: f64) -> f64 { return sim_min(hi, sim_max(lo, a)); }
+SIM_RHO :: 1025.0;        // sea water, kg/m^3
+SIM_G :: 9.81;
+SIM_RHO_AIR :: 1.225;
+
+// ---------------------------------------------------------------- sites and sea states (spec 5)
+SITE_GUAM :: 0; SITE_PUERTO_RICO :: 1; SITE_KONA :: 2; SITE_EQUATOR :: 3; SITE_CALIFORNIA :: 4;
+SITES :: 5;
+SimSite :: struct {
+  key: string; name: string;
+  latitude: f64;            // degrees north
+  surface_min: f64; surface_max: f64;   // surface water over the year, degrees C
+  sourced: bool;            // the range is sourced (else a planning value)
+  sea: int;                 // the default sea state
+  storms: string;
+}
+sim_site :: (i: int) -> SimSite {
+  if i == SITE_PUERTO_RICO { return SimSite.{key = "puerto-rico", name = "PUERTO RICO, OFF YABUCOA", latitude = 18.0, surface_min = 26.5, surface_max = 29.0, sea = SEA_TRADE, storms = "HURRICANES, EARTHQUAKES"}; }
+  if i == SITE_KONA { return SimSite.{key = "kona", name = "KONA, NELHA", latitude = 19.7, surface_min = 24.0, surface_max = 27.0, sea = SEA_TRADE, storms = "RARE HURRICANES"}; }
+  if i == SITE_EQUATOR { return SimSite.{key = "equator", name = "EQUATOR, NEAR BAKER ISLAND", latitude = 0.2, surface_min = 28.0, surface_max = 29.5, sea = SEA_TRADE, storms = "NONE: HURRICANE-FREE BELT"}; }
+  if i == SITE_CALIFORNIA { return SimSite.{key = "california", name = "CALIFORNIA, SAN CLEMENTE BASIN", latitude = 32.8, surface_min = 15.2, surface_max = 20.9, sourced = true, sea = SEA_WINTER, storms = "WINTER STORMS"}; }
+  return SimSite.{key = "guam", name = "GUAM, WEST COAST", latitude = 13.4, surface_min = 27.7, surface_max = 29.2, sourced = true, sea = SEA_TRADE, storms = "TYPHOONS"};
+}
+
+SEA_CALM :: 0; SEA_TRADE :: 1; SEA_EQUATOR_MAX :: 2; SEA_WINTER :: 3; SEA_GALE :: 4; SEA_HURRICANE :: 5;
+SEAS :: 6;
+SimSea :: struct { key: string; name: string; hs: f64; wind: f64; }
+// Each sea's wind gives its significant height under Pierson-Moskowitz, Hs = 0.21 U^2 / g.
+sim_sea :: (i: int) -> SimSea {
+  if i == SEA_CALM { return SimSea.{key = "calm", name = "CALM", hs = 0.5, wind = 4.8}; }
+  if i == SEA_EQUATOR_MAX { return SimSea.{key = "equator-max", name = "EQUATOR MAX", hs = 2.8, wind = 11.4}; }
+  if i == SEA_WINTER { return SimSea.{key = "winter", name = "WINTER", hs = 4.0, wind = 13.7}; }
+  if i == SEA_GALE { return SimSea.{key = "gale", name = "GALE", hs = 10.0, wind = 21.6}; }
+  if i == SEA_HURRICANE { return SimSea.{key = "hurricane", name = "HURRICANE", hs = 14.0, wind = 25.6}; }
+  return SimSea.{key = "trade", name = "TRADE WIND", hs = 1.5, wind = 8.4};
+}
+
+// The surface temperature in month m (0 January to 12), a sine through the site's range,
+// coldest in mid February (spec 5.1).
+sim_surface :: (s: SimSite, month: f64) -> f64 {
+  mid := (s.surface_min + s.surface_max) * 0.5; amp := (s.surface_max - s.surface_min) * 0.5;
+  return mid - amp * cos(2.0 * SIM_PI * (month - 1.5) / 12.0);
+}
+SIM_DEEP :: 5.0;          // deep water at 1,000 m, every site (a planning value)
+
+// ---------------------------------------------------------------- the sun
+// The sun's direction (x east, y up, z north) at a latitude, on a month (0..12) at an hour (local
+// solar time), from the declination and hour angle.
+SimSun :: struct { x: f64; y: f64; z: f64; elevation: f64; }
+sim_sun :: (latitude: f64, month: f64, hour: f64) -> SimSun {
+  day := month * 30.44;
+  decl := -23.44 * SIM_PI / 180.0 * cos(2.0 * SIM_PI * (day + 10.0) / 365.0);
+  lat := latitude * SIM_PI / 180.0;
+  h := (hour - 12.0) * 15.0 * SIM_PI / 180.0;
+  e := -cos(decl) * sin(h);
+  n := sin(decl) * cos(lat) - cos(decl) * sin(lat) * cos(h);
+  u := sin(decl) * sin(lat) + cos(decl) * cos(lat) * cos(h);
+  l := sqrt(e * e + n * n + u * u);
+  out := SimSun.{x = e / l, y = u / l, z = n / l};
+  out.elevation = sim_atan2(out.y, sqrt(sim_max(0, 1 - out.y * out.y)));
+  return out;
+}
+
+// ---------------------------------------------------------------- power systems (spec 6)
+POWER_OTEC :: 0; POWER_NUCLEAR :: 1; POWER_HYBRID :: 2;
+SimPlant :: struct {
+  power: int;                // POWER_*
+  otec_scale: f64 = 1.0;     // ?otec=
+  modules: int = 4;          // nuclear modules (?modules=), when the option has them
+  refuelling: int;           // modules offline
+  pipe_tripped: bool;
+  swac: bool;                // seawater cooling of the data halls
+  warming: f64 = 0.5;        // cold-pipe warming, degrees C
+  halving: bool;
+  jth: f64 = 15.0;           // fleet efficiency, J/TH
+  bitcoin: f64 = 65118.0;    // $ (Luxor's 16 November 2026 snapshot)
+  network: f64 = 967.0;      // EH/s
+  fees: f64 = 0.0229;        // BTC a block
+  pool: f64 = 0.02;
+}
+SimPower :: struct {
+  dt: f64;                   // the plant's inlet delta T
+  surface: f64;
+  otec_gross: f64; otec_parasitic: f64; otec_net: f64;
+  nuclear_net: f64; nuclear_gross: f64; modules_on: int;
+  supply: f64;               // net power on board
+  hotel: f64; data: f64; data_on_backup: bool; desal: f64; industry: f64; mining: f64;
+  data_load: f64; fixed: f64;
+  containers: int;           // miners running
+  hashrate: f64;             // EH/s
+  revenue: f64;              // $ / facility MWh
+  budget: f64;               // $ / MWh left to pay for power
+  shed: bool;                // anything shed (the panel goes amber)
+  condenser_flow: f64;       // each module's condenser seawater, m^3/s
+  cold_flow: f64;            // OTEC cold water, m^3/s
+  cooling_share: f64;        // the data halls' share of the cold flow with seawater cooling
+}
+SIM_OTEC_GROSS :: 171.4;  SIM_OTEC_PARASITIC :: 51.4;  SIM_OTEC_DT :: 24.0;
+SIM_MODULE_GROSS :: 50.0; SIM_MODULE_HOUSE :: 2.0; SIM_MODULE_THERMAL :: 160.0;
+SIM_DATA :: 120.0; SIM_DATA_SWAC :: 110.0; SIM_DESAL :: 15.0; SIM_INDUSTRY :: 20.0; SIM_HOTEL :: 8.0;
+SIM_CONTAINERS :: 50;
+
+sim_otec_net :: (dt: f64, scale: f64) -> f64 {
+  gross := SIM_OTEC_GROSS * scale * (dt / SIM_OTEC_DT) * (dt / SIM_OTEC_DT);
+  return sim_max(0, gross - SIM_OTEC_PARASITIC * scale);
+}
+// Mining revenue in $ per facility MWh (otec.md section 8): R = 6B(S + f)(1 - p) / (e u H).
+sim_revenue :: (p: SimPlant) -> f64 {
+  subsidy := ifx p.halving then 1.5625 else 3.125;
+  return 6.0 * p.bitcoin * (subsidy + p.fees) * (1.0 - p.pool) / (p.jth * 1.05 * p.network);
+}
+sim_power :: (p: SimPlant, site: SimSite, month: f64) -> SimPower {
+  o: SimPower;
+  o.surface = sim_surface(site, month);
+  o.dt = o.surface - (SIM_DEEP + p.warming);
+  if p.power != POWER_NUCLEAR {
+    scale := ifx p.power == POWER_HYBRID then p.otec_scale else p.otec_scale;
+    o.otec_gross = SIM_OTEC_GROSS * scale * (o.dt / SIM_OTEC_DT) * (o.dt / SIM_OTEC_DT);
+    o.otec_parasitic = SIM_OTEC_PARASITIC * scale;
+    o.otec_net = sim_max(0, o.otec_gross - o.otec_parasitic);
+    if p.pipe_tripped { o.otec_net *= 0.75; }
+    if p.swac { o.otec_net *= 0.99; }
+    o.cold_flow = 282.0 * scale * (ifx p.pipe_tripped then 0.75 else 1.0);
+  }
+  if p.power != POWER_OTEC {
+    total := ifx p.power == POWER_HYBRID then 2 else p.modules;
+    o.modules_on = total - p.refuelling;
+    if o.modules_on < 0 { o.modules_on = 0; }
+    o.nuclear_gross = SIM_MODULE_GROSS * f64(o.modules_on);
+    o.nuclear_net = (SIM_MODULE_GROSS - SIM_MODULE_HOUSE) * f64(o.modules_on);
+    o.condenser_flow = (SIM_MODULE_THERMAL - SIM_MODULE_GROSS) / (4.1 * 10.0);
+  }
+  o.supply = o.otec_net + o.nuclear_net;
+  o.data_load = ifx p.swac then SIM_DATA_SWAC else SIM_DATA;
+  o.fixed = SIM_HOTEL + o.data_load + SIM_DESAL + SIM_INDUSTRY;
+  o.cooling_share = ifx p.swac && o.cold_flow > 0 then 2.93 / o.cold_flow else 0;
+  // dispatch: the hotel, the data centre (on backup when it can't have all it needs), desalination,
+  // industry, then the miners in 1 MW steps
+  left := o.supply;
+  o.hotel = sim_min(SIM_HOTEL, left); left -= o.hotel;
+  // the data centre takes what it can; its batteries and generators carry the rest (spec 6.2)
+  o.data = sim_min(o.data_load, sim_max(left, 0)); left -= o.data;
+  o.data_on_backup = o.data < o.data_load;
+  o.desal = sim_min(SIM_DESAL, sim_max(left, 0)); left -= o.desal;
+  o.industry = sim_min(SIM_INDUSTRY, sim_max(left, 0)); left -= o.industry;
+  o.containers = cast(int) floor(sim_max(left, 0));
+  if o.containers > SIM_CONTAINERS { o.containers = SIM_CONTAINERS; }
+  o.mining = f64(o.containers);
+  o.shed = o.data_on_backup || o.desal < SIM_DESAL || o.industry < SIM_INDUSTRY || o.containers < SIM_CONTAINERS;
+  o.hashrate = o.mining / 1.05 / p.jth;   // MW / (J/TH) = TH/s * 1e6, so EH/s
+  o.revenue = sim_revenue(p);
+  o.budget = o.revenue - 40.27 - 8.0;
+  return o;
+}
+
+// ---------------------------------------------------------------- the hull (spec 3.1, 4)
+SIM_L :: 1000.0; SIM_B :: 600.0; SIM_T :: 25.0; SIM_D :: 50.0; SIM_CORNER :: 40.0;
+SIM_KG :: 25.0;           // the centre of gravity over the keel
+SIM_CA_HEAVE :: 1.0; SIM_CA_ROT :: 0.3; SIM_ZETA :: 0.08;
+SIM_COLUMN :: 25.0;       // the buoyancy columns' grid
+SIM_COLUMNS_X :: 40; SIM_COLUMNS_Z :: 24;
+SIM_STEP :: 1.0 / 60.0;   // the hull's fixed step
+SIM_LINES :: 16;
+SIM_DEPTH :: 1500.0;      // the site's water
+SIM_ANCHOR :: 2000.0;     // anchors this far out from the fairleads
+SIM_T0 :: 4.0e6; SIM_K1 :: 0.05e6;   // N, N/m
+SIM_BREAK :: 40.0e6;
+SIM_CURRENT :: 0.5;       // m/s from the east
+
+SimHull :: struct {
+  heave: f64; heave_v: f64;     // m over the design draft's waterline, and its rate
+  roll: f64; roll_v: f64;       // rad about +X (the north side down)
+  pitch: f64; pitch_v: f64;     // rad about +Z (the east end up)
+  surge: f64; surge_v: f64;     // m east of the anchors' centre
+  sway: f64; sway_v: f64;       // m north
+  clock: f64;                   // time not yet stepped
+  time: f64;
+  tension: f64;                 // the most-loaded line now, N
+  wind_force: f64;              // N
+  accel: f64;                   // the deck's vertical acceleration at the centre, m/s^2
+  trace: [60] f32;              // heave over the last minute, a second a sample
+  traced: f64;
+}
+// The hull's constants.
+sim_awp :: () -> f64 { return SIM_L * SIM_B - (4.0 - SIM_PI) * SIM_CORNER * SIM_CORNER; }
+sim_mass :: () -> f64 { return SIM_RHO * sim_awp() * SIM_T; }
+sim_gm_t :: () -> f64 { return SIM_T / 2.0 + SIM_B * SIM_B / (12.0 * SIM_T) - SIM_KG; }
+sim_gm_l :: () -> f64 { return SIM_T / 2.0 + SIM_L * SIM_L / (12.0 * SIM_T) - SIM_KG; }
+sim_heave_period :: () -> f64 { return 2.0 * SIM_PI * sqrt(sim_mass() * (1.0 + SIM_CA_HEAVE) / (SIM_RHO * SIM_G * sim_awp())); }
+sim_roll_inertia :: () -> f64 { k := 0.35 * SIM_B; return sim_mass() * k * k * (1.0 + SIM_CA_ROT); }
+sim_pitch_inertia :: () -> f64 { k := 0.29 * SIM_L; return sim_mass() * k * k * (1.0 + SIM_CA_ROT); }
+sim_roll_period :: () -> f64 { return 2.0 * SIM_PI * sqrt(sim_roll_inertia() / (sim_mass() * SIM_G * sim_gm_t())); }
+sim_pitch_period :: () -> f64 { return 2.0 * SIM_PI * sqrt(sim_pitch_inertia() / (sim_mass() * SIM_G * sim_gm_l())); }
+
+sim_wrap :: (i: int, m: int) -> int { r := i % m; return ifx r < 0 then r + m else r; }
+// The sea's height at (x, z) from a wrapped n x n tile of heights over `patch` metres.
+sim_sea_at :: (heights: [] f32, n: int, patch: f64, x: f64, z: f64) -> f64 {
+  if n <= 0 || heights.count < n * n || patch <= 0 { return 0; }
+  qx := x / patch * f64(n) - 0.5; qz := z / patch * f64(n) - 0.5;
+  fx := qx - floor(qx); fz := qz - floor(qz);
+  ix := cast(int) floor(qx); iz := cast(int) floor(qz);
+  m := n;
+  a := f64(heights[sim_wrap(iz, m) * m + sim_wrap(ix, m)]); b := f64(heights[sim_wrap(iz, m) * m + sim_wrap(ix + 1, m)]);
+  c := f64(heights[sim_wrap(iz + 1, m) * m + sim_wrap(ix, m)]); d := f64(heights[sim_wrap(iz + 1, m) * m + sim_wrap(ix + 1, m)]);
+  return (a * (1 - fx) + b * fx) * (1 - fz) + (c * (1 - fx) + d * fx) * fz;
+}
+
+// A mooring line's fairlead and anchor: four lines a corner, fanned 30 degrees apart about the
+// corner's diagonal; fairleads at the keel's corners.
+SimLine :: struct { fx: f64; fz: f64; ax: f64; az: f64; rest: f64; }
+sim_line :: (i: int) -> SimLine {
+  corner := i / 4; k := i % 4;
+  sx := ifx corner & 1 == 0 then -1.0 else 1.0;
+  sz := ifx corner & 2 == 0 then -1.0 else 1.0;
+  fx := sx * (SIM_L / 2.0 - 12.0); fz := sz * (SIM_B / 2.0 - 12.0);
+  diag := sim_atan2(sz * SIM_B, sx * SIM_L);
+  a := diag + (f64(k) - 1.5) * 30.0 * SIM_PI / 180.0;
+  ax := fx + cos(a) * SIM_ANCHOR; az := fz + sin(a) * SIM_ANCHOR;
+  return SimLine.{fx = fx, fz = fz, ax = ax, az = az, rest = sqrt(SIM_ANCHOR * SIM_ANCHOR + (SIM_DEPTH - SIM_T) * (SIM_DEPTH - SIM_T))};
+}
+// A line's tension at an extension x beyond its rest length: T0 + k1 x + k3 x^3, the cubic chosen
+// so the line reaches its breaking load at 150 m.
+SIM_K3 :: (SIM_BREAK - SIM_T0 - SIM_K1 * 150.0) / (150.0 * 150.0 * 150.0);
+sim_tension :: (x: f64) -> f64 { e := sim_max(x, -SIM_T0 / SIM_K1); return sim_max(0, SIM_T0 + SIM_K1 * e + SIM_K3 * e * e * e); }
+
+// The moorings' horizontal force on the hull at an offset (surge, sway), and the peak tension.
+SimMooring :: struct { fx: f64; fz: f64; peak: f64; }
+sim_mooring :: (surge: f64, sway: f64) -> SimMooring {
+  o: SimMooring;
+  for i: 0..<SIM_LINES {
+    l := sim_line(i);
+    dx := l.ax - (l.fx + surge); dz := l.az - (l.fz + sway); dy := SIM_DEPTH - SIM_T;
+    span := sqrt(dx * dx + dz * dz + dy * dy);
+    t := sim_tension(span - l.rest);
+    o.fx += t * dx / span; o.fz += t * dz / span;
+    if t > o.peak { o.peak = t; }
+  }
+  return o;
+}
+
+// The wind's force on the hull and the buildings over it (spec 4.4), toward (dx, dz).
+SIM_WINDAGE :: 85.0;      // m of freeboard and buildings, the side-on projected height
+sim_wind :: (u: f64, dx: f64, dz: f64) -> [2] f64 {
+  area := abs(dz) * SIM_L * SIM_WINDAGE + abs(dx) * SIM_B * SIM_WINDAGE;
+  f := 0.5 * SIM_RHO_AIR * 1.0 * area * u * u;
+  return [2] f64.[f * dx, f * dz];
+}
+
+// The steady offset under a beam wind of u m/s with no waves (spec 4.4): where the moorings'
+// pull meets the wind's force, by bisection.
+SimOffset :: struct { offset: f64; tension: f64; force: f64; }
+sim_offset :: (u: f64) -> SimOffset {
+  f := sim_wind(u, 0, 1)[1];
+  lo := 0.0; hi := 300.0;
+  for i: 0..<40 {
+    mid := (lo + hi) * 0.5;
+    if sim_mooring(0, mid).fz + f > 0 { lo = mid; } else { hi = mid; }
+  }
+  return SimOffset.{offset = lo, tension = sim_mooring(0, lo).peak, force = f};
+}
+// One fixed step of the hull on a sea of `heights` (cascade 0's tile at this tick), with the wind.
+sim_hull_step :: (h: SimHull, heights: [] f32, n: int, patch: f64, wind: f64, wdx: f64, wdz: f64, dt: f64) -> SimHull {
+  o := h;
+  m := sim_mass(); awp := sim_awp();
+  col := SIM_COLUMN * SIM_COLUMN;
+  // column buoyancy: the sea's rise at each column over the hull's own draft change
+  force := 0.0; mroll := 0.0; mpitch := 0.0;
+  if n > 0 { for i: 0..<SIM_COLUMNS_X { for j: 0..<SIM_COLUMNS_Z {
+    x := -SIM_L / 2.0 + (f64(i) + 0.5) * SIM_COLUMN; z := -SIM_B / 2.0 + (f64(j) + 0.5) * SIM_COLUMN;
+    eta := sim_sea_at(heights, n, patch, x + h.surge, z + h.sway);
+    p := SIM_RHO * SIM_G * eta * col;
+    force += p; mroll -= p * z; mpitch += p * x;
+  } } }
+  // heave: buoyancy of the columns' rise, the hydrostatic spring, damping
+  kh := SIM_RHO * SIM_G * awp; mh := m * (1.0 + SIM_CA_HEAVE);
+  ch := 2.0 * SIM_ZETA * sqrt(kh * mh);
+  ah := (force - kh * h.heave - ch * h.heave_v) / mh;
+  // roll and pitch
+  kr := m * SIM_G * sim_gm_t(); ir := sim_roll_inertia(); cr := 2.0 * SIM_ZETA * sqrt(kr * ir);
+  kp := m * SIM_G * sim_gm_l(); ip := sim_pitch_inertia(); cp := 2.0 * SIM_ZETA * sqrt(kp * ip);
+  ar := (mroll - kr * h.roll - cr * h.roll_v) / ir;
+  ap := (mpitch - kp * h.pitch - cp * h.pitch_v) / ip;
+  // surge and sway: wind, current, moorings, drag on the hull's motion
+  w := sim_wind(wind, wdx, wdz);
+  cur := 0.5 * SIM_RHO * 1.0 * SIM_B * SIM_T * SIM_CURRENT * SIM_CURRENT;   // from the east, pushing west
+  moor := sim_mooring(h.surge, h.sway);
+  // (the lines are laid symmetrically, so their pulls at rest cancel)
+  ms := m * 1.1;
+  sx := 0.5 * SIM_RHO * 1.0 * SIM_B * SIM_T; sz := 0.5 * SIM_RHO * 1.0 * SIM_L * SIM_T;
+  fsx := w[0] - cur + moor.fx - sx * h.surge_v * abs(h.surge_v) - 2.0e7 * h.surge_v;
+  fsz := w[1] + moor.fz - sz * h.sway_v * abs(h.sway_v) - 2.0e7 * h.sway_v;
+  // semi-implicit Euler
+  o.heave_v += ah * dt; o.heave += o.heave_v * dt;
+  o.roll_v += ar * dt; o.roll += o.roll_v * dt;
+  o.pitch_v += ap * dt; o.pitch += o.pitch_v * dt;
+  o.surge_v += fsx / ms * dt; o.surge += o.surge_v * dt;
+  o.sway_v += fsz / ms * dt; o.sway += o.sway_v * dt;
+  o.tension = moor.peak;
+  o.wind_force = sqrt(w[0] * w[0] + w[1] * w[1]);
+  o.accel = ah;
+  o.time += dt;
+  return o;
+}
+// A frame's time: the fixed steps due (at most 8; a long hitch does not replay seconds).
+sim_hull_advance :: (h: SimHull, heights: [] f32, n: int, patch: f64, wind: f64, wdx: f64, wdz: f64, frame: f64) -> SimHull {
+  o := h;
+  o.clock += sim_max(frame, 0);
+  steps := 0;
+  while o.clock >= SIM_STEP && steps < 8 {
+    clock := o.clock - SIM_STEP;
+    o = sim_hull_step(o, heights, n, patch, wind, wdx, wdz, SIM_STEP);
+    o.clock = clock; steps += 1;
+  }
+  if steps == 8 { o.clock = sim_min(o.clock, SIM_STEP); }
+  if o.time - o.traced >= 1.0 {
+    for i: 0..<59 { o.trace[i] = o.trace[i + 1]; }
+    o.trace[59] = f32(o.heave); o.traced = o.time;
+  }
+  return o;
+}
+
+// ---------------------------------------------------------------- checks (spec section 9)
+#test "the hydrostatics match section 3.1" {
+  #assert abs(sim_mass() / 1e9 - 15.34) < 0.05;              // 15.4 Mt with the corners rounded
+  #assert abs(sim_gm_t() - 1187.5) < 0.1 && abs(sim_gm_l() - 3320.8) < 0.1;
+  #assert abs(sim_heave_period() - 14.2) < 0.1;               // C_a = 1
+  // section 3.1's periods are without added inertia; the body rings with it (C_a 0.3)
+  #assert abs(sim_roll_period() / sqrt(1.0 + SIM_CA_ROT) - 12.2) < 0.1 && abs(sim_pitch_period() / sqrt(1.0 + SIM_CA_ROT) - 10.1) < 0.1;
+}
+#test "1: calm equilibrium holds the design draft with no heel or trim" {
+  h: SimHull; empty: [1] f32;
+  for i: 0..<600 { h = sim_hull_step(h, empty[..], 0, 1, 0, 1, 0, SIM_STEP); }
+  #assert abs(h.heave) < 0.25 && abs(h.roll) * 180 / SIM_PI < 0.01 && abs(h.pitch) * 180 / SIM_PI < 0.01;
+}
+#test "2: heave free decay rings at its period with zeta 0.08" {
+  h := SimHull.{heave = 1}; empty: [1] f32;
+  last := 1.0; ups := 0; first := 0.0; second := 0.0; peak1 := 0.0; peak2 := 0.0; rising := false;
+  for i: 0..<6000 {
+    h = sim_hull_step(h, empty[..], 0, 1, 0, 1, 0, SIM_STEP);
+    if h.heave_v > 0 && !rising { rising = true; }
+    if h.heave_v <= 0 && rising {
+      rising = false; ups += 1;
+      if ups == 1 { first = h.time; peak1 = h.heave; }
+      if ups == 2 { second = h.time; peak2 = h.heave; }
+    }
+    last = h.heave;
+  }
+  period := second - first;
+  #assert abs(period - sim_heave_period()) < 0.15 * sim_heave_period();
+  zeta := log(peak1 / peak2) / (2.0 * SIM_PI);
+  #assert abs(zeta - SIM_ZETA) < 0.03;
+}
+#test "3: roll free decay at section 3's period" {
+  h := SimHull.{roll = 0.5 * SIM_PI / 180.0}; empty: [1] f32;
+  crossings := 0; t0 := 0.0; t2 := 0.0; prev := h.roll;
+  for i: 0..<3000 {
+    h = sim_hull_step(h, empty[..], 0, 1, 0, 1, 0, SIM_STEP);
+    if (prev > 0) != (h.roll > 0) { crossings += 1; if crossings == 1 { t0 = h.time; } if crossings == 3 { t2 = h.time; } }
+    prev = h.roll;
+  }
+  #assert abs((t2 - t0) - sim_roll_period()) < 0.15 * sim_roll_period();
+}
+#test "4: the hull averages a short sea away" {
+  // a 100 m wave (an 8 s sea) of 1.5 m crest to trough, across the hull
+  n := 64; tile: [4096] f32;
+  for j: 0..<n { for i: 0..<n { tile[j * n + i] = f32(0.75 * sin(2.0 * SIM_PI * f64(i) / 16.0)); } }
+  h: SimHull; most := 0.0;
+  for k: 0..<1200 { h = sim_hull_step(h, tile[..], n, 400, 0, 1, 0, SIM_STEP); most = sim_max(most, abs(h.heave)); }
+  #assert most < 0.15;   // under 10% of the 1.5 m sea
+}
+#test "6: a 20 m/s beam wind holds within 5% of depth and under breaking load" {
+  o := sim_offset(20);
+  #assert abs(o.force / 1e6 - 20.8) < 0.5;
+  #assert o.offset < 75 && o.tension < SIM_BREAK;
+}
+#test "7: the OTEC model matches section 6.1 and the sites their ranges" {
+  table := [8] f64.[24, 23, 22, 21, 20, 19, 16, 12];
+  want := [8] f64.[120.0, 106.0, 92.6, 79.8, 67.6, 56.0, 24.8, 0];
+  for i: 0..<8 { #assert abs(sim_otec_net(table[i], 1) - want[i]) < 0.5; }
+  #assert abs(sim_otec_net(20, 1) / 120.0 - 0.563) < 0.002;
+  lows := [5] f64.[95, 80, 50, 99, 0]; highs := [5] f64.[116, 113, 86, 120, 19];
+  p: SimPlant;
+  for s: 0..<SITES {
+    lo := 1e9; hi := -1e9;
+    for m: 0..<120 { o := sim_power(p, sim_site(s), f64(m) * 0.1); lo = sim_min(lo, o.otec_net); hi = sim_max(hi, o.otec_net); }
+    #assert abs(lo - lows[s]) < 1.0 && abs(hi - highs[s]) < 1.0;
+  }
+  #assert sim_power(p, sim_site(SITE_CALIFORNIA), 1.5).otec_net == 0;
+}
+#test "8: dispatch sheds mining, then industry, then desalination" {
+  p: SimPlant;
+  o := sim_power(p, sim_site(SITE_GUAM), 1.5);
+  #assert o.containers == 0 && o.industry == 0 && o.desal == 0 && o.data_on_backup && o.shed;
+  big := p; big.otec_scale = 1.4;
+  aug := sim_power(big, sim_site(SITE_GUAM), 7.5);   // 162 MW: the miners go first, then some industry
+  #assert aug.data == SIM_DATA && aug.desal == SIM_DESAL && aug.industry < SIM_INDUSTRY && aug.industry > 0 && aug.containers == 0;
+  p.otec_scale = 1.75;
+  for m: 0..<12 { q := sim_power(p, sim_site(SITE_GUAM), f64(m) + 0.5); #assert q.industry == SIM_INDUSTRY && q.desal == SIM_DESAL && !q.data_on_backup; }
+}
+#test "11: mining revenue and the power budget" {
+  p: SimPlant;
+  #assert abs(sim_revenue(p) - 79.1) < 0.5 && abs(sim_revenue(p) - 48.27 - 30.7) < 0.5;
+  q := p; q.halving = true;
+  #assert abs(sim_revenue(q) / sim_revenue(p) - 0.503) < 0.005;
+  o := sim_power(SimPlant.{power = POWER_NUCLEAR}, sim_site(SITE_GUAM), 6);
+  #assert abs(o.mining / 1.05 / p.jth - 1.84) < 0.05;   // 29 MW of miners: 1.84 EH/s
+}
+#test "12: a pipe trip cuts OTEC's net by a quarter" {
+  p: SimPlant; a := sim_power(p, sim_site(SITE_GUAM), 6); p.pipe_tripped = true; b := sim_power(p, sim_site(SITE_GUAM), 6);
+  #assert abs(b.otec_net / a.otec_net - 0.75) < 0.02;
+}
+#test "13: nuclear dispatch at California, refuelling, and hybrid at Guam" {
+  p := SimPlant.{power = POWER_NUCLEAR};
+  for m: 0..<12 { o := sim_power(p, sim_site(SITE_CALIFORNIA), f64(m)); #assert o.supply == 192 && o.containers == 29; }
+  p.refuelling = 1;
+  o := sim_power(p, sim_site(SITE_CALIFORNIA), 1);
+  #assert o.supply == 144 && o.containers == 0 && abs(SIM_INDUSTRY - o.industry - 19) < 0.01;
+  h := SimPlant.{power = POWER_HYBRID};
+  lo := 1e9; hi := -1e9;
+  for m: 0..<120 { q := sim_power(h, sim_site(SITE_GUAM), f64(m) * 0.1); lo = sim_min(lo, q.supply); hi = sim_max(hi, q.supply); }
+  #assert abs(lo - 191) < 1.0 && abs(hi - 212) < 1.0;
+}
+#test "14: each module's figures" {
+  o := sim_power(SimPlant.{power = POWER_NUCLEAR}, sim_site(SITE_GUAM), 0);
+  #assert o.nuclear_gross / 4 == 50 && o.nuclear_net / 4 == 48;
+  #assert abs(SIM_MODULE_GROSS / SIM_MODULE_THERMAL - 0.3125) < 1e-9 && abs(o.condenser_flow - 2.68) < 0.05;
+}
+#test "the sun sets in the west-north-west at Guam in June" {
+  s := sim_sun(13.4, 5.5, 18.0);
+  #assert s.elevation > 0 && s.elevation < 0.3 && s.x < -0.8 && s.z > 0;
+  noon := sim_sun(13.4, 5.5, 12.0);
+  #assert noon.elevation > 1.3;
+}

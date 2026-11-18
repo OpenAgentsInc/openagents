@@ -39,7 +39,6 @@ pipeline metaverse-engine/render/exr.coax metaverse-engine/tools/film-frames.coa
 pipeline metaverse-engine/audio/measure.coax metaverse-engine/audio/sfx-tool.coax  # the sound-effect bank is judged by loudness when it is built
 
 # The Metaverse Engine book's own implementations: a chapter builds each and its example runs it
-book metaverse-engine/move/creative-fly.coax metaverse-engine/book/ch009-a-character-moves.md  # creative flight (a double press of jump, level flight, rise and sink): GameBuilder's web world (another repository) flies its character with it
 book metaverse-engine/physics/sim/scene.coax metaverse-engine/book/ch017-a-scene-owns-the-state.md
 book metaverse-engine/physics/sim/bodies.coax metaverse-engine/book/ch018-rigid-bodies-and-time-steps.md  # rigid bodies that touch: GameBuilder's web world (another repository) steps its blocks and ball with it
 book metaverse-engine/physics/sim/broad.coax metaverse-engine/book/ch020-find-the-pairs-that-might-touch.md

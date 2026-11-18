@@ -1,11 +1,15 @@
 # SLAB world: a simulation spec for the Metaverse Engine
 
-Status: phase S1 built, November 18, 2026, as **SLAB Simulation** at
-`/realms/slab`. The realm is registered, the sea comes from the water lab,
-and the static `prime` hull and deck districts are in place, viewed with an
-orbit camera. Its golden is still to be taken on staging. Phases S2–S7 are
-not built. The spec was revised the same day with sourced OTEC figures from
-[otec.md](otec.md).
+Status: phases S1–S3 built and most of S4, November 18, 2026, as
+**SLAB Simulation** at `/realms/slab`. The hull floats on column buoyancy
+with damping, moorings, wind and current (`metaverse/slab-sim.coax`); the
+`prime` deck is built and can be walked with GameBuilder's character
+controller; the five sites, six sea states, OTEC, nuclear and hybrid power and
+the dispatcher run, with a motion and power panel and a card for anything
+clicked. Still to build from S4: the `demo10` preset, the flow overlay, the
+pipes and the powership. Phases S5–S7 are not built, and the golden is still
+to be taken on staging. Measured numbers are in section 12. The spec was
+revised the same day with sourced OTEC figures from [otec.md](otec.md).
 
 This is the brief for a coding agent to build **SLAB**, an unlisted realm in
 the OpenAgents Metaverse Engine that rebuilds Palmer Luckey's proposed
@@ -617,10 +621,12 @@ Z from −300 to 300.
 | OTEC plant | −500 to −350 | −300 to 300 | Turbine halls, heat exchangers, 4 moonpools, ammonia tanks |
 | Industry | −350 to −150 | −300 to 300 | 3 process units, 6 smokestacks 60 m tall (the concept image's stacks), tank farm, desalination plant. With `?power=nuclear` or `hybrid`, the module exclusion zones over cells D3, D10, G3 and G10 (section 6.6) |
 | Data halls | −150 to 50 | −300 to 0 | 4 halls of 120 × 60 m, 3 storeys (18 m), with cooling yards |
-| Towers | −150 to 150 | 0 to 300 | 12 towers of 80–180 m, offices and housing |
+| Towers | −150 to 150 | 0 to 300 | 20 towers of 80–180 m, offices and housing, the tall ones stepped back for their top fifth (the concept image's dense cluster) |
 | Dock | −50 to 50 | −300 to −240 | The dock notch from section 3.1, with cranes |
 | Mining yard | 150 to 300 | −300 to −100 | 50 containers |
-| Medical campus | 150 to 350 | −100 to 300 | Hospital and research blocks, 4–6 storeys |
+| Civic blocks | 55 to 145 | −288 to −12 | Six colonnaded blocks, 12–20 m, as the concept image's white buildings round the towers |
+| Medical campus | 150 to 300 | −100 to 120 | Hospital and research blocks, 4–6 storeys |
+| Canal and colonnades | 155 to 470 | 146 to 290 | A canal lined with cypresses, and three colonnaded halls along the north side |
 | Gardens and civic | 300 to 500 | −300 to 300 | Classical civic buildings, groves, a fountain plaza (as in the concept image) |
 | Perimeter | Whole edge | | A 20 m promenade inside a 1.5 m parapet |
 
@@ -744,3 +750,39 @@ the column approximation.
   multiplayer economics.
 - Construction of the domes (the airform), until there is a reason to
   animate it.
+
+## 12. Results
+
+Measured on November 18, 2026, from the checks in `metaverse/slab-sim.coax`,
+`metaverse/slab-plan.coax` and `apps/openagents-web/slab.coax`. The targets
+in sections 3–9 are unchanged.
+
+| Quantity | Target | Measured |
+|---|---|---|
+| Displacement | 15.4 Mt | 15.34 Mt (the corners are rounded) |
+| Transverse and longitudinal GM | ≈ 1,188 m and ≈ 3,321 m | 1,187.5 m and 3,320.8 m |
+| Heave period (Cₐ = 1) | 14.2 s | 14.2 s; free decay rings at it within 15%, ζ within 0.03 of 0.08 |
+| Roll and pitch periods | 12.2 s and 10.1 s without added inertia | 12.2 s and 10.1 s; with Cₐ 0.3 on rotation the body rings at 13.9 s and 11.5 s |
+| Calm equilibrium (test 1) | design draft, no heel or trim | heave under 0.25 m, heel and trim under 0.01° |
+| Short sea (test 4) | averaged away | a 1.5 m, 100 m wave moves the hull under 0.15 m |
+| 20 m/s beam wind (test 6) | within 5% of depth | 20.8 MN of wind, offset under 75 m, the peak line under its breaking load |
+| OTEC net at ΔT 24, 20 and 12 °C (test 7) | 120, 67.6 and 0 MW | the same within 0.5 MW; Guam 95–116 MW over the year |
+| Dispatch (tests 8 and 13) | sheds mining, then industry, then desalination | as targeted; nuclear 192 MW with 29 MW of miners, 144 MW refuelling, hybrid at Guam 191–212 MW |
+| Pipe trip (test 12) | net down a quarter | 0.75 of net |
+
+**Departures from the spec, and why:**
+- The sea's heights are scaled to Pierson–Moskowitz (Hs = 0.21 U²/g), so each
+  sea state shows the Hs in section 5: the water lab's fetch-limited spectrum
+  at 300 km of fetch grows past a fully developed sea (3.4 m at 8.4 m/s).
+- Spray up the windward walls reaches about four times Hs (a standing wave's
+  crest at a vertical wall is about twice the highest wave's height,
+  2 × 1.86 Hs, and the wind lifts the spray above it), capped at 24 m.
+- The arrival view and the default hour follow the concept image: January at
+  17:18, with the sun low in the west-south-west, seen from off the
+  north-east corner.
+- With the default `otec` power at Guam, the dispatcher sheds industry, so
+  the stacks don't smoke. The concept image's smoke appears with
+  `?power=hybrid` or `nuclear`.
+
+Frame times are not measured yet: the build agent's browser ran in a hidden
+pane, which throttles frames.

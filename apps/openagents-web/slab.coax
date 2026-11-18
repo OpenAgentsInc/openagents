@@ -1,63 +1,117 @@
 // SLAB Simulation (openagents.com/realms/slab): an unlisted reconstruction of SLAB, the proposed
-// floating industrial platform, on open ocean. Phase S1 of
-// docs/research/ocean/slab-world-spec.md: the realm, the sea from the water lab, the static
-// `prime` monolith (1,000 x 600 x 50 m, 25 m draft) with its deck districts, and a camera that
-// flies round it. Hull physics, the deck walk, the power systems and the dome layouts are the
-// spec's later phases.
+// floating industrial platform, on open ocean (docs/research/ocean/slab-world-spec.md).
 //
 // The sea is the water lab's (waterlab.coax): a JONSWAP sea synthesized by the CPU FFT on the
 // water's clock (metaverse/water-spectrum.coax), drawn as a clipmap mesh to the horizon
-// (metaverse/water-ocean.coax), here in deep water everywhere: no beach, no shore cells.
-// The platform is metaverse/slab-plan.coax's records (boxes and upright cylinders), packed into
-// the uniforms each frame and traced by slab.wgsl's bg_fs, which writes their depth so the
-// sea's mesh hides behind the hull.
+// (metaverse/water-ocean.coax). The platform is metaverse/slab-plan.coax's records, packed into
+// the uniforms each frame and traced by slab.wgsl's bg_fs through the hull's pose, which
+// metaverse/slab-sim.coax steps on the same sea: column buoyancy, added mass, damping, sixteen
+// mooring lines, the wind and the current. slab-sim.coax also runs the sites, the sun, OTEC, the
+// nuclear option, the data halls, desalination, industry and the miners, and the HUD shows them.
 //
-// The URL: ?wind=M/S (10), ?t=SECONDS (a fixed moment), ?yaw=, ?pitch=, ?dist= (the camera's
-// orbit), ?x=, ?z= (the point it orbits), ?tier=phone. Drag or the arrow keys turn the camera,
-// the wheel or R and F zoom, W A S D move the point it looks at.
+// Three ways to look: an orbit round a point on the deck, a free fly-through, and walking the
+// deck as a character with GameBuilder's controller (metaverse/splice-bots/rules/walk.coax and
+// metaverse-engine/move/creative-fly.coax, wired as GameBuilder's hud_walk wires them: W runs
+// away from the camera, Space jumps, a double Space flies). Click anything to learn about it:
+// an info card with its construction, its physics and its numbers now.
+//
+// The URL: ?site=guam|puerto-rico|kona|equator|california, ?sea=calm|trade|equator-max|winter|
+// gale|hurricane, ?wind=M/S (overrides the sea's), ?hour=H, ?month=M (1-12), ?rate=X (world
+// seconds a second, 60 by default: a day in 24 minutes), ?power=otec|nuclear|hybrid, ?otec=SCALE,
+// ?modules=N, ?swac=1, ?t=SECONDS (a fixed moment), ?yaw=, ?pitch=, ?dist=, ?x=, ?z= (the
+// orbit), ?mode=orbit|fly|walk, ?hud=0, ?tier=phone.
 
 #load "../../metaverse/water-ocean.coax";
 #load "../../metaverse/slab-plan.coax";
+#load "../../metaverse/slab-sim.coax";
 #load "../../metaverse-engine/core/budget.coax";
+#load "../../metaverse-engine/ui/font.coax";
+#load "../../metaverse/splice-bots/rules/walk.coax";
+#load "../../metaverse-engine/move/creative-fly.coax" as fly;
 
-VERTEX_FLOATS :: 16;
-MAX_VERTICES :: 6;
+VERTEX_FLOATS :: 16;   // x, y, along, across, then length, core, light, glow (a rect: half w, half h, radius, alpha), red, green, blue, mode, border, 0, 0, 0
+MAX_VERTICES :: 30000;
 HOST_FACTS :: 600;
-KEY_LEFT :: -3; KEY_RIGHT :: -4; KEY_UP :: -1; KEY_DOWN :: -2;
+KEY_ESCAPE :: -1; KEY_ENTER :: -2; KEY_LEFT :: -4; KEY_RIGHT :: -5; KEY_UP :: -6; KEY_DOWN :: -7; KEY_SHIFT :: -13;
+MODE_STROKE :: 0.0f32;
+MODE_RECT :: 5.0f32;
+GAP :: 0.34f32; SPACE :: 0.95f32;
+TAU32 :: 6.2831853f32;
+PI32 :: 3.14159265f32;
 
 // The uniforms, floats.
 U_SIZE :: 0;      // width, height, time (s), fade
-U_MODE :: 4;      // still, phone (1), boxes, dpr
+U_MODE :: 4;      // still, phone (1), records, dpr
 U_EYE :: 8;       // x, y, z, tan of half the vertical field
 U_FWD :: 12;      // forward xyz, 0
 U_RIGHT :: 16;    // right xyz, 0
 U_UP :: 20;       // up xyz, 0
-U_SUN :: 24;      // toward the sun xyz, strength
+U_SUN :: 24;      // toward the sun xyz (world), strength
 U_SEA :: 28;      // level, cascade 0's patch (m), the fine patch (m), choppiness
-U_WIND :: 32;     // wind direction x, z, wind speed, significant height
+U_WIND :: 32;     // the waves' direction x, z, wind speed, significant height
 U_HULL :: 36;     // half length, half beam, deck height, keel height
 U_PACK :: 40;     // scales the packed numbers: height, slope, fine slope, choppy displacement
 U_CLIP :: 44;     // the clipmap: quads a side, levels, morph band (quads), the skirt's reach (m)
 U_LEVELS :: 48;   // a level each: centre x, z, spacing, hole x + 2 hole z (OCEAN_MAX_LEVELS)
 U_BOXES :: 96;    // the plan's records (metaverse/slab-plan.coax), SLAB_RECORD floats each
-U_WORDS :: U_BOXES + SLAB_MAX_BOXES * SLAB_RECORD;   // then the words:
+U_GROUPS :: U_BOXES + SLAB_MAX_BOXES * SLAB_RECORD;          // the record groups, SLAB_GROUP_FLOATS each
+U_PARAMS :: U_GROUPS + SLAB_MAX_GROUPS * SLAB_GROUP_FLOATS;  // the world's look and state (P_*)
+P_COUNTS :: 0;    // groups, the first stack, stacks, smoke (0..1)
+P_SUNCOL :: 4;    // the sun's colour, the sky's light
+P_ZENITH :: 8;    // the sky overhead, clouds
+P_HORIZON :: 12;  // the sky at the horizon, haze distance (m)
+P_POSE :: 16;     // three rows of the hull's rotation, each with a translation component: world = R p + T
+P_CHAR :: 28;     // the character's feet (hull frame) xyz, the way it faces
+P_GAIT :: 32;     // gait phase, speed, shown, airborne
+P_PICK :: 36;     // selected record (-1), hovered record, seconds since selected, night (0..1)
+P_SUNHULL :: 40;  // toward the sun in the hull's frame, the warm grade
+P_SPRAY :: 44;    // the spray's height (m), the wave groups' spacing (m), miners on (0..50), data halls (0..1)
+P_SYSTEMS :: 48;  // industry (0..1), the waves' speed along the walls, 0, 0
+PARAM_FLOATS :: 64;
+U_WORDS :: U_PARAMS + PARAM_FLOATS;   // then the words:
 W_COARSE :: 0;    //   cascade 0: (height, foam), (sx, sz) a texel
-W_CHOP :: 8192;   //   cascade 0's choppy displacement, (dx, dz) as two signed bytes a texel, two texels a word
+W_CHOP :: 8192;   //   cascade 0's choppy displacement, two signed bytes a texel, two texels a word
 W_FINE :: 10240;  //   the fine slopes (or the phone's baked tile), one word a texel
 TILE_N :: 64;
 WORDS :: W_FINE + TILE_N * TILE_N;
 UNIFORM_FLOATS :: U_WORDS + WORDS;
 
+CAM_ORBIT :: 0; CAM_FLY :: 1; CAM_WALK :: 2;
+
+// Keys held, bits.
+KB_LEFT :: 1; KB_RIGHT :: 2; KB_UP :: 4; KB_DOWN :: 8; KB_IN :: 64; KB_OUT :: 128;
+KB_W :: 256; KB_S :: 512; KB_D :: 1024; KB_A :: 2048; KB_SPACE :: 4096; KB_SHIFT :: 8192; KB_E :: 16384; KB_Q :: 32768;
+
+// The buttons the HUD draws this frame, hit on a press.
+MAX_BUTTONS :: 32;
+BTN_ORBIT :: 1; BTN_FLY :: 2; BTN_WALK :: 3; BTN_SITE :: 4; BTN_SEA :: 5; BTN_EARLIER :: 6; BTN_LATER :: 7;
+BTN_PAUSE :: 8; BTN_POWER :: 9; BTN_STATS :: 10; BTN_CLOSE :: 11; BTN_REFUEL :: 12; BTN_TRIP :: 13; BTN_SWAC :: 14;
+BTN_HALVING :: 15; BTN_HELP :: 16; BTN_MONTH :: 17;
+
 Slab :: struct {
   started: bool;
-  time: f64;            // s since the page opened, or the fixed moment
+  time: f64;            // s since the page opened (the water's clock), or the fixed moment
   fixed: f64;           // ?t= (-1: the clock runs)
   golden: bool;
   phone_forced: bool;
-  yaw: f32; pitch: f32; dist: f32;
-  tx: f32; tz: f32;     // the point the camera orbits, on the deck's plane
+  // the orbit
+  yaw: f32 = 0.9; pitch: f32 = 0.5; dist: f32 = 1150;
+  tx: f32 = -40; tz: f32 = 30;     // the point the orbit circles, on the deck's plane
+  intro: f32;                      // seconds of the arrival's push-in left
+  // the fly-through
+  fx: f32; fy: f32; fz: f32; fyaw: f32; fpitch: f32; fspeed: f32 = 30;
+  // on foot (hull frame): GameBuilder's controller
+  foot: SrOnFoot; flyer: fly.Fly; born: bool; taps: int;
+  wyaw: f32 = 1.2; wpitch: f32 = 0.18; wdist: f32 = 9.5;
+  stride: f32;          // metres walked, for the gait
+  mode: int;
   held: int;            // keys held, bits
-  dragging: bool; last_x: f32; last_y: f32;
+  dragging: bool; last_x: f32; last_y: f32; down_x: f32; down_y: f32; moved: f32;
+  px: f32; py: f32;     // the pointer
+  // the world
+  site: int; sea: int; wind_forced: f64;
+  hour: f64 = 17.3; month: f64 = 0.5; rate: f64 = 60; paused: bool;
+  plant: SimPlant; power: SimPower; hull: SimHull;
   wind: f64;
   spectrum: Spectrum;
   built: bool;          // the synths for the current wind and tier
@@ -73,17 +127,42 @@ Slab :: struct {
   mesh: int;            // the surface's vertices this frame
   boxes: [SLAB_MAX_BOXES * SLAB_RECORD] f32;
   box_count: int;
+  groups: [SLAB_MAX_GROUPS * SLAB_GROUP_FLOATS] f32;
+  group_count: int;
+  stack_first: int; stack_count: int;
+  // the camera this frame, for picking
+  eye: [3] f32; fwd: [3] f32; right: [3] f32; up: [3] f32; tanh: f32; aspect: f32;
+  width: f32; height: f32; dpr: f32;
+  pose: [12] f32;       // the hull's rotation rows and translation, world = R p + T
+  // what the pointer is on, what was clicked
+  selected: int = -1; hovered: int = -1; selected_at: f64; card_x: f32; card_y: f32;
+  stats: bool; stats_set: bool; hud: bool = true; help: bool;
+  buttons: [MAX_BUTTONS * 5] f32;   // x0, y0, x1, y1, id
+  button_count: int;
+  toast: [64] u8; toast_n: int; toast_at: f64;
 }
 
 hi_f32 :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
+lo_f32 :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
+clamp32 :: (a: f32, low: f32, high: f32) -> f32 { return lo_f32(high, hi_f32(low, a)); }
 
 slab_reset :: (s: [] Slab) {
   s[0].started = true;
   s[0].fixed = -1;
-  s[0].yaw = 0.62; s[0].pitch = 0.36; s[0].dist = 1500;
-  s[0].tx = 0; s[0].tz = 0;
-  s[0].wind = 10;
+  s[0].wind_forced = -1;
+  s[0].intro = 7;
   s[0].box_count = slab_plan(s[0].boxes[..]);
+  s[0].group_count = slab_groups(s[0].boxes[..], s[0].box_count, s[0].groups[..]);
+  s[0].stack_first = -1;
+  for i: 0..<s[0].box_count {
+    if cast(int) s[0].boxes[i * SLAB_RECORD + 3] == SLAB_KIND_STACK {
+      if s[0].stack_first < 0 { s[0].stack_first = i; }
+      s[0].stack_count += 1;
+    }
+  }
+  s[0].sea = SEA_TRADE;
+  s[0].fx = 900; s[0].fy = 160; s[0].fz = 520; s[0].fyaw = 1.0; s[0].fpitch = 0.12;
+  s[0].foot.walk.x = 470; s[0].foot.walk.z = 30;
 }
 
 // Half floats (IEEE binary16), rounded to nearest, for packing tiles.
@@ -110,12 +189,21 @@ pack2 :: (a: f32, b: f32) -> f32 { return f32_from_bits(half_bits(a) | (half_bit
 // A signed byte for v in [-1, 1].
 snorm8 :: (v: f32) -> u32 { return cast(u32) (cast(int) floor(wsp_clamp(v, -1, 1) * 127 + 0.5) & 0xff); }
 
-// The open-ocean sea for the wind: a long fetch, deep water.
+// The open-ocean sea for the wind: a long fetch, deep water, the trades' waves running west-south-west.
+SLAB_WAVES :: 4.36;
+// JONSWAP's fetch-limited growth runs past a fully developed sea at long fetch, so its heights are
+// scaled to Pierson-Moskowitz's Hs = 0.21 U^2 / g, the spec's sea states (metaverse/slab-sim.coax SIM_SEAS).
 slab_spectrum :: (wind: f64) -> Spectrum {
-  return Spectrum.{seed = 23, wind_speed = wind, wind = 2.6, fetch = 300000.0, choppiness = 0.8, spread = 0.8, depth = 4000.0};
+  sp := Spectrum.{seed = 23, wind_speed = wind, wind = SLAB_WAVES, fetch = 300000.0, choppiness = 0.8, spread = 0.8, depth = 4000.0};
+  grown := wsp_significant_height(sp);
+  if grown > 0.001 { sp.amplitude = 0.21 * wind * wind / 9.81 / grown; }
+  return sp;
 }
 
+slab_wind :: (s: [] Slab) -> f64 { return ifx s[0].wind_forced > 0 then s[0].wind_forced else sim_sea(s[0].sea).wind; }
+
 slab_build :: (s: [] Slab, phone: bool) {
+  s[0].wind = slab_wind(s);
   s[0].spectrum = slab_spectrum(s[0].wind);
   wsp_synth(s[0].synth[..], s[0].spectrum, ifx phone then 1 else 2, TILE_N);
   s[0].built = s[0].synth[0].ok;
@@ -130,80 +218,439 @@ slab_build :: (s: [] Slab, phone: bool) {
   }
 }
 
-// The lowest the eye may go at (x, z): over the sea's crests, or over the deck on the platform.
-slab_floor :: (x: f32, z: f32) -> f32 {
-  over := abs(x) < SLAB_LENGTH / 2 + 6 && abs(z) < SLAB_BEAM / 2 + 6;
-  return ifx over then SLAB_DECK + 4 else 6.0f32;
+// ---------------------------------------------------------------- the hull's frame
+// world = R p + T and back; the pose is written each frame from the hull's state.
+slab_pose :: (s: [] Slab) {
+  h := s[0].hull;
+  c := f32(cos(h.roll)); sn := f32(sin(h.roll)); ct := f32(cos(h.pitch)); st := f32(sin(h.pitch));
+  p := [12] f32.[ct, -st * c, st * sn, f32(h.surge),
+                 st, ct * c, -ct * sn, f32(h.heave),
+                 0, sn, c, f32(h.sway)];
+  for i: 0..<12 { s[0].pose[i] = p[i]; }
+}
+to_world :: (s: [] Slab, x: f32, y: f32, z: f32) -> [3] f32 {
+  p := s[0].pose;
+  return [3] f32.[p[0] * x + p[1] * y + p[2] * z + p[3], p[4] * x + p[5] * y + p[6] * z + p[7], p[8] * x + p[9] * y + p[10] * z + p[11]];
+}
+dir_to_hull :: (s: [] Slab, x: f32, y: f32, z: f32) -> [3] f32 {
+  p := s[0].pose;
+  return [3] f32.[p[0] * x + p[4] * y + p[8] * z, p[1] * x + p[5] * y + p[9] * z, p[2] * x + p[6] * y + p[10] * z];
+}
+to_hull :: (s: [] Slab, x: f32, y: f32, z: f32) -> [3] f32 {
+  p := s[0].pose;
+  return dir_to_hull(s, x - p[3], y - p[7], z - p[11]);
 }
 
-// Steps the camera and writes the sea's tiles and the platform's records for this tick.
+// ---------------------------------------------------------------- the deck underfoot
+// Whether (x, z) lies inside the hull's plan, inset by `inset`.
+in_plan :: (x: f32, z: f32, inset: f32) -> bool {
+  qx := abs(x) - SLAB_LENGTH / 2 + SLAB_CORNER; qz := abs(z) - SLAB_BEAM / 2 + SLAB_CORNER;
+  out := sqrt(hi_f32(qx, 0) * hi_f32(qx, 0) + hi_f32(qz, 0) * hi_f32(qz, 0)) + lo_f32(hi_f32(qx, qz), 0) - SLAB_CORNER;
+  return out < -inset;
+}
+rec :: (s: [] Slab, i: int, k: int) -> f32 { return s[0].boxes[i * SLAB_RECORD + k]; }
+rec_kind :: (s: [] Slab, i: int) -> int { return cast(int) rec(s, i, 3); }
+rec_shape :: (s: [] Slab, i: int) -> int { return cast(int) rec(s, i, 7); }
+// Whether a record's footprint holds (x, z), grown by r (a cylinder or dome by its circle).
+rec_holds :: (s: [] Slab, i: int, x: f32, z: f32, r: f32) -> bool {
+  x0 := rec(s, i, 0); z0 := rec(s, i, 2); x1 := rec(s, i, 4); z1 := rec(s, i, 6);
+  sh := rec_shape(s, i);
+  if sh == SLAB_CYLINDER || sh == SLAB_DOME {
+    cx := (x0 + x1) * 0.5; cz := (z0 + z1) * 0.5; rr := lo_f32(x1 - x0, z1 - z0) * 0.5 + r;
+    return (x - cx) * (x - cx) + (z - cz) * (z - cz) < rr * rr;
+  }
+  return x > x0 - r && x < x1 + r && z > z0 - r && z < z1 + r;
+}
+// The ground under feet at (x, z): the deck, a step up onto what it stands on, the bed of water.
+CHAR_STEP :: 0.5f32;
+CHAR_TALL :: 1.8f32;
+CHAR_RADIUS :: 0.35f32;
+ground_at :: (s: [] Slab, x: f32, z: f32, feet: f32) -> f32 {
+  g := SLAB_DECK;
+  for i: SLAB_HULL_PIECES..<s[0].box_count {
+    if !rec_holds(s, i, x, z, 0) { continue; }
+    k := rec_kind(s, i);
+    if k == SLAB_KIND_POOL { g = lo_f32(g, rec(s, i, 1)); continue; }
+    sh := rec_shape(s, i);
+    top := ifx sh == SLAB_GROVE || sh == SLAB_GLADE_GROVE then rec(s, i, 1) + 0.3f32 else rec(s, i, 5);
+    if top <= feet + CHAR_STEP && top > g { g = top; }
+  }
+  return g;
+}
+// Whether a body at (x, z) with its feet at `feet` is inside something.
+blocked :: (s: [] Slab, x: f32, z: f32, feet: f32) -> bool {
+  if !in_plan(x, z, 1.2) { return true; }   // the parapet round the deck's edge
+  for i: SLAB_HULL_PIECES..<s[0].box_count {
+    k := rec_kind(s, i);
+    if k == SLAB_KIND_POOL || k == SLAB_KIND_PLAZA || k == SLAB_KIND_PARK { continue; }
+    sh := rec_shape(s, i);
+    if sh == SLAB_GROVE || sh == SLAB_GLADE_GROVE {
+      if !rec_holds(s, i, x, z, 0) || feet > rec(s, i, 5) { continue; }
+      // the cypresses' trunks
+      cx := floor(x / SLAB_TREE_CELL); cz := floor(z / SLAB_TREE_CELL);
+      t := slab_tree(cx, cz);
+      if t.stands && !in_glade(s, i, t.x, t.z) && (x - t.x) * (x - t.x) + (z - t.z) * (z - t.z) < (t.radius * 0.55f32 + CHAR_RADIUS) * (t.radius * 0.55f32 + CHAR_RADIUS) { return true; }
+      continue;
+    }
+    if rec(s, i, 5) <= feet + CHAR_STEP || rec(s, i, 1) >= feet + CHAR_TALL { continue; }
+    if rec_holds(s, i, x, z, CHAR_RADIUS) { return true; }
+  }
+  return false;
+}
+// Whether a tree at (x, z) falls in grove i's clear glade.
+in_glade :: (s: [] Slab, i: int, x: f32, z: f32) -> bool {
+  if rec_shape(s, i) != SLAB_GLADE_GROVE { return false; }
+  cx := (rec(s, i, 0) + rec(s, i, 4)) * 0.5; cz := (rec(s, i, 2) + rec(s, i, 6)) * 0.5;
+  hx := (rec(s, i, 4) - rec(s, i, 0)) * 0.5 * SLAB_GLADE; hz := (rec(s, i, 6) - rec(s, i, 2)) * 0.5 * SLAB_GLADE;
+  return abs(x - cx) < hx && abs(z - cz) < hz;
+}
+// A step from (x, z) by (dx, dz) that slides along what it meets.
+slide :: (s: [] Slab, x: f32, z: f32, feet: f32, dx: f32, dz: f32) -> [2] f32 {
+  if !blocked(s, x + dx, z + dz, feet) { return [2] f32.[x + dx, z + dz]; }
+  if !blocked(s, x + dx, z, feet) { return [2] f32.[x + dx, z]; }
+  if !blocked(s, x, z + dz, feet) { return [2] f32.[x, z + dz]; }
+  return [2] f32.[x, z];
+}
+
+// ---------------------------------------------------------------- moving about
+axis :: (k: int, plus: int, minus: int) -> f32 {
+  return (ifx k & plus != 0 then 1.0f32 else 0.0f32) - (ifx k & minus != 0 then 1.0f32 else 0.0f32);
+}
+// On foot: GameBuilder's walk (hud_walk), in the hull's frame. Ahead is away from the camera.
+walk_step :: (s: [] Slab, dt: f32) {
+  t: SrWalkTuning;
+  if !s[0].born { s[0].foot.jump = sr_her_jump(ground_at(s, s[0].foot.walk.x, s[0].foot.walk.z, SLAB_DECK + 1), t); s[0].born = true; }
+  k := s[0].held;
+  go := axis(k, KB_W, KB_S) + axis(k, KB_UP, KB_DOWN) * 0;
+  side := axis(k, KB_D, KB_A);
+  was := s[0].foot.walk;
+  view := angle_wrap(s[0].wyaw + PI32);
+  was.face_off = angle_wrap(was.face_off - angle_wrap(view - was.yaw));
+  was.yaw = view;
+  j := s[0].foot.jump;
+  space := k & KB_SPACE != 0; sink := k & KB_SHIFT != 0;
+  ft: fly.FlyTuning; toggled := false;
+  for e: 0..<s[0].taps {
+    j = sr_jump_press(sr_jump_press(j, false), true);
+    up := fly.fly_press(fly.fly_press(s[0].flyer, false, ft).fly, true, ft); s[0].flyer = up.fly; toggled = toggled != up.toggled;
+  }
+  s[0].taps = 0;
+  j = sr_jump_press(j, space);
+  pr := fly.fly_press(s[0].flyer, space, ft);
+  s[0].flyer = fly.fly_tick(pr.fly, dt);
+  if toggled != pr.toggled { j.presses.waiting = 0; j.waiting_time = 0; j.vy = 0; j.on_ground = false; }
+  flying := s[0].flyer.on;
+  s[0].foot.stance = sr_stance_forward(s[0].foot.stance, k & KB_W != 0, t);
+  n := sr_walk_step(was, go, side, sr_walk_pace(s[0].foot.stance, t), sr_jump_airborne(j), t, dt);
+  if flying {
+    v := fly.fly_velocity(sin(was.yaw) * go - cos(was.yaw) * side, cos(was.yaw) * go + sin(was.yaw) * side, space, sink, ft);
+    n.vx = v.x; n.vz = v.z; n.speed = sqrt(v.x * v.x + v.z * v.z);
+    n.x = was.x + v.x * dt; n.z = was.z + v.z * dt;
+  }
+  at := slide(s, was.x, was.z, j.y, n.x - was.x, n.z - was.z);
+  if dt > 0 && (at[0] != n.x || at[1] != n.z) {
+    n.vx = (at[0] - was.x) / dt; n.vz = (at[1] - was.z) / dt; n.speed = sqrt(n.vx * n.vx + n.vz * n.vz);
+  }
+  n.x = at[0]; n.z = at[1];
+  ground := ground_at(s, n.x, n.z, j.y);
+  if flying {
+    up := fly.fly_velocity(0, 0, space, sink, ft).y;
+    j.prev_y = j.y; j.y += up * dt; j.vy = up; j.on_ground = false; j.presses.waiting = 0; j.waiting_time = 0; j.landed = false;
+    if j.y <= ground {
+      j.y = ground;
+      s[0].flyer = fly.fly_ground(s[0].flyer, true, sink && !space);
+      if !s[0].flyer.on { j.on_ground = true; j.landed = true; j.impact = 0; }
+    }
+    if j.y > SLAB_DECK + 400 { j.y = SLAB_DECK + 400; }
+    j.prev_y = j.y; j.vy = 0; j.clock = 0;
+  } else { j = sr_jump_advance(j, t, ground, dt); }
+  s[0].stride += n.speed * dt;
+  s[0].foot.walk = n; s[0].foot.jump = j; s[0].foot.stance = sr_stance_tick(s[0].foot.stance, dt);
+}
+feet_y :: (s: [] Slab) -> f32 {
+  t: SrWalkTuning;
+  return sr_feet_y(s[0].foot, ground_at(s, s[0].foot.walk.x, s[0].foot.walk.z, s[0].foot.jump.y), t);
+}
+
+// The fly-through: W A S D along the view, Space up, Shift down, the wheel sets the speed.
+fly_step :: (s: [] Slab, dt: f32) {
+  k := s[0].held;
+  turn := 1.2f32 * dt;
+  if k & KB_LEFT != 0 { s[0].fyaw += turn; }
+  if k & KB_RIGHT != 0 { s[0].fyaw -= turn; }
+  if k & KB_UP != 0 { s[0].fpitch = clamp32(s[0].fpitch - turn * 0.7f32, -1.4, 1.4); }
+  if k & KB_DOWN != 0 { s[0].fpitch = clamp32(s[0].fpitch + turn * 0.7f32, -1.4, 1.4); }
+  cy := cos(s[0].fpitch);
+  fx := -sin(s[0].fyaw) * cy; fy := -sin(s[0].fpitch); fz := -cos(s[0].fyaw) * cy;
+  rx := cos(s[0].fyaw); rz := -sin(s[0].fyaw);
+  go := axis(k, KB_W, KB_S); side := axis(k, KB_D, KB_A); lift := axis(k, KB_SPACE | KB_E, KB_SHIFT | KB_Q);
+  speed := s[0].fspeed * dt;
+  // the view's right is (rx, rz) (slab_frame's U_RIGHT): D goes right
+  nx := s[0].fx + (fx * go + rx * side) * speed;
+  ny := s[0].fy + (fy * go + lift) * speed;
+  nz := s[0].fz + (fz * go + rz * side) * speed;
+  ny = clamp32(ny, 3, 2000);
+  // stay out of the hull and the buildings
+  h := to_hull(s, nx, ny, nz);
+  if inside_any(s, h[0], h[1], h[2]) { ny = hi_f32(s[0].fy, ny); h = to_hull(s, s[0].fx, ny, s[0].fz); if inside_any(s, h[0], h[1], h[2]) { return; } nx = s[0].fx; nz = s[0].fz; }
+  s[0].fx = clamp32(nx, -6000, 6000); s[0].fy = ny; s[0].fz = clamp32(nz, -6000, 6000);
+}
+inside_any :: (s: [] Slab, x: f32, y: f32, z: f32) -> bool {
+  for i: 0..<s[0].box_count {
+    sh := rec_shape(s, i);
+    if sh == SLAB_GROVE || sh == SLAB_GLADE_GROVE { continue; }
+    if y > rec(s, i, 1) - 1 && y < rec(s, i, 5) + 1.5f32 && rec_holds(s, i, x, z, 1.5) { return true; }
+  }
+  return false;
+}
+
+// Travel stations (spec section 8): the keys 1 to 9.
+STATION_X :: [9] f32.[0, -420, -80, 225, 0, 410, 470, -20, 0];
+STATION_Z :: [9] f32.[-250, 0, -120, -190, 150, 30, 0, 20, 0];
+STATION_DIST :: [9] f32.[320, 420, 360, 260, 620, 380, 520, 1150, 1900];
+STATION_YAW :: [9] f32.[0.4, 1.9, 0.8, 0.5, 0.9, 1.2, 1.57, 0.9, 0.9];
+STATION_PITCH :: [9] f32.[0.35, 0.4, 0.5, 0.55, 0.3, 0.45, 0.25, 0.5, 0.12];
+STATION_NAME :: [9] string.["THE DOCK", "THE OTEC PLANT", "THE DATA HALLS", "THE MINING YARD", "THE TOWERS", "THE GARDENS", "THE BOW", "THE CONCEPT VIEW", "1.5 KM OUT"];
+travel :: (s: [] Slab, i: int) {
+  if i < 0 || i >= 9 { return; }
+  s[0].intro = 0;
+  if s[0].mode == CAM_WALK {
+    x := STATION_X[i]; z := STATION_Z[i];
+    if i >= 7 { x = 470; z = 30; }
+    // find open deck near the station
+    for r: 0..<40 { if !blocked(s, x, z, SLAB_DECK) { break; } x += 3; z += 2; }
+    s[0].foot.walk.x = x; s[0].foot.walk.z = z; s[0].foot.walk.vx = 0; s[0].foot.walk.vz = 0;
+    t: SrWalkTuning;
+    s[0].foot.jump = sr_her_jump(ground_at(s, x, z, SLAB_DECK + 2), t);
+  } else if s[0].mode == CAM_FLY {
+    yaw := STATION_YAW[i]; pitch := STATION_PITCH[i]; d := STATION_DIST[i];
+    s[0].fx = STATION_X[i] + sin(yaw) * cos(pitch) * d; s[0].fz = STATION_Z[i] + cos(yaw) * cos(pitch) * d;
+    s[0].fy = SLAB_DECK + sin(pitch) * d; s[0].fyaw = yaw; s[0].fpitch = pitch;
+  } else {
+    s[0].tx = STATION_X[i]; s[0].tz = STATION_Z[i]; s[0].dist = STATION_DIST[i];
+    s[0].yaw = STATION_YAW[i]; s[0].pitch = STATION_PITCH[i];
+  }
+  say(s, STATION_NAME[i]);
+}
+say :: (s: [] Slab, text: string) {
+  n := 0;
+  for i: 0..<text.count { if n < 64 { s[0].toast[n] = text[i]; n += 1; } }
+  s[0].toast_n = n; s[0].toast_at = s[0].time;
+}
+set_mode :: (s: [] Slab, m: int) {
+  if m == s[0].mode { return; }
+  if m == CAM_FLY {
+    // start where the eye is now, looking the same way
+    s[0].fx = s[0].eye[0]; s[0].fy = hi_f32(s[0].eye[1], 3); s[0].fz = s[0].eye[2];
+    s[0].fyaw = angle_atan2(-s[0].fwd[0], -s[0].fwd[2]);
+    s[0].fpitch = clamp32(-angle_atan2(s[0].fwd[1], sqrt(s[0].fwd[0] * s[0].fwd[0] + s[0].fwd[2] * s[0].fwd[2])), -1.4, 1.4);
+  }
+  if m == CAM_WALK {
+    // set down on the deck under the orbit's point (or the gardens' promenade)
+    x := s[0].tx; z := s[0].tz;
+    if s[0].mode == CAM_FLY { h := to_hull(s, s[0].fx, s[0].fy, s[0].fz); x = h[0]; z = h[2]; }
+    // from a distant overview, the gardens' promenade (the spec's arrival); else under the orbit's point
+    if !in_plan(x, z, 4) || (s[0].mode == CAM_ORBIT && s[0].dist > 600) { x = 470; z = 30; }
+    for r: 0..<60 { if !blocked(s, x, z, SLAB_DECK) { break; } x += 4; z += 1; if !in_plan(x, z, 4) { x = 470; z = 30 + f32(r); } }
+    s[0].foot.walk.x = x; s[0].foot.walk.z = z; s[0].foot.walk.vx = 0; s[0].foot.walk.vz = 0;
+    t: SrWalkTuning;
+    s[0].foot.jump = sr_her_jump(ground_at(s, x, z, SLAB_DECK + 2), t);
+    s[0].born = true;
+    s[0].flyer = fly.fly_stop(s[0].flyer);
+    s[0].wyaw = s[0].yaw; s[0].wpitch = 0.18; s[0].wdist = 9.5;
+  }
+  if m == CAM_ORBIT && s[0].mode == CAM_WALK { s[0].tx = s[0].foot.walk.x; s[0].tz = s[0].foot.walk.z; s[0].dist = 160; s[0].yaw = s[0].wyaw; s[0].pitch = 0.4; }
+  s[0].mode = m;
+  s[0].intro = 0;
+  say(s, ifx m == CAM_FLY then "FLY: WASD, SPACE UP, SHIFT DOWN, WHEEL SETS SPEED" else ifx m == CAM_WALK then "ON FOOT: WASD, SPACE JUMPS, SPACE TWICE FLIES" else "ORBIT: DRAG TO TURN, WHEEL TO ZOOM, WASD TO MOVE");
+}
+
+// ---------------------------------------------------------------- picking
+// The nearest record a ray (hull frame) meets: its index, or -1.
+ray_box :: (o: [3] f32, d: [3] f32, lo: [3] f32, hi: [3] f32) -> f32 {
+  tn := -1e9f32; tf := 1e9f32;
+  for a: 0..<3 {
+    if abs(d[a]) < 1e-7 { if o[a] < lo[a] || o[a] > hi[a] { return -1; } continue; }
+    t0 := (lo[a] - o[a]) / d[a]; t1 := (hi[a] - o[a]) / d[a];
+    if t0 > t1 { tt := t0; t0 = t1; t1 = tt; }
+    tn = hi_f32(tn, t0); tf = lo_f32(tf, t1);
+  }
+  if tf < hi_f32(tn, 0) { return -1; }
+  return hi_f32(tn, 0);
+}
+pick :: (s: [] Slab, x: f32, y: f32) -> int {
+  if s[0].width < 1 { return -1; }
+  nx := (x / s[0].width) * 2 - 1; ny := 1 - (y / s[0].height) * 2;
+  d: [3] f32;
+  for a: 0..<3 { d[a] = s[0].fwd[a] + s[0].right[a] * nx * s[0].tanh * s[0].aspect + s[0].up[a] * ny * s[0].tanh; }
+  l := sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+  for a: 0..<3 { d[a] /= l; }
+  o := to_hull(s, s[0].eye[0], s[0].eye[1], s[0].eye[2]);
+  hd := dir_to_hull(s, d[0], d[1], d[2]);
+  best := 1e9f32; found := -1;
+  for i: 0..<s[0].box_count {
+    lo := [3] f32.[rec(s, i, 0), rec(s, i, 1), rec(s, i, 2)];
+    hi := [3] f32.[rec(s, i, 4), rec(s, i, 5), rec(s, i, 6)];
+    t := ray_box(o, hd, lo, hi);
+    if t < 0 || t >= best { continue; }
+    sh := rec_shape(s, i);
+    if sh == SLAB_CYLINDER || sh == SLAB_DOME {
+      // the circle at the hit's height, or at the top
+      px := o[0] + hd[0] * t; pz := o[2] + hd[2] * t;
+      if !rec_holds(s, i, px, pz, 0.5) {
+        // it may still meet the side further in: sample along the box
+        hitc := false;
+        for k: 1..<24 {
+          tt := t + f32(k) * (lo_f32(hi[0] - lo[0], hi[2] - lo[2]) / 12);
+          qx := o[0] + hd[0] * tt; qy := o[1] + hd[1] * tt; qz := o[2] + hd[2] * tt;
+          if qy < lo[1] || qy > hi[1] { break; }
+          if rec_holds(s, i, qx, qz, 0) { t = tt; hitc = true; break; }
+        }
+        if !hitc { continue; }
+      }
+    }
+    // the hull's pieces lose to anything standing on the deck at the same distance
+    if i < SLAB_HULL_PIECES { t += 0.5; }
+    if t < best { best = t; found = i; }
+  }
+  if found >= 0 { return found; }
+  // the sea
+  if hd[1] < 0 { return -2; }
+  return -1;
+}
+
+// ---------------------------------------------------------------- the frame
 slab_frame :: (s: [] Slab, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
   if s.count < 1 || u.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
   if !s[0].started { slab_reset(s); }
+  s[0].width = width; s[0].height = height; s[0].dpr = hi_f32(dpr, 0.5);
   phone := s[0].phone_forced || width / hi_f32(dpr, 0.5) < 600;
-  if !s[0].built || s[0].built_phone != phone { slab_build(s, phone); }
+  if !s[0].stats_set { s[0].stats = false; s[0].stats_set = true; }
+  if !s[0].built || s[0].built_phone != phone || s[0].wind != slab_wind(s) { slab_build(s, phone); }
   if !s[0].built { return 0; }
   step := wsp_clamp(dt, 0, 0.1);
-  if s[0].fixed >= 0 { s[0].time = s[0].fixed; } else if !(still || s[0].golden) { s[0].time += f64(step); }
+  frozen := still || s[0].golden;
+  if s[0].fixed >= 0 { s[0].time = s[0].fixed; } else if !frozen { s[0].time += f64(step); }
   if s[0].golden && s[0].fixed < 0 { s[0].time = 12.0; }
-  turn := 1.0 * step;
-  if s[0].held & 1 != 0 { s[0].yaw -= turn; }
-  if s[0].held & 2 != 0 { s[0].yaw += turn; }
-  if s[0].held & 4 != 0 { s[0].pitch = wsp_clamp(s[0].pitch + turn * 0.6f32, -0.2, 1.45); }
-  if s[0].held & 8 != 0 { s[0].pitch = wsp_clamp(s[0].pitch - turn * 0.6f32, -0.2, 1.45); }
-  if s[0].held & 64 != 0 { s[0].dist = wsp_clamp(s[0].dist * (1 - step), 30, 9000); }
-  if s[0].held & 128 != 0 { s[0].dist = wsp_clamp(s[0].dist * (1 + step), 30, 9000); }
-  // W A S D move the orbit's point over the water, faster the farther the camera
-  pace := hi_f32(s[0].dist, 60) * 0.6f32 * step;
-  hx := -sin(s[0].yaw); hz := -cos(s[0].yaw);
-  if s[0].held & 256 != 0 { s[0].tx += hx * pace; s[0].tz += hz * pace; }
-  if s[0].held & 512 != 0 { s[0].tx -= hx * pace; s[0].tz -= hz * pace; }
-  if s[0].held & 1024 != 0 { s[0].tx += hz * pace; s[0].tz -= hx * pace; }
-  if s[0].held & 2048 != 0 { s[0].tx -= hz * pace; s[0].tz += hx * pace; }
-  s[0].tx = wsp_clamp(s[0].tx, -4000, 4000); s[0].tz = wsp_clamp(s[0].tz, -4000, 4000);
-  for i: 0..<UNIFORM_FLOATS { u[i] = 0; }
-  u[U_SIZE] = width; u[U_SIZE + 1] = height; u[U_SIZE + 2] = f32(s[0].time); u[U_SIZE + 3] = 1;
-  u[U_MODE] = ifx still then 1.0f32 else 0.0f32; u[U_MODE + 1] = ifx phone then 1.0f32 else 0.0f32;
-  u[U_MODE + 2] = f32(s[0].box_count); u[U_MODE + 3] = dpr;
-  // The camera orbits a point on the deck's plane.
-  cy := cos(s[0].pitch); sy := sin(s[0].pitch);
-  fx := -sin(s[0].yaw) * cy; fz := -cos(s[0].yaw) * cy; fy := -sy;
-  tx := s[0].tx; ty := SLAB_DECK; tz := s[0].tz;
-  ex := tx - fx * s[0].dist; ey := ty - fy * s[0].dist; ez := tz - fz * s[0].dist;
-  ey = hi_f32(ey, slab_floor(ex, ez));
-  // aim at the orbit's point from where the eye ended up
-  ax := tx - ex; ay := ty - ey; az := tz - ez;
-  al := sqrt(ax * ax + ay * ay + az * az);
-  fx = ax / al; fy = ay / al; fz = az / al;
-  u[U_EYE] = ex; u[U_EYE + 1] = ey; u[U_EYE + 2] = ez; u[U_EYE + 3] = 0.5;
-  u[U_FWD] = fx; u[U_FWD + 1] = fy; u[U_FWD + 2] = fz;
-  rl := sqrt(fx * fx + fz * fz);
-  rx := -fz / rl; rz := fx / rl;
-  u[U_RIGHT] = rx; u[U_RIGHT + 2] = rz;
-  u[U_UP] = -(rz * fy); u[U_UP + 1] = rz * fx - rx * fz; u[U_UP + 2] = rx * fy;
-  // a high tropical sun, south-east of the platform
-  se := 0.95; sa := 2.3;
-  u[U_SUN] = f32(cos(se) * sin(sa)); u[U_SUN + 1] = f32(sin(se)); u[U_SUN + 2] = f32(cos(se) * cos(sa)); u[U_SUN + 3] = 1;
+  // the world's clock: a day in 24 minutes at the default rate, a year in six hours
+  if !frozen && !s[0].paused && s[0].fixed < 0 {
+    s[0].hour += f64(step) * s[0].rate / 3600.0;
+    if s[0].hour >= 24 { s[0].hour -= 24; }
+    s[0].month += f64(step) * s[0].rate / 3600.0 * 12.0 / (24.0 * 365.0) * 1460.0;
+    if s[0].month >= 12 { s[0].month -= 12; }
+  }
+  site := sim_site(s[0].site);
   sp := s[0].spectrum;
-  c0 := s[0].synth[0].cascades[0];
-  u[U_SEA] = 0; u[U_SEA + 1] = f32(c0.patch);
-  u[U_SEA + 2] = ifx phone then f32(WSP_TILE_METERS) else f32(s[0].synth[0].cascades[1].patch);
-  u[U_SEA + 3] = f32(sp.choppiness);
-  w := wsp_direction(sp);
-  u[U_WIND] = f32(w.x); u[U_WIND + 1] = f32(w.y); u[U_WIND + 2] = f32(sp.wind_speed); u[U_WIND + 3] = f32(s[0].synth[0].significant);
-  u[U_HULL] = SLAB_LENGTH / 2; u[U_HULL + 1] = SLAB_BEAM / 2; u[U_HULL + 2] = SLAB_DECK; u[U_HULL + 3] = -SLAB_DRAFT;
-  for i: 0..<s[0].box_count * SLAB_RECORD { u[U_BOXES + i] = s[0].boxes[i]; }
-  // The tick (the water's clock), and the tiles at it.
+  // the sea's tile at this tick (the water's clock), then the hull on it
   tick := wsp_tick_at(sp, s[0].time);
   fresh := !s[0].have_tick || tick != s[0].last_tick;
   folded := tick % sp.period;
   wsp_tile(s[0].synth[..], 0, folded, s[0].tile[..]);
+  c0 := s[0].synth[0].cascades[0];
+  wd := wsp_direction(sp);
+  if !frozen || s[0].fixed >= 0 {
+    sim_step := ifx s[0].fixed >= 0 then 0.0 else f64(step);
+    if s[0].fixed >= 0 && s[0].hull.time < 30 {
+      // a fixed moment: let the hull settle onto it
+      for i: 0..<20 { s[0].hull = sim_hull_advance(s[0].hull, s[0].tile[0].height[..], TILE_N, c0.patch, s[0].wind, wd.x, wd.y, 0.1); }
+    }
+    s[0].hull = sim_hull_advance(s[0].hull, s[0].tile[0].height[..], TILE_N, c0.patch, s[0].wind, wd.x, wd.y, sim_step);
+  }
+  slab_pose(s);
+  s[0].power = sim_power(s[0].plant, site, s[0].month);
+  // the camera
+  ex: f32; ey: f32; ez: f32; fx: f32; fy: f32; fz: f32;
+  turn := 1.0f32 * step;
+  k := s[0].held;
+  if s[0].mode == CAM_FLY {
+    fly_step(s, step);
+    cy := cos(s[0].fpitch);
+    ex = s[0].fx; ey = s[0].fy; ez = s[0].fz;
+    fx = -sin(s[0].fyaw) * cy; fy = -sin(s[0].fpitch); fz = -cos(s[0].fyaw) * cy;
+  } else if s[0].mode == CAM_WALK {
+    if k & KB_LEFT != 0 { s[0].wyaw -= turn * 1.6f32; }
+    if k & KB_RIGHT != 0 { s[0].wyaw += turn * 1.6f32; }
+    if k & KB_UP != 0 { s[0].wpitch = clamp32(s[0].wpitch + turn, -0.5, 1.3); }
+    if k & KB_DOWN != 0 { s[0].wpitch = clamp32(s[0].wpitch - turn, -0.5, 1.3); }
+    walk_step(s, step);
+    feet := feet_y(s);
+    cy := cos(s[0].wpitch);
+    fx = -sin(s[0].wyaw) * cy; fy = -sin(s[0].wpitch); fz = -cos(s[0].wyaw) * cy;
+    head := [3] f32.[s[0].foot.walk.x, feet + 1.55f32, s[0].foot.walk.z];
+    hx := head[0] - fx * s[0].wdist; hy := head[1] - fy * s[0].wdist; hz := head[2] - fz * s[0].wdist;
+    // keep the eye over the deck, and short of what stands between it and the character
+    hy = hi_f32(hy, ground_at(s, hx, hz, hy) + 0.4f32);
+    w := to_world(s, hx, hy, hz);
+    ex = w[0]; ey = w[1]; ez = w[2];
+    t := to_world(s, head[0], head[1], head[2]);
+    ax := t[0] - ex; ay := t[1] - ey; az := t[2] - ez;
+    al := hi_f32(sqrt(ax * ax + ay * ay + az * az), 0.01);
+    fx = ax / al; fy = ay / al; fz = az / al;
+  } else {
+    if k & KB_LEFT != 0 { s[0].yaw -= turn; }
+    if k & KB_RIGHT != 0 { s[0].yaw += turn; }
+    if k & KB_UP != 0 { s[0].pitch = clamp32(s[0].pitch + turn * 0.6f32, -0.2, 1.45); }
+    if k & KB_DOWN != 0 { s[0].pitch = clamp32(s[0].pitch - turn * 0.6f32, -0.2, 1.45); }
+    if k & (KB_IN | KB_E) != 0 { s[0].dist = clamp32(s[0].dist * (1 - step), 25, 9000); }
+    if k & (KB_OUT | KB_Q) != 0 { s[0].dist = clamp32(s[0].dist * (1 + step), 25, 9000); }
+    // W A S D move the orbit's point, faster the farther the camera
+    pace := hi_f32(s[0].dist, 60) * 0.6f32 * step;
+    hx := -sin(s[0].yaw); hz := -cos(s[0].yaw);
+    if k & KB_W != 0 { s[0].tx += hx * pace; s[0].tz += hz * pace; s[0].intro = 0; }
+    if k & KB_S != 0 { s[0].tx -= hx * pace; s[0].tz -= hz * pace; s[0].intro = 0; }
+    if k & KB_D != 0 { s[0].tx -= hz * pace; s[0].tz += hx * pace; s[0].intro = 0; }
+    if k & KB_A != 0 { s[0].tx += hz * pace; s[0].tz -= hx * pace; s[0].intro = 0; }
+    s[0].tx = clamp32(s[0].tx, -4000, 4000); s[0].tz = clamp32(s[0].tz, -4000, 4000);
+    dist := s[0].dist; pitch := s[0].pitch;
+    if s[0].intro > 0 && !frozen && s[0].fixed < 0 {
+      // the arrival: from 1.5 km out, low over the water, pushing in to the concept image's view
+      s[0].intro -= step;
+      a := clamp32(1 - s[0].intro / 7, 0, 1); e := a * a * (3 - 2 * a);
+      dist = 2600 + (s[0].dist - 2600) * e; pitch = 0.06f32 + (s[0].pitch - 0.06f32) * e;
+    }
+    cy := cos(pitch); sy := sin(pitch);
+    fx = -sin(s[0].yaw) * cy; fz = -cos(s[0].yaw) * cy; fy = -sy;
+    tx := s[0].tx; ty := SLAB_DECK; tz := s[0].tz;
+    ex = tx - fx * dist; ey = ty - fy * dist; ez = tz - fz * dist;
+    over := abs(ex) < SLAB_LENGTH / 2 + 6 && abs(ez) < SLAB_BEAM / 2 + 6;
+    ey = hi_f32(ey, ifx over then SLAB_DECK + 4 else 6.0f32);
+    ax := tx - ex; ay := ty - ey; az := tz - ez;
+    al := sqrt(ax * ax + ay * ay + az * az);
+    fx = ax / al; fy = ay / al; fz = az / al;
+  }
+  for i: 0..<UNIFORM_FLOATS { u[i] = 0; }
+  u[U_SIZE] = width; u[U_SIZE + 1] = height; u[U_SIZE + 2] = f32(s[0].time); u[U_SIZE + 3] = 1;
+  u[U_MODE] = ifx still then 1.0f32 else 0.0f32; u[U_MODE + 1] = ifx phone then 1.0f32 else 0.0f32;
+  u[U_MODE + 2] = f32(s[0].box_count); u[U_MODE + 3] = dpr;
+  tanh := ifx s[0].mode == CAM_WALK then 0.58f32 else 0.5f32;
+  u[U_EYE] = ex; u[U_EYE + 1] = ey; u[U_EYE + 2] = ez; u[U_EYE + 3] = tanh;
+  u[U_FWD] = fx; u[U_FWD + 1] = fy; u[U_FWD + 2] = fz;
+  rl := hi_f32(sqrt(fx * fx + fz * fz), 1e-4);
+  rx := -fz / rl; rz := fx / rl;
+  u[U_RIGHT] = rx; u[U_RIGHT + 2] = rz;
+  ux := -(rz * fy); uy := rz * fx - rx * fz; uz := rx * fy;
+  u[U_UP] = ux; u[U_UP + 1] = uy; u[U_UP + 2] = uz;
+  s[0].eye = [3] f32.[ex, ey, ez]; s[0].fwd = [3] f32.[fx, fy, fz]; s[0].right = [3] f32.[rx, 0, rz]; s[0].up = [3] f32.[ux, uy, uz];
+  s[0].tanh = tanh; s[0].aspect = width / height;
+  // the sun over the site, and the sky's colours from its height
+  sun := sim_sun(site.latitude, s[0].month, s[0].hour);
+  u[U_SUN] = f32(sun.x); u[U_SUN + 1] = f32(sun.y); u[U_SUN + 2] = f32(sun.z); u[U_SUN + 3] = 1;
+  slab_sky_params(s, u, sun);
+  u[U_SEA] = 0; u[U_SEA + 1] = f32(c0.patch);
+  u[U_SEA + 2] = ifx phone then f32(WSP_TILE_METERS) else f32(s[0].synth[0].cascades[1].patch);
+  u[U_SEA + 3] = f32(sp.choppiness);
+  u[U_WIND] = f32(wd.x); u[U_WIND + 1] = f32(wd.y); u[U_WIND + 2] = f32(sp.wind_speed); u[U_WIND + 3] = f32(s[0].synth[0].significant);
+  u[U_HULL] = SLAB_LENGTH / 2; u[U_HULL + 1] = SLAB_BEAM / 2; u[U_HULL + 2] = SLAB_DECK; u[U_HULL + 3] = -SLAB_DRAFT;
+  for i: 0..<s[0].box_count * SLAB_RECORD { u[U_BOXES + i] = s[0].boxes[i]; }
+  for i: 0..<s[0].group_count * SLAB_GROUP_FLOATS { u[U_GROUPS + i] = s[0].groups[i]; }
+  slab_state_params(s, u, sun);
+  // the foam on the tile
   if fresh {
     gap := ifx s[0].have_tick && tick > s[0].last_tick then f32(tick - s[0].last_tick) * f32(sp.tick) else 0.0f32;
     if !s[0].have_tick && s[0].fixed >= 0 {
       // a fixed moment: the foam the last four seconds would have left
-      for k: 0..<8 {
-        back := ifx tick > cast(u64) (8 - k) * 60 then tick - cast(u64) (8 - k) * 60 else 0;
+      for kk: 0..<8 {
+        back := ifx tick > cast(u64) (8 - kk) * 60 then tick - cast(u64) (8 - kk) * 60 else 0;
         wsp_tile(s[0].synth[..], 0, back % sp.period, s[0].tile[..]);
         wsp_foam_step(s[0].foam[..], s[0].tile[..], wsp_whitecap_threshold(s[0].tile[..], sp.wind_speed), 0.6, 0.5);
       }
@@ -249,49 +696,679 @@ slab_frame :: (s: [] Slab, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
     for i: 0..<nn { fs = hi_f32(fs, hi_f32(abs(s[0].tile[0].sx[i]), abs(s[0].tile[0].sz[i]))); }
     u[U_PACK + 2] = fs;
     for i: 0..<nn { u[fine + i] = pack2(s[0].tile[0].sx[i] / fs, s[0].tile[0].sz[i] / fs); }
+    // (cascade 0 again, for the hull's next step)
+    wsp_tile(s[0].synth[..], 0, folded, s[0].tile[..]);
   }
-  return 0;
+  if !s[0].hud || s[0].golden { s[0].button_count = 0; return 0; }
+  return hud(s, out);
 }
 
-// Input.
+// The sky, the sun's colour and the haze for the sun's height: day, the golden hour, dusk, night.
+mix3 :: (a: [3] f32, b: [3] f32, t: f32) -> [3] f32 { return [3] f32.[a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]; }
+smooth :: (a: f32, b: f32, x: f32) -> f32 { t := clamp32((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); }
+slab_sky_params :: (s: [] Slab, u: [] f32, sun: SimSun) {
+  P := U_PARAMS;
+  e := f32(sun.y);
+  day := smooth(-0.12, 0.12, e);
+  gold := (1 - smooth(0.04, 0.42, e)) * smooth(-0.1, 0.02, e);
+  sc := mix3([3] f32.[1.0, 0.56, 0.30], [3] f32.[1.0, 0.95, 0.88], smooth(0.04, 0.5, e));
+  strength := smooth(-0.04, 0.08, e) * (0.75f32 + 0.35f32 * smooth(0.1, 0.6, e));
+  u[P + P_SUNCOL] = sc[0] * strength; u[P + P_SUNCOL + 1] = sc[1] * strength; u[P + P_SUNCOL + 2] = sc[2] * strength;
+  u[P + P_SUNCOL + 3] = 0.08f32 + 0.92f32 * day;
+  zen := mix3([3] f32.[0.012, 0.02, 0.05], [3] f32.[0.26, 0.47, 0.78], day);
+  zen = mix3(zen, [3] f32.[0.42, 0.50, 0.60], gold * 0.7f32);
+  hor := mix3([3] f32.[0.03, 0.04, 0.08], [3] f32.[0.78, 0.86, 0.92], day);
+  hor = mix3(hor, [3] f32.[1.0, 0.80, 0.56], gold * 0.85f32);
+  u[P + P_ZENITH] = zen[0]; u[P + P_ZENITH + 1] = zen[1]; u[P + P_ZENITH + 2] = zen[2];
+  u[P + P_ZENITH + 3] = ifx s[0].sea >= SEA_GALE then 0.85f32 else ifx s[0].sea >= SEA_WINTER then 0.6f32 else 0.4f32;
+  u[P + P_HORIZON] = hor[0]; u[P + P_HORIZON + 1] = hor[1]; u[P + P_HORIZON + 2] = hor[2];
+  u[P + P_HORIZON + 3] = ifx s[0].sea >= SEA_GALE then 3000.0f32 else 7000.0f32 - 2500.0f32 * gold;
+  u[P + P_SUNHULL + 3] = gold;
+  u[P + P_PICK + 3] = 1 - day;
+}
+slab_state_params :: (s: [] Slab, u: [] f32, sun: SimSun) {
+  P := U_PARAMS;
+  pw := s[0].power;
+  u[P + P_COUNTS] = f32(s[0].group_count); u[P + P_COUNTS + 1] = f32(s[0].stack_first); u[P + P_COUNTS + 2] = f32(s[0].stack_count);
+  u[P + P_COUNTS + 3] = f32(pw.industry / SIM_INDUSTRY);
+  for i: 0..<12 { u[P + P_POSE + i] = s[0].pose[i]; }
+  sh := dir_to_hull(s, f32(sun.x), f32(sun.y), f32(sun.z));
+  u[P + P_SUNHULL] = sh[0]; u[P + P_SUNHULL + 1] = sh[1]; u[P + P_SUNHULL + 2] = sh[2];
+  shown := s[0].mode == CAM_WALK;
+  u[P + P_CHAR] = s[0].foot.walk.x; u[P + P_CHAR + 1] = ifx shown then feet_y(s) else -1000.0f32; u[P + P_CHAR + 2] = s[0].foot.walk.z;
+  u[P + P_CHAR + 3] = sr_face_yaw(s[0].foot.walk);
+  u[P + P_GAIT] = s[0].stride / 1.9f32 * TAU32; u[P + P_GAIT + 1] = s[0].foot.walk.speed;
+  u[P + P_GAIT + 2] = ifx shown then 1.0f32 else 0.0f32; u[P + P_GAIT + 3] = ifx s[0].foot.jump.on_ground then 0.0f32 else 1.0f32;
+  u[P + P_PICK] = f32(s[0].selected); u[P + P_PICK + 1] = f32(s[0].hovered); u[P + P_PICK + 2] = f32(s[0].time - s[0].selected_at);
+  // the spray up the walls: a vertical wall reflects the sea (clapotis), so the highest waves'
+  // crests stand about twice their height (2 x 1.86 Hs) on it, and the wind carries the spray
+  // higher still where the wave groups strike: about four times the significant height
+  hs := s[0].synth[0].significant;
+  u[P + P_SPRAY] = f32(fmin(4.0 * hs + 0.3 * s[0].wind, 24.0)); u[P + P_SPRAY + 1] = 90;
+  u[P + P_SPRAY + 2] = f32(pw.containers); u[P + P_SPRAY + 3] = f32(pw.data / pw.data_load);
+  u[P + P_SYSTEMS] = f32(pw.industry / SIM_INDUSTRY); u[P + P_SYSTEMS + 1] = 7.5;
+}
+
+// ---------------------------------------------------------------- the HUD
+// One stroke as a quad wide enough for its glow (the stroke font's pen, font.coax).
+lit :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, core: f32, light: f32, glow: f32,
+        red: f32, green: f32, blue: f32, mode: f32) -> bool {
+  if at < 0 || (at + 6) * VERTEX_FLOATS > out.count { return false; }
+  dx := bx - ax; dy := by - ay;
+  length := sqrt(dx * dx + dy * dy);
+  ux := 1.0f32; uy := 0.0f32;
+  if length > 0 { ux = dx / length; uy = dy / length; }
+  nx := -uy; ny := ux;
+  r := glow + core + 1;
+  a := [6] f32.[-r, length + r, length + r, -r, length + r, -r];
+  c := [6] f32.[-r, -r, r, -r, r, r];
+  for v: 0..<6 {
+    o := (at + v) * VERTEX_FLOATS;
+    out[o] = ax + ux * a[v] + nx * c[v];
+    out[o + 1] = ay + uy * a[v] + ny * c[v];
+    out[o + 2] = a[v]; out[o + 3] = c[v];
+    out[o + 4] = length; out[o + 5] = core; out[o + 6] = light; out[o + 7] = glow;
+    out[o + 8] = red; out[o + 9] = green; out[o + 10] = blue; out[o + 11] = mode;
+    out[o + 12] = 0; out[o + 13] = 0; out[o + 14] = 0; out[o + 15] = 0;
+  }
+  return true;
+}
+// A rounded panel: (x0, y0)-(x1, y1), corner radius, colour and opacity, a light border.
+panel :: (out: [] f32, at: int, x0: f32, y0: f32, x1: f32, y1: f32, radius: f32, r: f32, g: f32, b: f32, alpha: f32, border: f32) -> int {
+  if at < 0 || (at + 6) * VERTEX_FLOATS > out.count { return at; }
+  cx := (x0 + x1) * 0.5; cy := (y0 + y1) * 0.5; hw := (x1 - x0) * 0.5 + 1; hh := (y1 - y0) * 0.5 + 1;
+  qx := [6] f32.[-hw, hw, hw, -hw, hw, -hw];
+  qy := [6] f32.[-hh, -hh, hh, -hh, hh, hh];
+  for v: 0..<6 {
+    o := (at + v) * VERTEX_FLOATS;
+    out[o] = cx + qx[v]; out[o + 1] = cy + qy[v]; out[o + 2] = qx[v]; out[o + 3] = qy[v];
+    out[o + 4] = hw - 1; out[o + 5] = hh - 1; out[o + 6] = radius; out[o + 7] = alpha;
+    out[o + 8] = r; out[o + 9] = g; out[o + 10] = b; out[o + 11] = MODE_RECT;
+    out[o + 12] = border; out[o + 13] = 0; out[o + 14] = 0; out[o + 15] = 0;
+  }
+  return at + 6;
+}
+Pen :: struct { k: f32; cap: f32; r: f32 = 1; g: f32 = 1; b: f32 = 1; light: f32 = 1; }
+ink :: (p: Pen) -> Ink { return Ink.{core = hi_f32(p.cap * 0.075f32, 0.55f32), light = p.light, glow = p.cap * 0.18f32, red = p.r, green = p.g, blue = p.b, mode = MODE_STROKE, scale = p.k}; }
+text :: (out: [] f32, at: int, t: string, x: f32, base: f32, p: Pen) -> int {
+  return draw_text(out, at, t, x, base, p.cap, GAP, SPACE, ink(p), false, false);
+}
+text_w :: (t: string, cap: f32) -> f32 { return measure(t, GAP, SPACE, false) * cap; }
+// A button: a pill with a label; kept for the press.
+button :: (s: [] Slab, out: [] f32, at: int, label: string, x: f32, y: f32, k: f32, on: bool, id: int) -> int {
+  cap := 7.5f32 * k;
+  w := text_w(label, cap) + 16 * k; h := 22 * k;
+  n := panel(out, at, x, y, x + w, y + h, 6 * k, ifx on then 0.98f32 else 0.06f32, ifx on then 0.88f32 else 0.07f32, ifx on then 0.70f32 else 0.09f32, ifx on then 0.92f32 else 0.62f32, 0.35);
+  pen := Pen.{k = k, cap = cap, r = ifx on then 0.1f32 else 0.95f32, g = ifx on then 0.08f32 else 0.93f32, b = ifx on then 0.05f32 else 0.88f32};
+  n = text(out, n, label, x + 8 * k, y + h * 0.5f32 + cap * 0.5f32, pen);
+  if s[0].button_count < MAX_BUTTONS {
+    o := s[0].button_count * 5;
+    s[0].buttons[o] = x; s[0].buttons[o + 1] = y; s[0].buttons[o + 2] = x + w; s[0].buttons[o + 3] = y + h; s[0].buttons[o + 4] = f32(id);
+    s[0].button_count += 1;
+  }
+  return n;
+}
+button_w :: (label: string, k: f32) -> f32 { return text_w(label, 7.5f32 * k) + 16 * k; }
+
+// Text building: a line of up to LINE_W bytes.
+LINE_W :: 88;
+put :: (b: [] u8, n: int, t: string) -> int { m := n; for i: 0..<t.count { if m < b.count { b[m] = t[i]; m += 1; } } return m; }
+putf :: (b: [] u8, n: int, v: f64, decimals: int) -> int {
+  m := n; x := v;
+  if x < 0 && x * pow10(decimals) <= -0.5 { m = put(b, m, "-"); }
+  if x < 0 { x = -x; }
+  scale := pow10(decimals);
+  r := floor(x * scale + 0.5);
+  whole := floor(r / scale); frac := r - whole * scale;
+  digits: [24] u8; k := 0; w := whole;
+  if w < 1 { digits[0] = 48; k = 1; }
+  while w >= 1 && k < 20 { q := floor(w / 10); digits[k] = cast(u8) (48 + cast(int) (w - q * 10)); k += 1; w = q; }
+  for i: 0..<k {
+    if i > 0 && (k - i) % 3 == 0 { m = put(b, m, ","); }
+    if m < b.count { b[m] = digits[k - 1 - i]; m += 1; }
+  }
+  if decimals > 0 {
+    m = put(b, m, ".");
+    for i: 0..<decimals {
+      p := pow10(decimals - 1 - i);
+      dig := cast(int) floor(frac / p) % 10;
+      if m < b.count { b[m] = cast(u8) (48 + dig); m += 1; }
+    }
+  }
+  return m;
+}
+pow10 :: (n: int) -> f64 { r := 1.0; for i: 0..<n { r *= 10; } return r; }
+two :: (b: [] u8, n: int, v: int) -> int { m := n; if v < 10 { m = put(b, m, "0"); } return putf(b, m, f64(v), 0); }
+MONTHS :: [12] string.["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+
+// The info card: up to CARD_LINES lines, each with a style.
+CARD_LINES :: 18;
+ST_TITLE :: 0; ST_SUB :: 1; ST_HEAD :: 2; ST_BODY :: 3; ST_LIVE :: 4; ST_WARN :: 5; ST_NOTE :: 6;
+Card :: struct { b: [CARD_LINES * LINE_W] u8; n: [CARD_LINES] int; style: [CARD_LINES] int; lines: int; }
+line :: (c: [] Card, style: int, t: string) -> int {
+  if c[0].lines >= CARD_LINES { return -1; }
+  i := c[0].lines; c[0].lines += 1;
+  c[0].style[i] = style;
+  c[0].n[i] = put(c[0].b[i * LINE_W..<(i + 1) * LINE_W], 0, t);
+  return i;
+}
+ln :: (c: [] Card, style: int, t: string) { _ = line(c, style, t); }
+more :: (c: [] Card, i: int, t: string) { if i < 0 { return; } c[0].n[i] = put(c[0].b[i * LINE_W..<(i + 1) * LINE_W], c[0].n[i], t); }
+num :: (c: [] Card, i: int, v: f64, d: int) { if i < 0 { return; } c[0].n[i] = putf(c[0].b[i * LINE_W..<(i + 1) * LINE_W], c[0].n[i], v, d); }
+card_text :: (c: [] Card, i: int) -> string { return cast(string) c[0].b[i * LINE_W..<i * LINE_W + c[0].n[i]]; }
+
+district :: (x: f32, z: f32) -> string {
+  if x < -350 { return "OTEC PLANT DISTRICT"; }
+  if x < -150 { return "INDUSTRY DISTRICT"; }
+  if x < 50 && z < 0 { return "DATA HALL DISTRICT"; }
+  if x < 150 { return "TOWER DISTRICT"; }
+  if x < 300 && z < -100 { return "MINING YARD"; }
+  if x < 300 && z < 130 { return "MEDICAL CAMPUS"; }
+  if x < 300 { return "CIVIC QUARTER"; }
+  return "GARDENS AND CIVIC DISTRICT";
+}
+
+// What a card says about record i (or the sea, i = -2): its construction, physics and numbers now.
+slab_card :: (s: [] Slab, i: int, c: [] Card) {
+  c[0].lines = 0;
+  pw := s[0].power; h := s[0].hull; site := sim_site(s[0].site); sea := sim_sea(s[0].sea);
+  if i == -2 {
+    ln(c, ST_TITLE, "THE SEA");
+    l := line(c, ST_SUB, site.name);
+    ln(c, ST_HEAD, "CONDITIONS");
+    l = line(c, ST_LIVE, sea.name); more(c, l, " SEA, WIND "); num(c, l, s[0].wind, 1); more(c, l, " M/S");
+    l = line(c, ST_LIVE, "SIGNIFICANT HEIGHT "); num(c, l, s[0].synth[0].significant, 2); more(c, l, " M");
+    l = line(c, ST_LIVE, "SURFACE "); num(c, l, pw.surface, 1); more(c, l, " C, DEEP 5.0 C AT 1,000 M");
+    ln(c, ST_HEAD, "PHYSICS");
+    ln(c, ST_BODY, "A JONSWAP WIND SEA FROM AN FFT, MADE FRESH EACH FRAME");
+    ln(c, ST_BODY, "HS = 0.21 U^2 / G (PIERSON-MOSKOWITZ)");
+    ln(c, ST_BODY, "WATER 1,500 M DEEP UNDER THE MOORINGS");
+    l = line(c, ST_NOTE, "STORMS HERE: "); more(c, l, site.storms);
+    l = line(c, ST_NOTE, ifx site.sourced then "SURFACE TEMPERATURES: SOURCED" else "SURFACE TEMPERATURES: PLANNING VALUES");
+    return;
+  }
+  if i < 0 || i >= s[0].box_count { return; }
+  k := rec_kind(s, i);
+  x0 := rec(s, i, 0); y0 := rec(s, i, 1); z0 := rec(s, i, 2); x1 := rec(s, i, 4); y1 := rec(s, i, 5); z1 := rec(s, i, 6);
+  cx := (x0 + x1) * 0.5; cz := (z0 + z1) * 0.5; tall := y1 - SLAB_DECK;
+  if k == SLAB_KIND_HULL {
+    ln(c, ST_TITLE, "THE HULL");
+    ln(c, ST_SUB, "THE PRIME MONOLITH: REINFORCED, PRESTRESSED CONCRETE");
+    ln(c, ST_HEAD, "CONSTRUCTION");
+    ln(c, ST_BODY, "1,000 X 600 X 50 M, CORNERS ROUNDED TO 40 M");
+    ln(c, ST_BODY, "BOTTOM SLAB 1.5 M, DECK 1.0 M, WALLS 1.5 M THICK");
+    ln(c, ST_BODY, "11 + 19 BULKHEADS MAKE 240 CELLS OF 50 X 50 X 50 M");
+    ln(c, ST_BODY, "2.41 MILLION M3 OF CONCRETE: ABOUT 6.0 MT");
+    ln(c, ST_HEAD, "PHYSICS");
+    ln(c, ST_BODY, "DRAFT 25 M, FREEBOARD 25 M, DISPLACES 15.4 MT");
+    ln(c, ST_BODY, "GM 1,188 M ACROSS, 3,321 M ALONG: VERY STIFF");
+    ln(c, ST_BODY, "PERIODS: HEAVE 14.2 S, ROLL 13.9 S, PITCH 11.5 S");
+    ln(c, ST_BODY, "16 TAUT LINES TO ANCHORS 2 KM OUT, 1,500 M DOWN");
+    ln(c, ST_HEAD, "NOW");
+    l := line(c, ST_LIVE, "HEAVE "); num(c, l, h.heave, 3); more(c, l, " M  ROLL "); num(c, l, h.roll * 180 / SIM_PI, 4); more(c, l, "°  PITCH "); num(c, l, h.pitch * 180 / SIM_PI, 4); more(c, l, "°");
+    l = line(c, ST_LIVE, "OFFSET "); num(c, l, sqrt(h.surge * h.surge + h.sway * h.sway), 1); more(c, l, " M  PEAK LINE "); num(c, l, h.tension / 1e6, 1); more(c, l, " MN");
+    l = line(c, ST_LIVE, "WIND ON THE HULL "); num(c, l, h.wind_force / 1e6, 1); more(c, l, " MN");
+    ln(c, ST_NOTE, "THE WAVES' FORCES LARGELY CANCEL ACROSS 1 KM OF HULL");
+    return;
+  }
+  if k == SLAB_KIND_PLANT || (k == SLAB_KIND_TANK && cx < -350) || (k == SLAB_KIND_POOL && cx < -350) {
+    ln(c, ST_TITLE, ifx k == SLAB_KIND_POOL then "MOONPOOL" else ifx k == SLAB_KIND_TANK then "AMMONIA TANK" else "OTEC POWER PLANT");
+    ln(c, ST_SUB, "CLOSED-CYCLE AMMONIA OCEAN THERMAL ENERGY CONVERSION");
+    ln(c, ST_HEAD, "CONSTRUCTION");
+    if k == SLAB_KIND_POOL { ln(c, ST_BODY, "A 12 M SHAFT THROUGH THE HULL, OPEN TO THE SEA"); ln(c, ST_BODY, "IT CARRIES ONE OF 4 COLD-WATER PIPES"); }
+    ln(c, ST_BODY, "TURBINE HALLS, HEAT EXCHANGERS, AMMONIA TANKS");
+    ln(c, ST_BODY, "4 PIPES, 6.7 M WIDE, 1,000 M DOWN THROUGH MOONPOOLS");
+    ln(c, ST_BODY, "WARM INTAKES ON THE WEST WALL AT -20 M");
+    ln(c, ST_HEAD, "PHYSICS");
+    ln(c, ST_BODY, "GROSS = 171.4 X (DT / 24)^2 MW; PUMPS TAKE 51.4 MW");
+    ln(c, ST_BODY, "COLD WATER 282 M3/S, WARM 564 M3/S AT DESIGN");
+    ln(c, ST_HEAD, "NOW");
+    if s[0].plant.power == POWER_NUCLEAR { ln(c, ST_WARN, "IDLE: THE PLATFORM RUNS ON NUCLEAR MODULES"); }
+    l := line(c, ST_LIVE, "SURFACE "); num(c, l, pw.surface, 1); more(c, l, " C, DEEP 5.5 C AT THE PLANT, DT "); num(c, l, pw.dt, 1); more(c, l, " C");
+    l = line(c, ST_LIVE, "GROSS "); num(c, l, pw.otec_gross, 1); more(c, l, " MW, PUMPS "); num(c, l, pw.otec_parasitic, 1); more(c, l, ", NET "); num(c, l, pw.otec_net, 1); more(c, l, " MW");
+    if s[0].plant.pipe_tripped { ln(c, ST_WARN, "ONE COLD-WATER PIPE TRIPPED: A QUARTER OF THE FLOW LOST"); }
+    ln(c, ST_NOTE, "NO OTEC PLANT HAS DELIVERED MORE THAN ABOUT 0.1 MW NET.");
+    ln(c, ST_NOTE, "THESE FIGURES ARE ENGINEERING MODELS.");
+    return;
+  }
+  if k == SLAB_KIND_INDUSTRY || k == SLAB_KIND_STACK || k == SLAB_KIND_TANK {
+    ln(c, ST_TITLE, ifx k == SLAB_KIND_STACK then "SMOKESTACK" else ifx k == SLAB_KIND_TANK then "PROCESS TANK" else "PROCESS UNIT");
+    ln(c, ST_SUB, "INDUSTRY: METAL PROCESSING, REFINING, CHEMICALS");
+    ln(c, ST_HEAD, "CONSTRUCTION");
+    l := line(c, ST_BODY, ""); num(c, l, f64(x1 - x0), 0); more(c, l, " X "); num(c, l, f64(z1 - z0), 0); more(c, l, " M, "); num(c, l, f64(tall), 0); more(c, l, " M TALL");
+    ln(c, ST_BODY, "3 PROCESS UNITS, 6 STACKS OF 60 M, A TANK FARM");
+    ln(c, ST_BODY, "HEAVY LOADS SIT OVER THE 50 M BULKHEAD GRID");
+    ln(c, ST_HEAD, "PHYSICS");
+    ln(c, ST_BODY, "A 20 MW LOAD, THIRD IN THE DISPATCH ORDER");
+    if k == SLAB_KIND_STACK { l = line(c, ST_BODY, "THE PLUME DRIFTS DOWNWIND AT "); num(c, l, s[0].wind, 1); more(c, l, " M/S"); }
+    ln(c, ST_HEAD, "NOW");
+    l = line(c, ST_LIVE, "RUNNING ON "); num(c, l, pw.industry, 1); more(c, l, " OF 20 MW");
+    if pw.industry < SIM_INDUSTRY { l = line(c, ST_WARN, "SHED "); num(c, l, SIM_INDUSTRY - pw.industry, 1); more(c, l, " MW: NOT ENOUGH POWER"); }
+    if s[0].plant.power != POWER_OTEC {
+      l = line(c, ST_LIVE, ""); num(c, l, f64(pw.modules_on), 0); more(c, l, " NUCLEAR MODULES BELOW DECK: "); num(c, l, pw.nuclear_net, 0); more(c, l, " MW NET");
+      ln(c, ST_NOTE, "OCEAN ATOMICS-TYPE MODULES, THE COMPANY'S STATED FIGURES");
+    }
+    ln(c, ST_NOTE, "THE UNITS HAVE NO PROCESS SIMULATION IN THIS WORLD");
+    return;
+  }
+  if k == SLAB_KIND_DESAL {
+    ln(c, ST_TITLE, "DESALINATION PLANT");
+    ln(c, ST_SUB, "REVERSE OSMOSIS");
+    ln(c, ST_HEAD, "CONSTRUCTION");
+    ln(c, ST_BODY, "34 X 120 M, 14 M TALL, BESIDE THE TANK FARM");
+    ln(c, ST_HEAD, "PHYSICS");
+    ln(c, ST_BODY, "100,000 M3 A DAY AT 3.5 KWH/M3: ABOUT 15 MW");
+    ln(c, ST_BODY, "SECOND IN THE DISPATCH ORDER");
+    ln(c, ST_HEAD, "NOW");
+    l := line(c, ST_LIVE, "MAKING "); num(c, l, pw.desal / SIM_DESAL * 100000, 0); more(c, l, " M3 A DAY ON "); num(c, l, pw.desal, 1); more(c, l, " MW");
+    return;
+  }
+  if k == SLAB_KIND_DATA || k == SLAB_KIND_COOLING {
+    ln(c, ST_TITLE, ifx k == SLAB_KIND_DATA then "AI DATA HALL" else "COOLING YARD");
+    ln(c, ST_SUB, "4 HALLS OF 25 MW IT: 100 MW IT IN ALL");
+    ln(c, ST_HEAD, "CONSTRUCTION");
+    if k == SLAB_KIND_DATA { ln(c, ST_BODY, "120 X 60 M, THREE STOREYS (18 M), FANS ON THE ROOF"); }
+    else { ln(c, ST_BODY, "DRY COOLERS AND THE SEAWATER HEAT EXCHANGERS"); }
+    ln(c, ST_BODY, "15 MINUTES OF BATTERIES; 40 MW OF GENERATORS IN 60 S");
+    ln(c, ST_HEAD, "PHYSICS");
+    ln(c, ST_BODY, "PUE 1.20: 120 MW (1.10 WITH SEAWATER COOLING: 110 MW)");
+    ln(c, ST_BODY, "SEAWATER COOLING TAKES 2.93 M3/S OF COLD WATER");
+    ln(c, ST_HEAD, "NOW");
+    l := line(c, ST_LIVE, "DRAWING "); num(c, l, pw.data, 1); more(c, l, " OF "); num(c, l, pw.data_load, 0); more(c, l, " MW FROM THE PLANT");
+    if pw.data_on_backup { ln(c, ST_WARN, "SHORT OF POWER: BATTERIES AND GENERATORS CARRY THE REST"); }
+    l = line(c, ST_LIVE, ifx s[0].plant.swac then "SEAWATER COOLING ON: " else "SEAWATER COOLING OFF");
+    if s[0].plant.swac { num(c, l, pw.cooling_share * 100, 1); more(c, l, "% OF THE COLD FLOW"); }
+    return;
+  }
+  if k == SLAB_KIND_CRANE {
+    ln(c, ST_TITLE, "DOCK CRANE");
+    ln(c, ST_SUB, "THE DOCK, ON THE SOUTH WALL");
+    ln(c, ST_HEAD, "CONSTRUCTION");
+    ln(c, ST_BODY, "A 48 M LEG AND A 60 M BOOM OVER THE WATER");
+    ln(c, ST_BODY, "THE SPEC'S DOCK NOTCH (100 X 60 M, FLOOR -8 M)");
+    ln(c, ST_BODY, "IS NOT CUT INTO THE HULL YET IN THIS WORLD");
+    return;
+  }
+  if k == SLAB_KIND_TOWER {
+    ln(c, ST_TITLE, "TOWER");
+    ln(c, ST_SUB, "OFFICES AND HOUSING");
+    ln(c, ST_HEAD, "CONSTRUCTION");
+    l := line(c, ST_BODY, ""); num(c, l, f64(tall), 0); more(c, l, " M TALL, "); num(c, l, f64(floor(tall / 3.6f32)), 0); more(c, l, " STOREYS OF 3.6 M");
+    l = line(c, ST_BODY, "FOOTPRINT "); num(c, l, f64(x1 - x0), 0); more(c, l, " X "); num(c, l, f64(z1 - z0), 0); more(c, l, " M, GLASS CURTAIN WALL");
+    ln(c, ST_BODY, "ITS CORE STANDS ON A BULKHEAD CROSSING");
+    ln(c, ST_HEAD, "PHYSICS");
+    area := f64((x1 - x0) * tall);
+    l = line(c, ST_LIVE, "WIND LOAD AT "); num(c, l, s[0].wind, 1); more(c, l, " M/S: "); num(c, l, 0.5 * SIM_RHO_AIR * 1.3 * area * s[0].wind * s[0].wind / 1e6, 2); more(c, l, " MN");
+    l = line(c, ST_LIVE, "THE DECK'S TILT HERE: "); num(c, l, abs(h.roll * 180 / SIM_PI) + abs(h.pitch * 180 / SIM_PI), 4); more(c, l, "°");
+    ln(c, ST_BODY, "PART OF THE 8 MW HOTEL LOAD: LIGHT, LIFTS, PUMPS");
+    return;
+  }
+  if k == SLAB_KIND_CONTAINERS {
+    ln(c, ST_TITLE, "BITCOIN MINING YARD");
+    ln(c, ST_SUB, "50 IMMERSION-COOLED 40 FT CONTAINERS OF 1 MW");
+    ln(c, ST_HEAD, "CONSTRUCTION");
+    ln(c, ST_BODY, "5 ROWS OF 10, EACH 12.2 X 2.4 X 2.9 M");
+    ln(c, ST_HEAD, "PHYSICS");
+    ln(c, ST_BODY, "R = 6B(S + F)(1 - P) / (E U H) PER FACILITY MWH");
+    ln(c, ST_BODY, "15 J/TH, PUE 1.05; LAST IN THE DISPATCH ORDER");
+    ln(c, ST_HEAD, "NOW");
+    l := line(c, ST_LIVE, ""); num(c, l, f64(pw.containers), 0); more(c, l, " OF 50 RUNNING: "); num(c, l, pw.hashrate, 2); more(c, l, " EH/S");
+    l = line(c, ST_LIVE, "REVENUE $"); num(c, l, pw.revenue, 2); more(c, l, "/MWH, LEFT FOR POWER $"); num(c, l, pw.budget, 2);
+    if s[0].plant.halving { ln(c, ST_WARN, "AFTER THE NEXT HALVING: THE SUBSIDY IS 1.5625 BTC"); }
+    ln(c, ST_NOTE, "LUXOR'S 16 NOV 2026 SNAPSHOT: BTC $65,118, 967 EH/S");
+    ln(c, ST_NOTE, "MINING BUYS LEFTOVER POWER; IT IS NOT THE ANCHOR LOAD");
+    return;
+  }
+  if k == SLAB_KIND_MEDICAL {
+    ln(c, ST_TITLE, "MEDICAL CAMPUS");
+    ln(c, ST_SUB, "HOSPITAL AND RESEARCH BLOCKS");
+    ln(c, ST_HEAD, "CONSTRUCTION");
+    l := line(c, ST_BODY, ""); num(c, l, f64(x1 - x0), 0); more(c, l, " X "); num(c, l, f64(z1 - z0), 0); more(c, l, " M, "); num(c, l, f64(floor(tall / 3.6f32)), 0); more(c, l, " STOREYS");
+    ln(c, ST_BODY, "4 TO 6 STOREYS, LOW OVER THE BULKHEADS");
+    ln(c, ST_HEAD, "NOW");
+    l = line(c, ST_LIVE, "DECK ACCELERATION "); num(c, l, abs(h.accel) / SIM_G * 1000, 2); more(c, l, " MILLI-G (COMFORT BAND 50)");
+    return;
+  }
+  if k == SLAB_KIND_GROVE || k == SLAB_KIND_PARK {
+    ln(c, ST_TITLE, "CYPRESS GROVE");
+    ln(c, ST_SUB, district(cx, cz));
+    ln(c, ST_HEAD, "CONSTRUCTION");
+    ln(c, ST_BODY, "ITALIAN CYPRESS ON A 7 M GRID, 7 TO 13 M TALL");
+    ln(c, ST_BODY, "PLANTED IN SOIL ON THE DECK SLAB, OVER THE CELLS");
+    l := line(c, ST_BODY, "THIS GROVE: "); num(c, l, f64(x1 - x0), 0); more(c, l, " X "); num(c, l, f64(z1 - z0), 0); more(c, l, " M");
+    ln(c, ST_NOTE, "AS IN THE CONCEPT IMAGE'S GARDENS");
+    return;
+  }
+  if k == SLAB_KIND_TEMPLE || k == SLAB_KIND_COLONNADE || k == SLAB_KIND_CIVIC {
+    ln(c, ST_TITLE, ifx k == SLAB_KIND_CIVIC then "CIVIC HALL" else ifx k == SLAB_KIND_COLONNADE then "COLONNADED HALL" else "TEMPLE");
+    ln(c, ST_SUB, district(cx, cz));
+    ln(c, ST_HEAD, "CONSTRUCTION");
+    l := line(c, ST_BODY, ""); num(c, l, f64(x1 - x0), 0); more(c, l, " X "); num(c, l, f64(z1 - z0), 0); more(c, l, " M, "); num(c, l, f64(tall), 0); more(c, l, " M TALL");
+    ln(c, ST_BODY, ifx k == SLAB_KIND_CIVIC then "A DOMED ASSEMBLY HALL ON THE FOUNTAIN PLAZA" else "CLASSICAL: A COLONNADE UNDER A GABLED ROOF");
+    ln(c, ST_BODY, "WHITE PRECAST CONCRETE, AS IN THE CONCEPT IMAGE");
+    return;
+  }
+  if k == SLAB_KIND_POOL || k == SLAB_KIND_PLAZA || k == SLAB_KIND_FOUNTAIN {
+    canal := k == SLAB_KIND_POOL && x1 - x0 > 100;
+    ln(c, ST_TITLE, ifx canal then "THE CANAL" else "FOUNTAIN PLAZA");
+    ln(c, ST_SUB, "GARDENS AND CIVIC DISTRICT");
+    ln(c, ST_HEAD, "CONSTRUCTION");
+    if canal { ln(c, ST_BODY, "315 M LONG, 14 M WIDE, 1.5 M DEEP, LINED WITH CYPRESSES"); }
+    else { ln(c, ST_BODY, "A 76 M ROUND PLAZA, A 26 M BASIN AND A 9 M JET"); }
+    ln(c, ST_BODY, "FED FROM THE DESALINATION PLANT'S WATER");
+    return;
+  }
+  ln(c, ST_TITLE, district(cx, cz));
+}
+
+// The HUD: the title, the modes, the world's controls, the stats, the card, the hints.
+hud :: (s: [] Slab, out: [] f32) -> int {
+  s[0].button_count = 0;
+  k := s[0].dpr;
+  W := s[0].width; H := s[0].height;
+  narrow := W / k < 720;
+  n := 0;
+  pad := 12 * k;
+  site := sim_site(s[0].site); sea := sim_sea(s[0].sea); pw := s[0].power;
+  white := Pen.{k = k, cap = 7 * k};
+  // the title and the world's line
+  n = panel(out, n, pad, pad, pad + (ifx narrow then W - 2 * pad else 430 * k), pad + 48 * k, 9 * k, 0.04, 0.05, 0.07, 0.62, 0.3);
+  n = text(out, n, "SLAB SIMULATION", pad + 12 * k, pad + 20 * k, Pen.{k = k, cap = 10 * k, r = 1, g = 0.9, b = 0.72});
+  b: [LINE_W] u8; m := 0;
+  m = put(b[..], m, site.key); m = put(b[..], 0, "");
+  m = put(b[..], m, site.name); m = put(b[..], m, "  ");
+  hh := cast(int) floor(s[0].hour); mm := cast(int) floor((s[0].hour - f64(hh)) * 60);
+  m = two(b[..], m, hh); m = put(b[..], m, ":"); m = two(b[..], m, mm); m = put(b[..], m, " ");
+  m = put(b[..], m, MONTHS[cast(int) floor(s[0].month) % 12]);
+  n = text(out, n, cast(string) b[0..<m], pad + 12 * k, pad + 36 * k, Pen.{k = k, cap = 6.5f32 * k, r = 0.86, g = 0.88, b = 0.9});
+  m = 0;
+  m = put(b[..], m, sea.name); m = put(b[..], m, " SEA  HS "); m = putf(b[..], m, s[0].synth[0].significant, 1);
+  m = put(b[..], m, " M  WIND "); m = putf(b[..], m, s[0].wind, 1); m = put(b[..], m, " M/S");
+  if !narrow { n = text(out, n, cast(string) b[0..<m], pad + 210 * k, pad + 20 * k, Pen.{k = k, cap = 6.5f32 * k, r = 0.7, g = 0.86, b = 0.95}); }
+  // the camera's modes
+  y := pad + 56 * k;
+  x := pad;
+  n = button(s, out, n, "ORBIT", x, y, k, s[0].mode == CAM_ORBIT, BTN_ORBIT); x += button_w("ORBIT", k) + 5 * k;
+  n = button(s, out, n, "FLY", x, y, k, s[0].mode == CAM_FLY, BTN_FLY); x += button_w("FLY", k) + 5 * k;
+  n = button(s, out, n, "WALK", x, y, k, s[0].mode == CAM_WALK, BTN_WALK); x += button_w("WALK", k) + 12 * k;
+  n = button(s, out, n, "STATS", x, y, k, s[0].stats, BTN_STATS); x += button_w("STATS", k) + 5 * k;
+  n = button(s, out, n, "?", x, y, k, s[0].help, BTN_HELP); x += button_w("?", k) + 5 * k;
+  // the world's controls
+  y2 := ifx narrow then y + 28 * k else y;
+  x2 := ifx narrow then pad else x + 8 * k;
+  m = put(b[..], 0, "SITE: "); m = put(b[..], m, site.key);
+  n = button(s, out, n, cast(string) b[0..<m], x2, y2, k, false, BTN_SITE); x2 += button_w(cast(string) b[0..<m], k) + 5 * k;
+  m = put(b[..], 0, "SEA: "); m = put(b[..], m, sea.key);
+  n = button(s, out, n, cast(string) b[0..<m], x2, y2, k, false, BTN_SEA); x2 += button_w(cast(string) b[0..<m], k) + 5 * k;
+  n = button(s, out, n, "-1H", x2, y2, k, false, BTN_EARLIER); x2 += button_w("-1H", k) + 3 * k;
+  n = button(s, out, n, "+1H", x2, y2, k, false, BTN_LATER); x2 += button_w("+1H", k) + 3 * k;
+  n = button(s, out, n, "+1MO", x2, y2, k, false, BTN_MONTH); x2 += button_w("+1MO", k) + 3 * k;
+  n = button(s, out, n, ifx s[0].paused then "PLAY" else "PAUSE", x2, y2, k, s[0].paused, BTN_PAUSE); x2 += button_w("PAUSE", k) + 5 * k;
+  pk := ifx s[0].plant.power == POWER_NUCLEAR then "POWER: NUCLEAR" else ifx s[0].plant.power == POWER_HYBRID then "POWER: HYBRID" else "POWER: OTEC";
+  if narrow && x2 + button_w(pk, k) > W - pad { y2 += 28 * k; x2 = pad; }
+  n = button(s, out, n, pk, x2, y2, k, false, BTN_POWER); x2 += button_w(pk, k) + 5 * k;
+  top := y2 + 32 * k;
+  // the stats
+  if s[0].stats {
+    pwide := lo_f32(300 * k, W - 2 * pad);
+    rows := 22;
+    ph := f32(rows) * 11.5f32 * k + 16 * k;
+    n = panel(out, n, pad, top, pad + pwide, top + ph, 9 * k, 0.04, 0.05, 0.07, 0.66, 0.3);
+    yy := top + 16 * k;
+    lx := pad + 12 * k;
+    head := Pen.{k = k, cap = 6.5f32 * k, r = 1, g = 0.82, b = 0.5};
+    body := Pen.{k = k, cap = 6 * k, r = 0.9, g = 0.92, b = 0.94};
+    warn := Pen.{k = k, cap = 6 * k, r = 1, g = 0.68, b = 0.25};
+    h := s[0].hull;
+    n = text(out, n, "MOTION", lx, yy, head); yy += 12 * k;
+    m = put(b[..], 0, "HEAVE "); m = putf(b[..], m, h.heave, 3); m = put(b[..], m, " M   ROLL "); m = putf(b[..], m, h.roll * 180 / SIM_PI, 4); m = put(b[..], m, "°   PITCH "); m = putf(b[..], m, h.pitch * 180 / SIM_PI, 4); m = put(b[..], m, "°");
+    n = text(out, n, cast(string) b[0..<m], lx, yy, body); yy += 11 * k;
+    m = put(b[..], 0, "DECK ACCEL "); m = putf(b[..], m, abs(h.accel) / SIM_G * 1000, 2); m = put(b[..], m, " MILLI-G   DRAFT "); m = putf(b[..], m, 25 - h.heave, 2); m = put(b[..], m, " M");
+    n = text(out, n, cast(string) b[0..<m], lx, yy, body); yy += 11 * k;
+    m = put(b[..], 0, "OFFSET "); m = putf(b[..], m, sqrt(h.surge * h.surge + h.sway * h.sway), 1); m = put(b[..], m, " M   PEAK LINE "); m = putf(b[..], m, h.tension / 1e6, 1); m = put(b[..], m, " OF 40 MN");
+    n = text(out, n, cast(string) b[0..<m], lx, yy, body); yy += 8 * k;
+    // the heave trace
+    tw := pwide - 24 * k; th := 18 * k;
+    n = panel(out, n, lx, yy, lx + tw, yy + th, 3 * k, 0.1, 0.12, 0.15, 0.6, 0);
+    scale := 0.02;
+    for i: 0..<60 { scale = fmax(scale, abs(f64(h.trace[i]))); }
+    for i: 1..<60 {
+      ax := lx + tw * f32(i - 1) / 59; bx := lx + tw * f32(i) / 59;
+      ay := yy + th * 0.5f32 - th * 0.45f32 * f32(f64(h.trace[i - 1]) / scale); by := yy + th * 0.5f32 - th * 0.45f32 * f32(f64(h.trace[i]) / scale);
+      if lit(out, n, ax, ay, bx, by, 0.6f32 * k, 1, 1.2f32 * k, 0.5, 0.85, 1, MODE_STROKE) { n += 6; }
+    }
+    yy += th + 14 * k;
+    n = text(out, n, "POWER", lx, yy, head); yy += 12 * k;
+    if s[0].plant.power != POWER_NUCLEAR {
+      m = put(b[..], 0, "OTEC: SURFACE "); m = putf(b[..], m, pw.surface, 1); m = put(b[..], m, " C, DT "); m = putf(b[..], m, pw.dt, 1); m = put(b[..], m, " C, NET "); m = putf(b[..], m, pw.otec_net, 1); m = put(b[..], m, " MW");
+      n = text(out, n, cast(string) b[0..<m], lx, yy, body); yy += 11 * k;
+    }
+    if s[0].plant.power != POWER_OTEC {
+      m = put(b[..], 0, "NUCLEAR: "); m = putf(b[..], m, f64(pw.modules_on), 0); m = put(b[..], m, " MODULES, "); m = putf(b[..], m, pw.nuclear_net, 0); m = put(b[..], m, " MW NET");
+      n = text(out, n, cast(string) b[0..<m], lx, yy, body); yy += 11 * k;
+    }
+    m = put(b[..], 0, "SUPPLY "); m = putf(b[..], m, pw.supply, 1); m = put(b[..], m, " MW AGAINST "); m = putf(b[..], m, pw.fixed, 0); m = put(b[..], m, " MW OF FIXED LOADS");
+    n = text(out, n, cast(string) b[0..<m], lx, yy, ifx pw.supply < pw.fixed then warn else body); yy += 11 * k;
+    m = put(b[..], 0, "DATA "); m = putf(b[..], m, pw.data, 0); m = put(b[..], m, "/"); m = putf(b[..], m, pw.data_load, 0);
+    m = put(b[..], m, "  DESAL "); m = putf(b[..], m, pw.desal, 0); m = put(b[..], m, "/15  INDUSTRY "); m = putf(b[..], m, pw.industry, 0); m = put(b[..], m, "/20  HOTEL "); m = putf(b[..], m, pw.hotel, 0);
+    n = text(out, n, cast(string) b[0..<m], lx, yy, ifx pw.shed then warn else body); yy += 11 * k;
+    if pw.data_on_backup { n = text(out, n, "DATA HALLS SHORT: BATTERIES AND GENERATORS CARRY THEM", lx, yy, warn); yy += 11 * k; }
+    m = put(b[..], 0, "MINERS "); m = putf(b[..], m, f64(pw.containers), 0); m = put(b[..], m, "/50  "); m = putf(b[..], m, pw.hashrate, 2); m = put(b[..], m, " EH/S  $"); m = putf(b[..], m, pw.revenue, 1); m = put(b[..], m, "/MWH");
+    n = text(out, n, cast(string) b[0..<m], lx, yy, body); yy += 14 * k;
+    // the plant's switches
+    bx := lx;
+    if s[0].plant.power != POWER_NUCLEAR {
+      n = button(s, out, n, ifx s[0].plant.pipe_tripped then "RESTORE PIPE" else "TRIP A PIPE", bx, yy - 6 * k, k, s[0].plant.pipe_tripped, BTN_TRIP); bx += button_w("RESTORE PIPE", k) + 4 * k;
+    }
+    if s[0].plant.power != POWER_OTEC {
+      n = button(s, out, n, ifx s[0].plant.refuelling > 0 then "END REFUEL" else "REFUEL ONE", bx, yy - 6 * k, k, s[0].plant.refuelling > 0, BTN_REFUEL); bx += button_w("END REFUEL", k) + 4 * k;
+    }
+    n = button(s, out, n, "SWAC", bx, yy - 6 * k, k, s[0].plant.swac, BTN_SWAC); bx += button_w("SWAC", k) + 4 * k;
+    n = button(s, out, n, "HALVING", bx, yy - 6 * k, k, s[0].plant.halving, BTN_HALVING);
+    yy += 26 * k;
+    n = text(out, n, "NO OTEC PLANT HAS DELIVERED MORE THAN ABOUT 0.1 MW NET.", lx, yy, Pen.{k = k, cap = 5.5f32 * k, r = 0.7, g = 0.72, b = 0.75});
+    yy += 10 * k;
+    n = text(out, n, "THESE FIGURES ARE ENGINEERING MODELS.", lx, yy, Pen.{k = k, cap = 5.5f32 * k, r = 0.7, g = 0.72, b = 0.75});
+  }
+  // help
+  if s[0].help {
+    hw := lo_f32(360 * k, W - 2 * pad); hy := ifx s[0].stats then top + 10 * k else top;
+    hx := ifx s[0].stats && !narrow then pad + 310 * k else pad;
+    if s[0].stats && narrow { hy = H * 0.45f32; }
+    n = panel(out, n, hx, hy, hx + hw, hy + 150 * k, 9 * k, 0.04, 0.05, 0.07, 0.8, 0.3);
+    hp := Pen.{k = k, cap = 6 * k, r = 0.92, g = 0.93, b = 0.95};
+    yy := hy + 18 * k;
+    lines := [11] string.["ORBIT: DRAG OR ARROWS TURN, WHEEL OR R/F ZOOM, WASD MOVE",
+      "FLY (KEY F): WASD, SPACE UP, SHIFT DOWN, WHEEL SPEED",
+      "WALK (KEY G): WASD, SPACE JUMPS, SPACE TWICE FLIES,",
+      "  DRAG TURNS THE CAMERA, WHEEL ZOOMS, DOUBLE-W RUNS",
+      "O: ORBIT   1-9: TRAVEL (DOCK, OTEC, DATA, MINING,",
+      "  TOWERS, GARDENS, BOW, CONCEPT VIEW, 1.5 KM OUT)",
+      "CLICK ANYTHING TO LEARN ABOUT IT; ESC CLOSES THE CARD",
+      "N: NEXT SITE   M: NEXT SEA   [ ]: TIME   P: POWER",
+      "H: HIDE THE HUD   I: STATS",
+      "", "SPEC: DOCS/RESEARCH/OCEAN/SLAB-WORLD-SPEC.MD"];
+    for i: 0..<11 { n = text(out, n, lines[i], hx + 12 * k, yy, hp); yy += 12 * k; }
+  }
+  // the card
+  if s[0].selected != -1 {
+    card: [1] Card;
+    slab_card(s, s[0].selected, card[..]);
+    cw := lo_f32(340 * k, W - 2 * pad);
+    lh := 11 * k;
+    chh := 20 * k;
+    for i: 0..<card[0].lines { chh += ifx card[0].style[i] == ST_TITLE then 16 * k else ifx card[0].style[i] == ST_HEAD then 15 * k else lh; }
+    cx := s[0].card_x + 18 * k; cy := s[0].card_y - chh * 0.3f32;
+    if narrow { cx = pad; cy = H - chh - 40 * k; }
+    if cx + cw > W - pad { cx = s[0].card_x - cw - 18 * k; }
+    cx = clamp32(cx, pad, W - pad - cw); cy = clamp32(cy, top, H - chh - 34 * k);
+    n = panel(out, n, cx, cy, cx + cw, cy + chh, 10 * k, 0.035, 0.04, 0.055, 0.86, 0.45);
+    yy := cy + 10 * k;
+    for i: 0..<card[0].lines {
+      st := card[0].style[i];
+      p := Pen.{k = k, cap = 6 * k, r = 0.9, g = 0.92, b = 0.94};
+      if st == ST_TITLE { p = Pen.{k = k, cap = 10 * k, r = 1, g = 0.92, b = 0.76}; yy += 16 * k; }
+      else if st == ST_SUB { p = Pen.{k = k, cap = 5.5f32 * k, r = 0.66, g = 0.74, b = 0.82}; yy += lh; }
+      else if st == ST_HEAD { p = Pen.{k = k, cap = 6 * k, r = 1, g = 0.78, b = 0.42}; yy += 15 * k; }
+      else if st == ST_LIVE { p = Pen.{k = k, cap = 6 * k, r = 0.62, g = 0.92, b = 1}; yy += lh; }
+      else if st == ST_WARN { p = Pen.{k = k, cap = 6 * k, r = 1, g = 0.62, b = 0.25}; yy += lh; }
+      else if st == ST_NOTE { p = Pen.{k = k, cap = 5.3f32 * k, r = 0.66, g = 0.68, b = 0.7}; yy += lh; }
+      else { yy += lh; }
+      n = text(out, n, card_text(card[..], i), cx + 14 * k, yy, p);
+    }
+    n = button(s, out, n, "X", cx + cw - button_w("X", k) - 8 * k, cy + 8 * k, k, false, BTN_CLOSE);
+  }
+  // what the pointer is on
+  if s[0].hovered != -1 && s[0].hovered != s[0].selected && !s[0].dragging && s[0].mode != CAM_WALK {
+    card: [1] Card;
+    slab_card(s, s[0].hovered, card[..]);
+    if card[0].lines > 0 {
+      t := card_text(card[..], 0);
+      tw := text_w(t, 6.5f32 * k) + 16 * k;
+      px := clamp32(s[0].px + 14 * k, pad, W - pad - tw); py := clamp32(s[0].py + 14 * k, top, H - 40 * k);
+      n = panel(out, n, px, py, px + tw, py + 20 * k, 6 * k, 0.04, 0.05, 0.07, 0.75, 0.3);
+      n = text(out, n, t, px + 8 * k, py + 13.5f32 * k, Pen.{k = k, cap = 6.5f32 * k, r = 1, g = 0.95, b = 0.85});
+    }
+  }
+  // a toast
+  if s[0].toast_n > 0 && s[0].time - s[0].toast_at < 3.5 {
+    t := cast(string) s[0].toast[0..<s[0].toast_n];
+    tw := text_w(t, 7 * k) + 24 * k;
+    a := f32(clamp32(f32(3.5 - (s[0].time - s[0].toast_at)), 0, 1));
+    tx := (W - tw) * 0.5f32; ty := H * 0.72f32;
+    n = panel(out, n, tx, ty, tx + tw, ty + 26 * k, 8 * k, 0.04, 0.05, 0.07, 0.75 * a, 0.3 * a);
+    n = text(out, n, t, tx + 12 * k, ty + 17 * k, Pen.{k = k, cap = 7 * k, r = 1, g = 0.92, b = 0.78, light = a});
+  }
+  // the reconstruction label (spec 8), always, and the mode's hint
+  note := Pen.{k = k, cap = 5.3f32 * k, r = 0.85, g = 0.86, b = 0.88};
+  hint := ifx s[0].mode == CAM_FLY then "FLY: WASD, SPACE UP, SHIFT DOWN, WHEEL SPEED, DRAG TO LOOK" else ifx s[0].mode == CAM_WALK then "WALK: WASD, SPACE JUMP, SPACE TWICE FLY, DRAG TO TURN, WHEEL ZOOM" else "DRAG TO TURN, WHEEL TO ZOOM, WASD TO MOVE, CLICK ANYTHING TO LEARN ABOUT IT";
+  n = panel(out, n, pad, H - pad - (ifx narrow then 44 else 32) * k, lo_f32(W - pad, pad + 560 * k), H - pad, 7 * k, 0.04, 0.05, 0.07, 0.55, 0.2);
+  n = text(out, n, hint, pad + 10 * k, H - pad - (ifx narrow then 30 else 18) * k, Pen.{k = k, cap = 5.6f32 * k, r = 1, g = 0.9, b = 0.72});
+  if narrow {
+    n = text(out, n, "RECONSTRUCTION: SLAB'S REAL DESIGN IS UNPUBLISHED.", pad + 10 * k, H - pad - 18 * k, note);
+    n = text(out, n, "DIMENSIONS AND SYSTEMS ARE THIS WORLD'S ASSUMPTIONS.", pad + 10 * k, H - pad - 7 * k, note);
+  } else {
+    n = text(out, n, "RECONSTRUCTION: SLAB'S REAL DESIGN IS UNPUBLISHED. DIMENSIONS AND SYSTEMS ARE THIS WORLD'S ASSUMPTIONS.", pad + 10 * k, H - pad - 7 * k, note);
+  }
+  return n;
+}
+
+// ---------------------------------------------------------------- input
 key_bit :: (key: int) -> int {
-  if key == KEY_LEFT { return 1; }
-  if key == KEY_RIGHT { return 2; }
-  if key == KEY_UP { return 4; }
-  if key == KEY_DOWN { return 8; }
-  if key == 'r' || key == 'R' { return 64; }
-  if key == 'f' || key == 'F' { return 128; }
-  if key == 'w' || key == 'W' { return 256; }
-  if key == 's' || key == 'S' { return 512; }
-  if key == 'd' || key == 'D' { return 1024; }
-  if key == 'a' || key == 'A' { return 2048; }
+  if key == KEY_LEFT { return KB_LEFT; }
+  if key == KEY_RIGHT { return KB_RIGHT; }
+  if key == KEY_UP { return KB_UP; }
+  if key == KEY_DOWN { return KB_DOWN; }
+  if key == KEY_SHIFT { return KB_SHIFT; }
+  if key == 'r' || key == 'R' { return KB_IN; }
+  if key == 'w' || key == 'W' { return KB_W; }
+  if key == 's' || key == 'S' { return KB_S; }
+  if key == 'd' || key == 'D' { return KB_D; }
+  if key == 'a' || key == 'A' { return KB_A; }
+  if key == ' ' { return KB_SPACE; }
+  if key == 'e' || key == 'E' { return KB_E; }
+  if key == 'q' || key == 'Q' { return KB_Q; }
   return 0;
+}
+press :: (s: [] Slab, id: int) {
+  if id == BTN_ORBIT { set_mode(s, CAM_ORBIT); }
+  else if id == BTN_FLY { set_mode(s, CAM_FLY); }
+  else if id == BTN_WALK { set_mode(s, CAM_WALK); }
+  else if id == BTN_STATS { s[0].stats = !s[0].stats; }
+  else if id == BTN_HELP { s[0].help = !s[0].help; }
+  else if id == BTN_SITE { s[0].site = (s[0].site + 1) % SITES; s[0].sea = sim_site(s[0].site).sea; s[0].wind_forced = -1; say(s, sim_site(s[0].site).name); }
+  else if id == BTN_SEA { s[0].sea = (s[0].sea + 1) % SEAS; s[0].wind_forced = -1; say(s, sim_sea(s[0].sea).name); }
+  else if id == BTN_EARLIER { s[0].hour -= 1; if s[0].hour < 0 { s[0].hour += 24; } }
+  else if id == BTN_LATER { s[0].hour += 1; if s[0].hour >= 24 { s[0].hour -= 24; } }
+  else if id == BTN_MONTH { s[0].month += 1; if s[0].month >= 12 { s[0].month -= 12; } }
+  else if id == BTN_PAUSE { s[0].paused = !s[0].paused; }
+  else if id == BTN_POWER { s[0].plant.power = (s[0].plant.power + 1) % 3; s[0].plant.refuelling = 0; say(s, ifx s[0].plant.power == POWER_NUCLEAR then "POWER: 4 NUCLEAR MODULES" else ifx s[0].plant.power == POWER_HYBRID then "POWER: 2 MODULES + OTEC" else "POWER: OTEC"); }
+  else if id == BTN_TRIP { s[0].plant.pipe_tripped = !s[0].plant.pipe_tripped; }
+  else if id == BTN_REFUEL { s[0].plant.refuelling = ifx s[0].plant.refuelling > 0 then 0 else 1; }
+  else if id == BTN_SWAC { s[0].plant.swac = !s[0].plant.swac; }
+  else if id == BTN_HALVING { s[0].plant.halving = !s[0].plant.halving; }
+  else if id == BTN_CLOSE { s[0].selected = -1; }
 }
 slab_key :: (s: [] Slab, key: int, down: bool) -> bool #export_c #effects(all) {
   if !s[0].started { slab_reset(s); }
+  if down {
+    if key == KEY_ESCAPE { if s[0].selected != -1 { s[0].selected = -1; return true; } if s[0].help { s[0].help = false; return true; } if s[0].mode != CAM_ORBIT { set_mode(s, CAM_ORBIT); return true; } return false; }
+    if key >= '1' && key <= '9' { travel(s, key - '1'); return true; }
+    if key == 'f' || key == 'F' { set_mode(s, ifx s[0].mode == CAM_FLY then CAM_ORBIT else CAM_FLY); return true; }
+    if key == 'g' || key == 'G' { set_mode(s, ifx s[0].mode == CAM_WALK then CAM_ORBIT else CAM_WALK); return true; }
+    if key == 'o' || key == 'O' { set_mode(s, CAM_ORBIT); return true; }
+    if key == 'n' || key == 'N' { press(s, BTN_SITE); return true; }
+    if key == 'm' || key == 'M' { press(s, BTN_SEA); return true; }
+    if key == '[' { press(s, BTN_EARLIER); return true; }
+    if key == ']' { press(s, BTN_LATER); return true; }
+    if key == 'p' || key == 'P' { press(s, BTN_POWER); return true; }
+    if key == 'i' || key == 'I' { press(s, BTN_STATS); return true; }
+    if key == 'h' || key == 'H' { s[0].hud = !s[0].hud; return true; }
+    if key == '?' { press(s, BTN_HELP); return true; }
+  }
   b := key_bit(key);
+  if key == 'f' || key == 'F' { return true; }
   if b == 0 { return false; }
-  if down { s[0].held |= b; } else { s[0].held = s[0].held & (4095 - b); }
+  if down && b == KB_SPACE && s[0].held & KB_SPACE == 0 { s[0].taps += 1; }
+  if down { s[0].held |= b; } else { s[0].held = s[0].held & (65535 - b); }
   return true;
 }
 slab_blur :: (s: [] Slab) #export_c #effects(all) { s[0].held = 0; s[0].dragging = false; }
+hit_button :: (s: [] Slab, x: f32, y: f32) -> int {
+  for i: 0..<s[0].button_count {
+    o := i * 5;
+    if x >= s[0].buttons[o] && x <= s[0].buttons[o + 2] && y >= s[0].buttons[o + 1] && y <= s[0].buttons[o + 3] { return cast(int) s[0].buttons[o + 4]; }
+  }
+  return 0;
+}
 slab_pointer :: (s: [] Slab, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
   if !s[0].started { slab_reset(s); }
-  if phase == 0 { s[0].dragging = true; s[0].last_x = x; s[0].last_y = y; return true; }
-  if phase == 1 && s[0].dragging {
-    s[0].yaw -= (x - s[0].last_x) * 0.004;
-    s[0].pitch = wsp_clamp(s[0].pitch + (y - s[0].last_y) * 0.003, -0.2, 1.45);
-    s[0].last_x = x; s[0].last_y = y;
+  s[0].px = x; s[0].py = y;
+  if phase == 0 {
+    b := hit_button(s, x, y);
+    if b != 0 { press(s, b); return true; }
+    s[0].dragging = true; s[0].last_x = x; s[0].last_y = y; s[0].down_x = x; s[0].down_y = y; s[0].moved = 0;
     return true;
   }
-  if phase >= 2 { s[0].dragging = false; }
+  if phase == 1 {
+    if s[0].dragging {
+      dx := x - s[0].last_x; dy := y - s[0].last_y;
+      s[0].moved += abs(dx) + abs(dy);
+      if s[0].mode == CAM_FLY { s[0].fyaw -= dx * 0.004; s[0].fpitch = clamp32(s[0].fpitch + dy * 0.003, -1.4, 1.4); }
+      else if s[0].mode == CAM_WALK { s[0].wyaw -= dx * 0.005; s[0].wpitch = clamp32(s[0].wpitch + dy * 0.004, -0.5, 1.3); }
+      else { s[0].yaw -= dx * 0.004; s[0].pitch = clamp32(s[0].pitch + dy * 0.003, -0.2, 1.45); s[0].intro = 0; }
+      s[0].last_x = x; s[0].last_y = y;
+      return true;
+    }
+    // hover: what is under the pointer (not over the HUD's buttons)
+    s[0].hovered = ifx hit_button(s, x, y) != 0 then -1 else pick(s, x, y);
+    return false;
+  }
+  if phase >= 2 {
+    was := s[0].dragging;
+    s[0].dragging = false;
+    if phase == 2 && was && s[0].moved < 6 * s[0].dpr {
+      p := pick(s, x, y);
+      if p == -1 || p == s[0].selected { s[0].selected = -1; }
+      else { s[0].selected = p; s[0].selected_at = s[0].time; s[0].card_x = x; s[0].card_y = y; }
+      return true;
+    }
+  }
   return false;
 }
 slab_wheel :: (s: [] Slab, dy: f32) #export_c #effects(all) {
   if !s[0].started { slab_reset(s); }
-  s[0].dist = wsp_clamp(s[0].dist * (1 + dy * 0.001), 30, 9000);
+  if s[0].mode == CAM_FLY { s[0].fspeed = clamp32(s[0].fspeed * (1 - dy * 0.001), 3, 60); return; }
+  if s[0].mode == CAM_WALK { s[0].wdist = clamp32(s[0].wdist * (1 + dy * 0.001), 1.5, 12); return; }
+  s[0].dist = clamp32(s[0].dist * (1 + dy * 0.001), 25, 9000);
+  s[0].intro = 0;
 }
 slab_golden :: (s: [] Slab, on: bool) #export_c #effects(all) { if !s[0].started { slab_reset(s); } s[0].golden = on; }
+slab_cursor :: (s: [] Slab) -> int #export_c #effects(all) {
+  if !s[0].started { return 0; }
+  if hit_button(s, s[0].px, s[0].py) != 0 { return 1; }
+  return ifx s[0].hovered != -1 && !s[0].dragging then 1 else 0;
+}
 
 // The page facts (message 600): the URL's query.
 fact :: (facts: string, key: string) -> string {
@@ -343,15 +1420,34 @@ slab_message :: (s: [] Slab, kind: int, text: string) #export_c #effects(all) {
   s[0].counted = true;
   url := fact(text, "url");
   s[0].fixed = query_number(url, "t", -1);
-  s[0].wind = fclamp(query_number(url, "wind", 10), 0.5, 30);
-  s[0].yaw = f32(query_number(url, "yaw", 0.62));
-  s[0].pitch = f32(fclamp(query_number(url, "pitch", 0.36), -0.2, 1.45));
-  s[0].dist = f32(fclamp(query_number(url, "dist", 1500), 30, 9000));
-  s[0].tx = f32(fclamp(query_number(url, "x", 0), -4000, 4000));
-  s[0].tz = f32(fclamp(query_number(url, "z", 0), -4000, 4000));
+  for i: 0..<SITES { b := put_pair("site=", sim_site(i).key); if query_word(url, cast(string) b.b[0..<b.n]) { s[0].site = i; s[0].sea = sim_site(i).sea; } }
+  for i: 0..<SEAS { b := put_pair("sea=", sim_sea(i).key); if query_word(url, cast(string) b.b[0..<b.n]) { s[0].sea = i; } }
+  w := query_number(url, "wind", -1);
+  if w > 0 { s[0].wind_forced = fclamp(w, 0.5, 30); }
+  s[0].hour = fclamp(query_number(url, "hour", 17.3), 0, 23.99);
+  mo := query_number(url, "month", -1);
+  if mo >= 1 { s[0].month = fclamp(mo, 1, 12.99) - 0.5; }
+  s[0].rate = fclamp(query_number(url, "rate", 60), 0, 3600);
+  if query_word(url, "power=nuclear") { s[0].plant.power = POWER_NUCLEAR; }
+  if query_word(url, "power=hybrid") { s[0].plant.power = POWER_HYBRID; }
+  s[0].plant.otec_scale = fclamp(query_number(url, "otec", 1), 0.05, 3.0);
+  s[0].plant.modules = cast(int) fclamp(query_number(url, "modules", 4), 1, 6);
+  s[0].plant.swac = query_word(url, "swac=1");
+  s[0].yaw = f32(query_number(url, "yaw", 0.9));
+  s[0].pitch = f32(fclamp(query_number(url, "pitch", 0.5), -0.2, 1.45));
+  s[0].dist = f32(fclamp(query_number(url, "dist", 1150), 25, 9000));
+  s[0].tx = f32(fclamp(query_number(url, "x", -20), -4000, 4000));
+  s[0].tz = f32(fclamp(query_number(url, "z", 20), -4000, 4000));
+  if query_number(url, "yaw", -99) != -99 || query_number(url, "dist", -99) != -99 || s[0].fixed >= 0 { s[0].intro = 0; }
   s[0].phone_forced = query_word(url, "tier=phone");
+  if query_word(url, "hud=0") { s[0].hud = false; }
+  if query_word(url, "mode=fly") { s[0].intro = 0; set_mode(s, CAM_FLY); }
+  if query_word(url, "mode=walk") { s[0].intro = 0; set_mode(s, CAM_WALK); }
+  s[0].toast_n = 0;
   s[0].built = false;
 }
+Pair :: struct { b: [48] u8; n: int; }
+put_pair :: (a: string, b: string) -> Pair { p: Pair; p.n = put(p.b[..], 0, a); p.n = put(p.b[..], p.n, b); return p; }
 
 coaxial_slab_max_vertices :: () -> int #export_c #effects(all) { return MAX_VERTICES; }
 // The clipmap's vertices this frame, drawn by slab.wgsl's surface_vs.
@@ -362,17 +1458,53 @@ coaxial_slab_uniform_floats :: () -> int #export_c #effects(all) { return UNIFOR
 #test "SLAB's uniforms fit one WebGPU uniform block" {
   // 64 KiB, the default maxUniformBufferBindingSize; slab.bindings declares UNIFORM_FLOATS / 4 vec4s
   #assert UNIFORM_FLOATS * 4 <= 65536;
-  #assert UNIFORM_FLOATS % 4 == 0 && U_WORDS % 4 == 0;
+  #assert UNIFORM_FLOATS % 4 == 0 && U_WORDS % 4 == 0 && U_PARAMS % 4 == 0 && U_GROUPS % 4 == 0;
   #assert U_BOXES >= U_LEVELS + 4 * OCEAN_MAX_LEVELS;
+  #assert P_SYSTEMS + 4 <= PARAM_FLOATS;
 }
-#test "The camera never goes under the deck or the waves" {
-  #assert slab_floor(0, 0) > SLAB_DECK;
-  #assert slab_floor(2000, 0) > 0;
+#test "the deck holds the walker inside its parapet and over its buildings" {
+  s: [1] Slab;
+  slab_reset(s[..]);
+  #assert ground_at(s[..], 470, 30, SLAB_DECK) >= SLAB_DECK;
+  #assert blocked(s[..], 600, 0, SLAB_DECK);              // over the edge
+  #assert blocked(s[..], 0, 150, SLAB_DECK) || !blocked(s[..], 0, 150, SLAB_DECK + 200);
+  // a tower's wall stops a walker on the deck, but not one above its roof
+  #assert blocked(s[..], -120, 42, SLAB_DECK) && !blocked(s[..], -120, 42, SLAB_DECK + 200);
+  // the canal's bed is below the deck
+  #assert ground_at(s[..], 300, 169, SLAB_DECK) < SLAB_DECK;
+}
+#test "a station sets the walker down on open deck" {
+  s: [1] Slab;
+  slab_reset(s[..]);
+  s[0].mode = CAM_WALK;
+  for i: 0..<9 { travel(s[..], i); #assert !blocked(s[..], s[0].foot.walk.x, s[0].foot.walk.z, s[0].foot.jump.y); }
+}
+#test "flying, D moves toward the view's right and W along it" {
+  s: [1] Slab;
+  slab_reset(s[..]);
+  slab_pose(s[..]);
+  s[0].fx = 0; s[0].fy = 300; s[0].fz = 2000; s[0].fyaw = 0; s[0].fpitch = 0; s[0].fspeed = 10;
+  // yaw 0 looks toward -z, so the view's right is +x
+  s[0].held = KB_D;
+  fly_step(s[..], 1);
+  #assert s[0].fx > 9 && abs(s[0].fz - 2000) < 0.01;
+  s[0].held = KB_W;
+  fly_step(s[..], 1);
+  #assert s[0].fz < 1991;
+}
+#test "numbers print as the HUD shows them" {
+  b: [32] u8;
+  n := putf(b[..], 0, 1234567.891, 2);
+  #assert cast(string) b[0..<n] == "1,234,567.89";
+  n = putf(b[..], 0, -0.004, 2);
+  #assert cast(string) b[0..<n] == "0.00";
+  n = putf(b[..], 0, -12.5, 1);
+  #assert cast(string) b[0..<n] == "-12.5";
 }
 
 // ---------------------------------------------------------------------------------------------
 // The frame budget (metaverse-engine/core/budget.coax, book chapter 16): what one frame of SLAB may use.
-SLAB_BUDGET :: FrameBudget.{steps = 8, vertices = 0, draws = 0, bytes = 2228224};
+SLAB_BUDGET :: FrameBudget.{steps = 8, vertices = MAX_VERTICES - 1, draws = 0, bytes = 4194304};
 
 #test "SLAB's frames fit their declared budget" {
   #assert budget_declared(SLAB_BUDGET, MAX_VERTICES) == BUDGET_NONE;
