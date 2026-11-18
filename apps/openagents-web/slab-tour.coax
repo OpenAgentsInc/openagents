@@ -20,7 +20,7 @@
 //                     the sites as choices to press
 //
 // The address: ?tour=0 no tour, ?tour=1 to 8 opens at that stop (8 is "Your turn"), and &hold=SECONDS
-// holds that stop at a moment, for a picture. ?intro=0 and ?intro=1, the stopgap card's words, mean
+// holds that stop at a moment, for a picture. ?intro=0 and ?intro=1, the old first screen's words, mean
 // ?tour=0 and ?tour=1.
 //
 //   coax/bin/coax test apps/openagents-web/slab.coax --only "tour"
@@ -107,7 +107,7 @@ tour_clear :: (s: [] Slab) {
   if s[0].build.on { build_toggle(s); }
   if s[0].under { s[0].under = false; s[0].hour = s[0].hp.tour.hour; }
   s[0].section = false; s[0].flow = false;
-  s[0].selected = -1; s[0].first = false;
+  s[0].selected = -1;
 }
 tour_go :: (s: [] Slab, stop: int) {
   k := ifx stop < 0 then 0 else ifx stop > TOUR_STOPS then TOUR_STOPS else stop;
@@ -181,10 +181,21 @@ tour_camera :: (s: [] Slab, step: f32) -> TourCamera {
 TOUR_LIFT :: 0.45f32;   // how far above the middle, as a share of half the screen's height
 tour_lift :: (s: [] Slab, f: [3] f32) -> [3] f32 {
   t := s[0].hp.tour;
-  if t.stop == 0 || t.stop >= TOUR_STOPS || !(s[0].aspect > 0) || s[0].aspect >= 1 { return f; }
-  share := TOUR_LIFT * clamp32((1 - s[0].aspect) / 0.5, 0, 1);
+  if t.stop == 0 || t.stop >= TOUR_STOPS { return f; }
+  share := tour_tall(s);
   // out of the first stop the lift comes in with the move, so the camera does not jump
   if t.stop == 1 { share *= clamp32(t.at / TOUR_MOVE, 0, 1); }
+  return view_lift(s, f, share);
+}
+// How far a tall screen's view is lifted: TOUR_LIFT on a phone held upright, nothing on a wide screen.
+tour_tall :: (s: [] Slab) -> f32 {
+  if !(s[0].aspect > 0) || s[0].aspect >= 1 { return 0; }
+  return TOUR_LIFT * clamp32((1 - s[0].aspect) / 0.5, 0, 1);
+}
+// The view `f` tipped down so that what it looked at stands `share` of half the screen's height above
+// the middle. The orbit uses it too, while a card covers a phone's lower half (sb_card_lift).
+view_lift :: (s: [] Slab, f: [3] f32, share: f32) -> [3] f32 {
+  if share <= 0 { return f; }
   a := angle_atan2(share * s[0].tanh, 1);
   // the camera's up: the world's, less what lies along the view
   d := f[1];

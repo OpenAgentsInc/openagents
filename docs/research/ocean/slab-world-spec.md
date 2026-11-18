@@ -1137,9 +1137,12 @@ opens at that stop, and `&hold=SECONDS` holds the stop at that second, for
 a picture. On a tall screen the caption covers the lower half, so the
 tour's camera tips down and its subject stands in the upper half.
 
-The first-screen card of `apps/openagents-web/slab-intro.coax` was a stopgap
-for the tour. The canvas HUD still draws it when the page has no pane; the
-pane never shows it.
+The tour replaced a stopgap first screen and the old canvas HUD: the
+stroke-font toolbar, panels and card are gone, and the canvas draws only
+lines (the flow, the bending line, the chart). On a tall screen an open
+card covers the lower half too, so the orbit tips down the same way and
+what you clicked stays in view. While the tour runs, short notes (toasts)
+and the place's tags are not shown: the caption has the screen.
 
 **Names in the scene** (`apps/openagents-web/slab-labels.coax`). The pane
 draws names over the canvas in the kit's body size:

@@ -30,7 +30,7 @@ CD_LIBERTY :: 93.0;         // the Statue of Liberty with its pedestal, m
 CD_EIFFEL :: 330.0;         // the Eiffel Tower, m
 CD_CAR :: 1500.0;           // a car, kg
 CD_HOOVER :: 2.5e6;         // the concrete in the Hoover Dam itself, m^3
-CD_KETTLE :: 0.1;           // a full kettle brought to the boil, kWh
+CD_KETTLE :: 0.1;           // a litre brought to the boil in a kettle from 15 °C: 4.19 kJ x 85 / 3,600 is 0.099 kWh
 CD_PERSON_L :: 150.0;       // fresh water a person uses in a day, litres
 CD_BUS_HIGH :: 4.4;         // a double-decker bus, m
 // The plant's figures the cards state (slab-sim.coax holds them as the numbers in its formulas;
@@ -205,7 +205,7 @@ cd_plant :: (s: [] Slab, h: [] SceneHud, part: int) {
       "It would be the platform's own power: no fuel, day and night. Nobody has built one near this size.");
   }
   cd_number(h, cd_v(pw.otec_net, 0, " MW"), "Power it gives now, after its own pumps", cd_p("Megawatts. Enough for about ", cd_homes(pw.otec_net), 0, " American homes."), SH_OURS);
-  cd_number(h, cd_v(pw.dt, 1, " °C"), "The gap between the warm water and the cold", cd_words("A warm room is about 18 °C warmer than the inside of a fridge."), ifx slab_site(s).sourced then SH_SOURCE else SH_OURS);
+  cd_number(h, cd_v(pw.dt, 1, " °C"), "The gap between the warm water and the cold", cd_p("As if a fridge at 4 °C stood in a room at ", pw.dt + 4.0, 0, " °C."), ifx slab_site(s).sourced then SH_SOURCE else SH_OURS);
   cd_number(h, cd_v(CD_OTEC_RECORD, 1, " MW"), "The most any plant of this kind has delivered", cd_p("At full power this one is ", cd_whole(design / CD_OTEC_RECORD), 0, " times larger."), SH_SOURCE);
   cd_now(h);
   if s[0].plant.power == POWER_NUCLEAR { sh_say(h, "Idle. The platform is running on its reactors."); }
@@ -258,7 +258,7 @@ cd_desal :: (s: [] Slab, h: [] SceneHud) {
     "A city at sea has no river. Whatever drinks, washes or grows here gets its water from this plant.");
   cd_number(h, cd_v(CD_DESAL_DAY, 0, " m³ a day"), "Fresh water at full power", cd_p("Enough for about ", tour_round(CD_DESAL_DAY * 1000.0 / CD_PERSON_L, 10000), 0, " people at 150 litres each a day."), SH_OURS);
   cd_number(h, cd_v(SIM_DESAL, 0, " MW"), "Power it draws", cd_p("Megawatts. As much as about ", tour_round(SIM_DESAL * 1000.0 / CD_HOME_KW, 500), 0, " American homes."), SH_OURS);
-  cd_number(h, cd_v(CD_DESAL_KWH, 1, " kWh"), "Electricity for each cubic metre of water", cd_p("About ", cd_whole(CD_DESAL_KWH / CD_KETTLE), 0, " full kettles brought to the boil, for a tonne of water."), SH_OURS);
+  cd_number(h, cd_v(CD_DESAL_KWH, 1, " kWh"), "Electricity for each cubic metre of water", cd_p("Enough to boil about ", cd_whole(CD_DESAL_KWH / CD_KETTLE), 0, " litres in a kettle, for each tonne of fresh water."), SH_OURS);
   cd_now(h);
   cd_fact(h, "Making", cd_v(pw.desal / SIM_DESAL * CD_DESAL_DAY, 0, " m³ a day"));
   cd_fact(h, "Running on", sb_w(sb_n(sb_w(sb_n(cd_t(), pw.desal, 1), " of "), SIM_DESAL, 0), " MW"));
@@ -355,12 +355,12 @@ cd_medical :: (s: [] Slab, h: [] SceneHud, wide: f64, deep: f64, tall: f64) {
 
 cd_grove :: (s: [] Slab, h: [] SceneHud, wide: f64, deep: f64, cx: f32, cz: f32) {
   name: [64] u8;
-  trees := floor(wide / 7.0) * floor(deep / 7.0);
+  trees := sim_max(floor(wide / 7.0), 1) * sim_max(floor(deep / 7.0), 1);   // a row when the grove is one tree deep
   cd_open(h, "Cypress grove",
     "A grove of Italian cypress trees, planted in soil laid on the deck.",
     "Luckey's picture shows formal gardens between the temples, so we planted them.");
   cd_number(h, cd_plan(wide, deep), "The ground this grove covers", cd_p("About ", wide * deep / CD_TENNIS, 0, " tennis courts."), SH_OURS);
-  cd_number(h, cd_p("About ", sim_max(trees, 1), 0, " trees"), "Planted 7 m apart", cd_words("One and a half car lengths between trunks."), SH_OURS);
+  cd_number(h, cd_p("About ", trees, 0, " trees"), "Planted 7 m apart", cd_words("One and a half car lengths between trunks."), SH_OURS);
   cd_number(h, cd_words("7 to 13 m"), "How tall the trees are", cd_p("As tall as a house of 2 to ", cd_whole(13.0 / CD_STOREY), 0, " storeys."), SH_OURS);
   cd_now(h);
   cd_say(h, sb_w(sb_w(cd_words("It stands in the "), cd_district(name[..], cx, cz)), ". The trees are drawn, not simulated: they do not grow or bend in the wind."));
@@ -403,7 +403,7 @@ cd_water :: (s: [] Slab, h: [] SceneHud, part: int, long: f64, wide: f64) {
     cd_number(h, cd_words("24 m"), "How tall the column is", cd_p("As tall as a ", cd_whole(24.0 / CD_STOREY), 0, "-storey building."), SH_OURS);
   } else {
     volume := long * wide * 1.5;
-    cd_number(h, cd_v(long, 0, " m"), "How long it is", cd_p("About ", long / CD_POOL_LONG, 0, " Olympic swimming pools, end to end."), SH_OURS);
+    cd_number(h, cd_v(long, 0, " m"), "How long it is", ifx long < 1.5 * CD_POOL_LONG then cd_words("A little longer than an Olympic swimming pool (50 m).") else cd_p("About ", long / CD_POOL_LONG, 0, " Olympic swimming pools, end to end."), SH_OURS);
     cd_number(h, cd_words("1.5 m"), "How deep it is", cd_words("Chest-deep on an adult."), SH_OURS);
     cd_number(h, cd_v(volume, 0, " m³"), "Water in it", cd_p("About ", cd_whole(volume / (CD_DESAL_DAY / 24.0 / 60.0)), 0, " minutes of the fresh water plant's output."), SH_OURS);
   }
@@ -523,7 +523,7 @@ cd_key :: (s: [] Slab, i: int) -> string {
   if k == SLAB_KIND_PIPE { return "pipe"; }
   if k == SLAB_KIND_HULL { return "hull"; }
   if k == SLAB_KIND_PLANT { return "plant"; }
-  if k == SLAB_KIND_TANK && cx < -350 { return "ammonia"; }
+  if k == SLAB_KIND_TANK && cx < 0 { return "ammonia"; }   // the plant's, west of the middle; industry's are east
   if k == SLAB_KIND_POOL && cx < -350 { return "moonpool"; }
   if k == SLAB_KIND_INDUSTRY { return "industry"; }
   if k == SLAB_KIND_STACK { return "stack"; }
@@ -603,7 +603,7 @@ cd_address :: (s: [] Slab, url: string) {
     if k == 0 && s[0].layout == LAYOUT_PRIME && change_has_dock(s[0].change[0].facts.shape, s[0].change[0].shown) { pick = -3; }
     if k > 1 { for i: 0..<s[0].box_count { if cd_key(s, i) == keys[k] { pick = i; break; } } }
     if pick == -1 { return; }
-    s[0].selected = pick; s[0].selected_at = s[0].time; s[0].first = false;
+    s[0].selected = pick; s[0].selected_at = s[0].time;
     s[0].hp.tour.wanted = false;
     return;
   }
@@ -852,4 +852,15 @@ sh_starts :: (t: string, with: string) -> bool {
   // a word that names no card opens none
   slab_message(d[..], HOST_FACTS, "url=https://openagents.com/worlds/slab?card=dragon\n");
   #assert d[0].selected == -1;
+}
+#test "cards: every word in the list opens a card on the platform it names" {
+  // the dock, the sea and the hull are always there; the rest are records of the opening shape or the
+  // shape the word comes with (the dome's ship and cable, the cluster's bridge)
+  keys := CD_KEYS;
+  s: [1] Slab; slab_reset(s[..]);
+  for k: 3..<25 {
+    found := false;
+    for i: 0..<s[0].box_count { if cd_key(s[..], i) == keys[k] { found = true; } }
+    #assert found;
+  }
 }

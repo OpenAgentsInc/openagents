@@ -161,7 +161,7 @@ place_line_tag :: (s: [] Slab, h: [] SceneHud, layer: int, id: string, name: str
 }
 // The names pinned in the scene: the two lines, and the dock (a name you can press for its card).
 place_tags :: (s: [] Slab, h: [] SceneHud) {
-  if s[0].under || s[0].build.on || s[0].section || s[0].chart.on || s[0].first { return; }
+  if s[0].under || s[0].build.on || s[0].section || s[0].chart.on { return; }
   k := s[0].dpr; c := s[0].change[..];
   ws := where_site(c[0].what.site);
   ls: [1] WhatLine; l := ls[..];

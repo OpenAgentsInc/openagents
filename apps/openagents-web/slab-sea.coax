@@ -189,22 +189,9 @@ sea_look_weather :: (s: [] Slab, u: [] f32, step: f32, snap: bool) {
   u[P + P_SUNHULL + 3] *= 1 - cover;
 }
 
-// The toolbar's two controls: the weather (the sea's own, or one held), and under the sea the
-// water (the survey view, or the water as it is).
+// The two presses (keys C and X, and the HUD's weather and water controls): the weather (the sea's
+// own, or one held), and under the sea the water (the survey view, or the water as it is).
 BTN_WEATHER :: 29; BTN_WATER :: 30;
-sea_look_weather_name :: (s: [] Slab) -> string {
-  if !s[0].look.chosen { return "WEATHER: SEA'S OWN"; }
-  if s[0].look.pin == WEATHER_OVERCAST { return "WEATHER: OVERCAST"; }
-  if s[0].look.pin == WEATHER_FOG { return "WEATHER: FOG"; }
-  if s[0].look.pin == WEATHER_RAIN { return "WEATHER: RAIN"; }
-  if s[0].look.pin == WEATHER_STORM { return "WEATHER: STORM"; }
-  return "WEATHER: CLEAR";
-}
-sea_look_tools :: (s: [] Slab, out: [] f32, at: int) -> int {
-  n := tool(s, out, at, sea_look_weather_name(s), s[0].look.chosen, BTN_WEATHER, 5);
-  if s[0].under { n = tool(s, out, n, ifx s[0].look.real_water then "WATER: AS IT IS" else "WATER: SURVEY", s[0].look.real_water, BTN_WATER, 5); }
-  return n;
-}
 // The weather steps: the sea's own, then clear, overcast, fog, rain, storm.
 sea_look_press :: (s: [] Slab, id: int) -> bool {
   if id == BTN_WEATHER {
@@ -281,24 +268,6 @@ sea_look_url :: (s: [] Slab, url: string) {
   pin := weather_url_pin(url);
   if pin >= 0 { s[0].look.chosen = true; s[0].look.pin = pin; }
   if query_word(url, "water=real") { s[0].look.real_water = true; }
-}
-// Under the sea, a note that says what is drawn: the survey view's clearer water, or the real
-// sight. Always on screen there: at the right on a wide screen, over the foot on a narrow one.
-sea_look_note :: (s: [] Slab, out: [] f32, at: int) -> int {
-  if !s[0].under { return at; }
-  k := s[0].dpr; W := s[0].width; H := s[0].height; pad := 12 * k;
-  b: [260] u8;
-  n := sea_look_water_note(s, b[..]).count;
-  n = put(b[..], n, ifx s[0].look.real_water then " Press X, or Water above, for the survey view." else " Press X, or Water above, for the water as it is.");
-  t := cast(string) b[0..<n];
-  narrow := W / k < 720;
-  px := 12.5f32; lead := 17 * k;
-  w := lo_f32(W - 2 * pad, 380 * k); inner := w - 24 * k;
-  h := f32(sans_lines(t, inner, px, k)) * lead + 14 * k;
-  x := ifx narrow then pad else W - pad - w;
-  y := ifx narrow then H - pad - 112 * k - h else H - pad - h;
-  m := panel(out, at, x, y, x + w, y + h, 7 * k, 0.04, 0.05, 0.07, 0.62, 0.2);
-  return sans_para(out, m, t, x + 12 * k, y + 3 * k, inner, px, lead, k, sans(k, 1, 0.9, 0.72));
 }
 
 #test "every site has a water type, and the seasons wrap the new year" {
