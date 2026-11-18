@@ -392,7 +392,7 @@ final class CoderWindow: NSObject {
         if editor.frame != frame { editor.frame = frame; wake() }
     }
 
-    func retire() { if let monitor { NSEvent.removeMonitor(monitor) }; monitor = nil; clock?.invalidate(); clock = nil; worker.gone = nil; worker.stop(); for one in agents.values { one.gone = nil; one.line = nil; one.stop() }; agents = [:]; cd_on_change(page, nil, nil); cd_close(page) }
+    func retire() { if chat != nil { keep() }; if let monitor { NSEvent.removeMonitor(monitor) }; monitor = nil; clock?.invalidate(); clock = nil; worker.gone = nil; worker.stop(); for one in agents.values { one.gone = nil; one.line = nil; one.stop() }; agents = [:]; cd_on_change(page, nil, nil); cd_close(page) }
 }
 
 final class CoderDelegate: NSObject, NSApplicationDelegate {

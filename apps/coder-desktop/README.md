@@ -124,7 +124,7 @@ Microcoder is not offered the Claude models.
 ## Saved chats
 
 Coder keeps every chat on this Mac (#13661). It saves a chat when you send a
-message and when a reply ends: the messages, the replies, the commands with
+message, when a reply ends and when you quit: the messages, the replies, the commands with
 their output, the thoughts, and the sub-agents with their tool calls, the calls' output, their thoughts and their replies.
 
 The sidebar lists the chats, most recent at the top. A chat moves to the top
