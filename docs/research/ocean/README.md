@@ -28,7 +28,9 @@ as of November 18, 2026.
 5. [ocean-atomics-reactor.md](ocean-atomics-reactor.md): the nuclear
    alternative.
 6. [slab-world-spec.md](slab-world-spec.md): turning all of it into a
-   simulated world.
+   simulated world. The [construction film and frame review](slab-construction-review.md)
+   follows the hull from the casting basin to the first seam, the Brownsville freight
+   deliveries and the commissioned platform.
 
 ## The documents
 
