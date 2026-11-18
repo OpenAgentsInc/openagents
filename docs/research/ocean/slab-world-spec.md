@@ -22,6 +22,9 @@ Read first:
   [OTEC_for_SLAB_Research_Report_2026-11-18.pdf](OTEC_for_SLAB_Research_Report_2026-11-18.pdf)).
   Sections 5 and 6 below take their sites, flows, output model, cooling and
   mining figures from it.
+- [ocean-atomics-reactor.md](ocean-atomics-reactor.md): Ocean Atomics' 50 MWe
+  marine reactor as shown in its video. Section 6.6's nuclear option takes
+  its figures from there.
 - Engine docs: [realm-host.md](../../metaverse/realm-host.md) (how a realm is
   registered), [water.md](../../metaverse/water.md) (the water physics, the
   spectral sea, the ocean clipmap and the water lab).
@@ -43,6 +46,8 @@ inside the world (section 8).
 | OTEC as the power source | **Ours**, the owner's direction for this world |
 | OTEC flows, output model, site temperatures and rankings, cooling, mining revenue (sections 5 and 6) | [otec.md](otec.md), which itself separates measured results, engineering models, developer claims and its own calculations. Where this spec still uses a planning value, it says so |
 | OTEC at 120 MW net | **Unproven.** The largest verified net output is about 103 kW (Hawaii, 1990s), and no megawatt-scale plant has run commercially (otec.md section 3) |
+| Nuclear option: a 50 MWe module of about 160 MWt in an 18 × 12.5 m compartment, for hulls 500 ft and up (section 6.6) | Ocean Atomics' explainer video, as read in [ocean-atomics-reactor.md](ocean-atomics-reactor.md). This is the company's claim, not verified |
+| Module house load, compartment width, refuelling outage length, and where modules sit in the hull | **Ours**, planning values until the nuclear research arrives |
 
 ## 2. The realm
 
@@ -544,6 +549,59 @@ best ΔT, and replaces the campus with the report's example allocation:
 
 This preset shows what the report actually recommends building first.
 
+### 6.6 Nuclear option (`?power=`)
+
+The power source can be switched with `?power=` or from the world panel:
+
+| Option | Plant |
+|---|---|
+| `otec` (default) | OTEC only, as above |
+| `nuclear` | 4 nuclear modules; no OTEC power plant. The deep-water intake is kept only if seawater cooling is on |
+| `hybrid` | 2 nuclear modules plus OTEC at `?otec=` scale |
+
+The modules follow Ocean Atomics' video. Label the module "Ocean
+Atomics-type module, company's stated figures" on the systems panel.
+
+**Per module:**
+
+| Parameter | Value | Source |
+|---|---|---|
+| Electrical output | 50 MWe gross | The video |
+| Thermal power | 160 MWt (31% efficient) | The video |
+| House load (pumps and controls) | 2 MWe, so **48 MW net** | Ours, a planning value |
+| Compartment | 18 m long, 12.5 m high, 14 m wide | The video, except the width, which is ours |
+| Turbine room | 25 m long, aft of the compartment | Ours. The video says only "to the turbine room aft" |
+| Condenser seawater | 110 MW of waste heat ÷ (4.1 MJ/m³·K × 10 K) = **2.7 m³/s**, through hull-side intakes, discharged at −30 m | Derived from the video's figures |
+| Availability | Runs at full power except during a refuelling outage | Ours. The video says only "years between refuellings" |
+
+**Placement in `prime`.** The four modules sit below deck in cells D3, D10,
+G3 and G10, inside the industry district. Each 50 m cell holds the 18 m
+compartment and its 25 m turbine room.
+- **On deck above each module:** a 30 m fenced exclusion zone with a
+  hatch. Draw the compartment, containment, shielding tank and turbine in
+  the section view, following the video's diagram.
+- **Hull minimum.** The video says modules need a hull of at least 500 ft
+  (152 m). The `dome` and `cluster` layouts are smaller (122 m), so for
+  them, `nuclear` and `hybrid` add a separate 160 m powership. It is moored
+  300 m away and connected by a power cable, like the video's "Powership"
+  scene. The HUD says why.
+
+**Power:**
+
+| Option | Net power | Against fixed loads |
+|---|---|---|
+| `nuclear` | 4 × 48 = 192 MW at every site and in every month, including `california` | Covers the 163 MW of fixed loads, leaving 29 MW for mining |
+| `hybrid` at `guam` | 96 MW nuclear + 95–116 MW OTEC = 191–212 MW | Covers them with room to spare |
+
+**Refuelling outage.** A "refuel a module" control takes one module
+offline. With `nuclear`, net output drops to 144 MW, so mining goes to zero
+and industry sheds 19 MW. This is the case for adding a fifth module, set
+with `?modules=` (1–6).
+
+**What the world does not model:** reactor physics, accidents, emergency
+cooling, fuel handling or radiation. A module is a steady power source
+with an outage switch.
+
 ## 7. Deck layout (`prime`)
 
 The deck is laid out after the concept image: industry at one end, towers
@@ -553,7 +611,7 @@ Z from −300 to 300.
 | District | X | Z | Contents |
 |---|---|---|---|
 | OTEC plant | −500 to −350 | −300 to 300 | Turbine halls, heat exchangers, 4 moonpools, ammonia tanks |
-| Industry | −350 to −150 | −300 to 300 | 3 process units, 6 smokestacks 60 m tall (the concept image's stacks), tank farm, desalination plant |
+| Industry | −350 to −150 | −300 to 300 | 3 process units, 6 smokestacks 60 m tall (the concept image's stacks), tank farm, desalination plant. With `?power=nuclear` or `hybrid`, the module exclusion zones over cells D3, D10, G3 and G10 (section 6.6) |
 | Data halls | −150 to 50 | −300 to 0 | 4 halls of 120 × 60 m, 3 storeys (18 m), with cooling yards |
 | Towers | −150 to 150 | 0 to 300 | 12 towers of 80–180 m, offices and housing |
 | Dock | −50 to 50 | −300 to −240 | The dock notch from section 3.1, with cranes |
@@ -600,11 +658,13 @@ control to the player on the gardens promenade.
 | Panel | Shows |
 |---|---|
 | Motion | Heave, roll and pitch, as now and as a 60 s trace; deck vertical acceleration at the player (with comfort bands of 0.05 g and 0.1 g); draft; trim; GM; mooring offset; peak line tension |
-| Systems | Surface, deep and plant ΔT (each marked sourced or planning); OTEC gross, parasitic and net output; each load; data-hall state and backup; mining hashrate, containers on, revenue per MWh and power budget; desalination output; the cooling-flow ratio; the "engineering models" line from section 6 |
+| Systems | Surface, deep and plant ΔT (each marked sourced or planning); OTEC gross, parasitic and net output; each load; data-hall state and backup; mining hashrate, containers on, revenue per MWh and power budget; desalination output; the cooling-flow ratio; the "engineering models" line from section 6; with nuclear, each module's state (running or refuelling), its MWe and its condenser flow |
 | World | Site, sea state, wind, current, time of day, layout |
 
 **Controls** in the world panel:
 - Site, sea state, layout and time of day.
+- Power source (`otec`, `nuclear`, `hybrid`), module count and "refuel a
+  module".
 - OTEC scale, the `demo10` preset, seawater cooling, and "trip a pipe".
 - Mining inputs and the halving toggle.
 - Ballast transfer (select a cell and fill or empty it).
@@ -638,6 +698,8 @@ the column approximation.
 | 10 | Ledger | Over 600 s in `trade`, the momentum ledger balances: buoyancy, drag, mooring, wind and gravity sum to the body's change in momentum |
 | 11 | Mining revenue | With the default inputs, R = $79.1 ± 0.5/MWh and the power budget is $30.7 ± 0.5/MWh. The halving toggle gives 50.3% ± 0.5% of R |
 | 12 | Pipe trip | Tripping one pipe cuts net output by 25% ± 2%. The data halls stay up on backup through the 60 s generator start, with no gap |
+| 13 | Nuclear dispatch | With `?power=nuclear` at `california`, net is 192 MW in every month and mining runs 29 containers. "Refuel a module" gives 144 MW net, with mining at 0 and industry shedding 19 MW. `hybrid` at `guam` gives 191–212 MW over the year |
+| 14 | Module figures | Each module reports 50 MWe gross, 48 MW net, 31.25% efficiency and 2.68 ± 0.05 m³/s of condenser flow. In `dome`, choosing `nuclear` adds the separate powership, not modules inside the dome |
 
 **Performance targets** (measure with `frametime.ts`, as water.md does):
 - Physics (6,000 columns) under 1.5 ms of CPU a tick on desktop. On phone,
@@ -652,7 +714,7 @@ the column approximation.
 | S1 Shell | Realm row, page, sea from the water lab, static `prime` hull and deck slab, fly camera, golden | `/realms/slab` opens, the release walk passes, the golden is committed |
 | S2 Hull physics | `metaverse/hull.coax`: columns, rigid body, added mass, damping, moorings, wind and current; motion panel; site and sea selectors | Tests 1–4, 6, 9 and 10 pass |
 | S3 Deck | `metaverse/slab-plan.coax` districts and generated buildings; walking in the deck frame; travel stations | Walk the deck in `gale` without the character sliding off or jittering; draw budgets hold |
-| S4 Systems | OTEC, data halls and backup, seawater cooling, mining and revenue, desalination, industry, dispatch, `demo10` preset, systems panel, flow overlay, pipes | Tests 7, 8, 11 and 12 pass; `california` shows the plant at zero in winter |
+| S4 Systems | OTEC, data halls and backup, seawater cooling, mining and revenue, desalination, industry, dispatch, `demo10` preset, nuclear and hybrid options with module placement and the powership, systems panel, flow overlay, pipes | Tests 7, 8, 11–14 pass; `california` shows OTEC at zero in winter and nuclear at full power |
 | S5 Domes | `dome` and `cluster` layouts, the Silone interior, bridges | Test 3 (dome) passes; bridges show relative motion in `equator-max` |
 | S6 Events and views | Ballast transfer, damage, section view, underwater view | Test 5 passes |
 | S7 Bending | Visual-only hull bending mode | Visible in the section view in `gale`, with no physics change |

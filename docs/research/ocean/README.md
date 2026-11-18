@@ -6,6 +6,8 @@ announced on November 17, 2026. The folder holds:
 - the announcement and a reply that proposes a design;
 - research reports on SLAB and on powering it with ocean thermal energy
   conversion (OTEC);
+- an analysis of a compact marine nuclear reactor, as an alternative or
+  supplement to OTEC;
 - a spec for rebuilding SLAB as a simulated world in the OpenAgents
   Metaverse Engine.
 
@@ -21,7 +23,9 @@ as of November 18, 2026.
 2. [slab.md](slab.md): whether it holds up.
 3. [silone-dome.md](silone-dome.md): one outside design proposal.
 4. [otec.md](otec.md): whether OTEC can power it, and where.
-5. [slab-world-spec.md](slab-world-spec.md): turning all of it into a
+5. [ocean-atomics-reactor.md](ocean-atomics-reactor.md): the nuclear
+   alternative.
+6. [slab-world-spec.md](slab-world-spec.md): turning all of it into a
    simulated world.
 
 ## The documents
@@ -101,6 +105,28 @@ a focus on data centers and Bitcoin mining. Its full PDF is
 - The recommended path runs from a Kona test, to a 5–10 MW plant in Guam,
   and grows only on measured results.
 
+### [ocean-atomics-reactor.md](ocean-atomics-reactor.md)
+
+**What it is:** a shot-by-shot analysis of a 78-second explainer video from
+Nick Touran, a nuclear engineer who runs whatisnuclear.com and is listed as
+CTO of Ocean Atomics. The video itself is
+[ocean-atomics-reactor.mp4](ocean-atomics-reactor.mp4).
+
+**What it covers:**
+- Every caption and reactor label, copied from the screen. The reactor is a
+  50 MWe integral pressurized-water reactor of about 160 MWt, in a standard
+  compartment 18 m long and 12.5 m high, for hulls 500 ft and up.
+- The hulls shown, including a powership and a floating data center.
+- What the video leaves out: fuel, refuelling interval, cost and licensing.
+- A first comparison with OTEC for SLAB, before any research.
+
+**Conclusions:**
+- Nuclear removes OTEC's tropical limit, its huge seawater flows and its
+  output swings, and it works at the California site.
+- The trade is regulation and security, which cuts against SLAB's aim of
+  escaping state and local rules.
+- All reactor figures are the company's claims; none have been verified.
+
 ### [slab-world-spec.md](slab-world-spec.md)
 
 **What it is:** the brief for a coding agent to build `/realms/slab`, an
@@ -118,7 +144,9 @@ unlisted world in the OpenAgents Metaverse Engine.
   temperatures, and six sea states up to a typhoon.
 - **On board:** the OTEC plant, data halls, mining and desalination, using
   the figures in otec.md.
-- **For the build:** deck layout, controls, 12 tests and seven build phases.
+- **Power options:** OTEC, nuclear (four 50 MWe modules, from
+  ocean-atomics-reactor.md) or a hybrid of the two.
+- **For the build:** deck layout, controls, 14 tests and seven build phases.
 
 **Status:** nothing in it is built yet.
 
@@ -128,5 +156,6 @@ unlisted world in the OpenAgents Metaverse Engine.
 |---|---|---|
 | [slab.jpeg](slab.jpeg) | SLAB's AI-generated concept image | palmer-luckey-post.md |
 | [silone-dome.mp4](silone-dome.mp4) | Ben Silone's dome render (46 s, no sound) | silone-dome.md |
+| [ocean-atomics-reactor.mp4](ocean-atomics-reactor.mp4) | Ocean Atomics' reactor explainer (78 s, music only) | ocean-atomics-reactor.md |
 | [SLAB_Research_Report_2026-11-18.pdf](SLAB_Research_Report_2026-11-18.pdf) | Full SLAB research report | slab.md |
 | [OTEC_for_SLAB_Research_Report_2026-11-18.pdf](OTEC_for_SLAB_Research_Report_2026-11-18.pdf) | Full OTEC research report | otec.md |
