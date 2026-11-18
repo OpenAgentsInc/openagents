@@ -1,0 +1,757 @@
+// "What would it take?" (docs/research/ocean/slab-world-spec.md, section 8.4; GitHub #13686): the
+// settings a visitor can change about SLAB, what each is limited to and why, and what follows from
+// them. The world (apps/openagents-web/slab.coax) holds one WhatIf, shows what_facts of it, and its
+// panel (apps/openagents-web/slab-panel.coax) draws the controls. Nothing here draws.
+//
+// The hull's figures are metaverse/hull.coax's ledger for the shape the settings give: this file has
+// no hull arithmetic of its own. The place is metaverse/slab-where.coax's chart; the power is
+// metaverse/slab-sim.coax's. What this file adds is the settings, their limits, the presets, the
+// address of a state and the reasons a setting can't work.
+//
+// Every limit is on the control with its reason (what_limits). Where a number is from is said with
+// it: WHAT_CLAIM (Luckey's), WHAT_SOURCE (a named source) or WHAT_OURS (our assumption or our sum).
+//   coax/bin/coax test metaverse/slab-whatif.coax
+
+#load "slab-where.coax";
+
+WHAT_NONE :: 0; WHAT_CLAIM :: 1; WHAT_SOURCE :: 2; WHAT_OURS :: 3;   // as scene-hud.coax's SH_*
+
+// The sliders.
+WC_WEIGHT :: 0;    // buildings and equipment, million tonnes
+WC_LENGTH :: 1;    // m
+WC_WIDTH :: 2;     // m
+WC_DEPTH :: 3;     // keel to deck, m
+WC_WALL :: 4;      // the sea walls, m
+WC_FLOOR :: 5;     // the bottom slab, m (the top slab is two thirds of it, as prime's)
+WC_DRAFT :: 6;     // the draft the ballast holds, m
+WC_PRICE :: 7;     // concrete in place, $ a cubic metre
+WC_YARDS :: 8;     // casting yards
+WC_POUR :: 9;      // each yard's pour, cubic metres a day
+WC_SHORE :: 10;    // nautical miles off the coast (kept as the place; see what_set)
+WC_WIND :: 11;     // m/s
+WC_MONTH :: 12;    // 1 to 12
+WC_OTEC :: 13;     // the ocean thermal plant's size: 1 is the picture's 120 MW
+WC_MODULES :: 14;  // reactor modules
+WC_DATA :: 15;     // the data halls, MW
+WC_DESAL :: 16;    // desalination, MW
+WC_INDUSTRY :: 17; // industry, MW
+WC_MINING :: 18;   // mining containers, 1 MW each
+WC_LIFE :: 19;     // design life, years
+WHAT_CONTROLS :: 20;
+// The tenants a switch turns off.
+WT_DATA :: 0; WT_DESAL :: 1; WT_INDUSTRY :: 2; WT_MINING :: 3;
+WHAT_TENANTS :: 4;
+// What floats.
+WHAT_PRIME :: 0; WHAT_DOME :: 1; WHAT_CLUSTER :: 2;   // as the page's LAYOUT_*
+
+WhatControl :: struct {
+  key: string;              // its name in an address (?long=)
+  name: string;
+  low: f64; high: f64; step: f64;
+  picture: f64;             // the concept picture's value
+  from: int;                // where the picture's value is from
+  decimals: int;
+  low_why: string; high_why: string;   // why it stops at each end
+}
+what_control :: (i: int) -> WhatControl {
+  if i == WC_WEIGHT { return WhatControl.{key = "weight", name = "Buildings and equipment", low = 0, high = 6, step = 0.1, picture = 2.0, from = WHAT_OURS, decimals = 1,
+    low_why = "0 is a bare hull.", high_why = "6 is three times our count for the picture's buildings."}; }
+  if i == WC_LENGTH { return WhatControl.{key = "long", name = "Length", low = 100, high = 2000, step = 50, picture = HULL_PRIME_L, from = WHAT_OURS,
+    low_why = "100 m is one caisson.", high_why = "2,000 m is twice the picture, as far as this model goes."}; }
+  if i == WC_WIDTH { return WhatControl.{key = "wide", name = "Width", low = 50, high = 1000, step = 50, picture = HULL_PRIME_B, from = WHAT_OURS,
+    low_why = "50 m is one caisson.", high_why = "1,000 m is as far as this model goes."}; }
+  if i == WC_DEPTH { return WhatControl.{key = "deep", name = "Depth, keel to deck", low = 30, high = 150, step = 1, picture = HULL_PRIME_DECK, from = WHAT_OURS,
+    low_why = "30 m is a barge with no upper structure.", high_why = "150 m is just over the picture's wall."}; }
+  if i == WC_WALL { return WhatControl.{key = "wall", name = "Sea walls", low = 0.5, high = 3, step = 0.1, picture = 1.5, from = WHAT_OURS, decimals = 1,
+    low_why = "0.5 m is about the least that covers the steel against sea water.", high_why = "3 m is twice the picture's wall."}; }
+  if i == WC_FLOOR { return WhatControl.{key = "floor", name = "Bottom slab", low = 0.5, high = 3, step = 0.1, picture = 1.5, from = WHAT_OURS, decimals = 1,
+    low_why = "0.5 m is about the least that covers the steel against sea water.", high_why = "3 m is twice the picture's slab."}; }
+  if i == WC_DRAFT { return WhatControl.{key = "draft", name = "Draft the ballast holds", low = 2, high = 60, step = 1, picture = HULL_PRIME_DRAFT, from = WHAT_OURS,
+    low_why = "2 m is a harbour barge.", high_why = "60 m is past the top of the 50 m watertight hull."}; }
+  if i == WC_PRICE { return WhatControl.{key = "price", name = "Concrete, in place", low = 100, high = 1000, step = 25, picture = 500, from = WHAT_OURS,
+    low_why = "$100 buys the concrete alone, with no steel, forms or labor.", high_why = "$1,000 is heavily reinforced concrete placed at sea."}; }
+  if i == WC_YARDS { return WhatControl.{key = "yards", name = "Casting yards", low = 1, high = 8, step = 1, picture = 1, from = WHAT_OURS,
+    low_why = "One yard is what the timelapse shows.", high_why = "Eight at once is as far as this model goes."}; }
+  if i == WC_POUR { return WhatControl.{key = "pour", name = "Each yard pours", low = 1000, high = 6000, step = 250, picture = 3000, from = WHAT_SOURCE,
+    low_why = "1,000 is one large building site's pour.", high_why = "6,000 is twice the feasibility study's rate."}; }
+  if i == WC_SHORE { return WhatControl.{key = "shore", name = "Distance from shore", low = 0, high = 250, step = 0.5, picture = 2.3, from = WHAT_OURS, decimals = 1,
+    low_why = "0 is the beach.", high_why = "250 is past the 200 mile line, on the high seas, where our chart ends."}; }
+  if i == WC_WIND { return WhatControl.{key = "wind", name = "Wind", low = 0, high = 40, step = 1, picture = 13.7, from = WHAT_OURS,
+    low_why = "0 is a flat calm.", high_why = "40 metres a second is a hurricane, the limit of our sea."}; }
+  if i == WC_MONTH { return WhatControl.{key = "month", name = "Month", low = 1, high = 12, step = 1, picture = 7, from = WHAT_OURS,
+    low_why = "", high_why = ""}; }
+  if i == WC_OTEC { return WhatControl.{key = "otec", name = "Ocean thermal plant", low = 0.25, high = 2, step = 0.25, picture = 1, from = WHAT_OURS, decimals = 2,
+    low_why = "30 MW is a quarter of the picture's plant.", high_why = "240 MW is twice it, as far as this model goes."}; }
+  if i == WC_MODULES { return WhatControl.{key = "modules", name = "Reactor modules", low = 1, high = 8, step = 1, picture = 4, from = WHAT_OURS,
+    low_why = "One module makes 50 MW.", high_why = "Eight make 400 MW, as far as this model goes."}; }
+  if i == WC_DATA { return WhatControl.{key = "data", name = "Data halls", low = 10, high = 240, step = 10, picture = SIM_DATA, from = WHAT_OURS,
+    low_why = "10 MW is one small hall.", high_why = "240 MW is twice the picture's."}; }
+  if i == WC_DESAL { return WhatControl.{key = "desal", name = "Desalination", low = 1, high = 30, step = 1, picture = SIM_DESAL, from = WHAT_OURS,
+    low_why = "1 MW waters a small town.", high_why = "30 MW is twice the picture's."}; }
+  if i == WC_INDUSTRY { return WhatControl.{key = "industry", name = "Industry", low = 2, high = 40, step = 2, picture = SIM_INDUSTRY, from = WHAT_OURS,
+    low_why = "2 MW is one workshop.", high_why = "40 MW is twice the picture's."}; }
+  if i == WC_MINING { return WhatControl.{key = "mining", name = "Bitcoin miners", low = 5, high = 100, step = 5, picture = f64(SIM_CONTAINERS), from = WHAT_OURS,
+    low_why = "5 containers is 5 MW.", high_why = "100 containers is twice the picture's."}; }
+  return WhatControl.{key = "life", name = "Design life", low = 25, high = 1000, step = 25, picture = 1000, from = WHAT_CLAIM,
+    low_why = "25 years is a usual life for an offshore platform.", high_why = "1,000 years is Luckey's claim."};
+}
+what_tenant_key :: (t: int) -> string { return ifx t == WT_DATA then "data" else ifx t == WT_DESAL then "desal" else ifx t == WT_INDUSTRY then "industry" else "mining"; }
+what_tenant_control :: (t: int) -> int { return ifx t == WT_DATA then WC_DATA else ifx t == WT_DESAL then WC_DESAL else ifx t == WT_INDUSTRY then WC_INDUSTRY else WC_MINING; }
+
+WhatIf :: struct {
+  v: [WHAT_CONTROLS] f64;   // each slider's value (WC_SHORE's is not kept: the place is)
+  on: [WHAT_TENANTS] bool;  // which tenants are aboard
+  site: int;                // the chart it is on
+  lat: f64; lon: f64;       // where it floats
+  power: int;               // POWER_*
+  layout: int;              // WHAT_PRIME, or one of Silone's
+  wind_own: bool;           // the wind is the visitor's, not the site's usual sea
+  month_own: bool;          // and the month
+}
+// The picture: every control at its picture value, at Guam, on the power the world opens with.
+what_picture :: () -> WhatIf {
+  w: WhatIf;
+  for i: 0..<WHAT_CONTROLS { w.v[i] = what_control(i).picture; }
+  for t: 0..<WHAT_TENANTS { w.on[t] = true; }
+  w.site = SITE_GUAM;
+  home := where_site(SITE_GUAM);
+  w.lat = home.lat; w.lon = home.lon;
+  w.power = sim_opening_power(true);
+  return w;
+}
+what_round :: (v: f64) -> f64 { return floor(v + 0.5); }
+// A value held to the control's range and step.
+what_snap :: (i: int, v: f64) -> f64 {
+  c := what_control(i);
+  x := ifx !(v == v) then c.picture else ifx v < c.low then c.low else ifx v > c.high then c.high else v;
+  return c.low + what_round((x - c.low) / c.step) * c.step;
+}
+// A slider's whole steps: a control runs 0 to what_ticks, at what_tick.
+what_ticks :: (i: int) -> int { c := what_control(i); return cast(int) what_round((c.high - c.low) / c.step); }
+what_tick_of :: (i: int, v: f64) -> int { c := what_control(i); return cast(int) what_round((what_snap(i, v) - c.low) / c.step); }
+what_at_tick :: (i: int, tick: int) -> f64 { c := what_control(i); return what_snap(i, c.low + f64(tick) * c.step); }
+
+// Moves to another site: its place, its usual sea and month unless the visitor set their own.
+what_go :: (w: [] WhatIf, site: int) {
+  i := ifx site < 0 || site >= SITES then SITE_GUAM else site;
+  home := where_site(i);
+  w[0].site = i; w[0].lat = home.lat; w[0].lon = home.lon;
+}
+// Sets a slider. The distance from shore moves the place out along the line from the nearest
+// coast, so it needs the site's chart; the others ignore it.
+what_set :: (w: [] WhatIf, c: Chart, i: int, value: f64) {
+  if i < 0 || i >= WHAT_CONTROLS { return; }
+  v := what_snap(i, value);
+  if i == WC_SHORE {
+    p := where_off(c, where_site(w[0].site), w[0].lat, w[0].lon, v);
+    w[0].lat = p[0]; w[0].lon = p[1];
+    return;
+  }
+  w[0].v[i] = v;
+  if i == WC_WIND { w[0].wind_own = true; }
+  if i == WC_MONTH { w[0].month_own = true; }
+}
+// Moves to a point of the site's chart (a click on it). False, and nothing moves, off the chart.
+what_move :: (w: [] WhatIf, c: Chart, lat: f64, lon: f64) -> bool {
+  if !chart_in(c, lat, lon) { return false; }
+  w[0].lat = lat; w[0].lon = lon;
+  return true;
+}
+
+// ---------------------------------------------------------------- presets
+WP_PICTURE :: 0; WP_PILOT :: 1; WP_FJORD :: 2; WP_CALIFORNIA :: 3; WP_GUAM :: 4; WP_DOME :: 5;
+WHAT_PRESETS :: 6;
+WhatPreset :: struct { key: string; name: string; note: string; }
+what_preset :: (i: int) -> WhatPreset {
+  if i == WP_PILOT { return WhatPreset.{key = "pilot", name = "The Gulf Coast pilot", note = "One caisson, 100 by 50 m, drawing 5 m, off Texas."}; }
+  if i == WP_FJORD { return WhatPreset.{key = "fjord", name = "Joined in a Norwegian fjord", note = "The picture's hull in Yrkefjorden's deep, sheltered water."}; }
+  if i == WP_CALIFORNIA { return WhatPreset.{key = "california", name = "Three miles off California", note = "Where Luckey said it could go."}; }
+  if i == WP_GUAM { return WhatPreset.{key = "guam", name = "Guam, on ocean thermal power", note = "Warm water over cold: the plant's best case."}; }
+  if i == WP_DOME { return WhatPreset.{key = "dome", name = "One Silone dome", note = "A single 122 m module of Ben Silone's design."}; }
+  return WhatPreset.{key = "picture", name = "The picture", note = "1,000 by 600 m, as the concept image draws it."};
+}
+what_preset_state :: (i: int) -> WhatIf {
+  w := what_picture();
+  ws: [1] WhatIf; ws[0] = w;
+  if i == WP_PILOT {
+    what_go(ws[..], SITE_TEXAS);
+    ws[0].v[WC_LENGTH] = 100; ws[0].v[WC_WIDTH] = 50; ws[0].v[WC_DEPTH] = 30; ws[0].v[WC_WALL] = 0.5; ws[0].v[WC_FLOOR] = 0.5;
+    ws[0].v[WC_DRAFT] = 5; ws[0].v[WC_WEIGHT] = 0;
+  }
+  if i == WP_FJORD { what_go(ws[..], SITE_FJORD); }
+  if i == WP_CALIFORNIA { what_go(ws[..], SITE_CALIFORNIA); }
+  if i == WP_GUAM { ws[0].power = POWER_OTEC; }
+  if i == WP_DOME { ws[0].layout = WHAT_DOME; ws[0].power = POWER_OTEC; }
+  return ws[0];
+}
+// The preset a state is, or -1.
+what_preset_of :: (w: WhatIf) -> int {
+  for i: 0..<WHAT_PRESETS { if what_same(w, what_preset_state(i)) { return i; } }
+  return -1;
+}
+what_same :: (a: WhatIf, b: WhatIf) -> bool {
+  for i: 0..<WHAT_CONTROLS { if i != WC_SHORE && abs(a.v[i] - b.v[i]) > 1e-6 && !(i == WC_WIND && !a.wind_own && !b.wind_own) && !(i == WC_MONTH && !a.month_own && !b.month_own) { return false; } }
+  for t: 0..<WHAT_TENANTS { if a.on[t] != b.on[t] { return false; } }
+  return a.site == b.site && abs(a.lat - b.lat) < 1e-4 && abs(a.lon - b.lon) < 1e-4 && a.power == b.power && a.layout == b.layout
+    && a.wind_own == b.wind_own && a.month_own == b.month_own;
+}
+
+// ---------------------------------------------------------------- what follows
+WHAT_CHANNEL_WIDTH :: 530.0 * 0.3048;   // the Corpus Christi ship channel: 162 m wide
+WHAT_CHANNEL_DEPTH :: 54.0 * 0.3048;    // and 16.5 m deep (slab-construction.coax's port; slab-image-feasibility.md)
+WHAT_KEEL :: 1.0;         // m of water a hull needs under its keel to float clear
+WHAT_OTEC_PICTURE :: 120.0;   // MW the picture's plant nets at its best (spec 6.1)
+WHAT_LIQUIDS :: 0.25;     // process liquids, as a share of the buildings' weight (prime's 0.5 of 2.0 Mt)
+
+// The hull the settings give, for metaverse/hull.coax. Under 50 m keel to deck there is only the
+// watertight hull; over it the upper structure carries the deck (a caisson taller than 50 m would
+// not tow upright: hull.coax's check).
+what_shape :: (w: WhatIf) -> HullShape {
+  sh := hull_prime();
+  sh.l = w.v[WC_LENGTH]; sh.b = w.v[WC_WIDTH];
+  sh.deck = w.v[WC_DEPTH]; sh.hull = ifx w.v[WC_DEPTH] < HULL_PRIME_HULL then w.v[WC_DEPTH] else HULL_PRIME_HULL;
+  sh.wall = w.v[WC_WALL]; sh.bottom = w.v[WC_FLOOR]; sh.top = w.v[WC_FLOOR] * (2.0 / 3.0);
+  if sh.web > sh.wall { sh.web = sh.wall; }
+  sh.draft = w.v[WC_DRAFT];
+  sh.topsides = w.v[WC_WEIGHT] * 1.0e9; sh.liquids = sh.topsides * WHAT_LIQUIDS;
+  return sh;
+}
+// The plant and its tenants. A bare hull carries none of them.
+what_plant :: (w: WhatIf, base: SimPlant) -> SimPlant {
+  p := base;
+  p.power = w.power; p.otec_scale = w.v[WC_OTEC]; p.modules = cast(int) what_round(w.v[WC_MODULES]);
+  bare := what_bare(w);
+  p.data_mw = ifx w.on[WT_DATA] && !bare then w.v[WC_DATA] else 0.0;
+  p.desal_mw = ifx w.on[WT_DESAL] && !bare then w.v[WC_DESAL] else 0.0;
+  p.industry_mw = ifx w.on[WT_INDUSTRY] && !bare then w.v[WC_INDUSTRY] else 0.0;
+  p.miners = ifx w.on[WT_MINING] && !bare then cast(int) what_round(w.v[WC_MINING]) else 0;
+  if bare { p.power = POWER_OTEC; p.otec_scale = 0; }
+  return p;
+}
+// Nothing is aboard: a prime hull with no buildings' weight.
+what_bare :: (w: WhatIf) -> bool { return w.layout == WHAT_PRIME && w.v[WC_WEIGHT] <= 0; }
+// The wind and the month in force: the visitor's, or the site's usual sea and the picture's month.
+what_wind :: (w: WhatIf) -> f64 { return ifx w.wind_own then w.v[WC_WIND] else sim_sea(sim_site(w.site).sea).wind; }
+what_month :: (w: WhatIf) -> f64 { return w.v[WC_MONTH] - 0.5; }   // the month's middle, on the simulation's 0 to 12
+
+WhatFacts :: struct {
+  shape: HullShape; led: HullLedger;
+  place: WherePlace;
+  sim: SimSite;             // the site with the water that is under the place
+  // how it floats
+  sunk: bool;               // too heavy: its watertight top is under water
+  aground: bool;            // it floats, but the water is too shallow for it
+  capsizes: bool;           // GM is not positive
+  ashore: bool;             // the place is on land
+  draft: f64;               // the keel under the water as the world shows it, m
+  deck: f64;                // the deck over the water as shown, m (negative: under it)
+  carries: f64;             // kg of buildings and liquids it could take before its top went under
+  // getting it out of port
+  one_piece: bool;          // the whole hull fits the Corpus Christi channel
+  too_wide: bool; too_deep: bool;
+  float_out: f64;           // the watertight hull's own draft, m
+  caissons: int;
+  // building it
+  cost: f64;                // the concrete alone, $
+  pour_days: f64;
+  // power
+  surface: f64;             // the sea surface now, degrees C
+  power: SimPower;
+  otec_wanted: bool;        // the power chosen has an ocean thermal plant
+  otec_cold: bool;          // it has none because the surface is too cold
+  otec_shallow: bool;       // or because there is no cold water in reach
+  // the design life
+  once_in_1000: f64;        // the chance of meeting the thousand-year event at least once
+  once_in_100: f64;
+}
+// The chance of at least one event with a return period of `period` years in `years`.
+what_chance :: (years: f64, period: f64) -> f64 { return 1.0 - pow(1.0 - 1.0 / period, years); }
+what_facts :: (w: WhatIf, c: Chart) -> WhatFacts {
+  f: WhatFacts;
+  site := where_site(w.site);
+  f.place = where_place(c, site, w.lat, w.lon);
+  f.sim = sim_site(w.site);
+  f.sim.depth = f.place.depth;
+  f.ashore = f.place.land || !f.place.on_chart;
+  f.shape = what_shape(w); f.led = hull_ledger(f.shape);
+  sh := f.shape; led := f.led;
+  depth := f.place.depth;
+  f.sunk = !led.afloat;
+  f.capsizes = led.gm_t <= 0 || led.gm_l <= 0;
+  f.aground = !f.sunk && !f.ashore && led.draft + WHAT_KEEL > depth;
+  // sunk, it goes down until its deck is awash or it meets the seabed; aground, it sits on the bed
+  f.draft = led.draft;
+  if f.sunk { f.draft = ifx hull_hi(sh.deck, sh.hull) < depth then hull_hi(sh.deck, sh.hull) else depth; }
+  if f.aground && f.draft > depth { f.draft = depth; }
+  if f.ashore { f.draft = led.draft; }
+  f.deck = hull_hi(sh.deck, sh.hull) - f.draft;
+  f.carries = hull_hi(led.per_metre * sh.hull - led.concrete_mass, 0);
+  // the whole hull through the channel: its beam in the width, its own concrete's draft in the depth
+  f.float_out = ifx led.per_metre > 0 then led.hull_mass / led.per_metre else 0.0;
+  f.too_wide = sh.b > WHAT_CHANNEL_WIDTH; f.too_deep = f.float_out + WHAT_KEEL > WHAT_CHANNEL_DEPTH;
+  f.one_piece = !f.too_wide && !f.too_deep;
+  f.caissons = hull_units(sh);
+  f.cost = led.concrete * w.v[WC_PRICE];
+  f.pour_days = led.concrete / (w.v[WC_YARDS] * w.v[WC_POUR]);
+  month := what_month(w);
+  f.surface = sim_surface(f.sim, month);
+  base: SimPlant;
+  plant := what_plant(w, base);
+  f.power = sim_power(plant, f.sim, month);
+  f.otec_wanted = w.power != POWER_NUCLEAR && !what_bare(w);
+  f.otec_shallow = f.otec_wanted && f.power.no_cold;
+  f.otec_cold = f.otec_wanted && !f.power.no_cold && f.power.otec_net <= 0;
+  f.once_in_1000 = what_chance(w.v[WC_LIFE], 1000); f.once_in_100 = what_chance(w.v[WC_LIFE], 100);
+  return f;
+}
+
+// ---------------------------------------------------------------- words
+WHAT_LINE :: 224;         // bytes of one line of words
+WhatLine :: struct { b: [WHAT_LINE] u8; n: int; }
+what_put :: (l: [] WhatLine, t: string) { for c: t { if l[0].n < WHAT_LINE { l[0].b[l[0].n] = c; l[0].n += 1; } } }
+// A number with a comma every three digits and `decimals` after the point.
+what_num :: (l: [] WhatLine, v: f64, decimals: int) {
+  x := ifx v == v then v else 0.0;
+  if x < 0 { what_put(l, "-"); x = -x; }
+  scale := 1.0; for i: 0..<decimals { scale *= 10.0; }
+  q := floor(x * scale + 0.5);
+  whole := floor(q / scale); part := q - whole * scale;
+  d: [24] u8; k := 0;
+  if whole < 1 { d[0] = '0'; k = 1; }
+  while whole >= 1 && k < 24 { t := floor(whole / 10.0); d[k] = cast(u8) ('0' + cast(int) (whole - t * 10.0)); whole = t; k += 1; }
+  while k > 0 {
+    k -= 1;
+    if l[0].n < WHAT_LINE { l[0].b[l[0].n] = d[k]; l[0].n += 1; }
+    if k > 0 && k % 3 == 0 { what_put(l, ","); }
+  }
+  if decimals > 0 {
+    what_put(l, ".");
+    p := scale / 10.0;
+    for i: 0..<decimals { t := floor(part / p); if l[0].n < WHAT_LINE { l[0].b[l[0].n] = cast(u8) ('0' + cast(int) t); l[0].n += 1; } part -= t * p; p /= 10.0; }
+  }
+}
+what_text :: (l: [] WhatLine) -> string { return cast(string) l[0].b[0..<l[0].n]; }
+what_month_name :: (m: int) -> string {
+  names := [12] string.["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  return names[ifx m < 1 then 0 else ifx m > 12 then 11 else m - 1];
+}
+// Money in words: "$1.9 billion", "$241 million", "$5,000".
+what_money :: (l: [] WhatLine, v: f64) {
+  what_put(l, "$");
+  if v >= 1.0e9 { what_num(l, v / 1.0e9, 1); what_put(l, " billion"); }
+  else if v >= 1.0e6 { what_num(l, v / 1.0e6, 0); what_put(l, " million"); }
+  else { what_num(l, v, 0); }
+}
+// A mass in words: "2.0 million tonnes", "25,400 tonnes".
+what_mass :: (l: [] WhatLine, kg: f64) {
+  if kg >= 0.95e9 { what_num(l, kg / 1.0e9, 1); what_put(l, " million tonnes"); }
+  else { what_num(l, kg / 1000.0, 0); what_put(l, " tonnes"); }
+}
+// A time in words: "1,276 days (3.5 years)".
+what_days :: (l: [] WhatLine, days: f64) {
+  what_num(l, days, 0); what_put(l, " days");
+  if days >= 365 { what_put(l, " ("); what_num(l, days / 365.25, 1); what_put(l, " years)"); }
+}
+// A control's value in words, with its unit.
+what_words :: (l: [] WhatLine, i: int, v: f64) {
+  c := what_control(i);
+  if i == WC_WEIGHT { what_num(l, v, 1); what_put(l, " million tonnes"); }
+  else if i == WC_PRICE { what_put(l, "$"); what_num(l, v, 0); what_put(l, " a cubic metre"); }
+  else if i == WC_YARDS { what_num(l, v, 0); what_put(l, ifx v == 1 then " yard" else " yards"); }
+  else if i == WC_POUR { what_num(l, v, 0); what_put(l, " cubic metres a day"); }
+  else if i == WC_SHORE { what_num(l, v, ifx v < 20 then 1 else 0); what_put(l, " nautical miles"); }
+  else if i == WC_WIND { what_num(l, v, 0); what_put(l, " metres a second"); }
+  else if i == WC_MONTH { what_put(l, what_month_name(cast(int) what_round(v))); }
+  else if i == WC_OTEC { what_num(l, v * WHAT_OTEC_PICTURE, 0); what_put(l, " MW at its best"); }
+  else if i == WC_MODULES { what_num(l, v, 0); what_put(l, ifx v == 1 then " module, " else " modules, "); what_num(l, v * SIM_MODULE_GROSS, 0); what_put(l, " MW"); }
+  else if i == WC_MINING { what_num(l, v, 0); what_put(l, " containers, "); what_num(l, v, 0); what_put(l, " MW"); }
+  else if i == WC_DATA || i == WC_DESAL || i == WC_INDUSTRY { what_num(l, v, 0); what_put(l, " MW"); }
+  else if i == WC_LIFE { what_num(l, v, 0); what_put(l, " years"); }
+  else { what_num(l, v, c.decimals); what_put(l, " m"); }
+}
+// A control's limits and why it stops at each: "0.5 to 3.0 m. 0.5 m is ... 3 m is ..."
+what_limits :: (l: [] WhatLine, i: int) {
+  c := what_control(i);
+  if i == WC_MONTH { what_put(l, "January to December."); return; }
+  if i == WC_WEIGHT { what_put(l, "0 to 6 million tonnes. "); }
+  else if i == WC_PRICE { what_put(l, "$100 to $1,000. "); }
+  else if i == WC_YARDS { what_put(l, "1 to 8. "); }
+  else if i == WC_POUR { what_put(l, "1,000 to 6,000. "); }
+  else if i == WC_SHORE { what_put(l, "0 to 250 nautical miles. "); }
+  else if i == WC_WIND { what_put(l, "0 to 40. "); }
+  else if i == WC_OTEC { what_put(l, "30 to 240 MW. "); }
+  else if i == WC_MODULES { what_put(l, "1 to 8. "); }
+  else if i == WC_MINING { what_put(l, "5 to 100. "); }
+  else if i == WC_DATA || i == WC_DESAL || i == WC_INDUSTRY { what_num(l, c.low, 0); what_put(l, " to "); what_num(l, c.high, 0); what_put(l, " MW. "); }
+  else if i == WC_LIFE { what_put(l, "25 to 1,000 years. "); }
+  else { what_num(l, c.low, c.decimals); what_put(l, " to "); what_num(l, c.high, c.decimals); what_put(l, " m. "); }
+  what_put(l, c.low_why); what_put(l, " "); what_put(l, c.high_why);
+}
+
+// ---------------------------------------------------------------- why not
+// The reasons this setting can't work, or can't work as the picture has it, most serious first:
+// each a sentence a visitor can act on. Returns how many (at most `out.count`).
+WHAT_NOTES :: 8;
+what_note :: (out: [] WhatLine, n: int) -> [] WhatLine { return out[n..<n + 1]; }
+what_whynot :: (w: WhatIf, f: WhatFacts, out: [] WhatLine) -> int {
+  n := 0;
+  for i: 0..<out.count { out[i].n = 0; }
+  site := where_site(w.site);
+  prime := w.layout == WHAT_PRIME;
+  if !f.place.on_chart && n < out.count {
+    l := what_note(out, n); what_put(l, "That point is off our chart of "); what_put(l, site.land); what_put(l, "."); n += 1;
+  } else if f.place.land && n < out.count {
+    l := what_note(out, n); what_put(l, "That point is on land: pick a point in the water."); n += 1;
+  }
+  if prime && f.sunk && n < out.count {
+    l := what_note(out, n);
+    what_put(l, "Too heavy: it weighs "); what_mass(l, f.led.mass); what_put(l, " and this hull floats ");
+    what_mass(l, f.led.per_metre * f.shape.hull); what_put(l, " before its watertight top goes under. It sinks");
+    what_put(l, ifx f.draft >= f.place.depth then " to the seabed." else " to its deck.");
+    n += 1;
+  }
+  if prime && f.capsizes && !f.sunk && n < out.count {
+    l := what_note(out, n);
+    what_put(l, "It would roll over: at "); what_num(l, f.shape.b, 0); what_put(l, " m wide and "); what_num(l, hull_hi(f.shape.deck, f.shape.hull), 0);
+    what_put(l, " m tall its weight sits above the point it rights itself about. Make it wider or lower.");
+    n += 1;
+  }
+  if prime && f.aground && n < out.count {
+    l := what_note(out, n);
+    what_put(l, "Aground: the hull draws "); what_num(l, f.led.draft, 0); what_put(l, " m and the water here is ");
+    what_num(l, f.place.depth, 0); what_put(l, " m deep.");
+    n += 1;
+  }
+  if prime && !f.sunk && f.shape.draft >= f.shape.hull && n < out.count {
+    l := what_note(out, n);
+    what_put(l, "The ballast can't hold a "); what_num(l, f.shape.draft, 0); what_put(l, " m draft: the watertight hull is only ");
+    what_num(l, f.shape.hull, 0); what_put(l, " m deep.");
+    n += 1;
+  }
+  if f.otec_cold && n < out.count {
+    l := what_note(out, n);
+    what_put(l, "No ocean thermal power here: the water is "); what_num(l, f.surface, 0); what_put(l, " C in ");
+    what_put(l, what_month_name(cast(int) what_round(w.v[WC_MONTH]))); what_put(l, ", and the plant needs 19 C or warmer over its cold water.");
+    n += 1;
+  }
+  if f.otec_shallow && n < out.count {
+    l := what_note(out, n);
+    what_put(l, "No ocean thermal power here: under "); what_num(l, f.place.depth, 0);
+    what_put(l, " m of water there is no room for the pipes. They hang 1,000 m to reach cold water.");
+    n += 1;
+  }
+  if prime && !f.one_piece && n < out.count {
+    l := what_note(out, n);
+    if f.too_wide { what_put(l, "The hull is wider than the Corpus Christi channel (162 m)"); }
+    else { what_put(l, "The hull floats too deep for the Corpus Christi channel (16.5 m)"); }
+    what_put(l, ", so it leaves as "); what_num(l, f64(f.caissons), 0); what_put(l, ifx f.caissons == 1 then " caisson" else " caissons"); what_put(l, " and is joined at sea.");
+    n += 1;
+  }
+  if site.note.count > 0 && n < out.count { l := what_note(out, n); what_put(l, site.note); n += 1; }
+  return n;
+}
+
+// ---------------------------------------------------------------- the address
+// A state as an address's query: only what differs from the picture, so the picture's is empty.
+WHAT_QUERY :: 512;
+WhatQuery :: struct { b: [WHAT_QUERY] u8; n: int; }
+what_query_put :: (q: [] WhatQuery, t: string) { for c: t { if q[0].n < WHAT_QUERY { q[0].b[q[0].n] = c; q[0].n += 1; } } }
+what_query_pair :: (q: [] WhatQuery, key: string, value: string) {
+  if q[0].n > 0 { what_query_put(q, "&"); }
+  what_query_put(q, key); what_query_put(q, "="); what_query_put(q, value);
+}
+// A plain number for an address: no commas, as few decimals as say it.
+what_plain :: (l: [] WhatLine, v: f64, decimals: int) {
+  x := v;
+  if x < 0 { what_put(l, "-"); x = -x; }
+  scale := 1.0; for i: 0..<decimals { scale *= 10.0; }
+  q := floor(x * scale + 0.5);
+  whole := floor(q / scale); part := cast(int) (q - whole * scale);
+  d: [24] u8; k := 0;
+  if whole < 1 { d[0] = '0'; k = 1; }
+  while whole >= 1 && k < 24 { t := floor(whole / 10.0); d[k] = cast(u8) ('0' + cast(int) (whole - t * 10.0)); whole = t; k += 1; }
+  while k > 0 { k -= 1; if l[0].n < WHAT_LINE { l[0].b[l[0].n] = d[k]; l[0].n += 1; } }
+  if decimals > 0 && part > 0 {
+    what_put(l, ".");
+    digits: [8] u8; m := decimals;
+    p := part;
+    for i: 0..<decimals { digits[decimals - 1 - i] = cast(u8) ('0' + p % 10); p /= 10; }
+    while m > 0 && digits[m - 1] == '0' { m -= 1; }
+    for i: 0..<m { if l[0].n < WHAT_LINE { l[0].b[l[0].n] = digits[i]; l[0].n += 1; } }
+  }
+}
+what_power_key :: (power: int) -> string { return ifx power == POWER_OTEC then "otec" else ifx power == POWER_NUCLEAR then "nuclear" else "hybrid"; }
+what_layout_key :: (layout: int) -> string { return ifx layout == WHAT_DOME then "dome" else ifx layout == WHAT_CLUSTER then "cluster" else "prime"; }
+what_query :: (w: WhatIf, q: [] WhatQuery) -> string {
+  q[0].n = 0;
+  base := what_picture();
+  home := where_site(w.site);
+  if w.site != base.site { what_query_pair(q, "site", sim_site(w.site).key); }
+  if abs(w.lat - home.lat) > 1e-4 || abs(w.lon - home.lon) > 1e-4 {
+    a: [1] WhatLine; what_plain(a[..], w.lat, 4); what_query_pair(q, "lat", what_text(a[..]));
+    b: [1] WhatLine; what_plain(b[..], w.lon, 4); what_query_pair(q, "lon", what_text(b[..]));
+  }
+  if w.layout != base.layout { what_query_pair(q, "layout", what_layout_key(w.layout)); }
+  if w.power != base.power { what_query_pair(q, "power", what_power_key(w.power)); }
+  for i: 0..<WHAT_CONTROLS {
+    if i == WC_SHORE { continue; }
+    if i == WC_WIND && !w.wind_own { continue; }
+    if i == WC_MONTH && !w.month_own { continue; }
+    tenant := -1;
+    for t: 0..<WHAT_TENANTS { if what_tenant_control(t) == i { tenant = t; } }
+    if tenant >= 0 && !w.on[tenant] { what_query_pair(q, what_control(i).key, "0"); continue; }
+    if abs(w.v[i] - base.v[i]) > 1e-6 || i == WC_WIND || i == WC_MONTH {
+      c := what_control(i);
+      a: [1] WhatLine; what_plain(a[..], w.v[i], ifx c.decimals > 0 then c.decimals else ifx c.step < 1 then 2 else 0);
+      what_query_pair(q, c.key, what_text(a[..]));
+    }
+  }
+  return cast(string) q[0].b[0..<q[0].n];
+}
+// One "key=value" of an address applied to a state: a preset, a site, the power, the layout, a
+// slider. `number` is the value as a number when it is one (`numeric`). False when the key is not
+// ours. The caller applies a preset first, then the site, then the rest, as an address lists them.
+what_apply :: (w: [] WhatIf, c: Chart, key: string, word: string, number: f64, numeric: bool) -> bool {
+  if key == "preset" {
+    for i: 0..<WHAT_PRESETS { if what_preset(i).key == word { w[0] = what_preset_state(i); return true; } }
+    return false;
+  }
+  if key == "site" {
+    for i: 0..<SITES { if sim_site(i).key == word { what_go(w, i); return true; } }
+    return false;
+  }
+  if key == "power" {
+    if word == "otec" { w[0].power = POWER_OTEC; return true; }
+    if word == "nuclear" { w[0].power = POWER_NUCLEAR; return true; }
+    if word == "hybrid" { w[0].power = POWER_HYBRID; return true; }
+    return false;
+  }
+  if key == "layout" {
+    if word == "dome" { w[0].layout = WHAT_DOME; return true; }
+    if word == "cluster" { w[0].layout = WHAT_CLUSTER; return true; }
+    if word == "prime" { w[0].layout = WHAT_PRIME; return true; }
+    return false;
+  }
+  if !numeric { return false; }
+  if key == "lat" { if chart_in(c, number, w[0].lon) { w[0].lat = number; } return true; }
+  if key == "lon" { if chart_in(c, w[0].lat, number) { w[0].lon = number; } return true; }
+  for t: 0..<WHAT_TENANTS {
+    if key == what_tenant_key(t) {
+      w[0].on[t] = number > 0;
+      if number > 0 { what_set(w, c, what_tenant_control(t), number); }
+      return true;
+    }
+  }
+  for i: 0..<WHAT_CONTROLS {
+    if key == what_control(i).key { what_set(w, c, i, number); return true; }
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------- checks
+what_test_chart :: (ws: [] Where, site: int) -> Chart { where_load(ws, site); return ws[0].chart; }
+#test "the picture is the hull module's prime hull, afloat at 25 m with its deck 118 m up" {
+  w := what_picture();
+  ws: [1] Where; c := what_test_chart(ws[..], w.site);
+  f := what_facts(w, c);
+  prime := hull_ledger(hull_prime());
+  #assert abs(f.led.mass - prime.mass) < 1.0 && abs(f.led.concrete - prime.concrete) < 1e-6 && abs(f.led.ballast - prime.ballast) < 1.0;
+  #assert !f.sunk && !f.aground && !f.capsizes && !f.ashore && abs(f.draft - 25) < 1e-9 && abs(f.deck - 118) < 1e-9;
+  #assert f.caissons == 120 && !f.one_piece && f.too_wide;
+  // 3.83 million cubic metres at $500 is $1.9 billion; one yard at 3,000 a day pours for 1,276 days
+  #assert abs(f.cost / 1e9 - 1.913) < 0.001 && abs(f.pour_days - 1275.6) < 0.1;
+  #assert abs(f.once_in_1000 - 0.632) < 0.001 && f.once_in_100 > 0.9999;
+  #assert what_preset_of(w) == WP_PICTURE;
+  // every control's picture value is inside its range and on its step
+  for i: 0..<WHAT_CONTROLS {
+    ct := what_control(i);
+    if i != WC_SHORE && i != WC_WIND { #assert abs(what_snap(i, ct.picture) - ct.picture) < 1e-9; }
+    #assert ct.low < ct.high && ct.step > 0 && ct.key.count > 0 && ct.name.count > 0 && what_ticks(i) >= 7 && what_ticks(i) <= 500;
+    #assert what_at_tick(i, 0) == ct.low && abs(what_at_tick(i, what_ticks(i)) - ct.high) < 1e-9 && what_at_tick(i, 9999) == what_at_tick(i, what_ticks(i));
+    #assert what_tick_of(i, what_at_tick(i, 3)) == 3;
+  }
+}
+#test "more weight uses up the ballast, then sinks the hull to its deck" {
+  ws: [1] Where; w := what_picture(); wa: [1] WhatIf; wa[0] = w;
+  c := what_test_chart(ws[..], w.site);
+  // six million tonnes on the picture's hull: a metre deeper and still afloat
+  what_set(wa[..], c, WC_WEIGHT, 6.0);
+  f := what_facts(wa[0], c);
+  #assert !f.sunk && f.led.ballast == 0 && f.draft > 26 && f.draft < 28 && f.deck < 118;
+  // the same weight on a hull a fifth the size: under
+  what_set(wa[..], c, WC_LENGTH, 300); what_set(wa[..], c, WC_WIDTH, 200);
+  g := what_facts(wa[0], c);
+  #assert g.sunk && abs(g.draft - 143) < 1e-9 && abs(g.deck) < 1e-9;      // Guam's water is 1,408 m: it stops at its deck
+  notes: [WHAT_NOTES] WhatLine;
+  n := what_whynot(wa[0], g, notes[..]);
+  #assert n >= 1;
+  first := cast(string) notes[0].b[0..<notes[0].n];
+  #assert first.count > 40 && cast(string) first[0..<10] == "Too heavy:" && cast(string) first[first.count - 12..<first.count] == "to its deck.";
+  // in the Gulf's 89 m the same hull meets the seabed first
+  what_go(wa[..], SITE_TEXAS);
+  ct := what_test_chart(ws[..], SITE_TEXAS);
+  h := what_facts(wa[0], ct);
+  #assert h.sunk && abs(h.draft - 89) < 1e-9 && abs(h.deck - 54) < 1e-9;
+}
+#test "moving to California stops the ocean thermal plant, and says why in each season" {
+  ws: [1] Where; wa: [1] WhatIf; wa[0] = what_preset_state(WP_GUAM);
+  c := what_test_chart(ws[..], SITE_GUAM);
+  guam := what_facts(wa[0], c);
+  #assert guam.power.otec_net > 90 && !guam.otec_cold && !guam.otec_shallow && guam.otec_wanted;
+  notes: [WHAT_NOTES] WhatLine;
+  // at Guam on the picture's hull the only note is that it leaves port in caissons
+  #assert what_whynot(wa[0], guam, notes[..]) == 1;
+  what_go(wa[..], SITE_CALIFORNIA);
+  c = what_test_chart(ws[..], SITE_CALIFORNIA);
+  what_set(wa[..], c, WC_MONTH, 2);
+  cal := what_facts(wa[0], c);
+  #assert cal.power.otec_net == 0 && cal.otec_shallow && cal.surface < 16 && cal.power.supply == 0;
+  // California's basin here is 607 m: no room for the pipes. Further out, over 1,000 m, it is the cold
+  n := what_whynot(wa[0], cal, notes[..]);
+  found := false;
+  for i: 0..<n { t := cast(string) notes[i].b[0..<notes[i].n]; if t.count > 60 && cast(string) t[0..<38] == "No ocean thermal power here: under 607" { found = true; } }
+  #assert found;
+  what_set(wa[..], c, WC_SHORE, 30);
+  deep := what_facts(wa[0], c);
+  if deep.place.depth >= 1000 {
+    #assert deep.otec_cold && !deep.otec_shallow;
+    n = what_whynot(wa[0], deep, notes[..]);
+    cold := false;
+    for i: 0..<n { t := cast(string) notes[i].b[0..<notes[i].n]; if t == "No ocean thermal power here: the water is 15 C in February, and the plant needs 19 C or warmer over its cold water." { cold = true; } }
+    #assert cold;
+  }
+}
+#test "the pilot fits the Corpus Christi channel in one piece, and the picture does not" {
+  ws: [1] Where; w := what_preset_state(WP_PILOT);
+  c := what_test_chart(ws[..], SITE_TEXAS);
+  f := what_facts(w, c);
+  // one caisson of thin concrete: 23,100 tonnes that floats at 4.5 m, ballasted to the 5 m and 25,600
+  // tonnes the feasibility study gives
+  #assert f.caissons == 1 && f.one_piece && !f.too_wide && !f.too_deep;
+  #assert abs(f.led.concrete_mass / 1e6 - 23.1) < 0.1 && abs(f.led.bare_draft - 4.5) < 0.05 && abs(f.draft - 5.0) < 1e-9 && abs(f.led.mass / 1e6 - 25.6) < 0.1;
+  #assert !f.sunk && !f.capsizes && !f.aground && f.deck > 24 && f.power.supply == 0 && what_bare(w);
+  notes: [WHAT_NOTES] WhatLine;
+  #assert what_whynot(w, f, notes[..]) == 0;
+  // 200,000 tonnes of buildings on it sinks it; in 89 m of water its 30 m deck goes awash
+  wa: [1] WhatIf; wa[0] = w;
+  what_set(wa[..], c, WC_WEIGHT, 0.2);
+  g := what_facts(wa[0], c);
+  #assert g.sunk && abs(g.deck) < 1e-9;
+  // a hull 200 m wide is too wide; a 50 m one with 3 m walls and slabs floats too deep
+  what_set(wa[..], c, WC_WEIGHT, 0); what_set(wa[..], c, WC_WIDTH, 200);
+  #assert what_facts(wa[0], c).too_wide;
+  what_set(wa[..], c, WC_WIDTH, 50); what_set(wa[..], c, WC_WALL, 3); what_set(wa[..], c, WC_FLOOR, 3); what_set(wa[..], c, WC_DEPTH, 50);
+  thick := what_facts(wa[0], c);
+  #assert thick.too_deep && !thick.too_wide && !thick.one_piece;
+}
+#test "a tall narrow hull rolls over, and shallow water grounds a deep one" {
+  ws: [1] Where; wa: [1] WhatIf; wa[0] = what_picture();
+  c := what_test_chart(ws[..], SITE_GUAM);
+  what_set(wa[..], c, WC_WIDTH, 50); what_set(wa[..], c, WC_WEIGHT, 0.1);
+  f := what_facts(wa[0], c);
+  #assert f.capsizes && f.led.gm_t < 0 && !f.sunk;
+  notes: [WHAT_NOTES] WhatLine;
+  n := what_whynot(wa[0], f, notes[..]);
+  rolls := false;
+  for i: 0..<n { t := cast(string) notes[i].b[0..<notes[i].n]; if t.count > 20 && cast(string) t[0..<18] == "It would roll over" { rolls = true; } }
+  #assert rolls;
+  // nine miles off Texas the Gulf is under 25 m deep
+  wb: [1] WhatIf; wb[0] = what_picture();
+  what_go(wb[..], SITE_TEXAS);
+  ct := what_test_chart(ws[..], SITE_TEXAS);
+  what_set(wb[..], ct, WC_SHORE, 9);
+  g := what_facts(wb[0], ct);
+  #assert g.aground && !g.sunk && g.place.depth < 26 && abs(g.draft - g.place.depth) < 1e-9 && abs(g.place.shore - 9) < 0.3;
+  #assert g.place.zone == ZONE_TERRITORIAL;      // just past Texas's nine mile line
+}
+#test "words: values with their units, limits with their reasons, money and time" {
+  l: [1] WhatLine;
+  what_words(l[..], WC_WEIGHT, 2.0); #assert what_text(l[..]) == "2.0 million tonnes"; l[0].n = 0;
+  what_words(l[..], WC_LENGTH, 1000); #assert what_text(l[..]) == "1,000 m"; l[0].n = 0;
+  what_words(l[..], WC_WALL, 1.5); #assert what_text(l[..]) == "1.5 m"; l[0].n = 0;
+  what_words(l[..], WC_PRICE, 500); #assert what_text(l[..]) == "$500 a cubic metre"; l[0].n = 0;
+  what_words(l[..], WC_YARDS, 1); #assert what_text(l[..]) == "1 yard"; l[0].n = 0;
+  what_words(l[..], WC_SHORE, 2.5); #assert what_text(l[..]) == "2.5 nautical miles"; l[0].n = 0;
+  what_words(l[..], WC_SHORE, 40); #assert what_text(l[..]) == "40 nautical miles"; l[0].n = 0;
+  what_words(l[..], WC_MONTH, 2); #assert what_text(l[..]) == "February"; l[0].n = 0;
+  what_words(l[..], WC_OTEC, 0.25); #assert what_text(l[..]) == "30 MW at its best"; l[0].n = 0;
+  what_words(l[..], WC_MODULES, 4); #assert what_text(l[..]) == "4 modules, 200 MW"; l[0].n = 0;
+  what_words(l[..], WC_LIFE, 1000); #assert what_text(l[..]) == "1,000 years"; l[0].n = 0;
+  what_limits(l[..], WC_WALL);
+  #assert what_text(l[..]) == "0.5 to 3.0 m. 0.5 m is about the least that covers the steel against sea water. 3 m is twice the picture's wall."; l[0].n = 0;
+  what_limits(l[..], WC_LIFE);
+  #assert what_text(l[..]) == "25 to 1,000 years. 25 years is a usual life for an offshore platform. 1,000 years is Luckey's claim."; l[0].n = 0;
+  what_money(l[..], 1.913e9); #assert what_text(l[..]) == "$1.9 billion"; l[0].n = 0;
+  what_money(l[..], 241.0e6); #assert what_text(l[..]) == "$241 million"; l[0].n = 0;
+  what_mass(l[..], 15.375e9); #assert what_text(l[..]) == "15.4 million tonnes"; l[0].n = 0;
+  what_mass(l[..], 25.4e6); #assert what_text(l[..]) == "25,400 tonnes"; l[0].n = 0;
+  what_days(l[..], 1275.6); #assert what_text(l[..]) == "1,276 days (3.5 years)"; l[0].n = 0;
+  what_num(l[..], 0.05, 1); #assert what_text(l[..]) == "0.1"; l[0].n = 0;
+  what_num(l[..], -1234567.891, 2); #assert what_text(l[..]) == "-1,234,567.89"; l[0].n = 0;
+  // every control's limits fit a line and end in a full stop
+  for i: 0..<WHAT_CONTROLS {
+    what_limits(l[..], i);
+    t := what_text(l[..]);
+    #assert t.count > 10 && t.count < WHAT_LINE && t[t.count - 1] == '.';
+    l[0].n = 0;
+  }
+}
+#test "every state has an address, and the address brings the state back" {
+  ws: [1] Where; q: [1] WhatQuery;
+  // the picture's address is empty
+  #assert what_query(what_picture(), q[..]) == "";
+  // each preset's address is what differs from the picture
+  #assert what_query(what_preset_state(WP_CALIFORNIA), q[..]) == "site=california";
+  #assert what_query(what_preset_state(WP_GUAM), q[..]) == "power=otec";
+  #assert what_query(what_preset_state(WP_DOME), q[..]) == "layout=dome&power=otec";
+  #assert what_query(what_preset_state(WP_PILOT), q[..]) == "site=texas&weight=0&long=100&wide=50&deep=30&wall=0.5&floor=0.5&draft=5";
+  // a state with everything moved comes back from its own address
+  wa: [1] WhatIf; wa[0] = what_preset_state(WP_PILOT);
+  c := what_test_chart(ws[..], SITE_TEXAS);
+  what_set(wa[..], c, WC_SHORE, 12); what_set(wa[..], c, WC_WIND, 22); what_set(wa[..], c, WC_MONTH, 9);
+  what_set(wa[..], c, WC_PRICE, 325); what_set(wa[..], c, WC_OTEC, 1.75); what_set(wa[..], c, WC_LIFE, 100);
+  wa[0].on[WT_MINING] = false; wa[0].power = POWER_NUCLEAR;
+  text := what_query(wa[0], q[..]);
+  wb: [1] WhatIf; wb[0] = what_picture();
+  // read it back a pair at a time: the site first, as the page does
+  for pass: 0..<2 {
+    i := 0;
+    while i < text.count {
+      e := i; while e < text.count && text[e] != '&' { e += 1; }
+      m := i; while m < e && text[m] != '=' { m += 1; }
+      key := cast(string) text[i..<m]; word := cast(string) text[m + 1..<e];
+      v := 0.0; scale := 0.0; sign := 1.0; numeric := word.count > 0;
+      for ch: word {
+        if ch == '-' { sign = -1; continue; }
+        if ch == '.' { scale = 1; continue; }
+        if ch < '0' || ch > '9' { numeric = false; break; }
+        if scale > 0 { scale *= 0.1; v += f64(ch - '0') * scale; } else { v = v * 10 + f64(ch - '0'); }
+      }
+      if (key == "site") == (pass == 0) { #assert what_apply(wb[..], what_test_chart(ws[..], wb[0].site), key, word, sign * v, numeric); }
+      i = e + 1;
+    }
+  }
+  #assert what_same(wa[0], wb[0]);
+  #assert what_query(wb[0], q[..]) == text && text.count < WHAT_QUERY - 60;
+  // a key that is not ours is refused; a preset is one word
+  #assert !what_apply(wb[..], c, "yaw", "1", 1, true) && !what_apply(wb[..], c, "site", "atlantis", 0, false);
+  #assert what_apply(wb[..], c, "preset", "fjord", 0, false) && wb[0].site == SITE_FJORD && what_preset_of(wb[0]) == WP_FJORD;
+}
+#test "the presets: each is a state of its own, and the fjord and the dome say what they are" {
+  ws: [1] Where;
+  for i: 0..<WHAT_PRESETS {
+    w := what_preset_state(i);
+    #assert what_preset_of(w) == i && what_preset(i).name.count > 0 && what_preset(i).note.count > 0;
+    c := what_test_chart(ws[..], w.site);
+    f := what_facts(w, c);
+    #assert !f.ashore && !f.sunk && !f.capsizes && !f.aground;
+  }
+  fjord := what_preset_state(WP_FJORD);
+  c := what_test_chart(ws[..], SITE_FJORD);
+  f := what_facts(fjord, c);
+  // the fjord is deep enough for the picture's 25 m draft, sheltered, and too cold and shallow for the plant
+  #assert f.place.depth == 134 && f.place.zone == ZONE_INTERNAL && f.otec_shallow && f.surface < 17;
+  #assert what_wind(fjord) < 6 && what_wind(what_preset_state(WP_CALIFORNIA)) > 13;
+  dome := what_preset_state(WP_DOME);
+  #assert dome.layout == WHAT_DOME && !what_bare(dome);
+}

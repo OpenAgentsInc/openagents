@@ -106,6 +106,11 @@ SimPlant :: struct {
   network: f64 = 967.0;      // EH/s
   fees: f64 = 0.0229;        // BTC a block
   pool: f64 = 0.02;
+  // the tenants' sizes (the picture's unless a visitor changes them: metaverse/slab-whatif.coax)
+  data_mw: f64 = SIM_DATA;   // the data halls' load, MW (0: none aboard)
+  desal_mw: f64 = SIM_DESAL;
+  industry_mw: f64 = SIM_INDUSTRY;
+  miners: int = SIM_CONTAINERS;   // mining containers, 1 MW each
 }
 SimPower :: struct {
   dt: f64;                   // the plant's inlet delta T
@@ -190,8 +195,8 @@ sim_power :: (p: SimPlant, site: SimSite, month: f64) -> SimPower {
     o.budget = o.revenue - 48.27;
     return o;
   }
-  o.data_load = ifx p.swac then SIM_DATA_SWAC else SIM_DATA;
-  o.fixed = SIM_HOTEL + o.data_load + SIM_DESAL + SIM_INDUSTRY;
+  o.data_load = (ifx p.swac then SIM_DATA_SWAC else SIM_DATA) * p.data_mw / SIM_DATA;
+  o.fixed = SIM_HOTEL + o.data_load + p.desal_mw + p.industry_mw;
   o.cooling_share = ifx p.swac && o.cold_flow > 0 then 2.93 / o.cold_flow else 0;
   // dispatch: the hotel, the data centre (on backup when it can't have all it needs), desalination,
   // industry, then the miners in 1 MW steps
@@ -200,12 +205,12 @@ sim_power :: (p: SimPlant, site: SimSite, month: f64) -> SimPower {
   // the data centre takes what it can; its batteries and generators carry the rest (spec 6.2)
   o.data = sim_min(o.data_load, sim_max(left, 0)); left -= o.data;
   o.data_on_backup = o.data < o.data_load;
-  o.desal = sim_min(SIM_DESAL, sim_max(left, 0)); left -= o.desal;
-  o.industry = sim_min(SIM_INDUSTRY, sim_max(left, 0)); left -= o.industry;
+  o.desal = sim_min(p.desal_mw, sim_max(left, 0)); left -= o.desal;
+  o.industry = sim_min(p.industry_mw, sim_max(left, 0)); left -= o.industry;
   o.containers = cast(int) floor(sim_max(left, 0));
-  if o.containers > SIM_CONTAINERS { o.containers = SIM_CONTAINERS; }
+  if o.containers > p.miners { o.containers = p.miners; }
   o.mining = f64(o.containers);
-  o.shed = o.data_on_backup || o.desal < SIM_DESAL || o.industry < SIM_INDUSTRY || o.containers < SIM_CONTAINERS;
+  o.shed = o.data_on_backup || o.desal < p.desal_mw || o.industry < p.industry_mw || o.containers < p.miners;
   o.hashrate = o.mining / 1.05 / p.jth;   // MW / (J/TH) = TH/s * 1e6, so EH/s
   o.revenue = sim_revenue(p);
   o.budget = o.revenue - 40.27 - 8.0;
@@ -717,6 +722,18 @@ sim_bending :: (heights: [] f32, n: int, patch: f64, h: SimHull) -> f64 {
   #assert aug.data == SIM_DATA && aug.desal == SIM_DESAL && aug.industry < SIM_INDUSTRY && aug.industry > 0 && aug.containers == 0;
   p.otec_scale = 1.75;
   for m: 0..<12 { q := sim_power(p, sim_site(SITE_GUAM), f64(m) + 0.5); #assert q.industry == SIM_INDUSTRY && q.desal == SIM_DESAL && !q.data_on_backup; }
+}
+#test "8b: a tenant's size is the plant's to set: none aboard asks for nothing, twice as much sheds sooner" {
+  p: SimPlant;
+  base := sim_power(p, sim_site(SITE_GUAM), 7.5);
+  none := p; none.data_mw = 0; none.desal_mw = 0; none.industry_mw = 0; none.miners = 0;
+  o := sim_power(none, sim_site(SITE_GUAM), 7.5);
+  #assert o.data_load == 0 && o.fixed == SIM_HOTEL && o.data == 0 && o.containers == 0 && !o.shed && !o.data_on_backup;
+  big := p; big.data_mw = 240; big.power = POWER_OTEC;
+  q := sim_power(big, sim_site(SITE_GUAM), 7.5);
+  #assert q.data_load == 240 && q.data_on_backup && q.shed && q.containers == 0;
+  half := p; half.miners = 10;
+  #assert sim_power(half, sim_site(SITE_GUAM), 7.5).containers <= 10 && base.data_load == SIM_DATA;
 }
 #test "11: mining revenue and the power budget" {
   p: SimPlant;
