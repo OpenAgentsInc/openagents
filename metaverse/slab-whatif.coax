@@ -78,7 +78,7 @@ what_control :: (i: int) -> WhatControl {
     low_why = "0 is the beach.", high_why = "250 is past the 200 mile line, on the high seas, where our chart ends."}; }
   if i == WC_WIND { return WhatControl.{key = "wind", name = "Wind", low = 0, high = 40, step = 1, picture = 13.7, from = WHAT_OURS,
     low_why = "0 is a flat calm.", high_why = "40 metres a second is a hurricane, the limit of our sea."}; }
-  if i == WC_MONTH { return WhatControl.{key = "month", name = "Month", low = 1, high = 12, step = 1, picture = 7, from = WHAT_OURS,
+  if i == WC_MONTH { return WhatControl.{key = "month", name = "Month", low = 1, high = 12, step = 1, picture = 6, from = WHAT_OURS,
     low_why = "", high_why = ""}; }
   if i == WC_OTEC { return WhatControl.{key = "otec", name = "Ocean thermal plant", low = 0.25, high = 2, step = 0.25, picture = 1, from = WHAT_OURS, decimals = 2,
     low_why = "30 MW is a quarter of the picture's plant.", high_why = "240 MW is twice it, as far as this model goes."}; }

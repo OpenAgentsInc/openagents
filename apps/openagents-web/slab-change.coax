@@ -1,0 +1,357 @@
+// What the "What would it take?" settings do to SLAB's world (GitHub #13686): the state the page
+// keeps for them, the platform's records for the hull they give, and the address of a state. The
+// settings and what follows from them are metaverse/slab-whatif.coax's; the page
+// (apps/openagents-web/slab.coax) holds one Change and calls in here from a few hooks. Nothing here
+// knows the page's own state, so it is checked on its own.
+//
+// The world answers a setting for real:
+//   the hull   its six records are rebuilt for the length, width and depth, at the draft the hull
+//              module's ledger gives: more weight sinks it, to its deck when it is too heavy and
+//              to the seabed where the water is shallower than that. The draft eases to its new
+//              value over a few seconds, so a visitor watches it go down.
+//   the deck   the picture's buildings keep their size on a bigger deck and shrink to fit a smaller
+//              one; a bare hull (no buildings' weight) has none.
+//   the pipes  the cold-water pipes hang only where the water is deep enough for them.
+//   the dock   a basin cut into the sheltered south wall (spec 3.1): 100 m along the hull, 60 m into
+//              it, its floor 8 m under the water. It takes 48,000 m^3 out of the 15 million m^3 the
+//              picture's hull displaces (0.3%), which the hull module's ledger does not yet count.
+//   coax/bin/coax test apps/openagents-web/slab-change.coax
+
+#load "../../metaverse/slab-whatif.coax";
+#load "../../metaverse/slab-plan.coax";
+
+CH_DOCK_LONG :: 100.0f32;    // the dock basin along the hull, m: columns J and K
+CH_DOCK_IN :: 60.0f32;       // and into it from the south wall
+CH_DOCK_FLOOR :: -8.0f32;    // its floor, m under the calm water at the picture's draft
+CH_DOCK_APRON :: 6.0f32;     // the clear quay round it
+CH_DOCK_MIN_L :: 400.0;      // the smallest hull that has one: it needs a wall to cut into
+CH_DOCK_MIN_B :: 300.0;
+CH_SINK :: 4.0;              // m/s the shown draft moves at least
+CH_SINK_EASE :: 0.9;         // and 1/s of what is left besides
+
+// What the page last had in force, so a change made by one of its own buttons is seen.
+ChangeWorld :: struct { site: int; power: int; layout: int; otec: f64; modules: int; wind: f64 = -1; month: int; }
+Change :: struct {
+  ready: bool;
+  what: WhatIf;
+  where: [1] Where;
+  facts: WhatFacts;
+  notes: [WHAT_NOTES] WhatLine; note_count: int;
+  shown: f64 = HULL_PRIME_DRAFT;   // the draft the world shows now, easing to facts.draft
+  rev: int;                 // goes up with every change of the settings
+  world: ChangeWorld;       // what the page was last told
+  query: [1] WhatQuery;     // the state's address
+  fit: [2] f64 = [2] f64.[HULL_PRIME_L, HULL_PRIME_B];   // the hull size the page's camera last framed
+}
+change_refresh :: (c: [] Change) {
+  where_load(c[0].where[..], c[0].what.site);
+  c[0].facts = what_facts(c[0].what, c[0].where[0].chart);
+  c[0].note_count = what_whynot(c[0].what, c[0].facts, c[0].notes[..]);
+  q := what_query(c[0].what, c[0].query[..]);
+  c[0].rev += 1;
+}
+change_init :: (c: [] Change) {
+  if c[0].ready { return; }
+  c[0].ready = true;
+  c[0].what = what_picture();
+  c[0].where[0].site = -1;
+  change_refresh(c);
+  c[0].shown = c[0].facts.draft;
+}
+change_chart :: (c: [] Change) -> Chart { return c[0].where[0].chart; }
+change_address :: (c: [] Change) -> string { return cast(string) c[0].query[0].b[0..<c[0].query[0].n]; }
+// The shown draft is where it will rest (a picture, an address just opened).
+change_settle :: (c: [] Change) { c[0].shown = c[0].facts.draft; }
+// Eases the shown draft toward the ledger's. True while it is still moving.
+change_step :: (c: [] Change, dt: f64) -> bool {
+  left := c[0].facts.draft - c[0].shown;
+  if abs(left) < 0.005 { if left != 0 { c[0].shown = c[0].facts.draft; return true; } return false; }
+  move := (CH_SINK + abs(left) * CH_SINK_EASE) * (ifx dt > 0 then (ifx dt < 0.1 then dt else 0.1) else 0.0);
+  c[0].shown += ifx abs(left) <= move then left else ifx left > 0 then move else -move;
+  return true;
+}
+// The hull is the picture's size (the deck's plan and height are the ones the walk and the tour know).
+change_picture_hull :: (c: [] Change) -> bool {
+  sh := c[0].facts.shape;
+  return c[0].what.layout == WHAT_PRIME && sh.l == HULL_PRIME_L && sh.b == HULL_PRIME_B && sh.deck == HULL_PRIME_DECK
+    && abs(c[0].shown - HULL_PRIME_DRAFT) < 0.01 && !what_bare(c[0].what);
+}
+// The hull for the shader: half its length, half its beam, the deck over the water, the keel under it.
+change_hull :: (c: [] Change) -> [4] f32 {
+  sh := c[0].facts.shape;
+  top := hull_hi(sh.deck, sh.hull);
+  return [4] f32.[f32(sh.l / 2.0), f32(sh.b / 2.0), f32(top - c[0].shown), f32(-c[0].shown)];
+}
+// How much the picture's buildings are scaled to stand on this deck: 1 on a deck as big or bigger.
+change_scale :: (sh: HullShape) -> f32 {
+  s := hull_lo(sh.l / HULL_PRIME_L, sh.b / HULL_PRIME_B);
+  return f32(ifx s > 1 then 1.0 else s);
+}
+change_has_dock :: (sh: HullShape, shown: f64) -> bool {
+  return sh.l >= CH_DOCK_MIN_L && sh.b >= CH_DOCK_MIN_B && hull_hi(sh.deck, sh.hull) - shown > 1.0;
+}
+// The cold-water pipes hang here: the plant is aboard and the water is deep enough for them.
+change_has_pipes :: (c: [] Change) -> bool { return !c[0].facts.power.no_cold && !c[0].facts.ashore; }
+
+// Rewrites the prime plan's `n` records (metaverse/slab-plan.coax's slab_plan) for the settings, in
+// place: the hull's six for its size and the draft shown, with the dock cut into the south wall; the
+// buildings scaled to the deck and lifted to it, or gone from a bare hull; the pipes hung from the
+// keel or gone. Returns the count.
+change_records :: (c: [] Change, boxes: [] f32, n: int) -> int {
+  sh := c[0].facts.shape;
+  hl := f32(sh.l / 2.0); hb := f32(sh.b / 2.0);
+  keel := f32(-c[0].shown); deck := f32(hull_hi(sh.deck, sh.hull) - c[0].shown);
+  k := change_scale(sh);
+  bare := what_bare(c[0].what);
+  pipes := change_has_pipes(c);
+  dock := change_has_dock(sh, c[0].shown);
+  dx := CH_DOCK_LONG / 2; dz := -hb + CH_DOCK_IN;
+  m := SLAB_HULL_PIECES;
+  for i: SLAB_HULL_PIECES..<n {
+    if bare { break; }
+    o := i * SLAB_RECORD;
+    kind := cast(int) boxes[o + 3];
+    x0 := boxes[o] * k; z0 := boxes[o + 2] * k; x1 := boxes[o + 4] * k; z1 := boxes[o + 6] * k;
+    y0 := deck + (boxes[o + 1] - SLAB_DECK) * k; y1 := deck + (boxes[o + 5] - SLAB_DECK) * k;
+    if kind == SLAB_KIND_PIPE {
+      if !pipes { continue; }
+      // a pipe keeps its width and its 1,000 m, under the keel at its moonpool
+      cx := (boxes[o] + boxes[o + 4]) * 0.5f32 * k; cz := (boxes[o + 2] + boxes[o + 6]) * 0.5f32 * k;
+      x0 = cx - SLAB_PIPE_RADIUS; x1 = cx + SLAB_PIPE_RADIUS; z0 = cz - SLAB_PIPE_RADIUS; z1 = cz + SLAB_PIPE_RADIUS;
+      y0 = keel - SLAB_PIPE_LENGTH; y1 = keel;
+    } else if dock && x1 > -dx - CH_DOCK_APRON && x0 < dx + CH_DOCK_APRON && z0 < dz + CH_DOCK_APRON {
+      // what stood where the basin is cut stands back from its quay
+      if (x0 + x1) * 0.5f32 >= 0 { x0 = dx + CH_DOCK_APRON; } else { x1 = -dx - CH_DOCK_APRON; }
+      if x1 - x0 < 4 { continue; }
+    }
+    t := m * SLAB_RECORD;
+    boxes[t] = x0; boxes[t + 1] = y0; boxes[t + 2] = z0; boxes[t + 3] = boxes[o + 3];
+    boxes[t + 4] = x1; boxes[t + 5] = y1; boxes[t + 6] = z1; boxes[t + 7] = boxes[o + 7];
+    m += 1;
+  }
+  // the hull: one block, or with the dock a block each side of the basin, the block behind it and
+  // the floor under it; the pieces left over lie inside the concrete, where no ray reaches them
+  for i: 0..<SLAB_HULL_PIECES { change_piece(boxes, i, -1, keel + 1, hb - 3, 1, keel + 2, hb - 1); }
+  if dock {
+    // the basin's floor is 8 m under the water at the draft the ballast holds, and goes down with the hull
+    at := CH_DOCK_FLOOR - f32(c[0].shown - sh.draft);
+    bed := ifx at < deck then at else deck;
+    change_piece(boxes, 0, -hl, keel, -hb, -dx, deck, hb);
+    change_piece(boxes, 1, dx, keel, -hb, hl, deck, hb);
+    change_piece(boxes, 2, -dx, keel, dz, dx, deck, hb);
+    if keel < bed { change_piece(boxes, 3, -dx, keel, -hb, dx, bed, dz); }
+  } else {
+    change_piece(boxes, 0, -hl, keel, -hb, hl, deck, hb);
+  }
+  return m;
+}
+change_piece :: (boxes: [] f32, i: int, x0: f32, y0: f32, z0: f32, x1: f32, y1: f32, z1: f32) {
+  o := i * SLAB_RECORD;
+  boxes[o] = x0; boxes[o + 1] = y0; boxes[o + 2] = z0; boxes[o + 3] = f32(SLAB_KIND_HULL);
+  boxes[o + 4] = x1; boxes[o + 5] = y1; boxes[o + 6] = z1; boxes[o + 7] = f32(SLAB_BOX);
+}
+// Whether (x, z) on the deck is over the dock's basin (the walk and the camera keep off it).
+change_in_dock :: (c: [] Change, x: f32, z: f32, margin: f32) -> bool {
+  sh := c[0].facts.shape;
+  return c[0].what.layout == WHAT_PRIME && change_has_dock(sh, c[0].shown) && abs(x) < CH_DOCK_LONG / 2 + margin && z < f32(-sh.b / 2.0) + CH_DOCK_IN + margin;
+}
+// The water the dock takes out of the hull's displacement at a draft, m^3.
+change_dock_volume :: (draft: f64) -> f64 { return f64(CH_DOCK_LONG) * f64(CH_DOCK_IN) * hull_lo(hull_hi(draft, 0), f64(-CH_DOCK_FLOOR)); }
+
+// ---------------------------------------------------------------- an address, a press
+// Applies the "key=value" pairs of a query ("a=1&b=2", with or without what is before a '?') that are
+// the settings'. A preset goes first, then the site, then the rest, so an address reads the same in
+// any order. `only` limits it to keys the page does not read itself. Returns how many applied.
+change_number :: (word: string) -> [2] f64 {
+  v := 0.0; scale := 0.0; sign := 1.0; any := false;
+  for i: 0..<word.count {
+    ch := word[i];
+    if ch == '-' && i == 0 { sign = -1; continue; }
+    if ch == '.' && scale == 0.0 { scale = 1; continue; }
+    if ch < '0' || ch > '9' { return [2] f64.[0, 0]; }
+    any = true;
+    if scale > 0 { scale *= 0.1; v += f64(ch - '0') * scale; } else { v = v * 10 + f64(ch - '0'); }
+  }
+  return [2] f64.[sign * v, ifx any then 1.0 else 0.0];
+}
+// The page reads these itself and tells us with change_world.
+change_pages :: (key: string) -> bool { return key == "site" || key == "power" || key == "layout" || key == "otec" || key == "modules" || key == "wind" || key == "month"; }
+change_pairs :: (c: [] Change, text: string, only: bool) -> int {
+  start := 0;
+  for i: 0..<text.count { if text[i] == '?' { start = i + 1; break; } }
+  applied := 0;
+  w: [1] WhatIf; w[0] = c[0].what;
+  for pass: 0..<3 {
+    i := start;
+    while i < text.count && text[i] != '#' {
+      e := i; while e < text.count && text[e] != '&' && text[e] != '#' { e += 1; }
+      m := i; while m < e && text[m] != '=' { m += 1; }
+      if m < e {
+        key := cast(string) text[i..<m]; word := cast(string) text[m + 1..<e];
+        rank := ifx key == "preset" then 0 else ifx key == "site" then 1 else 2;
+        if rank == pass && !(only && change_pages(key)) {
+          num := change_number(word);
+          where_load(c[0].where[..], w[0].site);
+          if what_apply(w[..], c[0].where[0].chart, key, word, num[0], num[1] > 0) { applied += 1; }
+        }
+      }
+      i = e + 1;
+    }
+  }
+  if applied > 0 { c[0].what = w[0]; change_refresh(c); }
+  return applied;
+}
+// The page's own settings as they are now: a change made by one of its buttons or its own address
+// keys comes into the settings. True when anything differed from what it last said.
+change_world :: (c: [] Change, now: ChangeWorld) -> bool {
+  was := c[0].world;
+  if was.site == now.site && was.power == now.power && was.layout == now.layout && was.otec == now.otec && was.modules == now.modules
+    && was.wind == now.wind && was.month == now.month { return false; }
+  // only what changed comes in: the rest is the settings' own
+  w: [1] WhatIf; w[0] = c[0].what;
+  if now.site != was.site && now.site != w[0].site { what_go(w[..], now.site); }
+  if now.power != was.power { w[0].power = now.power; }
+  if now.layout != was.layout { w[0].layout = now.layout; }
+  if now.otec != was.otec { w[0].v[WC_OTEC] = what_snap(WC_OTEC, now.otec); }
+  if now.modules != was.modules { w[0].v[WC_MODULES] = what_snap(WC_MODULES, f64(now.modules)); }
+  if now.wind != was.wind { w[0].wind_own = now.wind > 0; if w[0].wind_own { w[0].v[WC_WIND] = what_snap(WC_WIND, now.wind); } }
+  if now.month != was.month && !w[0].month_own { w[0].v[WC_MONTH] = what_snap(WC_MONTH, f64(now.month)); }
+  c[0].what = w[0]; c[0].world = now;
+  change_refresh(c);
+  return true;
+}
+// What the page should have in force for the settings (it then says so back with change_world).
+change_wants :: (c: [] Change) -> ChangeWorld {
+  w := c[0].what;
+  return ChangeWorld.{site = w.site, power = w.power, layout = w.layout, otec = w.v[WC_OTEC], modules = cast(int) what_round(w.v[WC_MODULES]),
+    wind = ifx w.wind_own then w.v[WC_WIND] else -1.0, month = cast(int) what_round(w.v[WC_MONTH])};
+}
+// A slider moved to a tick, a switch, a choice: each changes the settings and says so (rev).
+change_slide :: (c: [] Change, control: int, tick: int) {
+  w: [1] WhatIf; w[0] = c[0].what;
+  what_set(w[..], c[0].where[0].chart, control, what_at_tick(control, tick));
+  c[0].what = w[0]; change_refresh(c);
+}
+change_tenant :: (c: [] Change, tenant: int, on: bool) { if tenant >= 0 && tenant < WHAT_TENANTS { c[0].what.on[tenant] = on; change_refresh(c); } }
+change_site :: (c: [] Change, site: int) { w: [1] WhatIf; w[0] = c[0].what; what_go(w[..], site); c[0].what = w[0]; change_refresh(c); }
+change_power :: (c: [] Change, power: int) { c[0].what.power = power; change_refresh(c); }
+change_preset :: (c: [] Change, preset: int) { c[0].what = what_preset_state(preset); change_refresh(c); }
+// A point of the chart chosen (a click on it). False off the chart.
+change_place :: (c: [] Change, lat: f64, lon: f64) -> bool {
+  w: [1] WhatIf; w[0] = c[0].what;
+  if !what_move(w[..], c[0].where[0].chart, lat, lon) { return false; }
+  c[0].what = w[0]; change_refresh(c);
+  return true;
+}
+
+// ---------------------------------------------------------------- checks
+change_test_plan :: (c: [] Change, boxes: [] f32) -> int { return change_records(c, boxes, slab_plan(boxes)); }
+change_test_kind :: (boxes: [] f32, n: int, kind: int) -> int { k := 0; for i: 0..<n { if cast(int) boxes[i * SLAB_RECORD + 3] == kind { k += 1; } } return k; }
+// The hull pieces' volume inside a slab of water from y0 up to y1.
+change_test_volume :: (boxes: [] f32, y0: f32, y1: f32) -> f64 {
+  v := 0.0;
+  for i: 0..<4 {
+    o := i * SLAB_RECORD;
+    lo := ifx boxes[o + 1] > y0 then boxes[o + 1] else y0; hi := ifx boxes[o + 5] < y1 then boxes[o + 5] else y1;
+    if hi > lo { v += f64(boxes[o + 4] - boxes[o]) * f64(boxes[o + 6] - boxes[o + 2]) * f64(hi - lo); }
+  }
+  return v;
+}
+#test "the picture keeps every building, its pipes and its size, and gains the dock" {
+  cs: [1] Change; c := cs[..]; change_init(c);
+  plain: [SLAB_MAX_BOXES * SLAB_RECORD] f32; boxes: [SLAB_MAX_BOXES * SLAB_RECORD] f32;
+  n0 := slab_plan(plain[..]);
+  n := change_test_plan(c, boxes[..]);
+  #assert n == n0 && change_picture_hull(c) && change_has_pipes(c) && change_scale(c[0].facts.shape) == 1;
+  h := change_hull(c);
+  #assert h[0] == SLAB_LENGTH / 2 && h[1] == SLAB_BEAM / 2 && h[2] == SLAB_DECK && h[3] == -SLAB_DRAFT;
+  // every record off the hull is where the plan put it, but the data hall that stood on the dock's quay
+  moved := 0;
+  for i: SLAB_HULL_PIECES..<n { for k: 0..<SLAB_RECORD { if boxes[i * SLAB_RECORD + k] != plain[i * SLAB_RECORD + k] { moved += 1; break; } } }
+  #assert moved == 1;
+  // the hull's pieces fill the plan from keel to deck, less the basin: 100 x 60 m, 8 m of water in it
+  whole := f64(SLAB_LENGTH) * f64(SLAB_BEAM);
+  #assert abs(change_test_volume(boxes[..], -SLAB_DRAFT, 0) - (whole * 25.0 - change_dock_volume(25))) < 1.0;
+  #assert change_dock_volume(25) == 48000 && change_dock_volume(5) == 30000;
+  #assert abs(change_test_volume(boxes[..], 0, SLAB_DECK) - (whole - 6000.0) * 118.0) < 1.0;
+  #assert change_in_dock(c, 0, -280, 0) && !change_in_dock(c, 0, -230, 0) && !change_in_dock(c, 60, -280, 0) && change_in_dock(c, 51, -239, 1.2);
+  // no building's footprint is over the basin
+  for i: SLAB_HULL_PIECES..<n {
+    o := i * SLAB_RECORD;
+    if cast(int) boxes[o + 3] == SLAB_KIND_PIPE { continue; }
+    #assert !(boxes[o + 4] > -50 && boxes[o] < 50 && boxes[o + 2] < -240);
+  }
+}
+#test "more weight sinks it a metre; too much sinks it to its deck, a few metres a second" {
+  cs: [1] Change; c := cs[..]; change_init(c);
+  boxes: [SLAB_MAX_BOXES * SLAB_RECORD] f32;
+  change_slide(c, WC_WEIGHT, what_ticks(WC_WEIGHT));          // six million tonnes
+  #assert c[0].facts.draft > 26 && c[0].shown == 25 && c[0].rev == 2;
+  steps := 0;
+  while change_step(c, 1.0 / 60.0) && steps < 6000 { steps += 1; }
+  #assert steps > 5 && steps < 120 && c[0].shown == c[0].facts.draft && !change_picture_hull(c);
+  n := change_test_plan(c, boxes[..]);
+  #assert abs(f64(boxes[1]) + c[0].shown) < 1e-4 && abs(f64(boxes[5]) - (143 - c[0].shown)) < 1e-4;
+  // a hull a fifth the size under the same weight: down until the deck is awash
+  change_slide(c, WC_LENGTH, what_tick_of(WC_LENGTH, 300)); change_slide(c, WC_WIDTH, what_tick_of(WC_WIDTH, 200));
+  #assert c[0].facts.sunk && c[0].facts.draft == 143 && c[0].note_count >= 1;
+  steps = 0;
+  while change_step(c, 1.0 / 60.0) && steps < 6000 { steps += 1; }
+  #assert steps > 120 && steps < 900 && c[0].shown == 143;      // 2 to 15 seconds
+  n = change_test_plan(c, boxes[..]);
+  h := change_hull(c);
+  #assert h[0] == 150 && h[1] == 100 && abs(h[2]) < 1e-4 && h[3] == -143 && abs(boxes[5]) < 1e-4;
+  // this hull is too small for the dock: one block, and the buildings a fifth their size on its deck
+  #assert !change_has_dock(c[0].facts.shape, c[0].shown) && boxes[0] == -150 && boxes[4] == 150 && boxes[2] == -100 && boxes[6] == 100;
+  #assert abs(change_scale(c[0].facts.shape) - 0.3) < 1e-6;
+  for i: SLAB_HULL_PIECES..<n {
+    o := i * SLAB_RECORD;
+    if cast(int) boxes[o + 3] == SLAB_KIND_PIPE { continue; }
+    #assert boxes[o] >= -150 && boxes[o + 4] <= 150 && boxes[o + 2] >= -100 && boxes[o + 6] <= 100 && boxes[o + 1] >= -2;
+  }
+  change_settle(c);
+  #assert !change_step(c, 0.016);
+}
+#test "California has no pipes, the pilot is a bare caisson, and each state has its address" {
+  cs: [1] Change; c := cs[..]; change_init(c);
+  boxes: [SLAB_MAX_BOXES * SLAB_RECORD] f32;
+  n := change_test_plan(c, boxes[..]);
+  #assert change_test_kind(boxes[..], n, SLAB_KIND_PIPE) == 4 && change_address(c) == "";
+  change_site(c, SITE_CALIFORNIA);
+  n = change_test_plan(c, boxes[..]);
+  #assert change_test_kind(boxes[..], n, SLAB_KIND_PIPE) == 0 && !change_has_pipes(c) && change_address(c) == "site=california";
+  #assert c[0].facts.power.otec_net == 0 && c[0].note_count >= 2;
+  change_preset(c, WP_PILOT);
+  change_settle(c);
+  n = change_test_plan(c, boxes[..]);
+  #assert n == SLAB_HULL_PIECES && boxes[0] == -50 && boxes[4] == 50 && boxes[2] == -25 && boxes[6] == 25 && boxes[1] == -5 && boxes[5] == 25;
+  #assert c[0].facts.one_piece && c[0].note_count == 0 && !change_picture_hull(c);
+  #assert change_address(c) == "site=texas&weight=0&long=100&wide=50&deep=30&wall=0.5&floor=0.5&draft=5";
+  // an address brings it back, whatever order its pairs come in, and leaves the page's keys alone
+  ds: [1] Change; d := ds[..]; change_init(d);
+  #assert change_pairs(d, "/worlds/slab?draft=5&floor=0.5&wall=0.5&deep=30&wide=50&long=100&weight=0&site=texas&yaw=1", false) == 8;
+  #assert what_same(d[0].what, c[0].what);
+  es: [1] Change; e := es[..]; change_init(e);
+  #assert change_pairs(e, "?preset=pilot&price=300&site=guam&month=3", true) == 2 && e[0].what.site == SITE_TEXAS && e[0].what.v[WC_PRICE] == 300 && !e[0].what.month_own;
+  #assert change_pairs(e, "?hud=0&t=3", true) == 0;
+}
+#test "the page's own buttons come into the settings, and the settings say what the page should hold" {
+  cs: [1] Change; c := cs[..]; change_init(c);
+  now := change_wants(c);
+  #assert now.site == SITE_GUAM && now.power == POWER_HYBRID && now.layout == WHAT_PRIME && now.wind == -1 && now.modules == 4 && now.otec == 1;
+  c[0].world = now;
+  #assert !change_world(c, now);                             // the same again is nothing new
+  rev := c[0].rev;
+  now.site = SITE_TEXAS; now.power = POWER_OTEC; now.wind = 21.6; now.month = 9;
+  #assert change_world(c, now) && c[0].rev == rev + 1;
+  w := c[0].what;
+  #assert w.site == SITE_TEXAS && abs(w.lat - 27.55) < 1e-9 && w.power == POWER_OTEC && w.wind_own && w.v[WC_WIND] == 22 && w.v[WC_MONTH] == 9 && !w.month_own;
+  // the Gulf's 89 m: no cold water, so no pipes and no power from the plant
+  #assert c[0].facts.otec_shallow && c[0].facts.power.supply == 0;
+  // a click on the chart moves it; a click off the chart does not
+  #assert change_place(c, 27.0, -96.0) && c[0].what.lat == 27.0 && !change_place(c, 50.0, -96.0) && c[0].what.lat == 27.0;
+  change_tenant(c, WT_MINING, false);
+  #assert !c[0].what.on[WT_MINING] && c[0].facts.power.containers == 0;
+  change_power(c, POWER_NUCLEAR);
+  #assert change_wants(c).power == POWER_NUCLEAR && c[0].facts.power.supply > 100;
+}

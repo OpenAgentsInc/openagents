@@ -312,9 +312,9 @@ voice 190000
 # the host ABI every renderer carrier exports grew about 11 KB on 11-05 (#12869: transport, HTTP and sockets 3b02a1b75b, e6d471d805; lifecycle 259490d9f5; presentation 0f1bb416be): 293,263 measured; about 5% room
 watchtower 340000
 waterlab 190000
-# SLAB Simulation includes the construction fleet, cargo ledger, interactive timeline and what its HUD holds
-# (slab-hud.coax, #13685): 212,913 bytes measured 2026-11-18 on a Mac; about 10% room.
-slab 235000
+# SLAB Simulation includes the construction fleet, cargo ledger, interactive timeline, what its HUD holds
+# (slab-hud.coax, #13685) and the seven sites' charts (coastlines and depths, 79 KB, #13686).
+slab 335000
 # ... and its HUD's pane, any scene's HUD drawn with the scene set (scene-pane.coax, #13685): 124,869 bytes measured 2026-11-18 on a Mac; about 10% room.
 scene-pane 137500
 # The acknowledged three-phase block/transaction recording adds 156 KiB of data.

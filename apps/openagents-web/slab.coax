@@ -15,16 +15,23 @@
 // away from the camera, Space jumps, a double Space flies). Click anything to learn about it:
 // an info card with its construction, its physics and its numbers now.
 //
-// The URL: ?site=guam|puerto-rico|kona|equator|california, ?sea=calm|trade|equator-max|rough|
+// The URL: ?site=guam|puerto-rico|kona|equator|california|texas|fjord, ?sea=calm|trade|equator-max|rough|
 // gale|hurricane, ?wind=M/S (overrides the sea's), ?hour=H, ?month=M (1-12), ?rate=X (world
 // seconds a second, 60 by default: a day in 24 minutes), ?power=hybrid|otec|nuclear (hybrid when not given), ?otec=SCALE,
 // ?modules=N, ?swac=1, ?t=SECONDS (a fixed moment), ?yaw=, ?pitch=, ?dist=, ?x=, ?z= (the
 // orbit), ?mode=orbit|fly|walk, ?view=section|under, ?hole=1 (cell A1 holed), ?plant=demo10,
 // ?flow=1 (the flow overlay), ?hud=0, ?tier=phone.
+// The "What would it take?" settings (metaverse/slab-whatif.coax; each is left out of an address
+// when it is the picture's): ?preset=picture|pilot|fjord|california|guam|dome, ?weight=MT (million
+// tonnes of buildings and equipment), ?long=, ?wide=, ?deep= (the hull, metres), ?wall=, ?floor=
+// (metres of concrete), ?draft=M, ?price=$ a cubic metre, ?yards=N, ?pour=M3 a day, ?lat=, ?lon=
+// (a place on the site's chart), ?shore=NMI (that far off the coast), ?data=, ?desal=, ?industry=,
+// ?mining= (megawatts, or 0 for off), ?life=YEARS; they also read ?wind=, ?month=, ?otec=, ?modules=.
 
 #load "../../metaverse/water-ocean.coax";
 #load "../../metaverse/slab-plan.coax";
 #load "../../metaverse/slab-construction.coax";
+#load "slab-change.coax";
 #load "../../metaverse-engine/core/loop.coax";
 #load "../../components/core/slider.coax";
 #load "../../metaverse-engine/core/budget.coax";
@@ -167,6 +174,7 @@ Slab :: struct {
   button_count: int;
   toast: [64] u8; toast_n: int; toast_at: f64;
   hp: SlabHud;          // the HUD the browser draws (slab-hud.coax)
+  change: [1] Change;   // the "What would it take?" settings and what they do to the world (slab-change.coax)
 }
 
 hi_f32 :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
@@ -193,6 +201,9 @@ slab_reset :: (s: [] Slab) {
   s[0].plant.power = sim_opening_power(true);   // a power that carries the loads (spec 6.7)
   s[0].fx = 900; s[0].fy = 160; s[0].fz = 520; s[0].fyaw = 1.0; s[0].fpitch = 0.12;
   s[0].foot.walk.x = 470; s[0].foot.walk.z = 30;
+  change_init(s[0].change[..]);
+  s[0].change[0].world = change_now(s);
+  layout_records(s);
 }
 
 // Half floats (IEEE binary16), rounded to nearest, for packing tiles.
@@ -311,6 +322,7 @@ ground_at :: (s: [] Slab, x: f32, z: f32, feet: f32) -> f32 {
 // Whether a body at (x, z) with its feet at `feet` is inside something.
 blocked :: (s: [] Slab, x: f32, z: f32, feet: f32) -> bool {
   if !in_plan(x, z, 1.2) { return true; }   // the parapet round the deck's edge
+  if change_in_dock(s[0].change[..], x, z, 1.2) { return true; }   // and round the dock's basin
   for i: SLAB_HULL_PIECES..<s[0].box_count {
     k := rec_kind(s, i);
     if k == SLAB_KIND_POOL || k == SLAB_KIND_PLAZA || k == SLAB_KIND_PARK { continue; }
@@ -496,7 +508,12 @@ say :: (s: [] Slab, text: string) {
 has_ship :: (s: [] Slab) -> bool { return s[0].layout != LAYOUT_PRIME && s[0].plant.power != POWER_OTEC; }
 world_frame :: (s: [] Slab) -> bool { return s[0].layout == LAYOUT_CLUSTER || has_ship(s); }
 layout_records :: (s: [] Slab) {
-  if s[0].layout == LAYOUT_PRIME { s[0].box_count = slab_plan(s[0].boxes[..]); }
+  if s[0].layout == LAYOUT_PRIME {
+    // the plan, for the hull and the place the settings give (slab-change.coax)
+    s[0].box_count = change_records(s[0].change[..], s[0].boxes[..], slab_plan(s[0].boxes[..]));
+    s[0].stack_first = -1; s[0].stack_count = 0;
+    for i: 0..<s[0].box_count { if rec_kind(s, i) == SLAB_KIND_STACK { if s[0].stack_first < 0 { s[0].stack_first = i; } s[0].stack_count += 1; } }
+  }
   else if s[0].layout == LAYOUT_DOME {
     h := s[0].hull;
     s[0].box_count = ifx has_ship(s) then slab_silone(s[0].boxes[..], 0, f32(h.surge), f32(h.heave), f32(h.sway)) else slab_silone(s[0].boxes[..], 0, 0, 0, 0);
@@ -542,8 +559,65 @@ prime_only :: (s: [] Slab) -> bool {
   say(s, "THE PRIME LAYOUT ONLY: K CHANGES THE LAYOUT");
   return false;
 }
+// The walk, the section and the flow overlay know the picture's hull only: its deck's plan and its cells.
+picture_only :: (s: [] Slab) -> bool {
+  if change_picture_hull(s[0].change[..]) { return true; }
+  say(s, "FOR THE PICTURE'S HULL: RESET THE SIZE AND WEIGHT FIRST");
+  sb_toast(s, "This view is for the picture's hull. Reset the size and weight first.");
+  return false;
+}
+// The site with the water that is under the place the settings give, and the plant with their tenants.
+slab_site :: (s: [] Slab) -> SimSite { c := s[0].change[..]; return ifx c[0].ready && c[0].what.site == s[0].site then c[0].facts.sim else sim_site(s[0].site); }
+slab_plant :: (s: [] Slab) -> SimPlant { c := s[0].change[..]; return ifx c[0].ready && s[0].layout == LAYOUT_PRIME && what_bare(c[0].what) then what_plant(c[0].what, s[0].plant) else s[0].plant; }
+// What the page holds now, for the settings.
+change_now :: (s: [] Slab) -> ChangeWorld {
+  return ChangeWorld.{site = s[0].site, power = s[0].plant.power, layout = s[0].layout, otec = s[0].plant.otec_scale, modules = s[0].plant.modules,
+    wind = ifx s[0].wind_forced > 0 then s[0].wind_forced else -1.0, month = cast(int) floor(s[0].month) % 12 + 1};
+}
+// Puts the settings in force: the site, the power and its tenants, the wind, the month, the layout
+// and the hull. Only what differs is written, so a value the page read from its own address stays.
+change_push :: (s: [] Slab, fit: bool) {
+  c := s[0].change[..]; w := c[0].what;
+  if w.site != s[0].site { s[0].site = w.site; s[0].sea = sim_site(w.site).sea; }
+  if w.power != s[0].plant.power { s[0].plant.power = w.power; s[0].power_chosen = true; }
+  if what_snap(WC_OTEC, s[0].plant.otec_scale) != w.v[WC_OTEC] { s[0].plant.otec_scale = w.v[WC_OTEC]; }
+  if what_snap(WC_MODULES, f64(s[0].plant.modules)) != w.v[WC_MODULES] { s[0].plant.modules = cast(int) what_round(w.v[WC_MODULES]); }
+  tenants := what_plant(w, s[0].plant);
+  s[0].plant.data_mw = tenants.data_mw; s[0].plant.desal_mw = tenants.desal_mw; s[0].plant.industry_mw = tenants.industry_mw; s[0].plant.miners = tenants.miners;
+  if !w.wind_own { if s[0].wind_forced > 0 { s[0].wind_forced = -1; } }
+  else if !(s[0].wind_forced > 0 && what_snap(WC_WIND, s[0].wind_forced) == w.v[WC_WIND]) { s[0].wind_forced = sim_max(w.v[WC_WIND], 0.5); }
+  if w.month_own && cast(int) floor(s[0].month) % 12 + 1 != cast(int) what_round(w.v[WC_MONTH]) { s[0].month = what_month(w); }
+  if w.layout != s[0].layout { set_layout(s, w.layout); }
+  sh := c[0].facts.shape;
+  if s[0].layout == LAYOUT_PRIME && (sh.l != c[0].fit[0] || sh.b != c[0].fit[1]) {
+    // a hull of another size: the orbit frames it as it framed the picture's
+    if fit {
+      k := f32(sim_max(sh.l / HULL_PRIME_L, sh.b / HULL_PRIME_B));
+      s[0].tx = 174 * f32(sh.l / HULL_PRIME_L); s[0].tz = 110 * f32(sh.b / HULL_PRIME_B); s[0].ty = 0;
+      s[0].dist = clamp32(1164 * k, 240, 2600); s[0].intro = 0;
+    }
+    c[0].fit[0] = sh.l; c[0].fit[1] = sh.b;
+  }
+  if !change_picture_hull(c) {
+    if s[0].mode == CAM_WALK { set_mode(s, CAM_ORBIT); }
+    s[0].section = false; s[0].flow = false;
+  }
+  s[0].selected = -1; s[0].hovered = -1;
+  layout_records(s);
+  c[0].world = change_now(s);
+}
+// Each frame: a change one of the page's own buttons made comes into the settings, and the hull
+// eases to the draft they give.
+change_frame :: (s: [] Slab, dt: f64, frozen: bool) {
+  c := s[0].change[..];
+  if change_world(c, change_now(s)) { change_push(s, false); }
+  if c[0].what.month_own { s[0].month = what_month(c[0].what); }
+  if frozen || s[0].fixed >= 0 { if c[0].shown != c[0].facts.draft { change_settle(c); layout_records(s); } }
+  else if change_step(c, dt) && !s[0].build.on { layout_records(s); }
+}
 set_mode :: (s: [] Slab, m: int) {
   if m == CAM_WALK && !prime_only(s) { return; }
+  if m == CAM_WALK && !picture_only(s) { return; }
   if m != CAM_FLY && s[0].under { s[0].under = false; }
   if m == s[0].mode { return; }
   if m == CAM_FLY {
@@ -690,6 +764,7 @@ slab_frame :: (s: [] Slab, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
   }
   construction: BuildState;
   if s[0].build.on { construction = build_at(build_day(s[0].build.cursor)); }
+  change_frame(s, f64(step), frozen);
   // the world's clock: a day in 24 minutes at the default rate, a year in six hours
   if !frozen && !s[0].paused && s[0].fixed < 0 {
     s[0].hour += f64(step) * s[0].rate / 3600.0;
@@ -697,7 +772,7 @@ slab_frame :: (s: [] Slab, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
     s[0].month += f64(step) * s[0].rate / 3600.0 * 12.0 / (24.0 * 365.0) * 1460.0;
     if s[0].month >= 12 { s[0].month -= 12; }
   }
-  site := sim_site(s[0].site);
+  site := slab_site(s);
   sp := s[0].spectrum;
   // the sea's tile at this tick (the water's clock), then the hull on it
   tick := wsp_tick_at(sp, ifx s[0].build.on then s[0].build.cursor else s[0].time);
@@ -728,7 +803,7 @@ slab_frame :: (s: [] Slab, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
     layout_records(s);
   }
   s[0].bend = ifx s[0].layout == LAYOUT_PRIME then sim_bending(s[0].tile[0].height[..], TILE_N, c0.patch, s[0].hull) else 0.0;
-  s[0].power = sim_power(s[0].plant, site, s[0].month);
+  s[0].power = sim_power(slab_plant(s), site, s[0].month);
   // the camera
   ex: f32; ey: f32; ez: f32; fx: f32; fy: f32; fz: f32;
   turn := 1.0f32 * step;
@@ -782,7 +857,7 @@ slab_frame :: (s: [] Slab, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
     cy := cos(pitch); sy := sin(pitch);
     fx = -sin(s[0].yaw) * cy; fz = -cos(s[0].yaw) * cy; fy = -sy;
     // the build view aims at the highest finished level, which rises to the deck (slab-construction.coax)
-    deck_now := ifx s[0].build.on then f32(construction.deck - hull_hi(construction.draft, build_tow().draft)) else SLAB_DECK;
+    deck_now := ifx s[0].build.on then f32(construction.deck - hull_hi(construction.draft, build_tow().draft)) else ifx s[0].layout == LAYOUT_PRIME then change_hull(s[0].change[..])[2] else SLAB_DECK;
     tx := s[0].tx; ty := ifx s[0].build.on then deck_now else s[0].ty; tz := s[0].tz;
     if s[0].build.on {
       // Follow the first voyage. As the fleet repeats it, pull out to show the growing berth.
@@ -801,7 +876,7 @@ slab_frame :: (s: [] Slab, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
       dist *= hi_f32(1, 0.92f32 * height / width);
     }
     ex = tx - fx * dist; ey = ty - fy * dist; ez = tz - fz * dist;
-    over := s[0].layout == LAYOUT_PRIME && abs(ex) < SLAB_LENGTH / 2 + 6 && abs(ez) < SLAB_BEAM / 2 + 6;
+    over := s[0].layout == LAYOUT_PRIME && abs(ex) < change_hull(s[0].change[..])[0] + 6 && abs(ez) < change_hull(s[0].change[..])[1] + 6;
     ey = hi_f32(ey, ifx over then deck_now + 4 else 6.0f32);
     ax := tx - ex; ay := ty - ey; az := tz - ez;
     al := sqrt(ax * ax + ay * ay + az * az);
@@ -832,6 +907,7 @@ slab_frame :: (s: [] Slab, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
   u[U_SEA + 3] = f32(sp.choppiness);
   u[U_WIND] = f32(wd.x); u[U_WIND + 1] = f32(wd.y); u[U_WIND + 2] = f32(sp.wind_speed); u[U_WIND + 3] = f32(s[0].synth[0].significant);
   u[U_HULL] = SLAB_LENGTH / 2; u[U_HULL + 1] = SLAB_BEAM / 2; u[U_HULL + 2] = SLAB_DECK; u[U_HULL + 3] = -SLAB_DRAFT;
+  if s[0].layout == LAYOUT_PRIME && !s[0].build.on { hull_now := change_hull(s[0].change[..]); for i: 0..<4 { u[U_HULL + i] = hull_now[i]; } }
   for i: 0..<s[0].box_count * SLAB_RECORD { u[U_BOXES + i] = s[0].boxes[i]; }
   for i: 0..<s[0].group_count * SLAB_GROUP_FLOATS { u[U_GROUPS + i] = s[0].groups[i]; }
   slab_state_params(s, u, sun);
@@ -1119,7 +1195,7 @@ district :: (x: f32, z: f32) -> string {
 // What a card says about record i (or the sea, i = -2): its construction, physics and numbers now.
 slab_card :: (s: [] Slab, i: int, c: [] Card) {
   c[0].lines = 0;
-  pw := s[0].power; h := s[0].hull; site := sim_site(s[0].site); sea := sim_sea(s[0].sea);
+  pw := s[0].power; h := s[0].hull; site := slab_site(s); sea := sim_sea(s[0].sea);
   if i == -2 {
     ln(c, ST_TITLE, "THE SEA");
     l := line(c, ST_SUB, site.name);
@@ -1130,7 +1206,7 @@ slab_card :: (s: [] Slab, i: int, c: [] Card) {
     ln(c, ST_HEAD, "PHYSICS");
     ln(c, ST_BODY, "A JONSWAP WIND SEA FROM AN FFT, MADE FRESH EACH FRAME");
     ln(c, ST_BODY, "HS = 0.21 U^2 / G (PIERSON-MOSKOWITZ)");
-    ln(c, ST_BODY, "WATER 1,500 M DEEP UNDER THE MOORINGS");
+    l = line(c, ST_BODY, "WATER "); num(c, l, site.depth, 0); more(c, l, " M DEEP HERE");
     l = line(c, ST_NOTE, "STORMS HERE: "); more(c, l, site.storms);
     l = line(c, ST_NOTE, ifx site.sourced then "SURFACE TEMPERATURES: SOURCED" else "SURFACE TEMPERATURES: PLANNING VALUES");
     return;
@@ -1160,6 +1236,7 @@ slab_card :: (s: [] Slab, i: int, c: [] Card) {
     ln(c, ST_HEAD, "CONSTRUCTION");
     // every figure here is metaverse/hull.coax's ledger, the one the world floats and the timelapse builds
     hs := hull_prime(); led := hull_ledger(hs);
+    if s[0].layout == LAYOUT_PRIME { hs = s[0].change[0].facts.shape; led = s[0].change[0].facts.led; }   // the hull the settings give
     l0 := line(c, ST_BODY, ""); num(c, l0, hs.l, 0); more(c, l0, " X "); num(c, l0, hs.b, 0); more(c, l0, " M; THE DECK IS "); num(c, l0, hs.deck, 0); more(c, l0, " M OVER THE KEEL");
     l0 = line(c, ST_BODY, "THE LOWER "); num(c, l0, hs.hull, 0); more(c, l0, " M FLOATS: "); num(c, l0, f64(hull_units(hs)), 0); more(c, l0, " CAISSONS, 240 CELLS OF 50 M");
     l0 = line(c, ST_BODY, "A LIGHTER STRUCTURE CARRIES THE DECK "); num(c, l0, hull_upper(hs), 0); more(c, l0, " M HIGHER");
@@ -1568,7 +1645,7 @@ hud :: (s: [] Slab, out: [] f32) -> int {
   if s[0].flow { n = flow_overlay(s, out, n); }
   if s[0].section { n = bend_overlay(s, out, n); }
   pad := 12 * k;
-  site := sim_site(s[0].site); sea := sim_sea(s[0].sea); pw := s[0].power;
+  site := slab_site(s); sea := sim_sea(s[0].sea); pw := s[0].power;
   white := Pen.{k = k, cap = 7 * k};
   // the title and the world's line
   n = panel(out, n, pad, pad, pad + (ifx narrow then W - 2 * pad else 430 * k), pad + 48 * k, 9 * k, 0.04, 0.05, 0.07, 0.62, 0.3);
@@ -2031,6 +2108,15 @@ slab_message :: (s: [] Slab, kind: int, text: string) #export_c #effects(all) {
     s[0].dist = f32(fclamp(query_number(url, "dist", 720), 25, 9000));
     s[0].tx = f32(query_number(url, "x", 0)); s[0].tz = f32(query_number(url, "z", 0)); s[0].ty = f32(query_number(url, "y", 8));
   }
+  // the "What would it take?" settings: a preset first, then what the page read above, then their own keys
+  change_init(s[0].change[..]);
+  preset := false;
+  for i: 0..<WHAT_PRESETS { b := put_pair("preset=", what_preset(i).key); if query_word(url, cast(string) b.b[0..<b.n]) { preset = true; } }
+  if !preset { ok := change_world(s[0].change[..], change_now(s)); }
+  applied := change_pairs(s[0].change[..], url, !preset);
+  change_push(s, query_number(url, "dist", -99) == -99);
+  change_settle(s[0].change[..]);
+  layout_records(s);
   if query_word(url,"view=build") {
     build_toggle(s);
     day := query_number(url,"day", -1);
@@ -2219,7 +2305,16 @@ build_toggle :: (s: [] Slab) {
     s[0].mode = v.mode; s[0].yaw = v.yaw; s[0].pitch = v.pitch; s[0].dist = v.dist;
     s[0].tx = v.x; s[0].tz = v.z; s[0].intro = v.intro;
     s[0].build.on = false; s[0].build.play = false; s[0].build.scrubbing = false;
+    // the timelapse builds the platform at its berth in the Gulf: leaving it, that is where you are
+    if s[0].site != SITE_TEXAS || s[0].layout != LAYOUT_PRIME {
+      c := s[0].change[..];
+      c[0].what.layout = WHAT_PRIME; change_site(c, SITE_TEXAS); change_push(s, false);
+    }
+    say(s, "THE GULF BERTH OFF TEXAS, WHERE THE BUILD ENDED");
+    sb_toast(s, "You are at the Gulf berth off Texas, where the build ended.");
   } else {
+    say(s, "BUILT AT THE GULF BERTH, 40 NAUTICAL MILES OFF TEXAS");
+    sb_toast(s, "This builds the picture's platform at its berth in the Gulf, 40 nautical miles off Texas.");
     s[0].build = BuildView.{on = true, play = true, mode = s[0].mode, yaw = s[0].yaw, pitch = s[0].pitch,
       dist = s[0].dist, x = s[0].tx, z = s[0].tz, intro = s[0].intro};
     s[0].mode = CAM_ORBIT; s[0].yaw = -0.30; s[0].pitch = 0.40; s[0].dist = 265;
@@ -2343,4 +2438,34 @@ build_hud :: (s: [] Slab, out: [] f32) -> int {
   #assert s[0].build.play;
   build_seek(s[..], 90); press(s[..], BTN_TIMELAPSE);
   #assert s[0].build.play && s[0].build.cursor == 0;
+}
+
+#test "what would it take: a small hull under six million tonnes sinks to its deck, and the pilot fits the channel" {
+  s: [1] Slab;
+  slab_message(s[..], HOST_FACTS, "url=/worlds/slab?long=400&wide=300&weight=6\n");
+  c := s[0].change[..]; hull := change_hull(c);
+  #assert c[0].facts.sunk && hull[0] == 200 && hull[1] == 150 && abs(hull[2]) < 0.01 && c[0].note_count > 0;
+  #assert !picture_only(s[..]) && s[0].toast_n > 0;         // no walk on a hull that is not the picture's, and it says why
+  p: [1] Slab;
+  slab_message(p[..], HOST_FACTS, "url=/worlds/slab?preset=pilot\n");
+  d := p[0].change[..]; small := change_hull(d);
+  #assert p[0].site == SITE_TEXAS && small[0] == 50 && small[1] == 25 && abs(small[3] + 5) < 0.01 && d[0].facts.one_piece && !d[0].facts.too_wide && !d[0].facts.sunk;
+}
+#test "what would it take: off California the water is too shallow for the pipes, so the ocean thermal plant makes nothing" {
+  s: [1] Slab;
+  slab_message(s[..], HOST_FACTS, "url=/worlds/slab?power=hybrid\n");
+  #assert sim_power(slab_plant(s[..]), slab_site(s[..]), s[0].month).otec_net > 0;
+  // the page's own site button moves the settings with it
+  s[0].site = SITE_CALIFORNIA; change_frame(s[..], 0.016, false);
+  #assert s[0].change[0].what.site == SITE_CALIFORNIA && s[0].change[0].facts.otec_shallow;
+  #assert sim_power(slab_plant(s[..]), slab_site(s[..]), s[0].month).otec_net == 0;
+  for i: 0..<s[0].box_count { #assert rec_kind(s[..], i) != SLAB_KIND_PIPE; }
+}
+#test "the timelapse builds at the Gulf berth: leaving the build view, the world is off Texas" {
+  s: [1] Slab;
+  slab_reset(s[..]);
+  #assert s[0].site == SITE_GUAM;
+  build_toggle(s[..]); build_toggle(s[..]);
+  #assert !s[0].build.on && s[0].site == SITE_TEXAS && s[0].layout == LAYOUT_PRIME && s[0].change[0].what.site == SITE_TEXAS;
+  #assert abs(slab_site(s[..]).depth - 89) < 0.5;
 }
