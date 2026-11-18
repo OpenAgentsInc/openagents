@@ -24,7 +24,7 @@ SLAB_DRAFT :: 25.0f32;      // T
 SLAB_CORNER :: 40.0f32;     // plan corner radius
 SLAB_DECK :: SLAB_DEPTH - SLAB_DRAFT;   // the deck's height over the calm water: 25 m
 SLAB_RECORD :: 8;
-SLAB_MAX_BOXES :: 128;
+SLAB_MAX_BOXES :: 152;   // includes the port and construction fleet alongside the city
 SLAB_PIPE_RADIUS :: 3.35f32; SLAB_PIPE_LENGTH :: 1000.0f32;
 SLAB_HULL_PIECES :: 6;
 SLAB_GROUP :: 10;           // records a group

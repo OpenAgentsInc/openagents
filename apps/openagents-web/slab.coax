@@ -24,7 +24,9 @@
 
 #load "../../metaverse/water-ocean.coax";
 #load "../../metaverse/slab-plan.coax";
-#load "../../metaverse/slab-sim.coax";
+#load "../../metaverse/slab-construction.coax";
+#load "../../metaverse-engine/core/loop.coax";
+#load "../../components/core/slider.coax";
 #load "../../metaverse-engine/core/budget.coax";
 #load "../../metaverse-engine/ui/font.coax";
 #load "../../metaverse/splice-bots/rules/walk.coax";
@@ -91,7 +93,14 @@ BTN_ORBIT :: 1; BTN_FLY :: 2; BTN_WALK :: 3; BTN_SITE :: 4; BTN_SEA :: 5; BTN_EA
 BTN_PAUSE :: 8; BTN_POWER :: 9; BTN_STATS :: 10; BTN_CLOSE :: 11; BTN_REFUEL :: 12; BTN_TRIP :: 13; BTN_SWAC :: 14;
 BTN_HALVING :: 15; BTN_HELP :: 16; BTN_MONTH :: 17; BTN_HOLE :: 18; BTN_PUMP :: 19; BTN_SECTION :: 20; BTN_UNDER :: 21; BTN_FLOW :: 22;
 
+BTN_BUILD :: 23; BTN_TIMELAPSE :: 24; BTN_FIRST_TOW :: 25; BTN_FIRST_JOIN :: 26; BTN_OUTFIT :: 27;
+BuildView :: struct {
+  on: bool; play: bool; cursor: f64; clock: FrameClock;
+  scrubbing: bool; pointer: int; left: f32; right: f32; slider_y: f32;
+  mode: int; yaw: f32; pitch: f32; dist: f32; x: f32; z: f32; intro: f32;
+}
 Slab :: struct {
+  build: BuildView;
   started: bool;
   time: f64;            // s since the page opened (the water's clock), or the fixed moment
   fixed: f64;           // ?t= (-1: the clock runs)
@@ -207,7 +216,7 @@ slab_spectrum :: (wind: f64) -> Spectrum {
   return sp;
 }
 
-slab_wind :: (s: [] Slab) -> f64 { return ifx s[0].wind_forced > 0 then s[0].wind_forced else sim_sea(s[0].sea).wind; }
+slab_wind :: (s: [] Slab) -> f64 { if s[0].build.on { return 3.5; } return ifx s[0].wind_forced > 0 then s[0].wind_forced else sim_sea(s[0].sea).wind; }
 
 slab_build :: (s: [] Slab, phone: bool) {
   s[0].wind = slab_wind(s);
@@ -552,6 +561,14 @@ slab_frame :: (s: [] Slab, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
   frozen := still || s[0].golden;
   if s[0].fixed >= 0 { s[0].time = s[0].fixed; } else if !frozen { s[0].time += f64(step); }
   if s[0].golden && s[0].fixed < 0 { s[0].time = 12.0; }
+  if s[0].build.on && s[0].build.play && !frozen {
+    t := loop_frame(s[0].build.clock, f64(dt));
+    s[0].build.clock = t.clock;
+    s[0].build.cursor = sim_min(90, s[0].build.cursor + f64(t.steps) * f64(LOOP_STEP_NS) / f64(LOOP_SECOND));
+    if s[0].build.cursor >= 90 { s[0].build.play = false; }
+  }
+  construction: BuildState;
+  if s[0].build.on { construction = build_at(build_day(s[0].build.cursor)); }
   // the world's clock: a day in 24 minutes at the default rate, a year in six hours
   if !frozen && !s[0].paused && s[0].fixed < 0 {
     s[0].hour += f64(step) * s[0].rate / 3600.0;
@@ -562,13 +579,13 @@ slab_frame :: (s: [] Slab, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
   site := sim_site(s[0].site);
   sp := s[0].spectrum;
   // the sea's tile at this tick (the water's clock), then the hull on it
-  tick := wsp_tick_at(sp, s[0].time);
+  tick := wsp_tick_at(sp, ifx s[0].build.on then s[0].build.cursor else s[0].time);
   fresh := !s[0].have_tick || tick != s[0].last_tick;
   folded := tick % sp.period;
   wsp_tile(s[0].synth[..], 0, folded, s[0].tile[..]);
   c0 := s[0].synth[0].cascades[0];
   wd := wsp_direction(sp);
-  if !frozen || s[0].fixed >= 0 {
+  if !s[0].build.on && (!frozen || s[0].fixed >= 0) {
     sim_step := ifx s[0].fixed >= 0 then 0.0 else f64(step);
     if s[0].fixed >= 0 && s[0].hull.time < 30 {
       // a fixed moment: let the hull settle onto it
@@ -632,6 +649,22 @@ slab_frame :: (s: [] Slab, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
     cy := cos(pitch); sy := sin(pitch);
     fx = -sin(s[0].yaw) * cy; fz = -cos(s[0].yaw) * cy; fy = -sy;
     tx := s[0].tx; ty := SLAB_DECK; tz := s[0].tz;
+    if s[0].build.on {
+      // Follow the first voyage. As the fleet repeats it, pull out to show the growing berth.
+      pos := build_position(construction);
+      blend := f32(sim_clamp((construction.day - 31) / 32, 0, 1));
+      if construction.day >= 31 { pos = build_slot(0); }
+      tx += pos.x * (1 - blend) - 180 * blend; tz += pos.z * (1 - blend);
+      dist *= 1 + 3.85f32 * blend;
+      if construction.phase == BUILD_OUTFIT {
+        // The first lighter gets a close view, then the camera returns to the growing deck.
+        ship := build_lighter_position(construction);
+        watch := f32(sim_clamp((s[0].build.cursor - 70) / 2, 0, 1) * sim_clamp((84 - s[0].build.cursor) / 2, 0, 1));
+        tx += (ship.x + 180) * watch; tz += ship.z * watch;
+        dist *= 1 - 0.73f32 * watch;
+      }
+      dist *= hi_f32(1, 0.92f32 * height / width);
+    }
     ex = tx - fx * dist; ey = ty - fy * dist; ez = tz - fz * dist;
     over := abs(ex) < SLAB_LENGTH / 2 + 6 && abs(ez) < SLAB_BEAM / 2 + 6;
     ey = hi_f32(ey, ifx over then SLAB_DECK + 4 else 6.0f32);
@@ -655,6 +688,7 @@ slab_frame :: (s: [] Slab, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
   s[0].tanh = tanh; s[0].aspect = width / height;
   // the sun over the site, and the sky's colours from its height
   sun := sim_sun(site.latitude, s[0].month, s[0].hour);
+  if s[0].build.on { sun = sim_sun(27.8, 4.5, 15.5); }
   u[U_SUN] = f32(sun.x); u[U_SUN + 1] = f32(sun.y); u[U_SUN + 2] = f32(sun.z); u[U_SUN + 3] = 1;
   slab_sky_params(s, u, sun);
   u[U_SEA] = 0; u[U_SEA + 1] = f32(c0.patch);
@@ -665,6 +699,24 @@ slab_frame :: (s: [] Slab, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
   for i: 0..<s[0].box_count * SLAB_RECORD { u[U_BOXES + i] = s[0].boxes[i]; }
   for i: 0..<s[0].group_count * SLAB_GROUP_FLOATS { u[U_GROUPS + i] = s[0].groups[i]; }
   slab_state_params(s, u, sun);
+  if s[0].build.on {
+    buffer := u[U_BOXES..<U_GROUPS];
+    water := build_water(construction, s[0].tile[0].height[..], TILE_N, c0.patch);
+    records := build_scene(construction, water, s[0].boxes[..], s[0].box_count, buffer);
+    u[U_MODE + 2] = f32(records);
+    u[U_PARAMS + P_COUNTS] = f32(slab_groups(buffer, records, u[U_GROUPS..<U_PARAMS]));
+    u[U_PARAMS + P_COUNTS + 2] = 0; u[U_PARAMS + P_COUNTS + 3] = 0;
+    for i: 0..<12 { u[U_PARAMS + P_POSE + i] = 0; }
+    u[U_PARAMS + P_POSE] = 1; u[U_PARAMS + P_POSE + 5] = 1; u[U_PARAMS + P_POSE + 10] = 1;
+    u[U_PARAMS + P_SUNHULL] = f32(sun.x); u[U_PARAMS + P_SUNHULL + 1] = f32(sun.y); u[U_PARAMS + P_SUNHULL + 2] = f32(sun.z);
+    u[U_PARAMS + P_SECTION] = 0; u[U_PARAMS + P_UNDER] = 0;
+    u[U_PARAMS + P_GAIT + 2] = 0; u[U_PARAMS + P_PICK] = -1; u[U_PARAMS + P_PICK + 1] = -1;
+    if build_open(construction) {
+      p := build_position(construction);
+      u[U_PARAMS + 61] = 1; u[U_PARAMS + 62] = p.x; u[U_PARAMS + 63] = p.z;
+    }
+    u[U_PARAMS + 60] = 1; u[U_SIZE + 2] = f32(s[0].build.cursor);
+  }
   // the foam on the tile
   if fresh {
     gap := ifx s[0].have_tick && tick > s[0].last_tick then f32(tick - s[0].last_tick) * f32(sp.tick) else 0.0f32;
@@ -1295,6 +1347,7 @@ hud :: (s: [] Slab, out: [] f32) -> int {
   s[0].button_count = 0;
   k := s[0].dpr;
   W := s[0].width; H := s[0].height;
+  if s[0].build.on { return build_hud(s, out); }
   narrow := W / k < 720;
   n := 0;
   if s[0].flow { n = flow_overlay(s, out, n); }
@@ -1316,6 +1369,7 @@ hud :: (s: [] Slab, out: [] f32) -> int {
   m = put(b[..], m, sea.name); m = put(b[..], m, " SEA  HS "); m = putf(b[..], m, s[0].synth[0].significant, 1);
   m = put(b[..], m, " M  WIND "); m = putf(b[..], m, s[0].wind, 1); m = put(b[..], m, " M/S");
   if !narrow { n = text(out, n, cast(string) b[0..<m], pad + 210 * k, pad + 20 * k, Pen.{k = k, cap = 6.5f32 * k, r = 0.7, g = 0.86, b = 0.95}); }
+  n = button(s, out, n,"BUILD", pad + (ifx narrow then W / k - 85 else 358) * k, pad + 23 * k, k, false, BTN_BUILD);
   // the camera's modes
   y := pad + 56 * k;
   x := pad;
@@ -1525,7 +1579,12 @@ key_bit :: (key: int) -> int {
   return 0;
 }
 press :: (s: [] Slab, id: int) {
-  if id == BTN_ORBIT { set_mode(s, CAM_ORBIT); }
+  if id == BTN_BUILD { build_toggle(s); }
+  else if id == BTN_TIMELAPSE { if s[0].build.cursor >= 90 { build_seek(s, 0); } s[0].build.play = !s[0].build.play; }
+  else if id == BTN_FIRST_TOW { build_seek(s, 12); }
+  else if id == BTN_FIRST_JOIN { build_seek(s, 29); }
+  else if id == BTN_OUTFIT { build_seek(s, 76); }
+  else if id == BTN_ORBIT { set_mode(s, CAM_ORBIT); }
   else if id == BTN_FLY { set_mode(s, CAM_FLY); }
   else if id == BTN_WALK { set_mode(s, CAM_WALK); }
   else if id == BTN_STATS { s[0].stats = !s[0].stats; }
@@ -1560,6 +1619,16 @@ press :: (s: [] Slab, id: int) {
 }
 slab_key :: (s: [] Slab, key: int, down: bool) -> bool #export_c #effects(all) {
   if !s[0].started { slab_reset(s); }
+  if down && (key == 'b' || key == 'B') { build_toggle(s); return true; }
+  if s[0].build.on {
+    if !down { return true; }
+    if key == KEY_ESCAPE { build_toggle(s); }
+    else if key == ' ' || key == KEY_ENTER { press(s, BTN_TIMELAPSE); }
+    else if key == KEY_LEFT { build_seek(s, s[0].build.cursor - 0.5); }
+    else if key == KEY_RIGHT { build_seek(s, s[0].build.cursor + 0.5); }
+    else { return false; }
+    return true;
+  }
   if down {
     if key == KEY_ESCAPE { if s[0].selected != -1 { s[0].selected = -1; return true; } if s[0].help { s[0].help = false; return true; } if s[0].mode != CAM_ORBIT { set_mode(s, CAM_ORBIT); return true; } return false; }
     if key >= '1' && key <= '9' { travel(s, key - '1'); return true; }
@@ -1585,7 +1654,7 @@ slab_key :: (s: [] Slab, key: int, down: bool) -> bool #export_c #effects(all) {
   if down { s[0].held |= b; } else { s[0].held = s[0].held & (65535 - b); }
   return true;
 }
-slab_blur :: (s: [] Slab) #export_c #effects(all) { s[0].held = 0; s[0].dragging = false; }
+slab_blur :: (s: [] Slab) #export_c #effects(all) { s[0].held = 0; s[0].dragging = false; s[0].build.scrubbing = false; }
 hit_button :: (s: [] Slab, x: f32, y: f32) -> int {
   for i: 0..<s[0].button_count {
     o := i * 5;
@@ -1596,6 +1665,18 @@ hit_button :: (s: [] Slab, x: f32, y: f32) -> int {
 slab_pointer :: (s: [] Slab, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
   if !s[0].started { slab_reset(s); }
   s[0].px = x; s[0].py = y;
+  if s[0].build.on && s[0].hud {
+    if phase == 0 && !s[0].build.scrubbing && build_over_slider(s, x, y) {
+      s[0].build.scrubbing = true; s[0].build.pointer = id; s[0].dragging = false;
+    }
+    if s[0].build.scrubbing {
+      if id == s[0].build.pointer {
+        if phase <= 2 { build_seek(s, 90 * f64(slider_value(s[0].build.left, s[0].build.right - s[0].build.left, x))); }
+        if phase >= 2 { s[0].build.scrubbing = false; }
+      }
+      return true;
+    }
+  }
   if phase == 0 {
     b := hit_button(s, x, y);
     if b != 0 { press(s, b); return true; }
@@ -1613,13 +1694,14 @@ slab_pointer :: (s: [] Slab, x: f32, y: f32, phase: int, kind: int, id: int) -> 
       return true;
     }
     // hover: what is under the pointer (not over the HUD's buttons)
+    if s[0].build.on { return false; }
     s[0].hovered = ifx hit_button(s, x, y) != 0 then -1 else pick(s, x, y);
     return false;
   }
   if phase >= 2 {
     was := s[0].dragging;
     s[0].dragging = false;
-    if phase == 2 && was && s[0].moved < 6 * s[0].dpr {
+    if phase == 2 && was && !s[0].build.on && s[0].moved < 6 * s[0].dpr {
       p := pick(s, x, y);
       if p == -1 || p == s[0].selected { s[0].selected = -1; }
       else { s[0].selected = p; s[0].selected_at = s[0].time; s[0].card_x = x; s[0].card_y = y; }
@@ -1638,6 +1720,7 @@ slab_wheel :: (s: [] Slab, dy: f32) #export_c #effects(all) {
 slab_golden :: (s: [] Slab, on: bool) #export_c #effects(all) { if !s[0].started { slab_reset(s); } s[0].golden = on; }
 slab_cursor :: (s: [] Slab) -> int #export_c #effects(all) {
   if !s[0].started { return 0; }
+  if s[0].build.on && s[0].hud && build_over_slider(s, s[0].px, s[0].py) { return 1; }
   if hit_button(s, s[0].px, s[0].py) != 0 { return 1; }
   return ifx s[0].hovered != -1 && !s[0].dragging then 1 else 0;
 }
@@ -1720,6 +1803,11 @@ slab_message :: (s: [] Slab, kind: int, text: string) #export_c #effects(all) {
   if query_word(url, "view=section") { s[0].intro = 0; s[0].section = true; }
   if query_word(url, "hole=1") { s[0].hull.holed = true; }
   if query_word(url, "view=under") { s[0].intro = 0; go_under(s, true); }
+  if query_word(url,"view=build") {
+    build_toggle(s);
+    day := query_number(url,"day", -1);
+    if day >= 0 { build_seek(s, build_cursor(day)); }
+  }
   s[0].toast_n = 0;
   s[0].built = false;
 }
@@ -1803,4 +1891,152 @@ SLAB_BUDGET :: FrameBudget.{steps = 8, vertices = MAX_VERTICES - 1, draws = 0, b
   }
   // measured 0.10-0.15 m over a minute of the gale
   #assert most > 0.1 && most < 0.15;
+}
+
+#test "build mode opens from the realm, seeks both ways and restores the explore camera" {
+  s: [1]Slab;
+  slab_reset(s[..]); s[0].dist = 830; s[0].tx = 20; s[0].yaw = 1.3;
+  press(s[..], BTN_BUILD);
+  #assert s[0].build.on && s[0].build.play;
+  build_seek(s[..], 70);
+  #assert !s[0].build.play && build_at(build_day(s[0].build.cursor)).joined == 120;
+  build_seek(s[..], 16);
+  #assert build_at(build_day(s[0].build.cursor)).joined == 0;
+  _ = slab_key(s[..], KEY_ESCAPE, true);
+  #assert !s[0].build.on && s[0].dist == 830 && s[0].tx == 20 && s[0].yaw == 1.3;
+}
+
+#test "a construction deep link pauses on its requested day" {
+  s: [1]Slab;
+  slab_message(s[..], HOST_FACTS,"url=/realms/slab?view=build&day=31\n");
+  #assert s[0].build.on && !s[0].build.play && build_at(build_day(s[0].build.cursor)).joined == 1;
+}
+
+build_toggle :: (s: [] Slab) {
+  if s[0].build.on {
+    v := s[0].build;
+    s[0].mode = v.mode; s[0].yaw = v.yaw; s[0].pitch = v.pitch; s[0].dist = v.dist;
+    s[0].tx = v.x; s[0].tz = v.z; s[0].intro = v.intro;
+    s[0].build.on = false; s[0].build.play = false; s[0].build.scrubbing = false;
+  } else {
+    s[0].build = BuildView.{on = true, play = true, mode = s[0].mode, yaw = s[0].yaw, pitch = s[0].pitch,
+      dist = s[0].dist, x = s[0].tx, z = s[0].tz, intro = s[0].intro};
+    s[0].mode = CAM_ORBIT; s[0].yaw = -0.30; s[0].pitch = 0.40; s[0].dist = 265;
+    s[0].tx = 0; s[0].tz = 0; s[0].intro = 0;
+  }
+  s[0].dragging = false; s[0].held = 0; s[0].button_count = 0;
+}
+build_seek :: (s: [] Slab, cursor: f64) {
+  s[0].build.cursor = sim_clamp(cursor, 0, 90); s[0].build.play = false; s[0].build.clock = FrameClock.{};
+}
+build_over_slider :: (s: [] Slab, x: f32, y: f32) -> bool {
+  return s[0].build.right > s[0].build.left && x >= s[0].build.left - 8 * s[0].dpr && x <= s[0].build.right + 8 * s[0].dpr && abs(y - s[0].build.slider_y) <= 14 * s[0].dpr;
+}
+
+build_hud :: (s: [] Slab, out: [] f32) -> int {
+  k := s[0].dpr; w := s[0].width; h := s[0].height;
+  b := build_at(build_day(s[0].build.cursor)); tow := build_tow();
+  pad := 12 * k; left := (w - lo_f32(w - 2 * pad, 700 * k)) / 2; right := w - left;
+  compact := right - left < 540 * k;
+  ivory := Pen.{k = k, cap = 9 * k, r = 0.99, g = 0.97, b = 0.89};
+  small := Pen.{k = k, cap = 6.8f32 * k, r = 0.81, g = 0.86, b = 0.85};
+  gold := Pen.{k = k, cap = 7 * k, r = 1, g = 0.79, b = 0.43};
+  n := panel(out, 0, pad, pad, lo_f32(w - pad, pad + 330 * k), pad + 52 * k, 8 * k, 0.025, 0.055, 0.068, 0.88, 0.3);
+  freight := b.phase == BUILD_OUTFIT || b.phase == BUILD_COMPLETE;
+  n = text(out, n, ifx freight then "PORT OF BROWNSVILLE" else "CORPUS CHRISTI", pad + 13 * k, pad + 22 * k, Pen.{k = k, cap = 12 * k, r = 1, g = 0.91, b = 0.73});
+  n = text(out, n,"GULF ASSEMBLY  /  CONSTRUCTION STUDY", pad + 13 * k, pad + 40 * k, small);
+  n = button(s, out, n,"EXIT", lo_f32(w - pad, pad + 330 * k) - button_w("EXIT", k) - 8 * k, pad + 7 * k, k, false, BTN_BUILD);
+  // This distance strip stays to scale even though the 3D route is compressed.
+  map_w := lo_f32(315 * k, w - 2 * pad);
+  mx := ifx w / k < 710 then pad else w - map_w - pad;
+  my := ifx w / k < 710 then pad + 60 * k else pad;
+  n = panel(out, n, mx, my, mx + map_w, my + 54 * k, 8 * k, 0.025, 0.055, 0.068, 0.85, 0.3);
+  a := mx + 12 * k; span := map_w - 24 * k; cy := my + 32 * k;
+  n = text(out, n, ifx freight then "CARGO WHARF" else "CASTING YARD", a, my + 16 * k, small);
+  route_label := ifx freight then "145 NM   GULF BERTH" else "48 NM   GULF BERTH";
+  n = text(out, n, route_label, a + span - text_w(route_label, small.cap), my + 16 * k, small);
+  n = panel(out, n, a, cy - k, a + span, cy + k, k, 0.36, 0.49, 0.51, 1, 0);
+  gate := a + span * f32(ifx freight then BUILD_FREIGHT_CHANNEL / BUILD_FREIGHT_NM else BUILD_CHANNEL_NM / (BUILD_CHANNEL_NM + BUILD_GULF_NM));
+  n = panel(out, n, gate - k, cy - 4 * k, gate + k, cy + 4 * k, k, 0.72, 0.85, 0.84, 1, 0);
+  n = text(out, n, ifx freight then "15 NM   CHANNEL EXIT" else "8 NM   CHANNEL EXIT", gate - 4 * k, my + 47 * k, Pen.{k = k, cap = 5.8f32 * k, r = 0.77, g = 0.83, b = 0.81});
+  travel_nm := ifx b.phase == BUILD_COMPLETE then 48.0 else ifx b.phase == BUILD_OUTFIT then b.ship_route * 48 else b.nm;
+  dot := a + span * f32(travel_nm / 48);
+  n = panel(out, n, dot - 4 * k, cy - 4 * k, dot + 4 * k, cy + 4 * k, 4 * k, 1, 0.75, 0.37, 1, 0);
+  top := h - pad - 141 * k;
+  n = panel(out, n, left, top, right, h - pad, 9 * k, 0.025, 0.047, 0.057, 0.94, 0.4);
+  x := left + 14 * k;
+  c: [1]Card;
+  i := line(c[..], 0,"DAY "); num(c[..], i, floor(b.day), 0);
+  more(c[..], i,"   "); twohour := cast(int)floor((b.day - floor(b.day)) * 24);
+  num(c[..], i, f64(twohour), 0); more(c[..], i,"H");
+  n = text(out, n, card_text(c[..], i), x, top + 17 * k, gold);
+  i = line(c[..], 0,""); num(c[..], i, f64(b.joined), 0); more(c[..], i," / 120 JOINED");
+  t := card_text(c[..], i); n = text(out, n, t, right - 14 * k - text_w(t, small.cap), top + 17 * k, small);
+  stage := ifx b.phase == BUILD_JOIN && b.approach >= 0.65 then "CONNECT AND TEST SEAM" else BUILD_PHASES[b.phase];
+  n = text(out, n, stage, x, top + 38 * k, ivory);
+  i = line(c[..], 0,"");
+  if b.phase == BUILD_OUTFIT || b.phase == BUILD_COMPLETE {
+    more(c[..], i,"CARGO "); num(c[..], i, b.cargo / 1000000, 2); more(c[..], i," MT   DRAFT "); num(c[..], i, b.draft, 1); more(c[..], i," M");
+    if !compact { more(c[..], i,"   BALLAST "); num(c[..], i, b.ballast / 1000000, 2); more(c[..], i," MT"); }
+  } else if b.phase == BUILD_HOLD {
+    more(c[..], i,"20 M/S HEADWIND   TOW HELD AT QUAY");
+  } else {
+    more(c[..], i,"UNIT "); num(c[..], i, f64(b.unit + 1), 0); more(c[..], i,"   DRAFT "); num(c[..], i, build_lift(b).draft, 1); more(c[..], i," M");
+    if b.phase == BUILD_CHANNEL || b.phase == BUILD_GULF || b.phase == BUILD_JOIN {
+      more(c[..], i,"   "); num(c[..], i, b.nm, 1); more(c[..], i," / 48 NM");
+    } else { more(c[..], i,"   100 X 50 M"); }
+  }
+  n = text(out, n, card_text(c[..], i), x, top + 56 * k, small);
+  i = line(c[..], 0,"");
+  if b.phase == BUILD_CHANNEL {
+    more(c[..], i,"3 KN   UNDER KEEL "); num(c[..], i, BUILD_PORT_DEPTH - tow.draft, 1); more(c[..], i," M AT CHART DEPTH");
+  } else if b.phase == BUILD_GULF {
+    more(c[..], i,"4 KN   EST. PULL "); num(c[..], i, tow.pull / 1000, 2); more(c[..], i," / 2.00 MN");
+  } else if b.phase == BUILD_JOIN {
+    more(c[..], i,"JOIN PROGRESS   "); num(c[..], i, 100 * b.approach, 0); more(c[..], i,"%   BERTH DEPTH "); num(c[..], i, BUILD_SITE_DEPTH, 0); more(c[..], i," M");
+  } else if b.phase == BUILD_OUTFIT {
+    more(c[..], i,"LIGHTER "); num(c[..], i, f64(b.call + 1), 0); more(c[..], i," / 100   ON BOARD "); num(c[..], i, b.ship_load, 0); more(c[..], i," T");
+  } else if b.phase == BUILD_COMPLETE {
+    more(c[..], i,"DISPLACEMENT "); num(c[..], i, b.mass / 1000000, 3); more(c[..], i," MT   CLEARANCE "); num(c[..], i, BUILD_SITE_DEPTH - b.draft, 0); more(c[..], i," M");
+  } else if b.phase == BUILD_HOLD {
+    more(c[..], i,"EST. PULL "); num(c[..], i, build_pull(tow.draft, 20) / 1000, 2); more(c[..], i," MN EXCEEDS 2.00 MN");
+  } else if b.phase == BUILD_CAST { more(c[..], i,"STARTER SHELL / WALL LIFTS / DECK / BALLAST"); }
+  else { more(c[..], i,"OUTBOUND CHANNEL 162 M WIDE / 16.5 M DEEP"); }
+  n = text(out, n, card_text(c[..], i), x, top + 71 * k, small);
+  s[0].build.left = x; s[0].build.right = right - 14 * k; y := top + 91 * k; s[0].build.slider_y = y;
+  rx := s[0].build.right; thumb := x + (rx - x) * f32(s[0].build.cursor / 90);
+  n = panel(out, n, x, y - 2 * k, rx, y + 2 * k, 2 * k, 0.29, 0.36, 0.36, 1, 0);
+  if thumb > x { n = panel(out, n, x, y - 2 * k, thumb, y + 2 * k, 2 * k, 0.90, 0.63, 0.30, 1, 0); }
+  for beat: 1..<BUILD_BEATS.count - 1 {
+    tick := x + (rx - x) * f32(BUILD_BEATS[beat] / 90);
+    n = panel(out, n, tick - k, y - 4 * k, tick + k, y + 4 * k, k, 0.78, 0.78, 0.66, 0.9, 0);
+  }
+  n = panel(out, n, thumb - 5 * k, y - 7 * k, thumb + 5 * k, y + 7 * k, 4 * k, 1, 0.87, 0.61, 1, 0);
+  y = top + 108 * k;
+  action := ifx s[0].build.play then "PAUSE" else ifx s[0].build.cursor >= 90 then "REPLAY" else "PLAY";
+  n = button(s, out, n, action, x, y, k, true, BTN_TIMELAPSE); x += button_w("REPLAY", k) + 7 * k;
+  n = button(s, out, n,"TOW", x, y, k, false, BTN_FIRST_TOW); x += button_w("TOW", k) + 4 * k;
+  n = button(s, out, n,"JOIN", x, y, k, false, BTN_FIRST_JOIN); x += button_w("JOIN", k) + 4 * k;
+  n = button(s, out, n,"OUTFIT", x, y, k, false, BTN_OUTFIT);
+  if !compact { t = "ASSUMED BERTH / ROUTE COMPRESSED"; n = text(out, n, t, rx - text_w(t, small.cap), y + 15 * k, small); }
+  return n;
+}
+
+#test "a touch can rewind a finished build without orbiting the camera" {
+  s: [1] Slab; vertices: [64] f32;
+  slab_reset(s[..]); s[0].dpr = 2; s[0].width = 780; s[0].height = 1280;
+  press(s[..], BTN_BUILD);
+  _ = hud(s[..], vertices[..]);
+  v := s[0].build; y := v.slider_y;
+  _ = slab_pointer(s[..], v.right, y, 0, 1, 22);
+  #assert s[0].build.cursor == 90 && !s[0].build.play;
+  _ = slab_pointer(s[..], v.left, y, 1, 1, 23);
+  #assert s[0].build.cursor == 90;
+  _ = slab_pointer(s[..], v.left - 40, y, 1, 1, 22);
+  _ = slab_pointer(s[..], v.left - 40, y, 2, 1, 22);
+  #assert s[0].build.cursor == 0 && !s[0].build.scrubbing && !s[0].dragging;
+  press(s[..], BTN_TIMELAPSE);
+  #assert s[0].build.play;
+  build_seek(s[..], 90); press(s[..], BTN_TIMELAPSE);
+  #assert s[0].build.play && s[0].build.cursor == 0;
 }

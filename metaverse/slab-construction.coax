@@ -1,0 +1,364 @@
+// Corpus Christi construction scenario, in metres, metric tonnes, hours and project days.
+// Port dimensions and source assumptions are in docs/research/ocean/slab-image-feasibility.md.
+#load "slab-sim.coax";
+#load "slab-plan.coax";
+
+#test "a closed caisson floats through the port while the joined city cannot" {
+  tow := build_tow();
+  #assert abs(tow.concrete - 22372.4) < 0.01;
+  #assert abs(tow.mass - tow.concrete * 2.5 - BUILD_TOW_BALLAST) < 0.001;
+  #assert abs(tow.draft * 5000 * 1.025 - tow.mass) < 0.001;
+  #assert abs(tow.draft - 11.49873) < 0.0001 && abs(tow.gm - 2.47775) < 0.0001;
+  #assert build_passage(50, tow.draft) && !build_passage(600, tow.draft) && !build_passage(50, 25);
+  #assert tow.pull > 500 && tow.pull < BUILD_AVAILABLE_KN && build_pull(tow.draft, 20) > BUILD_AVAILABLE_KN;
+}
+
+#test "the first weather window and the two legs use physical travel time" {
+  #assert build_at(29).phase == BUILD_HOLD && build_at(29).joined == 0;
+  c := build_at(30 + 4.0 / 3.0 / 24.0);
+  #assert c.phase == BUILD_CHANNEL && abs(c.nm - 4.0) < 0.001 && c.joined == 0;
+  g := build_at(30 + (8.0 / 3.0 + 5.0) / 24.0);
+  #assert g.phase == BUILD_GULF && abs(g.nm - 28) < 0.001;
+  #assert build_at(30.60).phase == BUILD_JOIN && build_at(31).joined == 1;
+  #assert build_at(38).joined == 1 && build_at(39).joined == 2;
+}
+
+#test "all deliveries close the weight ledger and every day can be sought again" {
+  for i: 0..<BUILD_UNITS {
+    before := build_at(BUILD_SAIL + f64(i) * BUILD_CYCLE + 0.6);
+    after := build_at(BUILD_SAIL + f64(i) * BUILD_CYCLE + 1.0);
+    #assert before.joined == i && after.joined == i + 1;
+    #assert abs(after.mass - f64(i + 1) * build_tow().mass) < 0.01;
+  }
+  end := build_at(BUILD_DONE);
+  #assert end.joined == 120 && abs(end.mass - 15375000) < 0.01 && abs(end.draft - 25) < 0.00001;
+  half := build_at(BUILD_DOCKED + BUILD_OUTFIT_DAYS / 2);
+  #assert half.draft > build_tow().draft && half.draft < end.draft;
+  for i: 0..<101 {
+    day := BUILD_DONE * f64(i) / 100.0;
+    #assert abs(build_day(build_cursor(day)) - day) < 0.00001;
+  }
+  #assert build_at(-2).phase == BUILD_CAST && build_at(BUILD_DONE + 2).phase == BUILD_COMPLETE;
+}
+
+BUILD_COLUMNS :: 10; BUILD_ROWS :: 12; BUILD_UNITS :: BUILD_COLUMNS * BUILD_ROWS;
+BUILD_L :: f64(SLAB_LENGTH) / f64(BUILD_COLUMNS);
+BUILD_B :: f64(SLAB_BEAM) / f64(BUILD_ROWS);
+BUILD_H :: f64(SLAB_DEPTH);
+BUILD_RHO :: SIM_RHO / 1000.0;
+BUILD_TOW_BALLAST :: 3000.0;     // isolated low tanks, assumed CG 1.5 m above keel
+BUILD_AVAILABLE_KN :: 2000.0;    // assumed combined effective tow force at 4 kn
+BUILD_PORT_DEPTH :: 54.0 * 0.3048; BUILD_PORT_WIDTH :: 530.0 * 0.3048;
+BUILD_SITE_DEPTH :: 40.0;
+BUILD_CHANNEL_NM :: 8.0; BUILD_GULF_NM :: 40.0;
+BUILD_CHANNEL_H :: BUILD_CHANNEL_NM / 3.0; BUILD_VOYAGE_H :: BUILD_CHANNEL_H + BUILD_GULF_NM / 4.0;
+BUILD_SAIL :: 30.0; BUILD_CYCLE :: 8.0;
+BUILD_DOCKED :: BUILD_SAIL + f64(BUILD_UNITS - 1) * BUILD_CYCLE + 1.0;
+BUILD_FREIGHT_CHANNEL :: 15.0; BUILD_FREIGHT_GULF :: 130.0;
+BUILD_FREIGHT_NM :: BUILD_FREIGHT_CHANNEL + BUILD_FREIGHT_GULF;
+BUILD_FREIGHT_H :: BUILD_FREIGHT_CHANNEL / 3.0 + BUILD_FREIGHT_GULF / 5.0;
+BUILD_OUTFIT_DAYS :: 400.0; BUILD_DONE :: BUILD_DOCKED + BUILD_OUTFIT_DAYS;
+BUILD_CALLS :: 100; BUILD_PARCEL :: 25000.0;
+BUILD_CAST :: 0; BUILD_HOLD :: 1; BUILD_CHANNEL :: 2; BUILD_GULF :: 3; BUILD_JOIN :: 4; BUILD_YARD :: 5; BUILD_OUTFIT :: 6; BUILD_COMPLETE :: 7;
+BUILD_PHASES :: [8] string.["Casting in the basin","Weather hold","Port channel transit","Gulf tow","Align and join","Prepare next caisson","Outfit and ballast","Commissioned"];
+
+BuildTow :: struct { concrete: f64; mass: f64; draft: f64; gm: f64; pull: f64; }
+build_tow :: () -> BuildTow {
+  // Non-overlapping volumes. Every module has its own end walls, including at seams.
+  area := BUILD_L * BUILD_B;
+  bottom := area * 1.5; roof := area * 1.0;
+  clear_h := BUILD_H - 2.5;
+  inner_b := BUILD_B - 1.2;
+  webs := (area - (BUILD_L - 1.2) * inner_b + 0.6 * inner_b) * clear_h;
+  v := bottom + roof + webs;
+  mass := 2.5 * v + BUILD_TOW_BALLAST;
+  draft := mass / (BUILD_RHO * area);
+  kg := ((bottom * 0.75 + roof * (BUILD_H - 0.5) + webs * (1.5 + clear_h / 2)) * 2.5 + BUILD_TOW_BALLAST * 1.5) / mass;
+  gm := draft / 2 + BUILD_B * BUILD_B / (12 * draft) - kg;
+  return BuildTow.{concrete = v, mass = mass, draft = draft, gm = gm, pull = build_pull(draft, 10)};
+}
+// Planning resistance at 4 kn, Cd 0.9 submerged / 1.2 in air, plus a 30% margin.
+// Wave drift, acceleration and shallow-channel interaction require a tow study.
+build_pull :: (draft: f64, wind: f64) -> f64 {
+  speed := 4.0 * 1852.0 / 3600.0;
+  pull := 1.3 * (0.5 * SIM_RHO * 0.9 * BUILD_B * draft * speed * speed
+               + 0.5 * SIM_RHO_AIR * 1.2 * BUILD_B * (BUILD_H - draft) * (wind + speed) * (wind + speed)) / 1000;
+  return pull;
+}
+build_passage :: (beam: f64, draft: f64) -> bool {
+  return beam + 2 * 10.0 <= BUILD_PORT_WIDTH && draft + 2.0 <= BUILD_PORT_DEPTH;
+}
+
+// Elapsed project time and elapsed playback seconds. Slow down for the first individual tow.
+BUILD_BEATS :: [11] f64.[0, 6, 10, 16, 25, 33, 70, 73, 78, 82, 90];
+BUILD_DAYS :: [11] f64.[0, 28, BUILD_SAIL, BUILD_SAIL + BUILD_CHANNEL_H / 24, BUILD_SAIL + BUILD_VOYAGE_H / 24, BUILD_SAIL + 1, BUILD_DOCKED, BUILD_DOCKED + 8.0 / 24, BUILD_DOCKED + (8 + BUILD_FREIGHT_H) / 24, BUILD_DOCKED + (24 + BUILD_FREIGHT_H) / 24, BUILD_DONE];
+build_map :: (v: f64, a: [] const f64, b: [] const f64) -> f64 {
+  for i: 1..<a.count {
+    if v <= a[i] { return b[i - 1] + (b[i] - b[i - 1]) * sim_clamp((v - a[i - 1]) / (a[i] - a[i - 1]), 0, 1); }
+  }
+  return b[b.count - 1];
+}
+build_day :: (cursor: f64) -> f64 { return build_map(cursor, BUILD_BEATS[..], BUILD_DAYS[..]); }
+build_cursor :: (day: f64) -> f64 { return build_map(day, BUILD_DAYS[..], BUILD_BEATS[..]); }
+
+BuildState :: struct { day: f64; phase: int; joined: int; unit: int; nm: f64; approach: f64; fit: f64; call: int; ship_route: f64; ship_load: f64; mass: f64; draft: f64; ballast: f64; cargo: f64; }
+build_at :: (day: f64) -> BuildState {
+  b: BuildState; b.day = sim_clamp(day, 0, BUILD_DONE);
+  tow := build_tow();
+  headwind := ifx b.day < BUILD_SAIL then 20.0 else 10.0;
+  ready := build_passage(BUILD_B, tow.draft) && tow.gm > 0 && build_pull(tow.draft, headwind) <= BUILD_AVAILABLE_KN;
+  if b.day < 28 || !ready {
+    b.phase = ifx b.day < 28 then BUILD_CAST else BUILD_HOLD;
+  } else if b.day < BUILD_DOCKED {
+    cycles := (b.day - BUILD_SAIL) / BUILD_CYCLE;
+    b.unit = cast(int) floor(cycles);
+    hours := (b.day - (BUILD_SAIL + f64(b.unit) * BUILD_CYCLE)) * 24;
+    b.joined = b.unit;
+    if hours < BUILD_CHANNEL_H { b.phase = BUILD_CHANNEL; b.nm = hours * 3; }
+    else if hours < BUILD_VOYAGE_H { b.phase = BUILD_GULF; b.nm = BUILD_CHANNEL_NM + (hours - BUILD_CHANNEL_H) * 4; }
+    else if hours < 24 { b.phase = BUILD_JOIN; b.nm = BUILD_CHANNEL_NM + BUILD_GULF_NM; b.approach = (hours - BUILD_VOYAGE_H) / (24 - BUILD_VOYAGE_H); }
+    else { b.joined += 1; b.unit = b.joined; b.phase = BUILD_YARD; }
+  } else {
+    b.phase = ifx b.day >= BUILD_DONE then BUILD_COMPLETE else BUILD_OUTFIT;
+    b.joined = BUILD_UNITS; b.unit = BUILD_UNITS - 1;
+    // A four-day Brownsville round trip. Eight hours loading and sixteen discharging.
+    elapsed := (b.day - BUILD_DOCKED) / (BUILD_OUTFIT_DAYS / f64(BUILD_CALLS));
+    b.call = cast(int) sim_min(f64(BUILD_CALLS - 1), floor(elapsed));
+    hours := (elapsed - f64(b.call)) * 24 * BUILD_OUTFIT_DAYS / f64(BUILD_CALLS);
+    sailed := sim_clamp(hours - 8, 0, BUILD_FREIGHT_H);
+    back := sim_clamp(hours - 8 - BUILD_FREIGHT_H - 16, 0, BUILD_FREIGHT_H);
+    outward := sim_min(sailed, BUILD_FREIGHT_CHANNEL / 3) * 3 + sim_max(0, sailed - BUILD_FREIGHT_CHANNEL / 3) * 5;
+    inward := sim_min(back, BUILD_FREIGHT_GULF / 5) * 5 + sim_max(0, back - BUILD_FREIGHT_GULF / 5) * 3;
+    b.ship_route = (outward - inward) / BUILD_FREIGHT_NM;
+    landed := sim_clamp((hours - 8 - BUILD_FREIGHT_H) / 16, 0, 1);
+    b.ship_load = BUILD_PARCEL * (sim_clamp(hours / 8, 0, 1) - landed);
+    b.fit = (f64(b.call) + landed) / f64(BUILD_CALLS);
+  }
+  dry := tow.mass - BUILD_TOW_BALLAST;
+  final_mass := f64(SLAB_LENGTH) * f64(SLAB_BEAM) * f64(SLAB_DRAFT) * BUILD_RHO;
+  b.cargo = f64(BUILD_CALLS) * BUILD_PARCEL * b.fit;
+  b.ballast = f64(b.joined) * BUILD_TOW_BALLAST + b.fit * (final_mass - f64(BUILD_UNITS) * tow.mass - f64(BUILD_CALLS) * BUILD_PARCEL);
+  b.mass = f64(b.joined) * dry + b.cargo + b.ballast;
+  if b.joined > 0 { b.draft = b.mass / (f64(b.joined) * BUILD_L * BUILD_B * BUILD_RHO); }
+  return b;
+}
+
+// The harbor and berth share a compressed chart in the world. Geometry within each
+// caisson and its berth is in metres. The clock and resistance use the full voyage.
+BUILD_QUAY_X :: -1260.0f32;
+BUILD_CAISSON_KIND :: 22; BUILD_LIFT_KIND :: 23; BUILD_BOAT_KIND :: 24; BUILD_CABIN_KIND :: 25; BUILD_CARGO_KIND :: 26;
+BuildPosition :: struct { x: f32; z: f32; }
+build_slot :: (unit: int) -> BuildPosition {
+  return BuildPosition.{x = 450 - f32(unit % BUILD_COLUMNS) * 100, z = -275 + f32(unit / BUILD_COLUMNS) * 50};
+}
+build_position :: (b: BuildState) -> BuildPosition {
+  slot := build_slot(b.unit);
+  p := build_route(b.nm, 60, slot.z);
+  p.x += f32(sim_clamp(b.approach / 0.65, 0, 1)) * (slot.x - p.x);
+  return p;
+}
+// The gate marks are at x=-980. All tows reach the clear west side before
+// the short final movement along an empty row, even at the last delivery.
+build_route :: (nm: f64, quay_z: f32, berth_z: f32) -> BuildPosition {
+  if nm < BUILD_CHANNEL_NM {
+    t := f32(nm / BUILD_CHANNEL_NM);
+    return BuildPosition.{x = BUILD_QUAY_X + (-980 - BUILD_QUAY_X) * t, z = quay_z + (45 - quay_z) * t};
+  }
+  t := f32((nm - BUILD_CHANNEL_NM) / BUILD_GULF_NM);
+  return BuildPosition.{x = -980 + 365 * t, z = 45 + (berth_z - 45) * t};
+}
+
+// The base and an 8 m starter wall are already afloat. Lift the walls, close the
+// roof, then load low ballast. The floating draft changes with the concrete placed.
+BuildLift :: struct { depth: f64; draft: f64; }
+build_open :: (b: BuildState) -> bool { return b.phase == BUILD_CAST && b.day < 28 * 0.85; }
+build_lift :: (b: BuildState) -> BuildLift {
+  finish := build_tow(); fraction := ifx b.phase == BUILD_CAST then b.day / 28 else 1.0;
+  walls := sim_clamp(fraction / 0.85, 0, 1);
+  roof := sim_clamp((fraction - 0.85) / 0.15, 0, 1);
+  clear := 6.5 + 41.0 * walls;
+  webs := (finish.concrete - 12500.0) / 47.5;
+  mass := (7500 + webs * clear + 5000 * roof) * 2.5 + BUILD_TOW_BALLAST * roof;
+  return BuildLift.{depth = 1.5 + clear + roof, draft = mass / (BUILD_L * BUILD_B * BUILD_RHO)};
+}
+
+#test "delivered freight transfers off the lighter once and the floatout stays upright" {
+  for i: 0..<BUILD_CALLS {
+    day := BUILD_DOCKED + f64(i) * BUILD_OUTFIT_DAYS / f64(BUILD_CALLS);
+    sailing := build_at(day + 0.5); unloading := build_at(day + (8 + BUILD_FREIGHT_H + 8) / 24);
+    #assert abs(sailing.ship_load - BUILD_PARCEL) < 0.01 && abs(sailing.cargo - f64(i) * BUILD_PARCEL) < 0.01;
+    #assert abs(unloading.ship_load + unloading.cargo - f64(i + 1) * BUILD_PARCEL) < 0.01;
+  }
+  for i: 0..<29 {
+    lift := build_lift(build_at(f64(i)));
+    #assert lift.depth > lift.draft && lift.draft <= build_tow().draft + 0.00001;
+  }
+}
+
+build_box :: (out: [] f32, n: int, x: f32, z: f32, length: f32, beam: f32, bottom: f32, top: f32, kind: int) -> int {
+  return slab_put(out, n, x - length / 2, bottom, z - beam / 2, x + length / 2, top, z + beam / 2, kind, SLAB_BOX);
+}
+build_tug :: (out: [] f32, n: int, x: f32, z: f32, heading: f32) -> int {
+  a := build_box(out, n, x - 2 * heading, z, 30, 12, -3, 3, BUILD_BOAT_KIND);
+  a = slab_put(out, a, x + 13.5f32 * heading - 6.5f32, -3, z - 6, x + 13.5f32 * heading + 6.5f32, 3, z + 6, BUILD_BOAT_KIND, SLAB_CYLINDER);
+  a = build_box(out, a, x - 9 * heading, z, 9, 8, 3, 4, BUILD_LIFT_KIND);
+  a = build_box(out, a, x + heading, z, 1, 1, 9, 15, BUILD_LIFT_KIND);
+  a = build_box(out, a, x + 4 * heading, z, 12, 9, 3, 8, BUILD_CABIN_KIND);
+  return build_box(out, a, x + 4 * heading, z, 10, 8, 8, 10, BUILD_BOAT_KIND);
+}
+
+#test "the construction scene fits the renderer at each loadout and leaves the original plan intact" {
+  original: [SLAB_MAX_BOXES * SLAB_RECORD]f32; shown: [SLAB_MAX_BOXES * SLAB_RECORD]f32;
+  count := slab_plan(original[..]);
+  for i: 0..<21 {
+    b := build_at(BUILD_DOCKED + BUILD_OUTFIT_DAYS * f64(i) / 20);
+    n := build_scene(b, BuildWater.{}, original[..], count, shown[..]);
+    #assert n > 0 && n < SLAB_MAX_BOXES;
+  }
+  #assert build_slot(0).x == 450 && build_slot(119).z == 275 && build_slot(119).x == -450;
+}
+
+// Main hull as up to twelve row solids. The surface shader draws the 100 x 50 m
+// joints. This preserves module boundaries while keeping the GPU record list bounded.
+BuildWater :: struct { site: f32; tow: f32; lighter: f32; }
+build_mean_water :: (x: f32, z: f32, length: f32, beam: f32, heights: [] f32, n: int, patch: f64) -> f32 {
+  sum := 0.0;
+  for col: 0..<4 { for row: 0..<4 {
+    px := f64(x) + f64(length) * ((f64(col) + 0.5) / 4 - 0.5);
+    pz := f64(z) + f64(beam) * ((f64(row) + 0.5) / 4 - 0.5);
+    sum += sim_sea_at(heights, n, patch, px, pz);
+  } }
+  return f32(sum / 16);
+}
+build_lighter_position :: (b: BuildState) -> BuildPosition {
+  // Brownsville's berth lies south of the module yard on this schematic.
+  t := f32(b.ship_route);
+  return BuildPosition.{x = -790 + 875 * t, z = -970 + 652 * t};
+
+}
+build_water :: (b: BuildState, heights: [] f32, n: int, patch: f64) -> BuildWater {
+  water: BuildWater;
+  // Average over the actual joined waterplane, including an incomplete last row.
+  for row: 0..<BUILD_ROWS {
+    cols := cast(int)sim_clamp(f64(b.joined - row * BUILD_COLUMNS), 0, f64(BUILD_COLUMNS));
+    if cols > 0 {
+      length := 100 * f32(cols);
+      water.site += f32(cols) * build_mean_water(500 - length / 2, -275 + 50 * f32(row), length, 50, heights, n, patch);
+    }
+  }
+  if b.joined > 0 { water.site /= f32(b.joined); }
+  p := build_position(b);
+  water.tow = build_mean_water(p.x, p.z, 100, 50, heights, n, patch);
+  ship := build_lighter_position(b);
+  water.lighter = build_mean_water(ship.x, ship.z, 120, 32, heights, n, patch);
+  return water;
+}
+build_raise :: (records: [] f32, first: int, last: int, water: f32) {
+  for i: first..<last { records[i * SLAB_RECORD + 1] += water; records[i * SLAB_RECORD + 5] += water; }
+}
+#test "each floating body follows the sampled sea datum and the fixed quay stays put" {
+  heights: [16]f32; for i: 0..<16 { heights[i] = 1.25; }
+  stage := build_at(38.4); water := build_water(stage, heights[..], 4, 100);
+  #assert water.site == 1.25 && water.tow == 1.25 && water.lighter == 1.25;
+  before: [SLAB_MAX_BOXES * SLAB_RECORD]f32; after: [SLAB_MAX_BOXES * SLAB_RECORD]f32;
+  n := build_scene(stage, BuildWater.{}, before[..], 0, before[..]);
+  #assert build_scene(stage, water, after[..], 0, after[..]) == n;
+  #assert after[5] == before[5] + 1.25 && after[SLAB_RECORD + 5] == before[SLAB_RECORD + 5];
+}
+// A hawser uses the scene's ray/capsule intersection. The shape records the
+// direction of each endpoint inside its axis-aligned bounds.
+build_hawser :: (out: [] f32, n: int, ax: f32, az: f32, bx: f32, bz: f32) -> int {
+  sh := 7 + (ifx ax > bx then 1 else 0) + (ifx az > bz then 2 else 0);
+  low_x := ifx ax < bx then ax else bx;
+  low_z := ifx az < bz then az else bz;
+  return slab_put(out, n, low_x, 3, low_z, ax + bx - low_x, 7, az + bz - low_z, BUILD_LIFT_KIND, sh);
+}
+build_scene :: (b: BuildState, water: BuildWater, plan: [] f32, count: int, out: [] f32) -> int {
+  n := 0;
+  deck := f32(BUILD_H - b.draft) + water.site;
+  for row: 0..<BUILD_ROWS {
+    cols := cast(int) sim_clamp(f64(b.joined - row * BUILD_COLUMNS), 0, f64(BUILD_COLUMNS));
+    if cols > 0 {
+      length := f32(cols) * 100;
+      n = build_box(out, n, 500 - length / 2, -275 + 50 * f32(row), length, 50, water.site - f32(b.draft), deck, BUILD_CAISSON_KIND);
+    }
+  }
+  // A fixed quay, its fabrication shed, gantry, and a pair of channel marks.
+  n = build_box(out, n, -1505, 25, 365, 380, -12, 5, BUILD_CAISSON_KIND);
+  n = slab_put(out, n, -1620, 5, -90, -1440, 28, -18, SLAB_KIND_INDUSTRY, SLAB_GABLE_X);
+  for i: 0..<2 {
+    n = build_box(out, n, -1350, 12 + f32(i) * 80, 8, 8, 5, 65, BUILD_LIFT_KIND);
+    n = build_box(out, n, -1302, 12 + f32(i) * 80, 104, 6, 61, 65, BUILD_LIFT_KIND);
+  }
+  n = build_box(out, n, -980, -36, 7, 7, -2, 7, BUILD_BOAT_KIND);
+  n = build_box(out, n, -980, 126, 7, 7, -2, 7, BUILD_LIFT_KIND);
+  // The site marker buoys outline the reserved rectangle before the first unit arrives.
+  for end: 0..<2 { for side: 0..<2 {
+    mark_x := -520 + 1040 * f32(end); mark_z := -320 + 640 * f32(side);
+    n = slab_put(out, n, mark_x - 4, -2, mark_z - 4, mark_x + 4, 5, mark_z + 4, BUILD_LIFT_KIND, SLAB_CYLINDER);
+  } }
+  if b.phase == BUILD_OUTFIT {
+    n = build_box(out, n, -794, -1050, 250, 105, -10, 5, BUILD_CAISSON_KIND);
+    n = build_box(out, n, -840, -1014, 8, 8, 5, 46, BUILD_LIFT_KIND);
+    n = build_box(out, n, -840, -988, 5, 56, 42, 46, BUILD_LIFT_KIND);
+    n = build_box(out, n, -780, -1060, 80, 35, 5, 23, BUILD_CARGO_KIND);
+  }
+  if b.joined < BUILD_UNITS {
+    start := n;
+    p := build_position(b); lift := build_lift(b); top := f32(lift.depth - lift.draft);
+    n = build_box(out, n, p.x, p.z, 100, 50, -f32(lift.draft), top, BUILD_CAISSON_KIND);
+    // Open work cells with visible perimeter and centre web during slipforming.
+    if build_open(b) {
+      floor_y := 1.5f32 - f32(lift.draft);
+      out[(n - 1) * SLAB_RECORD + 5] = floor_y;
+      for side: 0..<2 {
+        n = build_box(out, n, p.x, p.z - 24.7 + 49.4 * f32(side), 100, 0.6, floor_y, top, BUILD_CAISSON_KIND);
+      }
+      for wall: 0..<3 { n = build_box(out, n, p.x - 49.7 + 49.7 * f32(wall), p.z, 0.6, 49, floor_y, top, BUILD_CAISSON_KIND); }
+    }
+    side := f32(b.approach);
+    for i: 0..<2 {
+      sign := ifx i == 0 then -1.0f32 else 1.0f32;
+      tx := p.x + 100 - (ifx i == 0 then 137.0f32 else 88.0f32) * side;
+      tz := p.z + sign * 15 + (46 - sign * 15) * side;
+      n = build_tug(out, n, tx, tz, 1);
+      if b.phase >= BUILD_CHANNEL && b.phase <= BUILD_JOIN {
+        n = build_hawser(out, n, p.x + 48, p.z + sign * 17, tx - 14, tz);
+      }
+
+    }
+    build_raise(out, start, n, water.tow);
+    // The work barge stays on the open side of the new row. A gantry handles
+    // joint hardware after the tugs finish warping the caisson into position.
+    slot := build_slot(b.unit); wx := slot.x; wz := slot.z + 89;
+    n = build_box(out, n, wx, wz, 86, 24, -3, 4, BUILD_BOAT_KIND);
+    for leg: 0..<2 { n = build_box(out, n, wx - 20 + 40 * f32(leg), wz, 4, 7, 4, 58, BUILD_LIFT_KIND); }
+    n = build_box(out, n, wx, wz, 44, 7, 55, 59, BUILD_LIFT_KIND);
+    n = build_box(out, n, wx + 20, wz - 25, 4, 54, 53, 57, BUILD_LIFT_KIND);
+    n = build_box(out, n, wx + 20, wz - 50, 0.75, 0.75, 39, 54, BUILD_LIFT_KIND);
+
+  } else if b.phase != BUILD_COMPLETE {
+    start := n; ship := build_lighter_position(b); x := ship.x; z := ship.z;
+    draft := f32((3500 + b.ship_load) / (120 * 32 * BUILD_RHO));
+    top := 10 - draft;
+    n = build_box(out, n, x, z, 120, 32, -draft, top, BUILD_BOAT_KIND);
+    if b.ship_load > 0.1 {
+      for i: 0..<3 { n = build_box(out, n, x - 35 + 35 * f32(i), z, 30, 25, top, top + f32(b.ship_load / BUILD_PARCEL) * 12, BUILD_CARGO_KIND); }
+    }
+    direction := ifx b.ship_load < 0.01 && b.ship_route > 0 then -1.0f32 else 1.0f32;
+    n = build_tug(out, n, x + 92 * direction, z, direction);
+    n = build_hawser(out, n, x + 58 * direction, z, x + 80 * direction, z);
+    build_raise(out, start, n, water.lighter);
+  }
+  if b.fit > 0 {
+    for i: SLAB_HULL_PIECES..<count {
+      j := i * SLAB_RECORD;
+      if cast(int)plan[j + 3] == SLAB_KIND_PIPE { continue; } // no deep-water OTEC pipe in 40 m
+      share := f32(sim_clamp(b.fit * 2.0 - ((f64(plan[j]) + 500) / 1000), 0, 1));
+      if share <= 0 { continue; }
+      y := deck + (plan[j + 1] - SLAB_DECK) * share;
+      n = slab_put(out, n, plan[j], y, plan[j + 2], plan[j + 4], y + (plan[j + 5] - plan[j + 1]) * share, plan[j + 6], cast(int)plan[j + 3], cast(int)plan[j + 7]);
+    }
+  }
+  return n;
+}

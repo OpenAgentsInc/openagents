@@ -1,0 +1,6 @@
+// Pointer position on a horizontal slider, in its renderer’s pixel coordinates.
+slider_value :: (x: f32, w: f32, px: f32) -> f32 {
+  if w <= 0 { return 0; }
+  v := (px - x) / w;
+  return ifx v < 0 then 0.0f32 else ifx v > 1 then 1.0f32 else v;
+}

@@ -16,6 +16,7 @@
 // measure and a skin keep working unchanged.
 //   coax/bin/coax test components/kit/controls-checks.coax
 
+#load "../core/slider.coax";
 #load "frame.coax";         // the frame context; it loads paint/sheet.coax and skin/skin.coax
 
 // ---------------------------------------------------------------- panel
@@ -87,11 +88,6 @@ slider :: (sh: [] Sheet, s: UiSkin, x: f32, y: f32, w: f32, value: f32, hit_kind
     sh[0].nu = uiskin_control(sh[0].under, sh[0].nu, knob_skin, kx, y + (s.control_h - k) / 2, k, k, UISKIN_PRIMARY);
   }
   sheet_hit(sh, hit_kind, hit_a, 0, x, y, w, s.control_h);
-}
-slider_value :: (x: f32, w: f32, px: f32) -> f32 {
-  if w <= 0 { return 0; }
-  v := (px - x) / w;
-  return ifx v < 0 then 0.0f32 else ifx v > 1 then 1.0f32 else v;
 }
 
 // Wrapped row copy uses the shared line wrapper and the skin's type roles.

@@ -24,13 +24,13 @@
 //   clip 44     quads a side, levels, morph band (quads), the skirt's reach (m)
 //   levels 48   centre x, z, spacing, hole x + 2 hole z
 //   boxes 96    the plan's records: min xyz, kind; max xyz, shape (metaverse/slab-plan.coax SLAB_SHAPE_*)
-//   groups 1120 the records' bounding groups: min xyz, first; max xyz, count
-//   params 1248 the world's light, the hull's pose, the walker, the selection (slab.coax P_*)
-//   words 1312  cascade 0, its displacement, the fine slopes
+//   groups 1312 the records' bounding groups: min xyz, first; max xyz, count
+//   params 1440 the world's light, the hull's pose, the walker, the selection (slab.coax P_*)
+//   words 1504  cascade 0, its displacement, the fine slopes
 SLAB_N :: cast(u32)64;
-SLAB_WORDS :: 1312;
-SLAB_GROUPS :: 1120;
-SLAB_P :: 1248;
+SLAB_WORDS :: 1504;
+SLAB_GROUPS :: 1312;
+SLAB_P :: 1440;
 SLAB_BOXES :: 96;
 SLAB_W_COARSE :: cast(u32)0;
 SLAB_W_CHOP :: cast(u32)8192;
@@ -256,6 +256,7 @@ slab_water :: (p:V2,world:V3,d:V3,dist:f32,t:f32,u:[]f32)->V3 {
   caps:f32=smoothstep(0.45f32,0.75f32,c.y*(0.6f32+froth))*(0.45f32+(0.55f32*smoothstep(0.35f32,0.6f32,fine)))*(1.0f32-smoothstep(500.0f32,2500.0f32,dist));
   hp:V3=sb_to_hull(world,u);
   edge:f32=slab_hull_plan(v2(hp.x,hp.z),u);
+  if (u[SLAB_P+60]>0.5f32) { edge=1e5f32; }
   // foam drawn out into streaks along the wind (the sea's lace), broken into patches
   wa:f32=(p.x*u[32])+(p.y*u[33]);
   wc:f32=(p.y*u[32])-(p.x*u[33]);
@@ -477,6 +478,12 @@ slab_record_hit :: (o:V3,d:V3,lo:V3,hi:V3,sh:s32,limit:f32)->V4 {
   if (sh==1) { return slab_drum_hit(o,d,lo,hi); }
   if (sh==2) { return slab_gable_hit(o,d,lo,hi,true); }
   if (sh==3) { return slab_gable_hit(o,d,lo,hi,false); }
+  if ((sh>=7)&&(sh<=10)) {
+    ax:f32=ifx ((sh-7)&1)==1 then hi.x else lo.x;
+    az:f32=ifx ((sh-7)&2)==2 then hi.z else lo.z;
+    bx:f32=lo.x+hi.x-ax; bz:f32=lo.z+hi.z-az;
+    return slab_capsule(o,d,v3(ax,hi.y,az),v3(bx,lo.y,bz),0.48f32);
+  }
   if (sh==4) { return slab_grove_hit(o,d,lo,hi,false,limit); }
   if (sh==5) { return slab_grove_hit(o,d,lo,hi,true,limit); }
   if (sh==6) { return slab_dome_hit(o,d,lo,hi); }
@@ -486,7 +493,7 @@ slab_record_hit :: (o:V3,d:V3,lo:V3,hi:V3,sh:s32,limit:f32)->V4 {
 slab_scene :: (o:V3,d:V3,masses:bool,limit:f32,u:[]f32)->SlabHit {
   hit:SlabHit=SlabHit.{t=limit,n=v3(0.0f32,1.0f32,0.0f32),kind=-1.0f32,top=0.0f32,id=-1.0f32,lo=v3(0.0f32,0.0f32,0.0f32),hi=v3(0.0f32,0.0f32,0.0f32)};
   groups:s32=wg_i32_f(u[SLAB_P]);
-  g:s32=ifx masses then 1 else 0;
+  g:s32=ifx masses&&(u[SLAB_P+60]<0.5f32) then 1 else 0;
   // the section view: what lies beyond the cut (on the eye's side) is taken away
   sec:f32=u[SLAB_P+52];
   cut:f32=u[SLAB_P+53];
@@ -711,6 +718,23 @@ slab_paint :: (hit:SlabHit,w:V3,d:V3,u:[]f32)->SlabPaint {
   emit:V3=v3(0.0f32,0.0f32,0.0f32);
   deck:f32=u[38];
   oncut:bool=(u[SLAB_P+52]!=0.0f32)&&(abs(n.z)>0.9f32)&&(abs(w.z-u[SLAB_P+53])<0.6f32);
+  // Construction materials share the existing lighting, depth and sea occlusion.
+  if ((k>=22)&&(k<=26)) {
+    if (k==22) {
+      c=v3(0.72f32,0.72f32,0.66f32);
+      if (roof) {
+        j:f32=fmax(slab_band(w.x,100.0f32,0.012f32),slab_band(w.z,50.0f32,0.022f32));
+        c=sb_mul(c,1.0f32-0.55f32*j);
+      } else {
+        c=sb_mul(c,0.93f32-0.13f32*slab_band(w.y,4.0f32,0.15f32));
+        c=sb_mix(v3(0.26f32,0.34f32,0.31f32),c,smoothstep(0.0f32,2.0f32,w.y));
+      }
+    } else if (k==23) { c=v3(0.98f32,0.59f32,0.13f32); }
+    else if (k==24) { c=ifx w.y<1.5f32 then v3(0.51f32,0.16f32,0.08f32) else v3(0.12f32,0.27f32,0.32f32); }
+    else if (k==25) { c=ifx w.y>6.3f32 then v3(0.21f32,0.38f32,0.43f32) else v3(0.96f32,0.91f32,0.79f32); }
+    else { c=v3(0.81f32,0.40f32,0.20f32); }
+    return SlabPaint.{c=sb_mul(c,grain),emit=emit};
+  }
   if (oncut) {
     return slab_section(k,w,u);
   }
@@ -1146,6 +1170,8 @@ slab_surface_fs :: (v:SlabS,u:[]f32)->V4 {
   rel:V3=wg_sub_f3f3(v.world,v3(u[8],u[9],u[10]));
   dist:f32=wg_length3(rel);
   d:V3=wg_div_f3f(rel,fmax(dist,1e-4f32));
+  // The casting basin's open cell is watertight below its rim.
+  if ((u[SLAB_P+61]>0.5f32)&&(abs(v.world.x-u[SLAB_P+62])<49.7f32)&&(abs(v.world.z-u[SLAB_P+63])<24.7f32)) { gpu_discard(); }
   // the section view: a slot cut out of the sea from the hull toward the eye
   sec:f32=u[SLAB_P+52];
   if (sec!=0.0f32) {
