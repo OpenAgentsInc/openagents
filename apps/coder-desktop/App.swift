@@ -96,6 +96,32 @@ func coderSkillsNote() -> String {
     return "Skills installed on this computer. When a message is about one, read its file with cat first, then do what it says:\n" + rows.joined(separator: "\n") + "\n\nThe message:\n"
 }
 
+/// One kept chat in the list: its id (its file's name), its title, when it last changed and its working folder.
+struct CoderChat: Codable { var id: String; var title: String; var updated: Double; var folder: String }
+/// The chats kept on this Mac: ~/Library/Application Support/Coder/chats, one file a chat (ID.json,
+/// the page's text) and index.json, the list, most recent first.
+final class CoderStore {
+    private let dir: URL
+    private(set) var list: [CoderChat] = []
+    init() {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first ?? FileManager.default.homeDirectoryForCurrentUser
+        dir = base.appendingPathComponent("Coder/chats")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        if let data = try? Data(contentsOf: dir.appendingPathComponent("index.json")), let kept = try? JSONDecoder().decode([CoderChat].self, from: data) { list = kept }
+    }
+    /// The list as the page reads it: one chat a line, its id, a tab, its title.
+    var lines: String { list.map { $0.id + "\t" + $0.title }.joined(separator: "\n") }
+    func text(_ id: String) -> String? { try? String(contentsOf: dir.appendingPathComponent(id + ".json"), encoding: .utf8) }
+    func folder(_ id: String) -> String? { list.first { $0.id == id }?.folder }
+    /// Keeps a chat's text and moves it to the top of the list.
+    func keep(id: String, title: String, folder: String, text: String) {
+        guard (try? text.write(to: dir.appendingPathComponent(id + ".json"), atomically: true, encoding: .utf8)) != nil else { return }
+        list.removeAll { $0.id == id }
+        list.insert(CoderChat(id: id, title: title, updated: Date().timeIntervalSince1970, folder: folder), at: 0)
+        if let data = try? JSONEncoder().encode(list) { try? data.write(to: dir.appendingPathComponent("index.json"), options: .atomic) }
+    }
+}
+
 final class CoderWindow: NSObject {
     let window: NSWindow
     private let page: UnsafeMutableRawPointer
@@ -107,6 +133,9 @@ final class CoderWindow: NSObject {
     private var clock: Timer?
     private var then: String?   // --then TEXT: sent in a new chat once --send's reply ends
     private var owed = 3   // frames still to draw after a change
+    private let store = CoderStore()
+    private var chat: String?          // the id of the chat that is shown, once it is kept
+    private var recallDue = false      // a chat was opened: the worker is told its turns ahead of the next message
 
     init?(resources: String) {
         guard let page = cd_open(resources), let raw = cd_view(page) else { return nil }
@@ -128,6 +157,7 @@ final class CoderWindow: NSObject {
                      Unmanaged.passUnretained(self).toOpaque())
         cd_skills(page, coderSkillsNote())
         cd_claude(page, CoderWorker.hasClaude ? 1 : 0)
+        cd_chats(page, store.lines)
         // the working folder: --folder PATH for this launch, else the one chosen last, else the home folder
         var isFolder: ObjCBool = false
         if let at = CommandLine.arguments.firstIndex(of: "--folder"), at + 1 < CommandLine.arguments.count,
@@ -156,6 +186,8 @@ final class CoderWindow: NSObject {
         let clock = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in self?.tick() }
         RunLoop.main.add(clock, forMode: .common); self.clock = clock
         window.center(); window.makeKeyAndOrderFront(nil); window.makeFirstResponder(editor)
+        // Coder --chat N opens the Nth most recent chat at launch (1 is the newest).
+        if let at = CommandLine.arguments.firstIndex(of: "--chat"), at + 1 < CommandLine.arguments.count, let k = Int(CommandLine.arguments[at + 1]), k >= 1, k <= store.list.count { open(store.list[k - 1].id) }
         // Coder --send TEXT sends TEXT at launch, for a check of the whole path with no typing.
         if let at = CommandLine.arguments.firstIndex(of: "--send"), at + 1 < CommandLine.arguments.count, cd_set_text(page, CommandLine.arguments[at + 1]) != 0, cd_submit(page) != 0,
            let next = CommandLine.arguments.firstIndex(of: "--then"), next + 1 < CommandLine.arguments.count { then = CommandLine.arguments[next + 1] }
@@ -234,24 +266,59 @@ final class CoderWindow: NSObject {
         case 1:
             editor.synchronize { editor.string = "" }
             guard worker.start() else { cd_failed(page, "Microcoder could not start."); return }
+            if recallDue {
+                // an opened chat's turns, or nothing to remember when it has none that ended
+                recallDue = false
+                var n = cd_recall_line(page, &out, Int32(out.count))
+                if n == 0 { n = cd_forget_line(&out, Int32(out.count)) }
+                worker.write(out, count: Int(n))
+            }
             let n = cd_task(page, session, folder.path, &out, Int32(out.count))
             worker.write(out, count: Int(n))
         case 2: window.makeFirstResponder(editor)
         // The line is written into out first: Swift copies an argument before a later one's call fills it.
         case 3: let n = cd_stop_line(&out, Int32(out.count)); worker.write(out, count: Int(n))
-        case 4: let n = cd_forget_line(&out, Int32(out.count)); worker.write(out, count: Int(n))
+        case 4:
+            chat = nil; recallDue = false; cd_current(page, "")
+            let n = cd_forget_line(&out, Int32(out.count)); worker.write(out, count: Int(n))
         case 5:
             out = [CChar](repeating: 0, count: 2_000_001)   // a whole chat fits: 24 messages and replies
             guard cd_copied(page, &out, 2_000_000) > 0 else { return }
             let board = NSPasteboard.general; board.clearContents(); board.setString(String(cString: out), forType: .string)
         case 6: chooseFolder()
+        case 7:
+            // a press on a chat in the sidebar: its kept text becomes the chat that is shown
+            guard cd_open_id(page, &out, Int32(out.count)) > 0 else { return }
+            open(String(cString: out))
         default: break
         }
+    }
+
+    /// Opens a kept chat: it becomes the chat that is shown, with the working folder it had.
+    private func open(_ id: String) {
+        guard let text = store.text(id), cd_load(page, text) != 0 else { return }
+        chat = id; recallDue = true; cd_current(page, id)
+        var isFolder: ObjCBool = false
+        if let kept = store.folder(id), FileManager.default.fileExists(atPath: kept, isDirectory: &isFolder), isFolder.boolValue { setFolder(URL(fileURLWithPath: kept), keep: false) }
+        window.makeFirstResponder(editor)
+        wake()
+    }
+    /// Keeps the chat that is shown: its file, and its place at the top of the list.
+    private func keep() {
+        let id = chat ?? UUID().uuidString.lowercased()
+        var out = [CChar](repeating: 0, count: 16_000_000)   // 24 messages with every row full fit
+        guard cd_save(page, &out, Int32(out.count)) > 0 else { return }
+        let text = String(cString: out)
+        var name = [CChar](repeating: 0, count: 256)
+        let title = cd_title(page, &name, Int32(name.count)) > 0 ? String(cString: name) : "New chat"
+        store.keep(id: id, title: title, folder: folder.path, text: text)
+        chat = id; cd_current(page, id); cd_chats(page, store.lines)
     }
 
     private func tick() {
         let what = cd_action(page)
         if what != 0 { act(what); wake() }
+        if cd_save_due(page) != 0 { keep(); wake() }
         else if let text = then, cd_running(page) == 0 { then = nil; newChat(); act(cd_action(page)); if cd_set_text(page, text) != 0 { _ = cd_submit(page) } }
         // An empty draft leaves the text to the bar, so its placeholder shows under the caret.
         let focused = window.firstResponder === editor

@@ -43,6 +43,20 @@ void cd_agent_line(void *page, int agent, const char *line);
 void cd_agent_failed(void *page, int agent, const char *why);
 int cd_agent_answer_line(void *page, int agent, char *out, int cap);
 int cd_agent_running(void *page, int agent);
+// Kept chats. cd_chats: the list for the sidebar, most recent first, one chat a line (its id, a
+// tab, its title). cd_current: the id of the chat that is shown ("" for one not kept yet).
+// cd_open_id: the id a press in the sidebar asked for (cd_action 7). cd_save_due: the chat changed
+// and is to be kept (once). cd_save: its text; cd_title: its title; each ends with a zero byte and
+// returns its length, 0 when it does not fit. cd_load: a kept text becomes the chat that is shown.
+// cd_recall_line: the line that tells the worker the opened chat's turns, 0 for none.
+void cd_chats(void *page, const char *list);
+void cd_current(void *page, const char *id);
+int cd_open_id(void *page, char *out, int cap);
+int cd_title(void *page, char *out, int cap);
+int cd_save_due(void *page);
+int cd_save(void *page, char *out, int cap);
+int cd_load(void *page, const char *text);
+int cd_recall_line(void *page, char *out, int cap);
 // cd_claude: whether Claude Code is installed here (with it, Microcoder may hand a task to a Claude
 // model). cd_agent_claude: whether this sub-agent runs in Claude Code, on the Claude worker.
 void cd_claude(void *page, int on);

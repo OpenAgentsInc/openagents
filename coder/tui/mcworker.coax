@@ -6,6 +6,7 @@
 //        {"task":...,"local":true}        the same on the model server on this machine (psionic)
 //        {"stop":true}                    STOP the run
 //        {"forget":true}                  forget the conversation
+//        {"recall":[{"task":T,"reply":R}]}   the conversation is these turns now (a chat the owner opened again)
 //        {"task":...,"agents":true}       the owner runs sub-agents: a step may delegate tasks ({"kind":"delegate","tasks":[...],"ticket":N}) and waits for {"results":[{"exit":N,"output":O}],"ticket":N}
 //        {"task":...,"agents":true,"claude":true}   a task's level may also be haiku, sonnet, opus or fable: the owner runs those in Claude Code
 //        {"task":...,"gated":true,"edits":true}   as gated, but edits are not refused
@@ -197,6 +198,19 @@ tool_main :: () -> int #export_c #effects(all) {
       continue;
     }
     if what == MWW_FORGET { h[0].turns = 0; continue; }
+    if what == MWW_RECALL {
+      // a chat opened again: these are its turns now (the newest MK_TURNS are kept)
+      if !running {
+        h[0].turns = 0;
+        for i: 0..<cl_count(req[0].recall) {
+          one := cl_json(req[0].recall, cl_item(req[0].recall, i));
+          ar[0].at = 0; ar[0].full = false;
+          h[0].ncur = mk_keep(h[0].cur[..], cl_str(ar[..], one, "task"));
+          mk_remember(h[..], cl_str(ar[..], one, "reply"));
+        }
+      }
+      continue;
+    }
     if what == MWW_EMBED {
       mk_keys(k[..]);
       mw_embed(k[..], req[0].text, req[0].query, out[..]);

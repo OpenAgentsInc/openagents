@@ -20,6 +20,7 @@ the typing mark and notices. The shared AppKit editor
 - **The copy icon under a message** copies that message: yours as you wrote it, a reply as its Markdown.
 - **The copy icon in the top right corner**, beside New chat, copies the whole chat: each message under `You:`, each command under `Ran:`, each reply under `Microcoder:`. Command output is not included.
 - **Click a reply** to see who wrote it (Microcoder and its model), beside the reply's copy icon. Click again to hide it.
+- **The sidebar** on the left lists your chats, most recent at the top. Click one to open it. See [Saved chats](#saved-chats).
 - **Sub-agents** take work Microcoder hands over. See [Sub-agents](#sub-agents).
 
 Limits, all shown on screen when you reach them:
@@ -30,6 +31,9 @@ Limits, all shown on screen when you reach them:
 - A message shows the first 12 commands and file reads. It says how many more ran.
 - A command's output is shown up to 4,000 bytes.
 - The working folder's name is cut with an ellipsis past 280 points wide.
+- The sidebar lists the 50 most recent chats and says how many older ones it does not show. It shows when the window is at least 900 points wide (at the usual text size).
+- A chat's title in the sidebar is its first message, up to 120 bytes.
+- When you open a chat, Microcoder is told its newest 6 messages and replies, up to 1,200 bytes of each.
 - A message runs up to 12 sub-agents, 6 in one step. Microcoder is told when a task is not run for this reason.
 - A sub-agent's task is cut at 1,500 bytes, its list of tool calls at 3,000 bytes and its reply at 8,000 bytes.
 - A run has 15 minutes, with its sub-agents' time included. A command has 120 seconds.
@@ -94,6 +98,34 @@ A Claude sub-agent runs through the Coax Claude Agent SDK
 Coder looks for `claude` in `~/.local/bin`, `/opt/homebrew/bin`,
 `/usr/local/bin` and the system `PATH` when it starts. Without it,
 Microcoder is not offered the Claude models.
+
+## Saved chats
+
+Coder keeps every chat on this Mac (#13661). It saves a chat when you send a
+message and when a reply ends: the messages, the replies, the commands with
+their output, and the sub-agents with their tool calls and replies.
+
+The sidebar lists the chats, most recent at the top. A chat moves to the top
+when you send a message in it. Click a chat to open it:
+
+- It shows as it was. A message that was still running when Coder quit shows as stopped.
+- The working folder becomes the one the chat used, if that folder still exists.
+- Microcoder is told the chat's newest messages and replies ahead of your next message, so a follow-up has its context.
+
+You can't open another chat while a reply is running. New chat starts an
+empty one; it joins the list when you send its first message. Coder opens on
+a new chat.
+
+The chats are files in `~/Library/Application Support/Coder/chats`: one
+`ID.json` for each chat and `index.json`, the list. Nothing is sent
+anywhere. Coder has no way to delete a chat yet: delete its file and its
+entry in `index.json`.
+
+To open the Nth most recent chat at launch (1 is the newest):
+
+```sh
+open -n apps/coder-desktop/build/Coder.app --args --chat 1
+```
 
 ## Skills and installed commands
 
@@ -164,5 +196,5 @@ coax/bin/coax test apps/coder-desktop/page.coax --library
 | `app.coax` | The compiled unit: the page and the atlas tables |
 | `host.c`, `host.h` | The page on the shared GPU carrier, as calls for Swift |
 | `carrier.c` | The shared component carrier with this page |
-| `App.swift` | The AppKit lifecycle, the window, the editor's placement and the worker process |
+| `App.swift` | The AppKit lifecycle, the window, the editor's placement, the worker processes and the kept chats' files |
 | `build.sh` | Coax to C and Metal, the two workers' images, then clang, swiftc and codesign |

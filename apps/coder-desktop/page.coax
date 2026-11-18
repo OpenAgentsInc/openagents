@@ -14,6 +14,7 @@
 //   coax/bin/coax test apps/coder-desktop/page.coax --library
 
 #load "../../components/app/task.coax";
+#load "../../components/app/nav.coax";
 #load "../../components/core/edit.coax";
 #load "../../components/skin/arcade.coax";
 #load "../../components/backend/gpu.coax";
@@ -43,6 +44,11 @@ CP_LEVEL :: [CP_LEVELS] string.["simple", "complex", "haiku", "sonnet", "opus", 
 CP_LEVEL_NAME :: [CP_LEVELS] string.["Hydrogen", "Carbon", "Claude Haiku", "Claude Sonnet", "Claude Opus", "Claude Fable"];
 CP_LEVEL_CLAUDE :: 2;                       // the first Claude level
 CP_PAD :: 16;               // the page's margin
+CP_CHATS :: 50;             // recent chats the sidebar lists; it says how many more there are
+CP_CHAT_ID :: 48;           // bytes of a chat's row id ("chat." and the host's id)
+CP_CHAT_TITLE :: 120;       // bytes of a chat's title: its first message on one line
+CP_SIDE :: 260;             // the sidebar's width
+CP_SIDE_FROM :: 900;        // the window width from which the sidebar shows; a narrower window has none
 CP_ZOOMS :: [8] f32.[0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0];   // the text sizes Command-plus and Command-minus step through
 CP_ZOOM_USUAL :: 2;
 CP_BOTTOM :: 8;             // under the message bar
@@ -54,9 +60,9 @@ CP_MODEL :: "gemini-4-hydrogen";
 CP_MODEL_NAME :: "Microcoder · Gemini 4 Hydrogen";
 
 // What the page asks of its host (coder_page_action), once.
-CP_ASK_NONE :: 0; CP_ASK_SEND :: 1; CP_ASK_FOCUS :: 2; CP_ASK_STOP :: 3; CP_ASK_NEW :: 4; CP_ASK_COPY :: 5; CP_ASK_FOLDER :: 6;
+CP_ASK_NONE :: 0; CP_ASK_SEND :: 1; CP_ASK_FOCUS :: 2; CP_ASK_STOP :: 3; CP_ASK_NEW :: 4; CP_ASK_COPY :: 5; CP_ASK_FOLDER :: 6; CP_ASK_OPEN :: 7;
 // What a row dispatches.
-CP_FIELD :: 1; CP_SEND :: 2; CP_NEW :: 3; CP_COPY :: 4; CP_TOOL :: 5; CP_FOLDER :: 6; CP_COPY_ASK :: 7; CP_COPY_REPLY :: 8; CP_COPY_ALL :: 9; CP_AGENT :: 10;
+CP_FIELD :: 1; CP_SEND :: 2; CP_NEW :: 3; CP_COPY :: 4; CP_TOOL :: 5; CP_FOLDER :: 6; CP_COPY_ASK :: 7; CP_COPY_REPLY :: 8; CP_COPY_ALL :: 9; CP_AGENT :: 10; CP_CHAT :: 11;
 // What was copied last (its button shows a check): a code block, a person's message, a reply, the whole chat.
 CP_COPIED_NONE :: 0; CP_COPIED_BLOCK :: 1; CP_COPIED_ASK :: 2; CP_COPIED_REPLY :: 3; CP_COPIED_ALL :: 4;
 CP_ALL :: 2000000;          // bytes the whole chat's copy may take: 24 messages and replies fit
@@ -99,6 +105,8 @@ CpTurn :: struct {
   fresh: bool;                // a model request ended: the next reply text starts the reply again
   h: f32; hw: f32;            // its height as last drawn, and the column's width then
 }
+// One kept chat in the sidebar's list.
+CpChat :: struct { id: [CP_CHAT_ID] u8; id_n: int; title: [CP_CHAT_TITLE] u8; title_n: int; }
 CpGeneration :: struct { under: [CP_UNDER] Prim; over: [CP_OVER] Prim; lines: [CP_LINES] SheetLine; hits: [CP_HITS] SheetHit; pool: [CP_POOL] u8; rows: [CP_ROWS] El; }
 CoderPage :: struct {
   ready: bool; time: f32; d: f32;
@@ -110,6 +118,11 @@ CoderPage :: struct {
   focused: bool; editor_h: f32; reduced: bool;
   skills: [CP_SKILLS] u8; skills_n: int;
   claude: bool;               // Claude Code is installed here: Microcoder may hand tasks to it
+  chats: [CP_CHATS] CpChat; nchats: int; chats_more: int;   // the host's list of kept chats, most recent first, and how many it has past these
+  current: [CP_CHAT_ID] u8; current_n: int;                 // the row id of the chat that is shown (none: not kept yet)
+  open: int;                  // the row a press asked to open
+  side: f32; side_scroll: f32; side_content: f32; side_view: f32;   // the sidebar as last drawn: its width (0: not shown), its scroll
+  kept_turns: int; kept_running: bool;                      // what the host last kept (coder_page_save_due)
   folder: [CP_FOLDER_TEXT] u8; folder_n: int;   // the working folder as shown (~/work/app): commands start there
   answer: int; answer_due: bool;   // the ticket of the worker's ask that is owed its answer
   results_due: bool;          // every sub-agent of the round has ended: the worker is owed their results
@@ -384,6 +397,178 @@ cp_results :: (s: [] CoderPage, i: int, out: [] u8) -> int {
   if n < 0 { return 0; }
   return mww_results(out, s[0].turns[i].ticket, cast(string) b[0..<n]);
 }
+
+// ---- saved chats (GitHub #13661). The host keeps each chat in a file and the list of them;
+// the page writes and reads a chat's text (coder_page_save, coder_page_load) and shows the list
+// in a sidebar on the left, most recent first. A press on a row asks the host to open that chat.
+// The host's list, most recent first: one chat a line, its id, a tab, its title. The first 50
+// are shown; the sidebar says how many more there are.
+coder_page_chats :: (s: [] CoderPage, list: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].nchats = 0; s[0].chats_more = 0;
+  i := 0;
+  while i < list.count {
+    e := i; while e < list.count && list[e] != 10 { e += 1; }
+    t := i; while t < e && list[t] != 9 { t += 1; }
+    if t > i {
+      if s[0].nchats < CP_CHATS {
+        k := s[0].nchats;
+        n := cp_out(s[0].chats[k].id[..], "chat."); n += cp_out(s[0].chats[k].id[n..<CP_CHAT_ID], cast(string) list[i..<t]);
+        s[0].chats[k].id_n = n;
+        s[0].chats[k].title_n = ifx t + 1 < e then cp_out(s[0].chats[k].title[..], cast(string) list[t + 1..<e]) else cp_out(s[0].chats[k].title[..], "New chat");
+        s[0].nchats += 1;
+      } else { s[0].chats_more += 1; }
+    }
+    i = e + 1;
+  }
+}
+// The id of the chat that is shown ("" for a new one that is not saved yet): its row is lit.
+coder_page_current :: (s: [] CoderPage, id: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  n := 0;
+  if id.count > 0 { n = cp_out(s[0].current[..], "chat."); n += cp_out(s[0].current[n..<CP_CHAT_ID], id); }
+  s[0].current_n = n;
+}
+// The id of the chat a press asked for (after CP_ASK_OPEN). Its length in out.
+coder_page_open_id :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 || s[0].open < 0 || s[0].open >= s[0].nchats { return 0; }
+  k := s[0].open;
+  return cp_out(out, cast(string) s[0].chats[k].id[5..<s[0].chats[k].id_n]);
+}
+// The chat's title for the list: its first message on one line, up to 120 bytes.
+coder_page_title :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 || s[0].nturns < 1 { return 0; }
+  n := 0; gap := false;
+  for c: cast(string) s[0].turns[0].ask[0..<s[0].turns[0].ask_n] {
+    if n >= out.count || n >= CP_CHAT_TITLE { break; }
+    if c == 10 || c == 13 || c == 9 || c == 32 { gap = n > 0; continue; }
+    if gap { out[n] = 32; n += 1; gap = false; if n >= out.count || n >= CP_CHAT_TITLE { break; } }
+    out[n] = c; n += 1;
+  }
+  // never the first bytes of a character alone
+  if n < s[0].turns[0].ask_n { while n > 0 && (out[n - 1] & 0xC0) == 0x80 { n -= 1; } if n > 0 && out[n - 1] >= 0xC0 { n -= 1; } }
+  return n;
+}
+// Whether the chat changed in a way the host keeps: a message was sent, or a run ended. Once each.
+coder_page_save_due :: (s: [] CoderPage) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  r := cp_running(s);
+  if s[0].nturns == 0 { s[0].kept_turns = 0; s[0].kept_running = false; return false; }
+  if r == s[0].kept_running && s[0].nturns == s[0].kept_turns { return false; }
+  s[0].kept_running = r; s[0].kept_turns = s[0].nturns;
+  return true;
+}
+cp_whole :: (seconds: f32) -> int { return ifx seconds < 0 then -1 else cast(int) seconds; }
+// The chat as text the host keeps: every message, reply, command and sub-agent, as shown. Its
+// length in out, 0 when it does not fit.
+coder_page_save :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  n := json_raw(out, 0, "{\"v\":1,\"turns\":[");
+  for i: 0..<s[0].nturns {
+    n = json_raw(out, n, ifx i > 0 then ",{\"ask\":" else "{\"ask\":"); n = json_write_string(out, n, cast(string) s[0].turns[i].ask[0..<s[0].turns[i].ask_n]);
+    n = json_raw(out, n, ",\"reply\":"); n = json_write_string(out, n, cast(string) s[0].turns[i].reply[0..<s[0].turns[i].reply_n]);
+    n = json_raw(out, n, ifx s[0].turns[i].cut then ",\"cut\":true" else ",\"cut\":false");
+    n = json_raw(out, n, ",\"state\":"); n = json_write_int(out, n, s[0].turns[i].state);
+    n = json_raw(out, n, ",\"note\":"); n = json_write_string(out, n, cast(string) s[0].turns[i].note[0..<s[0].turns[i].note_n]);
+    n = json_raw(out, n, ",\"more\":"); n = json_write_int(out, n, s[0].turns[i].more_cmds);
+    n = json_raw(out, n, ",\"cmds\":[");
+    for q: 0..<s[0].turns[i].ncmds {
+      n = json_raw(out, n, ifx q > 0 then ",{\"text\":" else "{\"text\":"); n = json_write_string(out, n, cast(string) s[0].turns[i].cmds[q].text[0..<s[0].turns[i].cmds[q].text_n]);
+      n = json_raw(out, n, ",\"out\":"); n = json_write_string(out, n, cast(string) s[0].turns[i].cmds[q].out[0..<s[0].turns[i].cmds[q].out_n]);
+      n = json_raw(out, n, ifx s[0].turns[i].cmds[q].read then ",\"read\":true" else ",\"read\":false");
+      n = json_raw(out, n, ifx s[0].turns[i].cmds[q].failed then ",\"failed\":true" else ",\"failed\":false");
+      n = json_raw(out, n, ",\"took\":"); n = json_write_int(out, n, cp_whole(s[0].turns[i].cmds[q].took)); n = json_raw(out, n, "}");
+    }
+    n = json_raw(out, n, "],\"agents\":[");
+    for j: 0..<s[0].turns[i].nagents {
+      n = json_raw(out, n, ifx j > 0 then ",{\"level\":" else "{\"level\":"); n = json_write_string(out, n, CP_LEVEL[s[0].turns[i].agents[j].level]);
+      n = json_raw(out, n, ",\"task\":"); n = json_write_string(out, n, cast(string) s[0].turns[i].agents[j].task[0..<s[0].turns[i].agents[j].task_n]);
+      n = json_raw(out, n, ",\"state\":"); n = json_write_int(out, n, s[0].turns[i].agents[j].state);
+      n = json_raw(out, n, ",\"reply\":"); n = json_write_string(out, n, cast(string) s[0].turns[i].agents[j].reply[0..<s[0].turns[i].agents[j].reply_n]);
+      n = json_raw(out, n, ",\"log\":"); n = json_write_string(out, n, cast(string) s[0].turns[i].agents[j].log[0..<s[0].turns[i].agents[j].log_n]);
+      n = json_raw(out, n, ",\"calls\":"); n = json_write_int(out, n, s[0].turns[i].agents[j].calls);
+      n = json_raw(out, n, ",\"took\":"); n = json_write_int(out, n, cp_whole(s[0].turns[i].agents[j].took)); n = json_raw(out, n, "}");
+    }
+    n = json_raw(out, n, "]}");
+  }
+  n = json_raw(out, n, "]}");
+  return ifx n < 0 then 0 else n;
+}
+// A kept chat (coder_page_save's text) becomes the chat that is shown. A message that was still
+// running when it was kept shows as stopped. False while a run is going or when the text is not a chat.
+coder_page_load :: (s: [] CoderPage, text: string) -> bool #export_c #effects(all) {
+  if s.count < 1 || cp_running(s) || cl_at(text, "turns").tok != JSON_ARRAY { return false; }
+  turns := cl_raw(text, "turns");
+  count := cl_count(turns); if count > CP_TURNS { count = CP_TURNS; }
+  ar := [1] ClArena.[ClArena.{buf = s[0].arena[..]}];
+  for i: 0..<count {
+    t := cl_json(turns, cl_item(turns, i));
+    ar[0].at = 0; ar[0].full = false;
+    s[0].turns[i].ask_n = cp_out(s[0].turns[i].ask[..], cl_str(ar[..], t, "ask"));
+    ar[0].at = 0;
+    s[0].turns[i].cut = false;
+    cp_reply_set(s, i, cl_str(ar[..], t, "reply"), false);
+    cut := cl_bool(t, "cut"); if cut.ok && cut.value { s[0].turns[i].cut = true; }
+    ar[0].at = 0;
+    s[0].turns[i].note_n = cp_out(s[0].turns[i].note[..], cl_str(ar[..], t, "note"));
+    state := cl_int(t, "state"); more := cl_int(t, "more");
+    s[0].turns[i].state = ifx state.ok && state.value > CP_RUNNING && state.value <= CP_STOPPED then state.value else CP_STOPPED;
+    s[0].turns[i].more_cmds = ifx more.ok && more.value > 0 then more.value else 0;
+    s[0].turns[i].over = 0; s[0].turns[i].stopping = false; s[0].turns[i].fresh = false; s[0].turns[i].info = false; s[0].turns[i].h = 0; s[0].turns[i].ah = 0;
+    s[0].turns[i].round = 0; s[0].turns[i].round_n = 0; s[0].turns[i].round_asked = 0; s[0].turns[i].waiting = false;
+    cmds := cl_raw(t, "cmds"); nc := ifx cmds.count > 0 then cl_count(cmds) else 0; if nc > CP_CMDS { nc = CP_CMDS; }
+    for q: 0..<nc {
+      c := cl_json(cmds, cl_item(cmds, q));
+      ar[0].at = 0;
+      s[0].turns[i].cmds[q].text_n = cp_out(s[0].turns[i].cmds[q].text[..], cl_str(ar[..], c, "text"));
+      ar[0].at = 0;
+      s[0].turns[i].cmds[q].out_n = cp_out(s[0].turns[i].cmds[q].out[..], cl_str(ar[..], c, "out"));
+      read := cl_bool(c, "read"); failed := cl_bool(c, "failed"); took := cl_int(c, "took");
+      s[0].turns[i].cmds[q].read = read.ok && read.value; s[0].turns[i].cmds[q].failed = failed.ok && failed.value; s[0].turns[i].cmds[q].running = false;
+      s[0].turns[i].cmds[q].began = 0; s[0].turns[i].cmds[q].took = ifx took.ok then cast(f32) took.value else -1.0f32;
+    }
+    s[0].turns[i].ncmds = nc;
+    agents := cl_raw(t, "agents"); na := ifx agents.count > 0 then cl_count(agents) else 0; if na > CP_AGENTS { na = CP_AGENTS; }
+    for j: 0..<na {
+      g := cl_json(agents, cl_item(agents, j));
+      s[0].turns[i].agents[j] = CpAgent.{};
+      ar[0].at = 0;
+      level := cl_str(ar[..], g, "level");
+      for name, q2: CP_LEVEL { if name == level { s[0].turns[i].agents[j].level = q2; } }
+      ar[0].at = 0;
+      s[0].turns[i].agents[j].task_n = cp_out(s[0].turns[i].agents[j].task[..], cl_str(ar[..], g, "task"));
+      ar[0].at = 0;
+      s[0].turns[i].agents[j].reply_n = cp_out(s[0].turns[i].agents[j].reply[..], cl_str(ar[..], g, "reply"));
+      ar[0].at = 0;
+      s[0].turns[i].agents[j].log_n = cp_out(s[0].turns[i].agents[j].log[..], cl_str(ar[..], g, "log"));
+      gs := cl_int(g, "state"); calls := cl_int(g, "calls"); took := cl_int(g, "took");
+      s[0].turns[i].agents[j].state = ifx gs.ok && gs.value > CP_RUNNING && gs.value <= CP_STOPPED then gs.value else CP_STOPPED;
+      s[0].turns[i].agents[j].calls = ifx calls.ok then calls.value else 0;
+      s[0].turns[i].agents[j].took = ifx took.ok then cast(f32) took.value else -1.0f32;
+    }
+    s[0].turns[i].nagents = na;
+  }
+  s[0].nturns = count; s[0].scroll = 0; s[0].stick = true; s[0].copied_turn = -1; s[0].copied_kind = CP_COPIED_NONE; s[0].results_due = false; s[0].answer_due = false;
+  s[0].kept_turns = count; s[0].kept_running = false;
+  return true;
+}
+// The chat's finished turns as the worker's recall line, so Microcoder knows a chat that was
+// opened again: the newest 6 (the most it keeps), each message and reply up to 1,200 bytes. 0 for none.
+coder_page_recall_line :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  b := s[0].scratch[..]; n := json_raw(b, 0, "["); some := false;
+  first := ifx s[0].nturns > 6 then s[0].nturns - 6 else 0;
+  for i: first..<s[0].nturns {
+    if s[0].turns[i].state == CP_RUNNING || s[0].turns[i].reply_n == 0 { continue; }
+    an := ifx s[0].turns[i].ask_n > 1200 then 1200 else s[0].turns[i].ask_n; rn := ifx s[0].turns[i].reply_n > 1200 then 1200 else s[0].turns[i].reply_n;
+    n = json_raw(b, n, ifx some then ",{\"task\":" else "{\"task\":"); n = json_write_string(b, n, cast(string) s[0].turns[i].ask[0..<an]);
+    n = json_raw(b, n, ",\"reply\":"); n = json_write_string(b, n, cast(string) s[0].turns[i].reply[0..<rn]); n = json_raw(b, n, "}");
+    some = true;
+  }
+  n = json_raw(b, n, "]");
+  if n < 0 || !some { return 0; }
+  return mww_recall(out, cast(string) b[0..<n]);
+}
 // A new chat: the window clears and the host has the worker forget. Not while a run is going.
 cp_new :: (s: [] CoderPage) -> bool {
   if cp_running(s) { return false; }
@@ -407,6 +592,12 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
     ib: [EL_ID] u8; tb: [EL_ID] u8;
     s[0].turns[turn].h = 0;
     return app_tool_press(s[0].keyed[..], app_id(tb[..], cp_id(ib[..], turn, ".g"), CP_CMD_IDS[j]), id);
+  }
+  if act == CP_CHAT {
+    id := surface_id(s[0].surface[..], row);
+    if cp_running(s) || id == cast(string) s[0].current[0..<s[0].current_n] { return false; }
+    for q: 0..<s[0].nchats { if id == cast(string) s[0].chats[q].id[0..<s[0].chats[q].id_n] { s[0].open = q; s[0].ask = CP_ASK_OPEN; return true; } }
+    return false;
   }
   if act == CP_FIELD { s[0].ask = CP_ASK_FOCUS; return true; }
   if act == CP_SEND {
@@ -435,8 +626,10 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
 
 cp_layout :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) {
   k := f[0].skin; a := k.app;
-  cw := w - 2 * CP_PAD; if cw > CP_COLUMN { cw = CP_COLUMN; }
-  x := (w - cw) / 2;
+  left: f32 = ifx w >= CP_SIDE_FROM then CP_SIDE else 0.0f32;   // the sidebar's width
+  s[0].side = left;
+  cw := w - left - 2 * CP_PAD; if cw > CP_COLUMN { cw = CP_COLUMN; }
+  x := left + (w - left - cw) / 2;
   s[0].col_x = x; s[0].col_w = cw;
   side := a.icon_button; edge := (side - a.icon) / 2;   // a Copy's icon sits on its message's edge
   running := cp_running(s); full := cp_full(s);
@@ -444,7 +637,7 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) {
   top: f32 = 0; bottom := h - CP_BOTTOM - bar;   // what scrolls runs up to the bar
   s[0].view = bottom - top;
   if s[0].stick { s[0].scroll = s[0].content - s[0].view; if s[0].scroll < 0 { s[0].scroll = 0; } }
-  uiframe_clip(f, 0, top, w, bottom);
+  uiframe_clip(f, left, top, w, bottom);
   y := top - s[0].scroll + a.gap;
   if s[0].nturns == 0 {
     _ := app_empty(f, "coder.empty", x, top + s[0].view / 3, cw, ICON_THOUGHT, "What do you want to do?", "Microcoder answers on Gemini 4 Hydrogen.");
@@ -525,7 +718,33 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) {
   if s[0].folder_n > 0 {
     name := sheet_pool(f[0].sheet, cast(string) s[0].folder[0..<s[0].folder_n]);
     fw := app_button_width(f, ICON_FOLDER, name); if fw > CP_FOLDER_MOST { fw = CP_FOLDER_MOST; }
+    if left > 0 && fw > left - 2 * CP_CORNER { fw = left - 2 * CP_CORNER; }
     _ := app_button(f, "coder.folder", CP_CORNER, CP_CORNER + (side - k.control_h) / 2, fw, ICON_FOLDER, name, APP_BUTTON_QUIET, ifx running then EL_S_DISABLED else 0, CP_FOLDER);
+  }
+  // the sidebar: the recent chats, most recent first. The chat that is shown is lit; while a run
+  // is going the others can't be opened.
+  if left > 0 {
+    sheet_fill(f[0].sheet, left - k.border, 0, k.border, h, 0, k.menu_divider);
+    rows: [CP_CHATS + 1] AppSideRow;
+    rows[0] = AppSideRow.{id = "coder.chats", title = "Chats", heading = true};
+    cur := cast(string) s[0].current[0..<s[0].current_n];
+    for q: 0..<s[0].nchats {
+      id := cast(string) s[0].chats[q].id[0..<s[0].chats[q].id_n];
+      is := cur.count > 0 && id == cur;
+      rows[q + 1] = AppSideRow.{id = id, title = cast(string) s[0].chats[q].title[0..<s[0].chats[q].title_n],
+                               state = ifx is then EL_S_CURRENT | (ifx running then EL_S_BUSY else 0) else ifx running then EL_S_DISABLED else 0};
+    }
+    stop := CP_CORNER + side + a.gap_small;
+    s[0].side_view = h - stop;
+    tail := ifx s[0].nchats == 0 || s[0].chats_more > 0 then k.small.line + 2 * a.gap else 0.0f32;
+    s[0].side_content = app_side_window(f, 0, stop, left - k.border, s[0].side_view, rows[0..<s[0].nchats + 1], s[0].side_scroll, tail, CP_CHAT);
+    if tail > 0 {
+      mb: [96] u8; mn := 0;
+      if s[0].nchats == 0 { mn = el_put(mb[..], 0, "Your chats show here."); }
+      else { mn = el_put_i(mb[..], 0, s[0].chats_more); mn = el_put(mb[..], mn, ifx s[0].chats_more == 1 then " older chat is not shown." else " older chats are not shown."); }
+      my := stop + s[0].side_content - tail + a.gap - scroll_clamp(s[0].side_scroll, s[0].side_content, s[0].side_view);
+      if my + k.small.line > stop && my < h { _ := app_meta(f, "coder.chats.more", a.side_pad, my, left - 2 * a.side_pad, sheet_pool(f[0].sheet, cast(string) mb[0..<mn]), false); }
+    }
   }
   c := AppComposer.{placeholder = "Message", text = eb_text(s[0].draft[..]),
     state = ifx running then APP_COMPOSER_RUNNING else ifx full then APP_COMPOSER_OFF else APP_COMPOSER_READY,
@@ -603,6 +822,11 @@ coder_page_pointer :: (s: [] CoderPage, x: f32, y: f32, phase: int) -> bool #exp
 // The wheel, in device pixels, down positive. Scrolling up lets go of the newest message.
 coder_page_wheel :: (s: [] CoderPage, dy: f32) #export_c #effects(all) {
   if s.count < 1 || !(s[0].d > 0) { return; }
+  // over the sidebar the wheel moves the list of chats
+  if s[0].side > 0 && s[0].px < s[0].side {
+    s[0].side_scroll = scroll_clamp(s[0].side_scroll + dy / s[0].d, s[0].side_content, s[0].side_view);
+    return;
+  }
   s[0].stick = false;
   s[0].scroll += dy / s[0].d;
   cp_clamp(s);
@@ -965,6 +1189,42 @@ coder_page_zoom_set :: (s: [] CoderPage, row: int) -> int #export_c #effects(all
   #assert s[0].turns[0].agents[2].state == CP_STOPPED && !s[0].results_due && coder_page_agent_next(s) == -1;
   // a new chat's first message shows none of them
   #assert coder_page_new(s) && coder_page_set_text(s, "hi") && coder_page_submit(s) && s[0].turns[0].nagents == 0 && !s[0].turns[0].waiting;
+}
+
+#test "a chat is kept and read back whole; the list names the chats; a reopened chat's turns go to the worker" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  #assert !coder_page_save_due(s) && coder_page_set_text(s, "List  the\nfiles") && coder_page_submit(s) && coder_page_save_due(s) && !coder_page_save_due(s);
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"opus\",\"task\":\"look\"}],\"ticket\":1}") == MWW_DELEGATE;
+  s[0].clock = 9;
+  #assert coder_page_agent_next(s) == 0 && coder_page_agent_line(s, 0, "{\"kind\":\"ask\",\"command\":\"ls\",\"ticket\":1}") == MWW_ASK;
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"two files\"}") == MWW_ENDED;
+  #assert coder_page_line(s, "{\"kind\":\"command\",\"command\":\"ls\",\"exit\":0,\"timed_out\":false,\"output\":\"a\\nb\"}") == MWW_COMMAND;
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"There are **two** files.\"}") == MWW_ENDED && coder_page_save_due(s);
+  tb: [200] u8; n := coder_page_title(s, tb[..]);
+  #assert cast(string) tb[0..<n] == "List the files";
+  kept: [16384] u8; kn := coder_page_save(s, kept[..]);
+  #assert kn > 0 && json_valid(cast(string) kept[0..<kn]) && coder_page_save(s, kept[0..<40]) == 0;
+  // a new chat, then the kept one again
+  #assert coder_page_new(s) && s[0].nturns == 0 && !coder_page_save_due(s);
+  #assert !coder_page_load(s, "{}") && coder_page_load(s, cast(string) kept[0..<kn]) && !coder_page_save_due(s);
+  #assert s[0].nturns == 1 && cast(string) s[0].turns[0].ask[0..<s[0].turns[0].ask_n] == "List  the\nfiles" && s[0].turns[0].state == CP_DONE && s[0].turns[0].blocks == 1;
+  #assert cast(string) s[0].turns[0].reply[0..<s[0].turns[0].reply_n] == "There are **two** files." && s[0].turns[0].ncmds == 1 && cast(string) s[0].turns[0].cmds[0].out[0..<s[0].turns[0].cmds[0].out_n] == "a\nb";
+  #assert s[0].turns[0].nagents == 1 && CP_LEVEL_NAME[s[0].turns[0].agents[0].level] == "Claude Opus" && s[0].turns[0].agents[0].state == CP_DONE && s[0].turns[0].agents[0].took == 9 && s[0].turns[0].agents[0].calls == 1;
+  #assert cast(string) s[0].turns[0].agents[0].reply[0..<s[0].turns[0].agents[0].reply_n] == "two files" && coder_page_agent_next(s) == -1;
+  // kept again, it is the same text
+  again: [16384] u8; an := coder_page_save(s, again[..]);
+  #assert cast(string) again[0..<an] == cast(string) kept[0..<kn];
+  out: [4096] u8; rn := coder_page_recall_line(s, out[..]);
+  #assert cast(string) out[0..<rn] == "{\"recall\":[{\"task\":\"List  the\\nfiles\",\"reply\":\"There are **two** files.\"}]}\n";
+  // the list: 50 rows and how many more; the id a press asks for
+  coder_page_chats(s, "a1\tFirst chat\nb2\t\nc3\tThird\n");
+  #assert s[0].nchats == 3 && s[0].chats_more == 0 && cast(string) s[0].chats[0].id[0..<s[0].chats[0].id_n] == "chat.a1" && cast(string) s[0].chats[1].title[0..<s[0].chats[1].title_n] == "New chat";
+  coder_page_current(s, "a1"); s[0].open = 2;
+  on := coder_page_open_id(s, out[..]);
+  #assert cast(string) out[0..<on] == "c3" && cast(string) s[0].current[0..<s[0].current_n] == "chat.a1";
+  coder_page_current(s, "");
+  #assert s[0].current_n == 0;
 }
 
 #test "Claude sub-agents: offered only where Claude Code is installed; a level is a model; a tool call needs no answer" {

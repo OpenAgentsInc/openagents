@@ -107,6 +107,16 @@ int cd_agent_answer_line(void *page, int agent, char *out, int cap) { CoderHost 
 void cd_claude(void *page, int on) { CoderHost *c = page; if (c) coder_page_set_claude(cd_state(c), on != 0); }
 int cd_agent_claude(void *page, int agent) { CoderHost *c = page; return c && coder_page_agent_claude(cd_state(c), agent); }
 int cd_agent_running(void *page, int agent) { CoderHost *c = page; return c && coder_page_agent_running(cd_state(c), agent); }
+// Kept chats (page.coax): the list, the chat that is shown, and a chat's text each way.
+static int cd_text_out(int n, char *out, int cap) { if (n < 0 || n >= cap) n = 0; out[n] = 0; return n; }
+void cd_chats(void *page, const char *list) { CoderHost *c = page; if (c) { coder_page_chats(cd_state(c), cd_string(list)); cd_changed(c); } }
+void cd_current(void *page, const char *id) { CoderHost *c = page; if (c) { coder_page_current(cd_state(c), cd_string(id)); cd_changed(c); } }
+int cd_open_id(void *page, char *out, int cap) { CoderHost *c = page; return c && cap > 1 ? cd_text_out((int)coder_page_open_id(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap) : 0; }
+int cd_title(void *page, char *out, int cap) { CoderHost *c = page; return c && cap > 1 ? cd_text_out((int)coder_page_title(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap) : 0; }
+int cd_save_due(void *page) { CoderHost *c = page; return c && coder_page_save_due(cd_state(c)); }
+int cd_save(void *page, char *out, int cap) { CoderHost *c = page; return c && cap > 1 ? cd_text_out((int)coder_page_save(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap) : 0; }
+int cd_load(void *page, const char *text) { CoderHost *c = page; if (!c) return 0; cd_changed(c); return coder_page_load(cd_state(c), cd_string(text)); }
+int cd_recall_line(void *page, char *out, int cap) { CoderHost *c = page; return c && cap > 0 ? (int)coder_page_recall_line(cd_state(c), (coax_v_u8){(uint8_t *)out, cap}) : 0; }
 int cd_stop_line(char *out, int cap) { return cap > 0 ? (int)coder_page_stop_line((coax_v_u8){(uint8_t *)out, cap}) : 0; }
 int cd_forget_line(char *out, int cap) { return cap > 0 ? (int)coder_page_forget_line((coax_v_u8){(uint8_t *)out, cap}) : 0; }
 void cd_line(void *page, const char *line) { CoderHost *c = page; if (!c) return; coder_page_line(cd_state(c), cd_string(line)); cd_changed(c); }

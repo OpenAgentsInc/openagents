@@ -37,6 +37,7 @@ MWW_VIEW :: 6; MWW_ASK :: 7; MWW_ENDED :: 8; MWW_EMBEDDING :: 9;
 MWW_DELEGATE :: 10;            // {"kind":"delegate","tasks":[{"level":L,"task":T}],"ticket":N}: a run with sub-agents hands tasks to its owner (GitHub #13655)
 // an owner's line
 MWW_TASK :: 11; MWW_ANSWER :: 12; MWW_STOP :: 13; MWW_FORGET :: 14; MWW_EMBED :: 15; MWW_RESULTS :: 16;
+MWW_RECALL :: 17;              // {"recall":[{"task":T,"reply":R}]}: the owner's kept turns of the conversation (GitHub #13661)
 
 MWW_STOP_LINE :: "{\"stop\":true}\n";
 MWW_FORGET_LINE :: "{\"forget\":true}\n";
@@ -91,6 +92,13 @@ mww_results :: (o: [] u8, ticket: int, results: string) -> int {
   return json_raw(o, n, "}\n");
 }
 // A text to embed: a query's when query is set, else a document's.
+// The turns of a conversation the owner kept, for a worker that has not seen them (a chat opened
+// again, GitHub #13661). turns: a JSON list, [{"task":T,"reply":R}], oldest first. The worker
+// forgets what it held and remembers these (the newest it has room for).
+mww_recall :: (o: [] u8, turns: string) -> int {
+  n := json_raw(o, 0, "{\"recall\":"); n = json_raw(o, n, turns);
+  return json_raw(o, n, "}\n");
+}
 mww_embed :: (o: [] u8, text: string, query: bool) -> int {
   n := json_raw(o, 0, "{\"embed\":"); n = json_write_string(o, n, text);
   return json_raw(o, n, ifx query then ",\"query\":true}\n" else "}\n");
@@ -108,6 +116,7 @@ MwwRequest :: struct {
   task: string; cwd: string; session: string; sandbox: string; model: string; effort: string;
   local: bool; gated: bool; agents: bool; edits: bool; claude: bool;
   results: string;               // results: the list's JSON text
+  recall: string;                // recall: the turns' JSON text
   policy: string;                // the policy member's JSON text, "" when there is none
   policy_on: bool;               // policy.enabled is true
   ceiling: JsonInt;              // policy.ceiling
@@ -124,6 +133,7 @@ mww_request :: (ar: [] ClArena, msg: string, r: [] MwwRequest) -> int {
     r[0].text = cl_str(ar, msg, "embed");
     r[0].kind = MWW_EMBED; return MWW_EMBED;
   }
+  if cl_at(msg, "recall").tok == JSON_ARRAY { r[0].recall = cl_raw(msg, "recall"); r[0].kind = MWW_RECALL; return MWW_RECALL; }
   if cl_at(msg, "results").tok == JSON_ARRAY {
     r[0].results = cl_raw(msg, "results");
     r[0].ticket = cl_int(msg, "ticket");
@@ -422,6 +432,8 @@ mww_attempt_again :: (ar: [] ClArena, line: string, out: [] u8) -> int {
   #assert mww_task_read(ar[..], cast(string) o[0..<n - 1], back[..]) && back[0].agents && back[0].edits;
   n = mww_task(o[..], McTask.{task = "do", cwd = "/w"});
   #assert mww_request(ar[..], cast(string) o[0..<n - 1], r[..]) == MWW_TASK && !r[0].agents && !r[0].edits;
+  n = mww_recall(o[..], "[{\"task\":\"hi\",\"reply\":\"hello\"}]");
+  #assert mww_request(ar[..], cast(string) o[0..<n - 1], r[..]) == MWW_RECALL && cl_count(r[0].recall) == 1 && cl_str(ar[..], r[0].recall, "0.reply") == "hello";
   n = mww_delegate(o[..], "[{\"level\":\"simple\",\"task\":\"a\"}]", 4);
   l: [1] MwwLine;
   #assert cast(string) o[0..<n] == "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"simple\",\"task\":\"a\"}],\"ticket\":4}";
