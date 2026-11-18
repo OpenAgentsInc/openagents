@@ -18,8 +18,10 @@ cl_checks :: (t:[]Ap,dir:string) {
  st=ac_call(t,"POST","/api/chat/library/v1","{}",auth,"","");ap_check(t,"malformed metadata refuses",st==400,"");
  st=ac_call(t,"GET","/api/chat/library/v1","",auth,"","");ap_check(t,"subsequent device reads saved revision",st==200 && cls_snapshot_read(ap_body(t),v[..]) && v[0].revision==2,ap_body(t));
  // A typed native workspace read crosses the real authenticated API/process boundary.
- sql:[1]Sb;sb(sql[..],"INSERT INTO chat.environment_connections_v1(account,host_pubkey,display_name,grant_id,epoch,relay) VALUES ('");sb(sql[..],account);sb(sql[..],"',repeat('dd',32),'Fixture computer',repeat('ee',32),0,'wss://relay.openagents.com')");ap_do(t,sb_text(sql[..]));
- wq:[1]WsRequest;wq[0].nm=js_copy(wq[0].method[..],"ReadWorkspace");wq[0].nw=js_copy(wq[0].workspace[..],"default");n=ws_write(wq[..],b[..]);wv:[1]WsView;path:="/api/chat/environment/workspace/v1?host=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
+ // Its computer and grant are this file's own: task_checks shares this database in a
+ // --part run and requires its dd/ee enrollment to belong to one account only.
+ sql:[1]Sb;sb(sql[..],"INSERT INTO chat.environment_connections_v1(account,host_pubkey,display_name,grant_id,epoch,relay) VALUES ('");sb(sql[..],account);sb(sql[..],"',repeat('c1',32),'Fixture computer',repeat('c2',32),0,'wss://relay.openagents.com')");ap_do(t,sb_text(sql[..]));
+ wq:[1]WsRequest;wq[0].nm=js_copy(wq[0].method[..],"ReadWorkspace");wq[0].nw=js_copy(wq[0].workspace[..],"default");n=ws_write(wq[..],b[..]);wv:[1]WsView;path:="/api/chat/environment/workspace/v1?host=c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1";
  st=ac_call(t,"POST",path,cast(string)b[0..<n],auth,"","");ap_check(t,"native workspace read reaches owned computer through normal API workers",st==200 && ws_view_read(ap_body(t),wv[..]) && cast(string)wv[0].branch[0..<wv[0].nb]=="main",ap_body(t));
  st=ac_call(t,"POST","/api/chat/environment/workspace/v1?host=ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",cast(string)b[0..<n],auth,"","");ap_check(t,"workspace identity never grants access to another computer",st==404,ap_body(t));
  st=ac_call(t,"POST",path,"{}",auth,"","");ap_check(t,"untyped commands never reach the workspace broker",st==400,ap_body(t));
