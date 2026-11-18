@@ -1,0 +1,372 @@
+// The photoreal style's frame, written on the CPU (docs/metaverse/photoreal.md): a realm calls
+// these once a frame to fill the block its shaders read (photoreal-layout.coax, photoreal.coax).
+//
+//   pr_frame_view     the camera
+//   pr_frame_sky      the sun and the sky from the sun's place: the sun's light after its air, the
+//                     sky's light on every facing (nine numbers, from the same sky the shader
+//                     draws), the light the ground sends back up, the air, and the exposure
+//   pr_frame_pose     a platform's pose (a hull that heaves and rolls); none is the identity
+//   pr_frame_light    the shadow map's space round a point of interest
+//   pr_frame_field    where the ground's sky field lies; pr_field_build makes the field
+//   pr_material       one row of the material table
+//   coax/bin/coax test --library metaverse-engine/render/shade/photoreal-frame.coax
+#module "metaverse.engine.render.photoreal_frame";
+#load "light.coax";
+#load "filmic.coax";
+#load "photoreal-layout.coax";
+
+// ---- the sky, on the CPU
+// The air's light as the shaders' atmosphere has it (atmosphere.coax: atmo_sky, atmo_far,
+// atmo_sunlight, atmo_day), in scalars: a page's own program cannot load the shaders' vector
+// types beside its own, so the frame's writer carries the same numbers.
+// metaverse-engine/render/tests/photoreal-checks.coax holds the two together, direction by direction.
+PRF_NIGHT :: -0.2419219f32;
+PRF_AIR :: [3] f32.[0.0245, 0.0571, 0.14];
+PRF_HAZE :: 0.012f32; PRF_GLOW :: 0.17f32; PRF_SUN :: 1.55f32;
+prf_smooth :: (a: f32, b: f32, x: f32) -> f32 { t := st_sat((x - a) / (b - a)); return t * t * (3 - 2 * t); }
+prf_mix :: (a: f32, b: f32, t: f32) -> f32 { return a + (b - a) * t; }
+prf_sun_mass :: (sun_up: f32) -> f32 { if sun_up < 0 { return 36 - sun_up * 150; } return 1 / (sun_up + 0.0277778f32); }
+prf_through :: (mass: f32) -> [3] f32 { return [3] f32.[exp(-(PRF_AIR[0] + PRF_HAZE) * mass), exp(-(PRF_AIR[1] + PRF_HAZE) * mass), exp(-(PRF_AIR[2] + PRF_HAZE) * mass)]; }
+// The sun's colour as it arrives through its air and `haze` more of it (photoreal.coax
+// pr_haze_through), and how much of the day is left by its height.
+PRF_HAZE_LOSS :: [3] f32.[0.87, 1, 1.3];
+pr_frame_sunlight :: (sun_up: f32, haze: f32) -> [3] f32 {
+  c := prf_through(prf_sun_mass(sun_up));
+  for a: 0..<3 { c[a] *= exp(-PRF_HAZE_LOSS[a] * st_max(haze, 0) * prf_sun_mass(sun_up)); }
+  return c;
+}
+pr_frame_day :: (sun_up: f32) -> f32 { t := st_sat((sun_up - PRF_NIGHT) / (-PRF_NIGHT)); return t * t * t; }
+// The air's light along the unit ray rd, the sun along the unit `sun`, with `haze` more haze
+// than a clear day's (photoreal.coax pr_air_light).
+pr_frame_air :: (rd: [3] f32, sun: [3] f32, haze: f32) -> [3] f32 {
+  up := st_sat(rd[1]);
+  cos_t := rd[0] * sun[0] + rd[1] * sun[1] + rd[2] * sun[2];
+  sun_mass := prf_sun_mass(sun[1]) * prf_mix(1, 0.3, sqrt(up));
+  mass := 1 / (st_max(up, 0) + 0.08f32);
+  even := 0.5f32 * (1 + cos_t * cos_t) + 0.5f32;
+  g := 0.76f32;
+  d := st_max(1 + g * g - 2 * g * cos_t, 0.0001);
+  forward := (1 - g * g) / (d * sqrt(d)) * 0.29f32;
+  glow := PRF_GLOW * (forward + 2.8f32 * exp(-st_max(1 - cos_t, 0) * 2.2f32) * exp(-up * 7));
+  first := prf_mix(prf_smooth(-0.14, 0.02, sun[1]), 1, exp(-up * 6));
+  low := 1 - st_sat(sun[1] * 5 + 0.15f32);
+  more := prf_mix(1, 2.6f32 * prf_mix(0.12, 1, prf_smooth(0, 0.45, up)), low);
+  blue := [3] f32.[0.03, 0.07, 0.21];
+  day := pr_frame_day(sun[1]);
+  c: [3] f32;
+  for a: 0..<3 {
+    extra := PRF_HAZE_LOSS[a] * st_max(haze, 0);
+    clear := PRF_AIR[a] + PRF_HAZE;
+    all := clear + extra;
+    reach := exp(-all * sun_mass);
+    took := 1 - exp(-all * mass);
+    hazy := extra / all * 0.9f32 * (0.4f32 + 0.6f32 * forward);
+    once := reach * took * (PRF_AIR[a] / all * even + glow + hazy) * first;
+    c[a] = (once + blue[a] * took * (clear / all) * more) * PRF_SUN * day;
+  }
+  return c;
+}
+// What distance fades to along rd: the air's light along it laid flat on the horizon.
+pr_frame_far :: (rd: [3] f32, sun: [3] f32, haze: f32) -> [3] f32 {
+  l := sqrt(rd[0] * rd[0] + rd[2] * rd[2]);
+  if l < 0.0001 { return pr_frame_air([3] f32.[0, 0, -1], sun, haze); }
+  return pr_frame_air([3] f32.[rd[0] / l, 0, rd[2] / l], sun, haze);
+}
+
+PrView :: struct {
+  eye: [3] f32; forward: [3] f32; right: [3] f32; up: [3] f32;
+  tangent: f32;        // of half the vertical field
+  aspect: f32;         // width / height
+  near: f32 = 0.5;     // m
+  time: f32;           // s
+}
+pr_frame_view :: (u: [] f32, b: int, v: PrView) {
+  for a: 0..<3 { u[b + PR_EYE + a] = v.eye[a]; u[b + PR_FORWARD + a] = v.forward[a]; u[b + PR_RIGHT + a] = v.right[a]; u[b + PR_UP + a] = v.up[a]; }
+  u[b + PR_EYE + 3] = v.tangent; u[b + PR_FORWARD + 3] = v.near; u[b + PR_RIGHT + 3] = v.aspect; u[b + PR_UP + 3] = v.time;
+}
+// A platform's pose: three rows of four, world = R p + T.
+pr_frame_pose :: (u: [] f32, b: int, pose: [12] f32) { for i: 0..<12 { u[b + PR_POSE + i] = pose[i]; } }
+pr_frame_no_pose :: (u: [] f32, b: int) {
+  for i: 0..<12 { u[b + PR_POSE + i] = 0; }
+  u[b + PR_POSE] = 1; u[b + PR_POSE + 5] = 1; u[b + PR_POSE + 10] = 1;
+}
+
+PrSky :: struct {
+  sun: [3] f32;                 // toward the sun (unit)
+  cover: f32 = 0.35;            // cloud, 0 to 1
+  air: f32 = 0.00003;           // what a metre of air at sea level takes out of light (0.00003: a clear day, 100 km of sight)
+  air_height: f32 = 1200;       // the height over which the air thins to 1/e (m)
+  haze: f32;                    // how much more haze the sky's air carries than a clear day's: 0 clear, 0.15 a hazy evening at sea
+  sea_level: f32;               // y
+  ground: [3] f32 = [3] f32.[0.07, 0.09, 0.1];   // how much of the light that reaches the ground or sea it sends back (as light, not a display colour)
+  exposure: f32 = 1;            // a bias on the exposure the sky's brightness sets: 2 a stop brighter
+  reduced: bool;                // a phone's tier
+}
+// The directions the sky is weighed in: PR_SKY_SAMPLES of them, evenly over the sphere (a golden spiral).
+PR_SKY_SAMPLES :: 96;
+pr_sky_direction :: (k: int) -> [3] f32 {
+  y := 1 - (2 * cast(f32) k + 1) / cast(f32) PR_SKY_SAMPLES;
+  r := sqrt(st_max(1 - y * y, 0));
+  a := cast(f32) k * 2.3999632;
+  return [3] f32.[cos(a) * r, y, sin(a) * r];
+}
+// The sun's light on a surface square to it: its colour after its air, gone as its disc sets.
+PR_SUN_POWER :: 2.5f32;   // the sun's light on a surface in the scale the atmosphere draws its sky in: under a high sun in clear air, level ground takes six to ten times more from the sun than from the whole sky
+pr_sun_light :: (sun_up: f32, haze: f32) -> [3] f32 {
+  c := pr_frame_sunlight(sun_up, haze);
+  t := st_sat((sun_up + 0.01) / 0.02);
+  k := t * t * (3 - 2 * t) * PR_SUN_POWER;
+  return [3] f32.[c[0] * k, c[1] * k, c[2] * k];
+}
+// The exposure for a sky, as a camera set for the scene would choose it: what brings pale level
+// ground in this light to a pale grey on the display. Under a low sun the ground takes little of
+// the sun, so the camera opens up and what faces the sun runs bright into the film's shoulder.
+// Night is held back so it stays dark.
+pr_exposure :: (sun_lum: f32, sun_up: f32, sky_lum: f32, bias: f32) -> f32 {
+  key := sun_lum * (0.3 + 0.7 * st_sat(sun_up)) * 0.8 + sky_lum;
+  return bias * 0.8 / st_max(key, 0.045);
+}
+pr_frame_sky :: (u: [] f32, b: int, s: PrSky) {
+  sun := s.sun;
+  day := pr_frame_day(s.sun[1]);
+  light := pr_sun_light(s.sun[1], s.haze);
+  // the sky over the horizon, weighed for a level surface: its light on the ground
+  up: [3] f32;
+  n_up := 0;
+  for k: 0..<PR_SKY_SAMPLES {
+    d := pr_sky_direction(k);
+    if d[1] <= 0 { continue; }
+    c := pr_frame_air(d, sun, s.haze);
+    w := d[1] * 4 / cast(f32) PR_SKY_SAMPLES;   // cos(theta) * (4 pi / N) / pi
+    up[0] += c[0] * w; up[1] += c[1] * w; up[2] += c[2] * w;
+    n_up += 1;
+  }
+  night := [3] f32.[0.0035 * (1 - day), 0.0052 * (1 - day), 0.0105 * (1 - day)];   // photoreal.coax pr_night
+  ground: [3] f32;
+  for a: 0..<3 { up[a] += night[a]; ground[a] = s.ground[a] * (light[a] * st_max(s.sun[1], 0) + up[a]); }
+  // nine numbers a colour: the whole sphere's light (the sky above, the ground's below) as
+  // second-order spherical harmonics, each already weighed for a surface's facing and divided by
+  // pi, so the shader's sum is albedo-ready (Ramamoorthi and Hanrahan 2001)
+  sh: [27] f32;
+  for k: 0..<PR_SKY_SAMPLES {
+    d := pr_sky_direction(k);
+    c := [3] f32.[ground[0], ground[1], ground[2]];
+    if d[1] > 0 { q := pr_frame_air(d, sun, s.haze); c = [3] f32.[q[0] + night[0], q[1] + night[1], q[2] + night[2]]; }
+    x := d[0]; y := d[1]; z := d[2];
+    basis := [9] f32.[0.282095, 0.488603 * y, 0.488603 * z, 0.488603 * x, 1.092548 * x * y, 1.092548 * y * z, 0.315392 * (3 * z * z - 1), 1.092548 * x * z, 0.546274 * (x * x - y * y)];
+    for i: 0..<9 { for a: 0..<3 { sh[i * 3 + a] += c[a] * basis[i] * 12.566371 / cast(f32) PR_SKY_SAMPLES; } }
+  }
+  // each band's share of a surface's light over pi (1, 2/3, 1/4), and the basis' own constant again
+  fold := [9] f32.[0.282095, 0.488603 * 0.6666667, 0.488603 * 0.6666667, 0.488603 * 0.6666667, 1.092548 * 0.25, 1.092548 * 0.25, 0.315392 * 0.25, 1.092548 * 0.25, 0.546274 * 0.25];
+  for i: 0..<9 { for a: 0..<3 { u[b + PR_SH + i * 4 + a] = sh[i * 3 + a] * fold[i]; } u[b + PR_SH + i * 4 + 3] = 0; }
+  for a: 0..<3 { u[b + PR_SUN + a] = s.sun[a]; u[b + PR_SUN_LIGHT + a] = light[a]; u[b + PR_GROUND + a] = ground[a]; }
+  u[b + PR_SUN + 3] = day;
+  u[b + PR_SUN_LIGHT + 3] = pr_exposure(light[0] * 0.2126 + light[1] * 0.7152 + light[2] * 0.0722, s.sun[1], up[0] * 0.2126 + up[1] * 0.7152 + up[2] * 0.0722, s.exposure);
+  u[b + PR_GROUND + 3] = ifx s.reduced then cast(f32) PR_TIER_REDUCED else cast(f32) PR_TIER_FULL;
+  u[b + PR_HAZE] = s.air; u[b + PR_HAZE + 1] = s.air_height; u[b + PR_HAZE + 2] = s.sea_level; u[b + PR_HAZE + 3] = s.cover;
+  u[b + PR_AIR_HAZE] = st_max(s.haze, 0);
+}
+// A light's colour as the display shows it under the frame's exposure and film (photoreal.coax
+// pr_out, on the CPU): for a page that hands display colours to code written for them.
+prf_encode :: (x: f32) -> f32 { c := st_max(x, 0); if c <= 0.0031308 { return c * 12.92; } return 1.055f32 * pow(c, 1 / 2.4f32) - 0.055f32; }
+pr_frame_out :: (u: [] f32, b: int, c: [3] f32) -> [3] f32 {
+  e := u[b + PR_SUN_LIGHT + 3];
+  t := film_rec709(film_rgb(st_max(c[0], 0) * e, st_max(c[1], 0) * e, st_max(c[2], 0) * e));
+  return [3] f32.[prf_encode(st_sat(t.r)), prf_encode(st_sat(t.g)), prf_encode(st_sat(t.b))];
+}
+// The sky along rd as pr_sky draws it over the horizon, from the block's sun: the air and the night's floor.
+pr_frame_sky_at :: (u: [] f32, b: int, rd: [3] f32) -> [3] f32 {
+  c := pr_frame_air([3] f32.[rd[0], st_max(rd[1], 0), rd[2]], [3] f32.[u[b + PR_SUN], u[b + PR_SUN + 1], u[b + PR_SUN + 2]], u[b + PR_AIR_HAZE]);
+  n := 1 - u[b + PR_SUN + 3];
+  return [3] f32.[c[0] + 0.0035f32 * n, c[1] + 0.0052f32 * n, c[2] + 0.0105f32 * n];
+}
+// The sky's light on a facing, read back from the block as the shader reads it (photoreal.coax pr_sky_light).
+pr_frame_sky_light :: (u: [] f32, b: int, x: f32, y: f32, z: f32) -> [3] f32 {
+  basis := [9] f32.[1, y, z, x, x * y, y * z, 3 * z * z - 1, x * z, x * x - y * y];
+  c: [3] f32;
+  for i: 0..<9 { for a: 0..<3 { c[a] += u[b + PR_SH + i * 4 + a] * basis[i]; } }
+  for a: 0..<3 { c[a] = st_max(c[a], 0); }
+  return c;
+}
+
+// The shadow map's space: `reach` metres each way round `focus` across the sun's light, and
+// `depth` metres toward and away from the sun (casters far up the light still cast: make it
+// long under a low sun). `size` is the map's side in texels; the middle moves in whole texels,
+// so shadow edges hold still as the focus moves.
+pr_frame_light :: (u: [] f32, b: int, sun: [3] f32, focus: [3] f32, reach: f32, depth: f32, size: f32) {
+  s := light_space(sun[0], sun[1], sun[2], 0, 0, reach, size);
+  mx := metaverse_style_shadow_snap(focus[0] * s.axx + focus[2] * s.axz, reach, size);
+  my := metaverse_style_shadow_snap(focus[0] * s.ayx + focus[1] * s.ayy + focus[2] * s.ayz, reach, size);
+  ml := focus[0] * sun[0] + focus[1] * sun[1] + focus[2] * sun[2];
+  o := b + PR_LIGHT;
+  u[o] = s.axx / reach; u[o + 1] = 0; u[o + 2] = s.axz / reach; u[o + 3] = -mx / reach;
+  u[o + 4] = s.ayx / reach; u[o + 5] = s.ayy / reach; u[o + 6] = s.ayz / reach; u[o + 7] = -my / reach;
+  u[o + 8] = -sun[0] / (2 * depth); u[o + 9] = -sun[1] / (2 * depth); u[o + 10] = -sun[2] / (2 * depth); u[o + 11] = 0.5 + ml / (2 * depth);
+  u[o + 12] = 0; u[o + 13] = 0; u[o + 14] = 0; u[o + 15] = 1;
+}
+
+// ---- the ground's sky field
+// A grid over the ground, PR_FIELD_FLOATS floats a cell: how much of the sky the cell's surface
+// sees (1 open), and that surface's height over the ground (0, or a roof's). A realm fills `tops`
+// with the height of what stands in each cell (0: open ground), calls pr_field_build, hands the
+// result to its shaders as a store, and says where the grid lies with pr_frame_field.
+PR_FIELD_FLOATS :: 2;
+PR_FIELD_FLOOR :: 0.22f32;   // the least a cell answers: light bounces between pale walls
+pr_field_build :: (tops: [] f32, nx: int, nz: int, cell: f32, out: [] f32) {
+  if nx < 1 || nz < 1 || tops.count < nx * nz || out.count < nx * nz * PR_FIELD_FLOATS { return; }
+  // eight ways round, and how far out along each (cells): near steps fine, far ones coarse
+  dx := [8] int.[1, 1, 0, -1, -1, -1, 0, 1]; dz := [8] int.[0, 1, 1, 1, 0, -1, -1, -1];
+  far := [12] int.[1, 2, 3, 4, 6, 8, 11, 15, 20, 27, 36, 48];
+  for j: 0..<nz { for i: 0..<nx {
+    h0 := tops[j * nx + i];
+    sum := 0.0f32;
+    for d: 0..<8 {
+      // the highest thing that way, as the square of the sine of its angle over this surface
+      best := 0.0f32;
+      run := cell * (ifx dx[d] != 0 && dz[d] != 0 then 1.41421356f32 else 1.0f32);
+      for k: 0..<12 {
+        x := i + dx[d] * far[k]; z := j + dz[d] * far[k];
+        if x < 0 || x >= nx || z < 0 || z >= nz { continue; }
+        rise := tops[z * nx + x] - h0;
+        if rise <= 0 { continue; }
+        dist := run * cast(f32) far[k];
+        s2 := rise * rise / (rise * rise + dist * dist);
+        if s2 > best { best = s2; }
+      }
+      sum += 1 - best;   // a level surface's light from over an angle a is cos(a) squared of the whole
+    }
+    o := (j * nx + i) * PR_FIELD_FLOATS;
+    out[o] = PR_FIELD_FLOOR + (1 - PR_FIELD_FLOOR) * sum / 8;
+    out[o + 1] = h0;
+  } }
+}
+// Where the field lies: its corner (x, z), a cell's side, the ground's height, its cells each
+// way, and the height over a surface at which its shade has faded out.
+pr_frame_field :: (u: [] f32, b: int, x0: f32, z0: f32, cell: f32, ground: f32, nx: int, nz: int, fade: f32) {
+  u[b + PR_FIELD] = x0; u[b + PR_FIELD + 1] = z0; u[b + PR_FIELD + 2] = cell; u[b + PR_FIELD + 3] = ground;
+  u[b + PR_FIELD_N] = cast(f32) nx; u[b + PR_FIELD_N + 1] = cast(f32) nz; u[b + PR_FIELD_N + 2] = fade;
+}
+pr_frame_no_field :: (u: [] f32, b: int) { for i: 0..<3 { u[b + PR_FIELD_N + i] = 0; } }
+
+// ---- materials
+// One row of the table: its colour as on a display, roughness, metal, pattern, the pattern's size
+// (0: the pattern's own) and its glow.
+pr_material :: (table: [] f32, k: int, r: f32, g: f32, bl: f32, rough: f32, metal: f32, pattern: int, scale: f32, glow: f32) {
+  if k < 0 || k >= PR_MATERIALS || (k + 1) * PR_MATERIAL_FLOATS > table.count { return; }
+  o := k * PR_MATERIAL_FLOATS;
+  table[o + PR_M_COLOUR] = r; table[o + PR_M_COLOUR + 1] = g; table[o + PR_M_COLOUR + 2] = bl;
+  table[o + PR_M_ROUGH] = rough; table[o + PR_M_METAL] = metal; table[o + PR_M_PATTERN] = cast(f32) pattern;
+  table[o + PR_M_SCALE] = scale; table[o + PR_M_GLOW] = glow;
+}
+
+// ---- checks
+#test "the sky's block: a high sun is white and bright, a low one gold, and a set one gives no sun light" {
+  u: [PR_FLOATS] f32;
+  noon := PrSky.{sun = [3] f32.[0.2, 0.9539392, 0.2236068]};
+  pr_frame_sky(u[..], 0, noon);
+  #assert u[PR_SUN_LIGHT] > 0.9 && u[PR_SUN_LIGHT + 2] > 0.8 && u[PR_SUN + 3] == 1 && u[PR_GROUND + 3] == 0;
+  noon_exposure := u[PR_SUN_LIGHT + 3];
+  // the sky's light from above is blue; from below comes what the ground sends back of the
+  // sun's and the sky's, about as much again under a high sun
+  top := pr_frame_sky_light(u[..], 0, 0, 1, 0); under := pr_frame_sky_light(u[..], 0, 0, -1, 0);
+  #assert top[2] > top[0] && top[1] > 0.05 && top[1] < 1 && under[1] < top[1] * 1.5 && under[1] > 0 && under[2] < top[2];
+  low := PrSky.{sun = [3] f32.[0.9, 0.08, 0.4284857], reduced = true};
+  pr_frame_sky(u[..], 0, low);
+  #assert u[PR_SUN_LIGHT] > u[PR_SUN_LIGHT + 1] * 1.2 && u[PR_SUN_LIGHT + 1] > u[PR_SUN_LIGHT + 2] * 1.5 && u[PR_GROUND + 3] == 1;
+  // a camera opens up as the light goes
+  #assert u[PR_SUN_LIGHT + 3] > noon_exposure;
+  // a wall toward a low sun takes more of the sky's light than one turned from it: the glow round the sun
+  toward := pr_frame_sky_light(u[..], 0, 0.9029, 0, 0.4298); away := pr_frame_sky_light(u[..], 0, -0.9029, 0, -0.4298);
+  #assert toward[0] > away[0];
+  set := PrSky.{sun = [3] f32.[0.9, -0.1, 0.4242641]};
+  pr_frame_sky(u[..], 0, set);
+  #assert u[PR_SUN_LIGHT] == 0 && u[PR_SUN_LIGHT + 1] == 0 && u[PR_SUN + 3] < 1 && u[PR_SUN + 3] > 0;
+  night := PrSky.{sun = [3] f32.[0, -1, 0]};
+  pr_frame_sky(u[..], 0, night);
+  dark := pr_frame_sky_light(u[..], 0, 0, 1, 0);
+  #assert u[PR_SUN + 3] == 0 && dark[2] > 0 && dark[2] < 0.02 && u[PR_SUN_LIGHT + 3] < 20;
+}
+#test "the sky's directions are unit and cover the sphere evenly" {
+  sum := [3] f32.[0, 0, 0]; above := 0;
+  for k: 0..<PR_SKY_SAMPLES {
+    d := pr_sky_direction(k);
+    #assert abs(d[0] * d[0] + d[1] * d[1] + d[2] * d[2] - 1) < 0.0001;
+    for a: 0..<3 { sum[a] += d[a]; }
+    if d[1] > 0 { above += 1; }
+  }
+  #assert above == PR_SKY_SAMPLES / 2 && abs(sum[0]) < 1.5 && abs(sum[1]) < 0.001 && abs(sum[2]) < 1.5;
+}
+#test "a white sky's light is 1 on every facing: the nine numbers keep the whole" {
+  // by hand: every sample the same light folds to the first number alone
+  u: [PR_FLOATS] f32;
+  sh0 := 0.0f32;
+  for k: 0..<PR_SKY_SAMPLES { sh0 += 0.282095 * 12.566371 / cast(f32) PR_SKY_SAMPLES; }
+  u[PR_SH] = sh0 * 0.282095;
+  c := pr_frame_sky_light(u[..], 0, 0.6, 0.64, 0.48);
+  #assert abs(c[0] - 1) < 0.001;
+}
+pr_test_light_row :: (u: [] f32, x: f32, y: f32, z: f32, row: int) -> f32 { o := PR_LIGHT + row * 4; return u[o] * x + u[o + 1] * y + u[o + 2] * z + u[o + 3]; }
+#test "the shadow map's space puts its focus in the middle and nearer the sun nearer 0" {
+  u: [PR_FLOATS] f32;
+  sun := [3] f32.[0.6, 0.64, 0.48]; focus := [3] f32.[120, 118, -40];
+  pr_frame_light(u[..], 0, sun, focus, 300, 2000, 2048);
+  // within a texel of the middle (the middle moves in whole texels: 600 m over 2048)
+  #assert abs(pr_test_light_row(u[..], 120, 118, -40, 0)) < 1.0 / 2048 + 0.0001 && abs(pr_test_light_row(u[..], 120, 118, -40, 1)) < 1.0 / 2048 + 0.0001;
+  #assert abs(pr_test_light_row(u[..], 120, 118, -40, 2) - 0.5) < 0.0001 && pr_test_light_row(u[..], 120, 118, -40, 3) == 1;
+  // 1,000 m toward the sun: a quarter of the depth nearer
+  #assert abs(pr_test_light_row(u[..], 120 + 600, 118 + 640, -40 + 480, 2) - 0.25) < 0.0001;
+  // a point moved along the sun's ray lands on the same texel
+  #assert abs(pr_test_light_row(u[..], 120 + 60, 118 + 64, -40 + 48, 0) - pr_test_light_row(u[..], 120, 118, -40, 0)) < 0.00001;
+  // the first row's length is 1 / reach (photoreal.coax pr_shadow reads the reach from it)
+  #assert abs(sqrt(u[PR_LIGHT] * u[PR_LIGHT] + u[PR_LIGHT + 2] * u[PR_LIGHT + 2]) - 1.0 / 300) < 0.000001;
+}
+#test "the ground's field: open ground sees the whole sky, a street between towers little, a roof its own sky" {
+  tops: [21 * 21] f32; out: [21 * 21 * PR_FIELD_FLOATS] f32;
+  pr_field_build(tops[..], 21, 21, 4, out[..]);
+  #assert out[(10 * 21 + 10) * 2] == 1 && out[(10 * 21 + 10) * 2 + 1] == 0;
+  // two 100 m towers either side of a 12 m street along z
+  for j: 0..<21 { for i: 0..<21 { if i < 9 || i > 11 { tops[j * 21 + i] = 100; } } }
+  pr_field_build(tops[..], 21, 21, 4, out[..]);
+  street := out[(10 * 21 + 10) * 2]; roof := out[(10 * 21 + 4) * 2];
+  #assert street < 0.6 && street >= PR_FIELD_FLOOR && roof == 1 && out[(10 * 21 + 4) * 2 + 1] == 100;
+  // a wider street is lighter
+  for j: 0..<21 { for i: 0..<21 { tops[j * 21 + i] = ifx i < 4 || i > 16 then 100.0f32 else 0.0f32; } }
+  pr_field_build(tops[..], 21, 21, 4, out[..]);
+  #assert out[(10 * 21 + 10) * 2] > street;
+  // a short buffer is left alone
+  small: [4] f32; small[0] = 7;
+  pr_field_build(tops[..], 21, 21, 4, small[..]);
+  #assert small[0] == 7;
+}
+#test "a material's row, and a number past the table is refused" {
+  t: [PR_MATERIALS * PR_MATERIAL_FLOATS] f32;
+  pr_material(t[..], 3, 0.5, 0.6, 0.7, 0.4, 1, PR_PATTERN_GLASS, 3.9, 2);
+  o := 3 * PR_MATERIAL_FLOATS;
+  #assert t[o] == 0.5 && t[o + 2] == 0.7 && t[o + PR_M_ROUGH] == 0.4 && t[o + PR_M_METAL] == 1 && t[o + PR_M_PATTERN] == 2 && t[o + PR_M_SCALE] == 3.9 && t[o + PR_M_GLOW] == 2;
+  pr_material(t[..], PR_MATERIALS, 1, 1, 1, 1, 1, 0, 0, 0);
+  pr_material(t[..], -1, 1, 1, 1, 1, 1, 0, 0, 0);
+  #assert t[0] == 0 && t[PR_MATERIALS * PR_MATERIAL_FLOATS - 1] == 0;
+}
+#test "the view and the pose are written where the shader reads them" {
+  u: [PR_FLOATS] f32;
+  pr_frame_view(u[..], 0, PrView.{eye = [3] f32.[1, 2, 3], forward = [3] f32.[0, 0, -1], right = [3] f32.[1, 0, 0], up = [3] f32.[0, 1, 0], tangent = 0.4, aspect = 1.6, time = 9});
+  #assert u[PR_EYE + 1] == 2 && u[PR_EYE + 3] == 0.4 && u[PR_FORWARD + 2] == -1 && u[PR_FORWARD + 3] == 0.5 && u[PR_RIGHT + 3] == 1.6 && u[PR_UP + 3] == 9;
+  pr_frame_no_pose(u[..], 0);
+  #assert u[PR_POSE] == 1 && u[PR_POSE + 5] == 1 && u[PR_POSE + 10] == 1 && u[PR_POSE + 3] == 0;
+  pr_frame_field(u[..], 0, -500, -300, 4, 118, 250, 150, 60);
+  #assert u[PR_FIELD] == -500 && u[PR_FIELD + 3] == 118 && u[PR_FIELD_N + 1] == 150 && u[PR_FIELD_N + 2] == 60;
+  pr_frame_no_field(u[..], 0);
+  #assert u[PR_FIELD_N] == 0;
+}
+#test "under a high sun in clear air level ground takes six to ten times more light from the sun than from the sky; a low sun in haze is gold and gives about as much as its sky" {
+  u: [PR_FLOATS] f32;
+  pr_frame_sky(u[..], 0, PrSky.{sun = [3] f32.[0.3, 0.866, 0.4], haze = 0.02});
+  sky := pr_frame_sky_light(u[..], 0, 0, 1, 0);
+  sun := u[PR_SUN_LIGHT + 1] * 0.866f32;
+  #assert sun / sky[1] > 6 && sun / sky[1] < 10;
+  // a low sun in haze: the sun's share falls, and its light is gold where the sky's is near white
+  pr_frame_sky(u[..], 0, PrSky.{sun = [3] f32.[-0.918, 0.216, 0.333], haze = 0.15});
+  low := pr_frame_sky_light(u[..], 0, 0, 1, 0);
+  #assert u[PR_SUN_LIGHT] / u[PR_SUN_LIGHT + 2] > 1.8 && low[0] / low[2] > 0.45 && low[0] / low[2] < 1.2;
+  #assert u[PR_SUN_LIGHT + 1] * 0.216f32 / low[1] > 0.5 && u[PR_SUN_LIGHT + 1] * 0.216f32 / low[1] < 3;
+}

@@ -1,0 +1,34 @@
+// What stands on SLAB beyond its plan (docs/metaverse/photoreal.md): each content set (windows and
+// railings, people, vehicles, ships, trees, lights, the construction view's objects) has a file of
+// its own, and joins the world here, in three calls. To add a set:
+//   1. #load its file below.
+//   2. give SlabContent a field for what it keeps (its part and material numbers).
+//   3. call it from the three procedures: once to make its parts and materials, on every rebuild
+//      to place what stands still, and every frame to place what moves.
+// slab-photoreal.coax owns the buffers and the drawing; nothing here reads the GPU.
+
+SlabContent :: struct {
+  placeholder: int;   // (a struct needs a field; the first content set replaces this)
+}
+// What a content set may read of the world when it places things.
+SlabWorld :: struct {
+  records: [] f32;     // the plan's records now (metaverse/slab-plan.coax: SLAB_RECORD floats each), hull frame
+  count: int;
+  layout: int;         // LAYOUT_PRIME, LAYOUT_DOME or LAYOUT_CLUSTER (slab.coax)
+  build: bool;         // the construction view is on
+  build_day: f64;      // and its day
+  reduced: bool;       // the phone's tier
+  time: f32;           // the world's seconds
+  hour: f32;           // the site's hour, 0 to 24
+  night: f32;          // 0 day to 1 night
+}
+
+// Once: make parts with the architecture kit's pen and photo_part, and materials with photo_material.
+slab_content_make :: (ph: [] SlabPhoto, pen: [] ArchPen) {
+}
+// On every rebuild, twice (photoreal-scene.coax: count, then fill): place what stands still.
+slab_content_place :: (ph: [] SlabPhoto, l: [] PrList, w: SlabWorld) {
+}
+// Every frame, twice: place what moves. Keep it small: these records go to the GPU every frame.
+slab_content_move :: (ph: [] SlabPhoto, l: [] PrList, w: SlabWorld) {
+}

@@ -1,3 +1,3 @@
---vertices slab_bg_vs,slab_surface_vs,slab_fx_vs
---fragments slab_bg_fs,slab_surface_fs,slab_fx_fs
+--vertices slab_bg_vs,slab_surface_vs,slab_shadow_vs,slab_scene_vs,slab_fx_vs
+--fragments slab_bg_fs,slab_surface_fs,slab_shadow_fs,slab_scene_fs,slab_fx_fs
 --bindings apps/openagents-web/gpu/slab.bindings --strip slab_

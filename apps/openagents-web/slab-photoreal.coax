@@ -1,0 +1,496 @@
+// SLAB drawn photoreal (docs/metaverse/photoreal.md; docs/research/ocean/slab-world-spec.md): the
+// platform and everything on it as meshes through the Metaverse Engine's photoreal style, under a
+// physical sky for the site's month and hour. slab.coax loads this file and calls it in three
+// places: slab_photo_style (the page's style), slab_photo_frame (once a frame, after the uniforms
+// are written) and the scene's exports in slab-face.c.
+//
+// The plan's records stay the source (metaverse/slab-plan.coax, and what the layouts and the
+// construction view write over them): each frame's records are read back from the uniforms, and
+// when they change the list of parts is made again. A record becomes one or more placed parts:
+// a box, a drum, a dome, a gabled roof, cypresses for a grove, columns and steps for a temple.
+// Each carries its record's number, so the shader can paint it by its kind (gpu/slab.coax
+// slab_paint, as the trace does) and warm what is selected. Picking is slab.coax's own, over
+// the records, and does not read the meshes.
+//
+// The section and the view from under the sea stay traced (slab.wgsl bg_fs): there the meshes
+// are not drawn. What stands on the platform beyond its plan joins in slab-content.coax.
+#load "../../metaverse-engine/render/shade/photoreal-frame.coax";
+#load "../../metaverse-engine/render/shade/photoreal-scene.coax";
+#load "../../metaverse-engine/arch/solid.coax";
+#load "slab-content.coax";
+
+U_PHOTO :: U_WORDS + WORDS + SEAS_FLOATS;   // the photoreal frame's block, after the sea's (gpu/slab-photoreal.coax SLAB_PHOTO)
+U_PHOTO_ON :: U_PHOTO + PR_FLOATS;   // 1: the realm draws photoreal; then 1: the meshes draw the platform this frame
+PHOTO_FLOATS :: PR_FLOATS + 4;
+PHOTO_VERTICES :: 40000;             // the parts' vertices, fixed and loose
+PHOTO_RECORDS :: 16384;              // placed parts, still and moving
+PHOTO_DRAWS :: 2 * PR_PARTS;
+PHOTO_STORES :: 4;                   // the vertices, the records, the materials, the ground's sky field
+PHOTO_PAINT :: 63;                   // the material that means: the plan's own paint for the record's kind
+PHOTO_CELL :: 4.0f32;                // the sky field's cell (m) over the prime deck
+PHOTO_NX :: 250; PHOTO_NZ :: 150;
+
+SlabPhoto :: struct {
+  on: bool;                // the realm draws photoreal
+  made: bool;              // the fixed parts and the materials are made
+  full: bool;              // something did not fit and was left out
+  mesh: [PHOTO_VERTICES * ARCH_VERTEX_FLOATS] f32;
+  fixed: int;              // vertices of the parts made once
+  vertices: int;           // and with the loose pieces made with each list
+  kinds: [PR_PARTS] ArchPart;
+  kind_count: int;
+  records: [PHOTO_RECORDS * PR_RECORD_FLOATS] f32;
+  still: int;              // records that stand still, then those that move
+  moving: int;
+  draws: [PHOTO_DRAWS * PR_DRAW_WORDS] u32;
+  still_draws: int;
+  draw_count: int;         // this frame's draws (0: the trace draws the platform)
+  materials: [PR_MATERIALS * PR_MATERIAL_FLOATS] f32;
+  material_count: int;
+  field: [PHOTO_NX * PHOTO_NZ * PR_FIELD_FLOATS] f32;
+  tops: [PHOTO_NX * PHOTO_NZ] f32;
+  field_on: bool;
+  key: u32;                // what the still list was made from
+  keyed: bool;
+  versions: [PHOTO_STORES] u32;
+  span_from: int; span_bytes: int; span_whole: bool;   // the records changed since the host last took them
+  box: int; drum: int; post: int; dome: int; gable: int; cypress: int; loose: int;
+  glass: int; steel: int; span: int;                    // materials
+  content: SlabContent;
+}
+
+// ---- for content sets (slab-content.coax)
+// A part made with the pen, by the number its records name it with. -1 when there is no room.
+photo_part :: (ph: [] SlabPhoto, part: ArchPart) -> int {
+  if ph[0].kind_count >= PR_PARTS { ph[0].full = true; return -1; }
+  ph[0].kinds[ph[0].kind_count] = part;
+  ph[0].kind_count += 1;
+  return ph[0].kind_count - 1;
+}
+// A material: its colour as on a display, how rough, how much metal, a pattern (PR_PATTERN_*) and
+// its size, and its own glow. Answers its row, or 0 (the plain default) when the table is full.
+photo_material :: (ph: [] SlabPhoto, r: f32, g: f32, b: f32, rough: f32, metal: f32, pattern: int, scale: f32, glow: f32) -> int {
+  if ph[0].material_count >= PHOTO_PAINT { ph[0].full = true; return 0; }
+  k := ph[0].material_count;
+  pr_material(ph[0].materials[..], k, r, g, b, rough, metal, pattern, scale, glow);
+  ph[0].material_count += 1;
+  ph[0].versions[2] += 1;
+  return k;
+}
+// A material's glow, set again (a lamp that comes on at dusk).
+photo_glow :: (ph: [] SlabPhoto, material: int, glow: f32) {
+  if material <= 0 || material >= ph[0].material_count { return; }
+  at := material * PR_MATERIAL_FLOATS + PR_M_GLOW;
+  if ph[0].materials[at] != glow { ph[0].materials[at] = glow; ph[0].versions[2] += 1; }
+}
+
+// ---- the page's style
+slab_photo_style :: (s: [] Slab, style: string, url: string) {
+  s[0].photo[0].on = style == "photoreal";
+  if query_word(url, "style=photoreal") { s[0].photo[0].on = true; }
+  if query_word(url, "style=painterly") { s[0].photo[0].on = false; }
+}
+
+// ---- the fixed parts
+// A cypress one metre across and one high: a column of foliage for its lower third, a cone above.
+photo_cypress :: (p: [] ArchPen) -> ArchPart {
+  from := p[0].n;
+  arch_limb(p, 0, 0, 0, 0, 0.3, 0, 0.5, 0.5, 10);
+  arch_limb(p, 0, 0.3, 0, 0, 1, 0, 0.5, 0.0, 10);
+  return arch_part(p, from);
+}
+photo_make :: (ph: [] SlabPhoto) {
+  pen: [1] ArchPen; p := pen[..];
+  arch_pen(p, ph[0].mesh[..]);
+  ph[0].kind_count = 0; ph[0].material_count = 0;
+  ph[0].box = photo_part(ph, pr_unit_box(p));
+  ph[0].drum = photo_part(ph, pr_unit_drum(p, 40));
+  ph[0].post = photo_part(ph, pr_unit_drum(p, 12));
+  ph[0].dome = photo_part(ph, pr_unit_dome(p, 32, 8));
+  ph[0].gable = photo_part(ph, pr_unit_gable(p));
+  ph[0].cypress = photo_part(ph, photo_cypress(p));
+  ph[0].loose = photo_part(ph, ArchPart.{});
+  for i: 0..<PR_MATERIALS * PR_MATERIAL_FLOATS { ph[0].materials[i] = 0; }
+  // row 0: what a vertex with no material of its own is made of
+  _ = photo_material(ph, 0.8, 0.8, 0.78, 0.8, 0, PR_PATTERN_PLAIN, 0, 0);
+  // the towers' curtain walls: four glasses, coated, each a little its own
+  ph[0].glass = photo_material(ph, 0.50, 0.60, 0.66, 0.06, 0.55, PR_PATTERN_GLASS, 3.9, 0);
+  _ = photo_material(ph, 0.56, 0.62, 0.64, 0.07, 0.5, PR_PATTERN_GLASS, 3.9, 0);
+  _ = photo_material(ph, 0.44, 0.56, 0.64, 0.05, 0.6, PR_PATTERN_GLASS, 3.9, 0);
+  _ = photo_material(ph, 0.58, 0.60, 0.58, 0.08, 0.45, PR_PATTERN_GLASS, 3.9, 0);
+  ph[0].steel = photo_material(ph, 0.12, 0.12, 0.12, 0.5, 1, PR_PATTERN_PLAIN, 0, 0);
+  ph[0].span = photo_material(ph, 0.66, 0.65, 0.62, 0.8, 0, PR_PATTERN_CONCRETE, 0, 0);
+  pr_material(ph[0].materials[..], PHOTO_PAINT, 0.8, 0.8, 0.78, 0.8, 0, PR_PATTERN_PLAIN, 0, 0);
+  slab_content_make(ph, p);
+  if p[0].full { ph[0].full = true; }
+  ph[0].fixed = p[0].n; ph[0].vertices = p[0].n;
+  ph[0].made = true; ph[0].keyed = false;
+  ph[0].versions[0] += 1; ph[0].versions[2] += 1;
+}
+
+// ---- the plan's records as parts
+photo_min :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
+photo_max :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
+// One placed part of record `i`: the plan's paint, or `material`.
+photo_mark :: (l: [] PrList, r: int, i: int, material: int) { pr_value(l, r, cast(f32) (i + 1)); pr_made_of(l, r, material); }
+photo_drum :: (ph: [] SlabPhoto, l: [] PrList, i: int, cx: f32, y0: f32, cz: f32, across: f32, tall: f32) {
+  r := pr_put(l, ifx across < 3 then ph[0].post else ph[0].drum, cx, y0, cz, 0, 1);
+  pr_stretch(l, r, across, tall, across); photo_mark(l, r, i, PHOTO_PAINT);
+}
+// A box in a frame turned a quarter (a temple whose long side runs along z): local (x, z) to the plan's.
+photo_box :: (ph: [] SlabPhoto, l: [] PrList, i: int, turned: bool, cx: f32, cz: f32, x: f32, y0: f32, z: f32, hx: f32, y1: f32, hz: f32) {
+  px := ifx turned then cx + z else cx + x; pz := ifx turned then cz + x else cz + z;
+  ax := ifx turned then hz else hx; az := ifx turned then hx else hz;
+  r := pr_box(l, ph[0].box, px - ax, y0, pz - az, px + ax, y1, pz + az, PHOTO_PAINT);
+  pr_value(l, r, cast(f32) (i + 1));
+}
+// A Greek temple in its record's box, as gpu/slab.coax slab_temple_sd shapes it: three steps, a
+// peristyle of columns, the cella, the entablature and a pedimented roof along its longer side.
+photo_temple :: (ph: [] SlabPhoto, l: [] PrList, i: int, x0: f32, y0: f32, z0: f32, x1: f32, y1: f32, z1: f32) {
+  turned := x1 - x0 < z1 - z0;
+  cx := (x0 + x1) * 0.5; cz := (z0 + z1) * 0.5;
+  sx := (ifx turned then z1 - z0 else x1 - x0) * 0.5; sz := (ifx turned then x1 - x0 else z1 - z0) * 0.5; hh := y1 - y0;
+  st := hh * 0.09; step := sz * 0.03;
+  for k: 0..<3 { kf := cast(f32) k; photo_box(ph, l, i, turned, cx, cz, 0, y0 + st * kf / 3, 0, sx - kf * step, y0 + st * (kf + 1) / 3, sz - kf * step); }
+  hl := sx - 3 * step; hw := sz - 3 * step;
+  hc := hh * 0.56; rc := photo_max(hw * 0.055, 0.45);
+  cl := hl - rc * 1.6; cw := hw - rc * 1.6;
+  nl := cast(int) photo_max(floor(cl * 2 / (rc * 5)), 2); sl := cl * 2 / cast(f32) nl;
+  nw := cast(int) photo_max(floor(cw * 2 / (rc * 5)), 2); sw := cw * 2 / cast(f32) nw;
+  pr_fine(l, true);
+  for k: 0..<nl + 1 { for side: 0..<2 {
+    x := -cl + cast(f32) k * sl; z := ifx side == 0 then -cw else cw;
+    photo_drum(ph, l, i, ifx turned then cx + z else cx + x, y0 + st, ifx turned then cz + x else cz + z, rc * 2, hc);
+  } }
+  for k: 1..<nw { for side: 0..<2 {
+    z := -cw + cast(f32) k * sw; x := ifx side == 0 then -cl else cl;
+    photo_drum(ph, l, i, ifx turned then cx + z else cx + x, y0 + st, ifx turned then cz + x else cz + z, rc * 2, hc);
+  } }
+  pr_fine(l, false);
+  photo_box(ph, l, i, turned, cx, cz, 0, y0 + st, 0, cl - rc * 3.5, y0 + st + hc, cw - rc * 3.5);
+  ye := y0 + st + hc; he := hh * 0.13;
+  photo_box(ph, l, i, turned, cx, cz, 0, ye, 0, hl, ye + he, hw);
+  yr := ye + he; hr := photo_max(y1 - yr, 0.5);
+  r := pr_put(l, ph[0].gable, cx, yr, cz, ifx turned then 1.5707963f32 else 0.0f32, 1);
+  pr_stretch(l, r, (hl + 0.4) * 2, hr, (hw + 0.4) * 2); photo_mark(l, r, i, PHOTO_PAINT);
+}
+// A round temple (slab_tholos_sd): round steps, a ring of columns round a round cella, a ring
+// entablature and a dome.
+photo_tholos :: (ph: [] SlabPhoto, l: [] PrList, i: int, x0: f32, y0: f32, z0: f32, x1: f32, y1: f32, z1: f32) {
+  turned := x1 - x0 < z1 - z0;
+  cx := (x0 + x1) * 0.5; cz := (z0 + z1) * 0.5; hh := y1 - y0;
+  r := (ifx turned then z1 - z0 else x1 - x0) * 0.5; st := hh * 0.08; step := r * 0.05;
+  for k: 0..<3 { kf := cast(f32) k; photo_drum(ph, l, i, cx, y0 + st * kf / 3, cz, (r - kf * step) * 2, st / 3); }
+  r2 := r - 3 * step; hc := hh * 0.45; rc := photo_max(r2 * 0.07, 0.35);
+  rr := r2 - rc * 1.6;
+  n := cast(int) photo_max(floor(6.2831853f32 * rr / (rc * 5)), 6);
+  pr_fine(l, true);
+  for k: 0..<n { a := 6.2831853f32 * cast(f32) k / cast(f32) n; photo_drum(ph, l, i, cx + cos(a) * rr, y0 + st, cz + sin(a) * rr, rc * 2, hc); }
+  pr_fine(l, false);
+  photo_drum(ph, l, i, cx, y0 + st, cz, (rr - rc * 3) * 2, hc);
+  ye := y0 + st + hc; he := hh * 0.12;
+  photo_drum(ph, l, i, cx, ye, cz, r2 * 2, he);
+  yd := ye + he; rd := photo_min(r2 * 0.92, y1 - yd);
+  d := pr_put(l, ph[0].dome, cx, yd, cz, 0, 1);
+  pr_stretch(l, d, rd * 2, rd * 2, rd * 2); photo_mark(l, d, i, PHOTO_PAINT);
+}
+// The plan's records, each as its parts. Runs twice a list (photoreal-scene.coax).
+photo_plan :: (ph: [] SlabPhoto, l: [] PrList, rec: [] f32, n: int, tripped: bool) {
+  for i: 0..<n {
+    at := i * SLAB_RECORD;
+    x0 := rec[at]; y0 := rec[at + 1]; z0 := rec[at + 2]; kind := cast(int) (rec[at + 3] + 0.5);
+    x1 := rec[at + 4]; y1 := rec[at + 5]; z1 := rec[at + 6]; shape := cast(int) (rec[at + 7] + 0.5);
+    // a tripped cold-water pipe: the first one broken off 300 m down (as slab_scene has it)
+    if kind == SLAB_KIND_PIPE && tripped && z0 < -200 { y0 = y1 - 300; }
+    // wholly under the sea: the sea hides it (the view from under it is traced)
+    if x1 <= x0 || y1 <= y0 || z1 <= z0 || y1 < -3 { continue; }
+    cx := (x0 + x1) * 0.5; cz := (z0 + z1) * 0.5;
+    dx := x1 - x0; dy := y1 - y0; dz := z1 - z0;
+    material := ifx kind == SLAB_KIND_TOWER then ph[0].glass + i % 4 else PHOTO_PAINT;
+    if shape == SLAB_CYLINDER {
+      across := photo_min(dx, dz);
+      r := pr_put(l, ifx across < 3 then ph[0].post else ph[0].drum, cx, y0, cz, 0, 1);
+      pr_stretch(l, r, across, dy, across); photo_mark(l, r, i, material);
+      if dy < 1 { pr_laid(l, r); }
+    } else if shape == SLAB_GABLE_X || shape == SLAB_GABLE_Z {
+      along_x := shape == SLAB_GABLE_X;
+      rise := photo_min((ifx along_x then dz else dx) * 0.5 * 0.36, dy * 0.45);
+      r := pr_box(l, ph[0].box, x0, y0, z0, x1, y1 - rise, z1, material); pr_value(l, r, cast(f32) (i + 1));
+      g := pr_put(l, ph[0].gable, cx, y1 - rise, cz, ifx along_x then 0.0f32 else 1.5707963f32, 1);
+      pr_stretch(l, g, ifx along_x then dx else dz, rise, ifx along_x then dz else dx); photo_mark(l, g, i, material);
+    } else if shape == SLAB_GROVE || shape == SLAB_GLADE_GROVE {
+      // the lawn, and the cypresses the trace and the walk know (slab_tree)
+      ground := y0 + 0.3f32;
+      r := pr_box(l, ph[0].box, x0, y0, z0, x1, ground, z1, PHOTO_PAINT); pr_value(l, r, cast(f32) (i + 1)); pr_laid(l, r);
+      for tz: cast(int) floor(z0 / SLAB_TREE_CELL)..<cast(int) floor(z1 / SLAB_TREE_CELL) + 1 {
+        for tx: cast(int) floor(x0 / SLAB_TREE_CELL)..<cast(int) floor(x1 / SLAB_TREE_CELL) + 1 {
+          t := slab_tree(cast(f32) tx, cast(f32) tz);
+          if !t.stands || t.x <= x0 + 1 || t.x >= x1 - 1 || t.z <= z0 + 1 || t.z >= z1 - 1 { continue; }
+          if shape == SLAB_GLADE_GROVE && abs(t.x - cx) < dx * 0.18 && abs(t.z - cz) < dz * 0.18 { continue; }
+          c := pr_put(l, ph[0].cypress, t.x, ground + 0.4f32, t.z, 0, 1);
+          pr_stretch(l, c, t.radius * 2, t.height - 0.4f32, t.radius * 2); photo_mark(l, c, i, PHOTO_PAINT);
+        }
+      }
+    } else if shape == SLAB_DOME {
+      rr := photo_min(dx, dz);
+      r := pr_put(l, ph[0].dome, cx, y0, cz, 0, 1);
+      pr_stretch(l, r, rr, rr, rr); photo_mark(l, r, i, material);
+    } else if shape == SLAB_TEMPLE {
+      photo_temple(ph, l, i, x0, y0, z0, x1, y1, z1);
+    } else if shape == SLAB_THOLOS {
+      photo_tholos(ph, l, i, x0, y0, z0, x1, y1, z1);
+    } else if shape == SLAB_STATUES {
+      // pedestals and figures along both long edges (slab_statues_hit)
+      along_x := dx >= dz;
+      la := ifx along_x then x0 else z0; ha := ifx along_x then x1 else z1;
+      s0 := (ifx along_x then z0 else x0) + 1.5f32; s1 := (ifx along_x then z1 else x1) - 1.5f32;
+      pr_fine(l, true);
+      for k: 0..<cast(int) floor((ha - la) / SLAB_STATUE_GAP) {
+        c := la + SLAB_STATUE_GAP * (cast(f32) k + 0.5f32);
+        for side: 0..<2 {
+          w := ifx side == 0 then s0 else s1;
+          px := ifx along_x then c else w; pz := ifx along_x then w else c;
+          r := pr_box(l, ph[0].box, px - 0.8f32, y0, pz - 0.8f32, px + 0.8f32, y0 + 1.8f32, pz + 0.8f32, PHOTO_PAINT); pr_value(l, r, cast(f32) (i + 1));
+          photo_drum(ph, l, i, px, y0 + 1.8f32, pz, 0.76, 2.4);
+        }
+      }
+      pr_fine(l, false);
+    } else if shape == SLAB_SILONE {
+      // a Silone dome module: its base ring, five terraces and the lantern (slab_silone_hit)
+      yc := y0 + 16;
+      photo_drum(ph, l, i, cx, y0, cz, dx, 16);
+      for k: 0..<6 {
+        across := ifx k < 5 then dx - 12 * (cast(f32) k + 1) else 8.0f32;
+        photo_drum(ph, l, i, cx, yc + 6 * cast(f32) k, cz, across, ifx k < 5 then 6.0f32 else 10.0f32);
+      }
+    } else if (shape >= 7 && shape <= 10) || (shape >= SLAB_BRIDGE && shape <= SLAB_BRIDGE + 3) {
+      // hawsers, cables and bridge decks lie at their own angles: photo_loose makes them
+    } else {
+      r := pr_box(l, ph[0].box, x0, y0, z0, x1, y1, z1, material); pr_value(l, r, cast(f32) (i + 1));
+      if dy < 1 { pr_laid(l, r); }
+    }
+  }
+  // the loose pieces, where they were made
+  if ph[0].vertices > ph[0].fixed {
+    r := pr_put(l, ph[0].loose, 0, 0, 0, 0, 1);
+    pr_made_of(l, r, 0);
+  }
+}
+// The pieces that lie at their own angles, made in place after the fixed parts: hawsers and
+// cables (capsules, 0.48 m) and bridge decks (8 m wide, 1.2 m deep), as slab_record_hit has them.
+photo_loose :: (ph: [] SlabPhoto, rec: [] f32, n: int) {
+  pen: [1] ArchPen; p := pen[..];
+  arch_pen(p, ph[0].mesh[..]);
+  p[0].n = ph[0].fixed;
+  for i: 0..<n {
+    at := i * SLAB_RECORD;
+    x0 := rec[at]; y0 := rec[at + 1]; z0 := rec[at + 2];
+    x1 := rec[at + 4]; y1 := rec[at + 5]; z1 := rec[at + 6]; shape := cast(int) (rec[at + 7] + 0.5);
+    if shape >= 7 && shape <= 10 {
+      ax := ifx (shape - 7) & 1 == 1 then x1 else x0; az := ifx (shape - 7) & 2 == 2 then z1 else z0;
+      arch_material(p, ph[0].steel, 0, 0, 0);
+      arch_limb(p, ax, y1, az, x0 + x1 - ax, y0, z0 + z1 - az, 0.48, 0.48, 8);
+    } else if shape >= SLAB_BRIDGE && shape <= SLAB_BRIDGE + 3 {
+      ex := ifx (shape - SLAB_BRIDGE) & 1 == 1 then x1 - 4.5f32 else x0 + 4.5f32; ez := ifx (shape - SLAB_BRIDGE) & 2 == 2 then z1 - 4.5f32 else z0 + 4.5f32;
+      arch_material(p, ph[0].span, 0, 0, 0);
+      arch_beam2(p, arch_v(ex, y1 - 1.2f32, ez), arch_v(x0 + x1 - ex, y0 + 1.2f32, z0 + z1 - ez), 4, 0.6);
+    }
+  }
+  if p[0].full { ph[0].full = true; }
+  ph[0].kinds[ph[0].loose] = ArchPart.{first = ph[0].fixed, count = p[0].n - ph[0].fixed};
+  if p[0].n != ph[0].vertices || p[0].n > ph[0].fixed { ph[0].versions[0] += 1; }
+  ph[0].vertices = p[0].n;
+}
+// The ground's sky field over the prime deck: how tall what stands in each cell is, then how
+// much of the sky each cell sees (photoreal-frame.coax pr_field_build).
+photo_field :: (ph: [] SlabPhoto, rec: [] f32, n: int) {
+  for i: 0..<PHOTO_NX * PHOTO_NZ { ph[0].tops[i] = 0; }
+  for i: 0..<n {
+    at := i * SLAB_RECORD;
+    x0 := rec[at]; y0 := rec[at + 1]; z0 := rec[at + 2]; kind := cast(int) (rec[at + 3] + 0.5);
+    x1 := rec[at + 4]; y1 := rec[at + 5]; z1 := rec[at + 6]; shape := cast(int) (rec[at + 7] + 0.5);
+    if kind == SLAB_KIND_HULL || kind == SLAB_KIND_GROVE || kind == SLAB_KIND_STATUE || y0 < SLAB_DECK - 2 || y1 - SLAB_DECK < 2 { continue; }
+    round := shape == SLAB_CYLINDER || shape == SLAB_DOME || shape == SLAB_THOLOS;
+    cx := (x0 + x1) * 0.5; cz := (z0 + z1) * 0.5; rr := photo_min(x1 - x0, z1 - z0) * 0.5;
+    i0 := cast(int) photo_max(floor((x0 + SLAB_LENGTH / 2) / PHOTO_CELL), 0); i1 := cast(int) photo_min(floor((x1 + SLAB_LENGTH / 2) / PHOTO_CELL), cast(f32) (PHOTO_NX - 1));
+    j0 := cast(int) photo_max(floor((z0 + SLAB_BEAM / 2) / PHOTO_CELL), 0); j1 := cast(int) photo_min(floor((z1 + SLAB_BEAM / 2) / PHOTO_CELL), cast(f32) (PHOTO_NZ - 1));
+    for j: j0..<j1 + 1 { for k: i0..<i1 + 1 {
+      px := (cast(f32) k + 0.5f32) * PHOTO_CELL - SLAB_LENGTH / 2; pz := (cast(f32) j + 0.5f32) * PHOTO_CELL - SLAB_BEAM / 2;
+      if px < x0 || px > x1 || pz < z0 || pz > z1 { continue; }
+      if round && (px - cx) * (px - cx) + (pz - cz) * (pz - cz) > rr * rr { continue; }
+      ph[0].tops[j * PHOTO_NX + k] = photo_max(ph[0].tops[j * PHOTO_NX + k], y1 - SLAB_DECK);
+    } }
+  }
+  pr_field_build(ph[0].tops[..], PHOTO_NX, PHOTO_NZ, PHOTO_CELL, ph[0].field[..]);
+  ph[0].versions[3] += 1;
+}
+// What a content set reads of the world.
+photo_world :: (s: [] Slab, rec: [] f32, n: int, reduced: bool) -> SlabWorld {
+  return SlabWorld.{records = rec, count = n, layout = s[0].layout, build = s[0].build.on, build_day = ifx s[0].build.on then build_day(s[0].build.cursor) else 0.0,
+    reduced = reduced, time = f32(s[0].time), hour = f32(s[0].hour), night = 0};
+}
+// The list of what stands still, made again from the frame's records.
+photo_list :: (s: [] Slab, rec: [] f32, n: int, tripped: bool, reduced: bool) {
+  ph := s[0].photo[..];
+  photo_loose(ph, rec, n);
+  ls: [1] PrList; l := ls[..];
+  pr_list(l, ph[0].records[..], ph[0].draws[..], 0);
+  for k: 0..<ph[0].kind_count { _ = pr_part(l, ph[0].kinds[k]); }
+  w := photo_world(s, rec, n, reduced);
+  pr_list_count(l); photo_plan(ph, l, rec, n, tripped); slab_content_place(ph, l, w);
+  pr_list_fill(l); photo_plan(ph, l, rec, n, tripped); slab_content_place(ph, l, w);
+  ph[0].still = l[0].rn;
+  ph[0].still_draws = pr_list_draws(l, reduced);
+  if l[0].full { ph[0].full = true; }
+  ph[0].field_on = s[0].layout == LAYOUT_PRIME && !s[0].build.on;
+  if ph[0].field_on { photo_field(ph, rec, n); }
+  ph[0].versions[1] += 1; ph[0].span_whole = true;
+}
+// What moves, after the still records: its own records and draws, made every frame.
+photo_movers :: (s: [] Slab, rec: [] f32, n: int, reduced: bool, night: f32) {
+  ph := s[0].photo[..];
+  had := ph[0].moving;
+  ls: [1] PrList; l := ls[..];
+  pr_list(l, ph[0].records[ph[0].still * PR_RECORD_FLOATS..<PHOTO_RECORDS * PR_RECORD_FLOATS], ph[0].draws[ph[0].still_draws * PR_DRAW_WORDS..<PHOTO_DRAWS * PR_DRAW_WORDS], ph[0].still);
+  for k: 0..<ph[0].kind_count { _ = pr_part(l, ph[0].kinds[k]); }
+  w := photo_world(s, rec, n, reduced); w.night = night;
+  pr_list_count(l); slab_content_move(ph, l, w);
+  pr_list_fill(l); slab_content_move(ph, l, w);
+  ph[0].moving = l[0].rn;
+  ph[0].draw_count = ph[0].still_draws + pr_list_draws(l, reduced);
+  if ph[0].moving > 0 || had > 0 {
+    ph[0].versions[1] += 1;
+    ph[0].span_from = ph[0].still * PR_RECORD_FLOATS * 4; ph[0].span_bytes = photo_max_i(ph[0].span_bytes, photo_max_i(ph[0].moving, had) * PR_RECORD_FLOATS * 4);
+  }
+}
+photo_max_i :: (a: int, b: int) -> int { if a > b { return a; } return b; }
+// What a list is made from, as one number: the records, their count and what else shapes the list.
+photo_key :: (rec: [] f32, n: int, tripped: bool, reduced: bool) -> u32 {
+  h: u64 = 2166136261;
+  for i: 0..<n * SLAB_RECORD { h = ((h ^ cast(u64) f32_bits(rec[i])) * 16777619) & 0xFFFFFFFF; }
+  h = ((h ^ cast(u64) n) * 16777619) & 0xFFFFFFFF;
+  h = ((h ^ (ifx tripped then 1 else 0) ^ (ifx reduced then 2 else 0)) * 16777619) & 0xFFFFFFFF;
+  return cast(u32) h;
+}
+
+// ---- a frame
+// Called once a frame after slab_frame has written the uniforms: the photoreal block, the list
+// when the records changed, and the sky's colours for the sea (which is written for colours as
+// a display shows them: gpu/slab-photoreal.coax).
+slab_photo_frame :: (s: [] Slab, u: [] f32, sun: SimSun, phone: bool) {
+  ph := s[0].photo[..];
+  b := U_PHOTO; P := U_PARAMS;
+  ph[0].draw_count = 0;
+  u[U_PHOTO_ON] = 0; u[U_PHOTO_ON + 1] = 0;
+  if !ph[0].on { return; }
+  if !ph[0].made { photo_make(ph); }
+  u[U_PHOTO_ON] = 1;
+  pr_frame_view(u, b, PrView.{eye = s[0].eye, forward = s[0].fwd, right = s[0].right, up = s[0].up, tangent = s[0].tanh, aspect = s[0].aspect, near = 0.5, time = u[U_SIZE + 2]});
+  pose: [12] f32;
+  for i: 0..<12 { pose[i] = u[P + P_POSE + i]; }
+  pr_frame_pose(u, b, pose);
+  sv := [3] f32.[f32(sun.x), f32(sun.y), f32(sun.z)];
+  storm := s[0].sea >= SEA_GALE;
+  pr_frame_sky(u, b, PrSky.{sun = sv, cover = ifx storm then 0.8f32 else ifx s[0].sea >= SEA_WINTER then 0.5f32 else 0.3f32,
+    air = ifx storm then 0.0003f32 else 0.00006f32, air_height = 900, haze = ifx storm then 0.3f32 else 0.15f32, sea_level = 0, ground = [3] f32.[0.26, 0.26, 0.25], exposure = 1.0, reduced = phone});
+  // the shadow map: round where the view meets the deck (or the sea), as wide as the view there
+  level := ifx s[0].layout == LAYOUT_PRIME && !s[0].build.on then SLAB_DECK else 8.0f32;
+  e := s[0].eye; f := s[0].fwd;
+  t := ifx f[1] < -0.02 then (e[1] - level) / (-f[1]) else 2500.0f32;
+  if s[0].mode == CAM_WALK { t = photo_min(t, ifx phone then 110.0f32 else 55.0f32); }
+  t = clamp32(t, 20, 2500);
+  reach := clamp32(t * s[0].tanh * photo_max(1, s[0].aspect) * 1.25f32 + 30, 90, 1000);
+  pr_frame_light(u, b, sv, [3] f32.[e[0] + f[0] * t, level, e[2] + f[2] * t], reach, 2400, 1024);
+  // the list
+  n := cast(int) u[U_MODE + 2];
+  rec := u[U_BOXES..<U_BOXES + n * SLAB_RECORD];
+  tripped := u[P + P_UNDER + 1] > 0.5;
+  key := photo_key(rec, n, tripped, phone);
+  if !ph[0].keyed || key != ph[0].key { photo_list(s, rec, n, tripped, phone); ph[0].key = key; ph[0].keyed = true; }
+  photo_movers(s, rec, n, phone, u[P + P_PICK + 3]);
+  if ph[0].field_on { pr_frame_field(u, b, -SLAB_LENGTH / 2, -SLAB_BEAM / 2, PHOTO_CELL, SLAB_DECK, PHOTO_NX, PHOTO_NZ, 8); } else { pr_frame_no_field(u, b); }
+  // the section and the view from under the sea stay traced
+  meshes := u[P + P_SECTION] == 0 && u[P + P_UNDER] < 0.5;
+  if meshes { u[U_PHOTO_ON + 1] = 1; } else { ph[0].draw_count = 0; }
+  // the sea's colours, as a display shows them: the sun on a white surface, the sky overhead
+  // and at the horizon square to the sun; no painted golden grade
+  sc := pr_frame_out(u, b, [3] f32.[u[b + PR_SUN_LIGHT], u[b + PR_SUN_LIGHT + 1], u[b + PR_SUN_LIGHT + 2]]);
+  zen := pr_frame_out(u, b, pr_frame_sky_at(u, b, [3] f32.[0, 1, 0]));
+  hl := photo_max(sqrt(sv[0] * sv[0] + sv[2] * sv[2]), 0.0001);
+  hor := pr_frame_out(u, b, pr_frame_sky_at(u, b, [3] f32.[-sv[2] / hl, 0.03, sv[0] / hl]));
+  for a: 0..<3 { u[P + P_SUNCOL + a] = sc[a]; u[P + P_ZENITH + a] = zen[a]; u[P + P_HORIZON + a] = hor[a]; }
+  u[P + P_SUNHULL + 3] = 0;
+}
+
+// ---- the scene's stores and draws, for slab-face.c
+slab_photo_draws :: (s: [] Slab) -> int #export_c #effects(all) { return ifx s[0].started then s[0].photo[0].draw_count else 0; }
+slab_photo_store_cap :: (k: int) -> int #export_c #effects(all) {
+  if k == 0 { return PHOTO_VERTICES * ARCH_VERTEX_FLOATS * 4; }
+  if k == 1 { return PHOTO_RECORDS * PR_RECORD_FLOATS * 4; }
+  if k == 2 { return PR_MATERIALS * PR_MATERIAL_FLOATS * 4; }
+  return PHOTO_NX * PHOTO_NZ * PR_FIELD_FLOATS * 4;
+}
+slab_photo_store_bytes :: (s: [] Slab, k: int) -> int #export_c #effects(all) {
+  if k == 0 { return photo_max_i(s[0].photo[0].vertices, 1) * ARCH_VERTEX_FLOATS * 4; }
+  if k == 1 { return photo_max_i(s[0].photo[0].still + s[0].photo[0].moving, 1) * PR_RECORD_FLOATS * 4; }
+  return slab_photo_store_cap(k);
+}
+slab_photo_store_version :: (s: [] Slab, k: int) -> int #export_c #effects(all) { return ifx k >= 0 && k < PHOTO_STORES then cast(int) s[0].photo[0].versions[k] else 0; }
+// Of the records, only those that moved since the host last took them (host.js
+// coaxial_store_span_v1: field 0 answers where they start, field 1 how many bytes and takes the span).
+slab_photo_store_span :: (s: [] Slab, k: int, field: int) -> int #export_c #effects(all) {
+  if k != 1 { return ifx field == 1 then 0xFFFFFFFF else 0; }
+  if field == 0 { return ifx s[0].photo[0].span_whole then 0 else s[0].photo[0].span_from; }
+  bytes := ifx s[0].photo[0].span_whole || s[0].photo[0].span_bytes <= 0 then 0xFFFFFFFF else s[0].photo[0].span_bytes;
+  s[0].photo[0].span_whole = false; s[0].photo[0].span_bytes = 0;
+  return bytes;
+}
+
+// ---- checks
+#test "the photoreal block follows the uniforms' words, where the shader reads it" {
+  // gpu/slab-photoreal.coax SLAB_PHOTO and gpu/slab.bindings' vec4 count follow these
+  #assert U_PHOTO == 15872 && UNIFORM_FLOATS == U_PHOTO + PHOTO_FLOATS && UNIFORM_FLOATS == 3995 * 4;
+  #assert PHOTO_PAINT == PR_MATERIALS - 1;
+}
+#test "a photoreal frame places the plan's parts and draws them; the section and the painterly realm draw none" #steps 4000000000 {
+  s: [1] Slab;
+  u: [UNIFORM_FLOATS] f32;
+  slab_reset(s[..]);
+  slab_build(s[..], false);
+  // what slab_frame hands on: the records, the camera, the sun
+  u[U_MODE + 2] = f32(s[0].box_count);
+  for i: 0..<s[0].box_count * SLAB_RECORD { u[U_BOXES + i] = s[0].boxes[i]; }
+  for i: 0..<12 { u[U_PARAMS + P_POSE + i] = ifx i == 0 || i == 5 || i == 10 then 1.0f32 else 0.0f32; }
+  s[0].eye = [3] f32.[600, 500, 700]; s[0].fwd = [3] f32.[-0.6, -0.5, -0.6245]; s[0].right = [3] f32.[0.72, 0, -0.69]; s[0].up = [3] f32.[-0.35, 0.87, -0.36];
+  s[0].tanh = 0.4; s[0].aspect = 1.6;
+  sun := sim_sun(27.8, 5.5, 17.85);
+  slab_photo_frame(s[..], u[..], sun, false);
+  #assert slab_photo_draws(s[..]) == 0 && u[U_PHOTO_ON] == 0;
+  s[0].photo[0].on = true;
+  slab_photo_frame(s[..], u[..], sun, false);
+  ph := s[0].photo[..];
+  #assert u[U_PHOTO_ON] == 1 && u[U_PHOTO_ON + 1] == 1;
+  #assert !ph[0].full && ph[0].still > 200 && ph[0].still < PHOTO_RECORDS;
+  draws := ph[0].draw_count;
+  #assert draws >= 6 && draws <= PHOTO_DRAWS;
+  #assert ph[0].fixed > 1000 && ph[0].vertices >= ph[0].fixed && ph[0].vertices <= PHOTO_VERTICES;
+  // every draw names vertices the mesh holds and records the list holds
+  for d: 0..<draws {
+    first := cast(int) ph[0].draws[d * 4]; count := cast(int) ph[0].draws[d * 4 + 1];
+    base := cast(int) (ph[0].draws[d * 4 + 2] & 0x7FFFFFFF); instances := cast(int) ph[0].draws[d * 4 + 3];
+    #assert count > 0 && first + count <= ph[0].vertices && instances > 0 && base + instances <= ph[0].still + ph[0].moving;
+  }
+  // the sea gets the sky's colours as a display shows them, and no painted golden grade
+  #assert u[U_PARAMS + P_SUNCOL] > u[U_PARAMS + P_SUNCOL + 2] && u[U_PARAMS + P_SUNCOL] <= 1 && u[U_PARAMS + P_SUNHULL + 3] == 0;
+  // the same records make the same list: nothing is built again
+  version := ph[0].versions[1];
+  slab_photo_frame(s[..], u[..], sun, false);
+  #assert ph[0].versions[1] == version;
+  // a phone leaves the fine parts out
+  slab_photo_frame(s[..], u[..], sun, true);
+  #assert ph[0].versions[1] != version;
+  // the section stays traced
+  u[U_PARAMS + P_SECTION] = 1;
+  slab_photo_frame(s[..], u[..], sun, false);
+  #assert ph[0].draw_count == 0 && u[U_PHOTO_ON] == 1 && u[U_PHOTO_ON + 1] == 0;
+}

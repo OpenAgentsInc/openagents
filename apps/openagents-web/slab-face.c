@@ -39,6 +39,21 @@ EXPORT("coaxial_surface_vertices") uint32_t coaxial_surface_vertices(uint32_t st
   return n < 0 ? 0u : (uint32_t)n;
 }
 
+// The photoreal style's scene (slab-photoreal.coax): the platform's parts as meshes, drawn by
+// host.js scene_vs/scene_fs between bg_fs and the sea. Four stores: the vertices, the placed
+// parts, the materials and the ground's sky field. No draws when the realm is not photoreal.
+EXPORT("coaxial_draws") uint32_t coaxial_draws(uint32_t state) { return (uint32_t)(uintptr_t)state_at(state)->photo.e[0].draws.e; }
+EXPORT("coaxial_draw_count") uint32_t coaxial_draw_count(uint32_t state) { return (uint32_t)slab_photo_draws(at(state)); }
+EXPORT("coaxial_stores") uint32_t coaxial_stores(void) { return 4; }
+EXPORT("coaxial_store_cap") uint32_t coaxial_store_cap(int32_t k) { return (uint32_t)slab_photo_store_cap(k); }
+EXPORT("coaxial_store") uint32_t coaxial_store(uint32_t state, int32_t k) {
+  coax_t_SlabPhoto *p = &state_at(state)->photo.e[0];
+  return (uint32_t)(uintptr_t)(k == 0 ? (void *)p->mesh.e : k == 1 ? (void *)p->records.e : k == 2 ? (void *)p->materials.e : (void *)p->field.e);
+}
+EXPORT("coaxial_store_bytes") uint32_t coaxial_store_bytes(uint32_t state, int32_t k) { return (uint32_t)slab_photo_store_bytes(at(state), k); }
+EXPORT("coaxial_store_version") uint32_t coaxial_store_version(uint32_t state, int32_t k) { return (uint32_t)slab_photo_store_version(at(state), k); }
+EXPORT("coaxial_store_span_v1") uint32_t coaxial_store_span_v1(uint32_t state, int32_t k, int32_t field) { return (uint32_t)slab_photo_store_span(at(state), k, field); }
+
 EXPORT("coaxial_key") uint32_t coaxial_key(uint32_t state, int32_t key, int32_t mods) { (void)mods; return slab_key(at(state), key, true) ? 1u : 0u; }
 EXPORT("coaxial_key_up") uint32_t coaxial_key_up(uint32_t state, int32_t key, int32_t mods) { (void)mods; return slab_key(at(state), key, false) ? 1u : 0u; }
 EXPORT("coaxial_blur") void coaxial_blur(uint32_t state) { slab_blur(at(state)); }

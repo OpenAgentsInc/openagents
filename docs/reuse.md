@@ -19,6 +19,7 @@ undo was hand-rolled and had no redo, while the OpenAgents Metaverse Engine's ed
 
 | You need | Use | Where |
 | --- | --- | --- |
+| A photoreal world: many thousands of placed meshes (windows, railings, lamp posts, people, vehicles, construction parts), physically based shading, a physical sky with haze, shadows and ambient occlusion | The photoreal style: make parts with the architecture kit's pen, place them with `pr_put`, light them with `pr_lit`; on SLAB add a content set in `slab-content.coax` | `metaverse-engine/render/shade/photoreal*.coax`; [docs/metaverse/photoreal.md](metaverse/photoreal.md) |
 | Real-time live browser input, held-input watchdog and presented-frame recording; Safari WebDriver transport | The shared CDP input and W3C adapters, with read-only loaded-byte receipts | `coax/web/player-browser.coax`, `player-webdriver.coax`; [contract](live-player-browser.md) |
 | Reading a CSV table that quotes (records over lines, quoted fields, doubled quotes, header columns by name, plain decimals) | `csv_record`, `csv_field`, `csv_column`, `csv_number`; `uf_field` in `metaverse-engine/import/unreal/files.coax` is for tables with no quoting | `coax/lib/text/csv.coax` |
 | Streaming observation moments and population normalization | Bounded F64 snapshots, staged publication and the Welford arithmetic shared with benchmark statistics; the caller owns freeze/version lifecycle | `psionic/lib/running-stats.coax`, `stats-moments.coax` |

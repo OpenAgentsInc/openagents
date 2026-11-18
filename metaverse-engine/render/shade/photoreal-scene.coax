@@ -1,0 +1,266 @@
+// The photoreal style's scene list (docs/metaverse/photoreal.md): the parts a realm made with the
+// architecture kit's pen (metaverse-engine/arch/mesh.coax), and the records that place them, written
+// so the host draws each part once however many thousand times it stands (coax/web/host.js: a
+// draw is a part's vertices and a run of records).
+//
+// A realm's content says where things stand in any order: a lamp post here, a window there. The
+// host needs each part's records side by side. So the content is run twice over one list:
+//   pr_list_count(l);  content(l);     // counts each part's records
+//   pr_list_fill(l);   content(l);     // writes them, each part's in one run
+//   pr_list_draws(l, reduced);         // one draw a part
+// The content must place the same things both times. pr_put answers a record's number on the
+// second run and -1 on the first; the setters take either.
+//
+// A record is marked fine (pr_fine) when the picture reads without it: a railing's posts, a far
+// window's frame. The reduced tier (a phone) leaves fine records out; they sit at the end of
+// their part's run, so leaving them out is drawing fewer.
+//   coax/bin/coax test --library metaverse-engine/render/shade/photoreal-scene.coax
+#module "metaverse.engine.render.photoreal_scene";
+#load "../../arch/mesh.coax";
+#load "photoreal-layout.coax";
+
+PR_PARTS :: 128;   // kinds of part a realm's list may hold
+PR_DRAW_WORDS :: 4;
+
+PrList :: struct {
+  records: [] f32;          // PR_RECORD_FLOATS floats each
+  draws: [] u32;            // PR_DRAW_WORDS words each: first vertex, vertices, first record (its top bit set: no index buffer), records
+  first: int;               // the number of records[0] in the realm's whole store (a second list after the first)
+  parts: int;               // parts known
+  part_first: [PR_PARTS] int; part_count: [PR_PARTS] int;
+  count: [PR_PARTS * 2] int;   // each part's records: coarse, then fine
+  start: [PR_PARTS * 2] int;   // where each run starts in records
+  at: [PR_PARTS * 2] int;      // written so far
+  filling: bool;
+  fine: bool;               // the next records are fine
+  rn: int;                  // records the list holds once filled
+  dn: int;                  // draws written
+  full: bool;               // something did not fit and was left out
+}
+
+// A list over a realm's buffers. `first` is where records[0] sits in the store the shader reads.
+pr_list :: (l: [] PrList, records: [] f32, draws: [] u32, first: int) {
+  l[0].records = records; l[0].draws = draws; l[0].first = first;
+  l[0].parts = 0; l[0].filling = false; l[0].fine = false; l[0].rn = 0; l[0].dn = 0; l[0].full = false;
+}
+// A part of the list: the kit's part, by a number the content places it with. -1 when the list has no room.
+pr_part :: (l: [] PrList, part: ArchPart) -> int {
+  if l[0].parts >= PR_PARTS { l[0].full = true; return -1; }
+  k := l[0].parts;
+  l[0].part_first[k] = part.first; l[0].part_count[k] = part.count;
+  l[0].parts += 1;
+  return k;
+}
+// The first run: count.
+pr_list_count :: (l: [] PrList) {
+  for i: 0..<PR_PARTS * 2 { l[0].count[i] = 0; l[0].at[i] = 0; l[0].start[i] = 0; }
+  l[0].filling = false; l[0].fine = false; l[0].rn = 0; l[0].dn = 0;
+}
+// Between the runs: lay the runs out, each part's coarse records then its fine ones.
+pr_list_fill :: (l: [] PrList) {
+  n := 0; room := l[0].records.count / PR_RECORD_FLOATS;
+  for i: 0..<PR_PARTS * 2 {
+    if n + l[0].count[i] > room { l[0].count[i] = room - n; l[0].full = true; }
+    l[0].start[i] = n; l[0].at[i] = 0;
+    n += l[0].count[i];
+  }
+  l[0].rn = n; l[0].filling = true; l[0].fine = false;
+}
+// Whether the next records are fine.
+pr_fine :: (l: [] PrList, on: bool) { l[0].fine = on; }
+// One of a part at (x, y, z), turned `yaw` about y and sized by `scale`.
+pr_put :: (l: [] PrList, part: int, x: f32, y: f32, z: f32, yaw: f32, scale: f32) -> int {
+  if part < 0 || part >= l[0].parts { return -1; }
+  run := part * 2 + (ifx l[0].fine then 1 else 0);
+  if !l[0].filling { l[0].count[run] += 1; return -1; }
+  if l[0].at[run] >= l[0].count[run] { l[0].full = true; return -1; }   // the second run placed more than the first
+  r := l[0].start[run] + l[0].at[run];
+  l[0].at[run] += 1;
+  o := r * PR_RECORD_FLOATS;
+  for i: 0..<PR_RECORD_FLOATS { l[0].records[o + i] = 0; }
+  l[0].records[o + PR_R_PLACE] = x; l[0].records[o + PR_R_PLACE + 1] = y; l[0].records[o + PR_R_PLACE + 2] = z;
+  l[0].records[o + PR_R_YAW] = yaw; l[0].records[o + PR_R_SCALE] = scale;
+  l[0].records[o + PR_R_TINT] = 1; l[0].records[o + PR_R_TINT + 1] = 1; l[0].records[o + PR_R_TINT + 2] = 1;
+  // each record its own corner of a material's pattern
+  l[0].records[o + PR_R_PHASE] = cast(f32) ((r * 37) % 101) * 0.0622;
+  return r;
+}
+// A record's facts. Each takes the number pr_put gave, and does nothing with -1.
+pr_set :: (l: [] PrList, r: int, field: int, v: f32) { if r >= 0 && r < l[0].rn { l[0].records[r * PR_RECORD_FLOATS + field] = v; } }
+pr_stretch :: (l: [] PrList, r: int, sx: f32, sy: f32, sz: f32) { pr_set(l, r, PR_R_STRETCH, sx); pr_set(l, r, PR_R_STRETCH + 1, sy); pr_set(l, r, PR_R_STRETCH + 2, sz); }
+pr_tint :: (l: [] PrList, r: int, red: f32, green: f32, blue: f32) { pr_set(l, r, PR_R_TINT, red); pr_set(l, r, PR_R_TINT + 1, green); pr_set(l, r, PR_R_TINT + 2, blue); }
+pr_value :: (l: [] PrList, r: int, v: f32) { pr_set(l, r, PR_R_VALUE, v); }
+pr_made_of :: (l: [] PrList, r: int, material: int) { pr_set(l, r, PR_R_MATERIAL, cast(f32) material); }
+pr_motion :: (l: [] PrList, r: int, motion: int, phase: f32) { pr_set(l, r, PR_R_MOTION, cast(f32) motion); pr_set(l, r, PR_R_PHASE, phase); }
+pr_free :: (l: [] PrList, r: int) { pr_set(l, r, PR_R_FREE, 1); }
+pr_laid :: (l: [] PrList, r: int) { pr_set(l, r, PR_R_MOTION, cast(f32) PR_LAID); }   // it lies flat on a surface
+// A box part (one that spans -0.5 to 0.5 along x and z and 0 to 1 up, pr_unit_box) stretched to
+// stand between two corners, of one material. Its record's number, or -1.
+pr_box :: (l: [] PrList, unit_box: int, x0: f32, y0: f32, z0: f32, x1: f32, y1: f32, z1: f32, material: int) -> int {
+  r := pr_put(l, unit_box, (x0 + x1) * 0.5, y0, (z0 + z1) * 0.5, 0, 1);
+  pr_stretch(l, r, x1 - x0, y1 - y0, z1 - z0);
+  pr_made_of(l, r, material);
+  return r;
+}
+// After the second run: one draw for each part that stands anywhere. On the reduced tier a part's
+// fine records are left out. Returns the draws written.
+pr_list_draws :: (l: [] PrList, reduced: bool) -> int {
+  l[0].dn = 0;
+  for k: 0..<l[0].parts {
+    n := l[0].at[k * 2] + (ifx reduced then 0 else l[0].at[k * 2 + 1]);
+    // (a part with fine records and no coarse ones starts at its fine run)
+    from := ifx l[0].at[k * 2] > 0 || reduced then l[0].start[k * 2] else l[0].start[k * 2 + 1];
+    if n <= 0 || l[0].part_count[k] <= 0 { continue; }
+    if !reduced && l[0].at[k * 2] > 0 && l[0].at[k * 2] != l[0].count[k * 2] { l[0].full = true; }   // the second run placed fewer: a gap would be drawn
+    if (l[0].dn + 1) * PR_DRAW_WORDS > l[0].draws.count { l[0].full = true; break; }
+    o := l[0].dn * PR_DRAW_WORDS;
+    l[0].draws[o] = cast(u32) l[0].part_first[k]; l[0].draws[o + 1] = cast(u32) l[0].part_count[k];
+    l[0].draws[o + 2] = cast(u32) (l[0].first + from) | 0x80000000; l[0].draws[o + 3] = cast(u32) n;
+    l[0].dn += 1;
+  }
+  return l[0].dn;
+}
+// The triangles a list's draws ask for (a realm's budget line).
+pr_list_triangles :: (l: [] PrList) -> int {
+  t := 0;
+  for i: 0..<l[0].dn { t += cast(int) l[0].draws[i * PR_DRAW_WORDS + 1] / 3 * cast(int) l[0].draws[i * PR_DRAW_WORDS + 3]; }
+  return t;
+}
+
+// ---- parts every realm wants
+// A box one metre each way that stands on its place: -0.5 to 0.5 along x and z, 0 to 1 up. A
+// record's stretch makes it any upright box (pr_box).
+pr_unit_box :: (p: [] ArchPen) -> ArchPart { from := p[0].n; arch_box(p, 0, 0.5, 0, 0.5, 0.5, 0.5); return arch_part(p, from); }
+// An upright cylinder one metre across and one high, standing on its place, capped top and bottom.
+pr_unit_drum :: (p: [] ArchPen, segments: int) -> ArchPart {
+  from := p[0].n;
+  if segments >= 3 {
+    for i: 0..<segments {
+      a := f32(ARCH_TAU) * cast(f32) i / cast(f32) segments; b := f32(ARCH_TAU) * cast(f32) (i + 1) / cast(f32) segments;
+      ca := cos(a) * 0.5; sa := sin(a) * 0.5; cb := cos(b) * 0.5; sb := sin(b) * 0.5;
+      // the wall, counter-clockwise from outside, its normals round so it shades as a curve
+      arch_quad(p, arch_at(cb, 0, sb, cb * 2, 0, sb * 2, 0, 0), arch_at(ca, 0, sa, ca * 2, 0, sa * 2, 0, 0), arch_at(ca, 1, sa, ca * 2, 0, sa * 2, 0, 1), arch_at(cb, 1, sb, cb * 2, 0, sb * 2, 0, 1));
+      arch_tri(p, arch_at(0, 1, 0, 0, 1, 0, 0, 0), arch_at(cb, 1, sb, 0, 1, 0, 0, 0), arch_at(ca, 1, sa, 0, 1, 0, 0, 0));
+      arch_tri(p, arch_at(0, 0, 0, 0, -1, 0, 0, 0), arch_at(ca, 0, sa, 0, -1, 0, 0, 0), arch_at(cb, 0, sb, 0, -1, 0, 0, 0));
+    }
+  }
+  return arch_part(p, from);
+}
+// A dome: the upper half of a ball one metre across (half a metre high), its rim on its place.
+pr_unit_dome :: (p: [] ArchPen, segments: int, rings: int) -> ArchPart {
+  from := p[0].n;
+  if segments >= 3 && rings >= 1 {
+    for j: 0..<rings {
+      e0 := f32(ARCH_TAU) * 0.25 * cast(f32) j / cast(f32) rings; e1 := f32(ARCH_TAU) * 0.25 * cast(f32) (j + 1) / cast(f32) rings;
+      r0 := cos(e0); y0 := sin(e0); r1 := cos(e1); y1 := sin(e1);
+      for i: 0..<segments {
+        a := f32(ARCH_TAU) * cast(f32) i / cast(f32) segments; b := f32(ARCH_TAU) * cast(f32) (i + 1) / cast(f32) segments;
+        q0 := arch_at(cos(b) * r0 * 0.5, y0 * 0.5, sin(b) * r0 * 0.5, cos(b) * r0, y0, sin(b) * r0, 0, 0);
+        q1 := arch_at(cos(a) * r0 * 0.5, y0 * 0.5, sin(a) * r0 * 0.5, cos(a) * r0, y0, sin(a) * r0, 0, 0);
+        q2 := arch_at(cos(a) * r1 * 0.5, y1 * 0.5, sin(a) * r1 * 0.5, cos(a) * r1, y1, sin(a) * r1, 0, 0);
+        q3 := arch_at(cos(b) * r1 * 0.5, y1 * 0.5, sin(b) * r1 * 0.5, cos(b) * r1, y1, sin(b) * r1, 0, 0);
+        if j == rings - 1 { arch_tri(p, q0, q1, q2); } else { arch_quad(p, q0, q1, q2, q3); }
+      }
+    }
+  }
+  return arch_part(p, from);
+}
+// A gabled roof one metre each way: its eaves along x at z = -0.5 and 0.5, its ridge along x one
+// metre up, its two gable ends closed. A record's stretch gives it a span, a rise and a length.
+pr_unit_gable :: (p: [] ArchPen) -> ArchPart {
+  from := p[0].n;
+  // the two slopes' normals for a unit rise over a half span: (0, 0.5, +-1) made unit
+  k := 1 / sqrt(1.25f32);
+  arch_quad(p, arch_at(-0.5, 0, 0.5, 0, 0.5 * k, k, 0, 0), arch_at(0.5, 0, 0.5, 0, 0.5 * k, k, 1, 0), arch_at(0.5, 1, 0, 0, 0.5 * k, k, 1, 1), arch_at(-0.5, 1, 0, 0, 0.5 * k, k, 0, 1));
+  arch_quad(p, arch_at(0.5, 0, -0.5, 0, 0.5 * k, -k, 0, 0), arch_at(-0.5, 0, -0.5, 0, 0.5 * k, -k, 1, 0), arch_at(-0.5, 1, 0, 0, 0.5 * k, -k, 1, 1), arch_at(0.5, 1, 0, 0, 0.5 * k, -k, 0, 1));
+  arch_tri(p, arch_at(0.5, 0, 0.5, 1, 0, 0, 0, 0), arch_at(0.5, 0, -0.5, 1, 0, 0, 1, 0), arch_at(0.5, 1, 0, 1, 0, 0, 0.5, 1));
+  arch_tri(p, arch_at(-0.5, 0, -0.5, -1, 0, 0, 0, 0), arch_at(-0.5, 0, 0.5, -1, 0, 0, 1, 0), arch_at(-0.5, 1, 0, -1, 0, 0, 0.5, 1));
+  return arch_part(p, from);
+}
+
+// ---- checks
+pr_test_content :: (l: [] PrList, box: int, drum: int) {
+  pr_fine(l, false);
+  a := pr_put(l, drum, 1, 2, 3, 0.5, 2);
+  pr_value(l, a, 41);
+  pr_fine(l, true);
+  for i: 0..<3 { r := pr_put(l, box, cast(f32) i, 0, 0, 0, 1); pr_tint(l, r, 0.5, 0.5, 0.5); }
+  pr_fine(l, false);
+  b := pr_box(l, box, 10, 5, -4, 14, 35, 0, 7);
+  pr_value(l, b, 9);
+  c := pr_put(l, box, 0, 0, 9, 0, 1);
+  pr_motion(l, c, PR_SWAY, 1.5); pr_free(l, c);
+}
+#test "a list run twice lays each part's records side by side, coarse before fine" {
+  mesh: [600 * ARCH_VERTEX_FLOATS] f32; pen: [1] ArchPen; arch_pen(pen[..], mesh[..]);
+  records: [16 * PR_RECORD_FLOATS] f32; draws: [8 * PR_DRAW_WORDS] u32; ls: [1] PrList; l := ls[..];
+  pr_list(l, records[..], draws[..], 100);
+  box := pr_part(l, pr_unit_box(pen[..])); drum := pr_part(l, pr_unit_drum(pen[..], 12));
+  #assert box == 0 && drum == 1 && l[0].part_first[0] == 0 && l[0].part_count[0] == 36 && l[0].part_first[1] == 36 && l[0].part_count[1] == 12 * 12;
+  pr_list_count(l); pr_test_content(l, box, drum);
+  #assert l[0].count[0] == 2 && l[0].count[1] == 3 && l[0].count[2] == 1 && l[0].count[3] == 0;
+  pr_list_fill(l); pr_test_content(l, box, drum);
+  #assert l[0].rn == 6 && !l[0].full;
+  // the box's two coarse records first, then its three fine ones, then the drum
+  #assert records[0 * 16 + PR_R_PLACE] == 12 && records[0 * 16 + PR_R_STRETCH] == 4 && records[0 * 16 + PR_R_STRETCH + 1] == 30 && records[0 * 16 + PR_R_STRETCH + 2] == 4;
+  #assert records[0 * 16 + PR_R_PLACE + 1] == 5 && records[0 * 16 + PR_R_PLACE + 2] == -2 && records[0 * 16 + PR_R_MATERIAL] == 7 && records[0 * 16 + PR_R_VALUE] == 9;
+  #assert records[1 * 16 + PR_R_PLACE + 2] == 9 && records[1 * 16 + PR_R_MOTION] == 2 && records[1 * 16 + PR_R_PHASE] == 1.5 && records[1 * 16 + PR_R_FREE] == 1;
+  #assert records[2 * 16 + PR_R_TINT] == 0.5 && records[3 * 16 + PR_R_PLACE] == 1 && records[4 * 16 + PR_R_PLACE] == 2;
+  #assert records[5 * 16 + PR_R_PLACE + 1] == 2 && records[5 * 16 + PR_R_YAW] == 0.5 && records[5 * 16 + PR_R_SCALE] == 2 && records[5 * 16 + PR_R_VALUE] == 41 && records[5 * 16 + PR_R_TINT + 2] == 1;
+  // one draw a part: its vertices, and its run of records from the list's first (the top bit: no index buffer)
+  #assert pr_list_draws(l, false) == 2;
+  #assert draws[0] == 0 && draws[1] == 36 && draws[2] == (100 | 0x80000000) && draws[3] == 5;
+  #assert draws[4] == 36 && draws[5] == 144 && draws[6] == (105 | 0x80000000) && draws[7] == 1;
+  #assert pr_list_triangles(l) == 12 * 5 + 48;
+  // the reduced tier leaves the fine records out
+  #assert pr_list_draws(l, true) == 2 && draws[3] == 2 && draws[7] == 1;
+}
+#test "a list that fills leaves whole records out and says so; a part it does not know is refused" {
+  mesh: [100 * ARCH_VERTEX_FLOATS] f32; pen: [1] ArchPen; arch_pen(pen[..], mesh[..]);
+  records: [2 * PR_RECORD_FLOATS] f32; draws: [1 * PR_DRAW_WORDS] u32; ls: [1] PrList; l := ls[..];
+  pr_list(l, records[..], draws[..], 0);
+  box := pr_part(l, pr_unit_box(pen[..]));
+  pr_list_count(l);
+  for i: 0..<5 { #assert pr_put(l, box, 0, 0, 0, 0, 1) == -1; }
+  #assert pr_put(l, 3, 0, 0, 0, 0, 1) == -1 && pr_put(l, -1, 0, 0, 0, 0, 1) == -1;
+  pr_list_fill(l);
+  #assert l[0].full && l[0].rn == 2;
+  n := 0;
+  for i: 0..<5 { if pr_put(l, box, cast(f32) i, 0, 0, 0, 1) >= 0 { n += 1; } }
+  #assert n == 2 && records[PR_RECORD_FLOATS] == 1;
+  #assert pr_list_draws(l, false) == 1 && draws[3] == 2;
+  // a setter on -1, or past the list, writes nothing
+  pr_value(l, -1, 5); pr_value(l, 2, 5);
+  #assert records[PR_R_VALUE] == 0 && records[PR_RECORD_FLOATS + PR_R_VALUE] == 0;
+  // a part made only of fine records is drawn on the full tier and not on the reduced
+  pr_list(l, records[..], draws[..], 0);
+  box = pr_part(l, pr_unit_box(pen[..]));
+  pr_list_count(l); pr_fine(l, true); _ = pr_put(l, box, 0, 0, 0, 0, 1);
+  pr_list_fill(l); pr_fine(l, true); _ = pr_put(l, box, 0, 0, 0, 0, 1);
+  #assert pr_list_draws(l, false) == 1 && draws[2] == 0x80000000 && draws[3] == 1 && pr_list_draws(l, true) == 0;
+}
+#test "the unit parts stand on their place, a metre each way, their normals unit and outward" {
+  mesh: [4000 * ARCH_VERTEX_FLOATS] f32; pen: [1] ArchPen; p := pen[..]; arch_pen(p, mesh[..]);
+  parts := [4] ArchPart.[pr_unit_box(p), pr_unit_drum(p, 16), pr_unit_dome(p, 16, 6), pr_unit_gable(p)];
+  tops := [4] f32.[1, 1, 0.5, 1];
+  #assert !p[0].full && parts[0].count == 36 && parts[1].count == 16 * 12 && parts[2].count == 16 * (5 * 6 + 3) && parts[3].count == 18;
+  for k: 0..<4 {
+    top := -1.0f32;
+    for i: parts[k].first..<parts[k].first + parts[k].count {
+      o := i * ARCH_VERTEX_FLOATS;
+      x := mesh[o]; y := mesh[o + 1]; z := mesh[o + 2]; nx := mesh[o + 3]; ny := mesh[o + 4]; nz := mesh[o + 5];
+      #assert abs(x) <= 0.5001 && abs(z) <= 0.5001 && y >= -0.0001 && y <= tops[k] + 0.0001;
+      #assert abs(nx * nx + ny * ny + nz * nz - 1) < 0.001;
+      if y > top { top = y; }
+    }
+    #assert abs(top - tops[k]) < 0.0001;
+    // every triangle winds counter-clockwise seen from outside: its own normal agrees with its vertices'
+    for t: 0..<parts[k].count / 3 {
+      o := (parts[k].first + t * 3) * ARCH_VERTEX_FLOATS;
+      ax := mesh[o + 12] - mesh[o]; ay := mesh[o + 13] - mesh[o + 1]; az := mesh[o + 14] - mesh[o + 2];
+      bx := mesh[o + 24] - mesh[o]; by := mesh[o + 25] - mesh[o + 1]; bz := mesh[o + 26] - mesh[o + 2];
+      cx := ay * bz - az * by; cy := az * bx - ax * bz; cz := ax * by - ay * bx;
+      #assert cx * mesh[o + 3] + cy * mesh[o + 4] + cz * mesh[o + 5] > 0;
+    }
+  }
+}

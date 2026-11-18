@@ -6,6 +6,7 @@
 #load "../../../metaverse/style.coax";
 #load "slab-sea.coax";
 #load "../../../metaverse/hull.coax";
+#load "slab-photoreal.coax";   // the photoreal style's mesh pass, sky and air (docs/metaverse/photoreal.md)
 
 // SLAB (slab.coax): the sea in deep water on the spectral tiles slab.coax packs into the
 // uniforms each frame (metaverse/water-spectrum.coax), drawn by surface_vs as the water lab's
@@ -150,6 +151,7 @@ sb_dir_to_world :: (q:V3,u:[]f32)->V3 {
 
 // The sky: zenith to horizon in the hour's colours, the sun's disc and its glow, broad pale clouds.
 slab_sky :: (d:V3,u:[]f32)->V3 {
+  if (slab_photo(u)) { return slab_photo_sky(d,u); }
   up:f32=clampf(d.y,0.0f32,1.0f32);
   zenith:V3=sb_p(u,8);
   horizon:V3=sb_p(u,12);
@@ -184,6 +186,7 @@ slab_sky :: (d:V3,u:[]f32)->V3 {
 }
 // The air between the eye and what it sees: a sea haze, warm toward the sun.
 slab_haze :: (c:V3,d:V3,dist:f32,u:[]f32)->V3 {
+  if (slab_photo(u)) { return slab_photo_haze(c,d,dist,u); }
   a:f32=1.0f32-exp((-dist)/u[SLAB_P+15]);
   sun:V3=v3(u[24],u[25],u[26]);
   tint:V3=sb_mix(sb_p(u,12),sb_add(sb_p(u,12),sb_mul(sb_p(u,4),0.25f32)),sb_pow(fmax(wg_dot3(d,sun),0.0f32),5.0f32));
@@ -191,6 +194,7 @@ slab_haze :: (c:V3,d:V3,dist:f32,u:[]f32)->V3 {
 }
 // The golden hour's grade over everything: warmer, a little sepia.
 slab_grade :: (c0:V3,u:[]f32)->V3 {
+  if (slab_photo(u)) { return c0; }   // the photoreal sky and air come through the film already
   // a soft shoulder over 0.6, so a white deck under a high sun keeps its detail; below it, unchanged
   // the concept image is exposed high and warm: lift the golden hour's exposure before the shoulder
   g:f32=u[SLAB_P+43];
@@ -1326,7 +1330,7 @@ slab_bg_fs :: (frag:V4,u:[]f32)->SlabOut {
   o:V3=v3(u[8],u[9],u[10]);
   ho:V3=sb_to_hull(o,u);
   hd:V3=sb_dir_to_hull(d,u);
-  hit:SlabHit=slab_scene(ho,hd,false,SLAB_MISS,u);
+  hit:SlabHit=slab_photo_first(ho,hd,u);
   ch:SlabHit=slab_walker(ho,hd,hit.t,u);
   if (ch.t<hit.t) { hit=ch; }
   // under the sea (the underwater view, or through the section's slot)

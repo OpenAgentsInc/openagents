@@ -42,6 +42,7 @@
 #load "slab-intro.coax";   // intro: the first screen, a stopgap (issue 13683)
 #load "slab-hud.coax";   // the HUD in plain words, drawn by the browser (GitHub #13685)
 #load "slab-sea.coax";
+#load "slab-photoreal.coax";   // the photoreal style: the platform as meshes under a physical sky (docs/metaverse/photoreal.md)
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, then length, core, light, glow (a rect: half w, half h, radius, alpha), red, green, blue, mode, border, 0, 0, 0
 MAX_VERTICES :: 30000;
@@ -90,7 +91,7 @@ W_CHOP :: 8192;   //   cascade 0's choppy displacement, two signed bytes a texel
 W_FINE :: 10240;  //   the two finer cascades' slopes (or the phone's baked tile), one word a texel
 TILE_N :: 64;
 WORDS :: W_FINE + TILE_N * TILE_N;
-UNIFORM_FLOATS :: U_WORDS + WORDS + SEAS_FLOATS;   // then the sea block (slab-sea.coax)
+UNIFORM_FLOATS :: U_WORDS + WORDS + SEAS_FLOATS + PHOTO_FLOATS;   // then the sea block (slab-sea.coax), then the photoreal frame's block (slab-photoreal.coax)
 
 CAM_ORBIT :: 0; CAM_FLY :: 1; CAM_WALK :: 2;
 
@@ -178,6 +179,7 @@ Slab :: struct {
   toast: [64] u8; toast_n: int; toast_at: f64;
   hp: SlabHud;          // the HUD the browser draws (slab-hud.coax)
   change: [1] Change;   // the "What would it take?" settings and what they do to the world (slab-change.coax)
+  photo: [1] SlabPhoto; // the photoreal style's scene (slab-photoreal.coax)
 }
 
 hi_f32 :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
@@ -984,6 +986,7 @@ slab_frame :: (s: [] Slab, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
   s[0].mesh = ocean_vertices(clip);
   sea_look_frame(s, u, phone, tick, folded);
   sb_say(s);   // the HUD as words, for its pane
+  slab_photo_frame(s, u, sun, phone);
   if !s[0].hud || s[0].golden { s[0].button_count = 0; return 0; }
   if s[0].hp.pane { return sb_lines(s, out); }
   return hud(s, out);
@@ -2064,6 +2067,7 @@ slab_message :: (s: [] Slab, kind: int, text: string) #export_c #effects(all) {
   if kind != HOST_FACTS || s[0].counted { return; }
   s[0].counted = true;
   url := fact(text, "url");
+  slab_photo_style(s, fact(text, "style"), url);
   s[0].fixed = query_number(url, "t", -1);
   for i: 0..<SITES { b := put_pair("site=", sim_site(i).key); if query_word(url, cast(string) b.b[0..<b.n]) { s[0].site = i; s[0].sea = sim_site(i).sea; } }
   for i: 0..<SEAS { b := put_pair("sea=", sim_sea(i).key); if query_word(url, cast(string) b.b[0..<b.n]) { s[0].sea = i; } }
@@ -2183,12 +2187,13 @@ coaxial_slab_uniform_floats :: () -> int #export_c #effects(all) { return UNIFOR
 
 // ---------------------------------------------------------------------------------------------
 // The frame budget (metaverse-engine/core/budget.coax, book chapter 16): what one frame of SLAB may use.
-SLAB_BUDGET :: FrameBudget.{steps = 8, vertices = MAX_VERTICES - 1, draws = 0, bytes = 4390912};
+// The photoreal scene's parts, placed records and sky field are in the state (slab-photoreal.coax).
+SLAB_BUDGET :: FrameBudget.{steps = 8, vertices = MAX_VERTICES - 1, draws = PHOTO_DRAWS, bytes = 8388608};
 
 #test "SLAB's frames fit their declared budget" {
   #assert budget_declared(SLAB_BUDGET, MAX_VERTICES) == BUDGET_NONE;
   bm := [1] BudgetMeter.[budget_meter(SLAB_BUDGET)];
-  budget_measure(bm[..], 0, 0, budget_arena_bytes(size_of(Slab), MAX_VERTICES, VERTEX_FLOATS, UNIFORM_FLOATS));
+  budget_measure(bm[..], 0, PHOTO_DRAWS, budget_arena_bytes(size_of(Slab), MAX_VERTICES, VERTEX_FLOATS, UNIFORM_FLOATS));
   #assert budget_ok(bm[0]);
 }
 #test "S7: in a gale the 50 m hull girder's ends flex about 9-14 cm, so 9-14 m in the section's x 100" #steps 4000000000 {

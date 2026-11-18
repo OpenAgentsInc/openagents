@@ -1,0 +1,86 @@
+// Checks that hold the photoreal style's two halves together: the frame's writer on the CPU
+// (metaverse-engine/render/shade/photoreal-frame.coax) carries the shaders' sky and film in
+// scalars, because a page's own program cannot load the shaders' vector types beside its own.
+// Here both are loaded, and each number is compared with the shader's.
+//   coax/bin/coax test --library metaverse-engine/render/tests/photoreal-checks.coax
+#load "../shade/photoreal.coax";
+#load "../shade/photoreal-frame.coax";
+
+prc_near :: (a: f32, b: f32) -> bool { return abs(a - b) <= 0.00002 + 0.0002 * abs(b); }
+#test "the writer's sky, far air, sunlight and day are the shaders' atmosphere, direction by direction" {
+  heights := [9] f32.[-0.35, -0.2, -0.1, -0.02, 0, 0.03, 0.21, 0.6, 1];
+  for h: 0..<9 {
+    a := 0.7f32 + cast(f32) h;
+    r := sqrt(1 - heights[h] * heights[h]);
+    sun := [3] f32.[cos(a) * r, heights[h], sin(a) * r];
+    light := atmo_sunlight(sun[1]); mine := pr_frame_sunlight(sun[1], 0);
+    #assert prc_near(mine[0], light.x) && prc_near(mine[1], light.y) && prc_near(mine[2], light.z);
+    #assert prc_near(pr_frame_day(sun[1]), atmo_day(sun[1]));
+    for k: 0..<PR_SKY_SAMPLES {
+      d := pr_sky_direction(k);
+      c := atmo_sky(v3(d[0], d[1], d[2]), v3(sun[0], sun[1], sun[2]));
+      m := pr_frame_air(d, sun, 0);
+      #assert prc_near(m[0], c.x) && prc_near(m[1], c.y) && prc_near(m[2], c.z);
+      f := atmo_far(v3(d[0], d[1], d[2]), v3(sun[0], sun[1], sun[2]));
+      g := pr_frame_far(d, sun, 0);
+      #assert prc_near(g[0], f.x) && prc_near(g[1], f.y) && prc_near(g[2], f.z);
+    }
+  }
+}
+#test "the writer's display colour and its sky are the shader's pr_out and pr_sky" {
+  u: [PR_FLOATS + 8] f32;
+  pr_frame_sky(u[..], 4, PrSky.{sun = [3] f32.[0.5, 0.21, 0.84], sea_level = 0});
+  levels := [7] f32.[0, 0.004, 0.05, 0.18, 0.6, 1.4, 9];
+  for i: 0..<7 {
+    c := [3] f32.[levels[i], levels[(i + 2) % 7], levels[(i + 5) % 7]];
+    a := pr_out(v3(c[0], c[1], c[2]), u[..], 4);
+    m := pr_frame_out(u[..], 4, c);
+    #assert prc_near(m[0], a.x) && prc_near(m[1], a.y) && prc_near(m[2], a.z);
+  }
+  for k: 0..<PR_SKY_SAMPLES {
+    d := pr_sky_direction(k);
+    if d[1] < 0 { continue; }
+    a := pr_sky(v3(d[0], d[1], d[2]), u[..], 4);
+    m := pr_frame_sky_at(u[..], 4, d);
+    #assert prc_near(m[0], a.x) && prc_near(m[1], a.y) && prc_near(m[2], a.z);
+  }
+  // and the nine numbers give back the sky's light the shader reads
+  for k: 0..<12 {
+    d := pr_sky_direction(k * 8);
+    a := pr_sky_light(v3(d[0], d[1], d[2]), u[..], 4);
+    m := pr_frame_sky_light(u[..], 4, d[0], d[1], d[2]);
+    #assert prc_near(m[0], a.x) && prc_near(m[1], a.y) && prc_near(m[2], a.z);
+  }
+}
+#test "with haze the writer's sky, far air and sunlight are the shader's; with none the shader's are the engine's atmosphere" {
+  heights := [5] f32.[-0.1, 0, 0.08, 0.21, 0.8];
+  hazes := [3] f32.[0, 0.05, 0.2];
+  for h: 0..<5 { for z: 0..<3 {
+    a := 0.3f32 + cast(f32) h;
+    r := sqrt(1 - heights[h] * heights[h]);
+    sun := [3] f32.[cos(a) * r, heights[h], sin(a) * r];
+    sv := v3(sun[0], sun[1], sun[2]);
+    light := mul3(atmo_sunlight(sun[1]), pr_haze_through(sun[1], hazes[z])); mine := pr_frame_sunlight(sun[1], hazes[z]);
+    #assert prc_near(mine[0], light.x) && prc_near(mine[1], light.y) && prc_near(mine[2], light.z);
+    for k: 0..<PR_SKY_SAMPLES {
+      d := pr_sky_direction(k);
+      dv := v3(d[0], d[1], d[2]);
+      c := pr_air_light(dv, sv, hazes[z]);
+      m := pr_frame_air(d, sun, hazes[z]);
+      #assert prc_near(m[0], c.x) && prc_near(m[1], c.y) && prc_near(m[2], c.z);
+      f := pr_air_far(dv, sv, hazes[z]);
+      g := pr_frame_far(d, sun, hazes[z]);
+      #assert prc_near(g[0], f.x) && prc_near(g[1], f.y) && prc_near(g[2], f.z);
+      if z == 0 {
+        e := atmo_sky(dv, sv);
+        #assert prc_near(c.x, e.x) && prc_near(c.y, e.y) && prc_near(c.z, e.z);
+      }
+    }
+  } }
+  // haze pales the sky overhead and reddens and dims a low sun
+  sun := v3(-0.92f32, 0.21f32, 0.33f32);
+  clear := pr_air_light(v3(0, 1, 0), sun, 0); hazy := pr_air_light(v3(0, 1, 0), sun, 0.15);
+  #assert hazy.z / hazy.x < clear.z / clear.x * 0.7;
+  a := pr_frame_sunlight(0.21, 0); b := pr_frame_sunlight(0.21, 0.15);
+  #assert b[0] < a[0] && b[0] / b[2] > a[0] / a[2] * 1.3;
+}

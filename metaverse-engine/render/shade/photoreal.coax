@@ -1,0 +1,579 @@
+// The Metaverse Engine's photoreal style (docs/metaverse/art-styles.md, docs/metaverse/photoreal.md):
+// what a realm tagged `photoreal` shades with. Written in Coax and emitted for each GPU.
+//
+// Light is in its own scale (linear; 1 is a bright white wall in full sun), from a sky that is
+// arithmetic on the sun's place (atmosphere.coax): the sun's colour after its air, the sky's
+// light on a surface by its normal, the same sky in reflections, and the air's light over
+// distance. Surfaces are physically based: a GGX highlight and Fresnel that keep energy
+// (character-material.coax cm_ggx), a split-sum environment response (pbr-env.coax), roughness and
+// normal detail from a material's pattern. The frame leaves through the film response
+// (filmic.coax) at one exposure: the golden hour's colour is the sun's own, not a tint.
+//
+// A realm's shader module names its entries and calls these with the first float of the frame's
+// block in its uniforms (`b`; photoreal-layout.coax, written by photoreal-frame.coax):
+//   pr_stand         a part's vertex where its record stands it (the scene's and the shadow's vertex)
+//   pr_surface       a material's surface at a point: colour, roughness, metal, normal detail
+//   pr_shadow        how much of the sun reaches a point, from the shadow map
+//   pr_field         how much of the sky a point near the ground sees (the ground's sky field)
+//   pr_environment   what a surface mirrors: the sky, the sea and ground under the horizon
+//   pr_lit           a surface under the sun and the sky
+//   pr_air           the air between the eye and a point
+//   pr_dome          the sky a realm draws behind its world
+//   pr_out           the frame's light as the display's colour
+//   coax/bin/coax test --library metaverse-engine/render/shade/photoreal.coax
+#load "../../gpu/wgsl.coax";
+#load "../noise.coax";
+#load "atmosphere.coax";
+#load "filmic.coax";
+#load "pbr-env.coax";
+#load "character-material.coax";
+#load "photoreal-layout.coax";
+
+// A record as the shader reads it: four rows of four (photoreal-layout.coax PR_R_*).
+PrObj :: struct {a:V4; b:V4; c:V4; d:V4;}
+// A vertex on its way to the fragment: where it is in the world, where on its own part (metres,
+// before its turn), both normals, the pen's tint times the record's, and the facts that don't
+// blend: its material, the record's value, the record's phase, 0.
+PrV :: struct {pos:V4; world:V3; local:V3; normal:V3; facing:V3; tint:V3; info:V4 #flat;}
+PrShade :: struct {pos:V4;}
+// A surface ready to light. `through` is how much light passes a thin thing (a leaf).
+PrSurface :: struct {albedo:V3; rough:f32; metal:f32; normal:V3; glow:V3; through:f32;}
+
+pr_at3 :: (u:[]f32,at:int)->V3 {return v3(u[at],u[at+1],u[at+2]);}
+pr_lum :: (c:V3)->f32 {return c.x*0.2126f32+c.y*0.7152f32+c.z*0.0722f32;}
+// A display colour as light, and back (the sRGB curve).
+pr_decode1 :: (x:f32)->f32 {c:f32=fmax(x,0.0f32);return ifx c<=0.04045f32 then c/12.92f32 else pow((c+0.055f32)/1.055f32,2.4f32);}
+pr_encode1 :: (x:f32)->f32 {c:f32=fmax(x,0.0f32);return ifx c<=0.0031308f32 then c*12.92f32 else 1.055f32*pow(c,1.0f32/2.4f32)-0.055f32;}
+pr_decode :: (c:V3)->V3 {return v3(pr_decode1(c.x),pr_decode1(c.y),pr_decode1(c.z));}
+pr_encode :: (c:V3)->V3 {return v3(pr_encode1(c.x),pr_encode1(c.y),pr_encode1(c.z));}
+
+// ---- the view
+// A world point in clip space: depth is 1 - near / (its distance along the view), so a traced
+// background that writes the same number (pr_depth) and the meshes hide each other rightly.
+pr_clip :: (w:V3,u:[]f32,b:int)->V4 {
+  rel:V3=sub3(w,pr_at3(u,b+PR_EYE));
+  z:f32=dot3(rel,pr_at3(u,b+PR_FORWARD));
+  t:f32=u[b+PR_EYE+3];
+  return v4(dot3(rel,pr_at3(u,b+PR_RIGHT))/(t*u[b+PR_RIGHT+3]),dot3(rel,pr_at3(u,b+PR_UP))/t,z-u[b+PR_FORWARD+3],z);
+}
+// The depth buffer's value for a point `along` the unit view ray `rd`.
+pr_depth :: (rd:V3,along:f32,u:[]f32,b:int)->f32 {
+  near:f32=u[b+PR_FORWARD+3];
+  return clampf(1.0f32-near/fmax(along*dot3(rd,pr_at3(u,b+PR_FORWARD)),near),0.0f32,1.0f32);
+}
+// The unit ray through a pixel of a target `width` by `height`.
+pr_ray :: (pos:V4,width:f32,height:f32,u:[]f32,b:int)->V3 {
+  x:f32=(pos.x/width)*2.0f32-1.0f32; y:f32=1.0f32-(pos.y/height)*2.0f32;
+  t:f32=u[b+PR_EYE+3];
+  return normalize3(add3(pr_at3(u,b+PR_FORWARD),add3(scale3(pr_at3(u,b+PR_RIGHT),x*t*u[b+PR_RIGHT+3]),scale3(pr_at3(u,b+PR_UP),y*t))));
+}
+// A platform's point in the world, and a direction; and back.
+pr_posed :: (p:V3,u:[]f32,b:int)->V3 {
+  o:int=b+PR_POSE;
+  return v3(u[o]*p.x+u[o+1]*p.y+u[o+2]*p.z+u[o+3],u[o+4]*p.x+u[o+5]*p.y+u[o+6]*p.z+u[o+7],u[o+8]*p.x+u[o+9]*p.y+u[o+10]*p.z+u[o+11]);
+}
+pr_posed_dir :: (d:V3,u:[]f32,b:int)->V3 {
+  o:int=b+PR_POSE;
+  return v3(u[o]*d.x+u[o+1]*d.y+u[o+2]*d.z,u[o+4]*d.x+u[o+5]*d.y+u[o+6]*d.z,u[o+8]*d.x+u[o+9]*d.y+u[o+10]*d.z);
+}
+pr_unposed :: (w:V3,u:[]f32,b:int)->V3 {
+  o:int=b+PR_POSE;
+  r:V3=v3(w.x-u[o+3],w.y-u[o+7],w.z-u[o+11]);
+  return v3(u[o]*r.x+u[o+4]*r.y+u[o+8]*r.z,u[o+1]*r.x+u[o+5]*r.y+u[o+9]*r.z,u[o+2]*r.x+u[o+6]*r.y+u[o+10]*r.z);
+}
+
+// ---- the parts
+// A record's sizes along its part's axes: its stretch, or its one scale.
+pr_sizes :: (m:PrObj)->V3 {
+  if (m.d.x==0.0f32&&m.d.y==0.0f32&&m.d.z==0.0f32) {return v3(m.b.x,m.b.x,m.b.x);}
+  return v3(m.d.x,m.d.y,m.d.z);
+}
+// A part's point where its record puts it, before the platform's pose: sized, moved by its
+// motion, turned about y and set down.
+pr_placed :: (p:V3,m:PrObj,time:f32)->V3 {
+  s:V3=pr_sizes(m);
+  l:V3=v3(p.x*s.x,p.y*s.y,p.z*s.z);
+  if (m.b.y>1.5f32&&m.b.y<2.5f32) {
+    // the wind: a slow lean and a quicker shiver, both growing with the square of the height
+    k:f32=l.y*l.y*0.0016f32;
+    l=v3(l.x+k*(sin(time*0.9f32+m.b.z)+0.35f32*sin(time*2.3f32+m.b.z*1.7f32)),l.y,l.z+k*0.6f32*sin(time*1.1f32+m.b.z*2.3f32));
+  }
+  if (m.b.y>0.5f32&&m.b.y<1.5f32) {l=v3(l.x,l.y+0.25f32*sin(time*0.8f32+m.b.z),l.z);}
+  c:f32=cos(m.a.w); sn:f32=sin(m.a.w);
+  return v3(l.x*c+l.z*sn+m.a.x,l.y+m.a.y,(0.0f32-l.x)*sn+l.z*c+m.a.z);
+}
+// A part's vertex where its record stands it: the scene's vertex.
+pr_stand :: (id:u32,instance:u32,u:[]f32,b:int,mesh:[]f32,objects:[]PrObj)->PrV {
+  m:PrObj=objects[cast(int)instance];
+  o:int=cast(int)id*12;
+  p:V3=v3(mesh[o],mesh[o+1],mesh[o+2]);
+  s:V3=pr_sizes(m);
+  // a normal under unequal sizes turns by their inverse
+  n:V3=normalize3(v3(mesh[o+3]/fmax(s.x,0.000001f32),mesh[o+4]/fmax(s.y,0.000001f32),mesh[o+5]/fmax(s.z,0.000001f32)));
+  c:f32=cos(m.a.w); sn:f32=sin(m.a.w);
+  w:V3=pr_placed(p,m,u[b+PR_UP+3]);
+  wn:V3=v3(n.x*c+n.z*sn,n.y,(0.0f32-n.x)*sn+n.z*c);
+  if (m.b.w<0.5f32) {w=pr_posed(w,u,b); wn=pr_posed_dir(wn,u,b);}
+  v:PrV;
+  v.world=w;
+  v.local=v3(p.x*s.x,p.y*s.y,p.z*s.z);
+  v.normal=wn;
+  v.facing=n;
+  tint:V3=v3(mesh[o+9],mesh[o+10],mesh[o+11]);
+  if (tint.x==0.0f32&&tint.y==0.0f32&&tint.z==0.0f32) {tint=v3(1.0f32,1.0f32,1.0f32);}
+  v.tint=mul3(tint,v3(m.c.x,m.c.y,m.c.z));
+  v.info=v4(ifx m.d.w>0.5f32 then m.d.w else mesh[o+6],m.c.w,m.b.z,m.b.w);
+  v.pos=pr_clip(w,u,b);
+  // what lies on a surface is drawn a few steps of the depth buffer nearer than it
+  if (m.b.y>2.5f32) {v.pos=v4(v.pos.x,v.pos.y,v.pos.z-0.0000006f32*v.pos.w,v.pos.w);}
+  return v;
+}
+// The same vertex in the shadow map's space.
+pr_shadow_stand :: (id:u32,instance:u32,u:[]f32,b:int,mesh:[]f32,objects:[]PrObj)->PrShade {
+  m:PrObj=objects[cast(int)instance];
+  o:int=cast(int)id*12;
+  w:V3=pr_placed(v3(mesh[o],mesh[o+1],mesh[o+2]),m,u[b+PR_UP+3]);
+  if (m.b.w<0.5f32) {w=pr_posed(w,u,b);}
+  s:PrShade;
+  s.pos=pr_light_clip(w,u,b);
+  return s;
+}
+pr_light_clip :: (w:V3,u:[]f32,b:int)->V4 {
+  p:V4=v4(w.x,w.y,w.z,1.0f32);
+  o:int=b+PR_LIGHT;
+  return v4(dot4(wg_at4(u,o),p),dot4(wg_at4(u,o+4),p),dot4(wg_at4(u,o+8),p),dot4(wg_at4(u,o+12),p));
+}
+
+// ---- the sun's shadow
+// The map's reach in the world (m): half its side.
+pr_shadow_reach :: (u:[]f32,b:int)->f32 {
+  o:int=b+PR_LIGHT;
+  return 1.0f32/fmax(sqrt(u[o]*u[o]+u[o+1]*u[o+1]+u[o+2]*u[o+2]),0.000001f32);
+}
+// How far toward the map's edge the world point p lies: under 0.9 well inside it, 1 and over
+// outside (where pr_shadow answers `outside`). A realm asks this before it works out a costly
+// `outside`.
+pr_shadow_edge :: (p:V3,u:[]f32,b:int)->f32 {
+  q:V4=pr_light_clip(p,u,b);
+  if (q.z<0.0f32||q.z>1.0f32) {return 2.0f32;}
+  return fmax(abs(q.x),abs(q.y));
+}
+// How much of the sun reaches the world point p on a surface facing n: 1 lit to 0 shadowed, from
+// the shadow map, its edge softened over a few taps (four on the reduced tier). A point outside
+// the map answers `outside`: what the realm knows of it some other way, or 1.
+pr_shadow :: (p:V3,n:V3,outside:f32,u:[]f32,b:int,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->f32 {
+  size:f32=cast(f32)gpu_depth_width(shadow_map);
+  // a texel's width in the world, from the map's first row (its length is 1 / the map's reach)
+  o:int=b+PR_LIGHT;
+  reach:f32=1.0f32/fmax(sqrt(u[o]*u[o]+u[o+1]*u[o+1]+u[o+2]*u[o+2]),0.000001f32);
+  texel:f32=2.0f32*reach/size;
+  q:V4=pr_light_clip(add3(p,scale3(n,texel*1.6f32+0.02f32)),u,b);
+  edge:f32=fmax(abs(q.x),abs(q.y));
+  if (edge>0.995f32||q.z<0.0f32||q.z>1.0f32) {return outside;}
+  uv:V2=v2(q.x*0.5f32+0.5f32,0.5f32-q.y*0.5f32);
+  taps:int=ifx u[b+PR_GROUND+3]>0.5f32 then 4 else 9;
+  lit:f32=0.0f32;
+  for i:0..<9 {
+    if (i<taps) {
+      a:f32=cast(f32)i*2.399963f32+p.x*3.1f32+p.z*1.7f32; d:f32=sqrt((cast(f32)i+0.5f32)/cast(f32)taps)*1.6f32/size;
+      lit=lit+gpu_compare(shadow_map,shadow_cmp,v2(uv.x+cos(a)*d,uv.y+sin(a)*d),q.z-0.00004f32);
+    }
+  }
+  lit=lit/cast(f32)taps;
+  // toward the map's edge the answer runs into the outside's, so no line shows where the map ends
+  return mix(lit,outside,smoothstep(0.9f32,0.995f32,edge));
+}
+
+// ---- the ground's sky field
+// How much of the sky the platform's point q sees (1 open, toward 0 between tall things), from
+// the field the realm laid over its ground (photoreal-frame.coax pr_field_build). The field holds
+// the answer at the ground and on each roof; above them it fades out.
+pr_field :: (q:V3,n:V3,u:[]f32,b:int,field:[]f32)->f32 {
+  nx:int=cast(int)u[b+PR_FIELD_N]; nz:int=cast(int)u[b+PR_FIELD_N+1];
+  if (nx<2||nz<2) {return 1.0f32;}
+  cell:f32=u[b+PR_FIELD+2];
+  // a wall takes the answer of the open ground just outside it
+  x:f32=(q.x+n.x*cell*0.75f32-u[b+PR_FIELD])/cell-0.5f32; z:f32=(q.z+n.z*cell*0.75f32-u[b+PR_FIELD+1])/cell-0.5f32;
+  i:int=cast(int)wg_clamp_i(cast(s32)floor(x),0,cast(s32)(nx-2)); j:int=cast(int)wg_clamp_i(cast(s32)floor(z),0,cast(s32)(nz-2));
+  tx:f32=saturate(x-cast(f32)i); tz:f32=saturate(z-cast(f32)j);
+  a:V2=v2(field[(j*nx+i)*2],field[(j*nx+i)*2+1]); c:V2=v2(field[(j*nx+i+1)*2],field[(j*nx+i+1)*2+1]);
+  d:V2=v2(field[((j+1)*nx+i)*2],field[((j+1)*nx+i)*2+1]); e:V2=v2(field[((j+1)*nx+i+1)*2],field[((j+1)*nx+i+1)*2+1]);
+  open:f32=mix(mix(a.x,c.x,tx),mix(d.x,e.x,tx),tz);
+  top:f32=mix(mix(a.y,c.y,tx),mix(d.y,e.y,tx),tz);
+  // how far over the field's own surface there (the ground, or a roof)
+  over:f32=fmax(q.y-(u[b+PR_FIELD+3]+top),0.0f32);
+  return mix(open,1.0f32,saturate(over/fmax(u[b+PR_FIELD_N+2],1.0f32)));
+}
+
+// ---- the sky's light
+// The sky's light on a surface facing n (its irradiance over pi, so albedo times this is what the
+// surface sends back): nine numbers the frame's writer made from the whole sky and the ground
+// under it.
+pr_sky_light :: (n:V3,u:[]f32,b:int)->V3 {
+  o:int=b+PR_SH;
+  c:V3=pr_at3(u,o);
+  c=add3(c,add3(scale3(pr_at3(u,o+4),n.y),add3(scale3(pr_at3(u,o+8),n.z),scale3(pr_at3(u,o+12),n.x))));
+  c=add3(c,add3(scale3(pr_at3(u,o+16),n.x*n.y),add3(scale3(pr_at3(u,o+20),n.y*n.z),scale3(pr_at3(u,o+24),3.0f32*n.z*n.z-1.0f32))));
+  c=add3(c,add3(scale3(pr_at3(u,o+28),n.x*n.z),scale3(pr_at3(u,o+32),n.x*n.x-n.y*n.y)));
+  return v3(fmax(c.x,0.0f32),fmax(c.y,0.0f32),fmax(c.z,0.0f32));
+}
+// ---- the air's light, with haze
+// The engine's atmosphere (atmosphere.coax) is a clear day's air. A frame may carry more haze
+// (PR_AIR_HAZE: the extra a unit of air takes out of green light; sea air on a still evening is
+// about 0.15). Haze takes a little more out of blue than out of red, so a low sun turns gold and
+// dimmer; and it scatters the light it takes nearly white and mostly forward, so the sky pales,
+// most along the horizon and round the sun. With no haze these are atmo_sky, atmo_far and
+// atmo_sunlight exactly.
+pr_haze_loss :: (hz:f32)->V3 {return scale3(v3(0.87f32,1.0f32,1.3f32),fmax(hz,0.0f32));}
+// What haze leaves of the sun's light after its air: multiply atmo_sunlight (or atmo_sun) by it.
+pr_haze_through :: (sun_up:f32,hz:f32)->V3 {return atmo_exp3(scale3(pr_haze_loss(hz),0.0f32-atmo_sun_mass(sun_up)));}
+pr_air_light :: (rd:V3,sun:V3,hz:f32)->V3 {
+  up:f32=saturate(rd.y);
+  cos_t:f32=dot3(rd,sun);
+  day:f32=atmo_day(sun.y);
+  extra:V3=pr_haze_loss(hz);
+  clear:V3=v3(ATMO_AIR_R+ATMO_HAZE,ATMO_AIR_G+ATMO_HAZE,ATMO_AIR_B+ATMO_HAZE);
+  all:V3=add3(clear,extra);
+  reach:V3=atmo_exp3(scale3(all,0.0f32-atmo_sun_mass(sun.y)*mix(1.0f32,0.3f32,sqrt(up))));
+  mass:f32=atmo_mass(up);
+  took:V3=v3(1.0f32-exp(0.0f32-all.x*mass),1.0f32-exp(0.0f32-all.y*mass),1.0f32-exp(0.0f32-all.z*mass));
+  air:V3=scale3(v3(ATMO_AIR_R/all.x,ATMO_AIR_G/all.y,ATMO_AIR_B/all.z),atmo_even(cos_t));
+  forward:f32=atmo_forward(cos_t);
+  glow:f32=ATMO_GLOW*(forward+2.8f32*exp(0.0f32-fmax(1.0f32-cos_t,0.0f32)*2.2f32)*exp(0.0f32-up*7.0f32));
+  // the extra haze's own share of what the air scatters: nearly white, part of it every way
+  // (light it has scattered more than once) and part forward
+  hazy:V3=scale3(v3(extra.x/all.x,extra.y/all.y,extra.z/all.z),0.9f32*(0.4f32+0.6f32*forward));
+  first:f32=mix(smoothstep(0.0f32-0.14f32,0.02f32,sun.y),1.0f32,exp(0.0f32-up*6.0f32));
+  once:V3=scale3(mul3(mul3(reach,took),add3(add3(air,v3(glow,glow,glow)),hazy)),first);
+  low:f32=1.0f32-saturate(sun.y*5.0f32+0.15f32);
+  // (the blue the clear air scatters again is its share of the air)
+  again:V3=scale3(mul3(mul3(v3(0.03f32,0.07f32,0.21f32),took),v3(clear.x/all.x,clear.y/all.y,clear.z/all.z)),mix(1.0f32,2.6f32*mix(0.12f32,1.0f32,smoothstep(0.0f32,0.45f32,up)),low));
+  return scale3(add3(once,again),ATMO_SUN*day);
+}
+// What distance fades to along rd: the air's light along it laid flat on the horizon.
+pr_air_far :: (rd:V3,sun:V3,hz:f32)->V3 {
+  l:f32=sqrt(rd.x*rd.x+rd.z*rd.z);
+  if (l<0.0001f32) {return pr_air_light(v3(0.0f32,0.0f32,0.0f32-1.0f32),sun,hz);}
+  return pr_air_light(v3(rd.x/l,0.0f32,rd.z/l),sun,hz);
+}
+// The faint light of a night sky, so a night is dark blue and never black.
+pr_night :: (day:f32)->V3 {return scale3(v3(0.0035f32,0.0052f32,0.0105f32),1.0f32-day);}
+// The sky along the unit ray rd, without its sun or clouds; under the horizon, the light the
+// ground and sea send up (what a mirror tilted down shows).
+pr_sky :: (rd:V3,u:[]f32,b:int)->V3 {
+  sun:V3=pr_at3(u,b+PR_SUN);
+  above:V3=add3(pr_air_light(v3(rd.x,fmax(rd.y,0.0f32),rd.z),sun,u[b+PR_AIR_HAZE]),pr_night(u[b+PR_SUN+3]));
+  if (rd.y>=0.0f32) {return above;}
+  // the horizon's own light gives way to the ground's over a few degrees
+  return mix3(above,pr_at3(u,b+PR_GROUND),saturate((0.0f32-rd.y)*9.0f32));
+}
+// The sky a realm draws behind its world: the air, the sun's disc and glare, and cloud.
+// `soft` is a pixel's width in radians (the disc's edge).
+pr_dome :: (rd:V3,soft:f32,u:[]f32,b:int)->V3 {
+  sun:V3=pr_at3(u,b+PR_SUN);
+  night:V3=pr_night(u[b+PR_SUN+3]);
+  hz:f32=u[b+PR_AIR_HAZE];
+  if (rd.y<0.0f32) {return add3(pr_air_light(v3(rd.x,0.0f32,rd.z),sun,hz),night);}
+  sky:V3=pr_air_light(rd,sun,hz);
+  dim:V3=pr_haze_through(sun.y,hz);
+  disc:V3=mul3(atmo_sun(rd,sun,0.0048f32,soft),dim);
+  if (u[b+PR_GROUND+3]>0.5f32) {return add3(add3(sky,disc),night);}
+  // (atmo_dome, with the frame's haze between the sun and its clouds)
+  c:AtmoCloud=atmo_clouds(rd,sun,sky,u[b+PR_HAZE+3],1.0f32,u[b+PR_UP+3]*0.004f32);
+  return add3(add3(scale3(add3(sky,disc),1.0f32-c.hide),mul3(c.light,mix3(v3(1.0f32,1.0f32,1.0f32),dim,0.75f32))),night);
+}
+
+// ---- the air
+// The share of a point's light that reaches the eye through `dist` metres of air, looking along rd
+// from an eye `eye_y` up: the air is thick at sea level and thins with height.
+pr_air_through :: (dist:f32,eye_y:f32,rd_y:f32,u:[]f32,b:int)->f32 {
+  h:f32=fmax(u[b+PR_HAZE+1],1.0f32);
+  y0:f32=fmax(eye_y-u[b+PR_HAZE+2],0.0f32);
+  // the air along the ray: the integral of exp(-y / h) from the eye to the point
+  k:f32=rd_y*dist/h;
+  along:f32=ifx abs(k)<0.001f32 then dist else dist*(1.0f32-exp(0.0f32-k))/k;
+  return exp(0.0f32-u[b+PR_HAZE]*exp(0.0f32-y0/h)*along);
+}
+// A point's light after the air between it and the eye: some of it lost, and the air's own light
+// (the sky along the same way, laid flat) in its place.
+pr_air :: (c:V3,w:V3,u:[]f32,b:int)->V3 {
+  to:V3=sub3(w,pr_at3(u,b+PR_EYE));
+  d:f32=length3(to);
+  rd:V3=scale3(to,1.0f32/fmax(d,0.0001f32));
+  t:f32=pr_air_through(d,u[b+PR_EYE+1],rd.y,u,b);
+  return add3(scale3(c,t),scale3(add3(pr_air_far(rd,pr_at3(u,b+PR_SUN),u[b+PR_AIR_HAZE]),pr_night(u[b+PR_SUN+3])),1.0f32-t));
+}
+
+// ---- materials
+// A point's two coordinates across a flat face of its part, in metres: across and up a wall, x
+// and z on a floor or roof.
+pr_face :: (local:V3,facing:V3)->V2 {
+  if (abs(facing.y)>0.7f32) {return v2(local.x,local.z);}
+  if (abs(facing.x)>abs(facing.z)) {return v2(local.z,local.y);}
+  return v2(local.x,local.y);
+}
+// Value noise in two and three dimensions on the engine's lattice hash, 0 to 1, and three octaves of it.
+pr_noise2 :: (x:f32,y:f32)->f32 {
+  ix:f32=floor(x); iy:f32=floor(y); fx:f32=x-ix; fy:f32=y-iy;
+  ux:f32=fx*fx*(3.0f32-2.0f32*fx); uy:f32=fy*fy*(3.0f32-2.0f32*fy);
+  return mix(mix(render_noise2(ix,iy),render_noise2(ix+1.0f32,iy),ux),mix(render_noise2(ix,iy+1.0f32),render_noise2(ix+1.0f32,iy+1.0f32),ux),uy);
+}
+pr_cloud2 :: (x:f32,y:f32)->f32 {return pr_noise2(x,y)*0.57f32+pr_noise2(x*2.03f32+11.0f32,y*2.03f32-7.0f32)*0.29f32+pr_noise2(x*4.01f32-3.0f32,y*4.01f32+19.0f32)*0.14f32;}
+// A line `wide` metres across on a grid of `every` metres, 1 on the line, its edge a pixel soft.
+// `aa` is a pixel's width in x's own units: gpu_fwidth(x), taken by the caller before it branches
+// (a browser refuses a derivative taken inside a branch on a varying).
+pr_line :: (x:f32,every:f32,wide:f32,aa0:f32)->f32 {
+  d:f32=abs(fract(x/every+0.5f32)-0.5f32)*every;
+  aa:f32=fmax(aa0,0.0001f32);
+  sharp:f32=1.0f32-smoothstep(wide*0.5f32-aa,wide*0.5f32+aa,d);
+  // a grid finer than the pixels fades to its average, so far walls don't shimmer
+  return mix(saturate(wide/every),sharp,saturate(every/(aa*2.5f32)-0.5f32));
+}
+// A normal tilted by a slope across the face (dx, dy: rise over run along the face's two ways).
+pr_tilt :: (n:V3,facing:V3,dx:f32,dy:f32)->V3 {
+  // the face's own two directions in the part: across and up a wall, x and z on a floor
+  t:V3=v3(1.0f32,0.0f32,0.0f32); s:V3=v3(0.0f32,0.0f32,1.0f32);
+  if (abs(facing.y)<=0.7f32) {
+    s=v3(0.0f32,1.0f32,0.0f32);
+    if (abs(facing.x)>abs(facing.z)) {t=v3(0.0f32,0.0f32,1.0f32);}
+  }
+  return normalize3(sub3(n,add3(scale3(t,dx),scale3(s,dy))));
+}
+// A material's surface at a vertex's point. `detail` is 0 on the reduced tier, where the fine
+// normal detail is left out.
+pr_surface :: (v:PrV,u:[]f32,b:int,materials:[]f32)->PrSurface {
+  row:int=cast(int)wg_clamp_i(cast(s32)(v.info.x+0.5f32),0,PR_MATERIALS-1)*PR_MATERIAL_FLOATS;
+  s:PrSurface;
+  s.albedo=mul3(pr_decode(v3(materials[row],materials[row+1],materials[row+2])),v.tint);
+  s.rough=materials[row+PR_M_ROUGH];
+  s.metal=materials[row+PR_M_METAL];
+  s.normal=normalize3(v.normal);
+  s.glow=scale3(s.albedo,materials[row+PR_M_GLOW]);
+  s.through=0.0f32;
+  pattern:int=cast(int)(materials[row+PR_M_PATTERN]+0.5f32);
+  scale:f32=materials[row+PR_M_SCALE];
+  full:bool=u[b+PR_GROUND+3]<0.5f32;
+  fl:V3=v.facing;
+  f:V2=pr_face(v.local,fl);
+  // a pixel's width across the face, taken here, before any branch
+  ax:f32=gpu_fwidth(f.x); ay:f32=gpu_fwidth(f.y);
+  // each instance its own corner of the noise
+  seed:f32=v.info.z*7.31f32;
+  if (pattern==PR_PATTERN_CONCRETE) {
+    // pours of slightly different greys, water marks, and a fine grain
+    cloud:f32=pr_cloud2(f.x*0.045f32+seed,f.y*0.045f32-seed);
+    grain:f32=pr_noise2(f.x*9.0f32,f.y*9.0f32+seed);
+    s.albedo=scale3(s.albedo,0.86f32+0.2f32*cloud+0.06f32*(grain-0.5f32));
+    s.rough=saturate(s.rough+0.12f32*(cloud-0.5f32));
+  } else if (pattern==PR_PATTERN_GLASS) {
+    floor_h:f32=ifx scale>0.0f32 then scale else 3.9f32;
+    if (abs(fl.y)<0.7f32) {
+      // a curtain wall: a spandrel band at each floor, a mullion every 1.5 m, and each pane tilted
+      // a hair of its own, so the sky's reflection breaks from pane to pane as real glazing's does
+      band:f32=pr_line(f.y-0.45f32,floor_h,0.9f32,ay);
+      mullion:f32=fmax(pr_line(f.x,1.5f32,0.09f32,ax),pr_line(f.y,floor_h,0.09f32,ay));
+      px:f32=floor(f.x/1.5f32+0.5f32); py:f32=floor(f.y/floor_h);
+      tone:f32=render_noise2(px+seed*13.0f32,py-seed*5.0f32);
+      if (full) {s.normal=pr_tilt(s.normal,fl,(render_noise2(px+31.0f32,py+seed)-0.5f32)*0.012f32,(tone-0.5f32)*0.012f32);}
+      // behind the glass: blinds, ceilings, a dark room; a little of each
+      s.albedo=mix3(scale3(s.albedo,0.5f32+0.9f32*tone*tone),scale3(s.albedo,1.6f32),band*0.6f32);
+      s.rough=mix(s.rough,0.45f32,band);
+      s.albedo=mix3(s.albedo,v3(0.16f32,0.17f32,0.18f32),mullion);
+      s.rough=mix(s.rough,0.4f32,mullion);
+      s.metal=mix(s.metal,1.0f32,mullion*0.8f32);
+    } else {
+      // its roof: a membrane and gravel
+      s.albedo=scale3(v3(0.19f32,0.19f32,0.185f32),0.8f32+0.4f32*pr_noise2(f.x*0.7f32,f.y*0.7f32));
+      s.rough=0.9f32; s.metal=0.0f32;
+    }
+  } else if (pattern==PR_PATTERN_PAVING) {
+    side:f32=ifx scale>0.0f32 then scale else 1.2f32;
+    cx:f32=floor(f.x/side); cz:f32=floor(f.y/side);
+    tone:f32=render_noise2(cx,cz);
+    joint:f32=fmax(pr_line(f.x,side,0.02f32,ax),pr_line(f.y,side,0.02f32,ay));
+    wear:f32=pr_cloud2(f.x*0.08f32,f.y*0.08f32);
+    s.albedo=scale3(s.albedo,(0.9f32+0.16f32*tone)*(0.88f32+0.2f32*wear)*(1.0f32-0.35f32*joint));
+    s.rough=saturate(s.rough+0.1f32*(tone-0.5f32)+0.2f32*joint);
+  } else if (pattern==PR_PATTERN_ASPHALT) {
+    grit:f32=pr_noise2(f.x*14.0f32,f.y*14.0f32);
+    worn:f32=pr_cloud2(f.x*0.06f32,f.y*0.06f32);
+    s.albedo=scale3(s.albedo,0.8f32+0.25f32*worn+0.12f32*(grit-0.5f32));
+  } else if (pattern==PR_PATTERN_LEAVES) {
+    // a crown: darker inside and under, lighter at its sunward tufts
+    tuft:f32=pr_noise2(v.world.x*1.3f32+seed,v.world.z*1.3f32-v.world.y*0.9f32);
+    s.albedo=scale3(s.albedo,0.62f32+0.7f32*tuft);
+    s.through=0.35f32;
+  } else if (pattern==PR_PATTERN_WATER) {
+    t:f32=u[b+PR_UP+3];
+    if (full) {
+      rx:f32=pr_noise2(v.world.x*0.9f32+t*0.25f32,v.world.z*0.9f32)-0.5f32; rz:f32=pr_noise2(v.world.x*0.9f32,v.world.z*0.9f32-t*0.21f32)-0.5f32;
+      s.normal=normalize3(add3(s.normal,v3(rx*0.05f32,0.0f32,rz*0.05f32)));
+    }
+  } else if (pattern==PR_PATTERN_STONE) {
+    course:f32=ifx scale>0.0f32 then scale else 0.6f32;
+    row_i:f32=floor(f.y/course);
+    // each course's blocks are set half a block along from the course under it
+    along:f32=f.x+(ifx fract(row_i*0.5f32)>0.25f32 then course else 0.0f32);
+    tone:f32=render_noise2(floor(along/(course*2.0f32))+seed*3.0f32,row_i);
+    joint:f32=fmax(pr_line(f.y,course,0.012f32,ay),pr_line(along,course*2.0f32,0.012f32,ax));
+    vein:f32=pr_cloud2(f.x*0.5f32+seed,f.y*0.5f32);
+    s.albedo=scale3(s.albedo,(0.9f32+0.14f32*tone)*(0.9f32+0.16f32*vein)*(1.0f32-0.3f32*joint));
+    s.rough=saturate(s.rough+0.15f32*(vein-0.5f32));
+  } else if (pattern==PR_PATTERN_PANELS) {
+    rib:f32=ifx scale>0.0f32 then scale else 0.3f32;
+    // ribs run up a wall and down a roof's slope: their shade is in the normal
+    phase:f32=fract(f.x/rib);
+    slope:f32=ifx phase<0.2f32 then 0.5f32 else (ifx (phase>0.5f32&&phase<0.7f32) then 0.0f32-0.5f32 else 0.0f32);
+    if (full) {s.normal=pr_tilt(s.normal,fl,slope*saturate(rib/(fmax(ax,0.0001f32)*4.0f32)-0.5f32),0.0f32);}
+    sheet:f32=render_noise2(floor(f.x/(rib*10.0f32))+seed,floor(f.y/6.0f32));
+    s.albedo=scale3(s.albedo,0.9f32+0.14f32*sheet+0.08f32*pr_cloud2(f.x*0.2f32,f.y*0.05f32));
+  } else if (pattern==PR_PATTERN_LAWN) {
+    mow:f32=pr_cloud2(v.world.x*0.11f32,v.world.z*0.11f32);
+    blade:f32=pr_noise2(v.world.x*6.0f32,v.world.z*6.0f32);
+    s.albedo=scale3(s.albedo,0.75f32+0.4f32*mow+0.2f32*(blade-0.5f32));
+  }
+  return s;
+}
+
+// ---- light on a surface
+// What a surface facing n mirrors when seen along `toward` (the unit way to the eye): the sky
+// along the mirrored ray, blurred toward the sky's light on the mirror's own facing as the surface
+// roughens. A realm with more to mirror (its own buildings, traced) mixes that in over this.
+pr_environment :: (n:V3,toward:V3,rough:f32,u:[]f32,b:int)->V3 {
+  r:V3=reflect3(scale3(toward,0.0f32-1.0f32),n);
+  // a rough surface's lobe leans toward the normal
+  r=normalize3(mix3(r,n,rough*rough));
+  sharp:V3=pr_sky(r,u,b);
+  return mix3(sharp,pr_sky_light(r,u,b),saturate(rough*1.25f32));
+}
+// A surface under the sun and the sky. `sun_reach` is how much of the sun reaches it (pr_shadow),
+// `open` how much of the sky it sees (pr_field, a crease's shade), `mirrored` what it mirrors
+// (pr_environment). Energy is kept: what the surface mirrors it does not also scatter.
+pr_lit :: (s:PrSurface,toward:V3,sun_reach:f32,open:f32,mirrored:V3,u:[]f32,b:int)->V3 {
+  n:V3=s.normal;
+  sun:V3=pr_at3(u,b+PR_SUN);
+  light:V3=scale3(pr_at3(u,b+PR_SUN_LIGHT),sun_reach);
+  f0:V3=cm_f0(s.albedo,s.metal);
+  rough:f32=clampf(s.rough,0.03f32,1.0f32);
+  nv:f32=fmax(dot3(n,toward),0.0001f32);
+  ndl:f32=dot3(n,sun);
+  // a thin thing passes some of the sun that strikes its far side
+  wrap:f32=fmax(ndl,0.0f32)+s.through*fmax(0.0f32-ndl,0.0f32)*0.6f32+s.through*0.15f32;
+  env:PbrEnvironment=pbr_environment(rough,nv);
+  spec_share:V3=v3(saturate(f0.x*env.a+env.b),saturate(f0.y*env.a+env.b),saturate(f0.z*env.a+env.b));
+  kept:V3=scale3(v3(1.0f32-spec_share.x,1.0f32-spec_share.y,1.0f32-spec_share.z),1.0f32-s.metal);
+  diffuse:V3=mul3(mul3(s.albedo,kept),add3(scale3(light,wrap),scale3(pr_sky_light(n,u,b),open)));
+  glint:V3=mul3(cm_ggx(f0,rough,n,sun,toward),light);
+  // a crease hides the sky from a mirror too, the more the rougher it is
+  seen:f32=mix(1.0f32,open,saturate(0.3f32+rough));
+  return add3(add3(diffuse,glint),add3(scale3(mul3(mirrored,spec_share),seen),s.glow));
+}
+
+// ---- the frame's way out
+// The frame's light as the display's colour: exposed, through the film response, encoded.
+pr_out :: (c:V3,u:[]f32,b:int)->V3 {
+  e:f32=u[b+PR_SUN_LIGHT+3];
+  t:FilmRGB=film_rec709(film_rgb(fmax(c.x,0.0f32)*e,fmax(c.y,0.0f32)*e,fmax(c.z,0.0f32)*e));
+  return pr_encode(v3(saturate(t.r),saturate(t.g),saturate(t.b)));
+}
+
+// ---- checks
+pr_test_block :: (u:[]f32) {
+  for i:0..<u.count {u[i]=0.0f32;}
+  u[PR_EYE]=0.0f32; u[PR_EYE+1]=10.0f32; u[PR_EYE+2]=0.0f32; u[PR_EYE+3]=0.5f32;
+  u[PR_FORWARD+2]=0.0f32-1.0f32; u[PR_FORWARD+3]=0.5f32;
+  u[PR_RIGHT]=1.0f32; u[PR_RIGHT+3]=1.6f32;
+  u[PR_UP+1]=1.0f32;
+  u[PR_SUN]=0.6f32; u[PR_SUN+1]=0.64f32; u[PR_SUN+2]=0.48f32; u[PR_SUN+3]=1.0f32;
+  u[PR_SUN_LIGHT]=0.9f32; u[PR_SUN_LIGHT+1]=0.8f32; u[PR_SUN_LIGHT+2]=0.7f32; u[PR_SUN_LIGHT+3]=1.0f32;
+  u[PR_GROUND]=0.05f32; u[PR_GROUND+1]=0.06f32; u[PR_GROUND+2]=0.07f32;
+  u[PR_HAZE]=0.00004f32; u[PR_HAZE+1]=1200.0f32;
+  u[PR_POSE]=1.0f32; u[PR_POSE+5]=1.0f32; u[PR_POSE+10]=1.0f32;
+  u[PR_SH]=0.2f32; u[PR_SH+1]=0.25f32; u[PR_SH+2]=0.3f32; u[PR_SH+4]=0.1f32; u[PR_SH+5]=0.12f32; u[PR_SH+6]=0.15f32;
+}
+#test "a point straight ahead lands in the middle of the view, its depth 1 - near / distance" {
+  u:[PR_FLOATS]f32; pr_test_block(u[..]);
+  c:V4=pr_clip(v3(0.0f32,10.0f32,0.0f32-100.0f32),u[..],0);
+  #assert abs(c.x)<0.00001f32 && abs(c.y)<0.00001f32 && abs(c.w-100.0f32)<0.0001f32 && abs(c.z/c.w-(1.0f32-0.5f32/100.0f32))<0.000001f32;
+  // a traced background writes the same depth for the same point
+  #assert abs(pr_depth(v3(0.0f32,0.0f32,0.0f32-1.0f32),100.0f32,u[..],0)-c.z/c.w)<0.000001f32;
+  // a point up and to the right by the field's half width sits on the view's corner
+  e:V4=pr_clip(v3(0.5f32*1.6f32*100.0f32,10.0f32+0.5f32*100.0f32,0.0f32-100.0f32),u[..],0);
+  #assert abs(e.x/e.w-1.0f32)<0.00001f32 && abs(e.y/e.w-1.0f32)<0.00001f32;
+  // and the ray through that corner's pixel points back at it
+  r:V3=pr_ray(v4(1600.0f32,0.0f32,0.0f32,1.0f32),1600.0f32,1000.0f32,u[..],0);
+  to:V3=normalize3(v3(80.0f32,50.0f32,0.0f32-100.0f32));
+  #assert abs(r.x-to.x)<0.00001f32 && abs(r.y-to.y)<0.00001f32 && abs(r.z-to.z)<0.00001f32;
+}
+#test "a platform's pose and its inverse undo each other" {
+  u:[PR_FLOATS]f32; pr_test_block(u[..]);
+  c:f32=cos(0.3f32); s:f32=sin(0.3f32);
+  u[PR_POSE]=c; u[PR_POSE+1]=0.0f32-s; u[PR_POSE+3]=4.0f32; u[PR_POSE+4]=s; u[PR_POSE+5]=c; u[PR_POSE+7]=0.0f32-2.0f32; u[PR_POSE+11]=7.0f32;
+  w:V3=pr_posed(v3(10.0f32,3.0f32,0.0f32-6.0f32),u[..],0);
+  #assert abs(w.x-(c*10.0f32-s*3.0f32+4.0f32))<0.0001f32 && abs(w.z-1.0f32)<0.0001f32;
+  back:V3=pr_unposed(w,u[..],0);
+  #assert abs(back.x-10.0f32)<0.0001f32 && abs(back.y-3.0f32)<0.0001f32 && abs(back.z+6.0f32)<0.0001f32;
+}
+#test "a record sizes, turns and sets down its part; a stretch takes the scale's place" {
+  m:PrObj;
+  m.a=v4(100.0f32,5.0f32,0.0f32-20.0f32,1.5707963f32); m.b=v4(2.0f32,0.0f32,0.0f32,0.0f32);
+  // the part's +x runs along (cos yaw, 0, -sin yaw): a quarter turn sends it to -z
+  p:V3=pr_placed(v3(1.0f32,1.0f32,0.0f32),m,0.0f32);
+  #assert abs(p.x-100.0f32)<0.0001f32 && abs(p.y-7.0f32)<0.0001f32 && abs(p.z+22.0f32)<0.0001f32;
+  m.d=v4(10.0f32,30.0f32,4.0f32,0.0f32); m.a.w=0.0f32;
+  q:V3=pr_placed(v3(0.5f32,1.0f32,0.0f32-0.5f32),m,0.0f32);
+  #assert abs(q.x-105.0f32)<0.0001f32 && abs(q.y-35.0f32)<0.0001f32 && abs(q.z+22.0f32)<0.0001f32;
+  // a swaying part's foot stays put and its top moves; a still one never moves
+  m.b.y=2.0f32;
+  foot:V3=pr_placed(v3(0.0f32,0.0f32,0.0f32),m,3.0f32); top:V3=pr_placed(v3(0.0f32,1.0f32,0.0f32),m,3.0f32);
+  #assert abs(foot.x-100.0f32)<0.0001f32 && abs(top.x-100.0f32)>0.01f32 && abs(top.y-35.0f32)<0.0001f32;
+}
+#test "the display's curve and its inverse; the film keeps middle grey and never passes white" {
+  for i:0..<11 {x:f32=cast(f32)i*0.1f32; #assert abs(pr_encode1(pr_decode1(x))-x)<0.0001f32;}
+  u:[PR_FLOATS]f32; pr_test_block(u[..]);
+  g:V3=pr_out(v3(0.18f32,0.18f32,0.18f32),u[..],0);
+  #assert abs(g.x-pr_encode1(0.18f32))<0.01f32 && abs(g.x-g.y)<0.01f32;
+  w:V3=pr_out(v3(60.0f32,60.0f32,60.0f32),u[..],0);
+  #assert w.x<=1.0f32 && w.x>0.9f32;
+  // a stop more exposure is brighter
+  u[PR_SUN_LIGHT+3]=2.0f32;
+  #assert pr_out(v3(0.18f32,0.18f32,0.18f32),u[..],0).x>g.x;
+}
+#test "a surface keeps energy: it never sends back more than reaches it" {
+  u:[PR_FLOATS]f32; pr_test_block(u[..]);
+  // white light from everywhere: the sky's light 1 on every facing, the mirror's 1, no sun
+  u[PR_SUN_LIGHT]=0.0f32; u[PR_SUN_LIGHT+1]=0.0f32; u[PR_SUN_LIGHT+2]=0.0f32;
+  for i:0..<36 {u[PR_SH+i]=0.0f32;} u[PR_SH]=1.0f32; u[PR_SH+1]=1.0f32; u[PR_SH+2]=1.0f32;
+  for k:0..<40 {
+    s:PrSurface;
+    s.albedo=v3(1.0f32,1.0f32,1.0f32); s.rough=0.05f32+0.1f32*cast(f32)(k%10); s.metal=ifx k<20 then 0.0f32 else 1.0f32; s.normal=v3(0.0f32,1.0f32,0.0f32);
+    a:f32=0.1f32+0.35f32*cast(f32)(k%4);
+    c:V3=pr_lit(s,v3(sin(a),cos(a),0.0f32),1.0f32,1.0f32,v3(1.0f32,1.0f32,1.0f32),u[..],0);
+    #assert c.x<=1.0001f32 && c.x>0.3f32;
+  }
+}
+#test "the sun lights the face turned to it, a shadow takes that away and the sky's light stays" {
+  u:[PR_FLOATS]f32; pr_test_block(u[..]);
+  s:PrSurface;
+  s.albedo=v3(0.5f32,0.5f32,0.5f32); s.rough=0.9f32; s.normal=v3(0.6f32,0.64f32,0.48f32);
+  toward:V3=v3(0.0f32,1.0f32,0.0f32); none:V3=v3(0.0f32,0.0f32,0.0f32);
+  lit:V3=pr_lit(s,toward,1.0f32,1.0f32,none,u[..],0); shaded:V3=pr_lit(s,toward,0.0f32,1.0f32,none,u[..],0); closed:V3=pr_lit(s,toward,0.0f32,0.0f32,none,u[..],0);
+  #assert lit.x>shaded.x+0.3f32 && shaded.x>0.05f32 && closed.x<0.0001f32;
+  // a face turned away takes no sun
+  s.normal=v3(0.0f32-0.6f32,0.0f32-0.64f32,0.0f32-0.48f32);
+  away:V3=pr_lit(s,toward,1.0f32,1.0f32,none,u[..],0);
+  #assert away.x<shaded.x+0.0001f32;
+}
+#test "the air takes more from a farther point and less from a higher eye" {
+  u:[PR_FLOATS]f32; pr_test_block(u[..]);
+  near:f32=pr_air_through(100.0f32,10.0f32,0.0f32,u[..],0); far:f32=pr_air_through(10000.0f32,10.0f32,0.0f32,u[..],0);
+  high:f32=pr_air_through(10000.0f32,3000.0f32,0.0f32,u[..],0);
+  #assert near>0.99f32 && far<near && far>0.5f32 && high>far;
+  // a ray level with the ground goes through `dist` of the air there exactly
+  #assert abs(far-exp(0.0f32-0.00004f32*exp(0.0f32-10.0f32/1200.0f32)*10000.0f32))<0.0001f32;
+}
+#test "a face's coordinates: across and up a wall, x and z on a floor" {
+  a:V2=pr_face(v3(3.0f32,7.0f32,5.0f32),v3(0.0f32,1.0f32,0.0f32)); #assert a.x==3.0f32 && a.y==5.0f32;
+  c:V2=pr_face(v3(3.0f32,7.0f32,5.0f32),v3(1.0f32,0.0f32,0.0f32)); #assert c.x==5.0f32 && c.y==7.0f32;
+  d:V2=pr_face(v3(3.0f32,7.0f32,5.0f32),v3(0.0f32,0.0f32,0.0f32-1.0f32)); #assert d.x==3.0f32 && d.y==7.0f32;
+}

@@ -1,0 +1,72 @@
+// The photoreal style's numbers (docs/metaverse/photoreal.md): where a frame's block sits in a
+// realm's uniforms, how a record and a material row are laid out, and the patterns a material may
+// name. The shaders (photoreal.coax) and the frame's writer (photoreal-frame.coax) both read this
+// file, so the two can't drift. The ground's sky field is PR_FIELD_FLOATS floats a cell
+// (photoreal-frame.coax): how open the cell's surface is to the sky, and that surface's height.
+//
+// A realm keeps the block anywhere in its uniforms and hands every procedure the block's first
+// float (`base`). Colours in a material row are written as they should look on a display; the
+// shader decodes them to light's own scale once.
+
+#module "metaverse.engine.render.photoreal_layout";
+
+// ---- the frame's block, floats from `base`
+PR_EYE :: 0;         // the eye x, y, z; the tangent of half the vertical field
+PR_FORWARD :: 4;     // forward x, y, z (unit); the near plane (m)
+PR_RIGHT :: 8;       // right x, y, z (unit); width / height
+PR_UP :: 12;         // up x, y, z (unit); the time (s)
+PR_SUN :: 16;        // toward the sun x, y, z (unit); the day (0 night to 1 day)
+PR_SUN_LIGHT :: 20;  // the sun's light on a surface square to it, r, g, b (0 with the sun down); the exposure
+PR_GROUND :: 24;     // the light the ground and sea send back up, r, g, b; the tier (PR_TIER_*)
+PR_HAZE :: 28;       // the air: what a metre of it takes out; the height (m) over which it thins to 1/e; sea level (y); cloud cover (0 to 1)
+PR_POSE :: 32;       // a platform's pose, three rows of four: world = R p + T (the identity with no platform)
+PR_FIELD :: 44;      // the ground's sky field: its corner x, z; a cell's side (m); the ground's height (y)
+PR_FIELD_N :: 48;    // its cells along x, along z; the height (m) over which its shade fades out; the air's haze (PR_AIR_HAZE)
+PR_AIR_HAZE :: 51;   // how much more haze the air carries than a clear day's: 0 clear, 0.15 a hazy evening at sea (photoreal.coax pr_air_light)
+PR_LIGHT :: 52;      // world to the shadow map, four rows of four
+PR_SH :: 68;         // the sky's light on a surface by its normal: nine rows of r, g, b, 0 (pr_sky_light)
+PR_FLOATS :: 104;
+
+PR_TIER_FULL :: 0;     // a desktop: every effect
+PR_TIER_REDUCED :: 1;  // a phone: fewer shadow taps, no clouds in reflections, no fine normal detail
+
+// ---- a record: one placed part, PR_RECORD_FLOATS floats (the architecture kit's record,
+// metaverse-engine/arch/place.coax, with its spare floats given a meaning)
+PR_RECORD_FLOATS :: 16;
+PR_R_PLACE :: 0;     // x, y, z
+PR_R_YAW :: 3;       // the turn about y: the part's +x runs along (cos yaw, 0, -sin yaw)
+PR_R_SCALE :: 4;     // one size for all three axes
+PR_R_MOTION :: 5;    // PR_STILL, PR_BOB, PR_SWAY or PR_LAID
+PR_R_PHASE :: 6;     // where in its motion it starts (radians)
+PR_R_FREE :: 7;      // 1: it does not ride the platform (a ship beside it)
+PR_R_TINT :: 8;      // r, g, b: multiplies the material's colour (1, 1, 1 leaves it)
+PR_R_VALUE :: 11;    // the realm's own number: what was clicked, which thing this is
+PR_R_STRETCH :: 12;  // sizes along the part's x, y, z in place of the one scale (0, 0, 0: use the scale)
+PR_R_MATERIAL :: 15; // a material for the whole part in place of its vertices' own (0: keep them)
+
+PR_STILL :: 0;
+PR_BOB :: 1;         // rises and falls a little (a buoy, a boat at its mooring)
+PR_SWAY :: 2;        // bends in the wind, more the higher up the part (a tree, a flag pole)
+PR_LAID :: 3;        // lies flat on a surface (a lawn on a deck, a road's marking): drawn a hair nearer, so the two never flicker
+
+// ---- a material: PR_MATERIAL_FLOATS floats a row, row k the material numbered k
+PR_MATERIAL_FLOATS :: 8;
+PR_M_COLOUR :: 0;    // r, g, b as on a display
+PR_M_ROUGH :: 3;     // 0 a mirror to 1 chalk
+PR_M_METAL :: 4;     // 0 or 1, rarely between
+PR_M_PATTERN :: 5;   // PR_PATTERN_*
+PR_M_SCALE :: 6;     // the pattern's size (m): a floor's height, a slab's side; 0 takes the pattern's own
+PR_M_GLOW :: 7;      // light of its own, in whites (a lamp, a lit window)
+PR_MATERIALS :: 64;  // rows a table may hold
+
+PR_PATTERN_PLAIN :: 0;     // one colour
+PR_PATTERN_CONCRETE :: 1;  // cast concrete: cloudy pours and a fine grain
+PR_PATTERN_GLASS :: 2;     // a curtain wall: floors, mullions, panes that mirror the sky
+PR_PATTERN_PAVING :: 3;    // stone slabs with joints
+PR_PATTERN_ASPHALT :: 4;   // a road's surface
+PR_PATTERN_LEAVES :: 5;    // foliage: light passes through its edges
+PR_PATTERN_WATER :: 6;     // still water: a pool, a canal
+PR_PATTERN_STONE :: 7;     // dressed stone in courses
+PR_PATTERN_PANELS :: 8;    // ribbed metal sheet
+PR_PATTERN_LAWN :: 9;      // mown grass or planted ground
+PR_PATTERNS :: 10;

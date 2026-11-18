@@ -1,0 +1,161 @@
+// SLAB's photoreal drawing (docs/metaverse/photoreal.md; docs/research/ocean/slab-world-spec.md):
+// the platform and everything on it as meshes through the Metaverse Engine's photoreal style
+// (metaverse-engine/render/shade/photoreal.coax), under a physical sky. slab.coax (this folder)
+// loads this file and calls it through a few hooks:
+//   slab_photo, slab_photo_meshes   which path a frame takes
+//   slab_photo_first                the background's trace, or a miss when the meshes draw the platform
+//   slab_photo_sky, slab_photo_haze the physical sky and air as the display shows them, for the sea
+//   slab_scene_vs/fs, slab_shadow_vs/fs   the mesh pass and its shadow map
+//
+// The sea (slab_water and what the water agents add to it) is written for colours as a display
+// shows them. So in this mode slab_sky, slab_haze and slab_grade hand it the physical sky, air
+// and film already through pr_out, and slab.coax's P_SUNCOL, P_ZENITH and P_HORIZON hold the
+// same (apps/openagents-web/slab-photoreal.coax writes them). Water that wants light's own scale
+// reads the frame's block instead: pr_dome, pr_sky_light, pr_air and pr_out with SLAB_PHOTO.
+#load "../../../metaverse-engine/render/shade/photoreal.coax";
+
+SLAB_PHOTO :: 15872;   // the photoreal frame's block in the uniforms (slab.coax U_PHOTO), then SLAB's own four:
+SLAB_PHOTO_ON :: SLAB_PHOTO + PR_FLOATS;          // 1: the realm draws photoreal
+SLAB_PHOTO_MESHES :: SLAB_PHOTO + PR_FLOATS + 1;  // 1: the meshes draw the platform this frame (0 in the section and under the sea)
+SLAB_PAINT :: 63.0f32;   // the material row that means: the plan's own paint for the record's kind (slab_paint)
+
+slab_photo :: (u:[]f32)->bool {return u[SLAB_PHOTO_ON]>0.5f32;}
+slab_photo_meshes :: (u:[]f32)->bool {return u[SLAB_PHOTO_MESHES]>0.5f32;}
+
+// The background's first hit: the traced platform, or nothing where the meshes draw it.
+slab_photo_first :: (o:V3,d:V3,u:[]f32)->SlabHit {
+  if (slab_photo_meshes(u)) {
+    return SlabHit.{t=SLAB_MISS,n=v3(0.0f32,1.0f32,0.0f32),kind=-1.0f32,top=0.0f32,id=-1.0f32,lo=v3(0.0f32,0.0f32,0.0f32),hi=v3(0.0f32,0.0f32,0.0f32)};
+  }
+  return slab_scene(o,d,false,SLAB_MISS,u);
+}
+// The physical sky along d as the display shows it: the air, the sun, cloud, and stars at night.
+slab_photo_sky :: (d:V3,u:[]f32)->V3 {
+  b:int=SLAB_PHOTO;
+  soft:f32=(u[b+PR_EYE+3]*2.0f32)/fmax(u[1],1.0f32);
+  c:V3=pr_dome(d,soft,u,b);
+  night:f32=1.0f32-u[b+PR_SUN+3];
+  if ((night>0.3f32)&&(d.y>0.05f32)) {
+    g:V2=v2(floor((d.x/(d.y+0.3f32))*180.0f32),floor((d.z/(d.y+0.3f32))*180.0f32));
+    c=add3(c,scale3(v3(0.8f32,0.85f32,1.0f32),stepf(0.996f32,slab_hash2(g))*(night-0.3f32)*0.03f32));
+  }
+  return pr_out(c,u,b);
+}
+// A display colour seen through `dist` metres of the physical air along d.
+slab_photo_haze :: (c:V3,d:V3,dist:f32,u:[]f32)->V3 {
+  b:int=SLAB_PHOTO;
+  t:f32=pr_air_through(dist,u[b+PR_EYE+1],d.y,u,b);
+  far:V3=pr_out(add3(pr_air_far(d,pr_at3(u,b+PR_SUN),u[b+PR_AIR_HAZE]),pr_night(u[b+PR_SUN+3])),u,b);
+  return mix3(c,far,1.0f32-t);
+}
+
+// ---- the mesh pass
+// (the vertices' store is not named `mesh`: host.js gives a store of that name in a page's shader its older single-mesh layout)
+slab_scene_vs :: (id:u32,instance:u32,u:[]f32,parts:[]f32,objects:[]PrObj)->PrV {return pr_stand(id,instance,u,SLAB_PHOTO,parts,objects);}
+slab_shadow_vs :: (id:u32,instance:u32,u:[]f32,parts:[]f32,objects:[]PrObj)->PrShade {return pr_shadow_stand(id,instance,u,SLAB_PHOTO,parts,objects);}
+slab_shadow_fs :: (s:PrShade) {}
+
+// How rough a kind's painted surface is (the plan's paint has no roughness of its own).
+slab_photo_rough :: (k:s32,roof:bool)->f32 {
+  if (k==0) {return ifx roof then 0.62f32 else 0.8f32;}
+  if ((k==4)||(k==8)||(k==10)||(k==12)||(k==13)||(k==20)) {return 0.45f32;}   // painted metal
+  if ((k==9)||(k==16)||(k==18)||(k==27)||(k==19)) {return 0.55f32;}        // dressed stone
+  if ((k==15)||(k==7)) {return 0.9f32;}
+  return 0.75f32;
+}
+// What a mirror on the platform shows along rh from ph (hull frame): the platform's own masses
+// where the ray meets one, under the sun and sky without their shadows; else `sky`.
+slab_photo_mirror :: (ph:V3,rh:V3,sky:V3,u:[]f32)->V3 {
+  b:int=SLAB_PHOTO;
+  hit:SlabHit=slab_scene(ph,rh,true,1500.0f32,u);
+  if (hit.t>=1500.0f32) {return sky;}
+  w:V3=sb_add(ph,sb_mul(rh,hit.t));
+  pt:SlabPaint=slab_paint(hit,w,rh,u);
+  nw:V3=sb_dir_to_world(hit.n,u);
+  light:V3=add3(scale3(pr_at3(u,b+PR_SUN_LIGHT),fmax(dot3(nw,pr_at3(u,b+PR_SUN)),0.0f32)),pr_sky_light(nw,u,b));
+  c:V3=add3(mul3(pr_decode(pt.c),light),scale3(pr_decode(pt.emit),1.0f32/fmax(u[b+PR_SUN_LIGHT+3],0.001f32)));
+  // the air between the mirror and what it shows
+  t:f32=pr_air_through(hit.t,u[b+PR_EYE+1],rh.y,u,b);
+  return mix3(sky,c,t);
+}
+slab_scene_fs :: (v:PrV,u:[]f32,materials:[]f32,field:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->V4 {
+  b:int=SLAB_PHOTO;
+  // (first: the material takes its derivatives before anything branches)
+  s:PrSurface=pr_surface(v,u,b,materials);
+  full:bool=u[b+PR_GROUND+3]<0.5f32;
+  eye:V3=pr_at3(u,b+PR_EYE);
+  to:V3=sub3(v.world,eye);
+  dist:f32=length3(to);
+  rd:V3=scale3(to,1.0f32/fmax(dist,0.0001f32));
+  toward:V3=scale3(rd,0.0f32-1.0f32);
+  free:bool=v.info.w>0.5f32;
+  // the hull's frame, where the plan's records and its paint live
+  wh:V3=v.world; nh:V3=s.normal; dh:V3=rd;
+  if (!free) {wh=sb_to_hull(v.world,u); nh=sb_dir_to_hull(s.normal,u); dh=sb_dir_to_hull(rd,u);}
+  record:int=cast(int)(v.info.y+0.5f32)-1;
+  exposure:f32=fmax(u[b+PR_SUN_LIGHT+3],0.001f32);
+  night:f32=u[SLAB_P+39];
+  kind:s32=-1;
+  if (record>=0) {
+    at:int=SLAB_BOXES+(record*8);
+    p:V4=wg_at4(u,at);
+    q:V4=wg_at4(u,at+4);
+    kind=wg_i32_f(p.w+0.5f32);
+    if (v.info.x>SLAB_PAINT-0.5f32) {
+      hit:SlabHit=SlabHit.{t=dist,n=nh,kind=p.w+(ifx q.w>10.5f32 then 0.25f32 else 0.0f32),top=q.y,id=cast(f32)(record),lo=v3(p.x,p.y,p.z),hi=v3(q.x,q.y,q.z)};
+      pt:SlabPaint=slab_paint(hit,wh,dh,u);
+      s.albedo=mul3(pr_decode(pt.c),v.tint);
+      s.glow=scale3(pr_decode(pt.emit),1.0f32/exposure);
+      s.rough=slab_photo_rough(kind,nh.y>0.5f32);
+      s.metal=0.0f32;
+      if ((kind==14)&&(nh.y>0.5f32)) {
+        // water on the deck: dark, smooth, a mirror
+        s.albedo=v3(0.006f32,0.03f32,0.04f32); s.rough=0.05f32; s.glow=v3(0.0f32,0.0f32,0.0f32);
+      }
+      if ((kind==0)&&(nh.y>0.5f32)) {
+        // the deck's margin is wet with spray: darker and smoother toward its edge
+        wet:f32=smoothstep(-45.0f32,-4.0f32,slab_hull_plan(v2(wh.x,wh.z),u))*saturate(u[SLAB_P+44]/20.0f32);
+        s.rough=mix(s.rough,0.2f32,wet*0.7f32);
+        s.albedo=scale3(s.albedo,1.0f32-(0.25f32*wet));
+      }
+    } else if ((kind==5)&&(abs(nh.y)<0.5f32)) {
+      // a tower's lit rooms at night, a room in two
+      along:f32=ifx abs(nh.x)>abs(nh.z) then wh.z else wh.x;
+      storey:f32=(wh.y-u[38])/3.9f32;
+      lit:f32=stepf(0.5f32,slab_hash2(v2(floor(along/3.0f32),floor(storey)+(cast(f32)(record)*13.0f32))))*stepf(0.3f32,fract(storey));
+      s.glow=add3(s.glow,scale3(v3(1.0f32,0.6f32,0.25f32),(lit*night*0.55f32)/exposure));
+    }
+  }
+  n:V3=s.normal;
+  sun:V3=pr_at3(u,b+PR_SUN);
+  // the sun: the shadow map, and beyond its reach the platform's own masses, traced
+  reach:f32=0.0f32;
+  if (((dot3(n,sun)>0.0f32)||(s.through>0.0f32))&&(sun.y>-0.02f32)) {
+    outside:f32=1.0f32;
+    if (full&&(!free)&&(pr_shadow_edge(v.world,u,b)>0.9f32)) {
+      far:SlabHit=slab_scene(sb_add(wh,sb_mul(nh,0.1f32)),sb_dir_to_hull(sun,u),true,900.0f32,u);
+      if (far.t<900.0f32) {outside=0.0f32;}
+    }
+    reach=pr_shadow(v.world,n,outside,u,b,shadow_map,shadow_cmp);
+  }
+  open:f32=ifx free then 1.0f32 else pr_field(wh,nh,u,b,field);
+  mirrored:V3=pr_environment(n,toward,s.rough,u,b);
+  if (full&&(!free)&&(s.rough<0.16f32)) {
+    r:V3=reflect3(rd,n);
+    mirrored=slab_photo_mirror(sb_add(wh,sb_mul(nh,0.15f32)),sb_dir_to_hull(r,u),mirrored,u);
+  }
+  c:V3=pr_out(pr_air(pr_lit(s,toward,reach,open,mirrored,u,b),v.world,u,b),u,b);
+  // SLAB's own, over the display's colour: the stacks' smoke between the eye and the surface,
+  // and a warm pulse on what is selected
+  sm:V4=slab_smoke(sb_to_hull(eye,u),sb_dir_to_hull(rd,u),dist,u);
+  c=mix3(c,v3(sm.x,sm.y,sm.z),sm.w);
+  if (record>=0) {
+    if (abs(cast(f32)(record)-u[SLAB_P+36])<0.5f32) {
+      pulse:f32=0.5f32+(0.5f32*sin(u[SLAB_P+38]*5.0f32));
+      c=add3(scale3(c,1.1f32),scale3(v3(1.0f32,0.62f32,0.2f32),0.12f32+(0.12f32*pulse)));
+    } else if (abs(cast(f32)(record)-u[SLAB_P+37])<0.5f32) {
+      c=add3(scale3(c,1.06f32),v3(0.06f32,0.05f32,0.03f32));
+    }
+  }
+  return v4(c.x,c.y,c.z,1.0f32);
+}
