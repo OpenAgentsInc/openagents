@@ -1209,9 +1209,11 @@ by its optics") has the method and its sources.
 
 **Not done, or not physics.**
 
-- The sky the sea mirrors is still the realm's painted sky, and the picture
-  is still display-referred: the optics work in light's own scale between a
-  square and a square root. A physical sky and tone mapping replace both.
+- In the default style the sky the sea mirrors is the realm's painted sky.
+  With `?style=photoreal` it is the physical sky, and the weather dims that
+  frame's sun, sky and air too. In both the sea's optics still work between a
+  square and a square root of the display's colours, not yet in the photoreal
+  frame's own light and film response.
 - Foam is where the sea's own Jacobian breaks, but its lace, the streaks'
   places and the spindrift are drawn from noise, not simulated.
 - Rain does not flatten the sea or ring its surface, and the cloud deck is a

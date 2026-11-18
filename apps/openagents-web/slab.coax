@@ -1026,6 +1026,7 @@ slab_frame :: (s: [] Slab, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
   sea_look_frame(s, u, phone, tick, folded);
   sb_say(s);   // the HUD as words, for its pane
   slab_photo_frame(s, u, sun, phone);
+  sea_look_photo(s, u);   // the weather over the photoreal sky's light (slab-sea.coax)
   if !s[0].hud || s[0].golden { s[0].button_count = 0; return 0; }
   if s[0].hp.pane { return sb_lines(s, out); }
   return hud(s, out);

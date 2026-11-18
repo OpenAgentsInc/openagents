@@ -45,7 +45,7 @@ slab_photo_sky :: (d:V3,u:[]f32)->V3 {
 slab_photo_haze :: (c:V3,d:V3,dist:f32,u:[]f32)->V3 {
   b:int=SLAB_PHOTO;
   t:f32=pr_air_through(dist,u[b+PR_EYE+1],d.y,u,b);
-  far:V3=pr_out(add3(pr_air_far(d,pr_at3(u,b+PR_SUN),u[b+PR_AIR_HAZE]),pr_night(u[b+PR_SUN+3])),u,b);
+  far:V3=pr_out(slab_sea_cloud_far(add3(pr_air_far(d,pr_at3(u,b+PR_SUN),u[b+PR_AIR_HAZE]),pr_night(u[b+PR_SUN+3])),u),u,b);   // (the weather's cloud: slab-sea.coax)
   return mix3(c,far,1.0f32-t);
 }
 
@@ -144,7 +144,7 @@ slab_scene_fs :: (v:PrV,u:[]f32,materials:[]f32,field:[]f32,shadow_map:TexDepth,
     r:V3=reflect3(rd,n);
     mirrored=slab_photo_mirror(sb_add(wh,sb_mul(nh,0.15f32)),sb_dir_to_hull(r,u),mirrored,u);
   }
-  c:V3=pr_out(pr_air(pr_lit(s,toward,reach,open,mirrored,u,b),v.world,u,b),u,b);
+  c:V3=pr_out(slab_sea_cloud_air(pr_air(pr_lit(s,toward,reach,open,mirrored,u,b),v.world,u,b),v.world,u),u,b);   // (the weather's cloud: slab-sea.coax)
   // SLAB's own, over the display's colour: the stacks' smoke between the eye and the surface,
   // and a warm pulse on what is selected
   sm:V4=slab_smoke(sb_to_hull(eye,u),sb_dir_to_hull(rd,u),dist,u);

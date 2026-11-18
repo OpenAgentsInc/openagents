@@ -207,6 +207,26 @@ slab_weather_px :: (d:V3,u:[]f32)->V2 {
   sy:f32=wg_dot3(d,v3(u[20],u[21],u[22]))/(vz*u[11]);
   return v2(((sx+1.0f32)*0.5f32)*u[0],((1.0f32-sy)*0.5f32)*u[1]);
 }
+// The photoreal air under the weather's cloud (gpu/slab-photoreal.coax calls these two). The
+// engine's air is a clear day's: its far light is the sun's glow in the haze. Under a cloud deck
+// the air is lit by the deck, so its far light goes to the sky's mean light, which the frame has
+// dimmed already (slab-sea.coax sea_look_photo). A sky with little cloud is left as it is.
+slab_sea_cloud_far :: (far:V3,u:[]f32)->V3 {
+  deck:f32=smoothstep(0.3f32,0.9f32,u[SLAB_SEA+16]);
+  return mix3(far,pr_sky_light(v3(0.0f32,1.0f32,0.0f32),u,SLAB_PHOTO),deck);
+}
+// The same for a colour (light's scale) that pr_air has put its clear air over; w is the point seen.
+slab_sea_cloud_air :: (c:V3,w:V3,u:[]f32)->V3 {
+  if (u[SLAB_SEA+16]<=0.3f32) { return c; }
+  b:int=SLAB_PHOTO;
+  to:V3=sub3(w,pr_at3(u,b+PR_EYE));
+  dist:f32=length3(to);
+  rd:V3=scale3(to,1.0f32/fmax(dist,0.0001f32));
+  t:f32=pr_air_through(dist,u[b+PR_EYE+1],rd.y,u,b);
+  far:V3=add3(pr_air_far(rd,pr_at3(u,b+PR_SUN),u[b+PR_AIR_HAZE]),pr_night(u[b+PR_SUN+3]));
+  return add3(c,scale3(sub3(slab_sea_cloud_far(far,u),far),1.0f32-t));
+}
+
 // Rain between the eye and the scene: streaks falling down the screen, leaning with the wind.
 slab_weather_air :: (c:V3,frag:V2,u:[]f32)->V3 {
   rain:f32=u[SLAB_SEA+17];
