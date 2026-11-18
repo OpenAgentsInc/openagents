@@ -31,6 +31,8 @@ as of November 18, 2026.
    simulated world. The [construction film and frame review](slab-construction-review.md)
    follows the hull from the casting basin to the first seam, the Brownsville freight
    deliveries and the commissioned platform.
+7. [slab-world-audit.md](slab-world-audit.md): what the built world is like
+   for a new visitor, and what to change.
 
 ## The documents
 
@@ -152,7 +154,33 @@ unlisted world in the OpenAgents Metaverse Engine.
   ocean-atomics-reactor.md) or a hybrid of the two.
 - **For the build:** deck layout, controls, 14 tests and seven build phases.
 
-**Status:** nothing in it is built yet.
+**Status:** build phases S1 to S7 are done. The spec's own status line and
+results section list where the world departs from it.
+
+### [slab-world-audit.md](slab-world-audit.md)
+
+**What it is:** an audit of the built world on November 18, 2026, from the
+point of view of someone who arrives from a post about SLAB and has read
+nothing.
+
+**What it covers:**
+- What a newcomer sees in the first minute, and what stops them
+  understanding it.
+- The words, cards, walking and cutaway views.
+- Where the world's numbers disagree with each other and with the spec.
+- How the world looks against the engine's photoreal style, and what the
+  water does and doesn't simulate.
+- Recommendations: a guided tour, a "What would it take?" panel with sliders
+  for weight, size, site and power, one story about where the platform is, a
+  photoreal look, and waves that meet the wall.
+
+**Conclusion:** the model underneath is sound, and a newcomer can't read it
+yet. The world is also not in production: `/realms/slab` returned 404 when
+the audit was written.
+
+**Includes:** [slab-world-audit-views.jpg](slab-world-audit-views.jpg), eight
+labelled views of the world. The construction timelapse has its own rebuild
+plan in [issue 13682](https://github.com/OpenAgentsInc/openagents/issues/13682).
 
 ## Files without their own doc
 
