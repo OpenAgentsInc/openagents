@@ -1,0 +1,276 @@
+// The SLAB world's chart (GitHub #13686): the coast, the water's depth, the legal lines, where the
+// platform is and, off Texas, the construction route. It is the panel's "Where" control: a press on
+// it moves the platform there. The data and the arithmetic are the engine's chart
+// (metaverse-engine/world/chart.coax, docs/metaverse/chart.md) and the sites are
+// metaverse/slab-where.coax's; this file lays the chart out on the canvas, draws its lines with the
+// page's strokes and names its parts with the HUD's tags (scene-hud.coax's sh_tag), in the browser's
+// own text.
+//
+// For another drawing (the tour's last stop, the construction drawing of #13682): chart_show(s, true)
+// opens this chart on the site the world is at, chart_far(s, true) shows the whole region, and
+// chart_draw_in(s, out, n, view) draws it into any rectangle of the canvas; chart_route_tags says
+// the route's names. The lines are made once for a site and a zoom (chart_make) and kept.
+//
+//   coax/bin/coax test apps/openagents-web/slab.coax --only "Chart"
+
+SC_SEGS :: 2600;          // line segments kept for a view
+SC_LAYERS :: 6;
+SC_SHELF :: 0; SC_COLD :: 1; SC_STATE :: 2; SC_TWELVE :: 3; SC_CUSTOMS :: 4; SC_ECONOMIC :: 5;
+SC_NODES :: 61 * 61;      // the most nodes a chart's grid has
+SC_NEAR :: 96.0;          // nautical miles across the near view (the near grid, 1.6 degrees)
+
+SlabChart :: struct {
+  on: bool;
+  far: bool;                       // the whole region and not the 96 miles round the place
+  site: int = -1; made_far: bool;  // what the lines below were made for
+  segs: [SC_SEGS * 4] f32;         // lat, lon, lat, lon
+  start: [SC_LAYERS + 1] int;      // each layer's first segment, and the end
+  view: ChartView;                 // where it is on the canvas, in the canvas's pixels
+  held: bool;                      // a press that began on the chart is still down
+}
+
+sc_grid :: (c: [] Change, far: bool) -> ChartGrid { ch := c[0].where[0].chart; return ifx far then ch.far else ch.near; }
+// The lines of a chart: the 200 m and 1,000 m depth lines, then the state's line, the 12, 24 and 200
+// mile lines, each kept to the sea. Made once for a site and a zoom.
+chart_make :: (s: [] Slab) {
+  m := s[0].chart; c := s[0].change[..];
+  site := c[0].what.site;
+  if m.site == site && m.made_far == m.far { return; }
+  where_load(c[0].where[..], site);
+  ch := c[0].where[0].chart; g := sc_grid(c, m.far); f := chart_field_of(g);
+  heights: [SC_NODES] f32; miles: [SC_NODES] f32;
+  n := 0;
+  ok := chart_field_heights(g, heights[..]) && chart_field_shore(ch, f, miles[..]);
+  ws := where_site(site);
+  for layer: 0..<SC_LAYERS {
+    m.start[layer] = n;
+    if !ok { continue; }
+    if layer == SC_SHELF { n = chart_march(f, heights[..], -200, m.segs[..], n, SC_SEGS); }
+    else if layer == SC_COLD { n = chart_march(f, heights[..], -1000, m.segs[..], n, SC_SEGS); }
+    else if ws.lines {
+      level := ifx layer == SC_STATE then ws.boundary else ifx layer == SC_TWELVE then 12.0 else ifx layer == SC_CUSTOMS then 24.0 else 200.0;
+      if level > 0 && !(layer == SC_TWELVE && ws.boundary >= 12) {
+        from := n;
+        n = chart_march(f, miles[..], f32(level), m.segs[..], n, SC_SEGS);
+        n = from + chart_keep_sea(ch, m.segs[from * 4..<n * 4], n - from);
+      }
+    }
+  }
+  m.start[SC_LAYERS] = n;
+  m.site = site; m.made_far = m.far;
+  s[0].chart = m;
+}
+chart_show :: (s: [] Slab, on: bool) { s[0].chart.on = on; s[0].chart.held = false; }
+chart_far :: (s: [] Slab, far: bool) { s[0].chart.far = far; }
+
+// Where the chart sits, clear of the HUD: beside the sheet on a wide screen, and between the bar and
+// the sheet on a phone (the mono skin's sheet is 380 px wide at the left, or the lower 46% under 600 px).
+chart_layout :: (s: [] Slab) -> ChartView {
+  c := s[0].change[..]; k := s[0].dpr; w := s[0].width; h := s[0].height;
+  g := sc_grid(c, s[0].chart.far);
+  narrow := w <= 600 * k;
+  x := ifx narrow then 10 * k else 400 * k; y := ifx narrow then 100 * k else 66 * k;
+  wide := ifx narrow then w - 20 * k else lo_f32(h * 0.62f32, w - 420 * k);
+  tall := ifx narrow then h * 0.54f32 - 152 * k else wide;
+  if wide < 160 * k { wide = 160 * k; }
+  if tall < 160 * k { tall = 160 * k; }
+  miles := ifx s[0].chart.far then (g.lat1 - g.lat0) * 60.0 else lo_f64((g.lat1 - g.lat0) * 60.0, SC_NEAR);
+  return ChartView.{x = x, y = y, w = wide, h = tall, lat = (g.lat0 + g.lat1) / 2.0, lon = (g.lon0 + g.lon1) / 2.0, miles = miles};
+}
+lo_f64 :: (a: f64, b: f64) -> f64 { return ifx a < b then a else b; }
+
+// One line of the chart, between two places, clipped to the view.
+chart_line :: (out: [] f32, n: int, v: ChartView, lat0: f64, lon0: f64, lat1: f64, lon1: f64, width: f32, shade: f32) -> int {
+  a := chart_to_screen(v, lat0, lon0); b := chart_to_screen(v, lat1, lon1);
+  seg := [4] f32.[a[0], a[1], b[0], b[1]];
+  if !chart_clip(v, seg[..]) { return n; }
+  if lit(out, n, seg[0], seg[1], seg[2], seg[3], width, 1.0, width, shade, shade, shade, MODE_STROKE) { return n + 6; }
+  return n;
+}
+// A small square at a place: filled for the platform, an outline for a named place.
+chart_mark :: (out: [] f32, n: int, v: ChartView, lat: f64, lon: f64, half: f32, filled: bool) -> int {
+  p := chart_to_screen(v, lat, lon);
+  if !chart_view_holds(v, p[0], p[1]) { return n; }
+  return panel(out, n, p[0] - half, p[1] - half, p[0] + half, p[1] + half, 0, ifx filled then 1.0 else 0.03, ifx filled then 1.0 else 0.03, ifx filled then 1.0 else 0.03, 1, 1);
+}
+// The chart drawn into a rectangle of the canvas: its ground, the depth lines, the legal lines, the
+// coast, the route off Texas, the site's own place and the platform.
+chart_draw_in :: (s: [] Slab, out: [] f32, at: int, v: ChartView) -> int {
+  chart_make(s);
+  m := s[0].chart; c := s[0].change[..]; k := s[0].dpr; n := at;
+  ch := c[0].where[0].chart; w := c[0].what;
+  n = panel(out, n, v.x, v.y, v.x + v.w, v.y + v.h, 0, 0.02, 0.02, 0.02, 1, 1);
+  for layer: 0..<SC_LAYERS {
+    shade := ifx layer == SC_SHELF then 0.22f32 else ifx layer == SC_COLD then 0.34f32 else 0.62f32;
+    width := ifx layer <= SC_COLD then 0.8f32 * k else 1.1f32 * k;
+    for i: m.start[layer]..<m.start[layer + 1] {
+      // the legal lines are dashed: every third piece is left out
+      if layer >= SC_STATE && i % 3 == 2 { continue; }
+      n = chart_line(out, n, v, f64(m.segs[i * 4]), f64(m.segs[i * 4 + 1]), f64(m.segs[i * 4 + 2]), f64(m.segs[i * 4 + 3]), width, shade);
+    }
+  }
+  last: ChartPoint;
+  for i: 0..<chart_coast_points(ch) {
+    p := chart_coast_point(ch, i);
+    if !p.first { n = chart_line(out, n, v, last.lat, last.lon, p.lat, p.lon, 1.5f32 * k, 1.0); }
+    last = p;
+  }
+  if w.site == SITE_TEXAS {
+    // the construction route: the casting yard, the channel to the jetties, and the tow to the berth
+    berth := where_site(SITE_TEXAS);
+    n = chart_line(out, n, v, WHERE_YARD[0], WHERE_YARD[1], WHERE_JETTIES[0], WHERE_JETTIES[1], 1.2f32 * k, 0.8);
+    n = chart_line(out, n, v, WHERE_JETTIES[0], WHERE_JETTIES[1], berth.lat, berth.lon, 1.2f32 * k, 0.8);
+    n = chart_mark(out, n, v, WHERE_YARD[0], WHERE_YARD[1], 3 * k, false);
+    n = chart_mark(out, n, v, WHERE_JETTIES[0], WHERE_JETTIES[1], 3 * k, false);
+    n = chart_mark(out, n, v, WHERE_BROWNSVILLE[0], WHERE_BROWNSVILLE[1], 3 * k, false);
+  }
+  home := where_site(w.site);
+  n = chart_mark(out, n, v, home.lat, home.lon, 3 * k, false);
+  n = chart_mark(out, n, v, w.lat, w.lon, 5 * k, true);
+  // a scale: ten miles near, a hundred far
+  bar := f32(chart_view_scale(v)) * (ifx m.far then 100.0f32 else 10.0f32);
+  y := v.y + v.h - 14 * k; x := v.x + 14 * k;
+  if lit(out, n, x, y, x + bar, y, 1.2f32 * k, 1.0, 1.2f32 * k, 1, 1, 1, MODE_STROKE) { n += 6; }
+  if lit(out, n, x, y - 4 * k, x, y + 4 * k, 1.2f32 * k, 1.0, 1.2f32 * k, 1, 1, 1, MODE_STROKE) { n += 6; }
+  if lit(out, n, x + bar, y - 4 * k, x + bar, y + 4 * k, 1.2f32 * k, 1.0, 1.2f32 * k, 1, 1, 1, MODE_STROKE) { n += 6; }
+  return n;
+}
+// The chart on the canvas when it is shown (after the HUD's own lines).
+chart_draw :: (s: [] Slab, out: [] f32, at: int) -> int {
+  if !s[0].chart.on || s[0].build.on { return at; }
+  s[0].chart.view = chart_layout(s);
+  return chart_draw_in(s, out, at, s[0].chart.view);
+}
+
+// A name on the chart, centred on a point of the canvas and kept inside the chart's edges.
+chart_label :: (s: [] Slab, h: [] SceneHud, id: string, name: string, px: f32, py: f32, press: bool) {
+  v := s[0].chart.view; k := s[0].dpr;
+  half := cast(f32) name.count * 3.7f32 + (ifx press then 16.0f32 else 6.0f32);   // about half its width, CSS pixels
+  x := px / k; y := py / k;
+  left := v.x / k + half; right := (v.x + v.w) / k - half;
+  if x < left { x = left; }
+  if x > right { x = right; }
+  if y < v.y / k + 12 { y = v.y / k + 12; }
+  if y > (v.y + v.h) / k - 12 { y = (v.y + v.h) / k - 12; }
+  sh_tag(h, id, name, x, y, 1, press);
+}
+// A name at a place of the chart, when the place is in view. `dy` lifts it off its mark, in CSS pixels.
+chart_tag :: (s: [] Slab, h: [] SceneHud, id: string, name: string, lat: f64, lon: f64, dy: f32) {
+  v := s[0].chart.view; k := s[0].dpr;
+  p := chart_to_screen(v, lat, lon);
+  if !chart_view_holds(v, p[0], p[1]) { return; }
+  chart_label(s, h, id, name, p[0], p[1] + dy * k, false);
+}
+// The construction route's names (the casting yard, the jetties, the freight port), for any drawing
+// that has laid the chart out.
+chart_route_tags :: (s: [] Slab, h: [] SceneHud) {
+  chart_tag(s, h, "chart.yard", "Casting yard, Corpus Christi", WHERE_YARD[0], WHERE_YARD[1], -16);
+  chart_tag(s, h, "chart.jetties", "Port Aransas jetties", WHERE_JETTIES[0], WHERE_JETTIES[1], 16);
+  chart_tag(s, h, "chart.freight", "Brownsville, the freight port", WHERE_BROWNSVILLE[0], WHERE_BROWNSVILLE[1], -16);
+}
+// A legal line's name, on the line: each line's name is on a row of its own up from the chart's foot,
+// so two lines a few miles apart do not write over each other.
+SC_ROWS :: 10;   // the rows of text a line's name may take, from the chart's head to its foot
+chart_line_tag :: (s: [] Slab, h: [] SceneHud, layer: int, id: string, name: string, used: [] bool) {
+  m := s[0].chart; v := m.view; k := s[0].dpr;
+  // the legal lines are named up from the chart's foot and the depth lines down from its head;
+  // each name takes the free row its line comes nearest, so two names never share a line of text
+  want := ifx layer < SC_STATE then layer - SC_SHELF else SC_ROWS - 1 - (layer - SC_STATE);
+  top := v.y + 48 * k; step := (v.h - 112 * k) / cast(f32) (SC_ROWS - 1);
+  best := -1; slot := -1; cost := 1.0e9f32; at: [2] f32;
+  for i: m.start[layer]..<m.start[layer + 1] {
+    p := chart_to_screen(v, f64(m.segs[i * 4]), f64(m.segs[i * 4 + 1]));
+    if !chart_view_holds(v, p[0], p[1]) { continue; }
+    for r: 0..<SC_ROWS {
+      if used[r] { continue; }
+      d := abs(p[1] - (top + step * cast(f32) r)) + 0.3f32 * step * abs(cast(f32) (r - want));
+      if d < cost { cost = d; best = i; slot = r; at = p; }
+    }
+  }
+  if best >= 0 { used[slot] = true; chart_label(s, h, id, name, at[0], top + step * cast(f32) slot, false); }
+}
+// The chart's names, said with the HUD: its title, the platform, the lines, the scale and a switch
+// between the near and the whole view.
+chart_tags :: (s: [] Slab, h: [] SceneHud) {
+  if !s[0].chart.on || s[0].build.on || !s[0].hp.pane { return; }
+  m := s[0].chart; v := m.view; k := s[0].dpr; c := s[0].change[..]; w := c[0].what;
+  if v.w <= 0 { return; }
+  site := where_site(w.site);
+  ls: [1] WhatLine; l := ls[..];
+  what_put(l, site.title); what_put(l, ". Not for navigation.");
+  chart_label(s, h, "chart.title", what_text(l), v.x + v.w / 2, v.y + 14 * k, false); l[0].n = 0;
+  chart_label(s, h, "chart.zoom", ifx m.far then "Show 96 miles" else "Show the whole region", v.x + v.w, v.y + v.h - 22 * k, true);
+  bar := f32(chart_view_scale(v)) * (ifx m.far then 100.0f32 else 10.0f32);
+  chart_label(s, h, "chart.scale", ifx m.far then "100 nautical miles" else "10 nautical miles", v.x + 14 * k + bar / 2, v.y + v.h - 30 * k, false);
+  chart_tag(s, h, "chart.here", "The platform", w.lat, w.lon, -16);
+  used: [SC_ROWS] bool;
+  chart_line_tag(s, h, SC_SHELF, "chart.l.shelf", "200 m deep", used[..]);
+  chart_line_tag(s, h, SC_COLD, "chart.l.cold", "1,000 m deep", used[..]);
+  if site.lines {
+    if site.boundary > 0 && site.boundary < 12 { what_put(l, "State line, "); what_num(l, site.boundary, 0); what_put(l, " miles"); chart_line_tag(s, h, SC_STATE, "chart.l.state", what_text(l), used[..]); l[0].n = 0; }
+    chart_line_tag(s, h, SC_TWELVE, "chart.l.12", "12 miles", used[..]);
+    chart_line_tag(s, h, SC_CUSTOMS, "chart.l.24", "24 miles", used[..]);
+    chart_line_tag(s, h, SC_ECONOMIC, "chart.l.200", "200 miles", used[..]);
+  }
+  if w.site == SITE_TEXAS { chart_route_tags(s, h); }
+}
+// A press on the chart: the platform goes to that place. True when the chart took the press.
+chart_pointer :: (s: [] Slab, x: f32, y: f32, phase: int) -> bool {
+  m := s[0].chart;
+  if !m.on || s[0].build.on || m.view.w <= 0 { return false; }
+  inside := chart_view_holds(m.view, x, y);
+  if phase == 0 { s[0].chart.held = inside; }
+  if !s[0].chart.held { return false; }
+  if phase >= 2 { s[0].chart.held = false; }
+  if inside {
+    at := chart_from_screen(m.view, x, y);
+    if change_place(s[0].change[..], at[0], at[1]) { change_push(s, false); panel_address(s); }
+  }
+  return true;
+}
+// A press on one of the chart's own tags. True when the id was the chart's.
+chart_act :: (s: [] Slab, id: string) -> bool {
+  if id == "chart.zoom" { chart_far(s, !s[0].chart.far); return true; }
+  return false;
+}
+
+#test "Chart: off Texas the chart has its depth lines, the nine mile line and the route, and a press moves the platform" #steps 2000000000 {
+  s: [1] Slab; vertices: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  slab_message(s[..], HOST_FACTS, "url=https://openagents.com/worlds/slab?intro=0&site=texas\n");
+  s[0].dpr = 1; s[0].width = 1440; s[0].height = 900;
+  #assert chart_draw(s[..], vertices[..], 0) == 0;          // nothing until it is shown
+  chart_show(s[..], true);
+  n := chart_draw(s[..], vertices[..], 0);
+  m := s[0].chart; v := m.view;
+  #assert n > 600 && n % 6 == 0 && v.w == v.h && v.w > 300 && v.x >= 400 && v.x + v.w <= 1440 && v.y + v.h <= 900;
+  // the shelf's edge, the state's nine mile line, the customs line; no separate 12 mile line inside nine
+  #assert m.start[SC_SHELF + 1] > m.start[SC_SHELF] && m.start[SC_STATE + 1] - m.start[SC_STATE] > 10 && m.start[SC_CUSTOMS + 1] > m.start[SC_CUSTOMS];
+  // every kept piece of the state's line is nine miles off the coast, at sea
+  ch := s[0].change[0].where[0].chart;
+  for i: m.start[SC_STATE]..<m.start[SC_STATE + 1] {
+    if i % 10 != 0 { continue; }
+    sh := chart_shore(ch, f64(m.segs[i * 4]), f64(m.segs[i * 4 + 1]));
+    #assert sh.found && abs(sh.nmi - 9) < 2.5;
+  }
+  // the platform's mark is at its place, and a press elsewhere moves it there
+  here := chart_to_screen(v, s[0].change[0].what.lat, s[0].change[0].what.lon);
+  #assert chart_view_holds(v, here[0], here[1]);
+  to := chart_to_screen(v, 27.30, -96.90);
+  #assert chart_pointer(s[..], to[0], to[1], 0) && chart_pointer(s[..], to[0], to[1], 2);
+  w := s[0].change[0].what;
+  #assert abs(w.lat - 27.30) < 0.01 && abs(w.lon + 96.90) < 0.01 && s[0].site == SITE_TEXAS && slab_action(s[..]) == PANEL_ADDRESS;
+  #assert abs(s[0].change[0].facts.place.shore - chart_shore(ch, w.lat, w.lon).nmi) < 0.01;
+  // a press off the chart is the world's
+  #assert !chart_pointer(s[..], v.x + v.w + 40, v.y + 10, 0);
+  // the whole region, and the names
+  #assert chart_act(s[..], "chart.zoom") && s[0].chart.far;
+  n = chart_draw(s[..], vertices[..], 0);
+  #assert s[0].chart.made_far && s[0].chart.start[SC_ECONOMIC + 1] > s[0].chart.start[SC_ECONOMIC];
+  sb_say(s[..]);
+  #assert sb_test_has(s[..], 'W', "chart.here", "The platform") && sb_test_has(s[..], 'W', "chart.yard", "") && sb_test_has(s[..], 'W', "chart.zoom", "Show 96 miles");
+  // at a phone's size the chart fits the width
+  s[0].dpr = 2; s[0].width = 780; s[0].height = 1688;
+  n = chart_draw(s[..], vertices[..], 0);
+  ph := s[0].chart.view;
+  #assert ph.x + ph.w <= 780 && ph.w >= 600 && ph.y >= 200 && ph.y + ph.h <= 1688 * 0.54 - 88;   // under the bar, over the sheet
+}

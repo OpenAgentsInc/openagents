@@ -1,0 +1,251 @@
+// The place drawn in the SLAB world (GitHub #13686): the nearest land on the horizon when it is in
+// sight, the state's line and the 12 mile line on the water, and the dock's name on its wall. Where
+// the land and the lines are comes from the site's chart (metaverse-engine/world/chart.coax through
+// metaverse/slab-where.coax). The land is a ridge the shader draws (gpu/slab.coax slab_land) toward
+// the bearing, as high and as wide against the sky as the chart's heights make it from the eye; the
+// lines are dashed strokes on the sea, named with the HUD's tags.
+//
+//   coax/bin/coax test apps/openagents-web/slab.coax --only "Place"
+
+PL_BEARINGS :: 48;        // looks round the horizon
+PL_SEGS :: 700;           // pieces of the two lines kept
+PL_REACH :: 60.0;         // nautical miles a look goes
+PL_SEEN :: 16000.0;       // m: how far off a line on the water is still drawn
+PL_DASH :: 150.0;         // m: a dash, and the gap after it
+
+SlabPlace :: struct {
+  site: int = -1; lat: f64; lon: f64;   // where the land and the lines below were worked out
+  eye: f32 = -1;                        // and from what height the land was
+  land: [4] f32;                        // the way to its shore, east and north (m); its height against the sky (tan); the cosine of half its width
+  nmi: f64;                             // how far the nearest land in sight is
+  segs: [PL_SEGS * 4] f32;              // the lines: x, z, x, z in metres east and north of the platform
+  start: [3] int;                       // the state's line, the 12 mile line, the end
+}
+
+// The nearest land as the eye sees it: looks round the horizon from the platform's place and keeps the
+// run of bearings with land in them round the nearest shore. Answers the way to that shore (east,
+// north), how high the land stands over the sea horizon (0 when all of it is under that line, as from
+// high up), the cosine of half the run's width (-1: land all round) and the miles to the shore (0: no
+// land in sight).
+place_look :: (ch: Chart, lat: f64, lon: f64, eye: f64) -> [5] f64 {
+  none := [5] f64.[0, 1, 0, 1, 0];
+  shore := chart_shore(ch, lat, lon);
+  if !shore.found || shore.nmi < 0.05 { return none; }
+  rise: [PL_BEARINGS] f64;
+  dip := -sqrt(2.0 * chart_max(eye, 0) / CHART_EARTH);
+  for i: 0..<PL_BEARINGS {
+    sky := chart_skyline(ch, lat, lon, eye, f64(i) * 360.0 / f64(PL_BEARINGS), 0.2, PL_REACH);   // a bearing in degrees
+    rise[i] = ifx sky.seen then chart_max(sky.angle - dip, 0) else -1.0;
+  }
+  bearing := chart_bearing(lat, lon, shore.lat, shore.lon);
+  at := cast(int) floor(bearing * f64(PL_BEARINGS) / 360.0 + 0.5) % PL_BEARINGS;
+  if rise[at] < 0 {
+    // the look nearest the shore's bearing with land in it, two looks either way
+    found := -1;
+    for k: 1..<3 { for side: 0..<2 { j := (at + (ifx side == 0 then k else -k) + PL_BEARINGS) % PL_BEARINGS; if found < 0 && rise[j] >= 0 { found = j; } } }
+    if found < 0 { return none; }
+    at = found;
+  }
+  left := 0; while left < PL_BEARINGS - 1 && rise[(at - left - 1 + PL_BEARINGS * 2) % PL_BEARINGS] >= 0 { left += 1; }
+  right := 0; while right < PL_BEARINGS - 1 - left && rise[(at + right + 1) % PL_BEARINGS] >= 0 { right += 1; }
+  peak := 0.0;
+  for k: -left..<right + 1 { r := rise[(at + k + PL_BEARINGS * 2) % PL_BEARINGS]; if r > peak { peak = r; } }
+  step := 2.0 * CHART_PI / f64(PL_BEARINGS);
+  wide := ifx left > right then left else right;
+  half := (f64(wide) + 0.75) * step;
+  return [5] f64.[sin(chart_rad(bearing)), cos(chart_rad(bearing)), peak, ifx left + right >= PL_BEARINGS - 1 || half >= CHART_PI then -1.0 else cos(half), shore.nmi];
+}
+// The state's line and the 12 mile line round the platform, in metres east and north of it.
+place_lines_make :: (s: [] Slab) {
+  p := s[0].place; c := s[0].change[..]; w := c[0].what;
+  ch := c[0].where[0].chart; ws := where_site(w.site);
+  g := ch.near; f := chart_field_of(g);
+  miles: [SC_NODES] f32; lines: [PL_SEGS * 4] f32;
+  n := 0;
+  ok := ws.lines && chart_field_shore(ch, f, miles[..]);
+  east := cos(chart_rad(w.lat)) * 60.0 * CHART_NMI; north := 60.0 * CHART_NMI;
+  for layer: 0..<2 {
+    p.start[layer] = n;
+    level := ifx layer == 0 then ws.boundary else 12.0;
+    if !ok || level <= 0 || (layer == 1 && ws.boundary >= 12) { continue; }
+    from := n;
+    n = chart_march(f, miles[..], f32(level), lines[..], n, PL_SEGS);
+    n = from + chart_keep_sea(ch, lines[from * 4..<n * 4], n - from);
+  }
+  p.start[2] = n;
+  for i: 0..<n {
+    p.segs[i * 4] = f32((f64(lines[i * 4 + 1]) - w.lon) * east); p.segs[i * 4 + 1] = f32((f64(lines[i * 4]) - w.lat) * north);
+    p.segs[i * 4 + 2] = f32((f64(lines[i * 4 + 3]) - w.lon) * east); p.segs[i * 4 + 3] = f32((f64(lines[i * 4 + 2]) - w.lat) * north);
+  }
+  s[0].place = p;
+}
+// Each frame: the land for the shader, worked out again when the platform has moved or the eye has
+// risen or dropped by a sixth.
+place_frame :: (s: [] Slab, u: [] f32) {
+  c := s[0].change[..]; w := c[0].what;
+  if !c[0].ready { return; }
+  eye := s[0].eye[1]; if eye < 2 { eye = 2; }
+  p := s[0].place;
+  moved := p.site != w.site || p.lat != w.lat || p.lon != w.lon;
+  if moved {
+    where_load(c[0].where[..], w.site);
+    s[0].place.site = w.site; s[0].place.lat = w.lat; s[0].place.lon = w.lon;
+    place_lines_make(s);
+  }
+  if moved || p.eye < 0 || abs(eye - p.eye) > p.eye / 6 {
+    look := place_look(c[0].where[0].chart, w.lat, w.lon, f64(eye));
+    far := look[4] * CHART_NMI;   // the way to the shore, as long as it is far (m)
+    s[0].place.land = [4] f32.[f32(look[0] * far), f32(look[1] * far), f32(look[2]), f32(look[3])];
+    s[0].place.nmi = look[4]; s[0].place.eye = eye;
+  }
+  shown := !s[0].under && !s[0].build.on && !s[0].section;
+  u[U_PARAMS + P_SYSTEMS + 2] = ifx shown then s[0].place.land[0] else 0.0f32; u[U_PARAMS + P_SYSTEMS + 3] = ifx shown then s[0].place.land[1] else 0.0f32;
+  u[U_PARAMS + P_UNDER + 2] = ifx shown then s[0].place.land[2] else 0.0f32; u[U_PARAMS + P_UNDER + 3] = s[0].place.land[3];
+}
+// Whether the hull stands between the eye and a point on the water (both in the hull's frame).
+place_hidden :: (s: [] Slab, e: [3] f32, x: f32, z: f32) -> bool {
+  if s[0].layout != LAYOUT_PRIME { return false; }
+  hull := change_hull(s[0].change[..]);
+  lo := [3] f32.[-hull[0], hull[3], -hull[1]]; hi := [3] f32.[hull[0], hull[2] + 210, hull[1]];
+  d := [3] f32.[x - e[0], 0 - e[1], z - e[2]];
+  t0 := 0.0f32; t1 := 1.0f32;
+  for a: 0..<3 {
+    if abs(d[a]) < 0.0001 { if e[a] < lo[a] || e[a] > hi[a] { return false; } continue; }
+    ta := (lo[a] - e[a]) / d[a]; tb := (hi[a] - e[a]) / d[a];
+    if ta > tb { tmp := ta; ta = tb; tb = tmp; }
+    if ta > t0 { t0 = ta; }
+    if tb < t1 { t1 = tb; }
+    if t0 > t1 { return false; }
+  }
+  return true;
+}
+// The two lines on the water, dashed, where they are near enough to see.
+place_lines :: (s: [] Slab, out: [] f32, at: int) -> int {
+  p := s[0].place; n := at;
+  if s[0].under || s[0].build.on || s[0].section || p.start[2] == 0 { return n; }
+  e := to_hull(s, s[0].eye[0], s[0].eye[1], s[0].eye[2]);
+  for i: 0..<p.start[2] {
+    ax := p.segs[i * 4]; az := p.segs[i * 4 + 1]; bx := p.segs[i * 4 + 2]; bz := p.segs[i * 4 + 3];
+    mx := (ax + bx) / 2 - e[0]; mz := (az + bz) / 2 - e[2];
+    long := sqrt((bx - ax) * (bx - ax) + (bz - az) * (bz - az));
+    if sqrt(mx * mx + mz * mz) > PL_SEEN + long / 2 || long < 1 { continue; }
+    dashes := cast(int) (long / (2 * PL_DASH)) + 1;
+    for k: 0..<dashes {
+      t0 := cast(f32) k / cast(f32) dashes; t1 := (cast(f32) k + 0.5f32) / cast(f32) dashes;
+      x0 := ax + (bx - ax) * t0; z0 := az + (bz - az) * t0; x1 := ax + (bx - ax) * t1; z1 := az + (bz - az) * t1;
+      far := sqrt((x0 - e[0]) * (x0 - e[0]) + (z0 - e[2]) * (z0 - e[2]));
+      if far > PL_SEEN || place_hidden(s, e, x0, z0) { continue; }
+      n = stroke3(s, out, n, [3] f32.[x0, 0.8, z0], [3] f32.[x1, 0.8, z1], 0.95, 0.95, 0.9, ifx far < 4000 then 1.6f32 else 1.1f32);
+    }
+  }
+  return n;
+}
+// A line's name, at its piece nearest the eye that is on screen.
+place_line_tag :: (s: [] Slab, h: [] SceneHud, layer: int, id: string, name: string) {
+  p := s[0].place; k := s[0].dpr;
+  e := to_hull(s, s[0].eye[0], s[0].eye[1], s[0].eye[2]);
+  best := 1.0e12f32; at: [3] f32; found := false;
+  for i: p.start[layer]..<p.start[layer + 1] {
+    for part: 0..<9 {
+      t := cast(f32) part / 8;
+      x := p.segs[i * 4] + (p.segs[i * 4 + 2] - p.segs[i * 4]) * t; z := p.segs[i * 4 + 1] + (p.segs[i * 4 + 3] - p.segs[i * 4 + 1]) * t;
+      d := (x - e[0]) * (x - e[0]) + (z - e[2]) * (z - e[2]);
+      if d > PL_SEEN * PL_SEEN || d >= best || place_hidden(s, e, x, z) { continue; }
+      sc := screen_of(s, x, 0.8, z);
+      if sc[2] < 2 || sc[0] < 30 * k || sc[0] > s[0].width - 30 * k || sc[1] < 110 * k || sc[1] > s[0].height - 60 * k { continue; }
+      best = d; at = sc; found = true;
+    }
+  }
+  // a name is as wide as a phone is half wide: keep all of it on the screen
+  if found { sh_tag(h, id, name, hi_f32(150, lo_f32(s[0].width / k - 150, at[0] / k)), at[1] / k - 12, 1, false); }
+}
+// The names pinned in the scene: the two lines, and the dock (a name you can press for its card).
+place_tags :: (s: [] Slab, h: [] SceneHud) {
+  if s[0].under || s[0].build.on || s[0].section || s[0].chart.on || s[0].first { return; }
+  k := s[0].dpr; c := s[0].change[..];
+  ws := where_site(c[0].what.site);
+  ls: [1] WhatLine; l := ls[..];
+  if ws.lines && ws.boundary > 0 && ws.boundary < 12 {
+    what_put(l, "The state's line, "); what_num(l, ws.boundary, 0); what_put(l, " miles from shore");
+    place_line_tag(s, h, 0, "place.state", what_text(l)); l[0].n = 0;
+  }
+  if ws.lines { place_line_tag(s, h, 1, "place.12", "12 mile line: the country's waters end"); }
+  // the dock, from the sea side of its wall
+  sh := c[0].facts.shape;
+  if s[0].layout == LAYOUT_PRIME && change_has_dock(sh, c[0].shown) && s[0].selected != -3 {
+    e := to_hull(s, s[0].eye[0], s[0].eye[1], s[0].eye[2]);
+    z := f32(-sh.b / 2.0);
+    if e[2] < z - 20 && e[2] > z - 2500 {
+      sc := screen_of(s, 0, 14, z + CH_DOCK_IN / 2);
+      if sc[2] > 2 && sc[0] > 40 * k && sc[0] < s[0].width - 40 * k && sc[1] > 70 * k && sc[1] < s[0].height - 60 * k { sh_tag(h, "place.dock", "The dock", sc[0] / k, sc[1] / k, 1, true); }
+    }
+  }
+}
+place_act :: (s: [] Slab, id: string) -> bool {
+  if id == "place.dock" { s[0].selected = -3; s[0].selected_at = s[0].time; return true; }
+  return false;
+}
+// The dock's card: how you get on board. The lifts and the gangway are our addition; the basin is the spec's.
+place_dock_card :: (s: [] Slab, c: [] Card) {
+  sh := s[0].change[0].facts.shape; deck := change_hull(s[0].change[..])[2];
+  ln(c, ST_TITLE, "The dock");
+  ln(c, ST_SUB, "How you get on board");
+  ln(c, ST_HEAD, "What it is");
+  ln(c, ST_BODY, "A basin cut into the sheltered south wall:");
+  ln(c, ST_BODY, "100 m long, 60 m in, its floor 8 m under the water.");
+  ln(c, ST_BODY, "Crew boats and supply ships of up to 6 m draft come in here.");
+  ln(c, ST_HEAD, "Getting up");
+  l := line(c, ST_BODY, "The deck is "); num(c, l, f64(deck), 0); more(c, l, " m over the water. Lifts in the");
+  ln(c, ST_BODY, "basin's walls carry people and cargo up to it.");
+  ln(c, ST_BODY, "The lifts are our assumption: the picture shows no way aboard.");
+  ln(c, ST_HEAD, "What it costs the hull");
+  l = line(c, ST_BODY, "The basin takes "); num(c, l, change_dock_volume(s[0].change[0].shown), 0); more(c, l, " cubic metres out of the");
+  l = line(c, ST_BODY, "hull under water, about "); num(c, l, change_dock_volume(s[0].change[0].shown) * 1.025, 0); more(c, l, " tonnes of lift.");
+  _ = sh;
+}
+
+#test "Place: Guam's hills stand on the horizon from the platform, and nothing shows 40 miles off Texas" {
+  ws: [1] Where;
+  where_load(ws[..], SITE_GUAM); g := where_site(SITE_GUAM);
+  look := place_look(ws[0].chart, g.lat, g.lon, 150);
+  // land to the east (the platform is off the west coast), half a degree or more over the horizon, 2.3 miles off
+  #assert look[2] > 0.008 && look[2] < 0.2 && look[0] > 0.5 && look[3] < 0.9 && look[3] > -1 && abs(look[4] - 2.3) < 0.3;
+  // from 600 m up its hills stand lower against the horizon's line, and its shore is still in sight on the sea
+  above := place_look(ws[0].chart, g.lat, g.lon, 600);
+  #assert above[2] < look[2] / 2 && above[4] > 2 && above[0] > 0.5;
+  where_load(ws[..], SITE_TEXAS); t := where_site(SITE_TEXAS);
+  none := place_look(ws[0].chart, t.lat, t.lon, 150);
+  #assert none[4] == 0 && none[2] == 0;
+  // from 1,500 m up the Texas coast, 40 miles off, is inside the horizon and in sight, to the west
+  high := place_look(ws[0].chart, t.lat, t.lon, 1500);
+  #assert high[4] > 35 && high[0] < 0;
+}
+#test "Place: off Guam the state's three mile line is on the water seaward of the platform, and the dock has its card" #steps 2000000000 {
+  s: [1] Slab; u: [UNIFORM_FLOATS] f32; vertices: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  slab_message(s[..], HOST_FACTS, "url=https://openagents.com/worlds/slab?intro=0\n");
+  // an eye east of the hull, 300 m up, looking west over it to the open sea
+  s[0].eye = [3] f32.[900, 300, -700]; s[0].width = 1440; s[0].height = 900; s[0].dpr = 1;
+  s[0].fwd = [3] f32.[-0.989, -0.148, 0]; s[0].right = [3] f32.[0, 0, 1]; s[0].up = [3] f32.[-0.148, 0.989, 0];
+  s[0].tanh = 0.4; s[0].aspect = 1.6; s[0].pose = [12] f32.[1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0];
+  place_frame(s[..], u[..]);
+  p := s[0].place;
+  #assert p.site == SITE_GUAM && u[U_PARAMS + P_SYSTEMS + 2] > 1500 && u[U_PARAMS + P_SYSTEMS + 2] < 5200;   // the shore is 2.3 miles off, to the east
+  #assert p.start[1] > 3;
+  #assert p.start[2] > p.start[1];
+  // the state's line is 3 miles off the coast, so its nearest piece is 0.2 to 1.6 miles from a platform 2.3 off
+  nearest := 1.0e9f32;
+  for i: 0..<p.start[1] {
+    d := sqrt(p.segs[i * 4] * p.segs[i * 4] + p.segs[i * 4 + 1] * p.segs[i * 4 + 1]) / 1852;
+    if d < nearest { nearest = d; }
+  }
+  #assert nearest > 0.2 && nearest < 1.6;
+  strokes := place_lines(s[..], vertices[..], 0);
+  #assert strokes > 0 && strokes % 6 == 0;
+  // under the sea nothing of the place is drawn
+  go_under(s[..], true); place_frame(s[..], u[..]);
+  #assert u[U_PARAMS + P_SYSTEMS + 2] == 0 && u[U_PARAMS + P_UNDER + 2] == 0 && place_lines(s[..], vertices[..], 0) == 0;
+  go_under(s[..], false);
+  #assert place_act(s[..], "place.dock") && s[0].selected == -3;
+  card: [1] Card; slab_card(s[..], -3, card[..]);
+  #assert card[0].lines >= 10 && card_text(card[..], 0) == "The dock";
+}

@@ -87,3 +87,10 @@ EXPORT("coaxial_pane_len") uint32_t coaxial_pane_len(uint32_t state) { return (u
 EXPORT("coaxial_pane_rev") int32_t coaxial_pane_rev(uint32_t state) { return (int32_t)slab_pane_rev(at(state)); }
 EXPORT("coaxial_pane_model") uint32_t coaxial_pane_model(uint32_t state) { return (uint32_t)(uintptr_t)slab_pane_model(at(state)).data; }
 EXPORT("coaxial_pane_model_len") uint32_t coaxial_pane_model_len(uint32_t state) { return (uint32_t)slab_pane_model(at(state)).count; }
+
+// The page's address, said to the browser when a setting of the "What would it take?" panel moves
+// (slab-panel.coax; coax/web/host.js, action 19): every state has an address.
+EXPORT("coaxial_action") int32_t coaxial_action(uint32_t state) { return (int32_t)slab_action(at(state)); }
+EXPORT("coaxial_outbox") uint32_t coaxial_outbox(uint32_t state) { return (uint32_t)(uintptr_t)slab_outbox(at(state)).data; }
+EXPORT("coaxial_outbox_len") uint32_t coaxial_outbox_len(uint32_t state) { return (uint32_t)slab_outbox(at(state)).count; }
+EXPORT("coaxial_action_done") void coaxial_action_done(uint32_t state) { slab_action_done(at(state)); }

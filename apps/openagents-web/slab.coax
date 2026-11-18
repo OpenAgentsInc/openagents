@@ -41,6 +41,9 @@
 #load "../../metaverse/splice-bots/rules/walk.coax";
 #load "../../metaverse-engine/move/creative-fly.coax" as fly;
 #load "slab-intro.coax";   // intro: the first screen, a stopgap (issue 13683)
+#load "slab-panel.coax";  // the "What would it take?" panel under Change (GitHub #13686)
+#load "slab-chart.coax";  // and its chart
+#load "slab-place.coax";  // the land on the horizon, the legal lines on the water and the dock's card
 #load "slab-hud.coax";   // the HUD in plain words, drawn by the browser (GitHub #13685)
 #load "slab-sea.coax";
 #load "slab-photoreal.coax";   // the photoreal style: the platform as meshes under a physical sky (docs/metaverse/photoreal.md)
@@ -82,9 +85,9 @@ P_GAIT :: 32;     // gait phase, speed, shown, airborne
 P_PICK :: 36;     // selected record (-1), hovered record, seconds since selected, night (0..1)
 P_SUNHULL :: 40;  // toward the sun in the hull's frame, the warm grade
 P_SPRAY :: 44;    // 0, 0 (the painted spray's, gone: slab-water.coax simulates it), miners on (0..50), data halls (0..1)
-P_SYSTEMS :: 48;  // industry (0..1), the waves' speed along the walls, 0, 0
+P_SYSTEMS :: 48;  // industry (0..1), the waves' speed along the walls, the way to the nearest land's shore x, z, as long as it is far (m; slab-place.coax)
 P_SECTION :: 52;  // the section: which side is cut away (0 none, +1 north of the cut, -1 south), the cut's z, the ballast's top, cell A1's floodwater top
-P_UNDER :: 56;    // under the sea (0/1), a cold-water pipe tripped (0/1), 0, 0
+P_UNDER :: 56;    // under the sea (0/1), a cold-water pipe tripped (0/1), the land's height against the sky (tan; 0: none in sight), the cosine of half its width
 PARAM_FLOATS :: 64;
 U_WORDS :: U_PARAMS + PARAM_FLOATS;   // then the words:
 W_COARSE :: 0;    //   cascade 0: (height, its foam and the fine tile's: slab-sea.coax), (sx, sz) a texel
@@ -183,6 +186,9 @@ Slab :: struct {
   hp: SlabHud;          // the HUD the browser draws (slab-hud.coax)
   change: [1] Change;   // the "What would it take?" settings and what they do to the world (slab-change.coax)
   photo: [1] SlabPhoto; // the photoreal style's scene (slab-photoreal.coax)
+  panel: Panel;         // their panel (slab-panel.coax)
+  chart: SlabChart;     // and its chart (slab-chart.coax)
+  place: SlabPlace;     // the land in sight and the lines on the water (slab-place.coax)
 }
 
 hi_f32 :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
@@ -981,6 +987,7 @@ slab_frame :: (s: [] Slab, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
     }
     u[U_PARAMS + 60] = 1; u[U_SIZE + 2] = f32(s[0].build.cursor);
   }
+  place_frame(s, u);   // the land in sight (slab-place.coax)
   // the foam on the tile
   if fresh {
     gap := ifx s[0].have_tick && tick > s[0].last_tick then f32(tick - s[0].last_tick) * f32(sp.tick) else 0.0f32;
@@ -1027,7 +1034,7 @@ slab_frame :: (s: [] Slab, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
   sb_say(s);   // the HUD as words, for its pane
   slab_photo_frame(s, u, sun, phone);
   if !s[0].hud || s[0].golden { s[0].button_count = 0; return 0; }
-  if s[0].hp.pane { return sb_lines(s, out); }
+  if s[0].hp.pane { return chart_draw(s, out, place_lines(s, out, sb_lines(s, out))); }
   return hud(s, out);
 }
 
@@ -1226,13 +1233,14 @@ district :: (x: f32, z: f32) -> string {
 slab_card :: (s: [] Slab, i: int, c: [] Card) {
   c[0].lines = 0;
   pw := s[0].power; h := s[0].hull; site := slab_site(s); sea := sim_sea(s[0].sea);
+  if i == -3 { place_dock_card(s, c); return; }
   if i == -2 {
     ln(c, ST_TITLE, "THE SEA");
     l := line(c, ST_SUB, site.name);
     ln(c, ST_HEAD, "CONDITIONS");
     l = line(c, ST_LIVE, sea.name); more(c, l, " SEA, WIND "); num(c, l, s[0].wind, 1); more(c, l, " M/S");
     l = line(c, ST_LIVE, "SIGNIFICANT HEIGHT "); num(c, l, s[0].synth[0].significant, 2); more(c, l, " M");
-    l = line(c, ST_LIVE, "SURFACE "); num(c, l, pw.surface, 1); more(c, l, " C, DEEP 5.0 C AT 1,000 M");
+    l = line(c, ST_LIVE, "SURFACE "); num(c, l, pw.surface, 1); more(c, l, ifx site.depth < SIM_COLD_DEPTH then " C" else " C, DEEP 5.0 C AT 1,000 M");
     ln(c, ST_HEAD, "PHYSICS");
     ln(c, ST_BODY, "A JONSWAP WIND SEA FROM AN FFT, MADE FRESH EACH FRAME");
     ln(c, ST_BODY, "HS = 0.21 U^2 / G (PIERSON-MOSKOWITZ)");
@@ -2003,6 +2011,7 @@ slab_pointer :: (s: [] Slab, x: f32, y: f32, phase: int, kind: int, id: int) -> 
     }
   }
   if intro_touch(s, x, y, phase, id) { return true; }   // intro: a second finger pinches
+  if chart_pointer(s, x, y, phase) { return true; }      // a press on the chart moves the platform
   if phase == 0 {
     b := hit_button(s, x, y);
     if b != 0 { press(s, b); return true; }
@@ -2146,6 +2155,7 @@ slab_message :: (s: [] Slab, kind: int, text: string) #export_c #effects(all) {
   }
   // the "What would it take?" settings: a preset first, then what the page read above, then their own keys
   change_init(s[0].change[..]);
+  panel_opened(s, url);
   preset := false;
   for i: 0..<WHAT_PRESETS { b := put_pair("preset=", what_preset(i).key); if query_word(url, cast(string) b.b[0..<b.n]) { preset = true; } }
   if !preset { ok := change_world(s[0].change[..], change_now(s)); }

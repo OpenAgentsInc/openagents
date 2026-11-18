@@ -51,9 +51,15 @@ The yards, dates, tugs and berth are a scenario we assumed. The numbers behind i
 The platform's own power plant decides. An ocean thermal plant (OTEC) makes electricity from the difference between warm water at the surface and cold water piped up from 1,000 m down. It needs about 20 °C of difference all year, which only tropical seas have.
 
 - Off Guam, where the world opens, the surface stays at 27.7 to 29.2 °C and the model's plant makes 95 to 116 MW through the year.
-- Off California the sea is too cold: nothing in winter, 19 MW at most in September.
+- Off California the plant makes nothing: the water three miles out is 607 m deep, too shallow for pipes that hang 1,000 m, and too cold in winter.
 
 The platform's fixed loads (data halls, desalination and industry) need 163 MW, more than the ocean plant alone gives even off Guam. So the world opens with two small nuclear modules beside it, and together they carry the loads. No OTEC plant has yet delivered more than about 0.1 MW net, so treat every power figure here as a model.
+
+Each site is a real place on a chart, with its depth, its distance to land and the legal lines round it. Under **Change**, **What would it take?** lets you change the hull, the load, the place and the power, and says what follows. Every setting has an address you can share:
+
+- The Gulf Coast pilot, one caisson that fits the ship channel: https://openagents.com/worlds/slab?preset=pilot
+- A hull too small for its load, sinking to its deck: https://openagents.com/worlds/slab?long=400&wide=300&weight=6
+- Three miles off California, where the ocean thermal plant stops: https://openagents.com/worlds/slab?preset=california
 
 Try the other sites: Puerto Rico, Kona in Hawaii, the equator, California, the Gulf of Mexico off Texas and a Norwegian fjord. For example https://openagents.com/worlds/slab?site=california
 

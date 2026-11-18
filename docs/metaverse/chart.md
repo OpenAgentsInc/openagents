@@ -77,6 +77,31 @@ e := chart_to_screen(v, site.lat, site.lon);                   // the berth
 `WHERE_BROWNSVILLE` is the freight port. `where_place(c, site, lat, lon)` gives
 the depth, the miles to land and the legal zone at any point on the way.
 
+## SLAB's drawing of it
+
+`apps/openagents-web/slab-chart.coax` is the one chart drawing in the SLAB
+world: the "Where" control of the "What would it take?" panel, and the map
+for the tour's last stop and the construction route.
+
+- `chart_show(s, on)` opens or closes it and `chart_far(s, far)` switches
+  between 96 miles round the platform and the whole region.
+- `chart_layout(s)` is the rectangle it takes on this screen, as a `ChartView`.
+- `chart_draw_in(s, out, n, view)` strokes the coast, the 200 m and 1,000 m
+  depth lines, the state's line and the 12, 24 and 200 mile lines, the
+  platform, and off Texas the route, into any `ChartView`. It returns the new
+  count of the page's stroke floats. `chart_draw(s, out, n)` does the same in
+  `chart_layout`'s rectangle when the chart is open.
+- `chart_tags(s, h)` names the parts with the HUD's tags and
+  `chart_route_tags(s, h)` names the casting yard, the jetties and Brownsville.
+- `chart_pointer(s, x, y, phase)` takes a press: it moves the platform to the
+  place pressed and writes the address.
+
+`apps/openagents-web/slab-place.coax` draws the same place in the scene: the
+nearest land where it is in sight (`chart_skyline` gives its bearing, height
+and width from the eye) and the state's line and the 12 mile line on the
+water. Only the nearest shore stands at its real distance; where land is all
+round, as in a fjord, the rest stands on the horizon.
+
 ## Adding a region
 
 Cut the coastline and the two height grids for the new place in the format

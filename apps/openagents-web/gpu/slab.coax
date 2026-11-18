@@ -151,6 +151,48 @@ sb_dir_to_world :: (q:V3,u:[]f32)->V3 {
   return v3(wg_dot3(sb_p(u,16),q),wg_dot3(sb_p(u,20),q),wg_dot3(sb_p(u,24),q));
 }
 
+// The nearest land (slab-place.coax, from the site's chart; slab.coax P_SYSTEMS and P_UNDER): u[SLAB_P+50..51]
+// is the way to its nearest shore and as long as that shore is far (m; 0: no land in sight), u[SLAB_P+58]
+// how high it stands over the horizon (tan) and u[SLAB_P+59] the cosine of half its width. slab_land
+// is its ridge against the sky, hazed; slab_shore is the land past the shore, where the sea's mesh would
+// be. The ridge's small rises are noise: the chart gives the bearing, the height and the width.
+slab_land_colour :: (u:[]f32)->V3 { return sb_mulv(sb_p(u,12),v3(0.34f32,0.42f32,0.33f32)); }
+slab_land_within :: (toward:f32,u:[]f32)->f32 {
+  edge:f32=u[SLAB_P+59];
+  if (edge<=-0.999f32) { return 1.0f32; }
+  return smoothstep(edge,edge+((1.0f32-edge)*0.3f32)+0.0001f32,toward);
+}
+slab_land :: (c:V3,d:V3,o:V3,u:[]f32)->V3 {
+  peak:f32=u[SLAB_P+58];
+  far:f32=wg_length2(v2(u[SLAB_P+50],u[SLAB_P+51]));
+  flat:f32=wg_length2(v2(d.x,d.z));
+  if ((peak<=0.0f32)||(far<1.0f32)||(flat<0.001f32)||(d.y>0.6f32)) { return c; }
+  toward:f32=((d.x*u[SLAB_P+50])+(d.z*u[SLAB_P+51]))/(flat*far);
+  within:f32=slab_land_within(toward,u);
+  // under the horizon the land starts where the look meets the shore (the sea's mesh ends short of it);
+  // looking away from the nearest shore, land that is all round stands on the horizon
+  reach:f32=fmax(far-(((o.x*u[SLAB_P+50])+(o.z*u[SLAB_P+51]))/far),1.0f32)/fmax(toward,0.0001f32);
+  foot:f32=ifx toward>0.02f32 then -(fmax(o.y,0.0f32)/reach) else -0.001f32;
+  rise:f32=0.3f32+(0.5f32*slab_noise(v2((d.x/flat)*4.0f32,(d.z/flat)*4.0f32)))+(0.2f32*slab_noise(v2((d.x/flat)*13.0f32+3.0f32,(d.z/flat)*13.0f32)));
+  ridge:f32=peak*within*rise;
+  el:f32=d.y/flat;
+  m:f32=(1.0f32-smoothstep(ridge-(0.0012f32+(ridge*0.04f32)),ridge,el))*smoothstep(foot-0.0006f32,foot,el);
+  // the ridge stands at the shore's distance, so it takes that much haze and no more
+  return sb_mix(c,slab_haze(slab_land_colour(u),d,far*0.6f32,u),m);
+}
+slab_shore :: (c:V3,w:V3,d:V3,u:[]f32)->V3 {
+  far:f32=wg_length2(v2(u[SLAB_P+50],u[SLAB_P+51]));
+  r:f32=wg_length2(v2(w.x,w.z));
+  if ((far<1.0f32)||(r<far*0.9f32)) { return c; }
+  along:f32=((w.x*u[SLAB_P+50])+(w.z*u[SLAB_P+51]))/far;
+  m:f32=smoothstep(far,(far*1.02f32)+15.0f32,along)*slab_land_within(along/r,u);
+  // a pale strand where the land meets the water; behind it the ground climbs to the ridge, so
+  // it takes the haze of a hillside a little past the shore and not of a plain out to the horizon
+  strand:f32=1.0f32-smoothstep(far*1.02f32,(far*1.05f32)+40.0f32,along);
+  land:V3=sb_mix(slab_land_colour(u),sb_mul(sb_p(u,12),0.82f32),strand*0.6f32);
+  return sb_mix(c,slab_haze(land,d,fmin(r,far*1.5f32)*0.4f32,u),m);
+}
+
 // The sky: zenith to horizon in the hour's colours, the sun's disc and its glow, broad pale clouds.
 slab_sky :: (d:V3,u:[]f32)->V3 {
   if (slab_photo(u)) { return slab_photo_sky(d,u); }
@@ -1307,7 +1349,7 @@ slab_bg_fs :: (frag:V4,u:[]f32)->SlabOut {
     c=slab_grade(c,u);
     return SlabOut.{c=v4(c.x,c.y,c.z,1.0f32),depth=1.0f32};
   }
-  c:V3=slab_haze(slab_weather_sky(slab_sky(d,u),d,u),d,40000.0f32*(1.0f32-smoothstep(0.0f32,0.2f32,d.y)),u);
+  c:V3=slab_land(slab_haze(slab_weather_sky(slab_sky(d,u),d,u),d,40000.0f32*(1.0f32-smoothstep(0.0f32,0.2f32,d.y)),u),d,o,u);
   sm:V4=slab_smoke(ho,hd,SLAB_MISS,u);
   c=sb_mix(c,v3(sm.x,sm.y,sm.z),sm.w);
   c=slab_grade(slab_weather_air(c,v2(frag.x,frag.y),u),u);
@@ -1402,7 +1444,7 @@ slab_surface_fs :: (v:SlabS,u:[]f32)->V4 {
     c=slab_grade(sw_under(c,sb_to_hull(v3(u[8],u[9],u[10]),u),sb_dir_to_hull(d,u),dist,u),u);
     return wg_make_f4_f3f(c,1.0f32);
   }
-  c:V3=slab_haze(slab_water(v.rest,v.world,d,dist,u[2],u),d,dist*0.4f32,u);
+  c:V3=slab_shore(slab_haze(slab_water(v.rest,v.world,d,dist,u[2],u),d,dist*0.4f32,u),v.world,d,u);
   sm:V4=slab_smoke(sb_to_hull(v3(u[8],u[9],u[10]),u),sb_dir_to_hull(d,u),dist,u);
   c=slab_grade(slab_weather_air(sb_mix(c,v3(sm.x,sm.y,sm.z),sm.w),slab_weather_px(d,u),u),u);
   return wg_make_f4_f3f(c,1.0f32);

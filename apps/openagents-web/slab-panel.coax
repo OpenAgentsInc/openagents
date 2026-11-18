@@ -1,0 +1,280 @@
+// The SLAB world's "What would it take?" panel (GitHub #13686): one panel under Change in the HUD
+// (slab-hud.coax's two lists), said with scene-hud.coax's procedures and drawn by the browser with
+// the components kit in the mono skin. The settings, their limits, the facts and the reasons a setting
+// can't work are metaverse/slab-whatif.coax's; what they do to the world is slab-change.coax's. This
+// file only says them and hears the presses.
+//
+// The panel shows one part at a time (the hull, building it, where, the weather, power, the design
+// life), so a phone's sheet stays short. Every slider is followed by its two ends in words and why it
+// stops at each (sh_limits), every figure is tagged with where it is from, and the reasons a setting
+// can't work lead the panel. Every state has an address: a press writes it to the address bar.
+//
+//   coax/bin/coax test apps/openagents-web/slab.coax --only "Panel"
+
+PP_HULL :: 0; PP_BUILD :: 1; PP_WHERE :: 2; PP_WEATHER :: 3; PP_POWER :: 4; PP_LIFE :: 5;
+PANEL_PARTS :: 6;
+PANEL_PATH :: 96;
+PANEL_ADDRESS :: 19;      // the browser's action that says the page's address without loading (coax/web/host.js)
+
+Panel :: struct {
+  part: int;                       // which part of the panel is open
+  path: [PANEL_PATH] u8; path_n: int;      // the page's own path, from the address it opened on
+  out: [PANEL_PATH + WHAT_QUERY + 24] u8; out_n: int;   // the address the browser is asked to show
+  action: int;
+}
+
+panel_part_name :: (i: int) -> string {
+  if i == PP_HULL { return "The hull"; }
+  if i == PP_BUILD { return "Building it"; }
+  if i == PP_WHERE { return "Where"; }
+  if i == PP_WEATHER { return "Weather"; }
+  if i == PP_POWER { return "Power"; }
+  return "Design life";
+}
+panel_id :: (out: [] u8, a: string, b: string) -> string {
+  n := 0;
+  for c: a { if n < out.count { out[n] = c; n += 1; } }
+  for c: b { if n < out.count { out[n] = c; n += 1; } }
+  return cast(string) out[0..<n];
+}
+// Where a figure is from, as the HUD tags it.
+panel_from :: (from: int) -> int { return ifx from == WHAT_CLAIM then SH_CLAIM else ifx from == WHAT_SOURCE then SH_SOURCE else ifx from == WHAT_OURS then SH_OURS else SH_NONE; }
+
+// What a control holds as the panel shows it: the wind and the month are the world's own until the
+// visitor sets them.
+panel_value :: (s: [] Slab, i: int) -> f64 {
+  w := s[0].change[0].what;
+  if i == WC_WIND && !w.wind_own { return what_snap(WC_WIND, s[0].wind); }
+  if i == WC_MONTH && !w.month_own { return f64(cast(int) floor(s[0].month) % 12 + 1); }
+  // the distance from shore is not kept: the place is, and the chart measures it
+  if i == WC_SHORE { c := what_control(i); d := s[0].change[0].facts.place.shore; return ifx d < c.low then c.low else ifx d > c.high then c.high else d; }
+  return w.v[i];
+}
+// One slider: its name, what it is now, and under it its two ends in words and why it stops at each.
+panel_slider :: (s: [] Slab, h: [] SceneHud, i: int) {
+  c := what_control(i); v := panel_value(s, i);
+  now: [1] WhatLine; lo: [1] WhatLine; hi: [1] WhatLine; why: [1] WhatLine; id: [SH_ID] u8;
+  what_words(now[..], i, v);
+  sh_slider(h, panel_id(id[..], "take.s.", c.key), c.name, what_text(now[..]), 0, what_ticks(i), 1, what_tick_of(i, v));
+  what_words(lo[..], i, c.low); what_words(hi[..], i, c.high);
+  what_put(why[..], c.low_why); if c.low_why.count > 0 && c.high_why.count > 0 { what_put(why[..], " "); } what_put(why[..], c.high_why);
+  sh_limits(h, what_text(lo[..]), what_text(hi[..]), what_text(why[..]));
+}
+// A site's storms in plain words (the sites' own strings are the old cards' capitals).
+panel_storms :: (site: int) -> string {
+  if site == SITE_PUERTO_RICO { return "Hurricanes, and earthquakes"; }
+  if site == SITE_KONA { return "Hurricanes are rare"; }
+  if site == SITE_EQUATOR { return "None: no hurricanes form on the equator"; }
+  if site == SITE_CALIFORNIA { return "Winter storms"; }
+  if site == SITE_TEXAS { return "Hurricanes, June to November"; }
+  if site == SITE_FJORD { return "Sheltered: winter gales outside"; }
+  return "Typhoons";
+}
+panel_fact :: (h: [] SceneHud, name: string, l: [] WhatLine, from: int) { sh_fact(h, name, what_text(l), panel_from(from)); l[0].n = 0; }
+
+// What the panel says: slab-hud.coax calls this for each group, every frame.
+panel_hud :: (s: [] Slab, h: [] SceneHud, group: int) {
+  if group != HUD_CHANGE { return; }
+  c := s[0].change[..]; w := c[0].what; f := c[0].facts; led := f.led; sh := f.shape;
+  prime := s[0].layout == LAYOUT_PRIME;
+  ids: [SH_ID] u8; ls: [1] WhatLine; l := ls[..];
+  sh_panel(h, "take", "What would it take?", "Change the hull, the place and the load, and see what follows");
+    // the reasons this setting can't work, first
+    for i: 0..<c[0].note_count { sh_say(h, what_text(c[0].notes[i..<i + 1])); }
+    sh_menu(h, "take.from", "Start from", "Your own settings");
+      now := what_preset_of(w);
+      for i: 0..<WHAT_PRESETS { p := what_preset(i); sh_option(h, sb_id(ids[..], "take.from.", i), p.name, p.note, now == i); }
+    sh_end_of(h);
+    sh_button(h, "take.reset", "Reset to the picture", false);
+    if !prime {
+      sh_say(h, "The sizes and the weight are for the one-platform shape. Choose it under Shape, or reset to the picture.");
+    }
+    sh_choices(h, "take.part", "Change");
+      for i: 0..<PANEL_PARTS { sh_option(h, sb_id(ids[..], "take.part.", i), panel_part_name(i), "", s[0].panel.part == i); }
+    sh_end_of(h);
+    part := s[0].panel.part;
+    if part == PP_HULL {
+      panel_slider(s, h, WC_WEIGHT); panel_slider(s, h, WC_LENGTH); panel_slider(s, h, WC_WIDTH); panel_slider(s, h, WC_DEPTH);
+      panel_slider(s, h, WC_WALL); panel_slider(s, h, WC_FLOOR); panel_slider(s, h, WC_DRAFT);
+      what_num(l, f.draft, 1); what_put(l, " m"); panel_fact(h, "Keel under the water (the draft)", l, WHAT_OURS);
+      if f.deck > 0 { what_num(l, f.deck, 1); what_put(l, " m"); } else { what_put(l, "Under water"); }
+      panel_fact(h, "Deck over the water", l, WHAT_OURS);
+      what_num(l, led.concrete / 1.0e6, 2); what_put(l, " million cubic metres"); panel_fact(h, "Concrete", l, WHAT_OURS);
+      what_mass(l, led.mass); panel_fact(h, "Weight afloat", l, WHAT_OURS);
+      what_mass(l, led.ballast); panel_fact(h, "Of that, ballast water", l, WHAT_OURS);
+      if f.carries > 0 { what_mass(l, f.carries); panel_fact(h, "More it could carry before its top went under", l, WHAT_OURS); }
+      what_num(l, led.gm_t, 0); what_put(l, " m"); panel_fact(h, "Steadiness (GM: how far the point it rocks about sits over its weight)", l, WHAT_OURS);
+      if !change_picture_hull(c) {
+        sh_say(h, "The buildings are the picture's, scaled to fit this deck. The hull still rocks as the picture's hull does: a smaller one would move more.");
+      }
+    }
+    if part == PP_BUILD {
+      panel_slider(s, h, WC_PRICE); panel_slider(s, h, WC_YARDS); panel_slider(s, h, WC_POUR);
+      what_money(l, f.cost); panel_fact(h, "The concrete alone", l, WHAT_OURS);
+      what_days(l, f.pour_days); panel_fact(h, "Pouring it", l, WHAT_OURS);
+      if f.one_piece { what_put(l, "In one piece"); } else { what_num(l, f64(f.caissons), 0); what_put(l, " caissons, joined at sea"); }
+      panel_fact(h, "Leaves the yard as", l, WHAT_OURS);
+      what_num(l, WHAT_CHANNEL_WIDTH, 0); what_put(l, " m wide, "); what_num(l, WHAT_CHANNEL_DEPTH, 1); what_put(l, " m deep");
+      panel_fact(h, "The Corpus Christi ship channel", l, WHAT_SOURCE);
+      what_num(l, f.float_out, 1); what_put(l, " m"); panel_fact(h, "The empty hull draws", l, WHAT_OURS);
+      sh_say(h, "The price is for concrete in place. Steel, moorings, the plant and the buildings are not in it.");
+    }
+    if part == PP_WHERE {
+      site := where_site(w.site);
+      sh_switch(h, "take.chart", "Show the chart", "The coast, the water's depth and the legal lines. Press the chart to move the platform.", s[0].chart.on);
+      panel_slider(s, h, WC_SHORE);
+      if f.place.land { what_put(l, "On land"); } else { what_num(l, f.sim.depth, 0); what_put(l, " m"); }
+      panel_fact(h, "Water depth", l, WHAT_SOURCE);
+      what_num(l, f.place.shore, 1); what_put(l, " nautical miles"); panel_fact(h, "Nearest land", l, WHAT_SOURCE);
+      if site.lines {
+        what_put(l, where_zone_name(f.place.zone)); panel_fact(h, "Whose waters", l, WHAT_SOURCE);
+        sh_say(h, where_zone_means(f.place.zone));
+        what_put(l, "The state's line is "); what_num(l, site.boundary, 0); what_put(l, " nautical miles out here. The country's waters end at 12, its customs zone at 24 and its economic zone at 200.");
+        if site.boundary > 0 { sh_say(h, what_text(l)); } l[0].n = 0;
+      }
+      sh_say(h, "Depths are from NOAA's ETOPO1 survey and the coast from Natural Earth. Other places are under Where it floats.");
+    }
+    if part == PP_WEATHER {
+      panel_slider(s, h, WC_WIND); panel_slider(s, h, WC_MONTH);
+      what_num(l, f.surface, 1); what_put(l, " °C"); panel_fact(h, "Sea surface this month", l, ifx f.sim.sourced then WHAT_SOURCE else WHAT_OURS);
+      what_num(l, s[0].synth[0].significant, 1); what_put(l, " m"); panel_fact(h, "Waves now (the highest third, on average)", l, WHAT_OURS);
+      what_put(l, panel_storms(w.site)); panel_fact(h, "Storms here", l, WHAT_OURS);
+      if !w.wind_own { sh_say(h, "The wind is the sea's own until you move it. The sea states are under The sea."); }
+    }
+    if part == PP_POWER {
+      pw := s[0].power;
+      panel_slider(s, h, WC_OTEC); panel_slider(s, h, WC_MODULES);
+      what_num(l, pw.otec_net, 0); what_put(l, " MW"); panel_fact(h, "Ocean thermal power now (OTEC: power from warm water over cold)", l, WHAT_OURS);
+      what_num(l, pw.nuclear_net, 0); what_put(l, " MW"); panel_fact(h, "Reactors now", l, WHAT_OURS);
+      what_num(l, pw.fixed, 0); what_put(l, " MW"); panel_fact(h, "The tenants below want", l, WHAT_OURS);
+      for t: 0..<WHAT_TENANTS {
+        k := what_tenant_control(t);
+        sh_switch(h, sb_id(ids[..], "take.t.", t), what_control(k).name, ifx w.on[t] then "On board" else "Not on board", w.on[t]);
+        if w.on[t] { panel_slider(s, h, k); }
+      }
+      sh_say(h, "Which source runs is under Power source. Bitcoin miners take what is left after the others.");
+    }
+    if part == PP_LIFE {
+      panel_slider(s, h, WC_LIFE);
+      what_num(l, f.once_in_100 * 100, 0); what_put(l, " in 100"); panel_fact(h, "Chance of meeting a storm seen once in 100 years", l, WHAT_OURS);
+      what_num(l, f.once_in_1000 * 100, 0); what_put(l, " in 100"); panel_fact(h, "Chance of meeting one seen once in 1,000 years", l, WHAT_OURS);
+      sh_say(h, "A platform that must last this long has to be built for the storm it will most likely meet. No concrete at sea is older than about 100 years.");
+    }
+  sh_end_of(h);
+}
+
+// The address of the state, for the address bar: the page's path and the settings that differ from
+// the picture's.
+panel_address :: (s: [] Slab) {
+  p := s[0].panel; n := 0;
+  path := ifx p.path_n > 0 then cast(string) p.path[0..<p.path_n] else "/worlds/slab";
+  for c: path { if n < p.out.count { p.out[n] = c; n += 1; } }
+  q := change_address(s[0].change[..]);
+  tail := ifx q.count > 0 then q else "preset=picture";
+  if n < p.out.count { p.out[n] = '?'; n += 1; }
+  for c: tail { if n < p.out.count { p.out[n] = c; n += 1; } }
+  p.out_n = n; p.action = PANEL_ADDRESS;
+  s[0].panel = p;
+}
+// The page's path, kept from the address it opened on ("/worlds/slab").
+panel_opened :: (s: [] Slab, url: string) {
+  i := 0;
+  // past a scheme and host, when the address has them
+  for k: 0..<url.count { if k + 2 < url.count && url[k] == ':' && url[k + 1] == '/' && url[k + 2] == '/' { i = k + 3; while i < url.count && url[i] != '/' { i += 1; } break; } }
+  n := 0;
+  while i < url.count && url[i] != '?' && url[i] != '#' && n < PANEL_PATH { s[0].panel.path[n] = url[i]; n += 1; i += 1; }
+  s[0].panel.path_n = ifx n > 0 && s[0].panel.path[0] == '/' then n else 0;
+}
+slab_action :: (s: [] Slab) -> int #export_c #effects(all) { return ifx s.count > 0 then s[0].panel.action else 0; }
+slab_outbox :: (s: [] Slab) -> string #export_c #effects(all) { return cast(string) s[0].panel.out[0..<s[0].panel.out_n]; }
+slab_action_done :: (s: [] Slab) #export_c #effects(all) { s[0].panel.action = 0; }
+
+// A setting moved: the world takes it and the address says it.
+panel_moved :: (s: [] Slab) { change_push(s, true); panel_address(s); }
+// What a press does. True when the id was the panel's.
+panel_act :: (s: [] Slab, id: string, value: int) -> bool {
+  if id.count < 5 || cast(string) id[0..<5] != "take." { return false; }
+  c := s[0].change[..];
+  if id == "take.reset" { change_preset(c, WP_PICTURE); panel_moved(s); sb_toast(s, "Back to the picture."); return true; }
+  if id == "take.chart" { chart_show(s, !s[0].chart.on); return true; }
+  k := sb_index(id, "take.from.");
+  if k >= 0 && k < WHAT_PRESETS { change_preset(c, k); panel_moved(s); sb_toast(s, what_preset(k).name); return true; }
+  k = sb_index(id, "take.part.");
+  if k >= 0 && k < PANEL_PARTS { s[0].panel.part = k; if k != PP_WHERE { chart_show(s, false); } return true; }
+  k = sb_index(id, "take.t.");
+  if k >= 0 && k < WHAT_TENANTS { change_tenant(c, k, !c[0].what.on[k]); panel_moved(s); return true; }
+  for i: 0..<WHAT_CONTROLS {
+    ids: [SH_ID] u8;
+    if id == panel_id(ids[..], "take.s.", what_control(i).key) {
+      if value < 0 || value > what_ticks(i) { return true; }
+      // the wind and the month become the visitor's own with the first move
+      if i == WC_WIND { c[0].what.wind_own = true; }
+      if i == WC_MONTH { c[0].what.month_own = true; }
+      change_slide(c, i, value); panel_moved(s);
+      return true;
+    }
+  }
+  return true;
+}
+
+#test "Panel: one panel under Change, a part at a time, every slider with its ends and the reason for each" {
+  s: [1] Slab;
+  slab_message(s[..], HOST_FACTS, "url=https://openagents.com/worlds/slab?intro=0\n");
+  sb_say(s[..]);
+  #assert !s[0].hp.said[0].lost;
+  #assert sb_test_has(s[..], 'P', "take", "What would it take?") && sb_test_has(s[..], 'B', "take.reset", "Reset to the picture");
+  #assert sb_test_has(s[..], 'R', "take.s.weight", "Buildings and equipment") && sb_test_field(s[..], 'R', "take.s.weight", 2) == "2.0 million tonnes";
+  // each slider's next line is its limits: both ends in words and a reason
+  text := sh_text(s[0].hp.said[..]); i := 0; sliders := 0;
+  while i < text.count {
+    l := sh_read(text, i); i = l.next;
+    if l.kind == 'R' && l.f[0].count > 7 && cast(string) l.f[0][0..<7] == "take.s." {
+      e := sh_read(text, i); sliders += 1;
+      #assert e.kind == 'r' && e.n == 3 && e.f[0].count > 0 && e.f[1].count > 0 && e.f[2].count > 10;
+    }
+  }
+  #assert sliders == 7 && !sb_test_has(s[..], 'R', "take.s.price", "");
+  // another part: its own sliders, and the first part's are gone
+  for part: 0..<PANEL_PARTS {
+    ids: [SH_ID] u8;
+    #assert panel_act(s[..], sb_id(ids[..], "take.part.", part), 0);
+    sb_say(s[..]);
+    #assert !s[0].hp.said[0].lost && s[0].hp.said[0].n < SH_TEXT * 3 / 4;
+  }
+  #assert sb_test_has(s[..], 'R', "take.s.life", "Design life") && !sb_test_has(s[..], 'R', "take.s.weight", "");
+  // every figure says where it is from
+  text = sh_text(s[0].hp.said[..]); i = 0;
+  inside := false;
+  while i < text.count {
+    l := sh_read(text, i); i = l.next;
+    if l.kind == 'P' { inside = l.f[0] == "take"; }
+    if l.kind == 'G' || l.kind == 'K' || l.kind == 'M' { inside = false; }
+    if inside && l.kind == 'F' { #assert l.f[2] == "1" || l.f[2] == "2" || l.f[2] == "3"; }
+  }
+}
+#test "Panel: a slider's move changes the world and writes the address; reset returns to the picture" {
+  s: [1] Slab;
+  slab_message(s[..], HOST_FACTS, "url=https://openagents.com/worlds/slab?intro=0\n");
+  #assert slab_action(s[..]) == 0;
+  // the length to its low end: one caisson long
+  #assert panel_act(s[..], "take.s.long", 0);
+  #assert change_hull(s[0].change[..])[0] == 50 && slab_action(s[..]) == PANEL_ADDRESS && slab_outbox(s[..]) == "/worlds/slab?long=100";
+  slab_action_done(s[..]); #assert slab_action(s[..]) == 0;
+  // a value past the ends does nothing
+  #assert panel_act(s[..], "take.s.long", 999) && change_hull(s[0].change[..])[0] == 50;
+  #assert panel_act(s[..], "take.from.1", 0) && s[0].site == SITE_TEXAS && change_hull(s[0].change[..])[0] == 50;
+  // the shore slider reads the place: the berth is 40 miles off Texas, not the picture's 2.3
+  #assert abs(panel_value(s[..], WC_SHORE) - 39.8) < 0.5;
+  // the address it wrote opens the same state
+  again: [1] Slab; line: [320] u8; n := 0;
+  for c: "url=https://openagents.com" { line[n] = c; n += 1; }
+  for c: slab_outbox(s[..]) { line[n] = c; n += 1; }
+  line[n] = '\n'; n += 1;
+  slab_message(again[..], HOST_FACTS, cast(string) line[0..<n]);
+  #assert what_same(again[0].change[0].what, s[0].change[0].what) && again[0].site == SITE_TEXAS && cast(string) again[0].panel.path[0..<again[0].panel.path_n] == "/worlds/slab";
+  #assert panel_act(s[..], "take.reset", 0) && s[0].site == SITE_GUAM && change_picture_hull(s[0].change[..]) && slab_outbox(s[..]) == "/worlds/slab?preset=picture";
+  // a tenant off, then the wind made the visitor's own
+  #assert panel_act(s[..], "take.t.3", 0) && !s[0].change[0].what.on[WT_MINING] && s[0].plant.miners == 0;
+  #assert panel_act(s[..], "take.s.wind", 40) && s[0].wind_forced == 40;
+  #assert !panel_act(s[..], "site.2", 0);
+}

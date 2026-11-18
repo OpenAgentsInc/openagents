@@ -5,7 +5,7 @@ Status: phases S1–S7 built, November 18, 2026, as
 there). The hull floats on column buoyancy
 with damping, moorings, wind and current (`metaverse/slab-sim.coax`); the
 `prime` deck is built and can be walked with GameBuilder's character
-controller; the five sites, six sea states, OTEC, nuclear and hybrid power,
+controller; the seven sites, six sea states, OTEC, nuclear and hybrid power,
 the `demo10` preset and the dispatcher run, with a motion and power panel and
 a card for anything clicked. Cell A1 can be holed and the ballast pumped
 against it; the section view (V) cuts the hull open and the underwater view
@@ -581,6 +581,34 @@ so `guam` is the default.
 | `kona` | West of Hawaiʻi Island at NELHA, about 19.7°N | 3rd; the best research base | 24.0–27.0 °C (planning; the report says the winter margin is narrow) | Rare hurricanes |
 | `equator` | Equatorial Pacific near Baker and Howland Islands (U.S. Minor Outlying Islands), about 0.2°N | Not in the report's atlas | 28.0–29.5 °C (planning) | None: Silone's hurricane-free belt |
 | `california` | 3.5 nautical miles off California (the "three miles" framing), San Clemente Basin | Excluded for OTEC | **15.2 °C in February to 20.9 °C in September** (NOAA climatology, sourced) | Winter storms |
+| `texas` | The Gulf of Mexico, 40 nautical miles off the Port Aransas jetties (27.55°N, 96.37°W): the berth the timelapse builds at | Not in the report's atlas | **20.5 °C in February to 29.9 °C in August** (NASA JPL MUR monthly means, 2015–2024, sourced) | Hurricanes, June to November |
+| `fjord` | Yrkefjorden, Norway (59.42°N, 5.78°E): a sheltered fjord, a place to join a hull and not to run one | None | **5.2 °C in March to 16.3 °C in August** (the same source) | Sheltered |
+
+**Each site is a real place on a chart** (`metaverse/slab-where.coax`, on the
+engine's chart module, `docs/metaverse/chart.md`). The coast is Natural Earth
+1:10m and the depths are NOAA ETOPO1, both public domain. The world reads the
+water's depth, the distance to land and the legal zone from the chart, at the
+site's own place or wherever the visitor moves the platform:
+
+| Site | Water depth | Nearest land | The state's line |
+|---|---|---|---|
+| `guam` | 1,408 m | 2.3 nautical miles | 3 nautical miles |
+| `puerto-rico` | 1,440 m | 2.6 | 9 |
+| `kona` | 1,725 m | 3.2 | 3 |
+| `equator` | 1,448 m | 2.9 (Baker Island, a marine monument) | none: federal waters |
+| `california` | 607 m | 3.5 | 3 |
+| `texas` | 89 m | 39.8 (40 from the jetties) | 9 |
+| `fjord` | 134 m | 0.5 | not drawn: Norwegian internal waters |
+
+Past the state's line the territorial sea ends at 12 nautical miles, the
+contiguous zone at 24 and the exclusive economic zone at 200.
+
+**No cold water, no ocean thermal plant.** The cold-water pipes hang 1,000 m
+(section 6.1). Where the water is shallower than that (`SIM_COLD_DEPTH`),
+the world hangs no pipes and the plant makes nothing, and says so:
+`california` (607 m), `texas` (89 m) and `fjord` (134 m). Before the sites
+had real depths, `california` showed up to 19 MW in September; the surface
+is warm enough then, but there is no cold water under it.
 
 **Temperatures at the plant.** OTEC works from the temperatures at the plant's
 inlets, not the sea surface (otec.md §6). The world uses:
@@ -599,7 +627,9 @@ site except `equator` is in the northern hemisphere. This gives:
 | `puerto-rico` | 21.0–23.5 °C | 80–113 MW |
 | `kona` | 18.5–21.5 °C | 50–86 MW |
 | `equator` | 22.5–24.0 °C | 99–120 MW |
-| `california` | 9.7–15.4 °C | 0 in winter, at most 19 MW in September |
+| `california` | 9.7–15.4 °C | 0: the water is 607 m deep, too shallow for the pipes |
+| `texas` | 15.0–24.4 °C | 0: the water is 89 m deep |
+| `fjord` | −0.3–10.8 °C | 0: too cold, and 134 m deep |
 
 The HUD labels each site's temperatures "sourced" or "planning value", as
 in the first table. When better site data arrives, change only this section
@@ -921,11 +951,17 @@ Z from −300 to 300.
 | Medical | 262 to 335 | −240 to −170 | One hospital block |
 | Civic | 348 to 468 | −268 to −172 | A colonnaded hall |
 
-The cranes are gone and the dock notch (section 3.1) stays uncut: the
-picture shows neither. The cranes' card, which nothing could open, went with
-them. The plan keeps the crane's kind number (`SLAB_KIND_CRANE`) and the
-shader its paint, so the dock's work (#13686) can put cranes back without
-renumbering.
+The cranes are gone: the picture shows none. Their card, which nothing
+could open, went with them, and the plan keeps the crane's kind number
+(`SLAB_KIND_CRANE`) and the shader its paint. The dock notch (section 3.1)
+is cut (#13686): a basin 100 m long and 60 m in, its floor 8 m under the
+water, in the sheltered south wall, on any hull at least 400 m long and
+300 m wide. Its name is pinned on the wall from the sea side and opens a
+card that says how you get on board: boats come into the basin and lifts in
+its walls go up to the deck. The lifts are our assumption. The one data
+hall that stood over the basin moves back from its quay. The basin takes
+48,000 m³ out of the hull's displacement at 25 m of draft (about 49,200 t
+of lift, 0.3%), which `metaverse/hull.coax`'s ledger does not count yet.
 Temples and the tholos are traced as distance fields in the shader
 (`slab_temple_sd`, `slab_tholos_sd`), and cypresses as cones, so the
 colonnades have real columns.
@@ -1091,6 +1127,84 @@ the column approximation.
 
 ## 12. Results
 
+### What would it take? (#13686)
+
+One panel under **Change** (`apps/openagents-web/slab-panel.coax`), drawn
+with the components kit in the mono skin. Its settings and their limits are
+`metaverse/slab-whatif.coax`; what they do to the world is
+`apps/openagents-web/slab-change.coax`. Every hull figure is
+`metaverse/hull.coax`'s ledger.
+
+| Part | Controls (range) |
+|---|---|
+| The hull | Buildings and equipment (0–6 Mt), length (100–2,000 m), width (50–1,000 m), depth keel to deck (30–150 m), sea walls and bottom slab (0.5–3 m), the draft the ballast holds (2–60 m) |
+| Building it | Concrete in place ($100–$1,000 a cubic metre), casting yards (1–8), each yard's pour (1,000–6,000 m³ a day) |
+| Where | The chart (press it to move the platform), distance from shore (0–250 nautical miles) |
+| Weather | Wind (0–40 m/s), month |
+| Power | Ocean thermal plant (30–240 MW), reactor modules (1–8), and each tenant on or off with its size: data halls, desalination, industry, miners |
+| Design life | 25–1,000 years |
+
+- Each slider shows its two ends in words under its line and says why it
+  stops at each (`k_slider_ends` in the kit, `sh_limits` in the HUD's text).
+- Each figure is tagged "From Luckey", "From a source" or "Our assumption".
+- The reasons a setting can't work lead the panel, for example "The hull is
+  wider than the Corpus Christi channel (162 m), so it leaves as 120
+  caissons and is joined at sea." and "No ocean thermal power here: under
+  607 m of water there is no room for the pipes."
+- Presets: the picture, the Gulf Coast pilot (100 × 50 m at 5 m draft, off
+  Texas), joined in a Norwegian fjord, three miles off California, Guam on
+  ocean thermal power, one Silone dome. **Reset to the picture** returns.
+- Every state has an address. A press writes the settings that differ from
+  the picture's into the address bar: `?preset=`, `?weight=`, `?long=`,
+  `?wide=`, `?deep=`, `?wall=`, `?floor=`, `?draft=`, `?price=`, `?yards=`,
+  `?pour=`, `?lat=`, `?lon=`, `?shore=`, `?data=`, `?desal=`, `?industry=`,
+  `?mining=` (0 is off), `?life=`, beside `?site=`, `?power=`, `?layout=`,
+  `?wind=`, `?month=`, `?otec=` and `?modules=`.
+
+What the world does with them, each checked in `slab.coax`:
+
+| Setting | The world |
+|---|---|
+| The picture's hull with 6 Mt on it | draws 27 m, two more than the picture: it carries far more than its buildings |
+| A 400 × 300 m hull with 6 Mt on it (`?long=400&wide=300&weight=6`) | weighs 9.6 Mt, floats 6.1 Mt, and goes down until its deck is awash |
+| The pilot (`?preset=pilot`) | 23,100 t of concrete, ballasted to 5 m; it leaves the 162 m wide, 16.5 m deep Corpus Christi channel in one piece |
+| The picture's hull | 162 m is narrower than its 600 m, so it leaves as 120 caissons |
+| California (`?preset=california`) | 607 m of water: no pipes, and the ocean thermal plant makes 0 MW |
+| The concrete alone, at $500 a cubic metre | $1.9 billion, 1,276 pour-days in one yard |
+
+A resized hull is drawn at its size with the picture's buildings scaled to
+its deck. Walking, the cut-open view and the flow lines are for the
+picture's hull only and say so. The hull's motion is still the picture
+hull's: a smaller hull would move more than the world shows, and the panel
+says that too.
+
+**The chart.** `metaverse-engine/world/chart.coax` is the engine's chart:
+coast, heights, distance to land, level lines, a view and a skyline
+(`docs/metaverse/chart.md` has its API). `apps/openagents-web/slab-chart.coax`
+draws it for this world: the coast, the 200 m and 1,000 m depth lines, the
+state's line and the 12, 24 and 200 mile lines, the platform, and off Texas
+the construction route (the casting yard at Corpus Christi, the Port Aransas
+jetties, the berth, Brownsville). `chart_draw_in(s, out, n, view)` draws it
+into any rectangle and `chart_route_tags` names the route, for the tour's
+last stop and the construction drawing (#13682).
+
+**The place.** The nearest land is drawn when it is in sight: its shore on
+the sea at the chart's distance and bearing, and its ridge over the horizon
+as high and as wide as the chart's heights make it from the eye
+(`slab-place.coax`, `slab_land` and `slab_shore` in the shader). The ridge's
+small rises are noise. Only the nearest shore stands at its real distance:
+where land is all round, as in the fjord, the rest stands on the horizon. The
+state's line and the 12 mile line are dashed on the water where they pass
+within 16 km, each with its name.
+
+**The timelapse builds the picture's platform at its Gulf berth**, the
+`texas` site, 40 nautical miles off the Port Aransas jetties. Entering the
+build view says so, and leaving it puts the world off Texas, where the
+build ended. For the construction work (#13682): the chart puts that berth
+in 89 m of water, not the 40 m `BUILD_SITE_DEPTH` assumes; 40 m of water is
+about 22 nautical miles out. Either the berth moves in or the depth
+changes.
+
 Measured on November 18, 2026, from the checks in `metaverse/slab-sim.coax`,
 `metaverse/slab-plan.coax` and `apps/openagents-web/slab.coax`. The targets
 in sections 3–9 are unchanged.
@@ -1149,8 +1263,8 @@ goes higher on the wind that turns up the wall.
 **The lee, measured** (root-mean-square height against the open sea's, in
 the `rough` sea and the `gale`): 0.24 to 0.31 at 60 m off the west wall;
 about 2.0 to 2.2 at the east wall, where the standing wave is; 0.46 to 0.59
-in the dock notch in the south wall (section 3.1; the model has the notch,
-the drawn hull does not yet). The south wall is only 20° off the waves' path,
+in the dock notch in the south wall (section 3.1; the model's notch is the
+drawn one, 50 m either side of the middle and 60 m in). The south wall is only 20° off the waves' path,
 so the notch sees about half the open sea. A notch in the west wall would see
 under a third.
 - The arrival view and the default hour follow the concept image: January at

@@ -58,11 +58,15 @@ SlabHud :: struct {
 sb_more :: (s: [] Slab, h: [] SceneHud, group: int) {
   // yours_hud(s, h, group);
   sea_look_hud(s, h, group);   // the weather, and the water under the sea (slab-sea.coax)
+  panel_hud(s, h, group);   // "What would it take?" (slab-panel.coax)
 }
 // What other files' presses do: one line each.
 sb_act_more :: (s: [] Slab, id: string, value: int) -> bool {
   // if yours_act(s, id, value) { return true; }
   if sea_look_act(s, id, value) { return true; }
+  if chart_act(s, id) { return true; }          // the chart's own tags (slab-chart.coax)
+  if place_act(s, id) { return true; }          // the dock's name (slab-place.coax)
+  if panel_act(s, id, value) { return true; }   // "What would it take?" (slab-panel.coax)
   return false;
 }
 
@@ -363,6 +367,8 @@ sb_say :: (s: [] Slab) {
     sb_help(s, h);
     sb_card(s, h);
     sb_first(s, h);
+    chart_tags(s, h);   // the chart's names (slab-chart.coax)
+    place_tags(s, h);   // the lines on the water and the dock (slab-place.coax)
     foot: [200] u8;
     sh_foot(h, sea_look_foot(s, foot[..]));
     if s[0].hp.toast_n > 0 && s[0].time - s[0].hp.toast_at < SB_TOAST { sh_toast(h, cast(string) s[0].hp.toast[0..<s[0].hp.toast_n]); }
