@@ -34,6 +34,8 @@ CP_AGENTS :: 12;            // sub-agents one message may start; a task past tha
 CP_AGENT_TASK :: 1500;      // bytes of a sub-agent's task kept (a longer task is cut, and the sub-agent gets the cut one)
 CP_AGENT_REPLY :: 8000;     // bytes of a sub-agent's reply kept, shown and handed back to Microcoder
 CP_AGENT_CALLS :: 6000;     // commands, tool calls and thoughts a chat keeps in all (#13670, #13671). Past it the oldest in the chat goes, and its message or transcript says how many went
+CP_QUIET :: 100;            // tool calls a sub-agent makes in a row with no file changed before it pauses and Microcoder decides (#13676)
+CP_ROUND :: 6;              // tasks Microcoder hands over in one step
 CP_PANE :: 440;             // the sub-agent transcript's width, on the window's right
 CP_PANE_MAIN :: 380;        // the conversation's least width beside it: under that the chats' sidebar goes, then the transcript takes the window
 CP_SCRATCH :: 262144;       // the sub-agents' results as one line for the worker
@@ -99,6 +101,10 @@ CpAgent :: struct {
   more_rows: int;             // in a chat kept before #13670: how many ran past the 40 it kept
   now: [CP_CMD] u8; now_n: int; now_running: bool;     // its newest tool call
   calls: int;
+  quiet: int;                 // its tool calls since it last changed a file, or since Microcoder let it go on
+  paused: bool;               // it reached CP_QUIET: its next command waits, and Microcoder decides whether it goes on
+  deny_due: bool;             // Microcoder let it go on: the command that waited is owed a no that carries the note
+  say: [CP_AGENT_TASK] u8; say_n: int;   // the note
   began: f32; took: f32;
 }
 CP_CMD_IDS :: [CP_AGENTS] string.["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11"];
@@ -107,7 +113,7 @@ CpTurn :: struct {
   early_cmds: int;            // how many of its oldest went to make room
   more_cmds: int;             // in a chat kept before #13671: how many ran past the 12 it kept
   agents: [CP_AGENTS] CpAgent; nagents: int;
-  round: int; round_n: int; round_asked: int; ticket: int; waiting: bool;   // the sub-agents Microcoder waits for: the first, how many, how many it asked for, its ticket
+  round_who: [CP_ROUND] int; round_asked: int; ticket: int; waiting: bool;   // the sub-agents Microcoder waits for: each task's sub-agent as its number (0: not run, -1: no such paused one), how many it asked for, its ticket
   ask: [EB_TEXT] u8; ask_n: int;
   reply: [CP_REPLY] u8; reply_n: int; cut: bool;
   doc: [1] MdDoc; blocks: int;
@@ -219,7 +225,7 @@ cp_send :: (s: [] CoderPage) -> bool {
   s[0].turns[i].ask_n = cp_out(s[0].turns[i].ask[..], text);
   s[0].turns[i].reply_n = 0; s[0].turns[i].head = 0; s[0].turns[i].tail = 0; s[0].turns[i].ncmds = 0; s[0].turns[i].early_cmds = 0; s[0].turns[i].more_cmds = 0; s[0].turns[i].cut = false; s[0].turns[i].blocks = 0; s[0].turns[i].note_n = 0;
   // a new chat uses the first turns again: nothing of the old ones may show (their sub-agents did, once)
-  s[0].turns[i].nagents = 0; s[0].turns[i].round = 0; s[0].turns[i].round_n = 0; s[0].turns[i].round_asked = 0; s[0].turns[i].waiting = false; s[0].turns[i].info = false; s[0].results_due = false;
+  s[0].turns[i].nagents = 0; s[0].turns[i].round_asked = 0; s[0].turns[i].waiting = false; s[0].turns[i].info = false; s[0].results_due = false;
   s[0].turns[i].state = CP_RUNNING; s[0].turns[i].stopping = false; s[0].turns[i].fresh = false; s[0].turns[i].h = 0;
   s[0].nturns += 1;
   eb_set(s[0].draft[..], "");
@@ -252,7 +258,7 @@ cp_cmds_end :: (s: [] CoderPage, i: int) {
   cp_calls_end(s, i, -1, true);
   for j: 0..<s[0].turns[i].nagents {
     if s[0].turns[i].agents[j].state == CP_RUNNING { s[0].turns[i].agents[j].state = CP_STOPPED; s[0].turns[i].agents[j].took = s[0].clock - s[0].turns[i].agents[j].began; cp_calls_end(s, i, j, true); }
-    s[0].turns[i].agents[j].start_due = false; s[0].turns[i].agents[j].answer_due = false; s[0].turns[i].agents[j].now_running = false;
+    s[0].turns[i].agents[j].start_due = false; s[0].turns[i].agents[j].answer_due = false; s[0].turns[i].agents[j].now_running = false; s[0].turns[i].agents[j].paused = false; s[0].turns[i].agents[j].deny_due = false;
   }
   s[0].turns[i].waiting = false; s[0].results_due = false;
 }
@@ -391,33 +397,51 @@ cp_calls_end :: (s: [] CoderPage, i: int, j: int, failed: bool) {
 }
 cp_delegate :: (s: [] CoderPage, i: int, tasks: string, ticket: int) {
   asked := ifx tasks.count > 1 && tasks[0] == '[' then cl_count(tasks) else 0;
-  s[0].turns[i].round = s[0].turns[i].nagents; s[0].turns[i].round_n = 0; s[0].turns[i].round_asked = asked; s[0].turns[i].ticket = ticket; s[0].turns[i].waiting = true;
+  if asked > CP_ROUND { asked = CP_ROUND; }
+  s[0].turns[i].round_asked = asked; s[0].turns[i].ticket = ticket; s[0].turns[i].waiting = true;
   for q: 0..<asked {
-    j := s[0].turns[i].nagents;
-    if j >= CP_AGENTS { break; }
     one := cl_json(tasks, cl_item(tasks, q));
     ar := [1] ClArena.[ClArena.{buf = s[0].scratch[..]}];
+    s[0].turns[i].round_who[q] = 0;
+    // a task with resume lets a paused sub-agent go on, with the task as a note to it (GitHub #13676)
+    resume := cl_int(one, "resume");
+    if resume.ok && resume.value > 0 {
+      g := resume.value - 1;
+      s[0].turns[i].round_who[q] = -1;
+      if g < s[0].turns[i].nagents && s[0].turns[i].agents[g].state == CP_RUNNING && s[0].turns[i].agents[g].paused {
+        s[0].turns[i].agents[g].paused = false; s[0].turns[i].agents[g].quiet = 0; s[0].turns[i].agents[g].deny_due = true;
+        s[0].turns[i].agents[g].say_n = cp_out(s[0].turns[i].agents[g].say[..], cl_str(ar[..], one, "task"));
+        s[0].turns[i].agents[g].now_n = cp_out(s[0].turns[i].agents[g].now[..], "going on");
+        s[0].turns[i].round_who[q] = g + 1;
+      }
+      continue;
+    }
+    j := s[0].turns[i].nagents;
+    if j >= CP_AGENTS { continue; }
     s[0].turns[i].agents[j] = CpAgent.{};
     s[0].turns[i].agents[j].task_n = cp_out(s[0].turns[i].agents[j].task[..], cl_str(ar[..], one, "task"));
     level := cl_str(ar[..], one, "level");
     for name, q2: CP_LEVEL { if name == level { s[0].turns[i].agents[j].level = q2; } }
-      for name, q2: CP_LEVEL_OLD { if name == level { s[0].turns[i].agents[j].level = q2; } }
+    for name, q2: CP_LEVEL_OLD { if name == level { s[0].turns[i].agents[j].level = q2; } }
     s[0].turns[i].agents[j].state = CP_RUNNING; s[0].turns[i].agents[j].start_due = true;
     s[0].turns[i].agents[j].began = s[0].clock; s[0].turns[i].agents[j].took = -1;
-    s[0].turns[i].nagents = j + 1; s[0].turns[i].round_n += 1;
+    s[0].turns[i].nagents = j + 1; s[0].turns[i].round_who[q] = j + 1;
   }
   s[0].turns[i].h = 0;
   cp_round_check(s, i);
 }
-// Every sub-agent of the round has ended: the worker is owed their results.
+// Every sub-agent of the round has ended or paused: the worker is owed their results.
 cp_round_check :: (s: [] CoderPage, i: int) {
   if !s[0].turns[i].waiting { return; }
-  for q: 0..<s[0].turns[i].round_n { if s[0].turns[i].agents[s[0].turns[i].round + q].state == CP_RUNNING { return; } }
+  for q: 0..<s[0].turns[i].round_asked {
+    w := s[0].turns[i].round_who[q];
+    if w > 0 && s[0].turns[i].agents[w - 1].state == CP_RUNNING && !s[0].turns[i].agents[w - 1].paused { return; }
+  }
   s[0].results_due = true;
 }
 cp_agent_end :: (s: [] CoderPage, i: int, j: int, state: int, text: string) {
   s[0].turns[i].agents[j].state = state; s[0].turns[i].agents[j].took = s[0].clock - s[0].turns[i].agents[j].began;
-  s[0].turns[i].agents[j].now_running = false; s[0].turns[i].agents[j].answer_due = false;
+  s[0].turns[i].agents[j].now_running = false; s[0].turns[i].agents[j].answer_due = false; s[0].turns[i].agents[j].paused = false; s[0].turns[i].agents[j].deny_due = false;
   cp_calls_end(s, i, j, state != CP_DONE);
   n := cp_out(s[0].turns[i].agents[j].reply[0..<CP_AGENT_REPLY - 48], text);
   if n < text.count { n += cp_out(s[0].turns[i].agents[j].reply[n..<CP_AGENT_REPLY], "\n[The reply is cut at 8,000 bytes.]"); }
@@ -465,7 +489,14 @@ coder_page_agent_line :: (s: [] CoderPage, j: int, line: string) -> int #export_
   l: [1] MwwLine;
   kind := mww_read(ar[..], line, l[..]);
   claude := s[0].turns[i].agents[j].level >= CP_LEVEL_CLAUDE;   // its worker's ask is a tool call starting: no answer is owed
-  if kind == MWW_ASK {
+  if kind == MWW_ASK && !claude && s[0].turns[i].agents[j].quiet >= CP_QUIET {
+    // 100 tool calls in a row with no file changed: this command waits, and Microcoder decides (GitHub #13676)
+    s[0].turns[i].agents[j].answer = l[0].ticket.value; s[0].turns[i].agents[j].answer_due = false; s[0].turns[i].agents[j].paused = true;
+    s[0].turns[i].agents[j].now_n = cp_out(s[0].turns[i].agents[j].now[..], "paused: Microcoder decides whether it goes on"); s[0].turns[i].agents[j].now_running = false;
+    s[0].turns[i].h = 0;
+    cp_round_check(s, i);
+  } else if kind == MWW_ASK {
+    s[0].turns[i].agents[j].quiet += 1;
     s[0].turns[i].agents[j].answer = l[0].ticket.value; s[0].turns[i].agents[j].answer_due = !claude;
     s[0].turns[i].agents[j].now_n = cp_out(s[0].turns[i].agents[j].now[..], l[0].command); s[0].turns[i].agents[j].now_running = true;
     s[0].turns[i].agents[j].calls += 1; _ = cp_call_add(s, i, j, l[0].command, "", false, false, true);
@@ -473,6 +504,7 @@ coder_page_agent_line :: (s: [] CoderPage, j: int, line: string) -> int #export_
     failed := l[0].timed_out.value || l[0].exit.value != 0;
     // an edit, or a command the worker ran before the first call, was not asked about
     if !cp_call_done(s, i, j, l[0].command, l[0].output, failed) && !claude && !s[0].turns[i].agents[j].now_running {
+      s[0].turns[i].agents[j].quiet = ifx failed then s[0].turns[i].agents[j].quiet + 1 else 0;   // an edit that took changed a file
       s[0].turns[i].agents[j].now_n = cp_out(s[0].turns[i].agents[j].now[..], l[0].command); s[0].turns[i].agents[j].calls += 1;
       _ = cp_call_add(s, i, j, l[0].command, l[0].output, false, failed, false);
     }
@@ -480,6 +512,7 @@ coder_page_agent_line :: (s: [] CoderPage, j: int, line: string) -> int #export_
   } else if kind == MWW_VIEW {
     vb: [CP_CMD] u8; vn := cp_out(vb[..], "read "); vn += cp_out(vb[vn..<CP_CMD], l[0].path);
     s[0].turns[i].agents[j].now_n = cp_out(s[0].turns[i].agents[j].now[..], cast(string) vb[0..<vn]); s[0].turns[i].agents[j].now_running = false;
+    s[0].turns[i].agents[j].quiet += 1;
     s[0].turns[i].agents[j].calls += 1; _ = cp_call_add(s, i, j, l[0].path, ifx l[0].found.value then "" else "No such file.", true, !l[0].found.value, false);
   } else if kind == MWW_THOUGHT { cp_thought_add(s, i, j, l[0].text);
   } else if kind == MWW_ENDED {
@@ -505,20 +538,51 @@ coder_page_agent_running :: (s: [] CoderPage, j: int) -> bool #export_c #effects
 coder_page_agent_answer_line :: (s: [] CoderPage, j: int, out: [] u8) -> int #export_c #effects(all) {
   if s.count < 1 || !cp_running(s) { return 0; }
   i := s[0].nturns - 1;
-  if j < 0 || j >= s[0].turns[i].nagents || !s[0].turns[i].agents[j].answer_due { return 0; }
+  if j < 0 || j >= s[0].turns[i].nagents { return 0; }
+  if s[0].turns[i].agents[j].deny_due {
+    // the command that waited through the pause is not run: its answer carries Microcoder's note
+    s[0].turns[i].agents[j].deny_due = false;
+    wb: [CP_AGENT_TASK + 256] u8; wn := cp_out(wb[..], "This command was not run. You were paused after 100 tool calls in a row with no file changed, and Microcoder let you go on. Its note: ");
+    wn += cp_out(wb[wn..<wb.count], cast(string) s[0].turns[i].agents[j].say[0..<s[0].turns[i].agents[j].say_n]);
+    return mww_answer(out, false, s[0].turns[i].agents[j].answer, cast(string) wb[0..<wn]);
+  }
+  if !s[0].turns[i].agents[j].answer_due { return 0; }
   s[0].turns[i].agents[j].answer_due = false;
   return mww_answer(out, true, s[0].turns[i].agents[j].answer, "");
+}
+// What Microcoder is told of a paused sub-agent: that it paused and why, its number, its newest 12
+// rows, and how to let it go on. The text is in the page's arena until the next worker line.
+cp_paused :: (s: [] CoderPage, i: int, j: int) -> string {
+  b := s[0].arena[..]; n := cp_out(b, "paused, not finished. Sub-agent number ");
+  n = el_put_i(b, n, j + 1); n += cp_out(b[n..<b.count], " has made "); n = el_put_i(b, n, CP_QUIET);
+  n += cp_out(b[n..<b.count], " tool calls in a row without changing a file ("); n = el_put_i(b, n, s[0].turns[i].agents[j].calls);
+  n += cp_out(b[n..<b.count], " in all). Its newest rows, oldest first:");
+  skip := ifx s[0].turns[i].agents[j].nrows > 12 then s[0].turns[i].agents[j].nrows - 12 else 0;
+  q := cp_nth(s, i, j, skip);
+  while q >= 0 {
+    n += cp_out(b[n..<b.count], ifx s[0].calls[q].thought then "\n- thought: " else ifx s[0].calls[q].read then "\n- read " else "\n- ");
+    n += cp_out(b[n..<b.count], cast(string) s[0].calls[q].text[0..<(ifx s[0].calls[q].text_n < 160 then s[0].calls[q].text_n else 160)]);
+    q = s[0].calls[q].next - 1;
+  }
+  n += cp_out(b[n..<b.count], "\nDecide now whether this serves the task. To let it go on, delegate one task with resume ");
+  n = el_put_i(b, n, j + 1); n += cp_out(b[n..<b.count], ", level "); n += cp_out(b[n..<b.count], CP_LEVEL[s[0].turns[i].agents[j].level]);
+  n += cp_out(b[n..<b.count], ", and as its task a note that tells it what to do next. To stop it, do not resume it.");
+  return cast(string) b[0..<n];
 }
 // The round's results as the worker's line: each sub-agent's reply, or why it has none.
 cp_results :: (s: [] CoderPage, i: int, out: [] u8) -> int {
   b := s[0].scratch[..]; n := json_raw(b, 0, "[");
   for q: 0..<s[0].turns[i].round_asked {
     n = json_raw(b, n, ifx q > 0 then ",{\"exit\":" else "{\"exit\":");
-    if q < s[0].turns[i].round_n {
-      j := s[0].turns[i].round + q;
+    w := s[0].turns[i].round_who[q];
+    if w > 0 && s[0].turns[i].agents[w - 1].state == CP_RUNNING && s[0].turns[i].agents[w - 1].paused {
+      n = json_raw(b, n, "1,\"output\":"); n = json_write_string(b, n, cp_paused(s, i, w - 1));
+    } else if w > 0 {
+      j := w - 1;
       n = json_raw(b, n, ifx s[0].turns[i].agents[j].state == CP_DONE then "0" else "1"); n = json_raw(b, n, ",\"output\":");
       n = json_write_string(b, n, cast(string) s[0].turns[i].agents[j].reply[0..<s[0].turns[i].agents[j].reply_n]);
-    } else { n = json_raw(b, n, "1,\"output\":\"not run: one message starts at most 12 sub-agents\""); }
+    } else if w < 0 { n = json_raw(b, n, "1,\"output\":\"not run: no paused sub-agent has that number\""); }
+    else { n = json_raw(b, n, "1,\"output\":\"not run: one message starts at most 12 sub-agents\""); }
     n = json_raw(b, n, "}");
   }
   n = json_raw(b, n, "]");
@@ -678,7 +742,7 @@ coder_page_load :: (s: [] CoderPage, text: string) -> bool #export_c #effects(al
     s[0].turns[i].more_cmds = ifx more.ok && more.value > 0 then more.value else 0;
     te := cl_int(t, "earlier"); s[0].turns[i].early_cmds = ifx te.ok && te.value > 0 then te.value else 0;
     s[0].turns[i].head = 0; s[0].turns[i].tail = 0; s[0].turns[i].ncmds = 0; s[0].turns[i].stopping = false; s[0].turns[i].fresh = false; s[0].turns[i].info = false; s[0].turns[i].h = 0; s[0].turns[i].ah = 0;
-    s[0].turns[i].round = 0; s[0].turns[i].round_n = 0; s[0].turns[i].round_asked = 0; s[0].turns[i].waiting = false;
+    s[0].turns[i].round_asked = 0; s[0].turns[i].waiting = false;
     cmds := cl_raw(t, "cmds"); nc := ifx cmds.count > 0 then cl_count(cmds) else 0;
     for at: 0..<nc { cp_load_row(s, i, -1, cl_json(cmds, cl_item(cmds, at))); }
     agents := cl_raw(t, "agents"); na := ifx agents.count > 0 then cl_count(agents) else 0; if na > CP_AGENTS { na = CP_AGENTS; }
@@ -893,7 +957,8 @@ cp_pane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
   }
   if nrows > 0 { y += a.gap - a.gap_small; }
   reply := cast(string) s[0].turns[i].agents[j].reply[0..<s[0].turns[i].agents[j].reply_n];
-  if state == CP_RUNNING { y += app_typing(f, cp_pane_id(ib[..], s, ".t", -1), x, y, "Working") + a.gap; }
+  if state == CP_RUNNING && s[0].turns[i].agents[j].paused { y += app_meta(f, cp_pane_id(ib[..], s, ".t", -1), x, y, cw, "Paused after 100 tool calls in a row with no file changed. Microcoder decides whether it goes on.", false) + a.gap; }
+  else if state == CP_RUNNING { y += app_typing(f, cp_pane_id(ib[..], s, ".t", -1), x, y, "Working") + a.gap; }
   else if state == CP_DONE && reply.count > 0 {
     if s[0].pane_parsed != reply.count {
       s[0].pane_doc[0].n = 0; s[0].pane_doc[0].nb = 0; s[0].pane_doc[0].nr = 0; s[0].pane_doc[0].ni = 0; s[0].pane_doc[0].nlink = 0;
@@ -958,7 +1023,7 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
         gs := s[0].turns[i].agents[j].state; gcalls := s[0].turns[i].agents[j].calls;
         gt := cast(string) s[0].turns[i].agents[j].task[0..<s[0].turns[i].agents[j].task_n];
         tool := AppTool.{icon = ICON_BOT, title = CP_LEVEL_NAME[s[0].turns[i].agents[j].level], arg = gt,
-                         state = ifx gs == CP_RUNNING then APP_TOOL_RUNNING else ifx gs == CP_DONE then APP_TOOL_DONE else APP_TOOL_FAILED,
+                         state = ifx gs == CP_RUNNING && s[0].turns[i].agents[j].paused then APP_TOOL_PENDING else ifx gs == CP_RUNNING then APP_TOOL_RUNNING else ifx gs == CP_DONE then APP_TOOL_DONE else APP_TOOL_FAILED,
                          input = gt,
                          took = sheet_pool(f[0].sheet, cp_took(kb[..], ifx gs == CP_RUNNING then s[0].clock - s[0].turns[i].agents[j].began else s[0].turns[i].agents[j].took))};
         y += app_tool(f, app_id(tb[..], cp_id(xb[..], i, ".g"), CP_CMD_IDS[j]), x, y, cw, tool, false, CP_AGENT) + a.gap_small;
@@ -1504,6 +1569,50 @@ coder_page_zoom_set :: (s: [] CoderPage, row: int) -> int #export_c #effects(all
   s[0].copied_kind = CP_COPIED_ALL;
   n = coder_page_copied(s, out[..]); #assert cast(string) out[0..<n] == "You:\nList files\n\nRan: ls\n\nMicrocoder:\nOne file: **a**.";
   #assert coder_page_new(s) && s[0].copied_kind == CP_COPIED_NONE;
+}
+// Where needle starts in text, -1 when it is not there (the checks' own).
+cp_find :: (text: string, needle: string) -> int {
+  i := 0;
+  while i + needle.count <= text.count { if cast(string) text[i..<i + needle.count] == needle { return i; } i += 1; }
+  return -1;
+}
+#test "a sub-agent that makes 100 tool calls with no file changed pauses; Microcoder is told and lets it go on with a note, or names no one" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  #assert coder_page_set_text(s, "look") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"hydrogen\",\"task\":\"count\"},{\"level\":\"carbon\",\"task\":\"read\"}],\"ticket\":1}") == MWW_DELEGATE;
+  out: [4096] u8;
+  // a read and a command each count; an edit that took starts the count again, one that failed does not
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"view\",\"path\":\"a.txt\",\"found\":true}") == MWW_VIEW && s[0].turns[0].agents[0].quiet == 1;
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"ask\",\"command\":\"ls\",\"ticket\":1}") == MWW_ASK && s[0].turns[0].agents[0].quiet == 2 && coder_page_agent_answer_line(s, 0, out[..]) > 0;
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"command\",\"command\":\"ls\",\"exit\":0,\"timed_out\":false,\"output\":\"a\"}") == MWW_COMMAND && s[0].turns[0].agents[0].quiet == 2;
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"command\",\"command\":\"edit a.txt\",\"exit\":1,\"timed_out\":false,\"output\":\"\"}") == MWW_COMMAND && s[0].turns[0].agents[0].quiet == 3;
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"command\",\"command\":\"edit a.txt\",\"exit\":0,\"timed_out\":false,\"output\":\"\"}") == MWW_COMMAND && s[0].turns[0].agents[0].quiet == 0;
+  // one under 100, its command is answered; at 100 the next waits: no answer is owed and no row is added
+  s[0].turns[0].agents[0].quiet = CP_QUIET - 1;
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"ask\",\"command\":\"ls\",\"ticket\":2}") == MWW_ASK && !s[0].turns[0].agents[0].paused && coder_page_agent_answer_line(s, 0, out[..]) > 0;
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"command\",\"command\":\"ls\",\"exit\":0,\"timed_out\":false,\"output\":\"a\"}") == MWW_COMMAND && s[0].turns[0].agents[0].quiet == CP_QUIET;
+  rows := s[0].turns[0].agents[0].nrows; calls := s[0].turns[0].agents[0].calls;
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"ask\",\"command\":\"cat b\",\"ticket\":3}") == MWW_ASK && s[0].turns[0].agents[0].paused && s[0].turns[0].agents[0].answer == 3;
+  #assert coder_page_agent_answer_line(s, 0, out[..]) == 0 && s[0].turns[0].agents[0].nrows == rows && s[0].turns[0].agents[0].calls == calls && coder_page_agent_running(s, 0);
+  // the other sub-agent still runs, so nothing is owed yet; when it ends, Microcoder gets both
+  #assert !s[0].results_due && coder_page_agent_line(s, 1, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"read it\"}") == MWW_ENDED && s[0].results_due;
+  n := coder_page_answer_line(s, out[..]); line := cast(string) out[0..<n];
+  #assert n > 0 && cp_find(line, "paused, not finished. Sub-agent number 1 has made 100 tool calls in a row without changing a file (") > 0;
+  #assert cp_find(line, "- read a.txt") > 0 && cp_find(line, "- edit a.txt") > 0 && cp_find(line, "delegate one task with resume 1, level hydrogen,") > 0 && cp_find(line, "\"output\":\"read it\"") > 0;
+  // resume lets it go on: the command that waited gets a no that carries the note, and the count starts again
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"hydrogen\",\"task\":\"write the file now\",\"resume\":1},{\"level\":\"hydrogen\",\"task\":\"x\",\"resume\":2},{\"level\":\"hydrogen\",\"task\":\"y\",\"resume\":9}],\"ticket\":2}") == MWW_DELEGATE;
+  #assert s[0].turns[0].nagents == 2 && !s[0].turns[0].agents[0].paused && s[0].turns[0].agents[0].quiet == 0 && !s[0].results_due;
+  n = coder_page_agent_answer_line(s, 0, out[..]); line = cast(string) out[0..<n];
+  #assert n > 0 && cp_find(line, "\"answer\":false,\"ticket\":3") > 0 && cp_find(line, "Its note: write the file now") > 0 && coder_page_agent_answer_line(s, 0, out[..]) == 0;
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"wrote it\"}") == MWW_ENDED && s[0].results_due;
+  n = coder_page_answer_line(s, out[..]); line = cast(string) out[0..<n];
+  #assert cp_find(line, "{\"exit\":0,\"output\":\"wrote it\"},{\"exit\":1,\"output\":\"not run: no paused sub-agent has that number\"},{\"exit\":1,\"output\":\"not run: no paused sub-agent has that number\"}") > 0;
+  // a paused sub-agent that is not let go on is stopped when the run ends
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"hydrogen\",\"task\":\"again\"}],\"ticket\":3}") == MWW_DELEGATE && s[0].turns[0].nagents == 3;
+  s[0].turns[0].agents[2].quiet = CP_QUIET;
+  #assert coder_page_agent_line(s, 2, "{\"kind\":\"ask\",\"command\":\"ls\",\"ticket\":1}") == MWW_ASK && s[0].turns[0].agents[2].paused && s[0].results_due;
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"Done.\"}") == MWW_ENDED && s[0].turns[0].agents[2].state == CP_STOPPED && !s[0].turns[0].agents[2].paused;
 }
 #test "thinking is a row in its place, named by its first line, kept whole, saved with the chat and left out of a copy" {
   p: [1] CoderPage; s := p[..];

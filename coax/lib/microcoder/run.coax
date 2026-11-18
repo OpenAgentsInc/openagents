@@ -716,10 +716,13 @@ mc_run_delegate :: (r: [] McRun, out: [] McRunEvent, k: int) -> int {
   b: [32768] u8; n := json_raw(b[..], 0, "[");
   for i: 0..<a.nd {
     n = json_raw(b[..], n, ifx i > 0 then ",{\"level\":" else "{\"level\":"); n = json_write_string(b[..], n, a.delegates[i].level);
-    n = json_raw(b[..], n, ",\"task\":"); n = json_write_string(b[..], n, a.delegates[i].task); n = json_raw(b[..], n, "}");
+    n = json_raw(b[..], n, ",\"task\":"); n = json_write_string(b[..], n, a.delegates[i].task);
+    if a.delegates[i].resume > 0 { n = json_raw(b[..], n, ",\"resume\":"); n = json_write_int(b[..], n, a.delegates[i].resume); }
+    n = json_raw(b[..], n, "}");
   }
   n = json_raw(b[..], n, "]");
-  if n < 0 { r[0].refused = "the delegated tasks are longer than 32 KB together"; return mc_run_failed(r, out, k); }
+  // a reply the loop takes is shorter than b, so this does not happen; it stays as the guard for a larger reply
+  if n < 0 { r[0].refused = "the delegated tasks are longer than 32 KB together"; return mc_run_failed(r, out, k); } // mutant: equivalent
   r[0].ask_ticket += 1; r[0].asking = true; r[0].delegating = true;
   return mc_run_put(out, k, McRunEvent.{kind = MR_DELEGATE, ticket = r[0].ask_ticket, text = mc_run_keep(r, cast(string) b[0..<n])});
 }
@@ -817,8 +820,17 @@ mc_run_answer_owned :: (r:[]McRun,ticket:int,allow:bool,why:string,out:[]McRunEv
   #assert r[0].asking && r[0].ask_ticket==3 && !r[0].ended;
 }
 
-MC_RUN_SPLIT_BARE :: "{\"rationale\":\"split\",\"delegate\":[{\"level\":\"hydrogen\",\"task\":\"count the files\"},{\"level\":\"carbon\",\"task\":\"find the bug\"}],\"edits\":[],\"commands\":[],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}";
-MC_RUN_SPLIT :: "{\"rationale\":\"split\",\"delegate\":[{\"level\":\"hydrogen\",\"task\":\"count the files\"},{\"level\":\"carbon\",\"task\":\"find the bug\"}],\"edits\":[],\"commands\":[\"true\"],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}";
+MC_RUN_SPLIT_BARE :: "{\"rationale\":\"split\",\"delegate\":[{\"level\":\"hydrogen\",\"task\":\"count the files\"},{\"level\":\"carbon\",\"task\":\"find the bug\",\"resume\":1}],\"edits\":[],\"commands\":[],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}";
+MC_RUN_SPLIT :: "{\"rationale\":\"split\",\"delegate\":[{\"level\":\"hydrogen\",\"task\":\"count the files\"},{\"level\":\"carbon\",\"task\":\"find the bug\",\"resume\":1}],\"edits\":[],\"commands\":[\"true\"],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}";
+#test "a step's delegated tasks fail the run when no ticket is left" {
+  f: [1] McRunFixture; out: [16] McRunEvent;
+  mc_run_fixture(f[..], "do two things");
+  r := f[0].r[..]; r[0].l[0].agents = true; r[0].ask_ticket = 9223372036854775807;
+  ev := [2] GwEvent.[GwEvent.{kind = GW_EV_TEXT, text = MC_RUN_SPLIT_BARE}, GwEvent.{kind = GW_EV_DONE, reason = "stop"}];
+  h := mc_run_heard(r, out[..], ev[..]);
+  n := mc_run_plain(r, out[..], h.k);
+  #assert n > 0 && r[0].ended && !r[0].delegating && r[0].l[0].ending == MC_END_FAILED && r[0].ask_ticket == 9223372036854775807;
+}
 #test "a step's delegated tasks wait for the owner's results, which become the step's results; then its commands run" {
   for gated: [2] bool.[false, true] {
     f: [1] McRunFixture; out: [16] McRunEvent;
@@ -829,7 +841,7 @@ MC_RUN_SPLIT :: "{\"rationale\":\"split\",\"delegate\":[{\"level\":\"hydrogen\",
     #assert h.tools && mc_pending(r[0].l[..]).nd == 2;
     n := mc_run_plain(r, out[..], h.k);
     #assert n == 1 && out[0].kind == MR_DELEGATE && out[0].ticket == 1 && r[0].asking && r[0].delegating && !r[0].ended;
-    #assert out[0].text == "[{\"level\":\"hydrogen\",\"task\":\"count the files\"},{\"level\":\"carbon\",\"task\":\"find the bug\"}]";
+    #assert out[0].text == "[{\"level\":\"hydrogen\",\"task\":\"count the files\"},{\"level\":\"carbon\",\"task\":\"find the bug\",\"resume\":1}]";
     #assert mc_run_poll(r, out[..]) == 0;                                         // waiting
     #assert mc_run_answer(r, true, "", out[..]) == 0 && r[0].delegating;          // a command's answer is not the results
     #assert mc_run_delegated(r, 2, "[]", out[..]) == 0 && r[0].delegating;        // another ticket

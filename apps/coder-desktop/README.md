@@ -94,7 +94,14 @@ call as a row you can press to see its input and output, and the reply. A
 running sub-agent's transcript fills in as it works. The X in the sidebar's
 top right corner closes it. So does a second click on the row.
 
-When all of them end, Microcoder gets their replies and carries on. A
+A sub-agent that makes 100 tool calls in a row without changing a file pauses
+(#13676). Its row says so, and Microcoder is told what it has been doing.
+Microcoder then lets it go on, with a note that tells it what to do next, or
+leaves it stopped. This is a check-in, not a limit: a sub-agent that is let go
+on runs until the next 100. Two cases never pause: a Claude sub-agent, and a
+sub-agent that only reads files and runs no commands.
+
+When all of them end or pause, Microcoder gets their replies and carries on. A
 sub-agent works in the same working folder, runs commands and edits files as
 Microcoder does, and can't start sub-agents of its own. Stop ends them too.
 

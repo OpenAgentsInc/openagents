@@ -41,8 +41,8 @@ MC_MAX_DELEGATES :: 6;
 // tasks, each with a level (hydrogen or carbon). mc_schema_delegate adds it to a run's schema.
 // An owner that also runs Claude Code sub-agents (GitHub #13660) has four more levels, one for
 // each Claude model: haiku, sonnet, opus and fable (MC_SCHEMA_DELEGATE_CLAUDE).
-MC_SCHEMA_DELEGATE :: ",\"delegate\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"level\":{\"type\":\"string\",\"enum\":[\"hydrogen\",\"carbon\"]},\"task\":{\"type\":\"string\"}},\"required\":[\"level\",\"task\"],\"additionalProperties\":false}}";
-MC_SCHEMA_DELEGATE_CLAUDE :: ",\"delegate\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"level\":{\"type\":\"string\",\"enum\":[\"hydrogen\",\"carbon\",\"haiku\",\"sonnet\",\"opus\",\"fable\"]},\"task\":{\"type\":\"string\"}},\"required\":[\"level\",\"task\"],\"additionalProperties\":false}}";
+MC_SCHEMA_DELEGATE :: ",\"delegate\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"level\":{\"type\":\"string\",\"enum\":[\"hydrogen\",\"carbon\"]},\"task\":{\"type\":\"string\"},\"resume\":{\"type\":\"integer\"}},\"required\":[\"level\",\"task\"],\"additionalProperties\":false}}";
+MC_SCHEMA_DELEGATE_CLAUDE :: ",\"delegate\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"level\":{\"type\":\"string\",\"enum\":[\"hydrogen\",\"carbon\",\"haiku\",\"sonnet\",\"opus\",\"fable\"]},\"task\":{\"type\":\"string\"},\"resume\":{\"type\":\"integer\"}},\"required\":[\"level\",\"task\"],\"additionalProperties\":false}}";
 MC_SCHEMA_RATIONALE :: "\"rationale\":{\"type\":\"string\"}";
 MC_SCHEMA_REQUIRED :: "\"required\":[\"rationale\"";
 mc_schema_find :: (text: string, needle: string) -> int {
@@ -95,7 +95,9 @@ mc_schema :: (out: [] u8, intel: bool, memory: bool) -> string {
 McEdit :: struct { path: string; old: string; text: string; seen: string; name: string; }   // text: the "new" field
 
 // A task handed to a sub-agent, and its level: hydrogen, carbon, or a Claude model (haiku, sonnet, opus, fable).
-McDelegate :: struct { level: string; task: string; }
+// resume (GitHub #13676): the number of a paused sub-agent this task lets go on, with the task as a
+// note to it; 0 or less for a new sub-agent.
+McDelegate :: struct { level: string; task: string; resume: int; }
 
 McAction :: struct {
   rationale: string;
@@ -173,11 +175,12 @@ mc_action_delegates :: (ar: [] ClArena, text: string, a: [] McAction, claude: bo
   a[0].nd = 0;
   if !cl_valid(text, ifx claude then "?a:delegate ?o:delegate.* ?s:delegate.*.level=hydrogen|carbon|haiku|sonnet|opus|fable ?s:delegate.*.task" else "?a:delegate ?o:delegate.* ?s:delegate.*.level=hydrogen|carbon ?s:delegate.*.task") { return "the reply's delegate does not match the next_action schema"; }
   ds := cl_raw(text, "delegate");
-  nd := ifx ds.count > 0 then cl_count(ds) else 0;
+  nd := ifx ds.count > 0 then cl_count(ds) else 0; // mutant: equivalent
   if nd > MC_MAX_DELEGATES { return "the reply delegates more than 6 tasks"; }
   for i: 0..<nd {
     d := cl_json(ds, cl_item(ds, i));
-    a[0].delegates[i] = McDelegate.{level = cl_str(ar, d, "level"), task = cl_str(ar, d, "task")};
+    resume := cl_int(d, "resume");
+    a[0].delegates[i] = McDelegate.{level = cl_str(ar, d, "level"), task = cl_str(ar, d, "task"), resume = ifx resume.ok then resume.value else 0};
     if a[0].delegates[i].task.count == 0 { return "a delegated task is empty"; }
   }
   if ar[0].full { return "the reply does not fit its buffer"; }
@@ -235,6 +238,16 @@ mc_question :: (q: string) -> McQuestion {
   #assert mc_action_delegates(ar[..], "{\"delegate\":[{\"level\":\"opus\",\"task\":\"x\"}]}", a[..], false) != "";
   #assert mc_action_delegates(ar[..], "{\"delegate\":[{\"level\":\"opus\",\"task\":\"x\"},{\"level\":\"fable\",\"task\":\"y\"}]}", a[..], true) == "" && a[0].nd == 2 && a[0].delegates[0].level == "opus" && a[0].delegates[1].level == "fable";
   #assert mc_action_delegates(ar[..], "{\"rationale\":\"x\"}", a[..], false) == "" && a[0].nd == 0;
+  // resume names a paused sub-agent by its number; left out, zero or less, the task is a new sub-agent's
+  #assert mc_action_delegates(ar[..], "{\"delegate\":[{\"level\":\"carbon\",\"task\":\"write it now\",\"resume\":3},{\"level\":\"carbon\",\"task\":\"y\",\"resume\":0},{\"level\":\"carbon\",\"task\":\"z\",\"resume\":-2}]}", a[..], false) == "" && a[0].nd == 3;
+  #assert a[0].delegates[0].resume == 3 && a[0].delegates[1].resume == 0 && a[0].delegates[2].resume == -2;
+  #assert mc_action_delegates(ar[..], "{\"delegate\":[{\"level\":\"carbon\",\"task\":\"z\"}]}", a[..], false) == "" && a[0].delegates[0].resume == 0;
+  // six tasks are the most
+  six := "{\"delegate\":[{\"level\":\"carbon\",\"task\":\"a\"},{\"level\":\"carbon\",\"task\":\"b\"},{\"level\":\"carbon\",\"task\":\"c\"},{\"level\":\"carbon\",\"task\":\"d\"},{\"level\":\"carbon\",\"task\":\"e\"},{\"level\":\"carbon\",\"task\":\"f\"}]}";
+  seven := "{\"delegate\":[{\"level\":\"carbon\",\"task\":\"a\"},{\"level\":\"carbon\",\"task\":\"b\"},{\"level\":\"carbon\",\"task\":\"c\"},{\"level\":\"carbon\",\"task\":\"d\"},{\"level\":\"carbon\",\"task\":\"e\"},{\"level\":\"carbon\",\"task\":\"f\"},{\"level\":\"carbon\",\"task\":\"g\"}]}";
+  #assert mc_action_delegates(ar[..], six, a[..], false) == "" && a[0].nd == 6 && a[0].delegates[5].task == "f";
+  #assert mc_action_delegates(ar[..], seven, a[..], false) == "the reply delegates more than 6 tasks" && a[0].nd == 0;
+  #assert cl_raw(mc_schema_delegate(MC_SCHEMA, d[..], false), "properties.delegate.items.properties.resume.type") == "\"integer\"" && cl_count(cl_raw(mc_schema_delegate(MC_SCHEMA, d[..], true), "properties.delegate.items.required")) == 2;
   #assert mc_action_delegates(ar[..], "{\"delegate\":[{\"level\":\"hard\",\"task\":\"x\"}]}", a[..], false) != "" && a[0].nd == 0;
   #assert mc_action_delegates(ar[..], "{\"delegate\":[{\"level\":\"hydrogen\",\"task\":\"\"}]}", a[..], false) == "a delegated task is empty";
   #assert mc_action_delegates(ar[..], "{\"delegate\":[{\"level\":\"hydrogen\",\"task\":\"a\"},{\"level\":\"hydrogen\",\"task\":\"a\"},{\"level\":\"hydrogen\",\"task\":\"a\"},{\"level\":\"hydrogen\",\"task\":\"a\"},{\"level\":\"hydrogen\",\"task\":\"a\"},{\"level\":\"hydrogen\",\"task\":\"a\"},{\"level\":\"hydrogen\",\"task\":\"a\"}]}", a[..], false) == "the reply delegates more than 6 tasks";
