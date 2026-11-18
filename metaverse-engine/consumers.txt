@@ -43,9 +43,7 @@ book metaverse-engine/physics/sim/scene.coax metaverse-engine/book/ch017-a-scene
 book metaverse-engine/physics/sim/bodies.coax metaverse-engine/book/ch018-rigid-bodies-and-time-steps.md  # rigid bodies that touch: GameBuilder's web world (another repository) steps its blocks and ball with it
 book metaverse-engine/physics/sim/broad.coax metaverse-engine/book/ch020-find-the-pairs-that-might-touch.md
 book metaverse-engine/physics/sim/narrow.coax metaverse-engine/book/ch021-find-where-they-touch.md
-book metaverse-engine/physics/sim/particles.coax metaverse-engine/book/ch023-particles-and-their-neighbors.md
 book metaverse-engine/physics/sim/sph.coax metaverse-engine/book/ch024-liquids-from-particles.md
-book metaverse-engine/physics/sim/pbd.coax metaverse-engine/book/ch025-cloth-and-rope-from-constraints.md
 book metaverse-engine/physics/sim/mpm.coax metaverse-engine/book/ch026-sand-snow-and-clay-on-a-grid.md
 book metaverse-engine/physics/sim/grid-fluid.coax metaverse-engine/book/ch028-smoke-on-a-grid.md
 book metaverse-engine/space/ metaverse-engine/book/ch039-ephemerides-time-scales-and-frames.md
