@@ -120,7 +120,14 @@ final class CoderWindow: NSObject {
         }
         editor.setAccessibilityIdentifier("coder.composer"); editor.setAccessibilityLabel("Message")
         canvas.addSubview(editor)
-        worker.line = { [weak self] text in guard let self else { return }; cd_line(self.page, text); self.wake() }
+        worker.line = { [weak self] text in
+            guard let self else { return }
+            cd_line(self.page, text)
+            // a line that asked about a command is answered at once (the count first: see act)
+            var out = [CChar](repeating: 0, count: 256)
+            let n = cd_answer_line(self.page, &out, Int32(out.count)); self.worker.write(out, count: Int(n))
+            self.wake()
+        }
         worker.gone = { [weak self] in guard let self else { return }; cd_failed(self.page, "Microcoder stopped running. Send the message again."); self.wake() }
         canvas.postsFrameChangedNotifications = true
         NotificationCenter.default.addObserver(forName: NSView.frameDidChangeNotification, object: canvas, queue: .main) { [weak self] _ in self?.wake() }

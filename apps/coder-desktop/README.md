@@ -30,9 +30,13 @@ Microcoder runs shell commands in your home folder as you, with the
 profiles (`read-only`, `workspace-write`) need `bwrap`, which is Linux only,
 so on macOS every command under them fails to start.
 
-Each command and file read shows as a row above the reply as it finishes.
-Press a row to open its input and output. The reply streams in as the model
-writes it.
+Each command shows as a row above the reply the moment it starts, with an
+activity mark while it runs. The row takes the command's output when it ends.
+A file read shows as a row when it ends. Press a row to open its input and
+output. The reply streams in as the model writes it.
+
+Coder asks the worker to wait before each command (`"gated":true`) so the row
+is on screen first, and then answers yes at once. Coder does not ask you.
 
 ## Skills and installed commands
 

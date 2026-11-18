@@ -51,10 +51,12 @@ CpCmd :: struct {
   text: [CP_CMD] u8; text_n: int;
   out: [CP_CMD_OUT + 64] u8; out_n: int;
   read: bool; failed: bool;
+  running: bool;              // asked for and not yet finished
 }
 CP_CMD_IDS :: [CP_CMDS] string.["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11"];
 CpTurn :: struct {
   cmds: [CP_CMDS] CpCmd; ncmds: int; more_cmds: int;
+  over: int;                  // commands asked for past the 12 shown and not yet finished
   ask: [EB_TEXT] u8; ask_n: int;
   reply: [CP_REPLY] u8; reply_n: int; cut: bool;
   doc: [1] MdDoc; blocks: int;
@@ -73,6 +75,7 @@ CoderPage :: struct {
   draft: [1] EditBuf;
   focused: bool; editor_h: f32; reduced: bool;
   skills: [CP_SKILLS] u8; skills_n: int;
+  answer: int; answer_due: bool;   // the ticket of the worker's ask that is owed its answer
   zoom: int;                  // the text size, a row of CP_ZOOMS
   px: f32; py: f32; touching: bool; pressed: [EL_ID] u8; pressed_n: int;
   scroll: f32; content: f32; view: f32; stick: bool;
@@ -133,7 +136,7 @@ cp_send :: (s: [] CoderPage) -> bool {
   if text.count == 0 || cp_running(s) || cp_full(s) { return false; }
   i := s[0].nturns;
   s[0].turns[i].ask_n = cp_out(s[0].turns[i].ask[..], text);
-  s[0].turns[i].reply_n = 0; s[0].turns[i].ncmds = 0; s[0].turns[i].more_cmds = 0; s[0].turns[i].cut = false; s[0].turns[i].blocks = 0; s[0].turns[i].note_n = 0;
+  s[0].turns[i].reply_n = 0; s[0].turns[i].ncmds = 0; s[0].turns[i].more_cmds = 0; s[0].turns[i].over = 0; s[0].turns[i].cut = false; s[0].turns[i].blocks = 0; s[0].turns[i].note_n = 0;
   s[0].turns[i].state = CP_RUNNING; s[0].turns[i].stopping = false; s[0].turns[i].fresh = false; s[0].turns[i].h = 0;
   s[0].nturns += 1;
   eb_set(s[0].draft[..], "");
@@ -157,8 +160,33 @@ cp_cmd_add :: (s: [] CoderPage, i: int, text: string, output: string, read: bool
   for c: output { if n >= CP_CMD_OUT { break; } s[0].turns[i].cmds[k].out[n] = c; n += 1; }
   if n < output.count { for c: "\n[The output is cut at 4,000 bytes.]" { s[0].turns[i].cmds[k].out[n] = c; n += 1; } }
   s[0].turns[i].cmds[k].out_n = n;
-  s[0].turns[i].cmds[k].read = read; s[0].turns[i].cmds[k].failed = failed;
+  s[0].turns[i].cmds[k].read = read; s[0].turns[i].cmds[k].failed = failed; s[0].turns[i].cmds[k].running = false;
   s[0].turns[i].ncmds = k + 1; s[0].turns[i].h = 0;
+}
+// The worker asks before it runs a command: the command shows at once as running, and the page
+// owes the worker its answer (coder_page_answer_line).
+cp_cmd_asked :: (s: [] CoderPage, i: int, text: string, ticket: int) {
+  s[0].answer = ticket; s[0].answer_due = true;
+  if s[0].turns[i].ncmds >= CP_CMDS { s[0].turns[i].more_cmds += 1; s[0].turns[i].over += 1; return; }
+  cp_cmd_add(s, i, text, "", false, false);
+  s[0].turns[i].cmds[s[0].turns[i].ncmds - 1].running = true;
+}
+// A command finished: the running row with its text takes the output, else it is a new row.
+cp_cmd_done :: (s: [] CoderPage, i: int, text: string, output: string, failed: bool) {
+  for k: 0..<s[0].turns[i].ncmds {
+    if s[0].turns[i].cmds[k].running && cast(string) s[0].turns[i].cmds[k].text[0..<s[0].turns[i].cmds[k].text_n] == cast(string) text[0..<(ifx text.count < CP_CMD then text.count else CP_CMD)] {
+      n := s[0].turns[i].ncmds; s[0].turns[i].ncmds = k;
+      cp_cmd_add(s, i, text, output, false, failed);
+      s[0].turns[i].ncmds = n;
+      return;
+    }
+  }
+  if s[0].turns[i].over > 0 { s[0].turns[i].over -= 1; return; }
+  cp_cmd_add(s, i, text, output, false, failed);
+}
+// The run is over: nothing is still running.
+cp_cmds_end :: (s: [] CoderPage, i: int) {
+  for k: 0..<s[0].turns[i].ncmds { if s[0].turns[i].cmds[k].running { s[0].turns[i].cmds[k].running = false; s[0].turns[i].cmds[k].failed = true; } }
 }
 // A new chat: the window clears and the host has the worker forget. Not while a run is going.
 cp_new :: (s: [] CoderPage) -> bool {
@@ -216,8 +244,8 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) {
       for q: 0..<s[0].turns[i].ncmds {
         c := s[0].turns[i].cmds[q];
         text := cast(string) s[0].turns[i].cmds[q].text[0..<c.text_n];
-        tool := AppTool.{icon = ifx c.read then ICON_DOCUMENT else ICON_TERMINAL, title = ifx c.read then "Read" else "Ran a command", arg = text,
-                         state = ifx c.failed then APP_TOOL_FAILED else APP_TOOL_DONE, input = text, output = cast(string) s[0].turns[i].cmds[q].out[0..<c.out_n]};
+        tool := AppTool.{icon = ifx c.read then ICON_DOCUMENT else ICON_TERMINAL, title = ifx c.read then "Read" else ifx c.running then "Running a command" else "Ran a command", arg = text,
+                         state = ifx c.running then APP_TOOL_RUNNING else ifx c.failed then APP_TOOL_FAILED else APP_TOOL_DONE, input = text, output = cast(string) s[0].turns[i].cmds[q].out[0..<c.out_n]};
         y += app_tool(f, app_id(tb[..], cp_id(xb[..], i, ".x"), CP_CMD_IDS[q]), x, y, cw, tool, false, CP_TOOL) + a.gap_small;
       }
       if s[0].turns[i].more_cmds > 0 {
@@ -330,7 +358,7 @@ coder_page_task :: (s: [] CoderPage, session: string, cwd: string, out: [] u8) -
   n := cp_out(whole[..], cast(string) s[0].skills[0..<s[0].skills_n]);
   for c: cast(string) s[0].turns[i].ask[0..<s[0].turns[i].ask_n] { whole[n] = c; n += 1; }
   t := McTask.{task = cast(string) whole[0..<n], session = session, cwd = cwd, sandbox = "danger-full-access",
-               ceiling = 3, model = CP_MODEL, effort = "low"};
+               ceiling = 3, gated = true, model = CP_MODEL, effort = "low"};
   return mww_task(out, t);
 }
 // What the host found installed on this computer (skills and their files), in words for Microcoder.
@@ -338,6 +366,13 @@ coder_page_task :: (s: [] CoderPage, session: string, cwd: string, out: [] u8) -
 coder_page_skills :: (s: [] CoderPage, note: string) #export_c #effects(all) {
   if s.count < 1 { return; }
   s[0].skills_n = cp_out(s[0].skills[..], note);
+}
+// The answer the worker is owed for the command it asked about: yes, run it. The page shows every
+// command as it starts; it does not hold one back. Its length in out, 0 when none is owed.
+coder_page_answer_line :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 || !s[0].answer_due { return 0; }
+  s[0].answer_due = false;
+  return mww_answer(out, true, s[0].answer, "");
 }
 // The worker's line to stop the run, and the one to forget the conversation.
 coder_page_stop_line :: (out: [] u8) -> int #export_c #effects(all) { return cp_out(out, MWW_STOP_LINE); }
@@ -354,7 +389,8 @@ coder_page_line :: (s: [] CoderPage, line: string) -> int #export_c #effects(all
   // reply: the next request's text takes its place, as the ended line's whole reply does.
   if kind == MWW_REPLY { cp_reply_set(s, i, l[0].text, !s[0].turns[i].fresh); s[0].turns[i].fresh = false; }
   else if kind == MWW_ATTEMPT { s[0].turns[i].fresh = true; }
-  else if kind == MWW_COMMAND { cp_cmd_add(s, i, l[0].command, l[0].output, false, l[0].timed_out.value || l[0].exit.value != 0); }
+  else if kind == MWW_ASK { cp_cmd_asked(s, i, l[0].command, l[0].ticket.value); }
+  else if kind == MWW_COMMAND { cp_cmd_done(s, i, l[0].command, l[0].output, l[0].timed_out.value || l[0].exit.value != 0); }
   else if kind == MWW_VIEW { cp_cmd_add(s, i, l[0].path, ifx l[0].found.value then "" else "No such file.", true, !l[0].found.value); }
   else if kind == MWW_ENDED {
     if l[0].ending == "finished" || l[0].ending == "asked" {
@@ -365,6 +401,7 @@ coder_page_line :: (s: [] CoderPage, line: string) -> int #export_c #effects(all
       s[0].turns[i].note_n = cp_out(s[0].turns[i].note[..], ifx l[0].text.count > 0 then l[0].text else "The run ended before a reply.");
       s[0].turns[i].state = CP_FAILED;
     }
+    cp_cmds_end(s, i);
     s[0].turns[i].h = 0;
   }
   return kind;
@@ -527,4 +564,22 @@ coder_page_zoom_set :: (s: [] CoderPage, row: int) -> int #export_c #effects(all
   for i: 0..<9 { _ := coder_page_zoom(s, -1); }
   #assert coder_page_zoom(s, 0) == 0 && coder_page_zoom_set(s, 2) == 2;
   st: [14] f32; #assert coder_page_style(s, st[..]) && abs(st[1] - 23) < 0.001;
+}
+
+#test "a command shows as running when the worker asks, is answered yes, and takes its output when it ends" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  #assert coder_page_set_text(s, "find it") && coder_page_submit(s);
+  out: [4096] u8; n := coder_page_task(s, "s-1", "/w", out[..]);
+  ar: [1] ClArena; buf: [4096] u8; ar[0].buf = buf[..]; back: [1] McTask;
+  #assert n > 0 && mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].gated;
+  #assert coder_page_answer_line(s, out[..]) == 0;
+  #assert coder_page_line(s, "{\"kind\":\"ask\",\"command\":\"find ~ -name x\",\"ticket\":7}") == MWW_ASK;
+  #assert s[0].turns[0].ncmds == 1 && s[0].turns[0].cmds[0].running;
+  n = coder_page_answer_line(s, out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "{\"answer\":true,\"ticket\":7}\n" && coder_page_answer_line(s, out[..]) == 0;
+  #assert coder_page_line(s, "{\"kind\":\"command\",\"command\":\"find ~ -name x\",\"exit\":0,\"timed_out\":false,\"output\":\"/a/x\"}") == MWW_COMMAND;
+  #assert s[0].turns[0].ncmds == 1 && !s[0].turns[0].cmds[0].running && !s[0].turns[0].cmds[0].failed && cast(string) s[0].turns[0].cmds[0].out[0..<s[0].turns[0].cmds[0].out_n] == "/a/x";
+  #assert coder_page_line(s, "{\"kind\":\"ask\",\"command\":\"sleep 9\",\"ticket\":8}") == MWW_ASK && s[0].turns[0].cmds[1].running;
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"stopped\",\"text\":\"\"}") == MWW_ENDED && !s[0].turns[0].cmds[1].running;
 }

@@ -27,6 +27,8 @@ int cd_action(void *page);
 int cd_task(void *page, const char *session, const char *cwd, char *out, int cap);
 // The note on installed skills that goes ahead of each message (not shown).
 void cd_skills(void *page, const char *note);
+// The answer the worker is owed after a line that asked about a command: its length, 0 for none.
+int cd_answer_line(void *page, char *out, int cap);
 int cd_stop_line(char *out, int cap);
 int cd_forget_line(char *out, int cap);
 // One line the worker wrote, without its newline.
