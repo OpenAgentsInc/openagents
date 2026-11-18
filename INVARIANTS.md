@@ -1105,9 +1105,11 @@ Checks: `account-chat-policy.coax`'s `#test` (the exact word, a person's own
 account, the team unchanged); `coax/web/api/tests/durable_chat_checks.coax`
 `dc_open_agent_checks` (an account off the team: a durable chat turn is still
 403; a guest is 401; a build agent starts queued and its turn is stored as
-`gamebuilder-agent`; the runner's claim and dispatch admit it; the same start
-with the stored word taken away is ended at dispatch with "Account admission
-changed before dispatch" and never started) and `dc_gamebuilder_checks`. Not
+`gamebuilder-agent`; the runner claims it and its dispatch grants it, shown
+with the claim expired first so no model is asked: the answer is "Claim
+expired before dispatch." and the turn is untouched; the same start with the
+stored word taken away is ended at dispatch with "Account admission changed
+before dispatch" and never started) and `dc_gamebuilder_checks`. Not
 covered by the suite: the native-effect guard for a build agent's turn (a
 build agent has no tools, so it makes no native effect), and a real model
 answer for an account off the team in production.
