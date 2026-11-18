@@ -68,7 +68,9 @@ final class CoderWindow: NSObject {
         canvas = Unmanaged<NSView>.fromOpaque(raw).takeUnretainedValue()
         var style = [Float](repeating: 0, count: 14); _ = cd_style(&style)
         editor = KitMacEditor(style: style); line = CGFloat(style[1])
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 900, height: 640),
+        // Most of the screen, up to 1500 by 1000 points.
+        let screen = NSScreen.main?.visibleFrame.size ?? NSSize(width: 1440, height: 900)
+        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: min(1500, (screen.width * 0.86).rounded()), height: min(1000, (screen.height * 0.88).rounded())),
                           styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         super.init()
         window.title = "Coder"; window.minSize = NSSize(width: 420, height: 320); window.isReleasedWhenClosed = false
@@ -131,6 +133,9 @@ final class CoderWindow: NSObject {
         var box = [Float](repeating: 0, count: 6)
         guard cd_editor(page, &box) != 0 else { editor.isHidden = true; return }
         editor.isHidden = false
+        // The bar draws its first line box[4] under the text box's top: the editor's text starts there too.
+        let inset = NSSize(width: 0, height: CGFloat(box[4]))
+        if editor.textContainerInset != inset { editor.textContainerInset = inset; wake() }
         let frame = NSRect(x: CGFloat(box[0]), y: canvas.bounds.height - CGFloat(box[1] + box[3]), width: CGFloat(box[2]), height: CGFloat(box[3]))
         if editor.frame != frame { editor.frame = frame; wake() }
     }
