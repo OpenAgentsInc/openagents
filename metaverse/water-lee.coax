@@ -1,0 +1,476 @@
+// Water for the Metaverse: the lee of a large floating body (docs/metaverse/water.md, "Large
+// floating bodies"). A hull a kilometre long shelters the sea behind it. This file says by how
+// much, for the waves the spectral sea (water-spectrum.coax) carries, with a stated model:
+//
+// - The body is its plan at the waterline: a rectangle or a circle (Floater), with its draft.
+// - Each wave train (a direction and a wavelength) meets the body as a strip as wide as the body's
+//   silhouette across that direction. Behind a strip the wave field is the sum of the two edges'
+//   Fresnel fields (Sommerfeld's half-plane solution in Penney and Price's (1952) form for
+//   breakwaters, by Babinet's principle for a strip): U = E(v1) + E(v2), where
+//   E(v) = (1 + i) / 2 * integral from v to infinity of exp(-i pi t^2 / 2) dt and
+//   v = h sqrt(2 / (lambda d)), h the distance into the edge's shadow and d the distance downwave
+//   of the edge. E is 1 in the open, 1/2 on the shadow's edge and falls to 0 deep inside it. A long
+//   wave has a small v, so swell wraps round the body more than chop does.
+// - Some of a long wave passes under the hull. Macagno's (1954) transmission past a fixed box of
+//   beam B and draft T in water h deep is Kt = 1 / sqrt(1 + (k B sinh(k h) / (2 cosh(k (h - T))))^2);
+//   that share of the amplitude is added back in the shadow.
+// - A sea is many trains. lee_band picks nine (three wavelengths by three directions) or fifteen
+//   from a band of the spectrum, weighted by the energy each stands for, and the gains add as
+//   energies. Directional spread fills a shadow in, as it does at sea.
+// - A bay cut into a wall (a dock notch) takes the sea at its mouth through the slit between the
+//   mouth's two corners (the two edges' fields less the whole wave).
+//
+// What it leaves out: the waves the body's own walls reflect into the lee of another body,
+// resonance inside a bay, the seabed, and anything a panel method would add. It is a planning
+// model with the right limits (no shelter far away or for very long waves, a hard shadow for
+// short ones), not a diffraction analysis.
+//
+// The gains are baked into a small grid in the body's frame (LeeGrid), fine at the walls and
+// coarse far out, which a renderer packs into its uniforms and a simulation samples.
+//   coax/bin/coax test metaverse/water-lee.coax
+#load "water-spectrum.coax";
+
+// A large floating body's plan as the sea meets it.
+Floater :: struct {
+  round: bool;
+  hx: f64; hz: f64;          // half its length (its x) and half its beam (its z), m; a round body's radius in both
+  draft: f64;                // m under the water
+  x: f64; z: f64;            // its centre in the world
+  c: f64 = 1.0; s: f64;      // its heading: the body's x axis is (c, s) in the world's (x, z)
+  // a bay cut into its plan (a dock notch), in the body's frame; none when bay_x1 <= bay_x0
+  bay_x0: f64; bay_x1: f64; bay_z0: f64; bay_z1: f64;
+}
+
+lee_local :: (f: Floater, wx: f64, wz: f64) -> D2 {
+  dx := wx - f.x; dz := wz - f.z;
+  return d2(f.c * dx + f.s * dz, -f.s * dx + f.c * dz);
+}
+lee_world :: (f: Floater, bx: f64, bz: f64) -> D2 { return d2(f.x + f.c * bx - f.s * bz, f.z + f.s * bx + f.c * bz); }
+lee_turn_in :: (f: Floater, dx: f64, dz: f64) -> D2 { return d2(f.c * dx + f.s * dz, -f.s * dx + f.c * dz); }
+lee_in_bay :: (f: Floater, bx: f64, bz: f64) -> bool {
+  return f.bay_x1 > f.bay_x0 && bx > f.bay_x0 && bx < f.bay_x1 && bz > f.bay_z0 && bz < f.bay_z1;
+}
+// Whether a point (body frame) is under the body's plan (a bay is open water).
+lee_inside :: (f: Floater, bx: f64, bz: f64) -> bool {
+  if f.round { return bx * bx + bz * bz < f.hx * f.hx; }
+  return abs(bx) < f.hx && abs(bz) < f.hz && !lee_in_bay(f, bx, bz);
+}
+// How far a ray from (ox, oz) along the unit (dx, dz) runs before it meets the body's outline
+// (body frame): from outside, where it enters; from inside, where it leaves; -1 when it misses.
+lee_ray :: (f: Floater, ox: f64, oz: f64, dx: f64, dz: f64) -> f64 {
+  if f.round {
+    b := ox * dx + oz * dz;
+    q := ox * ox + oz * oz - f.hx * f.hx;
+    disc := b * b - q;
+    if disc < 0.0 { return -1.0; }
+    r := sqrt(disc);
+    if -b - r > 0.0 { return -b - r; }
+    if -b + r > 0.0 { return -b + r; }
+    return -1.0;
+  }
+  ix := ifx abs(dx) > 0.000000001 then 1.0 / dx else 1000000000000.0;
+  iz := ifx abs(dz) > 0.000000001 then 1.0 / dz else 1000000000000.0;
+  ax := (-f.hx - ox) * ix; bx := (f.hx - ox) * ix;
+  az := (-f.hz - oz) * iz; bz := (f.hz - oz) * iz;
+  near := fmax(fmin(ax, bx), fmin(az, bz));
+  far := fmin(fmax(ax, bx), fmax(az, bz));
+  if far < near || far <= 0.0 { return -1.0; }
+  if near > 0.0 { return near; }
+  return far;
+}
+
+// ---- the edge's field
+
+// Fresnel's integrals C(x) and S(x), from Abramowitz and Stegun's 7.3.32 and 7.3.33 (within 0.002).
+lee_fresnel :: (x: f64) -> D2 {
+  a := abs(x);
+  f := (1.0 + 0.926 * a) / (2.0 + 1.792 * a + 3.104 * a * a);
+  g := 1.0 / (2.0 + 4.142 * a + 3.492 * a * a + 6.670 * a * a * a);
+  t := 0.5 * PI_D * a * a;
+  c := 0.5 + f * sin(t) - g * cos(t);
+  s := 0.5 - f * cos(t) - g * sin(t);
+  if x < 0.0 { return d2(-c, -s); }
+  return d2(c, s);
+}
+// E(v): the wave behind one straight edge, as (real, imaginary) of the open sea's. v > 0 is in the
+// edge's shadow.
+lee_edge :: (v: f64) -> D2 {
+  if v > 30.0 { return d2(0.0, 0.0); }
+  if v < -30.0 { return d2(1.0, 0.0); }
+  cs := lee_fresnel(v);
+  return d2(0.5 * (1.0 - cs.x - cs.y), 0.5 * (cs.y - cs.x));
+}
+// One edge at a corner (cx, cz) of a body, for a train travelling along the unit (dx, dz) with
+// its shadow on the side `side` (+1: the shadow lies to the left of travel, -1: to the right).
+lee_corner :: (px: f64, pz: f64, cx: f64, cz: f64, dx: f64, dz: f64, side: f64, lambda: f64) -> D2 {
+  rx := px - cx; rz := pz - cz;
+  along := rx * dx + rz * dz;
+  into := side * (rz * dx - rx * dz);
+  if along <= 0.01 {
+    // abeam or upwave of the corner: nothing has spread yet
+    if into > 0.0 { return d2(0.0, 0.0); }
+    return d2(1.0, 0.0);
+  }
+  return lee_edge(into * sqrt(2.0 / (fmax(lambda, 0.01) * along)));
+}
+
+// Macagno's transmitted share of a wave's amplitude past a fixed box `beam` m along the wave and
+// `draft` m deep, in water `depth` m deep, for wavenumber k.
+lee_transmission :: (k: f64, beam: f64, draft: f64, depth: f64) -> f64 {
+  if k <= 0.0 { return 1.0; }
+  if depth <= draft { return 0.0; }
+  // sinh(k h) / cosh(k (h - T)), kept finite in deep water where it tends to exp(k T)
+  ratio := 0.0;
+  if k * depth > 20.0 { ratio = exp(fmin(k * draft, 40.0)); } else {
+    e := exp(k * depth); m := exp(k * (depth - draft));
+    ratio = (e - 1.0 / e) / (m + 1.0 / m);
+  }
+  q := 0.5 * k * beam * ratio;
+  return 1.0 / sqrt(1.0 + q * q);
+}
+// What a wall of that box sends back, the rest of the energy: R^2 + Kt^2 = 1 (nothing is lost).
+lee_reflection :: (k: f64, beam: f64, draft: f64, depth: f64) -> f64 {
+  t := lee_transmission(k, beam, draft, depth);
+  return sqrt(fmax(1.0 - t * t, 0.0));
+}
+
+// The share of a train's energy at world point (wx, wz), 1 in the open sea: behind the body its
+// two edges' fields and what passes under it; under the body, the wave's pressure falling from
+// the whole wave at the weather edge to the transmitted share at the lee edge; in a bay, the sea
+// at its mouth through the slit between the mouth's corners. (dx, dz) is the way the train travels (a unit
+// vector, world), lambda its length, depth the water's.
+lee_train :: (f: Floater, wx: f64, wz: f64, dx: f64, dz: f64, lambda: f64, depth: f64) -> f64 {
+  p := lee_local(f, wx, wz);
+  d := lee_turn_in(f, dx, dz);
+  k := TAU_D / fmax(lambda, 0.01);
+  chord := ifx f.round then 2.0 * f.hx else 2.0 * (f.hx * abs(d.x) + f.hz * abs(d.y));
+  kt := lee_transmission(k, chord, f.draft, depth);
+  if lee_in_bay(f, p.x, p.y) {
+    // the sea just outside the mouth, then round the mouth's upwave corner. The mouth is the
+    // bay's side on the body's outline: the nearest of the four walls.
+    mx := p.x; mz := p.y; nx := 0.0; nz := 0.0;
+    gap := 1000000000000.0;
+    if f.hz - f.bay_z1 < gap && f.bay_z1 >= f.hz - 0.01 { gap = f.hz - f.bay_z1; mz = f.hz + 1.0; nx = 0.0; nz = 1.0; }
+    if f.bay_z0 + f.hz < gap && f.bay_z0 <= -f.hz + 0.01 { gap = f.bay_z0 + f.hz; mz = -f.hz - 1.0; mx = p.x; nx = 0.0; nz = -1.0; }
+    if f.hx - f.bay_x1 < gap && f.bay_x1 >= f.hx - 0.01 { gap = f.hx - f.bay_x1; mx = f.hx + 1.0; mz = p.y; nx = 1.0; nz = 0.0; }
+    if f.bay_x0 + f.hx < gap && f.bay_x0 <= -f.hx + 0.01 { gap = f.bay_x0 + f.hx; mx = -f.hx - 1.0; mz = p.y; nx = -1.0; nz = 0.0; }
+    whole := f; whole.bay_x1 = whole.bay_x0;
+    mouth := lee_world(f, mx, mz);
+    outside := lee_train(whole, mouth.x, mouth.y, dx, dz, lambda, depth);
+    // the mouth is a slit between its two corners: each corner's shadow lies on the side away
+    // from the opening, and the slit's field is the two edges' less the whole wave (Babinet)
+    ax := f.bay_x0; az := f.bay_z0; bx := f.bay_x1; bz := f.bay_z1;
+    if nz != 0.0 { az = nz * f.hz; bz = nz * f.hz; } else { ax = nx * f.hx; bx = nx * f.hx; }
+    sa := az * d.x - ax * d.y; sb := bz * d.x - bx * d.y;   // the corners across the train
+    ea := lee_corner(p.x, p.y, ax, az, d.x, d.y, ifx sa < sb then -1.0 else 1.0, lambda);
+    eb := lee_corner(p.x, p.y, bx, bz, d.x, d.y, ifx sa < sb then 1.0 else -1.0, lambda);
+    re := ea.x + eb.x - 1.0; im := ea.y + eb.y;
+    return outside * fclamp(re * re + im * im, 0.0, 1.0);
+  }
+  if lee_inside(f, p.x, p.y) {
+    back := lee_ray(f, p.x, p.y, -d.x, -d.y);
+    ahead := lee_ray(f, p.x, p.y, d.x, d.y);
+    share := ifx back > 0.0 && ahead > 0.0 then back / (back + ahead) else 0.5;
+    a := 1.0 - (1.0 - kt) * share;
+    return a * a;
+  }
+  // in front of the body (the train still has it ahead): the open sea; the wall's reflection is
+  // water-wall.coax's
+  if lee_ray(f, p.x, p.y, d.x, d.y) > 0.0 { return 1.0; }
+  // the silhouette's two corners across the train: lx, lz is the left of travel
+  lx := -d.y; lz := d.x;
+  ux := 0.0; uz := 0.0; vx := 0.0; vz := 0.0;
+  if f.round {
+    ux = lx * f.hx; uz = lz * f.hx; vx = -ux; vz = -uz;
+  } else {
+    sx := ifx abs(lx) > 0.000001 then (ifx lx > 0.0 then 1.0 else -1.0) else (ifx d.x >= 0.0 then 1.0 else -1.0);
+    sz := ifx abs(lz) > 0.000001 then (ifx lz > 0.0 then 1.0 else -1.0) else (ifx d.y >= 0.0 then 1.0 else -1.0);
+    ux = sx * f.hx; uz = sz * f.hz;
+    tx := ifx abs(lx) > 0.000001 then -sx else sx;
+    tz := ifx abs(lz) > 0.000001 then -sz else sz;
+    vx = tx * f.hx; vz = tz * f.hz;
+  }
+  // the left corner's shadow lies to its right, the right corner's to its left
+  e1 := lee_corner(p.x, p.y, ux, uz, d.x, d.y, -1.0, lambda);
+  e2 := lee_corner(p.x, p.y, vx, vz, d.x, d.y, 1.0, lambda);
+  re := e1.x + e2.x; im := e1.y + e2.y;
+  u := re * re + im * im;
+  shadow := 1.0 - fmin(u, 1.0);
+  return u + kt * kt * shadow;
+}
+
+// ---- a band of the sea as a few trains
+
+LEE_TRAINS :: 15;
+LeeSea :: struct {
+  n: int;
+  lambda: [LEE_TRAINS] f64;                  // m
+  dx: [LEE_TRAINS] f64; dz: [LEE_TRAINS] f64; // the way each travels (world)
+  w: [LEE_TRAINS] f64;                       // its share of the band's energy; they sum to 1
+  depth: f64;
+}
+// Wavenumbers low <= k < high of a spectrum as three wavelengths by five directions, each weighted
+// by the height variance it stands for (`slopes`: by the slope variance, for a band a renderer
+// reads as slopes).
+lee_band :: (sp: Spectrum, low: f64, high: f64, slopes: bool) -> LeeSea {
+  o: LeeSea; o.depth = sp.depth;
+  wp := wsp_peak_omega(sp);
+  from := fmax(wsp_dispersion(sp, fmax(low, 0.000001)), 0.55 * wp);
+  to := fmax(wsp_dispersion(sp, high), from * 1.05);
+  wd := wsp_direction(sp);
+  total := 0.0;
+  for i: 0..<3 {
+    a := from + (to - from) * f64(i) / 3.0; b := from + (to - from) * f64(i + 1) / 3.0;
+    e := 0.0; ew := 0.0;
+    for j: 0..<8 {
+      om := a + (b - a) * (f64(j) + 0.5) / 8.0;
+      s := wsp_jonswap(sp, om);
+      if slopes { kk := wsp_wavenumber(sp, om); s *= kk * kk; }
+      e += s; ew += s * om;
+    }
+    om := ifx e > 0.0 then ew / e else 0.5 * (a + b);
+    lambda := TAU_D / wsp_wavenumber(sp, om);
+    spread := 0.0;
+    for j: 0..<5 { spread += wsp_spreading(sp, f64(j - 2) * 0.5236, om); }
+    for j: 0..<5 {
+      th := f64(j - 2) * 0.5236;   // 30 degrees apart
+      c := cos(th); sn := sin(th);
+      t := i * 5 + j;
+      o.lambda[t] = lambda;
+      // theta turns from the wind as wsp_density measures it
+      o.dx[t] = wd.x * c - wd.y * sn; o.dz[t] = wd.x * sn + wd.y * c;
+      o.w[t] = e * (b - a) * (ifx spread > 0.0 then wsp_spreading(sp, th, om) / spread else 0.2);
+      total += o.w[t];
+    }
+  }
+  o.n = LEE_TRAINS;
+  for t: 0..<LEE_TRAINS { o.w[t] = ifx total > 0.0 then o.w[t] / total else 1.0 / f64(LEE_TRAINS); }
+  return o;
+}
+// One train: a swell of one length and direction (tests, and a caller's own sea).
+lee_swell :: (lambda: f64, dx: f64, dz: f64, depth: f64) -> LeeSea {
+  o: LeeSea; o.n = 1; o.lambda[0] = lambda; o.dx[0] = dx; o.dz[0] = dz; o.w[0] = 1.0; o.depth = depth;
+  return o;
+}
+// The sea's height at (wx, wz) over the open sea's (an amplitude ratio): the trains' energies
+// added, among `count` bodies (their shelters multiply).
+lee_gain :: (bodies: [] Floater, count: int, sea: LeeSea, wx: f64, wz: f64) -> f64 {
+  e := 0.0;
+  for t: 0..<sea.n {
+    g := 1.0;
+    for b: 0..<count { g *= lee_train(bodies[b], wx, wz, sea.dx[t], sea.dz[t], sea.lambda[t], sea.depth); }
+    e += sea.w[t] * g;
+  }
+  return sqrt(fmax(e, 0.0));
+}
+
+// ---- the baked grid
+
+// LEE_N nodes a side in the frame body's axes: LEE_INNER cells across the body, then LEE_OUTER
+// cells each side that start LEE_FIRST m wide at the wall and grow by LEE_GROW each, so the grid
+// is fine where the shadow's edge is sharp and reaches about 1.7 km out. Past it the gain is the
+// last node's.
+LEE_N :: 24; LEE_INNER :: 7; LEE_OUTER :: 8;
+LEE_FIRST :: 25.0; LEE_GROW :: 1.6;
+LeeGrid :: struct {
+  hx: f64; hz: f64;                  // the frame body's half extents
+  g: [2 * LEE_N * LEE_N] f32;        // per node: band 0 (the long waves: heights), band 1 (the short: slopes)
+  quiet: f32; least: f32;            // the mean and the least band-0 gain within 300 m of the body
+}
+// Node i's coordinate along an axis whose body half extent is h.
+lee_node :: (h: f64, i: int) -> f64 {
+  if i >= LEE_OUTER && i <= LEE_OUTER + LEE_INNER { return -h + 2.0 * h * f64(i - LEE_OUTER) / f64(LEE_INNER); }
+  j := ifx i < LEE_OUTER then LEE_OUTER - i else i - LEE_OUTER - LEE_INNER;
+  e := LEE_FIRST * (pow(LEE_GROW, f64(j)) - 1.0) / (LEE_GROW - 1.0);
+  return ifx i < LEE_OUTER then -h - e else h + e;
+}
+// The fractional node index of coordinate x (lee_node's inverse), clamped to the grid.
+lee_index :: (h: f64, x: f64) -> f64 {
+  if abs(x) <= h { return f64(LEE_OUTER) + (x + h) / (2.0 * h) * f64(LEE_INNER); }
+  e := abs(x) - h;
+  j := log(1.0 + e * (LEE_GROW - 1.0) / LEE_FIRST) / log(LEE_GROW);
+  j = fmin(j, f64(LEE_OUTER));
+  return ifx x < 0.0 then f64(LEE_OUTER) - j else f64(LEE_OUTER + LEE_INNER) + j;
+}
+// Bakes the two bands' gains round `frame` among `count` bodies.
+lee_bake :: (grid: [] LeeGrid, frame: Floater, bodies: [] Floater, count: int, long: LeeSea, short: LeeSea) {
+  grid[0].hx = frame.hx; grid[0].hz = frame.hz;
+  sum := 0.0; n := 0; least := 1.0;
+  for j: 0..<LEE_N {
+    for i: 0..<LEE_N {
+      bx := lee_node(frame.hx, i); bz := lee_node(frame.hz, j);
+      // a node on the outline is the water just outside it
+      if !frame.round {
+        if abs(abs(bx) - frame.hx) < 0.001 && abs(bz) <= frame.hz + 0.001 { bx += ifx bx > 0.0 then 0.5 else -0.5; }
+        if abs(abs(bz) - frame.hz) < 0.001 && abs(bx) <= frame.hx + 0.6 { bz += ifx bz > 0.0 then 0.5 else -0.5; }
+      }
+      w := lee_world(frame, bx, bz);
+      a := lee_gain(bodies, count, long, w.x, w.y);
+      b := lee_gain(bodies, count, short, w.x, w.y);
+      grid[0].g[2 * (j * LEE_N + i)] = f32(a); grid[0].g[2 * (j * LEE_N + i) + 1] = f32(b);
+      out := fmax(abs(bx) - frame.hx, abs(bz) - frame.hz);
+      if out > 0.0 && out < 300.0 { sum += a; n += 1; least = fmin(least, a); }
+    }
+  }
+  grid[0].quiet = ifx n > 0 then f32(sum / f64(n)) else 1.0;
+  grid[0].least = f32(least);
+}
+// The gain of `band` (0 long, 1 short) at a point in the frame body's axes, bilinear in the nodes.
+lee_sample :: (grid: [] LeeGrid, bx: f64, bz: f64, band: int) -> f64 {
+  u := lee_index(grid[0].hx, bx); v := lee_index(grid[0].hz, bz);
+  i := cast(int) fmin(floor(u), f64(LEE_N - 2)); j := cast(int) fmin(floor(v), f64(LEE_N - 2));
+  fu := u - f64(i); fv := v - f64(j);
+  a := f64(grid[0].g[2 * (j * LEE_N + i) + band]); b := f64(grid[0].g[2 * (j * LEE_N + i + 1) + band]);
+  c := f64(grid[0].g[2 * ((j + 1) * LEE_N + i) + band]); d := f64(grid[0].g[2 * ((j + 1) * LEE_N + i + 1) + band]);
+  return (a * (1.0 - fu) + b * fu) * (1.0 - fv) + (c * (1.0 - fu) + d * fu) * fv;
+}
+
+// ---- checks
+
+lee_prime :: () -> Floater { return Floater.{hx = 500.0, hz = 300.0, draft = 25.0}; }
+
+#test "Fresnel's integrals at their known values" {
+  // C(1) = 0.7799, S(1) = 0.4383, C(2) = 0.4883, S(2) = 0.3434 (Abramowitz and Stegun, table 7.7)
+  a := lee_fresnel(1.0); b := lee_fresnel(2.0);
+  #assert abs(a.x - 0.7799) < 0.003 && abs(a.y - 0.4383) < 0.003;
+  #assert abs(b.x - 0.4883) < 0.003 && abs(b.y - 0.3434) < 0.003;
+  z := lee_fresnel(0.0);
+  #assert abs(z.x) < 0.001 && abs(z.y) < 0.001;
+  far := lee_fresnel(40.0);
+  #assert abs(far.x - 0.5) < 0.01 && abs(far.y - 0.5) < 0.01;
+}
+#test "an edge's field: whole in the open, half on the shadow's edge, none deep inside" {
+  on := lee_edge(0.0);
+  #assert abs(on.x - 0.5) < 0.002 && abs(on.y) < 0.002;
+  open := lee_edge(-12.0); deep := lee_edge(12.0);
+  #assert abs(open.x - 1.0) < 0.03 && abs(open.y) < 0.03;
+  #assert sqrt(deep.x * deep.x + deep.y * deep.y) < 0.03;
+  // the two sides of an edge make the whole wave (Babinet)
+  for i: 0..<40 {
+    v := f64(i) * 0.2 - 4.0;
+    a := lee_edge(v); b := lee_edge(-v);
+    #assert abs(a.x + b.x - 1.0) < 0.000001 && abs(a.y + b.y) < 0.000001;
+  }
+  // the amplitude falls steadily into the shadow
+  last := 1.0;
+  for i: 0..<50 {
+    e := lee_edge(f64(i) * 0.1);
+    m := sqrt(e.x * e.x + e.y * e.y);
+    #assert m <= last + 0.004;
+    last = m;
+  }
+}
+#test "Macagno: a kilometre of hull stops wind waves and lets a little long swell under" {
+  // a 100 m wave (8 s) under 600 m of beam at 25 m of draft
+  #assert lee_transmission(TAU_D / 100.0, 600.0, 25.0, 1500.0) < 0.02;
+  // a 1,000 m swell (25 s) keeps a good third
+  long := lee_transmission(TAU_D / 1000.0, 600.0, 25.0, 1500.0);
+  #assert long > 0.3 && long < 0.5;
+  // no body, no loss; reflection and transmission keep the energy
+  #assert lee_transmission(0.05, 0.0, 25.0, 1500.0) == 1.0;
+  r := lee_reflection(TAU_D / 300.0, 600.0, 25.0, 1500.0); t := lee_transmission(TAU_D / 300.0, 600.0, 25.0, 1500.0);
+  #assert abs(r * r + t * t - 1.0) < 0.000000001;
+  // a deeper draft stops more
+  #assert lee_transmission(0.01, 600.0, 50.0, 1500.0) < lee_transmission(0.01, 600.0, 25.0, 1500.0);
+}
+#test "the lee is calmer than the open sea, and the open sea is untouched" {
+  f: [1] Floater; f[0] = lee_prime();
+  // a 150 m swell travelling west (-x): the west wall is the lee
+  sea := lee_swell(150.0, -1.0, 0.0, 1500.0);
+  behind := lee_gain(f[..], 1, sea, -560.0, 0.0);
+  #assert behind < 0.2;
+  // ahead of the body, beside it far off, and far downwave the sea is the open sea's
+  #assert lee_gain(f[..], 1, sea, 900.0, 0.0) == 1.0;
+  #assert abs(lee_gain(f[..], 1, sea, 0.0, 3000.0) - 1.0) < 0.05;
+  heal := lee_gain(f[..], 1, sea, -60000.0, 0.0);
+  #assert heal > 0.6;
+  // on the shadow's edge, far enough downwave to be clear of the other corner, half the wave
+  edge := lee_gain(f[..], 1, sea, -700.0, 300.0);
+  #assert abs(edge - 0.5) < 0.08;
+}
+#test "long swell wraps round the hull more than short chop" {
+  f: [1] Floater; f[0] = lee_prime();
+  // the mean over a line 120 m behind the lee wall (one point sits on the two edges' fringes)
+  last := 0.0;
+  for l: [5] f64.[10.0, 40.0, 150.0, 400.0, 900.0] {
+    sea := lee_swell(l, -1.0, 0.0, 1500.0);
+    g := 0.0;
+    for i: 0..<21 { g += lee_gain(f[..], 1, sea, -620.0, f64(i - 10) * 20.0) / 21.0; }
+    #assert g > last;
+    last = g;
+  }
+  #assert lee_gain(f[..], 1, lee_swell(10.0, -1.0, 0.0, 1500.0), -620.0, 60.0) < 0.05;
+  #assert last > 0.2;
+}
+#test "a round body shelters as a strip its own width" {
+  f: [1] Floater; f[0] = Floater.{round = true, hx = 60.96, hz = 60.96, draft = 12.0};
+  sea := lee_swell(40.0, 0.0, 1.0, 1500.0);
+  #assert lee_gain(f[..], 1, sea, 0.0, 75.0) < 0.35;
+  #assert lee_gain(f[..], 1, sea, 0.0, -200.0) == 1.0;
+  #assert abs(lee_gain(f[..], 1, sea, 400.0, 100.0) - 1.0) < 0.1;
+}
+#test "a turned body's lee turns with it" {
+  f: [1] Floater; f[0] = lee_prime();
+  f[0].c = 0.0; f[0].s = 1.0;    // its length now lies along the world's z
+  sea := lee_swell(100.0, -1.0, 0.0, 1500.0);
+  // behind its long side now
+  #assert lee_gain(f[..], 1, sea, -360.0, 0.0) < 0.2;
+  // where its west end used to shelter, off its beam, the sea is open
+  #assert lee_gain(f[..], 1, sea, -360.0, 800.0) > 0.8;
+}
+#test "a wind sea's lee: the spectrum's trains, long and short" #steps 400000000 {
+  // the SLAB world's winter sea: 13.7 m/s, waves running west-south-west
+  sp := Spectrum.{seed = 23, wind_speed = 13.7, wind = 4.36, fetch = 300000.0, spread = 0.8, depth = 4000.0};
+  c0 := wsp_cascade(sp, 2, 64, 0); c1 := wsp_cascade(sp, 2, 64, 1);
+  long := lee_band(sp, c0.low, c0.high, false); short := lee_band(sp, c1.low, c1.high, true);
+  total := 0.0;
+  for t: 0..<long.n { total += long.w[t]; #assert long.lambda[t] > 30.0 && long.lambda[t] < 400.0; }
+  #assert abs(total - 1.0) < 0.000001;
+  for t: 0..<short.n { #assert short.lambda[t] < long.lambda[0]; }
+  f: [1] Floater; f[0] = lee_prime();
+  wd := wsp_direction(sp);
+  // 80 m off the middle of the lee (west) wall, against 600 m upwave of the weather corner
+  lee := lee_gain(f[..], 1, long, -580.0, -40.0);
+  open := lee_gain(f[..], 1, long, 500.0 - wd.x * 600.0, 300.0 - wd.y * 600.0);
+  #assert abs(open - 1.0) < 0.000001;
+  #assert lee < 0.3;
+  // The short band's shadow is no deeper here: chop is spread wider about the wind (Donelan and
+  // Banner), so more of it comes along the wall. One train's shadow is deeper the shorter it is.
+  #assert lee_gain(f[..], 1, short, -580.0, -40.0) < 0.4;
+  one := lee_swell(short.lambda[7], wd.x, wd.y, 4000.0); two := lee_swell(long.lambda[7], wd.x, wd.y, 4000.0);
+  #assert lee_gain(f[..], 1, one, -580.0, -40.0) < lee_gain(f[..], 1, two, -580.0, -40.0);
+}
+#test "a bay in the lee wall is calmer than the sea at its mouth" {
+  f: [1] Floater; f[0] = lee_prime();
+  // the dock notch: 100 m along the south wall, 60 m into the hull
+  f[0].bay_x0 = -50.0; f[0].bay_x1 = 50.0; f[0].bay_z0 = -300.0; f[0].bay_z1 = -240.0;
+  #assert !lee_inside(f[0], 0.0, -270.0) && lee_inside(f[0], 0.0, -230.0) && lee_inside(f[0], 80.0, -270.0);
+  // a swell running along the south wall, a little off it
+  sea := lee_swell(150.0, -0.94, -0.342, 1500.0);
+  mouth := lee_gain(f[..], 1, sea, 0.0, -301.0);
+  inside := lee_gain(f[..], 1, sea, 0.0, -270.0);
+  #assert inside < mouth && inside < 0.4;
+  // a swell straight into the mouth fills the bay
+  into := lee_gain(f[..], 1, lee_swell(150.0, 0.0, 1.0, 1500.0), 0.0, -280.0);
+  #assert into > 0.8;
+}
+#test "the grid's nodes, their inverse, and a baked lee" #steps 2000000000 {
+  for i: 0..<LEE_N {
+    x := lee_node(500.0, i);
+    #assert abs(lee_index(500.0, x) - f64(i)) < 0.000001;
+    if i > 0 { #assert x > lee_node(500.0, i - 1); }
+  }
+  #assert abs(lee_node(500.0, LEE_OUTER) + 500.0) < 0.000001 && abs(lee_node(500.0, LEE_OUTER + LEE_INNER) - 500.0) < 0.000001;
+  #assert lee_node(500.0, LEE_N - 1) > 2000.0;
+  f: [1] Floater; f[0] = lee_prime();
+  grid: [1] LeeGrid;
+  long := lee_swell(150.0, -1.0, 0.0, 1500.0); short := lee_swell(12.0, -1.0, 0.0, 1500.0);
+  lee_bake(grid[..], f[0], f[..], 1, long, short);
+  // the grid answers as the model does at a node, and close to it between nodes
+  #assert abs(lee_sample(grid[..], lee_node(500.0, 3), lee_node(300.0, 11), 0) - lee_gain(f[..], 1, long, lee_node(500.0, 3), lee_node(300.0, 11))) < 0.0001;
+  #assert abs(lee_sample(grid[..], -640.0, 20.0, 0) - lee_gain(f[..], 1, long, -640.0, 20.0)) < 0.08;
+  #assert lee_sample(grid[..], -560.0, 0.0, 0) < 0.25;
+  #assert lee_sample(grid[..], -560.0, 0.0, 1) < lee_sample(grid[..], -560.0, 0.0, 0);
+  #assert lee_sample(grid[..], 700.0, 0.0, 0) > 0.99;
+  #assert grid[0].least < 0.2 && grid[0].quiet > grid[0].least && grid[0].quiet < 1.0;
+}
