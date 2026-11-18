@@ -1,0 +1,763 @@
+// Floating bodies (engine): what a barge, a caisson, a tug or a hull made of joined pieces does on
+// the sea, from its mass and its shape. Planning-level naval architecture, the kind a marine
+// operation is first sized with (DNV-ST-N001, DNV-RP-C205), not a seakeeping code:
+//
+// - Statics. A body's waterplane is a set of rectangles (afloat_plane); with its mass and centre of
+//   gravity that gives the draft, the heel and trim, and the metacentric heights, with free
+//   surfaces taken off (afloat_statics). A body with no stability left, or a deck edge under, is
+//   reported, not hidden.
+// - A sea. A sea state is a handful of wave trains (afloat_sea: a JONSWAP spectrum cut into
+//   AFLOAT_WAVES components, phases from metaverse-engine/core/rand.coax), in water of a given depth
+//   (the dispersion relation with tanh). The same sea at the same time is the same everywhere.
+// - Motion in waves. Each wave train pushes on the body's buoyancy columns (the columns of
+//   metaverse/slab-sim.coax's hull, here for any waterplane); heave, roll and pitch are damped
+//   oscillators with added mass, and their steady response to each train is closed form
+//   (afloat_rao), so a body's motion at any time is a sum, with no stepping (afloat_motion). The
+//   stepped integrator (afloat_step) is the same equations a step at a time, and a check holds the
+//   two together.
+// - Lines. A towline or a mooring is an elastic catenary (afloat_line_tension, afloat_line_sag: the
+//   inextensible catenary is metaverse-engine/physics/sim/pbd.coax's pbd_catenary_a, and a check
+//   holds them together); a chain that lies on the seabed lifts off it (afloat_chain).
+// - A tow. A body pulled along a route by tugs: thrust, the towline, hull and wind drag, current,
+//   wave drift, escort tugs that steer (afloat_tow_step). Speed, sheer, tension and clearances are
+//   results. The body can ground, strike a bank or part its line, and says so.
+// - Bending. A long body on a wave is a beam on its own buoyancy: the still-water and wave bending
+//   moment at every station (afloat_bending).
+// - Contact. A fender's load from how far it is squeezed (afloat_fender).
+//
+// Units: metres, seconds, kilograms, newtons, radians. x runs along the body (its length), z across
+// (its beam), y up. Roll is about x, + when the +z side is down; pitch is about z, + when the +x end
+// is down. Nothing here draws.
+//   coax/bin/coax test --library metaverse-engine/physics/afloat.coax
+#load "sim/pbd.coax";   // math-d.coax, rand.coax, the catenary
+
+AFLOAT_RHO :: 1025.0;      // sea water, kg/m^3
+AFLOAT_G :: 9.81;
+AFLOAT_RHO_AIR :: 1.225;
+AFLOAT_ZETA :: 0.08;       // damping ratio of heave, roll and pitch (slab-world-spec.md 4.2)
+AFLOAT_CA_HEAVE :: 1.0;    // added mass in heave, as a share of the mass
+AFLOAT_CA_ROT :: 0.3;      // added inertia in roll and pitch
+AFLOAT_COLUMN :: 25.0;     // the widest buoyancy column, m
+
+afloat_sinh :: (x: f64) -> f64 { return (exp(x) - exp(-x)) / 2.0; }
+afloat_tanh :: (x: f64) -> f64 { if x > 20.0 { return 1.0; } e := exp(2.0 * x); return (e - 1.0) / (e + 1.0); }
+afloat_asinh :: (x: f64) -> f64 { return ifx x < 0.0 then -log(-x + sqrt(x * x + 1.0)) else log(x + sqrt(x * x + 1.0)); }
+afloat_acosh :: (x: f64) -> f64 { return log(x + sqrt(fmax(x * x - 1.0, 0.0))); }
+afloat_sinc :: (x: f64) -> f64 { return ifx abs(x) < 1e-6 then 1.0 - x * x / 6.0 else sin(x) / x; }
+
+// ---------------------------------------------------------------- statics
+// A waterplane's sums: area, first moments and second moments about the body's origin. Rectangles
+// are (x0, z0, x1, z1), four numbers each, and must not overlap.
+AfloatPlane :: struct { area: f64; mx: f64; mz: f64; sxx: f64; szz: f64; sxz: f64; }
+afloat_plane_add :: (p: AfloatPlane, x0: f64, z0: f64, x1: f64, z1: f64) -> AfloatPlane {
+  o := p; a := (x1 - x0) * (z1 - z0); cx := (x0 + x1) * 0.5; cz := (z0 + z1) * 0.5;
+  o.area += a; o.mx += a * cx; o.mz += a * cz;
+  o.sxx += a * (cx * cx + (x1 - x0) * (x1 - x0) / 12.0);
+  o.szz += a * (cz * cz + (z1 - z0) * (z1 - z0) / 12.0);
+  o.sxz += a * cx * cz;
+  return o;
+}
+afloat_plane :: (rects: [] f64, n: int) -> AfloatPlane {
+  p: AfloatPlane;
+  for i: 0..<n { p = afloat_plane_add(p, rects[i * 4], rects[i * 4 + 1], rects[i * 4 + 2], rects[i * 4 + 3]); }
+  return p;
+}
+
+// What floats: a mass, its centre of gravity (gy over the keel), the sum of rho_tank * i_tank over
+// every slack tank (kg m: each tank's own waterplane second moment about its own axis, times its
+// liquid's density) for roll and for pitch, and the body's depth, keel to deck.
+AfloatLoad :: struct { mass: f64; gx: f64; gy: f64; gz: f64; free_t: f64; free_l: f64; depth: f64; }
+
+AFLOAT_OK :: 0; AFLOAT_SINKS :: 1; AFLOAT_CAPSIZES :: 2; AFLOAT_DECK_UNDER :: 3;
+AfloatStatics :: struct {
+  state: int;                // AFLOAT_*
+  area: f64; cx: f64; cz: f64;       // the waterplane and its centroid
+  draft: f64;                // at the centroid, m
+  kb: f64; bm_t: f64; bm_l: f64;
+  gm_t: f64; gm_l: f64;      // with free surfaces taken off
+  heel: f64; trim: f64;      // rad: + the +z side down, + the +x end down
+  deepest: f64;              // the deepest corner's draft, m
+  freeboard: f64;            // the lowest deck corner over the water, m
+  i_t: f64; i_l: f64;        // the waterplane's second moments about its centroid (z^2 and x^2), m^4
+}
+// A wall-sided body at rest in still water. Heel and trim come from the 2 x 2 system of the
+// waterplane's second moments, so an L-shaped hull heels about the axis it really heels about.
+afloat_statics :: (p: AfloatPlane, w: AfloatLoad, rects: [] f64, n: int) -> AfloatStatics {
+  s: AfloatStatics;
+  if p.area <= 0.0 || w.mass <= 0.0 { s.state = AFLOAT_SINKS; return s; }
+  s.area = p.area; s.cx = p.mx / p.area; s.cz = p.mz / p.area;
+  vol := w.mass / AFLOAT_RHO;
+  s.draft = vol / p.area; s.kb = s.draft * 0.5;
+  s.i_l = p.sxx - p.area * s.cx * s.cx; s.i_t = p.szz - p.area * s.cz * s.cz;
+  ixz := p.sxz - p.area * s.cx * s.cz;
+  s.bm_t = s.i_t / vol; s.bm_l = s.i_l / vol;
+  s.gm_t = s.kb + s.bm_t - w.gy - w.free_t / w.mass;
+  s.gm_l = s.kb + s.bm_l - w.gy - w.free_l / w.mass;
+  s.deepest = s.draft; s.freeboard = w.depth - s.draft;
+  if s.draft >= w.depth { s.state = AFLOAT_SINKS; return s; }
+  if s.gm_t <= 0.0 || s.gm_l <= 0.0 { s.state = AFLOAT_CAPSIZES; return s; }
+  // moments per radian, over m g: the heights; the product term couples the two
+  a := s.gm_t; d := s.gm_l; b := ixz / vol;
+  det := a * d - b * b;
+  if det <= 0.0 { s.state = AFLOAT_CAPSIZES; return s; }
+  ez := w.gz - s.cz; ex := w.gx - s.cx;
+  s.heel = atan_d((ez * d - ex * b) / det); s.trim = atan_d((ex * a - ez * b) / det);
+  th := sin(s.heel) / cos(s.heel); tt := sin(s.trim) / cos(s.trim);
+  for i: 0..<n { for k: 0..<4 {
+    x := rects[i * 4 + (ifx k & 1 == 0 then 0 else 2)]; z := rects[i * 4 + (ifx k & 2 == 0 then 1 else 3)];
+    t := s.draft + (x - s.cx) * tt + (z - s.cz) * th;
+    if t > s.deepest { s.deepest = t; }
+    if w.depth - t < s.freeboard { s.freeboard = w.depth - t; }
+  } }
+  if s.freeboard <= 0.0 { s.state = AFLOAT_DECK_UNDER; }
+  if abs(s.heel) > 0.35 || abs(s.trim) > 0.35 { s.state = AFLOAT_CAPSIZES; }   // past 20 degrees nothing here holds
+  return s;
+}
+// The draft at a point of the body.
+afloat_draft_at :: (s: AfloatStatics, x: f64, z: f64) -> f64 {
+  return s.draft + (x - s.cx) * sin(s.trim) / cos(s.trim) + (z - s.cz) * sin(s.heel) / cos(s.heel);
+}
+
+// ---------------------------------------------------------------- a sea
+AFLOAT_WAVES :: 12;
+AfloatSea :: struct {
+  n: int;
+  hs: f64; tp: f64; depth: f64; dir: f64;       // m, s, m, rad (the way the waves travel, from +x toward +z)
+  amp: [AFLOAT_WAVES] f64; omega: [AFLOAT_WAVES] f64; k: [AFLOAT_WAVES] f64;
+  kx: [AFLOAT_WAVES] f64; kz: [AFLOAT_WAVES] f64; phase: [AFLOAT_WAVES] f64;
+}
+// The wave number of a frequency in water `depth` deep: omega^2 = g k tanh(k depth), by Newton.
+afloat_wave_number :: (omega: f64, depth: f64) -> f64 {
+  k := omega * omega / AFLOAT_G;
+  if depth <= 0.0 { return k; }
+  for i: 0..<24 {
+    th := afloat_tanh(k * depth);
+    f := AFLOAT_G * k * th - omega * omega;
+    df := AFLOAT_G * th + AFLOAT_G * k * depth * (1.0 - th * th);
+    k = fmax(k - f / df, 1e-9);
+  }
+  return k;
+}
+// A wind sea's peak period from its height where the fetch is short (the Gulf of Mexico): a
+// planning value, 4.4 sqrt(Hs), a little steeper than Pierson-Moskowitz's 5.0 sqrt(Hs).
+afloat_peak_period :: (hs: f64) -> f64 { return fmax(2.5, 4.4 * sqrt(fmax(hs, 0.0))); }
+// A sea of significant height hs and peak period tp travelling toward dir, in water `depth` deep:
+// a JONSWAP shape (gamma 2) cut into AFLOAT_WAVES trains between 0.6 and 2.2 of the peak frequency,
+// spread 20 degrees either side, scaled so the trains' energy is the sea's. Phases are draws of
+// (seed, stream).
+afloat_sea :: (hs: f64, tp: f64, dir: f64, depth: f64, seed: int, stream: int) -> AfloatSea {
+  s: AfloatSea; s.n = AFLOAT_WAVES; s.hs = hs; s.tp = tp; s.depth = depth; s.dir = dir;
+  wp := TAU_D / tp; e := 0.0;
+  for i: 0..<AFLOAT_WAVES {
+    w := wp * (0.6 + 1.6 * (cast(f64) i + 0.5) / cast(f64) AFLOAT_WAVES);
+    sg := ifx w <= wp then 0.07 else 0.09;
+    r := exp(-(w - wp) * (w - wp) / (2.0 * sg * sg * wp * wp));
+    sp := pow(w, -5.0) * exp(-1.25 * pow(wp / w, 4.0)) * pow(2.0, r);
+    s.omega[i] = w; s.amp[i] = sqrt(sp); e += sp * 0.5;
+    s.k[i] = afloat_wave_number(w, depth);
+    spread := (cast(f64) (i % 3) - 1.0) * 20.0 * PI_D / 180.0;
+    s.kx[i] = s.k[i] * cos(dir + spread); s.kz[i] = s.k[i] * sin(dir + spread);
+    s.phase[i] = TAU_D * cast(f64) rand_unit(seed, stream, i);
+  }
+  // Hs = 4 sqrt(m0), m0 the sum of a^2 / 2
+  scale := ifx e > 0.0 then hs / (4.0 * sqrt(e)) else 0.0;
+  for i: 0..<AFLOAT_WAVES { s.amp[i] *= scale; }
+  return s;
+}
+// The sea's height at a place and a time.
+afloat_eta :: (s: AfloatSea, x: f64, z: f64, t: f64) -> f64 {
+  e := 0.0;
+  for i: 0..<s.n { e += s.amp[i] * cos(s.kx[i] * x + s.kz[i] * z - s.omega[i] * t + s.phase[i]); }
+  return e;
+}
+// The longest train that still carries a tenth of the peak train's height: the wave a long body
+// bends on.
+afloat_long_wave :: (s: AfloatSea) -> f64 {
+  top := 0.0; for i: 0..<s.n { top = fmax(top, s.amp[i]); }
+  for i: 0..<s.n { if s.amp[i] >= 0.1 * top { return TAU_D / s.k[i]; } }
+  return 0.0;
+}
+
+// ---------------------------------------------------------------- motion in waves
+// A body's response to each wave train: the complex amplitude of heave (m), roll and pitch (rad) at
+// the body's origin, for the body heading `yaw` (rad, + from x toward z). The force on the body is
+// the trains' pressure over its buoyancy columns, each averaged over its own column (the sinc
+// terms), fading with depth as exp(-k T / 2), half the draft.
+AfloatRao :: struct {
+  h_re: [AFLOAT_WAVES] f64; h_im: [AFLOAT_WAVES] f64;
+  r_re: [AFLOAT_WAVES] f64; r_im: [AFLOAT_WAVES] f64;
+  p_re: [AFLOAT_WAVES] f64; p_im: [AFLOAT_WAVES] f64;
+  heave_period: f64; roll_period: f64; pitch_period: f64;
+}
+// The body's inertias and springs in heave, roll and pitch.
+AfloatSprings :: struct { mh: f64; kh: f64; ir: f64; kr: f64; ip: f64; kp: f64; }
+afloat_springs :: (st: AfloatStatics, w: AfloatLoad) -> AfloatSprings {
+  o: AfloatSprings;
+  o.mh = w.mass * (1.0 + AFLOAT_CA_HEAVE); o.kh = AFLOAT_RHO * AFLOAT_G * st.area;
+  // radii of gyration: 0.35 of the beam and 0.29 of the length of the rectangle with the same
+  // second moments (slab-world-spec.md 3.1)
+  beam2 := 12.0 * st.i_t / st.area; length2 := 12.0 * st.i_l / st.area;
+  o.ir = w.mass * 0.35 * 0.35 * beam2 * (1.0 + AFLOAT_CA_ROT); o.kr = w.mass * AFLOAT_G * st.gm_t;
+  o.ip = w.mass * 0.29 * 0.29 * length2 * (1.0 + AFLOAT_CA_ROT); o.kp = w.mass * AFLOAT_G * st.gm_l;
+  return o;
+}
+afloat_respond :: (f_re: f64, f_im: f64, m: f64, k: f64, omega: f64) -> [2] f64 {
+  // x = f / (k - omega^2 m - i omega c), c = 2 zeta sqrt(k m)
+  a := k - omega * omega * m; b := -omega * 2.0 * AFLOAT_ZETA * sqrt(k * m);
+  d := a * a + b * b;
+  return [2] f64.[(f_re * a + f_im * b) / d, (f_im * a - f_re * b) / d];
+}
+afloat_rao :: (rects: [] f64, n: int, st: AfloatStatics, w: AfloatLoad, sea: AfloatSea, yaw: f64) -> AfloatRao {
+  o: AfloatRao;
+  if st.state != AFLOAT_OK { return o; }
+  sp := afloat_springs(st, w);
+  o.heave_period = TAU_D * sqrt(sp.mh / sp.kh); o.roll_period = TAU_D * sqrt(sp.ir / sp.kr); o.pitch_period = TAU_D * sqrt(sp.ip / sp.kp);
+  cy := cos(yaw); sy := sin(yaw);
+  for c: 0..<sea.n {
+    // the train's wave vector in the body's frame
+    kx := sea.kx[c] * cy + sea.kz[c] * sy; kz := -sea.kx[c] * sy + sea.kz[c] * cy;
+    fade := AFLOAT_RHO * AFLOAT_G * sea.amp[c] * exp(-sea.k[c] * st.draft * 0.5);
+    f_re := 0.0; f_im := 0.0; r_re := 0.0; r_im := 0.0; p_re := 0.0; p_im := 0.0;
+    for i: 0..<n {
+      x0 := rects[i * 4]; z0 := rects[i * 4 + 1]; x1 := rects[i * 4 + 2]; z1 := rects[i * 4 + 3];
+      nx := cast(int) floor((x1 - x0) / AFLOAT_COLUMN + 0.999); nz := cast(int) floor((z1 - z0) / AFLOAT_COLUMN + 0.999);
+      if nx < 1 { nx = 1; } if nz < 1 { nz = 1; }
+      dx := (x1 - x0) / cast(f64) nx; dz := (z1 - z0) / cast(f64) nz;
+      mean := dx * dz * afloat_sinc(kx * dx * 0.5) * afloat_sinc(kz * dz * 0.5);
+      for a: 0..<nx { for b: 0..<nz {
+        x := x0 + (cast(f64) a + 0.5) * dx; z := z0 + (cast(f64) b + 0.5) * dz;
+        ph := kx * x + kz * z;
+        re := mean * cos(ph); im := mean * sin(ph);
+        f_re += re; f_im += im;
+        r_re -= re * (z - st.cz); r_im -= im * (z - st.cz);
+        p_re -= re * (x - st.cx); p_im -= im * (x - st.cx);
+      } }
+    }
+    h := afloat_respond(fade * f_re, fade * f_im, sp.mh, sp.kh, sea.omega[c]);
+    r := afloat_respond(fade * r_re, fade * r_im, sp.ir, sp.kr, sea.omega[c]);
+    p := afloat_respond(fade * p_re, fade * p_im, sp.ip, sp.kp, sea.omega[c]);
+    o.h_re[c] = h[0]; o.h_im[c] = h[1]; o.r_re[c] = r[0]; o.r_im[c] = r[1]; o.p_re[c] = p[0]; o.p_im[c] = p[1];
+  }
+  return o;
+}
+// The body's motion now, its origin at (px, pz) in the sea's frame: heave is the centroid's rise,
+// m; roll and pitch are added to the still-water heel and trim.
+AfloatMotion :: struct { heave: f64; roll: f64; pitch: f64; heave_v: f64; }
+afloat_motion :: (rao: AfloatRao, sea: AfloatSea, px: f64, pz: f64, t: f64) -> AfloatMotion {
+  m: AfloatMotion;
+  for c: 0..<sea.n {
+    th := sea.kx[c] * px + sea.kz[c] * pz - sea.omega[c] * t + sea.phase[c];
+    cs := cos(th); sn := sin(th);
+    // Re[X e^(i th)]
+    m.heave += rao.h_re[c] * cs - rao.h_im[c] * sn;
+    m.roll += rao.r_re[c] * cs - rao.r_im[c] * sn;
+    m.pitch += rao.p_re[c] * cs - rao.p_im[c] * sn;
+    m.heave_v += sea.omega[c] * (rao.h_re[c] * sn + rao.h_im[c] * cs);
+  }
+  return m;
+}
+// The significant (four standard deviations, crest to trough) vertical motion of the body's point
+// (x, z), m.
+afloat_point_motion :: (rao: AfloatRao, st: AfloatStatics, sea: AfloatSea, x: f64, z: f64) -> f64 {
+  e := 0.0;
+  for c: 0..<sea.n {
+    re := rao.h_re[c] - (z - st.cz) * rao.r_re[c] - (x - st.cx) * rao.p_re[c];
+    im := rao.h_im[c] - (z - st.cz) * rao.r_im[c] - (x - st.cx) * rao.p_im[c];
+    e += (re * re + im * im) * 0.5;
+  }
+  return 4.0 * sqrt(e);
+}
+// The significant relative vertical motion between point (ax, az) of body a, whose origin is at
+// (apx, apz), and point (bx, bz) of body b at (bpx, bpz): what two faces do against each other.
+afloat_relative_motion :: (ra: AfloatRao, sa: AfloatStatics, ax: f64, az: f64, apx: f64, apz: f64,
+                           rb: AfloatRao, sb: AfloatStatics, bx: f64, bz: f64, bpx: f64, bpz: f64, sea: AfloatSea) -> f64 {
+  e := 0.0;
+  for c: 0..<sea.n {
+    are := ra.h_re[c] - (az - sa.cz) * ra.r_re[c] - (ax - sa.cx) * ra.p_re[c];
+    aim := ra.h_im[c] - (az - sa.cz) * ra.r_im[c] - (ax - sa.cx) * ra.p_im[c];
+    bre := rb.h_re[c] - (bz - sb.cz) * rb.r_re[c] - (bx - sb.cx) * rb.p_re[c];
+    bim := rb.h_im[c] - (bz - sb.cz) * rb.r_im[c] - (bx - sb.cx) * rb.p_im[c];
+    // each body's phase at its own origin
+    ta := sea.kx[c] * apx + sea.kz[c] * apz; tb := sea.kx[c] * bpx + sea.kz[c] * bpz;
+    re := are * cos(ta) - aim * sin(ta) - (bre * cos(tb) - bim * sin(tb));
+    im := are * sin(ta) + aim * cos(ta) - (bre * sin(tb) + bim * cos(tb));
+    e += (re * re + im * im) * 0.5;
+  }
+  return 4.0 * sqrt(e);
+}
+// The same equations a step at a time (semi-implicit Euler), for a check and for bodies whose
+// loads change faster than the waves: heave, roll and pitch under the sea's column forces now.
+AfloatState :: struct { heave: f64; heave_v: f64; roll: f64; roll_v: f64; pitch: f64; pitch_v: f64; time: f64; }
+afloat_step :: (s: AfloatState, rects: [] f64, n: int, st: AfloatStatics, w: AfloatLoad, sea: AfloatSea, px: f64, pz: f64, dt: f64) -> AfloatState {
+  o := s; sp := afloat_springs(st, w);
+  f := 0.0; mr := 0.0; mp := 0.0;
+  for c: 0..<sea.n {
+    fade := AFLOAT_RHO * AFLOAT_G * sea.amp[c] * exp(-sea.k[c] * st.draft * 0.5);
+    for i: 0..<n {
+      x0 := rects[i * 4]; z0 := rects[i * 4 + 1]; x1 := rects[i * 4 + 2]; z1 := rects[i * 4 + 3];
+      nx := cast(int) floor((x1 - x0) / AFLOAT_COLUMN + 0.999); nz := cast(int) floor((z1 - z0) / AFLOAT_COLUMN + 0.999);
+      if nx < 1 { nx = 1; } if nz < 1 { nz = 1; }
+      dx := (x1 - x0) / cast(f64) nx; dz := (z1 - z0) / cast(f64) nz;
+      mean := dx * dz * afloat_sinc(sea.kx[c] * dx * 0.5) * afloat_sinc(sea.kz[c] * dz * 0.5);
+      for a: 0..<nx { for b: 0..<nz {
+        x := x0 + (cast(f64) a + 0.5) * dx; z := z0 + (cast(f64) b + 0.5) * dz;
+        p := fade * mean * cos(sea.kx[c] * (px + x) + sea.kz[c] * (pz + z) - sea.omega[c] * s.time + sea.phase[c]);
+        f += p; mr -= p * (z - st.cz); mp -= p * (x - st.cx);
+      } }
+    }
+  }
+  o.heave_v += (f - sp.kh * s.heave - 2.0 * AFLOAT_ZETA * sqrt(sp.kh * sp.mh) * s.heave_v) / sp.mh * dt; o.heave += o.heave_v * dt;
+  o.roll_v += (mr - sp.kr * s.roll - 2.0 * AFLOAT_ZETA * sqrt(sp.kr * sp.ir) * s.roll_v) / sp.ir * dt; o.roll += o.roll_v * dt;
+  o.pitch_v += (mp - sp.kp * s.pitch - 2.0 * AFLOAT_ZETA * sqrt(sp.kp * sp.ip) * s.pitch_v) / sp.ip * dt; o.pitch += o.pitch_v * dt;
+  o.time += dt;
+  return o;
+}
+
+// ---------------------------------------------------------------- lines
+// A wire, chain or rope: its unstretched length (m), weight in water (N/m), stiffness EA (N) and
+// breaking load (N).
+AfloatLine :: struct { length: f64; weight: f64; ea: f64; mbl: f64; }
+// The span of a line hung between two points at one height when its horizontal tension is h:
+// 2 (h / w) asinh(w s / 2 h) + h s / EA (an elastic catenary).
+afloat_line_span :: (l: AfloatLine, h: f64) -> f64 {
+  return 2.0 * h / l.weight * afloat_asinh(l.weight * l.length / (2.0 * h)) + h * l.length / l.ea;
+}
+// The horizontal tension of a line whose ends are `span` apart, by bisection (the span grows with
+// the tension). A line with slack to spare hangs at almost no tension.
+afloat_line_tension :: (l: AfloatLine, span: f64) -> f64 {
+  if span <= 0.0 { return 0.0; }
+  lo := 1.0; hi := 1.0e9;
+  if afloat_line_span(l, lo) >= span { return lo; }
+  for i: 0..<70 { mid := (lo + hi) * 0.5; if afloat_line_span(l, mid) < span { lo = mid; } else { hi = mid; } }
+  return (lo + hi) * 0.5;
+}
+// How far the line's middle hangs below its ends at horizontal tension h, m.
+afloat_line_sag :: (l: AfloatLine, h: f64) -> f64 {
+  a := h / l.weight; q := l.length / (2.0 * a);
+  return a * (sqrt(1.0 + q * q) - 1.0);
+}
+// The tension at the line's ends (horizontal tension plus the weight of the hanging half's rise).
+afloat_line_end_tension :: (l: AfloatLine, h: f64) -> f64 { return h + l.weight * afloat_line_sag(l, h); }
+// The horizontal tension of a line already at tension h when its ends move `stretch` m further
+// apart: what a wave's surge between a tug and its tow adds (a snatch load).
+afloat_line_peak :: (l: AfloatLine, h: f64, stretch: f64) -> f64 {
+  return afloat_line_tension(l, afloat_line_span(l, fmax(h, 1.0)) + fmax(stretch, 0.0));
+}
+
+// A mooring chain from a fairlead `height` above a flat seabed to an anchor `reach` away, part of
+// it lying on the bottom: the horizontal tension, by bisection. Past the point where the whole
+// chain lifts, the chain is a taut elastic line and the anchor takes uplift.
+AfloatChain :: struct { tension: f64; lifted: f64; uplift: bool; }
+afloat_chain_reach :: (l: AfloatLine, height: f64, h: f64) -> f64 {
+  a := h / l.weight;
+  hung := sqrt(height * (height + 2.0 * a));            // the length off the bottom
+  if hung >= l.length { return 1.0e30; }
+  return l.length - hung + a * afloat_acosh(1.0 + height / a) + h * l.length / l.ea;
+}
+afloat_chain :: (l: AfloatLine, height: f64, reach: f64) -> AfloatChain {
+  o: AfloatChain;
+  taut := sqrt(fmax(l.length * l.length - height * height, 0.0));
+  lo := 1.0; hi := 1.0e9;
+  if afloat_chain_reach(l, height, lo) >= reach { o.tension = lo; o.lifted = sqrt(height * (height + 2.0 * lo / l.weight)); return o; }
+  for i: 0..<70 { mid := (lo + hi) * 0.5; if afloat_chain_reach(l, height, mid) < reach { lo = mid; } else { hi = mid; } }
+  o.tension = (lo + hi) * 0.5;
+  o.lifted = sqrt(height * (height + 2.0 * o.tension / l.weight));
+  if o.lifted >= l.length * 0.999 {
+    // the whole chain is off the bottom: a straight elastic line from here on
+    o.uplift = true; o.lifted = l.length;
+    stretch := sqrt(reach * reach + height * height) - l.length;
+    o.tension = fmax(o.tension, l.ea * stretch / l.length * reach / sqrt(reach * reach + height * height));
+    if reach < taut { o.tension = lo; }
+  }
+  return o;
+}
+
+// ---------------------------------------------------------------- contact
+// A pneumatic fender's reaction (N) squeezed `d` m: its rated reaction at its rated deflection,
+// rising as the 1.5 power (a planning curve), and the energy it has taken (J).
+afloat_fender :: (d: f64, rated_force: f64, rated_deflection: f64) -> f64 {
+  if d <= 0.0 { return 0.0; }
+  return rated_force * pow(d / rated_deflection, 1.5);
+}
+afloat_fender_energy :: (d: f64, rated_force: f64, rated_deflection: f64) -> f64 {
+  if d <= 0.0 { return 0.0; }
+  return rated_force * rated_deflection * pow(d / rated_deflection, 2.5) / 2.5;
+}
+// The deflection at which a fender has taken energy e, m.
+afloat_fender_deflection :: (e: f64, rated_force: f64, rated_deflection: f64) -> f64 {
+  if e <= 0.0 { return 0.0; }
+  return rated_deflection * pow(2.5 * e / (rated_force * rated_deflection), 0.4);
+}
+
+// ---------------------------------------------------------------- forces on a hull
+// The steady forces on a box hull, in its own frame: the water's drag on the under-water faces and
+// the wind's on the faces above, each 1/2 rho C A v |v| on the relative flow, and the waves' mean
+// drift, 1/8 rho g Hs^2 per metre of face with the share reflected, 1 - exp(-2 k T).
+AfloatHull :: struct {
+  length: f64; beam: f64; draft: f64; height: f64;   // m; height is deck over keel
+  mass: f64;                                         // kg
+  cd_x: f64 = 1.0; cd_y: f64 = 1.2;                  // a blunt box end on, and side on (assumed)
+  cw: f64 = 1.2;                                     // wind, on a wall
+  a11: f64 = 0.2; a22: f64 = 0.7; a66: f64 = 0.3;    // added mass in surge and sway, added inertia in yaw, as shares (assumed)
+}
+afloat_drift_per_metre :: (hs: f64, k: f64, draft: f64) -> f64 {
+  return AFLOAT_RHO * AFLOAT_G * hs * hs / 8.0 * (1.0 - exp(-2.0 * k * draft));
+}
+// The pull that holds a hull head-on at no speed in a sea of hs (peak wave number k), a wind of
+// `wind` m/s and a current, N: the towing standard's sizing case.
+afloat_holding_force :: (hull: AfloatHull, hs: f64, k: f64, wind: f64, current: f64) -> f64 {
+  return 0.5 * AFLOAT_RHO_AIR * hull.cw * hull.beam * (hull.height - hull.draft) * wind * wind
+       + 0.5 * AFLOAT_RHO * hull.cd_x * hull.beam * hull.draft * current * current
+       + afloat_drift_per_metre(hs, k, hull.draft) * hull.beam;
+}
+
+// ---------------------------------------------------------------- a tow
+// The weather and the water a tow is in now.
+AfloatWeather :: struct {
+  hs: f64; tp: f64;           // the sea
+  wave_dir: f64;              // the way the waves travel, rad
+  wind: f64; wind_dir: f64;   // m/s, the way the wind blows, rad
+  current: f64; current_dir: f64;
+  depth: f64;                 // water depth here, m
+  width: f64;                 // the channel's width here, m (0 in open water)
+  k: f64;                     // the peak wave number, if the caller has it (0: found from tp and depth)
+}
+// The tugs: `lead` tugs ahead on the towline, each of bollard pull `pull` (N), free-running at
+// `free_speed` m/s, and two escort tugs made fast at the bow and the stern quarters, each of `side`
+// N, that push the body sideways, turn it and brake it. A sea tow has no escorts (side 0).
+AfloatTugs :: struct { lead: int; pull: f64; free_speed: f64; side: f64; }
+// A tug's pull at speed and in a sea: it falls linearly to nothing at the free-running speed, and
+// with the waves as the towing standards' tug efficiency does (about 80% in calm, less in a sea).
+afloat_tug_pull :: (t: AfloatTugs, speed: f64, hs: f64) -> f64 {
+  eff := fclamp(0.80 - 0.07 * hs, 0.25, 0.80);
+  return cast(f64) t.lead * t.pull * eff * fclamp(1.0 - speed / t.free_speed, 0.0, 1.0);
+}
+// The speed a tow settles at, m/s: where the tugs' pull meets the hull's drag through the water (a
+// head current adds to it), the wind's and the waves' drift, by bisection. 0 when the tugs cannot
+// hold the hull.
+afloat_tow_speed :: (hull: AfloatHull, t: AfloatTugs, hs: f64, k: f64, wind: f64, current: f64) -> f64 {
+  if afloat_tug_pull(t, 0.0, hs) <= afloat_holding_force(hull, hs, k, wind, current) { return 0.0; }
+  lo := 0.0; hi := t.free_speed;
+  for i: 0..<50 {
+    mid := (lo + hi) * 0.5;
+    if afloat_tug_pull(t, mid, hs) > afloat_holding_force(hull, hs, k, wind, current + mid) { lo = mid; } else { hi = mid; }
+  }
+  return (lo + hi) * 0.5;
+}
+AFLOAT_TOW_OK :: 0; AFLOAT_TOW_AGROUND :: 1; AFLOAT_TOW_BANK :: 2; AFLOAT_TOW_PARTED :: 3;
+AfloatTow :: struct {
+  x: f64; z: f64; yaw: f64;        // the towed body's centre and heading (rad, + from x toward z)
+  u: f64; v: f64; r: f64;          // its speed ahead and to its +z side through the ground, m/s, and its turn, rad/s
+  tug_x: f64; tug_z: f64;          // where the lead tugs are
+  tension: f64;                    // each towline's horizontal tension, N
+  sag: f64;                        // the towline's sag, m
+  throttle: f64;                   // 0..1
+  bow_force: f64; stern_force: f64;   // the escort tugs' pushes now, N (+ toward the body's +z side)
+  along: f64;                      // distance run along the leg, m
+  off_track: f64;                  // the body's centre off the leg's centreline, m (+ to the left of the heading)
+  sheer: f64;                      // heading off the leg's direction, rad
+  under_keel: f64;                 // water under the deepest corner now, m
+  bank: f64;                       // room between the body's swept path and the nearer channel edge, m
+  state: int;                      // AFLOAT_TOW_*
+  time: f64;
+}
+// One step of a tow along a straight leg from (ax, az) toward (bx, bz), at up to `speed` m/s, each
+// lead tug on its own towline `line`. The lead tugs keep to the leg's centreline, ahead of the body by the towline's
+// span at its tension: they are light beside the tow, so their own balance (thrust less the line)
+// is taken at once and only the towed body has inertia. `deepest` is the body's deepest corner at
+// rest and `motion` what the waves add to it (half the significant vertical motion of a corner).
+afloat_tow_step :: (s: AfloatTow, hull: AfloatHull, tugs: AfloatTugs, line: AfloatLine, w: AfloatWeather,
+                    ax: f64, az: f64, bx: f64, bz: f64, speed: f64, deepest: f64, motion: f64, dt: f64) -> AfloatTow {
+  o := s;
+  if s.state != AFLOAT_TOW_OK { o.time += dt; return o; }
+  lx := bx - ax; lz := bz - az; ll := sqrt(lx * lx + lz * lz);
+  if ll <= 0.0 { return o; }
+  lx /= ll; lz /= ll;
+  course := afloat_angle(lx, lz);
+  cy := cos(s.yaw); sy := sin(s.yaw);
+  // where the body is on the leg
+  rx := s.x - ax; rz := s.z - az;
+  o.along = rx * lx + rz * lz; o.off_track = -rx * lz + rz * lx;
+  o.sheer = afloat_wrap(s.yaw - course);
+  // the throttle holds the speed made good along the leg; it eases when the line nears half its breaking load
+  made := s.u * (cy * lx + sy * lz) + s.v * (-sy * lx + cy * lz);
+  want := fclamp(o.throttle + (speed - made) * 0.02 * dt, 0.0, 1.0);
+  if s.tension > 0.5 * line.mbl { want = fmax(0.0, want - 0.05 * dt); }
+  o.throttle = want;
+  pull := afloat_tug_pull(tugs, fmax(made, 0.0), w.hs) * o.throttle;
+  each := fmax(pull / cast(f64) (ifx tugs.lead < 1 then 1 else tugs.lead), 1.0);   // each tug has its own line
+  // the towline: from the body's bow to the tugs on the centreline ahead
+  bow_x := s.x + cy * hull.length * 0.5; bow_z := s.z + sy * hull.length * 0.5;
+  span := afloat_line_span(line, each);
+  bow_along := (bow_x - ax) * lx + (bow_z - az) * lz; bow_off := -(bow_x - ax) * lz + (bow_z - az) * lx;
+  reach := sqrt(fmax(span * span - bow_off * bow_off, 1.0));
+  o.tug_x = ax + lx * (bow_along + reach); o.tug_z = az + lz * (bow_along + reach);
+  tx := o.tug_x - bow_x; tz := o.tug_z - bow_z; tl := sqrt(tx * tx + tz * tz);
+  tx /= tl; tz /= tl;
+  o.tension = each; o.sag = afloat_line_sag(line, each);
+  if afloat_line_end_tension(line, each) > line.mbl { o.state = AFLOAT_TOW_PARTED; }
+  // forces in the body's frame: X ahead, Y to +z side, N about the vertical
+  fx := pull * (tx * cy + tz * sy); fy := pull * (-tx * sy + tz * cy);
+  n := fy * hull.length * 0.5;
+  // water: drag on the flow past the hull (its speed through the ground less the current)
+  cxw := w.current * cos(w.current_dir); czw := w.current * sin(w.current_dir);
+  ur := s.u - (cxw * cy + czw * sy); vr := s.v - (-cxw * sy + czw * cy);
+  fx -= 0.5 * AFLOAT_RHO * hull.cd_x * hull.beam * hull.draft * ur * abs(ur);
+  fy -= 0.5 * AFLOAT_RHO * hull.cd_y * hull.length * hull.draft * vr * abs(vr);
+  n -= AFLOAT_RHO * hull.cd_y * hull.draft * pow(hull.length, 4.0) / 64.0 * s.r * abs(s.r);
+  // the Munk moment turns a hull moving askew further off its course
+  n += (hull.a22 - hull.a11) * hull.mass * ur * vr;
+  // wind on the faces above the water
+  wxw := w.wind * cos(w.wind_dir); wzw := w.wind * sin(w.wind_dir);
+  uw := (wxw * cy + wzw * sy) - s.u; vw := (-wxw * sy + wzw * cy) - s.v;
+  above := hull.height - hull.draft;
+  fx += 0.5 * AFLOAT_RHO_AIR * hull.cw * hull.beam * above * uw * abs(uw);
+  fy += 0.5 * AFLOAT_RHO_AIR * hull.cw * hull.length * above * vw * abs(vw);
+  // the waves' mean drift, along the way they travel, on the face they meet
+  kp := ifx w.k > 0.0 then w.k else afloat_wave_number(TAU_D / fmax(w.tp, 1.0), w.depth);
+  drift := afloat_drift_per_metre(w.hs, kp, hull.draft);
+  dxw := cos(w.wave_dir) * cy + sin(w.wave_dir) * sy; dzw := -cos(w.wave_dir) * sy + sin(w.wave_dir) * cy;
+  fx += drift * hull.beam * dxw * abs(dxw); fy += drift * hull.length * dzw * abs(dzw);
+  // the escort tugs: a push across the leg against the offset and the drift, and a turn against the
+  // sheer, each a spring and a damper on the body's own inertia, shared between the bow and the
+  // stern tug and held within each tug's pull
+  my := hull.mass * (1.0 + hull.a22);
+  iz := hull.mass * (hull.length * hull.length + hull.beam * hull.beam) / 12.0 * (1.0 + hull.a66);
+  off_v := -(s.u * cy - s.v * sy) * lz + (s.u * sy + s.v * cy) * lx;
+  push := -(0.0004 * o.off_track + 0.04 * off_v) * my;
+  turn := -(0.0009 * o.sheer + 0.06 * s.r) * iz;
+  o.bow_force = fclamp(push * 0.5 + turn / hull.length, -tugs.side, tugs.side);
+  o.stern_force = fclamp(push * 0.5 - turn / hull.length, -tugs.side, tugs.side);
+  fy += o.bow_force + o.stern_force; n += (o.bow_force - o.stern_force) * hull.length * 0.5;
+  // and they brake a tow that runs over its speed
+  if made > speed * 1.15 { fx -= fmin(tugs.side, (made - speed) * hull.mass * 0.01); }
+  // the body: Newton in its own frame, with added mass
+  mx := hull.mass * (1.0 + hull.a11);
+  o.u += (fx / mx + s.v * s.r) * dt; o.v += (fy / my - s.u * s.r) * dt; o.r += n / iz * dt;
+  o.yaw = afloat_wrap(s.yaw + o.r * dt);
+  o.x += (o.u * cy - o.v * sy) * dt; o.z += (o.u * sy + o.v * cy) * dt;
+  // clearances: the keel over the bottom (with squat, 1% of the draft a m/s), and the swept path in the channel
+  o.under_keel = w.depth - deepest - motion - 0.01 * hull.draft * abs(made);
+  if o.under_keel <= 0.0 { o.state = AFLOAT_TOW_AGROUND; }
+  if w.width > 0.0 {
+    swept := (hull.beam * abs(cos(o.sheer)) + hull.length * abs(sin(o.sheer))) * 0.5;
+    o.bank = w.width * 0.5 - swept - abs(o.off_track);
+    if o.bank <= 0.0 { o.state = AFLOAT_TOW_BANK; }
+  } else { o.bank = 1.0e9; }
+  o.time += dt;
+  return o;
+}
+afloat_wrap :: (a: f64) -> f64 { r := a; while r > PI_D { r -= TAU_D; } while r < -PI_D { r += TAU_D; } return r; }
+// The angle of a direction, rad, + from x toward z.
+afloat_angle :: (x: f64, z: f64) -> f64 {
+  if abs(x) < 1e-12 { return ifx z >= 0.0 then PI_D / 2.0 else -PI_D / 2.0; }
+  a := atan_d(z / x);
+  if x < 0.0 { return ifx z >= 0.0 then a + PI_D else a - PI_D; }
+  return a;
+}
+
+// ---------------------------------------------------------------- bending
+// A long body as a beam along x on its own buoyancy: `n` stations `dx` apart, each with a weight
+// (N/m) and a waterplane width (m). In still water (amp 0) or balanced on a wave of amplitude
+// `amp` and length `wave` at phase `phase`, the body takes the heave and trim that carry it, and
+// what is left over bends it. Writes the bending moment at each station (N m, + sagging) and
+// returns the largest magnitude.
+afloat_bending :: (weight: [] f64, width: [] f64, n: int, dx: f64, amp: f64, wave: f64, phase: f64, draft: f64, moment: [] f64) -> f64 {
+  if n < 2 { return 0.0; }
+  k := ifx wave > 0.0 then TAU_D / wave else 0.0;
+  fade := exp(-k * draft * 0.5);
+  mid := cast(f64) (n - 1) * 0.5;
+  // the load with no heave or trim, then the heave h and trim t that make force and moment zero:
+  // sum(q) = 0 and sum(q x) = 0, with q = rho g b (eta + h + t x) - (w - rho g b draft)
+  s0 := 0.0; s1 := 0.0; s2 := 0.0; f0 := 0.0; f1 := 0.0;
+  for i: 0..<n {
+    x := (cast(f64) i - mid) * dx; kb := AFLOAT_RHO * AFLOAT_G * width[i];
+    q := kb * (draft + amp * fade * cos(k * x + phase)) - weight[i];
+    s0 += kb; s1 += kb * x; s2 += kb * x * x; f0 += q; f1 += q * x;
+  }
+  det := s0 * s2 - s1 * s1;
+  if det <= 0.0 { return 0.0; }
+  h := (-f0 * s2 + f1 * s1) / det; t := (-f1 * s0 + f0 * s1) / det;
+  shear := 0.0; m := 0.0; top := 0.0;
+  for i: 0..<n {
+    x := (cast(f64) i - mid) * dx; kb := AFLOAT_RHO * AFLOAT_G * width[i];
+    q := kb * (draft + amp * fade * cos(k * x + phase) + h + t * x) - weight[i];
+    m += shear * dx + q * dx * dx * 0.5; shear += q * dx;
+    moment[i] = m;
+    if abs(m) > top { top = abs(m); }
+  }
+  return top;
+}
+// The largest wave bending moment over sixteen phases of the wave.
+afloat_bending_worst :: (weight: [] f64, width: [] f64, n: int, dx: f64, amp: f64, wave: f64, draft: f64, moment: [] f64) -> f64 {
+  top := 0.0;
+  for p: 0..<16 { top = fmax(top, afloat_bending(weight, width, n, dx, amp, wave, TAU_D * cast(f64) p / 16.0, draft, moment)); }
+  return top;
+}
+
+// ---------------------------------------------------------------- checks
+#test "a box barge floats at Archimedes' draft with the textbook metacentric height" {
+  r := [4] f64.[-50, -25, 50, 25];
+  p := afloat_plane(r[..], 1);
+  w := AfloatLoad.{mass = 46250.0e3, gy = 21.87, depth = 50};
+  s := afloat_statics(p, w, r[..], 1);
+  #assert s.state == AFLOAT_OK && abs(s.draft - 46250.0 / (5000.0 * 1.025)) < 1e-9;
+  #assert abs(s.bm_t - 50.0 * 50.0 / (12.0 * s.draft)) < 1e-9 && abs(s.bm_l - 100.0 * 100.0 / (12.0 * s.draft)) < 1e-9;
+  #assert abs(s.gm_t - (s.draft / 2 + s.bm_t - 21.87)) < 1e-9 && s.heel == 0 && s.trim == 0;
+  #assert abs(s.freeboard - (50 - s.draft)) < 1e-9;
+}
+#test "a weight off centre heels and trims the barge, and too high a weight capsizes it" {
+  r := [4] f64.[-50, -25, 50, 25];
+  p := afloat_plane(r[..], 1);
+  w := AfloatLoad.{mass = 46250.0e3, gy = 21.87, gz = 0.5, gx = 2.0, depth = 50};
+  s := afloat_statics(p, w, r[..], 1);
+  #assert s.state == AFLOAT_OK && abs(sin(s.heel) / cos(s.heel) - 0.5 / s.gm_t) < 1e-9 && abs(sin(s.trim) / cos(s.trim) - 2.0 / s.gm_l) < 1e-9;
+  #assert s.deepest > s.draft && abs(afloat_draft_at(s, 50, 25) - s.deepest) < 1e-9;
+  w.gy = 40; #assert afloat_statics(p, w, r[..], 1).state == AFLOAT_CAPSIZES;
+  w.gy = 21.87; w.mass = 260000.0e3; #assert afloat_statics(p, w, r[..], 1).state == AFLOAT_SINKS;
+  // a slack tank the width of the hull takes all the form stability away
+  w.mass = 46250.0e3; w.free_t = 1025.0 * 100.0 * 50.0 * 50.0 * 50.0 / 12.0;
+  #assert afloat_statics(p, w, r[..], 1).state == AFLOAT_CAPSIZES;
+}
+#test "two rectangles side by side float as the one rectangle they make, and an L heels about its own axis" {
+  one := [4] f64.[0, 0, 200, 50]; two := [8] f64.[0, 0, 100, 50, 100, 0, 200, 50];
+  w := AfloatLoad.{mass = 92500.0e3, gx = 100, gy = 21.87, gz = 25, depth = 50};
+  a := afloat_statics(afloat_plane(one[..], 1), w, one[..], 1); b := afloat_statics(afloat_plane(two[..], 2), w, two[..], 2);
+  #assert a.state == AFLOAT_OK && abs(a.draft - b.draft) < 1e-9 && abs(a.gm_t - b.gm_t) < 1e-6 && abs(a.gm_l - b.gm_l) < 1e-6;
+  ell := [8] f64.[0, 0, 200, 50, 0, 50, 100, 100];
+  p := afloat_plane(ell[..], 2);
+  wl := AfloatLoad.{mass = 138750.0e3, gx = p.mx / p.area + 1.0, gy = 21.87, gz = p.mz / p.area, depth = 50};
+  l := afloat_statics(p, wl, ell[..], 2);
+  #assert l.state == AFLOAT_OK && l.trim > 0 && l.heel != 0;   // a push along x also heels an L
+}
+#test "the sea's trains carry its significant height and obey the dispersion relation" {
+  s := afloat_sea(2.0, 6.2, 0.3, 40, 7, 1);
+  m0 := 0.0; for i: 0..<s.n { m0 += s.amp[i] * s.amp[i] * 0.5; }
+  #assert abs(4.0 * sqrt(m0) - 2.0) < 1e-9;
+  for i: 0..<s.n { #assert abs(AFLOAT_G * s.k[i] * afloat_tanh(s.k[i] * 40) - s.omega[i] * s.omega[i]) < 1e-9; }
+  // shallow water shortens a wave: a 12 s wave is 225 m long in deep water and near 143 m in 16.5 m
+  #assert abs(TAU_D / afloat_wave_number(TAU_D / 12.0, 0) - 224.8) < 0.5;
+  #assert abs(TAU_D / afloat_wave_number(TAU_D / 12.0, 16.5) - 143.0) < 3.0;
+  // the same seed and stream give the same sea, bit for bit; another stream another sea
+  t := afloat_sea(2.0, 6.2, 0.3, 40, 7, 1); u := afloat_sea(2.0, 6.2, 0.3, 40, 7, 2);
+  #assert afloat_eta(s, 31, -12, 100) == afloat_eta(t, 31, -12, 100) && afloat_eta(s, 31, -12, 100) != afloat_eta(u, 31, -12, 100);
+}
+#test "the stepped body settles onto the closed-form response" {
+  r := [4] f64.[-50, -25, 50, 25];
+  p := afloat_plane(r[..], 1); w := AfloatLoad.{mass = 46250.0e3, gy = 21.87, depth = 50};
+  st := afloat_statics(p, w, r[..], 1);
+  sea := afloat_sea(1.5, 7.0, 0.6, 40, 3, 9);
+  rao := afloat_rao(r[..], 1, st, w, sea, 0);
+  s: AfloatState; worst := 0.0; size := 0.0;
+  for i: 0..<12000 {
+    s = afloat_step(s, r[..], 1, st, w, sea, 10, -4, 0.05);
+    if i > 9000 {
+      m := afloat_motion(rao, sea, 10, -4, s.time);
+      worst = fmax(worst, abs(m.heave - s.heave)); worst = fmax(worst, 25.0 * abs(m.roll - s.roll)); worst = fmax(worst, 50.0 * abs(m.pitch - s.pitch));
+      size = fmax(size, abs(m.heave));
+    }
+  }
+  #assert size > 0.02 && worst < 0.1 * size + 0.01;
+}
+#test "a big hull averages a short sea away and a small one rides it" {
+  small := [4] f64.[-50, -25, 50, 25]; big := [4] f64.[-500, -300, 500, 300];
+  sea := afloat_sea(1.5, 5.4, 0.4, 40, 11, 2);
+  ws := AfloatLoad.{mass = 46250.0e3, gy = 21.87, depth = 50};
+  ss := afloat_statics(afloat_plane(small[..], 1), ws, small[..], 1);
+  wb := AfloatLoad.{mass = 15375.0e6, gy = 25, depth = 50};
+  sb := afloat_statics(afloat_plane(big[..], 1), wb, big[..], 1);
+  // the world's hull: 25 m draft, GM 1,187.5 and 3,320.8 m, a 14.2 s heave period (slab-world-spec.md 3.1)
+  #assert abs(sb.draft - 25) < 1e-9 && abs(sb.gm_t - 1187.5) < 0.01 && abs(sb.gm_l - 3320.83) < 0.01;
+  rs := afloat_rao(small[..], 1, ss, ws, sea, 0); rb := afloat_rao(big[..], 1, sb, wb, sea, 0);
+  #assert abs(rb.heave_period - 14.2) < 0.1;
+  #assert abs(rb.roll_period / sqrt(1.0 + AFLOAT_CA_ROT) - 12.2) < 0.1 && abs(rb.pitch_period / sqrt(1.0 + AFLOAT_CA_ROT) - 10.1) < 0.1;
+  a := afloat_point_motion(rs, ss, sea, 50, 25); b := afloat_point_motion(rb, sb, sea, 500, 300);
+  #assert b < 0.05 && a > 4.0 * b;
+  // two bodies far apart move against each other; a body does not move against itself
+  #assert afloat_relative_motion(rs, ss, 50, 0, 0, 0, rs, ss, 50, 0, 0, 0, sea) < 1e-9;
+  #assert afloat_relative_motion(rs, ss, 50, 0, 0, 0, rb, sb, -500, 0, 550, 0, sea) > 0.5 * a;
+}
+#test "the elastic catenary agrees with the rope module's catenary and stiffens when taut" {
+  wire := AfloatLine.{length = 800, weight = 196, ea = 1.0e12, mbl = 3.0e6};   // near inextensible
+  for i: 0..<5 {
+    span := 500.0 + 60.0 * cast(f64) i;
+    h := afloat_line_tension(wire, span);
+    a := pbd_catenary_a(span * 0.5, 800);
+    #assert abs(h - 196.0 * a) < 1e-4 * h;
+    #assert abs(afloat_line_sag(wire, h) + pbd_catenary_y(a, span * 0.5, 0)) < 1e-3;
+  }
+  real := AfloatLine.{length = 800, weight = 196, ea = 2.7e8, mbl = 3.0e6};
+  #assert abs(afloat_line_span(real, afloat_line_tension(real, 799)) - 799) < 1e-6;
+  // a metre of stretch on a taut 800 m wire is EA / s more tension
+  h0 := afloat_line_tension(real, 802); h1 := afloat_line_tension(real, 803);
+  #assert h1 - h0 > 0.5 * 2.7e8 / 800 && h1 - h0 < 1.05 * 2.7e8 / 800;
+  #assert afloat_line_end_tension(real, 1.0e6) > 1.0e6 && afloat_line_sag(real, 1.0e6) > 15 && afloat_line_sag(real, 1.0e6) < 16;
+}
+#test "a mooring chain lifts off the seabed as the hull moves away" {
+  chain := AfloatLine.{length = 600, weight = 2600, ea = 1.2e9, mbl = 1.2e7};
+  near := afloat_chain(chain, 30, 560); far := afloat_chain(chain, 30, 596);
+  #assert near.tension < far.tension && near.lifted < far.lifted && !near.uplift;
+  #assert abs(afloat_chain_reach(chain, 30, far.tension) - 596) < 1e-5;
+  // the hung length is sqrt(h (h + 2 H / w))
+  #assert abs(far.lifted - sqrt(30.0 * (30.0 + 2.0 * far.tension / 2600.0))) < 1e-9;
+  #assert afloat_chain(chain, 30, 640).uplift;
+}
+#test "a fender's energy is the area under its load" {
+  e := 0.0; for i: 0..<1000 { e += afloat_fender((cast(f64) i + 0.5) * 0.001, 4.0e6, 1.5) * 0.001; }
+  #assert abs(e - afloat_fender_energy(1.0, 4.0e6, 1.5)) < 1e-3 * e;
+  #assert abs(afloat_fender_deflection(afloat_fender_energy(0.7, 4.0e6, 1.5), 4.0e6, 1.5) - 0.7) < 1e-9;
+}
+afloat_test_tow :: (wind: f64, hs: f64, depth: f64, width: f64, steps: int, stern: f64, mbl: f64) -> AfloatTow {
+  hull := AfloatHull.{length = 100, beam = 50, draft = 9.02, height = 50, mass = 46250.0e3};
+  tugs := AfloatTugs.{lead = 2, pull = 150.0 * 9810.0, free_speed = 6.5, side = stern};
+  line := AfloatLine.{length = 300, weight = 196, ea = 2.7e8, mbl = mbl};
+  w := AfloatWeather.{hs = hs, tp = afloat_peak_period(hs), wave_dir = 2.4, wind = wind, wind_dir = 2.0, current = 0.3, current_dir = 1.57, depth = depth, width = width};
+  s := AfloatTow.{yaw = 0};
+  for i: 0..<steps { s = afloat_tow_step(s, hull, tugs, line, w, 0, 0, 20000, 0, 2.0, 9.02, 0.1, 10); }
+  return s;
+}
+#test "a wave's surge adds a snatch load to a towline, more on a short line; a tow's settled speed balances pull and drag" {
+  short := AfloatLine.{length = 250, weight = 200, ea = 2.7e8, mbl = 2.94e6};
+  long := AfloatLine.{length = 600, weight = 200, ea = 2.7e8, mbl = 2.94e6};
+  #assert abs(afloat_line_peak(short, 0.6e6, 0) - 0.6e6) < 1.0;
+  a := afloat_line_peak(short, 0.6e6, 1.0); b := afloat_line_peak(long, 0.6e6, 1.0);
+  #assert a > 0.7e6 && b > 0.6e6 && a > b;
+  #assert afloat_line_peak(short, 0.6e6, 4.0) > short.mbl;      // four metres of surge parts the short line
+  hull := AfloatHull.{length = 100, beam = 50, draft = 11.5, height = 50, mass = 58.9e6};
+  tugs := AfloatTugs.{lead = 2, pull = 150.0 * 9810.0, free_speed = 6.5};
+  v := afloat_tow_speed(hull, tugs, 0.5, 0.2, 5, 0);
+  #assert v > 1.5 && v < 3.5;
+  #assert abs(afloat_tug_pull(tugs, v, 0.5) - afloat_holding_force(hull, 0.5, 0.2, 5, v)) < 1.0e3;
+  #assert afloat_tow_speed(hull, tugs, 0.5, 0.2, 5, 0.5) < v && afloat_tow_speed(hull, tugs, 9.0, 0.03, 45, 0) == 0;
+}
+#test "a tow reaches the speed where the tugs' pull meets the drag, and holds the channel" {
+  s := afloat_test_tow(8, 0.3, 16.5, 162, 360, 80.0 * 9810.0, 3.0e6);
+  #assert s.state == AFLOAT_TOW_OK;
+  made := s.u;
+  #assert abs(made - 2.0) < 0.15 && abs(s.sheer) < 0.1 && abs(s.off_track) < 30;
+  // the two lines share the drag at that speed plus the wind and the waves: 0.25 to 1 MN each here
+  #assert s.tension > 0.25e6 && s.tension < 1.0e6 && s.sag > 0.5 && s.sag < 16.5 - 9.02;
+  #assert abs(s.under_keel - (16.5 - 9.02 - 0.1 - 0.01 * 9.02 * made)) < 0.05 && s.bank > 10;
+  // the same code twice gives the same bits
+  t := afloat_test_tow(8, 0.3, 16.5, 162, 360, 80.0 * 9810.0, 3.0e6);
+  #assert t.x == s.x && t.z == s.z && t.yaw == s.yaw && t.tension == s.tension;
+}
+#test "a tow with no escort tugs in a beam wind leaves the channel, a deep one grounds, a weak line parts" {
+  #assert afloat_test_tow(24, 0.5, 16.5, 162, 720, 0, 3.0e6).state == AFLOAT_TOW_BANK;
+  #assert afloat_test_tow(8, 0.3, 9.1, 162, 60, 80.0 * 9810.0, 3.0e6).state == AFLOAT_TOW_AGROUND;
+  #assert afloat_test_tow(8, 0.3, 16.5, 162, 360, 80.0 * 9810.0, 0.3e6).state == AFLOAT_TOW_PARTED;
+}
+#test "a uniform barge has no still-water bending and a wave its own length bends it most" {
+  weight: [101] f64; width: [101] f64; m: [101] f64;
+  for i: 0..<101 { width[i] = 50; weight[i] = AFLOAT_RHO * AFLOAT_G * 50.0 * 9.0; }
+  #assert afloat_bending(weight[..], width[..], 101, 10, 0, 0, 0, 9, m[..]) < 1.0;
+  // a wave as long as the barge, crest amidships: rho g B a L^2 / (2 pi^2), less the end effects
+  long := afloat_bending_worst(weight[..], width[..], 101, 10, 1.0, 1000, 9, m[..]);
+  want := AFLOAT_RHO * AFLOAT_G * 50.0 * 1.0 * 1000.0 * 1000.0 / (2.0 * PI_D * PI_D) * exp(-TAU_D / 1000.0 * 4.5);
+  #assert abs(long - want) < 0.05 * want;
+  short := afloat_bending_worst(weight[..], width[..], 101, 10, 1.0, 100, 9, m[..]);
+  #assert short < 0.05 * long;
+  // a heavy middle sags it in still water: w L^2 / 8 for the part the uniform buoyancy does not carry
+  for i: 40..<61 { weight[i] *= 1.5; }
+  #assert afloat_bending(weight[..], width[..], 101, 10, 0, 0, 0, 9, m[..]) > 1.0e9;
+}
