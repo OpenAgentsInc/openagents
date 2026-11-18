@@ -251,8 +251,9 @@ Unset, the default, means there are none and every rule is as before.
   ([gamebuilder-agent-v1](../protocol/gamebuilder-agent-v1.md)). On any other route it is
   `403 Not from this site.`, before the route runs.
 - The account chat (`POST /api/chat/complete/v1`) answers there by its own
-  rules, the same as on our site: a person's session (401 without), the
-  team's funding (403 without), a body `act_read` accepts (at most 65,536
+  rules: a person's session (401 without), any person's own account when
+  asked from the listed site (on our own site, the team's funding, 403
+  without), a body `act_read` accepts (at most 65,536
   bytes, 32 messages, 48,000 bytes of text; 400 otherwise) and
   `inference.c`'s daily quotas, counted to the account. No other chat route
   is reached: not the world, delegated or project turns, not the saved
@@ -335,7 +336,7 @@ refused):
 | `POST /api/chat/complete/v1` | The account chat's answer. Stores nothing; counts against the account's free daily inference quota |
 | `POST /api/chat/world/complete/v1` | The same chat as a typed world turn. Stores nothing, grants no write; the same quota |
 | `POST /api/chat/delegated/complete/v1` | The same chat with a routing note. Starts nothing, stores nothing; the same quota |
-| `POST /api/gamebuilder/agents/v1` | A GameBuilder build agent: one durable text turn in the account's own chat, no tools, the same free key and quota. The durable submit admits a limited session only on this path |
+| `POST /api/gamebuilder/agents/v1` | A GameBuilder build agent: one durable text turn in the account's own chat, no tools, the same free key and quota, for any person's own account. The durable submit admits a limited session only on this path |
 
 Someone who took over the inbox of such an account can use up that day's
 free quota (`OA_INFERENCE_DAILY_REQUESTS`, `OA_INFERENCE_DAILY_USD_MICROS`)

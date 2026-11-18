@@ -55,6 +55,10 @@ new turn requires the latest conversation revision and preserves its Project
 association. The initial funded team beta admits at most 32 queued/running
 turns per account, one per conversation, with complete history limited to 128
 messages / 131,072 decoded bytes and selected Project context to 32,768 bytes.
+A turn started as a GameBuilder build agent
+([gamebuilder-agent-v1](gamebuilder-agent-v1.md)) is stored as admitted for
+one (`admitted_for`) and is any person's own account's; every other turn is
+the team beta's.
 The fixed automatic initial model has a 2,048 output-token request cap. Later
 capability/routing work belongs to #13622.
 

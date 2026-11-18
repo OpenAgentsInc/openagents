@@ -36,6 +36,19 @@ act_bind :: (kind:int,session:bool,account:string,previous:string,found:bool,lim
   // the team's funding is what it was, whatever the site or the route
   #assert act_funded_from(2,"a",true,false,false) && act_funded_from(2,"a",true,false,true) && act_funded_from(2,"a",true,true,false) && act_funded_from(2,"a",true,true,true);
 }
+// A GameBuilder build agent is for every account (owner, 2026-11-17; INVARIANTS.md "A GameBuilder build agent is
+// any person's own account's"): a durable turn started through POST /api/gamebuilder/agents/v1 is stored with what
+// it was admitted for (chat.turns_v2.admitted_for, migration 0214), and that stored word, never a guess, is what
+// funds it again when the hosted runner takes it up, where no route or Origin is known. Every other durable turn
+// ('' there) keeps the team's funding.
+ACT_FOR_GAMEBUILDER_AGENT :: "gamebuilder-agent";
+#test "a durable turn admitted for a GameBuilder build agent is funded for a person's own account; any other turn is the team's" {
+  #assert act_funded_turn(2,"a",false,"gamebuilder-agent") && act_funded_turn(2,"a",true,"gamebuilder-agent") && act_funded_turn(2,"a",true,"");
+  #assert !act_funded_turn(2,"a",false,"") && !act_funded_turn(2,"a",false,"gamebuilder") && !act_funded_turn(2,"a",false,"gamebuilder-agent ") && !act_funded_turn(2,"a",false,"Gamebuilder-agent") && !act_funded_turn(2,"a",false,"team");
+  #assert !act_funded_turn(2,"",false,"gamebuilder-agent") && !act_funded_turn(2,"",true,"gamebuilder-agent") && !act_funded_turn(2,"",true,"");
+  for k:0..<6 {if k!=2 {#assert !act_funded_turn(k,"a",false,"gamebuilder-agent") && !act_funded_turn(k,"a",true,"gamebuilder-agent") && !act_funded_turn(k,"a",true,"");}}
+  #assert act_turn_for("gamebuilder-agent") && act_turn_for("") && !act_turn_for("gamebuilder") && !act_turn_for("team") && !act_turn_for(" ");
+}
 #test "save bounds and compare-and-swap revisions" {
   #assert act_save(0,0,1,1) && act_save(7,7,32,48000);
   #assert !act_save(0,1,1,1) && !act_save(-1,-1,1,1);
@@ -45,4 +58,7 @@ act_bind :: (kind:int,session:bool,account:string,previous:string,found:bool,lim
 act_owns :: (kind:int,account:string,owner:string)->bool #export_c #effects(all) {return kind==2 && account.count>0 && account==owner;}
 act_funded :: (kind:int,account:string,team:bool)->bool #export_c #effects(all) {return kind==2 && account.count>0 && team;}
 act_funded_from :: (kind:int,account:string,team:bool,listed:bool,plain:bool)->bool #export_c #effects(all) {return kind==2 && account.count>0 && (team || (listed && plain));}
+act_funded_turn :: (kind:int,account:string,team:bool,admitted_for:string)->bool #export_c #effects(all) {return kind==2 && account.count>0 && (team || admitted_for==ACT_FOR_GAMEBUILDER_AGENT);}
+// What a durable turn may be stored as admitted for: nothing, or a GameBuilder build agent.
+act_turn_for :: (admitted_for:string)->bool #export_c #effects(all) {return admitted_for.count==0 || admitted_for==ACT_FOR_GAMEBUILDER_AGENT;}
 act_save :: (revision:int,current:int,messages:int,bytes:int)->bool #export_c #effects(all) {return revision>=0 && revision==current && messages>=1 && messages<=32 && bytes>=1 && bytes<=48000;}

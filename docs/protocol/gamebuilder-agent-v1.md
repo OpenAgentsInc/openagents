@@ -29,14 +29,18 @@ bytes; `job` 1–1,200; `brief` 1–14,000. `gba_submit`
 conversation whose first block names the game and the job and says the agent
 has no tools, and whose second is the brief. Anything else is 400.
 
-Admission is the durable turn's: a person's session, the team beta's funding
-(`act_funded`, 403 otherwise), at most 32 active turns an account, the fixed
-model's 2,048 output-token cap, and `inference.c`'s free key and daily quotas.
-Nothing is charged. The site's chat (`POST /api/chat/complete/v1` from
-`gamebuilder.org`) is for every account since 2026-11-17 (`act_funded_from`);
-a build agent is not yet: its turn is admitted again when the hosted runner
-takes it up (`ctw_grant`), where no `Origin` is known, so an account off the
-team beta is told 403 at the start. A limited session (an email login on an account with a key
+Admission: any logged-in person's own account, on the team beta or not
+(since 2026-11-17; `act_funded_turn`, `account-chat-policy.coax`). Nobody
+logged in is 401. The limits are the durable turn's: at most 32 queued or
+running turns an account (429, in words with the number), the fixed model's
+2,048 output-token cap, and `inference.c`'s free key and daily quotas (500
+requests and $2.00 an account a day). Nothing is charged. The turn is stored
+as admitted for a build agent (`chat.turns_v2.admitted_for =
+'gamebuilder-agent'`, migration 0214), and that stored word is what admits it
+again when the hosted runner takes it up (`ctw_grant`), where no route or
+`Origin` is known. Every other durable turn keeps the team beta's funding
+(INVARIANTS.md, "A GameBuilder build agent is any person's own account's").
+A limited session (an email login on an account with a key
 or passkey) may start one: `ap_limited_write` names this path, and the durable
 submit honours it only on this path (INVARIANTS.md, "A limited session writes
 only the account chat's stateless completions and a build agent"). A POST

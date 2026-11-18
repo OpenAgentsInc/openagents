@@ -233,11 +233,42 @@ dc_gamebuilder_checks :: (t:[]Ap,auth:string,stranger:string) {
  st=dc_stop(t,auth,"gb_stop",turn);ap_check(t,"a queued build agent stops without a model call",st==200 && ctr_control_read(ap_body(t),control[..],arena[..]) && control[0].state==CT_CANCELLED,ap_body(t));
  st=dc_get(t,auth,"/api/gamebuilder/agent/events/v1",turn,0);ap_check(t,"its events replay through its own route",st==200 && ap_has(ap_body(t),"\"type\":\"cancelled\""),ap_body(t));
 }
+// A build agent is any person's own account's (GameBuilder issue 15; account-chat-policy.coax act_funded_turn):
+// an account off the team starts one, the turn says what it was admitted for, and the runner's dispatch reads
+// that from the turn. A turn that does not say so is the team's at dispatch, as every other durable turn is.
+// The model is never asked here: the claim is expired before the run, so a granted turn answers "Claim expired
+// before dispatch." (409, the turn untouched) and a turn that is not granted is ended with the admission error.
+dc_open_agent_checks :: (t:[]Ap,auth:string,account:string) {
+ ok:=false;out:[256]u8;q:[1]Sb;arena:[72]u8;control:[1]CtControl;j:[1]CtJob;ja:[108]u8;
+ sb(q[..],"SELECT team::text FROM auth.accounts WHERE id='");sb(q[..],account);sb(q[..],"'");ap_check(t,"that account is not on the team",ap_sql(t,sb_text(q[..]),out[..])=="false","");
+ ap_check(t,"off the team, a durable chat turn keeps the team's refusal",dc_post(t,auth,"open-unfunded","",0,"",-1,"Hello")==403,ap_body(t));
+ ap_check(t,"a guest starts no build agent",ac_call(t,"POST","/api/gamebuilder/agents/v1","{}","","","")==401,ap_body(t));
+ for pass:0..<2 {
+  // pass 0: the turn as stored. pass 1: the same start with its stored word taken away, as any other durable turn is stored.
+  start:=ifx pass==0 then "{\"schema\":\"gamebuilder.agent.start.v1\",\"operation_id\":\"gb_open_0\",\"game\":\"gamebuilder.org world\",\"job\":\"a castle\",\"brief\":\"world now: blocks: none\"}" else "{\"schema\":\"gamebuilder.agent.start.v1\",\"operation_id\":\"gb_open_1\",\"game\":\"gamebuilder.org world\",\"job\":\"a castle\",\"brief\":\"world now: blocks: none\"}";
+  st:=ac_call(t,"POST","/api/gamebuilder/agents/v1",start,auth,"","");ok=st==202 && ctr_control_read(ap_body(t),control[..],arena[..]) && control[0].state==CT_QUEUED;
+  ap_check(t,ifx pass==0 then "off the team, a build agent starts as one queued durable turn" else "off the team, a second build agent starts",ok,ap_body(t));if !ok {return;}
+  id:[36]u8;_=js_copy(id[..],control[0].turn);turn:=cast(string)id[..];
+  sb_clear(q[..]);sb(q[..],"SELECT admitted_for FROM chat.turns_v2 WHERE id='");sb(q[..],turn);sb(q[..],"'");
+  if pass==0 {ap_check(t,"the turn itself says it was admitted for a build agent",ap_sql(t,sb_text(q[..]),out[..])=="gamebuilder-agent","");}
+  else {sb_clear(q[..]);sb(q[..],"UPDATE chat.turns_v2 SET admitted_for='' WHERE id='");sb(q[..],turn);sb(q[..],"'");ap_do(t,sb_text(q[..]));}
+  fence:[36]u8;st=dc_signed(t,1,ifx pass==0 then "gb-open-claim-0" else "gb-open-claim-1","gb-open-worker","","",ifx pass==0 then "gb-open-claim-0" else "gb-open-claim-1");
+  ok=st==200 && cwr_job_read(ap_body(t),j[..],ja[..]) && j[0].has_work && j[0].turn==turn;if ok {_=js_copy(fence[..],j[0].dispatch);}
+  ap_check(t,"the runner claims the build agent's turn",ok,ap_body(t));if !ok {return;}
+  sb_clear(q[..]);sb(q[..],"UPDATE chat.turns_v2 SET claim_until_ms=(extract(epoch FROM clock_timestamp())*1000)::bigint-1 WHERE id='");sb(q[..],turn);sb(q[..],"'");ap_do(t,sb_text(q[..]));
+  st=dc_signed(t,2,ifx pass==0 then "gb-open-run-0" else "gb-open-run-1","gb-open-worker",turn,cast(string)fence[..],ifx pass==0 then "gb-open-run-0" else "gb-open-run-1");expired:=st==409 && ap_has(ap_body(t),"Claim expired before dispatch.");
+  sb_clear(q[..]);sb(q[..],"SELECT (dispatched_ms IS NOT NULL)::text||'|'||state::text||'|'||error FROM chat.turns_v2 WHERE id='");sb(q[..],turn);sb(q[..],"'");facts:=ap_sql(t,sb_text(q[..]),out[..]);
+  if pass==0 {ap_check(t,"off the team, the runner's dispatch grants the turn stored as a build agent's: only its expired claim holds it",expired && facts=="false|1|",facts);}
+  else {ap_check(t,"off the team, a turn not stored as a build agent's is ended at dispatch by the admission rule, never started",!expired && ac_find(facts,"false|")==0 && ap_has(facts,"Account admission changed before dispatch"),facts);}
+  _=dc_stop(t,auth,ifx pass==0 then "gb-open-stop-0" else "gb-open-stop-1",turn);
+ }
+}
 dc_checks :: (t:[]Ap,mail:string) {
  authb:[512]u8;otherb:[512]u8;accountb:[80]u8;otheraccount:[80]u8;arena:[72]u8;control:[1]CtControl;
  ok:=ac_person_login(t,mail,"durablechat@example.com","203.0.113.131",authb[..],accountb[..]) && ac_person_login(t,mail,"durablestranger@example.com","203.0.113.132",otherb[..],otheraccount[..]);ap_check(t,"durable chat uses verified independent account logins",ok,"");if !ok {return;}auth:=dc_z(authb[..]);stranger:=dc_z(otherb[..]);account:=dc_z(accountb[..]);
  ap_check(t,"durable conversation index requires an account",dc_get(t,"","/api/chat/conversations/v2alpha1","",0)==401,ap_body(t));
  ap_check(t,"durable submission retains the existing funded beta gate",dc_post(t,auth,"unfunded","",0,"",-1,"Hello")==403,ap_body(t));
+ dc_open_agent_checks(t,stranger,dc_z(otheraccount[..]));
  q:[1]Sb;sb(q[..],"UPDATE auth.accounts SET team=true WHERE id IN ('");sb(q[..],account);sb(q[..],"','");sb(q[..],dc_z(otheraccount[..]));sb(q[..],"')");ap_do(t,sb_text(q[..]));
  dc_gamebuilder_checks(t,auth,stranger);
  st:=dc_post(t,auth,"first","",0,"",-1,"First café");ok=st==202 && ctr_control_read(ap_body(t),control[..],arena[..]);ap_check(t,"submission saves one queued durable turn before responding",ok && control[0].state==CT_QUEUED && control[0].cursor==0 && control[0].revision==1,ap_body(t));if !ok {return;}

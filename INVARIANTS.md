@@ -934,7 +934,9 @@ account, on the team beta or not (`act_funded_from`,
 `coax/web/api/account-chat-policy.coax`, `#authority`, mutation-checked).
 Everywhere else the funding is the team's as before (`act_funded` or 403):
 this site's own page, an app or tool with no `Origin`, the world, delegated
-and project turns, the durable turns and so a GameBuilder build agent. What
+and project turns and the durable chat turns (a GameBuilder build agent has
+its own rule, the section "A GameBuilder build agent is any person's own
+account's"). What
 bounds an account there is what bounds the team: the free key (no credit,
 sats or wallet is read or charged), the account's own day
 (`OA_INFERENCE_DAILY_REQUESTS`, 500 requests, and
@@ -1061,6 +1063,54 @@ its only effect is text the page reads. It changes nothing the account owns
 beyond that conversation and nothing of how it logs in. The durable submit
 admits a limited session only where `ap_limited_write` names the request's own
 path, so `POST /api/chat/submit/v2alpha1` stays refused to it.
+
+## A GameBuilder build agent is any person's own account's
+
+`POST /api/gamebuilder/agents/v1` starts a build agent for any logged-in
+person's own account, on the team beta or not (owner, 2026-11-17, GameBuilder
+issue 15). Nobody logged in is 401; an agent, a guest or any other kind of
+principal is refused as before (`ctw_owns`). Every other durable turn
+(`POST /api/chat/submit/v2alpha1`, Project turns, native tasks started from
+them) keeps the team's funding, 403 without.
+
+A durable turn is admitted twice: at its start, and again when the hosted
+runner takes it up (`dispatch_turn`, `account-chat-turns.c`) and at each
+native effect (`native_guard`, `account-chat-tasks.c`), where no route and no
+`Origin` is known. So the turn itself says what it was admitted for:
+`chat.turns_v2.admitted_for` (migration 0214) is `'gamebuilder-agent'` only
+when the turn was started through the build agent's route, which writes that
+word itself (`gamebuilder-agents.c`); it is `''` for every other turn and for
+every turn stored before, and the column's check allows nothing else. Both
+admissions ask the same decision with the stored word:
+`act_funded_turn(kind, account, team, admitted_for)`
+(`coax/web/api/account-chat-policy.coax`, `#authority`, mutation-checked): a
+person's own account, and the team flag or that exact word. Nothing is
+guessed from the conversation, the input or the caller.
+
+What the word opens is one build agent turn and nothing else: its request is
+made by `gba_submit` (a new conversation, the game, the job and the brief
+within their sizes, no tools, no Project), so the conversation it makes cannot
+be continued by an account off the team (the continuing route is the team's).
+The limits are the durable turn's: at most 32 queued or running turns an
+account (`ctw_queue`; the 429 says the number), one model turn of at most
+2,048 output tokens, the free key (no credit, sats or wallet is read or
+charged), the account's own day (500 requests, $2.00; `inference.request`)
+and the start body's sizes (`gba_submit`). A frozen or deleted account is refused at both admissions
+(`ct_admit`, `ctw_grant`). The route has no `Origin` rule of its own beyond
+first-party (`auth_first_party`: none, this site's or a listed site's), so the
+command line and this site's own pages may start one for a person too: the
+rule is the route's, not gamebuilder.org's.
+
+Checks: `account-chat-policy.coax`'s `#test` (the exact word, a person's own
+account, the team unchanged); `coax/web/api/tests/durable_chat_checks.coax`
+`dc_open_agent_checks` (an account off the team: a durable chat turn is still
+403; a guest is 401; a build agent starts queued and its turn is stored as
+`gamebuilder-agent`; the runner's claim and dispatch admit it; the same start
+with the stored word taken away is ended at dispatch with "Account admission
+changed before dispatch" and never started) and `dc_gamebuilder_checks`. Not
+covered by the suite: the native-effect guard for a build agent's turn (a
+build agent has no tools, so it makes no native effect), and a real model
+answer for an account off the team in production.
 
 ## Anime words become directions only through the catalogue holder
 

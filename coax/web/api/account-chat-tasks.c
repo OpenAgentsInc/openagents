@@ -12,7 +12,7 @@ static bool native_guard(native_turn *n,bool write){
  PGconn *db=model_db(&n->m);if(!db||!exec_sql(db,"BEGIN",0,NULL))return false;
  PGresult *r=turn_row(db,n->m.account,n->m.turn,true);bool ok=model_matches(&n->m,r)&&number(r,0,3)==RUNNING&&nullable(r,0,26)>=(long long)api_now_ms();
  if(ok){n->stop=PQgetvalue(r,0,4)[0]=='t';if(write){const char *v[]={n->m.account,PQgetvalue(r,0,30)};PGresult *a=PQexecParams(db,"SELECT kind,team,frozen_at IS NOT NULL,deleted_at IS NOT NULL,($2='' OR EXISTS(SELECT 1 FROM projects.private_v1 WHERE account=$1 AND id=$2)) FROM auth.accounts WHERE id=$1",2,NULL,v,NULL,NULL,0);
-   ok=tuples(a)&&PQntuples(a)==1&&ctw_grant(act_funded(!strcmp(PQgetvalue(a,0,0),"person")?2:0,ts(n->m.account),PQgetvalue(a,0,1)[0]=='t'),PQgetvalue(a,0,2)[0]=='t',PQgetvalue(a,0,3)[0]=='t',PQgetvalue(a,0,4)[0]=='t');PQclear(a);}}
+   ok=tuples(a)&&PQntuples(a)==1&&ctw_grant(act_funded_turn(!strcmp(PQgetvalue(a,0,0),"person")?2:0,ts(n->m.account),PQgetvalue(a,0,1)[0]=='t',ts(PQgetvalue(r,0,31))),PQgetvalue(a,0,2)[0]=='t',PQgetvalue(a,0,3)[0]=='t',PQgetvalue(a,0,4)[0]=='t');PQclear(a);}}
  if(ok){char now[32],until[32];long long ms=(long long)api_now_ms();num(now,ms);num(until,ctw_claim_end(ms));const char *v[]={n->m.account,n->m.turn,n->m.dispatch,now,until};ok=exec_sql(db,"UPDATE chat.turns_v2 SET heartbeat_ms=$4::bigint,claim_until_ms=$5::bigint WHERE account=$1 AND id=$2 AND dispatch=$3",5,v);}
  PQclear(r);if(ok&&exec_sql(db,"COMMIT",0,NULL))return true;exec_sql(db,"ROLLBACK",0,NULL);return false;
 }

@@ -16,7 +16,8 @@ bool gamebuilder_agents_route(const request *q){
  unsigned char *body=calloc(1,131073);if(!body){refuse(q,503,"Memory unavailable.");return true;}
  int64_t n=gba_submit(tn(q->body,(int64_t)q->body_len),tb(body,131072));
  if(n<1){free(body);refuse(q,400,"Invalid build agent request.");return true;}
- // The submit path keeps this route's own path, so its operation receipts and its limited-session
+ // A build agent is any person's own account's (act_funded_turn): the turn is stored as admitted for one,
+ // and the hosted runner's dispatch reads that from the turn. The submit path keeps this route's own path, so its operation receipts and its limited-session
  // rule (ap_limited_write) are this route's, never /api/chat/submit/v2alpha1's.
- request next=*q;next.body=(const char *)body;next.body_len=(size_t)n;submit(&next,db,p);free(body);return true;
+ request next=*q;next.body=(const char *)body;next.body_len=(size_t)n;submit(&next,db,p,"gamebuilder-agent");free(body);return true;
 }

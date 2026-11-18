@@ -21034,7 +21034,9 @@ CREATE TABLE chat.turns_v2 (
     heartbeat_ms bigint,
     created_ms bigint NOT NULL,
     updated_ms bigint NOT NULL,
-    native_input_json text
+    native_input_json text,
+    admitted_for text DEFAULT ''::text NOT NULL,
+    CONSTRAINT turns_v2_admitted_for_check CHECK ((admitted_for = ANY (ARRAY[''::text, 'gamebuilder-agent'::text])))
 );
 
 
