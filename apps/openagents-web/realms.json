@@ -248,7 +248,7 @@
     { "id": "slab", "name": "SLAB SIMULATION", "kind": "open", "listed": false, "orbit": { "r": 0.5, "a": 3.6, "size": 0.02 },
       "realm": {
         "slug": "slab",
-        "style": "painterly",
+        "style": "photoreal",
         "clock": "fixed:0.5",
         "title": "SLAB Simulation",
         "description": "A reconstruction of SLAB, the floating platform for industry that Palmer Luckey proposed: a kilometre of concrete carrying a city on open ocean. Walk it, cut it open and watch it built.",

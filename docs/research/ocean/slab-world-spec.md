@@ -77,7 +77,7 @@ hand. `bun coax/web/realms.ts --check` must pass.
     "description": "A reconstruction of SLAB, the floating platform for industry that Palmer Luckey proposed: a kilometre of concrete carrying a city on open ocean. Walk it, cut it open and watch it built.",
     "share": "Walk a reconstruction of SLAB, the floating platform for industry Palmer Luckey proposed.",
     "alt": "A kilometre-long concrete platform carrying a city and industrial stacks on open ocean",
-    "style": "painterly", "clock": "fixed:0.5", "module": "slab", "slot": "slab",
+    "style": "photoreal", "clock": "fixed:0.5", "module": "slab", "slot": "slab",
     "golden": { "lit": 0.3, "settle": 3000, "blocks": 6 }, "assets": [] } }
 ```
 

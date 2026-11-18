@@ -29,6 +29,44 @@ slab_photo_first :: (o:V3,d:V3,u:[]f32)->SlabHit {
   }
   return slab_scene(o,d,false,SLAB_MISS,u);
 }
+// What the traced platform shows under the physical sky, as the display shows it before the air:
+// its paint under the sun, the platform's own shadow traced, and the sky's light. The section and
+// the view from under the sea draw the platform this way, and so does whoever walks the deck.
+slab_photo_lit :: (hit:SlabHit,o:V3,d:V3,u:[]f32)->V3 {
+  b:int=SLAB_PHOTO;
+  w:V3=sb_add(o,sb_mul(d,hit.t));
+  pt:SlabPaint=slab_paint(hit,w,d,u);
+  nw:V3=sb_dir_to_world(hit.n,u);
+  sun:V3=pr_at3(u,b+PR_SUN);
+  ndl:f32=fmax(dot3(nw,sun),0.0f32);
+  if ((ndl>0.0f32)&&(u[5]<0.5f32)&&(hit.kind<39.0f32)&&(sun.y>-0.02f32)) {
+    s:SlabHit=slab_scene(sb_add(w,sb_mul(hit.n,0.08f32)),sb_dir_to_hull(sun,u),true,900.0f32,u);
+    if (s.t<900.0f32) {ndl=0.0f32;}
+  }
+  // a little less of the sky where a wall meets the deck
+  occ:f32=ifx ((abs(hit.n.y)<0.5f32)&&(hit.kind>=0.5f32)) then 0.72f32+(0.28f32*smoothstep(0.0f32,6.0f32,w.y-u[38])) else 1.0f32;
+  light:V3=add3(scale3(pr_at3(u,b+PR_SUN_LIGHT),ndl),scale3(pr_sky_light(nw,u,b),occ));
+  c:V3=add3(pr_out(mul3(pr_decode(pt.c),light),u,b),pt.emit);
+  if (hit.id>-0.5f32) {
+    if (abs(hit.id-u[SLAB_P+36])<0.5f32) {
+      pulse:f32=0.5f32+(0.5f32*sin(u[SLAB_P+38]*5.0f32));
+      c=add3(scale3(c,1.1f32),scale3(v3(1.0f32,0.62f32,0.2f32),0.12f32+(0.12f32*pulse)));
+    } else if (abs(hit.id-u[SLAB_P+37])<0.5f32) {
+      c=add3(scale3(c,1.06f32),v3(0.06f32,0.05f32,0.03f32));
+    }
+  }
+  return c;
+}
+// ---- the sea's surface in the frame's light (gpu/slab-sea.coax slab_sea_top_*: what the open
+// sea, its foam and the hull's white water read when the realm draws photoreal)
+// The frame's light as the display shows it: exposure, film, white balance.
+slab_photo_show :: (c:V3,u:[]f32)->V3 {return pr_out(c,u,SLAB_PHOTO);}
+// The sun's light on a white card facing it, and the sky's on one facing up.
+slab_photo_sun :: (u:[]f32)->V3 {return pr_at3(u,SLAB_PHOTO+PR_SUN_LIGHT);}
+slab_photo_skylight :: (u:[]f32)->V3 {return pr_sky_light(v3(0.0f32,1.0f32,0.0f32),u,SLAB_PHOTO);}
+// The sky a sea mirrors along r: its air under the frame's cloud, without the sun's disc (the glint's).
+slab_photo_mirror_sky :: (r:V3,u:[]f32)->V3 {return pr_sky(r,u,SLAB_PHOTO);}
+
 // The physical sky along d as the display shows it: the air, the sun, cloud, and stars at night.
 slab_photo_sky :: (d:V3,u:[]f32)->V3 {
   b:int=SLAB_PHOTO;
@@ -45,7 +83,7 @@ slab_photo_sky :: (d:V3,u:[]f32)->V3 {
 slab_photo_haze :: (c:V3,d:V3,dist:f32,u:[]f32)->V3 {
   b:int=SLAB_PHOTO;
   t:f32=pr_air_through(dist,u[b+PR_EYE+1],d.y,u,b);
-  far:V3=pr_out(slab_sea_cloud_far(add3(pr_air_far(d,pr_at3(u,b+PR_SUN),u[b+PR_AIR_HAZE]),pr_night(u[b+PR_SUN+3])),u),u,b);   // (the weather's cloud: slab-sea.coax)
+  far:V3=pr_out(add3(pr_under_cloud(pr_air_far(d,pr_at3(u,b+PR_SUN),u[b+PR_AIR_HAZE]),u,b),pr_night(u[b+PR_SUN+3])),u,b);
   return mix3(c,far,1.0f32-t);
 }
 
@@ -144,11 +182,12 @@ slab_scene_fs :: (v:PrV,u:[]f32,materials:[]f32,field:[]f32,shadow_map:TexDepth,
     r:V3=reflect3(rd,n);
     mirrored=slab_photo_mirror(sb_add(wh,sb_mul(nh,0.15f32)),sb_dir_to_hull(r,u),mirrored,u);
   }
-  c:V3=pr_out(slab_sea_cloud_air(pr_air(pr_lit(s,toward,reach,open,mirrored,u,b),v.world,u,b),v.world,u),u,b);   // (the weather's cloud: slab-sea.coax)
+  c:V3=pr_out(pr_air(pr_lit(s,toward,reach,open,mirrored,u,b),v.world,u,b),u,b);
   // SLAB's own, over the display's colour: the stacks' smoke between the eye and the surface,
   // and a warm pulse on what is selected
   sm:V4=slab_smoke(sb_to_hull(eye,u),sb_dir_to_hull(rd,u),dist,u);
   c=mix3(c,v3(sm.x,sm.y,sm.z),sm.w);
+  c=slab_weather_air(c,v2(v.pos.x,v.pos.y),u);
   if (record>=0) {
     if (abs(cast(f32)(record)-u[SLAB_P+36])<0.5f32) {
       pulse:f32=0.5f32+(0.5f32*sin(u[SLAB_P+38]*5.0f32));

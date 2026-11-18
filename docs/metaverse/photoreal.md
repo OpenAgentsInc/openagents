@@ -1,8 +1,9 @@
 # The photoreal style
 
-Status: the drawing path is built (November 18) and SLAB is its first zone
-(`/worlds/slab?style=photoreal`). Materials for SLAB's concrete, glass and
-deck are the next step. The style's definition is in
+Status: the drawing path is built (November 18) and SLAB is its first zone:
+its realm record names `photoreal`, and `/worlds/slab?style=painterly`
+shows the older look. Materials for SLAB's concrete, glass and deck are the
+next step. The style's definition is in
 [art-styles.md](art-styles.md).
 
 This page says what the style is made of, how a realm draws with it, and
@@ -42,6 +43,15 @@ The parts themselves are made with the architecture kit's pen
   to ten times more light from the sun than from the whole sky
   (`PR_SUN_POWER`). Under a low sun in haze the two are about equal, so
   shadows are soft and cool.
+- **Cloud.** `PrSky.cover` draws the clouds, and thick cloud takes the sun:
+  none of it under a broken sky (a cover up to 0.45), 85% of it by 0.9. The
+  sky's light, the air's and the clouds' turn grey by the same share
+  (`pr_overcast`, `pr_under_cloud`). A realm whose weather knows how much
+  light comes through states it: `PrSky.sun_share` and `PrSky.sky_share`.
+  The camera opens up for a darker sky most of the way (`PR_ADAPT`, 0.7),
+  so a storm is darker on the display but not as dark as its light. SLAB
+  takes its cover, both shares and its air's thickness from the sea's
+  weather (`s[0].look.now`), so a gale is grey and dim.
 - **Shadows.** One shadow map follows the view (`pr_frame_light`). Its edge
   is softened over nine taps (four on a phone). A realm may answer for
   points beyond the map: SLAB traces its own plan there.
@@ -56,6 +66,10 @@ The parts themselves are made with the architecture kit's pen
   air is thick at sea level and thins with height.
 - **Film.** `pr_out` exposes the light, runs it through the engine's film
   response (`filmic.coax`) and encodes it for the display.
+- **White balance.** `PrSky.warm` is the camera's white balance: 0 leaves
+  light its own colour, 0.08 is a little warm (SLAB's setting under a clear
+  sky), and a grey keeps its brightness. It is held to 0.2 either way. Keep
+  it small: the golden hour comes from the sun and the haze.
 
 ### Shading
 
@@ -198,29 +212,78 @@ Limits: 16,384 records in all (`PHOTO_RECORDS`).
 ```
 coax/bin/coax test apps/openagents-web/slab.coax --only "photoreal"
 coax/remote/remote.sh run -- coax/web/wasm.sh apps/openagents-web/slab.coax apps/openagents-web/slab-face.c apps/openagents-web/build/slab.wasm
-coax/web/tool.sh shot "http://127.0.0.1:PORT/worlds/slab?t=20&hud=0&style=photoreal" out.png 1440x900 4000
+coax/web/tool.sh shot "http://127.0.0.1:PORT/worlds/slab?t=20&hud=0" out.png 1440x900 4000
 ```
 
 Look at it from the opening camera, at walking height (`&mode=walk`) and at
-390 × 844 (`&tier=phone`).
+390 × 844 (`&tier=phone`). `&style=painterly` shows the older look beside
+it.
+
+Two build traps:
+
+- **A shader change needs both WGSL files.** `slab-fx.wgsl` (the spray)
+  loads the sea's shader, which loads the photoreal one. After a change to
+  `gpu/slab.coax`, `gpu/slab-sea.coax`, `gpu/slab-photoreal.coax` or the
+  engine's `photoreal.coax`, regenerate every stale module and check:
+
+  ```
+  coax/web/tool.sh coax/web/wgsl-module.coax --site
+  coax/web/tool.sh coax/web/wgsl-module.coax --site --check
+  ```
+
+- **A black page with no error is a stale frame plan.** SLAB draws its
+  meshes and then its sea in one pass, which the host's frame plan has
+  known since November 18 (commit 08dd0c5f85). A worktree whose
+  `apps/openagents-web/build/frame-plan.wasm` is older draws SLAB black.
+  Rebuild it:
+
+  ```
+  coax/remote/remote.sh run -- coax/web/wasm.sh metaverse-engine/host/frame-plan-carrier.coax coax/web/frame-plan-face.c apps/openagents-web/build/frame-plan.wasm
+  ```
 
 ## What SLAB keeps traced
 
 - The section and the view from under the sea. The meshes aren't drawn
-  there; the trace draws the platform under the same sky.
+  there. The trace draws the platform under the same sun and sky
+  (`slab_photo_lit`): its paint, the platform's own shadow traced, and the
+  sky's light by facing. Whoever walks the deck is lit the same way.
+- Rain. The sea's rain streaks are drawn over the meshes too.
 - Picking. A click is still tested against the plan's records on the CPU.
 - The sea. It reads the same sky (below).
 
 ## What the water reads
 
-SLAB's sea is written for colours as a display shows them. In photoreal
-`slab_sky`, `slab_haze` and `slab_grade` (`apps/openagents-web/gpu/slab.coax`)
-already answer with the physical sky, air and film, and the uniforms
-`P_SUNCOL`, `P_ZENITH` and `P_HORIZON` hold the sun's and the sky's
-colours through the same film. The painted golden grade (`P_SUNHULL + 3`)
-is 0.
+In photoreal the sea's surface is lit and shown as the meshes are. Its
+optics (`apps/openagents-web/gpu/slab-sea.coax`) read the frame's sun and
+sky in light's own scale and leave through the frame's film:
 
-Water that wants light's own scale reads the frame's block at
+| The sea's call | In photoreal it answers with |
+| --- | --- |
+| `slab_sea_top_sun(u)` | the frame's sun on a card facing it (`PR_SUN_LIGHT`) |
+| `slab_sea_top_skylight(u)` | the sky's light on a card facing up (`pr_sky_light`) |
+| `slab_sea_top_sky(r, cap, u)` | the sky the surface mirrors along `r` (`pr_sky`: the air under the frame's cloud, without the sun's disc) |
+| `slab_sea_top_out(c, u)` | `pr_out`: exposure, film, white balance |
+
+The open sea, its foam and the hull's white water all go through these, so
+a wall and the water at its foot share one sun, sky, exposure and film.
+After the sea's colour, `slab_haze` puts the frame's air over it.
+
+The view from under the sea and the section's slot still cross between a
+display's colours and light with a square and a root (`slab_sea_lin`,
+`slab_sea_out`). There `slab_sky`, `slab_haze` and `slab_grade`
+(`apps/openagents-web/gpu/slab.coax`) answer with the physical sky, air
+and film, and the uniforms `P_SUNCOL`, `P_ZENITH` and `P_HORIZON` hold the
+sun's and the sky's colours through the same film. The painted golden
+grade (`P_SUNHULL + 3`) is 0. The film darkens deep shadow more than a
+display's curve does, so a display colour can't be turned back into the
+frame's light by undoing the curve alone.
+
+The weather is the sea's (`slab-sea.coax`, `SeaWeather`). `slab_photo_frame`
+reads its cloud, its shares of sun and sky, its haze length and its
+lightning, and hands them to `pr_frame_sky`. Nothing corrects the frame
+afterwards.
+
+Anything else that wants light's own scale reads the frame's block at
 `SLAB_PHOTO` (`apps/openagents-web/gpu/slab-photoreal.coax`):
 
 | Call | Answers |

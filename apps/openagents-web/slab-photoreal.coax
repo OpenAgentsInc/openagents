@@ -390,9 +390,16 @@ slab_photo_frame :: (s: [] Slab, u: [] f32, sun: SimSun, phone: bool) {
   for i: 0..<12 { pose[i] = u[P + P_POSE + i]; }
   pr_frame_pose(u, b, pose);
   sv := [3] f32.[f32(sun.x), f32(sun.y), f32(sun.z)];
-  storm := s[0].sea >= SEA_GALE;
-  pr_frame_sky(u, b, PrSky.{sun = sv, cover = ifx storm then 0.8f32 else ifx s[0].sea >= SEA_WINTER then 0.5f32 else 0.3f32,
-    air = ifx storm then 0.0003f32 else 0.00006f32, air_height = 900, haze = ifx storm then 0.3f32 else 0.15f32, sea_level = 0, ground = [3] f32.[0.26, 0.26, 0.25], exposure = 1.0, reduced = phone});
+  // the sea's weather (slab-sea.coax, water-sea.coax SeaWeather): its cloud covers the sky and
+  // lets through its shares of the sun and of the sky's light, and its rain and fog thicken the air
+  cloud := 0.0f32; sun_share := 1.0f32; sky_share := 1.0f32; thick := 0.000083f32; flash := 0.0f32;
+  if s[0].look.have {
+    w := s[0].look.now;
+    cloud = clamp32(f32(w.cloud), 0, 1); sun_share = clamp32(f32(w.sun), 0, 1); sky_share = clamp32(f32(w.sky), 0.05, 1);
+    thick = 1 / photo_max(f32(w.haze), 200); flash = clamp32(f32(w.lightning), 0, 1);
+  }
+  pr_frame_sky(u, b, PrSky.{sun = sv, cover = 0.3f32 + 0.6f32 * cloud, sun_share = sun_share, sky_share = sky_share, air = thick * 0.75f32, air_height = 900,
+    haze = 0.16f32 + 0.14f32 * cloud, warm = 0.08f32 * (1 - cloud), sea_level = 0, ground = [3] f32.[0.26, 0.26, 0.25], exposure = 1.0, reduced = phone});
   // the shadow map: round where the view meets the deck (or the sea), as wide as the view there
   level := ifx s[0].layout == LAYOUT_PRIME && !s[0].build.on then SLAB_DECK else 8.0f32;
   e := s[0].eye; f := s[0].fwd;
@@ -418,7 +425,8 @@ slab_photo_frame :: (s: [] Slab, u: [] f32, sun: SimSun, phone: bool) {
   zen := pr_frame_out(u, b, pr_frame_sky_at(u, b, [3] f32.[0, 1, 0]));
   hl := photo_max(sqrt(sv[0] * sv[0] + sv[2] * sv[2]), 0.0001);
   hor := pr_frame_out(u, b, pr_frame_sky_at(u, b, [3] f32.[-sv[2] / hl, 0.03, sv[0] / hl]));
-  for a: 0..<3 { u[P + P_SUNCOL + a] = sc[a]; u[P + P_ZENITH + a] = zen[a]; u[P + P_HORIZON + a] = hor[a]; }
+  // (lightning lights the cloud from inside, as slab-sea.coax has it for the painted sky)
+  for a: 0..<3 { u[P + P_SUNCOL + a] = sc[a]; u[P + P_ZENITH + a] = zen[a] + 0.22f32 * flash; u[P + P_HORIZON + a] = hor[a] + 0.16f32 * flash; }
   u[P + P_SUNHULL + 3] = 0;
 }
 

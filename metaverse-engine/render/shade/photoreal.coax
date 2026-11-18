@@ -258,11 +258,19 @@ pr_air_far :: (rd:V3,sun:V3,hz:f32)->V3 {
 }
 // The faint light of a night sky, so a night is dark blue and never black.
 pr_night :: (day:f32)->V3 {return scale3(v3(0.0035f32,0.0052f32,0.0105f32),1.0f32-day);}
+// How much of the sun thick cloud takes (photoreal-frame.coax pr_overcast: none to a cover of
+// 0.45, all the share by 0.9), and a sky's or the air's light under that cloud: grey by that
+// share, and as much of it left as the frame says comes through (PR_SKY_SHARE).
+pr_cloud_shade :: (u:[]f32,b:int)->f32 {return smoothstep(0.45f32,0.9f32,u[b+PR_HAZE+3]);}
+pr_under_cloud :: (c:V3,u:[]f32,b:int)->V3 {
+  l:f32=c.x*0.2126f32+c.y*0.7152f32+c.z*0.0722f32;
+  return scale3(mix3(c,v3(l,l,l),pr_cloud_shade(u,b)),u[b+PR_SKY_SHARE]);
+}
 // The sky along the unit ray rd, without its sun or clouds; under the horizon, the light the
 // ground and sea send up (what a mirror tilted down shows).
 pr_sky :: (rd:V3,u:[]f32,b:int)->V3 {
   sun:V3=pr_at3(u,b+PR_SUN);
-  above:V3=add3(pr_air_light(v3(rd.x,fmax(rd.y,0.0f32),rd.z),sun,u[b+PR_AIR_HAZE]),pr_night(u[b+PR_SUN+3]));
+  above:V3=add3(pr_under_cloud(pr_air_light(v3(rd.x,fmax(rd.y,0.0f32),rd.z),sun,u[b+PR_AIR_HAZE]),u,b),pr_night(u[b+PR_SUN+3]));
   if (rd.y>=0.0f32) {return above;}
   // the horizon's own light gives way to the ground's over a few degrees
   return mix3(above,pr_at3(u,b+PR_GROUND),saturate((0.0f32-rd.y)*9.0f32));
@@ -273,14 +281,14 @@ pr_dome :: (rd:V3,soft:f32,u:[]f32,b:int)->V3 {
   sun:V3=pr_at3(u,b+PR_SUN);
   night:V3=pr_night(u[b+PR_SUN+3]);
   hz:f32=u[b+PR_AIR_HAZE];
-  if (rd.y<0.0f32) {return add3(pr_air_light(v3(rd.x,0.0f32,rd.z),sun,hz),night);}
-  sky:V3=pr_air_light(rd,sun,hz);
-  dim:V3=pr_haze_through(sun.y,hz);
+  if (rd.y<0.0f32) {return add3(pr_under_cloud(pr_air_light(v3(rd.x,0.0f32,rd.z),sun,hz),u,b),night);}
+  sky:V3=pr_under_cloud(pr_air_light(rd,sun,hz),u,b);
+  dim:V3=scale3(pr_haze_through(sun.y,hz),1.0f32-0.85f32*pr_cloud_shade(u,b));
   disc:V3=mul3(atmo_sun(rd,sun,0.0048f32,soft),dim);
   if (u[b+PR_GROUND+3]>0.5f32) {return add3(add3(sky,disc),night);}
   // (atmo_dome, with the frame's haze between the sun and its clouds)
   c:AtmoCloud=atmo_clouds(rd,sun,sky,u[b+PR_HAZE+3],1.0f32,u[b+PR_UP+3]*0.004f32);
-  return add3(add3(scale3(add3(sky,disc),1.0f32-c.hide),mul3(c.light,mix3(v3(1.0f32,1.0f32,1.0f32),dim,0.75f32))),night);
+  return add3(add3(scale3(add3(sky,disc),1.0f32-c.hide),pr_under_cloud(mul3(c.light,mix3(v3(1.0f32,1.0f32,1.0f32),dim,0.75f32)),u,b)),night);
 }
 
 // ---- the air
@@ -301,7 +309,7 @@ pr_air :: (c:V3,w:V3,u:[]f32,b:int)->V3 {
   d:f32=length3(to);
   rd:V3=scale3(to,1.0f32/fmax(d,0.0001f32));
   t:f32=pr_air_through(d,u[b+PR_EYE+1],rd.y,u,b);
-  return add3(scale3(c,t),scale3(add3(pr_air_far(rd,pr_at3(u,b+PR_SUN),u[b+PR_AIR_HAZE]),pr_night(u[b+PR_SUN+3])),1.0f32-t));
+  return add3(scale3(c,t),scale3(add3(pr_under_cloud(pr_air_far(rd,pr_at3(u,b+PR_SUN),u[b+PR_AIR_HAZE]),u,b),pr_night(u[b+PR_SUN+3])),1.0f32-t));
 }
 
 // ---- materials
@@ -473,7 +481,10 @@ pr_lit :: (s:PrSurface,toward:V3,sun_reach:f32,open:f32,mirrored:V3,u:[]f32,b:in
 // The frame's light as the display's colour: exposed, through the film response, encoded.
 pr_out :: (c:V3,u:[]f32,b:int)->V3 {
   e:f32=u[b+PR_SUN_LIGHT+3];
-  t:FilmRGB=film_rec709(film_rgb(fmax(c.x,0.0f32)*e,fmax(c.y,0.0f32)*e,fmax(c.z,0.0f32)*e));
+  // the camera's white balance: red up and blue down by the same share, a grey's brightness kept
+  w:f32=u[b+PR_WARM];
+  k:f32=e/(1.0f32+0.1404f32*w);
+  t:FilmRGB=film_rec709(film_rgb(fmax(c.x,0.0f32)*k*(1.0f32+w),fmax(c.y,0.0f32)*k,fmax(c.z,0.0f32)*k*(1.0f32-w)));
   return pr_encode(v3(saturate(t.r),saturate(t.g),saturate(t.b)));
 }
 

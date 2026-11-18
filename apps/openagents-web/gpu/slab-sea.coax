@@ -34,6 +34,28 @@ slab_sea_kd :: (u:[]f32)->V3 {return v3(u[SLAB_SEA],u[SLAB_SEA+1],u[SLAB_SEA+2])
 // The sun's light on a white card facing it, and the sky's on one facing up.
 slab_sea_sun :: (u:[]f32)->V3 {return slab_sea_lin(sb_p(u,4));}
 slab_sea_skylight :: (u:[]f32)->V3 {return slab_sea_lin(sb_mul(sb_add(sb_p(u,8),sb_p(u,12)),0.5f32));}
+// The same for the sea's surface seen from the air. In the photoreal style its light is the
+// frame's own (the sun and sky that light the platform's meshes) and its display side is the
+// frame's film (gpu/slab-photoreal.coax), so the wall and the water at its foot are one picture.
+// The view from under the sea keeps the square and the root above.
+slab_sea_top_sun :: (u:[]f32)->V3 {
+  if (slab_photo(u)) { return slab_photo_sun(u); }
+  return slab_sea_sun(u);
+}
+slab_sea_top_skylight :: (u:[]f32)->V3 {
+  if (slab_photo(u)) { return slab_photo_skylight(u); }
+  return slab_sea_skylight(u);
+}
+slab_sea_top_out :: (c:V3,u:[]f32)->V3 {
+  if (slab_photo(u)) { return slab_photo_show(c,u); }
+  return slab_sea_out(c);
+}
+// The sky the surface mirrors along r, no brighter than `cap` of the display's white (the sun's disc is the glint's).
+slab_sea_top_sky :: (r:V3,cap:f32,u:[]f32)->V3 {
+  if (slab_photo(u)) { return slab_photo_mirror_sky(r,u); }
+  sk:V3=slab_sky(r,u);
+  return slab_sea_lin(v3(fmin(sk.x,cap),fmin(sk.y,cap),fmin(sk.z,cap)));
+}
 
 // The slopes of one of the two finer cascades at a rest point: `hi` 0 the fine tile (or the
 // phone's baked one), 1 the finest; bilinear, wrapped.
@@ -77,11 +99,11 @@ slab_sea_foam1 :: (p:V2,u:[]f32)->f32 {
 
 // Lit foam, in light's scale: a diffuse white under the sun and the sky.
 slab_sea_foam_lit :: (ndl:f32,u:[]f32)->V3 {
-  return sb_mul(sb_add(sb_mul(slab_sea_sun(u),0.3f32+(0.7f32*ndl)),slab_sea_skylight(u)),0.78f32);
+  return sb_mul(sb_add(sb_mul(slab_sea_top_sun(u),0.3f32+(0.7f32*ndl)),slab_sea_top_skylight(u)),0.78f32);
 }
 // The same for the display, on a level sea: the colour of white water (the hull's wash uses it).
 slab_sea_white :: (u:[]f32)->V3 {
-  return slab_sea_out(slab_sea_foam_lit(fmax(u[25],0.0f32),u));
+  return slab_sea_top_out(slab_sea_foam_lit(fmax(u[25],0.0f32),u),u);
 }
 
 // The open sea at a rest point p, seen along d from `dist` away; c is cascade 0 there (height,
@@ -115,16 +137,15 @@ slab_sea :: (p:V2,world:V3,d:V3,dist:f32,t:f32,c:V4,u:[]f32)->V4 {
   n:V3=wg_normalize3(v3(-slope.x,1.0f32,-slope.y));
   v:V3=sb_mul(d,-1.0f32);
   sun:V3=v3(u[24],u[25],u[26]);
-  sunl:V3=slab_sea_sun(u);
-  skyl:V3=slab_sea_skylight(u);
+  sunl:V3=slab_sea_top_sun(u);
+  skyl:V3=slab_sea_top_skylight(u);
   cv:f32=fmax(wg_dot3(n,v),0.02f32);
   fres:f32=wo_mean_fresnel(cv,sigma2);
   // the sky in it: the mirror's direction, lifted as a rough sea's facets lift it, the sun's disc
   // left to the glint
   r:V3=wg_reflect3(d,n);
   r=wg_normalize3(v3(r.x,abs(r.y)+(1.2f32*sqrt(sigma2)),r.z));
-  sk:V3=slab_sky(r,u);
-  col:V3=sb_mul(slab_sea_lin(v3(fmin(sk.x,1.25f32),fmin(sk.y,1.25f32),fmin(sk.z,1.25f32))),fres);
+  col:V3=sb_mul(slab_sea_top_sky(r,1.25f32,u),fres);
   // the water's own colour: the light that went in and was scattered back up
   ndl:f32=fmax(wg_dot3(n,sun),0.0f32);
   into:f32=1.0f32-wo_fresnel(fmax(sun.y,0.02f32));
@@ -179,8 +200,10 @@ slab_sea :: (p:V2,world:V3,d:V3,dist:f32,t:f32,c:V4,u:[]f32)->V4 {
   col=sb_mix(col,slab_sea_foam_lit(ndl,u),white);
   // and the spray hangs over the sea
   veil:f32=u[SLAB_SEA+14]*(1.0f32-exp((-dist)/700.0f32));
-  col=sb_mix(col,sb_mul(slab_sea_lin(sb_p(u,12)),0.9f32),veil*0.6f32);
-  o:V3=slab_sea_out(col);
+  hang:V3=skyl;
+  if (!slab_photo(u)) { hang=slab_sea_lin(sb_p(u,12)); }
+  col=sb_mix(col,sb_mul(hang,0.9f32),veil*0.6f32);
+  o:V3=slab_sea_top_out(col,u);
   return v4(o.x,o.y,o.z,white);
 }
 
@@ -207,26 +230,6 @@ slab_weather_px :: (d:V3,u:[]f32)->V2 {
   sy:f32=wg_dot3(d,v3(u[20],u[21],u[22]))/(vz*u[11]);
   return v2(((sx+1.0f32)*0.5f32)*u[0],((1.0f32-sy)*0.5f32)*u[1]);
 }
-// The photoreal air under the weather's cloud (gpu/slab-photoreal.coax calls these two). The
-// engine's air is a clear day's: its far light is the sun's glow in the haze. Under a cloud deck
-// the air is lit by the deck, so its far light goes to the sky's mean light, which the frame has
-// dimmed already (slab-sea.coax sea_look_photo). A sky with little cloud is left as it is.
-slab_sea_cloud_far :: (far:V3,u:[]f32)->V3 {
-  deck:f32=smoothstep(0.3f32,0.9f32,u[SLAB_SEA+16]);
-  return mix3(far,pr_sky_light(v3(0.0f32,1.0f32,0.0f32),u,SLAB_PHOTO),deck);
-}
-// The same for a colour (light's scale) that pr_air has put its clear air over; w is the point seen.
-slab_sea_cloud_air :: (c:V3,w:V3,u:[]f32)->V3 {
-  if (u[SLAB_SEA+16]<=0.3f32) { return c; }
-  b:int=SLAB_PHOTO;
-  to:V3=sub3(w,pr_at3(u,b+PR_EYE));
-  dist:f32=length3(to);
-  rd:V3=scale3(to,1.0f32/fmax(dist,0.0001f32));
-  t:f32=pr_air_through(dist,u[b+PR_EYE+1],rd.y,u,b);
-  far:V3=add3(pr_air_far(rd,pr_at3(u,b+PR_SUN),u[b+PR_AIR_HAZE]),pr_night(u[b+PR_SUN+3]));
-  return add3(c,scale3(sub3(slab_sea_cloud_far(far,u),far),1.0f32-t));
-}
-
 // Rain between the eye and the scene: streaks falling down the screen, leaning with the wind.
 slab_weather_air :: (c:V3,frag:V2,u:[]f32)->V3 {
   rain:f32=u[SLAB_SEA+17];

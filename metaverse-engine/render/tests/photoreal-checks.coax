@@ -29,7 +29,7 @@ prc_near :: (a: f32, b: f32) -> bool { return abs(a - b) <= 0.00002 + 0.0002 * a
 }
 #test "the writer's display colour and its sky are the shader's pr_out and pr_sky" {
   u: [PR_FLOATS + 8] f32;
-  pr_frame_sky(u[..], 4, PrSky.{sun = [3] f32.[0.5, 0.21, 0.84], sea_level = 0});
+  pr_frame_sky(u[..], 4, PrSky.{sun = [3] f32.[0.5, 0.21, 0.84], sea_level = 0, warm = 0.08});
   levels := [7] f32.[0, 0.004, 0.05, 0.18, 0.6, 1.4, 9];
   for i: 0..<7 {
     c := [3] f32.[levels[i], levels[(i + 2) % 7], levels[(i + 5) % 7]];
@@ -83,4 +83,20 @@ prc_near :: (a: f32, b: f32) -> bool { return abs(a - b) <= 0.00002 + 0.0002 * a
   #assert hazy.z / hazy.x < clear.z / clear.x * 0.7;
   a := pr_frame_sunlight(0.21, 0); b := pr_frame_sunlight(0.21, 0.15);
   #assert b[0] < a[0] && b[0] / b[2] > a[0] / a[2] * 1.3;
+}
+#test "under thick cloud the writer's sky is the shader's, and both take the same share of the sun" {
+  covers := [5] f32.[0, 0.45, 0.6, 0.8, 1];
+  for j: 0..<5 {
+    u: [PR_FLOATS + 8] f32;
+    pr_frame_sky(u[..], 4, PrSky.{sun = [3] f32.[0.5, 0.21, 0.84], cover = covers[j], haze = 0.3, sky_share = ifx j == 3 then 0.45f32 else -1.0f32});
+    #assert prc_near(pr_cloud_shade(u[..], 4), pr_overcast(covers[j]));
+    for k: 0..<PR_SKY_SAMPLES {
+      d := pr_sky_direction(k);
+      if d[1] < 0 { continue; }
+      a := pr_sky(v3(d[0], d[1], d[2]), u[..], 4);
+      m := pr_frame_sky_at(u[..], 4, d);
+      #assert prc_near(m[0], a.x) && prc_near(m[1], a.y) && prc_near(m[2], a.z);
+      if covers[j] >= 1 { #assert a.z - a.x < 0.02 && a.x - a.z < 0.02; }   // a full cover's sky is grey
+    }
+  }
 }

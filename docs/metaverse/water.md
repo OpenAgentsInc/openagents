@@ -720,13 +720,13 @@ visibility (our planning value between rain bands); a full overcast passes
 about 7% of the direct sun and 45% of the sky's light (Kasten and Czeplak
 1980 give 25% of the global radiation under 8 oktas). The picture dims by
 less than the light does, as an eye or a camera would open up.
-In the photoreal style (`?style=photoreal`, `docs/metaverse/photoreal.md`) the
-sea mirrors the physical sky through `slab_sky`, and the weather goes over the
-photoreal frame too (`sea_look_photo`): the frame's sun, its sky light and the
-ground's are dimmed by the same shares in light's own scale, and under a cloud
-deck the air's far light is the sky's mean light in place of a clear day's
-glow round the sun (`slab_sea_cloud_far`). The engine's sky has no overcast of
-its own yet, so this is SLAB's correction over it.
+In the photoreal style (SLAB's own; `docs/metaverse/photoreal.md`) the sea's
+surface is lit by the frame's sun and sky in light's own scale and shown
+through the frame's film (`slab_sea_top_*` in `gpu/slab-sea.coax`), so the
+water and the platform are one picture. The weather goes into the frame's sky
+itself: `slab_photo_frame` hands `pr_frame_sky` the weather's cloud, its
+shares of sun and sky and its haze length, and the engine's sky draws the
+overcast (`PrSky.cover`, `sun_share`, `sky_share`).
 The HUD's Change group has a Weather menu that holds a state;
 `?weather=clear|overcast|fog|rain|storm` and key C do the same.
 

@@ -170,12 +170,6 @@ sea_look_weather :: (s: [] Slab, u: [] f32, step: f32, snap: bool) {
     n.lightning = want.lightning;
     s[0].look.now = n;
   }
-  sea_look_light(s, u, false);
-}
-// The weather's cloud over the hour's colours: the sun's, the zenith's and the horizon's. `again`
-// when the photoreal frame has written its own sky's colours over them (sea_look_photo): then
-// only the colours are dimmed, since the rest was done once already.
-sea_look_light :: (s: [] Slab, u: [] f32, again: bool) {
   w := s[0].look.now;
   P := U_PARAMS;
   cover := f32(w.cloud);
@@ -184,34 +178,15 @@ sea_look_light :: (s: [] Slab, u: [] f32, again: bool) {
   flash := f32(w.lightning);
   grey := 0.0f32;
   for i: 0..<3 { u[P + P_SUNCOL + i] *= f32(w.sun); grey += (u[P + P_ZENITH + i] + u[P + P_HORIZON + i]) / 6; }
+  u[P + P_SUNCOL + 3] = u[P + P_SUNCOL + 3] * (1 + (seen - 1) * cover) + 0.5f32 * flash;
   tint := [3] f32.[0.95, 1.0, 1.06];
   for i: 0..<3 {
     u[P + P_ZENITH + i] += (grey * seen * tint[i] * 0.95f32 - u[P + P_ZENITH + i]) * cover + 0.22f32 * flash;
     u[P + P_HORIZON + i] += (grey * seen * tint[i] * 0.8f32 - u[P + P_HORIZON + i]) * cover + 0.16f32 * flash;
   }
-  if again { return; }
-  u[P + P_SUNCOL + 3] = u[P + P_SUNCOL + 3] * (1 + (seen - 1) * cover) + 0.5f32 * flash;
   u[P + P_ZENITH + 3] = hi_f32(lo_f32(u[P + P_ZENITH + 3], 0.6), 0.4f32 + 0.6f32 * cover);
   u[P + P_HORIZON + 3] = lo_f32(ifx s[0].sea >= SEA_GALE then 12000.0f32 else u[P + P_HORIZON + 3], f32(w.haze));
   u[P + P_SUNHULL + 3] *= 1 - cover;
-}
-// Called after the photoreal frame is written (slab-photoreal.coax slab_photo_frame): its sun and
-// its sky's light go under the same cloud, in light's own scale, so the meshes and the sea are lit
-// alike; then the sea's display colours are dimmed again. The photoreal air's own far light is
-// the clear sky's still (the engine's sky has no overcast yet).
-sea_look_photo :: (s: [] Slab, u: [] f32) {
-  if u[U_PHOTO_ON] < 0.5 { return; }
-  w := s[0].look.now;
-  b := U_PHOTO;
-  cover := f32(w.cloud);
-  seen := f32(pow(fmax(w.sky, 0.01), 0.16));
-  // (a display's share squared is light's: gpu/slab-sea.coax slab_sea_lin)
-  sun := f32(w.sun * w.sun);
-  sky := 1 + (seen * seen - 1) * cover;
-  for i: 0..<3 { u[b + PR_SUN_LIGHT + i] *= sun; u[b + PR_GROUND + i] *= sky; }
-  for k: 0..<9 { for i: 0..<3 { u[b + PR_SH + 4 * k + i] *= sky; } }
-  u[b + PR_HAZE + 3] = hi_f32(u[b + PR_HAZE + 3], cover);
-  sea_look_light(s, u, true);
 }
 
 // The toolbar's two controls: the weather (the sea's own, or one held), and under the sea the
@@ -349,24 +324,6 @@ sea_look_note :: (s: [] Slab, out: [] f32, at: int) -> int {
       #assert ((w >> 23) & 0xff) != 0xff;
     }
   }
-}
-#test "the weather's cloud dims the photoreal frame's sun and sky, and a clear sky leaves them" {
-  s: [1] Slab;
-  u: [UNIFORM_FLOATS] f32;
-  b := U_PHOTO;
-  u[U_PHOTO_ON] = 1;
-  for i: 0..<3 { u[b + PR_SUN_LIGHT + i] = 2; u[b + PR_GROUND + i] = 1; u[b + PR_SH + i] = 1; }
-  s[0].look.now = SeaWeather.{cloud = 0, rain = 0, fog = 0, lightning = 0, sun = 1, sky = 1, haze = 12000};
-  sea_look_photo(s[..], u[..]);
-  #assert u[b + PR_SUN_LIGHT] == 2 && u[b + PR_SH] == 1 && u[b + PR_GROUND] == 1 && u[b + PR_HAZE + 3] == 0;
-  s[0].look.now = SeaWeather.{cloud = 1, rain = 1, fog = 0, lightning = 0, sun = 0.07, sky = 0.25, haze = 7000};
-  sea_look_photo(s[..], u[..]);
-  #assert u[b + PR_SUN_LIGHT] < 0.02 && u[b + PR_SH] > 0.5 && u[b + PR_SH] < 0.8 && u[b + PR_GROUND] == u[b + PR_SH] && u[b + PR_HAZE + 3] == 1;
-  // and not at all when the realm does not draw photoreal
-  v: [UNIFORM_FLOATS] f32;
-  v[b + PR_SUN_LIGHT] = 2;
-  sea_look_photo(s[..], v[..]);
-  #assert v[b + PR_SUN_LIGHT] == 2;
 }
 #test "the sea block follows the words and the uniforms still fit one block" {
   // (the photoreal frame's block follows the sea's: slab-photoreal.coax)

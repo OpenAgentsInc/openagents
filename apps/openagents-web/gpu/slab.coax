@@ -1165,6 +1165,7 @@ slab_paint :: (hit:SlabHit,w:V3,d:V3,u:[]f32)->SlabPaint {
 // The lit colour of a hit (hull frame): the sky's light, the sun's where nothing shades it, and a
 // warm pulse round what is selected.
 slab_lit :: (hit:SlabHit,o:V3,d:V3,u:[]f32)->V3 {
+  if (slab_photo(u)) { return slab_photo_lit(hit,o,d,u); }
   w:V3=sb_add(o,sb_mul(d,hit.t));
   n:V3=hit.n;
   sun:V3=sb_p(u,40);
