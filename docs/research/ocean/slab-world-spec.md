@@ -107,6 +107,28 @@ Units are metres, seconds, kilograms and radians. **+Y is up**, matching
 world origin is the platform's centre at the calm waterline. +X runs along
 the platform's length toward the bow (east), and +Z points north.
 
+**The realm page.** `apps/openagents-web/realms/slab/index.md` is what a
+visitor without WebGPU reads, as plain text. It leads with five stills and
+the plain story (how big, why it floats, how it is built, where it could
+go), then the feature notes. The stills are in
+`apps/openagents-web/realms/slab/pictures/` and are served at
+`/worlds/slab/pictures/NAME.jpg`. Retake them when the world's look
+changes, with a dev server on PORT:
+
+| Picture | Address after `http://127.0.0.1:PORT/worlds/slab` |
+|---|---|
+| `platform.jpg` | `?hud=0&t=40&yaw=0.802&pitch=0.30&dist=900&x=120&z=60&y=20` |
+| `on-deck.jpg` | `?hud=0&t=40&mode=walk` |
+| `temples.jpg` | `?hud=0&t=40`, then the key 1 (`--eval` a `keydown` on `window`) |
+| `section.jpg` | `?hud=0&t=40&view=section` |
+| `build.jpg` | `?hud=0&view=build&day=503.8` |
+
+Each is `coax/web/tool.sh shot ADDRESS OUT.png 1600x900 6000`, then
+`sips -Z 1280 -s format jpeg -s formatOptions 72 OUT.png --out NAME.jpg`.
+The link-preview card `apps/openagents-web/og/realms/slab.jpg` is retaken
+with `bun coax/web/og-render.ts /realms/slab` on a staged site
+(docs/web/og-tags.md).
+
 ## 3. Layouts
 
 The realm has three layouts, selected with `?layout=` and from the HUD.
