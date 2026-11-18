@@ -16,6 +16,8 @@ const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").repl
 const loadedAssets = new Map();
 Object.defineProperty(globalThis, "coaxialAssetReceipts", { get: () => Object.freeze(Object.fromEntries(loadedAssets)) });
 export async function rememberAsset(url, data) {
+  // A page keeps receipts; a host with no page (pack-host.js in bun, the host-core and pack-cells checks) has none.
+  if (typeof location === "undefined") return;
   const u = new URL(url, location.href);
   const base = new URL("../", import.meta.url).pathname.replace(/\/$/, "");
   const path = base && u.pathname.startsWith(base + "/") ? u.pathname.slice(base.length) : u.pathname;
