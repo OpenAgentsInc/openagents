@@ -20,6 +20,7 @@
 //        {"embed":"TEXT","query":true}    a Vertex embedding of TEXT (a query's when query is set, else a document's)
 //   out  {"kind":"ready"}
 //        {"kind":"reply","text":"..."}    more of the reply as it streams
+//        {"kind":"thought","text":"..."}  a step's thinking, whole, before its reply or its commands (GitHub #13671)
 //        {"kind":"attempt","gateway":"vertex","model":"...","outcome":"done","status":200,"usd_micros":717}
 //        {"kind":"command","command":"ls","exit":0,"timed_out":false,"output":"..."}
 //        {"kind":"view","path":"a.txt","found":true}
@@ -78,6 +79,7 @@ mw_event :: (e: McRunEvent, o: [] u8) {
   else if e.kind == MR_VIEW { n = mww_view(o, e.text, e.found); }
   else if e.kind == MR_ASK { n = mww_ask(o, e.text, e.ticket); }
   else if e.kind == MR_DELEGATE { n = mww_delegate(o, e.text, e.ticket); }
+  else if e.kind == MR_THOUGHT { n = mww_thought(o, e.text); }
   else if e.kind == MR_ENDED { n = mww_ended(o, mc_ending_name(e.ending), e.text); }
   else { return; }
   mw_send(o, n);

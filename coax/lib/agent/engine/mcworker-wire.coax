@@ -14,6 +14,8 @@
 //     {"kind":"journal","path":P}                                                  mww_journal
 //     {"kind":"ready"}                                                             mww_ready
 //     {"kind":"reply","text":T}                                                    mww_reply
+//     {"kind":"thought","text":T}                                                  mww_thought
+//     {"kind":"thought","text":T}   a step's thinking, whole, before its answer    mww_thought
 //     {"kind":"attempt","schema":...}   coder.observability.v2 with a null engine  mww_attempt (stream.coax's cst_attempt)
 //     {"kind":"command","command":C,"exit":N,"timed_out":B,"output":O}             mww_command
 //     {"kind":"view","path":P,"found":B}                                           mww_view
@@ -37,6 +39,7 @@ MWW_VIEW :: 6; MWW_ASK :: 7; MWW_ENDED :: 8; MWW_EMBEDDING :: 9;
 MWW_DELEGATE :: 10;            // {"kind":"delegate","tasks":[{"level":L,"task":T}],"ticket":N}: a run with sub-agents hands tasks to its owner (GitHub #13655)
 // an owner's line
 MWW_TASK :: 11; MWW_ANSWER :: 12; MWW_STOP :: 13; MWW_FORGET :: 14; MWW_EMBED :: 15; MWW_RESULTS :: 16;
+MWW_THOUGHT :: 18;             // {"kind":"thought","text":T}: a step's thinking (GitHub #13671)
 MWW_RECALL :: 17;              // {"recall":[{"task":T,"reply":R}]}: the owner's kept turns of the conversation (GitHub #13661)
 
 MWW_STOP_LINE :: "{\"stop\":true}\n";
@@ -196,6 +199,11 @@ mww_journal :: (o: [] u8, path: string) -> int {
   return json_raw(o, n, "}");
 }
 mww_ready :: (o: [] u8) -> int { return json_raw(o, 0, "{\"kind\":\"ready\"}"); }
+// A step's thinking, as the model summarized it (GitHub #13671).
+mww_thought :: (o: [] u8, text: string) -> int {
+  n := json_raw(o, 0, "{\"kind\":\"thought\",\"text\":"); n = json_write_string(o, n, text);
+  return json_raw(o, n, "}");
+}
 mww_reply :: (o: [] u8, text: string) -> int {
   n := json_raw(o, 0, "{\"kind\":\"reply\",\"text\":"); n = json_write_string(o, n, text);
   return json_raw(o, n, "}");
@@ -280,6 +288,7 @@ mww_read :: (ar: [] ClArena, line: string, l: [] MwwLine) -> int {
   if kind == "journal" { k = MWW_JOURNAL; l[0].path = cl_str(ar, line, "path"); }
   else if kind == "ready" { k = MWW_READY; }
   else if kind == "reply" { k = MWW_REPLY; l[0].text = cl_str(ar, line, "text"); }
+  else if kind == "thought" { k = MWW_THOUGHT; l[0].text = cl_str(ar, line, "text"); }
   else if kind == "attempt" {
     k = MWW_ATTEMPT;
     l[0].usd_micros = cl_int(line, "usd_micros");
@@ -381,6 +390,9 @@ mww_attempt_again :: (ar: [] ClArena, line: string, out: [] u8) -> int {
   n = mww_reply(o[..], "a\nb");
   #assert cast(string) o[0..<n] == "{\"kind\":\"reply\",\"text\":\"a\\nb\"}";
   #assert mww_read(ar[..], cast(string) o[0..<n], l[..]) == MWW_REPLY && l[0].text == "a\nb";
+  n = mww_thought(o[..], "first\nthen");
+  #assert cast(string) o[0..<n] == "{\"kind\":\"thought\",\"text\":\"first\\nthen\"}";
+  #assert mww_read(ar[..], cast(string) o[0..<n], l[..]) == MWW_THOUGHT && l[0].text == "first\nthen";
   n = mww_command(o[..], "ls \"x\"", 3, false, "out\n");
   #assert cast(string) o[0..<n] == "{\"kind\":\"command\",\"command\":\"ls \\\"x\\\"\",\"exit\":3,\"timed_out\":false,\"output\":\"out\\n\"}";
   #assert mww_read(ar[..], cast(string) o[0..<n], l[..]) == MWW_COMMAND && l[0].command == "ls \"x\"" && l[0].exit.ok && l[0].exit.value == 3;

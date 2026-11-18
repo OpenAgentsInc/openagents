@@ -7,6 +7,7 @@
 //   out  {"kind":"ready"}
 //        {"kind":"ask","command":"ls","ticket":N}         a tool call as it starts. No answer is read: nothing waits.
 //        {"kind":"command","command":"ls","exit":0,"timed_out":false,"output":"..."}   the same call, ended (exit 1: it failed)
+//        {"kind":"thought","text":"..."}                   Claude's thinking, when Claude Code hands it over
 //        {"kind":"ended","ending":"finished","text":"..."}   the reply; or stopped, or failed with why
 //
 // It takes one task and then exits. Closing its stdin stops it like STOP.
@@ -116,6 +117,12 @@ tool_main :: () -> int #export_c #effects(all) {
           content := cl_raw(l, "message.content");
           for i: 0..<cl_count(content) {
             item := cl_json(content, cl_item(content, i));
+            // Claude's thinking, where Claude Code hands it over, goes out as a thought (GitHub #13671)
+            if cl_str(car, item, "type") == "thinking" {
+              thought := cl_str(car, item, "thinking");
+              if thought.count > 0 { cw_send(out[..], mww_thought(out[..], thought)); }
+              continue;
+            }
             if cl_str(car, item, "type") != "tool_use" { continue; }
             n := cw_label(car, cl_str(car, item, "name"), cl_raw(item, "input"), lb[..]);
             id := cl_str(car, item, "id");

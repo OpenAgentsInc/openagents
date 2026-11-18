@@ -52,6 +52,41 @@ APP_TEST_LONG :: "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n15\n16\n17\n18\
   #assert app_test_end(t[..]) && app_test_texts(t[..], "Page 3 of 3 · 20 lines") == 1 && app_test_texts(t[..], "20") == 1 && !app_test_pressable(t[..], "tool.1.result.next") && last < open;
 }
 
+#test "app task: a note opens onto its words alone: every line, with no input, no result and no pages" {
+  t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..]; k := arcade_phone_skin();
+  note := AppTool.{icon = 9, title = "Thought", arg = "Reading the plan", state = APP_TOOL_DONE, output = APP_TEST_LONG, note = true};
+  app_test_begin(t[..], "", "", true);
+  closed := app_tool(f, "note.1", 0, 0, 300, note, false, 9);
+  #assert app_test_end(t[..]) && closed == k.app.tool_h && app_test_find(t[..], "note.1.note") < 0;
+  #assert app_tool_press(t[0].ks[..], "note.1", "note.1");
+  app_test_begin(t[..], "", "", true);
+  open := app_tool(f, "note.1", 0, 0, 300, note, false, 9);
+  #assert app_test_end(t[..]) && app_test_has(t[..], "note.1", EL_S_EXPANDED) && app_test_value(t[..], "note.1") == "Reading the plan";
+  #assert app_test_find(t[..], "note.1.note") >= 0 && app_test_find(t[..], "note.1.input") < 0 && app_test_find(t[..], "note.1.result") < 0;
+  #assert app_test_texts(t[..], "Page 1 of 3 · 20 lines") == 0 && app_test_texts(t[..], "8") == 1 && app_test_texts(t[..], "20") == 1 && app_test_texts(t[..], "Input") == 0;
+  #assert open == k.app.tool_h + 2 * k.app.tool_body_pad + 20 * k.mono_small.line;
+  #assert app_test_row(t[..], "note.1.note").h == 20 * k.mono_small.line && app_test_row(t[..], "note.1.note").y == k.app.tool_h + k.app.tool_body_pad;
+}
+#test "app task: a note with Markdown opens onto its blocks, drawn as a reply's are, from the block it names" {
+  t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..]; k := arcade_phone_skin();
+  doc: [1] MdDoc;
+  first := md_parse(doc[..], "Before.", 0);
+  blocks := md_parse(doc[..], "**Plan**\n\nRead it first.", 0);
+  #assert first == 1 && blocks == 2;
+  note := AppTool.{icon = 9, title = "Thought", arg = "Head", state = APP_TOOL_DONE, output = "**Plan**\n\nRead it first.", note = true, doc = doc[..], block0 = first, blocks = blocks};
+  app_test_begin(t[..], "", "", true);
+  _ := app_tool(f, "note.2", 0, 0, 300, note, false, 9);
+  #assert app_test_end(t[..]) && app_tool_press(t[0].ks[..], "note.2", "note.2");
+  app_test_begin(t[..], "", "", true);
+  open := app_tool(f, "note.2", 0, 0, 300, note, false, 9);
+  #assert app_test_end(t[..]) && app_test_find(t[..], "note.2.note") >= 0 && app_test_find(t[..], "note.2.input") < 0;
+  #assert app_test_texts(t[..], "Plan") == 1;
+  #assert app_test_texts(t[..], "**Plan**") == 0;
+  #assert app_test_texts(t[..], "Read it first.") == 1;
+  #assert app_test_texts(t[..], "Before.") == 0;
+  #assert open == k.app.tool_h + 2 * k.app.tool_body_pad + 2 * k.md.line + k.md.block_gap;
+  #assert app_test_row(t[..], "note.2.note").h == 2 * k.md.line + k.md.block_gap && app_test_row(t[..], "note.2.note").y == k.app.tool_h + k.app.tool_body_pad;
+}
 #test "app task: a tool row's states say running, waiting and failed; it opens on a spring and its body is cut to what is revealed" {
   t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..];
   tools := [4] AppTool.[AppTool.{icon = 5, title = "Read", arg = "chat.coax", state = APP_TOOL_PENDING, input = "path: chat.coax"},

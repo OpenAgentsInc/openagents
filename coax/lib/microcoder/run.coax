@@ -105,6 +105,7 @@ MR_VIEW :: 4;                    // text: the path; found
 MR_STEP :: 5;                    // a step ended; step: its number
 MR_ENDED :: 6;                   // ending (MC_END_*), text: the reply (finished, asked) or why (no_capacity)
 MR_ASK :: 7;                     // text: a command waiting for mc_run_answer (a gated run)
+MR_THOUGHT :: 9;                 // text: the step's thinking, as the model summarized it, once it starts its answer (GitHub #13671)
 MR_DELEGATE :: 8;                // text: the step's delegated tasks as JSON ([{"level":L,"task":T}]), waiting for mc_run_delegated
 
 McRunEvent :: struct {
@@ -120,6 +121,8 @@ McRunEvent :: struct {
   ending: int;
 }
 
+MC_THINK :: 32768;               // the most bytes of one step's thinking a run hands out; past it the thought is cut and says so
+MC_THINK_CUT :: "\n[The thinking is cut at 32,768 bytes.]";
 McRun :: struct {
   l: [1] McLoop;
   p: [] GwPlan;
@@ -148,6 +151,7 @@ McRun :: struct {
   seed: bool;                    // before the first call, look up what the task names (mc_run_seed)
   seeded: bool;
   rbuf: [4096] u8;               // this poll's reply bytes
+  think: [MC_THINK + 64] u8; nthink: int; think_cut: bool;   // the step's thinking so far, and whether it ran past the buffer
   obuf: [131072] u8; nob: int;   // this poll's command outputs: the tools reuse their buffer per command
   tb: [1] McToolBuffers;
   start: [64] u8; nstart: int;   // a journaled run's first commit (git rev-parse HEAD), for the commits a failed ending lists
@@ -339,9 +343,18 @@ mc_run_heard :: (r: [] McRun, out: [] McRunEvent, ev: [] GwEvent) -> McHeard {
   k := 0;
   status := MC_WAIT;
   rn := 0; rb := r[0].rbuf[..];
+  answering := false;
   for e: ev {
     if e.kind == GW_EV_TEXT { rn += mc_rs_feed(r[0].rs[..], e.text, rb[rn..<rb.count]); }
+    // the step's thinking is kept until its answer starts, then handed out whole
+    if e.kind == GW_EV_REASONING { for c: e.text { if r[0].nthink < MC_THINK { r[0].think[r[0].nthink] = c; r[0].nthink += 1; } else { r[0].think_cut = true; } } }
+    else { answering = true; }
     status = mc_feed(l, e);
+  }
+  if r[0].nthink > 0 && (answering || status != MC_WAIT) {
+    if r[0].think_cut { for c: MC_THINK_CUT { r[0].think[r[0].nthink] = c; r[0].nthink += 1; } }
+    k = mc_run_put(out, k, McRunEvent.{kind = MR_THOUGHT, text = cast(string) r[0].think[0..<r[0].nthink]});
+    r[0].nthink = 0; r[0].think_cut = false;
   }
   if rn > 0 { k = mc_run_put(out, k, McRunEvent.{kind = MR_REPLY, text = cast(string) rb[0..<rn]}); }
   k = mc_run_logs(r, out, k);
@@ -417,6 +430,20 @@ MC_RUN_EDIT :: "{\"rationale\":\"fix\",\"edits\":[{\"path\":\"a.txt\",\"old\":\"
   }
 }
 
+#test "a step's thinking is kept while it arrives and handed out whole when the answer starts" {
+  f: [1] McRunFixture; out: [16] McRunEvent;
+  mc_run_fixture(f[..], "say hi");
+  r := f[0].r[..];
+  t := [2] GwEvent.[GwEvent.{kind = GW_EV_REASONING, text = "First, "}, GwEvent.{kind = GW_EV_REASONING, text = "greet."}];
+  h := mc_run_heard(r, out[..], t[..]);     // only thinking so far: nothing is given out
+  #assert h.k == 0 && r[0].nthink == 13 && r[0].calling;
+  a := [2] GwEvent.[GwEvent.{kind = GW_EV_REASONING, text = " Then stop."}, GwEvent.{kind = GW_EV_TEXT, text = MC_RUN_HI_A}];
+  h = mc_run_heard(r, out[..], a[..]);     // the answer starts: the thought goes out ahead of it
+  #assert h.k == 2 && out[0].kind == MR_THOUGHT && out[0].text == "First, greet. Then stop." && out[1].kind == MR_REPLY && out[1].text == "H" && r[0].nthink == 0;
+  b := [2] GwEvent.[GwEvent.{kind = GW_EV_TEXT, text = MC_RUN_HI_B}, GwEvent.{kind = GW_EV_DONE, reason = "stop"}];
+  h = mc_run_heard(r, out[..], b[..]);     // no thinking in this poll: no thought
+  #assert h.k == 3 && out[0].kind == MR_REPLY && out[2].kind == MR_ENDED;
+}
 #test "a reply streams out as its events come, the plan's log with it, and a finished one ends the run" {
   f: [1] McRunFixture; out: [16] McRunEvent;
   mc_run_fixture(f[..], "say hi");

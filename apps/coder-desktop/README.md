@@ -18,7 +18,7 @@ the typing mark and notices. The shared AppKit editor
 - **Command-plus** and **Command-minus** make the text bigger and smaller, in eight sizes from 80% to 200%. Command-0 is the usual size. Coder keeps the size you chose.
 - **Copy** on a code block puts its text on the clipboard.
 - **The copy icon under a message** copies that message: yours as you wrote it, a reply as its Markdown.
-- **The copy icon in the top right corner**, beside New chat, copies the whole chat: each message under `You:`, each command under `Ran:`, each reply under `Microcoder:`. Command output is not included.
+- **The copy icon in the top right corner**, beside New chat, copies the whole chat: each message under `You:`, each command under `Ran:`, each reply under `Microcoder:`. Command output and thoughts are not included.
 - **Click a reply** to see who wrote it (Microcoder and its model), beside the reply's copy icon. Click again to hide it.
 - **The sidebar** on the left lists your chats, most recent at the top. Click one to open it. See [Saved chats](#saved-chats).
 - **Sub-agents** take work Microcoder hands over. See [Sub-agents](#sub-agents).
@@ -28,15 +28,16 @@ Limits, all shown on screen when you reach them:
 - A chat holds 24 messages. Start a new chat to send more.
 - A reply longer than 60,000 bytes is cut.
 - One run at a time.
-- A message shows the first 12 commands and file reads. It says how many more ran.
-- A command's output is shown up to 4,000 bytes.
+- A command's or a tool call's output is shown up to 2,000 bytes, and its text up to 400 bytes.
+- A chat keeps 6,000 rows in all: commands, file reads, sub-agents' tool calls and thoughts (#13670, #13671). Past 6,000 it drops the oldest row in the chat, and the message or transcript it was in says at its top how many it dropped.
 - The working folder's name is cut with an ellipsis past 280 points wide.
 - The sidebar lists the 50 most recent chats and says how many older ones it does not show. It shows when the window is at least 900 points wide (at the usual text size).
 - A chat's title in the sidebar is its first message, up to 120 bytes.
 - When you open a chat, Microcoder is told its newest 6 messages and replies, up to 1,200 bytes of each.
 - A message runs up to 12 sub-agents, 6 in one step. Microcoder is told when a task is not run for this reason.
 - A sub-agent's task is cut at 1,500 bytes and its reply at 8,000 bytes.
-- A sub-agent's transcript keeps its newest 200 tool calls and follows them as they arrive. Past 200 it drops the oldest and says at the top how many it dropped (#13670). It shows each call up to 300 bytes and its output up to 1,000 bytes.
+- A sub-agent's transcript follows its rows as they arrive. Rows out of view are not drawn, so a long transcript costs what shows.
+- The model's thinking arrives as a summary of each step, up to 32,768 bytes a step. Thinking past that is cut, and the row says so.
 - You can drag the edge of either sidebar to resize it: the chats' sidebar from 180 to 480 points, a sub-agent's transcript from 320 to 900 points. A drag stops where it would leave the conversation under 380 points. Coder keeps the widths you chose.
 - A sub-agent's transcript is 440 points wide until you drag it. In a window where that leaves the conversation under 380 points, the chats' sidebar is hidden while the transcript is open. In a narrower window still, the transcript takes the whole window until you close it.
 - A command has 120 seconds. A run has no limit on its time, its model calls, its commands or its file reads (#13667): it ends when it replies or you press Stop. The same goes for every sub-agent.
@@ -54,6 +55,17 @@ output. The reply streams in as the model writes it.
 
 Each row shows on its right how long it took, such as `4s` or `1m 05s`.
 While it runs, the time counts up.
+
+## Thinking
+
+Microcoder and its sub-agents think before they answer or run a command
+(#13671). Each step's thinking is a **Thought** row, in its place among the
+commands, named by its first line. Press it to read it, formatted as a reply is.
+A thought longer than 2,000 bytes takes more rows, so none of it is cut.
+
+- Hydrogen and Carbon (Gemini) send a summary of their thinking, which is what Gemini gives; the full trace is not available.
+- A Claude sub-agent's thinking shows when Claude Code hands it over.
+- Thoughts are saved with the chat. Copying the whole chat leaves them out.
 
 Coder asks the worker to wait before each command (`"gated":true`) so the row
 is on screen first, and then answers yes at once. Coder does not ask you.
@@ -113,7 +125,7 @@ Microcoder is not offered the Claude models.
 
 Coder keeps every chat on this Mac (#13661). It saves a chat when you send a
 message and when a reply ends: the messages, the replies, the commands with
-their output, and the sub-agents with their tool calls, the calls' output and their replies.
+their output, the thoughts, and the sub-agents with their tool calls, the calls' output, their thoughts and their replies.
 
 The sidebar lists the chats, most recent at the top. A chat moves to the top
 when you send a message in it. Click a chat to open it:
