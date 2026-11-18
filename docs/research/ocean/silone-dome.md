@@ -30,7 +30,7 @@ is his, not Luckey's. Read everything below as one outside designer's concept.
 
 ## The video
 
-`yPbJP3-GUPTo_plJ.mp4`, attached to the post. The file is not in this repo.
+[silone-dome.mp4](silone-dome.mp4), attached to the post (originally named `yPbJP3-GUPTo_plJ.mp4`).
 
 - 45.9 seconds, 1280×720, 29.97 fps, 1,372 frames.
 - The audio track is silent (−91 dB throughout): no narration or music.
