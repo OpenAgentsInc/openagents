@@ -363,7 +363,8 @@ sb_say :: (s: [] Slab) {
     sb_help(s, h);
     sb_card(s, h);
     sb_first(s, h);
-    sh_foot(h, "A reconstruction. SLAB's real design is unpublished.");
+    foot: [200] u8;
+    sh_foot(h, sea_look_foot(s, foot[..]));
     if s[0].hp.toast_n > 0 && s[0].time - s[0].hp.toast_at < SB_TOAST { sh_toast(h, cast(string) s[0].hp.toast[0..<s[0].hp.toast_n]); }
   }
   _ = sh_end(h);

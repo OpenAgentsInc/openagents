@@ -237,6 +237,20 @@ sea_look_water_note :: (s: [] Slab, out: [] u8) -> string {
   }
   return cast(string) out[0..<n];
 }
+// The foot's line: under the sea it also says which water is drawn, so the survey view is never
+// taken for the real one.
+sea_look_foot :: (s: [] Slab, out: [] u8) -> string {
+  n := put(out, 0, "A reconstruction. SLAB's real design is unpublished.");
+  if !s[0].under { return cast(string) out[0..<n]; }
+  sight := sea_sight(sea_water(slab_site_water(sim_site(s[0].site).key).jerlov));
+  if s[0].look.real_water {
+    n = put(out, n, " The water is drawn as it is here: you see about "); n = putf(out, n, sight, 0); n = put(out, n, " m.");
+  } else {
+    n = put(out, n, " Survey view: the water is drawn "); n = putf(out, n, SEA_SURVEY_SIGHT / sight, 0);
+    n = put(out, n, " times clearer than it is.");
+  }
+  return cast(string) out[0..<n];
+}
 sea_look_hud :: (s: [] Slab, h: [] SceneHud, group: int) {
   if group == HUD_CHANGE {
     k := s[0].look;

@@ -998,6 +998,8 @@ slab_paint :: (hit:SlabHit,w:V3,d:V3,u:[]f32)->SlabPaint {
       // the waves meet this wall as squarely as its normal faces into them
       face:f32=clampf(0.25f32+(-(n.x*u[32])-(n.z*u[33]))*0.9f32,0.15f32,1.0f32);
       sprayw:f32=slab_spray(along*(ifx (n.x+n.z)>0.0f32 then 1.0f32 else -1.0f32),w.y,face,u[2],u);
+      // under the waterline there is no spray, only the bubbles a few metres down (the view under the sea)
+      sprayw=sprayw*smoothstep(-5.0f32,-0.5f32,w.y);
       c=sb_mix(c,v3(1.0f32,1.0f32,0.98f32),sprayw);
       // spray is thin water: it glows with the light through it, most of all against the sun
       thru:f32=sb_pow(fmax(wg_dot3(d,v3(u[24],u[25],u[26])),0.0f32),3.0f32);
