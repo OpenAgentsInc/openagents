@@ -32,22 +32,31 @@ hull_count :: (whole: f64, part: f64) -> int {
 }
 
 // ---------------------------------------------------------------- the shape
-// The defaults are SLAB's `prime` hull (spec 3.1).
+// SLAB's `prime` hull (spec 3.1). Code that needs one of these as a constant uses these names, so
+// the figure is still written once.
+HULL_PRIME_L :: 1000.0; HULL_PRIME_B :: 600.0;
+HULL_PRIME_HULL :: 50.0;   // the watertight hull's depth
+HULL_PRIME_DECK :: 143.0;  // the city deck over the keel: the concept image's wall
+HULL_PRIME_DRAFT :: 25.0;
+HULL_PRIME_CORNER :: 1.5;
+HULL_PRIME_CELL :: 50.0;
+HULL_PRIME_UNIT_L :: 100.0; HULL_PRIME_UNIT_B :: 50.0;
+// The defaults are `prime`.
 HullShape :: struct {
-  l: f64 = 1000.0;          // length, m
-  b: f64 = 600.0;           // beam, m
-  hull: f64 = 50.0;         // the watertight hull's depth, keel to its top slab's upper face
-  deck: f64 = 143.0;        // the city deck over the keel; equal to `hull` when there is no upper structure
-  draft: f64 = 25.0;        // the design draft, held by ballast while any is left
-  corner: f64 = 1.5;        // plan corner radius
+  l: f64 = HULL_PRIME_L;    // length, m
+  b: f64 = HULL_PRIME_B;    // beam, m
+  hull: f64 = HULL_PRIME_HULL;   // the watertight hull's depth, keel to its top slab's upper face
+  deck: f64 = HULL_PRIME_DECK;   // the city deck over the keel; equal to `hull` when there is no upper structure
+  draft: f64 = HULL_PRIME_DRAFT; // the design draft, held by ballast while any is left
+  corner: f64 = HULL_PRIME_CORNER;   // plan corner radius
   // the watertight hull's concrete
   bottom: f64 = 1.5;        // bottom slab
   top: f64 = 1.0;           // top slab (the hull's own deck)
   wall: f64 = 1.5;          // the sea walls, once lined
   web: f64 = 0.6;           // a caisson's own walls, and its webs
-  cell: f64 = 50.0;         // the bulkhead grid
-  unit_l: f64 = 100.0;      // a caisson's length (along the hull's length)
-  unit_b: f64 = 50.0;       // and its beam
+  cell: f64 = HULL_PRIME_CELL;       // the bulkhead grid
+  unit_l: f64 = HULL_PRIME_UNIT_L;   // a caisson's length (along the hull's length)
+  unit_b: f64 = HULL_PRIME_UNIT_B;   // and its beam
   // the upper structure, from the hull's top to the deck
   upper_wall: f64 = 0.8;    // the outer wall above the hull
   column: f64 = 15.0;       // each column's concrete in plan, m^2 (an 8 m square shaft, 0.5 m walls)

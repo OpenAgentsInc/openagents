@@ -16,13 +16,17 @@
 // can skip a whole district with one box test.
 
 #load "../metaverse-engine/render/noise.coax";
+#load "hull.coax";
 
-SLAB_LENGTH :: 1000.0f32;   // L, along X
-SLAB_BEAM :: 600.0f32;      // B, along Z
-SLAB_DEPTH :: 143.0f32;     // D, keel to deck: the concept image's wall, 118 m over the water
-SLAB_DRAFT :: 25.0f32;      // T
-SLAB_CORNER :: 1.5f32;      // plan corner radius: the image's corners are sharp
+// The hull's figures are metaverse/hull.coax's: the plan draws what the ledger weighs.
+SLAB_LENGTH :: f32(HULL_PRIME_L);     // L, along X: 1,000 m
+SLAB_BEAM :: f32(HULL_PRIME_B);       // B, along Z: 600 m
+SLAB_DEPTH :: f32(HULL_PRIME_DECK);   // keel to deck, 143 m: the concept image's wall, 118 m over the water
+SLAB_DRAFT :: f32(HULL_PRIME_DRAFT);  // T: 25 m
+SLAB_CORNER :: f32(HULL_PRIME_CORNER);   // plan corner radius: the image's corners are sharp
 SLAB_DECK :: SLAB_DEPTH - SLAB_DRAFT;   // the deck's height over the calm water: 118 m
+SLAB_HULL_TOP :: f32(HULL_PRIME_HULL - HULL_PRIME_DRAFT);   // the watertight hull's top over the calm water: 25 m;
+                                        // the upper structure carries the deck from here
 SLAB_RECORD :: 8;
 SLAB_MAX_BOXES :: 152;   // includes the port and construction fleet alongside the city
 SLAB_PIPE_RADIUS :: 3.35f32; SLAB_PIPE_LENGTH :: 1000.0f32;
@@ -336,8 +340,10 @@ slab_tree :: (cx: f32, cz: f32) -> SlabTree {
     #assert slab_inside(boxes[..], i);
     #assert cast(int) boxes[at + 3] < SLAB_KINDS && cast(int) boxes[at + 7] <= SLAB_STATUES;   // the plan has no domes or bridges
   }
-  // the hull spans keel to deck: 143 m deep, 25 m draft, 118 m of wall as the image draws it
-  #assert boxes[1] == -25 && boxes[5] == 118;
+  // the hull spans keel to deck: 143 m deep, 25 m draft, 118 m of wall as the image draws it; the
+  // watertight hull under it tops out 25 m over the water (hull.coax)
+  #assert boxes[1] == -25 && boxes[5] == 118 && SLAB_HULL_TOP == 25;
+  #assert f64(boxes[5] - boxes[1]) == hull_prime().deck && f64(boxes[5]) == hull_ledger(hull_prime()).deck_height;
   // the tallest tower is 205 m over the deck; eight stacks of 70-95 m (the concept image's)
   tallest := 0.0f32; stacks := 0;
   for i: SLAB_HULL_PIECES..<n {

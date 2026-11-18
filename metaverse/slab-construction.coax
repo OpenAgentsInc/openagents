@@ -1,5 +1,9 @@
 // Corpus Christi construction scenario, in metres, metric tonnes, hours and project days.
 // Port dimensions and source assumptions are in docs/research/ocean/slab-image-feasibility.md.
+// The hull it builds is metaverse/hull.coax's, the one the world floats: 120 caissons cast ashore
+// and towed out, then at the berth the sea walls' lining and the upper structure that carries the
+// deck to 143 m, then the city, with ballast to the 25 m draft (slab-world-spec.md 3.1). Its
+// concrete, masses and ballast are read from that ledger; the last check here fails if they drift.
 #load "slab-sim.coax";
 #load "slab-plan.coax";
 
@@ -31,7 +35,7 @@
     #assert abs(after.mass - f64(i + 1) * build_tow().mass) < 0.01;
   }
   end := build_at(BUILD_DONE);
-  #assert end.joined == 120 && abs(end.mass - 15375000) < 0.01 && abs(end.draft - 25) < 0.00001;
+  #assert end.joined == 120 && abs(end.mass - 15374950.51) < 0.01 && abs(end.draft - 25) < 0.00001;
   half := build_at(BUILD_DOCKED + BUILD_OUTFIT_DAYS / 2);
   #assert half.draft > build_tow().draft && half.draft < end.draft;
   for i: 0..<101 {
@@ -42,10 +46,9 @@
 }
 
 BUILD_COLUMNS :: 10; BUILD_ROWS :: 12; BUILD_UNITS :: BUILD_COLUMNS * BUILD_ROWS;
-BUILD_L :: f64(SLAB_LENGTH) / f64(BUILD_COLUMNS);
-BUILD_B :: f64(SLAB_BEAM) / f64(BUILD_ROWS);
-BUILD_H :: 50.0;                 // the spec's 50 m structural hull, whose mass budget the world keeps
-                                 // (slab-world-spec.md 3.1); the picture's taller wall is not in it
+BUILD_L :: HULL_PRIME_UNIT_L;    // a caisson: 100 x 50 x 50 m, the watertight hull's depth
+BUILD_B :: HULL_PRIME_UNIT_B;
+BUILD_H :: HULL_PRIME_HULL;
 BUILD_RHO :: SIM_RHO / 1000.0;
 BUILD_TOW_BALLAST :: 3000.0;     // isolated low tanks, assumed CG 1.5 m above keel
 BUILD_AVAILABLE_KN :: 2000.0;    // assumed combined effective tow force at 4 kn
@@ -58,25 +61,23 @@ BUILD_DOCKED :: BUILD_SAIL + f64(BUILD_UNITS - 1) * BUILD_CYCLE + 1.0;
 BUILD_FREIGHT_CHANNEL :: 15.0; BUILD_FREIGHT_GULF :: 130.0;
 BUILD_FREIGHT_NM :: BUILD_FREIGHT_CHANNEL + BUILD_FREIGHT_GULF;
 BUILD_FREIGHT_H :: BUILD_FREIGHT_CHANNEL / 3.0 + BUILD_FREIGHT_GULF / 5.0;
-BUILD_OUTFIT_DAYS :: 400.0; BUILD_DONE :: BUILD_DOCKED + BUILD_OUTFIT_DAYS;
-BUILD_CALLS :: 100; BUILD_PARCEL :: 25000.0;
+// The lighter's 200 calls, a four-day round trip each, land everything placed at the berth: the
+// materials for the lining and the upper structure first, then the city and its liquids.
+BUILD_OUTFIT_DAYS :: 800.0; BUILD_DONE :: BUILD_DOCKED + BUILD_OUTFIT_DAYS;
+BUILD_CALLS :: 200;
+// What the berth adds to the joined caissons, t: concrete cast at sea, then topsides and liquids.
+build_sea_concrete :: () -> f64 { led := hull_ledger(hull_prime()); return (led.lining + led.upper_concrete) * HULL_CONCRETE / 1000.0; }
+build_freight :: () -> f64 { led := hull_ledger(hull_prime()); return build_sea_concrete() + (led.topsides + led.liquids) / 1000.0; }
+build_parcel :: () -> f64 { return build_freight() / f64(BUILD_CALLS); }
 BUILD_CAST :: 0; BUILD_HOLD :: 1; BUILD_CHANNEL :: 2; BUILD_GULF :: 3; BUILD_JOIN :: 4; BUILD_YARD :: 5; BUILD_OUTFIT :: 6; BUILD_COMPLETE :: 7;
 BUILD_PHASES :: [8] string.["Casting in the basin","Weather hold","Port channel transit","Gulf tow","Align and join","Prepare next caisson","Outfit and ballast","Commissioned"];
 
 BuildTow :: struct { concrete: f64; mass: f64; draft: f64; gm: f64; pull: f64; }
 build_tow :: () -> BuildTow {
-  // Non-overlapping volumes. Every module has its own end walls, including at seams.
-  area := BUILD_L * BUILD_B;
-  bottom := area * 1.5; roof := area * 1.0;
-  clear_h := BUILD_H - 2.5;
-  inner_b := BUILD_B - 1.2;
-  webs := (area - (BUILD_L - 1.2) * inner_b + 0.6 * inner_b) * clear_h;
-  v := bottom + roof + webs;
-  mass := 2.5 * v + BUILD_TOW_BALLAST;
-  draft := mass / (BUILD_RHO * area);
-  kg := ((bottom * 0.75 + roof * (BUILD_H - 0.5) + webs * (1.5 + clear_h / 2)) * 2.5 + BUILD_TOW_BALLAST * 1.5) / mass;
-  gm := draft / 2 + BUILD_B * BUILD_B / (12 * draft) - kg;
-  return BuildTow.{concrete = v, mass = mass, draft = draft, gm = gm, pull = build_pull(draft, 10)};
+  // hull.coax's caisson: every module has its own walls, including at seams.
+  unit := hull_caisson(hull_prime());
+  f := hull_unit_float(unit, BUILD_TOW_BALLAST * 1000.0, 1.5);
+  return BuildTow.{concrete = unit.concrete, mass = f.mass / 1000.0, draft = f.draft, gm = f.gm, pull = build_pull(f.draft, 10)};
 }
 // Planning resistance at 4 kn, Cd 0.9 submerged / 1.2 in air, plus a 30% margin.
 // Wave drift, acceleration and shallow-channel interaction require a tow study.
@@ -102,7 +103,15 @@ build_map :: (v: f64, a: [] const f64, b: [] const f64) -> f64 {
 build_day :: (cursor: f64) -> f64 { return build_map(cursor, BUILD_BEATS[..], BUILD_DAYS[..]); }
 build_cursor :: (day: f64) -> f64 { return build_map(day, BUILD_DAYS[..], BUILD_BEATS[..]); }
 
-BuildState :: struct { day: f64; phase: int; joined: int; unit: int; nm: f64; approach: f64; fit: f64; call: int; ship_route: f64; ship_load: f64; mass: f64; draft: f64; ballast: f64; cargo: f64; }
+BuildState :: struct {
+  day: f64; phase: int; joined: int; unit: int; nm: f64; approach: f64;
+  fit: f64;        // the share of the berth's freight landed
+  call: int; ship_route: f64; ship_load: f64; mass: f64; draft: f64; ballast: f64; cargo: f64;
+  structure: f64;  // the share of the sea-cast concrete placed (the lining, then the upper structure)
+  city: f64;       // the share of the topsides and liquids aboard
+  concrete: f64;   // concrete in the hull so far, m^3
+  deck: f64;       // the highest finished level over the keel: the hull's top, rising to the deck
+}
 build_at :: (day: f64) -> BuildState {
   b: BuildState; b.day = sim_clamp(day, 0, BUILD_DONE);
   tow := build_tow();
@@ -132,15 +141,24 @@ build_at :: (day: f64) -> BuildState {
     inward := sim_min(back, BUILD_FREIGHT_GULF / 5) * 5 + sim_max(0, back - BUILD_FREIGHT_GULF / 5) * 3;
     b.ship_route = (outward - inward) / BUILD_FREIGHT_NM;
     landed := sim_clamp((hours - 8 - BUILD_FREIGHT_H) / 16, 0, 1);
-    b.ship_load = BUILD_PARCEL * (sim_clamp(hours / 8, 0, 1) - landed);
+    b.ship_load = build_parcel() * (sim_clamp(hours / 8, 0, 1) - landed);
     b.fit = (f64(b.call) + landed) / f64(BUILD_CALLS);
+    if b.day >= BUILD_DONE { b.fit = 1; }
   }
+  sh := hull_prime(); led := hull_ledger(sh);
   dry := tow.mass - BUILD_TOW_BALLAST;
-  final_mass := f64(SLAB_LENGTH) * f64(SLAB_BEAM) * f64(SLAB_DRAFT) * BUILD_RHO;
-  b.cargo = f64(BUILD_CALLS) * BUILD_PARCEL * b.fit;
-  b.ballast = f64(b.joined) * BUILD_TOW_BALLAST + b.fit * (final_mass - f64(BUILD_UNITS) * tow.mass - f64(BUILD_CALLS) * BUILD_PARCEL);
+  freight := build_freight(); sea := build_sea_concrete();
+  b.cargo = freight * b.fit;
+  // the materials for the concrete come first; the city follows on the finished deck
+  b.structure = sim_clamp(b.cargo / sea, 0, 1);
+  b.city = sim_clamp((b.cargo - sea) / (freight - sea), 0, 1);
+  lining := led.lining / (led.lining + led.upper_concrete);
+  b.deck = sh.hull + hull_upper(sh) * sim_clamp((b.structure - lining) / (1.0 - lining), 0, 1);
+  b.concrete = f64(b.joined) * tow.concrete + b.structure * (led.lining + led.upper_concrete);
+  // ballast: each caisson's tow ballast, then pumped in step with the freight to the ledger's figure
+  b.ballast = f64(b.joined) * BUILD_TOW_BALLAST + b.fit * (led.ballast / 1000.0 - f64(BUILD_UNITS) * BUILD_TOW_BALLAST);
   b.mass = f64(b.joined) * dry + b.cargo + b.ballast;
-  if b.joined > 0 { b.draft = b.mass / (f64(b.joined) * BUILD_L * BUILD_B * BUILD_RHO); }
+  if b.joined > 0 { b.draft = b.mass * 1000.0 / (led.per_metre * f64(b.joined) / f64(BUILD_UNITS)); }
   return b;
 }
 
@@ -187,8 +205,8 @@ build_lift :: (b: BuildState) -> BuildLift {
   for i: 0..<BUILD_CALLS {
     day := BUILD_DOCKED + f64(i) * BUILD_OUTFIT_DAYS / f64(BUILD_CALLS);
     sailing := build_at(day + 0.5); unloading := build_at(day + (8 + BUILD_FREIGHT_H + 8) / 24);
-    #assert abs(sailing.ship_load - BUILD_PARCEL) < 0.01 && abs(sailing.cargo - f64(i) * BUILD_PARCEL) < 0.01;
-    #assert abs(unloading.ship_load + unloading.cargo - f64(i + 1) * BUILD_PARCEL) < 0.01;
+    #assert abs(sailing.ship_load - build_parcel()) < 0.01 && abs(sailing.cargo - f64(i) * build_parcel()) < 0.01;
+    #assert abs(unloading.ship_load + unloading.cargo - f64(i + 1) * build_parcel()) < 0.01;
   }
   for i: 0..<29 {
     lift := build_lift(build_at(f64(i)));
@@ -276,14 +294,17 @@ build_hawser :: (out: [] f32, n: int, ax: f32, az: f32, bx: f32, bz: f32) -> int
 }
 build_scene :: (b: BuildState, water: BuildWater, plan: [] f32, count: int, out: [] f32) -> int {
   n := 0;
-  deck := f32(BUILD_H - b.draft) + water.site;
+  hull_top := f32(BUILD_H - b.draft) + water.site;  // the watertight hull's top
+  deck := f32(b.deck - b.draft) + water.site;       // the highest finished level: the deck, in the end
   for row: 0..<BUILD_ROWS {
     cols := cast(int) sim_clamp(f64(b.joined - row * BUILD_COLUMNS), 0, f64(BUILD_COLUMNS));
     if cols > 0 {
       length := f32(cols) * 100;
-      n = build_box(out, n, 500 - length / 2, -275 + 50 * f32(row), length, 50, water.site - f32(b.draft), deck, BUILD_CAISSON_KIND);
+      n = build_box(out, n, 500 - length / 2, -275 + 50 * f32(row), length, 50, water.site - f32(b.draft), hull_top, BUILD_CAISSON_KIND);
     }
   }
+  // the upper structure, rising over the joined hull to carry the deck
+  if deck > hull_top + 0.01f32 { n = build_box(out, n, 0, 0, SLAB_LENGTH, SLAB_BEAM, hull_top, deck, BUILD_CAISSON_KIND); }
   // A fixed quay, its fabrication shed, gantry, and a pair of channel marks.
   n = build_box(out, n, -1505, 25, 365, 380, -12, 5, BUILD_CAISSON_KIND);
   n = slab_put(out, n, -1620, 5, -90, -1440, 28, -18, SLAB_KIND_INDUSTRY, SLAB_GABLE_X);
@@ -344,22 +365,56 @@ build_scene :: (b: BuildState, water: BuildWater, plan: [] f32, count: int, out:
     top := 10 - draft;
     n = build_box(out, n, x, z, 120, 32, -draft, top, BUILD_BOAT_KIND);
     if b.ship_load > 0.1 {
-      for i: 0..<3 { n = build_box(out, n, x - 35 + 35 * f32(i), z, 30, 25, top, top + f32(b.ship_load / BUILD_PARCEL) * 12, BUILD_CARGO_KIND); }
+      for i: 0..<3 { n = build_box(out, n, x - 35 + 35 * f32(i), z, 30, 25, top, top + f32(b.ship_load / build_parcel()) * 12, BUILD_CARGO_KIND); }
     }
     direction := ifx b.ship_load < 0.01 && b.ship_route > 0 then -1.0f32 else 1.0f32;
     n = build_tug(out, n, x + 92 * direction, z, direction);
     n = build_hawser(out, n, x + 58 * direction, z, x + 80 * direction, z);
     build_raise(out, start, n, water.lighter);
   }
-  if b.fit > 0 {
+  if b.city > 0 {
     for i: SLAB_HULL_PIECES..<count {
       j := i * SLAB_RECORD;
       if cast(int)plan[j + 3] == SLAB_KIND_PIPE { continue; } // no deep-water OTEC pipe in 40 m
-      share := f32(sim_clamp(b.fit * 2.0 - ((f64(plan[j]) + 500) / 1000), 0, 1));
+      share := f32(sim_clamp(b.city * 2.0 - ((f64(plan[j]) + 500) / 1000), 0, 1));
       if share <= 0 { continue; }
       y := deck + (plan[j + 1] - SLAB_DECK) * share;
       n = slab_put(out, n, plan[j], y, plan[j + 2], plan[j + 4], y + (plan[j + 5] - plan[j + 1]) * share, plan[j + 6], cast(int)plan[j + 3], cast(int)plan[j + 7]);
     }
   }
   return n;
+}
+
+#test "the timelapse ends on the world's hull: the same deck height, concrete, mass and ballast" {
+  sh := hull_prime(); led := hull_ledger(sh);
+  end := build_at(BUILD_DONE);
+  // the timelapse against the ledger
+  #assert end.joined == hull_units(sh) && BUILD_UNITS == hull_units(sh) && BUILD_COLUMNS == hull_cols(sh) && BUILD_ROWS == hull_rows(sh);
+  #assert abs(build_tow().concrete - hull_caisson(sh).concrete) < 1e-9 && BUILD_H == sh.hull;
+  #assert end.structure == 1 && end.city == 1 && end.fit == 1;
+  #assert abs(end.concrete - led.concrete) < 0.01;                    // 3.83 million m^3
+  #assert abs(end.ballast * 1000.0 - led.ballast) < 1.0;              // 3.31 Mt
+  #assert abs(end.mass * 1000.0 - led.mass) < 1.0;                    // 15.375 Mt
+  #assert abs(end.draft - led.draft) < 1e-9 && abs(end.deck - sh.deck) < 1e-9;
+  #assert abs(end.deck - end.draft - led.deck_height) < 1e-9;         // 118 m over the water
+  // the world against the ledger: what it draws and what it steps
+  #assert f64(SLAB_DECK) == led.deck_height && f64(SLAB_DRAFT) == led.draft && f64(SLAB_DEPTH) == sh.deck;
+  #assert f64(SLAB_HULL_TOP) == led.freeboard && f64(SLAB_LENGTH) == sh.l && f64(SLAB_BEAM) == sh.b;
+  #assert abs(sim_mass() - led.mass) < 1.0 && sim_prime_shape().t == led.draft && sim_prime_shape().kg == led.kg;
+  // so the timelapse and the world agree
+  #assert abs(end.deck - end.draft - f64(SLAB_DECK)) < 1e-9 && abs(end.mass * 1000.0 - sim_mass()) < 1.0;
+  // the scene's last frame stands the city on the world's deck
+  plan: [SLAB_MAX_BOXES * SLAB_RECORD]f32; shown: [SLAB_MAX_BOXES * SLAB_RECORD]f32;
+  count := slab_plan(plan[..]);
+  n := build_scene(end, BuildWater.{}, plan[..], count, shown[..]);
+  tallest := 0.0f32;
+  for i: 0..<n { if shown[i * SLAB_RECORD + 5] > tallest { tallest = shown[i * SLAB_RECORD + 5]; } }
+  #assert tallest == SLAB_DECK + 205;
+  // on the way the deck only rises, and the city waits for it
+  last := sh.hull;
+  for i: 0..<41 {
+    b := build_at(BUILD_DOCKED + BUILD_OUTFIT_DAYS * f64(i) / 40);
+    #assert b.deck >= last && b.deck <= sh.deck && (b.city == 0 || b.deck == sh.deck);
+    last = b.deck;
+  }
 }

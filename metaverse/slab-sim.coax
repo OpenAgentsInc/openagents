@@ -5,7 +5,7 @@
 // the SLAB Simulation realm (apps/openagents-web/slab.coax) steps it and draws what it says.
 //
 // The hull is the `prime` monolith, a rigid body in heave, roll and pitch, plus surge and sway on
-// its moorings. Buoyancy comes from columns: the sea's height at each column's centre, a 25 m
+// its moorings. Its size, mass and centre of gravity come from metaverse/hull.coax's ledger. Buoyancy comes from columns: the sea's height at each column's centre, a 25 m
 // grid under the hull (960 columns), summed into a force and two moments (spec 4.1, linearised
 // about the design draft), with added mass and radiation damping at zeta = 0.08 (spec 4.2). Wind,
 // current and sixteen taut mooring lines hold it in the horizontal (spec 4.3, 4.4).
@@ -13,14 +13,15 @@
 //   coax/bin/coax test metaverse/slab-sim.coax
 
 #load "../metaverse-engine/core/angle.coax";
+#load "hull.coax";
 
 SIM_PI :: 3.14159265358979;
 sim_max :: (a: f64, b: f64) -> f64 { return ifx a > b then a else b; }
 sim_min :: (a: f64, b: f64) -> f64 { return ifx a < b then a else b; }
 sim_atan2 :: (y: f64, x: f64) -> f64 { return f64(angle_atan2(f32(y), f32(x))); }
 sim_clamp :: (a: f64, lo: f64, hi: f64) -> f64 { return sim_min(hi, sim_max(lo, a)); }
-SIM_RHO :: 1025.0;        // sea water, kg/m^3
-SIM_G :: 9.81;
+SIM_RHO :: HULL_SEA;       // sea water, kg/m^3
+SIM_G :: HULL_G;
 SIM_RHO_AIR :: 1.225;
 
 // ---------------------------------------------------------------- sites and sea states (spec 5)
@@ -214,8 +215,9 @@ sim_fixed_short :: (p: SimPlant, o: SimPower) -> bool {
 }
 
 // ---------------------------------------------------------------- the hull (spec 3.1, 4)
-SIM_L :: 1000.0; SIM_B :: 600.0; SIM_T :: 25.0; SIM_D :: 143.0; SIM_CORNER :: 1.5;
-SIM_KG :: 25.0;           // the centre of gravity over the keel
+// prime's figures are hull.coax's: SIM_D is the watertight hull's depth (the deck stands on the
+// upper structure, HULL_PRIME_DECK over the keel), and the centre of gravity is the ledger's.
+SIM_L :: HULL_PRIME_L; SIM_B :: HULL_PRIME_B; SIM_T :: HULL_PRIME_DRAFT; SIM_D :: HULL_PRIME_HULL; SIM_CORNER :: HULL_PRIME_CORNER;
 SIM_CA_HEAVE :: 1.0; SIM_CA_ROT :: 0.3; SIM_ZETA :: 0.08;
 SIM_COLUMN :: 25.0;       // the buoyancy columns' grid
 SIM_COLUMNS_X :: 40; SIM_COLUMNS_Z :: 24;
@@ -257,7 +259,7 @@ SimShape :: struct {
   round: bool;
   l: f64; b: f64;               // prime's length and beam, m
   r: f64;                       // the dome's radius, m
-  t: f64; d: f64; kg: f64;      // draft, depth, centre of gravity over the keel
+  t: f64; d: f64; kg: f64;      // draft, the watertight hull's depth, centre of gravity over the keel
   ca_heave: f64; ca_rot: f64;
   k_roll: f64; k_pitch: f64;    // radii of gyration
   lines: int; anchor: f64; t0: f64; k1: f64;
@@ -269,7 +271,7 @@ SimShape :: struct {
 SIM_DOME_R :: 60.96;          // 400 ft across
 SIM_DOME_CORE :: 15.0;        // the central core's radius
 sim_prime_shape :: () -> SimShape {
-  return SimShape.{l = SIM_L, b = SIM_B, t = SIM_T, d = SIM_D, kg = SIM_KG, ca_heave = SIM_CA_HEAVE, ca_rot = SIM_CA_ROT,
+  return SimShape.{l = SIM_L, b = SIM_B, t = SIM_T, d = SIM_D, kg = hull_ledger(hull_prime()).kg, ca_heave = SIM_CA_HEAVE, ca_rot = SIM_CA_ROT,
     k_roll = 0.35 * SIM_B, k_pitch = 0.29 * SIM_L, lines = 16, anchor = SIM_ANCHOR, t0 = SIM_T0, k1 = SIM_K1, windage = SIM_WINDAGE,
     cell = SIM_CELL * SIM_CELL, cell_h = SIM_D, hole_x = SIM_HOLE_X, hole_z = SIM_HOLE_Z};
 }
@@ -405,7 +407,7 @@ sim_offset :: (u: f64) -> SimOffset {
   return SimOffset.{offset = lo, tension = sim_mooring(0, lo).peak, force = f};
 }
 // Cell A1, the south-west corner cell (columns A-T west to east, rows 1-12 south to north).
-SIM_CELL :: 50.0;
+SIM_CELL :: HULL_PRIME_CELL;
 SIM_HOLE_X :: -SIM_L / 2.0 + SIM_CELL / 2.0; SIM_HOLE_Z :: -SIM_B / 2.0 + SIM_CELL / 2.0;
 SIM_HOLE_AREA :: 4.0;         // m^2 (spec 4.5)
 SIM_PUMPS :: 80.0;            // 8 pumps of 10 m^3/s
@@ -593,14 +595,8 @@ sim_cluster_advance :: (c0: SimCluster, heights: [] f32, n: int, patch: f64, win
 // by the sea's column loads; the rigid terms drop out because the mode is orthogonal to them.
 SIM_BEND_BL :: 4.730040745; SIM_BEND_SIGMA :: 0.982502215;
 SIM_E :: 35.0e9;              // prestressed concrete, Pa
-// The section's second moment about its neutral axis (section 3.1's deck, bottom, walls and 11
-// longitudinal bulkheads), m^4.
-sim_section_i :: () -> f64 {
-  deck := SIM_B * 1.0; bottom := SIM_B * 1.5; walls := 2.0 * 1.5 * SIM_D + 11.0 * 0.6 * SIM_D;
-  y := (deck * (SIM_D - 0.5) + bottom * 0.75 + walls * SIM_D / 2.0) / (deck + bottom + walls);
-  return deck * (SIM_D - 0.5 - y) * (SIM_D - 0.5 - y) + bottom * (0.75 - y) * (0.75 - y)
-       + walls * (SIM_D / 2.0 - y) * (SIM_D / 2.0 - y) + walls * SIM_D * SIM_D / 12.0;
-}
+// The hull girder's second moment about its neutral axis: the 50 m watertight hull's (hull.coax).
+sim_section_i :: () -> f64 { return hull_section_i(hull_prime()); }
 sim_bend_mode :: (x: f64) -> f64 {
   b := SIM_BEND_BL / SIM_L; t := b * (x + SIM_L / 2.0);
   ch := (exp(t) + exp(-t)) / 2.0; sh := (exp(t) - exp(-t)) / 2.0;
@@ -624,12 +620,18 @@ sim_bending :: (heights: [] f32, n: int, patch: f64, h: SimHull) -> f64 {
   return f / (SIM_E * sim_section_i() * b * b * b * b * SIM_L / 4.0);
 }
 // ---------------------------------------------------------------- checks (spec section 9)
-#test "the hydrostatics match section 3.1" {
-  #assert abs(sim_mass() / 1e9 - 15.34) < 0.05;              // 15.4 Mt with the corners rounded
-  #assert abs(sim_gm_t() - 1187.5) < 0.1 && abs(sim_gm_l() - 3320.8) < 0.1;
+#test "the hydrostatics match section 3.1 and the hull's ledger" {
+  led := hull_ledger(hull_prime()); sh := sim_prime_shape();
+  // the body the simulation steps is the ledger's: the same mass, draft, centre of gravity and GM
+  #assert abs(sim_mass() - led.mass) < 1.0 && abs(sim_mass() / 1e9 - 15.375) < 0.001;
+  #assert sh.t == led.draft && sh.kg == led.kg && sh.d == hull_prime().hull && abs(sim_awp() - hull_awp(hull_prime())) < 1e-6;
+  #assert abs(sim_gm_t() - led.gm_t) < 1e-9 && abs(sim_gm_l() - led.gm_l) < 1e-9;
+  #assert abs(sim_gm_t() - 1159.0) < 0.5 && abs(sim_gm_l() - 3292.3) < 0.5;   // KG 53.5 m
   #assert abs(sim_heave_period() - 14.2) < 0.1;               // C_a = 1
+  #assert abs(sim_heave_period() - hull_heave_period(hull_prime(), led, SIM_CA_HEAVE)) < 1e-9;
   // section 3.1's periods are without added inertia; the body rings with it (C_a 0.3)
-  #assert abs(sim_roll_period() / sqrt(1.0 + SIM_CA_ROT) - 12.2) < 0.1 && abs(sim_pitch_period() / sqrt(1.0 + SIM_CA_ROT) - 10.1) < 0.1;
+  #assert abs(sim_roll_period() / sqrt(1.0 + SIM_CA_ROT) - 12.4) < 0.1 && abs(sim_pitch_period() / sqrt(1.0 + SIM_CA_ROT) - 10.1) < 0.1;
+  #assert abs(sim_roll_period() - hull_rock_period(sh.k_roll, led.gm_t, SIM_CA_ROT)) < 1e-9;
 }
 #test "1: calm equilibrium holds the design draft with no heel or trim" {
   h: SimHull; empty: [1] f32;
@@ -757,7 +759,7 @@ sim_bending :: (heights: [] f32, n: int, patch: f64, h: SimHull) -> f64 {
   #assert abs(best.scale - 10.0 / sim_otec_net(sim_site(SITE_GUAM).surface_max - SIM_DEEP - 0.5, 1)) < 1e-9;
 }
 #test "S7: bending is zero on a flat or level sea and follows a hog" {
-  #assert abs(sim_section_i() / 1e6 - 9.7) < 0.3;
+  #assert abs(sim_section_i() / 1e6 - 1.04) < 0.01;      // the 50 m watertight hull's girder
   #assert abs(sim_bend_mode(-SIM_L / 2.0) - 1.0) < 1e-6 && abs(sim_bend_mode(SIM_L / 2.0) - 1.0) < 1e-4;
   h: SimHull; n := 8; flat: [64] f32; level: [64] f32;
   for i: 0..<64 { level[i] = 1.5; }

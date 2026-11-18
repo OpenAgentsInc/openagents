@@ -4,6 +4,7 @@
 #load "../../../metaverse-engine/render/noise.coax";
 #load "../../../metaverse-engine/gpu/wgsl.coax";
 #load "../../../metaverse/style.coax";
+#load "../../../metaverse/hull.coax";
 
 // SLAB (slab.coax): the sea in deep water on the spectral tiles slab.coax packs into the
 // uniforms each frame (metaverse/water-spectrum.coax), drawn by surface_vs as the water lab's
@@ -37,6 +38,7 @@ SLAB_W_CHOP :: cast(u32)8192;
 SLAB_W_FINE :: cast(u32)10240;
 SLAB_MISS :: 1e9f32;
 SLAB_CORNER :: 1.5f32;
+SLAB_HULL_DEPTH :: f32(HULL_PRIME_HULL);   // the watertight hull, keel to its top slab (metaverse/hull.coax)
 slab_word :: (i:u32,u:[]f32)->u32 {
   return wg_get_u4(wg_at4u(u,(cast(int)(i>>2))*4+SLAB_WORDS),cast(int)(i&3));
 }
@@ -921,22 +923,32 @@ slab_columns :: (s:f32,period:f32)->f32 {
 // The paint of what the ray hit at w (hull frame), by its kind (SLAB_KIND_* in metaverse/slab-plan.coax).
 // Returns the albedo, and in emit how much it glows (windows at night, lit miners).
 SlabPaint :: struct {c:V3; emit:V3; }
-// The section's cut face at w: the hull's concrete (1.5 m walls and bottom, the 1 m deck and the
-// transverse bulkheads every 50 m), the ballast water, the flooded cell, the waterline; the
+// The section's cut face at w, as metaverse/hull.coax weighs it. Below the hull's top, the
+// watertight hull: 1.5 m sea walls and bottom, a 1 m top slab, a web every 50 m and two caisson
+// walls back to back every 100 m, the ballast water, the flooded cell. Above it, the upper
+// structure: a 0.8 m outer wall, the deck's 0.6 m slab on girders, and beyond the cut the columns
+// that stand on the bulkhead crossings, with open space between. Then the waterline, and the
 // buildings cut open floor by floor. It lights itself, as a drawing would.
 slab_section :: (k:s32,w:V3,u:[]f32)->SlabPaint {
   c:V3=v3(0.10f32,0.10f32,0.11f32);
   if (k==0) {
     hl:f32=u[36]; hb:f32=u[37]; deck:f32=u[38]; keel:f32=u[39];
+    top:f32=keel+SLAB_HULL_DEPTH;
     bx:f32=abs(fract((w.x+hl)/50.0f32+0.5f32)-0.5f32)*50.0f32;
-    concrete:bool=(abs(w.x)>hl-1.5f32)||(w.y<keel+1.5f32)||(w.y>deck-1.0f32)||(bx<0.3f32);
+    seam:f32=abs(fract((w.x+hl)/100.0f32+0.5f32)-0.5f32)*100.0f32;
+    upper:bool=w.y>top;
+    concrete:bool=(abs(w.x)>hl-1.5f32)||(w.y<keel+1.5f32)||(w.y>top-1.0f32)||(bx<0.3f32)||(seam<0.6f32);
+    if (upper) { concrete=(abs(w.x)>hl-0.8f32)||(w.y>deck-0.6f32)||((bx<1.0f32)&&(w.y>deck-3.6f32)); }
     if (concrete) {
       hatch:f32=slab_band(w.x+w.y,2.0f32,0.25f32);
       c=sb_mul(v3(0.66f32,0.64f32,0.60f32),0.9f32+(0.1f32*hatch));
+    } else if (upper) {
+      // open space under the deck; the columns beyond the cut, 8 m square
+      c=ifx bx<4.0f32 then v3(0.33f32,0.32f32,0.31f32) else v3(0.13f32,0.14f32,0.16f32);
     } else {
       c=v3(0.17f32,0.17f32,0.18f32);
       // the cells' own lights, a row along each
-      c=sb_add(c,sb_mul(v3(0.2f32,0.18f32,0.14f32),slab_band(w.y-(deck-6.0f32),50.0f32,0.04f32)));
+      c=sb_add(c,sb_mul(v3(0.2f32,0.18f32,0.14f32),slab_band(w.y-(top-6.0f32),50.0f32,0.04f32)));
       // cell A1, the south-west corner, is a void (no ballast): its floodwater when holed
       a1:bool=(w.x<(-hl)+50.0f32)&&(w.z<(-hb)+50.0f32);
       if ((w.y<u[SLAB_P+54])&&!a1) { c=v3(0.06f32,0.26f32,0.42f32); }
