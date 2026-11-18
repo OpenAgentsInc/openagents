@@ -3705,6 +3705,9 @@ function paneOpen() {
   const root = document.createElement("div"); // page pane
   root.id = "coaxial-pane"; root.dataset.coaxialDock = "";
   document.body.appendChild(root);
+  // A button pressed with the pointer gives focus back, or every key after it would stay out of the scene
+  // (inEditor): W would not walk after a tab was opened. A press from the keyboard (detail 0) keeps its focus.
+  root.addEventListener("click", (e) => { const a = document.activeElement; if (e.detail > 0 && a?.tagName === "BUTTON" && root.contains(a)) a.blur(); });
   import(`/coaxial/dom-host.js?app=${paneApp}&root=${root.id}`).catch((error) => { console.error(error); document.documentElement.dataset.coaxialError = String(error); });
 }
 function paneActs() {

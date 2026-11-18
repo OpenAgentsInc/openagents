@@ -1,0 +1,255 @@
+// The scene set: the frames set's pieces for words over a scene that fills the window (a 3D world, a
+// map), for a visitor who has read nothing (GitHub #13685). A layer the scene shows through and takes
+// the pointer through; a bar of tabs with the sheet a tab opens under it; a card about one thing; a
+// caption that walks a visitor through steps; a tag pinned at a point of the scene; a picture laid
+// over the scene. A number comes with what it measures, something to picture it by and where it is
+// from; a fold keeps working out of the way until it is asked for. Each builds nodes in the tree and
+// nothing else. Every look is the skin's (components/skin/mono.coax, mono_scene_css), which sets this
+// set in plain words: sentence case, at the body's size and no smaller.
+//
+// A page with a canvas draws these in a pane of its own (docs/reuse.md, "Panes of a page's own"). The
+// layer has no pane on a side, so the scene keeps the whole window.
+//   coax/bin/coax test components/kit/scene.coax
+
+#load "dock.coax";
+#load "listing.coax";   // choices (k_choices, k_choice)
+
+SC_TENTHS :: 10;       // a place is written to a tenth of a pixel
+SC_PARTS :: 100;       // how much of a thing shows, in hundredths
+SC_VARS :: 64;         // bytes of a node's measures
+// Where a number is from.
+SC_FROM_NONE :: 0; SC_FROM_CLAIM :: 1; SC_FROM_SOURCE :: 2; SC_FROM_OURS :: 3;
+
+// Scene: opens the layer over the window. What is under it shows, and takes the pointer wherever
+// nothing of the layer is. Close it with tr_close.
+k_scene :: (t: [] Tree, id: string) -> int { return tr_open(t, id, TG_DIV, "scn"); }
+// The top of the layer: the bar, and the sheet under it. Close it with tr_close.
+k_scene_top :: (t: [] Tree, id: string) -> int { return tr_open(t, id, TG_DIV, "scn-top"); }
+// Bar: the strip of tabs, named for a screen reader. Close it with tr_close.
+k_scene_bar :: (t: [] Tree, u: [] Ui, id: string, label: string) -> int {
+  i := k_frame(t, u, id, TG_NAV, "scn-bar", MF_PANEL);
+  tr_attr(t, i, AT_LABEL, label);
+  return i;
+}
+// The scene's name, at the bar's start.
+k_scene_name :: (t: [] Tree, id: string, text: string) -> int { return tr_leaf(t, id, TG_SPAN, "scn-name", text); }
+// A space in the bar that takes the room left, so what follows stands at its end.
+k_scene_gap :: (t: [] Tree, id: string) -> int { return tr_leaf(t, id, TG_SPAN, "scn-gap", ""); }
+// Tab: a word in the bar that opens a sheet of controls under the bar; `open` while its sheet shows.
+k_scene_tab :: (t: [] Tree, id: string, label: string, open: bool) -> int {
+  i := tr_leaf(t, id, TG_BUTTON, "scn-tab", label);
+  tr_attr(t, i, AT_EXPANDED, ifx open then "true" else "false");
+  return i;
+}
+// Mode: a word in the bar that is one of a few ways to be in the scene; `on` for the one in force.
+k_scene_mode :: (t: [] Tree, id: string, label: string, on: bool) -> int {
+  i := tr_leaf(t, id, TG_BUTTON, "scn-tab", label);
+  tr_attr(t, i, AT_PRESSED, ifx on then "true" else "false");
+  return i;
+}
+// Sheet: what a tab opens, under the bar: a panel of controls whose body scrolls inside it when it is
+// taller than the window leaves it. Close it with k_scene_sheet_end.
+k_scene_sheet :: (t: [] Tree, u: [] Ui, id: string, label: string) -> int {
+  ida: [UI_ID] u8;
+  i := k_frame(t, u, id, TG_SECTION, "scn-sheet", MF_PANEL);
+  tr_attr(t, i, AT_LABEL, label);
+  b := tr_open(t, tr_cat(ida[..], id, ".b"), TG_DIV, "scn-body");
+  return i;
+}
+k_scene_sheet_end :: (t: [] Tree) { tr_close(t); tr_close(t); }
+// The head of a part of a sheet that was opened from a row of it: a button back (its id is `id`)
+// and the part's name.
+k_scene_back :: (t: [] Tree, id: string, label: string, title: string) -> int {
+  ida: [UI_ID] u8; idb: [UI_ID] u8;
+  h := tr_open(t, tr_cat(ida[..], id, ".head"), TG_DIV, "scn-head");
+  b := k_icon_button(t, id, IC_CHEVRON_LEFT, label);
+  n := tr_leaf(t, tr_cat(idb[..], id, ".t"), TG_H2, "scn-h", title);
+  tr_close(t);
+  return b;
+}
+// A heading inside a sheet or a card.
+k_scene_heading :: (t: [] Tree, id: string, text: string) -> int { return tr_leaf(t, id, TG_H3, "scn-h3", text); }
+// The one sentence a caption says, larger than the rest.
+k_scene_lead :: (t: [] Tree, id: string, text: string) -> int { return tr_leaf(t, id, TG_P, "scn-lead", text); }
+// A sentence.
+k_scene_say :: (t: [] Tree, id: string, text: string) -> int { return tr_leaf(t, id, TG_P, "scn-p", text); }
+// A row that opens a part of the sheet: its name, a line about it, and a mark that it leads on.
+k_scene_door :: (t: [] Tree, id: string, title: string, note: string) -> int {
+  ida: [UI_ID] u8; idb: [UI_ID] u8; idc: [UI_ID] u8; idd: [UI_ID] u8;
+  i := tr_open(t, id, TG_BUTTON, "scn-door");
+  c := tr_open(t, tr_cat(ida[..], id, ".w"), TG_SPAN, "scn-door-w");
+  a := tr_leaf(t, tr_cat(idb[..], id, ".t"), TG_SPAN, "scn-door-t", title);
+  if note.count > 0 { b := tr_leaf(t, tr_cat(idc[..], id, ".m"), TG_SPAN, "scn-note", note); }
+  tr_close(t);
+  g := k_icon(t, tr_cat(idd[..], id, ".ic"), IC_CHEVRON_RIGHT);
+  tr_close(t);
+  return i;
+}
+// Where a number is from, in words: someone's claim (named by the page), a source, or our own assumption.
+k_scene_from :: (t: [] Tree, id: string, from: int, claim: string) -> int {
+  if from == SC_FROM_NONE { return -1; }
+  words := ifx from == SC_FROM_CLAIM then claim else ifx from == SC_FROM_SOURCE then "From a source" else "Our assumption";
+  i := tr_leaf(t, id, TG_SPAN, "scn-from", words);
+  tr_attr(t, i, AT_STATE, ifx from == SC_FROM_CLAIM then "claim" else ifx from == SC_FROM_SOURCE then "source" else "ours");
+  return i;
+}
+// Number: one figure a person can picture: the figure, what it measures, something to picture it by
+// (which may be empty) and where it is from.
+k_scene_number :: (t: [] Tree, id: string, value: string, what: string, like: string, from: int, claim: string) -> int {
+  ida: [UI_ID] u8; idb: [UI_ID] u8; idc: [UI_ID] u8; idd: [UI_ID] u8; ide: [UI_ID] u8;
+  i := tr_open(t, id, TG_DIV, "scn-num");
+  top := tr_open(t, tr_cat(ida[..], id, ".top"), TG_DIV, "scn-num-top");
+  v := tr_leaf(t, tr_cat(idb[..], id, ".v"), TG_SPAN, "scn-num-v", value);
+  f := k_scene_from(t, tr_cat(idc[..], id, ".f"), from, claim);
+  tr_close(t);
+  w := tr_leaf(t, tr_cat(idd[..], id, ".w"), TG_SPAN, "", what);
+  if like.count > 0 { l := tr_leaf(t, tr_cat(ide[..], id, ".l"), TG_SPAN, "scn-note", like); }
+  tr_close(t);
+  return i;
+}
+// Fact: a name and what it is, with where it is from at its end.
+k_scene_fact :: (t: [] Tree, id: string, name: string, value: string, from: int, claim: string) -> int {
+  ida: [UI_ID] u8; idb: [UI_ID] u8; idc: [UI_ID] u8;
+  i := tr_open(t, id, TG_DIV, "scn-fact");
+  n := tr_leaf(t, tr_cat(ida[..], id, ".n"), TG_SPAN, "scn-fact-n", name);
+  v := tr_leaf(t, tr_cat(idb[..], id, ".v"), TG_SPAN, "scn-fact-v", value);
+  f := k_scene_from(t, tr_cat(idc[..], id, ".f"), from, claim);
+  tr_close(t);
+  return i;
+}
+// Fold: a line that opens what is under it (the working behind a number). The caller adds what it
+// holds after it while it is open.
+k_scene_fold :: (t: [] Tree, id: string, label: string, open: bool) -> int {
+  ida: [UI_ID] u8; idb: [UI_ID] u8;
+  i := tr_open(t, id, TG_BUTTON, "scn-fold");
+  tr_attr(t, i, AT_EXPANDED, ifx open then "true" else "false");
+  g := k_icon(t, tr_cat(ida[..], id, ".ic"), ifx open then IC_CHEVRON_DOWN else IC_CHEVRON_RIGHT);
+  l := tr_leaf(t, tr_cat(idb[..], id, ".l"), TG_SPAN, "", label);
+  tr_close(t);
+  return i;
+}
+// Card: what one thing in the scene is: its name, a button that closes it (its id is `id` with
+// ".x"), and a body that scrolls inside it. Close it with k_scene_card_end.
+k_scene_card :: (t: [] Tree, u: [] Ui, id: string, title: string, close: string) -> int {
+  ida: [UI_ID] u8; idb: [UI_ID] u8; idc: [UI_ID] u8; idd: [UI_ID] u8;
+  i := k_frame(t, u, id, TG_SECTION, "scn-card", MF_PANEL);
+  tr_attr(t, i, AT_LABEL, title);
+  h := tr_open(t, tr_cat(ida[..], id, ".head"), TG_DIV, "scn-head");
+  n := tr_leaf(t, tr_cat(idb[..], id, ".t"), TG_H2, "scn-h", title);
+  x := k_icon_button(t, tr_cat(idc[..], id, ".x"), IC_X, close);
+  tr_close(t);
+  b := tr_open(t, tr_cat(idd[..], id, ".b"), TG_DIV, "scn-body");
+  return i;
+}
+k_scene_card_end :: (t: [] Tree) { tr_close(t); tr_close(t); }
+// Caption: the words of one step of a walk through the scene, at the window's foot. Close it with tr_close.
+k_scene_caption :: (t: [] Tree, u: [] Ui, id: string, label: string) -> int {
+  i := k_frame(t, u, id, TG_SECTION, "scn-cap", MF_PANEL);
+  tr_attr(t, i, AT_LABEL, label); tr_attr(t, i, AT_LIVE, "polite");
+  return i;
+}
+// The steps of a walk as marks in a row: those before `now` done, `now` filled as far as `p` (0 to 1).
+k_scene_steps :: (t: [] Tree, id: string, count: int, now: int, p: f32) -> int {
+  ida: [UI_ID] u8; idb: [UI_ID] u8; idc: [UI_ID] u8;
+  i := tr_open(t, id, TG_DIV, "scn-steps");
+  tr_attr(t, i, AT_HIDDEN, "true");   // the caption says which step it is in words
+  base := tr_cat(ida[..], id, ".");
+  for k: 0..<count {
+    sid := tr_join(idb[..], base, k);
+    s := tr_open(t, sid, TG_SPAN, "scn-step");
+    tr_attr(t, s, AT_STATE, ifx k < now then "done" else ifx k == now then "now" else "next");
+    f := tr_leaf(t, tr_cat(idc[..], sid, ".f"), TG_SPAN, "scn-step-f", "");
+    k_var(t, f, ifx k < now then 1 else ifx k == now then p else 0);
+    tr_close(t);
+  }
+  tr_close(t);
+  return i;
+}
+// A row of buttons (a caption's or a card's). Close it with tr_close.
+k_scene_acts :: (t: [] Tree, id: string) -> int { return tr_open(t, id, TG_DIV, "scn-acts"); }
+
+// A node's place in the window and how much of it shows, as measures the stylesheet reads: --x and
+// --y in pixels from the window's top left, --a from 0 (unseen) to 1.
+sc_place :: (out: [] u8, x: f32, y: f32, show: f32) -> string {
+  n := 0;
+  for c: "--x:" { out[n] = c; n += 1; }
+  n = sc_tenths(out, n, x);
+  for c: "px;--y:" { out[n] = c; n += 1; }
+  n = sc_tenths(out, n, y);
+  for c: "px;--a:" { out[n] = c; n += 1; }
+  a := ifx !(show > 0) then 0 else ifx show >= 1 then SC_PARTS else cast(int) (show * cast(f32) SC_PARTS + 0.5);
+  if a >= SC_PARTS { out[n] = '1'; n += 1; }
+  else { out[n] = '0'; out[n + 1] = '.'; out[n + 2] = cast(u8) (cast(int) '0' + a / SC_TENTHS); out[n + 3] = cast(u8) (cast(int) '0' + a % SC_TENTHS); n += 4; }   // not a size: four characters written
+  return cast(string) out[0..<n];
+}
+sc_tenths :: (out: [] u8, at: int, v: f32) -> int {
+  n := at;
+  lim := 100000.0f32;   // not a size
+  w := ifx !(v == v) then 0.0f32 else ifx v > lim then lim else ifx v < -lim then -lim else v;
+  q := cast(int) (ifx w < 0 then -w * cast(f32) SC_TENTHS + 0.5 else w * cast(f32) SC_TENTHS + 0.5);
+  if w < 0 && q > 0 { out[n] = '-'; n += 1; }
+  d: [24] u8;
+  for c: tr_join(d[..], "", q / SC_TENTHS) { out[n] = c; n += 1; }
+  out[n] = '.'; out[n + 1] = cast(u8) (cast(int) '0' + q % SC_TENTHS);
+  return n + 2;
+}
+// The layer the tags stand in: as large as the window, and nothing of it takes the pointer but a tag
+// that can be pressed. Close it with tr_close.
+k_scene_tags :: (t: [] Tree, id: string) -> int { return tr_open(t, id, TG_DIV, "scn-tags"); }
+// Tag: a name pinned at a point of the scene, centred on it. The page says where the point is in the
+// window now (x, y in pixels) and how much the tag shows (0 to 1). One that can be pressed is a
+// button: a place to go to.
+k_scene_tag :: (t: [] Tree, id: string, text: string, x: f32, y: f32, show: f32, press: bool) -> int {
+  v: [SC_VARS] u8;
+  i := tr_leaf(t, id, ifx press then TG_BUTTON else TG_SPAN, ifx press then "scn-tag scn-tag-b" else "scn-tag", text);
+  tr_attr(t, i, AT_VARS, sc_place(v[..], x, y, show));
+  return i;
+}
+// Plate: a picture laid over the whole scene, as much of it showing as `show` says (0 to 1), so a
+// scene can fade in from the picture it was built from. `src` is a path on this site.
+k_scene_plate :: (t: [] Tree, id: string, src: string, alt: string, show: f32) -> int {
+  v: [SC_VARS] u8;
+  if !k_here(src) { return -1; }
+  i := tr_open(t, id, TG_IMG, "scn-plate");
+  tr_attr(t, i, AT_SRC, src); tr_attr(t, i, AT_LABEL, alt);
+  tr_attr(t, i, AT_VARS, sc_place(v[..], 0, 0, show));
+  tr_close(t);
+  return i;
+}
+// The line that stays at the window's foot (what the scene is and is not).
+k_scene_foot :: (t: [] Tree, id: string, text: string) -> int { return tr_leaf(t, id, TG_P, "scn-foot", text); }
+// A word the scene says for a moment (where the camera went), at the window's middle.
+k_scene_toast :: (t: [] Tree, id: string, text: string) -> int {
+  i := tr_leaf(t, id, TG_P, "scn-toast", text);
+  tr_attr(t, i, AT_ROLE, "status"); tr_attr(t, i, AT_LIVE, "polite");
+  return i;
+}
+
+#test "a tag is pinned where the page says, and a pressed one is a button" {
+  t: [1] Tree; tr_begin(t[..]);
+  r := k_scene(t[..], "scn");
+  a := k_scene_tag(t[..], "a", "Gardens and temples", 120.26, 40, 0.5, false);
+  b := k_scene_tag(t[..], "b", "The bow", -3.5, 900, 2, true);
+  tr_close(t[..]);
+  #assert tr_attr_of(t[..], a, AT_VARS) == "--x:120.3px;--y:40.0px;--a:0.50";
+  #assert tr_attr_of(t[..], b, AT_VARS) == "--x:-3.5px;--y:900.0px;--a:1";
+  #assert t[0].nodes[a].tag == TG_SPAN && t[0].nodes[b].tag == TG_BUTTON;
+}
+#test "a number carries what it measures, a picture of it and where it is from" {
+  t: [1] Tree; tr_begin(t[..]);
+  r := k_scene(t[..], "scn");
+  n := k_scene_number(t[..], "n", "282 m³ a second", "of cold water", "about four times the Thames at London", SC_FROM_SOURCE, "");
+  m := k_scene_number(t[..], "m", "1 km", "long", "", SC_FROM_CLAIM, "From Luckey");
+  tr_close(t[..]);
+  #assert tr_text_of(t[..], tr_find(t[..], "n.v")) == "282 m³ a second";
+  #assert tr_text_of(t[..], tr_find(t[..], "n.f")) == "From a source" && tr_text_of(t[..], tr_find(t[..], "m.f")) == "From Luckey";
+  #assert tr_find(t[..], "n.l") >= 0 && tr_find(t[..], "m.l") < 0;
+}
+#test "the steps before now are done and now is part filled" {
+  t: [1] Tree; tr_begin(t[..]);
+  r := k_scene(t[..], "scn");
+  s := k_scene_steps(t[..], "s", 7, 2, 0.5);
+  tr_close(t[..]);
+  #assert tr_attr_of(t[..], tr_find(t[..], "s.0"), AT_STATE) == "done" && tr_attr_of(t[..], tr_find(t[..], "s.2"), AT_STATE) == "now";
+  #assert tr_attr_of(t[..], tr_find(t[..], "s.6"), AT_STATE) == "next" && tr_attr_of(t[..], tr_find(t[..], "s.2.f"), AT_VARS) == "--p:0.500";
+}

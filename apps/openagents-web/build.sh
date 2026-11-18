@@ -346,6 +346,9 @@ waterlab=$!
 # /worlds/slab: SLAB Simulation, the floating platform on the water lab's sea (docs/research/ocean/slab-world-spec.md).
 timed slab "$here/../../coax/web/wasm.sh" "$here/slab.coax" "$here/slab-face.c" "$here/build/slab.wasm" &
 slab=$!
+# ... and its HUD's pane: what the world says its HUD holds, drawn with the scene set in the mono skin by the browser (scene-pane.coax, coax/web/dom-host.js; #13685).
+timed scene-pane "$here/../../coax/web/wasm.sh" "$here/scene-pane.coax" "$here/scene-pane-face.c" "$here/build/scene-pane.wasm" &
+scene_pane=$!
 old timed bitcoin-lab "$here/../../coax/web/wasm.sh" "$here/old/labs/bitcoin-lab.coax" "$here/old/labs/bitcoin-lab-face.c" "$here/build/bitcoin-lab.wasm" &
 bitcoin_lab=$!
 old timed valleylab "$here/../../coax/web/wasm.sh" "$here/old/labs/valleylab.coax" "$here/old/labs/valleylab-face.c" "$here/build/valleylab.wasm" &
@@ -601,6 +604,7 @@ wait "$characters"
 wait "$fixture"
 wait "$waterlab"
 wait "$slab"
+wait "$scene_pane"
 wait "$bitcoin_lab"
 wait "$valleylab"
 wait "$portallab"

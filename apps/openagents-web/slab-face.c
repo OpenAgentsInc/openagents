@@ -57,3 +57,11 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uin
   if (length > sizeof inbox) length = sizeof inbox;
   slab_message(at(state), kind, (coax_string){(const char *)inbox, (int64_t)length});
 }
+
+// The HUD's pane (coax/web/host.js, "A page's own pane"): the module the browser draws it with
+// (scene-pane.coax), what the HUD holds now as text (slab-hud.coax), and how many times that changed.
+EXPORT("coaxial_pane") uint32_t coaxial_pane(uint32_t state) { return (uint32_t)(uintptr_t)slab_pane(at(state)).data; }
+EXPORT("coaxial_pane_len") uint32_t coaxial_pane_len(uint32_t state) { return (uint32_t)slab_pane(at(state)).count; }
+EXPORT("coaxial_pane_rev") int32_t coaxial_pane_rev(uint32_t state) { return (int32_t)slab_pane_rev(at(state)); }
+EXPORT("coaxial_pane_model") uint32_t coaxial_pane_model(uint32_t state) { return (uint32_t)(uintptr_t)slab_pane_model(at(state)).data; }
+EXPORT("coaxial_pane_model_len") uint32_t coaxial_pane_model_len(uint32_t state) { return (uint32_t)slab_pane_model(at(state)).count; }

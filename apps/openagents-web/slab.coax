@@ -32,6 +32,7 @@
 #load "../../metaverse/splice-bots/rules/walk.coax";
 #load "../../metaverse-engine/move/creative-fly.coax" as fly;
 #load "slab-intro.coax";   // intro: the first screen, a stopgap (issue 13683)
+#load "slab-hud.coax";   // the HUD in plain words, drawn by the browser (GitHub #13685)
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, then length, core, light, glow (a rect: half w, half h, radius, alpha), red, green, blue, mode, border, 0, 0, 0
 MAX_VERTICES :: 30000;
@@ -165,6 +166,7 @@ Slab :: struct {
   buttons: [MAX_BUTTONS * 5] f32;   // x0, y0, x1, y1, id
   button_count: int;
   toast: [64] u8; toast_n: int; toast_at: f64;
+  hp: SlabHud;          // the HUD the browser draws (slab-hud.coax)
 }
 
 hi_f32 :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
@@ -912,7 +914,9 @@ slab_frame :: (s: [] Slab, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
     // (cascade 0 again, for the hull's next step)
     wsp_tile(s[0].synth[..], 0, folded, s[0].tile[..]);
   }
+  sb_say(s);   // the HUD as words, for its pane
   if !s[0].hud || s[0].golden { s[0].button_count = 0; return 0; }
+  if s[0].hp.pane { return sb_lines(s, out); }
   return hud(s, out);
 }
 
@@ -1825,6 +1829,7 @@ press :: (s: [] Slab, id: int) {
 }
 slab_key :: (s: [] Slab, key: int, down: bool) -> bool #export_c #effects(all) {
   if !s[0].started { slab_reset(s); }
+  if down && sb_key(s, key) { return true; }
   if down && (key == 'b' || key == 'B') { build_toggle(s); return true; }
   if s[0].build.on {
     if !down { return true; }
@@ -1873,6 +1878,7 @@ hit_button :: (s: [] Slab, x: f32, y: f32) -> int {
 slab_pointer :: (s: [] Slab, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
   if !s[0].started { slab_reset(s); }
   s[0].px = x; s[0].py = y;
+  sb_touch(s, phase, kind);
   if s[0].build.on && s[0].hud {
     if phase == 0 && !s[0].build.scrubbing && build_over_slider(s, x, y) {
       s[0].build.scrubbing = true; s[0].build.pointer = id; s[0].dragging = false;
@@ -1980,6 +1986,7 @@ query_word :: (url: string, pair: string) -> bool {
 }
 slab_message :: (s: [] Slab, kind: int, text: string) #export_c #effects(all) {
   if !s[0].started { slab_reset(s); }
+  if kind == SH_ACT { sb_act(s, text); return; }
   if kind != HOST_FACTS || s[0].counted { return; }
   s[0].counted = true;
   url := fact(text, "url");
@@ -2030,6 +2037,7 @@ slab_message :: (s: [] Slab, kind: int, text: string) #export_c #effects(all) {
     if day >= 0 { build_seek(s, build_cursor(day)); }
   }
   s[0].first = intro_wanted(s, url);   // intro:
+  sb_address(s, url);
   s[0].toast_n = 0;
   s[0].built = false;
 }

@@ -57,7 +57,7 @@ Try the other sites: Puerto Rico, Kona in Hawaii, the equator, California, the G
 
 ## In the world
 
-When it opens, a short card says what you are looking at. The row "Go to" under the toolbar takes you to nine places, and "Watch it built" plays the construction.
+When it opens, a short card says what you are looking at. **Look** lists nine places to go, and **Build it** plays the construction.
 
 - The `prime` layout, built to match the concept image: a concrete platform 1,000 m long and 600 m wide, with sharp corners. A watertight hull 50 m deep floats it, and a lighter structure of columns on that hull puts the deck 143 m over the keel. It floats with 25 m under the water and its wall 118 m above it, as in the picture. It opens on the picture's own view, at its golden hour.
 - The deck's districts, from west to east:
@@ -67,9 +67,9 @@ When it opens, a short card says what you are looking at. The row "Go to" under 
   - a canal lined with temple fronts and cypresses, a domed rotunda and two parterres;
   - Greek temples with real columns, steps and pediments, a round tholos, cypress groves and a fountain plaza;
   - two data halls, a mining yard, a medical block and a colonnaded hall along the south wall.
-- The hull floats. It rides on the waves under it, held by sixteen mooring lines, pushed by the wind and a current. The motion panel shows its heave, roll, pitch and offset.
-- The power runs. The world opens on both: a 120 MW ocean thermal (OTEC) plant and two nuclear modules, which together carry the data halls, desalination, industry and most of the miners. Switch to OTEC alone (or open [`?power=otec`](/worlds/slab?power=otec)) and the dispatcher sheds load: the stacks stop smoking and the data halls go to backup. The power button also runs four modules alone, and the report's 10 MW demonstration plant.
-- Damage control: the stats panel can hole cell A1, the south-west corner cell, and pump ballast to the opposite corner to level the hull again.
+- The hull floats. It rides on the waves under it, held by sixteen mooring lines, pushed by the wind and a current. **See inside**, **What it is doing now** gives its rise and fall, its lean and how far it is pushed off its place.
+- The power runs. The world opens on both: a 120 MW ocean thermal (OTEC) plant and two nuclear modules, which together carry the data halls, desalination, industry and most of the miners. Switch to OTEC alone (or open [`?power=otec`](/worlds/slab?power=otec)) and the dispatcher sheds load: the stacks stop smoking and the data halls go to backup. **Change**, **Power source** also runs four modules alone, and the report's 10 MW demonstration plant.
+- Damage control: **Change**, **Break something** can hole cell A1, the south-west corner cell, and pump ballast to the opposite corner to level the hull again.
 - Two cutaway views:
   - **Section** (V): the hull cut open across, with its concrete walls, bulkheads every 50 m, the ballast water in blue, a flooded cell in red, the waterline, and the columns that carry the deck above the 50 m hull.
   - **Under the sea** (U): swim under the hull to see its bottom, the four cold-water pipes hanging 1,000 m down and the sixteen mooring lines.
@@ -85,7 +85,13 @@ When it opens, a short card says what you are looking at. The row "Go to" under 
   - **Orbit**: drag or the arrow keys turn the view, the wheel, a pinch or R and F zoom, W, A, S and D move.
   - **Fly** (F): W, A, S and D along the view, Space or E to rise, Shift or Q to drop, the arrow keys to turn, the wheel to set the speed.
   - **Walk** (G): GameBuilder's character controller on the deck, which moves with the hull. Space jumps; Space twice flies.
-- Keys 1 to 9, or the "Go to" row, travel to nine places around the platform: the temples, the power plant, the data halls, the mining yard, the towers, the fountain, the bow, the picture's view and a view from 1.5 km. N and M change the site and the sea, [ and ] the hour, P the power, K the layout, I the stats, V the section, U the underwater view, L the flow overlay, H hides the panels, ? shows the help.
+- The controls are a bar at the top, in plain words, with a sheet under it (at the foot of a phone):
+  - **Explore** and **Build it** are the two ways to be in the world.
+  - **Look**: orbit, walk or fly, closer and farther, and a list of nine places to go.
+  - **See inside**: cut it open, go underwater, water and power, and what the platform is doing now.
+  - **Change**: where it floats, the sea, the hour and month, the power source, the shape, and things to break.
+  - **Help**: how to get around, the keys, and links to the research.
+- Keys 1 to 9 travel to nine places around the platform: the temples, the power plant, the data halls, the mining yard, the towers, the fountain, the bow, the picture's view and a view from 1.5 km. [ and ] change the hour, V opens the section, U the underwater view, L the flow overlay. N, M, P and K open **Change**, I opens **See inside**, ? opens **Help**, and H hides the controls.
 - Address options:
   - `?site=guam`, `puerto-rico`, `kona`, `equator`, `california`, `texas` or `fjord` picks a site and `?sea=` a sea state; `?wind=` sets the wind in metres a second.
   - `?hour=`, `?month=` and `?rate=` set the clock and how fast it runs.
@@ -102,7 +108,7 @@ The cluster's domes are drawn level: their heave and drift show, their small til
 
 ## The build, step by step
 
-[Play the construction timelapse](/worlds/slab?view=build). In the world, press **Watch it built** or **B**. Drag the gold timeline in either direction. Space plays or pauses, the arrow keys step through the timeline, and Escape returns to the original camera. **Tow**, **Join** and **Outfit** jump to the first operation of each kind. Drag the scene to orbit and use the wheel to zoom. A link with `?view=build&day=983.8` pauses on that project day.
+[Play the construction timelapse](/worlds/slab?view=build). In the world, open **Build it** or press **B**. Drag **Where in the film** in either direction. Space plays or pauses, the arrow keys step through the film, and Escape returns to the original camera. **The first tow**, **The first join** and **Fitting out** jump to the first operation of each kind. Drag the scene to orbit and use the wheel to zoom. A link with `?view=build&day=983.8` pauses on that project day.
 
 | Follow the work | What to watch |
 | --- | --- |
@@ -121,6 +127,7 @@ The cluster's domes are drawn level: their heave and drift show, their small til
 - `metaverse/slab-plan.coax` is the platform as data: the hull's pieces and the masses on its deck, with its checks.
 - `metaverse/slab-sim.coax` is the physics and the power: the sites, sea states, hull motion, moorings and dispatch, with the spec's tests.
 - `apps/openagents-web/slab.coax` is the world.
+- `apps/openagents-web/slab-hud.coax` is what its controls hold. The browser draws them from the components kit (`scene-pane.coax`, `components/kit/scene.coax`).
 - `slab-face.c` binds it for the browser, and `slab.wgsl` (from `gpu/slab.coax`) draws it.
 - `docs/research/ocean/` in the OpenAgents repository holds the research:
   - `slab-world-spec.md` is the spec this world is built from;

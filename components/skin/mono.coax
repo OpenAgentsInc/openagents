@@ -447,6 +447,66 @@ mono_dock_css :: (out: [] u8, at: int) -> int {
   return n;
 }
 
+// The scene set's rules (components/kit/scene.coax), after mono_dock_css's from `at`: words over a scene
+// that fills the window, for a visitor who has read nothing. Everything in the layer is in plain words:
+// sentence case, in the body's face at the body's size (14 px) and no smaller, so the kit's small capital
+// labels are set again here. Bytes written in all.
+mono_scene_css :: (out: [] u8, at: int) -> int {
+  n := at;
+  // the layer: the scene shows through it and takes the pointer wherever nothing of the layer is
+  n = mc(out, n, ".scn{position:fixed;inset:0;z-index:20;pointer-events:none;font:14px/1.5 var(--sans);color:var(--ink)}");
+  // plain words: no capitals, no small type
+  n = mc(out, n, ".scn .btn,.scn .lk,.scn .sel,.scn .meta,.scn .chip,.scn .sw,.scn .fact,.scn .row .meta,.scn .menu .row .meta{font:14px/1.4 var(--sans);letter-spacing:0;text-transform:none}");
+  n = mc(out, n, ".scn .btn,.scn .lk,.scn .sel,.scn .chip{font-weight:500}.scn .lk{padding:10px 12px;color:var(--ink)}.scn .btn{padding:11px 16px}.scn .meta{color:var(--ink-muted)}");
+  // the top: the bar of tabs, and the sheet the open tab has under it
+  n = mc(out, n, ".scn-top{position:absolute;top:8px;left:8px;right:8px;max-height:calc(100% - 56px);display:flex;flex-direction:column;align-items:flex-start;gap:8px}.scn-top>*{pointer-events:auto}");
+  n = mc(out, n, ".scn-bar{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:6px;max-width:100%;--frame-bg:var(--ground);--frame-line:var(--line-dim);--frame-deco:var(--line)}");
+  n = mc(out, n, ".scn-name{font:600 14px/1 var(--sans);letter-spacing:.06em;padding:0 10px 0 8px}.scn-gap{flex:1}");
+  n = mc(out, n, ".scn-tab{appearance:none;border:0;background:none;color:var(--ink-muted);font:500 14px/1 var(--sans);height:36px;padding:0 12px;cursor:pointer;white-space:nowrap;transition:color .15s,background .15s}");
+  n = mc(out, n, ".scn-tab:hover,.scn-tab:focus-visible{color:#fff;background:var(--raised);outline:none}.scn-tab[aria-expanded=true]{color:#fff;background:var(--raised);box-shadow:inset 0 -2px 0 #fff}");
+  n = mc(out, n, ".scn-tab[aria-pressed=true]{color:#000;background:#c8c8c8}");
+  // a sheet, a card and a caption: a framed panel whose body scrolls inside it
+  n = mc(out, n, ".scn-sheet,.scn-card,.scn-cap{display:flex;flex-direction:column;min-height:0;padding:14px;pointer-events:auto;--frame-bg:var(--ground);--frame-line:var(--line-dim);--frame-deco:var(--line)}");
+  n = mc(out, n, ".scn-body{min-height:0;overflow-y:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:12px;scrollbar-width:thin;scrollbar-color:var(--line-dim) transparent}");
+  n = mc(out, n, ".scn-sheet{width:380px;max-width:100%}.scn-card{position:absolute;top:64px;right:8px;width:380px;max-width:calc(100% - 16px);max-height:calc(100% - 116px)}");
+  n = mc(out, n, ".scn-cap{position:absolute;left:50%;bottom:48px;transform:translateX(-50%);width:600px;max-width:calc(100% - 16px);max-height:60%;gap:10px;overflow-y:auto}");
+  n = mc(out, n, ".scn-head{display:flex;align-items:center;gap:8px}.scn-head .ib{flex:none;width:36px;height:36px;color:var(--ink-muted)}.scn-h{flex:1;min-width:0;margin:0;font:600 16px/1.3 var(--sans)}");
+  n = mc(out, n, ".scn-h3{margin:6px 0 0;font:600 14px/1.4 var(--sans)}.scn-p{margin:0;max-width:62ch}.scn-lead{margin:0;font:500 18px/1.4 var(--sans)}.scn-note{color:var(--ink-muted);font:14px/1.4 var(--sans)}");
+  // a row that opens a part of the sheet
+  n = mc(out, n, ".scn-door{appearance:none;border:1px solid var(--line-dim);background:none;color:var(--ink);font:inherit;text-align:left;display:flex;align-items:center;gap:10px;width:100%;min-height:44px;padding:8px 12px;cursor:pointer}");
+  n = mc(out, n, ".scn-door:hover,.scn-door:focus-visible{background:var(--raised);border-color:var(--line-bright);outline:none}.scn-door-w{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}.scn-door-t{font-weight:500}");
+  // where a number is from: a claim is solid, a source is outlined, our own assumption is dashed
+  n = mc(out, n, ".scn-from{flex:none;font:14px/1.2 var(--sans);color:var(--ink-muted);padding:2px 8px;border:1px solid var(--line);white-space:nowrap}");
+  n = mc(out, n, ".scn-from[data-state=claim]{color:#000;background:#c8c8c8;border-color:#c8c8c8}.scn-from[data-state=source]{color:#fff;border-color:var(--line-bright)}.scn-from[data-state=ours]{border-style:dashed}");
+  // a number a person can picture, and a fact
+  n = mc(out, n, ".scn-num{display:flex;flex-direction:column;gap:2px;padding-top:10px;border-top:1px solid var(--line-dim)}.scn-num-top{display:flex;align-items:center;justify-content:space-between;gap:6px 10px;flex-wrap:wrap}");
+  n = mc(out, n, ".scn-num-v{font:600 20px/1.25 var(--sans);color:#fff}.scn-fact{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;align-items:baseline}");
+  n = mc(out, n, ".scn-fact-n{color:var(--ink-muted)}.scn-fact-v{text-align:right;font-variant-numeric:tabular-nums}.scn-fact>.scn-from{grid-column:1/-1;justify-self:start}");
+  // a fold, and a row of buttons
+  n = mc(out, n, ".scn-fold{appearance:none;border:0;background:none;color:var(--ink-muted);font:500 14px/1.4 var(--sans);display:inline-flex;align-items:center;gap:6px;min-height:36px;padding:0;cursor:pointer;align-self:flex-start}");
+  n = mc(out, n, ".scn-fold:hover,.scn-fold:focus-visible{color:#fff;outline:none}.scn-acts{display:flex;flex-wrap:wrap;gap:8px;align-items:center}");
+  // a walk's steps: a mark each, the one it is at filling
+  n = mc(out, n, ".scn-steps{display:flex;gap:4px}.scn-step{flex:1;height:3px;background:var(--line-dim);display:flex;overflow:hidden}.scn-step-f{flex:1;background:#fff;transform-origin:0 50%;transform:scaleX(var(--p,0))}");
+  // tags pinned in the scene, the picture over it, the foot's line and a word said for a moment
+  n = mc(out, n, ".scn-tags{position:absolute;inset:0;overflow:hidden}");
+  n = mc(out, n, ".scn-tag{position:absolute;left:0;top:0;margin:0;transform:translate(var(--x,0),var(--y,0)) translate(-50%,-50%);opacity:var(--a,1);font:500 14px/1.2 var(--sans);color:#fff;white-space:nowrap;text-shadow:0 0 2px #000,0 0 5px #000,0 1px 8px #000}");
+  n = mc(out, n, ".scn-tag-b{appearance:none;border:1px solid var(--line);background:var(--ground);min-height:32px;padding:0 10px;cursor:pointer;pointer-events:auto;text-shadow:none}.scn-tag-b:hover,.scn-tag-b:focus-visible{border-color:#fff;outline:none}");
+  n = mc(out, n, ".scn-plate{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;opacity:var(--a,0)}");
+  n = mc(out, n, ".scn-foot{position:absolute;left:8px;bottom:8px;max-width:calc(100% - 16px);margin:0;padding:4px 8px;background:var(--ground);color:var(--ink-muted)}");
+  n = mc(out, n, ".scn-toast{position:absolute;left:50%;top:70%;transform:translateX(-50%);max-width:calc(100% - 16px);margin:0;padding:8px 14px;background:var(--ground);border:1px solid var(--line-dim)}");
+  // the kit's controls inside a sheet: a switch row, a slider with its line under its name, choices, and a menu that opens in place
+  n = mc(out, n, ".scn .swr{min-height:44px}.scn .swr-t{font-weight:500}.scn .sw{min-height:44px;min-width:44px;justify-content:flex-end}");
+  n = mc(out, n, ".scn .slide{grid-template-columns:minmax(0,1fr) auto;gap:2px 10px}.scn .slide>input{grid-column:1/-1;grid-row:2;height:36px}.scn .slide .meta{color:var(--ink)}");
+  n = mc(out, n, ".scn .chips{display:flex;flex-wrap:wrap;gap:4px;min-height:0}.scn .chip{appearance:none;border:1px solid var(--line-dim);outline:0;background:none;color:var(--ink-muted);height:36px;padding:0 12px;cursor:pointer}");
+  n = mc(out, n, ".scn .chip:hover,.scn .chip:focus-visible{color:#fff;border-color:var(--line-bright)}.scn .chip[aria-pressed=true]{color:#000;background:#c8c8c8;border-color:#c8c8c8}");
+  n = mc(out, n, ".scn .anchor{display:block}.scn .sel{width:100%;height:40px;justify-content:space-between;color:var(--ink)}.scn .menu.pop{position:relative;inset:auto;width:100%;max-width:none;margin-top:6px}");
+  n = mc(out, n, ".scn .row{padding:9px 12px}.scn .prop{grid-template-columns:minmax(0,1fr) auto}");
+  // a narrow window: the sheet is as wide as the window, the card is a sheet at its foot, and a finger's targets are 44 px
+  n = mc(out, n, "@media (max-width:600px){.scn-sheet{position:fixed;left:8px;right:8px;bottom:44px;width:auto;max-height:46vh}.scn-card{top:auto;bottom:44px;left:8px;right:8px;width:auto;max-width:none;max-height:48%}.scn-cap{bottom:44px}.scn-lead{font-size:16px}}");
+  n = mc(out, n, "@media (pointer:coarse){.scn-tab,.scn .chip,.scn .sel{height:44px}.scn-head .ib{width:44px;height:44px}.scn-fold{min-height:44px}.scn-tag-b{min-height:44px}.scn .lk{min-height:44px}}");
+  return n;
+}
+
 // The switch's rules (components/kit/settings.coax, k_switch): a knob that moves across, and the word On or Off.
 // The settings page's rules and the dock's both hold them, since a page takes one set or the other.
 mono_switch_css :: (out: [] u8, at: int) -> int {
@@ -610,6 +670,39 @@ mono_button_css :: (out: [] u8, at: int) -> int {
     } else { i += 1; }
   }
   #assert greys > 20;
+}
+
+#test "the scene set's rules fit, are grey, and set nothing in capitals or under the body's size" {
+  css: [49152] u8; at := mono_dock_css(css[..], mono_css(css[..]));
+  n := mono_scene_css(css[..], at);
+  #assert n > at + 4000 && n < at + 9000 && n < 36864 && mono_scene_css(css[0..<at], at) == at;
+  sheet := cast(string) css[at..<n];
+  i := 0; greys := 0;
+  while i < sheet.count {
+    if sheet[i] == '#' {
+      j := i + 1;
+      while j < sheet.count && ((sheet[j] >= '0' && sheet[j] <= '9') || (sheet[j] >= 'a' && sheet[j] <= 'f')) { j += 1; }
+      if j - i - 1 == 3 { #assert sheet[i + 1] == sheet[i + 2] && sheet[i + 2] == sheet[i + 3]; greys += 1; }
+      if j - i - 1 == 6 { #assert sheet[i + 1] == sheet[i + 3] && sheet[i + 3] == sheet[i + 5] && sheet[i + 2] == sheet[i + 4] && sheet[i + 4] == sheet[i + 6]; greys += 1; }
+      i = j;
+    } else { i += 1; }
+  }
+  #assert greys > 10;
+  // plain words: nothing is put in capitals, and every type size (NNpx/ in a font, or font-size:NNpx) is the body's or more
+  sizes := 0;
+  for k: 0..<sheet.count - 10 {
+    #assert cast(string) sheet[k..<k + 9] != "uppercase" && cast(string) sheet[k..<k + 4] != "hsl(" && cast(string) sheet[k..<k + 4] != "rgb(";
+    font := cast(string) sheet[k..<k + 3] == "px/";
+    size := cast(string) sheet[k..<k + 10] == "font-size:";
+    if font || size {
+      v := 0;
+      if font { a := k; while a > 0 && sheet[a - 1] >= '0' && sheet[a - 1] <= '9' { a -= 1; } for q: a..<k { v = v * 10 + cast(int) (sheet[q] - '0'); } }
+      else { q := k + 10; while q < sheet.count && sheet[q] >= '0' && sheet[q] <= '9' { v = v * 10 + cast(int) (sheet[q] - '0'); q += 1; } }
+      #assert v >= 14;
+      sizes += 1;
+    }
+  }
+  #assert sizes > 8;
 }
 
 #test "the settings page's rules follow the page's, fit, and have no hue" {

@@ -1,0 +1,649 @@
+// A scene's HUD, drawn (GitHub #13685): the pane of a page with a canvas (docs/reuse.md, "Panes of a
+// page's own") that draws what the page says its HUD holds (scene-hud.coax) with the scene set
+// (components/kit/scene.coax) in the mono skin, in the browser's own text, as /chat is drawn. Any world
+// can use it: the page exports coaxial_pane as "scene-pane" and says its HUD each frame.
+//
+// It has no look of its own (coax/web/editor-skin-check.coax) and knows nothing about any world. What
+// it keeps is only what is open: the tab whose sheet shows, the part of the sheet opened from a row,
+// the menu and the fold. A press on anything the page named goes to the page as its id (SH_ACT).
+//
+// It also remembers, in this browser, that the visitor has been here (dom_keep, at most the word
+// "seen"), and tells the page once whether this is a first visit ("hud.visit 1") or not ("hud.visit 0"),
+// so a world can open on its tour the first time and on the world itself after.
+//   coax/bin/coax test apps/openagents-web/scene-pane.coax
+
+#load "../../components/kit/scene.coax";
+#load "../../components/backend/dom.coax";
+#load "scene-hud.coax";
+
+SP_CSS :: 40960;
+SP_ACT :: 96;          // bytes one press for the page takes
+SP_ACTS :: 8;
+SP_SLIDES :: 12;       // sliders a sheet can show at once
+SP_CLICK :: 1; SP_INPUT :: 2; SP_MODEL :: 6; SP_KEPT :: 12;
+SP_QUIET :: 0.4;       // seconds after a drag before the page's value is put back on a slider
+
+ScenePane :: struct {
+  ready: bool; time: f32; dirty: bool; animating: bool;
+  model: [SH_TEXT] u8; model_n: int;    // the page's last saying
+  open: [SH_ID] u8; open_n: int;        // the tab whose sheet shows
+  part: [SH_ID] u8; part_n: int;        // the part of it opened from a row
+  menu: [SH_ID] u8; menu_n: int;        // the menu that is open
+  fold: [SH_ID] u8; fold_n: int;        // the fold that is open
+  serial: int = -1;                     // the page's last word on which tab to open
+  greeted: bool;                        // the page was told whether this is a first visit
+  keep: bool;                           // "seen" is due to be kept in this browser
+  // the sliders on screen: each one's id (hashed), the value the page last said, the value last put on it
+  // or dragged to, and when it was last dragged
+  slide: [SP_SLIDES] int; slide_said: [SP_SLIDES] int; slide_shown: [SP_SLIDES] int; slide_at: [SP_SLIDES] f32; slides: int;
+  seen: [SP_SLIDES] int; seen_said: [SP_SLIDES] int; seen_n: int;   // those this build drew
+  claim: [SH_ID] u8; claim_n: int;      // the words for a claim's tag
+  back: [SH_ID] u8; back_n: int;
+  acts: [SP_ACTS] [SP_ACT] u8; act_n: [SP_ACTS] int; nacts: int;
+  inbox: [SH_TEXT] u8;
+  sets: [MF_COUNT] AfSettings;
+  css: [SP_CSS] u8;
+  ui: [1] Ui;
+  tree: [1] Tree;
+  dom: [1] Dom;
+}
+
+sp_act :: (s: [] ScenePane, body: string) -> bool {
+  if s[0].nacts >= SP_ACTS || body.count > SP_ACT || body.count == 0 { return false; }
+  k := s[0].nacts;
+  for i: 0..<body.count { s[0].acts[k][i] = body[i]; }
+  s[0].act_n[k] = body.count; s[0].nacts += 1;
+  return true;
+}
+sp_set :: (to: [] u8, id: string) -> int {
+  n := ifx id.count > to.count then to.count else id.count;
+  for i: 0..<n { to[i] = id[i]; }
+  return n;
+}
+sp_model :: (s: [] ScenePane) -> string { return cast(string) s[0].model[0..<s[0].model_n]; }
+sp_open :: (s: [] ScenePane) -> string { return cast(string) s[0].open[0..<s[0].open_n]; }
+sp_part :: (s: [] ScenePane) -> string { return cast(string) s[0].part[0..<s[0].part_n]; }
+sp_menu :: (s: [] ScenePane) -> string { return cast(string) s[0].menu[0..<s[0].menu_n]; }
+sp_fold :: (s: [] ScenePane) -> string { return cast(string) s[0].fold[0..<s[0].fold_n]; }
+// Whether `id` is `prefix` and then something: answers the something, or "".
+sp_after :: (id: string, prefix: string) -> string {
+  if id.count <= prefix.count || cast(string) id[0..<prefix.count] != prefix { return ""; }
+  return cast(string) id[prefix.count..<id.count];
+}
+// A line that starts a block an 'E' ends.
+sp_opens :: (kind: u8) -> bool { return kind == 'C' || kind == 'N' || kind == 'P' || kind == 'X'; }
+// A line that is not part of a sheet's, a card's or a caption's body.
+sp_ends :: (kind: u8) -> bool {
+  return kind == 0 || kind == 'G' || kind == 'M' || kind == 'K' || kind == 'U' || kind == 'Z' || kind == 'Y' || kind == 'V' || kind == 'D' || kind == 'W' || kind == 'I';
+}
+// Where the block whose opening line ends at `at` is over: past its 'E'.
+sp_skip :: (text: string, at: int) -> int {
+  i := at; depth := 0;
+  while i < text.count {
+    l := sh_read(text, i);
+    if sp_ends(l.kind) { return i; }
+    i = l.next;
+    if sp_opens(l.kind) { depth += 1; }
+    if l.kind == 'E' { if depth == 0 { return i; } depth -= 1; }
+  }
+  return i;
+}
+// The first line of `kind` whose first field is `id`, from `at`: where the line after it starts, or -1.
+sp_find :: (text: string, at: int, kind: u8, id: string) -> int {
+  i := at;
+  while i < text.count {
+    l := sh_read(text, i);
+    if l.kind == kind && l.n > 0 && l.f[0] == id { return l.next; }
+    i = l.next;
+  }
+  return -1;
+}
+
+// The page's saying: kept, and its word on which tab to open obeyed once.
+sp_heard :: (s: [] ScenePane, length: int) {
+  n := ifx length < 0 then 0 else ifx length > SH_TEXT then SH_TEXT else length;
+  for i: 0..<n { s[0].model[i] = s[0].inbox[i]; }
+  s[0].model_n = n;
+  text := sp_model(s);
+  i := 0;
+  while i < text.count {
+    l := sh_read(text, i); i = l.next;
+    if l.kind == 'D' && l.n >= 2 {
+      serial := sh_number_of(l.f[1], 0);
+      if serial != s[0].serial {
+        s[0].serial = serial;
+        s[0].open_n = sp_set(s[0].open[..], l.f[0]); s[0].part_n = 0; s[0].menu_n = 0;
+      }
+    }
+    if l.kind == 'V' && l.n >= 4 { s[0].claim_n = sp_set(s[0].claim[..], l.f[1]); s[0].back_n = sp_set(s[0].back[..], l.f[3]); }
+  }
+  // an open tab or part the page no longer says is shut
+  if s[0].open_n > 0 && sp_find(text, 0, 'G', sp_open(s)) < 0 { s[0].open_n = 0; s[0].part_n = 0; s[0].menu_n = 0; }
+  if s[0].part_n > 0 && sp_find(text, 0, 'P', sp_part(s)) < 0 { s[0].part_n = 0; }
+}
+
+// A slider this build drew, and what the page says it holds.
+sp_slide_seen :: (s: [] ScenePane, id: string, said: int) {
+  if s[0].seen_n >= SP_SLIDES { return; }
+  s[0].seen[s[0].seen_n] = tr_hash(id); s[0].seen_said[s[0].seen_n] = said; s[0].seen_n += 1;
+}
+// The lines of a body from `at`, drawn in order under the open node: buttons, choices, menus, switches,
+// sliders, rows that open a part, headings, sentences, facts, numbers, links and folds. It stops at a line
+// that is not a body's, or at the 'E' that ends the block it was called for (`inner`). `pre` starts the
+// ids of what has none of its own. Answers where it stopped.
+sp_body :: (s: [] ScenePane, at: int, inner: bool, pre: string) -> int {
+  t := s[0].tree[..]; u := s[0].ui[..];
+  text := sp_model(s);
+  claim := cast(string) s[0].claim[0..<s[0].claim_n];
+  ida: [UI_ID] u8; idb: [UI_ID] u8; idc: [UI_ID] u8;
+  i := at; k := 0; depth := 0; row := false;
+  while i < text.count {
+    l := sh_read(text, i);
+    if sp_ends(l.kind) { break; }
+    i = l.next; k += 1;
+    own := tr_join(ida[..], pre, k);
+    // buttons that follow one another stand in a row
+    press := (l.kind == 'B' || l.kind == 'A') && l.n >= 3;
+    if row && !press { tr_close(t); row = false; }
+    if press {
+      if !row { r := k_scene_acts(t, tr_cat(idb[..], own, ".acts")); row = true; }
+      b := k_button(t, u, l.f[0], l.f[1], ifx l.f[2] == "1" then BS_PRIMARY else BS_PLAIN);
+      if l.kind == 'B' { tr_attr(t, b, AT_PRESSED, ifx l.f[2] == "1" then "true" else "false"); }
+      continue;
+    }
+    if l.kind == 'E' {
+      if depth == 0 && inner { return i; }
+      if depth > 0 { depth -= 1; }
+      continue;
+    }
+    if l.kind == 'H' && l.n >= 1 { h := k_scene_heading(t, own, l.f[0]); }
+    if l.kind == 'S' && l.n >= 1 { p := k_scene_say(t, own, l.f[0]); }
+    if l.kind == 'J' && l.n >= 1 { p := k_scene_lead(t, own, l.f[0]); }
+    if l.kind == 'F' && l.n >= 3 { f := k_scene_fact(t, own, l.f[0], l.f[1], sh_number_of(l.f[2], 0), claim); }
+    if l.kind == 'Q' && l.n >= 4 { q := k_scene_number(t, own, l.f[0], l.f[1], l.f[2], sh_number_of(l.f[3], 0), claim); }
+    if l.kind == 'L' && l.n >= 2 { g := k_go(t, own, l.f[0], l.f[1]); }
+    if l.kind == 'T' && l.n >= 4 { w := k_switch_row(t, l.f[0], l.f[1], l.f[2], l.f[3] == "1"); }
+    if l.kind == 'R' && l.n >= 7 {
+      r := k_slider(t, l.f[0], l.f[1], l.f[2], sh_number_of(l.f[3], 0), sh_number_of(l.f[4], 0), sh_number_of(l.f[5], 1));
+      sp_slide_seen(s, l.f[0], sh_number_of(l.f[6], 0));
+    }
+    if l.kind == 'C' && l.n >= 2 {
+      // a few choices, all shown
+      w := tr_open(t, tr_cat(idb[..], own, ".c"), TG_DIV, "col");
+      n := tr_leaf(t, tr_cat(idc[..], own, ".n"), TG_SPAN, "scn-note", l.f[1]);
+      c := k_choices(t, l.f[0], l.f[1]);
+      while i < text.count {
+        o := sh_read(text, i);
+        if sp_ends(o.kind) { break; }
+        i = o.next;
+        if o.kind == 'E' { break; }
+        if o.kind == 'O' && o.n >= 4 { x := k_choice(t, o.f[0], o.f[1], o.f[3] == "1"); }
+      }
+      tr_close(t); tr_close(t);
+    }
+    if l.kind == 'N' && l.n >= 2 {
+      // a menu: what is chosen now, and its choices when it is open
+      now := ifx l.n >= 3 then l.f[2] else ""; j := i;
+      while j < text.count { o := sh_read(text, j); if sp_ends(o.kind) || o.kind == 'E' { break; } j = o.next; if o.kind == 'O' && o.n >= 4 && o.f[3] == "1" { now = o.f[1]; } }
+      open := sp_menu(s) == l.f[0];
+      w := tr_open(t, tr_cat(idb[..], own, ".c"), TG_DIV, "col");
+      n := tr_leaf(t, tr_cat(idc[..], own, ".n"), TG_SPAN, "scn-note", l.f[1]);
+      k_select_begin(t, u, tr_cat(idc[..], "menu.", l.f[0]), now, l.f[1], open);
+      while i < text.count {
+        o := sh_read(text, i);
+        if sp_ends(o.kind) { break; }
+        i = o.next;
+        if o.kind == 'E' { break; }
+        if open && o.kind == 'O' && o.n >= 4 { x := k_row(t, u, o.f[0], o.f[1], o.f[2], o.f[3] == "1"); }
+      }
+      k_select_end(t, open);
+      tr_close(t);
+    }
+    if l.kind == 'P' && l.n >= 3 {
+      // a row that opens a part of the sheet; the part itself is drawn when it is the one open
+      d := k_scene_door(t, tr_cat(idb[..], "door.", l.f[0]), l.f[1], l.f[2]);
+      i = sp_skip(text, i);
+    }
+    if l.kind == 'X' && l.n >= 2 {
+      open := sp_fold(s) == l.f[0];
+      f := k_scene_fold(t, tr_cat(idb[..], "fold.", l.f[0]), l.f[1], open);
+      if open { depth += 1; } else { i = sp_skip(text, i); }
+    }
+  }
+  if row { tr_close(t); }
+  return i;
+}
+
+sp_build :: (s: [] ScenePane) {
+  t := s[0].tree[..]; u := s[0].ui[..];
+  text := sp_model(s);
+  ida: [UI_ID] u8;
+  tr_begin(t);
+  s[0].seen_n = 0;
+  root := k_scene(t, "scn");
+  name := ""; close := "Close"; back := "Back"; bar := false;
+  i := 0;
+  while i < text.count {
+    l := sh_read(text, i); i = l.next;
+    if l.kind == 'V' && l.n >= 4 { name = l.f[0]; close = l.f[2]; back = l.f[3]; }
+    if l.kind == 'G' || l.kind == 'M' { bar = true; }
+  }
+  // the names pinned in the scene, under everything else
+  tags := k_scene_tags(t, "tags");
+  i = 0;
+  while i < text.count {
+    l := sh_read(text, i); i = l.next;
+    if l.kind == 'W' && l.n >= 6 {
+      w := k_scene_tag(t, l.f[0], l.f[1], cast(f32) sh_number_of(l.f[2], 0) / 10, cast(f32) sh_number_of(l.f[3], 0) / 10, cast(f32) sh_number_of(l.f[4], 0) / 100, l.f[5] == "1");
+    }
+  }
+  tr_close(t);
+  i = 0;
+  while i < text.count {
+    l := sh_read(text, i); i = l.next;
+    if l.kind == 'I' && l.n >= 3 { p := k_scene_plate(t, "plate", l.f[0], l.f[1], cast(f32) sh_number_of(l.f[2], 0) / 100); }
+  }
+  if bar {
+    top := k_scene_top(t, "top");
+    b := k_scene_bar(t, u, "bar", name);
+    if name.count > 0 { n := k_scene_name(t, "bar.name", name); }
+    i = 0;
+    while i < text.count {
+      l := sh_read(text, i); i = l.next;
+      if l.kind == 'M' && l.n >= 3 { m := k_scene_mode(t, l.f[0], l.f[1], l.f[2] == "1"); }
+      if l.kind == 'G' && l.n >= 2 && !sp_owned(text, l.f[0]) { g := k_scene_tab(t, tr_cat(ida[..], "tab.", l.f[0]), l.f[1], sp_open(s) == l.f[0]); }
+    }
+    tr_close(t);
+    // the open tab's sheet: all of it, or the one part of it that was opened from a row
+    at := ifx s[0].open_n > 0 then sp_find(text, 0, 'G', sp_open(s)) else -1;
+    if at >= 0 {
+      sheet := k_scene_sheet(t, u, "sheet", sp_open(s));
+      part := ifx s[0].part_n > 0 then sp_find(text, at, 'P', sp_part(s)) else -1;
+      if part >= 0 {
+        title := "";
+        j := at;
+        while j < text.count { l := sh_read(text, j); j = l.next; if l.kind == 'P' && l.n >= 3 && l.f[0] == sp_part(s) { title = l.f[1]; break; } }
+        h := k_scene_back(t, "part.back", back, title);
+        e := sp_body(s, part, true, "p.");
+      } else {
+        e := sp_body(s, at, false, "s.");
+      }
+      k_scene_sheet_end(t);
+    }
+    tr_close(t);
+  }
+  // the card, the caption, the foot's line and the word said for a moment
+  i = 0;
+  while i < text.count {
+    l := sh_read(text, i); i = l.next;
+    if l.kind == 'K' && l.n >= 2 {
+      c := k_scene_card(t, u, l.f[0], l.f[1], close);
+      i = sp_body(s, i, false, "c.");
+      k_scene_card_end(t);
+    }
+    if l.kind == 'U' && l.n >= 5 {
+      c := k_scene_caption(t, u, l.f[0], l.f[1]);
+      steps := sh_number_of(l.f[3], 0);
+      if steps > 0 { st := k_scene_steps(t, "cap.steps", steps, sh_number_of(l.f[2], 0), cast(f32) sh_number_of(l.f[4], 0) / 1000); }
+      i = sp_body(s, i, false, "u.");
+      tr_close(t);
+    }
+    if l.kind == 'Z' && l.n >= 1 { f := k_scene_foot(t, "foot", l.f[0]); }
+    if l.kind == 'Y' && l.n >= 1 { y := k_scene_toast(t, "toast", l.f[0]); }
+  }
+  tr_close(t);
+}
+
+// Whether a way to be in the scene has the group of this id as its own sheet (sh_mode_of): it then has no tab.
+sp_owned :: (text: string, group: string) -> bool {
+  i := 0;
+  while i < text.count {
+    l := sh_read(text, i); i = l.next;
+    if l.kind == 'M' && l.n >= 4 && l.f[3].count > 0 && l.f[3] == group { return true; }
+  }
+  return false;
+}
+// A press. The pane's own (a tab, a row that opens a part, the way back, a menu, a fold) change what is
+// open; anything else is the page's, and goes to it by its id.
+sp_click :: (s: [] ScenePane, id: string) {
+  tab := sp_after(id, "tab.");
+  if tab.count > 0 {
+    same := sp_open(s) == tab;
+    s[0].open_n = ifx same then 0 else sp_set(s[0].open[..], tab);
+    s[0].part_n = 0; s[0].menu_n = 0;
+    return;
+  }
+  // a way that is on and has a sheet of its own opens and shuts that sheet
+  {
+    text := sp_model(s); i := 0;
+    while i < text.count {
+      l := sh_read(text, i); i = l.next;
+      if l.kind == 'M' && l.n >= 4 && l.f[0] == id && l.f[2] == "1" && l.f[3].count > 0 {
+        same := sp_open(s) == l.f[3];
+        s[0].open_n = ifx same then 0 else sp_set(s[0].open[..], l.f[3]);
+        s[0].part_n = 0; s[0].menu_n = 0;
+        return;
+      }
+    }
+  }
+  door := sp_after(id, "door.");
+  if door.count > 0 { s[0].part_n = sp_set(s[0].part[..], door); s[0].menu_n = 0; return; }
+  if id == "part.back" { s[0].part_n = 0; s[0].menu_n = 0; return; }
+  menu := sp_after(id, "menu.");
+  if menu.count > 0 { s[0].menu_n = ifx sp_menu(s) == menu then 0 else sp_set(s[0].menu[..], menu); return; }
+  fold := sp_after(id, "fold.");
+  if fold.count > 0 { s[0].fold_n = ifx sp_fold(s) == fold then 0 else sp_set(s[0].fold[..], fold); return; }
+  // a choice made in a menu shuts it
+  if s[0].menu_n > 0 {
+    text := sp_model(s);
+    at := sp_find(text, 0, 'N', sp_menu(s));
+    while at >= 0 && at < text.count {
+      o := sh_read(text, at);
+      if sp_ends(o.kind) || o.kind == 'E' { break; }
+      at = o.next;
+      if o.kind == 'O' && o.n >= 1 && o.f[0] == id { s[0].menu_n = 0; break; }
+    }
+  }
+  b: [SP_ACT] u8;
+  _ = sp_act(s, sh_press(b[..], id, false, 0));
+}
+// A slider's move: its number goes to the page, and the page's own value waits until the drag is over.
+sp_input :: (s: [] ScenePane, id: string, length: int) {
+  n := ifx length < 0 then 0 else ifx length > 16 then 16 else length;
+  lo := 0; hi := n;
+  while lo < hi && (s[0].inbox[lo] == ' ' || s[0].inbox[lo] == '\n') { lo += 1; }
+  while hi > lo && (s[0].inbox[hi - 1] == ' ' || s[0].inbox[hi - 1] == '\n') { hi -= 1; }
+  v := sh_number_of(cast(string) s[0].inbox[lo..<hi], -1000000007);
+  if v == -1000000007 { return; }
+  key := tr_hash(id);
+  for k: 0..<s[0].slides { if s[0].slide[k] == key { s[0].slide_shown[k] = v; s[0].slide_at[k] = s[0].time; } }
+  b: [SP_ACT] u8;
+  _ = sp_act(s, sh_press(b[..], id, true, v));
+}
+// This browser's kept word, at the start: the page is told whether the visitor has been here, and a
+// first visit is kept.
+sp_kept :: (s: [] ScenePane, length: int) {
+  if s[0].greeted { return; }
+  s[0].greeted = true;
+  n := ifx length < 0 then 0 else ifx length > 8 then 8 else length;
+  been := cast(string) s[0].inbox[0..<n] == "seen";
+  b: [SP_ACT] u8;
+  _ = sp_act(s, sh_press(b[..], "hud.visit", true, ifx been then 0 else 1));
+  if !been { s[0].keep = true; }
+}
+
+// ---------------------------------------------------------------- the face's calls
+
+coaxial_scenepane_frame :: (s: [] ScenePane, dt: f32, reduced: bool) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  if !s[0].ready {
+    n := mono_frames(s[0].sets[..]);
+    s[0].ready = true; s[0].dirty = true;
+  }
+  step := ifx dt < 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
+  s[0].time += step;
+  if !s[0].dirty && !s[0].animating { return 0; }
+  d := s[0].dom[..];
+  if !d[0].styled {
+    n := mono_scene_css(s[0].css[..], mono_dock_css(s[0].css[..], mono_css(s[0].css[..])));
+    dm_style(d, cast(string) s[0].css[0..<n]);
+  }
+  ui_begin(s[0].ui[..], s[0].time, reduced);
+  sp_build(s);
+  ui_end(s[0].ui[..]);
+  // each slider holds what the page says: put on it when it is new, or when the page's value changed
+  // and no drag is under way (a drag's own echo must not pull the block back under the finger)
+  waiting := false;
+  slide: [SP_SLIDES] int; said: [SP_SLIDES] int; shown: [SP_SLIDES] int; when: [SP_SLIDES] f32;
+  text := sp_model(s);
+  for k: 0..<s[0].seen_n {
+    slide[k] = s[0].seen[k]; said[k] = s[0].seen_said[k]; shown[k] = said[k]; when[k] = -1;
+    old := -1;
+    for j: 0..<s[0].slides { if s[0].slide[j] == slide[k] { old = j; } }
+    put := old < 0;
+    if old >= 0 {
+      shown[k] = s[0].slide_shown[old]; when[k] = s[0].slide_at[old];
+      if said[k] != shown[k] {
+        if s[0].time - when[k] >= SP_QUIET { put = true; } else { waiting = true; }
+      }
+    }
+    if put {
+      // the slider's id is found again by its hash, from the saying
+      i := 0;
+      while i < text.count {
+        l := sh_read(text, i); i = l.next;
+        if l.kind == 'R' && l.n >= 7 && tr_hash(l.f[0]) == slide[k] { dm_value(d, l.f[0], l.f[6]); break; }
+      }
+      shown[k] = said[k];
+    }
+  }
+  s[0].slides = s[0].seen_n;
+  for k: 0..<s[0].seen_n { s[0].slide[k] = slide[k]; s[0].slide_said[k] = said[k]; s[0].slide_shown[k] = shown[k]; s[0].slide_at[k] = when[k]; }
+  s[0].animating = s[0].ui[0].busy || waiting;
+  s[0].dirty = false;
+  bytes := dm_flush(d, s[0].tree[..], s[0].sets[..]);
+  if d[0].overflow { dm_reset(d); s[0].dirty = true; s[0].slides = 0; return -1; }
+  return bytes;
+}
+coaxial_scenepane_busy :: (s: [] ScenePane) -> bool #export_c #effects(all) { return s.count > 0 && (s[0].dirty || s[0].animating); }
+// A press (1) or a slider's move (2) on the node in this slot; the page's saying (6) or this browser's
+// kept word (12), in the inbox.
+coaxial_scenepane_event :: (s: [] ScenePane, kind: int, slot: int, length: int) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].dirty = true;
+  if kind == SP_MODEL { sp_heard(s, length); return; }
+  if kind == SP_KEPT { sp_kept(s, length); return; }
+  id := dm_slot_id(s[0].dom[..], slot);
+  if id.count == 0 { return; }
+  if kind == SP_CLICK { sp_click(s, id); }
+  if kind == SP_INPUT { sp_input(s, id, length); }
+}
+coaxial_scenepane_size :: (s: [] ScenePane, slot: int, w: f32, h: f32) #export_c #effects(all) {
+  if s.count > 0 && dm_size(s[0].dom[..], slot, w, h) { s[0].dirty = true; }
+}
+coaxial_scenepane_inbox_cap :: () -> int #export_c #effects(all) { return SH_TEXT; }
+// The press that waits for the page: its kind (0: none) and its bytes (at acts[0]); done takes it away.
+coaxial_scenepane_act_kind :: (s: [] ScenePane) -> int #export_c #effects(all) { return ifx s.count > 0 && s[0].nacts > 0 then SH_ACT else 0; }
+coaxial_scenepane_act_len :: (s: [] ScenePane) -> int #export_c #effects(all) { return ifx s.count > 0 && s[0].nacts > 0 then s[0].act_n[0] else 0; }
+coaxial_scenepane_act_done :: (s: [] ScenePane) #export_c #effects(all) {
+  if s.count < 1 || s[0].nacts < 1 { return; }
+  for k: 1..<s[0].nacts { s[0].acts[k - 1] = s[0].acts[k]; s[0].act_n[k - 1] = s[0].act_n[k]; }
+  s[0].nacts -= 1;
+}
+// Whether "seen" is due to be kept in this browser (the face keeps it, then says so).
+coaxial_scenepane_keep :: (s: [] ScenePane) -> bool #export_c #effects(all) { return s.count > 0 && s[0].keep; }
+coaxial_scenepane_keep_done :: (s: [] ScenePane) #export_c #effects(all) { if s.count > 0 { s[0].keep = false; } }
+
+// ---------------------------------------------------------------- checks
+
+SpTest :: struct { s: [1] ScenePane; h: [1] SceneHud; }
+sp_test_said :: (x: [] SpTest) {
+  s := x[0].s[..]; h := x[0].h[..];
+  _ = sh_end(h);
+  for i: 0..<h[0].n { s[0].inbox[i] = h[0].text[i]; }
+  coaxial_scenepane_event(s, SP_MODEL, 0, h[0].n);
+  _ = coaxial_scenepane_frame(s, 0.016, true);
+}
+sp_test_press :: (x: [] SpTest, id: string) {
+  s := x[0].s[..];
+  coaxial_scenepane_event(s, SP_CLICK, dm_find(s[0].dom[..], id), 0);
+  _ = coaxial_scenepane_frame(s, 0.016, true);
+}
+sp_test_act :: (x: [] SpTest) -> string {
+  s := x[0].s[..];
+  if s[0].nacts < 1 { return ""; }
+  return cast(string) s[0].acts[0][0..<s[0].act_n[0]];
+}
+sp_test_world :: (x: [] SpTest, site: int, depth: int) {
+  h := x[0].h[..];
+  sh_begin(h);
+  sh_scene(h, "SLAB", "From Luckey", "Close", "Back");
+  sh_mode(h, "mode.tour", "Tour", false); sh_mode(h, "mode.explore", "Explore", true);
+  sh_group(h, "look", "Look");
+    sh_choices(h, "look.how", "Move as");
+      sh_option(h, "look.orbit", "Orbit", "", true); sh_option(h, "look.walk", "Walk", "", false); sh_option(h, "look.fly", "Fly", "", false);
+    sh_end_of(h);
+  sh_group(h, "change", "Change");
+    sh_menu(h, "site", "Where", "");
+      sh_option(h, "site.0", "Guam", "Warm water all year", site == 0); sh_option(h, "site.1", "Hawaii", "", site == 1);
+    sh_end_of(h);
+    sh_switch(h, "pause", "Stop the clock", "", false);
+    sh_panel(h, "take", "What would it take?", "Move a number and see what follows");
+      sh_say(h, "Deeper water needs longer lines.");
+      sh_slider(h, "take.depth", "Water depth", "1,500 m", 500, 4000, 100, depth);
+      sh_fact(h, "Line length", "2,500 m", SH_OURS);
+      sh_link(h, "The research behind this", "/docs/research/ocean/slab-world-spec.md");
+    sh_end_of(h);
+    sh_button(h, "reset", "Put everything back", false);
+  sh_tag(h, "d.0", "Gardens and temples", 300, 200, 1, false);
+  sh_tag(h, "go.6", "The bow", 600, 240, 1, true);
+  sh_foot(h, "A reconstruction. SLAB's real design is unpublished.");
+}
+
+#test "the bar holds the modes and a tab for each group; a tab opens its sheet and shuts it again" {
+  xs: [1] SpTest; x := xs[..]; s := x[0].s[..]; t := s[0].tree[..];
+  sp_test_world(x, 0, 1500); sp_test_said(x);
+  #assert tr_find(t, "bar") >= 0 && tr_text_of(t, tr_find(t, "bar.name")) == "SLAB";
+  #assert tr_attr_of(t, tr_find(t, "mode.explore"), AT_PRESSED) == "true" && tr_attr_of(t, tr_find(t, "mode.tour"), AT_PRESSED) == "false";
+  #assert tr_attr_of(t, tr_find(t, "tab.look"), AT_EXPANDED) == "false" && tr_find(t, "sheet") < 0;
+  #assert tr_text_of(t, tr_find(t, "foot")) == "A reconstruction. SLAB's real design is unpublished.";
+  sp_test_press(x, "tab.look");
+  #assert tr_attr_of(t, tr_find(t, "tab.look"), AT_EXPANDED) == "true" && tr_find(t, "sheet") >= 0;
+  // its choices are all on screen, the one in force pressed
+  #assert tr_attr_of(t, tr_find(t, "look.orbit"), AT_PRESSED) == "true" && tr_attr_of(t, tr_find(t, "look.fly"), AT_PRESSED) == "false";
+  #assert tr_find(t, "site.0") < 0 && sp_test_act(x) == "";
+  sp_test_press(x, "look.fly");
+  #assert sp_test_act(x) == "look.fly";
+  sp_test_press(x, "tab.look");
+  #assert tr_find(t, "sheet") < 0;
+}
+#test "a menu shows what is chosen, opens its choices in place, and shuts when one is chosen" {
+  xs: [1] SpTest; x := xs[..]; s := x[0].s[..]; t := s[0].tree[..];
+  sp_test_world(x, 0, 1500); sp_test_said(x);
+  sp_test_press(x, "tab.change");
+  #assert tr_text_of(t, tr_find(t, "menu.site.l")) == "Guam" && tr_find(t, "site.1") < 0;
+  sp_test_press(x, "menu.site");
+  #assert tr_find(t, "site.0") >= 0 && tr_has(t, tr_find(t, "site.0"), AT_CURRENT) && !tr_has(t, tr_find(t, "site.1"), AT_CURRENT);
+  #assert tr_text_of(t, tr_find(t, "site.0.m")) == "Warm water all year";
+  sp_test_press(x, "site.1");
+  #assert sp_test_act(x) == "site.1" && tr_find(t, "site.1") < 0;
+  // the page says the new choice
+  sp_test_world(x, 1, 1500); sp_test_said(x);
+  #assert tr_text_of(t, tr_find(t, "menu.site.l")) == "Hawaii";
+}
+#test "a row opens its part of the sheet, with a way back; a slider's move goes to the page with its number" {
+  xs: [1] SpTest; x := xs[..]; s := x[0].s[..]; t := s[0].tree[..]; d := s[0].dom[..];
+  sp_test_world(x, 0, 1500); sp_test_said(x);
+  sp_test_press(x, "tab.change");
+  #assert tr_find(t, "door.take") >= 0 && tr_find(t, "take.depth") < 0 && tr_find(t, "reset") >= 0;
+  sp_test_press(x, "door.take");
+  #assert tr_find(t, "take.depth") >= 0 && tr_find(t, "part.back") >= 0 && tr_find(t, "reset") < 0 && tr_find(t, "menu.site") < 0;
+  #assert tr_text_of(t, tr_find(t, "part.back.t")) == "What would it take?";
+  #assert tr_attr_of(t, tr_find(t, "take.depth"), AT_MIN) == "500" && tr_attr_of(t, tr_find(t, "take.depth"), AT_MAX) == "4000";
+  #assert tr_text_of(t, tr_find(t, "p.3.f")) == "Our assumption" && tr_attr_of(t, tr_find(t, "p.4"), AT_HREF) == "/docs/research/ocean/slab-world-spec.md";
+  s[0].inbox[0] = '2'; s[0].inbox[1] = '1'; s[0].inbox[2] = '0'; s[0].inbox[3] = '0';
+  coaxial_scenepane_event(s, SP_INPUT, dm_find(d, "take.depth"), 4);
+  #assert sp_test_act(x) == "take.depth 2100";
+  sp_test_press(x, "part.back");
+  #assert tr_find(t, "take.depth") < 0 && tr_find(t, "reset") >= 0;
+}
+#test "tags are pinned where the page says; one that can be pressed goes to the page" {
+  xs: [1] SpTest; x := xs[..]; s := x[0].s[..]; t := s[0].tree[..];
+  sp_test_world(x, 0, 1500); sp_test_said(x);
+  v: [SC_VARS] u8;
+  #assert tr_attr_of(t, tr_find(t, "d.0"), AT_VARS) == sc_place(v[..], 300, 200, 1) && t[0].nodes[tr_find(t, "go.6")].tag == TG_BUTTON;
+  sp_test_press(x, "go.6");
+  #assert sp_test_act(x) == "go.6";
+}
+#test "the page is told once whether this is a first visit, and a first visit is kept" {
+  xs: [1] SpTest; x := xs[..]; s := x[0].s[..];
+  coaxial_scenepane_event(s, SP_KEPT, 0, 0);
+  #assert sp_test_act(x) == "hud.visit 1" && coaxial_scenepane_keep(s) && coaxial_scenepane_act_kind(s) == SH_ACT;
+  coaxial_scenepane_act_done(s); coaxial_scenepane_keep_done(s);
+  coaxial_scenepane_event(s, SP_KEPT, 0, 0);
+  #assert sp_test_act(x) == "" && !coaxial_scenepane_keep(s);
+  ys: [1] SpTest; y := ys[..]; r := y[0].s[..];
+  r[0].inbox[0] = 's'; r[0].inbox[1] = 'e'; r[0].inbox[2] = 'e'; r[0].inbox[3] = 'n';
+  coaxial_scenepane_event(r, SP_KEPT, 0, 4);
+  #assert sp_test_act(y) == "hud.visit 0" && !coaxial_scenepane_keep(r);
+}
+#test "the page's word opens a tab once; a tab the page no longer says is shut" {
+  xs: [1] SpTest; x := xs[..]; s := x[0].s[..]; t := s[0].tree[..]; h := x[0].h[..];
+  sp_test_world(x, 0, 1500); sh_open(h, "change", 1); sp_test_said(x);
+  #assert tr_find(t, "sheet") >= 0 && tr_attr_of(t, tr_find(t, "tab.change"), AT_EXPANDED) == "true";
+  sp_test_press(x, "tab.change");
+  sp_test_world(x, 0, 1500); sh_open(h, "change", 1); sh_toast(h, "The bow"); sp_test_said(x);
+  #assert tr_find(t, "sheet") < 0 && tr_text_of(t, tr_find(t, "toast")) == "The bow";
+  sp_test_press(x, "tab.look");
+  sh_begin(h); sh_scene(h, "SLAB", "From Luckey", "Close", "Back"); sh_mode(h, "mode.tour", "Tour", true); sp_test_said(x);
+  #assert tr_find(t, "sheet") < 0 && tr_find(t, "tab.look") < 0;
+}
+#test "a card has its name, a way to close it, numbers with their tags and a fold that opens the working" {
+  xs: [1] SpTest; x := xs[..]; s := x[0].s[..]; t := s[0].tree[..]; h := x[0].h[..];
+  sp_test_world(x, 0, 1500);
+  sh_card(h, "card", "Cold-water pipe");
+    sh_say(h, "A pipe that brings cold water up from a kilometre down.");
+    sh_number(h, "282 m³ a second", "of cold water", "about four times the Thames at London", SH_SOURCE);
+    sh_fold(h, "maths", "The maths");
+      sh_say(h, "Flow = heat ÷ (density × heat capacity × temperature rise).");
+    sh_end_of(h);
+    sh_action(h, "view.flow", "See the water and power", true);
+    sh_link(h, "The research behind this", "/docs/research/ocean/otec.md");
+  sp_test_said(x);
+  #assert tr_text_of(t, tr_find(t, "card.t")) == "Cold-water pipe" && tr_find(t, "card.x") >= 0;
+  #assert tr_text_of(t, tr_find(t, "c.2.f")) == "From a source" && tr_attr_of(t, tr_find(t, "fold.maths"), AT_EXPANDED) == "false";
+  #assert tr_find(t, "c.4") < 0 && tr_attr_of(t, tr_find(t, "view.flow"), AT_STATE) == "primary";
+  sp_test_press(x, "fold.maths");
+  #assert tr_attr_of(t, tr_find(t, "fold.maths"), AT_EXPANDED) == "true" && tr_find(t, "c.4") >= 0;
+  sp_test_press(x, "card.x");
+  #assert sp_test_act(x) == "card.x";
+}
+#test "every class of the scene set that the pane draws has a rule in the skin's stylesheet" {
+  xs: [1] SpTest; x := xs[..]; s := x[0].s[..]; t := s[0].tree[..]; h := x[0].h[..];
+  sp_test_world(x, 0, 1500);
+  sh_card(h, "card", "Cold-water pipe"); sh_number(h, "1", "a", "b", SH_CLAIM); sh_fold(h, "maths", "The maths"); sh_end_of(h); sh_action(h, "a", "A", false);
+  sh_caption(h, "cap", "Tour", 1, 7, 0.5); sh_lead(h, "One kilometre long."); sh_action(h, "tour.next", "Next", true);
+  sh_plate(h, "/build/slab.jpeg", "The picture", 0.5); sh_toast(h, "Hello");
+  sp_test_said(x); sp_test_press(x, "tab.change"); sp_test_press(x, "menu.site");
+  css := cast(string) s[0].css[0..<mono_scene_css(s[0].css[..], mono_dock_css(s[0].css[..], mono_css(s[0].css[..])))];
+  #assert css.count < SP_CSS - 512;
+  for i: 0..<t[0].n {
+    cls := tr_class(t, i);
+    a := 0;
+    while a < cls.count {
+      b := a; while b < cls.count && cls[b] != ' ' { b += 1; }
+      one := cast(string) cls[a..<b];
+      // the scene set's own classes, each by its whole name (the kit's label spans have no rule of their own)
+      if one.count >= 3 && cast(string) one[0..<3] == "scn" {
+        found := false;
+        for k: 0..<css.count - one.count - 1 {
+          e := css[k + 1 + one.count];
+          whole := !((e >= 'a' && e <= 'z') || (e >= '0' && e <= '9') || e == '-');
+          if css[k] == '.' && whole && cast(string) css[k + 1..<k + 1 + one.count] == one { found = true; break; }
+        }
+        #assert found;
+      }
+      a = b + 1;
+    }
+  }
+}
+#test "a way with a sheet of its own has no tab: its button opens and shuts the sheet while it is on" {
+  xs: [1] SpTest; x := xs[..]; s := x[0].s[..]; t := s[0].tree[..];
+  h := x[0].h[..];
+  sh_begin(h);
+  sh_scene(h, "SLAB", "From Luckey", "Close", "Back");
+  sh_mode(h, "mode.explore", "Explore", false); sh_mode_of(h, "mode.build", "Build it", true, "build");
+  sh_group(h, "build", "Build it");
+    sh_button(h, "build.play", "Pause", false);
+  sh_group(h, "help", "Help");
+    sh_say(h, "Drag to turn.");
+  sp_test_said(x);
+  #assert tr_find(t, "tab.build") < 0 && tr_find(t, "tab.help") >= 0 && tr_find(t, "sheet") < 0;
+  sp_test_press(x, "mode.build");
+  #assert tr_find(t, "sheet") >= 0 && tr_find(t, "build.play") >= 0 && sp_test_act(x) == "";
+  sp_test_press(x, "mode.build");
+  #assert tr_find(t, "sheet") < 0 && sp_test_act(x) == "";
+  // a way that is not on goes to the page, which turns it on
+  sp_test_press(x, "mode.explore");
+  #assert sp_test_act(x) == "mode.explore";
+}

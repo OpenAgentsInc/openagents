@@ -1,0 +1,228 @@
+// A scene's HUD, said as text (GitHub #13685). A page with a canvas (a world) says what its HUD holds
+// as lines of text; its pane (scene-pane.coax) draws them with the scene set (components/kit/scene.coax)
+// in the mono skin, in the browser's own text. A press comes back to the page as a message of kind
+// SH_ACT whose text is the pressed thing's id, then a space and a number when it is a slider's move.
+// The page keeps no layout and the pane keeps no facts: the page says everything again each frame
+// (sh_begin ... sh_end), and the pane hears of it only when the text changed.
+//
+// What a page can say, in the order it is drawn:
+//   sh_mode(h, id, label, on)                    a way to be in the scene, in the bar (Tour, Explore)
+//   sh_mode_of(h, id, label, on, group)          a way that has a sheet of its own: the group of that id gets no tab,
+//                                                and the way's button opens and shuts its sheet while it is on
+//   sh_group(h, id, label)                       a tab in the bar; what follows is in its sheet
+//     sh_button(h, id, label, on)                a button; `on` draws it pressed
+//     sh_choices(h, id, label) ... sh_end_of(h)  a few choices all shown at once, one in force
+//     sh_menu(h, id, label, unset) ... sh_end_of(h)
+//                                                a menu: it shows what is chosen (`unset` when nothing is) and
+//                                                opens its choices
+//       sh_option(h, id, title, note, on)        one choice of either
+//     sh_switch(h, id, label, note, on)          a named thing that is on or off
+//     sh_slider(h, id, label, words, low, high, step, value)
+//                                                a whole number dragged between two ends; `words` says
+//                                                what it is now with its unit, and the ends are its limits
+//     sh_panel(h, id, label, note) ... sh_end_of(h)
+//                                                a row that opens a part of the sheet; anything here can
+//                                                be in it (not another panel)
+//     sh_heading(h, text)   sh_say(h, text)      a heading; a sentence
+//     sh_fact(h, name, value, from)              a name and its value, tagged with where it is from
+//     sh_number(h, value, what, like, from)      a figure, what it measures and something to picture it by
+//     sh_link(h, label, href)                    a real link (a path on this site, or https)
+//   sh_tag(h, id, text, x, y, show, press)       a name pinned in the scene, at window pixels
+// `from` is SH_NONE, SH_CLAIM (the claim of whoever the scene is about), SH_SOURCE or SH_OURS.
+// An id is letters, digits, dots and hyphens, at most SH_ID bytes, and one of a kind in the HUD.
+// Text may hold anything but a tab or a line end.
+//   coax/bin/coax test apps/openagents-web/scene-hud.coax
+
+SH_TEXT :: 16384;      // bytes of one saying (the pane's inbox)
+SH_FIELDS :: 8;        // the most fields a line has
+SH_ID :: 48;
+SH_ACT :: 640;         // the message a press reaches the page as
+SH_NONE :: 0; SH_CLAIM :: 1; SH_SOURCE :: 2; SH_OURS :: 3;
+SH_SUM :: 70368744177663;   // a saying's hash stays under 46 bits, so hash * 131 + a byte never overflows
+
+SceneHud :: struct {
+  text: [SH_TEXT] u8; n: int;
+  lost: bool;            // a line did not fit: the saying is short of it
+  rev: int; sum: int;    // how many different sayings there have been, and the last one's hash
+}
+
+sh_begin :: (h: [] SceneHud) { h[0].n = 0; h[0].lost = false; }
+// Ends a saying. True when it differs from the one before (the pane is told then).
+sh_end :: (h: [] SceneHud) -> bool {
+  sum := 7 + h[0].n;
+  for i: 0..<h[0].n { sum = (sum * 131 + cast(int) h[0].text[i]) & SH_SUM; }
+  if sum == h[0].sum && h[0].rev > 0 { return false; }
+  h[0].sum = sum; h[0].rev += 1;
+  return true;
+}
+sh_text :: (h: [] SceneHud) -> string { return cast(string) h[0].text[0..<h[0].n]; }
+
+// One line: its kind's letter, then its fields, a tab before each. A tab or a line end in a field is a space.
+sh_line :: (h: [] SceneHud, kind: u8, f: [] string) {
+  need := 2;
+  for i: 0..<f.count { need += 1 + f[i].count; }
+  if h[0].n + need > SH_TEXT { h[0].lost = true; return; }
+  n := h[0].n;
+  h[0].text[n] = kind; n += 1;
+  for i: 0..<f.count {
+    h[0].text[n] = '\t'; n += 1;
+    for c: f[i] { h[0].text[n] = ifx c == '\t' || c == '\n' || c == '\r' then cast(u8) ' ' else c; n += 1; }
+  }
+  h[0].text[n] = '\n';
+  h[0].n = n + 1;
+}
+SH_NUM :: 24;
+sh_int :: (out: [] u8, v: int) -> string {
+  n := 0; x := v;
+  if x < 0 { out[0] = '-'; n = 1; x = -x; }
+  d: [20] u8; k := 0;
+  if x == 0 { d[0] = '0'; k = 1; }
+  while x > 0 && k < d.count { d[k] = cast(u8) ('0' + x % 10); x /= 10; k += 1; }
+  while k > 0 && n < out.count { k -= 1; out[n] = d[k]; n += 1; }
+  return cast(string) out[0..<n];
+}
+// A whole number from text ("-12"), or `otherwise` when it is not one.
+sh_number_of :: (s: string, otherwise: int) -> int {
+  if s.count == 0 || s.count > 12 { return otherwise; }
+  v := 0; neg := false;
+  for i: 0..<s.count {
+    c := s[i];
+    if c == '-' && i == 0 && s.count > 1 { neg = true; continue; }
+    if c < '0' || c > '9' { return otherwise; }
+    v = v * 10 + cast(int) (c - '0');
+  }
+  return ifx neg then -v else v;
+}
+sh_flag :: (on: bool) -> string { return ifx on then "1" else "0"; }
+
+sh_mode :: (h: [] SceneHud, id: string, label: string, on: bool) { f := [3] string.[id, label, sh_flag(on)]; sh_line(h, 'M', f[..]); }
+sh_mode_of :: (h: [] SceneHud, id: string, label: string, on: bool, group: string) { f := [4] string.[id, label, sh_flag(on), group]; sh_line(h, 'M', f[..]); }
+sh_group :: (h: [] SceneHud, id: string, label: string) { f := [2] string.[id, label]; sh_line(h, 'G', f[..]); }
+sh_button :: (h: [] SceneHud, id: string, label: string, on: bool) { f := [3] string.[id, label, sh_flag(on)]; sh_line(h, 'B', f[..]); }
+sh_choices :: (h: [] SceneHud, id: string, label: string) { f := [2] string.[id, label]; sh_line(h, 'C', f[..]); }
+sh_menu :: (h: [] SceneHud, id: string, label: string, unset: string) { f := [3] string.[id, label, unset]; sh_line(h, 'N', f[..]); }
+sh_option :: (h: [] SceneHud, id: string, title: string, note: string, on: bool) { f := [4] string.[id, title, note, sh_flag(on)]; sh_line(h, 'O', f[..]); }
+sh_switch :: (h: [] SceneHud, id: string, label: string, note: string, on: bool) { f := [4] string.[id, label, note, sh_flag(on)]; sh_line(h, 'T', f[..]); }
+sh_slider :: (h: [] SceneHud, id: string, label: string, words: string, low: int, high: int, step: int, value: int) {
+  a: [SH_NUM] u8; b: [SH_NUM] u8; c: [SH_NUM] u8; d: [SH_NUM] u8;
+  f := [7] string.[id, label, words, sh_int(a[..], low), sh_int(b[..], high), sh_int(c[..], step), sh_int(d[..], value)];
+  sh_line(h, 'R', f[..]);
+}
+sh_panel :: (h: [] SceneHud, id: string, label: string, note: string) { f := [3] string.[id, label, note]; sh_line(h, 'P', f[..]); }
+sh_end_of :: (h: [] SceneHud) { f: [1] string; sh_line(h, 'E', f[0..<0]); }
+sh_heading :: (h: [] SceneHud, text: string) { f := [1] string.[text]; sh_line(h, 'H', f[..]); }
+sh_say :: (h: [] SceneHud, text: string) { f := [1] string.[text]; sh_line(h, 'S', f[..]); }
+sh_fact :: (h: [] SceneHud, name: string, value: string, from: int) { a: [SH_NUM] u8; f := [3] string.[name, value, sh_int(a[..], from)]; sh_line(h, 'F', f[..]); }
+sh_number :: (h: [] SceneHud, value: string, what: string, like: string, from: int) { a: [SH_NUM] u8; f := [4] string.[value, what, like, sh_int(a[..], from)]; sh_line(h, 'Q', f[..]); }
+sh_link :: (h: [] SceneHud, label: string, href: string) { f := [2] string.[label, href]; sh_line(h, 'L', f[..]); }
+// A name pinned in the scene: where its point is in the window now (CSS pixels), how much it shows
+// (0 to 1), and whether it can be pressed (a place to go to).
+sh_tag :: (h: [] SceneHud, id: string, text: string, x: f32, y: f32, show: f32, press: bool) {
+  a: [SH_NUM] u8; b: [SH_NUM] u8; c: [SH_NUM] u8;
+  // tenths of a pixel and hundredths of the whole, as whole numbers
+  f := [6] string.[id, text, sh_int(a[..], sh_round(x * 10)), sh_int(b[..], sh_round(y * 10)), sh_int(c[..], sh_round(show * 100)), sh_flag(press)];
+  sh_line(h, 'W', f[..]);
+}
+sh_round :: (v: f32) -> int {
+  if !(v == v) { return 0; }
+  w := ifx v > 1000000 then 1000000.0f32 else ifx v < -1000000 then -1000000.0f32 else v;
+  return cast(int) (ifx w < 0 then w - 0.5 else w + 0.5);
+}
+
+// The page's own lines (not for other files): the scene's name and the claim's words, a card, a tour's
+// caption, a picture over the scene, the foot's line, a word said for a moment, and which tab to open.
+sh_scene :: (h: [] SceneHud, name: string, claim: string, close: string, back: string) { f := [4] string.[name, claim, close, back]; sh_line(h, 'V', f[..]); }
+sh_open :: (h: [] SceneHud, group: string, serial: int) { a: [SH_NUM] u8; f := [2] string.[group, sh_int(a[..], serial)]; sh_line(h, 'D', f[..]); }
+sh_card :: (h: [] SceneHud, id: string, title: string) { f := [2] string.[id, title]; sh_line(h, 'K', f[..]); }
+sh_fold :: (h: [] SceneHud, id: string, label: string) { f := [2] string.[id, label]; sh_line(h, 'X', f[..]); }
+sh_action :: (h: [] SceneHud, id: string, label: string, primary: bool) { f := [3] string.[id, label, sh_flag(primary)]; sh_line(h, 'A', f[..]); }
+sh_caption :: (h: [] SceneHud, id: string, label: string, step: int, steps: int, part: f32) {
+  a: [SH_NUM] u8; b: [SH_NUM] u8; c: [SH_NUM] u8;
+  f := [5] string.[id, label, sh_int(a[..], step), sh_int(b[..], steps), sh_int(c[..], sh_round(part * 1000))];
+  sh_line(h, 'U', f[..]);
+}
+sh_lead :: (h: [] SceneHud, text: string) { f := [1] string.[text]; sh_line(h, 'J', f[..]); }
+sh_plate :: (h: [] SceneHud, src: string, alt: string, show: f32) { a: [SH_NUM] u8; f := [3] string.[src, alt, sh_int(a[..], sh_round(show * 100))]; sh_line(h, 'I', f[..]); }
+sh_foot :: (h: [] SceneHud, text: string) { f := [1] string.[text]; sh_line(h, 'Z', f[..]); }
+sh_toast :: (h: [] SceneHud, text: string) { f := [1] string.[text]; sh_line(h, 'Y', f[..]); }
+
+// ---------------------------------------------------------------- reading (the pane's side)
+
+ShLine :: struct {
+  kind: u8;              // 0 at the text's end
+  f: [SH_FIELDS] string; n: int;
+  next: int;             // where the line after it starts
+}
+// The line that starts at `at`.
+sh_read :: (text: string, at: int) -> ShLine {
+  o: ShLine;
+  o.next = text.count;
+  if at < 0 || at >= text.count { return o; }
+  e := at; while e < text.count && text[e] != '\n' { e += 1; }
+  o.next = ifx e < text.count then e + 1 else e;
+  if e == at { o.kind = ' '; return o; }
+  o.kind = text[at];
+  i := at + 1;
+  while i < e && o.n < SH_FIELDS {
+    // text[i] is the tab before a field
+    j := i + 1; while j < e && text[j] != '\t' { j += 1; }
+    o.f[o.n] = cast(string) text[i + 1..<j]; o.n += 1;
+    i = j;
+  }
+  return o;
+}
+// What a press says to the page: the id, then a space and the number when there is one.
+sh_press :: (out: [] u8, id: string, with_value: bool, value: int) -> string {
+  n := 0;
+  for c: id { if n < out.count { out[n] = c; n += 1; } }
+  if with_value {
+    a: [SH_NUM] u8;
+    if n < out.count { out[n] = ' '; n += 1; }
+    for c: sh_int(a[..], value) { if n < out.count { out[n] = c; n += 1; } }
+  }
+  return cast(string) out[0..<n];
+}
+ShPress :: struct { id: string; value: int; has: bool; }
+// A press as the page reads it.
+sh_pressed :: (body: string) -> ShPress {
+  o: ShPress;
+  e := 0; while e < body.count && body[e] != ' ' { e += 1; }
+  o.id = cast(string) body[0..<e];
+  if e + 1 < body.count {
+    v := sh_number_of(cast(string) body[e + 1..<body.count], -1000000007);
+    if v != -1000000007 { o.value = v; o.has = true; }
+  }
+  return o;
+}
+
+#test "a saying is lines of fields, read back as they were said" {
+  hs: [1] SceneHud; h := hs[..];
+  sh_begin(h);
+  sh_group(h, "change", "Change");
+  sh_slider(h, "take.depth", "Water depth", "1,500 m", 500, 4000, 100, 1500);
+  sh_option(h, "site.guam", "Guam", "", true);
+  sh_say(h, "A tab\there and a\nline end");
+  sh_tag(h, "d.3", "Gardens and temples", 120.26, -4.5, 0.5, true);
+  #assert sh_end(h) && !sh_end(h) && h[0].rev == 1 && !h[0].lost;
+  t := sh_text(h);
+  a := sh_read(t, 0); #assert a.kind == 'G' && a.n == 2 && a.f[0] == "change" && a.f[1] == "Change";
+  b := sh_read(t, a.next); #assert b.kind == 'R' && b.n == 7 && b.f[2] == "1,500 m" && sh_number_of(b.f[3], -1) == 500 && sh_number_of(b.f[6], -1) == 1500;
+  c := sh_read(t, b.next); #assert c.kind == 'O' && c.n == 4 && c.f[2] == "" && c.f[3] == "1";
+  d := sh_read(t, c.next); #assert d.kind == 'S' && d.f[0] == "A tab here and a line end";
+  e := sh_read(t, d.next); #assert e.kind == 'W' && e.f[2] == "1203" && e.f[3] == "-45" && e.f[4] == "50" && e.f[5] == "1";
+  z := sh_read(t, e.next); #assert z.kind == 0 && z.next == t.count;
+  // a different saying is a new one
+  sh_begin(h); sh_group(h, "change", "Changed"); #assert sh_end(h) && h[0].rev == 2;
+}
+#test "a saying that is too long loses whole lines, never part of one" {
+  hs: [1] SceneHud; h := hs[..];
+  sh_begin(h);
+  for i: 0..<400 { sh_say(h, "Sixty-four bytes of words, give or take, to fill the saying up."); }
+  #assert h[0].lost && h[0].n <= SH_TEXT && h[0].text[h[0].n - 1] == '\n';
+}
+#test "a press is an id, and a number when it is a slider's" {
+  b: [64] u8;
+  p := sh_pressed(sh_press(b[..], "take.depth", true, -250)); #assert p.id == "take.depth" && p.has && p.value == -250;
+  q := sh_pressed(sh_press(b[..], "look.fly", false, 0)); #assert q.id == "look.fly" && !q.has;
+  #assert sh_number_of("12x", -1) == -1 && sh_number_of("", -1) == -1 && sh_number_of("-", -1) == -1;
+}

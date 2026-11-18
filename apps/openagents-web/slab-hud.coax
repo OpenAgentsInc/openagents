@@ -1,0 +1,599 @@
+// The SLAB world's HUD (GitHub #13685): what the world says is on screen, in plain words, and what
+// each press does. slab.coax loads this file and says the HUD once a frame (sb_say). The browser draws
+// it with the scene set in the mono skin, as /chat is drawn: the pane is scene-pane.coax, the words
+// travel as scene-hud.coax describes, and the looks are components/kit/scene.coax and mono_scene_css.
+// The canvas keeps only drawn lines (the flow arrows, the bending line).
+//
+// How to add a control, a menu entry or a panel (another file's, in the same world)
+//
+// 1. In your own file, which slab.coax loads, write two procedures:
+//      yours_hud :: (s: [] Slab, h: [] SceneHud, group: int)        what you show
+//      yours_act :: (s: [] Slab, id: string, value: int) -> bool    what a press does; true when the id was yours
+// 2. Add one line for each to the two lists below, sb_more and sb_act_more. That is the whole hook.
+//
+// yours_hud is called once for each group every frame: HUD_LOOK, HUD_INSIDE ("See inside"), HUD_CHANGE
+// and HUD_BUILD ("Build it"). Say your part under the group it belongs to, with scene-hud.coax's
+// procedures. A panel under Change, a switch and a menu entry look like this:
+//      if group != HUD_CHANGE { return; }
+//      sh_panel(h, "take", "What would it take?", "Move a number and see what follows");
+//        sh_say(h, "Deeper water needs longer lines.");
+//        sh_slider(h, "take.depth", "Water depth", "1,500 m", 500, 4000, 100, 1500);
+//        sh_fact(h, "Line length", "2,500 m", SH_OURS);
+//        sh_link(h, "The research behind this", "https://github.com/OpenAgentsInc/openagents/blob/main/docs/…");
+//      sh_end_of(h);
+//      sh_switch(h, "line.lose", "Lose a line", "Cut one mooring line and see the others take its load", s[0].lost);
+//      sh_menu(h, "weather", "Weather", "");
+//        sh_option(h, "weather.clear", "Clear", "", clear); sh_option(h, "weather.squall", "A squall", "", !clear);
+//      sh_end_of(h);
+// yours_act gets the id you gave (and a slider's new number in `value`). Ids are yours to choose: start
+// them with your own word and a dot. Write in sentence case and plain words, explain a term the first
+// time, and state a slider's limits (its ends are its limits). Tag numbers: SH_CLAIM is "From Luckey",
+// SH_SOURCE "From a source", SH_OURS "Our assumption". sb_toast(s, "…") says a short word for a moment.
+// Everything the HUD says in one frame fits SH_TEXT (16 KB): a line past that is left out whole, and the
+// first HUD check fails (`lost`). What is inside a panel is drawn only while the panel is open, but it
+// is said, and counts, every frame: keep a panel to what a person reads in one look.
+//
+//   coax/bin/coax test apps/openagents-web/slab.coax --only "HUD"
+
+#load "scene-hud.coax";
+
+SB_PANE :: "scene-pane";   // the pane's module (scene-pane.coax)
+HUD_LOOK :: 0; HUD_INSIDE :: 1; HUD_CHANGE :: 2; HUD_BUILD :: 3;
+SB_DOCS :: "https://github.com/OpenAgentsInc/openagents/blob/main/docs/research/ocean/";
+SB_TEXT :: 200;            // bytes of one line of words built here
+SB_TOAST :: 3.5;           // seconds a word said for a moment stays
+
+SlabHud :: struct {
+  said: [1] SceneHud;
+  pane: bool;              // the browser draws the HUD: the page has read its address
+  visit: int = -1;         // -1 not told yet, 0 the visitor has been here, 1 a first visit
+  want: [SH_ID] u8; want_n: int; serial: int;   // the tab the pane is asked to open, and how many times it was asked
+  toast: [SB_TEXT] u8; toast_n: int; toast_at: f64;
+  touch: bool;             // the last press on the scene was a finger's
+}
+
+// ---------------------------------------------------------------- the two lists
+
+// What other files add to the HUD: one line each.
+sb_more :: (s: [] Slab, h: [] SceneHud, group: int) {
+  // yours_hud(s, h, group);
+}
+// What other files' presses do: one line each.
+sb_act_more :: (s: [] Slab, id: string, value: int) -> bool {
+  // if yours_act(s, id, value) { return true; }
+  return false;
+}
+
+// ---------------------------------------------------------------- words
+
+SbText :: struct { b: [SB_TEXT] u8; n: int; }
+sb_w :: (t: SbText, s: string) -> SbText { o := t; o.n = put(o.b[..], o.n, s); return o; }
+// A number with its thousands separated by commas: 15,375 or 1,187.5.
+sb_n :: (t: SbText, v: f64, decimals: int) -> SbText {
+  raw: [40] u8; m := putf(raw[..], 0, v, decimals);
+  o := t;
+  lead := 0; if m > 0 && raw[0] == '-' { lead = 1; }
+  dot := m; for i: 0..<m { if raw[i] == '.' { dot = i; break; } }
+  for i: 0..<m {
+    if i > lead && i < dot && (dot - i) % 3 == 0 { o.n = put(o.b[..], o.n, ","); }
+    if o.n < SB_TEXT { o.b[o.n] = raw[i]; o.n += 1; }
+  }
+  return o;
+}
+sb_s :: (t: [] SbText) -> string { return cast(string) t[0].b[0..<t[0].n]; }
+sb_toast :: (s: [] Slab, text: string) {
+  n := 0;
+  for c: text { if n < SB_TEXT { s[0].hp.toast[n] = c; n += 1; } }
+  s[0].hp.toast_n = n; s[0].hp.toast_at = s[0].time;
+}
+// The pane is asked to open a tab ("" shuts whichever is open).
+sb_open :: (s: [] Slab, group: string) {
+  n := 0;
+  for c: group { if n < SH_ID { s[0].hp.want[n] = c; n += 1; } }
+  s[0].hp.want_n = n; s[0].hp.serial += 1;
+}
+// An id from a word and a number: "site." and 2 is "site.2".
+sb_id :: (out: [] u8, part: string, k: int) -> string {
+  n := put(out, 0, part);
+  a: [SH_NUM] u8;
+  n = put(out, n, sh_int(a[..], k));
+  return cast(string) out[0..<n];
+}
+// The number at the end of an id that starts with `part` ("go." and "go.6" is 6), or -1.
+sb_index :: (id: string, part: string) -> int {
+  if id.count <= part.count || cast(string) id[0..<part.count] != part { return -1; }
+  return sh_number_of(cast(string) id[part.count..<id.count], -1);
+}
+
+SB_STATIONS :: [9] string.["The temples", "The power plant", "The data halls", "The mining yard", "The towers", "The fountain", "The bow", "The view in Luckey's picture", "From 1.5 km out"];
+// The sites in plain words, in slab-sim.coax's order (where_site in metaverse/slab-where.coax holds the same
+// titles with the chart: when the world loads that file, read the titles from it and drop this table).
+SB_SITES :: [SITES] string.["Guam, west coast", "Puerto Rico, off Yabucoa", "Hawaii, off Kona", "The equator, by Baker Island", "California, three miles out", "Texas, the Gulf of Mexico", "Norway, Yrkefjorden"];
+SB_STORMS :: [SITES] string.["Typhoons pass here.", "Hurricanes and earthquakes happen here.", "Hurricanes are rare here.", "No hurricanes form this close to the equator.", "Winter storms come through.", "Hurricanes come from June to November.", "A sheltered fjord: a place to join the hull, not to run it."];
+SB_SEAS :: [SEAS] string.["Calm", "Trade wind", "The equator's roughest", "Winter", "Gale", "Hurricane"];
+SB_MONTHS :: [12] string.["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+sb_clock :: (hour: f64) -> SbText {
+  t: SbText;
+  hh := cast(int) floor(hour); mm := cast(int) floor((hour - f64(hh)) * 60);
+  t.n = two(t.b[..], t.n, hh); t = sb_w(t, ":"); t.n = two(t.b[..], t.n, mm);
+  return t;
+}
+
+// ---------------------------------------------------------------- what the HUD holds
+
+sb_look :: (s: [] Slab, h: [] SceneHud) {
+  ids: [SH_ID] u8;
+  sh_group(h, "look", "Look");
+  if s[0].hp.touch {
+    sh_say(h, "Drag to turn. Pinch to zoom, or use the buttons. Tap anything to learn what it is. Walking and flying need a keyboard.");
+  } else {
+    sh_choices(h, "look.as", "Move as");
+      sh_option(h, "look.orbit", "Orbit", "", s[0].mode == CAM_ORBIT);
+      sh_option(h, "look.walk", "Walk", "", s[0].mode == CAM_WALK);
+      sh_option(h, "look.fly", "Fly", "", s[0].mode == CAM_FLY);
+    sh_end_of(h);
+    if s[0].mode == CAM_WALK { sh_say(h, "W, A, S and D walk. Space jumps; twice, and you fly. Drag to turn. Scroll to zoom."); }
+    else if s[0].mode == CAM_FLY { sh_say(h, "W, A, S and D fly. Space climbs and Shift drops. Drag to look. Scroll to change speed, from 3 to 60 metres a second."); }
+    else { sh_say(h, "Drag to turn. Scroll to zoom. W, A, S and D move the point you circle. Click anything to learn what it is."); }
+  }
+  if s[0].mode == CAM_ORBIT {
+    sh_button(h, "look.in", "Closer", false);
+    sh_button(h, "look.out", "Farther", false);
+  }
+  sh_menu(h, "go", "Go to a place", "Choose a place");
+    names := SB_STATIONS;
+    for i: 0..<9 { sh_option(h, sb_id(ids[..], "go.", i), names[i], "", false); }
+  sh_end_of(h);
+  sb_more(s, h, HUD_LOOK);
+}
+
+sb_inside :: (s: [] Slab, h: [] SceneHud) {
+  sh_group(h, "inside", "See inside");
+  if s[0].layout == LAYOUT_PRIME {
+    sh_switch(h, "view.section", "Cut it open", "A slice through the hull: its cells, its ballast water and the waterline", s[0].section);
+    sh_switch(h, "view.under", "Go underwater", "The underside of the hull, the cold-water pipes and the mooring lines", s[0].under);
+    sh_switch(h, "view.flow", "Water and power", "Where the sea water goes, and where the electricity goes", s[0].flow);
+  } else {
+    sh_say(h, "The cut-open view, the underwater view and the water and power lines are drawn for the one-platform shape. Choose it under Change.");
+  }
+  sb_now(s, h);
+  sb_more(s, h, HUD_INSIDE);
+}
+// What the world is doing now, in a part of the sheet: the old statistics, in plain words.
+sb_now :: (s: [] Slab, h: [] SceneHud) {
+  pw := s[0].power; hl := s[0].hull;
+  ts: [1] SbText; t: SbText;
+  sh_panel(h, "now", "What it is doing now", "The sea, the hull's motion and the power, as this world works them out");
+    sh_say(h, "These numbers come from this world's own model, not from SLAB.");
+    sh_heading(h, "The sea");
+    t = SbText.{}; t = sb_n(t, f64(s[0].synth[0].significant), 1); t = sb_w(t, " m"); ts[0] = t;
+    sh_fact(h, "Wave height", sb_s(ts[..]), SH_NONE);
+    t = SbText.{}; t = sb_n(t, s[0].wind, 1); t = sb_w(t, " m/s"); ts[0] = t;
+    sh_fact(h, "Wind", sb_s(ts[..]), SH_NONE);
+    sh_heading(h, "The hull");
+    t = SbText.{}; t = sb_n(t, hl.heave, 2); t = sb_w(t, " m"); ts[0] = t;
+    sh_fact(h, "Rise and fall", sb_s(ts[..]), SH_NONE);
+    t = SbText.{}; t = sb_n(t, hl.roll * 180 / SIM_PI, 3); t = sb_w(t, "°"); ts[0] = t;
+    sh_fact(h, "Lean to one side", sb_s(ts[..]), SH_NONE);
+    t = SbText.{}; t = sb_n(t, sqrt(hl.surge * hl.surge + hl.sway * hl.sway), 1); t = sb_w(t, " m"); ts[0] = t;
+    sh_fact(h, "Pushed off its place by", sb_s(ts[..]), SH_NONE);
+    t = SbText.{}; t = sb_n(t, hl.tension / 1e6, 1); t = sb_w(t, " of "); t = sb_n(t, SIM_BREAK / 1e6, 0); t = sb_w(t, " meganewtons"); ts[0] = t;
+    sh_fact(h, "Hardest-pulled mooring line", sb_s(ts[..]), SH_NONE);
+    sh_heading(h, "Power");
+    t = SbText.{}; t = sb_n(t, pw.supply, 1); t = sb_w(t, " MW"); ts[0] = t;
+    sh_fact(h, "Made", sb_s(ts[..]), SH_NONE);
+    t = SbText.{}; t = sb_n(t, pw.data, 1); t = sb_w(t, " of "); t = sb_n(t, pw.data_load, 0); t = sb_w(t, " MW"); ts[0] = t;
+    sh_fact(h, "Data halls", sb_s(ts[..]), SH_NONE);
+    if !s[0].plant.demo10 {
+      t = SbText.{}; t = sb_n(t, pw.desal, 1); t = sb_w(t, " of "); t = sb_n(t, SIM_DESAL, 0); t = sb_w(t, " MW"); ts[0] = t;
+      sh_fact(h, "Fresh water plant", sb_s(ts[..]), SH_NONE);
+    }
+    t = SbText.{}; t = sb_n(t, pw.industry, 1); t = sb_w(t, " MW"); ts[0] = t;
+    sh_fact(h, "Industry", sb_s(ts[..]), SH_NONE);
+    t = SbText.{}; t = sb_n(t, pw.mining, 1); t = sb_w(t, " MW"); ts[0] = t;
+    sh_fact(h, "Bitcoin mining", sb_s(ts[..]), SH_NONE);
+    if sim_fixed_short(s[0].plant, pw) { sh_say(h, "There is not enough power for everything, so some of it is switched off."); }
+  sh_end_of(h);
+}
+
+sb_change :: (s: [] Slab, h: [] SceneHud) {
+  ids: [SH_ID] u8; ts: [1] SbText; t: SbText;
+  sh_group(h, "change", "Change");
+  sh_menu(h, "site", "Where it floats", "");
+    sites := SB_SITES; storms := SB_STORMS;
+    for i: 0..<SITES {
+      st := sim_site(i);
+      t = SbText.{}; t = sb_w(t, "Surface water "); t = sb_n(t, st.surface_min, 1); t = sb_w(t, " to "); t = sb_n(t, st.surface_max, 1);
+      t = sb_w(t, ifx st.sourced then " °C, measured. " else " °C, our planning value. "); t = sb_w(t, storms[i]); ts[0] = t;
+      sh_option(h, sb_id(ids[..], "site.", i), sites[i], sb_s(ts[..]), s[0].site == i);
+    }
+  sh_end_of(h);
+  sh_menu(h, "sea", "The sea", "");
+    seas := SB_SEAS;
+    for i: 0..<SEAS {
+      se := sim_sea(i);
+      t = SbText.{}; t = sb_w(t, "Waves about "); t = sb_n(t, se.hs, 1); t = sb_w(t, " m high, wind "); t = sb_n(t, se.wind, 1); t = sb_w(t, " m/s"); ts[0] = t;
+      sh_option(h, sb_id(ids[..], "sea.", i), seas[i], sb_s(ts[..]), s[0].sea == i && s[0].wind_forced <= 0);
+    }
+  sh_end_of(h);
+  t = sb_clock(s[0].hour); ts[0] = t;
+  sh_slider(h, "hour", "Time of day", sb_s(ts[..]), 0, 95, 1, cast(int) floor(s[0].hour * 4));
+  months := SB_MONTHS;
+  mo := cast(int) floor(s[0].month) % 12;
+  sh_slider(h, "month", "Month", months[mo], 0, 11, 1, mo);
+  sh_switch(h, "pause", "Stop the clock", "The sun and the seasons hold still. The sea keeps moving.", s[0].paused);
+  sh_menu(h, "power", "Power source", "");
+    sh_option(h, "power.otec", "Ocean thermal power", "Electricity from the gap between warm surface water and cold deep water (OTEC)", s[0].plant.power == POWER_OTEC && !s[0].plant.demo10);
+    sh_option(h, "power.nuclear", "Four small reactors", "", s[0].plant.power == POWER_NUCLEAR);
+    sh_option(h, "power.hybrid", "Two reactors and ocean thermal power", "", s[0].plant.power == POWER_HYBRID);
+    sh_option(h, "power.demo", "A first plant of 10 megawatts", "The size the research report proposes building first", s[0].plant.demo10);
+  sh_end_of(h);
+  sh_switch(h, "swac", "Cool the data halls with sea water", "Cold deep water takes their heat away, which saves 10 megawatts", s[0].plant.swac);
+  sh_menu(h, "layout", "Shape", "");
+    sh_option(h, "layout.0", "One platform, a kilometre long", "The shape in Luckey's picture", s[0].layout == LAYOUT_PRIME);
+    sh_option(h, "layout.1", "One round dome", "122 m across", s[0].layout == LAYOUT_DOME);
+    sh_option(h, "layout.2", "Seven domes joined by bridges", "", s[0].layout == LAYOUT_CLUSTER);
+  sh_end_of(h);
+  sh_panel(h, "fault", "Break something", "Shut a pipe, hole the hull, take a reactor off line");
+    sh_say(h, "Each of these is a failure the platform has to live through. Switch one on and watch what the rest does.");
+    if s[0].plant.power != POWER_NUCLEAR { sh_switch(h, "fault.pipe", "Shut one cold-water pipe", "One of four. The plant loses a quarter of its power.", s[0].plant.pipe_tripped); }
+    if s[0].plant.power != POWER_OTEC {
+      sh_switch(h, "fault.refuel", "Take a reactor off line", "As when one is refuelled", s[0].plant.refuelling > 0);
+    }
+    if s[0].layout != LAYOUT_CLUSTER {
+      sh_switch(h, "fault.hole", "Hole the hull", ifx s[0].layout == LAYOUT_PRIME then "A hole of 4 m² below the waterline, in the corner cell" else "A hole of 4 m² below the waterline, in one part of the dome", s[0].hull.holed);
+      if s[0].hull.holed { sh_switch(h, "fault.pump", "Pump ballast across", "Moves water to the far corner to level the hull again", s[0].hull.pumping); }
+    }
+    sh_switch(h, "fault.halving", "Halve the mining reward", "Bitcoin pays miners half as much about every four years", s[0].plant.halving);
+  sh_end_of(h);
+  sb_more(s, h, HUD_CHANGE);
+}
+
+sb_build :: (s: [] Slab, h: [] SceneHud) {
+  ts: [1] SbText; t: SbText;
+  b := build_at(build_day(s[0].build.cursor)); tow := build_tow();
+  sh_group(h, "build", "Build it");
+  // the day and what is being done on it (slab-construction.coax's own names)
+  stage := BUILD_PHASES[b.phase];
+  if b.phase == BUILD_JOIN && b.approach >= 0.65 { stage = ifx b.joined == 0 then "Secure the first moorings" else "Connect and test the seam"; }
+  t = SbText.{}; t = sb_w(t, "Day "); t = sb_n(t, floor(b.day) + 1, 0); t = sb_w(t, ". "); t = sb_w(t, stage); t = sb_w(t, "."); ts[0] = t;
+  sh_lead(h, sb_s(ts[..]));
+  sh_button(h, "build.play", ifx s[0].build.play then "Pause" else ifx s[0].build.cursor >= 90 then "Play again" else "Play", !s[0].build.play);
+  t = SbText.{}; t = sb_n(t, s[0].build.cursor, 0); t = sb_w(t, " of 90 seconds"); ts[0] = t;
+  sh_slider(h, "build.at", "Where in the film", sb_s(ts[..]), 0, 90, 1, cast(int) floor(s[0].build.cursor));
+  sh_button(h, "build.tow", "The first tow", false);
+  sh_button(h, "build.join", "The first join", false);
+  sh_button(h, "build.outfit", "Fitting out", false);
+  t = SbText.{}; t = sb_n(t, f64(b.joined), 0); t = sb_w(t, " of "); t = sb_n(t, f64(BUILD_UNITS), 0); ts[0] = t;
+  sh_fact(h, "Pieces joined", sb_s(ts[..]), SH_NONE);
+  if b.phase == BUILD_OUTFIT || b.phase == BUILD_COMPLETE {
+    t = SbText.{}; t = sb_n(t, b.cargo / 1000000, 2); t = sb_w(t, " million tonnes"); ts[0] = t;
+    sh_fact(h, "Buildings and gear on board", sb_s(ts[..]), SH_NONE);
+    t = SbText.{}; t = sb_n(t, b.draft, 1); t = sb_w(t, " m"); ts[0] = t;
+    sh_fact(h, "How deep it sits", sb_s(ts[..]), SH_NONE);
+  } else if b.phase == BUILD_HOLD {
+    sh_say(h, "A 20 m/s headwind. The tugs cannot pull against it, so the piece waits at the quay.");
+  } else {
+    t = SbText.{}; t = sb_w(t, "Number "); t = sb_n(t, f64(b.unit + 1), 0); t = sb_w(t, ", 100 by 50 m"); ts[0] = t;
+    sh_fact(h, "This piece", sb_s(ts[..]), SH_NONE);
+    t = SbText.{}; t = sb_n(t, build_lift(b).draft, 1); t = sb_w(t, " m"); ts[0] = t;
+    sh_fact(h, "How deep it sits", sb_s(ts[..]), SH_NONE);
+    if b.phase == BUILD_CHANNEL || b.phase == BUILD_GULF || b.phase == BUILD_JOIN {
+      t = SbText.{}; t = sb_n(t, b.nm, 1); t = sb_w(t, " of 48 nautical miles"); ts[0] = t;
+      sh_fact(h, "Towed so far", sb_s(ts[..]), SH_NONE);
+    }
+    if b.phase == BUILD_CHANNEL {
+      t = SbText.{}; t = sb_n(t, BUILD_PORT_DEPTH - tow.draft, 1); t = sb_w(t, " m"); ts[0] = t;
+      sh_fact(h, "Water under it in the ship channel", sb_s(ts[..]), SH_SOURCE);
+    }
+  }
+  t = SbText.{}; t = sb_w(t, "Ninety seconds show about "); t = sb_n(t, BUILD_DONE / 365.25, 0);
+  t = sb_w(t, " years. The berth off Texas is our assumption, and the route is drawn shorter than its 48 nautical miles."); ts[0] = t;
+  sh_say(h, sb_s(ts[..]));
+  sb_more(s, h, HUD_BUILD);
+}
+
+sb_help :: (s: [] Slab, h: [] SceneHud) {
+  sh_group(h, "help", "Help");
+  sh_say(h, "This is our reconstruction of SLAB, a floating platform that Palmer Luckey says he is building. He has published no design, so the sizes and the systems here are our assumptions, worked out from his picture.");
+  sh_heading(h, "Getting around");
+  sh_say(h, "Drag to turn. Scroll or pinch to zoom. Click or tap anything on the platform to learn what it is.");
+  sh_say(h, "Look changes how you move. See inside cuts the hull open, takes you underwater, and shows where the water and the power go. Change moves the platform to another sea, hour or power source. Build it shows how it could be made.");
+  sh_heading(h, "Keys");
+  sh_fact(h, "1 to 9", "Go to a place", SH_NONE);
+  sh_fact(h, "O, G, F", "Orbit, walk, fly", SH_NONE);
+  sh_fact(h, "V, U, L", "Cut it open, go underwater, water and power", SH_NONE);
+  sh_fact(h, "[ and ]", "An hour earlier or later", SH_NONE);
+  sh_fact(h, "B", "Build it", SH_NONE);
+  sh_fact(h, "H", "Hide or show these controls", SH_NONE);
+  sh_fact(h, "Esc", "Close what is open", SH_NONE);
+  sh_heading(h, "Read the research");
+  b: [SB_TEXT] u8;
+  n := put(b[..], 0, SB_DOCS); n = put(b[..], n, "slab-world-spec.md");
+  sh_link(h, "How this world was worked out", cast(string) b[0..<n]);
+  n = put(b[..], 0, SB_DOCS); n = put(b[..], n, "slab-image-feasibility.md");
+  sh_link(h, "Could the platform in the picture be built?", cast(string) b[0..<n]);
+  n = put(b[..], 0, SB_DOCS); n = put(b[..], n, "otec.md");
+  sh_link(h, "Ocean thermal power", cast(string) b[0..<n]);
+  n = put(b[..], 0, SB_DOCS); n = put(b[..], n, "palmer-luckey-post.md");
+  sh_link(h, "What Luckey said", cast(string) b[0..<n]);
+}
+
+// The first screen (slab-intro.coax's words, until the tour replaces it): what this is, and two ways on.
+// Clicking anything in the world closes it.
+sb_first :: (s: [] Slab, h: [] SceneHud) {
+  if s[0].selected != -1 || s[0].build.on { s[0].first = false; }
+  if !s[0].first { return; }
+  sh_caption(h, "intro", "What is this?", 0, 0, 0);
+  sh_heading(h, "What is this?");
+  sh_lead(h, INTRO_WHAT);
+  sh_say(h, INTRO_OURS);
+  sh_say(h, INTRO_DO);
+  sh_action(h, "intro.look", "Look around", true);
+  sh_action(h, "mode.build", "Watch it built", false);
+}
+
+// The card about what was clicked: the lines slab_card writes, until the cards are rewritten to one
+// pattern (#13685, the cards' change).
+sb_card :: (s: [] Slab, h: [] SceneHud) {
+  if s[0].selected == -1 || s[0].build.on { return; }
+  card: [1] Card;
+  slab_card(s, s[0].selected, card[..]);
+  if card[0].lines < 1 { return; }
+  sh_card(h, "card", card_text(card[..], 0));
+  for i: 1..<card[0].lines {
+    st := card[0].style[i];
+    if st == ST_HEAD { sh_heading(h, card_text(card[..], i)); } else { sh_say(h, card_text(card[..], i)); }
+  }
+}
+
+// The HUD, said: every frame, and the pane hears of it when it changed.
+sb_say :: (s: [] Slab) {
+  h := s[0].hp.said[..];
+  sh_begin(h);
+  if s[0].hp.pane && s[0].hud && !s[0].golden {
+    sh_scene(h, "SLAB", "From Luckey", "Close", "Back");
+    sh_open(h, cast(string) s[0].hp.want[0..<s[0].hp.want_n], s[0].hp.serial);
+    sh_mode(h, "mode.explore", "Explore", !s[0].build.on);
+    sh_mode_of(h, "mode.build", "Build it", s[0].build.on, "build");
+    if s[0].build.on { sb_build(s, h); } else { sb_look(s, h); sb_inside(s, h); sb_change(s, h); }
+    sb_help(s, h);
+    sb_card(s, h);
+    sb_first(s, h);
+    sh_foot(h, "A reconstruction. SLAB's real design is unpublished.");
+    if s[0].hp.toast_n > 0 && s[0].time - s[0].hp.toast_at < SB_TOAST { sh_toast(h, cast(string) s[0].hp.toast[0..<s[0].hp.toast_n]); }
+  }
+  _ = sh_end(h);
+}
+
+// ---------------------------------------------------------------- what a press does
+
+sb_act :: (s: [] Slab, body: string) {
+  p := sh_pressed(body);
+  id := p.id;
+  if id == "hud.visit" { s[0].hp.visit = ifx p.has && p.value == 1 then 1 else 0; return; }
+  if sb_act_more(s, id, p.value) { return; }
+  if id == "intro.look" { s[0].first = false; return; }
+  s[0].first = false;   // any press is a way on from the first screen
+  if id == "mode.explore" { if s[0].build.on { build_toggle(s); } sb_open(s, ""); return; }
+  if id == "mode.build" { if !s[0].build.on { build_toggle(s); } sb_open(s, "build"); return; }
+  if id == "card.x" { s[0].selected = -1; return; }
+  // Build it
+  if id == "build.play" { press(s, BTN_TIMELAPSE); return; }
+  if id == "build.at" { if p.has { build_seek(s, sim_clamp(f64(p.value), 0, 90)); } return; }
+  if id == "build.tow" { press(s, BTN_FIRST_TOW); return; }
+  if id == "build.join" { press(s, BTN_FIRST_JOIN); return; }
+  if id == "build.outfit" { press(s, BTN_OUTFIT); return; }
+  if s[0].build.on { return; }
+  // Look
+  if id == "look.orbit" { set_mode(s, CAM_ORBIT); return; }
+  if id == "look.walk" { set_mode(s, CAM_WALK); return; }
+  if id == "look.fly" { set_mode(s, CAM_FLY); return; }
+  if id == "look.in" { s[0].dist = clamp32(s[0].dist * 0.7f32, 25, 9000); s[0].intro = 0; return; }
+  if id == "look.out" { s[0].dist = clamp32(s[0].dist / 0.7f32, 25, 9000); s[0].intro = 0; return; }
+  k := sb_index(id, "go.");
+  if k >= 0 && k < 9 { names := SB_STATIONS; travel(s, k); sb_toast(s, names[k]); return; }
+  // See inside
+  if id == "view.section" { press(s, BTN_SECTION); return; }
+  if id == "view.under" { press(s, BTN_UNDER); return; }
+  if id == "view.flow" { press(s, BTN_FLOW); return; }
+  // Change
+  k = sb_index(id, "site.");
+  if k >= 0 && k < SITES { sites := SB_SITES; s[0].site = k; s[0].sea = sim_site(k).sea; s[0].wind_forced = -1; sb_toast(s, sites[k]); return; }
+  k = sb_index(id, "sea.");
+  if k >= 0 && k < SEAS { s[0].sea = k; s[0].wind_forced = -1; return; }
+  if id == "hour" { if p.has { s[0].hour = fclamp(f64(p.value) / 4, 0, 23.99); } return; }
+  if id == "month" { if p.has { s[0].month = fclamp(f64(p.value), 0, 11) + 0.5; } return; }
+  if id == "pause" { s[0].paused = !s[0].paused; return; }
+  if id == "swac" { s[0].plant.swac = !s[0].plant.swac; return; }
+  if id == "power.otec" || id == "power.nuclear" || id == "power.hybrid" || id == "power.demo" {
+    s[0].plant.demo10 = id == "power.demo";
+    s[0].power_chosen = true;   // a change of layout keeps the visitor's choice
+    s[0].plant.power = ifx id == "power.nuclear" then POWER_NUCLEAR else ifx id == "power.hybrid" then POWER_HYBRID else POWER_OTEC;
+    s[0].plant.refuelling = 0;
+    if has_ship(s) { sb_toast(s, "A dome is too short for the reactors, so they ride on a ship moored beside it."); }
+    if s[0].layout != LAYOUT_PRIME { layout_records(s); }
+    return;
+  }
+  k = sb_index(id, "layout.");
+  if k >= 0 && k < 3 { set_layout(s, k); return; }
+  if id == "fault.pipe" { s[0].plant.pipe_tripped = !s[0].plant.pipe_tripped; return; }
+  if id == "fault.refuel" { press(s, BTN_REFUEL); return; }
+  if id == "fault.hole" {
+    press(s, BTN_HOLE);
+    sb_toast(s, ifx s[0].hull.holed then "The hull is holed. Water is coming in." else "The hole is mended and the water pumped out.");
+    return;
+  }
+  if id == "fault.pump" { s[0].hull.pumping = !s[0].hull.pumping; return; }
+  if id == "fault.halving" { s[0].plant.halving = !s[0].plant.halving; return; }
+}
+
+// ---------------------------------------------------------------- the canvas's part
+
+// What the canvas still draws under the HUD: lines in the scene (the flow arrows, the hull's bending),
+// and the construction view's own strip until it moves to the HUD.
+sb_lines :: (s: [] Slab, out: [] f32) -> int {
+  s[0].button_count = 0;
+  // the build view's words are in the pane's sheet (sb_build): its canvas panel and slider are not drawn
+  if s[0].build.on { s[0].build.left = 0; s[0].build.right = 0; return 0; }
+  n := 0;
+  if s[0].flow { n = flow_overlay(s, out, n); }
+  if s[0].section { n = bend_overlay(s, out, n); }
+  return n;
+}
+
+// A key the HUD takes before the world does (slab_key). With the pane on, the keys that used to step
+// blind through the sites, seas, powers and layouts open Change, where every choice is listed; I and ?
+// open the sheets that hold what the old panels said; Esc shuts the open sheet.
+sb_key :: (s: [] Slab, key: int) -> bool {
+  if !s[0].hp.pane || !s[0].hud || s[0].build.on { return false; }
+  if key == 'n' || key == 'N' || key == 'm' || key == 'M' || key == 'p' || key == 'P' || key == 'k' || key == 'K' { sb_open(s, "change"); return true; }
+  if key == 'i' || key == 'I' { sb_open(s, "inside"); return true; }
+  if key == '?' { sb_open(s, "help"); return true; }
+  if key == KEY_ESCAPE && s[0].selected == -1 { sb_open(s, ""); }
+  return false;
+}
+
+// A press on the scene: whether it was a finger's, which decides what Look offers. (Two fingers zoom:
+// slab-intro.coax's intro_touch has the pinch until that stopgap goes.)
+sb_touch :: (s: [] Slab, phase: int, kind: int) {
+  if phase == 0 { s[0].hp.touch = kind == 1; }
+}
+
+// The page's address, once: the pane is asked for unless the HUD is off.
+sb_address :: (s: [] Slab, url: string) {
+  s[0].hp.pane = true;
+  if s[0].build.on { sb_open(s, "build"); }
+}
+// The pane the browser draws beside the canvas, its last saying and how many there have been (the
+// face's coaxial_pane, coaxial_pane_model and coaxial_pane_rev).
+slab_pane :: (s: [] Slab) -> string #export_c #effects(all) { return ifx s.count > 0 && s[0].hp.pane && s[0].hud && !s[0].golden then SB_PANE else ""; }
+slab_pane_rev :: (s: [] Slab) -> int #export_c #effects(all) { return s[0].hp.said[0].rev; }
+slab_pane_model :: (s: [] Slab) -> string #export_c #effects(all) { return sh_text(s[0].hp.said[..]); }
+
+// ---------------------------------------------------------------- checks
+
+SbTest :: struct { s: [1] Slab; }
+sb_test_open :: (x: [] SbTest) {
+  s := x[0].s[..];
+  slab_reset(s);
+  slab_message(s, HOST_FACTS, "url=https://openagents.com/realms/slab/\n");
+  sb_say(s);
+}
+// Whether the saying has a line of `kind` whose first field is `a` (and whose second is `b`, when given).
+sb_test_has :: (s: [] Slab, kind: u8, a: string, b: string) -> bool {
+  text := sh_text(s[0].hp.said[..]);
+  i := 0;
+  while i < text.count {
+    l := sh_read(text, i); i = l.next;
+    if l.kind == kind && l.n > 0 && l.f[0] == a && (b.count == 0 || (l.n > 1 && l.f[1] == b)) { return true; }
+  }
+  return false;
+}
+// The field `k` of the first line of `kind` whose first field is `a`.
+sb_test_field :: (s: [] Slab, kind: u8, a: string, k: int) -> string {
+  text := sh_text(s[0].hp.said[..]);
+  i := 0;
+  while i < text.count {
+    l := sh_read(text, i); i = l.next;
+    if l.kind == kind && l.n > k && l.f[0] == a { return l.f[k]; }
+  }
+  return "";
+}
+
+#test "HUD: the world asks for its pane once it has read its address, and not with the HUD off" {
+  xs: [1] SbTest; x := xs[..]; s := x[0].s[..];
+  slab_reset(s);
+  #assert slab_pane(s) == "";
+  slab_message(s, HOST_FACTS, "url=https://openagents.com/realms/slab/\n");
+  #assert slab_pane(s) == "scene-pane";
+  sb_say(s);
+  #assert slab_pane_rev(s) == 1 && slab_pane_model(s).count > 1000 && !s[0].hp.said[0].lost;
+  sb_say(s);
+  #assert slab_pane_rev(s) == 1;
+  ys: [1] SbTest; y := ys[..]; r := y[0].s[..];
+  slab_reset(r);
+  slab_message(r, HOST_FACTS, "url=https://openagents.com/realms/slab/?hud=0\n");
+  #assert slab_pane(r) == "";
+  sb_say(r);
+  #assert slab_pane_model(r).count == 0;
+}
+#test "HUD: four groups in plain words, and every menu says its choices" {
+  xs: [1] SbTest; x := xs[..]; s := x[0].s[..];
+  sb_test_open(x);
+  #assert sb_test_has(s, 'G', "look", "Look") && sb_test_has(s, 'G', "inside", "See inside") && sb_test_has(s, 'G', "change", "Change");
+  #assert sb_test_has(s, 'M', "mode.build", "Build it") && sb_test_has(s, 'M', "mode.explore", "Explore") && !sb_test_has(s, 'G', "build", "");
+  #assert sb_test_has(s, 'T', "view.section", "Cut it open") && sb_test_has(s, 'T', "view.under", "Go underwater") && sb_test_has(s, 'T', "view.flow", "Water and power");
+  #assert sb_test_has(s, 'O', "site.0", "Guam, west coast") && sb_test_has(s, 'O', "site.6", "Norway, Yrkefjorden") && sb_test_has(s, 'O', "sea.5", "Hurricane");
+  #assert sb_test_has(s, 'O', "power.otec", "Ocean thermal power") && sb_test_field(s, 'O', "power.hybrid", 3) == "1" && sb_test_has(s, 'O', "layout.2", "") && sb_test_has(s, 'O', "go.8", "From 1.5 km out");
+  // no line is in capitals: every word of three letters or more has a small letter (units and names like SLAB, OTEC and MW aside)
+  text := sh_text(s[0].hp.said[..]);
+  i := 0; shout := 0;
+  while i < text.count {
+    j := i; caps := 0; small := 0;
+    while j < text.count && text[j] != '\n' { if text[j] >= 'A' && text[j] <= 'Z' { caps += 1; } if text[j] >= 'a' && text[j] <= 'z' { small += 1; } j += 1; }
+    if caps > 8 && caps > small { shout += 1; }
+    i = j + 1;
+  }
+  #assert shout == 0;
+  // the build view has the fourth group, and going back takes it away
+  sb_act(s, "mode.build"); sb_say(s);
+  #assert s[0].build.on && sb_test_has(s, 'G', "build", "Build it") && !sb_test_has(s, 'G', "look", "") && sb_test_field(s, 'D', "build", 0) == "build";
+  #assert sb_test_has(s, 'R', "build.at", "") && sb_test_has(s, 'B', "build.play", "");
+  sb_act(s, "mode.explore"); sb_say(s);
+  #assert !s[0].build.on && sb_test_has(s, 'G', "look", "Look");
+}
+#test "HUD: a press does what its control says" {
+  xs: [1] SbTest; x := xs[..]; s := x[0].s[..];
+  sb_test_open(x);
+  sb_act(s, "look.fly"); #assert s[0].mode == CAM_FLY;
+  sb_act(s, "look.orbit"); #assert s[0].mode == CAM_ORBIT;
+  d := s[0].dist; sb_act(s, "look.in"); #assert s[0].dist < d; sb_act(s, "look.out"); #assert abs(s[0].dist - d) < 1;
+  sb_act(s, "go.6"); sb_say(s);
+  #assert s[0].tx == STATION_X[6] && sb_test_has(s, 'Y', "The bow", "");
+  sb_act(s, "view.section"); #assert s[0].section; sb_act(s, "view.section"); #assert !s[0].section;
+  sb_act(s, "view.flow"); #assert s[0].flow;
+  sb_act(s, "site.4"); #assert s[0].site == SITE_CALIFORNIA && s[0].sea == SEA_WINTER;
+  sb_act(s, "sea.4"); #assert s[0].sea == SEA_GALE;
+  sb_act(s, "hour 50"); #assert s[0].hour == 12.5;
+  sb_act(s, "month 0"); #assert s[0].month == 0.5;
+  sb_act(s, "hour"); #assert s[0].hour == 12.5;
+  sb_act(s, "power.demo"); #assert s[0].plant.demo10 && s[0].plant.power == POWER_OTEC;
+  sb_act(s, "power.hybrid"); #assert !s[0].plant.demo10 && s[0].plant.power == POWER_HYBRID;
+  sb_act(s, "layout.1"); #assert s[0].layout == LAYOUT_DOME;
+  sb_say(s);
+  #assert !sb_test_has(s, 'T', "view.section", "") && sb_test_has(s, 'T', "fault.hole", "");
+  sb_act(s, "layout.0"); sb_act(s, "fault.hole"); sb_say(s);
+  #assert s[0].hull.holed && sb_test_has(s, 'T', "fault.pump", "");
+  sb_act(s, "pause"); #assert s[0].paused;
+  sb_act(s, "no.such.thing"); sb_act(s, "");
+}
+#test "HUD: two fingers zoom the orbit and do not turn it, and a finger is not offered walk or fly" {
+  xs: [1] SbTest; x := xs[..]; s := x[0].s[..];
+  sb_test_open(x);
+  d := s[0].dist; yaw := s[0].yaw;
+  _ = slab_pointer(s, 100, 300, 0, 1, 7);
+  _ = slab_pointer(s, 200, 300, 0, 1, 8);
+  _ = slab_pointer(s, 300, 300, 1, 1, 8);
+  #assert s[0].dist < d && s[0].yaw == yaw && s[0].hp.touch;
+  _ = slab_pointer(s, 300, 300, 2, 1, 8);
+  _ = slab_pointer(s, 100, 300, 2, 1, 7);
+  #assert s[0].selected == -1;
+  // a finger's visitor is not offered what needs a keyboard
+  sb_say(s);
+  #assert !sb_test_has(s, 'O', "look.walk", "") && sb_test_has(s, 'B', "look.in", "Closer");
+}
+#test "HUD: the keys that stepped blind through sites and powers open Change, where the choices are listed" {
+  xs: [1] SbTest; x := xs[..]; s := x[0].s[..];
+  sb_test_open(x);
+  site := s[0].site; power := s[0].plant.power;
+  #assert slab_key(s, 'n', true) && slab_key(s, 'p', true) && slab_key(s, 'k', true);
+  sb_say(s);
+  #assert s[0].site == site && s[0].plant.power == power && s[0].layout == LAYOUT_PRIME && sb_test_field(s, 'D', "change", 0) == "change";
+  #assert slab_key(s, '?', true); sb_say(s);
+  #assert sb_test_field(s, 'D', "help", 0) == "help" && !s[0].help;
+  // with the HUD off, the old keys work as they did
+  _ = slab_key(s, 'h', true);
+  #assert slab_key(s, 'n', true) && s[0].site == (site + 1) % SITES;
+}

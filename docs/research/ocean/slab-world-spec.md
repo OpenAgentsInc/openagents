@@ -933,61 +933,55 @@ wall.
 | Underwater | U | Uses the engine's underwater rendering (water.md W7) to show the hull bottom, moorings and pipes |
 | Flow overlay | L | Warm, cold and discharge flows, and power lines |
 
-**HUD panels**, which keep the engine's existing HUD look:
+**The HUD** is drawn by the browser from the components kit in the mono skin,
+so it looks like `/chat`: sentence case, the kit's 14 px body size as its
+smallest text, and 44 px targets for a finger. It is a bar at the top with a
+sheet under it (at the foot of a phone), over the full-window scene. A menu
+lists its choices; no control steps through values unseen.
 
-| Panel | Shows |
+| In the bar | Holds |
 |---|---|
-| Motion | Heave, roll and pitch, as now and as a 60 s trace; deck vertical acceleration at the player (with comfort bands of 0.05 g and 0.1 g); draft; trim; GM; mooring offset; peak line tension |
-| Systems | Surface, deep and plant ΔT (each marked sourced or planning); OTEC gross, parasitic and net output; each load; data-hall state and backup; mining hashrate, containers on, revenue per MWh and power budget; desalination output; the cooling-flow ratio; the "engineering models" line from section 6; with nuclear, each module's state (running or refuelling), its MWe and its condenser flow |
-| World | Site, sea state, wind, current, time of day, layout |
+| Explore, Build it | The ways to be in the world. Build it is the construction timelapse, and its sheet holds the day, the step under way, play and pause, a place in the film, and the first tow, the first join and fitting out |
+| Look | Orbit, walk or fly (not offered to a finger, which orbits and pinches); closer and farther; a list of the nine stations |
+| See inside | Cut it open, go underwater, water and power; "What it is doing now" holds the sea, the hull's motion and the power balance in plain words |
+| Change | Where it floats, the sea, the hour and the month, stop the clock, the power source, sea-water cooling, the shape; "Break something" holds the pipe trip, the refuelling, the holed cell and the halving |
+| Help | How to get around, the keys, and links to this spec and the reports |
 
-**Controls** in the world panel:
-- Site, sea state, layout and time of day.
-- Power source (`otec`, `nuclear`, `hybrid`), module count and "refuel a
-  module".
-- OTEC scale, the `demo10` preset, seawater cooling, and "trip a pipe".
-- Mining inputs and the halving toggle.
-- Ballast transfer (select a cell and fill or empty it).
-- "Hole a cell", "repair all" and "reset".
+The keys that stepped through the sites, seas, powers and layouts (N, M, P,
+K) now open Change. `?hud=0` and H hide the HUD; the canvas-drawn panels
+remain only as the fallback when the page has no pane.
+
+The HUD is three parts. `components/kit/scene.coax` is the kit's scene set
+(bar, sheet, card, caption, tags, the tag that says where a number is
+from), with its rules in `mono_scene_css`. `apps/openagents-web/scene-pane.coax`
+is the pane any world can use, and `scene-hud.coax` is how a world says what
+its HUD holds. `apps/openagents-web/slab-hud.coax` is SLAB's own content; its
+first lines say how another file adds a control, a menu entry or a panel.
 
 **Time.** The world runs a day in 24 minutes, sun included. A world year of
 6 hours drives each site's seasonal swing in surface temperature (section
 5.1). `?t=` freezes a moment, as in the water lab; `?month=` holds a month.
 
-**On-screen label.** The bottom-left corner always shows: "Reconstruction:
-SLAB's real design is unpublished. Sizes and systems are this world's
-assumptions." It is drawn in the system sans at 12.5 px, in sentence case,
-under the one-line hint for the current way of moving. On a screen narrower
-than 720 px both wrap to the screen's width.
+**On-screen label.** The bottom-left corner always shows: "A reconstruction.
+SLAB's real design is unpublished." Help opens with the full sentence: the
+sizes and the systems are our assumptions, worked out from the picture.
 
 **First screen.** The plain address opens a small card, "What is this?",
 with three short paragraphs: what SLAB is, that this world is our
 reconstruction from the concept picture, and what to do next. "Look around"
-closes it; so does Escape, opening the stats or the help, or clicking
-anything in the world. "Watch it built" opens the build view. A link that
-places the view, holds a moment, opens a cutaway, another layout or the
-build view goes straight there without the card; `?intro=1` shows it and
-`?intro=0` hides it. On a wide screen the card sits under the toolbar; on a
-narrow one it sits along the bottom, in place of the hint, until it is
-closed. The card, the places row and the label are in
-`apps/openagents-web/slab-intro.coax`, a stopgap that a guided tour
-replaces: the file's header says which lines of `slab.coax` to take out
-with it.
+closes it; so does Escape, any press in the HUD, or clicking anything in the
+world. "Watch it built" opens the build view. A link that places the view,
+holds a moment, opens a cutaway, another layout or the build view goes
+straight there without the card; `?intro=1` shows it and `?intro=0` hides
+it. The HUD draws the card over the foot of the scene. Its words and the
+rule for when it opens are in `apps/openagents-web/slab-intro.coax`, a
+stopgap that a guided tour replaces: the file's header says which lines of
+`slab.coax` to take out with it.
 
-**Places row.** Under the toolbar a row, "Go to", holds one button for each
-of the nine stations (Temples, Power plant, Data halls, Mining yard, Towers,
-Fountain, Bow, The picture's view, From 1.5 km) and "Watch it built". Each
-does what its number key does. The row shows the stations on the `prime`
-layout only, as the stations are that layout's; "Watch it built" shows on
-every layout.
-
-**Narrow screens and touch.** The toolbar's controls go one after another
-and start a new row at the screen's right edge, so none is cut off at any
-width (four rows at 390 px, and three more for the places). On a screen
-narrower than 720 px a press counts up to 3 px above and below a control,
-half the gap between two rows. One finger drags as the mouse does; two
-fingers pinch to zoom as the wheel does (flying has no zoom), and lifting
-after a pinch is not a tap.
+**Narrow screens and touch.** At 390 px the bar wraps to two rows and a
+sheet opens at the foot of the screen, so the platform stays in view above
+it. One finger drags as the mouse does; two fingers pinch to zoom as the
+wheel does (flying has no zoom), and lifting after a pinch is not a tap.
 
 ## 9. Tests
 
