@@ -12,7 +12,7 @@ SLAB has published no design. The dimensions here are this world's own planning 
 | --- | --- |
 | [Corpus Christi casting yard](/realms/slab/?view=build&day=14) | An 8 m starter shell floats at the quay. As crews raise the walls, place the deck and load low ballast, the caisson draws more water. |
 | [First Gulf tow](/realms/slab/?view=build&day=30.28) | Two tugs take one 100 × 50 m caisson through an assumed 8 nautical miles of channel at 3 knots and 40 offshore at 4 knots. A 20 m/s headwind holds the first departure for two days. |
-| [Assembly berth](/realms/slab/?view=build&day=503.8) | Tugs warp each caisson along an open row. A work barge attends the joint. Only a completed connection adds that unit to the joined displacement. The 120th joins on day 983. |
+| [Assembly berth](/realms/slab/?view=build&day=503.8) | Tugs warp each caisson along an open row. The first caisson takes the moorings. A work barge attends each subsequent joint. Only a completed connection adds that unit to the joined displacement. The 120th joins on day 983. |
 | [Brownsville freight run](/realms/slab/?view=build&day=984.6) | A separate 120 × 32 m lighter brings 25,000 t per call. The route assumes 15 nautical miles of channel and 130 offshore. Watch the lighter rise as cargo transfers to the hull, its towers go up and ballast brings it to operating draft. |
 | [Commissioned deck](/realms/slab/?view=build&day=1383) | At 25 m draft the joined hull displaces 15.375 million metric tonnes. The sequence ends at the original skyline. The 40 m berth rules out the main world's kilometre-long OTEC pipes. |
 

@@ -1582,7 +1582,7 @@ press :: (s: [] Slab, id: int) {
   if id == BTN_BUILD { build_toggle(s); }
   else if id == BTN_TIMELAPSE { if s[0].build.cursor >= 90 { build_seek(s, 0); } s[0].build.play = !s[0].build.play; }
   else if id == BTN_FIRST_TOW { build_seek(s, 12); }
-  else if id == BTN_FIRST_JOIN { build_seek(s, 29); }
+  else if id == BTN_FIRST_JOIN { build_seek(s, build_cursor(BUILD_SAIL + BUILD_CYCLE + 0.92)); }
   else if id == BTN_OUTFIT { build_seek(s, 76); }
   else if id == BTN_ORBIT { set_mode(s, CAM_ORBIT); }
   else if id == BTN_FLY { set_mode(s, CAM_FLY); }
@@ -1900,6 +1900,9 @@ SLAB_BUDGET :: FrameBudget.{steps = 8, vertices = MAX_VERTICES - 1, draws = 0, b
   #assert s[0].build.on && s[0].build.play;
   build_seek(s[..], 70);
   #assert !s[0].build.play && build_at(build_day(s[0].build.cursor)).joined == 120;
+  press(s[..], BTN_FIRST_JOIN);
+  joining := build_at(build_day(s[0].build.cursor));
+  #assert joining.joined == 1 && joining.phase == BUILD_JOIN && joining.approach > 0.65;
   build_seek(s[..], 16);
   #assert build_at(build_day(s[0].build.cursor)).joined == 0;
   _ = slab_key(s[..], KEY_ESCAPE, true);
@@ -1972,7 +1975,10 @@ build_hud :: (s: [] Slab, out: [] f32) -> int {
   n = text(out, n, card_text(c[..], i), x, top + 17 * k, gold);
   i = line(c[..], 0,""); num(c[..], i, f64(b.joined), 0); more(c[..], i," / 120 JOINED");
   t := card_text(c[..], i); n = text(out, n, t, right - 14 * k - text_w(t, small.cap), top + 17 * k, small);
-  stage := ifx b.phase == BUILD_JOIN && b.approach >= 0.65 then "CONNECT AND TEST SEAM" else BUILD_PHASES[b.phase];
+  stage := BUILD_PHASES[b.phase];
+  if b.phase == BUILD_JOIN && b.approach >= 0.65 {
+    stage = ifx b.joined == 0 then "SECURE FIRST MOORINGS" else "CONNECT AND TEST SEAM";
+  }
   n = text(out, n, stage, x, top + 38 * k, ivory);
   i = line(c[..], 0,"");
   if b.phase == BUILD_OUTFIT || b.phase == BUILD_COMPLETE {

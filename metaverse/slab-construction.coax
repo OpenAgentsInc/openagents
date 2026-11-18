@@ -90,8 +90,8 @@ build_passage :: (beam: f64, draft: f64) -> bool {
 }
 
 // Elapsed project time and elapsed playback seconds. Slow down for the first individual tow.
-BUILD_BEATS :: [11] f64.[0, 6, 10, 16, 25, 33, 70, 73, 78, 82, 90];
-BUILD_DAYS :: [11] f64.[0, 28, BUILD_SAIL, BUILD_SAIL + BUILD_CHANNEL_H / 24, BUILD_SAIL + BUILD_VOYAGE_H / 24, BUILD_SAIL + 1, BUILD_DOCKED, BUILD_DOCKED + 8.0 / 24, BUILD_DOCKED + (8 + BUILD_FREIGHT_H) / 24, BUILD_DOCKED + (24 + BUILD_FREIGHT_H) / 24, BUILD_DONE];
+BUILD_BEATS :: [13] f64.[0, 6, 10, 16, 25, 33, 36, 43, 70, 73, 78, 82, 90];
+BUILD_DAYS :: [13] f64.[0, 28, BUILD_SAIL, BUILD_SAIL + BUILD_CHANNEL_H / 24, BUILD_SAIL + BUILD_VOYAGE_H / 24, BUILD_SAIL + 1, BUILD_SAIL + BUILD_CYCLE + BUILD_VOYAGE_H / 24, BUILD_SAIL + BUILD_CYCLE + 1, BUILD_DOCKED, BUILD_DOCKED + 8.0 / 24, BUILD_DOCKED + (8 + BUILD_FREIGHT_H) / 24, BUILD_DOCKED + (24 + BUILD_FREIGHT_H) / 24, BUILD_DONE];
 build_map :: (v: f64, a: [] const f64, b: [] const f64) -> f64 {
   for i: 1..<a.count {
     if v <= a[i] { return b[i - 1] + (b[i] - b[i - 1]) * sim_clamp((v - a[i - 1]) / (a[i] - a[i - 1]), 0, 1); }
