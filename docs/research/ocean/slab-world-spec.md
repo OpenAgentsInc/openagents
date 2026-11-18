@@ -920,13 +920,16 @@ pitch 0.438, 1,164 m out, aimed at the waterline) in the `rough` sea
 at 17:51 off Guam: the sun at about 297°, 10° up, lights the long north
 wall as the picture does. The golden-hour grade lifts the exposure and adds
 sepia. The spray stands about nine times the significant height up the
-walls, every 95 m.
+walls, every 95 m. That height is painted to match the picture; section 12's
+physics gives about four times. The two are left apart on purpose until
+#13688 replaces the painted spray with spray computed from the waves at the
+wall.
 
 **Views:**
 
 | View | Key | Shows |
 |---|---|---|
-| Section | V | Cuts the hull on a plane through the player, showing the cells, ballast levels (blue), flooded cells (red), the waterline and the cold-water pipes |
+| Section | V | Cuts the platform on a plane through the player, showing the 50 m hull's cells, the ballast's level (blue, at the ledger's depth), flooded cells (red), the waterline, the open upper structure with its columns and girders, and the cold-water pipes |
 | Underwater | U | Uses the engine's underwater rendering (water.md W7) to show the hull bottom, moorings and pipes |
 | Flow overlay | L | Warm, cold and discharge flows, and power lines |
 
