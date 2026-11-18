@@ -1113,9 +1113,47 @@ draws names over the canvas in the kit's body size:
 No two names overlap: each takes its own place or the nearest clear row
 above or below it, and one with no clear place is left out.
 
+**Cards** (`apps/openagents-web/slab-cards.coax`). A click or a tap on
+anything opens its card, and every card has one pattern:
+
+1. What it is, in one plain sentence.
+2. Why it is here.
+3. Three numbers. Each has a comparison a person can picture and a tag:
+   From Luckey, From a source or Our assumption.
+4. What it is doing now: live figures from the world, each tagged, and a
+   plain sentence where nothing about the thing is simulated.
+5. "The maths": the formulas and the working, shut until asked for.
+6. Two ways on: a view that shows the thing (the cut, the underwater view,
+   the water and power lines, a station, or the Change sheet) and this
+   spec's section as a link.
+
+A comparison is worked in the code from the number and the measure it
+names (a home's 1.2 kW, a storey's 3.4 m, a football pitch, an Olympic
+pool's 2,500 m³, a 100,000 t aircraft carrier), and a check holds each
+one's arithmetic. The hull's figures are the ledger's (section 3.1), for
+the hull the settings give. A term is explained where it first appears:
+OTEC on the plant's cards, PUE on the data halls', GM in the hull's maths.
+
+The sea's card says what the spray does, honestly: the highest spray the
+chosen sea throws up the wall (section 12), that the picture's 36 m plumes
+need waves near 11 m, and the lee's figures. The data halls' card says
+which of the backup's states the halls are in (section 6.2).
+
+`?card=` opens the world on a card: `sea`, `hull`, `dock`, `pipe`,
+`plant`, `moonpool`, `ammonia`, `industry`, `stack`, `tank`, `water`,
+`data`, `cooling`, `tower`, `mining`, `medical`, `grove`, `temple`,
+`round-temple`, `hall`, `rotunda`, `canal`, `pool`, `fountain`, `statues`,
+and with `?layout=` `dome`, `bridge`, `ship` and `cable`. A card asked for
+by the address is a deep link, so no tour starts over it.
+
+The canvas's own card (`slab_card` in `slab.coax`) remains for a page with
+no pane, and is still in the old words.
+
 **Narrow screens and touch.** At 390 px the bar wraps to two rows and a
 sheet opens at the foot of the screen, so the platform stays in view above
-it. One finger drags as the mouse does; two fingers pinch to zoom as the
+it. Under 760 px the sheet, a card and the tour's caption stand in a
+column over the foot's line, however many lines that line takes, so none
+of them covers another. A card that opens shuts the sheet. One finger drags as the mouse does; two fingers pinch to zoom as the
 wheel does (flying has no zoom), and lifting after a pinch is not a tap.
 
 ## 9. Tests

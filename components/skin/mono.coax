@@ -503,8 +503,11 @@ mono_scene_css :: (out: [] u8, at: int) -> int {
   n = mc(out, n, ".scn .chip:hover,.scn .chip:focus-visible{color:#fff;border-color:var(--line-bright)}.scn .chip[aria-pressed=true]{color:#000;background:#c8c8c8;border-color:#c8c8c8}");
   n = mc(out, n, ".scn .anchor{display:block}.scn .sel{width:100%;height:40px;justify-content:space-between;color:var(--ink)}.scn .menu.pop{position:relative;inset:auto;width:100%;max-width:none;margin-top:6px}");
   n = mc(out, n, ".scn .row{padding:9px 12px}.scn .prop{grid-template-columns:minmax(0,1fr) auto}");
-  // a narrow window: the sheet is as wide as the window, the card is a sheet at its foot, and a finger's targets are 44 px
-  n = mc(out, n, "@media (max-width:600px){.scn-sheet{position:fixed;left:8px;right:8px;bottom:44px;width:auto;max-height:46vh}.scn-card{top:auto;bottom:44px;left:8px;right:8px;width:auto;max-width:none;max-height:48%}.scn-cap{bottom:44px}.scn-lead{font-size:16px}}");
+  // a narrow window: the sheet, the card and the caption are as wide as the window and stand in a column at its
+  // foot, over the foot's line however many lines that takes; a finger's targets are 44 px
+  n = mc(out, n, "@media (max-width:760px){.scn{display:flex;flex-direction:column;justify-content:flex-end;align-items:stretch;gap:8px;padding:8px}.scn-top{position:static;flex:1 1 auto;min-height:0;max-height:none}");
+  n = mc(out, n, ".scn-sheet{align-self:stretch;width:auto;margin-top:auto;max-height:46vh}.scn-card,.scn-cap{position:relative;inset:auto;transform:none;width:auto;max-width:none}.scn-card{max-height:48%}");
+  n = mc(out, n, ".scn-foot{position:static;align-self:flex-start;max-width:100%}.scn-lead{font-size:16px}}");
   n = mc(out, n, "@media (pointer:coarse){.scn-tab,.scn .chip,.scn .sel{height:44px}.scn-head .ib{width:44px;height:44px}.scn-fold{min-height:44px}.scn-tag-b{min-height:44px}.scn .lk{min-height:44px}}");
   return n;
 }

@@ -38,6 +38,7 @@
 #load "scene-hud.coax";
 #load "slab-tour.coax";
 #load "slab-labels.coax";   // the guided tour: its stops, its camera and its caption
+#load "slab-cards.coax";    // the card about what was clicked
 
 SB_PANE :: "scene-pane";   // the pane's module (scene-pane.coax)
 HUD_LOOK :: 0; HUD_INSIDE :: 1; HUD_CHANGE :: 2; HUD_BUILD :: 3;
@@ -54,6 +55,7 @@ SlabHud :: struct {
   touch: bool;             // the last press on the scene was a finger's
   tour: SlabTour;          // the guided tour (slab-tour.coax)
   lab: SlabLabels;         // the names in the scene (slab-labels.coax)
+  carded: int = -1;        // what the card was last about (-1: no card)
   short_s: f64;            // seconds of the world's clock the data halls have been short of power
   backup: SimBackup;       // what their batteries and generators carry now (slab-sim.coax, spec 6.2)
 }
@@ -353,18 +355,13 @@ sb_help :: (s: [] Slab, h: [] SceneHud) {
   sh_link(h, "What Luckey said", cast(string) b[0..<n]);
 }
 
-// The card about what was clicked: the lines slab_card writes, until the cards are rewritten to one
-// pattern (#13685, the cards' change).
+// The card about what was clicked (slab-cards.coax). In a narrow window a card and a sheet do not
+// both fit, so a card that opens shuts the sheet.
 sb_card :: (s: [] Slab, h: [] SceneHud) {
-  if s[0].selected == -1 || s[0].build.on { return; }
-  card: [1] Card;
-  slab_card(s, s[0].selected, card[..]);
-  if card[0].lines < 1 { return; }
-  sh_card(h, "card", card_text(card[..], 0));
-  for i: 1..<card[0].lines {
-    st := card[0].style[i];
-    if st == ST_HEAD { sh_heading(h, card_text(card[..], i)); } else { sh_say(h, card_text(card[..], i)); }
-  }
+  now := ifx s[0].build.on then -1 else s[0].selected;
+  if now != -1 && now != s[0].hp.carded && s[0].width < 760 * s[0].dpr { sb_open(s, ""); }
+  s[0].hp.carded = now;
+  cd_card(s, h);
 }
 
 // The HUD, said: every frame, and the pane hears of it when it changed.
@@ -409,6 +406,7 @@ sb_act :: (s: [] Slab, body: string) {
   }
   if tour_act(s, id) { return; }
   if lab_act(s, id) { return; }
+  if cd_act(s, id) { return; }
   if sb_act_more(s, id, p.value) { return; }
   if id == "mode.explore" { if s[0].build.on { build_toggle(s); } sb_open(s, ""); return; }
   if id == "mode.build" { if !s[0].build.on { build_toggle(s); } sb_open(s, "build"); return; }
@@ -504,6 +502,7 @@ sb_address :: (s: [] Slab, url: string) {
   s[0].hp.pane = true;
   if s[0].build.on { sb_open(s, "build"); }
   tour_address(s, url);
+  cd_address(s, url);
 }
 // The pane the browser draws beside the canvas, its last saying and how many there have been (the
 // face's coaxial_pane, coaxial_pane_model and coaxial_pane_rev).

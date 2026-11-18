@@ -89,7 +89,7 @@ The names of the districts stand over the deck while you are high above it. Pres
   - **Dome**: one Silone dome, 122 m across, with five planted terraces and a glass lantern. It heaves and rolls with the swell: its roll period falls inside the band of common wave periods.
   - **Cluster**: seven domes joined by twelve bridges with sliding joints. Each bridge's card gives its slide and hinge; in a 5 m swell the joints run into their stops.
   - With nuclear or hybrid power, a 160 m powership is moored 300 m off with a cable, because the modules need a longer hull than a dome.
-- Click anything for a card: what it is, how it is built, and its live numbers. Click the sea for the sea state.
+- Click anything for a card. Every card says what the thing is, why it is here, three numbers you can picture (each marked From Luckey, From a source or Our assumption), what it is doing now, and the maths if you ask for it. Click the sea for the sea's card.
 - Seven sites (Guam, Puerto Rico, Kona, the equator, California, the Gulf of Mexico off Texas and a Norwegian fjord) and six sea states, from calm to a hurricane. The sun follows the site, the month and the hour.
 - Three ways to move:
   - **Orbit**: drag or the arrow keys turn the view, the wheel, a pinch or R and F zoom, W, A, S and D move.
@@ -110,6 +110,7 @@ The names of the districts stand over the deck while you are high above it. Pres
   - `?mode=fly` or `walk` starts moving; `?view=section` or `under` opens a cutaway; `?hole=1` holes cell A1; `?flow=1` shows the flow overlay.
   - `?t=` holds one moment.
   - `?yaw=`, `?pitch=`, `?dist=`, `?x=`, `?y=` and `?z=` place the view.
+  - `?card=hull` opens on a card (`sea`, `hull`, `dock`, `pipe`, `plant`, `data`, `mining`, `tower`, `temple` and the rest: the spec lists them).
   - `?hud=0` hides the panels; `?tour=0` skips the tour, and `?tour=1` to `?tour=8` opens it at that stop (`?intro=0` and `?intro=1` still work: no tour, and the tour from its start).
   - `?tier=phone` draws the phone's waves on any screen.
 - Without WebGPU, the page shows only its name and a link here.

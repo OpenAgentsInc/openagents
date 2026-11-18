@@ -1,0 +1,855 @@
+// SLAB's cards (GitHub #13685): what the HUD says about the thing a visitor clicked. Every card has
+// one pattern, so a visitor learns to read one and can read them all:
+//
+//   what it is, in one plain sentence        sh_lead
+//   why it is here                           sh_say
+//   three numbers, each with a comparison a person can picture and a tag (From Luckey, From a
+//   source, Our assumption)                  sh_number
+//   what it is doing now                     a heading, then facts and sentences from the world
+//   the maths, behind a fold                 sh_fold
+//   two ways on: a view that shows it, and the research section as a link
+//
+// Hull figures come from metaverse/hull.coax's ledger (the hull the settings give), never typed here.
+// A comparison's arithmetic is done here from the number itself and the measure it is set against
+// (the CD_ constants), and checked below. The canvas's own card (slab_card in slab.coax) stays as
+// the fallback for a page with no pane.
+//
+//   coax/bin/coax test apps/openagents-web/slab.coax --only "cards"
+
+// The measures the comparisons use.
+CD_HOME_KW :: 1.2;          // an American home's average draw, kW (about 880 kWh a month)
+CD_STOREY :: 3.4;           // a storey of a building, m
+CD_PITCH :: 105.0 * 68.0;   // a football pitch, m^2
+CD_PITCH_LONG :: 105.0;
+CD_TENNIS :: 23.77 * 10.97; // a tennis court, m^2
+CD_POOL :: 2500.0;          // an Olympic swimming pool, m^3 (50 x 25 x 2 m)
+CD_POOL_LONG :: 50.0;
+CD_CARRIER :: 1.0e8;        // the largest aircraft carriers, kg (100,000 t)
+CD_EMPIRE :: 381.0;         // the Empire State Building to its roof, m
+CD_LIBERTY :: 93.0;         // the Statue of Liberty with its pedestal, m
+CD_EIFFEL :: 330.0;         // the Eiffel Tower, m
+CD_CAR :: 1500.0;           // a car, kg
+CD_HOOVER :: 2.5e6;         // the concrete in the Hoover Dam itself, m^3
+CD_KETTLE :: 0.1;           // a full kettle brought to the boil, kWh
+CD_PERSON_L :: 150.0;       // fresh water a person uses in a day, litres
+CD_BUS_HIGH :: 4.4;         // a double-decker bus, m
+// The plant's figures the cards state (slab-sim.coax holds them as the numbers in its formulas;
+// the checks below hold these to the model).
+CD_COLD_FLOW :: 282.0;      // cold water at full power, m^3/s
+CD_WARM_FLOW :: 564.0;      // warm water at full power, m^3/s
+CD_PIPE_WIDE :: 6.7;        // a cold-water pipe's bore, m
+CD_OTEC_RECORD :: 0.1;      // the most any ocean thermal plant has delivered, MW (Makai, Hawaii, 2015)
+CD_DESAL_DAY :: 100000.0;   // fresh water at full power, m^3 a day
+CD_DESAL_KWH :: 3.5;        // electricity for a cubic metre of it, kWh
+CD_IT :: 100.0;             // the computers in both data halls, MW
+CD_COMFORT :: 50.0;         // the deck's shake a person starts to notice, thousandths of gravity
+CD_NETWORK :: 967.0;        // the bitcoin network's speed in Luxor's 16 Nov 2026 snapshot, EH/s
+// The highest spray each sea throws up the wall in ten minutes, m (spec section 12, "The water at
+// the walls, measured": metaverse/water-wall.coax's runs), by sea state.
+CD_SPRAY :: [SEAS] f64.[0.0, 4.9, 8.6, 12.4, 28.7, 44.1];
+CD_PLUME :: 36.0;           // the plumes in Luckey's picture stand about this far up the wall, m
+CD_PLUME_SEA :: 11.0;       // and the wave height our model needs to throw them, m
+
+// ---------------------------------------------------------------- words
+
+cd_t :: () -> SbText { t: SbText; return t; }
+// A number and its unit: "118 m".
+cd_v :: (v: f64, decimals: int, unit: string) -> SbText { return sb_w(sb_n(cd_t(), v, decimals), unit); }
+// Words, a number, words: "About 150 of the largest aircraft carriers."
+cd_p :: (before: string, v: f64, decimals: int, after: string) -> SbText { return sb_w(sb_n(sb_w(cd_t(), before), v, decimals), after); }
+// A plan size: "60 × 40 m".
+cd_plan :: (a: f64, b: f64) -> SbText { return sb_w(sb_n(sb_w(sb_n(cd_t(), a, 0), " × "), b, 0), " m"); }
+cd_words :: (text: string) -> SbText { return sb_w(cd_t(), text); }
+cd_number :: (h: [] SceneHud, v: SbText, what: string, like: SbText, from: int) {
+  a: [1] SbText; b: [1] SbText; a[0] = v; b[0] = like;
+  sh_number(h, sb_s(a[..]), what, sb_s(b[..]), from);
+}
+cd_say :: (h: [] SceneHud, t: SbText) { a: [1] SbText; a[0] = t; sh_say(h, sb_s(a[..])); }
+cd_lead :: (h: [] SceneHud, t: SbText) { a: [1] SbText; a[0] = t; sh_lead(h, sb_s(a[..])); }
+cd_fact :: (h: [] SceneHud, name: string, v: SbText) { a: [1] SbText; a[0] = v; sh_fact(h, name, sb_s(a[..]), SH_OURS); }
+// The card's start: its name, what it is and why it is here.
+cd_open :: (h: [] SceneHud, title: string, what: string, why: string) {
+  sh_card(h, "card", title);
+  sh_lead(h, what);
+  sh_say(h, why);
+}
+cd_now :: (h: [] SceneHud) { sh_heading(h, "What it is doing now"); }
+cd_maths :: (h: [] SceneHud) { sh_fold(h, "card.maths", "The maths"); }
+// The card's end: a view that shows the thing, and the research behind it.
+cd_close :: (h: [] SceneHud, act: string, label: string, section: string) {
+  a: [1] SbText; a[0] = sb_w(sb_w(sb_w(cd_t(), SB_DOCS), "slab-world-spec.md#"), section);
+  sh_action(h, act, label, true);
+  sh_link(h, "The research behind this", sb_s(a[..]));
+}
+// The views the cards send a visitor to (the switches under See inside).
+cd_cut :: (s: [] Slab) -> string { return ifx s[0].section then "Close the cut" else "Cut it open"; }
+cd_dive :: (s: [] Slab) -> string { return ifx s[0].under then "Come back up" else "Go underwater"; }
+cd_lines :: (s: [] Slab) -> string { return ifx s[0].flow then "Hide the water and power" else "See the water and power"; }
+// How many of something a size comes to, to the nearest whole one.
+cd_whole :: (v: f64) -> f64 { return tour_round(v, 1); }
+cd_homes :: (mw: f64) -> f64 { return tour_round(mw * 1000.0 / CD_HOME_KW, 1000); }
+cd_lean :: (s: [] Slab) -> f64 { return (abs(s[0].hull.roll) + abs(s[0].hull.pitch)) * 180 / SIM_PI; }
+// A district's name in sentence case.
+cd_district :: (out: [] u8, x: f32, z: f32) -> string { return lab_plain(out, district(x, z)); }
+// The hull the settings give (slab-change.coax), or the picture's.
+cd_shape :: (s: [] Slab) -> HullShape { return ifx s[0].layout == LAYOUT_PRIME && s[0].change[0].ready then s[0].change[0].facts.shape else hull_prime(); }
+cd_ledger :: (s: [] Slab) -> HullLedger { return ifx s[0].layout == LAYOUT_PRIME && s[0].change[0].ready then s[0].change[0].facts.led else hull_ledger(hull_prime()); }
+
+// ---------------------------------------------------------------- the cards
+
+cd_sea :: (s: [] Slab, h: [] SceneHud) {
+  pw := s[0].power; site := slab_site(s); led := cd_ledger(s);
+  hs := f64(s[0].synth[0].significant);
+  cd_open(h, "The sea",
+    "The open sea round the platform: waves raised by the wind, worked out afresh every moment.",
+    "The sea decides the rest: how the hull moves, how hard its lines pull and how much power the warm water can give.");
+  if s[0].layout == LAYOUT_PRIME && hs > 0.05 {
+    cd_number(h, cd_v(hs, 1, " m"), "Wave height now", cd_p("The wall stands ", cd_whole(led.deck_height / hs), 0, " times as high out of the water."), SH_OURS);
+  } else {
+    cd_number(h, cd_v(hs, 1, " m"), "Wave height now", cd_p("A double-decker bus is ", CD_BUS_HIGH, 1, " m high."), SH_OURS);
+  }
+  if site.depth >= 600 {
+    cd_number(h, cd_v(site.depth, 0, " m"), "Water under the hull here", cd_p("About ", site.depth / CD_EMPIRE, 1, " Empire State Buildings, one on top of another."), SH_SOURCE);
+  } else {
+    cd_number(h, cd_v(site.depth, 0, " m"), "Water under the hull here", cd_p("About ", site.depth / CD_LIBERTY, 1, " Statues of Liberty, pedestal and all, one on top of another."), SH_SOURCE);
+  }
+  warm := ifx pw.surface >= 25 then "As warm as a heated swimming pool." else ifx pw.surface >= 15 then "Like an unheated outdoor pool in summer." else "Colder than most people will swim in.";
+  cd_number(h, cd_v(pw.surface, 1, " °C"), "Water at the surface this month", cd_words(warm), ifx site.sourced then SH_SOURCE else SH_OURS);
+  cd_now(h);
+  seas := SB_SEAS; storms := SB_STORMS;
+  if s[0].wind_forced > 0 { cd_fact(h, "Wind, set by hand", cd_v(s[0].wind, 1, " m/s")); }
+  else { cd_fact(h, seas[s[0].sea], cd_v(s[0].wind, 1, " m/s of wind")); }
+  if s[0].layout == LAYOUT_PRIME {
+    top := CD_SPRAY[s[0].sea];
+    if s[0].wind_forced <= 0 {
+      if top > 0 { cd_fact(h, "Highest spray up the wall", sb_w(sb_n(sb_w(sb_n(cd_t(), top, 0), " m of its "), led.deck_height, 0), " m")); }
+      else { sh_say(h, "This sea throws no spray up the wall."); }
+    }
+    cd_say(h, sb_w(sb_n(sb_w(sb_n(cd_words("The plumes in Luckey's picture stand about "), CD_PLUME, 0), " m up the wall. Our sea throws them that high only with waves near "), CD_PLUME_SEA, 0), " m, between a gale and a hurricane."));
+    cd_fact(h, "The sea 60 m off the west wall", cd_words("Under a third of the open sea"));
+    cd_fact(h, "The sea at the east wall", cd_words("About twice the open sea"));
+  }
+  sh_say(h, storms[s[0].site]);
+  cd_maths(h);
+    sh_say(h, "Wave height = 0.21 × wind speed² ÷ gravity, for a sea the wind has had time to raise (Pierson and Moskowitz).");
+    sh_say(h, "The waves are a wind sea of the JONSWAP shape, a standard description of how a sea's energy is spread over its wave lengths, summed afresh each frame.");
+    sh_say(h, "A wall reflects the waves that meet it, so the water there stands about twice as high; behind the hull only what bends round its ends arrives.");
+  sh_end_of(h);
+  cd_close(h, "card.change", "Change the sea", "52-sea-states-sea");
+}
+
+cd_pipe :: (s: [] Slab, h: [] SceneHud, cz: f32) {
+  pw := s[0].power;
+  cd_open(h, "Cold-water pipe",
+    "One of four pipes that bring cold water up from 1,000 m down.",
+    "The power plant runs on the gap between warm surface water and this cold water. Without it there is no power.");
+  cd_number(h, cd_v(SIM_COLD_DEPTH, 0, " m"), "How far down it reaches", cd_p("About ", cd_whole(SIM_COLD_DEPTH / CD_EIFFEL), 0, " Eiffel Towers, end to end."), SH_OURS);
+  cd_number(h, cd_v(CD_PIPE_WIDE, 1, " m"), "How wide it is", cd_words("About as wide as a two-lane road."), SH_OURS);
+  cd_number(h, cd_v(CD_COLD_FLOW, 0, " m³ a second"), "Cold water the four carry at full power", cd_p("An Olympic swimming pool every ", cd_whole(CD_POOL / CD_COLD_FLOW), 0, " seconds."), SH_OURS);
+  cd_now(h);
+  if s[0].plant.power == POWER_NUCLEAR { sh_say(h, "Idle. The platform is running on its reactors, so no water is pumped."); }
+  else if pw.no_cold { sh_say(h, "The water here is too shallow to reach cold water, so the pipes cannot be hung."); }
+  else {
+    if s[0].plant.pipe_tripped && cz < -200 { sh_say(h, "Broken 300 m down. This pipe is shut, and the plant has lost a quarter of its cold water."); }
+    else if s[0].plant.pipe_tripped { sh_say(h, "Flowing. One of the other three is shut."); }
+    cd_fact(h, "Cold water coming up", cd_v(pw.cold_flow, 0, " m³ a second"));
+  }
+  cd_maths(h);
+    area := SIM_PI * CD_PIPE_WIDE * CD_PIPE_WIDE / 4.0;
+    cd_say(h, sb_w(sb_n(sb_w(sb_n(sb_w(sb_n(cd_words("Speed = flow ÷ the pipe's area. One pipe carries "), CD_COLD_FLOW / 4.0, 1), " m³ a second through "), area, 0), " m², so the water rises at about "), CD_COLD_FLOW / 4.0 / area, 0), " m a second."));
+    sh_say(h, "The deep water is about 5 °C at every site; that figure is a planning value, not a measurement.");
+  sh_end_of(h);
+  cd_close(h, "view.under", cd_dive(s), "61-otec-power-plant");
+}
+
+cd_hull :: (s: [] Slab, h: [] SceneHud) {
+  hs := cd_shape(s); led := cd_ledger(s); hl := s[0].hull;
+  sh_card(h, "card", "The hull");
+  cd_lead(h, sb_w(sb_n(cd_words("A hollow concrete box "), hs.l, 0), " m long that floats as a ship does."));
+  cd_say(h, sb_w(sb_n(sb_w(sb_n(cd_words("Everything stands on it. Its lowest "), hs.hull, 0), " m is sealed cells that keep it afloat; the "), hull_upper(hs), 0), " m above is open structure that carries the deck."));
+  cd_number(h, cd_v(led.mass / 1e9, 1, " million tonnes"), "What it weighs, with the city and its ballast water", cd_p("About ", tour_round(led.mass / CD_CARRIER, 10), 0, " of the largest aircraft carriers."), SH_OURS);
+  cd_number(h, cd_v(led.draft, 0, " m"), "How deep it sits in the water", cd_p("As deep as a ", cd_whole(led.draft / CD_STOREY), 0, "-storey building is tall."), SH_OURS);
+  cd_number(h, cd_v(led.concrete / 1e6, 2, " million m³"), "Concrete in it", cd_p("About ", led.concrete / CD_HOOVER, 1, " times the concrete in the Hoover Dam."), SH_OURS);
+  cd_now(h);
+  cd_fact(h, "Rise and fall", cd_v(hl.heave, 2, " m"));
+  cd_fact(h, "Lean", cd_v(cd_lean(s), 3, "°"));
+  cd_fact(h, "Pushed off its place by", cd_v(sqrt(hl.surge * hl.surge + hl.sway * hl.sway), 1, " m"));
+  cd_fact(h, "Hardest-pulled mooring line", sb_w(sb_n(sb_w(sb_n(cd_t(), hl.tension / 1e6, 1), " of "), SIM_BREAK / 1e6, 0), " meganewtons"));
+  if hl.holed {
+    cd_say(h, sb_w(sb_n(cd_words("A corner cell is holed: "), hl.flood * SIM_RHO / 1e6, 0), " tonnes of water are in."));
+    if hl.pumping { cd_say(h, sb_w(sb_n(cd_words("The pumps have moved "), hl.moved, 0), " m³ of ballast to the far corner to level it.")); }
+  }
+  cd_maths(h);
+    cd_say(h, sb_w(sb_n(sb_w(sb_n(sb_w(sb_n(sb_w(sb_n(cd_words("It floats when the sea water it pushes aside weighs what it does: about "), hs.l, 0), " m × "), hs.b, 0), " m × "), led.draft, 0), " m of water at 1,025 kg a cubic metre is "), led.mass / 1e9, 1), " million tonnes."));
+    cd_say(h, sb_w(sb_n(sb_w(sb_n(cd_words("GM is how far the point the hull swings about sits above its centre of gravity; the bigger, the steadier. Here it is "), led.gm_t, 0), " m across and "), led.gm_l, 0), " m along."));
+    cd_say(h, sb_w(sb_n(sb_w(sb_n(cd_words("Left alone it would rise and fall every "), sim_heave_period(), 1), " s and roll every "), sim_roll_period(), 1), " s. Most wind waves come faster than that, every 5 to 10 s, so they move it little."));
+  sh_end_of(h);
+  cd_close(h, "view.section", cd_cut(s), "31-prime-the-monolith-default");
+}
+
+// The power plant, one of its moonpools or one of its ammonia tanks: `part` 0, 1 or 2.
+cd_plant :: (s: [] Slab, h: [] SceneHud, part: int) {
+  pw := s[0].power;
+  design := SIM_OTEC_GROSS - SIM_OTEC_PARASITIC;
+  if part == 1 {
+    cd_open(h, "Moonpool",
+      "A 12 m shaft straight down through the hull, open to the sea at the bottom.",
+      "One cold-water pipe hangs in each of the four. They belong to the ocean thermal power plant (OTEC for short), which makes electricity from the gap between warm surface water and cold deep water.");
+  } else if part == 2 {
+    cd_open(h, "Ammonia tank",
+      "A tank of ammonia, the fluid the power plant boils with warm sea water and turns back to liquid with cold.",
+      "It belongs to the ocean thermal power plant (OTEC for short), which makes electricity from the gap between warm surface water and cold deep water.");
+  } else {
+    cd_open(h, "Ocean thermal power plant",
+      "A power plant that makes electricity from the gap between warm surface water and cold deep water. Engineers call it ocean thermal energy conversion, OTEC for short.",
+      "It would be the platform's own power: no fuel, day and night. Nobody has built one near this size.");
+  }
+  cd_number(h, cd_v(pw.otec_net, 0, " MW"), "Power it gives now, after its own pumps", cd_p("Megawatts. Enough for about ", cd_homes(pw.otec_net), 0, " American homes."), SH_OURS);
+  cd_number(h, cd_v(pw.dt, 1, " °C"), "The gap between the warm water and the cold", cd_words("A warm room is about 18 °C warmer than the inside of a fridge."), ifx slab_site(s).sourced then SH_SOURCE else SH_OURS);
+  cd_number(h, cd_v(CD_OTEC_RECORD, 1, " MW"), "The most any plant of this kind has delivered", cd_p("At full power this one is ", cd_whole(design / CD_OTEC_RECORD), 0, " times larger."), SH_SOURCE);
+  cd_now(h);
+  if s[0].plant.power == POWER_NUCLEAR { sh_say(h, "Idle. The platform is running on its reactors."); }
+  else if pw.no_cold { sh_say(h, "The water here is too shallow to reach cold water, so the plant cannot run."); }
+  else {
+    cd_fact(h, "Made by its turbines", cd_v(pw.otec_gross, 1, " MW"));
+    cd_fact(h, "Taken by its own pumps", cd_v(pw.otec_parasitic, 1, " MW"));
+    cd_fact(h, "Left for the platform", cd_v(pw.otec_net, 1, " MW"));
+    if s[0].plant.pipe_tripped { sh_say(h, "One cold-water pipe is shut: a quarter of the cold water is lost."); }
+  }
+  if part == 1 {
+    most := 0.0;
+    for i: 0..<4 { most = sim_max(most, abs(s[0].water[0].pools[i].z)); }
+    cd_fact(h, "The water in the pools stands off the sea's level by up to", cd_v(most, 2, " m"));
+  }
+  cd_maths(h);
+    cd_say(h, sb_w(sb_n(sb_w(sb_n(sb_w(sb_n(cd_words("Power from the turbines = "), SIM_OTEC_GROSS, 1), " MW × (the gap ÷ "), SIM_OTEC_DT, 0), " °C)². The pumps take "), SIM_OTEC_PARASITIC, 1), " MW of it, so a small gap leaves nothing."));
+    cd_say(h, sb_w(sb_n(sb_w(sb_n(cd_words("At full power it takes in "), CD_WARM_FLOW, 0), " m³ of warm water and "), CD_COLD_FLOW, 0), " m³ of cold water every second."));
+    sh_say(h, "These figures are engineering models. The largest plant yet, Makai's in Hawaii in 2015, delivered about 0.1 MW.");
+  sh_end_of(h);
+  cd_close(h, "view.flow", cd_lines(s), "61-otec-power-plant");
+}
+
+// A process unit, a smokestack or a tank of the industry district: `part` 0, 1 or 2.
+cd_industry :: (s: [] Slab, h: [] SceneHud, part: int, wide: f64, deep: f64, tall: f64) {
+  pw := s[0].power;
+  cd_open(h, ifx part == 1 then "Smokestack" else ifx part == 2 then "Process tank" else "Process unit",
+    ifx part == 1 then "A smokestack of the industry district." else ifx part == 2 then "A storage tank of the industry district." else "A works of the industry district: metal processing, refining or chemicals.",
+    "Luckey says SLAB is for heavy industry, and his picture shows smokestacks. What the works would make, he has not said.");
+  cd_number(h, cd_v(SIM_INDUSTRY, 0, " MW"), "Power we give the district", cd_p("Megawatts. Enough for about ", cd_homes(SIM_INDUSTRY), 0, " American homes."), SH_OURS);
+  if part == 1 { cd_number(h, cd_v(tall, 0, " m"), "How tall this stack is", cd_p("As tall as a ", cd_whole(tall / CD_STOREY), 0, "-storey building."), SH_OURS); }
+  else { cd_number(h, cd_plan(wide, deep), "The ground this one covers", cd_p("About ", wide * deep / CD_TENNIS, 0, " tennis courts."), SH_OURS); }
+  cd_number(h, cd_words("8 stacks"), "How many the district has, 70 to 95 m tall", cd_p("The tallest is as high as a ", cd_whole(95.0 / CD_STOREY), 0, "-storey building."), SH_OURS);
+  cd_now(h);
+  cd_fact(h, "Running on", sb_w(sb_n(sb_w(sb_n(cd_t(), pw.industry, 1), " of "), SIM_INDUSTRY, 0), " MW"));
+  if pw.industry < SIM_INDUSTRY { cd_say(h, sb_w(sb_n(cd_words("Short of power: "), SIM_INDUSTRY - pw.industry, 1), " MW of it is switched off.")); }
+  if part == 1 { cd_say(h, sb_w(sb_n(cd_words("Its smoke drifts downwind at "), s[0].wind, 1), " m a second.")); }
+  sh_say(h, "We drew the buildings. What happens inside them is not simulated.");
+  cd_maths(h);
+    sh_say(h, "When there is not enough power for everything, it goes first to the lights, lifts and pumps, then the data halls, then the fresh water plant, then industry, and last the bitcoin miners.");
+    if s[0].plant.power != POWER_OTEC { cd_say(h, sb_w(sb_n(sb_w(sb_n(cd_t(), f64(pw.modules_on), 0), " small reactors below deck give "), pw.nuclear_net, 0), " MW. Their figures are the maker's own.")); }
+  sh_end_of(h);
+  cd_close(h, "view.flow", cd_lines(s), "64-desalination-and-industry");
+}
+
+cd_desal :: (s: [] Slab, h: [] SceneHud) {
+  pw := s[0].power;
+  cd_open(h, "Fresh water plant",
+    "A plant that makes fresh water from sea water by pushing it through fine filters (reverse osmosis).",
+    "A city at sea has no river. Whatever drinks, washes or grows here gets its water from this plant.");
+  cd_number(h, cd_v(CD_DESAL_DAY, 0, " m³ a day"), "Fresh water at full power", cd_p("Enough for about ", tour_round(CD_DESAL_DAY * 1000.0 / CD_PERSON_L, 10000), 0, " people at 150 litres each a day."), SH_OURS);
+  cd_number(h, cd_v(SIM_DESAL, 0, " MW"), "Power it draws", cd_p("Megawatts. As much as about ", tour_round(SIM_DESAL * 1000.0 / CD_HOME_KW, 500), 0, " American homes."), SH_OURS);
+  cd_number(h, cd_v(CD_DESAL_KWH, 1, " kWh"), "Electricity for each cubic metre of water", cd_p("About ", cd_whole(CD_DESAL_KWH / CD_KETTLE), 0, " full kettles brought to the boil, for a tonne of water."), SH_OURS);
+  cd_now(h);
+  cd_fact(h, "Making", cd_v(pw.desal / SIM_DESAL * CD_DESAL_DAY, 0, " m³ a day"));
+  cd_fact(h, "Running on", sb_w(sb_n(sb_w(sb_n(cd_t(), pw.desal, 1), " of "), SIM_DESAL, 0), " MW"));
+  cd_maths(h);
+    cd_say(h, sb_w(sb_n(sb_w(sb_n(sb_w(sb_n(cd_t(), CD_DESAL_DAY, 0), " m³ a day × "), CD_DESAL_KWH, 1), " kWh ÷ 24 hours = "), CD_DESAL_DAY * CD_DESAL_KWH / 24.0, 0), " kW: about 15 MW."));
+  sh_end_of(h);
+  cd_close(h, "view.flow", cd_lines(s), "64-desalination-and-industry");
+}
+
+cd_data :: (s: [] Slab, h: [] SceneHud, yard: bool) {
+  pw := s[0].power; bk := s[0].hp.backup;
+  pue := ifx s[0].plant.swac then SIM_DATA_SWAC / CD_IT else SIM_DATA / CD_IT;
+  cd_open(h, ifx yard then "Cooling yard" else "AI data hall",
+    ifx yard then "The yard that carries the data halls' heat away." else "A hall of computers that run AI models. There are two.",
+    "The halls are the platform's biggest user of power, and the reason to make so much of it out here.");
+  cd_number(h, cd_v(CD_IT, 0, " MW"), "Power the computers in both halls use", cd_p("Megawatts. As much as about ", cd_homes(CD_IT), 0, " American homes."), SH_OURS);
+  cd_number(h, cd_v(pue, 2, ""), "PUE: all the power a hall draws, divided by what its computers use", cd_p("For every ", cd_whole(1.0 / (pue - 1.0)), 0, " units the computers use, 1 more goes on cooling and lights."), SH_OURS);
+  cd_number(h, cd_v(SIM_BACKUP_BATTERY / 60.0, 0, " minutes"), "How long batteries carry the halls when the power fails", sb_w(sb_n(sb_w(sb_n(cd_words("After "), SIM_BACKUP_START, 0), " seconds, generators carry "), SIM_BACKUP_GEN, 0), " MW: a third of what the halls draw."), SH_OURS);
+  cd_now(h);
+  cd_fact(h, "From the power plant", sb_w(sb_n(sb_w(sb_n(cd_t(), pw.data, 1), " of "), pw.data_load, 0), " MW"));
+  if pw.data_on_backup {
+    sh_say(h, sb_backup_words(bk));
+    if bk.batteries > 0 { cd_fact(h, "Battery left", cd_v(floor((bk.left + 59) / 60), 0, " min")); }
+    if bk.dark > 0 { cd_fact(h, "Halls dark", sb_w(sb_n(sb_w(sb_n(cd_t(), bk.dark, 0), " of "), pw.data_load, 0), " MW")); }
+  }
+  if s[0].plant.swac { cd_fact(h, "Cooled with deep sea water, which takes", cd_v(pw.cooling_share * 100, 1, "% of the cold water")); }
+  else { sh_say(h, "Cooled by the yard's fans. Cold deep water could do it for less power: the switch is under Change."); }
+  cd_maths(h);
+    cd_say(h, sb_w(sb_n(sb_w(sb_n(sb_w(sb_n(sb_w(sb_n(cd_words("All the halls draw = the computers' power × PUE: "), CD_IT, 0), " MW × "), SIM_DATA / CD_IT, 2), " = "), SIM_DATA, 0), " MW. Cooled with deep sea water the PUE is "), SIM_DATA_SWAC / CD_IT, 2), "."));
+    cd_say(h, sb_w(sb_n(cd_words("When the power fails, the batteries carry the whole gap at once. When they are spent, whatever the plant and the "), SIM_BACKUP_GEN, 0), " MW of generators cannot carry goes dark."));
+  sh_end_of(h);
+  cd_close(h, "card.change", "Change the power", "62-ai-data-center");
+}
+
+cd_tower :: (s: [] Slab, h: [] SceneHud, wide: f64, deep: f64, tall: f64) {
+  force := 0.5 * SIM_RHO_AIR * 1.3 * wide * tall * s[0].wind * s[0].wind;
+  cd_open(h, "Tower",
+    "A tower of offices and homes.",
+    "Luckey's picture shows a skyline, so people would live and work here. How many, he has not said.");
+  cd_number(h, cd_v(tall, 0, " m"), "How tall it is", cd_p("", floor(tall / 3.6), 0, " storeys of 3.6 m."), SH_OURS);
+  cd_number(h, cd_plan(wide, deep), "The ground it stands on", cd_p("About ", wide * deep / CD_TENNIS, 0, " tennis courts."), SH_OURS);
+  cd_number(h, cd_v(force / 1e6, 2, " meganewtons"), "How hard the wind pushes on it now", cd_p("The weight of about ", cd_whole(force / (CD_CAR * SIM_G)), 0, " cars."), SH_OURS);
+  cd_now(h);
+  cd_fact(h, "The deck under it leans", cd_v(cd_lean(s), 3, "°"));
+  cd_say(h, sb_w(sb_n(cd_words("It shares the "), SIM_HOTEL, 0), " MW that the city's lights, lifts and pumps use. They are first in line for power."));
+  cd_maths(h);
+    sh_say(h, "Wind push = ½ × the air's density × 1.3 × the area of the face the wind meets × wind speed².");
+    sh_say(h, "Its core stands where two of the hull's walls cross, 50 m apart, so the weight goes straight down.");
+  sh_end_of(h);
+  cd_close(h, "go.4", "Go to the towers", "7-deck-layout-prime");
+}
+
+cd_mining :: (s: [] Slab, h: [] SceneHud) {
+  pw := s[0].power;
+  cd_open(h, "Bitcoin mining yard",
+    "50 shipping containers of bitcoin-mining computers, each drawing 1 MW.",
+    "Miners can be switched off in seconds, so they buy the power nobody else wants. They are last in line.");
+  cd_number(h, sb_w(sb_n(sb_w(sb_n(cd_t(), f64(pw.containers), 0), " of "), f64(SIM_CONTAINERS), 0), ""), "Containers running now", cd_p("Each draws as much as about ", tour_round(1000.0 / CD_HOME_KW, 10), 0, " American homes."), SH_OURS);
+  if pw.hashrate > 0 {
+    cd_number(h, cd_v(pw.hashrate, 2, " EH/s"), "Its mining speed now. An EH/s is a million million million guesses a second", cd_p("About 1 part in ", tour_round(slab_plant(s).network / pw.hashrate, 10), 0, " of all the bitcoin mining in the world."), SH_SOURCE);
+  } else {
+    cd_number(h, cd_v(0, 0, " EH/s"), "Its mining speed now. An EH/s is a million million million guesses a second", cd_p("All the bitcoin mining in the world is ", slab_plant(s).network, 0, " EH/s."), SH_SOURCE);
+  }
+  cd_number(h, sb_n(cd_words("$"), pw.revenue, 2), "What mining earns for each megawatt-hour of power", cd_words("A megawatt-hour runs an American home for about a month."), SH_SOURCE);
+  cd_now(h);
+  cd_fact(h, "Drawing", cd_v(pw.mining, 1, " MW"));
+  cd_fact(h, "Left to pay for power, a megawatt-hour", sb_n(cd_words("$"), pw.budget, 2));
+  if s[0].plant.halving { sh_say(h, "After the next halving: each block pays miners 1.5625 bitcoin in place of 3.125."); }
+  if pw.containers < SIM_CONTAINERS { sh_say(h, "Some are off: the power has gone to the users ahead of them."); }
+  cd_maths(h);
+    sh_say(h, "Earnings for a megawatt-hour = 6 blocks an hour × bitcoin's price × (the block's reward + fees) × (1 − the pool's fee) ÷ (energy for each guess × PUE × the whole network's speed).");
+    sh_say(h, "The machines use 15 joules for a million million guesses, and the yard's PUE (all its power over the computers' power) is 1.05.");
+    sh_say(h, "Prices are Luxor's snapshot of 16 November 2026: bitcoin at $65,118 and the network at 967 EH/s.");
+  sh_end_of(h);
+  cd_close(h, "view.flow", cd_lines(s), "63-bitcoin-mining-yard");
+}
+
+cd_medical :: (s: [] Slab, h: [] SceneHud, wide: f64, deep: f64, tall: f64) {
+  shake := abs(s[0].hull.accel) / SIM_G * 1000;
+  cd_open(h, "Medical campus",
+    "A hospital block on the south wall.",
+    "People who live far from shore need a hospital of their own. Its size is our guess.");
+  cd_number(h, cd_plan(wide, deep), "The ground it covers", cd_p("About ", wide * deep / CD_PITCH, 1, " football pitches."), SH_OURS);
+  cd_number(h, cd_v(floor(tall / 3.6), 0, " storeys"), "How tall it is", cd_p("", tall, 0, " m. Low, so its weight is spread over the hull's walls."), SH_OURS);
+  cd_number(h, cd_v(CD_COMFORT, 0, " thousandths of gravity"), "The up-and-down shake a person starts to notice", cd_words("A lift setting off pushes about this hard."), SH_OURS);
+  cd_now(h);
+  cd_fact(h, "The deck's shake", cd_v(shake, 2, " thousandths of gravity"));
+  sh_say(h, ifx shake < CD_COMFORT then "Too little to feel." else "Enough to feel.");
+  cd_maths(h);
+    sh_say(h, "Shake = how fast the deck's rise and fall changes speed, divided by gravity (9.81 m/s²).");
+  sh_end_of(h);
+  cd_close(h, "card.inside", "See how the hull is moving", "7-deck-layout-prime");
+}
+
+cd_grove :: (s: [] Slab, h: [] SceneHud, wide: f64, deep: f64, cx: f32, cz: f32) {
+  name: [64] u8;
+  trees := floor(wide / 7.0) * floor(deep / 7.0);
+  cd_open(h, "Cypress grove",
+    "A grove of Italian cypress trees, planted in soil laid on the deck.",
+    "Luckey's picture shows formal gardens between the temples, so we planted them.");
+  cd_number(h, cd_plan(wide, deep), "The ground this grove covers", cd_p("About ", wide * deep / CD_TENNIS, 0, " tennis courts."), SH_OURS);
+  cd_number(h, cd_p("About ", sim_max(trees, 1), 0, " trees"), "Planted 7 m apart", cd_words("One and a half car lengths between trunks."), SH_OURS);
+  cd_number(h, cd_words("7 to 13 m"), "How tall the trees are", cd_p("As tall as a house of 2 to ", cd_whole(13.0 / CD_STOREY), 0, " storeys."), SH_OURS);
+  cd_now(h);
+  cd_say(h, sb_w(sb_w(cd_words("It stands in the "), cd_district(name[..], cx, cz)), ". The trees are drawn, not simulated: they do not grow or bend in the wind."));
+  cd_maths(h);
+    sh_say(h, "Trees = the grove's length ÷ 7 m × its width ÷ 7 m.");
+  sh_end_of(h);
+  cd_close(h, "go.0", "Go to the temples", "7-deck-layout-prime");
+}
+
+// A temple, a round temple, a colonnaded hall or the rotunda: `part` 0 to 3.
+cd_temple :: (s: [] Slab, h: [] SceneHud, part: int, wide: f64, deep: f64, tall: f64) {
+  cd_open(h, ifx part == 3 then "Rotunda" else ifx part == 1 then "Round temple" else ifx part == 2 then "Colonnaded hall" else "Temple",
+    ifx part == 3 then "A domed round hall on the canal, with a columned porch."
+    else ifx part == 1 then "A round temple: a ring of columns about a domed room."
+    else ifx part == 2 then "A hall with a row of columns under a gabled roof."
+    else "A temple in the Greek style: three steps, a ring of columns and a walled room inside.",
+    "Luckey's picture is full of buildings like this. What they are for, he has not said.");
+  cd_number(h, cd_plan(sim_max(wide, deep), sim_min(wide, deep)), "Its size on the ground", cd_words("The Parthenon in Athens is 70 × 31 m."), SH_OURS);
+  cd_number(h, cd_v(tall, 0, " m"), "How tall it is", cd_p("As tall as a ", sim_max(cd_whole(tall / CD_STOREY), 1), 0, "-storey building."), SH_OURS);
+  cd_number(h, cd_words("1,000 years"), "How long Luckey says SLAB is designed to last", cd_words("Rome's Pantheon, also concrete, has stood for about 1,900."), SH_CLAIM);
+  cd_now(h);
+  cd_fact(h, "The deck under it leans", cd_v(cd_lean(s), 3, "°"));
+  sh_say(h, "We drew it in white precast concrete, as the picture shows. Nothing inside is modelled.");
+  cd_maths(h);
+    sh_say(h, "Its place and size are read off the one picture, so each could be wrong by tens of metres.");
+  sh_end_of(h);
+  cd_close(h, "go.0", "Go to the temples", "7-deck-layout-prime");
+}
+
+// The canal, a long pool or the fountain's plaza: `part` 0, 1 or 2.
+cd_water :: (s: [] Slab, h: [] SceneHud, part: int, long: f64, wide: f64) {
+  cd_open(h, ifx part == 0 then "The canal" else ifx part == 1 then "Garden pool" else "Fountain plaza",
+    ifx part == 0 then "A canal of fresh water through the gardens, lined with cypresses and temple fronts."
+    else ifx part == 1 then "A long pool between two formal gardens."
+    else "A round plaza with a fountain basin and a column in the middle.",
+    "Luckey's picture shows water on the deck. We fill it from the fresh water plant.");
+  if part == 2 {
+    cd_number(h, cd_words("80 m"), "How wide the plaza is", cd_words("A little wider than a football pitch (68 m)."), SH_OURS);
+    cd_number(h, cd_words("28 m"), "How wide the basin is", cd_words("A little longer than a tennis court (24 m)."), SH_OURS);
+    cd_number(h, cd_words("24 m"), "How tall the column is", cd_p("As tall as a ", cd_whole(24.0 / CD_STOREY), 0, "-storey building."), SH_OURS);
+  } else {
+    volume := long * wide * 1.5;
+    cd_number(h, cd_v(long, 0, " m"), "How long it is", cd_p("About ", long / CD_POOL_LONG, 0, " Olympic swimming pools, end to end."), SH_OURS);
+    cd_number(h, cd_words("1.5 m"), "How deep it is", cd_words("Chest-deep on an adult."), SH_OURS);
+    cd_number(h, cd_v(volume, 0, " m³"), "Water in it", cd_p("About ", cd_whole(volume / (CD_DESAL_DAY / 24.0 / 60.0)), 0, " minutes of the fresh water plant's output."), SH_OURS);
+  }
+  cd_now(h);
+  cd_fact(h, "The deck under it leans", cd_v(cd_lean(s), 3, "°"));
+  sh_say(h, "Too little to see in the water, which is drawn level.");
+  cd_maths(h);
+    sh_say(h, ifx part == 2 then "The sizes are read off the one picture." else "Water = length × width × depth. The fresh water plant makes 100,000 m³ a day, which is about 69 m³ a minute.");
+  sh_end_of(h);
+  cd_close(h, "go.5", "Go to the fountain", "7-deck-layout-prime");
+}
+
+cd_dome :: (s: [] Slab, h: [] SceneHud, i: int) {
+  cl := s[0].layout == LAYOUT_CLUSTER;
+  d := ifx cl && i < SIM_DOMES then s[0].cluster.domes[i] else s[0].hull;
+  cd_open(h, "Silone dome",
+    "A round floating module 122 m across, after Ben Silone's concept.",
+    ifx cl then (ifx i == 0 then "This is the other way to build at sea: small hulls joined by bridges. This one is the middle of seven and has no anchors of its own." else "This is the other way to build at sea: small hulls joined by bridges. This is one of seven, 130 m apart.")
+    else "This is the other way to build at sea: many small hulls in place of one big one. Here is one alone.");
+  cd_number(h, cd_words("122 m"), "How wide it is", cd_words("A little longer than a football pitch (105 m)."), SH_OURS);
+  cd_number(h, cd_words("144,000 tonnes"), "What it weighs", cd_words("About one and a half of the largest aircraft carriers."), SH_OURS);
+  cd_number(h, cd_words("6.4 s"), "How long one roll from side to side takes", cd_words("Ocean waves come every 5 to 15 s, so a swell rocks it."), SH_OURS);
+  cd_now(h);
+  cd_fact(h, "Rise and fall", cd_v(d.heave, 2, " m"));
+  cd_fact(h, "Lean", cd_v((abs(d.roll) + abs(d.pitch)) * 180 / SIM_PI, 2, "°"));
+  cd_fact(h, "Pushed off its place by", cd_v(sqrt(d.surge * d.surge + d.sway * d.sway), 1, " m"));
+  if d.holed { cd_say(h, sb_w(sb_n(cd_words("One of its eight parts is holed: "), d.flood * SIM_RHO / 1000, 0), " tonnes of water are in.")); }
+  cd_maths(h);
+    sh_say(h, "It sits 12 m deep with 4 m of its base ring above the water, and holds 27,500 m³ of concrete.");
+    sh_say(h, "GM (how far the point it swings about sits above its centre of gravity) is 73 m. With the water it drags along, a roll takes 7.3 s.");
+    sh_say(h, "The shape is from Silone's picture. The sizes are our assumption.");
+  sh_end_of(h);
+  cd_close(h, "card.change", "Change the shape", ifx cl then "33-cluster-joined-domes" else "32-dome-one-silone-dome");
+}
+
+cd_ship :: (s: [] Slab, h: [] SceneHud, cable: bool) {
+  nuke := s[0].plant.power == POWER_NUCLEAR;
+  net := f64(ifx nuke then s[0].plant.modules else 2) * 48 - f64(s[0].plant.refuelling) * 48;
+  cd_open(h, ifx cable then "Power cable" else "Powership",
+    ifx cable then "The cable that brings the powership's electricity to the nearest dome." else "A ship that carries small nuclear reactors and sends their power over a cable.",
+    "A dome is too short to hold a reactor, which needs a hull 152 m long. So the reactors ride on a ship moored beside it.");
+  cd_number(h, cd_v(net, 0, " MW"), "Power it sends to the domes now", cd_p("Megawatts. Enough for about ", cd_homes(net), 0, " American homes."), SH_SOURCE);
+  cd_number(h, cd_words("160 m"), "How long the ship is", cd_words("A football pitch and a half."), SH_OURS);
+  cd_number(h, cd_words("300 m"), "How far off it is moored", cd_words("About three football pitches."), SH_OURS);
+  cd_now(h);
+  cd_fact(h, "Reactors running", cd_v(net / 48.0, 0, ""));
+  sh_say(h, "The ship is drawn at rest: its own motion is not simulated. The cable is drawn above the water so you can see it.");
+  cd_maths(h);
+    sh_say(h, "Each reactor makes 50 MW and uses 2 MW itself, so 48 MW leaves the ship. These are the maker's stated figures.");
+  sh_end_of(h);
+  cd_close(h, "card.change", "Change the power", "66-nuclear-option-power");
+}
+
+cd_bridge :: (s: [] Slab, h: [] SceneHud, i: int) {
+  j := i - SIM_DOMES;
+  cl := s[0].cluster;
+  cd_open(h, "Bridge",
+    "A bridge 8 m wide across the 8 m gap between two domes.",
+    "Each dome moves on its own in a swell. The bridge has to let them, and still be safe to cross.");
+  cd_number(h, cd_words("8 m"), "How wide it is, and how long", cd_words("About as wide as a two-lane road."), SH_OURS);
+  cd_number(h, cd_v(SIM_SLIDE, 1, " m"), "How far its sliding joint can travel each way", cd_words("About the width of two doors."), SH_OURS);
+  cd_number(h, cd_v(cl.most_slide, 2, " m"), "The most a joint has slid since you came", cd_p("Its limit is ", SIM_SLIDE, 1, " m. Past that, stops take the load."), SH_OURS);
+  cd_now(h);
+  if j >= 0 && j < SIM_BRIDGES {
+    cd_fact(h, "This joint has slid", cd_v(cl.slide[j], 2, " m"));
+    cd_fact(h, "Its hinge is turned", cd_v(cl.hinge[j] * 180 / SIM_PI, 1, "°"));
+  }
+  if cl.most_slide > SIM_SLIDE { sh_say(h, "A joint has gone past its travel: the stops are carrying the load."); }
+  cd_maths(h);
+    sh_say(h, "A hinge at each end and a sliding joint in the middle take up the difference between two domes' motion.");
+    sh_say(h, "Our test of whether domes are easily joined: a 5 m swell runs the joints to their stops.");
+  sh_end_of(h);
+  cd_close(h, "card.change", "Change the sea", "33-cluster-joined-domes");
+}
+
+cd_statue :: (s: [] Slab, h: [] SceneHud, long: f64) {
+  count := floor(long / f64(SLAB_STATUE_GAP)) * 2;
+  cd_open(h, "Statues",
+    "A row of white statues on pedestals.",
+    "Luckey's picture lines its walks and plazas with them.");
+  cd_number(h, cd_words("4.2 m"), "How tall each is: a 2.4 m figure on a 1.8 m pedestal", cd_p("A little under a double-decker bus (", CD_BUS_HIGH, 1, " m)."), SH_OURS);
+  cd_number(h, cd_words("12 tonnes"), "What each weighs", cd_p("About ", cd_whole(12000.0 / CD_CAR), 0, " cars."), SH_OURS);
+  cd_number(h, cd_v(count, 0, " statues"), "In this row, 12 m apart on both sides", cd_words("A bus length between each."), SH_OURS);
+  cd_now(h);
+  sh_say(h, "They stand still. Nothing about them is simulated.");
+  cd_maths(h);
+    sh_say(h, "Statues = the row's length ÷ 12 m × 2 sides.");
+  sh_end_of(h);
+  cd_close(h, "go.0", "Go to the temples", "7-deck-layout-prime");
+}
+
+// Anything else on the deck: the district it lies in.
+cd_deck :: (s: [] Slab, h: [] SceneHud, cx: f32, cz: f32) {
+  name: [64] u8;
+  hs := cd_shape(s); led := cd_ledger(s);
+  cd_open(h, cd_district(name[..], cx, cz),
+    "A part of the city deck, the flat top of the hull where everything is built.",
+    "We divided the deck into districts by what Luckey's picture shows in each place.");
+  cd_number(h, cd_plan(hs.l, hs.b), "The whole deck", cd_p("About ", cd_whole(hs.l * hs.b / CD_PITCH), 0, " football pitches."), SH_OURS);
+  cd_number(h, cd_v(led.deck_height, 0, " m"), "How high the deck is above the sea", cd_p("As high as a ", cd_whole(led.deck_height / CD_STOREY), 0, "-storey building."), SH_OURS);
+  cd_number(h, cd_v(hs.cell, 0, " m"), "How far apart the hull's walls are under it", cd_words("The length of an Olympic swimming pool."), SH_OURS);
+  cd_now(h);
+  cd_fact(h, "The deck leans", cd_v(cd_lean(s), 3, "°"));
+  cd_maths(h);
+    sh_say(h, "Heavy buildings stand where the hull's walls cross, so their weight goes straight down to the water.");
+  sh_end_of(h);
+  cd_close(h, "go.8", "See the whole platform", "7-deck-layout-prime");
+}
+
+// Which card a record has: the word the address names it by (?card=).
+cd_key :: (s: [] Slab, i: int) -> string {
+  if i == -2 { return "sea"; }
+  if i == -3 { return "dock"; }
+  if i < 0 || i >= s[0].box_count { return ""; }
+  k := rec_kind(s, i);
+  cx := (rec(s, i, 0) + rec(s, i, 4)) * 0.5; wide := rec(s, i, 4) - rec(s, i, 0);
+  if k == SLAB_KIND_PIPE { return "pipe"; }
+  if k == SLAB_KIND_HULL { return "hull"; }
+  if k == SLAB_KIND_PLANT { return "plant"; }
+  if k == SLAB_KIND_TANK && cx < -350 { return "ammonia"; }
+  if k == SLAB_KIND_POOL && cx < -350 { return "moonpool"; }
+  if k == SLAB_KIND_INDUSTRY { return "industry"; }
+  if k == SLAB_KIND_STACK { return "stack"; }
+  if k == SLAB_KIND_TANK { return "tank"; }
+  if k == SLAB_KIND_DESAL { return "water"; }
+  if k == SLAB_KIND_DATA { return "data"; }
+  if k == SLAB_KIND_COOLING { return "cooling"; }
+  if k == SLAB_KIND_TOWER { return "tower"; }
+  if k == SLAB_KIND_CONTAINERS { return "mining"; }
+  if k == SLAB_KIND_MEDICAL { return "medical"; }
+  if k == SLAB_KIND_GROVE || k == SLAB_KIND_PARK { return "grove"; }
+  if k == SLAB_KIND_CIVIC { return "rotunda"; }
+  if k == SLAB_KIND_TEMPLE || k == SLAB_KIND_COLONNADE {
+    if cast(int) rec(s, i, 7) == SLAB_THOLOS { return "round-temple"; }
+    return ifx k == SLAB_KIND_COLONNADE then "hall" else "temple";
+  }
+  if k == SLAB_KIND_POOL { return ifx wide > 200 then "canal" else ifx wide > 40 then "pool" else "fountain"; }
+  if k == SLAB_KIND_PLAZA || k == SLAB_KIND_FOUNTAIN { return "fountain"; }
+  if k == SLAB_KIND_DOME { return "dome"; }
+  if k == SLAB_KIND_POWERSHIP { return "ship"; }
+  if k == SLAB_KIND_CABLE { return "cable"; }
+  if k == SLAB_KIND_BRIDGE { return "bridge"; }
+  if k == SLAB_KIND_STATUE { return "statues"; }
+  return "deck";
+}
+// The card about what was clicked.
+cd_card :: (s: [] Slab, h: [] SceneHud) {
+  i := s[0].selected;
+  if i == -1 || s[0].build.on { return; }
+  key := cd_key(s, i);
+  if key == "" { return; }
+  if key == "sea" { cd_sea(s, h); return; }
+  if key == "dock" { cd_dock(s, h); return; }
+  x0 := rec(s, i, 0); z0 := rec(s, i, 2); x1 := rec(s, i, 4); y1 := rec(s, i, 5); z1 := rec(s, i, 6);
+  cx := (x0 + x1) * 0.5; cz := (z0 + z1) * 0.5;
+  wide := f64(x1 - x0); deep := f64(z1 - z0); tall := f64(y1 - SLAB_DECK);
+  if key == "pipe" { cd_pipe(s, h, cz); }
+  else if key == "hull" { cd_hull(s, h); }
+  else if key == "plant" { cd_plant(s, h, 0); }
+  else if key == "moonpool" { cd_plant(s, h, 1); }
+  else if key == "ammonia" { cd_plant(s, h, 2); }
+  else if key == "industry" { cd_industry(s, h, 0, wide, deep, tall); }
+  else if key == "stack" { cd_industry(s, h, 1, wide, deep, tall); }
+  else if key == "tank" { cd_industry(s, h, 2, wide, deep, tall); }
+  else if key == "water" { cd_desal(s, h); }
+  else if key == "data" { cd_data(s, h, false); }
+  else if key == "cooling" { cd_data(s, h, true); }
+  else if key == "tower" { cd_tower(s, h, wide, deep, tall); }
+  else if key == "mining" { cd_mining(s, h); }
+  else if key == "medical" { cd_medical(s, h, wide, deep, tall); }
+  else if key == "grove" { cd_grove(s, h, wide, deep, cx, cz); }
+  else if key == "temple" { cd_temple(s, h, 0, wide, deep, tall); }
+  else if key == "round-temple" { cd_temple(s, h, 1, wide, deep, tall); }
+  else if key == "hall" { cd_temple(s, h, 2, wide, deep, tall); }
+  else if key == "rotunda" { cd_temple(s, h, 3, wide, deep, tall); }
+  else if key == "canal" { cd_water(s, h, 0, wide, deep); }
+  else if key == "pool" { cd_water(s, h, 1, wide, deep); }
+  else if key == "fountain" { cd_water(s, h, 2, wide, deep); }
+  else if key == "dome" { cd_dome(s, h, i); }
+  else if key == "ship" { cd_ship(s, h, false); }
+  else if key == "cable" { cd_ship(s, h, true); }
+  else if key == "bridge" { cd_bridge(s, h, i); }
+  else if key == "statues" { cd_statue(s, h, f64(hi_f32(x1 - x0, z1 - z0))); }
+  else { cd_deck(s, h, cx, cz); }
+}
+// The cards an address can open: ?card=hull opens the world on the hull's card (with ?layout= for a
+// dome, a bridge or the powership). A card asked for is a deep link, so no tour starts over it.
+CD_KEYS :: [29] string.["dock", "sea", "hull", "pipe", "plant", "moonpool", "ammonia", "industry", "stack", "tank", "water", "data", "cooling", "tower", "mining",
+  "medical", "grove", "temple", "round-temple", "hall", "rotunda", "canal", "pool", "fountain", "statues", "dome", "ship", "cable", "bridge"];
+cd_address :: (s: [] Slab, url: string) {
+  keys := CD_KEYS; pair: [1] SbText;
+  for k: 0..<29 {
+    pair[0] = sb_w(cd_words("card="), keys[k]);
+    if !query_word(url, sb_s(pair[..])) { continue; }
+    pick := ifx k == 1 then -2 else -1;
+    // the dock is there when the hull is big enough to have one (slab-change.coax)
+    if k == 0 && s[0].layout == LAYOUT_PRIME && change_has_dock(s[0].change[0].facts.shape, s[0].change[0].shown) { pick = -3; }
+    if k > 1 { for i: 0..<s[0].box_count { if cd_key(s, i) == keys[k] { pick = i; break; } } }
+    if pick == -1 { return; }
+    s[0].selected = pick; s[0].selected_at = s[0].time; s[0].first = false;
+    s[0].hp.tour.wanted = false;
+    return;
+  }
+}
+// The dock (slab-place.coax, slab-change.coax): how you get on board.
+cd_dock :: (s: [] Slab, h: [] SceneHud) {
+  deck := f64(change_hull(s[0].change[..])[2]);
+  volume := change_dock_volume(s[0].change[0].shown);
+  cd_open(h, "The dock",
+    "A basin cut into the sheltered south wall, where boats come alongside.",
+    "It is how you get on board. Luckey's picture shows no way aboard, so the dock and its lifts are our addition.");
+  cd_number(h, cd_plan(f64(CH_DOCK_LONG), f64(CH_DOCK_IN)), "The basin: along the wall, and into the hull", cd_words("A little smaller than a football pitch (105 × 68 m)."), SH_OURS);
+  cd_number(h, cd_v(deck, 0, " m"), "How far up the lifts carry people and cargo", cd_p("As high as a ", cd_whole(deck / CD_STOREY), 0, "-storey building."), SH_OURS);
+  cd_number(h, cd_v(volume, 0, " m³"), "Water in the basin, where hull would have been", cd_p("About ", cd_whole(volume / CD_POOL), 0, " Olympic swimming pools."), SH_OURS);
+  cd_now(h);
+  cd_fact(h, "Its floor is under the water by", cd_v(f64(-CH_DOCK_FLOOR), 0, " m"));
+  sh_say(h, "Crew boats and supply ships that draw up to 6 m come in here. Nothing moors yet: the boats are not simulated.");
+  cd_maths(h);
+    cd_say(h, sb_w(sb_n(sb_w(sb_n(cd_words("The basin takes "), volume, 0), " m³ out of the hull under the water, which costs about "), volume * SIM_RHO / 1000.0, 0), " tonnes of lift."));
+    sh_say(h, "The south wall lies 20° off the waves' path, so our model gives the basin about half the open sea's height.");
+  sh_end_of(h);
+  cd_close(h, "go.8", "See the whole platform", "31-prime-the-monolith-default");
+}
+// A card's own presses. The views it sends a visitor to are the HUD's (view.*, go.*).
+cd_act :: (s: [] Slab, id: string) -> bool {
+  if id == "card.change" { sb_open(s, "change"); return true; }
+  if id == "card.inside" { sb_open(s, "inside"); return true; }
+  return false;
+}
+
+// ---------------------------------------------------------------- checks
+
+// The first record of a kind (west of x = `west` when that is under 0), or -1.
+cd_test_pick :: (s: [] Slab, kind: int, west: f32) -> int {
+  for i: 0..<s[0].box_count {
+    if rec_kind(s, i) != kind { continue; }
+    if west < 0 && (rec(s, i, 0) + rec(s, i, 4)) * 0.5 >= west { continue; }
+    return i;
+  }
+  return -1;
+}
+// A word of four capitals or more that is not a name people write that way.
+cd_test_shouts :: (t: string) -> bool {
+  run := 0; start := 0;
+  for i: 0..<t.count + 1 {
+    c: u8 = ifx i < t.count then t[i] else 0;
+    if c >= 'A' && c <= 'Z' { if run == 0 { start = i; } run += 1; continue; }
+    if run >= 4 {
+      w := cast(string) t[start..<start + run];
+      if w != "OTEC" && w != "SLAB" && w != "JONSWAP" { return true; }
+    }
+    run = 0;
+  }
+  return false;
+}
+// Whether the card the HUD says now follows the pattern: 0, or the rule it breaks.
+//   1 no card, or the saying lost a line   2 no sentence of what it is   3 no sentence of why
+//   4 not three numbers                    5 a number with no comparison or no tag
+//   6 no "now"                             7 no maths behind a fold, or an empty one
+//   8 not one view to go to                9 not one link to the research
+//   10 capitals                            11 a fact with no tag
+cd_test_card :: (s: [] Slab) -> int {
+  text := sh_text(s[0].hp.said[..]);
+  if s[0].hp.said[0].lost { return 1; }
+  i := 0; inside := false; lead := 0; why := 0; numbers := 0; now := 0; fold := 0; folded := 0; in_fold := false; acts := 0; links := 0; cards := 0;
+  while i < text.count {
+    l := sh_read(text, i); i = l.next;
+    if l.kind == 'K' { inside = true; cards += 1; continue; }
+    if !inside { continue; }
+    if l.kind == 'Z' || l.kind == 'Y' || l.kind == 'G' || l.kind == 'M' || l.kind == 'U' || l.kind == 'W' { inside = false; continue; }
+    for k: 0..<l.n { if l.kind != 'L' && l.kind != 'A' && l.kind != 'X' && cd_test_shouts(l.f[k]) { return 10; } }
+    if l.kind == 'L' && cd_test_shouts(l.f[0]) { return 10; }
+    if l.kind == 'A' && l.n >= 2 && cd_test_shouts(l.f[1]) { return 10; }
+    if l.kind == 'J' { lead += 1; }
+    if l.kind == 'S' && lead == 1 && numbers == 0 && now == 0 { why += 1; }
+    if l.kind == 'Q' {
+      numbers += 1;
+      if l.n < 4 || l.f[0].count == 0 || l.f[1].count == 0 || l.f[2].count == 0 { return 5; }
+      from := sh_number_of(l.f[3], 0);
+      if from != SH_CLAIM && from != SH_SOURCE && from != SH_OURS { return 5; }
+    }
+    if l.kind == 'F' { if l.n < 3 || sh_number_of(l.f[2], 0) == SH_NONE { return 11; } }
+    if l.kind == 'H' && l.n >= 1 && l.f[0] == "What it is doing now" { now += 1; }
+    if l.kind == 'X' { fold += 1; in_fold = true; continue; }
+    if l.kind == 'E' { in_fold = false; continue; }
+    if in_fold && l.kind == 'S' { folded += 1; }
+    if l.kind == 'A' { acts += 1; }
+    if l.kind == 'L' { if l.n < 2 || !sh_starts(l.f[1], SB_DOCS) { return 9; } links += 1; }
+  }
+  if cards != 1 { return 1; }
+  if lead != 1 { return 2; }
+  if why < 1 { return 3; }
+  if numbers != 3 { return 4; }
+  if now != 1 { return 6; }
+  if fold != 1 || folded < 1 { return 7; }
+  if acts != 1 { return 8; }
+  if links != 1 { return 9; }
+  return 0;
+}
+sh_starts :: (t: string, with: string) -> bool {
+  if t.count < with.count { return false; }
+  for i: 0..<with.count { if t[i] != with[i] { return false; } }
+  return true;
+}
+
+#test "cards: everything a visitor can click, in all three shapes, has a card in the one pattern with a tag on every number" {
+  xs: [1] SbTest; x := xs[..]; s := x[0].s[..];
+  sb_test_open(x);
+  if s[0].hp.tour.on { tour_end(s); }
+  kinds: [40] bool;
+  for layout: 0..<3 {
+    set_layout(s, layout);
+    s[0].selected = -2; sb_say(s);
+    #assert cd_test_card(s) == 0;
+    if layout == LAYOUT_PRIME {
+      // the dock: a football pitch is 105 x 68 m, and its 48,000 m^3 is 19.2 Olympic pools
+      s[0].selected = -3; sb_say(s);
+      #assert cd_test_card(s) == 0 && sb_test_has(s, 'K', "card", "The dock") && f64(CH_DOCK_LONG) < CD_PITCH_LONG && f64(CH_DOCK_IN) < 68.0;
+      #assert sb_test_field(s, 'Q', "48,000 m³", 2) == "About 19 Olympic swimming pools.";
+    }
+    for i: 0..<s[0].box_count {
+      k := rec_kind(s, i);
+      // one of each kind is enough where they are all alike; the plant's district is told by where a thing stands
+      if k >= 0 && k < 40 && kinds[k] && k != SLAB_KIND_TANK && k != SLAB_KIND_POOL && k != SLAB_KIND_TEMPLE && k != SLAB_KIND_DOME && k != SLAB_KIND_BRIDGE { continue; }
+      if k >= 0 && k < 40 { kinds[k] = true; }
+      s[0].selected = i; sb_say(s);
+      #assert cd_test_card(s) == 0;
+    }
+  }
+  // every kind the plan lays has been seen
+  #assert kinds[SLAB_KIND_HULL] && kinds[SLAB_KIND_PIPE] && kinds[SLAB_KIND_PLANT] && kinds[SLAB_KIND_INDUSTRY] && kinds[SLAB_KIND_STACK] && kinds[SLAB_KIND_TANK];
+  #assert kinds[SLAB_KIND_DESAL] && kinds[SLAB_KIND_DATA] && kinds[SLAB_KIND_COOLING] && kinds[SLAB_KIND_TOWER] && kinds[SLAB_KIND_CONTAINERS] && kinds[SLAB_KIND_MEDICAL];
+  #assert kinds[SLAB_KIND_GROVE] && kinds[SLAB_KIND_TEMPLE] && kinds[SLAB_KIND_POOL] && kinds[SLAB_KIND_STATUE] && kinds[SLAB_KIND_DOME] && kinds[SLAB_KIND_BRIDGE];
+}
+
+#test "cards: the hull's card gives the ledger's weight, draft and concrete, and its comparisons add up" {
+  xs: [1] SbTest; x := xs[..]; s := x[0].s[..];
+  sb_test_open(x);
+  if s[0].hp.tour.on { tour_end(s); }
+  s[0].selected = cd_test_pick(s, SLAB_KIND_HULL, 0); sb_say(s);
+  #assert s[0].selected >= 0 && sb_test_has(s, 'K', "card", "The hull");
+  led := hull_ledger(hull_prime()); hs := hull_prime();
+  ts: [1] SbText;
+  ts[0] = cd_v(led.mass / 1e9, 1, " million tonnes");
+  // 15.4 million tonnes over a 100,000 t carrier is 154: about 150
+  #assert sb_s(ts[..]) == "15.4 million tonnes" && sb_test_field(s, 'Q', sb_s(ts[..]), 2) == "About 150 of the largest aircraft carriers.";
+  ts[0] = cd_v(led.draft, 0, " m");
+  // 25 m at 3.4 m a storey is 7.4: 7 storeys
+  #assert sb_s(ts[..]) == "25 m" && sb_test_field(s, 'Q', sb_s(ts[..]), 2) == "As deep as a 7-storey building is tall.";
+  ts[0] = cd_v(led.concrete / 1e6, 2, " million m³");
+  #assert sb_test_field(s, 'Q', sb_s(ts[..]), 1) == "Concrete in it" && sb_test_has(s, 'Q', "25 m", "How deep it sits in the water");
+  // the maths: the box of water the hull pushes aside weighs what the ledger says, within 2%
+  #assert abs(hs.l * hs.b * led.draft * SIM_RHO - led.mass) < 0.02 * led.mass;
+  // the view it sends a visitor to is the cut, and the link is the spec's section on the hull
+  #assert sb_test_has(s, 'A', "view.section", "Cut it open");
+  sb_act(s, "view.section"); sb_say(s);
+  #assert s[0].section && sb_test_has(s, 'A', "view.section", "Close the cut");
+}
+
+#test "cards: each comparison's arithmetic holds against the measure it names" {
+  // a pipe: 1,000 m is 3.03 Eiffel Towers; four carry an Olympic pool every 8.9 s; one pipe's water rises at 2.0 m/s
+  #assert cd_whole(SIM_COLD_DEPTH / CD_EIFFEL) == 3 && cd_whole(CD_POOL / CD_COLD_FLOW) == 9;
+  area := SIM_PI * CD_PIPE_WIDE * CD_PIPE_WIDE / 4.0;
+  #assert abs(CD_COLD_FLOW / 4.0 / area - 2.0) < 0.05 && abs(CD_PIPE_WIDE - 7.0) < 0.5;
+  // homes at 1.2 kW: industry's 20 MW is 16,667 (17,000), the computers' 100 MW 83,333 (83,000), a container's 1 MW 833 (830)
+  #assert cd_homes(SIM_INDUSTRY) == 17000 && cd_homes(CD_IT) == 83000 && tour_round(1000.0 / CD_HOME_KW, 10) == 830 && tour_round(SIM_DESAL * 1000.0 / CD_HOME_KW, 500) == 12500;
+  // a home at 1.2 kW uses 876 kWh in a month of 730 hours: a megawatt-hour is about a month
+  #assert abs(CD_HOME_KW * 730.0 - 1000.0) < 150.0;
+  // fresh water: 100,000 m^3 at 150 l a person is 666,667 people (670,000); 3.5 kWh is 35 kettles; 100,000 x 3.5 / 24 is 14,583 kW, the model's 15 MW
+  #assert tour_round(CD_DESAL_DAY * 1000.0 / CD_PERSON_L, 10000) == 670000 && cd_whole(CD_DESAL_KWH / CD_KETTLE) == 35;
+  #assert abs(CD_DESAL_DAY * CD_DESAL_KWH / 24.0 / 1000.0 - SIM_DESAL) < 0.5;
+  // the plant: 120 MW at full power over the record's 0.1 MW is 1,200; the model's cold water is the card's
+  #assert cd_whole((SIM_OTEC_GROSS - SIM_OTEC_PARASITIC) / CD_OTEC_RECORD) == 1200 && CD_WARM_FLOW == 2.0 * CD_COLD_FLOW;
+  p: SimPlant; p.power = POWER_OTEC;
+  #assert sim_power(p, sim_site(SITE_KONA), 6.5).cold_flow == CD_COLD_FLOW && p.network == CD_NETWORK;
+  // the halls: PUE 1.20 is 1 unit more for every 5, 1.10 is 1 for every 10; 40 MW of generators is a third of 120
+  #assert SIM_DATA / CD_IT == 1.2 && cd_whole(1.0 / (SIM_DATA / CD_IT - 1.0)) == 5 && cd_whole(1.0 / (SIM_DATA_SWAC / CD_IT - 1.0)) == 10;
+  #assert abs(SIM_BACKUP_GEN / SIM_DATA - 1.0 / 3.0) < 0.001 && SIM_BACKUP_BATTERY / 60.0 == 15;
+  // the deck: 600,000 m^2 is 84.0 football pitches; 118 m is 34.7 storeys
+  hs := hull_prime(); led := hull_ledger(hs);
+  #assert cd_whole(hs.l * hs.b / CD_PITCH) == 84 && cd_whole(led.deck_height / CD_STOREY) == 35 && hs.cell == CD_POOL_LONG;
+  // the gardens and the plaza: 13 m is 3.8 storeys, 95 m is 27.9, 24 m is 7.1; the plaza is wider than a pitch and its basin longer than a court
+  #assert cd_whole(13.0 / CD_STOREY) == 4 && cd_whole(95.0 / CD_STOREY) == 28 && cd_whole(24.0 / CD_STOREY) == 7 && 80.0 > 68.0 && 28.0 > 23.77;
+  // a statue: 2.4 + 1.8 m is 4.2, under a bus's 4.4; 12 t is 8 cars
+  #assert 2.4 + 1.8 < CD_BUS_HIGH && cd_whole(12000.0 / CD_CAR) == 8;
+  // a dome and its ship: 122 m is longer than a pitch; 144,000 t is 1.44 carriers; 160 m is 1.52 pitches; 300 m is 2.86
+  #assert 122.0 > CD_PITCH_LONG && abs(144000.0 * 1000.0 / CD_CARRIER - 1.5) < 0.1 && abs(160.0 / CD_PITCH_LONG - 1.5) < 0.05 && cd_whole(300.0 / CD_PITCH_LONG) == 3;
+  // a bridge's 1.5 m of travel is two doors of 0.76 m; the picture's plumes need a sea between the gale's and the hurricane's
+  #assert abs(SIM_SLIDE - 2.0 * 0.76) < 0.05 && CD_PLUME > CD_SPRAY[SEA_GALE] && CD_PLUME < CD_SPRAY[SEA_HURRICANE] && CD_PLUME_SEA > sim_sea(SEA_GALE).hs && CD_PLUME_SEA < sim_sea(SEA_HURRICANE).hs;
+  // the canal's water against the fresh water plant: 100,000 m^3 a day is 69.4 a minute
+  #assert abs(CD_DESAL_DAY / 24.0 / 60.0 - 69.4) < 0.1;
+}
+
+#test "cards: the data hall's card says what carries the halls when they are short, and the sea's card what the spray does" {
+  xs: [1] SbTest; x := xs[..]; s := x[0].s[..];
+  sb_test_open(x);
+  if s[0].hp.tour.on { tour_end(s); }
+  s[0].plant.power = POWER_OTEC; s[0].site = SITE_CALIFORNIA; s[0].month = 1.5;
+  s[0].power = sim_power(slab_plant(s), sim_site(s[0].site), s[0].month);
+  sb_backup_step(s, 120);
+  s[0].selected = cd_test_pick(s, SLAB_KIND_DATA, 0); sb_say(s);
+  #assert s[0].selected >= 0 && sb_test_has(s, 'K', "card", "AI data hall") && cd_test_card(s) == 0;
+  #assert sb_test_has(s, 'S', "Short of power: generators and batteries carry the halls", "") && sb_test_has(s, 'F', "Battery left", "13 min");
+  #assert sb_test_has(s, 'Q', "15 minutes", "How long batteries carry the halls when the power fails");
+  // the sea's card: the rough sea's spray is 12 m of the wall's 118, and the picture's plumes are said to need more
+  s[0].sea = SEA_ROUGH; s[0].wind_forced = -1; s[0].selected = -2; sb_say(s);
+  #assert sb_test_has(s, 'F', "Highest spray up the wall", "12 m of its 118 m") && sb_test_has(s, 'F', "The sea 60 m off the west wall", "Under a third of the open sea");
+  s[0].sea = SEA_CALM; sb_say(s);
+  #assert sb_test_has(s, 'S', "This sea throws no spray up the wall.", "");
+}
+
+#test "cards: a card that opens in a narrow window shuts the sheet, and its two ways on work" {
+  xs: [1] SbTest; x := xs[..]; s := x[0].s[..];
+  sb_test_open(x);
+  if s[0].hp.tour.on { tour_end(s); }
+  s[0].dpr = 2; s[0].width = 390 * s[0].dpr; s[0].height = 844 * s[0].dpr;
+  sb_open(s, "change"); sb_say(s);
+  serial := s[0].hp.serial;
+  s[0].selected = cd_test_pick(s, SLAB_KIND_TOWER, 0); sb_say(s);
+  #assert s[0].hp.want_n == 0 && s[0].hp.serial == serial + 1;
+  // the same card said again asks nothing more of the pane
+  sb_say(s);
+  #assert s[0].hp.serial == serial + 1;
+  // "Go to the towers" travels; "Change the power" on the data hall's card opens Change
+  #assert sb_test_has(s, 'A', "go.4", "Go to the towers");
+  s[0].selected = cd_test_pick(s, SLAB_KIND_DATA, 0); sb_say(s);
+  #assert sb_test_has(s, 'A', "card.change", "Change the power");
+  sb_act(s, "card.change");
+  #assert cast(string) s[0].hp.want[0..<s[0].hp.want_n] == "change";
+  // closing the card: the next one opens the sheet's shutting again
+  sb_act(s, "card.x"); sb_say(s);
+  #assert s[0].selected == -1 && s[0].hp.carded == -1;
+}
+
+#test "cards: an address opens the world on a card, in any of the three shapes, and no tour starts over it" {
+  a: [1] Slab; b: [1] Slab; c: [1] Slab; d: [1] Slab;
+  slab_message(a[..], HOST_FACTS, "url=https://openagents.com/worlds/slab?card=hull\n");
+  sb_act(a[..], "hud.visit 1"); sb_say(a[..]);
+  #assert cd_key(a[..], a[0].selected) == "hull" && !a[0].hp.tour.on && sb_test_has(a[..], 'K', "card", "The hull");
+  slab_message(b[..], HOST_FACTS, "url=https://openagents.com/worlds/slab?layout=cluster&card=bridge\n");
+  sb_say(b[..]);
+  #assert b[0].layout == LAYOUT_CLUSTER && cd_key(b[..], b[0].selected) == "bridge" && sb_test_has(b[..], 'K', "card", "Bridge") && cd_test_card(b[..]) == 0;
+  slab_message(c[..], HOST_FACTS, "url=https://openagents.com/worlds/slab?card=sea\n");
+  sb_say(c[..]);
+  #assert c[0].selected == -2 && sb_test_has(c[..], 'K', "card", "The sea");
+  // a word that names no card opens none
+  slab_message(d[..], HOST_FACTS, "url=https://openagents.com/worlds/slab?card=dragon\n");
+  #assert d[0].selected == -1;
+}
