@@ -38,6 +38,10 @@ int cd_copied(void *page, char *out, int cap);
 // The text's committed box (x, y, w, h, the first line's inset, a line's height), or 0 before the
 // first frame; the editor's style from the skin (14 floats, as apps/shared/composer/host.h's gc_style).
 int cd_editor(void *page, float box[6]);
-int cd_style(float style[14]);
+int cd_style(void *page, float style[14]);
+// The text size: a row of 0 to 7, 2 the usual. cd_zoom moves it by rows (0 leaves it), cd_zoom_set
+// names the row. Each returns the row it is at. Read cd_style again after a change.
+int cd_zoom(void *page, int by);
+int cd_zoom_set(void *page, int row);
 void cd_close(void *page);
 #endif

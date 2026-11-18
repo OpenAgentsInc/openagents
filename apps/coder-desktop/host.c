@@ -9,6 +9,7 @@ typedef struct {
   coax_t_CoderPage *s;
   int focused, reduced;
   float editor_height;
+  float screen;   // the screen's own scale
   int settle;     // frames still owed after a change (glyphs asked for in one frame are drawn in the next)
   void (*changed)(void *context); void *context;
 } CoderHost;
@@ -49,11 +50,29 @@ void *cd_open(const char *resources) {
   if (!a->host) { free(c->s); free(c); return NULL; }
   // the atlas at the scale the page draws its units at
   a->dpr = ui_dpr(a->host); if (a->dpr < 1) a->dpr = 1;
-  a->dpr *= coder_page_scale();
+  c->screen = a->dpr;
+  a->dpr *= coder_page_scale(cd_state(c));
   if (!atlas_setup(a)) { gallery_free(a); free(c->s); free(c); return NULL; }
   cd_changed(c);
   return c;
 }
+// The text size (a row of the page's sizes: 0 to 7, 2 the usual). The fonts and icons are drawn
+// again at the new scale, so text stays sharp. Returns the row it is at.
+static int cd_rescale(CoderHost *c, int row) {
+  App *a = &c->app;
+  float want = c->screen * coder_page_scale(cd_state(c));
+  if (want == a->dpr) return row;
+  for (int i = 0; i < 4; i++) { free(a->font_bytes[i]); a->font_bytes[i] = NULL; }
+  for (int i = 0; i < 64; i++) { free(a->svg[i]); a->svg[i] = NULL; }
+  free(a->mono); free(a->color); free(a->work); a->mono = NULL; a->color = NULL; a->work = NULL;
+  memset(a->atlas, 0, sizeof *a->atlas); memset(&a->plan, 0, sizeof a->plan); memset(&a->fonts, 0, sizeof a->fonts);
+  a->dpr = want;
+  if (!atlas_setup(a)) fprintf(stderr, "Coder: the fonts could not be drawn at the new size\n");
+  cd_changed(c);
+  return row;
+}
+int cd_zoom(void *page, int by) { CoderHost *c = page; return c ? cd_rescale(c, (int)coder_page_zoom(cd_state(c), by)) : 2; }
+int cd_zoom_set(void *page, int row) { CoderHost *c = page; return c ? cd_rescale(c, (int)coder_page_zoom_set(cd_state(c), row)) : 2; }
 void *cd_view(void *page) { return page ? ui_view(((CoderHost *)page)->app.host) : NULL; }
 void cd_frame(void *page) { if (page) ui_frame(((CoderHost *)page)->app.host); }
 int cd_moving(void *page) { CoderHost *c = page; return c && (c->settle > 0 || coder_page_moving(cd_state(c))); }
@@ -86,7 +105,7 @@ int cd_copied(void *page, char *out, int cap) {
   return n;
 }
 int cd_editor(void *page, float box[6]) { CoderHost *c = page; return c && coder_page_editor(cd_state(c), (coax_v_f32){box, 6}); }
-int cd_style(float style[14]) { return coder_page_style((coax_v_f32){style, 14}); }
+int cd_style(void *page, float style[14]) { CoderHost *c = page; return c ? coder_page_style(cd_state(c), (coax_v_f32){style, 14}) : 0; }
 void cd_close(void *page) {
   CoderHost *c = page;
   if (!c) return;

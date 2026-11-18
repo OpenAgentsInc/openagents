@@ -87,7 +87,7 @@ final class CoderWindow: NSObject {
     private let editor: KitMacEditor
     private let worker = CoderWorker()
     private let session = "coder-desktop-" + UUID().uuidString.lowercased()
-    private let line: CGFloat
+    private var line: CGFloat
     private var clock: Timer?
     private var then: String?   // --then TEXT: sent in a new chat once --send's reply ends
     private var owed = 3   // frames still to draw after a change
@@ -96,7 +96,9 @@ final class CoderWindow: NSObject {
         guard let page = cd_open(resources), let raw = cd_view(page) else { return nil }
         self.page = page
         canvas = Unmanaged<NSView>.fromOpaque(raw).takeUnretainedValue()
-        var style = [Float](repeating: 0, count: 14); _ = cd_style(&style)
+        // the text size chosen last time (a row of the page's sizes; 2 is the usual)
+        if UserDefaults.standard.object(forKey: "zoom") != nil { _ = cd_zoom_set(page, Int32(UserDefaults.standard.integer(forKey: "zoom"))) }
+        var style = [Float](repeating: 0, count: 14); _ = cd_style(page, &style)
         editor = KitMacEditor(style: style); line = CGFloat(style[1])
         // Most of the screen, up to 1500 by 1000 points.
         let screen = NSScreen.main?.visibleFrame.size ?? NSSize(width: 1440, height: 900)
@@ -133,6 +135,19 @@ final class CoderWindow: NSObject {
 
     func wake() { owed = 3 }
     var canNew: Bool { cd_running(page) == 0 }
+    /// View > Bigger Text, Smaller Text, Actual Size: by is a row up or down, nil the usual size.
+    func zoom(_ by: Int32?) {
+        let row = by.map { cd_zoom(page, $0) } ?? cd_zoom_set(page, 2)
+        UserDefaults.standard.set(Int(row), forKey: "zoom")
+        var style = [Float](repeating: 0, count: 14); _ = cd_style(page, &style)
+        line = CGFloat(style[1])
+        if let font = editor.font { editor.font = NSFont(descriptor: font.fontDescriptor, size: CGFloat(style[0])) }
+        let paragraph = NSMutableParagraphStyle(); paragraph.minimumLineHeight = line; paragraph.maximumLineHeight = line
+        editor.defaultParagraphStyle = paragraph
+        editor.textStorage?.addAttribute(.paragraphStyle, value: paragraph, range: NSRange(location: 0, length: editor.textStorage?.length ?? 0))
+        editor.typingAttributes[.paragraphStyle] = paragraph
+        wake()
+    }
     /// File > New Chat (Command-N): what the New chat button does.
     func newChat() { if cd_new(page) != 0 { window.makeFirstResponder(editor) }; wake() }
 
@@ -192,6 +207,9 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
     func applicationWillTerminate(_ notification: Notification) { main?.retire() }
     @objc func newChat(_ sender: Any?) { main?.newChat() }
+    @objc func biggerText(_ sender: Any?) { main?.zoom(1) }
+    @objc func smallerText(_ sender: Any?) { main?.zoom(-1) }
+    @objc func actualSize(_ sender: Any?) { main?.zoom(nil) }
     // New Chat is off while a run is going, as the button is.
     @objc func validateMenuItem(_ item: NSMenuItem) -> Bool { item.action != #selector(newChat(_:)) || main?.canNew == true }
 }
@@ -205,6 +223,14 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         let fileItem = NSMenuItem(), file = NSMenu(title: "File")
         file.addItem(withTitle: "New Chat", action: #selector(CoderDelegate.newChat(_:)), keyEquivalent: "n").target = delegate
         fileItem.submenu = file
+        let viewItem = NSMenuItem(), view = NSMenu(title: "View")
+        view.addItem(withTitle: "Actual Size", action: #selector(CoderDelegate.actualSize(_:)), keyEquivalent: "0").target = delegate
+        view.addItem(withTitle: "Bigger Text", action: #selector(CoderDelegate.biggerText(_:)), keyEquivalent: "+").target = delegate
+        // Command-= is Command-plus with no Shift
+        let plain = view.addItem(withTitle: "Bigger Text", action: #selector(CoderDelegate.biggerText(_:)), keyEquivalent: "=")
+        plain.target = delegate; plain.isHidden = true; plain.allowsKeyEquivalentWhenHidden = true
+        view.addItem(withTitle: "Smaller Text", action: #selector(CoderDelegate.smallerText(_:)), keyEquivalent: "-").target = delegate
+        viewItem.submenu = view
         appMenu.addItem(withTitle: "Hide Coder", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Quit Coder", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
@@ -215,7 +241,7 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         edit.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
         edit.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
         edit.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
-        appItem.submenu = appMenu; editItem.submenu = edit; bar.addItem(appItem); bar.addItem(fileItem); bar.addItem(editItem)
+        appItem.submenu = appMenu; editItem.submenu = edit; bar.addItem(appItem); bar.addItem(fileItem); bar.addItem(editItem); bar.addItem(viewItem)
         app.mainMenu = bar
         app.run()
     }

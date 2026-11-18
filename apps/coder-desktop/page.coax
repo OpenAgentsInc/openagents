@@ -31,9 +31,11 @@ CP_CMD :: 400;              // bytes of a command shown
 CP_CMD_OUT :: 4000;         // bytes of a command's output shown; the row says when it is cut
 CP_ARENA :: 131072;         // a worker line's strings
 CP_PAD :: 16;               // the page's margin
+CP_ZOOMS :: [8] f32.[0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0];   // the text sizes Command-plus and Command-minus step through
+CP_ZOOM_USUAL :: 2;
 CP_BOTTOM :: 8;             // under the message bar
 CP_COLUMN :: 680;           // the conversation's widest column
-CP_HEAD :: 44;              // the fixed header's height
+CP_CORNER :: 6;             // New chat from the window's top and right edges
 CP_MODEL :: "gemini-4-hydrogen";
 CP_MODEL_NAME :: "Microcoder · Gemini 4 Hydrogen";
 
@@ -71,6 +73,7 @@ CoderPage :: struct {
   draft: [1] EditBuf;
   focused: bool; editor_h: f32; reduced: bool;
   skills: [CP_SKILLS] u8; skills_n: int;
+  zoom: int;                  // the text size, a row of CP_ZOOMS
   px: f32; py: f32; touching: bool; pressed: [EL_ID] u8; pressed_n: int;
   scroll: f32; content: f32; view: f32; stick: bool;
   box: ComposerBox;
@@ -87,7 +90,10 @@ cp_init :: (s: [] CoderPage) {
     Sheet.{under = g[1].under[..], over = g[1].over[..], lines = g[1].lines[..], hits = g[1].hits[..], pool = g[1].pool[..]}, g[1].rows[..]);
   s[0].keyed[0] = KeyedStore.{rows = s[0].keys[..]};
   s[0].stick = true; s[0].copied_turn = -1; s[0].copied_block = -1;
+  s[0].zoom = CP_ZOOM_USUAL;
 }
+// Device pixels to a unit of the page's layout, before the screen's own scale: the skin's, times the text size.
+cp_scale :: (s: [] CoderPage) -> f32 { return ARCADE_PHONE_SCALE * CP_ZOOMS[ifx s[0].ready then s[0].zoom else CP_ZOOM_USUAL]; }
 cp_out :: (out: [] u8, text: string) -> int {
   n := 0;
   for c: text { if n >= out.count { break; } out[n] = c; n += 1; }
@@ -191,7 +197,7 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) {
   x := (w - cw) / 2;
   running := cp_running(s); full := cp_full(s);
   bar := ifx s[0].box.height > 0 then s[0].box.height else 80.0f32;
-  top: f32 = CP_HEAD; bottom := h - CP_BOTTOM - bar;   // what scrolls runs up to the bar
+  top: f32 = 0; bottom := h - CP_BOTTOM - bar;   // what scrolls runs up to the bar
   s[0].view = bottom - top;
   if s[0].stick { s[0].scroll = s[0].content - s[0].view; if s[0].scroll < 0 { s[0].scroll = 0; } }
   uiframe_clip(f, 0, top, w, bottom);
@@ -235,13 +241,12 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) {
   if full && !running { y += app_notice(f, "coder.full", x, y, cw, "This chat holds 24 messages. Start a new chat to send more.", APP_NOTICE_INFO) + a.gap; }
   uiframe_unclip(f);
   s[0].content = y + s[0].scroll - top;
-  // the header, over what scrolls
-  bw := app_button_width(f, -1, "New chat");
-  _ := app_button(f, "coder.new", x + cw - bw, (CP_HEAD - k.control_h) / 2, bw, -1, "New chat", APP_BUTTON_QUIET,
-                  ifx running || s[0].nturns == 0 then EL_S_DISABLED else 0, CP_NEW);
+  // New chat floats in the window's top right corner, over what scrolls
+  _ := app_icon_button(f, "coder.new", w - a.icon_button - CP_CORNER, CP_CORNER, ICON_COMPOSE, "New chat", APP_BUTTON_QUIET,
+                       ifx running || s[0].nturns == 0 then EL_S_DISABLED else 0, CP_NEW);
   c := AppComposer.{placeholder = "Message", text = eb_text(s[0].draft[..]),
     state = ifx running then APP_COMPOSER_RUNNING else ifx full then APP_COMPOSER_OFF else APP_COMPOSER_READY,
-    editing = s[0].focused, editor_h = s[0].editor_h / ARCADE_PHONE_SCALE, unit = ARCADE_PHONE_SCALE};
+    editing = s[0].focused, editor_h = s[0].editor_h / cp_scale(s), unit = ARCADE_PHONE_SCALE};
   s[0].box = app_composer(f, "coder.composer", "coder.composer.send", x, h - CP_BOTTOM, cw, c, CP_FIELD, CP_SEND);
 }
 
@@ -265,7 +270,7 @@ coder_page_frame :: (s: [] CoderPage, out: [] f32, width: f32, height: f32, dpr:
   if s.count < 1 || width < 1 || height < 1 { return 0; }
   if !s[0].ready { cp_init(s); }
   a := s[0].atlas[..];
-  d := (ifx dpr < 1 then 1.0f32 else dpr) * ARCADE_PHONE_SCALE;
+  d := (ifx dpr < 1 then 1.0f32 else dpr) * cp_scale(s);
   w := width / d; h := height / d;
   s[0].d = d;
   t := ifx dt < 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
@@ -384,17 +389,17 @@ coder_page_editor :: (s: [] CoderPage, out: [] f32) -> bool #export_c #effects(a
   t := [1] ElTable.[surface_rows(s[0].surface[..])];
   i := elt_find(t[..], "coder.composer");
   if i < 0 { return false; }
-  b := s[0].box; u: f32 = ARCADE_PHONE_SCALE;
+  b := s[0].box; u: f32 = cp_scale(s);
   out[0] = (t[0].rows[i].x + b.text_x) * u; out[1] = (t[0].rows[i].y + b.text_y) * u; out[2] = b.text_w * u; out[3] = b.text_h * u;
   out[4] = b.inset * u; out[5] = b.line * u;
   return true;
 }
 // How the platform editor is styled, from the skin: the text's size and line (points), then the
 // ink, the placeholder's ink and the caret's, each straight RGBA.
-coder_page_style :: (out: [] f32) -> bool #export_c #effects(all) {
-  if out.count < 14 { return false; }
+coder_page_style :: (s: [] CoderPage, out: [] f32) -> bool #export_c #effects(all) {
+  if s.count < 1 || out.count < 14 { return false; }
   k := arcade_phone_skin();
-  out[0] = k.body.size * ARCADE_PHONE_SCALE; out[1] = 23;
+  out[0] = k.body.size * cp_scale(s); out[1] = 23 * cp_scale(s) / ARCADE_PHONE_SCALE;
   out[2] = k.ink.r; out[3] = k.ink.g; out[4] = k.ink.b; out[5] = k.ink.a;
   out[6] = k.faint.r; out[7] = k.faint.g; out[8] = k.faint.b; out[9] = k.faint.a;
   out[10] = k.accent.r; out[11] = k.accent.g; out[12] = k.accent.b; out[13] = k.accent.a;
@@ -404,7 +409,21 @@ coder_page_running :: (s: [] CoderPage) -> bool #export_c #effects(all) { return
 coder_page_moving :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && (!s[0].ready || !s[0].reduced && s[0].moving); }
 coder_page_refused :: (s: [] CoderPage) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return s[0].refused; }
 coder_page_max_vertices :: () -> int #export_c #effects(all) { return CP_MAX_VERTICES; }
-coder_page_scale :: () -> f32 #export_c #effects(all) { return ARCADE_PHONE_SCALE; }
+coder_page_scale :: (s: [] CoderPage) -> f32 #export_c #effects(all) { if s.count < 1 { return ARCADE_PHONE_SCALE; } return cp_scale(s); }
+// The text size: a row of CP_ZOOMS (0 to 7; 2 is the usual size). by moves it a row up or down and
+// 0 leaves it; coder_page_zoom_set names the row. Each returns the row it is at now.
+coder_page_zoom :: (s: [] CoderPage, by: int) -> int #export_c #effects(all) {
+  if s.count < 1 { return CP_ZOOM_USUAL; }
+  if !s[0].ready { cp_init(s); }
+  return coder_page_zoom_set(s, s[0].zoom + by);
+}
+coder_page_zoom_set :: (s: [] CoderPage, row: int) -> int #export_c #effects(all) {
+  if s.count < 1 { return CP_ZOOM_USUAL; }
+  if !s[0].ready { cp_init(s); }
+  r := ifx row < 0 then 0 else ifx row > 7 then 7 else row;
+  if r != s[0].zoom { s[0].zoom = r; for i: 0..<s[0].nturns { s[0].turns[i].h = 0; } }
+  return s[0].zoom;
+}
 
 #test "a draft becomes a running turn, the worker's task names it, and its lines fill the reply" {
   p: [1] CoderPage; s := p[..];
@@ -496,4 +515,16 @@ coder_page_scale :: () -> f32 #export_c #effects(all) { return ARCADE_PHONE_SCAL
   #assert coder_page_line(s, "{\"kind\":\"attempt\",\"gateway\":\"vertex\",\"outcome\":\"done\",\"status\":200,\"usd_micros\":1}") == MWW_ATTEMPT;
   #assert coder_page_line(s, "{\"kind\":\"reply\",\"text\":\"Your game \"}") == MWW_REPLY && coder_page_line(s, "{\"kind\":\"reply\",\"text\":\"is open.\"}") == MWW_REPLY;
   #assert cast(string) s[0].turns[0].reply[0..<s[0].turns[0].reply_n] == "Your game is open.";
+}
+
+#test "the text size steps through its rows and stops at each end" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  #assert coder_page_zoom(s, 0) == 2 && abs(coder_page_scale(s) - 1.2) < 0.001;
+  #assert coder_page_zoom(s, 1) == 3 && abs(coder_page_scale(s) - 1.32) < 0.001;
+  for i: 0..<9 { _ := coder_page_zoom(s, 1); }
+  #assert coder_page_zoom(s, 0) == 7 && abs(coder_page_scale(s) - 2.4) < 0.001;
+  for i: 0..<9 { _ := coder_page_zoom(s, -1); }
+  #assert coder_page_zoom(s, 0) == 0 && coder_page_zoom_set(s, 2) == 2;
+  st: [14] f32; #assert coder_page_style(s, st[..]) && abs(st[1] - 23) < 0.001;
 }

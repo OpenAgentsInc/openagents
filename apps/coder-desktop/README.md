@@ -13,7 +13,8 @@ the typing mark and notices. The shared AppKit editor
 
 - **Send** (or Return) starts one Microcoder run. Shift-Return makes a new line.
 - **Stop** ends the run.
-- **New chat** (or Command-N) clears the window and makes Microcoder forget the conversation.
+- **New chat** (the icon in the window's top right corner, or Command-N) clears the window and makes Microcoder forget the conversation.
+- **Command-plus** and **Command-minus** make the text bigger and smaller, in eight sizes from 80% to 200%. Command-0 is the usual size. Coder keeps the size you chose.
 - **Copy** on a code block puts its text on the clipboard.
 
 Limits, all shown on screen when you reach them:
