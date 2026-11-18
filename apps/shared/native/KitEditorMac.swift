@@ -27,8 +27,8 @@ final class KitMacEditor: NSTextView {
         if let path = Bundle.main.path(forResource: "Geist", ofType: "ttf", inDirectory: "Components/fonts"), let provider = CGDataProvider(url: URL(fileURLWithPath: path) as CFURL), let face = CGFont(provider) {
             font = CTFontCreateWithGraphicsFont(face, size, nil, nil) as NSFont
         } else { font = .systemFont(ofSize: size) }
-        textColor = NSColor(red: CGFloat(style[2]), green: CGFloat(style[3]), blue: CGFloat(style[4]), alpha: CGFloat(style[5]))
-        insertionPointColor = NSColor(red: CGFloat(style[10]), green: CGFloat(style[11]), blue: CGFloat(style[12]), alpha: CGFloat(style[13]))
+        textColor = NSColor(red: CGFloat(style[2]), green: CGFloat(style[3]), blue: CGFloat(style[4]), alpha: CGFloat(style[5]))   // stock: the component library's colour, handed over as the page's style numbers
+        insertionPointColor = NSColor(red: CGFloat(style[10]), green: CGFloat(style[11]), blue: CGFloat(style[12]), alpha: CGFloat(style[13]))   // stock: the component library's colour, handed over as the page's style numbers
         let paragraph = NSMutableParagraphStyle(); paragraph.minimumLineHeight = CGFloat(style[1]); paragraph.maximumLineHeight = CGFloat(style[1])
         defaultParagraphStyle = paragraph
     }

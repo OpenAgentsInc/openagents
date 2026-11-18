@@ -63,7 +63,7 @@ import CoreText
         view.accessibilityViewIsModal=true
         guard let resources=Bundle.main.path(forResource:"Components",ofType:nil),let owner=resources.withCString({lg_open($0,wantsScene ? 1:0,mode == .card ? 1:0)}),let raw=lg_view(owner) else {
             // The surface could not open: say so plainly. The app's own login under this one still works.
-            let label=UILabel();label.text="Log in is unavailable. Restart OpenAgents.";label.numberOfLines=0;label.textAlignment = .center;label.textColor = .label
+            let label=UILabel();label.text="Log in is unavailable. Restart OpenAgents.";label.numberOfLines=0;label.textAlignment = .center;label.textColor = NativeSkin.color(NativeSkin.tokens.ink)
             label.translatesAutoresizingMaskIntoConstraints=false;view.addSubview(label)
             NSLayoutConstraint.activate([label.centerYAnchor.constraint(equalTo:view.centerYAnchor),label.leadingAnchor.constraint(equalTo:view.leadingAnchor,constant:24),label.trailingAnchor.constraint(equalTo:view.trailingAnchor,constant:-24)]);return
         }

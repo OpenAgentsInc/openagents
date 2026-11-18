@@ -15,7 +15,7 @@ enum NativeKitText {
         }
         return .systemFont(ofSize:size)
     }
-    static func color(_ style:[Float],_ at:Int)->UIColor {UIColor(red:CGFloat(style[at]),green:CGFloat(style[at+1]),blue:CGFloat(style[at+2]),alpha:CGFloat(style[at+3]))}
+    static func color(_ style:[Float],_ at:Int)->UIColor {UIColor(red:CGFloat(style[at]),green:CGFloat(style[at+1]),blue:CGFloat(style[at+2]),alpha:CGFloat(style[at+3]))}   // stock: the component library's colour, handed over as the page's style numbers
 }
 
 /// The one platform editor for a GPU composer. While it does not hold the keyboard it is out of
