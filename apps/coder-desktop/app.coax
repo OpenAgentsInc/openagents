@@ -1,0 +1,6 @@
+// Coder for desktop (macOS first): the compiled Coax the app links. It is the
+// shared chat composer's surface (apps/shared/composer/surface.coax, drawn by
+// components/kit/composer.coax) and the atlas tables the shared carrier reads.
+// build.sh compiles this file; carrier.c and App.swift are its host.
+#load "../../components/raster/host-tables.coax";
+#load "../shared/composer/surface.coax";
