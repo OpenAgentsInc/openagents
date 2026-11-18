@@ -970,7 +970,10 @@ is cut (#13686): a basin 100 m long and 60 m in, its floor 8 m under the
 water, in the sheltered south wall, on any hull at least 400 m long and
 300 m wide. Its name is pinned on the wall from the sea side and opens a
 card that says how you get on board: boats come into the basin and lifts in
-its walls go up to the deck. The lifts are our assumption. The one data
+its walls go up to the deck. The lifts are our assumption. The card says
+whether the basin is sheltered in the sea as it is now: it is exposed when
+the sea comes from within 70° of south, and sheltered in the picture's sea,
+which comes from the east-north-east. The one data
 hall that stood over the basin moves back from its quay. The basin takes
 48,000 m³ out of the hull's displacement at 25 m of draft (about 49,200 t
 of lift, 0.3%), which `metaverse/hull.coax`'s ledger does not count yet.
@@ -1195,7 +1198,7 @@ with the components kit in the mono skin. Its settings and their limits are
 | The hull | Buildings and equipment (0–6 Mt), length (100–2,000 m), width (50–1,000 m), depth keel to deck (30–150 m), sea walls and bottom slab (0.5–3 m), the draft the ballast holds (2–60 m) |
 | Building it | Concrete in place ($100–$1,000 a cubic metre), casting yards (1–8), each yard's pour (1,000–6,000 m³ a day) |
 | Where | The chart (press it to move the platform), distance from shore (0–250 nautical miles) |
-| Weather | Wind (0–40 m/s), month |
+| Weather | Wind (0–40 m/s), month. It also says which way the sea comes from, which walls face it and which side is sheltered |
 | Power | Ocean thermal plant (30–240 MW), reactor modules (1–8), and each tenant on or off with its size: data halls, desalination, industry, miners |
 | Design life | 25–1,000 years |
 
