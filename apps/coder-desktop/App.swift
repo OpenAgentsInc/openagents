@@ -19,6 +19,14 @@ final class CoderWorker {
         let p = Process(), into = Pipe(), out = Pipe()
         p.executableURL = URL(fileURLWithPath: path)
         p.currentDirectoryURL = FileManager.default.homeDirectoryForCurrentUser
+        // An app opened from the Finder has the system's short PATH: the commands Microcoder runs also
+        // find what is installed for this person (gamebuilder is in ~/.local/bin).
+        var env = ProcessInfo.processInfo.environment
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let had = (env["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin").split(separator: ":").map(String.init)
+        let more = [home + "/.local/bin", "/opt/homebrew/bin", "/usr/local/bin"].filter { !had.contains($0) }
+        env["PATH"] = (more + had).joined(separator: ":")
+        p.environment = env
         p.standardInput = into; p.standardOutput = out; p.standardError = FileHandle.nullDevice
         held = Data()
         out.fileHandleForReading.readabilityHandler = { [weak self] handle in
@@ -51,6 +59,27 @@ final class CoderWorker {
 
 /// The window: the compiled page fills it. The platform editor sits over the composer's text box
 /// and hands Coax each whole draft; what the page asks for (send, stop, a new chat, copy) is done here.
+// The skills installed for this person (~/.claude/skills/NAME/SKILL.md), in words for Microcoder:
+// each one's name, its file and its description. The first 16 skills, 300 characters of each
+// description. "" when there are none.
+func coderSkillsNote() -> String {
+    let root = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/skills")
+    let names = ((try? FileManager.default.contentsOfDirectory(atPath: root.path)) ?? []).sorted()
+    var rows: [String] = []
+    for name in names where rows.count < 16 {
+        let file = root.appendingPathComponent(name).appendingPathComponent("SKILL.md")
+        guard let text = try? String(contentsOf: file, encoding: .utf8), text.hasPrefix("---") else { continue }
+        var description = ""
+        for line in text.split(separator: "\n").dropFirst() {
+            if line.hasPrefix("---") { break }
+            if line.hasPrefix("description:") { description = String(line.dropFirst(12)).trimmingCharacters(in: .whitespaces) }
+        }
+        rows.append("- \(name) (\(file.path)): \(description.prefix(300))")
+    }
+    if rows.isEmpty { return "" }
+    return "Skills installed on this computer. When a message is about one, read its file with cat first, then do what it says:\n" + rows.joined(separator: "\n") + "\n\nThe message:\n"
+}
+
 final class CoderWindow: NSObject {
     let window: NSWindow
     private let page: UnsafeMutableRawPointer
@@ -78,6 +107,7 @@ final class CoderWindow: NSObject {
         window.contentView = canvas
         cd_on_change(page, { raw in guard let raw else { return }; Unmanaged<CoderWindow>.fromOpaque(raw).takeUnretainedValue().wake() },
                      Unmanaged.passUnretained(self).toOpaque())
+        cd_skills(page, coderSkillsNote())
         editor.committed = { [weak self] text in guard let self else { return }; _ = cd_set_text(self.page, text); self.wake() }
         // Return sends; Shift-Return and Option-Return make a new line.
         editor.command = { [weak self] selector in

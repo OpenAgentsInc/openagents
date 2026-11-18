@@ -23,6 +23,8 @@ int cd_submit(void *page);
 int cd_action(void *page);
 // The worker's lines (coder/tui/mcworker.coax), each with its newline: the length, 0 for none.
 int cd_task(void *page, const char *session, const char *cwd, char *out, int cap);
+// The note on installed skills that goes ahead of each message (not shown).
+void cd_skills(void *page, const char *note);
 int cd_stop_line(char *out, int cap);
 int cd_forget_line(char *out, int cap);
 // One line the worker wrote, without its newline.

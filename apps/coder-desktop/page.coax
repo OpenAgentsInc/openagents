@@ -25,11 +25,13 @@ CP_UNDER :: 4096; CP_OVER :: 16384; CP_LINES :: 4096; CP_HITS :: 512; CP_POOL ::
 CP_TURNS :: 24;             // messages a chat holds; the page says so when it is full
 CP_REPLY :: 60000;          // bytes of a reply kept (the Markdown document holds 65,536)
 CP_NOTE :: 512;
+CP_SKILLS :: 4000;          // bytes of the note on installed skills that goes ahead of each message
 CP_CMDS :: 12;              // commands and file reads a message shows; the page says how many more ran
 CP_CMD :: 400;              // bytes of a command shown
 CP_CMD_OUT :: 4000;         // bytes of a command's output shown; the row says when it is cut
 CP_ARENA :: 131072;         // a worker line's strings
 CP_PAD :: 16;               // the page's margin
+CP_BOTTOM :: 8;             // under the message bar
 CP_COLUMN :: 680;           // the conversation's widest column
 CP_HEAD :: 44;              // the fixed header's height
 CP_MODEL :: "gemini-4-hydrogen";
@@ -67,6 +69,7 @@ CoderPage :: struct {
   turns: [CP_TURNS] CpTurn; nturns: int;
   draft: [1] EditBuf;
   focused: bool; editor_h: f32; reduced: bool;
+  skills: [CP_SKILLS] u8; skills_n: int;
   px: f32; py: f32; touching: bool; pressed: [EL_ID] u8; pressed_n: int;
   scroll: f32; content: f32; view: f32; stick: bool;
   box: ComposerBox;
@@ -183,7 +186,7 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) {
   x := (w - cw) / 2;
   running := cp_running(s); full := cp_full(s);
   bar := ifx s[0].box.height > 0 then s[0].box.height else 80.0f32;
-  top: f32 = CP_HEAD; bottom := h - CP_PAD - bar - a.gap;
+  top: f32 = CP_HEAD; bottom := h - CP_BOTTOM - bar;   // what scrolls runs up to the bar
   s[0].view = bottom - top;
   if s[0].stick { s[0].scroll = s[0].content - s[0].view; if s[0].scroll < 0 { s[0].scroll = 0; } }
   uiframe_clip(f, 0, top, w, bottom);
@@ -234,7 +237,7 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) {
   c := AppComposer.{placeholder = "Message", text = eb_text(s[0].draft[..]),
     state = ifx running then APP_COMPOSER_RUNNING else ifx full then APP_COMPOSER_OFF else APP_COMPOSER_READY,
     editing = s[0].focused, editor_h = s[0].editor_h / ARCADE_PHONE_SCALE, unit = ARCADE_PHONE_SCALE};
-  s[0].box = app_composer(f, "coder.composer", "coder.composer.send", x, h - CP_PAD, cw, c, CP_FIELD, CP_SEND);
+  s[0].box = app_composer(f, "coder.composer", "coder.composer.send", x, h - CP_BOTTOM, cw, c, CP_FIELD, CP_SEND);
 }
 
 // ---------------------------------------------------------------- the host's calls
@@ -312,9 +315,19 @@ coder_page_action :: (s: [] CoderPage) -> int #export_c #effects(all) {
 coder_page_task :: (s: [] CoderPage, session: string, cwd: string, out: [] u8) -> int #export_c #effects(all) {
   if s.count < 1 || !cp_running(s) { return 0; }
   i := s[0].nturns - 1;
-  t := McTask.{task = cast(string) s[0].turns[i].ask[0..<s[0].turns[i].ask_n], session = session, cwd = cwd, sandbox = "danger-full-access",
+  // the note on installed skills, then the message
+  whole: [CP_SKILLS + EB_TEXT] u8;
+  n := cp_out(whole[..], cast(string) s[0].skills[0..<s[0].skills_n]);
+  for c: cast(string) s[0].turns[i].ask[0..<s[0].turns[i].ask_n] { whole[n] = c; n += 1; }
+  t := McTask.{task = cast(string) whole[0..<n], session = session, cwd = cwd, sandbox = "danger-full-access",
                ceiling = 3, model = CP_MODEL, effort = "low"};
   return mww_task(out, t);
+}
+// What the host found installed on this computer (skills and their files), in words for Microcoder.
+// It goes ahead of every message's task and is not shown. At most 4,000 bytes are kept.
+coder_page_skills :: (s: [] CoderPage, note: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].skills_n = cp_out(s[0].skills[..], note);
 }
 // The worker's line to stop the run, and the one to forget the conversation.
 coder_page_stop_line :: (out: [] u8) -> int #export_c #effects(all) { return cp_out(out, MWW_STOP_LINE); }
@@ -439,4 +452,15 @@ coder_page_scale :: () -> f32 #export_c #effects(all) { return ARCADE_PHONE_SCAL
   #assert cast(string) s[0].turns[0].cmds[0].text[0..<s[0].turns[0].cmds[0].text_n] == "ls" && cast(string) s[0].turns[0].cmds[0].out[0..<s[0].turns[0].cmds[0].out_n] == "a\nb";
   for i: 0..<12 { #assert coder_page_line(s, "{\"kind\":\"view\",\"path\":\"b.txt\",\"found\":false}") == MWW_VIEW; }
   #assert s[0].turns[0].ncmds == 12 && s[0].turns[0].more_cmds == 3 && s[0].turns[0].cmds[3].failed;
+}
+
+#test "the note on installed skills goes ahead of the message in the task, and the message shown stays the person's" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  coder_page_skills(s, "Skills: gamebuilder.\n\n");
+  #assert coder_page_set_text(s, "List my games") && coder_page_submit(s);
+  out: [8192] u8; n := coder_page_task(s, "s-1", "/w", out[..]);
+  ar: [1] ClArena; buf: [8192] u8; ar[0].buf = buf[..]; back: [1] McTask;
+  #assert n > 0 && mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].task == "Skills: gamebuilder.\n\nList my games";
+  #assert cast(string) s[0].turns[0].ask[0..<s[0].turns[0].ask_n] == "List my games";
 }

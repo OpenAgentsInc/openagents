@@ -33,6 +33,22 @@ Each command and file read shows as a row above the reply as it finishes.
 Press a row to open its input and output. The reply streams in as the model
 writes it.
 
+## Skills and installed commands
+
+Coder tells Microcoder which skills are installed for you: each folder under
+`~/.claude/skills` with a `SKILL.md`, by name, file and description (the
+first 16 skills, 300 characters of each description, 4,000 bytes in all).
+Microcoder reads a skill's file before work the skill covers. The note goes
+ahead of each message and is not shown.
+
+The commands Microcoder runs also find what is installed for you: Coder puts
+`~/.local/bin`, `/opt/homebrew/bin` and `/usr/local/bin` on the worker's
+`PATH`.
+
+So with the GameBuilder skill and command line installed
+(`scripts/install-cli.sh` in the GameBuilder repo), a message such as
+"List my GameBuilder levels" runs `gamebuilder list-levels`.
+
 ## How a message runs
 
 The app bundles the Microcoder worker (`coder/tui/mcworker.coax`) and starts

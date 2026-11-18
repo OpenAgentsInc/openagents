@@ -71,6 +71,7 @@ int cd_task(void *page, const char *session, const char *cwd, char *out, int cap
   CoderHost *c = page;
   return c && cap > 0 ? (int)coder_page_task(cd_state(c), cd_string(session), cd_string(cwd), (coax_v_u8){(uint8_t *)out, cap}) : 0;
 }
+void cd_skills(void *page, const char *note) { CoderHost *c = page; if (c) coder_page_skills(cd_state(c), cd_string(note)); }
 int cd_stop_line(char *out, int cap) { return cap > 0 ? (int)coder_page_stop_line((coax_v_u8){(uint8_t *)out, cap}) : 0; }
 int cd_forget_line(char *out, int cap) { return cap > 0 ? (int)coder_page_forget_line((coax_v_u8){(uint8_t *)out, cap}) : 0; }
 void cd_line(void *page, const char *line) { CoderHost *c = page; if (!c) return; coder_page_line(cd_state(c), cd_string(line)); cd_changed(c); }
