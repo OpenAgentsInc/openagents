@@ -1,0 +1,346 @@
+// A floating concrete hull: its shape, its mass ledger and its hydrostatics, in one place
+// (docs/research/ocean/slab-world-spec.md, section 3.1). SLAB's world (metaverse/slab-sim.coax),
+// its construction timelapse (metaverse/slab-construction.coax), its cards and its sliders all read
+// the hull from here, so no two of them can give a different depth, concrete volume, mass or ballast.
+//
+// The hull is two things, weighed apart:
+//   1. the watertight hull: closed concrete caissons (100 x 50 x 50 m for `prime`), each with its own
+//      bottom slab, top slab, walls and a web every `cell` metres, towed out and joined wall to wall,
+//      then its sea walls lined thicker from inside. It is all of the buoyancy, the compartments and
+//      the ballast.
+//   2. the upper structure: an outer wall, a column on every bulkhead crossing, girders and a deck
+//      slab that carry the city deck from the hull's top up to `deck` metres over the keel. It is not
+//      watertight and adds weight but no buoyancy.
+// Every procedure takes the shape, so a slider can ask for another length, beam, depth, wall or load
+// and read back the draft, the freeboard, the ballast left and the concrete.
+// Units: metres, cubic metres, kilograms, seconds. Heights are over the keel unless a name says
+// otherwise. Nothing here is a structural design: the thicknesses are planning values (the spec marks
+// each sourced or assumed).
+//   coax/bin/coax test metaverse/hull.coax
+
+HULL_SEA :: 1025.0;        // sea water, kg/m^3
+HULL_CONCRETE :: 2500.0;   // reinforced, prestressed concrete, kg/m^3
+HULL_G :: 9.81;
+HULL_PI :: 3.14159265358979;
+hull_hi :: (a: f64, b: f64) -> f64 { return ifx a > b then a else b; }
+hull_lo :: (a: f64, b: f64) -> f64 { return ifx a < b then a else b; }
+// How many whole parts of `part` metres fit `whole` (at least one).
+hull_count :: (whole: f64, part: f64) -> int {
+  if part <= 0 { return 1; }
+  n := cast(int) floor(whole / part + 0.5);
+  return ifx n < 1 then 1 else n;
+}
+
+// ---------------------------------------------------------------- the shape
+// The defaults are SLAB's `prime` hull (spec 3.1).
+HullShape :: struct {
+  l: f64 = 1000.0;          // length, m
+  b: f64 = 600.0;           // beam, m
+  hull: f64 = 50.0;         // the watertight hull's depth, keel to its top slab's upper face
+  deck: f64 = 143.0;        // the city deck over the keel; equal to `hull` when there is no upper structure
+  draft: f64 = 25.0;        // the design draft, held by ballast while any is left
+  corner: f64 = 1.5;        // plan corner radius
+  // the watertight hull's concrete
+  bottom: f64 = 1.5;        // bottom slab
+  top: f64 = 1.0;           // top slab (the hull's own deck)
+  wall: f64 = 1.5;          // the sea walls, once lined
+  web: f64 = 0.6;           // a caisson's own walls, and its webs
+  cell: f64 = 50.0;         // the bulkhead grid
+  unit_l: f64 = 100.0;      // a caisson's length (along the hull's length)
+  unit_b: f64 = 50.0;       // and its beam
+  // the upper structure, from the hull's top to the deck
+  upper_wall: f64 = 0.8;    // the outer wall above the hull
+  column: f64 = 15.0;       // each column's concrete in plan, m^2 (an 8 m square shaft, 0.5 m walls)
+  girder_w: f64 = 2.0;      // girders on every bulkhead line: width
+  girder_d: f64 = 3.0;      // and depth below the deck slab
+  deck_slab: f64 = 0.6;     // the deck slab, its secondary beams averaged in
+  // what it carries
+  topsides: f64 = 2.0e9;    // buildings, plant and equipment, kg
+  topsides_cg: f64 = 25.0;  // their centre of gravity over the deck, m
+  liquids: f64 = 0.5e9;     // process tanks, fuel, fresh water, kg
+  liquids_kg: f64 = 30.0;   // their centre of gravity over the keel, m
+}
+hull_prime :: () -> HullShape { s: HullShape; return s; }
+// The same hull with no upper structure: the hull's top slab is the deck.
+hull_bare :: (sh: HullShape) -> HullShape { o := sh; o.deck = o.hull; return o; }
+
+// The caissons along the length and across the beam, and the watertight hull's clear height.
+hull_cols :: (sh: HullShape) -> int { return hull_count(sh.l, sh.unit_l); }
+hull_rows :: (sh: HullShape) -> int { return hull_count(sh.b, sh.unit_b); }
+hull_units :: (sh: HullShape) -> int { return hull_cols(sh) * hull_rows(sh); }
+hull_clear :: (sh: HullShape) -> f64 { return hull_hi(sh.hull - sh.bottom - sh.top, 0); }
+// The upper structure's height (0 when the deck is the hull's top).
+hull_upper :: (sh: HullShape) -> f64 { return hull_hi(sh.deck - sh.hull, 0); }
+// The waterplane: the plan less its rounded corners.
+hull_awp :: (sh: HullShape) -> f64 { return sh.l * sh.b - (4.0 - HULL_PI) * sh.corner * sh.corner; }
+// One metre of immersion carries this much, kg.
+hull_per_metre :: (sh: HullShape) -> f64 { return HULL_SEA * hull_awp(sh); }
+
+// ---------------------------------------------------------------- one caisson
+// Every caisson is cast and towed alike: all four of its walls are `web` thick, and webs split it
+// into cells on the bulkhead grid, so two caissons meet with two walls back to back. A wall `wall`
+// thick on a tow would list an edge caisson and leave a corner one with no stability (the check
+// below), so the sea walls are lined to `wall` from inside the dry outer cells once the hull is joined.
+HullUnit :: struct {
+  l: f64; b: f64; h: f64;   // its outside size
+  plan: f64;                // its walls' and webs' concrete in plan, m^2
+  concrete: f64;            // m^3
+  mass: f64;                // its concrete, kg
+  kg: f64;                  // its concrete's centre of gravity over the keel
+}
+// The walls' and webs' concrete in plan for the caisson at (col, row): col 0 is the west end, row 0
+// the south side. `lined` gives its faces on the hull's outside the sea wall's thickness.
+hull_unit_plan :: (sh: HullShape, col: int, row: int, lined: bool) -> f64 {
+  cols := hull_cols(sh); rows := hull_rows(sh);
+  l := sh.l / f64(cols); b := sh.b / f64(rows);
+  sea := ifx lined then sh.wall else sh.web;
+  west := ifx col == 0 then sea else sh.web; east := ifx col == cols - 1 then sea else sh.web;
+  south := ifx row == 0 then sea else sh.web; north := ifx row == rows - 1 then sea else sh.web;
+  clear_l := hull_hi(l - west - east, 0); clear_b := hull_hi(b - south - north, 0);
+  // the webs inside: across the caisson (splitting its length) and along it (splitting its beam)
+  across := f64(hull_count(l, sh.cell) - 1); along := f64(hull_count(b, sh.cell) - 1);
+  plan := l * b - clear_l * clear_b + across * sh.web * clear_b + along * sh.web * hull_hi(clear_l - across * sh.web, 0);
+  return hull_lo(plan, l * b);
+}
+// A caisson as it is cast and towed.
+hull_caisson :: (sh: HullShape) -> HullUnit {
+  u: HullUnit;
+  u.l = sh.l / f64(hull_cols(sh)); u.b = sh.b / f64(hull_rows(sh)); u.h = sh.hull;
+  u.plan = hull_unit_plan(sh, hull_cols(sh) / 2, hull_rows(sh) / 2, false);
+  clear := hull_clear(sh);
+  area := u.l * u.b;
+  bottom := area * sh.bottom; top := area * sh.top; walls := u.plan * clear;
+  u.concrete = bottom + top + walls;
+  u.mass = u.concrete * HULL_CONCRETE;
+  if u.concrete > 0 { u.kg = (bottom * sh.bottom / 2.0 + top * (sh.hull - sh.top / 2.0) + walls * (sh.bottom + clear / 2.0)) / u.concrete; }
+  return u;
+}
+// A box afloat on its own (a caisson on tow): its draft, and its GM about its long axis.
+HullFloat :: struct { mass: f64; draft: f64; kg: f64; gm: f64; }
+hull_box_float :: (l: f64, b: f64, mass: f64, kg: f64) -> HullFloat {
+  f := HullFloat.{mass = mass, kg = kg};
+  if l <= 0 || b <= 0 || mass <= 0 { return f; }
+  f.draft = mass / (HULL_SEA * l * b);
+  f.gm = f.draft / 2.0 + b * b / (12.0 * f.draft) - kg;
+  return f;
+}
+// A caisson afloat with `ballast` kg of water whose centre is `ballast_kg` over the keel.
+hull_unit_float :: (u: HullUnit, ballast: f64, ballast_kg: f64) -> HullFloat {
+  mass := u.mass + ballast;
+  kg := ifx mass > 0 then (u.mass * u.kg + ballast * ballast_kg) / mass else 0.0;
+  return hull_box_float(u.l, u.b, mass, kg);
+}
+
+// ---------------------------------------------------------------- the ledger
+HullLedger :: struct {
+  // the watertight hull's concrete, m^3
+  bottom: f64; top: f64; walls: f64;   // its slabs, and its walls and webs as built
+  caissons: f64;                // cast ashore and towed: every caisson
+  lining: f64;                  // cast at sea: the sea walls thickened from inside
+  hull_concrete: f64;           // caissons + lining = bottom + top + walls
+  // the upper structure's concrete, m^3
+  upper_wall: f64; columns: f64; girders: f64; deck_slab: f64;
+  upper_concrete: f64;
+  concrete: f64;                // all of it, m^3
+  // masses, kg
+  hull_mass: f64; upper_mass: f64; concrete_mass: f64;
+  topsides: f64; liquids: f64;
+  ballast: f64;                 // sea water in the lower cells: what is left to trade for more load
+  mass: f64;                    // everything: the displacement
+  // afloat
+  draft: f64;                   // the design draft while ballast is left; deeper once it has run out
+  bare_draft: f64;              // the concrete alone
+  freeboard: f64;               // the watertight hull's top over the water
+  deck_height: f64;             // the city deck over the water
+  afloat: bool;                 // the watertight hull's top is over the water
+  per_metre: f64;               // kg for one more metre of draft
+  floor: f64;                   // the cells' floor area, m^2
+  ballast_depth: f64;           // the ballast's depth over the bottom slab, were it spread level
+  ballast_top: f64;             // and its surface over the keel
+  // stability
+  kg: f64; kb: f64; bm_t: f64; bm_l: f64; gm_t: f64; gm_l: f64;
+}
+hull_ledger :: (sh: HullShape) -> HullLedger {
+  o: HullLedger;
+  cols := hull_cols(sh); rows := hull_rows(sh);
+  area := sh.l * sh.b; clear := hull_clear(sh);
+  plan := 0.0;
+  for row: 0..<rows { for col: 0..<cols { plan += hull_unit_plan(sh, col, row, true); } }
+  o.bottom = area * sh.bottom; o.top = area * sh.top; o.walls = plan * clear;
+  o.hull_concrete = o.bottom + o.top + o.walls;
+  o.caissons = f64(cols * rows) * hull_caisson(sh).concrete;
+  o.lining = hull_hi(o.hull_concrete - o.caissons, 0);
+  o.floor = hull_hi(area - plan, 0);
+  // the upper structure: the deck slab, the outer wall under it, girders on every bulkhead line
+  // (a crossing counted once) and a column under each crossing
+  up := hull_upper(sh);
+  wall_h := 0.0; column_h := 0.0;
+  if up > 0 {
+    slab := hull_lo(sh.deck_slab, up); girder := hull_lo(sh.girder_d, up - slab);
+    wall_h = up - slab; column_h = up - slab - girder;
+    inner_l := hull_hi(sh.l - 2.0 * sh.upper_wall, 0); inner_b := hull_hi(sh.b - 2.0 * sh.upper_wall, 0);
+    lines_l := f64(hull_count(sh.b, sh.cell) - 1); lines_b := f64(hull_count(sh.l, sh.cell) - 1);
+    o.deck_slab = area * slab;
+    o.upper_wall = (area - inner_l * inner_b) * wall_h;
+    o.girders = ((lines_l * inner_l + lines_b * inner_b) * sh.girder_w - lines_l * lines_b * sh.girder_w * sh.girder_w) * girder;
+    o.columns = lines_l * lines_b * sh.column * column_h;
+  }
+  o.upper_concrete = o.upper_wall + o.columns + o.girders + o.deck_slab;
+  o.concrete = o.hull_concrete + o.upper_concrete;
+  o.hull_mass = o.hull_concrete * HULL_CONCRETE; o.upper_mass = o.upper_concrete * HULL_CONCRETE;
+  o.concrete_mass = o.hull_mass + o.upper_mass;
+  o.topsides = hull_hi(sh.topsides, 0); o.liquids = hull_hi(sh.liquids, 0);
+  // ballast is the trim variable: it fills what the design draft displaces beyond the fixed weights
+  o.per_metre = hull_per_metre(sh);
+  fixed := o.concrete_mass + o.topsides + o.liquids;
+  o.ballast = hull_hi(o.per_metre * sh.draft - fixed, 0);
+  o.mass = fixed + o.ballast;
+  if o.per_metre > 0 { o.draft = o.mass / o.per_metre; o.bare_draft = o.concrete_mass / o.per_metre; }
+  o.freeboard = sh.hull - o.draft;
+  o.deck_height = hull_hi(sh.deck, sh.hull) - o.draft;
+  o.afloat = o.freeboard > 0;
+  if o.floor > 0 { o.ballast_depth = o.ballast / HULL_SEA / o.floor; }
+  o.ballast_top = sh.bottom + o.ballast_depth;
+  // the centre of gravity, part by part
+  if o.mass > 0 {
+    slab := ifx up > 0 then hull_lo(sh.deck_slab, up) else 0.0;
+    moment := HULL_CONCRETE * (o.bottom * sh.bottom / 2.0 + o.top * (sh.hull - sh.top / 2.0) + o.walls * (sh.bottom + clear / 2.0)
+      + o.upper_wall * (sh.hull + wall_h / 2.0) + o.columns * (sh.hull + column_h / 2.0)
+      + o.girders * (sh.hull + column_h + (wall_h - column_h) / 2.0) + o.deck_slab * (sh.hull + up - slab / 2.0))
+      + o.topsides * (hull_hi(sh.deck, sh.hull) + sh.topsides_cg) + o.liquids * sh.liquids_kg
+      + o.ballast * (sh.bottom + o.ballast_depth / 2.0);
+    o.kg = moment / o.mass;
+  }
+  // a box's metacentres: KB = T / 2, BM = B^2 / 12T across and L^2 / 12T along
+  o.kb = o.draft / 2.0;
+  if o.draft > 0 { o.bm_t = sh.b * sh.b / (12.0 * o.draft); o.bm_l = sh.l * sh.l / (12.0 * o.draft); }
+  o.gm_t = o.kb + o.bm_t - o.kg; o.gm_l = o.kb + o.bm_l - o.kg;
+  return o;
+}
+
+// ---------------------------------------------------------------- periods and stiffness
+// The natural periods, with the added mass `ca` and a radius of gyration k (the simulation's are
+// k_roll = 0.35 B, k_pitch = 0.29 L, C_a 1.0 in heave and 0.3 in rotation: spec 4.2).
+hull_heave_period :: (sh: HullShape, led: HullLedger, ca: f64) -> f64 {
+  if led.per_metre <= 0 { return 0; }
+  return 2.0 * HULL_PI * sqrt(led.mass * (1.0 + ca) / (HULL_G * led.per_metre));
+}
+hull_rock_period :: (k: f64, gm: f64, ca: f64) -> f64 {
+  if gm <= 0 { return 0; }
+  return 2.0 * HULL_PI * k * sqrt((1.0 + ca) / (HULL_G * gm));
+}
+// The hull girder's second moment of area about its neutral axis for bending along its length, m^4:
+// the watertight hull's bottom and top slabs, its two outer walls and its lengthwise bulkheads (two
+// caisson walls at every seam, a web between). The upper structure is jointed and carries none of it.
+hull_section_i :: (sh: HullShape) -> f64 {
+  rows := hull_rows(sh);
+  lines := f64(hull_count(sh.b, sh.cell) - 1); seams := f64(rows - 1);
+  thick := 2.0 * sh.wall + seams * 2.0 * sh.web + hull_hi(lines - seams, 0) * sh.web;
+  d := sh.hull;
+  top := sh.b * sh.top; bottom := sh.b * sh.bottom; walls := thick * d;
+  if top + bottom + walls <= 0 { return 0; }
+  y := (top * (d - sh.top / 2.0) + bottom * sh.bottom / 2.0 + walls * d / 2.0) / (top + bottom + walls);
+  return top * (d - sh.top / 2.0 - y) * (d - sh.top / 2.0 - y) + bottom * (sh.bottom / 2.0 - y) * (sh.bottom / 2.0 - y)
+       + walls * (d / 2.0 - y) * (d / 2.0 - y) + walls * d * d / 12.0;
+}
+
+// ---------------------------------------------------------------- checks
+#test "prime's caissons: 120 of 100 x 50 x 50 m and 22,372 m^3 each; the lined hull is 2.82 million m^3" {
+  sh := hull_prime();
+  #assert hull_cols(sh) == 10 && hull_rows(sh) == 12 && hull_units(sh) == 120;
+  unit := hull_caisson(sh);
+  // 5,000 m^2 of slabs 2.5 m thick, and walls 0.6 m thick round it with one web: 207.84 m^2 by 47.5 m
+  #assert unit.l == 100 && unit.b == 50 && unit.h == 50;
+  #assert abs(unit.plan - 207.84) < 1e-9 && abs(unit.concrete - 22372.4) < 1e-6;
+  #assert abs(hull_unit_plan(sh, 0, 0, false) - unit.plan) < 1e-9 && hull_unit_plan(sh, 0, 0, true) > unit.plan;
+  led := hull_ledger(sh);
+  #assert abs(led.caissons - 120.0 * 22372.4) < 1e-3;                 // 2,684,688 m^3 cast ashore
+  // as built: slabs 1.5 million m^3; in plan a 1.5 m ring (4,791 m^2), 11 lengthwise seams of two
+  // 0.6 m walls, 9 crosswise seams and 10 webs (22,968.24 m^2), all 47.5 m high
+  #assert abs(led.bottom - 900000.0) < 1e-6 && abs(led.top - 600000.0) < 1e-6;
+  #assert abs(led.walls - (4791.0 + 22968.24) * 47.5) < 1e-3;
+  #assert abs(led.hull_concrete - 2818563.9) < 0.01;
+  // the lining: the ring's 0.9 m more, 2,818.44 m^2 by 47.5 m
+  #assert abs(led.lining - 2818.44 * 47.5) < 1e-3 && abs(led.caissons + led.lining - led.hull_concrete) < 1e-6;
+}
+#test "prime's upper structure: 1.01 million m^3 carrying the deck 93 m over the hull's top" {
+  sh := hull_prime(); led := hull_ledger(sh);
+  #assert hull_upper(sh) == 93;
+  #assert abs(led.deck_slab - 360000.0) < 1e-6;                       // 600,000 m^2 x 0.6 m
+  #assert abs(led.upper_wall - 2557.44 * 92.4) < 1e-3;                // a 0.8 m ring under the slab
+  #assert abs(led.girders - (22352.0 * 2.0 - 209.0 * 4.0) * 3.0) < 1e-3;   // 11 + 19 lines, 209 crossings once
+  #assert abs(led.columns - 209.0 * 15.0 * 89.4) < 1e-3;
+  #assert abs(led.upper_concrete - 1008180.456) < 0.01;
+  #assert abs(led.concrete - 3826744.356) < 0.02;
+  // lighter than the hull it stands on, and lighter than raising the cellular hull to the deck
+  #assert led.upper_mass < led.hull_mass * 0.4;
+  tall := sh; tall.hull = 143;
+  #assert hull_ledger(tall).concrete > led.concrete;
+}
+#test "prime's mass budget closes at its 25 m draft with ballast left and positive GM both ways" {
+  sh := hull_prime(); led := hull_ledger(sh);
+  #assert abs(led.concrete_mass / 1e9 - 9.567) < 0.001;               // 7.05 Mt of hull, 2.52 Mt above it
+  #assert abs(led.hull_mass / 1e9 - 7.046) < 0.001 && abs(led.upper_mass / 1e9 - 2.520) < 0.001;
+  #assert abs(led.mass / 1e9 - 15.375) < 0.001;                        // 1,000 x 600 x 25 m of sea water
+  #assert abs(led.concrete_mass + led.topsides + led.liquids + led.ballast - led.mass) < 1.0;
+  #assert abs(led.ballast / 1e9 - 3.308) < 0.001;
+  #assert abs(led.draft - 25.0) < 1e-9 && abs(led.freeboard - 25.0) < 1e-9 && abs(led.deck_height - 118.0) < 1e-9 && led.afloat;
+  #assert abs(led.per_metre / 1e6 - 615.0) < 0.01;                     // 615,000 t a metre
+  #assert abs(led.bare_draft - 15.56) < 0.01;
+  // the ballast lies 5.6 m deep on the bottom slab
+  #assert abs(led.ballast_depth - 5.64) < 0.01 && abs(led.ballast_top - 7.14) < 0.01;
+  #assert abs(led.kg - 53.5) < 0.5;
+  #assert abs(led.kb - 12.5) < 1e-9 && abs(led.bm_t - 1200.0) < 1e-6 && abs(led.bm_l - 3333.33) < 0.01;
+  #assert led.gm_t > 1100 && led.gm_l > 3200 && abs(led.gm_t - (12.5 + 1200.0 - led.kg)) < 1e-9;
+}
+#test "more load trades against ballast, then sinks the hull; a thicker wall costs ballast" {
+  sh := hull_prime(); base := hull_ledger(sh);
+  // every tonne of topsides is a tonne of ballast pumped out, at the same draft
+  more := sh; more.topsides = 4.0e9;
+  a := hull_ledger(more);
+  #assert abs(a.draft - 25.0) < 1e-9 && abs(base.ballast - a.ballast - 2.0e9) < 1.0 && a.kg > base.kg;
+  // past the ballast the draft grows by a metre every 615,000 t
+  heavy := sh; heavy.topsides = 6.0e9;
+  b := hull_ledger(heavy);
+  #assert b.ballast == 0 && b.draft > 25.0 && abs(b.draft - (b.concrete_mass + 6.5e9) / b.per_metre) < 1e-9;
+  #assert b.deck_height < 118.0 && b.afloat;
+  // far too much: the hull's top goes under
+  sunk := sh; sunk.topsides = 30.0e9;
+  #assert !hull_ledger(sunk).afloat;
+  thick := sh; thick.wall = 3.0;
+  c := hull_ledger(thick);
+  #assert c.concrete > base.concrete && c.ballast < base.ballast && c.bare_draft > base.bare_draft;
+  // a longer, wider hull displaces and weighs more, and its caissons still sum to it
+  big := sh; big.l = 2000; big.b = 1000;
+  d := hull_ledger(big);
+  #assert hull_units(big) == 400 && d.mass > 3.0 * base.mass && d.per_metre > 3.0 * base.per_metre;
+  // with no upper structure the hull's top is the deck
+  bare := hull_ledger(hull_bare(sh));
+  #assert bare.upper_concrete == 0 && abs(bare.concrete - base.hull_concrete) < 1e-6 && abs(bare.deck_height - 25.0) < 1e-9 && bare.ballast > base.ballast;
+}
+#test "a 50 m caisson tows upright; a lined or a 143 m one would not" {
+  sh := hull_prime();
+  tow := hull_unit_float(hull_caisson(sh), 3.0e6, 1.5);
+  #assert abs(tow.draft - 11.49873) < 0.0001 && abs(tow.gm - 2.47775) < 0.0001;
+  // a corner caisson cast with its two 1.5 m sea walls: 339.33 m^2 in plan, deeper and top-heavy
+  lined := hull_caisson(sh);
+  lined.plan = hull_unit_plan(sh, 0, 0, true);
+  #assert abs(lined.plan - 339.33) < 0.01;
+  walls := lined.plan * 47.5;
+  lined.concrete = 12500.0 + walls; lined.mass = lined.concrete * HULL_CONCRETE;
+  lined.kg = (7500.0 * 0.75 + 5000.0 * 49.5 + walls * 25.25) / lined.concrete;
+  corner := hull_unit_float(lined, 3.0e6, 1.5);
+  #assert corner.draft > 14.5 && corner.gm < 0;
+  // a caisson cast to the deck's 143 m
+  tall := sh; tall.hull = 143;
+  high := hull_unit_float(hull_caisson(tall), 3.0e6, 1.5);
+  #assert high.draft > 20 && high.gm < 0;
+}
+#test "periods and the hull girder" {
+  sh := hull_prime(); led := hull_ledger(sh);
+  // heave: 2 pi sqrt(T (1 + Ca) / g), 10.0 s bare and 14.2 s with Ca = 1
+  #assert abs(hull_heave_period(sh, led, 0) - 10.03) < 0.01 && abs(hull_heave_period(sh, led, 1) - 14.18) < 0.01;
+  #assert abs(hull_rock_period(0.35 * sh.b, led.gm_t, 0) - 12.4) < 0.1 && abs(hull_rock_period(0.29 * sh.l, led.gm_l, 0) - 10.1) < 0.1;
+  // the 50 m hull girder: about 1.04 million m^4
+  #assert abs(hull_section_i(sh) / 1e6 - 1.04) < 0.01;
+}
