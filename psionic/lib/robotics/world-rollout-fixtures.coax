@@ -1,0 +1,84 @@
+#load "world-rollout-types.coax";
+
+wr_default_config :: ()->WrConfig {
+  return WrConfig.{
+    horizon=4,
+    dt=0.05,
+    spring=4.0,
+    damping=0.4,
+    force_limit=2.0,
+    position_limit=0.5,
+    velocity_limit=2.5,
+    max_episode_steps=3,
+    obs_clip=5.0,
+    actor_pos=-1.2,
+    actor_vel=-0.45,
+    actor_bias=0.0,
+    log_std=-0.7,
+    value_pos2=-0.8,
+    value_vel2=-0.2,
+    value_bias=0.5,
+    pos_weight=1.0,
+    vel_weight=0.1,
+    force_weight=0.05,
+    alive_bonus=0.25,
+    gamma=0.99,
+    gae_lambda=0.95,
+  };
+}
+
+wr_default_stats :: ()->RnSnapshot {
+  s := RnSnapshot.{channels=2};
+  s.moments[0] = SmMoments.{count=4, mean=0.05, m2=0.36};
+  s.moments[1] = SmMoments.{count=4, mean=-0.02, m2=0.64};
+  return s;
+}
+
+wr_default_worlds :: ()->[3]WrWorld {
+  return [3]WrWorld.[
+    WrWorld.{rng=CrSeed.{seed=101, counter=0}, episode_step=0, state=OsState.{position=0.18, velocity=-0.10}, reset_state=OsState.{position=0.10, velocity=0.0}},
+    WrWorld.{rng=CrSeed.{seed=202, counter=0}, episode_step=1, state=OsState.{position=-0.22, velocity=0.15}, reset_state=OsState.{position=-0.10, velocity=0.0}},
+    WrWorld.{rng=CrSeed.{seed=303, counter=0}, episode_step=0, state=OsState.{position=0.49, velocity=0.90}, reset_state=OsState.{position=0.05, velocity=0.0}},
+  ];
+}
+
+wr_world_poison :: ()->WrWorld {
+  return WrWorld.{
+    rng=CrSeed.{seed=777, counter=888},
+    episode_step=99,
+    state=OsState.{position=42.5, velocity=-42.5},
+    reset_state=OsState.{position=12.5, velocity=-12.5},
+  };
+}
+
+wr_step_poison :: ()->WrStep {
+  s: WrStep;
+  s.world = -7;
+  s.step = -8;
+  s.obs = OsState.{position=101, velocity=102};
+  s.norm_obs = [2]f64.[103, 104];
+  s.mean = 105;
+  s.sampled_action = 106;
+  s.applied_force = 107;
+  s.z = 108;
+  s.logp = 109;
+  s.reward = 110;
+  s.value = 111;
+  s.bootstrap_value = 112;
+  s.next_state = OsState.{position=113, velocity=114};
+  s.live_state = OsState.{position=115, velocity=116};
+  s.terminated = 7;
+  s.truncated = 8;
+  s.delta = 117;
+  s.advantage = 118;
+  s.lambda_return = 119;
+  s.bootstrap = 9;
+  s.trace = 10;
+  return s;
+}
+
+wr_digest_poison :: ()->WrDigest {
+  d: WrDigest;
+  for i: 0..<WR_DIGEST_BYTES { d.bytes[i] = cast(u8)(200 + i); }
+  return d;
+}

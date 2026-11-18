@@ -1,0 +1,97 @@
+// Independent-world rollout batch contract for Chapter 259 (RB-03b).
+// Frozen running statistics normalize each world's observations during collection;
+// post-rollout Welford merge advances statistics only after every world finishes.
+#load "../physics/oscillator-types.coax";
+#load "../running-stats-types.coax";
+#load "locomotion/gaussian-types.coax";
+
+WR_MAX_WORLDS :: 16;
+WR_MAX_HORIZON :: 64;
+WR_MAX_STEPS :: 512;
+WR_CHANNELS :: 2;
+WR_DIGEST_BYTES :: 32;
+WR_TAG_WORLD :: "psionic.robotics.world-rollout.v1";
+WR_TAG_BATCH :: "psionic.robotics.world-rollout.v1.batch";
+
+WrStatus :: enum u8 {
+  ok;
+  shape;
+  capacity;
+  overlap;
+  number;
+  domain;
+  stats;
+  exhausted;
+  state;
+}
+
+WrConfig :: struct {
+  horizon: int;
+  dt: f64;
+  spring: f64;
+  damping: f64;
+  force_limit: f64;
+  position_limit: f64;
+  velocity_limit: f64;
+  max_episode_steps: int;
+  obs_clip: f64;
+  actor_pos: f64;
+  actor_vel: f64;
+  actor_bias: f64;
+  log_std: f64;
+  value_pos2: f64;
+  value_vel2: f64;
+  value_bias: f64;
+  pos_weight: f64;
+  vel_weight: f64;
+  force_weight: f64;
+  alive_bonus: f64;
+  gamma: f64;
+  gae_lambda: f64;
+}
+
+WrWorld :: struct {
+  rng: CrSeed;
+  episode_step: int;
+  state: OsState;
+  reset_state: OsState;
+}
+
+WrDigest :: struct {
+  bytes: [32] u8;
+}
+
+WrStep :: struct {
+  world: int;
+  step: int;
+  obs: OsState;
+  norm_obs: [2] f64;
+  mean: f64;
+  sampled_action: f64;
+  applied_force: f64;
+  z: f64;
+  logp: f64;
+  reward: f64;
+  value: f64;
+  bootstrap_value: f64;
+  next_state: OsState;
+  live_state: OsState;
+  terminated: int;
+  truncated: int;
+  delta: f64;
+  advantage: f64;
+  lambda_return: f64;
+  bootstrap: int;
+  trace: int;
+}
+
+WrResult :: struct {
+  status: WrStatus;
+  worlds: int;
+  horizon: int;
+  written: int;
+  terminated_count: int;
+  truncated_count: int;
+  next_stats: RnSnapshot;
+  batch_digest: WrDigest;
+}

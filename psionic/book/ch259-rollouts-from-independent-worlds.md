@@ -1,9 +1,11 @@
 # 259. Rollouts from independent worlds
 
 > **Status: partly implemented.** The CPU `running-statistics-f64-v1`
-> component below is runnable and independently checked. Transition collection,
-> actor/normalizer version fencing, counter allocation and complete rollout
-> resume remain to implement. No robot or new learning result is qualified.
+> component and a bounded F64 transition collector on the oscillator plant are
+> runnable and checked. Actor/normalizer version fencing across PPO epochs,
+> declared counter ranges for reset and randomization, delayed actions,
+> mid-rollout checkpoint and resume, and a row codec remain to implement. No
+> robot or new learning result is qualified.
 
 Training needs more than arrays containing observations and rewards. It needs
 the observation that produced an action, the exact old policy distribution,
@@ -127,6 +129,45 @@ shape, exhausted counters, real nonfinite active/inactive values and aliasing.
 The [receipt](../../docs/verification/robotics-running-stats-rb03-2026-11-15.md)
 records the observed checks and remaining collector boundary. No persistent
 snapshot codec or F32 neural normalization claim follows from this F64 component.
+
+## The oscillator collector now runs
+
+[`world-rollout.coax`](../lib/robotics/world-rollout.coax) collects 1–16
+oscillator worlds for 1–64 steps, at most 512 rows. It reuses `os_step`,
+`rgp_sample`/`rgp_density`, `rn_apply`/`rn_push`, `rga_returns_raw` and
+tagged SHA-256; it adds no second plant, sampler or GAE recurrence. Each world
+owns its counter-RNG stream, episode cursor and reset state. The caller's
+snapshot normalizes every step and stays frozen; the raw observations are
+pushed into a separate staged snapshot that the result returns. Each row keeps
+the pre-reset next state, the bootstrap value (zero only on a true terminal),
+the old log probability and the GAE outputs. A truncated row keeps its
+final-state value; the next row starts from the reset state.
+
+The collector admits the configuration, every world and the snapshot before
+it steps any world, and publishes worlds, rows and digests only after GAE and
+the statistics push succeed. Each refusal names the fault and leaves every
+output untouched. The checks run a three-world batch and each world alone and
+require identical rows and per-world digests. They move one world so that it
+terminates early and require the other worlds' rows and digests to stay
+unchanged. They also cover the exact admission bounds.
+
+An independent Python oracle,
+[`world_rollout_oracle.py`](../tests/robotics/world_rollout_oracle.py),
+recomputes the trajectory, GAE, Welford update and digests, and wrote the
+frozen vectors in
+[`world-rollout-golden.coax`](../lib/robotics/world-rollout-golden.coax).
+Python's `log`, `cos` and `exp` come from host libm, while Coax uses its fixed
+fdlibm profile, so floats are compared within 8 units in the last place; on
+the reference Mac the largest gap is 3. Flags, counters and digest bytes match
+exactly.
+
+```shell
+psionic/tests/robotics/check.sh world-rollout
+```
+
+Only the action-noise draws use the counter stream; resets copy a fixed
+state. This is an analytic plant with a linear actor and a quadratic critic,
+not a learning result.
 
 ## Frozen normalization and independent randomness
 

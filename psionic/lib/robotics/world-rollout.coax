@@ -1,0 +1,283 @@
+// Independent-world rollout batch collector for Chapter 259 (RB-03b).
+// Each world carries its own oscillator state, episode step, reset state, and
+// counter-based RNG stream. Pre-rollout running statistics stay frozen during
+// collection so world trajectories never couple through normalization; raw
+// observations merge into running statistics only after all worlds finish.
+#load "world-rollout-types.coax";
+#load "../physics/oscillator.coax";
+#load "../running-stats.coax";
+#load "locomotion/gaussian-sampling.coax";
+#load "locomotion/gae.coax";
+#load "../../../coax/lib/clip.coax";
+#load "../../../coax/lib/crypto/sha256.coax";
+#authority;
+#load "world-rollout-checks.coax" #test;
+
+wr_canonical_bits :: (value:f64)->u64 #effects(all) {
+  bits:=f64_bits(value);
+  if bits==0x8000000000000000 {return 0;}
+  return bits;
+}
+
+wr_word :: (word:u64,low:f64,high:f64)->WrStatus #effects(all) {
+  if !rgp_finite(word) {return WrStatus.number;}
+  value:=f64_from_bits(word);
+  if value<low || value>high {return WrStatus.domain;}
+  return WrStatus.ok;
+}
+
+wr_config_admit :: (cfg:WrConfig)->WrStatus #effects(all) {
+  if cfg.horizon<1 || cfg.horizon>WR_MAX_HORIZON {return WrStatus.shape;}
+  words:=[20]u64.[
+    f64_bits(cfg.dt),f64_bits(cfg.spring),f64_bits(cfg.damping),
+    f64_bits(cfg.force_limit),f64_bits(cfg.position_limit),f64_bits(cfg.velocity_limit),
+    f64_bits(cfg.obs_clip),
+    f64_bits(cfg.actor_pos),f64_bits(cfg.actor_vel),f64_bits(cfg.actor_bias),f64_bits(cfg.log_std),
+    f64_bits(cfg.value_pos2),f64_bits(cfg.value_vel2),f64_bits(cfg.value_bias),
+    f64_bits(cfg.pos_weight),f64_bits(cfg.vel_weight),f64_bits(cfg.force_weight),f64_bits(cfg.alive_bonus),
+    f64_bits(cfg.gamma),f64_bits(cfg.gae_lambda)
+  ];
+  low:=[20]f64.[
+    1e-6,1e-6,0,
+    1e-6,1e-6,1e-6,
+    0.1,
+    -4,-4,-4,-4,
+    -10,-10,-10,
+    0,0,0,-10,
+    0,0
+  ];
+  high:=[20]f64.[
+    0.25,1000,1000,
+    100,100,100,
+    16,
+    4,4,4,2,
+    10,10,10,
+    100,100,100,10,
+    1,1
+  ];
+  for i:0..<20 {
+    st:=wr_word(words[i],low[i],high[i]);
+    if st!=WrStatus.ok {return st;}
+  }
+  if cfg.max_episode_steps<1 || cfg.max_episode_steps>4096 {return WrStatus.domain;}
+  return WrStatus.ok;
+}
+
+wr_world_admit :: (cfg:WrConfig,w:WrWorld)->WrStatus #effects(all) {
+  words:=[4]u64.[
+    f64_bits(w.state.position),f64_bits(w.state.velocity),
+    f64_bits(w.reset_state.position),f64_bits(w.reset_state.velocity)
+  ];
+  caps:=[4]f64.[cfg.position_limit,cfg.velocity_limit,cfg.position_limit,cfg.velocity_limit];
+  for i:0..<4 {
+    st:=wr_word(words[i],-caps[i],caps[i]);
+    if st!=WrStatus.ok {return st;}
+  }
+  if w.episode_step<0 || w.episode_step>=cfg.max_episode_steps {return WrStatus.domain;}
+  need:=cast(u64)(2*cfg.horizon);
+  if w.rng.counter>18446744073709551615-need {return WrStatus.exhausted;}
+  return WrStatus.ok;
+}
+
+wr_world_digest_owned :: (w:WrWorld)->WrDigest #effects(all) {
+  payload:[56]u8;
+  _=cb_store_le64(payload[..],0,w.rng.seed);
+  _=cb_store_le64(payload[..],8,w.rng.counter);
+  _=cb_store_le64(payload[..],16,cast(u64)w.episode_step);
+  _=cb_store_le64(payload[..],24,wr_canonical_bits(w.state.position));
+  _=cb_store_le64(payload[..],32,wr_canonical_bits(w.state.velocity));
+  _=cb_store_le64(payload[..],40,wr_canonical_bits(w.reset_state.position));
+  _=cb_store_le64(payload[..],48,wr_canonical_bits(w.reset_state.velocity));
+  out:WrDigest;
+  _=sha256_tagged_checked(WR_TAG_WORLD,payload[..],out.bytes[..],false);
+  return out;
+}
+
+wr_world_digest :: (w:WrWorld,out:[]WrDigest)->WrStatus #export_c #effects(all) {
+  if out.count!=1 {return WrStatus.shape;}
+  words:=[4]u64.[
+    f64_bits(w.state.position),f64_bits(w.state.velocity),
+    f64_bits(w.reset_state.position),f64_bits(w.reset_state.velocity)
+  ];
+  for i:0..<4 {
+    if !rgp_finite(words[i]) {return WrStatus.number;}
+  }
+  if w.episode_step<0 {return WrStatus.domain;}
+  out[0]=wr_world_digest_owned(w);
+  return WrStatus.ok;
+}
+
+wr_normalize_obs_owned :: (stats:RnSnapshot,s:OsState,clip_obs:f64)->[2]f64 #effects(all) {
+  raw:=[2]f64.[s.position,s.velocity];
+  scaled:[2]f64;
+  _=rn_apply(stats,raw[..],scaled[..]);
+  c0:=scalar_clip_f64(scaled[0],-clip_obs,clip_obs);
+  c1:=scalar_clip_f64(scaled[1],-clip_obs,clip_obs);
+  return [2]f64.[c0.value,c1.value];
+}
+
+wr_actor_mean_owned :: (cfg:WrConfig,norm:[2]f64)->f64 #effects(all) {
+  return (cfg.actor_pos*norm[0]+cfg.actor_vel*norm[1])+cfg.actor_bias;
+}
+
+wr_critic_value_owned :: (cfg:WrConfig,norm:[2]f64)->f64 #effects(all) {
+  return (cfg.value_pos2*(norm[0]*norm[0])+cfg.value_vel2*(norm[1]*norm[1]))+cfg.value_bias;
+}
+
+// A state strictly outside either limit ends the episode; a state on the limit continues.
+wr_terminal :: (cfg:WrConfig,s:OsState)->int #effects(all) {
+  if abs(s.position)>cfg.position_limit || abs(s.velocity)>cfg.velocity_limit {return 1;}
+  return 0;
+}
+
+wr_reward_owned :: (cfg:WrConfig,next_s:OsState,force:f64,terminated:int)->f64 #effects(all) {
+  pos_cost:=cfg.pos_weight*(next_s.position*next_s.position);
+  vel_cost:=cfg.vel_weight*(next_s.velocity*next_s.velocity);
+  act_cost:=cfg.force_weight*(force*force);
+  bonus:=ifx terminated==0 then cfg.alive_bonus else 0.0;
+  return bonus-((pos_cost+vel_cost)+act_cost);
+}
+
+wr_collect :: (
+  cfg:WrConfig,
+  stats:RnSnapshot,
+  worlds_in:[]WrWorld,
+  worlds_out:[]WrWorld,
+  steps_out:[]WrStep,
+  digests_out:[]WrDigest,
+  overlap:bool
+)->WrResult #export_c #effects(all) {
+  st:=wr_config_admit(cfg);
+  if st!=WrStatus.ok {return WrResult.{status=st};}
+  nw:=worlds_in.count;
+  if nw<1 || nw>WR_MAX_WORLDS {return WrResult.{status=WrStatus.shape};}
+  total:=nw*cfg.horizon;
+  if total>WR_MAX_STEPS {return WrResult.{status=WrStatus.shape};}
+  if worlds_out.count<nw || steps_out.count<total || digests_out.count<nw {return WrResult.{status=WrStatus.capacity};}
+  if overlap {return WrResult.{status=WrStatus.overlap};}
+  // Admit the frozen snapshot before any world steps.
+  if stats.channels!=WR_CHANNELS {return WrResult.{status=WrStatus.stats};}
+  if rn_check(stats)!=RnStatus.ok {return WrResult.{status=WrStatus.stats};}
+  for i:0..<nw {
+    wst:=wr_world_admit(cfg,worlds_in[i]);
+    if wst!=WrStatus.ok {return WrResult.{status=wst};}
+  }
+  params:=OsParams.{spring=cfg.spring,damping=cfg.damping};
+  staged_worlds:[WR_MAX_WORLDS]WrWorld;
+  for w:0..<nw {staged_worlds[w]=worlds_in[w];}
+  staged_steps:[WR_MAX_STEPS]WrStep;
+  gae_in:[WR_MAX_STEPS]RgaStep;
+  gae_out:[WR_MAX_STEPS]RgaOutput;
+  raw_obs:[WR_MAX_STEPS*WR_CHANNELS]f64;
+  obs_cursor:=0;
+  term_count:=0;
+  trunc_count:=0;
+  for h:0..<cfg.horizon {
+    for w:0..<nw {
+      cur:=staged_worlds[w];
+      raw_obs[obs_cursor*2]=cur.state.position;
+      raw_obs[obs_cursor*2+1]=cur.state.velocity;
+      obs_cursor+=1;
+      norm:=wr_normalize_obs_owned(stats,cur.state,cfg.obs_clip);
+      mean:=wr_actor_mean_owned(cfg,norm);
+      val:=wr_critic_value_owned(cfg,norm);
+      draw:[1]RgpDraw;
+      _=rgp_sample_raw(cur.rng,mean,cfg.log_std,draw[..]);
+      dens:[1]RgpDensity;
+      if rgp_density_raw(mean,cfg.log_std,draw[0].action.value,dens[..])!=RgpStatus.ok {
+        return WrResult.{status=WrStatus.state};
+      }
+      clipped_force:=scalar_clip_f64(draw[0].action.value,-cfg.force_limit,cfg.force_limit);
+      step_phys:=os_step(params,cur.state,clipped_force.value,cfg.dt);
+      if step_phys.status!=OsStatus.ok {return WrResult.{status=WrStatus.state};}
+      next_ep:=cur.episode_step+1;
+      terminated:=wr_terminal(cfg,step_phys.state);
+      truncated:=ifx terminated==0 && next_ep>=cfg.max_episode_steps then 1 else 0;
+      term_count+=terminated;
+      trunc_count+=truncated;
+      rew:=wr_reward_owned(cfg,step_phys.state,clipped_force.value,terminated);
+      boot_val:=0.0;
+      if terminated==0 {
+        next_norm:=wr_normalize_obs_owned(stats,step_phys.state,cfg.obs_clip);
+        boot_val=wr_critic_value_owned(cfg,next_norm);
+      }
+      live_state:=step_phys.state;
+      live_ep:=next_ep;
+      if terminated==1 || truncated==1 {
+        live_state=cur.reset_state;
+        live_ep=0;
+      }
+      cur.state=live_state;
+      cur.rng=draw[0].next;
+      cur.episode_step=live_ep;
+      staged_worlds[w]=cur;
+      idx:=w*cfg.horizon+h;
+      rec:WrStep;
+      rec.world=w;
+      rec.step=h;
+      rec.obs=worlds_in[w].state;
+      if h>0 {rec.obs=staged_steps[idx-1].live_state;}
+      rec.norm_obs=norm;
+      rec.mean=mean;
+      rec.sampled_action=draw[0].action.value;
+      rec.applied_force=clipped_force.value;
+      rec.z=draw[0].z.value;
+      rec.logp=dens[0].logp.value;
+      rec.reward=rew;
+      rec.value=val;
+      rec.bootstrap_value=boot_val;
+      rec.next_state=step_phys.state;
+      rec.live_state=live_state;
+      rec.terminated=terminated;
+      rec.truncated=truncated;
+      staged_steps[idx]=rec;
+      gs:RgaStep;
+      gs.reward.value=rew;
+      gs.current_value.value=val;
+      gs.next_value.value=boot_val;
+      gs.terminated=terminated;
+      gs.truncated=truncated;
+      gae_in[idx]=gs;
+    }
+  }
+  if rga_returns_raw(nw,cfg.horizon,cfg.gamma,cfg.gae_lambda,gae_in[0..<total],gae_out[0..<total])!=RgaStatus.ok {
+    return WrResult.{status=WrStatus.state};
+  }
+  next_stats:[1]RnSnapshot;
+  if rn_push(stats,total,raw_obs[0..<total*WR_CHANNELS],next_stats[..])!=RnStatus.ok {
+    return WrResult.{status=WrStatus.stats};
+  }
+  staged_digests:[WR_MAX_WORLDS]WrDigest;
+  batch_bytes:[WR_MAX_WORLDS*WR_DIGEST_BYTES]u8;
+  for w:0..<nw {
+    d:=wr_world_digest_owned(staged_worlds[w]);
+    staged_digests[w]=d;
+    for b:0..<WR_DIGEST_BYTES {batch_bytes[w*WR_DIGEST_BYTES+b]=d.bytes[b];}
+  }
+  batch_digest:WrDigest;
+  _=sha256_tagged_checked(WR_TAG_BATCH,batch_bytes[0..<nw*WR_DIGEST_BYTES],batch_digest.bytes[..],false);
+  for w:0..<nw {
+    worlds_out[w]=staged_worlds[w];
+    digests_out[w]=staged_digests[w];
+  }
+  for i:0..<total {
+    rec:=staged_steps[i];
+    g:=gae_out[i];
+    rec.delta=g.delta.value;
+    rec.advantage=g.advantage.value;
+    rec.lambda_return=g.lambda_return.value;
+    rec.bootstrap=g.bootstrap;
+    rec.trace=g.trace;
+    steps_out[i]=rec;
+  }
+  return WrResult.{
+    status=WrStatus.ok,
+    worlds=nw,
+    horizon=cfg.horizon,
+    written=total,
+    terminated_count=term_count,
+    truncated_count=trunc_count,
+    next_stats=next_stats[0],
+    batch_digest=batch_digest,
+  };
+}

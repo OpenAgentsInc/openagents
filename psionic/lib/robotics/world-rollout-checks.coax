@@ -1,0 +1,253 @@
+#load "world-rollout-fixtures.coax";
+
+#test "independent worlds match single-world trajectories, digests, and reset boundaries" {
+  cfg:=wr_default_config();
+  stats:=wr_default_stats();
+  worlds:=wr_default_worlds();
+  w_out:[4]WrWorld;
+  s_out:[13]WrStep;
+  d_out:[4]WrDigest;
+  w_out[3]=wr_world_poison();
+  s_out[12]=wr_step_poison();
+  d_out[3]=wr_digest_poison();
+  res:=wr_collect(cfg,stats,worlds[..],w_out[..],s_out[..],d_out[..],false);
+  #assert res.status==WrStatus.ok && res.worlds==3 && res.horizon==4 && res.written==12;
+  #assert res.terminated_count>0 && res.truncated_count>0;
+  #assert res.next_stats.moments[0].count==16 && res.next_stats.moments[1].count==16;
+  #assert w_out[3].episode_step==99 && s_out[12].world==-7 && d_out[3].bytes[0]==200;
+  for w:0..<3 {
+    sw_in:=[1]WrWorld.[worlds[w]];
+    sw_out:[1]WrWorld;
+    ss_out:[4]WrStep;
+    sd_out:[1]WrDigest;
+    single:=wr_collect(cfg,stats,sw_in[..],sw_out[..],ss_out[..],sd_out[..],false);
+    #assert single.status==WrStatus.ok;
+    for b:0..<WR_DIGEST_BYTES {#assert sd_out[0].bytes[b]==d_out[w].bytes[b];}
+    for h:0..<4 {
+      a:=ss_out[h];
+      m:=s_out[w*4+h];
+      #assert wr_canonical_bits(a.obs.position)==wr_canonical_bits(m.obs.position);
+      #assert wr_canonical_bits(a.norm_obs[0])==wr_canonical_bits(m.norm_obs[0]);
+      #assert wr_canonical_bits(a.sampled_action)==wr_canonical_bits(m.sampled_action);
+      #assert wr_canonical_bits(a.applied_force)==wr_canonical_bits(m.applied_force);
+      #assert wr_canonical_bits(a.reward)==wr_canonical_bits(m.reward);
+      #assert wr_canonical_bits(a.delta)==wr_canonical_bits(m.delta);
+      #assert wr_canonical_bits(a.advantage)==wr_canonical_bits(m.advantage);
+      #assert wr_canonical_bits(a.lambda_return)==wr_canonical_bits(m.lambda_return);
+      #assert a.terminated==m.terminated && a.truncated==m.truncated;
+      #assert a.bootstrap==m.bootstrap && a.trace==m.trace;
+    }
+  }
+}
+
+#test "wr_world_digest validates inputs and signed-zero canonicalization" {
+  worlds:=wr_default_worlds();
+  out:[1]WrDigest;
+  #assert wr_world_digest(worlds[0],out[..])==WrStatus.ok;
+  two:[2]WrDigest;
+  #assert wr_world_digest(worlds[0],out[0..<0])==WrStatus.shape;
+  #assert wr_world_digest(worlds[0],two[..])==WrStatus.shape;
+  neg:=worlds[0];
+  neg.state.position=0.0;
+  neg.state.velocity=-0.0;
+  pos:=neg;
+  pos.state.velocity=0.0;
+  dn:[1]WrDigest;
+  dp:[1]WrDigest;
+  #assert wr_world_digest(neg,dn[..])==WrStatus.ok && wr_world_digest(pos,dp[..])==WrStatus.ok;
+  for b:0..<WR_DIGEST_BYTES {#assert dn[0].bytes[b]==dp[0].bytes[b];}
+}
+
+#load "world-rollout-golden.coax";
+
+// Coax evaluates sin/cos/exp/log with its fixed fdlibm profile; the Python
+// oracle uses host libm. Floats agree within WR_ORACLE_ULPS units in the last
+// place; flags, counters and digests agree exactly.
+WR_ORACLE_ULPS :: 8;
+
+wr_near :: (value:f64,golden:u64)->bool {
+  bits:=f64_bits(value);
+  if bits==golden {return true;}
+  if (bits>>63)!=(golden>>63) {return false;}
+  gap:=ifx bits>golden then bits-golden else golden-bits;
+  return gap<=WR_ORACLE_ULPS;
+}
+
+#test "collector matches the independent Python oracle" {
+  worlds:=wr_default_worlds();
+  w_out:[3]WrWorld;s_out:[12]WrStep;d_out:[3]WrDigest;
+  res:=wr_collect(wr_default_config(),wr_default_stats(),worlds[..],w_out[..],s_out[..],d_out[..],false);
+  #assert res.status==WrStatus.ok;
+  terms:=0;truncs:=0;
+  for i:0..<12 {
+    s:=s_out[i];
+    #assert s.world==i/4 && s.step==i%4;
+    #assert wr_near(s.obs.position,WR_GOLDEN_OBS_POS[i]) && wr_near(s.obs.velocity,WR_GOLDEN_OBS_VEL[i]);
+    #assert wr_near(s.norm_obs[0],WR_GOLDEN_NORM_POS[i]) && wr_near(s.norm_obs[1],WR_GOLDEN_NORM_VEL[i]);
+    #assert wr_near(s.mean,WR_GOLDEN_MEAN[i]) && wr_near(s.sampled_action,WR_GOLDEN_SAMPLED[i]);
+    #assert wr_near(s.applied_force,WR_GOLDEN_FORCE[i]) && wr_near(s.z,WR_GOLDEN_Z[i]);
+    #assert wr_near(s.logp,WR_GOLDEN_LOGP[i]) && wr_near(s.reward,WR_GOLDEN_REWARD[i]);
+    #assert wr_near(s.value,WR_GOLDEN_VALUE[i]) && wr_near(s.bootstrap_value,WR_GOLDEN_BOOT_VALUE[i]);
+    #assert wr_near(s.next_state.position,WR_GOLDEN_NEXT_POS[i]) && wr_near(s.next_state.velocity,WR_GOLDEN_NEXT_VEL[i]);
+    #assert wr_near(s.live_state.position,WR_GOLDEN_LIVE_POS[i]) && wr_near(s.live_state.velocity,WR_GOLDEN_LIVE_VEL[i]);
+    #assert wr_near(s.delta,WR_GOLDEN_DELTA[i]) && wr_near(s.advantage,WR_GOLDEN_ADV[i]);
+    #assert wr_near(s.lambda_return,WR_GOLDEN_RET[i]);
+    #assert s.terminated==WR_GOLDEN_TERM[i] && s.truncated==WR_GOLDEN_TRUNC[i];
+    #assert s.bootstrap==WR_GOLDEN_BOOT[i] && s.trace==WR_GOLDEN_TRACE[i];
+    terms+=WR_GOLDEN_TERM[i];truncs+=WR_GOLDEN_TRUNC[i];
+  }
+  #assert res.terminated_count==terms && res.truncated_count==truncs && terms>0 && truncs>0;
+  for c:0..<2 {
+    #assert res.next_stats.moments[c].count==16;
+    #assert wr_near(res.next_stats.moments[c].mean,WR_GOLDEN_STATS_MEAN[c]);
+    #assert wr_near(res.next_stats.moments[c].m2,WR_GOLDEN_STATS_M2[c]);
+  }
+  for w:0..<3 {#assert w_out[w].rng.counter==8 && w_out[w].rng.seed==worlds[w].rng.seed;}
+  for b:0..<WR_DIGEST_BYTES {
+    for w:0..<3 {#assert d_out[w].bytes[b]==WR_GOLDEN_WORLD_DIGESTS[w][b];}
+    #assert res.batch_digest.bytes[b]==WR_GOLDEN_BATCH_DIGEST[b];
+  }
+}
+
+#test "a terminal step stores the pre-reset state and a zero bootstrap" {
+  worlds:=wr_default_worlds();
+  w_out:[3]WrWorld;s_out:[12]WrStep;d_out:[3]WrDigest;
+  _=wr_collect(wr_default_config(),wr_default_stats(),worlds[..],w_out[..],s_out[..],d_out[..],false);
+  term:=s_out[8];
+  #assert term.terminated==1 && term.bootstrap==0 && term.bootstrap_value==0.0;
+  #assert abs(term.next_state.position)>0.5;
+  #assert term.live_state.position==worlds[2].reset_state.position && term.live_state.velocity==worlds[2].reset_state.velocity;
+  #assert s_out[9].obs.position==worlds[2].reset_state.position;
+  trunc:=s_out[2];
+  #assert trunc.truncated==1 && trunc.bootstrap==1 && trunc.trace==0;
+  #assert trunc.bootstrap_value!=0.0 && trunc.next_state.position!=trunc.live_state.position;
+}
+
+#test "resetting one world early leaves the other worlds unchanged" {
+  cfg:=wr_default_config();stats:=wr_default_stats();
+  base:=wr_default_worlds();
+  moved:=base;
+  moved[0].state=OsState.{position=0.45,velocity=1.5};
+  moved[0].reset_state=OsState.{position=-0.3,velocity=0.2};
+  aw:[3]WrWorld;as:[12]WrStep;ad:[3]WrDigest;
+  bw:[3]WrWorld;bs:[12]WrStep;bd:[3]WrDigest;
+  #assert wr_collect(cfg,stats,base[..],aw[..],as[..],ad[..],false).status==WrStatus.ok;
+  #assert wr_collect(cfg,stats,moved[..],bw[..],bs[..],bd[..],false).status==WrStatus.ok;
+  #assert bs[0].terminated+bs[1].terminated+bs[2].terminated+bs[3].terminated>0;
+  #assert ad[0].bytes[0]!=bd[0].bytes[0] || ad[0].bytes[1]!=bd[0].bytes[1];
+  for i:4..<12 {
+    #assert f64_bits(as[i].sampled_action)==f64_bits(bs[i].sampled_action);
+    #assert f64_bits(as[i].obs.position)==f64_bits(bs[i].obs.position);
+    #assert f64_bits(as[i].advantage)==f64_bits(bs[i].advantage);
+  }
+  for w:1..<3 {for b:0..<WR_DIGEST_BYTES {#assert ad[w].bytes[b]==bd[w].bytes[b];}}
+}
+
+wr_refused_untouched :: (res:WrResult,want:WrStatus,w_out:[]WrWorld,s_out:[]WrStep,d_out:[]WrDigest)->bool {
+  if res.status!=want || res.written!=0 {return false;}
+  return w_out[0].episode_step==99 && s_out[0].world==-7 && d_out[0].bytes[0]==200;
+}
+
+#test "refusals name the fault and leave every output untouched" {
+  cfg:=wr_default_config();stats:=wr_default_stats();worlds:=wr_default_worlds();
+  w_out:[3]WrWorld;s_out:[12]WrStep;d_out:[3]WrDigest;
+  for i:0..<3 {w_out[i]=wr_world_poison();d_out[i]=wr_digest_poison();}
+  for i:0..<12 {s_out[i]=wr_step_poison();}
+  #assert wr_refused_untouched(wr_collect(cfg,stats,worlds[..],w_out[..],s_out[..],d_out[..],true),WrStatus.overlap,w_out[..],s_out[..],d_out[..]);
+  #assert wr_refused_untouched(wr_collect(cfg,stats,worlds[..],w_out[..],s_out[0..<11],d_out[..],false),WrStatus.capacity,w_out[..],s_out[..],d_out[..]);
+  #assert wr_refused_untouched(wr_collect(cfg,stats,worlds[..],w_out[0..<2],s_out[..],d_out[..],false),WrStatus.capacity,w_out[..],s_out[..],d_out[..]);
+  #assert wr_refused_untouched(wr_collect(cfg,stats,worlds[0..<0],w_out[..],s_out[..],d_out[..],false),WrStatus.shape,w_out[..],s_out[..],d_out[..]);
+  long:=cfg;long.horizon=WR_MAX_HORIZON+1;
+  #assert wr_refused_untouched(wr_collect(long,stats,worlds[..],w_out[..],s_out[..],d_out[..],false),WrStatus.shape,w_out[..],s_out[..],d_out[..]);
+  bad:=cfg;bad.dt=f64_from_bits(0x7ff8000000000000);
+  #assert wr_refused_untouched(wr_collect(bad,stats,worlds[..],w_out[..],s_out[..],d_out[..],false),WrStatus.number,w_out[..],s_out[..],d_out[..]);
+  big:=cfg;big.gamma=1.5;
+  #assert wr_refused_untouched(wr_collect(big,stats,worlds[..],w_out[..],s_out[..],d_out[..],false),WrStatus.domain,w_out[..],s_out[..],d_out[..]);
+  nan_world:=worlds;nan_world[1].state.velocity=f64_from_bits(0x7ff0000000000000);
+  #assert wr_refused_untouched(wr_collect(cfg,stats,nan_world[..],w_out[..],s_out[..],d_out[..],false),WrStatus.number,w_out[..],s_out[..],d_out[..]);
+  far:=worlds;far[2].reset_state.position=0.6;
+  #assert wr_refused_untouched(wr_collect(cfg,stats,far[..],w_out[..],s_out[..],d_out[..],false),WrStatus.domain,w_out[..],s_out[..],d_out[..]);
+  old:=worlds;old[0].episode_step=cfg.max_episode_steps;
+  #assert wr_refused_untouched(wr_collect(cfg,stats,old[..],w_out[..],s_out[..],d_out[..],false),WrStatus.domain,w_out[..],s_out[..],d_out[..]);
+  spent:=worlds;spent[0].rng.counter=18446744073709551615-7;
+  #assert wr_refused_untouched(wr_collect(cfg,stats,spent[..],w_out[..],s_out[..],d_out[..],false),WrStatus.exhausted,w_out[..],s_out[..],d_out[..]);
+  wide:=stats;wide.channels=3;
+  #assert wr_refused_untouched(wr_collect(cfg,wide,worlds[..],w_out[..],s_out[..],d_out[..],false),WrStatus.stats,w_out[..],s_out[..],d_out[..]);
+  ok:=worlds;ok[0].rng.counter=18446744073709551615-8;
+  #assert wr_collect(cfg,stats,ok[..],w_out[..],s_out[..],d_out[..],false).status==WrStatus.ok;
+}
+
+#test "admission accepts every exact bound and refuses one step past it" {
+  #assert wr_word(f64_bits(0.0),0,1)==WrStatus.ok && wr_word(f64_bits(1.0),0,1)==WrStatus.ok;
+  #assert wr_word(f64_bits(-0.000001),0,1)==WrStatus.domain && wr_word(f64_bits(1.000001),0,1)==WrStatus.domain;
+  cfg:=wr_default_config();
+  for h:[2]int.[1,WR_MAX_HORIZON] {c:=cfg;c.horizon=h;#assert wr_config_admit(c)==WrStatus.ok;}
+  c0:=cfg;c0.horizon=0;#assert wr_config_admit(c0)==WrStatus.shape;
+  for m:[2]int.[1,4096] {c:=cfg;c.max_episode_steps=m;#assert wr_config_admit(c)==WrStatus.ok;}
+  for m:[2]int.[0,4097] {c:=cfg;c.max_episode_steps=m;#assert wr_config_admit(c)==WrStatus.domain;}
+  w:=wr_default_worlds()[0];
+  w.state.position=cfg.position_limit;#assert wr_world_admit(cfg,w)==WrStatus.ok;
+  w.state.position=0.6;#assert wr_world_admit(cfg,w)==WrStatus.domain;
+  #assert wr_terminal(cfg,OsState.{position=0.5,velocity=-2.5})==0;
+  #assert wr_terminal(cfg,OsState.{position=-0.5000001,velocity=0})==1;
+  #assert wr_terminal(cfg,OsState.{position=0,velocity=2.5000001})==1;
+  #assert wr_actor_mean_owned(WrConfig.{actor_pos=1,actor_vel=2,actor_bias=0.5},[2]f64.[1,1])==3.5;
+}
+
+#test "digests cover every world field and match the collector" {
+  worlds:=wr_default_worlds();
+  w_out:[3]WrWorld;s_out:[12]WrStep;d_out:[3]WrDigest;
+  #assert wr_collect(wr_default_config(),wr_default_stats(),worlds[..],w_out[..],s_out[..],d_out[..],false).status==WrStatus.ok;
+  one:[1]WrDigest;one[0]=wr_digest_poison();
+  #assert wr_world_digest(w_out[2],one[..])==WrStatus.ok;
+  for b:0..<WR_DIGEST_BYTES {#assert one[0].bytes[b]==d_out[2].bytes[b];}
+  base:=wr_world_digest_owned(worlds[0]);
+  edits:[7]WrWorld;
+  for i:0..<7 {edits[i]=worlds[0];}
+  edits[0].rng.seed+=1;edits[1].rng.counter+=1;edits[2].episode_step+=1;
+  edits[3].state.position+=0.001;edits[4].state.velocity+=0.001;
+  edits[5].reset_state.position+=0.001;edits[6].reset_state.velocity+=0.001;
+  for i:0..<7 {
+    d:=wr_world_digest_owned(edits[i]);same:=true;
+    for b:0..<WR_DIGEST_BYTES {if d.bytes[b]!=base.bytes[b] {same=false;}}
+    #assert !same;
+  }
+  bad:=worlds[0];bad.state.position=f64_from_bits(0x7ff8000000000000);
+  #assert wr_world_digest(bad,one[..])==WrStatus.number;
+  late:=worlds[0];late.episode_step=-1;
+  #assert wr_world_digest(late,one[..])==WrStatus.domain;
+}
+
+#test "the batch accepts the largest admitted shape and refuses one more" {
+  cfg:=wr_default_config();cfg.horizon=WR_MAX_HORIZON;
+  stats:=wr_default_stats();
+  base:=wr_default_worlds();
+  many:[17]WrWorld;
+  for w:0..<17 {many[w]=base[w%3];many[w].rng.seed=cast(u64)(1000+w);}
+  w_out:[17]WrWorld;s_out:[WR_MAX_STEPS+1]WrStep;d_out:[17]WrDigest;
+  full:=wr_collect(cfg,stats,many[0..<8],w_out[..],s_out[..],d_out[..],false);
+  #assert full.status==WrStatus.ok && full.written==WR_MAX_STEPS && full.next_stats.moments[0].count==WR_MAX_STEPS+4;
+  over:=cfg;over.horizon=57;
+  #assert wr_collect(over,stats,many[0..<9],w_out[..],s_out[..],d_out[..],false).status==WrStatus.shape;
+  wide:=cfg;wide.horizon=2;
+  #assert wr_collect(wide,stats,many[0..<16],w_out[..],s_out[..],d_out[..],false).status==WrStatus.ok;
+  #assert wr_collect(wide,stats,many[..],w_out[..],s_out[..],d_out[..],false).status==WrStatus.shape;
+}
+
+#test "statistics refusals cover channel count, bad snapshots and the sample ceiling" {
+  cfg:=wr_default_config();worlds:=wr_default_worlds();
+  w_out:[3]WrWorld;s_out:[12]WrStep;d_out:[3]WrDigest;
+  for i:0..<3 {w_out[i]=wr_world_poison();d_out[i]=wr_digest_poison();}
+  for i:0..<12 {s_out[i]=wr_step_poison();}
+  wide:=wr_default_stats();wide.channels=3;wide.moments[2]=wide.moments[0];
+  #assert rn_check(wide)==RnStatus.ok;
+  #assert wr_refused_untouched(wr_collect(cfg,wide,worlds[..],w_out[..],s_out[..],d_out[..],false),WrStatus.stats,w_out[..],s_out[..],d_out[..]);
+  broken:=wr_default_stats();broken.moments[1].m2=-1;
+  #assert wr_refused_untouched(wr_collect(cfg,broken,worlds[..],w_out[..],s_out[..],d_out[..],false),WrStatus.stats,w_out[..],s_out[..],d_out[..]);
+  full:=wr_default_stats();full.moments[0].count=RN_SAMPLES-11;full.moments[1].count=RN_SAMPLES-11;
+  #assert rn_check(full)==RnStatus.ok;
+  #assert wr_refused_untouched(wr_collect(cfg,full,worlds[..],w_out[..],s_out[..],d_out[..],false),WrStatus.stats,w_out[..],s_out[..],d_out[..]);
+  edge:=full;edge.moments[0].count=RN_SAMPLES-12;edge.moments[1].count=RN_SAMPLES-12;
+  res:=wr_collect(cfg,edge,worlds[..],w_out[..],s_out[..],d_out[..],false);
+  #assert res.status==WrStatus.ok && res.next_stats.moments[0].count==RN_SAMPLES;
+}
