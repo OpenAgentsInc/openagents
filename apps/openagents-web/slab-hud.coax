@@ -74,16 +74,9 @@ sb_act_more :: (s: [] Slab, id: string, value: int) -> bool {
 
 SbText :: struct { b: [SB_TEXT] u8; n: int; }
 sb_w :: (t: SbText, s: string) -> SbText { o := t; o.n = put(o.b[..], o.n, s); return o; }
-// A number with its thousands separated by commas: 15,375 or 1,187.5.
+// A number with its thousands separated by commas: 15,375 or 1,187.5 (putf separates them).
 sb_n :: (t: SbText, v: f64, decimals: int) -> SbText {
-  raw: [40] u8; m := putf(raw[..], 0, v, decimals);
-  o := t;
-  lead := 0; if m > 0 && raw[0] == '-' { lead = 1; }
-  dot := m; for i: 0..<m { if raw[i] == '.' { dot = i; break; } }
-  for i: 0..<m {
-    if i > lead && i < dot && (dot - i) % 3 == 0 { o.n = put(o.b[..], o.n, ","); }
-    if o.n < SB_TEXT { o.b[o.n] = raw[i]; o.n += 1; }
-  }
+  o := t; o.n = putf(o.b[..], o.n, v, decimals);
   return o;
 }
 sb_s :: (t: [] SbText) -> string { return cast(string) t[0].b[0..<t[0].n]; }
@@ -527,6 +520,13 @@ sb_test_field :: (s: [] Slab, kind: u8, a: string, k: int) -> string {
   #assert slab_pane(r) == "";
   sb_say(r);
   #assert slab_pane_model(r).count == 0;
+}
+#test "HUD: a number's thousands are separated once" {
+  t: [1] SbText;
+  t[0] = sb_n(sb_w(SbText.{}, "Day "), 1401, 0); #assert sb_s(t[..]) == "Day 1,401";
+  t[0] = sb_n(SbText.{}, 15374950.5, 1); #assert sb_s(t[..]) == "15,374,950.5";
+  t[0] = sb_n(SbText.{}, -1187.5, 1); #assert sb_s(t[..]) == "-1,187.5";
+  t[0] = sb_n(SbText.{}, 999, 0); #assert sb_s(t[..]) == "999";
 }
 #test "HUD: four groups in plain words, and every menu says its choices" {
   xs: [1] SbTest; x := xs[..]; s := x[0].s[..];
