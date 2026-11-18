@@ -20,7 +20,7 @@
 // seconds a second, 60 by default: a day in 24 minutes), ?power=otec|nuclear|hybrid, ?otec=SCALE,
 // ?modules=N, ?swac=1, ?t=SECONDS (a fixed moment), ?yaw=, ?pitch=, ?dist=, ?x=, ?z= (the
 // orbit), ?mode=orbit|fly|walk, ?view=section|under, ?hole=1 (cell A1 holed), ?plant=demo10,
-// ?hud=0, ?tier=phone.
+// ?flow=1 (the flow overlay), ?hud=0, ?tier=phone.
 
 #load "../../metaverse/water-ocean.coax";
 #load "../../metaverse/slab-plan.coax";
@@ -89,7 +89,7 @@ KB_W :: 256; KB_S :: 512; KB_D :: 1024; KB_A :: 2048; KB_SPACE :: 4096; KB_SHIFT
 MAX_BUTTONS :: 32;
 BTN_ORBIT :: 1; BTN_FLY :: 2; BTN_WALK :: 3; BTN_SITE :: 4; BTN_SEA :: 5; BTN_EARLIER :: 6; BTN_LATER :: 7;
 BTN_PAUSE :: 8; BTN_POWER :: 9; BTN_STATS :: 10; BTN_CLOSE :: 11; BTN_REFUEL :: 12; BTN_TRIP :: 13; BTN_SWAC :: 14;
-BTN_HALVING :: 15; BTN_HELP :: 16; BTN_MONTH :: 17; BTN_HOLE :: 18; BTN_PUMP :: 19; BTN_SECTION :: 20; BTN_UNDER :: 21;
+BTN_HALVING :: 15; BTN_HELP :: 16; BTN_MONTH :: 17; BTN_HOLE :: 18; BTN_PUMP :: 19; BTN_SECTION :: 20; BTN_UNDER :: 21; BTN_FLOW :: 22;
 
 Slab :: struct {
   started: bool;
@@ -110,6 +110,8 @@ Slab :: struct {
   mode: int;
   section: bool;        // V: the hull cut open across, where the camera looks
   under: bool;          // U: flying under the sea
+  flow: bool;           // L: the flow overlay
+  bend: f64;            // the hull's first bending mode at its ends now, m (visual only)
   held: int;            // keys held, bits
   dragging: bool; last_x: f32; last_y: f32; down_x: f32; down_y: f32; moved: f32;
   px: f32; py: f32;     // the pointer
@@ -575,6 +577,7 @@ slab_frame :: (s: [] Slab, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
     s[0].hull = sim_hull_advance(s[0].hull, s[0].tile[0].height[..], TILE_N, c0.patch, s[0].wind, wd.x, wd.y, sim_step);
   }
   slab_pose(s);
+  s[0].bend = sim_bending(s[0].tile[0].height[..], TILE_N, c0.patch, s[0].hull);
   s[0].power = sim_power(s[0].plant, site, s[0].month);
   // the camera
   ex: f32; ey: f32; ez: f32; fx: f32; fy: f32; fz: f32;
@@ -885,7 +888,7 @@ two :: (b: [] u8, n: int, v: int) -> int { m := n; if v < 10 { m = put(b, m, "0"
 MONTHS :: [12] string.["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 
 // The info card: up to CARD_LINES lines, each with a style.
-CARD_LINES :: 18;
+CARD_LINES :: 20;
 ST_TITLE :: 0; ST_SUB :: 1; ST_HEAD :: 2; ST_BODY :: 3; ST_LIVE :: 4; ST_WARN :: 5; ST_NOTE :: 6;
 Card :: struct { b: [CARD_LINES * LINE_W] u8; n: [CARD_LINES] int; style: [CARD_LINES] int; lines: int; }
 line :: (c: [] Card, style: int, t: string) -> int {
@@ -970,6 +973,7 @@ slab_card :: (s: [] Slab, i: int, c: [] Card) {
       l = line(c, ST_WARN, "CELL A1 HOLED: "); num(c, l, h.flood * SIM_RHO / 1e9, 1); more(c, l, " KT OF WATER IN");
       if h.pumping { l = line(c, ST_LIVE, "PUMPS MOVED "); num(c, l, h.moved / 1000, 1); more(c, l, " THOUSAND M3 OF BALLAST"); }
     }
+    l = line(c, ST_LIVE, "BENDING (FIRST MODE): THE ENDS "); num(c, l, s[0].bend * 100, 1); more(c, l, " CM");
     ln(c, ST_NOTE, "V CUTS THE HULL OPEN; THE WAVES' FORCES LARGELY CANCEL");
     return;
   }
@@ -1123,6 +1127,169 @@ slab_card :: (s: [] Slab, i: int, c: [] Card) {
   ln(c, ST_TITLE, district(cx, cz));
 }
 
+// ---------------------------------------------------------------- the flow overlay (L)
+// The plant's water and the platform's power drawn over the view as moving dashes, each labelled
+// with its flow (spec 6.1, 6.5): warm surface water in through the west wall at -20 m, cold water up
+// the four pipes from 1,000 m, the mixed discharge out at -60 m below the hull, and a power line
+// from each source to each load, as wide as its megawatts.
+FlowPen :: struct { r: f32; g: f32; b: f32; width: f32; speed: f32; }
+FLOW_WARM :: FlowPen.{r = 1, g = 0.55, b = 0.2, width = 1.6, speed = 30};
+FLOW_COLD :: FlowPen.{r = 0.35, g = 0.75, b = 1, width = 1.6, speed = 30};
+FLOW_OUT :: FlowPen.{r = 0.55, g = 0.95, b = 0.8, width = 1.4, speed = 20};
+FLOW_POWER :: FlowPen.{r = 1, g = 0.9, b = 0.35, width = 1.0, speed = 60};
+// A hull-frame point on the screen: pixels, and its depth along the view.
+screen_of :: (s: [] Slab, x: f32, y: f32, z: f32) -> [3] f32 {
+  w := to_world(s, x, y, z);
+  rx := w[0] - s[0].eye[0]; ry := w[1] - s[0].eye[1]; rz := w[2] - s[0].eye[2];
+  f := s[0].fwd; r := s[0].right; u := s[0].up;
+  vz := rx * f[0] + ry * f[1] + rz * f[2];
+  d := hi_f32(vz, 0.01);
+  sx := (rx * r[0] + ry * r[1] + rz * r[2]) / (s[0].tanh * s[0].aspect * d);
+  sy := (rx * u[0] + ry * u[1] + rz * u[2]) / (s[0].tanh * d);
+  return [3] f32.[(sx + 1) * 0.5f32 * s[0].width, (1 - sy) * 0.5f32 * s[0].height, vz];
+}
+// One leg of a flow from a to b (hull frame): a faint line, and dashes moving from a to b.
+flow_leg :: (s: [] Slab, out: [] f32, at: int, a: [3] f32, b: [3] f32, p: FlowPen, share: f32) -> int {
+  n := at;
+  if share <= 0.001f32 { return n; }
+  k := s[0].dpr;
+  dx := b[0] - a[0]; dy := b[1] - a[1]; dz := b[2] - a[2];
+  length := sqrt(dx * dx + dy * dy + dz * dz);
+  if length < 1 { return n; }
+  // the leg in front of the eye only
+  near := 2.0f32;
+  sa := screen_of(s, a[0], a[1], a[2]); sb := screen_of(s, b[0], b[1], b[2]);
+  t0 := 0.0f32; t1 := 1.0f32;
+  if sa[2] < near && sb[2] < near { return n; }
+  if sa[2] < near { t0 = (near - sa[2]) / (sb[2] - sa[2]); }
+  if sb[2] < near { t1 = (near - sa[2]) / (sb[2] - sa[2]); }
+  wd := p.width * k * (0.6f32 + 0.8f32 * clamp32(share, 0, 1.5));
+  pa := screen_of(s, a[0] + dx * t0, a[1] + dy * t0, a[2] + dz * t0);
+  pb := screen_of(s, a[0] + dx * t1, a[1] + dy * t1, a[2] + dz * t1);
+  if lit(out, n, pa[0], pa[1], pb[0], pb[1], wd * 0.5f32, 0.35, 1.5f32 * k, p.r, p.g, p.b, MODE_STROKE) { n += 6; }
+  // the dashes, spaced along the leg and moving at the flow's (sped-up) pace
+  spacing := hi_f32(30, length / 14);
+  travel := s[0].time * f64(p.speed * clamp32(share, 0.3f32, 1.5f32));
+  phase := f32(travel - floor(travel / f64(spacing)) * f64(spacing));
+  t := phase / length;
+  dash := 0.4f32 * spacing / length;
+  while t < 1 {
+    u0 := hi_f32(t, t0); u1 := lo_f32(t + dash, t1);
+    if u1 > u0 {
+      q0 := screen_of(s, a[0] + dx * u0, a[1] + dy * u0, a[2] + dz * u0);
+      q1 := screen_of(s, a[0] + dx * u1, a[1] + dy * u1, a[2] + dz * u1);
+      if lit(out, n, q0[0], q0[1], q1[0], q1[1], wd, 1.2, 2.5f32 * k, p.r, p.g, p.b, MODE_STROKE) { n += 6; }
+    }
+    t += spacing / length;
+  }
+  return n;
+}
+v3f :: (x: f32, y: f32, z: f32) -> [3] f32 { return [3] f32.[x, y, z]; }
+// A label at a hull-frame point, if it is in front of the eye.
+flow_label :: (s: [] Slab, out: [] f32, at: int, p: [3] f32, label: string, pen: FlowPen) -> int {
+  q := screen_of(s, p[0], p[1], p[2]);
+  if q[2] < 5 || q[0] < 0 || q[0] > s[0].width || q[1] < 0 || q[1] > s[0].height { return at; }
+  k := s[0].dpr;
+  return text(out, at, label, q[0] + 6 * k, q[1] - 4 * k, Pen.{k = k, cap = 6 * k, r = pen.r, g = pen.g, b = pen.b});
+}
+flow_overlay :: (s: [] Slab, out: [] f32, at: int) -> int {
+  n := at;
+  pw := s[0].power; pl := s[0].plant;
+  b: [LINE_W] u8; m := 0;
+  otec := pw.otec_gross > 0.01;
+  share := f32(pw.otec_gross / SIM_OTEC_GROSS);
+  plant_x := -430.0f32; deck := SLAB_DECK + 2;
+  if otec {
+    // warm water: in through the west wall at -20 m, up to the evaporators
+    for i: 0..<2 {
+      z := ifx i == 0 then -150.0f32 else 150.0f32;
+      n = flow_leg(s, out, n, v3f(-620, -20, z), v3f(-SLAB_LENGTH / 2, -20, z), FLOW_WARM, share);
+      n = flow_leg(s, out, n, v3f(-SLAB_LENGTH / 2, -20, z), v3f(plant_x, 5, z * 0.4f32), FLOW_WARM, share);
+    }
+    // cold water: up the pipes from 1,000 m to the condensers (a tripped pipe carries nothing)
+    for i: 0..<4 {
+      z := -225.0f32 + f32(i) * 150;
+      flowing := !(pl.pipe_tripped && i == 0);
+      sh := ifx flowing then share else 0.0f32;
+      n = flow_leg(s, out, n, v3f(-389, -1000, z), v3f(-389, -25, z), FLOW_COLD, sh);
+      n = flow_leg(s, out, n, v3f(-389, -25, z), v3f(plant_x, 5, z * 0.4f32), FLOW_COLD, sh);
+    }
+    // the mixed discharge: down and out through four diffusers at -60 m below the hull
+    for i: 0..<4 {
+      z := -225.0f32 + f32(i) * 150;
+      n = flow_leg(s, out, n, v3f(plant_x - 20, 0, z * 0.4f32), v3f(-450, -25, z), FLOW_OUT, share);
+      n = flow_leg(s, out, n, v3f(-450, -25, z), v3f(-450, -60, z), FLOW_OUT, share);
+      n = flow_leg(s, out, n, v3f(-450, -60, z), v3f(-560, -60, z), FLOW_OUT, share);
+    }
+    m = put(b[..], 0, "WARM IN "); m = putf(b[..], m, 564.0 * pw.scale * f64(share), 0); m = put(b[..], m, " M3/S AT -20 M");
+    n = flow_label(s, out, n, v3f(-560, -20, -150), cast(string) b[0..<m], FLOW_WARM);
+    m = put(b[..], 0, "COLD UP "); m = putf(b[..], m, pw.cold_flow, 0); m = put(b[..], m, " M3/S FROM 1,000 M");
+    n = flow_label(s, out, n, v3f(-389, -200, 75), cast(string) b[0..<m], FLOW_COLD);
+    n = flow_label(s, out, n, v3f(-500, -60, 225), "DISCHARGE AT -60 M", FLOW_OUT);
+  }
+  // power: from the plant (and the nuclear modules below the industry) to each load
+  src := v3f(plant_x, deck, 0);
+  if pl.power != POWER_OTEC && pw.nuclear_net > 0.01 {
+    nz := v3f(-250, deck, 0);
+    n = flow_leg(s, out, n, v3f(-325, deck, -175), nz, FLOW_POWER, 0.8);
+    n = flow_leg(s, out, n, v3f(-325, deck, 175), nz, FLOW_POWER, 0.8);
+    if pl.power == POWER_NUCLEAR { src = nz; }
+    m = put(b[..], 0, "NUCLEAR "); m = putf(b[..], m, pw.nuclear_net, 0); m = put(b[..], m, " MW");
+    n = flow_label(s, out, n, v3f(-325, deck, -175), cast(string) b[0..<m], FLOW_POWER);
+  }
+  if otec {
+    m = put(b[..], 0, "OTEC "); m = putf(b[..], m, pw.otec_net, 1); m = put(b[..], m, " MW NET");
+    n = flow_label(s, out, n, v3f(plant_x, deck + 30, 0), cast(string) b[0..<m], FLOW_POWER);
+  }
+  loads := [6] f64.[pw.data, pw.desal, pw.industry, pw.mining, pw.hotel * 0.5, pw.hotel * 0.5];
+  full := [6] f64.[pw.data_load, SIM_DESAL, SIM_INDUSTRY, 25.0, SIM_HOTEL * 0.5, SIM_HOTEL * 0.5];
+  lx := [6] f32.[-80, -175, -310, 225, 0, 400];
+  lz := [6] f32.[-120, 200, -150, -200, 150, 0];
+  names := [6] string.["DATA", "DESAL", "INDUSTRY", "MINING", "TOWERS", "GARDENS"];
+  for i: 0..<6 {
+    mid := v3f(src[0], deck, lz[i]);
+    sh := f32(loads[i] / hi_f64(full[i], 0.1));
+    n = flow_leg(s, out, n, src, mid, FLOW_POWER, sh);
+    n = flow_leg(s, out, n, mid, v3f(lx[i], deck, lz[i]), FLOW_POWER, sh);
+    m = put(b[..], 0, names[i]); m = put(b[..], m, " "); m = putf(b[..], m, loads[i], 1); m = put(b[..], m, " MW");
+    n = flow_label(s, out, n, v3f(lx[i], deck + 4, lz[i]), cast(string) b[0..<m], FLOW_POWER);
+  }
+  return n;
+}
+hi_f64 :: (a: f64, b: f64) -> f64 { return ifx a > b then a else b; }
+// A hull-frame segment as one stroke, cut where it passes behind the eye.
+stroke3 :: (s: [] Slab, out: [] f32, at: int, a: [3] f32, b: [3] f32, r: f32, g: f32, bl: f32, width: f32) -> int {
+  near := 2.0f32;
+  sa := screen_of(s, a[0], a[1], a[2]); sb := screen_of(s, b[0], b[1], b[2]);
+  if sa[2] < near && sb[2] < near { return at; }
+  t0 := 0.0f32; t1 := 1.0f32;
+  if sa[2] < near { t0 = (near - sa[2]) / (sb[2] - sa[2]); }
+  if sb[2] < near { t1 = (near - sa[2]) / (sb[2] - sa[2]); }
+  dx := b[0] - a[0]; dy := b[1] - a[1]; dz := b[2] - a[2];
+  pa := screen_of(s, a[0] + dx * t0, a[1] + dy * t0, a[2] + dz * t0);
+  pb := screen_of(s, a[0] + dx * t1, a[1] + dy * t1, a[2] + dz * t1);
+  k := s[0].dpr;
+  if lit(out, at, pa[0], pa[1], pb[0], pb[1], width * k, 1.1, 2 * k, r, g, bl, MODE_STROKE) { return at + 6; }
+  return at;
+}
+// S7: in the section, the hull's deck and keel lines bent by its first mode, 100 times
+// exaggerated (spec 4.6). The physics keeps the hull rigid.
+BEND_SCALE :: 100.0f32;
+bend_overlay :: (s: [] Slab, out: [] f32, at: int) -> int {
+  n := at;
+  z := section_cut(s);
+  a := f32(s[0].bend) * BEND_SCALE;
+  for i: 0..<20 {
+    x0 := -SLAB_LENGTH / 2 + f32(i) * 50; x1 := x0 + 50;
+    p0 := f32(sim_bend_mode(f64(x0))) * a; p1 := f32(sim_bend_mode(f64(x1))) * a;
+    n = stroke3(s, out, n, v3f(x0, SLAB_DECK + p0, z), v3f(x1, SLAB_DECK + p1, z), 1, 0.35, 0.85, 0.9);
+    n = stroke3(s, out, n, v3f(x0, -SLAB_DRAFT + p0, z), v3f(x1, -SLAB_DRAFT + p1, z), 1, 0.35, 0.85, 0.9);
+  }
+  b: [LINE_W] u8; m := put(b[..], 0, "BENDING X 100: THE ENDS ");
+  m = putf(b[..], m, s[0].bend * 100.0, 1); m = put(b[..], m, " CM");
+  return flow_label(s, out, n, v3f(-SLAB_LENGTH / 4, SLAB_DECK + 12, z), cast(string) b[0..<m], FlowPen.{r = 1, g = 0.45, b = 0.9});
+}
+
 // The HUD: the title, the modes, the world's controls, the stats, the card, the hints.
 hud :: (s: [] Slab, out: [] f32) -> int {
   s[0].button_count = 0;
@@ -1130,6 +1297,8 @@ hud :: (s: [] Slab, out: [] f32) -> int {
   W := s[0].width; H := s[0].height;
   narrow := W / k < 720;
   n := 0;
+  if s[0].flow { n = flow_overlay(s, out, n); }
+  if s[0].section { n = bend_overlay(s, out, n); }
   pad := 12 * k;
   site := sim_site(s[0].site); sea := sim_sea(s[0].sea); pw := s[0].power;
   white := Pen.{k = k, cap = 7 * k};
@@ -1157,6 +1326,7 @@ hud :: (s: [] Slab, out: [] f32) -> int {
   n = button(s, out, n, "?", x, y, k, s[0].help, BTN_HELP); x += button_w("?", k) + 5 * k;
   n = button(s, out, n, "SECTION", x, y, k, s[0].section, BTN_SECTION); x += button_w("SECTION", k) + 5 * k;
   n = button(s, out, n, "UNDER", x, y, k, s[0].under, BTN_UNDER); x += button_w("UNDER", k) + 5 * k;
+  n = button(s, out, n, "FLOW", x, y, k, s[0].flow, BTN_FLOW); x += button_w("FLOW", k) + 5 * k;
   // the world's controls
   y2 := ifx narrow then y + 28 * k else y;
   x2 := ifx narrow then pad else x + 8 * k;
@@ -1261,7 +1431,7 @@ hud :: (s: [] Slab, out: [] f32) -> int {
     n = panel(out, n, hx, hy, hx + hw, hy + 150 * k, 9 * k, 0.04, 0.05, 0.07, 0.8, 0.3);
     hp := Pen.{k = k, cap = 6 * k, r = 0.92, g = 0.93, b = 0.95};
     yy := hy + 18 * k;
-    lines := [11] string.["ORBIT: DRAG OR ARROWS TURN, WHEEL OR R/F ZOOM, WASD MOVE",
+    lines := [12] string.["ORBIT: DRAG OR ARROWS TURN, WHEEL OR R/F ZOOM, WASD MOVE",
       "FLY (KEY F): WASD, SPACE UP, SHIFT DOWN, WHEEL SPEED",
       "WALK (KEY G): WASD, SPACE JUMPS, SPACE TWICE FLIES,",
       "  DRAG TURNS THE CAMERA, WHEEL ZOOMS, DOUBLE-W RUNS",
@@ -1270,8 +1440,9 @@ hud :: (s: [] Slab, out: [] f32) -> int {
       "CLICK ANYTHING TO LEARN ABOUT IT; ESC CLOSES THE CARD",
       "N: NEXT SITE   M: NEXT SEA   [ ]: TIME   P: POWER",
       "H: HIDE THE HUD   I: STATS   V: SECTION   U: UNDER THE SEA",
+      "L: THE FLOW OVERLAY (WATER AND POWER)",
       "", "SPEC: DOCS/RESEARCH/OCEAN/SLAB-WORLD-SPEC.MD"];
-    for i: 0..<11 { n = text(out, n, lines[i], hx + 12 * k, yy, hp); yy += 12 * k; }
+    for i: 0..<12 { n = text(out, n, lines[i], hx + 12 * k, yy, hp); yy += 12 * k; }
   }
   // the card
   if s[0].selected != -1 {
@@ -1381,6 +1552,7 @@ press :: (s: [] Slab, id: int) {
   else if id == BTN_PUMP { s[0].hull.pumping = !s[0].hull.pumping; }
   else if id == BTN_SECTION { s[0].section = !s[0].section; }
   else if id == BTN_UNDER { go_under(s, !s[0].under); }
+  else if id == BTN_FLOW { s[0].flow = !s[0].flow; }
   else if id == BTN_REFUEL { s[0].plant.refuelling = ifx s[0].plant.refuelling > 0 then 0 else 1; }
   else if id == BTN_SWAC { s[0].plant.swac = !s[0].plant.swac; }
   else if id == BTN_HALVING { s[0].plant.halving = !s[0].plant.halving; }
@@ -1402,6 +1574,7 @@ slab_key :: (s: [] Slab, key: int, down: bool) -> bool #export_c #effects(all) {
     if key == 'i' || key == 'I' { press(s, BTN_STATS); return true; }
     if key == 'v' || key == 'V' { press(s, BTN_SECTION); return true; }
     if key == 'u' || key == 'U' { press(s, BTN_UNDER); return true; }
+    if key == 'l' || key == 'L' { press(s, BTN_FLOW); return true; }
     if key == 'h' || key == 'H' { s[0].hud = !s[0].hud; return true; }
     if key == '?' { press(s, BTN_HELP); return true; }
   }
@@ -1543,6 +1716,7 @@ slab_message :: (s: [] Slab, kind: int, text: string) #export_c #effects(all) {
   if query_word(url, "hud=0") { s[0].hud = false; }
   if query_word(url, "mode=fly") { s[0].intro = 0; set_mode(s, CAM_FLY); }
   if query_word(url, "mode=walk") { s[0].intro = 0; set_mode(s, CAM_WALK); }
+  if query_word(url, "flow=1") { s[0].flow = true; }
   if query_word(url, "view=section") { s[0].intro = 0; s[0].section = true; }
   if query_word(url, "hole=1") { s[0].hull.holed = true; }
   if query_word(url, "view=under") { s[0].intro = 0; go_under(s, true); }
@@ -1614,4 +1788,19 @@ SLAB_BUDGET :: FrameBudget.{steps = 8, vertices = MAX_VERTICES - 1, draws = 0, b
   bm := [1] BudgetMeter.[budget_meter(SLAB_BUDGET)];
   budget_measure(bm[..], 0, 0, budget_arena_bytes(size_of(Slab), MAX_VERTICES, VERTEX_FLOATS, UNIFORM_FLOATS));
   #assert budget_ok(bm[0]);
+}
+#test "S7: in a gale the hull's ends flex about 10-15 cm, so 10-15 m in the section's x 100" #steps 4000000000 {
+  s: [1] Slab;
+  slab_reset(s[..]);
+  s[0].sea = SEA_GALE; s[0].wind_forced = -1;
+  slab_build(s[..], true);
+  sp := s[0].spectrum; most := 0.0;
+  for k: 0..<40 {
+    tick := wsp_tick_at(sp, f64(k) * 1.5);
+    wsp_tile(s[0].synth[..], 0, tick % sp.period, s[0].tile[..]);
+    c0 := s[0].synth[0].cascades[0];
+    most = fmax(most, abs(sim_bending(s[0].tile[0].height[..], TILE_N, c0.patch, s[0].hull)));
+  }
+  // measured 0.10-0.15 m over a minute of the gale
+  #assert most > 0.1 && most < 0.15;
 }

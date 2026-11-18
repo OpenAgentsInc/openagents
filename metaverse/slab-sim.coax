@@ -389,6 +389,42 @@ sim_hull_step :: (h0: SimHull, heights: [] f32, n: int, patch: f64, wind: f64, w
   o.time += dt;
   return o;
 }
+// ---------------------------------------------------------------- hull bending (spec 4.6, S7)
+// Visual only: the hull stays rigid in the physics. The first free-free beam mode along X,
+// phi = (cosh bx + cos bx - sigma (sinh bx + sin bx)) / 2 (1 at the ends), with bL = 4.730, driven
+// by the sea's column loads; the rigid terms drop out because the mode is orthogonal to them.
+SIM_BEND_BL :: 4.730040745; SIM_BEND_SIGMA :: 0.982502215;
+SIM_E :: 35.0e9;              // prestressed concrete, Pa
+// The section's second moment about its neutral axis (section 3.1's deck, bottom, walls and 11
+// longitudinal bulkheads), m^4.
+sim_section_i :: () -> f64 {
+  deck := SIM_B * 1.0; bottom := SIM_B * 1.5; walls := 2.0 * 1.5 * SIM_D + 11.0 * 0.6 * SIM_D;
+  y := (deck * (SIM_D - 0.5) + bottom * 0.75 + walls * SIM_D / 2.0) / (deck + bottom + walls);
+  return deck * (SIM_D - 0.5 - y) * (SIM_D - 0.5 - y) + bottom * (0.75 - y) * (0.75 - y)
+       + walls * (SIM_D / 2.0 - y) * (SIM_D / 2.0 - y) + walls * SIM_D * SIM_D / 12.0;
+}
+sim_bend_mode :: (x: f64) -> f64 {
+  b := SIM_BEND_BL / SIM_L; t := b * (x + SIM_L / 2.0);
+  ch := (exp(t) + exp(-t)) / 2.0; sh := (exp(t) - exp(-t)) / 2.0;
+  return (ch + cos(t) - SIM_BEND_SIGMA * (sh + sin(t))) / 2.0;
+}
+// The mode's amplitude at the ends (m, + the ends up) for the sea under the hull now: the modal
+// force over the modal stiffness EI b^4 L / 4, quasi-static (the mode rings far faster than waves).
+sim_bending :: (heights: [] f32, n: int, patch: f64, h: SimHull) -> f64 {
+  if n <= 0 { return 0; }
+  f := 0.0; col := SIM_COLUMN * SIM_COLUMN;
+  for i: 0..<SIM_COLUMNS_X {
+    x := -SIM_L / 2.0 + (f64(i) + 0.5) * SIM_COLUMN;
+    phi := sim_bend_mode(x); row := 0.0;
+    for j: 0..<SIM_COLUMNS_Z {
+      z := -SIM_B / 2.0 + (f64(j) + 0.5) * SIM_COLUMN;
+      row += sim_sea_at(heights, n, patch, x + h.surge, z + h.sway);
+    }
+    f += SIM_RHO * SIM_G * row * col * phi;
+  }
+  b := SIM_BEND_BL / SIM_L;
+  return f / (SIM_E * sim_section_i() * b * b * b * b * SIM_L / 4.0);
+}
 // A frame's time: the fixed steps due (at most 8; a long hitch does not replay seconds).
 sim_hull_advance :: (h: SimHull, heights: [] f32, n: int, patch: f64, wind: f64, wdx: f64, wdz: f64, frame: f64) -> SimHull {
   o := h;
@@ -518,6 +554,17 @@ sim_hull_advance :: (h: SimHull, heights: [] f32, n: int, patch: f64, wind: f64,
   cold := sim_power(p, sim_site(SITE_GUAM), 1.5);
   #assert cold.supply < 10 && cold.data == 3.45 && cold.margin < 1.55;
   #assert abs(best.scale - 10.0 / sim_otec_net(sim_site(SITE_GUAM).surface_max - SIM_DEEP - 0.5, 1)) < 1e-9;
+}
+#test "S7: bending is zero on a flat or level sea and follows a hog" {
+  #assert abs(sim_section_i() / 1e5 - 9.6) < 0.3;
+  #assert abs(sim_bend_mode(-SIM_L / 2.0) - 1.0) < 1e-6 && abs(sim_bend_mode(SIM_L / 2.0) - 1.0) < 1e-4;
+  h: SimHull; n := 8; flat: [64] f32; level: [64] f32;
+  for i: 0..<64 { level[i] = 1.5; }
+  #assert sim_bending(flat[..], n, 4000, h) == 0 && abs(sim_bending(level[..], n, 4000, h)) < 1e-3;
+  // a crest under the middle (a hog): the ends drop
+  hog: [64] f32;
+  for j: 0..<n { for i: 0..<n { hog[j * n + i] = f32(2.0 * cos(2.0 * SIM_PI * (f64(i) + 0.5) / f64(n))); } }
+  #assert sim_bending(hog[..], n, 2000, h) < -0.001;
 }
 #test "5: holing cell A1 on prime sinks it 0.10 m and heels it 0.06 degrees, and it stays afloat" #steps 2000000000 {
   h := SimHull.{holed = true}; empty: [1] f32;

@@ -21,25 +21,27 @@ SLAB has published no design. The dimensions here are this world's own planning 
 - Two cutaway views:
   - **Section** (V): the hull cut open across, with its concrete walls, bulkheads every 50 m, the ballast water in blue, a flooded cell in red and the waterline.
   - **Under the sea** (U): swim under the hull to see its bottom, the four cold-water pipes hanging 1,000 m down and the sixteen mooring lines.
+- The flow overlay (L) draws the plant's warm and cold water, its discharge at −60 m and a power line to each load, with their flows.
+- The section also draws the hull's bending, 100 times exaggerated: in a gale its ends flex 10 to 15 cm.
 - Click anything for a card: what it is, how it is built, and its live numbers. Click the sea for the sea state.
 - Five sites (Guam, Puerto Rico, Kona, the equator, California) and six sea states, from calm to a hurricane. The sun follows the site, the month and the hour.
 - Three ways to move:
   - **Orbit**: drag or the arrow keys turn the view, the wheel or R and F zoom, W, A, S and D move.
   - **Fly** (F): W, A, S and D along the view, Space or E to rise, Shift or Q to drop, the arrow keys to turn, the wheel to set the speed.
   - **Walk** (G): GameBuilder's character controller on the deck, which moves with the hull. Space jumps; Space twice flies.
-- Keys 1 to 9 travel to stations around the platform. N and M change the site and the sea, [ and ] the hour, P the power, I the stats, V the section, U the underwater view, H hides the panels, ? shows the help.
+- Keys 1 to 9 travel to stations around the platform. N and M change the site and the sea, [ and ] the hour, P the power, I the stats, V the section, U the underwater view, L the flow overlay, H hides the panels, ? shows the help.
 - Address options:
   - `?site=` and `?sea=` pick a site and a sea state; `?wind=` sets the wind in metres a second.
   - `?hour=`, `?month=` and `?rate=` set the clock and how fast it runs.
   - `?power=otec`, `nuclear` or `hybrid`; `?plant=demo10`; `?otec=` scales the OTEC plant; `?modules=` and `?swac=1`.
-  - `?mode=fly` or `walk` starts moving; `?view=section` or `under` opens a cutaway; `?hole=1` holes cell A1.
+  - `?mode=fly` or `walk` starts moving; `?view=section` or `under` opens a cutaway; `?hole=1` holes cell A1; `?flow=1` shows the flow overlay.
   - `?t=` holds one moment.
   - `?yaw=`, `?pitch=`, `?dist=`, `?x=` and `?z=` place the view.
   - `?hud=0` hides the panels.
   - `?tier=phone` draws the phone's waves on any screen.
 - Without WebGPU (a current Chrome, Edge or Safari), the page shows only its name and a link here.
 
-The physics and power are engineering models, not measurements. No OTEC plant has delivered more than about 0.1 MW net. The dome layouts, the powership and the flow overlay aren't built yet.
+The physics and power are engineering models, not measurements. No OTEC plant has delivered more than about 0.1 MW net. The dome layouts and the powership aren't built yet.
 
 ## How it is made
 
