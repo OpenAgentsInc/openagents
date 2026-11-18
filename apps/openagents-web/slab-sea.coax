@@ -1,0 +1,316 @@
+// SLAB's sea beyond its heights (slab.coax loads this): the finer cascades and their foam, the
+// water's type by site, the weather that goes with the sea, and the view under it. The numbers
+// here fill gpu/slab-sea.coax's sea block and the words' spare bytes; the shared arithmetic is
+// metaverse/water-sea.coax and the engine's weather (metaverse-engine/world/water-weather.coax).
+//
+// The hull floats on cascade 0 alone (slab-sim), and cascade 0 is the same sea however many
+// finer cascades are drawn over it, so nothing here moves the hull.
+#load "../../metaverse/water-sea.coax";
+
+U_SEAS :: U_WORDS + WORDS;   // the sea block (gpu/slab-sea.coax SLAB_SEA)
+SEAS_FLOATS :: 32;
+// A desktop draws three cascades: cascade 0, the hull's sea, as geometry and slopes; two finer
+// ones as slopes, down to waves about a metre long. A phone draws cascade 0 and one baked tile.
+SEA_CASCADES :: 3;
+// How far the survey view under the sea shows a large dark thing, m: the hull is 1,000 m long.
+SEA_SURVEY_SIGHT :: 1500.0;
+// Shallower than this the bed is drawn under the sea, m.
+SEA_BED_SHOWN :: 250.0;
+
+SeaLook :: struct {
+  kept: [6 * 4096] f32;  // cascade 0's tile, set aside while Slab.tile works the finer cascades
+  foam1: [4096] f32;     // the foam over the fine tile
+  mss: [4] f32;          // mean square slope: cascade 0, the fine tile, the finest, what no tile holds
+  last_tick: u64; have_tick: bool;
+  chosen: bool; pin: int;         // ?weather= or key C chose a weather (else the sea's own)
+  state: int; scheduled: bool;    // what the schedule is pinned to
+  schedule: [1] WeatherSchedule;
+  now: SeaWeather; have: bool;    // the weather drawn, eased toward the schedule's
+  real_water: bool;      // under the sea: the water as it is (else the survey view)
+}
+
+// The water and the storm season at a site. The water types are our reading of Jerlov's (1976)
+// map: clear ocean (I to IB) in the open tropics, type III off southern California, coastal
+// water on the Texas shelf and in a fjord. Months count from 0 (January); a season that ends
+// before it begins runs through the new year.
+SiteWater :: struct { jerlov: Jerlov; from: f64; to: f64; }
+slab_site_water :: (key: string) -> SiteWater {
+  if key == "puerto-rico" { return SiteWater.{jerlov = Jerlov.IB, from = 5, to = 11}; }
+  if key == "kona" { return SiteWater.{jerlov = Jerlov.I, from = 5, to = 11}; }
+  if key == "equator" { return SiteWater.{jerlov = Jerlov.IB, from = 0, to = 0}; }
+  if key == "california" { return SiteWater.{jerlov = Jerlov.III, from = 10, to = 3}; }
+  if key == "texas" { return SiteWater.{jerlov = Jerlov.C3, from = 5, to = 11}; }
+  if key == "fjord" { return SiteWater.{jerlov = Jerlov.C5, from = 9, to = 3}; }
+  return SiteWater.{jerlov = Jerlov.IA, from = 6, to = 11};   // Guam: typhoons, most from July to November
+}
+slab_storm_season :: (w: SiteWater, month: f64) -> bool {
+  if w.from == w.to { return false; }
+  if w.from < w.to { return month >= w.from && month < w.to; }
+  return month >= w.from || month < w.to;
+}
+
+// The sea's numbers for the wind and tier just built.
+sea_look_built :: (s: [] Slab, phone: bool) {
+  k := s[0].look;
+  for i: 0..<4 { k.mss[i] = 0; }
+  for c: 0..<s[0].synth[0].count { k.mss[c] = f32(sea_cascade_mss(s[0].synth[..], c)); }
+  k.mss[3] = f32(sea_tail_mss(s[0].synth[..], s[0].wind));
+  for i: 0..<4096 { k.foam1[i] = 0; }
+  k.have_tick = false;
+  s[0].look = k;
+}
+// A cascade-0 word: the height (a half float), cascade 0's foam in a byte, the fine tile's in
+// seven bits (so the word is never a NaN's pattern).
+sea_look_foam_bits :: (foam1: f32) -> u32 { return cast(u32) (cast(int) floor(wsp_clamp(foam1, 0, 1) * 126 + 0.5) & 0x7f); }
+sea_look_word :: (height: f32, foam0: f32, foam1: f32) -> f32 {
+  a := cast(u32) (cast(int) floor(wsp_clamp(foam0, 0, 1) * 255 + 0.5) & 0xff);
+  return f32_from_bits(half_bits(height) | (a << 16) | (sea_look_foam_bits(foam1) << 24));
+}
+
+// Cascade 0's tile out of Slab.tile and back: the hull and the pictures read it between frames.
+sea_look_keep :: (s: [] Slab, back: bool) {
+  nn := TILE_N * TILE_N;
+  if back {
+    for i: 0..<nn {
+      s[0].tile[0].height[i] = s[0].look.kept[i]; s[0].tile[0].dx[i] = s[0].look.kept[nn + i]; s[0].tile[0].dz[i] = s[0].look.kept[2 * nn + i];
+      s[0].tile[0].sx[i] = s[0].look.kept[3 * nn + i]; s[0].tile[0].sz[i] = s[0].look.kept[4 * nn + i]; s[0].tile[0].jacobian[i] = s[0].look.kept[5 * nn + i];
+    }
+    return;
+  }
+  for i: 0..<nn {
+    s[0].look.kept[i] = s[0].tile[0].height[i]; s[0].look.kept[nn + i] = s[0].tile[0].dx[i]; s[0].look.kept[2 * nn + i] = s[0].tile[0].dz[i];
+    s[0].look.kept[3 * nn + i] = s[0].tile[0].sx[i]; s[0].look.kept[4 * nn + i] = s[0].tile[0].sz[i]; s[0].look.kept[5 * nn + i] = s[0].tile[0].jacobian[i];
+  }
+}
+// Each frame, after cascade 0's words are packed: the finer cascades' slopes into the fine
+// words (two signed bytes each), the fine tile's foam into cascade 0's words, and the sea block.
+// Slab.tile holds cascade 0 again when it returns.
+sea_look_frame :: (s: [] Slab, u: [] f32, phone: bool, tick: u64, folded: u64) {
+  sp := s[0].spectrum;
+  nn := TILE_N * TILE_N;
+  fine := U_WORDS + W_FINE;
+  B := U_SEAS;
+  if !phone { sea_look_keep(s, false); }
+  if phone {
+    u[U_PACK + 2] = 0.5;
+    for i: 0..<nn { u[fine + i] = f32_from_bits(snorm8(s[0].baked[4 * i] / 0.5) | (snorm8(s[0].baked[4 * i + 1] / 0.5) << 8)); }
+  } else {
+    wsp_tile(s[0].synth[..], 1, folded, s[0].tile[..]);
+    share := sea_fine_share(sp.wind_speed);
+    if !s[0].look.have_tick || tick != s[0].look.last_tick {
+      gap := ifx s[0].look.have_tick && tick > s[0].look.last_tick then f32(tick - s[0].look.last_tick) * f32(sp.tick) else 0.0f32;
+      if !s[0].look.have_tick && s[0].fixed >= 0 {
+        // a fixed moment: the foam the last two seconds would have left
+        for kk: 0..<4 {
+          back := ifx tick > cast(u64) (4 - kk) * 60 then tick - cast(u64) (4 - kk) * 60 else 0;
+          wsp_tile(s[0].synth[..], 1, back % sp.period, s[0].tile[..]);
+          sea_foam_step(s[0].look.foam1[..], s[0].tile[..], sea_share_threshold(s[0].tile[..], share), 0.2 * sea_jacobian_spread(s[0].tile[..]), 1.0, 0.5);
+        }
+        wsp_tile(s[0].synth[..], 1, folded, s[0].tile[..]);
+      }
+      sea_foam_step(s[0].look.foam1[..], s[0].tile[..], sea_share_threshold(s[0].tile[..], share), 0.2 * sea_jacobian_spread(s[0].tile[..]), 1.0, gap);
+      s[0].look.last_tick = tick; s[0].look.have_tick = true;
+    }
+    fs := 0.001f32;
+    for i: 0..<nn { fs = hi_f32(fs, hi_f32(abs(s[0].tile[0].sx[i]), abs(s[0].tile[0].sz[i]))); }
+    u[U_PACK + 2] = fs;
+    for i: 0..<nn { u[fine + i] = f32_from_bits(snorm8(s[0].tile[0].sx[i] / fs) | (snorm8(s[0].tile[0].sz[i] / fs) << 8)); }
+    if s[0].synth[0].count > 2 {
+      wsp_tile(s[0].synth[..], 2, folded, s[0].tile[..]);
+      f2 := 0.001f32;
+      for i: 0..<nn { f2 = hi_f32(f2, hi_f32(abs(s[0].tile[0].sx[i]), abs(s[0].tile[0].sz[i]))); }
+      for i: 0..<nn {
+        u[fine + i] = f32_from_bits(f32_bits(u[fine + i]) | (snorm8(s[0].tile[0].sx[i] / f2) << 16) | (snorm8(s[0].tile[0].sz[i] / f2) << 24));
+      }
+      u[B + 15] = f32(s[0].synth[0].cascades[2].patch); u[B + 22] = f2;
+    }
+    co := U_WORDS + W_COARSE;
+    for i: 0..<nn { u[co + 2 * i] = f32_from_bits(f32_bits(u[co + 2 * i]) | (sea_look_foam_bits(s[0].look.foam1[i]) << 24)); }
+    u[B + 12] = 1;
+    sea_look_keep(s, true);
+  }
+  // the water's type
+  site := sim_site(s[0].site);
+  water := sea_water(slab_site_water(site.key).jerlov);
+  survey := s[0].under && !s[0].look.real_water;
+  for i: 0..<3 { u[B + i] = water.kd[i]; u[B + 4 + i] = 0.33f32 * water.bb[i] / water.kd[i]; }
+  u[B + 3] = ifx survey then f32(SEA_SURVEY_SIGHT / sea_sight(water)) else 1.0f32;
+  u[B + 7] = 1.5f32 * water.kd[1];
+  for i: 0..<4 { u[B + 8 + i] = s[0].look.mss[i]; }
+  u[B + 13] = f32(sea_streaks(sp.wind_speed)); u[B + 14] = f32(sea_spindrift(sp.wind_speed));
+  w := s[0].look.now;
+  u[B + 16] = f32(w.cloud); u[B + 17] = f32(w.rain); u[B + 18] = f32(w.fog); u[B + 19] = f32(w.lightning);
+  u[B + 20] = f32(w.sun); u[B + 21] = f32(w.sky);
+  u[B + 23] = ifx s[0].under && site.depth < SEA_BED_SHOWN then f32(site.depth) else 0.0f32;
+  u[B + 24] = ifx survey then 0.05f32 else 0.0f32;
+  u[B + 25] = f32(wsp_whitecap_cover(sp.wind_speed));
+}
+
+// The weather for this frame, and what it does to the sky's light: called after slab_sky_params.
+// A weather chosen by hand holds; otherwise it is the sea's own (water-sea.coax
+// sea_weather_auto). It eases over a few seconds, and snaps at a fixed moment.
+sea_look_weather :: (s: [] Slab, u: [] f32, step: f32, snap: bool) {
+  site := sim_site(s[0].site);
+  auto := sea_weather_auto(s[0].wind, slab_storm_season(slab_site_water(site.key), s[0].month));
+  state := ifx s[0].look.chosen then s[0].look.pin else auto;
+  if s[0].build.on { state = WEATHER_CLEAR; }
+  if !s[0].look.scheduled || state != s[0].look.state {
+    weather_schedule(s[0].look.schedule[..], weather_coastal(), 0x51ab);
+    weather_pin_all(s[0].look.schedule[..], state);
+    s[0].look.state = state; s[0].look.scheduled = true;
+  }
+  tick := cast(u64) (fmax(s[0].time, 0.0) * f64(WEATHER_TICK_HZ));
+  want := sea_weather(weather_sample(s[0].look.schedule[..], tick));
+  if !s[0].look.have || snap { s[0].look.now = want; s[0].look.have = true; }
+  else {
+    k := 1.0 - exp(-f64(step) / 3.0);
+    n := s[0].look.now;
+    n.cloud += (want.cloud - n.cloud) * k; n.rain += (want.rain - n.rain) * k; n.fog += (want.fog - n.fog) * k;
+    n.sun += (want.sun - n.sun) * k; n.sky += (want.sky - n.sky) * k; n.haze += (want.haze - n.haze) * k;
+    n.lightning = want.lightning;
+    s[0].look.now = n;
+  }
+  w := s[0].look.now;
+  P := U_PARAMS;
+  cover := f32(w.cloud);
+  // the eye and a camera open up under cloud: the picture dims by less than the light does
+  seen := f32(pow(fmax(w.sky, 0.01), 0.16));
+  flash := f32(w.lightning);
+  grey := 0.0f32;
+  for i: 0..<3 { u[P + P_SUNCOL + i] *= f32(w.sun); grey += (u[P + P_ZENITH + i] + u[P + P_HORIZON + i]) / 6; }
+  u[P + P_SUNCOL + 3] = u[P + P_SUNCOL + 3] * (1 + (seen - 1) * cover) + 0.5f32 * flash;
+  tint := [3] f32.[0.95, 1.0, 1.06];
+  for i: 0..<3 {
+    u[P + P_ZENITH + i] += (grey * seen * tint[i] * 0.95f32 - u[P + P_ZENITH + i]) * cover + 0.22f32 * flash;
+    u[P + P_HORIZON + i] += (grey * seen * tint[i] * 0.8f32 - u[P + P_HORIZON + i]) * cover + 0.16f32 * flash;
+  }
+  u[P + P_ZENITH + 3] = hi_f32(lo_f32(u[P + P_ZENITH + 3], 0.6), 0.4f32 + 0.6f32 * cover);
+  u[P + P_HORIZON + 3] = lo_f32(ifx s[0].sea >= SEA_GALE then 12000.0f32 else u[P + P_HORIZON + 3], f32(w.haze));
+  u[P + P_SUNHULL + 3] *= 1 - cover;
+}
+
+// The toolbar's two controls: the weather (the sea's own, or one held), and under the sea the
+// water (the survey view, or the water as it is).
+BTN_WEATHER :: 29; BTN_WATER :: 30;
+sea_look_weather_name :: (s: [] Slab) -> string {
+  if !s[0].look.chosen { return "WEATHER: SEA'S OWN"; }
+  if s[0].look.pin == WEATHER_OVERCAST { return "WEATHER: OVERCAST"; }
+  if s[0].look.pin == WEATHER_FOG { return "WEATHER: FOG"; }
+  if s[0].look.pin == WEATHER_RAIN { return "WEATHER: RAIN"; }
+  if s[0].look.pin == WEATHER_STORM { return "WEATHER: STORM"; }
+  return "WEATHER: CLEAR";
+}
+sea_look_tools :: (s: [] Slab, out: [] f32, at: int) -> int {
+  n := tool(s, out, at, sea_look_weather_name(s), s[0].look.chosen, BTN_WEATHER, 5);
+  if s[0].under { n = tool(s, out, n, ifx s[0].look.real_water then "WATER: AS IT IS" else "WATER: SURVEY", s[0].look.real_water, BTN_WATER, 5); }
+  return n;
+}
+// The weather steps: the sea's own, then clear, overcast, fog, rain, storm.
+sea_look_press :: (s: [] Slab, id: int) -> bool {
+  if id == BTN_WEATHER {
+    if !s[0].look.chosen { s[0].look.chosen = true; s[0].look.pin = WEATHER_CLEAR; }
+    else if s[0].look.pin == WEATHER_STORM { s[0].look.chosen = false; }
+    else { s[0].look.pin += 1; }
+    return true;
+  }
+  if id == BTN_WATER { if s[0].under { s[0].look.real_water = !s[0].look.real_water; } return true; }
+  return false;
+}
+// Key C steps the weather; X, under the sea, swaps the survey view for the water as it is.
+sea_look_key :: (s: [] Slab, key: int) -> bool {
+  if key == 'c' || key == 'C' { return sea_look_press(s, BTN_WEATHER); }
+  if (key == 'x' || key == 'X') && s[0].under { return sea_look_press(s, BTN_WATER); }
+  return false;
+}
+// The HUD's part (slab-hud.coax): the weather under Change, and under See inside, while under
+// the sea, what the water is drawn as.
+sea_look_water_note :: (s: [] Slab, out: [] u8) -> string {
+  water := sea_water(slab_site_water(sim_site(s[0].site).key).jerlov);
+  sight := sea_sight(water);
+  n := 0;
+  if s[0].look.real_water {
+    n = put(out, n, "The water as it is here: you see about "); n = putf(out, n, sight, 0); n = put(out, n, " m.");
+  } else {
+    n = put(out, n, "Survey view: the water is drawn "); n = putf(out, n, SEA_SURVEY_SIGHT / sight, 0);
+    n = put(out, n, " times clearer than it is, with a fill light, so the hull, pipes and lines show. Real sight here is about ");
+    n = putf(out, n, sight, 0); n = put(out, n, " m.");
+  }
+  return cast(string) out[0..<n];
+}
+sea_look_hud :: (s: [] Slab, h: [] SceneHud, group: int) {
+  if group == HUD_CHANGE {
+    k := s[0].look;
+    sh_menu(h, "weather", "Weather", "");
+      sh_option(h, "weather.own", "The sea's own", "Clear in light winds, rain in a gale, a storm in a hurricane", !k.chosen);
+      sh_option(h, "weather.clear", "Clear", "", k.chosen && k.pin == WEATHER_CLEAR);
+      sh_option(h, "weather.overcast", "Overcast", "", k.chosen && k.pin == WEATHER_OVERCAST);
+      sh_option(h, "weather.fog", "Fog", "You see about 400 m", k.chosen && k.pin == WEATHER_FOG);
+      sh_option(h, "weather.rain", "Rain", "", k.chosen && k.pin == WEATHER_RAIN);
+      sh_option(h, "weather.storm", "Storm", "Heavy rain and lightning", k.chosen && k.pin == WEATHER_STORM);
+    sh_end_of(h);
+  }
+  if group == HUD_INSIDE && s[0].under {
+    b: [200] u8;
+    sh_switch(h, "water.real", "Show the water as it is", sea_look_water_note(s, b[..]), s[0].look.real_water);
+  }
+}
+sea_look_act :: (s: [] Slab, id: string, value: int) -> bool {
+  if id == "weather.own" { s[0].look.chosen = false; return true; }
+  if id == "water.real" { if s[0].under { s[0].look.real_water = !s[0].look.real_water; } return true; }
+  pins := [5] string.["weather.clear", "weather.overcast", "weather.fog", "weather.rain", "weather.storm"];
+  for i: 0..<5 { if id == pins[i] { s[0].look.chosen = true; s[0].look.pin = i; return true; } }
+  return false;
+}
+// ?weather=clear|overcast|fog|rain|storm holds a weather; ?water=real opens the view under the
+// sea in the water as it is.
+sea_look_url :: (s: [] Slab, url: string) {
+  pin := weather_url_pin(url);
+  if pin >= 0 { s[0].look.chosen = true; s[0].look.pin = pin; }
+  if query_word(url, "water=real") { s[0].look.real_water = true; }
+}
+// Under the sea, a note that says what is drawn: the survey view's clearer water, or the real
+// sight. Always on screen there: at the right on a wide screen, over the foot on a narrow one.
+sea_look_note :: (s: [] Slab, out: [] f32, at: int) -> int {
+  if !s[0].under { return at; }
+  k := s[0].dpr; W := s[0].width; H := s[0].height; pad := 12 * k;
+  b: [260] u8;
+  n := sea_look_water_note(s, b[..]).count;
+  n = put(b[..], n, ifx s[0].look.real_water then " Press X, or Water above, for the survey view." else " Press X, or Water above, for the water as it is.");
+  t := cast(string) b[0..<n];
+  narrow := W / k < 720;
+  px := 12.5f32; lead := 17 * k;
+  w := lo_f32(W - 2 * pad, 380 * k); inner := w - 24 * k;
+  h := f32(sans_lines(t, inner, px, k)) * lead + 14 * k;
+  x := ifx narrow then pad else W - pad - w;
+  y := ifx narrow then H - pad - 112 * k - h else H - pad - h;
+  m := panel(out, at, x, y, x + w, y + h, 7 * k, 0.04, 0.05, 0.07, 0.62, 0.2);
+  return sans_para(out, m, t, x + 12 * k, y + 3 * k, inner, px, lead, k, sans(k, 1, 0.9, 0.72));
+}
+
+#test "every site has a water type, and the seasons wrap the new year" {
+  for i: 0..<SITES {
+    w := slab_site_water(sim_site(i).key);
+    #assert sea_sight(sea_water(w.jerlov)) > 2.0 && sea_sight(sea_water(w.jerlov)) < 30.0;
+  }
+  // Guam's clear ocean against the Gulf's coastal water: bluer and seen four times as far through
+  g := sea_water(slab_site_water("guam").jerlov); t := sea_water(slab_site_water("texas").jerlov);
+  #assert sea_colour(g)[2] > 3.0 * sea_colour(g)[1] && sea_colour(t)[1] > sea_colour(t)[2];
+  #assert sea_sight(g) > 2.0 * sea_sight(t);
+  #assert slab_storm_season(slab_site_water("guam"), 8.0) && !slab_storm_season(slab_site_water("guam"), 2.0);
+  #assert slab_storm_season(slab_site_water("california"), 0.5) && slab_storm_season(slab_site_water("california"), 11.0) && !slab_storm_season(slab_site_water("california"), 6.0);
+  #assert !slab_storm_season(slab_site_water("equator"), 8.0);
+}
+#test "a sea word keeps its height and both foams, and is never a NaN's pattern" {
+  for a: 0..<5 {
+    for b: 0..<5 {
+      w := f32_bits(sea_look_word(-3.25, f32(a) / 4, f32(b) / 4));
+      #assert (w & 0xffff) == half_bits(-3.25);
+      #assert ((w >> 16) & 0xff) == cast(u32) (cast(int) floor(f32(a) / 4 * 255 + 0.5));
+      #assert (w >> 24) == cast(u32) (cast(int) floor(f32(b) / 4 * 126 + 0.5));
+      #assert ((w >> 23) & 0xff) != 0xff;
+    }
+  }
+}
+#test "the sea block follows the words and the uniforms still fit one block" {
+  #assert U_SEAS == 15840 && UNIFORM_FLOATS == U_SEAS + SEAS_FLOATS && UNIFORM_FLOATS * 4 <= 65536;
+}

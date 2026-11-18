@@ -20,7 +20,8 @@
 // seconds a second, 60 by default: a day in 24 minutes), ?power=hybrid|otec|nuclear (hybrid when not given), ?otec=SCALE,
 // ?modules=N, ?swac=1, ?t=SECONDS (a fixed moment), ?yaw=, ?pitch=, ?dist=, ?x=, ?z= (the
 // orbit), ?mode=orbit|fly|walk, ?view=section|under, ?hole=1 (cell A1 holed), ?plant=demo10,
-// ?flow=1 (the flow overlay), ?hud=0, ?tier=phone.
+// ?flow=1 (the flow overlay), ?hud=0, ?tier=phone, ?weather=clear|overcast|fog|rain|storm (else
+// the sea's own weather), ?water=real (under the sea: the water as it is, not the survey view).
 // The "What would it take?" settings (metaverse/slab-whatif.coax; each is left out of an address
 // when it is the picture's): ?preset=picture|pilot|fjord|california|guam|dome, ?weight=MT (million
 // tonnes of buildings and equipment), ?long=, ?wide=, ?deep= (the hull, metres), ?wall=, ?floor=
@@ -40,6 +41,7 @@
 #load "../../metaverse-engine/move/creative-fly.coax" as fly;
 #load "slab-intro.coax";   // intro: the first screen, a stopgap (issue 13683)
 #load "slab-hud.coax";   // the HUD in plain words, drawn by the browser (GitHub #13685)
+#load "slab-sea.coax";
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, then length, core, light, glow (a rect: half w, half h, radius, alpha), red, green, blue, mode, border, 0, 0, 0
 MAX_VERTICES :: 30000;
@@ -83,12 +85,12 @@ P_SECTION :: 52;  // the section: which side is cut away (0 none, +1 north of th
 P_UNDER :: 56;    // under the sea (0/1), a cold-water pipe tripped (0/1), 0, 0
 PARAM_FLOATS :: 64;
 U_WORDS :: U_PARAMS + PARAM_FLOATS;   // then the words:
-W_COARSE :: 0;    //   cascade 0: (height, foam), (sx, sz) a texel
+W_COARSE :: 0;    //   cascade 0: (height, its foam and the fine tile's: slab-sea.coax), (sx, sz) a texel
 W_CHOP :: 8192;   //   cascade 0's choppy displacement, two signed bytes a texel, two texels a word
-W_FINE :: 10240;  //   the fine slopes (or the phone's baked tile), one word a texel
+W_FINE :: 10240;  //   the two finer cascades' slopes (or the phone's baked tile), one word a texel
 TILE_N :: 64;
 WORDS :: W_FINE + TILE_N * TILE_N;
-UNIFORM_FLOATS :: U_WORDS + WORDS;
+UNIFORM_FLOATS :: U_WORDS + WORDS + SEAS_FLOATS;   // then the sea block (slab-sea.coax)
 
 CAM_ORBIT :: 0; CAM_FLY :: 1; CAM_WALK :: 2;
 
@@ -152,6 +154,7 @@ Slab :: struct {
   synth: [1] Synth;     // cascade 0 (and the desktop's fine cascade)
   tile: [1] Tile;
   foam: [4096] f32;     // the foam field over cascade 0
+  look: SeaLook;        // the finer cascades, the water's type, the weather (slab-sea.coax)
   baked: [WSP_TILE_FLOATS] f32;
   baked_ready: bool;
   last_tick: u64;
@@ -246,7 +249,7 @@ slab_wind :: (s: [] Slab) -> f64 { if s[0].build.on { return 3.5; } return ifx s
 slab_build :: (s: [] Slab, phone: bool) {
   s[0].wind = slab_wind(s);
   s[0].spectrum = slab_spectrum(s[0].wind);
-  wsp_synth(s[0].synth[..], s[0].spectrum, ifx phone then 1 else 2, TILE_N);
+  wsp_synth(s[0].synth[..], s[0].spectrum, ifx phone then 1 else SEA_CASCADES, TILE_N);
   s[0].built = s[0].synth[0].ok;
   s[0].built_phone = phone;
   for i: 0..<4096 { s[0].foam[i] = 0; }
@@ -257,6 +260,7 @@ slab_build :: (s: [] Slab, phone: bool) {
     s[0].baked_ready = true;
     wsp_synth(s[0].synth[..], s[0].spectrum, 1, TILE_N);
   }
+  sea_look_built(s, phone);
 }
 
 // ---------------------------------------------------------------- the hull's frame
@@ -902,6 +906,7 @@ slab_frame :: (s: [] Slab, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
   if s[0].build.on { sun = sim_sun(27.8, 4.5, 15.5); }
   u[U_SUN] = f32(sun.x); u[U_SUN + 1] = f32(sun.y); u[U_SUN + 2] = f32(sun.z); u[U_SUN + 3] = 1;
   slab_sky_params(s, u, sun);
+  sea_look_weather(s, u, step, frozen || s[0].fixed >= 0);
   u[U_SEA] = 0; u[U_SEA + 1] = f32(c0.patch);
   u[U_SEA + 2] = ifx phone then f32(WSP_TILE_METERS) else f32(s[0].synth[0].cascades[1].patch);
   u[U_SEA + 3] = f32(sp.choppiness);
@@ -960,7 +965,7 @@ slab_frame :: (s: [] Slab, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
   u[U_PACK] = hs; u[U_PACK + 1] = ss;
   co := U_WORDS + W_COARSE;
   for i: 0..<nn {
-    u[co + 2 * i] = pack2(s[0].tile[0].height[i] / hs, s[0].foam[i]);
+    u[co + 2 * i] = sea_look_word(s[0].tile[0].height[i] / hs, s[0].foam[i], 0);
     u[co + 2 * i + 1] = pack2(s[0].tile[0].sx[i] / ss, s[0].tile[0].sz[i] / ss);
   }
   ds := 0.001f32;
@@ -977,19 +982,7 @@ slab_frame :: (s: [] Slab, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
   u[U_CLIP] = f32(clip.n); u[U_CLIP + 1] = f32(clip.count); u[U_CLIP + 2] = f32(clip.morph); u[U_CLIP + 3] = f32(clip.far);
   ocean_level_uniforms(clip, u[U_LEVELS..<U_LEVELS + 4 * OCEAN_MAX_LEVELS]);
   s[0].mesh = ocean_vertices(clip);
-  fine := U_WORDS + W_FINE;
-  if phone {
-    u[U_PACK + 2] = 0.5;
-    for i: 0..<nn { u[fine + i] = pack2(s[0].baked[4 * i] / 0.5, s[0].baked[4 * i + 1] / 0.5); }
-  } else {
-    wsp_tile(s[0].synth[..], 1, folded, s[0].tile[..]);
-    fs := 0.001f32;
-    for i: 0..<nn { fs = hi_f32(fs, hi_f32(abs(s[0].tile[0].sx[i]), abs(s[0].tile[0].sz[i]))); }
-    u[U_PACK + 2] = fs;
-    for i: 0..<nn { u[fine + i] = pack2(s[0].tile[0].sx[i] / fs, s[0].tile[0].sz[i] / fs); }
-    // (cascade 0 again, for the hull's next step)
-    wsp_tile(s[0].synth[..], 0, folded, s[0].tile[..]);
-  }
+  sea_look_frame(s, u, phone, tick, folded);
   sb_say(s);   // the HUD as words, for its pane
   if !s[0].hud || s[0].golden { s[0].button_count = 0; return 0; }
   if s[0].hp.pane { return sb_lines(s, out); }
@@ -1675,6 +1668,7 @@ hud :: (s: [] Slab, out: [] f32) -> int {
   n = tool(s, out, n, cast(string) b[0..<m], false, BTN_SITE, 5);
   m = put(b[..], 0, "SEA: "); m = put(b[..], m, sea.key);
   n = tool(s, out, n, cast(string) b[0..<m], false, BTN_SEA, 5);
+  n = sea_look_tools(s, out, n);
   n = tool(s, out, n, "-1H", false, BTN_EARLIER, 3);
   n = tool(s, out, n, "+1H", false, BTN_LATER, 3);
   n = tool(s, out, n, "+1MO", false, BTN_MONTH, 3);
@@ -1836,6 +1830,7 @@ hud :: (s: [] Slab, out: [] f32) -> int {
     n = panel(out, n, tx, ty, tx + tw, ty + 26 * k, 8 * k, 0.04, 0.05, 0.07, 0.75 * a, 0.3 * a);
     n = text(out, n, t, tx + 12 * k, ty + 17 * k, Pen.{k = k, cap = 7 * k, r = 1, g = 0.92, b = 0.78, light = a});
   }
+  n = sea_look_note(s, out, n);
   // the reconstruction sentence (spec 8), always, and the mode's hint; then the first screen's card
   n = intro_foot(s, out, n);        // intro:
   n = intro_card(s, out, n, top);   // intro:
@@ -1861,6 +1856,7 @@ key_bit :: (key: int) -> int {
 }
 press :: (s: [] Slab, id: int) {
   if intro_press(s, id) { return; }   // intro:
+  if sea_look_press(s, id) { return; }
   if id == BTN_BUILD { build_toggle(s); }
   else if id == BTN_TIMELAPSE { if s[0].build.cursor >= 90 { build_seek(s, 0); } s[0].build.play = !s[0].build.play; }
   else if id == BTN_FIRST_TOW { build_seek(s, 12); }
@@ -1933,6 +1929,7 @@ slab_key :: (s: [] Slab, key: int, down: bool) -> bool #export_c #effects(all) {
     if key == 'u' || key == 'U' { press(s, BTN_UNDER); return true; }
     if key == 'l' || key == 'L' { press(s, BTN_FLOW); return true; }
     if key == 'k' || key == 'K' { press(s, BTN_LAYOUT); return true; }
+    if sea_look_key(s, key) { return true; }
     if key == 'h' || key == 'H' { s[0].hud = !s[0].hud; return true; }
     if key == '?' { press(s, BTN_HELP); return true; }
   }
@@ -2100,6 +2097,7 @@ slab_message :: (s: [] Slab, kind: int, text: string) #export_c #effects(all) {
   if query_word(url, "view=section") { s[0].intro = 0; s[0].section = true; }
   if query_word(url, "hole=1") { s[0].hull.holed = true; }
   if query_word(url, "view=under") { s[0].intro = 0; go_under(s, true); }
+  sea_look_url(s, url);
   if query_word(url, "layout=dome") { set_layout(s, LAYOUT_DOME); }
   if query_word(url, "layout=cluster") { set_layout(s, LAYOUT_CLUSTER); }
   if s[0].layout != LAYOUT_PRIME && query_number(url, "dist", -99) != -99 {
@@ -2185,7 +2183,7 @@ coaxial_slab_uniform_floats :: () -> int #export_c #effects(all) { return UNIFOR
 
 // ---------------------------------------------------------------------------------------------
 // The frame budget (metaverse-engine/core/budget.coax, book chapter 16): what one frame of SLAB may use.
-SLAB_BUDGET :: FrameBudget.{steps = 8, vertices = MAX_VERTICES - 1, draws = 0, bytes = 4194304};
+SLAB_BUDGET :: FrameBudget.{steps = 8, vertices = MAX_VERTICES - 1, draws = 0, bytes = 4390912};
 
 #test "SLAB's frames fit their declared budget" {
   #assert budget_declared(SLAB_BUDGET, MAX_VERTICES) == BUDGET_NONE;

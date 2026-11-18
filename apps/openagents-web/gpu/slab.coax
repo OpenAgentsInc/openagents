@@ -4,6 +4,7 @@
 #load "../../../metaverse-engine/render/noise.coax";
 #load "../../../metaverse-engine/gpu/wgsl.coax";
 #load "../../../metaverse/style.coax";
+#load "slab-sea.coax";
 #load "../../../metaverse/hull.coax";
 
 // SLAB (slab.coax): the sea in deep water on the spectral tiles slab.coax packs into the
@@ -28,6 +29,7 @@
 //   groups 1312 the records' bounding groups: min xyz, first; max xyz, count
 //   params 1440 the world's light, the hull's pose, the walker, the selection (slab.coax P_*)
 //   words 1504  cascade 0, its displacement, the fine slopes
+//   sea 15840   the water's optics, the finer cascades and the weather (slab-sea.coax)
 SLAB_N :: cast(u32)64;
 SLAB_WORDS :: 1504;
 SLAB_GROUPS :: 1312;
@@ -54,10 +56,12 @@ slab_coarse :: (p:V2,u:[]f32)->V4 {
       o:I2=i2(k&1,k>>1);
       c:U2=wg_cvt_u2i2(wg_band_i2i2(wg_add_i2i2(i,o),wg_make_i2_i((cast,trunc(s32)(SLAB_N))-1)));
       t:u32=add_wrap(mul_wrap(c.y,SLAB_N),c.x);
-      a:V2=wg_unpack2x16float(slab_word(add_wrap(SLAB_W_COARSE,mul_wrap(cast(u32)2,t)),u));
+      aw:u32=slab_word(add_wrap(SLAB_W_COARSE,mul_wrap(cast(u32)2,t)),u);
+      a:V2=wg_unpack2x16float(aw);
       b:V2=wg_unpack2x16float(slab_word(add_wrap(add_wrap(SLAB_W_COARSE,mul_wrap(cast(u32)2,t)),cast(u32)1),u));
       w:f32=(ifx o.x==1 then f.x else 1.0f32-f.x)*(ifx o.y==1 then f.y else 1.0f32-f.y);
-      acc=wg_add_f4f4(acc,wg_mul_ff4(w,v4(a.x*u[40],a.y,b.x*u[41],b.y*u[41])));
+      // the word's upper half is two foams in bytes: cascade 0's here, the fine tile's in slab-sea.coax
+      acc=wg_add_f4f4(acc,wg_mul_ff4(w,v4(a.x*u[40],(cast(f32)((aw>>16)&0xff))/255.0f32,b.x*u[41],b.y*u[41])));
       k+=1;
     }
   }
@@ -75,7 +79,7 @@ slab_fine :: (p:V2,u:[]f32)->V2 {
       o:I2=i2(k&1,k>>1);
       c:U2=wg_cvt_u2i2(wg_band_i2i2(wg_add_i2i2(i,o),wg_make_i2_i((cast,trunc(s32)(SLAB_N))-1)));
       w:f32=(ifx o.x==1 then f.x else 1.0f32-f.x)*(ifx o.y==1 then f.y else 1.0f32-f.y);
-      acc=wg_add_f2f2(acc,wg_mul_f2f(wg_mul_ff2(w,wg_unpack2x16float(slab_word(add_wrap(add_wrap(SLAB_W_FINE,mul_wrap(c.y,SLAB_N)),c.x),u))),u[42]));
+      acc=wg_add_f2f2(acc,wg_mul_f2f(wg_mul_ff2(w,wg_sw_xy_f4(wg_unpack4x8snorm(slab_word(add_wrap(add_wrap(SLAB_W_FINE,mul_wrap(c.y,SLAB_N)),c.x),u)&0xffff))),u[42]));
       k+=1;
     }
   }
@@ -226,48 +230,14 @@ slab_spray :: (s:f32,y:f32,face:f32,t:f32,u:[]f32)->f32 {
   foot:f32=1.0f32-smoothstep(0.6f32+(1.8f32*face*streak),1.8f32+(3.0f32*face),y);
   return clampf(fmax(plume*(0.35f32+(0.65f32*streak)),foot*face*0.9f32),0.0f32,1.0f32);
 }
-// The water, open ocean: deep blue, the sky in it, the sun's path, whitecaps and lace, and the
-// white water along the hull.
+// The water: the open sea by its optics (slab-sea.coax slab_sea), then the white water along
+// the hull's walls over it.
 slab_water :: (p:V2,world:V3,d:V3,dist:f32,t:f32,u:[]f32)->V3 {
   c:V4=slab_coarse(p,u);
   footprint:f32=(((dist*2.0f32)*u[11])/u[1])/fmax(abs(d.y),0.08f32);
-  keep:f32=clampf(((u[30]/64.0f32)/fmax(footprint,1e-4f32))-0.5f32,0.0f32,1.0f32);
-  farfade:f32=1.0f32-smoothstep(400.0f32,6000.0f32,dist);
-  slope:V2=wg_mul_f2f(wg_add_f2f2(v2(c.z,c.w),wg_mul_f2f(slab_fine(wg_add_f2f2(p,wg_mul_f2f(wg_mul_f2f(v2(u[32],u[33]),t),0.3f32)),u),keep)),0.35f32+(0.65f32*farfade));
-  n:V3=wg_normalize3(v3(-slope.x,1.0f32,-slope.y));
-  calm:V3=wg_normalize3(v3((-slope.x)/3.0f32,1.0f32,(-slope.y)/3.0f32));
-  sun:V3=v3(u[24],u[25],u[26]);
-  scol:V3=sb_p(u,4);
-  amb:f32=u[SLAB_P+7];
-  col:V3=v3(0.07f32,0.14f32,0.16f32);
-  col=sb_add(col,sb_mul(v3(0.03f32,0.15f32,0.15f32),clampf(c.x/fmax(u[35],0.2f32),0.0f32,1.0f32)));
-  col=sb_mul(col,(0.25f32+(0.75f32*amb))*(0.85f32+(0.3f32*fmax(wg_dot3(n,sun),0.0f32))));
-  // the swell's shape: dark troughs, and light through the thin water of the crests (teal)
-  hh:f32=clampf(c.x/fmax(u[35],0.2f32),-1.0f32,1.0f32);
-  col=sb_mul(col,0.7f32+(0.45f32*smoothstep(-1.0f32,1.0f32,hh)));
-  col=sb_add(col,sb_mul(v3(0.03f32,0.12f32,0.11f32),smoothstep(0.1f32,0.9f32,hh)*(0.3f32+(0.7f32*amb))));
-  // skylight scattered in the near water: the picture's sea is a warm grey under its haze, not
-  // the deep teal, until it reaches the bright distance
-  col=sb_mix(col,sb_mulv(slab_sky(wg_normalize3(v3(d.x,0.12f32,d.z)),u),v3(0.52f32,0.48f32,0.42f32)),0.42f32*amb*(1.0f32-smoothstep(700.0f32,2200.0f32,dist)));
-  v:V3=sb_mul(d,-1.0f32);
-  r:V3=wg_reflect3(d,calm);
-  fres:f32=0.02f32+(0.98f32*sb_pow(1.0f32-fmax(wg_dot3(calm,v),0.0f32),5.0f32));
-  col=sb_mix(col,slab_sky(v3(r.x,abs(r.y),r.z),u),fmin(fres,0.3f32));
-  // the sun's path on the water, broad at the golden hour
-  rn:V3=wg_reflect3(d,n);
-  sp:f32=fmax(wg_dot3(rn,sun),0.0f32);
-  col=sb_add(col,sb_mul(scol,(sb_pow(sp,90.0f32)*1.2f32)+(sb_pow(sp,900.0f32)*4.0f32)));
-  rs:V3=wg_reflect3(sb_mul(sun,-1.0f32),n);
-  cell:f32=(ifx u[5]>0.5f32 then 0.25f32 else 0.15f32)*fmax(1.0f32,footprint/0.05f32);
-  g:V2=wg_floor_f2(wg_div_f2f(v2(world.x,world.z),cell));
-  tw:f32=slab_hash2(wg_add_f2f(g,floor(t*3.0f32)));
-  near:f32=smoothstep(cos(0.09f32+(footprint*0.02f32)),1.0f32,wg_dot3(rs,v));
-  glint:f32=1.0f32-smoothstep(200.0f32,1500.0f32,dist);
-  col=sb_add(col,sb_mul(sb_mul(scol,stepf(0.8f32,tw)*near),1.6f32*glint));
-  // whitecaps from the foam field, lace between them, and white water along the hull's walls
+  sea:V4=slab_sea(p,world,d,dist,t,c,u);
+  col:V3=v3(sea.x,sea.y,sea.z);
   froth:f32=(slab_noise(wg_add_f2f2(wg_mul_f2f(p,0.35f32),v2(t*0.2f32,0.0f32)))*0.6f32)+(slab_noise(wg_mul_f2f(p,1.3f32))*0.4f32);
-  fine:f32=slab_noise(wg_add_f2f2(wg_mul_f2f(p,0.9f32),v2(t*0.4f32,-t*0.3f32)));
-  caps:f32=smoothstep(0.3f32,0.65f32,c.y*(0.6f32+froth))*(0.45f32+(0.55f32*smoothstep(0.35f32,0.6f32,fine)))*(1.0f32-smoothstep(500.0f32,2500.0f32,dist));
   hp:V3=sb_to_hull(world,u);
   edge:f32=slab_hull_plan(v2(hp.x,hp.z),u);
   // no monolith: the white water rings each dome instead (60: 1 none, 2 one dome in the hull's
@@ -295,11 +265,10 @@ slab_water :: (p:V2,world:V3,d:V3,dist:f32,t:f32,u:[]f32)->V3 {
   veins:f32=((1.0f32-smoothstep(0.0f32,thin,abs(st1-0.5f32)))*0.75f32+((1.0f32-smoothstep(0.0f32,thin*0.8f32,abs(st2-0.5f32)))*0.5f32))*(0.3f32+(0.7f32*patch));
   nearhull:f32=1.0f32-smoothstep(15.0f32,140.0f32+(u[SLAB_P+44]*6.0f32),edge);
   crest:f32=0.35f32+(0.65f32*smoothstep(-0.4f32,0.5f32,c.x/fmax(u[35],0.2f32)));
-  lace:f32=veins*crest*((nearhull*0.9f32)+(clampf(u[35]/3.0f32,0.0f32,1.0f32)*0.6f32*patch))*(1.0f32-smoothstep(300.0f32,2000.0f32,dist));
+  lace:f32=veins*crest*(nearhull*0.9f32)*(1.0f32-smoothstep(300.0f32,2000.0f32,dist));
   wash:f32=(1.0f32-smoothstep(0.0f32,14.0f32+(30.0f32*froth)+(u[SLAB_P+44]*0.8f32),edge))*smoothstep(0.2f32,0.5f32,froth+(0.2f32*sin((p.x+p.y)*0.08f32+(t*1.3f32))));
-  white:f32=clampf(fmax(fmax(caps*0.95f32,wash*0.95f32),lace*0.8f32),0.0f32,1.0f32);
-  foamc:V3=sb_mul(sb_add(sb_mul(v3(0.9f32,0.92f32,0.92f32),0.35f32+(0.55f32*amb)),sb_mul(scol,0.35f32*fmax(wg_dot3(n,sun),0.0f32))),1.0f32);
-  col=sb_mix(col,foamc,white);
+  white:f32=clampf(fmax(wash*0.95f32,lace*0.4f32),0.0f32,1.0f32);
+  col=sb_mix(col,slab_sea_white(u),white);
   return col;
 }
 
@@ -839,20 +808,12 @@ slab_lines :: (o:V3,d:V3,limit:f32,u:[]f32)->SlabHit {
 }
 // Sea water: what it scatters toward the eye at depth y (rgb), dimmer and bluer the deeper.
 slab_deep_colour :: (y:f32,up:f32,u:[]f32)->V3 {
-  light:f32=(0.5f32+(0.5f32*u[SLAB_P+7]))*(0.45f32+(0.55f32*smoothstep(-0.1f32,0.5f32,u[25])));
-  c:V3=sb_mix(v3(0.01f32,0.05f32,0.10f32),v3(0.06f32,0.34f32,0.46f32),exp(fmin(y,0.0f32)/150.0f32));
-  return sb_mul(c,light*(0.45f32+(0.55f32*smoothstep(-1.0f32,0.6f32,up))));
+  return slab_sea_out(slab_sea_fog(y,up,u));
 }
 // A colour seen through `path` metres of sea, the point at depth y and the eye at depth eye: red
-// goes first, then green.
+// goes first, then green (slab-sea.coax, by the site's water type).
 slab_through_water :: (c:V3,path:f32,y:f32,eye:f32,up:f32,u:[]f32)->V3 {
-  // the sunlight that reached the point down through the water above it
-  down:f32=fmax(-y,0.0f32);
-  // clear tropical ocean: blue light carries about 80 m
-  lit:V3=v3(exp(-down*0.07f32),exp(-down*0.02f32),exp(-down*0.012f32));
-  tr:V3=v3(exp(-path*0.07f32),exp(-path*0.02f32),exp(-path*0.012f32));
-  fog:V3=slab_deep_colour(eye,up,u);
-  return sb_add(sb_mulv(sb_mulv(c,lit),tr),sb_mulv(fog,v3(1.0f32-tr.x,1.0f32-tr.y,1.0f32-tr.z)));
+  return slab_sea_through(c,path,y,eye,up,u);
 }
 // How far of the ray o + d t, up to t, lies under the sea (y < 0).
 slab_under_len :: (o:V3,d:V3,t:f32)->f32 {
@@ -1386,6 +1347,7 @@ slab_bg_fs :: (frag:V4,u:[]f32)->SlabOut {
     }
     sm:V4=slab_smoke(ho,hd,hit.t,u);
     c=sb_mix(c,v3(sm.x,sm.y,sm.z),sm.w);
+    if (ho.y>0.0f32) { c=slab_weather_air(c,v2(frag.x,frag.y),u); }
     c=slab_grade(c,u);
     return SlabOut.{c=v4(c.x,c.y,c.z,1.0f32),depth=slab_depth_of(d,hit.t,u)};
   }
@@ -1397,14 +1359,14 @@ slab_bg_fs :: (frag:V4,u:[]f32)->SlabOut {
     slot=(abs(c0.x)<u[36]+20.0f32)&&(beyond>0.0f32)&&(beyond<1500.0f32);
   }
   if (slot||((u[SLAB_P+56]>0.5f32)&&((hd.y<0.0f32)||(ho.y<0.0f32)))) {
-    // open water all the way: the sea's own colour, darker looking down
-    c:V3=slab_grade(slab_deep_colour(fmin(ho.y,0.0f32),hd.y,u),u);
+    // open water all the way: the sea's own light, the sun's shafts, the bed where it is near
+    c:V3=slab_grade(ifx slot then slab_deep_colour(fmin(ho.y,0.0f32),hd.y,u) else slab_sea_open(o,d,u),u);
     return SlabOut.{c=v4(c.x,c.y,c.z,1.0f32),depth=1.0f32};
   }
-  c:V3=slab_haze(slab_sky(d,u),d,40000.0f32*(1.0f32-smoothstep(0.0f32,0.2f32,d.y)),u);
+  c:V3=slab_haze(slab_weather_sky(slab_sky(d,u),d,u),d,40000.0f32*(1.0f32-smoothstep(0.0f32,0.2f32,d.y)),u);
   sm:V4=slab_smoke(ho,hd,SLAB_MISS,u);
   c=sb_mix(c,v3(sm.x,sm.y,sm.z),sm.w);
-  c=slab_grade(c,u);
+  c=slab_grade(slab_weather_air(c,v2(frag.x,frag.y),u),u);
   return SlabOut.{c=v4(c.x,c.y,c.z,1.0f32),depth=1.0f32};
 }
 
@@ -1491,19 +1453,13 @@ slab_surface_fs :: (v:SlabS,u:[]f32)->V4 {
     if ((abs(hp.x)<u[36]+20.0f32)&&(beyond>0.0f32)&&(beyond<1500.0f32)) { gpu_discard(); }
   }
   if (u[SLAB_P+56]>0.5f32) {
-    // from under the sea: the sky through Snell's window overhead, the water's own colour mirrored
-    // outside it, the sun's glare through the waves
-    win:f32=smoothstep(0.62f32,0.70f32,d.y);
-    up:V3=wg_normalize3(v3(d.x*1.33f32,fmax(d.y,0.05f32),d.z*1.33f32));
-    sky:V3=sb_mul(slab_sky(up,u),0.85f32);
-    glare:f32=sb_pow(fmax(wg_dot3(d,v3(u[24],u[25],u[26])),0.0f32),60.0f32);
-    c:V3=sb_add(sb_mix(slab_deep_colour(-10.0f32,1.0f32,u),sky,win),sb_mul(sb_p(u,4),glare*2.0f32));
-    c=slab_grade(slab_through_water(c,dist,0.0f32,fmin(u[9],0.0f32),d.y,u),u);
+    // from under the sea: the sky through Snell's window, the water mirrored outside it
+    c:V3=slab_grade(slab_sea_below(v.rest,v.world,d,dist,slab_coarse(v.rest,u),u),u);
     return wg_make_f4_f3f(c,1.0f32);
   }
   c:V3=slab_haze(slab_water(v.rest,v.world,d,dist,u[2],u),d,dist*0.4f32,u);
   sm:V4=slab_smoke(sb_to_hull(v3(u[8],u[9],u[10]),u),sb_dir_to_hull(d,u),dist,u);
-  c=slab_grade(sb_mix(c,v3(sm.x,sm.y,sm.z),sm.w),u);
+  c=slab_grade(slab_weather_air(sb_mix(c,v3(sm.x,sm.y,sm.z),sm.w),slab_weather_px(d,u),u),u);
   return wg_make_f4_f3f(c,1.0f32);
 }
 // ---- The HUD: strokes (the stroke font's pen, as fixture.coax draws them) and rounded panels,

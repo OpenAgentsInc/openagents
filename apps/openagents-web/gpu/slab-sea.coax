@@ -1,0 +1,330 @@
+// SLAB's open sea, its weather and the view under it (gpu/slab.coax loads this; slab-sea.coax
+// beside the page fills the numbers). The sea is drawn by what light does at and under it, with
+// the engine's water optics (metaverse-engine/render/shade/water-optics.coax):
+//   the sky mirrored by Fresnel's share, less at grazing angles the rougher the sea;
+//   the water's own colour from its type's absorption and backscatter (Jerlov's, by site);
+//   the sun's glint, as wide as the slopes no tile holds (Cox and Munk's, by the wind);
+//   light through the crests; whitecaps where the sea's own Jacobian says it breaks, streaks from
+//   a near gale, spindrift from a strong gale;
+//   and from under it: Snell's window, the sun's shafts, the water's sight, the bed where it is near.
+// The white water at the hull's walls, the wall's reflection, the lee and the wakes are not here
+// (gpu/slab.coax slab_water and the water-wall work).
+//
+// The sea block, 32 floats after the words (slab-sea.coax U_SEAS):
+//   0   the water's diffuse attenuation at 650, 550, 450 nm (1/m); how much clearer the view under
+//       the sea is drawn than the water is (1: as it is)
+//   4   the deep water's reflectance under the surface, rgb; the particles' scatter (1/m)
+//   8   mean square slope: cascade 0's, the fine tile's, the finest tile's, and what no tile holds
+//   12  the long-wave crest gate's on (the fine foam is there), streaks, spindrift, the finest patch (m, 0: none)
+//   16  cloud cover, rain, fog, lightning (all 0 to 1)
+//   20  the sun's share through the cloud, the sky's, the finest slopes' scale, the bed's depth (m, 0: too deep to draw)
+//   24  the survey's fill light, the whitecaps' share of the sea, 0, 0
+#load "../../../metaverse-engine/render/shade/water-optics.coax";
+
+SLAB_SEA :: 15840;
+// The sun's angular radius, rad.
+SLAB_SUN_DISC :: 0.00465f32;
+
+// The page's colours are the display's (the sky's and the sun's uniforms, the platform's paint);
+// the optics are in light's own scale. These two cross over: a square and its root, until the
+// world's tone mapping takes the display side.
+slab_sea_lin :: (c:V3)->V3 {return v3(c.x*c.x,c.y*c.y,c.z*c.z);}
+slab_sea_out :: (c:V3)->V3 {return v3(sqrt(fmax(c.x,0.0f32)),sqrt(fmax(c.y,0.0f32)),sqrt(fmax(c.z,0.0f32)));}
+slab_sea_kd :: (u:[]f32)->V3 {return v3(u[SLAB_SEA],u[SLAB_SEA+1],u[SLAB_SEA+2]);}
+// The sun's light on a white card facing it, and the sky's on one facing up.
+slab_sea_sun :: (u:[]f32)->V3 {return slab_sea_lin(sb_p(u,4));}
+slab_sea_skylight :: (u:[]f32)->V3 {return slab_sea_lin(sb_mul(sb_add(sb_p(u,8),sb_p(u,12)),0.5f32));}
+
+// The slopes of one of the two finer cascades at a rest point: `hi` 0 the fine tile (or the
+// phone's baked one), 1 the finest; bilinear, wrapped.
+slab_sea_fine :: (p:V2,patch:f32,hi:u32,scale:f32,u:[]f32)->V2 {
+  q:V2=wg_sub_f2f(wg_mul_f2f(wg_div_f2f(p,patch),cast(f32)(SLAB_N)),0.5f32);
+  f:V2=wg_fract_f2(q);
+  i:I2=wg_cvt_i2f2(wg_floor_f2(q));
+  acc:V2=v2(0.0f32,0.0f32);
+  {
+    k:s32=0;
+    while k<4 {
+      o:I2=i2(k&1,k>>1);
+      c:U2=wg_cvt_u2i2(wg_band_i2i2(wg_add_i2i2(i,o),wg_make_i2_i((cast,trunc(s32)(SLAB_N))-1)));
+      w:f32=(ifx o.x==1 then f.x else 1.0f32-f.x)*(ifx o.y==1 then f.y else 1.0f32-f.y);
+      half:u32=(slab_word(add_wrap(add_wrap(SLAB_W_FINE,mul_wrap(c.y,SLAB_N)),c.x),u)>>mul_wrap(cast(u32)16,hi))&0xffff;
+      acc=wg_add_f2f2(acc,wg_mul_ff2(w,wg_sw_xy_f4(wg_unpack4x8snorm(half))));
+      k+=1;
+    }
+  }
+  return wg_mul_f2f(acc,scale);
+}
+// The fine tile's foam at a rest point (it rides in cascade 0's words, on the fine tile's grid).
+slab_sea_foam1 :: (p:V2,u:[]f32)->f32 {
+  q:V2=wg_sub_f2f(wg_mul_f2f(wg_div_f2f(p,u[30]),cast(f32)(SLAB_N)),0.5f32);
+  f:V2=wg_fract_f2(q);
+  i:I2=wg_cvt_i2f2(wg_floor_f2(q));
+  acc:f32=0.0f32;
+  {
+    k:s32=0;
+    while k<4 {
+      o:I2=i2(k&1,k>>1);
+      c:U2=wg_cvt_u2i2(wg_band_i2i2(wg_add_i2i2(i,o),wg_make_i2_i((cast,trunc(s32)(SLAB_N))-1)));
+      w:f32=(ifx o.x==1 then f.x else 1.0f32-f.x)*(ifx o.y==1 then f.y else 1.0f32-f.y);
+      word:u32=slab_word(add_wrap(SLAB_W_COARSE,mul_wrap(cast(u32)2,add_wrap(mul_wrap(c.y,SLAB_N),c.x))),u);
+      acc=acc+(w*((cast(f32)((word>>24)&0xff))/126.0f32));
+      k+=1;
+    }
+  }
+  return acc;
+}
+// A noise's ridge: 1 along the line where it crosses a half, 0 a `width` away.
+slab_sea_ridge :: (v:f32,width:f32)->f32 {return 1.0f32-smoothstep(0.0f32,width,abs(v-0.5f32));}
+
+// Lit foam, in light's scale: a diffuse white under the sun and the sky.
+slab_sea_foam_lit :: (ndl:f32,u:[]f32)->V3 {
+  return sb_mul(sb_add(sb_mul(slab_sea_sun(u),0.3f32+(0.7f32*ndl)),slab_sea_skylight(u)),0.78f32);
+}
+// The same for the display, on a level sea: the colour of white water (the hull's wash uses it).
+slab_sea_white :: (u:[]f32)->V3 {
+  return slab_sea_out(slab_sea_foam_lit(fmax(u[25],0.0f32),u));
+}
+
+// The open sea at a rest point p, seen along d from `dist` away; c is cascade 0 there (height,
+// foam, slopes). rgb is the display's colour before the air's haze, w how white the water is.
+slab_sea :: (p:V2,world:V3,d:V3,dist:f32,t:f32,c:V4,u:[]f32)->V4 {
+  phone:bool=u[5]>0.5f32;
+  hs:f32=fmax(u[35],0.05f32);
+  wind:V2=v2(u[32],u[33]);
+  footprint:f32=(((dist*2.0f32)*u[11])/u[1])/fmax(abs(d.y),0.08f32);
+  // what each cascade's pixel still holds: its slopes fade out where a pixel covers its texels,
+  // and their variance goes to the roughness instead
+  keep0:f32=0.3f32+(0.7f32*clampf(((u[29]/16.0f32)/fmax(footprint,1e-4f32))-0.5f32,0.0f32,1.0f32));
+  keep1:f32=clampf(((u[30]/64.0f32)/fmax(footprint,1e-4f32))-0.5f32,0.0f32,1.0f32);
+  patch2:f32=u[SLAB_SEA+15];
+  keep2:f32=ifx patch2>0.0f32 then clampf(((patch2/64.0f32)/fmax(footprint,1e-4f32))-0.5f32,0.0f32,1.0f32) else 0.0f32;
+  slope:V2=wg_mul_f2f(v2(c.z,c.w),keep0);
+  if (keep1>0.0f32) {
+    // the phone's fine tile is baked once, so it drifts down the wind; the desktop's runs on the clock
+    at:V2=ifx phone then wg_add_f2f2(p,wg_mul_f2f(wind,t*0.3f32)) else p;
+    slope=wg_add_f2f2(slope,wg_mul_f2f(slab_sea_fine(at,u[30],cast(u32)0,u[42],u),keep1));
+  }
+  if (keep2>0.0f32) {
+    slope=wg_add_f2f2(slope,wg_mul_f2f(slab_sea_fine(p,patch2,cast(u32)1,u[SLAB_SEA+22],u),keep2));
+  }
+  sigma2:f32=u[SLAB_SEA+11]+((1.0f32-(keep0*keep0))*u[SLAB_SEA+8])+((1.0f32-(keep1*keep1))*u[SLAB_SEA+9])+((1.0f32-(keep2*keep2))*u[SLAB_SEA+10]);
+  n:V3=wg_normalize3(v3(-slope.x,1.0f32,-slope.y));
+  v:V3=sb_mul(d,-1.0f32);
+  sun:V3=v3(u[24],u[25],u[26]);
+  sunl:V3=slab_sea_sun(u);
+  skyl:V3=slab_sea_skylight(u);
+  cv:f32=fmax(wg_dot3(n,v),0.02f32);
+  fres:f32=wo_mean_fresnel(cv,sigma2);
+  // the sky in it: the mirror's direction, lifted as a rough sea's facets lift it, the sun's disc
+  // left to the glint
+  r:V3=wg_reflect3(d,n);
+  r=wg_normalize3(v3(r.x,abs(r.y)+(1.2f32*sqrt(sigma2)),r.z));
+  sk:V3=slab_sky(r,u);
+  col:V3=sb_mul(slab_sea_lin(v3(fmin(sk.x,1.25f32),fmin(sk.y,1.25f32),fmin(sk.z,1.25f32))),fres);
+  // the water's own colour: the light that went in and was scattered back up
+  ndl:f32=fmax(wg_dot3(n,sun),0.0f32);
+  into:f32=1.0f32-wo_fresnel(fmax(sun.y,0.02f32));
+  deep:V3=v3(u[SLAB_SEA+4],u[SLAB_SEA+5],u[SLAB_SEA+6]);
+  light:V3=sb_add(sb_mul(sunl,ndl*into),sb_mul(skyl,0.94f32));
+  col=sb_add(col,sb_mul(sb_mulv(deep,light),WO_LEAVING*(1.0f32-fres)));
+  // the sun's glint
+  col=sb_add(col,sb_mul(sunl,WO_PI*wo_glint(n,v,sun,wo_alpha(sigma2),SLAB_SUN_DISC,0.0f32)));
+  // light through the crests, seen looking toward the sun: a few metres of water's colour
+  high:f32=c.x/hs;
+  crest:f32=smoothstep(0.05f32,0.45f32,high);
+  flat:f32=fmax(((d.x*sun.x)+(d.z*sun.z))/fmax(sqrt(((d.x*d.x)+(d.z*d.z))*((sun.x*sun.x)+(sun.z*sun.z))),1e-4f32),0.0f32);
+  col=sb_add(col,sb_mul(sb_mulv(sunl,wo_through(slab_sea_kd(u),6.0f32)),(0.11f32*crest)*((flat*flat)*(into*(1.0f32-fres)))));
+  // whitecaps: cascade 0's own foam, and the fine tile's where a long wave's crest carries it
+  gate:f32=smoothstep(-0.05f32,0.2f32,high);
+  near:f32=1.0f32-smoothstep(600.0f32,3500.0f32,dist);
+  wa:f32=(p.x*wind.x)+(p.y*wind.y);
+  wc:f32=(p.y*wind.x)-(p.x*wind.y);
+  f1:f32=0.0f32;
+  if ((u[SLAB_SEA+12]>0.5f32)&&(keep1>0.0f32)) { f1=(slab_sea_foam1(p,u)*gate)*keep1; }
+  foam:f32=fmax(c.y,f1);
+  white:f32=0.0f32;
+  if ((foam>0.02f32)||(u[SLAB_SEA+13]>0.0f32)) {
+    grain:f32=(slab_noise(wg_add_f2f2(wg_mul_f2f(p,0.21f32),v2(t*0.12f32,0.0f32)))*0.5f32)+(slab_noise(wg_mul_f2f(p,0.63f32))*0.3f32)+(slab_noise(wg_mul_f2f(p,1.9f32))*0.2f32);
+    // cascade 0's foam is as coarse as its texels: the grain and the crest break it up; the fine
+    // tile's is its own shape. Fresh foam is solid; as it ages it thins to a lace of holes
+    // (a breaking crest lies across the wind)
+    along:f32=slab_noise(v2((wa*0.07f32)-(t*0.05f32),wc*0.016f32));
+    f0:f32=(c.y*gate)*((0.2f32+(0.8f32*grain))+(0.75f32*along));
+    body:f32=fmax(fmin(f0,1.0f32),(f1*(0.55f32+(0.45f32*along)))*(0.6f32+(0.6f32*grain)));
+    // the foam's own texture eats it from its thin edges in: solid where it is thick, a lace of
+    // holes where it thins
+    lace:f32=((slab_noise(wg_add_f2f2(wg_mul_f2f(p,0.55f32),v2(t*0.08f32,t*0.05f32)))*0.5f32)+(slab_noise(wg_mul_f2f(p,1.9f32))*0.3f32))+(slab_noise(wg_mul_f2f(p,5.3f32))*0.2f32);
+    white=smoothstep((lace*1.25f32)-0.3f32,(lace*1.25f32)+0.25f32,body)*(0.7f32+(0.3f32*slab_noise(wg_mul_f2f(p,2.3f32))));
+    // foam blown out along the wind, from a near gale
+    line:f32=slab_sea_ridge(slab_noise(v2((wa*0.011f32)-(t*0.03f32),wc*0.3f32)),0.07f32+(footprint*0.004f32));
+    line2:f32=slab_sea_ridge(slab_noise(v2((wa*0.027f32)-(t*0.05f32)+4.0f32,(wc*0.7f32)+9.0f32)),0.06f32+(footprint*0.004f32));
+    white=fmax(white,(u[SLAB_SEA+13]*(0.3f32+(0.7f32*smoothstep(0.3f32,0.7f32,slab_noise(wg_mul_f2f(p,0.012f32))))))*(((line*0.5f32)+(line2*0.35f32))*(0.5f32+(0.5f32*grain))));
+  }
+  // past where the foam's grain shows, the sea is as white as its whitecaps cover it
+  white=mix(u[SLAB_SEA+25]*(0.4f32+(0.6f32*gate)),white,near);
+  // spindrift: the crests smoke
+  smoke:f32=(u[SLAB_SEA+14]*gate)*smoothstep(0.35f32,0.8f32,slab_noise(v2((wa*0.03f32)-(t*1.1f32),wc*0.12f32)));
+  white=clampf(fmax(white,smoke*0.7f32),0.0f32,1.0f32);
+  // the bubbles under fresh foam lighten the water round it
+  col=sb_add(col,sb_mul(sb_mulv(wo_through(slab_sea_kd(u),3.0f32),light),(0.05f32*smoothstep(0.05f32,0.5f32,foam))*(1.0f32-fres)));
+  col=sb_mix(col,slab_sea_foam_lit(ndl,u),white);
+  // and the spray hangs over the sea
+  veil:f32=u[SLAB_SEA+14]*(1.0f32-exp((-dist)/700.0f32));
+  col=sb_mix(col,sb_mul(slab_sea_lin(sb_p(u,12)),0.9f32),veil*0.8f32);
+  o:V3=slab_sea_out(col);
+  return v4(o.x,o.y,o.z,white);
+}
+
+// ---- The weather's part of the picture (its light and haze are in the uniforms already).
+// A cloud deck's underside over the sky's colour: broad dark and light, drifting.
+slab_weather_sky :: (c:V3,d:V3,u:[]f32)->V3 {
+  cover:f32=u[SLAB_SEA+16];
+  if ((cover<=0.02f32)||(d.y<=0.0f32)) { return c; }
+  q:V2=wg_div_f2f(v2(d.x,d.z),(d.y+0.12f32));
+  drift:V2=wg_mul_f2f(v2(u[32],u[33]),u[2]*0.02f32);
+  a:f32=slab_noise(wg_add_f2f2(wg_mul_f2f(q,0.7f32),drift));
+  b:f32=slab_noise(wg_add_f2f2(wg_mul_f2f(v2((q.x*1.6f32)-(q.y*1.1f32),(q.x*1.1f32)+(q.y*1.6f32)),1.3f32),wg_mul_f2f(drift,1.7f32)));
+  deck:f32=(a*0.62f32)+(b*0.38f32);
+  // lightning lights the deck from inside
+  flash:f32=u[SLAB_SEA+19]*smoothstep(0.35f32,0.8f32,a);
+  shade:f32=mix(1.0f32,0.62f32+(0.76f32*deck),cover*(0.55f32+(0.45f32*u[SLAB_SEA+17])));
+  return sb_add(sb_mul(c,shade),sb_mul(v3(0.75f32,0.8f32,1.0f32),flash*0.9f32));
+}
+// Where a view direction lands on the screen, in pixels (the fragment's own place, for a stage
+// that is not handed it).
+slab_weather_px :: (d:V3,u:[]f32)->V2 {
+  vz:f32=fmax(wg_dot3(d,v3(u[12],u[13],u[14])),1e-4f32);
+  sx:f32=wg_dot3(d,v3(u[16],u[17],u[18]))/((vz*u[11])*(u[0]/u[1]));
+  sy:f32=wg_dot3(d,v3(u[20],u[21],u[22]))/(vz*u[11]);
+  return v2(((sx+1.0f32)*0.5f32)*u[0],((1.0f32-sy)*0.5f32)*u[1]);
+}
+// Rain between the eye and the scene: streaks falling down the screen, leaning with the wind.
+slab_weather_air :: (c:V3,frag:V2,u:[]f32)->V3 {
+  rain:f32=u[SLAB_SEA+17];
+  if (rain<=0.01f32) { return c; }
+  px:V2=wg_div_f2f(frag,u[7]);
+  // the wind's part across the view leans the rain
+  lean:f32=clampf((((u[32]*u[16])+(u[33]*u[18]))*u[34])*0.03f32,-0.9f32,0.9f32);
+  x:f32=px.x+(px.y*lean);
+  s1:f32=slab_noise(v2(x*0.5f32,(px.y*0.045f32)-(u[2]*14.0f32)));
+  streak:f32=smoothstep(0.86f32,0.98f32,s1)*0.5f32;
+  if (u[5]<0.5f32) {
+    s2:f32=slab_noise(v2((x*0.21f32)+31.0f32,(px.y*0.022f32)-(u[2]*9.0f32)));
+    streak=streak+(smoothstep(0.87f32,0.98f32,s2)*0.35f32);
+  }
+  grey:V3=sb_mul(sb_add(sb_p(u,8),sb_p(u,12)),0.62f32);
+  return sb_mix(c,sb_add(grey,v3(0.1f32,0.1f32,0.11f32)),clampf((streak*rain)*0.38f32,0.0f32,0.5f32));
+}
+
+// ---- Under the sea.
+// How much clearer the water is drawn than it is (1: as it is), and the survey's fill light.
+slab_sea_clear :: (u:[]f32)->f32 {return fmax(u[SLAB_SEA+3],1.0f32);}
+// The daylight left at `down` metres under the surface, in light's scale.
+slab_sea_daylight :: (down:f32,u:[]f32)->V3 {
+  top:V3=sb_add(sb_mul(slab_sea_sun(u),fmax(u[25],0.0f32)*(1.0f32-wo_fresnel(fmax(u[25],0.02f32)))),sb_mul(slab_sea_skylight(u),0.94f32));
+  return sb_mulv(top,wo_through(slab_sea_kd(u),fmax(down,0.0f32)/slab_sea_clear(u)));
+}
+// What the water itself sends toward an eye at depth y looking `up` (the ray's rise): the deep
+// water's reflectance of the daylight at that depth, brighter looking up toward it.
+slab_sea_fog :: (y:f32,up:f32,u:[]f32)->V3 {
+  deep:V3=v3(u[SLAB_SEA+4],u[SLAB_SEA+5],u[SLAB_SEA+6]);
+  return sb_mul(sb_mulv(deep,slab_sea_daylight(-fmin(y,0.0f32),u)),3.0f32*(0.5f32+(0.5f32*smoothstep(-1.0f32,0.6f32,up))));
+}
+// What is left of each colour along `path` metres of the water toward the eye (beam attenuation:
+// the diffuse attenuation and the particles' scatter).
+slab_sea_beam :: (path:f32,u:[]f32)->V3 {
+  k:V3=slab_sea_kd(u);
+  b:f32=u[SLAB_SEA+7];
+  return wo_through(v3(k.x+b,k.y+b,k.z+b),path/slab_sea_clear(u));
+}
+// The sun's shafts along a ray from o (world, under the sea): the caustic net carried down the
+// sun's direction, summed at a few distances.
+slab_sea_shafts :: (o:V3,d:V3,limit:f32,u:[]f32)->f32 {
+  sun:V3=v3(u[24],u[25],u[26]);
+  if (sun.y<0.08f32) { return 0.0f32; }
+  // under the water the sun's rays run steeper (Snell)
+  sy:f32=wo_cos_refracted(sun.y);
+  sh:f32=sqrt(fmax(1.0f32-(sy*sy),0.0f32))/fmax(sqrt((sun.x*sun.x)+(sun.z*sun.z)),1e-4f32);
+  ray:V3=v3(sun.x*sh,sy,sun.z*sh);
+  steps:s32=ifx u[5]>0.5f32 then 3 else 5;
+  acc:f32=0.0f32;
+  at:f32=3.0f32;
+  i:s32=0;
+  while i<steps {
+    if (at<limit) {
+      q:V3=sb_add(o,sb_mul(d,at));
+      if (q.y<0.0f32) {
+        rise:f32=(-q.y)/ray.y;
+        top:V2=v2(q.x+(ray.x*rise),q.z+(ray.z*rise));
+        acc=acc+((wo_caustic(wg_mul_f2f(top,0.11f32),u[2]*0.6f32)*exp(q.y/(45.0f32*sqrt(slab_sea_clear(u)))))*exp((-at)/(70.0f32*sqrt(slab_sea_clear(u)))));
+      }
+    }
+    at=at*2.3f32;
+    i+=1;
+  }
+  toward:f32=0.35f32+(0.65f32*fmax(wg_dot3(d,ray),0.0f32));
+  return (acc*toward)*(clampf(sun.y*3.0f32,0.0f32,1.0f32)*u[SLAB_SEA+20]);
+}
+// A display colour c at depth y seen through `path` metres of the sea from an eye at depth eye.
+slab_sea_through :: (c:V3,path:f32,y:f32,eye:f32,up:f32,u:[]f32)->V3 {
+  tr:V3=slab_sea_beam(path,u);
+  // the thing is lit by the daylight that reached it (and, in the survey, a fill light)
+  day:V3=slab_sea_daylight(-fmin(y,0.0f32),u);
+  top:V3=slab_sea_daylight(0.0f32,u);
+  fill:f32=u[SLAB_SEA+24];
+  lit:V3=v3((day.x/fmax(top.x,1e-4f32))+fill,(day.y/fmax(top.y,1e-4f32))+fill,(day.z/fmax(top.z,1e-4f32))+fill);
+  fog:V3=slab_sea_fog(eye,up,u);
+  return slab_sea_out(sb_add(sb_mulv(sb_mulv(slab_sea_lin(c),lit),tr),sb_mulv(fog,v3(1.0f32-tr.x,1.0f32-tr.y,1.0f32-tr.z))));
+}
+// Open water along a ray from o (world), nothing in the way: the water's own light with the sun's
+// shafts in it, and the bed where the site's water is shallow enough to draw.
+slab_sea_open :: (o:V3,d:V3,u:[]f32)->V3 {
+  eye:f32=fmin(o.y,0.0f32);
+  fog:V3=slab_sea_fog(eye,d.y,u);
+  bed:f32=u[SLAB_SEA+23];
+  if ((bed>0.0f32)&&(d.y< -1e-4f32)) {
+    reach:f32=(o.y+bed)/(-d.y);
+    hit:V3=sb_add(o,sb_mul(d,reach));
+    // sand, rippled, the caustic net on it
+    grain:f32=(slab_noise(v2(hit.x*0.05f32,hit.z*0.05f32))*0.6f32)+(slab_noise(v2(hit.x*0.31f32,hit.z*0.31f32))*0.4f32);
+    net:f32=wo_caustic(v2(hit.x*0.09f32,hit.z*0.09f32),u[2]*0.6f32);
+    sand:V3=sb_mul(v3(0.46f32,0.41f32,0.31f32),(0.75f32+(0.4f32*grain))*(0.8f32+(0.7f32*net)));
+    day:V3=sb_add(slab_sea_daylight(bed,u),sb_mul(slab_sea_daylight(0.0f32,u),u[SLAB_SEA+24]));
+    tr:V3=slab_sea_beam(reach,u);
+    fog=sb_add(sb_mulv(sb_mulv(sand,day),tr),sb_mulv(fog,v3(1.0f32-tr.x,1.0f32-tr.y,1.0f32-tr.z)));
+  }
+  shafts:f32=slab_sea_shafts(o,d,600.0f32,u);
+  return slab_sea_out(sb_mul(fog,1.0f32+(1.6f32*shafts)));
+}
+// The surface from under it at rest point p, along d (rising): the sky bent through Snell's
+// window overhead, the water's own colour mirrored outside it, the sun through the waves.
+slab_sea_below :: (p:V2,world:V3,d:V3,dist:f32,c:V4,u:[]f32)->V3 {
+  slope:V2=v2(c.z,c.w);
+  if (u[5]<0.5f32) { slope=wg_add_f2f2(slope,slab_sea_fine(p,u[30],cast(u32)0,u[42],u)); }
+  n:V3=wg_normalize3(v3(-slope.x,1.0f32,-slope.y));
+  ci:f32=fmax(wg_dot3(d,n),0.0f32);
+  back:f32=wo_below(ci);
+  // out through the surface: Snell's law the other way
+  st2:f32=(WO_IOR*WO_IOR)*(1.0f32-(ci*ci));
+  co:f32=sqrt(fmax(1.0f32-st2,0.0f32));
+  out:V3=wg_normalize3(sb_add(sb_mul(sb_sub(d,sb_mul(n,ci)),WO_IOR),sb_mul(n,fmax(co,0.03f32))));
+  sk:V3=slab_sky(out,u);
+  sun:V3=v3(u[24],u[25],u[26]);
+  sky:V3=sb_mul(slab_sea_lin(v3(fmin(sk.x,1.4f32),fmin(sk.y,1.4f32),fmin(sk.z,1.4f32))),1.0f32-back);
+  glare:f32=sb_pow(fmax(wg_dot3(out,sun),0.0f32),180.0f32)*(1.0f32-back);
+  mirror:V3=sb_mul(slab_sea_fog(fmin(u[9],0.0f32),-0.4f32,u),back);
+  col:V3=sb_add(sb_add(sky,mirror),sb_mul(slab_sea_sun(u),glare*6.0f32));
+  tr:V3=slab_sea_beam(dist,u);
+  fog:V3=slab_sea_fog(fmin(u[9],0.0f32),d.y,u);
+  shafts:f32=slab_sea_shafts(v3(u[8],u[9],u[10]),d,dist,u);
+  return slab_sea_out(sb_add(sb_mulv(col,tr),sb_mul(sb_mulv(fog,v3(1.0f32-tr.x,1.0f32-tr.y,1.0f32-tr.z)),1.0f32+(1.6f32*shafts))));
+}
+
+#test "the sea's colour crossings are each other's inverse" {
+  c:V3=slab_sea_out(slab_sea_lin(v3(0.2f32,0.5f32,0.9f32)));
+  #assert abs(c.x-0.2f32)<1e-5f32 && abs(c.y-0.5f32)<1e-5f32 && abs(c.z-0.9f32)<1e-5f32;
+}
+#test "a ridge is 1 on its line and 0 a width away" {
+  #assert slab_sea_ridge(0.5f32,0.1f32)==1.0f32 && slab_sea_ridge(0.7f32,0.1f32)==0.0f32 && abs(slab_sea_ridge(0.55f32,0.1f32)-0.5f32)<1e-4f32;
+}

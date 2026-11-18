@@ -626,6 +626,112 @@ coax/bin/coax test --library metaverse/water-ocean.coax --steps 2000000000
 ```
 
 
+## The open sea by its optics (SLAB)
+
+SLAB's sea (`/worlds/slab`) is drawn by what light does at the water, not by a
+painted preset. The shared pieces are two modules any realm can load:
+
+- `metaverse-engine/render/shade/water-optics.coax` is W2's optics as shader
+  arithmetic with no uniforms of its own (`wo_*`): Fresnel's reflectance and
+  its mean over a rough sea, Beer–Lambert attenuation, the deep water's
+  reflectance, the GGX glint, the crest's phase function, Snell's window and
+  the caustic net. Every number is in light's own scale, so a realm decodes
+  its sky before it calls them and tones the result after.
+- `metaverse/water-sea.coax` is the CPU half (`sea_*`): the slope statistics
+  of a spectral sea, a finer cascade's whitecaps, the Beaufort scale's foam
+  streaks and spindrift, a water type's optics, and the weather that goes
+  with a wind.
+
+`apps/openagents-web/gpu/slab-sea.coax` and `apps/openagents-web/slab-sea.coax`
+are SLAB's use of them.
+
+**What is drawn.** A pixel of sea is the sum of four lights:
+
+1. The sky, mirrored by Fresnel's share. A rough sea's facets lean toward the
+   eye, so it reflects less at grazing angles than a flat one
+   (`wo_mean_fresnel`, Bruneton and others 2010), and the mirrored direction
+   is lifted by the slopes' spread.
+2. The water's own colour: the daylight that went in and was scattered back
+   up, `0.33 b_b / K_d` under the surface (Gordon and others 1975) times the
+   0.54 that leaves it. `K_d` is Jerlov's by water type; the backscatter is
+   pure sea water's (Morel 1974) plus particles that grow with the type's
+   turbidity, `0.0003 + 0.06 (K_d(550) - 0.064)` per metre (our fit: clear
+   ocean comes to a blue reflectance near 4%, coastal water to a green one
+   near 1.5%).
+3. The sun's glint: GGX whose `alpha²` is the mean square slope that no drawn
+   tile holds.
+4. Light through the crests, seen looking toward the sun.
+
+Whitecaps, wind streaks and spindrift go over that as lit diffuse foam.
+
+**Slopes.** A desktop draws three cascades: cascade 0 (the sea the hull
+floats on) as geometry and slopes, and two finer ones as slopes only, down to
+waves about a metre long. Cascade 0 is the same sea however many finer
+cascades are drawn over it, so the heights the hull samples are the heights
+drawn. Cox and Munk (1954) give the whole sea's mean square slope from the
+wind, `0.003 + 0.00512 U`. What the tiles hold is summed from their own
+spectrum (`sea_cascade_mss`); the rest is the glint's roughness
+(`sea_tail_mss`). Where a pixel covers a cascade's texels its slopes fade out
+and their variance joins the roughness, so the distant sea is a smooth sheen
+and not a shimmer.
+
+| Sea | Wind, m/s | Cascade patches, m | Mean square slope held by the tiles | Cox and Munk's |
+| --- | --- | --- | --- | --- |
+| calm, 0.5 m | 4.8 | 619, 117, 22 | 0.0008 | 0.028 |
+| trade, 1.5 m | 8.4 | 898, 170, 32 | 0.0033 | 0.046 |
+| equator-max, 2.8 m | 11.4 | 1,101, 208, 39 | 0.0075 | 0.061 |
+| winter, 4 m | 13.7 | 1,245, 235, 44 | 0.012 | 0.073 |
+| gale, 10 m | 21.6 | 1,686, 318, 60 | 0.041 | 0.114 |
+| hurricane, 14 m | 25.6 | 1,888, 356, 67 | 0.065 | 0.134 |
+
+**Whitecaps.** Cascade 0's foam is W4's (its Jacobian under a threshold). Its
+texels are 10 to 30 m wide, so the fine tile makes its own foam at 2 to 6 m:
+the share of the tile where its Jacobian is least (`sea_share_threshold`
+counts it from the tile, because a short wave's Jacobian is skewed), kept by
+the drawing only on the long waves' crests. The share is Monahan's cover of
+the whole sea, `3.84e-6 U^3.41`, over the 0.4 of the sea the crest gate
+passes. Foam streaks along the wind begin in a near gale (Beaufort 7) and are
+dense by a strong gale; spindrift begins in a strong gale (Beaufort 9).
+
+**Water types by site** (our reading of Jerlov's 1976 map):
+
+| Site | Type | A diver's sight |
+| --- | --- | --- |
+| Kona | I | 24 m |
+| Guam | IA | 23 m |
+| Puerto Rico, the equator | IB | 23 m |
+| California | III | 16 m |
+| Texas shelf | coastal 3 | 10 m |
+| The fjord | coastal 5 | 7 m |
+
+The sight is 3.9 beam attenuation lengths (2% contrast), with the beam
+attenuation taken as `K_d(550) / 0.4` (our planning ratio).
+
+**Weather.** W9's states drive the sea's light. With no weather chosen the
+state follows the wind (`sea_weather_auto`): a storm from Beaufort 10, rain
+from Beaufort 8, overcast from Beaufort 6 in the site's storm season, clear
+otherwise. `sea_weather` turns the state into the sun's and the sky's shares
+of light, and the air's haze length. A storm's rain leaves about 7 km of
+visibility (our planning value between rain bands); a full overcast passes
+about 7% of the direct sun and 45% of the sky's light (Kasten and Czeplak
+1980 give 25% of the global radiation under 8 oktas). The picture dims by
+less than the light does, as an eye or a camera would open up.
+`?weather=clear|overcast|fog|rain|storm` holds a state; key C steps through
+them.
+
+**Under the sea.** The same water type sets what the eye sees there: the
+daylight left at depth, the water's own glow, the beam attenuation along the
+view, the sun's shafts, and the surface from below with Snell's window. Real
+water shows a diver about 23 m at Guam, and the hull is 1,000 m long, so the
+underwater view opens as a survey: the water is drawn about 64 times clearer
+than it is there, with a fill light, and a line on screen says so. Key X (or
+`?water=real`) shows the water as it is. Where the site's water is shallower
+than 250 m the bed is drawn.
+
+**Checks.** `coax/bin/coax test --library
+metaverse-engine/render/shade/water-optics.coax` and `coax/bin/coax test
+--library metaverse/water-sea.coax --steps 2000000000`.
+
 ## W11: measurement (done; real phones are an owner step)
 
 Measured on 2026-10-29 with this change in headless Chrome on an Apple

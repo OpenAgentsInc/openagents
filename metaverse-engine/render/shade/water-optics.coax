@@ -1,0 +1,169 @@
+// The Metaverse Engine's water optics (docs/metaverse/water.md, W2): what light does at a water
+// surface and in the water under it, as shader arithmetic with no uniforms of its own. Written in
+// Coax and emitted for each GPU; every number is light's own scale (linear, 1 a bright diffuse
+// white), so a realm decodes its sky before it calls these and tones the result after.
+// Everglade's river (apps/openagents-web/gpu/everglade-v1/gpu.coax eg_water_*) and SLAB's open sea
+// (apps/openagents-web/gpu/slab-sea.coax) both draw with them.
+//
+//   wo_fresnel        Schlick's reflectance of a flat water surface at a cosine
+//   wo_mean_fresnel   the same averaged over a rough sea's facets (Bruneton et al. 2010)
+//   wo_cos_refracted  the cosine of the ray after Snell's law bends it into the water
+//   wo_through        Beer-Lambert: what is left of each colour after a path through the water
+//   wo_deep           the colour of water too deep to see the bed in, from its absorption and
+//                     backscatter (Gordon's reflectance of an optically deep sea)
+//   wo_ggx, wo_smith  the microfacet terms a glint is made of
+//   wo_glint          the sun's glint per unit illuminance, widened by the sun's disc
+//   wo_alpha          a GGX roughness for a sea's mean square slope (Cox and Munk's statistic)
+//   wo_sky_roughness  how far a reflection of the sky is blurred, by roughness and pixel footprint
+//   wo_hg             Henyey and Greenstein's phase function: light through a thin crest
+//   wo_below          the surface from under it: Snell's window, total reflection outside it
+//   wo_caustic        the bright net the surface's lenses cast down through the water
+//   coax/bin/coax test --library metaverse-engine/render/shade/water-optics.coax
+#load "../../gpu/shader.coax";
+#load "../noise.coax";
+
+WO_PI :: 3.14159265f32;
+WO_IOR :: 1.33f32;
+WO_F0 :: 0.0200593f32;   // ((n - 1) / (n + 1))^2
+// The share of the light scattered up through the surface that leaves it toward the eye: the
+// loss at the surface and the wider solid angle outside (Austin 1974, about t / n^2).
+WO_LEAVING :: 0.54f32;
+// The cosine of Snell's window's edge seen from below: sqrt(1 - 1 / n^2), 48.75 degrees off straight up.
+WO_WINDOW :: 0.6594f32;
+
+wo_exp3 :: (a:V3)->V3 {return v3(exp(a.x),exp(a.y),exp(a.z));}
+
+// Schlick's Fresnel reflectance of water at cosine c.
+wo_fresnel :: (c:f32)->f32 {
+  m:f32=clampf(1.0f32-c,0.0f32,1.0f32);
+  m2:f32=m*m;
+  return WO_F0+((((1.0f32-WO_F0)*m2)*m2)*m);
+}
+// The reflectance a rough sea shows at view cosine c, its slopes' variance sigma2 (m^2/m^2): the
+// facets the eye sees lean toward it, so a rough sea reflects less at grazing angles than a flat
+// one (Bruneton, Neyret and Holzschuch 2010, "Real-time realistic ocean lighting", eq. 16's fit).
+wo_mean_fresnel :: (c:f32,sigma2:f32)->f32 {
+  s:f32=sqrt(fmax(sigma2,0.0f32));
+  return WO_F0+((1.0f32-WO_F0)*pow(clampf(1.0f32-c,0.0f32,1.0f32),5.0f32*exp((-2.69f32)*s))/(1.0f32+(22.7f32*pow(s,1.5f32))));
+}
+wo_cos_refracted :: (ci:f32)->f32 {
+  return sqrt(fmax(1.0f32-((1.0f32-(ci*ci))/(WO_IOR*WO_IOR)),0.0f32));
+}
+// Beer-Lambert: each colour's share left after `path` metres at `absorb` (1/m).
+wo_through :: (absorb:V3,path:f32)->V3 {
+  return wo_exp3(scale3(absorb,-fmax(path,0.0f32)));
+}
+// Optically deep water's reflectance under the surface, R = 0.33 b_b / (a + b_b) (Gordon, Brown
+// and Jacobs 1975), from its diffuse attenuation kd (about a + b_b) and backscatter bb, both 1/m.
+// Times WO_LEAVING and the light that got in, it is the sea's own colour seen from above.
+wo_deep :: (kd:V3,bb:V3)->V3 {
+  return v3((0.33f32*bb.x)/fmax(kd.x,1e-4f32),(0.33f32*bb.y)/fmax(kd.y,1e-4f32),(0.33f32*bb.z)/fmax(kd.z,1e-4f32));
+}
+wo_ggx :: (noh:f32,a2:f32)->f32 {
+  d:f32=((noh*noh)*(a2-1.0f32))+1.0f32;
+  return a2/((WO_PI*d)*d);
+}
+wo_smith :: (nov:f32,nol:f32,a2:f32)->f32 {
+  gv:f32=nol*sqrt(((nov*nov)*(1.0f32-a2))+a2);
+  gl:f32=nov*sqrt(((nol*nol)*(1.0f32-a2))+a2);
+  return 0.5f32/fmax(gv+gl,1e-6f32);
+}
+// The sun's glint per unit illuminance off normal n toward v, the sun at l: GGX at `roughness`
+// widened by the sun's disc (rad), and by `far` (0 to 1) where distance has blurred the waves.
+wo_glint :: (n:V3,v:V3,l:V3,roughness:f32,disc:f32,far:f32)->f32 {
+  nol:f32=dot3(n,l);
+  nov:f32=fmax(dot3(n,v),1e-3f32);
+  if (nol<=0.0f32) {
+    return 0.0f32;
+  }
+  h:V3=normalize3(add3(l,v));
+  a:f32=fmin(((roughness*roughness)+(disc*0.5f32))+(far*0.08f32),1.0f32);
+  a2:f32=a*a;
+  spec:f32=(wo_ggx(fmax(dot3(n,h),0.0f32),a2)*wo_smith(nov,nol,a2))*wo_fresnel(fmax(dot3(v,h),0.0f32));
+  return (spec*nol)*(1.0f32-(0.75f32*far));
+}
+// The GGX roughness (alpha's square root: wo_glint squares it twice) whose facets have the mean
+// square slope mss: alpha^2 = mss, as Beckmann's distribution of a Gaussian sea.
+wo_alpha :: (mss:f32)->f32 {
+  return sqrt(sqrt(clampf(mss,1e-5f32,1.0f32)));
+}
+wo_sky_roughness :: (roughness:f32,footprint:f32)->f32 {
+  return clampf(sqrt(roughness)+(0.15f32*(log(1.0f32+(footprint*4.0f32))/0.693147180559945f32)),0.0f32,1.0f32);
+}
+// Henyey and Greenstein's phase function at cosine c, asymmetry g.
+wo_hg :: (g:f32,c:f32)->f32 {
+  return (1.0f32-(g*g))/((4.0f32*WO_PI)*pow((1.0f32+(g*g))-((2.0f32*g)*c),1.5f32));
+}
+// The surface seen from under it at cosine ci to its normal: what it mirrors back down (all of
+// it outside Snell's window, Fresnel's little inside).
+wo_below :: (ci:f32)->f32 {
+  st2:f32=(WO_IOR*WO_IOR)*(1.0f32-(ci*ci));
+  return ifx st2<1.0f32 then wo_fresnel(sqrt(1.0f32-st2)) else 1.0f32;
+}
+// The caustic net at p (m) and time t: the ridges of two drifting noise fields, 0 to 1.
+wo_caustic :: (p:V2,t:f32)->f32 {
+  a:f32=wo_noise(v2((p.x*0.9f32)+(t*0.31f32),(p.y*0.9f32)-(t*0.23f32)));
+  b:f32=wo_noise(v2((p.x*1.7f32)-(t*0.19f32)+7.3f32,(p.y*1.7f32)+(t*0.27f32)+2.1f32));
+  r:f32=(1.0f32-abs((2.0f32*a)-1.0f32))*(1.0f32-abs((2.0f32*b)-1.0f32));
+  return r*r;
+}
+// Value noise on the engine's portable lattice hash (render/noise.coax), 0 to 1.
+wo_noise :: (p:V2)->f32 {
+  ix:f32=floor(p.x); iy:f32=floor(p.y);
+  fx:f32=p.x-ix; fy:f32=p.y-iy;
+  sx:f32=(fx*fx)*(3.0f32-(2.0f32*fx)); sy:f32=(fy*fy)*(3.0f32-(2.0f32*fy));
+  return mix(mix(render_noise2(ix,iy),render_noise2(ix+1.0f32,iy),sx),mix(render_noise2(ix,iy+1.0f32),render_noise2(ix+1.0f32,iy+1.0f32),sx),sy);
+}
+
+#test "fresnel: two percent straight down, everything at grazing, and a rough sea reflects less there" {
+  #assert abs(wo_fresnel(1.0f32)-WO_F0)<1e-6f32 && abs(wo_fresnel(0.0f32)-1.0f32)<1e-6f32;
+  #assert wo_fresnel(0.5f32)>WO_F0 && wo_fresnel(0.5f32)<0.06f32;
+  // a calm sea keeps Schlick's curve
+  #assert abs(wo_mean_fresnel(0.3f32,0.0f32)-wo_fresnel(0.3f32))<1e-4f32;
+  // a gale's slopes (Cox and Munk: about 0.11 at 21 m/s) cut the grazing reflectance by more than half
+  #assert wo_mean_fresnel(0.05f32,0.11f32)<0.5f32*wo_fresnel(0.05f32) && wo_mean_fresnel(0.05f32,0.11f32)>WO_F0;
+  // and looking straight down nothing changes
+  #assert abs(wo_mean_fresnel(1.0f32,0.11f32)-WO_F0)<1e-5f32;
+}
+#test "snell: the refracted ray, the window's edge, and total reflection outside it" {
+  #assert abs(wo_cos_refracted(1.0f32)-1.0f32)<1e-6f32;
+  // grazing light enters at the critical angle
+  #assert abs(wo_cos_refracted(0.0f32)-WO_WINDOW)<1e-3f32;
+  #assert wo_below(1.0f32)<0.03f32 && wo_below(WO_WINDOW-0.02f32)==1.0f32 && wo_below(WO_WINDOW+0.05f32)<0.5f32;
+}
+#test "absorption: red goes first, and deep clear ocean is blue" {
+  // Jerlov type I: K_d 0.36, 0.064 and 0.019 a metre at 650, 550 and 450 nm
+  kd:V3=v3(0.36f32,0.064f32,0.019f32);
+  t:V3=wo_through(kd,10.0f32);
+  #assert abs(t.x-exp(0.0f32-3.6f32))<1e-6f32 && t.x<t.y && t.y<t.z && abs(t.z-exp(0.0f32-0.19f32))<1e-6f32;
+  none:V3=wo_through(kd,0.0f32-5.0f32);
+  #assert none.x==1.0f32 && none.z==1.0f32;
+  r:V3=wo_deep(kd,v3(0.0007f32,0.0012f32,0.0025f32));
+  // about four percent of the blue comes back, a tenth of that in green, almost no red
+  #assert r.z>0.035f32 && r.z<0.05f32 && r.y>0.004f32 && r.y<0.008f32 && r.x<0.001f32;
+}
+#test "glints: none from behind, brightest at the mirror angle, broader and dimmer on a rougher sea" {
+  n:V3=v3(0.0f32,1.0f32,0.0f32);
+  l:V3=normalize3(v3(0.0f32,0.5f32,1.0f32));
+  mirror:V3=normalize3(v3(0.0f32,0.5f32,0.0f32-1.0f32));
+  off:V3=normalize3(v3(0.4f32,0.5f32,0.0f32-1.0f32));
+  #assert wo_glint(n,mirror,v3(0.0f32,0.0f32-1.0f32,0.0f32),0.2f32,0.0047f32,0.0f32)==0.0f32;
+  calm:f32=wo_glint(n,mirror,l,wo_alpha(0.02f32),0.0047f32,0.0f32);
+  rough:f32=wo_glint(n,mirror,l,wo_alpha(0.12f32),0.0047f32,0.0f32);
+  #assert calm>rough && rough>0.0f32;
+  #assert wo_glint(n,off,l,wo_alpha(0.02f32),0.0047f32,0.0f32)<calm*0.2f32;
+  #assert wo_glint(n,off,l,wo_alpha(0.12f32),0.0047f32,0.0f32)>wo_glint(n,off,l,wo_alpha(0.02f32),0.0047f32,0.0f32);
+  // alpha squared twice is the mean square slope
+  a:f32=wo_alpha(0.05f32); #assert abs(((a*a)*(a*a))-0.05f32)<1e-5f32;
+}
+#test "the phase function sends light on ahead, and the caustic net stays in range" {
+  #assert wo_hg(0.6f32,1.0f32)>10.0f32*wo_hg(0.6f32,0.0f32-1.0f32);
+  // an even scatterer is 1 / 4 pi every way
+  #assert abs(wo_hg(0.0f32,0.3f32)-(1.0f32/(4.0f32*WO_PI)))<1e-6f32;
+  i:int=0;
+  while i<64 {
+    c:f32=wo_caustic(v2(cast(f32)(i)*0.37f32,cast(f32)(i)*0.61f32),cast(f32)(i)*0.13f32);
+    #assert c>=0.0f32 && c<=1.0f32;
+    i+=1;
+  }
+}

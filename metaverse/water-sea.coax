@@ -1,0 +1,285 @@
+// Water for the Metaverse: the open sea's look, the CPU half (docs/metaverse/water.md, "The open
+// sea"). What a renderer needs to draw a spectral sea (water-spectrum.coax) with the physical
+// optics (metaverse-engine/render/shade/water-optics.coax) so that its wave height can be read:
+//
+// - Slope statistics. A cascade's mean square slope from its modes, Cox and Munk's (1954) total
+//   for the wind, and the tail between them: the slopes of the waves too short for any tile,
+//   which a shader spends as roughness (the width of the sun's glitter, the blur of the sky).
+// - Whitecaps at the scale they break. The foam field of a finer cascade, made where its own
+//   crests sharpen on top of the long waves' (the Jacobians add), so small whitecaps ride the
+//   big crests, and the white share stays Monahan's for the wind.
+// - The wind's marks: foam drawn out in streaks from Beaufort 7, spindrift from Beaufort 9
+//   (the Beaufort scale's own sea criteria).
+// - Water types. Jerlov's ten (water-look.coax JERLOV_KD) with a backscatter for each, so a deep
+//   sea's own colour comes from its absorption (water-optics.coax wo_deep), not from a tint.
+// - Weather for a sea. Which of the engine's five weather states (W9,
+//   metaverse-engine/world/water-weather.coax) goes with a wind, and what each does to the
+//   light and the visibility over open water.
+//
+// None of this reaches the physics: the gameplay band (cascade 0, wsp_field) is unchanged, as
+// water-ocean.coax's split between the simulated and the seen requires.
+//   coax/bin/coax test --library metaverse/water-sea.coax --steps 2000000000
+
+#load "water-spectrum.coax";
+#load "water-look.coax";
+#load "../metaverse-engine/world/water-weather.coax";
+
+// ---------------------------------------------------------------- slope statistics
+// Cox and Munk's mean square slope of a clean sea surface at wind speed U (m/s, 12.5 m up):
+// 0.003 + 0.00512 U, upwind and crosswind together.
+sea_cox_munk :: (wind: f64) -> f64 { return 0.003 + 0.00512 * fmax(wind, 0.0); }
+
+// The mean square slope cascade c's modes carry: sum 2 |h0|^2 k^2 (wsp_variance's sum times k^2).
+sea_cascade_mss :: (s: [] Synth, c: int) -> f64 {
+  v := 0.0;
+  for i: s[0].first[c]..<s[0].first[c + 1] {
+    md := s[0].modes[i];
+    k2 := f64(md.kx) * f64(md.kx) + f64(md.kz) * f64(md.kz);
+    v += 2.0 * (f64(md.h0r) * f64(md.h0r) + f64(md.h0i) * f64(md.h0i)) * k2;
+  }
+  return v;
+}
+// The slopes of the waves shorter than every tile: Cox and Munk's total less what the cascades
+// hold, never under a ripple's 0.002.
+sea_tail_mss :: (s: [] Synth, wind: f64) -> f64 {
+  held := 0.0;
+  for c: 0..<s[0].count { held += sea_cascade_mss(s, c); }
+  return fmax(sea_cox_munk(wind) - held, 0.002);
+}
+
+// ---------------------------------------------------------------- the wind's marks
+// The Beaufort number of a wind (m/s at 10 m), 0 to 12 (WMO's limits).
+SEA_BEAUFORT :: [12] f64.[0.3, 1.6, 3.4, 5.5, 8.0, 10.8, 13.9, 17.2, 20.8, 24.5, 28.5, 32.7];
+sea_beaufort :: (wind: f64) -> int {
+  b := 0;
+  for i: 0..<12 { if wind >= SEA_BEAUFORT[i] { b = i + 1; } }
+  return b;
+}
+sea_ramp :: (a: f64, b: f64, x: f64) -> f64 { t := fclamp((x - a) / (b - a), 0.0, 1.0); return t * t * (3.0 - 2.0 * t); }
+// Foam blown in streaks along the wind: it begins in a near gale (Beaufort 7, 13.9 m/s) and is
+// dense by a strong gale (Beaufort 9, 20.8 m/s).
+sea_streaks :: (wind: f64) -> f64 { return sea_ramp(13.9, 20.8, wind); }
+// Spindrift, the spray torn off the crests: from a strong gale (Beaufort 9), filling the air by a
+// hurricane (Beaufort 12, 32.7 m/s).
+sea_spindrift :: (wind: f64) -> f64 { return sea_ramp(20.8, 32.7, wind); }
+
+// ---------------------------------------------------------------- whitecaps at their own scale
+// A finer cascade breaks at its own scale: a few metres across, where cascade 0's whitecaps are
+// as wide as its 16 to 32 m texels. The finer tile repeats across the long waves, so it cannot
+// know where their crests are: it makes foam over `share` of its own area, where its own
+// Jacobian is least, and the drawing keeps the foam that lies on a long wave's crest
+// (sea_crest_share of it).
+//
+// The Jacobian under which `share` of a tile lies, counted from the tile itself (a short wave's
+// Jacobian is skewed, so the normal quantile wsp_whitecap_threshold uses is off for it).
+sea_share_threshold :: (t: [] Tile, share: f64) -> f32 {
+  if share <= 0.00001 { return -1000.0; }
+  nn := t[0].size * t[0].size;
+  lo := t[0].jacobian[0]; hi := lo;
+  for i: 0..<nn { j := t[0].jacobian[i]; if j < lo { lo = j; } if j > hi { hi = j; } }
+  if hi - lo < 1e-6 { return -1000.0; }
+  bins: [256] int;
+  for i: 0..<nn {
+    b := cast(int) ((t[0].jacobian[i] - lo) / (hi - lo) * 255.999);
+    bins[b] += 1;
+  }
+  want := cast(int) (share * f64(nn)); seen := 0;
+  for b: 0..<256 {
+    seen += bins[b];
+    if seen >= want { return lo + (hi - lo) * (f32(b) + 1) / 256; }
+  }
+  return hi;
+}
+// How widely a tile's Jacobian spreads (its standard deviation): the foam's soft edge is a share
+// of it, so a gentle sea's edge is as narrow as its Jacobian's range.
+sea_jacobian_spread :: (t: [] Tile) -> f32 {
+  nn := t[0].size * t[0].size;
+  mean := 0.0; sq := 0.0;
+  for i: 0..<nn { j := f64(t[0].jacobian[i]); mean += j; sq += j * j; }
+  mean /= f64(nn);
+  return f32(sqrt(fmax(sq / f64(nn) - mean * mean, 0.0)));
+}
+// One step of a finer cascade's foam: full under `threshold`, none `soft` over it, and it decays
+// as wsp_foam_step's.
+sea_foam_step :: (foam: [] f32, t: [] Tile, threshold: f32, soft: f32, decay: f32, dt: f32) {
+  nn := t[0].size * t[0].size;
+  keep := exp(-decay * dt);
+  edge := ifx soft > 0.000001 then soft else 0.000001f32;
+  for i: 0..<nn {
+    made := wsp_clamp((threshold + edge - t[0].jacobian[i]) / edge, 0, 1);
+    v := foam[i] * keep;
+    foam[i] = ifx made > v then made else v;
+  }
+}
+// The share of the sea the drawing's crest gate passes (the long waves' upper part), and so the
+// share of its own tile a finer cascade whitens for Monahan's cover of the whole sea.
+SEA_CREST_SHARE :: 0.4;
+sea_fine_share :: (wind_speed: f64) -> f64 { return fmin(wsp_whitecap_cover(wind_speed) / SEA_CREST_SHARE, 0.6); }
+// The share of a foam field that is white (over a half).
+sea_white_share :: (foam: [] f32, nn: int) -> f64 {
+  n := 0;
+  for i: 0..<nn { if foam[i] > 0.5 { n += 1; } }
+  return f64(n) / f64(nn);
+}
+
+// ---------------------------------------------------------------- water types
+// A water type's optics at 650, 550 and 450 nm, 1/m: its diffuse attenuation (Jerlov's K_d) and
+// its backscatter: pure sea water's (Morel 1974: half of 0.0009, 0.0019 and 0.0045) plus the
+// particles', which grow with the type's turbidity. The particles' share is our fit, 0.0003 +
+// 0.06 (K_d(550) - 0.064): it gives clear ocean a blue reflectance near 4% and coastal water a
+// green one near 1.5%, the published range (Morel and Prieur 1977).
+SeaWater :: struct { kd: [3] f32; bb: [3] f32; }
+sea_water :: (j: Jerlov) -> SeaWater {
+  t := cast(int) cast(u8) j;
+  w: SeaWater;
+  for i: 0..<3 { w.kd[i] = JERLOV_KD[t * 3 + i]; }
+  particles := 0.0003f32 + 0.06f32 * (w.kd[1] - 0.064f32);
+  w.bb = [3] f32.[0.00045f32 + particles, 0.00095f32 + particles, 0.00225f32 + particles];
+  return w;
+}
+// The sea's own colour seen from above, as a share of the light that reaches it: Gordon's
+// 0.33 b_b / K_d under the surface, times the 0.54 that leaves it (water-optics.coax wo_deep,
+// WO_LEAVING).
+sea_colour :: (w: SeaWater) -> [3] f32 {
+  return [3] f32.[0.54f32 * 0.33f32 * w.bb[0] / w.kd[0], 0.54f32 * 0.33f32 * w.bb[1] / w.kd[1], 0.54f32 * 0.33f32 * w.bb[2] / w.kd[2]];
+}
+// How far a diver sees a large dark thing in this water, m: the contrast falls to 2% after
+// 3.9 beam attenuation lengths (Koschmieder), and the beam attenuation is about K_d's green over
+// 0.4 in open water (our planning ratio; clear ocean comes to about 25 m of sight, which agrees
+// with divers' 20 to 40 m).
+sea_sight :: (w: SeaWater) -> f64 { return 3.9 / (f64(w.kd[1]) / 0.4); }
+
+// ---------------------------------------------------------------- weather for a sea
+// The weather that goes with a wind over open water when nobody has chosen one: a storm from a
+// whole gale's wind (Beaufort 10), rain from a gale's (Beaufort 8), cloud over a fresh wind in the
+// place's storm season, and a clear sky otherwise.
+sea_weather_auto :: (wind: f64, storm_season: bool) -> int {
+  b := sea_beaufort(wind);
+  if b >= 10 { return WEATHER_STORM; }
+  if b >= 8 { return WEATHER_RAIN; }
+  if b >= 6 && storm_season { return WEATHER_OVERCAST; }
+  return WEATHER_CLEAR;
+}
+// What the weather does to a sea's light and air.
+SeaWeather :: struct {
+  cloud: f64;        // 0 to 1, the sky's cover
+  rain: f64;         // 0 to 1
+  fog: f64;          // 0 to 1
+  lightning: f64;    // the flash now, 0 to 1
+  sun: f64;          // the share of direct sunlight that reaches the sea
+  sky: f64;          // the share of the clear sky's light that does
+  haze: f64;         // the air's e-folding length, m (the visibility is 3.9 of these)
+}
+// A clear day's haze length over the sea (a visibility of 47 km), and the least a storm leaves.
+SEA_HAZE_CLEAR :: 12000.0;
+// Rain's and fog's extinction, 1/m at full strength: a storm's rain leaves about 7 km of
+// visibility between its bands (our planning value; inside a rain band it falls under 1 km),
+// thick sea fog about 400 m.
+SEA_RAIN_EXTINCTION :: 0.0005;
+SEA_FOG_EXTINCTION :: 0.0095;
+sea_weather :: (w: Weather) -> SeaWeather {
+  cover := fclamp((w.cloud - 0.15) / 0.85, 0.0, 1.0);
+  o: SeaWeather;
+  o.cloud = cover; o.rain = w.rain; o.fog = w.fog; o.lightning = w.lightning;
+  // a full overcast passes about a tenth of the direct sun and a third of the sky's light; under
+  // a storm's deep cloud, less (Kasten and Czeplak 1980: global radiation under 8 oktas is 25%)
+  o.sun = 1.0 - 0.93 * cover;
+  o.sky = 1.0 - (0.55 + 0.2 * w.rain) * cover;
+  // the mist a rain carries is in the rain's own number: only a fog's fog thickens the air more
+  fog := fclamp((w.fog - 0.35) / 0.65, 0.0, 1.0);
+  ext := 1.0 / SEA_HAZE_CLEAR + SEA_RAIN_EXTINCTION * w.rain + SEA_FOG_EXTINCTION * fog;
+  o.haze = 1.0 / ext;
+  return o;
+}
+// The visibility that haze length gives, m.
+sea_visibility :: (w: SeaWeather) -> f64 { return 3.9 * w.haze; }
+
+// ---------------------------------------------------------------- checks
+sea_test_sea :: (wind: f64) -> Spectrum {
+  sp := Spectrum.{seed = 23, wind_speed = wind, wind = 4.36, fetch = 300000.0, choppiness = 0.8, spread = 0.8, depth = 4000.0};
+  grown := wsp_significant_height(sp);
+  if grown > 0.001 { sp.amplitude = 0.21 * wind * wind / 9.81 / grown; }
+  return sp;
+}
+#test "a cascade's mean square slope is its tile's, and three cascades hold more of the sea's slope than two" #steps 900000000 {
+  synth: [1] Synth; tile: [1] Tile;
+  wsp_synth(synth[..], sea_test_sea(13.7), 3, 64);
+  #assert synth[0].ok && synth[0].count == 3;
+  for c: 0..<3 {
+    want := sea_cascade_mss(synth[..], c);
+    got := 0.0;
+    for k: 0..<3 {
+      wsp_tile(synth[..], c, cast(u64) (977 * k + 31), tile[..]);
+      for i: 0..<64 * 64 { got += f64(tile[0].sx[i]) * f64(tile[0].sx[i]) + f64(tile[0].sz[i]) * f64(tile[0].sz[i]); }
+    }
+    got /= 3.0 * 64.0 * 64.0;
+    #assert want > 0.0 && abs(got - want) < 0.08 * want;
+  }
+  three := sea_cascade_mss(synth[..], 0) + sea_cascade_mss(synth[..], 1) + sea_cascade_mss(synth[..], 2);
+  two: [1] Synth;
+  wsp_synth(two[..], sea_test_sea(13.7), 2, 64);
+  #assert three > sea_cascade_mss(two[..], 0) + sea_cascade_mss(two[..], 1);
+  // the gameplay band is the same sea either way
+  #assert sea_cascade_mss(two[..], 0) == sea_cascade_mss(synth[..], 0) && wsp_mode_count(two[..], 0) == wsp_mode_count(synth[..], 0);
+  // what no tile holds is spent as roughness, and it is never negative
+  #assert sea_tail_mss(synth[..], 13.7) >= 0.002 && sea_tail_mss(synth[..], 13.7) < sea_cox_munk(13.7);
+}
+#test "Cox and Munk: the slopes grow with the wind" {
+  #assert abs(sea_cox_munk(0.0) - 0.003) < 1e-9 && abs(sea_cox_munk(10.0) - 0.0542) < 1e-9;
+  #assert sea_cox_munk(25.6) > 4.0 * sea_cox_munk(4.8);
+}
+#test "the Beaufort scale, streaks from a near gale, spindrift from a strong gale" {
+  #assert sea_beaufort(0.0) == 0 && sea_beaufort(4.8) == 3 && sea_beaufort(8.4) == 5 && sea_beaufort(13.7) == 6;
+  #assert sea_beaufort(21.6) == 9 && sea_beaufort(25.6) == 10 && sea_beaufort(40.0) == 12;
+  #assert sea_streaks(8.4) == 0.0 && sea_streaks(13.7) == 0.0 && sea_streaks(21.6) == 1.0 && sea_streaks(17.0) > 0.2 && sea_streaks(17.0) < 0.8;
+  #assert sea_spindrift(13.7) == 0.0 && sea_spindrift(20.8) == 0.0 && sea_spindrift(25.6) > 0.2 && sea_spindrift(25.6) < 0.6 && sea_spindrift(33.0) == 1.0;
+}
+#test "fine whitecaps: none in a calm, the share asked for in a gale, and they decay" #steps 600000000 {
+  synth: [1] Synth; fine: [1] Tile;
+  foam: [4096] f32;
+  wsp_synth(synth[..], sea_test_sea(21.6), 3, 64);
+  #assert abs(synth[0].cascades[0].patch / synth[0].cascades[1].patch - WSP_RATIO) < 1e-9;
+  want := sea_fine_share(21.6);
+  #assert want > 0.25 && want < 0.6;
+  share := 0.0;
+  for k: 0..<3 {
+    wsp_tile(synth[..], 1, cast(u64) (1201 * k + 77), fine[..]);
+    for i: 0..<4096 { foam[i] = 0; }
+    sea_foam_step(foam[..], fine[..], sea_share_threshold(fine[..], want), 0.2 * sea_jacobian_spread(fine[..]), 0.6, 0.0);
+    share += sea_white_share(foam[..], 4096);
+  }
+  share /= 3.0;
+  #assert share > 0.9 * want && share < 1.25 * want;
+  // a calm sea makes none
+  wsp_synth(synth[..], sea_test_sea(4.8), 3, 64);
+  wsp_tile(synth[..], 1, 500, fine[..]);
+  for i: 0..<4096 { foam[i] = 0; }
+  sea_foam_step(foam[..], fine[..], sea_share_threshold(fine[..], sea_fine_share(4.8)), 0.2 * sea_jacobian_spread(fine[..]), 0.6, 0.0);
+  #assert sea_white_share(foam[..], 4096) < 0.01;
+  // and foam decays
+  for i: 0..<4096 { foam[i] = 1; }
+  sea_foam_step(foam[..], fine[..], -1000.0, 0.02, 0.6, 2.0);
+  #assert abs(foam[100] - f32(exp(-1.2))) < 1e-5;
+}
+#test "water types: clear ocean is blue, coastal water green, and a diver sees further in the clear" {
+  clear := sea_colour(sea_water(Jerlov.I));
+  #assert clear[2] > 0.018 && clear[2] < 0.03 && clear[2] > 5 * clear[1] && clear[1] > 5 * clear[0];
+  coast := sea_colour(sea_water(Jerlov.C3));
+  #assert coast[1] > coast[2] && coast[2] < 0.5 * clear[2] && coast[0] > clear[0];
+  #assert sea_sight(sea_water(Jerlov.I)) > 20.0 && sea_sight(sea_water(Jerlov.I)) < 40.0;
+  #assert sea_sight(sea_water(Jerlov.C3)) < 0.5 * sea_sight(sea_water(Jerlov.I));
+}
+#test "weather for a sea: a storm with a whole gale, rain with a gale, cloud in the season, else clear" {
+  #assert sea_weather_auto(25.6, false) == WEATHER_STORM && sea_weather_auto(21.6, false) == WEATHER_RAIN;
+  #assert sea_weather_auto(13.7, false) == WEATHER_CLEAR && sea_weather_auto(13.7, true) == WEATHER_OVERCAST;
+  #assert sea_weather_auto(8.4, true) == WEATHER_CLEAR && sea_weather_auto(4.8, false) == WEATHER_CLEAR;
+  clear := sea_weather(Weather.{state = WEATHER_CLEAR, cloud = 0.15});
+  #assert clear.sun == 1.0 && clear.sky == 1.0 && abs(sea_visibility(clear) - 46800.0) < 1.0;
+  storm := sea_weather(Weather.{state = WEATHER_STORM, cloud = 1.0, rain = 1.0, fog = 0.06, lightning = 0.5});
+  #assert storm.sun < 0.1 && storm.sky < 0.3 && storm.sky > 0.15 && storm.lightning == 0.5;
+  #assert sea_visibility(storm) > 5000.0 && sea_visibility(storm) < 8000.0;
+  fog := sea_weather(Weather.{state = WEATHER_FOG, cloud = 0.7, fog = 1.0});
+  #assert sea_visibility(fog) > 300.0 && sea_visibility(fog) < 500.0;
+  rain := sea_weather(Weather.{state = WEATHER_RAIN, cloud = 0.95, rain = 0.55, fog = 0.05});
+  #assert sea_visibility(rain) > sea_visibility(storm) && sea_visibility(rain) < 0.3 * sea_visibility(clear);
+}
