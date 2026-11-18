@@ -1,0 +1,721 @@
+// SLAB's construction, for drawing: everything in the build at one moment of a run of
+// metaverse/slab-build.coax. A renderer needs only this file's types and csv_at; it does not
+// need to know how the simulation works. (The method and its numbers:
+// docs/research/ocean/slab-construction-method.md.)
+//
+// How to use it:
+//   run: [1] CsRun; view: [1] CsvView;          // caller's storage: 1.4 MB and about 100 KB
+//   p := cs_params();                           // p.seed, p.positions (1-8), p.pour_rate (m^3 a day), p.start_month, ...
+//   cs_run(p, run[..]);                         // once for a set of parameters (about a quarter of a second)
+//   csv_at(run[..], day, view[..]);             // any day, with its fraction, in any order
+// run[0].total has the totals for a panel (days, placement_days, tows, weather_days, standdowns,
+// hurricanes, ...). run[0].total.failed is not 0 when the run stopped itself (CS_FAIL_*).
+//
+// What csv_at fills (CsvView):
+//   body[0 ..< bodies]   every caisson, tow piece, tug, barge and gantry: kind, state, where it is,
+//                        how it sits (yaw, roll, pitch), its size, draft, mass and GM, how much of
+//                        it is cast and cured, the ballast in it
+//   bay[0 ..< units]     the upper structure over each caisson of the hull: how high its wall and
+//                        columns stand, the share of its girders and deck slab cast (CsBay), with
+//                        unit[i] saying where that caisson is (csv_unit_place)
+//   hull                 the joined hull as one body: extent, draft, motion, offset on its
+//                        moorings, GM, the weather's push, the bending stress now
+//   line[0 ..< lines]    towlines and mooring lines: both ends, tension, breaking load, sag.
+//                        The mooring lines' shapes come from rig (moor_points in slab-moor.coax)
+//   work[0 ..< works]    what each crew, form and crane is doing, where, and how far along
+//   wx                   the sea, wind and current now, and any storm stand-down
+//   event_last, event_next   indices into run[0].ev (CsEvent: tick, kind CS_EV_*, id, value);
+//                        an event's day is csv_event_day. They are in time order: the camera's cues
+//   proc                 the simulation's own counters, if you want one this view does not name
+//   csv_module_share(run, view, i) is the share of the i-th topsides module landed (run[0].mod[i]
+//   names its record in metaverse/slab-plan.coax's plan).
+//
+// The frame is the site's: x east, z north, metres, the finished hull's centre at the origin with
+// its length along x; y is up from the still sea. A body's (x, z) is its centre in plan, `y` the
+// height of its keel (a floating body's is minus its draft, plus its heave), `yaw` the way its
+// length points (rad, + from x toward z), `roll` + when its +z side is down and `pitch` + when its
+// +x end is down, in its own frame. The yard is about 82 km west and 31 km north of the origin
+// (cs_lat_lon gives any point's latitude and longitude); the route between is run[0].route.
+//
+// What moves by forces and what is placed. A tow's track, speed and towline tension are the
+// simulation's integration of thrust, drag, wind, current and waves. Everything afloat in the open
+// sea heaves, rolls and pitches by its own response to the sea of the moment. The hull's offset is
+// where its sixteen lines balance the weather's push. Moves inside the yard and its basin, a piece
+// brought from stand-by to its joint, and tugs and barges on passage are placed along straight
+// lines at the simulation's times: they are station-keeping and warping, not integrated.
+//   coax/bin/coax test metaverse/slab-build-view.coax
+#load "slab-build.coax";
+
+CSV_MAX_BODIES :: 256;
+CSV_MAX_LINES :: 40;
+CSV_MAX_WORK :: 192;
+// kinds of body
+CSV_CAISSON :: 1;      // one caisson, in its casting cell or afloat in the basin (id: the caisson)
+CSV_PIECE :: 2;        // a tow piece of nc by nr caissons, from ready to joined (id: the piece)
+CSV_TUG :: 3;          // id: 0 and up are lead tugs, 100 and 101 the channel escorts
+CSV_BARGE :: 4;        // a freight barge (id: the barge)
+CSV_GANTRY :: 5;       // a gantry crane on the hull (id: the gantry)
+// states
+CSV_CASTING :: 1;      // in a dry cell, concrete going in (see base, walls, top)
+CSV_CURING :: 2;       // in the cell, cast (see cured)
+CSV_FLOAT_OUT :: 3;    // the cell is flooded and it is warped out
+CSV_BASIN :: 4;        // afloat in the basin, waiting or being joined to its neighbour
+CSV_READY :: 5;        // a piece at its berth, ballasted, waiting for tugs and weather
+CSV_TOW :: 6;          // under tow
+CSV_STANDBY :: 7;      // held on station at the site
+CSV_JOINING :: 8;      // brought in and being joined (the work list says which step)
+CSV_JOINED :: 9;       // part of the hull
+CSV_IDLE :: 10;        // a tug, barge or gantry with nothing to do
+CSV_RETURN :: 11;      // tugs or a barge running home
+CSV_LOADING :: 12;     // a barge at the freight quay
+CSV_PASSAGE :: 13;     // a barge on its way out
+CSV_QUEUE :: 14;       // a barge waiting off the hull
+CSV_DOCK :: 15;        // a barge alongside the hull
+CSV_WORKING :: 16;     // a gantry lifting, a tug towing or holding
+CsvBody :: struct {
+  kind: int; state: int; id: int;
+  x: f64; y: f64; z: f64;
+  yaw: f64; roll: f64; pitch: f64;
+  l: f64; b: f64; h: f64;         // length, beam, depth from keel to top
+  nc: int; nr: int;               // caissons along its length and across it
+  afloat: bool;
+  draft: f64; mass: f64; gm: f64; // gm: the least metacentric height (0 when not afloat)
+  base: f64; walls: f64; top: f64;   // the share cast of its bottom slab, its walls' height and its top slab
+  cured: f64;                     // 0 to 1
+  ballast: f64;                   // kg of water in it
+  water: f64;                     // the water's depth where it is, m
+}
+// kinds of line
+CSV_TOWLINE :: 1; CSV_MOORING :: 2;
+CsvLine :: struct {
+  kind: int;
+  a: int; b: int;                 // the bodies at its ends (-1: the hull, or an anchor on the seabed)
+  ax: f64; ay: f64; az: f64; bx: f64; by: f64; bz: f64;
+  tension: f64; limit: f64;       // N: now, and its breaking load
+  sag: f64;                       // a towline's sag below its ends, m (a slack line lies on the seabed: no more than the water's depth)
+}
+// kinds of work. progress runs 0 to 1 over the step.
+CSV_W_PREP :: 1;        // a cell made ready, bottom steel fixed (id: the caisson)
+CSV_W_BASE :: 2;        // the bottom slab poured
+CSV_W_SETUP :: 3;       // the slipform assembled
+CSV_W_SLIPFORM :: 4;    // the walls slipformed (height: the form's height over the cell floor)
+CSV_W_FALSEWORK :: 5;   // the top slab's falsework
+CSV_W_TOP :: 6;         // the top slab poured
+CSV_W_CURE :: 7;        // curing and the leak test
+CSV_W_FLOAT :: 8;       // the cell flooded, the caisson warped out
+CSV_W_MAKEUP :: 9;      // caissons joined into a tow piece in the basin (id: the piece)
+CSV_W_TOW :: 10;        // a tow under way (id: the piece; progress: the share of its time)
+CSV_W_MOOR :: 11;       // the first piece moored at the site
+CSV_W_CONNECT :: 12;    // a piece brought alongside (id: the piece; x, z: the joint)
+CSV_W_PULL :: 13;       // pulled in on the fenders
+CSV_W_SEAL :: 14;       // the gasket pressed, the joint drained
+CSV_W_BARS :: 15;       // temporary prestressing bars stressed
+CSV_W_TENDONS :: 16;    // the permanent tendons threaded and stressed
+CSV_W_GROUT :: 17;      // the joint grouted
+CSV_W_RESEAL :: 18;     // a joint that failed its test, made again
+CSV_W_LINING :: 19;     // the sea walls lined from inside
+CSV_W_COLUMNS :: 20;    // a bay's wall and columns climbing in jump forms (id: the bay's caisson; height: metres over the hull's top)
+CSV_W_GIRDERS :: 21;    // its girders cast
+CSV_W_SLAB :: 22;       // its deck slab cast
+CSV_W_LIFT :: 23;       // a gantry landing a module (id: the gantry)
+CSV_W_LIQUIDS :: 24;    // tanks filled
+CSV_W_OCEAN :: 25;      // the finished hull under ocean tow
+CSV_W_BALLAST :: 26;    // ballast pumped to the design draft
+CSV_W_COMMISSION :: 27;
+CSV_W_STANDDOWN :: 28;  // work stopped for a storm (id: 1 a tropical storm, 2 a hurricane)
+CsvWork :: struct { kind: int; id: int; x: f64; y: f64; z: f64; progress: f64; height: f64; }
+CsvPlace :: struct { x: f64; z: f64; }
+CsvHull :: struct {
+  pieces: int; units: int;        // made fast so far
+  x: f64; z: f64;                 // its waterplane's centre at rest
+  lx: f64; lz: f64;               // its extent along x and z
+  ox: f64; oz: f64;               // its offset on its moorings now
+  draft: f64; heave: f64; roll: f64; pitch: f64;
+  mass: f64; ballast: f64; gm_t: f64; gm_l: f64;
+  top: f64;                       // its highest concrete over the keel
+  push_x: f64; push_z: f64;       // the weather's steady push on it now, N
+  wind_heel: f64;                 // the heel the wind now gives it, rad
+  line_peak: f64;                 // its most loaded mooring line, N
+  bending: f64;                   // hull-girder stress in today's sea, Pa
+  lining: f64; upper: f64; outfit: f64; liquids: f64;   // shares done, 0 to 1
+  ocean: f64;                     // nautical miles made of an ocean tow
+  moored: bool;
+}
+CsvView :: struct {
+  day: f64; tick: int;
+  phase: int;                     // CS_PH_*
+  failed: int;                    // CS_FAIL_* once the run has stopped itself
+  wx: CsWx;
+  hull: CsvHull;
+  bodies: int; body: [CSV_MAX_BODIES] CsvBody;
+  lines: int; line: [CSV_MAX_LINES] CsvLine;
+  works: int; work: [CSV_MAX_WORK] CsvWork;
+  units: int; bay: [CS_MAX_UNITS] CsBay; unit: [CS_MAX_UNITS] CsvPlace;
+  rig: [1] MoorRig;               // the mooring rig, about (hull.x, hull.z)
+  event_last: int; event_next: int;
+  proc: CsProc;
+}
+
+// ---------------------------------------------------------------- the yard's layout
+// Measured from the basin's mouth, where a tow starts: `along` back up the channel, `ashore` to
+// the land side of its centreline. The channel is 81 m either side; the basin lies beside it.
+CSV_LANE_READY :: 150.0;     // ready pieces lie here
+CSV_LANE_BASIN :: 310.0;     // floated caissons wait and are joined here
+CSV_QUAY :: 380.0;           // the quay wall
+CSV_CELLS :: 425.0;          // the casting cells' centres, behind it
+CSV_CELL_PITCH :: 150.0;
+CSV_GAP :: 20.0;             // between caissons waiting to be joined
+CSV_STANDBY_OFF :: 300.0;    // stand-by stations either side of the hold point
+CSV_ALONGSIDE :: 25.0;       // where a piece is held off its joint before it is pulled in
+CSV_TUG_L :: 45.0; CSV_TUG_B :: 14.0; CSV_TUG_T :: 6.0; CSV_TUG_MASS :: 1.9e6;
+
+csv_event_day :: (e: CsEvent) -> f64 { return f64(e.tick) * CS_TICK_D; }
+csv_smooth :: (t: f64) -> f64 { u := fclamp(t, 0.0, 1.0); return u * u * (3.0 - 2.0 * u); }
+csv_mix :: (a: f64, b: f64, t: f64) -> f64 { return a + (b - a) * t; }
+csv_turn :: (a: f64, b: f64, t: f64) -> f64 { return a + afloat_wrap(b - a) * t; }
+// Where caisson i sits in the hull.
+csv_unit_place :: (run: [] CsRun, i: int) -> CsvPlace {
+  u := run[0].unit; c := run[0].u[i]; sh := run[0].sh;
+  return CsvPlace.{x = -sh.l * 0.5 + (f64(c.col) + 0.5) * u.l, z = -sh.b * 0.5 + (f64(c.row) + 0.5) * u.b};
+}
+// A casting cell's centre.
+csv_cell :: (run: [] CsRun, c: int) -> CsWay { return cs_yard_point(run[0].route, 250.0 + CSV_CELL_PITCH * f64(c), CSV_CELLS); }
+// Where caisson i lies in the basin: with its piece's others, apart by CSV_GAP until they are
+// joined (`made` 0 to 1 brings them together).
+csv_basin :: (run: [] CsRun, i: int, made: f64) -> CsWay {
+  c := run[0].u[i]; a := run[0].pc[c.piece]; u := run[0].unit;
+  gap := CSV_GAP * (1.0 - made);
+  along := 360.0 + 300.0 * f64(c.piece % 4) + (f64(c.col - a.c0) - f64(a.nc - 1) * 0.5) * (u.l + gap);
+  ashore := CSV_LANE_BASIN + (f64(c.row - a.r0) - f64(a.nr - 1) * 0.5) * (u.b + gap);
+  return cs_yard_point(run[0].route, along, ashore);
+}
+// A ready piece's berth.
+csv_berth :: (run: [] CsRun, ip: int) -> CsWay { return cs_yard_point(run[0].route, 250.0 + 260.0 * f64(ip % 6), CSV_LANE_READY); }
+// A piece's stand-by station at the site.
+csv_station :: (run: [] CsRun, ip: int) -> CsWay {
+  r := run[0].route; l := r.leg[r.legs - 1];
+  dx := (l.bx - l.ax) / l.len; dz := (l.bz - l.az) / l.len;
+  side := ifx ip % 2 == 0 then -CSV_STANDBY_OFF else CSV_STANDBY_OFF;
+  return CsWay.{x = r.hold_x - dz * side, z = r.hold_z + dx * side, yaw = afloat_angle(dx, dz), leg = r.legs - 1};
+}
+// The leg of the route nearest a point.
+csv_leg :: (run: [] CsRun, x: f64, z: f64) -> int {
+  r := run[0].route; best := 1.0e30; at := 0;
+  for i: 0..<r.legs {
+    l := r.leg[i];
+    f := fclamp(((x - l.ax) * (l.bx - l.ax) + (z - l.az) * (l.bz - l.az)) / (l.len * l.len), 0.0, 1.0);
+    dx := x - (l.ax + (l.bx - l.ax) * f); dz := z - (l.az + (l.bz - l.az) * f);
+    if dx * dx + dz * dz < best { best = dx * dx + dz * dz; at = i; }
+  }
+  return at;
+}
+// The water's depth at a point on leg `leg`. A leg has the least depth of its reach, which is
+// what a tow is checked against; the last runs out to the site, and here the seabed is taken to
+// fall evenly from that depth to the site's (our assumption: no chart is loaded).
+csv_water :: (run: [] CsRun, leg: int, x: f64, z: f64) -> f64 {
+  r := run[0].route; l := r.leg[leg];
+  if leg < r.legs - 1 { return l.depth; }
+  f := fclamp(((x - l.ax) * (l.bx - l.ax) + (z - l.az) * (l.bz - l.az)) / (l.len * l.len), 0.0, 1.0);
+  return csv_mix(l.depth, fmax(r.site_depth, l.depth), f);
+}
+// A sample of piece ip's tow at `s` seconds after it left: x, z, yaw, tension, tug x, tug z.
+csv_track :: (run: [] CsRun, ip: int, s: f64) -> [CS_TRACK_F] f64 {
+  o: [CS_TRACK_F] f64;
+  dt := f64(run[0].track_dt[ip]);
+  f := ifx dt > 0 then fclamp(s / dt, 0.0, f64(CS_TRACK - 1)) else 0.0;
+  i := cast(int) floor(f); if i > CS_TRACK - 2 { i = CS_TRACK - 2; }
+  u := f - f64(i); base := (ip * CS_TRACK + i) * CS_TRACK_F;
+  for k: 0..<CS_TRACK_F {
+    a := f64(run[0].track[base + k]); b := f64(run[0].track[base + CS_TRACK_F + k]);
+    o[k] = ifx k == 2 then csv_turn(a, b, u) else csv_mix(a, b, u);
+  }
+  return o;
+}
+// The fast piece that piece ip is joined to: the nearest one touching it (-1: none yet).
+csv_neighbour :: (run: [] CsRun, ip: int, tick: int) -> int {
+  a := run[0].pc[ip]; best := 1.0e30; at := -1;
+  for j: 0..<run[0].pieces {
+    b := run[0].pc[j];
+    if j == ip || !cs_reached(b.t_fast, tick) || !cs_touch(a, b) { continue; }
+    d := (a.x - b.x) * (a.x - b.x) + (a.z - b.z) * (a.z - b.z);
+    if d < best { best = d; at = j; }
+  }
+  return at;
+}
+// The share landed of topsides module i (run[0].mod[i]).
+csv_module_share :: (run: [] CsRun, v: [] CsvView, i: int) -> f64 {
+  c := run[0].mod[i];
+  return ifx c.mass > 0 then fclamp((v[0].proc.outfit - c.before) / c.mass, 0.0, 1.0) else 0.0;
+}
+csv_body :: (v: [] CsvView, b: CsvBody) -> int {
+  if v[0].bodies >= CSV_MAX_BODIES { return -1; }
+  v[0].body[v[0].bodies] = b; v[0].bodies += 1;
+  return v[0].bodies - 1;
+}
+csv_work :: (v: [] CsvView, kind: int, id: int, x: f64, y: f64, z: f64, progress: f64, height: f64) {
+  if v[0].works >= CSV_MAX_WORK { return; }
+  v[0].work[v[0].works] = CsvWork.{kind = kind, id = id, x = x, y = y, z = z, progress = fclamp(progress, 0.0, 1.0), height = height};
+  v[0].works += 1;
+}
+csv_line :: (v: [] CsvView, l: CsvLine) {
+  if v[0].lines >= CSV_MAX_LINES { return; }
+  v[0].line[v[0].lines] = l; v[0].lines += 1;
+}
+// A small craft at (x, z): it rides the surface.
+csv_craft :: (kind: int, state: int, id: int, x: f64, z: f64, yaw: f64, l: f64, b: f64, h: f64, draft: f64, mass: f64, water: f64, rise: f64) -> CsvBody {
+  return CsvBody.{kind = kind, state = state, id = id, x = x, y = rise - draft, z = z, yaw = yaw, l = l, b = b, h = h, nc = 1, nr = 1, afloat = true,
+                  draft = draft, mass = mass, gm = b * b / (12.0 * fmax(draft, 0.1)), base = 1, walls = 1, top = 1, cured = 1, water = water};
+}
+
+// ---------------------------------------------------------------- the view
+// Fills `v` with the build at `day` of `run`. Any day, in any order, gives the same view.
+csv_at :: (run: [] CsRun, day: f64, v: [] CsvView) {
+  q: [1] CsProc; q[0] = cs_seek(run, day);
+  tick := q[0].tick; t := tick;
+  frac := fclamp(fmax(day, 0.0) * f64(CS_TICKS) - f64(tick), 0.0, 1.0);
+  if tick >= run[0].end.tick { frac = 0.0; }
+  now := fmax(day, 0.0) * 86400.0;
+  sh := run[0].sh; led := run[0].led; u := run[0].unit; route := run[0].route; p := run[0].p;
+  wx := cs_weather(run, (f64(tick) + frac) * CS_TICK_D);
+  v[0].day = day; v[0].tick = tick; v[0].phase = q[0].phase; v[0].failed = q[0].failed; v[0].wx = wx; v[0].proc = q[0];
+  v[0].bodies = 0; v[0].lines = 0; v[0].works = 0;
+  sea := afloat_sea(wx.hs, wx.tp, wx.wave_dir, route.site_depth, p.seed, CS_S_WAVES);
+  yard_yaw := afloat_angle(route.leg[0].bx - route.leg[0].ax, route.leg[0].bz - route.leg[0].az);
+
+  // ---- the hull so far
+  hl: CsvHull;
+  rects: [CS_MAX_UNITS * 4] f64;
+  h := cs_hull(run, q[..], tick, rects[..]);
+  hm: AfloatMotion;
+  x1 := 0.0; z1 := 0.0;
+  if h.rects > 0 {
+    plane := afloat_plane(rects[..], h.rects);
+    hl.x = plane.mx / plane.area; hl.z = plane.mz / plane.area; hl.lx = h.lx; hl.lz = h.lz;
+    x1 = -1.0e9; z1 = -1.0e9;
+    for i: 0..<h.rects { x1 = fmax(x1, rects[i * 4 + 2]); z1 = fmax(z1, rects[i * 4 + 3]); }
+    hl.pieces = q[0].fast_pieces; hl.units = q[0].fast_units;
+    hl.draft = h.st.draft; hl.mass = h.load.mass; hl.gm_t = h.st.gm_t; hl.gm_l = h.st.gm_l; hl.ballast = q[0].ballast;
+    hl.top = cs_top(run, q[..]);
+    rao := afloat_rao(rects[..], h.rects, h.st, h.load, sea, 0.0);
+    hm = afloat_motion(rao, sea, hl.x, hl.z, now);
+    hl.heave = hm.heave; hl.roll = hm.roll; hl.pitch = hm.pitch;
+    // the weather's push, along the wind and the waves
+    hl.push_x = cs_push(run, h.lz, h.lx, h.st.draft, hl.top, wx.hs, wx.tp, wx.wind, wx.current) * cos(wx.wave_dir);
+    hl.push_z = cs_push(run, h.lx, h.lz, h.st.draft, hl.top, wx.hs, wx.tp, wx.wind, wx.current) * sin(wx.wave_dir);
+    hl.wind_heel = cs_wind(run, h, hl.top, wx.wind).heel;
+    hl.bending = cs_bend_v(run, fmax(h.lx, h.lz), h.st.area / fmax(fmax(h.lx, h.lz), 1.0), h.st.draft, wx.hs, wx.tp);
+    hl.moored = q[0].phase != CS_PH_OCEAN;
+    if hl.moored {
+      v[0].rig[0] = cs_rig(run, h.lx, h.lz, h.st.draft);
+      hold := cs_rig_hold(v[0].rig[..], hl.push_x, hl.push_z);
+      hl.ox = hold.x; hl.oz = hold.z; hl.line_peak = hold.peak;
+      for i: 0..<v[0].rig[0].count {
+        m := moor_now(v[0].rig[..], 0, i, hl.ox, hl.oz, 0.0, hm.heave);
+        csv_line(v, CsvLine.{kind = CSV_MOORING, a = -1, b = -1, ax = hl.x + m.wx, ay = v[0].rig[0].fair_y + hm.heave, az = hl.z + m.wz,
+                             bx = hl.x + v[0].rig[0].ax[i], by = -route.site_depth, bz = hl.z + v[0].rig[0].az[i], tension = m.pull.tension, limit = v[0].rig[0].line.mbl});
+      }
+    } else { v[0].rig[0].built = false; }
+  } else { v[0].rig[0].built = false; }
+  if led.lining > 0 { hl.lining = q[0].lining / led.lining; } else { hl.lining = 1.0; }
+  if led.upper_concrete > 0 { hl.upper = q[0].upper / led.upper_concrete; } else { hl.upper = 1.0; }
+  if led.topsides > 0 { hl.outfit = q[0].outfit / led.topsides; } else { hl.outfit = 1.0; }
+  if led.liquids > 0 { hl.liquids = q[0].liquids / led.liquids; } else { hl.liquids = 1.0; }
+  hl.ocean = q[0].ocean;
+  v[0].hull = hl;
+  v[0].units = run[0].units;
+  for i: 0..<run[0].units { v[0].bay[i] = cs_bay(run, q[0].up[i]); v[0].unit[i] = csv_unit_place(run, i); }
+
+  // ---- caissons in the yard: in a cell, or afloat and not yet part of a ready piece
+  base_v := u.l * u.b * sh.bottom; top_v := u.l * u.b * sh.top; wall_v := u.concrete - base_v - top_v;
+  dry := cs_box_statics(u.l, u.b, cs_unit_load(run, 0.0, false));
+  for i: 0..<q[0].next_unit {
+    c := run[0].u[i]; a := run[0].pc[c.piece];
+    if cs_reached(a.t_ready, t) { continue; }
+    b := CsvBody.{kind = CSV_CAISSON, id = i, l = u.l, b = u.b, h = sh.hull, nc = 1, nr = 1, yaw = yard_yaw, water = CS_BASIN_DEPTH};
+    if cs_reached(c.t_float, t) {
+      made := 0.0;
+      if q[0].form == c.piece && q[0].form_left >= 0.0 && a.count > 1 { made = csv_smooth(1.0 - (q[0].form_left - frac * CS_TICK_D) / (f64(a.count - 1) * CS_FORM_DAYS)); }
+      w := csv_basin(run, i, made);
+      b.state = CSV_BASIN; b.x = w.x; b.z = w.z; b.afloat = true; b.y = -dry.draft; b.draft = dry.draft; b.mass = u.mass; b.gm = fmin(dry.gm_t, dry.gm_l);
+      b.base = 1; b.walls = 1; b.top = 1; b.cured = 1;
+      _ = csv_body(v, b);
+      continue;
+    }
+    cell := c.cell; s := q[0].cell_stage[cell];
+    if q[0].cell_unit[cell] != i { continue; }
+    w := csv_cell(run, cell);
+    b.x = w.x; b.z = w.z; b.y = -CS_CELL_FLOOR; b.state = CSV_CASTING; b.water = CS_CELL_FLOOR;
+    vol := q[0].cell_vol[cell];
+    b.base = ifx s > CS_BASE then 1.0 else (ifx s == CS_BASE then vol / base_v else 0.0);
+    b.walls = ifx s > CS_WALLS then 1.0 else (ifx s == CS_WALLS then vol / wall_v else 0.0);
+    b.top = ifx s > CS_TOP then 1.0 else (ifx s == CS_TOP then vol / top_v else 0.0);
+    b.mass = HULL_CONCRETE * (b.base * base_v + b.walls * wall_v + b.top * top_v);
+    left := q[0].cell_left[cell] - frac * CS_TICK_D;
+    wk := s; done := 0.0;
+    if s == CS_PREP { done = 1.0 - left / CS_PREP_DAYS; }
+    if s == CS_BASE { done = b.base; }
+    if s == CS_SETUP { done = 1.0 - left / CS_SETUP_DAYS; }
+    if s == CS_WALLS { done = b.walls; }
+    if s == CS_FALSE { done = 1.0 - left / CS_FALSE_DAYS; }
+    if s == CS_TOP { done = b.top; }
+    if s == CS_CURE { b.state = CSV_CURING; b.cured = fclamp(1.0 - left / CS_CURE_DAYS, 0.0, 1.0); done = b.cured; }
+    if s == CS_FLOAT {
+      // the cell floods in the first half of the step; the caisson lifts off its floor and is
+      // warped to its place in the basin in the second
+      f := fclamp(1.0 - left / CS_FLOAT_DAYS, 0.0, 1.0);
+      level := -CS_CELL_FLOOR * (1.0 - fclamp(2.0 * f, 0.0, 1.0));
+      b.state = CSV_FLOAT_OUT; b.cured = 1; done = f;
+      b.y = fmax(-CS_CELL_FLOOR, level - dry.draft);
+      b.afloat = b.y > -CS_CELL_FLOOR; b.draft = level - b.y; b.gm = ifx b.afloat then fmin(dry.gm_t, dry.gm_l) else 0.0;
+      out := csv_basin(run, i, 0.0); g := csv_smooth(2.0 * f - 1.0);
+      b.x = csv_mix(w.x, out.x, g); b.z = csv_mix(w.z, out.z, g);
+    }
+    if s > CS_FLOAT { continue; }
+    _ = csv_body(v, b);
+    csv_work(v, wk, i, w.x, -CS_CELL_FLOOR, w.z, done, sh.bottom + b.walls * hull_clear(sh));
+  }
+  if q[0].form < run[0].pieces && q[0].form_left >= 0.0 && run[0].pc[q[0].form].count > 1 {
+    a := run[0].pc[q[0].form]; w := csv_basin(run, a.first, 1.0); e := csv_basin(run, a.first + a.count - 1, 1.0);
+    csv_work(v, CSV_W_MAKEUP, q[0].form, (w.x + e.x) * 0.5, 0.0, (w.z + e.z) * 0.5, 1.0 - (q[0].form_left - frac * CS_TICK_D) / (f64(a.count - 1) * CS_FORM_DAYS), 0.0);
+  }
+
+  // ---- pieces: ready, under tow, standing by, joining, joined
+  towing := -1; tow_body := -1; tow_s := 0.0;
+  for ip: 0..<run[0].pieces {
+    a := run[0].pc[ip];
+    if !cs_reached(a.t_ready, t) { continue; }
+    load := cs_piece_load(run, ip);
+    b := CsvBody.{kind = CSV_PIECE, id = ip, l = a.l, b = a.b, h = sh.hull, nc = a.nc, nr = a.nr, afloat = true, draft = a.draft, mass = a.mass, gm = fmin(a.gm_t, a.gm_l),
+                  base = 1, walls = 1, top = 1, cured = 1, ballast = f64(a.count) * CS_TOW_BALLAST, y = -a.draft, water = CS_BASIN_DEPTH};
+    if cs_reached(a.t_fast, t) {
+      // part of the hull: it rides with it
+      dx := a.x - hl.x; dz := a.z - hl.z;
+      b.state = CSV_JOINED; b.x = a.x + hl.ox; b.z = a.z + hl.oz; b.yaw = 0.0; b.roll = hl.roll; b.pitch = hl.pitch;
+      b.draft = hl.draft; b.y = -hl.draft + hl.heave - hl.pitch * dx - hl.roll * dz;
+      b.mass = hl.mass * a.l * a.b / fmax(h.st.area, 1.0); b.gm = fmin(hl.gm_t, hl.gm_l); b.ballast = hl.ballast * a.l * a.b / fmax(h.st.area, 1.0);
+      b.water = route.site_depth;
+      _ = csv_body(v, b);
+      continue;
+    }
+    berth := csv_berth(run, ip);
+    if a.t_depart < 0 || t < a.t_depart {
+      // at its berth; in the tick before it sails it is warped to the basin's mouth
+      b.state = CSV_READY; b.x = berth.x; b.z = berth.z; b.yaw = yard_yaw;
+      if a.t_depart >= 0 && t == a.t_depart - 1 { g := csv_smooth(frac); b.x = csv_mix(berth.x, route.leg[0].ax, g); b.z = csv_mix(berth.z, route.leg[0].az, g); }
+      _ = csv_body(v, b);
+      continue;
+    }
+    station := csv_station(run, ip);
+    if t < a.t_arrive {
+      // under tow: the simulation's track
+      s := (f64(t - a.t_depart) + frac) * CS_TICK_S;
+      k := csv_track(run, ip, s);
+      leg := csv_leg(run, k[0], k[1]); g := route.leg[leg];
+      b.state = CSV_TOW; b.x = k[0]; b.z = k[1]; b.yaw = k[2]; b.water = csv_water(run, leg, k[0], k[1]);
+      local := afloat_sea(wx.hs * g.shelter, afloat_peak_period(wx.hs * g.shelter), wx.wave_dir, g.depth, p.seed, CS_S_WAVES);
+      rect := [4] f64.[-a.l * 0.5, -a.b * 0.5, a.l * 0.5, a.b * 0.5];
+      st := cs_box_statics(a.l, a.b, load);
+      m := afloat_motion(afloat_rao(rect[..], 1, st, load, local, b.yaw), local, b.x, b.z, now);
+      b.y = -a.draft + m.heave; b.roll = m.roll; b.pitch = m.pitch;
+      towing = ip; tow_body = csv_body(v, b); tow_s = s;
+      csv_work(v, CSV_W_TOW, ip, b.x, 0.0, b.z, s / fmax(a.tow_time, 1.0), 0.0);
+      continue;
+    }
+    // at the site
+    b.water = route.site_depth;
+    crew := -1;
+    for c: 0..<CS_MAX_CREWS { if q[0].crew_piece[c] == ip { crew = c; } }
+    last := csv_track(run, ip, a.tow_time);
+    rect := [4] f64.[-a.l * 0.5, -a.b * 0.5, a.l * 0.5, a.b * 0.5];
+    st := cs_box_statics(a.l, a.b, load);
+    b.state = CSV_STANDBY; b.x = station.x; b.z = station.z; b.yaw = station.yaw;
+    if t == a.t_arrive { g := csv_smooth(frac); b.x = csv_mix(last[0], station.x, g); b.z = csv_mix(last[1], station.z, g); b.yaw = csv_turn(last[2], station.yaw, g); }
+    if crew >= 0 {
+      s := q[0].crew_stage[crew]; total := CS_J_TICKS[s];
+      done := (f64(total - q[0].crew_left[crew]) + frac) / f64(total);
+      b.state = CSV_JOINING;
+      nb := csv_neighbour(run, ip, t);
+      nx := 0.0; nz := 0.0; jx := a.x; jz := a.z;
+      if nb >= 0 {
+        o := run[0].pc[nb];
+        if abs(a.x - o.x) > abs(a.z - o.z) && abs(abs(a.x - o.x) - (a.l + o.l) * 0.5) < 1e-6 { nx = ifx a.x > o.x then 1.0 else -1.0; jx = a.x - nx * a.l * 0.5; }
+        else { nz = ifx a.z > o.z then 1.0 else -1.0; jz = a.z - nz * a.b * 0.5; }
+      }
+      place_x := a.x + hl.ox; place_z := a.z + hl.oz;
+      if s == CS_J_MOOR {
+        g := csv_smooth(done * 4.0);
+        b.x = csv_mix(station.x, a.x, g); b.z = csv_mix(station.z, a.z, g); b.yaw = csv_turn(station.yaw, 0.0, g);
+      } else if s == CS_J_CONNECT {
+        g := csv_smooth(done);
+        b.x = csv_mix(station.x, place_x + nx * CSV_ALONGSIDE, g); b.z = csv_mix(station.z, place_z + nz * CSV_ALONGSIDE, g); b.yaw = csv_turn(station.yaw, 0.0, g);
+      } else if s == CS_J_PULL {
+        g := 1.0 - csv_smooth(done);
+        b.x = place_x + nx * CSV_ALONGSIDE * g; b.z = place_z + nz * CSV_ALONGSIDE * g; b.yaw = 0.0;
+      } else { b.x = place_x; b.z = place_z; b.yaw = 0.0; }
+      csv_work(v, CSV_W_MOOR + s - CS_J_MOOR, ip, jx + hl.ox, sh.hull - a.draft, jz + hl.oz, done, 0.0);
+    }
+    m := afloat_motion(afloat_rao(rect[..], 1, st, load, sea, b.yaw), sea, b.x, b.z, now);
+    b.y = -a.draft + m.heave; b.roll = m.roll; b.pitch = m.pitch;
+    _ = csv_body(v, b);
+    // a tug holds each piece on station
+    if crew < 0 || q[0].crew_stage[crew] <= CS_J_PULL {
+      ahead := a.l * 0.5 + 60.0;
+      tx := b.x + cos(b.yaw) * ahead; tz := b.z + sin(b.yaw) * ahead;
+      _ = csv_body(v, csv_craft(CSV_TUG, CSV_WORKING, 200 + ip, tx, tz, b.yaw, CSV_TUG_L, CSV_TUG_B, 11.0, CSV_TUG_T, CSV_TUG_MASS, route.site_depth, afloat_eta(sea, tx, tz, now)));
+    }
+  }
+
+  // ---- the tugs
+  fleet := 2;
+  for ip: 0..<run[0].pieces { if run[0].pc[ip].tugs > fleet { fleet = run[0].pc[ip].tugs; } }
+  if towing >= 0 {
+    a := run[0].pc[towing]; k := csv_track(run, towing, tow_s);
+    leg := csv_leg(run, k[0], k[1]); g := route.leg[leg];
+    line := cs_towline(p.tug_pull, g.line);
+    local := afloat_sea(wx.hs * g.shelter, afloat_peak_period(wx.hs * g.shelter), wx.wave_dir, g.depth, p.seed, CS_S_WAVES);
+    cy := cos(k[2]); sy := sin(k[2]);
+    water := csv_water(run, leg, k[0], k[1]);
+    for i: 0..<a.tugs {
+      off := (f64(i) - f64(a.tugs - 1) * 0.5) * 60.0;
+      tx := k[4] - sy * off; tz := k[5] + cy * off;
+      id := csv_body(v, csv_craft(CSV_TUG, CSV_WORKING, i, tx, tz, afloat_angle(tx - k[0], tz - k[1]), CSV_TUG_L, CSV_TUG_B, 11.0, CSV_TUG_T, CSV_TUG_MASS, water, afloat_eta(local, tx, tz, now)));
+      csv_line(v, CsvLine.{kind = CSV_TOWLINE, a = id, b = tow_body, ax = tx, ay = 3.0, az = tz, bx = k[0] + cy * a.l * 0.5, by = 3.0, bz = k[1] + sy * a.l * 0.5,
+                           tension = k[3], limit = line.mbl, sag = ifx k[3] > 1.0 then fmin(afloat_line_sag(line, k[3]), water) else water});
+    }
+    if g.width > 0 {
+      // two escorts on the quarters while it is in a channel
+      for i: 0..<2 {
+        side := (ifx i == 0 then 1.0 else -1.0) * (a.b * 0.5 + CSV_TUG_B * 0.5 + 2.0);
+        tx := k[0] - cy * a.l * 0.3 - sy * side; tz := k[1] - sy * a.l * 0.3 + cy * side;
+        _ = csv_body(v, csv_craft(CSV_TUG, CSV_WORKING, 100 + i, tx, tz, k[2], 32.0, 12.0, 9.0, 5.0, 0.9e6, water, afloat_eta(local, tx, tz, now)));
+      }
+    }
+  } else {
+    // running home light after a tow, or at their berth
+    home := q[0].tow > 0 && t < q[0].fleet_free && cs_reached(run[0].pc[q[0].tow - 1].t_arrive, t);
+    for i: 0..<fleet {
+      w := cs_yard_point(route, 1900.0 + 70.0 * f64(i), 350.0); state := CSV_IDLE; yaw := yard_yaw; water := CS_BASIN_DEPTH; rise := 0.0;
+      if home {
+        a := run[0].pc[q[0].tow - 1];
+        f := fclamp((f64(t - a.t_arrive) + frac) / fmax(f64(q[0].fleet_free - a.t_arrive), 1.0), 0.0, 1.0);
+        way := cs_way(route, route.total * (1.0 - f) - 80.0 * f64(i));
+        w = CsWay.{x = way.x - sin(way.yaw) * 120.0, z = way.z + cos(way.yaw) * 120.0}; yaw = way.yaw + PI_D; state = CSV_RETURN;
+        water = csv_water(run, way.leg, w.x, w.z); rise = afloat_eta(sea, w.x, w.z, now) * route.leg[way.leg].shelter;
+      }
+      _ = csv_body(v, csv_craft(CSV_TUG, state, i, w.x, w.z, yaw, CSV_TUG_L, CSV_TUG_B, 11.0, CSV_TUG_T, CSV_TUG_MASS, water, rise));
+    }
+  }
+
+  // ---- freight barges and the gantries
+  lifting := false;
+  for b: 0..<CS_BARGES {
+    s := q[0].barge_stage[b]; cargo := q[0].barge_cargo[b];
+    bh := cs_barge_hull(cargo);
+    w := cs_yard_point(route, 2300.0 + 170.0 * f64(b), 355.0); state := CSV_IDLE; yaw := yard_yaw; water := CS_BASIN_DEPTH; rise := 0.0;
+    if s == CS_B_LOAD || s == CS_B_WAIT { state = CSV_LOADING; }
+    if s == CS_B_OUT || s == CS_B_BACK {
+      f := fclamp(1.0 - (f64(q[0].barge_left[b]) - frac) / fmax(f64(q[0].barge_trip[b]), 1.0), 0.0, 1.0);
+      if s == CS_B_BACK { f = 1.0 - f; }
+      way := cs_way(route, route.total * f);
+      side := ifx s == CS_B_OUT then -250.0 - 60.0 * f64(b) else 250.0 + 60.0 * f64(b);
+      w = CsWay.{x = way.x - sin(way.yaw) * side, z = way.z + cos(way.yaw) * side}; yaw = ifx s == CS_B_OUT then way.yaw else way.yaw + PI_D;
+      state = ifx s == CS_B_OUT then CSV_PASSAGE else CSV_RETURN;
+      water = csv_water(run, way.leg, w.x, w.z); rise = afloat_eta(sea, w.x, w.z, now) * route.leg[way.leg].shelter;
+    }
+    if s == CS_B_QUEUE { w = CsWay.{x = hl.x + 200.0 * (f64(b) - 1.0), z = z1 + 500.0}; yaw = 0.0; state = CSV_QUEUE; water = route.site_depth; rise = afloat_eta(sea, w.x, w.z, now); }
+    if s == CS_B_DOCK {
+      w = CsWay.{x = hl.x + hl.ox, z = z1 + hl.oz + CS_BARGE_B * 0.5 + 4.0}; yaw = 0.0; state = CSV_DOCK; water = route.site_depth; rise = afloat_eta(sea, w.x, w.z, now);
+      lifting = wx.storm == 0 && wx.hs <= CS_LIFT_HS && wx.wind <= CS_LIFT_WIND;
+    }
+    o := csv_craft(CSV_BARGE, state, b, w.x, w.z, yaw, CS_BARGE_L, CS_BARGE_B, CS_BARGE_D, bh.draft, bh.mass, water, rise);
+    o.ballast = 0.0; o.top = ifx CS_BARGE_LOAD > 0 then cargo / CS_BARGE_LOAD else 0.0;   // top: the share of a full load on its deck
+    _ = csv_body(v, o);
+  }
+  if h.rects > 0 && (q[0].barge_trips > 0 || q[0].outfit > 0.0) {
+    for g: 0..<CS_GANTRIES {
+      gx := hl.x + hl.ox + (f64(g) - f64(CS_GANTRIES - 1) * 0.5) * 140.0; gz := z1 + hl.oz - 20.0;
+      up := sh.hull;
+      for i: 0..<run[0].units { c := v[0].unit[i]; if abs(c.x - (gx - hl.ox)) <= u.l * 0.5 && abs(c.z - (gz - hl.oz)) <= u.b * 0.5 && v[0].bay[i].top > up { up = v[0].bay[i].top; } }
+      _ = csv_body(v, CsvBody.{kind = CSV_GANTRY, state = ifx lifting then CSV_WORKING else CSV_IDLE, id = g, x = gx, y = up - hl.draft + hl.heave, z = gz, l = 30.0, b = 40.0, h = 60.0, nc = 1, nr = 1,
+                           mass = 2.0e6, base = 1, walls = 1, top = 1, cured = 1, water = route.site_depth});
+      if lifting { csv_work(v, CSV_W_LIFT, g, gx, up - hl.draft, gz + 20.0, frac, 0.0); }
+    }
+  }
+
+  // ---- work on the hull
+  if wx.storm != 0 { csv_work(v, CSV_W_STANDDOWN, wx.storm, hl.x, 0.0, hl.z, 0.0, 0.0); }
+  if h.rects > 0 && q[0].lining > 0.0 && q[0].lining < led.lining { csv_work(v, CSV_W_LINING, 0, hl.x, 0.0, hl.z, hl.lining, 0.0); }
+  for i: 0..<run[0].units {
+    bay := v[0].bay[i];
+    if bay.stage == CS_BAY_NONE || bay.stage == CS_BAY_DONE || q[0].up[i] <= 0.0 { continue; }
+    c := v[0].unit[i];
+    kind := ifx bay.stage == CS_BAY_COLUMNS then CSV_W_COLUMNS else (ifx bay.stage == CS_BAY_GIRDERS then CSV_W_GIRDERS else CSV_W_SLAB);
+    done := ifx bay.stage == CS_BAY_COLUMNS then bay.column / fmax(run[0].bay.column_h, 1.0) else (ifx bay.stage == CS_BAY_GIRDERS then bay.girders else bay.slab);
+    csv_work(v, kind, i, c.x + hl.ox, bay.top - hl.draft, c.z + hl.oz, done, bay.column);
+  }
+  if q[0].phase == CS_PH_BUILD && q[0].liquids > 0.0 && q[0].liquids < led.liquids { csv_work(v, CSV_W_LIQUIDS, 0, hl.x, 0.0, hl.z, hl.liquids, 0.0); }
+  if q[0].phase == CS_PH_OCEAN { csv_work(v, CSV_W_OCEAN, run[0].ocean_tugs, hl.x, 0.0, hl.z, q[0].ocean / fmax(p.ocean_nm, 1.0), 0.0); }
+  if q[0].phase == CS_PH_BALLAST {
+    start := f64(run[0].units) * CS_TOW_BALLAST;
+    csv_work(v, CSV_W_BALLAST, 0, hl.x, 0.0, hl.z, (q[0].ballast - start) / fmax(led.ballast - start, 1.0), 0.0);
+  }
+  if q[0].phase == CS_PH_COMMISSION { csv_work(v, CSV_W_COMMISSION, 0, hl.x, 0.0, hl.z, 1.0 - (q[0].left - frac * CS_TICK_D) / CS_COMMISSION_DAYS, 0.0); }
+
+  // ---- the events either side of now
+  v[0].event_last = -1; v[0].event_next = -1;
+  for i: 0..<run[0].events {
+    if run[0].ev[i].tick <= tick { v[0].event_last = i; }
+    else { v[0].event_next = i; break; }
+  }
+}
+
+// ---------------------------------------------------------------- checks
+// Whether two bodies' plans overlap (rectangles at any angle), with `slack` m taken off each side.
+csv_overlap :: (a: CsvBody, b: CsvBody, slack: f64) -> bool {
+  for pass: 0..<2 {
+    o := ifx pass == 0 then a else b;
+    for axis: 0..<2 {
+      ux := ifx axis == 0 then cos(o.yaw) else -sin(o.yaw); uz := ifx axis == 0 then sin(o.yaw) else cos(o.yaw);
+      ra := abs(ux * cos(a.yaw) + uz * sin(a.yaw)) * (a.l * 0.5 - slack) + abs(-ux * sin(a.yaw) + uz * cos(a.yaw)) * (a.b * 0.5 - slack);
+      rb := abs(ux * cos(b.yaw) + uz * sin(b.yaw)) * (b.l * 0.5 - slack) + abs(-ux * sin(b.yaw) + uz * cos(b.yaw)) * (b.b * 0.5 - slack);
+      if abs((b.x - a.x) * ux + (b.z - a.z) * uz) >= ra + rb { return false; }
+    }
+  }
+  return true;
+}
+csv_same :: (a: [] CsvView, b: [] CsvView) -> bool {
+  if a[0].bodies != b[0].bodies || a[0].lines != b[0].lines || a[0].works != b[0].works || a[0].tick != b[0].tick { return false; }
+  for i: 0..<a[0].bodies {
+    p := a[0].body[i]; q := b[0].body[i];
+    if p.kind != q.kind || p.state != q.state || p.id != q.id || p.x != q.x || p.y != q.y || p.z != q.z || p.yaw != q.yaw || p.roll != q.roll || p.pitch != q.pitch || p.draft != q.draft || p.walls != q.walls { return false; }
+  }
+  for i: 0..<a[0].lines { if a[0].line[i].tension != b[0].line[i].tension || a[0].line[i].ax != b[0].line[i].ax { return false; } }
+  for i: 0..<a[0].works { if a[0].work[i].kind != b[0].work[i].kind || a[0].work[i].progress != b[0].work[i].progress { return false; } }
+  return a[0].hull.heave == b[0].hull.heave && a[0].hull.ox == b[0].hull.ox && a[0].wx.hs == b[0].wx.hs && a[0].event_next == b[0].event_next;
+}
+#test "a view is the same whenever and in whatever order it is asked for" #steps 6000000000 {
+  r: [1] CsRun; a: [1] CsvView; b: [1] CsvView;
+  cs_run(cs_params(), r[..]);
+  days := [6] f64.[1300.4, 12.0, 333.33, 96.5, 700.07, 1509.0];
+  for i: 0..<6 {
+    csv_at(r[..], days[i], a[..]);
+    csv_at(r[..], days[(i + 3) % 6], b[..]);
+    csv_at(r[..], days[i], b[..]);
+    #assert csv_same(a[..], b[..]) && a[0].bodies > 0;
+  }
+  // the last day is the finished hull: every piece joined, at the ledger's draft, on its sixteen lines
+  csv_at(r[..], r[0].total.days + 1.0, a[..]);
+  joined := 0;
+  for i: 0..<a[0].bodies { if a[0].body[i].kind == CSV_PIECE { #assert a[0].body[i].state == CSV_JOINED; joined += 1; } #assert a[0].body[i].kind != CSV_CAISSON; }
+  #assert joined == r[0].pieces && a[0].phase == CS_PH_DONE && a[0].works == 0;
+  #assert abs(a[0].hull.draft - r[0].led.draft) < 1e-3 && abs(a[0].hull.mass - r[0].led.mass) < 1.0 && a[0].hull.top == r[0].sh.deck;
+  #assert a[0].hull.lining == 1 && a[0].hull.upper == 1 && a[0].hull.outfit == 1 && a[0].hull.liquids == 1;
+  moorings := 0;
+  for i: 0..<a[0].lines { if a[0].line[i].kind == CSV_MOORING { moorings += 1; #assert a[0].line[i].tension > 0.0 && a[0].line[i].tension < a[0].line[i].limit; } }
+  #assert moorings == CS_MOOR_LINES && a[0].rig[0].built && a[0].lines == moorings;
+  for i: 0..<r[0].units { #assert a[0].bay[i].stage == CS_BAY_DONE && a[0].bay[i].top == r[0].sh.deck; }
+  for i: 0..<r[0].modules { #assert csv_module_share(r[..], a[..], i) == 1.0; }
+  #assert a[0].event_next == -1 && r[0].ev[a[0].event_last].kind == CS_EV_DONE;
+  // and before the first pour there is nothing but the tugs and barges at their berths
+  csv_at(r[..], 0.0, a[..]);
+  for i: 0..<a[0].bodies { k := a[0].body[i].kind; #assert (k == CSV_TUG || k == CSV_BARGE || k == CSV_CAISSON) && a[0].body[i].state != CSV_TOW; }
+  #assert a[0].hull.pieces == 0 && !a[0].rig[0].built && a[0].event_next >= 0;
+}
+#test "every body floats on its own displacement, over the seabed, clear of the others, on lines that hold" #steps 12000000000 {
+  r: [1] CsRun; v: [1] CsvView;
+  cs_run(cs_params(), r[..]);
+  quay := cs_yard_point(r[0].route, 0.0, CSV_QUAY);
+  l0 := r[0].route.leg[0]; nx := -(l0.bz - l0.az) / l0.len; nz := (l0.bx - l0.ax) / l0.len;
+  tows := 0; joins := 0; casts := 0; floats := 0; climbs := 0; lifts := 0; standbys := 0;
+  mbl := CS_LINE_MBL * r[0].p.tug_pull * 9810.0;
+  n := cast(int) floor(r[0].total.days / 2.73);
+  for d: 0..<n {
+    day := 2.73 * f64(d) + 0.3;
+    csv_at(r[..], day, v[..]);
+    #assert v[0].failed == 0 && v[0].bodies < CSV_MAX_BODIES && v[0].lines < CSV_MAX_LINES && v[0].works < CSV_MAX_WORK;
+    for i: 0..<v[0].bodies {
+      b := v[0].body[i];
+      #assert b.x == b.x && b.y == b.y && b.z == b.z && b.yaw == b.yaw && b.l > 0 && b.b > 0;
+      if b.kind == CSV_GANTRY { continue; }
+      // its keel is over the seabed (a caisson in its cell stands on the cell's floor)
+      #assert b.y >= -b.water - 1e-9;
+      if b.afloat {
+        // what it displaces is what it weighs
+        if b.kind != CSV_TUG { #assert abs(b.l * b.b * b.draft * AFLOAT_RHO - b.mass) < 0.002 * b.mass + 1.0; }
+        #assert b.draft > 0.0 && b.draft < b.water && b.gm >= CS_GM_MIN && abs(b.roll) < 0.1 && abs(b.pitch) < 0.1;
+      } else { #assert b.kind == CSV_CAISSON && b.y == -CS_CELL_FLOOR; }
+      // the quay: cast caissons stand behind it, everything afloat in the yard lies in front of it
+      if b.kind == CSV_CAISSON || b.state == CSV_READY {
+        ashore := (b.x - quay.x) * nx + (b.z - quay.z) * nz;
+        if b.state == CSV_CASTING || b.state == CSV_CURING { #assert ashore - b.b * 0.5 > 0.0; }
+        if b.state == CSV_BASIN || b.state == CSV_READY { #assert ashore + b.b * 0.5 < 0.0; }
+      }
+      if b.state == CSV_TOW { tows += 1; } if b.state == CSV_JOINING { joins += 1; } if b.state == CSV_CASTING { casts += 1; }
+      if b.state == CSV_BASIN { floats += 1; } if b.state == CSV_STANDBY { standbys += 1; }
+      // no two bodies in the same water: caissons and pieces at rest, a tow, barges and tugs.
+      // (Joined pieces touch by design; a body being warped or brought to its joint is placed.)
+      if b.state == CSV_FLOAT_OUT || b.state == CSV_JOINING || b.state == CSV_JOINED { continue; }
+      for j: i + 1..<v[0].bodies {
+        c := v[0].body[j];
+        if c.kind == CSV_GANTRY || c.state == CSV_FLOAT_OUT || c.state == CSV_JOINING { continue; }
+        if c.state == CSV_JOINED && b.state == CSV_DOCK { #assert !csv_overlap(b, c, 0.0); continue; }
+        #assert !csv_overlap(b, c, 0.5);
+      }
+    }
+    for i: 0..<v[0].lines {
+      l := v[0].line[i];
+      #assert l.tension >= 0.0 && l.tension < l.limit;
+      if l.kind == CSV_TOWLINE { #assert l.limit == mbl && l.a >= 0 && l.b >= 0 && v[0].body[l.a].kind == CSV_TUG && v[0].body[l.b].state == CSV_TOW && l.sag >= 0.0 && l.sag <= v[0].body[l.b].water; if l.tension > 0.1 * r[0].p.tug_pull * 9810.0 { #assert l.sag < v[0].body[l.b].water; } }
+    }
+    for i: 0..<v[0].works { w := v[0].work[i]; #assert w.progress >= 0.0 && w.progress <= 1.0 && w.kind >= CSV_W_PREP && w.kind <= CSV_W_STANDDOWN; if w.kind == CSV_W_COLUMNS { climbs += 1; } if w.kind == CSV_W_LIFT { lifts += 1; } }
+    // the hull: its pieces ride with it, and it lies within a few metres on its lines
+    hl := v[0].hull;
+    if hl.pieces > 0 {
+      #assert abs(hl.heave) < 3.0 && abs(hl.roll) < 0.05 && abs(hl.pitch) < 0.05 && hl.gm_t >= CS_GM_MIN && hl.gm_l >= CS_GM_MIN;
+      #assert hl.draft > 0 && hl.draft < r[0].sh.hull && hl.top >= r[0].sh.hull && hl.top <= r[0].sh.deck;
+      if hl.moored && v[0].wx.storm == 0 { #assert sqrt(hl.ox * hl.ox + hl.oz * hl.oz) < 0.25 * r[0].route.site_depth && hl.line_peak < CS_MOOR_MBL; }
+    }
+  }
+  // the samples met every kind of thing
+  #assert tows > 3 && joins > 20 && casts > 500 && floats > 50 && climbs > 500 && lifts > 20 && standbys > 5;
+}
+#test "a tow is drawn where the simulation took it: from the basin's mouth, down the channel, to its station" #steps 3000000000 {
+  r: [1] CsRun; v: [1] CsvView;
+  cs_run(cs_params(), r[..]);
+  a := r[0].pc[7]; route := r[0].route;
+  depart := f64(a.t_depart) * CS_TICK_D;
+  // the tick before, it is warped from its berth to the mouth; then it is on its track
+  csv_at(r[..], depart - 0.5 * CS_TICK_D, v[..]);
+  found := false;
+  for i: 0..<v[0].bodies { b := v[0].body[i]; if b.kind == CSV_PIECE && b.id == 7 { found = true; #assert b.state == CSV_READY; } }
+  #assert found;
+  csv_at(r[..], depart, v[..]);
+  for i: 0..<v[0].bodies { b := v[0].body[i]; if b.kind == CSV_PIECE && b.id == 7 { #assert b.state == CSV_TOW && abs(b.x - route.leg[0].ax) < 1.0 && abs(b.z - route.leg[0].az) < 1.0; } }
+  last_x := -1.0e9; lines := 0; escorts := 0;
+  for k: 1..<12 {
+    csv_at(r[..], depart + a.tow_time / 86400.0 * f64(k) / 12.0, v[..]);
+    for i: 0..<v[0].bodies {
+      b := v[0].body[i];
+      if b.kind == CSV_TUG && b.id >= 100 && b.id < 200 { escorts += 1; }
+      if b.kind != CSV_PIECE || b.id != 7 { continue; }
+      // it makes its way east, inside the channel while there is one
+      #assert b.state == CSV_TOW && b.x > last_x && b.draft < b.water;
+      last_x = b.x;
+      g := route.leg[csv_leg(r[..], b.x, b.z)];
+      if g.width > 0 {
+        f := fclamp(((b.x - g.ax) * (g.bx - g.ax) + (b.z - g.az) * (g.bz - g.az)) / (g.len * g.len), 0.0, 1.0);
+        dx := b.x - (g.ax + (g.bx - g.ax) * f); dz := b.z - (g.az + (g.bz - g.az) * f);
+        #assert sqrt(dx * dx + dz * dz) + b.b * 0.5 < g.width * 0.5;
+      }
+    }
+    for i: 0..<v[0].lines { if v[0].line[i].kind == CSV_TOWLINE { lines += 1; #assert v[0].line[i].tension > 1.0e4 && v[0].line[i].tension <= a.tow_peak; } }
+  }
+  #assert lines == 11 * a.tugs && escorts > 0;
+  // arrived, it is brought to its station and held there until a crew takes it
+  csv_at(r[..], f64(a.t_arrive + 1) * CS_TICK_D, v[..]);
+  s := csv_station(r[..], 7);
+  for i: 0..<v[0].bodies { b := v[0].body[i]; if b.kind == CSV_PIECE && b.id == 7 { #assert (b.state == CSV_STANDBY && abs(b.x - s.x) < 1e-6 && abs(b.z - s.z) < 1e-6) || b.state == CSV_JOINING; } }
+  // made fast, it is in its place in the hull
+  csv_at(r[..], f64(a.t_fast) * CS_TICK_D, v[..]);
+  for i: 0..<v[0].bodies { b := v[0].body[i]; if b.kind == CSV_PIECE && b.id == 7 { #assert b.state == CSV_JOINED && abs(b.x - v[0].hull.ox - a.x) < 1e-9 && abs(b.z - v[0].hull.oz - a.z) < 1e-9 && b.yaw == 0.0; } }
+}

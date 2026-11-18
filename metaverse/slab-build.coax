@@ -481,9 +481,9 @@ CS_EV_SAIL :: 22;        // the hull leaves on its ocean tow (value tugs)
 CS_EV_LANDFALL :: 23;    // and arrives
 CS_EV_BALLAST :: 24;     // it is at its draft
 CS_EV_DONE :: 25;        // commissioned
-CS_EV_FAILED :: 26;
+CS_EV_FAILED :: 26;      // the run stopped (value CS_FAIL_*)
 CS_EV_RISE :: 27;        // the first concrete of the upper structure (value: the bay's caisson)
-CS_EV_TOPPED :: 28;      // the first bay's deck slab is cast: the deck is at its full height there      // the run stopped (value CS_FAIL_*)
+CS_EV_TOPPED :: 28;      // the first bay's deck slab is cast: the deck is at its full height there
 
 CS_FAIL_TOO_MANY :: 1;   // more caissons than the tables hold
 CS_FAIL_UNIT :: 2;       // a caisson is not stable afloat
@@ -781,6 +781,11 @@ cs_tow :: (run: [] CsRun, ip: int, depart: int) {
   w: AfloatWeather; motion := 0.0;
   time := 0.0; leg := 0; seen := -1; step := 0; n := 0; state := AFLOAT_TOW_OK;
   top := 0.0; peak := 0.0; keel := 1.0e9; bank := 1.0e9; clear := 1.0e9;
+  // the first sample: at the basin's mouth, the tugs a line's length ahead
+  ahead := hull.length * 0.5 + 250.0;
+  run[0].scratch[0] = f32(s.x); run[0].scratch[1] = f32(s.z); run[0].scratch[2] = f32(s.yaw);
+  run[0].scratch[3] = 0.0; run[0].scratch[4] = f32(s.x + cos(s.yaw) * ahead); run[0].scratch[5] = f32(s.z + sin(s.yaw) * ahead);
+  n = 1;
   while leg < run[0].route.legs {
     g := run[0].route.leg[leg];
     line.length = g.line; tugs.side = ifx g.width > 0 then CS_ESCORT_T * 9810.0 else 0.0;
@@ -840,8 +845,7 @@ cs_tow :: (run: [] CsRun, ip: int, depart: int) {
   sample := CS_TOW_DT * f64(CS_TOW_SAMPLE);
   run[0].track_dt[ip] = f32(time / f64(CS_TRACK - 1));
   for j: 0..<CS_TRACK {
-    t := time * f64(j) / f64(CS_TRACK - 1) / sample - 1.0;     // the first sample is one interval in
-    if t < 0.0 { t = 0.0; }
+    t := time * f64(j) / f64(CS_TRACK - 1) / sample;
     i := cast(int) floor(t); if i > n - 2 { i = n - 2; }
     f := fclamp(t - f64(i), 0.0, 1.0);
     for k: 0..<CS_TRACK_F {
@@ -1752,7 +1756,7 @@ cs_same :: (a: CsProc, b: CsProc) -> bool {
     base := i * CS_TRACK * CS_TRACK_F; end := base + (CS_TRACK - 1) * CS_TRACK_F;
     // (the open Gulf's wind and current set a tow a few hundred metres off its line by the end)
     #assert abs(f64(r[0].track[end]) - r[0].route.hold_x) < 600.0 && abs(f64(r[0].track[end + 1]) - r[0].route.hold_z) < 600.0;
-    #assert abs(f64(r[0].track[base]) - r[0].route.leg[0].ax) < 500.0 && abs(f64(r[0].track[base + 1]) - r[0].route.leg[0].az) < 500.0;
+    #assert abs(f64(r[0].track[base]) - r[0].route.leg[0].ax) < 1.0 && abs(f64(r[0].track[base + 1]) - r[0].route.leg[0].az) < 1.0;
   }
   for i: 0..<r[0].route.legs {
     g := r[0].route.leg[i];
