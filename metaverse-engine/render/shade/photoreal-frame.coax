@@ -206,7 +206,7 @@ pr_frame_out :: (u: [] f32, b: int, c: [3] f32) -> [3] f32 {
   e := u[b + PR_SUN_LIGHT + 3];
   w := u[b + PR_WARM];
   k := e / (1 + 0.1404f32 * w);
-  t := film_rec709(film_rgb(st_max(c[0], 0) * k * (1 + w), st_max(c[1], 0) * k, st_max(c[2], 0) * k * (1 - w)));
+  t := film_photo(film_rgb(st_max(c[0], 0) * k * (1 + w), st_max(c[1], 0) * k, st_max(c[2], 0) * k * (1 - w)));
   return [3] f32.[prf_encode(st_sat(t.r)), prf_encode(st_sat(t.g)), prf_encode(st_sat(t.b))];
 }
 // The sky along rd as pr_sky draws it over the horizon, from the block's sun: the air and the night's floor.

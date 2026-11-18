@@ -87,6 +87,15 @@ slab_photo_haze :: (c:V3,d:V3,dist:f32,u:[]f32)->V3 {
   return mix3(c,far,1.0f32-t);
 }
 
+// A light seen through `dist` metres of the physical air along d (pr_air for a point the
+// caller knows by its distance), and the share of slab_haze's distance the sea still takes: none.
+slab_photo_air :: (c:V3,d:V3,dist:f32,u:[]f32)->V3 {
+  b:int=SLAB_PHOTO;
+  t:f32=pr_air_through(dist,u[b+PR_EYE+1],d.y,u,b);
+  return add3(scale3(c,t),scale3(add3(pr_under_cloud(pr_air_far(d,pr_at3(u,b+PR_SUN),u[b+PR_AIR_HAZE]),u,b),pr_night(u[b+PR_SUN+3])),1.0f32-t));
+}
+slab_photo_sea_haze :: (u:[]f32)->f32 {return ifx slab_photo(u) then 0.0f32 else 0.4f32;}
+
 // ---- the mesh pass
 // (the vertices' store is not named `mesh`: host.js gives a store of that name in a page's shader its older single-mesh layout)
 slab_scene_vs :: (id:u32,instance:u32,u:[]f32,parts:[]f32,objects:[]PrObj)->PrV {return pr_stand(id,instance,u,SLAB_PHOTO,parts,objects);}

@@ -484,7 +484,7 @@ pr_out :: (c:V3,u:[]f32,b:int)->V3 {
   // the camera's white balance: red up and blue down by the same share, a grey's brightness kept
   w:f32=u[b+PR_WARM];
   k:f32=e/(1.0f32+0.1404f32*w);
-  t:FilmRGB=film_rec709(film_rgb(fmax(c.x,0.0f32)*k*(1.0f32+w),fmax(c.y,0.0f32)*k,fmax(c.z,0.0f32)*k*(1.0f32-w)));
+  t:FilmRGB=film_photo(film_rgb(fmax(c.x,0.0f32)*k*(1.0f32+w),fmax(c.y,0.0f32)*k,fmax(c.z,0.0f32)*k*(1.0f32-w)));
   return pr_encode(v3(saturate(t.r),saturate(t.g),saturate(t.b)));
 }
 

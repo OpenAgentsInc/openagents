@@ -50,6 +50,13 @@ slab_sea_top_out :: (c:V3,u:[]f32)->V3 {
   if (slab_photo(u)) { return slab_photo_show(c,u); }
   return slab_sea_out(c);
 }
+// The surface's light after the air between it and the eye. In the photoreal style that is the
+// frame's air, mixed in as light as it is over the meshes (so slab_haze adds none for the sea
+// there); the painterly style hazes the display's colour afterwards.
+slab_sea_top_air :: (c:V3,d:V3,dist:f32,u:[]f32)->V3 {
+  if (slab_photo(u)) { return slab_photo_air(c,d,dist,u); }
+  return c;
+}
 // The sky the surface mirrors along r, no brighter than `cap` of the display's white (the sun's disc is the glint's).
 slab_sea_top_sky :: (r:V3,cap:f32,u:[]f32)->V3 {
   if (slab_photo(u)) { return slab_photo_mirror_sky(r,u); }
@@ -203,7 +210,7 @@ slab_sea :: (p:V2,world:V3,d:V3,dist:f32,t:f32,c:V4,u:[]f32)->V4 {
   hang:V3=skyl;
   if (!slab_photo(u)) { hang=slab_sea_lin(sb_p(u,12)); }
   col=sb_mix(col,sb_mul(hang,0.9f32),veil*0.6f32);
-  o:V3=slab_sea_top_out(col,u);
+  o:V3=slab_sea_top_out(slab_sea_top_air(col,d,dist,u),u);
   return v4(o.x,o.y,o.z,white);
 }
 

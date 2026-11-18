@@ -1444,7 +1444,7 @@ slab_surface_fs :: (v:SlabS,u:[]f32)->V4 {
     c=slab_grade(sw_under(c,sb_to_hull(v3(u[8],u[9],u[10]),u),sb_dir_to_hull(d,u),dist,u),u);
     return wg_make_f4_f3f(c,1.0f32);
   }
-  c:V3=slab_shore(slab_haze(slab_water(v.rest,v.world,d,dist,u[2],u),d,dist*0.4f32,u),v.world,d,u);
+  c:V3=slab_shore(slab_haze(slab_water(v.rest,v.world,d,dist,u[2],u),d,dist*slab_photo_sea_haze(u),u),v.world,d,u);
   sm:V4=slab_smoke(sb_to_hull(v3(u[8],u[9],u[10]),u),sb_dir_to_hull(d,u),dist,u);
   c=slab_grade(slab_weather_air(sb_mix(c,v3(sm.x,sm.y,sm.z),sm.w),slab_weather_px(d,u),u),u);
   return wg_make_f4_f3f(c,1.0f32);

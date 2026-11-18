@@ -46,3 +46,32 @@ film_rec709 :: (linear:FilmRGB)->FilmRGB {
  hue:=film_atan2(sqrt(3.0f32)*(c.g-c.b),2*c.r-c.g-c.b)*180/3.14159265359;red:=film_sat(1-abs(2*hue/135));red=red*red*(3-2*red);c.r+=red*red*saturation*(0.03-c.r)*0.18;
  c=film_ap1(c);c=film_rgb(film_max(c.r,0),film_max(c.g,0),film_max(c.b,0));c=film_mix_grey(c,0.96);c=film_rgb(film_curve(c.r),film_curve(c.g),film_curve(c.b));c=film_mix_grey(c,0.93);c=film_out(c);return film_rgb(film_max(c.r,0),film_max(c.g,0),film_max(c.b,0));
 }
+
+// A photograph's response: the film above with a camera's gentler toe. The film crushes what is
+// darker than middle grey (a hundredth of white comes out a sixth as bright), which suits a graded
+// game picture and turns a hazy sea or a shaded wall near black. This keeps the film's colour and
+// everything from middle grey up, and below it leads the brightness to FILM_PHOTO_TOE's power
+// curve through middle grey: a hundredth of white comes out about half as bright.
+FILM_PHOTO_TOE :: 1.25f32;
+#test "the photo response is the film from middle grey up and keeps the darks the film crushes" {
+ g:=film_photo(film_rgb(0.18,0.18,0.18));f:=film_rec709(film_rgb(0.18,0.18,0.18));#assert abs(g.g-f.g)<0.0001;
+ h:=film_photo(film_rgb(0.6,0.5,0.4));i:=film_rec709(film_rgb(0.6,0.5,0.4));#assert abs(h.r-i.r)<0.0001 && abs(h.b-i.b)<0.0001;
+ d:=film_photo(film_rgb(0.01,0.01,0.01));e:=film_rec709(film_rgb(0.01,0.01,0.01));#assert d.g>2.5*e.g && d.g<0.01 && d.g>0.004;
+ z:=film_photo(film_rgb(0,0,0));#assert z.r==0 && z.g==0 && z.b==0;
+}
+#test "the photo response never falls as the light rises" {
+ last:f32=0;for i:1..<400 {x:=cast(f32)i*0.001;c:=film_photo(film_rgb(x,x,x));#assert c.g>=last;last=c.g;}
+}
+#test "film_photo_light undoes the photo response's toe for a grey" {
+ for i:1..<18 {x:=cast(f32)i*0.01;c:=film_photo(film_rgb(x,x,x));#assert abs(film_photo_light(c.g)-x)<0.012;}
+}
+film_luma :: (c:FilmRGB)->f32 {return c.r*0.2126+c.g*0.7152+c.b*0.0722;}
+film_photo :: (linear:FilmRGB)->FilmRGB {
+ t:=film_rec709(linear);yi:=film_max(film_luma(linear),0);yo:=film_luma(t);
+ soft:=0.18*pow(yi/0.18,FILM_PHOTO_TOE);w:=film_sat(yi/0.18);w=w*w*(3-2*w);
+ return film_scale(t,(soft+(yo-soft)*w)/film_max(yo,0.000001));
+}
+// The light a grey of brightness y on the photo response came from, below middle grey (the toe's
+// own curve, so it is close and not exact where the film takes over): for code that holds a
+// display colour and needs the light behind it.
+film_photo_light :: (y:f32)->f32 {return 0.18*pow(film_max(y,0)/0.18,1/FILM_PHOTO_TOE);}

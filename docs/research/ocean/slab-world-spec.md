@@ -1016,9 +1016,17 @@ camera (yaw 0.802, pitch 0.438, 1,164 m out, aimed at the waterline) crops
 the towers as the picture does; it is the tour's first stop and the station
 "The view in Luckey's picture". The world opens in the `rough` sea
 (4 m; section 5.2 says why, and that Guam's own sea is `trade`), in June
-at 17:51 off Guam: the sun at about 297°, 10° up, lights the long north
-wall as the picture does. The golden-hour grade lifts the exposure and adds
-sepia. The spray at the walls is computed from the waves that meet them
+at 17:24 off Guam: the sun at about 291°, 13° up. From the opening camera
+(which looks south-west) the sun stands to the left and a little ahead: it
+lights the long north wall at a glancing angle, leaves the east end wall in
+shade so the block reads as a solid, and lays shadows about four times as
+long as things are tall across the deck toward the camera's right. June is
+the month because the sun then sets furthest north, which is what lights the
+north wall; an earlier hour lifts the sun and shortens the shadows, and a
+later one (the first choice was 17:51, 7° up) puts the whole garden in the
+towers' shadow. The painterly style's golden-hour grade lifts the exposure
+and adds sepia; the photoreal style exposes for the deck's pale concrete and
+warms the camera's white balance under a low sun (photoreal.md). The spray at the walls is computed from the waves that meet them
 (section 4.7), so in this 4 m sea it is small against a 118 m wall: bursts a
 few metres high, about three every two seconds round the hull. The picture's
 plumes, about 36 m, need a sea between the `gale` and the `hurricane`

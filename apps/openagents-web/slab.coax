@@ -146,7 +146,7 @@ Slab :: struct {
   px: f32; py: f32;     // the pointer
   // the world
   site: int; sea: int; wind_forced: f64;
-  hour: f64 = 17.85; month: f64 = 5.5; rate: f64 = 60; paused: bool;
+  hour: f64 = 17.4; month: f64 = 5.5; rate: f64 = 60; paused: bool;
   plant: SimPlant; power: SimPower; hull: SimHull;
   power_chosen: bool;   // the visitor or the address picked the power: a change of layout keeps it (else sim_opening_power)
   first: bool; tool_x: f32; tool_y: f32;   // intro: the "what is this" card is open; the toolbar's cursor (slab-intro.coax)
@@ -2121,7 +2121,7 @@ slab_message :: (s: [] Slab, kind: int, text: string) #export_c #effects(all) {
   if query_word(url, "sea=winter") { s[0].sea = SEA_ROUGH; }   // the rough sea's address before it was renamed
   w := query_number(url, "wind", -1);
   if w > 0 { s[0].wind_forced = fclamp(w, 0.5, 30); }
-  s[0].hour = fclamp(query_number(url, "hour", 17.85), 0, 23.99);
+  s[0].hour = fclamp(query_number(url, "hour", 17.4), 0, 23.99);
   mo := query_number(url, "month", -1);
   if mo >= 1 { s[0].month = fclamp(mo, 1, 12.99) - 0.5; }
   s[0].rate = fclamp(query_number(url, "rate", 60), 0, 3600);

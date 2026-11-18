@@ -64,12 +64,22 @@ The parts themselves are made with the architecture kit's pen
   platform's own buildings on a desktop.
 - **Air.** `pr_air` fades a surface into the air's light with distance. The
   air is thick at sea level and thins with height.
-- **Film.** `pr_out` exposes the light, runs it through the engine's film
-  response (`filmic.coax`) and encodes it for the display.
+- **Film.** `pr_out` exposes the light, runs it through the engine's photo
+  response (`film_photo` in `filmic.coax`) and encodes it for the display.
+  The photo response is the engine's film from middle grey up. Below middle
+  grey it has a camera's gentler toe: the film shows a hundredth of white a
+  sixth as bright, which turns a hazy sea or a shaded wall near black, and
+  the photo response shows it about half as bright. `film_photo_light` gives
+  back the light behind a dark display grey.
+- **Exposure.** `PrSky.exposure` scales the engine's choice, which shows pale
+  level ground as a pale grey. SLAB sets 1.45 (`PHOTO_EXPOSURE`), so its
+  cream concrete in the sun sits near the top of the display, as in the
+  concept picture.
 - **White balance.** `PrSky.warm` is the camera's white balance: 0 leaves
-  light its own colour, 0.08 is a little warm (SLAB's setting under a clear
-  sky), and a grey keeps its brightness. It is held to 0.2 either way. Keep
-  it small: the golden hour comes from the sun and the haze.
+  light its own colour, and a grey keeps its brightness. It is held to 0.2
+  either way. SLAB sets 0.07 under a high sun and up to 0.15 under a low
+  one, less under cloud. Keep it small: most of the golden hour comes from
+  the sun and the haze.
 
 ### Shading
 
@@ -262,11 +272,13 @@ sky in light's own scale and leave through the frame's film:
 | `slab_sea_top_sun(u)` | the frame's sun on a card facing it (`PR_SUN_LIGHT`) |
 | `slab_sea_top_skylight(u)` | the sky's light on a card facing up (`pr_sky_light`) |
 | `slab_sea_top_sky(r, cap, u)` | the sky the surface mirrors along `r` (`pr_sky`: the air under the frame's cloud, without the sun's disc) |
+| `slab_sea_top_air(c, d, dist, u)` | the frame's air over `dist` metres along `d`, mixed in as light (`pr_air_through`, `pr_air_far`) |
 | `slab_sea_top_out(c, u)` | `pr_out`: exposure, film, white balance |
 
 The open sea, its foam and the hull's white water all go through these, so
-a wall and the water at its foot share one sun, sky, exposure and film.
-After the sea's colour, `slab_haze` puts the frame's air over it.
+a wall and the water at its foot share one sun, sky, air, exposure and
+film. `slab_haze` adds no air of its own over the sea in photoreal
+(`slab_photo_sea_haze`).
 
 The view from under the sea and the section's slot still cross between a
 display's colours and light with a square and a root (`slab_sea_lin`,
