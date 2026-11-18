@@ -1149,9 +1149,10 @@ goes higher on the wind that turns up the wall.
 **The lee, measured** (root-mean-square height against the open sea's, in
 the `rough` sea and the `gale`): 0.24 to 0.31 at 60 m off the west wall;
 about 2.0 to 2.2 at the east wall, where the standing wave is; 0.46 to 0.59
-in the dock notch in the south wall. The south wall is only 20° off the
-waves' path, so the notch sees about half the open sea. A notch in the west
-wall would see under a third.
+in the dock notch in the south wall (section 3.1; the model has the notch,
+the drawn hull does not yet). The south wall is only 20° off the waves' path,
+so the notch sees about half the open sea. A notch in the west wall would see
+under a third.
 - The arrival view and the default hour follow the concept image: January at
   17:18, with the sun low in the west-south-west, seen from off the
   north-east corner.
