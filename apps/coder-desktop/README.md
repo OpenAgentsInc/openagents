@@ -21,9 +21,17 @@ Limits, all shown on screen when you reach them:
 - A chat holds 24 messages. Start a new chat to send more.
 - A reply longer than 60,000 bytes is cut.
 - One run at a time.
+- A message shows the first 12 commands and file reads. It says how many more ran.
+- A command's output is shown up to 4,000 bytes.
 
-Microcoder runs in your home folder with the `read-only` sandbox profile.
-Commands it runs are not shown yet; you see the reply.
+Microcoder runs shell commands in your home folder as you, with the
+`danger-full-access` profile: nothing confines them. The worker's other
+profiles (`read-only`, `workspace-write`) need `bwrap`, which is Linux only,
+so on macOS every command under them fails to start.
+
+Each command and file read shows as a row above the reply as it finishes.
+Press a row to open its input and output. The reply streams in as the model
+writes it.
 
 ## How a message runs
 
