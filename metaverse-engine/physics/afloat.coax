@@ -17,7 +17,7 @@
 //   two together.
 // - Lines. A towline or a mooring is an elastic catenary (afloat_line_tension, afloat_line_sag: the
 //   inextensible catenary is metaverse-engine/physics/sim/pbd.coax's pbd_catenary_a, and a check
-//   holds them together); a chain that lies on the seabed lifts off it (afloat_chain).
+//   holds them together). A mooring line that lies on the seabed is metaverse-engine/physics/moor.coax's.
 // - A tow. A body pulled along a route by tugs: thrust, the towline, hull and wind drag, current,
 //   wave drift, escort tugs that steer (afloat_tow_step). Speed, sheer, tension and clearances are
 //   results. The body can ground, strike a bank or part its line, and says so.
@@ -344,34 +344,6 @@ afloat_line_peak :: (l: AfloatLine, h: f64, stretch: f64) -> f64 {
   return afloat_line_tension(l, afloat_line_span(l, fmax(h, 1.0)) + fmax(stretch, 0.0));
 }
 
-// A mooring chain from a fairlead `height` above a flat seabed to an anchor `reach` away, part of
-// it lying on the bottom: the horizontal tension, by bisection. Past the point where the whole
-// chain lifts, the chain is a taut elastic line and the anchor takes uplift.
-AfloatChain :: struct { tension: f64; lifted: f64; uplift: bool; }
-afloat_chain_reach :: (l: AfloatLine, height: f64, h: f64) -> f64 {
-  a := h / l.weight;
-  hung := sqrt(height * (height + 2.0 * a));            // the length off the bottom
-  if hung >= l.length { return 1.0e30; }
-  return l.length - hung + a * afloat_acosh(1.0 + height / a) + h * l.length / l.ea;
-}
-afloat_chain :: (l: AfloatLine, height: f64, reach: f64) -> AfloatChain {
-  o: AfloatChain;
-  taut := sqrt(fmax(l.length * l.length - height * height, 0.0));
-  lo := 1.0; hi := 1.0e9;
-  if afloat_chain_reach(l, height, lo) >= reach { o.tension = lo; o.lifted = sqrt(height * (height + 2.0 * lo / l.weight)); return o; }
-  for i: 0..<70 { mid := (lo + hi) * 0.5; if afloat_chain_reach(l, height, mid) < reach { lo = mid; } else { hi = mid; } }
-  o.tension = (lo + hi) * 0.5;
-  o.lifted = sqrt(height * (height + 2.0 * o.tension / l.weight));
-  if o.lifted >= l.length * 0.999 {
-    // the whole chain is off the bottom: a straight elastic line from here on
-    o.uplift = true; o.lifted = l.length;
-    stretch := sqrt(reach * reach + height * height) - l.length;
-    o.tension = fmax(o.tension, l.ea * stretch / l.length * reach / sqrt(reach * reach + height * height));
-    if reach < taut { o.tension = lo; }
-  }
-  return o;
-}
-
 // ---------------------------------------------------------------- contact
 // A pneumatic fender's reaction (N) squeezed `d` m: its rated reaction at its rated deflection,
 // rising as the 1.5 power (a planning curve), and the energy it has taken (J).
@@ -692,15 +664,6 @@ afloat_bending_worst :: (weight: [] f64, width: [] f64, n: int, dx: f64, amp: f6
   h0 := afloat_line_tension(real, 802); h1 := afloat_line_tension(real, 803);
   #assert h1 - h0 > 0.5 * 2.7e8 / 800 && h1 - h0 < 1.05 * 2.7e8 / 800;
   #assert afloat_line_end_tension(real, 1.0e6) > 1.0e6 && afloat_line_sag(real, 1.0e6) > 15 && afloat_line_sag(real, 1.0e6) < 16;
-}
-#test "a mooring chain lifts off the seabed as the hull moves away" {
-  chain := AfloatLine.{length = 600, weight = 2600, ea = 1.2e9, mbl = 1.2e7};
-  near := afloat_chain(chain, 30, 560); far := afloat_chain(chain, 30, 596);
-  #assert near.tension < far.tension && near.lifted < far.lifted && !near.uplift;
-  #assert abs(afloat_chain_reach(chain, 30, far.tension) - 596) < 1e-5;
-  // the hung length is sqrt(h (h + 2 H / w))
-  #assert abs(far.lifted - sqrt(30.0 * (30.0 + 2.0 * far.tension / 2600.0))) < 1e-9;
-  #assert afloat_chain(chain, 30, 640).uplift;
 }
 #test "a fender's energy is the area under its load" {
   e := 0.0; for i: 0..<1000 { e += afloat_fender((cast(f64) i + 0.5) * 0.001, 4.0e6, 1.5) * 0.001; }

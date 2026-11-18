@@ -37,6 +37,7 @@
 #load "hull.coax";
 #load "slab-plan.coax";
 #load "../metaverse-engine/physics/afloat.coax";
+#load "slab-moor.coax";   // the world's moorings, on metaverse-engine/physics/moor.coax
 
 // ---------------------------------------------------------------- sizes
 CS_TICKS :: 8;              // ticks a day
@@ -135,8 +136,11 @@ CS_COMMISSION_DAYS :: 60.0;
 CS_STORM_HS :: 8.0; CS_STORM_TP :: 12.4; CS_STORM_WIND :: 40.0; CS_STORM_CURRENT :: 1.0;
 CS_PT :: 10.0e6;            // prestress across a finished joint, Pa
 CS_PT_TEMP :: 1.0e6;        // across a joint on its temporary bars
-CS_CHAIN_W :: 2460.0;       // a 120 mm mooring chain in water, N/m
-CS_CHAIN_EA :: 1.0e9; CS_CHAIN_MBL :: 13.6e6; CS_CHAIN_LENGTH :: 900.0; CS_CHAIN_PRE :: 1.0e6; CS_CHAIN_SAFETY :: 1.67;
+// the moorings are the world's (slab-world-spec.md 4.3; slab-sim.coax's SIM_BREAK, SIM_T0 and SIM_ANCHOR):
+// sixteen lines, four fanned at each corner, each a 40 MN bundle laid at 4 MN
+CS_MOOR_LINES :: 16; CS_MOOR_MBL :: 40.0e6; CS_MOOR_PRE :: 4.0e6; CS_MOOR_ANCHOR :: 2000.0;
+CS_MOOR_SAFETY :: 1.67;     // a line's breaking load over what it may carry in the design storm
+CS_WORK_HS :: 2.5; CS_WORK_WIND :: 15.0; CS_WORK_CURRENT :: 0.5;   // the worst weather work goes on in
 // the ocean tow
 CS_OCEAN_TUG_T :: 300.0;    // each tug, t
 CS_OCEAN_SEA :: 1.6;        // the open ocean's sea over the Gulf's
@@ -447,8 +451,8 @@ CsStage :: struct {
   upper_ok: bool;
   bend_v: f64;                     // hull-girder stress in the design storm: head sea, Pa
   bend_h: f64;                     // and sideways in a quartering sea, Pa
-  lines: int;                      // mooring chains that hold it in the design storm
-  line_load: f64;                  // the storm's push on it, N
+  top: f64;                        // its highest concrete over the keel when the piece was made fast, m
+  moor: CsMoor;                    // how it lies to the world's sixteen lines
 }
 CsModule :: struct { record: int; kind: int; x: f64; z: f64; mass: f64; rank: int; before: f64; }
 CsEvent :: struct { tick: int; kind: int; id: int; value: f32; }
@@ -565,7 +569,7 @@ CsTotals :: struct {
   form_lifts: int;           // jump-form lifts of the upper structure
   bend_v: f64; bend_h: f64;  // the worst stage's stresses in the design storm, Pa
   bend_ok: bool;             // both under the joints' prestress
-  lines: int;                // mooring chains on the finished hull
+  moor: CsMoor;              // the finished hull on the world's sixteen lines
   mass: f64; draft: f64; gm_t: f64; gm_l: f64;      // the hull as finished
   ocean_tugs: int; ocean_days: f64;
 }
@@ -1021,21 +1025,63 @@ cs_bend_h :: (run: [] CsRun, length: f64, wide: f64, draft: f64, hs: f64, tp: f6
   i := cs_side_i(sh, wide);
   return ifx i > 0 then m * wide * 0.5 / i else 0.0;
 }
-// The chains on one long side that hold a force (N) on the hull within a chain's safe load, and the
-// force.
-cs_mooring :: (run: [] CsRun, length: f64, wide: f64, draft: f64) -> [2] f64 {
-  sh := run[0].sh;
-  k := afloat_wave_number(TAU_D / CS_STORM_TP, run[0].route.site_depth);
-  box := AfloatHull.{length = wide, beam = length, draft = draft, height = hull_hi(sh.deck, sh.hull)};
-  force := afloat_holding_force(box, CS_STORM_HS, k, CS_STORM_WIND, CS_STORM_CURRENT);
-  chain := AfloatLine.{length = CS_CHAIN_LENGTH, weight = CS_CHAIN_W, ea = CS_CHAIN_EA, mbl = CS_CHAIN_MBL};
-  height := fmax(run[0].route.site_depth - draft, 5.0);
-  reach := afloat_chain_reach(chain, height, CS_CHAIN_PRE);
-  safe := CS_CHAIN_MBL / CS_CHAIN_SAFETY;
-  lo := 0.0; hi := 300.0;
-  for i: 0..<40 { mid := (lo + hi) * 0.5; if afloat_chain(chain, height, reach + mid).tension < safe { lo = mid; } else { hi = mid; } }
-  lee := afloat_chain(chain, height, reach - lo).tension;
-  return [2] f64.[floor(force / fmax(safe - lee, 1.0)) + 1.0, force];
+// The world's sixteen lines laid about a hull `lx` by `lz` m (along x and z) at `draft`, in the
+// site's water. The rig's frame is the hull's own, about its centre.
+cs_rig :: (run: [] CsRun, lx: f64, lz: f64, draft: f64) -> MoorRig {
+  return moor_rig(MoorHull.{l = lx, b = lz, draft = draft, count = CS_MOOR_LINES, mbl = CS_MOOR_MBL, pretension = CS_MOOR_PRE, anchor = CS_MOOR_ANCHOR}, run[0].route.site_depth);
+}
+// Where a moored hull comes to rest under a steady push (fx, fz) N: the offset at which its lines
+// pull back as hard, the most loaded line's tension there, and whether the lines can (`held` is
+// false when the push is more than they give before one reaches its breaking load).
+CsHold :: struct { x: f64; z: f64; peak: f64; held: bool; }
+cs_rig_hold :: (rig: [] MoorRig, fx: f64, fz: f64) -> CsHold {
+  o: CsHold; f := sqrt(fx * fx + fz * fz);
+  if f <= 0.0 { o.peak = moor_force(rig, 0, 0.0, 0.0, 0.0, 0.0).peak; o.held = true; return o; }
+  ux := fx / f; uz := fz / f;
+  lo := 0.0; hi := 400.0;
+  for i: 0..<40 {
+    mid := (lo + hi) * 0.5;
+    m := moor_force(rig, 0, ux * mid, uz * mid, 0.0, 0.0);
+    if -(m.fx * ux + m.fz * uz) < f && m.peak < rig[0].line.mbl { lo = mid; } else { hi = mid; }
+  }
+  d := (lo + hi) * 0.5;
+  m := moor_force(rig, 0, ux * d, uz * d, 0.0, 0.0);
+  o.x = ux * d; o.z = uz * d; o.peak = m.peak;
+  o.held = -(m.fx * ux + m.fz * uz) >= 0.999 * f;
+  return o;
+}
+// The push of a sea, a wind and a current on the long side of a hull `length` by `wide` m whose
+// highest concrete is `top` over the keel, N: the worst heading for a spread mooring.
+cs_push :: (run: [] CsRun, length: f64, wide: f64, draft: f64, top: f64, hs: f64, tp: f64, wind: f64, current: f64) -> f64 {
+  k := afloat_wave_number(TAU_D / fmax(tp, 1.0), run[0].route.site_depth);
+  box := AfloatHull.{length = wide, beam = length, draft = draft, height = top};
+  return afloat_holding_force(box, hs, k, wind, current);
+}
+// How a hull `length` by `wide` m lies to the world's lines: in the worst weather work goes on in,
+// and in the design storm, both beam on. And the lines of the same kind that would hold the design
+// storm with CS_MOOR_SAFETY in hand.
+CsMoor :: struct {
+  work_push: f64; work_offset: f64; work_peak: f64;
+  storm_push: f64; storm_peak: f64; storm_held: bool;
+  storm_lines: int;
+}
+cs_mooring :: (run: [] CsRun, length: f64, wide: f64, draft: f64, top: f64) -> CsMoor {
+  o: CsMoor;
+  rig: [1] MoorRig; rig[0] = cs_rig(run, length, wide, draft);
+  o.work_push = cs_push(run, length, wide, draft, top, CS_WORK_HS, afloat_peak_period(CS_WORK_HS), CS_WORK_WIND, CS_WORK_CURRENT);
+  w := cs_rig_hold(rig[..], 0.0, o.work_push);
+  o.work_offset = sqrt(w.x * w.x + w.z * w.z); o.work_peak = w.peak;
+  o.storm_push = cs_push(run, length, wide, draft, top, CS_STORM_HS, CS_STORM_TP, CS_STORM_WIND, CS_STORM_CURRENT);
+  s := cs_rig_hold(rig[..], 0.0, o.storm_push);
+  o.storm_peak = s.peak; o.storm_held = s.held && s.peak <= CS_MOOR_MBL / CS_MOOR_SAFETY;
+  // one line square to the push: what it gives at its safe load, less what its opposite number
+  // still pulls after the same offset
+  line := rig[0].line; rise := rig[0].depth + rig[0].fair_y;
+  safe := CS_MOOR_MBL / CS_MOOR_SAFETY;
+  out := moor_span_for(line, rise, safe);
+  lee := moor_pull(line, fmax(2.0 * rig[0].span - out, 0.0), rise).h;
+  o.storm_lines = 2 * (cast(int) floor(o.storm_push / fmax(moor_pull(line, out, rise).h - lee, 1.0)) + 1);
+  return o;
 }
 // The stage reached when a piece is made fast: how the hull so far floats, bends and is moored.
 cs_stage :: (run: [] CsRun, q: [] CsProc, tick: int) -> CsStage {
@@ -1053,9 +1099,8 @@ cs_stage :: (run: [] CsRun, q: [] CsProc, tick: int) -> CsStage {
   s.upper_ok = fs.state == AFLOAT_OK && s.gm_loaded >= CS_GM_WORK;
   s.bend_v = cs_bend_v(run, s.length, s.wide, s.draft, CS_STORM_HS, CS_STORM_TP);
   s.bend_h = cs_bend_h(run, s.length, s.wide, s.draft, CS_STORM_HS, CS_STORM_TP);
-  m := cs_mooring(run, s.length, s.wide, s.draft);
-  s.line_load = m[1];
-  s.lines = 2 * (cast(int) m[0] + cast(int) floor(m[0] * s.wide / s.length) + 1);
+  s.top = cs_top(run, q);
+  s.moor = cs_mooring(run, s.length, s.wide, s.draft, s.top);
   return s;
 }
 // The significant motion between a waiting piece's face and the hull's, in the sea `wx`, m.
@@ -1550,10 +1595,10 @@ cs_totals :: (run: [] CsRun) {
   }
   o.bend_ok = o.bend_v <= CS_PT && o.bend_h <= CS_PT;
   if q.fast_pieces > 0 {
-    o.lines = run[0].st[q.fast_pieces].lines;
     rects: [CS_MAX_UNITS * 4] f64; one: [1] CsProc; one[0] = q;
     h := cs_hull(run, one[..], q.tick, rects[..]);
     o.mass = h.load.mass; o.draft = h.st.draft; o.gm_t = h.st.gm_t; o.gm_l = h.st.gm_l;
+    o.moor = cs_mooring(run, fmax(h.lx, h.lz), fmin(h.lx, h.lz), h.st.draft, cs_top(run, one[..]));
   }
   o.ocean_tugs = ifx p.ocean_nm > 0 then run[0].ocean_tugs else 0; o.ocean_days = f64(q.ocean_ticks) * CS_TICK_D;
   run[0].total = o;
@@ -1753,8 +1798,22 @@ cs_same :: (a: CsProc, b: CsProc) -> bool {
   #assert slack.state == AFLOAT_CAPSIZES;
   // each piece as towed, and the hull after each piece is made fast
   for i: 0..<r[0].pieces { a := r[0].pc[i]; #assert a.gm_t >= CS_GM_MIN && a.gm_l >= CS_GM_MIN && a.draft < CS_BASIN_DEPTH; }
-  for i: 1..<r[0].pieces + 1 { s := r[0].st[i]; #assert s.gm_t >= CS_GM_MIN && s.gm_l >= CS_GM_MIN && s.draft < r[0].sh.hull && s.lines >= 4; }
+  for i: 1..<r[0].pieces + 1 { s := r[0].st[i]; #assert s.gm_t >= CS_GM_MIN && s.gm_l >= CS_GM_MIN && s.draft < r[0].sh.hull && s.moor.work_peak < CS_MOOR_MBL / CS_MOOR_SAFETY; }
   #assert r[0].st[r[0].pieces].upper_ok;
+  // the moorings are the world's sixteen. In the worst weather work goes on in they hold the
+  // finished hull beam on within 11 m, the worst line at half what it may carry. They do not hold
+  // the design hurricane beam on (211 MN against the 118 MN at which a line breaks): the method
+  // lays storm lines for the season, twenty of the same chain square to the long sides
+  w := moor_check_prime();
+  #assert w.count == CS_MOOR_LINES && w.mbl == CS_MOOR_MBL && w.pretension == CS_MOOR_PRE && w.anchor == CS_MOOR_ANCHOR;
+  #assert w.l == r[0].sh.l && w.b == r[0].sh.b && w.draft == r[0].led.draft;
+  m := t.moor;
+  #assert m.work_push > 25.0e6 && m.work_push < 35.0e6 && m.work_offset < 12.0 && m.work_peak < 0.5 * CS_MOOR_MBL / CS_MOOR_SAFETY + 1.0e6;
+  #assert m.storm_push > 200.0e6 && m.storm_push < 220.0e6 && !m.storm_held && m.storm_lines == 20;
+  #assert r[0].st[1].moor.storm_held && r[0].st[1].moor.storm_lines == 2;
+  rig: [1] MoorRig; rig[0] = cs_rig(r[..], r[0].sh.l, r[0].sh.b, r[0].led.draft);
+  #assert rig[0].kind == MOOR_CATENARY && rig[0].count == 16 && cs_rig_hold(rig[..], 0.0, 100.0e6).held && !cs_rig_hold(rig[..], 0.0, 130.0e6).held;
+  #assert abs(cs_rig_hold(rig[..], 0.0, 0.0).peak - CS_MOOR_PRE) < 1.0;
   // the upper structure: the wind is stronger at its height, its push grows as it rises, and the
   // design storm's wind heels the half-built hull by less than a degree
   #assert abs(cs_wind_at(10.0, 118.0) / 10.0 - 1.312) < 0.01 && cs_wind_at(10.0, 5.0) == 10.0;

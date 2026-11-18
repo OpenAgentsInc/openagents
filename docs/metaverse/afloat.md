@@ -23,7 +23,7 @@ body, `z` across it, `y` up.
 | The same a step at a time | `afloat_step` |
 | How much a point of a body moves, and how much two bodies' faces move against each other | `afloat_point_motion`, `afloat_relative_motion` |
 | A towline or mooring line as an elastic catenary: tension from span, sag, the tension at its end, a snatch load | `afloat_line_span`, `afloat_line_tension`, `afloat_line_sag`, `afloat_line_end_tension`, `afloat_line_peak` |
-| A chain that lies on the seabed and lifts off it | `afloat_chain_reach`, `afloat_chain` |
+| A mooring line from an anchor on the seabed | Not here: `metaverse-engine/physics/moor.coax` (`moor_pull`) |
 | A fender's load, energy and squeeze | `afloat_fender`, `afloat_fender_energy`, `afloat_fender_deflection` |
 | The pull that holds a hull in a sea, a wind and a current; what a tug pulls at a speed and in a sea; the speed a tow settles at | `afloat_holding_force`, `afloat_tug_pull`, `afloat_tow_speed` |
 | A tow along a reach of channel or open water, a step at a time | `afloat_tow_step`. Speed, sheer, towline tension, the water under the keel, the room to the bank and the line's sag are results. `state` becomes `AFLOAT_TOW_AGROUND`, `AFLOAT_TOW_BANK` or `AFLOAT_TOW_PARTED` when that happens |
