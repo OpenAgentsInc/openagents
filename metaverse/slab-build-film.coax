@@ -1,0 +1,342 @@
+// SLAB's construction as a film: which stretch of the build each second shows, what the camera
+// looks at, and where it flies, all chosen from one run's own events (metaverse/slab-build.coax).
+// The page draws the build (apps/openagents-web/slab-build-draw.coax); this file only says when
+// and from where. It reads a run and a view and nothing else.
+//
+//   film: [1] BuildFilm;  bf_plan(run, film[..]);      // once for a run
+//   day := bf_day(film[..], seconds);                  // the film's second as a day of the build
+//   k := bf_shot(film[..], seconds);                   // the shot that second is in
+//   at := bf_subject(run, view, film[0].shots[k]);     // what it looks at, from the view of that day
+//   cam := bf_camera(film[0].shots[k], at, seconds);   // the eye and where it looks (cam/track.coax)
+//
+// A film is a row of shots with no gaps: each shot runs a stretch of days at one rate, so the
+// build's clock never jumps, only changes pace, and the pace is the shot's to state (bf_rate).
+// Slow shots follow one piece of work (a pour, a float-out, a tow, a joint); fast ones between
+// them let the months go by. The camera cuts only where a shot ends.
+//   coax/bin/coax test metaverse/slab-build-film.coax
+#load "slab-build-view.coax";
+#load "../metaverse-engine/cam/track.coax";
+
+BF_MAX_SHOTS :: 32;
+// what a shot looks at
+BF_YARD :: 0;        // the casting yard, from over its basin
+BF_CELL :: 1;        // one casting cell (id: the cell)
+BF_BASIN :: 2;       // where a piece is made up in the basin (id: the piece)
+BF_PIECE :: 3;       // a tow piece, wherever it is (id: the piece)
+BF_JOINT :: 4;       // the joint a piece is being made fast at (id: the piece)
+BF_HULL :: 5;        // the joined hull
+BF_EDGE :: 6;        // the hull's edge where barges lie and the gantries lift
+BF_PASS :: 7;        // the jetties at the pass, where the channel meets the Gulf
+BF_WATERLINE :: 8;   // the hull's corner at the water
+// chapters, in the film's order (BF_TITLES)
+BF_CHAPTERS :: 21;
+BF_TITLES :: [BF_CHAPTERS] string.[
+  "The yard", "Pouring the bottom slab", "Slipforming the walls", "The top slab and the leak test", "Flooding the cell, floating out",
+  "Two caissons become one tow", "The first tow leaves", "Down the ship channel", "Past the jetties", "Across the Gulf",
+  "Mooring the first piece", "The first joint at sea", "A piece every few days", "A storm: work stands down", "The hull grows, the deck climbs",
+  "The first lift", "The city goes up", "The last piece", "Lining and fitting out", "Ballasting down", "Commissioned"];
+BF_TRUE_HOUR :: 0.7;   // days a second: a shot slower than this shows the hour of the day as it is; a faster one holds daylight
+
+BfShot :: struct {
+  t0: f64; t1: f64;        // film seconds
+  d0: f64; d1: f64;        // days of the build
+  chapter: int;            // BF_TITLES
+  subject: int; id: int;   // BF_*
+  // the camera rides an arc about the subject: where it starts and ends
+  az0: f32; az1: f32;      // rad, from +x toward +z (from the subject's own heading when `follow`)
+  el0: f32; el1: f32;      // rad over the horizon
+  dist0: f32; dist1: f32;  // m (times the subject's size when `sized`)
+  follow: bool; sized: bool;
+  hour: f32;               // the hour a fast shot holds
+}
+BuildFilm :: struct {
+  shots: [BF_MAX_SHOTS] BfShot; count: int;
+  length: f64;             // film seconds
+  days: f64;               // the build's days
+}
+BfSubject :: struct { x: f64; y: f64; z: f64; yaw: f64; size: f64; }
+
+bf_deg :: (d: f32) -> f32 { return d * 0.017453293f32; }
+// One more shot, from where the last ended to day d1, `seconds` long. A shot with no days to show
+// (its event never came in this run) is left out.
+bf_add :: (f: [] BuildFilm, d1: f64, seconds: f64, chapter: int, subject: int, id: int, az0: f32, az1: f32, el0: f32, el1: f32, dist0: f32, dist1: f32, follow: bool, sized: bool) {
+  n := f[0].count;
+  d0 := ifx n > 0 then f[0].shots[n - 1].d1 else 0.0;
+  end := fmin(d1, f[0].days);
+  if n >= BF_MAX_SHOTS || end <= d0 + 0.01 || seconds <= 0.0 { return; }
+  t0 := ifx n > 0 then f[0].shots[n - 1].t1 else 0.0;
+  f[0].shots[n] = BfShot.{t0 = t0, t1 = t0 + seconds, d0 = d0, d1 = end, chapter = chapter, subject = subject, id = id,
+    az0 = bf_deg(az0), az1 = bf_deg(az1), el0 = bf_deg(el0), el1 = bf_deg(el1), dist0 = dist0, dist1 = dist1, follow = follow, sized = sized, hour = 10.5};
+  f[0].count = n + 1; f[0].length = t0 + seconds;
+}
+// The day of the first event of `kind` (for `id`, or any when id < 0) on or after `from`; -1 when there is none.
+bf_event :: (run: [] CsRun, kind: int, id: int, from: f64) -> f64 {
+  for i: 0..<run[0].events {
+    e := run[0].ev[i];
+    if e.kind == kind && (id < 0 || e.id == id) && csv_event_day(e) >= from { return csv_event_day(e); }
+  }
+  return -1.0;
+}
+bf_tick_day :: (t: int) -> f64 { return ifx t >= 0 then f64(t) * CS_TICK_D else -1.0; }
+// Where the route meets the Gulf: the end of the last sheltered leg, between the jetties.
+bf_pass :: (run: [] CsRun) -> CsWay {
+  r := run[0].route; i := ifx r.mouth > 0 then r.mouth - 1 else 0; l := r.leg[i];
+  return CsWay.{x = l.bx, z = l.bz, yaw = afloat_angle(l.bx - l.ax, l.bz - l.az), leg = i};
+}
+// The seconds into piece ip's tow at which it is nearest the pass.
+bf_pass_time :: (run: [] CsRun, ip: int) -> f64 {
+  w := bf_pass(run); a := run[0].pc[ip]; best := 1.0e30; at := 0.0;
+  for i: 0..<400 {
+    s := a.tow_time * f64(i) / 399.0; k := csv_track(run, ip, s);
+    d := (k[0] - w.x) * (k[0] - w.x) + (k[1] - w.z) * (k[1] - w.z);
+    if d < best { best = d; at = s; }
+  }
+  return at;
+}
+
+// The film of a run.
+bf_plan :: (run: [] CsRun, f: [] BuildFilm) {
+  f[0].count = 0; f[0].length = 0.0; f[0].days = run[0].total.days;
+  if run[0].units < 1 || run[0].pieces < 1 || f[0].days <= 0.0 { return; }
+  u := run[0].u[0]; p0 := run[0].pc[0]; last := run[0].pieces - 1;
+  cell := ifx u.cell >= 0 then u.cell else 0;
+  base := bf_tick_day(u.t_base); walls := bf_tick_day(u.t_walls); walled := bf_tick_day(u.t_walled);
+  top := bf_tick_day(u.t_top); flood := bf_tick_day(u.t_flood); float := bf_tick_day(u.t_float);
+  // ---- the yard: one caisson from an empty cell to afloat
+  bf_add(f, fmin(1.0, base), 6, 0, BF_YARD, 0, -125, -80, 24, 20, 1000, 760, true, false);
+  bf_add(f, base, 4, 1, BF_CELL, cell, -70, -35, 36, 30, 250, 200, true, false);
+  bf_add(f, walls - CS_SETUP_DAYS, 7, 1, BF_CELL, cell, 15, 55, 20, 24, 170, 150, true, false);
+  bf_add(f, walls, 3, 2, BF_CELL, cell, 60, 80, 26, 24, 200, 220, true, false);
+  bf_add(f, walled, 11, 2, BF_CELL, cell, -150, -60, 16, 26, 230, 250, true, false);
+  bf_add(f, top, 5, 3, BF_CELL, cell, 100, 140, 52, 44, 250, 230, true, false);
+  bf_add(f, flood, 3, 3, BF_YARD, 0, -70, -100, 30, 26, 800, 900, true, false);
+  bf_add(f, float, 10, 4, BF_CELL, cell, -115, -65, 10, 14, 230, 260, true, false);
+  bf_add(f, bf_tick_day(p0.t_ready), 6, 5, BF_BASIN, 0, -60, -120, 30, 22, 420, 380, true, false);
+  // ---- the first tow
+  dep := bf_tick_day(p0.t_depart); arr := bf_tick_day(p0.t_arrive);
+  if dep >= 0.0 && arr > dep {
+    run_in := bf_pass_time(run, 0) / 86400.0; pass := dep + run_in;
+    bf_add(f, dep, 3, 6, BF_PIECE, 0, -100, -80, 14, 12, 460, 430, true, false);
+    bf_add(f, dep + 0.12 * run_in, 6, 6, BF_PIECE, 0, 150, 195, 9, 11, 430, 520, true, false);
+    bf_add(f, pass - 0.12 * run_in, 9, 7, BF_PIECE, 0, 200, 160, 34, 26, 760, 560, true, false);
+    bf_add(f, pass + 0.10 * run_in, 8, 8, BF_PASS, 0, 62, 48, 5, 7, 620, 560, true, false);
+    bf_add(f, arr, 8, 9, BF_PIECE, 0, 35, 62, 12, 9, 900, 620, true, false);
+  }
+  // ---- the site: the first piece moored, the first joint made
+  fast0 := bf_tick_day(p0.t_fast);
+  bf_add(f, fast0, 8, 10, BF_PIECE, 0, -50, 10, 16, 22, 480, 520, false, false);
+  if run[0].pieces > 1 {
+    p1 := run[0].pc[1];
+    bf_add(f, bf_tick_day(p1.t_join), 4, 10, BF_HULL, 0, 20, 60, 20, 24, 3.2, 3.6, false, true);
+    bf_add(f, bf_tick_day(p1.t_fast), 9, 11, BF_JOINT, 1, 30, 75, 15, 10, 330, 170, false, false);
+    bf_add(f, bf_tick_day(p1.t_done), 5, 11, BF_JOINT, 1, 75, 110, 38, 46, 150, 180, false, false);
+  }
+  // ---- the months: the hull grows, a storm, the deck climbs, the city goes up
+  closed := ifx run[0].total.closed_day > 0 then run[0].total.closed_day else f[0].days;
+  from := ifx f[0].count > 0 then f[0].shots[f[0].count - 1].d1 else 0.0;
+  storm := -1;
+  for i: 0..<run[0].storms { if storm < 0 && run[0].storm[i].t0 > from + 20.0 && run[0].storm[i].t1 < closed { storm = i; } }
+  if storm >= 0 {
+    bf_add(f, run[0].storm[storm].t0, 14, 12, BF_HULL, 0, 60, 150, 24, 30, 2.4, 2.0, false, true);
+    bf_add(f, run[0].storm[storm].t1, 9, 13, BF_HULL, 0, 200, 230, 5, 8, 1.7, 1.9, false, true);
+  }
+  topped := bf_event(run, CS_EV_TOPPED, -1, 0.0); lift := bf_event(run, CS_EV_LIFT, -1, 0.0);
+  if lift > 0.0 {
+    bf_add(f, fmin(ifx topped > 0.0 then topped else lift, lift) - 2.0, ifx storm >= 0 then 13.0 else 22.0, 14, BF_HULL, 0, 230, 320, 22, 30, 1.9, 1.7, false, true);
+    bf_add(f, lift + 1.5, 10, 15, BF_EDGE, 0, 50, 95, 12, 16, 340, 300, false, false);
+  }
+  pl := run[0].pc[last];
+  if last > 1 && pl.t_join >= 0 {
+    bf_add(f, bf_tick_day(pl.t_join) - 1.0, 18, 16, BF_HULL, 0, -40, 80, 26, 34, 1.9, 1.6, false, true);
+    bf_add(f, bf_tick_day(pl.t_done), 8, 17, BF_JOINT, last, 110, 150, 22, 30, 460, 380, false, false);
+  }
+  decked := bf_event(run, CS_EV_DECKED, -1, 0.0); ballast := bf_event(run, CS_EV_BALLAST, -1, 0.0);
+  if ballast > 0.0 {
+    bf_add(f, ifx decked > 0.0 then fmin(decked, ballast - 5.0) else ballast - 20.0, 10, 18, BF_HULL, 0, 80, 170, 30, 24, 1.6, 1.5, false, true);
+    bf_add(f, ballast, 9, 19, BF_WATERLINE, 0, -62, -38, 3, 6, 420, 520, false, false);
+  }
+  bf_add(f, f[0].days, 9, 20, BF_HULL, 0, -130, -75, 14, 19, 1.5, 1.25, false, true);
+}
+
+// The shot a second of the film is in (the last one once the film has ended).
+bf_shot :: (f: [] BuildFilm, t: f64) -> int {
+  k := 0;
+  for i: 0..<f[0].count { if t >= f[0].shots[i].t0 { k = i; } }
+  return k;
+}
+// The day of the build a second of the film shows.
+bf_day :: (f: [] BuildFilm, t: f64) -> f64 {
+  if f[0].count < 1 { return 0.0; }
+  s := f[0].shots[bf_shot(f, t)];
+  return s.d0 + (s.d1 - s.d0) * fclamp((t - s.t0) / (s.t1 - s.t0), 0.0, 1.0);
+}
+// And the second that shows a day.
+bf_time :: (f: [] BuildFilm, day: f64) -> f64 {
+  if f[0].count < 1 { return 0.0; }
+  k := 0;
+  for i: 0..<f[0].count { if day >= f[0].shots[i].d0 { k = i; } }
+  s := f[0].shots[k];
+  return s.t0 + (s.t1 - s.t0) * fclamp((day - s.d0) / (s.d1 - s.d0), 0.0, 1.0);
+}
+// A shot's pace: days of the build a second of film.
+bf_rate :: (s: BfShot) -> f64 { return (s.d1 - s.d0) / (s.t1 - s.t0); }
+// The first shot of a chapter (-1: the film has none of it).
+bf_chapter :: (f: [] BuildFilm, chapter: int) -> int {
+  for i: 0..<f[0].count { if f[0].shots[i].chapter == chapter { return i; } }
+  return -1;
+}
+// The hour of the day to light a moment of a shot by: the build's own in a slow shot, the shot's
+// held hour in a fast one (a year of days and nights in seconds would only flicker).
+bf_hour :: (s: BfShot, day: f64) -> f64 {
+  if bf_rate(s) > BF_TRUE_HOUR { return f64(s.hour); }
+  return (day - floor(day)) * 24.0;
+}
+
+// ---------------------------------------------------------------- what a shot looks at
+bf_find :: (v: [] CsvView, kind: int, id: int) -> int {
+  for i: 0..<v[0].bodies { if v[0].body[i].kind == kind && v[0].body[i].id == id { return i; } }
+  return -1;
+}
+// The subject of a shot in the view of its day: a point in the site's frame (y over the still
+// sea), the way it heads, and its size across. Every height comes from the view: a camera aimed
+// here is aimed at the work.
+bf_subject :: (run: [] CsRun, v: [] CsvView, s: BfShot) -> BfSubject {
+  route := run[0].route; sh := run[0].sh; h := v[0].hull;
+  yard := afloat_angle(route.leg[0].bx - route.leg[0].ax, route.leg[0].bz - route.leg[0].az);
+  o := BfSubject.{yaw = 0.0, size = 200.0};
+  if s.subject == BF_YARD {
+    w := cs_yard_point(route, 250.0 + CSV_CELL_PITCH * 0.5 * f64(cs_cells(run[0].p) - 1), 340.0);
+    return BfSubject.{x = w.x, y = 0.0, z = w.z, yaw = yard, size = CSV_CELL_PITCH * f64(cs_cells(run[0].p))};
+  }
+  if s.subject == BF_CELL {
+    w := csv_cell(run, s.id); top := -CS_CELL_FLOOR;
+    for i: 0..<v[0].bodies {
+      b := v[0].body[i];
+      if b.kind != CSV_CAISSON || (b.state != CSV_CASTING && b.state != CSV_CURING && b.state != CSV_FLOAT_OUT) || run[0].u[b.id].cell != s.id { continue; }
+      top = b.y + sh.bottom * b.base + b.walls * hull_clear(sh) + sh.top * b.top;
+      if b.state == CSV_FLOAT_OUT { w.x = b.x; w.z = b.z; }
+    }
+    return BfSubject.{x = w.x, y = fmax(-5.0, (top - CS_CELL_FLOOR) * 0.5), z = w.z, yaw = yard, size = run[0].unit.l};
+  }
+  if s.subject == BF_BASIN || s.subject == BF_PIECE || s.subject == BF_JOINT {
+    a := run[0].pc[s.id];
+    if s.subject == BF_JOINT {
+      for i: 0..<v[0].works {
+        k := v[0].work[i];
+        if k.id == s.id && k.kind >= CSV_W_MOOR && k.kind <= CSV_W_RESEAL { return BfSubject.{x = k.x, y = k.y, z = k.z, yaw = 0.0, size = a.b}; }
+      }
+    }
+    i := bf_find(v, CSV_PIECE, s.id);
+    if i >= 0 && s.subject != BF_BASIN {
+      b := v[0].body[i];
+      return BfSubject.{x = b.x, y = fmax(4.0, (b.y + b.h) * 0.6), z = b.z, yaw = b.yaw, size = b.l};
+    }
+    w := csv_basin(run, a.first, 1.0); e := csv_basin(run, a.first + a.count - 1, 1.0);
+    return BfSubject.{x = (w.x + e.x) * 0.5, y = 12.0, z = (w.z + e.z) * 0.5, yaw = yard, size = a.l};
+  }
+  if s.subject == BF_PASS { w := bf_pass(run); return BfSubject.{x = w.x, y = 4.0, z = w.z, yaw = w.yaw, size = 400.0}; }
+  // the hull, its edge and its waterline
+  if h.units < 1 { return BfSubject.{x = route.hold_x, y = 10.0, z = route.hold_z, yaw = 0.0, size = 300.0}; }
+  cx := h.x + h.ox; cz := h.z + h.oz; deck := h.top - h.draft;
+  if s.subject == BF_EDGE {
+    z1 := cz + h.lz * 0.5;
+    g := bf_find(v, CSV_GANTRY, 0);
+    if g >= 0 { z1 = v[0].body[g].z + 20.0; cx = v[0].body[g].x + 70.0; }
+    return BfSubject.{x = cx, y = deck * 0.75, z = z1, yaw = 0.0, size = 200.0};
+  }
+  if s.subject == BF_WATERLINE { return BfSubject.{x = cx + h.lx * 0.5, y = 2.0, z = cz - h.lz * 0.5, yaw = 0.0, size = 300.0}; }
+  return BfSubject.{x = cx, y = deck * 0.5, z = cz, yaw = 0.0, size = fmax(fmax(h.lx, h.lz), 300.0)};
+}
+// A shot's flight about its subject, as a track of four keys (cam/track.coax): each key the eye
+// and the point looked at, both measured from the subject. `at` gives the subject's heading and
+// size; its place is added by bf_camera.
+bf_flight :: (s: BfShot, at: BfSubject) -> Flight {
+  f: Flight;
+  for i: 0..<4 {
+    u := f32(i) / 3.0f32;
+    az := s.az0 + (s.az1 - s.az0) * u + (ifx s.follow then f32(at.yaw) else 0.0f32);
+    el := s.el0 + (s.el1 - s.el0) * u;
+    d := (s.dist0 + (s.dist1 - s.dist0) * u) * (ifx s.sized then f32(at.size) else 1.0f32);
+    f = tr_key(f, f32(s.t1 - s.t0) * u, [6] f32.[d * cos(el) * cos(az), d * sin(el), d * cos(el) * sin(az), 0, 0, 0], false, EASE_LINEAR);
+  }
+  return f;
+}
+// The camera of a film second inside a shot: the eye and the look, from the subject (add its place).
+bf_camera :: (s: BfShot, at: BfSubject, t: f64) -> CamView {
+  p := tr_flown(bf_flight(s, at), f32(fclamp(t - s.t0, 0.0, s.t1 - s.t0)));
+  return CamView.{ex = p[0], ey = p[1], ez = p[2], lx = p[3], ly = p[4], lz = p[5]};
+}
+
+// ---------------------------------------------------------------- checks
+BfTest :: struct { run: [1] CsRun; view: [1] CsvView; film: [1] BuildFilm; }
+#test "film: the shots run end to end from the first day to the last, with no gap and no step back" #steps 4000000000 {
+  t: [1] BfTest; run := t[0].run[..]; f := t[0].film[..];
+  cs_run(cs_params(), run); bf_plan(run, f);
+  #assert f[0].count >= 20 && f[0].count <= BF_MAX_SHOTS && f[0].length > 150.0 && f[0].length < 260.0;
+  #assert f[0].shots[0].d0 == 0.0 && f[0].shots[0].t0 == 0.0 && f[0].shots[f[0].count - 1].d1 == run[0].total.days;
+  seen: [BF_CHAPTERS] bool;
+  for i: 0..<f[0].count {
+    s := f[0].shots[i];
+    #assert s.t1 > s.t0 && s.d1 > s.d0 && s.chapter >= 0 && s.chapter < BF_CHAPTERS;
+    if i > 0 { p := f[0].shots[i - 1]; #assert s.t0 == p.t1 && s.d0 == p.d1 && s.chapter >= p.chapter; }
+    seen[s.chapter] = true;
+  }
+  for c: 0..<BF_CHAPTERS { #assert seen[c] && bf_chapter(f, c) >= 0; }
+  // the day rises with the film, and a day's second shows that day
+  last := -1.0;
+  for i: 0..<500 {
+    s := f[0].length * f64(i) / 499.0; d := bf_day(f, s);
+    #assert d >= last; last = d;
+    #assert abs(bf_day(f, bf_time(f, d)) - d) < 1.0e-6;
+  }
+  #assert bf_day(f, -5.0) == 0.0 && bf_day(f, f[0].length + 9.0) == run[0].total.days && bf_time(f, 99999.0) == f[0].length;
+}
+#test "film: the slow shots are on the run's own events: the pour, the float-out, the tow, the joint, the storm, the first lift" #steps 4000000000 {
+  t: [1] BfTest; run := t[0].run[..]; f := t[0].film[..];
+  cs_run(cs_params(), run); bf_plan(run, f);
+  u := run[0].u[0]; p0 := run[0].pc[0]; p1 := run[0].pc[1];
+  // floating out: from the cell's flooding to the caisson afloat, slowly enough to show the hour
+  k := bf_chapter(f, 4); s := f[0].shots[k];
+  #assert s.d0 == bf_tick_day(u.t_flood) && s.d1 == bf_tick_day(u.t_float) && s.subject == BF_CELL && s.id == u.cell && bf_rate(s) < BF_TRUE_HOUR;
+  // the tow: it leaves when the run says, passes the jetties inside the pass shot, and arrives as the Gulf shot ends
+  k = bf_chapter(f, 8); s = f[0].shots[k];
+  pass := bf_tick_day(p0.t_depart) + bf_pass_time(run, 0) / 86400.0;
+  #assert s.subject == BF_PASS && s.d0 < pass && s.d1 > pass && pass > bf_tick_day(p0.t_depart) && pass < bf_tick_day(p0.t_arrive);
+  #assert f[0].shots[bf_chapter(f, 9)].d1 == bf_tick_day(p0.t_arrive) && f[0].shots[bf_chapter(f, 6)].d0 == bf_tick_day(p0.t_ready);
+  // the joint: from the join's start to the piece made fast
+  k = bf_chapter(f, 11); s = f[0].shots[k];
+  #assert s.subject == BF_JOINT && s.id == 1 && s.d0 == bf_tick_day(p1.t_join) && s.d1 == bf_tick_day(p1.t_fast);
+  // the storm's shot is a stand-down of the run, and the lift's holds the first lift
+  k = bf_chapter(f, 13); s = f[0].shots[k];
+  csv_at(run, (s.d0 + s.d1) * 0.5, t[0].view[..]);
+  #assert t[0].view[0].wx.storm != 0;
+  k = bf_chapter(f, 15); s = f[0].shots[k]; lift := bf_event(run, CS_EV_LIFT, -1, 0.0);
+  #assert s.subject == BF_EDGE && s.d0 < lift && s.d1 > lift;
+  // every fast shot holds daylight; a slow one's hour is the day's own
+  for i: 0..<f[0].count { q := f[0].shots[i]; if bf_rate(q) > BF_TRUE_HOUR { #assert bf_hour(q, q.d0 + 0.9) == 10.5; } else { #assert abs(bf_hour(q, 3.25) - 6.0) < 1.0e-9; } }
+}
+#test "film: the camera looks at the work, from above the sea, and never from inside its subject" #steps 12000000000 #traversal 1000000000 {
+  t: [1] BfTest; run := t[0].run[..]; f := t[0].film[..]; v := t[0].view[..];
+  cs_run(cs_params(), run); bf_plan(run, f);
+  for i: 0..<f[0].count {
+    s := f[0].shots[i];
+    for j: 0..<2 {
+      sec := s.t0 + (s.t1 - s.t0) * (0.03 + 0.94 * f64(j));
+      csv_at(run, bf_day(f, sec), v);
+      at := bf_subject(run, v, s); c := bf_camera(s, at, sec);
+      // the subject is at the height of the work of that day: never the finished deck over an unbuilt hull
+      top := fmax(v[0].hull.top - v[0].hull.draft, 40.0);
+      #assert at.y >= -6.0 && at.y <= top;
+      d := sqrt(c.ex * c.ex + c.ey * c.ey + c.ez * c.ez);
+      #assert f64(c.ey) + at.y > 4.0 && f64(d) > at.size * 0.55 && c.lx == 0 && c.ly == 0 && c.lz == 0;
+    }
+  }
+  // the first shot of the yard looks at an empty basin: nothing is afloat and no concrete is cast
+  csv_at(run, 0.0, v);
+  for i: 0..<v[0].bodies { b := v[0].body[i]; #assert b.kind != CSV_PIECE && b.kind != CSV_GANTRY && (b.kind != CSV_CAISSON || (b.base == 0.0 && b.walls == 0.0)); }
+  // the tow's shots follow the piece: its subject moves with it, by kilometres
+  k := bf_chapter(f, 7); s := f[0].shots[k];
+  csv_at(run, s.d0, v); a := bf_subject(run, v, s);
+  csv_at(run, s.d1, v); b := bf_subject(run, v, s);
+  #assert sqrt((a.x - b.x) * (a.x - b.x) + (a.z - b.z) * (a.z - b.z)) > 5000.0;
+}
