@@ -1,0 +1,216 @@
+// Claude Code as a worker process (GitHub #13660): one task, run by the claude CLI through the
+// Coax Claude Agent SDK (coax/lib/agent/claude), speaking the Microcoder worker's lines
+// (coax/lib/agent/engine/mcworker-wire.coax) so an owner drives it as it drives mcworker.
+//
+//   in   {"task":"...","cwd":"/path","model":"sonnet"}   the task; model is haiku, sonnet, opus or fable, or a model id
+//        {"stop":true}                                    STOP the run
+//   out  {"kind":"ready"}
+//        {"kind":"ask","command":"ls","ticket":N}         a tool call as it starts. No answer is read: nothing waits.
+//        {"kind":"command","command":"ls","exit":0,"timed_out":false,"output":"..."}   the same call, ended (exit 1: it failed)
+//        {"kind":"ended","ending":"finished","text":"..."}   the reply; or stopped, or failed with why
+//
+// It takes one task and then exits. Closing its stdin stops it like STOP.
+//
+// The login is the one Claude Code already has on this computer: no API key reaches the child
+// (ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN and ANTHROPIC_BASE_URL are removed), and the SDK
+// never opens a browser. claude is found on PATH. It loads the person's settings as their own
+// Claude Code does, saves no session, and runs with no permission prompts, as Microcoder's
+// commands do (danger-full-access).
+//
+// Limits: a run has 15 minutes (CW_RUN_MS). A tool call's line names it in up to 300 bytes and
+// carries up to 4,000 bytes of its output. Up to 32 tool calls are open at once.
+//
+//   coax/web/tool.sh coder/tui/claudeworker.coax
+
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/agent/claude/claude.coax";
+#load "../../coax/lib/agent/engine/mcworker-wire.coax";
+
+cxterm_byte :: (timeout_ms: int) -> int #foreign #effects(all);
+cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
+
+CW_LINE :: 1048576;
+CW_RUN_MS :: 900000;
+CW_LABEL :: 300;
+CW_OUTPUT :: 4000;
+CW_OPEN :: 32;
+CW_ID :: 96;
+
+// A tool call that has started and not ended: its id and the words its lines carry.
+CwCall :: struct { id: [CW_ID] u8; id_n: int; label: [CW_LABEL] u8; label_n: int; used: bool; }
+
+cw_send :: (o: [] u8, n: int) {
+  if n < 0 || n >= o.count { return; }
+  o[n] = 10;
+  r := cxterm_write(o[0..<n + 1]);
+}
+cw_put :: (dst: [] u8, at: int, s: string) -> int {
+  n := at;
+  for c: s { if n >= dst.count { break; } dst[n] = ifx c == 10 || c == 13 || c == 9 then cast(u8) 32 else c; n += 1; }
+  return n;
+}
+// A tool call in a line's words: a Bash call is its command, a file tool its verb and path, any
+// other its name. Up to 300 bytes, on one line.
+cw_label :: (ar: [] ClArena, name: string, input: string, out: [] u8) -> int {
+  n := 0;
+  if name == "Bash" { n = cw_put(out, 0, cl_str(ar, input, "command")); }
+  else if name == "Read" { n = cw_put(out, 0, "read "); n = cw_put(out, n, cl_str(ar, input, "file_path")); }
+  else if name == "Write" { n = cw_put(out, 0, "write "); n = cw_put(out, n, cl_str(ar, input, "file_path")); }
+  else if name == "Edit" || name == "MultiEdit" { n = cw_put(out, 0, "edit "); n = cw_put(out, n, cl_str(ar, input, "file_path")); }
+  else if name == "Grep" { n = cw_put(out, 0, "search "); n = cw_put(out, n, cl_str(ar, input, "pattern")); }
+  else if name == "Glob" { n = cw_put(out, 0, "find "); n = cw_put(out, n, cl_str(ar, input, "pattern")); }
+  else if name == "WebFetch" { n = cw_put(out, 0, "fetch "); n = cw_put(out, n, cl_str(ar, input, "url")); }
+  else if name == "WebSearch" { n = cw_put(out, 0, "web search "); n = cw_put(out, n, cl_str(ar, input, "query")); }
+  else { n = cw_put(out, 0, name); }
+  if n == 0 { n = cw_put(out, 0, name); }
+  return n;
+}
+// The model the CLI is asked for: the four levels are its own aliases; anything else goes as it is.
+cw_model :: (level: string) -> string {
+  if level == "haiku" || level == "sonnet" || level == "opus" || level == "fable" { return level; }
+  return ifx level.count > 0 then level else "sonnet";
+}
+// A tool result's output: a string, or the text of its blocks, up to CW_OUTPUT bytes.
+cw_output :: (ar: [] ClArena, item: string, out: [] u8) -> int {
+  c := cl_at(item, "content");
+  n := 0;
+  if c.ok && c.tok == JSON_STRING { for ch: cl_text(ar, item, c) { if n >= out.count { break; } out[n] = ch; n += 1; } }
+  else if c.ok {
+    blocks := cl_json(item, c);
+    for i: 0..<cl_count(blocks) {
+      b := cl_json(blocks, cl_item(blocks, i));
+      if cl_str(ar, b, "type") != "text" { continue; }
+      if n > 0 && n < out.count { out[n] = 10; n += 1; }
+      for ch: cl_str(ar, b, "text") { if n >= out.count { break; } out[n] = ch; n += 1; }
+    }
+  }
+  return n;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  line: [CW_LINE] u8; nl := 0;
+  out: [CW_LINE] u8;
+  ab: [65536] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  cline: [CL_LINE_MAX] u8; carena: [262144] u8; cout: [262144] u8; scratch: [196608] u8;
+  task: [32768] u8; cwd: [4096] u8; model: [128] u8;
+  calls: [CW_OPEN] CwCall;
+  lb: [CW_LABEL] u8; ob: [CW_OUTPUT] u8; eb: [2048] u8;
+  q: [1] ClQuery; p: [1] ClProcess;
+  req: [1] MwwRequest;
+  running := false; began := 0; ticket := 0;
+  cw_send(out[..], mww_ready(out[..]));
+  while true {
+    if running {
+      ev := cl_poll(q[..], p[..], 20);
+      ended := ""; text := "";
+      if cxproc_now_ms() - began > CW_RUN_MS { ended = "failed"; text = "Claude ran for 15 minutes, the most a sub-agent has, and was stopped."; }
+      else if ev.kind == ClEventKind.failed { ended = "failed"; text = cl_error(q[..]); }
+      else if ev.kind == ClEventKind.end {
+        ended = "failed";
+        text = cl_stderr(p[..], eb[..]);
+        if text.count == 0 { text = "Claude Code ended before it replied."; }
+      }
+      else if ev.kind == ClEventKind.permission { cl_allow(q[..], "", ""); }
+      else if ev.kind == ClEventKind.message && ev.message.parent_tool_use_id.count == 0 {
+        m := ev.message; l := m.line; car := q[0].ar[..];
+        if m.kind == ClKind.assistant {
+          content := cl_raw(l, "message.content");
+          for i: 0..<cl_count(content) {
+            item := cl_json(content, cl_item(content, i));
+            if cl_str(car, item, "type") != "tool_use" { continue; }
+            n := cw_label(car, cl_str(car, item, "name"), cl_raw(item, "input"), lb[..]);
+            id := cl_str(car, item, "id");
+            for k: 0..<CW_OPEN {
+              if calls[k].used { continue; }
+              calls[k].used = true; calls[k].id_n = cl_copy(calls[k].id[..], id);
+              for j: 0..<n { calls[k].label[j] = lb[j]; }
+              calls[k].label_n = n;
+              break;
+            }
+            ticket += 1;
+            cw_send(out[..], mww_ask(out[..], cast(string) lb[0..<n], ticket));
+          }
+          e := cl_assistant_error(l, cl_at(l, "error"));
+          if e == ClAssistantError.authentication_failed || e == ClAssistantError.oauth_org_not_allowed {
+            ended = "failed"; text = "Claude Code is not logged in on this computer. Run `claude` in a terminal and log in, then send the message again.";
+          }
+        } else if m.kind == ClKind.user {
+          content := cl_raw(l, "message.content");
+          for i: 0..<cl_count(content) {
+            item := cl_json(content, cl_item(content, i));
+            if cl_str(car, item, "type") != "tool_result" { continue; }
+            id := cl_str(car, item, "tool_use_id");
+            for k: 0..<CW_OPEN {
+              if !calls[k].used || cast(string) calls[k].id[0..<calls[k].id_n] != id { continue; }
+              calls[k].used = false;
+              on := cw_output(car, item, ob[..]);
+              failed := cl_bool(item, "is_error");
+              cw_send(out[..], mww_command(out[..], cast(string) calls[k].label[0..<calls[k].label_n], ifx failed.ok && failed.value then 1 else 0, false, cast(string) ob[0..<on]));
+              break;
+            }
+          }
+        } else if m.kind == ClKind.result {
+          r := cl_result_of(car, m);
+          if r.kind == ClResultKind.success && !r.is_error { ended = "finished"; text = r.result; }
+          else {
+            ended = "failed"; text = cl_str(car, l, "result");
+            if text.count == 0 { text = cl_str(car, l, "errors.0"); }
+            if text.count == 0 { text = "Claude Code ended with an error."; }
+          }
+        }
+      }
+      if ended.count > 0 {
+        cw_send(out[..], mww_ended(out[..], ended, text));
+        r := cl_kill(p[..]); cl_close(p[..]);
+        return 0;
+      }
+    }
+    b := cxterm_byte(ifx running then 0 else 200);
+    got_line := false;
+    while b >= 0 {
+      if b == 10 { got_line = true; break; }
+      if nl < line.count { line[nl] = cast,trunc(u8) b; nl += 1; }
+      b = cxterm_byte(0);
+    }
+    if b == -2 && !got_line {       // stdin closed: the owner is gone
+      if running { r := cl_kill(p[..]); cl_close(p[..]); }
+      return 0;
+    }
+    if !got_line { continue; }
+    msg := cast(string) line[0..<nl];
+    nl = 0;
+    ar[0].at = 0; ar[0].full = false;
+    what := mww_request(ar[..], msg, req[..]);
+    if what == MWW_STOP {
+      if running {
+        r := cl_kill(p[..]); cl_close(p[..]);
+        cw_send(out[..], mww_ended(out[..], "stopped", ""));
+        return 0;
+      }
+      continue;
+    }
+    if what != MWW_TASK || running { continue; }
+    tn := cl_copy(task[..], req[0].task); cn := cl_copy(cwd[..], req[0].cwd); mn := cl_copy(model[..], cw_model(req[0].model));
+    if tn < req[0].task.count { cw_send(out[..], mww_ended(out[..], "failed", "The task is longer than 32,768 bytes.")); return 0; }
+    cl_init(q[..], cline[..], carena[..], cout[..]);
+    o: [1] ClOptions;
+    o[0].model = cast(string) model[0..<mn];
+    o[0].persist_session = false;
+    o[0].permission_mode = ClPermissionMode.bypass_permissions;
+    if cn > 0 { o[0].cwd = cast(string) cwd[0..<cn]; }
+    cl_remove_env(o[..], "ANTHROPIC_API_KEY");
+    cl_remove_env(o[..], "ANTHROPIC_AUTH_TOKEN");
+    cl_remove_env(o[..], "ANTHROPIC_BASE_URL");
+    cl_remove_env(o[..], "CLAUDECODE");
+    cl_remove_env(o[..], "CLAUDE_CODE_ENTRYPOINT");
+    q[0].options = o[0];
+    problem := cl_start(q[..], p[..], cast(string) task[0..<tn], false, scratch[..]);
+    if problem.count > 0 {
+      cw_send(out[..], mww_ended(out[..], "failed", ifx problem == "claude executable not found" then "Claude Code is not installed on this computer: the claude command was not found." else problem));
+      return 0;
+    }
+    running = true; began = cxproc_now_ms();
+  }
+  return 0;
+}

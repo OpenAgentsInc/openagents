@@ -36,6 +36,12 @@ CP_AGENT_REPLY :: 8000;     // bytes of a sub-agent's reply kept, shown and hand
 CP_AGENT_LOG :: 3000;       // bytes of a sub-agent's list of tool calls shown
 CP_SCRATCH :: 262144;       // the sub-agents' results as one line for the worker
 CP_MODEL_COMPLEX :: "gemini-4-carbon";      // a complex task's model; a simple one runs on CP_MODEL
+// A sub-agent's level, as Microcoder names it, and the name its row shows. The last four run in
+// Claude Code on the Claude login of this computer (coder/tui/claudeworker.coax, GitHub #13660).
+CP_LEVELS :: 6;
+CP_LEVEL :: [CP_LEVELS] string.["simple", "complex", "haiku", "sonnet", "opus", "fable"];
+CP_LEVEL_NAME :: [CP_LEVELS] string.["Hydrogen", "Carbon", "Claude Haiku", "Claude Sonnet", "Claude Opus", "Claude Fable"];
+CP_LEVEL_CLAUDE :: 2;                       // the first Claude level
 CP_PAD :: 16;               // the page's margin
 CP_ZOOMS :: [8] f32.[0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0];   // the text sizes Command-plus and Command-minus step through
 CP_ZOOM_USUAL :: 2;
@@ -67,7 +73,7 @@ CpCmd :: struct {
 }
 // One sub-agent: a run of its own on a worker of its own, started by the host.
 CpAgent :: struct {
-  task: [CP_AGENT_TASK] u8; task_n: int; complex: bool;
+  task: [CP_AGENT_TASK] u8; task_n: int; level: int;   // which of CP_LEVEL
   state: int;                 // CP_RUNNING, CP_DONE, CP_FAILED, CP_STOPPED
   start_due: bool;            // the host has not started its worker yet
   answer: int; answer_due: bool;   // its worker's ask that is owed a yes
@@ -103,6 +109,7 @@ CoderPage :: struct {
   draft: [1] EditBuf;
   focused: bool; editor_h: f32; reduced: bool;
   skills: [CP_SKILLS] u8; skills_n: int;
+  claude: bool;               // Claude Code is installed here: Microcoder may hand tasks to it
   folder: [CP_FOLDER_TEXT] u8; folder_n: int;   // the working folder as shown (~/work/app): commands start there
   answer: int; answer_due: bool;   // the ticket of the worker's ask that is owed its answer
   results_due: bool;          // every sub-agent of the round has ended: the worker is owed their results
@@ -258,7 +265,8 @@ cp_delegate :: (s: [] CoderPage, i: int, tasks: string, ticket: int) {
     ar := [1] ClArena.[ClArena.{buf = s[0].scratch[..]}];
     s[0].turns[i].agents[j] = CpAgent.{};
     s[0].turns[i].agents[j].task_n = cp_out(s[0].turns[i].agents[j].task[..], cl_str(ar[..], one, "task"));
-    s[0].turns[i].agents[j].complex = cl_str(ar[..], one, "level") == "complex";
+    level := cl_str(ar[..], one, "level");
+    for name, q2: CP_LEVEL { if name == level { s[0].turns[i].agents[j].level = q2; } }
     s[0].turns[i].agents[j].state = CP_RUNNING; s[0].turns[i].agents[j].start_due = true;
     s[0].turns[i].agents[j].began = s[0].clock; s[0].turns[i].agents[j].took = -1;
     s[0].turns[i].nagents = j + 1; s[0].turns[i].round_n += 1;
@@ -287,7 +295,16 @@ coder_page_agent_next :: (s: [] CoderPage) -> int #export_c #effects(all) {
   for j: 0..<s[0].turns[i].nagents { if s[0].turns[i].agents[j].start_due { s[0].turns[i].agents[j].start_due = false; return j; } }
   return -1;
 }
-// Sub-agent j's task line for its worker: a simple task on Hydrogen, a complex one on Carbon.
+// Whether Claude Code is installed on this computer: with it, Microcoder may pick a Claude level.
+coder_page_set_claude :: (s: [] CoderPage, on: bool) #export_c #effects(all) { if s.count > 0 { s[0].claude = on; } }
+// Whether sub-agent j runs in Claude Code: the host starts the Claude worker for it, not Microcoder's.
+coder_page_agent_claude :: (s: [] CoderPage, j: int) -> bool #export_c #effects(all) {
+  if s.count < 1 || s[0].nturns < 1 { return false; }
+  i := s[0].nturns - 1;
+  return j >= 0 && j < s[0].turns[i].nagents && s[0].turns[i].agents[j].level >= CP_LEVEL_CLAUDE;
+}
+// Sub-agent j's task line for its worker: a simple task on Hydrogen, a complex one on Carbon, a
+// Claude level's on that Claude model (the task alone: Claude Code finds the skills itself).
 // It has no sub-agents of its own.
 coder_page_agent_task :: (s: [] CoderPage, j: int, session: string, cwd: string, out: [] u8) -> int #export_c #effects(all) {
   if s.count < 1 || !cp_running(s) { return 0; }
@@ -296,7 +313,9 @@ coder_page_agent_task :: (s: [] CoderPage, j: int, session: string, cwd: string,
   whole: [CP_SKILLS + CP_AGENT_TASK] u8;
   n := cp_out(whole[..], cast(string) s[0].skills[0..<s[0].skills_n]);
   n += cp_out(whole[n..<whole.count], cast(string) s[0].turns[i].agents[j].task[0..<s[0].turns[i].agents[j].task_n]);
-  complex := s[0].turns[i].agents[j].complex;
+  level := s[0].turns[i].agents[j].level;
+  if level >= CP_LEVEL_CLAUDE { return mww_task(out, McTask.{task = cast(string) s[0].turns[i].agents[j].task[0..<s[0].turns[i].agents[j].task_n], session = session, cwd = cwd, sandbox = "danger-full-access", ceiling = 3, model = CP_LEVEL[level]}); }
+  complex := level == 1;
   t := McTask.{task = cast(string) whole[0..<n], session = session, cwd = cwd, sandbox = "danger-full-access", ceiling = 3, gated = true, edits = true,
                model = ifx complex then CP_MODEL_COMPLEX else CP_MODEL, effort = ifx complex then "medium" else "low"};
   return mww_task(out, t);
@@ -309,13 +328,14 @@ coder_page_agent_line :: (s: [] CoderPage, j: int, line: string) -> int #export_
   ar := [1] ClArena.[ClArena.{buf = s[0].arena[..]}];
   l: [1] MwwLine;
   kind := mww_read(ar[..], line, l[..]);
+  claude := s[0].turns[i].agents[j].level >= CP_LEVEL_CLAUDE;   // its worker's ask is a tool call starting: no answer is owed
   if kind == MWW_ASK {
-    s[0].turns[i].agents[j].answer = l[0].ticket.value; s[0].turns[i].agents[j].answer_due = true;
+    s[0].turns[i].agents[j].answer = l[0].ticket.value; s[0].turns[i].agents[j].answer_due = !claude;
     s[0].turns[i].agents[j].now_n = cp_out(s[0].turns[i].agents[j].now[..], l[0].command); s[0].turns[i].agents[j].now_running = true;
     s[0].turns[i].agents[j].calls += 1; cp_agent_log(s, i, j, l[0].command);
   } else if kind == MWW_COMMAND {
     // an edit, or a command the worker ran before the first call, was not asked about
-    if !s[0].turns[i].agents[j].now_running { s[0].turns[i].agents[j].now_n = cp_out(s[0].turns[i].agents[j].now[..], l[0].command); s[0].turns[i].agents[j].calls += 1; cp_agent_log(s, i, j, l[0].command); }
+    if !claude && !s[0].turns[i].agents[j].now_running { s[0].turns[i].agents[j].now_n = cp_out(s[0].turns[i].agents[j].now[..], l[0].command); s[0].turns[i].agents[j].calls += 1; cp_agent_log(s, i, j, l[0].command); }
     s[0].turns[i].agents[j].now_running = false;
   } else if kind == MWW_VIEW {
     vb: [CP_CMD] u8; vn := cp_out(vb[..], "read "); vn += cp_out(vb[vn..<CP_CMD], l[0].path);
@@ -447,7 +467,7 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) {
         ob := s[0].scratch[..]; on := cp_out(ob, cast(string) s[0].turns[i].agents[j].log[0..<g.log_n]);
         if on > 0 && g.reply_n > 0 { on += cp_out(ob[on..<ob.count], "\n"); }
         on += cp_out(ob[on..<ob.count], cast(string) s[0].turns[i].agents[j].reply[0..<g.reply_n]);
-        tool := AppTool.{icon = ICON_BOT, title = ifx g.complex then "Carbon" else "Hydrogen", arg = gt,
+        tool := AppTool.{icon = ICON_BOT, title = CP_LEVEL_NAME[g.level], arg = gt,
                          state = ifx g.state == CP_RUNNING then APP_TOOL_RUNNING else ifx g.state == CP_DONE then APP_TOOL_DONE else APP_TOOL_FAILED,
                          input = gt, output = sheet_pool(f[0].sheet, cast(string) ob[0..<on]),
                          took = sheet_pool(f[0].sheet, cp_took(kb[..], ifx g.state == CP_RUNNING then s[0].clock - g.began else g.took))};
@@ -612,7 +632,7 @@ coder_page_task :: (s: [] CoderPage, session: string, cwd: string, out: [] u8) -
   n := cp_out(whole[..], cast(string) s[0].skills[0..<s[0].skills_n]);
   for c: cast(string) s[0].turns[i].ask[0..<s[0].turns[i].ask_n] { whole[n] = c; n += 1; }
   t := McTask.{task = cast(string) whole[0..<n], session = session, cwd = cwd, sandbox = "danger-full-access",
-               ceiling = 3, gated = true, edits = true, agents = true, model = CP_MODEL, effort = "low"};
+               ceiling = 3, gated = true, edits = true, agents = true, claude = s[0].claude, model = CP_MODEL, effort = "low"};
   return mww_task(out, t);
 }
 // What the host found installed on this computer (skills and their files), in words for Microcoder.
@@ -945,4 +965,28 @@ coder_page_zoom_set :: (s: [] CoderPage, row: int) -> int #export_c #effects(all
   #assert s[0].turns[0].agents[2].state == CP_STOPPED && !s[0].results_due && coder_page_agent_next(s) == -1;
   // a new chat's first message shows none of them
   #assert coder_page_new(s) && coder_page_set_text(s, "hi") && coder_page_submit(s) && s[0].turns[0].nagents == 0 && !s[0].turns[0].waiting;
+}
+
+#test "Claude sub-agents: offered only where Claude Code is installed; a level is a model; a tool call needs no answer" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  out: [8192] u8; ab: [8192] u8; ar: [1] ClArena; ar[0].buf = ab[..]; back: [1] McTask;
+  #assert coder_page_set_text(s, "ask claude") && coder_page_submit(s);
+  n := coder_page_task(s, "s", "/w", out[..]);
+  #assert mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].agents && !back[0].claude;
+  coder_page_set_claude(s, true);
+  n = coder_page_task(s, "s", "/w", out[..]);
+  #assert mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].agents && back[0].claude;
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"simple\",\"task\":\"count\"},{\"level\":\"opus\",\"task\":\"find the bug\"},{\"level\":\"fable\",\"task\":\"design it\"}],\"ticket\":1}") == MWW_DELEGATE;
+  #assert !coder_page_agent_claude(s, 0) && coder_page_agent_claude(s, 1) && coder_page_agent_claude(s, 2) && !coder_page_agent_claude(s, 3);
+  #assert CP_LEVEL_NAME[s[0].turns[0].agents[1].level] == "Claude Opus" && CP_LEVEL_NAME[s[0].turns[0].agents[2].level] == "Claude Fable";
+  n = coder_page_agent_task(s, 1, "s-a1", "/w", out[..]);
+  r: [1] MwwRequest;
+  #assert mww_request(ar[..], cast(string) out[0..<n - 1], r[..]) == MWW_TASK && r[0].task == "find the bug" && r[0].model == "opus" && r[0].cwd == "/w" && !r[0].agents;
+  // two tool calls at once: each is logged when it starts, and neither is owed an answer
+  #assert coder_page_agent_line(s, 1, "{\"kind\":\"ask\",\"command\":\"ls\",\"ticket\":1}") == MWW_ASK && coder_page_agent_line(s, 1, "{\"kind\":\"ask\",\"command\":\"read a.txt\",\"ticket\":2}") == MWW_ASK;
+  #assert coder_page_agent_answer_line(s, 1, out[..]) == 0 && s[0].turns[0].agents[1].calls == 2 && s[0].turns[0].agents[1].now_running;
+  #assert coder_page_agent_line(s, 1, "{\"kind\":\"command\",\"command\":\"ls\",\"exit\":0,\"timed_out\":false,\"output\":\"a\"}") == MWW_COMMAND && coder_page_agent_line(s, 1, "{\"kind\":\"command\",\"command\":\"read a.txt\",\"exit\":0,\"timed_out\":false,\"output\":\"b\"}") == MWW_COMMAND;
+  #assert s[0].turns[0].agents[1].calls == 2 && cast(string) s[0].turns[0].agents[1].log[0..<s[0].turns[0].agents[1].log_n] == "ls\nread a.txt\n";
+  #assert coder_page_agent_line(s, 1, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"line 4\"}") == MWW_ENDED && s[0].turns[0].agents[1].state == CP_DONE;
 }

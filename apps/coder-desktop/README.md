@@ -59,9 +59,11 @@ level for each task:
 
 - **Simple** tasks go to a sub-agent on Gemini 4 Hydrogen.
 - **Complex** tasks go to a sub-agent on Gemini 4 Carbon.
+- **Claude** tasks go to Claude Code, on the model Microcoder picks: Haiku, Sonnet, Opus or Fable. See [Claude sub-agents](#claude-sub-agents).
 
 Sub-agents handed over in one step run at the same time. Each is a row above
-the reply, named Hydrogen or Carbon, with its task beside the name and its
+the reply, named for its model (Hydrogen, Carbon, or Claude Haiku, Claude
+Sonnet, Claude Opus, Claude Fable), with its task beside the name and its
 elapsed time on the right. While a sub-agent runs, the line under its row
 says how many tool calls it has made and names the newest. Press the row to
 see every tool call and, when it ends, its reply.
@@ -72,6 +74,27 @@ Microcoder does, and can't start sub-agents of its own. Stop ends them too.
 
 To ask for them, say so: "Use two sub-agents at the same time: one to count
 the tests, one to explain how login works."
+
+### Claude sub-agents
+
+When the `claude` command is installed, Microcoder can hand a task to Claude
+Code (#13660). It picks the model: Haiku for a quick lookup, Sonnet for
+everyday coding, Opus for hard work, Fable for the hardest. It does so when
+you ask for Claude or name one of those models, or when a task is harder
+than a complex one. For example: "Have Claude Opus review the last commit."
+
+A Claude sub-agent runs through the Coax Claude Agent SDK
+(`coax/lib/agent/claude`), in the worker `coder/tui/claudeworker.coax`:
+
+- It uses the Claude login already on this Mac. Coder passes no API key and never opens a login page. If Claude Code is not logged in, the row says so: run `claude` in a terminal and log in.
+- It works in the working folder with Claude Code's own tools, your settings and your skills, and with no permission prompts.
+- It saves no Claude Code session.
+- Its usage counts against your Claude plan.
+- It has 15 minutes. Each tool call shows in its row as it starts.
+
+Coder looks for `claude` in `~/.local/bin`, `/opt/homebrew/bin`,
+`/usr/local/bin` and the system `PATH` when it starts. Without it,
+Microcoder is not offered the Claude models.
 
 ## Skills and installed commands
 
@@ -143,4 +166,4 @@ coax/bin/coax test apps/coder-desktop/page.coax --library
 | `host.c`, `host.h` | The page on the shared GPU carrier, as calls for Swift |
 | `carrier.c` | The shared component carrier with this page |
 | `App.swift` | The AppKit lifecycle, the window, the editor's placement and the worker process |
-| `build.sh` | Coax to C and Metal, the worker's image, then clang, swiftc and codesign |
+| `build.sh` | Coax to C and Metal, the two workers' images, then clang, swiftc and codesign |

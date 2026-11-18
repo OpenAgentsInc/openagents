@@ -28,6 +28,9 @@ cp "$repo/apps/openagents-desktop/native/OpenAgents.icns" "$res/Coder.icns"
 # The Microcoder worker (coder/tui/mcworker.coax): tool.sh builds its image, named by the compiler's hash; the app runs the copy.
 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/mcworker.coax" < /dev/null > /dev/null
 cp "$repo/coax/web/build/tools/mcworker-$(shasum -a 256 "$coax" | cut -d " " -f 1)" "$res/mcworker"
+# The Claude Code worker (coder/tui/claudeworker.coax), for a sub-agent on a Claude model.
+COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/claudeworker.coax" < /dev/null > /dev/null
+cp "$repo/coax/web/build/tools/claudeworker-$(shasum -a 256 "$coax" | cut -d " " -f 1)" "$res/claudeworker"
 rm -rf "$res/Components/fonts" "$res/Components/icons"
 cp -R "$repo/components/zeron/fonts" "$repo/components/zeron/icons" "$res/Components/"
 cp "$repo/components/zeron/NOTICE" "$res/Components/NOTICE"

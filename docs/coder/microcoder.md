@@ -131,6 +131,9 @@ schema, the tools and the limits. The model never sees a key, a path under
   Hydrogen, complex on Gemini 4 Carbon, all at once) and answers
   `{"results":[{"exit":N,"output":"..."}],"ticket":N}`. Each result is a
   step result named `agent LEVEL: TASK`. The step's commands run after.
+  A task line with `"claude":true` too (#13660) adds four levels, `haiku`,
+  `sonnet`, `opus` and `fable`: the owner runs those tasks in Claude Code
+  (`coder/tui/claudeworker.coax`, on the Coax Claude Agent SDK).
 - **`view`**: read files under the working directory, capped at 64 KB each.
 - **A seeded first step** (#13325): in Coder, before the first call, the
   loop looks up what the task names. The files it mentions that exist under

@@ -7,6 +7,7 @@
 //        {"stop":true}                    STOP the run
 //        {"forget":true}                  forget the conversation
 //        {"task":...,"agents":true}       the owner runs sub-agents: a step may delegate tasks ({"kind":"delegate","tasks":[...],"ticket":N}) and waits for {"results":[{"exit":N,"output":O}],"ticket":N}
+//        {"task":...,"agents":true,"claude":true}   a task's level may also be haiku, sonnet, opus or fable: the owner runs those in Claude Code
 //        {"task":...,"gated":true,"edits":true}   as gated, but edits are not refused
 //        {"task":...,"gated":true}        each command waits for an answer: {"answer":true,"ticket":N} or {"answer":false,"ticket":N,"why":"..."}
 //        {"task":...,"model":"gemini-4-argon","effort":"low"}   the owner's model and thinking level (Hydrogen and low by default)
@@ -275,7 +276,7 @@ tool_main :: () -> int #export_c #effects(all) {
       if why.count > 0 { mw_ended(out[..], "failed", why); continue; }
       run[0].aw = aw[..];
     }
-    if req[0].agents && !mc_agents(run[0].l[..], lb[..]) { mw_ended(out[..], "failed", "the sub-agents' schema does not fit"); continue; }
+    if req[0].agents && !mc_agents(run[0].l[..], lb[..], req[0].claude) { mw_ended(out[..], "failed", "the sub-agents' schema does not fit"); continue; }
     context:[32768]u8;nc:=json_raw(context[..],0,"{\"profile\":\"coder-owned-v1\",\"cwd\":");nc=json_write_string(context[..],nc,cd);
     nc=json_raw(context[..],nc,",\"session\":");nc=json_write_string(context[..],nc,req[0].session);
     nc=json_raw(context[..],nc,",\"policy\":");policy:=req[0].policy;nc=json_raw(context[..],nc,ifx policy.count>0 then policy else "null");

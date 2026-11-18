@@ -13,19 +13,28 @@ final class CoderWorker {
 
     var alive: Bool { process?.isRunning == true }
 
+    /// The bundled program it runs: Microcoder's worker, or the Claude Code worker for a Claude sub-agent.
+    var program = "mcworker"
+    /// The folders added to the system's short PATH for what the workers start.
+    static var path: String {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let had = (ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin").split(separator: ":").map(String.init)
+        let more = [home + "/.local/bin", "/opt/homebrew/bin", "/usr/local/bin"].filter { !had.contains($0) }
+        return (more + had).joined(separator: ":")
+    }
+    /// Whether Claude Code is installed: a claude command on that PATH.
+    static var hasClaude: Bool { path.split(separator: ":").contains { FileManager.default.isExecutableFile(atPath: $0 + "/claude") } }
+
     func start() -> Bool {
         if alive { return true }
-        guard let path = Bundle.main.path(forResource: "mcworker", ofType: nil) else { return false }
+        guard let path = Bundle.main.path(forResource: program, ofType: nil) else { return false }
         let p = Process(), into = Pipe(), out = Pipe()
         p.executableURL = URL(fileURLWithPath: path)
         p.currentDirectoryURL = FileManager.default.homeDirectoryForCurrentUser
         // An app opened from the Finder has the system's short PATH: the commands Microcoder runs also
         // find what is installed for this person (gamebuilder is in ~/.local/bin).
         var env = ProcessInfo.processInfo.environment
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
-        let had = (env["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin").split(separator: ":").map(String.init)
-        let more = [home + "/.local/bin", "/opt/homebrew/bin", "/usr/local/bin"].filter { !had.contains($0) }
-        env["PATH"] = (more + had).joined(separator: ":")
+        env["PATH"] = CoderWorker.path
         p.environment = env
         p.standardInput = into; p.standardOutput = out; p.standardError = FileHandle.nullDevice
         held = Data()
@@ -54,7 +63,14 @@ final class CoderWorker {
         let data = bytes.prefix(count).withUnsafeBytes { Data($0) }
         try? input.write(contentsOf: data)
     }
-    func stop() { let p = process; process = nil; input = nil; p?.terminate() }
+    /// Closes its input first: a worker ends on that and stops what it started (the Claude worker
+    /// kills the claude process group). Half a second later it is terminated if it is still there.
+    func stop() {
+        let p = process, i = input
+        process = nil; input = nil
+        try? i?.close()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { if p?.isRunning == true { p?.terminate() } }
+    }
 }
 
 /// The window: the compiled page fills it. The platform editor sits over the composer's text box
@@ -111,6 +127,7 @@ final class CoderWindow: NSObject {
         cd_on_change(page, { raw in guard let raw else { return }; Unmanaged<CoderWindow>.fromOpaque(raw).takeUnretainedValue().wake() },
                      Unmanaged.passUnretained(self).toOpaque())
         cd_skills(page, coderSkillsNote())
+        cd_claude(page, CoderWorker.hasClaude ? 1 : 0)
         // the working folder: --folder PATH for this launch, else the one chosen last, else the home folder
         var isFolder: ObjCBool = false
         if let at = CommandLine.arguments.firstIndex(of: "--folder"), at + 1 < CommandLine.arguments.count,
@@ -158,6 +175,7 @@ final class CoderWindow: NSObject {
             let j = cd_agent_next(page)
             if j < 0 { break }
             let one = CoderWorker()
+            if cd_agent_claude(page, j) != 0 { one.program = "claudeworker" }
             one.line = { [weak self] text in guard let self, self.agents[j] === one else { return }; cd_agent_line(self.page, j, text); self.pump() }
             one.gone = { [weak self] in guard let self, self.agents[j] === one else { return }; self.agents[j] = nil; cd_agent_failed(self.page, j, "The sub-agent's worker stopped running."); self.pump() }
             guard one.start() else { cd_agent_failed(page, j, "The sub-agent's worker could not start."); continue }

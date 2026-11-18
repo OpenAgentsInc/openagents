@@ -96,6 +96,7 @@ McLoop :: struct {
   memory: bool;                  // the action's notes are read, and a finish is held for the owner (MC_FINISH)
   finish_refused: int;           // finishes the owner refused
   agents: bool;                  // the action's delegate is read: the owner runs sub-agents (mc_agents)
+  claude: bool;                  // its levels include the Claude models: the owner runs Claude Code too
 }
 
 // The state's buffers and the loop's are separate (sb, b), each live as long as the loop.
@@ -123,17 +124,21 @@ mc_aware :: (l: [] McLoop, b: [] McLoopBuffers, intel: bool, memory: bool) -> bo
 // Sub-agents (GitHub #13655): what a run whose owner runs them is told, after MC_SYSTEM and
 // mc_aware's sections.
 MC_AGENTS :: "\n- You can hand work to sub-agents. delegate is a list of up to 6 tasks, each with a level and a task. They run at the same time, each in a run of its own with your tools and your working directory. None of them sees this conversation: write each task so it stands alone, with the paths and facts it needs and what to report back. level simple is for a lookup, a search, a command or a small change. level complex is for work that takes many steps or careful reasoning: it goes to a stronger, slower model. Each sub-agent's reply comes back as a result of this step named agent LEVEL: TASK, ahead of the step's edits and commands. Answer a plain question or run one quick command yourself; delegate the rest, as one task or as several that do not depend on each other. Do not delegate the same task twice, and do not redo a sub-agent's work to check it. Leave delegate empty when you hand nothing over. Your run, with the time your sub-agents take, has 15 minutes.";
+// What a run is told when its owner also runs Claude Code sub-agents (GitHub #13660), after MC_AGENTS.
+MC_AGENTS_CLAUDE :: "\n- Four more levels hand a task to Claude Code, on the person's own Claude login, with Claude's tools in your working directory: haiku (fastest, for a quick lookup or a small change), sonnet (everyday coding), opus (hard work that takes careful reasoning) and fable (the strongest and slowest, for the hardest work). Use a Claude level when the person asks for Claude or names one of those models, or when a task is harder than complex. Otherwise use simple or complex.";
 // Turns on delegation for a loop mc_init set up (after mc_aware, when the run has a mode): the
 // schema gains delegate and the system prompt MC_AGENTS. False when they don't fit b (they do).
-mc_agents :: (l: [] McLoop, b: [] McLoopBuffers) -> bool {
+// claude: with the Claude levels (MC_AGENTS_CLAUDE).
+mc_agents :: (l: [] McLoop, b: [] McLoopBuffers, claude: bool) -> bool {
   sb: [4096] u8;
-  schema := mc_schema_delegate(l[0].schema, sb[..]);
+  schema := mc_schema_delegate(l[0].schema, sb[..], claude);
   n := json_raw(b[0].system[..], 0, l[0].system);          // in place when mc_aware wrote it there
   n = json_raw(b[0].system[..], n, MC_AGENTS);
+  if claude { n = json_raw(b[0].system[..], n, MC_AGENTS_CLAUDE); }
   if n < 0 || schema.count == 0 || schema.count > b[0].schema.count { return false; }
   for c, i: schema { b[0].schema[i] = c; }
   l[0].system = cast(string) b[0].system[0..<n]; l[0].schema = cast(string) b[0].schema[0..<schema.count];
-  l[0].agents = true;
+  l[0].agents = true; l[0].claude = claude;
   return true;
 }
 
@@ -212,7 +217,7 @@ mc_take :: (l: [] McLoop, text: string) -> int {
     why = mc_text_action(l[0].ar[..], text, l[0].norm, l[0].pending[..]);
   }
   if why.count > 0 { return mc_bad(l, why); }
-  if l[0].agents { why = mc_action_delegates(l[0].ar[..], text, l[0].pending[..]); if why.count > 0 { return mc_bad(l, why); } }
+  if l[0].agents { why = mc_action_delegates(l[0].ar[..], text, l[0].pending[..], l[0].claude); if why.count > 0 { return mc_bad(l, why); } }
   l[0].steps += 1;
   l[0].bad = 0;
   // a finish that carries edits, commands or views is a working step: they are run, not
@@ -747,7 +752,7 @@ ps_count :: (text: string, needle: string) -> int {
   for aware: [2] bool.[false, true] {
     l: [1] McLoop; sb: [1] McStateBuffers; lb: [1] McLoopBuffers;
     mc_init(l[..], sb[..], lb[..], "{}", "do two things", "{}", 1.0);
-    #assert mc_aware(l[..], lb[..], aware, aware) && mc_agents(l[..], lb[..]) && l[0].agents;
+    #assert mc_aware(l[..], lb[..], aware, aware) && mc_agents(l[..], lb[..], aware) && l[0].agents && l[0].claude == aware;
     #assert ps_count(l[0].system, "You can hand work to sub-agents.") == 1 && ps_count(l[0].system, "You are Microcoder") == 1 && ps_count(l[0].system, "You have a working memory.") == (ifx aware then 1 else 0);
     #assert json_valid(l[0].schema) && cl_raw(l[0].schema, "properties.delegate").count > 0 && (cl_raw(l[0].schema, "properties.notes").count > 0) == aware;
     s := mc_take(l[..], "{\"rationale\":\"split\",\"delegate\":[{\"level\":\"simple\",\"task\":\"a\"},{\"level\":\"complex\",\"task\":\"b\"}],\"edits\":[],\"commands\":[],\"view\":[],\"finished\":true,\"reply\":\"done\",\"ask\":\"none\"}");

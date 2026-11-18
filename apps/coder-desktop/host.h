@@ -43,6 +43,10 @@ void cd_agent_line(void *page, int agent, const char *line);
 void cd_agent_failed(void *page, int agent, const char *why);
 int cd_agent_answer_line(void *page, int agent, char *out, int cap);
 int cd_agent_running(void *page, int agent);
+// cd_claude: whether Claude Code is installed here (with it, Microcoder may hand a task to a Claude
+// model). cd_agent_claude: whether this sub-agent runs in Claude Code, on the Claude worker.
+void cd_claude(void *page, int on);
+int cd_agent_claude(void *page, int agent);
 int cd_stop_line(char *out, int cap);
 int cd_forget_line(char *out, int cap);
 // One line the worker wrote, without its newline.
