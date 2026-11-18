@@ -31,7 +31,7 @@ SLAB has published no design. The dimensions here are this world's own planning 
   - Greek temples with real columns, steps and pediments, a round tholos, cypress groves and a fountain plaza;
   - two data halls, a mining yard, a medical block and a colonnaded hall along the south wall.
 - The hull floats. It rides on the waves under it, held by sixteen mooring lines, pushed by the wind and a current. The motion panel shows its heave, roll, pitch and offset.
-- The power runs. OTEC, or nuclear modules, or both, feed the data halls, desalination, industry and the miners, and the dispatcher sheds load when the power falls short. The power button also runs the report's 10 MW demonstration plant.
+- The power runs. The world opens on both: a 120 MW ocean thermal (OTEC) plant and two nuclear modules, which together carry the data halls, desalination, industry and most of the miners. Switch to OTEC alone (or open [`?power=otec`](/worlds/slab?power=otec)) and the dispatcher sheds load: the stacks stop smoking and the data halls go to backup. The power button also runs four modules alone, and the report's 10 MW demonstration plant.
 - Damage control: the stats panel can hole cell A1, the south-west corner cell, and pump ballast to the opposite corner to level the hull again.
 - Two cutaway views:
   - **Section** (V): the hull cut open across, with its concrete walls, bulkheads every 50 m, the ballast water in blue, a flooded cell in red and the waterline.
@@ -53,7 +53,7 @@ SLAB has published no design. The dimensions here are this world's own planning 
   - `?site=` and `?sea=` pick a site and a sea state; `?wind=` sets the wind in metres a second.
   - `?hour=`, `?month=` and `?rate=` set the clock and how fast it runs.
   - `?layout=dome` or `cluster` picks a layout.
-  - `?power=otec`, `nuclear` or `hybrid`; `?plant=demo10`; `?otec=` scales the OTEC plant; `?modules=` and `?swac=1`.
+  - `?power=hybrid` (the default), `otec` or `nuclear`; `?plant=demo10`; `?otec=` scales the OTEC plant; `?modules=` and `?swac=1`.
   - `?mode=fly` or `walk` starts moving; `?view=section` or `under` opens a cutaway; `?hole=1` holes cell A1; `?flow=1` shows the flow overlay.
   - `?t=` holds one moment.
   - `?yaw=`, `?pitch=`, `?dist=`, `?x=`, `?y=` and `?z=` place the view.

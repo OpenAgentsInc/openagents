@@ -590,7 +590,8 @@ and at `guam` it delivers 95–116 MW over the year. The dispatcher sheds
 mining, then industry, then desalination, and the panel goes amber. This is
 intentional: it matches the report's point that the 100 MW IT illustration
 needs more than 120 MW of delivered capacity *plus* resilience (otec.md §10,
-phase 4).
+phase 4). It is no longer the state the world opens in (section 6.7): open
+it with `?power=otec`.
 
 **`?otec=` scale** (0.05 to 3.0) multiplies the plant: gross, parasitic
 load, flows and pipe count. Show the extra pipes the larger plant needs.
@@ -615,9 +616,9 @@ The power source can be switched with `?power=` or from the world panel:
 
 | Option | Plant |
 |---|---|
-| `otec` (default) | OTEC only, as above |
+| `otec` | OTEC only, as above. The default for the `dome` and `cluster` layouts |
 | `nuclear` | 4 nuclear modules; no OTEC power plant. The deep-water intake is kept only if seawater cooling is on |
-| `hybrid` | 2 nuclear modules plus OTEC at `?otec=` scale |
+| `hybrid` | 2 nuclear modules plus OTEC at `?otec=` scale. The default for `prime` (section 6.7) |
 
 The modules follow Ocean Atomics' video. Label the module "Ocean
 Atomics-type module, company's stated figures" on the systems panel.
@@ -665,6 +666,54 @@ with `?modules=` (1–6).
 **What the world does not model:** reactor physics, accidents, emergency
 cooling, fuel handling or radiation. A module is a steady power source
 with an outage switch.
+
+### 6.7 The opening power state
+
+Decided November 18, 2026, for
+[issue 13683](https://github.com/OpenAgentsInc/openagents/issues/13683).
+
+**`prime` opens on `hybrid`:** the report's 120 MW ocean thermal plant plus
+two modules. At `guam` that is 96 MW from the modules and 95–116 MW from
+OTEC, 191–212 MW over the year against 163 MW of fixed loads. Every fixed
+load runs in every month, 28 to 48 of the 50 mining containers run on what
+is left, and the industry's stacks smoke as the concept image's do.
+
+Why not the other two options that cover the loads:
+
+| Option | Why not the opening state |
+|---|---|
+| `?otec=1.75` (167–203 MW at `guam`, 7 pipes) | It makes the panel calm by scaling up the least proven part. No OTEC plant has delivered more than about 0.1 MW net, and the report's own illustration stops at 120 MW. Opening on a 210 MW plant would hide the report's main finding behind a larger number |
+| `nuclear` (192 MW) | It removes OTEC, which is the owner's direction for this world and most of what the deck, the pipes and the flow overlay show |
+
+`hybrid` keeps the plant at the size the report studies and says what fills
+the gap. Both sources are still unproven at this size: the OTEC figures are
+engineering models, and the module's figures are the company's own. The
+panel says both.
+
+**The shortfall stays reachable.** It is the lesson, not the first
+impression:
+
+- `?power=otec` opens the same city on the 120 MW plant alone: 110.5 MW in
+  June against 163 MW. Mining, industry and desalination switch off, the
+  stacks stop smoking and the data halls go to backup.
+- The power control steps to it (hybrid, the 10 MW demonstration, OTEC,
+  nuclear).
+- `?site=california` shows the other half: in February OTEC gives nothing
+  and the two modules' 96 MW can't carry the city either.
+
+**The domes open on `otec`,** as before. They are under the 152 m hull a
+module needs, so `hybrid` there adds a powership and draws the dome level
+beside it. A dome should open rolling on the swell, alone. A power picked
+in the address or with the control is kept when the layout changes; the
+opening power is applied only while nothing has been picked
+(`sim_opening_power` in `metaverse/slab-sim.coax`).
+
+**Amber means a fixed load is short.** The panel's loads line used to turn
+amber whenever fewer than 50 mining containers ran. Mining is the flexible
+buyer of what is left (section 6.3), so 43 of 50 is the design working. The
+line now turns amber only when the data halls are on backup or desalination
+or industry is shed (`sim_fixed_short`). `SimPower.shed` keeps its meaning
+for the dispatch tests.
 
 ## 7. Deck layout (`prime`)
 
@@ -851,9 +900,10 @@ in sections 3–9 are unchanged.
 - The arrival view and the default hour follow the concept image: January at
   17:18, with the sun low in the west-south-west, seen from off the
   north-east corner.
-- With the default `otec` power at Guam, the dispatcher sheds industry, so
-  the stacks don't smoke. The concept image's smoke appears with
-  `?power=hybrid` or `nuclear`.
+- With `otec` power at Guam, the dispatcher sheds industry, so the stacks
+  don't smoke. The world therefore opens on `hybrid` (section 6.7): supply
+  206.5 MW in June against 163 MW, every fixed load carried, 43 of 50
+  mining containers on, and the stacks smoking as in the concept image.
 
 - A holed cell's 4 m² orifice takes about 24 minutes to fill 64,000 m³, so
   the spec's 60 s is not consistent with its orifice law. The world keeps the

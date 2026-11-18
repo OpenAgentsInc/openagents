@@ -201,6 +201,17 @@ sim_power :: (p: SimPlant, site: SimSite, month: f64) -> SimPower {
   o.budget = o.revenue - 40.27 - 8.0;
   return o;
 }
+// The power a layout opens on (spec 6.7). The monolith opens on hybrid: the report's 120 MW ocean
+// thermal plant with two modules carries every fixed load at Guam all year, so the first reading
+// of the panel is a platform that works. The domes are under the hull the modules need, so they
+// open on OTEC, with no powership unless one is asked for.
+sim_opening_power :: (prime: bool) -> int { return ifx prime then POWER_HYBRID else POWER_OTEC; }
+// A fixed load is short: the data halls on backup, or desalination or industry shed. Miners
+// below their 50 are not: they are the flexible buyer of what is left (spec 6.3).
+sim_fixed_short :: (p: SimPlant, o: SimPower) -> bool {
+  if p.demo10 { return o.data_on_backup || o.industry < SIM_DEMO_UTILITY; }
+  return o.data_on_backup || o.desal < SIM_DESAL || o.industry < SIM_INDUSTRY;
+}
 
 // ---------------------------------------------------------------- the hull (spec 3.1, 4)
 SIM_L :: 1000.0; SIM_B :: 600.0; SIM_T :: 25.0; SIM_D :: 143.0; SIM_CORNER :: 1.5;
@@ -712,6 +723,27 @@ sim_bending :: (heights: [] f32, n: int, patch: f64, h: SimHull) -> f64 {
   lo := 1e9; hi := -1e9;
   for m: 0..<120 { q := sim_power(h, sim_site(SITE_GUAM), f64(m) * 0.1); lo = sim_min(lo, q.supply); hi = sim_max(hi, q.supply); }
   #assert abs(lo - 191) < 1.0 && abs(hi - 212) < 1.0;
+}
+#test "the opening power carries every fixed load at Guam all year; ocean thermal power alone does not" {
+  #assert sim_opening_power(true) == POWER_HYBRID && sim_opening_power(false) == POWER_OTEC;
+  p := SimPlant.{power = sim_opening_power(true)};
+  for m: 0..<120 {
+    q := sim_power(p, sim_site(SITE_GUAM), f64(m) * 0.1);
+    #assert !sim_fixed_short(p, q) && q.industry == SIM_INDUSTRY && q.desal == SIM_DESAL && q.data == SIM_DATA;
+    #assert q.containers >= 28 && q.containers < SIM_CONTAINERS && q.shed;   // the miners take what is left: not a fault
+  }
+  june := sim_power(p, sim_site(SITE_GUAM), 5.5);
+  #assert abs(june.supply - 206.5) < 0.5 && june.containers == 43;
+  // the lesson, one step away: the same city on the 120 MW plant alone
+  p.power = POWER_OTEC;
+  alone := sim_power(p, sim_site(SITE_GUAM), 5.5);
+  #assert sim_fixed_short(p, alone) && abs(alone.supply - 110.5) < 0.5 && alone.industry == 0 && alone.containers == 0;
+  // and where the sea is cold, the modules alone can't carry it either
+  p.power = POWER_HYBRID;
+  #assert sim_fixed_short(p, sim_power(p, sim_site(SITE_CALIFORNIA), 1.5));
+  // the demonstration's own campus is judged by its own loads
+  demo := SimPlant.{demo10 = true};
+  #assert !sim_fixed_short(demo, sim_power(demo, sim_site(SITE_GUAM), 7.5));
 }
 #test "the 10 MW demonstration nets 10 MW at its best and keeps a 1.55 MW margin" {
   p := SimPlant.{demo10 = true};
