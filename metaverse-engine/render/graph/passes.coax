@@ -123,7 +123,7 @@ RenderPlan :: struct { status:RenderPlanStatus=RenderPlanStatus.invalid; readine
   requires:=[14]int.[0,1,1,1,0,1,160,1,128,0,0,1088,1024,0];
   expected:=true;
   for i:0..<14 {if (bits&(1<<i))!=0 && (bits&requires[i])!=requires[i] {expected=false;}}
-  if (bits&17)==17 || ((bits&512)!=0 && (bits&17)==0) {expected=false;}
+  if (bits&512)!=0 && (bits&17)==0 {expected=false;}
   #assert render_features(f)==expected;
 }
 #forall "render pipeline states retain every output depth blend bias and channel policy" p:0..<13 {
@@ -171,7 +171,26 @@ RenderPlan :: struct { status:RenderPlanStatus=RenderPlanStatus.invalid; readine
   c:=FrameCounts.{width=1,height=1,vertex_stride=1};
   q:=render_plan(RenderFeatures.{},c,RenderReadiness.invalid,true);#assert q.status==RenderPlanStatus.invalid && q.count==0;
   c.water_draws=1;q=render_plan(RenderFeatures.{},c,RenderReadiness.loading,true);#assert q.status==RenderPlanStatus.invalid && q.count==0;
-  c.water_draws=0;q=render_plan(RenderFeatures.{scene=true,surface=true},c,RenderReadiness.ready,true);#assert q.status==RenderPlanStatus.invalid && q.count==0;
+}
+#test "a scene page's surface is drawn after its scene, in the same pass and on the same depth" {
+  // a mesh world over a sea (SLAB's photoreal style): the scene first, so the sea shades only what the scene leaves open
+  c:=FrameCounts.{width=1,height=1,vertex_stride=1,draw_count=2,surface_vertices=6};
+  f:=RenderFeatures.{scene=true,surface=true};
+  q:=render_plan(f,c,RenderReadiness.ready,true);
+  #assert q.status==RenderPlanStatus.ok && q.count==5 && q.ops[0].kind==RenderOpKind.begin && q.ops[0].depth==RenderTarget.scene_depth;
+  #assert q.ops[1].pass==RenderPassId.background && q.ops[2].pass==RenderPassId.scene && q.ops[2].count==2;
+  #assert q.ops[3].kind==RenderOpKind.draw && q.ops[3].pass==RenderPassId.surface && q.ops[3].first==0 && q.ops[3].count==6 && q.ops[3].instances==1 && q.ops[3].draw_source==RenderDrawSource.vertices;
+  #assert q.ops[3].state.valid && q.ops[3].state.depth==RenderDepth.less && q.ops[3].state.depth_write && q.ops[3].state.outputs==1;
+  #assert q.ops[4].kind==RenderOpKind.end;
+  // with no scene draws this frame the surface is still drawn, once
+  c.draw_count=0;q=render_plan(f,c,RenderReadiness.ready,true);
+  n:=0;for i:0..<q.count {if q.ops[i].kind==RenderOpKind.draw && q.ops[i].pass==RenderPassId.surface {n+=1;}}
+  #assert q.status==RenderPlanStatus.ok && n==1;
+  // and a page with no scene draws it where it always has: straight after the background
+  c.draw_count=0;q=render_plan(RenderFeatures.{surface=true},c,RenderReadiness.ready,true);#assert q.ops[2].pass==RenderPassId.surface;
+  // no vertices, no draw
+  c.draw_count=2;c.surface_vertices=0;q=render_plan(f,c,RenderReadiness.ready,true);
+  for i:0..<q.count {#assert !(q.ops[i].kind==RenderOpKind.draw && q.ops[i].pass==RenderPassId.surface);}
 }
 #forall "render zero work is omitted while clear and dependency passes remain" variant:0..<4 {
   f:=RenderFeatures.{scene=true,shadow=true,casters=true,grass=true,water=true,water_copy=true,post=true,particles=true,particle_depth=true,particle_over=true};
@@ -241,7 +260,6 @@ RenderPlan :: struct { status:RenderPlanStatus=RenderPlanStatus.invalid; readine
 render_features :: (f:RenderFeatures)->bool #effects(all) {
   // a traced page (no scene: bg_fs draws the world) may still have particles, drawn over what it traced (#13451)
   if !f.scene && (f.shadow || f.casters || f.grass || f.water || f.post) {return false;}
-  if f.scene && f.surface {return false;}
   if f.water_copy && (!f.water || !f.post) {return false;}
   if f.post_depth && !f.post {return false;}
   if f.traced_depth && !f.scene && !f.surface {return false;}
@@ -364,8 +382,11 @@ render_plan_shipping :: (f:RenderFeatures,c:FrameCounts,x:RenderShipping,ready:R
   // an opaque scene's grass is drawn after it, so hidden blades are never shaded
   last:=x.grass_last && draws>0;   // mutant: equivalent (with no scene draws nothing sits between the two places the grass can be drawn, a surface needing no scene and the grass a scene)
   if blades && !last {rp_draw(q,f,RenderPassId.grass,RenderDrawSource.vertices,0,3,c.grass_instances);}
-  if f.surface && c.surface_vertices>0 {rp_draw(q,f,RenderPassId.surface,RenderDrawSource.vertices,0,c.surface_vertices,1);}
+  // a page with no scene draws its surface straight after the background; a scene page draws it after
+  // the scene, so the surface shades only what the scene leaves open
+  if f.surface && !f.scene && c.surface_vertices>0 {rp_draw(q,f,RenderPassId.surface,RenderDrawSource.vertices,0,c.surface_vertices,1);}
   if scene>0 {rp_draw(q,f,RenderPassId.scene,RenderDrawSource.records,0,scene,1);}
+  if f.surface && f.scene && c.surface_vertices>0 {rp_draw(q,f,RenderPassId.surface,RenderDrawSource.vertices,0,c.surface_vertices,1);}
   if culled {
     // the cull's second phase: the pyramid of what was just drawn, then the pieces it no longer
     // hides, in a pass that keeps the light and depth

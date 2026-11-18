@@ -228,10 +228,11 @@
 // Coax bounds/selects the ranges; the SDK issues draw(3, count, 0, first).
 // Optional: coaxial_grass_vertices_v1(state), how many vertices grass_vs draws a blade (3 to 48, in
 // threes; absent or anything else: 3). The stylized look's lush grass has 9 (stylized-layout.coax).
-// A traced page's surface (the water lab's clipmap sea), when the page has no scene, its WGSL has
-// surface_vs and surface_fs and the app exports coaxial_surface_vertices: the page gets a depth buffer,
-// bg_fs writes its depth (@builtin(frag_depth)), and that many vertices (no buffer, bg's group) draw right
-// after it, depth-tested and written:
+// A page's surface (the water lab's clipmap sea), when its WGSL has surface_vs and surface_fs and
+// the app exports coaxial_surface_vertices: the page gets a depth buffer, bg_fs writes its depth
+// (@builtin(frag_depth)), and that many vertices (no buffer, bg's group) draw depth-tested and
+// written: right after bg_fs on a traced page, after the scene's draws on a scene page (SLAB's
+// mesh world over its sea), where surface_fs writes the scene's targets (two with post_fs):
 //   coaxial_surface_vertices(state)  vertices to draw, three a triangle (0: none)
 // Particles, optionally: particles:URL names a shader module of their own (particle_vs/particle_fs,
 // group 0 the uniforms, group 1 binding 0 the emitters), drawn after the scene, added, depth-tested;
@@ -1384,7 +1385,7 @@ async function loadShadersOnce() {
   // With a scene, every pipeline in the pass shares its depth buffer; only the scene tests and writes it.
   const scene = !!engine?.exports.coaxial_draws;
   gpu.scene3d = scene;
-  const surfaced = !scene && /fn\s+surface_vs\b/.test(code) && /fn\s+surface_fs\b/.test(code) && !!engine?.exports.coaxial_surface_vertices;
+  const surfaced = /fn\s+surface_vs\b/.test(code) && /fn\s+surface_fs\b/.test(code) && !!engine?.exports.coaxial_surface_vertices;
   const depthed = scene || surfaced;
   const flat = depthed ? { depthStencil: { format: "depth32float", depthWriteEnabled: false, depthCompare: "always" } } : {};
   const shadows = scene && /fn\s+shadow_vs\b/.test(code);
@@ -3322,7 +3323,7 @@ function draw(now) {
   {
     const has = (on, bit) => (on ? 1 << bit : 0);
     const copies = !!(post && gpu.waterCopyGroup && gpu.waterTransmit);
-    const bits = has(gpu.scene, 0) | has(gpu.scene && gpu.shadow, 1) | has(gpu.scene && gpu.caster, 2) | has(gpu.scene && gpu.grass, 3) | has(!gpu.scene && gpu.surface, 4)
+    const bits = has(gpu.scene, 0) | has(gpu.scene && gpu.shadow, 1) | has(gpu.scene && gpu.caster, 2) | has(gpu.scene && gpu.grass, 3) | has(gpu.surface, 4)
       | has(gpu.scene && gpu.waterTransmit, 5) | has(copies, 6) | has(post, 7) | has(gpu.particles, 10) | has(copies && gpu.particles && gpu.particleDepth, 11)
       | has(gpu.particles && gpu.particlesOver, 12) | has(x.coaxial_media, 13) | has(gpu.shadow && gpu.shadowTiles, 14) | has(culled, 15) | has(hero, 16)
       | has(gpu.scene && gpu.sort && gpu.particles, 17) | has(gpu.scene && gpu.sceneGroup, 18) | has(gpu.particles, 19);

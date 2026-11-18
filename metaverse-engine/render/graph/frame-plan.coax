@@ -64,7 +64,7 @@ frame_plan_features :: (bits: u32) -> RenderFeatures #effects(all) {
 frame_plan_page :: (bits: u32, c: FrameCounts, x: RenderShipping, out: [] u32) -> int #effects(all) {
   if out.count > 0 { out[0] = 0; }
   b := cast(int) bits;
-  if b < 0 || b > FPH_ALL { return 0; }  // mutant: equivalent (FPH_ALL sets the scene and the surface together, which the features refuse)
+  if b < 0 || b > FPH_ALL { return 0; }
   y := x;
   if (b & FPH_TILES) == 0 { y.tiles = false; y.tile = -1; y.tile_count = 0; y.clears = 0; }
   if (b & FPH_CULL) == 0 { y.cull = false; }

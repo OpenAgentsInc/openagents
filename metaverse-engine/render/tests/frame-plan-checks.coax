@@ -219,6 +219,8 @@ fpc_page_has :: (w: [] u32, kind: RenderOpKind, pass: RenderPassId) -> int #effe
   x := RenderShipping.{bloom_passes = 9};
   w[0] = 7; #assert frame_plan_page(1, c, x, w[..]) == 0 && w[0] == 0;
   #assert frame_plan_page(cast(u32) (FPH_ALL - 16 - 512), FrameCounts.{width = 1, height = 1, vertex_stride = 1}, RenderShipping.{}, w[..]) > 0;
+  // every bit at once holds together too: a scene page may draw a surface (a mesh world over a sea)
+  #assert frame_plan_page(cast(u32) FPH_ALL, FrameCounts.{width = 1, height = 1, vertex_stride = 1}, RenderShipping.{}, w[..]) > 0;
   #assert frame_plan_page(0, c, RenderShipping.{}, w[..]) == 32 && frame_plan_count(w[0..<32]) == 3;
 }
 #test "the header has the host's bits and the shipping members" {
@@ -386,9 +388,10 @@ fpc_full_ask :: (bits: u32, facts: u32) -> [FPA_WORDS] u32 #effects(all) {
 #test "a page's plan: what the host or the features cannot do is dropped, not refused, and the out buffer's first word is cleared" {
   w: [2072] u32;
   c := FrameCounts.{width = 1, height = 1, vertex_stride = 1, draw_count = 2};
-  // a one-word buffer is cleared, an empty one is left alone, and the largest host word is a set the features refuse
+  // a one-word buffer is cleared, an empty one is left alone, and the largest host word is a set the features hold
   w[0] = 7; #assert frame_plan_page(cast(u32) (FPH_ALL + 1), c, RenderShipping.{}, w[0..<1]) == 0 && w[0] == 0;
-  w[0] = 7; #assert frame_plan_page(cast(u32) FPH_ALL, c, RenderShipping.{}, w[..]) == 0 && w[0] == 0;
+  w[0] = 7; #assert frame_plan_page(cast(u32) FPH_ALL, c, RenderShipping.{}, w[..]) > 0 && w[0] == FRAME_PLAN_MAGIC;
+  w[0] = 7; #assert frame_plan_page(cast(u32) (FPH_ALL - 1), c, RenderShipping.{}, w[..]) == 0 && w[0] == 0;   // a shadow and the rest with no scene
   w[0] = 7; #assert frame_plan_page(1, c, RenderShipping.{}, w[0..<0]) == 0 && w[0] == 7;
   // a host with no shadow drops the tiles, the shadow list and the character, whatever the page says
   x := RenderShipping.{tiles = true, tile = 1, tile_count = 4, clears = 2, shadow_draws = 3, character = true, character_cast = true, bloom_passes = 3};
