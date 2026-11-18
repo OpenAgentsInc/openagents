@@ -37,9 +37,9 @@ PR_TIER_REDUCED :: 1;  // a phone: fewer shadow taps, no clouds in reflections, 
 PR_RECORD_FLOATS :: 16;
 PR_R_PLACE :: 0;     // x, y, z
 PR_R_YAW :: 3;       // the turn about y: the part's +x runs along (cos yaw, 0, -sin yaw)
-PR_R_SCALE :: 4;     // one size for all three axes
-PR_R_MOTION :: 5;    // PR_STILL, PR_BOB, PR_SWAY or PR_LAID
-PR_R_PHASE :: 6;     // where in its motion it starts (radians)
+PR_R_SCALE :: 4;     // one size for all three axes (a leaning record: its roll, radians)
+PR_R_MOTION :: 5;    // PR_STILL, PR_BOB, PR_SWAY, PR_LAID or PR_LEAN
+PR_R_PHASE :: 6;     // where in its motion it starts (radians; a leaning record: its pitch)
 PR_R_FREE :: 7;      // 1: it does not ride the platform (a ship beside it)
 PR_R_TINT :: 8;      // r, g, b: multiplies the material's colour (1, 1, 1 leaves it)
 PR_R_VALUE :: 11;    // the realm's own number: what was clicked, which thing this is
@@ -52,6 +52,8 @@ PR_STILL :: 0;
 PR_BOB :: 1;         // rises and falls a little (a buoy, a boat at its mooring)
 PR_SWAY :: 2;        // bends in the wind, more the higher up the part (a tree, a flag pole)
 PR_LAID :: 3;        // lies flat on a surface (a lawn on a deck, a road's marking): drawn a hair nearer, so the two never flicker
+PR_LEAN :: 4;        // leans any way (a ship on a sea, a limb, a flag's cloth): rolled about its own x, then pitched about its
+                     // own z (its +x end rises), then turned by its yaw. Its size is its stretch, for its scale's float holds the roll
 
 // ---- a material: PR_MATERIAL_FLOATS floats a row, row k the material numbered k
 PR_MATERIAL_FLOATS :: 8;

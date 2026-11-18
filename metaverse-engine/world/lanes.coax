@@ -1,5 +1,6 @@
 // Lanes: a path walked one way, as a tower defense's stair, and which walker on it a tower picks.
 //   coax/bin/coax test --library metaverse-engine/world/lanes.coax
+#module "metaverse.engine.lanes";   // a file may #load it as an alias (metaverse-engine/world/timetable.coax does)
 
 #load "../core/points.coax";
 

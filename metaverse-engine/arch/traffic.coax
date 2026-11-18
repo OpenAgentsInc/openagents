@@ -1,0 +1,503 @@
+// The Metaverse Engine's architecture kit, what moves through a place: ships, road vehicles, a
+// helicopter, people and seabirds, as generators. Each writes one part at the origin
+// (metaverse-engine/arch/mesh.coax ArchPart) in metres; a realm stands it with a record, and the
+// record moves it (the photoreal style's records turn, pitch and roll a part:
+// metaverse-engine/render/shade/photoreal-scene.coax pr_lean).
+//
+//   traffic_ship        a ship by its kind: a supply ship, a harbour tug, a bulk carrier, a large
+//                       container ship and a floating gas plant. Bow along +x, its waterline at y 0,
+//                       midships at the origin. traffic_ship_of gives its sizes.
+//   traffic_ride        how a ship sits on a sea: heave, pitch and roll from nine heights under it
+//   traffic_truck       a box truck, a forklift with a crate, a utility cart: front along +x, wheels on y 0
+//   traffic_forklift
+//   traffic_cart
+//   traffic_helicopter  a medium helicopter's body on its skids, nose along +x; traffic_rotor is its
+//                       main rotor (turn it about y at TRAFFIC_ROTOR_UP over the body's origin) and
+//                       traffic_tail_rotor the tail's (pitch it about z at traffic_tail_at)
+//   traffic_bone        one rounded bone a metre long and a metre thick, from its place up its own y:
+//                       a figure's limb, laid from joint to joint (photoreal-figure.coax)
+//   traffic_person      a person a long way off: six boxes, facing +z, mid-stride or standing
+//   traffic_bird        a seabird's body, beak along +x; traffic_wing is one wing, root at the origin, tip along +z
+//
+// Colours are the pen's tint over the look's paint material, so a record's tint shifts a whole
+// part (a fleet in several liveries). Sizes are typical of each kind and stated in
+// traffic_ship_of; nothing here is a model of a named vessel but the gas plant's and the
+// container ship's outer sizes, which are their classes' published ones.
+//   coax/bin/coax test --library metaverse-engine/arch/traffic.coax
+#module "metaverse.engine.arch.traffic";
+#load "solid.coax";
+
+// The material rows a part is made of: plain paint that takes a tint, window glass, and a dark matt (tyres).
+TrafficLook :: struct { paint: int; glass: int; dark: int; }
+
+TRAFFIC_SUPPLY :: 0;      // a platform supply ship
+TRAFFIC_TUG :: 1;         // a harbour tug
+TRAFFIC_BULKER :: 2;      // a Kamsarmax bulk carrier
+TRAFFIC_CONTAINER :: 3;   // a 24,000 TEU container ship
+TRAFFIC_FLNG :: 4;        // a floating liquefied natural gas plant of Prelude's size
+TRAFFIC_SHIPS :: 5;
+
+// A ship's sizes (m), its service speed (m/s) and what it carries (t).
+TrafficShip :: struct { length: f32; beam: f32; draft: f32; deck: f32; air: f32; speed: f32; carries: f32; }
+traffic_ship_of :: (kind: int) -> TrafficShip {
+  if kind == TRAFFIC_TUG { return TrafficShip.{length = 32, beam = 11.5, draft = 4.8, deck = 1.5, air = 12.5, speed = 6.2, carries = 0}; }
+  if kind == TRAFFIC_BULKER { return TrafficShip.{length = 229, beam = 32.3, draft = 12, deck = 7, air = 27, speed = 7.2, carries = 82000}; }
+  if kind == TRAFFIC_CONTAINER { return TrafficShip.{length = 400, beam = 61.3, draft = 16, deck = 16.5, air = 58, speed = 11.3, carries = 240000}; }
+  if kind == TRAFFIC_FLNG { return TrafficShip.{length = 488, beam = 74, draft = 19, deck = 24.5, air = 105, speed = 0, carries = 600000}; }
+  return TrafficShip.{length = 76, beam = 17, draft = 6, deck = 2.4, air = 25, speed = 6.2, carries = 3500};
+}
+
+// ---- a hull, lofted through stations from its stern (t 0) to its stem (t 1)
+TrafficHull :: struct {
+  length: f32; beam: f32; draft: f32;
+  deck: f32;             // the deck over the water amidships
+  bow: f32 = 0.3;        // the share of its length that narrows to the stem
+  stern: f32 = 0.1;      // and that narrows to the transom
+  transom: f32 = 0.8;    // the transom's width as a share of the beam
+  sheer: f32 = 0;        // how much higher the deck stands at the stem
+  rake: f32 = 0;         // how far the stem leans forward at the deck
+  full: f32 = 2;         // how full the bow is: 1.5 fine, 3 bluff
+}
+TRAFFIC_STATIONS :: 11;
+traffic_station :: (h: TrafficHull, k: int) -> f32 {
+  s := h.stern; b := h.bow;
+  t := [11] f32.[0, s * 0.5, s, (s + 1 - b) * 0.5, 1 - b, 1 - b * 0.72, 1 - b * 0.48, 1 - b * 0.28, 1 - b * 0.12, 1 - b * 0.03, 1];
+  return t[k];
+}
+traffic_fore :: (h: TrafficHull, t: f32) -> f32 { u := (t - (1 - h.bow)) / h.bow; if u < 0 { return 0; } if u > 1 { return 1; } return u; }
+// Half the hull's breadth at a station.
+traffic_half :: (h: TrafficHull, t: f32) -> f32 {
+  half := h.beam * 0.5f32;
+  if t < h.stern { a := t / h.stern; return half * (h.transom + (1 - h.transom) * a * (2 - a)); }
+  u := traffic_fore(h, t);
+  return half * (1 - pow(u, h.full));
+}
+// A point of the hull's side: station t, height y over the water (lifted by the sheer when
+// `sheer`), port (-1) or starboard (1).
+traffic_point :: (h: TrafficHull, t: f32, y: f32, side: f32, sheer: bool) -> [3] f32 {
+  u := traffic_fore(h, t);
+  yy := ifx sheer then y + h.sheer * u * u else y;
+  lift := (yy + h.draft) / (h.deck + h.sheer + h.draft);
+  if lift < 0 { lift = 0; } if lift > 1.4 { lift = 1.4; }
+  return arch_v((t - 0.5f32) * h.length + h.rake * u * lift, yy, side * traffic_half(h, t));
+}
+// The hull's two sides from y0 up to y1 between stations t0 and t1, closed across its ends where
+// it has a breadth there (a transom, the break of a forecastle).
+traffic_sides :: (p: [] ArchPen, h: TrafficHull, t0: f32, t1: f32, y0: f32, y1: f32, sheer: bool) {
+  for k: 0..<TRAFFIC_STATIONS - 1 {
+    a := traffic_station(h, k); b := traffic_station(h, k + 1);
+    if a < t0 { a = t0; } if b > t1 { b = t1; }
+    if b - a < 0.0001 { continue; }
+    arch_face(p, traffic_point(h, a, y0, 1, false), traffic_point(h, b, y0, 1, false), traffic_point(h, b, y1, 1, sheer), traffic_point(h, a, y1, 1, sheer));
+    arch_face(p, traffic_point(h, b, y0, -1, false), traffic_point(h, a, y0, -1, false), traffic_point(h, a, y1, -1, sheer), traffic_point(h, b, y1, -1, sheer));
+  }
+  if traffic_half(h, t0) > 0.05 { arch_face(p, traffic_point(h, t0, y0, -1, false), traffic_point(h, t0, y0, 1, false), traffic_point(h, t0, y1, 1, sheer), traffic_point(h, t0, y1, -1, sheer)); }
+  if traffic_half(h, t1) > 0.05 { arch_face(p, traffic_point(h, t1, y0, 1, false), traffic_point(h, t1, y0, -1, false), traffic_point(h, t1, y1, -1, sheer), traffic_point(h, t1, y1, 1, sheer)); }
+}
+// A deck across the hull at height y between two stations.
+traffic_deck :: (p: [] ArchPen, h: TrafficHull, t0: f32, t1: f32, y: f32, sheer: bool) {
+  for k: 0..<TRAFFIC_STATIONS - 1 {
+    a := traffic_station(h, k); b := traffic_station(h, k + 1);
+    if a < t0 { a = t0; } if b > t1 { b = t1; }
+    if b - a < 0.0001 { continue; }
+    arch_face(p, traffic_point(h, a, y, 1, sheer), traffic_point(h, b, y, 1, sheer), traffic_point(h, b, y, -1, sheer), traffic_point(h, a, y, -1, sheer));
+  }
+}
+// A whole hull: red under the boot-topping, its own colour above, and its deck.
+traffic_hull :: (p: [] ArchPen, look: TrafficLook, h: TrafficHull, side: [3] f32, deck: [3] f32) {
+  under := h.draft; if under > 5 { under = 5; }
+  arch_material(p, look.paint, 0.36, 0.07, 0.05);
+  traffic_sides(p, h, 0, 1, -under, 0.5, false);
+  arch_material(p, look.paint, side[0], side[1], side[2]);
+  traffic_sides(p, h, 0, 1, 0.5, h.deck, true);
+  arch_material(p, look.paint, deck[0], deck[1], deck[2]);
+  traffic_deck(p, h, 0, 1, h.deck, true);
+}
+// A box of a colour, and a band of windows round a box (glass, a hand's breadth proud of it).
+traffic_box :: (p: [] ArchPen, look: TrafficLook, x0: f32, y0: f32, z0: f32, x1: f32, y1: f32, z1: f32, r: f32, g: f32, b: f32) {
+  arch_material(p, look.paint, r, g, b);
+  arch_slab(p, x0, y0, z0, x1, y1, z1);
+}
+traffic_windows :: (p: [] ArchPen, look: TrafficLook, x0: f32, y0: f32, z0: f32, x1: f32, y1: f32, z1: f32) {
+  arch_material(p, look.glass, 0, 0, 0);
+  arch_slab(p, x0 - 0.08f32, y0, z0 - 0.08f32, x1 + 0.08f32, y1, z1 + 0.08f32);
+}
+
+traffic_supply :: (p: [] ArchPen, look: TrafficLook) {
+  s := traffic_ship_of(TRAFFIC_SUPPLY);
+  h := TrafficHull.{length = s.length, beam = s.beam, draft = s.draft, deck = s.deck, bow = 0.32, stern = 0.06, transom = 0.92, sheer = 0, rake = 3, full = 2.1};
+  hull := arch_v(0.80, 0.22, 0.04); green := arch_v(0.16, 0.24, 0.2);
+  traffic_hull(p, look, h, hull, green);
+  // the forecastle, and the bulwark round the working deck aft
+  arch_material(p, look.paint, hull[0], hull[1], hull[2]);
+  traffic_sides(p, h, 0.56, 1, s.deck, 7.2, true);
+  traffic_sides(p, h, 0, 0.56, s.deck, s.deck + 1.1f32, false);
+  arch_material(p, look.paint, green[0], green[1], green[2]);
+  traffic_deck(p, h, 0.56, 1, 7.2, true);
+  // the house: two decks, a third, the bridge with its wings, the mast and two funnels
+  traffic_box(p, look, 6, 7.2, -7.2, 28, 12.6, 7.2, 0.9, 0.9, 0.88);
+  traffic_box(p, look, 9, 12.6, -6.2, 26, 15.4, 6.2, 0.9, 0.9, 0.88);
+  traffic_box(p, look, 12, 15.4, -7.6, 25, 18.4, 7.6, 0.9, 0.9, 0.88);
+  traffic_windows(p, look, 12, 16.4, -7.6, 25, 17.6, 7.6);
+  traffic_box(p, look, 17, 18.4, -0.4, 18, 25, 0.4, 0.8, 0.8, 0.8);
+  traffic_box(p, look, 16.6, 22.6, -2.4, 17.2, 23, 2.4, 0.8, 0.8, 0.8);
+  for side: 0..<2 {
+    z := ifx side == 0 then -6.0f32 else 4.4f32;
+    traffic_box(p, look, 6.5, 12.6, z, 9, 17, z + 1.6f32, 0.07, 0.12, 0.3);
+  }
+  // the deck cargo: containers, a tank, a rack of pipe; and the crane
+  traffic_box(p, look, -31, s.deck, -6, -19, s.deck + 2.6f32, -3.5, 0.2, 0.36, 0.6);
+  traffic_box(p, look, -31, s.deck, -2.8, -19, s.deck + 2.6f32, -0.3, 0.62, 0.16, 0.1);
+  traffic_box(p, look, -17, s.deck, -6, -5, s.deck + 2.6f32, -3.5, 0.75, 0.72, 0.66);
+  traffic_box(p, look, -30, s.deck, 1.5, -12, s.deck + 1.2f32, 6.2, 0.5, 0.5, 0.52);
+  traffic_box(p, look, -9, s.deck, 2, -2, s.deck + 3.2f32, 6, 0.85, 0.85, 0.82);
+  traffic_box(p, look, 1.4, s.deck, 5.4, 2.6, s.deck + 8, 6.6, 0.85, 0.6, 0.08);
+  arch_material(p, look.paint, 0.85, 0.6, 0.08);
+  arch_beam(p, arch_v(2, s.deck + 7.6f32, 6), arch_v(-12, s.deck + 11, 3), 0.35);
+}
+traffic_tug :: (p: [] ArchPen, look: TrafficLook) {
+  s := traffic_ship_of(TRAFFIC_TUG);
+  h := TrafficHull.{length = s.length, beam = s.beam, draft = s.draft, deck = s.deck, bow = 0.42, stern = 0.22, transom = 0.72, sheer = 2.2, rake = 1.5, full = 2.3};
+  traffic_hull(p, look, h, arch_v(0.05, 0.05, 0.06), arch_v(0.2, 0.26, 0.22));
+  // the bulwark, the deckhouse, the wheelhouse with windows all round, two funnels, the mast, the winch
+  arch_material(p, look.paint, 0.05, 0.05, 0.06);
+  traffic_sides(p, h, 0, 1, s.deck, s.deck + 0.9f32, true);
+  traffic_box(p, look, -3, s.deck, -3.6, 7, 4.6, 3.6, 0.9, 0.86, 0.7);
+  traffic_box(p, look, 0, 4.6, -2.7, 5.5, 7.4, 2.7, 0.92, 0.92, 0.9);
+  traffic_windows(p, look, 0, 5.5, -2.7, 5.5, 6.8, 2.7);
+  for side: 0..<2 {
+    z := ifx side == 0 then -2.8f32 else 1.6f32;
+    traffic_box(p, look, -2.6, 4.6, z, -1.2, 8.3, z + 1.2f32, 0.68, 0.08, 0.05);
+  }
+  traffic_box(p, look, 2.5, 7.4, -0.2, 2.9, 12.5, 0.2, 0.8, 0.8, 0.8);
+  traffic_box(p, look, -9, s.deck, -1.8, -6, 3.1, 1.8, 0.4, 0.42, 0.45);
+}
+traffic_bulker :: (p: [] ArchPen, look: TrafficLook) {
+  s := traffic_ship_of(TRAFFIC_BULKER);
+  h := TrafficHull.{length = s.length, beam = s.beam, draft = s.draft, deck = s.deck, bow = 0.1, stern = 0.07, transom = 0.82, sheer = 0, rake = 4, full = 3};
+  hull := arch_v(0.07, 0.09, 0.14);
+  traffic_hull(p, look, h, hull, arch_v(0.4, 0.13, 0.1));
+  arch_material(p, look.paint, hull[0], hull[1], hull[2]);
+  traffic_sides(p, h, 0.92, 1, s.deck, s.deck + 2.6f32, false);
+  arch_material(p, look.paint, 0.4, 0.13, 0.1);
+  traffic_deck(p, h, 0.92, 1, s.deck + 2.6f32, false);
+  // seven hatch covers, the house aft with the bridge across the beam, the funnel, the foremast
+  for k: 0..<7 {
+    x := -76 + cast(f32) k * 24.5f32;
+    traffic_box(p, look, x, s.deck, -7.6, x + 17, s.deck + 1.4f32, 7.6, 0.5, 0.56, 0.5);
+  }
+  traffic_box(p, look, -106, s.deck, -13, -92, 22, 13, 0.92, 0.92, 0.9);
+  traffic_box(p, look, -105, 22, -16.1, -95, 25, 16.1, 0.92, 0.92, 0.9);
+  traffic_windows(p, look, -105, 23, -16.1, -95, 24.3, 16.1);
+  traffic_box(p, look, -112, s.deck, -3, -107.5, 27, 3, 0.1, 0.25, 0.5);
+  traffic_box(p, look, 106, s.deck + 2.6f32, -0.4, 107, 21, 0.4, 0.8, 0.8, 0.8);
+}
+traffic_container :: (p: [] ArchPen, look: TrafficLook) {
+  s := traffic_ship_of(TRAFFIC_CONTAINER);
+  h := TrafficHull.{length = s.length, beam = s.beam, draft = s.draft, deck = s.deck, bow = 0.11, stern = 0.05, transom = 0.86, sheer = 0, rake = 8, full = 2.6};
+  traffic_hull(p, look, h, arch_v(0.06, 0.12, 0.24), arch_v(0.2, 0.2, 0.2));
+  // the boxes on deck in bays of 40 ft, nine and ten tiers high, each bay's own colours; the
+  // house a third of the way aft with the bridge across the beam, and the engine casing aft
+  tints := [6] [3] f32.[arch_v(0.6, 0.14, 0.1), arch_v(0.12, 0.3, 0.55), arch_v(0.75, 0.72, 0.66), arch_v(0.1, 0.4, 0.3), arch_v(0.8, 0.45, 0.08), arch_v(0.4, 0.42, 0.45)];
+  half := s.beam * 0.5f32 - 1.5f32;
+  for k: 0..<21 {
+    x := -184 + cast(f32) k * 15.5f32;
+    if k >= 5 { x += 16; }     // past the engine casing
+    if k >= 14 { x += 20; }    // and the house
+    if x + 14.2f32 > 172 { break; }
+    c := tints[(k * 5 + 1) % 6]; tall := 18.2f32 + 2.6f32 * cast(f32) ((k * 3) % 3);
+    reach := half; if x > 150 { reach = half * 0.8f32; }
+    traffic_box(p, look, x, s.deck, -reach, x + 14.2f32, s.deck + tall, reach, c[0], c[1], c[2]);
+    if k % 2 == 0 {
+      c2 := tints[(k * 7 + 4) % 6];
+      z0 := ifx k % 4 == 0 then -reach else -reach * 0.2f32; z1 := ifx k % 4 == 0 then reach * 0.3f32 else reach;
+      traffic_box(p, look, x, s.deck + tall, z0, x + 14.2f32, s.deck + tall + 5.2f32, z1, c2[0], c2[1], c2[2]);
+    }
+  }
+  traffic_box(p, look, 54, s.deck, -29, 70, 54, 29, 0.92, 0.92, 0.9);
+  traffic_box(p, look, 55, 54, -30.6, 69, 58, 30.6, 0.92, 0.92, 0.9);
+  traffic_windows(p, look, 55, 55.2, -30.6, 69, 57, 30.6);
+  traffic_box(p, look, -104, s.deck, -9, -92, 52, 9, 0.85, 0.8, 0.6);
+}
+traffic_flng :: (p: [] ArchPen, look: TrafficLook) {
+  s := traffic_ship_of(TRAFFIC_FLNG);
+  h := TrafficHull.{length = s.length, beam = s.beam, draft = s.draft, deck = s.deck, bow = 0.08, stern = 0.03, transom = 0.96, sheer = 0, rake = 5, full = 3};
+  traffic_hull(p, look, h, arch_v(0.58, 0.1, 0.07), arch_v(0.42, 0.43, 0.44));
+  d := s.deck;
+  // the process modules in two rows either side of a pipe rack, each its own height
+  for k: 0..<8 {
+    x := -160 + cast(f32) k * 41;
+    for side: 0..<2 {
+      tall := 20 + 22 * arch_hash(k * 2 + side, 3); grey := 0.5f32 + 0.2f32 * arch_hash(k * 2 + side, 5);
+      z0 := ifx side == 0 then -33.0f32 else 4.0f32;
+      traffic_box(p, look, x, d, z0, x + 36, d + tall, z0 + 29, grey, grey, grey * 1.03f32);
+    }
+  }
+  traffic_box(p, look, -160, d, -3, 168, d + 12, 3, 0.75, 0.68, 0.42);
+  // the turret forward and its swivel, the flare boom leaning out over the bow, the quarters and the helideck aft
+  traffic_box(p, look, 186, d, -14, 214, d + 46, 14, 0.62, 0.63, 0.65);
+  traffic_box(p, look, 193, d + 46, -7, 207, d + 60, 7, 0.8, 0.5, 0.1);
+  arch_material(p, look.paint, 0.7, 0.7, 0.72);
+  arch_beam(p, arch_v(170, d + 4, -30), arch_v(214, d + 80, -74), 1.3);
+  traffic_box(p, look, -236, d, -30, -206, d + 38, 30, 0.92, 0.92, 0.9);
+  traffic_windows(p, look, -236, d + 33, -30, -206, d + 36, 30);
+  traffic_box(p, look, -247, d + 38, -11, -225, d + 38.6f32, 11, 0.12, 0.3, 0.2);
+}
+// A ship of a kind as one part.
+traffic_ship :: (p: [] ArchPen, look: TrafficLook, kind: int) -> ArchPart {
+  from := p[0].n;
+  if kind == TRAFFIC_TUG { traffic_tug(p, look); }
+  else if kind == TRAFFIC_BULKER { traffic_bulker(p, look); }
+  else if kind == TRAFFIC_CONTAINER { traffic_container(p, look); }
+  else if kind == TRAFFIC_FLNG { traffic_flng(p, look); }
+  else { traffic_supply(p, look); }
+  return arch_part(p, from);
+}
+
+// ---- a hull's ride on a sea
+// A ship takes the plane of the sea under it: its heave is the sea's mean height over its
+// waterplane, and it pitches and rolls to the sea's mean slope along and across it. Waves much
+// shorter than the hull average out, as they do for a ship; there is no resonance and no lag in
+// this (a ship's own rolling period is not modelled). The realm samples its sea at nine points
+// (traffic_ride_at, in the ship's own frame: +x its bow, +z its starboard side) and hands the heights over.
+TrafficRide :: struct { heave: f32; pitch: f32; roll: f32; }   // m; radians, the bow up; radians, as pr_lean rolls (starboard down)
+traffic_ride_at :: (k: int, length: f32, beam: f32) -> [2] f32 {
+  return [2] f32.[(cast(f32) (k % 3) - 1) * length / 3, (cast(f32) (k / 3) - 1) * beam / 3];
+}
+traffic_ride :: (h: [9] f32, length: f32, beam: f32) -> TrafficRide {
+  r: TrafficRide;
+  for k: 0..<9 { r.heave += h[k] / 9; }
+  // the least-squares plane through the nine: its slope along x is the fore row less the aft row over two lengths' thirds, thrice
+  fore := h[2] + h[5] + h[8]; aft := h[0] + h[3] + h[6];
+  star := h[6] + h[7] + h[8]; port := h[0] + h[1] + h[2];
+  along := (fore - aft) / (2 * length); across := (star - port) / (2 * beam);
+  r.pitch = along / (1 + 0.28f32 * along * along);      // atan, near enough for a sea's slopes
+  r.roll = -across / (1 + 0.28f32 * across * across);
+  return r;
+}
+
+// ---- road vehicles
+// A wheel on the ground, its axle along z: a tyre and its two faces.
+traffic_wheel :: (p: [] ArchPen, look: TrafficLook, x: f32, z: f32, r: f32, wide: f32) {
+  arch_material(p, look.dark, 0, 0, 0);
+  z0 := z - wide * 0.5f32; z1 := z + wide * 0.5f32;
+  y := r * 0.8660254f32;   // six sides: it stands on a flat
+  arch_limb(p, x, y, z0, x, y, z1, r, r, 6);
+  for i: 0..<6 {
+    a := f32(ARCH_TAU) * cast(f32) i / 6; b := f32(ARCH_TAU) * cast(f32) (i + 1) / 6;
+    arch_tri(p, arch_at(x, y, z1, 0, 0, 1, 0, 0), arch_at(x + cos(a) * r, y + sin(a) * r, z1, 0, 0, 1, 0, 0), arch_at(x + cos(b) * r, y + sin(b) * r, z1, 0, 0, 1, 0, 0));
+    arch_tri(p, arch_at(x, y, z0, 0, 0, -1, 0, 0), arch_at(x + cos(b) * r, y + sin(b) * r, z0, 0, 0, -1, 0, 0), arch_at(x + cos(a) * r, y + sin(a) * r, z0, 0, 0, -1, 0, 0));
+  }
+}
+TRAFFIC_TRUCK_LONG :: 7.4f32; TRAFFIC_FORKLIFT_LONG :: 3.6f32; TRAFFIC_CART_LONG :: 2.7f32;
+// A box truck 7.4 m long, 2.4 m wide and 3.3 m high. Its box takes the record's tint.
+traffic_truck :: (p: [] ArchPen, look: TrafficLook) -> ArchPart {
+  from := p[0].n;
+  traffic_box(p, look, -3.6, 0.55, -1.0, 3.5, 0.95, 1.0, 0.1, 0.1, 0.11);
+  traffic_box(p, look, -3.7, 0.95, -1.2, 1.5, 3.3, 1.2, 0.93, 0.93, 0.93);
+  traffic_box(p, look, 1.7, 0.75, -1.15, 3.7, 2.55, 1.15, 0.85, 0.87, 0.9);
+  traffic_windows(p, look, 2.7, 1.6, -1.15, 3.7, 2.35, 1.15);
+  for k: 0..<4 { traffic_wheel(p, look, ifx k < 2 then 2.6f32 else -2.3f32, ifx k % 2 == 0 then -1.02f32 else 1.02f32, 0.48, 0.32); }
+  return arch_part(p, from);
+}
+// A forklift 3.6 m long with its forks, carrying a crate: counterweight aft, the driver's guard, the mast.
+traffic_forklift :: (p: [] ArchPen, look: TrafficLook) -> ArchPart {
+  from := p[0].n;
+  traffic_box(p, look, -1.3, 0.3, -0.6, 0.6, 1.15, 0.6, 0.9, 0.62, 0.05);
+  traffic_box(p, look, -1.3, 1.15, -0.55, -0.7, 1.5, 0.55, 0.12, 0.12, 0.13);
+  for k: 0..<4 {
+    x := ifx k < 2 then -0.95f32 else 0.35f32; z := ifx k % 2 == 0 then -0.55f32 else 0.5f32;
+    traffic_box(p, look, x, 1.15, z, x + 0.06f32, 2.15, z + 0.06f32, 0.12, 0.12, 0.13);
+  }
+  traffic_box(p, look, -1.0, 2.15, -0.6, 0.45, 2.21, 0.6, 0.12, 0.12, 0.13);
+  for side: 0..<2 {
+    z := ifx side == 0 then -0.45f32 else 0.35f32;
+    traffic_box(p, look, 0.65, 0.1, z, 0.77, 3.1, z + 0.1f32, 0.15, 0.15, 0.16);
+    traffic_box(p, look, 0.77, 0.42, z - 0.02f32, 2.0, 0.48, z + 0.12f32, 0.15, 0.15, 0.16);
+  }
+  traffic_box(p, look, 0.85, 0.48, -0.55, 1.95, 1.5, 0.55, 0.62, 0.48, 0.3);
+  for k: 0..<4 { traffic_wheel(p, look, ifx k < 2 then 0.3f32 else -0.95f32, ifx k % 2 == 0 then -0.56f32 else 0.56f32, 0.3, 0.22); }
+  return arch_part(p, from);
+}
+// A utility cart 2.7 m long: two seats under a canopy and a small flat bed.
+traffic_cart :: (p: [] ArchPen, look: TrafficLook) -> ArchPart {
+  from := p[0].n;
+  traffic_box(p, look, -1.3, 0.28, -0.6, 1.3, 0.62, 0.6, 0.93, 0.93, 0.93);
+  traffic_box(p, look, 0.95, 0.62, -0.58, 1.3, 0.95, 0.58, 0.93, 0.93, 0.93);
+  traffic_box(p, look, -0.35, 0.62, -0.55, 0.2, 0.86, 0.55, 0.14, 0.14, 0.15);
+  traffic_box(p, look, -0.45, 0.62, -0.55, -0.35, 1.25, 0.55, 0.14, 0.14, 0.15);
+  traffic_box(p, look, -1.3, 0.62, -0.6, -0.5, 0.82, 0.6, 0.35, 0.36, 0.38);
+  for k: 0..<4 {
+    x := ifx k < 2 then -0.45f32 else 0.95f32; z := ifx k % 2 == 0 then -0.58f32 else 0.53f32;
+    traffic_box(p, look, x, 0.62, z, x + 0.05f32, 1.8, z + 0.05f32, 0.14, 0.14, 0.15);
+  }
+  traffic_box(p, look, -0.6, 1.8, -0.64, 1.1, 1.86, 0.64, 0.93, 0.93, 0.93);
+  for k: 0..<4 { traffic_wheel(p, look, ifx k < 2 then 0.9f32 else -0.9f32, ifx k % 2 == 0 then -0.58f32 else 0.58f32, 0.22, 0.18); }
+  return arch_part(p, from);
+}
+
+// ---- a helicopter
+TRAFFIC_ROTOR :: 6.9f32;      // the main rotor's radius: a 13.8 m disc
+TRAFFIC_ROTOR_UP :: 3.9f32;   // the rotor's hub over the skids' ground
+traffic_tail_at :: () -> [3] f32 { return arch_v(-9.3, 3.6, 0.35); }
+// A medium twin-engined helicopter's body, 13.5 m from its nose to its fin, on skids. Its body takes the record's tint.
+traffic_helicopter :: (p: [] ArchPen, look: TrafficLook) -> ArchPart {
+  from := p[0].n;
+  arch_material(p, look.paint, 0.92, 0.92, 0.92);
+  arch_ellipsoid(p, 0, 2.0, 0, 4.1, 1.2, 1.15, 8, 5);
+  arch_ellipsoid(p, -0.6, 3.05, 0, 2.0, 0.5, 0.8, 6, 3);
+  arch_limb(p, -3.3, 2.3, 0, -9.0, 2.75, 0, 0.5, 0.18, 6);
+  arch_beam2(p, arch_v(-8.5, 2.7, 0), arch_v(-9.5, 4.4, 0), 0.05, 0.5);
+  traffic_box(p, look, -8.9, 2.9, -1.3, -8.2, 2.96, 1.3, 0.92, 0.92, 0.92);
+  traffic_box(p, look, -0.12, 3.4, -0.12, 0.12, TRAFFIC_ROTOR_UP, 0.12, 0.2, 0.2, 0.2);
+  arch_material(p, look.glass, 0, 0, 0);
+  arch_ellipsoid(p, 2.5, 2.2, 0, 1.75, 0.82, 1.08, 8, 4);
+  for side: 0..<2 {
+    z := ifx side == 0 then -1.15f32 else 1.15f32;
+    traffic_box(p, look, -1.8, 0, z - 0.06f32, 2.4, 0.12, z + 0.06f32, 0.15, 0.15, 0.16);
+    traffic_box(p, look, -1.2, 0.1, z - 0.04f32, -1.1, 1.3, z + 0.04f32, 0.15, 0.15, 0.16);
+    traffic_box(p, look, 1.5, 0.1, z - 0.04f32, 1.6, 1.3, z + 0.04f32, 0.15, 0.15, 0.16);
+  }
+  return arch_part(p, from);
+}
+// The main rotor: four blades round the origin, level. A record turns it about y.
+traffic_rotor :: (p: [] ArchPen, look: TrafficLook) -> ArchPart {
+  from := p[0].n;
+  arch_material(p, look.paint, 0.12, 0.12, 0.13);
+  arch_slab(p, -TRAFFIC_ROTOR, -0.03, -0.19, TRAFFIC_ROTOR, 0.03, 0.19);
+  arch_slab(p, -0.19, -0.03, -TRAFFIC_ROTOR, 0.19, 0.03, TRAFFIC_ROTOR);
+  arch_slab(p, -0.4, -0.12, -0.4, 0.4, 0.12, 0.4);
+  return arch_part(p, from);
+}
+// The tail rotor: two blades in the part's x-y plane, 1.3 m in radius. A record pitches it about z.
+traffic_tail_rotor :: (p: [] ArchPen, look: TrafficLook) -> ArchPart {
+  from := p[0].n;
+  arch_material(p, look.paint, 0.12, 0.12, 0.13);
+  arch_slab(p, -1.3, -0.1, -0.02, 1.3, 0.1, 0.02);
+  return arch_part(p, from);
+}
+
+// ---- people and birds
+// One rounded bone: from its place a metre up its own y, a metre thick. 108 vertices.
+traffic_bone :: (p: [] ArchPen, look: TrafficLook) -> ArchPart {
+  from := p[0].n;
+  arch_material(p, look.paint, 0, 0, 0);
+  arch_ellipsoid(p, 0, 0.5, 0, 0.5, 0.56, 0.5, 6, 4);
+  return arch_part(p, from);
+}
+TRAFFIC_PERSON_TALL :: 1.74f32;
+// A person a long way off, 1.74 m tall, facing +z with their left along +x: legs, a body and arms
+// that take the record's tint, a head. `stride` 1 is mid-stride with the left foot forward
+// (a record's stretch of -1 along x is the other foot), 0 standing.
+traffic_person :: (p: [] ArchPen, look: TrafficLook, stride: f32) -> ArchPart {
+  from := p[0].n;
+  for side: 0..<2 {
+    sx: f32 = ifx side == 0 then 1 else -1;
+    arch_material(p, look.paint, 0.2, 0.2, 0.24);
+    arch_beam2(p, arch_v(sx * 0.09f32, 0.94, 0), arch_v(sx * 0.09f32, 0.0, sx * 0.3f32 * stride), 0.075, 0.08);
+    arch_material(p, look.paint, 1, 1, 1);
+    arch_beam2(p, arch_v(sx * 0.24f32, 1.42, 0), arch_v(sx * 0.25f32, 0.86, -sx * 0.22f32 * stride), 0.05, 0.05);
+  }
+  arch_slab(p, -0.19, 0.9, -0.11, 0.19, 1.46, 0.11);
+  arch_material(p, look.paint, 0.86, 0.66, 0.54);
+  arch_slab(p, -0.085, 1.5, -0.095, 0.085, TRAFFIC_PERSON_TALL, 0.095);
+  return arch_part(p, from);
+}
+TRAFFIC_WING :: 0.62f32;   // a gull's wing, root to tip
+traffic_bird :: (p: [] ArchPen, look: TrafficLook) -> ArchPart {
+  from := p[0].n;
+  arch_material(p, look.paint, 0.93, 0.93, 0.92);
+  arch_ellipsoid(p, 0, 0, 0, 0.23, 0.07, 0.07, 6, 3);
+  return arch_part(p, from);
+}
+// One wing: a flat blade from the origin out along +z. A record's stretch of -1 along z is the other wing.
+traffic_wing :: (p: [] ArchPen, look: TrafficLook) -> ArchPart {
+  from := p[0].n;
+  arch_material(p, look.paint, 0.8, 0.81, 0.83);
+  arch_face(p, arch_v(0.1, 0, 0), arch_v(-0.09, 0, 0), arch_v(-0.05, 0, TRAFFIC_WING), arch_v(-0.05, 0, TRAFFIC_WING));
+  arch_face(p, arch_v(0.1, 0, 0), arch_v(-0.05, 0, TRAFFIC_WING), arch_v(0.06, 0, TRAFFIC_WING * 0.55f32), arch_v(0.06, 0, TRAFFIC_WING * 0.55f32));
+  return arch_part(p, from);
+}
+
+// ---- checks
+traffic_test_reach :: (out: [] f32, part: ArchPart) -> [6] f32 {
+  r := [6] f32.[1000000, 1000000, 1000000, -1000000, -1000000, -1000000];
+  for i: part.first..<part.first + part.count {
+    for a: 0..<3 { v := out[i * ARCH_VERTEX_FLOATS + a]; if v < r[a] { r[a] = v; } if v > r[a + 3] { r[a + 3] = v; } }
+  }
+  return r;
+}
+#test "each ship is as long, as wide and as tall as its sizes say, its faces turned outward" {
+  buf: [2400 * ARCH_VERTEX_FLOATS] f32; pen: [1] ArchPen; p := pen[..];
+  look := TrafficLook.{paint = 1, glass = 2, dark = 3};
+  for kind: 0..<TRAFFIC_SHIPS {
+    arch_pen(p, buf[..]);
+    part := traffic_ship(p, look, kind);
+    s := traffic_ship_of(kind);
+    #assert !p[0].full && part.count > 300 && part.count % 3 == 0 && part.count < 2400;
+    r := traffic_test_reach(buf[..], part);
+    // the stem rakes forward of half its length; the transom sits at the other half (the gas plant's helideck overhangs it)
+    #assert abs(r[0] + s.length * 0.5f32) < 3.5 && r[3] >= s.length * 0.5f32 - 0.01 && r[3] < s.length * 0.5f32 + 9;
+    // some box may overhang the side a hand's breadth (a bridge's windows)
+    #assert r[5] > s.beam * 0.5f32 - 0.6f32 && r[5] < s.beam * 0.5f32 + 0.2f32 && abs(r[2] + r[5]) < 0.2 || kind == TRAFFIC_FLNG;
+    #assert r[1] < -3 && r[1] >= -5.01 && r[4] > s.air - 4 && r[4] < s.air + 4;
+    #assert arch_facing(buf[..], part) > 0;
+  }
+}
+#test "a ship rides the plane of the sea under it: up with a swell, bow up on a rising slope, heeled away from a slope across it" {
+  h: [9] f32;
+  for k: 0..<9 { h[k] = 1.5; }
+  flat := traffic_ride(h, 90, 18);
+  #assert abs(flat.heave - 1.5) < 0.0001 && flat.pitch == 0 && flat.roll == 0;
+  // a sea that rises 0.05 a metre toward the bow and 0.1 a metre toward starboard
+  for k: 0..<9 { at := traffic_ride_at(k, 90, 18); h[k] = 0.05f32 * at[0] + 0.1f32 * at[1]; }
+  r := traffic_ride(h, 90, 18);
+  #assert abs(r.heave) < 0.0001 && abs(r.pitch - 0.05) < 0.001 && abs(r.roll + 0.1) < 0.001;
+  // a wave much shorter than the hull averages out: crest, trough, crest along it
+  for k: 0..<9 { h[k] = ifx k % 3 == 1 then -1.0f32 else 1.0f32; }
+  s := traffic_ride(h, 90, 18);
+  #assert s.pitch == 0 && abs(s.heave - 1.0f32 / 3) < 0.0001;
+}
+#test "a hull narrows to its stem and its transom, and is its full beam between" {
+  h := TrafficHull.{length = 100, beam = 20, draft = 5, deck = 4, bow = 0.3, stern = 0.1, transom = 0.8, sheer = 2, rake = 3, full = 2};
+  #assert abs(traffic_half(h, 0) - 8) < 0.001 && abs(traffic_half(h, 0.5) - 10) < 0.001 && traffic_half(h, 1) == 0;
+  #assert traffic_half(h, 0.85) < 10 && traffic_half(h, 0.85) > traffic_half(h, 0.95);
+  // the deck rises to the stem by the sheer, and the stem rakes forward at the deck only
+  top := traffic_point(h, 1, h.deck, 1, true); foot := traffic_point(h, 1, -h.draft, 1, false);
+  #assert abs(top[1] - 6) < 0.001 && abs(top[0] - 53) < 0.001 && abs(foot[0] - 50) < 0.001 && top[2] == 0;
+}
+#test "the vehicles stand on their wheels, as long as they say; the helicopter on its skids under its rotor" {
+  buf: [1200 * ARCH_VERTEX_FLOATS] f32; pen: [1] ArchPen; p := pen[..];
+  look := TrafficLook.{paint = 1, glass = 2, dark = 3};
+  arch_pen(p, buf[..]);
+  truck := traffic_truck(p, look); r := traffic_test_reach(buf[..], truck);
+  #assert abs(r[3] - r[0] - TRAFFIC_TRUCK_LONG) < 0.2 && abs(r[1]) < 0.001 && r[4] > 3.2 && r[4] < 3.4 && truck.count < 700;
+  arch_pen(p, buf[..]);
+  fork := traffic_forklift(p, look); r = traffic_test_reach(buf[..], fork);
+  #assert abs(r[3] - r[0] - TRAFFIC_FORKLIFT_LONG) < 0.4 && abs(r[1]) < 0.001 && fork.count < 900;
+  arch_pen(p, buf[..]);
+  cart := traffic_cart(p, look); r = traffic_test_reach(buf[..], cart);
+  #assert abs(r[3] - r[0] - TRAFFIC_CART_LONG) < 0.2 && abs(r[1]) < 0.001 && r[4] < 1.9 && cart.count < 700;
+  arch_pen(p, buf[..]);
+  heli := traffic_helicopter(p, look); r = traffic_test_reach(buf[..], heli);
+  #assert abs(r[1]) < 0.001 && r[4] > TRAFFIC_ROTOR_UP - 0.01 && r[4] < 4.7 && r[3] - r[0] > 13 && r[3] - r[0] < 14.5 && !p[0].full;
+  arch_pen(p, buf[..]);
+  rotor := traffic_rotor(p, look); r = traffic_test_reach(buf[..], rotor);
+  #assert abs(r[3] - TRAFFIC_ROTOR) < 0.001 && abs(r[5] - TRAFFIC_ROTOR) < 0.001 && rotor.count == 108;
+}
+#test "a bone is a metre from its place up its y; a far person is 1.74 m tall on the ground, a stride apart" {
+  buf: [600 * ARCH_VERTEX_FLOATS] f32; pen: [1] ArchPen; p := pen[..];
+  look := TrafficLook.{paint = 1, glass = 2, dark = 3};
+  arch_pen(p, buf[..]);
+  bone := traffic_bone(p, look); r := traffic_test_reach(buf[..], bone);
+  #assert bone.count == 108 && r[1] < 0 && r[1] > -0.07 && r[4] > 1 && r[4] < 1.07 && abs(r[3] - 0.5) < 0.07 && arch_facing(buf[..], bone) > 0;
+  arch_pen(p, buf[..]);
+  walk := traffic_person(p, look, 1); r = traffic_test_reach(buf[..], walk);
+  #assert walk.count == 216 && abs(r[4] - TRAFFIC_PERSON_TALL) < 0.001 && r[1] > -0.09 && r[1] < 0.01 && r[5] - r[2] > 0.6;
+  arch_pen(p, buf[..]);
+  stand := traffic_person(p, look, 0); r = traffic_test_reach(buf[..], stand);
+  #assert stand.count == 216 && r[5] - r[2] < 0.25;
+  arch_pen(p, buf[..]);
+  wing := traffic_wing(p, look); r = traffic_test_reach(buf[..], wing);
+  #assert wing.count == 6 && abs(r[5] - TRAFFIC_WING) < 0.001 && r[2] == 0;
+}

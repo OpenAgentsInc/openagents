@@ -1,0 +1,178 @@
+// A timetable: where a mover is along a lane (metaverse-engine/world/lanes.coax) at any time, with
+// no state kept. A truck that stops at each crossing, a ship that waits at its berth, a person
+// who never stops: each is a lane, how long the mover waits at each of its points, a cruising
+// speed and how hard it speeds up and slows. tt_run answers how far along it is at a time, how
+// fast it is going and whether it waits; the lane gives the place (metaverse_lane_at) and
+// tt_heading the way it faces, turned smoothly through a corner.
+//
+// Because the answer is a function of the time alone, every visitor sees the same mover in the
+// same place at the same moment, a picture at a fixed time is repeatable, and a mover out of
+// sight costs nothing. Movers do not see each other: two timetables that cross can pass through
+// one another, so a realm spaces them in time.
+//
+// A mover speeds up from rest at `accel` to `cruise`, holds it, and slows at `accel` to rest at a
+// point where it waits. It passes a point with no wait at the speed it has. A leg too short to
+// reach the cruising speed is run as far up to speed as it gets. A loop's last point is its first
+// again (the lane's points repeat it), and it waits there as at its first point.
+//   coax/bin/coax test --library metaverse-engine/world/timetable.coax
+#module "metaverse.engine.timetable";
+#load "lanes.coax" as lane;
+
+TtLeg :: struct { time: f32; up: f32; hold: f32; top: f32; }
+// One leg of `span` metres: how long it takes, how long it speeds up and holds its top speed.
+tt_leg :: (span: f32, cruise: f32, accel: f32, from_rest: bool, to_rest: bool) -> TtLeg {
+  l: TtLeg;
+  if span <= 0 || cruise <= 0 { return l; }
+  a := ifx accel > 0.0001 then accel else 0.0001f32;
+  ramps: f32 = (ifx from_rest then 1.0f32 else 0.0f32) + (ifx to_rest then 1.0f32 else 0.0f32);
+  top := cruise;
+  if ramps > 0 && top * top * ramps > 2 * a * span { top = sqrt(2 * a * span / ramps); }
+  ramp := top * top / (2 * a);
+  l.top = top;
+  l.up = ifx from_rest then top / a else 0.0f32;
+  down := ifx to_rest then top / a else 0.0f32;
+  l.hold = (span - ramp * ramps) / top; if l.hold < 0 { l.hold = 0; }
+  l.time = l.up + l.hold + down;
+  return l;
+}
+TtRun :: struct {
+  along: f32;       // metres along the lane
+  speed: f32;       // m/s now
+  leg: int;         // the leg it is on: from point `leg` to the next
+  waiting: bool;    // it stands at the leg's far point
+  left: f32;        // seconds it still waits there
+}
+tt_rests :: (wait: [] f32, i: int, n: int, loop: bool) -> bool {
+  if i <= 0 || i >= n - 1 { return !loop || wait[0] > 0; }
+  return wait[i] > 0;
+}
+tt_wait :: (wait: [] f32, i: int, n: int, loop: bool) -> f32 { if i >= n - 1 { return ifx loop then wait[0] else 0.0f32; } return wait[i]; }
+// How long the whole lane takes, waits and all (a loop: one round, with its wait at the start).
+tt_cycle :: (along: [] f32, wait: [] f32, cruise: f32, accel: f32, loop: bool) -> f32 {
+  n := along.count; total: f32 = 0;
+  for i: 0..<n - 1 {
+    total += tt_leg(along[i + 1] - along[i], cruise, accel, tt_rests(wait, i, n, loop), tt_rests(wait, i + 1, n, loop)).time;
+    total += tt_wait(wait, i + 1, n, loop);
+  }
+  return total;
+}
+// Where the mover is `time` seconds after it left the lane's first point. A loop goes round for
+// ever; a lane with two ends stays at its far end.
+tt_run :: (along: [] f32, wait: [] f32, cruise: f32, accel: f32, loop: bool, time: f32) -> TtRun {
+  n := along.count; r: TtRun;
+  if n < 2 { return r; }
+  t := time; if t < 0 { t = 0; }
+  if loop {
+    cycle := tt_cycle(along, wait, cruise, accel, true);
+    if cycle > 0 { t = t - floor(t / cycle) * cycle; }
+  }
+  a := ifx accel > 0.0001 then accel else 0.0001f32;
+  for i: 0..<n - 1 {
+    span := along[i + 1] - along[i];
+    to_rest := tt_rests(wait, i + 1, n, loop);
+    l := tt_leg(span, cruise, accel, tt_rests(wait, i, n, loop), to_rest);
+    r.leg = i;
+    if t < l.time {
+      if t < l.up { r.along = along[i] + 0.5f32 * a * t * t; r.speed = a * t; return r; }
+      ramp := 0.5f32 * a * l.up * l.up;
+      if t < l.up + l.hold { r.along = along[i] + ramp + l.top * (t - l.up); r.speed = l.top; return r; }
+      d := t - l.up - l.hold;
+      r.along = along[i] + ramp + l.top * l.hold + l.top * d - 0.5f32 * a * d * d;
+      r.speed = l.top - a * d;
+      if r.along > along[i + 1] { r.along = along[i + 1]; }
+      return r;
+    }
+    t -= l.time;
+    w := tt_wait(wait, i + 1, n, loop);
+    if t < w { r.along = along[i + 1]; r.speed = 0; r.waiting = true; r.left = w - t; return r; }
+    t -= w;
+  }
+  r.along = along[n - 1]; r.speed = 0; r.waiting = true; r.leg = n - 2;
+  return r;
+}
+// The lane's place at a run (metaverse_lane_at): x and z.
+tt_place :: (points: [] f32, along: [] f32, r: TtRun) -> [2] f32 {
+  p := lane.metaverse_lane_at(points, along, r.along);
+  return [2] f32.[p.x, p.z];
+}
+tt_leg_way :: (points: [] f32, n: int, i: int, loop: bool) -> [2] f32 {
+  k := i;
+  if k < 0 { k = ifx loop then n - 2 else 0; }
+  if k > n - 2 { k = ifx loop then 0 else n - 2; }
+  dx := points[k * 2 + 2] - points[k * 2]; dz := points[k * 2 + 3] - points[k * 2 + 1];
+  d := sqrt(dx * dx + dz * dz);
+  if d < 0.000001 { return [2] f32.[1, 0]; }
+  return [2] f32.[dx / d, dz / d];
+}
+// The way the mover faces (x, z, unit): along its leg, turned half way toward the next leg by the
+// time it reaches the corner and the rest of the way over the first `turn` metres after it.
+tt_heading :: (points: [] f32, along: [] f32, r: TtRun, loop: bool, turn: f32) -> [2] f32 {
+  n := along.count;
+  if n < 2 { return [2] f32.[1, 0]; }
+  w := tt_leg_way(points, n, r.leg, loop);
+  if turn <= 0 { return w; }
+  into := r.along - along[r.leg]; left := along[r.leg + 1] - r.along;
+  o := w; k: f32 = 0;
+  if into < turn && (loop || r.leg > 0) { o = tt_leg_way(points, n, r.leg - 1, loop); k = 0.5f32 * (1 - into / turn); }
+  else if left < turn && (loop || r.leg < n - 2) { o = tt_leg_way(points, n, r.leg + 1, loop); k = 0.5f32 * (1 - left / turn); }
+  x := w[0] + (o[0] - w[0]) * k; z := w[1] + (o[1] - w[1]) * k;
+  d := sqrt(x * x + z * z);
+  if d < 0.01 { return w; }
+  return [2] f32.[x / d, z / d];
+}
+
+// ---- checks
+TT_SQUARE :: [10] f32.[0, 0, 100, 0, 100, 100, 0, 100, 0, 0];
+#test "a leg from rest to rest speeds up, holds and slows; a short one never reaches its cruising speed" {
+  l := tt_leg(100, 10, 2, true, true);
+  // 25 m up to speed in 5 s, 50 m held for 5 s, 25 m down in 5 s
+  #assert abs(l.up - 5) < 0.0001 && abs(l.hold - 5) < 0.0001 && abs(l.time - 15) < 0.0001 && l.top == 10;
+  s := tt_leg(16, 10, 2, true, true);
+  #assert abs(s.top - sqrt(32.0f32)) < 0.0001 && s.hold < 0.001 && abs(s.time - s.top) < 0.001;
+  // passing both ends at speed is the span over the speed
+  #assert abs(tt_leg(100, 10, 2, false, false).time - 10) < 0.0001;
+}
+#test "a loop with a stop at each corner comes round to where it started, and stands at each corner" {
+  along: [5] f32; wait := [5] f32.[2, 2, 2, 2, 0]; sq := TT_SQUARE;
+  #assert lane.metaverse_lane_build(sq[..], along[..]) == 400;
+  cycle := tt_cycle(along[..], wait[..], 10, 2, true);
+  #assert abs(cycle - 4 * (15 + 2)) < 0.001;
+  // half way down the first side at the middle of its hold
+  r := tt_run(along[..], wait[..], 10, 2, true, 7.5);
+  #assert abs(r.along - 50) < 0.001 && abs(r.speed - 10) < 0.001 && r.leg == 0 && !r.waiting;
+  // it never goes backward, and stands at the first corner from 15 s to 17 s
+  last: f32 = 0;
+  for k: 0..<340 { q := tt_run(along[..], wait[..], 10, 2, true, cast(f32) k * 0.2f32); #assert q.along >= last - 0.0001 && q.speed <= 10.0001 && q.speed >= -0.0001; last = q.along; }
+  w := tt_run(along[..], wait[..], 10, 2, true, 16);
+  #assert w.waiting && w.along == 100 && abs(w.left - 1) < 0.001 && w.speed == 0;
+  // a whole round later it is where it was
+  b := tt_run(along[..], wait[..], 10, 2, true, 7.5f32 + cycle * 3);
+  #assert abs(b.along - 50) < 0.01;
+  p := tt_place(sq[..], along[..], tt_run(along[..], wait[..], 10, 2, true, 17 + 7.5f32));
+  #assert abs(p[0] - 100) < 0.001 && abs(p[1] - 50) < 0.001;
+}
+#test "a walker who never stops goes round at one speed, and turns smoothly through a corner" {
+  along: [5] f32; wait: [5] f32; sq := TT_SQUARE;
+  _ = lane.metaverse_lane_build(sq[..], along[..]);
+  #assert abs(tt_cycle(along[..], wait[..], 1.25, 1, true) - 320) < 0.001;
+  r := tt_run(along[..], wait[..], 1.25, 1, true, 40);
+  #assert abs(r.along - 50) < 0.001 && r.speed == 1.25;
+  h := tt_heading(sq[..], along[..], r, true, 4);
+  #assert h[0] == 1 && h[1] == 0;
+  // at the corner it faces half way between the two sides, a moment before and a moment after
+  before := tt_heading(sq[..], along[..], tt_run(along[..], wait[..], 1.25, 1, true, 79.99), true, 4);
+  after := tt_heading(sq[..], along[..], tt_run(along[..], wait[..], 1.25, 1, true, 80.01), true, 4);
+  #assert abs(before[0] - 0.7071) < 0.01 && abs(before[1] - 0.7071) < 0.01 && abs(after[0] - before[0]) < 0.01 && abs(after[1] - before[1]) < 0.01;
+  // round the loop's own join too
+  join := tt_heading(sq[..], along[..], tt_run(along[..], wait[..], 1.25, 1, true, 0.01), true, 4);
+  #assert abs(join[0] - 0.7071) < 0.01 && abs(join[1] + 0.7071) < 0.01;
+}
+#test "a lane with two ends is run once and the mover stays at its far end" {
+  pts := [4] f32.[0, 0, 30, 40]; along: [2] f32; wait: [2] f32;
+  _ = lane.metaverse_lane_build(pts[..], along[..]);
+  #assert abs(tt_cycle(along[..], wait[..], 5, 1, false) - tt_leg(50, 5, 1, true, true).time) < 0.0001;
+  r := tt_run(along[..], wait[..], 5, 1, false, 1000);
+  #assert r.along == 50 && r.waiting && r.speed == 0;
+  h := tt_heading(pts[..], along[..], r, false, 3);
+  #assert abs(h[0] - 0.6) < 0.0001 && abs(h[1] - 0.8) < 0.0001;
+}

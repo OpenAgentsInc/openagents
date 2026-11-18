@@ -1,0 +1,269 @@
+// What lives in a photoreal scene (docs/metaverse/photoreal.md, "What moves"): the engine's figure
+// drawn as leaning records, a flag that follows the wind, a seabird, and a helicopter's rotors.
+// Each is a handful of records of parts a realm made once (metaverse-engine/arch/traffic.coax, and
+// the unit box of photoreal-scene.coax), written into the realm's moving list every frame. Nothing
+// here keeps state: a figure is a skeleton, a pose and a place; a flag is the wind and the time.
+//
+//   pr_figure   a person: the engine's figure (metaverse-engine/anim/figure.coax: its skeleton, its
+//               joint limits, its walk) with each bone a rounded part laid from joint to joint.
+//               PR_FIGURE_RECORDS records. The realm keeps the skeleton (pr_figure_rig: a few
+//               builds, made once) and asks pr_figure_walk for a pose.
+//   pr_flag     a flag from the top of its pole: strips of cloth that stream downwind, hang when
+//               the air is still and ripple faster the harder it blows. PR_FLAG_RECORDS records.
+//   pr_bird     a seabird: a body and two wings that beat. 3 records.
+//   pr_rotors   a helicopter's main and tail rotors on its body's record. 2 records.
+//   coax/bin/coax test --library metaverse-engine/render/shade/photoreal-life.coax
+#module "metaverse.engine.render.photoreal_life";
+#load "photoreal-scene.coax";
+#load "../../anim/figure.coax" as mfig;
+#load "../../arch/traffic.coax";
+
+// What a person wears, each a colour that multiplies the paint (light's own scale).
+PrFigureLook :: struct {
+  skin: [3] f32 = [3] f32.[0.72, 0.5, 0.38];
+  top: [3] f32 = [3] f32.[0.6, 0.6, 0.62];
+  legs: [3] f32 = [3] f32.[0.08, 0.09, 0.13];
+  shoes: [3] f32 = [3] f32.[0.05, 0.05, 0.05];
+  hair: [3] f32 = [3] f32.[0.06, 0.04, 0.03];   // or a hard hat's colour
+  sleeves: bool = true;                          // long sleeves: the forearms take the top's colour
+  material: int;                                 // the paint
+}
+PR_FIGURE_RECORDS :: 21;   // a person's twenty bones and their hair
+// A person's skeleton for a build: `size` 1 is 1.74 m tall.
+pr_figure_rig :: (size: f32, girth: f32) -> mfig.Skeleton {
+  s: mfig.Shape; s.rig = mfig.Rig.person; s.size = size; s.girth = girth;
+  return mfig.metaverse_figure_skeleton(mfig.metaverse_figure_shape_fix(s));
+}
+// How far a figure of this size walks in a second, and how many strides it takes.
+pr_figure_speed :: (size: f32) -> f32 { s: mfig.Shape; s.rig = mfig.Rig.person; s.size = size; return mfig.metaverse_figure_speed(s, mfig.Gait.walk); }
+pr_figure_strides :: (size: f32) -> f32 { s: mfig.Shape; s.rig = mfig.Rig.person; s.size = size; return mfig.metaverse_figure_stride_rate(s, mfig.Gait.walk); }
+// The pose of a walk `strides` strides in (its fraction is the phase), or of standing at `clock` seconds.
+pr_figure_walk :: (strides: f32, clock: f32, walking: bool) -> mfig.Pose {
+  if !walking { return mfig.metaverse_figure_gait(mfig.Rig.person, mfig.Gait.stand, 0, clock); }
+  return mfig.metaverse_figure_gait(mfig.Rig.person, mfig.Gait.walk, strides - floor(strides), clock);
+}
+pr_figure_tint :: (k: mfig.Skeleton, i: int, look: PrFigureLook) -> [3] f32 {
+  q := k.part[i];
+  if q.region == mfig.REGION_HEAD || (q.a == mfig.P_NECK && q.b == mfig.P_HEAD) { return look.skin; }
+  arm := (q.a >= mfig.P_L_SHOULDER && q.a <= mfig.P_R_HAND) && (q.b >= mfig.P_L_SHOULDER && q.b <= mfig.P_R_HAND);
+  if arm {
+    if q.a == q.b { return look.skin; }                                           // a hand
+    if (q.a == mfig.P_L_ELBOW || q.a == mfig.P_R_ELBOW) && !look.sleeves { return look.skin; }
+    return look.top;
+  }
+  if q.a >= mfig.P_L_HIP || q.b >= mfig.P_L_HIP {
+    if q.b == mfig.P_L_TOE || q.b == mfig.P_R_TOE { return look.shoes; }
+    return look.legs;
+  }
+  return look.top;
+}
+// A person with their feet at (x, y, z), facing `heading` (0 is +z; a quarter turn is +x), in a
+// pose. `bone` is the realm's traffic_bone part. Writes PR_FIGURE_RECORDS records and answers the
+// first (or -1 while the list counts). `value` is the realm's own number on each (what was clicked).
+pr_figure :: (l: [] PrList, bone: int, k: mfig.Skeleton, pose: mfig.Pose, x: f32, y: f32, z: f32, heading: f32, look: PrFigureLook, value: f32) -> int {
+  first := -1;
+  if !l[0].filling {
+    for i: 0..<PR_FIGURE_RECORDS { _ = pr_put(l, bone, 0, 0, 0, 0, 1); }
+    return first;
+  }
+  joints: [mfig.MAX_JOINTS] mfig.Fv;
+  _ = mfig.metaverse_figure_joints_at(k, pose, mfig.Place.{x = 0, y = 0, z = 0, yaw = 0}, joints[..]);
+  for i: 0..<PR_FIGURE_RECORDS {
+    r := -1;
+    tint := look.hair;
+    if i < k.parts {
+      q := k.part[i]; a := joints[q.a]; b := joints[q.b];
+      dx := b.x - a.x; dy := b.y - a.y; dz := b.z - a.z; d := sqrt(dx * dx + dy * dy + dz * dz);
+      // a bone is a capsule in the figure's own drawing: its rounded ends reach past its joints
+      if d < 0.0001 { dx = 0; dy = 1; dz = 0; d = 0; } else { dx /= d; dy /= d; dz /= d; }
+      ea := q.ra * 0.75f32; eb := q.rb * 0.75f32;
+      wide := q.ra + q.rb; deep := wide;
+      trunk := q.a <= mfig.P_CHEST && q.b <= mfig.P_NECK && q.b >= mfig.P_SPINE;
+      if trunk { wide = wide * 1.5f32; deep = deep * 0.95f32; }
+      r = pr_span_in(l, bone, x, y, z, heading, a.x - dx * ea, a.y - dy * ea, a.z - dz * ea, b.x + dx * eb, b.y + dy * eb, b.z + dz * eb, wide, deep);
+      tint = pr_figure_tint(k, i, look);
+    } else if i == PR_FIGURE_RECORDS - 1 {
+      // the hair, or a hat: a cap over the crown
+      h := joints[mfig.P_HEAD]; c := joints[mfig.P_CROWN]; s := k.size;
+      r = pr_span_in(l, bone, x, y, z, heading, h.x, h.y + 0.085f32 * s, h.z - 0.012f32 * s, c.x, c.y + 0.115f32 * s, c.z - 0.012f32 * s, 0.215f32 * s, 0.225f32 * s);
+    } else {
+      r = pr_put(l, bone, x, y - 100, z, 0, 0.001);   // a rig with fewer bones: out of sight
+    }
+    pr_tint(l, r, tint[0], tint[1], tint[2]); pr_made_of(l, r, look.material); pr_value(l, r, value);
+    if first < 0 { first = r; }
+  }
+  return first;
+}
+
+// ---- a flag
+PR_FLAG_STRIPS :: 6;
+PR_FLAG_RECORDS :: PR_FLAG_STRIPS * 2;   // each strip an upper and a lower band of colour
+// How far the cloth hangs from level (radians, down): straight down in still air, nearly level by a fresh breeze.
+pr_flag_droop :: (speed: f32) -> f32 {
+  t := (speed - 0.5f32) / 7.5f32; if t < 0 { t = 0; } if t > 1 { t = 1; }
+  t = t * t * (3 - 2 * t);
+  return 1.4f32 * (1 - t) + 0.1f32;
+}
+// How many ripples a second run down the cloth, and how far its free end swings (radians).
+pr_flag_rate :: (speed: f32) -> f32 { return 0.5f32 + 0.22f32 * speed; }
+pr_flag_swing :: (speed: f32) -> f32 { t := (speed - 1) / 9; if t < 0 { t = 0; } if t > 1 { t = 1; } return 0.12f32 + 0.5f32 * t; }
+// A flag `long` by `hoist` metres whose upper corner at the pole is (x, y, z), in a wind blowing
+// toward (wx, wz) (unit) at `speed` m/s, at `time` seconds. `box` is the realm's unit box
+// (pr_unit_box). `free`: it does not ride the platform (a ship's ensign).
+pr_flag :: (l: [] PrList, box: int, x: f32, y: f32, z: f32, long: f32, hoist: f32, wx: f32, wz: f32, speed: f32, time: f32, seed: f32,
+            upper: [3] f32, lower: [3] f32, material: int, free: bool) {
+  seg := long / cast(f32) PR_FLAG_STRIPS;
+  droop := pr_flag_droop(speed); swing := pr_flag_swing(speed); rate := pr_flag_rate(speed);
+  base := angle_atan2(-wz, wx);   // the yaw whose +x runs downwind
+  ax := x; ay := y; az := z;
+  for i: 0..<PR_FLAG_STRIPS {
+    along := (cast(f32) i + 0.5f32) / cast(f32) PR_FLAG_STRIPS;
+    wave := sin(6.2831853f32 * (rate * time - along * 1.4f32) + seed);
+    yaw := base + swing * along * wave;
+    pitch := -droop * (0.75f32 + 0.25f32 * along) + 0.1f32 * swing * sin(6.2831853f32 * (rate * 0.63f32 * time - along) + seed * 1.7f32);
+    cp := cos(pitch); sp := sin(pitch); c := cos(yaw); s := sin(yaw);
+    // the strip's own x (along the fly) and y (up the hoist) in the world
+    fx := cp * c; fy := sp; fz := -cp * s;
+    ux := -sp * c; uy := cp; uz := sp * s;
+    for band: 0..<2 {
+      // each band stands on the middle of its lower edge
+      down := hoist * (ifx band == 0 then 0.5f32 else 1.0f32);
+      r := pr_put(l, box, ax + fx * seg * 0.5f32 - ux * down, ay + fy * seg * 0.5f32 - uy * down, az + fz * seg * 0.5f32 - uz * down, yaw, 1);
+      pr_stretch(l, r, seg * 1.04f32, hoist * 0.5f32, 0.03);
+      pr_lean(l, r, pitch, 0);
+      tint := ifx band == 0 then upper else lower;
+      pr_tint(l, r, tint[0], tint[1], tint[2]); pr_made_of(l, r, material);
+      if free { pr_free(l, r); }
+    }
+    ax += fx * seg; ay += fy * seg; az += fz * seg;
+  }
+}
+
+// ---- a seabird
+// A bird at (x, y, z) flying along (fx, fz) (unit), its wings `beat` radians above level (a glide is
+// a small steady angle). `body` and `wing` are the realm's traffic_bird and traffic_wing parts.
+pr_bird :: (l: [] PrList, body: int, wing: int, x: f32, y: f32, z: f32, fx: f32, fz: f32, beat: f32, bank: f32, material: int) {
+  yaw := angle_atan2(-fz, fx);
+  b := pr_put(l, body, x, y, z, yaw, 1); pr_lean(l, b, 0, bank); pr_made_of(l, b, material);
+  for side: 0..<2 {
+    w := pr_put(l, wing, x, y + 0.03f32, z, yaw, 1);
+    pr_stretch(l, w, 1, 1, ifx side == 0 then 1.0f32 else -1.0f32);
+    // a wing's tip lies along its z, and a roll about x lowers what lies along +z: so the wing
+    // along +z rolls the other way to lift its tip, and the mirrored one rolls with the beat
+    pr_lean(l, w, 0, (ifx side == 0 then -beat else beat) + bank);
+    pr_made_of(l, w, material);
+  }
+}
+
+// ---- a helicopter's rotors
+// The rotors of a helicopter whose body's record stands at (x, y, z) turned `yaw`, pitched and
+// rolled (pr_lean): the main rotor `turn` radians round, the tail rotor with it. The rotors take
+// the body's pitch and roll about its place only roughly (they stand level over it), which reads
+// right for the few degrees a helicopter tilts.
+pr_rotors :: (l: [] PrList, rotor: int, tail: int, x: f32, y: f32, z: f32, yaw: f32, pitch: f32, turn: f32, material: int, free: bool) {
+  c := cos(yaw); s := sin(yaw);
+  up := TRAFFIC_ROTOR_UP;
+  // the hub leans forward with the body's pitch: its place moves by the pitch times its height
+  hx := -sin(pitch) * up;
+  r := pr_put(l, rotor, x + hx * c, y + cos(pitch) * up + 0.1f32, z - hx * s, yaw + turn, 1);
+  pr_made_of(l, r, material); if free { pr_free(l, r); }
+  t := traffic_tail_at();
+  tx := t[0] * cos(pitch) - t[1] * sin(pitch); ty := t[0] * sin(pitch) + t[1] * cos(pitch);
+  q := pr_put(l, tail, x + tx * c + t[2] * s, y + ty, z - tx * s + t[2] * c, yaw, 1);
+  pr_lean(l, q, pitch + turn * 1.9f32, 0);
+  pr_made_of(l, q, material); if free { pr_free(l, q); }
+}
+
+// ---- checks
+pr_life_test_top :: (rec: [] f32, r: int) -> [3] f32 {
+  // where the shader stands the part's top, (0, 1, 0) stretched: rolled about x, pitched about z, turned about y
+  o := r * PR_RECORD_FLOATS;
+  span := rec[o + PR_R_STRETCH + 1]; roll := rec[o + PR_R_SCALE]; pitch := rec[o + PR_R_PHASE]; yaw := rec[o + PR_R_YAW];
+  y := span * cos(roll); z := span * sin(roll);
+  lx := -y * sin(pitch); ly := y * cos(pitch);
+  return [3] f32.[rec[o] + lx * cos(yaw) + z * sin(yaw), rec[o + 1] + ly, rec[o + 2] - lx * sin(yaw) + z * cos(yaw)];
+}
+#test "a walking figure's records stand on the ground at its place, as tall as its build, and its feet swap ahead and behind" {
+  mesh: [200 * ARCH_VERTEX_FLOATS] f32; pen: [1] ArchPen; arch_pen(pen[..], mesh[..]);
+  records: [64 * PR_RECORD_FLOATS] f32; draws: [2 * PR_DRAW_WORDS] u32; ls: [1] PrList; l := ls[..];
+  pr_list(l, records[..], draws[..], 0);
+  bone := pr_part(l, traffic_bone(pen[..], TrafficLook.{paint = 1, glass = 2, dark = 3}));
+  k := pr_figure_rig(1, 1);
+  look: PrFigureLook; look.material = 1;
+  #assert k.parts == 20 && k.parts < PR_FIGURE_RECORDS;
+  lead: [2] f32;
+  for step: 0..<2 {
+    pose := pr_figure_walk(0.25f32 + 0.5f32 * cast(f32) step, 0, true);
+    // facing +x: a quarter turn
+    pr_list_count(l); _ = pr_figure(l, bone, k, pose, 10, 5, -3, 1.5707963, look, 7);
+    pr_list_fill(l); first := pr_figure(l, bone, k, pose, 10, 5, -3, 1.5707963, look, 7);
+    #assert first == 0 && l[0].rn == PR_FIGURE_RECORDS && !l[0].full;
+    low: f32 = 100; high: f32 = -100;
+    for r: 0..<PR_FIGURE_RECORDS {
+      o := r * PR_RECORD_FLOATS; top := pr_life_test_top(records[..], r);
+      #assert records[o + PR_R_MOTION] == 4 && records[o + PR_R_VALUE] == 7 && records[o + PR_R_MATERIAL] == 1;
+      if records[o + 1] < low { low = records[o + 1]; } if top[1] < low { low = top[1]; }
+      if records[o + 1] > high { high = records[o + 1]; } if top[1] > high { high = top[1]; }
+      // nothing strays far from where the figure stands
+      #assert abs(records[o] - 10) < 0.9 && abs(records[o + 2] + 3) < 0.9;
+    }
+    #assert low > 4.9 && low < 5.12 && high > 5 + 1.6 && high < 5 + 1.95;
+    // the left foot's bone (hip + 2 to its toe) is the sixth of its side: its place along x says which foot leads
+    for r: 0..<k.parts { if k.part[r].b == mfig.P_L_TOE { lead[step] = records[r * PR_RECORD_FLOATS] - 10; } }
+  }
+  #assert lead[0] * lead[1] < 0;
+}
+#test "a figure's colours go where they belong: skin on the head and hands, the top on the body, shoes on the feet" {
+  k := pr_figure_rig(1, 1);
+  look: PrFigureLook; look.sleeves = false;
+  for i: 0..<k.parts {
+    q := k.part[i]; t := pr_figure_tint(k, i, look);
+    if q.b == mfig.P_CROWN || (q.a == q.b) || q.b == mfig.P_L_HAND || q.b == mfig.P_R_HAND { #assert t[0] == look.skin[0]; }
+    if q.b == mfig.P_L_TOE || q.b == mfig.P_R_TOE { #assert t[0] == look.shoes[0]; }
+    if q.b == mfig.P_L_KNEE || q.b == mfig.P_R_FOOT || q.b == mfig.P_L_HIP { #assert t[0] == look.legs[0]; }
+    if q.b == mfig.P_CHEST || q.b == mfig.P_L_ELBOW || (q.a == mfig.P_L_SHOULDER && q.b == mfig.P_R_SHOULDER) { #assert t[0] == look.top[0]; }
+  }
+}
+#test "a flag hangs in still air and streams downwind in a breeze; its strips join end to end" {
+  mesh: [100 * ARCH_VERTEX_FLOATS] f32; pen: [1] ArchPen; arch_pen(pen[..], mesh[..]);
+  records: [32 * PR_RECORD_FLOATS] f32; draws: [2 * PR_DRAW_WORDS] u32; ls: [1] PrList; l := ls[..];
+  pr_list(l, records[..], draws[..], 0);
+  box := pr_part(l, pr_unit_box(pen[..]));
+  #assert pr_flag_droop(0) > 1.4 && pr_flag_droop(12) < 0.11 && pr_flag_droop(4) < pr_flag_droop(2) && pr_flag_rate(10) > pr_flag_rate(3);
+  white := [3] f32.[1, 1, 1];
+  reach: [2] f32;
+  for wind: 0..<2 {
+    speed: f32 = ifx wind == 0 then 0.0f32 else 12.0f32;
+    // a wind blowing toward -z
+    pr_list_count(l); pr_flag(l, box, 0, 20, 0, 3, 2, 0, -1, speed, 1.3, 0, white, white, 1, false);
+    pr_list_fill(l); pr_flag(l, box, 0, 20, 0, 3, 2, 0, -1, speed, 1.3, 0, white, white, 1, false);
+    #assert l[0].rn == PR_FLAG_RECORDS && !l[0].full;
+    // the last strip's upper band: how far downwind and how far down its middle is
+    o := (PR_FLAG_RECORDS - 2) * PR_RECORD_FLOATS;
+    reach[wind] = -records[o + 2];
+    if wind == 0 { #assert records[o + 1] < 20 - 2.2 && reach[0] < 1.2; }
+    if wind == 1 { #assert reach[1] > 2.2 && records[o + 1] > 20 - 2 && abs(records[o]) < 1.2; }
+  }
+}
+#test "a bird is a body and two wings at one place; a helicopter's rotor stands over its body" {
+  mesh: [400 * ARCH_VERTEX_FLOATS] f32; pen: [1] ArchPen; arch_pen(pen[..], mesh[..]);
+  records: [8 * PR_RECORD_FLOATS] f32; draws: [4 * PR_DRAW_WORDS] u32; ls: [1] PrList; l := ls[..];
+  look := TrafficLook.{paint = 1, glass = 2, dark = 3};
+  pr_list(l, records[..], draws[..], 0);
+  body := pr_part(l, traffic_bird(pen[..], look)); wing := pr_part(l, traffic_wing(pen[..], look));
+  rotor := pr_part(l, traffic_rotor(pen[..], look)); tail := pr_part(l, traffic_tail_rotor(pen[..], look));
+  for run: 0..<2 {
+    if run == 0 { pr_list_count(l); } else { pr_list_fill(l); }
+    pr_bird(l, body, wing, 1, 2, 3, 0, 1, 0.4, 0, 1);
+    pr_rotors(l, rotor, tail, 100, 50, 20, 0, 0, 1.0, 1, true);
+  }
+  #assert l[0].rn == 5 && !l[0].full;
+  // the wings: mirrored along z, rolled opposite ways so both tips rise
+  o := 1 * PR_RECORD_FLOATS;
+  #assert records[o] == 1 && records[o + PR_R_STRETCH + 2] == 1 && records[o + PR_R_SCALE] == -0.4;
+  #assert records[o + PR_RECORD_FLOATS + PR_R_STRETCH + 2] == -1 && records[o + PR_RECORD_FLOATS + PR_R_SCALE] == 0.4;
+  // the shader's roll of each tip: (y, z) to (y cos r - z sin r, ...): both rise
+  #assert -TRAFFIC_WING * sin(records[o + PR_R_SCALE]) > 0.2 && TRAFFIC_WING * sin(records[o + PR_RECORD_FLOATS + PR_R_SCALE]) > 0.2;
+  r := 3 * PR_RECORD_FLOATS;
+  #assert records[r] == 100 && abs(records[r + 1] - 50 - TRAFFIC_ROTOR_UP - 0.1) < 0.001 && records[r + PR_R_YAW] == 1 && records[r + PR_R_FREE] == 1;
+}

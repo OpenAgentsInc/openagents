@@ -204,6 +204,9 @@ moves everything with the hull. What a record can also say:
 | `pr_laid(l, r)` | lies flat on a surface (a road marking): drawn a hair nearer so the two never flicker |
 | `pr_free(l, r)` | doesn't ride the platform (a ship beside it): its position is in the world's frame |
 | `pr_near(l, r, metres)` | a small thing: drawn only within that distance of the eye (three fifths of it on a phone) |
+| `pr_lean(l, r, pitch, roll)` | stands the part rolled about its own x, then pitched about its own z, then turned by its yaw (a ship on a wave, a bone of a walking figure); it takes the place of a motion. **Not drawn yet:** see "Things that move" |
+| `pr_span(l, part, ax, ay, az, bx, by, bz, across)` | a part made 1 m long along +y (a bone, a rod), stretched from a to b and `across` thick |
+| `pr_span_in(l, part, ox, oy, oz, yaw, ax, ..., bz, wide, deep)` | the same, with a and b given in a frame at o turned by `yaw` (a limb of a figure that faces some way) |
 | `pr_value(l, r, v)` | the realm's own number; SLAB's plan parts carry their record's number here |
 | `pr_box(l, ph[0].box, x0, y0, z0, x1, y1, z1, material)` | a box between two corners |
 
@@ -247,6 +250,34 @@ only, and nothing in the construction view.
 | The dock | Four gantry cranes on the basin's rims, a landing stage, a gangway and a door, a lift shaft, bollards, fenders | 29 |
 
 The lamps' lens material is `slab_city_lamp(ph)`, for the night lights to light.
+
+### Things that move
+
+The engine has the kinds a living place needs, so a realm doesn't draw its
+own:
+
+| You need | Use | Where |
+| --- | --- | --- |
+| A ship, a truck, a forklift, a cart, a helicopter and its rotors, a person at a distance, a bird | `traffic_ship(pen, look, TRAFFIC_SUPPLY)` and the rest: each answers a part, front along +x, standing on y 0 (a ship's waterline) | `metaverse-engine/arch/traffic.coax` |
+| A ship that rides the sea | Sample the sea's height at the nine places `traffic_ride_at` gives, pass them to `traffic_ride`, and give its heave to the record's height and its pitch and roll to `pr_lean` | `metaverse-engine/arch/traffic.coax` |
+| A walking figure up close | `pr_figure`: the engine's person skeleton and walk (`anim/figure.coax`), drawn as 21 records, one a bone | `metaverse-engine/render/shade/photoreal-life.coax` |
+| A flag in the wind, a flying bird, a turning rotor | `pr_flag` (12 records), `pr_bird` (3), `pr_rotors` (2) | `metaverse-engine/render/shade/photoreal-life.coax` |
+| Where a mover is at a time, with no state kept | `tt_run` on a lane with a wait at each point, then `tt_place` and `tt_heading` | `metaverse-engine/world/timetable.coax` |
+
+A timetable is a function of the time alone: every visitor sees the same
+mover in the same place, and a picture at a fixed time is repeatable.
+Movers do not see each other, so space them in time.
+
+SLAB does not draw these yet. Its content set for them
+(`slab-content-life.coax`, issue #13687) is still to be written.
+
+**The shader does not lean a record yet.** `pr_lean` writes the record, but
+the shader's half (`pr_leant` in `photoreal.coax`) is not on `main`: its
+push waits on checks for the sway and bob code it touches (#13687). Until
+it lands, a leaning record is drawn upright and at the wrong size, so
+`pr_lean`, `pr_span`, `pr_span_in`, `pr_figure`, `pr_flag`, `pr_bird` and
+`pr_rotors` draw wrong. The parts, the timetable and `traffic_ride` do not
+depend on it.
 
 ### Check it
 

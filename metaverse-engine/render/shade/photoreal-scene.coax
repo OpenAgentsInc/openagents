@@ -18,6 +18,7 @@
 //   coax/bin/coax test --library metaverse-engine/render/shade/photoreal-scene.coax
 #module "metaverse.engine.render.photoreal_scene";
 #load "../../arch/mesh.coax";
+#load "../../core/angle.coax";
 #load "photoreal-layout.coax";
 
 PR_PARTS :: 128;   // kinds of part a realm's list may hold
@@ -95,6 +96,42 @@ pr_made_of :: (l: [] PrList, r: int, material: int) { pr_set(l, r, PR_R_MATERIAL
 pr_motion :: (l: [] PrList, r: int, motion: int, phase: f32) { pr_set(l, r, PR_R_MOTION, cast(f32) motion); pr_set(l, r, PR_R_PHASE, phase); }
 pr_free :: (l: [] PrList, r: int) { pr_set(l, r, PR_R_FREE, 1 + pr_near_set(l, r)); }
 pr_laid :: (l: [] PrList, r: int) { pr_set(l, r, PR_R_MOTION, cast(f32) PR_LAID); }   // it lies flat on a surface
+// It leans (PR_LEAN): rolled `roll` about its part's x, then pitched `pitch` about its z (its +x end
+// rises), then turned by its yaw. A ship on a sea, a limb, a flag's cloth. It keeps the size it has.
+pr_lean :: (l: [] PrList, r: int, pitch: f32, roll: f32) {
+  if r < 0 || r >= l[0].rn { return; }
+  o := r * PR_RECORD_FLOATS;
+  if l[0].records[o + PR_R_MOTION] != cast(f32) PR_LEAN && l[0].records[o + PR_R_STRETCH] == 0 && l[0].records[o + PR_R_STRETCH + 1] == 0 && l[0].records[o + PR_R_STRETCH + 2] == 0 {
+    k := l[0].records[o + PR_R_SCALE];
+    l[0].records[o + PR_R_STRETCH] = k; l[0].records[o + PR_R_STRETCH + 1] = k; l[0].records[o + PR_R_STRETCH + 2] = k;
+  }
+  l[0].records[o + PR_R_MOTION] = cast(f32) PR_LEAN; l[0].records[o + PR_R_PHASE] = pitch; l[0].records[o + PR_R_SCALE] = roll;
+}
+// A part that runs from its place one metre up its own y, laid from a to b instead (a limb, a
+// spar, a rope's piece): `across` wide. Answers the record.
+pr_span :: (l: [] PrList, part: int, ax: f32, ay: f32, az: f32, bx: f32, by: f32, bz: f32, across: f32) -> int {
+  dx := bx - ax; dy := by - ay; dz := bz - az; span := sqrt(dx * dx + dy * dy + dz * dz);
+  r := pr_put(l, part, ax, ay, az, 0, 1);
+  if span < 0.000001 { pr_stretch(l, r, across, 0.000001, across); return r; }
+  // its y goes to (-cos roll sin pitch, cos roll cos pitch, sin roll)
+  sr := dz / span; if sr > 1 { sr = 1; } if sr < -1 { sr = -1; }
+  roll := angle_atan2(sr, sqrt(1 - sr * sr)); pitch := angle_atan2(-dx, dy);
+  pr_stretch(l, r, across, span, across);
+  pr_lean(l, r, pitch, roll);
+  return r;
+}
+// The same in a frame of its own: a and b are in a frame that stands at (ox, oy, oz) turned `yaw`
+// about y (a figure's joints, a mast's stays), and the part is `wide` along the frame's x and
+// `deep` along its z where it stands upright.
+pr_span_in :: (l: [] PrList, part: int, ox: f32, oy: f32, oz: f32, yaw: f32, ax: f32, ay: f32, az: f32, bx: f32, by: f32, bz: f32, wide: f32, deep: f32) -> int {
+  c := cos(yaw); s := sin(yaw);
+  r := pr_span(l, part, ax, ay, az, bx, by, bz, wide);
+  if r < 0 || r >= l[0].rn { return r; }
+  o := r * PR_RECORD_FLOATS;
+  l[0].records[o + PR_R_PLACE] = ox + ax * c + az * s; l[0].records[o + PR_R_PLACE + 1] = oy + ay; l[0].records[o + PR_R_PLACE + 2] = oz - ax * s + az * c;
+  l[0].records[o + PR_R_YAW] = yaw; l[0].records[o + PR_R_STRETCH + 2] = deep;
+  return r;
+}
 // A box part (one that spans -0.5 to 0.5 along x and z and 0 to 1 up, pr_unit_box) stretched to
 // stand between two corners, of one material. Its record's number, or -1.
 pr_box :: (l: [] PrList, unit_box: int, x0: f32, y0: f32, z0: f32, x1: f32, y1: f32, z1: f32, material: int) -> int {
@@ -289,5 +326,28 @@ pr_test_content :: (l: [] PrList, box: int, drum: int) {
       cx := ay * bz - az * by; cy := az * bx - ax * bz; cz := ax * by - ay * bx;
       #assert cx * mesh[o + 3] + cy * mesh[o + 4] + cz * mesh[o + 5] > 0;
     }
+  }
+}
+#test "a leaning record keeps its size as its stretch, and a spanned part's pitch and roll carry its y from a to b" {
+  mesh: [100 * ARCH_VERTEX_FLOATS] f32; pen: [1] ArchPen; arch_pen(pen[..], mesh[..]);
+  records: [8 * PR_RECORD_FLOATS] f32; draws: [2 * PR_DRAW_WORDS] u32; ls: [1] PrList; l := ls[..];
+  pr_list(l, records[..], draws[..], 0);
+  box := pr_part(l, pr_unit_box(pen[..]));
+  ends := [4] [6] f32.[[6] f32.[1, 2, 3, 1, 5, 3], [6] f32.[0, 0, 0, 2, -1, 0.5], [6] f32.[4, 1, 0, 4, 1, -3], [6] f32.[0, 1, 0, -0.3, 0.2, 0.4]];
+  for run: 0..<2 {
+    if run == 0 { pr_list_count(l); } else { pr_list_fill(l); }
+    a := pr_put(l, box, 5, 0, 5, 0.25, 3); pr_lean(l, a, 0.1, -0.2);
+    for k: 0..<4 { e := ends[k]; _ = pr_span(l, box, e[0], e[1], e[2], e[3], e[4], e[5], 0.2); }
+  }
+  #assert l[0].rn == 5 && !l[0].full;
+  #assert records[PR_R_MOTION] == 4 && records[PR_R_PHASE] == 0.1 && records[PR_R_SCALE] == -0.2 && records[PR_R_STRETCH] == 3 && records[PR_R_STRETCH + 1] == 3 && records[PR_R_STRETCH + 2] == 3 && records[PR_R_YAW] == 0.25;
+  for k: 0..<4 {
+    e := ends[k]; o := (k + 1) * PR_RECORD_FLOATS;
+    span := sqrt((e[3] - e[0]) * (e[3] - e[0]) + (e[4] - e[1]) * (e[4] - e[1]) + (e[5] - e[2]) * (e[5] - e[2]));
+    #assert records[o] == e[0] && records[o + 1] == e[1] && records[o + 2] == e[2] && abs(records[o + PR_R_STRETCH + 1] - span) < 0.0001 && records[o + PR_R_STRETCH] == 0.2;
+    // the shader's lean (photoreal.coax pr_leant) of the part's top, (0, span, 0): rolled about x, pitched about z
+    roll := records[o + PR_R_SCALE]; pitch := records[o + PR_R_PHASE];
+    y := span * cos(roll); z := span * sin(roll);
+    #assert abs(e[0] - y * sin(pitch) - e[3]) < 0.001 && abs(e[1] + y * cos(pitch) - e[4]) < 0.001 && abs(e[2] + z - e[5]) < 0.001;
   }
 }
