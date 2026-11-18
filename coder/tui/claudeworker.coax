@@ -7,7 +7,8 @@
 //   out  {"kind":"ready"}
 //        {"kind":"ask","command":"ls","ticket":N}         a tool call as it starts. No answer is read: nothing waits.
 //        {"kind":"command","command":"ls","exit":0,"timed_out":false,"output":"..."}   the same call, ended (exit 1: it failed)
-//        {"kind":"thought","text":"..."}                   Claude's thinking, when Claude Code hands it over
+//        {"kind":"thought","text":"..."}                   Claude's thinking, as Claude Code summarizes it (--thinking-display summarized)
+//        {"kind":"reply","text":"..."}                     what Claude says between tool calls; the last text is the reply, in ended
 //        {"kind":"ended","ending":"finished","text":"..."}   the reply; or stopped, or failed with why
 //
 // It takes one task and then exits. Closing its stdin stops it like STOP.
@@ -115,7 +116,17 @@ cw_output :: (ar: [] ClArena, item: string, out: [] u8) -> int {
     blocks := cl_json(item, c);
     for i: 0..<cl_count(blocks) {
       b := cl_json(blocks, cl_item(blocks, i));
-      if cl_str(ar, b, "type") != "text" { continue; }
+      kind := cl_str(ar, b, "type");
+      if kind == "image" {
+        // a Read of an image hands Claude the picture itself, which has no words to show
+        if n > 0 && n < out.count { out[n] = 10; n += 1; }
+        for ch: "An image" { if n >= out.count { break; } out[n] = ch; n += 1; }
+        media := cl_str(ar, b, "source.media_type");
+        if media.count > 0 { for ch: " (" { if n < out.count { out[n] = ch; n += 1; } } for ch: media { if n < out.count { out[n] = ch; n += 1; } } if n < out.count { out[n] = 41; n += 1; } }
+        for ch: ", which Claude sees." { if n >= out.count { break; } out[n] = ch; n += 1; }
+        continue;
+      }
+      if kind != "text" { continue; }
       if n > 0 && n < out.count { out[n] = 10; n += 1; }
       for ch: cl_str(ar, b, "text") { if n >= out.count { break; } out[n] = ch; n += 1; }
     }
@@ -133,6 +144,7 @@ tool_main :: () -> int #export_c #effects(all) {
   lb: [CW_LABEL] u8; ob: [CW_OUTPUT] u8; eb: [2048] u8;
   q: [1] ClQuery; p: [1] ClProcess;
   req: [1] MwwRequest;
+  held: [65536] u8; held_n := 0;   // the newest thing Claude said, not sent yet
   keyb: [4096] u8; kentry: [4200] u8; keyed := false;   // a key passed in CODER_CLAUDE_KEY
   running := false; ticket := 0;
   cw_send(out[..], mww_ready(out[..]));
@@ -153,7 +165,15 @@ tool_main :: () -> int #export_c #effects(all) {
           content := cl_raw(l, "message.content");
           for i: 0..<cl_count(content) {
             item := cl_json(content, cl_item(content, i));
-            // Claude's thinking, where Claude Code hands it over, goes out as a thought (GitHub #13671)
+            // What Claude says goes out once more follows it: the last text of the run is its reply,
+            // which ended carries, so it is held until something comes after it.
+            if cl_str(car, item, "type") == "text" {
+              said := cl_str(car, item, "text");
+              if said.count > 0 { if held_n > 0 { cw_send(out[..], mww_reply(out[..], cast(string) held[0..<held_n])); } held_n = cl_copy(held[..], said); }
+              continue;
+            }
+            if held_n > 0 { cw_send(out[..], mww_reply(out[..], cast(string) held[0..<held_n])); held_n = 0; }
+            // Claude's thinking goes out as a thought (GitHub #13671)
             if cl_str(car, item, "type") == "thinking" {
               thought := cl_str(car, item, "thinking");
               if thought.count > 0 { cw_send(out[..], mww_thought(out[..], thought)); }
@@ -195,6 +215,9 @@ tool_main :: () -> int #export_c #effects(all) {
           }
         } else if m.kind == ClKind.result {
           r := cl_result_of(car, m);
+          // held text that is not the reply was said along the way
+          if held_n > 0 && cast(string) held[0..<held_n] != r.result { cw_send(out[..], mww_reply(out[..], cast(string) held[0..<held_n])); }
+          held_n = 0;
           if r.kind == ClResultKind.success && !r.is_error { ended = "finished"; text = r.result; }
           else {
             ended = "failed"; text = cl_str(car, l, "result");
@@ -204,6 +227,7 @@ tool_main :: () -> int #export_c #effects(all) {
         }
       }
       if ended.count > 0 {
+        if held_n > 0 { cw_send(out[..], mww_reply(out[..], cast(string) held[0..<held_n])); held_n = 0; }   // a run that failed keeps what it said
         cw_send(out[..], mww_ended(out[..], ended, text));
         r := cl_kill(p[..]); cl_close(p[..]);
         return 0;
@@ -241,6 +265,8 @@ tool_main :: () -> int #export_c #effects(all) {
     o[0].model = cast(string) model[0..<mn];
     o[0].persist_session = false;
     o[0].permission_mode = ClPermissionMode.bypass_permissions;
+    // Claude Code leaves thinking empty unless asked for its summaries
+    cl_add_extra(o[..], "thinking-display", "summarized");
     if cn > 0 { o[0].cwd = cast(string) cwd[0..<cn]; }
     cl_remove_env(o[..], "ANTHROPIC_API_KEY");
     cl_remove_env(o[..], "ANTHROPIC_AUTH_TOKEN");

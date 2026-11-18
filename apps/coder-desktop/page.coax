@@ -71,19 +71,21 @@ CP_MODEL_NAME :: "Microcoder · Gemini 4 Hydrogen";
 // What the page asks of its host (coder_page_action), once.
 CP_ASK_NONE :: 0; CP_ASK_SEND :: 1; CP_ASK_FOCUS :: 2; CP_ASK_STOP :: 3; CP_ASK_NEW :: 4; CP_ASK_COPY :: 5; CP_ASK_FOLDER :: 6; CP_ASK_OPEN :: 7;
 // What a row dispatches.
-CP_FIELD :: 1; CP_SEND :: 2; CP_NEW :: 3; CP_COPY :: 4; CP_TOOL :: 5; CP_FOLDER :: 6; CP_COPY_ASK :: 7; CP_COPY_REPLY :: 8; CP_COPY_ALL :: 9; CP_AGENT :: 10; CP_CHAT :: 11; CP_PANE_CLOSE :: 12; CP_PANE_TOOL :: 13; CP_PANE_COPY :: 14;
+CP_FIELD :: 1; CP_SEND :: 2; CP_NEW :: 3; CP_COPY :: 4; CP_TOOL :: 5; CP_FOLDER :: 6; CP_COPY_ASK :: 7; CP_COPY_REPLY :: 8; CP_COPY_ALL :: 9; CP_AGENT :: 10; CP_CHAT :: 11; CP_PANE_CLOSE :: 12; CP_PANE_TOOL :: 13; CP_PANE_COPY :: 14; CP_SAID_COPY :: 15;
 // What was copied last (its button shows a check): a code block, a person's message, a reply, the whole chat.
-CP_COPIED_NONE :: 0; CP_COPIED_BLOCK :: 1; CP_COPIED_ASK :: 2; CP_COPIED_REPLY :: 3; CP_COPIED_ALL :: 4; CP_COPIED_PANE :: 5;
+CP_COPIED_NONE :: 0; CP_COPIED_BLOCK :: 1; CP_COPIED_ASK :: 2; CP_COPIED_REPLY :: 3; CP_COPIED_ALL :: 4; CP_COPIED_PANE :: 5; CP_COPIED_SAID :: 6;
 CP_ALL :: 2000000;          // bytes the whole chat's copy may take: 24 messages and replies fit
 // A turn's state.
 CP_RUNNING :: 0; CP_DONE :: 1; CP_FAILED :: 2; CP_STOPPED :: 3;
 
-// One row of a message or of a sub-agent's transcript: a command, a file read, a tool call, or a thought.
+// One row of a message or of a sub-agent's transcript: a command, a file read, a tool call, a
+// thought, or what the sub-agent said between its tool calls.
 CpCall :: struct {
   text: [CP_CMD] u8; text_n: int;
   out: [CP_CMD_OUT + 64] u8; out_n: int;
   read: bool; failed: bool; running: bool;
   thought: bool;              // the model's thinking (#13671): text is its first line, out its words
+  said: bool;                 // what a sub-agent said between its tool calls: out is its words, shown as a reply is
   began: f32; took: f32;
   next: int;                  // the sub-agent's call after this one, as its place in the page's calls plus 1; 0 for none
   order: int;                 // when it was added, counted up over the chat
@@ -163,6 +165,7 @@ CoderPage :: struct {
   box: ComposerBox;
   ask: int; refused: int; moving: bool;
   copied_turn: int; copied_block: int; copied_kind: int;
+  copied_row: int;            // CP_COPIED_SAID: the row whose code block was copied
   dx: f32; dy: f32; col_x: f32; col_w: f32;   // where the pointer went down; the column as last drawn
   arena: [CP_ARENA] u8;
 }
@@ -306,7 +309,7 @@ cp_call_add :: (s: [] CoderPage, i: int, j: int, text: string, output: string, r
   }
   s[0].calls[q].text_n = cp_out(s[0].calls[q].text[..], text);
   cp_call_out(s, q, output);
-  s[0].calls[q].read = read; s[0].calls[q].failed = failed; s[0].calls[q].running = running; s[0].calls[q].thought = false;
+  s[0].calls[q].read = read; s[0].calls[q].failed = failed; s[0].calls[q].running = running; s[0].calls[q].thought = false; s[0].calls[q].said = false;
   s[0].calls[q].began = s[0].clock; s[0].calls[q].took = -1; s[0].calls[q].next = 0; s[0].calls[q].h = 0;
   s[0].calls_order += 1; s[0].calls[q].order = s[0].calls_order;
   if j < 0 {
@@ -320,8 +323,9 @@ cp_call_add :: (s: [] CoderPage, i: int, j: int, text: string, output: string, r
 }
 // A model's thinking joins a list as rows marked as thoughts (GitHub #13671): one row for each
 // 2,000 bytes, cut at a line's or a word's end, so none of it is dropped. A row is named by its
-// first line, without Markdown's marks.
-cp_thought_add :: (s: [] CoderPage, i: int, j: int, text: string) {
+// first line, without Markdown's marks. said: what a sub-agent said between its tool calls, in
+// rows of the same size that show as a reply does.
+cp_thought_add :: (s: [] CoderPage, i: int, j: int, text: string, said: bool) {
   from := 0;
   while from < text.count {
     to := ifx text.count - from > CP_CMD_OUT then from + CP_CMD_OUT else text.count;
@@ -339,7 +343,7 @@ cp_thought_add :: (s: [] CoderPage, i: int, j: int, text: string) {
       hb[hn] = c; hn += 1;
     }
     q := cp_call_add(s, i, j, cast(string) hb[0..<hn], cast(string) text[from..<to], false, false, false);
-    if q >= 0 { s[0].calls[q].thought = true; }
+    if q >= 0 { s[0].calls[q].thought = !said; s[0].calls[q].said = said; }
     from = to;
   }
 }
@@ -514,7 +518,8 @@ coder_page_agent_line :: (s: [] CoderPage, j: int, line: string) -> int #export_
     s[0].turns[i].agents[j].now_n = cp_out(s[0].turns[i].agents[j].now[..], cast(string) vb[0..<vn]); s[0].turns[i].agents[j].now_running = false;
     s[0].turns[i].agents[j].quiet += 1;
     s[0].turns[i].agents[j].calls += 1; _ = cp_call_add(s, i, j, l[0].path, ifx l[0].found.value then "" else "No such file.", true, !l[0].found.value, false);
-  } else if kind == MWW_THOUGHT { cp_thought_add(s, i, j, l[0].text);
+  } else if kind == MWW_THOUGHT { cp_thought_add(s, i, j, l[0].text, false);
+  } else if kind == MWW_REPLY { cp_thought_add(s, i, j, l[0].text, true);   // said between tool calls; the reply comes in ended
   } else if kind == MWW_ENDED {
     done := l[0].ending == "finished" || l[0].ending == "asked";
     cp_agent_end(s, i, j, ifx done then CP_DONE else CP_FAILED, ifx l[0].text.count > 0 then l[0].text else "The sub-agent ended before a reply.");
@@ -560,7 +565,7 @@ cp_paused :: (s: [] CoderPage, i: int, j: int) -> string {
   skip := ifx s[0].turns[i].agents[j].nrows > 12 then s[0].turns[i].agents[j].nrows - 12 else 0;
   q := cp_nth(s, i, j, skip);
   while q >= 0 {
-    n += cp_out(b[n..<b.count], ifx s[0].calls[q].thought then "\n- thought: " else ifx s[0].calls[q].read then "\n- read " else "\n- ");
+    n += cp_out(b[n..<b.count], ifx s[0].calls[q].thought then "\n- thought: " else ifx s[0].calls[q].said then "\n- said: " else ifx s[0].calls[q].read then "\n- read " else "\n- ");
     n += cp_out(b[n..<b.count], cast(string) s[0].calls[q].text[0..<(ifx s[0].calls[q].text_n < 160 then s[0].calls[q].text_n else 160)]);
     q = s[0].calls[q].next - 1;
   }
@@ -670,6 +675,7 @@ cp_save_rows :: (s: [] CoderPage, out: [] u8, from: int, head: int) -> int {
     n = json_raw(out, n, ifx s[0].calls[q].read then ",\"read\":true" else ",\"read\":false");
     n = json_raw(out, n, ifx s[0].calls[q].failed then ",\"failed\":true" else ",\"failed\":false");
     if s[0].calls[q].thought { n = json_raw(out, n, ",\"thought\":true"); }
+    if s[0].calls[q].said { n = json_raw(out, n, ",\"said\":true"); }
     n = json_raw(out, n, ",\"took\":"); n = json_write_int(out, n, cp_whole(s[0].calls[q].took)); n = json_raw(out, n, "}");
     q = s[0].calls[q].next - 1; at += 1;
   }
@@ -711,11 +717,11 @@ coder_page_save :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) 
 cp_load_row :: (s: [] CoderPage, i: int, j: int, c: string) {
   ar := [1] ClArena.[ClArena.{buf = s[0].arena[..]}];
   what := cl_str(ar[..], c, "text"); output := cl_str(ar[..], c, "out");
-  read := cl_bool(c, "read"); failed := cl_bool(c, "failed"); took := cl_int(c, "took"); thought := cl_bool(c, "thought");
+  read := cl_bool(c, "read"); failed := cl_bool(c, "failed"); took := cl_int(c, "took"); thought := cl_bool(c, "thought"); said := cl_bool(c, "said");
   q := cp_call_add(s, i, j, what, "", read.ok && read.value, failed.ok && failed.value, false);
   if q < 0 { return; }
   s[0].calls[q].out_n = cp_out(s[0].calls[q].out[..], output);
-  s[0].calls[q].thought = thought.ok && thought.value;
+  s[0].calls[q].thought = thought.ok && thought.value; s[0].calls[q].said = said.ok && said.value;
   s[0].calls[q].began = 0; s[0].calls[q].took = ifx took.ok then cast(f32) took.value else -1.0f32;
 }
 // A kept chat (coder_page_save's text) becomes the chat that is shown. A message that was still
@@ -831,6 +837,15 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
     if !s[0].pane_open || q < 0 { return false; }
     return app_tool_press(s[0].keyed[..], cp_pane_id(tb[..], s, ".x", q), id);
   }
+  if act == CP_SAID_COPY {
+    // a code block's Copy in what a sub-agent said: its row and its block, by the button's id
+    id := surface_id(s[0].surface[..], row);
+    at := cp_number(id, ".x"); block := cp_number(id, ".code.");
+    if !s[0].pane_open || at < 0 || block < 0 { return false; }
+    q := cp_nth(s, s[0].pane_turn, s[0].pane_agent, at - s[0].turns[s[0].pane_turn].agents[s[0].pane_agent].early_rows);
+    if q < 0 || !s[0].calls[q].said { return false; }
+    s[0].copied_turn = s[0].pane_turn; s[0].copied_row = q; s[0].copied_block = block; s[0].copied_kind = CP_COPIED_SAID; s[0].ask = CP_ASK_COPY; return true;
+  }
   if act == CP_PANE_COPY {
     block := cp_number(surface_id(s[0].surface[..], row), ".code.");
     if !s[0].pane_open || block < 0 { return false; }
@@ -892,6 +907,27 @@ cp_pane_id :: (out: [] u8, s: [] CoderPage, part: string, q: int) -> string {
 cp_row :: (s: [] CoderPage, f: [] UiFrame, q: int, id: string, x: f32, y: f32, w: f32, action: int) -> f32 {
   a := f[0].skin.app; sh := f[0].sheet; kb: [24] u8;
   text := cast(string) s[0].calls[q].text[0..<s[0].calls[q].text_n]; output := cast(string) s[0].calls[q].out[0..<s[0].calls[q].out_n];
+  if s[0].calls[q].said {
+    // what the sub-agent said reads as a reply does: its Markdown, parsed into this frame's document
+    at := s[0].think_at; b0 := s[0].think[at].nb;
+    blocks := md_parse(s[0].think[at..<at + 1], output, 0);
+    if blocks > 0 {
+      return app_message_agent_part(f, id, x, y, w, s[0].think[at..<at + 1], b0, blocks,
+                                    ifx s[0].copied_kind == CP_COPIED_SAID && s[0].copied_row == q then s[0].copied_block else -1, CP_SAID_COPY);
+    }
+    // the document is full: its words as they are, wrapped, a line each
+    wb: [2 * CP_CMD_OUT + 256] u8;
+    per := cast(int) (w / measure_width(f[0].m, f[0].skin.small.face, "0")) - 1; if per < 8 { per = 8; }
+    wn := cp_wrap(wb[..], output, per);
+    ln: f32 = 0; from := 0; li := 0;
+    for k: 0..<wn + 1 {
+      if k < wn && wb[k] != 10 { continue; }
+      lb: [EL_ID] u8; n := el_put(lb[..], 0, id); n = el_put(lb[..], n, ".l"); n = el_put_i(lb[..], n, li); li += 1;
+      ln += app_meta(f, cast(string) lb[0..<n], x, y + ln, w, sheet_pool(sh, cast(string) wb[from..<k]), false);
+      from = k + 1;
+    }
+    return ln;
+  }
   if s[0].calls[q].thought {
     note := AppTool.{icon = ICON_THOUGHT, title = "Thought", arg = text, state = APP_TOOL_DONE, note = true};
     if !app_tool_is_open(f, uiframe_key(f, id), false) { return app_tool(f, id, x, y, w, note, false, action); }
@@ -1323,7 +1359,7 @@ coder_page_line :: (s: [] CoderPage, line: string) -> int #export_c #effects(all
   else if kind == MWW_ASK { cp_cmd_asked(s, i, l[0].command, l[0].ticket.value); }
   else if kind == MWW_DELEGATE { cp_delegate(s, i, l[0].tasks, l[0].ticket.value); }
   else if kind == MWW_COMMAND { cp_cmd_done(s, i, l[0].command, l[0].output, l[0].timed_out.value || l[0].exit.value != 0); }
-  else if kind == MWW_THOUGHT { cp_thought_add(s, i, -1, l[0].text); }
+  else if kind == MWW_THOUGHT { cp_thought_add(s, i, -1, l[0].text, false); }
   else if kind == MWW_VIEW { cp_cmd_add(s, i, l[0].path, ifx l[0].found.value then "" else "No such file.", true, !l[0].found.value); }
   else if kind == MWW_ENDED {
     if l[0].ending == "finished" || l[0].ending == "asked" {
@@ -1355,6 +1391,15 @@ coder_page_copied :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all
     if !s[0].pane_open || s[0].copied_block < 0 || s[0].copied_block >= s[0].pane_blocks { return 0; }
     return cp_out(out, md_block_text(s[0].pane_doc[..], s[0].copied_block));
   }
+  if kind == CP_COPIED_SAID {
+    // parsed again into the transcript's reply document, which the next frame parses afresh
+    q := s[0].copied_row;
+    if q < 0 || !s[0].calls[q].said { return 0; }
+    s[0].pane_doc[0].n = 0; s[0].pane_doc[0].nb = 0; s[0].pane_doc[0].nr = 0; s[0].pane_doc[0].ni = 0; s[0].pane_doc[0].nlink = 0; s[0].pane_parsed = -1;
+    blocks := md_parse(s[0].pane_doc[..], cast(string) s[0].calls[q].out[0..<s[0].calls[q].out_n], 0);
+    if s[0].copied_block < 0 || s[0].copied_block >= blocks || s[0].pane_doc[0].blocks[s[0].copied_block].kind != MB_CODE { return 0; }
+    return cp_out(out, md_block_text(s[0].pane_doc[..], s[0].copied_block));
+  }
   if kind == CP_COPIED_BLOCK {
     if s[0].copied_block < 0 || s[0].copied_block >= s[0].turns[i].blocks { return 0; }
     return cp_out(out, md_block_text(s[0].turns[i].doc[..], s[0].copied_block));
@@ -1367,7 +1412,7 @@ coder_page_copied :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all
     n += cp_out(out[n..<out.count], "You:\n"); n += cp_out(out[n..<out.count], cast(string) s[0].turns[j].ask[0..<s[0].turns[j].ask_n]); n += cp_out(out[n..<out.count], "\n\n");
     q := s[0].turns[j].head - 1;
     while q >= 0 {
-      if !s[0].calls[q].thought {
+      if !s[0].calls[q].thought && !s[0].calls[q].said {
         n += cp_out(out[n..<out.count], ifx s[0].calls[q].read then "Read: " else "Ran: ");
         n += cp_out(out[n..<out.count], cast(string) s[0].calls[q].text[0..<s[0].calls[q].text_n]); n += cp_out(out[n..<out.count], "\n");
       }
@@ -1639,14 +1684,39 @@ cp_find :: (text: string, needle: string) -> int {
   #assert cast(string) s[0].calls[cp_nth(s, 0, -1, 0)].out[0..<s[0].calls[cp_nth(s, 0, -1, 0)].out_n] == "**Reading the plan**\n\nI will list the files first.";
   // thinking longer than a row holds takes more rows, cut at a word's end, and none of it is dropped
   long: [7000] u8; for k: 0..<7000 { long[k] = ifx k % 10 == 9 then cast(u8) 32 else cast(u8) 'a'; }
-  cp_thought_add(s, 0, 0, cast(string) long[..]);
+  cp_thought_add(s, 0, 0, cast(string) long[..], false);
   #assert s[0].turns[0].agents[0].nrows == 5;
   #assert s[0].calls[cp_nth(s, 0, 0, 1)].out_n == 2000 && s[0].calls[cp_nth(s, 0, 0, 3)].out_n == 2000 && s[0].calls[cp_nth(s, 0, 0, 4)].out_n == 1000 && s[0].calls[cp_nth(s, 0, 0, 4)].thought;
   #assert s[0].calls[cp_nth(s, 0, 0, 1)].out[1999] == 32 && s[0].calls[cp_nth(s, 0, 0, 2)].out[0] == 'a';
   // with no space to cut at, a row ends where it is full and not inside a character
   for k: 0..<7000 { long[k] = ifx k % 2 == 1 then cast(u8) 0xC3 else cast(u8) 0xA9; }
-  cp_thought_add(s, 0, 0, cast(string) long[0..<2001]);
+  cp_thought_add(s, 0, 0, cast(string) long[0..<2001], false);
   #assert s[0].turns[0].agents[0].nrows == 7 && s[0].calls[cp_nth(s, 0, 0, 5)].out_n == 1999 && s[0].calls[cp_nth(s, 0, 0, 6)].out_n == 2 && s[0].calls[cp_nth(s, 0, 0, 6)].out[0] == 0xC3;
+}
+#test "what a sub-agent says between its tool calls is a row in its place, saved with the chat, left out of a copy; its code copies" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  #assert coder_page_set_text(s, "look") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"carbon\",\"task\":\"count\"}],\"ticket\":1}") == MWW_DELEGATE;
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"reply\",\"text\":\"I'll list them.\\n\\n```sh\\nls\\n```\"}") == MWW_REPLY;
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"ask\",\"command\":\"ls\",\"ticket\":1}") == MWW_ASK;
+  #assert s[0].turns[0].agents[0].nrows == 2 && s[0].turns[0].agents[0].calls == 1;
+  q := cp_nth(s, 0, 0, 0);
+  #assert s[0].calls[q].said && !s[0].calls[q].thought && !s[0].calls[cp_nth(s, 0, 0, 1)].said;
+  #assert cast(string) s[0].calls[q].out[0..<s[0].calls[q].out_n] == "I'll list them.\n\n```sh\nls\n```";
+  // its code block's Copy gives the code
+  s[0].pane_open = true; s[0].pane_turn = 0; s[0].pane_agent = 0;
+  s[0].copied_turn = 0; s[0].copied_row = q; s[0].copied_block = 1; s[0].copied_kind = CP_COPIED_SAID;
+  out: [512] u8;
+  n := coder_page_copied(s, out[..]); #assert cast(string) out[0..<n] == "ls";
+  s[0].copied_block = 0; #assert coder_page_copied(s, out[..]) == 0;   // not a code block
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"3\"}") == MWW_ENDED;
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"Done.\"}") == MWW_ENDED;
+  s[0].copied_turn = 0; s[0].copied_kind = CP_COPIED_ALL;
+  n = coder_page_copied(s, out[..]); #assert cast(string) out[0..<n] == "You:\nlook\n\nMicrocoder:\nDone.";
+  kept: [65536] u8; kn := coder_page_save(s, kept[..]);
+  #assert kn > 0 && coder_page_new(s) && coder_page_load(s, cast(string) kept[0..<kn]);
+  #assert s[0].turns[0].agents[0].nrows == 2 && s[0].calls[cp_nth(s, 0, 0, 0)].said && !s[0].calls[cp_nth(s, 0, 0, 1)].said;
 }
 #test "thinking is wrapped to its row at a word's end, and a word longer than a line is broken" {
   o: [64] u8;

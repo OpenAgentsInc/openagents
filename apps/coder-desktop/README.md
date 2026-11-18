@@ -64,7 +64,7 @@ commands, named by its first line. Press it to read it, formatted as a reply is.
 A thought longer than 2,000 bytes takes more rows, so none of it is cut.
 
 - Hydrogen and Carbon (Gemini) send a summary of their thinking, which is what Gemini gives; the full trace is not available.
-- A Claude sub-agent's thinking shows when Claude Code hands it over.
+- A Claude sub-agent's thinking shows as Claude Code summarizes it: Coder asks for the summaries (`--thinking-display summarized`), which Claude Code otherwise leaves empty.
 - Thoughts are saved with the chat. Copying the whole chat leaves them out.
 
 Coder asks the worker to wait before each command (`"gated":true`) so the row
@@ -90,7 +90,10 @@ says how many tool calls it has made and names the newest.
 
 Click a sub-agent's row to open its transcript in a sidebar on the right
 (#13666). It reads as the conversation does: the task as a message, each tool
-call as a row you can press to see its input and output, and the reply. A
+call as a row you can press to see its input and output, what the sub-agent
+says between its tool calls as text in its place, and the reply. A Claude
+sub-agent's read of an image shows "An image", since Claude gets the picture
+and not words. A
 running sub-agent's transcript fills in as it works. The X in the sidebar's
 top right corner closes it. So does a second click on the row.
 
