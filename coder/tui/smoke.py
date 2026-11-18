@@ -492,12 +492,14 @@ def verbs(check):
         check("--deadline: the job expires, exit 124", exp.returncode == 124 and '"ending":"expired"' in exp.stdout)
         subprocess.run([coder, "run", "child says hi", "--engine", "echo", "--report-to", par], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
         open(gate, "w").close()
+        # The parent is "finished" for a moment between its turns (an end line, then the report's
+        # user line), so it is done only once its own turn and both reports' turns have ended.
         for _ in range(100):
             st = subprocess.run([coder, "status", par, "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
-            if '"running"' not in st.stdout:
+            plog = subprocess.run([coder, "log", par, "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60).stdout
+            if '"running"' not in st.stdout and plog.count('"kind":"end"') >= 3:
                 break
             time.sleep(0.2)
-        plog = subprocess.run([coder, "log", par, "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60).stdout
         plines = [json.loads(l) for l in plog.splitlines() if l.startswith("{")]
         jobs = [l["ending"] for l in plines if l["kind"] == "job"]
         check("--report-to: the parent's log holds both jobs' endings", sorted(jobs) == ["expired", "finished"])
@@ -756,7 +758,7 @@ def verbs(check):
             chunk = {"choices": [{"delta": {"content": content, "role": "assistant"}, "index": 0}], "object": "chat.completion.chunk"}
             last = {"choices": [{"delta": {"content": ""}, "finish_reason": "stop", "index": 0}], "object": "chat.completion.chunk",
                     "usage": {"prompt_tokens": 500, "completion_tokens": 40, "total_tokens": 540}}
-            return "HTTP/2 200 \r\ncontent-type: text/event-stream\r\n\r\ndata: " + json.dumps(chunk) + "\n\ndata: " + json.dumps(last) + "\n\ndata: [DONE]\n"
+            return "HTTP/2 200 \r\ncontent-type: text/event-stream\r\n\r\ndata: " + json.dumps(chunk) + "\n\ndata: " + json.dumps(last) + "\n\ndata: [DONE]\n\n"
         act = lambda **k: json.dumps(dict({"rationale": "r", "commands": [], "view": [], "finished": False, "reply": "", "ask": "none"}, **k))
         endings = {}
         for name, rs in {"asked": [mhttp(act(reply="Which file?", ask="question"))], "bad_replies": [mhttp("not json")] * 3,
