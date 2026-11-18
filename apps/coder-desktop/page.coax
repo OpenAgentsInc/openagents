@@ -58,6 +58,7 @@ CpTurn :: struct {
   doc: [1] MdDoc; blocks: int;
   note: [CP_NOTE] u8; note_n: int;
   state: int; stopping: bool;
+  fresh: bool;                // a model request ended: the next reply text starts the reply again
   h: f32; hw: f32;            // its height as last drawn, and the column's width then
 }
 CpGeneration :: struct { under: [CP_UNDER] Prim; over: [CP_OVER] Prim; lines: [CP_LINES] SheetLine; hits: [CP_HITS] SheetHit; pool: [CP_POOL] u8; rows: [CP_ROWS] El; }
@@ -127,7 +128,7 @@ cp_send :: (s: [] CoderPage) -> bool {
   i := s[0].nturns;
   s[0].turns[i].ask_n = cp_out(s[0].turns[i].ask[..], text);
   s[0].turns[i].reply_n = 0; s[0].turns[i].ncmds = 0; s[0].turns[i].more_cmds = 0; s[0].turns[i].cut = false; s[0].turns[i].blocks = 0; s[0].turns[i].note_n = 0;
-  s[0].turns[i].state = CP_RUNNING; s[0].turns[i].stopping = false; s[0].turns[i].h = 0;
+  s[0].turns[i].state = CP_RUNNING; s[0].turns[i].stopping = false; s[0].turns[i].fresh = false; s[0].turns[i].h = 0;
   s[0].nturns += 1;
   eb_set(s[0].draft[..], "");
   s[0].stick = true; s[0].ask = CP_ASK_SEND;
@@ -344,7 +345,10 @@ coder_page_line :: (s: [] CoderPage, line: string) -> int #export_c #effects(all
   kind := mww_read(ar[..], line, l[..]);
   if !cp_running(s) { return kind; }
   i := s[0].nturns - 1;
-  if kind == MWW_REPLY { cp_reply_set(s, i, l[0].text, true); }
+  // Each model request streams its own text. What one wrote before it ran commands is not the
+  // reply: the next request's text takes its place, as the ended line's whole reply does.
+  if kind == MWW_REPLY { cp_reply_set(s, i, l[0].text, !s[0].turns[i].fresh); s[0].turns[i].fresh = false; }
+  else if kind == MWW_ATTEMPT { s[0].turns[i].fresh = true; }
   else if kind == MWW_COMMAND { cp_cmd_add(s, i, l[0].command, l[0].output, false, l[0].timed_out.value || l[0].exit.value != 0); }
   else if kind == MWW_VIEW { cp_cmd_add(s, i, l[0].path, ifx l[0].found.value then "" else "No such file.", true, !l[0].found.value); }
   else if kind == MWW_ENDED {
@@ -481,4 +485,15 @@ coder_page_scale :: () -> f32 #export_c #effects(all) { return ARCADE_PHONE_SCAL
   #assert coder_page_set_text(s, "run some gamebuilder commands tell me what u see") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND;
   n = coder_page_task(s, "s-1", "/w", out[..]);
   #assert n > 0;
+}
+
+#test "text a request wrote before its commands gives way to the next request's text" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  #assert coder_page_set_text(s, "open my game") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"reply\",\"text\":\"Opened it. \"}") == MWW_REPLY && coder_page_line(s, "{\"kind\":\"reply\",\"text\":\"Look there.\"}") == MWW_REPLY;
+  #assert cast(string) s[0].turns[0].reply[0..<s[0].turns[0].reply_n] == "Opened it. Look there.";
+  #assert coder_page_line(s, "{\"kind\":\"attempt\",\"gateway\":\"vertex\",\"outcome\":\"done\",\"status\":200,\"usd_micros\":1}") == MWW_ATTEMPT;
+  #assert coder_page_line(s, "{\"kind\":\"reply\",\"text\":\"Your game \"}") == MWW_REPLY && coder_page_line(s, "{\"kind\":\"reply\",\"text\":\"is open.\"}") == MWW_REPLY;
+  #assert cast(string) s[0].turns[0].reply[0..<s[0].turns[0].reply_n] == "Your game is open.";
 }
