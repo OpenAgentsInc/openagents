@@ -1,14 +1,16 @@
 # SLAB world: a simulation spec for the Metaverse Engine
 
-Status: phases S1–S3 built and most of S4, November 18, 2026, as
+Status: phases S1–S3 and S6 built and most of S4, November 18, 2026, as
 **SLAB Simulation** at `/realms/slab`. The hull floats on column buoyancy
 with damping, moorings, wind and current (`metaverse/slab-sim.coax`); the
 `prime` deck is built and can be walked with GameBuilder's character
-controller; the five sites, six sea states, OTEC, nuclear and hybrid power and
-the dispatcher run, with a motion and power panel and a card for anything
-clicked. Still to build from S4: the `demo10` preset, the flow overlay, the
-pipes and the powership. Phases S5–S7 are not built, and the golden is still
-to be taken on staging. Measured numbers are in section 12. The spec was
+controller; the five sites, six sea states, OTEC, nuclear and hybrid power,
+the `demo10` preset and the dispatcher run, with a motion and power panel and
+a card for anything clicked. Cell A1 can be holed and the ballast pumped
+against it; the section view (V) cuts the hull open and the underwater view
+(U) shows the bottom, the cold-water pipes and the moorings. Still to build
+from S4: the flow overlay and the powership. Phases S5 and S7 are not built,
+and the golden is still to be taken on staging. Measured numbers are in section 12. The spec was
 revised the same day with sourced OTEC figures from [otec.md](otec.md).
 
 This is the brief for a coding agent to build **SLAB**, an unlisted realm in
@@ -660,7 +662,7 @@ control to the player on the gardens promenade.
 | View | Key | Shows |
 |---|---|---|
 | Section | V | Cuts the hull on a plane through the player, showing the cells, ballast levels (blue), flooded cells (red), the waterline and the cold-water pipes |
-| Underwater | Q / E | Uses the engine's underwater rendering (water.md W7) to show the hull bottom, moorings and pipes |
+| Underwater | U | Uses the engine's underwater rendering (water.md W7) to show the hull bottom, moorings and pipes |
 | Flow overlay | O | Warm, cold and discharge flows, and power lines |
 
 **HUD panels**, which keep the engine's existing HUD look:
@@ -769,6 +771,9 @@ in sections 3–9 are unchanged.
 | OTEC net at ΔT 24, 20 and 12 °C (test 7) | 120, 67.6 and 0 MW | the same within 0.5 MW; Guam 95–116 MW over the year |
 | Dispatch (tests 8 and 13) | sheds mining, then industry, then desalination | as targeted; nuclear 192 MW with 29 MW of miners, 144 MW refuelling, hybrid at Guam 191–212 MW |
 | Pipe trip (test 12) | net down a quarter | 0.75 of net |
+| Cell A1 holed on `prime` (test 5) | about 64,000 t, sinkage ≈ 0.10 m, heel ≈ 0.06° | 64,000–66,000 m³ in, sinkage and heel within 0.03 of the targets; pumping half the floodwater to the opposite corner takes heel and trim back under 0.005° |
+| `demo10` preset | 10 MW net at the site's best | 10 MW at its best; IT 3.45, utility 4.0 and mining 1.0 MW leave a 1.55 MW margin |
+| Frame time | 60 FPS | 60 FPS, p95 16.7 ms, at 1440×900 (dpr 1 and 2) and on a 390×844 phone, from `realm-perf` on an Apple M-series GPU; the section and underwater views were checked by eye, not timed |
 
 **Departures from the spec, and why:**
 - The sea's heights are scaled to Pierson–Moskowitz (Hs = 0.21 U²/g), so each
@@ -784,5 +789,16 @@ in sections 3–9 are unchanged.
   the stacks don't smoke. The concept image's smoke appears with
   `?power=hybrid` or `nuclear`.
 
-Frame times are not measured yet: the build agent's browser ran in a hidden
-pane, which throttles frames.
+- A holed cell's 4 m² orifice takes about 24 minutes to fill 64,000 m³, so
+  the spec's 60 s is not consistent with its orifice law. The world keeps the
+  orifice law and runs the flood and the pumps 24 times faster than real
+  time, so the cell fills in about a minute.
+- Ballast is drawn as one level across the inner bottom (−12.2 m, 6.9 Mt);
+  the pumps are modelled as moving half the floodwater's mass from the
+  damaged corner to the opposite one, which balances its moments.
+- The underwater key is U, since Q and E already zoom and climb. The section
+  cuts through the orbit's point, the walker, or where the fly camera looks,
+  and cuts the sea away in front of it.
+- Under water, red light falls to 1/e in 14 m and blue in about 80 m (clear
+  tropical ocean), so the 1,000 m pipes and the moorings fade within a
+  hundred metres. The mooring lines are drawn 1.2 m wide.

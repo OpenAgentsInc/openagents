@@ -184,11 +184,17 @@ slab_haze :: (c:V3,d:V3,dist:f32,u:[]f32)->V3 {
   return sb_mix(c,tint,a*0.92f32);
 }
 // The golden hour's grade over everything: warmer, a little sepia.
-slab_grade :: (c:V3,u:[]f32)->V3 {
+slab_grade :: (c0:V3,u:[]f32)->V3 {
+  // a soft shoulder over 0.6, so a white deck under a high sun keeps its detail; below it, unchanged
+  c:V3=v3(slab_shoulder(c0.x),slab_shoulder(c0.y),slab_shoulder(c0.z));
   g:f32=u[SLAB_P+43];
   l:f32=(c.x*0.3f32)+(c.y*0.59f32)+(c.z*0.11f32);
   sep:V3=v3(l*1.08f32,l*0.95f32,l*0.78f32);
   return sb_mix(c,sb_add(sb_mul(c,0.6f32),sb_mul(sep,0.45f32)),g*0.55f32);
+}
+slab_shoulder :: (x:f32)->f32 {
+  if (x<0.6f32) { return x; }
+  return 0.6f32+(0.4f32*(1.0f32-exp(-(x-0.6f32)/0.4f32)));
 }
 // The spray thrown up a wall where the wave groups strike it: (white, the spray's top over y).
 // s runs along the wall, `face` is how squarely the waves meet it.
@@ -467,12 +473,7 @@ slab_grove_hit :: (o:V3,d:V3,lo:V3,hi:V3,glade:bool,limit:f32)->V4 {
 }
 SlabHit :: struct {t:f32; n:V3; kind:f32; top:f32; id:f32; lo:V3; hi:V3; }
 // One record against a ray.
-slab_record_hit :: (o:V3,d:V3,at:int,limit:f32,u:[]f32)->V4 {
-  p:V4=wg_at4(u,at);
-  q:V4=wg_at4(u,at+4);
-  lo:V3=v3(p.x,p.y,p.z);
-  hi:V3=v3(q.x,q.y,q.z);
-  sh:s32=wg_i32_f(q.w+0.5f32);
+slab_record_hit :: (o:V3,d:V3,lo:V3,hi:V3,sh:s32,limit:f32)->V4 {
   if (sh==1) { return slab_drum_hit(o,d,lo,hi); }
   if (sh==2) { return slab_gable_hit(o,d,lo,hi,true); }
   if (sh==3) { return slab_gable_hit(o,d,lo,hi,false); }
@@ -486,6 +487,9 @@ slab_scene :: (o:V3,d:V3,masses:bool,limit:f32,u:[]f32)->SlabHit {
   hit:SlabHit=SlabHit.{t=limit,n=v3(0.0f32,1.0f32,0.0f32),kind=-1.0f32,top=0.0f32,id=-1.0f32,lo=v3(0.0f32,0.0f32,0.0f32),hi=v3(0.0f32,0.0f32,0.0f32)};
   groups:s32=wg_i32_f(u[SLAB_P]);
   g:s32=ifx masses then 1 else 0;
+  // the section view: what lies beyond the cut (on the eye's side) is taken away
+  sec:f32=u[SLAB_P+52];
+  cut:f32=u[SLAB_P+53];
   while g<groups {
     ga:int=SLAB_GROUPS+((cast(int)g)*8);
     a:V4=wg_at4(u,ga);
@@ -497,11 +501,30 @@ slab_scene :: (o:V3,d:V3,masses:bool,limit:f32,u:[]f32)->SlabHit {
       i:s32=first;
       while i<first+count {
         at:int=SLAB_BOXES+((cast(int)i)*8);
-        h:V4=slab_record_hit(o,d,at,hit.t,u);
-        if (h.x<hit.t) {
-          p:V4=wg_at4(u,at);
-          q:V4=wg_at4(u,at+4);
-          hit=SlabHit.{t=h.x,n=v3(h.y,h.z,h.w),kind=p.w,top=q.y,id=cast(f32)(i),lo=v3(p.x,p.y,p.z),hi=v3(q.x,q.y,q.z)};
+        p:V4=wg_at4(u,at);
+        q:V4=wg_at4(u,at+4);
+        lo:V3=v3(p.x,p.y,p.z);
+        hi:V3=v3(q.x,q.y,q.z);
+        sh:s32=wg_i32_f(q.w+0.5f32);
+        keep:bool=true;
+        if (sec!=0.0f32) {
+          if (sh==0) {
+            // a box is cut through; anything else goes whole if its middle lies beyond
+            if (sec>0.0f32) { hi.z=fmin(hi.z,cut); } else { lo.z=fmax(lo.z,cut); }
+            keep=lo.z<hi.z;
+          } else if (wg_i32_f(p.w+0.5f32)!=0) {
+            keep=(sec*((((lo.z+hi.z)*0.5f32))-cut))<=0.0f32;
+          }
+        }
+        // a tripped cold-water pipe: the first one broken off 300 m down
+        if ((wg_i32_f(p.w+0.5f32)==21)&&(u[SLAB_P+57]>0.5f32)&&(lo.z<-200.0f32)) { lo.y=hi.y-300.0f32; }
+        if (keep) {
+          h:V4=slab_record_hit(o,d,lo,hi,sh,hit.t);
+          // the hull's rounded corners: only the part on this side of the cut
+          if ((sec!=0.0f32)&&(sh!=0)&&(wg_i32_f(p.w+0.5f32)==0)&&((sec*((o.z+(d.z*h.x))-cut))>0.0f32)) { h.x=SLAB_MISS; }
+          if (h.x<hit.t) {
+            hit=SlabHit.{t=h.x,n=v3(h.y,h.z,h.w),kind=p.w,top=q.y,id=cast(f32)(i),lo=lo,hi=hi};
+          }
         }
         i+=1;
       }
@@ -541,6 +564,53 @@ slab_capsule :: (o:V3,d:V3,a:V3,b:V3,r:f32)->V4 {
     }
   }
   return v4(SLAB_MISS,0.0f32,1.0f32,0.0f32);
+}
+// The 16 mooring lines (hull frame), seen under water: taut from fairleads at the keel's corners to
+// anchors 2 km out and 1,500 m down, four to a corner fanned 30 degrees apart (slab-sim's sim_line).
+slab_lines :: (o:V3,d:V3,limit:f32,u:[]f32)->SlabHit {
+  hit:SlabHit=SlabHit.{t=limit,n=v3(0.0f32,1.0f32,0.0f32),kind=-1.0f32,top=0.0f32,id=-1.0f32,lo=v3(0.0f32,0.0f32,0.0f32),hi=v3(0.0f32,0.0f32,0.0f32)};
+  hl:f32=u[36]; hb:f32=u[37]; keel:f32=u[39];
+  i:s32=0;
+  while i<16 {
+    corner:s32=i/4; k:s32=i%4;
+    sx:f32=ifx (corner&1)==0 then -1.0f32 else 1.0f32;
+    sz:f32=ifx (corner&2)==0 then -1.0f32 else 1.0f32;
+    fx:f32=sx*(hl-12.0f32); fz:f32=sz*(hb-12.0f32);
+    dl:f32=sqrt((hl*hl)+(hb*hb));
+    dx:f32=(sx*hl)/dl; dz:f32=(sz*hb)/dl;
+    r:f32=((cast(f32)(k))-1.5f32)*0.5235988f32;
+    ax:f32=(dx*cos(r))-(dz*sin(r)); az:f32=(dz*cos(r))+(dx*sin(r));
+    h:V4=slab_capsule(o,d,v3(fx,keel,fz),v3(fx+(ax*2000.0f32),-1500.0f32,fz+(az*2000.0f32)),0.6f32);
+    if (h.x<hit.t) { hit=SlabHit.{t=h.x,n=v3(h.y,h.z,h.w),kind=45.0f32,top=0.0f32,id=-1.0f32,lo=v3(0.0f32,0.0f32,0.0f32),hi=v3(0.0f32,0.0f32,0.0f32)}; }
+    i+=1;
+  }
+  return hit;
+}
+// Sea water: what it scatters toward the eye at depth y (rgb), dimmer and bluer the deeper.
+slab_deep_colour :: (y:f32,up:f32,u:[]f32)->V3 {
+  light:f32=(0.5f32+(0.5f32*u[SLAB_P+7]))*(0.45f32+(0.55f32*smoothstep(-0.1f32,0.5f32,u[25])));
+  c:V3=sb_mix(v3(0.01f32,0.05f32,0.10f32),v3(0.06f32,0.34f32,0.46f32),exp(fmin(y,0.0f32)/150.0f32));
+  return sb_mul(c,light*(0.45f32+(0.55f32*smoothstep(-1.0f32,0.6f32,up))));
+}
+// A colour seen through `path` metres of sea, the point at depth y and the eye at depth eye: red
+// goes first, then green.
+slab_through_water :: (c:V3,path:f32,y:f32,eye:f32,up:f32,u:[]f32)->V3 {
+  // the sunlight that reached the point down through the water above it
+  down:f32=fmax(-y,0.0f32);
+  // clear tropical ocean: blue light carries about 80 m
+  lit:V3=v3(exp(-down*0.07f32),exp(-down*0.02f32),exp(-down*0.012f32));
+  tr:V3=v3(exp(-path*0.07f32),exp(-path*0.02f32),exp(-path*0.012f32));
+  fog:V3=slab_deep_colour(eye,up,u);
+  return sb_add(sb_mulv(sb_mulv(c,lit),tr),sb_mulv(fog,v3(1.0f32-tr.x,1.0f32-tr.y,1.0f32-tr.z)));
+}
+// How far of the ray o + d t, up to t, lies under the sea (y < 0).
+slab_under_len :: (o:V3,d:V3,t:f32)->f32 {
+  if (o.y<0.0f32) {
+    if (d.y>1e-5f32) { return fmin(t,(-o.y)/d.y); }
+    return t;
+  }
+  if (d.y< -1e-5f32) { return fmax(t-(o.y/(-d.y)),0.0f32); }
+  return 0.0f32;
 }
 // The walker (P_CHAR, P_GAIT): a body of capsules, legs and arms swinging with its gait.
 // Returns the hit, its part in w (1 skin, 2 shirt, 3 trousers, 4 hair).
@@ -602,6 +672,35 @@ slab_columns :: (s:f32,period:f32)->f32 {
 // The paint of what the ray hit at w (hull frame), by its kind (SLAB_KIND_* in metaverse/slab-plan.coax).
 // Returns the albedo, and in emit how much it glows (windows at night, lit miners).
 SlabPaint :: struct {c:V3; emit:V3; }
+// The section's cut face at w: the hull's concrete (1.5 m walls and bottom, the 1 m deck and the
+// transverse bulkheads every 50 m), the ballast water, the flooded cell, the waterline; the
+// buildings cut open floor by floor. It lights itself, as a drawing would.
+slab_section :: (k:s32,w:V3,u:[]f32)->SlabPaint {
+  c:V3=v3(0.10f32,0.10f32,0.11f32);
+  if (k==0) {
+    hl:f32=u[36]; hb:f32=u[37]; deck:f32=u[38]; keel:f32=u[39];
+    bx:f32=abs(fract((w.x+hl)/50.0f32+0.5f32)-0.5f32)*50.0f32;
+    concrete:bool=(abs(w.x)>hl-1.5f32)||(w.y<keel+1.5f32)||(w.y>deck-1.0f32)||(bx<0.3f32);
+    if (concrete) {
+      hatch:f32=slab_band(w.x+w.y,2.0f32,0.25f32);
+      c=sb_mul(v3(0.66f32,0.64f32,0.60f32),0.9f32+(0.1f32*hatch));
+    } else {
+      c=v3(0.17f32,0.17f32,0.18f32);
+      // the cells' own lights, a row along each
+      c=sb_add(c,sb_mul(v3(0.2f32,0.18f32,0.14f32),slab_band(w.y-(deck-6.0f32),50.0f32,0.04f32)));
+      // cell A1, the south-west corner, is a void (no ballast): its floodwater when holed
+      a1:bool=(w.x<(-hl)+50.0f32)&&(w.z<(-hb)+50.0f32);
+      if ((w.y<u[SLAB_P+54])&&!a1) { c=v3(0.06f32,0.26f32,0.42f32); }
+      if (a1&&(w.y<u[SLAB_P+55])) { c=v3(0.70f32,0.18f32,0.10f32); }
+    }
+    // the waterline outside, dashed across the cut
+    if ((abs(w.y)<0.35f32)&&(slab_band(w.x,8.0f32,0.6f32)>0.5f32)) { c=v3(0.9f32,0.95f32,1.0f32); }
+  } else if (k!=21) {
+    // a building cut open: its floors every 3.6 m
+    c=sb_add(v3(0.16f32,0.15f32,0.14f32),sb_mul(v3(0.5f32,0.48f32,0.44f32),slab_band(w.y-u[38],3.6f32,0.1f32)));
+  }
+  return SlabPaint.{c=sb_mul(c,0.25f32),emit=sb_mul(c,0.8f32)};
+}
 slab_paint :: (hit:SlabHit,w:V3,d:V3,u:[]f32)->SlabPaint {
   kind:f32=hit.kind; n:V3=hit.n; top:f32=hit.top;
   k:s32=wg_i32_f(kind+0.5f32);
@@ -611,10 +710,25 @@ slab_paint :: (hit:SlabHit,w:V3,d:V3,u:[]f32)->SlabPaint {
   c:V3=v3(0.80f32,0.78f32,0.74f32);
   emit:V3=v3(0.0f32,0.0f32,0.0f32);
   deck:f32=u[38];
+  oncut:bool=(u[SLAB_P+52]!=0.0f32)&&(abs(n.z)>0.9f32)&&(abs(w.z-u[SLAB_P+53])<0.6f32);
+  if (oncut) {
+    return slab_section(k,w,u);
+  }
+  if (k==21) {
+    // the pipes: dark fibre-reinforced plastic, ringed every 12 m where its lengths join
+    c=sb_mul(v3(0.16f32,0.17f32,0.18f32),0.9f32+(0.2f32*slab_band(w.y,12.0f32,0.08f32)));
+    return SlabPaint.{c=c,emit=emit};
+  }
+  if ((k==0)&&(n.y< -0.5f32)) {
+    // the bottom slab: bare concrete under a film of marine growth, the formwork's joints every 10 m
+    jx:f32=abs(fract(w.x/10.0f32)-0.5f32); jz:f32=abs(fract(w.z/10.0f32)-0.5f32);
+    c=sb_mul(v3(0.42f32,0.45f32,0.40f32),(0.85f32+(0.15f32*slab_noise(v2(w.x*0.05f32,w.z*0.05f32))))*(1.0f32-(0.12f32*stepf(0.48f32,fmax(jx,jz)))));
+    return SlabPaint.{c=c,emit=emit};
+  }
   if (k==0) {
     if (roof) {
       // the deck: pale paving, 20 m streets on the 100 m grid, the promenade and its parapet
-      c=v3(0.86f32,0.83f32,0.76f32);
+      c=v3(0.82f32,0.79f32,0.72f32);
       gx:f32=abs((w.x/100.0f32)-wg_round(w.x/100.0f32))*100.0f32;
       gz:f32=abs((w.z/100.0f32)-wg_round(w.z/100.0f32))*100.0f32;
       if (fmin(gx,gz)<10.0f32) {
@@ -808,6 +922,8 @@ slab_paint :: (hit:SlabHit,w:V3,d:V3,u:[]f32)->SlabPaint {
     c=v3(0.16f32,0.2f32,0.3f32);
   } else if (k==44) {
     c=v3(0.12f32,0.09f32,0.07f32);
+  } else if (k==45) {
+    c=v3(0.20f32,0.19f32,0.16f32);
   }
   return SlabPaint.{c=sb_mul(c,grain),emit=emit};
 }
@@ -835,7 +951,7 @@ slab_lit :: (hit:SlabHit,o:V3,d:V3,u:[]f32)->V3 {
   // a little ambient occlusion where walls meet the deck
   occ:f32=ifx abs(n.y)<0.5f32 then 0.72f32+(0.28f32*smoothstep(0.0f32,6.0f32,w.y-u[38])) else 1.0f32;
   if (hit.kind<0.5f32) { occ=1.0f32; }
-  light:V3=sb_add(sb_mul(skyc,(0.55f32+(0.25f32*n.y))*occ*(0.35f32+(0.65f32*amb))),sb_mul(scol,ndl*shade*1.05f32));
+  light:V3=sb_add(sb_mul(skyc,(0.36f32+(0.2f32*n.y))*(1.0f32+(0.6f32*u[SLAB_P+43]))*occ*(0.35f32+(0.65f32*amb))),sb_mul(scol,ndl*shade*1.05f32));
   c:V3=sb_mulv(base,light);
   // the sea's light bounced up onto the walls
   if (n.y<0.3f32) { c=sb_add(c,sb_mul(sb_mulv(base,v3(0.05f32,0.09f32,0.1f32)),amb*smoothstep(30.0f32,0.0f32,w.y))); }
@@ -915,12 +1031,40 @@ slab_bg_fs :: (frag:V4,u:[]f32)->SlabOut {
   hit:SlabHit=slab_scene(ho,hd,false,SLAB_MISS,u);
   ch:SlabHit=slab_walker(ho,hd,hit.t,u);
   if (ch.t<hit.t) { hit=ch; }
+  // under the sea (the underwater view, or through the section's slot)
+  wet:bool=(u[SLAB_P+56]>0.5f32)||(u[SLAB_P+52]!=0.0f32);
+  if (u[SLAB_P+56]>0.5f32) {
+    ln:SlabHit=slab_lines(ho,hd,hit.t,u);
+    if (ln.t<hit.t) { hit=ln; }
+  }
   if (hit.t<SLAB_MISS) {
-    c:V3=slab_haze(slab_lit(hit,ho,hd,u),d,hit.t,u);
+    c:V3=slab_lit(hit,ho,hd,u);
+    under:f32=ifx wet then slab_under_len(ho,hd,hit.t) else 0.0f32;
+    // the section's cut face reads as a drawing: the water in front of it only tints it
+    wy:f32=ho.y+(hd.y*hit.t);
+    if ((u[SLAB_P+52]!=0.0f32)&&(abs(hit.n.z)>0.9f32)&&(abs((ho.z+(hd.z*hit.t))-u[SLAB_P+53])<0.6f32)) { under=under*0.12f32; wy=0.0f32; }
+    if (under>0.0f32) {
+      c=slab_through_water(c,under,wy,fmin(ho.y,0.0f32),hd.y,u);
+      if (ho.y>0.0f32) { c=slab_haze(c,d,hit.t-under,u); }
+    } else {
+      c=slab_haze(c,d,hit.t,u);
+    }
     sm:V4=slab_smoke(ho,hd,hit.t,u);
     c=sb_mix(c,v3(sm.x,sm.y,sm.z),sm.w);
     c=slab_grade(c,u);
     return SlabOut.{c=v4(c.x,c.y,c.z,1.0f32),depth=slab_depth_of(d,hit.t,u)};
+  }
+  // through the section's slot (where the ray meets the waterline) or from under the sea
+  slot:bool=false;
+  if ((u[SLAB_P+52]!=0.0f32)&&(hd.y<0.0f32)&&(ho.y>0.0f32)) {
+    c0:V3=sb_add(ho,sb_mul(hd,ho.y/(-hd.y)));
+    beyond:f32=u[SLAB_P+52]*(c0.z-u[SLAB_P+53]);
+    slot=(abs(c0.x)<u[36]+20.0f32)&&(beyond>0.0f32)&&(beyond<1500.0f32);
+  }
+  if (slot||((u[SLAB_P+56]>0.5f32)&&((hd.y<0.0f32)||(ho.y<0.0f32)))) {
+    // open water all the way: the sea's own colour, darker looking down
+    c:V3=slab_grade(slab_deep_colour(fmin(ho.y,0.0f32),hd.y,u),u);
+    return SlabOut.{c=v4(c.x,c.y,c.z,1.0f32),depth=1.0f32};
   }
   c:V3=slab_haze(slab_sky(d,u),d,40000.0f32*(1.0f32-smoothstep(0.0f32,0.2f32,d.y)),u);
   sm:V4=slab_smoke(ho,hd,SLAB_MISS,u);
@@ -1002,6 +1146,24 @@ slab_surface_fs :: (v:SlabS,u:[]f32)->V4 {
   rel:V3=wg_sub_f3f3(v.world,v3(u[8],u[9],u[10]));
   dist:f32=wg_length3(rel);
   d:V3=wg_div_f3f(rel,fmax(dist,1e-4f32));
+  // the section view: a slot cut out of the sea from the hull toward the eye
+  sec:f32=u[SLAB_P+52];
+  if (sec!=0.0f32) {
+    hp:V3=sb_to_hull(v.world,u);
+    beyond:f32=sec*(hp.z-u[SLAB_P+53]);
+    if ((abs(hp.x)<u[36]+20.0f32)&&(beyond>0.0f32)&&(beyond<1500.0f32)) { gpu_discard(); }
+  }
+  if (u[SLAB_P+56]>0.5f32) {
+    // from under the sea: the sky through Snell's window overhead, the water's own colour mirrored
+    // outside it, the sun's glare through the waves
+    win:f32=smoothstep(0.62f32,0.70f32,d.y);
+    up:V3=wg_normalize3(v3(d.x*1.33f32,fmax(d.y,0.05f32),d.z*1.33f32));
+    sky:V3=sb_mul(slab_sky(up,u),0.85f32);
+    glare:f32=sb_pow(fmax(wg_dot3(d,v3(u[24],u[25],u[26])),0.0f32),60.0f32);
+    c:V3=sb_add(sb_mix(slab_deep_colour(-10.0f32,1.0f32,u),sky,win),sb_mul(sb_p(u,4),glare*2.0f32));
+    c=slab_grade(slab_through_water(c,dist,0.0f32,fmin(u[9],0.0f32),d.y,u),u);
+    return wg_make_f4_f3f(c,1.0f32);
+  }
   c:V3=slab_haze(slab_water(v.rest,v.world,d,dist,u[2],u),d,dist,u);
   sm:V4=slab_smoke(sb_to_hull(v3(u[8],u[9],u[10]),u),sb_dir_to_hull(d,u),dist,u);
   c=slab_grade(sb_mix(c,v3(sm.x,sm.y,sm.z),sm.w),u);

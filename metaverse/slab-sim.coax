@@ -92,6 +92,7 @@ SimPlant :: struct {
   swac: bool;                // seawater cooling of the data halls
   warming: f64 = 0.5;        // cold-pipe warming, degrees C
   halving: bool;
+  demo10: bool;              // ?plant=demo10: the report's 10 MW demonstration (spec 6.5)
   jth: f64 = 15.0;           // fleet efficiency, J/TH
   bitcoin: f64 = 65118.0;    // $ (Luxor's 16 November 2026 snapshot)
   network: f64 = 967.0;      // EH/s
@@ -114,11 +115,16 @@ SimPower :: struct {
   condenser_flow: f64;       // each module's condenser seawater, m^3/s
   cold_flow: f64;            // OTEC cold water, m^3/s
   cooling_share: f64;        // the data halls' share of the cold flow with seawater cooling
+  margin: f64;               // demo10: the uncommitted margin, MW
+  scale: f64;                // the OTEC plant's scale this ran at
 }
 SIM_OTEC_GROSS :: 171.4;  SIM_OTEC_PARASITIC :: 51.4;  SIM_OTEC_DT :: 24.0;
 SIM_MODULE_GROSS :: 50.0; SIM_MODULE_HOUSE :: 2.0; SIM_MODULE_THERMAL :: 160.0;
 SIM_DATA :: 120.0; SIM_DATA_SWAC :: 110.0; SIM_DESAL :: 15.0; SIM_INDUSTRY :: 20.0; SIM_HOTEL :: 8.0;
 SIM_CONTAINERS :: 50;
+// The 10 MW demonstration's allocation (otec.md section 10): 3 MW of IT at PUE 1.15; utility,
+// industry and water; up to 1 MW of curtailable mining; the rest an uncommitted margin.
+SIM_DEMO_NET :: 10.0; SIM_DEMO_IT :: 3.45; SIM_DEMO_UTILITY :: 4.0; SIM_DEMO_MINING :: 1.0;
 
 sim_otec_net :: (dt: f64, scale: f64) -> f64 {
   gross := SIM_OTEC_GROSS * scale * (dt / SIM_OTEC_DT) * (dt / SIM_OTEC_DT);
@@ -134,7 +140,14 @@ sim_power :: (p: SimPlant, site: SimSite, month: f64) -> SimPower {
   o.surface = sim_surface(site, month);
   o.dt = o.surface - (SIM_DEEP + p.warming);
   if p.power != POWER_NUCLEAR {
-    scale := ifx p.power == POWER_HYBRID then p.otec_scale else p.otec_scale;
+    scale := p.otec_scale;
+    if p.demo10 {
+      // scaled so the plant nets 10 MW at the site's best delta T
+      best := site.surface_max - (SIM_DEEP + p.warming);
+      full := sim_otec_net(best, 1);
+      scale = ifx full > 0 then SIM_DEMO_NET / full else 0;
+    }
+    o.scale = scale;
     o.otec_gross = SIM_OTEC_GROSS * scale * (o.dt / SIM_OTEC_DT) * (o.dt / SIM_OTEC_DT);
     o.otec_parasitic = SIM_OTEC_PARASITIC * scale;
     o.otec_net = sim_max(0, o.otec_gross - o.otec_parasitic);
@@ -151,6 +164,22 @@ sim_power :: (p: SimPlant, site: SimSite, month: f64) -> SimPower {
     o.condenser_flow = (SIM_MODULE_THERMAL - SIM_MODULE_GROSS) / (4.1 * 10.0);
   }
   o.supply = o.otec_net + o.nuclear_net;
+  if p.demo10 {
+    // the demonstration's campus: IT first, then utility, industry and water, then the miners;
+    // whatever is left is the margin
+    left := o.supply;
+    o.data_load = SIM_DEMO_IT; o.fixed = SIM_DEMO_IT + SIM_DEMO_UTILITY;
+    o.data = sim_min(SIM_DEMO_IT, left); left -= o.data; o.data_on_backup = o.data < SIM_DEMO_IT;
+    o.industry = sim_min(SIM_DEMO_UTILITY, sim_max(left, 0)); left -= o.industry;
+    o.mining = sim_min(SIM_DEMO_MINING, sim_max(left, 0)); left -= o.mining;
+    o.containers = ifx o.mining >= SIM_DEMO_MINING then 1 else 0;
+    o.margin = sim_max(left, 0);
+    o.shed = o.data_on_backup || o.industry < SIM_DEMO_UTILITY || o.mining < SIM_DEMO_MINING;
+    o.hashrate = o.mining / 1.05 / p.jth;
+    o.revenue = sim_revenue(p);
+    o.budget = o.revenue - 48.27;
+    return o;
+  }
   o.data_load = ifx p.swac then SIM_DATA_SWAC else SIM_DATA;
   o.fixed = SIM_HOTEL + o.data_load + SIM_DESAL + SIM_INDUSTRY;
   o.cooling_share = ifx p.swac && o.cold_flow > 0 then 2.93 / o.cold_flow else 0;
@@ -200,6 +229,12 @@ SimHull :: struct {
   accel: f64;                   // the deck's vertical acceleration at the centre, m/s^2
   trace: [60] f32;              // heave over the last minute, a second a sample
   traced: f64;
+  // flooding and ballast (spec 4.5): a holed cell fills through its hole to the outside waterline;
+  // the pumps move ballast from the damaged corner to the opposite one to take the heel out
+  holed: bool;
+  flood: f64;                   // m^3 in the holed cell
+  pumping: bool;
+  moved: f64;                   // m^3 of ballast pumped from the damaged corner to the opposite one
 }
 // The hull's constants.
 sim_awp :: () -> f64 { return SIM_L * SIM_B - (4.0 - SIM_PI) * SIM_CORNER * SIM_CORNER; }
@@ -279,7 +314,36 @@ sim_offset :: (u: f64) -> SimOffset {
   return SimOffset.{offset = lo, tension = sim_mooring(0, lo).peak, force = f};
 }
 // One fixed step of the hull on a sea of `heights` (cascade 0's tile at this tick), with the wind.
-sim_hull_step :: (h: SimHull, heights: [] f32, n: int, patch: f64, wind: f64, wdx: f64, wdz: f64, dt: f64) -> SimHull {
+// Cell A1, the south-west corner cell (columns A-T west to east, rows 1-12 south to north).
+SIM_CELL :: 50.0;
+SIM_HOLE_X :: -SIM_L / 2.0 + SIM_CELL / 2.0; SIM_HOLE_Z :: -SIM_B / 2.0 + SIM_CELL / 2.0;
+SIM_HOLE_AREA :: 4.0;         // m^2 (spec 4.5)
+SIM_PUMPS :: 80.0;            // 8 pumps of 10 m^3/s
+// The world runs a flood and the pumps this many times faster than real time, so a holed cell
+// fills in about a minute (the 4 m^2 orifice itself takes about 24 minutes).
+SIM_FLOOD_LAPSE :: 24.0;
+// The flood's and the ballast's water this step: the cell fills by the orifice law
+// Q = A sqrt(2 g dh), dh the outside waterline over the water inside.
+sim_flood :: (h: SimHull, dt: f64) -> SimHull {
+  o := h;
+  if o.holed {
+    inside := o.flood / (SIM_CELL * SIM_CELL);
+    // the outside waterline at the cell, over the keel: the draft less the hull's rise there
+    outside := SIM_T - (h.heave - h.roll * SIM_HOLE_Z + h.pitch * SIM_HOLE_X);
+    dh := outside - inside;
+    q := ifx dh > 0 then SIM_HOLE_AREA * sqrt(2.0 * SIM_G * dh) else -SIM_HOLE_AREA * sqrt(2.0 * SIM_G * -dh);
+    o.flood = sim_clamp(o.flood + q * dt * SIM_FLOOD_LAPSE, 0, SIM_CELL * SIM_CELL * SIM_D);
+  }
+  if o.pumping {
+    // enough to balance the flood's moments: half its water moved to the opposite corner
+    target := o.flood / 2.0;
+    step := SIM_PUMPS * dt * SIM_FLOOD_LAPSE;
+    o.moved = ifx o.moved < target then sim_min(target, o.moved + step) else sim_max(target, o.moved - step);
+  }
+  return o;
+}
+sim_hull_step :: (h0: SimHull, heights: [] f32, n: int, patch: f64, wind: f64, wdx: f64, wdz: f64, dt: f64) -> SimHull {
+  h := sim_flood(h0, dt);
   o := h;
   m := sim_mass(); awp := sim_awp();
   col := SIM_COLUMN * SIM_COLUMN;
@@ -291,6 +355,10 @@ sim_hull_step :: (h: SimHull, heights: [] f32, n: int, patch: f64, wind: f64, wd
     p := SIM_RHO * SIM_G * eta * col;
     force += p; mroll -= p * z; mpitch += p * x;
   } } }
+  // the floodwater's weight at the holed cell; the moved ballast leaves it and lands opposite
+  wf := SIM_RHO * SIM_G * h.flood; wm := SIM_RHO * SIM_G * h.moved;
+  force -= wf; mroll += wf * SIM_HOLE_Z; mpitch -= wf * SIM_HOLE_X;
+  mroll -= 2.0 * wm * SIM_HOLE_Z; mpitch += 2.0 * wm * SIM_HOLE_X;
   // heave: buoyancy of the columns' rise, the hydrostatic spring, damping
   kh := SIM_RHO * SIM_G * awp; mh := m * (1.0 + SIM_CA_HEAVE);
   ch := 2.0 * SIM_ZETA * sqrt(kh * mh);
@@ -439,6 +507,30 @@ sim_hull_advance :: (h: SimHull, heights: [] f32, n: int, patch: f64, wind: f64,
   lo := 1e9; hi := -1e9;
   for m: 0..<120 { q := sim_power(h, sim_site(SITE_GUAM), f64(m) * 0.1); lo = sim_min(lo, q.supply); hi = sim_max(hi, q.supply); }
   #assert abs(lo - 191) < 1.0 && abs(hi - 212) < 1.0;
+}
+#test "the 10 MW demonstration nets 10 MW at its best and keeps a 1.55 MW margin" {
+  p := SimPlant.{demo10 = true};
+  hi := 0.0; lo := 1e9; best: SimPower;
+  for m: 0..<120 { o := sim_power(p, sim_site(SITE_GUAM), f64(m) * 0.1); if o.supply > hi { hi = o.supply; best = o; } lo = sim_min(lo, o.supply); }
+  #assert abs(hi - 10.0) < 0.01;
+  #assert abs(best.data - 3.45) < 1e-9 && abs(best.industry - 4.0) < 1e-9 && abs(best.mining - 1.0) < 1e-9 && abs(best.margin - 1.55) < 0.01;
+  // in the coldest month the margin goes first, then the miners
+  cold := sim_power(p, sim_site(SITE_GUAM), 1.5);
+  #assert cold.supply < 10 && cold.data == 3.45 && cold.margin < 1.55;
+  #assert abs(best.scale - 10.0 / sim_otec_net(sim_site(SITE_GUAM).surface_max - SIM_DEEP - 0.5, 1)) < 1e-9;
+}
+#test "5: holing cell A1 on prime sinks it 0.10 m and heels it 0.06 degrees, and it stays afloat" #steps 2000000000 {
+  h := SimHull.{holed = true}; empty: [1] f32;
+  for i: 0..<9000 { h = sim_hull_step(h, empty[..], 0, 1, 0, 1, 0, SIM_STEP); }
+  // about 64,000 m^3 of water: the cell filled to the outside waterline
+  #assert abs(h.flood - 64000.0) < 2000.0;
+  #assert abs(-h.heave - 0.10) < 0.03;
+  heel := abs(h.roll) * 180.0 / SIM_PI;
+  #assert abs(heel - 0.06) < 0.03 && h.heave > -SIM_D + SIM_T;
+  // the pumps take the heel and trim back out
+  h.pumping = true;
+  for i: 0..<9000 { h = sim_hull_step(h, empty[..], 0, 1, 0, 1, 0, SIM_STEP); }
+  #assert abs(h.roll) * 180.0 / SIM_PI < 0.005 && abs(h.pitch) * 180.0 / SIM_PI < 0.005;
 }
 #test "14: each module's figures" {
   o := sim_power(SimPlant.{power = POWER_NUCLEAR}, sim_site(SITE_GUAM), 0);

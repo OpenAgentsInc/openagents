@@ -19,7 +19,8 @@
 // gale|hurricane, ?wind=M/S (overrides the sea's), ?hour=H, ?month=M (1-12), ?rate=X (world
 // seconds a second, 60 by default: a day in 24 minutes), ?power=otec|nuclear|hybrid, ?otec=SCALE,
 // ?modules=N, ?swac=1, ?t=SECONDS (a fixed moment), ?yaw=, ?pitch=, ?dist=, ?x=, ?z= (the
-// orbit), ?mode=orbit|fly|walk, ?hud=0, ?tier=phone.
+// orbit), ?mode=orbit|fly|walk, ?view=section|under, ?hole=1 (cell A1 holed), ?plant=demo10,
+// ?hud=0, ?tier=phone.
 
 #load "../../metaverse/water-ocean.coax";
 #load "../../metaverse/slab-plan.coax";
@@ -67,6 +68,8 @@ P_PICK :: 36;     // selected record (-1), hovered record, seconds since selecte
 P_SUNHULL :: 40;  // toward the sun in the hull's frame, the warm grade
 P_SPRAY :: 44;    // the spray's height (m), the wave groups' spacing (m), miners on (0..50), data halls (0..1)
 P_SYSTEMS :: 48;  // industry (0..1), the waves' speed along the walls, 0, 0
+P_SECTION :: 52;  // the section: which side is cut away (0 none, +1 north of the cut, -1 south), the cut's z, the ballast's top, cell A1's floodwater top
+P_UNDER :: 56;    // under the sea (0/1), a cold-water pipe tripped (0/1), 0, 0
 PARAM_FLOATS :: 64;
 U_WORDS :: U_PARAMS + PARAM_FLOATS;   // then the words:
 W_COARSE :: 0;    //   cascade 0: (height, foam), (sx, sz) a texel
@@ -86,7 +89,7 @@ KB_W :: 256; KB_S :: 512; KB_D :: 1024; KB_A :: 2048; KB_SPACE :: 4096; KB_SHIFT
 MAX_BUTTONS :: 32;
 BTN_ORBIT :: 1; BTN_FLY :: 2; BTN_WALK :: 3; BTN_SITE :: 4; BTN_SEA :: 5; BTN_EARLIER :: 6; BTN_LATER :: 7;
 BTN_PAUSE :: 8; BTN_POWER :: 9; BTN_STATS :: 10; BTN_CLOSE :: 11; BTN_REFUEL :: 12; BTN_TRIP :: 13; BTN_SWAC :: 14;
-BTN_HALVING :: 15; BTN_HELP :: 16; BTN_MONTH :: 17;
+BTN_HALVING :: 15; BTN_HELP :: 16; BTN_MONTH :: 17; BTN_HOLE :: 18; BTN_PUMP :: 19; BTN_SECTION :: 20; BTN_UNDER :: 21;
 
 Slab :: struct {
   started: bool;
@@ -105,6 +108,8 @@ Slab :: struct {
   wyaw: f32 = 1.2; wpitch: f32 = 0.18; wdist: f32 = 9.5;
   stride: f32;          // metres walked, for the gait
   mode: int;
+  section: bool;        // V: the hull cut open across, where the camera looks
+  under: bool;          // U: flying under the sea
   held: int;            // keys held, bits
   dragging: bool; last_x: f32; last_y: f32; down_x: f32; down_y: f32; moved: f32;
   px: f32; py: f32;     // the pointer
@@ -389,7 +394,7 @@ fly_step :: (s: [] Slab, dt: f32) {
   nx := s[0].fx + (fx * go + rx * side) * speed;
   ny := s[0].fy + (fy * go + lift) * speed;
   nz := s[0].fz + (fz * go + rz * side) * speed;
-  ny = clamp32(ny, 3, 2000);
+  ny = ifx s[0].under then clamp32(ny, -1400, -4) else clamp32(ny, 3, 2000);
   // stay out of the hull and the buildings
   h := to_hull(s, nx, ny, nz);
   if inside_any(s, h[0], h[1], h[2]) { ny = hi_f32(s[0].fy, ny); h = to_hull(s, s[0].fx, ny, s[0].fz); if inside_any(s, h[0], h[1], h[2]) { return; } nx = s[0].fx; nz = s[0].fz; }
@@ -432,16 +437,29 @@ travel :: (s: [] Slab, i: int) {
   }
   say(s, STATION_NAME[i]);
 }
+// U: down under the sea in the fly-through, 45 m under the waterline beneath the OTEC plant,
+// looking along its cold-water pipes; again, back up to the orbit.
+go_under :: (s: [] Slab, on: bool) {
+  if !on { s[0].under = false; set_mode(s, CAM_ORBIT); return; }
+  set_mode(s, CAM_FLY);
+  s[0].under = true;
+  slab_pose(s);
+  w := to_world(s, -425, -42, -275);
+  s[0].fx = w[0]; s[0].fy = w[1]; s[0].fz = w[2];
+  s[0].fyaw = angle_atan2(-0.55, -0.85); s[0].fpitch = -0.12;
+  say(s, "UNDER THE SEA: WASD AND SPACE OR SHIFT TO SWIM, U TO SURFACE");
+}
 say :: (s: [] Slab, text: string) {
   n := 0;
   for i: 0..<text.count { if n < 64 { s[0].toast[n] = text[i]; n += 1; } }
   s[0].toast_n = n; s[0].toast_at = s[0].time;
 }
 set_mode :: (s: [] Slab, m: int) {
+  if m != CAM_FLY && s[0].under { s[0].under = false; }
   if m == s[0].mode { return; }
   if m == CAM_FLY {
     // start where the eye is now, looking the same way
-    s[0].fx = s[0].eye[0]; s[0].fy = hi_f32(s[0].eye[1], 3); s[0].fz = s[0].eye[2];
+    s[0].fx = s[0].eye[0]; s[0].fy = ifx s[0].under then s[0].eye[1] else hi_f32(s[0].eye[1], 3); s[0].fz = s[0].eye[2];
     s[0].fyaw = angle_atan2(-s[0].fwd[0], -s[0].fwd[2]);
     s[0].fpitch = clamp32(-angle_atan2(s[0].fwd[1], sqrt(s[0].fwd[0] * s[0].fwd[0] + s[0].fwd[2] * s[0].fwd[2])), -1.4, 1.4);
   }
@@ -747,6 +765,31 @@ slab_state_params :: (s: [] Slab, u: [] f32, sun: SimSun) {
   u[P + P_SPRAY] = f32(fmin(4.0 * hs + 0.3 * s[0].wind, 24.0)); u[P + P_SPRAY + 1] = 90;
   u[P + P_SPRAY + 2] = f32(pw.containers); u[P + P_SPRAY + 3] = f32(pw.data / pw.data_load);
   u[P + P_SYSTEMS] = f32(pw.industry / SIM_INDUSTRY); u[P + P_SYSTEMS + 1] = 7.5;
+  if s[0].section {
+    cut := section_cut(s);
+    eh := to_hull(s, s[0].eye[0], s[0].eye[1], s[0].eye[2]);
+    u[P + P_SECTION] = ifx eh[2] > cut then 1.0f32 else -1.0f32; u[P + P_SECTION + 1] = cut;
+    u[P + P_SECTION + 2] = SLAB_BALLAST_TOP;
+    u[P + P_SECTION + 3] = ifx s[0].hull.holed then -SLAB_DRAFT + f32(s[0].hull.flood / (SIM_CELL * SIM_CELL)) else -1000.0f32;
+  }
+  u[P + P_UNDER] = ifx s[0].under then 1.0f32 else 0.0f32;
+  u[P + P_UNDER + 1] = ifx s[0].plant.pipe_tripped then 1.0f32 else 0.0f32;
+}
+// The ballast's top over the keel's plane: 6.9 Mt of sea water across the inner bottom (spec 4.4).
+SLAB_BALLAST_TOP :: -12.2f32;
+// Where the section cuts across the hull: through the orbit's point, or the walker, kept inside
+// the hull's beam.
+section_cut :: (s: [] Slab) -> f32 {
+  z := ifx s[0].mode == CAM_WALK then s[0].foot.walk.z else s[0].tz;
+  if s[0].mode == CAM_FLY {
+    // where the view meets the deck's plane (or the waterline's, from under it)
+    e := to_hull(s, s[0].eye[0], s[0].eye[1], s[0].eye[2]);
+    f := dir_to_hull(s, s[0].fwd[0], s[0].fwd[1], s[0].fwd[2]);
+    plane := ifx e[1] < 0 then -SLAB_DRAFT else SLAB_DECK;
+    t := ifx abs(f[1]) > 0.02f32 then (plane - e[1]) / f[1] else 300.0f32;
+    z = e[2] + f[2] * clamp32(t, 0, 1500);
+  }
+  return clamp32(z, -SLAB_BEAM / 2 + 10, SLAB_BEAM / 2 - 10);
 }
 
 // ---------------------------------------------------------------- the HUD
@@ -891,6 +934,21 @@ slab_card :: (s: [] Slab, i: int, c: [] Card) {
   k := rec_kind(s, i);
   x0 := rec(s, i, 0); y0 := rec(s, i, 1); z0 := rec(s, i, 2); x1 := rec(s, i, 4); y1 := rec(s, i, 5); z1 := rec(s, i, 6);
   cx := (x0 + x1) * 0.5; cz := (z0 + z1) * 0.5; tall := y1 - SLAB_DECK;
+  if k == SLAB_KIND_PIPE {
+    ln(c, ST_TITLE, "COLD-WATER PIPE");
+    ln(c, ST_SUB, "ONE OF FOUR FEEDING THE OTEC PLANT");
+    ln(c, ST_HEAD, "CONSTRUCTION");
+    ln(c, ST_BODY, "6.7 M WIDE, 1,000 M LONG, FIBRE-REINFORCED PLASTIC");
+    ln(c, ST_BODY, "HUNG FROM THE HULL THROUGH A 12 M MOONPOOL");
+    ln(c, ST_HEAD, "PHYSICS");
+    ln(c, ST_BODY, "DRAWS 4.5 C WATER FROM 1,000 M DOWN AT ABOUT 2 M/S");
+    ln(c, ST_BODY, "FOUR CARRY 282 M3/S; LOSE ONE AND A QUARTER GOES");
+    ln(c, ST_HEAD, "NOW");
+    if s[0].plant.pipe_tripped && cz < -200 { ln(c, ST_WARN, "BROKEN 300 M DOWN: TRIPPED (THE STATS' SWITCH)"); }
+    else { ln(c, ST_LIVE, "FLOWING"); }
+    ln(c, ST_NOTE, "U GOES UNDER THE SEA TO SEE THEM");
+    return;
+  }
   if k == SLAB_KIND_HULL {
     ln(c, ST_TITLE, "THE HULL");
     ln(c, ST_SUB, "THE PRIME MONOLITH: REINFORCED, PRESTRESSED CONCRETE");
@@ -908,7 +966,11 @@ slab_card :: (s: [] Slab, i: int, c: [] Card) {
     l := line(c, ST_LIVE, "HEAVE "); num(c, l, h.heave, 3); more(c, l, " M  ROLL "); num(c, l, h.roll * 180 / SIM_PI, 4); more(c, l, "°  PITCH "); num(c, l, h.pitch * 180 / SIM_PI, 4); more(c, l, "°");
     l = line(c, ST_LIVE, "OFFSET "); num(c, l, sqrt(h.surge * h.surge + h.sway * h.sway), 1); more(c, l, " M  PEAK LINE "); num(c, l, h.tension / 1e6, 1); more(c, l, " MN");
     l = line(c, ST_LIVE, "WIND ON THE HULL "); num(c, l, h.wind_force / 1e6, 1); more(c, l, " MN");
-    ln(c, ST_NOTE, "THE WAVES' FORCES LARGELY CANCEL ACROSS 1 KM OF HULL");
+    if h.holed {
+      l = line(c, ST_WARN, "CELL A1 HOLED: "); num(c, l, h.flood * SIM_RHO / 1e9, 1); more(c, l, " KT OF WATER IN");
+      if h.pumping { l = line(c, ST_LIVE, "PUMPS MOVED "); num(c, l, h.moved / 1000, 1); more(c, l, " THOUSAND M3 OF BALLAST"); }
+    }
+    ln(c, ST_NOTE, "V CUTS THE HULL OPEN; THE WAVES' FORCES LARGELY CANCEL");
     return;
   }
   if k == SLAB_KIND_PLANT || (k == SLAB_KIND_TANK && cx < -350) || (k == SLAB_KIND_POOL && cx < -350) {
@@ -1093,6 +1155,8 @@ hud :: (s: [] Slab, out: [] f32) -> int {
   n = button(s, out, n, "WALK", x, y, k, s[0].mode == CAM_WALK, BTN_WALK); x += button_w("WALK", k) + 12 * k;
   n = button(s, out, n, "STATS", x, y, k, s[0].stats, BTN_STATS); x += button_w("STATS", k) + 5 * k;
   n = button(s, out, n, "?", x, y, k, s[0].help, BTN_HELP); x += button_w("?", k) + 5 * k;
+  n = button(s, out, n, "SECTION", x, y, k, s[0].section, BTN_SECTION); x += button_w("SECTION", k) + 5 * k;
+  n = button(s, out, n, "UNDER", x, y, k, s[0].under, BTN_UNDER); x += button_w("UNDER", k) + 5 * k;
   // the world's controls
   y2 := ifx narrow then y + 28 * k else y;
   x2 := ifx narrow then pad else x + 8 * k;
@@ -1104,14 +1168,14 @@ hud :: (s: [] Slab, out: [] f32) -> int {
   n = button(s, out, n, "+1H", x2, y2, k, false, BTN_LATER); x2 += button_w("+1H", k) + 3 * k;
   n = button(s, out, n, "+1MO", x2, y2, k, false, BTN_MONTH); x2 += button_w("+1MO", k) + 3 * k;
   n = button(s, out, n, ifx s[0].paused then "PLAY" else "PAUSE", x2, y2, k, s[0].paused, BTN_PAUSE); x2 += button_w("PAUSE", k) + 5 * k;
-  pk := ifx s[0].plant.power == POWER_NUCLEAR then "POWER: NUCLEAR" else ifx s[0].plant.power == POWER_HYBRID then "POWER: HYBRID" else "POWER: OTEC";
+  pk := ifx s[0].plant.power == POWER_NUCLEAR then "POWER: NUCLEAR" else ifx s[0].plant.power == POWER_HYBRID then "POWER: HYBRID" else ifx s[0].plant.demo10 then "POWER: 10 MW DEMO" else "POWER: OTEC";
   if narrow && x2 + button_w(pk, k) > W - pad { y2 += 28 * k; x2 = pad; }
   n = button(s, out, n, pk, x2, y2, k, false, BTN_POWER); x2 += button_w(pk, k) + 5 * k;
   top := y2 + 32 * k;
   // the stats
   if s[0].stats {
     pwide := lo_f32(300 * k, W - 2 * pad);
-    rows := 22;
+    rows := ifx s[0].hull.holed then 25 else 24;
     ph := f32(rows) * 11.5f32 * k + 16 * k;
     n = panel(out, n, pad, top, pad + pwide, top + ph, 9 * k, 0.04, 0.05, 0.07, 0.66, 0.3);
     yy := top + 16 * k;
@@ -1149,8 +1213,16 @@ hud :: (s: [] Slab, out: [] f32) -> int {
     }
     m = put(b[..], 0, "SUPPLY "); m = putf(b[..], m, pw.supply, 1); m = put(b[..], m, " MW AGAINST "); m = putf(b[..], m, pw.fixed, 0); m = put(b[..], m, " MW OF FIXED LOADS");
     n = text(out, n, cast(string) b[0..<m], lx, yy, ifx pw.supply < pw.fixed then warn else body); yy += 11 * k;
-    m = put(b[..], 0, "DATA "); m = putf(b[..], m, pw.data, 0); m = put(b[..], m, "/"); m = putf(b[..], m, pw.data_load, 0);
-    m = put(b[..], m, "  DESAL "); m = putf(b[..], m, pw.desal, 0); m = put(b[..], m, "/15  INDUSTRY "); m = putf(b[..], m, pw.industry, 0); m = put(b[..], m, "/20  HOTEL "); m = putf(b[..], m, pw.hotel, 0);
+    if s[0].plant.demo10 {
+      // the report's 10 MW demonstration: its own allocation (otec.md section 10)
+      m = put(b[..], 0, "10 MW DEMONSTRATION, PLANT AT "); m = putf(b[..], m, pw.scale, 3); m = put(b[..], m, " OF FULL SIZE");
+      n = text(out, n, cast(string) b[0..<m], lx, yy, body); yy += 11 * k;
+      m = put(b[..], 0, "IT "); m = putf(b[..], m, pw.data, 2); m = put(b[..], m, "/3.45  UTILITY "); m = putf(b[..], m, pw.industry, 2); m = put(b[..], m, "/4.00  MINING "); m = putf(b[..], m, pw.mining, 2);
+      m = put(b[..], m, "/1.00  MARGIN "); m = putf(b[..], m, pw.margin, 2);
+    } else {
+      m = put(b[..], 0, "DATA "); m = putf(b[..], m, pw.data, 0); m = put(b[..], m, "/"); m = putf(b[..], m, pw.data_load, 0);
+      m = put(b[..], m, "  DESAL "); m = putf(b[..], m, pw.desal, 0); m = put(b[..], m, "/15  INDUSTRY "); m = putf(b[..], m, pw.industry, 0); m = put(b[..], m, "/20  HOTEL "); m = putf(b[..], m, pw.hotel, 0);
+    }
     n = text(out, n, cast(string) b[0..<m], lx, yy, ifx pw.shed then warn else body); yy += 11 * k;
     if pw.data_on_backup { n = text(out, n, "DATA HALLS SHORT: BATTERIES AND GENERATORS CARRY THEM", lx, yy, warn); yy += 11 * k; }
     m = put(b[..], 0, "MINERS "); m = putf(b[..], m, f64(pw.containers), 0); m = put(b[..], m, "/50  "); m = putf(b[..], m, pw.hashrate, 2); m = put(b[..], m, " EH/S  $"); m = putf(b[..], m, pw.revenue, 1); m = put(b[..], m, "/MWH");
@@ -1165,7 +1237,18 @@ hud :: (s: [] Slab, out: [] f32) -> int {
     }
     n = button(s, out, n, "SWAC", bx, yy - 6 * k, k, s[0].plant.swac, BTN_SWAC); bx += button_w("SWAC", k) + 4 * k;
     n = button(s, out, n, "HALVING", bx, yy - 6 * k, k, s[0].plant.halving, BTN_HALVING);
-    yy += 26 * k;
+    yy += 22 * k;
+    // damage control (spec 4.5)
+    bx = lx;
+    n = button(s, out, n, ifx h.holed then "REPAIR A1" else "HOLE CELL A1", bx, yy - 6 * k, k, h.holed, BTN_HOLE); bx += button_w("HOLE CELL A1", k) + 4 * k;
+    if h.holed { n = button(s, out, n, "PUMP BALLAST", bx, yy - 6 * k, k, h.pumping, BTN_PUMP); }
+    yy += 18 * k;
+    if h.holed {
+      m = put(b[..], 0, "FLOOD "); m = putf(b[..], m, h.flood * SIM_RHO / 1e9, 1); m = put(b[..], m, " KT  SINKAGE "); m = putf(b[..], m, -h.heave, 2);
+      m = put(b[..], m, " M  HEEL "); m = putf(b[..], m, abs(h.roll) * 180 / SIM_PI, 3); m = put(b[..], m, "  TRIM "); m = putf(b[..], m, abs(h.pitch) * 180 / SIM_PI, 3);
+      n = text(out, n, cast(string) b[0..<m], lx, yy, warn); yy += 11 * k;
+    }
+    yy += 4 * k;
     n = text(out, n, "NO OTEC PLANT HAS DELIVERED MORE THAN ABOUT 0.1 MW NET.", lx, yy, Pen.{k = k, cap = 5.5f32 * k, r = 0.7, g = 0.72, b = 0.75});
     yy += 10 * k;
     n = text(out, n, "THESE FIGURES ARE ENGINEERING MODELS.", lx, yy, Pen.{k = k, cap = 5.5f32 * k, r = 0.7, g = 0.72, b = 0.75});
@@ -1186,7 +1269,7 @@ hud :: (s: [] Slab, out: [] f32) -> int {
       "  TOWERS, GARDENS, BOW, CONCEPT VIEW, 1.5 KM OUT)",
       "CLICK ANYTHING TO LEARN ABOUT IT; ESC CLOSES THE CARD",
       "N: NEXT SITE   M: NEXT SEA   [ ]: TIME   P: POWER",
-      "H: HIDE THE HUD   I: STATS",
+      "H: HIDE THE HUD   I: STATS   V: SECTION   U: UNDER THE SEA",
       "", "SPEC: DOCS/RESEARCH/OCEAN/SLAB-WORLD-SPEC.MD"];
     for i: 0..<11 { n = text(out, n, lines[i], hx + 12 * k, yy, hp); yy += 12 * k; }
   }
@@ -1282,8 +1365,22 @@ press :: (s: [] Slab, id: int) {
   else if id == BTN_LATER { s[0].hour += 1; if s[0].hour >= 24 { s[0].hour -= 24; } }
   else if id == BTN_MONTH { s[0].month += 1; if s[0].month >= 12 { s[0].month -= 12; } }
   else if id == BTN_PAUSE { s[0].paused = !s[0].paused; }
-  else if id == BTN_POWER { s[0].plant.power = (s[0].plant.power + 1) % 3; s[0].plant.refuelling = 0; say(s, ifx s[0].plant.power == POWER_NUCLEAR then "POWER: 4 NUCLEAR MODULES" else ifx s[0].plant.power == POWER_HYBRID then "POWER: 2 MODULES + OTEC" else "POWER: OTEC"); }
+  else if id == BTN_POWER {
+    // OTEC, nuclear, hybrid, the 10 MW demonstration, and round again
+    if s[0].plant.demo10 { s[0].plant.demo10 = false; s[0].plant.power = POWER_OTEC; }
+    else if s[0].plant.power == POWER_HYBRID { s[0].plant.power = POWER_OTEC; s[0].plant.demo10 = true; }
+    else { s[0].plant.power = (s[0].plant.power + 1) % 3; }
+    s[0].plant.refuelling = 0;
+    say(s, ifx s[0].plant.demo10 then "POWER: THE REPORT'S 10 MW DEMONSTRATION" else ifx s[0].plant.power == POWER_NUCLEAR then "POWER: 4 NUCLEAR MODULES" else ifx s[0].plant.power == POWER_HYBRID then "POWER: 2 MODULES + OTEC" else "POWER: OTEC");
+  }
   else if id == BTN_TRIP { s[0].plant.pipe_tripped = !s[0].plant.pipe_tripped; }
+  else if id == BTN_HOLE {
+    if s[0].hull.holed { s[0].hull.holed = false; s[0].hull.flood = 0; s[0].hull.moved = 0; s[0].hull.pumping = false; say(s, "CELL A1 REPAIRED AND PUMPED DRY"); }
+    else { s[0].hull.holed = true; s[0].section = true; s[0].tz = -255; say(s, "CELL A1 HOLED: 4 M2 BELOW THE WATERLINE"); }
+  }
+  else if id == BTN_PUMP { s[0].hull.pumping = !s[0].hull.pumping; }
+  else if id == BTN_SECTION { s[0].section = !s[0].section; }
+  else if id == BTN_UNDER { go_under(s, !s[0].under); }
   else if id == BTN_REFUEL { s[0].plant.refuelling = ifx s[0].plant.refuelling > 0 then 0 else 1; }
   else if id == BTN_SWAC { s[0].plant.swac = !s[0].plant.swac; }
   else if id == BTN_HALVING { s[0].plant.halving = !s[0].plant.halving; }
@@ -1303,6 +1400,8 @@ slab_key :: (s: [] Slab, key: int, down: bool) -> bool #export_c #effects(all) {
     if key == ']' { press(s, BTN_LATER); return true; }
     if key == 'p' || key == 'P' { press(s, BTN_POWER); return true; }
     if key == 'i' || key == 'I' { press(s, BTN_STATS); return true; }
+    if key == 'v' || key == 'V' { press(s, BTN_SECTION); return true; }
+    if key == 'u' || key == 'U' { press(s, BTN_UNDER); return true; }
     if key == 'h' || key == 'H' { s[0].hud = !s[0].hud; return true; }
     if key == '?' { press(s, BTN_HELP); return true; }
   }
@@ -1430,6 +1529,7 @@ slab_message :: (s: [] Slab, kind: int, text: string) #export_c #effects(all) {
   s[0].rate = fclamp(query_number(url, "rate", 60), 0, 3600);
   if query_word(url, "power=nuclear") { s[0].plant.power = POWER_NUCLEAR; }
   if query_word(url, "power=hybrid") { s[0].plant.power = POWER_HYBRID; }
+  if query_word(url, "plant=demo10") { s[0].plant.power = POWER_OTEC; s[0].plant.demo10 = true; }
   s[0].plant.otec_scale = fclamp(query_number(url, "otec", 1), 0.05, 3.0);
   s[0].plant.modules = cast(int) fclamp(query_number(url, "modules", 4), 1, 6);
   s[0].plant.swac = query_word(url, "swac=1");
@@ -1443,6 +1543,9 @@ slab_message :: (s: [] Slab, kind: int, text: string) #export_c #effects(all) {
   if query_word(url, "hud=0") { s[0].hud = false; }
   if query_word(url, "mode=fly") { s[0].intro = 0; set_mode(s, CAM_FLY); }
   if query_word(url, "mode=walk") { s[0].intro = 0; set_mode(s, CAM_WALK); }
+  if query_word(url, "view=section") { s[0].intro = 0; s[0].section = true; }
+  if query_word(url, "hole=1") { s[0].hull.holed = true; }
+  if query_word(url, "view=under") { s[0].intro = 0; go_under(s, true); }
   s[0].toast_n = 0;
   s[0].built = false;
 }

@@ -25,6 +25,7 @@ SLAB_CORNER :: 40.0f32;     // plan corner radius
 SLAB_DECK :: SLAB_DEPTH - SLAB_DRAFT;   // the deck's height over the calm water: 25 m
 SLAB_RECORD :: 8;
 SLAB_MAX_BOXES :: 128;
+SLAB_PIPE_RADIUS :: 3.35f32; SLAB_PIPE_LENGTH :: 1000.0f32;
 SLAB_HULL_PIECES :: 6;
 SLAB_GROUP :: 10;           // records a group
 SLAB_MAX_GROUPS :: 16;
@@ -52,7 +53,8 @@ SLAB_KIND_PLAZA :: 17;
 SLAB_KIND_COLONNADE :: 18;
 SLAB_KIND_FOUNTAIN :: 19;
 SLAB_KIND_DESAL :: 20;
-SLAB_KINDS :: 21;
+SLAB_KIND_PIPE :: 21;      // the OTEC cold-water pipes, hanging 1,000 m down through the moonpools
+SLAB_KINDS :: 22;
 
 SLAB_BOX :: 0;
 SLAB_CYLINDER :: 1;
@@ -112,6 +114,11 @@ slab_plan :: (out: [] f32) -> int {
     z := -225.0f32 + f32(i) * 150;
     n = slab_put(out, n, -395, SLAB_DECK - 0.5f32, z - 6, -383, SLAB_DECK + 0.05f32, z + 6, SLAB_KIND_POOL, SLAB_CYLINDER);
   }
+  // the cold-water pipes: 6.7 m wide, from the keel to 1,000 m down (spec 6.1)
+  for i: 0..<4 {
+    z := -225.0f32 + f32(i) * 150;
+    n = slab_put(out, n, -389 - SLAB_PIPE_RADIUS, keel - SLAB_PIPE_LENGTH, z - SLAB_PIPE_RADIUS, -389 + SLAB_PIPE_RADIUS, keel, z + SLAB_PIPE_RADIUS, SLAB_KIND_PIPE, SLAB_CYLINDER);
+  }
   for i: 0..<4 {
     n = slab_drum(out, n, -362, ifx i < 2 then -270.0f32 + f32(i) * 30 else 240.0f32 + f32(i - 2) * 30, 11, 18, SLAB_KIND_TANK);
   }
@@ -161,6 +168,14 @@ slab_plan :: (out: [] f32) -> int {
     z0 := -288.0f32 + f32(i / 2) * 100;
     n = slab_shape(out, n, x0, z0, x0 + 37, z0 + 76, 12.0f32 + f32((i * 5) % 3) * 4, SLAB_KIND_COLONNADE, ifx i / 2 == 1 then SLAB_GABLE_Z else SLAB_BOX);
   }
+  // Pipe racks across the industry district, carrying process lines between its units.
+  n = slab_mass(out, n, -345, 92, -152, 99, 7, SLAB_KIND_INDUSTRY);
+  n = slab_mass(out, n, -345, -80, -282, -73, 7, SLAB_KIND_INDUSTRY);
+  // Boulevards: cypresses along the avenues at X -150, 150 and 300, as the concept image's tree-lined streets.
+  // (each strip holds one line of the 7 m tree cells' centres, X = 7k + 3.5, with their jitter)
+  n = slab_shape(out, n, -153, -240, -147.5, 290, 12, SLAB_KIND_GROVE, SLAB_GROVE);
+  n = slab_shape(out, n, 148, -95, 153.5, 140, 12, SLAB_KIND_GROVE, SLAB_GROVE);
+  n = slab_shape(out, n, 302, -285, 307.5, 140, 12, SLAB_KIND_GROVE, SLAB_GROVE);
   // The mining yard, X 150 to 300, Z -300 to -100: 50 containers in five rows of ten.
   for row: 0..<5 {
     z := -280.0f32 + f32(row) * 9;
