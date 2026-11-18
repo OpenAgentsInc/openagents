@@ -50,7 +50,7 @@ SlabWater :: struct {
   each: int;                    // a body
   pools: [4] Moonpool;
   // what the grid and the stations were laid for
-  laid: bool; for_wind: f64; for_x: f64; for_z: f64; for_c: f64; for_s: f64; for_mode: int; for_phone: bool;
+  laid: bool; for_wind: f64; for_from: f64; for_x: f64; for_z: f64; for_c: f64; for_s: f64; for_mode: int; for_phone: bool;
   moment: f64 = -1.0;           // the fixed moment the spray was run up to (-1: the clock runs)
   warm: bool;                   // it has been run up to a moment once: a page opens with its spray in the air
   phone: bool;
@@ -95,9 +95,9 @@ ww_plant :: (w: [] SlabWater, cold: f64, design: f64, dt: f64, current: f64) {
 ww_lay :: (w: [] SlabWater, s: [] Synth, phone: bool) {
   sp := s[0].spectrum;
   f := w[0].frame;
-  kept := w[0].laid && w[0].for_wind == sp.wind_speed && w[0].for_mode == w[0].mode * 8 + w[0].count && w[0].for_phone == phone;
+  kept := w[0].laid && w[0].for_wind == sp.wind_speed && w[0].for_from == sp.wind && w[0].for_mode == w[0].mode * 8 + w[0].count && w[0].for_phone == phone;
   if kept && abs(w[0].for_x - f.x) < 8.0 && abs(w[0].for_z - f.z) < 8.0 && abs(w[0].for_c - f.c) < 0.0002 && abs(w[0].for_s - f.s) < 0.01 { return; }
-  w[0].laid = true; w[0].for_wind = sp.wind_speed; w[0].for_mode = w[0].mode * 8 + w[0].count; w[0].for_phone = phone;
+  w[0].laid = true; w[0].for_wind = sp.wind_speed; w[0].for_from = sp.wind; w[0].for_mode = w[0].mode * 8 + w[0].count; w[0].for_phone = phone;
   w[0].for_x = f.x; w[0].for_z = f.z; w[0].for_c = f.c; w[0].for_s = f.s;
   c0 := s[0].cascades[0];
   long := lee_band(sp, c0.low, c0.high, false);
@@ -160,7 +160,10 @@ ww_frame :: (w: [] SlabWater, s: [] Synth, tile: [] Tile, wind: f64, current: D2
   steps := cast(int) (WW_PREROLL / 0.2);
   for i: 0..<steps {
     t := moment - WW_PREROLL + 0.2 * f64(i + 1);
-    wsp_tile(s, 0, wsp_tick_at(sp, fmax(t, 0.0)) % sp.period, tile);
+    // the sea repeats, so the seconds before the world's first are the end of its period: a page
+    // opens on the foam a moving sea made, not on 24 s of a sea standing still
+    if t < 0.0 { t += f64(sp.period) * sp.tick; }
+    wsp_tile(s, 0, wsp_tick_at(sp, t) % sp.period, tile);
     ww_advance(w, tile, patch, wind, level, 0.2);
   }
   return true;
@@ -312,6 +315,27 @@ ww_test_sea :: (wind: f64) -> Spectrum { return wall_test_sea(wind, 4.36); }
   #assert ww_puffs(w[..]) == WW_PUFFS_PHONE && ww_bursts(w[..]) <= WW_BURSTS_PHONE;
   // the moonpools moved
   #assert w[0].pools[0].peak > 0.0;
+}
+#test "a page's first frame has the foam the sea made in the 24 s before it" #steps 12000000000 {
+  sp := wall_test_sea(13.7, PI_D / 4.0);   // a south-westerly: its waves travel north-east
+  s: [1] Synth; wsp_synth(s[..], sp, 1, 64);
+  t: [1] Tile;
+  a: [1] SlabWater; b: [1] SlabWater;
+  ww_monolith(a[..], 500.0, 300.0, 25.0, 0.0, 0.0, 1.0, 0.0);
+  ww_monolith(b[..], 500.0, 300.0, 25.0, 0.0, 0.0, 1.0, 0.0);
+  // the first frame's moment is its own short step; the sea's period later the same sea comes round
+  #assert ww_frame(a[..], s[..], t[..], 13.7, d2(-0.5, 0.0), 0.0, 0.016, 0.0, false) && a[0].warm;
+  #assert ww_frame(b[..], s[..], t[..], 13.7, d2(-0.5, 0.0), 0.0, 0.016 + f64(sp.period) * sp.tick, 0.0, false);
+  // so the seconds before the first were the end of the period, not a sea standing still: the same foam
+  white := 0;
+  for i: 0..<a[0].stations { #assert a[0].spray[0].foam[i] == b[0].spray[0].foam[i]; if a[0].spray[0].foam[i] > 0.2 { white += 1; } }
+  #assert a[0].spray[0].thrown == b[0].spray[0].thrown;
+  // a 4 m south-westerly leaves white water at the foot of the south and west walls and none at the others
+  u: [WW_FLOATS] f32;
+  ww_pack(a[..], u[..]);
+  cells := [4] int.[0, 0, 0, 0];
+  for f: 0..<4 { for i: 0..<WW_CELLS / 4 { w := f32_bits(u[WW_FOAM + f * WW_CELLS / 4 + i]); for k: 0..<4 { if ((w >> cast(u32) (8 * k)) & 0xff) > 50 { cells[f] += 1; } } } }
+  #assert white > 20 && cells[2] > 8 && cells[3] > 8 && cells[0] == 0 && cells[1] == 0;
 }
 #test "seven domes: each shelters its lee and throws its own spray" #steps 12000000000 {
   sp := ww_test_sea(21.6);
