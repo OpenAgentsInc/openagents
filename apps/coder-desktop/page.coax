@@ -108,6 +108,8 @@ CpAgent :: struct {
   deny_due: bool;             // Microcoder let it go on: the command that waited is owed a no that carries the note
   say: [CP_AGENT_TASK] u8; say_n: int;   // the note
   began: f32; took: f32;
+  heard: f32;                 // the clock when its worker last sent a line: since then it waits on its model
+  again: [CP_CMD] u8; again_n: int;   // its newest model call that was sent again, and why; cleared when it moves on
   after: int;                 // how many of Microcoder's own rows came before it was handed over: it shows after them
 }
 CP_CMD_IDS :: [CP_AGENTS] string.["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11"];
@@ -275,6 +277,22 @@ cp_took :: (out: [] u8, seconds: f32) -> string {
   return cast(string) out[0..<n];
 }
 
+// While sub-agent j runs and is not running a tool, it waits on its model: "waiting on Gemini 4
+// Carbon · 3m 05s", counted from its worker's last line, with a call that was sent again after
+// it. "" while it runs a tool, is paused, has ended, or heard from its worker under 3 seconds ago.
+cp_agent_wait :: (s: [] CoderPage, i: int, j: int, out: [] u8) -> string {
+  g := s[0].turns[i].agents[j];
+  if g.state != CP_RUNNING || g.now_running || g.paused || s[0].clock - g.heard < CP_WAIT_SHOWN { return ""; }
+  tb: [24] u8;
+  n := cp_out(out, "waiting on ");
+  if g.level < CP_LEVEL_CLAUDE { n += cp_out(out[n..<out.count], "Gemini 4 "); }
+  n += cp_out(out[n..<out.count], CP_LEVEL_NAME[g.level]); n += cp_out(out[n..<out.count], " · ");
+  n += cp_out(out[n..<out.count], cp_took(tb[..], s[0].clock - g.heard));
+  if g.again_n > 0 { n += cp_out(out[n..<out.count], " · "); n += cp_out(out[n..<out.count], cast(string) g.again[0..<g.again_n]); }
+  return cast(string) out[0..<n];
+}
+CP_WAIT_SHOWN :: 3.0;
+
 // ---- sub-agents (GitHub #13655). Microcoder hands tasks over in one line (MWW_DELEGATE); the
 // host starts a worker for each, all at once, and feeds their lines back here; when every one
 // has ended, the page owes Microcoder their results (coder_page_answer_line).
@@ -429,7 +447,7 @@ cp_delegate :: (s: [] CoderPage, i: int, tasks: string, ticket: int) {
     for name, q2: CP_LEVEL { if name == level { s[0].turns[i].agents[j].level = q2; } }
     for name, q2: CP_LEVEL_OLD { if name == level { s[0].turns[i].agents[j].level = q2; } }
     s[0].turns[i].agents[j].state = CP_RUNNING; s[0].turns[i].agents[j].start_due = true;
-    s[0].turns[i].agents[j].began = s[0].clock; s[0].turns[i].agents[j].took = -1;
+    s[0].turns[i].agents[j].began = s[0].clock; s[0].turns[i].agents[j].took = -1; s[0].turns[i].agents[j].heard = s[0].clock;
     s[0].turns[i].agents[j].after = s[0].turns[i].early_cmds + s[0].turns[i].ncmds;
     s[0].turns[i].nagents = j + 1; s[0].turns[i].round_who[q] = j + 1;
   }
@@ -495,6 +513,16 @@ coder_page_agent_line :: (s: [] CoderPage, j: int, line: string) -> int #export_
   l: [1] MwwLine;
   kind := mww_read(ar[..], line, l[..]);
   claude := s[0].turns[i].agents[j].level >= CP_LEVEL_CLAUDE;   // its worker's ask is a tool call starting: no answer is owed
+  waited := s[0].clock - s[0].turns[i].agents[j].heard; s[0].turns[i].agents[j].heard = s[0].clock;
+  if kind == MWW_ATTEMPT && l[0].outcome == "retried" {
+    // a model call that failed before its answer and goes again: the row says so until the sub-agent moves on
+    tb: [24] u8; ab := s[0].turns[i].agents[j].again[..]; n := 0;
+    st := ifx l[0].status.ok then l[0].status.value else 0;
+    if st == 429 { n = cp_out(ab, "a call was rate-limited and is being sent again"); }
+    else if st == 0 { n = cp_out(ab, "a call got no answer in "); n += cp_out(ab[n..<ab.count], cp_took(tb[..], waited)); n += cp_out(ab[n..<ab.count], " and is being sent again"); }
+    else { n = cp_out(ab, "a call failed (HTTP "); n = el_put_i(ab, n, st); n += cp_out(ab[n..<ab.count], ") and is being sent again"); }
+    s[0].turns[i].agents[j].again_n = n;
+  } else if kind != MWW_ATTEMPT { s[0].turns[i].agents[j].again_n = 0; }
   if kind == MWW_ASK && !claude && s[0].turns[i].agents[j].quiet >= CP_QUIET {
     // 100 tool calls in a row with no file changed: this command waits, and Microcoder decides (GitHub #13676)
     s[0].turns[i].agents[j].answer = l[0].ticket.value; s[0].turns[i].agents[j].answer_due = false; s[0].turns[i].agents[j].paused = true;
@@ -998,7 +1026,11 @@ cp_pane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
   if nrows > 0 { y += a.gap - a.gap_small; }
   reply := cast(string) s[0].turns[i].agents[j].reply[0..<s[0].turns[i].agents[j].reply_n];
   if state == CP_RUNNING && s[0].turns[i].agents[j].paused { y += app_meta(f, cp_pane_id(ib[..], s, ".t", -1), x, y, cw, "Paused after 100 tool calls in a row with no file changed. Microcoder decides whether it goes on.", false) + a.gap; }
-  else if state == CP_RUNNING { y += app_typing(f, cp_pane_id(ib[..], s, ".t", -1), x, y, "Working") + a.gap; }
+  else if state == CP_RUNNING {
+    wb: [2 * CP_CMD] u8; wait := cp_agent_wait(s, i, j, wb[..]);
+    if wait.count > 0 { y += app_meta(f, cp_pane_id(ib[..], s, ".w", -1), x, y, cw, sheet_pool(sh, wait), false) + a.gap_small; }
+    y += app_typing(f, cp_pane_id(ib[..], s, ".t", -1), x, y, ifx wait.count > 0 then wait else "Working") + a.gap;
+  }
   else if state == CP_DONE && reply.count > 0 {
     if s[0].pane_parsed != reply.count {
       s[0].pane_doc[0].n = 0; s[0].pane_doc[0].nb = 0; s[0].pane_doc[0].nr = 0; s[0].pane_doc[0].ni = 0; s[0].pane_doc[0].nlink = 0;
@@ -1026,9 +1058,11 @@ cp_agent_row :: (s: [] CoderPage, f: [] UiFrame, i: int, j: int, x: f32, y0: f32
                    input = gt,
                    took = sheet_pool(f[0].sheet, cp_took(kb[..], ifx gs == CP_RUNNING then s[0].clock - s[0].turns[i].agents[j].began else s[0].turns[i].agents[j].took))};
   y += app_tool(f, app_id(tb[..], cp_id(xb[..], i, ".g"), CP_CMD_IDS[j]), x, y, cw, tool, false, CP_AGENT) + a.gap_small;
-  if gcalls > 0 && gs == CP_RUNNING {
-    mb: [CP_CMD + 64] u8; mn := el_put_i(mb[..], 0, gcalls); mn = el_put(mb[..], mn, ifx gcalls == 1 then " tool call · " else " tool calls · ");
-    mn += cp_out(mb[mn..<mb.count], cast(string) s[0].turns[i].agents[j].now[0..<s[0].turns[i].agents[j].now_n]);
+  wb: [2 * CP_CMD] u8; wait := cp_agent_wait(s, i, j, wb[..]);
+  if (gcalls > 0 || wait.count > 0) && gs == CP_RUNNING {
+    mb: [3 * CP_CMD] u8; mn := 0;
+    if gcalls > 0 { mn = el_put_i(mb[..], 0, gcalls); mn = el_put(mb[..], mn, ifx gcalls == 1 then " tool call · " else " tool calls · "); }
+    mn += cp_out(mb[mn..<mb.count], ifx wait.count > 0 then wait else cast(string) s[0].turns[i].agents[j].now[0..<s[0].turns[i].agents[j].now_n]);
     y += app_meta(f, app_id(tb[..], cp_id(xb[..], i, ".gm"), CP_CMD_IDS[j]), x + a.tool_pad, y, cw - 2 * a.tool_pad, sheet_pool(f[0].sheet, sheet_single_line(f[0].sheet, cast(string) mb[0..<mn])), false) + a.gap_small;
   }
   return y - y0;
@@ -1743,6 +1777,35 @@ cp_find :: (text: string, needle: string) -> int {
   #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"Done.\"}") == MWW_ENDED;
   kept: [65536] u8; kn := coder_page_save(s, kept[..]);
   #assert kn > 0 && coder_page_new(s) && coder_page_load(s, cast(string) kept[0..<kn]) && s[0].turns[0].agents[0].after == 1;
+}
+#test "a sub-agent waiting on its model says so and for how long, and a call sent again says why until it moves on" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  #assert coder_page_set_text(s, "go") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"carbon\",\"task\":\"phase 0\"},{\"level\":\"opus\",\"task\":\"review\"}],\"ticket\":1}") == MWW_DELEGATE;
+  wb: [800] u8;
+  #assert cp_agent_wait(s, 0, 0, wb[..]) == "";                       // just started
+  s[0].clock += 185;
+  #assert cp_agent_wait(s, 0, 0, wb[..]) == "waiting on Gemini 4 Carbon · 3m 05s";
+  #assert cp_agent_wait(s, 0, 1, wb[..]) == "waiting on Claude Opus · 3m 05s";
+  // a call that got nothing and went again; then one that was rate-limited
+  s[0].clock += 85;
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"attempt\",\"gateway\":\"vertex\",\"outcome\":\"retried\",\"status\":0}") == MWW_ATTEMPT;
+  s[0].clock += 4;
+  #assert cp_agent_wait(s, 0, 0, wb[..]) == "waiting on Gemini 4 Carbon · 4s · a call got no answer in 4m 30s and is being sent again";
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"attempt\",\"gateway\":\"vertex\",\"outcome\":\"retried\",\"status\":429}") == MWW_ATTEMPT;
+  s[0].clock += 10;
+  #assert cp_agent_wait(s, 0, 0, wb[..]) == "waiting on Gemini 4 Carbon · 10s · a call was rate-limited and is being sent again";
+  // running a tool is not waiting; the next line clears the note
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"ask\",\"command\":\"ls\",\"ticket\":1}") == MWW_ASK;
+  s[0].clock += 10;
+  #assert cp_agent_wait(s, 0, 0, wb[..]) == "";
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"command\",\"command\":\"ls\",\"exit\":0,\"timed_out\":false,\"output\":\"a\"}") == MWW_COMMAND;
+  s[0].clock += 3;
+  #assert cp_agent_wait(s, 0, 0, wb[..]) == "waiting on Gemini 4 Carbon · 3s";
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"done\"}") == MWW_ENDED;
+  s[0].clock += 30;
+  #assert cp_agent_wait(s, 0, 0, wb[..]) == "";
 }
 #test "thinking is wrapped to its row at a word's end, and a word longer than a line is broken" {
   o: [64] u8;
