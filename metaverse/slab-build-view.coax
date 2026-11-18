@@ -20,8 +20,10 @@
 //                        unit[i] saying where that caisson is (csv_unit_place)
 //   hull                 the joined hull as one body: extent, draft, motion, offset on its
 //                        moorings, GM, the weather's push, the bending stress now
-//   line[0 ..< lines]    towlines and mooring lines: both ends, tension, breaking load, sag.
-//                        The mooring lines' shapes come from rig (moor_points in slab-moor.coax)
+//   line[0 ..< lines]    towlines, the sixteen mooring lines, and in a storm stand-down the
+//                        storm legs: both ends, tension, breaking load, sag. A mooring line's
+//                        shape comes from rig, a storm leg's from storm (moor_points in
+//                        slab-moor.coax, with the hull's offset hull.ox, hull.oz)
 //   work[0 ..< works]    what each crew, form and crane is doing, where, and how far along
 //   wx                   the sea, wind and current now, and any storm stand-down
 //   event_last, event_next   indices into run[0].ev (CsEvent: tick, kind CS_EV_*, id, value);
@@ -87,11 +89,14 @@ CsvBody :: struct {
 }
 // kinds of line
 CSV_TOWLINE :: 1; CSV_MOORING :: 2;
+CSV_STORM_LINE :: 3;   // a storm leg: `chains` chains side by side, made fast for a stand-down
 CsvLine :: struct {
   kind: int;
   a: int; b: int;                 // the bodies at its ends (-1: the hull, or an anchor on the seabed)
   ax: f64; ay: f64; az: f64; bx: f64; by: f64; bz: f64;
   tension: f64; limit: f64;       // N: now, and its breaking load
+  index: int;                     // a mooring line's or a storm leg's number in its rig
+  chains: int;                    // chains in a storm leg (1 for the others)
   sag: f64;                       // a towline's sag below its ends, m (a slack line lies on the seabed: no more than the water's depth)
 }
 // kinds of work. progress runs 0 to 1 over the step.
@@ -135,7 +140,8 @@ CsvHull :: struct {
   top: f64;                       // its highest concrete over the keel
   push_x: f64; push_z: f64;       // the weather's steady push on it now, N
   wind_heel: f64;                 // the heel the wind now gives it, rad
-  line_peak: f64;                 // its most loaded mooring line, N
+  line_peak: f64;                 // its most loaded mooring chain, N
+  storm_kz: int; storm_kx: int;   // chains in each storm leg made fast now (0: none): the legs that hold along z, and along x
   bending: f64;                   // hull-girder stress in today's sea, Pa
   lining: f64; upper: f64; outfit: f64; liquids: f64;   // shares done, 0 to 1
   ocean: f64;                     // nautical miles made of an ocean tow
@@ -152,6 +158,7 @@ CsvView :: struct {
   works: int; work: [CSV_MAX_WORK] CsvWork;
   units: int; bay: [CS_MAX_UNITS] CsBay; unit: [CS_MAX_UNITS] CsvPlace;
   rig: [1] MoorRig;               // the mooring rig, about (hull.x, hull.z)
+  storm: [1] MoorRig;             // the storm legs, the same way (drawn while hull.storm_kz or hull.storm_kx is over 0)
   event_last: int; event_next: int;
   proc: CsProc;
 }
@@ -300,22 +307,31 @@ csv_at :: (run: [] CsRun, day: f64, v: [] CsvView) {
     hm = afloat_motion(rao, sea, hl.x, hl.z, now);
     hl.heave = hm.heave; hl.roll = hm.roll; hl.pitch = hm.pitch;
     // the weather's push, along the wind and the waves
-    hl.push_x = cs_push(run, h.lz, h.lx, h.st.draft, hl.top, wx.hs, wx.tp, wx.wind, wx.current) * cos(wx.wave_dir);
-    hl.push_z = cs_push(run, h.lx, h.lz, h.st.draft, hl.top, wx.hs, wx.tp, wx.wind, wx.current) * sin(wx.wave_dir);
+    push := cs_push_now(run, h.lx, h.lz, h.st.draft, hl.top, wx);
+    hl.push_x = push[0]; hl.push_z = push[1];
     hl.wind_heel = cs_wind(run, h, hl.top, wx.wind).heel;
     hl.bending = cs_bend_v(run, fmax(h.lx, h.lz), h.st.area / fmax(fmax(h.lx, h.lz), 1.0), h.st.draft, wx.hs, wx.tp);
     hl.moored = q[0].phase != CS_PH_OCEAN;
     if hl.moored {
       v[0].rig[0] = cs_rig(run, h.lx, h.lz, h.st.draft);
-      hold := cs_rig_hold(v[0].rig[..], hl.push_x, hl.push_z);
+      v[0].storm[0] = cs_storm_rig(run, h.lx, h.lz, h.st.draft);
+      hl.storm_kz = q[0].storm_kz; hl.storm_kx = q[0].storm_kx;
+      hold := cs_hold_both(v[0].rig[..], v[0].storm[..], hl.storm_kz, hl.storm_kx, hl.push_x, hl.push_z);
       hl.ox = hold.x; hl.oz = hold.z; hl.line_peak = hold.peak;
       for i: 0..<v[0].rig[0].count {
         m := moor_now(v[0].rig[..], 0, i, hl.ox, hl.oz, 0.0, hm.heave);
-        csv_line(v, CsvLine.{kind = CSV_MOORING, a = -1, b = -1, ax = hl.x + m.wx, ay = v[0].rig[0].fair_y + hm.heave, az = hl.z + m.wz,
+        csv_line(v, CsvLine.{kind = CSV_MOORING, a = -1, b = -1, index = i, chains = 1, ax = hl.x + m.wx, ay = v[0].rig[0].fair_y + hm.heave, az = hl.z + m.wz,
                              bx = hl.x + v[0].rig[0].ax[i], by = -route.site_depth, bz = hl.z + v[0].rig[0].az[i], tension = m.pull.tension, limit = v[0].rig[0].line.mbl});
       }
-    } else { v[0].rig[0].built = false; }
-  } else { v[0].rig[0].built = false; }
+      for i: 0..<v[0].storm[0].count {
+        k := ifx i < 2 * CS_STORM_LONG then hl.storm_kz else hl.storm_kx;
+        if k <= 0 { continue; }
+        m := moor_now(v[0].storm[..], 0, i, hl.ox, hl.oz, 0.0, hm.heave);
+        csv_line(v, CsvLine.{kind = CSV_STORM_LINE, a = -1, b = -1, index = i, chains = k, ax = hl.x + m.wx, ay = v[0].storm[0].fair_y + hm.heave, az = hl.z + m.wz,
+                             bx = hl.x + v[0].storm[0].ax[i], by = -route.site_depth, bz = hl.z + v[0].storm[0].az[i], tension = f64(k) * m.pull.tension, limit = f64(k) * v[0].storm[0].line.mbl});
+      }
+    } else { v[0].rig[0].built = false; v[0].storm[0].built = false; }
+  } else { v[0].rig[0].built = false; v[0].storm[0].built = false; }
   if led.lining > 0 { hl.lining = q[0].lining / led.lining; } else { hl.lining = 1.0; }
   if led.upper_concrete > 0 { hl.upper = q[0].upper / led.upper_concrete; } else { hl.upper = 1.0; }
   if led.topsides > 0 { hl.outfit = q[0].outfit / led.topsides; } else { hl.outfit = 1.0; }
@@ -479,7 +495,7 @@ csv_at :: (run: [] CsRun, day: f64, v: [] CsvView) {
       off := (f64(i) - f64(a.tugs - 1) * 0.5) * 60.0;
       tx := k[4] - sy * off; tz := k[5] + cy * off;
       id := csv_body(v, csv_craft(CSV_TUG, CSV_WORKING, i, tx, tz, afloat_angle(tx - k[0], tz - k[1]), CSV_TUG_L, CSV_TUG_B, 11.0, CSV_TUG_T, CSV_TUG_MASS, water, afloat_eta(local, tx, tz, now)));
-      csv_line(v, CsvLine.{kind = CSV_TOWLINE, a = id, b = tow_body, ax = tx, ay = 3.0, az = tz, bx = k[0] + cy * a.l * 0.5, by = 3.0, bz = k[1] + sy * a.l * 0.5,
+      csv_line(v, CsvLine.{kind = CSV_TOWLINE, a = id, b = tow_body, index = i, chains = 1, ax = tx, ay = 3.0, az = tz, bx = k[0] + cy * a.l * 0.5, by = 3.0, bz = k[1] + sy * a.l * 0.5,
                            tension = k[3], limit = line.mbl, sag = ifx k[3] > 1.0 then fmin(afloat_line_sag(line, k[3]), water) else water});
     }
     if g.width > 0 {
@@ -612,7 +628,7 @@ csv_same :: (a: [] CsvView, b: [] CsvView) -> bool {
   #assert a[0].hull.lining == 1 && a[0].hull.upper == 1 && a[0].hull.outfit == 1 && a[0].hull.liquids == 1;
   moorings := 0;
   for i: 0..<a[0].lines { if a[0].line[i].kind == CSV_MOORING { moorings += 1; #assert a[0].line[i].tension > 0.0 && a[0].line[i].tension < a[0].line[i].limit; } }
-  #assert moorings == CS_MOOR_LINES && a[0].rig[0].built && a[0].lines == moorings;
+  #assert moorings == CS_MOOR_LINES && a[0].rig[0].built && a[0].lines == moorings && a[0].hull.storm_kz == 0 && a[0].hull.storm_kx == 0;
   for i: 0..<r[0].units { #assert a[0].bay[i].stage == CS_BAY_DONE && a[0].bay[i].top == r[0].sh.deck; }
   for i: 0..<r[0].modules { #assert csv_module_share(r[..], a[..], i) == 1.0; }
   #assert a[0].event_next == -1 && r[0].ev[a[0].event_last].kind == CS_EV_DONE;
@@ -673,9 +689,24 @@ csv_same :: (a: [] CsvView, b: [] CsvView) -> bool {
     if hl.pieces > 0 {
       #assert abs(hl.heave) < 3.0 && abs(hl.roll) < 0.05 && abs(hl.pitch) < 0.05 && hl.gm_t >= CS_GM_MIN && hl.gm_l >= CS_GM_MIN;
       #assert hl.draft > 0 && hl.draft < r[0].sh.hull && hl.top >= r[0].sh.hull && hl.top <= r[0].sh.deck;
-      if hl.moored && v[0].wx.storm == 0 { #assert sqrt(hl.ox * hl.ox + hl.oz * hl.oz) < 0.25 * r[0].route.site_depth && hl.line_peak < CS_MOOR_MBL; }
+      // on its lines in any weather: within a quarter of the water's depth, no chain near breaking
+      if hl.moored { #assert sqrt(hl.ox * hl.ox + hl.oz * hl.oz) < 0.25 * r[0].route.site_depth && hl.line_peak < 0.75 * CS_MOOR_MBL; }
+      #assert (hl.storm_kz == 0 && hl.storm_kx == 0) || v[0].wx.storm != 0;
     }
   }
+  // the hurricane of the fourth summer, at its peak: the storm legs are fast and share the load,
+  // the hull lies within a few metres, and no line is over what it may carry
+  peak := 0.0;
+  for i: 0..<r[0].storms { if r[0].storm[i].kind == 2 && r[0].storm[i].peak < r[0].total.days { peak = r[0].storm[i].peak; } }
+  csv_at(r[..], peak, v[..]);
+  legs := 0;
+  for i: 0..<v[0].lines {
+    l := v[0].line[i];
+    #assert l.tension < l.limit / CS_MOOR_SAFETY;
+    if l.kind == CSV_STORM_LINE { legs += 1; #assert l.chains == (ifx l.index < 2 * CS_STORM_LONG then v[0].hull.storm_kz else v[0].hull.storm_kx) && l.tension > 0.0; }
+  }
+  #assert v[0].wx.storm == 2 && v[0].wx.hs > 6.0 && v[0].hull.storm_kz == 2 && v[0].hull.storm_kx == 1 && legs == 2 * CS_STORM_LONG + 2 * CS_STORM_SHORT;
+  #assert sqrt(v[0].hull.ox * v[0].hull.ox + v[0].hull.oz * v[0].hull.oz) < 15.0 && v[0].hull.line_peak == r[0].total.moor_peak;
   // the samples met every kind of thing
   #assert tows > 3 && joins > 20 && casts > 500 && floats > 50 && climbs > 500 && lifts > 20 && standbys > 5;
 }

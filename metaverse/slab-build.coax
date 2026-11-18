@@ -23,7 +23,13 @@
 //   cs_weather(run, day)                  // the sea, wind and storm at any day
 //   run[0].ev[0 ..< run[0].events]        // camera-worthy events with their ticks (CS_EV_*)
 // The run stops itself and says why (run[0].total.failed, CS_FAIL_*) when a body capsizes, grounds,
-// strikes the channel's bank or parts its towline.
+// strikes the channel's bank, parts its towline, or the hull breaks a mooring line in a storm.
+//
+// Moorings. The growing hull lies to the world's sixteen lines (slab-moor.coax). They hold working
+// weather and not a hurricane on the 143 m wall, so at a storm warning storm lines are made fast:
+// more of the same chain, square to the sides (cs_storm_rig), as many as the design storm asks for
+// with the hull as it stands (cs_mooring). At each storm's peak the hull is set against that
+// storm's own push (cs_hold_both): a chain that reaches its breaking load stops the run.
 //
 // What is physics and what is a rule. Forces move every tow (thrust, towline, drag, wind, current,
 // wave drift), float every body (draft and GM from its mass and waterplane), move the faces of a
@@ -141,6 +147,11 @@ CS_PT_TEMP :: 1.0e6;        // across a joint on its temporary bars
 CS_MOOR_LINES :: 16; CS_MOOR_MBL :: 40.0e6; CS_MOOR_PRE :: 4.0e6; CS_MOOR_ANCHOR :: 2000.0;
 CS_MOOR_SAFETY :: 1.67;     // a line's breaking load over what it may carry in the design storm
 CS_WORK_HS :: 2.5; CS_WORK_WIND :: 15.0; CS_WORK_CURRENT :: 0.5;   // the worst weather work goes on in
+// storm lines: more of the same chain, laid square to the hull's sides as it grows and made fast
+// at a storm warning. Four legs on each side that lies along x and two on each that lies along z,
+// each leg as many chains side by side as the design storm asks for
+CS_STORM_LONG :: 4; CS_STORM_SHORT :: 2;
+CS_STORM_CHAINS :: 8;       // the most chains in a leg
 // the ocean tow
 CS_OCEAN_TUG_T :: 300.0;    // each tug, t
 CS_OCEAN_SEA :: 1.6;        // the open ocean's sea over the Gulf's
@@ -171,6 +182,7 @@ CsParams :: struct {
   join_crews: int = 2;
   ocean_nm: f64 = 0.0;        // a tow of the finished hull to another site, nautical miles (0: it stays)
   ignore_weather: int = 0;    // for the checks: 1 sails with no weather limit, 2 joins with none, 3 both
+  storm_lines: bool = true;   // storm lines are made fast at a storm warning (false: the world's sixteen lines alone)
   shape: HullShape;
 }
 cs_params :: () -> CsParams { p: CsParams; p.shape = hull_prime(); return p; }
@@ -452,7 +464,6 @@ CsStage :: struct {
   bend_v: f64;                     // hull-girder stress in the design storm: head sea, Pa
   bend_h: f64;                     // and sideways in a quartering sea, Pa
   top: f64;                        // its highest concrete over the keel when the piece was made fast, m
-  moor: CsMoor;                    // how it lies to the world's sixteen lines
 }
 CsModule :: struct { record: int; kind: int; x: f64; z: f64; mass: f64; rank: int; before: f64; }
 CsEvent :: struct { tick: int; kind: int; id: int; value: f32; }
@@ -494,6 +505,7 @@ CS_FAIL_PARTED :: 6;     // a towline parted
 CS_FAIL_STALLED :: 7;    // a tow could not make way
 CS_FAIL_HULL :: 8;       // the joined hull is not stable
 CS_FAIL_TIME :: 9;       // it did not finish in 48 years
+CS_FAIL_MOORING :: 10;   // the hull broke a mooring line in a storm (id: the storm's kind)
 
 // The process: everything that moves from tick to tick. Small, so a run keeps many copies.
 CS_IDLE :: 0; CS_PREP :: 1; CS_BASE :: 2; CS_SETUP :: 3; CS_WALLS :: 4; CS_FALSE :: 5; CS_TOP :: 6; CS_CURE :: 7; CS_FLOAT :: 8; CS_RESET :: 9;
@@ -532,6 +544,8 @@ CsProc :: struct {
   form_lifts: int;                     // jump-form lifts made
   gm_low: f64;                         // the joined hull's least GM so far, m
   heel_high: f64;                      // and its largest heel under the design storm's wind, rad
+  storm_kz: int; storm_kx: int;        // chains in each storm leg made fast now: the legs that hold along z, and along x
+  moor_peak: f64;                      // the highest tension in a mooring chain at a storm's peak so far, N
   // the topsides
   barge_stage: [CS_BARGES] int;        // CS_B_*
   barge_left: [CS_BARGES] int;         // ticks
@@ -570,6 +584,7 @@ CsTotals :: struct {
   bend_v: f64; bend_h: f64;  // the worst stage's stresses in the design storm, Pa
   bend_ok: bool;             // both under the joints' prestress
   moor: CsMoor;              // the finished hull on the world's sixteen lines
+  moor_peak: f64;            // the highest tension in a mooring chain at the peak of one of the run's storms, N
   mass: f64; draft: f64; gm_t: f64; gm_l: f64;      // the hull as finished
   ocean_tugs: int; ocean_days: f64;
 }
@@ -1054,6 +1069,71 @@ cs_rig_hold :: (rig: [] MoorRig, fx: f64, fz: f64) -> CsHold {
   o.held = -(m.fx * ux + m.fz * uz) >= 0.999 * f;
   return o;
 }
+// The storm lines about a hull `lx` by `lz` m: one chain a leg, in the rig's own form, so
+// slab-moor.coax solves and draws them. Legs 0 to 2 CS_STORM_LONG - 1 leave the sides that lie
+// along x and hold a push along z; the rest leave the other two sides and hold along x.
+cs_storm_rig :: (run: [] CsRun, lx: f64, lz: f64, draft: f64) -> MoorRig {
+  o := cs_rig(run, lx, lz, draft); n := 0;
+  for side: 0..<2 {
+    s := ifx side == 0 then -1.0 else 1.0;
+    for i: 0..<CS_STORM_LONG {
+      o.fx[n] = -lx * 0.5 + (f64(i) + 0.5) * lx / f64(CS_STORM_LONG); o.fz[n] = s * lz * 0.5;
+      o.ax[n] = o.fx[n]; o.az[n] = o.fz[n] + s * o.span; n += 1;
+    }
+  }
+  for side: 0..<2 {
+    s := ifx side == 0 then -1.0 else 1.0;
+    for i: 0..<CS_STORM_SHORT {
+      o.fx[n] = s * lx * 0.5; o.fz[n] = -lz * 0.5 + (f64(i) + 0.5) * lz / f64(CS_STORM_SHORT);
+      o.ax[n] = o.fx[n] + s * o.span; o.az[n] = o.fz[n]; n += 1;
+    }
+  }
+  o.count = n;
+  return o;
+}
+// The pull of both rigs on a hull moved (x, z): the world's lines and the storm legs, each leg
+// `kz` or `kx` chains. fx, fz: the force, N. peak: the most loaded chain's tension.
+CsPull :: struct { fx: f64; fz: f64; peak: f64; }
+cs_pull_both :: (rig: [] MoorRig, storm: [] MoorRig, kz: int, kx: int, x: f64, z: f64) -> CsPull {
+  m := moor_force(rig, 0, x, z, 0.0, 0.0);
+  o := CsPull.{fx = m.fx, fz = m.fz, peak = m.peak};
+  if kz <= 0 && kx <= 0 { return o; }
+  // the legs of one side run alike from a hull that has moved and not turned: one stands for all
+  for side: 0..<4 {
+    k := ifx side < 2 then kz else kx;
+    if k <= 0 { continue; }
+    legs := ifx side < 2 then CS_STORM_LONG else CS_STORM_SHORT;
+    i := ifx side < 2 then side * CS_STORM_LONG else 2 * CS_STORM_LONG + (side - 2) * CS_STORM_SHORT;
+    n := moor_now(storm, 0, i, x, z, 0.0, 0.0);
+    if n.span <= 0 { continue; }
+    o.fx += f64(k * legs) * n.pull.h * (storm[0].ax[i] - n.wx) / n.span; o.fz += f64(k * legs) * n.pull.h * (storm[0].az[i] - n.wz) / n.span;
+    if n.pull.tension > o.peak { o.peak = n.pull.tension; }
+  }
+  return o;
+}
+// cs_rig_hold with the storm legs made fast as well.
+cs_hold_both :: (rig: [] MoorRig, storm: [] MoorRig, kz: int, kx: int, fx: f64, fz: f64) -> CsHold {
+  o: CsHold; f := sqrt(fx * fx + fz * fz);
+  if f <= 0.0 { o.peak = cs_pull_both(rig, storm, kz, kx, 0.0, 0.0).peak; o.held = true; return o; }
+  ux := fx / f; uz := fz / f;
+  lo := 0.0; hi := 400.0;
+  for i: 0..<40 {
+    mid := (lo + hi) * 0.5;
+    m := cs_pull_both(rig, storm, kz, kx, ux * mid, uz * mid);
+    if -(m.fx * ux + m.fz * uz) < f && m.peak < rig[0].line.mbl { lo = mid; } else { hi = mid; }
+  }
+  d := (lo + hi) * 0.5;
+  m := cs_pull_both(rig, storm, kz, kx, ux * d, uz * d);
+  o.x = ux * d; o.z = uz * d; o.peak = m.peak;
+  o.held = -(m.fx * ux + m.fz * uz) >= 0.999 * f;
+  return o;
+}
+// The weather's steady push on a hull `lx` by `lz` m now, N along x and z: the push it would give
+// each side square on, by the share of the weather that comes that way.
+cs_push_now :: (run: [] CsRun, lx: f64, lz: f64, draft: f64, top: f64, wx: CsWx) -> [2] f64 {
+  return [2] f64.[cs_push(run, lz, lx, draft, top, wx.hs, wx.tp, wx.wind, wx.current) * cos(wx.wave_dir),
+                  cs_push(run, lx, lz, draft, top, wx.hs, wx.tp, wx.wind, wx.current) * sin(wx.wave_dir)];
+}
 // The push of a sea, a wind and a current on the long side of a hull `length` by `wide` m whose
 // highest concrete is `top` over the keel, N: the worst heading for a spread mooring.
 cs_push :: (run: [] CsRun, length: f64, wide: f64, draft: f64, top: f64, hs: f64, tp: f64, wind: f64, current: f64) -> f64 {
@@ -1061,13 +1141,16 @@ cs_push :: (run: [] CsRun, length: f64, wide: f64, draft: f64, top: f64, hs: f64
   box := AfloatHull.{length = wide, beam = length, draft = draft, height = top};
   return afloat_holding_force(box, hs, k, wind, current);
 }
-// How a hull `length` by `wide` m lies to the world's lines: in the worst weather work goes on in,
-// and in the design storm, both beam on. And the lines of the same kind that would hold the design
-// storm with CS_MOOR_SAFETY in hand.
+// How a hull `length` (along x) by `wide` m lies to the world's lines: in the worst weather work
+// goes on in, and in the design storm, both beam on. And the storm lines that hold the design
+// storm from any side with CS_MOOR_SAFETY in hand: the chains in each leg (cs_storm_rig).
 CsMoor :: struct {
   work_push: f64; work_offset: f64; work_peak: f64;
-  storm_push: f64; storm_peak: f64; storm_held: bool;
-  storm_lines: int;
+  storm_push: f64; storm_peak: f64; storm_held: bool;   // beam on, on the world's lines alone
+  storm_push_x: f64;                                    // the design storm head on, N
+  kz: int; kx: int;                                     // chains in each storm leg that holds along z, and along x
+  storm_lines: int;                                     // storm chains in all
+  with_peak: f64; with_held: bool;                      // the design storm on both rigs: the worst chain from ahead, abeam and the quarter
 }
 cs_mooring :: (run: [] CsRun, length: f64, wide: f64, draft: f64, top: f64) -> CsMoor {
   o: CsMoor;
@@ -1078,13 +1161,20 @@ cs_mooring :: (run: [] CsRun, length: f64, wide: f64, draft: f64, top: f64) -> C
   o.storm_push = cs_push(run, length, wide, draft, top, CS_STORM_HS, CS_STORM_TP, CS_STORM_WIND, CS_STORM_CURRENT);
   s := cs_rig_hold(rig[..], 0.0, o.storm_push);
   o.storm_peak = s.peak; o.storm_held = s.held && s.peak <= CS_MOOR_MBL / CS_MOOR_SAFETY;
-  // one line square to the push: what it gives at its safe load, less what its opposite number
-  // still pulls after the same offset
-  line := rig[0].line; rise := rig[0].depth + rig[0].fair_y;
+  // the storm legs: add a chain to every leg on a side until the design storm is held from there
   safe := CS_MOOR_MBL / CS_MOOR_SAFETY;
-  out := moor_span_for(line, rise, safe);
-  lee := moor_pull(line, fmax(2.0 * rig[0].span - out, 0.0), rise).h;
-  o.storm_lines = 2 * (cast(int) floor(o.storm_push / fmax(moor_pull(line, out, rise).h - lee, 1.0)) + 1);
+  storm: [1] MoorRig; storm[0] = cs_storm_rig(run, length, wide, draft);
+  o.storm_push_x = cs_push(run, wide, length, draft, top, CS_STORM_HS, CS_STORM_TP, CS_STORM_WIND, CS_STORM_CURRENT);
+  while o.kz < CS_STORM_CHAINS { h := cs_hold_both(rig[..], storm[..], o.kz, 0, 0.0, o.storm_push); if h.held && h.peak <= safe { break; } o.kz += 1; }
+  while o.kx < CS_STORM_CHAINS { h := cs_hold_both(rig[..], storm[..], 0, o.kx, o.storm_push_x, 0.0); if h.held && h.peak <= safe { break; } o.kx += 1; }
+  o.storm_lines = 2 * (CS_STORM_LONG * o.kz + CS_STORM_SHORT * o.kx);
+  o.with_held = true;
+  for a: 0..<3 {
+    th := f64(a) * 0.25 * PI_D;
+    h := cs_hold_both(rig[..], storm[..], o.kz, o.kx, o.storm_push_x * cos(th), o.storm_push * sin(th));
+    if h.peak > o.with_peak { o.with_peak = h.peak; }
+    if !h.held || h.peak > safe { o.with_held = false; }
+  }
   return o;
 }
 // The stage reached when a piece is made fast: how the hull so far floats, bends and is moored.
@@ -1104,8 +1194,13 @@ cs_stage :: (run: [] CsRun, q: [] CsProc, tick: int) -> CsStage {
   s.bend_v = cs_bend_v(run, s.length, s.wide, s.draft, CS_STORM_HS, CS_STORM_TP);
   s.bend_h = cs_bend_h(run, s.length, s.wide, s.draft, CS_STORM_HS, CS_STORM_TP);
   s.top = cs_top(run, q);
-  s.moor = cs_mooring(run, s.length, s.wide, s.draft, s.top);
   return s;
+}
+// How the hull lay to its moorings after its i-th piece was made fast (1 and up), and the storm
+// lines it needed then.
+cs_stage_moor :: (run: [] CsRun, i: int) -> CsMoor {
+  s := run[0].st[i];
+  return cs_mooring(run, s.length, s.wide, s.draft, s.top);
 }
 // The significant motion between a waiting piece's face and the hull's, in the sea `wx`, m.
 cs_join_motion :: (run: [] CsRun, q: [] CsProc, ip: int, wx: CsWx) -> f64 {
@@ -1509,9 +1604,30 @@ cs_tick :: (run: [] CsRun, q: [] CsProc, record: bool) {
   if standdown != 0 && before == 0 {
     q[0].standdowns += 1; if standdown == 2 { q[0].hurricanes += 1; }
     cs_event(run, record, t, CS_EV_WARN, standdown, wx.storm_peak);
+    // the storm legs are made fast: the chains the design storm asks for with the hull as it stands
+    if p.storm_lines && q[0].fast_pieces > 0 && q[0].phase != CS_PH_OCEAN {
+      rects: [CS_MAX_UNITS * 4] f64;
+      h := cs_hull(run, q, t, rects[..]);
+      m := cs_mooring(run, h.lx, h.lz, h.st.draft, cs_top(run, q));
+      q[0].storm_kz = m.kz; q[0].storm_kx = m.kx;
+    }
   }
-  if standdown == 0 && before != 0 { cs_event(run, record, t, CS_EV_CLEAR, before, day); }
-  if record { for i: 0..<run[0].storms { s := run[0].storm[i]; if s.peak >= day && s.peak < day + CS_TICK_D { cs_event(run, record, t, CS_EV_STORM, s.kind, s.hs); } } }
+  if standdown == 0 && before != 0 { cs_event(run, record, t, CS_EV_CLEAR, before, day); q[0].storm_kz = 0; q[0].storm_kx = 0; }
+  for i: 0..<run[0].storms {
+    s := run[0].storm[i];
+    if s.peak < day || s.peak >= day + CS_TICK_D { continue; }
+    cs_event(run, record, t, CS_EV_STORM, s.kind, s.hs);
+    if q[0].fast_pieces == 0 || q[0].phase == CS_PH_OCEAN { continue; }
+    // the storm's peak: the hull lies to its lines under the push of that sea and wind, or breaks one
+    rects: [CS_MAX_UNITS * 4] f64;
+    h := cs_hull(run, q, t, rects[..]);
+    rig: [1] MoorRig; rig[0] = cs_rig(run, h.lx, h.lz, h.st.draft);
+    legs: [1] MoorRig; legs[0] = cs_storm_rig(run, h.lx, h.lz, h.st.draft);
+    push := cs_push_now(run, h.lx, h.lz, h.st.draft, cs_top(run, q), cs_weather(run, s.peak));
+    hold := cs_hold_both(rig[..], legs[..], q[0].storm_kz, q[0].storm_kx, push[0], push[1]);
+    if hold.peak > q[0].moor_peak { q[0].moor_peak = hold.peak; }
+    if !hold.held { q[0].failed = CS_FAIL_MOORING; q[0].fail_id = s.kind; }
+  }
   core := cs_storm_core(run, day);
   held := false;
   if q[0].phase == CS_PH_BUILD {
@@ -1579,7 +1695,7 @@ cs_totals :: (run: [] CsRun) {
   o.tows = q.tows; o.sea_joins = ifx q.fast_pieces > 0 then q.fast_pieces - 1 else 0;
   o.weather_days = f64(q.weather_ticks) * CS_TICK_D;
   o.standdowns = q.standdowns; o.hurricanes = q.hurricanes; o.reworks = q.reworks; o.aborts = q.aborts;
-  o.lifts = q.lifts; o.barge_trips = q.barge_trips; o.form_lifts = q.form_lifts; o.hull_gm_least = q.gm_low; o.wind_heel = q.heel_high;
+  o.lifts = q.lifts; o.barge_trips = q.barge_trips; o.form_lifts = q.form_lifts; o.hull_gm_least = q.gm_low; o.wind_heel = q.heel_high; o.moor_peak = q.moor_peak;
   o.line_mbl = CS_LINE_MBL * p.tug_pull * 9810.0;
   o.tow_keel = 1.0e9; o.tow_bank = 1.0e9; o.tow_clear = 1.0e9; o.gm_least = 1.0e9; o.bend_ok = true;
   dry := cs_box_statics(run[0].unit.l, run[0].unit.b, cs_unit_load(run, 0.0, false));
@@ -1602,7 +1718,7 @@ cs_totals :: (run: [] CsRun) {
     rects: [CS_MAX_UNITS * 4] f64; one: [1] CsProc; one[0] = q;
     h := cs_hull(run, one[..], q.tick, rects[..]);
     o.mass = h.load.mass; o.draft = h.st.draft; o.gm_t = h.st.gm_t; o.gm_l = h.st.gm_l;
-    o.moor = cs_mooring(run, fmax(h.lx, h.lz), fmin(h.lx, h.lz), h.st.draft, cs_top(run, one[..]));
+    o.moor = cs_mooring(run, h.lx, h.lz, h.st.draft, cs_top(run, one[..]));
   }
   o.ocean_tugs = ifx p.ocean_nm > 0 then run[0].ocean_tugs else 0; o.ocean_days = f64(q.ocean_ticks) * CS_TICK_D;
   run[0].total = o;
@@ -1666,6 +1782,7 @@ cs_same :: (a: CsProc, b: CsProc) -> bool {
   for c: 0..<CS_BARGES { if a.barge_stage[c] != b.barge_stage[c] || a.barge_left[c] != b.barge_left[c] || a.barge_cargo[c] != b.barge_cargo[c] { return false; } }
   if a.fast_pieces != b.fast_pieces || a.fast_units != b.fast_units || a.done_units != b.done_units || a.fast_edge != b.fast_edge { return false; }
   for i: 0..<CS_MAX_UNITS { if a.up[i] != b.up[i] { return false; } }
+  if a.storm_kz != b.storm_kz || a.storm_kx != b.storm_kx || a.moor_peak != b.moor_peak { return false; }
   if a.form_lifts != b.form_lifts || a.gm_low != b.gm_low || a.heel_high != b.heel_high || a.hurricanes != b.hurricanes || a.barge_trips != b.barge_trips || a.ocean_ticks != b.ocean_ticks { return false; }
   if a.poured_yard != b.poured_yard || a.lining != b.lining || a.upper != b.upper || a.outfit != b.outfit || a.liquids != b.liquids || a.ballast != b.ballast || a.ocean != b.ocean || a.left != b.left { return false; }
   return a.weather_ticks == b.weather_ticks && a.standdowns == b.standdowns && a.tows == b.tows && a.lifts == b.lifts && a.aborts == b.aborts && a.reworks == b.reworks && a.done_tick == b.done_tick;
@@ -1802,19 +1919,38 @@ cs_same :: (a: CsProc, b: CsProc) -> bool {
   #assert slack.state == AFLOAT_CAPSIZES;
   // each piece as towed, and the hull after each piece is made fast
   for i: 0..<r[0].pieces { a := r[0].pc[i]; #assert a.gm_t >= CS_GM_MIN && a.gm_l >= CS_GM_MIN && a.draft < CS_BASIN_DEPTH; }
-  for i: 1..<r[0].pieces + 1 { s := r[0].st[i]; #assert s.gm_t >= CS_GM_MIN && s.gm_l >= CS_GM_MIN && s.draft < r[0].sh.hull && s.moor.work_peak < CS_MOOR_MBL / CS_MOOR_SAFETY; }
+  for i: 1..<r[0].pieces + 1 { s := r[0].st[i]; #assert s.gm_t >= CS_GM_MIN && s.gm_l >= CS_GM_MIN && s.draft < r[0].sh.hull; }
   #assert r[0].st[r[0].pieces].upper_ok;
   // the moorings are the world's sixteen. In the worst weather work goes on in they hold the
   // finished hull beam on within 11 m, the worst line at half what it may carry. They do not hold
-  // the design hurricane beam on (211 MN against the 118 MN at which a line breaks): the method
-  // lays storm lines for the season, twenty of the same chain square to the long sides
+  // the design hurricane beam on (211 MN, where a line reaches what it may carry at 66 MN and
+  // breaks at 114 MN): the method makes storm lines fast at a warning, twenty more chains for the
+  // finished hull, and with them no chain passes what it may carry from ahead, abeam or the quarter
   w := moor_check_prime();
   #assert w.count == CS_MOOR_LINES && w.mbl == CS_MOOR_MBL && w.pretension == CS_MOOR_PRE && w.anchor == CS_MOOR_ANCHOR;
   #assert w.l == r[0].sh.l && w.b == r[0].sh.b && w.draft == r[0].led.draft;
   m := t.moor;
   #assert m.work_push > 25.0e6 && m.work_push < 35.0e6 && m.work_offset < 12.0 && m.work_peak < 0.5 * CS_MOOR_MBL / CS_MOOR_SAFETY + 1.0e6;
-  #assert m.storm_push > 200.0e6 && m.storm_push < 220.0e6 && !m.storm_held && m.storm_lines == 20;
-  #assert r[0].st[1].moor.storm_held && r[0].st[1].moor.storm_lines == 2;
+  #assert m.storm_push > 200.0e6 && m.storm_push < 220.0e6 && !m.storm_held && m.kz == 2 && m.kx == 1 && m.storm_lines == 20;
+  #assert m.storm_push_x > 120.0e6 && m.storm_push_x < 135.0e6 && m.with_held && m.with_peak <= CS_MOOR_MBL / CS_MOOR_SAFETY;
+  // every third stage of the growing hull: the first pieces need no storm lines, and no stage's
+  // chains pass what they may carry, at work or in the design storm
+  lines := 0;
+  for i: 1..<r[0].pieces + 1 {
+    if i > 6 && i % 3 != 0 { continue; }
+    sm := cs_stage_moor(r[..], i);
+    #assert sm.work_peak < CS_MOOR_MBL / CS_MOOR_SAFETY && sm.with_held && sm.storm_lines >= lines && sm.storm_lines <= 20;
+    #assert sm.storm_held == (sm.storm_lines == 0) || sm.kx > 0;
+    lines = sm.storm_lines;
+  }
+  #assert cs_stage_moor(r[..], 1).storm_lines == 0 && cs_stage_moor(r[..], 5).storm_lines == 0 && cs_stage_moor(r[..], 6).storm_lines == 8;
+  // the run's own storms: the hurricane of its fourth summer loads a chain to 16 MN with the
+  // storm lines fast. Without them the sixteen lines break and the run stops there
+  #assert t.moor_peak > 10.0e6 && t.moor_peak < CS_MOOR_MBL / CS_MOOR_SAFETY;
+  bare: [1] CsRun; pb := cs_params(); pb.storm_lines = false;
+  cs_run(pb, bare[..]);
+  #assert bare[0].total.failed == CS_FAIL_MOORING && bare[0].total.fail_id == 2 && bare[0].total.days > 1290.0 && bare[0].total.days < 1300.0;
+  #assert bare[0].ev[bare[0].events - 1].kind == CS_EV_FAILED;
   rig: [1] MoorRig; rig[0] = cs_rig(r[..], r[0].sh.l, r[0].sh.b, r[0].led.draft);
   #assert rig[0].kind == MOOR_CATENARY && rig[0].count == 16 && cs_rig_hold(rig[..], 0.0, 100.0e6).held && !cs_rig_hold(rig[..], 0.0, 130.0e6).held;
   #assert abs(cs_rig_hold(rig[..], 0.0, 0.0).peak - CS_MOOR_PRE) < 1.0;
