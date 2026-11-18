@@ -55,7 +55,8 @@ typedef uintptr_t A;
  F(A,drive_out,(A)) F(uint32_t,drive_out_len,(A)) F(A,media,(A)) F(uint32_t,media_len,(A)) F(uint32_t,media_capacity,(A)) F(uint32_t,sounds_len,(A)) F(uint32_t,player_appearance_v1,(void)) \
  F(A,sounds,(A)) F(uint32_t,sounds_capacity,(A)) F(A,sound_bank,(A)) F(uint32_t,sound_bank_len,(A)) F(uint32_t,sound_bank_capacity,(A)) \
  F(A,sound_bank_storage,(A)) F(uint32_t,sound_bank_storage_bytes,(A)) F(A,mesh_bounds_v1,(A)) \
- F(A,rig_v1,(A,uint32_t)) F(void,rig_ready_v1,(A,uint32_t)) F(uint32_t,frame_plan_v1,(A,uint32_t,uint32_t *,uint32_t))
+ F(A,rig_v1,(A,uint32_t)) F(void,rig_ready_v1,(A,uint32_t)) F(uint32_t,frame_plan_v1,(A,uint32_t,uint32_t *,uint32_t)) \
+ F(uint32_t,grass_instances,(A)) F(uint32_t,grass_vertices_v1,(A)) F(uint32_t,grass_range_count_v1,(A)) F(uint32_t,grass_range_v1,(A,uint32_t,uint32_t)) F(int32_t,draw_blend_v1,(A,int32_t))
 // Optional browser editor exports. Counts remain u32; addresses are native.
 #define PH_EDITOR(F) F(int32_t,field_probe,(A,int32_t)) F(int32_t,edit_rev,(A)) F(A,edit_model,(A)) F(uint32_t,edit_model_len,(A)) F(uint32_t,edit_own,(A)) F(void,page,(A,int32_t))
 typedef struct {
@@ -972,6 +973,44 @@ static NSData *phPackImage(NSString *path, id<MTLDevice> device) {
 }
 
 // ---- a frame (host.js draw)
+// The grass (host.js grassInto, docs/metaverse/art-styles.md 8): a page whose shaders have a `grass` pair and whose face
+// has coaxial_grass_instances draws that many blades, each coaxial_grass_vertices_v1 vertices (3 to 48, in threes; else 3),
+// depth-tested and written, into the scene's targets with the scene's bindings; with ranges, each range of the blade domain.
+- (uint32_t)grassBlades { return x.grass_instances && [self shader:@"grass"] ? x.grass_instances(state) : 0; }
+- (void)grassInto:(id<MTLRenderCommandEncoder>)e lit:(BOOL)post {
+ uint32_t blades = [self grassBlades]; if (!blades) return;
+ PHTarget lit[2] = {{MTLPixelFormatRGBA16Float}, {MTLPixelFormatRGBA16Float}}, flat[1] = {{MTLPixelFormatBGRA8Unorm}};
+ PHPipe *g = [self pipe:post ? @"grass-lit" : @"grass" role:@"grass" targets:post ? lit : flat count:post ? 2 : 1 depth:YES];
+ if (!g) return;
+ uint32_t asked = x.grass_vertices_v1 ? x.grass_vertices_v1(state) : 3, each = asked >= 3 && asked <= 48 && asked % 3 == 0 ? asked : 3;
+ [self bind:g to:e]; [e setDepthStencilState:depthLess];
+ if (x.grass_range_count_v1 && x.grass_range_v1) {
+  uint32_t ranges = MIN(x.grass_range_count_v1(state), 128u);
+  for (uint32_t i = 0; i < ranges; i++) { uint32_t first = x.grass_range_v1(state, i, 0), n = x.grass_range_v1(state, i, 1); if (n) [e drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:each instanceCount:n baseInstance:first]; }
+ } else [e drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:each instanceCount:blades];
+}
+// The scene's draws in colour (host.js drawScene): a face with coaxial_draw_blend_v1 says of each draw whether it replaces
+// (0), adds (1: source alpha over one) or lies over (2: straight alpha); a blended draw tests the depth and does not write it.
+- (void)sceneInto:(id<MTLRenderCommandEncoder>)e lit:(BOOL)post words:(const uint32_t *)list count:(uint32_t)count {
+ PHTarget lit[2] = {{MTLPixelFormatRGBA16Float}, {MTLPixelFormatRGBA16Float}}, flat[1] = {{MTLPixelFormatBGRA8Unorm}};
+ PHPipe *sc = [self pipe:post ? @"scene-lit" : @"scene" role:@"scene" targets:post ? lit : flat count:post ? 2 : 1 depth:YES];
+ if (!sc) return;
+ [self bind:sc to:e]; [e setDepthStencilState:depthLess];
+ if (!x.draw_blend_v1) { [self drawList:e words:list count:count]; return; }
+ MTLPixelFormat f = post ? MTLPixelFormatRGBA16Float : MTLPixelFormatBGRA8Unorm;
+ PHTarget added[2] = {{f, YES, MTLBlendFactorSourceAlpha, MTLBlendFactorOne, MTLBlendFactorZero, MTLBlendFactorOne}, {MTLPixelFormatRGBA16Float, YES, MTLBlendFactorSourceAlpha, MTLBlendFactorOne, MTLBlendFactorZero, MTLBlendFactorOne}};
+ PHTarget over[2] = {{f, YES, MTLBlendFactorSourceAlpha, MTLBlendFactorOneMinusSourceAlpha, MTLBlendFactorOne, MTLBlendFactorOneMinusSourceAlpha}, {MTLPixelFormatRGBA16Float, YES, MTLBlendFactorSourceAlpha, MTLBlendFactorOneMinusSourceAlpha, MTLBlendFactorOne, MTLBlendFactorOneMinusSourceAlpha}};
+ int bound = 0;
+ for (uint32_t i = 0; i < count; i++) {
+  int32_t profile = x.draw_blend_v1(state, (int32_t)i); if (profile < 0 || profile > 2) continue;
+  if (profile != bound) {
+   PHPipe *p = profile == 0 ? sc : [self pipe:[NSString stringWithFormat:@"scene-%@%@", profile == 1 ? @"add" : @"over", post ? @"-lit" : @""] role:@"scene" targets:profile == 1 ? added : over count:post ? 2 : 1 depth:YES];
+   if (!p) continue;
+   [self bind:p to:e]; [e setDepthStencilState:profile == 0 ? depthLess : depthRead]; bound = profile;
+  }
+  [self drawList:e words:list + (size_t)i * 4 count:1];
+ }
+}
 - (void)drawList:(id<MTLRenderCommandEncoder>)e words:(const uint32_t *)list count:(uint32_t)count {
  size_t indices = packIndexBytes / 4;
  for (uint32_t i = 0; i < count; i++) {
@@ -1030,10 +1069,8 @@ static NSData *phPackImage(NSString *path, id<MTLDevice> device) {
    PHPipe *bg = [self pipe:post ? @"bg-lit" : @"bg" role:@"bg" targets:post ? lit : flat count:post ? 2 : 1 depth:pf.scene];
    if (bg) { [self bind:bg to:e]; if (pf.scene) [e setDepthStencilState:[self shader:@"bg"]->writesDepth ? depthAlways:depthBackground]; [e drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:op->count]; }
   } break;
-  case ENGINE_FP_PASS_SCENE: {
-   PHPipe *sc = [self pipe:post ? @"scene-lit" : @"scene" role:@"scene" targets:post ? lit : flat count:post ? 2 : 1 depth:YES];
-   if (sc) { [self bind:sc to:e]; [e setDepthStencilState:depthLess]; [self drawList:e words:pf.list count:op->count]; }
-  } break;
+  case ENGINE_FP_PASS_SCENE: [self sceneInto:e lit:post words:pf.list count:op->count]; break;
+  case ENGINE_FP_PASS_GRASS: [self grassInto:e lit:post]; break;
   case ENGINE_FP_PASS_PARTICLE_OVER: case ENGINE_FP_PASS_PARTICLE: {
    // the particles' bytes go up with the first of their draws; smoke lies over what is behind and takes that much of the
    // light's bloom share, then the particles that add
@@ -1152,12 +1189,12 @@ static void phPlanMedia(void *s, int after) { AEPageHost *h = (__bridge AEPageHo
  // The frame's order is the engine's (metaverse-engine/render/graph/passes.coax, GitHub #13303): a page whose face has
  // coaxial_frame_plan_v1 is drawn by the one C walk (host/core/frame-plan-walk.h) calling planBegin, planDraw and the
  // rest below, which map a pass to its Metal pipeline, depth state and bindings and decide no order. This host's word
- // says what it has: no grass, water, character pass, instance cull or particle sort. ENGINE_PLAN=off draws a page
+ // says what it has: grass when the page has a grass pair, and no water, character pass, instance cull or particle sort. ENGINE_PLAN=off draws a page
  // that has a plan in the order below, to compare.
  BOOL planned = NO; int planOps = -1;
  if (x.frame_plan_v1 && !((getenv("ENGINE_PLAN") ? getenv("ENGINE_PLAN") : getenv("AETHYR_PLAN")) && !strcmp((getenv("ENGINE_PLAN") ? getenv("ENGINE_PLAN") : getenv("AETHYR_PLAN")), "off"))) {
   BOOL sparkly = scene && particleBuffer && [self shader:@"particle"];
-  uint32_t bits = (scene ? ENGINE_FP_HOST_SCENE | ENGINE_FP_HOST_SCENE_READY : 0) | (shadowPipe ? ENGINE_FP_HOST_SHADOW : 0) | (post ? ENGINE_FP_HOST_POST : 0)
+  uint32_t bits = (scene ? ENGINE_FP_HOST_SCENE | ENGINE_FP_HOST_SCENE_READY : 0) | (shadowPipe ? ENGINE_FP_HOST_SHADOW : 0) | (post ? ENGINE_FP_HOST_POST : 0) | (scene && [self grassBlades] ? ENGINE_FP_HOST_GRASS : 0)
    | (sparkly ? ENGINE_FP_HOST_PARTICLES | ENGINE_FP_HOST_PARTICLES_READY : 0) | (sparkly && [self shader:@"particle_over"] ? ENGINE_FP_HOST_PARTICLE_OVER : 0)
    | (!flatDepth ? ENGINE_FP_HOST_MEDIA : 0) | (shadowPipe && tiles ? ENGINE_FP_HOST_TILES : 0);
   EngineCoreFace face = {0}; face.frame_plan_v1 = x.frame_plan_v1;
@@ -1210,8 +1247,8 @@ static void phPlanMedia(void *s, int after) { AEPageHost *h = (__bridge AEPageHo
  PHPipe *bg = [self pipe:post ? @"bg-lit" : @"bg" role:@"bg" targets:post ? lit : flat count:post ? 2 : 1 depth:scene];
  if (bg) { [self bind:bg to:e]; if (scene) [e setDepthStencilState:[self shader:@"bg"]->writesDepth ? depthAlways:depthBackground]; [e drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3]; }
  if (draws) {
-  PHPipe *sc = [self pipe:post ? @"scene-lit" : @"scene" role:@"scene" targets:post ? lit : flat count:post ? 2 : 1 depth:YES];
-  if (sc) { [self bind:sc to:e]; [e setDepthStencilState:depthLess]; [self drawList:e words:list count:draws]; }
+  [self grassInto:e lit:post];   // the grass first: a draw that is blended lies over it
+  [self sceneInto:e lit:post words:list count:draws];
   uint32_t sparks = particleBuffer && [self shader:@"particle"] ? x.particle_instances(state) : 0;
   size_t bytes = sparks ? MIN((size_t)x.particle_bytes(state), particleBuffer.length) & ~(size_t)3 : 0;
   if (bytes) {

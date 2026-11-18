@@ -507,8 +507,14 @@ and the HUD between the media layers are all `passes.coax`'s order.
   which `frame-plan.coax` writes.
 - The Mac and iPhone: `apple/PageHost.m` asks through `engine_core_plan` and maps the callbacks to
   Metal (`planBegin`, `planDraw`, `planRect`, `planEnd`). Its word has the scene, the shadow map and
-  its tiles, the post pass, the particles and the media layers; it has no grass, water, character
-  pass, instance cull or particle sort, so the engine's plan holds none. `ENGINE_PLAN=off` draws a
+  its tiles, the post pass, the particles and the media layers, and the grass when the page has a
+  `grass` shader pair and its face has `coaxial_grass_instances` (each blade
+  `coaxial_grass_vertices_v1` vertices, 3 when the face has none; `coaxial_grass_range_v1`'s ranges
+  when it has them), drawn depth-tested into the scene's targets with the scene's bindings as
+  `host.js` draws it. It has no water, character pass, instance cull or particle sort, so the
+  engine's plan holds none of those. A face with `coaxial_draw_blend_v1` has each scene draw
+  replace (0), add (1) or lie over (2) what is behind it, as in `host.js`: a blended draw tests the
+  depth and does not write it. A page with neither is drawn as before. `ENGINE_PLAN=off` draws a
   page that has a plan in the host's own order, and `ENGINE_PAGE_TIMES=1` says which order a frame
   took and how many operations. Compare the two with the Mac app's offscreen frame:
 
