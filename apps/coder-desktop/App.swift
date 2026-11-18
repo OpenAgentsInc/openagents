@@ -139,6 +139,7 @@ final class CoderWindow: NSObject {
     private var line: CGFloat
     private var clock: Timer?
     private var then: String?   // --then TEXT: sent in a new chat once --send's reply ends
+    private var showAgent: Int?   // --agent N: the Nth sub-agent's transcript opens as soon as there is one
     private var owed = 3   // frames still to draw after a change
     private let store = CoderStore()
     private var chat: String?          // the id of the chat that is shown, once it is kept
@@ -199,6 +200,8 @@ final class CoderWindow: NSObject {
         // Coder --send TEXT sends TEXT at launch, for a check of the whole path with no typing.
         if let at = CommandLine.arguments.firstIndex(of: "--send"), at + 1 < CommandLine.arguments.count, cd_set_text(page, CommandLine.arguments[at + 1]) != 0, cd_submit(page) != 0,
            let next = CommandLine.arguments.firstIndex(of: "--then"), next + 1 < CommandLine.arguments.count { then = CommandLine.arguments[next + 1] }
+        // Coder --agent N opens the transcript of the Nth sub-agent of the newest message that has one.
+        if let at = CommandLine.arguments.firstIndex(of: "--agent"), at + 1 < CommandLine.arguments.count { showAgent = Int(CommandLine.arguments[at + 1]) }
         tick()
     }
 
@@ -352,7 +355,7 @@ final class CoderWindow: NSObject {
     /// Keeps the chat that is shown: its file, and its place at the top of the list.
     private func keep() {
         let id = chat ?? UUID().uuidString.lowercased()
-        var out = [CChar](repeating: 0, count: 16_000_000)   // 24 messages with every row full fit
+        var out = [CChar](repeating: 0, count: 32_000_000)   // 24 messages with every row and every sub-agent's rows full fit
         guard cd_save(page, &out, Int32(out.count)) > 0 else { return }
         let text = String(cString: out)
         var name = [CChar](repeating: 0, count: 256)
@@ -364,6 +367,7 @@ final class CoderWindow: NSObject {
     private func tick() {
         let what = cd_action(page)
         if what != 0 { act(what); wake() }
+        if let n = showAgent, cd_pane(page, Int32(n)) != 0 { showAgent = nil; wake() }
         if cd_save_due(page) != 0 { keep(); wake() }
         else if let text = then, cd_running(page) == 0 { then = nil; newChat(); act(cd_action(page)); if cd_set_text(page, text) != 0 { _ = cd_submit(page) } }
         // An empty draft leaves the text to the bar, so its placeholder shows under the caret.

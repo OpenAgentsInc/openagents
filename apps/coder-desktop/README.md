@@ -35,7 +35,9 @@ Limits, all shown on screen when you reach them:
 - A chat's title in the sidebar is its first message, up to 120 bytes.
 - When you open a chat, Microcoder is told its newest 6 messages and replies, up to 1,200 bytes of each.
 - A message runs up to 12 sub-agents, 6 in one step. Microcoder is told when a task is not run for this reason.
-- A sub-agent's task is cut at 1,500 bytes, its list of tool calls at 3,000 bytes and its reply at 8,000 bytes.
+- A sub-agent's task is cut at 1,500 bytes and its reply at 8,000 bytes.
+- A sub-agent's transcript shows its first 40 tool calls and says how many more ran. It shows each call up to 300 bytes and its output up to 1,000 bytes.
+- A sub-agent's transcript is 440 points wide. In a window where that leaves the conversation under 380 points, the chats' sidebar is hidden while the transcript is open. In a narrower window still, the transcript takes the whole window until you close it.
 - A run has 15 minutes, with its sub-agents' time included. A command has 120 seconds.
 
 Microcoder runs shell commands as you, starting in the working folder, with
@@ -69,8 +71,13 @@ Sub-agents handed over in one step run at the same time. Each is a row above
 the reply, named for its model (Hydrogen, Carbon, or Claude Haiku, Claude
 Sonnet, Claude Opus, Claude Fable), with its task beside the name and its
 elapsed time on the right. While a sub-agent runs, the line under its row
-says how many tool calls it has made and names the newest. Press the row to
-see every tool call and, when it ends, its reply.
+says how many tool calls it has made and names the newest.
+
+Click a sub-agent's row to open its transcript in a sidebar on the right
+(#13666). It reads as the conversation does: the task as a message, each tool
+call as a row you can press to see its input and output, and the reply. A
+running sub-agent's transcript fills in as it works. The X in the sidebar's
+top right corner closes it. So does a second click on the row.
 
 When all of them end, Microcoder gets their replies and carries on. A
 sub-agent works in the same working folder, runs commands and edits files as
@@ -103,7 +110,7 @@ Microcoder is not offered the Claude models.
 
 Coder keeps every chat on this Mac (#13661). It saves a chat when you send a
 message and when a reply ends: the messages, the replies, the commands with
-their output, and the sub-agents with their tool calls and replies.
+their output, and the sub-agents with their tool calls, the calls' output and their replies.
 
 The sidebar lists the chats, most recent at the top. A chat moves to the top
 when you send a message in it. Click a chat to open it:
@@ -130,6 +137,13 @@ To open the Nth most recent chat at launch (1 is the newest):
 
 ```sh
 open -n apps/coder-desktop/build/Coder.app --args --chat 1
+```
+
+To open a sub-agent's transcript at launch, add `--agent N`. It opens the Nth
+sub-agent of the newest message that has that many:
+
+```sh
+open -n apps/coder-desktop/build/Coder.app --args --chat 1 --agent 1
 ```
 
 ## Skills and installed commands
@@ -185,6 +199,12 @@ Add `--then TEXT` to start a new chat once that reply ends and send `TEXT` in it
 
 ```sh
 open -n apps/coder-desktop/build/Coder.app --args --send "Say hi." --then "What is 2+2?"
+```
+
+To build a second copy somewhere else, and leave a running Coder's files alone:
+
+```sh
+CODER_BUILD=/tmp/coder apps/coder-desktop/build.sh
 ```
 
 ## Checks

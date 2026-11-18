@@ -4,11 +4,12 @@
 # component carrier (carrier.c, host.c) and Mac host (apps/shared/host/apple/ui-host.m), with the shared
 # AppKit editor (apps/shared/native/KitEditorMac.swift) and the component shader emitted as Metal, and the Microcoder worker (coder/tui/mcworker.coax) it talks to.
 #   apps/coder-desktop/build.sh [--open]
+#   CODER_BUILD=/tmp/coder apps/coder-desktop/build.sh   builds into another folder
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 repo="$(cd "$here/../.." && pwd)"
 coax="${COAX:-$repo/coax/bin/coax}"
-work="$here/build"
+work="${CODER_BUILD:-$here/build}"   # CODER_BUILD=DIR builds a second copy and leaves a running Coder's files alone
 app="$work/Coder.app"
 res="$app/Contents/Resources"
 mkdir -p "$work/c" "$app/Contents/MacOS" "$res/Components"

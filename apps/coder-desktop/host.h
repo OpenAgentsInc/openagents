@@ -63,6 +63,9 @@ int cd_recall_line(void *page, char *out, int cap);
 // model). cd_agent_claude: whether this sub-agent runs in Claude Code, on the Claude worker.
 void cd_claude(void *page, int on);
 int cd_agent_claude(void *page, int agent);
+// Opens the transcript of sub-agent n (1 is the first) of the newest message that has that many, on
+// the window's right, as a press on its row does. 0 when no message has.
+int cd_pane(void *page, int n);
 int cd_stop_line(char *out, int cap);
 int cd_forget_line(char *out, int cap);
 // One line the worker wrote, without its newline.

@@ -22,7 +22,7 @@
 
 CP_MAX_VERTICES :: 200000;
 // A generation's declared capacity: primitives, selectable lines, hits, pooled bytes, semantic rows; then keyed ids.
-CP_UNDER :: 4096; CP_OVER :: 16384; CP_LINES :: 4096; CP_HITS :: 512; CP_POOL :: 262144; CP_ROWS :: 768; CP_KEYED :: 256;
+CP_UNDER :: 4096; CP_OVER :: 16384; CP_LINES :: 4096; CP_HITS :: 512; CP_POOL :: 262144; CP_ROWS :: 768; CP_KEYED :: 320;
 CP_TURNS :: 24;             // messages a chat holds; the page says so when it is full
 CP_REPLY :: 60000;          // bytes of a reply kept (the Markdown document holds 65,536)
 CP_NOTE :: 512;
@@ -34,7 +34,11 @@ CP_ARENA :: 131072;         // a worker line's strings
 CP_AGENTS :: 12;            // sub-agents one message may start; a task past that is answered as not run
 CP_AGENT_TASK :: 1500;      // bytes of a sub-agent's task kept (a longer task is cut, and the sub-agent gets the cut one)
 CP_AGENT_REPLY :: 8000;     // bytes of a sub-agent's reply kept, shown and handed back to Microcoder
-CP_AGENT_LOG :: 3000;       // bytes of a sub-agent's list of tool calls shown
+CP_AGENT_CALLS :: 40;       // tool calls a sub-agent's transcript shows; it says how many more ran
+CP_AGENT_CMD :: 300;        // bytes of a sub-agent's tool call shown
+CP_AGENT_OUT :: 1000;       // bytes of a sub-agent's tool call's output shown; the row says when it is cut
+CP_PANE :: 440;             // the sub-agent transcript's width, on the window's right
+CP_PANE_MAIN :: 380;        // the conversation's least width beside it: under that the chats' sidebar goes, then the transcript takes the window
 CP_SCRATCH :: 262144;       // the sub-agents' results as one line for the worker
 CP_MODEL_COMPLEX :: "gemini-4-carbon";      // a complex task's model; a simple one runs on CP_MODEL
 // A sub-agent's level, as Microcoder names it, and the name its row shows. The last four run in
@@ -62,9 +66,9 @@ CP_MODEL_NAME :: "Microcoder · Gemini 4 Hydrogen";
 // What the page asks of its host (coder_page_action), once.
 CP_ASK_NONE :: 0; CP_ASK_SEND :: 1; CP_ASK_FOCUS :: 2; CP_ASK_STOP :: 3; CP_ASK_NEW :: 4; CP_ASK_COPY :: 5; CP_ASK_FOLDER :: 6; CP_ASK_OPEN :: 7;
 // What a row dispatches.
-CP_FIELD :: 1; CP_SEND :: 2; CP_NEW :: 3; CP_COPY :: 4; CP_TOOL :: 5; CP_FOLDER :: 6; CP_COPY_ASK :: 7; CP_COPY_REPLY :: 8; CP_COPY_ALL :: 9; CP_AGENT :: 10; CP_CHAT :: 11;
+CP_FIELD :: 1; CP_SEND :: 2; CP_NEW :: 3; CP_COPY :: 4; CP_TOOL :: 5; CP_FOLDER :: 6; CP_COPY_ASK :: 7; CP_COPY_REPLY :: 8; CP_COPY_ALL :: 9; CP_AGENT :: 10; CP_CHAT :: 11; CP_PANE_CLOSE :: 12; CP_PANE_TOOL :: 13; CP_PANE_COPY :: 14;
 // What was copied last (its button shows a check): a code block, a person's message, a reply, the whole chat.
-CP_COPIED_NONE :: 0; CP_COPIED_BLOCK :: 1; CP_COPIED_ASK :: 2; CP_COPIED_REPLY :: 3; CP_COPIED_ALL :: 4;
+CP_COPIED_NONE :: 0; CP_COPIED_BLOCK :: 1; CP_COPIED_ASK :: 2; CP_COPIED_REPLY :: 3; CP_COPIED_ALL :: 4; CP_COPIED_PANE :: 5;
 CP_ALL :: 2000000;          // bytes the whole chat's copy may take: 24 messages and replies fit
 // A turn's state.
 CP_RUNNING :: 0; CP_DONE :: 1; CP_FAILED :: 2; CP_STOPPED :: 3;
@@ -77,6 +81,13 @@ CpCmd :: struct {
   running: bool;              // asked for and not yet finished
   began: f32; took: f32;      // the page's clock when it was asked for, and its seconds once it ended (-1: not timed)
 }
+// One tool call of a sub-agent, as its transcript shows it.
+CpCall :: struct {
+  text: [CP_AGENT_CMD] u8; text_n: int;
+  out: [CP_AGENT_OUT + 64] u8; out_n: int;
+  read: bool; failed: bool; running: bool;
+  began: f32; took: f32;
+}
 // One sub-agent: a run of its own on a worker of its own, started by the host.
 CpAgent :: struct {
   task: [CP_AGENT_TASK] u8; task_n: int; level: int;   // which of CP_LEVEL
@@ -84,7 +95,7 @@ CpAgent :: struct {
   start_due: bool;            // the host has not started its worker yet
   answer: int; answer_due: bool;   // its worker's ask that is owed a yes
   reply: [CP_AGENT_REPLY] u8; reply_n: int;   // its reply, or why it failed
-  log: [CP_AGENT_LOG] u8; log_n: int; log_cut: bool;   // its tool calls, one a line
+  rows: [CP_AGENT_CALLS] CpCall; nrows: int; more_rows: int;   // its tool calls, the first 40, and how many ran past them
   now: [CP_CMD] u8; now_n: int; now_running: bool;     // its newest tool call
   calls: int;
   began: f32; took: f32;
@@ -126,6 +137,11 @@ CoderPage :: struct {
   folder: [CP_FOLDER_TEXT] u8; folder_n: int;   // the working folder as shown (~/work/app): commands start there
   answer: int; answer_due: bool;   // the ticket of the worker's ask that is owed its answer
   results_due: bool;          // every sub-agent of the round has ended: the worker is owed their results
+  // the sub-agent whose transcript shows on the window's right (GitHub #13666): which, where it
+  // was last drawn, its scroll, and its reply as a document
+  pane_open: bool; pane_turn: int; pane_agent: int;
+  pane_x: f32; pane_w: f32; pane_scroll: f32; pane_content: f32; pane_view: f32; pane_stick: bool;
+  pane_doc: [1] MdDoc; pane_blocks: int; pane_parsed: int;
   clock: f32;                 // seconds the page has been drawn, for how long a tool call took
   scratch: [CP_SCRATCH] u8;
   zoom: int;                  // the text size, a row of CP_ZOOMS
@@ -245,7 +261,7 @@ cp_cmd_done :: (s: [] CoderPage, i: int, text: string, output: string, failed: b
 cp_cmds_end :: (s: [] CoderPage, i: int) {
   for k: 0..<s[0].turns[i].ncmds { if s[0].turns[i].cmds[k].running { s[0].turns[i].cmds[k].running = false; s[0].turns[i].cmds[k].failed = true; s[0].turns[i].cmds[k].took = s[0].clock - s[0].turns[i].cmds[k].began; } }
   for j: 0..<s[0].turns[i].nagents {
-    if s[0].turns[i].agents[j].state == CP_RUNNING { s[0].turns[i].agents[j].state = CP_STOPPED; s[0].turns[i].agents[j].took = s[0].clock - s[0].turns[i].agents[j].began; }
+    if s[0].turns[i].agents[j].state == CP_RUNNING { s[0].turns[i].agents[j].state = CP_STOPPED; s[0].turns[i].agents[j].took = s[0].clock - s[0].turns[i].agents[j].began; cp_calls_end(s, i, j, true); }
     s[0].turns[i].agents[j].start_due = false; s[0].turns[i].agents[j].answer_due = false; s[0].turns[i].agents[j].now_running = false;
   }
   s[0].turns[i].waiting = false; s[0].results_due = false;
@@ -262,11 +278,40 @@ cp_took :: (out: [] u8, seconds: f32) -> string {
 // ---- sub-agents (GitHub #13655). Microcoder hands tasks over in one line (MWW_DELEGATE); the
 // host starts a worker for each, all at once, and feeds their lines back here; when every one
 // has ended, the page owes Microcoder their results (coder_page_answer_line).
-cp_agent_log :: (s: [] CoderPage, i: int, j: int, text: string) {
-  n := s[0].turns[i].agents[j].log_n;
-  if s[0].turns[i].agents[j].log_cut { return; }
-  if n + text.count + 1 > CP_AGENT_LOG - 48 { s[0].turns[i].agents[j].log_cut = true; n += cp_out(s[0].turns[i].agents[j].log[n..<CP_AGENT_LOG], "[The list is cut at 3,000 bytes.]\n"); s[0].turns[i].agents[j].log_n = n; return; }
-  n += cp_out(s[0].turns[i].agents[j].log[n..<CP_AGENT_LOG], text); s[0].turns[i].agents[j].log[n] = 10; s[0].turns[i].agents[j].log_n = n + 1;
+// A sub-agent's tool call joins its transcript: the first 40 are kept, the rest counted.
+cp_call_add :: (s: [] CoderPage, i: int, j: int, text: string, output: string, read: bool, failed: bool, running: bool) {
+  q := s[0].turns[i].agents[j].nrows;
+  if q >= CP_AGENT_CALLS { s[0].turns[i].agents[j].more_rows += 1; return; }
+  s[0].turns[i].agents[j].rows[q].text_n = cp_out(s[0].turns[i].agents[j].rows[q].text[..], text);
+  cp_call_out(s, i, j, q, output);
+  s[0].turns[i].agents[j].rows[q].read = read; s[0].turns[i].agents[j].rows[q].failed = failed; s[0].turns[i].agents[j].rows[q].running = running;
+  s[0].turns[i].agents[j].rows[q].began = s[0].clock; s[0].turns[i].agents[j].rows[q].took = -1;
+  s[0].turns[i].agents[j].nrows = q + 1;
+}
+cp_call_out :: (s: [] CoderPage, i: int, j: int, q: int, output: string) {
+  n := cp_out(s[0].turns[i].agents[j].rows[q].out[0..<CP_AGENT_OUT], output);
+  if n < output.count { n += cp_out(s[0].turns[i].agents[j].rows[q].out[n..<CP_AGENT_OUT + 64], "\n[The output is cut at 1,000 bytes.]"); }
+  s[0].turns[i].agents[j].rows[q].out_n = n;
+}
+// A sub-agent's tool call ended: its running row takes the output. False when no row is running with that text.
+cp_call_done :: (s: [] CoderPage, i: int, j: int, text: string, output: string, failed: bool) -> bool {
+  cut := cast(string) text[0..<(ifx text.count < CP_AGENT_CMD then text.count else CP_AGENT_CMD)];
+  for q: 0..<s[0].turns[i].agents[j].nrows {
+    if !s[0].turns[i].agents[j].rows[q].running || cast(string) s[0].turns[i].agents[j].rows[q].text[0..<s[0].turns[i].agents[j].rows[q].text_n] != cut { continue; }
+    cp_call_out(s, i, j, q, output);
+    s[0].turns[i].agents[j].rows[q].failed = failed; s[0].turns[i].agents[j].rows[q].running = false;
+    s[0].turns[i].agents[j].rows[q].took = s[0].clock - s[0].turns[i].agents[j].rows[q].began;
+    return true;
+  }
+  return false;
+}
+// A sub-agent ended: none of its tool calls is still running.
+cp_calls_end :: (s: [] CoderPage, i: int, j: int, failed: bool) {
+  for q: 0..<s[0].turns[i].agents[j].nrows {
+    if !s[0].turns[i].agents[j].rows[q].running { continue; }
+    s[0].turns[i].agents[j].rows[q].running = false; s[0].turns[i].agents[j].rows[q].failed = failed;
+    s[0].turns[i].agents[j].rows[q].took = s[0].clock - s[0].turns[i].agents[j].rows[q].began;
+  }
 }
 cp_delegate :: (s: [] CoderPage, i: int, tasks: string, ticket: int) {
   asked := ifx tasks.count > 1 && tasks[0] == '[' then cl_count(tasks) else 0;
@@ -296,6 +341,7 @@ cp_round_check :: (s: [] CoderPage, i: int) {
 cp_agent_end :: (s: [] CoderPage, i: int, j: int, state: int, text: string) {
   s[0].turns[i].agents[j].state = state; s[0].turns[i].agents[j].took = s[0].clock - s[0].turns[i].agents[j].began;
   s[0].turns[i].agents[j].now_running = false; s[0].turns[i].agents[j].answer_due = false;
+  cp_calls_end(s, i, j, state != CP_DONE);
   n := cp_out(s[0].turns[i].agents[j].reply[0..<CP_AGENT_REPLY - 48], text);
   if n < text.count { n += cp_out(s[0].turns[i].agents[j].reply[n..<CP_AGENT_REPLY], "\n[The reply is cut at 8,000 bytes.]"); }
   s[0].turns[i].agents[j].reply_n = n; s[0].turns[i].h = 0;
@@ -345,15 +391,19 @@ coder_page_agent_line :: (s: [] CoderPage, j: int, line: string) -> int #export_
   if kind == MWW_ASK {
     s[0].turns[i].agents[j].answer = l[0].ticket.value; s[0].turns[i].agents[j].answer_due = !claude;
     s[0].turns[i].agents[j].now_n = cp_out(s[0].turns[i].agents[j].now[..], l[0].command); s[0].turns[i].agents[j].now_running = true;
-    s[0].turns[i].agents[j].calls += 1; cp_agent_log(s, i, j, l[0].command);
+    s[0].turns[i].agents[j].calls += 1; cp_call_add(s, i, j, l[0].command, "", false, false, true);
   } else if kind == MWW_COMMAND {
+    failed := l[0].timed_out.value || l[0].exit.value != 0;
     // an edit, or a command the worker ran before the first call, was not asked about
-    if !claude && !s[0].turns[i].agents[j].now_running { s[0].turns[i].agents[j].now_n = cp_out(s[0].turns[i].agents[j].now[..], l[0].command); s[0].turns[i].agents[j].calls += 1; cp_agent_log(s, i, j, l[0].command); }
+    if !cp_call_done(s, i, j, l[0].command, l[0].output, failed) && !claude && !s[0].turns[i].agents[j].now_running {
+      s[0].turns[i].agents[j].now_n = cp_out(s[0].turns[i].agents[j].now[..], l[0].command); s[0].turns[i].agents[j].calls += 1;
+      cp_call_add(s, i, j, l[0].command, l[0].output, false, failed, false);
+    }
     s[0].turns[i].agents[j].now_running = false;
   } else if kind == MWW_VIEW {
     vb: [CP_CMD] u8; vn := cp_out(vb[..], "read "); vn += cp_out(vb[vn..<CP_CMD], l[0].path);
     s[0].turns[i].agents[j].now_n = cp_out(s[0].turns[i].agents[j].now[..], cast(string) vb[0..<vn]); s[0].turns[i].agents[j].now_running = false;
-    s[0].turns[i].agents[j].calls += 1; cp_agent_log(s, i, j, cast(string) vb[0..<vn]);
+    s[0].turns[i].agents[j].calls += 1; cp_call_add(s, i, j, l[0].path, ifx l[0].found.value then "" else "No such file.", true, !l[0].found.value, false);
   } else if kind == MWW_ENDED {
     done := l[0].ending == "finished" || l[0].ending == "asked";
     cp_agent_end(s, i, j, ifx done then CP_DONE else CP_FAILED, ifx l[0].text.count > 0 then l[0].text else "The sub-agent ended before a reply.");
@@ -493,7 +543,16 @@ coder_page_save :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) 
       n = json_raw(out, n, ",\"task\":"); n = json_write_string(out, n, cast(string) s[0].turns[i].agents[j].task[0..<s[0].turns[i].agents[j].task_n]);
       n = json_raw(out, n, ",\"state\":"); n = json_write_int(out, n, s[0].turns[i].agents[j].state);
       n = json_raw(out, n, ",\"reply\":"); n = json_write_string(out, n, cast(string) s[0].turns[i].agents[j].reply[0..<s[0].turns[i].agents[j].reply_n]);
-      n = json_raw(out, n, ",\"log\":"); n = json_write_string(out, n, cast(string) s[0].turns[i].agents[j].log[0..<s[0].turns[i].agents[j].log_n]);
+      n = json_raw(out, n, ",\"more\":"); n = json_write_int(out, n, s[0].turns[i].agents[j].more_rows);
+      n = json_raw(out, n, ",\"rows\":[");
+      for q: 0..<s[0].turns[i].agents[j].nrows {
+        n = json_raw(out, n, ifx q > 0 then ",{\"text\":" else "{\"text\":"); n = json_write_string(out, n, cast(string) s[0].turns[i].agents[j].rows[q].text[0..<s[0].turns[i].agents[j].rows[q].text_n]);
+        n = json_raw(out, n, ",\"out\":"); n = json_write_string(out, n, cast(string) s[0].turns[i].agents[j].rows[q].out[0..<s[0].turns[i].agents[j].rows[q].out_n]);
+        n = json_raw(out, n, ifx s[0].turns[i].agents[j].rows[q].read then ",\"read\":true" else ",\"read\":false");
+        n = json_raw(out, n, ifx s[0].turns[i].agents[j].rows[q].failed then ",\"failed\":true" else ",\"failed\":false");
+        n = json_raw(out, n, ",\"took\":"); n = json_write_int(out, n, cp_whole(s[0].turns[i].agents[j].rows[q].took)); n = json_raw(out, n, "}");
+      }
+      n = json_raw(out, n, "]");
       n = json_raw(out, n, ",\"calls\":"); n = json_write_int(out, n, s[0].turns[i].agents[j].calls);
       n = json_raw(out, n, ",\"took\":"); n = json_write_int(out, n, cp_whole(s[0].turns[i].agents[j].took)); n = json_raw(out, n, "}");
     }
@@ -547,8 +606,25 @@ coder_page_load :: (s: [] CoderPage, text: string) -> bool #export_c #effects(al
       s[0].turns[i].agents[j].task_n = cp_out(s[0].turns[i].agents[j].task[..], cl_str(ar[..], g, "task"));
       ar[0].at = 0;
       s[0].turns[i].agents[j].reply_n = cp_out(s[0].turns[i].agents[j].reply[..], cl_str(ar[..], g, "reply"));
-      ar[0].at = 0;
-      s[0].turns[i].agents[j].log_n = cp_out(s[0].turns[i].agents[j].log[..], cl_str(ar[..], g, "log"));
+      // its tool calls; a chat kept before 2026-11-17 has them as a list of lines, with no output
+      rows := cl_raw(g, "rows"); nr := ifx rows.count > 0 then cl_count(rows) else 0; if nr > CP_AGENT_CALLS { nr = CP_AGENT_CALLS; }
+      for q: 0..<nr {
+        c := cl_json(rows, cl_item(rows, q));
+        ar[0].at = 0; what := cl_str(ar[..], c, "text"); output := cl_str(ar[..], c, "out");
+        read := cl_bool(c, "read"); failed := cl_bool(c, "failed"); took := cl_int(c, "took");
+        cp_call_add(s, i, j, what, "", read.ok && read.value, failed.ok && failed.value, false);
+        s[0].turns[i].agents[j].rows[q].out_n = cp_out(s[0].turns[i].agents[j].rows[q].out[..], output);
+        s[0].turns[i].agents[j].rows[q].began = 0; s[0].turns[i].agents[j].rows[q].took = ifx took.ok then cast(f32) took.value else -1.0f32;
+      }
+      if nr == 0 {
+        ar[0].at = 0; old := cl_str(ar[..], g, "log"); from := 0;
+        for at: 0..<old.count {
+          if old[at] != 10 { continue; }
+          if at > from && old[from] != '[' { cp_call_add(s, i, j, cast(string) old[from..<at], "", false, false, false); }
+          from = at + 1;
+        }
+      }
+      gm := cl_int(g, "more"); s[0].turns[i].agents[j].more_rows = ifx gm.ok && gm.value > 0 then gm.value else 0;
       gs := cl_int(g, "state"); calls := cl_int(g, "calls"); took := cl_int(g, "took");
       s[0].turns[i].agents[j].state = ifx gs.ok && gs.value > CP_RUNNING && gs.value <= CP_STOPPED then gs.value else CP_STOPPED;
       s[0].turns[i].agents[j].calls = ifx calls.ok then calls.value else 0;
@@ -557,7 +633,7 @@ coder_page_load :: (s: [] CoderPage, text: string) -> bool #export_c #effects(al
     s[0].turns[i].nagents = na;
   }
   s[0].nturns = count; s[0].scroll = 0; s[0].stick = true; s[0].copied_turn = -1; s[0].copied_kind = CP_COPIED_NONE; s[0].results_due = false; s[0].answer_due = false;
-  s[0].kept_turns = count; s[0].kept_running = false;
+  s[0].kept_turns = count; s[0].kept_running = false; s[0].pane_open = false;
   return true;
 }
 // The chat's finished turns as the worker's recall line, so Microcoder knows a chat that was
@@ -580,7 +656,7 @@ coder_page_recall_line :: (s: [] CoderPage, out: [] u8) -> int #export_c #effect
 // A new chat: the window clears and the host has the worker forget. Not while a run is going.
 cp_new :: (s: [] CoderPage) -> bool {
   if cp_running(s) { return false; }
-  s[0].nturns = 0; s[0].scroll = 0; s[0].stick = true; s[0].copied_turn = -1; s[0].copied_kind = CP_COPIED_NONE; s[0].ask = CP_ASK_NEW; return true;
+  s[0].nturns = 0; s[0].scroll = 0; s[0].stick = true; s[0].copied_turn = -1; s[0].copied_kind = CP_COPIED_NONE; s[0].pane_open = false; s[0].ask = CP_ASK_NEW; return true;
 }
 coder_page_new :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && cp_new(s); }
 cp_press :: (s: [] CoderPage, row: int) -> bool {
@@ -597,9 +673,23 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
     id := surface_id(s[0].surface[..], row);
     turn := cp_number(id, "t"); j := cp_number(id, ".g");
     if turn < 0 || turn >= s[0].nturns || j < 0 || j >= s[0].turns[turn].nagents { return false; }
-    ib: [EL_ID] u8; tb: [EL_ID] u8;
-    s[0].turns[turn].h = 0;
-    return app_tool_press(s[0].keyed[..], app_id(tb[..], cp_id(ib[..], turn, ".g"), CP_CMD_IDS[j]), id);
+    // its transcript opens on the window's right; a press on the one that is open closes it
+    if s[0].pane_open && s[0].pane_turn == turn && s[0].pane_agent == j { s[0].pane_open = false; return true; }
+    s[0].pane_open = true; s[0].pane_turn = turn; s[0].pane_agent = j; s[0].pane_parsed = -1;
+    s[0].pane_scroll = 0; s[0].pane_content = 0; s[0].pane_stick = s[0].turns[turn].agents[j].state == CP_RUNNING;
+    return true;
+  }
+  if act == CP_PANE_CLOSE { s[0].pane_open = false; return true; }
+  if act == CP_PANE_TOOL {
+    id := surface_id(s[0].surface[..], row);
+    q := cp_number(id, ".x"); tb: [EL_ID] u8;
+    if !s[0].pane_open || q < 0 { return false; }
+    return app_tool_press(s[0].keyed[..], cp_pane_id(tb[..], s, ".x", q), id);
+  }
+  if act == CP_PANE_COPY {
+    block := cp_number(surface_id(s[0].surface[..], row), ".code.");
+    if !s[0].pane_open || block < 0 { return false; }
+    s[0].copied_turn = s[0].pane_turn; s[0].copied_block = block; s[0].copied_kind = CP_COPIED_PANE; s[0].ask = CP_ASK_COPY; return true;
   }
   if act == CP_CHAT {
     id := surface_id(s[0].surface[..], row);
@@ -632,10 +722,95 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
   return false;
 }
 
-cp_layout :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) {
+// The transcript of sub-agent n (1 is the first) of the newest message that has that many opens,
+// as a press on its row opens it. False when no message has.
+coder_page_pane :: (s: [] CoderPage, n: int) -> bool #export_c #effects(all) {
+  if s.count < 1 || n < 1 { return false; }
+  for back: 0..<s[0].nturns {
+    i := s[0].nturns - 1 - back;
+    if s[0].turns[i].nagents < n { continue; }
+    s[0].pane_open = true; s[0].pane_turn = i; s[0].pane_agent = n - 1; s[0].pane_parsed = -1;
+    s[0].pane_scroll = 0; s[0].pane_content = 0; s[0].pane_stick = s[0].turns[i].agents[n - 1].state == CP_RUNNING;
+    return true;
+  }
+  return false;
+}
+// "p3.1.x12": a part of the open sub-agent's transcript, named by its turn and its number.
+cp_pane_id :: (out: [] u8, s: [] CoderPage, part: string, q: int) -> string {
+  n := el_put(out, 0, "p"); n = el_put_i(out, n, s[0].pane_turn); n = el_put(out, n, "."); n = el_put_i(out, n, s[0].pane_agent); n = el_put(out, n, part);
+  if q >= 0 { n = el_put_i(out, n, q); }
+  return cast(string) out[0..<n];
+}
+// A sub-agent's transcript (GitHub #13666) from px, pw wide, the window's height: its model, how
+// long it ran and Close at the top; under them, scrolling, its task as a message, each tool call
+// as a row that opens onto its input and output, and its reply, as the conversation shows its own.
+cp_pane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
+  k := f[0].skin; a := k.app; sh := f[0].sheet;
+  i := s[0].pane_turn; j := s[0].pane_agent;
+  side := a.icon_button; state := s[0].turns[i].agents[j].state;
+  kb: [24] u8; ib: [EL_ID] u8;
+  if px > 0 { sheet_fill(sh, px, 0, k.border, h, 0, k.menu_divider); }
+  hx := px + CP_PAD; mid := CP_CORNER + side / 2;
+  sheet_icon(sh, ICON_BOT, hx, mid - a.tool_icon / 2, a.tool_icon, k.muted); hx += a.tool_icon + a.gap;
+  hx += sheet_text(sh, f[0].m, -1, hx, mid - k.tool.line / 2, k.tool.line, k.tool.face, k.ink, CP_LEVEL_NAME[s[0].turns[i].agents[j].level]) + a.gap;
+  took := cp_took(kb[..], ifx state == CP_RUNNING then s[0].clock - s[0].turns[i].agents[j].began else s[0].turns[i].agents[j].took);
+  if took.count > 0 { _ := app_meta(f, "coder.pane.took", hx, mid - k.small.line / 2, px + pw - side - CP_CORNER - hx, sheet_pool(sh, took), false); }
+  _ := app_icon_button(f, "coder.pane.close", px + pw - side - CP_CORNER, CP_CORNER, ICON_CLOSE, "Close", APP_BUTTON_QUIET, 0, CP_PANE_CLOSE);
+  stop := CP_CORNER + side + a.gap_small;
+  s[0].pane_view = h - stop;
+  if s[0].pane_stick { s[0].pane_scroll = s[0].pane_content - s[0].pane_view; }
+  s[0].pane_scroll = scroll_clamp(s[0].pane_scroll, s[0].pane_content, s[0].pane_view);
+  uiframe_clip(f, px, stop, px + pw, h);
+  x := px + CP_PAD; cw := pw - 2 * CP_PAD; y := stop - s[0].pane_scroll + a.gap;
+  y += app_message_user(f, cp_pane_id(ib[..], s, ".u", -1), x, y, cw, cast(string) s[0].turns[i].agents[j].task[0..<s[0].turns[i].agents[j].task_n]) + a.gap;
+  nrows := s[0].turns[i].agents[j].nrows;
+  for q: 0..<nrows {
+    running := s[0].turns[i].agents[j].rows[q].running; read := s[0].turns[i].agents[j].rows[q].read;
+    text := cast(string) s[0].turns[i].agents[j].rows[q].text[0..<s[0].turns[i].agents[j].rows[q].text_n];
+    tool := AppTool.{icon = ifx read then ICON_DOCUMENT else ICON_TERMINAL, title = ifx read then "Read" else ifx running then "Running a command" else "Ran a command", arg = text,
+                     state = ifx running then APP_TOOL_RUNNING else ifx s[0].turns[i].agents[j].rows[q].failed then APP_TOOL_FAILED else APP_TOOL_DONE,
+                     input = text, output = cast(string) s[0].turns[i].agents[j].rows[q].out[0..<s[0].turns[i].agents[j].rows[q].out_n],
+                     took = sheet_pool(sh, cp_took(kb[..], ifx running then s[0].clock - s[0].turns[i].agents[j].rows[q].began else s[0].turns[i].agents[j].rows[q].took))};
+    y += app_tool(f, cp_pane_id(ib[..], s, ".x", q), x, y, cw, tool, false, CP_PANE_TOOL) + a.gap_small;
+  }
+  if s[0].turns[i].agents[j].more_rows > 0 {
+    mb: [96] u8; mn := el_put_i(mb[..], 0, s[0].turns[i].agents[j].more_rows); mn = el_put(mb[..], mn, " more ran. A sub-agent shows its first 40.");
+    y += app_meta(f, cp_pane_id(ib[..], s, ".xm", -1), x, y, cw, sheet_pool(sh, cast(string) mb[0..<mn]), false) + a.gap_small;
+  }
+  if nrows > 0 { y += a.gap - a.gap_small; }
+  reply := cast(string) s[0].turns[i].agents[j].reply[0..<s[0].turns[i].agents[j].reply_n];
+  if state == CP_RUNNING { y += app_typing(f, cp_pane_id(ib[..], s, ".t", -1), x, y, "Working") + a.gap; }
+  else if state == CP_DONE && reply.count > 0 {
+    if s[0].pane_parsed != reply.count {
+      s[0].pane_doc[0].n = 0; s[0].pane_doc[0].nb = 0; s[0].pane_doc[0].nr = 0; s[0].pane_doc[0].ni = 0; s[0].pane_doc[0].nlink = 0;
+      s[0].pane_blocks = md_parse(s[0].pane_doc[..], reply, 0); s[0].pane_parsed = reply.count;
+    }
+    y += app_message_agent(f, cp_pane_id(ib[..], s, ".a", -1), x, y, cw, s[0].pane_doc[..], s[0].pane_blocks,
+                           ifx s[0].copied_kind == CP_COPIED_PANE then s[0].copied_block else -1, CP_PANE_COPY) + a.gap;
+  }
+  else if state == CP_FAILED { y += app_notice(f, cp_pane_id(ib[..], s, ".n", -1), x, y, cw, ifx reply.count > 0 then sheet_pool(sh, reply) else "The sub-agent ended before a reply.", APP_NOTICE_ERROR) + a.gap; }
+  else if state == CP_STOPPED { y += app_meta(f, cp_pane_id(ib[..], s, ".s", -1), x, y, cw, "Stopped", false) + a.gap; }
+  uiframe_unclip(f);
+  s[0].pane_content = y + s[0].pane_scroll - stop;
+}
+
+cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
   k := f[0].skin; a := k.app;
-  left: f32 = ifx w >= CP_SIDE_FROM then CP_SIDE else 0.0f32;   // the sidebar's width
-  s[0].side = left;
+  left: f32 = ifx window_w >= CP_SIDE_FROM then CP_SIDE else 0.0f32;   // the sidebar's width
+  // a sub-agent's transcript takes the window's right side. Where the conversation would have
+  // under 380 points beside it, the chats' sidebar goes; where it still would, the transcript
+  // takes the whole window until it is closed.
+  whole := window_w; right: f32 = 0;
+  if s[0].pane_open && (s[0].pane_turn >= s[0].nturns || s[0].pane_agent >= s[0].turns[s[0].pane_turn].nagents) { s[0].pane_open = false; }
+  if s[0].pane_open {
+    right = CP_PANE;
+    if whole - left - right < CP_PANE_MAIN { left = 0; }
+    if whole - right < CP_PANE_MAIN { right = whole; left = 0; }
+  }
+  s[0].side = left; s[0].pane_w = right; s[0].pane_x = whole - right;
+  if right >= whole { s[0].col_w = 0; cp_pane(s, f, 0, whole, h); return; }
+  if right > 0 { cp_pane(s, f, whole - right, right, h); }
+  w := whole - right;   // from here w is where the conversation's side ends
   cw := w - left - 2 * CP_PAD; if cw > CP_COLUMN { cw = CP_COLUMN; }
   x := left + (w - left - cw) / 2;
   s[0].col_x = x; s[0].col_w = cw;
@@ -647,6 +822,8 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) {
   if s[0].stick { s[0].scroll = s[0].content - s[0].view; if s[0].scroll < 0 { s[0].scroll = 0; } }
   uiframe_clip(f, left, top, w, bottom);
   y := top - s[0].scroll + a.gap;
+  // where the column reaches under a corner's buttons, the first message starts below them
+  if x + cw > w - 2 * side - CP_CORNER || left == 0 && x < CP_CORNER + CP_FOLDER_MOST { y += CP_CORNER + side; }
   if s[0].nturns == 0 {
     _ := app_empty(f, "coder.empty", x, top + s[0].view / 3, cw, ICON_THOUGHT, "What do you want to do?", "Microcoder answers on Gemini 4 Hydrogen.");
   }
@@ -663,19 +840,16 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) {
       // its sub-agents: each a row with its model, its task and how long it has run; under a
       // running one, its newest tool call
       for j: 0..<s[0].turns[i].nagents {
-        g := s[0].turns[i].agents[j];
-        gt := cast(string) s[0].turns[i].agents[j].task[0..<g.task_n];
-        ob := s[0].scratch[..]; on := cp_out(ob, cast(string) s[0].turns[i].agents[j].log[0..<g.log_n]);
-        if on > 0 && g.reply_n > 0 { on += cp_out(ob[on..<ob.count], "\n"); }
-        on += cp_out(ob[on..<ob.count], cast(string) s[0].turns[i].agents[j].reply[0..<g.reply_n]);
-        tool := AppTool.{icon = ICON_BOT, title = CP_LEVEL_NAME[g.level], arg = gt,
-                         state = ifx g.state == CP_RUNNING then APP_TOOL_RUNNING else ifx g.state == CP_DONE then APP_TOOL_DONE else APP_TOOL_FAILED,
-                         input = gt, output = sheet_pool(f[0].sheet, cast(string) ob[0..<on]),
-                         took = sheet_pool(f[0].sheet, cp_took(kb[..], ifx g.state == CP_RUNNING then s[0].clock - g.began else g.took))};
+        gs := s[0].turns[i].agents[j].state; gcalls := s[0].turns[i].agents[j].calls;
+        gt := cast(string) s[0].turns[i].agents[j].task[0..<s[0].turns[i].agents[j].task_n];
+        tool := AppTool.{icon = ICON_BOT, title = CP_LEVEL_NAME[s[0].turns[i].agents[j].level], arg = gt,
+                         state = ifx gs == CP_RUNNING then APP_TOOL_RUNNING else ifx gs == CP_DONE then APP_TOOL_DONE else APP_TOOL_FAILED,
+                         input = gt,
+                         took = sheet_pool(f[0].sheet, cp_took(kb[..], ifx gs == CP_RUNNING then s[0].clock - s[0].turns[i].agents[j].began else s[0].turns[i].agents[j].took))};
         y += app_tool(f, app_id(tb[..], cp_id(xb[..], i, ".g"), CP_CMD_IDS[j]), x, y, cw, tool, false, CP_AGENT) + a.gap_small;
-        if g.calls > 0 && g.state == CP_RUNNING {
-          mb: [CP_CMD + 64] u8; mn := el_put_i(mb[..], 0, g.calls); mn = el_put(mb[..], mn, ifx g.calls == 1 then " tool call · " else " tool calls · ");
-          mn += cp_out(mb[mn..<mb.count], cast(string) s[0].turns[i].agents[j].now[0..<g.now_n]);
+        if gcalls > 0 && gs == CP_RUNNING {
+          mb: [CP_CMD + 64] u8; mn := el_put_i(mb[..], 0, gcalls); mn = el_put(mb[..], mn, ifx gcalls == 1 then " tool call · " else " tool calls · ");
+          mn += cp_out(mb[mn..<mb.count], cast(string) s[0].turns[i].agents[j].now[0..<s[0].turns[i].agents[j].now_n]);
           y += app_meta(f, app_id(tb[..], cp_id(xb[..], i, ".gm"), CP_CMD_IDS[j]), x + a.tool_pad, y, cw - 2 * a.tool_pad, sheet_pool(f[0].sheet, sheet_single_line(f[0].sheet, cast(string) mb[0..<mn])), false) + a.gap_small;
         }
       }
@@ -835,6 +1009,12 @@ coder_page_wheel :: (s: [] CoderPage, dy: f32) #export_c #effects(all) {
     s[0].side_scroll = scroll_clamp(s[0].side_scroll + dy / s[0].d, s[0].side_content, s[0].side_view);
     return;
   }
+  // over a sub-agent's transcript it moves that; scrolling up lets go of its newest row
+  if s[0].pane_open && s[0].pane_w > 0 && s[0].px >= s[0].pane_x {
+    s[0].pane_scroll = scroll_clamp(s[0].pane_scroll + dy / s[0].d, s[0].pane_content, s[0].pane_view);
+    s[0].pane_stick = s[0].pane_scroll >= s[0].pane_content - s[0].pane_view - 1;
+    return;
+  }
   s[0].stick = false;
   s[0].scroll += dy / s[0].d;
   cp_clamp(s);
@@ -845,7 +1025,7 @@ coder_page_wheel :: (s: [] CoderPage, dy: f32) #export_c #effects(all) {
 // one size; the rest keep the component library's.
 CP_ICON :: 18;
 coder_page_icon_size :: (i: int) -> f32 #export_c #effects(all) {
-  if i == ICON_FOLDER || i == ICON_COPY || i == ICON_CHECK || i == ICON_COMPOSE { return CP_ICON; }
+  if i == ICON_FOLDER || i == ICON_COPY || i == ICON_CHECK || i == ICON_COMPOSE || i == ICON_CLOSE { return CP_ICON; }
   sizes := ICON_SIZES;
   return ifx i >= 0 && i < ICON_COUNT then sizes[i] else 16.0f32;
 }
@@ -937,6 +1117,10 @@ coder_page_failed :: (s: [] CoderPage, why: string) #export_c #effects(all) {
 coder_page_copied :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
   if s.count < 1 || s[0].copied_turn < 0 || s[0].copied_turn >= s[0].nturns { return 0; }
   i := s[0].copied_turn; kind := s[0].copied_kind;
+  if kind == CP_COPIED_PANE {
+    if !s[0].pane_open || s[0].copied_block < 0 || s[0].copied_block >= s[0].pane_blocks { return 0; }
+    return cp_out(out, md_block_text(s[0].pane_doc[..], s[0].copied_block));
+  }
   if kind == CP_COPIED_BLOCK {
     if s[0].copied_block < 0 || s[0].copied_block >= s[0].turns[i].blocks { return 0; }
     return cp_out(out, md_block_text(s[0].turns[i].doc[..], s[0].copied_block));
@@ -1255,6 +1439,43 @@ coder_page_zoom_set :: (s: [] CoderPage, row: int) -> int #export_c #effects(all
   #assert coder_page_agent_line(s, 1, "{\"kind\":\"ask\",\"command\":\"ls\",\"ticket\":1}") == MWW_ASK && coder_page_agent_line(s, 1, "{\"kind\":\"ask\",\"command\":\"read a.txt\",\"ticket\":2}") == MWW_ASK;
   #assert coder_page_agent_answer_line(s, 1, out[..]) == 0 && s[0].turns[0].agents[1].calls == 2 && s[0].turns[0].agents[1].now_running;
   #assert coder_page_agent_line(s, 1, "{\"kind\":\"command\",\"command\":\"ls\",\"exit\":0,\"timed_out\":false,\"output\":\"a\"}") == MWW_COMMAND && coder_page_agent_line(s, 1, "{\"kind\":\"command\",\"command\":\"read a.txt\",\"exit\":0,\"timed_out\":false,\"output\":\"b\"}") == MWW_COMMAND;
-  #assert s[0].turns[0].agents[1].calls == 2 && cast(string) s[0].turns[0].agents[1].log[0..<s[0].turns[0].agents[1].log_n] == "ls\nread a.txt\n";
+  #assert s[0].turns[0].agents[1].calls == 2 && s[0].turns[0].agents[1].nrows == 2 && cast(string) s[0].turns[0].agents[1].rows[1].text[0..<s[0].turns[0].agents[1].rows[1].text_n] == "read a.txt" && cast(string) s[0].turns[0].agents[1].rows[1].out[0..<s[0].turns[0].agents[1].rows[1].out_n] == "b" && !s[0].turns[0].agents[1].rows[0].running;
   #assert coder_page_agent_line(s, 1, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"line 4\"}") == MWW_ENDED && s[0].turns[0].agents[1].state == CP_DONE;
+}
+#test "a sub-agent's tool calls are rows with their output; a press opens its transcript and another closes it; a kept chat has them" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  #assert coder_page_set_text(s, "look") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"simple\",\"task\":\"count\"},{\"level\":\"fable\",\"task\":\"read it\"}],\"ticket\":1}") == MWW_DELEGATE;
+  // Microcoder's worker asks, then ends the command; a file read is a row of its own
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"ask\",\"command\":\"ls\",\"ticket\":1}") == MWW_ASK && s[0].turns[0].agents[0].rows[0].running;
+  s[0].clock = 3;
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"command\",\"command\":\"ls\",\"exit\":1,\"timed_out\":false,\"output\":\"no\"}") == MWW_COMMAND;
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"view\",\"path\":\"a.txt\",\"found\":true}") == MWW_VIEW;
+  #assert s[0].turns[0].agents[0].nrows == 2 && !s[0].turns[0].agents[0].rows[0].running && s[0].turns[0].agents[0].rows[0].failed && s[0].turns[0].agents[0].rows[0].took == 3;
+  #assert cast(string) s[0].turns[0].agents[0].rows[0].out[0..<s[0].turns[0].agents[0].rows[0].out_n] == "no" && s[0].turns[0].agents[0].rows[1].read;
+  // a call still running when its sub-agent ends is ended with it; past 40 they are counted
+  #assert coder_page_agent_line(s, 1, "{\"kind\":\"ask\",\"command\":\"sleep 9\",\"ticket\":1}") == MWW_ASK;
+  for q: 0..<CP_AGENT_CALLS + 2 { cp_call_add(s, 0, 1, "x", "", false, false, false); }
+  #assert s[0].turns[0].agents[1].nrows == CP_AGENT_CALLS && s[0].turns[0].agents[1].more_rows == 3;
+  #assert coder_page_agent_line(s, 1, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"# Done\"}") == MWW_ENDED && !s[0].turns[0].agents[1].rows[0].running && !s[0].turns[0].agents[1].rows[0].failed;
+  // the transcript: open, the wheel over it moves it and not the conversation, closed by New chat
+  s[0].pane_open = true; s[0].pane_turn = 0; s[0].pane_agent = 1; s[0].pane_x = 500; s[0].pane_w = 440; s[0].pane_content = 900; s[0].pane_view = 300; s[0].d = 1; s[0].px = 600; s[0].content = 900; s[0].view = 300; s[0].stick = false;
+  coder_page_wheel(s, 50);
+  #assert s[0].pane_scroll == 50 && s[0].scroll == 0 && !s[0].pane_stick;
+  coder_page_wheel(s, 900);
+  #assert s[0].pane_scroll == 600 && s[0].pane_stick;
+  s[0].px = 100; coder_page_wheel(s, 20);
+  #assert s[0].scroll == 20 && s[0].pane_scroll == 600;
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"2\"}") == MWW_ENDED;
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"ok\"}") == MWW_ENDED;
+  kept: [65536] u8; kn := coder_page_save(s, kept[..]);
+  #assert kn > 0 && json_valid(cast(string) kept[0..<kn]);
+  #assert coder_page_new(s) && !s[0].pane_open && coder_page_load(s, cast(string) kept[0..<kn]);
+  #assert s[0].turns[0].agents[0].nrows == 2 && s[0].turns[0].agents[0].rows[0].failed && s[0].turns[0].agents[0].rows[0].took == 3 && s[0].turns[0].agents[0].rows[1].read;
+  #assert cast(string) s[0].turns[0].agents[0].rows[0].out[0..<s[0].turns[0].agents[0].rows[0].out_n] == "no";
+  #assert s[0].turns[0].agents[1].nrows == CP_AGENT_CALLS && s[0].turns[0].agents[1].more_rows == 3;
+  // a chat kept before the rows: its list of tool calls becomes rows with no output
+  #assert coder_page_new(s) && coder_page_load(s, "{\"v\":1,\"turns\":[{\"ask\":\"a\",\"reply\":\"b\",\"state\":1,\"cmds\":[],\"agents\":[{\"level\":\"opus\",\"task\":\"t\",\"state\":1,\"reply\":\"r\",\"log\":\"ls\\nread a.txt\\n[The list is cut at 3,000 bytes.]\\n\",\"calls\":2,\"took\":4}]}]}");
+  #assert s[0].turns[0].agents[0].nrows == 2 && cast(string) s[0].turns[0].agents[0].rows[1].text[0..<s[0].turns[0].agents[0].rows[1].text_n] == "read a.txt";
 }

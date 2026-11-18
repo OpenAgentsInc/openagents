@@ -48,15 +48,17 @@ ICON_SIDEBAR :: 32;
 // chats, images and pinned marks, all Apps SDK UI's (components/icons/NOTICE)
 ICON_COMPOSE :: 33; ICON_CHATS :: 34; ICON_IMAGES :: 35; ICON_PIN :: 36;
 ICON_ARCHIVE :: 37; ICON_SHARE :: 38; ICON_FLAG :: 39;
-ICON_COUNT :: 40;
-ICON_NAMES :: [40] string.["paperclip", "arrow-up", "claude-mark", "alt-arrow-down", "terminal", "document", "pen",
+// what closes a pane (Coder's sub-agent transcript): Apps SDK UI's x
+ICON_CLOSE :: 40;
+ICON_COUNT :: 41;
+ICON_NAMES :: [41] string.["paperclip", "arrow-up", "claude-mark", "alt-arrow-down", "terminal", "document", "pen",
                            "magnifer", "global", "chat-round-line", "copy", "wrap-text", "file-rust", "alt-arrow-right",
                            "document-add", "folder-with-files", "checklist", "bot", "widget", "danger-triangle", "stop", "psionic-mark",
                            "gallery", "file-text", "file-document", "check", "alt-arrow-left",
                            "alt-arrow-right", "claude-mark", "magnifer", "openai-mark", "openai-mark", "sidebar-left",
-                           "compose-edit-square", "chats", "image-square", "pin", "archive", "share", "flag"];
-ICON_SIZES :: [40] f32.[18, 14, 16, 14, 16, 16, 16, 16, 16, 16, 12, 13, 14, 14, 16, 16, 16, 16, 16, 12, 11, 16,
-                        14, 14, 14, 14, 14, 10, 14, 14, 16, 14, 20, 20, 20, 20, 20, 20, 20, 20];
+                           "compose-edit-square", "chats", "image-square", "pin", "archive", "share", "flag", "x"];
+ICON_SIZES :: [41] f32.[18, 14, 16, 14, 16, 16, 16, 16, 16, 16, 12, 13, 14, 14, 16, 16, 16, 16, 16, 12, 11, 16,
+                        14, 14, 14, 14, 14, 10, 14, 14, 16, 14, 20, 20, 20, 20, 20, 20, 20, 20, 18];
 
 // Zeron Dark, opaque (builtins.rs zeron_dark and theme.rs's derived roles).
 Theme :: struct {

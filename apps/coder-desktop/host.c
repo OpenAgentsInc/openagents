@@ -105,6 +105,7 @@ void cd_agent_line(void *page, int agent, const char *line) { CoderHost *c = pag
 void cd_agent_failed(void *page, int agent, const char *why) { CoderHost *c = page; if (!c) return; coder_page_agent_failed(cd_state(c), agent, cd_string(why)); cd_changed(c); }
 int cd_agent_answer_line(void *page, int agent, char *out, int cap) { CoderHost *c = page; return c && cap > 0 ? (int)coder_page_agent_answer_line(cd_state(c), agent, (coax_v_u8){(uint8_t *)out, cap}) : 0; }
 void cd_claude(void *page, int on) { CoderHost *c = page; if (c) coder_page_set_claude(cd_state(c), on != 0); }
+int cd_pane(void *page, int n) { CoderHost *c = page; return c && coder_page_pane(cd_state(c), n); }
 int cd_agent_claude(void *page, int agent) { CoderHost *c = page; return c && coder_page_agent_claude(cd_state(c), agent); }
 int cd_agent_running(void *page, int agent) { CoderHost *c = page; return c && coder_page_agent_running(cd_state(c), agent); }
 // Kept chats (page.coax): the list, the chat that is shown, and a chat's text each way.

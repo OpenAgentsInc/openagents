@@ -31,7 +31,7 @@ GP_FONTS :: 13;
 // and the glyph cache is sized from the body faces, so a large face costs the atlas little. A glyph
 // a display face does not hold draws from the cache in the largest body face, so text never breaks.
 GP_BODY_FONTS :: 12;
-GP_ICONS :: 40;
+GP_ICONS :: 48;             // icons the atlas holds; the component library names 41 (ICON_COUNT)
 
 // The glyphs the atlas holds, in order: ASCII 32..126, then these.
 GP_EXTRA :: [3] u32.[0x2026, 0x2022, 0x00A0];   // … • no-break space
