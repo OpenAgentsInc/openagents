@@ -114,12 +114,23 @@ This is a rectangular, cellular concrete hull read from the concept image.
 |---|---|
 | Length L (X) | 1,000 m |
 | Beam B (Z) | 600 m |
-| Hull depth D | 50 m |
+| Hull depth D | 143 m (was 50 m; see the note below) |
 | Design draft T | 25 m |
-| Freeboard (deck above calm water) | 25 m |
+| Freeboard (deck above calm water) | 118 m (was 25 m) |
 | Deck area | 600,000 m² (60 ha) |
-| Corners | Rounded, 40 m radius in plan |
+| Corners | Sharp, 1.5 m radius in plan (was 40 m) |
 | Displacement at T | 1,000 × 600 × 25 × 1,025 kg/m³ = **15.4 Mt** |
+
+**Following the picture (2026-11-18).** The owner's direction for the first
+version is parity with the concept image, walls included, over this spec. A
+camera fitted to the picture's deck corners (about 5 px RMS, a 51° horizontal
+field) puts its wall about 118 m over the water on a beam of about 550 m. The
+world therefore raises the deck to 118 m and squares the corners, and keeps
+the 1,000 × 600 m plan, the 25 m draft and the mass budget below. The tables
+in this section are still the 50 m hull's; the hull-bending section modulus
+(section 4.6) and the wind area use the 143 m depth. The picture's horizon
+sits higher than its slab's perspective allows, so no single camera matches
+both; the world matches the slab.
 
 **Structure.** Reinforced and prestressed concrete at 2,500 kg/m³:
 
@@ -215,10 +226,16 @@ Ballast and payload make up the remaining 75,000 t, with KG = 10 m.
 | BM | r²/(4T) | 77.4 m |
 | GM | | ≈ 73 m |
 | Heave natural period | | 6.9 s (Cₐ = 0) to 12.0 s (Cₐ = 2) |
-| Roll natural period | k = 0.45r | ≈ 6.4 s |
+| Roll natural period | k = 0.45r | ≈ 6.4 s (7.3 s with Cₐ = 0.3) |
 
 The dome's roll period falls inside the band of common wave periods. The
 world should show this as a finding rather than tune it away.
+
+**Simulated (metaverse/slab-sim.coax, `sim_dome_shape`):** mass 0.1436 Mt,
+GM 73.4 m; it floats at its 12 m draft within 0.12 m; it heaves more than
+`prime` in the same sea; one flooded sector (cells below the waterline, 12 m
+high) takes on about 18,000 t and heels it 3.4°. The dome physics is built;
+its rendering is not yet.
 
 **Interior,** following the render in silone-dome.md: a central three-storey
 atrium 40 m across with a tree and ring galleries; offices, a gym and homes
@@ -231,6 +248,12 @@ centre-to-centre spacing of 130 m. Neighbouring domes are linked by 8 m-wide
 bridges with a hinge at each end and a sliding joint in the middle. Each
 dome is its own rigid body, so the bridges show the relative motion that
 Silone's "easily joined" claim has to survive.
+
+**Finding (simulated).** Each dome feels a Froude–Krylov horizontal wave
+force on its columns as well as the vertical one. In a 5.2 m, 160 m swell
+the domes tilt under 5°, but the bridge hinges swing 30–55° and the sliding
+joints run past ±1.5 m into their stops. Bridges this short do not survive
+that sea without much longer travel.
 
 ## 4. Physics
 
@@ -338,6 +361,10 @@ research measured this. Keep the hull rigid for the physics. Phase S7 adds a
 visual-only bending mode: the deck's vertical deflection along X, computed as
 the first beam mode, driven by the difference between column buoyancy and
 weight along the length. Show it exaggerated 100× in the section view.
+
+With the 143 m hull (section 3.1) the section is far stiffer (I ≈ 9.7e6 m⁴
+per the simulation): a gale flexes the ends about 1–1.5 cm, so the world
+draws it 1,000× exaggerated instead.
 
 ## 5. Sites and sea states
 
@@ -622,17 +649,21 @@ Z from −300 to 300.
 
 | District | X | Z | Contents |
 |---|---|---|---|
-| OTEC plant | −500 to −350 | −300 to 300 | Turbine halls, heat exchangers, 4 moonpools, ammonia tanks |
-| Industry | −350 to −150 | −300 to 300 | 3 process units, 6 smokestacks 60 m tall (the concept image's stacks), tank farm, desalination plant. With `?power=nuclear` or `hybrid`, the module exclusion zones over cells D3, D10, G3 and G10 (section 6.6) |
-| Data halls | −150 to 50 | −300 to 0 | 4 halls of 120 × 60 m, 3 storeys (18 m), with cooling yards |
-| Towers | −150 to 150 | 0 to 300 | 20 towers of 80–180 m, offices and housing, the tall ones stepped back for their top fifth (the concept image's dense cluster) |
-| Dock | −50 to 50 | −300 to −240 | The dock notch from section 3.1, with cranes |
-| Mining yard | 150 to 300 | −300 to −100 | 50 containers |
-| Civic blocks | 55 to 145 | −288 to −12 | Six colonnaded blocks, 12–20 m, as the concept image's white buildings round the towers |
-| Medical campus | 150 to 300 | −100 to 120 | Hospital and research blocks, 4–6 storeys |
-| Canal and colonnades | 155 to 470 | 146 to 290 | A canal lined with cypresses, and three colonnaded halls along the north side |
-| Gardens and civic | 300 to 500 | −300 to 300 | Classical civic buildings, groves, a fountain plaza (as in the concept image) |
-| Perimeter | Whole edge | | A 20 m promenade inside a 1.5 m parapet |
+| OTEC plant | −480 to −95 | 170 to 265, and the west end | Three turbine halls along the north wall, the power block, 4 moonpools with their pipes, ammonia tanks |
+| Industry | −480 to −232 | −270 to 140 | Process units, a desalination plant, a tank farm, and 8 stacks of 70–95 m (the picture's row of chimneys; the tallest smoke) |
+| Towers | −290 to 205 | −165 to 40 | 23 glass towers of 85–205 m, each with its own tone; those of 150 m or more step back to 0.7 for their top fifth |
+| Canal and parterre | −90 to 230 | 40 to 280 | Five temple fronts along the canal's south bank, a canal pool lined with cypresses, a domed rotunda with a portico, and two parterres with a long pool |
+| Gardens and temples | 230 to 500 | −165 to 300 | The great temple (a full peristyle of columns, steps and pediments), two smaller temples, a round tholos, cypress groves, and a fountain plaza |
+| Data halls | 40 to 195 | −270 to −196 | 2 halls of 26 and 32 m, cooling, tanks and two chimneys |
+| Mining yard | 160 to 345 | −280 to −243 | 5 rows of containers |
+| Medical | 262 to 335 | −240 to −170 | One hospital block |
+| Civic | 348 to 468 | −268 to −172 | A colonnaded hall |
+
+The cranes are gone and the dock notch (section 3.1) stays uncut: the
+picture shows neither.
+Temples and the tholos are traced as distance fields in the shader
+(`slab_temple_sd`, `slab_tholos_sd`), and cypresses as cones, so the
+colonnades have real columns.
 
 **Buildings** are generated by code from simple masses. Painted Village's
 architecture kit is the model for this. No imported models. The budget is
@@ -655,9 +686,16 @@ control to the player on the gardens promenade.
   can move under it. Walking is 1.4 m/s; running is 5 m/s.
 - **Fly.** F toggles a free camera, with a maximum of 60 m/s and an altitude
   cap of 2,000 m.
-- **Travel.** Number keys 1 to 9 jump to stations: dock, OTEC plant, data
-  halls, mining yard, towers, gardens, the bow, under the hull, and the
-  1.5 km view.
+- **Travel.** Number keys 1 to 9 jump to stations: the temples, OTEC plant,
+  data halls, mining yard, towers, fountain, the bow, the concept image's
+  view, and the 1.5 km view.
+
+**Opening view.** The world opens on the concept image's camera (yaw 0.802,
+pitch 0.438, 1,164 m out, aimed at the waterline) in a winter sea, in June
+at 17:51 off Guam: the sun at about 297°, 10° up, lights the long north
+wall as the picture does. The golden-hour grade lifts the exposure and adds
+sepia. The spray stands about nine times the significant height up the
+walls, every 95 m.
 
 **Views:**
 

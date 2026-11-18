@@ -19,10 +19,10 @@
 
 SLAB_LENGTH :: 1000.0f32;   // L, along X
 SLAB_BEAM :: 600.0f32;      // B, along Z
-SLAB_DEPTH :: 50.0f32;      // D, keel to deck
+SLAB_DEPTH :: 143.0f32;     // D, keel to deck: the concept image's wall, 118 m over the water
 SLAB_DRAFT :: 25.0f32;      // T
-SLAB_CORNER :: 40.0f32;     // plan corner radius
-SLAB_DECK :: SLAB_DEPTH - SLAB_DRAFT;   // the deck's height over the calm water: 25 m
+SLAB_CORNER :: 1.5f32;      // plan corner radius: the image's corners are sharp
+SLAB_DECK :: SLAB_DEPTH - SLAB_DRAFT;   // the deck's height over the calm water: 118 m
 SLAB_RECORD :: 8;
 SLAB_MAX_BOXES :: 152;   // includes the port and construction fleet alongside the city
 SLAB_PIPE_RADIUS :: 3.35f32; SLAB_PIPE_LENGTH :: 1000.0f32;
@@ -63,6 +63,9 @@ SLAB_GABLE_Z :: 3;
 SLAB_GROVE :: 4;
 SLAB_GLADE_GROVE :: 5;
 SLAB_DOME :: 6;
+// 7 to 10 are slab-construction.coax's hawsers: a capsule between two of the box's corners
+SLAB_TEMPLE :: 11;         // a Greek temple: steps, peristyle, cella, entablature, pedimented roof along its longer side
+SLAB_THOLOS :: 12;         // a round temple: steps, a ring of columns, a domed cella
 
 slab_put :: (out: [] f32, n: int, x0: f32, y0: f32, z0: f32, x1: f32, y1: f32, z1: f32, kind: int, shape: int) -> int {
   if n >= SLAB_MAX_BOXES || (n + 1) * SLAB_RECORD > out.count { return n; }
@@ -89,15 +92,27 @@ slab_dome :: (out: [] f32, n: int, x: f32, z: f32, radius: f32, base: f32, kind:
 }
 
 // The twenty towers (offices and housing), 80 to 180 m, as the concept image's dense cluster.
-TOWER_HEIGHTS :: [20] f32.[120, 165, 95, 180, 140, 80, 175, 110, 150, 90, 130, 160, 105, 145, 85, 170, 125, 100, 155, 115];
-TOWER_HALF :: [20] f32.[16, 19, 14, 20, 17, 13, 18, 15, 19, 14, 16, 18, 15, 17, 13, 19, 16, 14, 18, 15];
+// The towers (the concept image's glass cluster behind the canal): place, half sizes and height.
+TOWERS :: 23;
+TOWER_X :: [23] f32.[-300, -215, -130, -45, 40, 125, -260, -175, -90, -5, 80, 160, -300, -215, -130, -45, 40, 125, -255, -170, -85, 0, 85];
+TOWER_Z :: [23] f32.[18, 22, 14, 24, 16, 20, -60, -56, -64, -58, -62, -54, -140, -136, -144, -138, -142, -134, -222, -218, -226, -220, -224];
+TOWER_HX :: [23] f32.[12, 14, 11, 15, 13, 11, 14, 12, 16, 15, 13, 11, 12, 15, 16, 14, 12, 13, 11, 13, 15, 14, 12];
+TOWER_HZ :: [23] f32.[14, 11, 15, 12, 11, 13, 12, 15, 14, 13, 15, 12, 14, 12, 13, 15, 14, 11, 13, 15, 12, 13, 14];
+TOWER_HEIGHTS :: [23] f32.[90, 120, 160, 140, 110, 85, 135, 175, 205, 185, 150, 100, 110, 165, 195, 180, 160, 120, 95, 140, 170, 150, 115];
+// The chimneys at the west end, the four tallest smoking (the concept image's power station).
+STACKS :: 8;
+STACK_X :: [8] f32.[-472, -456, -462, -444, -432, -448, -436, -404];
+STACK_Z :: [8] f32.[150, 128, 86, 60, 40, 2, -20, -40];
+STACK_H :: [8] f32.[70, 74, 92, 95, 82, 95, 78, 92];
 
-// Writes the `prime` plan into out (SLAB_RECORD floats a record); returns the record count.
+// Writes the `prime` plan into out (SLAB_RECORD floats a record); returns the record count. The
+// layout follows the concept image (docs/research/ocean/slab.jpeg), its features placed on the
+// deck by back-projecting them through the image's camera, fitted to the hull's corners.
 slab_plan :: (out: [] f32) -> int {
   n := 0;
   hl := SLAB_LENGTH / 2; hb := SLAB_BEAM / 2; r := SLAB_CORNER;
   keel := -SLAB_DRAFT;
-  // The hull: a rounded rectangle in plan, as two crossed boxes and four corner drums.
+  // The hull: a rectangle in plan with barely rounded corners, as two crossed boxes and four corner drums.
   n = slab_put(out, n, -hl, keel, -hb + r, hl, SLAB_DECK, hb - r, SLAB_KIND_HULL, SLAB_BOX);
   n = slab_put(out, n, -hl + r, keel, -hb, hl - r, SLAB_DECK, hb, SLAB_KIND_HULL, SLAB_BOX);
   for c: 0..<4 {
@@ -105,113 +120,87 @@ slab_plan :: (out: [] f32) -> int {
     cz := ifx c & 2 == 0 then -hb + r else hb - r;
     n = slab_put(out, n, cx - r, keel, cz - r, cx + r, SLAB_DECK, cz + r, SLAB_KIND_HULL, SLAB_CYLINDER);
   }
-  // OTEC plant, X -500 to -350: turbine halls, heat exchangers, moonpools, ammonia tanks.
-  n = slab_shape(out, n, -480, -250, -380, -130, 30, SLAB_KIND_PLANT, SLAB_GABLE_X);
-  n = slab_shape(out, n, -480, 130, -380, 250, 30, SLAB_KIND_PLANT, SLAB_GABLE_X);
-  n = slab_mass(out, n, -470, -100, -400, -20, 20, SLAB_KIND_PLANT);
-  n = slab_mass(out, n, -470, 20, -400, 100, 20, SLAB_KIND_PLANT);
+  // The west end: the OTEC plant's power station. Turbine halls along the north edge, the power
+  // block and process units behind the chimneys, a tank farm and desalination at the south.
+  n = slab_shape(out, n, -470, 170, -340, 265, 30, SLAB_KIND_PLANT, SLAB_GABLE_X);
+  n = slab_shape(out, n, -330, 185, -210, 260, 22, SLAB_KIND_PLANT, SLAB_GABLE_X);
+  n = slab_shape(out, n, -200, 190, -95, 255, 18, SLAB_KIND_PLANT, SLAB_GABLE_X);
+  n = slab_mass(out, n, -372, -60, -300, 140, 36, SLAB_KIND_PLANT);
+  n = slab_mass(out, n, -290, -30, -232, 95, 26, SLAB_KIND_INDUSTRY);
+  n = slab_mass(out, n, -470, -270, -345, -120, 28, SLAB_KIND_INDUSTRY);
+  n = slab_mass(out, n, -480, -105, -455, -70, 14, SLAB_KIND_DESAL);
+  for i: 0..<STACKS { n = slab_drum(out, n, STACK_X[i], STACK_Z[i], ifx STACK_H[i] > 90 then 5.5f32 else 4.5f32, STACK_H[i], SLAB_KIND_STACK); }
+  // the moonpools and the cold-water pipes: 6.7 m wide, from the keel to 1,000 m down (spec 6.1)
   for i: 0..<4 {
     z := -225.0f32 + f32(i) * 150;
     n = slab_put(out, n, -395, SLAB_DECK - 0.5f32, z - 6, -383, SLAB_DECK + 0.05f32, z + 6, SLAB_KIND_POOL, SLAB_CYLINDER);
   }
-  // the cold-water pipes: 6.7 m wide, from the keel to 1,000 m down (spec 6.1)
   for i: 0..<4 {
     z := -225.0f32 + f32(i) * 150;
     n = slab_put(out, n, -389 - SLAB_PIPE_RADIUS, keel - SLAB_PIPE_LENGTH, z - SLAB_PIPE_RADIUS, -389 + SLAB_PIPE_RADIUS, keel, z + SLAB_PIPE_RADIUS, SLAB_KIND_PIPE, SLAB_CYLINDER);
   }
-  for i: 0..<4 {
-    n = slab_drum(out, n, -362, ifx i < 2 then -270.0f32 + f32(i) * 30 else 240.0f32 + f32(i - 2) * 30, 11, 18, SLAB_KIND_TANK);
-  }
-  // Industry, X -350 to -150: three process units, six 60 m stacks, a tank farm, the desalination plant.
-  n = slab_mass(out, n, -340, -210, -280, -90, 35, SLAB_KIND_INDUSTRY);
-  n = slab_mass(out, n, -340, -50, -280, 70, 35, SLAB_KIND_INDUSTRY);
-  n = slab_shape(out, n, -265, 120, -205, 240, 28, SLAB_KIND_INDUSTRY, SLAB_GABLE_Z);
-  for i: 0..<6 {
-    n = slab_drum(out, n, ifx i < 3 then -240.0f32 else -185.0f32, -235.0f32 + f32(i % 3) * 55, 4, 60, SLAB_KIND_STACK);
-  }
-  for i: 0..<6 {
-    n = slab_drum(out, n, -250.0f32 + f32(i % 3) * 30, -20.0f32 + f32(i / 3) * 34, 12, 16, SLAB_KIND_TANK);
-  }
-  n = slab_mass(out, n, -192, 140, -158, 260, 14, SLAB_KIND_DESAL);
-  // Data halls, X -150 to 50, Z -300 to 0: four halls three storeys (18 m) tall, and their cooling yard.
-  n = slab_mass(out, n, -145, -240, -85, -122, 18, SLAB_KIND_DATA);
-  n = slab_mass(out, n, -75, -238, -15, -122, 18, SLAB_KIND_DATA);
-  n = slab_mass(out, n, -145, -118, -85, -2, 18, SLAB_KIND_DATA);
-  n = slab_mass(out, n, -75, -118, -15, -2, 18, SLAB_KIND_DATA);
-  n = slab_mass(out, n, 0, -230, 40, -15, 7, SLAB_KIND_COOLING);
-  // The dock, X -50 to 50 at the south edge: two cranes, each a leg and a boom.
-  for i: 0..<2 {
-    x := ifx i == 0 then -30.0f32 else 30.0f32;
-    n = slab_put(out, n, x - 4, SLAB_DECK, -288, x + 4, SLAB_DECK + 48, -262, SLAB_KIND_CRANE, SLAB_BOX);
-    n = slab_put(out, n, x - 3, SLAB_DECK + 44, -310, x + 3, SLAB_DECK + 49, -250, SLAB_KIND_CRANE, SLAB_BOX);
-  }
-  // Towers, X -150 to 150, Z 0 to 300: twenty of 80 to 180 m in a 5 by 4 grid, each turned a little off it.
-  for i: 0..<20 {
-    x := -120.0f32 + f32(i % 5) * 60 + f32((i * 7) % 5 - 2) * 3;
-    z := 42.0f32 + f32(i / 5) * 70 + f32((i * 3) % 5 - 2) * 3;
-    h := TOWER_HALF[i];
-    w := h * (0.8f32 + 0.1f32 * f32(i % 3));
-    top := TOWER_HEIGHTS[i];
-    if top >= 130 {
-      // the tall ones step back for their top fifth, as the concept image's towers do
+  for i: 0..<4 { n = slab_drum(out, n, ifx i < 2 then -320.0f32 else -290.0f32, -255.0f32 + f32(i % 2) * 30, 11, 18, SLAB_KIND_TANK); }
+  // Classical halls between the turbine halls and the towers.
+  n = slab_shape(out, n, -300, 110, -205, 165, 16, SLAB_KIND_COLONNADE, SLAB_TEMPLE);
+  n = slab_shape(out, n, -190, 110, -90, 165, 18, SLAB_KIND_COLONNADE, SLAB_TEMPLE);
+  // The towers: glass, 85 to 205 m, the tall ones stepped back for their top fifth.
+  for i: 0..<TOWERS {
+    x := TOWER_X[i]; z := TOWER_Z[i]; w := TOWER_HX[i]; h := TOWER_HZ[i]; top := TOWER_HEIGHTS[i];
+    if top >= 150 {
       base := top * 0.8f32;
       n = slab_mass(out, n, x - w, z - h, x + w, z + h, base, SLAB_KIND_TOWER);
-      n = slab_put(out, n, x - w * 0.68f32, SLAB_DECK + base, z - h * 0.68f32, x + w * 0.68f32, SLAB_DECK + top, z + h * 0.68f32, SLAB_KIND_TOWER, SLAB_BOX);
+      n = slab_put(out, n, x - w * 0.7f32, SLAB_DECK + base, z - h * 0.7f32, x + w * 0.7f32, SLAB_DECK + top, z + h * 0.7f32, SLAB_KIND_TOWER, SLAB_BOX);
     } else {
       n = slab_mass(out, n, x - w, z - h, x + w, z + h, top, SLAB_KIND_TOWER);
     }
   }
-  // Colonnaded civic blocks between the data halls and the mining yard, X 55 to 145, Z -288 to -12:
-  // two to a street block, as the white classical buildings round the concept image's towers.
-  for i: 0..<6 {
-    x0 := ifx i % 2 == 0 then 55.0f32 else 108.0f32;
-    z0 := -288.0f32 + f32(i / 2) * 100;
-    n = slab_shape(out, n, x0, z0, x0 + 37, z0 + 76, 12.0f32 + f32((i * 5) % 3) * 4, SLAB_KIND_COLONNADE, ifx i / 2 == 1 then SLAB_GABLE_Z else SLAB_BOX);
+  // The temple fronts along the canal's south bank, pediments to the water.
+  for i: 0..<5 {
+    x0 := -60.0f32 + f32(i) * 54;
+    n = slab_shape(out, n, x0, 58, x0 + 42, 115, 24.0f32 + f32(i % 2) * 4, SLAB_KIND_COLONNADE, SLAB_TEMPLE);
   }
-  // Pipe racks across the industry district, carrying process lines between its units.
-  n = slab_mass(out, n, -345, 92, -152, 99, 7, SLAB_KIND_INDUSTRY);
-  n = slab_mass(out, n, -345, -80, -282, -73, 7, SLAB_KIND_INDUSTRY);
-  // Boulevards: cypresses along the avenues at X -150, 150 and 300, as the concept image's tree-lined streets.
-  // (each strip holds one line of the 7 m tree cells' centres, X = 7k + 3.5, with their jitter)
-  n = slab_shape(out, n, -153, -240, -147.5, 290, 12, SLAB_KIND_GROVE, SLAB_GROVE);
-  n = slab_shape(out, n, 148, -95, 153.5, 140, 12, SLAB_KIND_GROVE, SLAB_GROVE);
-  n = slab_shape(out, n, 302, -285, 307.5, 140, 12, SLAB_KIND_GROVE, SLAB_GROVE);
-  // The mining yard, X 150 to 300, Z -300 to -100: 50 containers in five rows of ten.
+  // The canal, X -70 to 205, a row of cypresses on each bank.
+  n = slab_put(out, n, -70, SLAB_DECK - 1.5f32, 140, 205, SLAB_DECK + 0.05f32, 162, SLAB_KIND_POOL, SLAB_BOX);
+  n = slab_shape(out, n, -70, 126, 205, 132.5f32, 12, SLAB_KIND_GROVE, SLAB_GROVE);
+  n = slab_shape(out, n, -70, 168, 205, 174.5f32, 12, SLAB_KIND_GROVE, SLAB_GROVE);
+  // The rotunda at the canal's west end: a drum under a dome, its portico to the east.
+  n = slab_drum(out, n, -45, 215, 22, 20, SLAB_KIND_CIVIC);
+  n = slab_dome(out, n, -45, 215, 22, 20, SLAB_KIND_CIVIC);
+  n = slab_shape(out, n, -26, 201, 8, 229, 19, SLAB_KIND_TEMPLE, SLAB_TEMPLE);
+  // The parterre between the canal and the north edge, and its pool.
+  n = slab_shape(out, n, 20, 186, 122, 272, 12, SLAB_KIND_GROVE, SLAB_GLADE_GROVE);
+  n = slab_shape(out, n, 132, 186, 228, 272, 12, SLAB_KIND_GROVE, SLAB_GLADE_GROVE);
+  n = slab_put(out, n, 40, SLAB_DECK - 1.0f32, 250, 102, SLAB_DECK + 0.05f32, 264, SLAB_KIND_POOL, SLAB_BOX);
+  // The temple garden, X 230 to 475: the great temple, two smaller ones and a tholos in cypress
+  // groves, and the round fountain plaza by the north edge with its column.
+  n = slab_shape(out, n, 232, -150, 470, -12, 13, SLAB_KIND_GROVE, SLAB_GLADE_GROVE);
+  n = slab_shape(out, n, 232, -8, 268, 100, 13, SLAB_KIND_GROVE, SLAB_GROVE);
+  n = slab_shape(out, n, 412, 104, 472, 180, 13, SLAB_KIND_GROVE, SLAB_GROVE);
+  n = slab_shape(out, n, 232, 108, 318, 180, 13, SLAB_KIND_GROVE, SLAB_GLADE_GROVE);
+  n = slab_shape(out, n, 232, 190, 335, 272, 13, SLAB_KIND_GROVE, SLAB_GROVE);
+  n = slab_shape(out, n, 430, 190, 472, 272, 13, SLAB_KIND_GROVE, SLAB_GROVE);
+  n = slab_shape(out, n, 366, 10, 404, 74, 24, SLAB_KIND_TEMPLE, SLAB_TEMPLE);
+  n = slab_shape(out, n, 322, 58, 348, 94, 17, SLAB_KIND_TEMPLE, SLAB_TEMPLE);
+  n = slab_shape(out, n, 275, 20, 297, 52, 14, SLAB_KIND_TEMPLE, SLAB_TEMPLE);
+  n = slab_shape(out, n, 423, 78, 441, 96, 14, SLAB_KIND_TEMPLE, SLAB_THOLOS);
+  n = slab_drum(out, n, 382, 225, 40, 0.25f32, SLAB_KIND_PLAZA);
+  n = slab_drum(out, n, 382, 225, 14, 0.7f32, SLAB_KIND_POOL);
+  n = slab_drum(out, n, 382, 225, 1.6f32, 24, SLAB_KIND_FOUNTAIN);
+  // The east end's south side: data halls with their chimneys, cooling, desalination tanks, the
+  // hospital, the miners' containers, and a colonnaded hall on the east edge.
+  n = slab_mass(out, n, 40, -270, 110, -200, 26, SLAB_KIND_DATA);
+  n = slab_mass(out, n, 120, -262, 190, -196, 32, SLAB_KIND_DATA);
+  n = slab_drum(out, n, 62, -186, 3, 44, SLAB_KIND_INDUSTRY);
+  n = slab_drum(out, n, 158, -184, 3, 40, SLAB_KIND_INDUSTRY);
+  n = slab_mass(out, n, 200, -232, 250, -205, 6, SLAB_KIND_COOLING);
+  n = slab_drum(out, n, 222, -186, 9, 24, SLAB_KIND_TANK);
+  n = slab_drum(out, n, 246, -176, 7, 28, SLAB_KIND_TANK);
+  n = slab_mass(out, n, 262, -240, 335, -170, 18, SLAB_KIND_MEDICAL);
   for row: 0..<5 {
     z := -280.0f32 + f32(row) * 9;
     n = slab_put(out, n, 160, SLAB_DECK, z, 296, SLAB_DECK + 2.9f32, z + 2.4f32, SLAB_KIND_CONTAINERS, SLAB_BOX);
   }
-  // The medical campus, X 150 to 300, Z -100 to 120: hospital and research blocks, 4 to 6 storeys.
-  n = slab_mass(out, n, 165, -90, 225, -20, 18, SLAB_KIND_MEDICAL);
-  n = slab_mass(out, n, 240, -90, 295, -30, 15, SLAB_KIND_MEDICAL);
-  n = slab_mass(out, n, 165, 0, 225, 110, 21, SLAB_KIND_MEDICAL);
-  n = slab_mass(out, n, 240, -10, 295, 110, 18, SLAB_KIND_MEDICAL);
-  // Classical buildings along the north side: colonnaded halls, 12 m.
-  n = slab_shape(out, n, 160, 210, 225, 240, 13, SLAB_KIND_COLONNADE, SLAB_GABLE_X);
-  n = slab_shape(out, n, 235, 210, 300, 240, 13, SLAB_KIND_COLONNADE, SLAB_GABLE_X);
-  n = slab_shape(out, n, 160, 252, 300, 285, 11, SLAB_KIND_COLONNADE, SLAB_GABLE_X);
-  // The canal, X 155 to 470, lined with cypresses on both banks.
-  n = slab_put(out, n, 155, SLAB_DECK - 1.5f32, 162, 470, SLAB_DECK + 0.05f32, 176, SLAB_KIND_POOL, SLAB_BOX);
-  n = slab_shape(out, n, 155, 146, 470, 158, 12, SLAB_KIND_GROVE, SLAB_GROVE);
-  n = slab_shape(out, n, 155, 180, 470, 192, 12, SLAB_KIND_GROVE, SLAB_GROVE);
-  // Gardens and civic, X 300 to 500: temples in cypress groves, a domed civic hall, a fountain plaza.
-  n = slab_shape(out, n, 312, -285, 400, -165, 13, SLAB_KIND_GROVE, SLAB_GLADE_GROVE);
-  n = slab_shape(out, n, 410, -285, 488, -165, 13, SLAB_KIND_GROVE, SLAB_GROVE);
-  n = slab_shape(out, n, 312, -150, 400, -40, 13, SLAB_KIND_GROVE, SLAB_GLADE_GROVE);
-  n = slab_shape(out, n, 410, -150, 488, -40, 13, SLAB_KIND_GROVE, SLAB_GLADE_GROVE);
-  n = slab_shape(out, n, 410, 82, 488, 136, 12, SLAB_KIND_GROVE, SLAB_GROVE);
-  n = slab_shape(out, n, 312, 205, 488, 290, 13, SLAB_KIND_GROVE, SLAB_GLADE_GROVE);
-  n = slab_shape(out, n, 340, -238, 372, -212, 15, SLAB_KIND_TEMPLE, SLAB_GABLE_X);
-  n = slab_shape(out, n, 342, -106, 370, -84, 13, SLAB_KIND_TEMPLE, SLAB_GABLE_X);
-  n = slab_shape(out, n, 378, 238, 422, 257, 16, SLAB_KIND_TEMPLE, SLAB_GABLE_X);
-  n = slab_drum(out, n, 449, -95, 8, 9, SLAB_KIND_TEMPLE);
-  n = slab_dome(out, n, 449, -95, 8, 9, SLAB_KIND_TEMPLE);
-  n = slab_mass(out, n, 318, -25, 392, 95, 20, SLAB_KIND_CIVIC);
-  n = slab_drum(out, n, 355, 35, 20, 26, SLAB_KIND_CIVIC);
-  n = slab_dome(out, n, 355, 35, 20, 26, SLAB_KIND_CIVIC);
-  n = slab_drum(out, n, 449, 30, 38, 0.25f32, SLAB_KIND_PLAZA);
-  n = slab_drum(out, n, 449, 30, 13, 0.7f32, SLAB_KIND_POOL);
-  n = slab_drum(out, n, 449, 30, 1.2f32, 9, SLAB_KIND_FOUNTAIN);
+  n = slab_shape(out, n, 348, -268, 468, -172, 22, SLAB_KIND_COLONNADE, SLAB_TEMPLE);
   return n;
 }
 
@@ -252,7 +241,7 @@ SlabTree :: struct { stands: bool; x: f32; z: f32; radius: f32; height: f32; }
 slab_hash :: (x: f32, z: f32) -> f32 { return render_noise2(x, z); }
 slab_tree :: (cx: f32, cz: f32) -> SlabTree {
   a := slab_hash(cx, cz); b := slab_hash(cx + 17.0f32, cz - 9.0f32); c := slab_hash(cx - 31.0f32, cz + 5.0f32);
-  return SlabTree.{stands = a > 0.22f32,
+  return SlabTree.{stands = a > 0.4f32,
     x = (cx + 0.5f32) * SLAB_TREE_CELL + (b - 0.5f32) * 2.2f32,
     z = (cz + 0.5f32) * SLAB_TREE_CELL + (c - 0.5f32) * 2.2f32,
     radius = 1.5f32 + 0.8f32 * b, height = 7.0f32 + 6.0f32 * c};
@@ -266,18 +255,18 @@ slab_tree :: (cx: f32, cz: f32) -> SlabTree {
     at := i * SLAB_RECORD;
     #assert boxes[at] < boxes[at + 4] && boxes[at + 1] < boxes[at + 5] && boxes[at + 2] < boxes[at + 6];
     #assert slab_inside(boxes[..], i);
-    #assert cast(int) boxes[at + 3] < SLAB_KINDS && cast(int) boxes[at + 7] <= SLAB_DOME;
+    #assert cast(int) boxes[at + 3] < SLAB_KINDS && cast(int) boxes[at + 7] <= SLAB_THOLOS;
   }
-  // the hull spans keel to deck: 50 m deep, 25 m draft
-  #assert boxes[1] == -25 && boxes[5] == 25;
-  // the tallest tower is 180 m over the deck; six stacks of 60 m (the spec's section 7)
+  // the hull spans keel to deck: 143 m deep, 25 m draft, 118 m of wall as the image draws it
+  #assert boxes[1] == -25 && boxes[5] == 118;
+  // the tallest tower is 205 m over the deck; eight stacks of 70-95 m (the concept image's)
   tallest := 0.0f32; stacks := 0;
   for i: SLAB_HULL_PIECES..<n {
     at := i * SLAB_RECORD;
     if boxes[at + 5] - SLAB_DECK > tallest { tallest = boxes[at + 5] - SLAB_DECK; }
-    if cast(int) boxes[at + 3] == SLAB_KIND_STACK { stacks += 1; #assert boxes[at + 5] - SLAB_DECK == 60; }
+    if cast(int) boxes[at + 3] == SLAB_KIND_STACK { stacks += 1; #assert boxes[at + 5] - SLAB_DECK >= 70 && boxes[at + 5] - SLAB_DECK <= 95; }
   }
-  #assert tallest == 180 && stacks == 6;
+  #assert tallest == 205 && stacks == 8;
 }
 
 #test "SLAB's groups bound every record once" {

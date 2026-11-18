@@ -44,7 +44,8 @@
 BUILD_COLUMNS :: 10; BUILD_ROWS :: 12; BUILD_UNITS :: BUILD_COLUMNS * BUILD_ROWS;
 BUILD_L :: f64(SLAB_LENGTH) / f64(BUILD_COLUMNS);
 BUILD_B :: f64(SLAB_BEAM) / f64(BUILD_ROWS);
-BUILD_H :: f64(SLAB_DEPTH);
+BUILD_H :: 50.0;                 // the spec's 50 m structural hull, whose mass budget the world keeps
+                                 // (slab-world-spec.md 3.1); the picture's taller wall is not in it
 BUILD_RHO :: SIM_RHO / 1000.0;
 BUILD_TOW_BALLAST :: 3000.0;     // isolated low tanks, assumed CG 1.5 m above keel
 BUILD_AVAILABLE_KN :: 2000.0;    // assumed combined effective tow force at 4 kn
