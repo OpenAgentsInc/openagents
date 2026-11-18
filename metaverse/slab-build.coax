@@ -1,0 +1,1857 @@
+// SLAB's construction, simulated: a seeded run of the method in
+// docs/research/ocean/slab-construction-method.md, from the first pour to the commissioned hull.
+// It replaces the closed-form schedule of slab-construction.coax (which still draws the old view).
+//
+// What runs. Time moves in ticks of three hours. Each tick the yard's casting cells pour against
+// one shared concrete plant (cs_yard), floated caissons are joined into tow pieces in the basin,
+// a tug fleet takes the next piece out when the forecast gives a window (cs_tow: the body is
+// integrated along the channel and the Gulf by metaverse-engine/physics/afloat.coax, so its speed,
+// towline tension and clearances are results), join crews make each piece fast to the hull when the
+// sea lets them (cs_joins), the sea walls are lined and the upper structure rises bay by bay over
+// the joined caissons (cs_sea_concrete: wall and columns in jump forms, then girders, then the
+// deck slab), barges and lifts land the city on each finished bay (cs_outfit), and ballast brings
+// the hull to its draft. The weather is a function of the seed and the time (cs_weather): a monthly
+// sea, a wind, and tropical storms that stop work. The hull is metaverse/hull.coax's: its caisson,
+// its volumes, its ballast and its draft are read from there.
+//
+// How to use it (a drawing reads metaverse/slab-build-view.coax, which sits on this file):
+//   p := cs_params();                     // or change p.seed, p.positions, p.pour_rate, p.start_month, p.order, p.ocean_nm
+//   cs_run(p, run);                       // run: [] CsRun, caller's storage (1.4 MB). The same p gives the same bits.
+//   cs_run_on(p, route, run);             // the same over a CsRoute of your own (cs_route_gulf is the default)
+//   run[0].total                          // CsTotals: days, placement days, tows, weather days lost, ...
+//   q := cs_seek(run, day);               // the process state at any day, from the nearest checkpoint
+//   cs_weather(run, day)                  // the sea, wind and storm at any day
+//   run[0].ev[0 ..< run[0].events]        // camera-worthy events with their ticks (CS_EV_*)
+// The run stops itself and says why (run[0].total.failed, CS_FAIL_*) when a body capsizes, grounds,
+// strikes the channel's bank or parts its towline.
+//
+// What is physics and what is a rule. Forces move every tow (thrust, towline, drag, wind, current,
+// wave drift), float every body (draft and GM from its mass and waterplane), move the faces of a
+// joint against each other, load the fenders, bend the growing hull and pull on its moorings. The
+// yard's pours and cures, the crews' steps and the barges' round trips are timed work with stated
+// rates. Moves inside the yard and basin, and a tug's or barge's return, are not integrated.
+//
+// Units: metres, seconds, kilograms, newtons, radians; days from the first day of the start month.
+// The frame: x east, z north, the finished hull's centre at the origin, its length along x.
+//   coax/bin/coax test metaverse/slab-build.coax
+#load "hull.coax";
+#load "slab-plan.coax";
+#load "../metaverse-engine/physics/afloat.coax";
+
+// ---------------------------------------------------------------- sizes
+CS_TICKS :: 8;              // ticks a day
+CS_TICK_D :: 0.125;         // days a tick
+CS_TICK_S :: 10800.0;       // seconds a tick
+CS_MAX_UNITS :: 160;        // caissons (a larger hull is refused: CS_FAIL_TOO_MANY)
+CS_MAX_CELLS :: 8;
+CS_MAX_CREWS :: 4;
+CS_BARGES :: 3;
+CS_TRACK :: 96;             // samples kept of each tow
+CS_TRACK_F :: 6;            // x, z, yaw, tension, tug x, tug z
+CS_SCRATCH :: 1440;         // five days of five-minute samples
+CS_CHECKS :: 384;
+CS_MAX_EVENTS :: 1600;
+CS_MAX_STORMS :: 96;
+CS_YEARS :: 48;
+CS_MAX_TICKS :: 140160;     // 48 years
+CS_MAX_MODULES :: 152;      // SLAB_MAX_BOXES
+CS_MAX_LEGS :: 28;
+
+// ---------------------------------------------------------------- the method's numbers
+// Each is marked sourced or assumed in docs/research/ocean/slab-construction-method.md.
+CS_SEED :: 1;               // the default run's seed
+// the yard
+CS_PREP_DAYS :: 6.0;        // cell made ready, bottom steel fixed
+CS_BASE_RATE :: 2500.0;     // m^3 a day into one bottom slab
+CS_SETUP_DAYS :: 4.0;       // slipform assembled on the slab
+CS_SLIP_RATE :: 3.0;        // m of wall a day (Condeep practice, 1.5 to 4)
+CS_FALSE_DAYS :: 6.0;       // falsework and steel for the top slab
+CS_TOP_RATE :: 2500.0;      // m^3 a day into one top slab
+CS_CURE_DAYS :: 12.0;       // cure, prestress, fit out, leak test
+CS_FLOAT_DAYS :: 1.0;       // flood the cell, warp the caisson out
+CS_RESET_DAYS :: 2.0;       // pump the cell dry
+CS_LEAK_RATE :: 0.05;       // caissons that fail the leak test
+CS_LEAK_DAYS :: 6.0;
+CS_STOP_RATE :: 0.03;       // slipforms that stop part way
+CS_STOP_DAYS :: 3.0;
+CS_FORM_DAYS :: 6.0;        // one joint made in the sheltered basin
+CS_CELL_FLOOR :: 13.5;      // the casting cells' floor under the sea, m
+CS_BASIN_DEPTH :: 14.0;     // the yard's wet basin, m
+// the tow
+CS_TOW_BALLAST :: 3.0e6;    // kg of pressed-up water ballast a caisson (hull.coax's tow check)
+CS_TOW_BALLAST_KG :: 1.5;   // its centre over the keel, m
+CS_TUG_FREE :: 6.5;         // a tug's free-running speed, m/s
+CS_ESCORT_T :: 80.0;        // each escort tug in the channel, t of bollard pull
+CS_TOW_HS :: 2.5;           // a tow's limiting sea, m
+CS_TOW_WIND :: 12.0;        // and wind, m/s
+CS_ALPHA :: 0.8;            // the forecast must show this share of a limit
+CS_TOW_SPARE :: 1.5;        // planned duration times this must fit the window
+CS_LINE_W :: 200.0;         // a 76 mm towing wire in water, N/m
+CS_LINE_EA :: 2.7e8;        // its stiffness, N
+CS_LINE_MBL :: 2.0;         // its breaking load over the tug's bollard pull
+CS_DESIGN_HS :: 3.0;        // the sea the lead tugs must hold a piece in, m
+CS_DESIGN_WIND :: 15.0;
+CS_DESIGN_CURRENT :: 0.5;
+CS_TUG_FAIL :: 0.02;        // tows put back a day by a tug breakdown
+CS_HOLD_MAX :: 2;           // pieces standing by at the site
+CS_TOW_DT :: 15.0;          // the tow integrator's step, s
+CS_TOW_WX :: 60;            // steps between weather samples (15 minutes)
+CS_TOW_SAMPLE :: 20;        // steps between track samples (5 minutes)
+// joining at sea
+CS_JOIN_HS :: 1.5;          // limiting sea, m
+CS_JOIN_WIND :: 12.0;
+CS_JOIN_REL :: 0.15;        // limiting significant motion between the two faces, m
+CS_SEAL_FAIL :: 0.08;       // joints resealed after the leak test
+CS_APPROACH :: 0.10;        // closing speed on the fenders, m/s
+CS_FENDER_FORCE :: 4.0e6;   // a fender's rated reaction, N
+CS_FENDER_DEFL :: 1.5;      // at this deflection, m
+CS_FENDERS :: 4;            // on a face
+CS_GM_MIN :: 1.0;           // the least GM of any floating stage, m
+CS_GM_WORK :: 5.0;          // the least GM before the upper structure goes on, m
+// work on the joined hull
+CS_SEA_POUR_HS :: 2.5;      // concrete is placed at sea below this, m
+// the upper structure, a caisson's bay at a time: the outer wall and the columns climb in jump
+// forms, then the girders are cast on travelling falsework, then the deck slab
+CS_UP_LIFT :: 4.0;          // one jump-form lift, m
+CS_UP_CLIMB :: 0.8;         // m of height a day in one bay (a lift every five days)
+CS_UP_GIRDER_DAYS :: 20.0;  // the least time a bay's girders take
+CS_UP_SLAB_DAYS :: 10.0;    // and its deck slab
+CS_UP_WIND :: 20.0;         // forms and cranes stop when the wind at their height passes this, m/s
+CS_WIND_SHEAR :: 0.11;      // the wind over open sea grows with height as (z / 10 m) to this power
+CS_BARGE_LOAD :: 12.0e6;    // kg a deck barge carries
+CS_BARGE_LIGHT :: 4.0e6;    // the barge itself
+CS_BARGE_L :: 122.0; CS_BARGE_B :: 30.5; CS_BARGE_D :: 7.6;
+CS_BARGE_TUG_T :: 60.0;     // its tug
+CS_BARGE_HS :: 2.5;
+CS_BARGE_LOAD_TICKS :: 8;   // a day to load
+CS_LIFT :: 1.5e6;           // one lifted module, kg
+CS_GANTRIES :: 2;
+CS_LIFT_HS :: 2.0; CS_LIFT_WIND :: 15.0;
+CS_GANTRY_DOWN :: 0.05;     // days a gantry is out of service
+CS_LIQUID_RATE :: 25.0e6;   // kg a day by tanker
+CS_BALLAST_RATE :: 150.0e6; // kg a day by the hull's own pumps
+CS_COMMISSION_DAYS :: 60.0;
+// the storm a half-built hull must ride out, and what its concrete may take
+CS_STORM_HS :: 8.0; CS_STORM_TP :: 12.4; CS_STORM_WIND :: 40.0; CS_STORM_CURRENT :: 1.0;
+CS_PT :: 10.0e6;            // prestress across a finished joint, Pa
+CS_PT_TEMP :: 1.0e6;        // across a joint on its temporary bars
+CS_CHAIN_W :: 2460.0;       // a 120 mm mooring chain in water, N/m
+CS_CHAIN_EA :: 1.0e9; CS_CHAIN_MBL :: 13.6e6; CS_CHAIN_LENGTH :: 900.0; CS_CHAIN_PRE :: 1.0e6; CS_CHAIN_SAFETY :: 1.67;
+// the ocean tow
+CS_OCEAN_TUG_T :: 300.0;    // each tug, t
+CS_OCEAN_SEA :: 1.6;        // the open ocean's sea over the Gulf's
+CS_OCEAN_HOLD_HS :: 5.0; CS_OCEAN_HOLD_WIND :: 20.0; CS_OCEAN_HOLD_CURRENT :: 0.5;
+CS_OCEAN_STOP_HS :: 6.0;
+// the weather
+CS_HS_MONTH :: [12] f64.[1.30, 1.35, 1.40, 1.35, 1.20, 1.00, 0.90, 0.80, 1.00, 1.20, 1.30, 1.30];
+CS_MONTH_START :: [12] f64.[0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
+CS_HS_SIGMA :: 0.45;
+CS_STORM_P :: [3] f64.[0.38, 0.10, 0.02];   // a first, second and third stand-down in a year
+CS_HURRICANE_SHARE :: 0.25;
+// random streams
+CS_S_SEA :: 9100; CS_S_DIR :: 9110; CS_S_NORTH :: 9111; CS_S_FORECAST :: 9112; CS_S_STORM :: 9113;
+CS_S_LEAK :: 9120; CS_S_STOP :: 9121; CS_S_SEAL :: 9122; CS_S_TUG :: 9123; CS_S_GANTRY :: 9124; CS_S_WAVES :: 9125;
+
+// ---------------------------------------------------------------- what a run is given
+CS_ORDER_ROWS :: 0;      // single caissons, a row at a time
+CS_ORDER_COMPACT :: 1;   // single caissons, outward from the centre
+CS_ORDER_PAIRS :: 2;     // two joined end to end in the basin, outward from the centre
+CS_ORDER_QUADS :: 3;     // four joined in the basin (200 x 100 m), outward from the centre
+CsParams :: struct {
+  seed: int = CS_SEED;
+  positions: int = 6;         // casting cells, 1 to 8
+  pour_rate: f64 = 3000.0;    // m^3 of concrete a day from every plant, ashore and afloat
+  start_month: int = 0;       // 0 January
+  order: int = CS_ORDER_PAIRS;
+  tug_pull: f64 = 150.0;      // a lead tug's bollard pull, t
+  join_crews: int = 2;
+  ocean_nm: f64 = 0.0;        // a tow of the finished hull to another site, nautical miles (0: it stays)
+  ignore_weather: int = 0;    // for the checks: 1 sails with no weather limit, 2 joins with none, 3 both
+  shape: HullShape;
+}
+cs_params :: () -> CsParams { p: CsParams; p.shape = hull_prime(); return p; }
+cs_cells :: (p: CsParams) -> int { return ifx p.positions < 1 then 1 else (ifx p.positions > CS_MAX_CELLS then CS_MAX_CELLS else p.positions); }
+cs_crews :: (p: CsParams) -> int { return ifx p.join_crews < 1 then 1 else (ifx p.join_crews > CS_MAX_CREWS then CS_MAX_CREWS else p.join_crews); }
+// The days a volume of concrete takes at a placing rate (the feasibility study's measure).
+cs_placement_days :: (concrete: f64, rate: f64) -> f64 { return ifx rate > 0 then concrete / rate else 0.0; }
+
+// ---------------------------------------------------------------- the route, as data
+// A leg of the way out: a straight reach of channel or open water.
+CsLeg :: struct {
+  ax: f64; az: f64; bx: f64; bz: f64; len: f64;
+  depth: f64;      // m
+  width: f64;      // the dredged channel's width, m (0: open water)
+  shelter: f64;    // the share of the open sea's wave height that reaches it
+  speed: f64;      // the tow's planned speed, m/s
+  line: f64;       // towline paid out, m
+  tide: f64;       // tidal stream along it, m/s at its strongest
+}
+CsRoute :: struct {
+  legs: int;
+  leg: [CS_MAX_LEGS] CsLeg;
+  total: f64;            // m
+  site_depth: f64;       // m
+  hold_x: f64; hold_z: f64;   // where an arrived piece stands by
+  mouth: int;            // the first leg past the jetties
+}
+// Where the default route is on the earth (metaverse/slab-where.coax keeps the same three places:
+// its WHERE_YARD, WHERE_JETTIES and the texas site). [lat, lon]
+CS_YARD_AT :: [2] f64.[27.82, -97.20];       // the casting yard, on the ship channel at Ingleside
+CS_JETTIES_AT :: [2] f64.[27.834, -97.044];  // the channel's mouth between the Aransas Pass jetties
+CS_SITE_AT :: [2] f64.[27.55, -96.367];      // the berth: 40 nautical miles off the jetties, in 89 m
+CS_BEND_RADIUS :: 3000.0;                    // a channel bend's radius, m
+CS_REACHES :: 5;
+CS_BEND_STEP :: 3.0;                         // and the most one reach of it turns, degrees
+// Ingleside to the berth on the Texas shelf: the Corpus Christi ship channel east to Harbor
+// Island, the bend into Aransas Pass, the jetty channel, the outer bar channel, and the open Gulf.
+// Each bend in a channel is made of short reaches on CS_BEND_RADIUS. The frame is the site's: x
+// east, z north, m, the finished hull's centre at the origin.
+cs_route_gulf :: () -> CsRoute {
+  r: CsRoute;
+  n := CS_REACHES;
+  nm := [CS_REACHES] f64.[7.0, 1.6, 4.0, 8.0, 28.03];
+  bearing := [CS_REACHES] f64.[78.0, 128.0, 122.0, 114.62, 114.62];
+  depth := [CS_REACHES] f64.[16.46, 16.46, 17.07, 20.0, 30.0];
+  width := [CS_REACHES] f64.[161.5, 161.5, 161.5, 0.0, 0.0];
+  shelter := [CS_REACHES] f64.[0.15, 0.5, 1.0, 1.0, 1.0];
+  knots := [CS_REACHES] f64.[3.0, 3.0, 3.0, 4.0, 4.0];
+  line := [CS_REACHES] f64.[250.0, 250.0, 250.0, 300.0, 400.0];
+  tide := [CS_REACHES] f64.[0.3, 0.5, 0.3, 0.0, 0.0];
+  r.site_depth = 89.0;
+  x := 0.0; z := 0.0; dx := 0.0; dz := 0.0;
+  for i: 0..<n {
+    l := nm[i] * 1852.0;
+    // the tangents a bend at either end takes from this reach
+    if i > 0 && width[i] > 0 && width[i - 1] > 0 { l -= CS_BEND_RADIUS * tan(abs(bearing[i] - bearing[i - 1]) * 0.5 * PI_D / 180.0); }
+    if i < n - 1 && width[i] > 0 && width[i + 1] > 0 { l -= CS_BEND_RADIUS * tan(abs(bearing[i + 1] - bearing[i]) * 0.5 * PI_D / 180.0); }
+    if i == n - 1 { l -= 1800.0; }   // the last reach ends at the stand-by point, 1,800 m short of the site
+    b := bearing[i] * PI_D / 180.0; dx = sin(b); dz = cos(b);
+    r.leg[r.legs] = CsLeg.{ax = x, az = z, bx = x + dx * l, bz = z + dz * l, len = l, depth = depth[i], width = width[i],
+                           shelter = shelter[i], speed = knots[i] * 0.5144, line = line[i], tide = tide[i]};
+    r.legs += 1; x += dx * l; z += dz * l; r.total += l;
+    if i == 1 { r.mouth = r.legs; }
+    if i < n - 1 && width[i] > 0 && width[i + 1] > 0 {
+      turn := bearing[i + 1] - bearing[i];
+      steps := cast(int) floor(abs(turn) / CS_BEND_STEP - 1e-9) + 1;
+      chord := 2.0 * CS_BEND_RADIUS * sin(abs(turn) / f64(steps) * 0.5 * PI_D / 180.0);
+      for c: 0..<steps {
+        cb := (bearing[i] + turn * (f64(c) + 0.5) / f64(steps)) * PI_D / 180.0; cx := sin(cb); cz := cos(cb);
+        r.leg[r.legs] = CsLeg.{ax = x, az = z, bx = x + cx * chord, bz = z + cz * chord, len = chord, depth = fmin(depth[i], depth[i + 1]), width = 200.0,
+                               shelter = fmax(shelter[i], shelter[i + 1]), speed = fmin(knots[i], knots[i + 1]) * 0.5144, line = line[i], tide = fmax(tide[i], tide[i + 1])};
+        r.legs += 1; x += cx * chord; z += cz * chord; r.total += chord;
+      }
+    }
+  }
+  ox := x + dx * 1800.0; oz := z + dz * 1800.0;
+  for i: 0..<r.legs { r.leg[i].ax -= ox; r.leg[i].az -= oz; r.leg[i].bx -= ox; r.leg[i].bz -= oz; }
+  r.hold_x = x - ox; r.hold_z = z - oz;
+  return r;
+}
+// A point of the site's frame on the earth: [lat, lon], on a flat chart about the site.
+cs_lat_lon :: (x: f64, z: f64) -> [2] f64 {
+  return [2] f64.[CS_SITE_AT[0] + z / 1852.0 / 60.0, CS_SITE_AT[1] + x / 1852.0 / 60.0 / cos(CS_SITE_AT[0] * PI_D / 180.0)];
+}
+// The point `dist` m along the route, and the heading there (rad, + from x toward z).
+CsWay :: struct { x: f64; z: f64; yaw: f64; leg: int; }
+cs_way :: (r: CsRoute, dist: f64) -> CsWay {
+  o: CsWay; d := fclamp(dist, 0.0, r.total);
+  for i: 0..<r.legs {
+    l := r.leg[i];
+    if d <= l.len || i == r.legs - 1 {
+      f := fclamp(d / l.len, 0.0, 1.0);
+      o.x = l.ax + (l.bx - l.ax) * f; o.z = l.az + (l.bz - l.az) * f; o.yaw = afloat_angle(l.bx - l.ax, l.bz - l.az); o.leg = i;
+      return o;
+    }
+    d -= l.len;
+  }
+  return o;
+}
+// A point of the yard: `along` m back from the basin's mouth and `ashore` m to the land side.
+cs_yard_point :: (r: CsRoute, along: f64, ashore: f64) -> CsWay {
+  l := r.leg[0]; dx := (l.bx - l.ax) / l.len; dz := (l.bz - l.az) / l.len;
+  return CsWay.{x = l.ax - dx * along - dz * ashore, z = l.az - dz * along + dx * ashore, yaw = afloat_angle(dx, dz)};
+}
+
+// ---------------------------------------------------------------- the weather
+CsStorm :: struct {
+  peak: f64;       // day
+  kind: int;       // 1 a tropical storm, 2 a hurricane
+  hs: f64; wind: f64;
+  t0: f64; t1: f64;   // work stands down between these days
+}
+CsWx :: struct {
+  hs: f64; tp: f64;            // the open sea at the site
+  wind: f64; wind_dir: f64;    // m/s; the way it blows, rad (+ from x toward z)
+  wave_dir: f64;
+  current: f64; current_dir: f64;
+  storm: int;                  // 0, or the kind of the storm work is standing down for
+  storm_peak: f64;             // that storm's day
+}
+// A standard normal draw from four uniform ones.
+cs_gauss :: (seed: int, stream: int, i: int) -> f64 {
+  s := 0.0;
+  for k: 0..<4 { s += f64(rand_unit(seed, stream, i * 4 + k)); }
+  return (s - 2.0) * 1.7320508075688772;
+}
+// Smooth unit-variance noise with a knot at every whole t.
+cs_smooth :: (seed: int, stream: int, t: f64) -> f64 {
+  a := floor(t); f := t - a; s := f * f * (3.0 - 2.0 * f);
+  i := cast(int) a;
+  v := cs_gauss(seed, stream, i) * (1.0 - s) + cs_gauss(seed, stream, i + 1) * s;
+  return v / sqrt((1.0 - s) * (1.0 - s) + s * s);
+}
+// Days of weather: systems five days length, fronts a day and a half, squalls ten hours.
+cs_noise :: (seed: int, stream: int, day: f64) -> f64 {
+  return 0.7746 * cs_smooth(seed, stream, day / 5.0) + 0.5477 * cs_smooth(seed, stream + 1, day / 1.5) + 0.3162 * cs_smooth(seed, stream + 2, day / 0.4);
+}
+cs_doy :: (start_month: int, day: f64) -> f64 {
+  m := ifx start_month < 0 then 0 else (ifx start_month > 11 then 11 else start_month);
+  d := CS_MONTH_START[m] + day;
+  return d - 365.0 * floor(d / 365.0);
+}
+// The month's mean significant wave height at the site, m, eased between the months' middles.
+cs_month_hs :: (doy: f64) -> f64 {
+  m := doy / 30.4167 - 0.5;
+  a := floor(m); f := m - a;
+  i := (cast(int) a + 12) % 12; j := (i + 1) % 12;
+  return CS_HS_MONTH[i] * (1.0 - f) + CS_HS_MONTH[j] * f;
+}
+// The tropical storms of the run: a year has up to three stand-downs, each most likely near the
+// start of September, one in four of them a hurricane's sea at the site.
+cs_storms :: (run: [] CsRun) {
+  p := run[0].p; n := 0;
+  m := ifx p.start_month < 0 then 0 else (ifx p.start_month > 11 then 11 else p.start_month);
+  for y: 0..<CS_YEARS {
+    for k: 0..<3 {
+      c := y * 8 + k;
+      if n >= CS_MAX_STORMS || f64(rand_unit(p.seed, CS_S_STORM, c * 5)) >= CS_STORM_P[k] { continue; }
+      doy := 244.0 + (f64(rand_unit(p.seed, CS_S_STORM, c * 5 + 1)) + f64(rand_unit(p.seed, CS_S_STORM, c * 5 + 2)) - 1.0) * 70.0;
+      s: CsStorm;
+      s.peak = f64(y) * 365.0 + doy - CS_MONTH_START[m];
+      u := f64(rand_unit(p.seed, CS_S_STORM, c * 5 + 4));
+      if f64(rand_unit(p.seed, CS_S_STORM, c * 5 + 3)) < CS_HURRICANE_SHARE {
+        s.kind = 2; s.hs = 6.0 + 5.0 * u; s.wind = 33.0 + 17.0 * u; s.t0 = s.peak - 5.0; s.t1 = s.peak + 3.0;
+      } else {
+        s.kind = 1; s.hs = 3.0 + 2.5 * u; s.wind = 18.0 + 12.0 * u; s.t0 = s.peak - 4.0; s.t1 = s.peak + 1.5;
+      }
+      if s.t1 < 0.0 { continue; }
+      run[0].storm[n] = s; n += 1;
+    }
+  }
+  run[0].storms = n;
+}
+// The storm work is standing down for on `day` (0: none), the strongest if two overlap.
+cs_standdown :: (run: [] CsRun, day: f64) -> int {
+  k := 0;
+  for i: 0..<run[0].storms { s := run[0].storm[i]; if day >= s.t0 && day <= s.t1 && s.kind > k { k = s.kind; } }
+  return k;
+}
+// A stand-down touches the days from a to b.
+cs_storm_within :: (run: [] CsRun, a: f64, b: f64) -> bool {
+  for i: 0..<run[0].storms { s := run[0].storm[i]; if s.t0 <= b && s.t1 >= a { return true; } }
+  return false;
+}
+// The yard itself stops from two days before a storm's peak to a day after.
+cs_storm_core :: (run: [] CsRun, day: f64) -> bool {
+  for i: 0..<run[0].storms { s := run[0].storm[i]; if day >= s.peak - 2.0 && day <= s.peak + 1.0 { return true; } }
+  return false;
+}
+// The weather at the site on `day`: a pure function of the seed, the start month and the time.
+cs_weather :: (run: [] CsRun, day: f64) -> CsWx {
+  p := run[0].p; w: CsWx;
+  doy := cs_doy(p.start_month, day);
+  n := 0.0; turn := 0.0; north := 0.0;
+  tk := day * f64(CS_TICKS); ti := cast(int) floor(tk + 0.5);
+  if ti >= 0 && abs(tk - f64(ti)) < 1e-9 {
+    slot := ti % 64;
+    if run[0].wx_at[slot] != ti + 1 {
+      run[0].wx_n[slot] = cs_noise(p.seed, CS_S_SEA, day); run[0].wx_dir[slot] = cs_smooth(p.seed, CS_S_DIR, day / 2.0);
+      run[0].wx_north[slot] = cs_smooth(p.seed, CS_S_NORTH, day / 6.0); run[0].wx_at[slot] = ti + 1;
+    }
+    n = run[0].wx_n[slot]; turn = run[0].wx_dir[slot]; north = run[0].wx_north[slot];
+  } else { n = cs_noise(p.seed, CS_S_SEA, day); turn = cs_smooth(p.seed, CS_S_DIR, day / 2.0); north = cs_smooth(p.seed, CS_S_NORTH, day / 6.0); }
+  base := cs_month_hs(doy) * exp(CS_HS_SIGMA * n - CS_HS_SIGMA * CS_HS_SIGMA * 0.5);
+  storm := 0.0; gale := 0.0; w.storm_peak = -1.0;
+  for i: 0..<run[0].storms {
+    s := run[0].storm[i];
+    if abs(day - s.peak) < 3.0 { e := exp(-(day - s.peak) * (day - s.peak) / 0.36); storm = fmax(storm, s.hs * e); gale = fmax(gale, s.wind * e); }
+    if day >= s.t0 && day <= s.t1 && s.kind > w.storm { w.storm = s.kind; w.storm_peak = s.peak; }
+  }
+  w.hs = sqrt(base * base + storm * storm);
+  w.tp = afloat_peak_period(w.hs);
+  w.wind = fmax(sqrt(AFLOAT_G * base / 0.21), gale);      // slab-sim.coax's sea: Hs = 0.21 U^2 / g
+  // the wind blows from the south-east most days; in the cool months a norther turns it to blow south
+  w.wind_dir = 2.356 + 0.6 * turn;
+  if (doy >= 304.0 || doy < 90.0) && north > 1.0 { w.wind_dir = -1.571 + 0.3 * turn; }
+  w.wave_dir = w.wind_dir;
+  w.current = 0.15; w.current_dir = -2.356;               // the shelf's drift, down the coast
+  return w;
+}
+// What the forecast made on day `now` says the sea will be on `day`: the truth, off by a factor
+// that grows with the lead time (10% a day ahead).
+cs_forecast_hs :: (run: [] CsRun, now: f64, day: f64) -> f64 {
+  w := cs_weather(run, day);
+  lead := fmax(day - now, 0.0);
+  return w.hs * exp(0.10 * sqrt(lead) * cs_gauss(run[0].p.seed, CS_S_FORECAST, cast(int) floor(day * 8.0)));
+}
+// The forecast shows `ticks` ticks from `day` under a sea of `hs` and a wind of `wind`, each with
+// the margin CS_ALPHA.
+cs_window :: (run: [] CsRun, day: f64, ticks: int, hs: f64, wind: f64) -> bool {
+  for i: 0..<ticks + 1 {
+    d := day + f64(i) * CS_TICK_D;
+    w := cs_weather(run, d);
+    lead := f64(i) * CS_TICK_D;
+    f := exp(0.10 * sqrt(lead) * cs_gauss(run[0].p.seed, CS_S_FORECAST, cast(int) floor(d * 8.0)));
+    if w.hs * f > CS_ALPHA * hs || w.wind * f > wind { return false; }
+  }
+  return true;
+}
+
+// ---------------------------------------------------------------- the tables of a run
+CsUnit :: struct {
+  col: int; row: int;      // its place in the hull: col 0 west, row 0 south
+  piece: int;
+  cell: int;               // the casting cell it is built in
+  // the ticks it reached each step (-1: not yet)
+  t_start: int; t_base: int; t_walls: int; t_walled: int; t_top: int; t_flood: int; t_float: int;
+}
+CsPiece :: struct {
+  first: int; count: int;          // its caissons, by index
+  c0: int; r0: int; nc: int; nr: int;
+  x: f64; z: f64;                  // its centre in the hull
+  l: f64; b: f64;
+  mass: f64; draft: f64; gm_t: f64; gm_l: f64;   // as towed
+  tugs: int;                       // lead tugs
+  t_ready: int; t_depart: int; t_arrive: int; t_join: int; t_fast: int; t_done: int;
+  tow_time: f64;                   // s
+  tow_state: int;                  // AFLOAT_TOW_*, or CS_TOW_STALLED
+  tow_tension: f64;                // the highest steady tension in one towline, N
+  tow_peak: f64;                   // with the waves' snatch load, at the line's end, N
+  tow_keel: f64;                   // the least water under the keel, m
+  tow_bank: f64;                   // the least room to a channel edge, m
+  tow_clear: f64;                  // the least water under the towline's sag, m
+  join_hs: f64;                    // the highest sea while its joint was open, m
+  join_rel: f64;                   // the motion between the faces when it was pulled in, m
+  join_fender: f64;                // the load on one fender, N
+  join_close: f64;                 // the sea's push on the drained joint, N
+  join_stress: f64;                // the highest girder stress while it was on its bars, Pa
+  attempts: int;
+}
+CS_TOW_STALLED :: 4;
+// The hull after each piece is made fast.
+CsStage :: struct {
+  pieces: int;
+  length: f64; wide: f64;          // its extent and mean width, m
+  mass: f64; draft: f64; gm_t: f64; gm_l: f64;
+  gm_loaded: f64;                  // its GM with the whole upper structure and topsides on it
+  upper_ok: bool;
+  bend_v: f64;                     // hull-girder stress in the design storm: head sea, Pa
+  bend_h: f64;                     // and sideways in a quartering sea, Pa
+  lines: int;                      // mooring chains that hold it in the design storm
+  line_load: f64;                  // the storm's push on it, N
+}
+CsModule :: struct { record: int; kind: int; x: f64; z: f64; mass: f64; rank: int; before: f64; }
+CsEvent :: struct { tick: int; kind: int; id: int; value: f32; }
+CS_EV_CAST :: 1;         // a caisson starts in a cell (id unit, value cell)
+CS_EV_STOPPAGE :: 2;     // its slipform stops
+CS_EV_LEAK :: 3;         // it fails its leak test
+CS_EV_FLOAT :: 4;        // it floats out
+CS_EV_READY :: 5;        // a piece is ready to tow (id piece)
+CS_EV_TUG :: 6;          // a tug breaks down
+CS_EV_DEPART :: 7;       // a tow leaves (id piece, value lead tugs)
+CS_EV_ARRIVE :: 8;       // and arrives (value hours)
+CS_EV_JOIN :: 9;         // a join starts (id piece)
+CS_EV_ABORT :: 10;       // and is broken off (value sea, m)
+CS_EV_FAST :: 11;        // the piece is fast on its bars (value pieces fast)
+CS_EV_RESEAL :: 12;      // its joint is resealed
+CS_EV_SEALED :: 13;      // its joint is finished
+CS_EV_WARN :: 14;        // a storm warning: work stands down (value kind)
+CS_EV_STORM :: 15;       // the storm's peak (value sea, m)
+CS_EV_CLEAR :: 16;       // all clear
+CS_EV_CLOSED :: 17;      // the last piece is fast
+CS_EV_LINED :: 18;       // the sea walls are lined
+CS_EV_DECKED :: 19;      // the deck slab is whole
+CS_EV_LIFT :: 20;        // the first module is landed
+CS_EV_OUTFIT :: 21;      // the last one
+CS_EV_SAIL :: 22;        // the hull leaves on its ocean tow (value tugs)
+CS_EV_LANDFALL :: 23;    // and arrives
+CS_EV_BALLAST :: 24;     // it is at its draft
+CS_EV_DONE :: 25;        // commissioned
+CS_EV_FAILED :: 26;
+CS_EV_RISE :: 27;        // the first concrete of the upper structure (value: the bay's caisson)
+CS_EV_TOPPED :: 28;      // the first bay's deck slab is cast: the deck is at its full height there      // the run stopped (value CS_FAIL_*)
+
+CS_FAIL_TOO_MANY :: 1;   // more caissons than the tables hold
+CS_FAIL_UNIT :: 2;       // a caisson is not stable afloat
+CS_FAIL_PIECE :: 3;      // a tow piece is not stable afloat
+CS_FAIL_AGROUND :: 4;    // a tow grounded
+CS_FAIL_BANK :: 5;       // a tow struck the channel's edge
+CS_FAIL_PARTED :: 6;     // a towline parted
+CS_FAIL_STALLED :: 7;    // a tow could not make way
+CS_FAIL_HULL :: 8;       // the joined hull is not stable
+CS_FAIL_TIME :: 9;       // it did not finish in 48 years
+
+// The process: everything that moves from tick to tick. Small, so a run keeps many copies.
+CS_IDLE :: 0; CS_PREP :: 1; CS_BASE :: 2; CS_SETUP :: 3; CS_WALLS :: 4; CS_FALSE :: 5; CS_TOP :: 6; CS_CURE :: 7; CS_FLOAT :: 8; CS_RESET :: 9;
+CS_J_MOOR :: 1; CS_J_CONNECT :: 2; CS_J_PULL :: 3; CS_J_SEAL :: 4; CS_J_BARS :: 5; CS_J_TENDONS :: 6; CS_J_GROUT :: 7; CS_J_RESEAL :: 8;
+CS_J_TICKS :: [9] int.[0, 16, 1, 1, 2, 8, 24, 12, 12];   // 48, 3, 3, 6, 24, 72, 36 and 36 hours
+CS_B_IDLE :: 0; CS_B_LOAD :: 1; CS_B_WAIT :: 2; CS_B_OUT :: 3; CS_B_QUEUE :: 4; CS_B_DOCK :: 5; CS_B_BACK :: 6;
+CS_PH_BUILD :: 0; CS_PH_OCEAN :: 1; CS_PH_BALLAST :: 2; CS_PH_COMMISSION :: 3; CS_PH_DONE :: 4;
+CsProc :: struct {
+  tick: int;
+  phase: int;              // CS_PH_*
+  failed: int;             // CS_FAIL_*
+  fail_id: int;
+  // the yard
+  cell_unit: [CS_MAX_CELLS] int;
+  cell_stage: [CS_MAX_CELLS] int;      // CS_IDLE to CS_RESET
+  cell_left: [CS_MAX_CELLS] f64;       // days left of a timed step
+  cell_vol: [CS_MAX_CELLS] f64;        // m^3 placed in this pour
+  cell_pause: [CS_MAX_CELLS] f64;      // days left of a stoppage
+  next_unit: int;
+  afloat: int;                         // caissons floated out
+  form: int;                           // the piece being made up in the basin
+  form_left: f64;                      // days left of that (-1: not begun)
+  // the tow
+  tow: int;                            // the next piece to leave
+  fleet_free: int;                     // the tick the lead tugs are back
+  tug_delayed: int;                    // the piece a breakdown has already delayed
+  // joining
+  crew_piece: [CS_MAX_CREWS] int;
+  crew_stage: [CS_MAX_CREWS] int;      // CS_J_*
+  crew_left: [CS_MAX_CREWS] int;       // ticks
+  crew_hurt: [CS_MAX_CREWS] int;       // 1: a sea strained the joint while it was on its bars
+  fast_pieces: int; fast_units: int; fast_edge: int; done_units: int;
+  // concrete, m^3
+  poured_yard: f64; lining: f64; upper: f64;
+  up: [CS_MAX_UNITS] f64;              // the upper structure's concrete in each caisson's bay, m^3
+  form_lifts: int;                     // jump-form lifts made
+  gm_low: f64;                         // the joined hull's least GM so far, m
+  heel_high: f64;                      // and its largest heel under the design storm's wind, rad
+  // the topsides
+  barge_stage: [CS_BARGES] int;        // CS_B_*
+  barge_left: [CS_BARGES] int;         // ticks
+  barge_trip: [CS_BARGES] int;         // ticks its passage takes
+  barge_cargo: [CS_BARGES] f64;        // kg
+  outfit: f64;                         // kg landed
+  liquids: f64;
+  ballast: f64;                        // kg of sea water in the hull
+  ocean: f64;                          // nautical miles made of the ocean tow
+  left: f64;                           // days left of commissioning
+  // counts
+  weather_ticks: int;                  // ticks on which the weather held a tow, a join, a pour or a lift
+  standdowns: int; hurricanes: int;
+  tows: int; lifts: int; barge_trips: int; aborts: int; reworks: int;
+  ocean_ticks: int;
+  done_tick: int;
+}
+CsTotals :: struct {
+  failed: int; fail_id: int;
+  days: f64;                 // from the first pour to commissioned
+  placement_days: f64;       // every cubic metre of concrete at the placing rate
+  concrete: f64;             // m^3 placed: caissons, lining and upper structure
+  tows: int;                 // tows from the yard
+  sea_joins: int;            // joints made in the open sea
+  weather_days: f64;         // days on which the weather held work
+  standdowns: int; hurricanes: int;
+  reworks: int; aborts: int;
+  lifts: int; barge_trips: int;
+  closed_day: f64;           // the last piece made fast
+  tow_tension: f64; tow_peak: f64; line_mbl: f64;   // the worst towline, N
+  tow_keel: f64; tow_bank: f64; tow_clear: f64;
+  gm_least: f64;             // the least GM of anything afloat, m
+  hull_gm_least: f64;        // the joined hull's least GM while the upper structure and the city go on, m
+  wind_heel: f64;            // its largest heel under the design storm's wind, rad
+  form_lifts: int;           // jump-form lifts of the upper structure
+  bend_v: f64; bend_h: f64;  // the worst stage's stresses in the design storm, Pa
+  bend_ok: bool;             // both under the joints' prestress
+  lines: int;                // mooring chains on the finished hull
+  mass: f64; draft: f64; gm_t: f64; gm_l: f64;      // the hull as finished
+  ocean_tugs: int; ocean_days: f64;
+}
+CsRun :: struct {
+  p: CsParams;
+  sh: HullShape; led: HullLedger; unit: HullUnit;
+  route: CsRoute;
+  upper_kg: f64;             // the upper structure's centre over the keel, from the ledger
+  bay: CsBayPlan;            // the upper structure over one caisson
+  units: int; cols: int; rows: int; pieces: int; edge_units: int;
+  u: [CS_MAX_UNITS] CsUnit;
+  pc: [CS_MAX_UNITS] CsPiece;
+  st: [CS_MAX_UNITS + 1] CsStage;
+  mod: [CS_MAX_MODULES] CsModule; modules: int;
+  storm: [CS_MAX_STORMS] CsStorm; storms: int;
+  ev: [CS_MAX_EVENTS] CsEvent; events: int;
+  chk: [CS_CHECKS] CsProc; checks: int; every: int;
+  end: CsProc;
+  total: CsTotals;
+  ocean_tugs: int;
+  track: [CS_MAX_UNITS * CS_TRACK * CS_TRACK_F] f32;
+  track_dt: [CS_MAX_UNITS] f32;
+  scratch: [CS_SCRATCH * CS_TRACK_F] f32;
+  // the weather's noise at the last ticks asked for (it is a pure function; this only saves work)
+  wx_at: [64] int; wx_n: [64] f64; wx_dir: [64] f64; wx_north: [64] f64;
+}
+cs_reached :: (t: int, tick: int) -> bool { return t >= 0 && t <= tick; }
+cs_event :: (run: [] CsRun, record: bool, tick: int, kind: int, id: int, value: f64) {
+  if !record || run[0].events >= CS_MAX_EVENTS { return; }
+  run[0].ev[run[0].events] = CsEvent.{tick = tick, kind = kind, id = id, value = f32(value)};
+  run[0].events += 1;
+}
+
+// ---------------------------------------------------------------- the plan: pieces and their order
+cs_piece_span :: (order: int) -> [2] int {
+  if order == CS_ORDER_QUADS { return [2] int.[2, 2]; }
+  if order == CS_ORDER_PAIRS { return [2] int.[2, 1]; }
+  return [2] int.[1, 1];
+}
+cs_plan :: (run: [] CsRun) {
+  sh := run[0].sh; p := run[0].p;
+  cols := hull_cols(sh); rows := hull_rows(sh);
+  ul := sh.l / f64(cols); ub := sh.b / f64(rows);
+  span := cs_piece_span(p.order);
+  pcols := (cols + span[0] - 1) / span[0]; prows := (rows + span[1] - 1) / span[1];
+  n := pcols * prows;
+  run[0].cols = cols; run[0].rows = rows; run[0].units = cols * rows; run[0].pieces = n;
+  // each piece's place and its keys: which goes first
+  k1: [CS_MAX_UNITS] f64; k2: [CS_MAX_UNITS] f64; k3: [CS_MAX_UNITS] f64; at: [CS_MAX_UNITS] int;
+  for j: 0..<prows { for i: 0..<pcols {
+    a := j * pcols + i; at[a] = a;
+    c0 := i * span[0]; r0 := j * span[1];
+    nc := ifx c0 + span[0] > cols then cols - c0 else span[0]; nr := ifx r0 + span[1] > rows then rows - r0 else span[1];
+    x := -sh.l * 0.5 + (f64(c0) + f64(nc) * 0.5) * ul; z := -sh.b * 0.5 + (f64(r0) + f64(nr) * 0.5) * ub;
+    if p.order == CS_ORDER_ROWS { k1[a] = f64(j); k2[a] = f64(i); k3[a] = 0.0; }
+    else {
+      ax := abs(x) / sh.l; az := abs(z) / sh.b;
+      k1[a] = fmax(ax, az); k2[a] = fmin(ax, az); k3[a] = afloat_angle(x, z);
+    }
+  } }
+  for i: 0..<n { for j: i + 1..<n {
+    a := at[i]; b := at[j];
+    less := k1[b] < k1[a] - 1e-9 || (abs(k1[b] - k1[a]) <= 1e-9 && (k2[b] < k2[a] - 1e-9 || (abs(k2[b] - k2[a]) <= 1e-9 && k3[b] < k3[a])));
+    if less { at[i] = b; at[j] = a; }
+  } }
+  u := 0; edge := 0;
+  for o: 0..<n {
+    a := at[o]; i := a % pcols; j := a / pcols;
+    c0 := i * span[0]; r0 := j * span[1];
+    nc := ifx c0 + span[0] > cols then cols - c0 else span[0]; nr := ifx r0 + span[1] > rows then rows - r0 else span[1];
+    q: CsPiece;
+    q.first = u; q.count = nc * nr; q.c0 = c0; q.r0 = r0; q.nc = nc; q.nr = nr;
+    q.l = f64(nc) * ul; q.b = f64(nr) * ub;
+    q.x = -sh.l * 0.5 + (f64(c0) + f64(nc) * 0.5) * ul; q.z = -sh.b * 0.5 + (f64(r0) + f64(nr) * 0.5) * ub;
+    q.t_ready = -1; q.t_depart = -1; q.t_arrive = -1; q.t_join = -1; q.t_fast = -1; q.t_done = -1;
+    q.tow_keel = 1.0e9; q.tow_bank = 1.0e9; q.tow_clear = 1.0e9;
+    run[0].pc[o] = q;
+    for r: r0..<r0 + nr { for c: c0..<c0 + nc {
+      run[0].u[u] = CsUnit.{col = c, row = r, piece = o, cell = -1, t_start = -1, t_base = -1, t_walls = -1, t_walled = -1, t_top = -1, t_flood = -1, t_float = -1};
+      if c == 0 || r == 0 || c == cols - 1 || r == rows - 1 { edge += 1; }
+      u += 1;
+    } }
+  }
+  run[0].edge_units = edge;
+}
+// The caissons of a piece that stand on the hull's outside.
+cs_piece_edge :: (run: [] CsRun, ip: int) -> int {
+  q := run[0].pc[ip]; n := 0;
+  for i: q.first..<q.first + q.count {
+    u := run[0].u[i];
+    if u.col == 0 || u.row == 0 || u.col == run[0].cols - 1 || u.row == run[0].rows - 1 { n += 1; }
+  }
+  return n;
+}
+// Two pieces share a face.
+cs_touch :: (a: CsPiece, b: CsPiece) -> bool {
+  dx := abs(a.x - b.x); dz := abs(a.z - b.z);
+  hx := (a.l + b.l) * 0.5; hz := (a.b + b.b) * 0.5;
+  return (abs(dx - hx) < 1e-6 && dz < hz - 1e-6) || (abs(dz - hz) < 1e-6 && dx < hx - 1e-6);
+}
+
+// ---------------------------------------------------------------- the topsides manifest
+// What a cubic metre of each kind of building weighs beside the others (assumed; the total is the
+// ledger's). Ground cover is weighed by its area.
+cs_kind_weight :: (kind: int) -> f64 {
+  if kind == SLAB_KIND_TOWER || kind == SLAB_KIND_DATA || kind == SLAB_KIND_MEDICAL || kind == SLAB_KIND_FOUNTAIN { return 0.30; }
+  if kind == SLAB_KIND_PLANT || kind == SLAB_KIND_INDUSTRY || kind == SLAB_KIND_DESAL { return 0.25; }
+  if kind == SLAB_KIND_CIVIC || kind == SLAB_KIND_TEMPLE || kind == SLAB_KIND_COLONNADE { return 0.35; }
+  if kind == SLAB_KIND_CONTAINERS { return 0.20; }
+  if kind == SLAB_KIND_STACK { return 0.15; }
+  if kind == SLAB_KIND_TANK || kind == SLAB_KIND_COOLING { return 0.10; }
+  if kind == SLAB_KIND_STATUE { return 0.40; }
+  if kind == SLAB_KIND_CRANE { return 0.03; }
+  return 0.0;
+}
+cs_kind_cover :: (kind: int) -> f64 {
+  if kind == SLAB_KIND_PARK || kind == SLAB_KIND_GROVE { return 1.6; }
+  if kind == SLAB_KIND_PLAZA { return 1.2; }
+  return 0.0;
+}
+// The modules to land, from slab-plan.coax's records: each record's share of the ledger's topsides,
+// at its place on the deck, in the order the deck is finished under it.
+cs_manifest :: (run: [] CsRun) {
+  sh := run[0].sh;
+  plan: [SLAB_MAX_BOXES * SLAB_RECORD] f32;
+  count := slab_plan(plan[..]);
+  ul := sh.l / f64(run[0].cols); ub := sh.b / f64(run[0].rows);
+  n := 0; sum := 0.0;
+  for i: SLAB_HULL_PIECES..<count {
+    j := i * SLAB_RECORD; kind := cast(int) plan[j + 3];
+    dx := f64(plan[j + 4] - plan[j]); dy := f64(plan[j + 5] - plan[j + 1]); dz := f64(plan[j + 6] - plan[j + 2]);
+    w := cs_kind_weight(kind) * dx * dy * dz + cs_kind_cover(kind) * dx * dz;
+    if w <= 0.0 || n >= CS_MAX_MODULES { continue; }
+    m: CsModule;
+    m.record = i; m.kind = kind; m.mass = w;
+    m.x = fclamp(f64(plan[j] + plan[j + 4]) * 0.5, -sh.l * 0.5 + 1.0, sh.l * 0.5 - 1.0);
+    m.z = fclamp(f64(plan[j + 2] + plan[j + 6]) * 0.5, -sh.b * 0.5 + 1.0, sh.b * 0.5 - 1.0);
+    col := cast(int) floor((m.x + sh.l * 0.5) / ul); row := cast(int) floor((m.z + sh.b * 0.5) / ub);
+    for k: 0..<run[0].units { if run[0].u[k].col == col && run[0].u[k].row == row { m.rank = k; } }
+    run[0].mod[n] = m; n += 1; sum += w;
+  }
+  // by the order the deck is finished, then scaled to the ledger
+  for i: 1..<n {
+    m := run[0].mod[i]; j := i;
+    while j > 0 && run[0].mod[j - 1].rank > m.rank { run[0].mod[j] = run[0].mod[j - 1]; j -= 1; }
+    run[0].mod[j] = m;
+  }
+  before := 0.0;
+  for i: 0..<n {
+    run[0].mod[i].mass = ifx sum > 0 then run[0].mod[i].mass / sum * run[0].led.topsides else 0.0;
+    run[0].mod[i].before = before; before += run[0].mod[i].mass;
+  }
+  run[0].modules = n;
+}
+
+// ---------------------------------------------------------------- bodies afloat
+// A caisson afloat with `ballast` kg of water; `slack` gives the ballast a free surface the width
+// of a cell (the wrong way to carry it: the check shows why).
+cs_unit_load :: (run: [] CsRun, ballast: f64, slack: bool) -> AfloatLoad {
+  u := run[0].unit; sh := run[0].sh;
+  w := AfloatLoad.{mass = u.mass + ballast, depth = sh.hull};
+  w.gy = (u.mass * u.kg + ballast * CS_TOW_BALLAST_KG) / w.mass;
+  if slack && ballast > 0 {
+    cells := f64(hull_count(u.l, sh.cell) * hull_count(u.b, sh.cell));
+    cl := u.l / f64(hull_count(u.l, sh.cell)) - sh.web; cb := u.b / f64(hull_count(u.b, sh.cell)) - sh.web;
+    w.free_t = AFLOAT_RHO * cells * cl * cb * cb * cb / 12.0; w.free_l = AFLOAT_RHO * cells * cb * cl * cl * cl / 12.0;
+  }
+  return w;
+}
+cs_box_statics :: (l: f64, b: f64, w: AfloatLoad) -> AfloatStatics {
+  r := [4] f64.[-l * 0.5, -b * 0.5, l * 0.5, b * 0.5];
+  return afloat_statics(afloat_plane(r[..], 1), w, r[..], 1);
+}
+// A tow piece: its caissons joined, each with its tow ballast.
+cs_piece_load :: (run: [] CsRun, ip: int) -> AfloatLoad {
+  w := cs_unit_load(run, CS_TOW_BALLAST, false);
+  w.mass *= f64(run[0].pc[ip].count);
+  return w;
+}
+cs_piece_hull :: (run: [] CsRun, ip: int, st: AfloatStatics) -> AfloatHull {
+  q := run[0].pc[ip];
+  return AfloatHull.{length = q.l, beam = q.b, draft = st.draft, height = run[0].sh.hull, mass = st.draft * q.l * q.b * AFLOAT_RHO};
+}
+// The lead tugs a piece needs: enough to hold it head-on in the design sea, and one over; two at least.
+cs_tugs_needed :: (hull: AfloatHull, pull_t: f64) -> int {
+  k := afloat_wave_number(TAU_D / afloat_peak_period(CS_DESIGN_HS), 20.0);
+  hold := afloat_holding_force(hull, CS_DESIGN_HS, k, CS_DESIGN_WIND, CS_DESIGN_CURRENT);
+  one := AfloatTugs.{lead = 1, pull = pull_t * 9810.0, free_speed = CS_TUG_FREE};
+  n := cast(int) floor(hold / afloat_tug_pull(one, 0.0, CS_DESIGN_HS)) + 2;
+  return ifx n < 2 then 2 else n;
+}
+cs_towline :: (pull_t: f64, length: f64) -> AfloatLine {
+  return AfloatLine.{length = length, weight = CS_LINE_W, ea = CS_LINE_EA, mbl = CS_LINE_MBL * pull_t * 9810.0};
+}
+
+// One tow from the yard to the stand-by point, integrated: the piece is a body under its tugs'
+// pull, the water, the wind, the waves' drift and the tide, leg by leg. Writes what happened into
+// the piece (how length, the worst tension, the least clearances, whether it failed) and its track.
+cs_tow :: (run: [] CsRun, ip: int, depart: int) {
+  p := run[0].p;
+  load := cs_piece_load(run, ip);
+  st := cs_box_statics(run[0].pc[ip].l, run[0].pc[ip].b, load);
+  hull := cs_piece_hull(run, ip, st);
+  rect := [4] f64.[-hull.length * 0.5, -hull.beam * 0.5, hull.length * 0.5, hull.beam * 0.5];
+  tugs := AfloatTugs.{lead = run[0].pc[ip].tugs, pull = p.tug_pull * 9810.0, free_speed = CS_TUG_FREE};
+  line := cs_towline(p.tug_pull, 250.0);
+  l0 := run[0].route.leg[0];
+  s := AfloatTow.{x = l0.ax, z = l0.az, yaw = afloat_angle(l0.bx - l0.ax, l0.bz - l0.az)};
+  w: AfloatWeather; motion := 0.0;
+  time := 0.0; leg := 0; seen := -1; step := 0; n := 0; state := AFLOAT_TOW_OK;
+  top := 0.0; peak := 0.0; keel := 1.0e9; bank := 1.0e9; clear := 1.0e9;
+  while leg < run[0].route.legs {
+    g := run[0].route.leg[leg];
+    line.length = g.line; tugs.side = ifx g.width > 0 then CS_ESCORT_T * 9810.0 else 0.0;
+    w.depth = g.depth; w.width = g.width;
+    if step % CS_TOW_WX == 0 || leg != seen {
+      seen = leg;
+      day := (f64(depart) * CS_TICK_S + time) / 86400.0;
+      wx := cs_weather(run, day);
+      w.hs = wx.hs * g.shelter; w.tp = afloat_peak_period(w.hs); w.wave_dir = wx.wave_dir; w.wind = wx.wind; w.wind_dir = wx.wind_dir;
+      if g.width > 0 {
+        // the tide runs along the channel, a day to a cycle
+        tide := g.tide * sin(TAU_D * day / 1.035);
+        w.current = abs(tide); w.current_dir = afloat_angle(g.bx - g.ax, g.bz - g.az) + (ifx tide < 0 then PI_D else 0.0);
+      } else { w.current = wx.current; w.current_dir = wx.current_dir; }
+      w.k = afloat_wave_number(TAU_D / fmax(w.tp, 1.0), g.depth);
+      sea := afloat_sea(w.hs, w.tp, w.wave_dir, g.depth, p.seed, CS_S_WAVES);
+      rao := afloat_rao(rect[..], 1, st, load, sea, s.yaw);
+      motion = 0.5 * afloat_point_motion(rao, st, sea, hull.length * 0.5, hull.beam * 0.5);
+      // the waves' surge between the tugs and the tow stretches the line: half the wave height
+      snatch := afloat_line_end_tension(line, afloat_line_peak(line, s.tension, 0.5 * w.hs));
+      if step > 0 && snatch > peak { peak = snatch; }
+      if step > 0 && snatch > line.mbl { state = AFLOAT_TOW_PARTED; }
+    }
+    speed := g.speed;
+    if leg == run[0].route.legs - 1 && g.len - s.along < 900.0 { speed = fmax(0.4, g.speed * (g.len - s.along) / 900.0); }
+    s = afloat_tow_step(s, hull, tugs, line, w, g.ax, g.az, g.bx, g.bz, speed, st.deepest, motion, CS_TOW_DT);
+    time += CS_TOW_DT; step += 1;
+    if s.tension > top { top = s.tension; }
+    if s.under_keel < keel { keel = s.under_keel; }
+    if s.bank < bank { bank = s.bank; }
+    if s.tension > 0.1 * tugs.pull && g.depth - s.sag < clear { clear = g.depth - s.sag; }
+    if s.state != AFLOAT_TOW_OK { state = s.state; }
+    if step % CS_TOW_SAMPLE == 0 && n < CS_SCRATCH {
+      a := n * CS_TRACK_F;
+      run[0].scratch[a] = f32(s.x); run[0].scratch[a + 1] = f32(s.z); run[0].scratch[a + 2] = f32(s.yaw);
+      run[0].scratch[a + 3] = f32(s.tension); run[0].scratch[a + 4] = f32(s.tug_x); run[0].scratch[a + 5] = f32(s.tug_z);
+      n += 1;
+    }
+    if state != AFLOAT_TOW_OK { break; }
+    if time > 5.0 * 86400.0 { state = CS_TOW_STALLED; break; }
+    if s.along >= g.len - (ifx leg == run[0].route.legs - 1 then 0.0 else hull.length * 0.5) { leg += 1; }
+  }
+  if peak < top { peak = top; }
+  // the last sample is the tow as it arrives
+  if n < CS_SCRATCH {
+    a := n * CS_TRACK_F;
+    run[0].scratch[a] = f32(s.x); run[0].scratch[a + 1] = f32(s.z); run[0].scratch[a + 2] = f32(s.yaw);
+    run[0].scratch[a + 3] = f32(s.tension); run[0].scratch[a + 4] = f32(s.tug_x); run[0].scratch[a + 5] = f32(s.tug_z);
+    n += 1;
+  }
+  run[0].pc[ip].tow_time = time; run[0].pc[ip].tow_state = state;
+  run[0].pc[ip].tow_tension = top; run[0].pc[ip].tow_peak = peak;
+  run[0].pc[ip].tow_keel = keel; run[0].pc[ip].tow_bank = bank; run[0].pc[ip].tow_clear = clear;
+  // keep CS_TRACK samples of the track, evenly in time
+  if n < 2 { n = 2; }
+  base := ip * CS_TRACK * CS_TRACK_F;
+  sample := CS_TOW_DT * f64(CS_TOW_SAMPLE);
+  run[0].track_dt[ip] = f32(time / f64(CS_TRACK - 1));
+  for j: 0..<CS_TRACK {
+    t := time * f64(j) / f64(CS_TRACK - 1) / sample - 1.0;     // the first sample is one interval in
+    if t < 0.0 { t = 0.0; }
+    i := cast(int) floor(t); if i > n - 2 { i = n - 2; }
+    f := fclamp(t - f64(i), 0.0, 1.0);
+    for k: 0..<CS_TRACK_F {
+      a := run[0].scratch[i * CS_TRACK_F + k]; b := run[0].scratch[(i + 1) * CS_TRACK_F + k];
+      run[0].track[base + j * CS_TRACK_F + k] = a + (b - a) * f32(f);
+    }
+  }
+}
+
+// ---------------------------------------------------------------- the joined hull
+// The hull as it stands at `tick`: its waterplane (one rectangle a piece that is fast, written to
+// `rects`), everything on it, and how it floats. The water ballast is trimmed to keep it level;
+// `raw_heel` and `raw_trim` are what it would take up were the ballast spread evenly, and `shift`
+// the ballast that has to sit off centre to stop that (kg, moved half the hull's beam or length).
+CsHull :: struct {
+  rects: int;
+  load: AfloatLoad; st: AfloatStatics;
+  lx: f64; lz: f64;          // its extent along x and z
+  raw_heel: f64; raw_trim: f64; shift: f64;
+}
+cs_hull :: (run: [] CsRun, q: [] CsProc, tick: int, rects: [] f64) -> CsHull {
+  o: CsHull; sh := run[0].sh; led := run[0].led; u := run[0].unit;
+  x0 := 1.0e9; x1 := -1.0e9; z0 := 1.0e9; z1 := -1.0e9;
+  mass := 0.0; mx := 0.0; mz := 0.0; my := 0.0; n := 0; units := 0;
+  for i: 0..<run[0].pieces {
+    a := run[0].pc[i];
+    if !cs_reached(a.t_fast, tick) { continue; }
+    rects[n * 4] = a.x - a.l * 0.5; rects[n * 4 + 1] = a.z - a.b * 0.5; rects[n * 4 + 2] = a.x + a.l * 0.5; rects[n * 4 + 3] = a.z + a.b * 0.5;
+    x0 = fmin(x0, rects[n * 4]); z0 = fmin(z0, rects[n * 4 + 1]); x1 = fmax(x1, rects[n * 4 + 2]); z1 = fmax(z1, rects[n * 4 + 3]);
+    m := f64(a.count) * u.mass;
+    mass += m; mx += m * a.x; mz += m * a.z; my += m * u.kg;
+    n += 1; units += a.count;
+  }
+  o.rects = n;
+  if n == 0 { o.st.state = AFLOAT_SINKS; return o; }
+  o.lx = x1 - x0; o.lz = z1 - z0;
+  plane := afloat_plane(rects, n);
+  cx := plane.mx / plane.area; cz := plane.mz / plane.area;
+  clear := hull_clear(sh);
+  // what sits level over the joined area: water ballast, the lining, liquids
+  cells := led.floor * f64(units) / f64(run[0].units);
+  deep := ifx cells > 0 then q[0].ballast / AFLOAT_RHO / cells else 0.0;
+  even := q[0].ballast + q[0].lining * HULL_CONCRETE + q[0].liquids;
+  mass += even; mx += even * cx; mz += even * cz;
+  my += q[0].ballast * (sh.bottom + deep * 0.5) + q[0].lining * HULL_CONCRETE * (sh.bottom + clear * 0.5) + q[0].liquids * sh.liquids_kg;
+  // the upper structure, bay by bay, each as high as it has risen
+  for i: 0..<run[0].units {
+    if q[0].up[i] <= 0.0 { break; }
+    c := run[0].u[i]; bay := cs_bay(run, q[0].up[i]);
+    x := -sh.l * 0.5 + (f64(c.col) + 0.5) * u.l; z := -sh.b * 0.5 + (f64(c.row) + 0.5) * u.b;
+    mass += bay.mass; mx += bay.mass * x; mz += bay.mass * z; my += bay.mass * bay.kg;
+  }
+  // the topsides landed so far, module by module
+  for i: 0..<run[0].modules {
+    c := run[0].mod[i]; m := fclamp(q[0].outfit - c.before, 0.0, c.mass);
+    if m <= 0.0 { break; }
+    mass += m; mx += m * c.x; mz += m * c.z; my += m * (hull_hi(sh.deck, sh.hull) + sh.topsides_cg);
+  }
+  o.load = AfloatLoad.{mass = mass, gx = mx / mass, gy = my / mass, gz = mz / mass, depth = sh.hull};
+  raw := afloat_statics(plane, o.load, rects, n);
+  o.raw_heel = raw.heel; o.raw_trim = raw.trim;
+  o.shift = mass * (abs(o.load.gz - cz) / fmax(o.lz * 0.5, 1.0) + abs(o.load.gx - cx) / fmax(o.lx * 0.5, 1.0));
+  o.load.gx = cx; o.load.gz = cz;
+  o.st = afloat_statics(plane, o.load, rects, n);
+  return o;
+}
+// The upper structure over one caisson's bay. Every bay gets the same share of each part (the
+// ledger's volume over the number of caissons), cast in this order: the outer wall and the columns
+// together to the columns' top (`a` m^3), the girders with the wall's last few metres (`b`), the
+// deck slab (`c`).
+CsBayPlan :: struct { column_h: f64; girder: f64; slab: f64; a: f64; b: f64; c: f64; share: f64; }
+cs_bay_plan :: (sh: HullShape, led: HullLedger, units: int) -> CsBayPlan {
+  o: CsBayPlan; up := hull_upper(sh);
+  if up <= 0 || units < 1 { return o; }
+  o.slab = hull_lo(sh.deck_slab, up); o.girder = hull_lo(sh.girder_d, up - o.slab); o.column_h = up - o.slab - o.girder;
+  wall_h := up - o.slab; n := f64(units);
+  wall_a := ifx wall_h > 0 then led.upper_wall * o.column_h / wall_h else 0.0;
+  o.a = (led.columns + wall_a) / n; o.b = (led.girders + led.upper_wall - wall_a) / n; o.c = led.deck_slab / n;
+  o.share = led.upper_concrete / n;
+  return o;
+}
+CS_BAY_NONE :: 0; CS_BAY_COLUMNS :: 1; CS_BAY_GIRDERS :: 2; CS_BAY_SLAB :: 3; CS_BAY_DONE :: 4;
+CsBay :: struct {
+  stage: int;       // CS_BAY_*: what is being cast in it
+  column: f64;      // the height its wall and columns have reached over the hull's top, m
+  girders: f64;     // the share of its girders cast, 0 to 1
+  slab: f64;        // and of its deck slab
+  top: f64;         // its highest concrete over the keel, m
+  kg: f64;          // its concrete's centre over the keel
+  mass: f64;        // kg
+}
+// A bay with `v` m^3 of its upper structure cast.
+cs_bay :: (run: [] CsRun, v: f64) -> CsBay {
+  o: CsBay; b := run[0].bay; sh := run[0].sh;
+  o.top = sh.hull; o.kg = sh.hull;
+  if v <= 0.0 || b.share <= 0.0 { return o; }
+  va := fmin(v, b.a); vb := fclamp(v - b.a, 0.0, b.b); vc := fclamp(v - b.a - b.b, 0.0, b.c);
+  o.column = ifx b.a > 0 then b.column_h * va / b.a else b.column_h;
+  o.girders = ifx b.b > 0 then vb / b.b else (ifx v >= b.a then 1.0 else 0.0);
+  o.slab = ifx b.c > 0 then vc / b.c else 0.0;
+  o.stage = CS_BAY_COLUMNS; o.top = sh.hull + o.column;
+  if vb > 0.0 || v >= b.a - 1e-9 { o.stage = CS_BAY_GIRDERS; }
+  if vb > 0.0 { o.top = sh.hull + b.column_h + b.girder; }
+  if vc > 0.0 || v >= b.a + b.b - 1e-9 { o.stage = CS_BAY_SLAB; }
+  if vc > 0.0 { o.top = sh.hull + b.column_h + b.girder + b.slab; }
+  if v >= b.share - 1e-9 { o.stage = CS_BAY_DONE; }
+  o.mass = v * HULL_CONCRETE;
+  o.kg = (va * (sh.hull + o.column * 0.5) + vb * (sh.hull + b.column_h + b.girder * 0.5) + vc * (sh.hull + b.column_h + b.girder + b.slab * 0.5)) / v;
+  return o;
+}
+// The most a bay with `v` m^3 cast takes in one tick, m^3: its forms' climb, its falsework's pace,
+// and no further than the end of the part it is on.
+cs_bay_cap :: (run: [] CsRun, v: f64) -> f64 {
+  b := run[0].bay;
+  if v < b.a - 1e-9 { return fmin(b.a - v, ifx b.column_h > 0 then b.a * CS_UP_CLIMB / b.column_h * CS_TICK_D else b.a); }
+  if v < b.a + b.b - 1e-9 { return fmin(b.a + b.b - v, b.b / CS_UP_GIRDER_DAYS * CS_TICK_D); }
+  return fmin(fmax(b.share - v, 0.0), b.c / CS_UP_SLAB_DAYS * CS_TICK_D);
+}
+// The wind `over` m above the water, from the wind at 10 m.
+cs_wind_at :: (wind: f64, over: f64) -> f64 { return wind * exp(CS_WIND_SHEAR * log(fmax(over, 10.0) / 10.0)); }
+// The hull's highest concrete over the keel now.
+cs_top :: (run: [] CsRun, q: [] CsProc) -> f64 { return cs_bay(run, q[0].up[0]).top; }
+// The wind's push on the hull's long side in a wind of `wind` m/s at 10 m, taken as a full wall to
+// its highest concrete (an upper bound while only some bays have risen), N; and the heel it gives.
+CsWind :: struct { force: f64; lever: f64; heel: f64; }
+cs_wind :: (run: [] CsRun, h: CsHull, top: f64, wind: f64) -> CsWind {
+  o: CsWind;
+  over := fmax(top - h.st.draft, 0.0);
+  v := cs_wind_at(wind, over * 0.5);
+  o.force = 0.5 * AFLOAT_RHO_AIR * 1.2 * fmax(h.lx, h.lz) * over * v * v;
+  o.lever = over * 0.5 + h.st.draft * 0.5;
+  gm := fmin(h.st.gm_t, h.st.gm_l);
+  if gm > 0 && h.load.mass > 0 { o.heel = o.force * o.lever / (h.load.mass * AFLOAT_G * gm); }
+  return o;
+}
+// The second moment of a strip of the hull `wide` m across, for bending sideways (about the
+// vertical), m^4: its two slabs, and its lengthwise walls each at its distance from the middle.
+cs_side_i :: (sh: HullShape, wide: f64) -> f64 {
+  cells := hull_count(wide, sh.cell);
+  i := (sh.top + sh.bottom) * wide * wide * wide / 12.0;
+  for j: 0..<cells + 1 {
+    z := -wide * 0.5 + f64(j) * wide / f64(cells);
+    seam := j > 0 && j < cells && abs(f64(j) * sh.cell / sh.unit_b - floor(f64(j) * sh.cell / sh.unit_b + 0.5)) < 1e-6;
+    t := ifx seam then 2.0 * sh.web else sh.web;
+    i += t * hull_clear(sh) * z * z;
+  }
+  return i;
+}
+// The hull-girder stress of a joined block `length` by `wide` m at `draft`, head on to a sea of
+// `hs` and `tp`: vertical bending on the highest wave in a thousand (1.86 Hs tall), the block rigid
+// and balanced on it. Pa. It grows with the block's length: the wave's unbalanced push at the two
+// ends is carried through the whole girder.
+cs_bend_v :: (run: [] CsRun, length: f64, wide: f64, draft: f64, hs: f64, tp: f64) -> f64 {
+  sh := run[0].sh;
+  weight: [101] f64; width: [101] f64; moment: [101] f64;
+  n := cast(int) floor(length / 10.0) + 1; if n > 101 { n = 101; } if n < 3 { n = 3; }
+  dx := length / f64(n - 1);
+  k := afloat_wave_number(TAU_D / fmax(tp, 1.0), run[0].route.site_depth);
+  for i: 0..<n { weight[i] = AFLOAT_RHO * AFLOAT_G * wide * draft; width[i] = wide; }
+  m := afloat_bending_worst(weight[..], width[..], n, dx, 0.93 * hs, TAU_D / k, draft, moment[..]);
+  girder := sh; girder.b = wide; girder.l = length; girder.wall = sh.web;
+  i := hull_section_i(girder);
+  return ifx i > 0 then m * 0.55 * sh.hull / i else 0.0;
+}
+// And sideways in a quartering sea: the waves' push across the block, which a narrow strip has
+// little to resist. The worst of five headings. Pa.
+cs_bend_h :: (run: [] CsRun, length: f64, wide: f64, draft: f64, hs: f64, tp: f64) -> f64 {
+  sh := run[0].sh;
+  weight: [101] f64; width: [101] f64; moment: [101] f64;
+  n := cast(int) floor(length / 10.0) + 1; if n > 101 { n = 101; } if n < 3 { n = 3; }
+  dx := length / f64(n - 1);
+  k := afloat_wave_number(TAU_D / fmax(tp, 1.0), run[0].route.site_depth);
+  m := 0.0;
+  for a: 1..<6 {
+    th := f64(a) * 15.0 * PI_D / 180.0;
+    kx := k * cos(th); kz := k * sin(th);
+    push := 2.0 * AFLOAT_RHO * AFLOAT_G * 0.93 * hs * abs(sin(kz * wide * 0.5)) * (1.0 - exp(-k * draft)) / k;   // N per metre of length
+    for i: 0..<n { weight[i] = 0.0; width[i] = push / (AFLOAT_RHO * AFLOAT_G); }
+    m = fmax(m, afloat_bending_worst(weight[..], width[..], n, dx, 1.0, TAU_D / kx, 0.0, moment[..]));
+  }
+  i := cs_side_i(sh, wide);
+  return ifx i > 0 then m * wide * 0.5 / i else 0.0;
+}
+// The chains on one long side that hold a force (N) on the hull within a chain's safe load, and the
+// force.
+cs_mooring :: (run: [] CsRun, length: f64, wide: f64, draft: f64) -> [2] f64 {
+  sh := run[0].sh;
+  k := afloat_wave_number(TAU_D / CS_STORM_TP, run[0].route.site_depth);
+  box := AfloatHull.{length = wide, beam = length, draft = draft, height = hull_hi(sh.deck, sh.hull)};
+  force := afloat_holding_force(box, CS_STORM_HS, k, CS_STORM_WIND, CS_STORM_CURRENT);
+  chain := AfloatLine.{length = CS_CHAIN_LENGTH, weight = CS_CHAIN_W, ea = CS_CHAIN_EA, mbl = CS_CHAIN_MBL};
+  height := fmax(run[0].route.site_depth - draft, 5.0);
+  reach := afloat_chain_reach(chain, height, CS_CHAIN_PRE);
+  safe := CS_CHAIN_MBL / CS_CHAIN_SAFETY;
+  lo := 0.0; hi := 300.0;
+  for i: 0..<40 { mid := (lo + hi) * 0.5; if afloat_chain(chain, height, reach + mid).tension < safe { lo = mid; } else { hi = mid; } }
+  lee := afloat_chain(chain, height, reach - lo).tension;
+  return [2] f64.[floor(force / fmax(safe - lee, 1.0)) + 1.0, force];
+}
+// The stage reached when a piece is made fast: how the hull so far floats, bends and is moored.
+cs_stage :: (run: [] CsRun, q: [] CsProc, tick: int) -> CsStage {
+  s: CsStage; sh := run[0].sh; led := run[0].led;
+  rects: [CS_MAX_UNITS * 4] f64;
+  h := cs_hull(run, q, tick, rects[..]);
+  s.pieces = h.rects;
+  s.length = fmax(h.lx, h.lz); s.wide = h.st.area / fmax(s.length, 1.0);
+  s.mass = h.load.mass; s.draft = h.st.draft; s.gm_t = h.st.gm_t; s.gm_l = h.st.gm_l;
+  // with every load it will carry: the same waterplane, the finished hull's weights a share
+  share := h.st.area / (sh.l * sh.b);
+  full := AfloatLoad.{mass = led.mass * share, gx = h.load.gx, gz = h.load.gz, gy = led.kg, depth = sh.hull};
+  fs := afloat_statics(afloat_plane(rects[..], h.rects), full, rects[..], h.rects);
+  s.gm_loaded = fmin(fs.gm_t, fs.gm_l);
+  s.upper_ok = fs.state == AFLOAT_OK && s.gm_loaded >= CS_GM_WORK;
+  s.bend_v = cs_bend_v(run, s.length, s.wide, s.draft, CS_STORM_HS, CS_STORM_TP);
+  s.bend_h = cs_bend_h(run, s.length, s.wide, s.draft, CS_STORM_HS, CS_STORM_TP);
+  m := cs_mooring(run, s.length, s.wide, s.draft);
+  s.line_load = m[1];
+  s.lines = 2 * (cast(int) m[0] + cast(int) floor(m[0] * s.wide / s.length) + 1);
+  return s;
+}
+// The significant motion between a waiting piece's face and the hull's, in the sea `wx`, m.
+cs_join_motion :: (run: [] CsRun, q: [] CsProc, ip: int, wx: CsWx) -> f64 {
+  rects: [CS_MAX_UNITS * 4] f64;
+  h := cs_hull(run, q, q[0].tick, rects[..]);
+  if h.rects == 0 { return 0.0; }
+  a := run[0].pc[ip];
+  // the face: half way to the nearest piece that is fast
+  best := 1.0e18; jx := a.x; jz := a.z;
+  for i: 0..<run[0].pieces {
+    b := run[0].pc[i];
+    if i == ip || !cs_reached(b.t_fast, q[0].tick) || !cs_touch(a, b) { continue; }
+    d := (a.x - b.x) * (a.x - b.x) + (a.z - b.z) * (a.z - b.z);
+    if d < best { best = d; jx = a.x + (b.x - a.x) * a.l / (a.l + b.l); jz = a.z + (b.z - a.z) * a.b / (a.b + b.b); if abs(a.x - b.x) > 1e-6 { jz = a.z; } else { jx = a.x; } }
+  }
+  sea := afloat_sea(wx.hs, wx.tp, wx.wave_dir, run[0].route.site_depth, run[0].p.seed, CS_S_WAVES);
+  hr := afloat_rao(rects[..], h.rects, h.st, h.load, sea, 0.0);
+  load := cs_piece_load(run, ip);
+  rect := [4] f64.[-a.l * 0.5, -a.b * 0.5, a.l * 0.5, a.b * 0.5];
+  st := cs_box_statics(a.l, a.b, load);
+  pr := afloat_rao(rect[..], 1, st, load, sea, 0.0);
+  return afloat_relative_motion(hr, h.st, jx, jz, 0.0, 0.0, pr, st, jx - a.x, jz - a.z, a.x, a.z, sea);
+}
+
+// ---------------------------------------------------------------- one tick
+cs_cell_next :: (run: [] CsRun, q: [] CsProc, record: bool, c: int) {
+  t := q[0].tick; s := q[0].cell_stage[c]; i := q[0].cell_unit[c]; p := run[0].p;
+  if s == CS_PREP { q[0].cell_stage[c] = CS_BASE; q[0].cell_vol[c] = 0.0; run[0].u[i].t_base = t; return; }
+  if s == CS_BASE { q[0].cell_stage[c] = CS_SETUP; q[0].cell_left[c] = CS_SETUP_DAYS; return; }
+  if s == CS_SETUP { q[0].cell_stage[c] = CS_WALLS; q[0].cell_vol[c] = 0.0; run[0].u[i].t_walls = t; return; }
+  if s == CS_WALLS { q[0].cell_stage[c] = CS_FALSE; q[0].cell_left[c] = CS_FALSE_DAYS; run[0].u[i].t_walled = t; return; }
+  if s == CS_FALSE { q[0].cell_stage[c] = CS_TOP; q[0].cell_vol[c] = 0.0; return; }
+  if s == CS_TOP {
+    q[0].cell_stage[c] = CS_CURE; q[0].cell_left[c] = CS_CURE_DAYS; run[0].u[i].t_top = t;
+    if f64(rand_unit(p.seed, CS_S_LEAK, i)) < CS_LEAK_RATE { q[0].cell_left[c] += CS_LEAK_DAYS; q[0].reworks += 1; cs_event(run, record, t, CS_EV_LEAK, i, CS_LEAK_DAYS); }
+    return;
+  }
+  if s == CS_CURE { q[0].cell_stage[c] = CS_FLOAT; q[0].cell_left[c] = CS_FLOAT_DAYS; run[0].u[i].t_flood = t; return; }
+  if s == CS_FLOAT {
+    q[0].cell_stage[c] = CS_RESET; q[0].cell_left[c] = CS_RESET_DAYS; run[0].u[i].t_float = t + 1; q[0].afloat += 1;
+    st := cs_box_statics(run[0].unit.l, run[0].unit.b, cs_unit_load(run, 0.0, false));
+    if st.state != AFLOAT_OK || st.gm_t < CS_GM_MIN || st.draft + 1.0 > CS_CELL_FLOOR { q[0].failed = CS_FAIL_UNIT; q[0].fail_id = i; }
+    cs_event(run, record, t, CS_EV_FLOAT, i, f64(c));
+    return;
+  }
+  if s == CS_RESET { q[0].cell_stage[c] = CS_IDLE; q[0].cell_unit[c] = -1; }
+}
+// The casting cells: timed steps count down, pours draw on the plant (walls first: a slipform does
+// not stop). Returns the concrete the plant has left for the work at sea this tick, m^3.
+cs_yard :: (run: [] CsRun, q: [] CsProc, record: bool, standdown: int, core: bool) -> f64 {
+  p := run[0].p; sh := run[0].sh; u := run[0].unit; t := q[0].tick;
+  supply := ifx core then 0.0 else p.pour_rate * CS_TICK_D;
+  base_v := u.l * u.b * sh.bottom; top_v := u.l * u.b * sh.top; wall_v := u.concrete - base_v - top_v;
+  cells := cs_cells(p);
+  for c: 0..<cells {
+    s := q[0].cell_stage[c];
+    if s == CS_IDLE {
+      if q[0].next_unit < run[0].units && standdown == 0 {
+        i := q[0].next_unit; q[0].next_unit += 1;
+        q[0].cell_unit[c] = i; q[0].cell_stage[c] = CS_PREP; q[0].cell_left[c] = CS_PREP_DAYS; q[0].cell_vol[c] = 0.0; q[0].cell_pause[c] = 0.0;
+        run[0].u[i].cell = c; run[0].u[i].t_start = t;
+        cs_event(run, record, t, CS_EV_CAST, i, f64(c));
+      }
+      continue;
+    }
+    if core { continue; }
+    if s == CS_PREP || s == CS_SETUP || s == CS_FALSE || s == CS_CURE || s == CS_FLOAT || s == CS_RESET {
+      q[0].cell_left[c] -= CS_TICK_D;
+      if q[0].cell_left[c] <= 1e-9 { cs_cell_next(run, q, record, c); }
+    }
+  }
+  if core { return 0.0; }
+  for pass: 0..<3 {
+    want := ifx pass == 0 then CS_WALLS else (ifx pass == 1 then CS_TOP else CS_BASE);
+    total := ifx pass == 0 then wall_v else (ifx pass == 1 then top_v else base_v);
+    rate := ifx pass == 0 then CS_SLIP_RATE * u.plan else (ifx pass == 1 then CS_TOP_RATE else CS_BASE_RATE);
+    for c: 0..<cells {
+      if q[0].cell_stage[c] != want { continue; }
+      if q[0].cell_pause[c] > 1e-9 { q[0].cell_pause[c] -= CS_TICK_D; continue; }
+      before := q[0].cell_vol[c];
+      got := fmin(fmin(supply, rate * CS_TICK_D), total - before);
+      if total - before - got < 1e-6 && supply >= total - before { got = total - before; }
+      q[0].cell_vol[c] += got; supply -= got; q[0].poured_yard += got;
+      if want == CS_WALLS && before < total * 0.5 && q[0].cell_vol[c] >= total * 0.5 {
+        i := q[0].cell_unit[c];
+        if f64(rand_unit(p.seed, CS_S_STOP, i)) < CS_STOP_RATE { q[0].cell_pause[c] = CS_STOP_DAYS; q[0].reworks += 1; cs_event(run, record, t, CS_EV_STOPPAGE, i, CS_STOP_DAYS); }
+      }
+      if q[0].cell_vol[c] >= total { cs_cell_next(run, q, record, c); }
+    }
+  }
+  return supply;
+}
+// The basin: the next piece's caissons are joined once they are all afloat, one joint at a time.
+cs_basin :: (run: [] CsRun, q: [] CsProc, record: bool, standdown: int) {
+  if q[0].form >= run[0].pieces { return; }
+  t := q[0].tick; a := run[0].pc[q[0].form];
+  for i: a.first..<a.first + a.count { if !cs_reached(run[0].u[i].t_float, t) { return; } }
+  if q[0].form_left < 0.0 { q[0].form_left = f64(a.count - 1) * CS_FORM_DAYS; }
+  if q[0].form_left > 1e-9 { if standdown == 0 { q[0].form_left -= CS_TICK_D; } if q[0].form_left > 1e-9 { return; } }
+  ip := q[0].form;
+  load := cs_piece_load(run, ip);
+  st := cs_box_statics(a.l, a.b, load);
+  if st.state != AFLOAT_OK || fmin(st.gm_t, st.gm_l) < CS_GM_MIN { q[0].failed = CS_FAIL_PIECE; q[0].fail_id = ip; }
+  run[0].pc[ip].mass = load.mass; run[0].pc[ip].draft = st.draft; run[0].pc[ip].gm_t = st.gm_t; run[0].pc[ip].gm_l = st.gm_l;
+  run[0].pc[ip].tugs = cs_tugs_needed(cs_piece_hull(run, ip, st), run[0].p.tug_pull);
+  run[0].pc[ip].t_ready = t + 1;
+  cs_event(run, record, t, CS_EV_READY, ip, f64(a.count));
+  q[0].form += 1; q[0].form_left = -1.0;
+}
+// The planned ticks of a tow: every leg at its speed, and the spare.
+cs_tow_ticks :: (run: [] CsRun) -> int {
+  s := 0.0;
+  for i: 0..<run[0].route.legs { s += run[0].route.leg[i].len / run[0].route.leg[i].speed; }
+  return cast(int) floor(s * CS_TOW_SPARE / CS_TICK_S) + 1;
+}
+cs_busy :: (q: [] CsProc, crews: int) -> int {
+  n := 0;
+  for c: 0..<crews { if q[0].crew_piece[c] >= 0 && q[0].crew_stage[c] <= CS_J_BARS { n += 1; } }
+  return n;
+}
+// The tow: the next piece leaves at six in the morning when it is ready, the tugs are back, there
+// is room to stand by at the site and the forecast shows a window. Returns true when only the
+// weather held it.
+cs_sail :: (run: [] CsRun, q: [] CsProc, record: bool, standdown: int) -> bool {
+  if q[0].tow >= run[0].pieces { return false; }
+  t := q[0].tick; p := run[0].p; ip := q[0].tow;
+  if !cs_reached(run[0].pc[ip].t_ready, t) || t < q[0].fleet_free { return false; }
+  if q[0].tow - q[0].fast_pieces - cs_busy(q, cs_crews(p)) >= CS_HOLD_MAX { return false; }
+  if t % CS_TICKS != 2 { return false; }
+  day := f64(t) * CS_TICK_D;
+  plan := cs_tow_ticks(run);
+  if p.ignore_weather & 1 == 0 {
+    if standdown != 0 || cs_storm_within(run, day, day + f64(plan) * CS_TICK_D + 1.0) { return true; }
+    if !cs_window(run, day, plan, CS_TOW_HS, CS_TOW_WIND) { return true; }
+  }
+  if q[0].tug_delayed != ip && f64(rand_unit(p.seed, CS_S_TUG, ip)) < CS_TUG_FAIL {
+    q[0].tug_delayed = ip; q[0].fleet_free = t + CS_TICKS; q[0].reworks += 1;
+    cs_event(run, record, t, CS_EV_TUG, ip, 1.0);
+    return false;
+  }
+  if record { cs_tow(run, ip, t); }
+  a := run[0].pc[ip];
+  took := cast(int) floor(a.tow_time / CS_TICK_S) + 1;
+  run[0].pc[ip].t_depart = t; run[0].pc[ip].t_arrive = t + took;
+  cs_event(run, record, t, CS_EV_DEPART, ip, f64(a.tugs));
+  if a.tow_state != AFLOAT_TOW_OK {
+    q[0].failed = ifx a.tow_state == AFLOAT_TOW_AGROUND then CS_FAIL_AGROUND else (ifx a.tow_state == AFLOAT_TOW_BANK then CS_FAIL_BANK else (ifx a.tow_state == AFLOAT_TOW_PARTED then CS_FAIL_PARTED else CS_FAIL_STALLED));
+    q[0].fail_id = ip;
+    return false;
+  }
+  cs_event(run, record, t + took, CS_EV_ARRIVE, ip, a.tow_time / 3600.0);
+  // the tugs run home light at ten knots
+  q[0].fleet_free = t + took + cast(int) floor(run[0].route.total / 5.144 / CS_TICK_S) + 1;
+  q[0].tow += 1; q[0].tows += 1;
+  return false;
+}
+// A piece made fast: it is part of the hull from the next tick.
+cs_fast :: (run: [] CsRun, q: [] CsProc, record: bool, ip: int) {
+  t := q[0].tick; a := run[0].pc[ip];
+  run[0].pc[ip].t_fast = t + 1;
+  q[0].fast_pieces += 1; q[0].fast_units += a.count; q[0].fast_edge += cs_piece_edge(run, ip);
+  q[0].ballast += f64(a.count) * CS_TOW_BALLAST;
+  if record {
+    s := cs_stage(run, q, t + 1);
+    run[0].st[q[0].fast_pieces] = s;
+  }
+  now := run[0].st[q[0].fast_pieces];
+  if now.gm_t < CS_GM_MIN || now.gm_l < CS_GM_MIN || (q[0].fast_pieces == run[0].pieces && !now.upper_ok) { q[0].failed = CS_FAIL_HULL; q[0].fail_id = ip; }
+  cs_event(run, record, t, CS_EV_FAST, ip, f64(q[0].fast_pieces));
+  if q[0].fast_pieces == run[0].pieces { cs_event(run, record, t, CS_EV_CLOSED, ip, f64(t + 1) * CS_TICK_D); }
+}
+cs_sealed :: (run: [] CsRun, q: [] CsProc, record: bool, c: int) {
+  ip := q[0].crew_piece[c];
+  run[0].pc[ip].t_done = q[0].tick + 1; q[0].done_units += run[0].pc[ip].count;
+  q[0].crew_piece[c] = -1; q[0].crew_stage[c] = 0;
+  cs_event(run, record, q[0].tick, CS_EV_SEALED, ip, 0.0);
+}
+// The piece a free crew would take next: the first that has arrived and touches the hull.
+cs_next_join :: (run: [] CsRun, q: [] CsProc, crews: int) -> int {
+  t := q[0].tick;
+  for i: 0..<q[0].tow {
+    a := run[0].pc[i];
+    if !cs_reached(a.t_arrive, t) || cs_reached(a.t_fast, t) || a.t_fast == t + 1 { continue; }
+    taken := false;
+    for c: 0..<crews { if q[0].crew_piece[c] == i { taken = true; } }
+    if taken { continue; }
+    if i == 0 { return i; }
+    for j: 0..<run[0].pieces { if j != i && cs_reached(run[0].pc[j].t_fast, t) && cs_touch(a, run[0].pc[j]) { return i; } }
+  }
+  return -1;
+}
+// The join crews. A crew takes a waiting piece when the forecast shows the joint's open hours under
+// the limit and no storm due before its tendons are stressed. While the joint is open the real sea
+// is checked each tick, and the faces' motion when the piece is pulled in: over the limit, the
+// piece is let go and tried again. Returns true when only the weather held a crew.
+cs_joins :: (run: [] CsRun, q: [] CsProc, record: bool, standdown: int, wx: CsWx) -> bool {
+  p := run[0].p; t := q[0].tick; crews := cs_crews(p); day := f64(t) * CS_TICK_D; held := false;
+  for c: 0..<crews {
+    ip := q[0].crew_piece[c];
+    if ip < 0 { continue; }
+    s := q[0].crew_stage[c];
+    if s >= CS_J_CONNECT && s <= CS_J_SEAL && wx.hs <= CS_JOIN_HS && record && wx.hs > run[0].pc[ip].join_hs { run[0].pc[ip].join_hs = wx.hs; }
+    if s >= CS_J_CONNECT && s <= CS_J_SEAL && (wx.hs > CS_JOIN_HS || standdown != 0) {
+      q[0].crew_piece[c] = -1; q[0].crew_stage[c] = 0; q[0].aborts += 1;
+      if record { run[0].pc[ip].attempts += 1; }
+      cs_event(run, record, t, CS_EV_ABORT, ip, wx.hs);
+      continue;
+    }
+    if (s == CS_J_BARS || s == CS_J_TENDONS) && wx.hs > 2.0 {
+      // a joint on its temporary bars carries the hull's bending in whatever sea comes
+      now := run[0].st[q[0].fast_pieces];
+      stress := cs_bend_v(run, fmax(now.length, run[0].pc[ip].l), fmax(now.wide, 1.0), fmax(now.draft, 1.0), wx.hs, wx.tp);
+      if record && stress > run[0].pc[ip].join_stress { run[0].pc[ip].join_stress = stress; }
+      if stress > CS_PT_TEMP { q[0].crew_hurt[c] = 1; }
+    }
+    q[0].crew_left[c] -= 1;
+    if q[0].crew_left[c] > 0 { continue; }
+    if s == CS_J_MOOR { cs_fast(run, q, record, ip); cs_sealed(run, q, record, c); continue; }
+    if s == CS_J_CONNECT {
+      // pulled in on the fenders: the faces must be nearly still against each other
+      rel := cs_join_motion(run, q, ip, wx);
+      a := run[0].pc[ip];
+      energy := 0.5 * a.mass * 1.5 * CS_APPROACH * CS_APPROACH / f64(CS_FENDERS);
+      if record {
+        run[0].pc[ip].join_rel = rel;
+        run[0].pc[ip].join_fender = afloat_fender(afloat_fender_deflection(energy, CS_FENDER_FORCE, CS_FENDER_DEFL), CS_FENDER_FORCE, CS_FENDER_DEFL);
+      }
+      if rel > CS_JOIN_REL {
+        q[0].crew_piece[c] = -1; q[0].crew_stage[c] = 0; q[0].aborts += 1;
+        if record { run[0].pc[ip].attempts += 1; }
+        cs_event(run, record, t, CS_EV_ABORT, ip, wx.hs);
+        continue;
+      }
+    }
+    if s == CS_J_BARS { cs_fast(run, q, record, ip); }
+    if s == CS_J_GROUT {
+      if q[0].crew_hurt[c] != 0 || f64(rand_unit(p.seed, CS_S_SEAL, ip)) < CS_SEAL_FAIL {
+        q[0].crew_stage[c] = CS_J_RESEAL; q[0].crew_left[c] = CS_J_TICKS[CS_J_RESEAL]; q[0].reworks += 1;
+        cs_event(run, record, t, CS_EV_RESEAL, ip, 36.0);
+      } else { cs_sealed(run, q, record, c); }
+      continue;
+    }
+    if s == CS_J_RESEAL { cs_sealed(run, q, record, c); continue; }
+    q[0].crew_stage[c] = s + 1; q[0].crew_left[c] = CS_J_TICKS[s + 1];
+  }
+  for c: 0..<crews {
+    if q[0].crew_piece[c] >= 0 { continue; }
+    ip := cs_next_join(run, q, crews);
+    if ip < 0 { continue; }
+    first := ip == 0;
+    open := ifx first then CS_J_TICKS[CS_J_MOOR] else CS_J_TICKS[CS_J_CONNECT] + CS_J_TICKS[CS_J_PULL] + CS_J_TICKS[CS_J_SEAL] + CS_J_TICKS[CS_J_BARS];
+    if p.ignore_weather & 2 == 0 {
+      if standdown != 0 || cs_storm_within(run, day, day + f64(open + CS_J_TICKS[CS_J_TENDONS]) * CS_TICK_D) { held = true; continue; }
+      if !cs_window(run, day, open, CS_JOIN_HS, CS_JOIN_WIND) { held = true; continue; }
+    }
+    q[0].crew_piece[c] = ip; q[0].crew_hurt[c] = 0; q[0].crew_stage[c] = ifx first then CS_J_MOOR else CS_J_CONNECT;
+    q[0].crew_left[c] = CS_J_TICKS[q[0].crew_stage[c]];
+    if record {
+      a := run[0].pc[ip];
+      run[0].pc[ip].t_join = t; run[0].pc[ip].join_hs = 0.0; run[0].pc[ip].join_rel = 0.0;
+      run[0].pc[ip].join_close = AFLOAT_RHO * AFLOAT_G * a.draft * a.draft * 0.5 * fmin(a.l, a.b);
+    }
+    cs_event(run, record, t, CS_EV_JOIN, ip, wx.hs);
+  }
+  return held;
+}
+// Concrete placed at sea with what the plant has left: the sea walls' lining on the caissons that
+// are fast, then the upper structure on the caissons whose joints are finished.
+cs_sea_concrete :: (run: [] CsRun, q: [] CsProc, record: bool, standdown: int, wx: CsWx, left: f64) -> bool {
+  led := run[0].led; t := q[0].tick; supply := left; bp := run[0].bay;
+  steady := run[0].st[q[0].fast_pieces].upper_ok;
+  lining := ifx run[0].edge_units > 0 && steady then led.lining * f64(q[0].fast_edge) / f64(run[0].edge_units) else 0.0;
+  bays := ifx steady && bp.share > 0 then q[0].done_units else 0;
+  open := false;
+  for i: 0..<bays { if q[0].up[i] < bp.share - 1e-9 { open = true; break; } }
+  if lining - q[0].lining <= 1e-9 && !open { return false; }
+  if standdown != 0 || wx.hs > CS_SEA_POUR_HS { return true; }
+  d := fmin(supply, fmax(lining - q[0].lining, 0.0));
+  if q[0].lining < led.lining && q[0].lining + d >= led.lining - 1e-6 { d = led.lining - q[0].lining; cs_event(run, record, t, CS_EV_LINED, 0, f64(t) * CS_TICK_D); }
+  q[0].lining += d; supply -= fmin(d, supply);
+  // the bays in the order they were joined: each takes what its forms can, while the plant has any
+  draft := run[0].st[q[0].fast_pieces].draft; windy := false;
+  for i: 0..<bays {
+    v := q[0].up[i];
+    if v >= bp.share - 1e-9 { continue; }
+    if supply <= 1e-9 { break; }
+    was := cs_bay(run, v);
+    if cs_wind_at(wx.wind, was.top - draft) > CS_UP_WIND { windy = true; continue; }
+    d = fmin(supply, cs_bay_cap(run, v));
+    if v + d >= bp.share - 1e-6 { d = bp.share - v; v = bp.share; } else { v += d; }
+    now := cs_bay(run, v);
+    q[0].form_lifts += cast(int) floor(now.column / CS_UP_LIFT + 1e-9) - cast(int) floor(was.column / CS_UP_LIFT + 1e-9);
+    if q[0].upper == 0.0 && d > 0.0 { cs_event(run, record, t, CS_EV_RISE, i, f64(t) * CS_TICK_D); }
+    if i == 0 && was.stage != CS_BAY_DONE && now.stage == CS_BAY_DONE { cs_event(run, record, t, CS_EV_TOPPED, i, now.top); }
+    q[0].up[i] = v; q[0].upper += d; supply -= fmin(d, supply);
+    if i == run[0].units - 1 && now.stage == CS_BAY_DONE { q[0].upper = led.upper_concrete; cs_event(run, record, t, CS_EV_DECKED, 0, f64(t) * CS_TICK_D); }
+  }
+  return windy;
+}
+// The mass of topsides whose deck is finished under them.
+cs_outfit_open :: (run: [] CsRun, q: [] CsProc) -> f64 {
+  share := run[0].bay.share; decked := 0;
+  if share <= 0 { decked = q[0].done_units; }
+  else { for i: 0..<run[0].units { if q[0].up[i] < share - 1e-9 { break; } decked += 1; } }
+  m := 0.0;
+  for i: 0..<run[0].modules { if run[0].mod[i].rank < decked { m += run[0].mod[i].mass; } }
+  return m;
+}
+cs_barge_hull :: (cargo: f64) -> AfloatHull {
+  mass := CS_BARGE_LIGHT + cargo;
+  return AfloatHull.{length = CS_BARGE_L, beam = CS_BARGE_B, draft = mass / (AFLOAT_RHO * CS_BARGE_L * CS_BARGE_B), height = CS_BARGE_D + 8.0, mass = mass};
+}
+// The ticks a barge's passage takes in the weather now: its tug's pull against its drag.
+cs_barge_ticks :: (run: [] CsRun, wx: CsWx, cargo: f64) -> int {
+  tug := AfloatTugs.{lead = 1, pull = CS_BARGE_TUG_T * 9810.0, free_speed = 6.0};
+  k := afloat_wave_number(TAU_D / wx.tp, 30.0);
+  v := afloat_tow_speed(cs_barge_hull(cargo), tug, wx.hs, k, wx.wind, 0.0);
+  if v < 0.5 { v = 0.5; }
+  return cast(int) floor(run[0].route.total / v / CS_TICK_S) + 1;
+}
+// Freight and lifts: barges load a day at the yard, cross when the forecast lets them, queue for
+// the dock, and the gantries land a module a tick each while the sea and the wind allow.
+cs_outfit :: (run: [] CsRun, q: [] CsProc, record: bool, standdown: int, wx: CsWx) -> bool {
+  p := run[0].p; t := q[0].tick; day := f64(t) * CS_TICK_D; held := false;
+  open := cs_outfit_open(run, q);
+  afloat := 0.0; docked := -1;
+  for b: 0..<CS_BARGES { afloat += q[0].barge_cargo[b]; if q[0].barge_stage[b] == CS_B_DOCK { docked = b; } }
+  for b: 0..<CS_BARGES {
+    s := q[0].barge_stage[b];
+    if s == CS_B_IDLE {
+      load := fmin(CS_BARGE_LOAD, open - q[0].outfit - afloat);
+      if load > 1.0 && standdown == 0 { q[0].barge_cargo[b] = load; afloat += load; q[0].barge_stage[b] = CS_B_LOAD; q[0].barge_left[b] = CS_BARGE_LOAD_TICKS; }
+    } else if s == CS_B_LOAD {
+      if standdown == 0 { q[0].barge_left[b] -= 1; }
+      if q[0].barge_left[b] <= 0 { q[0].barge_stage[b] = CS_B_WAIT; }
+    } else if s == CS_B_WAIT {
+      trip := cs_barge_ticks(run, wx, q[0].barge_cargo[b]);
+      if (standdown != 0 || cs_storm_within(run, day, day + f64(trip) * CS_TICK_D + 1.0) || !cs_window(run, day, trip, CS_BARGE_HS, 100.0)) { held = true; }
+      else { q[0].barge_stage[b] = CS_B_OUT; q[0].barge_left[b] = trip; q[0].barge_trip[b] = trip; q[0].barge_trips += 1; }
+    } else if s == CS_B_OUT {
+      q[0].barge_left[b] -= 1;
+      if q[0].barge_left[b] <= 0 { q[0].barge_stage[b] = CS_B_QUEUE; }
+    } else if s == CS_B_QUEUE {
+      if docked < 0 { q[0].barge_stage[b] = CS_B_DOCK; docked = b; }
+    } else if s == CS_B_DOCK {
+      if standdown != 0 || wx.hs > CS_LIFT_HS || wx.wind > CS_LIFT_WIND { held = true; }
+      else {
+        for g: 0..<CS_GANTRIES {
+          if f64(rand_unit(p.seed, CS_S_GANTRY, (t / CS_TICKS) * CS_GANTRIES + g)) < CS_GANTRY_DOWN { continue; }
+          m := fmin(CS_LIFT, q[0].barge_cargo[b]);
+          if m <= 0.0 { continue; }
+          if q[0].outfit == 0.0 { cs_event(run, record, t, CS_EV_LIFT, b, m); }
+          q[0].barge_cargo[b] -= m; q[0].outfit += m; q[0].lifts += 1;
+        }
+      }
+      if q[0].barge_cargo[b] <= 1.0 {
+        q[0].outfit += q[0].barge_cargo[b]; q[0].barge_cargo[b] = 0.0;
+        q[0].barge_stage[b] = CS_B_BACK; q[0].barge_left[b] = cs_barge_ticks(run, wx, 0.0); q[0].barge_trip[b] = q[0].barge_left[b];
+        if q[0].outfit >= run[0].led.topsides - 1.0 { q[0].outfit = run[0].led.topsides; cs_event(run, record, t, CS_EV_OUTFIT, b, f64(q[0].lifts)); }
+      }
+    } else if s == CS_B_BACK {
+      q[0].barge_left[b] -= 1;
+      if q[0].barge_left[b] <= 0 { q[0].barge_stage[b] = CS_B_IDLE; }
+    }
+  }
+  return held;
+}
+// The finished hull as a tow: a box at its draft now, its deck the full height over the keel.
+cs_hull_box :: (run: [] CsRun, mass: f64) -> AfloatHull {
+  sh := run[0].sh;
+  return AfloatHull.{length = sh.l, beam = sh.b, draft = mass / (AFLOAT_RHO * sh.l * sh.b), height = hull_hi(sh.deck, sh.hull), mass = mass};
+}
+// The tugs an ocean tow of the finished hull needs: enough to hold it in a 5 m sea, a 20 m/s wind
+// and half a metre a second of current (the towing standards' holding case).
+cs_ocean_tugs :: (run: [] CsRun) -> int {
+  led := run[0].led;
+  box := cs_hull_box(run, led.mass - led.ballast + f64(run[0].units) * CS_TOW_BALLAST);
+  k := afloat_wave_number(TAU_D / afloat_peak_period(CS_OCEAN_HOLD_HS), 1000.0);
+  one := AfloatTugs.{lead = 1, pull = CS_OCEAN_TUG_T * 9810.0, free_speed = 7.0};
+  return cast(int) floor(afloat_holding_force(box, CS_OCEAN_HOLD_HS, k, CS_OCEAN_HOLD_WIND, CS_OCEAN_HOLD_CURRENT) / afloat_tug_pull(one, 0.0, CS_OCEAN_HOLD_HS)) + 1;
+}
+// Once a day while the hull is being built up: how it floats now, and the heel the design storm's
+// wind would give it at the height it has reached. A hull with too little GM fails the run.
+cs_watch :: (run: [] CsRun, q: [] CsProc) {
+  rects: [CS_MAX_UNITS * 4] f64;
+  h := cs_hull(run, q, q[0].tick, rects[..]);
+  gm := fmin(h.st.gm_t, h.st.gm_l);
+  if q[0].gm_low == 0.0 || gm < q[0].gm_low { q[0].gm_low = gm; }
+  w := cs_wind(run, h, cs_top(run, q), CS_STORM_WIND);
+  if w.heel > q[0].heel_high { q[0].heel_high = w.heel; }
+  if h.st.state != AFLOAT_OK || gm < CS_GM_MIN { q[0].failed = CS_FAIL_HULL; q[0].fail_id = -1; }
+}
+// Advances the process one tick. `record` is true on the run itself; a replay from a checkpoint
+// passes false, reads each tow from the tables and writes no event, and reaches the same state.
+cs_tick :: (run: [] CsRun, q: [] CsProc, record: bool) {
+  if q[0].phase == CS_PH_DONE || q[0].failed != 0 { q[0].tick += 1; return; }
+  p := run[0].p; led := run[0].led; t := q[0].tick; day := f64(t) * CS_TICK_D;
+  wx := cs_weather(run, day);
+  standdown := wx.storm;
+  before := cs_standdown(run, day - CS_TICK_D);
+  if standdown != 0 && before == 0 {
+    q[0].standdowns += 1; if standdown == 2 { q[0].hurricanes += 1; }
+    cs_event(run, record, t, CS_EV_WARN, standdown, wx.storm_peak);
+  }
+  if standdown == 0 && before != 0 { cs_event(run, record, t, CS_EV_CLEAR, before, day); }
+  if record { for i: 0..<run[0].storms { s := run[0].storm[i]; if s.peak >= day && s.peak < day + CS_TICK_D { cs_event(run, record, t, CS_EV_STORM, s.kind, s.hs); } } }
+  core := cs_storm_core(run, day);
+  held := false;
+  if q[0].phase == CS_PH_BUILD {
+    left := cs_yard(run, q, record, standdown, core);
+    cs_basin(run, q, record, standdown);
+    if cs_sail(run, q, record, standdown) { held = true; }
+    if cs_joins(run, q, record, standdown, wx) { held = true; }
+    if cs_sea_concrete(run, q, record, standdown, wx, left) { held = true; }
+    if cs_outfit(run, q, record, standdown, wx) { held = true; }
+    if t % CS_TICKS == 0 && q[0].fast_pieces > 0 && (q[0].upper > 0.0 || q[0].outfit > 0.0) { cs_watch(run, q); }
+    landed := q[0].outfit >= led.topsides || run[0].modules == 0;
+    if (landed || q[0].outfit >= 0.5 * led.topsides) && q[0].liquids < led.liquids && standdown == 0 { q[0].liquids = fmin(led.liquids, q[0].liquids + CS_LIQUID_RATE * CS_TICK_D); }
+    if q[0].done_units == run[0].units && q[0].lining >= led.lining && q[0].upper >= led.upper_concrete && landed && q[0].liquids >= led.liquids {
+      if p.ocean_nm > 0.0 { q[0].phase = CS_PH_OCEAN; cs_event(run, record, t, CS_EV_SAIL, 0, f64(run[0].ocean_tugs)); } else { q[0].phase = CS_PH_BALLAST; }
+    }
+  } else if q[0].phase == CS_PH_OCEAN {
+    hs := wx.hs * CS_OCEAN_SEA;
+    q[0].ocean_ticks += 1;
+    if hs > CS_OCEAN_STOP_HS { held = true; }
+    else {
+      tugs := AfloatTugs.{lead = run[0].ocean_tugs, pull = CS_OCEAN_TUG_T * 9810.0, free_speed = 7.0};
+      k := afloat_wave_number(TAU_D / afloat_peak_period(hs), 1000.0);
+      mass := led.mass - led.ballast + q[0].ballast;
+      q[0].ocean += afloat_tow_speed(cs_hull_box(run, mass), tugs, hs, k, wx.wind, 0.0) * CS_TICK_S / 1852.0;
+    }
+    if q[0].ocean >= p.ocean_nm { q[0].ocean = p.ocean_nm; q[0].phase = CS_PH_BALLAST; cs_event(run, record, t, CS_EV_LANDFALL, 0, f64(q[0].ocean_ticks) * CS_TICK_D); }
+  } else if q[0].phase == CS_PH_BALLAST {
+    step := CS_BALLAST_RATE * CS_TICK_D;
+    if abs(led.ballast - q[0].ballast) <= step {
+      q[0].ballast = led.ballast; q[0].phase = CS_PH_COMMISSION; q[0].left = CS_COMMISSION_DAYS;
+      cs_event(run, record, t, CS_EV_BALLAST, 0, led.draft);
+    } else { q[0].ballast += ifx led.ballast > q[0].ballast then step else -step; }
+  } else if q[0].phase == CS_PH_COMMISSION {
+    q[0].left -= CS_TICK_D;
+    if q[0].left <= 1e-9 { q[0].phase = CS_PH_DONE; q[0].done_tick = t + 1; cs_event(run, record, t, CS_EV_DONE, 0, f64(t + 1) * CS_TICK_D); }
+  }
+  if held { q[0].weather_ticks += 1; }
+  if q[0].failed != 0 { cs_event(run, record, t, CS_EV_FAILED, q[0].fail_id, f64(q[0].failed)); }
+  q[0].tick += 1;
+}
+
+// ---------------------------------------------------------------- a run
+cs_start :: (run: [] CsRun, q: [] CsProc) {
+  s: CsProc;
+  for c: 0..<CS_MAX_CELLS { s.cell_unit[c] = -1; }
+  for c: 0..<CS_MAX_CREWS { s.crew_piece[c] = -1; }
+  s.form_left = -1.0; s.tug_delayed = -1; s.done_tick = -1;
+  q[0] = s;
+}
+// The upper structure's centre over the keel, from the ledger: the whole hull's moment less every
+// other part's.
+cs_upper_kg :: (sh: HullShape, led: HullLedger) -> f64 {
+  if led.upper_mass <= 0 { return sh.hull; }
+  clear := hull_clear(sh);
+  rest := HULL_CONCRETE * (led.bottom * sh.bottom / 2.0 + led.top * (sh.hull - sh.top / 2.0) + led.walls * (sh.bottom + clear / 2.0))
+        + led.topsides * (hull_hi(sh.deck, sh.hull) + sh.topsides_cg) + led.liquids * sh.liquids_kg + led.ballast * (sh.bottom + led.ballast_depth / 2.0);
+  return (led.kg * led.mass - rest) / led.upper_mass;
+}
+cs_totals :: (run: [] CsRun) {
+  o: CsTotals; q := run[0].end; led := run[0].led; p := run[0].p;
+  o.failed = q.failed; o.fail_id = q.fail_id;
+  o.days = f64(ifx q.done_tick >= 0 then q.done_tick else q.tick) * CS_TICK_D;
+  o.concrete = q.poured_yard + q.lining + q.upper;
+  o.placement_days = cs_placement_days(led.concrete, p.pour_rate);
+  o.tows = q.tows; o.sea_joins = ifx q.fast_pieces > 0 then q.fast_pieces - 1 else 0;
+  o.weather_days = f64(q.weather_ticks) * CS_TICK_D;
+  o.standdowns = q.standdowns; o.hurricanes = q.hurricanes; o.reworks = q.reworks; o.aborts = q.aborts;
+  o.lifts = q.lifts; o.barge_trips = q.barge_trips; o.form_lifts = q.form_lifts; o.hull_gm_least = q.gm_low; o.wind_heel = q.heel_high;
+  o.line_mbl = CS_LINE_MBL * p.tug_pull * 9810.0;
+  o.tow_keel = 1.0e9; o.tow_bank = 1.0e9; o.tow_clear = 1.0e9; o.gm_least = 1.0e9; o.bend_ok = true;
+  dry := cs_box_statics(run[0].unit.l, run[0].unit.b, cs_unit_load(run, 0.0, false));
+  o.gm_least = fmin(dry.gm_t, dry.gm_l);
+  for i: 0..<run[0].pieces {
+    a := run[0].pc[i];
+    if a.t_ready >= 0 { o.gm_least = fmin(o.gm_least, fmin(a.gm_t, a.gm_l)); }
+    if a.t_depart < 0 { continue; }
+    o.tow_tension = fmax(o.tow_tension, a.tow_tension); o.tow_peak = fmax(o.tow_peak, a.tow_peak);
+    o.tow_keel = fmin(o.tow_keel, a.tow_keel); o.tow_bank = fmin(o.tow_bank, a.tow_bank); o.tow_clear = fmin(o.tow_clear, a.tow_clear);
+    if cs_reached(a.t_fast, q.tick) { o.closed_day = fmax(o.closed_day, f64(a.t_fast) * CS_TICK_D); }
+  }
+  for i: 1..<q.fast_pieces + 1 {
+    s := run[0].st[i];
+    o.gm_least = fmin(o.gm_least, fmin(s.gm_t, s.gm_l));
+    o.bend_v = fmax(o.bend_v, s.bend_v); o.bend_h = fmax(o.bend_h, s.bend_h);
+  }
+  o.bend_ok = o.bend_v <= CS_PT && o.bend_h <= CS_PT;
+  if q.fast_pieces > 0 {
+    o.lines = run[0].st[q.fast_pieces].lines;
+    rects: [CS_MAX_UNITS * 4] f64; one: [1] CsProc; one[0] = q;
+    h := cs_hull(run, one[..], q.tick, rects[..]);
+    o.mass = h.load.mass; o.draft = h.st.draft; o.gm_t = h.st.gm_t; o.gm_l = h.st.gm_l;
+  }
+  o.ocean_tugs = ifx p.ocean_nm > 0 then run[0].ocean_tugs else 0; o.ocean_days = f64(q.ocean_ticks) * CS_TICK_D;
+  run[0].total = o;
+}
+// Runs the build for `p` into `run`, start to finish. The same parameters give the same bits.
+cs_run :: (p: CsParams, run: [] CsRun) { cs_run_on(p, cs_route_gulf(), run); }
+// The same over a route of your own.
+cs_run_on :: (p: CsParams, route: CsRoute, run: [] CsRun) {
+  run[0].p = p; run[0].sh = p.shape;
+  run[0].led = hull_ledger(p.shape); run[0].unit = hull_caisson(p.shape);
+  run[0].upper_kg = cs_upper_kg(p.shape, run[0].led);
+  run[0].bay = cs_bay_plan(p.shape, run[0].led, hull_units(p.shape));
+  run[0].route = route;
+  for i: 0..<64 { run[0].wx_at[i] = 0; }
+  run[0].events = 0; run[0].checks = 0; run[0].every = 64; run[0].modules = 0; run[0].pieces = 0; run[0].units = 0;
+  for i: 0..<CS_MAX_UNITS + 1 { s: CsStage; run[0].st[i] = s; }
+  q: [1] CsProc; cs_start(run, q[..]);
+  if hull_units(p.shape) > CS_MAX_UNITS || hull_units(p.shape) < 1 {
+    q[0].failed = CS_FAIL_TOO_MANY; run[0].end = q[0]; run[0].chk[0] = q[0]; run[0].checks = 1; cs_totals(run); return;
+  }
+  cs_plan(run); cs_manifest(run); cs_storms(run);
+  run[0].ocean_tugs = cs_ocean_tugs(run);
+  every := 64; n := 0;
+  while q[0].phase != CS_PH_DONE && q[0].failed == 0 {
+    if q[0].tick >= CS_MAX_TICKS { q[0].failed = CS_FAIL_TIME; break; }
+    if q[0].tick % every == 0 {
+      if n == CS_CHECKS {
+        for i: 0..<CS_CHECKS / 2 { run[0].chk[i] = run[0].chk[i * 2]; }
+        n = CS_CHECKS / 2; every *= 2;
+      }
+      if q[0].tick % every == 0 { run[0].chk[n] = q[0]; n += 1; }
+    }
+    cs_tick(run, q[..], true);
+  }
+  run[0].end = q[0]; run[0].checks = n; run[0].every = every;
+  // the events in the order they happen (an arrival is written when its tow leaves)
+  for i: 1..<run[0].events {
+    e := run[0].ev[i]; j := i;
+    while j > 0 && run[0].ev[j - 1].tick > e.tick { run[0].ev[j] = run[0].ev[j - 1]; j -= 1; }
+    run[0].ev[j] = e;
+  }
+  cs_totals(run);
+}
+// The process at the start of the tick `day` falls in: the nearest checkpoint before it, played
+// forward. Any day in any order gives what playing from the start gives.
+cs_seek :: (run: [] CsRun, day: f64) -> CsProc {
+  k := cast(int) floor(fmax(day, 0.0) * f64(CS_TICKS));
+  if k >= run[0].end.tick || run[0].checks < 1 { return run[0].end; }
+  c := k / run[0].every; if c >= run[0].checks { c = run[0].checks - 1; }
+  q: [1] CsProc; q[0] = run[0].chk[c];
+  while q[0].tick < k { cs_tick(run, q[..], false); }
+  return q[0];
+}
+
+// ---------------------------------------------------------------- checks
+cs_same :: (a: CsProc, b: CsProc) -> bool {
+  if a.tick != b.tick || a.phase != b.phase || a.failed != b.failed || a.next_unit != b.next_unit || a.afloat != b.afloat { return false; }
+  if a.form != b.form || a.form_left != b.form_left || a.tow != b.tow || a.fleet_free != b.fleet_free || a.tug_delayed != b.tug_delayed { return false; }
+  for c: 0..<CS_MAX_CELLS { if a.cell_unit[c] != b.cell_unit[c] || a.cell_stage[c] != b.cell_stage[c] || a.cell_left[c] != b.cell_left[c] || a.cell_vol[c] != b.cell_vol[c] || a.cell_pause[c] != b.cell_pause[c] { return false; } }
+  for c: 0..<CS_MAX_CREWS { if a.crew_piece[c] != b.crew_piece[c] || a.crew_stage[c] != b.crew_stage[c] || a.crew_left[c] != b.crew_left[c] || a.crew_hurt[c] != b.crew_hurt[c] { return false; } }
+  for c: 0..<CS_BARGES { if a.barge_stage[c] != b.barge_stage[c] || a.barge_left[c] != b.barge_left[c] || a.barge_cargo[c] != b.barge_cargo[c] { return false; } }
+  if a.fast_pieces != b.fast_pieces || a.fast_units != b.fast_units || a.done_units != b.done_units || a.fast_edge != b.fast_edge { return false; }
+  for i: 0..<CS_MAX_UNITS { if a.up[i] != b.up[i] { return false; } }
+  if a.form_lifts != b.form_lifts || a.gm_low != b.gm_low || a.heel_high != b.heel_high || a.hurricanes != b.hurricanes || a.barge_trips != b.barge_trips || a.ocean_ticks != b.ocean_ticks { return false; }
+  if a.poured_yard != b.poured_yard || a.lining != b.lining || a.upper != b.upper || a.outfit != b.outfit || a.liquids != b.liquids || a.ballast != b.ballast || a.ocean != b.ocean || a.left != b.left { return false; }
+  return a.weather_ticks == b.weather_ticks && a.standdowns == b.standdowns && a.tows == b.tows && a.lifts == b.lifts && a.aborts == b.aborts && a.reworks == b.reworks && a.done_tick == b.done_tick;
+}
+#test "the same seed gives the same run bit for bit, and any day sought gives what play gives" #steps 6000000000 {
+  a: [1] CsRun; b: [1] CsRun;
+  p := cs_params();
+  cs_run(p, a[..]); cs_run(p, b[..]);
+  #assert a[0].total.failed == 0 && a[0].end.phase == CS_PH_DONE;
+  #assert cs_same(a[0].end, b[0].end) && a[0].events == b[0].events && a[0].total.days == b[0].total.days;
+  for i: 0..<a[0].events { #assert a[0].ev[i].tick == b[0].ev[i].tick && a[0].ev[i].kind == b[0].ev[i].kind && a[0].ev[i].id == b[0].ev[i].id && a[0].ev[i].value == b[0].ev[i].value; }
+  for i: 0..<a[0].pieces { #assert a[0].pc[i].t_fast == b[0].pc[i].t_fast && a[0].pc[i].tow_peak == b[0].pc[i].tow_peak && a[0].pc[i].tow_time == b[0].pc[i].tow_time; }
+  for i: 0..<a[0].pieces * CS_TRACK * CS_TRACK_F { #assert a[0].track[i] == b[0].track[i]; }
+  // the events are in the order they happen
+  for i: 1..<a[0].events { #assert a[0].ev[i].tick >= a[0].ev[i - 1].tick; }
+  // played from the first day with nothing recorded, it passes through every state a seek gives
+  days := [9] f64.[0.3, 96.5, 250.6, 541.875, 700.125, 1176.7, 1297.9, 1440.0, 1505.5];
+  q: [1] CsProc; q[0] = a[0].chk[0];
+  for i: 0..<9 {
+    k := cast(int) floor(days[i] * f64(CS_TICKS));
+    while q[0].tick < k { cs_tick(a[..], q[..], false); }
+    #assert cs_same(cs_seek(a[..], days[i]), q[0]);
+  }
+  while q[0].tick < a[0].end.tick { cs_tick(a[..], q[..], false); }
+  #assert cs_same(q[0], a[0].end);
+  // and in any order
+  back := cs_seek(a[..], 700.125); fore := cs_seek(a[..], 250.6); again := cs_seek(a[..], 700.125);
+  #assert cs_same(back, again) && fore.tick == 2004 && cs_same(cs_seek(a[..], 1.0e6), a[0].end);
+  // another seed is another run
+  p.seed = 2; cs_run(p, b[..]);
+  #assert b[0].total.failed == 0 && b[0].total.days != a[0].total.days && !cs_same(a[0].end, b[0].end);
+}
+#test "concrete and mass are conserved from the pour to the hull, which ends as the ledger's" #steps 3000000000 {
+  r: [1] CsRun; p := cs_params(); cs_run(p, r[..]);
+  led := r[0].led; sh := r[0].sh; t := r[0].total; q := r[0].end;
+  #assert t.failed == 0;
+  // every cubic metre: the caissons from the yard, the lining and the upper structure at sea
+  #assert abs(q.poured_yard - led.caissons) < 1e-3 && abs(q.lining - led.lining) < 1e-3 && abs(q.upper - led.upper_concrete) < 1e-3;
+  #assert abs(t.concrete - led.concrete) < 1e-3;                           // 3,826,744 m^3
+  bays := 0.0;
+  for i: 0..<r[0].units { bays += q.up[i]; #assert abs(q.up[i] - r[0].bay.share) < 1e-6; }
+  #assert abs(bays - led.upper_concrete) < 1e-3;
+  b := r[0].bay;
+  #assert abs(b.a + b.b + b.c - b.share) < 1e-9 && abs(b.column_h + b.girder + b.slab - hull_upper(sh)) < 1e-9;
+  // a finished bay stands to the deck with its centre where the ledger puts the upper structure's
+  done := cs_bay(r[..], b.share);
+  #assert done.stage == CS_BAY_DONE && abs(done.top - sh.deck) < 1e-9 && abs(done.kg - r[0].upper_kg) < 1e-6;
+  // everything aboard, and the hull afloat as the world floats it: 15.375 Mt at 25 m, level
+  #assert abs(q.outfit - led.topsides) < 1.0 && abs(q.liquids - led.liquids) < 1.0 && abs(q.ballast - led.ballast) < 1.0;
+  #assert abs(t.mass - led.mass) < 1.0;
+  #assert abs(t.draft - led.draft) < 1e-3;                                 // the plan's rounded corners are 2 m^2 of 600,000
+  #assert abs(t.gm_t / led.gm_t - 1.0) < 1e-4 && abs(t.gm_l / led.gm_l - 1.0) < 1e-4;
+  rects: [CS_MAX_UNITS * 4] f64; one: [1] CsProc; one[0] = q;
+  h := cs_hull(r[..], one[..], q.tick, rects[..]);
+  // level: the city is not centred on the deck, and an eighth of the ballast sits off centre to answer it
+  #assert h.st.state == AFLOAT_OK && h.st.heel == 0.0 && h.st.trim == 0.0 && h.shift > 0.0 && h.shift < 0.15 * led.ballast;
+  #assert abs(h.raw_heel) < 0.005 && abs(h.raw_trim) < 0.005;
+  #assert abs(sh.deck - h.st.draft - led.deck_height) < 1e-3;              // the deck 118 m over the water
+  // on the way: concrete only grows, never faster than the plant places it, and the hull's mass
+  // is what has been put in it
+  last := 0.0;
+  for d: 0..<31 {
+    day := 50.0 * f64(d); s := cs_seek(r[..], day);
+    placed := s.poured_yard + s.lining + s.upper;
+    #assert placed >= last - 1e-6 && placed <= p.pour_rate * (f64(s.tick) * CS_TICK_D) + 1e-6;
+    last = placed;
+    if s.fast_pieces > 0 {
+      one[0] = s; g := cs_hull(r[..], one[..], s.tick, rects[..]);
+      parts := f64(s.fast_units) * r[0].unit.mass + s.ballast + (s.lining + s.upper) * HULL_CONCRETE + s.outfit + s.liquids;
+      #assert abs(g.load.mass - parts) < 1.0;
+      #assert abs(g.st.area * g.st.draft * AFLOAT_RHO - g.load.mass) < 1e-3 * g.load.mass;
+      #assert g.st.state == AFLOAT_OK && g.st.draft < sh.hull;
+    }
+  }
+}
+#test "every tow stays in the channel with water under it and its lines whole" #steps 3000000000 {
+  r: [1] CsRun; p := cs_params(); cs_run(p, r[..]);
+  t := r[0].total;
+  #assert t.failed == 0 && t.tows == r[0].pieces && r[0].pieces == 60;
+  mbl := CS_LINE_MBL * p.tug_pull * 9810.0;
+  for i: 0..<r[0].pieces {
+    a := r[0].pc[i];
+    #assert a.tow_state == AFLOAT_TOW_OK && a.tugs >= 2;
+    #assert a.tow_keel > 1.0 && a.tow_bank > 0.0 && a.tow_clear > 0.0;
+    #assert a.tow_tension > 0.0 && a.tow_tension <= a.tow_peak && a.tow_peak < mbl;
+    #assert a.t_arrive > a.t_depart && a.t_fast > a.t_arrive && a.t_done >= a.t_fast;
+    // its track runs from the yard to the stand-by point and never leaves a channel
+    base := i * CS_TRACK * CS_TRACK_F; end := base + (CS_TRACK - 1) * CS_TRACK_F;
+    // (the open Gulf's wind and current set a tow a few hundred metres off its line by the end)
+    #assert abs(f64(r[0].track[end]) - r[0].route.hold_x) < 600.0 && abs(f64(r[0].track[end + 1]) - r[0].route.hold_z) < 600.0;
+    #assert abs(f64(r[0].track[base]) - r[0].route.leg[0].ax) < 500.0 && abs(f64(r[0].track[base + 1]) - r[0].route.leg[0].az) < 500.0;
+  }
+  for i: 0..<r[0].route.legs {
+    g := r[0].route.leg[i];
+    #assert r[0].pc[0].draft < g.depth;
+    if g.width > 0 { #assert r[0].pc[0].b < g.width; }
+  }
+  #assert t.tow_peak < t.line_mbl && t.tow_keel > 4.0 && t.tow_bank > 30.0;
+  // the route is the chart's: the yard at Ingleside, 40 nautical miles from the jetties to the berth
+  m := r[0].route.leg[r[0].route.mouth];
+  #assert abs(sqrt(m.ax * m.ax + m.az * m.az) / 1852.0 - 40.0) < 0.5;
+  yard := cs_lat_lon(r[0].route.leg[0].ax, r[0].route.leg[0].az); jetties := cs_lat_lon(m.ax, m.az);
+  #assert abs(yard[0] - CS_YARD_AT[0]) < 0.02 && abs(yard[1] - CS_YARD_AT[1]) < 0.02;
+  #assert abs(jetties[0] - CS_JETTIES_AT[0]) < 0.02 && abs(jetties[1] - CS_JETTIES_AT[1]) < 0.02;
+  // a tow that sails into a hurricane with the weather limit ignored does not come through: it is
+  // blown onto the bank, parts a line, or is days late; and at least one line parts
+  normal := r[0].pc[3].tow_time; parted := 0; storms := 0;
+  for i: 0..<r[0].storms {
+    s := r[0].storm[i];
+    if s.kind != 2 { continue; }
+    storms += 1;
+    for back: 1..<5 {
+      cs_tow(r[..], 3, cast(int) floor((s.peak - 0.25 * f64(back)) * f64(CS_TICKS)));
+      a := r[0].pc[3];
+      #assert a.tow_state != AFLOAT_TOW_OK || a.tow_time > 2.0 * normal;
+      if a.tow_state == AFLOAT_TOW_PARTED { parted += 1; #assert a.tow_peak > mbl; }
+    }
+  }
+  #assert storms >= 2 && parted >= 1;
+}
+#test "everything afloat is stable at every stage; a caisson with slack ballast is not" #steps 3000000000 {
+  r: [1] CsRun; p := cs_params(); cs_run(p, r[..]);
+  t := r[0].total; u := r[0].unit;
+  #assert t.failed == 0 && t.gm_least >= CS_GM_MIN && t.hull_gm_least >= CS_GM_WORK;
+  // the caisson as it floats out, and as it tows: hull.coax's figures
+  dry := cs_box_statics(u.l, u.b, cs_unit_load(r[..], 0.0, false));
+  tow := cs_box_statics(u.l, u.b, cs_unit_load(r[..], CS_TOW_BALLAST, false));
+  f := hull_unit_float(u, CS_TOW_BALLAST, CS_TOW_BALLAST_KG);
+  #assert dry.state == AFLOAT_OK && tow.state == AFLOAT_OK && abs(tow.draft - f.draft) < 1e-9 && abs(tow.gm_t - f.gm) < 1e-9;
+  #assert abs(tow.draft - 11.50) < 0.01 && abs(tow.gm_t - 2.48) < 0.01 && tow.draft < CS_BASIN_DEPTH;
+  #assert abs(tow.area * tow.draft * AFLOAT_RHO - (u.mass + CS_TOW_BALLAST)) < 1e-3;
+  // the same ballast left free to run across its cells capsizes it: the tanks are pressed up
+  slack := cs_box_statics(u.l, u.b, cs_unit_load(r[..], CS_TOW_BALLAST, true));
+  #assert slack.state == AFLOAT_CAPSIZES;
+  // each piece as towed, and the hull after each piece is made fast
+  for i: 0..<r[0].pieces { a := r[0].pc[i]; #assert a.gm_t >= CS_GM_MIN && a.gm_l >= CS_GM_MIN && a.draft < CS_BASIN_DEPTH; }
+  for i: 1..<r[0].pieces + 1 { s := r[0].st[i]; #assert s.gm_t >= CS_GM_MIN && s.gm_l >= CS_GM_MIN && s.draft < r[0].sh.hull && s.lines >= 4; }
+  #assert r[0].st[r[0].pieces].upper_ok;
+  // the upper structure: the wind is stronger at its height, its push grows as it rises, and the
+  // design storm's wind heels the half-built hull by less than a degree
+  #assert abs(cs_wind_at(10.0, 118.0) / 10.0 - 1.312) < 0.01 && cs_wind_at(10.0, 5.0) == 10.0;
+  rects: [CS_MAX_UNITS * 4] f64; one: [1] CsProc; one[0] = cs_seek(r[..], 900.0);
+  h := cs_hull(r[..], one[..], one[0].tick, rects[..]);
+  low := cs_wind(r[..], h, r[0].sh.hull, CS_STORM_WIND); high := cs_wind(r[..], h, r[0].sh.deck, CS_STORM_WIND);
+  #assert high.force > 4.0 * low.force && high.heel > low.heel && t.wind_heel > 0.0 && t.wind_heel < 0.0175;
+  #assert cs_top(r[..], one[..]) == r[0].sh.deck;      // the first bays are at the deck by then
+  // no bay climbs faster than its forms, and the city never lands on a bay before its deck
+  for d: 0..<30 {
+    a := cs_seek(r[..], 50.0 * f64(d)); b := cs_seek(r[..], 50.0 * f64(d) + 1.0);
+    for i: 0..<r[0].units {
+      #assert b.up[i] >= a.up[i] && i == 0 || a.up[i] <= a.up[i - 1];
+      rise := cs_bay(r[..], b.up[i]).column - cs_bay(r[..], a.up[i]).column;
+      #assert rise <= CS_UP_CLIMB + 1e-6;
+    }
+    one[0] = a;
+    #assert a.outfit <= cs_outfit_open(r[..], one[..]) + 1.0;
+  }
+  #assert t.form_lifts == r[0].units * cast(int) floor(r[0].bay.column_h / CS_UP_LIFT);
+}
+#test "the finish follows the concrete: 804 placement days is the feasibility note's hull, 1,276 this one's" #steps 20000000000 {
+  r: [1] CsRun; p := cs_params(); cs_run(p, r[..]);
+  t := r[0].total;
+  // docs/research/ocean/slab-image-feasibility.md: 2.412 million m^3 at 3,000 m^3 a day
+  #assert abs(cs_placement_days(2.412e6, 3000.0) - 804.0) < 1e-9;
+  // the ledger's hull has 3.83 million: no run can beat its placement days, and the default one
+  // adds under a fifth for the weather, the joints, ballasting and commissioning
+  #assert abs(t.placement_days - r[0].led.concrete / 3000.0) < 1e-9 && abs(t.placement_days - 1275.58) < 0.01;
+  #assert t.days > t.placement_days && t.days < 1.2 * t.placement_days;
+  #assert t.closed_day < t.days && t.weather_days > 100.0 && t.weather_days < 600.0;
+  // the default run meets a hurricane and stands down for it
+  #assert t.hurricanes >= 1 && t.standdowns >= t.hurricanes;
+  warned := 0;
+  for i: 0..<r[0].events { if r[0].ev[i].kind == CS_EV_WARN && r[0].ev[i].id == 2 { warned += 1; } }
+  #assert warned == t.hurricanes;
+  base := t.days;
+  // more casting positions and a higher placing rate each bring the finish in, never push it out
+  last := 1.0e9;
+  for i: 0..<4 {
+    p = cs_params(); p.positions = 1 + 2 * i; cs_run(p, r[..]);
+    #assert r[0].total.failed == 0 && r[0].total.days < last + 30.0;
+    if i < 3 { #assert r[0].total.days < last - 100.0; }
+    last = r[0].total.days;
+  }
+  last = 1.0e9;
+  for i: 0..<3 {
+    p = cs_params(); p.pour_rate = 1000.0 + 2500.0 * f64(i); cs_run(p, r[..]);
+    #assert r[0].total.failed == 0 && r[0].total.days < last - 30.0 && r[0].total.days > r[0].total.placement_days;
+    last = r[0].total.days;
+  }
+  p = cs_params(); p.positions = 8; p.pour_rate = 6000.0; cs_run(p, r[..]);
+  #assert r[0].total.failed == 0 && r[0].total.days < 0.75 * base;
+  // the start month and the seed move it too
+  p = cs_params(); p.start_month = 6; cs_run(p, r[..]);
+  #assert r[0].total.failed == 0 && r[0].total.days != base && abs(r[0].total.days - base) < 120.0;
+  p = cs_params(); p.seed = 7; cs_run(p, r[..]);
+  #assert r[0].total.failed == 0 && r[0].total.days != base && abs(r[0].total.days - base) < 120.0;
+}
+#test "pairs and compact growth keep the hull's bending under the joints' prestress; row by row does not" #steps 12000000000 {
+  r: [1] CsRun;
+  tows := [4] int.[120, 120, 60, 30];
+  for order: 0..<4 {
+    p := cs_params(); p.order = order; cs_run(p, r[..]);
+    t := r[0].total;
+    #assert t.failed == 0 && t.tows == tows[order] && t.sea_joins == tows[order] - 1;
+    // every piece but the first is joined to one already fast
+    for i: 1..<r[0].pieces {
+      found := false;
+      for j: 0..<r[0].pieces { if j != i && r[0].pc[j].t_fast < r[0].pc[i].t_fast && cs_touch(r[0].pc[i], r[0].pc[j]) { found = true; } }
+      #assert found;
+    }
+    if order == CS_ORDER_ROWS { #assert !t.bend_ok && t.bend_h > 1.5 * CS_PT; }
+    else { #assert t.bend_ok && t.bend_h < 0.5 * CS_PT && t.bend_v < CS_PT; }
+    // whatever the order, the same hull
+    #assert abs(t.mass - r[0].led.mass) < 1.0 && abs(t.concrete - r[0].led.concrete) < 1e-3;
+  }
+}
+#test "a join begun above its sea limit does not complete; an ocean tow adds its days; a hull of too many caissons is refused" #steps 12000000000 {
+  r: [1] CsRun; p := cs_params(); cs_run(p, r[..]);
+  #assert r[0].total.aborts == 0;
+  base := r[0].total.days;
+  for i: 1..<r[0].pieces { a := r[0].pc[i]; #assert a.join_hs <= CS_JOIN_HS && a.join_rel <= CS_JOIN_REL && a.join_fender > 0.0 && a.join_fender <= CS_FENDER_FORCE; }
+  // crews sent out in any sea: the joints opened in too much are broken off and begun again, and
+  // every joint that is made was still made inside the limit
+  p.ignore_weather = 2; cs_run(p, r[..]);
+  #assert r[0].total.failed == 0 && r[0].total.aborts > 20;
+  aborts := 0;
+  for i: 0..<r[0].events { e := r[0].ev[i]; if e.kind == CS_EV_ABORT { aborts += 1; } }
+  #assert aborts == r[0].total.aborts;
+  for i: 0..<r[0].pieces { a := r[0].pc[i]; #assert a.join_hs <= CS_JOIN_HS && a.join_rel <= CS_JOIN_REL && a.t_fast > a.t_join; }
+  // the finished hull towed 1,900 nautical miles: the tugs that hold it, and the weeks it takes
+  p = cs_params(); p.ocean_nm = 1900.0; cs_run(p, r[..]);
+  t := r[0].total;
+  #assert t.failed == 0 && t.ocean_tugs >= 10 && t.ocean_tugs <= 60 && t.ocean_days > 10.0 && t.ocean_days < 60.0;
+  #assert abs(t.days - base - t.ocean_days) < 2.0 && abs(t.draft - r[0].led.draft) < 1e-3;
+  // a hull cut into more caissons than the tables hold is refused, not half built
+  p = cs_params(); p.shape.unit_l = 25.0; cs_run(p, r[..]);
+  #assert r[0].total.failed == CS_FAIL_TOO_MANY && r[0].end.tick == 0;
+}
