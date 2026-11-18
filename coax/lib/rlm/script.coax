@@ -70,7 +70,7 @@ B_ADD :: 1; B_SUB :: 2; B_MUL :: 3; B_DIV :: 4; B_MOD :: 5;
 B_EQ :: 6; B_NE :: 7; B_LT :: 8; B_LE :: 9; B_GT :: 10; B_GE :: 11; B_IN :: 12; B_NOTIN :: 13;
 
 // One node: children by index (-1 for none), siblings through next.
-RsNode :: struct { kind: int; a: int = -1; b: int = -1; c: int = -1; next: int = -1; s: string; s2: string; i: int; line: int; }
+RlmNode :: struct { kind: int; a: int = -1; b: int = -1; c: int = -1; next: int = -1; s: string; s2: string; i: int; line: int; }
 
 RS_INDENTS :: 64;
 
@@ -84,7 +84,7 @@ Rs :: struct {
   cells: [] RsVal; nc: int;
   lists: [] RsList; nl: int;
   toks: [] RsTok; nt: int; tp: int;
-  nodes: [] RsNode; nn: int;
+  nodes: [] RlmNode; nn: int;
   names: [] string; vals: [] RsVal; nv: int; frame: int;
   out: [] u8; no: int; out_total: int;
   marks: [RS_MARKS] int; nmarks: int;   // where each print call's text starts in out (run.coax shares a cut turn among them)
@@ -469,7 +469,7 @@ rs_expect_op :: (r: [] Rs, op: string) -> bool {
 rs_node :: (r: [] Rs, kind: int, line: int) -> int {
   if r[0].nn >= r[0].nodes.count { rs_fail(r, "the program is too long", "", ""); return -1; }
   id := r[0].nn; r[0].nn += 1;
-  r[0].nodes[id] = RsNode.{kind = kind, line = line};
+  r[0].nodes[id] = RlmNode.{kind = kind, line = line};
   return id;
 }
 

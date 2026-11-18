@@ -39,7 +39,7 @@ RtMem :: struct {
   namebuf: [1048576] u8; nnb: int;
   heap: [RT_HEAP] u8;
   cells: [RT_CELLS] RsVal; lists: [RT_LISTS] RsList;
-  toks: [RT_NODES] RsTok; nodes: [RT_NODES] RsNode;
+  toks: [RT_NODES] RsTok; nodes: [RT_NODES] RlmNode;
   vnames: [RT_NAMES] string; vals: [RT_NAMES] RsVal;
   memo: [RT_MEMO] string; memo_fail: [RT_MEMO] bool; pend: [RT_MEMO] string;
   out: [4194304] u8; trace: [16777216] u8; reply: [RLM_SLOTS * RLM_REPLY_MAX] u8;

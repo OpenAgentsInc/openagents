@@ -921,7 +921,7 @@ RC_MEMO :: 8192;
 RcMem :: struct {
   heap: [RC_HEAP] u8;
   cells: [RC_CELLS] RsVal; lists: [RC_LISTS] RsList;
-  toks: [RC_NODES] RsTok; nodes: [RC_NODES] RsNode;
+  toks: [RC_NODES] RsTok; nodes: [RC_NODES] RlmNode;
   vnames: [RC_NAMES] string; vals: [RC_NAMES] RsVal;
   memo: [RC_MEMO] string; memo_fail: [RC_MEMO] bool; pend: [RC_MEMO] string;
   out: [4194304] u8; trace: [16777216] u8; reply: [RLM_SLOTS * RLM_REPLY_MAX] u8;

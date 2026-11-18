@@ -82,7 +82,7 @@ RlmKid :: struct {
 RlmArenas :: struct {
   heap: [] u8;
   cells: [] RsVal; lists: [] RsList;
-  toks: [] RsTok; nodes: [] RsNode;
+  toks: [] RsTok; nodes: [] RlmNode;
   names: [] string; vals: [] RsVal;
   memo: [] string; memo_fail: [] bool; pend: [] string;
   out: [] u8; trace: [] u8; reply: [] u8;
@@ -752,7 +752,7 @@ RlmTestMem :: struct {
   none: [1] string;
   heap: [200000] u8;
   cells: [4000] RsVal; lists: [600] RsList;
-  toks: [3000] RsTok; nodes: [3000] RsNode;
+  toks: [3000] RsTok; nodes: [3000] RlmNode;
   names: [64] string; vals: [64] RsVal;
   memo: [64] string; memo_fail: [64] bool; pend: [64] string;
   out: [4096] u8; trace: [16384] u8; reply: [RLM_SLOTS * 2048] u8;
