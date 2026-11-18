@@ -25,8 +25,8 @@ WC_WALL :: 4;      // the sea walls, m
 WC_FLOOR :: 5;     // the bottom slab, m (the top slab is two thirds of it, as prime's)
 WC_DRAFT :: 6;     // the draft the ballast holds, m
 WC_PRICE :: 7;     // concrete in place, $ a cubic metre
-WC_YARDS :: 8;     // casting yards
-WC_POUR :: 9;      // each yard's pour, cubic metres a day
+WC_YARDS :: 8;     // casting positions in the yard
+WC_POUR :: 9;      // each concrete plant's pour, cubic metres a day
 WC_SHORE :: 10;    // nautical miles off the coast (kept as the place; see what_set)
 WC_WIND :: 11;     // m/s
 WC_MONTH :: 12;    // 1 to 12
@@ -70,9 +70,10 @@ what_control :: (i: int) -> WhatControl {
     low_why = "2 m is a harbour barge.", high_why = "60 m is past the top of the 50 m watertight hull."}; }
   if i == WC_PRICE { return WhatControl.{key = "price", name = "Concrete, in place", low = 100, high = 1000, step = 25, picture = 500, from = WHAT_OURS,
     low_why = "$100 buys the concrete alone, with no steel, forms or labor.", high_why = "$1,000 is heavily reinforced concrete placed at sea."}; }
-  if i == WC_YARDS { return WhatControl.{key = "yards", name = "Casting yards", low = 1, high = 8, step = 1, picture = 1, from = WHAT_OURS,
-    low_why = "One yard is what the timelapse shows.", high_why = "Eight at once is as far as this model goes."}; }
-  if i == WC_POUR { return WhatControl.{key = "pour", name = "Each yard pours", low = 1000, high = 6000, step = 250, picture = 3000, from = WHAT_SOURCE,
+  // The two the build simulation takes (metaverse/slab-build.coax CsParams: positions and pour_rate; its defaults are the picture's).
+  if i == WC_YARDS { return WhatControl.{key = "yards", name = "Casting positions in the yard", low = 1, high = 8, step = 1, picture = 6, from = WHAT_OURS,
+    low_why = "One position casts a caisson at a time.", high_why = "Eight at once is as far as the build simulation goes."}; }
+  if i == WC_POUR { return WhatControl.{key = "pour", name = "Each concrete plant pours", low = 1000, high = 6000, step = 250, picture = 3000, from = WHAT_SOURCE,
     low_why = "1,000 is one large building site's pour.", high_why = "6,000 is twice the feasibility study's rate."}; }
   if i == WC_SHORE { return WhatControl.{key = "shore", name = "Distance from shore", low = 0, high = 250, step = 0.5, picture = 2.3, from = WHAT_OURS, decimals = 1,
     low_why = "0 is the beach.", high_why = "250 is past the 200 mile line, on the high seas, where our chart ends."}; }
@@ -253,7 +254,6 @@ WhatFacts :: struct {
   caissons: int;
   // building it
   cost: f64;                // the concrete alone, $
-  pour_days: f64;
   // power
   surface: f64;             // the sea surface now, degrees C
   power: SimPower;
@@ -292,7 +292,6 @@ what_facts :: (w: WhatIf, c: Chart) -> WhatFacts {
   f.one_piece = !f.too_wide && !f.too_deep;
   f.caissons = hull_units(sh);
   f.cost = led.concrete * w.v[WC_PRICE];
-  f.pour_days = led.concrete / (w.v[WC_YARDS] * w.v[WC_POUR]);
   month := what_month(w);
   f.surface = sim_surface(f.sim, month);
   base: SimPlant;
@@ -357,7 +356,7 @@ what_words :: (l: [] WhatLine, i: int, v: f64) {
   c := what_control(i);
   if i == WC_WEIGHT { what_num(l, v, 1); what_put(l, " million tonnes"); }
   else if i == WC_PRICE { what_put(l, "$"); what_num(l, v, 0); what_put(l, " a cubic metre"); }
-  else if i == WC_YARDS { what_num(l, v, 0); what_put(l, ifx v == 1 then " yard" else " yards"); }
+  else if i == WC_YARDS { what_num(l, v, 0); what_put(l, ifx v == 1 then " position" else " positions"); }
   else if i == WC_POUR { what_num(l, v, 0); what_put(l, " cubic metres a day"); }
   else if i == WC_SHORE { what_num(l, v, ifx v < 20 then 1 else 0); what_put(l, " nautical miles"); }
   else if i == WC_WIND { what_num(l, v, 0); what_put(l, " metres a second"); }
@@ -558,8 +557,8 @@ what_test_chart :: (ws: [] Where, site: int) -> Chart { where_load(ws, site); re
   #assert abs(f.led.mass - prime.mass) < 1.0 && abs(f.led.concrete - prime.concrete) < 1e-6 && abs(f.led.ballast - prime.ballast) < 1.0;
   #assert !f.sunk && !f.aground && !f.capsizes && !f.ashore && abs(f.draft - 25) < 1e-9 && abs(f.deck - 118) < 1e-9;
   #assert f.caissons == 120 && !f.one_piece && f.too_wide;
-  // 3.83 million cubic metres at $500 is $1.9 billion; one yard at 3,000 a day pours for 1,276 days
-  #assert abs(f.cost / 1e9 - 1.913) < 0.001 && abs(f.pour_days - 1275.6) < 0.1;
+  // 3.83 million cubic metres at $500 is $1.9 billion (the days to build are the build simulation's: the panel runs it)
+  #assert abs(f.cost / 1e9 - 1.913) < 0.001;
   #assert abs(f.once_in_1000 - 0.632) < 0.001 && f.once_in_100 > 0.9999;
   #assert what_preset_of(w) == WP_PICTURE;
   // every control's picture value is inside its range and on its step
@@ -670,7 +669,7 @@ what_test_chart :: (ws: [] Where, site: int) -> Chart { where_load(ws, site); re
   what_words(l[..], WC_LENGTH, 1000); #assert what_text(l[..]) == "1,000 m"; l[0].n = 0;
   what_words(l[..], WC_WALL, 1.5); #assert what_text(l[..]) == "1.5 m"; l[0].n = 0;
   what_words(l[..], WC_PRICE, 500); #assert what_text(l[..]) == "$500 a cubic metre"; l[0].n = 0;
-  what_words(l[..], WC_YARDS, 1); #assert what_text(l[..]) == "1 yard"; l[0].n = 0;
+  what_words(l[..], WC_YARDS, 1); #assert what_text(l[..]) == "1 position"; l[0].n = 0;
   what_words(l[..], WC_SHORE, 2.5); #assert what_text(l[..]) == "2.5 nautical miles"; l[0].n = 0;
   what_words(l[..], WC_SHORE, 40); #assert what_text(l[..]) == "40 nautical miles"; l[0].n = 0;
   what_words(l[..], WC_MONTH, 2); #assert what_text(l[..]) == "February"; l[0].n = 0;

@@ -1277,7 +1277,7 @@ with the components kit in the mono skin. Its settings and their limits are
 | Part | Controls (range) |
 |---|---|
 | The hull | Buildings and equipment (0–6 Mt), length (100–2,000 m), width (50–1,000 m), depth keel to deck (30–150 m), sea walls and bottom slab (0.5–3 m), the draft the ballast holds (2–60 m) |
-| Building it | Concrete in place ($100–$1,000 a cubic metre), casting yards (1–8), each yard's pour (1,000–6,000 m³ a day) |
+| Building it | Concrete in place ($100–$1,000 a cubic metre), casting positions in the yard (1–8), each concrete plant's pour (1,000–6,000 m³ a day). The days to build, the tows, the weather days and the pours done again are one run of the build simulation (`metaverse/slab-build.coax`), run again when the settings stand still |
 | Where | The chart (press it to move the platform), distance from shore (0–250 nautical miles) |
 | Weather | Wind (0–40 m/s), month. It also says which way the sea comes from, which walls face it and which side is sheltered |
 | Power | Ocean thermal plant (30–240 MW), reactor modules (1–8), and each tenant on or off with its size: data halls, desalination, industry, miners |
@@ -1309,7 +1309,9 @@ What the world does with them, each checked in `slab.coax`:
 | The pilot (`?preset=pilot`) | 23,100 t of concrete, ballasted to 5 m; it leaves the 162 m wide, 16.5 m deep Corpus Christi channel in one piece |
 | The picture's hull | 162 m is narrower than its 600 m, so it leaves as 120 caissons |
 | California (`?preset=california`) | 607 m of water: no pipes, and the ocean thermal plant makes 0 MW |
-| The concrete alone, at $500 a cubic metre | $1.9 billion, 1,276 pour-days in one yard |
+| The concrete alone, at $500 a cubic metre | $1.9 billion |
+| Building it, first pour to switched on (the build simulation, seed 1) | 1,510 days at six casting positions and 3,000 m³ a day; 3,429 at two positions; 6,545 at one |
+| A 2,000 × 1,000 m hull (`?long=2000&wide=1000`) | "The build fails in our simulation: it takes up to 160 caissons and this hull is 400." |
 
 A resized hull is drawn at its size with the picture's buildings scaled to
 its deck. Walking, the cut-open view and the flow lines are for the

@@ -9,7 +9,14 @@
 // stops at each (sh_limits), every figure is tagged with where it is from, and the reasons a setting
 // can't work lead the panel. Every state has an address: a press writes it to the address bar.
 //
+//
+// The days to build are a run of the build simulation (metaverse/slab-build.coax; not its view,
+// slab-build-view.coax, whose csv_at has the name of coax/lib/text/csv.coax's in this page): the yard, the tows, the joints at sea and the weather, for this hull, this
+// many casting positions and this pour rate. A run takes about a quarter of a second, so the panel
+// runs it once the settings have stood still for a moment and "Building it" is the open part.
+//
 //   coax/bin/coax test apps/openagents-web/slab.coax --only "Panel"
+#load "../../metaverse/slab-build.coax";
 
 PP_HULL :: 0; PP_BUILD :: 1; PP_WHERE :: 2; PP_WEATHER :: 3; PP_POWER :: 4; PP_LIFE :: 5;
 PANEL_PARTS :: 6;
@@ -21,6 +28,49 @@ Panel :: struct {
   path: [PANEL_PATH] u8; path_n: int;      // the page's own path, from the address it opened on
   out: [PANEL_PATH + WHAT_QUERY + 24] u8; out_n: int;   // the address the browser is asked to show
   action: int;
+  // the build simulation's last run, what it was run for, and the settings as they stood last frame
+  run: [1] CsRun; ran: bool; ran_for: [WHAT_CONTROLS] f64; seen: [WHAT_CONTROLS] f64; due: f64;
+}
+PANEL_STILL :: 0.35;      // seconds the settings stand still before the build is simulated again
+
+// The settings a run of the build depends on: the hull and its load, the casting positions and the pour.
+panel_build_same :: (a: [WHAT_CONTROLS] f64, b: [WHAT_CONTROLS] f64) -> bool {
+  for i: 0..<WHAT_CONTROLS {
+    if i != WC_WEIGHT && i != WC_LENGTH && i != WC_WIDTH && i != WC_DEPTH && i != WC_WALL && i != WC_FLOOR && i != WC_DRAFT && i != WC_YARDS && i != WC_POUR { continue; }
+    if abs(a[i] - b[i]) > 1e-9 { return false; }
+  }
+  return true;
+}
+panel_build_run :: (s: [] Slab) {
+  w := s[0].change[0].what;
+  p := cs_params();
+  p.shape = s[0].change[0].facts.shape; p.positions = cast(int) floor(w.v[WC_YARDS] + 0.5); p.pour_rate = w.v[WC_POUR];
+  cs_run(p, s[0].panel.run[..]);
+  s[0].panel.ran = true; s[0].panel.ran_for = w.v; s[0].panel.seen = w.v;
+}
+// Once a frame: runs the build again when "Building it" is open and its settings have stood still.
+panel_frame :: (s: [] Slab) {
+  if s[0].panel.part != PP_BUILD || s[0].layout != LAYOUT_PRIME { return; }
+  v := s[0].change[0].what.v;
+  if s[0].panel.ran && panel_build_same(s[0].panel.ran_for, v) { return; }
+  if s[0].fixed >= 0 { panel_build_run(s); return; }   // a fixed moment has no clock to wait on
+  if s[0].panel.due == 0 || !panel_build_same(s[0].panel.seen, v) { s[0].panel.seen = v; s[0].panel.due = s[0].time + PANEL_STILL; return; }
+  if s[0].time >= s[0].panel.due { s[0].panel.due = 0; panel_build_run(s); }
+}
+// Why a run of the build stopped itself, in plain words.
+panel_build_fail :: (l: [] WhatLine, t: CsTotals, units: int) {
+  what_put(l, "The build fails in our simulation: ");
+  if t.failed == CS_FAIL_TOO_MANY { what_put(l, "it takes up to "); what_num(l, f64(CS_MAX_UNITS), 0); what_put(l, " caissons and this hull is "); what_num(l, f64(units), 0); what_put(l, "."); }
+  else if t.failed == CS_FAIL_UNIT { what_put(l, "one caisson of this hull is not stable afloat, so it cannot leave the yard."); }
+  else if t.failed == CS_FAIL_PIECE { what_put(l, "a joined piece is not stable under tow."); }
+  else if t.failed == CS_FAIL_AGROUND { what_put(l, "a tow grounds on the way out."); }
+  else if t.failed == CS_FAIL_BANK { what_put(l, "a tow strikes the channel's edge."); }
+  else if t.failed == CS_FAIL_PARTED { what_put(l, "a towline parts."); }
+  else if t.failed == CS_FAIL_STALLED { what_put(l, "a tow cannot make way."); }
+  else if t.failed == CS_FAIL_HULL { what_put(l, "the joined hull is not stable while its upper structure goes on."); }
+  else if t.failed == CS_FAIL_TIME { what_put(l, "it is not finished in 48 years."); }
+  else if t.failed == CS_FAIL_MOORING { what_put(l, "the hull breaks a mooring line in a storm."); }
+  else { what_put(l, "it stops itself."); }
 }
 
 panel_part_name :: (i: int) -> string {
@@ -81,6 +131,8 @@ panel_hud :: (s: [] Slab, h: [] SceneHud, group: int) {
   sh_panel(h, "take", "What would it take?", "Change the hull, the place and the load, and see what follows");
     // the reasons this setting can't work, first
     for i: 0..<c[0].note_count { sh_say(h, what_text(c[0].notes[i..<i + 1])); }
+    built := prime && s[0].panel.ran && panel_build_same(s[0].panel.ran_for, w.v);
+    if built && s[0].panel.run[0].total.failed != 0 { panel_build_fail(l, s[0].panel.run[0].total, f.caissons); sh_say(h, what_text(l)); l[0].n = 0; }
     sh_menu(h, "take.from", "Start from", "Your own settings");
       now := what_preset_of(w);
       for i: 0..<WHAT_PRESETS { p := what_preset(i); sh_option(h, sb_id(ids[..], "take.from.", i), p.name, p.note, now == i); }
@@ -111,12 +163,23 @@ panel_hud :: (s: [] Slab, h: [] SceneHud, group: int) {
     if part == PP_BUILD {
       panel_slider(s, h, WC_PRICE); panel_slider(s, h, WC_YARDS); panel_slider(s, h, WC_POUR);
       what_money(l, f.cost); panel_fact(h, "The concrete alone", l, WHAT_OURS);
-      what_days(l, f.pour_days); panel_fact(h, "Pouring it", l, WHAT_OURS);
+      if s[0].panel.ran && prime {
+        // the last run's figures stay up until the next run is in
+        t := s[0].panel.run[0].total;
+        if t.failed == 0 {
+          what_days(l, t.days); panel_fact(h, "Building it, first pour to switched on", l, WHAT_OURS);
+          what_num(l, f64(t.tows), 0); panel_fact(h, "Tows from the yard", l, WHAT_OURS);
+          what_num(l, t.weather_days, 0); panel_fact(h, "Days the weather held work", l, WHAT_OURS);
+          what_num(l, f64(t.reworks), 0); panel_fact(h, "Pours done again", l, WHAT_OURS);
+        }
+      }
       if f.one_piece { what_put(l, "In one piece"); } else { what_num(l, f64(f.caissons), 0); what_put(l, " caissons, joined at sea"); }
       panel_fact(h, "Leaves the yard as", l, WHAT_OURS);
       what_num(l, WHAT_CHANNEL_WIDTH, 0); what_put(l, " m wide, "); what_num(l, WHAT_CHANNEL_DEPTH, 1); what_put(l, " m deep");
       panel_fact(h, "The Corpus Christi ship channel", l, WHAT_SOURCE);
       what_num(l, f.float_out, 1); what_put(l, " m"); panel_fact(h, "The empty hull draws", l, WHAT_OURS);
+      if prime { sh_say(h, "The days are one run of our build simulation: the yard, the tows, the joints at sea and the weather it meets. It runs again when you let go of a slider."); }
+      else { sh_say(h, "The build simulation is for the one-platform shape."); }
       sh_say(h, "The price is for concrete in place. Steel, moorings, the plant and the buildings are not in it.");
     }
     if part == PP_WHERE {
@@ -174,15 +237,15 @@ panel_hud :: (s: [] Slab, h: [] SceneHud, group: int) {
 // The address of the state, for the address bar: the page's path and the settings that differ from
 // the picture's.
 panel_address :: (s: [] Slab) {
-  p := s[0].panel; n := 0;
-  path := ifx p.path_n > 0 then cast(string) p.path[0..<p.path_n] else "/worlds/slab";
-  for c: path { if n < p.out.count { p.out[n] = c; n += 1; } }
+  // Written in place: the panel holds the build simulation's run, too big to copy onto the stack.
+  n := 0; cap := s[0].panel.out.count;
+  path := ifx s[0].panel.path_n > 0 then cast(string) s[0].panel.path[0..<s[0].panel.path_n] else "/worlds/slab";
+  for c: path { if n < cap { s[0].panel.out[n] = c; n += 1; } }
   q := change_address(s[0].change[..]);
   tail := ifx q.count > 0 then q else "preset=picture";
-  if n < p.out.count { p.out[n] = '?'; n += 1; }
-  for c: tail { if n < p.out.count { p.out[n] = c; n += 1; } }
-  p.out_n = n; p.action = PANEL_ADDRESS;
-  s[0].panel = p;
+  if n < cap { s[0].panel.out[n] = '?'; n += 1; }
+  for c: tail { if n < cap { s[0].panel.out[n] = c; n += 1; } }
+  s[0].panel.out_n = n; s[0].panel.action = PANEL_ADDRESS;
 }
 // The page's path, kept from the address it opened on ("/worlds/slab").
 panel_opened :: (s: [] Slab, url: string) {
@@ -285,4 +348,30 @@ panel_act :: (s: [] Slab, id: string, value: int) -> bool {
   #assert panel_act(s[..], "take.t.3", 0) && !s[0].change[0].what.on[WT_MINING] && s[0].plant.miners == 0;
   #assert panel_act(s[..], "take.s.wind", 40) && s[0].wind_forced == 40;
   #assert !panel_act(s[..], "site.2", 0);
+}
+
+#test "Panel: the days to build are the build simulation's, run again when the settings stand still" #steps 20000000000 #traversal 2000000000 {
+  s: [1] Slab;
+  slab_message(s[..], HOST_FACTS, "url=https://openagents.com/worlds/slab?intro=0\n");
+  // nothing runs until "Building it" is the open part
+  panel_frame(s[..]); #assert !s[0].panel.ran;
+  #assert panel_act(s[..], "take.part.1", 0) && s[0].panel.part == PP_BUILD;
+  // the settings must stand still for a moment first
+  s[0].time = 10; panel_frame(s[..]); #assert !s[0].panel.ran && s[0].panel.due > 10;
+  s[0].time = 10.2; panel_frame(s[..]); #assert !s[0].panel.ran;
+  s[0].time = 10.5; panel_frame(s[..]);
+  // the picture: six casting positions at 3,000 cubic metres a day, 1,510 days by the simulation's seed 1
+  #assert s[0].panel.ran && s[0].panel.run[0].total.failed == 0 && abs(s[0].panel.run[0].total.days - 1510) < 1;
+  sb_say(s[..]);
+  #assert sb_test_field(s[..], 'F', "Building it, first pour to switched on", 1) == "1,510 days (4.1 years)";
+  // one casting position: 6,545 days. A move restarts the wait, and the old figure stays up until the run is in
+  #assert panel_act(s[..], "take.s.yards", 0);
+  s[0].time = 10.6; panel_frame(s[..]); #assert abs(s[0].panel.run[0].total.days - 1510) < 1 && !panel_build_same(s[0].panel.ran_for, s[0].change[0].what.v);
+  s[0].time = 11.0; panel_frame(s[..]); #assert abs(s[0].panel.run[0].total.days - 6545) < 1;
+  // a hull of more caissons than the simulation takes: the panel says so first
+  #assert panel_act(s[..], "take.s.long", what_ticks(WC_LENGTH)) && panel_act(s[..], "take.s.wide", what_ticks(WC_WIDTH));
+  s[0].fixed = 1; panel_frame(s[..]);
+  #assert s[0].panel.run[0].total.failed == CS_FAIL_TOO_MANY;
+  l: [1] WhatLine; panel_build_fail(l[..], s[0].panel.run[0].total, s[0].change[0].facts.caissons);
+  #assert what_text(l[..]) == "The build fails in our simulation: it takes up to 160 caissons and this hull is 400.";
 }

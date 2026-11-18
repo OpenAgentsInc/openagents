@@ -29,7 +29,7 @@
 // The "What would it take?" settings (metaverse/slab-whatif.coax; each is left out of an address
 // when it is the picture's): ?preset=picture|pilot|fjord|california|guam|dome, ?weight=MT (million
 // tonnes of buildings and equipment), ?long=, ?wide=, ?deep= (the hull, metres), ?wall=, ?floor=
-// (metres of concrete), ?draft=M, ?price=$ a cubic metre, ?yards=N, ?pour=M3 a day, ?lat=, ?lon=
+// (metres of concrete), ?draft=M, ?price=$ a cubic metre, ?yards=N (casting positions), ?pour=M3 a day, ?lat=, ?lon=
 // (a place on the site's chart), ?shore=NMI (that far off the coast), ?data=, ?desal=, ?industry=,
 // ?mining= (megawatts, or 0 for off), ?life=YEARS; they also read ?wind=, ?month=, ?otec=, ?modules=.
 
@@ -646,6 +646,7 @@ change_frame :: (s: [] Slab, dt: f64, frozen: bool) {
   if c[0].what.month_own { s[0].month = what_month(c[0].what); }
   if frozen || s[0].fixed >= 0 { if c[0].shown != c[0].facts.draft { change_settle(c); layout_records(s); } }
   else if change_step(c, dt) && !s[0].build.on { layout_records(s); }
+  panel_frame(s);   // the build simulation's run for the panel, when its settings have stood still (slab-panel.coax)
 }
 set_mode :: (s: [] Slab, m: int) {
   if m == CAM_WALK && !prime_only(s) { return; }
@@ -2255,7 +2256,7 @@ coaxial_slab_uniform_floats :: () -> int #export_c #effects(all) { return UNIFOR
 // ---------------------------------------------------------------------------------------------
 // The frame budget (metaverse-engine/core/budget.coax, book chapter 16): what one frame of SLAB may use.
 // The photoreal scene's parts, placed records and sky field are in the state (slab-photoreal.coax).
-SLAB_BUDGET :: FrameBudget.{steps = 8, vertices = MAX_VERTICES - 1, draws = PHOTO_DRAWS, bytes = 8388608};
+SLAB_BUDGET :: FrameBudget.{steps = 8, vertices = MAX_VERTICES - 1, draws = PHOTO_DRAWS, bytes = 10485760};
 
 #test "SLAB's frames fit their declared budget" {
   #assert budget_declared(SLAB_BUDGET, MAX_VERTICES) == BUDGET_NONE;
