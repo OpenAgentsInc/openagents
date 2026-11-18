@@ -7,6 +7,7 @@
 typedef struct {
   App app;
   coax_t_CoderPage *s;
+  int edge;
   int focused, reduced;
   float editor_height;
   float screen;   // the screen's own scale
@@ -32,6 +33,9 @@ static void cd_on_pointer(void *user, float x, float y, int phase, int clicks, i
   (void)clicks; (void)mods;
   CoderHost *c = user;
   coder_page_pointer(cd_state(c), x, y, phase);
+  // over a sidebar's edge, and while one is dragged, the pointer is the resize arrows
+  int edge = coder_page_edge(cd_state(c)) ? 3 : 0;
+  if (edge != c->edge) { c->edge = edge; ui_cursor(c->app.host, edge); }
   cd_woke(c);
 }
 static void cd_on_wheel(void *user, float dy) { CoderHost *c = user; coder_page_wheel(cd_state(c), dy); cd_woke(c); }
@@ -105,6 +109,9 @@ void cd_agent_line(void *page, int agent, const char *line) { CoderHost *c = pag
 void cd_agent_failed(void *page, int agent, const char *why) { CoderHost *c = page; if (!c) return; coder_page_agent_failed(cd_state(c), agent, cd_string(why)); cd_changed(c); }
 int cd_agent_answer_line(void *page, int agent, char *out, int cap) { CoderHost *c = page; return c && cap > 0 ? (int)coder_page_agent_answer_line(cd_state(c), agent, (coax_v_u8){(uint8_t *)out, cap}) : 0; }
 void cd_claude(void *page, int on) { CoderHost *c = page; if (c) coder_page_set_claude(cd_state(c), on != 0); }
+// The sidebars' widths as dragged: read (1 once after a drag, when they are to be kept) and set.
+int cd_sides(void *page, float out[2]) { CoderHost *c = page; return c && coder_page_sides(cd_state(c), (coax_v_f32){out, 2}); }
+void cd_sides_set(void *page, float left, float right) { CoderHost *c = page; if (c) { coder_page_sides_set(cd_state(c), left, right); cd_woke(c); } }
 int cd_pane(void *page, int n) { CoderHost *c = page; return c && coder_page_pane(cd_state(c), n); }
 int cd_agent_claude(void *page, int agent) { CoderHost *c = page; return c && coder_page_agent_claude(cd_state(c), agent); }
 int cd_agent_running(void *page, int agent) { CoderHost *c = page; return c && coder_page_agent_running(cd_state(c), agent); }

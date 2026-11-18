@@ -151,6 +151,8 @@ final class CoderWindow: NSObject {
         canvas = Unmanaged<NSView>.fromOpaque(raw).takeUnretainedValue()
         // the text size chosen last time (a row of the page's sizes; 2 is the usual)
         if UserDefaults.standard.object(forKey: "zoom") != nil { _ = cd_zoom_set(page, Int32(UserDefaults.standard.integer(forKey: "zoom"))) }
+        // the sidebars' widths as dragged last time
+        cd_sides_set(page, UserDefaults.standard.float(forKey: "sideWidth"), UserDefaults.standard.float(forKey: "paneWidth"))
         var style = [Float](repeating: 0, count: 14); _ = cd_style(page, &style)
         editor = KitMacEditor(style: style); line = CGFloat(style[1])
         // Most of the screen, up to 1500 by 1000 points.
@@ -369,6 +371,8 @@ final class CoderWindow: NSObject {
         if what != 0 { act(what); wake() }
         if let n = showAgent, cd_pane(page, Int32(n)) != 0 { showAgent = nil; wake() }
         if cd_save_due(page) != 0 { keep(); wake() }
+        var sides = [Float](repeating: 0, count: 2)
+        if cd_sides(page, &sides) != 0 { UserDefaults.standard.set(sides[0], forKey: "sideWidth"); UserDefaults.standard.set(sides[1], forKey: "paneWidth") }
         else if let text = then, cd_running(page) == 0 { then = nil; newChat(); act(cd_action(page)); if cd_set_text(page, text) != 0 { _ = cd_submit(page) } }
         // An empty draft leaves the text to the bar, so its placeholder shows under the caret.
         let focused = window.firstResponder === editor

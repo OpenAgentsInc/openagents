@@ -66,6 +66,10 @@ int cd_agent_claude(void *page, int agent);
 // Opens the transcript of sub-agent n (1 is the first) of the newest message that has that many, on
 // the window's right, as a press on its row does. 0 when no message has.
 int cd_pane(void *page, int n);
+// The sidebars' widths as dragged, in points at the usual text size; 0 is one never dragged.
+// cd_sides is 1 once after a drag ends: keep them then.
+int cd_sides(void *page, float out[2]);
+void cd_sides_set(void *page, float left, float right);
 int cd_stop_line(char *out, int cap);
 int cd_forget_line(char *out, int cap);
 // One line the worker wrote, without its newline.

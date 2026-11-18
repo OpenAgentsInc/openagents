@@ -36,8 +36,9 @@ Limits, all shown on screen when you reach them:
 - When you open a chat, Microcoder is told its newest 6 messages and replies, up to 1,200 bytes of each.
 - A message runs up to 12 sub-agents, 6 in one step. Microcoder is told when a task is not run for this reason.
 - A sub-agent's task is cut at 1,500 bytes and its reply at 8,000 bytes.
-- A sub-agent's transcript shows its first 40 tool calls and says how many more ran. It shows each call up to 300 bytes and its output up to 1,000 bytes.
-- A sub-agent's transcript is 440 points wide. In a window where that leaves the conversation under 380 points, the chats' sidebar is hidden while the transcript is open. In a narrower window still, the transcript takes the whole window until you close it.
+- A sub-agent's transcript keeps its newest 200 tool calls and follows them as they arrive. Past 200 it drops the oldest and says at the top how many it dropped (#13670). It shows each call up to 300 bytes and its output up to 1,000 bytes.
+- You can drag the edge of either sidebar to resize it: the chats' sidebar from 180 to 480 points, a sub-agent's transcript from 320 to 900 points. A drag stops where it would leave the conversation under 380 points. Coder keeps the widths you chose.
+- A sub-agent's transcript is 440 points wide until you drag it. In a window where that leaves the conversation under 380 points, the chats' sidebar is hidden while the transcript is open. In a narrower window still, the transcript takes the whole window until you close it.
 - A command has 120 seconds. A run has no limit on its time, its model calls, its commands or its file reads (#13667): it ends when it replies or you press Stop. The same goes for every sub-agent.
 
 Microcoder runs shell commands as you, starting in the working folder, with
