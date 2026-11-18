@@ -1,0 +1,249 @@
+// SLAB's moorings (docs/research/ocean/slab-world-spec.md, section 4.3): where a hull's lines run
+// in the water it floats in, what they are made of, their pull on the hull now, and the points
+// each is drawn through. Each line is metaverse-engine/physics/moor.coax's elastic catenary, so
+// the tension, the anchor's uplift, the line on the seabed and the drawn shape are one solution.
+//
+// The layout follows the water's depth:
+//   deep (400 m or more): taut legs of polyester rope from fairleads at the keel to anchors that
+//     take uplift, the anchors as far out for the depth as the spec's 2,000 m in 1,500 m of water;
+//   shallow: chain catenaries from fairleads at the waterline to anchors laid so each line pulls
+//     with its pretension, long enough that chain still lies on the seabed at breaking load, so an
+//     anchor is never pulled upward.
+// Rope and chain are sized from the line's breaking load (the spec's 40 MN for `prime`):
+//   polyester rope: 5.9 N/m in water and EA = 15 x breaking load, for each MN of breaking load
+//     (a 20 MN rope weighs about 12 kg/m in water; 15 is the slow, quasi-static stiffness);
+//   studless R5 chain: 205 N/m in water and EA = 103 x breaking load (a 220 mm chain breaks at
+//     40.9 MN, weighs 963 kg/m in air, and has EA = 0.854e8 d^2 kN).
+// These are planning values. 40 MN is more than any one rope or chain made today carries, so each
+// line here stands for a bundle. A line that reaches its breaking load is lost, and stays lost.
+//
+// Not modelled: the lines' own motion and drag, fatigue, seabed friction, the anchors' holding
+// capacity, and the lines' downward pull on the hull (under 0.1% of its weight).
+//   coax/bin/coax test metaverse/slab-moor.coax
+#load "../metaverse-engine/physics/moor.coax";
+
+MOOR_MAX :: 16;
+MOOR_TAUT :: 0; MOOR_CATENARY :: 1;
+MOOR_SHALLOW :: 400.0;        // m of water: chain catenaries under it, taut rope legs from it down
+MOOR_ROPE_W :: 5.9e-6;        // polyester rope: N/m in water for each N of breaking load
+MOOR_ROPE_EA :: 15.0;         //   and EA over the breaking load
+MOOR_CHAIN_W :: 205.0e-6;     // studless R5 chain
+MOOR_CHAIN_EA :: 103.0;
+MOOR_GROUNDED :: 1.15;        // a chain is this many times the length it lifts at breaking load
+MOOR_REFERENCE :: 1500.0;     // the depth the spec's anchor distances are given for
+
+// A hull's moorings at a site.
+MoorRig :: struct {
+  built: bool;
+  kind: int;                  // MOOR_TAUT or MOOR_CATENARY
+  count: int;                 // lines
+  depth: f64;                 // the water's, m
+  line: MoorLine;             // each line: they are alike
+  pretension: f64;            // each line's tension with the hull at rest, N
+  fair_y: f64;                // the fairleads' height over the still waterline (under it: negative)
+  span: f64;                  // each anchor's distance along the seabed from its fairlead, at rest
+  fx: [MOOR_MAX] f64; fz: [MOOR_MAX] f64;   // the fairleads, in the hull's frame
+  ax: [MOOR_MAX] f64; az: [MOOR_MAX] f64;   // the anchors, in the world's frame about the rig's centre
+}
+// What the hull needs moored. prime: `count` lines in fours at the corners, fanned 30 degrees
+// apart about each corner's diagonal. A round hull: lines evenly round it.
+MoorHull :: struct {
+  round: bool;
+  l: f64; b: f64; r: f64;     // the plan: length and beam, or a radius
+  draft: f64;
+  count: int;
+  mbl: f64;                   // each line's breaking load, N
+  pretension: f64;            // N
+  anchor: f64;                // the anchors' distance in MOOR_REFERENCE of water, m
+}
+moor_kind_at :: (depth: f64) -> int { return ifx depth < MOOR_SHALLOW then MOOR_CATENARY else MOOR_TAUT; }
+moor_rig :: (h: MoorHull, depth: f64) -> MoorRig {
+  o: MoorRig;
+  o.count = ifx h.count > MOOR_MAX then MOOR_MAX else h.count;
+  o.depth = depth; o.kind = moor_kind_at(depth); o.pretension = h.pretension;
+  rise := 0.0;
+  if o.kind == MOOR_TAUT {
+    o.fair_y = -h.draft; rise = depth - h.draft;
+    o.span = h.anchor * rise / (MOOR_REFERENCE - h.draft);
+    o.line = MoorLine.{w = MOOR_ROPE_W * h.mbl, ea = MOOR_ROPE_EA * h.mbl, mbl = h.mbl};
+    o.line.length = moor_length_for(o.line, o.span, rise, h.pretension);
+  } else {
+    o.fair_y = 0; rise = depth;
+    o.line = MoorLine.{w = MOOR_CHAIN_W * h.mbl, ea = MOOR_CHAIN_EA * h.mbl, mbl = h.mbl};
+    // the chain a pull at breaking load lifts off the seabed: s = sqrt(z (z + 2 H / w))
+    o.line.length = MOOR_GROUNDED * sqrt(rise * (rise + 2.0 * h.mbl / o.line.w));
+    o.span = moor_span_for(o.line, rise, h.pretension);
+  }
+  for i: 0..<o.count {
+    a := 0.0;
+    if h.round {
+      a = (f64(i) + 0.5) * 2.0 * 3.14159265358979 / f64(o.count);
+      o.fx[i] = cos(a) * (h.r - 2.0); o.fz[i] = sin(a) * (h.r - 2.0);
+    } else {
+      corner := i / 4; k := i % 4;
+      sx := ifx corner & 1 == 0 then -1.0 else 1.0;
+      sz := ifx corner & 2 == 0 then -1.0 else 1.0;
+      o.fx[i] = sx * (h.l / 2.0 - 12.0); o.fz[i] = sz * (h.b / 2.0 - 12.0);
+      // the corner's diagonal, then the fan
+      dl := sqrt(h.l * h.l + h.b * h.b);
+      ca := sx * h.l / dl; sa := sz * h.b / dl;
+      f := (f64(k) - 1.5) * 30.0 * 3.14159265358979 / 180.0;
+      o.ax[i] = o.fx[i] + (ca * cos(f) - sa * sin(f)) * o.span; o.az[i] = o.fz[i] + (sa * cos(f) + ca * sin(f)) * o.span;
+      continue;
+    }
+    o.ax[i] = o.fx[i] + cos(a) * o.span; o.az[i] = o.fz[i] + sin(a) * o.span;
+  }
+  o.built = true;
+  return o;
+}
+
+// One line now, for a hull whose centre has moved (x, z) from the rig's and turned `yaw` (the bow
+// toward +z), its waterline `heave` over the still one.
+MoorNow :: struct {
+  lost: bool;
+  wx: f64; wz: f64;           // the fairlead, in the world's frame about the rig's centre
+  span: f64; rise: f64;       // the fairlead from the anchor: along the seabed, and over it
+  pull: MoorPull;
+}
+moor_now :: (rig: [] MoorRig, lost: u32, i: int, x: f64, z: f64, yaw: f64, heave: f64) -> MoorNow {
+  o: MoorNow;
+  c := cos(yaw); s := sin(yaw);
+  o.wx = x + rig[0].fx[i] * c - rig[0].fz[i] * s; o.wz = z + rig[0].fx[i] * s + rig[0].fz[i] * c;
+  dx := rig[0].ax[i] - o.wx; dz := rig[0].az[i] - o.wz;
+  o.span = sqrt(dx * dx + dz * dz); o.rise = rig[0].depth + rig[0].fair_y + heave;
+  o.lost = (lost >> cast(u32) i) & 1 == 1;
+  if !o.lost { o.pull = moor_pull(rig[0].line, o.span, o.rise); }
+  return o;
+}
+// The lines' pull on the hull together: the force, the turning moment about the hull's centre
+// (turning the bow toward +z), the downward pull, and the most loaded line.
+MoorForce :: struct {
+  fx: f64; fz: f64; yaw: f64; down: f64;
+  peak: f64; worst: int;      // the most loaded line's tension, and which (-1: none holds)
+  held: int;                  // lines still holding
+}
+moor_force :: (rig: [] MoorRig, lost: u32, x: f64, z: f64, yaw: f64, heave: f64) -> MoorForce {
+  o := MoorForce.{worst = -1};
+  for i: 0..<rig[0].count {
+    n := moor_now(rig, lost, i, x, z, yaw, heave);
+    if n.lost { continue; }
+    o.held += 1;
+    if n.pull.tension > o.peak || o.worst < 0 { o.peak = n.pull.tension; o.worst = i; }
+    o.down += n.pull.v;
+    if n.span <= 0 { continue; }
+    fx := n.pull.h * (rig[0].ax[i] - n.wx) / n.span; fz := n.pull.h * (rig[0].az[i] - n.wz) / n.span;
+    o.fx += fx; o.fz += fz;
+    o.yaw += (n.wx - x) * fz - (n.wz - z) * fx;
+  }
+  return o;
+}
+// The points line i is drawn through, MOOR_POINTS of them from the anchor to the fairlead: x, y
+// (over the still waterline), z in the world's frame about the rig's centre, into out[at..]. They
+// are spaced along the lifted line, with the first two the anchor and where the line leaves the
+// seabed. A lost line lies along the seabed from its anchor toward where its fairlead was.
+MOOR_POINTS :: 5;
+moor_points :: (rig: [] MoorRig, lost: u32, i: int, x: f64, z: f64, yaw: f64, heave: f64, out: [] f32, at: int) {
+  n := moor_now(rig, lost, i, x, z, yaw, heave);
+  l := rig[0].line; bed := -rig[0].depth;
+  ux := 0.0; uz := 0.0;
+  if n.span > 0 { ux = (n.wx - rig[0].ax[i]) / n.span; uz = (n.wz - rig[0].az[i]) / n.span; }
+  for k: 0..<MOOR_POINTS {
+    along := 0.0; up := 0.0;
+    if n.lost {
+      // parted at the fairlead: on the seabed, as far as its length reaches
+      reach := ifx l.length < n.span then l.length else n.span;
+      along = reach * f64(k) / f64(MOOR_POINTS - 1);
+    } else {
+      from := n.pull.grounded;
+      s := ifx k == 0 then 0.0 else from + (l.length - from) * f64(k - 1) / f64(MOOR_POINTS - 2);
+      p := moor_at(l, n.pull, n.span, s);
+      along = p[0]; up = p[1];
+    }
+    out[at + 3 * k] = f32(rig[0].ax[i] + ux * along); out[at + 3 * k + 1] = f32(bed + up); out[at + 3 * k + 2] = f32(rig[0].az[i] + uz * along);
+  }
+}
+
+// ---------------------------------------------------------------- checks
+moor_check_prime :: () -> MoorHull { return MoorHull.{l = 1000.0, b = 600.0, draft = 25.0, count = 16, mbl = 40.0e6, pretension = 4.0e6, anchor = 2000.0}; }
+moor_check_dome :: () -> MoorHull { return MoorHull.{round = true, r = 60.96, draft = 12.0, count = 8, mbl = 10.0e6, pretension = 1.0e6, anchor = 1800.0}; }
+
+#test "deep water: 16 taut rope legs to anchors 2 km out, each at its 4 MN pretension, pulling up on its anchor" {
+  r: [1] MoorRig; r[0] = moor_rig(moor_check_prime(), 1500.0);
+  #assert r[0].kind == MOOR_TAUT && r[0].count == 16 && abs(r[0].span - 2000.0) < 1e-9 && r[0].fair_y == -25.0;
+  // a 40 MN rope: 236 N/m in water, EA 600 MN, cut a little shorter than the 2,485 m to its anchor
+  #assert abs(r[0].line.w - 236.0) < 0.5 && r[0].line.ea == 600.0e6;
+  #assert r[0].line.length > 2440.0 && r[0].line.length < 2485.0;
+  for i: 0..<16 {
+    n := moor_now(r[..], 0, i, 0, 0, 0, 0);
+    #assert abs(n.pull.tension - 4.0e6) < 100.0 && n.pull.uplift > 1.0e6 && n.pull.grounded == 0;
+    #assert abs(sqrt((r[0].ax[i] - r[0].fx[i]) * (r[0].ax[i] - r[0].fx[i]) + (r[0].az[i] - r[0].fz[i]) * (r[0].az[i] - r[0].fz[i])) - 2000.0) < 1e-6;
+  }
+  // at rest the sixteen pulls cancel
+  f := moor_force(r[..], 0, 0, 0, 0, 0);
+  #assert abs(f.fx) < 1.0 && abs(f.fz) < 1.0 && abs(f.yaw) < 1000.0 && f.held == 16;
+  #assert abs(f.down / 1e6 - 16.0 * moor_now(r[..], 0, 0, 0, 0, 0, 0).pull.v / 1e6) < 1e-6;
+}
+#test "40 m of water: chain catenaries from the waterline, most of each on the seabed and no uplift" {
+  r: [1] MoorRig; r[0] = moor_rig(moor_check_prime(), 40.0);
+  #assert r[0].kind == MOOR_CATENARY && r[0].fair_y == 0;
+  // a 40 MN chain: 8.2 kN/m in water; 626 m lifts at breaking load, so 720 m is laid
+  #assert abs(r[0].line.w - 8200.0) < 1.0 && abs(r[0].line.length - 720.0) < 1.0;
+  n := moor_now(r[..], 0, 5, 0, 0, 0, 0);
+  #assert abs(n.pull.tension - 4.0e6) < 100.0 && n.pull.uplift == 0 && n.pull.grounded > 450.0;
+  // pulled to breaking load there is still chain on the seabed
+  far := r[0].span;
+  for k: 0..<400 { far += 0.05; if moor_pull(r[0].line, far, 40.0).tension >= r[0].line.mbl { break; } }
+  p := moor_pull(r[0].line, far, 40.0);
+  #assert p.tension >= r[0].line.mbl && p.grounded > 50.0 && p.uplift == 0;
+  // and it gets there in a few metres: a shallow catenary is stiff
+  #assert far - r[0].span < 12.0;
+  #assert moor_kind_at(399.0) == MOOR_CATENARY && moor_kind_at(400.0) == MOOR_TAUT;
+}
+#test "a hull pushed off its place is pulled back, and a turned one is turned back" {
+  depths := [2] f64.[1500.0, 40.0]; push := [2] f64.[30.0, 2.0];
+  for q: 0..<2 {
+    r: [1] MoorRig; r[0] = moor_rig(moor_check_prime(), depths[q]);
+    north := moor_force(r[..], 0, 0, push[q], 0, 0);
+    #assert north.fz < -1.0e6 && abs(north.fx) < 1.0e-3 * abs(north.fz) && north.peak > 4.0e6;
+    east := moor_force(r[..], 0, push[q], 0, 0, 0);
+    #assert east.fx < -1.0e6 && abs(east.fz) < 1.0e-3 * abs(east.fx);
+    turned := moor_force(r[..], 0, 0, 0, 0.01, 0);
+    #assert turned.yaw < -1.0e7 && abs(turned.fx) < 1.0e4 && abs(turned.fz) < 1.0e4;
+  }
+}
+#test "a lost line pulls nothing: its neighbours' pull shows, and the hull is turned" {
+  r: [1] MoorRig; r[0] = moor_rig(moor_check_prime(), 1500.0);
+  // line 15: the north-east corner's most northerly line
+  f := moor_force(r[..], cast(u32) 1 << 15, 0, 0, 0, 0);
+  #assert f.held == 15 && moor_now(r[..], cast(u32) 1 << 15, 15, 0, 0, 0, 0).lost;
+  // the pull it gave (north and a little east, 3.2 MN along the seabed) is missing
+  one := moor_now(r[..], 0, 15, 0, 0, 0, 0);
+  hx := one.pull.h * (r[0].ax[15] - one.wx) / one.span; hz := one.pull.h * (r[0].az[15] - one.wz) / one.span;
+  #assert abs(f.fx + hx) < 1.0 && abs(f.fz + hz) < 1.0 && hz > 2.5e6;
+  #assert abs(f.yaw + (one.wx * hz - one.wz * hx)) < 1000.0 && abs(f.yaw) > 1.0e8;
+}
+#test "a round hull's 8 lines run evenly round it, a quarter of prime's" {
+  r: [1] MoorRig; r[0] = moor_rig(moor_check_dome(), 1500.0);
+  #assert r[0].count == 8 && abs(r[0].span - 1800.0) < 1e-9;
+  f := moor_force(r[..], 0, 0, 0, 0, 0);
+  #assert abs(f.fx) < 1.0 && abs(f.fz) < 1.0 && abs(f.peak - 1.0e6) < 100.0;
+  // radial lines hardly resist a turn: the moment is theirs times the fairleads' small lever
+  turned := moor_force(r[..], 0, 0, 0, 0.01, 0).yaw;
+  #assert turned < 0 && turned > -1.0e7;
+}
+#test "the drawn points run from the anchor to the fairlead; a slack chain's lie on the seabed first" {
+  out: [15] f32;
+  r: [1] MoorRig; r[0] = moor_rig(moor_check_prime(), 1500.0);
+  moor_points(r[..], 0, 3, 0, 0, 0, 0, out[..], 0);
+  #assert abs(f64(out[0]) - r[0].ax[3]) < 0.01 && abs(f64(out[1]) + 1500.0) < 0.01 && abs(f64(out[2]) - r[0].az[3]) < 0.01;
+  #assert abs(f64(out[12]) - r[0].fx[3]) < 0.01 && abs(f64(out[13]) + 25.0) < 0.01 && abs(f64(out[14]) - r[0].fz[3]) < 0.01;
+  // a taut leg sags under its chord: tens of metres, a third of the way up 2.5 km
+  third := f64(out[7]);
+  #assert third < -1500.0 + 1475.0 / 3.0 - 10.0 && third > -1500.0 + 1475.0 / 3.0 - 80.0;
+  s: [1] MoorRig; s[0] = moor_rig(moor_check_prime(), 40.0);
+  moor_points(s[..], 0, 3, 0, 0, 0, 0, out[..], 0);
+  #assert out[1] == -40 && out[4] == -40 && out[7] > -40 && abs(f64(out[13])) < 0.01;
+  // lost: all of it on the seabed
+  moor_points(s[..], cast(u32) 1 << 3, 3, 0, 0, 0, 0, out[..], 0);
+  for k: 0..<MOOR_POINTS { #assert out[3 * k + 1] == -40; }
+}

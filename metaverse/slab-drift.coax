@@ -1,0 +1,257 @@
+// What pushes, turns and drifts a moored hull (docs/research/ocean/slab-world-spec.md, section 4.4):
+// the waves' push on its walls, the slow drift force, the turning moment of wind and current on its
+// faces, and its inertia about the vertical. metaverse/slab-sim.coax's hull step calls these; they
+// take plain numbers and tiles, so any box or round hull can use them. Every coefficient here is a
+// stand-in for something this world does not compute, and says so.
+//
+// The sea comes as tiles (DriftSea), which metaverse/water-hull.coax makes each tick from the
+// spectral sea's waves, each wave weighted by its own length against the hull's draft T
+// (k = 2 pi / wavelength, deep water, where a wave's pressure fades as e^-kz):
+//   lift   height x e^-kT: the pressure head at the keel. A long swell lifts the hull nearly
+//          as the still sea would; chop a few drafts long hardly reaches the keel.
+//   push   height x (1 - e^-kT) / k: the head summed over the wall's draft, m^2. The sea's push
+//          on a metre of wall is rho g times this; round the waterline it sums to the horizontal
+//          Froude-Krylov force (the pressure of the wave as if the hull were not there).
+//   back   height x sqrt(1 - e^-2kT): the part of each wave the hull turns back. A wave's
+//          power below the draft passes under (Wiegel's power-transmission estimate, 1960), so
+//          the reflected share of its energy is 1 - e^-2kT.
+// The forces are sums over the waterline in the simulation itself: along a kilometre of wall the
+// crests and troughs of a short sea cancel, with no transfer function saying that they should.
+//
+// The slow drift force (drift_wave_drift): a wall that turns a wave of amplitude a back is pushed
+// with a mean force of 1/2 rho g a^2 R^2 a metre (Maruo, 1960). In an irregular sea the force
+// follows the square of the reflected wave's envelope (Newman's approximation, 1974), so here each
+// metre of weather wall takes rho g back^2 times the square of the cosine between the waves and
+// its normal, and the hull's step keeps the slow part (a 10 s low-pass). It is a mean of the
+// order of 100 MN on prime in a hurricane, with groups of waves moving it slowly: this, not the
+// wave-by-wave push, is what loads moorings in a storm.
+// Not computed: the hull's own motion in the drift force, the waves it sends out, and any change
+// of the sea round it. Those need a frequency-domain diffraction analysis.
+//   coax/bin/coax test metaverse/slab-drift.coax
+
+DRIFT_PI :: 3.14159265358979;
+
+// A flat face `face` metres long in a flow that meets it at an angle (sin_a, cos_a: 1, 0 is square
+// on): how far its centre of pressure sits from its middle toward the end the flow comes from.
+// Rayleigh's free-streamline plate: e = 3/4 face cos a / (4 + pi sin a), none square on and
+// 3/16 of the length edge on. A hull's face is not a thin plate, so this is a stand-in.
+drift_arm :: (face: f64, sin_a: f64, cos_a: f64) -> f64 { return 0.75 * face * cos_a / (4.0 + DRIFT_PI * sin_a); }
+
+// The turning moment (N m, turning the bow toward +z) on a box hull of length l (along x) and
+// beam b, from a flow (u, w) in the hull's frame over faces h high: each pair of faces takes the
+// cross-flow force 1/2 rho h len v|v| of the flow square to it (C_d = 1, as the spec's wind and
+// current) at Rayleigh's centre of pressure. The long faces try to turn broadside to the flow and
+// the ends try to turn them back; the long faces win.
+drift_turn :: (rho: f64, l: f64, b: f64, h: f64, u: f64, w: f64) -> f64 {
+  q := sqrt(u * u + w * w);
+  if !(q > 0) { return 0; }
+  along := 0.5 * rho * h * b * u * abs(u);    // on the ends, along x
+  across := 0.5 * rho * h * l * w * abs(w);   // on the long faces, along z
+  // the long faces: the flow comes from -sign(u) x, so the force acts there
+  ex := drift_arm(l, abs(w) / q, abs(u) / q) * (ifx u > 0 then -1.0 else 1.0);
+  ez := drift_arm(b, abs(u) / q, abs(w) / q) * (ifx w > 0 then -1.0 else 1.0);
+  return ex * across - ez * along;
+}
+// The drag moment on a box hull of draft t turning at `rate` rad/s: the cross-flow drag of each
+// strip of its length and beam moving sideways at rate x, 1/2 rho t (rate x)|rate x| dx, summed.
+drift_turn_drag :: (rho: f64, l: f64, b: f64, t: f64, rate: f64) -> f64 {
+  return -0.5 * rho * t * rate * abs(rate) * (l * l * l * l + b * b * b * b) / 32.0;
+}
+// The water that turns with a box hull, as inertia (kg m^2): each strip of the length carries the
+// water a flat plate as deep as the draft carries moving sideways, 1/2 pi rho t^2 a metre (half
+// the plate's pi rho t^2, since the sea's surface is on one side), and the same for the ends.
+// A stand-in: a real hull's is a function of how fast it turns.
+drift_turn_added :: (rho: f64, l: f64, b: f64, t: f64) -> f64 {
+  return 0.5 * DRIFT_PI * rho * t * t * (l * l * l + b * b * b) / 12.0;
+}
+// ---------------------------------------------------------------- the waves on the walls
+DRIFT_RHO :: 1025.0; DRIFT_G :: 9.81;
+DRIFT_TILE :: 64;             // a tile's side, texels
+DRIFT_TEXELS :: 4096;
+DriftSea :: struct {
+  n: int;                     // the tiles' side, texels (0: no sea)
+  patch: f64;                 // and in metres; the tiles wrap
+  draft: f64;                 // the draft they were weighted for, m
+  variance: f64;              // the mean square of `back`, m^2
+  along: f64;                 // the share of that energy running the waves' way: the mean cos^2
+  lift: [DRIFT_TEXELS] f32;   // m
+  push: [DRIFT_TEXELS] f32;   // m^2
+  back: [DRIFT_TEXELS] f32;   // m
+}
+drift_wrap :: (i: int, m: int) -> int { r := i % m; return ifx r < 0 then r + m else r; }
+// A wrapped n x n tile's value at (x, z), between its texels' centres.
+drift_at :: (tile: [] f32, n: int, patch: f64, x: f64, z: f64) -> f64 {
+  if n <= 0 || tile.count < n * n || patch <= 0 { return 0; }
+  qx := x / patch * f64(n) - 0.5; qz := z / patch * f64(n) - 0.5;
+  fx := qx - floor(qx); fz := qz - floor(qz);
+  ix := cast(int) floor(qx); iz := cast(int) floor(qz);
+  a := f64(tile[drift_wrap(iz, n) * n + drift_wrap(ix, n)]); b := f64(tile[drift_wrap(iz, n) * n + drift_wrap(ix + 1, n)]);
+  c := f64(tile[drift_wrap(iz + 1, n) * n + drift_wrap(ix, n)]); d := f64(tile[drift_wrap(iz + 1, n) * n + drift_wrap(ix + 1, n)]);
+  return (a * (1 - fx) + b * fx) * (1 - fz) + (c * (1 - fx) + d * fx) * fz;
+}
+// The waterline in pieces about 10 m long, as wide as one of prime's buoyancy columns (a box's are
+// exactly that when its sides divide by it): piece i's middle and outward normal in the hull's
+// frame, and its length.
+DRIFT_PIECE :: 10.0;
+DriftEdge :: struct { x: f64; z: f64; nx: f64; nz: f64; span: f64; }
+DriftPlan :: struct { round: bool; l: f64; b: f64; r: f64; }
+drift_side :: (side: f64) -> int { n := cast(int) floor(side / DRIFT_PIECE + 0.5); return ifx n < 1 then 1 else n; }
+drift_edges :: (p: DriftPlan) -> int {
+  if p.round { return 2 * drift_side(DRIFT_PI * p.r); }
+  return 2 * (drift_side(p.l) + drift_side(p.b));
+}
+drift_edge :: (p: DriftPlan, i: int) -> DriftEdge {
+  if p.round {
+    n := drift_edges(p); a := (f64(i) + 0.5) * 2.0 * DRIFT_PI / f64(n);
+    return DriftEdge.{x = p.r * cos(a), z = p.r * sin(a), nx = cos(a), nz = sin(a), span = 2.0 * DRIFT_PI * p.r / f64(n)};
+  }
+  nl := drift_side(p.l); nb := drift_side(p.b);
+  if i < 2 * nl {
+    // the long walls: south, then north
+    k := i % nl; s := ifx i < nl then -1.0 else 1.0;
+    return DriftEdge.{x = -p.l / 2.0 + (f64(k) + 0.5) * p.l / f64(nl), z = s * p.b / 2.0, nz = s, span = p.l / f64(nl)};
+  }
+  j := i - 2 * nl; k := j % nb; s := ifx j < nb then -1.0 else 1.0;
+  return DriftEdge.{x = s * p.l / 2.0, z = -p.b / 2.0 + (f64(k) + 0.5) * p.b / f64(nb), nx = s, span = p.b / f64(nb)};
+}
+// A force on the hull in the world's frame, and its turning moment about the hull's centre (N m,
+// turning the bow toward +z).
+DriftForce :: struct { fx: f64; fz: f64; yaw: f64; }
+// The waves' push on the walls of a hull whose centre is at (cx, cz), turned (cy, sy: the cosine
+// and sine of its yaw): rho g `scale` push on each piece of waterline, against its normal.
+drift_wave_push :: (push: [] f32, n: int, patch: f64, scale: f64, p: DriftPlan, cx: f64, cz: f64, cy: f64, sy: f64) -> DriftForce {
+  o: DriftForce;
+  if n <= 0 { return o; }
+  fx := 0.0; fz := 0.0;
+  for i: 0..<drift_edges(p) {
+    e := drift_edge(p, i);
+    head := drift_at(push, n, patch, cx + e.x * cy - e.z * sy, cz + e.x * sy + e.z * cy);
+    f := -DRIFT_RHO * DRIFT_G * scale * head * e.span;
+    fx += f * e.nx; fz += f * e.nz;
+    o.yaw += e.x * f * e.nz - e.z * f * e.nx;
+  }
+  o.fx = fx * cy - fz * sy; o.fz = fx * sy + fz * cy;
+  return o;
+}
+// The drift force: each piece of wall facing the waves (which run toward (wx, wz), a unit) takes
+// rho g back^2 cos^2 a metre, pushed the way it faces away from. With no tile (n = 0) it is the
+// mean force, from the reflected waves' mean square; `along` is the share of them running the
+// waves' way (the rest cross from both sides and cancel).
+drift_wave_drift :: (back: [] f32, n: int, patch: f64, variance: f64, along: f64, wx: f64, wz: f64, p: DriftPlan, cx: f64, cz: f64, cy: f64, sy: f64) -> DriftForce {
+  o: DriftForce;
+  // the waves' way in the hull's frame
+  hx := wx * cy + wz * sy; hz := -wx * sy + wz * cy;
+  fx := 0.0; fz := 0.0;
+  for i: 0..<drift_edges(p) {
+    e := drift_edge(p, i);
+    facing := -(e.nx * hx + e.nz * hz);
+    if facing <= 0 { continue; }
+    square := variance;
+    if n > 0 { zeta := drift_at(back, n, patch, cx + e.x * cy - e.z * sy, cz + e.x * sy + e.z * cy); square = zeta * zeta; }
+    f := -DRIFT_RHO * DRIFT_G * along * square * facing * facing * e.span;
+    fx += f * e.nx; fz += f * e.nz;
+    o.yaw += e.x * f * e.nz - e.z * f * e.nx;
+  }
+  o.fx = fx * cy - fz * sy; o.fz = fx * sy + fz * cy;
+  return o;
+}
+// The water a flat hull carries with it when it heaves, rolls or pitches is several times what it
+// displaces: see sim_shape's coefficients for the spec's values, and the spec's results for what a
+// flat-plate estimate gives instead.
+
+#test "a face square to the flow has its centre of pressure in the middle; edge on, 3/16 forward" {
+  #assert drift_arm(1000, 1, 0) == 0;
+  #assert abs(drift_arm(1000, 0, 1) - 187.5) < 1e-9;
+  #assert abs(drift_arm(1000, 0.70710678, 0.70710678) - 85.3) < 0.1;
+}
+#test "a flow off the beam turns a box broadside to it, and nothing turns it square on or end on" {
+  // wind from the south-west at 25 m/s on prime's 85 m of walls and buildings
+  u := 25.0 * 0.70710678;
+  m := drift_turn(1.225, 1000, 600, 85, u, u);
+  // the long faces: 16.3 MN at 85 m; the ends: 9.8 MN at 51 m; the bow swings away from the wind
+  #assert m < 0 && abs(m / 1e9 + (16.27 * 85.3 - 9.76 * 51.2) / 1000.0) < 0.02;
+  #assert drift_turn(1.225, 1000, 600, 85, 0, 25) == 0 && drift_turn(1.225, 1000, 600, 85, 25, 0) == 0;
+  // mirrored flows turn it the other way
+  #assert abs(drift_turn(1.225, 1000, 600, 85, -u, u) + m) < 1.0 && abs(drift_turn(1.225, 1000, 600, 85, u, -u) + m) < 1.0;
+  #assert abs(drift_turn(1.225, 1000, 600, 85, -u, -u) - m) < 1.0;
+  // a square box has no long face to win
+  #assert abs(drift_turn(1.225, 600, 600, 85, u, u)) < 1.0;
+}
+#test "turning drags, and carries water with it" {
+  #assert drift_turn_drag(1025, 1000, 600, 25, 0.001) < 0 && drift_turn_drag(1025, 1000, 600, 25, -0.001) > 0;
+  // prime: 1.0e6 kg a metre of length, 5% more inertia than the hull's own 1.9e15 kg m^2
+  a := drift_turn_added(1025, 1000, 600, 25);
+  #assert abs(a / 1e14 - 1.02) < 0.01;
+}
+#test "the waterline: 320 pieces of 10 m round prime, 38 round a dome, normals outward, lengths summing to it" {
+  box := DriftPlan.{l = 1000, b = 600}; dome := DriftPlan.{round = true, r = 60.96};
+  #assert drift_edges(box) == 320 && drift_edges(dome) == 38;
+  sum := 0.0; nx := 0.0; nz := 0.0;
+  for i: 0..<320 {
+    e := drift_edge(box, i);
+    sum += e.span; nx += e.nx * e.span; nz += e.nz * e.span;
+    #assert e.span == 10.0 && e.x * e.nx + e.z * e.nz > 0 && abs(e.nx * e.nx + e.nz * e.nz - 1.0) < 1e-12;
+    #assert abs(e.x) <= 500 && abs(e.z) <= 300 && (abs(e.x) == 500 || abs(e.z) == 300);
+  }
+  #assert sum == 3200 && abs(nx) < 1e-9 && abs(nz) < 1e-9;
+  round := 0.0;
+  for i: 0..<38 { e := drift_edge(dome, i); round += e.span; #assert abs(sqrt(e.x * e.x + e.z * e.z) - 60.96) < 1e-9; }
+  #assert abs(round - 2.0 * DRIFT_PI * 60.96) < 1e-9;
+}
+#test "a level sea pushes nowhere; a head of water on the east wall pushes west" {
+  box := DriftPlan.{l = 1000, b = 600};
+  level: [DRIFT_TEXELS] f32;
+  for i: 0..<DRIFT_TEXELS { level[i] = 3; }
+  f := drift_wave_push(level[..], 64, 6400, 1, box, 0, 0, 1, 0);
+  #assert abs(f.fx) < 1e-3 && abs(f.fz) < 1e-3 && abs(f.yaw) < 1.0;
+  // a tile 100 m a texel, one unit higher east of x = 0 than west of it
+  step: [DRIFT_TEXELS] f32;
+  for j: 0..<64 { for i: 0..<64 { step[j * 64 + i] = ifx i < 32 then 1 else 0; } }
+  g := drift_wave_push(step[..], 64, 6400, 1, box, 0, 0, 1, 0);
+  // rho g x 1 m^2 x 600 m of east wall; the long walls' halves cancel
+  #assert abs(g.fx + DRIFT_RHO * DRIFT_G * 600.0) < 1.0 && abs(g.fz) < 1e-6 && abs(g.yaw) < 1.0;
+}
+#test "the push sums to the pressure gradient over the hull's plan (Gauss), turned or not" {
+  // push = 2 sin(2 pi x / 1600): the mean slope over the plan times its area, by the walls alone
+  tile: [DRIFT_TEXELS] f32;
+  for j: 0..<64 { for i: 0..<64 { tile[j * 64 + i] = f32(2.0 * sin(2.0 * DRIFT_PI * (f64(i) + 0.5) / 16.0)); } }
+  box := DriftPlan.{l = 1000, b = 600};
+  f := drift_wave_push(tile[..], 64, 6400, 1, box, 130, 40, 1, 0);
+  k := 2.0 * DRIFT_PI / 1600.0;
+  // -rho g B (H(x0 + L/2) - H(x0 - L/2)), H as the tile draws it: within a few percent of the sine
+  want := -DRIFT_RHO * DRIFT_G * 600.0 * 2.0 * (sin(k * 630.0) - sin(k * -370.0));
+  #assert abs(f.fx - want) < 0.03 * abs(want) && abs(f.fz) < 1e-6 * abs(want);
+  // a hull with no walls across the waves' way feels the same push per metre of beam at any heading
+  dome := DriftPlan.{round = true, r = 60.96};
+  a := drift_wave_push(tile[..], 64, 6400, 1, dome, 130, 40, 1, 0);
+  b := drift_wave_push(tile[..], 64, 6400, 1, dome, 130, 40, 0.6, 0.8);
+  #assert abs(a.fx - b.fx) < 0.01 * abs(a.fx) && abs(a.fx) > 1.0e5 && abs(a.yaw) < 1.0 && abs(b.yaw) < 1.0;
+}
+#test "the mean drift force is Maruo's 1/2 rho g a^2 on each metre of weather wall" {
+  box := DriftPlan.{l = 1000, b = 600}; none: [1] f32;
+  // waves of amplitude 5 m, all turned back, running north onto the 1,000 m south wall: 126 MN
+  f := drift_wave_drift(none[..], 0, 0, 12.5, 1, 0, 1, box, 0, 0, 1, 0);
+  #assert abs(f.fz - 0.5 * DRIFT_RHO * DRIFT_G * 25.0 * 1000.0) < 1.0 && abs(f.fx) < 1e-6 && abs(f.yaw) < 1.0;
+  // running east onto the 600 m end: six tenths of it
+  e := drift_wave_drift(none[..], 0, 0, 12.5, 1, 1, 0, box, 0, 0, 1, 0);
+  #assert abs(e.fx - 0.6 * f.fz) < 1.0;
+  // at 45 degrees both weather walls take half their square-on force
+  d := drift_wave_drift(none[..], 0, 0, 12.5, 1, 0.70710678, 0.70710678, box, 0, 0, 1, 0);
+  #assert abs(d.fz - 0.5 * f.fz) < 10.0 && abs(d.fx - 0.5 * e.fx) < 10.0 && abs(d.yaw) < 1000.0;
+  // a round hull: 2/3 of its diameter's worth
+  dome := DriftPlan.{round = true, r = 60.96};
+  r := drift_wave_drift(none[..], 0, 0, 12.5, 1, 0, 1, dome, 0, 0, 1, 0);
+  #assert abs(r.fz - 0.5 * DRIFT_RHO * DRIFT_G * 25.0 * 2.0 * 60.96 * 2.0 / 3.0) < 0.01 * r.fz;
+}
+#test "a group of waves on one end of the weather wall drifts the hull and turns it" {
+  // reflected waves only west of x = 0
+  tile: [DRIFT_TEXELS] f32;
+  for j: 0..<64 { for i: 0..<64 { tile[j * 64 + i] = ifx i >= 32 then 3 else 0; } }
+  box := DriftPlan.{l = 1000, b = 600};
+  // the tile's east half (x 3,200 to 6,400) wraps to x -3,200 to 0: the hull's west half
+  f := drift_wave_drift(tile[..], 64, 6400, 0, 1, 0, 1, box, 0, 0, 1, 0);
+  // (the tile blends the edge of the group over one 100 m texel)
+  #assert abs(f.fz - DRIFT_RHO * DRIFT_G * 9.0 * 500.0) < 0.05 * f.fz;
+  // pushed north at the west end: the bow (east) swings south
+  #assert f.yaw < 0 && abs(f.yaw + f.fz * 250.0) < 0.08 * f.fz * 250.0;
+}

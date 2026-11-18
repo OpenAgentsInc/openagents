@@ -1,0 +1,112 @@
+// The checks of moor.coax. The oracle doesn't use the catenary's formulas: it walks the line from
+// its anchor in short straight pieces, each stretched by its own tension and leaning the way its
+// tension points, and says where the far end comes out.
+
+// 220 mm studless chain (about 40 MN) and a polyester rope of the same strength.
+moor_check_chain :: () -> MoorLine { return MoorLine.{length = 800.0, w = 8200.0, ea = 4.1e9, mbl = 40.0e6}; }
+moor_check_rope :: () -> MoorLine { return MoorLine.{length = 2480.0, w = 235.0, ea = 600.0e6, mbl = 40.0e6}; }
+
+moor_oracle_end :: (l: MoorLine, p: MoorPull) -> [2] f64 {
+  n := 4000; ds := l.length / f64(n);
+  x := 0.0; z := 0.0;
+  for i: 0..<n {
+    s := (f64(i) + 0.5) * ds;
+    if s <= p.grounded { x += ds * (1.0 + p.h / l.ea); continue; }
+    up := ifx p.grounded > 0 then l.w * (s - p.grounded) else p.v - l.w * (l.length - s);
+    t := sqrt(p.h * p.h + up * up);
+    x += ds * (1.0 + t / l.ea) * p.h / t; z += ds * (1.0 + t / l.ea) * up / t;
+  }
+  return [2] f64.[x, z];
+}
+
+#test "a heavy chain on the seabed is the textbook catenary" {
+  // H = 4 MN lifts s = sqrt(z (z + 2 H / w)) of chain 50 m, over H/w asinh(w s / H) of seabed
+  l := moor_check_chain(); l.ea = 1.0e16;
+  h := 4.0e6; z := 50.0;
+  s := sqrt(z * (z + 2.0 * h / l.w)); x := h / l.w * moor_asinh(l.w * s / h);
+  p := moor_pull(l, l.length - s + x, z);
+  #assert p.ok && !p.slack;
+  #assert abs(p.h / h - 1.0) < 1e-6 && abs(p.v - l.w * s) < 1.0;
+  #assert abs(p.grounded - (l.length - s)) < 1e-3 && p.uplift == 0;
+}
+#test "a taut rope pulls nearly as a straight spring, and up on its anchor" {
+  l := moor_check_rope();
+  // 86 m longer than the rope: about 21 MN, where the rope's 0.6 MN of weight hardly bends it
+  span := 2100.0; rise := 1475.0; d := sqrt(span * span + rise * rise);
+  p := moor_pull(l, span, rise);
+  #assert p.ok && p.grounded == 0 && p.uplift > 0;
+  spring := l.ea * (d - l.length) / l.length;
+  #assert abs(p.tension / spring - 1.0) < 0.03;
+  // the rope's weight is all that its two ends' vertical pulls differ by
+  #assert abs(p.v - p.uplift - l.w * l.length) < 1e-3;
+  // and it sags under the straight line: the fairlead's pull is steeper than the chord
+  #assert p.v / p.h > rise / span;
+}
+#test "the pull puts the far end of a walked line at the fairlead, slack to breaking" #steps 400000000 {
+  rope := moor_check_rope(); chain := moor_check_chain();
+  for k: 0..<24 {
+    span := 1900.0 + 10.0 * f64(k);
+    p := moor_pull(rope, span, 1475.0);
+    e := moor_oracle_end(rope, p);
+    #assert p.ok && abs(e[0] - span) < 0.05 && abs(e[1] - 1475.0) < 0.05;
+  }
+  for k: 0..<24 {
+    span := 751.0 + 2.4 * f64(k);
+    p := moor_pull(chain, span, 50.0);
+    e := moor_oracle_end(chain, p);
+    #assert p.ok && abs(e[0] - span) < 0.05 && abs(e[1] - 50.0) < 0.05;
+  }
+}
+#test "the further the fairlead, the harder the pull; the weights and lengths add up" {
+  lines := [2] MoorLine.[moor_check_chain(), moor_check_rope()];
+  rises := [2] f64.[50.0, 1475.0]; from := [2] f64.[740.0, 1700.0]; step := [2] f64.[0.3, 2.5];
+  for q: 0..<2 {
+    l := lines[q]; last := 0.0;
+    for k: 0..<240 {
+      span := from[q] + step[q] * f64(k);
+      p := moor_pull(l, span, rises[q]);
+      #assert p.ok && p.tension >= last;
+      #assert abs(p.v - p.uplift - l.w * (l.length - p.grounded)) < 1e-3 * l.w * l.length;
+      #assert p.grounded == 0 || p.uplift == 0;
+      last = p.tension;
+      if p.tension > l.mbl { break; }
+    }
+    #assert last > l.mbl;   // the sweep ran from slack to past breaking
+  }
+}
+#test "a slack line hangs straight down with the rest on the seabed" {
+  l := moor_check_chain();
+  p := moor_pull(l, 600.0, 50.0);
+  #assert p.ok && p.slack && p.h == 0 && abs(p.v - l.w * 50.0) < 0.001 * l.w * 50.0;
+  top := moor_at(l, p, 600.0, l.length);
+  #assert abs(top[0] - 600.0) < 1e-9 && abs(top[1] - 50.0) < 1e-6;
+}
+#test "the drawn line runs from the anchor to the fairlead and never dips under the seabed" {
+  lines := [2] MoorLine.[moor_check_chain(), moor_check_rope()];
+  rises := [2] f64.[50.0, 1475.0]; spans := [2] f64.[752.0, 2000.0];
+  for q: 0..<2 {
+    l := lines[q]; p := moor_pull(l, spans[q], rises[q]);
+    a := moor_at(l, p, spans[q], 0); b := moor_at(l, p, spans[q], l.length);
+    #assert a[0] == 0 && a[1] == 0 && abs(b[0] - spans[q]) < 1e-5 && abs(b[1] - rises[q]) < 1e-5;
+    last := a;
+    for k: 1..<41 {
+      c := moor_at(l, p, spans[q], l.length * f64(k) / 40.0);
+      #assert c[0] > last[0] && c[1] >= last[1] && c[1] >= 0;
+      last = c;
+    }
+  }
+}
+#test "a line is cut or laid to its pretension" {
+  rope := moor_check_rope();
+  rope.length = moor_length_for(rope, 2000.0, 1475.0, 4.0e6);
+  #assert abs(moor_pull(rope, 2000.0, 1475.0).tension - 4.0e6) < 10.0;
+  #assert rope.length < sqrt(2000.0 * 2000.0 + 1475.0 * 1475.0);   // shorter than the gap: stretched taut
+  chain := moor_check_chain();
+  span := moor_span_for(chain, 50.0, 4.0e6);
+  p := moor_pull(chain, span, 50.0);
+  #assert abs(p.tension - 4.0e6) < 10.0 && p.grounded > 400.0;
+}
+#test "a line with no length, weight or stiffness is refused" {
+  #assert !moor_pull(MoorLine.{}, 100.0, 50.0).ok;
+  #assert !moor_pull(moor_check_chain(), 100.0, 0.0).ok;
+}

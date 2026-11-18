@@ -4,16 +4,20 @@
 // the hotel load and the bitcoin miners) with the dispatcher that sheds them. No platform effects:
 // the SLAB Simulation realm (apps/openagents-web/slab.coax) steps it and draws what it says.
 //
-// The hull is the `prime` monolith, a rigid body in heave, roll and pitch, plus surge and sway on
-// its moorings. Its size, mass and centre of gravity come from metaverse/hull.coax's ledger. Buoyancy comes from columns: the sea's height at each column's centre, a 10 m
+// The hull is the `prime` monolith, a rigid body in heave, roll and pitch, plus surge, sway and yaw
+// on its moorings. Its size, mass and centre of gravity come from metaverse/hull.coax's ledger. Buoyancy comes from columns: the sea's height at each column's centre, a 10 m
 // grid under the hull (6,000 columns), summed into a force and two moments (spec 4.1, linearised
 // about the design draft), with added mass and radiation damping at zeta = 0.08 (spec 4.2). Wind,
-// current and sixteen taut mooring lines hold it in the horizontal (spec 4.3, 4.4).
+// current and sixteen mooring lines hold it in the horizontal (spec 4.3, 4.4): the lines are
+// metaverse/slab-moor.coax's catenaries, laid for the site's depth, and one can break; wind and
+// current off the beam turn the hull against them (metaverse/slab-drift.coax).
 // Units: metres, seconds, kilograms, newtons; MW and degrees C in the systems.
 //   coax/bin/coax test metaverse/slab-sim.coax
 
 #load "../metaverse-engine/core/angle.coax";
 #load "hull.coax";
+#load "slab-moor.coax";
+#load "slab-drift.coax";
 
 SIM_PI :: 3.14159265358979;
 sim_max :: (a: f64, b: f64) -> f64 { return ifx a > b then a else b; }
@@ -240,8 +244,8 @@ SIM_STEP :: 1.0 / 60.0;   // the hull's fixed step
 SIM_LINES :: 16;
 SIM_DEPTH :: 1500.0;      // the site's water
 SIM_ANCHOR :: 2000.0;     // anchors this far out from the fairleads
-SIM_T0 :: 4.0e6; SIM_K1 :: 0.05e6;   // N, N/m
-SIM_BREAK :: 40.0e6;
+SIM_T0 :: 4.0e6;          // each line's pretension, N
+SIM_BREAK :: 40.0e6;      // and its breaking load
 SIM_WAVE_DECAY :: 25.0;    // 1/k of a 160 m wave, m
 SIM_CURRENT :: 0.5;       // m/s from the east
 
@@ -256,6 +260,9 @@ SimImpulse :: struct {
   moor_x: f64; moor_z: f64;
   wave_x: f64; wave_z: f64;     // the sea's push on the walls
   drag_x: f64; drag_z: f64;     // the water's drag on the hull's own surge and sway
+  current_z: f64;               // the current's push north or south on a turned hull's faces
+  drift_x: f64; drift_z: f64;   // the waves' slow drift force
+  yaw_wind: f64; yaw_current: f64; yaw_moor: f64; yaw_wave: f64; yaw_drag: f64;   // about the vertical, N m s
   push_x: f64; push_z: f64;     // a cluster's bridges
 }
 SimHull :: struct {
@@ -268,6 +275,13 @@ SimHull :: struct {
   pitch: f64; pitch_v: f64;     // rad about +Z (the east end up)
   surge: f64; surge_v: f64;     // m east of the anchors' centre
   sway: f64; sway_v: f64;       // m north
+  yaw: f64; yaw_v: f64;         // rad about the vertical (the bow, +X, toward north)
+  depth: f64 = SIM_DEPTH;       // the water here, m: it sets the mooring layout
+  rig: [1] MoorRig;             // the moorings, laid on the first step in this water (slab-moor.coax)
+  lost: u32;                    // the lines lost, a bit each
+  broke: f64 = -1.0;            // when a line last broke at its load, s (-1: none has)
+  drift_x: f64; drift_z: f64;   // the waves' slow drift force on the hull now, N
+  drift_n: f64;                 // and its turning moment, N m
   clock: f64;                   // time not yet stepped
   time: f64;
   tension: f64;                 // the most-loaded line now, N
@@ -291,7 +305,8 @@ SimShape :: struct {
   t: f64; d: f64; kg: f64;      // draft, the watertight hull's depth, centre of gravity over the keel
   ca_heave: f64; ca_rot: f64;
   k_roll: f64; k_pitch: f64;    // radii of gyration
-  lines: int; anchor: f64; t0: f64; k1: f64;
+  k_yaw: f64;
+  lines: int; anchor: f64; t0: f64; mbl: f64;   // lines, the anchors' distance in 1,500 m of water, each line's pretension and breaking load
   windage: f64;                 // the side-on projected height of hull and buildings, m
   column: f64;                  // prime's buoyancy columns' grid, m
   cell: f64;                    // the holed compartment's plan area, m^2
@@ -302,11 +317,12 @@ SIM_DOME_R :: 60.96;          // 400 ft across
 SIM_DOME_CORE :: 15.0;        // the central core's radius
 sim_prime_shape :: () -> SimShape {
   return SimShape.{l = SIM_L, b = SIM_B, t = SIM_T, d = SIM_D, kg = hull_ledger(hull_prime()).kg, ca_heave = SIM_CA_HEAVE, ca_rot = SIM_CA_ROT,
-    k_roll = 0.35 * SIM_B, k_pitch = 0.29 * SIM_L, lines = 16, anchor = SIM_ANCHOR, t0 = SIM_T0, k1 = SIM_K1, windage = SIM_WINDAGE, column = SIM_COLUMN,
+    k_roll = 0.35 * SIM_B, k_pitch = 0.29 * SIM_L, k_yaw = 0.30 * sqrt(SIM_L * SIM_L + SIM_B * SIM_B),
+    lines = 16, anchor = SIM_ANCHOR, t0 = SIM_T0, mbl = SIM_BREAK, windage = SIM_WINDAGE, column = SIM_COLUMN,
     cell = SIM_CELL * SIM_CELL, cell_h = SIM_D, hole_x = SIM_HOLE_X, hole_z = SIM_HOLE_Z};
 }
-// One Silone dome: 12 m draft, 4 m of base ring above it, KG 10 m, 8 lines at 45 degrees with a
-// quarter of prime's line stiffness. The holed compartment is one of the 8 sectors outside the core
+// One Silone dome: 12 m draft, 4 m of base ring above it, KG 10 m, 8 lines at 45 degrees, each a
+// quarter of one of prime's. The holed compartment is one of the 8 sectors outside the core
 // below the waterline (spec 3.2), the south-west one; its centroid lies 41.5 m out.
 sim_dome_shape :: () -> SimShape {
   r := SIM_DOME_R; c := SIM_DOME_CORE;
@@ -314,7 +330,8 @@ sim_dome_shape :: () -> SimShape {
   half := SIM_PI / 8.0;
   out := 2.0 / 3.0 * (r * r * r - c * c * c) / (r * r - c * c) * sin(half) / half;
   return SimShape.{round = true, l = 2.0 * r, b = 2.0 * r, r = r, t = 12.0, d = 16.0, kg = 10.0, ca_heave = 1.5, ca_rot = 0.3,
-    k_roll = 0.45 * r, k_pitch = 0.45 * r, lines = 8, anchor = 1800.0, t0 = SIM_T0 / 4.0, k1 = SIM_K1 / 4.0, windage = 24.0,
+    k_roll = 0.45 * r, k_pitch = 0.45 * r, k_yaw = r * 0.7071067811865476,
+    lines = 8, anchor = 1800.0, t0 = SIM_T0 / 4.0, mbl = SIM_BREAK / 4.0, windage = 24.0,
     cell = cell, cell_h = 12.0, hole_x = -out * 0.7071067811865476, hole_z = -out * 0.7071067811865476};
 }
 sim_shape :: (h: SimHull) -> SimShape { return ifx h.round then sim_dome_shape() else sim_prime_shape(); }
@@ -330,6 +347,11 @@ sim_gm_l_of :: (sh: SimShape) -> f64 { bm := ifx sh.round then sh.r * sh.r / (4.
 sim_heave_period_of :: (sh: SimShape) -> f64 { return 2.0 * SIM_PI * sqrt(sim_mass_of(sh) * (1.0 + sh.ca_heave) / (SIM_RHO * SIM_G * sim_awp_of(sh))); }
 sim_roll_inertia_of :: (sh: SimShape) -> f64 { return sim_mass_of(sh) * sh.k_roll * sh.k_roll * (1.0 + sh.ca_rot); }
 sim_pitch_inertia_of :: (sh: SimShape) -> f64 { return sim_mass_of(sh) * sh.k_pitch * sh.k_pitch * (1.0 + sh.ca_rot); }
+// About the vertical: the hull's own inertia and the water a box hull turns with it.
+sim_yaw_inertia_of :: (sh: SimShape) -> f64 {
+  own := sim_mass_of(sh) * sh.k_yaw * sh.k_yaw;
+  return ifx sh.round then own else own + drift_turn_added(SIM_RHO, sh.l, sh.b, sh.t);
+}
 sim_roll_period_of :: (sh: SimShape) -> f64 { return 2.0 * SIM_PI * sqrt(sim_roll_inertia_of(sh) / (sim_mass_of(sh) * SIM_G * sim_gm_t_of(sh))); }
 sim_pitch_period_of :: (sh: SimShape) -> f64 { return 2.0 * SIM_PI * sqrt(sim_pitch_inertia_of(sh) / (sim_mass_of(sh) * SIM_G * sim_gm_l_of(sh))); }
 // prime's, as section 3.1 gives them
@@ -395,53 +417,27 @@ sim_tap :: (n: int, patch: f64, x: f64) -> SimTap {
   return SimTap.{a = sim_wrap(k, n), b = sim_wrap(k + 1, n), f = q - fl};
 }
 
-// A mooring line's fairlead and anchor. prime: four lines a corner, fanned 30 degrees apart about
-// the corner's diagonal, fairleads at the keel's corners. The dome: eight lines 45 degrees apart.
-SimLine :: struct { fx: f64; fz: f64; ax: f64; az: f64; rest: f64; }
-sim_line_of :: (sh: SimShape, i: int) -> SimLine {
-  fx := 0.0; fz := 0.0; a := 0.0;
-  if sh.round {
-    a = (f64(i) + 0.5) * SIM_PI / 4.0;
-    fx = cos(a) * (sh.r - 2.0); fz = sin(a) * (sh.r - 2.0);
-  } else {
-    corner := i / 4; k := i % 4;
-    sx := ifx corner & 1 == 0 then -1.0 else 1.0;
-    sz := ifx corner & 2 == 0 then -1.0 else 1.0;
-    fx = sx * (sh.l / 2.0 - 12.0); fz = sz * (sh.b / 2.0 - 12.0);
-    diag := sim_atan2(sz * sh.b, sx * sh.l);
-    a = diag + (f64(k) - 1.5) * 30.0 * SIM_PI / 180.0;
-  }
-  ax := fx + cos(a) * sh.anchor; az := fz + sin(a) * sh.anchor;
-  return SimLine.{fx = fx, fz = fz, ax = ax, az = az, rest = sqrt(sh.anchor * sh.anchor + (SIM_DEPTH - sh.t) * (SIM_DEPTH - sh.t))};
+// The moorings (spec 4.3): the rig a shape is given in `depth` metres of water. prime: four lines
+// a corner, fanned 30 degrees apart about the corner's diagonal. The dome: eight lines 45 degrees
+// apart.
+sim_rig_of :: (sh: SimShape, depth: f64) -> MoorRig {
+  return moor_rig(MoorHull.{round = sh.round, l = sh.l, b = sh.b, r = sh.r, draft = sh.t, count = sh.lines, mbl = sh.mbl, pretension = sh.t0, anchor = sh.anchor}, depth);
 }
-sim_line :: (i: int) -> SimLine { return sim_line_of(sim_prime_shape(), i); }
-// A line's tension at an extension x beyond its rest length: T0 + k1 x + k3 x^3, the cubic chosen
-// so the line reaches its breaking load at 150 m.
-sim_tension_of :: (sh: SimShape, x: f64) -> f64 {
-  k3 := (SIM_BREAK - sh.t0 - sh.k1 * 150.0) / (150.0 * 150.0 * 150.0);
-  e := sim_max(x, -sh.t0 / sh.k1);
-  return sim_max(0, sh.t0 + sh.k1 * e + k3 * e * e * e);
-}
-sim_tension :: (x: f64) -> f64 { return sim_tension_of(sim_prime_shape(), x); }
-
 // The moorings' horizontal force on the hull at an offset (surge, sway), and the peak tension.
 SimMooring :: struct { fx: f64; fz: f64; peak: f64; }
+sim_mooring_in :: (rig: [] MoorRig, surge: f64, sway: f64) -> SimMooring {
+  f := moor_force(rig, 0, surge, sway, 0, 0);
+  return SimMooring.{fx = f.fx, fz = f.fz, peak = f.peak};
+}
 sim_mooring_of :: (sh: SimShape, surge: f64, sway: f64) -> SimMooring {
-  o: SimMooring;
-  for i: 0..<sh.lines {
-    l := sim_line_of(sh, i);
-    dx := l.ax - (l.fx + surge); dz := l.az - (l.fz + sway); dy := SIM_DEPTH - sh.t;
-    span := sqrt(dx * dx + dz * dz + dy * dy);
-    t := sim_tension_of(sh, span - l.rest);
-    o.fx += t * dx / span; o.fz += t * dz / span;
-    if t > o.peak { o.peak = t; }
-  }
-  return o;
+  rig: [1] MoorRig; rig[0] = sim_rig_of(sh, SIM_DEPTH);
+  return sim_mooring_in(rig[..], surge, sway);
 }
 sim_mooring :: (surge: f64, sway: f64) -> SimMooring { return sim_mooring_of(sim_prime_shape(), surge, sway); }
-
 // The wind's force on the hull and the buildings over it (spec 4.4), toward (dx, dz).
-SIM_WINDAGE :: 85.0;      // m of freeboard and buildings, the side-on projected height
+// The side-on projected height, m: the drawn wall (the deck over the waterline, 118 m) and 60 m of
+// buildings over it.
+SIM_WINDAGE :: HULL_PRIME_DECK - HULL_PRIME_DRAFT + 60.0;
 sim_wind_of :: (sh: SimShape, u: f64, dx: f64, dz: f64) -> [2] f64 {
   area := (abs(dz) * sh.l + abs(dx) * sh.b) * sh.windage;
   f := 0.5 * SIM_RHO_AIR * 1.0 * area * u * u;
@@ -454,12 +450,13 @@ sim_wind :: (u: f64, dx: f64, dz: f64) -> [2] f64 { return sim_wind_of(sim_prime
 SimOffset :: struct { offset: f64; tension: f64; force: f64; }
 sim_offset :: (u: f64) -> SimOffset {
   f := sim_wind(u, 0, 1)[1];
+  rig: [1] MoorRig; rig[0] = sim_rig_of(sim_prime_shape(), SIM_DEPTH);
   lo := 0.0; hi := 300.0;
   for i: 0..<40 {
     mid := (lo + hi) * 0.5;
-    if sim_mooring(0, mid).fz + f > 0 { lo = mid; } else { hi = mid; }
+    if sim_mooring_in(rig[..], 0, mid).fz + f > 0 { lo = mid; } else { hi = mid; }
   }
-  return SimOffset.{offset = lo, tension = sim_mooring(0, lo).peak, force = f};
+  return SimOffset.{offset = lo, tension = sim_mooring_in(rig[..], 0, lo).peak, force = f};
 }
 // Cell A1, the south-west corner cell (columns A-T west to east, rows 1-12 south to north).
 SIM_CELL :: HULL_PRIME_CELL;
@@ -490,78 +487,129 @@ sim_flood_of :: (sh: SimShape, h: SimHull, dt: f64) -> SimHull {
   }
   return o;
 }
-// One fixed step of the hull on a sea of `heights` (cascade 0's tile at this tick), with the wind.
+// What holds the hull in the horizontal at its place and speed now, the waves aside: the wind, the
+// water past it (the current and its own motion), the moorings and the slow damping. The forces
+// are in the world's frame; `yaw` is the turning moment about the vertical. The parts are the
+// momentum ledger's: the current's is the water's force on the hull held still, and the drag's the
+// rest, with the slow damping.
+SimHold :: struct {
+  fx: f64; fz: f64; yaw: f64; wind: f64; moor: MoorForce;
+  wind_x: f64; wind_z: f64; current_x: f64; current_z: f64; drag_x: f64; drag_z: f64;
+  yaw_wind: f64; yaw_current: f64; yaw_drag: f64;
+}
+sim_plan_of :: (sh: SimShape) -> DriftPlan { return DriftPlan.{round = sh.round, l = sh.l, b = sh.b, r = sh.r}; }
+sim_hold :: (h: SimHull, sh: SimShape, rig: [] MoorRig, wind: f64, wdx: f64, wdz: f64) -> SimHold {
+  o := SimHold.{moor = MoorForce.{worst = -1}};
+  cy := cos(h.yaw); sy := sin(h.yaw);
+  // the wind in the hull's frame: its force on the faces it sees, and its turning moment
+  hx := wdx * cy + wdz * sy; hz := -wdx * sy + wdz * cy;
+  w := sim_wind_of(sh, wind, hx, hz);
+  o.wind = sqrt(w[0] * w[0] + w[1] * w[1]);
+  o.wind_x = w[0] * cy - w[1] * sy; o.wind_z = w[0] * sy + w[1] * cy;
+  // the water past the hull, in its frame: the current (from the east) less the hull's own
+  // motion, with the cross-flow drag of each pair of faces (C_d 1)
+  su := 0.5 * SIM_RHO * sh.b * sh.t; sw := 0.5 * SIM_RHO * sh.l * sh.t;
+  cu := -SIM_CURRENT * cy; cw := SIM_CURRENT * sy;
+  rx := -SIM_CURRENT - h.surge_v; rz := -h.sway_v;
+  ru := rx * cy + rz * sy; rw := -rx * sy + rz * cy;
+  du0 := su * cu * abs(cu); dw0 := sw * cw * abs(cw);
+  du := su * ru * abs(ru) - du0; dw := sw * rw * abs(rw) - dw0;
+  o.current_x = du0 * cy - dw0 * sy; o.current_z = du0 * sy + dw0 * cy;
+  // slow damping (the lines' drag through the water and the waves' own, a stand-in), about the
+  // vertical as if spread over the hull's plan
+  lin := 2.0e7 * sim_mass_of(sh) / sim_prime_mass();
+  o.drag_x = du * cy - dw * sy - lin * h.surge_v; o.drag_z = du * sy + dw * cy - lin * h.sway_v;
+  if !sh.round {
+    o.yaw_wind = drift_turn(SIM_RHO_AIR, sh.l, sh.b, sh.windage, wind * hx, wind * hz);
+    o.yaw_current = drift_turn(SIM_RHO, sh.l, sh.b, sh.t, cu, cw);
+    o.yaw_drag = drift_turn(SIM_RHO, sh.l, sh.b, sh.t, ru, rw) - o.yaw_current + drift_turn_drag(SIM_RHO, sh.l, sh.b, sh.t, h.yaw_v);
+  }
+  o.yaw_drag -= lin * (sh.l * sh.l + sh.b * sh.b) / 12.0 * h.yaw_v;
+  if !h.free { o.moor = moor_force(rig, h.lost, h.surge, h.sway, h.yaw, h.heave); }
+  o.fx = o.wind_x + o.current_x + o.moor.fx + h.push_x + o.drag_x;
+  o.fz = o.wind_z + o.current_z + o.moor.fz + h.push_z + o.drag_z;
+  o.yaw = o.yaw_wind + o.yaw_current + o.moor.yaw + o.yaw_drag;
+  return o;
+}
+// The sea's tiles as the step reads them (slab-drift.coax's DriftSea). `deep` scales `push`: 1
+// for tiles weighted wave by wave, or 0 for a plain tile of heights, taken as one band of 160 m
+// waves (SIM_WAVE_DECAY) that lifts the hull unfaded.
+SimWaves :: struct { n: int; patch: f64; deep: f64; variance: f64; along: f64; }
+SIM_DRIFT_SLOW :: 10.0;       // the drift force's low-pass, s: it keeps the slow part (Newman)
+// One fixed step of the hull on a sea of `heights` (cascade 0's tile at this tick, or a check's
+// own wave), with the wind: one band, no drift.
 sim_hull_step :: (h0: SimHull, heights: [] f32, n: int, patch: f64, wind: f64, wdx: f64, wdz: f64, dt: f64) -> SimHull {
   return sim_hull_step_on(sim_shape(h0), h0, heights, n, patch, wind, wdx, wdz, dt);
 }
 // The same step for a caller that already holds the hull's shape (it does not change between steps).
 sim_hull_step_on :: (sh: SimShape, h0: SimHull, heights: [] f32, n: int, patch: f64, wind: f64, wdx: f64, wdz: f64, dt: f64) -> SimHull {
+  return sim_hull_core(sh, h0, heights, heights, heights[0..<0], SimWaves.{n = n, patch = patch}, wind, wdx, wdz, dt);
+}
+// The step on the spectral sea's tiles, each wave weighted by its length (water-hull.coax), with
+// the wind the waves run with.
+sim_hull_step_in :: (h0: SimHull, sea: [] DriftSea, wind: f64, wdx: f64, wdz: f64, dt: f64) -> SimHull {
+  return sim_hull_step_in_on(sim_shape(h0), h0, sea, wind, wdx, wdz, dt);
+}
+sim_hull_step_in_on :: (sh: SimShape, h0: SimHull, sea: [] DriftSea, wind: f64, wdx: f64, wdz: f64, dt: f64) -> SimHull {
+  wv := SimWaves.{n = sea[0].n, patch = sea[0].patch, deep = 1.0, variance = sea[0].variance, along = sea[0].along};
+  return sim_hull_core(sh, h0, sea[0].lift[..], sea[0].push[..], sea[0].back[..], wv, wind, wdx, wdz, dt);
+}
+sim_hull_core :: (sh: SimShape, h0: SimHull, lift: [] f32, push: [] f32, back: [] f32, wv: SimWaves, wind: f64, wdx: f64, wdz: f64, dt: f64) -> SimHull {
   h := sim_flood_of(sh, h0, dt);
   o := h;
+  n := wv.n; patch := wv.patch;
   m := sim_mass_of(sh); awp := sim_awp_of(sh);
-  // column buoyancy: the sea's rise at each column over the hull's own draft change
-  // and the wave's horizontal push (Froude-Krylov): the pressure gradient under a sloping surface,
-  // over the column's depth with a 160 m wave's decay. A long hull's slopes cancel; a dome's do not.
-  force := 0.0; mroll := 0.0; mpitch := 0.0; wave_x := 0.0; wave_z := 0.0;
-  deep := SIM_WAVE_DECAY * (1.0 - exp(-sh.t / SIM_WAVE_DECAY));
-  regular := !sh.round && n <= SIM_TILE_MAX && heights.count >= n * n && patch > 0;
-  if n > 0 && !regular { for i: 0..<sim_columns(sh) {
+  if !h.free && (!h.rig[0].built || h.rig[0].depth != h.depth || h.rig[0].count != sh.lines) { o.rig[0] = sim_rig_of(sh, h.depth); }
+  cy := cos(h.yaw); sy := sin(h.yaw);
+  ox := h.cx + h.surge; oz := h.cz + h.sway;
+  // column buoyancy: the sea's pressure head at each column's foot over the hull's own draft change
+  force := 0.0; mroll := 0.0; mpitch := 0.0;
+  // a hull square to the tile sums its columns as weights on the tile's texels; a turned one
+  // reads the tile under each column
+  regular := !sh.round && h.yaw == 0 && n <= SIM_TILE_MAX && lift.count >= n * n && patch > 0;
+  if n > 0 && sh.round { for i: 0..<sim_columns(sh) {
     c := sim_column(sh, i);
-    wx := c[0] + h.cx + h.surge; wz := c[1] + h.cz + h.sway;
-    eta := sim_sea_at(heights, n, patch, wx, wz);
-    p := SIM_RHO * SIM_G * eta * c[2];
+    p := SIM_RHO * SIM_G * sim_sea_at(lift, n, patch, c[0] * cy - c[1] * sy + ox, c[0] * sy + c[1] * cy + oz) * c[2];
     force += p; mroll -= p * c[1]; mpitch += p * c[0];
-    if sh.round {
-      sx := (sim_sea_at(heights, n, patch, wx + 5.0, wz) - sim_sea_at(heights, n, patch, wx - 5.0, wz)) / 10.0;
-      sz := (sim_sea_at(heights, n, patch, wx, wz + 5.0) - sim_sea_at(heights, n, patch, wx, wz - 5.0)) / 10.0;
-      wave_x -= SIM_RHO * SIM_G * sx * c[2] * deep; wave_z -= SIM_RHO * SIM_G * sz * c[2] * deep;
-    }
   } }
-  if n > 0 && regular {
+  if n > 0 && !sh.round {
     nx := sim_columns_x(sh); nz := sim_columns_z(sh); wx := sh.l / f64(nx); wz := sh.b / f64(nz);
     x0 := -sh.l / 2.0 + wx / 2.0; z0 := -sh.b / 2.0 + wz / 2.0;
-    tx := sim_weights(n, patch, h.cx + h.surge + x0, x0, wx, nx); tz := sim_weights(n, patch, h.cz + h.sway + z0, z0, wz, nz);
     all := 0.0; by_x := 0.0; by_z := 0.0;
-    for r: 0..<n {
-      if tz.w[r] == 0 { continue; }
-      row := r * n; line := 0.0; lever := 0.0;
-      for c: 0..<n { e := f64(heights[row + c]); line += e * tx.w[c]; lever += e * tx.m[c]; }
-      all += line * tz.w[r]; by_x += lever * tz.w[r]; by_z += line * tz.m[r];
+    if regular {
+      tx := sim_weights(n, patch, ox + x0, x0, wx, nx); tz := sim_weights(n, patch, oz + z0, z0, wz, nz);
+      for r: 0..<n {
+        if tz.w[r] == 0 { continue; }
+        row := r * n; line := 0.0; lever := 0.0;
+        for c: 0..<n { e := f64(lift[row + c]); line += e * tx.w[c]; lever += e * tx.m[c]; }
+        all += line * tz.w[r]; by_x += lever * tz.w[r]; by_z += line * tz.m[r];
+      }
+    } else {
+      for j: 0..<nz {
+        z := z0 + f64(j) * wz; line := 0.0; lever := 0.0;
+        for i: 0..<nx {
+          x := x0 + f64(i) * wx;
+          e := sim_sea_at(lift, n, patch, x * cy - z * sy + ox, x * sy + z * cy + oz);
+          line += e; lever += e * x;
+        }
+        all += line; by_x += lever; by_z += line * z;
+      }
     }
-    lift := SIM_RHO * SIM_G * wx * wz;
-    force += lift * all; mroll -= lift * by_z; mpitch += lift * by_x;
-    // the sea's push: its height on the east wall less the west wall's, row by row, and the north
-    // wall's less the south wall's (see below), with the same weights
-    east := sim_tap(n, patch, h.cx + h.surge + sh.l / 2.0); west := sim_tap(n, patch, h.cx + h.surge - sh.l / 2.0);
-    north := sim_tap(n, patch, h.cz + h.sway + sh.b / 2.0); south := sim_tap(n, patch, h.cz + h.sway - sh.b / 2.0);
-    ends := 0.0; sides := 0.0;
-    for r: 0..<n {
-      if tz.w[r] == 0 { continue; }
-      row := r * n;
-      ends += tz.w[r] * (f64(heights[row + east.a]) * (1.0 - east.f) + f64(heights[row + east.b]) * east.f
-        - f64(heights[row + west.a]) * (1.0 - west.f) - f64(heights[row + west.b]) * west.f);
-    }
-    for c: 0..<n {
-      if tx.w[c] == 0 { continue; }
-      sides += tx.w[c] * (f64(heights[north.a * n + c]) * (1.0 - north.f) + f64(heights[north.b * n + c]) * north.f
-        - f64(heights[south.a * n + c]) * (1.0 - south.f) - f64(heights[south.b * n + c]) * south.f);
-    }
-    wave_x -= SIM_RHO * SIM_G * deep * wz * ends; wave_z -= SIM_RHO * SIM_G * deep * wx * sides;
+    up := SIM_RHO * SIM_G * wx * wz;
+    force += up * all; mroll -= up * by_z; mpitch += up * by_x;
   }
-  if n > 0 && !regular && !sh.round {
-    // prime's slopes, summed along a row of columns, leave the sea's height at the two faces the
-    // row ends on: the push is the pressure on the end walls and the side walls
-    nx := sim_columns_x(sh); nz := sim_columns_z(sh); wx := sh.l / f64(nx); wz := sh.b / f64(nz);
-    ox := h.cx + h.surge; oz := h.cz + h.sway;
-    for j: 0..<nz {
-      z := oz - sh.b / 2.0 + (f64(j) + 0.5) * wz;
-      wave_x -= SIM_RHO * SIM_G * deep * wz * (sim_sea_at(heights, n, patch, ox + sh.l / 2.0, z) - sim_sea_at(heights, n, patch, ox - sh.l / 2.0, z));
-    }
-    for i: 0..<nx {
-      x := ox - sh.l / 2.0 + (f64(i) + 0.5) * wx;
-      wave_z -= SIM_RHO * SIM_G * deep * wx * (sim_sea_at(heights, n, patch, x, oz + sh.b / 2.0) - sim_sea_at(heights, n, patch, x, oz - sh.b / 2.0));
-    }
-  }
+  // the waves' horizontal push (Froude-Krylov): the sea's pressure on the walls, summed round the
+  // waterline in pieces as long as a column is wide. Along a long hull the crests and troughs
+  // cancel; round a dome they do not.
+  deep := ifx wv.deep > 0 then wv.deep else SIM_WAVE_DECAY * (1.0 - exp(-sh.t / SIM_WAVE_DECAY));
+  plan := sim_plan_of(sh);
+  wave := drift_wave_push(push, n, patch, deep, plan, ox, oz, cy, sy);
+  // the slow drift force, where the tiles carry the waves the hull turns back
+  if back.count > 0 && n > 0 {
+    d := drift_wave_drift(back, n, patch, wv.variance, wv.along, wdx, wdz, plan, ox, oz, cy, sy);
+    keep := sim_min(dt / SIM_DRIFT_SLOW, 1.0);
+    o.drift_x += (d.fx - h.drift_x) * keep; o.drift_z += (d.fz - h.drift_z) * keep; o.drift_n += (d.yaw - h.drift_n) * keep;
+  } else { o.drift_x = 0; o.drift_z = 0; o.drift_n = 0; }
   // the floodwater's weight at the holed cell; the moved ballast leaves it and lands opposite
   wf := SIM_RHO * SIM_G * h.flood; wm := SIM_RHO * SIM_G * h.moved;
   force -= wf; mroll += wf * sh.hole_z; mpitch -= wf * sh.hole_x;
@@ -576,40 +624,50 @@ sim_hull_step_on :: (sh: SimShape, h0: SimHull, heights: [] f32, n: int, patch: 
   kp := md * SIM_G * sim_gm_l_of(sh); ip := sim_pitch_inertia_of(sh); cp := 2.0 * SIM_ZETA * sqrt(kp * ip);
   ar := (mroll - kr * h.roll - cr * h.roll_v) / ir;
   ap := (mpitch - kp * h.pitch - cp * h.pitch_v) / ip;
-  // surge and sway: wind, current, moorings, drag on the hull's motion
-  w := sim_wind_of(sh, wind, wdx, wdz);
-  cur := 0.5 * SIM_RHO * 1.0 * sh.b * sh.t * SIM_CURRENT * SIM_CURRENT;   // from the east, pushing west
-  moor: SimMooring;
-  if !h.free { moor = sim_mooring_of(sh, h.surge, h.sway); }
-  // (the lines are laid symmetrically, so their pulls at rest cancel)
+  // surge, sway and yaw: wind, current, moorings and drag, then the waves
+  hold := sim_hold(h, sh, o.rig[..], wind, wdx, wdz);
+  // a line at its breaking load parts, and stays parted
+  if hold.moor.worst >= 0 && hold.moor.peak >= sh.mbl { o.lost |= cast(u32) 1 << cast(u32) hold.moor.worst; o.broke = h.time; }
   ms := sim_slide_mass_of(sh);
-  sx := 0.5 * SIM_RHO * 1.0 * sh.b * sh.t; sz := 0.5 * SIM_RHO * 1.0 * sh.l * sh.t;
-  lin := 2.0e7 * m / sim_prime_mass();
-  fsx := w[0] - cur + moor.fx + h.push_x + wave_x - sx * h.surge_v * abs(h.surge_v) - lin * h.surge_v;
-  fsz := w[1] + moor.fz + h.push_z + wave_z - sz * h.sway_v * abs(h.sway_v) - lin * h.sway_v;
+  fsx := hold.fx + wave.fx + o.drift_x;
+  fsz := hold.fz + wave.fz + o.drift_z;
+  fyaw := hold.yaw + wave.yaw + o.drift_n;
   // semi-implicit Euler
   o.heave_v += ah * dt; o.heave += o.heave_v * dt;
   o.roll_v += ar * dt; o.roll += o.roll_v * dt;
   o.pitch_v += ap * dt; o.pitch += o.pitch_v * dt;
   o.surge_v += fsx / ms * dt; o.surge += o.surge_v * dt;
   o.sway_v += fsz / ms * dt; o.sway += o.sway_v * dt;
-  o.tension = moor.peak;
-  o.wind_force = sqrt(w[0] * w[0] + w[1] * w[1]);
+  o.yaw_v += fyaw / sim_yaw_inertia_of(sh) * dt; o.yaw += o.yaw_v * dt;
+  o.tension = hold.moor.peak;
+  o.wind_force = hold.wind;
   o.accel = ah;
   o.time += dt;
   // the momentum ledger (test 10): every force above, by name. A force added to the step and not
   // added here fails that check.
   o.imp.buoyancy += (m * SIM_G + (force + wf) - kh * h.heave) * dt; o.imp.gravity -= (m * SIM_G + wf) * dt; o.imp.damping -= ch * h.heave_v * dt;
-  o.imp.wind_x += w[0] * dt; o.imp.wind_z += w[1] * dt; o.imp.current_x -= cur * dt;
-  o.imp.moor_x += moor.fx * dt; o.imp.moor_z += moor.fz * dt; o.imp.wave_x += wave_x * dt; o.imp.wave_z += wave_z * dt;
-  o.imp.drag_x -= (sx * h.surge_v * abs(h.surge_v) + lin * h.surge_v) * dt; o.imp.drag_z -= (sz * h.sway_v * abs(h.sway_v) + lin * h.sway_v) * dt;
+  o.imp.wind_x += hold.wind_x * dt; o.imp.wind_z += hold.wind_z * dt; o.imp.current_x += hold.current_x * dt; o.imp.current_z += hold.current_z * dt;
+  o.imp.moor_x += hold.moor.fx * dt; o.imp.moor_z += hold.moor.fz * dt; o.imp.wave_x += wave.fx * dt; o.imp.wave_z += wave.fz * dt;
+  o.imp.drift_x += o.drift_x * dt; o.imp.drift_z += o.drift_z * dt;
+  o.imp.drag_x += hold.drag_x * dt; o.imp.drag_z += hold.drag_z * dt;
   o.imp.push_x += h.push_x * dt; o.imp.push_z += h.push_z * dt;
+  o.imp.yaw_wind += hold.yaw_wind * dt; o.imp.yaw_current += hold.yaw_current * dt; o.imp.yaw_moor += hold.moor.yaw * dt;
+  o.imp.yaw_wave += (wave.yaw + o.drift_n) * dt; o.imp.yaw_drag += hold.yaw_drag * dt;
   return o;
 }
 // The masses the ledger's impulses move: the hull with the water it carries along, in heave and
-// in surge and sway.
+// in surge and sway. Stand-ins: see the spec's results.
 sim_heave_mass_of :: (sh: SimShape) -> f64 { return sim_mass_of(sh) * (1.0 + sh.ca_heave); }
 sim_slide_mass_of :: (sh: SimShape) -> f64 { return sim_mass_of(sh) * 1.1; }
+// After a frame's steps: the heave trace.
+sim_hull_traced :: (h: SimHull) -> SimHull {
+  o := h;
+  if o.time - o.traced >= 1.0 {
+    for i: 0..<59 { o.trace[i] = o.trace[i + 1]; }
+    o.trace[59] = f32(o.heave); o.traced = o.time;
+  }
+  return o;
+}
 // A frame's time: the fixed steps due (at most 8; a long hitch does not replay seconds).
 sim_hull_advance :: (h: SimHull, heights: [] f32, n: int, patch: f64, wind: f64, wdx: f64, wdz: f64, frame: f64) -> SimHull {
   o := h;
@@ -621,11 +679,19 @@ sim_hull_advance :: (h: SimHull, heights: [] f32, n: int, patch: f64, wind: f64,
     o.clock = clock; steps += 1;
   }
   if steps == 8 { o.clock = sim_min(o.clock, SIM_STEP); }
-  if o.time - o.traced >= 1.0 {
-    for i: 0..<59 { o.trace[i] = o.trace[i + 1]; }
-    o.trace[59] = f32(o.heave); o.traced = o.time;
+  return sim_hull_traced(o);
+}
+sim_hull_advance_in :: (h: SimHull, sea: [] DriftSea, wind: f64, wdx: f64, wdz: f64, frame: f64) -> SimHull {
+  o := h;
+  o.clock += sim_max(frame, 0);
+  steps := 0; sh := sim_shape(h);
+  while o.clock >= SIM_STEP && steps < 8 {
+    clock := o.clock - SIM_STEP;
+    o = sim_hull_step_in_on(sh, o, sea, wind, wdx, wdz, SIM_STEP);
+    o.clock = clock; steps += 1;
   }
-  return o;
+  if steps == 8 { o.clock = sim_min(o.clock, SIM_STEP); }
+  return sim_hull_traced(o);
 }
 
 // ---------------------------------------------------------------- the cluster (spec 3.3)
@@ -668,6 +734,17 @@ sim_rim :: (h: SimHull, ux: f64, uz: f64) -> [3] f64 {
   return [3] f64.[h.cx + h.surge + x - h.pitch * SIM_SEAT, 4.0 + h.heave - h.roll * z + h.pitch * x, h.cz + h.sway + z + h.roll * SIM_SEAT];
 }
 sim_cluster_step :: (c0: SimCluster, heights: [] f32, n: int, patch: f64, wind: f64, wdx: f64, wdz: f64, dt: f64) -> SimCluster {
+  c := sim_cluster_bridges(c0);
+  for i: 0..<SIM_DOMES { c.domes[i] = sim_hull_step(c.domes[i], heights, n, patch, wind, wdx, wdz, dt); }
+  return c;
+}
+sim_cluster_step_in :: (c0: SimCluster, sea: [] DriftSea, wind: f64, wdx: f64, wdz: f64, dt: f64) -> SimCluster {
+  c := sim_cluster_bridges(c0);
+  for i: 0..<SIM_DOMES { c.domes[i] = sim_hull_step_in(c.domes[i], sea, wind, wdx, wdz, dt); }
+  return c;
+}
+// The bridges' pushes on the domes they join, this step.
+sim_cluster_bridges :: (c0: SimCluster) -> SimCluster {
   c := c0;
   for i: 0..<SIM_DOMES { c.domes[i].push_x = 0; c.domes[i].push_z = 0; }
   for k: 0..<SIM_BRIDGES {
@@ -692,7 +769,6 @@ sim_cluster_step :: (c0: SimCluster, heights: [] f32, n: int, patch: f64, wind: 
     c.most_slide = sim_max(c.most_slide, abs(along));
     c.most_hinge = sim_max(c.most_hinge, abs(c.hinge[k]));
   }
-  for i: 0..<SIM_DOMES { c.domes[i] = sim_hull_step(c.domes[i], heights, n, patch, wind, wdx, wdz, dt); }
   return c;
 }
 sim_cluster_advance :: (c0: SimCluster, heights: [] f32, n: int, patch: f64, wind: f64, wdx: f64, wdz: f64, frame: f64) -> SimCluster {
@@ -702,6 +778,18 @@ sim_cluster_advance :: (c0: SimCluster, heights: [] f32, n: int, patch: f64, win
   while c.clock >= SIM_STEP && steps < 4 {
     clock := c.clock - SIM_STEP;
     c = sim_cluster_step(c, heights, n, patch, wind, wdx, wdz, SIM_STEP);
+    c.clock = clock; steps += 1;
+  }
+  if steps == 4 { c.clock = sim_min(c.clock, SIM_STEP); }
+  return c;
+}
+sim_cluster_advance_in :: (c0: SimCluster, sea: [] DriftSea, wind: f64, wdx: f64, wdz: f64, frame: f64) -> SimCluster {
+  c := c0;
+  c.clock += sim_max(frame, 0);
+  steps := 0;
+  while c.clock >= SIM_STEP && steps < 4 {
+    clock := c.clock - SIM_STEP;
+    c = sim_cluster_step_in(c, sea, wind, wdx, wdz, SIM_STEP);
     c.clock = clock; steps += 1;
   }
   if steps == 4 { c.clock = sim_min(c.clock, SIM_STEP); }
@@ -878,9 +966,11 @@ sim_same_pose :: (a: SimHull, b: SimHull) -> bool {
   #assert abs(h.imp.gravity + sim_mass_of(sh) * SIM_G * 600.0) < 1e-6 * gross;      // 15.375 Mt for 600 s
   // east and north: wind, current, moorings, the sea's push and the water's drag
   east := h.imp.wind_x + h.imp.current_x + h.imp.moor_x + h.imp.wave_x + h.imp.drag_x + h.imp.push_x;
-  north := h.imp.wind_z + h.imp.moor_z + h.imp.wave_z + h.imp.drag_z + h.imp.push_z;
+  // (the oblique wind turns the hull a little, so the current pushes on its long walls too; a
+  // plain tile of heights carries no drift)
+  north := h.imp.wind_z + h.imp.current_z + h.imp.moor_z + h.imp.wave_z + h.imp.drag_z + h.imp.push_z;
   across := abs(h.imp.wind_x) + abs(h.imp.current_x) + abs(h.imp.moor_x) + abs(h.imp.wave_x) + abs(h.imp.drag_x);
-  along := abs(h.imp.wind_z) + abs(h.imp.moor_z) + abs(h.imp.wave_z) + abs(h.imp.drag_z);
+  along := abs(h.imp.wind_z) + abs(h.imp.current_z) + abs(h.imp.moor_z) + abs(h.imp.wave_z) + abs(h.imp.drag_z);
   #assert abs(east - sim_slide_mass_of(sh) * h.surge_v) < 1e-9 * across;
   #assert abs(north - sim_slide_mass_of(sh) * h.sway_v) < 1e-9 * along;
   // every named force did something, and the moorings pulled against the wind
@@ -889,8 +979,9 @@ sim_same_pose :: (a: SimHull, b: SimHull) -> bool {
 }
 #test "6: a 20 m/s beam wind holds within 5% of depth and under breaking load" {
   o := sim_offset(20);
-  #assert abs(o.force / 1e6 - 20.8) < 0.5;
-  #assert o.offset < 75 && o.tension < SIM_BREAK;
+  // on the drawn wall: 118 m of it over the water and 60 m of buildings
+  #assert abs(o.force / 1e6 - 43.6) < 0.5;
+  #assert o.offset < 75 && o.offset > 55 && o.tension < SIM_BREAK / 2.0;
 }
 #test "7: the OTEC model matches section 6.1 and the sites their ranges" {
   table := [8] f64.[24, 23, 22, 21, 20, 19, 16, 12];

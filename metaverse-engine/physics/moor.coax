@@ -1,0 +1,185 @@
+// Mooring lines for floating bodies: one line as an elastic catenary between an anchor on a flat
+// seabed and a fairlead on the body. A slack line lies on the seabed for part of its length and
+// lifts off as the body pulls; a taut line hangs clear and pulls up on its anchor. From a line's
+// length, weight in water and axial stiffness, and where its fairlead is, this gives the pull on
+// the body, the tension, the anchor's uplift, the length on the seabed and the line's shape, all
+// from the same solution, so what is drawn is what pulls.
+//
+// The equations are the standard quasi-static ones (Irvine, "Cable Structures", 1981; Jonkman,
+// NREL/TP-500-41958, 2007, section 2.5), with no seabed friction. For a pull (H, V) at the
+// fairlead of a line of unstretched length L, weight w a metre and stiffness EA:
+//
+//   clear of the seabed (V >= wL), with VA = V - wL the uplift at the anchor:
+//     x = H/w (asinh(V/H) - asinh(VA/H)) + HL/EA
+//     z = H/w (sqrt(1 + (V/H)^2) - sqrt(1 + (VA/H)^2)) + (VL - wL^2/2)/EA
+//   on the seabed for LB = L - V/w:
+//     x = LB + H/w asinh(V/H) + HL/EA
+//     z = H/w (sqrt(1 + (V/H)^2) - 1) + V^2 / (2 EA w)
+//
+// moor_pull solves these for (H, V): V from the fairlead's height for each H, then H by a bracketed
+// Newton's method from Jonkman's starting guess, a fixed number of steps at most, so the same
+// fairlead gives the same pull on every machine and a nearly slack line still solves.
+//
+// Not modelled: the line's own inertia and drag (it is in equilibrium at every instant), seabed
+// friction and slope, bending stiffness, and stiffness that changes with load or age.
+// Units: metres, newtons. SLAB's layouts are metaverse/slab-moor.coax.
+//   coax/bin/coax test metaverse-engine/physics/moor.coax
+#load "moor-checks.coax" #test;
+
+MoorLine :: struct {
+  length: f64;      // unstretched, m
+  w: f64;           // weight in water, N/m
+  ea: f64;          // axial stiffness, N
+  mbl: f64;         // breaking load, N
+}
+MoorPull :: struct {
+  h: f64;           // the pull on the fairlead toward the anchor, N
+  v: f64;           // the pull on the fairlead downward, N
+  tension: f64;     // the line's tension at the fairlead, N
+  uplift: f64;      // the upward pull on the anchor, N (0 while line lies on the seabed)
+  grounded: f64;    // unstretched line lying on the seabed, m
+  slack: bool;      // the line hangs straight down and pulls nowhere sideways
+  ok: bool;         // solved (a line with no length, weight or stiffness is not)
+}
+// Where a pull (H, V) holds the fairlead: x along the seabed from the anchor, z over it, and how
+// each moves with H and V.
+MoorEnds :: struct { x: f64; z: f64; xh: f64; xv: f64; zh: f64; zv: f64; }
+
+moor_max :: (a: f64, b: f64) -> f64 { return ifx a > b then a else b; }
+moor_min :: (a: f64, b: f64) -> f64 { return ifx a < b then a else b; }
+moor_asinh :: (x: f64) -> f64 { a := abs(x); r := log(a + sqrt(a * a + 1.0)); return ifx x < 0 then -r else r; }
+moor_tanh :: (x: f64) -> f64 { if x > 20.0 { return 1.0; } e := exp(2.0 * x); return (e - 1.0) / (e + 1.0); }
+
+moor_ends :: (l: MoorLine, h: f64, v: f64) -> MoorEnds {
+  o: MoorEnds;
+  a := v / h; ra := sqrt(1.0 + a * a);
+  if v < l.w * l.length {
+    o.x = l.length - v / l.w + h / l.w * moor_asinh(a) + h * l.length / l.ea;
+    o.z = h / l.w * (ra - 1.0) + v * v / (2.0 * l.ea * l.w);
+    o.xh = (moor_asinh(a) - a / ra) / l.w + l.length / l.ea;
+    o.xv = (1.0 / ra - 1.0) / l.w;
+    o.zh = (ra - 1.0 - a * a / ra) / l.w;
+    o.zv = a / ra / l.w + v / (l.ea * l.w);
+    return o;
+  }
+  b := (v - l.w * l.length) / h; rb := sqrt(1.0 + b * b);
+  o.x = h / l.w * (moor_asinh(a) - moor_asinh(b)) + h * l.length / l.ea;
+  o.z = h / l.w * (ra - rb) + (v * l.length - 0.5 * l.w * l.length * l.length) / l.ea;
+  o.xh = (moor_asinh(a) - moor_asinh(b) - a / ra + b / rb) / l.w + l.length / l.ea;
+  o.xv = (1.0 / ra - 1.0 / rb) / l.w;
+  o.zh = (ra - rb - a * a / ra + b * b / rb) / l.w;
+  o.zv = (a / ra - b / rb) / l.w + l.length / l.ea;
+  return o;
+}
+// The unstretched length that hangs straight down `rise` metres under its own weight.
+moor_hang :: (l: MoorLine, rise: f64) -> f64 { return 2.0 * rise / (1.0 + sqrt(1.0 + 2.0 * l.w * rise / l.ea)); }
+
+// The downward pull that holds the fairlead `rise` metres over the seabed while the line pulls
+// sideways with h. More downward pull lifts more line, so there is one answer.
+moor_v_for :: (l: MoorLine, h: f64, rise: f64) -> f64 {
+  wl := l.w * l.length; q := wl / h;
+  // the rise with the whole line just lifted, and nothing left on the seabed
+  edge := h / l.w * q * q / (sqrt(1.0 + q * q) + 1.0) + 0.5 * wl * l.length / l.ea;
+  if rise <= edge {
+    // on the seabed: sqrt(h^2 + v^2) = h + w rise - v^2 / (2 EA), the stretch a small correction
+    v := 0.0;
+    for i: 0..<8 { m := l.w * rise - v * v / (2.0 * l.ea); v = sqrt(moor_max(m * (2.0 * h + m), 0)); }
+    return v;
+  }
+  // clear of the seabed: Newton from the edge, which the rise's curve keeps on one side
+  v := wl; tol := 1e-12 * (rise + l.length);
+  for i: 0..<40 {
+    e := moor_ends(l, h, v);
+    g := e.z - rise;
+    if abs(g) < tol { break; }
+    v = moor_max(v - g / e.zv, wl);
+  }
+  return v;
+}
+MOOR_STEPS :: 80;
+// The line's pull on a fairlead `span` metres along the seabed from the anchor and `rise` metres
+// over it. A harder sideways pull holds the fairlead further out, so Newton's method on that pull
+// runs inside a bracket and halves the bracket (on a log scale) whenever a step would leave it.
+moor_pull :: (l: MoorLine, span: f64, rise: f64) -> MoorPull {
+  o: MoorPull;
+  if !(l.length > 0 && l.w > 0 && l.ea > 0 && rise > 0) { return o; }
+  x := moor_max(span, 0);
+  hang := moor_hang(l, rise);
+  if hang <= l.length && x <= l.length - hang {
+    // enough line to hang straight down with the rest on the seabed
+    o.v = l.w * hang; o.tension = o.v; o.grounded = l.length - hang; o.slack = true; o.ok = true;
+    return o;
+  }
+  d := sqrt(x * x + rise * rise);
+  if x < 1e-6 {
+    // straight up from the anchor: only its stretch and weight
+    o.v = l.ea * (rise - l.length) / l.length + 0.5 * l.w * l.length; o.tension = o.v;
+    o.uplift = moor_max(o.v - l.w * l.length, 0); o.slack = true; o.ok = true;
+    return o;
+  }
+  // Jonkman's starting guess, or the straight stretched line when the line is shorter than the gap
+  lam := 0.2;
+  if l.length > d { lam = sqrt(3.0 * ((l.length * l.length - rise * rise) / (x * x) - 1.0)); }
+  h := moor_max(abs(0.5 * l.w * x / lam), 1.0);
+  if l.length < d { h = moor_max(h, l.ea * (d - l.length) / l.length * x / d); }
+  lo := 1e-6; hi := h;
+  for i: 0..<60 {
+    if moor_ends(l, hi, moor_v_for(l, hi, rise)).x >= x { break; }
+    lo = hi; hi *= 4.0;
+  }
+  v := 0.0; tol := 1e-10 * (l.length + d);
+  for i: 0..<MOOR_STEPS {
+    v = moor_v_for(l, h, rise);
+    e := moor_ends(l, h, v);
+    g := e.x - x;
+    if abs(g) < tol || hi <= lo * (1.0 + 1e-15) { o.ok = true; break; }
+    if g < 0 { lo = h; } else { hi = h; }
+    slope := e.xh - e.xv * e.zh / e.zv;
+    nh := ifx slope > 0 then h - g / slope else 0.0;
+    h = ifx nh > lo && nh < hi then nh else sqrt(lo * hi);
+  }
+  o.h = h; o.v = v; o.tension = sqrt(h * h + v * v);
+  o.uplift = moor_max(v - l.w * l.length, 0);
+  o.grounded = moor_max(l.length - v / l.w, 0);
+  return o;
+}
+// The point of the line `s` metres of unstretched line from the anchor: [along the seabed toward
+// the fairlead, over the seabed], for a fairlead held at `span` by `p`.
+moor_at :: (l: MoorLine, p: MoorPull, span: f64, s: f64) -> [2] f64 {
+  if p.slack {
+    // along the seabed to under the fairlead, then straight up
+    if s <= p.grounded { return [2] f64.[ifx p.grounded > 0 then span * s / p.grounded else span, 0]; }
+    u := s - p.grounded;
+    return [2] f64.[span, u + 0.5 * l.w * u * u / l.ea];
+  }
+  if p.grounded > 0 {
+    if s <= p.grounded { return [2] f64.[s * (1.0 + p.h / l.ea), 0]; }
+    u := s - p.grounded; q := l.w * u / p.h;
+    return [2] f64.[p.grounded + p.h / l.w * moor_asinh(q) + p.h * s / l.ea, p.h / l.w * (sqrt(1.0 + q * q) - 1.0) + 0.5 * l.w * u * u / l.ea];
+  }
+  va := p.v - l.w * l.length;
+  a := (va + l.w * s) / p.h; b := va / p.h;
+  return [2] f64.[p.h / l.w * (moor_asinh(a) - moor_asinh(b)) + p.h * s / l.ea,
+    p.h / l.w * (sqrt(1.0 + a * a) - sqrt(1.0 + b * b)) + (va * s + 0.5 * l.w * s * s) / l.ea];
+}
+// The unstretched length that gives `tension` at a fairlead held at (span, rise): a taut line is
+// cut to its pretension. A longer line pulls less, so this bisects.
+moor_length_for :: (l: MoorLine, span: f64, rise: f64, tension: f64) -> f64 {
+  d := sqrt(span * span + rise * rise);
+  lo := 0.5 * d; hi := span + rise;
+  for i: 0..<60 {
+    q := l; q.length = 0.5 * (lo + hi);
+    if moor_pull(q, span, rise).tension > tension { lo = q.length; } else { hi = q.length; }
+  }
+  return 0.5 * (lo + hi);
+}
+// How far along the seabed from its anchor a line's fairlead sits when it pulls with `tension`:
+// a slack line's anchor is laid at its pretension. A fairlead further out pulls more.
+moor_span_for :: (l: MoorLine, rise: f64, tension: f64) -> f64 {
+  lo := moor_max(l.length - moor_hang(l, rise), 0); hi := l.length * (1.0 + 2.0 * tension / l.ea) + rise;
+  for i: 0..<60 {
+    mid := 0.5 * (lo + hi);
+    if moor_pull(l, mid, rise).tension < tension { lo = mid; } else { hi = mid; }
+  }
+  return 0.5 * (lo + hi);
+}

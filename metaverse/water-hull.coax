@@ -1,0 +1,105 @@
+// The spectral sea as a large floating hull feels it (docs/metaverse/water.md, W4; SLAB's spec,
+// section 4.1): the gameplay band's waves at a tick, each weighted by its own length against the
+// hull's draft, as the three tiles metaverse/slab-drift.coax's forces read (DriftSea).
+//
+// The spectral sea is a sum of waves, each with its own wavenumber k (metaverse/water-spectrum.coax's
+// modes). A wave's pressure fades with depth as e^-kz in deep water, so a hull of draft T feels each
+// wave differently:
+//   lift   e^-kT            of its height at the keel: a 400 m swell at 25 m keeps 68%, a 60 m chop 7%;
+//   push   (1 - e^-kT) / k  of its height as a head summed over the wall, m^2;
+//   back   sqrt(1 - e^-2kT) of its height turned back by the hull (Wiegel's power-transmission
+//                           estimate): the 60 m chop nearly all, the 400 m swell 73%.
+// Every wave keeps its own phase: the weights are applied to each wave before the transform, so the
+// tiles are fields, not statistics, and a hull sums them where it floats. One more transform of
+// two packed pairs a tick, on the band physics already reads, so every client computes the same.
+//   coax/bin/coax test metaverse/water-hull.coax --steps 2000000000
+#load "water-spectrum.coax";
+#load "slab-drift.coax";
+
+// A wave's three weights at wavenumber k (rad/m) for a draft (m): [lift, push, back].
+whl_weights :: (k: f64, draft: f64) -> [3] f64 {
+  if !(k > 0) || !(draft > 0) { return [3] f64.[1, 0, 0]; }
+  fade := exp(-k * draft);
+  return [3] f64.[fade, (1.0 - fade) / k, sqrt(1.0 - fade * fade)];
+}
+// The sea at `tick` for a hull of `draft`, into out. `scratch` is 4 x 64 x 64 floats of working
+// room (a Tile's scratch does).
+whl_sea :: (s: [] Synth, tick: u64, draft: f64, scratch: [] f32, out: [] DriftSea) {
+  n := WSP_GAMEPLAY_SIZE; nn := n * n;
+  out[0].n = 0;
+  if !s[0].ok || scratch.count < 4 * nn { return; }
+  for i: 0..<4 * nn { scratch[i] = 0; }
+  w := wsp_direction(s[0].spectrum);
+  energy := 0.0; along := 0.0;
+  for i: s[0].first[0]..<s[0].first[1] {
+    e := wsp_evolve(s, i, tick);
+    md := s[0].modes[i];
+    k := 1.0 / f64(md.inv);
+    q := whl_weights(k, draft);
+    lift := f32(q[0]); push := f32(q[1]); back := f32(q[2]);
+    at := wrap_i(md.m, n) * n + wrap_i(md.n, n);
+    // (lift, push), then (back, nothing), each pair packed as A + iB
+    scratch[at] = lift * e.hr - push * e.hi; scratch[nn + at] = lift * e.hi + push * e.hr;
+    scratch[2 * nn + at] = back * e.hr; scratch[3 * nn + at] = back * e.hi;
+    // the turned-back waves' energy, and how much of it runs the wind's way
+    part := 2.0 * (f64(md.h0r) * f64(md.h0r) + f64(md.h0i) * f64(md.h0i)) * q[2] * q[2];
+    c := (f64(md.kx) * w.x + f64(md.kz) * w.y) * f64(md.inv);
+    energy += part; along += part * c * c;
+  }
+  fv: [1] Fft2; fv[0] = s[0].gameplay;
+  wsp_fft_pair(fv[..], scratch, 0, nn, nn);
+  wsp_fft_pair(fv[..], scratch, 2 * nn, 3 * nn, nn);
+  for t: 0..<nn { out[0].lift[t] = scratch[t]; out[0].push[t] = scratch[nn + t]; out[0].back[t] = scratch[2 * nn + t]; }
+  out[0].n = n; out[0].patch = s[0].cascades[0].patch; out[0].draft = draft;
+  out[0].variance = energy; out[0].along = ifx energy > 0 then along / energy else 1.0;
+}
+
+// ---------------------------------------------------------------- checks
+whl_rms :: (v: [] f32) -> f64 { sum := 0.0; for i: 0..<v.count { sum += f64(v[i]) * f64(v[i]); } return sqrt(sum / f64(v.count)); }
+
+#test "a wave's weights: a swell lifts and a chop is turned back" {
+  // 25 m of draft
+  swell := whl_weights(TAU_D / 400.0, 25.0); chop := whl_weights(TAU_D / 60.0, 25.0);
+  #assert abs(swell[0] - 0.675) < 0.001 && abs(chop[0] - 0.073) < 0.001;
+  #assert abs(swell[2] - 0.738) < 0.001 && abs(chop[2] - 0.997) < 0.001;
+  // the head over the wall: nearly the whole draft for a wave far longer than it, 1/k for a short one
+  #assert abs(whl_weights(TAU_D / 20000.0, 25.0)[1] - 25.0) < 0.1 && abs(chop[1] - (1.0 - 0.073) * 60.0 / TAU_D) < 0.01;
+  // no draft: the sea as it is, with nothing to push on or turn back
+  flat := whl_weights(0.1, 0);
+  #assert flat[0] == 1 && flat[1] == 0 && flat[2] == 0;
+}
+#test "with next to no draft the lift is the sea's own height; with draft, chop fades faster than swell" #steps 1500000000 {
+  sp := wsp_sea(21.6, 300000.0, 23);
+  s: [1] Synth; t: [1] Tile; sea: [1] DriftSea;
+  wsp_synth(s[..], sp, 1, 64);
+  wsp_tile(s[..], 0, 777, t[..]);
+  scratch: [16384] f32;
+  whl_sea(s[..], 777, 1e-9, scratch[..], sea[..]);
+  #assert sea[0].n == 64 && sea[0].patch == s[0].cascades[0].patch;
+  for i: 0..<4096 { #assert abs(sea[0].lift[i] - t[0].height[i]) < 1e-4; }
+  #assert whl_rms(sea[0].push[..]) < 1e-6 && whl_rms(sea[0].back[..]) < 1e-3;
+  // a gale at prime's 25 m: its 200 m waves keep about half their lift and most are turned back
+  whl_sea(s[..], 777, 25.0, scratch[..], sea[..]);
+  high := whl_rms(t[0].height[0..<4096]);
+  keep := whl_rms(sea[0].lift[..]) / high; turn := whl_rms(sea[0].back[..]) / high;
+  #assert keep > 0.3 && keep < 0.6 && turn > 0.8 && turn < 1.0;
+  // the tile's mean square is the modes' energy, within what one tile's waves vary by
+  #assert abs(whl_rms(sea[0].back[..]) * whl_rms(sea[0].back[..]) / sea[0].variance - 1.0) < 0.35;
+  // a wind sea spreads: most, not all, of it runs the wind's way
+  #assert sea[0].along > 0.6 && sea[0].along < 0.98;
+  // a short sea (a trade wind's 100 m waves) keeps less of its lift
+  short := wsp_sea(8.4, 300000.0, 23);
+  wsp_synth(s[..], short, 1, 64);
+  wsp_tile(s[..], 0, 777, t[..]);
+  whl_sea(s[..], 777, 25.0, scratch[..], sea[..]);
+  #assert whl_rms(sea[0].lift[..]) / whl_rms(t[0].height[0..<4096]) < keep;
+}
+#test "the same tick gives the same tiles, bit for bit" #steps 1500000000 {
+  sp := wsp_sea(13.7, 300000.0, 23);
+  s: [1] Synth; a: [1] DriftSea; b: [1] DriftSea; scratch: [16384] f32;
+  wsp_synth(s[..], sp, 1, 64);
+  whl_sea(s[..], 4321, 25.0, scratch[..], a[..]);
+  whl_sea(s[..], 4321 + sp.period, 25.0, scratch[..], b[..]);
+  for i: 0..<4096 { #assert a[0].lift[i] == b[0].lift[i] && a[0].push[i] == b[0].push[i] && a[0].back[i] == b[0].back[i]; }
+  #assert a[0].variance == b[0].variance && a[0].along == b[0].along;
+}

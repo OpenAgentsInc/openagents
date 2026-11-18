@@ -478,22 +478,23 @@ constraint. Use it if it gives this force law; otherwise apply the law as
 an external force at each fairlead. Draw each line as a straight segment
 from the fairlead to the anchor, fading out with depth.
 
+Since November 18, 2026 the lines are not this polynomial. Each is a
+catenary with a length, a weight and a stiffness, laid for the site's depth,
+and it can break. Section 12, "The hull on its moorings", describes them.
+
 ### 4.4 Wind and current
 
 - **Wind:** F = ½ ρ_air C_d A U², with ρ_air = 1.225 and C_d = 1.0. A is the
   projected area normal to the wind: hull freeboard plus building
-  silhouettes. For `prime` side-on, A ≈ 1,000 m × 85 m.
-  - At U = 20 m/s this gives ≈ 21 MN. The moorings must hold the offset
-    under 5% of depth (75 m).
-  - **Not yet agreed with the drawn wall.** The 85 m is the 50 m hull's:
-    25 m of freeboard and 60 m of buildings (`SIM_WINDAGE`). The drawn wall
-    stands 118 m over the water, so the honest area is 1,000 m × 178 m and
-    the force at 20 m/s is ≈ 44 MN. The present sixteen lines hold 21 MN at
-    69 m of offset; under 44 MN they would give about 120 m, over the 75 m
-    limit. The wind area therefore changes together with the lines, in the
-    mooring work of #13688, so that test 6 keeps a limit the lines were
-    sized for. Until then the world's wind force and offset are those of a
-    25 m wall.
+  silhouettes. For `prime` side-on, A ≈ 1,000 m × 178 m: the drawn wall
+  stands 118 m over the water and the buildings 60 m over that
+  (`SIM_WINDAGE`).
+  - At U = 20 m/s this gives ≈ 44 MN. The moorings must hold the offset
+    under 5% of depth (75 m). The sixteen catenary lines hold it at 66 m,
+    with the worst line at 16 MN (section 12, "The hull on its moorings").
+  - Until November 18, 2026 the area was the 50 m hull's, 1,000 m × 85 m
+    (21 MN at 20 m/s). The lines were not resized when it grew: section 12
+    says what they hold and what they don't.
 - **Current:** 0.5 m/s by default, from the east (the North Equatorial
   Current at `guam`), with quadratic drag on the submerged area, C_d = 1.0.
 
@@ -1040,8 +1041,8 @@ the column approximation.
 - Real SLAB data. If SLAB publishes real dimensions, a site or a power
   system, update section 1 and the affected numbers. Keep this world's
   version history.
-- Frequency-domain hydrodynamics: diffraction, radiation and second-order
-  drift.
+- Frequency-domain hydrodynamics: diffraction and radiation, and any
+  second-order drift beyond the wall estimate in section 12.
 - Concrete fatigue, cracking, or the 1,000-year lifespan claim itself.
 - Process simulation for industry, hospital operations, a market, or
   multiplayer economics.
@@ -1064,10 +1065,10 @@ in sections 3–9 are unchanged.
 | Roll and pitch periods | 12.4 s and 10.1 s without added inertia | 12.4 s and 10.1 s; with Cₐ 0.3 on rotation the body rings at 14.1 s and 11.6 s |
 | Calm equilibrium (test 1) | design draft, no heel or trim | heave under 0.25 m, heel and trim under 0.01° |
 | Short sea (test 4) | averaged away | a 1.5 m, 100 m wave moves the hull under 0.15 m |
-| 20 m/s beam wind (test 6) | within 5% of depth | 20.8 MN of wind on the 85 m wind height, 69 m of offset, 8.0 MN in the peak line of a 40 MN breaking load. Section 4.4 says what the drawn 118 m wall changes |
-| Buoyancy grid (section 4.1) | 6,000 columns on 10 m, under 1.5 ms a tick | 6,000 columns; about 2 µs a tick in a native release build (16 µs on the earlier 25 m grid). Headless Chrome, 10 s on the `trade` sea, frames drawn before and after: 3,295 and 3,058 at 1440 × 900, 12,726 and 12,531 at 390 × 844 as a phone, with other builds loading the machine; not timed on a real phone |
-| Determinism (test 9) | the same pose bit for bit at tick 10,000 | two runs on a moving 1.5 m sea agree in every bit, the second through a late joiner at tick 5,000; at tick 10,000 the hull has moved 0.82 m east and 1.78 m north |
-| Momentum ledger (test 10) | balances over 600 s in `trade` | up: lift +9.04968 × 10¹³ N·s, weight −9.04970 × 10¹³, heave damping +7.8 × 10⁶, which sum to the hull's −1.239 × 10⁸ within 15 N·s. North: wind +1.428 × 10⁹, moorings −7.74 × 10⁸, drag −2.77 × 10⁸, the sea's push +5.6 × 10⁵, which sum to the hull's +3.777 × 10⁸. East, with the current's −1.153 × 10⁹, likewise |
+| 20 m/s beam wind (test 6) | within 5% of depth | 43.6 MN of wind on the drawn wall's 178 m wind height, 66 m of offset, 16.1 MN in the peak line of a 40 MN breaking load. (On the earlier 85 m wind height and polynomial line: 20.8 MN, 69 m and 8.0 MN.) |
+| Buoyancy grid (section 4.1) | 6,000 columns on 10 m, under 1.5 ms a tick | 6,000 columns; about 2 µs a tick in a native release build (16 µs on the earlier 25 m grid) before the hull turned and hung on catenaries. With them a tick is 25 µs for a hull square to the tile (the sixteen lines' solutions), 41 µs turned (each column reads the tile) and 54 µs on the weighted sea with the drift, and the three weighted tiles cost 75 µs a frame. Headless Chrome, 10 s on the `trade` sea, frames drawn before and after: 3,295 and 3,058 at 1440 × 900, 12,726 and 12,531 at 390 × 844 as a phone, with other builds loading the machine; not timed on a real phone |
+| Determinism (test 9) | the same pose bit for bit at tick 10,000 | two runs on a moving 1.5 m sea agree in every bit, the second through a late joiner at tick 5,000; at tick 10,000 the hull has moved 2.91 m east and 3.41 m north and turned 0.06° |
+| Momentum ledger (test 10) | balances over 600 s in `trade` | up: lift +9.04968 × 10¹³ N·s, weight −9.04970 × 10¹³, heave damping +9.5 × 10⁶, which sum to the hull's −1.085 × 10⁸ within 15 N·s. North: wind +2.991 × 10⁹, moorings −3.240 × 10⁹, drag −1.72 × 10⁸, the sea's push +8.9 × 10⁵, the current on the turned hull +3 × 10⁵, which sum to the hull's −4.19 × 10⁸. East, with the current's −1.153 × 10⁹, likewise. About the vertical: wind −9.60 × 10¹⁰ N·m·s, moorings +8.75 × 10¹⁰, the sea's push −1.28 × 10¹⁰, drag −4 × 10⁸, which sum to the hull's −2.18 × 10¹⁰ |
 | OTEC net at ΔT 24, 20 and 12 °C (test 7) | 120, 67.6 and 0 MW | the same within 0.5 MW; Guam 95–116 MW over the year |
 | Dispatch (tests 8 and 13) | sheds mining, then industry, then desalination | as targeted; nuclear 192 MW with 29 MW of miners, 144 MW refuelling, hybrid at Guam 191–212 MW |
 | Pipe trip (test 12) | net down a quarter | 0.75 of net |
@@ -1114,3 +1115,100 @@ in sections 3–9 are unchanged.
 - Under water, red light falls to 1/e in 14 m and blue in about 80 m (clear
   tropical ocean), so the 1,000 m pipes and the moorings fade within a
   hundred metres. The mooring lines are drawn 1.2 m wide.
+
+### The hull on its moorings
+
+Measured on November 18, 2026, from the checks in
+`metaverse-engine/physics/moor.coax`, `metaverse/slab-moor.coax`,
+`metaverse/slab-drift.coax`, `metaverse/water-hull.coax` and
+`metaverse/slab-station.coax` (H1 to H5, and tests 9 and 10 run on the
+moorings). Issue 13688 asked for these.
+
+**What the hull's step now does.**
+
+- **Yaw.** The hull turns about the vertical. Wind and current that meet a
+  wall at an angle push nearer the end they reach first (Rayleigh's
+  free-streamline plate: the centre of pressure sits ¾ L cos α / (4 + π sin α)
+  from the middle), and each mooring line pulls on its own fairlead, so
+  unequal tensions turn the hull too. Its inertia is the ledger's mass at a
+  radius of gyration of 0.30 of the diagonal, plus the water a flat strip as
+  deep as the draft carries (5% more).
+- **Waves by their length.** `water-hull.coax` makes three tiles each tick
+  from the spectral sea's gameplay band, with every wave weighted by its own
+  wavenumber k against the 25 m draft T: the lift at the keel (e^−kT), the
+  head summed over the wall ((1 − e^−kT)/k) and the part the hull turns back
+  (√(1 − e^−2kT), Wiegel's power-transmission estimate). A 400 m swell keeps
+  68% of its lift and a 60 m chop 7%. The hull sums the tiles where it
+  floats: the lift over its 960 columns, the push round its waterline in
+  12.5 m pieces. Crests and troughs still cancel along the hull in the sum
+  itself.
+- **Slow drift.** A wall that turns back a wave of amplitude a takes a mean
+  push of ½ ρ g a² for each metre (Maruo), and in an irregular sea the push
+  follows the square of the wave envelope (Newman's approximation). Each
+  metre of weather wall takes ρ g × (the turned-back height)² × cos² of the
+  angle between the waves and its normal, and the step keeps the slow part
+  (a 10 s low-pass).
+- **Moorings.** Each line is an elastic catenary on a flat seabed (Irvine;
+  Jonkman, NREL/TP-500-41958), solved for the pull at its fairlead. The
+  tension, the anchor's uplift, the length on the seabed and the drawn shape
+  come from the one solution. In 400 m of water or more the lines are taut
+  polyester legs from the keel (5.9 N/m in water and a stiffness of 15 times
+  the breaking load, for a 40 MN rope), cut to give 4 MN at rest, with the
+  anchors as far out in proportion as 2,000 m is at 1,500 m. In shallower
+  water they are 220 mm chains from the waterline (8.2 kN/m in water), long
+  enough that no anchor is pulled upward at the breaking load. A line parts
+  at its breaking load and stays parted.
+- **Added mass and damping.** These are stand-ins and nothing more. They
+  differ by motion: heave keeps the spec's Cₐ = 1, roll and pitch 0.3, and
+  surge and sway 0.1 (a flat strip as deep as the draft gives 4% end on and
+  7% broadside). Yaw adds the water that strip carries along the hull's
+  length and beam, 5% of its own inertia. Heave, roll and pitch are damped at
+  ζ = 0.08. Surge, sway and yaw have the cross-flow drag of each pair of
+  faces on the hull's speed through the current (C_d = 1) and a linear term
+  of 20 MN for each m/s, about ζ = 0.08 on the moorings.
+- **The ledger.** `SimHull.imp` names the drift, the current's push on a
+  turned hull's long walls and the five moments about the vertical beside
+  the forces it had, and test 10 runs on both seas. A hull square to the
+  sea's tile sums its 6,000 columns as weights on the tile; a turned hull
+  reads the tile under each column.
+
+| Quantity | Measured |
+|---|---|
+| Lines at 1,500 m (`prime`) | 16 taut legs of 2,471 m, anchors 2,000 m out, each anchor pulled upward 2 MN at rest |
+| Lines at California, 607 m | 16 taut legs of 974 m, anchors 789 m out |
+| Lines off Texas, 89 m | 16 chains of 1,076 m, anchors 1,058 m out, 796 m of each on the seabed at rest, no uplift |
+| 20 m/s beam wind, no waves (test 6 and H4) | 43.6 MN: 66 m off its place at 1,500 m with the worst line at 16.2 MN; 14 m off Texas, worst line 16.2 MN, 490 m of each chain still on the seabed |
+| 25.6 m/s wind from the south-west, no waves (H1) | 80 MN: 108 m off its place and turned 1.1°, the worst line at 24 MN. The wind's own moment is 1.9 GN·m toward broadside; the unequal lines turn it the other way with 5.6 GN·m until the two balance. Mirrored, it turns the other way by as much. End on, it doesn't turn |
+| `gale`, as the page runs it (H3) | the hull turns back a sea 8.0 m high of the gale's 10 m. Drift 17 MN on top of the wind's 46 MN: 72 m off its place where wind and current alone leave it 51 m, and the worst line at 18.0 MN instead of 13.7 |
+| `hurricane`, as the page runs it (H5) | wind 65 MN and drift 33 MN: 113 m off its place, turned 1.5°, the worst line at 26.4 MN of 40. One line lost: it comes to rest 146 m off and turned 3.1° with the worst line at 30.5 MN, swinging out to 163 m and 33.5 MN on the way. Two lost: 190 m, 7.3°, 35.7 MN at rest. Three lost: a fourth is over 40 MN at rest and parts on its own |
+| `hurricane` square on the long wall (H5; not a sea the page runs) | wind 72 MN and drift 60 MN: the worst of the sixteen lines is at 44 MN at rest, over its breaking load |
+| A line lost in the gale (H5) | the hull comes to rest 95 m off its place instead of 72 m, turned 2.2° instead of 0.9°, with another line the most loaded at 21.0 MN |
+| Heave on the gale's sea (H2) | less with each wave faded by its length than with the same sea lifting the hull unfaded; both are centimetres |
+| Determinism (test 9) | two runs of 10,000 ticks in `winter`, with a line lost at tick 4,000, end in the same hull bit for bit, and a hull handed over at tick 10,000 steps on the same |
+| Ledger (test 10) | over 600 s of `trade` from rest, each step's change in velocity is that step's summed force over the mass it moves, and the yaw and heave ledgers close to one part in a million |
+
+**Departures, and what this does not model:**
+- The sixteen 40 MN lines are the spec's, sized for a 20 m/s wind on a 25 m
+  wall. They pass test 6 on the drawn wall, but they have no storm margin.
+  In the page's hurricane the worst line is at two thirds of its breaking
+  load and the hull is 113 m off its place, 7.5% of the depth. Square on the
+  long wall the same storm would part them. A mooring designed to offshore
+  practice keeps its worst line under 60% of breaking in its design storm
+  with every line intact, which here needs about twice the lines or twice
+  their strength. That sizing is open. The numbers are as the model gives
+  them; nothing was tuned.
+- The drift force is an estimate from the wall's draft and the waves the
+  hull turns back. It leaves out the hull's own motion, the waves the hull
+  sends out and any change to the sea round the hull.
+- A flat plate of `prime`'s size carries far more water in heave than
+  Cₐ = 1: about 6.8 times the hull's mass (π/8 × B/T, less a quarter for its
+  ends), and about 1.7 and 2.5 times in roll and pitch. With those the heave
+  period would be about 28 s, not 14.2 s. Sections 3 and 4.2 keep the spec's
+  values, so the periods on the hull's card are the spec's, not a
+  hydrodynamic result.
+- The lines are in equilibrium at every instant: they have no inertia or
+  drag of their own, the seabed is flat and has no friction, and a rope's
+  stiffness doesn't change with load.
+- The hull is rigid and its added mass doesn't couple its motions (no Munk
+  moment).
+

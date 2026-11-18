@@ -1,0 +1,393 @@
+// Keeping SLAB on station (docs/research/ocean/slab-world-spec.md, sections 4.3 and 4.4): what the
+// page and its cards read of the hull's place on its moorings, where it comes to rest in a steady
+// wind and sea, "lose a line", and the points each line is drawn through. The forces themselves
+// are metaverse/slab-sim.coax's hull step, slab-moor.coax's lines and slab-drift.coax's waves.
+//   coax/bin/coax test metaverse/slab-station.coax --steps 4000000000   (about a minute)
+#load "slab-sim.coax";
+#load "water-hull.coax";
+
+// One of the hull's lines now.
+sim_line_now :: (h: SimHull, i: int) -> MoorNow {
+  rig: [1] MoorRig; rig[0] = h.rig[0];
+  return moor_now(rig[..], h.lost, i, h.surge, h.sway, h.yaw, h.heave);
+}
+sim_lines_lost :: (h: SimHull) -> int { n := 0; for i: 0..<MOOR_MAX { if (h.lost >> cast(u32) i) & 1 == 1 { n += 1; } } return n; }
+// The hull with its moorings laid, if they were not yet (the step lays them on its first).
+sim_rigged :: (h0: SimHull) -> SimHull {
+  h := h0; sh := sim_shape(h);
+  if !h.free && (!h.rig[0].built || h.rig[0].depth != h.depth || h.rig[0].count != sh.lines) { h.rig[0] = sim_rig_of(sh, h.depth); }
+  return h;
+}
+// "Lose a line": the most loaded line that still holds parts. The hull shifts and turns and its
+// neighbours take the load; in a storm one of them may reach its own breaking load and go too.
+sim_lose_line :: (h0: SimHull) -> SimHull {
+  h := sim_rigged(h0);
+  if h.free { return h; }
+  f := moor_force(h.rig[..], h.lost, h.surge, h.sway, h.yaw, h.heave);
+  if f.worst >= 0 { h.lost |= cast(u32) 1 << cast(u32) f.worst; }
+  return h;
+}
+// New lines on every fairlead.
+sim_refit_lines :: (h0: SimHull) -> SimHull { h := h0; h.lost = 0; h.broke = -1.0; return h; }
+
+// The steady force and turning moment on a hull held still at its place: wind, current, moorings
+// and the waves' mean drift (their wave-by-wave push averages to nothing).
+sim_static :: (h: SimHull, sh: SimShape, rig: [] MoorRig, sea: [] DriftSea, wind: f64, wdx: f64, wdz: f64) -> DriftForce {
+  hold := sim_hold(h, sh, rig, wind, wdx, wdz);
+  o := DriftForce.{fx = hold.fx, fz = hold.fz, yaw = hold.yaw};
+  if sea[0].n > 0 {
+    none: [1] f32;
+    d := drift_wave_drift(none[..], 0, 0, sea[0].variance, sea[0].along, wdx, wdz, sim_plan_of(sh), 0, 0, cos(h.yaw), sin(h.yaw));
+    o.fx += d.fx; o.fz += d.fz; o.yaw += d.yaw;
+  }
+  return o;
+}
+// Where the hull comes to rest in this wind and sea, as after hours of it: the place and heading
+// at which wind, current, mean drift and the lines balance, by Newton's method on the three. A sea
+// state is a steady condition, so the page starts a hull here and puts it here when the weather is
+// changed; a hull left to find its own way swings for an hour. It doesn't break a line: the next
+// step does, if one is over its load here.
+sim_hull_settle :: (h0: SimHull, sea: [] DriftSea, wind: f64, wdx: f64, wdz: f64) -> SimHull {
+  h := sim_rigged(h0);
+  if h.free || sim_lines_lost(h) >= h.rig[0].count { return h; }
+  sh := sim_shape(h);
+  h.surge_v = 0; h.sway_v = 0; h.yaw_v = 0;
+  reach := 0.01 * h.rig[0].span;       // the furthest one Newton step may move it, m
+  dq := [3] f64.[0.05, 0.05, 1.0e-5];
+  for round: 0..<60 {
+    f := sim_static(h, sh, h.rig[..], sea, wind, wdx, wdz);
+    if abs(f.fx) < 100.0 && abs(f.fz) < 100.0 && abs(f.yaw) < 1.0e5 { break; }
+    // how the three change with the place and the heading
+    j: [9] f64;
+    for c: 0..<3 {
+      q := h;
+      if c == 0 { q.surge += dq[0]; } else if c == 1 { q.sway += dq[1]; } else { q.yaw += dq[2]; }
+      g := sim_static(q, sh, h.rig[..], sea, wind, wdx, wdz);
+      j[c] = (g.fx - f.fx) / dq[c]; j[3 + c] = (g.fz - f.fz) / dq[c]; j[6 + c] = (g.yaw - f.yaw) / dq[c];
+    }
+    det := j[0] * (j[4] * j[8] - j[5] * j[7]) - j[1] * (j[3] * j[8] - j[5] * j[6]) + j[2] * (j[3] * j[7] - j[4] * j[6]);
+    if det == 0 { break; }
+    bx := -f.fx; bz := -f.fz; by := -f.yaw;
+    sx := (bx * (j[4] * j[8] - j[5] * j[7]) - j[1] * (bz * j[8] - j[5] * by) + j[2] * (bz * j[7] - j[4] * by)) / det;
+    sz := (j[0] * (bz * j[8] - j[5] * by) - bx * (j[3] * j[8] - j[5] * j[6]) + j[2] * (j[3] * by - bz * j[6])) / det;
+    sy := (j[0] * (j[4] * by - bz * j[7]) - j[1] * (j[3] * by - bz * j[6]) + bx * (j[3] * j[7] - j[4] * j[6])) / det;
+    far := sqrt(sx * sx + sz * sz);
+    if far > reach { sx *= reach / far; sz *= reach / far; sy *= reach / far; }
+    sy = sim_clamp(sy, -0.02, 0.02);
+    h.surge += sx; h.sway += sz; h.yaw += sy;
+  }
+  h.drift_x = 0; h.drift_z = 0; h.drift_n = 0;
+  if sea[0].n > 0 {
+    none: [1] f32;
+    d := drift_wave_drift(none[..], 0, 0, sea[0].variance, sea[0].along, wdx, wdz, sim_plan_of(sh), 0, 0, cos(h.yaw), sin(h.yaw));
+    h.drift_x = d.fx; h.drift_z = d.fz; h.drift_n = d.yaw;
+  }
+  hold := sim_hold(h, sh, h.rig[..], wind, wdx, wdz);
+  h.tension = hold.moor.peak; h.wind_force = hold.wind;
+  return h;
+}
+
+// What a card and the stats say about the hull on its moorings now.
+SimStation :: struct {
+  moored: bool;               // it has lines of its own
+  kind: int;                  // MOOR_TAUT or MOOR_CATENARY
+  depth: f64;                 // the water, m
+  lines: int; lost: int;
+  length: f64;                // each line, m
+  span: f64;                  // each anchor from its fairlead at rest, m
+  breaking: f64;              // each line's breaking load, N
+  offset: f64;                // the hull from its place, m
+  turn: f64;                  // and from its heading, degrees (the bow toward north: +)
+  peak: f64;                  // the most loaded line, N
+  worst: int;                 // which
+  uplift: f64;                // the hardest any anchor is pulled upward, N
+  grounded: f64;              // the least line any holding line has on the seabed, m
+  drift: f64;                 // the waves' slow drift force, N
+  wind: f64;                  // the wind's force, N
+}
+sim_station :: (h0: SimHull) -> SimStation {
+  h := sim_rigged(h0);
+  o := SimStation.{depth = h.depth, worst = -1, drift = sqrt(h.drift_x * h.drift_x + h.drift_z * h.drift_z), wind = h.wind_force};
+  o.offset = sqrt(h.surge * h.surge + h.sway * h.sway); o.turn = h.yaw * 180.0 / SIM_PI;
+  if h.free { return o; }
+  rig := h.rig[0];
+  o.moored = true; o.kind = rig.kind; o.lines = rig.count; o.lost = sim_lines_lost(h);
+  o.length = rig.line.length; o.span = rig.span; o.breaking = rig.line.mbl;
+  first := true;
+  for i: 0..<rig.count {
+    n := moor_now(h.rig[..], h.lost, i, h.surge, h.sway, h.yaw, h.heave);
+    if n.lost { continue; }
+    if n.pull.tension > o.peak || o.worst < 0 { o.peak = n.pull.tension; o.worst = i; }
+    o.uplift = sim_max(o.uplift, n.pull.uplift);
+    if first || n.pull.grounded < o.grounded { o.grounded = n.pull.grounded; }
+    first = false;
+  }
+  return o;
+}
+// Line i's drawn points and its load: STATION_FLOATS floats into out[at..]. MOOR_POINTS points
+// (x, y over the still waterline, z; the world's frame) from the anchor to the fairlead, then its
+// state: 0 no line, 1 to 2 holding (1 + its tension over its breaking load), 3 lost and lying on
+// the seabed. The page and the view under water draw these; nothing else places a line.
+STATION_FLOATS :: 16;
+sim_line_points :: (h0: SimHull, i: int, out: [] f32, at: int) {
+  h := sim_rigged(h0);
+  for k: 0..<STATION_FLOATS { out[at + k] = 0; }
+  if h.free || i < 0 || i >= h.rig[0].count { return; }
+  moor_points(h.rig[..], h.lost, i, h.surge, h.sway, h.yaw, h.heave, out, at);
+  for k: 0..<MOOR_POINTS { out[at + 3 * k] += f32(h.cx); out[at + 3 * k + 2] += f32(h.cz); }
+  n := moor_now(h.rig[..], h.lost, i, h.surge, h.sway, h.yaw, h.heave);
+  out[at + 15] = ifx n.lost then 3.0f32 else 1.0f32 + f32(sim_min(n.pull.tension / h.rig[0].line.mbl, 0.999));
+}
+
+// ---------------------------------------------------------------- checks (spec section 9, H1 to H5)
+// The page's sea for a wind (apps/openagents-web/slab.coax's slab_spectrum): a long fetch, scaled
+// to Pierson-Moskowitz's height, running west-south-west.
+station_check_spectrum :: (wind: f64) -> Spectrum {
+  sp := Spectrum.{seed = 23, wind_speed = wind, wind = 4.36, fetch = 300000.0, choppiness = 0.8, spread = 0.8, depth = 4000.0};
+  grown := wsp_significant_height(sp);
+  if grown > 0.001 { sp.amplitude = 0.21 * wind * wind / 9.81 / grown; }
+  return sp;
+}
+// The checks make the sea's tiles every sixth step, ten times a second: the page makes them once a
+// frame, and the hull's steps between read the same tiles.
+STATION_CHECK_EVERY :: 6;
+
+#test "H1: wind off the beam turns the platform against its lines; wind on the beam or the end does not" {
+  sea: [1] DriftSea; h: SimHull;
+  // 25.6 m/s (the hurricane's) from the south-west
+  d := 0.7071067811865476;
+  a := sim_hull_settle(h, sea[..], 25.6, d, d);
+  st := sim_station(a);
+  // it comes to rest 108 m to the north-east with its bow one degree toward north
+  #assert st.turn > 0.8 && st.turn < 1.4;
+  #assert st.offset > 90.0 && st.offset < 125.0 && st.peak < 0.7 * st.breaking;
+  // two things turn it. The wind's push sits toward the end of each wall it meets first, and
+  // tries to swing the long walls broadside: the bow toward south, with 1.9 GN m
+  sh := sim_shape(a);
+  blown := drift_turn(SIM_RHO_AIR, sh.l, sh.b, sh.windage, 25.6 * d, 25.6 * d);
+  #assert blown < -1.5e9 && blown > -2.5e9;
+  // and the lines, unequally loaded now the hull is off its place, turn it the other way with
+  // nearly three times that until it has turned far enough for the two to balance
+  square := moor_force(a.rig[..], 0, a.surge, a.sway, 0, 0);
+  #assert square.yaw > 1.5 * -blown;
+  hold := sim_hold(a, sh, a.rig[..], 25.6, d, d);
+  #assert abs(hold.yaw) < 1.0e5 && abs(hold.moor.yaw + hold.yaw_wind) < 0.01 * -blown && hold.yaw_wind < 0.9 * blown;
+  // mirrored, it turns the other way by as much
+  b := sim_hull_settle(h, sea[..], 25.6, d, -d);
+  #assert abs(sim_station(b).turn + st.turn) < 0.001;
+  // on the end, with the current: nothing turns it. Square on the beam only the current's small
+  // set to the west does, a tenth as far
+  #assert abs(sim_station(sim_hull_settle(h, sea[..], 25.6, -1, 0)).turn) < 0.0001;
+  #assert abs(sim_station(sim_hull_settle(h, sea[..], 25.6, 0, 1)).turn) < st.turn / 5.0;
+  // from rest on its place only the wind turns it, so it starts the wind's way; at its resting
+  // place it stays
+  empty: [1] f32; moving := h; resting := a;
+  for i: 0..<1200 {
+    moving = sim_hull_step(moving, empty[..], 0, 1, 25.6, d, d, SIM_STEP);
+    resting = sim_hull_step(resting, empty[..], 0, 1, 25.6, d, d, SIM_STEP);
+  }
+  #assert moving.yaw < 0 && moving.yaw_v < 0;
+  #assert abs(resting.yaw - a.yaw) < 1.0e-5 && abs(resting.surge - a.surge) < 0.01 && abs(resting.sway - a.sway) < 0.01;
+}
+#test "H3: in a gale the waves' drift adds two fifths to the hull's offset and the load on its lines" #steps 2000000000 {
+  s: [1] Synth; sea: [1] DriftSea; scratch: [16384] f32; none: [1] DriftSea;
+  sp := station_check_spectrum(21.6);
+  wsp_synth(s[..], sp, 1, 64);
+  whl_sea(s[..], 0, 25.0, scratch[..], sea[..]);
+  w := wsp_direction(sp);
+  h: SimHull;
+  dry := sim_station(sim_hull_settle(h, none[..], 21.6, w.x, w.y));     // wind and current alone
+  wet_hull := sim_hull_settle(h, sea[..], 21.6, w.x, w.y);
+  wet := sim_station(wet_hull);
+  // the gale's 10 m sea: 25 m of wall turns back most of each wave, a sea 8 m high
+  #assert abs(4.0 * sqrt(sea[0].variance) - 8.0) < 0.5;
+  // the mean drift: rho g Hs^2 / 16 a metre on the weather walls, 17 MN toward the west-south-west
+  // (the waves meet the 600 m end nearly square on and the long north wall at a glance)
+  #assert wet.drift > 14.0e6 && wet.drift < 21.0e6 && wet_hull.drift_x < 0 && wet_hull.drift_z < 0;
+  // the wind's push is 46 MN, so the drift is two fifths of that again: the hull sits 72 m off its
+  // place where wind and current alone leave it 51 m, and the worst line carries 18 MN, not 14
+  #assert dry.wind > 43.0e6 && dry.wind < 48.0e6 && wet.drift > 0.3 * dry.wind && dry.drift == 0;
+  #assert wet.offset > 1.3 * dry.offset && wet.peak - 4.0e6 > 1.3 * (dry.peak - 4.0e6);
+  #assert wet.offset < 90.0 && wet.peak < 0.5 * wet.breaking;
+  // stepped on the sea itself, the slow force stays about its mean and the hull about its place
+  g := wet_hull; low := 1.0e12; high := 0.0;
+  for i: 0..<3600 {
+    if i % STATION_CHECK_EVERY == 0 { whl_sea(s[..], wsp_tick_at(sp, g.time), 25.0, scratch[..], sea[..]); }
+    g = sim_hull_step_in(g, sea[..], 21.6, w.x, w.y, SIM_STEP);
+    f := sqrt(g.drift_x * g.drift_x + g.drift_z * g.drift_z);
+    low = sim_min(low, f); high = sim_max(high, f);
+  }
+  #assert low > 0.25 * wet.drift && high < 3.0 * wet.drift && high > 1.05 * low;
+  #assert abs(g.surge - wet_hull.surge) < 10.0 && abs(g.sway - wet_hull.sway) < 10.0 && g.lost == 0;
+}
+#test "H2: the hull rides a gale's waves by their length: less than the same sea lifting it unfaded" #steps 2000000000 {
+  s: [1] Synth; sea: [1] DriftSea; t: [1] Tile;
+  sp := station_check_spectrum(21.6);
+  wsp_synth(s[..], sp, 1, 64);
+  w := wsp_direction(sp);
+  a: SimHull; b: SimHull; most_a := 0.0; most_b := 0.0;
+  for i: 0..<1800 {
+    if i % STATION_CHECK_EVERY == 0 {
+      tick := wsp_tick_at(sp, a.time);
+      wsp_tile(s[..], 0, tick, t[..]);
+      whl_sea(s[..], tick, 25.0, t[0].scratch[..], sea[..]);
+    }
+    a = sim_hull_step_in(a, sea[..], 0, w.x, w.y, SIM_STEP);
+    b = sim_hull_step(b, t[0].height[0..<4096], 64, s[0].cascades[0].patch, 0, w.x, w.y, SIM_STEP);
+    most_a = sim_max(most_a, abs(a.heave)); most_b = sim_max(most_b, abs(b.heave));
+  }
+  // both are centimetres on a 10 m sea; the faded one is the smaller
+  #assert most_a < most_b && most_b < 0.10 * 10.0 && most_a > 0;
+}
+#test "H4: deep and shallow sites are moored differently, and both hold a 20 m/s beam wind" {
+  none: [1] DriftSea;
+  deep := sim_hull_settle(SimHull.{}, none[..], 20, 0, 1);
+  shallow := sim_hull_settle(SimHull.{depth = 89.0}, none[..], 20, 0, 1);     // the Gulf site off Texas
+  a := sim_station(deep); b := sim_station(shallow);
+  #assert a.kind == MOOR_TAUT && b.kind == MOOR_CATENARY && a.lines == 16 && b.lines == 16;
+  // 1,500 m: 2.5 km rope legs, every anchor pulled upward, the hull 66 m off its place
+  #assert a.length > 2400.0 && a.uplift > 1.0e6 && a.grounded == 0;
+  #assert a.offset > 55.0 && a.offset < 75.0 && a.peak < 0.5 * a.breaking;
+  // 89 m: 1,076 m chains, no anchor pulled upward, the hull held within 14 m
+  #assert abs(b.length - 1076.0) < 1.0 && b.uplift == 0 && b.grounded > 400.0;
+  #assert b.offset > 8.0 && b.offset < 20.0 && b.peak < 0.5 * b.breaking;
+  // and drawn differently: a taut leg runs from the keel to the seabed 1,500 m down; a chain from
+  // the waterline lies along the seabed 89 m down for most of its length
+  p: [16] f32;
+  sim_line_points(deep, 0, p[..], 0);
+  #assert p[1] == -1500 && p[4] == -1500 && p[7] > -1100 && abs(f64(p[13]) + 25.0) < 0.3 && p[15] >= 1 && p[15] < 2;
+  sim_line_points(shallow, 0, p[..], 0);
+  #assert p[1] == -89 && p[4] == -89 && abs(f64(p[13])) < 0.3;
+  reach := sqrt(f64(p[3] - p[0]) * f64(p[3] - p[0]) + f64(p[5] - p[2]) * f64(p[5] - p[2]));
+  #assert reach > 100.0;
+}
+#test "H5: lose a line in a gale: the hull shifts and turns, its neighbour takes the load, and it shows" #steps 2000000000 {
+  s: [1] Synth; sea: [1] DriftSea; scratch: [16384] f32;
+  sp := station_check_spectrum(21.6);
+  wsp_synth(s[..], sp, 1, 64);
+  whl_sea(s[..], 0, 25.0, scratch[..], sea[..]);
+  w := wsp_direction(sp);
+  whole := sim_hull_settle(SimHull.{}, sea[..], 21.6, w.x, w.y);
+  before := sim_station(whole);
+  cut := sim_lose_line(whole);
+  #assert sim_lines_lost(cut) == 1 && sim_line_now(cut, before.worst).lost;
+  // where it comes to rest on fifteen lines
+  after := sim_station(sim_hull_settle(cut, sea[..], 21.6, w.x, w.y));
+  #assert after.lost == 1 && after.worst != before.worst;
+  #assert after.offset > before.offset + 2.0 && abs(after.turn - before.turn) > 0.05 && after.peak > before.peak;
+  // and on the way there: two minutes on, it is moving off and turning
+  g := cut;
+  for i: 0..<7200 {
+    if i % STATION_CHECK_EVERY == 0 { whl_sea(s[..], wsp_tick_at(sp, g.time), 25.0, scratch[..], sea[..]); }
+    g = sim_hull_step_in(g, sea[..], 21.6, w.x, w.y, SIM_STEP);
+  }
+  moved := sqrt((g.surge - whole.surge) * (g.surge - whole.surge) + (g.sway - whole.sway) * (g.sway - whole.sway));
+  #assert moved > 0.3 && abs(g.yaw - whole.yaw) > 1.0e-5;
+  // its drawn points lie on the seabed, and its state says lost
+  p: [16] f32;
+  sim_line_points(g, before.worst, p[..], 0);
+  #assert p[15] == 3 && p[13] == -1500;
+  // new lines put it back
+  #assert sim_lines_lost(sim_refit_lines(g)) == 0;
+}
+#test "H5: in the hurricane three lost lines put a fourth over its breaking load, and it parts on its own" #steps 2000000000 {
+  s: [1] Synth; sea: [1] DriftSea; scratch: [16384] f32;
+  sp := station_check_spectrum(25.6);
+  wsp_synth(s[..], sp, 1, 64);
+  whl_sea(s[..], 0, 25.0, scratch[..], sea[..]);
+  w := wsp_direction(sp);
+  h := sim_hull_settle(SimHull.{}, sea[..], 25.6, w.x, w.y);
+  first := sim_station(h);
+  // as the page runs it (from the east-north-east): all sixteen hold it 113 m off its place, the
+  // worst line at two thirds of its breaking load, under 65 MN of wind and 33 MN of drift
+  #assert first.peak > 0.6 * first.breaking && first.peak < 0.75 * first.breaking && first.offset > 100.0 && first.offset < 125.0;
+  #assert first.drift > 28.0e6 && first.drift < 38.0e6 && first.wind > 60.0e6 && first.wind < 70.0e6;
+  cut := 0;
+  for k: 0..<8 {
+    if sim_station(h).peak >= first.breaking { break; }
+    h = sim_hull_settle(sim_lose_line(h), sea[..], 25.6, w.x, w.y); cut += 1;
+  }
+  #assert cut == 3 && sim_station(h).peak >= first.breaking;
+  // and the next step breaks it without being asked
+  g := sim_hull_step_in(h, sea[..], 25.6, w.x, w.y, SIM_STEP);
+  #assert sim_lines_lost(g) == cut + 1 && g.broke >= 0;
+  // square on the long wall (not a sea the page runs) the same storm is too much for all sixteen:
+  // 72 MN of wind and 60 MN of drift put the worst line over its breaking load at rest
+  sp.wind = 0;
+  wsp_synth(s[..], sp, 1, 64);
+  whl_sea(s[..], 0, 25.0, scratch[..], sea[..]);
+  beam := sim_station(sim_hull_settle(SimHull.{}, sea[..], 25.6, 0, 1));
+  #assert beam.lost == 0 && beam.peak > beam.breaking && beam.drift > 50.0e6 && beam.drift < 70.0e6 && beam.wind > 68.0e6;
+}
+
+// ---------------------------------------------------------------- spec tests 9 and 10, on the moorings
+station_check_same :: (a: SimHull, b: SimHull) -> bool {
+  return a.heave == b.heave && a.roll == b.roll && a.pitch == b.pitch && a.surge == b.surge && a.sway == b.sway && a.yaw == b.yaw
+      && a.heave_v == b.heave_v && a.roll_v == b.roll_v && a.pitch_v == b.pitch_v && a.surge_v == b.surge_v && a.sway_v == b.sway_v && a.yaw_v == b.yaw_v
+      && a.drift_x == b.drift_x && a.drift_z == b.drift_z && a.drift_n == b.drift_n && a.lost == b.lost && a.tension == b.tension && a.time == b.time;
+}
+// A run of `steps` ticks in the winter sea from a hull's state, losing a line at tick `cut`.
+station_check_run :: (s: [] Synth, sp: Spectrum, from: SimHull, steps: int, cut: int) -> SimHull {
+  sea: [1] DriftSea; scratch: [16384] f32;
+  w := wsp_direction(sp);
+  h := from;
+  for i: 0..<steps {
+    if i == cut { h = sim_lose_line(h); }
+    if i % STATION_CHECK_EVERY == 0 { whl_sea(s, wsp_tick_at(sp, h.time), 25.0, scratch[..], sea[..]); }
+    h = sim_hull_step_in(h, sea[..], sp.wind_speed, w.x, w.y, SIM_STEP);
+  }
+  return h;
+}
+#test "9: two runs give the same hull bit for bit at tick 10,000, and a late joiner goes on the same" #steps 4000000000 {
+  s: [1] Synth; sea: [1] DriftSea; scratch: [16384] f32;
+  sp := station_check_spectrum(13.7);
+  wsp_synth(s[..], sp, 1, 64);
+  whl_sea(s[..], 0, 25.0, scratch[..], sea[..]);
+  w := wsp_direction(sp);
+  start := sim_hull_settle(SimHull.{}, sea[..], 13.7, w.x, w.y);
+  #assert station_check_same(start, sim_hull_settle(SimHull.{}, sea[..], 13.7, w.x, w.y));
+  // 10,000 ticks with a line lost at tick 4,000: every motion, the yaw and the lines among them
+  a := station_check_run(s[..], sp, start, 10000, 4000);
+  b := station_check_run(s[..], sp, start, 10000, 4000);
+  #assert station_check_same(a, b) && a.lost != 0 && a.yaw != start.yaw && a.heave != 0;
+  // a late joiner is handed the hull at tick 10,000 and steps on with everyone else
+  joined := a;
+  #assert station_check_same(station_check_run(s[..], sp, a, 600, -1), station_check_run(s[..], sp, joined, 600, -1));
+  // and the lines it draws are the same floats
+  p: [16] f32; q: [16] f32;
+  for i: 0..<16 {
+    sim_line_points(a, i, p[..], 0); sim_line_points(b, i, q[..], 0);
+    for k: 0..<16 { #assert p[k] == q[k]; }
+  }
+}
+#test "10: over 600 s of the trade sea the forces on the hull sum to its change in momentum" #steps 4000000000 {
+  s: [1] Synth; sea: [1] DriftSea; scratch: [16384] f32;
+  sp := station_check_spectrum(8.4);
+  wsp_synth(s[..], sp, 1, 64);
+  w := wsp_direction(sp);
+  // from rest on its place, not where it settles, so every force has work to do
+  h := sim_rigged(SimHull.{}); sh := sim_shape(h);
+  for i: 0..<36000 {
+    if i % STATION_CHECK_EVERY == 0 { whl_sea(s[..], wsp_tick_at(sp, h.time), 25.0, scratch[..], sea[..]); }
+    h = sim_hull_step_in_on(sh, h, sea[..], 8.4, w.x, w.y, SIM_STEP);
+  }
+  // metaverse/slab-sim.coax's ledger (its own test 10 runs on a plain tile, with no drift): east and
+  // north, wind, current, moorings, the waves' push, their slow drift and the water's drag
+  q := h.imp;
+  east := q.wind_x + q.current_x + q.moor_x + q.wave_x + q.drift_x + q.drag_x + q.push_x;
+  north := q.wind_z + q.current_z + q.moor_z + q.wave_z + q.drift_z + q.drag_z + q.push_z;
+  gross_x := abs(q.wind_x) + abs(q.current_x) + abs(q.moor_x) + abs(q.wave_x) + abs(q.drift_x) + abs(q.drag_x);
+  gross_z := abs(q.wind_z) + abs(q.current_z) + abs(q.moor_z) + abs(q.wave_z) + abs(q.drift_z) + abs(q.drag_z);
+  #assert abs(east - sim_slide_mass_of(sh) * h.surge_v) < 1.0e-9 * gross_x;
+  #assert abs(north - sim_slide_mass_of(sh) * h.sway_v) < 1.0e-9 * gross_z;
+  // about the vertical: wind, current, the lines, the waves and the water's drag on the turning
+  turn := q.yaw_wind + q.yaw_current + q.yaw_moor + q.yaw_wave + q.yaw_drag;
+  gross_n := abs(q.yaw_wind) + abs(q.yaw_current) + abs(q.yaw_moor) + abs(q.yaw_wave) + abs(q.yaw_drag);
+  #assert abs(turn - sim_yaw_inertia_of(sh) * h.yaw_v) < 1.0e-9 * gross_n;
+  // every force did something: the wind and the drift push it west-south-west, the lines pull back
+  #assert q.wind_x < 0 && q.wind_z < 0 && q.drift_x < 0 && q.current_x < 0 && q.moor_x > 0 && q.moor_z > 0 && q.wave_x != 0 && q.drag_x != 0;
+  #assert q.yaw_wind != 0 && q.yaw_moor != 0 && q.yaw_wave != 0 && q.yaw_drag != 0 && q.current_z != 0;
+  #assert abs(q.wind_x) / 600.0 > 2.0e6 && abs(q.drift_x) / 600.0 > 1.0e5;
+  // and the hull has not run away: after ten minutes it moves slower than 0.2 m/s
+  #assert sqrt(h.surge_v * h.surge_v + h.sway_v * h.sway_v) < 0.2 && h.lost == 0;
+}
