@@ -1,20 +1,20 @@
 # SLAB Simulation
 
-An unlisted reconstruction of SLAB at https://openagents.com/realms/slab. SLAB is Palmer Luckey's proposed floating platform for American industry. This world rebuilds it on open ocean from the research in the OpenAgents repository. It is unlisted: the [worlds list](https://openagents.com/worlds) leaves it out, so you open it by its address.
+An unlisted reconstruction of SLAB at https://openagents.com/worlds/slab. SLAB is Palmer Luckey's proposed floating platform for American industry. This world rebuilds it on open ocean from the research in the OpenAgents repository. It is unlisted: the [worlds list](https://openagents.com/worlds) leaves it out, so you open it by its address.
 
 SLAB has published no design. The dimensions here are this world's own planning values, read from the AI-generated concept image and set out in the world spec.
 
 ## Build SLAB from the ports
 
-[Play the construction timelapse](/realms/slab/?view=build). In the world, open **Build** or press **B**. Drag the gold timeline in either direction. Space plays or pauses, the arrow keys step through the timeline, and Escape returns to the original camera. **Tow**, **Join** and **Outfit** jump to the first operation of each kind. Drag the scene to orbit and use the wheel to zoom. A link with `?view=build&day=983.8` pauses on that project day.
+[Play the construction timelapse](/worlds/slab?view=build). In the world, open **Build** or press **B**. Drag the gold timeline in either direction. Space plays or pauses, the arrow keys step through the timeline, and Escape returns to the original camera. **Tow**, **Join** and **Outfit** jump to the first operation of each kind. Drag the scene to orbit and use the wheel to zoom. A link with `?view=build&day=983.8` pauses on that project day.
 
 | Follow the work | What to watch |
 | --- | --- |
-| [Corpus Christi casting yard](/realms/slab/?view=build&day=14) | An 8 m starter shell floats at the quay. As crews raise the walls, place the deck and load low ballast, the caisson draws more water. |
-| [First Gulf tow](/realms/slab/?view=build&day=30.28) | Two tugs take one 100 × 50 m caisson through an assumed 8 nautical miles of channel at 3 knots and 40 offshore at 4 knots. A 20 m/s headwind holds the first departure for two days. |
-| [Assembly berth](/realms/slab/?view=build&day=503.8) | Tugs warp each caisson along an open row. The first caisson takes the moorings. A work barge attends each subsequent joint. Only a completed connection adds that unit to the joined displacement. The 120th joins on day 983. |
-| [Brownsville freight run](/realms/slab/?view=build&day=984.6) | A separate 120 × 32 m lighter brings 25,000 t per call. The route assumes 15 nautical miles of channel and 130 offshore. Watch the lighter rise as cargo transfers to the hull, its towers go up and ballast brings it to operating draft. |
-| [Commissioned deck](/realms/slab/?view=build&day=1383) | At 25 m draft the joined hull displaces 15.375 million metric tonnes. The sequence ends at the original skyline. The 40 m berth rules out the main world's kilometre-long OTEC pipes. |
+| [Corpus Christi casting yard](/worlds/slab?view=build&day=14) | An 8 m starter shell floats at the quay. As crews raise the walls, place the deck and load low ballast, the caisson draws more water. |
+| [First Gulf tow](/worlds/slab?view=build&day=30.28) | Two tugs take one 100 × 50 m caisson through an assumed 8 nautical miles of channel at 3 knots and 40 offshore at 4 knots. A 20 m/s headwind holds the first departure for two days. |
+| [Assembly berth](/worlds/slab?view=build&day=503.8) | Tugs warp each caisson along an open row. The first caisson takes the moorings. A work barge attends each subsequent joint. Only a completed connection adds that unit to the joined displacement. The 120th joins on day 983. |
+| [Brownsville freight run](/worlds/slab?view=build&day=984.6) | A separate 120 × 32 m lighter brings 25,000 t per call. The route assumes 15 nautical miles of channel and 130 offshore. Watch the lighter rise as cargo transfers to the hull, its towers go up and ballast brings it to operating draft. |
+| [Commissioned deck](/worlds/slab?view=build&day=1383) | At 25 m draft the joined hull displaces 15.375 million metric tonnes. The sequence ends at the original skyline. The 40 m berth rules out the main world's kilometre-long OTEC pipes. |
 
 **What the numbers mean.** The project assumes parallel casting positions producing one closed unit every eight days. Each needs about 22,372 m³ of reinforced concrete at 2.5 t/m³, including the separate end walls needed during tow. With 3,000 t of low ballast the tow weighs about 58,931 t, draws 11.50 m in seawater and has an initial transverse metacentric height of 2.48 m under the assumed mass distribution. At 4 knots in a 10 m/s headwind, the steady drag estimate including a 30% margin calls for 1.73 MN of the assumed 2 MN available underway. At 20 m/s it exceeds that allowance. The port’s published channel is 530 ft wide and 54 ft deep. The assumed screening margins are 10 m on each side and 2 m below the keel. The 600 m assembled beam excludes a tow of the finished city through that channel. [Corpus Christi channel dimensions](https://portofcc.com/wp-content/uploads/PCCA-Press-Release-CIP-Completion-vf.pdf) · [Brownsville port directory](https://www.portofbrownsville.com/wp-content/uploads/2026/01/Port-of-Brownsville-Directory-2025-Web-V1.pdf)
 

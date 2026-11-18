@@ -1,7 +1,8 @@
 # SLAB world: a simulation spec for the Metaverse Engine
 
 Status: phases S1–S7 built, November 18, 2026, as
-**SLAB Simulation** at `/realms/slab`. The hull floats on column buoyancy
+**SLAB Simulation** at `/worlds/slab` (the older `/realms/slab` moves
+there). The hull floats on column buoyancy
 with damping, moorings, wind and current (`metaverse/slab-sim.coax`); the
 `prime` deck is built and can be walked with GameBuilder's character
 controller; the five sites, six sea states, OTEC, nuclear and hybrid power,
@@ -77,8 +78,12 @@ hand. `bun coax/web/realms.ts --check` must pass.
     "golden": { "lit": 0.3, "settle": 3000, "blocks": 6 }, "assets": [] } }
 ```
 
-- **Unlisted.** With `listed: false` the realm stays off `/realms` and the
-  galaxy, but its page opens at `/realms/slab`.
+- **Unlisted.** With `listed: false` the realm stays off `/worlds` and the
+  galaxy, but its page opens at `/worlds/slab`. The site moves every
+  `/realms/...` address to `/worlds/...` for good, query kept, so
+  `/realms/slab` opens it too. The row's `description` no longer says
+  "unlisted" (the world is linked from a public post), and a `share` line
+  gives the link preview its text.
 - **Orbit.** Check that the orbit is clear of other rows. If it isn't, pick a
   clear one by the rules in realm-host.md.
 - **No asset files.** Everything is generated from code, as in the water lab.
@@ -783,7 +788,7 @@ the column approximation.
 
 | Phase | Delivers | Done when |
 |---|---|---|
-| S1 Shell | Realm row, page, sea from the water lab, static `prime` hull and deck slab, fly camera, golden | `/realms/slab` opens, the release walk passes, the golden is committed |
+| S1 Shell | Realm row, page, sea from the water lab, static `prime` hull and deck slab, fly camera, golden | `/worlds/slab` opens, the release walk passes, the golden is committed |
 | S2 Hull physics | `metaverse/hull.coax`: columns, rigid body, added mass, damping, moorings, wind and current; motion panel; site and sea selectors | Tests 1–4, 6, 9 and 10 pass |
 | S3 Deck | `metaverse/slab-plan.coax` districts and generated buildings; walking in the deck frame; travel stations | Walk the deck in `gale` without the character sliding off or jittering; draw budgets hold |
 | S4 Systems | OTEC, data halls and backup, seawater cooling, mining and revenue, desalination, industry, dispatch, `demo10` preset, nuclear and hybrid options with module placement and the powership, systems panel, flow overlay, pipes | Tests 7, 8, 11–14 pass; `california` shows OTEC at zero in winter and nuclear at full power |

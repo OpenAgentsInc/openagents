@@ -343,7 +343,7 @@ fixture=$!
 # /worlds/waterlab: the water system's test scene (docs/metaverse/water.md), the spectral sea in Coax.
 old timed waterlab "$here/../../coax/web/wasm.sh" "$here/waterlab.coax" "$here/waterlab-face.c" "$here/build/waterlab.wasm" &
 waterlab=$!
-# /realms/slab: SLAB Simulation, the floating platform on the water lab's sea (docs/research/ocean/slab-world-spec.md).
+# /worlds/slab: SLAB Simulation, the floating platform on the water lab's sea (docs/research/ocean/slab-world-spec.md).
 timed slab "$here/../../coax/web/wasm.sh" "$here/slab.coax" "$here/slab-face.c" "$here/build/slab.wasm" &
 slab=$!
 old timed bitcoin-lab "$here/../../coax/web/wasm.sh" "$here/old/labs/bitcoin-lab.coax" "$here/old/labs/bitcoin-lab-face.c" "$here/build/bitcoin-lab.wasm" &

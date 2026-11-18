@@ -1,4 +1,4 @@
-// SLAB Simulation (openagents.com/realms/slab): an unlisted reconstruction of SLAB, the proposed
+// SLAB Simulation (openagents.com/worlds/slab; /realms/slab moves there): a reconstruction of SLAB, the proposed
 // floating industrial platform, on open ocean (docs/research/ocean/slab-world-spec.md).
 //
 // The sea is the water lab's (waterlab.coax): a JONSWAP sea synthesized by the CPU FFT on the
@@ -2138,7 +2138,7 @@ SLAB_BUDGET :: FrameBudget.{steps = 8, vertices = MAX_VERTICES - 1, draws = 0, b
 
 #test "a construction deep link pauses on its requested day" {
   s: [1]Slab;
-  slab_message(s[..], HOST_FACTS,"url=/realms/slab?view=build&day=31\n");
+  slab_message(s[..], HOST_FACTS,"url=/worlds/slab?view=build&day=31\n");
   #assert s[0].build.on && !s[0].build.play && build_at(build_day(s[0].build.cursor)).joined == 1;
 }
 

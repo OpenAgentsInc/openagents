@@ -135,7 +135,7 @@ CTO of Ocean Atomics. The video itself is
 
 ### [slab-world-spec.md](slab-world-spec.md)
 
-**What it is:** the brief for a coding agent to build `/realms/slab`, an
+**What it is:** the brief for a coding agent to build `/worlds/slab`, an
 unlisted world in the OpenAgents Metaverse Engine.
 
 **What it specifies:**
@@ -175,8 +175,9 @@ nothing.
   photoreal look, and waves that meet the wall.
 
 **Conclusion:** the model underneath is sound, and a newcomer can't read it
-yet. The world is also not in production: `/realms/slab` returned 404 when
-the audit was written.
+yet. The world was also not in production when the audit was written:
+`/realms/slab` moved to `/worlds/slab`, which returned 404, because no
+release had shipped since the world landed.
 
 **Includes:** [slab-world-audit-views.jpg](slab-world-audit-views.jpg), eight
 labelled views of the world. The construction timelapse has its own rebuild
