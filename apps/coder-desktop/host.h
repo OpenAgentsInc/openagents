@@ -86,5 +86,12 @@ int cd_style(void *page, float style[14]);
 // names the row. Each returns the row it is at. Read cd_style again after a change.
 int cd_zoom(void *page, int by);
 int cd_zoom_set(void *page, int row);
+// A page with no window, for a chat whose reply goes on out of view: every cd_ call that reads
+// lines, answers workers or keeps text works on it. cd_take moves a chat, run and all, from one
+// page to another and leaves the first a new chat (0 when the other holds a running chat).
+// cd_tick counts seconds on a page with no window. cd_close frees either kind.
+void *cd_headless(void);
+int cd_take(void *to, void *from);
+void cd_tick(void *page, float dt);
 void cd_close(void *page);
 #endif

@@ -13,6 +13,7 @@ typedef struct {
   float screen;   // the screen's own scale
   int settle;     // frames still owed after a change (glyphs asked for in one frame are drawn in the next)
   void (*changed)(void *context); void *context;
+  int headless;   // a page with no window: a chat whose reply runs out of view
 } CoderHost;
 
 static coax_v_t_CoderPage cd_state(CoderHost *c) { return (coax_v_t_CoderPage){c->s, 1}; }
@@ -140,9 +141,29 @@ int cd_copied(void *page, char *out, int cap) {
 }
 int cd_editor(void *page, float box[6]) { CoderHost *c = page; return c && coder_page_editor(cd_state(c), (coax_v_f32){box, 6}); }
 int cd_style(void *page, float style[14]) { CoderHost *c = page; return c ? coder_page_style(cd_state(c), (coax_v_f32){style, 14}) : 0; }
+// A page with no window, for a chat whose reply goes on out of view: it reads its workers' lines
+// and keeps its text as the window's page does. cd_close frees it.
+void *cd_headless(void) {
+  CoderHost *c = calloc(1, sizeof *c);
+  if (!c) return NULL;
+  c->s = calloc(1, sizeof *c->s);
+  if (!c->s) { free(c); return NULL; }
+  c->headless = 1;
+  coder_page_init(cd_state(c));
+  return c;
+}
+// The chat in from moves to to, run and all; from is left a new chat. 0 when to holds a running chat.
+int cd_take(void *to, void *from) {
+  CoderHost *t = to, *f = from;
+  if (!t || !f) return 0;
+  int ok = coder_page_take(cd_state(t), cd_state(f));
+  cd_changed(t); cd_changed(f);
+  return ok;
+}
+void cd_tick(void *page, float dt) { CoderHost *c = page; if (c) coder_page_tick(cd_state(c), dt); }
 void cd_close(void *page) {
   CoderHost *c = page;
   if (!c) return;
-  gallery_free(&c->app);
+  if (!c->headless) gallery_free(&c->app);
   free(c->s); free(c);
 }

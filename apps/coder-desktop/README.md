@@ -27,7 +27,7 @@ Limits, all shown on screen when you reach them:
 
 - A chat holds 24 messages. Start a new chat to send more.
 - A reply longer than 60,000 bytes is cut.
-- One run at a time.
+- One run at a time in each chat.
 - A command's or a tool call's output is shown up to 2,000 bytes, and its text up to 400 bytes.
 - A chat keeps 6,000 rows in all: commands, file reads, sub-agents' tool calls and thoughts (#13670, #13671). Past 6,000 it drops the oldest row in the chat, and the message or transcript it was in says at its top how many it dropped.
 - The working folder's name is cut with an ellipsis past 280 points wide.
@@ -166,9 +166,11 @@ when you send a message in it. Click a chat to open it:
 - The working folder becomes the one the chat used, if that folder still exists.
 - Microcoder is told the chat's newest messages and replies ahead of your next message, so a follow-up has its context.
 
-You can't open another chat while a reply is running. New chat starts an
-empty one; it joins the list when you send its first message. Coder opens on
-a new chat.
+You can open another chat, or start a new one, while a reply is running. The
+reply goes on out of view, and its chat shows a spinner in the sidebar. Its
+chat is saved as it changes and when the reply ends. Click the chat to see it
+again, still running or finished. New chat starts an empty one; it joins the
+list when you send its first message. Coder opens on a new chat.
 
 The chats are files in `~/Library/Application Support/Coder/chats`: one
 `ID.json` for each chat and `index.json`, the list. Nothing is sent
@@ -246,6 +248,13 @@ Add `--then TEXT` to start a new chat once that reply ends and send `TEXT` in it
 
 ```sh
 open -n apps/coder-desktop/build/Coder.app --args --send "Say hi." --then "What is 2+2?"
+```
+
+Add `--new TEXT` to start a new chat while that reply runs and send `TEXT` in
+it. The first reply goes on out of view:
+
+```sh
+open -n apps/coder-desktop/build/Coder.app --args --send "Run sleep 20, then say hi." --new "What is 2+2?"
 ```
 
 To build a second copy somewhere else, and leave a running Coder's files alone:

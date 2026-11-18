@@ -130,7 +130,7 @@ CpTurn :: struct {
   h: f32; hw: f32;            // its height as last drawn, and the column's width then
 }
 // One kept chat in the sidebar's list.
-CpChat :: struct { id: [CP_CHAT_ID] u8; id_n: int; title: [CP_CHAT_TITLE] u8; title_n: int; }
+CpChat :: struct { id: [CP_CHAT_ID] u8; id_n: int; title: [CP_CHAT_TITLE] u8; title_n: int; busy: bool; }   // busy: a reply runs in it, out of view
 CpGeneration :: struct { under: [CP_UNDER] Prim; over: [CP_OVER] Prim; lines: [CP_LINES] SheetLine; hits: [CP_HITS] SheetHit; pool: [CP_POOL] u8; rows: [CP_ROWS] El; }
 CoderPage :: struct {
   ready: bool; time: f32; d: f32;
@@ -637,12 +637,14 @@ coder_page_chats :: (s: [] CoderPage, list: string) #export_c #effects(all) {
   while i < list.count {
     e := i; while e < list.count && list[e] != 10 { e += 1; }
     t := i; while t < e && list[t] != 9 { t += 1; }
+    u := ifx t < e then t + 1 else e; while u < e && list[u] != 9 { u += 1; }   // the title's end: a third column says a reply runs in it
     if t > i {
       if s[0].nchats < CP_CHATS {
         k := s[0].nchats;
         n := cp_out(s[0].chats[k].id[..], "chat."); n += cp_out(s[0].chats[k].id[n..<CP_CHAT_ID], cast(string) list[i..<t]);
         s[0].chats[k].id_n = n;
-        s[0].chats[k].title_n = ifx t + 1 < e then cp_out(s[0].chats[k].title[..], cast(string) list[t + 1..<e]) else cp_out(s[0].chats[k].title[..], "New chat");
+        s[0].chats[k].title_n = ifx t + 1 < u then cp_out(s[0].chats[k].title[..], cast(string) list[t + 1..<u]) else cp_out(s[0].chats[k].title[..], "New chat");
+        s[0].chats[k].busy = u + 1 < e && list[u + 1] == '1';
         s[0].nchats += 1;
       } else { s[0].chats_more += 1; }
     }
@@ -836,12 +838,39 @@ coder_page_recall_line :: (s: [] CoderPage, out: [] u8) -> int #export_c #effect
   if n < 0 || !some { return 0; }
   return mww_recall(out, cast(string) b[0..<n]);
 }
-// A new chat: the window clears and the host has the worker forget. Not while a run is going.
+// A new chat: the window clears and the host has the worker forget. While a run is going the
+// host first moves that chat out of view (coder_page_take), where its run goes on.
 cp_new :: (s: [] CoderPage) -> bool {
-  if cp_running(s) { return false; }
+  if cp_running(s) { s[0].ask = CP_ASK_NEW; return true; }
   s[0].nturns = 0; cp_calls_reset(s); s[0].scroll = 0; s[0].stick = true; s[0].copied_turn = -1; s[0].copied_kind = CP_COPIED_NONE; s[0].pane_open = false; s[0].ask = CP_ASK_NEW; return true;
 }
 coder_page_new :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && cp_new(s); }
+// A page with no window, for a chat whose reply runs out of view.
+coder_page_init :: (s: [] CoderPage) #export_c #effects(all) { if s.count > 0 { cp_init(s); } }
+// Seconds pass on a page with no window: its run's tool calls and waits count them.
+coder_page_tick :: (s: [] CoderPage, dt: f32) #export_c #effects(all) { if s.count > 0 && dt > 0 { s[0].clock += dt; } }
+// The chat in `from` moves to `to`, run and all: its turns, sub-agents, tool calls and what the
+// worker is owed. `from` is left a new chat, with nothing to ask the host. False when `to` holds a
+// running chat. The clock's times shift to `to`'s clock.
+coder_page_take :: (to: [] CoderPage, from: [] CoderPage) -> bool #export_c #effects(all) {
+  if to.count < 1 || from.count < 1 || cp_running(to) { return false; }
+  if !to[0].ready { cp_init(to); }
+  shift := to[0].clock - from[0].clock;
+  for i: 0..<from[0].nturns {
+    to[0].turns[i] = from[0].turns[i];
+    for j: 0..<to[0].turns[i].nagents { to[0].turns[i].agents[j].began += shift; to[0].turns[i].agents[j].heard += shift; }
+  }
+  for q: 0..<from[0].calls_n { to[0].calls[q] = from[0].calls[q]; to[0].calls[q].began += shift; }
+  to[0].nturns = from[0].nturns; to[0].calls_n = from[0].calls_n; to[0].calls_free = from[0].calls_free; to[0].calls_order = from[0].calls_order;
+  to[0].current_n = cp_out(to[0].current[..], cast(string) from[0].current[0..<from[0].current_n]);
+  to[0].kept_turns = from[0].kept_turns; to[0].kept_running = from[0].kept_running;
+  to[0].answer = from[0].answer; to[0].answer_due = from[0].answer_due; to[0].results_due = from[0].results_due;
+  to[0].scroll = 0; to[0].stick = true; to[0].pane_open = false; to[0].copied_turn = -1; to[0].copied_kind = CP_COPIED_NONE;
+  from[0].nturns = 0; cp_calls_reset(from); from[0].current_n = 0; from[0].answer_due = false; from[0].results_due = false;
+  from[0].kept_turns = 0; from[0].kept_running = false; from[0].pane_open = false; from[0].copied_turn = -1; from[0].copied_kind = CP_COPIED_NONE;
+  from[0].scroll = 0; from[0].stick = true;
+  return true;
+}
 cp_press :: (s: [] CoderPage, row: int) -> bool {
   act := surface_action(s[0].surface[..], row);
   if act == CP_TOOL {
@@ -885,7 +914,7 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
   }
   if act == CP_CHAT {
     id := surface_id(s[0].surface[..], row);
-    if cp_running(s) || id == cast(string) s[0].current[0..<s[0].current_n] { return false; }
+    if id == cast(string) s[0].current[0..<s[0].current_n] { return false; }
     for q: 0..<s[0].nchats { if id == cast(string) s[0].chats[q].id[0..<s[0].chats[q].id_n] { s[0].open = q; s[0].ask = CP_ASK_OPEN; return true; } }
     return false;
   }
@@ -1166,7 +1195,7 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
   _ := app_icon_button(f, "coder.copy", w - 2 * a.icon_button - CP_CORNER, CP_CORNER, ifx all then k.icon_check else k.icon_copy, ifx all then "Copied" else "Copy chat", APP_BUTTON_QUIET,
                        ifx s[0].nturns == 0 then EL_S_DISABLED else 0, CP_COPY_ALL);
   _ := app_icon_button(f, "coder.new", w - a.icon_button - CP_CORNER, CP_CORNER, ICON_COMPOSE, "New chat", APP_BUTTON_QUIET,
-                       ifx running || s[0].nturns == 0 then EL_S_DISABLED else 0, CP_NEW);
+                       ifx s[0].nturns == 0 then EL_S_DISABLED else 0, CP_NEW);
   // the working folder floats in the top left corner; a press asks the host for another
   if s[0].folder_n > 0 {
     name := sheet_pool(f[0].sheet, cast(string) s[0].folder[0..<s[0].folder_n]);
@@ -1174,8 +1203,8 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
     if left > 0 && fw > left - 2 * CP_CORNER { fw = left - 2 * CP_CORNER; }
     _ := app_button(f, "coder.folder", CP_CORNER, CP_CORNER + (side - k.control_h) / 2, fw, ICON_FOLDER, name, APP_BUTTON_QUIET, ifx running then EL_S_DISABLED else 0, CP_FOLDER);
   }
-  // the sidebar: the recent chats, most recent first. The chat that is shown is lit; while a run
-  // is going the others can't be opened.
+  // the sidebar: the recent chats, most recent first. The chat that is shown is lit; one whose
+  // reply runs, shown or not, says so.
   if left > 0 {
     sheet_fill(f[0].sheet, left - k.border, 0, k.border, h, 0, k.menu_divider);
     rows: [CP_CHATS + 1] AppSideRow;
@@ -1185,7 +1214,7 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
       id := cast(string) s[0].chats[q].id[0..<s[0].chats[q].id_n];
       is := cur.count > 0 && id == cur;
       rows[q + 1] = AppSideRow.{id = id, title = cast(string) s[0].chats[q].title[0..<s[0].chats[q].title_n],
-                               state = ifx is then EL_S_CURRENT | (ifx running then EL_S_BUSY else 0) else ifx running then EL_S_DISABLED else 0};
+                               state = (ifx is then EL_S_CURRENT else 0) | (ifx (is && running) || s[0].chats[q].busy then EL_S_BUSY else 0)};
     }
     stop := CP_CORNER + side + a.gap_small;
     s[0].side_view = h - stop;
@@ -1902,6 +1931,32 @@ cp_find :: (text: string, needle: string) -> int {
   #assert s[0].current_n == 0;
 }
 
+#test "a running chat moves out of view and back with its run; a new chat and another chat open while it runs; the list marks it" {
+  p: [2] CoderPage; s := p[0..<1]; b := p[1..<2];
+  cp_init(s); coder_page_init(b);
+  coder_page_current(s, "a1");
+  #assert coder_page_set_text(s, "look around") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND && coder_page_save_due(s);
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"opus\",\"task\":\"look\"}],\"ticket\":4}") == MWW_DELEGATE;
+  s[0].clock = 50;
+  #assert coder_page_agent_next(s) == 0 && coder_page_agent_line(s, 0, "{\"kind\":\"ask\",\"command\":\"ls\",\"ticket\":1}") == MWW_ASK;
+  // a new chat while it runs: the host is asked, and the chat moves out
+  #assert coder_page_new(s) && coder_page_action(s) == CP_ASK_NEW && cp_running(s);
+  #assert coder_page_take(b, s) && !cp_running(s) && s[0].nturns == 0 && s[0].current_n == 0 && coder_page_action(s) == CP_ASK_NONE;
+  #assert cp_running(b) && cast(string) b[0].current[0..<b[0].current_n] == "chat.a1" && b[0].turns[0].nagents == 1 && b[0].turns[0].agents[0].began == -50;
+  #assert !coder_page_take(b, s);   // it holds a running chat
+  // out of view its lines still land: the sub-agent's row ends, then the reply
+  coder_page_tick(b, 7);
+  #assert coder_page_agent_line(b, 0, "{\"kind\":\"command\",\"command\":\"ls\",\"exit\":0,\"timed_out\":false,\"output\":\"x\"}") == MWW_COMMAND;
+  #assert b[0].calls[cp_nth(b, 0, 0, 0)].took == 7 && !coder_page_save_due(b);
+  // the list marks it, and another chat opens while it runs
+  coder_page_chats(s, "a1\tLook around\t1\nb2\tOther\n");
+  #assert s[0].nchats == 2 && s[0].chats[0].busy && !s[0].chats[1].busy && cast(string) s[0].chats[0].title[0..<s[0].chats[0].title_n] == "Look around";
+  #assert cast(string) s[0].chats[1].title[0..<s[0].chats[1].title_n] == "Other";
+  // back in view, run and all
+  s[0].clock = 100;
+  #assert coder_page_take(s, b) && cp_running(s) && b[0].nturns == 0 && s[0].turns[0].agents[0].began == 43;
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"done\"}") == MWW_ENDED && !cp_running(s) && coder_page_save_due(s);
+}
 #test "Claude sub-agents: offered only where Claude Code is installed; a level is a model; a tool call needs no answer" {
   p: [1] CoderPage; s := p[..];
   cp_init(s);

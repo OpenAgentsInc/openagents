@@ -162,16 +162,36 @@ final class CoderStore {
     }
 }
 
+/// One chat's run: the page that reads its lines, its worker and its sub-agents' workers. The chat
+/// that is shown runs on the window's page. One whose reply goes on out of view, after New Chat or
+/// a press on another chat, has a page with no window (cd_headless) until it ends or is opened again.
+final class CoderRun {
+    var page: UnsafeMutableRawPointer
+    let worker = CoderWorker()
+    var agents: [Int32: CoderWorker] = [:]
+    let session = "coder-desktop-" + UUID().uuidString.lowercased()
+    var folder: URL                    // its working folder, once it is out of view
+    var chat: String?                  // its kept chat's id, once it is out of view
+    init(page: UnsafeMutableRawPointer, folder: URL) { self.page = page; self.folder = folder }
+    func stop() {
+        worker.gone = nil; worker.line = nil; worker.stop()
+        for one in agents.values { one.gone = nil; one.line = nil; one.stop() }
+        agents = [:]
+    }
+}
+
 final class CoderWindow: NSObject {
     let window: NSWindow
     private let page: UnsafeMutableRawPointer
     private let canvas: NSView
     private let editor: KitMacEditor
-    private let worker = CoderWorker()
-    private let session = "coder-desktop-" + UUID().uuidString.lowercased()
+    private var run: CoderRun                    // the shown chat's run, on the window's page
+    private var runs: [String: CoderRun] = [:]   // chats whose replies run out of view, by id
+    private var last = CACurrentMediaTime()      // when the clock last ticked, for their pages' seconds
     private var line: CGFloat
     private var clock: Timer?
     private var then: String?   // --then TEXT: sent in a new chat once --send's reply ends
+    private var also: String?   // --new TEXT: sent in a new chat while --send's reply runs
     private var showAgent: Int?   // --agent N: the Nth sub-agent's transcript opens as soon as there is one
     private var owed = 3   // frames still to draw after a change
     private let store = CoderStore()
@@ -181,6 +201,7 @@ final class CoderWindow: NSObject {
     init?(resources: String) {
         guard let page = cd_open(resources), let raw = cd_view(page) else { return nil }
         self.page = page
+        run = CoderRun(page: page, folder: FileManager.default.homeDirectoryForCurrentUser)
         canvas = Unmanaged<NSView>.fromOpaque(raw).takeUnretainedValue()
         // the text size chosen last time (a row of the page's sizes; 2 is the usual)
         if UserDefaults.standard.object(forKey: "zoom") != nil { _ = cd_zoom_set(page, Int32(UserDefaults.standard.integer(forKey: "zoom"))) }
@@ -200,7 +221,7 @@ final class CoderWindow: NSObject {
                      Unmanaged.passUnretained(self).toOpaque())
         cd_skills(page, coderSkillsNote())
         cd_claude(page, CoderWorker.hasClaude ? 1 : 0)
-        cd_chats(page, store.lines)
+        cd_chats(page, chatLines)
         // the working folder: --folder PATH for this launch, else the one chosen last, else the home folder
         var isFolder: ObjCBool = false
         if let at = CommandLine.arguments.firstIndex(of: "--folder"), at + 1 < CommandLine.arguments.count,
@@ -218,12 +239,7 @@ final class CoderWindow: NSObject {
         }
         editor.setAccessibilityIdentifier("coder.composer"); editor.setAccessibilityLabel("Message")
         canvas.addSubview(editor)
-        worker.line = { [weak self] text in
-            guard let self else { return }
-            cd_line(self.page, text)
-            self.pump()
-        }
-        worker.gone = { [weak self] in guard let self else { return }; cd_failed(self.page, "Microcoder stopped running. Send the message again."); self.pump() }
+        wire(run)
         canvas.postsFrameChangedNotifications = true
         NotificationCenter.default.addObserver(forName: NSView.frameDidChangeNotification, object: canvas, queue: .main) { [weak self] _ in self?.wake() }
         monitor = NSEvent.addLocalMonitorForEvents(matching: .rightMouseDown) { [weak self] event in self?.rightClick(event) == true ? nil : event }
@@ -235,6 +251,8 @@ final class CoderWindow: NSObject {
         // Coder --send TEXT sends TEXT at launch, for a check of the whole path with no typing.
         if let at = CommandLine.arguments.firstIndex(of: "--send"), at + 1 < CommandLine.arguments.count, cd_set_text(page, CommandLine.arguments[at + 1]) != 0, cd_submit(page) != 0,
            let next = CommandLine.arguments.firstIndex(of: "--then"), next + 1 < CommandLine.arguments.count { then = CommandLine.arguments[next + 1] }
+        // Coder --send A --new B sends B in a new chat while A's reply runs, which goes on out of view.
+        if let at = CommandLine.arguments.firstIndex(of: "--new"), at + 1 < CommandLine.arguments.count { also = CommandLine.arguments[at + 1] }
         // Coder --agent N opens the transcript of the Nth sub-agent of the newest message that has one.
         if let at = CommandLine.arguments.firstIndex(of: "--agent"), at + 1 < CommandLine.arguments.count { showAgent = Int(CommandLine.arguments[at + 1]) }
         tick()
@@ -242,34 +260,64 @@ final class CoderWindow: NSObject {
 
     func wake() { owed = 3 }
 
-    /// The sub-agents' workers, by the page's number for each. Microcoder hands tasks over in one
-    /// line; each runs on a worker of its own, all at once, and the page reads every line.
-    private var agents: [Int32: CoderWorker] = [:]
+    /// A run's worker lines go to its page, wherever that page is now.
+    private func wire(_ r: CoderRun) {
+        r.worker.line = { [weak self, weak r] text in guard let self, let r else { return }; cd_line(r.page, text); self.pump(r) }
+        r.worker.gone = { [weak self, weak r] in guard let self, let r else { return }; cd_failed(r.page, "Microcoder stopped running. Send the message again."); self.pump(r) }
+    }
     /// After any worker's line: answer what is owed, start the sub-agents the page asks for, and
-    /// stop the workers of those that have ended. (Each count is taken before its write: see act.)
-    private func pump() {
+    /// stop the workers of those that have ended. Microcoder hands tasks over in one line; each runs
+    /// on a worker of its own, all at once, and the run's page reads every line. (Each count is
+    /// taken before its write: see act.)
+    private func pump(_ r: CoderRun) {
         var out = [CChar](repeating: 0, count: 300_000)
+        let page = r.page, cwd = (r === run ? folder : r.folder).path
         while true {
             let j = cd_agent_next(page)
             if j < 0 { break }
             let one = CoderWorker()
             if cd_agent_claude(page, j) != 0 { one.program = "claudeworker" }
-            one.line = { [weak self] text in guard let self, self.agents[j] === one else { return }; cd_agent_line(self.page, j, text); self.pump() }
-            one.gone = { [weak self] in guard let self, self.agents[j] === one else { return }; self.agents[j] = nil; cd_agent_failed(self.page, j, "The sub-agent's worker stopped running."); self.pump() }
+            one.line = { [weak self, weak r] text in guard let self, let r, r.agents[j] === one else { return }; cd_agent_line(r.page, j, text); self.pump(r) }
+            one.gone = { [weak self, weak r] in guard let self, let r, r.agents[j] === one else { return }; r.agents[j] = nil; cd_agent_failed(r.page, j, "The sub-agent's worker stopped running."); self.pump(r) }
             guard one.start() else { cd_agent_failed(page, j, "The sub-agent's worker could not start."); continue }
-            agents[j] = one
-            let n = cd_agent_task(page, j, session + "-agent-\(j)-" + UUID().uuidString.lowercased(), folder.path, &out, Int32(out.count))
+            r.agents[j] = one
+            let n = cd_agent_task(page, j, r.session + "-agent-\(j)-" + UUID().uuidString.lowercased(), cwd, &out, Int32(out.count))
             one.write(out, count: Int(n))
         }
-        for (j, one) in agents {
+        for (j, one) in r.agents {
             let n = cd_agent_answer_line(page, j, &out, Int32(out.count))
             one.write(out, count: Int(n))
-            if cd_agent_running(page, j) == 0 { agents[j] = nil; one.gone = nil; one.line = nil; one.stop() }
+            if cd_agent_running(page, j) == 0 { r.agents[j] = nil; one.gone = nil; one.line = nil; one.stop() }
         }
-        let n = cd_answer_line(page, &out, Int32(out.count)); worker.write(out, count: Int(n))
+        let n = cd_answer_line(page, &out, Int32(out.count)); r.worker.write(out, count: Int(n))
         wake()
     }
-    var canNew: Bool { cd_running(page) == 0 }
+    /// The list as the page reads it: one chat a line, its id, a tab, its title, and a tab and 1
+    /// when its reply runs out of view.
+    private var chatLines: String { store.list.map { $0.id + "\t" + $0.title + (runs[$0.id] != nil ? "\t1" : "") }.joined(separator: "\n") }
+    /// The shown chat's reply goes on out of view: its run moves to a page with no window and the
+    /// window gets a new run. True when nothing runs in the window now.
+    @discardableResult private func detach() -> Bool {
+        guard cd_running(page) != 0 else { return true }
+        keep()
+        guard let id = chat, let back = cd_headless() else { return false }
+        guard cd_take(back, page) != 0 else { cd_close(back); return false }
+        let moved = run
+        moved.page = back; moved.folder = folder; moved.chat = id
+        runs[id] = moved
+        run = CoderRun(page: page, folder: folder); wire(run)
+        chat = nil; recallDue = false; cd_current(page, "")
+        cd_chats(page, chatLines)
+        wake()
+        return true
+    }
+    /// A reply out of view ended: its chat is kept, its workers stop and its page goes.
+    private func finish(_ id: String) {
+        guard let back = runs.removeValue(forKey: id) else { return }
+        back.stop(); cd_close(back.page)
+        cd_chats(page, chatLines); wake()
+    }
+    var canFolder: Bool { cd_running(page) == 0 }
     /// View > Bigger Text, Smaller Text, Actual Size: by is a row up or down, nil the usual size.
     func zoom(_ by: Int32?) {
         let row = by.map { cd_zoom(page, $0) } ?? cd_zoom_set(page, 2)
@@ -311,22 +359,25 @@ final class CoderWindow: NSObject {
         switch what {
         case 1:
             editor.synchronize { editor.string = "" }
-            guard worker.start() else { cd_failed(page, "Microcoder could not start."); return }
+            guard run.worker.start() else { cd_failed(page, "Microcoder could not start."); return }
             if recallDue {
                 // an opened chat's turns, or nothing to remember when it has none that ended
                 recallDue = false
                 var n = cd_recall_line(page, &out, Int32(out.count))
                 if n == 0 { n = cd_forget_line(&out, Int32(out.count)) }
-                worker.write(out, count: Int(n))
+                run.worker.write(out, count: Int(n))
             }
-            let n = cd_task(page, session, folder.path, &out, Int32(out.count))
-            worker.write(out, count: Int(n))
+            let n = cd_task(page, run.session, folder.path, &out, Int32(out.count))
+            run.worker.write(out, count: Int(n))
         case 2: window.makeFirstResponder(editor)
         // The line is written into out first: Swift copies an argument before a later one's call fills it.
-        case 3: let n = cd_stop_line(&out, Int32(out.count)); worker.write(out, count: Int(n))
+        case 3: let n = cd_stop_line(&out, Int32(out.count)); run.worker.write(out, count: Int(n))
         case 4:
+            // a new chat: one whose reply is running goes on out of view
+            guard detach() else { return }
             chat = nil; recallDue = false; cd_current(page, "")
-            let n = cd_forget_line(&out, Int32(out.count)); worker.write(out, count: Int(n))
+            let n = cd_forget_line(&out, Int32(out.count)); run.worker.write(out, count: Int(n))
+            window.makeFirstResponder(editor)
         case 5:
             out = [CChar](repeating: 0, count: 2_000_001)   // a whole chat fits: 24 messages and replies
             guard cd_copied(page, &out, 2_000_000) > 0 else { return }
@@ -340,8 +391,22 @@ final class CoderWindow: NSObject {
         }
     }
 
-    /// Opens a kept chat: it becomes the chat that is shown, with the working folder it had.
+    /// Opens a kept chat: it becomes the chat that is shown, with the working folder it had. A reply
+    /// running in the shown chat goes on out of view; a chat whose reply runs out of view comes back
+    /// with its run.
     private func open(_ id: String) {
+        guard id != chat, detach() else { return }
+        if let back = runs[id] {
+            guard cd_take(page, back.page) != 0 else { return }
+            runs[id] = nil; cd_close(back.page); back.page = page
+            run.stop()   // the window's idle worker: a message in a chat opened later starts another
+            run = back
+            chat = id; recallDue = false; cd_current(page, id)
+            setFolder(back.folder, keep: false)
+            cd_chats(page, chatLines)
+            window.makeFirstResponder(editor); wake()
+            return
+        }
         guard let text = store.text(id), cd_load(page, text) != 0 else { return }
         chat = id; recallDue = true; cd_current(page, id)
         var isFolder: ObjCBool = false
@@ -352,10 +417,12 @@ final class CoderWindow: NSObject {
     /// The chat that is shown, when it is kept and no reply is running: File > Delete Chat acts on it.
     var canDelete: Bool { chat != nil && cd_running(page) == 0 }
     func deleteShown() { if let id = chat { delete(id) } }
+    /// Whether a reply is running in a chat, shown or out of view: it can't be deleted then.
+    private func busy(_ id: String) -> Bool { runs[id] != nil || (id == chat && cd_running(page) != 0) }
     /// Asks, then deletes a kept chat. Deleting the one that is shown starts a new chat. Not while a
     /// reply is running in it.
     func delete(_ id: String) {
-        if id == chat && cd_running(page) != 0 { return }
+        if busy(id) { return }
         let alert = NSAlert()
         alert.messageText = "Delete this chat?"
         alert.informativeText = "“" + (store.title(id) ?? "New chat") + "” will be deleted from this Mac. You can't undo this."
@@ -364,8 +431,9 @@ final class CoderWindow: NSObject {
         alert.beginSheetModal(for: window) { [weak self] answer in
             guard let self, answer == .alertFirstButtonReturn else { return }
             if id == self.chat { guard cd_running(self.page) == 0 else { return }; self.chat = nil; _ = cd_new(self.page) }
+            guard !self.busy(id) else { return }
             self.store.remove(id)
-            cd_chats(self.page, self.store.lines)
+            cd_chats(self.page, self.chatLines)
             self.window.makeFirstResponder(self.editor); self.wake()
         }
     }
@@ -416,28 +484,39 @@ final class CoderWindow: NSObject {
         let id = String(cString: out), menu = NSMenu()
         let item = menu.addItem(withTitle: "Delete Chat…", action: #selector(deleteFromMenu(_:)), keyEquivalent: "")
         item.target = self; item.representedObject = id
-        item.isEnabled = !(id == chat && cd_running(page) != 0)
+        item.isEnabled = !busy(id)
         menu.autoenablesItems = false
         NSMenu.popUpContextMenu(menu, with: event, for: canvas)
         return true
     }
     private var monitor: Any?
 
-    /// Keeps the chat that is shown: its file, and its place at the top of the list.
-    private func keep() {
-        let id = chat ?? UUID().uuidString.lowercased()
+    /// Keeps a chat: its file, and its place at the top of the list. The shown one, or one whose
+    /// reply runs out of view.
+    private func keep(_ which: CoderRun? = nil) {
+        let r = which ?? run, shown = r === run
+        let id = (shown ? chat : r.chat) ?? UUID().uuidString.lowercased()
         var out = [CChar](repeating: 0, count: 32_000_000)   // 24 messages with every row and every sub-agent's rows full fit
-        guard cd_save(page, &out, Int32(out.count)) > 0 else { return }
+        guard cd_save(r.page, &out, Int32(out.count)) > 0 else { return }
         let text = String(cString: out)
         var name = [CChar](repeating: 0, count: 256)
-        let title = cd_title(page, &name, Int32(name.count)) > 0 ? String(cString: name) : "New chat"
-        store.keep(id: id, title: title, folder: folder.path, text: text)
-        chat = id; cd_current(page, id); cd_chats(page, store.lines)
+        let title = cd_title(r.page, &name, Int32(name.count)) > 0 ? String(cString: name) : "New chat"
+        store.keep(id: id, title: title, folder: (shown ? folder : r.folder).path, text: text)
+        if shown { chat = id; cd_current(page, id) } else { r.chat = id }
+        cd_chats(page, chatLines)
     }
 
     private func tick() {
+        // replies out of view: their seconds pass, they are kept as they change, and they end
+        let now = CACurrentMediaTime(), dt = Float(now - last); last = now
+        for (id, back) in runs {
+            cd_tick(back.page, dt)
+            if cd_save_due(back.page) != 0 { keep(back) }
+            if cd_running(back.page) == 0 { finish(id) }
+        }
         let what = cd_action(page)
         if what != 0 { act(what); wake() }
+        if let text = also, chat != nil, cd_running(page) != 0 { also = nil; newChat(); act(cd_action(page)); if cd_set_text(page, text) != 0 { _ = cd_submit(page) } }
         if let n = showAgent, cd_pane(page, Int32(n)) != 0 { showAgent = nil; wake() }
         if cd_save_due(page) != 0 { keep(); wake() }
         var sides = [Float](repeating: 0, count: 2)
@@ -461,7 +540,13 @@ final class CoderWindow: NSObject {
         if editor.frame != frame { editor.frame = frame; wake() }
     }
 
-    func retire() { if chat != nil { keep() }; if let monitor { NSEvent.removeMonitor(monitor) }; monitor = nil; clock?.invalidate(); clock = nil; worker.gone = nil; worker.stop(); for one in agents.values { one.gone = nil; one.line = nil; one.stop() }; agents = [:]; cd_on_change(page, nil, nil); cd_close(page) }
+    func retire() {
+        if chat != nil { keep() }
+        for back in runs.values { keep(back); back.stop(); cd_close(back.page) }
+        runs = [:]
+        if let monitor { NSEvent.removeMonitor(monitor) }; monitor = nil; clock?.invalidate(); clock = nil
+        run.stop(); cd_on_change(page, nil, nil); cd_close(page)
+    }
 }
 
 final class CoderDelegate: NSObject, NSApplicationDelegate {
@@ -482,8 +567,13 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
     @objc func smallerText(_ sender: Any?) { main?.zoom(-1) }
     @objc func actualSize(_ sender: Any?) { main?.zoom(nil) }
     @objc func claudeKey(_ sender: Any?) { main?.chooseKey() }
-    // New Chat is off while a run is going, as the button is.
-    @objc func validateMenuItem(_ item: NSMenuItem) -> Bool { item.action == #selector(deleteChat(_:)) ? main?.canDelete == true : (item.action != #selector(newChat(_:)) && item.action != #selector(openFolder(_:))) || main?.canNew == true }
+    // Open Folder is off while the shown chat's reply runs, as its button is. New Chat is always on:
+    // a running reply goes on out of view.
+    @objc func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        if item.action == #selector(deleteChat(_:)) { return main?.canDelete == true }
+        if item.action == #selector(openFolder(_:)) { return main?.canFolder == true }
+        return true
+    }
 }
 
 @main struct CoderApp {
