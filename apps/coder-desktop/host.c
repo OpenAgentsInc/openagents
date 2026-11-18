@@ -1,0 +1,93 @@
+// Firm reason: 6 (native GPU carrier for the compiled page; state, layout and paint are Coax).
+// Coder's page on the shared carrier (host.h). carrier.c includes it after the component
+// carrier (components/gallery/linux/main.c), so it shares that file's App and atlas code and the
+// one generated library. It holds no behaviour: frames, clicks and lines go to page.coax.
+#include "host.h"
+
+typedef struct {
+  App app;
+  coax_t_CoderPage *s;
+  int focused, reduced;
+  float editor_height;
+  int settle;     // frames still owed after a change (glyphs asked for in one frame are drawn in the next)
+  void (*changed)(void *context); void *context;
+} CoderHost;
+
+static coax_v_t_CoderPage cd_state(CoderHost *c) { return (coax_v_t_CoderPage){c->s, 1}; }
+static coax_string cd_string(const char *text) { return (coax_string){text ? text : "", text ? (int64_t)strlen(text) : 0}; }
+static void cd_changed(CoderHost *c) { c->settle = 3; }
+static void cd_woke(CoderHost *c) { cd_changed(c); if (c->changed) c->changed(c->context); }
+
+static int cd_on_frame(void *user, float *vertices, float w, float h, float dpr, float dt) {
+  CoderHost *c = user;
+  coder_page_env(cd_state(c), c->focused != 0, c->editor_height, c->reduced != 0);
+  int n = (int)coder_page_frame(cd_state(c), (coax_v_f32){vertices, (int64_t)c->app.max_vertices * coaxial_components_vertex_floats()}, w, h, dpr, dt);
+  if (atlas_serve(&c->app)) cd_changed(c);
+  if (c->settle > 0) c->settle--;
+  return n < 0 ? 0 : n;
+}
+static void cd_on_pointer(void *user, float x, float y, int phase, int clicks, int mods) {
+  (void)clicks; (void)mods;
+  CoderHost *c = user;
+  coder_page_pointer(cd_state(c), x, y, phase);
+  cd_woke(c);
+}
+static void cd_on_wheel(void *user, float dy) { CoderHost *c = user; coder_page_wheel(cd_state(c), dy); cd_woke(c); }
+
+void *cd_open(const char *resources) {
+  CoderHost *c = calloc(1, sizeof *c);
+  if (!c) return NULL;
+  App *a = &c->app;
+  snprintf(a->resources, sizeof a->resources, "%s", resources);
+  char shader[PATH_MAX + 32]; snprintf(shader, sizeof shader, "%s/components.metal", resources);
+  c->s = calloc(1, sizeof *c->s);
+  if (!c->s) { free(c); return NULL; }
+  a->atlas = c->s->atlas.e; a->max_vertices = (uint32_t)coder_page_max_vertices();
+  UiApp app = {.title = "Coder", .width = 900, .height = 640, .embedded = 1, .max_vertices = a->max_vertices, .shader = shader, .user = c,
+               .frame = cd_on_frame, .pointer = cd_on_pointer, .wheel = cd_on_wheel};
+  a->host = ui_open(&app, 0);
+  if (!a->host) { free(c->s); free(c); return NULL; }
+  // the atlas at the scale the page draws its units at
+  a->dpr = ui_dpr(a->host); if (a->dpr < 1) a->dpr = 1;
+  a->dpr *= coder_page_scale();
+  if (!atlas_setup(a)) { gallery_free(a); free(c->s); free(c); return NULL; }
+  cd_changed(c);
+  return c;
+}
+void *cd_view(void *page) { return page ? ui_view(((CoderHost *)page)->app.host) : NULL; }
+void cd_frame(void *page) { if (page) ui_frame(((CoderHost *)page)->app.host); }
+int cd_moving(void *page) { CoderHost *c = page; return c && (c->settle > 0 || coder_page_moving(cd_state(c))); }
+void cd_on_change(void *page, void (*changed)(void *context), void *context) { CoderHost *c = page; if (c) { c->changed = changed; c->context = context; } }
+void cd_env(void *page, int focused, float editor_height, int reduced) {
+  CoderHost *c = page;
+  if (!c) return;
+  if (c->focused != (focused != 0) || c->editor_height != editor_height || c->reduced != (reduced != 0)) cd_changed(c);
+  c->focused = focused != 0; c->editor_height = editor_height; c->reduced = reduced != 0;
+}
+int cd_set_text(void *page, const char *text) { CoderHost *c = page; if (!c) return 0; cd_changed(c); return coder_page_set_text(cd_state(c), cd_string(text)); }
+int cd_submit(void *page) { CoderHost *c = page; if (!c) return 0; cd_changed(c); return coder_page_submit(cd_state(c)); }
+int cd_action(void *page) { CoderHost *c = page; return c ? (int)coder_page_action(cd_state(c)) : 0; }
+int cd_task(void *page, const char *session, const char *cwd, char *out, int cap) {
+  CoderHost *c = page;
+  return c && cap > 0 ? (int)coder_page_task(cd_state(c), cd_string(session), cd_string(cwd), (coax_v_u8){(uint8_t *)out, cap}) : 0;
+}
+int cd_stop_line(char *out, int cap) { return cap > 0 ? (int)coder_page_stop_line((coax_v_u8){(uint8_t *)out, cap}) : 0; }
+int cd_forget_line(char *out, int cap) { return cap > 0 ? (int)coder_page_forget_line((coax_v_u8){(uint8_t *)out, cap}) : 0; }
+void cd_line(void *page, const char *line) { CoderHost *c = page; if (!c) return; coder_page_line(cd_state(c), cd_string(line)); cd_changed(c); }
+void cd_failed(void *page, const char *why) { CoderHost *c = page; if (!c) return; coder_page_failed(cd_state(c), cd_string(why)); cd_changed(c); }
+int cd_running(void *page) { CoderHost *c = page; return c && coder_page_running(cd_state(c)); }
+int cd_copied(void *page, char *out, int cap) {
+  CoderHost *c = page;
+  if (!c || cap < 1) return 0;
+  int n = (int)coder_page_copied(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1});
+  out[n] = 0; cd_changed(c);
+  return n;
+}
+int cd_editor(void *page, float box[6]) { CoderHost *c = page; return c && coder_page_editor(cd_state(c), (coax_v_f32){box, 6}); }
+int cd_style(float style[14]) { return coder_page_style((coax_v_f32){style, 14}); }
+void cd_close(void *page) {
+  CoderHost *c = page;
+  if (!c) return;
+  gallery_free(&c->app);
+  free(c->s); free(c);
+}

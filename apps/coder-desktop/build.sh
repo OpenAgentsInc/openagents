@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Firm reason: 5 (thin wrapper around coax, clang, swiftc and codesign; holds no logic)
-# Builds Coder.app for this Mac: the shared composer surface (app.coax) compiled to C on the shared
-# component carrier (carrier.c) and Mac host (apps/shared/host/apple/ui-host.m), with the shared
-# AppKit editor (apps/shared/native/KitEditorMac.swift) and the component shader emitted as Metal.
+# Builds Coder.app for this Mac: the page (app.coax, page.coax) compiled to C on the shared
+# component carrier (carrier.c, host.c) and Mac host (apps/shared/host/apple/ui-host.m), with the shared
+# AppKit editor (apps/shared/native/KitEditorMac.swift) and the component shader emitted as Metal, and the Microcoder worker (coder/tui/mcworker.coax) it talks to.
 #   apps/coder-desktop/build.sh [--open]
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -25,6 +25,9 @@ xcrun -sdk macosx swiftc -O -swift-version 5 -suppress-warnings -parse-as-librar
 mv "$app/Contents/MacOS/Coder.new" "$app/Contents/MacOS/Coder"
 cp "$here/Info.plist" "$app/Contents/Info.plist"
 cp "$repo/apps/openagents-desktop/native/OpenAgents.icns" "$res/Coder.icns"
+# The Microcoder worker (coder/tui/mcworker.coax): tool.sh builds its image, named by the compiler's hash; the app runs the copy.
+COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/mcworker.coax" < /dev/null > /dev/null
+cp "$repo/coax/web/build/tools/mcworker-$(shasum -a 256 "$coax" | cut -d " " -f 1)" "$res/mcworker"
 rm -rf "$res/Components/fonts" "$res/Components/icons"
 cp -R "$repo/components/zeron/fonts" "$repo/components/zeron/icons" "$res/Components/"
 cp "$repo/components/zeron/NOTICE" "$res/Components/NOTICE"

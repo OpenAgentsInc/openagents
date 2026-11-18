@@ -54,7 +54,7 @@ void *gc_open(const char *resources) {
   if (!b->s) { free(b); return NULL; }
   a->atlas = b->s->atlas.e; a->max_vertices = (uint32_t)composer_surface_max_vertices();
   a->icons_dir = "icons-apps"; a->icon_count = gc_icon_count; a->icon_size = gc_icon_size; a->icon_name = gc_icon_name;
-  UiApp app = {.title = "Composer", .width = 378, .height = 94, .embedded = 1, .max_vertices = a->max_vertices, .shader = shader, .user = b,
+  UiApp app = {.title = "Composer", .width = 378, .height = 94, .max_vertices = a->max_vertices, .shader = shader, .user = b,
                .frame = gc_on_frame, .pointer = gc_on_pointer, .drive = gc_on_drive};
   a->host = ui_open(&app, 0);
   if (!a->host) { free(b->s); free(b); return NULL; }

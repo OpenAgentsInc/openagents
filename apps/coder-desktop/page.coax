@@ -1,0 +1,383 @@
+// Coder's page (macOS first): a conversation with Microcoder. The turns
+// scroll above the shared composer; each is the person's message
+// (app_message_user), the reply as Markdown (app_message_agent) and what the
+// run is doing (app_typing, app_notice, app_meta), all from the app set
+// (components/app/). The page keeps the draft, the turns and the scroll; it
+// has no effects. Its host (host.c, App.swift) runs the Microcoder worker
+// (coder/tui/mcworker.coax) and passes its lines here; the lines both ways are
+// the worker's own codec (coax/lib/agent/engine/mcworker-wire.coax).
+//
+// What a person does reaches the host as coder_page_action: send (the host
+// writes coder_page_task to the worker), focus (the platform editor takes the
+// keyboard over coder_page_editor's box), stop, a new chat, and a code block's
+// Copy (coder_page_copied is the text).
+//   coax/bin/coax test apps/coder-desktop/page.coax --library
+
+#load "../../components/app/chat.coax";
+#load "../../components/core/edit.coax";
+#load "../../components/skin/arcade.coax";
+#load "../../components/backend/gpu.coax";
+#load "../../coax/lib/agent/engine/mcworker-wire.coax";
+
+CP_MAX_VERTICES :: 200000;
+// A generation's declared capacity: primitives, selectable lines, hits, pooled bytes, semantic rows; then keyed ids.
+CP_UNDER :: 4096; CP_OVER :: 16384; CP_LINES :: 4096; CP_HITS :: 512; CP_POOL :: 65536; CP_ROWS :: 768; CP_KEYED :: 256;
+CP_TURNS :: 24;             // messages a chat holds; the page says so when it is full
+CP_REPLY :: 60000;          // bytes of a reply kept (the Markdown document holds 65,536)
+CP_NOTE :: 512;
+CP_ARENA :: 131072;         // a worker line's strings
+CP_PAD :: 16;               // the page's margin
+CP_COLUMN :: 680;           // the conversation's widest column
+CP_HEAD :: 44;              // the fixed header's height
+CP_MODEL :: "gemini-4-hydrogen";
+CP_MODEL_NAME :: "Microcoder · Gemini 4 Hydrogen";
+
+// What the page asks of its host (coder_page_action), once.
+CP_ASK_NONE :: 0; CP_ASK_SEND :: 1; CP_ASK_FOCUS :: 2; CP_ASK_STOP :: 3; CP_ASK_NEW :: 4; CP_ASK_COPY :: 5;
+// What a row dispatches.
+CP_FIELD :: 1; CP_SEND :: 2; CP_NEW :: 3; CP_COPY :: 4;
+// A turn's state.
+CP_RUNNING :: 0; CP_DONE :: 1; CP_FAILED :: 2; CP_STOPPED :: 3;
+
+CpTurn :: struct {
+  ask: [EB_TEXT] u8; ask_n: int;
+  reply: [CP_REPLY] u8; reply_n: int; cut: bool;
+  doc: [1] MdDoc; blocks: int;
+  note: [CP_NOTE] u8; note_n: int;
+  state: int; stopping: bool;
+  h: f32; hw: f32;            // its height as last drawn, and the column's width then
+}
+CpGeneration :: struct { under: [CP_UNDER] Prim; over: [CP_OVER] Prim; lines: [CP_LINES] SheetLine; hits: [CP_HITS] SheetHit; pool: [CP_POOL] u8; rows: [CP_ROWS] El; }
+CoderPage :: struct {
+  ready: bool; time: f32; d: f32;
+  atlas: [1] Atlas;
+  gen: [2] CpGeneration; surface: [1] UiSurface;
+  keys: [CP_KEYED] Keyed; keyed: [1] KeyedStore;
+  turns: [CP_TURNS] CpTurn; nturns: int;
+  draft: [1] EditBuf;
+  focused: bool; editor_h: f32; reduced: bool;
+  px: f32; py: f32; touching: bool; pressed: [EL_ID] u8; pressed_n: int;
+  scroll: f32; content: f32; view: f32; stick: bool;
+  box: ComposerBox;
+  ask: int; refused: int; moving: bool;
+  copied_turn: int; copied_block: int;
+  arena: [CP_ARENA] u8;
+}
+
+cp_init :: (s: [] CoderPage) {
+  s[0].ready = true;
+  g := s[0].gen[..];
+  s[0].surface[0] = surface_over(
+    Sheet.{under = g[0].under[..], over = g[0].over[..], lines = g[0].lines[..], hits = g[0].hits[..], pool = g[0].pool[..]}, g[0].rows[..],
+    Sheet.{under = g[1].under[..], over = g[1].over[..], lines = g[1].lines[..], hits = g[1].hits[..], pool = g[1].pool[..]}, g[1].rows[..]);
+  s[0].keyed[0] = KeyedStore.{rows = s[0].keys[..]};
+  s[0].stick = true; s[0].copied_turn = -1; s[0].copied_block = -1;
+}
+cp_out :: (out: [] u8, text: string) -> int {
+  n := 0;
+  for c: text { if n >= out.count { break; } out[n] = c; n += 1; }
+  return n;
+}
+// "t7.a": a turn's part, named by the turn's number.
+cp_id :: (out: [] u8, i: int, part: string) -> string {
+  n := 0; out[n] = 't'; n += 1;
+  if i >= 10 { out[n] = cast(u8) ('0' + i / 10); n += 1; }
+  out[n] = cast(u8) ('0' + i % 10); n += 1;
+  for c: part { if n >= out.count { break; } out[n] = c; n += 1; }
+  return cast(string) out[0..<n];
+}
+// The number after `mark` in id, -1 when it has none.
+cp_number :: (id: string, mark: string) -> int {
+  i := 0;
+  while i + mark.count <= id.count {
+    if cast(string) id[i..<i + mark.count] == mark {
+      j := i + mark.count; n := 0; any := false;
+      while j < id.count && id[j] >= '0' && id[j] <= '9' { n = n * 10 + cast(int) (id[j] - '0'); j += 1; any = true; }
+      return ifx any then n else -1;
+    }
+    i += 1;
+  }
+  return -1;
+}
+cp_running :: (s: [] CoderPage) -> bool { return s[0].nturns > 0 && s[0].turns[s[0].nturns - 1].state == CP_RUNNING; }
+cp_full :: (s: [] CoderPage) -> bool { return s[0].nturns >= CP_TURNS; }
+cp_clamp :: (s: [] CoderPage) {
+  most := s[0].content - s[0].view;
+  if s[0].scroll > most { s[0].scroll = most; }
+  if s[0].scroll < 0 { s[0].scroll = 0; }
+}
+// The draft becomes a turn. False when there is nothing to send or nowhere to put it.
+cp_send :: (s: [] CoderPage) -> bool {
+  text := eb_text(s[0].draft[..]);
+  if text.count == 0 || cp_running(s) || cp_full(s) { return false; }
+  i := s[0].nturns;
+  s[0].turns[i].ask_n = cp_out(s[0].turns[i].ask[..], text);
+  s[0].turns[i].reply_n = 0; s[0].turns[i].cut = false; s[0].turns[i].blocks = 0; s[0].turns[i].note_n = 0;
+  s[0].turns[i].state = CP_RUNNING; s[0].turns[i].stopping = false; s[0].turns[i].h = 0;
+  s[0].nturns += 1;
+  eb_set(s[0].draft[..], "");
+  s[0].stick = true; s[0].ask = CP_ASK_SEND;
+  return true;
+}
+cp_reply_set :: (s: [] CoderPage, i: int, text: string, more: bool) {
+  n := ifx more then s[0].turns[i].reply_n else 0;
+  for c: text { if n >= CP_REPLY { s[0].turns[i].cut = true; break; } s[0].turns[i].reply[n] = c; n += 1; }
+  s[0].turns[i].reply_n = n; s[0].turns[i].h = 0;
+  // md_parse appends: the document starts empty for each whole reply
+  s[0].turns[i].doc[0].n = 0; s[0].turns[i].doc[0].nb = 0; s[0].turns[i].doc[0].nr = 0; s[0].turns[i].doc[0].ni = 0; s[0].turns[i].doc[0].nlink = 0;
+  s[0].turns[i].blocks = md_parse(s[0].turns[i].doc[..], cast(string) s[0].turns[i].reply[0..<n], 0);
+}
+cp_press :: (s: [] CoderPage, row: int) -> bool {
+  act := surface_action(s[0].surface[..], row);
+  if act == CP_FIELD { s[0].ask = CP_ASK_FOCUS; return true; }
+  if act == CP_SEND {
+    if cp_running(s) { s[0].turns[s[0].nturns - 1].stopping = true; s[0].ask = CP_ASK_STOP; return true; }
+    return cp_send(s);
+  }
+  if act == CP_NEW && !cp_running(s) {
+    s[0].nturns = 0; s[0].scroll = 0; s[0].stick = true; s[0].copied_turn = -1; s[0].ask = CP_ASK_NEW; return true;
+  }
+  if act == CP_COPY {
+    id := surface_id(s[0].surface[..], row);
+    turn := cp_number(id, "t"); block := cp_number(id, ".code.");
+    if turn < 0 || turn >= s[0].nturns || block < 0 { return false; }
+    s[0].copied_turn = turn; s[0].copied_block = block; s[0].ask = CP_ASK_COPY; return true;
+  }
+  return false;
+}
+
+cp_layout :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) {
+  k := f[0].skin; a := k.app;
+  cw := w - 2 * CP_PAD; if cw > CP_COLUMN { cw = CP_COLUMN; }
+  x := (w - cw) / 2;
+  running := cp_running(s); full := cp_full(s);
+  bar := ifx s[0].box.height > 0 then s[0].box.height else 80.0f32;
+  top: f32 = CP_HEAD; bottom := h - CP_PAD - bar - a.gap;
+  s[0].view = bottom - top;
+  if s[0].stick { s[0].scroll = s[0].content - s[0].view; if s[0].scroll < 0 { s[0].scroll = 0; } }
+  uiframe_clip(f, 0, top, w, bottom);
+  y := top - s[0].scroll + a.gap;
+  if s[0].nturns == 0 {
+    _ := app_empty(f, "coder.empty", x, top + s[0].view / 3, cw, ICON_THOUGHT, "What do you want to do?", "Microcoder answers on Gemini 4 Hydrogen.");
+  }
+  ib: [EL_ID] u8;
+  for i: 0..<s[0].nturns {
+    th := s[0].turns[i].h;
+    if th > 0 && s[0].turns[i].hw == cw && (y + th < top || y > bottom) { y += th; }
+    else {
+      y0 := y;
+      y += app_message_user(f, cp_id(ib[..], i, ".u"), x, y, cw, cast(string) s[0].turns[i].ask[0..<s[0].turns[i].ask_n]) + a.gap;
+      if s[0].turns[i].reply_n > 0 {
+        y += app_meta(f, cp_id(ib[..], i, ".m"), x, y, cw, CP_MODEL_NAME, false) + a.gap_small;
+        y += app_message_agent(f, cp_id(ib[..], i, ".a"), x, y, cw, s[0].turns[i].doc[..], s[0].turns[i].blocks,
+                               ifx s[0].copied_turn == i then s[0].copied_block else -1, CP_COPY) + a.gap;
+      }
+      if s[0].turns[i].cut { y += app_notice(f, cp_id(ib[..], i, ".c"), x, y, cw, "This reply is longer than 60,000 bytes. The rest is not shown.", APP_NOTICE_INFO) + a.gap; }
+      st := s[0].turns[i].state;
+      if st == CP_RUNNING { y += app_typing(f, cp_id(ib[..], i, ".t"), x, y, ifx s[0].turns[i].stopping then "Stopping" else "Writing a reply") + a.gap; }
+      else if st == CP_FAILED { y += app_notice(f, cp_id(ib[..], i, ".n"), x, y, cw, cast(string) s[0].turns[i].note[0..<s[0].turns[i].note_n], APP_NOTICE_ERROR) + a.gap; }
+      else if st == CP_STOPPED { y += app_meta(f, cp_id(ib[..], i, ".s"), x, y, cw, "Stopped", false) + a.gap; }
+      s[0].turns[i].h = ifx st == CP_RUNNING then 0.0f32 else y - y0; s[0].turns[i].hw = cw;
+    }
+  }
+  if full && !running { y += app_notice(f, "coder.full", x, y, cw, "This chat holds 24 messages. Start a new chat to send more.", APP_NOTICE_INFO) + a.gap; }
+  uiframe_unclip(f);
+  s[0].content = y + s[0].scroll - top;
+  // the header, over what scrolls
+  bw := app_button_width(f, -1, "New chat");
+  _ := app_button(f, "coder.new", x + cw - bw, (CP_HEAD - k.control_h) / 2, bw, -1, "New chat", APP_BUTTON_QUIET,
+                  ifx running || s[0].nturns == 0 then EL_S_DISABLED else 0, CP_NEW);
+  c := AppComposer.{placeholder = "Message", text = eb_text(s[0].draft[..]),
+    state = ifx running then APP_COMPOSER_RUNNING else ifx full then APP_COMPOSER_OFF else APP_COMPOSER_READY,
+    editing = s[0].focused, editor_h = s[0].editor_h / ARCADE_PHONE_SCALE, unit = ARCADE_PHONE_SCALE};
+  s[0].box = app_composer(f, "coder.composer", "coder.composer.send", x, h - CP_PAD, cw, c, CP_FIELD, CP_SEND);
+}
+
+// ---------------------------------------------------------------- the host's calls
+
+// The platform editor: whether it holds the keyboard, its own text height in points while it does; reduced motion.
+coder_page_env :: (s: [] CoderPage, focused: bool, editor_height: f32, reduced: bool) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].focused = focused; s[0].editor_h = ifx focused && editor_height > 0 then editor_height else 0.0f32; s[0].reduced = reduced;
+}
+// The platform editor's text after an edit. One longer than a draft may be is refused.
+coder_page_set_text :: (s: [] CoderPage, text: string) -> bool #export_c #effects(all) {
+  if s.count < 1 || text.count > EB_TEXT { return false; }
+  if text != eb_text(s[0].draft[..]) { eb_set(s[0].draft[..], text); }
+  return true;
+}
+// Return in the editor: the same as a press on Send. True when the draft was sent.
+coder_page_submit :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && cp_send(s); }
+// One frame of width by height device pixels. Returns the vertex count.
+coder_page_frame :: (s: [] CoderPage, out: [] f32, width: f32, height: f32, dpr: f32, dt: f32) -> int #export_c #effects(all) {
+  if s.count < 1 || width < 1 || height < 1 { return 0; }
+  if !s[0].ready { cp_init(s); }
+  a := s[0].atlas[..];
+  d := (ifx dpr < 1 then 1.0f32 else dpr) * ARCADE_PHONE_SCALE;
+  w := width / d; h := height / d;
+  s[0].d = d;
+  t := ifx dt < 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
+  if !s[0].reduced { s[0].time += t; }
+  a[0].frame += 1;
+  k := arcade_phone_skin();
+  v := paint_quad(out, 0, d, 0, 0, w, h, 0, 0, k.canvas, k.canvas);
+  if !a[0].ready { return v; }
+  f: [1] UiFrame;
+  input := uiinput(s[0].px, s[0].py, s[0].touching, s[0].touching, cast(string) s[0].pressed[0..<s[0].pressed_n], ifx s[0].focused then "coder.composer" else "");
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_font(a), k, input, s[0].time, t, s[0].reduced, false);
+  cp_layout(s, f[..], w, h);
+  s[0].moving = uiframe_moving(f[..]) || cp_running(s);
+  if !uiframe_end(f[..], s[0].surface[..]) { s[0].refused += 1; }
+  cp_clamp(s);
+  sh := surface_sheet(s[0].surface[..]);
+  v = gpu_draw(out, v, a, d, sh.under[0..<sh.nu], 0, 0, -8, h + 8);
+  v = gpu_draw(out, v, a, d, sh.over[0..<sh.no], 0, 0, -8, h + 8);
+  gpu_monochrome(out, v);
+  return v;
+}
+// A click, in device pixels: phase 0 down, 1 moved, 2 up, 3 cancelled, routed through the committed rows.
+coder_page_pointer :: (s: [] CoderPage, x: f32, y: f32, phase: int) -> bool #export_c #effects(all) {
+  if s.count < 1 || !(s[0].d > 0) { return false; }
+  ux := x / s[0].d; uy := y / s[0].d;
+  s[0].px = ux; s[0].py = uy;
+  row := surface_hit(s[0].surface[..], ux, uy);
+  id := surface_id(s[0].surface[..], row);
+  acts := surface_action(s[0].surface[..], row) != 0;
+  was := cast(string) s[0].pressed[0..<s[0].pressed_n];
+  if phase == 0 { s[0].touching = true; s[0].pressed_n = ifx acts then el_copy(s[0].pressed[..], id) else 0; return acts; }
+  if phase == 1 { if was != id { s[0].pressed_n = 0; } return s[0].pressed_n > 0; }
+  held := s[0].pressed_n > 0 && was == id;
+  s[0].touching = false; s[0].pressed_n = 0;
+  return phase == 2 && held && cp_press(s, row);
+}
+// The wheel, in device pixels, down positive. Scrolling up lets go of the newest message.
+coder_page_wheel :: (s: [] CoderPage, dy: f32) #export_c #effects(all) {
+  if s.count < 1 || !(s[0].d > 0) { return; }
+  s[0].stick = false;
+  s[0].scroll += dy / s[0].d;
+  cp_clamp(s);
+  if s[0].scroll >= s[0].content - s[0].view - 1 { s[0].stick = true; }
+}
+// What the page asks of the host (CP_ASK_*), once.
+coder_page_action :: (s: [] CoderPage) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  ask := s[0].ask; s[0].ask = CP_ASK_NONE;
+  return ask;
+}
+// The newest message as the worker's task line (mcworker-wire.coax): its length in out, 0 for none.
+coder_page_task :: (s: [] CoderPage, session: string, cwd: string, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 || !cp_running(s) { return 0; }
+  i := s[0].nturns - 1;
+  t := McTask.{task = cast(string) s[0].turns[i].ask[0..<s[0].turns[i].ask_n], session = session, cwd = cwd, sandbox = "read-only",
+               ceiling = 3, model = CP_MODEL, effort = "low"};
+  return mww_task(out, t);
+}
+// The worker's line to stop the run, and the one to forget the conversation.
+coder_page_stop_line :: (out: [] u8) -> int #export_c #effects(all) { return cp_out(out, MWW_STOP_LINE); }
+coder_page_forget_line :: (out: [] u8) -> int #export_c #effects(all) { return cp_out(out, MWW_FORGET_LINE); }
+// One line from the worker. Returns its kind (MWW_*).
+coder_page_line :: (s: [] CoderPage, line: string) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  ar := [1] ClArena.[ClArena.{buf = s[0].arena[..]}];
+  l: [1] MwwLine;
+  kind := mww_read(ar[..], line, l[..]);
+  if !cp_running(s) { return kind; }
+  i := s[0].nturns - 1;
+  if kind == MWW_REPLY { cp_reply_set(s, i, l[0].text, true); }
+  else if kind == MWW_ENDED {
+    if l[0].ending == "finished" || l[0].ending == "asked" {
+      if l[0].text.count > 0 { cp_reply_set(s, i, l[0].text, false); }
+      s[0].turns[i].state = CP_DONE;
+    } else if s[0].turns[i].stopping { s[0].turns[i].state = CP_STOPPED; }
+    else {
+      s[0].turns[i].note_n = cp_out(s[0].turns[i].note[..], ifx l[0].text.count > 0 then l[0].text else "The run ended before a reply.");
+      s[0].turns[i].state = CP_FAILED;
+    }
+    s[0].turns[i].h = 0;
+  }
+  return kind;
+}
+// The worker could not start or went away: the running turn says why.
+coder_page_failed :: (s: [] CoderPage, why: string) #export_c #effects(all) {
+  if s.count < 1 || !cp_running(s) { return; }
+  i := s[0].nturns - 1;
+  s[0].turns[i].note_n = cp_out(s[0].turns[i].note[..], why); s[0].turns[i].state = CP_FAILED; s[0].turns[i].h = 0;
+}
+// The code block whose Copy was pressed: its text's length in out.
+coder_page_copied :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 || s[0].copied_turn < 0 || s[0].copied_turn >= s[0].nturns { return 0; }
+  i := s[0].copied_turn;
+  if s[0].copied_block < 0 || s[0].copied_block >= s[0].turns[i].blocks { return 0; }
+  return cp_out(out, md_block_text(s[0].turns[i].doc[..], s[0].copied_block));
+}
+// The text's committed box for the platform editor, in points from the view's top left: x, y, w, h,
+// then the first line's inset and a line's height.
+coder_page_editor :: (s: [] CoderPage, out: [] f32) -> bool #export_c #effects(all) {
+  if s.count < 1 || out.count < 6 { return false; }
+  t := [1] ElTable.[surface_rows(s[0].surface[..])];
+  i := elt_find(t[..], "coder.composer");
+  if i < 0 { return false; }
+  b := s[0].box; u: f32 = ARCADE_PHONE_SCALE;
+  out[0] = (t[0].rows[i].x + b.text_x) * u; out[1] = (t[0].rows[i].y + b.text_y) * u; out[2] = b.text_w * u; out[3] = b.text_h * u;
+  out[4] = b.inset * u; out[5] = b.line * u;
+  return true;
+}
+// How the platform editor is styled, from the skin: the text's size and line (points), then the
+// ink, the placeholder's ink and the caret's, each straight RGBA.
+coder_page_style :: (out: [] f32) -> bool #export_c #effects(all) {
+  if out.count < 14 { return false; }
+  k := arcade_phone_skin();
+  out[0] = k.body.size * ARCADE_PHONE_SCALE; out[1] = 23;
+  out[2] = k.ink.r; out[3] = k.ink.g; out[4] = k.ink.b; out[5] = k.ink.a;
+  out[6] = k.faint.r; out[7] = k.faint.g; out[8] = k.faint.b; out[9] = k.faint.a;
+  out[10] = k.accent.r; out[11] = k.accent.g; out[12] = k.accent.b; out[13] = k.accent.a;
+  return true;
+}
+coder_page_running :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && cp_running(s); }
+coder_page_moving :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && (!s[0].ready || !s[0].reduced && s[0].moving); }
+coder_page_refused :: (s: [] CoderPage) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return s[0].refused; }
+coder_page_max_vertices :: () -> int #export_c #effects(all) { return CP_MAX_VERTICES; }
+coder_page_scale :: () -> f32 #export_c #effects(all) { return ARCADE_PHONE_SCALE; }
+
+#test "a draft becomes a running turn, the worker's task names it, and its lines fill the reply" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  #assert !coder_page_submit(s) && coder_page_set_text(s, "What is 2+2?") && coder_page_submit(s);
+  #assert s[0].nturns == 1 && cp_running(s) && eb_text(s[0].draft[..]) == "" && coder_page_action(s) == CP_ASK_SEND && coder_page_action(s) == CP_ASK_NONE;
+  out: [4096] u8; n := coder_page_task(s, "s-1", "/w", out[..]);
+  ar: [1] ClArena; buf: [4096] u8; ar[0].buf = buf[..]; back: [1] McTask;
+  #assert n > 0 && mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].task == "What is 2+2?" && back[0].model == "gemini-4-hydrogen" && back[0].sandbox == "read-only" && back[0].cwd == "/w";
+  #assert !coder_page_submit(s);   // one run at a time
+  #assert coder_page_line(s, "{\"kind\":\"reply\",\"text\":\"2 + 2 \"}") == MWW_REPLY && coder_page_line(s, "{\"kind\":\"reply\",\"text\":\"equals 4\"}") == MWW_REPLY;
+  #assert cast(string) s[0].turns[0].reply[0..<s[0].turns[0].reply_n] == "2 + 2 equals 4" && s[0].turns[0].blocks == 1 && cp_running(s);
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"2 + 2 equals 4.\"}") == MWW_ENDED;
+  #assert !cp_running(s) && s[0].turns[0].state == CP_DONE && cast(string) s[0].turns[0].reply[0..<s[0].turns[0].reply_n] == "2 + 2 equals 4.";
+}
+#test "a run that ends another way says why, a stopped one says Stopped, and a lost worker fails the turn" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  #assert coder_page_set_text(s, "a") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"failed\",\"text\":\"a limit\"}") == MWW_ENDED;
+  #assert s[0].turns[0].state == CP_FAILED && cast(string) s[0].turns[0].note[0..<s[0].turns[0].note_n] == "a limit";
+  #assert coder_page_set_text(s, "b") && coder_page_submit(s);
+  s[0].turns[1].stopping = true;
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"stopped\",\"text\":\"\"}") == MWW_ENDED && s[0].turns[1].state == CP_STOPPED;
+  #assert coder_page_set_text(s, "c") && coder_page_submit(s);
+  coder_page_failed(s, "Microcoder stopped running.");
+  #assert s[0].turns[2].state == CP_FAILED && !cp_running(s);
+}
+#test "a code block's Copy id names its turn and block" {
+  #assert cp_number("t12.a.code.6.copy", "t") == 12 && cp_number("t12.a.code.6.copy", ".code.") == 6 && cp_number("coder.new", ".code.") == -1;
+  ib: [EL_ID] u8;
+  #assert cp_id(ib[..], 3, ".u") == "t3.u" && cp_id(ib[..], 21, ".a") == "t21.a";
+}
+#test "a reply that streams a code block in pieces ends with the whole block" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  #assert coder_page_set_text(s, "hello world") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"reply\",\"text\":\"2 + 2 = 4\\n\\n```python\\nprint(\\\"Hello\"}") == MWW_REPLY;
+  #assert coder_page_line(s, "{\"kind\":\"reply\",\"text\":\", world!\\\")\\n```\"}") == MWW_REPLY;
+  #assert s[0].turns[0].blocks == 2 && md_block_text(s[0].turns[0].doc[..], 1) == "print(\"Hello, world!\")";
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"2 + 2 = 4\\n\\n```python\\nprint(\\\"Hello, world!\\\")\\n```\"}") == MWW_ENDED;
+  #assert s[0].turns[0].state == CP_DONE && s[0].turns[0].blocks == 2 && md_block_text(s[0].turns[0].doc[..], 1) == "print(\"Hello, world!\")";
+}

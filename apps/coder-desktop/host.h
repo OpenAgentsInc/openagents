@@ -1,0 +1,39 @@
+// Firm reason: 6 (opaque SDK lifetime boundary; no generated types cross Swift).
+// Coder's page (page.coax) on the shared component host, as a Metal view the app puts in its
+// window. Rectangles are in points from the view's top left. Every call is on the main thread.
+#ifndef CODER_HOST_H
+#define CODER_HOST_H
+// resources: the folder holding the component shader, fonts and icons. NULL when it cannot open.
+void *cd_open(const char *resources);
+void *cd_view(void *page);
+// One frame. Call it while cd_moving says 1, and after anything changes.
+void cd_frame(void *page);
+int cd_moving(void *page);
+// Called when something changed without the app's doing (a click or the wheel on the page).
+void cd_on_change(void *page, void (*changed)(void *context), void *context);
+// The platform editor: whether it holds the keyboard, its own text height in points while it does; reduced motion.
+void cd_env(void *page, int focused, float editor_height, int reduced);
+// The editor's whole text after an edit: 0 when it is longer than a draft may be.
+int cd_set_text(void *page, const char *text);
+// Return in the editor: 1 when the draft was sent (cd_action then says so).
+int cd_submit(void *page);
+// What the page asks for, once: 0 nothing, 1 the draft was sent (write cd_task to the worker and
+// empty the editor), 2 the text wants the keyboard, 3 stop the run (cd_stop_line), 4 a new chat
+// (cd_forget_line), 5 a code block's Copy (cd_copied is its text).
+int cd_action(void *page);
+// The worker's lines (coder/tui/mcworker.coax), each with its newline: the length, 0 for none.
+int cd_task(void *page, const char *session, const char *cwd, char *out, int cap);
+int cd_stop_line(char *out, int cap);
+int cd_forget_line(char *out, int cap);
+// One line the worker wrote, without its newline.
+void cd_line(void *page, const char *line);
+// The worker could not start or went away: the running message says why.
+void cd_failed(void *page, const char *why);
+int cd_running(void *page);
+int cd_copied(void *page, char *out, int cap);
+// The text's committed box (x, y, w, h, the first line's inset, a line's height), or 0 before the
+// first frame; the editor's style from the skin (14 floats, as apps/shared/composer/host.h's gc_style).
+int cd_editor(void *page, float box[6]);
+int cd_style(float style[14]);
+void cd_close(void *page);
+#endif
