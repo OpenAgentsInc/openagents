@@ -207,9 +207,10 @@ fi
 # (the ranges are under the kernels' ephemeral ports) takes one before its server binds it. WAKE's
 # block is 8 wide (test_private_runner.py's runner on WAKE_PORT + 1, test_room.py's on + 7, a second API of
 # tests/durable_chat_checks.coax on + 2 and of tests/auth_checks.coax on + 3), CHAT's 3
-# (test_zchat.py's fake on CHAT_PORT + 1 and runner on + 2).
+# (test_zchat.py's fake on CHAT_PORT + 1 and runner on + 2), INFER's 3 (test_inference.py's second API on
+# INFER_PORT + 1 and its two fake Vertex endpoints on + 2).
 "$here/../tool.sh" "$here/port_locks.coax" "$work/ports" $$ API_PORT:7000:1 NPC_PORT:7800:1 PIECE_PORT:8600:1 BUILDER_PORT:9400:1 \
-  GCS_PORT:10200:1 RELAY_PORT:11000:1 NOTICE_RELAY_PORT:11800:1 WAKE_PORT:12600:8 INFER_PORT:13400:1 SPARK_PORT:14200:1 \
+  GCS_PORT:10200:1 RELAY_PORT:11000:1 NOTICE_RELAY_PORT:11800:1 WAKE_PORT:12600:8 INFER_PORT:13400:3 SPARK_PORT:14200:1 \
   RESEND_PORT:15000:1 TOKENINFO_PORT:15800:1 CHAT_PORT:16600:3 METAVERSE_GCS_PORT:17400:1 ANIME_PORT:18200:1 SCRIPT_JOB_PORT:19000:1 WORLDBUILDER_PORT:19800:1 \
   > /dev/null 2> "$work/ports.err" & ports_pid=$!
 for _ in $(seq 1200); do [[ -s "$work/ports" ]] && break; kill -0 "$ports_pid" 2>/dev/null || break; sleep 0.1; done
@@ -516,7 +517,7 @@ if [[ $serve == 1 ]]; then
 fi
 lap "the database, the signer, the runner and the API up"
 if runs py; then
-API_TEST_TIMES=1 API_LOG="$work/api.log" API="http://127.0.0.1:$api_port" PGURL="$OA_API_DATABASE" PSQL="$pgbin/psql" python3 -I "$here/test.py" || { cat "$work/api.log"; exit 1; }
+API_TEST_TIMES=1 API_LOG="$work/api.log" API="http://127.0.0.1:$api_port" API_BIN="$work/api" PGURL="$OA_API_DATABASE" PSQL="$pgbin/psql" python3 -I "$here/test.py" || { cat "$work/api.log"; exit 1; }
 lap "test.py"
 fi
 # The CLI as a caller (NIP-98 callers, realms/mine, visibility, admin keys, device login), in Coax: tests/cli_auth.coax.

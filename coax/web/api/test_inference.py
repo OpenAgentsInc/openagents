@@ -284,3 +284,192 @@ s, _, _ = infer(infer_ask, keyfile=other_key)
 time.sleep(0.5)
 check("drawdown: the last call may take credit below zero; then the key gets a 402",
       s == 200 and int(sql(f"select msat from inference.credit where pubkey = '{other}'")) < 0 and infer(infer_ask, keyfile=other_key)[0] == 402)
+
+# Vertex's two endpoints (inference.c upstream_ask, inference-upstream-policy.coax): us first, global when us
+# is slow or failing, global first for a while after, and the call counted once. A second API on this
+# database (INFER_PORT + 1) asks two fake endpoints on INFER_PORT + 2 (/us/..., /global/...): a race after
+# 1 second, global first for 2 seconds after us loses. test.sh's own API keeps its one endpoint.
+import atexit
+
+up_mode = {"us": {}, "global": {}}   # status (0: the connection closes with no answer), delay in seconds before the first byte
+up_seen = []
+
+
+class FakeEndpoints(http.server.BaseHTTPRequestHandler):
+    def do_POST(self):
+        which = "global" if self.path.startswith("/global/") else "us"
+        raw = self.rfile.read(int(self.headers["Content-Length"]))
+        mode = dict(up_mode[which])
+        up_seen.append({"which": which, "auth": self.headers.get("Authorization"), "raw": raw})
+        time.sleep(mode.get("delay", 0))
+        status = mode.get("status", 200)
+        tokens = {"prompt_tokens": 1000, "completion_tokens": 200} if which == "us" else {"prompt_tokens": 2000, "completion_tokens": 400}
+        if status == 0:
+            self.close_connection = True
+            return
+        if status != 200:
+            out, kind = json.dumps({"error": {"code": status, "message": which + " is down"}}).encode(), "application/json"
+        elif json.loads(raw).get("stream"):
+            chunks = [{"choices": [{"index": 0, "delta": {"role": "assistant", "content": "from "}}]},
+                      {"choices": [{"index": 0, "delta": {"content": which}, "finish_reason": "stop"}]},
+                      {"choices": [], "usage": tokens}]
+            out, kind = ("".join("data: " + json.dumps(c) + "\n\n" for c in chunks) + "data: [DONE]\n\n").encode(), "text/event-stream"
+        else:
+            out, kind = json.dumps({"choices": [{"index": 0, "message": {"role": "assistant", "content": "from " + which}, "finish_reason": "stop"}], "usage": tokens}).encode(), "application/json"
+        try:
+            self.send_response(status)
+            self.send_header("Content-Type", kind)
+            self.send_header("Content-Length", str(len(out)))
+            self.end_headers()
+            self.wfile.write(out[:20])
+            self.wfile.flush()
+            time.sleep(mode.get("middle", 0))
+            self.wfile.write(out[20:])
+        except OSError:
+            pass   # the API dropped this endpoint: the other one answered
+
+    def log_message(self, *a):
+        pass
+
+
+up_port = int(os.environ["INFER_PORT"])
+up_fake = http.server.ThreadingHTTPServer(("127.0.0.1", up_port + 2), FakeEndpoints)
+threading.Thread(target=up_fake.serve_forever, daemon=True).start()
+UP_API = f"http://127.0.0.1:{up_port + 1}"
+up_key = os.path.join(os.path.dirname(os.environ["INFER_KEY"]), "infer-upstream.key")
+up_user = subprocess.run([os.environ["SIGN"], "--new", up_key], capture_output=True, text=True, check=True).stdout.strip()
+up_api = subprocess.Popen([os.environ["API_BIN"], "--listen", f"127.0.0.1:{up_port + 1}"], stderr=subprocess.PIPE, text=True,
+                          env=dict(os.environ, OA_API_DATABASE=os.environ["PGURL"], OA_API_ORIGIN=UP_API, OA_API_WORKERS="2", OA_INFERENCE_PUBKEYS=up_user,
+                                   OA_INFERENCE_URL=f"http://127.0.0.1:{up_port + 2}/us/chat/completions", OA_INFERENCE_FALLBACK_URL=f"http://127.0.0.1:{up_port + 2}/global/chat/completions",
+                                   OA_INFERENCE_TOKEN="test-token", OA_INFERENCE_HEDGE_MS="1000", OA_INFERENCE_BREAKER_MS="2000", OA_INFERENCE_DAILY_REQUESTS="500"))
+atexit.register(up_api.kill)
+up_log = []
+threading.Thread(target=lambda: [up_log.append(l) for l in up_api.stderr], daemon=True).start()
+
+
+def up_call(method, path, body=None, headers=None):
+    req = urllib.request.Request(UP_API + path, method=method, data=body, headers=headers or {})
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            return r.status, r.read(), dict(r.headers)
+    except urllib.error.HTTPError as e:
+        return e.code, e.read(), dict(e.headers)
+    except OSError as e:
+        return 0, str(e).encode(), {}
+
+
+for _ in range(300):
+    if up_call("GET", "/api/playtest/health")[0] == 200:
+        break
+    time.sleep(0.1)
+
+
+def up_ask(us=None, glob=None, stream=False, settle=0.4):
+    """One signed ask of the second API with the endpoints set so: (status, body, headers, seconds, the endpoints asked in order)."""
+    up_mode["us"], up_mode["global"] = us or {}, glob or {}
+    before = len(up_seen)
+    t0 = time.monotonic()
+    s, b, h = up_call("POST", "/api/v1/inference", json.dumps(dict(infer_ask, stream=True) if stream else infer_ask).encode(),
+                      {"Content-Type": "application/json", "Authorization": "Nostr " + infer_sign(up_key, UP_API + "/api/v1/inference")})
+    took = time.monotonic() - t0
+    time.sleep(settle)   # the child keeps the call after it answers
+    return s, b, h, took, [x["which"] for x in up_seen[before:]]
+
+
+def up_kept():
+    """The account's calls kept, its last one, and its day: 'calls|status|in|out|usd_micros|day's requests'."""
+    return sql(f"select (select count(*) from inference.calls where pubkey = '{up_user}')||'|'||status||'|'||in_tokens||'|'||out_tokens||'|'||usd_micros||'|'||"
+               f"(select n from inference.account_day where pubkey = '{up_user}') from inference.calls where pubkey = '{up_user}' order by id desc limit 1")
+
+
+def up_said(b):
+    return json.loads(b)["choices"][0]["message"]["content"]
+
+
+def up_close():
+    """Past the while global is first, then one fast answer from us, which ends its run of losses."""
+    time.sleep(2.2)
+    s, b, h, _, asked = up_ask()
+    return s == 200 and up_said(b) == "from us" and h.get("X-OA-Upstream") == "us" and asked == ["us"], (s, b, asked)
+
+
+s, b, h, took, asked = up_ask()
+check("upstream: us fast: its answer, and global is never asked", s == 200 and up_said(b) == "from us" and h.get("X-OA-Upstream") == "us" and asked == ["us"], (s, b, h, asked))
+check("upstream: us fast: the call is kept once with us's usage", up_kept() == "1|200|1000|200|3000|1", up_kept())
+
+s, b, h, took, asked = up_ask(us={"delay": 5})
+check("upstream: us slow: global is asked as well after the bound, and its answer is the answer",
+      s == 200 and up_said(b) == "from global" and h.get("X-OA-Upstream") == "global" and asked == ["us", "global"] and 0.9 < took < 4, (s, b, h, took, asked))
+check("upstream: us slow: both endpoints got the same body and the service's token",
+      up_seen[-1]["raw"] == up_seen[-2]["raw"] and json.loads(up_seen[-1]["raw"])["max_tokens"] == 8192 and {x["auth"] for x in up_seen[-2:]} == {"Bearer test-token"}, up_seen[-2:])
+check("upstream: us slow: one call kept and one request of the day, with the usage of the answer the caller got", up_kept() == "2|200|2000|400|6000|2", up_kept())
+
+s, b, h, took, asked = up_ask(us={"delay": 5})
+check("upstream: the breaker is open: global is asked first and us is not asked, with no wait",
+      s == 200 and up_said(b) == "from global" and h.get("X-OA-Upstream") == "global" and asked == ["global"] and took < 3, (s, b, took, asked))
+ok, why = up_close()
+check("upstream: the breaker closes: after its while, us is asked first again and answers", ok, why)
+
+s, b, h, took, asked = up_ask(us={"status": 503})
+check("upstream: us failing (503): global is asked once and the caller sees its answer, not an error",
+      s == 200 and up_said(b) == "from global" and asked == ["us", "global"] and took < 3, (s, b, took, asked))
+up_count = up_kept()
+s, b, h, took, asked = up_ask(us={}, glob={"status": 503})
+check("upstream: global first and failing: us is asked once", s == 200 and up_said(b) == "from us" and h.get("X-OA-Upstream") == "us" and asked == ["global", "us"], (s, b, asked))
+check("upstream: a failed endpoint is never a call of its own", up_count == "5|200|2000|400|6000|5" and up_kept() == "6|200|1000|200|3000|6", (up_count, up_kept()))
+ok, why = up_close()
+check("upstream: the breaker closes after a failure too", ok, why)
+
+s, b, h, took, asked = up_ask(us={"status": 429})
+check("upstream: us failing (429): global answers", s == 200 and up_said(b) == "from global" and asked == ["us", "global"], (s, b, asked))
+ok, why = up_close()
+s, b, h, took, asked = up_ask(us={"status": 0})
+check("upstream: us not answering at all: global answers", ok and s == 200 and up_said(b) == "from global" and asked == ["us", "global"], (why, s, b, asked))
+ok, why = up_close()
+
+up_count = int(up_kept().split("|")[0])
+s, b, h, took, asked = up_ask(us={"status": 503}, glob={"status": 429})
+check("upstream: both failing: the caller's error is the first endpoint's status and body, as one endpoint's always was",
+      ok and s == 503 and json.loads(b) == {"error": {"code": 503, "message": "us is down"}} and h.get("Content-Type") == "application/json" and asked == ["us", "global"], (why, s, b, h, asked))
+check("upstream: both failing: one call kept, at no cost", up_kept().startswith(f"{up_count + 1}|503|0|0|0|"), up_kept())
+s, b, h, took, asked = up_ask(us={"status": 0}, glob={"status": 0})
+check("upstream: neither reached: the same 502 in the same words", s == 502 and json.loads(b) == {"error": "the model was not reached"} and sorted(asked) == ["global", "us"], (s, b, asked))
+s, b, h, took, asked = up_ask(us={"status": 400}, glob={"status": 400})
+check("upstream: a 400 is the answer from whichever endpoint is first: the other would say the same", s == 400 and len(asked) == 1, (s, b, asked))
+ok, why = up_close()
+
+s, b, h, took, asked = up_ask(us={"delay": 5}, stream=True)
+up_text = b.decode()
+check("upstream: a stream whose first byte is late: the whole stream is global's, never two answers joined",
+      ok and s == 200 and h.get("Content-Type") == "text/event-stream" and h.get("X-OA-Upstream") == "global" and asked == ["us", "global"]
+      and up_text.count("data: ") == 4 and up_text.endswith("data: [DONE]\n\n") and '"content": "global"' in up_text and '"content": "us"' not in up_text, (why, s, h, asked, up_text))
+check("upstream: a stream's usage is the answering endpoint's, once", up_kept().split("|")[1:5] == ["200", "2000", "400", "6000"], up_kept())
+ok, why = up_close()
+s, b, h, took, asked = up_ask(us={"middle": 2.5}, stream=True)
+check("upstream: a stream that has begun is never left: us's stream to its end though the bound passes, global not asked",
+      ok and s == 200 and h.get("X-OA-Upstream") == "us" and asked == ["us"] and b.decode().endswith("data: [DONE]\n\n") and took > 2.4, (why, s, h, took, asked))
+
+up_count = int(up_kept().split("|")[0])
+s, b, h, took, asked = up_ask(us={"delay": 2}, glob={"delay": 6}, settle=0)   # the next ask is inside the race's rest (1 second)
+up_long = (s, b, h, took, asked)
+s, b, h, took, asked = up_ask(us={"delay": 1.3}, glob={"delay": 6})
+up_next = (s, b, took, asked)
+s, b, h, took, asked = up_long
+check("upstream: a long answer: us wins the race it was first in, and global is dropped",
+      s == 200 and up_said(b) == "from us" and h.get("X-OA-Upstream") == "us" and asked == ["us", "global"] and took < 4, (s, b, took, asked))
+s, b, took, asked = up_next
+check("upstream: after us won a race, the next long answer starts none (a long answer is not paid for twice in a row)",
+      s == 200 and up_said(b) == "from us" and asked == ["us"], (s, b, took, asked))
+check("upstream: every ask was one call, whatever was tried", up_kept().startswith(f"{up_count + 2}|200|1000|200|3000|"), up_kept())
+time.sleep(1.2)   # past the race's rest
+s, b, h, took, asked = up_ask(us={"delay": 2.5}, glob={"status": 403})
+check("upstream: global's own refusal in a race is not the answer: us's answer still comes",
+      s == 200 and up_said(b) == "from us" and h.get("X-OA-Upstream") == "us" and asked == ["us", "global"], (s, b, took, asked))
+time.sleep(0.3)
+up_lines = [l for l in up_log if "inference: upstream:" in l]
+check("upstream: the log says which endpoint answered and how long each took, and no token",
+      any("global answered 200" in l and "us asked first, the other when it was slow" in l and "us: dropped after" in l for l in up_lines)
+      and any("the other when it failed" in l and "us: 503 in" in l for l in up_lines) and any("neither answered" in l for l in up_lines)
+      and not any("test-token" in l or "Bearer" in l for l in up_log), up_lines[:6])
+up_api.kill()
+up_fake.shutdown()

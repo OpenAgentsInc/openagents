@@ -582,6 +582,7 @@ int main(int argc, char **argv) {
   api_log("listening on %s:%d, %d worker%s", host, port, count, count == 1 ? "" : "s");
   // no worker blocks in accept on a connection another one took
   fcntl(lfd, F_SETFL, fcntl(lfd, F_GETFL, 0) | O_NONBLOCK);
+  inference_upstream_init();   // before the workers: they and their children share it
   if (count == 1) return serve(lfd, 0);
   // each worker opens its own database connection: the parent's goes before they start
   if (db) { PQfinish(db); db = NULL; }

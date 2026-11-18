@@ -1,0 +1,168 @@
+// Which Vertex endpoint answers a model call (inference.c; INVARIANTS.md "A model call is asked of
+// the us endpoint first, of global when us is slow or failing, and counted once").
+//
+// Two endpoints serve the same models from the same project: the us multi-region, which is the
+// faster one and so the first choice, and global. On 2026-11-18 us took 5 to 22 seconds for answers
+// that take 1 to 2 while global answered in about 1, and every caller waited. So:
+//
+//   failing   a 429, a 5xx or no HTTP answer at all from the first endpoint: the other is asked once
+//             before the caller sees an error.
+//   slow      us has sent no byte of its answer within the bound (3 seconds: a short answer takes
+//             0.8 to 2 on either endpoint, measured 2026-11-17): global is asked as well, and the
+//             first of the two to send a byte of an answer is the answer; the other is dropped.
+//             Only a 2xx from global wins a race: its refusal (a 403, a 404) never replaces the
+//             answer us is still writing.
+//             Never two answers spliced: the choice is made before any byte reaches the caller.
+//   memory    us failed, or global won a race: global is asked first for a while (60 seconds, doubled
+//             each time in a row us loses again, to 10 minutes), then us is tried again. us won a
+//             race (a long answer, not a slow endpoint): no race is started for half that while, so
+//             long answers are not paid for twice in a row.
+//
+// While global is first there is no race back to us (us is the endpoint known to be slow); a failure
+// of global still goes to us once. The host (inference.c) moves the facts in and the decisions out,
+// makes the HTTP calls and keeps the memory; every rule is here.
+#authority;
+
+IU_US :: 0; IU_GLOBAL :: 1; IU_NONE :: -1;
+IU_SHOW_FIRST :: 0; IU_SHOW_SECOND :: 1; IU_SHOW_NONE :: 2;
+IU_BOUND_MS :: 3000; IU_BOUND_MIN_MS :: 100; IU_BOUND_MAX_MS :: 60000;
+IU_OPEN_MS :: 60000; IU_OPEN_MIN_MS :: 100; IU_OPEN_MAX_MS :: 600000;
+
+#test "us is first unless global is preferred just now; the other endpoint is the other one" {
+  #assert iu_first(1000, 0) == IU_US && iu_first(1000, 999) == IU_US && iu_first(1000, 1000) == IU_US;
+  #assert iu_first(1000, 1001) == IU_GLOBAL && iu_first(0, 1) == IU_GLOBAL;
+  #assert iu_other(IU_US) == IU_GLOBAL && iu_other(IU_GLOBAL) == IU_US;
+  #assert IU_US == 0 && IU_GLOBAL == 1 && IU_NONE == -1;
+}
+#test "a 429, a 5xx and no answer at all go to the other endpoint; every other status is the answer" {
+  #assert iu_retryable(0) && iu_retryable(429) && iu_retryable(500) && iu_retryable(502) && iu_retryable(503) && iu_retryable(599);
+  #assert !iu_retryable(200) && !iu_retryable(204) && !iu_retryable(400) && !iu_retryable(401) && !iu_retryable(403) && !iu_retryable(404);
+  #assert !iu_retryable(428) && !iu_retryable(430) && !iu_retryable(499) && !iu_retryable(600) && !iu_retryable(1) && !iu_retryable(-1);
+}
+#test "what ends a call: a 2xx from either endpoint, and from the endpoint asked first any status the other would share" {
+  #assert iu_answers(true, 200) && iu_answers(false, 200) && iu_answers(true, 204) && iu_answers(false, 299) && iu_answers(true, 299);
+  #assert iu_answers(true, 400) && iu_answers(true, 401) && iu_answers(true, 403) && iu_answers(true, 404) && iu_answers(true, 300) && iu_answers(true, 199);
+  #assert !iu_answers(false, 400) && !iu_answers(false, 401) && !iu_answers(false, 403) && !iu_answers(false, 404) && !iu_answers(false, 300) && !iu_answers(false, 199);
+  #assert !iu_answers(true, 0) && !iu_answers(false, 0) && !iu_answers(true, 429) && !iu_answers(false, 429) && !iu_answers(true, 500) && !iu_answers(false, 503) && !iu_answers(true, 599);
+}
+#test "the bound is 3 seconds unless set; 0 turns the race off; a set bound is held to 0.1 to 60 seconds" {
+  #assert iu_bound(-1) == 3000 && iu_bound(-5000) == 3000 && iu_bound(0) == 0;
+  #assert iu_bound(1) == 100 && iu_bound(99) == 100 && iu_bound(100) == 100 && iu_bound(101) == 101 && iu_bound(2500) == 2500;
+  #assert iu_bound(59999) == 59999 && iu_bound(60000) == 60000 && iu_bound(60001) == 60000 && iu_bound(900000) == 60000;
+  #assert IU_BOUND_MS == 3000 && IU_BOUND_MIN_MS == 100 && IU_BOUND_MAX_MS == 60000;
+}
+#test "global is asked as well only when us is first, the bound has passed and no race is resting" {
+  #assert !iu_hedge(IU_US, 3000, 0, 50000, 0) && !iu_hedge(IU_US, 3000, 2999, 50000, 0);
+  #assert iu_hedge(IU_US, 3000, 3000, 50000, 0) && iu_hedge(IU_US, 3000, 3001, 50000, 0) && iu_hedge(IU_US, 3000, 22000, 50000, 50000);
+  #assert !iu_hedge(IU_GLOBAL, 3000, 3000, 50000, 0) && !iu_hedge(IU_GLOBAL, 3000, 22000, 50000, 0);
+  #assert !iu_hedge(IU_US, 0, 0, 50000, 0) && !iu_hedge(IU_US, 0, 22000, 50000, 0) && !iu_hedge(IU_US, -1, 22000, 50000, 0) && iu_hedge(IU_US, 1, 1, 50000, 0);
+  #assert !iu_hedge(IU_US, 3000, 22000, 50000, 50001) && iu_hedge(IU_US, 3000, 22000, 50001, 50001);
+}
+#test "global is preferred after us failed or lost a race to it, and never for what global did" {
+  #assert iu_trip(IU_US, true, IU_NONE) && iu_trip(IU_US, true, IU_GLOBAL) && iu_trip(IU_US, false, IU_GLOBAL);
+  #assert !iu_trip(IU_US, false, IU_US) && !iu_trip(IU_US, false, IU_NONE);
+  #assert !iu_trip(IU_GLOBAL, true, IU_US) && !iu_trip(IU_GLOBAL, true, IU_NONE) && !iu_trip(IU_GLOBAL, false, IU_GLOBAL) && !iu_trip(IU_GLOBAL, false, IU_US);
+}
+#test "the while global is preferred doubles each time in a row, to ten minutes" {
+  #assert iu_open_for(-1, 0) == 60000 && iu_open_for(0, 0) == 60000 && iu_open_for(-1, 1) == 120000 && iu_open_for(-1, 2) == 240000;
+  #assert iu_open_for(-1, 3) == 480000 && iu_open_for(-1, 4) == 600000 && iu_open_for(-1, 5) == 600000 && iu_open_for(-1, 4000) == 600000;
+  #assert iu_open_for(-1, -1) == 60000 && iu_open_for(1500, 0) == 1500 && iu_open_for(1500, 1) == 3000 && iu_open_for(1, 0) == 100 && iu_open_for(99, 1) == 200;
+  #assert iu_open_for(100, 0) == 100 && iu_open_for(101, 0) == 101 && iu_open_for(600000, 0) == 600000 && iu_open_for(600001, 0) == 600000 && iu_open_for(300001, 1) == 600000;
+  #assert iu_open_for(300000, 1) == 600000 && iu_open_for(299999, 1) == 599998;
+  #assert IU_OPEN_MS == 60000 && IU_OPEN_MIN_MS == 100 && IU_OPEN_MAX_MS == 600000;
+}
+#test "us answering as first choice ends the run of losses; us winning a race rests the race for half the while" {
+  #assert iu_clear(IU_US, false, IU_US) && !iu_clear(IU_US, true, IU_US) && !iu_clear(IU_US, false, IU_GLOBAL) && !iu_clear(IU_US, false, IU_NONE);
+  #assert !iu_clear(IU_GLOBAL, false, IU_US) && !iu_clear(IU_GLOBAL, true, IU_US) && !iu_clear(IU_GLOBAL, false, IU_GLOBAL);
+  #assert iu_rest(IU_US, true, IU_US) && !iu_rest(IU_US, false, IU_US) && !iu_rest(IU_US, true, IU_GLOBAL) && !iu_rest(IU_US, true, IU_NONE);
+  #assert !iu_rest(IU_GLOBAL, true, IU_US) && !iu_rest(IU_GLOBAL, true, IU_GLOBAL);
+  #assert iu_rest_for(-1) == 30000 && iu_rest_for(1500) == 750 && iu_rest_for(101) == 50 && iu_rest_for(900000) == 300000;
+}
+#test "both failed: the caller sees the first endpoint's HTTP answer, else the second's, else none was reached" {
+  #assert iu_show(429, true, 503) == IU_SHOW_FIRST && iu_show(500, true, 0) == IU_SHOW_FIRST && iu_show(503, false, 0) == IU_SHOW_FIRST;
+  #assert iu_show(1, true, 503) == IU_SHOW_FIRST && iu_show(429, false, 503) == IU_SHOW_FIRST;
+  #assert iu_show(0, true, 503) == IU_SHOW_SECOND && iu_show(0, true, 429) == IU_SHOW_SECOND && iu_show(0, true, 1) == IU_SHOW_SECOND && iu_show(-1, true, 1) == IU_SHOW_SECOND;
+  #assert iu_show(0, true, 0) == IU_SHOW_NONE && iu_show(0, false, 0) == IU_SHOW_NONE && iu_show(0, false, 503) == IU_SHOW_NONE && iu_show(0, true, -1) == IU_SHOW_NONE;
+  #assert IU_SHOW_FIRST == 0 && IU_SHOW_SECOND == 1 && IU_SHOW_NONE == 2;
+}
+#forall "a race is only ever started from us, and global is only ever preferred for what us did" facts:0..<64 {
+  first := ifx (facts & 1) != 0 then IU_GLOBAL else IU_US; failed := (facts & 2) != 0; hedged := (facts & 4) != 0;
+  winner := ifx (facts & 8) != 0 then IU_GLOBAL else ifx (facts & 16) != 0 then IU_US else IU_NONE; late := (facts & 32) != 0;
+  if first == IU_GLOBAL {
+    #assert !iu_hedge(first, 3000, ifx late then 30000 else 0, 50000, 0) && !iu_trip(first, failed, winner) && !iu_rest(first, hedged, winner) && !iu_clear(first, failed, winner);
+  }
+  #assert !(iu_trip(first, failed, winner) && iu_clear(first, failed, winner));
+  // An endpoint that failed is never the one that answered, so that pair of facts is not one the host has.
+  if !(failed && winner == first) { #assert !(iu_trip(first, failed, winner) && iu_rest(first, hedged, winner)); }
+}
+
+// The endpoint asked first at now_ms: global until global_until_ms, us from then on.
+iu_first :: (now_ms: int, global_until_ms: int) -> int #export_c #effects(all) {
+  if now_ms < global_until_ms { return IU_GLOBAL; }
+  return IU_US;
+}
+iu_other :: (up: int) -> int #export_c #effects(all) {
+  if up == IU_US { return IU_GLOBAL; }
+  return IU_US;
+}
+// Whether an endpoint's answer (its HTTP status, 0 when none came) is a failure the other endpoint
+// may not share: a 429, a 5xx, or no answer. A 400, 401, 403 or 404 would be the same from both.
+iu_retryable :: (status: int) -> bool #export_c #effects(all) {
+  return status == 0 || status == 429 || (status >= 500 && status <= 599);
+}
+// Whether an endpoint's status ends the call with its answer. A 2xx does, from either. From the
+// endpoint asked first, so does any status the other would share (a 400, a 403). From the other
+// endpoint only a 2xx does: asked beside or after the first, its own refusal is a failure of its own.
+iu_answers :: (asked_first: bool, status: int) -> bool #export_c #effects(all) {
+  if status >= 200 && status <= 299 { return true; }
+  return asked_first && !iu_retryable(status);
+}
+// The race's bound in milliseconds from OA_INFERENCE_HEDGE_MS (negative: not set). 0: no race.
+iu_bound :: (configured: int) -> int #export_c #effects(all) {
+  if configured < 0 { return IU_BOUND_MS; }
+  if configured == 0 { return 0; }
+  if configured < IU_BOUND_MIN_MS { return IU_BOUND_MIN_MS; }   // mutant: equivalent (<= 100, or < 101: at 100 the bound returned is 100 either way)
+  if configured > IU_BOUND_MAX_MS { return IU_BOUND_MAX_MS; }   // mutant: equivalent (>= 60000: at 60000 the bound returned is 60000 either way)
+  return configured;
+}
+// Whether to ask the other endpoint as well, elapsed_ms into a call whose first endpoint has sent no
+// byte of an answer: only from us, only with a bound, and not while a race rests (rest_until_ms).
+iu_hedge :: (first: int, bound_ms: int, elapsed_ms: int, now_ms: int, rest_until_ms: int) -> bool #export_c #effects(all) {
+  if first != IU_US || bound_ms <= 0 { return false; }
+  if now_ms < rest_until_ms { return false; }
+  return elapsed_ms >= bound_ms;
+}
+// After a call: whether global is preferred from now (us was first and failed, or global answered).
+iu_trip :: (first: int, first_failed: bool, winner: int) -> bool #export_c #effects(all) {
+  return first == IU_US && (first_failed || winner == IU_GLOBAL);
+}
+// After a call: whether us is well again (it was first and it answered), which ends the run of losses.
+iu_clear :: (first: int, first_failed: bool, winner: int) -> bool #export_c #effects(all) {
+  return first == IU_US && !first_failed && winner == IU_US;
+}
+// After a call: whether us won a race it was first in, so the next calls start none for a while.
+iu_rest :: (first: int, hedged: bool, winner: int) -> bool #export_c #effects(all) {
+  return first == IU_US && hedged && winner == IU_US;
+}
+// How long global is preferred, from OA_INFERENCE_BREAKER_MS (not positive: 60 seconds) and the
+// losses in a row before this one: doubled for each, held to 0.1 seconds to 10 minutes.
+iu_open_for :: (configured: int, trips: int) -> int #export_c #effects(all) {
+  ms := configured;
+  if ms <= 0 { ms = IU_OPEN_MS; }
+  if ms < IU_OPEN_MIN_MS { ms = IU_OPEN_MIN_MS; }   // mutant: equivalent (<= 100, or < 101: at 100 the while is 100 either way)
+  n := trips;
+  while n > 0 && ms < IU_OPEN_MAX_MS { ms = ms * 2; n = n - 1; }   // mutant: equivalent (<= 600000, or < 600001: one more doubling from 600000 is held to 600000 by the next line)
+  if ms > IU_OPEN_MAX_MS { ms = IU_OPEN_MAX_MS; }   // mutant: equivalent (>= 600000: at 600000 the while is 600000 either way)
+  return ms;
+}
+// How long no race is started after us won one: half the first while.
+iu_rest_for :: (configured: int) -> int #export_c #effects(all) {
+  return iu_open_for(configured, 0) / 2;
+}
+// Both endpoints failed (or the one there is did): whose answer the caller sees. Statuses are HTTP
+// statuses, 0 when no answer came; second_asked is false when there was no second endpoint to ask.
+iu_show :: (first_status: int, second_asked: bool, second_status: int) -> int #export_c #effects(all) {
+  if first_status > 0 { return IU_SHOW_FIRST; }
+  if second_asked && second_status > 0 { return IU_SHOW_SECOND; }
+  return IU_SHOW_NONE;
+}

@@ -38,24 +38,41 @@
 // a time, so a child process makes it: it relays Vertex's status and bytes to
 // the caller as they arrive, then keeps the call, with the usage Vertex
 // reported, on a database connection of its own.
-//   OA_INFERENCE_URL          the Chat Completions URL (tests point it at a fake)
+//
+// Vertex has two endpoints for the same models, the us multi-region and global. us is asked first;
+// global is asked when us fails (a 429, a 5xx, no answer) or has sent nothing of its answer within the
+// bound, and after that global is asked first for a while. The rules are inference-upstream-policy.coax's;
+// this file makes the calls and keeps the memory. However many endpoints were asked, the call is one
+// request of the account's day and is kept and metered once, from the answer the caller got
+// (INVARIANTS.md "A model call is asked of the us endpoint first, of global when us is slow or failing,
+// and counted once"). Each call's log line says which endpoint answered and how long each took.
+//   OA_INFERENCE_URL          the Chat Completions URL (tests point it at a fake); set, it is the only
+//                             endpoint unless OA_INFERENCE_FALLBACK_URL names a second
+//   OA_INFERENCE_FALLBACK_URL the second endpoint's URL (tests)
+//   OA_INFERENCE_HEDGE_MS     how long us may send nothing before global is asked as well (3000; 0: never)
+//   OA_INFERENCE_BREAKER_MS   how long global is asked first after us failed or lost (60000, doubling to 600000)
 //   OA_INFERENCE_TOKEN        a token to send instead of the metadata server's (tests)
 //   OA_INFERENCE_PUBKEYS      the keys that may use the route, besides the admins'
 //   OA_INFERENCE_DAILY_REQUESTS  requests a day per account (500)
 //   OA_INFERENCE_DAILY_USD_MICROS  spend a day per account, in millionths of a dollar (2000000)
 #include "api.h"
 #include "nostr.h"
+#include "inference-upstream-policy.generated.h"
 #include <curl/curl.h>
 #include <fcntl.h>
 #include <signal.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
 #include <time.h>
 #include <unistd.h>
 
-// The us multi-region, not global: global was many times slower on Gemini 4 Carbon (2026-11-11).
+// The us multi-region first, not global: global was many times slower on Gemini 4 Carbon (2026-11-11).
+// Global second: on 2026-11-18 us took 5 to 22 seconds for answers global gave in 1 (inference-upstream-policy.coax).
 #define VERTEX_CHAT "https://aiplatform.us.rep.googleapis.com/v1/projects/openagentsgemini/locations/us/endpoints/openapi/chat/completions"
+#define VERTEX_CHAT_GLOBAL "https://aiplatform.googleapis.com/v1/projects/openagentsgemini/locations/global/endpoints/openapi/chat/completions"
 
 static const char *env_or(const char *name, const char *fallback) { const char *v = getenv(name); return v && *v ? v : fallback; }
 
@@ -339,16 +356,17 @@ static bool credit_route(const request *q) {
 // The relay: Vertex's status line once its first bytes come, then its bytes
 // as they come; everything also kept (to 4 MB) for the usage at the end.
 // hold (the local serve mode): an answer that isn't a 200 is kept, not relayed (held), and answered in words.
-typedef struct { int fd; CURL *h; bool stream, started, gone, hold, held, deferred; buf all; const inference_observer *observer;void *context; } relay_t;
+// upstream: the endpoint whose answer this is ("us", "global"), said in the answer's X-OA-Upstream.
+typedef struct { int fd; CURL *h; bool stream, started, gone, hold, held, deferred; buf all; const inference_observer *observer;void *context; const char *upstream; } relay_t;
 static bool send_all(int fd, const char *p, size_t n) {
   while (n) { ssize_t k = write(fd, p, n); if (k <= 0) return false; p += k; n -= (size_t)k; }
   return true;
 }
 static void start(relay_t *r, long status) {
-  char head[256];
+  char head[320];
   const char *type = r->stream && status == 200 ? "text/event-stream" : "application/json";
-  int n = snprintf(head, sizeof head, "HTTP/1.1 %ld %s\r\nContent-Type: %s\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
-                   status, status == 200 ? "OK" : "Upstream", type);
+  int n = snprintf(head, sizeof head, "HTTP/1.1 %ld %s\r\nContent-Type: %s\r\nCache-Control: no-store\r\n%s%s%sConnection: close\r\n\r\n",
+                   status, status == 200 ? "OK" : "Upstream", type, r->upstream ? "X-OA-Upstream: " : "", r->upstream ? r->upstream : "", r->upstream ? "\r\n" : "");
   r->started = true;
   if (!send_all(r->fd, head, (size_t)n)) r->gone = true;
 }
@@ -370,6 +388,144 @@ static size_t relay(char *data, size_t size, size_t n, void *user) {
 // is still admitted or cancellation was requested; no phone socket owns it.
 static int observer_progress(void *opaque,curl_off_t down,curl_off_t got,curl_off_t up,curl_off_t sent){
  (void)down;(void)got;(void)up;(void)sent;relay_t *r=opaque;return r->observer&&r->observer->keep&&!r->observer->keep(r->context)?1:0;
+}
+
+// ---- the two endpoints (inference-upstream-policy.coax decides; this asks and remembers).
+// What the calls before this one learned, shared by every worker of this instance and the children
+// that make the calls: until when global is asked first, until when no race is started, and how many
+// times in a row us has lost. Made before the workers start (api.c); with none (mmap refused), each
+// call starts from nothing and us is always first.
+enum { IU_NONE = -1, IU_US = 0, IU_GLOBAL = 1, IU_SHOW_FIRST = 0, IU_SHOW_SECOND = 1 };   // the policy's numbers (its checks hold them to these)
+typedef struct { _Atomic long long global_until_ms, rest_until_ms; _Atomic int trips; } upstream_memory;
+static upstream_memory *upstream_mem;
+void inference_upstream_init(void) {
+  if (upstream_mem) return;
+  void *p = mmap(NULL, sizeof *upstream_mem, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+  if (p != MAP_FAILED) upstream_mem = p;   // zeroed: us first, no race resting
+}
+
+// One endpoint's part of a call. err: an answer that is a failure (not iu_answers), kept and not
+// relayed, for the caller to see only if the other endpoint fails too.
+typedef struct race race;
+typedef struct { race *g; int up; CURL *h; bool asked, done, dropped; CURLcode code; long status; buf err; double asked_ms, first_ms, done_ms; } attempt;
+struct race { relay_t *r; attempt a[2]; int first, winner; const char *name[2]; };
+// An endpoint's bytes: the first byte of an answer (iu_answers) makes it the call's answer, and from
+// then on only its bytes go to the caller. Never bytes of both.
+static size_t attempt_bytes(char *data, size_t size, size_t n, void *user) {
+  attempt *a = user; race *g = a->g; size_t k = size * n;
+  if (g->winner == IU_NONE) {
+    long status = 0; curl_easy_getinfo(a->h, CURLINFO_RESPONSE_CODE, &status);
+    if (!iu_answers(a->up == g->first, status)) { if (a->err.n + k <= (1u << 20)) keep(&a->err, data, k); return k; }
+    g->winner = a->up; a->first_ms = api_now_ms(); g->r->h = a->h; g->r->upstream = g->name[a->up];
+  }
+  if (g->winner != a->up) { a->dropped = true; return 0; }   // the other endpoint answered first: this one's bytes go nowhere
+  return relay(data, size, n, g->r);
+}
+static void attempt_ask(CURLM *m, race *g, int up, const char *url, struct curl_slist *hd, const char *send) {
+  attempt *a = &g->a[up];
+  a->g = g; a->up = up; a->asked = true; a->asked_ms = api_now_ms();
+  a->h = curl_easy_init();
+  if (!a->h) { a->done = true; a->code = CURLE_FAILED_INIT; a->done_ms = a->asked_ms; return; }
+  curl_easy_setopt(a->h, CURLOPT_URL, url);
+  curl_easy_setopt(a->h, CURLOPT_HTTPHEADER, hd);
+  curl_easy_setopt(a->h, CURLOPT_POSTFIELDS, send);   // the same body, model and limits to either endpoint
+  curl_easy_setopt(a->h, CURLOPT_WRITEFUNCTION, attempt_bytes);
+  curl_easy_setopt(a->h, CURLOPT_WRITEDATA, a);
+  curl_easy_setopt(a->h, CURLOPT_TIMEOUT, 300L);
+  if (g->r->observer) { curl_easy_setopt(a->h, CURLOPT_NOPROGRESS, 0L); curl_easy_setopt(a->h, CURLOPT_XFERINFOFUNCTION, observer_progress); curl_easy_setopt(a->h, CURLOPT_XFERINFODATA, g->r); }
+  if (curl_multi_add_handle(m, a->h) != CURLM_OK) { a->done = true; a->code = CURLE_FAILED_INIT; a->done_ms = a->asked_ms; }
+}
+// What an endpoint did, for the log: no token, no body, only its status and times.
+static void attempt_words(const attempt *a, char *out, size_t cap) {
+  int ms = (int)(a->done_ms - a->asked_ms);
+  if (!a->asked) snprintf(out, cap, "not asked");
+  else if (a->dropped) snprintf(out, cap, "dropped after %d ms", ms);
+  else if (a->first_ms > 0) snprintf(out, cap, "%ld, first byte %d ms, done %d ms", a->status, (int)(a->first_ms - a->asked_ms), ms);
+  else if (a->status > 0) snprintf(out, cap, "%ld in %d ms", a->status, ms);
+  else snprintf(out, cap, "not reached (curl %d) in %d ms", (int)a->code, ms);
+}
+// Asks urls[IU_US] and, by the policy, urls[IU_GLOBAL] (NULL: there is no second endpoint) with the same
+// headers and body; relays the one answer through r. Vertex's status into *status and the transport's
+// result into *transport, as one call to one endpoint would give them.
+static void upstream_ask(relay_t *r, const char *urls[2], const char *names[2], struct curl_slist *hd, const char *send, long *status, CURLcode *transport) {
+  static upstream_memory none;
+  upstream_memory *mem = upstream_mem ? upstream_mem : &none;
+  race g = {.r = r, .winner = IU_NONE, .name = {names[0], names[1]}};
+  bool two = urls[IU_GLOBAL] != NULL, hedged = false, stopped = false;
+  double t0 = api_now_ms();
+  long long open_ms = env_ll("OA_INFERENCE_BREAKER_MS", -1), bound = iu_bound(env_ll("OA_INFERENCE_HEDGE_MS", -1));
+  int first = two ? (int)iu_first((int64_t)t0, atomic_load(&mem->global_until_ms)) : IU_US, second = (int)iu_other(first);
+  // Whether a race rests is this call's from its start: a call under way never starts one late.
+  long long rest_until = atomic_load(&mem->rest_until_ms);
+  bool racing = two && iu_hedge(first, bound, bound, (int64_t)t0, rest_until);   // global is asked as well once the bound passes
+  attempt *f = &g.a[first], *s = &g.a[second];
+  g.first = first;
+  CURLM *m = curl_multi_init();
+  if (!m) { *transport = CURLE_FAILED_INIT; return; }
+  attempt_ask(m, &g, first, urls[first], hd, send);
+  for (;;) {
+    int running = 0, left = 0;
+    curl_multi_perform(m, &running);
+    double now = api_now_ms();
+    for (CURLMsg *msg; (msg = curl_multi_info_read(m, &left));) {
+      if (msg->msg != CURLMSG_DONE) continue;
+      attempt *a = g.a[0].h == msg->easy_handle ? &g.a[0] : &g.a[1];
+      a->done = true; a->code = msg->data.result; a->done_ms = now;
+      curl_easy_getinfo(a->h, CURLINFO_RESPONSE_CODE, &a->status);
+      if (a->code == CURLE_ABORTED_BY_CALLBACK) stopped = true;   // the owner cancelled: nothing more is asked
+      else if (g.winner == IU_NONE && a->code == CURLE_OK && iu_answers(a->up == first, a->status)) { g.winner = a->up; a->first_ms = now; r->h = a->h; r->upstream = g.name[a->up]; }   // an answer with no body
+    }
+    if (g.winner != IU_NONE) {
+      attempt *lost = &g.a[iu_other(g.winner)];
+      if (lost->asked && !lost->done) { curl_multi_remove_handle(m, lost->h); lost->done = lost->dropped = true; lost->done_ms = now; }   // its connection closes: Vertex stops
+      if (g.a[g.winner].done) break;
+    } else if (stopped) break;
+    else if (!s->asked) {
+      if (!two) { if (f->done) break; }
+      else if (f->done || iu_hedge(first, bound, (int64_t)(now - t0), (int64_t)t0, rest_until)) {
+        hedged = !f->done;
+        attempt_ask(m, &g, second, urls[second], hd, send);
+        continue;
+      }
+    } else if (f->done && s->done) break;   // both failed
+    int wait = 1000;
+    if (g.winner == IU_NONE && racing && !s->asked) {
+      double to = bound - (now - t0);
+      wait = to < 1 ? 1 : to > 1000 ? 1000 : (int)to + 1;
+    }
+    curl_multi_poll(m, NULL, 0, wait, NULL);
+  }
+  attempt *shown = g.winner != IU_NONE ? &g.a[g.winner] : NULL;
+  if (!shown && stopped) shown = f;
+  if (!shown) {   // no answer: the failure the caller sees, as one endpoint's failure always was
+    int64_t which = iu_show(f->status, s->asked, s->status);
+    shown = which == IU_SHOW_FIRST ? f : which == IU_SHOW_SECOND ? s : NULL;
+    if (shown && shown->h) { r->h = shown->h; r->upstream = g.name[shown->up]; if (shown->err.n) relay(shown->err.p, 1, shown->err.n, r); }
+  }
+  *transport = shown ? shown->code : f->code;
+  if (shown && (shown->code == CURLE_OK || r->started || r->held || r->observer)) *status = shown->status;
+  if (two && !stopped) {
+    bool first_failed = f->done && !f->dropped && g.winner != first;
+    double now = api_now_ms();
+    if (iu_trip(first, first_failed, g.winner)) {
+      int trips = atomic_load(&mem->trips);
+      atomic_store(&mem->global_until_ms, (long long)now + iu_open_for(open_ms, trips));
+      atomic_store(&mem->trips, trips + 1);
+    } else if (iu_clear(first, first_failed, g.winner)) atomic_store(&mem->trips, 0);
+    if (iu_rest(first, hedged, g.winner)) atomic_store(&mem->rest_until_ms, (long long)now + iu_rest_for(open_ms));
+  }
+  char us[96], global[96];
+  attempt_words(&g.a[IU_US], us, sizeof us); attempt_words(&g.a[IU_GLOBAL], global, sizeof global);
+  if (two) api_log("inference: upstream: %s answered %ld in %d ms; %s asked first%s; us: %s; global: %s",
+                   g.winner == IU_NONE ? "neither" : g.name[g.winner], *status, (int)(api_now_ms() - t0), g.name[first],
+                   hedged ? ", the other when it was slow" : s->asked ? ", the other when it failed" : "", us, global);
+  else api_log("inference: upstream: %s: %s", g.name[IU_US], us);
+  for (int i = 0; i < 2; i++) {
+    if (g.a[i].h) { curl_multi_remove_handle(m, g.a[i].h); curl_easy_cleanup(g.a[i].h); }
+    free(g.a[i].err.p);
+  }
+  r->h = NULL;
+  curl_multi_cleanup(m);
 }
 
 // The last "name": N in text (a stream reports its usage in its last chunk), or 0.
@@ -454,7 +610,11 @@ static void answer(int fd, const char *who, const char *model, const char *reque
   char tok[12000], auth[12100];
   long status = 0;
   double t0 = api_now_ms();CURLcode transport=CURLE_FAILED_INIT;
-  const char *url = env_or("OA_INFERENCE_URL", VERTEX_CHAT), *send = request;
+  // The endpoints: Vertex's us and global, or the one OA_INFERENCE_URL names (and OA_INFERENCE_FALLBACK_URL's).
+  const char *set = getenv("OA_INFERENCE_URL"), *fallback = getenv("OA_INFERENCE_FALLBACK_URL"), *send = request;
+  bool one = set && *set && !(fallback && *fallback);
+  const char *urls[2] = {set && *set ? set : VERTEX_CHAT, fallback && *fallback ? fallback : one ? NULL : VERTEX_CHAT_GLOBAL};
+  const char *names[2] = {one ? "configured" : "us", "global"};
   bool have = token(tok, sizeof tok);
   snprintf(auth, sizeof auth, "Authorization: Bearer %s", tok);
   (void)original;
@@ -462,7 +622,7 @@ static void answer(int fd, const char *who, const char *model, const char *reque
   char via = have ? 'g' : 0;
   const char *remote = getenv("OA_INFERENCE_REMOTE_URL");
   if (!have && remote && *remote && getenv("OA_INFERENCE_SIGNER")) {
-    via = 'o'; url = remote; send = original;
+    via = 'o'; urls[0] = remote; urls[1] = NULL; names[0] = "openagents.com"; send = original;
     have = local_sign(remote, original, tok, sizeof tok);
     snprintf(auth, sizeof auth, "Authorization: %s", tok);
     if (!have && !save && !observer) { local_refuse(fd, 502, local_words('o', -1)); r.started = true; }
@@ -471,18 +631,9 @@ static void answer(int fd, const char *who, const char *model, const char *reque
   r.hold = true;
 #endif
   if (have) {
-    r.h = curl_easy_init();
     struct curl_slist *hd = curl_slist_append(curl_slist_append(NULL, auth), "Content-Type: application/json");
-    curl_easy_setopt(r.h, CURLOPT_URL, url);
-    curl_easy_setopt(r.h, CURLOPT_HTTPHEADER, hd);
-    curl_easy_setopt(r.h, CURLOPT_POSTFIELDS, send);
-    curl_easy_setopt(r.h, CURLOPT_WRITEFUNCTION, relay);
-    curl_easy_setopt(r.h, CURLOPT_WRITEDATA, &r);
-    curl_easy_setopt(r.h, CURLOPT_TIMEOUT, 300L);
-    if(observer){curl_easy_setopt(r.h,CURLOPT_NOPROGRESS,0L);curl_easy_setopt(r.h,CURLOPT_XFERINFOFUNCTION,observer_progress);curl_easy_setopt(r.h,CURLOPT_XFERINFODATA,&r);}
-    transport=curl_easy_perform(r.h);
-    if(transport==CURLE_OK || r.started || r.held || observer)curl_easy_getinfo(r.h,CURLINFO_RESPONSE_CODE,&status);
-    curl_slist_free_all(hd); curl_easy_cleanup(r.h);
+    upstream_ask(&r, urls, names, hd, send, &status, &transport);
+    curl_slist_free_all(hd);
   } else api_log("inference: no token");
   memset(tok, 0, sizeof tok); memset(auth, 0, sizeof auth);
 #ifdef OA_LOCAL_SERVE
@@ -533,6 +684,7 @@ bool inference_route(const request *q) {
 static bool inference_ask_impl(const request *q, const char *pubkey, bool free_key, bool (*save)(void *,int,const char *,size_t), const inference_observer *observer,void *context) {
   PGconn *db = api_db();
   if (!db) {if(observer)observer->end(context,503,true,0);else api_error(q->fd, 503, "no database");return true;}
+  inference_upstream_init();   // api.c made it before the workers; a program that didn't gets one of its own
   if (!free_key) {
     // The wallet's daily limit holds for credit too (wallet.c, pay/wallet-policy.coax's wp_credit; #13330).
     if (wallet_credit_refused(q, db, pubkey)) return true;

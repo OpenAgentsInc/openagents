@@ -4872,6 +4872,60 @@ Check: `coax/web/api/test.sh` (the `credit:` and `drawdown:` checks in
 wrong preimage, replayed and out-of-bounds top-ups refuse; one payment
 credits once; no rate refuses paid use); `coax test coax/lib/x402/x402.coax`.
 
+## A model call is asked of the us endpoint first, of global when us is slow or failing, and counted once
+
+`coax/web/api/inference.c` asks Vertex's Chat Completions for every caller of
+`inference_ask` (`/api/v1/inference`, the account chat, the project and world
+chats, `/chat`). Vertex serves the same models from the same project at two
+endpoints: the us multi-region and global. us is the first choice because it
+is the faster one; neither was chosen for where data is kept. The rules are
+`coax/web/api/inference-upstream-policy.coax` (`#authority`); the C makes the
+calls and keeps the memory.
+
+- **Failing.** A 429, a 5xx or no HTTP answer from the endpoint asked first
+  sends the same call to the other endpoint once. Any other status is the
+  answer (a 400, 401, 403 or 404 would be the same from both).
+- **Slow.** When us has sent no byte of its answer within the bound (3
+  seconds, `OA_INFERENCE_HEDGE_MS`; 0 turns it off), global is asked as well.
+  The first endpoint to send a byte of an answer that is not a failure is the
+  call's answer and the other is dropped (from global in a race only a 2xx
+  is an answer: its own refusal never replaces what us is writing). The
+  choice is made before any byte reaches the caller, so a caller never gets
+  bytes of two answers, and a stream that has begun is never left for the
+  other endpoint.
+- **Memory.** After us fails or loses to global, global is asked first for a
+  while (60 seconds, `OA_INFERENCE_BREAKER_MS`, doubled each time in a row
+  us loses again, to 10 minutes), then us is tried again. While global is
+  first no race back to us is started; a failure of global still goes to us
+  once. After us wins a race (a long answer, not a slow endpoint), no race is
+  started for half that while. The memory is one small shared mapping per
+  instance, made before the workers start; it is never a place a request can
+  write.
+- **Counted once.** `inference.request` counts the request against the
+  account's day before any endpoint is asked, and `inference.finish` keeps
+  one row and one charge, from the status and usage of the answer the caller
+  got. An endpoint that failed or was dropped adds no request, no row, no
+  spend and no debit of credit. (Vertex may still bill us for a dropped
+  call's tokens; that is our cost, never the account's.)
+- **The same call.** Both endpoints get the same body (the model, messages
+  and limits `inference.request` wrote) and the same service token. When
+  both fail the caller sees what one failing endpoint always gave: the first
+  endpoint's status and body, else the second's, else 502 `the model was not
+  reached`.
+- **Seen.** Each call logs one line: which endpoint answered, which was asked
+  first and why the other was asked, and each one's status and times. No
+  token, key or body is logged. A relayed answer says its endpoint in
+  `X-OA-Upstream`.
+- `OA_INFERENCE_URL` (tests, the local serve mode) names one endpoint and
+  turns all of this off unless `OA_INFERENCE_FALLBACK_URL` names a second.
+
+Check: `coax test coax/web/api/inference-upstream-policy.coax --library` and
+`coax mutate` on it with zero survivors; `coax/web/api/test.sh` (the
+`upstream:` checks in `test_inference.py`: a second API asks two fake
+endpoints, us fast, slow, failing and silent, both failing, a late stream, a
+stream under way, the breaker opening and closing, and one kept call for
+each ask).
+
 ## Nostr projections cannot create authority or replace signed bytes
 
 New `nostr.*.v1alpha1` values are source-pinned projections. A SignedEvent keeps

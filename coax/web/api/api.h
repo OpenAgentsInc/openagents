@@ -133,6 +133,7 @@ bool scripts_publish_ok(const request *q, PGconn *db, const char *id, const char
 bool worlds_route(const request *q);       // worlds.c: a world's document by ID, its edits, its dev and live revisions and its imported assets (world-policy.coax)
 bool site_identity(const request *q, PGconn *db, char who[65], bool *signed_req, bool *payload, bool *unseen);
 bool inference_route(const request *q);   // inference.c: POST /api/v1/inference, our models for the Mac app
+void inference_upstream_init(void);        // inference.c: what the model calls remember about Vertex's two endpoints, shared by the workers
 bool inference_ask(const request *q, const char *pubkey, bool free_key);   // inference.c: the same ask for a caller another route named (chat.c)
 typedef struct {
  bool (*bytes)(void *context,int status,const char *data,size_t size);
