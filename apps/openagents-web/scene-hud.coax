@@ -20,6 +20,7 @@
 //     sh_slider(h, id, label, words, low, high, step, value)
 //                                                a whole number dragged between two ends; `words` says
 //                                                what it is now with its unit, and the ends are its limits
+//     sh_limits(h, low, high, why)               right after a slider: its two ends in words, and why it stops at each
 //     sh_panel(h, id, label, note) ... sh_end_of(h)
 //                                                a row that opens a part of the sheet; anything here can
 //                                                be in it (not another panel)
@@ -108,6 +109,7 @@ sh_slider :: (h: [] SceneHud, id: string, label: string, words: string, low: int
   f := [7] string.[id, label, words, sh_int(a[..], low), sh_int(b[..], high), sh_int(c[..], step), sh_int(d[..], value)];
   sh_line(h, 'R', f[..]);
 }
+sh_limits :: (h: [] SceneHud, low: string, high: string, why: string) { f := [3] string.[low, high, why]; sh_line(h, 'r', f[..]); }
 sh_panel :: (h: [] SceneHud, id: string, label: string, note: string) { f := [3] string.[id, label, note]; sh_line(h, 'P', f[..]); }
 sh_end_of :: (h: [] SceneHud) { f: [1] string; sh_line(h, 'E', f[0..<0]); }
 sh_heading :: (h: [] SceneHud, text: string) { f := [1] string.[text]; sh_line(h, 'H', f[..]); }

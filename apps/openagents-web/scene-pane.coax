@@ -167,6 +167,7 @@ sp_body :: (s: [] ScenePane, at: int, inner: bool, pre: string) -> int {
       r := k_slider(t, l.f[0], l.f[1], l.f[2], sh_number_of(l.f[3], 0), sh_number_of(l.f[4], 0), sh_number_of(l.f[5], 1));
       sp_slide_seen(s, l.f[0], sh_number_of(l.f[6], 0));
     }
+    if l.kind == 'r' && l.n >= 3 { e := k_slider_ends(t, tr_cat(idb[..], own, ".ends"), l.f[0], l.f[1], l.f[2]); }
     if l.kind == 'C' && l.n >= 2 {
       // a few choices, all shown
       w := tr_open(t, tr_cat(idb[..], own, ".c"), TG_DIV, "col");

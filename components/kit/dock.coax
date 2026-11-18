@@ -125,6 +125,18 @@ k_slider :: (t: [] Tree, id: string, name: string, value: string, low: int, high
   tr_close(t);
   return f;
 }
+// Slider ends: what a slider's two ends are, in words, under the ends of its line, and a line on why
+// it stops at each (`why` may be empty). It goes right after the slider it describes, so no limit of
+// a control is hidden. `id` is its own. Answers its node.
+k_slider_ends :: (t: [] Tree, id: string, low: string, high: string, why: string) -> int {
+  ida: [UI_ID] u8; idb: [UI_ID] u8; idc: [UI_ID] u8;
+  p := tr_open(t, id, TG_DIV, "slide-ends");
+  a := tr_leaf(t, tr_cat(ida[..], id, ".lo"), TG_SPAN, "meta", low);
+  b := tr_leaf(t, tr_cat(idb[..], id, ".hi"), TG_SPAN, "meta", high);
+  if why.count > 0 { c := tr_leaf(t, tr_cat(idc[..], id, ".why"), TG_P, "slide-why", why); }
+  tr_close(t);
+  return p;
+}
 
 // Meter: a named amount against its limit (a budget spent, a store filled): its name, a line filled as
 // far as `share` of the limit is used (0 to 1; more shows as full), and the amount in words, which name
@@ -187,6 +199,12 @@ DkTest :: struct { t: [1] Tree; u: [1] Ui; }
   #assert ln == tr_find(t, "height") && t[0].nodes[ln].tag == TG_INPUT && tr_attr_of(t, ln, AT_TYPE) == "range" && tr_attr_of(t, ln, AT_LABEL) == "Height";
   #assert tr_attr_of(t, ln, AT_MIN) == "145" && tr_attr_of(t, ln, AT_MAX) == "225" && tr_attr_of(t, ln, AT_STEP) == "1";
   #assert tr_class(t, tr_find(t, "height.slide")) == "slide" && tr_text_of(t, tr_find(t, "height.n")) == "Height" && tr_text_of(t, tr_find(t, "height.v")) == "175 cm" && t[0].depth == 0;
+  // its ends in words and why it stops there; no reason, no empty line
+  le := k_slider_ends(t, "height.ends", "145 cm", "225 cm", "The body is made for these heights.");
+  #assert tr_class(t, le) == "slide-ends" && tr_text_of(t, tr_find(t, "height.ends.lo")) == "145 cm" && tr_text_of(t, tr_find(t, "height.ends.hi")) == "225 cm";
+  #assert tr_class(t, tr_find(t, "height.ends.why")) == "slide-why" && tr_text_of(t, tr_find(t, "height.ends.why")) == "The body is made for these heights." && t[0].depth == 0;
+  lb := k_slider_ends(t, "bare.ends", "0", "9", "");
+  #assert tr_find(t, "bare.ends.why") < 0 && tr_text_of(t, tr_find(t, "bare.ends.hi")) == "9" && t[0].depth == 0;
   // a meter: its name, a line filled to its share of the limit, and the amount with the limit in words
   tr_begin(t);
   mt := k_meter(t, "spent", "Costliest call", "5,000 of 20,000", 0.25);
