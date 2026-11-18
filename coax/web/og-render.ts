@@ -61,6 +61,8 @@ const STILLS: Record<string, { path?: string; query?: string; skip?: number; siz
   "painted-village": { crop: [100, 50, 1380, 525] },
   "nostr-lab": { crop: [380, 50, 1300, 494] },
   "coax-lab": { query: "?golden&at=mandelbrot", crop: [314, 48, 830, 315] },
+  // the opening view brought in to fill the card's band: the whole hull, its surf and the smoking stacks
+  "slab": { query: "?golden&t=40&yaw=0.802&pitch=0.30&dist=900&x=120&z=60&y=20" },
 }
 const dirOf = (path: string) => path.replace(/^\//, "")
 // A page's card is ours to render when it isn't hand-made: its image is the default or its rendered card.
