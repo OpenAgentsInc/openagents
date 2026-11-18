@@ -87,6 +87,18 @@ APP_TEST_LONG :: "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n15\n16\n17\n18\
   #assert open == k.app.tool_h + 2 * k.app.tool_body_pad + 2 * k.md.line + k.md.block_gap;
   #assert app_test_row(t[..], "note.2.note").h == 2 * k.md.line + k.md.block_gap && app_test_row(t[..], "note.2.note").y == k.app.tool_h + k.app.tool_body_pad;
 }
+#test "app task: a row asked whether it is open before it is drawn still opens on a press" {
+  t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..];
+  note := AppTool.{icon = 9, title = "Thought", arg = "Head", state = APP_TOOL_DONE, output = "words", note = true};
+  app_test_begin(t[..], "", "", true);
+  #assert !app_tool_open_now(f, "note.3", false);
+  _ := app_tool(f, "note.3", 0, 0, 300, note, false, 9);
+  #assert app_test_end(t[..]) && !app_test_has(t[..], "note.3", EL_S_EXPANDED) && app_tool_press(t[0].ks[..], "note.3", "note.3");
+  app_test_begin(t[..], "", "", true);
+  #assert app_tool_open_now(f, "note.3", false);
+  _ = app_tool(f, "note.3", 0, 0, 300, note, false, 9);
+  #assert app_test_end(t[..]) && app_test_has(t[..], "note.3", EL_S_EXPANDED) && app_test_find(t[..], "note.3.note") >= 0;
+}
 #test "app task: a tool row's states say running, waiting and failed; it opens on a spring and its body is cut to what is revealed" {
   t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..];
   tools := [4] AppTool.[AppTool.{icon = 5, title = "Read", arg = "chat.coax", state = APP_TOOL_PENDING, input = "path: chat.coax"},

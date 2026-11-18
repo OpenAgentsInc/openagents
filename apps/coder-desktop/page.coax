@@ -108,6 +108,7 @@ CpAgent :: struct {
   deny_due: bool;             // Microcoder let it go on: the command that waited is owed a no that carries the note
   say: [CP_AGENT_TASK] u8; say_n: int;   // the note
   began: f32; took: f32;
+  after: int;                 // how many of Microcoder's own rows came before it was handed over: it shows after them
 }
 CP_CMD_IDS :: [CP_AGENTS] string.["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11"];
 CpTurn :: struct {
@@ -429,6 +430,7 @@ cp_delegate :: (s: [] CoderPage, i: int, tasks: string, ticket: int) {
     for name, q2: CP_LEVEL_OLD { if name == level { s[0].turns[i].agents[j].level = q2; } }
     s[0].turns[i].agents[j].state = CP_RUNNING; s[0].turns[i].agents[j].start_due = true;
     s[0].turns[i].agents[j].began = s[0].clock; s[0].turns[i].agents[j].took = -1;
+    s[0].turns[i].agents[j].after = s[0].turns[i].early_cmds + s[0].turns[i].ncmds;
     s[0].turns[i].nagents = j + 1; s[0].turns[i].round_who[q] = j + 1;
   }
   s[0].turns[i].h = 0;
@@ -702,6 +704,7 @@ coder_page_save :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) 
       n = json_raw(out, n, ",\"reply\":"); n = json_write_string(out, n, cast(string) s[0].turns[i].agents[j].reply[0..<s[0].turns[i].agents[j].reply_n]);
       n = json_raw(out, n, ",\"more\":"); n = json_write_int(out, n, s[0].turns[i].agents[j].more_rows);
       n = json_raw(out, n, ",\"earlier\":"); n = json_write_int(out, n, s[0].turns[i].agents[j].early_rows);
+      n = json_raw(out, n, ",\"after\":"); n = json_write_int(out, n, s[0].turns[i].agents[j].after);
       n = json_raw(out, n, ",\"rows\":[");
       n = cp_save_rows(s, out, n, s[0].turns[i].agents[j].head);
       n = json_raw(out, n, "]");
@@ -776,6 +779,7 @@ coder_page_load :: (s: [] CoderPage, text: string) -> bool #export_c #effects(al
       }
       gm := cl_int(g, "more"); s[0].turns[i].agents[j].more_rows = ifx gm.ok && gm.value > 0 then gm.value else 0;
       ge := cl_int(g, "earlier"); s[0].turns[i].agents[j].early_rows = ifx ge.ok && ge.value > 0 then ge.value else 0;
+      gf := cl_int(g, "after"); s[0].turns[i].agents[j].after = ifx gf.ok && gf.value > 0 then gf.value else 0;   // a chat kept before it: first
       gs := cl_int(g, "state"); calls := cl_int(g, "calls"); took := cl_int(g, "took");
       s[0].turns[i].agents[j].state = ifx gs.ok && gs.value > CP_RUNNING && gs.value <= CP_STOPPED then gs.value else CP_STOPPED;
       s[0].turns[i].agents[j].calls = ifx calls.ok then calls.value else 0;
@@ -930,7 +934,7 @@ cp_row :: (s: [] CoderPage, f: [] UiFrame, q: int, id: string, x: f32, y: f32, w
   }
   if s[0].calls[q].thought {
     note := AppTool.{icon = ICON_THOUGHT, title = "Thought", arg = text, state = APP_TOOL_DONE, note = true};
-    if !app_tool_is_open(f, uiframe_key(f, id), false) { return app_tool(f, id, x, y, w, note, false, action); }
+    if !app_tool_open_now(f, id, false) { return app_tool(f, id, x, y, w, note, false, action); }
     // an open thought reads as a reply does: its Markdown, parsed into this frame's document
     at := s[0].think_at; b0 := s[0].think[at].nb;
     note.blocks = md_parse(s[0].think[at..<at + 1], output, 0);
@@ -1009,6 +1013,26 @@ cp_pane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
   s[0].pane_content = y + s[0].pane_scroll - stop;
 }
 
+// Sub-agent j of turn i as the conversation shows it at (x, y), cw wide: a row with its model, its
+// task and how long it has run, and under a running one its newest tool call. Returns its height
+// with the gap under it.
+cp_agent_row :: (s: [] CoderPage, f: [] UiFrame, i: int, j: int, x: f32, y0: f32, cw: f32) -> f32 {
+  a := f[0].skin.app; y := y0;
+  tb: [EL_ID] u8; xb: [EL_ID] u8; kb: [24] u8;
+  gs := s[0].turns[i].agents[j].state; gcalls := s[0].turns[i].agents[j].calls;
+  gt := cast(string) s[0].turns[i].agents[j].task[0..<s[0].turns[i].agents[j].task_n];
+  tool := AppTool.{icon = ICON_BOT, title = CP_LEVEL_NAME[s[0].turns[i].agents[j].level], arg = gt,
+                   state = ifx gs == CP_RUNNING && s[0].turns[i].agents[j].paused then APP_TOOL_PENDING else ifx gs == CP_RUNNING then APP_TOOL_RUNNING else ifx gs == CP_DONE then APP_TOOL_DONE else APP_TOOL_FAILED,
+                   input = gt,
+                   took = sheet_pool(f[0].sheet, cp_took(kb[..], ifx gs == CP_RUNNING then s[0].clock - s[0].turns[i].agents[j].began else s[0].turns[i].agents[j].took))};
+  y += app_tool(f, app_id(tb[..], cp_id(xb[..], i, ".g"), CP_CMD_IDS[j]), x, y, cw, tool, false, CP_AGENT) + a.gap_small;
+  if gcalls > 0 && gs == CP_RUNNING {
+    mb: [CP_CMD + 64] u8; mn := el_put_i(mb[..], 0, gcalls); mn = el_put(mb[..], mn, ifx gcalls == 1 then " tool call · " else " tool calls · ");
+    mn += cp_out(mb[mn..<mb.count], cast(string) s[0].turns[i].agents[j].now[0..<s[0].turns[i].agents[j].now_n]);
+    y += app_meta(f, app_id(tb[..], cp_id(xb[..], i, ".gm"), CP_CMD_IDS[j]), x + a.tool_pad, y, cw - 2 * a.tool_pad, sheet_pool(f[0].sheet, sheet_single_line(f[0].sheet, cast(string) mb[0..<mn])), false) + a.gap_small;
+  }
+  return y - y0;
+}
 cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
   k := f[0].skin; a := k.app;
   left: f32 = ifx window_w >= CP_SIDE_FROM then (ifx s[0].side_w > 0 then s[0].side_w else cast(f32) CP_SIDE) else 0.0f32;   // the sidebar's width
@@ -1053,22 +1077,10 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
       asked := s[0].copied_kind == CP_COPIED_ASK && s[0].copied_turn == i;
       y += app_icon_button(f, cp_id(ib[..], i, ".uc"), x + cw - side + edge, y, ifx asked then k.icon_check else k.icon_copy, ifx asked then "Copied" else "Copy message", APP_BUTTON_QUIET, 0, CP_COPY_ASK);
       tb: [EL_ID] u8; xb: [EL_ID] u8; kb: [24] u8;
-      // its sub-agents: each a row with its model, its task and how long it has run; under a
-      // running one, its newest tool call
-      for j: 0..<s[0].turns[i].nagents {
-        gs := s[0].turns[i].agents[j].state; gcalls := s[0].turns[i].agents[j].calls;
-        gt := cast(string) s[0].turns[i].agents[j].task[0..<s[0].turns[i].agents[j].task_n];
-        tool := AppTool.{icon = ICON_BOT, title = CP_LEVEL_NAME[s[0].turns[i].agents[j].level], arg = gt,
-                         state = ifx gs == CP_RUNNING && s[0].turns[i].agents[j].paused then APP_TOOL_PENDING else ifx gs == CP_RUNNING then APP_TOOL_RUNNING else ifx gs == CP_DONE then APP_TOOL_DONE else APP_TOOL_FAILED,
-                         input = gt,
-                         took = sheet_pool(f[0].sheet, cp_took(kb[..], ifx gs == CP_RUNNING then s[0].clock - s[0].turns[i].agents[j].began else s[0].turns[i].agents[j].took))};
-        y += app_tool(f, app_id(tb[..], cp_id(xb[..], i, ".g"), CP_CMD_IDS[j]), x, y, cw, tool, false, CP_AGENT) + a.gap_small;
-        if gcalls > 0 && gs == CP_RUNNING {
-          mb: [CP_CMD + 64] u8; mn := el_put_i(mb[..], 0, gcalls); mn = el_put(mb[..], mn, ifx gcalls == 1 then " tool call · " else " tool calls · ");
-          mn += cp_out(mb[mn..<mb.count], cast(string) s[0].turns[i].agents[j].now[0..<s[0].turns[i].agents[j].now_n]);
-          y += app_meta(f, app_id(tb[..], cp_id(xb[..], i, ".gm"), CP_CMD_IDS[j]), x + a.tool_pad, y, cw - 2 * a.tool_pad, sheet_pool(f[0].sheet, sheet_single_line(f[0].sheet, cast(string) mb[0..<mn])), false) + a.gap_small;
-        }
-      }
+      // its sub-agents, each in its place among Microcoder's own rows: after the rows that came
+      // before it was handed over
+      drawn := 0;
+      while drawn < s[0].turns[i].nagents && s[0].turns[i].agents[drawn].after <= s[0].turns[i].early_cmds { y += cp_agent_row(s, f, i, drawn, x, y, cw); drawn += 1; }
       if s[0].turns[i].nagents > 0 && s[0].turns[i].ncmds == 0 { y += a.gap - a.gap_small; }
       early := s[0].turns[i].early_cmds;
       if early > 0 {
@@ -1078,6 +1090,7 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
       q := s[0].turns[i].head - 1; at := early;
       while q >= 0 {
         nx := s[0].calls[q].next - 1;
+        while drawn < s[0].turns[i].nagents && s[0].turns[i].agents[drawn].after <= at { y += cp_agent_row(s, f, i, drawn, x, y, cw); drawn += 1; }
         // a row out of view keeps its place and is not drawn, so a long run costs what shows
         rh := s[0].calls[q].h;
         if rh > 0 && (y + rh < top - CP_PANE_MARGIN || y > bottom + CP_PANE_MARGIN) { y += rh + a.gap_small; q = nx; at += 1; continue; }
@@ -1085,6 +1098,7 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
         s[0].calls[q].h = rh; y += rh + a.gap_small;
         q = nx; at += 1;
       }
+      while drawn < s[0].turns[i].nagents { y += cp_agent_row(s, f, i, drawn, x, y, cw); drawn += 1; }
       if s[0].turns[i].more_cmds > 0 {
         mb: [96] u8; mn := el_put_i(mb[..], 0, s[0].turns[i].more_cmds); mn = el_put(mb[..], mn, " more ran after these and were not kept.");
         y += app_meta(f, cp_id(ib[..], i, ".xm"), x, y, cw, sheet_pool(f[0].sheet, cast(string) mb[0..<mn]), false) + a.gap_small;
@@ -1717,6 +1731,18 @@ cp_find :: (text: string, needle: string) -> int {
   kept: [65536] u8; kn := coder_page_save(s, kept[..]);
   #assert kn > 0 && coder_page_new(s) && coder_page_load(s, cast(string) kept[0..<kn]);
   #assert s[0].turns[0].agents[0].nrows == 2 && s[0].calls[cp_nth(s, 0, 0, 0)].said && !s[0].calls[cp_nth(s, 0, 0, 1)].said;
+}
+#test "a sub-agent shows after the rows Microcoder had when it handed the task over, in a kept chat too" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  #assert coder_page_set_text(s, "do phase 0") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"thought\",\"text\":\"Prioritizing the method doc\"}") == MWW_THOUGHT;
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"carbon\",\"task\":\"phase 0\"}],\"ticket\":1}") == MWW_DELEGATE;
+  #assert s[0].turns[0].agents[0].after == 1;
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"done\"}") == MWW_ENDED;
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"Done.\"}") == MWW_ENDED;
+  kept: [65536] u8; kn := coder_page_save(s, kept[..]);
+  #assert kn > 0 && coder_page_new(s) && coder_page_load(s, cast(string) kept[0..<kn]) && s[0].turns[0].agents[0].after == 1;
 }
 #test "thinking is wrapped to its row at a word's end, and a word longer than a line is broken" {
   o: [64] u8;

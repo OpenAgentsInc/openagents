@@ -141,6 +141,14 @@ app_tool_press :: (keyed: [] KeyedStore, id: string, pressed: string) -> bool {
   keyed_slot_set(keyed, k, slot, ifx page < 0 then 0.0f32 else page);
   return true;
 }
+// Whether the tool row `id` is open, read before app_tool draws it this frame: it does not claim
+// the id, so app_tool still can. (uiframe_key here would claim it, app_tool's own claim would be
+// refused as a second one, and the row would always draw closed.)
+app_tool_open_now :: (f: [] UiFrame, id: string, initial: bool) -> bool {
+  k := keyed_find(f[0].keyed, id);
+  if !keyed_ok(f[0].keyed, k) { return initial; }
+  return keyed_slot(f[0].keyed, k, APP_TOOL_OPEN) > 0;
+}
 // Whether a tool row or group is open: what a person set, else `initial`.
 // A fresh row takes `initial`, so a row that starts open is open in its first frame.
 app_tool_is_open :: (f: [] UiFrame, k: int, initial: bool) -> bool {
