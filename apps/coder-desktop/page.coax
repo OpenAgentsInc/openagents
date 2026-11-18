@@ -435,6 +435,14 @@ coder_page_open_id :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(al
   k := s[0].open;
   return cp_out(out, cast(string) s[0].chats[k].id[5..<s[0].chats[k].id_n]);
 }
+// The id of the chat whose sidebar row is at a point, in device pixels (a right-click there offers
+// to delete it). Its length in out, 0 when no chat's row is there.
+coder_page_chat_at :: (s: [] CoderPage, x: f32, y: f32, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 || !(s[0].d > 0) { return 0; }
+  id := surface_id(s[0].surface[..], surface_hit(s[0].surface[..], x / s[0].d, y / s[0].d));
+  for q: 0..<s[0].nchats { if id == cast(string) s[0].chats[q].id[0..<s[0].chats[q].id_n] { return cp_out(out, cast(string) id[5..<id.count]); } }
+  return 0;
+}
 // The chat's title for the list: its first message on one line, up to 120 bytes.
 coder_page_title :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
   if s.count < 1 || s[0].nturns < 1 { return 0; }

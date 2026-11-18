@@ -113,6 +113,13 @@ final class CoderStore {
     var lines: String { list.map { $0.id + "\t" + $0.title }.joined(separator: "\n") }
     func text(_ id: String) -> String? { try? String(contentsOf: dir.appendingPathComponent(id + ".json"), encoding: .utf8) }
     func folder(_ id: String) -> String? { list.first { $0.id == id }?.folder }
+    func title(_ id: String) -> String? { list.first { $0.id == id }?.title }
+    /// Deletes a chat: its file and its place in the list. It can't be brought back.
+    func remove(_ id: String) {
+        try? FileManager.default.removeItem(at: dir.appendingPathComponent(id + ".json"))
+        list.removeAll { $0.id == id }
+        if let data = try? JSONEncoder().encode(list) { try? data.write(to: dir.appendingPathComponent("index.json"), options: .atomic) }
+    }
     /// Keeps a chat's text and moves it to the top of the list.
     func keep(id: String, title: String, folder: String, text: String) {
         guard (try? text.write(to: dir.appendingPathComponent(id + ".json"), atomically: true, encoding: .utf8)) != nil else { return }
@@ -183,6 +190,7 @@ final class CoderWindow: NSObject {
         worker.gone = { [weak self] in guard let self else { return }; cd_failed(self.page, "Microcoder stopped running. Send the message again."); self.pump() }
         canvas.postsFrameChangedNotifications = true
         NotificationCenter.default.addObserver(forName: NSView.frameDidChangeNotification, object: canvas, queue: .main) { [weak self] _ in self?.wake() }
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .rightMouseDown) { [weak self] event in self?.rightClick(event) == true ? nil : event }
         let clock = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in self?.tick() }
         RunLoop.main.add(clock, forMode: .common); self.clock = clock
         window.center(); window.makeKeyAndOrderFront(nil); window.makeFirstResponder(editor)
@@ -303,6 +311,44 @@ final class CoderWindow: NSObject {
         window.makeFirstResponder(editor)
         wake()
     }
+    /// The chat that is shown, when it is kept and no reply is running: File > Delete Chat acts on it.
+    var canDelete: Bool { chat != nil && cd_running(page) == 0 }
+    func deleteShown() { if let id = chat { delete(id) } }
+    /// Asks, then deletes a kept chat. Deleting the one that is shown starts a new chat. Not while a
+    /// reply is running in it.
+    func delete(_ id: String) {
+        if id == chat && cd_running(page) != 0 { return }
+        let alert = NSAlert()
+        alert.messageText = "Delete this chat?"
+        alert.informativeText = "“" + (store.title(id) ?? "New chat") + "” will be deleted from this Mac. You can't undo this."
+        alert.addButton(withTitle: "Delete").hasDestructiveAction = true
+        alert.addButton(withTitle: "Cancel")
+        alert.beginSheetModal(for: window) { [weak self] answer in
+            guard let self, answer == .alertFirstButtonReturn else { return }
+            if id == self.chat { guard cd_running(self.page) == 0 else { return }; self.chat = nil; _ = cd_new(self.page) }
+            self.store.remove(id)
+            cd_chats(self.page, self.store.lines)
+            self.window.makeFirstResponder(self.editor); self.wake()
+        }
+    }
+    @objc private func deleteFromMenu(_ item: NSMenuItem) { if let id = item.representedObject as? String { delete(id) } }
+    /// A right-click on a chat in the sidebar: a menu with Delete Chat.
+    private func rightClick(_ event: NSEvent) -> Bool {
+        guard event.window === window else { return false }
+        let at = canvas.convert(event.locationInWindow, from: nil), scale = window.backingScaleFactor
+        var out = [CChar](repeating: 0, count: 128)
+        let y = canvas.isFlipped ? at.y : canvas.bounds.height - at.y
+        guard cd_chat_at(page, Float(at.x * scale), Float(y * scale), &out, Int32(out.count)) > 0 else { return false }
+        let id = String(cString: out), menu = NSMenu()
+        let item = menu.addItem(withTitle: "Delete Chat…", action: #selector(deleteFromMenu(_:)), keyEquivalent: "")
+        item.target = self; item.representedObject = id
+        item.isEnabled = !(id == chat && cd_running(page) != 0)
+        menu.autoenablesItems = false
+        NSMenu.popUpContextMenu(menu, with: event, for: canvas)
+        return true
+    }
+    private var monitor: Any?
+
     /// Keeps the chat that is shown: its file, and its place at the top of the list.
     private func keep() {
         let id = chat ?? UUID().uuidString.lowercased()
@@ -338,7 +384,7 @@ final class CoderWindow: NSObject {
         if editor.frame != frame { editor.frame = frame; wake() }
     }
 
-    func retire() { clock?.invalidate(); clock = nil; worker.gone = nil; worker.stop(); for one in agents.values { one.gone = nil; one.line = nil; one.stop() }; agents = [:]; cd_on_change(page, nil, nil); cd_close(page) }
+    func retire() { if let monitor { NSEvent.removeMonitor(monitor) }; monitor = nil; clock?.invalidate(); clock = nil; worker.gone = nil; worker.stop(); for one in agents.values { one.gone = nil; one.line = nil; one.stop() }; agents = [:]; cd_on_change(page, nil, nil); cd_close(page) }
 }
 
 final class CoderDelegate: NSObject, NSApplicationDelegate {
@@ -354,11 +400,12 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) { main?.retire() }
     @objc func newChat(_ sender: Any?) { main?.newChat() }
     @objc func openFolder(_ sender: Any?) { main?.chooseFolder() }
+    @objc func deleteChat(_ sender: Any?) { main?.deleteShown() }
     @objc func biggerText(_ sender: Any?) { main?.zoom(1) }
     @objc func smallerText(_ sender: Any?) { main?.zoom(-1) }
     @objc func actualSize(_ sender: Any?) { main?.zoom(nil) }
     // New Chat is off while a run is going, as the button is.
-    @objc func validateMenuItem(_ item: NSMenuItem) -> Bool { (item.action != #selector(newChat(_:)) && item.action != #selector(openFolder(_:))) || main?.canNew == true }
+    @objc func validateMenuItem(_ item: NSMenuItem) -> Bool { item.action == #selector(deleteChat(_:)) ? main?.canDelete == true : (item.action != #selector(newChat(_:)) && item.action != #selector(openFolder(_:))) || main?.canNew == true }
 }
 
 @main struct CoderApp {
@@ -370,6 +417,9 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         let fileItem = NSMenuItem(), file = NSMenu(title: "File")
         file.addItem(withTitle: "New Chat", action: #selector(CoderDelegate.newChat(_:)), keyEquivalent: "n").target = delegate
         file.addItem(withTitle: "Open Folder…", action: #selector(CoderDelegate.openFolder(_:)), keyEquivalent: "o").target = delegate
+        file.addItem(.separator())
+        let del = file.addItem(withTitle: "Delete Chat…", action: #selector(CoderDelegate.deleteChat(_:)), keyEquivalent: "\u{8}")
+        del.target = delegate; del.keyEquivalentModifierMask = [.command]
         fileItem.submenu = file
         let viewItem = NSMenuItem(), view = NSMenu(title: "View")
         view.addItem(withTitle: "Actual Size", action: #selector(CoderDelegate.actualSize(_:)), keyEquivalent: "0").target = delegate

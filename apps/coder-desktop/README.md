@@ -118,8 +118,13 @@ a new chat.
 
 The chats are files in `~/Library/Application Support/Coder/chats`: one
 `ID.json` for each chat and `index.json`, the list. Nothing is sent
-anywhere. Coder has no way to delete a chat yet: delete its file and its
-entry in `index.json`.
+anywhere.
+
+To delete a chat, right-click it in the sidebar and choose Delete Chat. For
+the chat that is shown, File > Delete Chat (Command-Delete) does the same.
+Coder asks first. The chat's file is deleted and can't be brought back.
+Deleting the chat that is shown starts a new chat. You can't delete a chat
+while a reply is running in it.
 
 To open the Nth most recent chat at launch (1 is the newest):
 
