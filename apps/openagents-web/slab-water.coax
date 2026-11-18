@@ -1,0 +1,327 @@
+// SLAB Simulation: what the hull does to the water (docs/research/ocean/slab-world-spec.md 4.6).
+// The models are the engine's, for any large floating body: metaverse/water-lee.coax (the calm
+// lee), metaverse/water-wall.coax (reflection, run-up, spray), metaverse/water-wake.coax (wake,
+// discharge plume, moonpool surge) and metaverse-engine/fx/spray.coax (the spray's puffs). This
+// file keeps their state for the page, steps it each frame, and packs what the shaders read
+// (gpu/slab-water.coax, gpu/slab-fx.coax) into a block of the page's uniforms:
+//   head  0     mode (0 off, 1 the monolith: its walls send waves back, 2 domes), R, the spray's clock (s), puffs a burst
+//         4     the frame's centre x, z, and its heading's cosine and sine
+//         8     each face's reflected share (+x, +z, -x, -z), 12 its beam's slant, 16 its beam's spread
+//         20    the drift of what floats: direction x, z, speed (m/s); the foot foam's reach (m)
+//         24    the water's flow past the hull: direction x, z, speed (m/s); the hull's width across it (m)
+//         28    the discharge: how much (0 to 1), its outlets' depth (m), how far it sinks (m), over what distance (m)
+//         32    the four moonpools' surge (m)
+//         36    the grid's half extents x, z; the sea's significant height (m); the next burst's row
+//   grid  40    the lee's gains as bytes (LEE_N x LEE_N nodes, two bands), four to a float's bits
+//   foam  328   the white water at the walls' feet as bytes: 32 cells a face (or 16 a dome)
+// The spray's bursts go to the GPU as the page's particles (coax/web/host.js "Particles"):
+// WALL_BURSTS rows of SPRAY_ROW floats, each drawn as WW_PUFFS puffs (WW_PUFFS_PHONE of the newest
+// WW_BURSTS_PHONE on a phone).
+//   coax/bin/coax test apps/openagents-web/slab-water.coax
+#load "../../metaverse/water-wall.coax";
+#load "../../metaverse/water-wake.coax";
+
+WW_HEAD :: 40;
+WW_GRID :: WW_HEAD;
+WW_GRID_FLOATS :: 2 * LEE_N * LEE_N / 4;
+WW_FOAM :: WW_GRID + WW_GRID_FLOATS;
+WW_CELLS :: 32;                 // foam cells a face
+WW_FLOATS :: WW_FOAM + 4 * WW_CELLS / 4;
+WW_PUFFS :: 24; WW_PUFFS_PHONE :: 10;
+WW_BURSTS_PHONE :: 96;
+WW_STATIONS :: 320; WW_STATIONS_PHONE :: 160;   // ten and twenty metres apart round the monolith
+WW_PREROLL :: 24.0;             // s of sea run before a fixed moment, so its spray and foam are there
+WW_LAYERING :: 0.015;           // the upper thermocline's buoyancy frequency, 1/s (our assumption)
+WW_OUTLET :: 60.0;              // the mixed discharge's depth, m (spec 6.1)
+
+SlabWater :: struct {
+  mode: int;
+  frame: Floater;               // the grid's frame: the monolith, a dome, or the cluster's square
+  bodies: [7] Floater;
+  count: int;
+  sea: WallSea;
+  faces: WallFaces;
+  grid: [1] LeeGrid;
+  spray: [1] WallSpray;
+  heights: [WALL_STATIONS] f32; sharp: [WALL_STATIONS] f32;
+  stations: int;                // in all
+  each: int;                    // a body
+  pools: [4] Moonpool;
+  // what the grid and the stations were laid for
+  laid: bool; for_wind: f64; for_x: f64; for_z: f64; for_c: f64; for_mode: int; for_phone: bool;
+  moment: f64 = -1.0;           // the fixed moment the spray was run up to (-1: the clock runs)
+  phone: bool;
+  wind_x: f64; wind_z: f64;     // m/s
+  drift: D2;                    // m/s
+  flow: D2;                     // the water past the hull, m/s
+  discharge: f64;               // of the design flow
+  sink: f64; carry: f64;        // m
+}
+
+// The monolith at (x, z), heading (c, s): spec 3.1's plan, with its dock notch in the south wall.
+ww_monolith :: (w: [] SlabWater, hx: f64, hz: f64, draft: f64, x: f64, z: f64, c: f64, s: f64) {
+  w[0].mode = 1; w[0].count = 1;
+  w[0].frame = Floater.{hx = hx, hz = hz, draft = draft, x = x, z = z, c = c, s = s,
+    bay_x0 = -50.0, bay_x1 = 50.0, bay_z0 = -hz, bay_z1 = -hz + 60.0};
+  w[0].bodies[0] = w[0].frame;
+}
+// `count` domes of radius r at centres (x, z) pairs; the grid's frame is the square round them.
+ww_domes :: (w: [] SlabWater, count: int, r: f64, draft: f64, centres: [] f64) {
+  w[0].mode = 2; w[0].count = ifx count > 7 then 7 else count;
+  cx := 0.0; cz := 0.0;
+  for i: 0..<w[0].count { cx += centres[2 * i] / f64(w[0].count); cz += centres[2 * i + 1] / f64(w[0].count); }
+  reach := r;
+  for i: 0..<w[0].count {
+    w[0].bodies[i] = Floater.{round = true, hx = r, hz = r, draft = draft, x = centres[2 * i], z = centres[2 * i + 1]};
+    reach = fmax(reach, fmax(abs(centres[2 * i] - cx), abs(centres[2 * i + 1] - cz)) + r);
+  }
+  w[0].frame = Floater.{hx = reach, hz = reach, draft = draft, x = cx, z = cz};
+  if w[0].count == 1 { w[0].frame = w[0].bodies[0]; }
+}
+// The plant's discharge: cold water raised (m^3/s; twice as much warm water joins it), the design
+// flow, and the plant's temperature difference (K). The mix is (dT + 2.2) / 3 colder than the surface.
+ww_plant :: (w: [] SlabWater, cold: f64, design: f64, dt: f64, current: f64) {
+  w[0].discharge = ifx design > 0.0 then fclamp(cold / design, 0.0, 1.5) else 0.0;
+  colder := fmax(dt + 2.2, 0.0) / 3.0;
+  w[0].sink = plume_settle(plume_buoyancy(3.0 * cold / 4.0, colder), WW_LAYERING);
+  w[0].carry = plume_carry(current, WW_LAYERING);
+}
+
+// Lays the grid and the stations again when the sea, the layout or the hull's place has changed.
+ww_lay :: (w: [] SlabWater, s: [] Synth, phone: bool) {
+  sp := s[0].spectrum;
+  f := w[0].frame;
+  same := w[0].laid && w[0].for_wind == sp.wind_speed && w[0].for_mode == w[0].mode * 8 + w[0].count && w[0].for_phone == phone
+    && abs(w[0].for_x - f.x) < 8.0 && abs(w[0].for_z - f.z) < 8.0 && abs(w[0].for_c - f.c) < 0.0002;
+  if same { return; }
+  w[0].laid = true; w[0].for_wind = sp.wind_speed; w[0].for_mode = w[0].mode * 8 + w[0].count; w[0].for_phone = phone;
+  w[0].for_x = f.x; w[0].for_z = f.z; w[0].for_c = f.c;
+  c0 := s[0].cascades[0];
+  long := lee_band(sp, c0.low, c0.high, false);
+  short := lee_band(sp, c0.high, 10.0 * c0.high, true);
+  lee_bake(w[0].grid[..], f, w[0].bodies[..], w[0].count, long, short);
+  b0 := w[0].bodies[0];
+  w[0].sea = wall_sea(s, 0, 2.0 * b0.hz, b0.draft);
+  w[0].faces = wall_faces(w[0].sea, b0);
+  total := ifx phone then WW_STATIONS_PHONE else WW_STATIONS;
+  // a dome's stations stay ten or twenty metres apart too
+  w[0].each = ifx w[0].mode == 1 then total else cast(int) fmax(floor(TAU_D * b0.hx / (ifx phone then 20.0 else 10.0)), 8.0);
+  w[0].stations = w[0].each * w[0].count;
+  wall_begin(w[0].spray[..], w[0].stations);
+  for i: 0..<w[0].count { wall_arrange(w[0].spray[..], w[0].bodies[i], w[0].sea, i * w[0].each, w[0].each); }
+  w[0].phone = phone;
+}
+// One step of the walls' water on cascade 0's tile at this moment.
+ww_advance :: (w: [] SlabWater, tile: [] Tile, patch: f64, wind: f64, level: f64, dt: f64) {
+  if dt <= 0.0 || w[0].mode == 0 { return; }
+  breaks := 1.0 - f64(wsp_whitecap_threshold(tile, wind));
+  for i: 0..<w[0].count {
+    wall_read(w[0].bodies[i], w[0].frame, w[0].grid[..], tile, patch, i * w[0].each, w[0].each, w[0].heights[..], w[0].sharp[..]);
+    wall_step(w[0].spray[..], w[0].bodies[i], w[0].sea, i * w[0].each, w[0].each, w[0].heights[..], w[0].sharp[..], breaks, w[0].wind_x, w[0].wind_z, level, dt);
+  }
+  wall_tick(w[0].spray[..], dt);
+  if w[0].mode == 1 {
+    // the moonpools, 111 m in from the west wall and 150 m apart (metaverse/slab-plan.coax)
+    f := w[0].frame;
+    area := PI_D * (6.0 * 6.0 - 3.35 * 3.35);
+    drive := moonpool_drive(w[0].sea.k, f.draft);
+    for i: 0..<4 {
+      bx := -389.0; bz := -225.0 + 150.0 * f64(i);
+      p := lee_world(f, bx, bz);
+      sea := lee_sample(w[0].grid[..], bx, bz, 0) * wall_at(tile[0].height[..], tile[0].size, patch, p.x, p.y) * drive;
+      moonpool_step(w[0].pools[i..<i + 1], f.draft, area, sea, dt);
+    }
+  }
+}
+// A frame: `moment` is the fixed moment when the clock stands (a picture, ?t=), else -1 and dt
+// runs. At a fixed moment the sea is run for WW_PREROLL seconds up to it, once, so the spray in
+// the air and the foam at the walls are the ones that sea made; the caller then makes the tile
+// at its own tick again (`ran` true).
+ww_frame :: (w: [] SlabWater, s: [] Synth, tile: [] Tile, wind: f64, current: D2, level: f64, moment: f64, dt: f64, phone: bool) -> bool {
+  if w[0].mode == 0 { return false; }
+  sp := s[0].spectrum;
+  wd := wsp_direction(sp);
+  w[0].wind_x = wd.x * wind; w[0].wind_z = wd.y * wind;
+  w[0].drift = wake_drift(current, d2(w[0].wind_x, w[0].wind_z));
+  w[0].flow = current;
+  ww_lay(w, s, phone);
+  patch := s[0].cascades[0].patch;
+  if moment < 0.0 {
+    w[0].moment = -1.0;
+    ww_advance(w, tile, patch, wind, level, dt);
+    return false;
+  }
+  if w[0].moment == moment { return false; }
+  w[0].moment = moment;
+  steps := cast(int) (WW_PREROLL / 0.2);
+  for i: 0..<steps {
+    t := moment - WW_PREROLL + 0.2 * f64(i + 1);
+    wsp_tile(s, 0, wsp_tick_at(sp, fmax(t, 0.0)) % sp.period, tile);
+    ww_advance(w, tile, patch, wind, level, 0.2);
+  }
+  return true;
+}
+
+ww_byte :: (v: f64) -> u32 { return cast(u32) fclamp(floor(v * 255.0 + 0.5), 0.0, 255.0); }
+// Bursts drawn and puffs in each.
+ww_bursts :: (w: [] SlabWater) -> int {
+  if w[0].mode == 0 { return 0; }
+  n := ifx w[0].spray[0].thrown < WALL_BURSTS then w[0].spray[0].thrown else WALL_BURSTS;
+  if w[0].phone && n > WW_BURSTS_PHONE { n = WW_BURSTS_PHONE; }
+  return n;
+}
+ww_puffs :: (w: [] SlabWater) -> int { return ifx w[0].phone then WW_PUFFS_PHONE else WW_PUFFS; }
+// The block of uniforms (WW_FLOATS floats).
+ww_pack :: (w: [] SlabWater, u: [] f32) {
+  for i: 0..<WW_FLOATS { u[i] = 0; }
+  if w[0].mode == 0 { return; }
+  f := w[0].frame;
+  u[0] = f32(w[0].mode); u[1] = f32(w[0].sea.reflect); u[2] = f32(w[0].spray[0].time); u[3] = f32(ww_puffs(w));
+  u[4] = f32(f.x); u[5] = f32(f.z); u[6] = f32(f.c); u[7] = f32(f.s);
+  for i: 0..<4 {
+    u[8 + i] = f32(w[0].sea.reflect * w[0].faces.f[i].share);
+    u[12 + i] = f32(w[0].faces.f[i].slant); u[16 + i] = f32(w[0].faces.f[i].spread);
+    u[32 + i] = f32(w[0].pools[i].z);
+  }
+  ds := sqrt(w[0].drift.x * w[0].drift.x + w[0].drift.y * w[0].drift.y);
+  u[20] = f32(ifx ds > 0.0001 then w[0].drift.x / ds else 1.0); u[21] = f32(ifx ds > 0.0001 then w[0].drift.y / ds else 0.0);
+  u[22] = f32(ds); u[23] = f32(ds * 90.0);    // foam on the open sea lasts about a minute and a half
+  fs := sqrt(w[0].flow.x * w[0].flow.x + w[0].flow.y * w[0].flow.y);
+  fx := ifx fs > 0.0001 then w[0].flow.x / fs else 1.0; fz := ifx fs > 0.0001 then w[0].flow.y / fs else 0.0;
+  u[24] = f32(fx); u[25] = f32(fz); u[26] = f32(fs);
+  // the hull's width across the flow, in its own frame
+  lx := f.c * fx + f.s * fz; lz := -f.s * fx + f.c * fz;
+  u[27] = f32(2.0 * (f.hx * abs(lz) + f.hz * abs(lx)));
+  u[28] = f32(ifx w[0].mode == 1 then w[0].discharge else 0.0); u[29] = f32(WW_OUTLET); u[30] = f32(w[0].sink); u[31] = f32(w[0].carry);
+  u[36] = f32(w[0].grid[0].hx); u[37] = f32(w[0].grid[0].hz); u[38] = f32(w[0].sea.significant); u[39] = f32(w[0].spray[0].next);
+  for i: 0..<WW_GRID_FLOATS {
+    word: u32 = 0;
+    for b: 0..<4 { word |= ww_byte(f64(w[0].grid[0].g[4 * i + b])) << cast(u32) (8 * b); }
+    u[WW_GRID + i] = f32_from_bits(word);
+  }
+  // the foam: a station's white water in its cell (the most of the stations that share it)
+  cells: [4 * WW_CELLS] u32;
+  if w[0].mode == 1 {
+    for i: 0..<w[0].stations {
+      st := wall_station(f, w[0].stations, i);
+      along := ifx st.face == 0 then (st.z + f.hz) / (2.0 * f.hz) else (ifx st.face == 1 then (f.hx - st.x) / (2.0 * f.hx) else (ifx st.face == 2 then (f.hz - st.z) / (2.0 * f.hz) else (st.x + f.hx) / (2.0 * f.hx)));
+      c := st.face * WW_CELLS + cast(int) fclamp(floor(along * f64(WW_CELLS)), 0.0, f64(WW_CELLS - 1));
+      v := ww_byte(f64(w[0].spray[0].foam[i]));
+      if v > cells[c] { cells[c] = v; }
+    }
+  } else {
+    for i: 0..<w[0].stations {
+      c := (i / w[0].each) * 16 + (i % w[0].each) * 16 / w[0].each;
+      v := ww_byte(f64(w[0].spray[0].foam[i]));
+      if v > cells[c] { cells[c] = v; }
+    }
+  }
+  for i: 0..<WW_CELLS {
+    u[WW_FOAM + i] = f32_from_bits(cells[4 * i] | (cells[4 * i + 1] << 8) | (cells[4 * i + 2] << 16) | (cells[4 * i + 3] << 24));
+  }
+}
+// The sea's height at a world point round the hull: the water its walls stand in, for the
+// hull's own force model (the tile's waves, calmer in the lee and under the hull, and the
+// reflections off the monolith's faces).
+ww_height :: (w: [] SlabWater, tile: [] Tile, patch: f64, wx: f64, wz: f64) -> f64 {
+  if w[0].mode == 0 || !w[0].laid { return wall_at(tile[0].height[..], tile[0].size, patch, wx, wz); }
+  if w[0].mode == 1 { return wall_water(w[0].frame, w[0].sea, w[0].faces, w[0].grid[..], tile[0].height[..], tile[0].size, patch, wx, wz); }
+  p := lee_local(w[0].frame, wx, wz);
+  return lee_sample(w[0].grid[..], p.x, p.y, 0) * wall_at(tile[0].height[..], tile[0].size, patch, wx, wz);
+}
+
+// ---- checks
+
+ww_test_sea :: (wind: f64) -> Spectrum { return wall_test_sea(wind, 4.36); }
+#test "the block's layout fits and its bytes round-trip" {
+  #assert WW_FLOATS == 360 && WW_FLOATS % 4 == 0 && WW_GRID_FLOATS == 288;
+  #assert ww_byte(0.0) == 0 && ww_byte(1.0) == 255 && ww_byte(2.0) == 255 && ww_byte(0.5) == 128;
+  #assert WW_STATIONS <= WALL_STATIONS && WW_BURSTS_PHONE <= WALL_BURSTS;
+}
+#test "the lee wall is calmer than the weather wall, by the model's amount" #steps 6000000000 {
+  // the winter sea (4 m) against the monolith at its moorings
+  sp := ww_test_sea(13.7);
+  s: [1] Synth; wsp_synth(s[..], sp, 1, 64);
+  t: [1] Tile;
+  w: [1] SlabWater;
+  ww_monolith(w[..], 500.0, 300.0, 25.0, 0.0, 0.0, 1.0, 0.0);
+  patch := s[0].cascades[0].patch;
+  // the root mean square height over two minutes: on a line 60 m off the west (lee) wall, at the
+  // east (weather) wall, in the open sea clear of the hull's reflections, and in the dock notch
+  open := 0.0; lee := 0.0; weather := 0.0; dock := 0.0; n := 0;
+  for step: 0..<120 {
+    wsp_tile(s[..], 0, cast(u64) (step * 120), t[..]);
+    _ = ww_frame(w[..], s[..], t[..], 13.7, d2(-0.5, 0.0), 0.0, -1.0, 0.1, false);
+    for j: 0..<11 {
+      z := -250.0 + 50.0 * f64(j);
+      a := ww_height(w[..], t[..], patch, 1500.0, -2500.0 + z); open += a * a;
+      b := ww_height(w[..], t[..], patch, -560.0, z); lee += b * b;
+      c := ww_height(w[..], t[..], patch, 501.0, z); weather += c * c;
+      d := ww_height(w[..], t[..], patch, -40.0 + 8.0 * f64(j), -270.0); dock += d * d;
+      n += 1;
+    }
+  }
+  open = sqrt(open / f64(n)); lee = sqrt(lee / f64(n)); weather = sqrt(weather / f64(n)); dock = sqrt(dock / f64(n));
+  // the open sea's root mean square height is Hs / 4
+  #assert abs(4.0 * open - w[0].sea.significant) < 0.6;
+  // the lee stands at about 0.3 of the open sea; at the weather wall, with what it sends back, nearly twice
+  #assert lee < 0.4 * open && lee > 0.1 * open;
+  #assert weather > 1.6 * open && weather < 2.6 * open;   // two stretches of sea two minutes long differ by a few percent
+  // the dock notch in the south wall sits in about half the open sea: that wall lies only 20
+  // degrees off the waves' path, sheltered from the main sea but open to the part that spreads
+  #assert dock < 0.7 * open && dock > 0.2 * open;
+  // and the grid's own summary agrees: the calmest water within 300 m is under a fifth
+  #assert w[0].grid[0].least < 0.2;
+}
+#test "a fixed moment has its spray in the air and packs it" #steps 12000000000 {
+  sp := ww_test_sea(21.6);
+  s: [1] Synth; wsp_synth(s[..], sp, 1, 64);
+  t: [1] Tile;
+  w: [1] SlabWater;
+  ww_monolith(w[..], 500.0, 300.0, 25.0, 0.0, 0.0, 1.0, 0.0);
+  ww_plant(w[..], 282.0, 282.0, 24.0, 0.5);
+  #assert ww_frame(w[..], s[..], t[..], 21.6, d2(-0.5, 0.0), 0.0, 40.0, 0.0, false);
+  // asked again for the same moment it does nothing
+  thrown := w[0].spray[0].thrown;
+  #assert thrown > 20 && !ww_frame(w[..], s[..], t[..], 21.6, d2(-0.5, 0.0), 0.0, 40.0, 0.0, false) && w[0].spray[0].thrown == thrown;
+  #assert abs(w[0].spray[0].time - WW_PREROLL) < 0.001 && wall_live(w[0].spray[..]) > 5;
+  u: [WW_FLOATS] f32;
+  ww_pack(w[..], u[..]);
+  #assert u[0] == 1 && u[1] > 0.99 && u[3] == 24 && u[8] > 0.9 && u[10] < 0.3;
+  // foam drifts west with the current and a little south with the wind; the wake is the beam wide
+  #assert u[20] < -0.9 && u[22] > 0.5 && u[22] < 1.5 && abs(u[27] - 600) < 1;
+  // the discharge: all of it, from 60 m, sinking about a hundred more
+  #assert u[28] == 1 && u[29] == 60 && u[30] > 80 && u[30] < 130 && abs(u[31] - 104.7) < 0.2;
+  // some foam at the east wall's foot, none at the west wall's
+  east := 0; west := 0;
+  for i: 0..<WW_CELLS / 4 { if f32_bits(u[WW_FOAM + i]) != 0 { east += 1; } if f32_bits(u[WW_FOAM + 2 * WW_CELLS / 4 + i]) != 0 { west += 1; } }
+  #assert east > 0 && west == 0;
+  // the grid's bytes: open water upwind (255), calm behind
+  first := f32_bits(u[WW_GRID + (2 * (12 * LEE_N + LEE_N - 1)) / 4]);
+  #assert ((first >> 16) & 255) == 255 || (first & 255) == 255;
+  // a phone draws fewer, smaller bursts
+  w[0].phone = true;
+  #assert ww_puffs(w[..]) == WW_PUFFS_PHONE && ww_bursts(w[..]) <= WW_BURSTS_PHONE;
+  // the moonpools moved
+  #assert w[0].pools[0].peak > 0.0;
+}
+#test "seven domes: each shelters its lee and throws its own spray" #steps 12000000000 {
+  sp := ww_test_sea(21.6);
+  s: [1] Synth; wsp_synth(s[..], sp, 1, 64);
+  t: [1] Tile;
+  w: [1] SlabWater;
+  centres: [14] f64;
+  for i: 1..<7 { a := f64(i - 1) * PI_D / 3.0; centres[2 * i] = cos(a) * 180.0; centres[2 * i + 1] = sin(a) * 180.0; }
+  ww_domes(w[..], 7, 60.96, 12.0, centres[..]);
+  #assert w[0].mode == 2 && w[0].count == 7 && abs(w[0].frame.hx - 240.96) < 0.01 && !w[0].frame.round;
+  _ = ww_frame(w[..], s[..], t[..], 21.6, d2(-0.5, 0.0), 0.0, 30.0, 0.0, false);
+  #assert w[0].each >= 30 && w[0].stations == 7 * w[0].each && w[0].stations <= WALL_STATIONS;
+  #assert w[0].spray[0].thrown > 0;
+  patch := s[0].cascades[0].patch;
+  // just behind the centre dome (waves run west-south-west) the sea is lower than upwind of the cluster
+  wsp_tile(s[..], 0, 3600, t[..]);
+  p := lee_local(w[0].frame, -70.0, -25.0);
+  #assert lee_sample(w[0].grid[..], p.x, p.y, 0) < 0.8;
+  q := lee_local(w[0].frame, 600.0, 250.0);
+  #assert lee_sample(w[0].grid[..], q.x, q.y, 0) > 0.95;
+}

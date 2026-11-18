@@ -236,41 +236,48 @@ WallSpray :: struct {
   highest: f64;                         // the highest a burst's heaviest drops have reached, m above still water
   speed: f64;                           // the fastest jet, m/s
 }
-// Lays `count` stations round `body` for `sea` (when the sea, the body's heading or the count changes).
-wall_arrange :: (w: [] WallSpray, body: Floater, sea: WallSea, count_in: int) {
+// Stations first ..< first + n are `body`'s, so one WallSpray serves several bodies (a cluster):
+// each of the calls below takes a body and its range. wall_begin sets how many are in use in all.
+wall_begin :: (w: [] WallSpray, count_in: int) {
   count := ifx count_in > WALL_STATIONS then WALL_STATIONS else (ifx count_in < 4 then 4 else count_in);
-  fresh := w[0].count != count;
+  if w[0].count == count { return; }
   w[0].count = count;
-  for i: 0..<count {
-    st := wall_station(body, count, i);
-    face := wall_face(sea, body.c * st.nx - body.s * st.nz, body.s * st.nx + body.c * st.nz);
-    w[0].share[i] = f32(face.share); w[0].square[i] = f32(face.square);
-    if fresh { w[0].last[i] = 0; w[0].rise[i] = 0; w[0].sharp[i] = 0; w[0].up[i] = 0; w[0].foam[i] = 0; }
-  }
-  if fresh { w[0].begun = false; }
+  for i: 0..<count { w[0].last[i] = 0; w[0].rise[i] = 0; w[0].sharp[i] = 0; w[0].up[i] = 0; w[0].foam[i] = 0; }
+  w[0].begun = false;
 }
-// Reads each station's sea from cascade 0's tile through the lee's grid: the height that arrives
-// and its sharpness (1 - Jacobian), both times the lee's gain there.
-wall_read :: (w: [] WallSpray, body: Floater, grid: [] LeeGrid, tile: [] Tile, patch: f64, heights: [] f32, sharp: [] f32) {
-  n := tile[0].size;
-  for i: 0..<w[0].count {
-    st := wall_station(body, w[0].count, i);
+// Lays a body's stations for `sea` (when the sea or the body's heading changes).
+wall_arrange :: (w: [] WallSpray, body: Floater, sea: WallSea, first: int, n: int) {
+  for i: 0..<n {
+    st := wall_station(body, n, i);
+    face := wall_face(sea, body.c * st.nx - body.s * st.nz, body.s * st.nx + body.c * st.nz);
+    w[0].share[first + i] = f32(face.share); w[0].square[first + i] = f32(face.square);
+  }
+}
+// Reads a body's stations' sea from cascade 0's tile through the lee's grid (baked round
+// `frame`): the height that arrives and its sharpness (1 - Jacobian), both times the lee's gain.
+wall_read :: (body: Floater, frame: Floater, grid: [] LeeGrid, tile: [] Tile, patch: f64, first: int, n: int, heights: [] f32, sharp: [] f32) {
+  size := tile[0].size;
+  for i: 0..<n {
+    st := wall_station(body, n, i);
     // a metre off the wall, in open water
     p := lee_world(body, st.x + st.nx, st.z + st.nz);
-    g := lee_sample(grid, st.x + st.nx, st.z + st.nz, 0);
-    heights[i] = f32(g * wall_at(tile[0].height[..], n, patch, p.x, p.y));
-    sharp[i] = f32(g * (1.0 - wall_at(tile[0].jacobian[..], n, patch, p.x, p.y)));
+    q := lee_local(frame, p.x, p.y);
+    g := lee_sample(grid, q.x, q.y, 0);
+    heights[first + i] = f32(g * wall_at(tile[0].height[..], size, patch, p.x, p.y));
+    sharp[first + i] = f32(g * (1.0 - wall_at(tile[0].jacobian[..], size, patch, p.x, p.y)));
   }
 }
-// One step of dt seconds. heights and sharp are wall_read's; `breaks` is 1 less the sea's
-// whitecap threshold (wsp_whitecap_threshold): how sharp a travelling crest is when it breaks.
-// (wind_x, wind_z) is the wind, m/s, world; `level` the still water's height, world.
-wall_step :: (w: [] WallSpray, body: Floater, sea: WallSea, heights: [] f32, sharp: [] f32, breaks: f64, wind_x: f64, wind_z: f64, level: f64, dt: f64) {
+// One step of dt seconds for a body's stations; wall_tick then moves the clock on, once for all
+// the bodies. heights and sharp are wall_read's; `breaks` is 1 less the sea's whitecap threshold
+// (wsp_whitecap_threshold): how sharp a travelling crest is when it breaks. (wind_x, wind_z) is
+// the wind, m/s, world; `level` the still water's height, world.
+wall_tick :: (w: [] WallSpray, dt: f64) { if dt > 0.0 { w[0].begun = true; w[0].time += dt; } }
+wall_step :: (w: [] WallSpray, body: Floater, sea: WallSea, first: int, count: int, heights: [] f32, sharp: [] f32, breaks: f64, wind_x: f64, wind_z: f64, level: f64, dt: f64) {
   if dt <= 0.0 { return; }
-  count := w[0].count;
   keep := f32(exp(-dt / WALL_FOAM_LIFE));
   spacing := (ifx body.round then TAU_D * body.hx else 4.0 * (body.hx + body.hz)) / f64(count);
-  for i: 0..<count {
+  for j: 0..<count {
+    i := first + j;
     h := f64(heights[i]);
     v := ifx w[0].begun then (h - f64(w[0].last[i])) / dt else 0.0;
     w[0].foam[i] *= keep;
@@ -292,7 +299,7 @@ wall_step :: (w: [] WallSpray, body: Floater, sea: WallSea, heights: [] f32, sha
       impact := WALL_IMPACT * sea.speed * sqrt(b) * f64(w[0].square[i]) * share;
       jet := sqrt(slosh * slosh + impact * impact);
       if b > 0.0 && crest > 0.0 && jet > WALL_ONSET {
-        st := wall_station(body, count, i);
+        st := wall_station(body, count, j);
         at := lee_world(body, st.x + 0.6 * st.nx, st.z + 0.6 * st.nz);
         nx := body.c * st.nx - body.s * st.nz; nz := body.s * st.nx + body.c * st.nz;
         amount := fclamp((jet - WALL_ONSET) / WALL_ONSET, 0.15, 1.0) * (0.4 + 0.6 * b);
@@ -317,8 +324,6 @@ wall_step :: (w: [] WallSpray, body: Floater, sea: WallSea, heights: [] f32, sha
     }
     w[0].last[i] = f32(h);
   }
-  w[0].begun = true;
-  w[0].time += dt;
 }
 // Bursts still in the air.
 wall_live :: (w: [] WallSpray) -> int {
@@ -354,7 +359,8 @@ wall_run :: (wind: f64, seconds: int) -> WallRun {
   lee_bake(grid[..], body, bodies[..], 1, long, long);
   sea := wall_sea(s[..], 0, 2.0 * body.hz, body.draft);
   w: [1] WallSpray;
-  wall_arrange(w[..], body, sea, 320);
+  wall_begin(w[..], 320);
+  wall_arrange(w[..], body, sea, 0, 320);
   heights: [WALL_STATIONS] f32; sharp: [WALL_STATIONS] f32;
   wd := wsp_direction(sp);
   o: WallRun; o.significant = sea.significant;
@@ -362,8 +368,9 @@ wall_run :: (wind: f64, seconds: int) -> WallRun {
   for step: 0..<seconds * 10 {
     wsp_tile(s[..], 0, cast(u64) (step * 12), t[..]);
     breaks := 1.0 - f64(wsp_whitecap_threshold(t[..], wind));
-    wall_read(w[..], body, grid[..], t[..], c0.patch, heights[..], sharp[..]);
-    wall_step(w[..], body, sea, heights[..], sharp[..], breaks, wd.x * wind, wd.y * wind, 0.0, 0.1);
+    wall_read(body, body, grid[..], t[..], c0.patch, 0, 320, heights[..], sharp[..]);
+    wall_step(w[..], body, sea, 0, 320, heights[..], sharp[..], breaks, wd.x * wind, wd.y * wind, 0.0, 0.1);
+    wall_tick(w[..], 0.1);
     // every new burst: on a face the sea meets, and above still water
     while seen < w[0].thrown {
       r := SPRAY_ROW * (seen % WALL_BURSTS);
