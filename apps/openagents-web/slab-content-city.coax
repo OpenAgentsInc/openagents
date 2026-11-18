@@ -1,0 +1,322 @@
+// SLAB's architectural and industrial detail (docs/metaverse/photoreal.md; spec section 7): what
+// makes the deck read as a built place from walking height. A content set of slab-content.coax.
+//
+// Nothing here is placed by hand. Every piece follows a rule over the plan's records as they are
+// this frame (metaverse/slab-plan.coax, after slab-change.coax has sized the hull and cut the
+// dock), so a longer hull or a re-planned deck gets its detail with no edit here:
+//   the edge      a parapet and handrail round the wall's top and the dock's basin, the promenade's
+//                 lamps and benches, stair and lift heads
+//   the dock      cranes on the basin's rims, a landing stage with its gangway, fenders, bollards
+// The parts are the Metaverse Engine's (metaverse-engine/arch/city.coax, works.coax, plaza.coax).
+// Small things carry a distance (pr_near) and most are fine (pr_fine): a phone leaves those out.
+#load "../../metaverse-engine/arch/works.coax";
+#load "../../metaverse-engine/arch/plaza.coax";
+
+CITY_SEED :: 7129;
+CITY_PI :: 3.14159265f32;
+// How near the eye a small thing is drawn (m): about where it is two pixels across.
+CITY_NEAR_RAIL :: 140.0f32; CITY_NEAR_POST :: 130.0f32; CITY_NEAR_SEAT :: 200.0f32; CITY_NEAR_LAMP :: 330.0f32;
+CITY_NEAR_KERB :: 460.0f32; CITY_NEAR_PLANT :: 1500.0f32;
+// What the last list placed, by rule (the report's and the checks' counts).
+CITY_EDGE :: 0; CITY_DOCK :: 1; CITY_RULES :: 2;
+
+SlabCity :: struct {
+  made: bool;
+  look: ArchCityLook;        // the material rows: metal, dark, glass, lamp, stone, paint
+  // parts
+  rail: int; lamp_post: int; bench: int; bollard: int; lift: int; stair_head: int;
+  crane: int; ramp: int;
+  placed: [CITY_RULES] int;
+}
+
+// ---- once: the materials and the parts
+slab_city_make :: (ph: [] SlabPhoto, p: [] ArchPen) {
+  c: SlabCity; k: ArchCityLook;
+  k.metal = photo_material(ph, 0.95, 0.95, 0.94, 0.5, 0, PR_PATTERN_PLAIN, 0, 0);
+  k.dark = photo_material(ph, 0.09, 0.1, 0.11, 0.6, 0, PR_PATTERN_PLAIN, 0, 0);
+  k.glass = photo_material(ph, 0.24, 0.31, 0.35, 0.08, 0.6, PR_PATTERN_PLAIN, 0, 0);
+  k.lamp = photo_material(ph, 1.0, 0.94, 0.8, 0.4, 0, PR_PATTERN_PLAIN, 0, 0);
+  k.stone = photo_material(ph, 0.8, 0.78, 0.73, 0.85, 0, PR_PATTERN_CONCRETE, 0, 0);
+  k.paint = photo_material(ph, 0.95, 0.95, 0.92, 0.75, 0, PR_PATTERN_PLAIN, 0, 0);
+  c.look = k;
+  c.rail = photo_part(ph, arch_railing(p, k, 12, 0.34, 5, 2));
+  c.lamp_post = photo_part(ph, arch_street_lamp(p, k, 8.5, 2.2));
+  c.bench = photo_part(ph, arch_bench(p, 2.2));
+  c.bollard = photo_part(ph, arch_bollard(p, k, 0.9, 0.12));
+  c.lift = photo_part(ph, arch_kiosk(p, k, 3, 3, 3.6));
+  c.stair_head = photo_part(ph, arch_kiosk(p, k, 3.2, 5, 3.1));
+  c.crane = photo_part(ph, arch_dock_crane(p, k, 5, 22, 30));
+  c.ramp = photo_part(ph, arch_gangway(p, k, 18, 6, 1.6));
+  c.made = c.ramp >= 0;
+  ph[0].content.city = c;
+}
+
+// ---- reading the plan
+city_rec :: (w: SlabWorld, i: int, k: int) -> f32 { return w.records[i * SLAB_RECORD + k]; }
+city_kind :: (w: SlabWorld, i: int) -> int { return cast(int) (city_rec(w, i, 3) + 0.5); }
+city_shape :: (w: SlabWorld, i: int) -> int { return cast(int) (city_rec(w, i, 7) + 0.5); }
+// The deck, from the hull's own records: its bounds, its height, and the dock's basin if one is
+// cut (the hull piece that stands in from the south wall stands behind it).
+CityDeck :: struct { ok: bool; x0: f32; z0: f32; x1: f32; z1: f32; y: f32; dock: bool; bx0: f32; bx1: f32; bz: f32; }
+city_deck :: (w: SlabWorld) -> CityDeck {
+  d: CityDeck;
+  if w.count < SLAB_HULL_PIECES { return d; }
+  top: f32 = -1000000;
+  for i: 0..<SLAB_HULL_PIECES { if city_kind(w, i) == SLAB_KIND_HULL && city_rec(w, i, 5) > top { top = city_rec(w, i, 5); } }
+  d.x0 = 1000000; d.z0 = 1000000; d.x1 = -1000000; d.z1 = -1000000; d.y = top;
+  n := 0;
+  for i: 0..<SLAB_HULL_PIECES {
+    if city_kind(w, i) != SLAB_KIND_HULL || city_rec(w, i, 5) < top - 0.01 || city_rec(w, i, 4) - city_rec(w, i, 0) < 4 || city_rec(w, i, 6) - city_rec(w, i, 2) < 4 { continue; }
+    d.x0 = arch_lowf(d.x0, city_rec(w, i, 0)); d.x1 = arch_highf(d.x1, city_rec(w, i, 4));
+    d.z0 = arch_lowf(d.z0, city_rec(w, i, 2)); d.z1 = arch_highf(d.z1, city_rec(w, i, 6));
+    n += 1;
+  }
+  d.ok = n > 0 && d.x1 - d.x0 > 120 && d.z1 - d.z0 > 120;
+  if !d.ok { return d; }
+  for i: 0..<SLAB_HULL_PIECES {
+    if city_kind(w, i) != SLAB_KIND_HULL || city_rec(w, i, 5) < top - 0.01 { continue; }
+    if city_rec(w, i, 0) > d.x0 + 1 && city_rec(w, i, 4) < d.x1 - 1 && city_rec(w, i, 2) > d.z0 + 4 {
+      d.dock = true; d.bx0 = city_rec(w, i, 0); d.bx1 = city_rec(w, i, 4); d.bz = city_rec(w, i, 2);
+    }
+  }
+  return d;
+}
+// Whether (x, z) is on the deck, m clear of its edge and the basin.
+city_on :: (d: CityDeck, x: f32, z: f32, m: f32) -> bool {
+  if x < d.x0 + m || x > d.x1 - m || z < d.z0 + m || z > d.z1 - m { return false; }
+  return !(d.dock && x > d.bx0 - m && x < d.bx1 + m && z < d.bz + m);
+}
+// Whether (x, z) is on the deck and m clear of everything that stands on it or is cut into it
+// (but record `skip`: what a piece is fixed to). Hawsers and the dome layouts' pieces are not
+// on the deck; statues are (their rows stand on the promenade).
+city_open :: (w: SlabWorld, d: CityDeck, x: f32, z: f32, m: f32, skip: int) -> bool {
+  if !city_on(d, x, z, m) { return false; }
+  for i: SLAB_HULL_PIECES..<w.count {
+    if i == skip { continue; }
+    o := i * SLAB_RECORD;
+    if w.records[o + 5] < d.y - 0.5 { continue; }
+    sh := cast(int) (w.records[o + 7] + 0.5);
+    if (sh >= 7 && sh <= 10) || sh >= SLAB_SILONE { continue; }
+    x0 := w.records[o]; z0 := w.records[o + 2]; x1 := w.records[o + 4]; z1 := w.records[o + 6];
+    if x < x0 - m || x > x1 + m || z < z0 - m || z > z1 + m { continue; }
+    if sh == SLAB_CYLINDER || sh == SLAB_DOME {
+      cx := (x0 + x1) * 0.5; cz := (z0 + z1) * 0.5; rr := arch_lowf(x1 - x0, z1 - z0) * 0.5 + m;
+      if (x - cx) * (x - cx) + (z - cz) * (z - cz) < rr * rr { return false; }
+      continue;
+    }
+    return false;
+  }
+  return true;
+}
+
+// ---- placing
+// A part's turn so that its +z (the way a wall's part faces) looks along (nx, nz), and so that
+// its +x (the way a run lies) lies along (tx, tz). Both for the four level directions. A part's
+// +x runs along (cos yaw, 0, -sin yaw) and its +z along (sin yaw, 0, cos yaw).
+city_facing :: (nx: f32, nz: f32) -> f32 {
+  if nz > 0.5 { return 0; }
+  if nx > 0.5 { return CITY_PI * 0.5; }
+  if nz < -0.5 { return CITY_PI; }
+  return -CITY_PI * 0.5;
+}
+city_along :: (tx: f32, tz: f32) -> f32 {
+  if tx > 0.5 { return 0; }
+  if tz > 0.5 { return -CITY_PI * 0.5; }
+  if tx < -0.5 { return CITY_PI; }
+  return CITY_PI * 0.5;
+}
+// One of a part, drawn within `reach` metres (0: at any distance).
+city_put :: (l: [] PrList, part: int, x: f32, y: f32, z: f32, yaw: f32, reach: f32) -> int {
+  r := pr_put(l, part, x, y, z, yaw, 1);
+  if reach > 0 { pr_near(l, r, reach); }
+  return r;
+}
+// A box of one material and tint between two corners.
+city_box :: (ph: [] SlabPhoto, l: [] PrList, x0: f32, y0: f32, z0: f32, x1: f32, y1: f32, z1: f32, material: int, red: f32, green: f32, blue: f32, reach: f32) -> int {
+  r := pr_box(l, ph[0].box, arch_lowf(x0, x1), y0, arch_lowf(z0, z1), arch_highf(x0, x1), y1, arch_highf(z0, z1), material);
+  pr_tint(l, r, red, green, blue);
+  if reach > 0 { pr_near(l, r, reach); }
+  return r;
+}
+// The records a list holds so far (counted on the first run, written on the second).
+city_total :: (l: [] PrList) -> int {
+  n := 0;
+  for i: 0..<PR_PARTS * 2 { n += ifx l[0].filling then l[0].at[i] else l[0].count[i]; }
+  return n;
+}
+
+// ---- the edge
+// One straight run of the deck's edge from a to b, the water on its n side.
+city_edge_run :: (ph: [] SlabPhoto, l: [] PrList, w: SlabWorld, d: CityDeck, ax: f32, az: f32, bx: f32, bz: f32, nx: f32, nz: f32, basin: bool) {
+  c := ph[0].content.city; y := d.y;
+  run := abs(bx - ax) + abs(bz - az);
+  if run < 6 { return; }
+  tx := (bx - ax) / run; tz := (bz - az) / run;
+  // the parapet: a metre of the wall's own concrete at its face, a drain channel inside its foot
+  pr_fine(l, false);
+  r := pr_box(l, ph[0].box, arch_lowf(ax - nx * 0.5, bx), y, arch_lowf(az - nz * 0.5, bz), arch_highf(ax - nx * 0.5, bx), y + 1.05, arch_highf(az - nz * 0.5, bz), PHOTO_PAINT);
+  pr_value(l, r, 1);
+  pr_fine(l, true);
+  r = city_box(ph, l, ax - nx * 0.95, y, az - nz * 0.95, bx - nx * 0.6, y + 0.02, bz - nz * 0.6, c.look.metal, 0.2, 0.2, 0.21, CITY_NEAR_KERB);
+  pr_laid(l, r);
+  // a handrail along its top
+  n := cast(int) floor(run / 12 + 0.5); if n < 1 { n = 1; }
+  seg := run / cast(f32) n;
+  for k: 0..<n {
+    s := (cast(f32) k + 0.5) * seg;
+    r = city_put(l, c.rail, ax + tx * s - nx * 0.25, y + 1.05, az + tz * s - nz * 0.25, city_along(tx, tz), CITY_NEAR_RAIL);
+    pr_stretch(l, r, seg / 12, 1, 1); pr_tint(l, r, 0.6, 0.62, 0.64);
+  }
+  // lamps along the walk, their arms over it, and benches between them
+  lamps := cast(int) floor(run / 36);
+  for k: 0..<lamps {
+    s := (cast(f32) k + 0.5) * run / cast(f32) lamps;
+    px := ax + tx * s - nx * 2.6; pz := az + tz * s - nz * 2.6;
+    if city_open(w, d, px, pz, 0.7, -1) { _ = city_put(l, c.lamp_post, px, y, pz, city_along(-nx, -nz), CITY_NEAR_LAMP); }
+    if basin || k == 0 { continue; }
+    s = cast(f32) k * run / cast(f32) lamps;
+    px = ax + tx * s - nx * 2.3; pz = az + tz * s - nz * 2.3;
+    if city_open(w, d, px, pz, 1.3, -1) { r = city_put(l, c.bench, px, y, pz, city_along(tx, tz), CITY_NEAR_SEAT); pr_made_of(l, r, c.look.metal); }
+  }
+  // the heads of the stairs and lifts that come up through the hull: a lift, then a stair
+  pr_fine(l, false);
+  heads := ifx basin then 0 else cast(int) floor(run / 220);
+  for k: 0..<heads {
+    s := (cast(f32) k + 0.5) * run / cast(f32) heads;
+    px := ax + tx * s - nx * 9; pz := az + tz * s - nz * 9;
+    if city_open(w, d, px, pz, 3.4, -1) { _ = city_put(l, ifx k % 2 == 0 then c.lift else c.stair_head, px, y, pz, city_facing(-nx, -nz), CITY_NEAR_PLANT); }
+  }
+}
+city_edge :: (ph: [] SlabPhoto, l: [] PrList, w: SlabWorld, d: CityDeck) {
+  city_edge_run(ph, l, w, d, d.x0, d.z1, d.x1, d.z1, 0, 1, false);
+  city_edge_run(ph, l, w, d, d.x1, d.z0, d.x1, d.z1, 1, 0, false);
+  city_edge_run(ph, l, w, d, d.x0, d.z0, d.x0, d.z1, -1, 0, false);
+  if !d.dock { city_edge_run(ph, l, w, d, d.x0, d.z0, d.x1, d.z0, 0, -1, false); return; }
+  city_edge_run(ph, l, w, d, d.x0, d.z0, d.bx0, d.z0, 0, -1, false);
+  city_edge_run(ph, l, w, d, d.bx1, d.z0, d.x1, d.z0, 0, -1, false);
+  city_edge_run(ph, l, w, d, d.bx0, d.z0, d.bx0, d.bz, 1, 0, true);
+  city_edge_run(ph, l, w, d, d.bx1, d.z0, d.bx1, d.bz, -1, 0, true);
+  city_edge_run(ph, l, w, d, d.bx0, d.bz, d.bx1, d.bz, 0, -1, true);
+}
+
+// ---- the dock
+city_dock :: (ph: [] SlabPhoto, l: [] PrList, w: SlabWorld, d: CityDeck) {
+  if !d.dock || d.bx1 - d.bx0 < 40 || d.bz - d.z0 < 30 { return; }
+  c := ph[0].content.city; k := c.look;
+  mid := (d.bx0 + d.bx1) * 0.5; deep := d.bz - d.z0;
+  pr_fine(l, false);
+  // cranes on the rims, their booms over the basin
+  for side: 0..<2 {
+    for j: 0..<2 {
+      z := d.z0 + deep * (0.28 + 0.44 * cast(f32) j);
+      x := ifx side == 0 then d.bx0 - 3.4 else d.bx1 + 3.4;
+      _ = city_put(l, c.crane, x, d.y, z, city_facing(ifx side == 0 then -1.0f32 else 1.0f32, 0), 0);
+    }
+  }
+  // a landing stage afloat under the basin's head wall, bollards along it, a lift up the wall
+  // and a gangway from the stage up to a landing at a door in the head wall
+  x0 := d.bx0 + 10; x1 := d.bx1 - 10; z1 := d.bz - 0.6; z0 := z1 - 9;
+  _ = city_box(ph, l, x0, -0.7, z0, x1, 0.9, z1, k.stone, 1, 1, 1, 0);
+  _ = city_box(ph, l, mid - 22, 0.9, d.bz - 4.4, mid - 18, d.y, d.bz, k.stone, 1, 1, 1, 0);
+  if city_open(w, d, mid - 20, d.bz + 3.2, 2.0, -1) { _ = city_put(l, c.lift, mid - 20, d.y, d.bz + 3.2, 0, CITY_NEAR_PLANT); }
+  _ = city_put(l, c.ramp, mid - 9, 0.9, d.bz - 2.0, 0, CITY_NEAR_PLANT);
+  _ = city_box(ph, l, mid + 9, 6.7, d.bz - 3.2, mid + 13, 6.9, d.bz, k.metal, 0.4, 0.42, 0.44, 0);
+  _ = city_box(ph, l, mid + 10, 6.9, d.bz - 0.1, mid + 12.2, 9.2, d.bz, k.dark, 1, 1, 1, 0);
+  pr_fine(l, true);
+  n := cast(int) floor((x1 - x0) / 10);
+  for j: 0..<n + 1 {
+    x := x0 + 1 + (x1 - x0 - 2) * cast(f32) j / cast(f32) n;
+    r := pr_put(l, c.bollard, x, 0.9, z0 + 0.9, 0, 1.4); pr_near(l, r, CITY_NEAR_SEAT);
+  }
+  // fenders down the side walls at the water
+  for side: 0..<2 {
+    x := ifx side == 0 then d.bx0 + 0.55 else d.bx1 - 0.55;
+    m := cast(int) floor((deep - 14) / 9);
+    for j: 0..<m {
+      r := city_put(l, ph[0].post, x, -2.2, d.z0 + 5 + 9 * cast(f32) j, 0, CITY_NEAR_KERB);
+      pr_stretch(l, r, 1.1, 5.4, 1.1); pr_made_of(l, r, k.dark);
+    }
+  }
+  pr_fine(l, false);
+}
+
+// ---- the set's calls (slab-content.coax)
+slab_city_place :: (ph: [] SlabPhoto, l: [] PrList, w: SlabWorld) {
+  if !ph[0].content.city.made || w.layout != LAYOUT_PRIME || w.build { return; }
+  d := city_deck(w);
+  if !d.ok { return; }
+  n: [CITY_RULES + 1] int;
+  n[0] = city_total(l);
+  city_edge(ph, l, w, d); n[1] = city_total(l);
+  city_dock(ph, l, w, d); n[2] = city_total(l);
+  pr_fine(l, false);
+  if l[0].filling { for k: 0..<CITY_RULES { ph[0].content.city.placed[k] = n[k + 1] - n[k]; } }
+}
+// The lamps' lenses: the material content-green's night lamps light (slab-content-green.coax).
+slab_city_lamp :: (ph: [] SlabPhoto) -> int { return ifx ph[0].content.city.made then ph[0].content.city.look.lamp else 0; }
+
+// ---- checks
+city_test_world :: (rec: [] f32, n: int) -> SlabWorld { return SlabWorld.{records = rec, count = n, layout = LAYOUT_PRIME, build = false, build_day = 0, reduced = false, time = 0, hour = 12, night = 0}; }
+#test "the city reads the deck from the hull's own records: its bounds, its height and the dock's basin" {
+  rec: [SLAB_MAX_BOXES * SLAB_RECORD] f32;
+  n := slab_plan(rec[..]);
+  w := city_test_world(rec[..], n);
+  d := city_deck(w);
+  // the plan as drawn: one hull, no basin
+  #assert d.ok && !d.dock && d.x0 == -SLAB_LENGTH / 2 && d.x1 == SLAB_LENGTH / 2 && d.z0 == -SLAB_BEAM / 2 && d.z1 == SLAB_BEAM / 2 && d.y == SLAB_DECK;
+  #assert !city_on(d, SLAB_LENGTH / 2 - 0.5, 0, 1) && city_on(d, SLAB_LENGTH / 2 - 2, 0, 1);
+  // a hull in three blocks round a basin, as slab-change.coax cuts it
+  for i: 0..<SLAB_HULL_PIECES * SLAB_RECORD { rec[i] = 0; }
+  blocks := [12] f32.[-500, -300, -50, 300, 50, -300, 500, 300, -50, -240, 50, 300];
+  for b: 0..<3 {
+    o := b * SLAB_RECORD;
+    rec[o] = blocks[b * 4]; rec[o + 1] = -25; rec[o + 2] = blocks[b * 4 + 1]; rec[o + 3] = cast(f32) SLAB_KIND_HULL;
+    rec[o + 4] = blocks[b * 4 + 2]; rec[o + 5] = 118; rec[o + 6] = blocks[b * 4 + 3]; rec[o + 7] = cast(f32) SLAB_BOX;
+  }
+  d = city_deck(w);
+  #assert d.ok && d.dock && d.bx0 == -50 && d.bx1 == 50 && d.bz == -240 && d.x0 == -500 && d.z0 == -300;
+  #assert !city_on(d, 0, -270, 1) && !city_on(d, 50.5, -270, 1) && city_on(d, 52, -270, 1) && city_on(d, 0, -238, 1);
+  // the directions: a wall's part faces its wall's way, a run lies along its run
+  #assert city_facing(0, 1) == 0 && abs(sin(city_facing(1, 0)) - 1) < 0.0001 && abs(cos(city_facing(0, -1)) + 1) < 0.0001 && abs(sin(city_facing(-1, 0)) + 1) < 0.0001;
+  #assert city_along(1, 0) == 0 && abs(sin(city_along(0, 1)) + 1) < 0.0001 && abs(cos(city_along(-1, 0)) + 1) < 0.0001 && abs(sin(city_along(0, -1)) - 1) < 0.0001;
+}
+#test "the city's detail is placed by rule from the live deck: the edge and the dock get theirs, a phone gets less and the build view none" #steps 20000000000 {
+  s: [1] Slab;
+  u: [UNIFORM_FLOATS] f32;
+  slab_reset(s[..]);
+  slab_build(s[..], false);
+  u[U_MODE + 2] = f32(s[0].box_count);
+  for i: 0..<s[0].box_count * SLAB_RECORD { u[U_BOXES + i] = s[0].boxes[i]; }
+  for i: 0..<12 { u[U_PARAMS + P_POSE + i] = ifx i == 0 || i == 5 || i == 10 then 1.0f32 else 0.0f32; }
+  s[0].eye = [3] f32.[600, 500, 700]; s[0].fwd = [3] f32.[-0.6, -0.5, -0.6245]; s[0].right = [3] f32.[0.72, 0, -0.69]; s[0].up = [3] f32.[-0.35, 0.87, -0.36];
+  s[0].tanh = 0.4; s[0].aspect = 1.6;
+  sun := sim_sun(27.8, 5.5, 17.85);
+  s[0].photo[0].on = true;
+  slab_photo_frame(s[..], u[..], sun, false);
+  ph := s[0].photo[..];
+  c := ph[0].content.city;
+  #assert c.made && !ph[0].full && ph[0].fixed <= PHOTO_VERTICES && ph[0].material_count < PHOTO_PAINT;
+  // the page's deck has the dock cut (slab-change.coax): the basin's rims get cranes and a stage
+  d := city_deck(photo_world(s[..], u[U_BOXES..<U_BOXES + s[0].box_count * SLAB_RECORD], s[0].box_count, false));
+  #assert d.ok && d.dock;
+  #assert c.placed[CITY_EDGE] == 466 && c.placed[CITY_DOCK] == 29;
+  // every record stands on or over the deck's plan, or down the wall or in the basin beside it
+  for r: 0..<ph[0].still {
+    o := r * PR_RECORD_FLOATS;
+    #assert ph[0].records[o] > d.x0 - 3 && ph[0].records[o] < d.x1 + 3 && ph[0].records[o + 2] > d.z0 - 3 && ph[0].records[o + 2] < d.z1 + 3;
+  }
+  // a phone: the fine records are left out
+  full := 0;
+  for dr: 0..<ph[0].draw_count { full += cast(int) ph[0].draws[dr * 4 + 3]; }
+  slab_photo_frame(s[..], u[..], sun, true);
+  less := 0;
+  for dr: 0..<ph[0].draw_count { less += cast(int) ph[0].draws[dr * 4 + 3]; }
+  #assert !ph[0].full && less < full;
+  // the construction view: no rail is drawn
+  s[0].build.on = true;
+  ph[0].keyed = false;
+  slab_photo_frame(s[..], u[..], sun, false);
+  rails := 0;
+  for dr: 0..<ph[0].draw_count { if cast(int) ph[0].draws[dr * 4] == ph[0].kinds[c.rail].first { rails += 1; } }
+  #assert rails == 0;
+}

@@ -231,6 +231,23 @@ either order.
 
 Limits: 16,384 records in all (`PHOTO_RECORDS`).
 
+### The detail set
+
+`apps/openagents-web/slab-content-city.coax` places SLAB's built detail
+from the engine's street and works kits (`metaverse-engine/arch/city.coax`,
+`works.coax`). Every piece follows a rule over the plan's records as they
+are this rebuild, so a resized hull keeps its detail. It reads the deck's
+bounds, height and dock basin from the hull's own records (`city_deck`) and
+keeps clear of every building (`city_open`). It places on the prime layout
+only, and nothing in the construction view.
+
+| Rule | What it places | Records |
+| --- | --- | --- |
+| The edge | A parapet and handrail round the wall's top and the basin, a drain channel, lamps every 36 m, benches, lift and stair heads | 466 |
+| The dock | Four gantry cranes on the basin's rims, a landing stage, a gangway and a door, a lift shaft, bollards, fenders | 29 |
+
+The lamps' lens material is `slab_city_lamp(ph)`, for the night lights to light.
+
 ### Check it
 
 ```
