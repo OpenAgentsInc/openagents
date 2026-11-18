@@ -170,6 +170,8 @@ cp_send :: (s: [] CoderPage) -> bool {
   i := s[0].nturns;
   s[0].turns[i].ask_n = cp_out(s[0].turns[i].ask[..], text);
   s[0].turns[i].reply_n = 0; s[0].turns[i].ncmds = 0; s[0].turns[i].more_cmds = 0; s[0].turns[i].over = 0; s[0].turns[i].cut = false; s[0].turns[i].blocks = 0; s[0].turns[i].note_n = 0;
+  // a new chat uses the first turns again: nothing of the old ones may show (their sub-agents did, once)
+  s[0].turns[i].nagents = 0; s[0].turns[i].round = 0; s[0].turns[i].round_n = 0; s[0].turns[i].round_asked = 0; s[0].turns[i].waiting = false; s[0].turns[i].info = false; s[0].results_due = false;
   s[0].turns[i].state = CP_RUNNING; s[0].turns[i].stopping = false; s[0].turns[i].fresh = false; s[0].turns[i].h = 0;
   s[0].nturns += 1;
   eb_set(s[0].draft[..], "");
@@ -941,4 +943,6 @@ coder_page_zoom_set :: (s: [] CoderPage, row: int) -> int #export_c #effects(all
   #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"simple\",\"task\":\"again\"}],\"ticket\":4}") == MWW_DELEGATE && s[0].turns[0].nagents == 3;
   #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"stopped\",\"text\":\"\"}") == MWW_ENDED;
   #assert s[0].turns[0].agents[2].state == CP_STOPPED && !s[0].results_due && coder_page_agent_next(s) == -1;
+  // a new chat's first message shows none of them
+  #assert coder_page_new(s) && coder_page_set_text(s, "hi") && coder_page_submit(s) && s[0].turns[0].nagents == 0 && !s[0].turns[0].waiting;
 }
