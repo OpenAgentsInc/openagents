@@ -240,6 +240,10 @@ slab_water :: (p:V2,world:V3,d:V3,dist:f32,t:f32,u:[]f32)->V3 {
   col:V3=v3(0.07f32,0.14f32,0.16f32);
   col=sb_add(col,sb_mul(v3(0.03f32,0.15f32,0.15f32),clampf(c.x/fmax(u[35],0.2f32),0.0f32,1.0f32)));
   col=sb_mul(col,(0.25f32+(0.75f32*amb))*(0.85f32+(0.3f32*fmax(wg_dot3(n,sun),0.0f32))));
+  // the swell's shape: dark troughs, and light through the thin water of the crests (teal)
+  hh:f32=clampf(c.x/fmax(u[35],0.2f32),-1.0f32,1.0f32);
+  col=sb_mul(col,0.7f32+(0.45f32*smoothstep(-1.0f32,1.0f32,hh)));
+  col=sb_add(col,sb_mul(v3(0.03f32,0.12f32,0.11f32),smoothstep(0.1f32,0.9f32,hh)*(0.3f32+(0.7f32*amb))));
   v:V3=sb_mul(d,-1.0f32);
   r:V3=wg_reflect3(d,calm);
   fres:f32=0.02f32+(0.98f32*sb_pow(1.0f32-fmax(wg_dot3(calm,v),0.0f32),5.0f32));
@@ -258,7 +262,7 @@ slab_water :: (p:V2,world:V3,d:V3,dist:f32,t:f32,u:[]f32)->V3 {
   // whitecaps from the foam field, lace between them, and white water along the hull's walls
   froth:f32=(slab_noise(wg_add_f2f2(wg_mul_f2f(p,0.35f32),v2(t*0.2f32,0.0f32)))*0.6f32)+(slab_noise(wg_mul_f2f(p,1.3f32))*0.4f32);
   fine:f32=slab_noise(wg_add_f2f2(wg_mul_f2f(p,0.9f32),v2(t*0.4f32,-t*0.3f32)));
-  caps:f32=smoothstep(0.45f32,0.75f32,c.y*(0.6f32+froth))*(0.45f32+(0.55f32*smoothstep(0.35f32,0.6f32,fine)))*(1.0f32-smoothstep(500.0f32,2500.0f32,dist));
+  caps:f32=smoothstep(0.3f32,0.65f32,c.y*(0.6f32+froth))*(0.45f32+(0.55f32*smoothstep(0.35f32,0.6f32,fine)))*(1.0f32-smoothstep(500.0f32,2500.0f32,dist));
   hp:V3=sb_to_hull(world,u);
   edge:f32=slab_hull_plan(v2(hp.x,hp.z),u);
   if (u[SLAB_P+60]>0.5f32) { edge=1e5f32; }
@@ -269,12 +273,12 @@ slab_water :: (p:V2,world:V3,d:V3,dist:f32,t:f32,u:[]f32)->V3 {
   st1:f32=slab_noise(v2((wa*0.035f32)-(t*0.04f32),wc*0.16f32));
   st2:f32=slab_noise(v2((wa*0.09f32)-(t*0.07f32),(wc*0.4f32)+5.0f32));
   patch:f32=smoothstep(0.3f32,0.7f32,slab_noise(wg_mul_f2f(p,0.015f32)));
-  thin:f32=0.035f32+(footprint*0.002f32);
+  thin:f32=0.05f32+(footprint*0.002f32);
   veins:f32=((1.0f32-smoothstep(0.0f32,thin,abs(st1-0.5f32)))*0.75f32+((1.0f32-smoothstep(0.0f32,thin*0.8f32,abs(st2-0.5f32)))*0.5f32))*(0.3f32+(0.7f32*patch));
   nearhull:f32=1.0f32-smoothstep(15.0f32,140.0f32+(u[SLAB_P+44]*6.0f32),edge);
   crest:f32=0.35f32+(0.65f32*smoothstep(-0.4f32,0.5f32,c.x/fmax(u[35],0.2f32)));
-  lace:f32=veins*crest*((nearhull*0.9f32)+(clampf(u[35]/3.0f32,0.0f32,1.0f32)*1.0f32))*(1.0f32-smoothstep(300.0f32,2000.0f32,dist));
-  wash:f32=(1.0f32-smoothstep(0.0f32,8.0f32+(14.0f32*froth)+u[SLAB_P+44],edge))*smoothstep(0.2f32,0.5f32,froth+(0.2f32*sin((p.x+p.y)*0.08f32+(t*1.3f32))));
+  lace:f32=veins*crest*((nearhull*0.9f32)+(clampf(u[35]/3.0f32,0.0f32,1.0f32)*1.5f32))*(1.0f32-smoothstep(300.0f32,2000.0f32,dist));
+  wash:f32=(1.0f32-smoothstep(0.0f32,14.0f32+(30.0f32*froth)+(u[SLAB_P+44]*0.8f32),edge))*smoothstep(0.2f32,0.5f32,froth+(0.2f32*sin((p.x+p.y)*0.08f32+(t*1.3f32))));
   white:f32=clampf(fmax(fmax(caps*0.95f32,wash*0.95f32),lace*0.8f32),0.0f32,1.0f32);
   foamc:V3=sb_mul(sb_add(sb_mul(v3(0.9f32,0.92f32,0.92f32),0.35f32+(0.55f32*amb)),sb_mul(scol,0.35f32*fmax(wg_dot3(n,sun),0.0f32))),1.0f32);
   col=sb_mix(col,foamc,white);
@@ -502,6 +506,47 @@ slab_grove_hit :: (o:V3,d:V3,lo:V3,hi:V3,glade:bool,limit:f32)->V4 {
   }
   return v4(SLAB_MISS,0.0f32,1.0f32,0.0f32);
 }
+// A row of statues (metaverse/slab-plan.coax slab_statue_near places the same ones): along the
+// box's longer side every 12 m, 1.5 m in from each long edge, a 1.6 m pedestal 1.8 m tall and a
+// 2.4 m figure on it. The candidates are the statues whose stations the ray's span crosses.
+SLAB_STATUE_GAP :: 12.0f32;
+slab_statues_hit :: (o:V3,d:V3,lo:V3,hi:V3,limit:f32)->V4 {
+  best:V4=v4(SLAB_MISS,0.0f32,1.0f32,0.0f32);
+  sp:V2=slab_span(o,d,lo,hi);
+  if ((sp.y<sp.x)||(sp.y<0.0f32)||(sp.x>=limit)) { return best; }
+  t0:f32=fmax(sp.x,0.0f32); t1:f32=fmin(sp.y,limit);
+  alongx:bool=(hi.x-lo.x)>=(hi.z-lo.z);
+  la:f32=ifx alongx then lo.x else lo.z;
+  ha:f32=ifx alongx then hi.x else hi.z;
+  a0:f32=ifx alongx then o.x+(d.x*t0) else o.z+(d.z*t0);
+  a1:f32=ifx alongx then o.x+(d.x*t1) else o.z+(d.z*t1);
+  count:f32=floor((ha-la)/SLAB_STATUE_GAP);
+  i0:f32=fmax(floor((fmin(a0,a1)-la)/SLAB_STATUE_GAP)-1.0f32,0.0f32);
+  i1:f32=fmin(floor((fmax(a0,a1)-la)/SLAB_STATUE_GAP)+1.0f32,count-1.0f32);
+  s0:f32=(ifx alongx then lo.z else lo.x)+1.5f32;
+  s1:f32=(ifx alongx then hi.z else hi.x)-1.5f32;
+  base:f32=lo.y;
+  i:f32=i0;
+  j:s32=0;
+  while (i<=i1)&&(j<64) {
+    c:f32=la+(SLAB_STATUE_GAP*(i+0.5f32));
+    side:s32=0;
+    while side<2 {
+      w:f32=ifx side==0 then s0 else s1;
+      px:f32=ifx alongx then c else w;
+      pz:f32=ifx alongx then w else c;
+      ped:V4=slab_box_hit(o,d,v3(px-0.8f32,base,pz-0.8f32),v3(px+0.8f32,base+1.8f32,pz+0.8f32));
+      if ((ped.x>0.0f32)&&(ped.x<best.x)) { best=ped; }
+      fig:V4=slab_drum_hit(o,d,v3(px-0.38f32,base+1.8f32,pz-0.38f32),v3(px+0.38f32,base+4.2f32,pz+0.38f32));
+      if ((fig.x>0.0f32)&&(fig.x<best.x)) { best=fig; }
+      side+=1;
+    }
+    i+=1.0f32;
+    j+=1;
+  }
+  if (best.x>=limit) { return v4(SLAB_MISS,0.0f32,1.0f32,0.0f32); }
+  return best;
+}
 // The concept image's Greek buildings, traced on their distance fields inside their boxes.
 slab_sd_box :: (p:V3,c:V3,h:V3)->f32 {
   qx:f32=abs(p.x-c.x)-h.x; qy:f32=abs(p.y-c.y)-h.y; qz:f32=abs(p.z-c.z)-h.z;
@@ -622,6 +667,7 @@ slab_record_hit :: (o:V3,d:V3,lo:V3,hi:V3,sh:s32,limit:f32)->V4 {
   if (sh==5) { return slab_grove_hit(o,d,lo,hi,true,limit); }
   if (sh==6) { return slab_dome_hit(o,d,lo,hi); }
   if (sh==11) { return slab_greek_hit(o,d,lo,hi,false,limit); }
+  if (sh==13) { return slab_statues_hit(o,d,lo,hi,limit); }
   if (sh==12) { return slab_greek_hit(o,d,lo,hi,true,limit); }
   return slab_box_hit(o,d,lo,hi);
 }
@@ -1094,6 +1140,9 @@ slab_paint :: (hit:SlabHit,w:V3,d:V3,u:[]f32)->SlabPaint {
     // the plaza: rings of paving round the fountain
     rr:f32=wg_length2(v2(w.x-((hit.lo.x+hit.hi.x)*0.5f32),w.z-((hit.lo.z+hit.hi.z)*0.5f32)));
     c=sb_mix(v3(0.88f32,0.85f32,0.78f32),v3(0.72f32,0.70f32,0.66f32),slab_band(rr,6.0f32,0.12f32));
+  } else if (k==27) {
+    // the statues: white cast stone, a little darker on the pedestal
+    c=ifx w.y<(hit.lo.y+1.8f32) then v3(0.86f32,0.84f32,0.79f32) else v3(0.95f32,0.93f32,0.88f32);
   } else if (k==19) {
     c=v3(0.95f32,0.97f32,1.0f32);
   } else if (k==41) {

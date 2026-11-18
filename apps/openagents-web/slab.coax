@@ -290,6 +290,7 @@ ground_at :: (s: [] Slab, x: f32, z: f32, feet: f32) -> f32 {
     k := rec_kind(s, i);
     if k == SLAB_KIND_POOL { g = lo_f32(g, rec(s, i, 1)); continue; }
     sh := rec_shape(s, i);
+    if sh == SLAB_STATUES { continue; }   // the deck runs on between the statues; their pedestals block
     top := ifx sh == SLAB_GROVE || sh == SLAB_GLADE_GROVE then rec(s, i, 1) + 0.3f32 else rec(s, i, 5);
     if top <= feet + CHAR_STEP && top > g { g = top; }
   }
@@ -308,6 +309,10 @@ blocked :: (s: [] Slab, x: f32, z: f32, feet: f32) -> bool {
       cx := floor(x / SLAB_TREE_CELL); cz := floor(z / SLAB_TREE_CELL);
       t := slab_tree(cx, cz);
       if t.stands && !in_glade(s, i, t.x, t.z) && (x - t.x) * (x - t.x) + (z - t.z) * (z - t.z) < (t.radius * 0.55f32 + CHAR_RADIUS) * (t.radius * 0.55f32 + CHAR_RADIUS) { return true; }
+      continue;
+    }
+    if sh == SLAB_STATUES {
+      if feet < rec(s, i, 5) && slab_statue_near(rec(s, i, 0), rec(s, i, 2), rec(s, i, 4), rec(s, i, 6), x, z, CHAR_RADIUS) { return true; }
       continue;
     }
     if rec(s, i, 5) <= feet + CHAR_STEP || rec(s, i, 1) >= feet + CHAR_TALL { continue; }
@@ -416,7 +421,7 @@ fly_step :: (s: [] Slab, dt: f32) {
 inside_any :: (s: [] Slab, x: f32, y: f32, z: f32) -> bool {
   for i: 0..<s[0].box_count {
     sh := rec_shape(s, i);
-    if sh == SLAB_GROVE || sh == SLAB_GLADE_GROVE { continue; }
+    if sh == SLAB_GROVE || sh == SLAB_GLADE_GROVE || sh == SLAB_STATUES { continue; }
     if y > rec(s, i, 1) - 1 && y < rec(s, i, 5) + 1.5f32 && rec_holds(s, i, x, z, 1.5) { return true; }
   }
   return false;
@@ -527,6 +532,17 @@ pick :: (s: [] Slab, x: f32, y: f32) -> int {
     t := ray_box(o, hd, lo, hi);
     if t < 0 || t >= best { continue; }
     sh := rec_shape(s, i);
+    if sh == SLAB_STATUES {
+      // only a statue itself: walk the ray through the row's box in half metres
+      hitst := false;
+      for k: 0..<80 {
+        tt := t + f32(k) * 0.5f32;
+        qx := o[0] + hd[0] * tt; qy := o[1] + hd[1] * tt; qz := o[2] + hd[2] * tt;
+        if qy < lo[1] - 0.1f32 || qy > hi[1] + 0.1f32 { break; }
+        if slab_statue_near(lo[0], lo[2], hi[0], hi[2], qx, qz, 0) { t = tt; hitst = true; break; }
+      }
+      if !hitst { continue; }
+    }
     if sh == SLAB_CYLINDER || sh == SLAB_DOME {
       // the circle at the hit's height, or at the top
       px := o[0] + hd[0] * t; pz := o[2] + hd[2] * t;
@@ -1018,12 +1034,13 @@ slab_card :: (s: [] Slab, i: int, c: [] Card) {
     ln(c, ST_TITLE, "THE HULL");
     ln(c, ST_SUB, "THE PRIME MONOLITH: REINFORCED, PRESTRESSED CONCRETE");
     ln(c, ST_HEAD, "CONSTRUCTION");
-    ln(c, ST_BODY, "1,000 X 600 X 50 M, CORNERS ROUNDED TO 40 M");
+    ln(c, ST_BODY, "1,000 X 600 X 143 M, SQUARE CORNERS, AS DRAWN");
     ln(c, ST_BODY, "BOTTOM SLAB 1.5 M, DECK 1.0 M, WALLS 1.5 M THICK");
-    ln(c, ST_BODY, "11 + 19 BULKHEADS MAKE 240 CELLS OF 50 X 50 X 50 M");
-    ln(c, ST_BODY, "2.41 MILLION M3 OF CONCRETE: ABOUT 6.0 MT");
+    ln(c, ST_BODY, "11 + 19 BULKHEADS MAKE 240 CELLS, 50 X 50 M IN PLAN");
+    ln(c, ST_BODY, "6.0 MT OF CONCRETE IN THE SPEC'S 50 M HULL; THE");
+    ln(c, ST_BODY, "PICTURE'S TALLER WALL ABOVE IS NOT IN THE BUDGET");
     ln(c, ST_HEAD, "PHYSICS");
-    ln(c, ST_BODY, "DRAFT 25 M, FREEBOARD 25 M, DISPLACES 15.4 MT");
+    ln(c, ST_BODY, "DRAFT 25 M, FREEBOARD 118 M, DISPLACES 15.4 MT");
     ln(c, ST_BODY, "GM 1,188 M ACROSS, 3,321 M ALONG: VERY STIFF");
     ln(c, ST_BODY, "PERIODS: HEAVE 14.2 S, ROLL 13.9 S, PITCH 11.5 S");
     ln(c, ST_BODY, "16 TAUT LINES TO ANCHORS 2 KM OUT, 1,500 M DOWN");
@@ -1083,7 +1100,7 @@ slab_card :: (s: [] Slab, i: int, c: [] Card) {
     ln(c, ST_TITLE, "DESALINATION PLANT");
     ln(c, ST_SUB, "REVERSE OSMOSIS");
     ln(c, ST_HEAD, "CONSTRUCTION");
-    ln(c, ST_BODY, "34 X 120 M, 14 M TALL, BESIDE THE TANK FARM");
+    l0 := line(c, ST_BODY, ""); num(c, l0, f64(x1 - x0), 0); more(c, l0, " X "); num(c, l0, f64(z1 - z0), 0); more(c, l0, " M, "); num(c, l0, f64(y1 - y0), 0); more(c, l0, " M TALL, ON THE WEST WALL");
     ln(c, ST_HEAD, "PHYSICS");
     ln(c, ST_BODY, "100,000 M3 A DAY AT 3.5 KWH/M3: ABOUT 15 MW");
     ln(c, ST_BODY, "SECOND IN THE DISPATCH ORDER");
@@ -1149,7 +1166,7 @@ slab_card :: (s: [] Slab, i: int, c: [] Card) {
   }
   if k == SLAB_KIND_MEDICAL {
     ln(c, ST_TITLE, "MEDICAL CAMPUS");
-    ln(c, ST_SUB, "HOSPITAL AND RESEARCH BLOCKS");
+    ln(c, ST_SUB, "A HOSPITAL BLOCK ON THE SOUTH WALL");
     ln(c, ST_HEAD, "CONSTRUCTION");
     l := line(c, ST_BODY, ""); num(c, l, f64(x1 - x0), 0); more(c, l, " X "); num(c, l, f64(z1 - z0), 0); more(c, l, " M, "); num(c, l, f64(floor(tall / 3.6f32)), 0); more(c, l, " STOREYS");
     ln(c, ST_BODY, "4 TO 6 STOREYS, LOW OVER THE BULKHEADS");
@@ -1168,22 +1185,40 @@ slab_card :: (s: [] Slab, i: int, c: [] Card) {
     return;
   }
   if k == SLAB_KIND_TEMPLE || k == SLAB_KIND_COLONNADE || k == SLAB_KIND_CIVIC {
-    ln(c, ST_TITLE, ifx k == SLAB_KIND_CIVIC then "CIVIC HALL" else ifx k == SLAB_KIND_COLONNADE then "COLONNADED HALL" else "TEMPLE");
+    shape := cast(int) rec(s, i, 7);
+    round := shape == SLAB_THOLOS;
+    ln(c, ST_TITLE, ifx k == SLAB_KIND_CIVIC then "ROTUNDA" else ifx round then "THOLOS" else ifx k == SLAB_KIND_COLONNADE then "COLONNADED HALL" else "TEMPLE");
     ln(c, ST_SUB, district(cx, cz));
     ln(c, ST_HEAD, "CONSTRUCTION");
     l := line(c, ST_BODY, ""); num(c, l, f64(x1 - x0), 0); more(c, l, " X "); num(c, l, f64(z1 - z0), 0); more(c, l, " M, "); num(c, l, f64(tall), 0); more(c, l, " M TALL");
-    ln(c, ST_BODY, ifx k == SLAB_KIND_CIVIC then "A DOMED ASSEMBLY HALL ON THE FOUNTAIN PLAZA" else "CLASSICAL: A COLONNADE UNDER A GABLED ROOF");
+    ln(c, ST_BODY, ifx k == SLAB_KIND_CIVIC then "A DOMED DRUM ON THE CANAL, WITH A PORTICO" else ifx round then "A RING OF COLUMNS ROUND A DOMED CELLA" else ifx shape == SLAB_TEMPLE then "3 STEPS, A PERISTYLE OF COLUMNS, A WALLED CELLA" else "CLASSICAL: A COLONNADE UNDER A GABLED ROOF");
+    if shape == SLAB_TEMPLE { ln(c, ST_BODY, "AN ENTABLATURE AND A PEDIMENTED ROOF ALONG ITS LENGTH"); }
     ln(c, ST_BODY, "WHITE PRECAST CONCRETE, AS IN THE CONCEPT IMAGE");
     return;
   }
   if k == SLAB_KIND_POOL || k == SLAB_KIND_PLAZA || k == SLAB_KIND_FOUNTAIN {
-    canal := k == SLAB_KIND_POOL && x1 - x0 > 100;
-    ln(c, ST_TITLE, ifx canal then "THE CANAL" else "FOUNTAIN PLAZA");
-    ln(c, ST_SUB, "GARDENS AND CIVIC DISTRICT");
+    canal := k == SLAB_KIND_POOL && x1 - x0 > 200;
+    long_pool := k == SLAB_KIND_POOL && !canal && x1 - x0 > 40;
+    ln(c, ST_TITLE, ifx canal then "THE CANAL" else ifx long_pool then "PARTERRE POOL" else "FOUNTAIN PLAZA");
+    ln(c, ST_SUB, district(cx, cz));
     ln(c, ST_HEAD, "CONSTRUCTION");
-    if canal { ln(c, ST_BODY, "315 M LONG, 14 M WIDE, 1.5 M DEEP, LINED WITH CYPRESSES"); }
-    else { ln(c, ST_BODY, "A 76 M ROUND PLAZA, A 26 M BASIN AND A 9 M JET"); }
+    if canal || long_pool {
+      l := line(c, ST_BODY, ""); num(c, l, f64(x1 - x0), 0); more(c, l, " M LONG, "); num(c, l, f64(z1 - z0), 0); more(c, l, " M WIDE, 1.5 M DEEP");
+      ln(c, ST_BODY, ifx canal then "LINED WITH CYPRESSES AND TEMPLE FRONTS" else "BETWEEN TWO PARTERRES OF CLIPPED GROVES");
+    }
+    else { ln(c, ST_BODY, "AN 80 M ROUND PLAZA, A 28 M BASIN AND A 24 M COLUMN"); }
     ln(c, ST_BODY, "FED FROM THE DESALINATION PLANT'S WATER");
+    return;
+  }
+  if k == SLAB_KIND_STATUE {
+    ln(c, ST_TITLE, "STATUE");
+    ln(c, ST_SUB, district(cx, cz));
+    ln(c, ST_HEAD, "CONSTRUCTION");
+    ln(c, ST_BODY, "WHITE CAST STONE: A 2.4 M FIGURE ON A 1.8 M PEDESTAL");
+    ln(c, ST_BODY, "ABOUT 12 T, 4.6 M3 OF IT THE PEDESTAL, ON THE DECK SLAB");
+    count := floor(hi_f32(x1 - x0, z1 - z0) / SLAB_STATUE_GAP) * 2;
+    l := line(c, ST_BODY, "THIS ROW: "); num(c, l, f64(count), 0); more(c, l, " STATUES, 12 M APART ON BOTH SIDES");
+    ln(c, ST_NOTE, "AS THE CONCEPT IMAGE LINES ITS WALKS AND PLAZAS");
     return;
   }
   ln(c, ST_TITLE, district(cx, cz));

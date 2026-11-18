@@ -54,7 +54,8 @@ SLAB_KIND_COLONNADE :: 18;
 SLAB_KIND_FOUNTAIN :: 19;
 SLAB_KIND_DESAL :: 20;
 SLAB_KIND_PIPE :: 21;      // the OTEC cold-water pipes, hanging 1,000 m down through the moonpools
-SLAB_KINDS :: 22;
+SLAB_KIND_STATUE :: 27;    // 22 to 26 are slab-construction.coax's caissons, lifts, boats, cabins and cargo
+SLAB_KINDS :: 28;
 
 SLAB_BOX :: 0;
 SLAB_CYLINDER :: 1;
@@ -66,6 +67,26 @@ SLAB_DOME :: 6;
 // 7 to 10 are slab-construction.coax's hawsers: a capsule between two of the box's corners
 SLAB_TEMPLE :: 11;         // a Greek temple: steps, peristyle, cella, entablature, pedimented roof along its longer side
 SLAB_THOLOS :: 12;         // a round temple: steps, a ring of columns, a domed cella
+SLAB_STATUES :: 13;        // a row of statues on pedestals along both long edges of the box, SLAB_STATUE_GAP apart
+SLAB_STATUE_GAP :: 12.0f32;
+SLAB_STATUE_TALL :: 4.2f32;  // a 1.8 m pedestal, a 2.4 m figure
+
+// Whether (x, z) lies within r of a statue's pedestal in a row over (x0, z0)-(x1, z1). The shader
+// (gpu/slab.coax slab_statues_hit) places the same statues: along the longer side every
+// SLAB_STATUE_GAP from the row's start, 1.5 m in from each long edge, 1.6 m square.
+slab_statue_near :: (x0: f32, z0: f32, x1: f32, z1: f32, x: f32, z: f32, r: f32) -> bool {
+  along_x := x1 - x0 >= z1 - z0;
+  a := ifx along_x then x else z; la := ifx along_x then x0 else z0; ha := ifx along_x then x1 else z1;
+  i := floor((a - la) / SLAB_STATUE_GAP);
+  if i < 0 || i >= floor((ha - la) / SLAB_STATUE_GAP) { return false; }
+  c := la + SLAB_STATUE_GAP * (i + 0.5f32);
+  across := ifx along_x then z else x;
+  s0 := (ifx along_x then z0 else x0) + 1.5f32; s1 := (ifx along_x then z1 else x1) - 1.5f32;
+  return abs(a - c) < 0.8f32 + r && (abs(across - s0) < 0.8f32 + r || abs(across - s1) < 0.8f32 + r);
+}
+slab_statues :: (out: [] f32, n: int, x0: f32, z0: f32, x1: f32, z1: f32) -> int {
+  return slab_put(out, n, x0, SLAB_DECK, z0, x1, SLAB_DECK + SLAB_STATUE_TALL, z1, SLAB_KIND_STATUE, SLAB_STATUES);
+}
 
 slab_put :: (out: [] f32, n: int, x0: f32, y0: f32, z0: f32, x1: f32, y1: f32, z1: f32, kind: int, shape: int) -> int {
   if n >= SLAB_MAX_BOXES || (n + 1) * SLAB_RECORD > out.count { return n; }
@@ -201,6 +222,14 @@ slab_plan :: (out: [] f32) -> int {
     n = slab_put(out, n, 160, SLAB_DECK, z, 296, SLAB_DECK + 2.9f32, z + 2.4f32, SLAB_KIND_CONTAINERS, SLAB_BOX);
   }
   n = slab_shape(out, n, 348, -268, 468, -172, 22, SLAB_KIND_COLONNADE, SLAB_TEMPLE);
+  // The concept image's statues: rows along the canal's banks, round the parterres and the
+  // fountain plaza, on the temple garden's walk, and along the north and east promenades.
+  n = slab_statues(out, n, -70, 134, 205, 168);
+  n = slab_statues(out, n, 20, 180, 228, 278);
+  n = slab_statues(out, n, 342, 185, 422, 265);
+  n = slab_statues(out, n, 318, 100, 412, 140);
+  n = slab_statues(out, n, -90, 286, 490, 296);
+  n = slab_statues(out, n, 486, -290, 496, 290);
   return n;
 }
 
@@ -255,7 +284,7 @@ slab_tree :: (cx: f32, cz: f32) -> SlabTree {
     at := i * SLAB_RECORD;
     #assert boxes[at] < boxes[at + 4] && boxes[at + 1] < boxes[at + 5] && boxes[at + 2] < boxes[at + 6];
     #assert slab_inside(boxes[..], i);
-    #assert cast(int) boxes[at + 3] < SLAB_KINDS && cast(int) boxes[at + 7] <= SLAB_THOLOS;
+    #assert cast(int) boxes[at + 3] < SLAB_KINDS && cast(int) boxes[at + 7] <= SLAB_STATUES;
   }
   // the hull spans keel to deck: 143 m deep, 25 m draft, 118 m of wall as the image draws it
   #assert boxes[1] == -25 && boxes[5] == 118;
@@ -296,4 +325,35 @@ slab_tree :: (cx: f32, cz: f32) -> SlabTree {
     #assert t.z - t.radius > f32(cz) * SLAB_TREE_CELL - 0.01f32 && t.z + t.radius < f32(cz + 1) * SLAB_TREE_CELL + 0.01f32;
     #assert t.height >= 7 && t.height <= 13;
   } }
+}
+
+#test "Every statue stands on open deck: not in water, a building or a grove" {
+  boxes: [SLAB_MAX_BOXES * SLAB_RECORD] f32;
+  n := slab_plan(boxes[..]);
+  rows := 0; statues := 0;
+  for i: SLAB_HULL_PIECES..<n {
+    at := i * SLAB_RECORD;
+    if cast(int) boxes[at + 7] != SLAB_STATUES { continue; }
+    rows += 1;
+    x0 := boxes[at]; z0 := boxes[at + 2]; x1 := boxes[at + 4]; z1 := boxes[at + 6];
+    along_x := x1 - x0 >= z1 - z0;
+    la := ifx along_x then x0 else z0; ha := ifx along_x then x1 else z1;
+    count := cast(int) floor((ha - la) / SLAB_STATUE_GAP);
+    for k: 0..<count {
+      c := la + SLAB_STATUE_GAP * (f32(k) + 0.5f32);
+      for side: 0..<2 {
+        across := ifx side == 0 then (ifx along_x then z0 else x0) + 1.5f32 else (ifx along_x then z1 else x1) - 1.5f32;
+        x := ifx along_x then c else across; z := ifx along_x then across else c;
+        #assert slab_statue_near(x0, z0, x1, z1, x, z, 0);
+        statues += 1;
+        for j: SLAB_HULL_PIECES..<n {
+          bt := j * SLAB_RECORD;
+          kind := cast(int) boxes[bt + 3];
+          if j == i || kind == SLAB_KIND_PLAZA || kind == SLAB_KIND_STATUE { continue; }
+          #assert !(x + 0.8f32 > boxes[bt] && x - 0.8f32 < boxes[bt + 4] && z + 0.8f32 > boxes[bt + 2] && z - 0.8f32 < boxes[bt + 6]);
+        }
+      }
+    }
+  }
+  #assert rows == 6 && statues > 200;
 }
