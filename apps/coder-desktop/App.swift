@@ -89,6 +89,7 @@ final class CoderWindow: NSObject {
     private let session = "coder-desktop-" + UUID().uuidString.lowercased()
     private let line: CGFloat
     private var clock: Timer?
+    private var then: String?   // --then TEXT: sent in a new chat once --send's reply ends
     private var owed = 3   // frames still to draw after a change
 
     init?(resources: String) {
@@ -125,11 +126,15 @@ final class CoderWindow: NSObject {
         RunLoop.main.add(clock, forMode: .common); self.clock = clock
         window.center(); window.makeKeyAndOrderFront(nil); window.makeFirstResponder(editor)
         // Coder --send TEXT sends TEXT at launch, for a check of the whole path with no typing.
-        if let at = CommandLine.arguments.firstIndex(of: "--send"), at + 1 < CommandLine.arguments.count, cd_set_text(page, CommandLine.arguments[at + 1]) != 0 { _ = cd_submit(page) }
+        if let at = CommandLine.arguments.firstIndex(of: "--send"), at + 1 < CommandLine.arguments.count, cd_set_text(page, CommandLine.arguments[at + 1]) != 0, cd_submit(page) != 0,
+           let next = CommandLine.arguments.firstIndex(of: "--then"), next + 1 < CommandLine.arguments.count { then = CommandLine.arguments[next + 1] }
         tick()
     }
 
     func wake() { owed = 3 }
+    var canNew: Bool { cd_running(page) == 0 }
+    /// File > New Chat (Command-N): what the New chat button does.
+    func newChat() { if cd_new(page) != 0 { window.makeFirstResponder(editor) }; wake() }
 
     private func act(_ what: Int32) {
         var out = [CChar](repeating: 0, count: 262144)
@@ -140,8 +145,9 @@ final class CoderWindow: NSObject {
             let n = cd_task(page, session, FileManager.default.homeDirectoryForCurrentUser.path, &out, Int32(out.count))
             worker.write(out, count: Int(n))
         case 2: window.makeFirstResponder(editor)
-        case 3: worker.write(out, count: Int(cd_stop_line(&out, Int32(out.count))))
-        case 4: worker.write(out, count: Int(cd_forget_line(&out, Int32(out.count))))
+        // The line is written into out first: Swift copies an argument before a later one's call fills it.
+        case 3: let n = cd_stop_line(&out, Int32(out.count)); worker.write(out, count: Int(n))
+        case 4: let n = cd_forget_line(&out, Int32(out.count)); worker.write(out, count: Int(n))
         case 5:
             guard cd_copied(page, &out, Int32(out.count)) > 0 else { return }
             let board = NSPasteboard.general; board.clearContents(); board.setString(String(cString: out), forType: .string)
@@ -152,6 +158,7 @@ final class CoderWindow: NSObject {
     private func tick() {
         let what = cd_action(page)
         if what != 0 { act(what); wake() }
+        else if let text = then, cd_running(page) == 0 { then = nil; newChat(); act(cd_action(page)); if cd_set_text(page, text) != 0 { _ = cd_submit(page) } }
         // An empty draft leaves the text to the bar, so its placeholder shows under the caret.
         let focused = window.firstResponder === editor
         var used = line
@@ -184,6 +191,9 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
     func applicationWillTerminate(_ notification: Notification) { main?.retire() }
+    @objc func newChat(_ sender: Any?) { main?.newChat() }
+    // New Chat is off while a run is going, as the button is.
+    @objc func validateMenuItem(_ item: NSMenuItem) -> Bool { item.action != #selector(newChat(_:)) || main?.canNew == true }
 }
 
 @main struct CoderApp {
@@ -192,6 +202,9 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         let delegate = CoderDelegate(); app.delegate = delegate
         let bar = NSMenu(), appItem = NSMenuItem(), editItem = NSMenuItem()
         let appMenu = NSMenu(), edit = NSMenu(title: "Edit")
+        let fileItem = NSMenuItem(), file = NSMenu(title: "File")
+        file.addItem(withTitle: "New Chat", action: #selector(CoderDelegate.newChat(_:)), keyEquivalent: "n").target = delegate
+        fileItem.submenu = file
         appMenu.addItem(withTitle: "Hide Coder", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Quit Coder", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
@@ -202,7 +215,7 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         edit.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
         edit.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
         edit.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
-        appItem.submenu = appMenu; editItem.submenu = edit; bar.addItem(appItem); bar.addItem(editItem)
+        appItem.submenu = appMenu; editItem.submenu = edit; bar.addItem(appItem); bar.addItem(fileItem); bar.addItem(editItem)
         app.mainMenu = bar
         app.run()
     }

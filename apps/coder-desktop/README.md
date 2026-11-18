@@ -13,7 +13,7 @@ the typing mark and notices. The shared AppKit editor
 
 - **Send** (or Return) starts one Microcoder run. Shift-Return makes a new line.
 - **Stop** ends the run.
-- **New chat** clears the window and makes Microcoder forget the conversation.
+- **New chat** (or Command-N) clears the window and makes Microcoder forget the conversation.
 - **Copy** on a code block puts its text on the clipboard.
 
 Limits, all shown on screen when you reach them:
@@ -72,6 +72,12 @@ To send a message at launch, with no typing:
 
 ```sh
 open -n apps/coder-desktop/build/Coder.app --args --send "What is 2+2?"
+```
+
+Add `--then TEXT` to start a new chat once that reply ends and send `TEXT` in it:
+
+```sh
+open -n apps/coder-desktop/build/Coder.app --args --send "Say hi." --then "What is 2+2?"
 ```
 
 ## Checks

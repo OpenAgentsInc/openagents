@@ -153,6 +153,12 @@ cp_cmd_add :: (s: [] CoderPage, i: int, text: string, output: string, read: bool
   s[0].turns[i].cmds[k].read = read; s[0].turns[i].cmds[k].failed = failed;
   s[0].turns[i].ncmds = k + 1; s[0].turns[i].h = 0;
 }
+// A new chat: the window clears and the host has the worker forget. Not while a run is going.
+cp_new :: (s: [] CoderPage) -> bool {
+  if cp_running(s) { return false; }
+  s[0].nturns = 0; s[0].scroll = 0; s[0].stick = true; s[0].copied_turn = -1; s[0].ask = CP_ASK_NEW; return true;
+}
+coder_page_new :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && cp_new(s); }
 cp_press :: (s: [] CoderPage, row: int) -> bool {
   act := surface_action(s[0].surface[..], row);
   if act == CP_TOOL {
@@ -168,9 +174,7 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
     if cp_running(s) { s[0].turns[s[0].nturns - 1].stopping = true; s[0].ask = CP_ASK_STOP; return true; }
     return cp_send(s);
   }
-  if act == CP_NEW && !cp_running(s) {
-    s[0].nturns = 0; s[0].scroll = 0; s[0].stick = true; s[0].copied_turn = -1; s[0].ask = CP_ASK_NEW; return true;
-  }
+  if act == CP_NEW { return cp_new(s); }
   if act == CP_COPY {
     id := surface_id(s[0].surface[..], row);
     turn := cp_number(id, "t"); block := cp_number(id, ".code.");
@@ -463,4 +467,18 @@ coder_page_scale :: () -> f32 #export_c #effects(all) { return ARCADE_PHONE_SCAL
   ar: [1] ClArena; buf: [8192] u8; ar[0].buf = buf[..]; back: [1] McTask;
   #assert n > 0 && mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].task == "Skills: gamebuilder.\n\nList my games";
   #assert cast(string) s[0].turns[0].ask[0..<s[0].turns[0].ask_n] == "List my games";
+}
+
+#test "after a reply and a new chat, the next message still makes a task" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  coder_page_skills(s, "Skills: gamebuilder.\n\n");
+  #assert coder_page_set_text(s, "Write three paragraphs") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND;
+  out: [8192] u8; n := coder_page_task(s, "s-1", "/w", out[..]);
+  #assert n > 0;
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"done\"}") == MWW_ENDED && !cp_running(s);
+  #assert coder_page_new(s) && s[0].nturns == 0 && coder_page_action(s) == CP_ASK_NEW;
+  #assert coder_page_set_text(s, "run some gamebuilder commands tell me what u see") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND;
+  n = coder_page_task(s, "s-1", "/w", out[..]);
+  #assert n > 0;
 }

@@ -65,6 +65,7 @@ void cd_env(void *page, int focused, float editor_height, int reduced) {
   c->focused = focused != 0; c->editor_height = editor_height; c->reduced = reduced != 0;
 }
 int cd_set_text(void *page, const char *text) { CoderHost *c = page; if (!c) return 0; cd_changed(c); return coder_page_set_text(cd_state(c), cd_string(text)); }
+int cd_new(void *page) { CoderHost *c = page; if (!c) return 0; cd_changed(c); return coder_page_new(cd_state(c)); }
 int cd_submit(void *page) { CoderHost *c = page; if (!c) return 0; cd_changed(c); return coder_page_submit(cd_state(c)); }
 int cd_action(void *page) { CoderHost *c = page; return c ? (int)coder_page_action(cd_state(c)) : 0; }
 int cd_task(void *page, const char *session, const char *cwd, char *out, int cap) {

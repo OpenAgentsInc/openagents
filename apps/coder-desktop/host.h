@@ -17,6 +17,8 @@ void cd_env(void *page, int focused, float editor_height, int reduced);
 int cd_set_text(void *page, const char *text);
 // Return in the editor: 1 when the draft was sent (cd_action then says so).
 int cd_submit(void *page);
+// A new chat, as the New chat button makes one. 0 while a run is going.
+int cd_new(void *page);
 // What the page asks for, once: 0 nothing, 1 the draft was sent (write cd_task to the worker and
 // empty the editor), 2 the text wants the keyboard, 3 stop the run (cd_stop_line), 4 a new chat
 // (cd_forget_line), 5 a code block's Copy (cd_copied is its text).
