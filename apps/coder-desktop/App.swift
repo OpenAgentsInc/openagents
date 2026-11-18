@@ -35,6 +35,8 @@ final class CoderWorker {
         // find what is installed for this person (gamebuilder is in ~/.local/bin).
         var env = ProcessInfo.processInfo.environment
         env["PATH"] = CoderWorker.path
+        // The Claude key goes to the Claude worker only: Microcoder's commands never see it.
+        env["CODER_CLAUDE_KEY"] = program == "claudeworker" ? CoderKey.current : nil
         p.environment = env
         p.standardInput = into; p.standardOutput = out; p.standardError = FileHandle.nullDevice
         held = Data()
@@ -71,6 +73,37 @@ final class CoderWorker {
         try? i?.close()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { if p?.isRunning == true { p?.terminate() } }
     }
+}
+
+/// The key Claude sub-agents use in place of this Mac's Claude Code login: an Anthropic API key, or
+/// a Claude Code token from `claude setup-token`. CODER_CLAUDE_KEY in Coder's launch environment
+/// wins; else the key set with Coder > Claude Key, kept in ~/Library/Application Support/Coder/claude-key,
+/// readable by this user only. nil: the login is used.
+enum CoderKey {
+    static var file: URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first ?? FileManager.default.homeDirectoryForCurrentUser
+        return base.appendingPathComponent("Coder/claude-key")
+    }
+    static var fromLaunch: String? {
+        let key = (ProcessInfo.processInfo.environment["CODER_CLAUDE_KEY"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return key.isEmpty ? nil : key
+    }
+    static var saved: String? {
+        let key = ((try? String(contentsOf: file, encoding: .utf8)) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return key.isEmpty ? nil : key
+    }
+    static var current: String? { fromLaunch ?? saved }
+    /// Keeps a key (mode 600), or removes the kept one when key is empty. False when it could not be written.
+    static func save(_ key: String) -> Bool {
+        let key = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        if key.isEmpty { try? FileManager.default.removeItem(at: file); return saved == nil }
+        try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        guard FileManager.default.createFile(atPath: file.path, contents: Data(key.utf8), attributes: [.posixPermissions: 0o600]) else { return false }
+        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
+        return true
+    }
+    /// The end of a key, for showing which one is set: "…" and its last 4 characters.
+    static func tail(_ key: String) -> String { "…" + key.suffix(4) }
 }
 
 /// The window: the compiled page fills it. The platform editor sits over the composer's text box
@@ -336,6 +369,42 @@ final class CoderWindow: NSObject {
             self.window.makeFirstResponder(self.editor); self.wake()
         }
     }
+    /// Coder > Claude Key: sets, replaces or removes the key Claude sub-agents use. It applies to the
+    /// next Claude sub-agent; one already running keeps what it started with.
+    func chooseKey() {
+        let alert = NSAlert()
+        alert.messageText = "Claude Key"
+        var about = "Claude sub-agents use this key instead of the Claude Code login on this Mac. Paste an Anthropic API key (sk-ant-api…) or a token from claude setup-token (sk-ant-oat…). Coder keeps it in a file only you can read."
+        if let launch = CoderKey.fromLaunch { about += "\n\nThis launch uses the key in CODER_CLAUDE_KEY (" + CoderKey.tail(launch) + "). It wins over a key set here until you open Coder without it." }
+        else if let kept = CoderKey.saved { about += "\n\nThe key set now ends " + CoderKey.tail(kept) + "." }
+        else { about += "\n\nNo key is set now: Claude sub-agents use the Claude Code login." }
+        alert.informativeText = about
+        let field = NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 320, height: 24))
+        field.placeholderString = "sk-ant-…"
+        alert.accessoryView = field
+        alert.addButton(withTitle: "Save")
+        alert.addButton(withTitle: "Cancel")
+        let hadKey = CoderKey.saved != nil
+        if hadKey { alert.addButton(withTitle: "Remove Key").hasDestructiveAction = true }
+        alert.window.initialFirstResponder = field
+        alert.beginSheetModal(for: window) { [weak self] answer in
+            guard let self else { return }
+            defer { self.window.makeFirstResponder(self.editor) }
+            let key: String
+            switch answer {
+            case .alertFirstButtonReturn:
+                key = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                if key.isEmpty { return }
+            case .alertThirdButtonReturn where hadKey: key = ""
+            default: return
+            }
+            if !CoderKey.save(key) {
+                let failed = NSAlert(); failed.messageText = "The key could not be saved."
+                failed.informativeText = "Coder could not write " + CoderKey.file.path + "."
+                failed.beginSheetModal(for: self.window)
+            }
+        }
+    }
     @objc private func deleteFromMenu(_ item: NSMenuItem) { if let id = item.representedObject as? String { delete(id) } }
     /// A right-click on a chat in the sidebar: a menu with Delete Chat.
     private func rightClick(_ event: NSEvent) -> Bool {
@@ -412,6 +481,7 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
     @objc func biggerText(_ sender: Any?) { main?.zoom(1) }
     @objc func smallerText(_ sender: Any?) { main?.zoom(-1) }
     @objc func actualSize(_ sender: Any?) { main?.zoom(nil) }
+    @objc func claudeKey(_ sender: Any?) { main?.chooseKey() }
     // New Chat is off while a run is going, as the button is.
     @objc func validateMenuItem(_ item: NSMenuItem) -> Bool { item.action == #selector(deleteChat(_:)) ? main?.canDelete == true : (item.action != #selector(newChat(_:)) && item.action != #selector(openFolder(_:))) || main?.canNew == true }
 }
@@ -437,6 +507,8 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         plain.target = delegate; plain.isHidden = true; plain.allowsKeyEquivalentWhenHidden = true
         view.addItem(withTitle: "Smaller Text", action: #selector(CoderDelegate.smallerText(_:)), keyEquivalent: "-").target = delegate
         viewItem.submenu = view
+        appMenu.addItem(withTitle: "Claude Key…", action: #selector(CoderDelegate.claudeKey(_:)), keyEquivalent: "").target = delegate
+        appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Hide Coder", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Quit Coder", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")

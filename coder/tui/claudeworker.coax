@@ -12,9 +12,11 @@
 //
 // It takes one task and then exits. Closing its stdin stops it like STOP.
 //
-// The login is the one Claude Code already has on this computer: no API key reaches the child
-// (ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN and ANTHROPIC_BASE_URL are removed), and the SDK
-// never opens a browser. claude is found on PATH. It loads the person's settings as their own
+// The login is the one Claude Code already has on this computer, unless the owner passes a key
+// in CODER_CLAUDE_KEY: an Anthropic API key (sk-ant-api...) becomes the child's ANTHROPIC_API_KEY,
+// and a Claude Code token from `claude setup-token` (sk-ant-oat...) its CLAUDE_CODE_OAUTH_TOKEN.
+// Any other key inherited from the owner's environment (ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN,
+// ANTHROPIC_BASE_URL, CLAUDE_CODE_OAUTH_TOKEN) is removed, and the SDK never opens a browser. claude is found on PATH. It loads the person's settings as their own
 // Claude Code does, saves no session, and runs with no permission prompts, as Microcoder's
 // commands do (danger-full-access).
 //
@@ -71,6 +73,39 @@ cw_model :: (level: string) -> string {
   if level == "haiku" || level == "sonnet" || level == "opus" || level == "fable" { return level; }
   return ifx level.count > 0 then level else "sonnet";
 }
+// The variable a key passed in CODER_CLAUDE_KEY goes into: a Claude Code token from
+// `claude setup-token` starts sk-ant-oat; anything else is taken as an API key.
+CW_OAUTH_PREFIX :: "sk-ant-oat";
+cw_key_var :: (key: string) -> string {
+  if key.count < CW_OAUTH_PREFIX.count { return "ANTHROPIC_API_KEY"; }
+  for i: 0..<CW_OAUTH_PREFIX.count { if key[i] != CW_OAUTH_PREFIX[i] { return "ANTHROPIC_API_KEY"; } }
+  return "CLAUDE_CODE_OAUTH_TOKEN";
+}
+// "NAME=key" for the child's environment, in out; 0 when there is no key or it does not fit.
+cw_key_entry :: (key: string, out: [] u8) -> int {
+  if key.count == 0 { return 0; }
+  name := cw_key_var(key);
+  if name.count + 1 + key.count > out.count { return 0; }
+  n := 0;
+  for c: name { out[n] = c; n += 1; }
+  out[n] = cast(u8) 61; n += 1;
+  for c: key { out[n] = c; n += 1; }
+  return n;
+}
+
+#test "a passed-in key goes to the right variable" {
+  b: [256] u8;
+  #assert cw_key_var("sk-ant-api03-abc") == "ANTHROPIC_API_KEY";
+  #assert cw_key_var("sk-ant-oat01-abc") == "CLAUDE_CODE_OAUTH_TOKEN";
+  #assert cw_key_var("sk-ant") == "ANTHROPIC_API_KEY";
+  n := cw_key_entry("sk-ant-oat01-abc", b[..]);
+  #assert cast(string) b[0..<n] == "CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-abc";
+  n = cw_key_entry("sk-ant-api03-abc", b[..]);
+  #assert cast(string) b[0..<n] == "ANTHROPIC_API_KEY=sk-ant-api03-abc";
+  #assert cw_key_entry("", b[..]) == 0;
+  #assert cw_key_entry("sk-ant-api03-abc", b[0..<10]) == 0;
+}
+
 // A tool result's output: a string, or the text of its blocks, up to CW_OUTPUT bytes.
 cw_output :: (ar: [] ClArena, item: string, out: [] u8) -> int {
   c := cl_at(item, "content");
@@ -98,6 +133,7 @@ tool_main :: () -> int #export_c #effects(all) {
   lb: [CW_LABEL] u8; ob: [CW_OUTPUT] u8; eb: [2048] u8;
   q: [1] ClQuery; p: [1] ClProcess;
   req: [1] MwwRequest;
+  keyb: [4096] u8; kentry: [4200] u8; keyed := false;   // a key passed in CODER_CLAUDE_KEY
   running := false; ticket := 0;
   cw_send(out[..], mww_ready(out[..]));
   while true {
@@ -138,7 +174,9 @@ tool_main :: () -> int #export_c #effects(all) {
           }
           e := cl_assistant_error(l, cl_at(l, "error"));
           if e == ClAssistantError.authentication_failed || e == ClAssistantError.oauth_org_not_allowed {
-            ended = "failed"; text = "Claude Code is not logged in on this computer. Run `claude` in a terminal and log in, then send the message again.";
+            ended = "failed";
+            text = ifx keyed then "Claude refused the key Coder has. Set another with Coder > Claude Key, then send the message again."
+                   else "Claude Code is not logged in on this computer. Run `claude` in a terminal and log in, or set a key with Coder > Claude Key, then send the message again.";
           }
         } else if m.kind == ClKind.user {
           content := cl_raw(l, "message.content");
@@ -209,6 +247,11 @@ tool_main :: () -> int #export_c #effects(all) {
     cl_remove_env(o[..], "ANTHROPIC_BASE_URL");
     cl_remove_env(o[..], "CLAUDECODE");
     cl_remove_env(o[..], "CLAUDE_CODE_ENTRYPOINT");
+    cl_remove_env(o[..], "CLAUDE_CODE_OAUTH_TOKEN");
+    cl_remove_env(o[..], "CODER_CLAUDE_KEY");
+    keyed = false;
+    kn := cw_key_entry(cl_getenv("CODER_CLAUDE_KEY", keyb[..]), kentry[..]);
+    if kn > 0 { cl_add_env(o[..], cast(string) kentry[0..<kn]); keyed = true; }
     q[0].options = o[0];
     problem := cl_start(q[..], p[..], cast(string) task[0..<tn], false, scratch[..]);
     if problem.count > 0 {

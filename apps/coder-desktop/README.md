@@ -118,7 +118,7 @@ and Opus or Fable when you ask or when a task needs more than Carbon gives. For 
 A Claude sub-agent runs through the Coax Claude Agent SDK
 (`coax/lib/agent/claude`), in the worker `coder/tui/claudeworker.coax`:
 
-- It uses the Claude login already on this Mac. Coder passes no API key and never opens a login page. If Claude Code is not logged in, the row says so: run `claude` in a terminal and log in.
+- It uses the Claude login already on this Mac, unless you give Coder a key (see [Claude key](#claude-key)). Coder never opens a login page. If Claude Code is not logged in and there is no key, the row says so.
 - It works in the working folder with Claude Code's own tools, your settings and your skills, and with no permission prompts.
 - It saves no Claude Code session.
 - Its usage counts against your Claude plan.
@@ -127,6 +127,28 @@ A Claude sub-agent runs through the Coax Claude Agent SDK
 Coder looks for `claude` in `~/.local/bin`, `/opt/homebrew/bin`,
 `/usr/local/bin` and the system `PATH` when it starts. Without it,
 Microcoder is not offered the Claude models.
+
+#### Claude key
+
+Claude sub-agents can use a key instead of the Claude Code login: an
+Anthropic API key (`sk-ant-api…`, from the Claude Console), or a long-lived
+Claude Code token (`sk-ant-oat…`, from `claude setup-token`). An API key is
+billed to its Console account; a token counts against the plan it came from.
+
+- **Coder > Claude Key…** sets it. Paste the key and press Save. The dialog shows the last 4 characters of the key that is set, and Remove Key goes back to the login. Coder keeps the key in `~/Library/Application Support/Coder/claude-key`, readable by you only.
+- **For one launch**, pass it in the environment. It wins over a key set in the menu:
+
+```sh
+open -n apps/coder-desktop/build/Coder.app --env CODER_CLAUDE_KEY="$ANTHROPIC_API_KEY"
+```
+
+A key applies to the next Claude sub-agent; one that is running keeps what it
+started with. Only the Claude worker gets the key, as `ANTHROPIC_API_KEY` or
+`CLAUDE_CODE_OAUTH_TOKEN`: Microcoder and the commands it runs never see it.
+Any other `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`
+or `CLAUDE_CODE_OAUTH_TOKEN` in Coder's environment is not passed on. If
+Claude refuses the key, the sub-agent's row says so. You still need the
+`claude` command installed.
 
 ## Saved chats
 
