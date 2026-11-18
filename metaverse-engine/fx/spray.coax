@@ -1,0 +1,119 @@
+#load "../render/noise.coax";
+// Spray: water thrown into the air in bursts (a wave against a wall, a bow, a waterfall's foot),
+// drawn as lit puffs. A burst is one row of SPRAY_ROW floats; each of its puffs' places is a pure
+// function of the row, the puff's number and the burst's age, so nothing moves between frames, the
+// GPU expands every burst in one instanced pass, and the checks below see the same numbers.
+//
+// A burst's row:
+//   [0..2] where it leaves the water (world, m)     [3] when (the page's clock, s)
+//   [4..6] the jet's velocity (m/s)                 [7] how far along the wall it spreads, m
+//   [8..10] the air's velocity there (m/s)          [11] a puff's radius at birth, m
+//   [12, 13] the wall's outward normal (x, z)       [14] a seed
+//   [15] how much water (0 to 1: a puff's opacity)
+//
+// The motion: a drop feels gravity and a drag in proportion to its speed through the air, with a
+// response time tau (a big drop's is seconds, mist's a fraction of one). That has a closed form:
+//   v(t) = vt + (v0 - vt) exp(-t / tau),   vt = air - g tau up   (where it ends up drifting)
+//   p(t) = p0 + vt t + (v0 - vt) tau (1 - exp(-t / tau))
+// A drop thrown straight up at v0 in still air tops out at v0 tau - g tau^2 ln(1 + v0 / (g tau)),
+// which is v0^2 / (2 g) for a heavy drop and nearly nothing for mist. The wind carries each drop
+// the more the lighter it is.
+//
+// Two puffs in three are drops (tau 0.9 to 2.5 s), one in three is mist (tau 0.15 to 0.4 s). A
+// burst lives SPRAY_LIFE seconds; a caller keeps a ring of rows and overwrites the oldest.
+//   coax/bin/coax test metaverse-engine/fx/spray.coax
+SPRAY_ROW :: 16;
+SPRAY_LIFE :: 9.0f32;
+SPRAY_G :: 9.81f32;
+
+// A number in [0, 1) for puff i of a burst; k picks one of several.
+spray_hash :: (seed:f32,i:f32,k:f32)->f32 #effects(all) { return render_noise3(seed,i+1.0f32,k+1.0f32); }
+// Whether puff i is mist.
+spray_mist :: (i:f32)->bool #effects(all) { return (i-(3.0f32*floor(i/3.0f32)))<0.5f32; }
+// Puff i's response time, s.
+spray_tau :: (seed:f32,i:f32)->f32 #effects(all) {
+  h:=spray_hash(seed,i,0.0f32);
+  if spray_mist(i) { return 0.15f32+(0.25f32*h); }
+  return 0.9f32+(1.6f32*h);
+}
+// The share of the jet's speed puff i leaves with: the jet's head is its fastest water.
+spray_share :: (seed:f32,i:f32)->f32 #effects(all) {
+  h:=spray_hash(seed,i,1.0f32);
+  return 0.45f32+(0.55f32*sqrt(h));
+}
+// How far a drop has gone along one axis after t seconds: v0 its speed along it at the start, vt
+// the speed it tends to (the air's along that axis, less g tau on the upward one).
+spray_travel :: (v0:f32,vt:f32,tau:f32,t:f32)->f32 #effects(all) {
+  return (vt*t)+((v0-vt)*tau*(1.0f32-exp((-t)/tau)));
+}
+// The height a drop thrown up at v0 through air rising at `air` reaches above its start, m.
+spray_peak :: (v0:f32,air:f32,tau:f32)->f32 #effects(all) {
+  vt:=air-(SPRAY_G*tau);
+  if v0<=0.0f32 { return 0.0f32; }
+  if vt>=0.0f32 { return spray_travel(v0,vt,tau,SPRAY_LIFE); }
+  // it stops rising when v = 0: exp(-t / tau) = -vt / (v0 - vt)
+  t:=tau*log((v0-vt)/(-vt));
+  if t>SPRAY_LIFE { t=SPRAY_LIFE; }
+  return spray_travel(v0,vt,tau,t);
+}
+// A puff's opacity over its burst's age: it forms in a tenth of a second and thins as it spreads,
+// mist lasting the burst's life and drops half of it.
+spray_fade :: (i:f32,age:f32)->f32 #effects(all) {
+  if age<0.0f32 || age>=SPRAY_LIFE { return 0.0f32; }
+  life:=ifx spray_mist(i) then SPRAY_LIFE else 0.6f32*SPRAY_LIFE;
+  a:=age/life;
+  if a>=1.0f32 { return 0.0f32; }
+  rise:=ifx age<0.12f32 then age/0.12f32 else 1.0f32;
+  return rise*(1.0f32-a)*(1.0f32-a);
+}
+// A puff's radius over its age, from `size` at birth: it spreads as it flies, mist faster.
+spray_radius :: (i:f32,size:f32,age:f32)->f32 #effects(all) {
+  grow:=ifx spray_mist(i) then 1.1f32 else 0.45f32;
+  return size*(1.0f32+(grow*age));
+}
+
+#test "a heavy drop flies as a thrown stone and mist goes nowhere in still air" {
+  // tau 1000 s: no drag to speak of; 12 m/s up reaches v^2 / 2g = 7.34 m
+  #assert abs(spray_peak(12.0f32,0.0f32,1000.0f32)-7.34f32)<0.05f32;
+  // a real drop loses some of that, mist nearly all
+  drop:=spray_peak(12.0f32,0.0f32,1.5f32); mist:=spray_peak(12.0f32,0.0f32,0.2f32);
+  #assert drop>4.0f32 && drop<7.3f32;
+  #assert mist>0.5f32 && mist<2.5f32;
+  // the closed form is the path's highest point
+  top:=0.0f32;
+  for s:0..<900 {
+    y:=spray_travel(12.0f32,-(SPRAY_G*1.5f32),1.5f32,f32(s)*0.01f32);
+    if y>top { top=y; }
+  }
+  #assert abs(top-drop)<0.01f32;
+}
+#test "a faster jet goes higher and rising air lifts mist" {
+  last:=0.0f32;
+  for v:1..<30 {
+    h:=spray_peak(f32(v),0.0f32,1.5f32);
+    #assert h>last;
+    last=h;
+  }
+  #assert spray_peak(5.0f32,6.0f32,0.2f32)>spray_peak(5.0f32,0.0f32,0.2f32)+10.0f32;
+}
+#test "the wind carries mist further than drops" {
+  // 4 s in a 14 m/s wind, from rest along it
+  mist:=spray_travel(0.0f32,14.0f32,0.2f32,4.0f32); drop:=spray_travel(0.0f32,14.0f32,2.0f32,4.0f32);
+  #assert mist>50.0f32 && mist<56.0f32;
+  #assert drop<mist && drop>20.0f32;
+  // no wind, no drift
+  #assert spray_travel(0.0f32,0.0f32,0.2f32,4.0f32)==0.0f32;
+}
+#test "puffs differ, stay in range, and fade out" {
+  mists:=0;
+  for i:0..<48 {
+    t:=spray_tau(7.0f32,f32(i)); s:=spray_share(7.0f32,f32(i));
+    #assert t>=0.15f32 && t<=2.5f32 && s>=0.45f32 && s<=1.0f32;
+    if spray_mist(f32(i)) { mists+=1; #assert t<=0.4f32; } else { #assert t>=0.9f32; }
+    #assert spray_fade(f32(i),-0.1f32)==0.0f32 && spray_fade(f32(i),SPRAY_LIFE)==0.0f32;
+    #assert spray_fade(f32(i),0.5f32)>0.5f32 && spray_fade(f32(i),0.5f32)<=1.0f32;
+    #assert spray_radius(f32(i),2.0f32,3.0f32)>2.0f32;
+  }
+  #assert mists==16;
+  #assert spray_tau(7.0f32,4.0f32)!=spray_tau(7.0f32,5.0f32) && spray_tau(7.0f32,4.0f32)!=spray_tau(8.0f32,4.0f32);
+}

@@ -1,0 +1,494 @@
+// Water for the Metaverse: waves that meet a wall (docs/metaverse/water.md, "Large floating
+// bodies"). A large floating body's side is a vertical wall in deep water. This file says what the
+// spectral sea (water-spectrum.coax) does there, with stated models:
+//
+// - Reflection. A vertical wall sends back the share R of a wave it does not let under the hull
+//   (water-lee.coax's lee_reflection: R^2 + Kt^2 = 1). In front of a flat face the reflected wave is
+//   the incident wave's mirror image in the face (the method of images), so at the wall the water
+//   stands (1 + R g) times as high as the sea that arrives, where g is the share of the sea's
+//   amplitude travelling toward that face, read from the sea's own modes (wall_sea). A normally
+//   incident wave at a perfect wall doubles; half a wavelength of nodes and antinodes stands off
+//   it. The reflected beam leaves the face along the mean mirrored direction, as wide as the face,
+//   spreading and thinning with the sea's directional spread (wall_beam).
+// - Set-up. Sainflou's (1928) rise of the standing wave's mean level at the wall:
+//   k H^2 / 2 coth(k h) for incident height H.
+// - Breaking at the wall. The sea's own breaking test (the Jacobian of its choppy displacement
+//   under the whitecap threshold, water-spectrum.coax) is applied to the standing wave: its
+//   sharpness there is (1 + R g) times the incident sea's, and a standing wave holds
+//   WALL_CLAPOTIS times the steepness of a travelling one before it breaks (0.218 against 0.142:
+//   Penney and Price 1952, Miche 1944).
+// - Spray. When a crest that breaks at the wall passes a station, the wall turns its water
+//   upward: the jet's speed is the standing wave's own rising speed and WALL_IMPACT of the
+//   breaking crest's forward speed, by the share of the sea that meets the face and how squarely.
+//   A breaking crest moves at the peak wave's phase speed, or at the wind's when that is slower
+//   (waves that outrun the wind are not the ones it breaks). A jet slower than WALL_ONSET slops
+//   and stays green. A jet throws one burst of the
+//   engine's spray (metaverse-engine/fx/spray.coax) into the air that the wind then carries, and
+//   leaves white water at the wall's foot that fades in WALL_FOAM_LIFE seconds.
+//
+// What it leaves out: wave focusing in corners, the stem wave that grows along a wall the sea
+// meets at a shallow angle (Mach reflection), the violent "flip-through" jets of a wave that
+// breaks exactly on the wall (laboratory jets reach several times the phase speed), green water
+// over the deck, the hull's motion changing the reflection (radiated waves), and the reflected
+// wave's chop. Spray heights are therefore a floor for the worst single impact and a fair figure
+// for the run of them.
+//   coax/bin/coax test metaverse/water-wall.coax
+#load "water-lee.coax";
+#load "../metaverse-engine/fx/spray.coax";
+
+WALL_ONSET :: 5.0;          // m/s: water thrown up slower than this (under 1.3 m of rise) is slop, not spray
+WALL_IMPACT :: 0.8;         // the share of a breaking crest's speed a wall turns upward (our assumption)
+WALL_CLAPOTIS :: 1.54;      // 0.218 / 0.142
+WALL_FOAM_LIFE :: 20.0;     // s: white water at the foot fades by 1/e
+WALL_LIFT :: 0.4;           // the share of the wind into a wall that turns upward at its face (our assumption)
+WALL_ROSE :: 72;            // 5 degree bins of the way the sea travels
+WALL_STATIONS :: 384;       // points round a body's waterline that can throw spray
+WALL_BURSTS :: 256;         // bursts kept at once: a ring, the oldest overwritten
+
+// What a sea brings to a body's walls.
+WallSea :: struct {
+  rose: [WALL_ROSE] f64;    // the share of the band's energy travelling in each direction; sums to 1
+  k: f64;                   // the peak wave's wavenumber, rad/m
+  speed: f64;               // a breaking crest's forward speed, m/s: the peak's phase speed or the wind's, the slower
+  depth: f64;
+  significant: f64;         // the band's significant height, m
+  reflect: f64;             // R for the peak wave at this body
+}
+wall_bin_x :: (b: int) -> f64 { return cos((f64(b) + 0.5) * TAU_D / f64(WALL_ROSE)); }
+wall_bin_z :: (b: int) -> f64 { return sin((f64(b) + 0.5) * TAU_D / f64(WALL_ROSE)); }
+// Cascade c of a synthesised sea as a body `beam` m wide and `draft` m deep meets it.
+wall_sea :: (s: [] Synth, c: int, beam: f64, draft: f64) -> WallSea {
+  o: WallSea;
+  total := 0.0;
+  for i: s[0].first[c]..<s[0].first[c + 1] {
+    md := s[0].modes[i];
+    // h0 travels along +k, conj(h0(-k)) along -k
+    a := atan2_d(f64(md.kz), f64(md.kx));
+    if a < 0.0 { a += TAU_D; }
+    b := cast(int) fmin(floor(a / TAU_D * f64(WALL_ROSE)), f64(WALL_ROSE - 1));
+    e := f64(md.h0r) * f64(md.h0r) + f64(md.h0i) * f64(md.h0i);
+    em := f64(md.hmr) * f64(md.hmr) + f64(md.hmi) * f64(md.hmi);
+    o.rose[b] += e; o.rose[(b + WALL_ROSE / 2) % WALL_ROSE] += em;
+    total += e + em;
+  }
+  if total > 0.0 { for b: 0..<WALL_ROSE { o.rose[b] /= total; } }
+  sp := s[0].spectrum;
+  wp := wsp_peak_omega(sp);
+  o.k = wsp_wavenumber(sp, wp);
+  o.speed = fmin(wp / fmax(o.k, 0.000001), sp.wind_speed);
+  o.depth = sp.depth;
+  o.significant = 4.0 * sqrt(fmax(wsp_variance(s, c), 0.0));
+  o.reflect = lee_reflection(o.k, beam, draft, sp.depth);
+  return o;
+}
+// One train travelling along the unit (dx, dz): a swell (tests, and a caller's own sea).
+wall_swell :: (dx: f64, dz: f64, k: f64, height: f64, depth: f64, reflect: f64) -> WallSea {
+  o: WallSea;
+  a := atan2_d(dz, dx);
+  if a < 0.0 { a += TAU_D; }
+  o.rose[cast(int) fmin(floor(a / TAU_D * f64(WALL_ROSE)), f64(WALL_ROSE - 1))] = 1.0;
+  o.k = k; o.depth = depth; o.significant = height; o.reflect = reflect;
+  o.speed = sqrt(WATER_G * tanh_d(fmin(k * depth, 20.0)) / fmax(k, 0.000001));
+  return o;
+}
+
+// How the sea meets a wall whose outward normal is the unit (nx, nz), world.
+WallFace :: struct {
+  share: f64;     // the share of the sea's amplitude travelling toward the wall, 0 to 1
+  square: f64;    // how squarely it arrives: the root mean square cosine of its angle to the normal
+  slant: f64;     // the mean reflected direction's tangent from the normal, along the wall's tangent (-nz, nx)
+  spread: f64;    // the tangent of the incoming directions' spread about their mean
+}
+wall_face :: (sea: WallSea, nx: f64, nz: f64) -> WallFace {
+  e := 0.0; sq := 0.0; mx := 0.0; mz := 0.0;
+  for b: 0..<WALL_ROSE {
+    dx := wall_bin_x(b); dz := wall_bin_z(b);
+    into := -(dx * nx + dz * nz);
+    if into <= 0.05 { continue; }   // within a bin's half width of running along the wall
+    e += sea.rose[b]; sq += sea.rose[b] * into * into;
+    mx += sea.rose[b] * dx; mz += sea.rose[b] * dz;
+  }
+  o: WallFace;
+  if e <= 0.000001 { return o; }
+  o.share = sqrt(fmin(e, 1.0)); o.square = sqrt(sq / e);
+  m := sqrt(mx * mx + mz * mz);
+  if m < 0.000001 { return o; }
+  mx /= m; mz /= m;
+  // the mean direction mirrored in the wall: its normal part turns round, its tangent part stays
+  out := -(mx * nx + mz * nz); along := -mx * nz + mz * nx;
+  o.slant = along / fmax(out, 0.05);
+  // m is the mean resultant length: 1 for one direction; the circular spread is sqrt(-2 ln m)
+  sd := sqrt(fmax(-2.0 * log(fmin(m / fmax(e, 0.000001), 1.0)), 0.0));
+  o.spread = fmin(sd, 1.2);
+  o.spread = sin(o.spread) / fmax(cos(o.spread), 0.2);
+  return o;
+}
+
+// Sainflou's rise of the mean level at a wall for incident height H, m.
+wall_setup :: (height: f64, k: f64, depth: f64) -> f64 {
+  kh := fmin(k * depth, 20.0);
+  return 0.5 * k * height * height / fmax(tanh_d(kh), 0.01);
+}
+// How many times the incident sea's height the water at the wall stands.
+wall_gain :: (reflect: f64, share: f64) -> f64 { return 1.0 + reflect * share; }
+// The crest's height above still water at the wall for an incident wave of height H.
+wall_crest :: (sea: WallSea, face: WallFace, height: f64) -> f64 {
+  return wall_gain(sea.reflect, face.share) * 0.5 * height + sea.reflect * face.share * wall_setup(height, sea.k, sea.depth);
+}
+// The share of a face's reflection that reaches a point `out` m in front of it and `along` m from
+// its middle along its tangent; the face is `length` m long.
+wall_beam :: (face: WallFace, out: f64, along: f64, length: f64) -> f64 {
+  if out < 0.0 || length <= 0.0 { return 0.0; }
+  from := along - out * face.slant;
+  edge := 0.04 * length + out * face.spread;
+  inside := fclamp(0.5 + (0.5 * length - abs(from)) / fmax(edge, 0.001), 0.0, 1.0);
+  return inside * sqrt(length / (length + 2.0 * out * face.spread));
+}
+
+// A wrapped n x n tile of values over `patch` metres at (x, z), bilinear between texel centres
+// (as metaverse/slab-sim.coax's sim_sea_at reads the sea).
+wall_at :: (values: [] f32, n: int, patch: f64, x: f64, z: f64) -> f64 {
+  if n <= 0 || values.count < n * n || patch <= 0.0 { return 0.0; }
+  qx := x / patch * f64(n) - 0.5; qz := z / patch * f64(n) - 0.5;
+  fx := qx - floor(qx); fz := qz - floor(qz);
+  ix := wrap_i(cast(int) floor(qx), n); iz := wrap_i(cast(int) floor(qz), n);
+  jx := (ix + 1) % n; jz := (iz + 1) % n;
+  a := f64(values[iz * n + ix]); b := f64(values[iz * n + jx]);
+  c := f64(values[jz * n + ix]); d := f64(values[jz * n + jx]);
+  return (a * (1.0 - fx) + b * fx) * (1.0 - fz) + (c * (1.0 - fx) + d * fx) * fz;
+}
+
+// The four faces of a rectangular body: 0 its +x side, 1 +z, 2 -x, 3 -z (body frame normals).
+wall_normal_x :: (face: int) -> f64 { return ifx face == 0 then 1.0 else (ifx face == 2 then -1.0 else 0.0); }
+wall_normal_z :: (face: int) -> f64 { return ifx face == 1 then 1.0 else (ifx face == 3 then -1.0 else 0.0); }
+WallFaces :: struct { f: [4] WallFace; }
+wall_faces :: (sea: WallSea, body: Floater) -> WallFaces {
+  o: WallFaces;
+  for i: 0..<4 {
+    nx := wall_normal_x(i); nz := wall_normal_z(i);
+    o.f[i] = wall_face(sea, body.c * nx - body.s * nz, body.s * nx + body.c * nz);
+  }
+  return o;
+}
+// The sea's height at world point (wx, wz) round a rectangular body: the sea that arrives (the
+// tile, times the lee's gain from the baked grid) and what the body's faces send back. The
+// hull's own force model and a renderer read the same water through this.
+wall_water :: (body: Floater, sea: WallSea, faces: WallFaces, grid: [] LeeGrid, heights: [] f32, n: int, patch: f64, wx: f64, wz: f64) -> f64 {
+  p := lee_local(body, wx, wz);
+  h := lee_sample(grid, p.x, p.y, 0) * wall_at(heights, n, patch, wx, wz);
+  if lee_inside(body, p.x, p.y) || body.round { return h; }
+  for i: 0..<4 {
+    amp := sea.reflect * faces.f[i].share;
+    if amp <= 0.001 { continue; }
+    nx := wall_normal_x(i); nz := wall_normal_z(i);
+    half := ifx nx != 0.0 then body.hx else body.hz;
+    length := ifx nx != 0.0 then 2.0 * body.hz else 2.0 * body.hx;
+    out := p.x * nx + p.y * nz - half;
+    if out < 0.0 { continue; }
+    along := -p.x * nz + p.y * nx;
+    beam := wall_beam(faces.f[i], out, along, length);
+    if beam <= 0.001 { continue; }
+    m := lee_world(body, p.x - 2.0 * out * nx, p.y - 2.0 * out * nz);
+    h += amp * beam * wall_at(heights, n, patch, m.x, m.y);
+  }
+  return h;
+}
+
+// ---- stations and spray
+
+WallStation :: struct { x: f64; z: f64; nx: f64; nz: f64; face: int; }
+// Station i of `count` spaced evenly round the body's waterline (body frame): a rectangle's run
+// up its +x face, along +z, down -x and back along -z; a round body's go round it.
+wall_station :: (body: Floater, count: int, i: int) -> WallStation {
+  o: WallStation;
+  if body.round {
+    a := (f64(i) + 0.5) * TAU_D / f64(count);
+    o.nx = cos(a); o.nz = sin(a); o.x = body.hx * o.nx; o.z = body.hx * o.nz;
+    return o;
+  }
+  d := (f64(i) + 0.5) * 4.0 * (body.hx + body.hz) / f64(count);
+  if d < 2.0 * body.hz { o.face = 0; o.x = body.hx; o.z = -body.hz + d; o.nx = 1.0; return o; }
+  d -= 2.0 * body.hz;
+  if d < 2.0 * body.hx { o.face = 1; o.x = body.hx - d; o.z = body.hz; o.nz = 1.0; return o; }
+  d -= 2.0 * body.hx;
+  if d < 2.0 * body.hz { o.face = 2; o.x = -body.hx; o.z = body.hz - d; o.nx = -1.0; return o; }
+  d -= 2.0 * body.hz;
+  o.face = 3; o.x = -body.hx + d; o.z = -body.hz; o.nz = -1.0;
+  return o;
+}
+
+WallSpray :: struct {
+  count: int;                           // stations in use
+  time: f64;                            // s since it began
+  begun: bool;
+  share: [WALL_STATIONS] f32;           // each station's WallFace share and squareness
+  square: [WALL_STATIONS] f32;
+  last: [WALL_STATIONS] f32;            // the incident height there last step, m
+  rise: [WALL_STATIONS] f32;            // the fastest it has risen since its last trough, m/s
+  sharp: [WALL_STATIONS] f32;           // the sharpest (1 - Jacobian) since its last trough
+  up: [WALL_STATIONS] u8;               // rising
+  foam: [WALL_STATIONS] f32;            // white water at its foot, 0 to 1
+  rows: [SPRAY_ROW * WALL_BURSTS] f32;  // the bursts (spray.coax's rows)
+  next: int;                            // the next row to write
+  thrown: int;                          // bursts so far
+  crests: int;                          // crests that have passed a station that faces the sea
+  runup: f64;                           // the highest water has stood at a wall, m above still water
+  highest: f64;                         // the highest a burst's heaviest drops have reached, m above still water
+  speed: f64;                           // the fastest jet, m/s
+}
+// Lays `count` stations round `body` for `sea` (when the sea, the body's heading or the count changes).
+wall_arrange :: (w: [] WallSpray, body: Floater, sea: WallSea, count_in: int) {
+  count := ifx count_in > WALL_STATIONS then WALL_STATIONS else (ifx count_in < 4 then 4 else count_in);
+  fresh := w[0].count != count;
+  w[0].count = count;
+  for i: 0..<count {
+    st := wall_station(body, count, i);
+    face := wall_face(sea, body.c * st.nx - body.s * st.nz, body.s * st.nx + body.c * st.nz);
+    w[0].share[i] = f32(face.share); w[0].square[i] = f32(face.square);
+    if fresh { w[0].last[i] = 0; w[0].rise[i] = 0; w[0].sharp[i] = 0; w[0].up[i] = 0; w[0].foam[i] = 0; }
+  }
+  if fresh { w[0].begun = false; }
+}
+// Reads each station's sea from cascade 0's tile through the lee's grid: the height that arrives
+// and its sharpness (1 - Jacobian), both times the lee's gain there.
+wall_read :: (w: [] WallSpray, body: Floater, grid: [] LeeGrid, tile: [] Tile, patch: f64, heights: [] f32, sharp: [] f32) {
+  n := tile[0].size;
+  for i: 0..<w[0].count {
+    st := wall_station(body, w[0].count, i);
+    // a metre off the wall, in open water
+    p := lee_world(body, st.x + st.nx, st.z + st.nz);
+    g := lee_sample(grid, st.x + st.nx, st.z + st.nz, 0);
+    heights[i] = f32(g * wall_at(tile[0].height[..], n, patch, p.x, p.y));
+    sharp[i] = f32(g * (1.0 - wall_at(tile[0].jacobian[..], n, patch, p.x, p.y)));
+  }
+}
+// One step of dt seconds. heights and sharp are wall_read's; `breaks` is 1 less the sea's
+// whitecap threshold (wsp_whitecap_threshold): how sharp a travelling crest is when it breaks.
+// (wind_x, wind_z) is the wind, m/s, world; `level` the still water's height, world.
+wall_step :: (w: [] WallSpray, body: Floater, sea: WallSea, heights: [] f32, sharp: [] f32, breaks: f64, wind_x: f64, wind_z: f64, level: f64, dt: f64) {
+  if dt <= 0.0 { return; }
+  count := w[0].count;
+  keep := f32(exp(-dt / WALL_FOAM_LIFE));
+  spacing := (ifx body.round then TAU_D * body.hx else 4.0 * (body.hx + body.hz)) / f64(count);
+  for i: 0..<count {
+    h := f64(heights[i]);
+    v := ifx w[0].begun then (h - f64(w[0].last[i])) / dt else 0.0;
+    w[0].foam[i] *= keep;
+    share := f64(w[0].share[i]);
+    gain := wall_gain(sea.reflect, share);
+    if v > 0.0 {
+      w[0].up[i] = 1;
+      if f32(v) > w[0].rise[i] { w[0].rise[i] = f32(v); }
+      if sharp[i] > w[0].sharp[i] { w[0].sharp[i] = sharp[i]; }
+    } else if w[0].up[i] != 0 {
+      // a crest has just passed: w.last is its height
+      crest := gain * f64(w[0].last[i]) + sea.reflect * share * wall_setup(2.0 * fmax(f64(w[0].last[i]), 0.0), sea.k, sea.depth);
+      if crest > w[0].runup { w[0].runup = crest; }
+      if share > 0.3 { w[0].crests += 1; }
+      // the standing wave is `gain` times as sharp as the sea, and holds WALL_CLAPOTIS times as much
+      hold := (1.0 + (WALL_CLAPOTIS - 1.0) * sea.reflect * share) / gain;
+      b := ifx breaks > 0.0001 then fclamp((f64(w[0].sharp[i]) / hold - breaks) / (0.5 * breaks), 0.0, 1.0) else 0.0;
+      slosh := gain * f64(w[0].rise[i]);
+      impact := WALL_IMPACT * sea.speed * sqrt(b) * f64(w[0].square[i]) * share;
+      jet := sqrt(slosh * slosh + impact * impact);
+      if b > 0.0 && crest > 0.0 && jet > WALL_ONSET {
+        st := wall_station(body, count, i);
+        at := lee_world(body, st.x + 0.6 * st.nx, st.z + 0.6 * st.nz);
+        nx := body.c * st.nx - body.s * st.nz; nz := body.s * st.nx + body.c * st.nz;
+        amount := fclamp((jet - WALL_ONSET) / WALL_ONSET, 0.15, 1.0) * (0.4 + 0.6 * b);
+        // the wind into the wall stalls at its face and part of it turns upward
+        into := fmax(-(wind_x * nx + wind_z * nz), 0.0);
+        r := SPRAY_ROW * w[0].next;
+        w[0].rows[r] = f32(at.x); w[0].rows[r + 1] = f32(level + crest); w[0].rows[r + 2] = f32(at.y); w[0].rows[r + 3] = f32(w[0].time);
+        w[0].rows[r + 4] = f32(0.12 * jet * nx); w[0].rows[r + 5] = f32(jet); w[0].rows[r + 6] = f32(0.12 * jet * nz); w[0].rows[r + 7] = f32(spacing);
+        w[0].rows[r + 8] = f32(wind_x + 0.7 * into * nx); w[0].rows[r + 9] = f32(WALL_LIFT * into); w[0].rows[r + 10] = f32(wind_z + 0.7 * into * nz);
+        w[0].rows[r + 11] = f32(fclamp(0.5 + 0.06 * jet * jet / (2.0 * WATER_G), 0.6, 3.0));
+        w[0].rows[r + 12] = f32(nx); w[0].rows[r + 13] = f32(nz);
+        w[0].rows[r + 14] = f32(1 + (w[0].thrown * 7 + i) % 4093); w[0].rows[r + 15] = f32(amount);
+        w[0].next = (w[0].next + 1) % WALL_BURSTS;
+        w[0].thrown += 1;
+        if f32(amount) > w[0].foam[i] { w[0].foam[i] = f32(amount); }
+        // its heaviest drops (tau 2.5 s) leave with the jet's whole speed
+        top := crest + f64(spray_peak(f32(jet), f32(WALL_LIFT * into), 2.5));
+        if top > w[0].highest { w[0].highest = top; }
+        if jet > w[0].speed { w[0].speed = jet; }
+      }
+      w[0].up[i] = 0; w[0].rise[i] = 0; w[0].sharp[i] = 0;
+    }
+    w[0].last[i] = f32(h);
+  }
+  w[0].begun = true;
+  w[0].time += dt;
+}
+// Bursts still in the air.
+wall_live :: (w: [] WallSpray) -> int {
+  n := 0;
+  for i: 0..<WALL_BURSTS {
+    if i >= w[0].thrown { break; }
+    if w[0].time - f64(w[0].rows[SPRAY_ROW * i + 3]) < f64(SPRAY_LIFE) { n += 1; }
+  }
+  return n;
+}
+
+// ---- checks
+
+// A fully developed wind sea travelling along `heading` (rad, 0 is +z): Hs = 0.21 U^2 / g, the
+// SLAB world's sea states (apps/openagents-web/slab.coax slab_spectrum).
+wall_test_sea :: (wind: f64, heading: f64) -> Spectrum {
+  sp := Spectrum.{seed = 23, wind_speed = wind, wind = heading, fetch = 300000.0, choppiness = 0.8, spread = 0.8, depth = 4000.0};
+  grown := wsp_significant_height(sp);
+  if grown > 0.001 { sp.amplitude = 0.21 * wind * wind / 9.81 / grown; }
+  return sp;
+}
+WallRun :: struct { thrown: int; crests: int; runup: f64; highest: f64; speed: f64; foam: f64; lee: int; low: int; significant: f64; }
+// `seconds` of a sea of `wind` m/s against the SLAB hull (1,000 by 600 m, 25 m draft), stepped at 10 Hz.
+wall_run :: (wind: f64, seconds: int) -> WallRun {
+  sp := wall_test_sea(wind, 4.36);
+  s: [1] Synth; wsp_synth(s[..], sp, 1, 64);
+  t: [1] Tile;
+  body := lee_prime();
+  bodies: [1] Floater; bodies[0] = body;
+  c0 := s[0].cascades[0];
+  grid: [1] LeeGrid;
+  long := lee_band(sp, c0.low, c0.high, false);
+  lee_bake(grid[..], body, bodies[..], 1, long, long);
+  sea := wall_sea(s[..], 0, 2.0 * body.hz, body.draft);
+  w: [1] WallSpray;
+  wall_arrange(w[..], body, sea, 320);
+  heights: [WALL_STATIONS] f32; sharp: [WALL_STATIONS] f32;
+  wd := wsp_direction(sp);
+  o: WallRun; o.significant = sea.significant;
+  seen := 0;
+  for step: 0..<seconds * 10 {
+    wsp_tile(s[..], 0, cast(u64) (step * 12), t[..]);
+    breaks := 1.0 - f64(wsp_whitecap_threshold(t[..], wind));
+    wall_read(w[..], body, grid[..], t[..], c0.patch, heights[..], sharp[..]);
+    wall_step(w[..], body, sea, heights[..], sharp[..], breaks, wd.x * wind, wd.y * wind, 0.0, 0.1);
+    // every new burst: on a face the sea meets, and above still water
+    while seen < w[0].thrown {
+      r := SPRAY_ROW * (seen % WALL_BURSTS);
+      if f64(w[0].rows[r + 12]) * wd.x + f64(w[0].rows[r + 13]) * wd.y > -0.2 { o.lee += 1; }
+      if w[0].rows[r + 1] <= 0 || w[0].rows[r + 5] <= f32(WALL_ONSET) { o.low += 1; }
+      seen += 1;
+    }
+  }
+  for i: 0..<w[0].count { o.foam = fmax(o.foam, f64(w[0].foam[i])); }
+  o.thrown = w[0].thrown; o.crests = w[0].crests; o.runup = w[0].runup; o.highest = w[0].highest; o.speed = w[0].speed;
+  return o;
+}
+
+#test "reflection doubles a normally incident wave at a perfect wall" {
+  // a 256 m swell travelling toward -x over a 1,024 m tile, against the hull's +x face
+  n := 64; patch := 1024.0;
+  tile: [4096] f32;
+  k := TAU_D * 4.0 / patch;
+  for j: 0..<n { for i: 0..<n { tile[j * n + i] = f32(1.5 * cos(k * (f64(i) + 0.5) * patch / f64(n) + 0.7)); } }
+  body := lee_prime();
+  bodies: [1] Floater; bodies[0] = body;
+  grid: [1] LeeGrid;
+  swell := lee_swell(256.0, -1.0, 0.0, 4000.0);
+  lee_bake(grid[..], body, bodies[..], 1, swell, swell);
+  sea := wall_swell(-1.0, 0.0, k, 3.0, 4000.0, 1.0);
+  faces := wall_faces(sea, body);
+  #assert abs(faces.f[0].share - 1.0) < 0.000001 && abs(faces.f[0].square - 1.0) < 0.01 && faces.f[2].share == 0.0;
+  #assert abs(faces.f[0].slant) < 0.05 && faces.f[0].spread < 0.01;
+  // at the wall, along its middle 800 m, the water stands twice the incident wave
+  for z: [5] f64.[-200.0, -90.0, 0.0, 120.0, 250.0] {
+    inc := wall_at(tile[..], n, patch, 500.0, z);
+    #assert abs(inc) > 0.5;
+    #assert abs(wall_water(body, sea, faces, grid[..], tile[..], n, patch, 500.0, z) - 2.0 * inc) < 0.02 * abs(inc);
+  }
+  // a quarter wavelength off the wall is a node: the two waves cancel, whatever the phase
+  #assert abs(wall_water(body, sea, faces, grid[..], tile[..], n, patch, 564.0, 0.0)) < 0.06;
+  #assert abs(wall_at(tile[..], n, patch, 564.0, 0.0)) > 0.5;
+  // half a wavelength off is an antinode again
+  #assert abs(wall_water(body, sea, faces, grid[..], tile[..], n, patch, 628.0, 0.0) - 2.0 * wall_at(tile[..], n, patch, 628.0, 0.0)) < 0.08;
+  // a wall that lets half the energy under (R = 0.707) stands 1.707 times
+  soft := wall_swell(-1.0, 0.0, k, 3.0, 4000.0, 0.7071);
+  #assert abs(wall_water(body, soft, faces, grid[..], tile[..], n, patch, 500.0, 0.0) / wall_at(tile[..], n, patch, 500.0, 0.0) - 1.7071) < 0.02;
+  // beside the hull, clear of the beam, and behind it, nothing is sent back
+  #assert abs(wall_water(body, sea, faces, grid[..], tile[..], n, patch, 700.0, 700.0) - wall_at(tile[..], n, patch, 700.0, 700.0)) < 0.02;
+  #assert abs(wall_water(body, sea, faces, grid[..], tile[..], n, patch, -560.0, 0.0)) < 0.3 * 1.5;
+}
+#test "a wave along a wall is not sent back, and an oblique one leaves at its mirrored angle" {
+  along := wall_face(wall_swell(0.0, 1.0, 0.05, 2.0, 4000.0, 1.0), 1.0, 0.0);
+  #assert along.share == 0.0;
+  // travelling toward -x and +z at 45 degrees onto the +x face: it leaves toward +x and +z
+  f := wall_face(wall_swell(-0.7071, 0.7071, 0.05, 2.0, 4000.0, 1.0), 1.0, 0.0);
+  #assert abs(f.share - 1.0) < 0.000001 && abs(f.square - 0.7071) < 0.06 && abs(f.slant - 1.0) < 0.15;
+  // the beam: whole at the wall's middle, half at its end, none behind the face, and it follows the slant
+  #assert wall_beam(f, 0.0, 0.0, 600.0) == 1.0 && abs(wall_beam(f, 0.0, 300.0, 600.0) - 0.5) < 0.001;
+  #assert wall_beam(f, -1.0, 0.0, 600.0) == 0.0;
+  #assert wall_beam(f, 400.0, 400.0 * f.slant, 600.0) > 0.9 && wall_beam(f, 400.0, -400.0, 600.0) == 0.0;
+}
+#test "Sainflou's set-up and the crest at the wall" {
+  // a 4 m, 120 m wave in deep water: k H^2 / 2 = 0.42 m
+  k := TAU_D / 120.0;
+  #assert abs(wall_setup(4.0, k, 4000.0) - 0.419) < 0.005;
+  // shallower water lifts it more; no wave, no rise
+  #assert wall_setup(4.0, k, 10.0) > wall_setup(4.0, k, 4000.0) && wall_setup(0.0, k, 4000.0) == 0.0;
+  sea := wall_swell(-1.0, 0.0, k, 4.0, 4000.0, 1.0);
+  face := wall_face(sea, 1.0, 0.0);
+  // twice the incident crest and the set-up
+  #assert abs(wall_crest(sea, face, 4.0) - 4.419) < 0.01;
+  // a wall the sea does not face sees the wave as it is
+  #assert abs(wall_crest(sea, wall_face(sea, -1.0, 0.0), 4.0) - 2.0) < 0.000001;
+}
+#test "a wind sea's shares on the SLAB hull's faces" #steps 400000000 {
+  sp := wall_test_sea(13.7, 4.36);
+  s: [1] Synth; wsp_synth(s[..], sp, 1, 64);
+  sea := wall_sea(s[..], 0, 600.0, 25.0);
+  total := 0.0;
+  for b: 0..<WALL_ROSE { total += sea.rose[b]; }
+  #assert abs(total - 1.0) < 0.000001;
+  #assert sea.reflect > 0.99 && abs(sea.significant - 4.0) < 0.5 && sea.speed > 10.0 && sea.speed <= 13.7;
+  faces := wall_faces(sea, lee_prime());
+  // waves run west-south-west: the east face takes nearly all of it, the north face most, the
+  // west face almost none, and the south face the little that spreads back
+  #assert faces.f[0].share > 0.95 && faces.f[1].share > 0.6 && faces.f[2].share < 0.3 && faces.f[3].share < 0.75;
+  #assert faces.f[0].square > 0.8 && faces.f[1].square < faces.f[0].square;
+  #assert faces.f[1].share > faces.f[3].share && faces.f[0].share > faces.f[1].share;
+}
+#test "no white water in a 0.5 m calm" #steps 4000000000 {
+  r := wall_run(4.8, 60);
+  #assert abs(r.significant - 0.5) < 0.1;
+  #assert r.crests > 1000;
+  #assert r.thrown == 0 && r.foam == 0.0 && r.highest == 0.0;
+  #assert r.runup > 0.3 && r.runup < 2.0;
+}
+#test "spray appears only where and when a wave hits" #steps 8000000000 {
+  r := wall_run(13.7, 60);
+  // some crests throw spray, most do not
+  #assert r.thrown > 20 && r.thrown < r.crests / 4;
+  // every burst left a face the sea meets, from a crest above still water, faster than the onset
+  #assert r.lee == 0 && r.low == 0;
+  #assert r.foam > 0.0;
+  // honest heights for a 4 m sea (3.6 m of it in this band): the water stands about twice as
+  // high as the open sea's crests, and the spray's heaviest drops top out near three times Hs
+  #assert r.runup > 4.0 && r.runup < 10.0;
+  #assert r.highest > 7.0 && r.highest < 16.0;
+}
+#test "turning the wind up throws more spray, higher" #steps 12000000000 {
+  low := wall_run(11.4, 40); gale := wall_run(21.6, 40);
+  #assert low.thrown > 0 && gale.thrown > 4 * low.thrown;
+  #assert gale.highest > 2.0 * low.highest && gale.speed > 1.4 * low.speed;
+  #assert gale.runup > 2.0 * low.runup;
+  #assert gale.highest > 18.0 && gale.highest < 40.0;
+}
+#test "stations run round the waterline, facing out" {
+  body := lee_prime();
+  faces: [4] int;
+  for i: 0..<320 {
+    st := wall_station(body, 320, i);
+    faces[st.face] += 1;
+    #assert abs(st.nx * st.nx + st.nz * st.nz - 1.0) < 0.000001;
+    #assert !lee_inside(body, st.x + st.nx, st.z + st.nz) && lee_inside(body, st.x - st.nx, st.z - st.nz);
+  }
+  // ten metres apart: 60 on each short face, 100 on each long one
+  #assert faces[0] == 60 && faces[1] == 100 && faces[2] == 60 && faces[3] == 100;
+  round := Floater.{round = true, hx = 61.0, hz = 61.0, draft = 12.0};
+  for i: 0..<40 {
+    st := wall_station(round, 40, i);
+    #assert abs(sqrt(st.x * st.x + st.z * st.z) - 61.0) < 0.000001 && abs(st.x * st.nz - st.z * st.nx) < 0.000001;
+  }
+}

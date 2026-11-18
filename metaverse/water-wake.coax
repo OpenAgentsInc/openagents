@@ -1,0 +1,173 @@
+// Water for the Metaverse: what a large floating body leaves in the water (docs/metaverse/water.md,
+// "Large floating bodies"): its wake in a current, the plume of water it discharges, and the
+// surge in a moonpool. Each is a small stated model a world reads numbers from and a renderer
+// draws; none is a flow simulation.
+//
+// - Wake. A body that makes waves as it moves has a Froude number U / sqrt(g L) near 0.2 to 0.5.
+//   A kilometre of hull in half a metre a second of current is at 0.005: its Kelvin waves would
+//   be 2 PI U^2 / g = 0.16 m long and it makes none worth drawing (wake_waves). What it leaves is
+//   a bluff body's turbulent wake: slack water behind it between two shear lines that leave its
+//   corners, widening as sqrt(Cd D x) (Schlichting's far wake), the speed lost on the centreline
+//   falling as sqrt(Cd D / x), and a slow meander at the Strouhal period D / (St U).
+// - Plume. Water discharged at depth mixes to its flow-weighted temperature, and if it is denser
+//   than the sea round it, it sinks until the sea's own layering stops it: Morton, Taylor and
+//   Turner's (1956) level 2.8 B^(1/4) N^(-3/4) below the outlet for buoyancy flux B and buoyancy
+//   frequency N, reached in about PI / N seconds while the current carries it downstream. From
+//   above, a patch `d` metres down shows through twice that much water: exp(-2 K d) of its
+//   contrast for attenuation K.
+// - Moonpool. The water in a shaft through the hull is a piston on the sea's spring: its period is
+//   2 PI sqrt((T + 0.41 sqrt(A)) / g) for draft T and area A (Molin 2001's added length). The sea
+//   drives it with the wave's pressure at the keel, exp(-k T) of the surface wave, and the flow
+//   separating at the shaft's mouth damps it in proportion to the square of its speed.
+//   coax/bin/coax test metaverse/water-wake.coax
+#load "water.coax";
+
+// ---- wake
+
+WAKE_STROUHAL :: 0.15;      // a rectangle broadside to the flow
+WAKE_DRAG :: 2.0;           // its drag coefficient
+wake_froude :: (speed: f64, length: f64) -> f64 { return abs(speed) / sqrt(WATER_G * fmax(length, 0.001)); }
+// The length of the waves a body moving at `speed` trails (Kelvin's transverse waves), m.
+wake_kelvin :: (speed: f64) -> f64 { return TAU_D * speed * speed / WATER_G; }
+// The share of a ship's wave-making a body at this Froude number has: none under 0.1, all of it
+// by 0.3 (the hump of wave resistance starts near 0.2).
+wake_waves :: (froude: f64) -> f64 { t := fclamp((froude - 0.1) / 0.2, 0.0, 1.0); return t * t * (3.0 - 2.0 * t); }
+// The wake's width between its shear lines `x` m downstream of a body `across` m wide.
+wake_width :: (across: f64, x: f64) -> f64 { return across * sqrt(1.0 + 0.5 * WAKE_DRAG * fmax(x, 0.0) / fmax(across, 0.001)); }
+// The share of the stream's speed lost on the wake's centreline there.
+wake_deficit :: (across: f64, x: f64) -> f64 { return fmin(1.0, sqrt(WAKE_DRAG * across / fmax(x, 0.001))); }
+// How often the wake swings from side to side, s.
+wake_period :: (across: f64, speed: f64) -> f64 { return across / (WAKE_STROUHAL * fmax(abs(speed), 0.0001)); }
+// How far apart along the wake its swings are, m: the eddies travel at 0.85 of the stream.
+wake_swing :: (across: f64) -> f64 { return 0.85 * across / WAKE_STROUHAL; }
+// The drift of what floats (foam, spray's water): the current and 3 percent of the wind (the
+// usual leeway of a surface film), m/s.
+wake_drift :: (current: D2, wind: D2) -> D2 { return d2(current.x + 0.03 * wind.x, current.y + 0.03 * wind.y); }
+
+// ---- plume
+
+PLUME_EXPANSION :: 0.00030; // seawater's thermal expansion near 25 C, 1/K
+PLUME_SETTLE :: 2.8;        // Morton, Taylor and Turner's level, in B^(1/4) N^(-3/4)
+// The temperature of two flows mixed.
+plume_mix :: (flow_a: f64, temp_a: f64, flow_b: f64, temp_b: f64) -> f64 {
+  total := flow_a + flow_b;
+  if total <= 0.0 { return temp_a; }
+  return (flow_a * temp_a + flow_b * temp_b) / total;
+}
+// Its buoyancy flux, m^4/s^3: positive sinks (colder than the sea round it by `colder` K).
+plume_buoyancy :: (flow: f64, colder: f64) -> f64 { return WATER_G * PLUME_EXPANSION * colder * flow; }
+// How far below (or, if warmer, above) its outlet it settles in a sea of buoyancy frequency n (1/s), m.
+plume_settle :: (buoyancy: f64, n: f64) -> f64 {
+  if n <= 0.0 { return 0.0; }
+  return PLUME_SETTLE * pow(abs(buoyancy), 0.25) * pow(n, -0.75);
+}
+// How far downstream the current carries it while it settles, m.
+plume_carry :: (speed: f64, n: f64) -> f64 { return ifx n > 0.0 then abs(speed) * PI_D / n else 0.0; }
+// The plume's depth below its outlet `x` m downstream: it eases down to its level over plume_carry.
+plume_sink :: (settle: f64, carry: f64, x: f64) -> f64 {
+  if carry <= 0.0 { return settle; }
+  t := fclamp(x / carry, 0.0, 1.0);
+  return settle * t * t * (3.0 - 2.0 * t);
+}
+// Its width `x` m downstream of an outlet `width` m wide: it entrains as it sinks and spreads
+// about one in ten after (our assumption).
+plume_width :: (width: f64, x: f64) -> f64 { return width + 0.2 * fmax(x, 0.0); }
+// How much colder than the sea it still is there, of what it left with: it dilutes as it widens.
+plume_strength :: (width: f64, x: f64) -> f64 { return width / plume_width(width, x); }
+// The share of a patch's contrast that shows from above through `depth` m of water of attenuation k (1/m).
+plume_seen :: (depth: f64, k: f64) -> f64 { return exp(-2.0 * fmax(k, 0.0) * fmax(depth, 0.0)); }
+
+// ---- moonpool
+
+MOONPOOL_LOSS :: 1.0;       // the pressure-loss coefficient of flow through the shaft's mouth
+// The piston mode's period for a shaft of water `draft` m deep and `area` m^2 in section, s.
+moonpool_length :: (draft: f64, area: f64) -> f64 { return draft + 0.41 * sqrt(fmax(area, 0.0)); }
+moonpool_period :: (draft: f64, area: f64) -> f64 { return TAU_D * sqrt(moonpool_length(draft, area) / WATER_G); }
+// The share of a surface wave of wavenumber k that presses on the shaft's mouth at the keel.
+moonpool_drive :: (k: f64, draft: f64) -> f64 { return exp(-fmax(k, 0.0) * draft); }
+Moonpool :: struct { z: f64; v: f64; peak: f64; }
+// One step: `sea` is the wave's height over the shaft times moonpool_drive, m.
+moonpool_step :: (m: [] Moonpool, draft: f64, area: f64, sea: f64, dt_in: f64) {
+  length := moonpool_length(draft, area);
+  w2 := WATER_G / length;
+  steps := cast(int) fmax(-floor(-dt_in / 0.05), 1.0);
+  dt := dt_in / f64(steps);
+  for i: 0..<steps {
+    // the spring, a little wave-making damping (2 percent of critical), and the mouth's loss
+    a := -w2 * (m[0].z - sea) - 2.0 * 0.02 * sqrt(w2) * m[0].v - 0.5 * MOONPOOL_LOSS * abs(m[0].v) * m[0].v / length;
+    m[0].v += a * dt;
+    m[0].z += m[0].v * dt;
+  }
+  if abs(m[0].z) > m[0].peak { m[0].peak = abs(m[0].z); }
+}
+
+// ---- checks
+
+#test "a kilometre of hull in a slow current makes no waves; a ship does" {
+  fr := wake_froude(0.5, 1000.0);
+  #assert abs(fr - 0.00505) < 0.0001 && wake_waves(fr) == 0.0;
+  #assert abs(wake_kelvin(0.5) - 0.16) < 0.005;
+  // a 200 m ship at 12 m/s: Fr 0.27, waves 92 m long
+  ship := wake_froude(12.0, 200.0);
+  #assert abs(ship - 0.271) < 0.002 && wake_waves(ship) > 0.8 && abs(wake_kelvin(12.0) - 92.2) < 0.5;
+}
+#test "the wake widens and heals downstream" {
+  #assert wake_width(600.0, 0.0) == 600.0;
+  last := 600.0; lost := 1.0;
+  for i: 1..<40 {
+    x := f64(i) * 500.0;
+    #assert wake_width(600.0, x) > last && wake_deficit(600.0, x) <= lost;
+    last = wake_width(600.0, x); lost = wake_deficit(600.0, x);
+  }
+  // far downstream it grows as the square root of the distance
+  #assert abs(wake_width(600.0, 400000.0) / wake_width(600.0, 100000.0) - 2.0) < 0.02;
+  // slack water close behind; a quarter of the stream still missing 20 km down
+  #assert wake_deficit(600.0, 600.0) == 1.0 && abs(wake_deficit(600.0, 19200.0) - 0.25) < 0.001;
+  // 600 m of beam across half a metre a second: a swing every 2.2 hours, 3.4 km apart
+  #assert abs(wake_period(600.0, 0.5) - 8000.0) < 1.0 && abs(wake_swing(600.0) - 3400.0) < 1.0;
+  d := wake_drift(d2(-0.5, 0.0), d2(-12.9, -4.7));
+  #assert abs(d.x + 0.887) < 0.001 && abs(d.y + 0.141) < 0.001;
+}
+#test "an OTEC plant's mixed discharge sinks to its level" {
+  // 282 m^3/s of 4.5 C deep water and 564 of 28.5 C surface water, each 2.2 K nearer the other after the plant
+  mixed := plume_mix(282.0, 6.7, 564.0, 26.3);
+  #assert abs(mixed - 19.77) < 0.01;
+  // through four outlets into 28 C water: each sinks about 100 m in a sea of N = 0.015 /s
+  b := plume_buoyancy(846.0 / 4.0, 28.0 - mixed);
+  #assert b > 3.0 && b < 8.0;
+  settle := plume_settle(b, 0.015);
+  #assert settle > 80.0 && settle < 130.0;
+  // a stronger layering stops it sooner, a bigger flow sinks further (but only as its fourth root)
+  #assert plume_settle(b, 0.03) < 0.62 * settle && abs(plume_settle(16.0 * b, 0.015) / settle - 2.0) < 0.000001;
+  #assert plume_settle(b, 0.0) == 0.0;
+  // the current carries it about a hundred metres on the way down
+  carry := plume_carry(0.5, 0.015);
+  #assert abs(carry - 104.7) < 0.1;
+  #assert plume_sink(settle, carry, 0.0) == 0.0 && plume_sink(settle, carry, 1000.0) == settle;
+  #assert plume_sink(settle, carry, 52.0) > 0.4 * settle && plume_sink(settle, carry, 52.0) < 0.6 * settle;
+  // it dilutes as it widens
+  #assert plume_strength(40.0, 0.0) == 1.0 && abs(plume_strength(40.0, 200.0) - 0.5) < 0.000001;
+  // from above: a fifth of its contrast through 60 m of clear blue water (K = 0.0125 /m), a fiftieth through 155 m
+  #assert abs(plume_seen(60.0, 0.0125) - 0.223) < 0.002 && plume_seen(155.0, 0.0125) < 0.025 && plume_seen(0.0, 0.0125) == 1.0;
+}
+#test "a moonpool rings at its piston period and the mouth's loss holds it" #steps 400000000 {
+  // a 12 m shaft with a 6.7 m pipe down it, through 25 m of hull
+  area := PI_D * (6.0 * 6.0 - 3.35 * 3.35);
+  period := moonpool_period(25.0, area);
+  #assert abs(period - 10.7) < 0.1;
+  // pulled down a metre and let go in still water: it comes back through zero a quarter period later
+  m: [1] Moonpool; m[0].z = -1.0;
+  t := 0.0;
+  while m[0].z < 0.0 && t < 20.0 { moonpool_step(m[..], 25.0, area, 0.0, 0.01); t += 0.01; }
+  #assert abs(t - period / 4.0) < 0.15;
+  // driven at its own period by a 1 m wave at the mouth it grows past the wave and then holds
+  r: [1] Moonpool;
+  for i: 0..<60000 { moonpool_step(r[..], 25.0, area, 1.0 * sin(TAU_D * f64(i) * 0.01 / period), 0.01); }
+  #assert r[0].peak > 2.0 && r[0].peak < 12.0;
+  // driven far off its period it follows the sea
+  s: [1] Moonpool;
+  for i: 0..<60000 { moonpool_step(s[..], 25.0, area, 1.0 * sin(TAU_D * f64(i) * 0.01 / 40.0), 0.01); }
+  #assert s[0].peak > 0.9 && s[0].peak < 1.3;
+  // a short wave hardly reaches the keel
+  #assert moonpool_drive(TAU_D / 40.0, 25.0) < 0.03 && moonpool_drive(TAU_D / 600.0, 25.0) > 0.75;
+}
