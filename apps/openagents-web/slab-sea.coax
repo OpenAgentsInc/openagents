@@ -326,6 +326,6 @@ sea_look_note :: (s: [] Slab, out: [] f32, at: int) -> int {
   }
 }
 #test "the sea block follows the words and the uniforms still fit one block" {
-  // (the photoreal frame's block follows the sea's: slab-photoreal.coax)
+  // (the photoreal frame's block follows the sea's: slab-photoreal.coax; then the mooring lines': slab-lines.coax)
   #assert U_SEAS == 15840 && UNIFORM_FLOATS >= U_SEAS + SEAS_FLOATS && UNIFORM_FLOATS * 4 <= 65536;
 }

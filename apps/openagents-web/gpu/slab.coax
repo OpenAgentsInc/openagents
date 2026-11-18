@@ -774,25 +774,37 @@ slab_capsule :: (o:V3,d:V3,a:V3,b:V3,r:f32)->V4 {
   }
   return v4(SLAB_MISS,0.0f32,1.0f32,0.0f32);
 }
-// The 16 mooring lines (hull frame), seen under water: taut from fairleads at the keel's corners to
-// anchors 2 km out and 1,500 m down, four to a corner fanned 30 degrees apart (slab-sim's sim_line).
+SLAB_MOOR :: 16200;   // the mooring lines (slab-lines.coax, U_MOOR): the seabed's height, then 16 lines of 8 floats
+// The mooring lines (the world's frame), seen under water, as the mooring model has them now.
+// Each line is its anchor on the seabed (x, z), its fairlead (x, y, z), the share of the way to
+// the fairlead at which it leaves the seabed (under 0: no line), and how far it hangs below the
+// straight run from there, a third and two thirds of the way along. Four straight pieces: along
+// the seabed, then up through the two hanging points to the hull. A broken line lies on the seabed.
 slab_lines :: (o:V3,d:V3,limit:f32,u:[]f32)->SlabHit {
   hit:SlabHit=SlabHit.{t=limit,n=v3(0.0f32,1.0f32,0.0f32),kind=-1.0f32,top=0.0f32,id=-1.0f32,lo=v3(0.0f32,0.0f32,0.0f32),hi=v3(0.0f32,0.0f32,0.0f32)};
-  hl:f32=u[36]; hb:f32=u[37]; keel:f32=u[39];
+  bed:f32=u[SLAB_MOOR];
   i:s32=0;
   while i<16 {
-    corner:s32=i/4; k:s32=i%4;
-    sx:f32=ifx (corner&1)==0 then -1.0f32 else 1.0f32;
-    sz:f32=ifx (corner&2)==0 then -1.0f32 else 1.0f32;
-    fx:f32=sx*(hl-12.0f32); fz:f32=sz*(hb-12.0f32);
-    dl:f32=sqrt((hl*hl)+(hb*hb));
-    dx:f32=(sx*hl)/dl; dz:f32=(sz*hb)/dl;
-    r:f32=((cast(f32)(k))-1.5f32)*0.5235988f32;
-    ax:f32=(dx*cos(r))-(dz*sin(r)); az:f32=(dz*cos(r))+(dx*sin(r));
-    h:V4=slab_capsule(o,d,v3(fx,keel,fz),v3(fx+(ax*2000.0f32),-1500.0f32,fz+(az*2000.0f32)),0.6f32);
-    if (h.x<hit.t) { hit=SlabHit.{t=h.x,n=v3(h.y,h.z,h.w),kind=45.0f32,top=0.0f32,id=-1.0f32,lo=v3(0.0f32,0.0f32,0.0f32),hi=v3(0.0f32,0.0f32,0.0f32)}; }
+    b:s32=SLAB_MOOR+4+(i*8);
+    if (u[b+5]>=0.0f32) {
+      a:V3=v3(u[b],bed,u[b+1]);
+      f:V3=v3(u[b+2],u[b+3],u[b+4]);
+      p1:V3=v3(mix(a.x,f.x,u[b+5]),bed,mix(a.z,f.z,u[b+5]));
+      p2:V3=sb_add(sb_mix(p1,f,0.33333334f32),v3(0.0f32,u[b+6],0.0f32));
+      p3:V3=sb_add(sb_mix(p1,f,0.6666667f32),v3(0.0f32,u[b+7],0.0f32));
+      j:s32=0;
+      while j<4 {
+        ca:V3=ifx j==0 then a else (ifx j==1 then p1 else (ifx j==2 then p2 else p3));
+        cb:V3=ifx j==0 then p1 else (ifx j==1 then p2 else (ifx j==2 then p3 else f));
+        h:V4=slab_capsule(o,d,ca,cb,0.6f32);
+        if (h.x<hit.t) { hit=SlabHit.{t=h.x,n=v3(h.y,h.z,h.w),kind=45.0f32,top=0.0f32,id=-1.0f32,lo=v3(0.0f32,0.0f32,0.0f32),hi=v3(0.0f32,0.0f32,0.0f32)}; }
+        j+=1;
+      }
+    }
     i+=1;
   }
+  // the page lights in the hull's frame
+  if (hit.kind>44.0f32) { hit=SlabHit.{t=hit.t,n=sb_dir_to_hull(hit.n,u),kind=45.0f32,top=0.0f32,id=-1.0f32,lo=v3(0.0f32,0.0f32,0.0f32),hi=v3(0.0f32,0.0f32,0.0f32)}; }
   return hit;
 }
 // Sea water: what it scatters toward the eye at depth y (rgb), dimmer and bluer the deeper.
@@ -1313,7 +1325,7 @@ slab_bg_fs :: (frag:V4,u:[]f32)->SlabOut {
   // under the sea (the underwater view, or through the section's slot)
   wet:bool=(u[SLAB_P+56]>0.5f32)||(u[SLAB_P+52]!=0.0f32);
   if (u[SLAB_P+56]>0.5f32) {
-    ln:SlabHit=slab_lines(ho,hd,hit.t,u);
+    ln:SlabHit=slab_lines(o,d,hit.t,u);
     if (ln.t<hit.t) { hit=ln; }
   }
   if (hit.t<SLAB_MISS) {

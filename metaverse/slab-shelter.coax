@@ -1,0 +1,176 @@
+// SLAB's hull in the sea it changes round itself (docs/research/ocean/slab-world-spec.md, "The
+// hull on its moorings": what the hull samples). A hull a kilometre long does not float in the
+// open sea: its weather faces send waves back, the sea behind it is calmer, and under it a wave's
+// pressure fades from the weather side to the lee side. metaverse/water-wall.coax and
+// metaverse/water-lee.coax work that sea out for drawing; this file hands the same sea to the
+// hull's force model (metaverse/slab-sim.coax's sim_hull_step_lee_on) as two lists of gains:
+//   lee   one for each buoyancy column: the lee model's gain under the hull at that column;
+//   wall  one for each piece of waterline: the lee model's gain in the water at the wall, and on
+//         a flat face what that face sends back (wall_water's sum at the wall itself, where a
+//         wave and its reflection are in step).
+// The gains multiply the sea's tiles as the hull reads them (metaverse/water-hull.coax: each
+// wave already weighted by its length against the draft), so a renderer and the hull's forces
+// see one sea. They are laid once for a wind and a heading, not every step: a body's shelter is
+// fixed in its own frame.
+//
+// Stand-ins, as the wall and lee models say of themselves: one reflection coefficient for the
+// whole sea (the peak wave's), a planning diffraction model, no waves reflected between bodies.
+// The slow drift force is not scaled: it is worked out from the waves the hull turns back.
+//   coax/bin/coax test metaverse/slab-shelter.coax --steps 4000000000
+#load "slab-station.coax";
+#load "water-wall.coax";
+
+SHELTER_COLUMNS :: 6000;      // prime's buoyancy columns; a cluster's seven domes need 2,688
+SHELTER_EDGES :: 320;         // prime's pieces of waterline; a cluster's seven domes need 266
+Shelter :: struct {
+  columns: int; edges: int;   // how many are laid, over every body (0: none, the open sea)
+  lee: [SHELTER_COLUMNS] f32;
+  wall: [SHELTER_EDGES] f32;
+}
+shelter_none :: (o: [] Shelter) { o[0].columns = 0; o[0].edges = 0; }
+// One body's gains, added after those already laid: the hull `h` of shape `sh`, as `body` in the
+// wall and lee models, whose baked grid is in `frame`'s axes (the body itself, or the square round
+// a cluster). False when they do not fit.
+shelter_body :: (o: [] Shelter, sh: SimShape, h: SimHull, frame: Floater, body: Floater, sea: WallSea, faces: WallFaces, grid: [] LeeGrid) -> bool {
+  plan := sim_plan_of(sh);
+  nc := sim_columns(sh); ne := drift_edges(plan);
+  c0 := o[0].columns; e0 := o[0].edges;
+  if c0 + nc > SHELTER_COLUMNS || e0 + ne > SHELTER_EDGES { return false; }
+  cy := cos(h.yaw); sy := sin(h.yaw);
+  ox := h.cx + h.surge; oz := h.cz + h.sway;
+  for i: 0..<nc {
+    c := sim_column(sh, i);
+    p := lee_local(frame, c[0] * cy - c[1] * sy + ox, c[0] * sy + c[1] * cy + oz);
+    o[0].lee[c0 + i] = f32(lee_sample(grid, p.x, p.y, 0));
+  }
+  for i: 0..<ne {
+    e := drift_edge(plan, i);
+    wx := e.x * cy - e.z * sy + ox; wz := e.x * sy + e.z * cy + oz;
+    p := lee_local(frame, wx, wz);
+    g := lee_sample(grid, p.x, p.y, 0);
+    if !sh.round && !body.round {
+      // the piece's face: +x, +z, -x, -z (wall_normal_x, wall_normal_z)
+      face := ifx e.nx > 0.5 then 0 else (ifx e.nz > 0.5 then 1 else (ifx e.nx < -0.5 then 2 else 3));
+      q := lee_local(body, wx, wz);
+      along := -q.x * wall_normal_z(face) + q.y * wall_normal_x(face);
+      length := ifx face == 0 || face == 2 then 2.0 * body.hz else 2.0 * body.hx;
+      g += sea.reflect * faces.f[face].share * wall_beam(faces.f[face], 0.0, along, length);
+    }
+    o[0].wall[e0 + i] = f32(g);
+  }
+  o[0].columns = c0 + nc; o[0].edges = e0 + ne;
+  return true;
+}
+
+// ---------------------------------------------------------------- checks
+// prime in a sea of `wind` m/s, as the wall and lee models have it (the page's ww_lay does the same).
+ShelterCheck :: struct { body: Floater; sea: WallSea; faces: WallFaces; grid: [1] LeeGrid; }
+shelter_check_lay :: (k: [] ShelterCheck, s: [] Synth, h: SimHull) {
+  sh := sim_shape(h); sp := s[0].spectrum;
+  k[0].body = Floater.{hx = sh.l / 2.0, hz = sh.b / 2.0, draft = sh.t, x = h.cx + h.surge, z = h.cz + h.sway, c = cos(h.yaw), s = sin(h.yaw)};
+  bodies: [1] Floater; bodies[0] = k[0].body;
+  c0 := s[0].cascades[0];
+  lee_bake(k[0].grid[..], k[0].body, bodies[..], 1, lee_band(sp, c0.low, c0.high, false), lee_band(sp, c0.high, 10.0 * c0.high, true));
+  k[0].sea = wall_sea(s, 0, sh.b, sh.t);
+  k[0].faces = wall_faces(k[0].sea, k[0].body);
+}
+
+#test "the hull's gains are the wall and lee models' sea: more at the weather walls, less in the lee and under the hull toward it" #steps 4000000000 {
+  s: [1] Synth; t: [1] Tile; k: [1] ShelterCheck; o: [1] Shelter;
+  // a gale running west-south-west, the hull turned a degree and 60 m off its place
+  sp := wall_test_sea(21.6, 4.36);
+  wsp_synth(s[..], sp, 1, 64);
+  wsp_tile(s[..], 0, 900, t[..]);
+  h := SimHull.{surge = -55.0, sway = -25.0, yaw = 0.017};
+  sh := sim_shape(h); plan := sim_plan_of(sh);
+  shelter_check_lay(k[..], s[..], h);
+  #assert shelter_body(o[..], sh, h, k[0].body, k[0].body, k[0].sea, k[0].faces, k[0].grid[..]);
+  #assert o[0].columns == 6000 && o[0].edges == 320 && sim_columns(sh) == 6000 && drift_edges(plan) == 320;
+  // at each piece of wall the gain times the open sea is wall_water's height just off the wall
+  patch := s[0].cascades[0].patch;
+  cy := cos(h.yaw); sy := sin(h.yaw);
+  for i: 0..<320 {
+    e := drift_edge(plan, i);
+    bx := e.x + e.nx * 1.0e-6; bz := e.z + e.nz * 1.0e-6;
+    wx := bx * cy - bz * sy + h.surge; wz := bx * sy + bz * cy + h.sway;
+    open := wall_at(t[0].height[..], t[0].size, patch, wx, wz);
+    there := wall_water(k[0].body, k[0].sea, k[0].faces, k[0].grid[..], t[0].height[..], t[0].size, patch, wx, wz);
+    #assert abs(f64(o[0].wall[i]) * open - there) < 0.002 + 0.002 * abs(open);
+  }
+  // the waves come from just north of east, spread 40 degrees either way: the east wall stands in
+  // nearly twice the open sea and the north wall in two thirds more; the west wall, in the lee,
+  // in a third of it; the south wall, which the spread still reaches, in about the open sea
+  south := 0.0; north := 0.0; west := 0.0; east := 0.0;
+  for i: 0..<100 { south += f64(o[0].wall[i]) / 100.0; north += f64(o[0].wall[100 + i]) / 100.0; }
+  for i: 0..<60 { west += f64(o[0].wall[200 + i]) / 60.0; east += f64(o[0].wall[260 + i]) / 60.0; }
+  #assert east > 1.7 && east < 2.0 && north > 1.4 && north < east && west < 0.45 && south > 0.8 && south < 1.2;
+  // under the hull the waves' pressure fades from the weather side to the lee side
+  windward := 0.0; leeward := 0.0;
+  nz := sim_columns_z(sh);
+  for j: 0..<nz { windward += f64(o[0].lee[99 * nz + j]) / f64(nz); leeward += f64(o[0].lee[j]) / f64(nz); }
+  #assert windward > 0.6 && leeward < 0.5 * windward && leeward >= 0;
+  for i: 0..<6000 { #assert o[0].lee[i] >= 0 && o[0].lee[i] < 1.5; }
+  // a second body's gains follow the first's, and one too many does not fit
+  #assert !shelter_body(o[..], sh, h, k[0].body, k[0].body, k[0].sea, k[0].faces, k[0].grid[..]) && o[0].columns == 6000;
+  shelter_none(o[..]);
+  #assert o[0].columns == 0 && o[0].edges == 0;
+}
+#test "in its own shelter the hull rolls and heaves less, is pushed harder by each wave, and its forces still sum to its momentum" #steps 4000000000 {
+  s: [1] Synth; sea: [1] DriftSea; scratch: [16384] f32; k: [1] ShelterCheck; o: [1] Shelter;
+  sp := wall_test_sea(21.6, 4.36);
+  wsp_synth(s[..], sp, 1, 64);
+  w := wsp_direction(sp);
+  h := sim_rigged(SimHull.{}); sh := sim_shape(h);
+  shelter_check_lay(k[..], s[..], h);
+  #assert shelter_body(o[..], sh, h, k[0].body, k[0].body, k[0].sea, k[0].faces, k[0].grid[..]);
+  a := h; b := h; c := h;
+  heave_a := 0.0; heave_b := 0.0; roll_a := 0.0; roll_b := 0.0; push_a := 0.0; push_b := 0.0;
+  for i: 0..<6000 {
+    if i % 6 == 0 { whl_sea(s[..], wsp_tick_at(sp, a.time), 25.0, scratch[..], sea[..]); }
+    wa := a.imp.wave_x; wb := b.imp.wave_x;
+    a = sim_hull_step_in_on(sh, a, sea[..], 21.6, w.x, w.y, SIM_STEP);
+    b = sim_hull_step_lee_on(sh, b, sea[..], o[0].lee[0..<o[0].columns], o[0].wall[0..<o[0].edges], 21.6, w.x, w.y, SIM_STEP);
+    c = sim_hull_step_lee_on(sh, c, sea[..], o[0].lee[0..<o[0].columns], o[0].wall[0..<o[0].edges], 21.6, w.x, w.y, SIM_STEP);
+    heave_a += a.heave * a.heave; heave_b += b.heave * b.heave; roll_a += a.roll * a.roll; roll_b += b.roll * b.roll;
+    push_a += (a.imp.wave_x - wa) * (a.imp.wave_x - wa); push_b += (b.imp.wave_x - wb) * (b.imp.wave_x - wb);
+  }
+  // less of the sea reaches under the hull; the weather wall's standing wave pushes harder than the
+  // open sea's waves, whose two walls partly cancel
+  #assert heave_b < heave_a && roll_b < roll_a && push_b > push_a;
+  // two runs agree bit for bit
+  #assert b.heave == c.heave && b.roll == c.roll && b.pitch == c.pitch && b.surge == c.surge && b.sway == c.sway && b.yaw == c.yaw && b.tension == c.tension;
+  // the ledger: every force by name sums to the hull's change in momentum
+  q := b.imp;
+  east := q.wind_x + q.current_x + q.moor_x + q.wave_x + q.drift_x + q.drag_x + q.push_x;
+  north := q.wind_z + q.current_z + q.moor_z + q.wave_z + q.drift_z + q.drag_z + q.push_z;
+  gross_x := abs(q.wind_x) + abs(q.current_x) + abs(q.moor_x) + abs(q.wave_x) + abs(q.drift_x) + abs(q.drag_x);
+  gross_z := abs(q.wind_z) + abs(q.current_z) + abs(q.moor_z) + abs(q.wave_z) + abs(q.drift_z) + abs(q.drag_z);
+  #assert abs(east - sim_slide_mass_of(sh) * b.surge_v) < 1.0e-9 * gross_x && abs(north - sim_slide_mass_of(sh) * b.sway_v) < 1.0e-9 * gross_z;
+  turn := q.yaw_wind + q.yaw_current + q.yaw_moor + q.yaw_wave + q.yaw_drag;
+  gross_n := abs(q.yaw_wind) + abs(q.yaw_current) + abs(q.yaw_moor) + abs(q.yaw_wave) + abs(q.yaw_drag);
+  #assert abs(turn - sim_yaw_inertia_of(sh) * b.yaw_v) < 1.0e-9 * gross_n;
+  up := q.buoyancy + q.gravity + q.damping;
+  #assert abs(up - sim_heave_mass_of(sh) * b.heave_v) < 1.0e-9 * (abs(q.buoyancy) + abs(q.gravity) + abs(q.damping));
+}
+#test "a dome behind another feels less of the sea than the one in front" #steps 4000000000 {
+  s: [1] Synth; grid: [1] LeeGrid; o: [1] Shelter;
+  sp := wall_test_sea(13.7, 4.36);
+  wsp_synth(s[..], sp, 1, 64);
+  // two domes 130 m apart along the waves' way (they run west-south-west), in one frame round both
+  w := wsp_direction(sp);
+  front := SimHull.{round = true, cx = -65.0 * w.x, cz = -65.0 * w.y}; back := SimHull.{round = true, cx = 65.0 * w.x, cz = 65.0 * w.y};
+  sh := sim_shape(front);
+  bodies: [2] Floater;
+  bodies[0] = Floater.{round = true, hx = sh.r, hz = sh.r, draft = sh.t, x = front.cx, z = front.cz};
+  bodies[1] = Floater.{round = true, hx = sh.r, hz = sh.r, draft = sh.t, x = back.cx, z = back.cz};
+  frame := Floater.{hx = 65.0 + sh.r, hz = 65.0 + sh.r, draft = sh.t};
+  c0 := s[0].cascades[0];
+  lee_bake(grid[..], frame, bodies[..], 2, lee_band(sp, c0.low, c0.high, false), lee_band(sp, c0.high, 10.0 * c0.high, true));
+  sea := wall_sea(s[..], 0, 2.0 * sh.r, sh.t); faces: WallFaces;
+  #assert shelter_body(o[..], sh, front, frame, bodies[0], sea, faces, grid[..]) && shelter_body(o[..], sh, back, frame, bodies[1], sea, faces, grid[..]);
+  nc := sim_columns(sh); ne := drift_edges(sim_plan_of(sh));
+  #assert o[0].columns == 2 * nc && o[0].edges == 2 * ne && nc == 384 && ne == 38;
+  first := 0.0; second := 0.0;
+  for i: 0..<ne { first += f64(o[0].wall[i]) / f64(ne); second += f64(o[0].wall[ne + i]) / f64(ne); }
+  #assert second < first && first < 1.2 && second > 0.1;
+}

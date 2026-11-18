@@ -6,7 +6,8 @@
 // (metaverse/water-ocean.coax). The platform is metaverse/slab-plan.coax's records, packed into
 // the uniforms each frame and traced by slab.wgsl's bg_fs through the hull's pose, which
 // metaverse/slab-sim.coax steps on the same sea: column buoyancy, added mass, damping, sixteen
-// mooring lines, the wind and the current. slab-sim.coax also runs the sites, the sun, OTEC, the
+// mooring lines with their own shape and a seabed (slab-lines.coax), the wind, the current and
+// the waves' slow push. It turns against its lines as well as moving off. slab-sim.coax also runs the sites, the sun, OTEC, the
 // nuclear option, the data halls, desalination, industry and the miners, and the HUD shows them.
 //
 // Three ways to look: an orbit round a point on the deck, a free fly-through, and walking the
@@ -19,7 +20,9 @@
 // gale|hurricane, ?wind=M/S (overrides the sea's), ?hour=H, ?month=M (1-12), ?rate=X (world
 // seconds a second, 60 by default: a day in 24 minutes), ?power=hybrid|otec|nuclear (hybrid when not given), ?otec=SCALE,
 // ?modules=N, ?swac=1, ?t=SECONDS (a fixed moment), ?yaw=, ?pitch=, ?dist=, ?x=, ?z= (the
-// orbit), ?mode=orbit|fly|walk, ?view=section|under, ?hole=1 (cell A1 holed), ?plant=demo10,
+// orbit), ?mode=orbit|fly|walk, ?ex=, ?ey=, ?ez= (metres) and ?eyaw=, ?epitch= (radians: where the
+// fly-through or the view under the sea starts and looks), ?view=section|under, ?hole=1 (cell A1
+// holed), ?lose=N (N mooring lines already broken), ?plant=demo10,
 // ?flow=1 (the flow overlay), ?hud=0, ?tier=phone, ?weather=clear|overcast|fog|rain|storm (else
 // the sea's own weather), ?water=real (under the sea: the water as it is, not the survey view).
 // The "What would it take?" settings (metaverse/slab-whatif.coax; each is left out of an address
@@ -47,6 +50,7 @@
 #load "slab-hud.coax";   // the HUD in plain words, drawn by the browser (GitHub #13685)
 #load "slab-sea.coax";
 #load "slab-photoreal.coax";   // the photoreal style: the platform as meshes under a physical sky (docs/metaverse/photoreal.md)
+#load "slab-lines.coax";   // the hull on its moorings: its sea, its lines, "lose a line" (GitHub #13688)
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, then length, core, light, glow (a rect: half w, half h, radius, alpha), red, green, blue, mode, border, 0, 0, 0
 MAX_VERTICES :: 30000;
@@ -96,7 +100,8 @@ W_FINE :: 10240;  //   the two finer cascades' slopes (or the phone's baked tile
 TILE_N :: 64;
 WORDS :: W_FINE + TILE_N * TILE_N;
 U_WATER :: U_WORDS + WORDS + SEAS_FLOATS + PHOTO_FLOATS;   // the sea block (slab-sea.coax), the photoreal frame's (slab-photoreal.coax), then what the hull does to the water (slab-water.coax, WW_FLOATS)
-UNIFORM_FLOATS :: U_WATER + WW_FLOATS;
+U_MOOR :: U_WATER + WW_FLOATS;   // then the mooring lines as the view under the sea draws them (slab-lines.coax)
+UNIFORM_FLOATS :: U_MOOR + LINES_FLOATS;
 
 CAM_ORBIT :: 0; CAM_FLY :: 1; CAM_WALK :: 2;
 
@@ -189,6 +194,7 @@ Slab :: struct {
   panel: Panel;         // their panel (slab-panel.coax)
   chart: SlabChart;     // and its chart (slab-chart.coax)
   place: SlabPlace;     // the land in sight and the lines on the water (slab-place.coax)
+  lines: [1] Lines;     // the sea as the hull feels it, and what its lines were last set for (slab-lines.coax)
 }
 
 hi_f32 :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
@@ -282,6 +288,9 @@ slab_pose :: (s: [] Slab) {
   p := [12] f32.[ct, -st * c, st * sn, f32(h.surge),
                  st, ct * c, -ct * sn, f32(h.heave),
                  0, sn, c, f32(h.sway)];
+  // the heeled hull, turned about the vertical against its lines (bow towards north is positive)
+  cy := f32(cos(h.yaw)); sy := f32(sin(h.yaw));
+  for i: 0..<3 { a := p[i]; b := p[8 + i]; p[i] = cy * a - sy * b; p[8 + i] = sy * a + cy * b; }
   for i: 0..<12 { s[0].pose[i] = p[i]; }
 }
 to_world :: (s: [] Slab, x: f32, y: f32, z: f32) -> [3] f32 {
@@ -451,7 +460,8 @@ fly_step :: (s: [] Slab, dt: f32) {
   nx := s[0].fx + (fx * go + rx * side) * speed;
   ny := s[0].fy + (fy * go + lift) * speed;
   nz := s[0].fz + (fz * go + rz * side) * speed;
-  ny = ifx s[0].under then clamp32(ny, -1400, -4) else clamp32(ny, 3, 2000);
+  // under the sea: not above it, and not under the seabed (89 m down off Texas)
+  ny = ifx s[0].under then clamp32(ny, -f32(sim_min(1400, slab_site(s).depth - 2)), -4) else clamp32(ny, 3, 2000);
   // stay out of the hull and the buildings
   h := to_hull(s, nx, ny, nz);
   if inside_any(s, h[0], h[1], h[2]) { ny = hi_f32(s[0].fy, ny); h = to_hull(s, s[0].fx, ny, s[0].fz); if inside_any(s, h[0], h[1], h[2]) { return; } nx = s[0].fx; nz = s[0].fz; }
@@ -761,14 +771,15 @@ pick :: (s: [] Slab, x: f32, y: f32) -> int {
 
 // What the hull does to the water (slab-water.coax): lay it for this layout, then step it. At a
 // fixed moment its spray is run up to that moment and the sea's tile is made again after.
-slab_water_frame :: (s: [] Slab, phone: bool, frozen: bool, step: f64) {
+// Where the water model's bodies are now: the platform as drawn, a dome, or the cluster's seven.
+// The hull's own forces read the same model (slab-lines.coax, lines_shelter).
+slab_water_bodies :: (s: [] Slab) {
   w := s[0].water[..];
   h := s[0].hull;
   if s[0].build.on { w[0].mode = 0; return; }
   if s[0].layout == LAYOUT_PRIME {
-    // the water follows the hull as drawn: slab_pose does not turn it yet, so no heading here
-    // (when it does, pass cos and sin of h.yaw)
-    ww_monolith(w, f64(SLAB_LENGTH) / 2, f64(SLAB_BEAM) / 2, f64(SLAB_DRAFT), h.surge, h.sway, 1.0, 0.0);
+    // the water follows the hull as drawn, turned against its lines (slab_pose)
+    ww_monolith(w, f64(SLAB_LENGTH) / 2, f64(SLAB_BEAM) / 2, f64(SLAB_DRAFT), h.surge, h.sway, cos(h.yaw), sin(h.yaw));
   } else {
     centres: [14] f64;
     n := ifx s[0].layout == LAYOUT_CLUSTER then 7 else 1;
@@ -778,6 +789,12 @@ slab_water_frame :: (s: [] Slab, phone: bool, frozen: bool, step: f64) {
     }
     ww_domes(w, n, SIM_DOME_R, 12.0, centres[..]);
   }
+}
+slab_water_frame :: (s: [] Slab, phone: bool, frozen: bool, step: f64) {
+  w := s[0].water[..];
+  h := s[0].hull;
+  slab_water_bodies(s);
+  if s[0].build.on { return; }
   pw := s[0].power;
   ww_plant(w, pw.cold_flow, 282.0, pw.dt, SIM_CURRENT);
   w[0].overlay = s[0].flow;
@@ -831,20 +848,8 @@ slab_frame :: (s: [] Slab, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
   wsp_tile(s[0].synth[..], 0, folded, s[0].tile[..]);
   c0 := s[0].synth[0].cascades[0];
   wd := wsp_direction(sp);
-  if s[0].layout == LAYOUT_CLUSTER && !s[0].build.on && (!frozen || s[0].fixed >= 0) {
-    if s[0].fixed >= 0 && s[0].cluster.domes[0].time < 20 {
-      for i: 0..<300 { s[0].cluster = sim_cluster_step(s[0].cluster, s[0].tile[0].height[..], TILE_N, c0.patch, s[0].wind, wd.x, wd.y, SIM_STEP); }
-    }
-    s[0].cluster = sim_cluster_advance(s[0].cluster, s[0].tile[0].height[..], TILE_N, c0.patch, s[0].wind, wd.x, wd.y, ifx s[0].fixed >= 0 then 0.0 else f64(step));
-    s[0].hull = s[0].cluster.domes[0];
-  } else if !s[0].build.on && (!frozen || s[0].fixed >= 0) {
-    sim_step := ifx s[0].fixed >= 0 then 0.0 else f64(step);
-    if s[0].fixed >= 0 && s[0].hull.time < 30 {
-      // a fixed moment: let the hull settle onto it
-      for i: 0..<20 { s[0].hull = sim_hull_advance(s[0].hull, s[0].tile[0].height[..], TILE_N, c0.patch, s[0].wind, wd.x, wd.y, 0.1); }
-    }
-    s[0].hull = sim_hull_advance(s[0].hull, s[0].tile[0].height[..], TILE_N, c0.patch, s[0].wind, wd.x, wd.y, sim_step);
-  }
+  // the hull on the sea as it feels it, held by its lines (slab-lines.coax)
+  if !s[0].build.on && (!frozen || s[0].fixed >= 0) { lines_step(s, folded, wd.x, wd.y, ifx s[0].fixed >= 0 then 0.0 else f64(step), s[0].fixed >= 0, phone); }
   slab_water_frame(s, phone, frozen, f64(step));
   slab_pose(s);
   if world_frame(s) {
@@ -1071,6 +1076,7 @@ slab_state_params :: (s: [] Slab, u: [] f32, sun: SimSun) {
   u[P + P_COUNTS] = f32(s[0].group_count); u[P + P_COUNTS + 1] = f32(s[0].stack_first); u[P + P_COUNTS + 2] = f32(s[0].stack_count);
   u[P + P_COUNTS + 3] = f32(pw.industry / SIM_INDUSTRY);
   for i: 0..<12 { u[P + P_POSE + i] = s[0].pose[i]; }
+  lines_uniforms(s, u, U_MOOR);   // the mooring lines, in this frame
   sh := dir_to_hull(s, f32(sun.x), f32(sun.y), f32(sun.z));
   u[P + P_SUNHULL] = sh[0]; u[P + P_SUNHULL + 1] = sh[1]; u[P + P_SUNHULL + 2] = sh[2];
   shown := s[0].mode == CAM_WALK;
@@ -1203,7 +1209,7 @@ two :: (b: [] u8, n: int, v: int) -> int { m := n; if v < 10 { m = put(b, m, "0"
 MONTHS :: [12] string.["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 
 // The info card: up to CARD_LINES lines, each with a style.
-CARD_LINES :: 20;
+CARD_LINES :: 24;
 ST_TITLE :: 0; ST_SUB :: 1; ST_HEAD :: 2; ST_BODY :: 3; ST_LIVE :: 4; ST_WARN :: 5; ST_NOTE :: 6;
 Card :: struct { b: [CARD_LINES * LINE_W] u8; n: [CARD_LINES] int; style: [CARD_LINES] int; lines: int; }
 line :: (c: [] Card, style: int, t: string) -> int {
@@ -1288,11 +1294,10 @@ slab_card :: (s: [] Slab, i: int, c: [] Card) {
     l0 = line(c, ST_BODY, "DRAFT "); num(c, l0, led.draft, 0); more(c, l0, " M, DECK "); num(c, l0, led.deck_height, 0); more(c, l0, " M OVER THE SEA, DISPLACES "); num(c, l0, led.mass / 1e9, 1); more(c, l0, " MT");
     l0 = line(c, ST_BODY, "GM "); num(c, l0, led.gm_t, 0); more(c, l0, " M ACROSS, "); num(c, l0, led.gm_l, 0); more(c, l0, " M ALONG: VERY STIFF");
     l0 = line(c, ST_BODY, "PERIODS: HEAVE "); num(c, l0, sim_heave_period(), 1); more(c, l0, " S, ROLL "); num(c, l0, sim_roll_period(), 1); more(c, l0, " S, PITCH "); num(c, l0, sim_pitch_period(), 1); more(c, l0, " S");
-    ln(c, ST_BODY, "16 TAUT LINES TO ANCHORS 2 KM OUT, 1,500 M DOWN");
+    lines_card(s, c);   // the mooring layout this depth gives, and what is not modelled (slab-lines.coax)
     ln(c, ST_HEAD, "NOW");
     l := line(c, ST_LIVE, "HEAVE "); num(c, l, h.heave, 3); more(c, l, " M  ROLL "); num(c, l, h.roll * 180 / SIM_PI, 4); more(c, l, "°  PITCH "); num(c, l, h.pitch * 180 / SIM_PI, 4); more(c, l, "°");
-    l = line(c, ST_LIVE, "OFFSET "); num(c, l, sqrt(h.surge * h.surge + h.sway * h.sway), 1); more(c, l, " M  PEAK LINE "); num(c, l, h.tension / 1e6, 1); more(c, l, " MN");
-    l = line(c, ST_LIVE, "WIND ON THE HULL "); num(c, l, h.wind_force / 1e6, 1); more(c, l, " MN");
+    lines_card_now(s, c);   // offset, turn, the hardest-pulled line, the wind's and the waves' push, lines broken
     if h.holed {
       l = line(c, ST_WARN, "CELL A1 HOLED: "); num(c, l, h.flood * SIM_RHO / 1e9, 1); more(c, l, " KT OF WATER IN");
       if h.pumping { l = line(c, ST_LIVE, "PUMPS MOVED "); num(c, l, h.moved / 1000, 1); more(c, l, " THOUSAND M3 OF BALLAST"); }
@@ -1744,7 +1749,7 @@ hud :: (s: [] Slab, out: [] f32) -> int {
     n = text(out, n, cast(string) b[0..<m], lx, yy, body); yy += 11 * k;
     m = put(b[..], 0, "DECK ACCEL "); m = putf(b[..], m, abs(h.accel) / SIM_G * 1000, 2); m = put(b[..], m, " MILLI-G   DRAFT "); m = putf(b[..], m, SIM_T - h.heave, 2); m = put(b[..], m, " M");
     n = text(out, n, cast(string) b[0..<m], lx, yy, body); yy += 11 * k;
-    m = put(b[..], 0, "OFFSET "); m = putf(b[..], m, sqrt(h.surge * h.surge + h.sway * h.sway), 1); m = put(b[..], m, " M   PEAK LINE "); m = putf(b[..], m, h.tension / 1e6, 1); m = put(b[..], m, " OF 40 MN");
+    m = put(b[..], 0, "OFFSET "); m = putf(b[..], m, sqrt(h.surge * h.surge + h.sway * h.sway), 1); m = put(b[..], m, " M   PEAK LINE "); m = putf(b[..], m, h.tension / 1e6, 1); m = put(b[..], m, " OF "); m = putf(b[..], m, sim_shape(h).mbl / 1e6, 0); m = put(b[..], m, " MN");
     n = text(out, n, cast(string) b[0..<m], lx, yy, body); yy += 8 * k;
     // the heave trace
     tw := pwide - 24 * k; th := 18 * k;
@@ -2147,6 +2152,7 @@ slab_message :: (s: [] Slab, kind: int, text: string) #export_c #effects(all) {
   if query_word(url, "flow=1") { s[0].flow = true; }
   if query_word(url, "view=section") { s[0].intro = 0; s[0].section = true; }
   if query_word(url, "hole=1") { s[0].hull.holed = true; }
+  s[0].lines[0].lose = cast(int) fclamp(query_number(url, "lose", 0), 0, f64(MOOR_MAX));   // ?lose=N: mooring lines already broken
   if query_word(url, "view=under") { s[0].intro = 0; go_under(s, true); }
   sea_look_url(s, url);
   if query_word(url, "layout=dome") { set_layout(s, LAYOUT_DOME); }
@@ -2156,6 +2162,12 @@ slab_message :: (s: [] Slab, kind: int, text: string) #export_c #effects(all) {
     s[0].yaw = f32(query_number(url, "yaw", 0.802)); s[0].pitch = f32(fclamp(query_number(url, "pitch", 0.36), -0.2, 1.45));
     s[0].dist = f32(fclamp(query_number(url, "dist", 720), 25, 9000));
     s[0].tx = f32(query_number(url, "x", 0)); s[0].tz = f32(query_number(url, "z", 0)); s[0].ty = f32(query_number(url, "y", 8));
+  }
+  if s[0].mode == CAM_FLY && query_number(url, "ex", -99999) != -99999 {
+    // where the fly-through, or the view under the sea, starts and looks
+    s[0].fx = f32(fclamp(query_number(url, "ex", 0), -6000, 6000)); s[0].fz = f32(fclamp(query_number(url, "ez", 0), -6000, 6000));
+    s[0].fy = f32(query_number(url, "ey", f64(s[0].fy)));
+    s[0].fyaw = f32(query_number(url, "eyaw", f64(s[0].fyaw))); s[0].fpitch = f32(fclamp(query_number(url, "epitch", f64(s[0].fpitch)), -1.4, 1.4));
   }
   // the "What would it take?" settings: a preset first, then what the page read above, then their own keys
   change_init(s[0].change[..]);

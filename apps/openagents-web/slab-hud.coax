@@ -85,6 +85,7 @@ sb_more :: (s: [] Slab, h: [] SceneHud, group: int) {
   // yours_hud(s, h, group);
   sea_look_hud(s, h, group);   // the weather, and the water under the sea (slab-sea.coax)
   panel_hud(s, h, group);   // "What would it take?" (slab-panel.coax)
+  lines_hud(s, h, group);      // what holds the hull in place, and "lose a line" (slab-lines.coax)
 }
 // What other files' presses do: one line each.
 sb_act_more :: (s: [] Slab, id: string, value: int) -> bool {
@@ -93,6 +94,7 @@ sb_act_more :: (s: [] Slab, id: string, value: int) -> bool {
   if chart_act(s, id) { return true; }          // the chart's own tags (slab-chart.coax)
   if place_act(s, id) { return true; }          // the dock's name (slab-place.coax)
   if panel_act(s, id, value) { return true; }   // "What would it take?" (slab-panel.coax)
+  if lines_act(s, id, value) { return true; }
   return false;
 }
 
@@ -203,7 +205,7 @@ sb_now :: (s: [] Slab, h: [] SceneHud) {
     sh_fact(h, "Lean to one side", sb_s(ts[..]), SH_NONE);
     t = SbText.{}; t = sb_n(t, sqrt(hl.surge * hl.surge + hl.sway * hl.sway), 1); t = sb_w(t, " m"); ts[0] = t;
     sh_fact(h, "Pushed off its place by", sb_s(ts[..]), SH_NONE);
-    t = SbText.{}; t = sb_n(t, hl.tension / 1e6, 1); t = sb_w(t, " of "); t = sb_n(t, SIM_BREAK / 1e6, 0); t = sb_w(t, " meganewtons"); ts[0] = t;
+    t = SbText.{}; t = sb_n(t, lines_hull(s).tension / 1e6, 1); t = sb_w(t, " of "); t = sb_n(t, sim_shape(lines_hull(s)).mbl / 1e6, 0); t = sb_w(t, " meganewtons"); ts[0] = t;
     sh_fact(h, "Hardest-pulled mooring line", sb_s(ts[..]), SH_NONE);
     sh_heading(h, "Power");
     t = SbText.{}; t = sb_n(t, pw.supply, 1); t = sb_w(t, " MW"); ts[0] = t;

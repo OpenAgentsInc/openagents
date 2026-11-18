@@ -138,6 +138,42 @@ sim_line_points :: (h0: SimHull, i: int, out: [] f32, at: int) {
   n := moor_now(h.rig[..], h.lost, i, h.surge, h.sway, h.yaw, h.heave);
   out[at + 15] = ifx n.lost then 3.0f32 else 1.0f32 + f32(sim_min(n.pull.tension / h.rig[0].line.mbl, 0.999));
 }
+// Line i packed small for a shader, STATION_PACKED floats into out[at..], in the world's frame:
+//   anchor x, z (it lies on the seabed); fairlead x, y, z;
+//   how far from the anchor to the fairlead the line leaves the seabed, as a share of the way
+//     along the seabed (0 for a taut leg, most of the way for a chain; under 0: no line);
+//   the line's height over the straight run from there to the fairlead, a third and two thirds
+//     of the way along it (it hangs below: these are 0 or less).
+// The same solution as sim_line_points: these are points of the line's own curve. A lost line lies
+// on the seabed from its anchor toward where its fairlead was.
+STATION_PACKED :: 8;
+sim_line_packed :: (h0: SimHull, i: int, out: [] f32, at: int) {
+  h := sim_rigged(h0);
+  for k: 0..<STATION_PACKED { out[at + k] = 0; }
+  out[at + 5] = -1;
+  if h.free || i < 0 || i >= h.rig[0].count { return; }
+  n := moor_now(h.rig[..], h.lost, i, h.surge, h.sway, h.yaw, h.heave);
+  l := h.rig[0].line; ax := h.rig[0].ax[i]; az := h.rig[0].az[i]; bed := -h.rig[0].depth;
+  out[at] = f32(h.cx + ax); out[at + 1] = f32(h.cz + az);
+  if n.lost {
+    reach := ifx n.span > 0 then sim_min(l.length / n.span, 1.0) else 0.0;
+    out[at + 2] = f32(h.cx + ax + (n.wx - ax) * reach); out[at + 3] = f32(bed); out[at + 4] = f32(h.cz + az + (n.wz - az) * reach);
+    out[at + 5] = 0.5;
+    return;
+  }
+  out[at + 2] = f32(h.cx + n.wx); out[at + 3] = f32(bed + n.rise); out[at + 4] = f32(h.cz + n.wz);
+  if !(n.span > 0) { out[at + 5] = 1; return; }
+  from := moor_at(l, n.pull, n.span, n.pull.grounded)[0];
+  out[at + 5] = f32(sim_clamp(from / n.span, 0, 1));
+  if n.pull.slack || n.span - from < 1.0e-6 { return; }
+  for k: 1..<3 {
+    // the length of line that reaches this far along: the line runs on with its length, so bisect
+    want := from + (n.span - from) * f64(k) / 3.0;
+    lo := n.pull.grounded; hi := l.length;
+    for j: 0..<32 { mid := 0.5 * (lo + hi); if moor_at(l, n.pull, n.span, mid)[0] < want { lo = mid; } else { hi = mid; } }
+    out[at + 5 + k] = f32(moor_at(l, n.pull, n.span, 0.5 * (lo + hi))[1] - n.rise * f64(k) / 3.0);
+  }
+}
 
 // ---------------------------------------------------------------- checks (spec section 9, H1 to H5)
 // The page's sea for a wind (apps/openagents-web/slab.coax's slab_spectrum): a long fetch, scaled
@@ -260,6 +296,21 @@ STATION_CHECK_EVERY :: 6;
   #assert p[1] == -89 && p[4] == -89 && abs(f64(p[13])) < 0.3;
   reach := sqrt(f64(p[3] - p[0]) * f64(p[3] - p[0]) + f64(p[5] - p[2]) * f64(p[5] - p[2]));
   #assert reach > 100.0;
+  // packed for the shader they are the same lines: the same anchor, the fairlead where the last
+  // point is, the same place the chain leaves the seabed, and a curve that hangs below the
+  // straight run (a taut leg to windward by some ten metres and a slackened one to leeward by a
+  // hundred or more; a chain by 20 m of its 89 m)
+  k: [8] f32;
+  sim_line_packed(shallow, 0, k[..], 0);
+  #assert k[0] == p[0] && k[1] == p[2] && abs(k[2] - p[12]) < 0.5 && abs(k[3] - p[13]) < 0.5 && abs(k[4] - p[14]) < 0.5;
+  whole := sqrt(f64(k[2] - k[0]) * f64(k[2] - k[0]) + f64(k[4] - k[1]) * f64(k[4] - k[1]));
+  #assert abs(f64(k[5]) * whole - reach) < 1.0 && k[5] > 0.1 && k[5] < 1;
+  #assert k[6] < -1 && k[7] < -1 && k[6] > -89 && k[7] > -89;
+  sim_line_packed(deep, 0, p[..], 0);
+  #assert p[5] == 0 && p[3] > -26 && p[3] < -24 && p[6] < -5 && p[7] < -5 && p[6] > -400 && p[7] > -400;
+  // no such line
+  sim_line_packed(deep, 16, p[..], 0);
+  #assert p[5] < 0;
 }
 #test "H5: lose a line in a gale: the hull shifts and turns, its neighbour takes the load, and it shows" #steps 2000000000 {
   s: [1] Synth; sea: [1] DriftSea; scratch: [16384] f32;
@@ -287,6 +338,8 @@ STATION_CHECK_EVERY :: 6;
   p: [16] f32;
   sim_line_points(g, before.worst, p[..], 0);
   #assert p[15] == 3 && p[13] == -1500;
+  sim_line_packed(g, before.worst, p[..], 0);
+  #assert p[3] == -1500 && p[5] == 0.5 && p[6] == 0 && p[7] == 0;
   // new lines put it back
   #assert sim_lines_lost(sim_refit_lines(g)) == 0;
 }

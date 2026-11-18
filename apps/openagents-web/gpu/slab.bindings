@@ -2,7 +2,7 @@
 # group 0 the frame's uniforms and the HUD's letters; group 1 the photoreal scene's stores (the parts'
 # vertices, the records, the materials, the ground's sky field); group 2 the sun's shadow map and its
 # comparison sampler.
-u 0 0 uniform 4050
+u 0 0 uniform 4083
 sans_atlas 0 1
 sans_sampler 0 2
 parts 1 0

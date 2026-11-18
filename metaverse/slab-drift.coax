@@ -120,12 +120,20 @@ DriftForce :: struct { fx: f64; fz: f64; yaw: f64; }
 // The waves' push on the walls of a hull whose centre is at (cx, cz), turned (cy, sy: the cosine
 // and sine of its yaw): rho g `scale` push on each piece of waterline, against its normal.
 drift_wave_push :: (push: [] f32, n: int, patch: f64, scale: f64, p: DriftPlan, cx: f64, cz: f64, cy: f64, sy: f64) -> DriftForce {
+  return drift_wave_push_at(push, n, patch, scale, push[0..<0], p, cx, cz, cy, sy);
+}
+// The same with the sea at each piece of wall as the hull itself changes it: `wall` is one gain a
+// piece, in drift_edge's order (more where a face sends the waves back, less in the hull's own
+// lee; metaverse/slab-shelter.coax lays it). With none it is the open sea's.
+drift_wave_push_at :: (push: [] f32, n: int, patch: f64, scale: f64, wall: [] f32, p: DriftPlan, cx: f64, cz: f64, cy: f64, sy: f64) -> DriftForce {
   o: DriftForce;
   if n <= 0 { return o; }
   fx := 0.0; fz := 0.0;
-  for i: 0..<drift_edges(p) {
+  edges := drift_edges(p);
+  for i: 0..<edges {
     e := drift_edge(p, i);
     head := drift_at(push, n, patch, cx + e.x * cy - e.z * sy, cz + e.x * sy + e.z * cy);
+    if wall.count >= edges { head *= f64(wall[i]); }
     f := -DRIFT_RHO * DRIFT_G * scale * head * e.span;
     fx += f * e.nx; fz += f * e.nz;
     o.yaw += e.x * f * e.nz - e.z * f * e.nx;

@@ -1462,8 +1462,8 @@ moorings). Issue 13688 asked for these.
   head summed over the wall ((1 − e^−kT)/k) and the part the hull turns back
   (√(1 − e^−2kT), Wiegel's power-transmission estimate). A 400 m swell keeps
   68% of its lift and a 60 m chop 7%. The hull sums the tiles where it
-  floats: the lift over its 960 columns, the push round its waterline in
-  12.5 m pieces. Crests and troughs still cancel along the hull in the sum
+  floats: the lift over its 6,000 columns, the push round its waterline in
+  10 m pieces. Crests and troughs still cancel along the hull in the sum
   itself.
 - **Slow drift.** A wall that turns back a wave of amplitude a takes a mean
   push of ½ ρ g a² for each metre (Maruo), and in an irregular sea the push
@@ -1509,6 +1509,49 @@ moorings). Issue 13688 asked for these.
 | Heave on the gale's sea (H2) | less with each wave faded by its length than with the same sea lifting the hull unfaded; both are centimetres |
 | Determinism (test 9) | two runs of 10,000 ticks in `winter`, with a line lost at tick 4,000, end in the same hull bit for bit, and a hull handed over at tick 10,000 steps on the same |
 | Ledger (test 10) | over 600 s of `trade` from rest, each step's change in velocity is that step's summed force over the mass it moves, and the yaw and heave ledgers close to one part in a million |
+
+**On the page.** `apps/openagents-web/slab-lines.coax` runs this in the
+world. Each frame it makes the three weighted tiles once, puts the hull at
+rest when the place, the layout, the wind or the depth changes
+(`sim_hull_settle`), and then steps it. The hull's pose carries its turn, so
+the camera, the walker, the drawing and the cards follow the turned hull.
+
+- **See inside**, **What holds it in place** says the layout the depth gives
+  and shows the lines holding, the offset, the turn, the
+  hardest-pulled line against its breaking load, the wind's push, the waves'
+  slow push, and the hardest upward pull on an anchor or the chain still on
+  the seabed. **Lose a line** breaks the most loaded line and **Fit new
+  lines** puts them back. A line that reaches its breaking load parts on its
+  own and the HUD says so. `?lose=N` opens the world with N lines broken.
+- The hull's card gives the same layout, the turn, both pushes and the lines
+  broken, and says what is not modelled.
+- Under the sea each line is drawn as four straight pieces through points of
+  the mooring model's own curve (`sim_line_packed`): the anchor, where the
+  line leaves the seabed, two points up the hanging part and the fairlead.
+  They are the last 132 floats of the uniforms (the seabed's height, then 8
+  floats a line, in the world's frame), which brings the block to 4,083 of
+  the 4,096 vec4s a uniform block may hold on every device. A broken line
+  lies on the seabed from its anchor.
+- **What the hull samples.** The hull feels the spectral sea's waves at its
+  place, each weighted by its length against the draft, in the sea the hull
+  changes round itself. `metaverse/slab-shelter.coax` takes the wall and lee
+  models' sea (`wall_water`, the page's `ww_height`) and hands it to the
+  force model as a gain under each buoyancy column and at each piece of
+  waterline. Under the hull a wave's pressure fades from the weather side to
+  the lee side. At a weather wall the wave and what the wall sends back
+  stand in step, and at a lee wall the sea is calmer. A cluster's domes
+  shelter each other the same way. The gains are laid again when the wall
+  and lee models are (a new wind, or the hull has moved 8 m or turned). The
+  slow drift is not scaled: it already counts the waves the hull turns back.
+  These are stand-ins for a diffraction analysis: one reflection coefficient
+  for the whole sea and a planning model of the lee.
+
+| On the page | Measured |
+|---|---|
+| A line lost in the gale | at the break the worst of the fifteen is at 16.4 MN. Two minutes on the hull is 3 m further off and turned 0.3° more, with the worst line at 16.9 MN. It comes to rest 22 m further off, turned 2.1°, at 21.0 MN. 15 million tonnes on these lines swing in about 20 minutes, so the move takes minutes, and the HUD says so |
+| The hull's step (native, release) | 25 µs square to the sea's tile, 41 µs turned, 54 µs on the weighted tiles with drift; the tiles themselves 75 µs a frame |
+| The gale with the hull in its own shelter, against the open sea (ten minutes, native) | heave 0.08 m rms against 0.11 m, roll 0.040° against 0.055°, pitch 0.033° against 0.042°. Each wave's push 203 MN rms along the hull and 94 MN across it, against 140 and 69 MN: the east and north walls stand in 1.97 and 1.68 times the open sea, the west wall in 0.32. The worst line 19.2 MN against 19.0 MN |
+| The shelter's cost | 5 µs more a step (native, release); the gains are laid only when the wall and lee models are |
 
 **Departures, and what this does not model:**
 - The sixteen 40 MN lines are the spec's, sized for a 20 m/s wind on a 25 m
