@@ -4826,7 +4826,7 @@ function noGpuNotice() {
   // the explanation. Overlay pages also position their root over normal flow.
   const domRoot = document.getElementById("coaxial-root");
   if (domRoot) {
-    note.style.cssText += ";position:fixed;left:16px;right:16px;bottom:16px;z-index:2147483647;max-height:40vh;overflow:auto";
+    note.style.cssText += ";position:fixed;left:16px;right:16px;bottom:16px;z-index:2147483647;max-height:40vh;overflow:auto"; // text fallback
     document.body.append(note);
   } else {
     (document.querySelector("main") || document.body).prepend(note);
