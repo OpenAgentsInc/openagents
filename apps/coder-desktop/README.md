@@ -14,6 +14,7 @@ the typing mark and notices. The shared AppKit editor
 - **Send** (or Return) starts one Microcoder run. Shift-Return makes a new line.
 - **Stop** ends the run.
 - **New chat** (the icon in the window's top right corner, or Command-N) clears the window and makes Microcoder forget the conversation.
+- **The working folder** shows in the window's top left corner. Commands start there. Press it (or File > Open Folder, Command-O) to choose another. Coder keeps the folder you chose; until you choose one, it is your home folder. You can't change it during a run.
 - **Command-plus** and **Command-minus** make the text bigger and smaller, in eight sizes from 80% to 200%. Command-0 is the usual size. Coder keeps the size you chose.
 - **Copy** on a code block puts its text on the clipboard.
 
@@ -24,9 +25,11 @@ Limits, all shown on screen when you reach them:
 - One run at a time.
 - A message shows the first 12 commands and file reads. It says how many more ran.
 - A command's output is shown up to 4,000 bytes.
+- The working folder's name is cut with an ellipsis past 280 points wide.
 
-Microcoder runs shell commands in your home folder as you, with the
-`danger-full-access` profile: nothing confines them. The worker's other
+Microcoder runs shell commands as you, starting in the working folder, with
+the `danger-full-access` profile: nothing confines them, and a command can
+reach outside the folder. The worker's other
 profiles (`read-only`, `workspace-write`) need `bwrap`, which is Linux only,
 so on macOS every command under them fails to start.
 
@@ -77,6 +80,12 @@ To send a message at launch, with no typing:
 
 ```sh
 open -n apps/coder-desktop/build/Coder.app --args --send "What is 2+2?"
+```
+
+Add `--folder PATH` to use a working folder for this launch only:
+
+```sh
+open -n apps/coder-desktop/build/Coder.app --args --folder ~/work/app --send "Run pwd."
 ```
 
 Add `--then TEXT` to start a new chat once that reply ends and send `TEXT` in it:

@@ -111,6 +111,14 @@ final class CoderWindow: NSObject {
         cd_on_change(page, { raw in guard let raw else { return }; Unmanaged<CoderWindow>.fromOpaque(raw).takeUnretainedValue().wake() },
                      Unmanaged.passUnretained(self).toOpaque())
         cd_skills(page, coderSkillsNote())
+        // the working folder: --folder PATH for this launch, else the one chosen last, else the home folder
+        var isFolder: ObjCBool = false
+        if let at = CommandLine.arguments.firstIndex(of: "--folder"), at + 1 < CommandLine.arguments.count,
+           FileManager.default.fileExists(atPath: CommandLine.arguments[at + 1], isDirectory: &isFolder), isFolder.boolValue {
+            setFolder(URL(fileURLWithPath: CommandLine.arguments[at + 1]), keep: false)
+        } else if let kept = UserDefaults.standard.string(forKey: "folder"), FileManager.default.fileExists(atPath: kept, isDirectory: &isFolder), isFolder.boolValue {
+            setFolder(URL(fileURLWithPath: kept), keep: false)
+        } else { setFolder(folder, keep: false) }
         editor.committed = { [weak self] text in guard let self else { return }; _ = cd_set_text(self.page, text); self.wake() }
         // Return sends; Shift-Return and Option-Return make a new line.
         editor.command = { [weak self] selector in
@@ -156,6 +164,26 @@ final class CoderWindow: NSObject {
         wake()
     }
     /// File > New Chat (Command-N): what the New chat button does.
+    /// The working folder: commands start there. The corner shows it with ~ for the home folder.
+    private(set) var folder = FileManager.default.homeDirectoryForCurrentUser
+    func setFolder(_ url: URL, keep: Bool) {
+        folder = url.standardizedFileURL
+        if keep { UserDefaults.standard.set(folder.path, forKey: "folder") }
+        let home = FileManager.default.homeDirectoryForCurrentUser.path, path = folder.path
+        cd_folder(page, path == home ? "~" : path.hasPrefix(home + "/") ? "~" + path.dropFirst(home.count) : path)
+        wake()
+    }
+    func chooseFolder() {
+        guard cd_running(page) == 0 else { return }
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true; panel.canChooseFiles = false; panel.allowsMultipleSelection = false; panel.canCreateDirectories = true
+        panel.directoryURL = folder; panel.prompt = "Choose"; panel.message = "Choose the working folder. Commands start there."
+        panel.beginSheetModal(for: window) { [weak self] answer in
+            guard let self else { return }
+            if answer == .OK, let url = panel.url { self.setFolder(url, keep: true) }
+            self.window.makeFirstResponder(self.editor)
+        }
+    }
     func newChat() { if cd_new(page) != 0 { window.makeFirstResponder(editor) }; wake() }
 
     private func act(_ what: Int32) {
@@ -164,7 +192,7 @@ final class CoderWindow: NSObject {
         case 1:
             editor.synchronize { editor.string = "" }
             guard worker.start() else { cd_failed(page, "Microcoder could not start."); return }
-            let n = cd_task(page, session, FileManager.default.homeDirectoryForCurrentUser.path, &out, Int32(out.count))
+            let n = cd_task(page, session, folder.path, &out, Int32(out.count))
             worker.write(out, count: Int(n))
         case 2: window.makeFirstResponder(editor)
         // The line is written into out first: Swift copies an argument before a later one's call fills it.
@@ -173,6 +201,7 @@ final class CoderWindow: NSObject {
         case 5:
             guard cd_copied(page, &out, Int32(out.count)) > 0 else { return }
             let board = NSPasteboard.general; board.clearContents(); board.setString(String(cString: out), forType: .string)
+        case 6: chooseFolder()
         default: break
         }
     }
@@ -214,11 +243,12 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
     func applicationWillTerminate(_ notification: Notification) { main?.retire() }
     @objc func newChat(_ sender: Any?) { main?.newChat() }
+    @objc func openFolder(_ sender: Any?) { main?.chooseFolder() }
     @objc func biggerText(_ sender: Any?) { main?.zoom(1) }
     @objc func smallerText(_ sender: Any?) { main?.zoom(-1) }
     @objc func actualSize(_ sender: Any?) { main?.zoom(nil) }
     // New Chat is off while a run is going, as the button is.
-    @objc func validateMenuItem(_ item: NSMenuItem) -> Bool { item.action != #selector(newChat(_:)) || main?.canNew == true }
+    @objc func validateMenuItem(_ item: NSMenuItem) -> Bool { (item.action != #selector(newChat(_:)) && item.action != #selector(openFolder(_:))) || main?.canNew == true }
 }
 
 @main struct CoderApp {
@@ -229,6 +259,7 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         let appMenu = NSMenu(), edit = NSMenu(title: "Edit")
         let fileItem = NSMenuItem(), file = NSMenu(title: "File")
         file.addItem(withTitle: "New Chat", action: #selector(CoderDelegate.newChat(_:)), keyEquivalent: "n").target = delegate
+        file.addItem(withTitle: "Open Folder…", action: #selector(CoderDelegate.openFolder(_:)), keyEquivalent: "o").target = delegate
         fileItem.submenu = file
         let viewItem = NSMenuItem(), view = NSMenu(title: "View")
         view.addItem(withTitle: "Actual Size", action: #selector(CoderDelegate.actualSize(_:)), keyEquivalent: "0").target = delegate

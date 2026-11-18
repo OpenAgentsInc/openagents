@@ -21,12 +21,14 @@ int cd_submit(void *page);
 int cd_new(void *page);
 // What the page asks for, once: 0 nothing, 1 the draft was sent (write cd_task to the worker and
 // empty the editor), 2 the text wants the keyboard, 3 stop the run (cd_stop_line), 4 a new chat
-// (cd_forget_line), 5 a code block's Copy (cd_copied is its text).
+// (cd_forget_line), 5 a code block's Copy (cd_copied is its text), 6 choose the working folder.
 int cd_action(void *page);
 // The worker's lines (coder/tui/mcworker.coax), each with its newline: the length, 0 for none.
 int cd_task(void *page, const char *session, const char *cwd, char *out, int cap);
 // The note on installed skills that goes ahead of each message (not shown).
 void cd_skills(void *page, const char *note);
+// The working folder as shown in the corner (~/work/app). Its whole path is cd_task's cwd.
+void cd_folder(void *page, const char *shown);
 // The answer the worker is owed after a line that asked about a command: its length, 0 for none.
 int cd_answer_line(void *page, char *out, int cap);
 int cd_stop_line(char *out, int cap);

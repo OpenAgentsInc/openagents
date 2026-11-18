@@ -35,14 +35,16 @@ CP_ZOOMS :: [8] f32.[0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0];   // the text si
 CP_ZOOM_USUAL :: 2;
 CP_BOTTOM :: 8;             // under the message bar
 CP_COLUMN :: 680;           // the conversation's widest column
+CP_FOLDER_TEXT :: 512;     // bytes of the working folder's name as shown
+CP_FOLDER_MOST :: 280;      // the working folder chip's greatest width; a longer name is cut with an ellipsis
 CP_CORNER :: 6;             // New chat from the window's top and right edges
 CP_MODEL :: "gemini-4-hydrogen";
 CP_MODEL_NAME :: "Microcoder · Gemini 4 Hydrogen";
 
 // What the page asks of its host (coder_page_action), once.
-CP_ASK_NONE :: 0; CP_ASK_SEND :: 1; CP_ASK_FOCUS :: 2; CP_ASK_STOP :: 3; CP_ASK_NEW :: 4; CP_ASK_COPY :: 5;
+CP_ASK_NONE :: 0; CP_ASK_SEND :: 1; CP_ASK_FOCUS :: 2; CP_ASK_STOP :: 3; CP_ASK_NEW :: 4; CP_ASK_COPY :: 5; CP_ASK_FOLDER :: 6;
 // What a row dispatches.
-CP_FIELD :: 1; CP_SEND :: 2; CP_NEW :: 3; CP_COPY :: 4; CP_TOOL :: 5;
+CP_FIELD :: 1; CP_SEND :: 2; CP_NEW :: 3; CP_COPY :: 4; CP_TOOL :: 5; CP_FOLDER :: 6;
 // A turn's state.
 CP_RUNNING :: 0; CP_DONE :: 1; CP_FAILED :: 2; CP_STOPPED :: 3;
 
@@ -75,6 +77,7 @@ CoderPage :: struct {
   draft: [1] EditBuf;
   focused: bool; editor_h: f32; reduced: bool;
   skills: [CP_SKILLS] u8; skills_n: int;
+  folder: [CP_FOLDER_TEXT] u8; folder_n: int;   // the working folder as shown (~/work/app): commands start there
   answer: int; answer_due: bool;   // the ticket of the worker's ask that is owed its answer
   zoom: int;                  // the text size, a row of CP_ZOOMS
   px: f32; py: f32; touching: bool; pressed: [EL_ID] u8; pressed_n: int;
@@ -210,6 +213,7 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
     return cp_send(s);
   }
   if act == CP_NEW { return cp_new(s); }
+  if act == CP_FOLDER { if cp_running(s) { return false; } s[0].ask = CP_ASK_FOLDER; return true; }
   if act == CP_COPY {
     id := surface_id(s[0].surface[..], row);
     turn := cp_number(id, "t"); block := cp_number(id, ".code.");
@@ -272,6 +276,11 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) {
   // New chat floats in the window's top right corner, over what scrolls
   _ := app_icon_button(f, "coder.new", w - a.icon_button - CP_CORNER, CP_CORNER, ICON_COMPOSE, "New chat", APP_BUTTON_QUIET,
                        ifx running || s[0].nturns == 0 then EL_S_DISABLED else 0, CP_NEW);
+  // the working folder floats in the top left corner; a press asks the host for another
+  if s[0].folder_n > 0 {
+    _ := app_chip(f, "coder.folder", CP_CORNER, CP_CORNER, CP_FOLDER_MOST, ICON_FOLDER, "Working folder", sheet_pool(f[0].sheet, cast(string) s[0].folder[0..<s[0].folder_n]),
+                  ifx running then EL_S_DISABLED else 0, CP_FOLDER);
+  }
   c := AppComposer.{placeholder = "Message", text = eb_text(s[0].draft[..]),
     state = ifx running then APP_COMPOSER_RUNNING else ifx full then APP_COMPOSER_OFF else APP_COMPOSER_READY,
     editing = s[0].focused, editor_h = s[0].editor_h / cp_scale(s), unit = ARCADE_PHONE_SCALE};
@@ -366,6 +375,12 @@ coder_page_task :: (s: [] CoderPage, session: string, cwd: string, out: [] u8) -
 coder_page_skills :: (s: [] CoderPage, note: string) #export_c #effects(all) {
   if s.count < 1 { return; }
   s[0].skills_n = cp_out(s[0].skills[..], note);
+}
+// The working folder as the host shows it (~/work/app). Commands start there: the host passes its
+// whole path as the task's cwd. At most 512 bytes are kept.
+coder_page_folder :: (s: [] CoderPage, shown: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].folder_n = cp_out(s[0].folder[..], shown);
 }
 // The answer the worker is owed for the command it asked about: yes, run it. The page shows every
 // command as it starts; it does not hold one back. Its length in out, 0 when none is owed.
@@ -582,4 +597,14 @@ coder_page_zoom_set :: (s: [] CoderPage, row: int) -> int #export_c #effects(all
   #assert s[0].turns[0].ncmds == 1 && !s[0].turns[0].cmds[0].running && !s[0].turns[0].cmds[0].failed && cast(string) s[0].turns[0].cmds[0].out[0..<s[0].turns[0].cmds[0].out_n] == "/a/x";
   #assert coder_page_line(s, "{\"kind\":\"ask\",\"command\":\"sleep 9\",\"ticket\":8}") == MWW_ASK && s[0].turns[0].cmds[1].running;
   #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"stopped\",\"text\":\"\"}") == MWW_ENDED && !s[0].turns[0].cmds[1].running;
+}
+#test "the working folder is kept as the host shows it, up to 512 bytes" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  #assert s[0].folder_n == 0;
+  coder_page_folder(s, "~/work/app");
+  #assert cast(string) s[0].folder[0..<s[0].folder_n] == "~/work/app";
+  long: [600] u8; for i: 0..<600 { long[i] = 97; }
+  coder_page_folder(s, cast(string) long[..]);
+  #assert s[0].folder_n == CP_FOLDER_TEXT;
 }
