@@ -17,7 +17,7 @@
 // Claude Code does, saves no session, and runs with no permission prompts, as Microcoder's
 // commands do (danger-full-access).
 //
-// Limits: a run has 15 minutes (CW_RUN_MS). A tool call's line names it in up to 300 bytes and
+// A run has no time limit: it ends when Claude replies or its owner stops it. Limits: a tool call's line names it in up to 300 bytes and
 // carries up to 4,000 bytes of its output. Up to 32 tool calls are open at once.
 //
 //   coax/web/tool.sh coder/tui/claudeworker.coax
@@ -31,7 +31,6 @@ cxterm_byte :: (timeout_ms: int) -> int #foreign #effects(all);
 cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
 
 CW_LINE :: 1048576;
-CW_RUN_MS :: 900000;
 CW_LABEL :: 300;
 CW_OUTPUT :: 4000;
 CW_OPEN :: 32;
@@ -98,14 +97,13 @@ tool_main :: () -> int #export_c #effects(all) {
   lb: [CW_LABEL] u8; ob: [CW_OUTPUT] u8; eb: [2048] u8;
   q: [1] ClQuery; p: [1] ClProcess;
   req: [1] MwwRequest;
-  running := false; began := 0; ticket := 0;
+  running := false; ticket := 0;
   cw_send(out[..], mww_ready(out[..]));
   while true {
     if running {
       ev := cl_poll(q[..], p[..], 20);
       ended := ""; text := "";
-      if cxproc_now_ms() - began > CW_RUN_MS { ended = "failed"; text = "Claude ran for 15 minutes, the most a sub-agent has, and was stopped."; }
-      else if ev.kind == ClEventKind.failed { ended = "failed"; text = cl_error(q[..]); }
+      if ev.kind == ClEventKind.failed { ended = "failed"; text = cl_error(q[..]); }
       else if ev.kind == ClEventKind.end {
         ended = "failed";
         text = cl_stderr(p[..], eb[..]);
@@ -210,7 +208,7 @@ tool_main :: () -> int #export_c #effects(all) {
       cw_send(out[..], mww_ended(out[..], "failed", ifx problem == "claude executable not found" then "Claude Code is not installed on this computer: the claude command was not found." else problem));
       return 0;
     }
-    running = true; began = cxproc_now_ms();
+    running = true;
   }
   return 0;
 }

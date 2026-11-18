@@ -38,7 +38,7 @@ Limits, all shown on screen when you reach them:
 - A sub-agent's task is cut at 1,500 bytes and its reply at 8,000 bytes.
 - A sub-agent's transcript shows its first 40 tool calls and says how many more ran. It shows each call up to 300 bytes and its output up to 1,000 bytes.
 - A sub-agent's transcript is 440 points wide. In a window where that leaves the conversation under 380 points, the chats' sidebar is hidden while the transcript is open. In a narrower window still, the transcript takes the whole window until you close it.
-- A run has 15 minutes, with its sub-agents' time included. A command has 120 seconds.
+- A command has 120 seconds. A run has no limit on its time, its model calls, its commands or its file reads (#13667): it ends when it replies or you press Stop. The same goes for every sub-agent.
 
 Microcoder runs shell commands as you, starting in the working folder, with
 the `danger-full-access` profile: nothing confines them, and a command can
@@ -100,7 +100,7 @@ A Claude sub-agent runs through the Coax Claude Agent SDK
 - It works in the working folder with Claude Code's own tools, your settings and your skills, and with no permission prompts.
 - It saves no Claude Code session.
 - Its usage counts against your Claude plan.
-- It has 15 minutes. Each tool call shows in its row as it starts.
+- It has no time limit. Each tool call shows in its row as it starts.
 
 Coder looks for `claude` in `~/.local/bin`, `/opt/homebrew/bin`,
 `/usr/local/bin` and the system `PATH` when it starts. Without it,

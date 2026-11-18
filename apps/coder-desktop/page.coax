@@ -375,7 +375,7 @@ coder_page_agent_task :: (s: [] CoderPage, j: int, session: string, cwd: string,
   level := s[0].turns[i].agents[j].level;
   if level >= CP_LEVEL_CLAUDE { return mww_task(out, McTask.{task = cast(string) s[0].turns[i].agents[j].task[0..<s[0].turns[i].agents[j].task_n], session = session, cwd = cwd, sandbox = "danger-full-access", ceiling = 3, model = CP_LEVEL[level]}); }
   complex := level == 1;
-  t := McTask.{task = cast(string) whole[0..<n], session = session, cwd = cwd, sandbox = "danger-full-access", ceiling = 3, gated = true, edits = true,
+  t := McTask.{task = cast(string) whole[0..<n], session = session, cwd = cwd, sandbox = "danger-full-access", ceiling = 3, gated = true, edits = true, unlimited = true,
                model = ifx complex then CP_MODEL_COMPLEX else CP_MODEL, effort = ifx complex then "medium" else "low"};
   return mww_task(out, t);
 }
@@ -1044,7 +1044,7 @@ coder_page_task :: (s: [] CoderPage, session: string, cwd: string, out: [] u8) -
   n := cp_out(whole[..], cast(string) s[0].skills[0..<s[0].skills_n]);
   for c: cast(string) s[0].turns[i].ask[0..<s[0].turns[i].ask_n] { whole[n] = c; n += 1; }
   t := McTask.{task = cast(string) whole[0..<n], session = session, cwd = cwd, sandbox = "danger-full-access",
-               ceiling = 3, gated = true, edits = true, agents = true, claude = s[0].claude, model = CP_MODEL, effort = "low"};
+               ceiling = 3, gated = true, edits = true, unlimited = true, agents = true, claude = s[0].claude, model = CP_MODEL, effort = "low"};
   return mww_task(out, t);
 }
 // What the host found installed on this computer (skills and their files), in words for Microcoder.
@@ -1350,7 +1350,7 @@ coder_page_zoom_set :: (s: [] CoderPage, row: int) -> int #export_c #effects(all
   #assert coder_page_set_text(s, "do two things") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND;
   out: [8192] u8; ab: [8192] u8; ar: [1] ClArena; ar[0].buf = ab[..]; back: [1] McTask;
   n := coder_page_task(s, "s", "/w", out[..]);
-  #assert mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].agents && back[0].edits && back[0].gated;
+  #assert mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].agents && back[0].edits && back[0].gated && back[0].unlimited;
   #assert coder_page_agent_next(s) == -1;
   #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"simple\",\"task\":\"count files\"},{\"level\":\"complex\",\"task\":\"find the bug\"}],\"ticket\":3}") == MWW_DELEGATE;
   #assert s[0].turns[0].nagents == 2 && s[0].turns[0].waiting && !s[0].results_due;
