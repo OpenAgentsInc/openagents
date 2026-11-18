@@ -131,7 +131,6 @@ chart_draw_in :: (s: [] Slab, out: [] f32, at: int, v: ChartView) -> int {
     n = chart_line(out, n, v, WHERE_JETTIES[0], WHERE_JETTIES[1], berth.lat, berth.lon, 1.2f32 * k, 0.8);
     n = chart_mark(out, n, v, WHERE_YARD[0], WHERE_YARD[1], 3 * k, false);
     n = chart_mark(out, n, v, WHERE_JETTIES[0], WHERE_JETTIES[1], 3 * k, false);
-    n = chart_mark(out, n, v, WHERE_BROWNSVILLE[0], WHERE_BROWNSVILLE[1], 3 * k, false);
   }
   home := where_site(w.site);
   n = chart_mark(out, n, v, home.lat, home.lon, 3 * k, false);
@@ -173,9 +172,8 @@ chart_tag :: (s: [] Slab, h: [] SceneHud, id: string, name: string, lat: f64, lo
 // The construction route's names (the casting yard, the jetties, the freight port), for any drawing
 // that has laid the chart out.
 chart_route_tags :: (s: [] Slab, h: [] SceneHud) {
-  chart_tag(s, h, "chart.yard", "Casting yard, Corpus Christi", WHERE_YARD[0], WHERE_YARD[1], -16);
+  chart_tag(s, h, "chart.yard", "Ingleside: the casting yard and the freight wharf", WHERE_YARD[0], WHERE_YARD[1], -16);
   chart_tag(s, h, "chart.jetties", "Port Aransas jetties", WHERE_JETTIES[0], WHERE_JETTIES[1], 16);
-  chart_tag(s, h, "chart.freight", "Brownsville, the freight port", WHERE_BROWNSVILLE[0], WHERE_BROWNSVILLE[1], -16);
 }
 // A legal line's name, on the line: each line's name is on a row of its own up from the chart's foot,
 // so two lines a few miles apart do not write over each other.

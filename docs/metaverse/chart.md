@@ -74,7 +74,7 @@ site := where_site(SITE_TEXAS);
 e := chart_to_screen(v, site.lat, site.lon);                   // the berth
 ```
 
-`WHERE_BROWNSVILLE` is the freight port. `where_place(c, site, lat, lon)` gives
+`WHERE_FREIGHT` is the freight wharf, at Ingleside beside the yard. `where_place(c, site, lat, lon)` gives
 the depth, the miles to land and the legal zone at any point on the way.
 
 ## SLAB's drawing of it
@@ -92,7 +92,7 @@ for the tour's last stop and the construction route.
   count of the page's stroke floats. `chart_draw(s, out, n)` does the same in
   `chart_layout`'s rectangle when the chart is open.
 - `chart_tags(s, h)` names the parts with the HUD's tags and
-  `chart_route_tags(s, h)` names the casting yard, the jetties and Brownsville.
+  `chart_route_tags(s, h)` names Ingleside (the casting yard and the freight wharf) and the jetties.
 - `chart_pointer(s, x, y, phase)` takes a press: it moves the platform to the
   place pressed and writes the address.
 

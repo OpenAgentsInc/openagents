@@ -1288,7 +1288,7 @@ coast, heights, distance to land, level lines, a view and a skyline
 draws it for this world: the coast, the 200 m and 1,000 m depth lines, the
 state's line and the 12, 24 and 200 mile lines, the platform, and off Texas
 the construction route (the casting yard at Corpus Christi, the Port Aransas
-jetties, the berth, Brownsville). `chart_draw_in(s, out, n, view)` draws it
+jetties, the berth). Freight loads at Ingleside too. `chart_draw_in(s, out, n, view)` draws it
 into any rectangle and `chart_route_tags` names the route, for the tour's
 last stop and the construction drawing (#13682).
 

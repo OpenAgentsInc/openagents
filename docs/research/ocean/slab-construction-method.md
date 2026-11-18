@@ -441,9 +441,9 @@ The first module lands on day 544 and the last on day 1,414 (computed).
 ### Where the freight loads
 
 This method loads modules at Ingleside, beside the casting yard: 47.6
-nautical miles from the berth, down the same channel. The earlier
-timelapse and `metaverse/slab-where.coax` load freight at the Port of
-Brownsville. Brownsville is about 113 nautical miles away: 98 from the
+nautical miles from the berth, down the same channel, and
+`metaverse/slab-where.coax` and the chart say the same (`WHERE_FREIGHT`).
+The earlier timelapse loads freight at the Port of Brownsville. Brownsville is about 113 nautical miles away: 98 from the
 Brazos Santiago Pass jetties (near 26.07° N, 97.15° W) to the berth
 (computed), plus about 15 up its ship channel (assumed). That more than
 doubles a barge's round trip. The simulation's barge passage is a distance
@@ -505,7 +505,7 @@ storm's peak is 28.5 MN, over the 24 MN a chain may carry and under its
 | Harbor Island, where the channel bends to the pass | 27.85° N, 97.08° W | computed from the route |
 | Aransas Pass jetties | 27.834° N, 97.044° W | assumed, as in `slab-where.coax` |
 | The berth | 27.55° N, 96.367° W | decided (`slab-where.coax`, the Texas site) |
-| Port of Brownsville | 25.95° N, 97.40° W | assumed, as in `slab-where.coax` |
+| Port of Brownsville | 25.95° N, 97.40° W | assumed; the earlier timelapse's freight port, not used |
 
 The berth is in 89 m of water, 40 nautical miles off the jetties and beyond
 Texas's 9 nautical mile state line (decided). It is 47.6 nautical miles

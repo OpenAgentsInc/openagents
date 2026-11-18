@@ -51,10 +51,11 @@ where_site :: (i: int) -> WhereSite {
 
 // The timelapse's route off Texas (metaverse/slab-construction.coax): the casting yard at Ingleside, the
 // ship channel's mouth between the Aransas Pass jetties, and the berth, which is the texas site.
-// Freight comes from the Port of Brownsville. [lat, lon]
+// Freight loads at Ingleside too, at a wharf beside the yard (the construction method's decision,
+// docs/research/ocean/slab-construction-method.md; the older timelapse drew a Brownsville wharf). [lat, lon]
 WHERE_YARD :: [2] f64.[27.82, -97.20];
 WHERE_JETTIES :: [2] f64.[27.834, -97.044];
-WHERE_BROWNSVILLE :: [2] f64.[25.95, -97.40];
+WHERE_FREIGHT :: [2] f64.[27.82, -97.20];   // the freight wharf, at Ingleside on Corpus Christi Bay
 
 // A region's chart needs its coast held somewhere: the caller keeps one of these.
 Where :: struct {
