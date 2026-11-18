@@ -17,6 +17,9 @@ the typing mark and notices. The shared AppKit editor
 - **The working folder** shows in the window's top left corner. Commands start there. Press it (or File > Open Folder, Command-O) to choose another. Coder keeps the folder you chose; until you choose one, it is your home folder. You can't change it during a run.
 - **Command-plus** and **Command-minus** make the text bigger and smaller, in eight sizes from 80% to 200%. Command-0 is the usual size. Coder keeps the size you chose.
 - **Copy** on a code block puts its text on the clipboard.
+- **The copy icon under a message** copies that message: yours as you wrote it, a reply as its Markdown.
+- **The copy icon in the top right corner**, beside New chat, copies the whole chat: each message under `You:`, each command under `Ran:`, each reply under `Microcoder:`. Command output is not included.
+- **Click a reply** to see who wrote it (Microcoder and its model), beside the reply's copy icon. Click again to hide it.
 
 Limits, all shown on screen when you reach them:
 

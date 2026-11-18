@@ -199,7 +199,8 @@ final class CoderWindow: NSObject {
         case 3: let n = cd_stop_line(&out, Int32(out.count)); worker.write(out, count: Int(n))
         case 4: let n = cd_forget_line(&out, Int32(out.count)); worker.write(out, count: Int(n))
         case 5:
-            guard cd_copied(page, &out, Int32(out.count)) > 0 else { return }
+            out = [CChar](repeating: 0, count: 2_000_001)   // a whole chat fits: 24 messages and replies
+            guard cd_copied(page, &out, 2_000_000) > 0 else { return }
             let board = NSPasteboard.general; board.clearContents(); board.setString(String(cString: out), forType: .string)
         case 6: chooseFolder()
         default: break

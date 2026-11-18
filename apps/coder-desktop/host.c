@@ -27,6 +27,7 @@ static int cd_on_frame(void *user, float *vertices, float w, float h, float dpr,
   if (c->settle > 0) c->settle--;
   return n < 0 ? 0 : n;
 }
+static float cd_icon_size(int i) { return coder_page_icon_size(i); }
 static void cd_on_pointer(void *user, float x, float y, int phase, int clicks, int mods) {
   (void)clicks; (void)mods;
   CoderHost *c = user;
@@ -43,6 +44,7 @@ void *cd_open(const char *resources) {
   char shader[PATH_MAX + 32]; snprintf(shader, sizeof shader, "%s/components.metal", resources);
   c->s = calloc(1, sizeof *c->s);
   if (!c->s) { free(c); return NULL; }
+  a->icon_size = cd_icon_size;
   a->atlas = c->s->atlas.e; a->max_vertices = (uint32_t)coder_page_max_vertices();
   UiApp app = {.title = "Coder", .width = 900, .height = 640, .embedded = 1, .max_vertices = a->max_vertices, .shader = shader, .user = c,
                .frame = cd_on_frame, .pointer = cd_on_pointer, .wheel = cd_on_wheel};

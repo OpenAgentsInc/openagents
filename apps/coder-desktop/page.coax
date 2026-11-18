@@ -44,7 +44,10 @@ CP_MODEL_NAME :: "Microcoder · Gemini 4 Hydrogen";
 // What the page asks of its host (coder_page_action), once.
 CP_ASK_NONE :: 0; CP_ASK_SEND :: 1; CP_ASK_FOCUS :: 2; CP_ASK_STOP :: 3; CP_ASK_NEW :: 4; CP_ASK_COPY :: 5; CP_ASK_FOLDER :: 6;
 // What a row dispatches.
-CP_FIELD :: 1; CP_SEND :: 2; CP_NEW :: 3; CP_COPY :: 4; CP_TOOL :: 5; CP_FOLDER :: 6;
+CP_FIELD :: 1; CP_SEND :: 2; CP_NEW :: 3; CP_COPY :: 4; CP_TOOL :: 5; CP_FOLDER :: 6; CP_COPY_ASK :: 7; CP_COPY_REPLY :: 8; CP_COPY_ALL :: 9;
+// What was copied last (its button shows a check): a code block, a person's message, a reply, the whole chat.
+CP_COPIED_NONE :: 0; CP_COPIED_BLOCK :: 1; CP_COPIED_ASK :: 2; CP_COPIED_REPLY :: 3; CP_COPIED_ALL :: 4;
+CP_ALL :: 2000000;          // bytes the whole chat's copy may take: 24 messages and replies fit
 // A turn's state.
 CP_RUNNING :: 0; CP_DONE :: 1; CP_FAILED :: 2; CP_STOPPED :: 3;
 
@@ -64,6 +67,8 @@ CpTurn :: struct {
   doc: [1] MdDoc; blocks: int;
   note: [CP_NOTE] u8; note_n: int;
   state: int; stopping: bool;
+  info: bool;                 // a click on the reply shows who wrote it, beside its Copy
+  ay: f32; ah: f32;           // the reply's place as last drawn (ah 0: not drawn)
   fresh: bool;                // a model request ended: the next reply text starts the reply again
   h: f32; hw: f32;            // its height as last drawn, and the column's width then
 }
@@ -84,7 +89,8 @@ CoderPage :: struct {
   scroll: f32; content: f32; view: f32; stick: bool;
   box: ComposerBox;
   ask: int; refused: int; moving: bool;
-  copied_turn: int; copied_block: int;
+  copied_turn: int; copied_block: int; copied_kind: int;
+  dx: f32; dy: f32; col_x: f32; col_w: f32;   // where the pointer went down; the column as last drawn
   arena: [CP_ARENA] u8;
 }
 
@@ -194,7 +200,7 @@ cp_cmds_end :: (s: [] CoderPage, i: int) {
 // A new chat: the window clears and the host has the worker forget. Not while a run is going.
 cp_new :: (s: [] CoderPage) -> bool {
   if cp_running(s) { return false; }
-  s[0].nturns = 0; s[0].scroll = 0; s[0].stick = true; s[0].copied_turn = -1; s[0].ask = CP_ASK_NEW; return true;
+  s[0].nturns = 0; s[0].scroll = 0; s[0].stick = true; s[0].copied_turn = -1; s[0].copied_kind = CP_COPIED_NONE; s[0].ask = CP_ASK_NEW; return true;
 }
 coder_page_new :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && cp_new(s); }
 cp_press :: (s: [] CoderPage, row: int) -> bool {
@@ -218,7 +224,16 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
     id := surface_id(s[0].surface[..], row);
     turn := cp_number(id, "t"); block := cp_number(id, ".code.");
     if turn < 0 || turn >= s[0].nturns || block < 0 { return false; }
-    s[0].copied_turn = turn; s[0].copied_block = block; s[0].ask = CP_ASK_COPY; return true;
+    s[0].copied_turn = turn; s[0].copied_block = block; s[0].copied_kind = CP_COPIED_BLOCK; s[0].ask = CP_ASK_COPY; return true;
+  }
+  if act == CP_COPY_ASK || act == CP_COPY_REPLY {
+    turn := cp_number(surface_id(s[0].surface[..], row), "t");
+    if turn < 0 || turn >= s[0].nturns { return false; }
+    s[0].copied_turn = turn; s[0].copied_block = -1; s[0].copied_kind = ifx act == CP_COPY_ASK then CP_COPIED_ASK else CP_COPIED_REPLY; s[0].ask = CP_ASK_COPY; return true;
+  }
+  if act == CP_COPY_ALL {
+    if s[0].nturns == 0 { return false; }
+    s[0].copied_turn = 0; s[0].copied_block = -1; s[0].copied_kind = CP_COPIED_ALL; s[0].ask = CP_ASK_COPY; return true;
   }
   return false;
 }
@@ -227,6 +242,8 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) {
   k := f[0].skin; a := k.app;
   cw := w - 2 * CP_PAD; if cw > CP_COLUMN { cw = CP_COLUMN; }
   x := (w - cw) / 2;
+  s[0].col_x = x; s[0].col_w = cw;
+  side := a.icon_button; edge := (side - a.icon) / 2;   // a Copy's icon sits on its message's edge
   running := cp_running(s); full := cp_full(s);
   bar := ifx s[0].box.height > 0 then s[0].box.height else 80.0f32;
   top: f32 = 0; bottom := h - CP_BOTTOM - bar;   // what scrolls runs up to the bar
@@ -240,10 +257,12 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) {
   ib: [EL_ID] u8;
   for i: 0..<s[0].nturns {
     th := s[0].turns[i].h;
-    if th > 0 && s[0].turns[i].hw == cw && (y + th < top || y > bottom) { y += th; }
+    if th > 0 && s[0].turns[i].hw == cw && (y + th < top || y > bottom) { y += th; s[0].turns[i].ah = 0; }
     else {
       y0 := y;
-      y += app_message_user(f, cp_id(ib[..], i, ".u"), x, y, cw, cast(string) s[0].turns[i].ask[0..<s[0].turns[i].ask_n]) + a.gap;
+      y += app_message_user(f, cp_id(ib[..], i, ".u"), x, y, cw, cast(string) s[0].turns[i].ask[0..<s[0].turns[i].ask_n]);
+      asked := s[0].copied_kind == CP_COPIED_ASK && s[0].copied_turn == i;
+      y += app_icon_button(f, cp_id(ib[..], i, ".uc"), x + cw - side + edge, y, ifx asked then k.icon_check else k.icon_copy, ifx asked then "Copied" else "Copy message", APP_BUTTON_QUIET, 0, CP_COPY_ASK);
       tb: [EL_ID] u8; xb: [EL_ID] u8;
       for q: 0..<s[0].turns[i].ncmds {
         c := s[0].turns[i].cmds[q];
@@ -258,10 +277,17 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) {
       }
       if s[0].turns[i].ncmds > 0 { y += a.gap - a.gap_small; }
       if s[0].turns[i].reply_n > 0 {
-        y += app_meta(f, cp_id(ib[..], i, ".m"), x, y, cw, CP_MODEL_NAME, false) + a.gap_small;
+        s[0].turns[i].ay = y;
         y += app_message_agent(f, cp_id(ib[..], i, ".a"), x, y, cw, s[0].turns[i].doc[..], s[0].turns[i].blocks,
-                               ifx s[0].copied_turn == i then s[0].copied_block else -1, CP_COPY) + a.gap;
-      }
+                               ifx s[0].copied_kind == CP_COPIED_BLOCK && s[0].copied_turn == i then s[0].copied_block else -1, CP_COPY);
+        s[0].turns[i].ah = y - s[0].turns[i].ay;
+        if s[0].turns[i].state != CP_RUNNING {
+          did := s[0].copied_kind == CP_COPIED_REPLY && s[0].copied_turn == i;
+          // who wrote it, beside Copy, after a click on the reply
+          if s[0].turns[i].info { _ := app_meta(f, cp_id(ib[..], i, ".m"), x - edge + side, y + (side - k.small.line) / 2, cw - side, CP_MODEL_NAME, false); }
+          y += app_icon_button(f, cp_id(ib[..], i, ".ac"), x - edge, y, ifx did then k.icon_check else k.icon_copy, ifx did then "Copied" else "Copy message", APP_BUTTON_QUIET, 0, CP_COPY_REPLY);
+        } else { y += a.gap; }
+      } else { s[0].turns[i].ah = 0; }
       if s[0].turns[i].cut { y += app_notice(f, cp_id(ib[..], i, ".c"), x, y, cw, "This reply is longer than 60,000 bytes. The rest is not shown.", APP_NOTICE_INFO) + a.gap; }
       st := s[0].turns[i].state;
       if st == CP_RUNNING { y += app_typing(f, cp_id(ib[..], i, ".t"), x, y, ifx s[0].turns[i].stopping then "Stopping" else ifx s[0].turns[i].reply_n > 0 then "Writing a reply" else "Working") + a.gap; }
@@ -274,12 +300,16 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) {
   uiframe_unclip(f);
   s[0].content = y + s[0].scroll - top;
   // New chat floats in the window's top right corner, over what scrolls
+  all := s[0].copied_kind == CP_COPIED_ALL;
+  _ := app_icon_button(f, "coder.copy", w - 2 * a.icon_button - CP_CORNER, CP_CORNER, ifx all then k.icon_check else k.icon_copy, ifx all then "Copied" else "Copy chat", APP_BUTTON_QUIET,
+                       ifx s[0].nturns == 0 then EL_S_DISABLED else 0, CP_COPY_ALL);
   _ := app_icon_button(f, "coder.new", w - a.icon_button - CP_CORNER, CP_CORNER, ICON_COMPOSE, "New chat", APP_BUTTON_QUIET,
                        ifx running || s[0].nturns == 0 then EL_S_DISABLED else 0, CP_NEW);
   // the working folder floats in the top left corner; a press asks the host for another
   if s[0].folder_n > 0 {
-    _ := app_chip(f, "coder.folder", CP_CORNER, CP_CORNER, CP_FOLDER_MOST, ICON_FOLDER, "Working folder", sheet_pool(f[0].sheet, cast(string) s[0].folder[0..<s[0].folder_n]),
-                  ifx running then EL_S_DISABLED else 0, CP_FOLDER);
+    name := sheet_pool(f[0].sheet, cast(string) s[0].folder[0..<s[0].folder_n]);
+    fw := app_button_width(f, ICON_FOLDER, name); if fw > CP_FOLDER_MOST { fw = CP_FOLDER_MOST; }
+    _ := app_button(f, "coder.folder", CP_CORNER, CP_CORNER + (side - k.control_h) / 2, fw, ICON_FOLDER, name, APP_BUTTON_QUIET, ifx running then EL_S_DISABLED else 0, CP_FOLDER);
   }
   c := AppComposer.{placeholder = "Message", text = eb_text(s[0].draft[..]),
     state = ifx running then APP_COMPOSER_RUNNING else ifx full then APP_COMPOSER_OFF else APP_COMPOSER_READY,
@@ -338,6 +368,15 @@ coder_page_pointer :: (s: [] CoderPage, x: f32, y: f32, phase: int) -> bool #exp
   id := surface_id(s[0].surface[..], row);
   acts := surface_action(s[0].surface[..], row) != 0;
   was := cast(string) s[0].pressed[0..<s[0].pressed_n];
+  if phase == 0 { s[0].dx = ux; s[0].dy = uy; }
+  // a click on a reply, where nothing else takes it, shows or hides who wrote it
+  if phase == 2 && !acts && s[0].pressed_n == 0 && abs(ux - s[0].dx) < 3 && abs(uy - s[0].dy) < 3 && ux >= s[0].col_x && ux < s[0].col_x + s[0].col_w {
+    for i: 0..<s[0].nturns {
+      if s[0].turns[i].ah > 0 && uy >= s[0].turns[i].ay && uy < s[0].turns[i].ay + s[0].turns[i].ah && uy < s[0].view {
+        s[0].turns[i].info = !s[0].turns[i].info; s[0].touching = false; return true;
+      }
+    }
+  }
   if phase == 0 { s[0].touching = true; s[0].pressed_n = ifx acts then el_copy(s[0].pressed[..], id) else 0; return acts; }
   if phase == 1 { if was != id { s[0].pressed_n = 0; } return s[0].pressed_n > 0; }
   held := s[0].pressed_n > 0 && was == id;
@@ -351,6 +390,15 @@ coder_page_wheel :: (s: [] CoderPage, dy: f32) #export_c #effects(all) {
   s[0].scroll += dy / s[0].d;
   cp_clamp(s);
   if s[0].scroll >= s[0].content - s[0].view - 1 { s[0].stick = true; }
+}
+// An icon's size in the atlas. An icon draws at this size wherever it is, so the ones that sit
+// together in the window's top corners and under messages (folder, copy, its check, new chat) are
+// one size; the rest keep the component library's.
+CP_ICON :: 18;
+coder_page_icon_size :: (i: int) -> f32 #export_c #effects(all) {
+  if i == ICON_FOLDER || i == ICON_COPY || i == ICON_CHECK || i == ICON_COMPOSE { return CP_ICON; }
+  sizes := ICON_SIZES;
+  return ifx i >= 0 && i < ICON_COUNT then sizes[i] else 16.0f32;
 }
 // What the page asks of the host (CP_ASK_*), once.
 coder_page_action :: (s: [] CoderPage) -> int #export_c #effects(all) {
@@ -427,12 +475,32 @@ coder_page_failed :: (s: [] CoderPage, why: string) #export_c #effects(all) {
   i := s[0].nturns - 1;
   s[0].turns[i].note_n = cp_out(s[0].turns[i].note[..], why); s[0].turns[i].state = CP_FAILED; s[0].turns[i].h = 0;
 }
-// The code block whose Copy was pressed: its text's length in out.
+// What the last Copy took: a code block, a person's message, a reply as its Markdown, or the whole
+// chat (each message under "You:", each command under "Ran:", each reply under "Microcoder:"). Its length in out.
 coder_page_copied :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
   if s.count < 1 || s[0].copied_turn < 0 || s[0].copied_turn >= s[0].nturns { return 0; }
-  i := s[0].copied_turn;
-  if s[0].copied_block < 0 || s[0].copied_block >= s[0].turns[i].blocks { return 0; }
-  return cp_out(out, md_block_text(s[0].turns[i].doc[..], s[0].copied_block));
+  i := s[0].copied_turn; kind := s[0].copied_kind;
+  if kind == CP_COPIED_BLOCK {
+    if s[0].copied_block < 0 || s[0].copied_block >= s[0].turns[i].blocks { return 0; }
+    return cp_out(out, md_block_text(s[0].turns[i].doc[..], s[0].copied_block));
+  }
+  if kind == CP_COPIED_ASK { return cp_out(out, cast(string) s[0].turns[i].ask[0..<s[0].turns[i].ask_n]); }
+  if kind == CP_COPIED_REPLY { return cp_out(out, cast(string) s[0].turns[i].reply[0..<s[0].turns[i].reply_n]); }
+  if kind != CP_COPIED_ALL { return 0; }
+  n := 0;
+  for j: 0..<s[0].nturns {
+    n += cp_out(out[n..<out.count], "You:\n"); n += cp_out(out[n..<out.count], cast(string) s[0].turns[j].ask[0..<s[0].turns[j].ask_n]); n += cp_out(out[n..<out.count], "\n\n");
+    for q: 0..<s[0].turns[j].ncmds {
+      n += cp_out(out[n..<out.count], ifx s[0].turns[j].cmds[q].read then "Read: " else "Ran: ");
+      n += cp_out(out[n..<out.count], cast(string) s[0].turns[j].cmds[q].text[0..<s[0].turns[j].cmds[q].text_n]); n += cp_out(out[n..<out.count], "\n");
+    }
+    if s[0].turns[j].ncmds > 0 { n += cp_out(out[n..<out.count], "\n"); }
+    if s[0].turns[j].reply_n > 0 {
+      n += cp_out(out[n..<out.count], "Microcoder:\n"); n += cp_out(out[n..<out.count], cast(string) s[0].turns[j].reply[0..<s[0].turns[j].reply_n]); n += cp_out(out[n..<out.count], "\n\n");
+    }
+  }
+  while n > 0 && out[n - 1] == 10 { n -= 1; }
+  return n;
 }
 // The text's committed box for the platform editor, in points from the view's top left: x, y, w, h,
 // then the first line's inset and a line's height.
@@ -607,4 +675,31 @@ coder_page_zoom_set :: (s: [] CoderPage, row: int) -> int #export_c #effects(all
   long: [600] u8; for i: 0..<600 { long[i] = 97; }
   coder_page_folder(s, cast(string) long[..]);
   #assert s[0].folder_n == CP_FOLDER_TEXT;
+}
+#test "Copy takes a message, a reply, or the whole chat with its commands" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  #assert coder_page_set_text(s, "List files") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND;
+  #assert coder_page_line(s, "{\"kind\":\"command\",\"command\":\"ls\",\"exit\":0,\"timed_out\":false,\"output\":\"a\"}") == MWW_COMMAND;
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"One file: **a**.\"}") == MWW_ENDED;
+  out: [512] u8;
+  s[0].copied_turn = 0; s[0].copied_kind = CP_COPIED_ASK;
+  n := coder_page_copied(s, out[..]); #assert cast(string) out[0..<n] == "List files";
+  s[0].copied_kind = CP_COPIED_REPLY;
+  n = coder_page_copied(s, out[..]); #assert cast(string) out[0..<n] == "One file: **a**.";
+  s[0].copied_kind = CP_COPIED_ALL;
+  n = coder_page_copied(s, out[..]); #assert cast(string) out[0..<n] == "You:\nList files\n\nRan: ls\n\nMicrocoder:\nOne file: **a**.";
+  #assert coder_page_new(s) && s[0].copied_kind == CP_COPIED_NONE;
+}
+#test "a click on a reply shows who wrote it and another hides it; a drag does not; the corner icons are one size" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  #assert coder_page_set_text(s, "hi") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND;
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"Hello.\"}") == MWW_ENDED;
+  s[0].d = 1; s[0].col_x = 100; s[0].col_w = 400; s[0].view = 600; s[0].turns[0].ay = 50; s[0].turns[0].ah = 40;
+  #assert !coder_page_pointer(s, 200, 60, 0) && coder_page_pointer(s, 200, 60, 2) && s[0].turns[0].info;
+  #assert !coder_page_pointer(s, 200, 60, 0) && coder_page_pointer(s, 200, 60, 2) && !s[0].turns[0].info;
+  #assert !coder_page_pointer(s, 200, 60, 0) && !coder_page_pointer(s, 260, 60, 2) && !s[0].turns[0].info;
+  #assert !coder_page_pointer(s, 50, 60, 0) && !coder_page_pointer(s, 50, 60, 2) && !s[0].turns[0].info;
+  #assert coder_page_icon_size(ICON_COPY) == coder_page_icon_size(ICON_COMPOSE) && coder_page_icon_size(ICON_FOLDER) == CP_ICON && coder_page_icon_size(ICON_CHECK) == CP_ICON;
 }
