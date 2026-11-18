@@ -155,11 +155,12 @@ slab_sea :: (p:V2,world:V3,d:V3,dist:f32,t:f32,c:V4,u:[]f32)->V4 {
     lace:f32=((slab_noise(wg_add_f2f2(wg_mul_f2f(p,0.55f32),v2(t*0.08f32,t*0.05f32)))*0.5f32)+(slab_noise(wg_mul_f2f(p,1.9f32))*0.3f32))+(slab_noise(wg_mul_f2f(p,5.3f32))*0.2f32);
     white=smoothstep((lace*1.25f32)-0.3f32,(lace*1.25f32)+0.25f32,body)*(0.7f32+(0.3f32*slab_noise(wg_mul_f2f(p,2.3f32))));
     // foam blown out along the wind, from a near gale
-    s1:f32=slab_noise(v2((wa*0.018f32)-(t*0.04f32),wc*0.55f32));
-    s2:f32=slab_noise(v2(((wa*0.045f32)-(t*0.07f32))+4.0f32,(wc*1.3f32)+9.0f32));
-    soft:f32=0.1f32+(footprint*0.02f32);
-    line:f32=smoothstep(0.6f32-soft,0.6f32+soft,(s1*0.65f32)+(s2*0.35f32));
-    white=fmax(white,(u[SLAB_SEA+13]*(0.3f32+(0.7f32*smoothstep(0.3f32,0.7f32,slab_noise(wg_mul_f2f(p,0.012f32))))))*((line*0.6f32)*(0.5f32+(0.5f32*grain))));
+    s1:f32=slab_noise(v2((wa*0.03f32)-(t*0.04f32),wc*0.5f32));
+    s2:f32=slab_noise(v2(((wa*0.08f32)-(t*0.07f32))+4.0f32,(wc*1.2f32)+9.0f32));
+    soft:f32=0.08f32+(footprint*0.02f32);
+    line:f32=smoothstep(0.64f32-soft,0.64f32+soft,(s1*0.6f32)+(s2*0.4f32));
+    patches:f32=smoothstep(0.35f32,0.75f32,slab_noise(wg_add_f2f2(wg_mul_f2f(p,0.02f32),v2(3.0f32,t*0.01f32))));
+    white=fmax(white,(u[SLAB_SEA+13]*patches)*((line*0.45f32)*(0.5f32+(0.5f32*grain))));
   }
   // past where the foam's grain shows, the sea is as white as its whitecaps cover it
   white=mix(u[SLAB_SEA+25]*(0.4f32+(0.6f32*gate)),white,near);
@@ -171,7 +172,7 @@ slab_sea :: (p:V2,world:V3,d:V3,dist:f32,t:f32,c:V4,u:[]f32)->V4 {
   col=sb_mix(col,slab_sea_foam_lit(ndl,u),white);
   // and the spray hangs over the sea
   veil:f32=u[SLAB_SEA+14]*(1.0f32-exp((-dist)/700.0f32));
-  col=sb_mix(col,sb_mul(slab_sea_lin(sb_p(u,12)),0.9f32),veil*0.8f32);
+  col=sb_mix(col,sb_mul(slab_sea_lin(sb_p(u,12)),0.9f32),veil*0.6f32);
   o:V3=slab_sea_out(col);
   return v4(o.x,o.y,o.z,white);
 }

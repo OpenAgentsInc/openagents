@@ -643,7 +643,9 @@ painted preset. The shared pieces are two modules any realm can load:
   with a wind.
 
 `apps/openagents-web/gpu/slab-sea.coax` and `apps/openagents-web/slab-sea.coax`
-are SLAB's use of them.
+are SLAB's use of them. Everglade's W2 shader still carries its own copy of
+the same terms (`eg_water_*` in `gpu/everglade-v1/gpu.coax`); moving it onto
+`wo_*` without a change to its pictures is not done yet.
 
 **What is drawn.** A pixel of sea is the sum of four lights:
 
@@ -680,7 +682,7 @@ and not a shimmer.
 | calm, 0.5 m | 4.8 | 619, 117, 22 | 0.0008 | 0.028 |
 | trade, 1.5 m | 8.4 | 898, 170, 32 | 0.0033 | 0.046 |
 | equator-max, 2.8 m | 11.4 | 1,101, 208, 39 | 0.0075 | 0.061 |
-| winter, 4 m | 13.7 | 1,245, 235, 44 | 0.012 | 0.073 |
+| rough, 4 m | 13.7 | 1,245, 235, 44 | 0.012 | 0.073 |
 | gale, 10 m | 21.6 | 1,686, 318, 60 | 0.041 | 0.114 |
 | hurricane, 14 m | 25.6 | 1,888, 356, 67 | 0.065 | 0.134 |
 
@@ -691,7 +693,9 @@ counts it from the tile, because a short wave's Jacobian is skewed), kept by
 the drawing only on the long waves' crests. The share is Monahan's cover of
 the whole sea, `3.84e-6 U^3.41`, over the 0.4 of the sea the crest gate
 passes. Foam streaks along the wind begin in a near gale (Beaufort 7) and are
-dense by a strong gale; spindrift begins in a strong gale (Beaufort 9).
+dense by a strong gale; spindrift begins in a strong gale (Beaufort 9). The
+streaks are drawn as short broken patches of stretched noise, a few metres
+wide and tens of metres long; their place is not simulated.
 
 **Water types by site** (our reading of Jerlov's 1976 map):
 
@@ -716,17 +720,28 @@ visibility (our planning value between rain bands); a full overcast passes
 about 7% of the direct sun and 45% of the sky's light (Kasten and Czeplak
 1980 give 25% of the global radiation under 8 oktas). The picture dims by
 less than the light does, as an eye or a camera would open up.
-`?weather=clear|overcast|fog|rain|storm` holds a state; key C steps through
-them.
+The HUD's Change group has a Weather menu that holds a state;
+`?weather=clear|overcast|fog|rain|storm` and key C do the same.
 
 **Under the sea.** The same water type sets what the eye sees there: the
 daylight left at depth, the water's own glow, the beam attenuation along the
 view, the sun's shafts, and the surface from below with Snell's window. Real
 water shows a diver about 23 m at Guam, and the hull is 1,000 m long, so the
 underwater view opens as a survey: the water is drawn about 64 times clearer
-than it is there, with a fill light, and a line on screen says so. Key X (or
-`?water=real`) shows the water as it is. Where the site's water is shallower
-than 250 m the bed is drawn.
+than it is there, with a fill light, and the foot line on screen says so. The
+switch "Show the water as it is" under See inside (key X, or `?water=real`)
+draws the water as it is. Where the site's water is shallower than 250 m the
+bed is drawn, with the platform's shadow on it (one shadow ray toward the
+refracted sun) and a caustic net that fades with depth as `1 / (1 + depth /
+25 m)`. The hull's shadow in the water itself (the shafts under the hull) is
+not drawn.
+
+**Cost.** Headless Chrome on an Apple M-series GPU, GPU time p50 (p95), on a
+machine busy with other builds: the opening view at 1440×900 went from 2.06
+(2.25) ms to 2.34 (3.33) ms, the hurricane from 2.20 (3.74) ms to 3.95 (6.73)
+ms with its rain, cloud deck and streaks, and the view under the sea takes
+1.37 (2.02) ms. The phone tier at 390×844 keeps one cascade and a baked fine
+tile: 0.40 (0.44) ms before, 0.62 (2.39) ms after.
 
 **Checks.** `coax/bin/coax test --library
 metaverse-engine/render/shade/water-optics.coax` and `coax/bin/coax test

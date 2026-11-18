@@ -1112,9 +1112,43 @@ in sections 3–9 are unchanged.
 - The underwater key is U, since Q and E already zoom and climb. The section
   cuts through the orbit's point, the walker, or where the fly camera looks,
   and cuts the sea away in front of it.
-- Under water, red light falls to 1/e in 14 m and blue in about 80 m (clear
-  tropical ocean), so the 1,000 m pipes and the moorings fade within a
-  hundred metres. The mooring lines are drawn 1.2 m wide.
+- Under water a diver sees about 23 m at Guam (Jerlov type IA), and the hull
+  is 1,000 m long. The underwater view therefore opens as a survey: the water
+  is drawn about 64 times clearer than it is, with a fill light, and the foot
+  line says so. "Show the water as it is" under See inside draws the real
+  water. The mooring lines are drawn 1.2 m wide.
+
+### The sea's look, the weather and the view under the sea
+
+Measured on November 18, 2026, from the checks in
+`metaverse-engine/render/shade/water-optics.coax`, `metaverse/water-sea.coax`
+and `apps/openagents-web/slab-sea.coax`, and from pictures of the six sea
+states. Issue 13688 asked for these. `docs/metaverse/water.md` ("The open sea
+by its optics") has the method and its sources.
+
+| Quantity | Measured |
+|---|---|
+| The sea's colour | the sky mirrored by Fresnel's mean share, plus the water's own reflectance by Jerlov type (IA at Guam, coastal 3 on the Texas shelf, coastal 5 in the fjord); no tint. The site's water type is our reading of Jerlov's map |
+| Slopes drawn | three cascades on a desktop (patches of 1,245, 235 and 44 m in the 4 m sea), one and a baked tile on a phone; the rest of Cox and Munk's mean square slope is the glint's roughness |
+| The hull's sea | cascade 0 is the same bit for bit with one, two or three cascades drawn (checked), so the heights the hull samples are the heights drawn |
+| Whitecap cover | Monahan's, from the wind: 0.08% at 4.8 m/s, 0.6% at 8.4, 2.9% at 13.7, 14% at 21.6 and 24% at 25.6 m/s; broken at 2 to 6 m on the long waves' crests |
+| Streaks and spindrift | streaks from 13.9 m/s, full at 20.8 m/s; spindrift from 20.8 m/s (the Beaufort scale's descriptions) |
+| Weather by the sea | clear to `rough`; rain in `gale`; a storm in `hurricane` with a cloud deck, rain, lightning and about 7 km of visibility (our planning value). Overcast in a strong breeze in the site's storm season |
+| A diver's sight | 24 m at Kona, 23 m at Guam, 16 m off California, 10 m on the Texas shelf, 7 m in the fjord (3.9 beam attenuation lengths; the beam attenuation is our planning ratio to K_d) |
+| The view under the sea | survey view 1,500 m of sight, stated on screen; the hull's bottom, the cold-water pipes, the mooring lines, Snell's window and the bed at Texas (89 m) and the fjord (134 m) seen in pictures |
+| Frame time, GPU p50 (p95) | 1440×900: opening view 2.34 (3.33) ms, was 2.06 (2.25); hurricane 3.95 (6.73) ms, was 2.20 (3.74); under the sea 1.37 (2.02) ms. 390×844 phone tier: 0.62 (2.39) ms, was 0.40 (0.44). Headless Chrome on an Apple M-series GPU, on a machine busy with other builds |
+
+**Not done, or not physics.**
+
+- The sky the sea mirrors is still the realm's painted sky, and the picture
+  is still display-referred: the optics work in light's own scale between a
+  square and a square root. A physical sky and tone mapping replace both.
+- Foam is where the sea's own Jacobian breaks, but its lace, the streaks'
+  places and the spindrift are drawn from noise, not simulated.
+- Rain does not flatten the sea or ring its surface, and the cloud deck is a
+  texture with no shadow of its own on the water.
+- Under the sea the hull casts its shadow on the bed, not in the water: the
+  sun's shafts do not stop under the hull.
 
 ### The hull on its moorings
 
