@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 5 (deterministic scenario driver for Tier 1 Coder Desktop evals)
 """Tier 1 deterministic host & mock-worker scenario runner.
 
 Drives evals/coder-desktop/host_driver/build/host_driver against

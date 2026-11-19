@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 5 (offline fixture generator for Tier 1 Coder Desktop evals)
 """Generate evals/coder-desktop/tier1/fixtures_data.coax from tier1/fixtures/*.jsonl."""
 import argparse
 import pathlib

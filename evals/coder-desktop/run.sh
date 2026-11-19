@@ -1,4 +1,5 @@
 #!/bin/sh
+# Firm reason: 5 (thin shell runner dispatching Tier 0, Tier 1, and compaction evals)
 set -eu
 
 # Coder Desktop evaluation runner (Tier 0, Tier 1, and Compaction).

@@ -1,4 +1,5 @@
 #!/bin/sh
+# Firm reason: 5 (thin shell wrapper invoking coax test for the compaction eval suite)
 set -eu
 
 # Deterministic & long-horizon compaction evaluation suite (GitHub #13706).

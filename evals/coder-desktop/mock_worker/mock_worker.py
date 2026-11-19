@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 5 (deterministic mock worker script for Tier 1 Coder Desktop evals)
 """Deterministic mock worker speaking mcworker-wire JSONL over stdin/stdout.
 
 Replays a JSON script and records every owner->worker line (mww_task,

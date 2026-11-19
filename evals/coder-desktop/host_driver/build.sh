@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin build wrapper invoking coax and clang for the headless eval host driver)
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
