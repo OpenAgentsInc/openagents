@@ -1,0 +1,51 @@
+// Checks for the app set's follow-ups tray (followups.coax). Example data only.
+#load "checks-kit.coax";
+
+#test "app follow-ups: a pressed button's id names its op by its last word" {
+  #assert app_fu_op("coder.fu.q2.up") == APP_FU_OP_UP && app_fu_op("coder.fu.q0.send") == APP_FU_OP_SEND && app_fu_op("coder.fu.s1.now") == APP_FU_OP_NOW;
+  #assert app_fu_op("coder.fu.resume") == APP_FU_OP_RESUME && app_fu_op("coder.fu.clear") == APP_FU_OP_CLEAR && app_fu_op("coder.fu.s0.queue") == APP_FU_OP_REQUEUE;
+  #assert app_fu_op("coder.fu.q2") == APP_FU_OP_NONE && app_fu_op("plain") == APP_FU_OP_NONE && app_fu_op("") == APP_FU_OP_NONE;
+  #assert app_fu_line("first\nsecond") == "first" && app_fu_line("one") == "one";
+}
+
+#test "app follow-ups: the tray shows a waiting steer and the queue, each row's actions pressable; the head keeps Resume and Clear while paused" {
+  t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..];
+  rows := [3] AppFuRow.[
+    AppFuRow.{id = "fu.s0", kind = APP_FU_STEER, text = "also check b"},
+    AppFuRow.{id = "fu.q0", kind = APP_FU_QUEUED, text = "then fix c\nand more", place = 1, first = true},
+    AppFuRow.{id = "fu.q1", kind = APP_FU_QUEUED, text = "and d", place = 2},
+  ];
+  app_test_begin(t[..], "", "", true);
+  tray := AppFuTray.{head = "Queued · 2", clear = true, running = true};
+  h := app_fu_tray(f, "fu", 0, 400, 600, tray, rows[..], 43);
+  #assert h == app_fu_height(f, tray, 3) && h > 0;
+  #assert app_test_end(t[..]);
+  #assert app_test_pressable(t[..], "fu.s0.now") && app_test_pressable(t[..], "fu.q1.up") && app_test_pressable(t[..], "fu.q0.send") && app_test_pressable(t[..], "fu.q1.del") && app_test_pressable(t[..], "fu.q1.edit");
+  #assert !app_test_pressable(t[..], "fu.q0.up") && app_test_pressable(t[..], "fu.clear") && app_test_find(t[..], "fu.resume") < 0;
+  #assert app_test_label(t[..], "fu.q0.send") == "Steer" && app_test_texts(t[..], "Steering") == 1 && app_test_texts(t[..], "then fix c") == 1;
+  // paused and idle: Resume shows and a queued row's primary is Send now
+  app_test_begin(t[..], "", "", true);
+  tray = AppFuTray.{head = "Paused · after an error", paused = true, clear = true};
+  _ := app_fu_tray(f, "fu", 0, 400, 600, tray, rows[1..<3], 43);
+  #assert app_test_end(t[..]);
+  #assert app_test_pressable(t[..], "fu.resume") && app_test_label(t[..], "fu.q0.send") == "Send now";
+  // nothing to show: no tray
+  app_test_begin(t[..], "", "", true);
+  #assert app_fu_tray(f, "fu", 0, 400, 600, AppFuTray.{}, rows[0..<0], 43) == 0;
+  _ := app_test_end(t[..]);
+}
+
+#test "app follow-ups: a steer not taken says why with Queue and Dismiss; a row being edited says how to finish; a steer taken in reads in the timeline" {
+  t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..];
+  rows := [2] AppFuRow.[
+    AppFuRow.{id = "fu.s0", kind = APP_FU_REJECTED, text = "also b", note = "not steerable"},
+    AppFuRow.{id = "fu.q0", kind = APP_FU_QUEUED, text = "then c", place = 1, first = true, editing = true},
+  ];
+  app_test_begin(t[..], "", "", true);
+  _ := app_fu_tray(f, "fu", 0, 400, 600, AppFuTray.{head = "Queued · 1", clear = true, running = true, more = 3}, rows[..], 43);
+  h := app_message_steer(f, "t0.st0", 0, 0, 600, "look at b too");
+  #assert app_test_end(t[..]);
+  #assert app_test_pressable(t[..], "fu.s0.queue") && app_test_pressable(t[..], "fu.s0.dismiss") && app_test_texts(t[..], "Not taken") == 1;
+  #assert app_test_find(t[..], "fu.q0.send") < 0 && app_test_texts(t[..], "Editing · Return saves · Esc cancels") == 1 && app_test_texts(t[..], "3 more queued") == 1;
+  #assert h > 0 && app_test_texts(t[..], "Steered into the reply") == 1;
+}

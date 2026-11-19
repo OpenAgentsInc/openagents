@@ -83,10 +83,14 @@ CP_ASK_NONE :: 0; CP_ASK_SEND :: 1; CP_ASK_FOCUS :: 2; CP_ASK_STOP :: 3; CP_ASK_
 // settings (settings.coax): it opened or closed (the host moves the keyboard), the text size, the keys, Foreman's tier, its log and history, log in, an update check, the search field
 CP_ASK_SETTINGS :: 13; CP_ASK_ZOOM_IN :: 14; CP_ASK_ZOOM_OUT :: 15; CP_ASK_CLAUDE_KEY :: 16; CP_ASK_OPENROUTER :: 17; CP_ASK_TIER :: 18; CP_ASK_AUDIT :: 19; CP_ASK_CLEAR_FOREMAN :: 20; CP_ASK_LOGIN :: 21; CP_ASK_CHECK_UPDATES :: 22; CP_ASK_SEARCH :: 23;
 CP_ASK_OPEN_FILE :: 24;     // a press on a file a row or a reply names: coder_page_open_path is its path
+CP_ASK_FOLLOWUP :: 25;      // a follow-up for the host (followups.coax): coder_page_followup_op says which
 // What a row dispatches.
 CP_FIELD :: 1; CP_SEND :: 2; CP_NEW :: 3; CP_COPY :: 4; CP_TOOL :: 5; CP_FOLDER :: 6; CP_COPY_ASK :: 7; CP_COPY_REPLY :: 8; CP_COPY_ALL :: 9; CP_AGENT :: 10; CP_CHAT :: 11; CP_PANE_CLOSE :: 12; CP_PANE_TOOL :: 13; CP_PANE_COPY :: 14; CP_SAID_COPY :: 15; CP_BUDGET_EDIT :: 16; CP_BUDGET_APPROVE :: 17; CP_GOAL_OPEN :: 18; CP_GOAL_TOGGLE :: 19; CP_GOAL_COMPLETE_ACT :: 20; CP_GOAL_CLEAR_ACT :: 21; CP_FOREMAN :: 22; CP_FOREMAN_HUD_TOGGLE :: 23; CP_FOREMAN_HUD_OPEN :: 24; CP_MODEL_MENU :: 25; CP_MODEL_PICK :: 26; CP_UPDATE :: 27; CP_SIDE_TOGGLE :: 28;
 CP_GROUP :: 41;            // a message's or the open sub-agent's activity group: a press on its summary opens or folds it (#13731, #13744)
 CP_PATH :: 42;             // a file a reply names in inline code (#13698)
+CP_FU :: 45;               // a button of the follow-ups tray (followups.coax, #13717)
+CP_FU_MODE :: 46;          // the composer's chip that says what Return does while a reply runs
+CP_FU_DRAFT :: 47;         // the composer's Steer or Queue while a reply runs: the draft goes that way
 CP_SET_BACK :: 29; CP_SET_PAGE :: 30; CP_SET_SEARCH :: 31; CP_SET_HIT :: 32; CP_SET_ACCOUNT :: 33; CP_SET_TOGGLE :: 34; CP_SET_ACT :: 35;   // settings.coax
 // Desktop auto-updater pill states shown in the sidebar footer.
 CP_UPD_HIDDEN :: 0; CP_UPD_AVAILABLE :: 1; CP_UPD_DOWNLOADING :: 2; CP_UPD_READY :: 3; CP_UPD_ERROR :: 4;

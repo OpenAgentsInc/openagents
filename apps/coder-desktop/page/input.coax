@@ -91,6 +91,12 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
     for q: 0..<s[0].nchats { if id == cast(string) s[0].chats[q].id[0..<s[0].chats[q].id_n] { s[0].open = q; s[0].ask = CP_ASK_OPEN; return true; } }
     return false;
   }
+  if act == CP_FU { return cp_fu_press(s, surface_id(s[0].surface[..], row)); }
+  if act == CP_FU_DRAFT {
+    if !cp_running(s) || eb_text(s[0].draft[..]).count == 0 { return false; }
+    return cp_fu_ask(s, ifx surface_id(s[0].surface[..], row) == "coder.fu.queue" then CP_FUO_QUEUE else CP_FUO_STEER, -1);
+  }
+  if act == CP_FU_MODE { s[0].fu[0].queue_first = !s[0].fu[0].queue_first; return cp_fu_ask(s, CP_FUO_MODE, -1); }
   if act == CP_FIELD { s[0].ask = CP_ASK_FOCUS; return true; }
   if act == CP_SEND {
     if cp_running(s) { s[0].turns[s[0].nturns - 1].stopping = true; s[0].ask = CP_ASK_STOP; return true; }

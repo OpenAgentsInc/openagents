@@ -52,6 +52,7 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
     @objc func openFolder(_ sender: Any?) { main?.chooseFolder() }
     @objc func renameChat(_ sender: Any?) { main?.renameShown() }
     @objc func deleteChat(_ sender: Any?) { main?.deleteShown() }
+    @objc func followUpOther(_ sender: Any?) { main?.followUpOther() }
     @objc func biggerText(_ sender: Any?) { main?.zoom(1) }
     @objc func smallerText(_ sender: Any?) { main?.zoom(-1) }
     @objc func actualSize(_ sender: Any?) { main?.zoom(nil) }
@@ -81,6 +82,11 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         if item.action == #selector(renameChat(_:)) { return main?.canRename == true }
         if item.action == #selector(deleteChat(_:)) { return main?.canDelete == true }
         if item.action == #selector(openFolder(_:)) { return main?.canFolder == true }
+        if item.action == #selector(followUpOther(_:)) {
+            guard let w = main else { return false }
+            item.title = cd_followup_queues(w.page) != 0 ? "Steer the Reply" : "Queue a Follow-up"
+            return cd_running(w.page) != 0
+        }
         if item.action == #selector(setForemanTier(_:)) {
             let current = main?.foremanTier ?? .managed
             let matches = (senderTag: item.tag, tier: current)
@@ -111,6 +117,10 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         file.addItem(withTitle: "Rename Chat…", action: #selector(CoderDelegate.renameChat(_:)), keyEquivalent: "").target = delegate
         let del = file.addItem(withTitle: "Delete Chat…", action: #selector(CoderDelegate.deleteChat(_:)), keyEquivalent: "\u{8}")
         del.target = delegate; del.keyEquivalentModifierMask = [.command]
+        // while a reply runs, Command-Return does what Return does not: queue, or steer (#13717)
+        file.addItem(.separator())
+        let other = file.addItem(withTitle: "Queue a Follow-up", action: #selector(CoderDelegate.followUpOther(_:)), keyEquivalent: "\r")
+        other.target = delegate; other.keyEquivalentModifierMask = [.command]
         fileItem.submenu = file
         let viewItem = NSMenuItem(), view = NSMenu(title: "View")
         let actual = view.addItem(withTitle: "Actual Size", action: #selector(CoderDelegate.actualSize(_:)), keyEquivalent: "0")

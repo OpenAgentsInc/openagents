@@ -67,3 +67,61 @@
   p: [1] CoderPage; s := p[..]; cp_init(s);
   #assert coder_page_line(s, "{\"kind\":\"queue_refused\",\"op\":\"delete\",\"id\":\"q9\",\"reason\":\"unknown_id\"}") == MWW_QUEUE_REFUSED && cp_fu_str(s[0].fu[0].refused[..], s[0].fu[0].nrefused) == "unknown_id";
 }
+
+#test "follow-ups: while a reply runs Return steers and Command-Return queues (or the other way round); editing a queued one, Return saves; Esc gives up the edit, then stops the reply" {
+  p: [1] CoderPage; s := p[..]; cp_init(s);
+  #assert !coder_page_followup_submit(s, false);                        // nothing written, nothing runs
+  #assert coder_page_set_text(s, "fix a") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND;
+  #assert !coder_page_followup_submit(s, false);                        // the draft went
+  #assert coder_page_set_text(s, "also b") && coder_page_followup_submit(s, false) && coder_page_action(s) == CP_ASK_FOLLOWUP && coder_page_followup_op(s) == CP_FUO_STEER;
+  #assert coder_page_followup_submit(s, true) && coder_page_followup_op(s) == CP_FUO_QUEUE;
+  coder_page_followup_mode(s, true);
+  #assert coder_page_followup_queues(s) && coder_page_followup_submit(s, false) && coder_page_followup_op(s) == CP_FUO_QUEUE && coder_page_followup_submit(s, true) && coder_page_followup_op(s) == CP_FUO_STEER;
+  // a queued one in the composer: Return saves it as that item, and Esc gives it up
+  #assert coder_page_line(s, "{\"kind\":\"queue\",\"paused\":false,\"reason\":\"\",\"active\":\"\",\"items\":[{\"id\":\"q1\",\"text\":\"then c\"},{\"id\":\"q2\",\"text\":\"and d\"}]}") == MWW_QUEUED;
+  coder_page_followup_editing(s, 1);
+  #assert coder_page_followup_edited(s) == 1 && coder_page_followup_submit(s, false) && coder_page_followup_op(s) == CP_FUO_SAVE && coder_page_followup_item(s) == 1;
+  // the item keeps its mark where a new order puts it
+  #assert coder_page_line(s, "{\"kind\":\"queue\",\"paused\":false,\"reason\":\"\",\"active\":\"\",\"items\":[{\"id\":\"q2\",\"text\":\"and d\"},{\"id\":\"q1\",\"text\":\"then c\"}]}") == MWW_QUEUED;
+  #assert coder_page_followup_edited(s) == 0;
+  #assert coder_page_followup_escape(s) && coder_page_followup_op(s) == CP_FUO_CANCEL && coder_page_followup_edited(s) == -1;
+  #assert coder_page_followup_escape(s) && coder_page_followup_op(s) == CP_FUO_INTERRUPT && s[0].turns[0].stopping && !coder_page_followup_escape(s);
+  // a new chat keeps Return's default and none of the follow-ups
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"stopped\",\"text\":\"\"}") == MWW_ENDED && cp_new(s);
+  #assert coder_page_queue_count(s) == 0 && coder_page_followup_queues(s) && !coder_page_followup_escape(s);
+}
+
+#test "follow-ups: the tray shows the waiting steer and the queue over the composer, its presses reach the host, and a steer taken in shows in its message" {
+  p: [1] CoderPage; s := p[..]; cp_init(s); f: [1] UiFrame;
+  out: [1024] u8;
+  #assert coder_page_set_text(s, "fix a") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND;
+  #assert coder_page_line(s, "{\"kind\":\"turn\",\"turn\":1,\"source\":\"message\",\"id\":\"\",\"text\":\"\"}") == MWW_TURN;
+  #assert coder_page_steer_line(s, "s1", "also b", out[..]) > 0 && coder_page_steer_line(s, "s2", "and c", out[..]) > 0;
+  #assert coder_page_line(s, "{\"kind\":\"queue\",\"paused\":false,\"reason\":\"\",\"active\":\"\",\"items\":[{\"id\":\"q1\",\"text\":\"then d\"},{\"id\":\"q2\",\"text\":\"and e\"}]}") == MWW_QUEUED;
+  #assert cp_test_draw(s, f[..]) && cp_test_draw(s, f[..]);
+  sf := s[0].surface[..];
+  #assert surface_find(sf, "coder.fu.s0.now") >= 0 && surface_find(sf, "coder.fu.q1.up") >= 0 && surface_find(sf, "coder.fu.q0.send") >= 0 && surface_find(sf, "coder.fu.mode") >= 0;
+  #assert s[0].fu[0].tray_h > 0;
+  #assert cp_press(s, surface_find(sf, "coder.fu.q1.up")) && coder_page_action(s) == CP_ASK_FOLLOWUP && coder_page_followup_op(s) == APP_FU_OP_UP && coder_page_followup_item(s) == 1;
+  #assert !cp_press(s, surface_find(sf, "coder.fu.q0.up"));               // the head has no Move up
+  #assert cp_press(s, surface_find(sf, "coder.fu.s1.now")) && coder_page_followup_op(s) == APP_FU_OP_NOW && coder_page_followup_item(s) == 1;
+  #assert cp_press(s, surface_find(sf, "coder.fu.clear")) && coder_page_followup_op(s) == APP_FU_OP_CLEAR;
+  #assert cp_press(s, surface_find(sf, "coder.fu.mode")) && coder_page_followup_op(s) == CP_FUO_MODE && coder_page_followup_queues(s);
+  // a steer taken in leaves the tray and reads in its message; one refused waits to be queued or dismissed
+  #assert coder_page_line(s, "{\"kind\":\"steer\",\"id\":\"s1\",\"status\":\"applied\",\"turn\":1,\"step\":2}") == MWW_STEERED;
+  #assert coder_page_line(s, "{\"kind\":\"steer\",\"id\":\"s2\",\"status\":\"rejected\",\"turn\":1,\"reason\":\"full\"}") == MWW_STEERED;
+  #assert cp_test_draw(s, f[..]) && cp_test_draw(s, f[..]);
+  #assert surface_find(sf, "t0.st0") >= 0 && surface_find(sf, "coder.fu.s0.now") < 0 && surface_find(sf, "coder.fu.s1.queue") >= 0;
+  #assert cp_press(s, surface_find(sf, "coder.fu.s1.queue")) && coder_page_followup_op(s) == APP_FU_OP_REQUEUE && coder_page_followup_item(s) == 1;
+  #assert cp_press(s, surface_find(sf, "coder.fu.s1.dismiss")) && coder_page_steer_count(s) == 1;
+  // the reply ends and the queue pauses: the tray says why, with Resume, and a row's primary is Send now
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"failed\",\"text\":\"no model\"}") == MWW_ENDED;
+  #assert coder_page_line(s, "{\"kind\":\"queue\",\"paused\":true,\"reason\":\"error\",\"active\":\"\",\"items\":[{\"id\":\"q1\",\"text\":\"then d\"}]}") == MWW_QUEUED;
+  #assert cp_test_draw(s, f[..]) && cp_test_draw(s, f[..]);
+  #assert surface_find(sf, "coder.fu.resume") >= 0 && surface_find(sf, "coder.fu.mode") < 0 && surface_find(sf, "t0.st0") >= 0;
+  #assert cp_press(s, surface_find(sf, "coder.fu.resume")) && coder_page_followup_op(s) == APP_FU_OP_RESUME;
+  #assert cp_press(s, surface_find(sf, "coder.fu.q0.send")) && coder_page_followup_op(s) == APP_FU_OP_SEND && coder_page_followup_item(s) == 0;
+  // an empty queue and no steers waiting: no tray
+  #assert coder_page_line(s, "{\"kind\":\"queue\",\"paused\":false,\"reason\":\"\",\"active\":\"\",\"items\":[]}") == MWW_QUEUED;
+  #assert cp_test_draw(s, f[..]) && cp_test_draw(s, f[..]) && surface_find(sf, "coder.fu") < 0 && s[0].fu[0].tray_h == 0;
+}

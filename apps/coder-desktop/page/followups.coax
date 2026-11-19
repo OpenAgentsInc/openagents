@@ -24,6 +24,7 @@ CpFuSteer :: struct {
   status: int;                   // CP_STEER_*
   reason: [40] u8; nreason: int; // a rejected one's
   turn: int; step: int;          // the turn it was for; the step it became (applied)
+  at: int;                       // the page's message it was for: the timeline shows it there once applied
 }
 CpFollow :: struct {
   turn: int;                     // the worker's latest turn (0: none heard)
@@ -33,7 +34,20 @@ CpFollow :: struct {
   steers: [CP_FU_STEERS] CpFuSteer; nsteers: int;
   refused_op: [16] u8; nrefused_op: int; refused_id: [CP_FU_ID] u8; nrefused_id: int; refused: [32] u8; nrefused: int;
   began: bool;                   // the worker started a turn the page did not send: owed to the host once
+  // the tray and the composer (#13717)
+  queue_first: bool;             // Return queues while a reply runs (else it steers); Command-Return does the other
+  editing: int;                  // the queued item whose text the composer holds, from 1 (0: none)
+  op: int; item: int;            // what a press or a key asked of the host (CP_ASK_FOLLOWUP): APP_FU_OP_* or CP_FUO_*, and its row
+  tray_h: f32;                   // the tray's height last frame, with its gap: the conversation ends above it
 }
+
+// What a key in the composer asks of the host beside the tray's own ops (APP_FU_OP_*).
+CP_FUO_STEER :: 20;              // the draft goes into the running reply
+CP_FUO_QUEUE :: 21;              // the draft goes last in the queue
+CP_FUO_SAVE :: 22;               // the draft is the edited item's new text
+CP_FUO_CANCEL :: 23;             // the edit is given up: the draft as it was before
+CP_FUO_INTERRUPT :: 24;          // Esc: the reply stops (its waiting steers head the queue, paused)
+CP_FUO_MODE :: 25;               // Return's default changed: the host keeps it
 
 cp_fu_str :: (b: [] u8, n: int) -> string { return cast(string) b[0..<n]; }
 // text into out, cut on a character's start when it does not fit.
@@ -51,7 +65,7 @@ cp_fu_steer_find :: (f: [] CpFollow, id: string) -> int {
 }
 // A steer the page sent (or heard of): the oldest that is done (applied, rejected, queued,
 // resubmitted) gives its place when all are taken.
-cp_fu_steer_put :: (f: [] CpFollow, id: string, text: string, status: int) -> int {
+cp_fu_steer_put :: (f: [] CpFollow, id: string, text: string, status: int, at: int) -> int {
   i := cp_fu_steer_find(f, id);
   if i >= 0 { return i; }
   if f[0].nsteers >= CP_FU_STEERS {
@@ -64,7 +78,7 @@ cp_fu_steer_put :: (f: [] CpFollow, id: string, text: string, status: int) -> in
   i = f[0].nsteers; f[0].nsteers += 1;
   f[0].steers[i].nid = cp_out(f[0].steers[i].id[..], id);
   f[0].steers[i].ntext = cp_fu_cut(f[0].steers[i].text[..], text);
-  f[0].steers[i].status = status; f[0].steers[i].nreason = 0; f[0].steers[i].turn = f[0].turn; f[0].steers[i].step = 0;
+  f[0].steers[i].status = status; f[0].steers[i].nreason = 0; f[0].steers[i].turn = f[0].turn; f[0].steers[i].step = 0; f[0].steers[i].at = at;
   return i;
 }
 cp_fu_status :: (name: string) -> int {
@@ -79,6 +93,10 @@ cp_fu_status :: (name: string) -> int {
 // The whole queue as the worker sent it: each item read on its own, so a long one fits the arena.
 cp_fu_queue :: (f: [] CpFollow, l: MwwLine, arena: [] u8) {
   f[0].heard = true;
+  // the item being edited keeps its mark where the new order puts it, or loses it when it went
+  was: [CP_FU_ID] u8; nwas := 0;
+  if f[0].editing > 0 && f[0].editing <= f[0].n { e := f[0].editing - 1; nwas = cp_out(was[..], cp_fu_str(f[0].items[e].id[..], f[0].items[e].nid)); }
+  f[0].editing = 0;
   f[0].paused = l.paused.ok && l.paused.value;
   f[0].nreason = cp_out(f[0].reason[..], l.reason);
   f[0].nactive = cp_out(f[0].active[..], l.active);
@@ -95,6 +113,7 @@ cp_fu_queue :: (f: [] CpFollow, l: MwwLine, arena: [] u8) {
     t := cl_str(ar[..], one, "text");
     f[0].items[f[0].n].ntext = cp_fu_cut(f[0].items[f[0].n].text[..], t);
     f[0].items[f[0].n].cut = t.count > CP_FU_TEXT || ar[0].full;
+    if nwas > 0 && cp_fu_str(f[0].items[f[0].n].id[..], f[0].items[f[0].n].nid) == cast(string) was[0..<nwas] { f[0].editing = f[0].n + 1; }
     f[0].n += 1;
   }
 }
@@ -116,9 +135,10 @@ cp_fu_line :: (s: [] CoderPage, kind: int, l: MwwLine) -> bool {
   if kind == MWW_STEERED {
     st := cp_fu_status(l.steer_status);
     if st < 0 { return true; }
-    i := cp_fu_steer_put(f, l.id, "", st);
+    i := cp_fu_steer_put(f, l.id, "", st, s[0].nturns - 1);
     if i < 0 { return true; }
     f[0].steers[i].status = st;
+    if st == CP_STEER_APPLIED && f[0].steers[i].at >= 0 && f[0].steers[i].at < s[0].nturns { s[0].turns[f[0].steers[i].at].h = 0; }
     f[0].steers[i].nreason = cp_out(f[0].steers[i].reason[..], l.reason);
     if l.turn.ok { f[0].steers[i].turn = l.turn.value; }
     if l.step.ok { f[0].steers[i].step = l.step.value; }
@@ -140,7 +160,7 @@ cp_fu_line :: (s: [] CoderPage, kind: int, l: MwwLine) -> bool {
 coder_page_steer_line :: (s: [] CoderPage, id: string, text: string, out: [] u8) -> int #export_c #effects(all) {
   if s.count < 1 || !cp_running(s) || id.count == 0 || id.count > CP_FU_ID || text.count == 0 { return 0; }
   f := s[0].fu[..];
-  if cp_fu_steer_put(f, id, text, CP_STEER_SENT) < 0 { return 0; }
+  if cp_fu_steer_put(f, id, text, CP_STEER_SENT, s[0].nturns - 1) < 0 { return 0; }
   n := mww_steer(out, id, text, f[0].turn);
   return ifx n < 0 then 0 else n;
 }
@@ -216,3 +236,134 @@ coder_page_steer_reason :: (s: [] CoderPage, i: int, out: [] u8) -> int #export_
 }
 // The worker's latest turn number (0: none heard).
 coder_page_worker_turn :: (s: [] CoderPage) -> int #export_c #effects(all) { return ifx s.count > 0 then s[0].fu[0].turn else 0; }
+
+// ---------------------------------------------------------------- the tray and the composer (#13717)
+
+// A chat opened or begun: none of the last one's follow-ups stay; Return's default does.
+cp_fu_reset :: (s: [] CoderPage) {
+  first := s[0].fu[0].queue_first;
+  s[0].fu[0] = CpFollow.{};
+  s[0].fu[0].queue_first = first;
+}
+// A steer that waits on the reply: sent, or taken but not yet in.
+cp_fu_pending :: (st: int) -> bool { return st == CP_STEER_SENT || st == CP_STEER_ACCEPTED; }
+cp_fu_ask :: (s: [] CoderPage, op: int, item: int) -> bool { s[0].fu[0].op = op; s[0].fu[0].item = item; s[0].ask = CP_ASK_FOLLOWUP; return true; }
+
+// A press on the tray (CP_FU): its row from the button's id ("coder.fu.s1.now", "coder.fu.q2.up",
+// "coder.fu.resume"). Dismiss is the page's own; the rest go to the host.
+cp_fu_press :: (s: [] CoderPage, id: string) -> bool {
+  op := app_fu_op(id);
+  if op == APP_FU_OP_NONE { return false; }
+  f := s[0].fu[..];
+  if op == APP_FU_OP_RESUME || op == APP_FU_OP_CLEAR { return cp_fu_ask(s, op, -1); }
+  steer := cp_number(id, "coder.fu.s"); item := cp_number(id, "coder.fu.q");
+  if steer >= 0 {
+    if steer >= f[0].nsteers { return false; }
+    if op == APP_FU_OP_DISMISS {
+      for k: steer + 1..<f[0].nsteers { f[0].steers[k - 1] = f[0].steers[k]; }
+      f[0].nsteers -= 1;
+      return true;
+    }
+    if op == APP_FU_OP_NOW && (!cp_running(s) || !cp_fu_pending(f[0].steers[steer].status)) { return false; }
+    if op != APP_FU_OP_NOW && op != APP_FU_OP_REQUEUE { return false; }
+    return cp_fu_ask(s, op, steer);
+  }
+  if item < 0 || item >= f[0].n { return false; }
+  if op == APP_FU_OP_UP && item == 0 { return false; }
+  if op != APP_FU_OP_DELETE && op != APP_FU_OP_UP && op != APP_FU_OP_EDIT && op != APP_FU_OP_SEND { return false; }
+  return cp_fu_ask(s, op, item);
+}
+
+// Return in the composer while a reply runs, or while a queued item is edited: other is
+// Command-Return. The host then steers, queues or saves the draft (CP_ASK_FOLLOWUP). False when
+// Return sends the draft as a message (coder_page_submit).
+coder_page_followup_submit :: (s: [] CoderPage, other: bool) -> bool #export_c #effects(all) {
+  if s.count < 1 || eb_text(s[0].draft[..]).count == 0 { return false; }
+  f := s[0].fu[..];
+  if f[0].editing > 0 { return cp_fu_ask(s, CP_FUO_SAVE, f[0].editing - 1); }
+  if !cp_running(s) { return false; }
+  queue := f[0].queue_first != other;
+  return cp_fu_ask(s, ifx queue then CP_FUO_QUEUE else CP_FUO_STEER, -1);
+}
+// Esc in the composer: an edit is given up, else a running reply stops. False when it does neither.
+coder_page_followup_escape :: (s: [] CoderPage) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  if s[0].fu[0].editing > 0 { s[0].fu[0].editing = 0; return cp_fu_ask(s, CP_FUO_CANCEL, -1); }
+  if !cp_running(s) || s[0].turns[s[0].nturns - 1].stopping { return false; }
+  s[0].turns[s[0].nturns - 1].stopping = true;
+  return cp_fu_ask(s, CP_FUO_INTERRUPT, -1);
+}
+// What the host was asked (cd_action CP_ASK_FOLLOWUP): the op (APP_FU_OP_* or CP_FUO_*), and its
+// row (a queued item's place, or a steer's for APP_FU_OP_NOW and APP_FU_OP_REQUEUE; -1 for none).
+coder_page_followup_op :: (s: [] CoderPage) -> int #export_c #effects(all) { return ifx s.count > 0 then s[0].fu[0].op else 0; }
+coder_page_followup_item :: (s: [] CoderPage) -> int #export_c #effects(all) { return ifx s.count > 0 then s[0].fu[0].item else -1; }
+// The queued item i whose text the composer now holds (-1: none).
+coder_page_followup_editing :: (s: [] CoderPage, i: int) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].fu[0].editing = ifx i >= 0 && i < s[0].fu[0].n then i + 1 else 0;
+}
+// The queued item the composer holds, -1 for none.
+coder_page_followup_edited :: (s: [] CoderPage) -> int #export_c #effects(all) { return ifx s.count > 0 then s[0].fu[0].editing - 1 else -1; }
+// Return's default while a reply runs: true queues, false steers. coder_page_followup_queues reads it.
+coder_page_followup_mode :: (s: [] CoderPage, queue_first: bool) #export_c #effects(all) { if s.count > 0 { s[0].fu[0].queue_first = queue_first; } }
+coder_page_followup_queues :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && s[0].fu[0].queue_first; }
+// Steer i's id into out: its length, -1 for none.
+coder_page_steer_id :: (s: [] CoderPage, i: int, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 || i < 0 || i >= s[0].fu[0].nsteers { return -1; }
+  return cp_out(out, cp_fu_str(s[0].fu[0].steers[i].id[..], s[0].fu[0].steers[i].nid));
+}
+// Steer i leaves the tray (the host queued its text instead).
+coder_page_steer_dismiss :: (s: [] CoderPage, i: int) #export_c #effects(all) {
+  if s.count < 1 || i < 0 || i >= s[0].fu[0].nsteers { return; }
+  for k: i + 1..<s[0].fu[0].nsteers { s[0].fu[0].steers[k - 1] = s[0].fu[0].steers[k]; }
+  s[0].fu[0].nsteers -= 1;
+}
+
+// Why the queue is paused, in the person's words.
+cp_fu_why :: (reason: string) -> string {
+  if reason == "error" { return "Paused after an error"; }
+  if reason == "interrupted" { return "Paused: the reply was stopped"; }
+  if reason == "restored" { return "Paused: Coder closed while these waited"; }
+  return "Paused";
+}
+// The tray over the composer (app_fu_tray), docked at bottom: the waiting and refused steers of
+// the running reply, then the queue. Keeps its height for the conversation's end.
+cp_fu_tray :: (s: [] CoderPage, f: [] UiFrame, x: f32, bottom: f32, cw: f32, running: bool) {
+  fu := s[0].fu[..]; sh := f[0].sheet;
+  rows: [APP_FU_SHOWN] AppFuRow; n := 0; more := 0;
+  ib: [EL_ID] u8;
+  for k: 0..<fu[0].nsteers {
+    st := fu[0].steers[k].status;
+    show := (cp_fu_pending(st) && running) || st == CP_STEER_REJECTED;
+    if !show { continue; }
+    if n >= APP_FU_SHOWN { more += 1; continue; }
+    nn := el_put(ib[..], 0, "coder.fu.s"); nn = el_put_i(ib[..], nn, k);
+    rows[n] = AppFuRow.{id = sheet_pool(sh, cast(string) ib[0..<nn]), kind = ifx st == CP_STEER_REJECTED then APP_FU_REJECTED else APP_FU_STEER,
+                        text = cp_fu_str(fu[0].steers[k].text[..], fu[0].steers[k].ntext), note = cp_fu_str(fu[0].steers[k].reason[..], fu[0].steers[k].nreason)};
+    n += 1;
+  }
+  for i: 0..<fu[0].n {
+    if n >= APP_FU_SHOWN { more += 1; continue; }
+    nn := el_put(ib[..], 0, "coder.fu.q"); nn = el_put_i(ib[..], nn, i);
+    rows[n] = AppFuRow.{id = sheet_pool(sh, cast(string) ib[0..<nn]), kind = APP_FU_QUEUED, text = cp_fu_str(fu[0].items[i].text[..], fu[0].items[i].ntext),
+                        place = i + 1, first = i == 0, editing = fu[0].editing == i + 1};
+    n += 1;
+  }
+  hb: [64] u8; hn := 0;
+  if fu[0].paused && fu[0].n > 0 { hn = el_put(hb[..], 0, cp_fu_why(cp_fu_str(fu[0].reason[..], fu[0].nreason))); }
+  else if fu[0].n > 0 { hn = el_put(hb[..], 0, "Queued · "); hn = el_put_i(hb[..], hn, fu[0].n); }
+  else { hn = el_put(hb[..], 0, "Follow-ups"); }
+  t := AppFuTray.{head = sheet_pool(sh, cast(string) hb[0..<hn]), paused = fu[0].paused && fu[0].n > 0, clear = fu[0].n > 0, running = running, more = more};
+  h := app_fu_tray(f, "coder.fu", x, bottom, cw, t, rows[0..<n], CP_FU);
+  fu[0].tray_h = ifx h > 0 then h + f[0].skin.app.gap_small else 0.0f32;
+}
+// Turn i's steers that the reply took in, in the timeline at (x, y): their height.
+cp_fu_steered :: (s: [] CoderPage, f: [] UiFrame, i: int, x: f32, y: f32, cw: f32) -> f32 {
+  fu := s[0].fu[..]; h: f32 = 0; ib: [EL_ID] u8;
+  for k: 0..<fu[0].nsteers {
+    if fu[0].steers[k].status != CP_STEER_APPLIED || fu[0].steers[k].at != i { continue; }
+    nn := cp_id(ib[..], i, ".st").count; nn = el_put_i(ib[..], nn, k);
+    h += app_message_steer(f, sheet_pool(f[0].sheet, cast(string) ib[0..<nn]), x, y + h, cw, cp_fu_str(fu[0].steers[k].text[..], fu[0].steers[k].ntext)) + f[0].skin.app.gap;
+  }
+  return h;
+}

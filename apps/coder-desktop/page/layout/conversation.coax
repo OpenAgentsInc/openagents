@@ -126,7 +126,7 @@ cp_conversation :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, x: f32, c
   k := f[0].skin; a := k.app;
   side := a.icon_button; edge := (side - a.icon) / 2;   // a Copy's icon sits on its message's edge
   bar := ifx s[0].box.height > 0 then s[0].box.height else 80.0f32;
-  top: f32 = 0; bottom := h - CP_BOTTOM - bar;   // what scrolls runs up to the bar
+  top: f32 = 0; bottom := h - CP_BOTTOM - bar - s[0].fu[0].tray_h;   // what scrolls runs up to the follow-ups and the bar
   s[0].view = bottom - top;
   if s[0].stick { s[0].scroll = s[0].content - s[0].view; if s[0].scroll < 0 { s[0].scroll = 0; } }
   uiframe_clip(f, left, top, w, bottom);
@@ -158,6 +158,8 @@ cp_conversation :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, x: f32, c
       // what it did on its way to the reply: one activity group (#13731)
       gh := cp_group(s, f, i, x, y, cw, top, bottom);
       if gh > 0 { y += gh + a.gap; }
+      // what the person steered it with as it ran (#13717)
+      y += cp_fu_steered(s, f, i, x, y, cw);
       if s[0].turns[i].reply_n > 0 {
         s[0].turns[i].ay = y;
         if s[0].live_reply != i { f[0].skin.motion.enter = 0; }
@@ -340,7 +342,8 @@ cp_corners :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, window_w: f32,
 // The composer at the window's foot, x and cw as the conversation: Zeron pill container,
 // working folder chip on the left, model chip beside Send, and the models' popover above it.
 cp_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, h: f32, running: bool, full: bool, exceeded: bool) {
-  k := f[0].skin;
+  k := f[0].skin; a := k.app;
+  queues := s[0].fu[0].queue_first;   // while a reply runs Return steers it or queues a follow-up (#13717)
   s[0].box = cp_zeron_composer(s, f, x, h - CP_BOTTOM, cw, running, full || exceeded);
   // Zeron bottom toolbar inside the composer pill: working folder chip on the left,
   // compact model selector chip beside the circular 28pt send/stop pill on the right,
@@ -354,6 +357,7 @@ cp_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, h: f32, running
   z_edge := rgba(0.7804f32, 0.8235f32, 0.8706f32, 0.0902f32);    // #c7d2de17 ($zeron.composer.edge)
   z_menu_bg := rgba(0.1059f32, 0.1059f32, 0.1098f32, 0.96f32);   // #1b1b1c ($zeron.menu.tint)
   box_y := (h - CP_BOTTOM) - s[0].box.height;
+  cp_fu_tray(s, f, x, box_y - a.gap_small, cw, running);
   row_y := box_y + s[0].box.row_y;
   chip_y := row_y + (s[0].box.send - k.cmp.chip_h) / 2;
   chip_gap := 6.0f32 / u;
@@ -365,7 +369,21 @@ cp_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, h: f32, running
   m_max := s[0].box.send_x - k.cmp.action_inset - chip_gap;
   if m_w > m_max { m_w = m_max; }
   m_x := x + s[0].box.send_x - chip_gap - m_w;
-  if s[0].folder_n > 0 {
+  if running {
+    // the folder can't change while a reply runs: its place says what Return does, and a press
+    // turns it the other way; with a draft, Steer and Queue beside it
+    fx := x + 8.0f32 / u;
+    mode := ifx queues then "Return queues" else "Return steers";
+    mw := app_chip(f, "coder.fu.mode", fx, chip_y, m_x - fx - chip_gap, -1, "What Return does while the reply runs", mode, 0, CP_FU_MODE);
+    if eb_text(s[0].draft[..]).count > 0 && s[0].fu[0].editing == 0 {
+      bx := fx + mw + a.gap_small;
+      sw := app_chip_width(f, -1, "Steer", 0); qw := app_chip_width(f, -1, "Queue", 0);
+      if bx + sw + qw + a.gap_small <= m_x - a.gap_small {
+        _ := app_chip(f, "coder.fu.steer", bx, chip_y, 0, -1, "Steer the reply with the draft", "Steer", ifx queues then 0 else EL_S_CURRENT, CP_FU_DRAFT);
+        _ := app_chip(f, "coder.fu.queue", bx + sw + a.gap_small, chip_y, 0, -1, "Queue the draft for after the reply", "Queue", ifx queues then EL_S_CURRENT else 0, CP_FU_DRAFT);
+      }
+    }
+  } else if s[0].folder_n > 0 {
     name := sheet_pool(f[0].sheet, cast(string) s[0].folder[0..<s[0].folder_n]);
     fx := x + 8.0f32 / u;
     max_fw := m_x - fx - chip_gap;
@@ -528,7 +546,9 @@ cp_zeron_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, bottom: f32, w: f3
   sheet_hit(sh, UIFRAME_HIT, field_row, 0, x, box_y, w, box_h);
   // Placeholder or unfocused draft text.
   if text.count == 0 {
-    _ := sheet_text(sh, m, -1, x + side_pad, box_y + top_pad, line_h, k.body.face, z_placeholder, "Ask anything...");
+    // while a reply runs it says what Return does (#13717)
+    hint := ifx !running then "Ask anything..." else ifx s[0].fu[0].queue_first then "Queue a follow-up · ⌘Return steers · Esc stops" else "Steer the reply · ⌘Return queues · Esc stops";
+    _ := sheet_text(sh, m, -1, x + side_pad, box_y + top_pad, line_h, k.body.face, z_placeholder, hint);
   } else if !editing {
     // Draw unfocused draft text lines inside the text box.
     ly := box_y + top_pad;

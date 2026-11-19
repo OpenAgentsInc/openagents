@@ -16,6 +16,7 @@ final class CoderRun {
     var chat: String?                  // its kept chat's id, once it is out of view
     var turn: CoderTurn?               // the running message, kept so a reopened Coder attaches to it
     var queued: [String: String] = [:] // the whole text of each message this Coder queued, by id (the page keeps previews)
+    var steered: [String: String] = [:] // the whole text of each steer this Coder sent, by id
     init(page: UnsafeMutableRawPointer, folder: URL) { self.page = page; self.folder = folder }
     func stop() {
         endTurn()
@@ -98,6 +99,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     private var showAgent: Int?   // --agent N: the Nth sub-agent's transcript opens as soon as there is one
     var owed = 3   // frames still to draw after a change
     private var restoreEditorFocus = false
+    var draftBeforeEdit = ""          // the draft there before a queued message's text was edited in the composer, back after (GitHub #13717)
     let store = CoderStore()
     var chat: String?          // the id of the chat that is shown, once it is kept
     var recallDue = false      // a chat was opened: the worker is told its turns ahead of the next message
@@ -170,8 +172,14 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         editor.committed = { [weak self] text in guard let self else { return }; _ = cd_set_text(self.page, text); self.wake() }
         // Return sends; Shift-Return and Option-Return make a new line.
         editor.command = { [weak self] selector in
-            guard let self, selector == #selector(NSResponder.insertNewline(_:)) else { return false }
+            guard let self else { return false }
+            // Esc gives up an edit of a queued message or stops the reply (#13717)
+            if selector == #selector(NSResponder.cancelOperation(_:)) { if cd_followup_escape(self.page) != 0 { self.wake(); return true }; return false }
+            guard selector == #selector(NSResponder.insertNewline(_:)) else { return false }
             if NSApp.currentEvent?.modifierFlags.contains(.shift) == true { return false }
+            // while a reply runs Return steers it or queues a follow-up; editing a queued one, it saves (#13717)
+            let other = NSApp.currentEvent?.modifierFlags.contains(.command) == true
+            if cd_followup_submit(self.page, other ? 1 : 0) != 0 { self.wake(); return true }
             _ = cd_submit(self.page); self.wake(); return true
         }
         editor.setAccessibilityIdentifier("coder.composer"); editor.setAccessibilityLabel("Message")
@@ -190,9 +198,16 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         canvas.addSubview(search)
         syncSettingsInfo()
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self, event.keyCode == 53, event.window === self.window, self.window.attachedSheet == nil, cd_settings_page(self.page) >= 0 else { return event }
+            guard let self, event.window === self.window, self.window.attachedSheet == nil else { return event }
+            // in the composer Esc gives up an edit or stops the reply (#13717); Command-Return is the
+            // File menu's (followUpOther)
+            if self.window.firstResponder === self.editor && cd_settings_page(self.page) < 0 {
+                if event.keyCode == 53 && cd_followup_escape(self.page) != 0 { self.wake(); return nil }
+            }
+            guard event.keyCode == 53, cd_settings_page(self.page) >= 0 else { return event }
             self.escape(); return nil
         }
+        cd_followup_mode(page, UserDefaults.standard.bool(forKey: "followUpsQueueFirst") ? 1 : 0)
         wire(run)
         reattach()
         canvas.postsFrameChangedNotifications = true
@@ -298,6 +313,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             let named = (String(cString: out) as NSString).expandingTildeInPath
             let url = named.hasPrefix("/") ? URL(fileURLWithPath: named) : folder.appendingPathComponent(named)
             if FileManager.default.fileExists(atPath: url.path) { NSWorkspace.shared.open(url) }
+        case 25: followUp()
         default: break
         }
     }

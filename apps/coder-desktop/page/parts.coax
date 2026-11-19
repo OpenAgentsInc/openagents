@@ -4,6 +4,7 @@
 
 #load "../../../components/app/activity.coax";
 #load "../../../components/app/nav.coax";
+#load "../../../components/app/followups.coax";
 #load "../../shared/app/view/shell.coax";
 #load "../../../components/kit/foreman_hud.coax";
 #load "../../../components/core/edit.coax";

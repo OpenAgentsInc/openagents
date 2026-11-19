@@ -170,6 +170,16 @@ int cd_queue_item_cut(void *page, int i) { CoderHost *c = page; return c && code
 int cd_steer_count(void *page) { CoderHost *c = page; return c ? (int)coder_page_steer_count(cd_state(c)) : 0; }
 int cd_steer_status(void *page, int i) { CoderHost *c = page; return c ? (int)coder_page_steer_status(cd_state(c), i) : -1; }
 int cd_steer_text(void *page, int i, char *out, int cap) { CoderHost *c = page; return c && cap > 1 ? cd_text_out((int)coder_page_steer_text(cd_state(c), i, (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap) : 0; }
+int cd_followup_submit(void *page, int other) { CoderHost *c = page; if (!c) return 0; cd_changed(c); return coder_page_followup_submit(cd_state(c), other != 0); }
+int cd_followup_escape(void *page) { CoderHost *c = page; if (!c) return 0; cd_changed(c); return coder_page_followup_escape(cd_state(c)); }
+int cd_followup_op(void *page) { CoderHost *c = page; return c ? (int)coder_page_followup_op(cd_state(c)) : 0; }
+int cd_followup_item(void *page) { CoderHost *c = page; return c ? (int)coder_page_followup_item(cd_state(c)) : -1; }
+void cd_followup_editing(void *page, int i) { CoderHost *c = page; if (c) { cd_changed(c); coder_page_followup_editing(cd_state(c), i); } }
+void cd_followup_mode(void *page, int queue_first) { CoderHost *c = page; if (c) { cd_changed(c); coder_page_followup_mode(cd_state(c), queue_first != 0); } }
+int cd_followup_edited(void *page) { CoderHost *c = page; return c ? (int)coder_page_followup_edited(cd_state(c)) : -1; }
+int cd_followup_queues(void *page) { CoderHost *c = page; return c && coder_page_followup_queues(cd_state(c)); }
+int cd_steer_id(void *page, int i, char *out, int cap) { CoderHost *c = page; return c && cap > 1 ? cd_text_out((int)coder_page_steer_id(cd_state(c), i, (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap) : 0; }
+void cd_steer_dismiss(void *page, int i) { CoderHost *c = page; if (c) { cd_changed(c); coder_page_steer_dismiss(cd_state(c), i); } }
 int cd_steer_reason(void *page, int i, char *out, int cap) { CoderHost *c = page; return c && cap > 1 ? cd_text_out((int)coder_page_steer_reason(cd_state(c), i, (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap) : 0; }
 int cd_worker_turn(void *page) { CoderHost *c = page; return c ? (int)coder_page_worker_turn(cd_state(c)) : 0; }
 void cd_line(void *page, const char *line) { CoderHost *c = page; if (!c) return; coder_page_line(cd_state(c), cd_string(line)); cd_changed(c); }

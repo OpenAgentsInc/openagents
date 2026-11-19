@@ -136,6 +136,7 @@ extension CoderWindow {
         if clearedUnread { cd_chats(page, chatLines) }
         var isFolder: ObjCBool = false
         if let kept = store.folder(id), FileManager.default.fileExists(atPath: kept, isDirectory: &isFolder), isFolder.boolValue { setFolder(URL(fileURLWithPath: kept), keep: false) }
+        showKeptQueue(id)
         window.makeFirstResponder(editor)
         wake()
     }
