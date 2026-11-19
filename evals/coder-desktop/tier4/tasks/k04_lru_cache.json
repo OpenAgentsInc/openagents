@@ -1,0 +1,48 @@
+{
+  "id": "k04_lru_cache",
+  "category": "bench_python",
+  "fixture": "lru",
+  "description": "Implement an LRU cache from its README",
+  "budget_usd_micros": 100000,
+  "timeout_s": 300,
+  "steps": [
+    {
+      "send": "Implement LRUCache in lru.py as README.md describes, so `python3 -m unittest` passes. Do not change the tests."
+    }
+  ],
+  "graders": [
+    {
+      "type": "not_timed_out"
+    },
+    {
+      "type": "ended"
+    },
+    {
+      "type": "command",
+      "run": "python3 -m unittest -q",
+      "restore": [
+        "test_lru.py"
+      ]
+    },
+    {
+      "type": "command",
+      "run": "python3 -m unittest -q test_hidden",
+      "name": "hidden test",
+      "add": {
+        "test_hidden.py": "import unittest\nfrom lru import LRUCache\n\nclass H(unittest.TestCase):\n    def test(self):\n        c = LRUCache(3)\n        for k in 'abcd':\n            c.put(k, k)\n        self.assertIsNone(c.get('a'))\n        c.get('b'); c.put('e', 'e')\n        self.assertIsNone(c.get('c'))\n        self.assertEqual(c.get('b'), 'b')\n"
+      }
+    },
+    {
+      "type": "files_unchanged",
+      "paths": [
+        "test_*.py"
+      ]
+    },
+    {
+      "type": "outside_unchanged"
+    },
+    {
+      "type": "no_guard_trips"
+    }
+  ]
+}

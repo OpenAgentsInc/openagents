@@ -1,0 +1,44 @@
+{
+  "id": "g3_goal_continues_to_done",
+  "category": "golden",
+  "fixture": "blank",
+  "description": "/goal with two dependent parts continues until both are done",
+  "budget_usd_micros": 150000,
+  "timeout_s": 420,
+  "bug": "https://github.com/OpenAgentsInc/openagents/commit/1a9e5fc9a3",
+  "tier1": "host scenario 12_goal_lifecycle; replay fixture 05_goal_autonomous",
+  "steps": [
+    {
+      "goal": "First create shapes.py with area_square(s) and area_rect(w, h). Then, as a separate step, create report.py with a main() that prints `square 9` and `rect 6` using shapes.py for sides 3 and 2x3, and test_shapes.py with unittest tests for both functions. Finish when `python3 -m unittest` passes and `python3 report.py` prints those two lines."
+    }
+  ],
+  "graders": [
+    {
+      "type": "not_timed_out"
+    },
+    {
+      "type": "state",
+      "field": "goal_status",
+      "eq": 3
+    },
+    {
+      "type": "command",
+      "run": "python3 -m unittest -q",
+      "name": "own tests"
+    },
+    {
+      "type": "command",
+      "run": "python3 -c \"import report; report.main()\" | diff - expected.txt",
+      "name": "report",
+      "add": {
+        "expected.txt": "square 9\nrect 6\n"
+      }
+    },
+    {
+      "type": "outside_unchanged"
+    },
+    {
+      "type": "no_guard_trips"
+    }
+  ]
+}

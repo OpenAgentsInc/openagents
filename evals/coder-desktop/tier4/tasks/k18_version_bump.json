@@ -1,0 +1,51 @@
+{
+  "id": "k18_version_bump",
+  "category": "bench_maint",
+  "fixture": "pkg",
+  "description": "Bump a package version and add a changelog entry",
+  "budget_usd_micros": 100000,
+  "timeout_s": 300,
+  "steps": [
+    {
+      "send": "Release 1.5.0: change the version from 1.4.2 to 1.5.0 everywhere it is set, and add a `## 1.5.0` section at the top of CHANGELOG.md (above 1.4.2) with the line `- Added: --json output.`"
+    }
+  ],
+  "graders": [
+    {
+      "type": "not_timed_out"
+    },
+    {
+      "type": "ended"
+    },
+    {
+      "type": "file_contains",
+      "path": "pyproject.toml",
+      "text": "version = \"1.5.0\""
+    },
+    {
+      "type": "file_contains",
+      "path": "mypkg/__init__.py",
+      "text": "__version__ = \"1.5.0\""
+    },
+    {
+      "type": "command",
+      "run": "python3 -c \"t=open('CHANGELOG.md').read(); assert '- Added: --json output.' in t and t.index('## 1.5.0') < t.index('## 1.4.2') < t.index('## 1.4.1'), t\"",
+      "name": "changelog order"
+    },
+    {
+      "type": "command",
+      "run": "! grep -n 1.4.2 pyproject.toml mypkg/__init__.py",
+      "name": "old version gone"
+    },
+    {
+      "type": "diff_max_files",
+      "max": 3
+    },
+    {
+      "type": "outside_unchanged"
+    },
+    {
+      "type": "no_guard_trips"
+    }
+  ]
+}

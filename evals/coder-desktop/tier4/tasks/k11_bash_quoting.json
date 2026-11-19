@@ -1,0 +1,40 @@
+{
+  "id": "k11_bash_quoting",
+  "category": "bench_shell",
+  "fixture": "backup",
+  "description": "Fix a shell script that breaks on spaces in file names",
+  "budget_usd_micros": 100000,
+  "timeout_s": 300,
+  "steps": [
+    {
+      "send": "`sh test.sh` fails because backup.sh breaks on file names with spaces. Fix backup.sh (POSIX sh) without changing test.sh."
+    }
+  ],
+  "graders": [
+    {
+      "type": "not_timed_out"
+    },
+    {
+      "type": "ended"
+    },
+    {
+      "type": "command",
+      "run": "sh test.sh",
+      "restore": [
+        "test.sh"
+      ]
+    },
+    {
+      "type": "files_unchanged",
+      "paths": [
+        "test.sh"
+      ]
+    },
+    {
+      "type": "outside_unchanged"
+    },
+    {
+      "type": "no_guard_trips"
+    }
+  ]
+}

@@ -42,6 +42,11 @@ HOST_DRIVER_DIR = EVAL_DIR / "host_driver"
 HOST_DRIVER_BIN = HOST_DRIVER_DIR / "build/host_driver"
 TASKS_DIR = EVAL_DIR / "tier2/tasks"
 FIXTURES_DIR = EVAL_DIR / "tier2/fixtures"
+# Tier 4 (golden trajectories and the benchmark slice) runs through this same runner with
+# --manifest tier4/slice.json: its tasks live in tier4/tasks, its fixtures in tier4/fixtures,
+# and a manifest may name Tier 2 tasks too. A fixture is looked up beside its task first.
+TIER4_TASKS_DIR = EVAL_DIR / "tier4/tasks"
+TIER4_FIXTURES_DIR = EVAL_DIR / "tier4/fixtures"
 RESOURCES_DIR = REPO_ROOT / "components/zeron"
 REAL_HOME = Path(os.path.expanduser("~"))
 
@@ -126,7 +131,7 @@ class Sandbox:
         self.repo = self.root / "repo"
         self.outside = self.root / "outside"
         self.home = self.root / "home"
-        self.fixture = FIXTURES_DIR / task["fixture"]
+        self.fixture = fixture_dir(task)
         shutil.copytree(self.fixture, self.repo)
         self.outside.mkdir()
         for rel, text in task.get("outside", {}).items():
@@ -200,6 +205,38 @@ def skills_note(home: Path) -> str:
     if not rows:
         return ""
     return "Skills installed on this computer. When a message is about one, read its file with cat first, then do what it says:\n" + "\n".join(rows) + "\n\nThe message:\n"
+
+
+def fixture_dir(task: dict[str, Any]) -> Path:
+    for d in (task.get("_fixtures"), FIXTURES_DIR, TIER4_FIXTURES_DIR):
+        if d and (Path(d) / task["fixture"]).is_dir():
+            return Path(d) / task["fixture"]
+    raise RuntimeError(f"no fixture {task['fixture']!r} for task {task['id']}")
+
+
+def load_tasks(tasks_dir: Path, fixtures_dir: Path) -> list[dict[str, Any]]:
+    out = []
+    for p in sorted(glob.glob(str(tasks_dir / "*.json"))):
+        t = json.loads(Path(p).read_text())
+        t["_fixtures"] = str(fixtures_dir)
+        out.append(t)
+    return out
+
+
+def load_manifest(path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """A manifest names task ids per group ({"tier": 4, "groups": {"golden": [...], "benchmark": [...]}})."""
+    m = json.loads(path.read_text())
+    pool = {t["id"]: t for t in load_tasks(TASKS_DIR, FIXTURES_DIR) + load_tasks(TIER4_TASKS_DIR, TIER4_FIXTURES_DIR)}
+    tasks, missing = [], []
+    for group, ids in m["groups"].items():
+        for i in ids:
+            if i not in pool:
+                missing.append(i)
+                continue
+            tasks.append(dict(pool[i], group=group))
+    if missing:
+        raise SystemExit(f"{path}: no task named {', '.join(missing)}")
+    return m, tasks
 
 
 def snapshot(d: Path) -> dict[str, str]:
@@ -358,6 +395,8 @@ def run_task(task: dict[str, Any], case_dir: Path, worker: Path, claude_worker: 
     result = {
         "id": task["id"],
         "category": task["category"],
+        "group": task.get("group"),
+        "bug": task.get("bug"),
         "description": task.get("description", ""),
         "passed": passed,
         "known_failure": known if (known and not passed) else None,
@@ -652,9 +691,15 @@ def main() -> int:
     ap.add_argument("--keep", action="store_true", help="keep each task's temp sandbox")
     ap.add_argument("--claude", action="store_true", help="build claudeworker and let tasks marked claude use it")
     ap.add_argument("--list", action="store_true", help="list the tasks and exit")
+    ap.add_argument("--manifest", default="", help="run the tasks a manifest names (Tier 4: evals/coder-desktop/tier4/slice.json)")
     args = ap.parse_args()
 
-    tasks = [json.loads(Path(p).read_text()) for p in sorted(glob.glob(str(TASKS_DIR / "*.json")))]
+    tier = 2
+    if args.manifest:
+        manifest, tasks = load_manifest(Path(args.manifest))
+        tier = int(manifest.get("tier", 4))
+    else:
+        tasks = load_tasks(TASKS_DIR, FIXTURES_DIR)
     if args.filter:
         keys = [k for k in args.filter.split(",") if k]
         tasks = [t for t in tasks if any(k in t["id"] for k in keys)]
@@ -662,7 +707,7 @@ def main() -> int:
         tasks = [t for t in tasks if t["category"] == args.category]
     if args.list:
         for t in tasks:
-            print(f"{t['id']:32} {t['category']:12} {t.get('description', '')}")
+            print(f"{t['id']:34} {t.get('group') or t['category']:12} {t.get('description', '')}")
         return 0
     if not tasks:
         print("no tasks matched", file=sys.stderr)
@@ -675,7 +720,7 @@ def main() -> int:
 
     sha = sh(["git", "rev-parse", "--short", "HEAD"], cwd=REPO_ROOT).stdout.strip() or "nogit"
     ts = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
-    run_dir = Path(args.out) if args.out else EVAL_DIR / f"results/tier2-{ts}-{sha}"
+    run_dir = Path(args.out) if args.out else EVAL_DIR / f"results/tier{tier}-{ts}-{sha}"
     run_dir.mkdir(parents=True, exist_ok=True)
     gcloud_cache = Path(tempfile.mkdtemp(prefix="coder-t2-gcloud-"))
 
@@ -692,7 +737,7 @@ def main() -> int:
     finally:
         shutil.rmtree(gcloud_cache, ignore_errors=True)
 
-    write_summary(run_dir, results, sha)
+    write_summary(run_dir, results, sha, tier)
     passed = sum(1 for r in results if r["passed"])
     known = sum(1 for r in results if r["known_failure"])
     failed = len(results) - passed - known
@@ -703,7 +748,14 @@ def main() -> int:
     return 0 if failed == 0 else 1
 
 
-def write_summary(run_dir: Path, results: list[dict[str, Any]], sha: str) -> None:
+def percentile(values: list[int], q: float) -> int:
+    if not values:
+        return 0
+    v = sorted(values)
+    return v[min(len(v) - 1, int(round(q * (len(v) - 1))))]
+
+
+def write_summary(run_dir: Path, results: list[dict[str, Any]], sha: str, tier: int = 2) -> None:
     cats: dict[str, dict[str, int]] = {}
     for r in results:
         c = cats.setdefault(r["category"], {"total": 0, "passed": 0, "cost_usd_micros": 0})
@@ -711,13 +763,16 @@ def write_summary(run_dir: Path, results: list[dict[str, Any]], sha: str) -> Non
         c["passed"] += int(r["passed"])
         c["cost_usd_micros"] += r["cost_usd_micros"]
     summary = {
-        "tier": 2, "git_sha": sha, "os": sys.platform, "created": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "tier": tier, "git_sha": sha, "os": sys.platform, "created": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "models": sorted({m for r in results for m in r["models"] if m}),
         "total": len(results), "passed": sum(int(r["passed"]) for r in results),
         "cost_usd_micros": sum(r["cost_usd_micros"] for r in results),
         "wall_ms": sum(r["wall_ms"] for r in results),
+        "cost_per_task_usd_micros": (sum(r["cost_usd_micros"] for r in results) // len(results)) if results else 0,
+        "wall_p50_ms": percentile([r["wall_ms"] for r in results], 0.5),
+        "wall_p95_ms": percentile([r["wall_ms"] for r in results], 0.95),
         "categories": cats,
-        "cases": [{k: r[k] for k in ("id", "category", "passed", "known_failure", "cost_usd_micros", "wall_ms", "attempts", "turns", "tool_calls", "guard_trips", "goal_status")} for r in results],
+        "cases": [{k: r.get(k) for k in ("id", "category", "group", "passed", "known_failure", "cost_usd_micros", "wall_ms", "attempts", "turns", "tool_calls", "guard_trips", "goal_status")} for r in results],
     }
     (run_dir / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     rows = ["| task | category | result | cost | wall | attempts | turns | commands |", "|---|---|---|---|---|---|---|---|"]
@@ -726,8 +781,9 @@ def write_summary(run_dir: Path, results: list[dict[str, Any]], sha: str) -> Non
         rows.append(f"| {r['id']} | {r['category']} | {res} | ${r['cost_usd_micros'] / 1e6:.4f} | {r['wall_ms'] / 1000:.0f} s | {r['attempts']} | {r['turns']} | {r['tool_calls']} |")
     cat_rows = [f"- {k}: {v['passed']}/{v['total']} (${v['cost_usd_micros'] / 1e6:.4f})" for k, v in sorted(cats.items())]
     (run_dir / "report.md").write_text(
-        f"# Coder Desktop Tier 2 run ({sha})\n\nModels: {', '.join(summary['models']) or 'none'}\n\n"
-        f"Passed {summary['passed']}/{summary['total']}, cost ${summary['cost_usd_micros'] / 1e6:.4f}, wall {summary['wall_ms'] / 1000:.0f} s.\n\n"
+        f"# Coder Desktop Tier {tier} run ({sha})\n\nModels: {', '.join(summary['models']) or 'none'}\n\n"
+        f"Passed {summary['passed']}/{summary['total']}, cost ${summary['cost_usd_micros'] / 1e6:.4f}, wall {summary['wall_ms'] / 1000:.0f} s, "
+        f"p95 task wall {summary['wall_p95_ms'] / 1000:.0f} s, ${summary['cost_per_task_usd_micros'] / 1e6:.4f} a task.\n\n"
         + "\n".join(cat_rows) + "\n\n" + "\n".join(rows) + "\n")
 
 

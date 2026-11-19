@@ -1,0 +1,37 @@
+{
+  "id": "k12_makefile_targets",
+  "category": "bench_shell",
+  "fixture": "maketest",
+  "description": "Add test and clean targets to a Makefile",
+  "budget_usd_micros": 100000,
+  "timeout_s": 300,
+  "steps": [
+    {
+      "send": "Add two targets to the Makefile: `test`, which runs `python3 -m unittest -q`, and `clean`, which removes every __pycache__ folder. Keep `build` working."
+    }
+  ],
+  "graders": [
+    {
+      "type": "not_timed_out"
+    },
+    {
+      "type": "ended"
+    },
+    {
+      "type": "command",
+      "run": "make test",
+      "name": "make test"
+    },
+    {
+      "type": "command",
+      "run": "make build && mkdir -p __pycache__ sub/__pycache__ && make clean && test ! -d __pycache__ && test ! -d sub/__pycache__",
+      "name": "make clean"
+    },
+    {
+      "type": "outside_unchanged"
+    },
+    {
+      "type": "no_guard_trips"
+    }
+  ]
+}

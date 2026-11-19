@@ -1,0 +1,4 @@
+[project]
+name = "mypkg"
+version = "1.4.2"
+description = "A small package"

@@ -9,6 +9,9 @@ evals/coder-desktop/run.sh --tier 2        # Tier 2 live-agent suite: real model
 evals/coder-desktop/run.sh --tier 2 --filter a1_,e2_
 evals/coder-desktop/run.sh --tier 3        # Tier 3: build and drive the real Coder.app, compare captures
 evals/coder-desktop/run.sh --tier 3 --update-goldens   # write new goldens after a deliberate UI change
+evals/coder-desktop/run.sh --tier 4        # Tier 4: golden trajectories + 25-task benchmark slice, costs money
+evals/coder-desktop/run.sh --compare BASE NEW   # diff two Tier 2 or Tier 4 runs (summary.json or run folder)
+evals/coder-desktop/run.sh --trend         # one row per kept run: pass rate, cost a task, p95 wall, regressions
 ```
 
 Run `coax/build.sh` first in a fresh worktree. Results go to `evals/coder-desktop/results/` (gitignored).
@@ -20,11 +23,13 @@ Run `coax/build.sh` first in a fresh worktree. Results go to `evals/coder-deskto
 | compaction | `compaction/` C1-C12 | free |
 | 2 | 15 live tasks (`tier2/tasks/`): the real `host.c` and `page.coax` in `host_driver` against the real `mcworker` | about $0.50 a full run (Gemini 4 Neon, Hydrogen sub-agents) |
 | 3 | 7 flows (`tier3/run_ui.py`) on the real built `Coder.app`, driven with real input events on the mock worker; 15 window captures compared with `tier3/goldens/` | free (macOS only; a build plus about 75 s) |
+| 4 | 4 golden trajectories from real desktop bugs and the 25-task coding benchmark slice (`tier4/slice.json`), through the Tier 2 harness, compared with `tier4/baseline/` | about $1.20 a run |
 
-## Tier 2 is opt-in
+## Tier 2 and Tier 4 are opt-in
 
-Tier 2 calls real models. It runs only with `--tier 2`. `--tier all`, the default, never runs it, so
-CI and other agents that call `run.sh` with no arguments or `--tier all` spend nothing.
+Tier 2 and Tier 4 call real models. They run only with `--tier 2` or `--tier 4`. `--tier all`, the
+default, never runs them, so CI and other agents that call `run.sh` with no arguments or `--tier all`
+spend nothing.
 
 ## How Tier 2 works
 
@@ -160,3 +165,80 @@ Not covered yet: copying a code block to the pasteboard, pin drag-reorder, switc
 background chat, the budget approval and `/goal` UI, and streaming frame-time telemetry (Tier 1's
 host scenarios measure frame time on the same page). The sub-agent pane opens through the app's
 `--agent N` launch flag rather than a click on the row.
+
+## Tier 4: golden trajectories and the benchmark slice
+
+`run.sh --tier 4` runs every task `tier4/slice.json` names through the Tier 2 runner
+(`tier2/run_tasks.py --manifest tier4/slice.json`): the same sandbox, guards, budgets, graders and
+artifacts as Tier 2, in `results/tier4-<time>-<sha>/`. The manifest has two groups:
+
+| Group | Tasks |
+|---|---|
+| `golden` | g1 a fact past 1,200 bytes of a message full of em dashes is recalled after a reload (#13729), g2 a delegated fix changes a file instead of reading for ever (#13676), g3 a two-part `/goal` continues to done (1a9e5fc9a3), g4 a fix lands through 4,000 lines of test output (#13706) |
+| `benchmark` | 25 tasks: Tier 2's five coding tasks (a1, a2, a3, b2, c2) and 20 in `tier4/tasks/`: Python (k01-k10: CSV to JSON, log counts, ISO dates, LRU cache, a rename across files, a CLI flag, sort ties, Roman numerals, an email regex, None handling), shell (k11 quoting, k12 Makefile targets, k13 a large-files script), C (k14, k15), Swift (k16), JavaScript (k17), repo maintenance (k18 version bump and changelog, k19 config migration, k20 move a duplicated helper) |
+
+Each task is graded by hidden tests or exact output on data the agent never saw (`add` in a `command`
+grader), plus the files it must not edit, canaries outside the repo and the guard net. The fixtures
+need `python3`, `make`, `cc`, `swiftc` and `node` on the machine. Every task's budget is $0.10 ($0.15
+for g3), so a run costs $2.95 at most; the two runs so far cost $1.22 and $1.20, 29/29 each (`tier4/baseline/` is the second). `--filter g1_,k0` runs some of them.
+
+After the run, `run.sh` writes `compare.md` in the run folder: the run against
+`tier4/baseline/summary.json`. `compare.py diff BASE NEW` reports pass rate, cost a task, p95 task
+wall time, regressions (a task that passed in BASE and fails in NEW; a `known_failure` is not one),
+fixes, and per-task cost or wall-time rises over 20%. `--fail-on-regression` exits 1 on a regression or
+a pass rate down more than 5 points. To move the baseline after a deliberate change (a new model, a new
+task), copy the run's `summary.json` and `report.md` into `tier4/baseline/` and commit them.
+
+`compare.py trend` (or `run.sh --trend [TIER]`) prints one row per run folder under `results/` with a
+`summary.json`: time, commit, tier, pass rate, cost a task, p95 wall and regressions against the
+previous run of the same tier.
+
+## Golden regression policy
+
+Every P0 or P1 Coder Desktop bug gets, in the change that fixes it:
+
+1. A Tier 1 case, always: a host scenario in `tier1/scenarios/` (the real page and `host.c` on the
+   mock worker), a replay fixture in `tier1/fixtures/` (via `tier1/gen_fixtures.py`), a compaction
+   case, or a `#test` in `apps/coder-desktop/` when the bug is the page's alone. It replays the bug's
+   wire lines with no model, so it fails before the fix and passes after, at no cost.
+2. A Tier 4 golden task, when the bug depends on what a model does (it reads for ever, forgets after a
+   reload, stops a `/goal` early, loses track in long output): copy `tier4/golden-template.json` to
+   `tier4/tasks/gN_name.json`, set `bug` to the issue and `tier1` to the case from step 1, give it a
+   small fixture in `tier4/fixtures/` (no private data: rewrite the user's text and files; each
+   `.py`, `.sh` or `.js` file starts with a `Firm reason:` comment line, as tools-check wants), add the id
+   to `tier4/slice.json`'s `golden` list, run it with `run.sh --tier 4 --filter gN_` until it passes on
+   the fix, and add it to the baseline.
+
+A golden task that fails for a known reason gets `"known_failure": "<issue link>"` until it is fixed.
+
+## Scheduled runs
+
+There are no GitHub Actions in this repo; the green-main pipeline (`coax/remote/after.sh`,
+`docs/metaverse/green-main-pipeline.md`) is the CI for every head of `main`, and the paid and macOS
+tiers run on a schedule on a Mac:
+
+| When | What | Where |
+|---|---|---|
+| Every head of `main` that reaches Coder Desktop (`apps/coder-desktop/`, `evals/coder-desktop/`, `components/`, or what Coder's graph reaches) | `check.sh coder` / `coder-since`: the step `coder-desktop-evals` runs `tier1/replay_test.coax`, which loads `page.coax`, so Tier 0's page tests run with Tier 1's replay fixtures (272 checks, about 25 s) | the Linux build hosts; free. `mcworker-wire.coax` already runs in the pipeline's suites |
+| Nightly, 03:00 | `nightly.sh night`: `run.sh --tier all` (Tier 0, Tier 1 with the host scenarios, compaction), Tier 2 compared with the previous night, and Tier 3 | a Mac with the model credentials; about $0.50 |
+| Weekly (Sunday 05:00), and by hand before a desktop release | `nightly.sh week`: Tier 4, compared with `tier4/baseline/` | the same; about $1.20 |
+
+`nightly.sh` tests `origin/main-green` (the newest head the pipeline passed; `origin/main` when there
+is none) or `--commit REV`. It checks the commit out into its own worktree under
+`~/.openagents/coder-desktop-evals/`, builds the compiler, runs, keeps each run folder (`out/`), each
+summary (`runs/`) and the trend (`trend.md`), and removes the worktree. A regression, a pass rate down
+more than 5 points, a failing Tier 3 flow or a run that could not finish opens one issue, "Scheduled
+Coder Desktop evals failed" (or comments on it while it is open). `OA_DESKTOP_EVALS_MONTHLY_USD`
+(default 40) caps the kept runs' cost over 30 days: past it the paid tiers are skipped. Expected spend
+is about $15 a month for the nights and $5 for the weeks, on the existing Vertex and OpenRouter keys;
+no new cloud resources.
+
+Nothing is scheduled until someone installs it: `evals/coder-desktop/nightly.sh install` prints the
+two crontab lines (it changes nothing itself), as `coax/remote/mutation-sweep.sh install` does on a
+Mac. Tier 3 captures need Screen Recording for the process that runs them; under cron, set
+`OA_DESKTOP_EVALS_TIER3=0` in the lines until cron has it. By hand: `nightly.sh night`, `nightly.sh week`
+and `nightly.sh trend`.
+
+The host scenarios and the compaction suite stay off the build hosts for now: on Linux `host_driver`
+crashes opening the page (signal 11) and the compaction suite does not link (the `cxproc` natives),
+so they run in the nightly run on macOS until that is fixed (#13734).

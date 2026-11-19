@@ -1,0 +1,20 @@
+{
+  "id": "gN_short_name",
+  "category": "golden",
+  "fixture": "blank",
+  "description": "What the bug broke, as the behavior that must now hold",
+  "bug": "https://github.com/OpenAgentsInc/openagents/issues/NNNNN",
+  "tier1": "The Tier 1 case that replays the same bug without a model (tier1/scenarios/NN_*.json, a replay fixture or a compaction case)",
+  "budget_usd_micros": 100000,
+  "timeout_s": 300,
+  "steps": [
+    {"send": "The user's message that hit the bug, with anything private taken out"}
+  ],
+  "graders": [
+    {"type": "not_timed_out"},
+    {"type": "ended"},
+    {"type": "command", "run": "python3 -m unittest -q", "restore": ["test_example.py"]},
+    {"type": "outside_unchanged"},
+    {"type": "no_guard_trips"}
+  ]
+}

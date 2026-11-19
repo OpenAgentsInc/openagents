@@ -1,0 +1,40 @@
+{
+  "id": "k01_csv_to_json",
+  "category": "bench_python",
+  "fixture": "csvjson",
+  "description": "Write a CSV-to-JSON converter",
+  "budget_usd_micros": 100000,
+  "timeout_s": 300,
+  "steps": [
+    {
+      "send": "Write convert.py that reads data.csv and writes out.json: a JSON list with one object per row, keyed by the header, with age as an integer. Run it once so out.json exists."
+    }
+  ],
+  "graders": [
+    {
+      "type": "not_timed_out"
+    },
+    {
+      "type": "ended"
+    },
+    {
+      "type": "command",
+      "run": "python3 -c \"import json; d=json.load(open('out.json')); assert len(d)==4 and d[0]=={'name':'Ada','age':36,'city':'London'}, d\"",
+      "name": "its own output"
+    },
+    {
+      "type": "command",
+      "run": "python3 convert.py && python3 -c \"import json; d=json.load(open('out.json')); assert d==[{'name':'Kim','age':51,'city':'Seoul'},{'name':'Ola','age':19,'city':'Oslo'}], d\"",
+      "name": "hidden data",
+      "add": {
+        "data.csv": "name,age,city\nKim,51,Seoul\nOla,19,Oslo\n"
+      }
+    },
+    {
+      "type": "outside_unchanged"
+    },
+    {
+      "type": "no_guard_trips"
+    }
+  ]
+}

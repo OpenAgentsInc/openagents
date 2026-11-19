@@ -1,0 +1,44 @@
+{
+  "id": "k05_rename_function",
+  "category": "bench_python",
+  "fixture": "rename",
+  "description": "Rename a function across a small codebase",
+  "budget_usd_micros": 100000,
+  "timeout_s": 300,
+  "steps": [
+    {
+      "send": "Rename the function calc_total to total_price everywhere in this repo (definition and every use). Keep `python3 -m unittest` passing."
+    }
+  ],
+  "graders": [
+    {
+      "type": "not_timed_out"
+    },
+    {
+      "type": "ended"
+    },
+    {
+      "type": "command",
+      "run": "python3 -m unittest -q",
+      "restore": [
+        "test_cart.py"
+      ]
+    },
+    {
+      "type": "command",
+      "run": "! grep -rn calc_total --include=*.py .",
+      "name": "no old name"
+    },
+    {
+      "type": "command",
+      "run": "python3 -c \"from pricing import total_price; assert total_price([{'price':2,'qty':3}])==6\"",
+      "name": "new name"
+    },
+    {
+      "type": "outside_unchanged"
+    },
+    {
+      "type": "no_guard_trips"
+    }
+  ]
+}

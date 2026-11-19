@@ -1,0 +1,39 @@
+{
+  "tier": 4,
+  "description": "Tier 4: golden trajectories from real Coder Desktop bugs and the 25-task coding benchmark slice, through the Tier 2 harness",
+  "groups": {
+    "golden": [
+      "g1_recall_multibyte_after_reload",
+      "g2_subagent_changes_a_file",
+      "g3_goal_continues_to_done",
+      "g4_fix_through_long_output"
+    ],
+    "benchmark": [
+      "a1_fix_mean_off_by_one",
+      "a2_fix_slugify",
+      "a3_add_restock",
+      "b2_fix_then_changelog",
+      "c2_delegate_two_fixes",
+      "k01_csv_to_json",
+      "k02_log_status_counts",
+      "k03_fix_iso_dates",
+      "k04_lru_cache",
+      "k05_rename_function",
+      "k06_cli_json_flag",
+      "k07_fix_tie_order",
+      "k08_roman_numerals",
+      "k09_email_regex",
+      "k10_none_handling",
+      "k11_bash_quoting",
+      "k12_makefile_targets",
+      "k13_large_files_script",
+      "k14_c_reverse",
+      "k15_c_count_words",
+      "k16_swift_fib",
+      "k17_js_group_by",
+      "k18_version_bump",
+      "k19_config_migrate",
+      "k20_dedupe_helper"
+    ]
+  }
+}

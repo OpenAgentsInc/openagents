@@ -1,0 +1,40 @@
+{
+  "id": "k17_js_group_by",
+  "category": "bench_js",
+  "fixture": "jsgroup",
+  "description": "Implement groupBy in JavaScript",
+  "budget_usd_micros": 100000,
+  "timeout_s": 300,
+  "steps": [
+    {
+      "send": "Implement groupBy in util.js so `node test.js` passes. Do not change test.js."
+    }
+  ],
+  "graders": [
+    {
+      "type": "not_timed_out"
+    },
+    {
+      "type": "ended"
+    },
+    {
+      "type": "command",
+      "run": "node test.js",
+      "restore": [
+        "test.js"
+      ]
+    },
+    {
+      "type": "files_unchanged",
+      "paths": [
+        "test.js"
+      ]
+    },
+    {
+      "type": "outside_unchanged"
+    },
+    {
+      "type": "no_guard_trips"
+    }
+  ]
+}

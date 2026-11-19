@@ -1,0 +1,43 @@
+{
+  "id": "k15_c_count_words",
+  "category": "bench_c",
+  "fixture": "cwords",
+  "description": "Implement a word counter in C",
+  "budget_usd_micros": 100000,
+  "timeout_s": 300,
+  "steps": [
+    {
+      "send": "Implement count_words in words.c so `make test` passes. Do not change test_words.c or the Makefile."
+    }
+  ],
+  "graders": [
+    {
+      "type": "not_timed_out"
+    },
+    {
+      "type": "ended"
+    },
+    {
+      "type": "command",
+      "run": "make test",
+      "restore": [
+        "test_words.c",
+        "Makefile",
+        "words.h"
+      ]
+    },
+    {
+      "type": "files_unchanged",
+      "paths": [
+        "test_words.c",
+        "Makefile"
+      ]
+    },
+    {
+      "type": "outside_unchanged"
+    },
+    {
+      "type": "no_guard_trips"
+    }
+  ]
+}

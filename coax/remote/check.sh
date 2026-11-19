@@ -71,10 +71,14 @@
 #   coax/remote/check.sh e2 PROD          the room build and Everglade II's pair: this commit
 #                                         against production's commit PROD (#13266)
 #   coax/remote/check.sh counts BASE      no allowlist count raised since BASE (coax/remote/counts.sh)
-#   coax/remote/check.sh coder            Coder's own checks (coax test coder/tui/coder.coax) and its
-#                                         offline smoke (coder/tui/smoke.py, about 10 minutes)
+#   coax/remote/check.sh coder            Coder's own checks (coax test coder/tui/coder.coax), its
+#                                         offline smoke (coder/tui/smoke.py, about 10 minutes) and
+#                                         Coder Desktop's Tier 0 and Tier 1 replay evals (the page's
+#                                         tests and evals/coder-desktop/tier1/replay_test.coax, #13705)
 #   coax/remote/check.sh coder-since BASE the same, when the change since BASE reaches Coder
-#                                         (a fast run; its own job)
+#                                         (a fast run; its own job); a change that reaches only
+#                                         Coder Desktop (apps/coder-desktop, evals/coder-desktop,
+#                                         components) runs only its evals
 #
 # It writes build/pipeline/: MODE.log (the output), status, failed (one line
 # per failing suite or step), limits.txt (each compile-time limit note:
@@ -202,7 +206,12 @@ api() { step api coax/web/api/test.sh --part "$1" || status=1; }
 coder() {
   step coder-checks coax/bin/coax test coder/tui/coder.coax || status=1
   step coder-smoke python3 coder/tui/smoke.py || status=1
+  # Coder Desktop's evals that need no model, window or worker (#13705): replay_test.coax loads
+  # page.coax, so this runs the page's own tests too. The host scenarios and compaction run on Macs.
+  desktop_evals
 }
+desktop_evals() { step coder-desktop-evals coax/bin/coax test evals/coder-desktop/tier1/replay_test.coax --library || status=1; }
+desktop_touched() { grep -Eq '^(apps/coder-desktop|evals/coder-desktop|components)/' "$out/changed"; }
 coder_touched() {   # whether the change since $arg reaches Coder (yes when the graph can't tell)
   grep -Eq '^coder/' "$out/changed" && return 0
   affected_files || return 0
@@ -744,6 +753,7 @@ case "$mode" in
   coder-since)
     changed_since
     if grep -qvE '(\.md$|^docs/)' "$out/changed" && coder_touched; then coder
+    elif grep -qvE '(\.md$|^docs/)' "$out/changed" && desktop_touched; then desktop_evals   # only Coder Desktop: no TUI smoke
     else echo "== coder: skipped, the change doesn't reach Coder" >> "$log"; fi ;;
   room-since)
     changed_since

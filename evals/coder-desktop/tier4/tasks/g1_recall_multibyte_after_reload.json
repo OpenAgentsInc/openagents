@@ -1,0 +1,49 @@
+{
+  "id": "g1_recall_multibyte_after_reload",
+  "category": "golden",
+  "fixture": "blank",
+  "description": "A fact past 1,200 bytes of a message full of em dashes is recalled after a reload",
+  "budget_usd_micros": 100000,
+  "timeout_s": 300,
+  "bug": "https://github.com/OpenAgentsInc/openagents/issues/13729",
+  "tier1": "page.coax recall-cut test (an em dash across the cut); compaction C11 (recall UTF-8 cuts)",
+  "steps": [
+    {
+      "send": "Some context for later \u2014 please keep it. Note 1 \u2014 the build server, the cache \u2014 and the runner all stay as they are. Note 2 \u2014 the build server, the cache \u2014 and the runner all stay as they are. Note 3 \u2014 the build server, the cache \u2014 and the runner all stay as they are. Note 4 \u2014 the build server, the cache \u2014 and the runner all stay as they are. Note 5 \u2014 the build server, the cache \u2014 and the runner all stay as they are. Note 6 \u2014 the build server, the cache \u2014 and the runner all stay as they are. Note 7 \u2014 the build server, the cache \u2014 and the runner all stay as they are. Note 8 \u2014 the build server, the cache \u2014 and the runner all stay as they are. Note 9 \u2014 the build server, the cache \u2014 and the runner all stay as they are. Note 10 \u2014 the build server, the cache \u2014 and the runner all stay as they are. Note 11 \u2014 the build server, the cache \u2014 and the runner all stay as they are. Note 12 \u2014 the build server, the cache \u2014 and the runner all stay as they are. Note 13 \u2014 the build server, the cache \u2014 and the runner all stay as they are. Note 14 \u2014 the build server, the cache \u2014 and the runner all stay as they are. Note 15 \u2014 the build server, the cache \u2014 and the runner all stay as they are. Note 16 \u2014 the build server, the cache \u2014 and the runner all stay as they are. Note 17 \u2014 the build server, the cache \u2014 and the runner all stay as they are. Note 18 \u2014 the build server, the cache \u2014 and the runner all stay as they are. The deploy window \u2014 this is the one that matters \u2014 is THURSDAY-0400. For now, only create ack.txt containing the word ok."
+    },
+    {
+      "reload": true
+    },
+    {
+      "send": "What is the deploy window I gave you earlier in this chat? Write it alone into window.txt."
+    }
+  ],
+  "graders": [
+    {
+      "type": "not_timed_out"
+    },
+    {
+      "type": "file_contains",
+      "path": "ack.txt",
+      "text": "ok",
+      "ci": true
+    },
+    {
+      "type": "recall_sent",
+      "contains": [
+        "THURSDAY-0400"
+      ]
+    },
+    {
+      "type": "file_contains",
+      "path": "window.txt",
+      "text": "THURSDAY-0400"
+    },
+    {
+      "type": "outside_unchanged"
+    },
+    {
+      "type": "no_guard_trips"
+    }
+  ]
+}

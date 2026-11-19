@@ -1,0 +1,40 @@
+{
+  "id": "k10_none_handling",
+  "category": "bench_python",
+  "fixture": "stats",
+  "description": "Handle None and empty input in summarize()",
+  "budget_usd_micros": 100000,
+  "timeout_s": 300,
+  "steps": [
+    {
+      "send": "summarize() in stats.py crashes on None values and on an empty list; test_stats.py says what it should return. Fix stats.py without changing the tests."
+    }
+  ],
+  "graders": [
+    {
+      "type": "not_timed_out"
+    },
+    {
+      "type": "ended"
+    },
+    {
+      "type": "command",
+      "run": "python3 -m unittest -q",
+      "restore": [
+        "test_stats.py"
+      ]
+    },
+    {
+      "type": "files_unchanged",
+      "paths": [
+        "test_*.py"
+      ]
+    },
+    {
+      "type": "outside_unchanged"
+    },
+    {
+      "type": "no_guard_trips"
+    }
+  ]
+}

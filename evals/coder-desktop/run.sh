@@ -1,16 +1,19 @@
 #!/bin/sh
-# Firm reason: 5 (thin shell runner dispatching Tier 0, Tier 1, and compaction evals)
+# Firm reason: 5 (thin shell runner dispatching the Coder Desktop eval tiers and the run comparison)
 set -eu
 
-# Coder Desktop evaluation runner (Tier 0, Tier 1, Compaction, and opt-in Tier 2 and Tier 3).
-# Usage: evals/coder-desktop/run.sh [--tier 0|1|2|3|compaction|all] [--filter TEXT] [--update-goldens] [--no-build]
-# Tier 2 calls real models and costs money: it runs only with --tier 2, never with --tier all.
-# Tier 3 builds and drives the real Coder.app on this Mac: it runs only with --tier 3.
+# Coder Desktop evaluation runner (Tier 0, Tier 1, Compaction, and opt-in Tier 2, 3 and 4).
+# Usage: evals/coder-desktop/run.sh [--tier 0|1|2|3|4|compaction|all] [--filter TEXT] [--update-goldens] [--no-build]
+#        evals/coder-desktop/run.sh --compare BASE NEW     (two summary.json files or run folders)
+#        evals/coder-desktop/run.sh --trend [TIER]
+# Tier 2 and Tier 4 call real models and cost money: they run only with --tier 2 or --tier 4,
+# never with --tier all. Tier 3 builds and drives the real Coder.app on this Mac: only with --tier 3.
 
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)"
 TIER="all"
 FILTER=""
 T3_ARGS=""
+HERE="$ROOT/evals/coder-desktop"
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -42,15 +45,30 @@ while [ "$#" -gt 0 ]; do
       T3_ARGS="$T3_ARGS --no-build"
       shift
       ;;
+    --compare)
+      if [ "$#" -lt 3 ]; then
+        echo "error: --compare requires BASE and NEW (summary.json files or run folders)" >&2
+        exit 2
+      fi
+      exec python3 "$HERE/compare.py" diff "$2" "$3"
+      ;;
+    --trend)
+      if [ "$#" -ge 2 ]; then exec python3 "$HERE/compare.py" trend --tier "$2"; fi
+      exec python3 "$HERE/compare.py" trend
+      ;;
     -h|--help)
-      echo "Usage: $0 [--tier 0|1|2|3|compaction|all] [--filter TEXT] [--update-goldens] [--no-build]"
+      echo "Usage: $0 [--tier 0|1|2|3|4|compaction|all] [--filter TEXT] [--update-goldens] [--no-build]"
+      echo "       $0 --compare BASE NEW | --trend [TIER]"
       echo "  --tier 0           Run Tier 0 unit & wire-contract checks (page.coax, mcworker-wire.coax, tools_smoke.sh)"
       echo "  --tier 1           Run Tier 1 deterministic transcript replay + compaction suites"
       echo "  --tier compaction  Run deterministic & long-horizon compaction eval suite (C1-C12)"
       echo "  --tier 2           Run the Tier 2 live-agent suite (real mcworker, real models, costs money; opt-in only)"
       echo "  --tier 3           Run the Tier 3 native suite: build Coder.app, drive it on the mock worker, compare captures (macOS; opt-in only)"
-      echo "  --tier all         Run Tier 0, Tier 1, and Compaction (default; never Tier 2 or 3)"
-      echo "  --filter TEXT      Tier 2 and 3: run tasks or flows whose name contains TEXT (comma-separated)"
+      echo "  --tier 4           Run Tier 4: golden trajectories and the 25-task benchmark slice (tier4/slice.json) through the Tier 2 harness, compared with tier4/baseline (costs money; opt-in only)"
+      echo "  --tier all         Run Tier 0, Tier 1, and Compaction (default; never Tier 2, 3 or 4)"
+      echo "  --filter TEXT      Tier 2, 3 and 4: run tasks or flows whose name contains TEXT (comma-separated)"
+      echo "  --compare BASE NEW Compare two Tier 2 or Tier 4 runs (summary.json files or run folders)"
+      echo "  --trend [TIER]     One row per kept run under results/: pass rate, cost a task, p95 wall, regressions"
       echo "  --update-goldens   Tier 3: write the captures as the new goldens (tier3/goldens/)"
       echo "  --no-build         Tier 3: reuse the last scratch build (results/tier3-build/)"
       exit 0
@@ -63,9 +81,9 @@ while [ "$#" -gt 0 ]; do
 done
 
 case "$TIER" in
-  0|1|2|3|compaction|all) ;;
+  0|1|2|3|4|compaction|all) ;;
   *)
-    echo "error: unsupported tier '$TIER' (supported: 0, 1, 2, 3, compaction, all)" >&2
+    echo "error: unsupported tier '$TIER' (supported: 0, 1, 2, 3, 4, compaction, all)" >&2
     exit 2
     ;;
 esac
@@ -122,7 +140,7 @@ rec = {
     "run_id": run_id,
     "tier": tier,
     "case": case_name,
-    "model": "live" if tier == 2 else ("mock" if tier == 3 else "deterministic"),
+    "model": "live" if tier in (2, 4) else ("mock" if tier == 3 else "deterministic"),
     "passed": rc == 0,
     "wall_ms": wall_ms,
     "cost_usd_micros": 0,
@@ -183,15 +201,15 @@ if tier == 1 and case_name == "tier1_host_scenarios":
             with open(out_path, "a", encoding="utf-8") as out:
                 out.write(json.dumps(srec, separators=(",", ":")) + "\n")
 
-# Also emit per-task records when running the Tier 2 live suite
-if tier == 2 and case_name == "tier2_live_suite":
+# Also emit per-task records when running the Tier 2 live suite or Tier 4 (the same runner)
+if (tier == 2 and case_name == "tier2_live_suite") or (tier == 4 and case_name == "tier4_suite"):
     for ln in text.splitlines():
         tm = re.match(r"^(ok  |FAIL|KNOWN) task (\S+): (.*?) \((\d+) ms, \$([0-9.]+), (\d+) attempts, (\d+) turns, (\d+) commands\)(?: -- (.*))?$", ln)
         if tm:
             ok = tm.group(1).strip() == "ok"
             trec = {
                 "run_id": run_id,
-                "tier": 2,
+                "tier": tier,
                 "case": f"task_{tm.group(2)}",
                 "model": "live",
                 "passed": ok,
@@ -286,6 +304,22 @@ if [ "$TIER" = "2" ]; then
     run_case 2 "tier2_live_suite" env BROWSER=/usr/bin/true python3 evals/coder-desktop/tier2/run_tasks.py --filter "$FILTER"
   else
     run_case 2 "tier2_live_suite" env BROWSER=/usr/bin/true python3 evals/coder-desktop/tier2/run_tasks.py
+  fi
+fi
+
+# Tier 4 is opt-in: real models, about $1.20 a run (tier4/slice.json: 4 golden trajectories and
+# the 25-task benchmark slice, each capped by its own chat budget). Never part of --tier all.
+# The run is compared with tier4/baseline/summary.json (report in the run folder's compare.md).
+if [ "$TIER" = "4" ]; then
+  T4_OUT="$RESULTS_DIR/tier4-${TS_FILE}-${SHA}"
+  if [ -n "$FILTER" ]; then
+    run_case 4 "tier4_suite" env BROWSER=/usr/bin/true python3 evals/coder-desktop/tier2/run_tasks.py --manifest evals/coder-desktop/tier4/slice.json --out "$T4_OUT" --filter "$FILTER"
+  else
+    run_case 4 "tier4_suite" env BROWSER=/usr/bin/true python3 evals/coder-desktop/tier2/run_tasks.py --manifest evals/coder-desktop/tier4/slice.json --out "$T4_OUT"
+  fi
+  if [ -f "$T4_OUT/summary.json" ] && [ -f "$HERE/tier4/baseline/summary.json" ]; then
+    python3 "$HERE/compare.py" diff "$HERE/tier4/baseline/summary.json" "$T4_OUT/summary.json" --out "$T4_OUT/compare.md" > /dev/null || true
+    echo "Baseline comparison: $T4_OUT/compare.md"
   fi
 fi
 

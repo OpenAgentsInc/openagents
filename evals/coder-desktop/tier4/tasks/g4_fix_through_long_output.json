@@ -1,0 +1,42 @@
+{
+  "id": "g4_fix_through_long_output",
+  "category": "golden",
+  "fixture": "noisy",
+  "description": "A fix still lands when the test run prints thousands of lines",
+  "budget_usd_micros": 100000,
+  "timeout_s": 300,
+  "bug": "https://github.com/OpenAgentsInc/openagents/issues/13706",
+  "tier1": "compaction C9-C12 (200-step scenarios, eviction, recall bounds)",
+  "steps": [
+    {
+      "send": "`python3 -m unittest` fails (it prints a lot of noise first). Fix parser.py so it passes, without changing the tests."
+    }
+  ],
+  "graders": [
+    {
+      "type": "not_timed_out"
+    },
+    {
+      "type": "ended"
+    },
+    {
+      "type": "command",
+      "run": "python3 -m unittest -q",
+      "restore": [
+        "test_parser.py"
+      ]
+    },
+    {
+      "type": "files_unchanged",
+      "paths": [
+        "test_*.py"
+      ]
+    },
+    {
+      "type": "outside_unchanged"
+    },
+    {
+      "type": "no_guard_trips"
+    }
+  ]
+}

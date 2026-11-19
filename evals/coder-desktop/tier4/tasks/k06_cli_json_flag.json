@@ -1,0 +1,40 @@
+{
+  "id": "k06_cli_json_flag",
+  "category": "bench_python",
+  "fixture": "wc",
+  "description": "Add a --json flag to a CLI",
+  "budget_usd_micros": 100000,
+  "timeout_s": 300,
+  "steps": [
+    {
+      "send": "Add a --json flag to wordcount.py: with it, print a single JSON object {\"words\": N, \"lines\": M} instead of the two text lines. Without it, the output stays as it is."
+    }
+  ],
+  "graders": [
+    {
+      "type": "not_timed_out"
+    },
+    {
+      "type": "ended"
+    },
+    {
+      "type": "command",
+      "run": "python3 wordcount.py --json sample.txt | python3 -c \"import json,sys; assert json.load(sys.stdin)=={'words':5,'lines':2}\"",
+      "name": "json"
+    },
+    {
+      "type": "command",
+      "run": "python3 wordcount.py sample.txt | diff - expected.txt",
+      "name": "text unchanged",
+      "add": {
+        "expected.txt": "words: 5\nlines: 2\n"
+      }
+    },
+    {
+      "type": "outside_unchanged"
+    },
+    {
+      "type": "no_guard_trips"
+    }
+  ]
+}

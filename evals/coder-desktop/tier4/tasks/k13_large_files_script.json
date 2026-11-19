@@ -1,0 +1,43 @@
+{
+  "id": "k13_large_files_script",
+  "category": "bench_shell",
+  "fixture": "bigfiles",
+  "description": "Write a script that lists large files",
+  "budget_usd_micros": 100000,
+  "timeout_s": 300,
+  "steps": [
+    {
+      "send": "Write big.sh, an executable shell script: `./big.sh DIR` prints every file under DIR (recursively) larger than 1000 bytes, largest first, one per line as `SIZE PATH` with PATH as found from DIR (for example `1500 data/a.txt`)."
+    }
+  ],
+  "graders": [
+    {
+      "type": "not_timed_out"
+    },
+    {
+      "type": "ended"
+    },
+    {
+      "type": "command",
+      "run": "sh big.sh data | diff - expected.txt",
+      "name": "data",
+      "add": {
+        "expected.txt": "3000 data/c.bin\n1500 data/a.txt\n1001 data/sub/d.txt\n"
+      }
+    },
+    {
+      "type": "command",
+      "run": "mkdir -p other && head -c 2000 /dev/zero > other/z && head -c 5 /dev/zero > other/y && sh big.sh other | diff - expected2.txt",
+      "name": "other dir",
+      "add": {
+        "expected2.txt": "2000 other/z\n"
+      }
+    },
+    {
+      "type": "outside_unchanged"
+    },
+    {
+      "type": "no_guard_trips"
+    }
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "id": "k14_c_reverse",
+  "category": "bench_c",
+  "fixture": "cstr",
+  "description": "Fix an off-by-one in a C string reverse",
+  "budget_usd_micros": 100000,
+  "timeout_s": 300,
+  "steps": [
+    {
+      "send": "`make test` fails: str_reverse in strrev.c is wrong. Fix strrev.c without changing test.c or the Makefile."
+    }
+  ],
+  "graders": [
+    {
+      "type": "not_timed_out"
+    },
+    {
+      "type": "ended"
+    },
+    {
+      "type": "command",
+      "run": "make test",
+      "restore": [
+        "test.c",
+        "Makefile",
+        "strrev.h"
+      ]
+    },
+    {
+      "type": "files_unchanged",
+      "paths": [
+        "test.c",
+        "Makefile"
+      ]
+    },
+    {
+      "type": "outside_unchanged"
+    },
+    {
+      "type": "no_guard_trips"
+    }
+  ]
+}

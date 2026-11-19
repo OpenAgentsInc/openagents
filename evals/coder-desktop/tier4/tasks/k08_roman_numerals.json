@@ -1,0 +1,40 @@
+{
+  "id": "k08_roman_numerals",
+  "category": "bench_python",
+  "fixture": "roman",
+  "description": "Implement Roman numeral conversion",
+  "budget_usd_micros": 100000,
+  "timeout_s": 300,
+  "steps": [
+    {
+      "send": "Implement to_roman and from_roman in roman.py so `python3 -m unittest` passes. Do not change the tests."
+    }
+  ],
+  "graders": [
+    {
+      "type": "not_timed_out"
+    },
+    {
+      "type": "ended"
+    },
+    {
+      "type": "command",
+      "run": "python3 -m unittest -q",
+      "restore": [
+        "test_roman.py"
+      ]
+    },
+    {
+      "type": "files_unchanged",
+      "paths": [
+        "test_*.py"
+      ]
+    },
+    {
+      "type": "outside_unchanged"
+    },
+    {
+      "type": "no_guard_trips"
+    }
+  ]
+}

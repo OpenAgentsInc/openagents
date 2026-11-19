@@ -490,7 +490,7 @@ args_for() {   # item job-args...
     job\ *) echo "${item#job }" ;;
     step\ tools-check|step\ after-gates|step\ everglade-parity|step\ wire-check|step\ layer-check|step\ editor-skin|step\ wgsl|step\ realm-pages|step\ changelog-page|step\ realm-cards) echo "reports" ;;
     step\ room-build) echo "room" ;;
-    step\ coder-checks|step\ coder-smoke) echo "coder" ;;
+    step\ coder-checks|step\ coder-smoke|step\ coder-desktop-evals) echo "coder" ;;
     step\ check-visuals) echo "visuals" ;;
     e2\ *) echo "e2 $(cat "$results/production" 2> /dev/null)" ;;
     *) echo "$*" ;;   # the whole job again

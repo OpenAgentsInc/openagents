@@ -1,0 +1,40 @@
+{
+  "id": "k03_fix_iso_dates",
+  "category": "bench_python",
+  "fixture": "dates",
+  "description": "Fix ISO timestamp parsing with Z and offsets",
+  "budget_usd_micros": 100000,
+  "timeout_s": 300,
+  "steps": [
+    {
+      "send": "test_dates.py fails. Fix parse_ts in dates.py so `python3 -m unittest` passes, without changing the tests."
+    }
+  ],
+  "graders": [
+    {
+      "type": "not_timed_out"
+    },
+    {
+      "type": "ended"
+    },
+    {
+      "type": "command",
+      "run": "python3 -m unittest -q",
+      "restore": [
+        "test_dates.py"
+      ]
+    },
+    {
+      "type": "files_unchanged",
+      "paths": [
+        "test_*.py"
+      ]
+    },
+    {
+      "type": "outside_unchanged"
+    },
+    {
+      "type": "no_guard_trips"
+    }
+  ]
+}

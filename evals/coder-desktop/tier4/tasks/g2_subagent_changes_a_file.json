@@ -1,0 +1,61 @@
+{
+  "id": "g2_subagent_changes_a_file",
+  "category": "golden",
+  "fixture": "readheavy",
+  "description": "A delegated fix changes a file instead of reading for ever",
+  "budget_usd_micros": 100000,
+  "timeout_s": 420,
+  "bug": "https://github.com/OpenAgentsInc/openagents/issues/13676",
+  "tier1": "host scenario 15_subagent_quiet_loop_pause_resume; replay fixture 04_subagent_pause_100",
+  "steps": [
+    {
+      "send": "Delegate this to one sub-agent: make test_core.py pass by fixing the bug in pkg/ (not the test). Then run `python3 -m unittest` yourself and report."
+    }
+  ],
+  "graders": [
+    {
+      "type": "not_timed_out"
+    },
+    {
+      "type": "ended"
+    },
+    {
+      "type": "wire_count",
+      "kind": "delegate",
+      "main_only": true,
+      "min": 1
+    },
+    {
+      "type": "wire_count",
+      "dir": "to_worker",
+      "key": "results",
+      "main_only": true,
+      "min": 1
+    },
+    {
+      "type": "wire_count",
+      "kind": "command",
+      "max": 40,
+      "name": "under 40 commands in all"
+    },
+    {
+      "type": "command",
+      "run": "python3 -m unittest -q",
+      "restore": [
+        "test_core.py"
+      ]
+    },
+    {
+      "type": "files_unchanged",
+      "paths": [
+        "test_*.py"
+      ]
+    },
+    {
+      "type": "outside_unchanged"
+    },
+    {
+      "type": "no_guard_trips"
+    }
+  ]
+}

@@ -1,0 +1,45 @@
+{
+  "id": "k20_dedupe_helper",
+  "category": "bench_maint",
+  "fixture": "dupes",
+  "description": "Move a duplicated helper into one module",
+  "budget_usd_micros": 100000,
+  "timeout_s": 300,
+  "steps": [
+    {
+      "send": "users.py and tags.py each define the same normalize(). Move it into a new module textnorm.py and import it from there in both files, so it is defined once. Keep `python3 -m unittest` passing."
+    }
+  ],
+  "graders": [
+    {
+      "type": "not_timed_out"
+    },
+    {
+      "type": "ended"
+    },
+    {
+      "type": "command",
+      "run": "python3 -m unittest -q",
+      "restore": [
+        "test_names.py"
+      ]
+    },
+    {
+      "type": "command",
+      "run": "test \"$(grep -l 'def normalize' *.py)\" = textnorm.py",
+      "name": "defined once, in textnorm.py"
+    },
+    {
+      "type": "files_unchanged",
+      "paths": [
+        "test_*.py"
+      ]
+    },
+    {
+      "type": "outside_unchanged"
+    },
+    {
+      "type": "no_guard_trips"
+    }
+  ]
+}

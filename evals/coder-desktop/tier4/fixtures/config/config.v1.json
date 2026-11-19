@@ -1,0 +1,5 @@
+{
+  "db_host": "db.internal",
+  "db_port": "5432",
+  "debug": "yes"
+}

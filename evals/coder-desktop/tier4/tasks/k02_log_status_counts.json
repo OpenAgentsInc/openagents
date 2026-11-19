@@ -1,0 +1,41 @@
+{
+  "id": "k02_log_status_counts",
+  "category": "bench_python",
+  "fixture": "accesslog",
+  "description": "Count HTTP status codes in an access log",
+  "budget_usd_micros": 100000,
+  "timeout_s": 300,
+  "steps": [
+    {
+      "send": "Write report.py that reads access.log (common log format) and prints one line per HTTP status code, sorted by code ascending, formatted as `CODE COUNT`. Save its output for the current log to report.txt."
+    }
+  ],
+  "graders": [
+    {
+      "type": "not_timed_out"
+    },
+    {
+      "type": "ended"
+    },
+    {
+      "type": "command",
+      "run": "printf '200 3\\n201 1\\n301 1\\n404 2\\n500 1\\n' | diff - report.txt",
+      "name": "report.txt"
+    },
+    {
+      "type": "command",
+      "run": "python3 report.py | diff - expected.txt",
+      "name": "hidden log",
+      "add": {
+        "access.log": "1.1.1.1 - - [11/Oct/2026:01:00:00 +0000] \"GET / HTTP/1.1\" 503 0\n1.1.1.2 - - [11/Oct/2026:01:00:01 +0000] \"GET /x HTTP/1.1\" 200 10\n1.1.1.3 - - [11/Oct/2026:01:00:02 +0000] \"GET /y HTTP/1.1\" 503 0\n1.1.1.4 - - [11/Oct/2026:01:00:03 +0000] \"GET /z HTTP/1.1\" 204 0\n",
+        "expected.txt": "200 1\n204 1\n503 2\n"
+      }
+    },
+    {
+      "type": "outside_unchanged"
+    },
+    {
+      "type": "no_guard_trips"
+    }
+  ]
+}
