@@ -9,6 +9,12 @@
 //   - sends what qp_tell asks (host action 6: the tier to keep in verse.quality; 33: the rung AUTO
 //     settled at, kept in verse.quality.settled) when it has no other action to send;
 //   - shows qp_label beside its frame rate, and calls qp_pick(quality_next(mode)) on a tap.
+// Two opt-ins, for a realm that wants them (SLAB, apps/openagents-web/slab-quality.coax):
+//   - qp_floor(p, rung): AUTO starts no lower than this rung on a device with no rung kept from an
+//     earlier visit (a light scene need not start a phone at LOW); the measured start still steps
+//     it down as far as its frames say;
+//   - qp_pin(p, rung): hold one rung, whatever the frames do, and tell the host nothing (a page's
+//     test parameter, so a picture at a fixed moment is the same on every machine).
 // A golden frame holds the rung its screen's size alone gives, so a golden is the same on every
 // machine. It never decides its graphics anywhere else.
 //   coax/bin/coax test metaverse-engine/core/quality-page.coax
@@ -26,6 +32,8 @@ QualityPage :: struct {
   dev: QualityDevice; facts: bool; mode: int = QUALITY_AUTO; tell: bool;   // the page's device and the player's pick
   settled: [QUALITY_CLASSES] int;   // the rung each class settled at on an earlier visit (-1 none; read only with facts)
   kn: QualityKnobs; kn_ready: bool; golden: bool;   // the rung's knobs as the frame uses them
+  floor: int = -1;   // qp_floor: AUTO's lowest start rung (-1 the device's own)
+  pin: int = -1;     // qp_pin: the rung held (-1 none)
 }
 QpTell :: struct { action: int; n: int; }
 
@@ -62,7 +70,15 @@ qp_frame :: (p: [] QualityPage, dt: f32, w: f32, h: f32, dpr: f32, golden: bool,
     if w < 1 || h < 1 { return; }
     d := qp_device(p, w, h, dpr);
     if golden { quality_start(p[0].q[..], d, QUALITY_AUTO); }
-    else { k := quality_device_class(d); quality_start_settled(p[0].q[..], d, p[0].mode, ifx p[0].facts then p[0].settled[k] else -1); }
+    else {
+      k := quality_device_class(d); kept := ifx p[0].facts then p[0].settled[k] else -1;
+      quality_start_settled(p[0].q[..], d, p[0].mode, kept);
+      if p[0].pin >= 0 { qp_hold(p[0].q[..], p[0].pin); }
+      else if p[0].floor >= 0 && kept < 0 && p[0].q[0].start < p[0].floor {
+        p[0].q[0].start = p[0].floor;
+        if quality_auto(p[0].q[..]) { p[0].q[0].rung = p[0].floor; }
+      }
+    }
     p[0].ready = true;
   } else {
     if !p[0].q[0].probed && p[0].q[0].probe < 0 && drawing { quality_probe_begin(p[0].q[..]); }
@@ -96,9 +112,26 @@ qp_pixels :: (p: [] QualityPage, w: f32, h: f32, dpr: f32) -> int {
   if p[0].ready { return quality_pixels(p[0].q[..], w / k, h / k); }
   return quality_start_pixels(qp_device(p, w, h, dpr), p[0].mode);
 }
-// The player picks a tier or AUTO; the host is told to keep it (qp_tell).
+// The player picks a tier or AUTO; the host is told to keep it (qp_tell). A pick ends a pin.
 qp_pick :: (p: [] QualityPage, mode: int) {
+  p[0].pin = -1;
   quality_choose(p[0].q[..], mode); p[0].mode = p[0].q[0].mode; p[0].tell = true;
+}
+// AUTO's lowest start rung, for a device with no rung kept (the governor starts again).
+qp_floor :: (p: [] QualityPage, rung: int) {
+  p[0].floor = ifx rung < 0 then -1 else ifx rung >= QUALITY_RUNGS then QUALITY_RUNGS - 1 else rung; p[0].ready = false;
+}
+// Hold one rung (-1 lets go): the frames move nothing and the host is told nothing.
+qp_pin :: (p: [] QualityPage, rung: int) {
+  p[0].pin = ifx rung < 0 then -1 else ifx rung >= QUALITY_RUNGS then QUALITY_RUNGS - 1 else rung;
+  p[0].tell = false; p[0].ready = false;
+}
+qp_hold :: (q: [] Quality, rung: int) {
+  quality_choose(q, QUALITY_RUNG_TIER[rung]); q[0].rung = rung; q[0].probed = true;
+}
+// Whether AUTO draws less than the ladder's top now (the realm says so to the player).
+qp_lowered :: (p: [] QualityPage) -> bool {
+  return p[0].ready && !p[0].golden && p[0].pin < 0 && quality_auto(p[0].q[..]) && p[0].q[0].rung < QUALITY_RUNGS - 1;
 }
 // "GFX AUTO · MED", or the tier the player picked; nothing on a golden frame or before the start.
 qp_label :: (p: [] QualityPage, out: [] u8) -> string {
@@ -126,6 +159,27 @@ qp_label :: (p: [] QualityPage, out: [] u8) -> string {
   // frames on time: it settles, and the host is told the rung once
   told := 0; for i: 0..<3000 { qp_frame(p[..], 0.0166, 3024, 1720, 2, false, true); t := qp_tell(p[..], out[..]); if t.action == QP_ACT_SETTLED { told += 1; #assert t.n >= 5; } else { #assert t.action == 0; } }
   #assert told >= 1;
+}
+#test "quality page: a floor starts AUTO higher until frames say otherwise, and a pin holds one rung and tells nothing" #steps 200000000 {
+  p: [1] QualityPage; out: [64] u8;
+  qp_facts(p[..], QUALITY_FACTS_IPHONE); qp_floor(p[..], 8);
+  qp_frame(p[..], 0, 1170, 2532, 3, false, false);
+  #assert p[0].ready && quality_auto(p[0].q[..]) && p[0].q[0].rung == 8 && p[0].kn.scale == QUALITY_SCALE[8] && qp_lowered(p[..]);
+  // frames of 40 ms once the scene draws: the measured start steps down from the floor
+  for i: 0..<120 { qp_frame(p[..], 0.04, 1170, 2532, 3, false, true); }
+  #assert p[0].q[0].probed && p[0].q[0].rung < 8;
+  // a rung kept from an earlier visit wins over the floor
+  k: [1] QualityPage; qp_facts(k[..], "url=https://x/worlds/y\nvw=390\nvh=844\ndpr=3\ncoarse=1\ntouch=5\nsettled=3/1/4\n"); qp_floor(k[..], 8);
+  qp_frame(k[..], 0, 1170, 2532, 3, false, false); #assert k[0].q[0].rung == 4;
+  // a pin: the rung holds under long frames and short ones, and the host hears nothing
+  n: [1] QualityPage; qp_facts(n[..], QUALITY_FACTS_MAC); qp_pin(n[..], 4);
+  qp_frame(n[..], 0, 3024, 1720, 2, false, true);
+  #assert n[0].q[0].rung == 4 && !quality_auto(n[0].q[..]) && !qp_lowered(n[..]);
+  for i: 0..<600 { qp_frame(n[..], 0.06, 3024, 1720, 2, false, true); #assert qp_tell(n[..], out[..]).action == 0; }
+  for i: 0..<600 { qp_frame(n[..], 0.005, 3024, 1720, 2, false, true); }
+  #assert n[0].q[0].rung == 4 && qp_pixels(n[..], 3024, 1720, 2) == quality_pixels(n[0].q[..], 1512, 860);
+  // a pick ends the pin
+  qp_pick(n[..], QUALITY_AUTO); #assert n[0].pin == -1 && quality_auto(n[0].q[..]) && qp_tell(n[..], out[..]).action == QP_ACT_QUALITY;
 }
 #test "quality page: a pick holds its tier, the host keeps it, and the reach knobs ease while the others step" {
   p: [1] QualityPage; out: [64] u8;

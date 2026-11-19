@@ -23,12 +23,22 @@ EXPORT("coaxial_uniform_floats") uint32_t coaxial_uniform_floats(void) { return 
 // Golden mode (host.js coaxial_golden): the sea holds one moment.
 static bool golden;
 EXPORT("coaxial_golden") void coaxial_golden(uint32_t on) { golden = on != 0; }
+// The picture's detail (slab-quality.coax): the pixels the host draws at most (host.js drawn), and
+// the governor's state for a headless check (globalThis.coaxial.quality(field)).
+static uint32_t quality_state;
+EXPORT("coaxial_pixel_budget") uint32_t coaxial_pixel_budget(void) {
+  if (!quality_state || golden) return 0;
+  int64_t px = slab_pixel_budget(at(quality_state));
+  return px > 0 ? (uint32_t)px : 0u;
+}
+EXPORT("coaxial_quality_probe") int32_t coaxial_quality_probe(uint32_t state, int32_t field) { return (int32_t)slab_quality_probe(at(state), field); }
 
 EXPORT("coaxial_frame")
 uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, float width, float height, float dpr, float dt, uint32_t still) {
   coax_v_f32 out = {(float *)(uintptr_t)vertices, coaxial_slab_max_vertices() * coaxial_slab_vertex_floats()};
   coax_v_f32 u = {(float *)(uintptr_t)uniforms, coaxial_slab_uniform_floats()};
   slab_golden(at(state), golden);
+  quality_state = state;
   int64_t n = slab_frame(at(state), out, u, width, height, dpr, dt, still != 0);
   return n < 0 ? 0u : (uint32_t)n;
 }

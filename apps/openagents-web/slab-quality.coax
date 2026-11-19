@@ -1,0 +1,192 @@
+// SLAB's picture detail (GitHub #13687): the Metaverse Engine's graphics governor
+// (metaverse-engine/core/quality.coax through quality-page.coax), wired as every realm wires it.
+// In Automatic, when frames run long (a laptop's built-in GPU, a phone), it steps down its ladder:
+// fewer pixels first (the host draws fewer and scales the picture up), then the post pass's contact
+// shade off, then the phone tier's content (the fine detail records left out, the plain sky). When
+// frames keep on time again it steps back up, waiting longer each time a rung didn't hold, so the
+// picture settles instead of going up and down. Look says when the picture is lowered, in one
+// sentence, and lets the visitor set the detail by hand: Automatic, Full or Lighter.
+//
+// The rungs are the engine's (QUALITY_RUNGS, 0 the cheapest, 11 full). What SLAB draws on each:
+//   pixels   QUALITY_SCALE: CSS pixels drawn per CSS pixel, at most the device's
+//   contact  on while the rung's post knob is at least a half (rungs 3 and up)
+//   content  the phone tier's records and sky while the rung's scenery knob is under 0.75 (rungs 0, 1)
+// A device with no rung kept from an earlier visit starts no lower than MED's top (rung 8, what a
+// phone drew before the governor: 1.5 CSS pixels with contact); the measured start steps it down
+// as far as its first frames say.
+//
+// The address: ?tier=0..11 holds that rung (?tier=full is 11, ?tier=lighter LOW's rung, ?tier=auto
+// lets the governor run even at a fixed moment); a fixed moment (?t=) with no ?tier= draws full, so
+// a picture is the same on every machine. ?quality=high|medium|low|auto is the engine's (kept by the
+// browser). ?slowgpu=K is a test: the governor sees every frame K times longer, as on a GPU K times
+// slower (message SQ_SLOW, "K", changes it while the page runs). ?tier=phone is slab.coax's own:
+// the phone's layout and sea.
+//   coax/bin/coax test apps/openagents-web/slab.coax --only "detail"
+
+#load "../../metaverse-engine/core/quality-page.coax";
+
+SQ_FLOOR :: 8;        // AUTO's lowest start rung (MED's top)
+SQ_CONTACT_POST :: 0.5;
+SQ_CONTENT_SCENERY :: 0.75;
+SQ_SLOW :: 7913;      // test message: the governor's frame-time factor ("1" none)
+SQ_LOWERED :: "We lowered the picture's detail to keep it smooth on this device.";
+
+SlabQuality :: struct {
+  qp: [1] QualityPage;
+  slow: f32 = 1;        // ?slowgpu=: the factor on the frame time the governor sees
+  contact: bool = true; // the post pass's contact shade, at this rung
+  reduced: bool;        // the phone tier's content and sky, at this rung
+  act: int; out: [16] u8; out_n: int;   // what the host is told to keep (qp_tell), until it is done
+}
+
+// The address (slab_message, once): the pin, the floor and the test factor.
+sq_address :: (s: [] Slab, url: string, fixed: bool) {
+  q := s[0].qual[..];
+  r := cast(int) query_number(url, "tier", -1);
+  if query_word(url, "tier=full") { r = QUALITY_RUNGS - 1; }
+  if query_word(url, "tier=lighter") { r = QUALITY_TIER_RUNG[QUALITY_LOW]; }
+  auto := query_word(url, "tier=auto");
+  if r < 0 && fixed && !auto { r = QUALITY_RUNGS - 1; }
+  qp_floor(q[0].qp[..], SQ_FLOOR);
+  if r >= 0 && !auto { qp_pin(q[0].qp[..], r); }
+  q[0].slow = f32(fclamp(query_number(url, "slowgpu", 1), 1, 50));
+}
+// The host's messages the governor hears: the page's facts (the first) and the GPU's. True when it was one of its own.
+sq_message :: (s: [] Slab, kind: int, text: string) -> bool {
+  q := s[0].qual[..];
+  if kind == QP_HOST_GPU { qp_gpu(q[0].qp[..], text); return true; }
+  if kind == SQ_SLOW { q[0].slow = f32(fclamp(query_number_text(text), 1, 50)); return true; }
+  return false;
+}
+sq_facts :: (s: [] Slab, text: string) { qp_facts(s[0].qual[0].qp[..], text); }
+query_number_text :: (t: string) -> f64 {
+  v := 0.0; scale := 0.0; any := false;
+  for c: t {
+    if c == '.' && scale == 0.0 { scale = 1; continue; }
+    if c < '0' || c > '9' { break; }
+    any = true;
+    if scale > 0.0 { scale *= 0.1; v += f64(c - '0') * scale; } else { v = v * 10 + f64(c - '0'); }
+  }
+  return ifx any then v else 1.0;
+}
+
+// A frame: its length (s) and the picture's size (slab_frame has set s.width, s.height, s.dpr).
+sq_frame :: (s: [] Slab, dt: f32) {
+  q := s[0].qual[..];
+  qp_frame(q[0].qp[..], dt * q[0].slow, s[0].width, s[0].height, s[0].dpr, s[0].golden, s[0].built);
+  if s[0].golden { q[0].contact = true; q[0].reduced = false; return; }
+  kn := q[0].qp[0].kn;
+  q[0].contact = kn.post >= f32(SQ_CONTACT_POST);
+  q[0].reduced = kn.scenery < f32(SQ_CONTENT_SCENERY);
+}
+// The pixels a frame draws at most (the face's coaxial_pixel_budget): 0 (no cap) on a golden frame.
+slab_pixel_budget :: (s: [] Slab) -> int #export_c #effects(all) {
+  if s.count < 1 || !s[0].started || s[0].golden { return 0; }
+  px := qp_pixels(s[0].qual[0].qp[..], s[0].width, s[0].height, s[0].dpr);
+  return ifx px > 0 then px else 0;
+}
+sq_contact :: (s: [] Slab) -> bool { return s[0].qual[0].contact; }
+sq_reduced :: (s: [] Slab) -> bool { return s[0].qual[0].reduced; }
+sq_lowered :: (s: [] Slab) -> bool { return qp_lowered(s[0].qual[0].qp[..]); }
+
+// For a headless check (globalThis.coaxial.quality(field)): 0 the rung, 1 the mode (QUALITY_*),
+// 2 the pixel budget in thousands, 3 contact on, 4 the phone tier's content, 5 lowered (Look says
+// so), 6 the steps taken, 7 the governor's long average frame in tenths of a millisecond.
+slab_quality_probe :: (s: [] Slab, field: int) -> int #export_c #effects(all) {
+  if s.count < 1 { return -1; }
+  q := s[0].qual[..]; g := q[0].qp[0].q[..];
+  if field == 0 { return g[0].rung; }
+  if field == 1 { return g[0].mode; }
+  if field == 2 { return slab_pixel_budget(s) / 1000; }
+  if field == 3 { return ifx q[0].contact then 1 else 0; }
+  if field == 4 { return ifx q[0].reduced then 1 else 0; }
+  if field == 5 { return ifx sq_lowered(s) then 1 else 0; }
+  if field == 6 { return g[0].steps; }
+  if field == 7 { return cast(int) (g[0].slow_avg * 10); }
+  return -1;
+}
+
+// ---- the HUD (slab-hud.coax sb_more, sb_act_more): under Look, the detail and why it is lowered
+sq_hud :: (s: [] Slab, h: [] SceneHud, group: int) {
+  if group != HUD_LOOK || s[0].golden { return; }
+  p := s[0].qual[0].qp[..]; m := p[0].q[0].mode;
+  pinned := p[0].pin >= 0;
+  sh_choices(h, "detail", "Picture detail");
+    sh_option(h, "detail.auto", "Automatic", "", !pinned && m == QUALITY_AUTO);
+    sh_option(h, "detail.full", "Full", "", !pinned && m == QUALITY_HIGH);
+    sh_option(h, "detail.lighter", "Lighter", "", !pinned && (m == QUALITY_LOW || m == QUALITY_MEDIUM));
+  sh_end_of(h);
+  if sq_lowered(s) { sh_say(h, SQ_LOWERED); }
+}
+sq_act :: (s: [] Slab, id: string, value: int) -> bool {
+  p := s[0].qual[0].qp[..];
+  if id == "detail.auto" { qp_pick(p, QUALITY_AUTO); return true; }
+  if id == "detail.full" { qp_pick(p, QUALITY_HIGH); return true; }
+  if id == "detail.lighter" { qp_pick(p, QUALITY_LOW); return true; }
+  return false;
+}
+
+// ---- what the host keeps (host action 6 the tier, 33 the rung AUTO settled at), when no other
+// action is waiting (slab-panel.coax slab_action)
+sq_action :: (s: [] Slab) -> int {
+  q := s[0].qual[..];
+  if q[0].act == 0 { t := qp_tell(q[0].qp[..], q[0].out[..]); q[0].act = t.action; q[0].out_n = t.n; }
+  return q[0].act;
+}
+sq_outbox :: (s: [] Slab) -> string { return cast(string) s[0].qual[0].out[0..<s[0].qual[0].out_n]; }
+sq_action_done :: (s: [] Slab) { s[0].qual[0].act = 0; s[0].qual[0].out_n = 0; }
+
+// ---- checks
+
+sq_test_frames :: (s: [] Slab, ms: f32, seconds: f32) {
+  t := 0.0f32; while t < seconds { sq_frame(s, ms / 1000); t += ms / 1000; }
+}
+#test "detail: a computer draws full, steps down under long frames to fewer pixels, then contact off, then the phone content, and back up" #steps 400000000 {
+  s: [1] Slab; slab_reset(s[..]); s[0].started = true; s[0].built = true;
+  s[0].width = 2880; s[0].height = 1800; s[0].dpr = 2;
+  sq_facts(s[..], "url=https://openagents.com/worlds/slab\nvw=1440\nvh=900\ndpr=2\ncoarse=0\ntouch=0\ncores=10\nmemory=16\nquality=\n");
+  sq_address(s[..], "/worlds/slab", false);
+  sq_frame(s[..], 0);
+  #assert s[0].qual[0].qp[0].q[0].rung == QUALITY_RUNGS - 1 && sq_contact(s[..]) && !sq_reduced(s[..]) && !sq_lowered(s[..]);
+  #assert slab_pixel_budget(s[..]) == cast(int) (1440.0 * 900.0 * 9.0);
+  // 40 ms frames: fewer pixels, and the Look pane says so
+  sq_test_frames(s[..], 40, 6);
+  r := s[0].qual[0].qp[0].q[0].rung;
+  #assert r < QUALITY_RUNGS - 1 && sq_lowered(s[..]) && slab_pixel_budget(s[..]) < 1440 * 900 * 9;
+  // far over for long: down to the rungs with no contact, then the phone content
+  sq_test_frames(s[..], 120, 20);
+  #assert s[0].qual[0].qp[0].q[0].rung <= 1 && !sq_contact(s[..]) && sq_reduced(s[..]);
+  // on time again: it climbs back, contact and the content first
+  sq_test_frames(s[..], 8, 120);
+  #assert s[0].qual[0].qp[0].q[0].rung >= 3 && sq_contact(s[..]) && !sq_reduced(s[..]);
+}
+#test "detail: a phone starts at the floor; a pin holds; a fixed moment draws full; a golden frame is never lowered" {
+  s: [1] Slab; slab_reset(s[..]); s[0].started = true; s[0].built = true;
+  s[0].width = 1170; s[0].height = 2532; s[0].dpr = 3;
+  sq_facts(s[..], "url=https://openagents.com/worlds/slab\nvw=390\nvh=844\ndpr=3\ncoarse=1\ntouch=5\nsw=390\nsh=844\nquality=\n");
+  sq_address(s[..], "/worlds/slab", false); sq_frame(s[..], 0);
+  #assert s[0].qual[0].qp[0].q[0].rung == SQ_FLOOR && sq_contact(s[..]) && !sq_reduced(s[..]) && sq_lowered(s[..]);
+  #assert slab_pixel_budget(s[..]) == cast(int) (390.0 * 844.0 * 1.5 * 1.5);
+  p: [1] Slab; slab_reset(p[..]); p[0].started = true; p[0].built = true; p[0].width = 2880; p[0].height = 1800; p[0].dpr = 2;
+  sq_address(p[..], "/worlds/slab?tier=1", false); sq_frame(p[..], 0); sq_test_frames(p[..], 5, 12);
+  #assert p[0].qual[0].qp[0].q[0].rung == 1 && sq_reduced(p[..]) && !sq_contact(p[..]) && !sq_lowered(p[..]);
+  f: [1] Slab; slab_reset(f[..]); f[0].started = true; f[0].built = true; f[0].width = 2880; f[0].height = 1800; f[0].dpr = 2;
+  sq_address(f[..], "/worlds/slab?t=20", true); sq_frame(f[..], 0); sq_test_frames(f[..], 80, 12);
+  #assert f[0].qual[0].qp[0].q[0].rung == QUALITY_RUNGS - 1 && sq_contact(f[..]);
+  a: [1] Slab; slab_reset(a[..]); a[0].started = true; a[0].built = true; a[0].width = 2880; a[0].height = 1800; a[0].dpr = 2;
+  sq_address(a[..], "/worlds/slab?t=20&tier=auto", true); sq_frame(a[..], 0); sq_test_frames(a[..], 80, 12);
+  #assert a[0].qual[0].qp[0].q[0].rung < QUALITY_RUNGS - 1;
+  g: [1] Slab; slab_reset(g[..]); g[0].started = true; g[0].built = true; g[0].golden = true; g[0].width = 1170; g[0].height = 2532; g[0].dpr = 3;
+  sq_frame(g[..], 0); sq_test_frames(g[..], 80, 12);
+  #assert sq_contact(g[..]) && !sq_reduced(g[..]) && slab_pixel_budget(g[..]) == 0 && !sq_lowered(g[..]);
+}
+#test "detail: Look offers Automatic, Full and Lighter; a pick holds and the host is told to keep it" {
+  s: [1] Slab; slab_reset(s[..]); s[0].started = true; s[0].built = true; s[0].width = 2880; s[0].height = 1800; s[0].dpr = 2;
+  sq_address(s[..], "/worlds/slab", false); sq_frame(s[..], 0);
+  #assert sq_act(s[..], "detail.lighter", 0) && s[0].qual[0].qp[0].q[0].mode == QUALITY_LOW;
+  #assert sq_action(s[..]) == QP_ACT_QUALITY && sq_outbox(s[..]) == "low" && sq_action(s[..]) == QP_ACT_QUALITY;
+  sq_action_done(s[..]); #assert sq_action(s[..]) == 0;
+  sq_test_frames(s[..], 5, 30); #assert s[0].qual[0].qp[0].q[0].rung == QUALITY_TIER_RUNG[QUALITY_LOW];
+  #assert sq_act(s[..], "detail.auto", 0) && s[0].qual[0].qp[0].q[0].mode == QUALITY_AUTO && !sq_act(s[..], "look.walk", 0);
+  #assert sq_message(s[..], SQ_SLOW, "4") && s[0].qual[0].slow == 4 && !sq_message(s[..], 640, "");
+}

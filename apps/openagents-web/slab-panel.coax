@@ -291,9 +291,9 @@ panel_opened :: (s: [] Slab, url: string) {
   while i < url.count && url[i] != '?' && url[i] != '#' && n < PANEL_PATH { s[0].panel.path[n] = url[i]; n += 1; i += 1; }
   s[0].panel.path_n = ifx n > 0 && s[0].panel.path[0] == '/' then n else 0;
 }
-slab_action :: (s: [] Slab) -> int #export_c #effects(all) { return ifx s.count > 0 then s[0].panel.action else 0; }
-slab_outbox :: (s: [] Slab) -> string #export_c #effects(all) { return cast(string) s[0].panel.out[0..<s[0].panel.out_n]; }
-slab_action_done :: (s: [] Slab) #export_c #effects(all) { s[0].panel.action = 0; }
+slab_action :: (s: [] Slab) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return ifx s[0].panel.action != 0 then s[0].panel.action else sq_action(s); }   // else the detail the host keeps (slab-quality.coax)
+slab_outbox :: (s: [] Slab) -> string #export_c #effects(all) { return ifx s[0].panel.action != 0 then cast(string) s[0].panel.out[0..<s[0].panel.out_n] else sq_outbox(s); }
+slab_action_done :: (s: [] Slab) #export_c #effects(all) { if s[0].panel.action != 0 { s[0].panel.action = 0; } else { sq_action_done(s); } }
 
 // The picture's hull and load again, the place and the rest kept (the tour is of the picture's platform).
 panel_picture_hull :: (s: [] Slab) {

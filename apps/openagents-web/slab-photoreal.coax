@@ -476,7 +476,8 @@ photo_key :: (rec: [] f32, n: int, tripped: bool, reduced: bool) -> u32 {
 // Called once a frame after slab_frame has written the uniforms: the photoreal block, the list
 // when the records changed, and the sky's colours for the sea (which is written for colours as
 // a display shows them: gpu/slab-photoreal.coax).
-slab_photo_frame :: (s: [] Slab, u: [] f32, sun: SimSun, phone: bool) {
+slab_photo_frame :: (s: [] Slab, u: [] f32, sun: SimSun, phone_tier: bool) {
+  phone := phone_tier || sq_reduced(s);   // the phone's content and sky, or the detail stepped down to them (slab-quality.coax)
   ph := s[0].photo[..];
   b := U_PHOTO; P := U_PARAMS;
   ph[0].draw_count = 0;
@@ -548,7 +549,7 @@ slab_photo_frame :: (s: [] Slab, u: [] f32, sun: SimSun, phone: bool) {
   meshes := u[P + P_SECTION] == 0 && u[P + P_UNDER] < 0.5;
   if meshes { u[U_PHOTO_ON + 1] = 1; } else { ph[0].draw_count = 0; }
   // the post pass's contact shade (gpu/slab-photoreal.coax slab_post_fs), unless the address leaves it out
-  u[U_PHOTO_ON + 2] = ifx meshes && !ph[0].no_contact then 1.0f32 else 0.0f32;
+  u[U_PHOTO_ON + 2] = ifx meshes && !ph[0].no_contact && sq_contact(s) then 1.0f32 else 0.0f32;   // and not on the detail's lowest rungs
   // the sea's colours, as a display shows them: the sun on a white surface, the sky overhead
   // and at the horizon square to the sun; no painted golden grade
   sc := pr_frame_out(u, b, [3] f32.[u[b + PR_SUN_LIGHT], u[b + PR_SUN_LIGHT + 1], u[b + PR_SUN_LIGHT + 2]]);

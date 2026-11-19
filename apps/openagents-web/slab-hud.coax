@@ -132,6 +132,7 @@ sb_more :: (s: [] Slab, h: [] SceneHud, group: int) {
   sea_look_hud(s, h, group);   // the weather, and the water under the sea (slab-sea.coax)
   panel_hud(s, h, group);   // "What would it take?" (slab-panel.coax)
   lines_hud(s, h, group);      // what holds the hull in place, and "lose a line" (slab-lines.coax)
+  sq_hud(s, h, group);         // the picture's detail, and when it is lowered (slab-quality.coax)
 }
 // What other files' presses do: one line each.
 sb_act_more :: (s: [] Slab, id: string, value: int) -> bool {
@@ -141,6 +142,7 @@ sb_act_more :: (s: [] Slab, id: string, value: int) -> bool {
   if place_act(s, id) { return true; }          // the dock's name (slab-place.coax)
   if panel_act(s, id, value) { return true; }   // "What would it take?" (slab-panel.coax)
   if lines_act(s, id, value) { return true; }
+  if sq_act(s, id, value) { return true; }
   return false;
 }
 

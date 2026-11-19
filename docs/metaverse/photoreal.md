@@ -145,6 +145,40 @@ sun. `pr_list_draws(l, true)` leaves out records
 marked fine (`pr_fine`). The host draws a phone's shadow map at half the
 size.
 
+### The picture's detail on a slow device
+
+SLAB runs the engine's graphics governor
+(`metaverse-engine/core/quality.coax` through `quality-page.coax`), wired in
+`apps/openagents-web/slab-quality.coax`. In Automatic, when the frames' long
+average runs over 18.7 ms (about 53 frames a second) for half a second, it
+steps down the engine's ladder of twelve rungs; after five seconds on time it
+steps up one rung, and a rung that fails again waits twice as long. What
+SLAB draws on each rung:
+
+| Rungs | Pixels drawn per CSS pixel | Contact | Content and sky |
+| --- | --- | --- | --- |
+| 11 (Full) | the device's (up to 3) | on | full |
+| 10 | 2 | on | full |
+| 3 to 9 | 1.25 to 1.5 | on | full |
+| 2 (Lighter) | 1 | off | full |
+| 0 and 1 | 0.75, 0.85 | off | the phone tier's |
+
+The host draws the fewer pixels and the browser scales the picture up. A
+device with no rung kept from an earlier visit starts no lower than rung 8
+(what a phone drew before: 1.5 CSS pixels with contact), and the measured
+start in its first 1.5 seconds steps it down as far as its frames say
+(`qp_floor`). When Automatic draws below Full, Look says "We lowered the
+picture's detail to keep it smooth on this device." under a Picture detail
+choice: Automatic, Full or Lighter (kept in the browser as `verse.quality`).
+
+For tests: `?tier=0..11` (or `full`, `lighter`) holds one rung (`qp_pin`); a
+fixed moment (`?t=`) draws Full unless `?tier=auto`; `?slowgpu=K` makes the
+governor see every frame K times longer, and message 7913 with the text `K`
+changes it while the page runs. `globalThis.coaxial.quality(field)` reads the
+rung (0), the mode (1), the pixel budget in thousands (2), contact (3), the
+phone content (4), whether Look says it is lowered (5), the steps (6) and the
+long average in tenths of a millisecond (7).
+
 ## Materials
 
 A material names a pattern (`PR_PATTERN_*`, `photoreal-layout.coax`). The

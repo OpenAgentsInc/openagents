@@ -26,7 +26,9 @@
 // holed), ?lose=N (N mooring lines already broken), ?plant=demo10,
 // ?flow=1 (the flow overlay), ?hud=0, ?tier=phone, ?weather=clear|overcast|fog|rain|storm (else
 // the sea's own weather), ?water=real (under the sea: the water as it is, not the survey view),
-// ?style=painterly (the older look), ?contact=0 (photoreal without its contact pass).
+// ?style=painterly (the older look), ?contact=0 (photoreal without its contact pass), ?tier=0..11|full|lighter|auto
+// (hold one rung of the picture's detail, or let it run at a fixed moment; a fixed moment draws full),
+// ?quality=high|medium|low|auto, ?slowgpu=K (a test: frames count K times longer); slab-quality.coax.
 // The "What would it take?" settings (metaverse/slab-whatif.coax; each is left out of an address
 // when it is the picture's): ?preset=picture|pilot|fjord|california|guam|dome, ?weight=MT (million
 // tonnes of buildings and equipment), ?long=, ?wide=, ?deep= (the hull, metres), ?wall=, ?floor=
@@ -54,6 +56,7 @@
 #load "slab-foam.coax";   // the open sea's foam field, through the frame store (GitHub #13688)
 #load "slab-bearing.coax";   // where the weather comes from: ?winddir=, each site's normal bearing
 #load "slab-photoreal.coax";   // the photoreal style: the platform as meshes under a physical sky (docs/metaverse/photoreal.md)
+#load "slab-quality.coax";   // the picture's detail: the engine's governor steps it down on a slow device (GitHub #13687)
 #load "slab-lines.coax";   // the hull on its moorings: its sea, its lines, "lose a line" (GitHub #13688)
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, then length, core, light, glow (a rect: half w, half h, radius, alpha), red, green, blue, mode, border, 0, 0, 0
@@ -193,6 +196,7 @@ Slab :: struct {
   chart: SlabChart;     // and its chart (slab-chart.coax)
   place: SlabPlace;     // the land in sight and the lines on the water (slab-place.coax)
   lines: [1] Lines;     // the sea as the hull feels it, and what its lines were last set for (slab-lines.coax)
+  qual: [1] SlabQuality; // the picture's detail (slab-quality.coax)
 }
 
 hi_f32 :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
@@ -824,6 +828,7 @@ slab_frame :: (s: [] Slab, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
   if !s[0].stats_set { s[0].stats = false; s[0].stats_set = true; }
   if !s[0].built || s[0].built_phone != phone || s[0].wind != slab_wind(s) || s[0].built_from != slab_from(s) { slab_build(s, phone); }
   if !s[0].built { return 0; }
+  sq_frame(s, dt);   // the picture's detail (slab-quality.coax)
   step := wsp_clamp(dt, 0, 0.1);
   frozen := still || s[0].golden;
   if s[0].fixed >= 0 { s[0].time = s[0].fixed; } else if !frozen { s[0].time += f64(step); }
@@ -1830,11 +1835,13 @@ query_word :: (url: string, pair: string) -> bool {
 slab_message :: (s: [] Slab, kind: int, text: string) #export_c #effects(all) {
   if !s[0].started { slab_reset(s); }
   if kind == SH_ACT { sb_act(s, text); return; }
+  if sq_message(s, kind, text) { return; }   // the GPU's facts, for the picture's detail (slab-quality.coax)
   if kind != HOST_FACTS || s[0].counted { return; }
   s[0].counted = true;
   url := fact(text, "url");
   slab_photo_style(s, fact(text, "style"), url);
   s[0].fixed = query_number(url, "t", -1);
+  sq_facts(s, text); sq_address(s, url, s[0].fixed >= 0);   // the picture's detail: ?tier=, ?quality=, ?slowgpu= (slab-quality.coax)
   for i: 0..<SITES { b := put_pair("site=", sim_site(i).key); if query_word(url, cast(string) b.b[0..<b.n]) { s[0].site = i; s[0].sea = sim_site(i).sea; } }
   for i: 0..<SEAS { b := put_pair("sea=", sim_sea(i).key); if query_word(url, cast(string) b.b[0..<b.n]) { s[0].sea = i; } }
   if query_word(url, "sea=winter") { s[0].sea = SEA_ROUGH; }   // the rough sea's address before it was renamed
