@@ -414,6 +414,10 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-Wl,-stack_size,0x4000000",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = "$(OA_IOS_BUNDLE_ID)";
 				PRODUCT_NAME = OpenAgents;
 				PROVISIONING_PROFILE_SPECIFIER = "$(OA_APP_PROVISIONING_PROFILE)";
@@ -523,6 +527,10 @@
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-Wl,-stack_size,0x4000000",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "$(OA_IOS_BUNDLE_ID)";
 				PRODUCT_NAME = OpenAgents;

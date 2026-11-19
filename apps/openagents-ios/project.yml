@@ -75,6 +75,9 @@ targets:
         SWIFT_OBJC_BRIDGING_HEADER: Bridge.h
         HEADER_SEARCH_PATHS: ["$(SRCROOT)/Generated"]
         GCC_OPTIMIZATION_LEVEL: "2"
+        # The Coax page steps hold multi-megabyte frames (a screen reset builds its state on the
+        # stack); iOS gives the main thread 1 MB by default, so launch overflowed (build 1404-1408).
+        OTHER_LDFLAGS: ["$(inherited)", "-Wl,-stack_size,0x4000000"]
   OpenAgentsIdentityTests:
     type: bundle.unit-test
     platform: iOS
