@@ -14,6 +14,22 @@ EnvironmentApp :: struct {
   // the open conversation's, else the computer's default). menu: 1 model, 2 effort.
   offer:[1]EaOffer;model:[64]u8;nmo:int;effort:[16]u8;nef:int;menu:int;
   expanded:[64]int;expanded_n:int;history_before:int;sync_requested:bool;paused:bool;workspace:bool;
+  // The folders the computer last offered (DescribeEnvironment, ListSessions) and the one a new
+  // session opens in (nfo 0: the workspace itself). An older computer offers none and gets none.
+  folders:[EA_FOLDERS]EaFolder;nfolders:int;folder:[EA_FOLDER]u8;nfo:int;
+}
+// The folder a new session asks for: the chosen one while the computer still offers it, else "".
+eu_folder :: (e:[]EnvironmentApp)->string #effects(all) {
+  want:=cast(string)e[0].folder[0..<e[0].nfo];if want.count==0 {return "";}
+  for i:0..<e[0].nfolders {if cast(string)e[0].folders[i].path[0..<e[0].folders[i].np]==want {return want;}}return "";
+}
+eu_take_folders :: (e:[]EnvironmentApp,v:[]EaView) #effects(all) {e[0].nfolders=v[0].nfolders;for i:0..<v[0].nfolders {e[0].folders[i]=v[0].folders[i];}}
+#test "a new session names the chosen folder only while the computer offers it" {
+ e:[1]EnvironmentApp;e[0].active=true;e[0].nd=ea_copy(e[0].draft[..],"hello");e[0].nfo=ea_copy(e[0].folder[..],"apps");
+ eu_mutate(e[..],"OpenSession",false);#assert e[0].request[0].nf==0;   // an older computer offered none: no folder
+ e[0].random=false;e[0].action=0;e[0].nfolders=1;e[0].folders[0].np=ea_copy(e[0].folders[0].path[..],"apps");
+ eu_mutate(e[..],"OpenSession",false);#assert cast(string)e[0].request[0].folder[0..<e[0].request[0].nf]=="apps";
+ e[0].random=false;e[0].action=0;eu_mutate(e[..],"SendMessage",false);#assert e[0].request[0].nf==0;
 }
 #test "history navigation pauses polling without replacing an uncertain command" {
  e:[1]EnvironmentApp;e[0].active=true;e[0].timer=true;e[0].uncertain=true;e[0].request[0].nc=ea_copy(e[0].request[0].command[..],"01234567890123456789012345678901");
@@ -121,6 +137,7 @@ eu_mutate :: (e:[]EnvironmentApp,method:string,allow:bool) #effects(all) {
     m:=eu_model(e);l:=eu_level(e,m);o:=e[0].offer[..];
     if m>=0 {q[0].nmo=ea_copy(q[0].model[..],cast(string)o[0].models[m].id[0..<o[0].models[m].ni]);}
     if l>=0 {q[0].nef=ea_copy(q[0].effort[..],cast(string)o[0].levels[l].id[0..<o[0].levels[l].ni]);}
+    f:=eu_folder(e);if method=="OpenSession" && f.count>0 {q[0].nf=ea_copy(q[0].folder[..],f);}
   }
   e[0].random=true;e[0].action=11;e[0].nb=ea_copy(e[0].body[..],"{}");
 }
@@ -151,7 +168,7 @@ eu_reply :: (e:[]EnvironmentApp,op:int,status:int,raw:string,failed:bool) #effec
   if e[0].selected<0 {if !ea_catalog_read(raw,e[0].catalog[..]) {eu_note(e,"Unreadable environment list.");return;}e[0].uncertain=false;eu_note(e,"");return;}
   next:[1]EaView;
   if e[0].local && cast(string)e[0].request[0].method[0..<e[0].request[0].nm]=="DescribeEnvironment" && ea_view_read(raw,next[..]) {
-    e[0].catalog[0].entries[0].host=next[0].host;e[0].catalog[0].entries[0].nl=ea_copy(e[0].catalog[0].entries[0].label[..],"This computer");
+    e[0].catalog[0].entries[0].host=next[0].host;e[0].catalog[0].entries[0].nl=ea_copy(e[0].catalog[0].entries[0].label[..],"This computer");eu_take_folders(e,next[..]);
     eu_request(e,"ListSessions");eu_http(e,false);return;
   }
   if !ea_view_read(raw,next[..]) || cast(string)next[0].host[..]!=cast(string)e[0].catalog[0].entries[e[0].selected].host[..] {eu_note(e,"The reply did not match this computer.");e[0].uncertain=true;return;}
@@ -159,6 +176,7 @@ eu_reply :: (e:[]EnvironmentApp,op:int,status:int,raw:string,failed:bool) #effec
   e[0].view[0]=next[0];e[0].uncertain=false;if next[0].offer.n>0 {e[0].offer[0]=next[0].offer;}
   if next[0].ne>0 {eu_note(e,eu_error(cast(string)next[0].error[0..<next[0].ne]));return;}
   q:=e[0].request[..];method:=cast(string)q[0].method[0..<q[0].nm];
+  if method=="DescribeEnvironment" || (method=="ListSessions" && q[0].before==0) {eu_take_folders(e,next[..]);}
   if method=="OpenSession" {e[0].ns=ea_copy(e[0].session[..],cast(string)q[0].session[0..<q[0].ns]);e[0].page=2;}
   if (method=="OpenSession" || method=="SendMessage") && cast(string)next[0].status[0..<next[0].nt]=="accepted" {e[0].nd=0;}
   eu_note(e,ifx cast(string)next[0].status[0..<next[0].nt]=="unknown" then "Outcome unknown · not retried" else "");

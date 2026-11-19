@@ -29,8 +29,10 @@ EsChips :: struct {
 // the paired computers). The repository chip takes none while a request
 // cannot carry a repository, or while the draft runs on a paired computer.
 es_chips :: (s: [] EnvSelect) -> EsChips #effects(all) {
+  // on a paired computer the second chip is the folder a new session opens in, while it offers some
+  if es_chosen_paired(s) >= 0 { return EsChips.{environment = es_env_value(s), environment_on = true, repository = es_folder_value(s), repository_on = es_folder_on(s)}; }
   return EsChips.{environment = es_env_value(s), environment_on = true,
-                  repository = es_repo_value(s), repository_on = es_chosen_paired(s) < 0 && (!s[0].in || s[0].repo_ready)};
+                  repository = es_repo_value(s), repository_on = (!s[0].in || s[0].repo_ready)};
 }
 ES_V_PAIR_HINT :: "To use your own computer, run openagents-environment pair --workspace FOLDER on it, then open the link it shows on this phone.";
 
@@ -40,6 +42,7 @@ EsPickerSize :: struct { content: f32; view: f32; }
 
 ES_V_TITLE_ENV :: "Where it runs";
 ES_V_TITLE_REPO :: "Repository";
+ES_V_TITLE_FOLDER :: "Folder";
 
 es_v_row_h :: (k: UiSkin) -> f32 #effects(all) {
   if k.chat.enabled {return k.body.line+k.small.line+2*k.app.gap_small;}
@@ -73,13 +76,14 @@ es_picker :: (f: [] UiFrame, s: [] EnvSelect, x: f32, y: f32, w: f32, h: f32, ch
   size: EsPickerSize;
   if s[0].sheet == ES_SHEET_NONE { return size; }
   k := f[0].skin;
-  env := s[0].sheet == ES_SHEET_ENV;
+  env := s[0].sheet == ES_SHEET_ENV; folder := !env && es_chosen_paired(s) >= 0;
+  heading := ifx env then ES_V_TITLE_ENV else ifx folder then ES_V_TITLE_FOLDER else ES_V_TITLE_REPO;
   inside:PanelInside;
-  if k.chat.enabled {inside=app_sheet(f,ifx env then "env.panel" else "env.repo.panel",x,y,w,h,ifx env then ES_V_TITLE_ENV else ES_V_TITLE_REPO);}
-  else {inside=ctx_panel(f, ifx env then "env.panel" else "env.repo.panel", x, y, w, h, ifx env then ES_V_TITLE_ENV else ES_V_TITLE_REPO);}
+  if k.chat.enabled {inside=app_sheet(f,ifx env then "env.panel" else "env.repo.panel",x,y,w,h,heading);}
+  else {inside=ctx_panel(f, ifx env then "env.panel" else "env.repo.panel", x, y, w, h, heading);}
   // the two buttons along the top
   busy := es_checking(s);
-  if k.chat.enabled {_:=app_icon_button(f,"env.close",inside.x,inside.y,ICON_BACK,"Done",APP_BUTTON_DEFAULT,0,0);title:=ifx env then ES_V_TITLE_ENV else ES_V_TITLE_REPO;tw:=measure_width(f[0].m,k.title.face,title);_=app_text(f,"env.title",x+(w-tw)/2,inside.y+(k.app.icon_button-k.title.line)/2,tw,APP_TEXT_TITLE,title);}
+  if k.chat.enabled {_:=app_icon_button(f,"env.close",inside.x,inside.y,ICON_BACK,"Done",APP_BUTTON_DEFAULT,0,0);title:=heading;tw:=measure_width(f[0].m,k.title.face,title);_=app_text(f,"env.title",x+(w-tw)/2,inside.y+(k.app.icon_button-k.title.line)/2,tw,APP_TEXT_TITLE,title);}
   else {bw := ctx_button(f, "env.close", inside.x, inside.y, "Done", false, 0, 0);_ = ctx_button(f, "env.refresh", inside.x + bw + k.space, inside.y, "Refresh", false, ifx busy then EL_S_BUSY else 0, 0);}
   top := inside.y + k.control_h + k.space;
   bottom := y + h - k.pad;
@@ -106,6 +110,14 @@ es_picker :: (f: [] UiFrame, s: [] EnvSelect, x: f32, y: f32, w: f32, h: f32, ch
     else if s[0].catalog_state == ES_FAILED { cy += es_v_note(f, "env.note", inside.x, cy, inside.w, "We couldn't read your computers."); }
     else if s[0].catalog_state == ES_UNKNOWN { cy += es_v_note(f, "env.note", inside.x, cy, inside.w, ifx k.chat.enabled then "Reconnecting…" else "We couldn't tell if your computers loaded. Refresh to try again."); }
     else if s[0].catalog[0].ok && s[0].catalog[0].n == 0 { cy += es_v_note(f, "env.note", inside.x, cy, inside.w, "No computers are connected to this account."); }
+  } else if folder {
+    picked := es_folder_name(s); b: [ES_EL_ID] u8;
+    cy += es_v_choice(f, "env.folder.none", inside.x, cy, inside.w, "Workspace", "The folder your computer shares", picked.count == 0, true, check);
+    for i: 0..<s[0].nfolders {
+      name := cast(string) s[0].folders[i].path[0..<s[0].folders[i].np];
+      nb := es_index_put("env.folder.", i, b[..]);
+      cy += es_v_choice(f, cast(string) b[0..<nb], inside.x, cy, inside.w, name, "", name == picked, true, check);
+    }
   } else {
     es_repo_list(s, s[0].shown[..]);
     picked := es_repo_name(s);

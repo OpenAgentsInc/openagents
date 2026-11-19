@@ -69,3 +69,27 @@ esv_tap :: (sf: [] UiSurface, s: [] EnvSelect, id: string) -> bool #effects(all)
   #assert elt_find(t[..], "env.repo.none") >= 0 && elt_label(t[..], elt_find(t[..], "env.repo.1")) == "OpenAgentsInc/coax" && elt_find(t[..], "env.repo.2") < 0;
   #assert esv_tap(sf[..], s[..], "env.repo.1") && es_chips(s[..]).repository == "coax";
 }
+
+#test "on a paired computer the second chip picks the folder a new session opens in, with no account" {
+  s := [1] EnvSelect.[es_new()]; es_draft(s[..], "");
+  h := "fb9347515b57c2c3a066baa42dc6920b24645539a4e32c11ed36c2e4789c265a";
+  #assert es_paired_begin(s[..], 1, true) && es_paired_add(s[..], h, "Studio Mac"); es_paired_end(s[..]);
+  es_open_env(s[..], 1); #assert es_press(s[..], "env.device.0", 2);
+  // the computer offers nothing yet (or is an older one): the chip says Workspace and takes no press
+  c := es_chips(s[..]); #assert c.repository == "Workspace" && !c.repository_on && !es_press(s[..], "composer.repo", 3);
+  list: [2] EaFolder; list[0].np = ea_copy(list[0].path[..], "apps"); list[1].np = ea_copy(list[1].path[..], "docs");
+  es_folders_set(s[..], h, list[..], 2, true);
+  c = es_chips(s[..]); #assert c.repository_on && es_press(s[..], "composer.repo", 3) && s[0].sheet == ES_SHEET_REPO && !es_take_login(s[..]) && s[0].nout == 0;
+  st: [1] EsvStore;
+  sf := [1] UiSurface.[surface_over(Sheet.{under = st[0].under_a[..], over = st[0].over_a[..], hits = st[0].hits_a[..]}, st[0].rows_a[..],
+                                    Sheet.{under = st[0].under_b[..], over = st[0].over_b[..], hits = st[0].hits_b[..]}, st[0].rows_b[..])];
+  _ := esv_frame(st[..], sf[..], s[..]); t := [1] ElTable.[surface_rows(sf[..])];
+  #assert elt_find(t[..], "env.folder.none") >= 0 && elt_find(t[..], "env.folder.1") >= 0 && elt_find(t[..], "env.repo.none") < 0;
+  #assert esv_tap(sf[..], s[..], "env.folder.1") && s[0].sheet == ES_SHEET_NONE && es_folder_name(s[..]) == "docs" && es_chips(s[..]).repository == "docs";
+  // once the conversation exists its folder is set: the chip takes no press
+  es_folders_set(s[..], h, list[..], 2, false); #assert !es_chips(s[..]).repository_on && !es_press(s[..], "composer.repo", 4);
+  // folders another computer offered are not this one's
+  es_folders_set(s[..], "0000000000000000000000000000000000000000000000000000000000000000", list[..], 2, true); #assert !es_chips(s[..]).repository_on;
+  // choosing the computer again starts from its workspace
+  es_open_env(s[..], 5); #assert es_press(s[..], "env.device.0", 5) && es_folder_name(s[..]) == "";
+}

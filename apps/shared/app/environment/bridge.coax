@@ -64,6 +64,12 @@ es_bridge_sync :: (c: [] AppCore, b: [] EsBridge, s: [] EnvSelect) #effects(all)
     es_paired_end(s);
   }
   es_paired_note(s, app_device_pair_words(c));
+  // the paired computer's folders, and the folder a new session there opens in (GitHub #13713)
+  if app_device_on(c) {
+    e := c[0].device[0].e[..]; host := cast(string) c[0].device[0].host[..];
+    es_folders_set(s, host, e[0].folders[..], e[0].nfolders, e[0].ns == 0);
+    if cast(string) s[0].folders_host[..] == host && es_chosen_paired(s) >= 0 { f := es_folder_name(s); e[0].nfo = ea_copy(e[0].folder[..], f); if e[0].nfo < 0 { e[0].nfo = 0; } }
+  } else { es_folders_set(s, "", s[0].folders[0..<0], 0, false); }
   // the core moved to a paired computer by itself (a relaunch rejoined its conversation): the
   // draft takes it, so the chip names it and the slot is not set back
   core_env := app_environment(c);

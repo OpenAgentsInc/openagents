@@ -275,6 +275,34 @@ es_occupy :: (h:[]HsHost,slot:[]EsSlot,grant:string,device:string) #effects(all)
   home:[1024]u8;exe:[1200]u8;p:=fs_join(proc_getenv("HOME",home[..]),".local/bin/claude",exe[..]);if fs_kind(p)==FS_FILE {engine[0].claude_n=ea_copy(engine[0].claude[..],p);}
   slot[0].summary.updated=cxproc_wall_us()/1000;
 }
+// A Coder session's working folder (GitHub #13713): `folder` under the bound workspace `root`,
+// as its real path, or "" when it is not a folder inside the root (a link out of it included).
+es_folder_path :: (root:string,folder:string,out:[]u8)->string #effects(all) {
+  if root.count==0 || !ea_folder_ok(folder) {return "";}
+  joined:[1400]u8;real:=fs_realpath(fs_join(root,folder,joined[..]),out);
+  if !es_folder_inside(root,real) || fs_kind(real)!=FS_DIR {return "";}
+  return real;
+}
+// Whether real path `real` is strictly inside `root` (both canonical).
+es_folder_inside :: (root:string,real:string)->bool #effects(all) {
+  return root.count>0 && real.count>root.count+1 && cast(string)real[0..<root.count]==root && real[root.count]=='/';
+}
+// The folders a phone may open a session in: the workspace's own folders, not hidden, by name.
+es_folders :: (h:[]HsHost,v:[]EaView) #effects(all) {c:=h[0].environment[0].configuration[..];es_folders_at(cast(string)c[0].workspace[0..<c[0].nw],v);}
+es_folders_at :: (root:string,v:[]EaView) #effects(all) {
+  v[0].nfolders=0;
+  l:[1]FsList;if root.count==0 || fs_list(root,l[..])<1 {return;}
+  for i:0..<l[0].n {
+    if v[0].nfolders>=EA_FOLDERS {break;}name:=fs_entry(l[..],i);real:[1024]u8;
+    if es_folder_path(root,name,real[..]).count==0 {continue;}
+    f:=v[0].folders[v[0].nfolders..<v[0].nfolders+1];f[0].np=ea_copy(f[0].path[..],name);if f[0].np>0 {v[0].nfolders+=1;}
+  }
+}
+// The slot works in `folder` (already checked), and says so for a later resume.
+es_use_folder :: (slot:[]EsSlot,real:string,folder:string)->bool #effects(all) {
+  engine:=slot[0].engine[..];slot[0].nw=ea_copy(slot[0].workspace[..],real);engine[0].cwd_n=ea_copy(engine[0].cwd[..],real);
+  p:[1400]u8;return slot[0].nw>0 && engine[0].cwd_n>0 && fs_replace_durable(es_file(slot,".folder",p[..]),folder);
+}
 // A chat given back while idle takes a slot again with its saved history and Claude session:
 // its slot index, -1 when it cannot continue, -2 when no slot is free.
 es_resume :: (h:[]HsHost,id:string,grant:string,device:string)->int #effects(all) {
@@ -284,6 +312,10 @@ es_resume :: (h:[]HsHost,id:string,grant:string,device:string)->int #effects(all
   resume:=es_resume_id(owner,id,sid[..]);if resume.count==0 {return -1;}
   k:=es_take_slot(h);if k<0 {return -2;}
   slot:=h[0].environment[0].slots[k..<k+1];es_occupy(h,slot,owner,device);
+  // a chat opened in a folder continues there, or not at all (Claude keeps a session per folder)
+  fp:[1400]u8;fb:[EA_FOLDER]u8;fn:=fs_read(es_named_file(owner,id,".folder",fp[..]),fb[..]);
+  if fn>0 {c:=h[0].environment[0].configuration[..];real:[1024]u8;at:=es_folder_path(cast(string)c[0].workspace[0..<c[0].nw],cast(string)fb[0..<fn],real[..]);
+    if at.count==0 {xt_reset(slot);return -1;}engine:=slot[0].engine[..];slot[0].nw=ea_copy(slot[0].workspace[..],at);engine[0].cwd_n=ea_copy(engine[0].cwd[..],at);}
   saved:=summary[0];saved.updated=slot[0].summary.updated;slot[0].summary=saved;
   path:[1400]u8;data:[2097152]u8;n:=fs_read(es_file(slot,".jsonl",path[..]),data[..]);
   if n<0 || !pa_bind(h,slot,id,grant) {xt_reset(slot);return -1;}
@@ -554,9 +586,9 @@ es_native_read :: (h:[]HsHost,q:[]EaRequest,v:[]EaView) #effects(all) {
 }
 es_dispatch :: (h:[]HsHost,q:[]EaRequest,device:string,grant:string,v:[]EaView) #effects(all) {
   e:=h[0].environment[..];es_snapshot(h,q,grant,v);method:=cast(string)q[0].method[0..<q[0].nm];
-  if method=="DescribeEnvironment" {return;}
+  if method=="DescribeEnvironment" {es_folders(h,v);return;}
   if cast(string)q[0].workspace[0..<q[0].nw]!="default" {es_refuse(v,"workspace_refused");return;}
-  if method=="ListSessions" {if q[0].before==0 {es_saved_list(h,grant,v);}else {v[0].ns=0;}es_native_list(h,q,v);return;}
+  if method=="ListSessions" {if q[0].before==0 {es_saved_list(h,grant,v);es_folders(h,v);}else {v[0].ns=0;}es_native_list(h,q,v);return;}
   id:=cast(string)q[0].session[0..<q[0].ns];k:=es_find(e,id,grant);
   if k>=0 && e[0].slots[k].execution[0].active {es_refuse(v,"unsupported_profile");return;}
   if method=="ReadSession" {if k<0 {if ea_id(id,32) {es_read_saved(h,q,grant,v);}else {es_native_read(h,q,v);}}return;}
@@ -575,9 +607,15 @@ es_dispatch :: (h:[]HsHost,q:[]EaRequest,device:string,grant:string,v:[]EaView) 
     k=es_take_slot(h);
     if k<0 {es_refuse(v,"capacity");return;}
     slot:=e[0].slots[k..<k+1];es_occupy(h,slot,grant,device);engine:=slot[0].engine[..];
+    if q[0].nf>0 {
+      c:=e[0].configuration[..];real:[1024]u8;at:=es_folder_path(cast(string)c[0].workspace[0..<c[0].nw],cast(string)q[0].folder[0..<q[0].nf],real[..]);
+      if at.count==0 {slot[0].occupied=false;es_refuse(v,"folder_refused");return;}
+    }
     summary:=slot[0].summary;summary.ni=ea_copy(summary.id[..],id);summary.nw=ea_copy(summary.workspace[..],"default");summary.nt=ea_copy(summary.title[..],hs_cut(cast(string)q[0].text[0..<q[0].nt],200));
     summary.managed=true;summary.nc=ea_copy(summary.control[..],"available");summary.generation=cxproc_wall_us()/1000;slot[0].summary=summary;
     if !pa_bind(h,slot,id,grant) {slot[0].occupied=false;es_refuse(v,"conflict");return;}
+    if q[0].nf>0 {c:=e[0].configuration[..];real:[1024]u8;at:=es_folder_path(cast(string)c[0].workspace[0..<c[0].nw],cast(string)q[0].folder[0..<q[0].nf],real[..]);
+      if at.count==0 || !es_use_folder(slot,at,cast(string)q[0].folder[0..<q[0].nf]) {xt_reset(slot);es_refuse(v,"storage_unavailable");return;}}
     m:=[1]int.[engine[0].model];l:=[1]int.[engine[0].effort];
     if !es_choice(engine[0].cat[..],q,m[..],l[..]) {slot[0].occupied=false;es_refuse(v,"model_unavailable");return;}
   } else {
@@ -666,4 +704,10 @@ es_pair :: (args:[]Args)->int #effects(all) {
     _ = cxproc_sleep_ms(1000);
   }
   tool_errln("coder host pair: no phone asked with that code; run it again");return 3;
+}
+#test "a phone may open a session only in a folder inside the bound workspace" {
+  #assert es_folder_inside("/w/repo","/w/repo/apps") && es_folder_inside("/w/repo","/w/repo/apps/web");
+  #assert !es_folder_inside("/w/repo","/w/repo") && !es_folder_inside("/w/repo","/w/repo/") && !es_folder_inside("/w/repo","/w/repo-other/apps") && !es_folder_inside("/w/repo","/w") && !es_folder_inside("","/apps");
+  // a folder spelled to leave the workspace is refused before any path is read
+  real:[1024]u8;#assert es_folder_path("/w/repo","../x",real[..]).count==0 && es_folder_path("/w/repo",".git",real[..]).count==0 && es_folder_path("","apps",real[..]).count==0;
 }

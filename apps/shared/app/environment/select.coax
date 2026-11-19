@@ -86,6 +86,7 @@ EsDraft :: struct {
   key: [ES_DRAFT_KEY] u8; nk: int; held: bool; used: int;
   host: [64] u8; manual: bool;             // a chosen computer, or Default
   repo: [ES_REPO] u8; nr: int;             // nr 0: no repository
+  folder: [EA_FOLDER] u8; nf: int;         // on a paired computer: the folder a new session opens in (nf 0: its workspace)
 }
 // What a message sent from a draft carries.
 EsChoice :: struct {
@@ -110,6 +111,9 @@ EnvSelect :: struct {
   shown: [1] EsRepoList;       // the repository picker's rows, kept here so the frame's text outlives it
   // drafts
   drafts: [ES_DRAFTS] EsDraft; current: int; tick: int;
+  // the folders the paired computer `folders_host` offers, and whether the conversation can still
+  // choose one (a new chat on it): the bridge copies them from the device lane (GitHub #13713)
+  folders: [EA_FOLDERS] EaFolder; nfolders: int; folders_host: [64] u8; folder_open: bool;
   // the picker
   sheet: int; scroll: f32;
   // effects for the core
@@ -262,6 +266,27 @@ es_env_value :: (s: [] EnvSelect) -> string #effects(all) {
   if p >= 0 { return es_paired_name(s, p); }
   i := es_chosen(s);
   return ifx i >= 0 then es_computer_name(s, i) else "Default";
+}
+// The paired computer's folders, as the device lane last had them.
+es_folders_set :: (s: [] EnvSelect, host: string, list: [] EaFolder, n: int, open: bool) #effects(all) {
+  for i: 0..<64 { s[0].folders_host[i] = ifx i < host.count then host[i] else 0; }
+  s[0].nfolders = ifx n > EA_FOLDERS then EA_FOLDERS else n; for i: 0..<s[0].nfolders { s[0].folders[i] = list[i]; }
+  s[0].folder_open = open;
+}
+// Whether the draft can choose a folder now: it runs on a paired computer that offers some, in a new chat.
+es_folder_on :: (s: [] EnvSelect) -> bool #effects(all) {
+  p := es_chosen_paired(s); if p < 0 || !s[0].folder_open || s[0].nfolders == 0 { return false; }
+  return cast(string) s[0].folders_host[..] == cast(string) s[0].paired[0].entries[p].host[..];
+}
+es_folder_name :: (s: [] EnvSelect) -> string #effects(all) { d := es_now(s); return cast(string) s[0].drafts[d].folder[0..<s[0].drafts[d].nf]; }
+// What the folder chip shows: the chosen folder, or the computer's workspace.
+es_folder_value :: (s: [] EnvSelect) -> string #effects(all) { f := es_folder_name(s); return ifx f.count > 0 then f else "Workspace"; }
+es_choose_folder :: (s: [] EnvSelect, i: int) -> bool #effects(all) {
+  if !es_folder_on(s) || s[0].sheet != ES_SHEET_REPO || i < -1 || i >= s[0].nfolders { return false; }
+  d := es_now(s);
+  if i < 0 { s[0].drafts[d].nf = 0; } else { s[0].drafts[d].nf = ea_copy(s[0].drafts[d].folder[..], cast(string) s[0].folders[i].path[0..<s[0].folders[i].np]); if s[0].drafts[d].nf < 0 { s[0].drafts[d].nf = 0; } }
+  es_close(s);
+  return true;
 }
 es_repo_name :: (s: [] EnvSelect) -> string #effects(all) { d := es_now(s); return cast(string) s[0].drafts[d].repo[0..<s[0].drafts[d].nr]; }
 // What the repository chip shows: the name after its owner, or "No repository".
@@ -421,7 +446,9 @@ es_close :: (s: [] EnvSelect) #effects(all) { s[0].sheet = ES_SHEET_NONE; s[0].s
 // A picker opens: the list is read again when it is old, and computers whose
 // answer is old are asked again.
 es_open :: (s: [] EnvSelect, sheet: int, now_ms: int) #effects(all) {
-  if !s[0].in && !(sheet == ES_SHEET_ENV && es_own(s)) { s[0].want_login = true; return; }
+  folder := sheet == ES_SHEET_REPO && es_folder_on(s);
+  if !s[0].in && !(sheet == ES_SHEET_ENV && es_own(s)) && !folder { s[0].want_login = true; return; }
+  if folder { s[0].sheet = sheet; s[0].scroll = 0; return; }
   s[0].sheet = sheet; s[0].scroll = 0;
   if !s[0].in { return; }
   stale := !s[0].catalog[0].ok || now_ms - s[0].catalog_at_ms > ES_CATALOG_FRESH_MS;
@@ -434,6 +461,7 @@ es_open :: (s: [] EnvSelect, sheet: int, now_ms: int) #effects(all) {
 }
 es_open_env :: (s: [] EnvSelect, now_ms: int) #effects(all) { es_open(s, ES_SHEET_ENV, now_ms); }
 es_open_repo :: (s: [] EnvSelect, now_ms: int) #effects(all) {
+  if es_chosen_paired(s) >= 0 { if es_folder_on(s) { es_open(s, ES_SHEET_REPO, now_ms); } return; }
   if s[0].in && !s[0].repo_ready { return; }
   es_open(s, ES_SHEET_REPO, now_ms);
 }
@@ -466,7 +494,7 @@ es_choose_computer :: (s: [] EnvSelect, i: int) -> bool #effects(all) {
 es_choose_paired :: (s: [] EnvSelect, i: int) -> bool #effects(all) {
   if i < 0 || i >= s[0].paired[0].n { return false; }
   d := es_now(s);
-  s[0].drafts[d].manual = true; s[0].drafts[d].host = s[0].paired[0].entries[i].host; s[0].drafts[d].nr = 0;
+  s[0].drafts[d].manual = true; s[0].drafts[d].host = s[0].paired[0].entries[i].host; s[0].drafts[d].nr = 0; s[0].drafts[d].nf = 0;
   es_close(s);
   return true;
 }
@@ -520,7 +548,7 @@ es_index_of :: (id: string, prefix: string) -> int #effects(all) {
 // False: the id is not ours, or the press does nothing now.
 es_press :: (s: [] EnvSelect, id: string, now_ms: int) -> bool #effects(all) {
   if id == "composer.environment" { es_open_env(s, now_ms); return true; }
-  if id == "composer.repo" { if s[0].in && !s[0].repo_ready { return false; } es_open_repo(s, now_ms); return true; }
+  if id == "composer.repo" { if es_chosen_paired(s) >= 0 { if !es_folder_on(s) { return false; } } else if s[0].in && !s[0].repo_ready { return false; } es_open_repo(s, now_ms); return true; }
   if s[0].sheet == ES_SHEET_NONE { return false; }
   if id == "env.close" || id == "env.scrim" { es_close(s); return true; }
   if id == "env.refresh" { es_refresh(s, now_ms); return true; }
@@ -531,6 +559,8 @@ es_press :: (s: [] EnvSelect, id: string, now_ms: int) -> bool #effects(all) {
     for i: 0..<s[0].catalog[0].n { b: [ES_EL_ID] u8; if id == es_computer_id(s, i, b[..]) { return es_choose_computer(s, i); } }
     return false;
   }
+  if id == "env.folder.none" { return es_choose_folder(s, -1); }
+  if es_index_of(id, "env.folder.") >= 0 { return es_choose_folder(s, es_index_of(id, "env.folder.")); }
   if id == "env.repo.none" { es_choose_no_repo(s); return true; }
   return es_choose_repo(s, es_index_of(id, "env.repo."));
 }

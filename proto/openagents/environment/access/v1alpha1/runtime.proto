@@ -24,6 +24,9 @@ message RuntimeRequest {
   // Writers omit them when unset, so a request without them is unchanged on the wire.
   optional string model = 13 [json_name = "model"];
   optional string effort = 14 [json_name = "effort"];
+  // OpenSession only: a folder the computer offered (RuntimeView.folders), relative to the bound
+  // workspace, plain segments, none empty, hidden, "." or ".."; absent opens the workspace itself.
+  optional string folder = 15 [json_name = "folder"];
 }
 message RuntimeItem {
   string item_id = 1 [json_name = "item_id"];
@@ -92,6 +95,9 @@ message RuntimeView {
   repeated RuntimeModel models = 15 [json_name = "models"]; // at most 12
   // Absent from an older computer; items plus thoughts are at most 64.
   repeated RuntimeThought thoughts = 16 [json_name = "thoughts"];
+  // DescribeEnvironment and ListSessions: the workspace's visible folders a session may open in, at
+  // most 24; absent from an older computer.
+  repeated string folders = 17 [json_name = "folders"];
 }
 // Private local configuration; never returned in a RuntimeView.
 message RuntimeConfiguration {
