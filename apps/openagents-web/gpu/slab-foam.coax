@@ -67,14 +67,20 @@ slab_foam_streak :: (wa:f32,wc:f32,s:f32)->f32 {
   return ifx v<0.5f32 then e else 1.0f32-e;
 }
 // A cover drawn on those streaks for a pixel `fp` metres wide: the streaks are sized to the pixel
-// (a few pixels wide, never a texel of the field), in octaves of two blended by the pixel's size so
-// the pattern does not bend with distance. Both octaves whiten the same share.
+// (their finest octave, 1.3 units, two to four pixels wide; never a texel of the field), in octaves
+// of two blended by the pixel's size so the pattern does not bend with distance, and their edges
+// are as soft as the rank's step across one pixel (about 0.7 of a pixel's share of a unit). A
+// streak a pixel wide with a hard edge is lit in one frame and missed in the next as the eye moves
+// (the far sea's flicker). Both octaves whiten the same share.
 slab_foam_streaks :: (cover:f32,wa:f32,wc:f32,fp:f32)->f32 {
-  l:f32=wg_log2(fmax(fp,0.25f32));
+  px:f32=fmax(fp,0.125f32);
+  l:f32=wg_log2(px)+2.0f32;
   s:f32=pow(2.0f32,floor(l));
-  w0:f32=slab_foam_show(cover,slab_foam_streak(wa,wc,s),0.03f32,0.0f32,1.0f32);
-  w1:f32=slab_foam_show(cover,slab_foam_streak(wa+31.0f32,wc+17.0f32,2.0f32*s),0.03f32,0.0f32,1.0f32);
-  return mix(w0,w1,fract(l));
+  soft:f32=clampf((0.35f32*px)/s,0.03f32,0.2f32);
+  w0:f32=slab_foam_show(cover,slab_foam_streak(wa,wc,s),soft,0.0f32,1.0f32);
+  w1:f32=slab_foam_show(cover,slab_foam_streak(wa+31.0f32,wc+17.0f32,2.0f32*s),soft*0.5f32,0.0f32,1.0f32);
+  // a pixel wider than a crest's streak of white (a metre or two) sees the cover itself
+  return mix(mix(w0,w1,fract(l)),clampf(cover,0.0f32,1.0f32),smoothstep(1.5f32,6.0f32,px));
 }
 // A cover (0 to 1) drawn against a rank: soft-edged, with `soft` the edge's width in cover; a
 // pixel `fp` metres wide that holds many of the pattern's grains (about `grain` metres) is the
@@ -110,7 +116,9 @@ slab_foam_white :: (p:V2,t:f32,fp:f32,dist:f32,wind:V2,spin:f32,gate:f32,cover:f
   }
   mean:V2=slab_foam_mean(frame);
   // a pixel wider than a texel: the field's own mean, so the far sea neither sparkles nor goes bald
-  far:f32=smoothstep(0.6f32*tex,3.0f32*tex,fp);
+  // (a pixel past a texel and a half falls between the bilinear samples' peaks, and catches a
+  // different one each frame as the eye or the field moves)
+  far:f32=smoothstep(0.4f32*tex,1.5f32*tex,fp);
   fa=slab_foam_mix2(fa,mean,far);
   // whitecaps: fresh foam is a solid crest band; as it thins the edge eats in and it laces
   // the pattern grows with the pixel (to a texel's size at most), so a coarse view (a phone's,
@@ -129,7 +137,9 @@ slab_foam_white :: (p:V2,t:f32,fp:f32,dist:f32,wind:V2,spin:f32,gate:f32,cover:f
   }
   soft:f32=0.05f32+(0.1f32*(1.0f32-fa.x));
   // and it is brightest fresh: a thinning patch is a film the water shows through
-  cap:f32=slab_foam_show(fa.x,rank,soft,fp,1.5f32/zoom)*(0.35f32+(0.65f32*smoothstep(0.15f32,0.7f32,fa.x)));
+  // (the rank's coarse octave is about 3.3/zoom metres down the wind: a pixel past half of that
+  // sees the cover, so the bands never come down to a pixel's width and flicker)
+  cap:f32=slab_foam_show(fa.x,rank,soft,fp,0.8f32/zoom)*(0.35f32+(0.65f32*smoothstep(0.15f32,0.7f32,fa.x)));
   // where a texel is wider than about half a pixel, a break (one coarse sample, or a run of them
   // along a long wave's trough) would draw as a flat floe tens of pixels wide. There the field
   // keeps a quarter of where it broke and spreads the rest evenly (so the mean cover is still the
@@ -158,7 +168,7 @@ slab_foam_white :: (p:V2,t:f32,fp:f32,dist:f32,wind:V2,spin:f32,gate:f32,cover:f
   white:f32=fmax(cap,lane);
   // spindrift: the wind tears the tops off fresh crests and lays them downwind in smoking streaks
   if (spin>0.0f32) {
-    up:V2=slab_foam_at(wg_sub_f2f2(p,wg_mul_f2f(wind,7.0f32)),frame);
+    up:V2=slab_foam_mix2(slab_foam_at(wg_sub_f2f2(p,wg_mul_f2f(wind,7.0f32)),frame),mean,far);
     torn:f32=smoothstep(0.35f32,0.9f32,fmax(fa.x,up.x));
     smoke:f32=slab_noise(v2((wa*0.05f32)-(t*1.1f32),wc*0.35f32));
     white=fmax(white,(spin*torn)*(smoothstep(0.3f32,0.75f32,smoke)*(0.4f32+(0.4f32*gate))));
