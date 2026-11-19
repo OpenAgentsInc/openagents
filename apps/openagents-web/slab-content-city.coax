@@ -11,6 +11,9 @@
 //                 lines, crossings, lamps, bollards, signs, benches, covers, where nothing stands
 //   blocks        towers, the medical block, data halls: plinths, piers, entrances, fins or belts,
 //                 roof parapets and roof plant, window surrounds, cooling yards
+//   works         pipe racks, louvres and doors, stair towers and valve stations on process halls;
+//                 walkways, ladders and ducts on stacks and tanks; the moonpools' gantries; fans
+//                 on the mining yard's containers; the desalination plant's trains and sea pipes
 // The parts are the Metaverse Engine's (metaverse-engine/arch/city.coax, works.coax, plaza.coax).
 // Small things carry a distance (pr_near) and most are fine (pr_fine): a phone leaves those out.
 #load "../../metaverse-engine/arch/works.coax";
@@ -26,16 +29,18 @@ CITY_FLOOR :: 3.9f32;      // a tower's storey and its mullions' module: the gla
 CITY_MODULE :: 4.5f32;
 CITY_GRID :: 100.0f32;     // the streets' grid: the deck's paint (gpu/slab.coax slab_paint)
 // What the last list placed, by rule (the report's and the checks' counts).
-CITY_EDGE :: 0; CITY_DOCK :: 1; CITY_STREETS :: 2; CITY_BLOCKS :: 3; CITY_RULES :: 4;
+CITY_EDGE :: 0; CITY_DOCK :: 1; CITY_STREETS :: 2; CITY_BLOCKS :: 3; CITY_WORKS :: 4; CITY_RULES :: 5;
 
 SlabCity :: struct {
   made: bool;
   look: ArchCityLook;        // the material rows: metal, dark, glass, lamp, stone, paint
+  panel: int;                // ribbed metal sheet
   // parts
   rail: int; lamp_post: int; bench: int; bollard: int; lift: int; stair_head: int;
   crane: int; ramp: int;
   sign: int; dashes: int; zebra: int; cover: int;
   canopy: int; ring: int; ring_wide: int; fan: int; unit: int; chiller: int; mast: int; frame: int; louvre: int; pipe: int;
+  rack: [2] int; foot: int; ladder: int; ring_stack: int; ring_tank: int; stair: int; valves: int; fans: int; train: int;
   placed: [CITY_RULES] int;
 }
 
@@ -49,6 +54,7 @@ slab_city_make :: (ph: [] SlabPhoto, p: [] ArchPen) {
   k.stone = photo_material(ph, 0.8, 0.78, 0.73, 0.85, 0, PR_PATTERN_CONCRETE, 0, 0);
   k.paint = photo_material(ph, 0.95, 0.95, 0.92, 0.75, 0, PR_PATTERN_PLAIN, 0, 0);
   c.look = k;
+  c.panel = photo_material(ph, 0.74, 0.76, 0.78, 0.45, 0, PR_PATTERN_PANELS, 0, 0);
   c.rail = photo_part(ph, arch_railing(p, k, 12, 0.34, 5, 2));
   c.lamp_post = photo_part(ph, arch_street_lamp(p, k, 8.5, 2.2));
   c.bench = photo_part(ph, arch_bench(p, 2.2));
@@ -76,7 +82,17 @@ slab_city_make :: (ph: [] SlabPhoto, p: [] ArchPen) {
   c.louvre = photo_part(ph, arch_louvre(p, k, 8));
   arch_material(p, k.metal, 0, 0, 0);
   c.pipe = photo_part(ph, arch_pipe(p, 8));
-  c.made = c.pipe >= 0;
+  c.rack[0] = photo_part(ph, arch_pipe_rack(p, k, 12, 3.2, 6.4, 2, 3, CITY_SEED));
+  c.rack[1] = photo_part(ph, arch_pipe_rack(p, k, 12, 3.2, 6.4, 2, 3, CITY_SEED + 9));
+  c.foot = photo_part(ph, arch_cage_ladder(p, k, 9, 2.4));
+  c.ladder = photo_part(ph, arch_cage_ladder(p, k, 9, 0));
+  c.ring_stack = photo_part(ph, arch_ring_walk(p, k, 12, 0.22, 1.1));
+  c.ring_tank = photo_part(ph, arch_ring_walk(p, k, 16, 0.11, 1.1));
+  c.stair = photo_part(ph, arch_stair_unit(p, k, 3.6, 4.4, 1.1));
+  c.valves = photo_part(ph, arch_valve_station(p, k));
+  c.fans = photo_part(ph, arch_fan_bank(p, k, 4, 0.55, 1.5));
+  c.train = photo_part(ph, arch_vessel_rack(p, k, 3, 4, 7));
+  c.made = c.train >= 0;
   ph[0].content.city = c;
 }
 
@@ -608,6 +624,313 @@ city_blocks :: (ph: [] SlabPhoto, l: [] PrList, w: SlabWorld, d: CityDeck) {
   pr_fine(l, false);
 }
 
+// ---- the works
+// A run of pipe rack from a to b along x or z: whole units of the rack's 12 m, stretched to fit.
+city_rack :: (ph: [] SlabPhoto, l: [] PrList, ax: f32, az: f32, bx: f32, bz: f32, y: f32, seed: int) {
+  c := ph[0].content.city;
+  run := abs(bx - ax) + abs(bz - az);
+  if run < 7 { return; }
+  tx := (bx - ax) / run; tz := (bz - az) / run;
+  n := cast(int) floor(run / 12 + 0.5); if n < 1 { n = 1; }
+  seg := run / cast(f32) n;
+  for k: 0..<n {
+    s := (cast(f32) k + 0.5) * seg;
+    r := pr_put(l, c.rack[(seed + k) % 2], ax + tx * s, y, az + tz * s, city_along(tx, tz), 1);
+    pr_stretch(l, r, seg / 12, 1, 1);
+  }
+}
+// A process hall (the OTEC halls, the heat exchangers, industry, desalination): a pipe rack down
+// its clearest long side with drops into the wall and valve stations beyond it, louvres and doors
+// in its other walls, a stair tower at an end, and plant and a handrail on a flat roof.
+city_process :: (ph: [] SlabPhoto, l: [] PrList, w: SlabWorld, d: CityDeck, i: int) {
+  c := ph[0].content.city; k := c.look;
+  x0 := city_rec(w, i, 0); y0 := city_rec(w, i, 1); z0 := city_rec(w, i, 2); x1 := city_rec(w, i, 4); y1 := city_rec(w, i, 5); z1 := city_rec(w, i, 6);
+  dx := x1 - x0; dz := z1 - z0; shape := city_shape(w, i); kind := city_kind(w, i);
+  if dx < 14 || dz < 14 || y1 - y0 < 8 { return; }
+  seed := CITY_SEED + i * 131;
+  gabled := shape == SLAB_GABLE_X || shape == SLAB_GABLE_Z;
+  // (a gabled hall's walls stop under its roof, as slab-photoreal.coax photo_plan stands it)
+  wall := y1 - y0;
+  if gabled { wall -= arch_lowf((ifx shape == SLAB_GABLE_X then dz else dx) * 0.5 * 0.36, (y1 - y0) * 0.45); }
+  long_x := ifx gabled then shape == SLAB_GABLE_X else dx >= dz;
+  fa := ifx long_x then 2 else 0; fb := fa + 1;
+  // the rack's side: the long one with more clear deck beside it
+  side := -1; most := 1;
+  for f: fa..<fb + 1 {
+    face := city_face(x0, z0, x1, z1, f); n := 0;
+    for j: 0..<cast(int) floor(face.half * 2 / 6) {
+      at := -face.half + 3 + 6 * cast(f32) j;
+      if city_open(w, d, face.cx + face.tx * at + face.nx * 3.6, face.cz + face.tz * at + face.nz * 3.6, 1.9, i) { n += 1; }
+    }
+    if n > most { most = n; side = f; }
+  }
+  pr_fine(l, false);
+  if side >= 0 {
+    face := city_face(x0, z0, x1, z1, side);
+    cells := cast(int) floor(face.half * 2 / 6);
+    start: f32 = 0; going := false;
+    for j: 0..<cells + 1 {
+      at := -face.half + 3 + 6 * cast(f32) j;
+      px := face.cx + face.tx * at + face.nx * 3.6; pz := face.cz + face.tz * at + face.nz * 3.6;
+      ok := j < cells && city_open(w, d, px, pz, 1.9, i);
+      if ok && !going { start = at - 3; going = true; }
+      if !ok && going {
+        going = false; stop := at - 3;
+        city_rack(ph, l, face.cx + face.tx * start + face.nx * 3.6, face.cz + face.tz * start + face.nz * 3.6, face.cx + face.tx * stop + face.nx * 3.6, face.cz + face.tz * stop + face.nz * 3.6, y0, seed);
+      }
+      if ok {
+        pr_fine(l, true);
+        // a drop into the wall every fourth cell, and a valve station out beyond the rack
+        if j % 4 == 1 { city_pipe(ph, l, face.cx + face.tx * at, face.cz + face.tz * at, face.cx + face.tx * at + face.nx * 3.6, face.cz + face.tz * at + face.nz * 3.6, y0 + 4.5, 0.45, 0.66, 0.68, 0.7, CITY_NEAR_STEEL); }
+        vx := face.cx + face.tx * at + face.nx * 7.6; vz := face.cz + face.tz * at + face.nz * 7.6;
+        if j % 5 == 2 && city_open(w, d, vx, vz, 2.3, i) { _ = city_put(l, c.valves, vx, y0, vz, city_along(face.tx, face.tz), CITY_NEAR_SEAT); }
+        pr_fine(l, false);
+      }
+    }
+  }
+  // the other walls: louvres, and doors in the long one; a great door in each gable end
+  pr_fine(l, true);
+  for f: 0..<4 {
+    if f == side { continue; }
+    face := city_face(x0, z0, x1, z1, f);
+    long_face := f == fa || f == fb;
+    city_vents(ph, l, w, d, i, face, y0, arch_lowf(wall * 0.55, 9), 12, long_face);
+    if gabled && !long_face && city_open(w, d, face.cx + face.nx * 5, face.cz + face.nz * 5, 2, i) {
+      _ = city_wall_part(l, c.louvre, face, 0, y0, arch_lowf(face.half * 0.6, 9), arch_lowf(wall * 0.7, 7.5), CITY_NEAR_PLANT);
+    }
+  }
+  // a stair tower up an end wall, storey on storey, each turned half round on the one below
+  for j: 0..<4 {
+    f := (fa + 2 + j + cast(int) (arch_hash(seed, 9) * 2)) % 4;
+    if f == side { continue; }
+    face := city_face(x0, z0, x1, z1, f);
+    at := face.half - 4.6;
+    px := face.cx + face.tx * at + face.nx * 1.5; pz := face.cz + face.tz * at + face.nz * 1.5;
+    if at < 1 || !city_open(w, d, px, pz, 2.4, i) { continue; }
+    storeys := cast(int) floor(wall / 3.6); if storeys > 12 { storeys = 12; }
+    for s: 0..<storeys { _ = city_put(l, c.stair, px, y0 + 3.6 * cast(f32) s, pz, city_along(face.tx, face.tz) + (ifx s % 2 == 0 then 0.0f32 else CITY_PI), CITY_NEAR_STEEL); }
+    break;
+  }
+  pr_fine(l, false);
+  if !gabled {
+    city_parapet(ph, l, x0, z0, x1, z1, y1, 1.1, 0.78);
+    city_roof_plant(ph, l, x0, z0, x1, z1, y1, 14, 0.5, seed + 7, false);
+  }
+  if kind == SLAB_KIND_DESAL { city_desal(ph, l, w, d, i, side); }
+}
+// The desalination plant: reverse-osmosis trains beside it, and its two sea pipes carried over
+// the promenade to the nearest edge and down the wall into the water.
+city_desal :: (ph: [] SlabPhoto, l: [] PrList, w: SlabWorld, d: CityDeck, i: int, rack_side: int) {
+  c := ph[0].content.city; k := c.look;
+  x0 := city_rec(w, i, 0); y0 := city_rec(w, i, 1); z0 := city_rec(w, i, 2); x1 := city_rec(w, i, 4); z1 := city_rec(w, i, 6);
+  pr_fine(l, true);
+  for f: 0..<4 {
+    if f == rack_side { continue; }
+    face := city_face(x0, z0, x1, z1, f); trains := 0;
+    for j: 0..<3 {
+      at := (cast(f32) j - 1) * 8.5;
+      px := face.cx + face.tx * at + face.nx * 3; pz := face.cz + face.tz * at + face.nz * 3;
+      if abs(at) > face.half - 3 || !city_open(w, d, px, pz, 1.4, i) { continue; }
+      _ = city_put(l, c.train, px, y0, pz, city_along(face.tx, face.tz), CITY_NEAR_STEEL);
+      trains += 1;
+    }
+    if trains > 0 { break; }
+  }
+  pr_fine(l, false);
+  // the nearest edge that is not the basin's
+  best := 0; gap := x0 - d.x0;
+  if d.x1 - x1 < gap { best = 1; gap = d.x1 - x1; }
+  if d.z1 - z1 < gap { best = 2; gap = d.z1 - z1; }
+  if z0 - d.z0 < gap && !(d.dock && x1 > d.bx0 && x0 < d.bx1) { best = 3; gap = z0 - d.z0; }
+  if gap > 120 { return; }
+  face := city_face(x0, z0, x1, z1, ifx best == 0 then 1 else ifx best == 1 then 0 else best);
+  for j: 0..<2 {
+    at := (ifx j == 0 then -2.2f32 else 2.2f32); bore: f32 = ifx j == 0 then 1.0 else 0.7;
+    red: f32 = ifx j == 0 then 0.32 else 0.56; green: f32 = ifx j == 0 then 0.44 else 0.55; blue: f32 = ifx j == 0 then 0.52 else 0.5;
+    ax := face.cx + face.tx * at; az := face.cz + face.tz * at;
+    ex := ax + face.nx * (gap + 0.9); ez := az + face.nz * (gap + 0.9);
+    city_pipe(ph, l, ax, az, ex + face.nx * bore * 0.5, ez + face.nz * bore * 0.5, d.y + 4.2, bore, red, green, blue, 0);
+    // its trestles over the walk, and the riser down the wall with its clamps
+    for s: 0..<cast(int) floor(gap / 6) {
+      t := 3 + 6 * cast(f32) s;
+      if t > gap - 1.5 { continue; }
+      _ = city_box(ph, l, ax + face.nx * t - 0.15, d.y, az + face.nz * t - 0.15, ax + face.nx * t + 0.15, d.y + 4.2, az + face.nz * t + 0.15, k.metal, 0.4, 0.42, 0.44, CITY_NEAR_KERB);
+    }
+    r := pr_put(l, ph[0].post, ex, -3, ez, 0, 1);
+    pr_stretch(l, r, bore, d.y + 4.2 + bore + 3, bore); pr_made_of(l, r, k.metal); pr_tint(l, r, red, green, blue);
+    for s: 0..<cast(int) floor(d.y / 14) {
+      yb := 6 + 14 * cast(f32) s;
+      _ = city_box(ph, l, ex - bore * 0.7 - face.nx * 0.3, yb, ez - bore * 0.7 - face.nz * 0.3, ex + bore * 0.7 - face.nx * 0.3, yb + 0.3, ez + bore * 0.7 - face.nz * 0.3, k.metal, 0.3, 0.31, 0.32, CITY_NEAR_MARK);
+    }
+  }
+}
+// A way out from an upright cylinder at (cx, cz) to clear deck: one of the four level
+// directions, the first from a seeded start whose foot is clear. 0 to 3 as city_face's sides, or -1.
+city_clear_side :: (w: SlabWorld, d: CityDeck, i: int, cx: f32, cz: f32, r: f32, seed: int) -> int {
+  first := cast(int) (arch_hash(seed, 4) * 4);
+  for j: 0..<4 {
+    f := city_face(cx - r, cz - r, cx + r, cz + r, (first + j) % 4);
+    if city_open(w, d, f.cx + f.nx * 1.6, f.cz + f.nz * 1.6, 0.8, i) { return (first + j) % 4; }
+  }
+  return -1;
+}
+// A caged ladder up a cylinder's side from y0 to y1: whole 9 m lengths stretched to fit, the
+// lowest open at its foot.
+city_ladder :: (ph: [] SlabPhoto, l: [] PrList, cx: f32, cz: f32, r: f32, side: int, y0: f32, y1: f32) {
+  c := ph[0].content.city;
+  if side < 0 || y1 - y0 < 4 { return; }
+  f := city_face(cx - r, cz - r, cx + r, cz + r, side);
+  n := cast(int) floor((y1 - y0) / 9 + 0.5); if n < 1 { n = 1; }
+  sy := (y1 - y0) / (9 * cast(f32) n);
+  for k: 0..<n {
+    q := city_put(l, ifx k == 0 then c.foot else c.ladder, f.cx, y0 + 9 * sy * cast(f32) k, f.cz, city_facing(f.nx, f.nz), CITY_NEAR_SEAT);
+    pr_stretch(l, q, 1, sy, 1);
+  }
+}
+// A stack or a tall column: walkways round it near its top and down its height, a ladder up to
+// them, and from a stack a flue duct to the hall beside it.
+city_stack :: (ph: [] SlabPhoto, l: [] PrList, w: SlabWorld, d: CityDeck, i: int) {
+  c := ph[0].content.city;
+  x0 := city_rec(w, i, 0); y0 := city_rec(w, i, 1); z0 := city_rec(w, i, 2); x1 := city_rec(w, i, 4); y1 := city_rec(w, i, 5); z1 := city_rec(w, i, 6);
+  cx := (x0 + x1) * 0.5; cz := (z0 + z1) * 0.5; r := arch_lowf(x1 - x0, z1 - z0) * 0.5;
+  if r < 1.5 || y1 - y0 < 16 { return; }
+  seed := CITY_SEED + i * 131;
+  pr_fine(l, false);
+  top := y1 - 3.5; yr := top;
+  while yr > y0 + 16 {
+    q := city_put(l, ifx r < 6.5 then c.ring_stack else c.ring_tank, cx, yr, cz, 0, CITY_NEAR_PLANT);
+    pr_stretch(l, q, r, 1, r);
+    yr -= 26;
+  }
+  pr_fine(l, true);
+  city_ladder(ph, l, cx, cz, r, city_clear_side(w, d, i, cx, cz, r, seed), y0, top);
+  pr_fine(l, false);
+  if city_kind(w, i) != SLAB_KIND_STACK { return; }
+  // the duct: to the nearest hall it stands square to
+  best := -1; gap: f32 = 90; along_x := true; wall_at: f32 = 0;
+  for j: SLAB_HULL_PIECES..<w.count {
+    kind := city_kind(w, j); sh := city_shape(w, j);
+    if (kind != SLAB_KIND_PLANT && kind != SLAB_KIND_INDUSTRY) || sh == SLAB_CYLINDER { continue; }
+    a0 := city_rec(w, j, 0); b0 := city_rec(w, j, 2); a1 := city_rec(w, j, 4); b1 := city_rec(w, j, 6);
+    if cz > b0 + 2 && cz < b1 - 2 {
+      g := ifx cx < a0 then a0 - cx - r else cx - r - a1;
+      if g > 1 && g < gap { gap = g; best = j; along_x = true; wall_at = ifx cx < a0 then a0 else a1; }
+    }
+    if cx > a0 + 2 && cx < a1 - 2 {
+      g := ifx cz < b0 then b0 - cz - r else cz - r - b1;
+      if g > 1 && g < gap { gap = g; best = j; along_x = false; wall_at = ifx cz < b0 then b0 else b1; }
+    }
+  }
+  if best < 0 { return; }
+  bore := arch_lowf(r * 0.45, 2.4);
+  if along_x { city_pipe(ph, l, ifx wall_at > cx then cx + r * 0.9 else cx - r * 0.9, cz, wall_at, cz, y0 + 5, bore, 0.8, 0.8, 0.78, 0); }
+  else { city_pipe(ph, l, cx, ifx wall_at > cz then cz + r * 0.9 else cz - r * 0.9, cx, wall_at, y0 + 5, bore, 0.8, 0.8, 0.78, 0); }
+}
+// A tank: a railed walk round its rim, a ladder up to it, a valve station at its foot, and a
+// pipe to each tank that stands square to it.
+city_tank :: (ph: [] SlabPhoto, l: [] PrList, w: SlabWorld, d: CityDeck, i: int) {
+  c := ph[0].content.city;
+  x0 := city_rec(w, i, 0); y0 := city_rec(w, i, 1); z0 := city_rec(w, i, 2); x1 := city_rec(w, i, 4); y1 := city_rec(w, i, 5); z1 := city_rec(w, i, 6);
+  cx := (x0 + x1) * 0.5; cz := (z0 + z1) * 0.5; r := arch_lowf(x1 - x0, z1 - z0) * 0.5;
+  if r < 3 || y1 - y0 < 5 { return; }
+  seed := CITY_SEED + i * 131;
+  pr_fine(l, false);
+  q := city_put(l, ifx r < 6.5 then c.ring_stack else c.ring_tank, cx, y1 - 0.2, cz, 0, CITY_NEAR_PLANT);
+  pr_stretch(l, q, r, 1, r);
+  side := city_clear_side(w, d, i, cx, cz, r, seed);
+  pr_fine(l, true);
+  city_ladder(ph, l, cx, cz, r, side, y0, y1 - 0.2);
+  if side >= 0 {
+    f := city_face(cx - r, cz - r, cx + r, cz + r, (side + 2) % 4);
+    vx := f.cx + f.nx * 3.4; vz := f.cz + f.nz * 3.4;
+    if city_open(w, d, vx, vz, 2.2, i) { _ = city_put(l, c.valves, vx, y0, vz, city_along(f.tx, f.tz), CITY_NEAR_SEAT); }
+  }
+  for j: i + 1..<w.count {
+    if city_kind(w, j) != SLAB_KIND_TANK || city_shape(w, j) != SLAB_CYLINDER { continue; }
+    ox := (city_rec(w, j, 0) + city_rec(w, j, 4)) * 0.5; oz := (city_rec(w, j, 2) + city_rec(w, j, 6)) * 0.5; rr := (city_rec(w, j, 4) - city_rec(w, j, 0)) * 0.5;
+    if abs(ox - cx) < 2 && abs(oz - cz) - r - rr < 40 { city_pipe(ph, l, cx, ifx oz > cz then cz + r else cz - r, cx, ifx oz > cz then oz - rr else oz + rr, y0 + 0.3, 0.5, 0.66, 0.68, 0.7, CITY_NEAR_STEEL); }
+    if abs(oz - cz) < 2 && abs(ox - cx) - r - rr < 40 { city_pipe(ph, l, ifx ox > cx then cx + r else cx - r, cz, ifx ox > cx then ox - rr else ox + rr, cz, y0 + 0.3, 0.5, 0.66, 0.68, 0.7, CITY_NEAR_STEEL); }
+  }
+  pr_fine(l, false);
+}
+// A moonpool (open water through the deck that no plaza holds): a grating and rail round its
+// lip, and a gantry over it for the cold-water pipe.
+city_moonpool :: (ph: [] SlabPhoto, l: [] PrList, w: SlabWorld, d: CityDeck, i: int) {
+  c := ph[0].content.city; k := c.look;
+  x0 := city_rec(w, i, 0); z0 := city_rec(w, i, 2); x1 := city_rec(w, i, 4); z1 := city_rec(w, i, 6);
+  cx := (x0 + x1) * 0.5; cz := (z0 + z1) * 0.5; r := arch_lowf(x1 - x0, z1 - z0) * 0.5;
+  if r < 3 || r > 12 { return; }
+  for j: SLAB_HULL_PIECES..<w.count {
+    kind := city_kind(w, j);
+    if (kind == SLAB_KIND_PLAZA || kind == SLAB_KIND_FOUNTAIN) && cx > city_rec(w, j, 0) && cx < city_rec(w, j, 4) && cz > city_rec(w, j, 2) && cz < city_rec(w, j, 6) { return; }
+  }
+  pr_fine(l, false);
+  q := city_put(l, c.ring_stack, cx, d.y + 0.06, cz, 0, CITY_NEAR_PLANT);
+  pr_stretch(l, q, r / 1.22, 1, r / 1.22);
+  a := r + 2.4; y := d.y;
+  for corner: 0..<4 {
+    px := cx + (ifx corner & 1 == 0 then -a else a); pz := cz + (ifx corner & 2 == 0 then -a else a);
+    _ = city_box(ph, l, px - 0.35, y, pz - 0.35, px + 0.35, y + 10, pz + 0.35, k.metal, 0.9, 0.62, 0.1, 0);
+  }
+  for side: 0..<2 {
+    pz := cz + (ifx side == 0 then -a else a);
+    _ = city_box(ph, l, cx - a - 0.35, y + 10, pz - 0.4, cx + a + 0.35, y + 10.8, pz + 0.4, k.metal, 0.9, 0.62, 0.1, 0);
+  }
+  _ = city_box(ph, l, cx - 0.7, y + 10.8, cz - a - 0.4, cx + 0.7, y + 11.6, cz + a + 0.4, k.metal, 0.9, 0.62, 0.1, 0);
+  _ = city_box(ph, l, cx - 0.8, y + 7.6, cz - 0.8, cx + 0.8, y + 9.0, cz + 0.8, k.metal, 0.3, 0.31, 0.32, 0);
+  _ = city_box(ph, l, cx - 0.07, y + 9.0, cz - 0.07, cx + 0.07, y + 10.8, cz + 0.07, k.metal, 0.3, 0.31, 0.32, CITY_NEAR_KERB);
+}
+// The cooling plant: a fan in its cowl over each painted one, louvres round its walls.
+city_cooling :: (ph: [] SlabPhoto, l: [] PrList, w: SlabWorld, d: CityDeck, i: int) {
+  c := ph[0].content.city;
+  x0 := city_rec(w, i, 0); y0 := city_rec(w, i, 1); z0 := city_rec(w, i, 2); x1 := city_rec(w, i, 4); y1 := city_rec(w, i, 5); z1 := city_rec(w, i, 6);
+  pr_fine(l, true);
+  for a: cast(int) floor(x0 / 10)..<cast(int) floor(x1 / 10) + 1 { for b: cast(int) floor(z0 / 10)..<cast(int) floor(z1 / 10) + 1 {
+    px := (cast(f32) a + 0.5) * 10; pz := (cast(f32) b + 0.5) * 10;
+    if px < x0 + 3.4 || px > x1 - 3.4 || pz < z0 + 3.4 || pz > z1 - 3.4 { continue; }
+    r := pr_put(l, c.fan, px, y1, pz, 0, 1); pr_stretch(l, r, 3.2, 3.0, 3.2);
+  } }
+  if y1 - y0 > 4 { for f: 0..<4 { city_vents(ph, l, w, d, i, city_face(x0, z0, x1, z1, f), y0, 1.2, 7, false); } }
+  pr_fine(l, false);
+}
+// A row of the mining yard's containers: in each of the paint's slots a bank of fans on one long
+// side and an intake louvre on the other; a cable duct along the row and switchgear at its end.
+city_containers :: (ph: [] SlabPhoto, l: [] PrList, w: SlabWorld, d: CityDeck, i: int) {
+  c := ph[0].content.city;
+  x0 := city_rec(w, i, 0); y0 := city_rec(w, i, 1); z0 := city_rec(w, i, 2); x1 := city_rec(w, i, 4); y1 := city_rec(w, i, 5); z1 := city_rec(w, i, 6);
+  along_x := x1 - x0 >= z1 - z0;
+  if !along_x || y1 - y0 < 2 || z1 - z0 < 1.8 { return; }
+  cz := (z0 + z1) * 0.5;
+  pr_fine(l, true);
+  for slot: cast(int) floor((x0 - 160) / 13.6)..<cast(int) floor((x1 - 160) / 13.6) + 1 {
+    xs := 160 + 13.6 * cast(f32) slot;
+    if xs < x0 - 0.1 || xs + 13.6 > x1 + 0.1 { continue; }
+    px := xs + 13.6 * 0.4;
+    if !city_open(w, d, px, cz, 0.2, i) { continue; }
+    _ = city_put(l, c.fans, px, y0, z0 - 0.02, CITY_PI, CITY_NEAR_LAMP);
+    r := city_put(l, c.louvre, px, y0 + 0.7, z1 + 0.02, 0, CITY_NEAR_LAMP); pr_stretch(l, r, 6, 1.5, 1);
+  }
+  city_pipe(ph, l, x0, z1 + 0.7, x1, z1 + 0.7, y0 + 0.1, 0.35, 0.3, 0.31, 0.32, CITY_NEAR_STEEL);
+  pr_fine(l, false);
+  if city_open(w, d, x0 - 3, cz, 1.6, i) { _ = city_box(ph, l, x0 - 4.2, y0, cz - 1.3, x0 - 1.8, y0 + 2.3, cz + 1.3, c.panel, 0.8, 0.82, 0.8, CITY_NEAR_PLANT); }
+}
+city_works :: (ph: [] SlabPhoto, l: [] PrList, w: SlabWorld, d: CityDeck) {
+  for i: SLAB_HULL_PIECES..<w.count {
+    kind := city_kind(w, i); shape := city_shape(w, i);
+    if city_rec(w, i, 5) < d.y - 0.5 { continue; }
+    round := shape == SLAB_CYLINDER;
+    if kind == SLAB_KIND_POOL && round { city_moonpool(ph, l, w, d, i); continue; }
+    if city_rec(w, i, 1) < d.y - 0.5 { continue; }
+    if round && (kind == SLAB_KIND_STACK || kind == SLAB_KIND_INDUSTRY) { city_stack(ph, l, w, d, i); }
+    if round && kind == SLAB_KIND_TANK { city_tank(ph, l, w, d, i); }
+    boxy := shape == SLAB_BOX || shape == SLAB_GABLE_X || shape == SLAB_GABLE_Z;
+    if boxy && (kind == SLAB_KIND_PLANT || kind == SLAB_KIND_INDUSTRY || kind == SLAB_KIND_DESAL) { city_process(ph, l, w, d, i); }
+    if shape == SLAB_BOX && kind == SLAB_KIND_COOLING { city_cooling(ph, l, w, d, i); }
+    if shape == SLAB_BOX && kind == SLAB_KIND_CONTAINERS { city_containers(ph, l, w, d, i); }
+  }
+  pr_fine(l, false);
+}
+
 // ---- the set's calls (slab-content.coax)
 slab_city_place :: (ph: [] SlabPhoto, l: [] PrList, w: SlabWorld) {
   if !ph[0].content.city.made || w.layout != LAYOUT_PRIME || w.build { return; }
@@ -619,6 +942,7 @@ slab_city_place :: (ph: [] SlabPhoto, l: [] PrList, w: SlabWorld) {
   city_dock(ph, l, w, d); n[2] = city_total(l);
   city_streets(ph, l, w, d); n[3] = city_total(l);
   city_blocks(ph, l, w, d); n[4] = city_total(l);
+  city_works(ph, l, w, d); n[5] = city_total(l);
   pr_fine(l, false);
   if l[0].filling { for k: 0..<CITY_RULES { ph[0].content.city.placed[k] = n[k + 1] - n[k]; } }
 }
@@ -669,7 +993,7 @@ city_test_world :: (rec: [] f32, n: int) -> SlabWorld { return SlabWorld.{record
   // the page's deck has the dock cut (slab-change.coax): the basin's rims get cranes and a stage
   d := city_deck(photo_world(s[..], u[U_BOXES..<U_BOXES + s[0].box_count * SLAB_RECORD], s[0].box_count, false));
   #assert d.ok && d.dock;
-  #assert c.placed[CITY_EDGE] == 466 && c.placed[CITY_DOCK] == 29 && c.placed[CITY_STREETS] == 1269 && c.placed[CITY_BLOCKS] == 1160;
+  #assert c.placed[CITY_EDGE] == 466 && c.placed[CITY_DOCK] == 29 && c.placed[CITY_STREETS] == 1269 && c.placed[CITY_BLOCKS] == 1160 && c.placed[CITY_WORKS] == 791;
   // every record stands on or over the deck's plan, or down the wall or in the basin beside it
   for r: 0..<ph[0].still {
     o := r * PR_RECORD_FLOATS;
