@@ -1,0 +1,28 @@
+#test "app_shell_layout coordinates persistent sidebar, centered main column, and right pane responsively" {
+  ss := app_sidebar_spec_default();
+  ps := app_pane_spec_default();
+
+  // Desktop wide (1200pt): persistent sidebar + centered conversation, no pane
+  w1 := app_shell_layout(1200, 800, 0, 0, false, 0, false, ss, ps, 720, 24);
+  #assert w1.side.persistent && w1.side.width == APP_SIDEBAR_DEFAULT;
+  #assert !w1.pane.open && w1.main_x == APP_SIDEBAR_DEFAULT && w1.col_w == 720.0f32;
+  #assert app_shell_edge(w1, APP_SIDEBAR_DEFAULT, APP_SIDEBAR_RESIZE_EDGE) == 1;
+  #assert app_shell_edge(w1, 600, APP_SIDEBAR_RESIZE_EDGE) == 0;
+
+  // Desktop wide (1200pt) with pane open: sidebar + conversation + pane all fit (234 + 380 + 440 = 1054 <= 1200)
+  w2 := app_shell_layout(1200, 800, 0, 0, false, 0, true, ss, ps, 720, 24);
+  #assert w2.side.persistent && w2.pane.open && w2.pane.mode == APP_PANE_SIDE;
+  #assert w2.main_w == 1200.0f32 - APP_SIDEBAR_DEFAULT - APP_PANE_DEFAULT;
+  #assert app_shell_edge(w2, w2.pane.x, APP_SIDEBAR_RESIZE_EDGE) == 2;
+
+  // Desktop medium (960pt) with pane open: sidebar collapses so conversation keeps >= 380pt beside pane
+  w3 := app_shell_layout(960, 800, 0, 0, false, 0, true, ss, ps, 720, 24);
+  #assert !w3.side.persistent && !w3.side.visible && w3.pane.open && w3.pane.mode == APP_PANE_SIDE;
+  #assert w3.main_x == 0.0f32 && w3.main_w >= APP_PANE_MAIN_MIN;
+
+  // Mobile/narrow (400pt) with pane open: drawer mode + full-width pane (no resize edges)
+  w4 := app_shell_layout(400, 800, 0, 0, false, 0, true, ss, ps, 720, 24);
+  #assert w4.side.mode == APP_SIDEBAR_DRAWER && !w4.side.persistent;
+  #assert w4.pane.open && w4.pane.mode == APP_PANE_FULL && w4.pane.w == 400.0f32 && w4.col_w == 0.0f32;
+  #assert app_shell_edge(w4, 0, APP_SIDEBAR_RESIZE_EDGE) == 0;
+}

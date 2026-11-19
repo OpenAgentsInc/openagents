@@ -1,0 +1,57 @@
+#test "responsive sidebar switches between slide-in drawer and persistent docked column at breakpoint" {
+  spec := app_sidebar_spec_default();
+  // Narrow viewport (< 900pt): drawer mode
+  narrow_closed := app_sidebar_layout(400.0f32, 0.0f32, 0.0f32, 0.0f32, false, spec);
+  #assert narrow_closed.mode == APP_SIDEBAR_DRAWER && !narrow_closed.persistent && !narrow_closed.visible;
+  #assert narrow_closed.width == app_sidebar_width(400.0f32) && narrow_closed.page_shift == 0.0f32;
+
+  narrow_open := app_sidebar_layout(400.0f32, 0.0f32, 0.0f32, 1.0f32, false, spec);
+  #assert narrow_open.mode == APP_SIDEBAR_DRAWER && !narrow_open.persistent && narrow_open.visible;
+  #assert narrow_open.page_shift == app_sidebar_shift(400.0f32, 1.0f32);
+
+  // Wide viewport (>= 900pt): persistent docked column
+  wide := app_sidebar_layout(1200.0f32, 0.0f32, 0.0f32, 0.0f32, false, spec);
+  #assert wide.mode == APP_SIDEBAR_PERSISTENT && wide.persistent && wide.visible;
+  #assert wide.width == APP_SIDEBAR_DEFAULT && wide.page_shift == 0.0f32;
+
+  // User-dragged width clamps into [min_w, max_w]
+  #assert app_sidebar_clamp(0.0f32, spec) == 0.0f32;
+  #assert app_sidebar_clamp(100.0f32, spec) == APP_SIDEBAR_MIN;
+  #assert app_sidebar_clamp(500.0f32, spec) == APP_SIDEBAR_MAX;
+  #assert app_sidebar_clamp(260.0f32, spec) == 260.0f32;
+
+  // Collapsed persistent sidebar hides cleanly
+  wide_collapsed := app_sidebar_layout(1200.0f32, 260.0f32, 0.0f32, 0.0f32, true, spec);
+  #assert wide_collapsed.mode == APP_SIDEBAR_PERSISTENT && !wide_collapsed.persistent && !wide_collapsed.visible && wide_collapsed.width == 0.0f32;
+
+  // Dragging respects right pane and minimum main column width
+  #assert app_sidebar_drag(360.0f32, 1000.0f32, 400.0f32, spec) == 220.0f32;
+}
+
+#test "responsive sidebar draws persistent surface on wide viewports and scrim drawer on narrow viewports" {
+  u0: [128] Prim; o0: [32] Prim; l0: [16] SheetLine; h0: [32] SheetHit; p0: [512] u8; r0: [32] El;
+  u1: [128] Prim; o1: [32] Prim; l1: [16] SheetLine; h1: [32] SheetHit; p1: [512] u8; r1: [32] El;
+  sf: [1] UiSurface; sf[0] = surface_over(
+    Sheet.{under = u0[..], over = o0[..], lines = l0[..], hits = h0[..], pool = p0[..]}, r0[..],
+    Sheet.{under = u1[..], over = o1[..], lines = l1[..], hits = h1[..], pool = p1[..]}, r1[..]);
+  keys: [16] Keyed; ks: [1] KeyedStore; ks[0] = KeyedStore.{rows = keys[..]};
+  f: [1] UiFrame; k := arcade_phone_skin(); spec := app_sidebar_spec_default();
+
+  // Wide: persistent surface, no scrim
+  lay_w := app_sidebar_layout(1200.0f32, 0.0f32, 0.0f32, 0.0f32, false, spec);
+  uiframe_begin(f[..], sf[..], ks[..], measure_cells(), k, uiinput(0, 0, false, false, "", ""), 0, 0.016, true, false);
+  in_w := app_sidebar_responsive(f[..], "side", "side.scrim", 0, 0, 1200, 800, 0, lay_w, 0.0f32, "Menu", 7);
+  app_sidebar_end(f[..], in_w);
+  #assert uiframe_end(f[..], sf[..]);
+  #assert in_w.w == APP_SIDEBAR_DEFAULT - k.border;
+  #assert surface_find(sf[..], "side") >= 0 && surface_find(sf[..], "side.scrim") < 0;
+
+  // Narrow open: drawer + scrim
+  lay_n := app_sidebar_layout(400.0f32, 0.0f32, 0.0f32, 1.0f32, false, spec);
+  uiframe_begin(f[..], sf[..], ks[..], measure_cells(), k, uiinput(0, 0, false, false, "", ""), 0, 0.016, true, false);
+  in_n := app_sidebar_responsive(f[..], "side", "side.scrim", 0, 0, 400, 800, 20, lay_n, 1.0f32, "Menu", 7);
+  app_sidebar_end(f[..], in_n);
+  #assert uiframe_end(f[..], sf[..]);
+  #assert in_n.w > 0;
+  #assert surface_find(sf[..], "side") >= 0 && surface_find(sf[..], "side.scrim") >= 0;
+}

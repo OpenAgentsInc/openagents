@@ -1,0 +1,66 @@
+// Unified 3-region responsive app shell geometry shared by Coder Desktop and OpenAgents Mobile:
+// left navigation sidebar/drawer + centered main conversation column + right inspector pane.
+#load "../../../../components/app/sidebar.coax";
+#load "../../../../components/app/pane.coax";
+
+AppShellLayout :: struct {
+  win_w: f32;
+  win_h: f32;
+  side: AppSidebarLayout;
+  pane: AppPaneLayout;
+  main_x: f32;
+  main_w: f32;
+  col_x: f32;
+  col_w: f32;
+}
+
+// Solves the responsive 3-region layout:
+// 1. Right pane reserves space (shrinking to min_w or going full-width on narrow viewports).
+// 2. Left sidebar docks on viewports >= breakpoint unless collapsed or crowded out by the pane,
+//    and becomes a slide-in drawer below breakpoint.
+// 3. Main conversation column is centered within the remaining space, capped at col_max.
+app_shell_layout :: (
+  win_w: f32,
+  win_h: f32,
+  side_user_w: f32,
+  pane_user_w: f32,
+  side_collapsed: bool,
+  drawer_share: f32,
+  pane_open: bool,
+  side_spec: AppSidebarSpec,
+  pane_spec: AppPaneSpec,
+  col_max: f32,
+  pad: f32,
+) -> AppShellLayout {
+  out: AppShellLayout;
+  out.win_w = win_w;
+  out.win_h = win_h;
+  out.pane = app_pane_layout(win_w, pane_user_w, pane_open, pane_spec);
+  pane_w := ifx out.pane.open then out.pane.w else 0.0f32;
+  out.side = app_sidebar_layout(win_w, pane_w, side_user_w, drawer_share, side_collapsed, side_spec);
+  left_w := ifx out.side.persistent && out.side.visible then out.side.width else 0.0f32;
+
+  // If the pane is open and the persistent sidebar fits beside it, keep both; otherwise the
+  // sidebar was already collapsed by app_sidebar_layout.
+  main_w := win_w - left_w - pane_w;
+  if main_w < 0 { main_w = 0; }
+  out.main_x = left_w;
+  out.main_w = main_w;
+  if main_w > 0 {
+    cw := main_w - 2 * pad;
+    if cw > col_max { cw = col_max; }
+    if cw < 0 { cw = 0; }
+    out.col_w = cw;
+    out.col_x = left_w + (main_w - cw) / 2;
+  }
+  return out;
+}
+
+// Returns which resizable divider edge is under ux: 1 for left sidebar, 2 for right pane, 0 none.
+app_shell_edge :: (lay: AppShellLayout, ux: f32, edge: f32) -> int {
+  if lay.side.persistent && lay.side.visible && lay.side.width > 0 && abs(ux - lay.side.width) <= edge { return 1; }
+  if lay.pane.open && lay.pane.mode == APP_PANE_SIDE && lay.pane.w > 0 && lay.pane.x > 0 && abs(ux - lay.pane.x) <= edge { return 2; }
+  return 0;
+}
+
+#load "shell-checks.coax" #test;

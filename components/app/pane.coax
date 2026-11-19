@@ -1,0 +1,96 @@
+// Responsive secondary/inspector pane shared by Coder Desktop and OpenAgents Mobile.
+// On wide viewports it docks as a resizable right split pane; on narrow viewports it opens
+// full-width over the conversation column.
+#load "chat.coax";
+
+APP_PANE_SIDE :: 0; // wide viewport: docked resizable right split pane
+APP_PANE_FULL :: 1; // narrow viewport: full-width overlay sheet
+
+APP_PANE_DEFAULT :: 440.0f32;
+APP_PANE_MIN :: 320.0f32;
+APP_PANE_MAX :: 900.0f32;
+APP_PANE_MAIN_MIN :: 380.0f32;
+
+AppPaneSpec :: struct {
+  default_w: f32;
+  min_w: f32;
+  max_w: f32;
+  main_min: f32;
+}
+
+app_pane_spec_default :: () -> AppPaneSpec {
+  return AppPaneSpec.{
+    default_w = APP_PANE_DEFAULT,
+    min_w = APP_PANE_MIN,
+    max_w = APP_PANE_MAX,
+    main_min = APP_PANE_MAIN_MIN,
+  };
+}
+
+AppPaneLayout :: struct {
+  mode: int; // APP_PANE_SIDE or APP_PANE_FULL
+  open: bool;
+  x: f32;
+  w: f32;
+}
+
+// Clamps a persisted user-dragged pane width into [min_w, max_w]; 0 keeps the default.
+app_pane_clamp :: (w: f32, spec: AppPaneSpec) -> f32 {
+  if !(w > 0) { return 0.0f32; }
+  if w < spec.min_w { return spec.min_w; }
+  if w > spec.max_w { return spec.max_w; }
+  return w;
+}
+
+// Computes the new right pane width while dragging its left edge to ux.
+app_pane_drag :: (ux: f32, win_w: f32, left_w: f32, spec: AppPaneSpec) -> f32 {
+  wv := win_w - ux;
+  most := win_w - left_w - spec.main_min;
+  if wv > most { wv = most; }
+  if wv > spec.max_w { wv = spec.max_w; }
+  if wv < spec.min_w { wv = spec.min_w; }
+  return wv;
+}
+
+// Solves the right pane's width and mode given the viewport width and user preference.
+// When win_w - spec.min_w < spec.main_min, the pane takes the full viewport width.
+app_pane_layout :: (win_w: f32, user_w: f32, open: bool, spec: AppPaneSpec) -> AppPaneLayout {
+  lay: AppPaneLayout;
+  lay.x = win_w;
+  if !open { return lay; }
+  lay.open = true;
+  pw := ifx user_w > 0 then user_w else spec.default_w;
+  if pw < spec.min_w { pw = spec.min_w; }
+  if pw > spec.max_w { pw = spec.max_w; }
+  if win_w - pw < spec.main_min {
+    lay.mode = APP_PANE_FULL;
+    lay.x = 0.0f32;
+    lay.w = win_w;
+    return lay;
+  }
+  lay.mode = APP_PANE_SIDE;
+  lay.w = pw;
+  lay.x = win_w - pw;
+  return lay;
+}
+
+// Draws the secondary pane's divider (when docked), header icon, title, optional meta text,
+// and close icon button. Returns the y coordinate where the scrollable body starts.
+app_pane_shell :: (f: [] UiFrame, x: f32, y: f32, w: f32, h: f32, icon: int, title: string, meta_id: string, meta: string, close_id: string, close_action: int, pad: f32, corner: f32) -> f32 {
+  k := f[0].skin; a := k.app; sh := f[0].sheet;
+  side := a.icon_button;
+  if x > 0 { sheet_fill(sh, x, y, k.border, h, 0, k.menu_divider); }
+  hx := x + pad; mid := y + corner + side / 2;
+  if icon >= 0 {
+    sheet_icon(sh, icon, hx, mid - a.tool_icon / 2, a.tool_icon, k.muted);
+    hx += a.tool_icon + a.gap;
+  }
+  hx += sheet_text(sh, f[0].m, -1, hx, mid - k.tool.line / 2, k.tool.line, k.tool.face, k.ink, title) + a.gap;
+  if meta.count > 0 {
+    _ := app_meta(f, meta_id, hx, mid - k.small.line / 2, x + w - side - corner - hx, meta, false);
+  }
+  _ := app_icon_button(f, close_id, x + w - side - corner, y + corner, ICON_CLOSE, "Close", APP_BUTTON_QUIET, 0, close_action);
+  return y + corner + side + a.gap_small;
+}
+
+#load "pane-checks.coax" #test;
