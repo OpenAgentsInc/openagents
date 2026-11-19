@@ -7,6 +7,8 @@
 //   the edge      a parapet and handrail round the wall's top and the dock's basin, the promenade's
 //                 lamps and benches, stair and lift heads
 //   the dock      cranes on the basin's rims, a landing stage with its gangway, fenders, bollards
+//   streets       the paint's 100 m grid (gpu/slab.coax slab_paint): kerbs and gutters, centre
+//                 lines, crossings, lamps, bollards, signs, benches, covers, where nothing stands
 // The parts are the Metaverse Engine's (metaverse-engine/arch/city.coax, works.coax, plaza.coax).
 // Small things carry a distance (pr_near) and most are fine (pr_fine): a phone leaves those out.
 #load "../../metaverse-engine/arch/works.coax";
@@ -16,9 +18,10 @@ CITY_SEED :: 7129;
 CITY_PI :: 3.14159265f32;
 // How near the eye a small thing is drawn (m): about where it is two pixels across.
 CITY_NEAR_RAIL :: 140.0f32; CITY_NEAR_POST :: 130.0f32; CITY_NEAR_SEAT :: 200.0f32; CITY_NEAR_LAMP :: 330.0f32;
-CITY_NEAR_KERB :: 460.0f32; CITY_NEAR_PLANT :: 1500.0f32;
+CITY_NEAR_KERB :: 460.0f32; CITY_NEAR_MARK :: 800.0f32; CITY_NEAR_PLANT :: 1500.0f32;
+CITY_GRID :: 100.0f32;     // the streets' grid: the deck's paint (gpu/slab.coax slab_paint)
 // What the last list placed, by rule (the report's and the checks' counts).
-CITY_EDGE :: 0; CITY_DOCK :: 1; CITY_RULES :: 2;
+CITY_EDGE :: 0; CITY_DOCK :: 1; CITY_STREETS :: 2; CITY_RULES :: 3;
 
 SlabCity :: struct {
   made: bool;
@@ -26,6 +29,7 @@ SlabCity :: struct {
   // parts
   rail: int; lamp_post: int; bench: int; bollard: int; lift: int; stair_head: int;
   crane: int; ramp: int;
+  sign: int; dashes: int; zebra: int; cover: int;
   placed: [CITY_RULES] int;
 }
 
@@ -47,7 +51,14 @@ slab_city_make :: (ph: [] SlabPhoto, p: [] ArchPen) {
   c.stair_head = photo_part(ph, arch_kiosk(p, k, 3.2, 5, 3.1));
   c.crane = photo_part(ph, arch_dock_crane(p, k, 5, 22, 30));
   c.ramp = photo_part(ph, arch_gangway(p, k, 18, 6, 1.6));
-  c.made = c.ramp >= 0;
+  c.sign = photo_part(ph, arch_sign_post(p, k, 3.0, 0.9, 0.6, 0.1, 0.28, 0.55));
+  c.dashes = photo_part(ph, arch_dashes(p, k, 20, 4, 6, 0.16));
+  c.zebra = photo_part(ph, arch_zebra(p, k, 10, 3));
+  from := p[0].n;
+  arch_material(p, k.metal, 0.24, 0.24, 0.25);
+  arch_disc(p, 0.42, 0.012, 12);
+  c.cover = photo_part(ph, arch_part(p, from));
+  c.made = c.cover >= 0;
   ph[0].content.city = c;
 }
 
@@ -240,6 +251,103 @@ city_dock :: (ph: [] SlabPhoto, l: [] PrList, w: SlabWorld, d: CityDeck) {
   pr_fine(l, false);
 }
 
+// ---- the streets
+// A point of a street that runs along x (axis 0) or z (axis 1): s along it, q across.
+city_sx :: (axis: int, s: f32, q: f32) -> f32 { return ifx axis == 0 then s else q; }
+city_sz :: (axis: int, s: f32, q: f32) -> f32 { return ifx axis == 0 then q else s; }
+// Whether the grid has a street at coordinate q between lo and hi: clear of the promenade.
+city_street_at :: (q: f32, lo: f32, hi: f32) -> bool { return q - lo > 30 && hi - q > 30; }
+city_streets :: (ph: [] SlabPhoto, l: [] PrList, w: SlabWorld, d: CityDeck) {
+  c := ph[0].content.city; y := d.y; grid := CITY_GRID;
+  for axis: 0..<2 {
+    lo := ifx axis == 0 then d.x0 else d.z0; hi := ifx axis == 0 then d.x1 else d.z1;       // along
+    clo := ifx axis == 0 then d.z0 else d.x0; chi := ifx axis == 0 then d.z1 else d.x1;     // across
+    tx: f32 = ifx axis == 0 then 1.0 else 0.0; tz := 1 - tx;
+    for line: cast(int) floor(clo / grid)..<cast(int) floor(chi / grid) + 2 {
+      q := cast(f32) line * grid;
+      if !city_street_at(q, clo, chi) { continue; }
+      // kerbs and gutters down both sides, wherever nothing stands, broken at the crossings
+      pr_fine(l, true);
+      for side: 0..<2 {
+        e: f32 = ifx side == 0 then -1.0 else 1.0;
+        start := lo; going := false;
+        cells := cast(int) floor((hi - lo - 40) / 5);
+        for cell: 0..<cells + 1 {
+          s := lo + 20 + 5 * cast(f32) cell; m := s + 2.5;
+          cross_at := floor(m / grid + 0.5) * grid;
+          ok := cell < cells && !(abs(m - cross_at) < 7.5 && city_street_at(cross_at, lo, hi)) && city_open(w, d, city_sx(axis, m, q + e * 5.15), city_sz(axis, m, q + e * 5.15), 0.3, -1);
+          if ok && !going { start = s; going = true; }
+          if !ok && going {
+            going = false;
+            _ = city_box(ph, l, city_sx(axis, start, q + e * 5.0), y, city_sz(axis, start, q + e * 5.0), city_sx(axis, s, q + e * 5.3), y + 0.13, city_sz(axis, s, q + e * 5.3), c.look.stone, 1, 1, 1, CITY_NEAR_KERB);
+            r := city_box(ph, l, city_sx(axis, start, q + e * 4.5), y, city_sz(axis, start, q + e * 4.5), city_sx(axis, s, q + e * 5.0), y + 0.015, city_sz(axis, s, q + e * 5.0), c.look.metal, 0.3, 0.3, 0.31, CITY_NEAR_KERB);
+            pr_laid(l, r);
+          }
+        }
+      }
+      // the centre line, three lengths a block, and a cover or two
+      pr_fine(l, false);
+      for unit: cast(int) floor((lo + 20) / 20) + 1..<cast(int) floor((hi - 20) / 20) {
+        m := cast(f32) unit * 20 + 10;
+        cross_at := floor(m / grid + 0.5) * grid;
+        if abs(m - cross_at) < 12 && city_street_at(cross_at, lo, hi) { continue; }
+        if !city_open(w, d, city_sx(axis, m, q), city_sz(axis, m, q), 2, -1) { continue; }
+        r := city_put(l, c.dashes, city_sx(axis, m, q), y, city_sz(axis, m, q), city_along(tx, tz), CITY_NEAR_MARK);
+        pr_laid(l, r);
+        if unit % 2 == 0 {
+          pr_fine(l, true);
+          r = city_put(l, c.cover, city_sx(axis, m + 4, q - 1.9), y, city_sz(axis, m + 4, q - 1.9), 0, CITY_NEAR_SEAT);
+          pr_laid(l, r);
+          pr_fine(l, false);
+        }
+      }
+      // block by block: lamps down both sides, their arms over the road, and a bench
+      pr_fine(l, true);
+      for block: cast(int) floor(lo / grid) - 1..<cast(int) floor(hi / grid) + 1 {
+        b := cast(f32) block * grid;
+        for k: 0..<3 {
+          e: f32 = ifx k == 1 then -1.0 else 1.0;
+          s := b + 30 + 20 * cast(f32) k;
+          if s < lo + 22 || s > hi - 22 { continue; }
+          px := city_sx(axis, s, q + e * 6.3); pz := city_sz(axis, s, q + e * 6.3);
+          if city_open(w, d, px, pz, 0.8, -1) { _ = city_put(l, c.lamp_post, px, y, pz, ifx axis == 0 then city_along(0, -e) else city_along(-e, 0), CITY_NEAR_LAMP); }
+        }
+        s := b + 50;
+        px := city_sx(axis, s, q + 8.4); pz := city_sz(axis, s, q + 8.4);
+        if s > lo + 22 && s < hi - 22 && city_open(w, d, px, pz, 1.4, -1) { r := city_put(l, c.bench, px, y, pz, city_along(tx, tz), CITY_NEAR_SEAT); pr_made_of(l, r, c.look.metal); }
+      }
+      // the crossings on this street: a zebra over each of its two arms
+      pr_fine(l, false);
+      for cross: cast(int) floor(lo / grid)..<cast(int) floor(hi / grid) + 2 {
+        p := cast(f32) cross * grid;
+        if !city_street_at(p, lo, hi) { continue; }
+        for arm: 0..<2 {
+          s := p + (ifx arm == 0 then -13.5f32 else 13.5f32);
+          if !city_open(w, d, city_sx(axis, s, q), city_sz(axis, s, q), 3, -1) { continue; }
+          r := city_put(l, c.zebra, city_sx(axis, s, q), y, city_sz(axis, s, q), city_along(tx, tz), CITY_NEAR_MARK);
+          pr_laid(l, r);
+        }
+        if axis != 0 { continue; }
+        // and, once a crossing, its corners: two bollards each, a sign on two of them
+        pr_fine(l, true);
+        for corner: 0..<4 {
+          ex: f32 = ifx corner & 1 == 0 then -1.0 else 1.0; ez: f32 = ifx corner & 2 == 0 then -1.0 else 1.0;
+          for b: 0..<2 {
+            px := p + ex * (ifx b == 0 then 6.3f32 else 7.9f32); pz := q + ez * (ifx b == 0 then 7.9f32 else 6.3f32);
+            if city_open(w, d, px, pz, 0.5, -1) { _ = city_put(l, c.bollard, px, y, pz, 0, CITY_NEAR_POST); }
+          }
+          if corner == 0 || corner == 3 {
+            px := p + ex * 7.6; pz := q + ez * 7.6;
+            if city_open(w, d, px, pz, 0.6, -1) { _ = city_put(l, c.sign, px, y, pz, ifx (cross + line) % 2 == 0 then 0.0f32 else CITY_PI * 0.5, CITY_NEAR_SEAT); }
+          }
+        }
+        pr_fine(l, false);
+      }
+    }
+  }
+  pr_fine(l, false);
+}
+
 // ---- the set's calls (slab-content.coax)
 slab_city_place :: (ph: [] SlabPhoto, l: [] PrList, w: SlabWorld) {
   if !ph[0].content.city.made || w.layout != LAYOUT_PRIME || w.build { return; }
@@ -249,6 +357,7 @@ slab_city_place :: (ph: [] SlabPhoto, l: [] PrList, w: SlabWorld) {
   n[0] = city_total(l);
   city_edge(ph, l, w, d); n[1] = city_total(l);
   city_dock(ph, l, w, d); n[2] = city_total(l);
+  city_streets(ph, l, w, d); n[3] = city_total(l);
   pr_fine(l, false);
   if l[0].filling { for k: 0..<CITY_RULES { ph[0].content.city.placed[k] = n[k + 1] - n[k]; } }
 }
@@ -280,7 +389,7 @@ city_test_world :: (rec: [] f32, n: int) -> SlabWorld { return SlabWorld.{record
   #assert city_facing(0, 1) == 0 && abs(sin(city_facing(1, 0)) - 1) < 0.0001 && abs(cos(city_facing(0, -1)) + 1) < 0.0001 && abs(sin(city_facing(-1, 0)) + 1) < 0.0001;
   #assert city_along(1, 0) == 0 && abs(sin(city_along(0, 1)) + 1) < 0.0001 && abs(cos(city_along(-1, 0)) + 1) < 0.0001 && abs(sin(city_along(0, -1)) - 1) < 0.0001;
 }
-#test "the city's detail is placed by rule from the live deck: the edge and the dock get theirs, a phone gets less and the build view none" #steps 20000000000 {
+#test "the city's detail is placed by rule from the live deck: every rule gets its share, a phone gets less and the build view none" #steps 20000000000 {
   s: [1] Slab;
   u: [UNIFORM_FLOATS] f32;
   slab_reset(s[..]);
@@ -299,7 +408,7 @@ city_test_world :: (rec: [] f32, n: int) -> SlabWorld { return SlabWorld.{record
   // the page's deck has the dock cut (slab-change.coax): the basin's rims get cranes and a stage
   d := city_deck(photo_world(s[..], u[U_BOXES..<U_BOXES + s[0].box_count * SLAB_RECORD], s[0].box_count, false));
   #assert d.ok && d.dock;
-  #assert c.placed[CITY_EDGE] == 466 && c.placed[CITY_DOCK] == 29;
+  #assert c.placed[CITY_EDGE] == 466 && c.placed[CITY_DOCK] == 29 && c.placed[CITY_STREETS] == 1269;
   // every record stands on or over the deck's plan, or down the wall or in the basin beside it
   for r: 0..<ph[0].still {
     o := r * PR_RECORD_FLOATS;
