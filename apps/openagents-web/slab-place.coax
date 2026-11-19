@@ -140,11 +140,15 @@ place_lines :: (s: [] Slab, out: [] f32, at: int) -> int {
   }
   return n;
 }
-// A line's name, at its piece nearest the eye that is on screen.
+// A line's name, just over its piece nearest the eye that is on screen and where the name keeps off
+// the platform and the other names (slab-labels.coax). No such piece: no name.
 place_line_tag :: (s: [] Slab, h: [] SceneHud, layer: int, id: string, name: string) {
-  p := s[0].place; k := s[0].dpr;
+  p := s[0].place; k := hi_f32(s[0].dpr, 0.5);
   e := to_hull(s, s[0].eye[0], s[0].eye[1], s[0].eye[2]);
-  best := 1.0e12f32; at: [3] f32; found := false;
+  ox: [24] f32; oy: [24] f32;
+  on := lab_outline(s, ox[..], oy[..]);
+  half := (cast(f32) name.count * 7.6f32 + 8) / 2;
+  best := 1.0e12f32; kept: LabBox; found := false;
   for i: p.start[layer]..<p.start[layer + 1] {
     for part: 0..<9 {
       t := cast(f32) part / 8;
@@ -153,11 +157,13 @@ place_line_tag :: (s: [] Slab, h: [] SceneHud, layer: int, id: string, name: str
       if d > PL_SEEN * PL_SEEN || d >= best || place_hidden(s, e, x, z) { continue; }
       sc := screen_of(s, x, 0.8, z);
       if sc[2] < 2 || sc[0] < 30 * k || sc[0] > s[0].width - 30 * k || sc[1] < 110 * k || sc[1] > s[0].height - 60 * k { continue; }
-      best = d; at = sc; found = true;
+      // a name is as wide as a phone is half wide: all of it stays on the screen, just over the line
+      b := lab_box_at(name, hi_f32(half + 6, lo_f32(s[0].width / k - half - 6, sc[0] / k)), sc[1] / k - 14);
+      if !lab_clear(s, b, ox[..], oy[..], on) { continue; }
+      best = d; kept = b; found = true;
     }
   }
-  // a name is as wide as a phone is half wide: keep all of it on the screen
-  if found { sh_tag(h, id, name, hi_f32(150, lo_f32(s[0].width / k - 150, at[0] / k)), at[1] / k - 12, 1, false); }
+  if found { lab_keep(s, h, id, name, kept); }
 }
 // The names pinned in the scene: the two lines, and the dock (a name you can press for its card).
 place_tags :: (s: [] Slab, h: [] SceneHud) {
