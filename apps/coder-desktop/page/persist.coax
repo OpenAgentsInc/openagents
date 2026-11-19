@@ -1,0 +1,262 @@
+// Coder Desktop page (../page.coax): keeping a chat and reading it back, the recall line, a new
+// chat, and moving a chat between pages.
+
+// Whether the chat changed in a way the host keeps: a message was sent, or a run ended. Once each.
+coder_page_save_due :: (s: [] CoderPage) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  r := cp_running(s);
+  b := cp_budget(s);
+  m := cp_model_index(s);
+  if s[0].nturns == 0 && s[0].goal_status == CP_GOAL_NONE { s[0].kept_turns = 0; s[0].kept_running = false; s[0].kept_cost = 0; s[0].kept_budget = b; s[0].kept_override = s[0].budget_override; s[0].kept_model = m; s[0].kept_goal_status = CP_GOAL_NONE; s[0].kept_goal_n = 0; s[0].kept_goal_time = 0; return false; }
+  if r == s[0].kept_running && s[0].nturns == s[0].kept_turns && s[0].cost_usd_micros == s[0].kept_cost && b == s[0].kept_budget && s[0].budget_override == s[0].kept_override && m == s[0].kept_model && s[0].goal_status == s[0].kept_goal_status && s[0].goal_objective_n == s[0].kept_goal_n && s[0].goal_time_seconds == s[0].kept_goal_time { return false; }
+  s[0].kept_running = r; s[0].kept_turns = s[0].nturns; s[0].kept_cost = s[0].cost_usd_micros; s[0].kept_budget = b; s[0].kept_override = s[0].budget_override; s[0].kept_model = m;
+  s[0].kept_goal_status = s[0].goal_status; s[0].kept_goal_n = s[0].goal_objective_n; s[0].kept_goal_time = s[0].goal_time_seconds;
+  return true;
+}
+cp_whole :: (seconds: f32) -> int { return ifx seconds < 0 then -1 else cast(int) seconds; }
+// The chat as text the host keeps: every message, reply, command and sub-agent, as shown. Its
+// length in out, 0 when it does not fit.
+// A list's rows as a kept chat has them, from the place `head` names.
+cp_save_rows :: (s: [] CoderPage, out: [] u8, from: int, head: int) -> int {
+  n := from; q := head - 1; at := 0;
+  while q >= 0 {
+    n = json_raw(out, n, ifx at > 0 then ",{\"text\":" else "{\"text\":"); n = json_write_string(out, n, cast(string) s[0].calls[q].text[0..<s[0].calls[q].text_n]);
+    n = json_raw(out, n, ",\"out\":"); n = json_write_string(out, n, cp_call_text(s, q));
+    n = json_raw(out, n, ifx s[0].calls[q].read then ",\"read\":true" else ",\"read\":false");
+    n = json_raw(out, n, ifx s[0].calls[q].failed then ",\"failed\":true" else ",\"failed\":false");
+    if s[0].calls[q].thought { n = json_raw(out, n, ",\"thought\":true"); }
+    if s[0].calls[q].said { n = json_raw(out, n, ",\"said\":true"); }
+    n = json_raw(out, n, ",\"took\":"); n = json_write_int(out, n, cp_whole(s[0].calls[q].took)); n = json_raw(out, n, "}");
+    q = s[0].calls[q].next - 1; at += 1;
+  }
+  return n;
+}
+coder_page_save :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  n := json_raw(out, 0, "{\"v\":1,\"cost_usd_micros\":");
+  n = json_write_int(out, n, s[0].cost_usd_micros);
+  n = json_raw(out, n, ",\"budget_usd_micros\":");
+  n = json_write_int(out, n, cp_budget(s));
+  if s[0].budget_override { n = json_raw(out, n, ",\"budget_override\":true"); }
+  n = json_raw(out, n, ",\"model\":");
+  n = json_write_string(out, n, cp_model_id(s, cp_model_index(s)));
+  if s[0].goal_status != CP_GOAL_NONE && s[0].goal_objective_n > 0 {
+    n = json_raw(out, n, ",\"goal_status\":"); n = json_write_int(out, n, s[0].goal_status);
+    n = json_raw(out, n, ",\"goal_time\":"); n = json_write_int(out, n, s[0].goal_time_seconds);
+    n = json_raw(out, n, ",\"goal_turns\":"); n = json_write_int(out, n, s[0].goal_turns);
+    n = json_raw(out, n, ",\"goal_objective\":"); n = json_write_string(out, n, cast(string) s[0].goal_objective[0..<s[0].goal_objective_n]);
+  }
+  n = json_raw(out, n, ",\"turns\":[");
+  for i: 0..<s[0].nturns {
+    n = json_raw(out, n, ifx i > 0 then ",{\"ask\":" else "{\"ask\":"); n = json_write_string(out, n, cast(string) s[0].turns[i].ask[0..<s[0].turns[i].ask_n]);
+    n = json_raw(out, n, ",\"reply\":"); n = json_write_string(out, n, cast(string) s[0].turns[i].reply[0..<s[0].turns[i].reply_n]);
+    n = json_raw(out, n, ifx s[0].turns[i].cut then ",\"cut\":true" else ",\"cut\":false");
+    n = json_raw(out, n, ",\"state\":"); n = json_write_int(out, n, s[0].turns[i].state);
+    n = json_raw(out, n, ",\"model\":"); n = json_write_string(out, n, cp_model_id(s, s[0].turns[i].model));
+    n = json_raw(out, n, ",\"note\":"); n = json_write_string(out, n, cast(string) s[0].turns[i].note[0..<s[0].turns[i].note_n]);
+    n = json_raw(out, n, ",\"more\":"); n = json_write_int(out, n, s[0].turns[i].more_cmds);
+    n = json_raw(out, n, ",\"earlier\":"); n = json_write_int(out, n, s[0].turns[i].early_cmds);
+    n = json_raw(out, n, ",\"cmds\":[");
+    n = cp_save_rows(s, out, n, s[0].turns[i].head);
+    n = json_raw(out, n, "],\"agents\":[");
+    for j: 0..<s[0].turns[i].nagents {
+      n = json_raw(out, n, ifx j > 0 then ",{\"level\":" else "{\"level\":"); n = json_write_string(out, n, CP_LEVEL[s[0].turns[i].agents[j].level]);
+      n = json_raw(out, n, ",\"task\":"); n = json_write_string(out, n, cast(string) s[0].turns[i].agents[j].task[0..<s[0].turns[i].agents[j].task_n]);
+      n = json_raw(out, n, ",\"state\":"); n = json_write_int(out, n, s[0].turns[i].agents[j].state);
+      n = json_raw(out, n, ",\"reply\":"); n = json_write_string(out, n, cast(string) s[0].turns[i].agents[j].reply[0..<s[0].turns[i].agents[j].reply_n]);
+      n = json_raw(out, n, ",\"more\":"); n = json_write_int(out, n, s[0].turns[i].agents[j].more_rows);
+      n = json_raw(out, n, ",\"earlier\":"); n = json_write_int(out, n, s[0].turns[i].agents[j].early_rows);
+      n = json_raw(out, n, ",\"after\":"); n = json_write_int(out, n, s[0].turns[i].agents[j].after);
+      n = json_raw(out, n, ",\"rows\":[");
+      n = cp_save_rows(s, out, n, s[0].turns[i].agents[j].head);
+      n = json_raw(out, n, "]");
+      n = json_raw(out, n, ",\"calls\":"); n = json_write_int(out, n, s[0].turns[i].agents[j].calls);
+      n = json_raw(out, n, ",\"took\":"); n = json_write_int(out, n, cp_whole(s[0].turns[i].agents[j].took)); n = json_raw(out, n, "}");
+    }
+    n = json_raw(out, n, "]}");
+  }
+  n = json_raw(out, n, "]}");
+  return ifx n < 0 then 0 else n;
+}
+// One kept row joins the list it was kept from.
+cp_load_row :: (s: [] CoderPage, i: int, j: int, c: string) {
+  ar := [1] ClArena.[ClArena.{buf = s[0].arena[..]}];
+  what := cl_str(ar[..], c, "text"); output := cl_str(ar[..], c, "out");
+  read := cl_bool(c, "read"); failed := cl_bool(c, "failed"); took := cl_int(c, "took"); thought := cl_bool(c, "thought"); said := cl_bool(c, "said");
+  q := cp_call_add(s, i, j, what, "", read.ok && read.value, failed.ok && failed.value, false);
+  if q < 0 { return; }
+  if (thought.ok && thought.value) || (said.ok && said.value) { cp_long_set(s, q, output); }
+  else { s[0].calls[q].out_n = cp_out(s[0].calls[q].out[..], output); }
+  s[0].calls[q].thought = thought.ok && thought.value; s[0].calls[q].said = said.ok && said.value;
+  s[0].calls[q].began = 0; s[0].calls[q].took = ifx took.ok then cast(f32) took.value else -1.0f32; s[0].live_call = -1;
+}
+// A kept chat (coder_page_save's text) becomes the chat that is shown. A message that was still
+// running when it was kept shows as stopped. False while a run is going or when the text is not a chat.
+coder_page_load :: (s: [] CoderPage, text: string) -> bool #export_c #effects(all) {
+  if s.count < 1 || cp_running(s) || cl_at(text, "turns").tok != JSON_ARRAY { return false; }
+  turns := cl_raw(text, "turns");
+  count := cl_count(turns); if count > CP_TURNS { count = CP_TURNS; }
+  ar := [1] ClArena.[ClArena.{buf = s[0].arena[..]}];
+  s[0].nturns = 0; cp_calls_reset(s);
+  for i: 0..<count {
+    s[0].nturns = i + 1; s[0].turns[i].nagents = 0;
+    t := cl_json(turns, cl_item(turns, i));
+    ar[0].at = 0; ar[0].full = false;
+    s[0].turns[i].ask_n = cp_out(s[0].turns[i].ask[..], cl_str(ar[..], t, "ask"));
+    ar[0].at = 0;
+    s[0].turns[i].cut = false;
+    cp_reply_set(s, i, cl_str(ar[..], t, "reply"), false);
+    cut := cl_bool(t, "cut"); if cut.ok && cut.value { s[0].turns[i].cut = true; }
+    ar[0].at = 0;
+    s[0].turns[i].note_n = cp_out(s[0].turns[i].note[..], cl_str(ar[..], t, "note"));
+    ar[0].at = 0;
+    tm := cl_str(ar[..], t, "model");
+    s[0].turns[i].model = ifx tm.count > 0 then cp_model_find(tm) else s[0].model;
+    state := cl_int(t, "state"); more := cl_int(t, "more");
+    s[0].turns[i].state = ifx state.ok && state.value > CP_RUNNING && state.value <= CP_STOPPED then state.value else CP_STOPPED;
+    s[0].turns[i].more_cmds = ifx more.ok && more.value > 0 then more.value else 0;
+    te := cl_int(t, "earlier"); s[0].turns[i].early_cmds = ifx te.ok && te.value > 0 then te.value else 0;
+    s[0].turns[i].head = 0; s[0].turns[i].tail = 0; s[0].turns[i].ncmds = 0; s[0].turns[i].stopping = false; s[0].turns[i].fresh = false; s[0].turns[i].info = false; s[0].turns[i].h = 0; s[0].turns[i].ah = 0;
+    s[0].turns[i].round_asked = 0; s[0].turns[i].waiting = false;
+    cmds := cl_raw(t, "cmds"); nc := ifx cmds.count > 0 then cl_count(cmds) else 0;
+    for at: 0..<nc { cp_load_row(s, i, -1, cl_json(cmds, cl_item(cmds, at))); }
+    agents := cl_raw(t, "agents"); na := ifx agents.count > 0 then cl_count(agents) else 0; if na > CP_AGENTS { na = CP_AGENTS; }
+    for j: 0..<na {
+      g := cl_json(agents, cl_item(agents, j));
+      s[0].turns[i].agents[j] = CpAgent.{}; s[0].turns[i].nagents = j + 1;
+      ar[0].at = 0;
+      level := cl_str(ar[..], g, "level");
+      for name, q2: CP_LEVEL { if name == level { s[0].turns[i].agents[j].level = q2; } }
+      for name, q2: CP_LEVEL_OLD { if name == level { s[0].turns[i].agents[j].level = q2; } }
+      ar[0].at = 0;
+      s[0].turns[i].agents[j].task_n = cp_out(s[0].turns[i].agents[j].task[..], cl_str(ar[..], g, "task"));
+      ar[0].at = 0;
+      s[0].turns[i].agents[j].reply_n = cp_out(s[0].turns[i].agents[j].reply[..], cl_str(ar[..], g, "reply"));
+      // its tool calls; a chat kept before 2026-11-17 has them as a list of lines, with no output
+      rows := cl_raw(g, "rows"); nr := ifx rows.count > 0 then cl_count(rows) else 0; 
+      for at: 0..<nr { cp_load_row(s, i, j, cl_json(rows, cl_item(rows, at))); }
+      if nr == 0 {
+        ar[0].at = 0; old := cl_str(ar[..], g, "log"); from := 0;
+        for at: 0..<old.count {
+          if old[at] != 10 { continue; }
+          if at > from && old[from] != '[' { _ = cp_call_add(s, i, j, cast(string) old[from..<at], "", false, false, false); }
+          from = at + 1;
+        }
+      }
+      gm := cl_int(g, "more"); s[0].turns[i].agents[j].more_rows = ifx gm.ok && gm.value > 0 then gm.value else 0;
+      ge := cl_int(g, "earlier"); s[0].turns[i].agents[j].early_rows = ifx ge.ok && ge.value > 0 then ge.value else 0;
+      gf := cl_int(g, "after"); s[0].turns[i].agents[j].after = ifx gf.ok && gf.value > 0 then gf.value else 0;   // a chat kept before it: first
+      gs := cl_int(g, "state"); calls := cl_int(g, "calls"); took := cl_int(g, "took");
+      s[0].turns[i].agents[j].state = ifx gs.ok && gs.value > CP_RUNNING && gs.value <= CP_STOPPED then gs.value else CP_STOPPED;
+      s[0].turns[i].agents[j].calls = ifx calls.ok then calls.value else 0;
+      s[0].turns[i].agents[j].took = ifx took.ok then cast(f32) took.value else -1.0f32;
+    }
+    s[0].turns[i].nagents = na;
+  }
+  cost := cl_int(text, "cost_usd_micros");
+  s[0].cost_usd_micros = ifx cost.ok && cost.value > 0 then cost.value else 0;
+  budget := cl_int(text, "budget_usd_micros");
+  s[0].budget_usd_micros = ifx budget.ok && budget.value > 0 then budget.value else CP_BUDGET_DEFAULT;
+  ov := cl_bool(text, "budget_override");
+  s[0].budget_override = ov.ok && ov.value;
+  mar := [1] ClArena.[ClArena.{buf = s[0].scratch[..]}];
+  s[0].model = cp_model_find(cl_str(mar[..], text, "model"));
+  s[0].model_menu = false;
+  cp_goal_reset(s);
+  gs := cl_int(text, "goal_status");
+  if gs.ok && gs.value >= CP_GOAL_ACTIVE && gs.value <= CP_GOAL_BUDGET_LIMITED {
+    gar := [1] ClArena.[ClArena.{buf = s[0].scratch[..]}];
+    go := cl_str(gar[..], text, "goal_objective");
+    if go.count > 0 {
+      s[0].goal_status = gs.value;
+      s[0].goal_objective_n = cp_out(s[0].goal_objective[..], go);
+      gt := cl_int(text, "goal_time"); s[0].goal_time_seconds = ifx gt.ok && gt.value > 0 then gt.value else 0;
+      gturns := cl_int(text, "goal_turns"); s[0].goal_turns = ifx gturns.ok && gturns.value > 0 then gturns.value else 0;
+    }
+  }
+  s[0].nturns = count; s[0].scroll = 0; s[0].stick = true; s[0].copied_turn = -1; s[0].copied_kind = CP_COPIED_NONE; s[0].results_due = false; s[0].answer_due = false;
+  s[0].live_ask = -1; s[0].live_reply = -1; s[0].live_call = -1; s[0].live_pane = -1;
+  s[0].kept_turns = count; s[0].kept_running = false; s[0].kept_cost = s[0].cost_usd_micros; s[0].kept_budget = s[0].budget_usd_micros; s[0].kept_override = s[0].budget_override; s[0].kept_model = s[0].model;
+  s[0].kept_goal_status = s[0].goal_status; s[0].kept_goal_n = s[0].goal_objective_n; s[0].kept_goal_time = s[0].goal_time_seconds; s[0].pane_open = false; s[0].pane_manual = false;
+  return true;
+}
+// The chat's finished turns as the worker's recall line, so Microcoder knows a chat that was
+// opened again: the newest 6 (the most it keeps), each message and reply up to CP_RECALL_TEXT bytes,
+// as the TUI keeps them (MK_TURN_TEXT, MK_CUT). A longer one is cut on a character and ends in
+// CP_RECALL_CUT, so the model knows it goes on. 0 for none.
+CP_RECALL_TEXT :: 8000;
+CP_RECALL_CUT :: " [cut here: the rest is not kept]";
+cp_recall_text :: (t: [] u8, s: string) -> string {
+  if s.count <= t.count { return s; }
+  k := text_byte_floor(s, t.count - CP_RECALL_CUT.count);
+  for i: 0..<k { t[i] = s[i]; }
+  for i: 0..<CP_RECALL_CUT.count { t[k + i] = CP_RECALL_CUT[i]; }
+  return cast(string) t[0..<k + CP_RECALL_CUT.count];
+}
+coder_page_recall_line :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  b := s[0].scratch[..]; n := json_raw(b, 0, "["); some := false;
+  first := ifx s[0].nturns > 6 then s[0].nturns - 6 else 0;
+  for i: first..<s[0].nturns {
+    if s[0].turns[i].state == CP_RUNNING || s[0].turns[i].reply_n == 0 { continue; }
+    t: [CP_RECALL_TEXT] u8;
+    n = json_raw(b, n, ifx some then ",{\"task\":" else "{\"task\":"); n = json_write_string(b, n, cp_recall_text(t[..], cast(string) s[0].turns[i].ask[0..<s[0].turns[i].ask_n]));
+    n = json_raw(b, n, ",\"reply\":"); n = json_write_string(b, n, cp_recall_text(t[..], cast(string) s[0].turns[i].reply[0..<s[0].turns[i].reply_n])); n = json_raw(b, n, "}");
+    some = true;
+  }
+  n = json_raw(b, n, "]");
+  if n < 0 || !some { return 0; }
+  return mww_recall(out, cast(string) b[0..<n]);
+}
+// A new chat: the window clears and the host has the worker forget. While a run is going the
+// host first moves that chat out of view (coder_page_take), where its run goes on.
+cp_new :: (s: [] CoderPage) -> bool {
+  if cp_running(s) { s[0].ask = CP_ASK_NEW; return true; }
+  s[0].nturns = 0; cp_calls_reset(s); s[0].cost_usd_micros = 0; s[0].kept_cost = 0;
+  s[0].budget_usd_micros = CP_BUDGET_DEFAULT; s[0].budget_override = false; s[0].kept_budget = CP_BUDGET_DEFAULT; s[0].kept_override = false;
+  s[0].model = CP_MODEL_DEFAULT; s[0].kept_model = CP_MODEL_DEFAULT; s[0].model_menu = false;
+  cp_goal_reset(s); s[0].kept_goal_status = CP_GOAL_NONE; s[0].kept_goal_n = 0; s[0].kept_goal_time = 0;
+  s[0].live_ask = -1; s[0].live_reply = -1; s[0].live_call = -1; s[0].live_pane = -1;
+  s[0].scroll = 0; s[0].stick = true; s[0].copied_turn = -1; s[0].copied_kind = CP_COPIED_NONE; s[0].pane_open = false; s[0].pane_manual = false; s[0].ask = CP_ASK_NEW; return true;
+}
+coder_page_new :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && cp_new(s); }
+// A page with no window, for a chat whose reply runs out of view.
+coder_page_init :: (s: [] CoderPage) #export_c #effects(all) { if s.count > 0 { cp_init(s); } }
+// Seconds pass on a page with no window: its run's tool calls and waits count them.
+coder_page_tick :: (s: [] CoderPage, dt: f32) #export_c #effects(all) { if s.count > 0 && dt > 0 { s[0].clock += dt; } }
+// The chat in `from` moves to `to`, run and all: its turns, sub-agents, tool calls and what the
+// worker is owed. `from` is left a new chat, with nothing to ask the host. False when `to` holds a
+// running chat. The clock's times shift to `to`'s clock.
+coder_page_take :: (to: [] CoderPage, from: [] CoderPage) -> bool #export_c #effects(all) {
+  if to.count < 1 || from.count < 1 || cp_running(to) { return false; }
+  if !to[0].ready { cp_init(to); }
+  shift := to[0].clock - from[0].clock;
+  for i: 0..<from[0].nturns {
+    to[0].turns[i] = from[0].turns[i];
+    for j: 0..<to[0].turns[i].nagents { to[0].turns[i].agents[j].began += shift; to[0].turns[i].agents[j].heard += shift; }
+  }
+  for q: 0..<from[0].calls_n { to[0].calls[q] = from[0].calls[q]; to[0].calls[q].began += shift; }
+  for k: 0..<from[0].long_n { to[0].long_buf[k] = from[0].long_buf[k]; }
+  to[0].nturns = from[0].nturns; to[0].calls_n = from[0].calls_n; to[0].calls_free = from[0].calls_free; to[0].calls_order = from[0].calls_order; to[0].long_n = from[0].long_n;
+  to[0].current_n = cp_out(to[0].current[..], cast(string) from[0].current[0..<from[0].current_n]);
+  to[0].kept_turns = from[0].kept_turns; to[0].kept_running = from[0].kept_running; to[0].kept_cost = from[0].kept_cost;
+  to[0].kept_budget = from[0].kept_budget; to[0].kept_override = from[0].kept_override; to[0].kept_model = from[0].kept_model;
+  to[0].kept_goal_status = from[0].kept_goal_status; to[0].kept_goal_n = from[0].kept_goal_n; to[0].kept_goal_time = from[0].kept_goal_time;
+  to[0].cost_usd_micros = from[0].cost_usd_micros; to[0].budget_usd_micros = cp_budget(from); to[0].budget_override = from[0].budget_override; to[0].model = cp_model_index(from); to[0].model_menu = false;
+  to[0].goal_status = from[0].goal_status; to[0].goal_time_seconds = from[0].goal_time_seconds; to[0].goal_turns = from[0].goal_turns; to[0].goal_prompt_kind = from[0].goal_prompt_kind; to[0].goal_turn_began = ifx from[0].goal_turn_began > 0 then from[0].goal_turn_began + shift else 0;
+  to[0].goal_objective_n = cp_out(to[0].goal_objective[..], cast(string) from[0].goal_objective[0..<from[0].goal_objective_n]);
+  to[0].goal_notice_n = cp_out(to[0].goal_notice[..], cast(string) from[0].goal_notice[0..<from[0].goal_notice_n]);
+  to[0].answer = from[0].answer; to[0].answer_due = from[0].answer_due; to[0].results_due = from[0].results_due;
+  to[0].live_ask = -1; to[0].live_reply = -1; to[0].live_call = -1; to[0].live_pane = -1;
+  from[0].live_ask = -1; from[0].live_reply = -1; from[0].live_call = -1; from[0].live_pane = -1;
+  to[0].scroll = 0; to[0].stick = true; to[0].pane_open = false; to[0].pane_manual = false; to[0].copied_turn = -1; to[0].copied_kind = CP_COPIED_NONE;
+  from[0].nturns = 0; cp_calls_reset(from); from[0].current_n = 0; from[0].answer_due = false; from[0].results_due = false;
+  from[0].kept_turns = 0; from[0].kept_running = false; from[0].kept_cost = 0; from[0].cost_usd_micros = 0;
+  from[0].budget_usd_micros = CP_BUDGET_DEFAULT; from[0].budget_override = false; from[0].kept_budget = CP_BUDGET_DEFAULT; from[0].kept_override = false;
+  from[0].model = CP_MODEL_DEFAULT; from[0].kept_model = CP_MODEL_DEFAULT; from[0].model_menu = false;
+  cp_goal_reset(from); from[0].kept_goal_status = CP_GOAL_NONE; from[0].kept_goal_n = 0; from[0].kept_goal_time = 0;
+  from[0].live_ask = -1; from[0].live_reply = -1; from[0].live_call = -1; from[0].live_pane = -1;
+  from[0].pane_open = false; from[0].pane_manual = false; from[0].copied_turn = -1; from[0].copied_kind = CP_COPIED_NONE;
+  from[0].scroll = 0; from[0].stick = true;
+  return true;
+}

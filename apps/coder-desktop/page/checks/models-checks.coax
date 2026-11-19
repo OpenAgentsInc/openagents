@@ -1,0 +1,155 @@
+// Checks for the page's models.coax: the model picker and OpenRouter models. Example data only.
+#load "../parts.coax";
+#load "checks-kit.coax";
+
+#test "OpenRouter: the set model is a picker entry and a sub-agent level, routed as openrouter: ids, kept by save/load" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  #assert cp_models(s) == CP_MODELS;                              // none set: no entry, no level offered
+  out: [8192] u8; ab: [8192] u8; ar: [1] ClArena; ar[0].buf = ab[..]; back: [1] McTask;
+  #assert coder_page_set_text(s, "hi") && coder_page_submit(s);
+  n := coder_page_task(s, "s", "/w", out[..]);
+  #assert mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].openrouter == "" && back[0].model == "gemini-4-neon";
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"ok\"}") == MWW_ENDED;
+  coder_page_set_openrouter(s, "deepseek/deepseek-v4.1-flash-1017", "moonshotai/kimi-k3");
+  #assert cp_models(s) == CP_MODELS + 1 && cp_model_label(s, CP_MODEL_OR) == "deepseek-v4.1-flash-1017" && cp_model_desc(s, CP_MODEL_OR) == "OpenRouter";
+  #assert cp_model_meta(s, CP_MODEL_OR) == "Microcoder · OpenRouter · deepseek/deepseek-v4.1-flash-1017";
+  s[0].model = CP_MODEL_OR;
+  #assert coder_page_set_text(s, "ship it") && coder_page_submit(s);
+  ar[0].at = 0;
+  n = coder_page_task(s, "s", "/w", out[..]);
+  #assert mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].model == "openrouter:deepseek/deepseek-v4.1-flash-1017" && back[0].openrouter == "moonshotai/kimi-k3";
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"openrouter\",\"task\":\"build it\"},{\"level\":\"opus\",\"task\":\"review\"}],\"ticket\":1}") == MWW_DELEGATE;
+  #assert CP_LEVEL_NAME[s[0].turns[1].agents[0].level] == "OpenRouter" && !coder_page_agent_claude(s, 0) && coder_page_agent_claude(s, 1);
+  #assert coder_page_agent_next(s) == 0;
+  ar[0].at = 0;
+  n = coder_page_agent_task(s, 0, "s-a0", "/w", out[..]);
+  #assert mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].model == "openrouter:moonshotai/kimi-k3" && back[0].effort == "medium" && !back[0].agents;
+  s[0].clock = s[0].turns[1].agents[0].heard + 4;
+  wb: [256] u8;
+  #assert cp_agent_wait(s, 1, 0, wb[..]) == "waiting on OpenRouter · 4s";
+  // saved by its id, found again as the OpenRouter entry; clearing the setting goes back to Neon
+  saved: [65536] u8; sn := coder_page_save(s, saved[..]);
+  p2: [1] CoderPage; s2 := p2[..]; cp_init(s2);
+  coder_page_set_openrouter(s2, "deepseek/deepseek-v4.1-flash-1017", "");
+  #assert sn > 0 && coder_page_load(s2, cast(string) saved[0..<sn]) && s2[0].model == CP_MODEL_OR && s2[0].turns[1].model == CP_MODEL_OR && s2[0].turns[1].agents[0].level == CP_LEVEL_OR;
+  coder_page_set_openrouter(s2, "", "");
+  #assert s2[0].model == CP_MODEL_DEFAULT && cp_model_id(s2, CP_MODEL_OR) == "gemini-4-neon";
+  // a launch's --model
+  #assert !coder_page_pick_model(s2, "openrouter") && coder_page_pick_model(s2, "Carbon") && s2[0].model == 1 && !coder_page_pick_model(s2, "gpt");
+  coder_page_set_openrouter(s2, "deepseek/deepseek-v4.1-flash-1017", "");
+  #assert coder_page_pick_model(s2, "openrouter") && s2[0].model == CP_MODEL_OR && coder_page_pick_model(s2, "gemini-4-neon") && s2[0].model == CP_MODEL_DEFAULT;
+}
+
+#test "composer model picker defaults to Neon, switches models per chat, routes tasks, and persists across save/load/take/new" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  s[0].d = 1.0f32;
+  s[0].ready = true;
+  #assert s[0].model == CP_MODEL_DEFAULT && cp_model_id(s, s[0].model) == "gemini-4-neon";
+  // First turn uses default Neon.
+  #assert coder_page_set_text(s, "first") && coder_page_submit(s);
+  out: [4096] u8;
+  n := coder_page_task(s, "sess-1", "/w", out[..]);
+  ar: [1] ClArena; ab: [2048] u8; ar[0] = ClArena.{buf = ab[..]};
+  back: [1] McTask;
+  #assert n > 0 && mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].model == "gemini-4-neon";
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"ok\"}") == MWW_ENDED;
+  // Layout and open the model picker popover via the composer button.
+  f: [1] UiFrame;
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0, 0.016, false, false);
+  cp_layout(s, f[..], 900.0f32, 700.0f32);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  btn := surface_find(s[0].surface[..], "coder.model");
+  #assert btn >= 0 && !s[0].model_menu;
+  #assert cp_press(s, btn);
+  #assert s[0].model_menu;
+  // Re-layout with popover open: all 4 model options appear.
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0.016, 0.016, false, false);
+  cp_layout(s, f[..], 900.0f32, 700.0f32);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  opt0 := surface_find(s[0].surface[..], "coder.model.0");
+  opt1 := surface_find(s[0].surface[..], "coder.model.1");
+  opt2 := surface_find(s[0].surface[..], "coder.model.2");
+  opt3 := surface_find(s[0].surface[..], "coder.model.3");
+  #assert opt0 >= 0 && opt1 >= 0 && opt2 >= 0 && opt3 >= 0;
+  // Pick Gemini 4 Carbon (index 1).
+  #assert cp_press(s, opt1);
+  #assert !s[0].model_menu && s[0].model == 1 && cp_model_id(s, s[0].model) == "gemini-4-carbon";
+  #assert coder_page_save_due(s);
+  // Second turn routes to Carbon while first turn remembers Neon.
+  #assert coder_page_set_text(s, "second") && coder_page_submit(s);
+  n = coder_page_task(s, "sess-1", "/w", out[..]);
+  ar[0].at = 0;
+  #assert n > 0 && mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].model == "gemini-4-carbon";
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"ok2\"}") == MWW_ENDED;
+  #assert s[0].turns[0].model == 0 && s[0].turns[1].model == 1;
+  // Clicking outside an open popover dismisses it.
+  s[0].model_menu = true;
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0.032, 0.016, false, false);
+  cp_layout(s, f[..], 900.0f32, 700.0f32);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  #assert coder_page_pointer(s, 10.0f32, 10.0f32, 0);
+  #assert !s[0].model_menu;
+  // Save/load preserves chat model and per-turn models.
+  saved: [16384] u8;
+  sn := coder_page_save(s, saved[..]);
+  #assert sn > 0;
+  p2: [1] CoderPage; s2 := p2[..];
+  cp_init(s2);
+  #assert coder_page_load(s2, cast(string) saved[0..<sn]);
+  #assert s2[0].model == 1 && s2[0].turns[0].model == 0 && s2[0].turns[1].model == 1;
+  // coder_page_take transfers selected model and resets source to Neon.
+  p3: [1] CoderPage; s3 := p3[..];
+  cp_init(s3);
+  #assert coder_page_take(s3, s2);
+  #assert s3[0].model == 1 && s2[0].model == CP_MODEL_DEFAULT;
+  // New chat resets selected model to Neon.
+  #assert cp_new(s3);
+  #assert s3[0].model == CP_MODEL_DEFAULT && !s3[0].model_menu;
+  // Loading an older saved chat without a model field defaults to Neon.
+  #assert coder_page_load(s3, "{\"turns\":[{\"ask\":\"hi\",\"reply\":\"yo\",\"state\":1}]}");
+  #assert s3[0].model == CP_MODEL_DEFAULT && s3[0].turns[0].model == CP_MODEL_DEFAULT;
+}
+
+#test "OpenRouter model picker popover clears the composer, hides the platform editor while open, and receives clicks" {
+  p: [1] CoderPage; s := p[..]; cp_init(s);
+  s[0].d = 1.0f32;
+  coder_page_set_openrouter(s, "anthropic/claude-sonnet-4", "");
+  #assert cp_models(s) == 5;
+  f: [1] UiFrame;
+  // Closed state: platform editor is active.
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0.0, 0.016, false, false);
+  cp_layout(s, f[..], 900.0f32, 700.0f32);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  eb: [6] f32;
+  #assert coder_page_editor(s, eb[..]);
+  // Open the model menu popover.
+  btn := surface_find(s[0].surface[..], "coder.model");
+  #assert btn >= 0 && cp_press(s, btn) && s[0].model_menu;
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0.016, 0.016, false, false);
+  cp_layout(s, f[..], 900.0f32, 700.0f32);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  // While open, platform editor is hidden so AppKit NSTextView cannot paint over or intercept the popover.
+  #assert !coder_page_editor(s, eb[..]);
+  t := [1] ElTable.[surface_rows(s[0].surface[..])];
+  comp := elt_find(t[..], "coder.composer");
+  menu := elt_find(t[..], "coder.model.menu");
+  or_opt := elt_find(t[..], "coder.model.4");
+  #assert comp >= 0 && menu >= 0 && or_opt >= 0;
+  // Popover sits cleanly above the composer box without overlapping the text field.
+  #assert t[0].rows[menu].y + t[0].rows[menu].h <= t[0].rows[comp].y;
+  #assert t[0].rows[or_opt].y + t[0].rows[or_opt].h <= t[0].rows[comp].y;
+  // Clicking the center of the OpenRouter option hits coder.model.4 and selects OpenRouter.
+  cx := t[0].rows[or_opt].x + t[0].rows[or_opt].w * 0.5f32;
+  cy := t[0].rows[or_opt].y + t[0].rows[or_opt].h * 0.5f32;
+  #assert surface_hit(s[0].surface[..], cx, cy) == or_opt;
+  #assert coder_page_pointer(s, cx, cy, 0);
+  #assert coder_page_pointer(s, cx, cy, 2);
+  #assert !s[0].model_menu && s[0].model == CP_MODEL_OR;
+  // Once closed, platform editor is active again.
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0.032, 0.016, false, false);
+  cp_layout(s, f[..], 900.0f32, 700.0f32);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  #assert coder_page_editor(s, eb[..]);
+}

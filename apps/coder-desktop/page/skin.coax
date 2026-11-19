@@ -1,0 +1,83 @@
+// Coder Desktop page (../page.coax): the layout scale and the page's skin.
+
+// Device pixels to a unit of the page's layout, before the screen's own scale: the skin's, times the text size.
+cp_scale :: (s: [] CoderPage) -> f32 { return ARCADE_PHONE_SCALE * CP_ZOOMS[ifx s[0].ready then s[0].zoom else CP_ZOOM_USUAL]; }
+// Coder Desktop's skin: Coder's monochrome Arcade palette with Claude Desktop's sidebar and
+// composer geometry, and slightly smaller main-area typography (14.4pt body, 13.2pt code/tools/chips)
+// relative to the unchanged 13.2pt sidebar.
+cp_skin :: () -> UiSkin {
+  u: f32 = ARCADE_PHONE_SCALE;
+  k := arcade_phone_skin();
+  // Sidebar surface & divider: visibly distinct cool-dark surface with crisp 1pt divider and clear selection pill.
+  k.sidebar = rgba(0.086f32, 0.090f32, 0.102f32, 1.0f32);
+  k.menu_divider = rgba(1.0f32, 1.0f32, 1.0f32, 0.14f32);
+  k.raised = rgba(0.157f32, 0.165f32, 0.184f32, 1.0f32);
+  k.hover = rgba(0.204f32, 0.212f32, 0.235f32, 1.0f32);
+  // Sidebar: Claude Desktop proportions (32pt rows, 26pt headers, 8pt inset/radius, 16pt pad, 15pt icons).
+  k.app.side_row = 32.0f32 / u;
+  k.app.side_row_two = 48.0f32 / u;
+  k.app.side_head = 26.0f32 / u;
+  k.app.row_inset = 8.0f32 / u;
+  k.app.row_radius = 8.0f32 / u;
+  k.app.side_pad = 16.0f32 / u;
+  k.app.icon = 15.0f32 / u;
+  // Main-area typography (everything outside the sidebar; k.small stays FONT_SMALL for sidebar parity).
+  k.body.face = FONT_TOOL; k.body.size = 12; k.body.line = 19.0f32;
+  k.strong.face = FONT_CHIP; k.strong.size = 12; k.strong.line = 19.0f32;
+  k.code.face = FONT_MONO_12; k.code.size = 12; k.code.line = 19.0f32;
+  k.mono.face = FONT_MONO_11; k.mono.size = 11; k.mono.line = 16.5f32;
+  k.mono_small.face = FONT_MONO_11; k.mono_small.size = 11; k.mono_small.line = 16.0f32;
+  k.tool.face = FONT_SMALL; k.tool.size = 11; k.tool.line = 16.5f32;
+  k.label.face = FONT_MENU_SMALL; k.label.size = 11; k.label.line = 16.0f32;
+  k.title.face = FONT_MENU; k.title.size = 13; k.title.line = 20.0f32;
+  // Main transcript: Claude Desktop proportions (prose, user bubble, code blocks, tool & thinking rows).
+  k.md.line = 19.0f32;
+  k.md.block_line = 16.5f32;
+  k.md.block_gap = 12.0f32;
+  k.app.gap = 10.0f32 / u;
+  k.app.gap_small = 6.0f32 / u;
+  k.app.icon_button = 28.0f32 / u;
+  k.app.bubble_pad_x = 16.0f32 / u;
+  k.app.bubble_pad_y = 10.0f32 / u;
+  k.app.bubble_radius = 16.0f32 / u;
+  k.app.bubble_share = 0.85f32;
+  k.app.code_head = 32.0f32 / u;
+  k.app.code_pad = 14.0f32 / u;
+  k.app.code_radius = 10.0f32 / u;
+  k.app.tool_h = 34.0f32 / u;
+  k.app.tool_pad = 12.0f32 / u;
+  k.app.tool_body_pad = 10.0f32 / u;
+  k.app.tool_radius = 10.0f32 / u;
+  k.app.tool_icon = 14.0f32 / u;
+  k.app.tool_chevron = 12.0f32 / u;
+  k.tr.bubble_pad_x = 16.0f32 / u;
+  k.tr.bubble_pad_y = 10.0f32 / u;
+  k.tr.bubble_radius = 16.0f32 / u;
+  // Minimal live message entrance (120ms, 3pt); non-live messages suppress enter completely.
+  k.motion.enter = 0.12f32;
+  k.app.rise = 3.0f32 / u;
+  // Composer: Claude Desktop card proportions (16pt radius, 21pt input line, 32pt send button, 28pt chip).
+  k.cmp.radius = 16.0f32 / u;
+  k.cmp.line = 21.0f32 / u;
+  k.cmp.text_inset = 6.0f32 / u;
+  k.cmp.pad_top = 12.0f32 / u;
+  k.cmp.pad_v = 20.0f32 / u;
+  k.cmp.actions_row = 32.0f32 / u;
+  k.cmp.actions_bottom = 10.0f32 / u;
+  k.cmp.action_inset = 10.0f32 / u;
+  k.cmp.send = 32.0f32 / u;
+  k.cmp.stop = 11.0f32 / u;
+  k.cmp.stop_radius = 2.5f32 / u;
+  k.cmp.chip_h = 28.0f32 / u;
+  k.cmp.chip_radius = 8.0f32 / u;
+  k.cmp.chip_pad = 8.0f32 / u;
+  k.cmp.chip_icon = 14.0f32 / u;
+  k.cmp.chip_gap = 6.0f32 / u;
+  // The transcript's activity groups: Zeron's measures in points (#13731)
+  k.act = app_act_scaled(u);
+  // Settings (settings.coax): Zeron's measures in points, in the page's units. Its 13pt faces are
+  // Coder's 11-unit ones (13.2pt); its 11pt, 12pt and 20pt faces are slots the host sizes in points.
+  k.set = uisettings_scaled(zeron_settings(), u);
+  k.set.text_face = FONT_SMALL; k.set.name_face = FONT_MENU_SMALL;
+  return k;
+}

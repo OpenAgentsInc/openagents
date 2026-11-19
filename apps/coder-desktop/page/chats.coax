@@ -1,0 +1,143 @@
+// Coder Desktop page (../page.coax): the kept chats' list in the sidebar, pins, the Foreman row,
+// the update pill's state, and which chat is shown.
+
+// ---- saved chats (GitHub #13661). The host keeps each chat in a file and the list of them;
+// the page writes and reads a chat's text (coder_page_save, coder_page_load) and shows the list
+// in a sidebar on the left, most recent first. A press on a row asks the host to open that chat.
+// The host's list, most recent first: one chat a line, its id, a tab, its title. The first 50
+// are shown; the sidebar says how many more there are.
+coder_page_chats :: (s: [] CoderPage, list: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].nchats = 0; s[0].chats_more = 0;
+  s[0].pin_drag = 0; s[0].pin_dragging = false;
+  i := 0;
+  while i < list.count {
+    e := i; while e < list.count && list[e] != 10 { e += 1; }
+    t := i; while t < e && list[t] != 9 { t += 1; }
+    u := ifx t < e then t + 1 else e; while u < e && list[u] != 9 { u += 1; }   // the title's end: a third column says a reply runs in it
+    v := ifx u < e then u + 1 else e; while v < e && list[v] != 9 { v += 1; }   // optional fourth column: '1' when pinned
+    w := ifx v < e then v + 1 else e; while w < e && list[w] != 9 { w += 1; }   // optional fifth column: '1' when managed by Foreman
+    z := ifx w < e then w + 1 else e; while z < e && list[z] != 9 { z += 1; }   // optional sixth column: '1' when unread
+    if t > i {
+      if s[0].nchats < CP_CHATS {
+        k := s[0].nchats;
+        n := cp_out(s[0].chats[k].id[..], "chat."); n += cp_out(s[0].chats[k].id[n..<CP_CHAT_ID], cast(string) list[i..<t]);
+        s[0].chats[k].id_n = n;
+        s[0].chats[k].title_n = ifx t + 1 < u then cp_out(s[0].chats[k].title[..], cast(string) list[t + 1..<u]) else cp_out(s[0].chats[k].title[..], "New chat");
+        s[0].chats[k].busy = u + 1 < v && list[u + 1] == '1';
+        s[0].chats[k].pinned = v + 1 < w && list[v + 1] == '1';
+        s[0].chats[k].managed = w + 1 < z && list[w + 1] == '1';
+        s[0].chats[k].unread = z + 1 < e && list[z + 1] == '1';
+        s[0].nchats += 1;
+      } else { s[0].chats_more += 1; }
+    }
+    i = e + 1;
+  }
+}
+// Helpers for pinned chats in the sidebar.
+cp_pin_count :: (s: [] CoderPage) -> int {
+  n := 0;
+  for q: 0..<s[0].nchats { if s[0].chats[q].pinned { n += 1; } }
+  return n;
+}
+cp_pin_index :: (s: [] CoderPage, target: int) -> int {
+  idx := 0;
+  for q: 0..<s[0].nchats {
+    if s[0].chats[q].pinned {
+      if q == target { return idx; }
+      idx += 1;
+    }
+  }
+  return -1;
+}
+cp_pin_reorder :: (s: [] CoderPage, from_q: int, to_idx: int) -> bool {
+  slots: [CP_CHATS] int; np := 0; from_idx := -1;
+  for q: 0..<s[0].nchats {
+    if s[0].chats[q].pinned {
+      if q == from_q { from_idx = np; }
+      slots[np] = q; np += 1;
+    }
+  }
+  if from_idx < 0 || to_idx < 0 || to_idx >= np || from_idx == to_idx { return false; }
+  moved := s[0].chats[slots[from_idx]];
+  if from_idx < to_idx {
+    for k: from_idx..<to_idx { s[0].chats[slots[k]] = s[0].chats[slots[k + 1]]; }
+  } else {
+    k := from_idx;
+    while k > to_idx { s[0].chats[slots[k]] = s[0].chats[slots[k - 1]]; k -= 1; }
+  }
+  s[0].chats[slots[to_idx]] = moved;
+  return true;
+}
+// The pinned chat id and new 0-based pinned index after CP_ASK_REORDER_PIN.
+coder_page_pin_move_id :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 || s[0].pin_move_id_n <= 5 { return 0; }
+  n := cp_out(out, cast(string) s[0].pin_move_id[5..<s[0].pin_move_id_n]);
+  s[0].pin_move_id_n = 0;
+  return n;
+}
+coder_page_pin_move_to :: (s: [] CoderPage) -> int #export_c #effects(all) {
+  if s.count < 1 { return -1; }
+  to := s[0].pin_move_to; s[0].pin_move_to = -1;
+  return to;
+}
+// The id of the chat that is shown ("" for a new one that is not saved yet): its row is lit.
+// Update the persistent Foreman sidebar row's running spinner and permission tier.
+coder_page_foreman :: (s: [] CoderPage, busy: bool, tier: int) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].foreman_busy = busy;
+  s[0].foreman_tier = ifx tier < CP_FOREMAN_TIER_OBSERVE then CP_FOREMAN_TIER_OBSERVE else ifx tier > CP_FOREMAN_TIER_AUTO then CP_FOREMAN_TIER_AUTO else tier;
+}
+// Update the sidebar footer auto-updater pill state, optional label, and detail text.
+coder_page_update :: (s: [] CoderPage, state: int, label: string, detail: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].update_state = ifx state < CP_UPD_HIDDEN then CP_UPD_HIDDEN else ifx state > CP_UPD_ERROR then CP_UPD_ERROR else state;
+  s[0].update_label_n = cp_out(s[0].update_label[..], label);
+  s[0].update_detail_n = cp_out(s[0].update_detail[..], detail);
+}
+coder_page_current :: (s: [] CoderPage, id: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  n := 0;
+  if id.count > 0 { n = cp_out(s[0].current[..], "chat."); n += cp_out(s[0].current[n..<CP_CHAT_ID], id); }
+  s[0].current_n = n;
+  if n > 0 {
+    cur := cast(string) s[0].current[0..<n];
+    for q: 0..<s[0].nchats {
+      if cast(string) s[0].chats[q].id[0..<s[0].chats[q].id_n] == cur { s[0].chats[q].unread = false; }
+    }
+  }
+}
+// The id of the chat a press asked for (after CP_ASK_OPEN). Its length in out.
+coder_page_open_id :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 || s[0].open < 0 || s[0].open >= s[0].nchats { return 0; }
+  k := s[0].open;
+  return cp_out(out, cast(string) s[0].chats[k].id[5..<s[0].chats[k].id_n]);
+}
+// The id of the chat whose sidebar row is at a point, in device pixels (a right-click there offers
+// to delete it). Its length in out, 0 when no chat's row is there.
+coder_page_chat_at :: (s: [] CoderPage, x: f32, y: f32, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 || !(s[0].d > 0) { return 0; }
+  id := surface_id(s[0].surface[..], surface_hit(s[0].surface[..], x / s[0].d, y / s[0].d));
+  for q: 0..<s[0].nchats { if id == cast(string) s[0].chats[q].id[0..<s[0].chats[q].id_n] { return cp_out(out, cast(string) id[5..<id.count]); } }
+  return 0;
+}
+// True when the persistent Foreman sidebar row is at (x, y) in device pixels (for right-click menu).
+coder_page_foreman_at :: (s: [] CoderPage, x: f32, y: f32) -> bool #export_c #effects(all) {
+  if s.count < 1 || !(s[0].d > 0) { return false; }
+  id := surface_id(s[0].surface[..], surface_hit(s[0].surface[..], x / s[0].d, y / s[0].d));
+  return id == "coder.foreman";
+}
+// The chat's title for the list: its first message on one line, up to 120 bytes.
+coder_page_title :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 || s[0].nturns < 1 { return 0; }
+  n := 0; gap := false;
+  for c: cast(string) s[0].turns[0].ask[0..<s[0].turns[0].ask_n] {
+    if n >= out.count || n >= CP_CHAT_TITLE { break; }
+    if c == 10 || c == 13 || c == 9 || c == 32 { gap = n > 0; continue; }
+    if gap { out[n] = 32; n += 1; gap = false; if n >= out.count || n >= CP_CHAT_TITLE { break; } }
+    out[n] = c; n += 1;
+  }
+  // never the first bytes of a character alone
+  if n < s[0].turns[0].ask_n { while n > 0 && (out[n - 1] & 0xC0) == 0x80 { n -= 1; } if n > 0 && out[n - 1] >= 0xC0 { n -= 1; } }
+  return n;
+}

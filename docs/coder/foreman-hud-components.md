@@ -63,10 +63,10 @@ Top-level Foreman HUD panel composed from the primitives above:
   - Center: **Signal Wires** fanning out from the Foreman output port to each visible managed worker node (up to `FHUD_MAX_NODES = 6`, with an overflow count badge if more exist).
   - Right column: **Managed Worker Nodes** (each clickable to open that managed chat), or a single standby target node (`No managed chats yet`) when the fleet is empty.
 
-## 4. Coder Desktop Integration (`apps/coder-desktop/page.coax`)
+## 4. Coder Desktop Integration (`apps/coder-desktop/page/layout/conversation.coax`)
 
 - `CoderPage` adds `foreman_hud_collapsed: bool` (default `false`) and action `CP_FOREMAN_HUD_TOGGLE :: 23`.
-- In `cp_layout`, whenever `cur == "chat.foreman"`:
+- In `cp_conversation` (`cp_foreman_hud`), whenever `cur == "chat.foreman"`:
   1. Collects managed chats (`s[0].chats[q].managed`), counts busy workers and active sub-agents, and formats current tier and spend/budget.
   2. Renders `fhud_hud(...)` at the top of the conversation column so it scrolls naturally with the Foreman workspace and stays visually aligned with the column width `cw`.
   3. Uses Foreman-specific empty-state copy when `s[0].nturns == 0`.
@@ -75,5 +75,5 @@ Top-level Foreman HUD panel composed from the primitives above:
 ## 5. Verification
 
 - Unit checks in `components/kit/foreman_hud.coax` (`coax/bin/coax test components/kit/foreman_hud.coax`): port/wire/node/metric primitives, active pulse motion vs. reduced motion, hit testing, collapse mode, and zero `sheet.lost`.
-- Integration checks in `apps/coder-desktop/page.coax` (`coax/bin/coax test apps/coder-desktop/page.coax`): Foreman HUD presence when `chat.foreman` is active, clicking a managed node dispatches `CP_ASK_OPEN`, and clicking the toggle collapses/expands the HUD.
+- Integration checks in `apps/coder-desktop/page/checks/layout-checks.coax` (`coax/bin/coax test apps/coder-desktop/page.coax --library`): Foreman HUD presence when `chat.foreman` is active, clicking a managed node dispatches `CP_ASK_OPEN`, and clicking the toggle collapses/expands the HUD.
 - Full macOS build check via `CODER_BUILD=/tmp/coder-foreman-hud apps/coder-desktop/build.sh`.

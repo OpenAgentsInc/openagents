@@ -64,7 +64,7 @@ coax_units = target_points / ARCADE_PHONE_SCALE   // divide by 1.2
 ```
 
 Apply desktop-specific geometry overrides in `cp_skin()` inside
-`apps/coder-desktop/page.coax` (keeping shared skins intact for other apps):
+`apps/coder-desktop/page/skin.coax` (keeping shared skins intact for other apps):
 
 | Element | Claude Desktop (pt) | Coder `cp_skin()` (Coax units at 1.2x) |
 | --- | --- | --- |
@@ -76,14 +76,14 @@ Apply desktop-specific geometry overrides in `cp_skin()` inside
 | Sidebar icon size (`app.icon`) | `15pt` | `15.0 / u` |
 | Composer toolbar chip height / radius / icon | `28pt` / `8pt` / `14pt` | `28.0 / u`, `8.0 / u`, `14.0 / u` |
 
-## Step 4: Implement in Coax Components & `apps/coder-desktop/page.coax`
+## Step 4: Implement in Coax Components & `apps/coder-desktop/page/`
 
 1. Keep reusable structural improvements in `components/app/` and
    `components/kit/` (for example, `app_side_action` and hover states in
    `components/app/nav.coax`, and live `row_y` returned in `ComposerBox` from
    `components/kit/composer.coax`).
-2. Wire page-specific layout in `apps/coder-desktop/page.coax` (`cp_layout` and
-   `cp_skin`).
+2. Wire page-specific layout in `apps/coder-desktop/page/layout/` (`cp_layout`,
+   `cp_sidebar`, `cp_conversation`, `cp_pane`) and `page/skin.coax` (`cp_skin`).
 3. Never hardcode Claude colors; always reference Coder's skin tokens
    (`k.canvas`, `k.surface`, `k.raised`, `k.hover`, `k.menu_divider`, `k.ink`,
    `k.muted`, `k.faint`).

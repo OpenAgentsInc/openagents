@@ -1,0 +1,22 @@
+// What the page's checks share: a text search and two frames, the narrow one and one wide enough
+// for the sidebar. Loaded by every checks/*.coax.
+#load "../parts.coax";
+
+// Where needle starts in text, -1 when it is not there (the checks' own).
+cp_find :: (text: string, needle: string) -> int {
+  i := 0;
+  while i + needle.count <= text.count { if cast(string) text[i..<i + needle.count] == needle { return i; } i += 1; }
+  return -1;
+}
+// a frame wide enough for the sidebar
+cp_test_draw_side :: (s: [] CoderPage, f: [] UiFrame) -> bool {
+  uiframe_begin(f, s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0, 0.016, false, false);
+  cp_layout(s, f, 1200.0f32, 800.0f32);
+  return uiframe_end(f, s[0].surface[..]);
+}
+cp_test_draw :: (s: [] CoderPage, f: [] UiFrame) -> bool {
+  uiframe_begin(f, s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0, 0.016, false, false);
+  s[0].think_at = 1 - s[0].think_at; s[0].think[s[0].think_at].n = 0; s[0].think[s[0].think_at].nb = 0; s[0].think[s[0].think_at].nr = 0; s[0].think[s[0].think_at].ni = 0; s[0].think[s[0].think_at].nlink = 0;
+  cp_layout(s, f, 900.0f32, 2000.0f32);
+  return uiframe_end(f, s[0].surface[..]);
+}

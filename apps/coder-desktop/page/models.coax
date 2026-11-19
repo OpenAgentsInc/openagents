@@ -1,0 +1,72 @@
+// Coder Desktop page (../page.coax): the composer's model list, the OpenRouter main and sub-agent
+// models, and the picker's host calls.
+
+// How many entries the picker has: the Gemini models, and the OpenRouter model when one is set.
+cp_models :: (s: [] CoderPage) -> int { return ifx s.count > 0 && s[0].or_main_n > 0 then CP_MODELS + 1 else CP_MODELS; }
+cp_model_index :: (s: [] CoderPage) -> int {
+  return ifx s.count > 0 && s[0].model >= 0 && s[0].model < cp_models(s) then s[0].model else CP_MODEL_DEFAULT;
+}
+// A kept model's entry: a Gemini id or short name, or any "openrouter:" id (CP_MODEL_OR).
+cp_model_find :: (name: string) -> int {
+  if name.count > CP_OR_PREFIX.count && cast(string) name[0..<CP_OR_PREFIX.count] == CP_OR_PREFIX { return CP_MODEL_OR; }
+  ids := CP_MODEL_ID; shorts := CP_MODEL_SHORT;
+  for i: 0..<CP_MODELS {
+    if name == ids[i] || name == shorts[i] { return i; }
+  }
+  return CP_MODEL_DEFAULT;
+}
+cp_or_main :: (s: [] CoderPage) -> string { return cast(string) s[0].or_main[0..<s[0].or_main_n]; }
+cp_or_sub :: (s: [] CoderPage) -> string { return cast(string) s[0].or_sub[0..<s[0].or_sub_n]; }
+cp_is_or :: (s: [] CoderPage, idx: int) -> bool { return idx == CP_MODEL_OR && s.count > 0 && s[0].or_main_n > 0; }
+// The worker's model id for an entry: "openrouter:VENDOR/MODEL" for the OpenRouter one.
+cp_model_id :: (s: [] CoderPage, idx: int) -> string {
+  if cp_is_or(s, idx) { return cast(string) s[0].or_id[0..<cp_out(s[0].or_id[..], CP_OR_PREFIX) + cp_out(s[0].or_id[CP_OR_PREFIX.count..<s[0].or_id.count], cp_or_main(s))]; }
+  ids := CP_MODEL_ID;
+  return ifx idx >= 0 && idx < CP_MODELS then ids[idx] else ids[CP_MODEL_DEFAULT];
+}
+// The OpenRouter entry's label is the model's name after its vendor (deepseek-v4.1-flash-1017).
+cp_model_label :: (s: [] CoderPage, idx: int) -> string {
+  if cp_is_or(s, idx) {
+    m := cp_or_main(s); at := 0;
+    for c, i: m { if c == '/' { at = i + 1; } }
+    return ifx at < m.count then cast(string) m[at..<m.count] else m;
+  }
+  labels := CP_MODEL_LABEL;
+  return ifx idx >= 0 && idx < CP_MODELS then labels[idx] else labels[CP_MODEL_DEFAULT];
+}
+cp_model_short :: (idx: int) -> string {
+  shorts := CP_MODEL_SHORT;
+  return ifx idx >= 0 && idx < CP_MODELS then shorts[idx] else shorts[CP_MODEL_DEFAULT];
+}
+cp_model_desc :: (s: [] CoderPage, idx: int) -> string {
+  if cp_is_or(s, idx) { return "OpenRouter"; }
+  descs := CP_MODEL_DESC;
+  return ifx idx >= 0 && idx < CP_MODELS then descs[idx] else descs[CP_MODEL_DEFAULT];
+}
+cp_model_meta :: (s: [] CoderPage, idx: int) -> string {
+  if cp_is_or(s, idx) {
+    n := cp_out(s[0].or_meta[..], "Microcoder · OpenRouter · ");
+    n += cp_out(s[0].or_meta[n..<s[0].or_meta.count], cp_or_main(s));
+    return cast(string) s[0].or_meta[0..<n];
+  }
+  metas := CP_MODEL_META;
+  return ifx idx >= 0 && idx < CP_MODELS then metas[idx] else metas[CP_MODEL_DEFAULT];
+}
+// The OpenRouter models the person set (Coder > OpenRouter Models): main for Microcoder, sub for
+// sub-agents, each "" for none. A chat on the OpenRouter entry goes back to Neon when main is cleared.
+// The shown chat's model by name (a launch's --model): a Gemini id or short name, or "openrouter"
+// (or an "openrouter:" id) for the OpenRouter entry. False when no entry has that name.
+coder_page_pick_model :: (s: [] CoderPage, name: string) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  idx := ifx name == "openrouter" then CP_MODEL_OR else cp_model_find(name);
+  if idx == CP_MODEL_DEFAULT && name != cp_model_id(s, CP_MODEL_DEFAULT) && name != cp_model_short(CP_MODEL_DEFAULT) { return false; }
+  if idx >= cp_models(s) { return false; }
+  s[0].model = idx;
+  return true;
+}
+coder_page_set_openrouter :: (s: [] CoderPage, main: string, sub: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].or_main_n = ifx main.count <= CP_OR_ID then cp_out(s[0].or_main[..], main) else 0;
+  s[0].or_sub_n = ifx sub.count <= CP_OR_ID then cp_out(s[0].or_sub[..], sub) else 0;
+  if s[0].model >= cp_models(s) { s[0].model = CP_MODEL_DEFAULT; }
+}

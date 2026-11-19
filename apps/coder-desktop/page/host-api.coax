@@ -1,0 +1,252 @@
+// Coder Desktop page (../page.coax): the rest of the calls the host makes: the editor, frames, icons
+// and fonts, actions, the worker's task and lines, Copy, and the text size.
+
+// ---------------------------------------------------------------- the host's calls
+
+// The platform editor: whether it holds the keyboard, its own text height in points while it does; reduced motion.
+coder_page_env :: (s: [] CoderPage, focused: bool, editor_height: f32, reduced: bool) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].focused = focused; s[0].editor_h = ifx focused && editor_height > 0 then editor_height else 0.0f32; s[0].reduced = reduced;
+}
+// The platform editor's text after an edit. One longer than a draft may be is refused.
+coder_page_set_text :: (s: [] CoderPage, text: string) -> bool #export_c #effects(all) {
+  if s.count < 1 || text.count > EB_TEXT { return false; }
+  if text != eb_text(s[0].draft[..]) { eb_set(s[0].draft[..], text); }
+  return true;
+}
+// Return in the editor: the same as a press on Send. True when the draft was sent.
+coder_page_submit :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && cp_send(s); }
+// One frame of width by height device pixels. Returns the vertex count.
+coder_page_frame :: (s: [] CoderPage, out: [] f32, width: f32, height: f32, dpr: f32, dt: f32) -> int #export_c #effects(all) {
+  if s.count < 1 || width < 1 || height < 1 { return 0; }
+  if !s[0].ready { cp_init(s); }
+  a := s[0].atlas[..];
+  d := (ifx dpr < 1 then 1.0f32 else dpr) * cp_scale(s);
+  w := width / d; h := height / d;
+  s[0].d = d;
+  t := ifx dt < 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
+  if !s[0].reduced { s[0].time += t; }
+  s[0].clock += t;
+  a[0].frame += 1;
+  k := cp_skin();
+  v := paint_quad(out, 0, d, 0, 0, w, h, 0, 0, k.canvas, k.canvas);
+  if !a[0].ready { return v; }
+  f: [1] UiFrame;
+  input := uiinput(s[0].px, s[0].py, s[0].touching, s[0].touching, cast(string) s[0].pressed[0..<s[0].pressed_n], ifx s[0].focused then "coder.composer" else "");
+  s[0].think_at = 1 - s[0].think_at;
+  s[0].think[s[0].think_at].n = 0; s[0].think[s[0].think_at].nb = 0; s[0].think[s[0].think_at].nr = 0; s[0].think[s[0].think_at].ni = 0; s[0].think[s[0].think_at].nlink = 0;
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_font(a), k, input, s[0].time, t, s[0].reduced, false);
+  cp_layout(s, f[..], w, h);
+  s[0].moving = uiframe_moving(f[..]) || cp_running(s) || cp_side_busy(s) || s[0].set_due;
+  s[0].set_due = false;
+  if !uiframe_end(f[..], s[0].surface[..]) { s[0].refused += 1; }
+  cp_clamp(s);
+  sh := surface_sheet(s[0].surface[..]);
+  v = gpu_draw(out, v, a, d, sh.under[0..<sh.nu], 0, 0, -8, h + 8);
+  v = gpu_draw(out, v, a, d, sh.over[0..<sh.no], 0, 0, -8, h + 8);
+  gpu_monochrome(out, v);
+  return v;
+}
+// An icon's size in the atlas. An icon draws at this size wherever it is, so the ones that sit
+// together in the window's top corners and under messages (folder, copy, its check, new chat) are
+// one size; the rest keep the component library's.
+CP_ICON :: 18;
+coder_page_icon_size :: (i: int) -> f32 #export_c #effects(all) {
+  if i == ICON_FOLDER || i == ICON_COPY || i == ICON_CHECK || i == ICON_COMPOSE || i == ICON_CLOSE { return CP_ICON; }
+  sizes := ICON_SIZES;
+  // settings' icons are Zeron's, in points
+  if i >= ICON_SET_GENERAL && i <= ICON_SET_COMMAND { return sizes[i] / ARCADE_PHONE_SCALE; }
+  return ifx i >= 0 && i < ICON_COUNT then sizes[i] else 16.0f32;
+}
+// A font's size in the atlas: the settings' faces are Zeron's, in points; the rest keep the
+// component library's.
+coder_page_font_size :: (k: int) -> f32 #export_c #effects(all) {
+  sizes := FONT_SIZES;
+  if k < 0 || k >= sizes.count { return 12.0f32; }
+  if k == FONT_SET_HEAD || k == FONT_SET_DESC || k == FONT_SET_TITLE { return sizes[k] / ARCADE_PHONE_SCALE; }
+  return sizes[k];
+}
+// What the page asks of the host (CP_ASK_*), once.
+coder_page_action :: (s: [] CoderPage) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  ask := s[0].ask; s[0].ask = CP_ASK_NONE;
+  return ask;
+}
+// The newest message as the worker's task line (mcworker-wire.coax): its length in out, 0 for none.
+coder_page_task :: (s: [] CoderPage, session: string, cwd: string, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 || !cp_running(s) { return 0; }
+  i := s[0].nturns - 1;
+  // the note on installed skills, optional active thread goal context, then the message
+  whole: [CP_SKILLS + CP_GOAL_TEXT + EB_TEXT + 2048] u8;
+  n := cp_out(whole[..], cast(string) s[0].skills[0..<s[0].skills_n]);
+  if s[0].goal_status == CP_GOAL_ACTIVE && s[0].goal_objective_n > 0 {
+    n += cp_out(whole[n..<whole.count], "<goal_objective>\n");
+    n += cp_out(whole[n..<whole.count], cast(string) s[0].goal_objective[0..<s[0].goal_objective_n]);
+    n += cp_out(whole[n..<whole.count], "\n</goal_objective>\n");
+    if s[0].goal_prompt_kind == CP_GOAL_PROMPT_CONTINUE {
+      n += cp_out(whole[n..<whole.count], "Continue working toward the active thread goal above. Make concrete, verified progress without stopping early. Do not ask the user for permission to continue. When the goal is completely achieved and verified, include [GOAL_COMPLETE] at the end of your reply. If you are truly blocked and need user input, include [GOAL_BLOCKED] and explain what is needed.\n\n");
+    } else if s[0].goal_prompt_kind == CP_GOAL_PROMPT_UPDATED {
+      n += cp_out(whole[n..<whole.count], "The user updated the active thread goal above. Realign your work to the updated objective. When the updated goal is completely achieved and verified, include [GOAL_COMPLETE] at the end of your reply. If blocked on user input, include [GOAL_BLOCKED].\n\n");
+    } else {
+      n += cp_out(whole[n..<whole.count], "Work autonomously toward the active thread goal above. Make concrete, verified progress across turns until finished. When the goal is completely achieved and verified, include [GOAL_COMPLETE] at the end of your reply. If you are truly blocked and need user input, include [GOAL_BLOCKED].\n\n");
+    }
+  }
+  for c: cast(string) s[0].turns[i].ask[0..<s[0].turns[i].ask_n] { if n < whole.count { whole[n] = c; n += 1; } }
+  t := McTask.{task = cast(string) whole[0..<n], session = session, cwd = cwd, sandbox = "danger-full-access",
+               ceiling = 3, gated = true, edits = true, unlimited = true, no_ask = true, agents = true, claude = s[0].claude, model = cp_model_id(s, s[0].turns[i].model), effort = "low", openrouter = cp_or_sub(s)};
+  return mww_task(out, t);
+}
+// What the host found installed on this computer (skills and their files), in words for Microcoder.
+// It goes ahead of every message's task and is not shown. At most 4,000 bytes are kept.
+coder_page_skills :: (s: [] CoderPage, note: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].skills_n = cp_out(s[0].skills[..], note);
+}
+// The working folder as the host shows it (~/work/app). Commands start there: the host passes its
+// whole path as the task's cwd. At most 512 bytes are kept.
+coder_page_folder :: (s: [] CoderPage, shown: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].folder_n = cp_out(s[0].folder[..], shown);
+}
+// The answer the worker is owed for the command it asked about: yes, run it. The page shows every
+// command as it starts; it does not hold one back. Its length in out, 0 when none is owed.
+coder_page_answer_line :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  if s[0].results_due && cp_running(s) {
+    i := s[0].nturns - 1;
+    s[0].results_due = false; s[0].turns[i].waiting = false; s[0].turns[i].h = 0;
+    return cp_results(s, i, out);
+  }
+  if !s[0].answer_due { return 0; }
+  s[0].answer_due = false;
+  return mww_answer(out, true, s[0].answer, "");
+}
+// The worker's line to stop the run, and the one to forget the conversation.
+coder_page_stop_line :: (out: [] u8) -> int #export_c #effects(all) { return cp_out(out, MWW_STOP_LINE); }
+coder_page_forget_line :: (out: [] u8) -> int #export_c #effects(all) { return cp_out(out, MWW_FORGET_LINE); }
+// One line from the worker. Returns its kind (MWW_*).
+coder_page_line :: (s: [] CoderPage, line: string) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  ar := [1] ClArena.[ClArena.{buf = s[0].arena[..]}];
+  l: [1] MwwLine;
+  kind := mww_read(ar[..], line, l[..]);
+  if !cp_running(s) { return kind; }
+  i := s[0].nturns - 1;
+  // Each model request streams its own text. What one wrote before it ran commands is not the
+  // reply: the next request's text takes its place, as the ended line's whole reply does.
+  if kind == MWW_REPLY { cp_reply_set(s, i, l[0].text, !s[0].turns[i].fresh); s[0].turns[i].fresh = false; }
+  else if kind == MWW_ATTEMPT { s[0].turns[i].fresh = true; cp_add_cost(s, cp_attempt_cost(l[0])); }
+  else if kind == MWW_ASK { cp_cmd_asked(s, i, l[0].command, l[0].ticket.value); }
+  else if kind == MWW_DELEGATE { cp_delegate(s, i, l[0].tasks, l[0].ticket.value); }
+  else if kind == MWW_COMMAND { cp_cmd_done(s, i, l[0].command, l[0].output, l[0].timed_out.value || l[0].exit.value != 0); }
+  else if kind == MWW_THOUGHT { cp_thought_add(s, i, -1, l[0].text, false); }
+  else if kind == MWW_VIEW { cp_cmd_add(s, i, l[0].path, ifx l[0].found.value then "" else "No such file.", true, !l[0].found.value); }
+  else if kind == MWW_ENDED {
+    if l[0].ending == "finished" || l[0].ending == "asked" {
+      if l[0].text.count > 0 { cp_reply_set(s, i, l[0].text, false); }
+      s[0].turns[i].state = CP_DONE;
+    } else if s[0].turns[i].stopping { s[0].turns[i].state = CP_STOPPED; }
+    else {
+      s[0].turns[i].note_n = cp_out(s[0].turns[i].note[..], cp_ended_why(l[0].ending, l[0].text, false));
+      s[0].turns[i].state = CP_FAILED;
+      s[0].live_reply = i;
+    }
+    cp_cmds_end(s, i);
+    s[0].turns[i].h = 0;
+    cp_goal_on_turn_end(s, i, l[0].ending, l[0].text);
+  }
+  return kind;
+}
+// The worker could not start or went away: the running turn says why.
+coder_page_failed :: (s: [] CoderPage, why: string) #export_c #effects(all) {
+  if s.count < 1 || !cp_running(s) { return; }
+  i := s[0].nturns - 1;
+  s[0].turns[i].note_n = cp_out(s[0].turns[i].note[..], why); s[0].turns[i].state = CP_FAILED; s[0].live_reply = i; s[0].turns[i].h = 0;
+  cp_cmds_end(s, i);
+}
+// What the last Copy took: a code block, a person's message, a reply as its Markdown, or the whole
+// chat (each message under "You:", each command under "Ran:", each reply under "Microcoder:"). Its length in out.
+coder_page_copied :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 || s[0].copied_turn < 0 || s[0].copied_turn >= s[0].nturns { return 0; }
+  i := s[0].copied_turn; kind := s[0].copied_kind;
+  if kind == CP_COPIED_PANE {
+    if !s[0].pane_open || s[0].copied_block < 0 || s[0].copied_block >= s[0].pane_blocks { return 0; }
+    return cp_out(out, md_block_text(s[0].pane_doc[..], s[0].copied_block));
+  }
+  if kind == CP_COPIED_SAID {
+    // parsed again into the transcript's reply document, which the next frame parses afresh
+    q := s[0].copied_row;
+    if q < 0 || !s[0].calls[q].said { return 0; }
+    s[0].pane_doc[0].n = 0; s[0].pane_doc[0].nb = 0; s[0].pane_doc[0].nr = 0; s[0].pane_doc[0].ni = 0; s[0].pane_doc[0].nlink = 0; s[0].pane_parsed = -1;
+    blocks := md_parse(s[0].pane_doc[..], cp_call_text(s, q), 0);
+    if s[0].copied_block < 0 || s[0].copied_block >= blocks || s[0].pane_doc[0].blocks[s[0].copied_block].kind != MB_CODE { return 0; }
+    return cp_out(out, md_block_text(s[0].pane_doc[..], s[0].copied_block));
+  }
+  if kind == CP_COPIED_BLOCK {
+    if s[0].copied_block < 0 || s[0].copied_block >= s[0].turns[i].blocks { return 0; }
+    return cp_out(out, md_block_text(s[0].turns[i].doc[..], s[0].copied_block));
+  }
+  if kind == CP_COPIED_ASK { return cp_out(out, cast(string) s[0].turns[i].ask[0..<s[0].turns[i].ask_n]); }
+  if kind == CP_COPIED_REPLY { return cp_out(out, cast(string) s[0].turns[i].reply[0..<s[0].turns[i].reply_n]); }
+  if kind != CP_COPIED_ALL { return 0; }
+  n := 0;
+  for j: 0..<s[0].nturns {
+    n += cp_out(out[n..<out.count], "You:\n"); n += cp_out(out[n..<out.count], cast(string) s[0].turns[j].ask[0..<s[0].turns[j].ask_n]); n += cp_out(out[n..<out.count], "\n\n");
+    q := s[0].turns[j].head - 1;
+    while q >= 0 {
+      if !s[0].calls[q].thought && !s[0].calls[q].said {
+        n += cp_out(out[n..<out.count], ifx s[0].calls[q].read then "Read: " else "Ran: ");
+        n += cp_out(out[n..<out.count], cast(string) s[0].calls[q].text[0..<s[0].calls[q].text_n]); n += cp_out(out[n..<out.count], "\n");
+      }
+      q = s[0].calls[q].next - 1;
+    }
+    if s[0].turns[j].ncmds > 0 { n += cp_out(out[n..<out.count], "\n"); }
+    if s[0].turns[j].reply_n > 0 {
+      n += cp_out(out[n..<out.count], "Microcoder:\n"); n += cp_out(out[n..<out.count], cast(string) s[0].turns[j].reply[0..<s[0].turns[j].reply_n]); n += cp_out(out[n..<out.count], "\n\n");
+    }
+  }
+  while n > 0 && out[n - 1] == 10 { n -= 1; }
+  return n;
+}
+// The text's committed box for the platform editor, in points from the view's top left: x, y, w, h,
+// then the first line's inset and a line's height.
+coder_page_editor :: (s: [] CoderPage, out: [] f32) -> bool #export_c #effects(all) {
+  if s.count < 1 || out.count < 6 || s[0].model_menu { return false; }
+  t := [1] ElTable.[surface_rows(s[0].surface[..])];
+  i := elt_find(t[..], "coder.composer");
+  if i < 0 { return false; }
+  b := s[0].box; u: f32 = cp_scale(s);
+  out[0] = (t[0].rows[i].x + b.text_x) * u; out[1] = (t[0].rows[i].y + b.text_y) * u; out[2] = b.text_w * u; out[3] = b.text_h * u;
+  out[4] = b.inset * u; out[5] = b.line * u;
+  return true;
+}
+// How the platform editor is styled, from the skin: the text's size and line (points), then the
+// ink, the placeholder's ink and the caret's, each straight RGBA.
+coder_page_style :: (s: [] CoderPage, out: [] f32) -> bool #export_c #effects(all) {
+  if s.count < 1 || out.count < 14 { return false; }
+  k := cp_skin();
+  out[0] = k.body.size * cp_scale(s); out[1] = k.cmp.line * cp_scale(s);
+  out[2] = k.ink.r; out[3] = k.ink.g; out[4] = k.ink.b; out[5] = k.ink.a;
+  out[6] = k.faint.r; out[7] = k.faint.g; out[8] = k.faint.b; out[9] = k.faint.a;
+  out[10] = k.accent.r; out[11] = k.accent.g; out[12] = k.accent.b; out[13] = k.accent.a;
+  return true;
+}
+coder_page_running :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && cp_running(s); }
+coder_page_moving :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && (!s[0].ready || !s[0].reduced && s[0].moving); }
+coder_page_refused :: (s: [] CoderPage) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return s[0].refused; }
+coder_page_max_vertices :: () -> int #export_c #effects(all) { return CP_MAX_VERTICES; }
+coder_page_scale :: (s: [] CoderPage) -> f32 #export_c #effects(all) { if s.count < 1 { return ARCADE_PHONE_SCALE; } return cp_scale(s); }
+// The text size: a row of CP_ZOOMS (0 to 7; 2 is the usual size). by moves it a row up or down and
+// 0 leaves it; coder_page_zoom_set names the row. Each returns the row it is at now.
+coder_page_zoom :: (s: [] CoderPage, by: int) -> int #export_c #effects(all) {
+  if s.count < 1 { return CP_ZOOM_USUAL; }
+  if !s[0].ready { cp_init(s); }
+  return coder_page_zoom_set(s, s[0].zoom + by);
+}
+coder_page_zoom_set :: (s: [] CoderPage, row: int) -> int #export_c #effects(all) {
+  if s.count < 1 { return CP_ZOOM_USUAL; }
+  if !s[0].ready { cp_init(s); }
+  r := ifx row < 0 then 0 else ifx row > 7 then 7 else row;
+  if r != s[0].zoom { s[0].zoom = r; for i: 0..<s[0].nturns { s[0].turns[i].h = 0; } }
+  return s[0].zoom;
+}

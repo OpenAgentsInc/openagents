@@ -2,7 +2,7 @@
 
 Coder Desktop draws an agent's work as Zeron's activity group does. The
 component is `components/app/activity.coax`; Coder's transcript uses it in
-`cp_group` (`apps/coder-desktop/page.coax`).
+`cp_group` (`apps/coder-desktop/page/layout/conversation.coax`).
 
 ## Captures
 

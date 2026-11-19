@@ -1,0 +1,141 @@
+// Coder Desktop page (../../page.coax): a sub-agent's transcript beside the conversation, and the
+// row a command, file read or thought shows as.
+
+// The transcript of sub-agent n (1 is the first) of the newest message that has that many opens,
+// as a press on its row opens it. False when no message has.
+coder_page_pane :: (s: [] CoderPage, n: int) -> bool #export_c #effects(all) {
+  if s.count < 1 || n < 1 { return false; }
+  for back: 0..<s[0].nturns {
+    i := s[0].nturns - 1 - back;
+    if s[0].turns[i].nagents < n { continue; }
+    cp_pane_open(s, i, n - 1);
+    s[0].pane_manual = true;
+    return true;
+  }
+  return false;
+}
+// "p3.1.x12": a part of the open sub-agent's transcript, named by its turn and its number.
+cp_pane_id :: (out: [] u8, s: [] CoderPage, part: string, q: int) -> string {
+  n := el_put(out, 0, "p"); n = el_put_i(out, n, s[0].pane_turn); n = el_put(out, n, "."); n = el_put_i(out, n, s[0].pane_agent); n = el_put(out, n, part);
+  if q >= 0 { n = el_put_i(out, n, q); }
+  return cast(string) out[0..<n];
+}
+// One row at (x, y), w wide, as the conversation and a transcript both show it: a command or a
+// file read that opens onto its input and output, or a thought that opens onto its words, wrapped
+// to the row. Returns its height.
+cp_row :: (s: [] CoderPage, f: [] UiFrame, q: int, id: string, x: f32, y: f32, w: f32, action: int) -> f32 {
+  a := f[0].skin.app; sh := f[0].sheet; kb: [24] u8;
+  text := cast(string) s[0].calls[q].text[0..<s[0].calls[q].text_n]; output := cp_call_text(s, q);
+  if s[0].calls[q].said {
+    // what the sub-agent said reads as a reply does: its Markdown, parsed into this frame's document
+    at := s[0].think_at; b0 := s[0].think[at].nb;
+    blocks := md_parse(s[0].think[at..<at + 1], output, 0);
+    if blocks > 0 {
+      enter := f[0].skin.motion.enter;
+      if s[0].live_call != q { f[0].skin.motion.enter = 0; }
+      rh := app_message_agent_part(f, id, x, y, w, s[0].think[at..<at + 1], b0, blocks,
+                                   ifx s[0].copied_kind == CP_COPIED_SAID && s[0].copied_row == q then s[0].copied_block else -1, CP_SAID_COPY);
+      f[0].skin.motion.enter = enter; if s[0].live_call == q { s[0].live_call = -1; }
+      return rh;
+    }
+    // the document is full: its words as they are, wrapped, a line each
+    wb := s[0].scratch[..];
+    per := cast(int) (w / measure_width(f[0].m, f[0].skin.small.face, "0")) - 1; if per < 8 { per = 8; }
+    wn := cp_wrap(wb, output, per);
+    ln: f32 = 0; from := 0; li := 0;
+    for k: 0..<wn + 1 {
+      if k < wn && wb[k] != 10 { continue; }
+      lb: [EL_ID] u8; n := el_put(lb[..], 0, id); n = el_put(lb[..], n, ".l"); n = el_put_i(lb[..], n, li); li += 1;
+      ln += app_meta(f, cast(string) lb[0..<n], x, y + ln, w, sheet_pool(sh, cast(string) wb[from..<k]), false);
+      from = k + 1;
+    }
+    return ln;
+  }
+  if s[0].calls[q].thought {
+    note := AppTool.{icon = ICON_THOUGHT, title = "Thought", arg = text, state = APP_TOOL_DONE, note = true};
+    if !app_tool_open_now(f, id, false) { return app_tool(f, id, x, y, w, note, false, action); }
+    // an open thought reads as a reply does: its Markdown, parsed into this frame's document
+    at := s[0].think_at; b0 := s[0].think[at].nb;
+    note.blocks = md_parse(s[0].think[at..<at + 1], output, 0);
+    if note.blocks > 0 { note.doc = s[0].think[at..<at + 1]; note.block0 = b0; note.output = output; }
+    else {
+      // the document is full: its words as they are, wrapped to the row
+      wb := s[0].scratch[..];
+      per := cast(int) ((w - 2 * a.tool_pad) / measure_width(f[0].m, f[0].skin.mono_small.face, "0")) - 1; if per < 8 { per = 8; }
+      wn := cp_wrap(wb, output, per);
+      note.output = sheet_pool(sh, cast(string) wb[0..<wn]);
+    }
+    return app_tool(f, id, x, y, w, note, false, action);
+  }
+  running := s[0].calls[q].running; read := s[0].calls[q].read;
+  tool := AppTool.{icon = ifx read then ICON_DOCUMENT else ICON_TERMINAL, title = ifx read then "Read" else ifx running then "Running a command" else "Ran a command", arg = text,
+                   state = ifx running then APP_TOOL_RUNNING else ifx s[0].calls[q].failed then APP_TOOL_FAILED else APP_TOOL_DONE, input = text, output = output,
+                   took = sheet_pool(sh, cp_took(kb[..], ifx running then s[0].clock - s[0].calls[q].began else s[0].calls[q].took))};
+  return app_tool(f, id, x, y, w, tool, false, action);
+}
+// A sub-agent's transcript (GitHub #13666) from px, pw wide, the window's height: its model, how
+// long it ran and Close at the top; under them, scrolling, its task as a message, each tool call
+// as a row that opens onto its input and output, and its reply, as the conversation shows its own.
+cp_pane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
+  k := f[0].skin; a := k.app; sh := f[0].sheet;
+  i := s[0].pane_turn; j := s[0].pane_agent;
+  side := a.icon_button; state := s[0].turns[i].agents[j].state;
+  kb: [24] u8; ib: [EL_ID] u8;
+  took := cp_took(kb[..], ifx state == CP_RUNNING then s[0].clock - s[0].turns[i].agents[j].began else s[0].turns[i].agents[j].took);
+  took_s := ifx took.count > 0 then sheet_pool(sh, took) else "";
+  stop := app_pane_shell(f, px, 0, pw, h, ICON_BOT, CP_LEVEL_NAME[s[0].turns[i].agents[j].level], "coder.pane.took", took_s, "coder.pane.close", CP_PANE_CLOSE, CP_PAD, CP_CORNER);
+  s[0].pane_view = h - stop;
+  if s[0].pane_stick { s[0].pane_scroll = s[0].pane_content - s[0].pane_view; }
+  s[0].pane_scroll = scroll_clamp(s[0].pane_scroll, s[0].pane_content, s[0].pane_view);
+  uiframe_clip(f, px, stop, px + pw, h);
+  x := px + CP_PAD; cw := pw - 2 * CP_PAD; y := stop - s[0].pane_scroll + a.gap;
+  enter := f[0].skin.motion.enter;
+  f[0].skin.motion.enter = 0;
+  y += app_message_user(f, cp_pane_id(ib[..], s, ".u", -1), x, y, cw, cast(string) s[0].turns[i].agents[j].task[0..<s[0].turns[i].agents[j].task_n]) + a.gap;
+  f[0].skin.motion.enter = enter;
+  nrows := s[0].turns[i].agents[j].nrows; early := s[0].turns[i].agents[j].early_rows;
+  if early > 0 {
+    eb: [96] u8; en := el_put_i(eb[..], 0, early); en = el_put(eb[..], en, ifx early == 1 then " earlier row is not shown. A chat keeps 6,000 tool calls and thoughts." else " earlier rows are not shown. A chat keeps 6,000 tool calls and thoughts.");
+    y += app_meta(f, cp_pane_id(ib[..], s, ".xe", -1), x, y, cw, sheet_pool(sh, cast(string) eb[0..<en]), false) + a.gap_small;
+  }
+  q := s[0].turns[i].agents[j].head - 1; at := 0;
+  while q >= 0 {
+    nx := s[0].calls[q].next - 1;
+    // a row out of view keeps its place and is not drawn, so a long transcript costs what shows
+    rh := s[0].calls[q].h;
+    if rh > 0 && (y + rh < stop - CP_PANE_MARGIN || y > h + CP_PANE_MARGIN) { y += rh + a.gap_small; q = nx; at += 1; continue; }
+    rh = cp_row(s, f, q, cp_pane_id(ib[..], s, ".x", at + early), x, y, cw, CP_PANE_TOOL);   // a row keeps its id when older ones go, so an open row stays open
+    s[0].calls[q].h = rh; y += rh + a.gap_small;
+    q = nx; at += 1;
+  }
+  if s[0].turns[i].agents[j].more_rows > 0 {
+    mb: [96] u8; mn := el_put_i(mb[..], 0, s[0].turns[i].agents[j].more_rows); mn = el_put(mb[..], mn, " more ran after these and were not kept.");
+    y += app_meta(f, cp_pane_id(ib[..], s, ".xm", -1), x, y, cw, sheet_pool(sh, cast(string) mb[0..<mn]), false) + a.gap_small;
+  }
+  if nrows > 0 { y += a.gap - a.gap_small; }
+  reply := cast(string) s[0].turns[i].agents[j].reply[0..<s[0].turns[i].agents[j].reply_n];
+  if state == CP_RUNNING && s[0].turns[i].agents[j].paused { y += app_meta(f, cp_pane_id(ib[..], s, ".t", -1), x, y, cw, "Paused after 100 tool calls in a row with no file changed. Microcoder decides whether it goes on.", false) + a.gap; }
+  else if state == CP_RUNNING {
+    wb: [2 * CP_CMD] u8; wait := cp_agent_wait(s, i, j, wb[..]);
+    if wait.count > 0 { y += app_meta(f, cp_pane_id(ib[..], s, ".w", -1), x, y, cw, sheet_pool(sh, wait), false) + a.gap_small; }
+    y += app_typing(f, cp_pane_id(ib[..], s, ".t", -1), x, y, ifx wait.count > 0 then wait else "Working") + a.gap;
+  }
+  else if state == CP_DONE && reply.count > 0 {
+    if s[0].pane_parsed != reply.count {
+      s[0].pane_doc[0].n = 0; s[0].pane_doc[0].nb = 0; s[0].pane_doc[0].nr = 0; s[0].pane_doc[0].ni = 0; s[0].pane_doc[0].nlink = 0;
+      s[0].pane_blocks = md_parse(s[0].pane_doc[..], reply, 0); s[0].pane_parsed = reply.count;
+    }
+    if s[0].live_pane != i * CP_AGENTS + j { f[0].skin.motion.enter = 0; }
+    y += app_message_agent(f, cp_pane_id(ib[..], s, ".a", -1), x, y, cw, s[0].pane_doc[..], s[0].pane_blocks,
+                           ifx s[0].copied_kind == CP_COPIED_PANE then s[0].copied_block else -1, CP_PANE_COPY) + a.gap;
+    f[0].skin.motion.enter = enter; if s[0].live_pane == i * CP_AGENTS + j { s[0].live_pane = -1; }
+  }
+  else if state == CP_FAILED {
+    if s[0].live_pane != i * CP_AGENTS + j { f[0].skin.motion.enter = 0; }
+    y += app_notice(f, cp_pane_id(ib[..], s, ".n", -1), x, y, cw, ifx reply.count > 0 then sheet_pool(sh, reply) else "The sub-agent ended before a reply.", APP_NOTICE_ERROR) + a.gap;
+    f[0].skin.motion.enter = enter; if s[0].live_pane == i * CP_AGENTS + j { s[0].live_pane = -1; }
+  }
+  else if state == CP_STOPPED { y += app_meta(f, cp_pane_id(ib[..], s, ".s", -1), x, y, cw, "Stopped", false) + a.gap; }
+  uiframe_unclip(f);
+  s[0].pane_content = y + s[0].pane_scroll - stop;
+}

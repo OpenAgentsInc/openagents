@@ -1,0 +1,199 @@
+// Checks for the page's skin.coax, input.coax and layout/: the skin, text size, sidebars and their widths, the HUD. Example data only.
+#load "../parts.coax";
+#load "checks-kit.coax";
+
+#test "the text size steps through its rows and stops at each end" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  #assert coder_page_zoom(s, 0) == 2 && abs(coder_page_scale(s) - 1.2) < 0.001;
+  #assert coder_page_zoom(s, 1) == 3 && abs(coder_page_scale(s) - 1.32) < 0.001;
+  for i: 0..<9 { _ := coder_page_zoom(s, 1); }
+  #assert coder_page_zoom(s, 0) == 7 && abs(coder_page_scale(s) - 2.4) < 0.001;
+  for i: 0..<9 { _ := coder_page_zoom(s, -1); }
+  #assert coder_page_zoom(s, 0) == 0 && coder_page_zoom_set(s, 2) == 2;
+  st: [14] f32; #assert coder_page_style(s, st[..]) && abs(st[0] - 14.4) < 0.01 && abs(st[1] - 21) < 0.001;
+}
+
+#test "desktop skin matches Claude sidebar proportions while keeping Coder monochrome palette" {
+  u: f32 = ARCADE_PHONE_SCALE;
+  k := cp_skin();
+  base := arcade_phone_skin();
+  // Structure/geometry matches Claude Desktop at 1.2x scale (280pt sidebar, 32pt rows, 26pt headers, 8pt inset/radius, 16pt pad).
+  #assert CP_SIDE == 234;
+  #assert k.app.side_row * u > 31.9f32 && k.app.side_row * u < 32.1f32;
+  #assert k.app.side_head * u > 25.9f32 && k.app.side_head * u < 26.1f32;
+  #assert k.app.row_inset * u > 7.9f32 && k.app.row_inset * u < 8.1f32;
+  #assert k.app.row_radius * u > 7.9f32 && k.app.row_radius * u < 8.1f32;
+  #assert k.app.side_pad * u > 15.9f32 && k.app.side_pad * u < 16.1f32;
+  // Main-area typography is smaller than Arcade default while sidebar (k.small) stays unchanged.
+  #assert k.small.face == base.small.face && k.small.size == base.small.size;
+  #assert k.body.size < base.body.size && k.mono.size < base.mono.size && k.tool.size < base.tool.size && k.label.size < base.label.size;
+  // Composer geometry matches Claude Desktop card proportions.
+  #assert k.cmp.radius * u > 15.9f32 && k.cmp.radius * u < 16.1f32;
+  #assert k.cmp.send * u > 31.9f32 && k.cmp.send * u < 32.1f32;
+  #assert k.cmp.chip_h * u > 27.9f32 && k.cmp.chip_h * u < 28.1f32;
+  // Color palette stays Coder's own Arcade monochrome.
+  #assert k.canvas.r == base.canvas.r && k.surface.r == base.surface.r && k.ink.r == base.ink.r;
+}
+
+#test "sidebar footer draws demo pills stacked in the footer region" {
+  u0: [64] Prim; o0: [64] Prim; l0: [16] SheetLine; h0: [16] SheetHit; p0: [512] u8; r0: [16] El;
+  u1: [64] Prim; o1: [64] Prim; l1: [16] SheetLine; h1: [16] SheetHit; p1: [512] u8; r1: [16] El;
+  sf: [1] UiSurface;
+  sf[0] = surface_over(
+    Sheet.{under = u0[..], over = o0[..], lines = l0[..], hits = h0[..], pool = p0[..]}, r0[..],
+    Sheet.{under = u1[..], over = o1[..], lines = l1[..], hits = h1[..], pool = p1[..]}, r1[..]);
+  keys: [16] Keyed; ks: [1] KeyedStore; ks[0] = KeyedStore.{rows = keys[..]};
+  k := cp_skin();
+  f: [1] UiFrame;
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  s[0].d = 1.0f32;
+  h: f32 = 660.0f32;
+  // Hidden by default: footer takes zero height and emits no placeholder pills.
+  #assert cp_side_footer_h(s, k) == 0.0f32;
+  // Available state renders clickable update pill with detail.
+  coder_page_update(s, CP_UPD_AVAILABLE, "", "v0.2.0");
+  footer_h := cp_side_footer_h(s, k);
+  #assert footer_h > k.cmp.chip_h;
+  uiframe_begin(f[..], sf[..], ks[..], measure_cells(), k, uiinput(0, 0, false, false, "", ""), 0, 0.016, true, false);
+  cp_side_footer(s, f[..], 0, h - footer_h, cast(f32) CP_SIDE - k.border);
+  #assert uiframe_end(f[..], sf[..]);
+  u_idx := surface_find(sf[..], "coder.side.pill.update");
+  #assert u_idx >= 0 && surface_find(sf[..], "coder.side.pill.provider") < 0;
+  tb := surface_rows(sf[..]);
+  u_row := tb.rows[u_idx];
+  #assert u_row.action == CP_UPDATE;
+  #assert u_row.y > h - footer_h && u_row.y + u_row.h < h;
+  // Downloading state disables clicks.
+  coder_page_update(s, CP_UPD_DOWNLOADING, "Downloading…", "42%");
+  uiframe_begin(f[..], sf[..], ks[..], measure_cells(), k, uiinput(0, 0, false, false, "", ""), 0.016, 0.016, true, false);
+  cp_side_footer(s, f[..], 0, h - footer_h, cast(f32) CP_SIDE - k.border);
+  #assert uiframe_end(f[..], sf[..]);
+  u_idx = surface_find(sf[..], "coder.side.pill.update");
+  #assert u_idx >= 0 && surface_rows(sf[..]).rows[u_idx].action == 0;
+  // Ready state is clickable through full layout and dispatches CP_ASK_UPDATE.
+  coder_page_update(s, CP_UPD_READY, "", "v0.2.0");
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), k, uiinput(0, 0, false, false, "", ""), 0.032, 0.016, true, false);
+  cp_layout(s, f[..], 1200.0f32, h);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  r_idx := surface_find(s[0].surface[..], "coder.side.pill.update");
+  #assert r_idx >= 0;
+  r_row := surface_rows(s[0].surface[..]).rows[r_idx];
+  #assert r_row.action == CP_UPDATE;
+  cx := r_row.x + r_row.w * 0.5f32;
+  cy := r_row.y + r_row.h * 0.5f32;
+  #assert coder_page_pointer(s, cx, cy, 0);
+  #assert coder_page_pointer(s, cx, cy, 2);
+  #assert coder_page_action(s) == CP_ASK_UPDATE;
+}
+
+#test "sidebar collapses below CP_SIDE_FROM and yields to transcript pane under CP_PANE_MAIN" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  s[0].d = 1.0f32;
+  f: [1] UiFrame;
+  // At exactly CP_SIDE_FROM (900 px), the chats sidebar is visible.
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0, 0.016, true, false);
+  cp_layout(s, f[..], cast(f32) CP_SIDE_FROM, 800.0f32);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  #assert s[0].side == cast(f32) CP_SIDE;
+  // One pixel below CP_SIDE_FROM, the chats sidebar collapses.
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0.016, 0.016, true, false);
+  cp_layout(s, f[..], cast(f32) (CP_SIDE_FROM - 1), 800.0f32);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  #assert s[0].side == 0;
+  // With a sub-agent pane open at 1000 px, chats sidebar yields first (1000 - 234 - 440 < 380) while the pane stays at CP_PANE.
+  #assert coder_page_set_text(s, "check") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"hydrogen\",\"task\":\"inspect\"}],\"ticket\":1}") == MWW_DELEGATE;
+  #assert s[0].pane_open;
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0.032, 0.016, true, false);
+  cp_layout(s, f[..], 1000.0f32, 800.0f32);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  #assert s[0].side == 0 && s[0].pane_w == cast(f32) CP_PANE && s[0].col_w > 0;
+  // At 600 px, even without the chats sidebar the transcript pane cannot leave CP_PANE_MAIN, so it takes the whole window.
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0.048, 0.016, true, false);
+  cp_layout(s, f[..], 600.0f32, 800.0f32);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  #assert s[0].side == 0 && s[0].pane_w == 600.0f32 && s[0].col_w == 0;
+}
+
+#test "zoom and pane resize clamp to configured bounds" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  s[0].d = 1.0f32;
+  #assert coder_page_zoom_set(s, -5) == 0 && cp_scale(s) == ARCADE_PHONE_SCALE * CP_ZOOMS[0];
+  #assert coder_page_zoom(s, -1) == 0;
+  max_z := CP_ZOOMS.count - 1;
+  #assert coder_page_zoom_set(s, 99) == max_z && cp_scale(s) == ARCADE_PHONE_SCALE * CP_ZOOMS[max_z];
+  #assert coder_page_zoom(s, 1) == max_z;
+  #assert coder_page_zoom_set(s, CP_ZOOM_USUAL) == CP_ZOOM_USUAL;
+  // Sidebar and pane width clamping on setter.
+  coder_page_sides_set(s, 50.0f32, 100.0f32);
+  #assert s[0].side_w == cast(f32) CP_SIDE_LEAST && s[0].pane_user == cast(f32) CP_PANE_LEAST;
+  coder_page_sides_set(s, 9999.0f32, 9999.0f32);
+  #assert s[0].side_w == cast(f32) CP_SIDE_MOST && s[0].pane_user == cast(f32) CP_PANE_MOST;
+  coder_page_sides_set(s, 0.0f32, 0.0f32);
+  #assert s[0].side_w == 0.0f32 && s[0].pane_user == 0.0f32;
+  // When pane_user leaves less than CP_PANE_MAIN, layout gives the pane the whole window; with room, it uses pane_user.
+  #assert coder_page_set_text(s, "open pane") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"hydrogen\",\"task\":\"work\"}],\"ticket\":1}") == MWW_DELEGATE;
+  coder_page_sides_set(s, 0.0f32, cast(f32) CP_PANE_MOST);
+  f: [1] UiFrame;
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0, 0.016, true, false);
+  cp_layout(s, f[..], 1000.0f32, 800.0f32);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  #assert s[0].pane_w == 1000.0f32 && s[0].col_w == 0;
+  coder_page_sides_set(s, 0.0f32, cast(f32) CP_PANE_LEAST);
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0.016, 0.016, true, false);
+  cp_layout(s, f[..], 1000.0f32, 800.0f32);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  #assert s[0].pane_w == cast(f32) CP_PANE_LEAST && s[0].col_w > 0;
+}
+
+#test "foreman chat renders GPU Foreman HUD with clickable managed worker nodes and compact toggle" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  s[0].d = 1.0f32;
+  s[0].ready = true;
+  coder_page_chats(s, "m1\tManaged task\t1\t0\t1\nr1\tRegular\n");
+  coder_page_foreman(s, true, CP_FOREMAN_TIER_AUTO);
+  coder_page_current(s, "foreman");
+  f: [1] UiFrame;
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0, 0.016, false, false);
+  cp_layout(s, f[..], 500.0f32, 800.0f32);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  ti := surface_find(s[0].surface[..], "foreman.hud.toggle");
+  n1 := surface_find(s[0].surface[..], "foreman.node.chat.m1");
+  #assert ti >= 0 && n1 >= 0 && surface_find(s[0].surface[..], "foreman.node.chat.r1") < 0;
+  #assert cp_press(s, n1);
+  #assert coder_page_action(s) == CP_ASK_OPEN && s[0].open == 0 && cast(string) s[0].chats[0].id[5..<s[0].chats[0].id_n] == "m1";
+  #assert cp_press(s, ti);
+  #assert s[0].foreman_hud_collapsed;
+}
+
+#test "sidebar collapse toggle hides and restores the persistent sidebar on wide windows" {
+  p: [1] CoderPage; s := p[..]; cp_init(s);
+  f: [1] UiFrame;
+  // Wide window starts with persistent sidebar and a Hide sidebar toggle
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0.016, 0.016, false, false);
+  cp_layout(s, f[..], 1400.0f32, 900.0f32);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  #assert s[0].side > 0 && !s[0].side_collapsed;
+  row := surface_find(s[0].surface[..], "coder.side.toggle");
+  #assert row >= 0 && surface_action(s[0].surface[..], row) == CP_SIDE_TOGGLE;
+  // Pressing the toggle collapses the sidebar and shows the Show sidebar toggle in the main pane
+  #assert cp_press(s, row) && s[0].side_collapsed;
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0.032, 0.016, false, false);
+  cp_layout(s, f[..], 1400.0f32, 900.0f32);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  #assert s[0].side == 0;
+  row2 := surface_find(s[0].surface[..], "coder.side.toggle");
+  #assert row2 >= 0 && surface_action(s[0].surface[..], row2) == CP_SIDE_TOGGLE;
+  // Pressing again restores the persistent sidebar
+  #assert cp_press(s, row2) && !s[0].side_collapsed;
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0.048, 0.016, false, false);
+  cp_layout(s, f[..], 1400.0f32, 900.0f32);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  #assert s[0].side > 0;
+}

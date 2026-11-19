@@ -1,0 +1,270 @@
+// Coder Desktop page (../page.coax): presses, the pointer, the wheel, and the sidebars' edges.
+
+cp_press :: (s: [] CoderPage, row: int) -> bool {
+  act := surface_action(s[0].surface[..], row);
+  if act >= CP_SET_BACK && act <= CP_SET_ACT { return cp_settings_press(s, act, surface_id(s[0].surface[..], row)); }
+  if act == CP_TOOL {
+    id := surface_id(s[0].surface[..], row);
+    turn := cp_number(id, "t"); k := cp_number(id, ".x");
+    if turn < 0 || turn >= s[0].nturns || k < 0 { return false; }
+    tb: [EL_ID] u8;
+    s[0].turns[turn].h = 0;
+    return app_act_press(s[0].keyed[..], cp_row_id(tb[..], turn, k), id);
+  }
+  if act == CP_GROUP {
+    turn := cp_number(surface_id(s[0].surface[..], row), "t");
+    if turn < 0 || turn >= s[0].nturns { return false; }
+    s[0].turns[turn].fold = app_act_choose(s[0].turns[turn].fold, s[0].turns[turn].state == CP_RUNNING);
+    s[0].turns[turn].h = 0;
+    return true;
+  }
+  if act == CP_AGENT {
+    id := surface_id(s[0].surface[..], row);
+    turn := cp_number(id, "t"); j := cp_number(id, ".g");
+    if turn < 0 || turn >= s[0].nturns || j < 0 || j >= s[0].turns[turn].nagents { return false; }
+    // its transcript opens on the window's right; a press on the one that is open closes it
+    s[0].pane_manual = true;
+    if s[0].pane_open && s[0].pane_turn == turn && s[0].pane_agent == j { s[0].pane_open = false; return true; }
+    cp_pane_open(s, turn, j);
+    return true;
+  }
+  if act == CP_PANE_CLOSE { s[0].pane_open = false; s[0].pane_manual = true; return true; }
+  if act == CP_PANE_TOOL {
+    id := surface_id(s[0].surface[..], row);
+    q := cp_number(id, ".x"); tb: [EL_ID] u8;
+    if !s[0].pane_open || q < 0 { return false; }
+    return app_tool_press(s[0].keyed[..], cp_pane_id(tb[..], s, ".x", q), id);
+  }
+  if act == CP_SAID_COPY {
+    // a code block's Copy in what a sub-agent said: its row and its block, by the button's id
+    id := surface_id(s[0].surface[..], row);
+    at := cp_number(id, ".x"); block := cp_number(id, ".code.");
+    if !s[0].pane_open || at < 0 || block < 0 { return false; }
+    q := cp_nth(s, s[0].pane_turn, s[0].pane_agent, at - s[0].turns[s[0].pane_turn].agents[s[0].pane_agent].early_rows);
+    if q < 0 || !s[0].calls[q].said { return false; }
+    s[0].copied_turn = s[0].pane_turn; s[0].copied_row = q; s[0].copied_block = block; s[0].copied_kind = CP_COPIED_SAID; s[0].ask = CP_ASK_COPY; return true;
+  }
+  if act == CP_PANE_COPY {
+    block := cp_number(surface_id(s[0].surface[..], row), ".code.");
+    if !s[0].pane_open || block < 0 { return false; }
+    s[0].copied_turn = s[0].pane_turn; s[0].copied_block = block; s[0].copied_kind = CP_COPIED_PANE; s[0].ask = CP_ASK_COPY; return true;
+  }
+  if act == CP_CHAT {
+    id := surface_id(s[0].surface[..], row);
+    if id == cast(string) s[0].current[0..<s[0].current_n] { return false; }
+    for q: 0..<s[0].nchats { if id == cast(string) s[0].chats[q].id[0..<s[0].chats[q].id_n] { s[0].open = q; s[0].ask = CP_ASK_OPEN; return true; } }
+    return false;
+  }
+  if act == CP_FIELD { s[0].ask = CP_ASK_FOCUS; return true; }
+  if act == CP_SEND {
+    if cp_running(s) { s[0].turns[s[0].nturns - 1].stopping = true; s[0].ask = CP_ASK_STOP; return true; }
+    return cp_send(s);
+  }
+  if act == CP_NEW { return cp_new(s); }
+  if act == CP_FOREMAN { s[0].ask = CP_ASK_FOREMAN; return true; }
+  if act == CP_UPDATE { s[0].ask = CP_ASK_UPDATE; return true; }
+  if act == CP_SIDE_TOGGLE { s[0].side_collapsed = !s[0].side_collapsed; return true; }
+  if act == CP_FOREMAN_HUD_TOGGLE { s[0].foreman_hud_collapsed = !s[0].foreman_hud_collapsed; return true; }
+  if act == CP_FOREMAN_HUD_OPEN {
+    id := surface_id(s[0].surface[..], row);
+    prefix := "foreman.node.";
+    if id.count > prefix.count && id[0..<prefix.count] == prefix {
+      cid := id[prefix.count..<id.count];
+      for q: 0..<s[0].nchats {
+        if cid == cast(string) s[0].chats[q].id[0..<s[0].chats[q].id_n] { s[0].open = q; s[0].ask = CP_ASK_OPEN; return true; }
+      }
+    }
+    return false;
+  }
+  if act == CP_FOLDER { if cp_running(s) { return false; } s[0].model_menu = false; s[0].ask = CP_ASK_FOLDER; return true; }
+  if act == CP_MODEL_MENU {
+    s[0].model_menu = !s[0].model_menu;
+    return true;
+  }
+  if act == CP_MODEL_PICK {
+    idx := cp_number(surface_id(s[0].surface[..], row), "coder.model.");
+    s[0].model_menu = false;
+    if idx < 0 || idx >= cp_models(s) { return false; }
+    s[0].model = idx;
+    return true;
+  }
+  if act == CP_COPY {
+    id := surface_id(s[0].surface[..], row);
+    turn := cp_number(id, "t"); block := cp_number(id, ".code.");
+    if turn < 0 || turn >= s[0].nturns || block < 0 { return false; }
+    s[0].copied_turn = turn; s[0].copied_block = block; s[0].copied_kind = CP_COPIED_BLOCK; s[0].ask = CP_ASK_COPY; return true;
+  }
+  if act == CP_COPY_ASK || act == CP_COPY_REPLY {
+    turn := cp_number(surface_id(s[0].surface[..], row), "t");
+    if turn < 0 || turn >= s[0].nturns { return false; }
+    s[0].copied_turn = turn; s[0].copied_block = -1; s[0].copied_kind = ifx act == CP_COPY_ASK then CP_COPIED_ASK else CP_COPIED_REPLY; s[0].ask = CP_ASK_COPY; return true;
+  }
+  if act == CP_COPY_ALL {
+    if s[0].nturns == 0 { return false; }
+    s[0].copied_turn = 0; s[0].copied_block = -1; s[0].copied_kind = CP_COPIED_ALL; s[0].ask = CP_ASK_COPY; return true;
+  }
+  if act == CP_BUDGET_EDIT { s[0].ask = CP_ASK_BUDGET; return true; }
+  if act == CP_BUDGET_APPROVE {
+    s[0].budget_override = true;
+    if s[0].goal_status == CP_GOAL_BUDGET_LIMITED { s[0].goal_status = CP_GOAL_ACTIVE; }
+    return true;
+  }
+  if act == CP_GOAL_OPEN { s[0].ask = CP_ASK_GOAL; return true; }
+  if act == CP_GOAL_TOGGLE {
+    if s[0].goal_status == CP_GOAL_ACTIVE { return cp_goal_set_status(s, CP_GOAL_PAUSED); }
+    if s[0].goal_status != CP_GOAL_NONE { return cp_goal_set_status(s, CP_GOAL_ACTIVE); }
+    return false;
+  }
+  if act == CP_GOAL_COMPLETE_ACT { return cp_goal_set_status(s, CP_GOAL_COMPLETE); }
+  if act == CP_GOAL_CLEAR_ACT { return cp_goal_clear(s); }
+  return false;
+}
+
+
+// Which sidebar's edge is at x: 1 the chats', 2 a sub-agent's transcript's, 0 neither. A
+// transcript that takes the whole window has no edge.
+cp_edge :: (s: [] CoderPage, ux: f32) -> int {
+  if s[0].side > 0 && abs(ux - s[0].side) <= CP_EDGE { return 1; }
+  if s[0].pane_open && s[0].pane_w > 0 && s[0].pane_x > 0 && abs(ux - s[0].pane_x) <= CP_EDGE { return 2; }
+  return 0;
+}
+// True while the pointer is on a sidebar's edge or drags one: the host shows the resize cursor.
+coder_page_edge :: (s: [] CoderPage) -> bool #export_c #effects(all) {
+  return s.count > 0 && (s[0].drag != 0 || s[0].hover != 0);
+}
+// The sidebars' widths as dragged, into out[0] (the chats') and out[1] (the transcript's), 0 for
+// one never dragged. True once after a drag ends: the host keeps them.
+coder_page_sides :: (s: [] CoderPage, out: [] f32) -> bool #export_c #effects(all) {
+  if s.count < 1 || out.count < 2 { return false; }
+  out[0] = s[0].side_w; out[1] = s[0].pane_user;
+  due := s[0].sides_due; s[0].sides_due = false;
+  return due;
+}
+// The widths the host kept. One outside its limits is put inside them; 0 leaves the usual width.
+coder_page_sides_set :: (s: [] CoderPage, left: f32, right: f32) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].side_w = app_sidebar_clamp(left, cp_sidebar_spec());
+  s[0].pane_user = app_pane_clamp(right, cp_pane_spec());
+}
+// A click, in device pixels: phase 0 down, 1 moved, 2 up, 3 cancelled, routed through the committed rows.
+coder_page_pointer :: (s: [] CoderPage, x: f32, y: f32, phase: int) -> bool #export_c #effects(all) {
+  if s.count < 1 || !(s[0].d > 0) { return false; }
+  ux := x / s[0].d; uy := y / s[0].d;
+  s[0].px = ux; s[0].py = uy;
+  row := surface_hit(s[0].surface[..], ux, uy);
+  id := surface_id(s[0].surface[..], row);
+  acts := surface_action(s[0].surface[..], row) != 0;
+  was := cast(string) s[0].pressed[0..<s[0].pressed_n];
+  // a sidebar's edge: a press on it takes hold, a move drags it, and the conversation keeps 380 points
+  if phase == 0 { s[0].drag = cp_edge(s, ux); if s[0].drag != 0 { s[0].touching = false; s[0].pressed_n = 0; return true; } }
+  if s[0].drag != 0 {
+    if phase == 1 {
+      if s[0].drag == 1 {
+        s[0].side_w = app_sidebar_drag(ux, s[0].win_w, s[0].pane_w, cp_sidebar_spec());
+      } else {
+        s[0].pane_user = app_pane_drag(ux, s[0].win_w, s[0].side, cp_pane_spec());
+      }
+      return true;
+    }
+    s[0].drag = 0; s[0].sides_due = true; s[0].hover = cp_edge(s, ux);
+    return true;
+  }
+  if phase == 1 { s[0].hover = cp_edge(s, ux); }
+  if phase == 0 { s[0].dx = ux; s[0].dy = uy; }
+  // a click on a reply, where nothing else takes it, shows or hides who wrote it
+  if phase == 2 && !acts && s[0].pressed_n == 0 && abs(ux - s[0].dx) < 3 && abs(uy - s[0].dy) < 3 && ux >= s[0].col_x && ux < s[0].col_x + s[0].col_w {
+    for i: 0..<s[0].nturns {
+      if s[0].turns[i].ah > 0 && uy >= s[0].turns[i].ay && uy < s[0].turns[i].ay + s[0].turns[i].ah && uy < s[0].view {
+        s[0].turns[i].info = !s[0].turns[i].info; s[0].touching = false; return true;
+      }
+    }
+  }
+  if phase == 0 && s[0].model_menu {
+    act := surface_action(s[0].surface[..], row);
+    if act != CP_MODEL_MENU && act != CP_MODEL_PICK {
+      s[0].model_menu = false;
+      return true;
+    }
+  }
+  if phase == 0 {
+    s[0].touching = true;
+    s[0].pressed_n = ifx acts then el_copy(s[0].pressed[..], id) else 0;
+    s[0].pin_drag = 0; s[0].pin_dragging = false;
+    if surface_action(s[0].surface[..], row) == CP_CHAT && cp_pin_count(s) > 1 {
+      for q: 0..<s[0].nchats {
+        if s[0].chats[q].pinned && id == cast(string) s[0].chats[q].id[0..<s[0].chats[q].id_n] {
+          s[0].pin_drag = q + 1;
+          s[0].pin_drop = cp_pin_index(s, q);
+          break;
+        }
+      }
+    }
+    return acts;
+  }
+  if phase == 1 {
+    if s[0].touching && s[0].pin_drag > 0 {
+      if !s[0].pin_dragging && abs(uy - s[0].dy) >= 4.0f32 {
+        s[0].pin_dragging = true;
+        s[0].pressed_n = 0;
+      }
+      if s[0].pin_dragging {
+        np := cp_pin_count(s);
+        rh := ifx s[0].pin_row_h > 0 then s[0].pin_row_h else 32.0f32;
+        idx := ifx uy <= s[0].pin_top then 0 else cast(int) ((uy - s[0].pin_top) / rh);
+        if idx >= np { idx = np - 1; }
+        if idx < 0 { idx = 0; }
+        s[0].pin_drop = idx;
+        return true;
+      }
+    }
+    if was != id { s[0].pressed_n = 0; }
+    return s[0].pressed_n > 0;
+  }
+  if s[0].pin_drag > 0 {
+    q := s[0].pin_drag - 1;
+    was_dragging := s[0].pin_dragging;
+    target := s[0].pin_drop;
+    s[0].pin_drag = 0; s[0].pin_dragging = false;
+    if was_dragging {
+      s[0].touching = false; s[0].pressed_n = 0;
+      if q >= 0 && q < s[0].nchats && s[0].chats[q].pinned {
+        tmp: [CP_CHAT_ID] u8;
+        tmp_n := cp_out(tmp[..], cast(string) s[0].chats[q].id[0..<s[0].chats[q].id_n]);
+        if cp_pin_reorder(s, q, target) {
+          s[0].pin_move_id_n = cp_out(s[0].pin_move_id[..], cast(string) tmp[0..<tmp_n]);
+          s[0].pin_move_to = target;
+          s[0].ask = CP_ASK_REORDER_PIN;
+        }
+      }
+      return true;
+    }
+  }
+  held := s[0].pressed_n > 0 && was == id;
+  s[0].touching = false; s[0].pressed_n = 0;
+  return phase == 2 && held && cp_press(s, row);
+}
+// The wheel, in device pixels, down positive. Scrolling up lets go of the newest message.
+coder_page_wheel :: (s: [] CoderPage, dy: f32) #export_c #effects(all) {
+  if s.count < 1 || !(s[0].d > 0) { return; }
+  // in settings the wheel moves the list of pages or the page
+  if s[0].set_open {
+    if s[0].px < s[0].side { s[0].set_list_scroll = scroll_clamp(s[0].set_list_scroll + dy / s[0].d, s[0].set_list_content, s[0].set_list_view); }
+    else { s[0].set_scroll = scroll_clamp(s[0].set_scroll + dy / s[0].d, s[0].set_content, s[0].set_view); }
+    return;
+  }
+  // over the sidebar the wheel moves the list of chats
+  if s[0].side > 0 && s[0].px < s[0].side {
+    s[0].side_scroll = scroll_clamp(s[0].side_scroll + dy / s[0].d, s[0].side_content, s[0].side_view);
+    return;
+  }
+  // over a sub-agent's transcript it moves that; scrolling up lets go of its newest row
+  if s[0].pane_open && s[0].pane_w > 0 && s[0].px >= s[0].pane_x {
+    s[0].pane_scroll = scroll_clamp(s[0].pane_scroll + dy / s[0].d, s[0].pane_content, s[0].pane_view);
+    s[0].pane_stick = s[0].pane_scroll >= s[0].pane_content - s[0].pane_view - 1;
+    return;
+  }
+  s[0].stick = false;
+  s[0].scroll += dy / s[0].d;
+  cp_clamp(s);
+  if s[0].scroll >= s[0].content - s[0].view - 1 { s[0].stick = true; }
+}

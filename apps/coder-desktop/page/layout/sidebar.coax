@@ -1,0 +1,204 @@
+// Coder Desktop page (../../page.coax): the chats' sidebar: New chat, the Foreman row, Pinned and
+// Recents, the line under them, and its foot (the update pill and the account row).
+
+  // the sidebar: Claude Desktop's structural hierarchy (surface separation, top primary action,
+  // section header, 32pt rows with 8pt inset/radius) in Coder's monochrome palette.
+cp_sidebar :: (s: [] CoderPage, f: [] UiFrame, left: f32, h: f32, running: bool) {
+  k := f[0].skin; a := k.app;
+  u: f32 = ARCADE_PHONE_SCALE;
+  sw := app_sidebar_surface(f, 0, 0, left, h);
+  sy := 10.0f32 / u;
+  toggle_w := a.icon_button + a.row_inset;
+  _ := app_icon_button(f, "coder.side.toggle", sw - toggle_w, sy + (a.side_row - a.icon_button) / 2, a.icon_nav, "Hide sidebar", APP_BUTTON_QUIET, 0, CP_SIDE_TOGGLE);
+  sy += app_side_action(f, "coder.new", 0, sy, sw - toggle_w, ICON_COMPOSE, "New chat", 0, CP_NEW);
+  cur := cast(string) s[0].current[0..<s[0].current_n];
+  // Persistent Foreman row pinned at the top of the sidebar above Pinned and Recents.
+  sy += cp_side_foreman(s, f, sw, sy, cur, running);
+  stop := sy + 10.0f32 / u;
+  rows: [CP_CHATS + 2] AppSideRow;
+  nrows := 0;
+  npinned := cp_pin_count(s);
+  nrecent := s[0].nchats - npinned;
+  if npinned > 0 {
+    rows[nrows] = AppSideRow.{id = "coder.pinned", title = "Pinned", heading = true};
+    nrows += 1;
+    for q: 0..<s[0].nchats {
+      if !s[0].chats[q].pinned { continue; }
+      id := cast(string) s[0].chats[q].id[0..<s[0].chats[q].id_n];
+      is := cur.count > 0 && id == cur;
+      t_str := cast(string) s[0].chats[q].title[0..<s[0].chats[q].title_n];
+      if s[0].chats[q].managed {
+        tb: [CP_CHAT_TITLE + 8] u8; tn := el_put(tb[..], 0, t_str); tn = el_put(tb[..], tn, " · F");
+        t_str = sheet_pool(f[0].sheet, cast(string) tb[0..<tn]);
+      }
+      rows[nrows] = AppSideRow.{id = id, title = t_str,
+                                state = (ifx is then EL_S_CURRENT else 0) | (ifx (is && running) || s[0].chats[q].busy then EL_S_BUSY else 0),
+                                unread = s[0].chats[q].unread && !is};
+      nrows += 1;
+    }
+  }
+  if nrecent > 0 || npinned == 0 || s[0].chats_more > 0 {
+    rows[nrows] = AppSideRow.{id = "coder.chats", title = "Recents", heading = true};
+    nrows += 1;
+    for q: 0..<s[0].nchats {
+      if s[0].chats[q].pinned { continue; }
+      id := cast(string) s[0].chats[q].id[0..<s[0].chats[q].id_n];
+      is := cur.count > 0 && id == cur;
+      t_str := cast(string) s[0].chats[q].title[0..<s[0].chats[q].title_n];
+      if s[0].chats[q].managed {
+        tb: [CP_CHAT_TITLE + 8] u8; tn := el_put(tb[..], 0, t_str); tn = el_put(tb[..], tn, " · F");
+        t_str = sheet_pool(f[0].sheet, cast(string) tb[0..<tn]);
+      }
+      rows[nrows] = AppSideRow.{id = id, title = t_str,
+                                state = (ifx is then EL_S_CURRENT else 0) | (ifx (is && running) || s[0].chats[q].busy then EL_S_BUSY else 0),
+                                unread = s[0].chats[q].unread && !is};
+      nrows += 1;
+    }
+  }
+  // the foot: the update pill when there is one, then the account row and its gear (settings)
+  st := k.set;
+  me_h := st.account_top + st.account + st.list_pad;
+  footer_h := cp_side_footer_h(s, k);
+  if stop + footer_h + me_h > h { footer_h = 0; }
+  if stop + me_h > h { me_h = 0; }
+  s[0].side_view = h - stop - footer_h - me_h;
+  bottom_pad := 16.0f32 / u;
+  tail := ifx s[0].nchats == 0 || s[0].chats_more > 0 then k.small.line + 2 * a.gap + bottom_pad else bottom_pad;
+  s[0].side_content = app_side_window(f, 0, stop, sw, s[0].side_view, rows[0..<nrows], s[0].side_scroll, tail, CP_CHAT);
+  s[0].pin_row_h = a.side_row;
+  s[0].pin_top = stop + a.side_head - scroll_clamp(s[0].side_scroll, s[0].side_content, s[0].side_view);
+  if s[0].pin_dragging && s[0].pin_drag > 0 && npinned > 1 {
+    from := cp_pin_index(s, s[0].pin_drag - 1);
+    if from >= 0 {
+      dy := s[0].pin_top + cast(f32) from * a.side_row;
+      if dy + a.side_row > stop && dy < stop + s[0].side_view {
+        sheet_fill(f[0].sheet, a.row_inset, dy, sw - 2 * a.row_inset, a.side_row, a.row_radius, opacity(k.hover, 0.6));
+      }
+      to := s[0].pin_drop;
+      if to >= 0 && to < npinned && to != from {
+        line_slot := ifx to > from then to + 1 else to;
+        ly := s[0].pin_top + cast(f32) line_slot * a.side_row - 1.0f32 / u;
+        if ly >= stop && ly <= stop + s[0].side_view {
+          sheet_fill(f[0].sheet, a.row_inset, ly, sw - 2 * a.row_inset, 2.0f32 / u, 1.0f32 / u, k.ink);
+        }
+      }
+    }
+  }
+  // the line under the list: the empty list's hint, or how many older chats are left out; none when every chat shows
+  if s[0].nchats == 0 || s[0].chats_more > 0 {
+    mb: [96] u8; mn := 0;
+    if s[0].nchats == 0 { mn = el_put(mb[..], 0, "Your chats show here."); }
+    else { mn = el_put_i(mb[..], 0, s[0].chats_more); mn = el_put(mb[..], mn, ifx s[0].chats_more == 1 then " older chat is not shown." else " older chats are not shown."); }
+    my := stop + s[0].side_content - tail + a.gap - scroll_clamp(s[0].side_scroll, s[0].side_content, s[0].side_view);
+    if my + k.small.line > stop && my < stop + s[0].side_view { _ := app_meta(f, "coder.chats.more", a.side_pad, my, sw - 2 * a.side_pad, sheet_pool(f[0].sheet, cast(string) mb[0..<mn]), false); }
+  }
+  if footer_h > 0 { cp_side_footer(s, f, 0, h - me_h - footer_h, sw); }
+  if me_h > 0 { _ := set_account_row(f, "coder.me", st.list_pad, h - st.list_pad - st.account, sw - 2 * st.list_pad, "Local", "L", false, false, CP_SET_ACCOUNT, CP_SET_TOGGLE); }
+}
+// The Foreman row at the sidebar's top, above Pinned and Recents, sw wide at sy: its tier, or how many
+// managed chats run. Returns its height.
+cp_side_foreman :: (s: [] CoderPage, f: [] UiFrame, sw: f32, sy: f32, cur: string, running: bool) -> f32 {
+  k := f[0].skin; a := k.app;
+  f_cur := cur == "chat.foreman";
+  f_busy := s[0].foreman_busy || (f_cur && running);
+  f_state := (ifx f_cur then EL_S_CURRENT else 0) | (ifx f_busy then EL_S_BUSY else 0);
+  fh := a.side_row;
+  fk := uiframe_key(f, "coder.foreman");
+  fp := uiframe_press(f, fk, "coder.foreman");
+  fhov := uiframe_hovered(f, "coder.foreman");
+  if f_cur { sheet_fill(f[0].sheet, a.row_inset, sy, sw - 2 * a.row_inset, fh, a.row_radius, k.raised); }
+  else if fhov { sheet_fill(f[0].sheet, a.row_inset, sy, sw - 2 * a.row_inset, fh, a.row_radius, opacity(k.raised, 0.75)); }
+  if fp > 0 { sheet_fill(f[0].sheet, a.row_inset, sy, sw - 2 * a.row_inset, fh, a.row_radius, opacity(k.hover, fp)); }
+  frow := uiframe_semantic(f, "coder.foreman", EL_BUTTON, "Foreman", 0, sy, sw, fh, f_state, CP_FOREMAN);
+  tf := k.body;
+  tx := a.side_pad;
+  mark := a.icon;
+  sheet_icon(f[0].sheet, ICON_BOT, tx, sy + (fh - mark) / 2, mark, ifx f_cur || fhov then k.ink else k.muted);
+  tx += mark + a.row_inset;
+  managed_busy := 0;
+  for q: 0..<s[0].nchats {
+    if s[0].chats[q].managed && s[0].chats[q].busy { managed_busy += 1; }
+  }
+  tier_base := ifx s[0].foreman_tier == CP_FOREMAN_TIER_OBSERVE then "Observe" else ifx s[0].foreman_tier == CP_FOREMAN_TIER_AUTO then "Auto" else "Managed";
+  tb_lbl: [32] u8;
+  tier_lbl := tier_base;
+  if managed_busy > 0 {
+    tn := el_put_i(tb_lbl[..], 0, managed_busy);
+    tn = el_put(tb_lbl[..], tn, " · ");
+    tn = el_put(tb_lbl[..], tn, tier_base);
+    tier_lbl = sheet_pool(f[0].sheet, cast(string) tb_lbl[0..<tn]);
+  }
+  badge_w := ifx f_busy then a.icon + a.gap else measure_width(f[0].m, k.small.face, tier_lbl) + a.gap;
+  froom := sw - a.side_pad - tx - badge_w;
+  if froom > 0 { _ := sheet_text(f[0].sheet, f[0].m, -1, tx, sy + (fh - tf.line) / 2, tf.line, tf.face, k.ink, app_fit(f, tf.face, "Foreman", froom)); }
+  if f_busy {
+    activity(f[0].sheet, k, sw - a.side_pad - a.icon, sy + (fh - a.icon) / 2, a.icon, f[0].clock, f[0].reduced_motion);
+  } else {
+    tw := measure_width(f[0].m, k.small.face, tier_lbl);
+    _ := sheet_text(f[0].sheet, f[0].m, -1, sw - a.side_pad - tw, sy + (fh - k.small.line) / 2, k.small.line, k.small.face, ifx managed_busy > 0 then k.muted else k.faint, tier_lbl);
+  }
+  sheet_hit(f[0].sheet, UIFRAME_HIT, frow, 0, 0, sy, sw, fh);
+  return fh;
+}
+
+// Bottom-of-sidebar desktop auto-updater pill (hidden when no update is active).
+cp_side_footer_h :: (s: [] CoderPage, k: UiSkin) -> f32 {
+  if s.count < 1 || s[0].update_state == CP_UPD_HIDDEN { return 0.0f32; }
+  u: f32 = ARCADE_PHONE_SCALE;
+  pad_v := 10.0f32 / u;
+  return k.border + pad_v + k.cmp.chip_h + pad_v;
+}
+cp_side_pill :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, icon: int, label: string, detail: string, action: int, highlighted: bool) {
+  k := f[0].skin; c := k.cmp; sh := f[0].sheet; m := f[0].m;
+  h := c.chip_h; r := h / 2.0f32;
+  hovered := action != 0 && uiframe_hovered(f, id);
+  row := uiframe_semantic(f, id, EL_BUTTON, label, x, y, w, h, 0, action);
+  elt_value(f[0].rows, row, detail);
+  bg := ifx hovered then k.hover else k.raised;
+  border := ifx highlighted then k.accent else k.hairline;
+  _ := sheet_box(sh, x, y, w, h, r, k.border, bg, border);
+  ink := ifx hovered || highlighted then k.ink else k.muted;
+  icon_ink := ifx highlighted then k.accent else ink;
+  pad := 10.0f32 / ARCADE_PHONE_SCALE;
+  tx := x + pad;
+  if icon >= 0 {
+    sheet_icon(sh, icon, tx, y + (h - c.chip_icon) / 2.0f32, c.chip_icon, icon_ink);
+    tx += c.chip_icon + c.chip_gap;
+  }
+  right := x + w - pad;
+  if detail.count > 0 {
+    dw := measure_width(m, k.label.face, detail);
+    if right - dw > tx + c.chip_gap {
+      _ := sheet_text(sh, m, -1, right - dw, y + (h - k.label.line) / 2.0f32, k.label.line, k.label.face, k.faint, detail);
+      right -= dw + c.chip_gap;
+    }
+  }
+  room := right - tx;
+  if room > 0 {
+    _ := sheet_text(sh, m, -1, tx, y + (h - k.small.line) / 2.0f32, k.small.line, k.small.face, ink, app_fit(f, k.small.face, label, room));
+  }
+  sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, w, h);
+}
+cp_side_footer :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32) {
+  if s.count < 1 || s[0].update_state == CP_UPD_HIDDEN { return; }
+  k := f[0].skin; a := k.app;
+  u: f32 = ARCADE_PHONE_SCALE;
+  pad_v := 10.0f32 / u;
+  sheet_fill(f[0].sheet, x, y, w, k.border, 0, k.menu_divider);
+  px := x + a.row_inset;
+  pw := w - 2.0f32 * a.row_inset;
+  if pw <= 0 { return; }
+  py := y + k.border + pad_v;
+  st := s[0].update_state;
+  icon := ICON_ARROW_UP;
+  def_label := "Update available";
+  action := CP_UPDATE;
+  highlighted := false;
+  if st == CP_UPD_AVAILABLE { highlighted = true; }
+  else if st == CP_UPD_DOWNLOADING { def_label = "Updating…"; action = 0; }
+  else if st == CP_UPD_READY { icon = ICON_CHECK; def_label = "Restart to update"; highlighted = true; }
+  else if st == CP_UPD_ERROR { icon = ICON_DANGER; def_label = "Update failed"; }
+  label := ifx s[0].update_label_n > 0 then sheet_pool(f[0].sheet, cast(string) s[0].update_label[0..<s[0].update_label_n]) else def_label;
+  detail := ifx s[0].update_detail_n > 0 then sheet_pool(f[0].sheet, cast(string) s[0].update_detail[0..<s[0].update_detail_n]) else "";
+  cp_side_pill(f, "coder.side.pill.update", px, py, pw, icon, label, detail, action, highlighted);
+}

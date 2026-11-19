@@ -1,0 +1,27 @@
+// Coder Desktop page's parts, in one namespace. ../page.coax loads them with their checks; a check
+// file (checks/*.coax) loads them alone, so it runs on its own:
+//   coax/bin/coax test apps/coder-desktop/page/checks/transcript-checks.coax --library
+
+#load "../../../components/app/activity.coax";
+#load "../../../components/app/nav.coax";
+#load "../../shared/app/view/shell.coax";
+#load "../../../components/kit/foreman_hud.coax";
+#load "../../../components/core/edit.coax";
+#load "../../../components/skin/arcade.coax";
+#load "../../../components/backend/gpu.coax";
+#load "../../../coax/lib/agent/engine/mcworker-wire.coax";
+#load "../settings.coax";
+
+#load "state.coax";
+#load "skin.coax";
+#load "models.coax";
+#load "goal.coax";
+#load "transcript.coax";
+#load "chats.coax";
+#load "persist.coax";
+#load "input.coax";
+#load "layout/layout.coax";
+#load "layout/sidebar.coax";
+#load "layout/pane.coax";
+#load "layout/conversation.coax";
+#load "host-api.coax";

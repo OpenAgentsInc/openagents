@@ -1,0 +1,31 @@
+// Coder Desktop page (../../page.coax): the window's layout. app_shell_layout places the sidebar,
+// the conversation's column and a sub-agent's transcript; each is drawn by its own part
+// (sidebar.coax, conversation.coax, pane.coax), in the same order every frame.
+
+cp_sidebar_spec :: () -> AppSidebarSpec {
+  return AppSidebarSpec.{ breakpoint = cast(f32) CP_SIDE_FROM, default_w = cast(f32) CP_SIDE, min_w = cast(f32) CP_SIDE_LEAST, max_w = cast(f32) CP_SIDE_MOST, main_min = cast(f32) CP_PANE_MAIN };
+}
+cp_pane_spec :: () -> AppPaneSpec {
+  return AppPaneSpec.{ default_w = cast(f32) CP_PANE, min_w = cast(f32) CP_PANE_LEAST, max_w = cast(f32) CP_PANE_MOST, main_min = cast(f32) CP_PANE_MAIN };
+}
+cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
+  s[0].win_w = window_w;
+  if s[0].set_open { cp_settings(s, f, window_w, h); return; }
+  if s[0].pane_open && (s[0].pane_turn >= s[0].nturns || s[0].pane_agent >= s[0].turns[s[0].pane_turn].nagents) { s[0].pane_open = false; }
+  // Unified 3-region responsive shell (apps/shared/app/view/shell.coax): persistent sidebar on
+  // wide viewports, centered conversation column, and right sub-agent transcript pane.
+  shell := app_shell_layout(window_w, h, s[0].side_w, s[0].pane_user, s[0].side_collapsed, 0.0f32, s[0].pane_open, cp_sidebar_spec(), cp_pane_spec(), CP_COLUMN, CP_PAD);
+  left := ifx shell.side.persistent then shell.side.width else 0.0f32;
+  right := shell.pane.w;
+  s[0].side = left; s[0].pane_w = right; s[0].pane_x = shell.pane.x;
+  if shell.pane.open && shell.pane.mode == APP_PANE_FULL { s[0].col_w = 0; cp_pane(s, f, 0, window_w, h); return; }
+  if shell.pane.open && right > 0 { cp_pane(s, f, shell.pane.x, right, h); }
+  w := window_w - right;   // from here w is where the conversation's side ends
+  cw := shell.col_w; x := shell.col_x;
+  s[0].col_x = x; s[0].col_w = cw;
+  running := cp_running(s); full := cp_full(s); exceeded := cp_budget_exceeded(s);
+  cp_conversation(s, f, left, w, x, cw, h, running, full, exceeded);
+  cp_corners(s, f, left, w, window_w, exceeded);
+  if left > 0 { cp_sidebar(s, f, left, h, running); }
+  cp_composer(s, f, x, cw, h, running, full, exceeded);
+}

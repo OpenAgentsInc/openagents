@@ -154,7 +154,7 @@ A run sees earlier turns of the conversation as `environment.conversation`:
   with `MK_CUT`, so the model knows its reply goes on. `mk_facts` drops the
   oldest turns first when the facts do not fit.
 - The desktop app sends the turns of a chat you open again as an `MWW_RECALL`
-  line (`coder_page_recall_line` in `apps/coder-desktop/page.coax`, read by
+  line (`coder_page_recall_line` in `apps/coder-desktop/page/persist.coax`, read by
   `coder/tui/mcworker.coax`). It sends the newest 6 turns but cuts each
   message and reply at 1,200 bytes, with no marker and on a byte, not a
   character. Issue #13729 covers the fix.

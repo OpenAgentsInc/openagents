@@ -1,0 +1,153 @@
+// Checks for the page's chats.coax and layout/sidebar.coax: the chat list, pins, unread and busy rows, the Foreman row. Example data only.
+#load "../parts.coax";
+#load "checks-kit.coax";
+
+#test "pinned chats parse, stay distinct from recents, and reorder by drag" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  s[0].d = 1.0f32;
+  coder_page_chats(s, "p1\tAlpha\t0\t1\np2\tBeta\t0\t1\np3\tGamma\t0\t1\nr1\tRecent one\nr2\tRecent two\n");
+  #assert s[0].nchats == 5 && cp_pin_count(s) == 3;
+  #assert s[0].chats[0].pinned && s[0].chats[1].pinned && s[0].chats[2].pinned;
+  #assert !s[0].chats[3].pinned && !s[0].chats[4].pinned;
+  #assert cp_pin_index(s, 0) == 0 && cp_pin_index(s, 1) == 1 && cp_pin_index(s, 2) == 2 && cp_pin_index(s, 3) == -1;
+  // Commit a layout frame so surface_hit knows the pinned rows.
+  f: [1] UiFrame;
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0, 0.016, true, false);
+  cp_layout(s, f[..], 1200.0f32, 800.0f32);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  #assert s[0].pin_row_h > 0 && s[0].pin_top > 0;
+  // Drag p1 down onto p3's slot.
+  y1 := s[0].pin_top + 0.5f32 * s[0].pin_row_h;
+  y3 := s[0].pin_top + 2.5f32 * s[0].pin_row_h;
+  #assert coder_page_pointer(s, 80, y1, 0);
+  #assert s[0].pin_drag == 1 && !s[0].pin_dragging;
+  #assert coder_page_pointer(s, 80, y3, 1);
+  #assert s[0].pin_dragging && s[0].pin_drop == 2;
+  #assert coder_page_pointer(s, 80, y3, 2);
+  #assert coder_page_action(s) == CP_ASK_REORDER_PIN;
+  moved: [64] u8;
+  mn := coder_page_pin_move_id(s, moved[..]);
+  #assert cast(string) moved[0..<mn] == "p1" && coder_page_pin_move_to(s) == 2;
+  // Internal pinned order is now p2, p3, p1 while recents stay intact.
+  #assert cast(string) s[0].chats[0].id[0..<s[0].chats[0].id_n] == "chat.p2";
+  #assert cast(string) s[0].chats[1].id[0..<s[0].chats[1].id_n] == "chat.p3";
+  #assert cast(string) s[0].chats[2].id[0..<s[0].chats[2].id_n] == "chat.p1";
+  #assert cast(string) s[0].chats[3].id[0..<s[0].chats[3].id_n] == "chat.r1";
+  // Re-layout and drag p1 back up to the top slot (0).
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0.016, 0.016, true, false);
+  cp_layout(s, f[..], 1200.0f32, 800.0f32);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  #assert coder_page_pointer(s, 80, y3, 0);
+  #assert coder_page_pointer(s, 80, y1, 1);
+  #assert s[0].pin_dragging && s[0].pin_drop == 0;
+  #assert coder_page_pointer(s, 80, y1, 2);
+  #assert coder_page_action(s) == CP_ASK_REORDER_PIN;
+  mn = coder_page_pin_move_id(s, moved[..]);
+  #assert cast(string) moved[0..<mn] == "p1" && coder_page_pin_move_to(s) == 0;
+  #assert cast(string) s[0].chats[0].id[0..<s[0].chats[0].id_n] == "chat.p1";
+  #assert cast(string) s[0].chats[1].id[0..<s[0].chats[1].id_n] == "chat.p2";
+  #assert cast(string) s[0].chats[2].id[0..<s[0].chats[2].id_n] == "chat.p3";
+}
+
+#test "sidebar unread chats parse in Pinned and Recents, clear on select, and do not keep the page moving" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  s[0].d = 1.0f32;
+  s[0].ready = true;
+  coder_page_chats(s, "p1\tPinned unread\t0\t1\t0\t1\nr1\tRecent unread\t0\t0\t0\t1\nb1\tBusy chat\t1\t0\t0\t1\nr2\tRead chat\n");
+  #assert s[0].nchats == 4 && cp_pin_count(s) == 1;
+  #assert s[0].chats[0].pinned && s[0].chats[0].unread && !s[0].chats[0].busy;
+  #assert !s[0].chats[1].pinned && s[0].chats[1].unread && !s[0].chats[1].busy;
+  #assert s[0].chats[2].busy && s[0].chats[2].unread;
+  #assert !s[0].chats[3].unread && !s[0].chats[3].busy;
+  // Selecting a chat clears its unread state immediately.
+  coder_page_current(s, "p1");
+  #assert !s[0].chats[0].unread && s[0].chats[1].unread;
+  coder_page_current(s, "r1");
+  #assert !s[0].chats[1].unread;
+  // An unread-only sidebar does not keep the page moving.
+  coder_page_chats(s, "p1\tPinned unread\t0\t1\t0\t1\nr1\tRecent unread\t0\t0\t0\t1\n");
+  f: [1] UiFrame;
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0, 0.016, false, false);
+  cp_layout(s, f[..], 1200.0f32, 800.0f32);
+  s[0].moving = uiframe_moving(f[..]) || cp_running(s) || cp_side_busy(s);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  #assert !cp_side_busy(s) && !coder_page_moving(s);
+}
+
+#test "the sidebar says how many older chats are left out only when some are" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s); s[0].d = 1.0f32; s[0].ready = true;
+  f: [1] UiFrame;
+  // one chat: no "0 older chats" line
+  coder_page_chats(s, "a1\tOnly chat\n");
+  #assert s[0].nchats == 1 && s[0].chats_more == 0;
+  #assert cp_test_draw_side(s, f[..]);
+  #assert surface_find(s[0].surface[..], "coder.chats.more") < 0;
+  // no chats: the hint shows
+  coder_page_chats(s, "");
+  #assert cp_test_draw_side(s, f[..]);
+  #assert surface_find(s[0].surface[..], "coder.chats.more") >= 0;
+  // more chats than the list holds: the count shows
+  lb: [CP_CHATS * 16 + 64] u8; ln := 0;
+  for q: 0..<CP_CHATS + 2 { ln = el_put(lb[..], ln, "c"); ln = el_put_i(lb[..], ln, q); ln = el_put(lb[..], ln, "\tChat\n"); }
+  coder_page_chats(s, cast(string) lb[0..<ln]);
+  #assert s[0].chats_more == 2;
+  s[0].side_scroll = 100000.0f32;   // the line sits under the list's last row
+  #assert cp_test_draw_side(s, f[..]);
+  #assert surface_find(s[0].surface[..], "coder.chats.more") >= 0;
+  #assert surface_say(s[0].surface[..], surface_find(s[0].surface[..], "coder.chats.more")) == "2 older chats are not shown.";
+}
+
+#test "a busy sidebar chat keeps the page moving while idle" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  s[0].d = 1.0f32;
+  s[0].ready = true;
+  coder_page_chats(s, "a1\tBackground run\t1\nb2\tIdle chat\n");
+  f: [1] UiFrame;
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0, 0.016, false, false);
+  cp_layout(s, f[..], 1200.0f32, 800.0f32);
+  s[0].moving = uiframe_moving(f[..]) || cp_running(s) || cp_side_busy(s);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  #assert !cp_running(s) && s[0].side > 0 && cp_side_busy(s) && coder_page_moving(s);
+  // Collapsing the sidebar or clearing the busy flag lets the page go idle.
+  s[0].side = 0;
+  #assert !cp_side_busy(s);
+  coder_page_chats(s, "a1\tBackground run\nb2\tIdle chat\n");
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0.016, 0.016, false, false);
+  cp_layout(s, f[..], 1200.0f32, 800.0f32);
+  s[0].moving = uiframe_moving(f[..]) || cp_running(s) || cp_side_busy(s);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  #assert s[0].side > 0 && !cp_side_busy(s) && !coder_page_moving(s);
+}
+
+#test "foreman sidebar row sits above pinned and recents, dispatches CP_ASK_FOREMAN, and parses managed chats" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  s[0].d = 1.0f32;
+  s[0].ready = true;
+  coder_page_chats(s, "p1\tPinned\t0\t1\t0\nm1\tManaged task\t1\t0\t1\nr1\tRegular\n");
+  #assert s[0].nchats == 3 && !s[0].chats[0].managed && s[0].chats[1].managed && !s[0].chats[2].managed;
+  coder_page_foreman(s, true, CP_FOREMAN_TIER_AUTO);
+  #assert s[0].foreman_busy && s[0].foreman_tier == CP_FOREMAN_TIER_AUTO;
+  f: [1] UiFrame;
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0, 0.016, false, false);
+  cp_layout(s, f[..], 1200.0f32, 800.0f32);
+  s[0].moving = uiframe_moving(f[..]) || cp_running(s) || cp_side_busy(s);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  #assert cp_side_busy(s) && coder_page_moving(s);
+  // Click and hit-test the Foreman row directly below New chat.
+  fx := 40.0f32;
+  fy := 10.0f32 / ARCADE_PHONE_SCALE + cp_skin().app.side_row * 1.5f32;
+  #assert coder_page_foreman_at(s, fx, fy);
+  #assert !coder_page_foreman_at(s, fx, 5.0f32);
+  #assert coder_page_pointer(s, fx, fy, 0);
+  #assert coder_page_pointer(s, fx, fy, 2);
+  #assert coder_page_action(s) == CP_ASK_FOREMAN;
+  // Clearing busy on both Foreman and chats lets the page settle.
+  coder_page_foreman(s, false, CP_FOREMAN_TIER_OBSERVE);
+  coder_page_chats(s, "p1\tPinned\t0\t1\t0\nm1\tManaged task\t0\t0\t1\n");
+  #assert !cp_side_busy(s) && s[0].foreman_tier == CP_FOREMAN_TIER_OBSERVE;
+}

@@ -1,0 +1,320 @@
+// Coder Desktop page (../page.coax): its capacities, ids and actions, the CoderPage struct and its
+// parts, cp_init, and the small helpers every part uses (ids, numbers, trim, compare).
+
+
+CP_MAX_VERTICES :: 200000;
+// A generation's declared capacity: primitives, selectable lines, hits, pooled bytes, semantic rows; then keyed ids.
+CP_UNDER :: 4096; CP_OVER :: 16384; CP_LINES :: 4096; CP_HITS :: 512; CP_POOL :: 262144; CP_ROWS :: 768; CP_KEYED :: 320;
+CP_TURNS :: 24;             // messages a chat holds; the page says so when it is full
+CP_REPLY :: 60000;          // bytes of a reply kept (the Markdown document holds 65,536)
+CP_NOTE :: 512;
+CP_SKILLS :: 4096;          // bytes of the note on installed skills / Foreman instructions that goes ahead of each message
+CP_CMD :: 400;              // bytes of a command or a tool call shown
+CP_CMD_OUT :: 2000;         // bytes of a command's or a tool call's output shown; the row says when it is cut
+CP_THOUGHT_MAX :: 65536;    // bytes of a single thought or sub-agent note kept in one row (matches MdDoc's 65,536-byte capacity)
+CP_LONG_POOL :: 2097152;    // page-level buffer for thoughts and sub-agent notes longer than CP_CMD_OUT
+CP_ARENA :: 131072;         // a worker line's strings
+CP_AGENTS :: 12;            // sub-agents one message may start; a task past that is answered as not run
+CP_AGENT_TASK :: 1500;      // bytes of a sub-agent's task kept (a longer task is cut, and the sub-agent gets the cut one)
+CP_AGENT_REPLY :: 8000;     // bytes of a sub-agent's reply kept, shown and handed back to Microcoder
+CP_AGENT_CALLS :: 6000;     // commands, tool calls and thoughts a chat keeps in all (#13670, #13671). Past it the oldest in the chat goes, and its message or transcript says how many went
+CP_QUIET :: 100;            // tool calls a sub-agent makes in a row with no file changed before it pauses and Microcoder decides (#13676)
+CP_ROUND :: 6;              // tasks Microcoder hands over in one step
+CP_PANE :: 440;             // the sub-agent transcript's width, on the window's right
+CP_PANE_MAIN :: 380;        // the conversation's least width beside it: under that the chats' sidebar goes, then the transcript takes the window
+CP_SCRATCH :: 262144;       // the sub-agents' results as one line for the worker
+CP_MODEL_SIMPLE :: "gemini-4-hydrogen";     // a level hydrogen task's model
+CP_MODEL_COMPLEX :: "gemini-4-carbon";      // a level carbon task's model
+CP_MODEL_NEON :: "gemini-4-neon";          // a level neon task's model: Gemini 4 Neon, frontier work that finishes fast (2026-11-18)
+// A sub-agent's level, as Microcoder names it, and the name its row shows. The first three run on
+// Gemini (Hydrogen, Carbon, Neon); the last four in Claude Code on the Claude login of this
+// computer (coder/tui/claudeworker.coax, GitHub #13660). Chats keep a level by its name, so a
+// level's place in the list can change.
+// openrouter runs on the OpenRouter model the person set for sub-agents (Coder > OpenRouter Models).
+CP_LEVELS :: 8;
+CP_LEVEL :: [CP_LEVELS] string.["hydrogen", "carbon", "neon", "openrouter", "haiku", "sonnet", "opus", "fable"];
+// What the first two were called before 2026-11-17, as chats kept then have them.
+CP_LEVEL_OLD :: [2] string.["simple", "complex"];
+CP_LEVEL_NAME :: [CP_LEVELS] string.["Hydrogen", "Carbon", "Neon", "OpenRouter", "Claude Haiku", "Claude Sonnet", "Claude Opus", "Claude Fable"];
+CP_LEVEL_OR :: 3;                           // the OpenRouter level
+CP_LEVEL_CLAUDE :: 4;                       // the first Claude level
+CP_PAD :: 16;               // the page's margin
+CP_CHATS :: 50;             // recent chats the sidebar lists; it says how many more there are
+CP_CHAT_ID :: 48;           // bytes of a chat's row id ("chat." and the host's id)
+CP_CHAT_TITLE :: 120;       // bytes of a chat's title: its first message on one line
+CP_SIDE :: 234;             // the sidebar's width until its edge is dragged (280pt at 1.2x, matching Claude Desktop)
+CP_SIDE_LEAST :: 180; CP_SIDE_MOST :: 480;     // how narrow and wide a drag makes the sidebar
+CP_PANE_LEAST :: 320; CP_PANE_MOST :: 900;     // and a sub-agent's transcript
+CP_PANE_MARGIN :: 200;      // how far out of view a transcript's row is still drawn
+CP_EDGE :: 4;               // how near a sidebar's edge a press takes hold of it
+CP_SIDE_FROM :: 900;        // the window width from which the sidebar shows; a narrower window has none
+CP_ZOOMS :: [8] f32.[0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0];   // the text sizes Command-plus and Command-minus step through
+CP_ZOOM_USUAL :: 2;
+CP_BOTTOM :: 8;             // under the message bar
+CP_COLUMN :: 680;           // the conversation's widest column
+CP_FOLDER_TEXT :: 512;     // bytes of the working folder's name as shown
+CP_FOLDER_MOST :: 280;      // the working folder chip's greatest width; a longer name is cut with an ellipsis
+CP_CORNER :: 6;             // New chat from the window's top and right edges
+CP_MODEL :: "gemini-4-neon";               // Microcoder's default main model (Hydrogen until 2026-11-18)
+CP_MODEL_NAME :: "Microcoder · Gemini 4 Neon";
+// Main models available in the composer model picker (Neon is the default for every chat). The
+// OpenRouter model the person set (Coder > OpenRouter Models) is one more entry, CP_MODEL_OR, after these.
+CP_MODELS :: 4;
+CP_MODEL_OR :: CP_MODELS;
+CP_OR_ID :: 256;            // bytes of an OpenRouter model id kept (VENDOR/MODEL)
+CP_OR_PREFIX :: "openrouter:";
+CP_MODEL_DEFAULT :: 0;
+CP_MODEL_ID :: [CP_MODELS] string.["gemini-4-neon", "gemini-4-carbon", "gemini-4-hydrogen", "gemini-4-argon"];
+CP_MODEL_LABEL :: [CP_MODELS] string.["Gemini 4 Neon", "Gemini 4 Carbon", "Gemini 4 Hydrogen", "Gemini 4 Argon"];
+CP_MODEL_SHORT :: [CP_MODELS] string.["Neon", "Carbon", "Hydrogen", "Argon"];
+CP_MODEL_DESC :: [CP_MODELS] string.["Fast frontier", "Deep reasoning", "Fast & light", "Heavyweight"];
+CP_MODEL_META :: [CP_MODELS] string.["Microcoder · Gemini 4 Neon", "Microcoder · Gemini 4 Carbon", "Microcoder · Gemini 4 Hydrogen", "Microcoder · Gemini 4 Argon"];
+
+// Default per-chat-thread max budget in microdollars ($50.00).
+CP_BUDGET_DEFAULT :: 50000000;
+// Thread goal (/goal) limits and states (ported from openai/codex).
+CP_GOAL_TEXT :: 2048;
+CP_GOAL_NOTICE :: 256;
+CP_GOAL_NONE :: 0; CP_GOAL_ACTIVE :: 1; CP_GOAL_PAUSED :: 2; CP_GOAL_COMPLETE :: 3; CP_GOAL_BLOCKED :: 4; CP_GOAL_BUDGET_LIMITED :: 5;
+CP_GOAL_PROMPT_NONE :: 0; CP_GOAL_PROMPT_START :: 1; CP_GOAL_PROMPT_CONTINUE :: 2; CP_GOAL_PROMPT_UPDATED :: 3; CP_GOAL_PROMPT_BUDGET :: 4;
+CP_GOAL_USAGE :: "Usage: /goal <objective> | /goal edit | /goal pause | /goal resume | /goal complete | /goal clear";
+// What the page asks of its host (coder_page_action), once.
+CP_ASK_NONE :: 0; CP_ASK_SEND :: 1; CP_ASK_FOCUS :: 2; CP_ASK_STOP :: 3; CP_ASK_NEW :: 4; CP_ASK_COPY :: 5; CP_ASK_FOLDER :: 6; CP_ASK_OPEN :: 7; CP_ASK_BUDGET :: 8; CP_ASK_GOAL :: 9; CP_ASK_REORDER_PIN :: 10; CP_ASK_FOREMAN :: 11; CP_ASK_UPDATE :: 12;
+// settings (settings.coax): it opened or closed (the host moves the keyboard), the text size, the keys, Foreman's tier, its log and history, log in, an update check, the search field
+CP_ASK_SETTINGS :: 13; CP_ASK_ZOOM_IN :: 14; CP_ASK_ZOOM_OUT :: 15; CP_ASK_CLAUDE_KEY :: 16; CP_ASK_OPENROUTER :: 17; CP_ASK_TIER :: 18; CP_ASK_AUDIT :: 19; CP_ASK_CLEAR_FOREMAN :: 20; CP_ASK_LOGIN :: 21; CP_ASK_CHECK_UPDATES :: 22; CP_ASK_SEARCH :: 23;
+// What a row dispatches.
+CP_FIELD :: 1; CP_SEND :: 2; CP_NEW :: 3; CP_COPY :: 4; CP_TOOL :: 5; CP_FOLDER :: 6; CP_COPY_ASK :: 7; CP_COPY_REPLY :: 8; CP_COPY_ALL :: 9; CP_AGENT :: 10; CP_CHAT :: 11; CP_PANE_CLOSE :: 12; CP_PANE_TOOL :: 13; CP_PANE_COPY :: 14; CP_SAID_COPY :: 15; CP_BUDGET_EDIT :: 16; CP_BUDGET_APPROVE :: 17; CP_GOAL_OPEN :: 18; CP_GOAL_TOGGLE :: 19; CP_GOAL_COMPLETE_ACT :: 20; CP_GOAL_CLEAR_ACT :: 21; CP_FOREMAN :: 22; CP_FOREMAN_HUD_TOGGLE :: 23; CP_FOREMAN_HUD_OPEN :: 24; CP_MODEL_MENU :: 25; CP_MODEL_PICK :: 26; CP_UPDATE :: 27; CP_SIDE_TOGGLE :: 28;
+CP_GROUP :: 41;            // a message's activity group: a press on its summary opens or folds it (#13731)
+CP_SET_BACK :: 29; CP_SET_PAGE :: 30; CP_SET_SEARCH :: 31; CP_SET_HIT :: 32; CP_SET_ACCOUNT :: 33; CP_SET_TOGGLE :: 34; CP_SET_ACT :: 35;   // settings.coax
+// Desktop auto-updater pill states shown in the sidebar footer.
+CP_UPD_HIDDEN :: 0; CP_UPD_AVAILABLE :: 1; CP_UPD_DOWNLOADING :: 2; CP_UPD_READY :: 3; CP_UPD_ERROR :: 4;
+// Foreman permission tiers shown in the sidebar.
+CP_FOREMAN_TIER_OBSERVE :: 0; CP_FOREMAN_TIER_ASSIST :: 1; CP_FOREMAN_TIER_AUTO :: 2;
+// What was copied last (its button shows a check): a code block, a person's message, a reply, the whole chat.
+CP_COPIED_NONE :: 0; CP_COPIED_BLOCK :: 1; CP_COPIED_ASK :: 2; CP_COPIED_REPLY :: 3; CP_COPIED_ALL :: 4; CP_COPIED_PANE :: 5; CP_COPIED_SAID :: 6;
+CP_ALL :: 2000000;          // bytes the whole chat's copy may take: 24 messages and replies fit
+// A turn's state.
+CP_RUNNING :: 0; CP_DONE :: 1; CP_FAILED :: 2; CP_STOPPED :: 3;
+
+// One row of a message or of a sub-agent's transcript: a command, a file read, a tool call, a
+// thought, or what the sub-agent said between its tool calls.
+CpCall :: struct {
+  text: [CP_CMD] u8; text_n: int;
+  out: [CP_CMD_OUT + 64] u8; out_n: int;
+  long_at: int; long_n: int;  // when long_n > 0, the row's body lives in CoderPage.long_buf[long_at..<long_at + long_n]
+  read: bool; failed: bool; running: bool;
+  thought: bool;              // the model's thinking (#13671): text is its first line, out its words
+  said: bool;                 // what a sub-agent said between its tool calls: out is its words, shown as a reply is
+  began: f32; took: f32;
+  next: int;                  // the sub-agent's call after this one, as its place in the page's calls plus 1; 0 for none
+  order: int;                 // when it was added, counted up over the chat
+  h: f32;                     // its row's height as last drawn, 0 before that: a row out of view is not drawn
+}
+// One sub-agent: a run of its own on a worker of its own, started by the host.
+CpAgent :: struct {
+  task: [CP_AGENT_TASK] u8; task_n: int; level: int;   // which of CP_LEVEL
+  state: int;                 // CP_RUNNING, CP_DONE, CP_FAILED, CP_STOPPED
+  start_due: bool;            // the host has not started its worker yet
+  answer: int; answer_due: bool;   // its worker's ask that is owed a yes
+  reply: [CP_AGENT_REPLY] u8; reply_n: int;   // its reply, or why it failed
+  head: int; tail: int; nrows: int;   // its tool calls, oldest first: the first's and last's places in the page's calls, plus 1
+  early_rows: int;            // how many of its oldest calls went to make room
+  more_rows: int;             // in a chat kept before #13670: how many ran past the 40 it kept
+  now: [CP_CMD] u8; now_n: int; now_running: bool;     // its newest tool call
+  calls: int;
+  quiet: int;                 // its tool calls since it last changed a file, or since Microcoder let it go on
+  paused: bool;               // it reached CP_QUIET: its next command waits, and Microcoder decides whether it goes on
+  deny_due: bool;             // Microcoder let it go on: the command that waited is owed a no that carries the note
+  say: [CP_AGENT_TASK] u8; say_n: int;   // the note
+  began: f32; took: f32;
+  heard: f32;                 // the clock when its worker last sent a line: since then it waits on its model
+  again: [CP_CMD] u8; again_n: int;   // its newest model call that was sent again, and why; cleared when it moves on
+  after: int;                 // how many of Microcoder's own rows came before it was handed over: it shows after them
+  said_open: bool;            // its newest row is what it says in the model call still streaming: the next piece joins it
+}
+CP_CMD_IDS :: [CP_AGENTS] string.["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11"];
+CpTurn :: struct {
+  head: int; tail: int; ncmds: int;   // its own commands, file reads and thoughts, oldest first: the first's and last's places in the page's calls, plus 1
+  early_cmds: int;            // how many of its oldest went to make room
+  more_cmds: int;             // in a chat kept before #13671: how many ran past the 12 it kept
+  agents: [CP_AGENTS] CpAgent; nagents: int;
+  began: f32;                 // the clock when it was sent: the working line counts from it
+  fold: int;                  // its activity group as the person left it: APP_ACT_UNCHOSEN, _OPENED or _FOLDED
+  round_who: [CP_ROUND] int; round_asked: int; ticket: int; waiting: bool;   // the sub-agents Microcoder waits for: each task's sub-agent as its number (0: not run, -1: no such paused one), how many it asked for, its ticket
+  ask: [EB_TEXT] u8; ask_n: int;
+  reply: [CP_REPLY] u8; reply_n: int; cut: bool;
+  doc: [1] MdDoc; blocks: int;
+  note: [CP_NOTE] u8; note_n: int;
+  state: int; stopping: bool;
+  model: int;                 // index into CP_MODEL_ID used for this turn (0: Neon)
+  info: bool;                 // a click on the reply shows who wrote it, beside its Copy
+  ay: f32; ah: f32;           // the reply's place as last drawn (ah 0: not drawn)
+  fresh: bool;                // a model request ended: the next reply text starts the reply again
+  h: f32; hw: f32;            // its height as last drawn, and the column's width then
+}
+// One kept chat in the sidebar's list.
+CpChat :: struct { id: [CP_CHAT_ID] u8; id_n: int; title: [CP_CHAT_TITLE] u8; title_n: int; busy: bool; pinned: bool; managed: bool; unread: bool; }   // busy: a reply runs in it, out of view; pinned: shown in Pinned section; managed: Foreman-managed; unread: completed or updated out of view
+CpGeneration :: struct { under: [CP_UNDER] Prim; over: [CP_OVER] Prim; lines: [CP_LINES] SheetLine; hits: [CP_HITS] SheetHit; pool: [CP_POOL] u8; rows: [CP_ROWS] El; }
+CoderPage :: struct {
+  ready: bool; time: f32; d: f32;
+  atlas: [1] Atlas;
+  gen: [2] CpGeneration; surface: [1] UiSurface;
+  keys: [CP_KEYED] Keyed; keyed: [1] KeyedStore;
+  turns: [CP_TURNS] CpTurn; nturns: int;
+  draft: [1] EditBuf;
+  focused: bool; editor_h: f32; reduced: bool;
+  skills: [CP_SKILLS] u8; skills_n: int;
+  claude: bool;               // Claude Code is installed here: Microcoder may hand tasks to it
+  chats: [CP_CHATS] CpChat; nchats: int; chats_more: int;   // the host's list of kept chats, most recent first, and how many it has past these
+  current: [CP_CHAT_ID] u8; current_n: int;                 // the row id of the chat that is shown (none: not kept yet)
+  open: int;                  // the row a press asked to open
+  pin_drag: int; pin_dragging: bool; pin_drop: int;   // 1-based chat index being dragged in Pinned, whether past threshold, target 0-based pin slot
+  pin_top: f32; pin_row_h: f32;                       // y of the first pinned row and row height as last drawn
+  foreman_busy: bool; foreman_tier: int; foreman_hud_collapsed: bool; // persistent Foreman chat state, permission tier, and HUD fold
+  pin_move_id: [CP_CHAT_ID] u8; pin_move_id_n: int; pin_move_to: int;   // completed pinned reorder owed to the host
+  side: f32; side_scroll: f32; side_content: f32; side_view: f32;   // the sidebar as last drawn: its width (0: not shown), its scroll
+  kept_turns: int; kept_running: bool; kept_cost: int; kept_budget: int; kept_override: bool;   // what the host last kept (coder_page_save_due)
+  kept_goal_status: int; kept_goal_n: int; kept_goal_time: int;
+  model: int; kept_model: int; model_menu: bool;            // selected main model for this chat (0: Neon) and picker popover state
+  or_main: [CP_OR_ID] u8; or_main_n: int;                   // the OpenRouter model for Microcoder ("" for none): the picker's CP_MODEL_OR
+  or_sub: [CP_OR_ID] u8; or_sub_n: int;                     // the OpenRouter model for sub-agents ("" for none): level openrouter
+  or_id: [CP_OR_ID + 16] u8; or_sub_id: [CP_OR_ID + 16] u8; or_meta: [CP_OR_ID + 40] u8;   // "openrouter:" ids and the reply's byline
+  cost_usd_micros: int;                                     // running total cost of this chat in microdollars (1e-6 USD)
+  budget_usd_micros: int;                                   // per-chat max budget in microdollars (default CP_BUDGET_DEFAULT)
+  budget_override: bool;                                    // user manually approved continuing above budget_usd_micros
+  goal_objective: [CP_GOAL_TEXT] u8; goal_objective_n: int; // active thread goal objective (/goal)
+  goal_status: int;                                         // CP_GOAL_*
+  goal_time_seconds: int;                                   // elapsed active seconds spent on the goal
+  goal_turns: int;                                          // turns executed toward this goal
+  goal_prompt_kind: int;                                    // CP_GOAL_PROMPT_* for the running turn
+  goal_turn_began: f32;                                     // clock when the running goal turn began
+  goal_notice: [CP_GOAL_NOTICE] u8; goal_notice_n: int;     // feedback/usage notice from /goal commands
+  folder: [CP_FOLDER_TEXT] u8; folder_n: int;   // the working folder as shown (~/work/app): commands start there
+  answer: int; answer_due: bool;   // the ticket of the worker's ask that is owed its answer
+  results_due: bool;          // every sub-agent of the round has ended: the worker is owed their results
+  // the sub-agent whose transcript shows on the window's right (GitHub #13666): which, where it
+  // was last drawn, its scroll, and its reply as a document
+  pane_open: bool; pane_turn: int; pane_agent: int; pane_manual: bool;
+  pane_x: f32; pane_w: f32; pane_scroll: f32; pane_content: f32; pane_view: f32; pane_stick: bool;
+  pane_doc: [1] MdDoc; pane_blocks: int; pane_parsed: int;
+  think: [2] MdDoc; think_at: int;   // the open thoughts' Markdown, parsed afresh each frame; two, so the frame before keeps its words
+  // the sidebars' widths as dragged (#13670), 0 until then; which edge is held (1 the chats', 2 the
+  // transcript's) or under the pointer; the window's width as last drawn; the host owes keeping them
+  calls: [CP_AGENT_CALLS] CpCall; calls_n: int; calls_free: int; calls_order: int;   // every sub-agent's tool calls: how many places were ever used, the first free one plus 1
+  long_buf: [CP_LONG_POOL] u8; long_n: int;
+  side_w: f32; pane_user: f32; drag: int; hover: int; win_w: f32; sides_due: bool; side_collapsed: bool;
+  clock: f32;                 // seconds the page has been drawn, for how long a tool call took
+  scratch: [CP_SCRATCH] u8;
+  zoom: int;                  // the text size, a row of CP_ZOOMS
+  px: f32; py: f32; touching: bool; pressed: [EL_ID] u8; pressed_n: int;
+  scroll: f32; content: f32; view: f32; stick: bool;
+  box: ComposerBox;
+  ask: int; refused: int; moving: bool;
+  live_ask: int; live_reply: int; live_call: int; live_pane: int;   // >= 0: newly arrived live item to animate in once
+  copied_turn: int; copied_block: int; copied_kind: int;
+  copied_row: int;            // CP_COPIED_SAID: the row whose code block was copied
+  update_state: int;
+  update_label: [64] u8; update_label_n: int;
+  update_detail: [48] u8; update_detail_n: int;
+  dx: f32; dy: f32; col_x: f32; col_w: f32;   // where the pointer went down; the column as last drawn
+  // settings (settings.coax): open, its page, the page's and the list's scroll, the search and the
+  // row it asked for, the search field's box, and what the host told it
+  set_open: bool; set_page: int; set_tier: int;
+  set_scroll: f32; set_content: f32; set_view: f32; set_target_y: f32;
+  set_list_scroll: f32; set_list_content: f32; set_list_view: f32;
+  set_query: [64] u8; set_query_n: int;
+  set_target: [EL_ID] u8; set_target_n: int;
+  set_box: [4] f32; set_due: bool; set_bar: f32;   // set_due: the page scrolled to a row, one more frame; set_bar: the window's title bar, in points
+  set_claude: [48] u8; set_claude_n: int;
+  set_orkey: [48] u8; set_orkey_n: int;
+  set_version: [48] u8; set_version_n: int;
+  arena: [CP_ARENA] u8;
+}
+
+cp_init :: (s: [] CoderPage) {
+  s[0].ready = true;
+  g := s[0].gen[..];
+  s[0].surface[0] = surface_over(
+    Sheet.{under = g[0].under[..], over = g[0].over[..], lines = g[0].lines[..], hits = g[0].hits[..], pool = g[0].pool[..]}, g[0].rows[..],
+    Sheet.{under = g[1].under[..], over = g[1].over[..], lines = g[1].lines[..], hits = g[1].hits[..], pool = g[1].pool[..]}, g[1].rows[..]);
+  s[0].keyed[0] = KeyedStore.{rows = s[0].keys[..]};
+  s[0].stick = true; s[0].copied_turn = -1; s[0].copied_block = -1;
+  s[0].live_ask = -1; s[0].live_reply = -1; s[0].live_call = -1; s[0].live_pane = -1;
+  s[0].zoom = CP_ZOOM_USUAL;
+  s[0].budget_usd_micros = CP_BUDGET_DEFAULT; s[0].budget_override = false;
+  s[0].model = CP_MODEL_DEFAULT; s[0].kept_model = CP_MODEL_DEFAULT; s[0].model_menu = false;
+  s[0].goal_status = CP_GOAL_NONE; s[0].goal_objective_n = 0; s[0].goal_time_seconds = 0; s[0].goal_turns = 0; s[0].goal_prompt_kind = CP_GOAL_PROMPT_NONE; s[0].goal_notice_n = 0;
+}
+
+cp_out :: (out: [] u8, text: string) -> int {
+  n := 0;
+  for c: text { if n >= out.count { break; } out[n] = c; n += 1; }
+  return n;
+}
+// "t7.x12": a message's own row, named by the turn's number and the row's, counted from the message's first.
+cp_row_id :: (out: [] u8, i: int, k: int) -> string {
+  n := el_put(out, 0, "t"); n = el_put_i(out, n, i); n = el_put(out, n, ".x"); n = el_put_i(out, n, k);
+  return cast(string) out[0..<n];
+}
+// "t7.a": a turn's part, named by the turn's number.
+cp_id :: (out: [] u8, i: int, part: string) -> string {
+  n := 0; out[n] = 't'; n += 1;
+  if i >= 10 { out[n] = cast(u8) ('0' + i / 10); n += 1; }
+  out[n] = cast(u8) ('0' + i % 10); n += 1;
+  for c: part { if n >= out.count { break; } out[n] = c; n += 1; }
+  return cast(string) out[0..<n];
+}
+// The number after `mark` in id, -1 when it has none.
+cp_number :: (id: string, mark: string) -> int {
+  i := 0;
+  while i + mark.count <= id.count {
+    if cast(string) id[i..<i + mark.count] == mark {
+      j := i + mark.count; n := 0; any := false;
+      while j < id.count && id[j] >= '0' && id[j] <= '9' { n = n * 10 + cast(int) (id[j] - '0'); j += 1; any = true; }
+      return ifx any then n else -1;
+    }
+    i += 1;
+  }
+  return -1;
+}
+cp_running :: (s: [] CoderPage) -> bool { return s[0].nturns > 0 && s[0].turns[s[0].nturns - 1].state == CP_RUNNING; }
+cp_side_busy :: (s: [] CoderPage) -> bool {
+  if s[0].side <= 0 { return false; }
+  if s[0].foreman_busy { return true; }
+  for q: 0..<s[0].nchats {
+    if s[0].chats[q].busy { return true; }
+  }
+  return false;
+}
+cp_full :: (s: [] CoderPage) -> bool { return s[0].nturns >= CP_TURNS; }
+cp_clamp :: (s: [] CoderPage) {
+  most := s[0].content - s[0].view;
+  if s[0].scroll > most { s[0].scroll = most; }
+  if s[0].scroll < 0 { s[0].scroll = 0; }
+}
+cp_is_space :: (c: u8) -> bool { return c == 32 || c == 9 || c == 10 || c == 13; }
+cp_trim :: (text: string) -> string {
+  a := 0; b := text.count;
+  while a < b && cp_is_space(text[a]) { a += 1; }
+  while b > a && cp_is_space(text[b - 1]) { b -= 1; }
+  return cast(string) text[a..<b];
+}
+cp_eq_ci :: (a: string, b: string) -> bool {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count {
+    ca := a[i]; cb := b[i];
+    if ca >= 65 && ca <= 90 { ca += 32; }
+    if cb >= 65 && cb <= 90 { cb += 32; }
+    if ca != cb { return false; }
+  }
+  return true;
+}
+cp_contains :: (text: string, needle: string) -> bool {
+  if needle.count == 0 || needle.count > text.count { return false; }
+  i := 0;
+  while i + needle.count <= text.count {
+    if cast(string) text[i..<i + needle.count] == needle { return true; }
+    i += 1;
+  }
+  return false;
+}

@@ -252,7 +252,7 @@ So with the GameBuilder skill and command line installed
 
 The app bundles the Microcoder worker (`coder/tui/mcworker.coax`) and starts
 it on the first message. `Worker.swift` carries bytes between the worker and the
-page. The page (`page.coax`) writes the task line and reads every reply line
+page. The page (`page.coax` and its parts in `page/`) writes the task line and reads every reply line
 with the worker's own codec (`coax/lib/agent/engine/mcworker-wire.coax`).
 Each sub-agent is one more worker process, which the app starts (through the daemon, see [Runs outlive Coder](#runs-outlive-coder)) when
 Microcoder hands a task over and stops when the task ends.
@@ -363,6 +363,10 @@ count (`CFBundleVersion`). The log is `~/.cache/openagents/coder-release/log`.
 coax/bin/coax test apps/coder-desktop/page.coax --library
 ```
 
+That runs every page check. A check file under `page/checks/` also runs on its
+own, for example
+`coax/bin/coax test apps/coder-desktop/page/checks/transcript-checks.coax --library`.
+
 The Foreman control API (`docs/coder/foreman-control-api.md`), which lets a
 script or another agent manage Foreman in a running Coder:
 
@@ -375,7 +379,19 @@ apps/coder-desktop/foreman-control-test.sh --live   # also drives a built Coder.
 
 | File | What |
 | --- | --- |
-| `page.coax` | The page: the turns, the draft, the scroll, layout, and the worker's lines |
+| `page.coax` | The page's entry: it loads `page/parts.coax` and the checks |
+| `page/parts.coax` | The page's parts, in one namespace; a check file loads it alone |
+| `page/state.coax` | Capacities, ids and actions, the `CoderPage` struct, `cp_init` and the small helpers |
+| `page/skin.coax`, `page/models.coax` | The page's skin and scale; the model picker's list and the OpenRouter models |
+| `page/goal.coax` | The chat's cost and budget, the thread goal and `/goal` |
+| `page/transcript.coax` | Turns and their rows: sending, the reply, commands, tool calls, thoughts, sub-agents and their workers |
+| `page/chats.coax`, `page/persist.coax` | The kept chats' list, pins and the Foreman row; keeping and reading back a chat, the recall line, a new chat |
+| `page/input.coax`, `page/host-api.coax` | Presses, the pointer, the wheel and the sidebars' edges; the rest of the host's `coder_page_*` calls |
+| `page/layout/layout.coax` | `cp_layout`: the shell's regions, then the parts below in a fixed draw order |
+| `page/layout/conversation.coax` | A message's activity group, the conversation, the Foreman HUD, the corner buttons and the composer |
+| `page/layout/sidebar.coax`, `page/layout/pane.coax` | The chats' sidebar and its foot; a sub-agent's transcript and the shared tool row |
+| `page/checks/*.coax` | The page's checks, one file per part they cover |
+| `settings.coax` | The settings screen |
 | `app.coax` | The compiled unit: the page and the atlas tables |
 | `host.c`, `host.h` | The page on the shared GPU carrier, as calls for Swift |
 | `carrier.c` | The shared component carrier with this page |

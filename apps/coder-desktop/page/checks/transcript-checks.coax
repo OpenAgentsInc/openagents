@@ -1,0 +1,283 @@
+// Checks for the page's transcript.coax and layout/conversation.coax: turns, rows, Copy, the activity group. Example data only.
+#load "../parts.coax";
+#load "checks-kit.coax";
+
+#test "a draft becomes a running turn, the worker's task names it, and its lines fill the reply" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  #assert !coder_page_submit(s) && coder_page_set_text(s, "What is 2+2?") && coder_page_submit(s);
+  #assert s[0].nturns == 1 && cp_running(s) && eb_text(s[0].draft[..]) == "" && coder_page_action(s) == CP_ASK_SEND && coder_page_action(s) == CP_ASK_NONE;
+  out: [4096] u8; n := coder_page_task(s, "s-1", "/w", out[..]);
+  ar: [1] ClArena; buf: [4096] u8; ar[0].buf = buf[..]; back: [1] McTask;
+  #assert n > 0 && mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].task == "What is 2+2?" && back[0].model == "gemini-4-neon" && back[0].sandbox == "danger-full-access" && back[0].cwd == "/w";
+  #assert !coder_page_submit(s);   // one run at a time
+  #assert coder_page_line(s, "{\"kind\":\"reply\",\"text\":\"2 + 2 \"}") == MWW_REPLY && coder_page_line(s, "{\"kind\":\"reply\",\"text\":\"equals 4\"}") == MWW_REPLY;
+  #assert cast(string) s[0].turns[0].reply[0..<s[0].turns[0].reply_n] == "2 + 2 equals 4" && s[0].turns[0].blocks == 1 && cp_running(s);
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"2 + 2 equals 4.\"}") == MWW_ENDED;
+  #assert !cp_running(s) && s[0].turns[0].state == CP_DONE && cast(string) s[0].turns[0].reply[0..<s[0].turns[0].reply_n] == "2 + 2 equals 4.";
+}
+
+#test "a run that ends another way says why, a stopped one says Stopped, and a lost worker fails the turn" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  #assert coder_page_set_text(s, "a") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"failed\",\"text\":\"a limit\"}") == MWW_ENDED;
+  #assert s[0].turns[0].state == CP_FAILED && cast(string) s[0].turns[0].note[0..<s[0].turns[0].note_n] == "a limit";
+  #assert coder_page_set_text(s, "b") && coder_page_submit(s);
+  s[0].turns[1].stopping = true;
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"stopped\",\"text\":\"\"}") == MWW_ENDED && s[0].turns[1].state == CP_STOPPED;
+  #assert coder_page_set_text(s, "c") && coder_page_submit(s);
+  coder_page_failed(s, "Microcoder stopped running.");
+  #assert s[0].turns[2].state == CP_FAILED && !cp_running(s);
+}
+
+#test "a code block's Copy id names its turn and block" {
+  #assert cp_number("t12.a.code.6.copy", "t") == 12 && cp_number("t12.a.code.6.copy", ".code.") == 6 && cp_number("coder.new", ".code.") == -1;
+  ib: [EL_ID] u8;
+  #assert cp_id(ib[..], 3, ".u") == "t3.u" && cp_id(ib[..], 21, ".a") == "t21.a";
+}
+
+#test "a reply that streams a code block in pieces ends with the whole block" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  #assert coder_page_set_text(s, "hello world") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"reply\",\"text\":\"2 + 2 = 4\\n\\n```python\\nprint(\\\"Hello\"}") == MWW_REPLY;
+  #assert coder_page_line(s, "{\"kind\":\"reply\",\"text\":\", world!\\\")\\n```\"}") == MWW_REPLY;
+  #assert s[0].turns[0].blocks == 2 && md_block_text(s[0].turns[0].doc[..], 1) == "print(\"Hello, world!\")";
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"2 + 2 = 4\\n\\n```python\\nprint(\\\"Hello, world!\\\")\\n```\"}") == MWW_ENDED;
+  #assert s[0].turns[0].state == CP_DONE && s[0].turns[0].blocks == 2 && md_block_text(s[0].turns[0].doc[..], 1) == "print(\"Hello, world!\")";
+}
+
+#test "a command the worker ran and a file it read join the running turn, and every one is kept" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  #assert coder_page_set_text(s, "list it") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"command\",\"command\":\"ls\",\"exit\":0,\"timed_out\":false,\"output\":\"a\\nb\"}") == MWW_COMMAND;
+  #assert coder_page_line(s, "{\"kind\":\"command\",\"command\":\"false\",\"exit\":1,\"timed_out\":false,\"output\":\"\"}") == MWW_COMMAND;
+  #assert coder_page_line(s, "{\"kind\":\"view\",\"path\":\"a.txt\",\"found\":true}") == MWW_VIEW;
+  #assert s[0].turns[0].ncmds == 3 && !s[0].calls[cp_nth(s, 0, -1, 0)].failed && s[0].calls[cp_nth(s, 0, -1, 1)].failed && s[0].calls[cp_nth(s, 0, -1, 2)].read;
+  #assert cast(string) s[0].calls[cp_nth(s, 0, -1, 0)].text[0..<s[0].calls[cp_nth(s, 0, -1, 0)].text_n] == "ls" && cast(string) s[0].calls[cp_nth(s, 0, -1, 0)].out[0..<s[0].calls[cp_nth(s, 0, -1, 0)].out_n] == "a\nb";
+  for i: 0..<12 { #assert coder_page_line(s, "{\"kind\":\"view\",\"path\":\"b.txt\",\"found\":false}") == MWW_VIEW; }
+  #assert s[0].turns[0].ncmds == 15 && s[0].turns[0].more_cmds == 0 && s[0].turns[0].early_cmds == 0 && s[0].calls[cp_nth(s, 0, -1, 14)].failed && cp_nth(s, 0, -1, 15) < 0;
+}
+
+#test "the note on installed skills goes ahead of the message in the task, and the message shown stays the person's" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  coder_page_skills(s, "Skills: gamebuilder.\n\n");
+  #assert coder_page_set_text(s, "List my games") && coder_page_submit(s);
+  out: [8192] u8; n := coder_page_task(s, "s-1", "/w", out[..]);
+  ar: [1] ClArena; buf: [8192] u8; ar[0].buf = buf[..]; back: [1] McTask;
+  #assert n > 0 && mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].task == "Skills: gamebuilder.\n\nList my games";
+  #assert cast(string) s[0].turns[0].ask[0..<s[0].turns[0].ask_n] == "List my games";
+}
+
+#test "after a reply and a new chat, the next message still makes a task" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  coder_page_skills(s, "Skills: gamebuilder.\n\n");
+  #assert coder_page_set_text(s, "Write three paragraphs") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND;
+  out: [8192] u8; n := coder_page_task(s, "s-1", "/w", out[..]);
+  #assert n > 0;
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"done\"}") == MWW_ENDED && !cp_running(s);
+  #assert coder_page_new(s) && s[0].nturns == 0 && coder_page_action(s) == CP_ASK_NEW;
+  #assert coder_page_set_text(s, "run some gamebuilder commands tell me what u see") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND;
+  n = coder_page_task(s, "s-1", "/w", out[..]);
+  #assert n > 0;
+}
+
+#test "text a request wrote before its commands gives way to the next request's text" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  #assert coder_page_set_text(s, "open my game") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"reply\",\"text\":\"Opened it. \"}") == MWW_REPLY && coder_page_line(s, "{\"kind\":\"reply\",\"text\":\"Look there.\"}") == MWW_REPLY;
+  #assert cast(string) s[0].turns[0].reply[0..<s[0].turns[0].reply_n] == "Opened it. Look there.";
+  #assert coder_page_line(s, "{\"kind\":\"attempt\",\"gateway\":\"vertex\",\"outcome\":\"done\",\"status\":200,\"usd_micros\":1}") == MWW_ATTEMPT;
+  #assert coder_page_line(s, "{\"kind\":\"reply\",\"text\":\"Your game \"}") == MWW_REPLY && coder_page_line(s, "{\"kind\":\"reply\",\"text\":\"is open.\"}") == MWW_REPLY;
+  #assert cast(string) s[0].turns[0].reply[0..<s[0].turns[0].reply_n] == "Your game is open.";
+}
+
+#test "a command shows as running when the worker asks, is answered yes, and takes its output when it ends" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  #assert coder_page_set_text(s, "find it") && coder_page_submit(s);
+  out: [4096] u8; n := coder_page_task(s, "s-1", "/w", out[..]);
+  ar: [1] ClArena; buf: [4096] u8; ar[0].buf = buf[..]; back: [1] McTask;
+  #assert n > 0 && mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].gated;
+  #assert coder_page_answer_line(s, out[..]) == 0;
+  #assert coder_page_line(s, "{\"kind\":\"ask\",\"command\":\"find ~ -name x\",\"ticket\":7}") == MWW_ASK;
+  #assert s[0].turns[0].ncmds == 1 && s[0].calls[cp_nth(s, 0, -1, 0)].running;
+  n = coder_page_answer_line(s, out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "{\"answer\":true,\"ticket\":7}\n" && coder_page_answer_line(s, out[..]) == 0;
+  #assert coder_page_line(s, "{\"kind\":\"command\",\"command\":\"find ~ -name x\",\"exit\":0,\"timed_out\":false,\"output\":\"/a/x\"}") == MWW_COMMAND;
+  #assert s[0].turns[0].ncmds == 1 && !s[0].calls[cp_nth(s, 0, -1, 0)].running && !s[0].calls[cp_nth(s, 0, -1, 0)].failed && cast(string) s[0].calls[cp_nth(s, 0, -1, 0)].out[0..<s[0].calls[cp_nth(s, 0, -1, 0)].out_n] == "/a/x";
+  #assert coder_page_line(s, "{\"kind\":\"ask\",\"command\":\"sleep 9\",\"ticket\":8}") == MWW_ASK && s[0].calls[cp_nth(s, 0, -1, 1)].running;
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"stopped\",\"text\":\"\"}") == MWW_ENDED && !s[0].calls[cp_nth(s, 0, -1, 1)].running;
+}
+
+#test "the working folder is kept as the host shows it, up to 512 bytes" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  #assert s[0].folder_n == 0;
+  coder_page_folder(s, "~/work/app");
+  #assert cast(string) s[0].folder[0..<s[0].folder_n] == "~/work/app";
+  long: [600] u8; for i: 0..<600 { long[i] = 97; }
+  coder_page_folder(s, cast(string) long[..]);
+  #assert s[0].folder_n == CP_FOLDER_TEXT;
+}
+
+#test "Copy takes a message, a reply, or the whole chat with its commands" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  #assert coder_page_set_text(s, "List files") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND;
+  #assert coder_page_line(s, "{\"kind\":\"command\",\"command\":\"ls\",\"exit\":0,\"timed_out\":false,\"output\":\"a\"}") == MWW_COMMAND;
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"One file: **a**.\"}") == MWW_ENDED;
+  out: [512] u8;
+  s[0].copied_turn = 0; s[0].copied_kind = CP_COPIED_ASK;
+  n := coder_page_copied(s, out[..]); #assert cast(string) out[0..<n] == "List files";
+  s[0].copied_kind = CP_COPIED_REPLY;
+  n = coder_page_copied(s, out[..]); #assert cast(string) out[0..<n] == "One file: **a**.";
+  s[0].copied_kind = CP_COPIED_ALL;
+  n = coder_page_copied(s, out[..]); #assert cast(string) out[0..<n] == "You:\nList files\n\nRan: ls\n\nMicrocoder:\nOne file: **a**.";
+  #assert coder_page_new(s) && s[0].copied_kind == CP_COPIED_NONE;
+}
+
+#test "thinking is a row in its place, named by its first line, kept whole, saved with the chat and left out of a copy" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  #assert coder_page_set_text(s, "look") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"thought\",\"text\":\"**Reading the plan**\\n\\nI will list the files first.\"}") == MWW_THOUGHT;
+  #assert coder_page_line(s, "{\"kind\":\"command\",\"command\":\"ls\",\"exit\":0,\"timed_out\":false,\"output\":\"a\"}") == MWW_COMMAND;
+  #assert s[0].turns[0].ncmds == 2 && s[0].calls[cp_nth(s, 0, -1, 0)].thought && !s[0].calls[cp_nth(s, 0, -1, 1)].thought && s[0].calls[cp_nth(s, 0, -1, 0)].took < 0;
+  #assert cast(string) s[0].calls[cp_nth(s, 0, -1, 0)].text[0..<s[0].calls[cp_nth(s, 0, -1, 0)].text_n] == "Reading the plan";
+  #assert cast(string) s[0].calls[cp_nth(s, 0, -1, 0)].out[0..<s[0].calls[cp_nth(s, 0, -1, 0)].out_n] == "**Reading the plan**\n\nI will list the files first.";
+  // a sub-agent's thinking joins its transcript and is not counted as a tool call
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"carbon\",\"task\":\"count\"}],\"ticket\":1}") == MWW_DELEGATE;
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"thought\",\"text\":\"# Counting\"}") == MWW_THOUGHT;
+  #assert s[0].turns[0].agents[0].nrows == 1 && s[0].turns[0].agents[0].calls == 0 && s[0].calls[cp_nth(s, 0, 0, 0)].thought && cast(string) s[0].calls[cp_nth(s, 0, 0, 0)].text[0..<s[0].calls[cp_nth(s, 0, 0, 0)].text_n] == "Counting";
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"3\"}") == MWW_ENDED;
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"Done.\"}") == MWW_ENDED;
+  out: [512] u8;
+  s[0].copied_turn = 0; s[0].copied_kind = CP_COPIED_ALL;
+  n := coder_page_copied(s, out[..]); #assert cast(string) out[0..<n] == "You:\nlook\n\nRan: ls\n\nMicrocoder:\nDone.";
+  // a kept chat has it, in its place
+  kept: [65536] u8; kn := coder_page_save(s, kept[..]);
+  #assert kn > 0 && coder_page_new(s) && s[0].calls_n == 0 && coder_page_load(s, cast(string) kept[0..<kn]);
+  #assert s[0].turns[0].ncmds == 2 && s[0].calls[cp_nth(s, 0, -1, 0)].thought && !s[0].calls[cp_nth(s, 0, -1, 1)].thought && s[0].turns[0].agents[0].nrows == 1 && s[0].calls[cp_nth(s, 0, 0, 0)].thought;
+  #assert cast(string) s[0].calls[cp_nth(s, 0, -1, 0)].out[0..<s[0].calls[cp_nth(s, 0, -1, 0)].out_n] == "**Reading the plan**\n\nI will list the files first.";
+  // thinking longer than CP_CMD_OUT stays a single Thought row in both sub-agent and main chat, and survives save/load
+  long: [7000] u8; for k: 0..<7000 { long[k] = ifx k % 10 == 9 then cast(u8) 32 else cast(u8) 'a'; }
+  cp_thought_add(s, 0, 0, cast(string) long[..], false);
+  #assert s[0].turns[0].agents[0].nrows == 2;
+  q1 := cp_nth(s, 0, 0, 1);
+  #assert s[0].calls[q1].thought && cp_call_text(s, q1) == cast(string) long[..];
+  cp_thought_add(s, 0, -1, cast(string) long[..], false);
+  #assert s[0].turns[0].ncmds == 3;
+  qm := cp_nth(s, 0, -1, 2);
+  #assert s[0].calls[qm].thought && cp_call_text(s, qm) == cast(string) long[..];
+  kn = coder_page_save(s, kept[..]);
+  #assert kn > 0 && coder_page_new(s) && coder_page_load(s, cast(string) kept[0..<kn]);
+  #assert s[0].turns[0].agents[0].nrows == 2 && cp_call_text(s, cp_nth(s, 0, 0, 1)) == cast(string) long[..];
+  #assert s[0].turns[0].ncmds == 3 && cp_call_text(s, cp_nth(s, 0, -1, 2)) == cast(string) long[..];
+  // a thought past CP_THOUGHT_MAX stays one row and does not cut inside a UTF-8 character
+  huge: [CP_THOUGHT_MAX + 3] u8;
+  for k: 0..<CP_THOUGHT_MAX + 3 { huge[k] = ifx k % 2 == 1 then cast(u8) 0xC3 else cast(u8) 0xA9; }
+  cp_thought_add(s, 0, 0, cast(string) huge[..], false);
+  q2 := cp_nth(s, 0, 0, 2);
+  #assert s[0].turns[0].agents[0].nrows == 3 && s[0].calls[q2].thought && cp_call_text(s, q2).count == CP_THOUGHT_MAX - 1;
+}
+
+#test "thinking is wrapped to its row at a word's end, and a word longer than a line is broken" {
+  o: [64] u8;
+  n := cp_wrap(o[..], "one two three four", 9);
+  #assert cast(string) o[0..<n] == "one two\nthree\nfour";
+  n = cp_wrap(o[..], "ab\nabcdefghijkl mn", 5);
+  #assert cast(string) o[0..<n] == "ab\nabcde\nfghij\nkl mn";
+  n = cp_wrap(o[..], "", 5); #assert n == 0;
+}
+
+#test "a click on a reply shows who wrote it and another hides it; a drag does not; the corner icons are one size" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  #assert coder_page_set_text(s, "hi") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND;
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"Hello.\"}") == MWW_ENDED;
+  s[0].d = 1; s[0].col_x = 100; s[0].col_w = 400; s[0].view = 600; s[0].turns[0].ay = 50; s[0].turns[0].ah = 40;
+  #assert !coder_page_pointer(s, 200, 60, 0) && coder_page_pointer(s, 200, 60, 2) && s[0].turns[0].info;
+  #assert !coder_page_pointer(s, 200, 60, 0) && coder_page_pointer(s, 200, 60, 2) && !s[0].turns[0].info;
+  #assert !coder_page_pointer(s, 200, 60, 0) && !coder_page_pointer(s, 260, 60, 2) && !s[0].turns[0].info;
+  #assert !coder_page_pointer(s, 50, 60, 0) && !coder_page_pointer(s, 50, 60, 2) && !s[0].turns[0].info;
+  #assert coder_page_icon_size(ICON_COPY) == coder_page_icon_size(ICON_COMPOSE) && coder_page_icon_size(ICON_FOLDER) == CP_ICON && coder_page_icon_size(ICON_CHECK) == CP_ICON;
+}
+
+#test "turn limit caps a chat at CP_TURNS and blocks further submissions cleanly" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  s[0].d = 1.0f32;
+  for i: 0..<CP_TURNS {
+    #assert !cp_full(s);
+    #assert coder_page_set_text(s, "turn") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND;
+    #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"ok\"}") == MWW_ENDED;
+  }
+  #assert s[0].nturns == CP_TURNS && cp_full(s);
+  #assert coder_page_set_text(s, "one too many") && !coder_page_submit(s);
+  #assert s[0].nturns == CP_TURNS && coder_page_action(s) == 0;
+  f: [1] UiFrame;
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0, 0.016, true, false);
+  cp_layout(s, f[..], 1200.0f32, 800.0f32);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+}
+
+#test "malformed and truncated wire JSON lines do not corrupt a running turn" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  #assert coder_page_set_text(s, "resilience") && coder_page_submit(s);
+  #assert coder_page_line(s, "") == 0;
+  #assert coder_page_line(s, "not json at all") == 0;
+  #assert coder_page_line(s, "{\"kind\":\"reply\",\"text\":\"trunc") == 0;
+  #assert coder_page_line(s, "{\"kind\":\"unknown_kind\",\"text\":\"x\"}") == 0;
+  #assert coder_page_line(s, "{\"kind\":\"command\"}") == MWW_COMMAND;
+  #assert cp_running(s) && s[0].nturns == 1;
+  #assert coder_page_line(s, "{\"kind\":\"reply\",\"text\":\"recovered\"}") == MWW_REPLY;
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"recovered\"}") == MWW_ENDED;
+  #assert !cp_running(s) && s[0].turns[0].state == CP_DONE;
+  #assert cast(string) s[0].turns[0].reply[0..<s[0].turns[0].reply_n] == "recovered";
+}
+
+#test "a message's work is one activity group: open while it runs, its summary counted, folded when done until a press opens it" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s); s[0].d = 1.0f32; s[0].ready = true; f: [1] UiFrame;
+  #assert coder_page_set_text(s, "look") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"thought\",\"text\":\"Plan the look\"}") > 0;
+  #assert coder_page_line(s, "{\"kind\":\"command\",\"command\":\"ls\",\"exit\":0,\"timed_out\":false,\"output\":\"a\\nb\"}") == MWW_COMMAND;
+  #assert coder_page_line(s, "{\"kind\":\"ask\",\"command\":\"sleep 9\",\"ticket\":8}") == MWW_ASK;
+  s[0].clock += 9;
+  #assert cp_test_draw(s, f[..]);
+  g := surface_find(s[0].surface[..], "t0.grp");
+  #assert g >= 0 && surface_say(s[0].surface[..], g) == "Thought process · ran 2 commands";
+  // live: the thought and both commands show, the running one too; the working line counts its seconds
+  #assert surface_find(s[0].surface[..], "t0.x0.words") >= 0 && surface_find(s[0].surface[..], "t0.x1") >= 0 && surface_find(s[0].surface[..], "t0.x2") >= 0;
+  #assert surface_say(s[0].surface[..], surface_find(s[0].surface[..], "t0.x1")) == "Ran ls" && surface_find(s[0].surface[..], "t0.t") >= 0;
+  // done: folded to its summary; a press opens it, another folds it
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"ok\"}") == MWW_ENDED;
+  #assert cp_test_draw(s, f[..]) && surface_find(s[0].surface[..], "t0.x1") < 0 && surface_find(s[0].surface[..], "t0.t") < 0;
+  #assert cp_press(s, surface_find(s[0].surface[..], "t0.grp")) && cp_test_draw(s, f[..]) && surface_find(s[0].surface[..], "t0.x1") >= 0;
+  // a row opens onto its output
+  #assert cp_press(s, surface_find(s[0].surface[..], "t0.x1")) && cp_test_draw(s, f[..]) && surface_find(s[0].surface[..], "t0.x1.output") >= 0;
+}
+
+#test "coder desktop tasks disable interactive asking for main and sub-agent workers" {
+  p: [1] CoderPage; s := p[..]; cp_init(s);
+  coder_page_set_claude(s, true);
+  #assert coder_page_set_text(s, "ship it") && coder_page_submit(s);
+  #assert coder_page_action(s) == CP_ASK_SEND;
+  out: [8192] u8; n := coder_page_task(s, "sess-1", "/tmp/work", out[..]);
+  ab: [8192] u8; ar: [1] ClArena; ar[0].buf = ab[..];
+  t: [1] McTask;
+  #assert n > 0 && mww_task_read(ar[..], cast(string) out[0..<n - 1], t[..]) && t[0].no_ask && t[0].unlimited && t[0].sandbox == "danger-full-access";
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"hydrogen\",\"task\":\"a\"},{\"level\":\"sonnet\",\"task\":\"b\"}],\"ticket\":1}") == MWW_DELEGATE;
+  for j: 0..<2 {
+    an := coder_page_agent_task(s, j, "sess-1", "/tmp/work", out[..]);
+    ar[0].at = 0; ar[0].full = false;
+    #assert an > 0 && mww_task_read(ar[..], cast(string) out[0..<an - 1], t[..]) && t[0].no_ask && t[0].sandbox == "danger-full-access";
+  }
+}

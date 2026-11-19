@@ -1,0 +1,344 @@
+// Checks for the page's transcript.coax and layout/pane.coax: sub-agents, their tool calls and transcripts. Example data only.
+#load "../parts.coax";
+#load "checks-kit.coax";
+
+#test "a sub-agent that makes 100 tool calls with no file changed pauses; Microcoder is told and lets it go on with a note, or names no one" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  #assert coder_page_set_text(s, "look") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"hydrogen\",\"task\":\"count\"},{\"level\":\"carbon\",\"task\":\"read\"}],\"ticket\":1}") == MWW_DELEGATE;
+  out: [4096] u8;
+  // a read and a command each count; an edit that took starts the count again, one that failed does not
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"view\",\"path\":\"a.txt\",\"found\":true}") == MWW_VIEW && s[0].turns[0].agents[0].quiet == 1;
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"ask\",\"command\":\"ls\",\"ticket\":1}") == MWW_ASK && s[0].turns[0].agents[0].quiet == 2 && coder_page_agent_answer_line(s, 0, out[..]) > 0;
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"command\",\"command\":\"ls\",\"exit\":0,\"timed_out\":false,\"output\":\"a\"}") == MWW_COMMAND && s[0].turns[0].agents[0].quiet == 2;
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"command\",\"command\":\"edit a.txt\",\"exit\":1,\"timed_out\":false,\"output\":\"\"}") == MWW_COMMAND && s[0].turns[0].agents[0].quiet == 3;
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"command\",\"command\":\"edit a.txt\",\"exit\":0,\"timed_out\":false,\"output\":\"\"}") == MWW_COMMAND && s[0].turns[0].agents[0].quiet == 0;
+  // one under 100, its command is answered; at 100 the next waits: no answer is owed and no row is added
+  s[0].turns[0].agents[0].quiet = CP_QUIET - 1;
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"ask\",\"command\":\"ls\",\"ticket\":2}") == MWW_ASK && !s[0].turns[0].agents[0].paused && coder_page_agent_answer_line(s, 0, out[..]) > 0;
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"command\",\"command\":\"ls\",\"exit\":0,\"timed_out\":false,\"output\":\"a\"}") == MWW_COMMAND && s[0].turns[0].agents[0].quiet == CP_QUIET;
+  rows := s[0].turns[0].agents[0].nrows; calls := s[0].turns[0].agents[0].calls;
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"ask\",\"command\":\"cat b\",\"ticket\":3}") == MWW_ASK && s[0].turns[0].agents[0].paused && s[0].turns[0].agents[0].answer == 3;
+  #assert coder_page_agent_answer_line(s, 0, out[..]) == 0 && s[0].turns[0].agents[0].nrows == rows && s[0].turns[0].agents[0].calls == calls && coder_page_agent_running(s, 0);
+  // the other sub-agent still runs, so nothing is owed yet; when it ends, Microcoder gets both
+  #assert !s[0].results_due && coder_page_agent_line(s, 1, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"read it\"}") == MWW_ENDED && s[0].results_due;
+  n := coder_page_answer_line(s, out[..]); line := cast(string) out[0..<n];
+  #assert n > 0 && cp_find(line, "paused, not finished. Sub-agent number 1 has made 100 tool calls in a row without changing a file (") > 0;
+  #assert cp_find(line, "- read a.txt") > 0 && cp_find(line, "- edit a.txt") > 0 && cp_find(line, "delegate one task with resume 1, level hydrogen,") > 0 && cp_find(line, "\"output\":\"read it\"") > 0;
+  // resume lets it go on: the command that waited gets a no that carries the note, and the count starts again
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"hydrogen\",\"task\":\"write the file now\",\"resume\":1},{\"level\":\"hydrogen\",\"task\":\"x\",\"resume\":2},{\"level\":\"hydrogen\",\"task\":\"y\",\"resume\":9}],\"ticket\":2}") == MWW_DELEGATE;
+  #assert s[0].turns[0].nagents == 2 && !s[0].turns[0].agents[0].paused && s[0].turns[0].agents[0].quiet == 0 && !s[0].results_due;
+  n = coder_page_agent_answer_line(s, 0, out[..]); line = cast(string) out[0..<n];
+  #assert n > 0 && cp_find(line, "\"answer\":false,\"ticket\":3") > 0 && cp_find(line, "Its note: write the file now") > 0 && coder_page_agent_answer_line(s, 0, out[..]) == 0;
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"wrote it\"}") == MWW_ENDED && s[0].results_due;
+  n = coder_page_answer_line(s, out[..]); line = cast(string) out[0..<n];
+  #assert cp_find(line, "{\"exit\":0,\"output\":\"wrote it\"},{\"exit\":1,\"output\":\"not run: no paused sub-agent has that number\"},{\"exit\":1,\"output\":\"not run: no paused sub-agent has that number\"}") > 0;
+  // a paused sub-agent that is not let go on is stopped when the run ends
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"hydrogen\",\"task\":\"again\"}],\"ticket\":3}") == MWW_DELEGATE && s[0].turns[0].nagents == 3;
+  s[0].turns[0].agents[2].quiet = CP_QUIET;
+  #assert coder_page_agent_line(s, 2, "{\"kind\":\"ask\",\"command\":\"ls\",\"ticket\":1}") == MWW_ASK && s[0].turns[0].agents[2].paused && s[0].results_due;
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"Done.\"}") == MWW_ENDED && s[0].turns[0].agents[2].state == CP_STOPPED && !s[0].turns[0].agents[2].paused;
+}
+
+#test "a sub-agent's reply streamed a few bytes at a time is one row, and the reply it ends with shows once" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  #assert coder_page_set_text(s, "look") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"carbon\",\"task\":\"count\"}],\"ticket\":1}") == MWW_DELEGATE;
+  for piece: [4] string.["I'll", " list", " them.\\n", "Now."] {
+    lb: [256] u8; n := cp_out(lb[..], "{\"kind\":\"reply\",\"text\":\""); n += cp_out(lb[n..<lb.count], piece); n += cp_out(lb[n..<lb.count], "\"}");
+    #assert coder_page_agent_line(s, 0, cast(string) lb[0..<n]) == MWW_REPLY;
+  }
+  #assert s[0].turns[0].agents[0].nrows == 1 && cp_call_text(s, cp_nth(s, 0, 0, 0)) == "I'll list them.\nNow." && cast(string) s[0].calls[cp_nth(s, 0, 0, 0)].text[0..<s[0].calls[cp_nth(s, 0, 0, 0)].text_n] == "I'll list them.";
+  // a model call's end starts a new row for the next call's words
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"attempt\",\"gateway\":\"openrouter\",\"outcome\":\"done\",\"status\":200}") == MWW_ATTEMPT;
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"reply\",\"text\":\"There is \"}") == MWW_REPLY && coder_page_agent_line(s, 0, "{\"kind\":\"reply\",\"text\":\"1 file.\"}") == MWW_REPLY;
+  #assert s[0].turns[0].agents[0].nrows == 2;
+  // ended with that same text: the row goes, the reply shows it
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"There is 1 file.\"}") == MWW_ENDED;
+  #assert s[0].turns[0].agents[0].nrows == 1 && cp_call_text(s, cp_nth(s, 0, 0, 0)) == "I'll list them.\nNow.";
+}
+
+#test "what a sub-agent says between its tool calls is a row in its place, saved with the chat, left out of a copy; its code copies" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  #assert coder_page_set_text(s, "look") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"carbon\",\"task\":\"count\"}],\"ticket\":1}") == MWW_DELEGATE;
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"reply\",\"text\":\"I'll list them.\\n\\n```sh\\nls\\n```\"}") == MWW_REPLY;
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"ask\",\"command\":\"ls\",\"ticket\":1}") == MWW_ASK;
+  #assert s[0].turns[0].agents[0].nrows == 2 && s[0].turns[0].agents[0].calls == 1;
+  q := cp_nth(s, 0, 0, 0);
+  #assert s[0].calls[q].said && !s[0].calls[q].thought && !s[0].calls[cp_nth(s, 0, 0, 1)].said;
+  #assert cast(string) s[0].calls[q].out[0..<s[0].calls[q].out_n] == "I'll list them.\n\n```sh\nls\n```";
+  // its code block's Copy gives the code
+  s[0].pane_open = true; s[0].pane_turn = 0; s[0].pane_agent = 0;
+  s[0].copied_turn = 0; s[0].copied_row = q; s[0].copied_block = 1; s[0].copied_kind = CP_COPIED_SAID;
+  out: [512] u8;
+  n := coder_page_copied(s, out[..]); #assert cast(string) out[0..<n] == "ls";
+  s[0].copied_block = 0; #assert coder_page_copied(s, out[..]) == 0;   // not a code block
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"3\"}") == MWW_ENDED;
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"Done.\"}") == MWW_ENDED;
+  s[0].copied_turn = 0; s[0].copied_kind = CP_COPIED_ALL;
+  n = coder_page_copied(s, out[..]); #assert cast(string) out[0..<n] == "You:\nlook\n\nMicrocoder:\nDone.";
+  kept: [65536] u8; kn := coder_page_save(s, kept[..]);
+  #assert kn > 0 && coder_page_new(s) && coder_page_load(s, cast(string) kept[0..<kn]);
+  #assert s[0].turns[0].agents[0].nrows == 2 && s[0].calls[cp_nth(s, 0, 0, 0)].said && !s[0].calls[cp_nth(s, 0, 0, 1)].said;
+}
+
+#test "a sub-agent shows after the rows Microcoder had when it handed the task over, in a kept chat too" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  #assert coder_page_set_text(s, "do phase 0") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"thought\",\"text\":\"Prioritizing the method doc\"}") == MWW_THOUGHT;
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"carbon\",\"task\":\"phase 0\"}],\"ticket\":1}") == MWW_DELEGATE;
+  #assert s[0].turns[0].agents[0].after == 1;
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"done\"}") == MWW_ENDED;
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"Done.\"}") == MWW_ENDED;
+  kept: [65536] u8; kn := coder_page_save(s, kept[..]);
+  #assert kn > 0 && coder_page_new(s) && coder_page_load(s, cast(string) kept[0..<kn]) && s[0].turns[0].agents[0].after == 1;
+}
+
+#test "a sub-agent waiting on its model says so and for how long, and a call sent again says why until it moves on" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  #assert coder_page_set_text(s, "go") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"carbon\",\"task\":\"phase 0\"},{\"level\":\"opus\",\"task\":\"review\"}],\"ticket\":1}") == MWW_DELEGATE;
+  wb: [800] u8;
+  #assert cp_agent_wait(s, 0, 0, wb[..]) == "";                       // just started
+  s[0].clock += 185;
+  #assert cp_agent_wait(s, 0, 0, wb[..]) == "waiting on Gemini 4 Carbon · 3m 05s";
+  #assert cp_agent_wait(s, 0, 1, wb[..]) == "waiting on Claude Opus · 3m 05s";
+  // a call that got nothing and went again; then one that was rate-limited
+  s[0].clock += 85;
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"attempt\",\"gateway\":\"vertex\",\"outcome\":\"retried\",\"status\":0}") == MWW_ATTEMPT;
+  s[0].clock += 4;
+  #assert cp_agent_wait(s, 0, 0, wb[..]) == "waiting on Gemini 4 Carbon · 4s · a call got no answer in 4m 30s and is being sent again";
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"attempt\",\"gateway\":\"vertex\",\"outcome\":\"retried\",\"status\":429}") == MWW_ATTEMPT;
+  s[0].clock += 10;
+  #assert cp_agent_wait(s, 0, 0, wb[..]) == "waiting on Gemini 4 Carbon · 10s · a call was rate-limited and is being sent again";
+  // running a tool is not waiting; the next line clears the note
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"ask\",\"command\":\"ls\",\"ticket\":1}") == MWW_ASK;
+  s[0].clock += 10;
+  #assert cp_agent_wait(s, 0, 0, wb[..]) == "";
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"command\",\"command\":\"ls\",\"exit\":0,\"timed_out\":false,\"output\":\"a\"}") == MWW_COMMAND;
+  s[0].clock += 3;
+  #assert cp_agent_wait(s, 0, 0, wb[..]) == "waiting on Gemini 4 Carbon · 3s";
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"done\"}") == MWW_ENDED;
+  s[0].clock += 30;
+  #assert cp_agent_wait(s, 0, 0, wb[..]) == "";
+}
+
+#test "sub-agents: a neon task runs on Gemini 4 Neon, its row and wait line name Neon, and it is not a Claude level" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  #assert coder_page_set_text(s, "ship it") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND;
+  out: [8192] u8; ab: [8192] u8; ar: [1] ClArena; ar[0].buf = ab[..]; back: [1] McTask;
+  n := coder_page_task(s, "s", "/w", out[..]);
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"neon\",\"task\":\"build it\"},{\"level\":\"opus\",\"task\":\"review\"}],\"ticket\":1}") == MWW_DELEGATE;
+  #assert s[0].turns[0].nagents == 2 && CP_LEVEL_NAME[s[0].turns[0].agents[0].level] == "Neon" && !coder_page_agent_claude(s, 0) && coder_page_agent_claude(s, 1);
+  #assert CP_LEVEL_NAME[s[0].turns[0].agents[1].level] == "Claude Opus";
+  #assert coder_page_agent_next(s) == 0;
+  n = coder_page_agent_task(s, 0, "s-a0", "/w", out[..]);
+  #assert mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].task == "build it" && back[0].model == "gemini-4-neon" && back[0].effort == "medium" && back[0].gated && back[0].edits;
+  s[0].clock = s[0].turns[0].agents[0].heard + 4;
+  wb: [256] u8;
+  #assert cp_agent_wait(s, 0, 0, wb[..]) == "waiting on Gemini 4 Neon · 4s";
+}
+
+#test "sub-agents: tasks start once each, a complex one on Carbon; their tool calls show; when all end the worker gets the results" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  #assert coder_page_set_text(s, "do two things") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND;
+  out: [8192] u8; ab: [8192] u8; ar: [1] ClArena; ar[0].buf = ab[..]; back: [1] McTask;
+  n := coder_page_task(s, "s", "/w", out[..]);
+  #assert mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].agents && back[0].edits && back[0].gated && back[0].unlimited;
+  #assert coder_page_agent_next(s) == -1;
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"hydrogen\",\"task\":\"count files\"},{\"level\":\"carbon\",\"task\":\"find the bug\"}],\"ticket\":3}") == MWW_DELEGATE;
+  #assert s[0].turns[0].nagents == 2 && s[0].turns[0].waiting && !s[0].results_due;
+  #assert coder_page_agent_next(s) == 0 && coder_page_agent_next(s) == 1 && coder_page_agent_next(s) == -1;
+  n = coder_page_agent_task(s, 0, "s-a0", "/w", out[..]);
+  #assert mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].task == "count files" && back[0].model == "gemini-4-hydrogen" && !back[0].agents && back[0].gated && back[0].edits && back[0].cwd == "/w";
+  n = coder_page_agent_task(s, 1, "s-a1", "/w", out[..]);
+  #assert mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].task == "find the bug" && back[0].model == "gemini-4-carbon" && back[0].effort == "medium";
+  s[0].clock = 5;
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"ask\",\"command\":\"ls | wc -l\",\"ticket\":1}") == MWW_ASK;
+  n = coder_page_agent_answer_line(s, 0, out[..]);
+  #assert cast(string) out[0..<n] == "{\"answer\":true,\"ticket\":1}\n" && coder_page_agent_answer_line(s, 0, out[..]) == 0 && coder_page_agent_answer_line(s, 1, out[..]) == 0;
+  #assert s[0].turns[0].agents[0].calls == 1 && s[0].turns[0].agents[0].now_running && cast(string) s[0].turns[0].agents[0].now[0..<s[0].turns[0].agents[0].now_n] == "ls | wc -l";
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"command\",\"command\":\"ls | wc -l\",\"exit\":0,\"timed_out\":false,\"output\":\"12\"}") == MWW_COMMAND && !s[0].turns[0].agents[0].now_running && s[0].turns[0].agents[0].calls == 1;
+  s[0].clock = 70;
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"12 files\"}") == MWW_ENDED;
+  #assert !coder_page_agent_running(s, 0) && coder_page_agent_running(s, 1) && !s[0].results_due && coder_page_answer_line(s, out[..]) == 0;
+  kb: [24] u8;
+  #assert cp_took(kb[..], s[0].turns[0].agents[0].took) == "1m 10s" && cp_took(kb[..], 9.7) == "9s" && cp_took(kb[..], 65) == "1m 05s" && cp_took(kb[..], -1) == "";
+  coder_page_agent_failed(s, 1, "Its worker stopped.");
+  #assert s[0].results_due && s[0].turns[0].agents[1].state == CP_FAILED;
+  n = coder_page_answer_line(s, out[..]);
+  #assert cast(string) out[0..<n] == "{\"results\":[{\"exit\":0,\"output\":\"12 files\"},{\"exit\":1,\"output\":\"Its worker stopped.\"}],\"ticket\":3}\n";
+  #assert !s[0].turns[0].waiting && coder_page_answer_line(s, out[..]) == 0;
+  // a second round, stopped: its sub-agent is stopped with the run and nothing is owed
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"hydrogen\",\"task\":\"again\"}],\"ticket\":4}") == MWW_DELEGATE && s[0].turns[0].nagents == 3;
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"stopped\",\"text\":\"\"}") == MWW_ENDED;
+  #assert s[0].turns[0].agents[2].state == CP_STOPPED && !s[0].results_due && coder_page_agent_next(s) == -1;
+  // a new chat's first message shows none of them
+  #assert coder_page_new(s) && coder_page_set_text(s, "hi") && coder_page_submit(s) && s[0].turns[0].nagents == 0 && !s[0].turns[0].waiting;
+}
+
+#test "Claude sub-agents: offered only where Claude Code is installed; a level is a model; a tool call needs no answer" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  out: [8192] u8; ab: [8192] u8; ar: [1] ClArena; ar[0].buf = ab[..]; back: [1] McTask;
+  #assert coder_page_set_text(s, "ask claude") && coder_page_submit(s);
+  n := coder_page_task(s, "s", "/w", out[..]);
+  #assert mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].agents && !back[0].claude;
+  coder_page_set_claude(s, true);
+  n = coder_page_task(s, "s", "/w", out[..]);
+  #assert mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].agents && back[0].claude;
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"hydrogen\",\"task\":\"count\"},{\"level\":\"opus\",\"task\":\"find the bug\"},{\"level\":\"fable\",\"task\":\"design it\"}],\"ticket\":1}") == MWW_DELEGATE;
+  #assert !coder_page_agent_claude(s, 0) && coder_page_agent_claude(s, 1) && coder_page_agent_claude(s, 2) && !coder_page_agent_claude(s, 3);
+  #assert CP_LEVEL_NAME[s[0].turns[0].agents[1].level] == "Claude Opus" && CP_LEVEL_NAME[s[0].turns[0].agents[2].level] == "Claude Fable";
+  n = coder_page_agent_task(s, 1, "s-a1", "/w", out[..]);
+  r: [1] MwwRequest;
+  #assert mww_request(ar[..], cast(string) out[0..<n - 1], r[..]) == MWW_TASK && r[0].task == "find the bug" && r[0].model == "opus" && r[0].cwd == "/w" && !r[0].agents;
+  // two tool calls at once: each is logged when it starts, and neither is owed an answer
+  #assert coder_page_agent_line(s, 1, "{\"kind\":\"ask\",\"command\":\"ls\",\"ticket\":1}") == MWW_ASK && coder_page_agent_line(s, 1, "{\"kind\":\"ask\",\"command\":\"read a.txt\",\"ticket\":2}") == MWW_ASK;
+  #assert coder_page_agent_answer_line(s, 1, out[..]) == 0 && s[0].turns[0].agents[1].calls == 2 && s[0].turns[0].agents[1].now_running;
+  #assert coder_page_agent_line(s, 1, "{\"kind\":\"command\",\"command\":\"ls\",\"exit\":0,\"timed_out\":false,\"output\":\"a\"}") == MWW_COMMAND && coder_page_agent_line(s, 1, "{\"kind\":\"command\",\"command\":\"read a.txt\",\"exit\":0,\"timed_out\":false,\"output\":\"b\"}") == MWW_COMMAND;
+  #assert s[0].turns[0].agents[1].calls == 2 && s[0].turns[0].agents[1].nrows == 2 && cast(string) s[0].calls[cp_nth(s, 0, 1, 1)].text[0..<s[0].calls[cp_nth(s, 0, 1, 1)].text_n] == "read a.txt" && cast(string) s[0].calls[cp_nth(s, 0, 1, 1)].out[0..<s[0].calls[cp_nth(s, 0, 1, 1)].out_n] == "b" && !s[0].calls[cp_nth(s, 0, 1, 0)].running;
+  #assert coder_page_agent_line(s, 1, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"line 4\"}") == MWW_ENDED && s[0].turns[0].agents[1].state == CP_DONE;
+}
+
+#test "a chat keeps 6,000 sub-agent tool calls: past that the oldest in the chat goes, and its sub-agent counts it" {
+  p: [1] CoderPage; s := p[..];
+  s[0].nturns = 1; s[0].turns[0].nagents = 2; s[0].turns[0].state = CP_DONE;
+  s[0].calls_n = CP_AGENT_CALLS - 4;   // as if all but four places were taken
+  _ = cp_call_add(s, 0, 0, "a", "", false, false, false);
+  _ = cp_call_add(s, 0, 0, "b", "", false, false, false);
+  for q: 0..<2 { _ = cp_call_add(s, 0, 1, "x", "", false, false, false); }
+  #assert s[0].calls_n == CP_AGENT_CALLS && s[0].turns[0].agents[0].nrows == 2 && s[0].turns[0].agents[1].nrows == 2;
+  _ = cp_call_add(s, 0, 1, "y", "", false, false, false);
+  #assert s[0].turns[0].agents[0].nrows == 1 && s[0].turns[0].agents[0].early_rows == 1 && cast(string) s[0].calls[cp_nth(s, 0, 0, 0)].text[0..<1] == "b";
+  _ = cp_call_add(s, 0, 1, "y", "", false, false, false);
+  #assert s[0].turns[0].agents[0].nrows == 0 && s[0].turns[0].agents[0].head == 0 && s[0].turns[0].agents[0].tail == 0 && cp_nth(s, 0, 0, 0) == -1;
+  _ = cp_call_add(s, 0, 1, "newest", "", false, false, false);
+  #assert s[0].turns[0].agents[1].nrows == 4 && s[0].turns[0].agents[1].early_rows == 1 && s[0].turns[0].agents[0].early_rows == 2 && s[0].calls_n == CP_AGENT_CALLS;
+  #assert cast(string) s[0].calls[s[0].turns[0].agents[1].tail - 1].text[0..<6] == "newest" && cast(string) s[0].calls[cp_nth(s, 0, 1, 0)].text[0..<1] == "x";
+  // a new chat lets them all go
+  #assert coder_page_new(s) && s[0].calls_n == 0 && s[0].calls_free == 0;
+}
+
+#test "a sub-agent's tool calls are rows with their output; a press opens its transcript and another closes it; a kept chat has them" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  #assert coder_page_set_text(s, "look") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"hydrogen\",\"task\":\"count\"},{\"level\":\"fable\",\"task\":\"read it\"}],\"ticket\":1}") == MWW_DELEGATE;
+  // Microcoder's worker asks, then ends the command; a file read is a row of its own
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"ask\",\"command\":\"ls\",\"ticket\":1}") == MWW_ASK && s[0].calls[cp_nth(s, 0, 0, 0)].running;
+  s[0].clock = 3;
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"command\",\"command\":\"ls\",\"exit\":1,\"timed_out\":false,\"output\":\"no\"}") == MWW_COMMAND;
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"view\",\"path\":\"a.txt\",\"found\":true}") == MWW_VIEW;
+  #assert s[0].turns[0].agents[0].nrows == 2 && !s[0].calls[cp_nth(s, 0, 0, 0)].running && s[0].calls[cp_nth(s, 0, 0, 0)].failed && s[0].calls[cp_nth(s, 0, 0, 0)].took == 3;
+  #assert cast(string) s[0].calls[cp_nth(s, 0, 0, 0)].out[0..<s[0].calls[cp_nth(s, 0, 0, 0)].out_n] == "no" && s[0].calls[cp_nth(s, 0, 0, 1)].read;
+  // a call still running when its sub-agent ends is ended with it
+  #assert coder_page_agent_line(s, 1, "{\"kind\":\"ask\",\"command\":\"sleep 9\",\"ticket\":1}") == MWW_ASK;
+  _ = cp_call_add(s, 0, 1, "newest", "", false, false, false);
+  #assert s[0].turns[0].agents[1].early_rows == 0 && cast(string) s[0].calls[s[0].turns[0].agents[1].tail - 1].text[0..<6] == "newest";
+  #assert coder_page_agent_line(s, 1, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"# Done\"}") == MWW_ENDED && !s[0].calls[cp_nth(s, 0, 1, 0)].running && !s[0].calls[cp_nth(s, 0, 1, 0)].failed;
+  // a sidebar's edge drags: the chats' between 180 and 480 points, the transcript's from 320, and
+  // the conversation keeps 380; the widths are owed to the host once, and a kept one is held to its limits
+  s[0].d = 1; s[0].win_w = 1400; s[0].side = 260; s[0].pane_open = true; s[0].pane_x = 960; s[0].pane_w = 440;
+  #assert coder_page_pointer(s, 262, 300, 0) && s[0].drag == 1 && coder_page_edge(s);
+  #assert coder_page_pointer(s, 300, 300, 1) && s[0].side_w == 300 && coder_page_pointer(s, 20, 300, 1) && s[0].side_w == 180 && coder_page_pointer(s, 900, 300, 1) && s[0].side_w == 480;
+  #assert coder_page_pointer(s, 330, 300, 2) && s[0].drag == 0 && s[0].side_w == 480 && !coder_page_edge(s);
+  s[0].side = 480;
+  #assert coder_page_pointer(s, 958, 300, 0) && s[0].drag == 2 && coder_page_pointer(s, 700, 300, 1) && s[0].pane_user == 540;
+  #assert coder_page_pointer(s, 1390, 300, 1) && s[0].pane_user == 320 && coder_page_pointer(s, 1390, 300, 2);
+  sw: [2] f32;
+  #assert coder_page_sides(s, sw[..]) && sw[0] == 480 && sw[1] == 320 && !coder_page_sides(s, sw[..]);
+  coder_page_sides_set(s, 9000, 10);
+  #assert s[0].side_w == 480 && s[0].pane_user == 320;
+  coder_page_sides_set(s, 0, 0);
+  #assert s[0].side_w == 0 && s[0].pane_user == 0 && !coder_page_pointer(s, 600, 300, 1) && !coder_page_edge(s);
+  s[0].side = 0;
+  // the transcript: open, the wheel over it moves it and not the conversation, closed by New chat
+  s[0].pane_open = true; s[0].pane_turn = 0; s[0].pane_agent = 1; s[0].pane_x = 500; s[0].pane_w = 440; s[0].pane_content = 900; s[0].pane_view = 300; s[0].d = 1; s[0].px = 600; s[0].content = 900; s[0].view = 300; s[0].stick = false;
+  coder_page_wheel(s, 50);
+  #assert s[0].pane_scroll == 50 && s[0].scroll == 0 && !s[0].pane_stick;
+  coder_page_wheel(s, 900);
+  #assert s[0].pane_scroll == 600 && s[0].pane_stick;
+  s[0].px = 100; coder_page_wheel(s, 20);
+  #assert s[0].scroll == 20 && s[0].pane_scroll == 600;
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"2\"}") == MWW_ENDED;
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"ok\"}") == MWW_ENDED;
+  kept: [65536] u8; kn := coder_page_save(s, kept[..]);
+  #assert kn > 0 && json_valid(cast(string) kept[0..<kn]);
+  #assert coder_page_new(s) && !s[0].pane_open && coder_page_load(s, cast(string) kept[0..<kn]);
+  #assert s[0].turns[0].agents[0].nrows == 2 && s[0].calls[cp_nth(s, 0, 0, 0)].failed && s[0].calls[cp_nth(s, 0, 0, 0)].took == 3 && s[0].calls[cp_nth(s, 0, 0, 1)].read;
+  #assert cast(string) s[0].calls[cp_nth(s, 0, 0, 0)].out[0..<s[0].calls[cp_nth(s, 0, 0, 0)].out_n] == "no";
+  #assert s[0].turns[0].agents[1].early_rows == 0 && cast(string) s[0].calls[s[0].turns[0].agents[1].tail - 1].text[0..<6] == "newest";
+  // a chat kept before the rows: its list of tool calls becomes rows with no output
+  #assert coder_page_new(s) && coder_page_load(s, "{\"v\":1,\"turns\":[{\"ask\":\"a\",\"reply\":\"b\",\"state\":1,\"cmds\":[],\"agents\":[{\"level\":\"opus\",\"task\":\"t\",\"state\":1,\"reply\":\"r\",\"log\":\"ls\\nread a.txt\\n[The list is cut at 2,000 bytes.]\\n\",\"calls\":2,\"took\":4}]}]}");
+  #assert s[0].turns[0].agents[0].nrows == 2 && cast(string) s[0].calls[cp_nth(s, 0, 0, 1)].text[0..<s[0].calls[cp_nth(s, 0, 0, 1)].text_n] == "read a.txt";
+}
+
+#test "delegating to sub-agents auto-opens the first one in the sidebar without hijacking manual changes" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  s[0].d = 1.0f32;
+  #assert coder_page_set_text(s, "check repo") && coder_page_submit(s);
+  #assert !s[0].pane_open;
+  // Delegating to multiple sub-agents opens the first one in the sidebar.
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"hydrogen\",\"task\":\"first\"},{\"level\":\"carbon\",\"task\":\"second\"}],\"ticket\":1}") == MWW_DELEGATE;
+  #assert s[0].pane_open && s[0].pane_turn == 0 && s[0].pane_agent == 0 && s[0].pane_stick && !s[0].pane_manual;
+  // User switches to the second sub-agent: a later delegation in the same turn does not hijack the sidebar.
+  #assert coder_page_pane(s, 2) && s[0].pane_open && s[0].pane_turn == 0 && s[0].pane_agent == 1 && s[0].pane_manual;
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"a\"}") == MWW_ENDED;
+  #assert coder_page_agent_line(s, 1, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"b\"}") == MWW_ENDED;
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"hydrogen\",\"task\":\"third\"}],\"ticket\":2}") == MWW_DELEGATE;
+  #assert s[0].pane_open && s[0].pane_turn == 0 && s[0].pane_agent == 1;
+  #assert coder_page_agent_line(s, 2, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"c\"}") == MWW_ENDED;
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"done 1\"}") == MWW_ENDED;
+  // A new turn resets manual override and auto-opens its first delegated sub-agent.
+  #assert coder_page_set_text(s, "next step") && coder_page_submit(s) && !s[0].pane_manual;
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"carbon\",\"task\":\"inspect\"}],\"ticket\":3}") == MWW_DELEGATE;
+  #assert s[0].pane_open && s[0].pane_turn == 1 && s[0].pane_agent == 0 && s[0].pane_stick;
+  // Closing the sidebar manually via its close button prevents later delegations in the same turn from reopening it.
+  f: [1] UiFrame;
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0, 0.016, true, false);
+  cp_layout(s, f[..], 1200.0f32, 800.0f32);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  close_row := surface_find(s[0].surface[..], "coder.pane.close");
+  #assert close_row >= 0 && cp_press(s, close_row) && !s[0].pane_open && s[0].pane_manual;
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"d\"}") == MWW_ENDED;
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"hydrogen\",\"task\":\"follow up\"}],\"ticket\":4}") == MWW_DELEGATE;
+  #assert !s[0].pane_open;
+  #assert coder_page_agent_line(s, 1, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"e\"}") == MWW_ENDED;
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"done 2\"}") == MWW_ENDED;
+}
+
+#test "sub-agent delegation caps at CP_AGENTS without overflow and ignores out-of-range agent lines" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  #assert coder_page_set_text(s, "fan out") && coder_page_submit(s);
+  // Delegate 12 sub-agents across two batches of 6, then attempt a 13th.
+  batch := "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"hydrogen\",\"task\":\"a\"},{\"level\":\"hydrogen\",\"task\":\"b\"},{\"level\":\"hydrogen\",\"task\":\"c\"},{\"level\":\"hydrogen\",\"task\":\"d\"},{\"level\":\"hydrogen\",\"task\":\"e\"},{\"level\":\"hydrogen\",\"task\":\"f\"}],\"ticket\":1}";
+  #assert coder_page_line(s, batch) == MWW_DELEGATE;
+  #assert s[0].turns[0].nagents == 6;
+  for i: 0..<6 {
+    #assert coder_page_agent_line(s, i, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"done\"}") == MWW_ENDED;
+  }
+  #assert coder_page_line(s, batch) == MWW_DELEGATE;
+  #assert s[0].turns[0].nagents == CP_AGENTS;
+  for i: 6..<CP_AGENTS {
+    #assert coder_page_agent_line(s, i, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"done\"}") == MWW_ENDED;
+  }
+  // A 13th delegated task is clipped at CP_AGENTS.
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"carbon\",\"task\":\"overflow\"}],\"ticket\":3}") == MWW_DELEGATE;
+  #assert s[0].turns[0].nagents == CP_AGENTS;
+  // Out-of-range agent index is safely ignored.
+  #assert coder_page_agent_line(s, CP_AGENTS, "{\"kind\":\"reply\",\"text\":\"ignored\"}") == 0;
+  #assert coder_page_agent_line(s, -1, "{\"kind\":\"reply\",\"text\":\"ignored\"}") == 0;
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"all twelve done\"}") == MWW_ENDED;
+  #assert !cp_running(s) && s[0].turns[0].state == CP_DONE;
+}

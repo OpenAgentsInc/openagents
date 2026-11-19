@@ -1,0 +1,114 @@
+// Checks for the page's goal.coax: cost, budget and /goal. Example data only.
+#load "../parts.coax";
+#load "checks-kit.coax";
+
+#test "conversation cost formatting and attempt cost selection" {
+  cb: [32] u8;
+  #assert cp_cost(cb[..], 0) == "";
+  #assert cp_cost(cb[..], -5) == "";
+  #assert cp_cost(cb[..], 50) == "<$0.0001";
+  #assert cp_cost(cb[..], 700) == "$0.0007";
+  #assert cp_cost(cb[..], 9999) == "$0.01";
+  #assert cp_cost(cb[..], 10000) == "$0.01";
+  #assert cp_cost(cb[..], 1234567) == "$1.23";
+  #assert cp_cost(cb[..], 1235000) == "$1.24";
+  ab: [512] u8; ar: [1] ClArena; ar[0].buf = ab[..]; l: [1] MwwLine;
+  #assert mww_read(ar[..], "{\"kind\":\"attempt\",\"gateway\":\"vertex\",\"outcome\":\"done\",\"status\":200,\"usd_micros\":12500}", l[..]) == MWW_ATTEMPT && cp_attempt_cost(l[0]) == 12500;
+  #assert mww_read(ar[..], "{\"kind\":\"attempt\",\"gateway\":\"openrouter\",\"outcome\":\"done\",\"status\":200,\"provider_cost_usd_micros\":7500,\"usd_micros\":9999}", l[..]) == MWW_ATTEMPT && cp_attempt_cost(l[0]) == 7500;
+  #assert mww_read(ar[..], "{\"kind\":\"attempt\",\"gateway\":\"vertex\",\"outcome\":\"retried\",\"status\":429}", l[..]) == MWW_ATTEMPT && cp_attempt_cost(l[0]) == 0;
+}
+
+#test "per-thread max budget defaults to $50, persists across save/load/take, auto-stops on exceed, and requires manual approval or budget increase" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  #assert coder_page_budget_usd_micros(s) == 50000000 && !coder_page_budget_exceeded(s);
+  #assert coder_page_set_budget_usd_micros(s, 100000) && coder_page_budget_usd_micros(s) == 100000;
+  #assert !coder_page_set_budget_usd_micros(s, 0) && !coder_page_set_budget_usd_micros(s, -5);
+  // Start a turn and exceed the $0.10 budget: page automatically asks host to stop.
+  #assert coder_page_set_text(s, "do work") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND;
+  #assert coder_page_line(s, "{\"kind\":\"attempt\",\"gateway\":\"vertex\",\"outcome\":\"done\",\"status\":200,\"usd_micros\":100000}") == MWW_ATTEMPT;
+  #assert coder_page_cost_usd_micros(s) == 100000 && coder_page_budget_exceeded(s) && coder_page_action(s) == CP_ASK_STOP;
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"stopped\"}") == MWW_ENDED && !cp_running(s);
+  // New turns are blocked while over budget.
+  #assert coder_page_set_text(s, "more work") && !coder_page_submit(s);
+  // Persist and reload preserves custom budget and cost.
+  kept: [16384] u8; kn := coder_page_save(s, kept[..]);
+  #assert kn > 0 && coder_page_new(s) && coder_page_budget_usd_micros(s) == 50000000 && !coder_page_budget_exceeded(s);
+  #assert coder_page_load(s, cast(string) kept[0..<kn]) && coder_page_budget_usd_micros(s) == 100000 && coder_page_cost_usd_micros(s) == 100000 && coder_page_budget_exceeded(s);
+  // Older chats without budget_usd_micros default to $50.
+  #assert coder_page_load(s, "{\"v\":1,\"cost_usd_micros\":5000,\"turns\":[{\"ask\":\"hi\",\"reply\":\"hello\"}]}") && coder_page_budget_usd_micros(s) == 50000000 && !coder_page_budget_exceeded(s);
+  // Reload over-budget chat, approve continuing above budget, verify unblocked and save_due.
+  #assert coder_page_load(s, cast(string) kept[0..<kn]) && coder_page_budget_exceeded(s) && !coder_page_save_due(s);
+  #assert coder_page_budget_approve(s) && !coder_page_budget_exceeded(s) && coder_page_save_due(s);
+  // Persist override across save/load.
+  kn2 := coder_page_save(s, kept[..]);
+  #assert kn2 > 0 && coder_page_load(s, cast(string) kept[0..<kn2]) && !coder_page_budget_exceeded(s) && s[0].budget_override;
+  // Can now submit a new turn; raising budget above current cost clears override; lowering re-triggers exceeded + stop.
+  #assert coder_page_set_text(s, "continue") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND;
+  #assert coder_page_set_budget_usd_micros(s, 500000) && !s[0].budget_override && !coder_page_budget_exceeded(s);
+  #assert coder_page_set_budget_usd_micros(s, 50000) && coder_page_budget_exceeded(s) && coder_page_action(s) == CP_ASK_STOP;
+}
+
+#test "per-thread max budget and override transfer across coder_page_take and reset the source page" {
+  p: [1] CoderPage; s := p[..]; q: [1] CoderPage; b := q[..];
+  cp_init(s); cp_init(b);
+  #assert coder_page_set_budget_usd_micros(s, 100000) && coder_page_budget_approve(s);
+  #assert coder_page_set_text(s, "run") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND;
+  #assert s[0].live_ask == 0;
+  #assert coder_page_take(b, s);
+  #assert b[0].live_ask == -1 && b[0].live_reply == -1;
+  #assert coder_page_budget_usd_micros(b) == 100000 && b[0].budget_override;
+  #assert coder_page_budget_usd_micros(s) == 50000000 && !s[0].budget_override;
+}
+
+#test "/goal slash commands manage lifecycle, prompt injection, continuation, and persistence" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  // Bare /goal with no active goal opens the goal editor.
+  #assert coder_page_set_text(s, "/goal") && coder_page_submit(s);
+  #assert coder_page_action(s) == CP_ASK_GOAL;
+  #assert coder_page_goal_status(s) == CP_GOAL_NONE;
+  // Setting a goal with /goal <objective> starts an active goal turn with goal prompt context.
+  #assert coder_page_set_text(s, "/goal ship the goal feature with full tests") && coder_page_submit(s);
+  #assert coder_page_action(s) == CP_ASK_SEND;
+  #assert coder_page_goal_status(s) == CP_GOAL_ACTIVE;
+  obj: [256] u8; on := coder_page_goal_objective(s, obj[..]);
+  #assert cast(string) obj[0..<on] == "ship the goal feature with full tests";
+  task_buf: [8192] u8;
+  tn1 := coder_page_task(s, "s1", "/tmp", task_buf[..]);
+  #assert tn1 > 0;
+  task1 := cast(string) task_buf[0..<tn1];
+  #assert cp_contains(task1, "<goal_objective>") && cp_contains(task1, "ship the goal feature with full tests");
+  // When a turn ends without [GOAL_COMPLETE]/[GOAL_BLOCKED], autonomous continuation starts the next turn.
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"First milestone complete, moving to tests.\"}") == MWW_ENDED;
+  #assert coder_page_action(s) == CP_ASK_SEND;
+  #assert coder_page_running(s);
+  tn2 := coder_page_task(s, "s1", "/tmp", task_buf[..]);
+  #assert tn2 > 0 && cp_contains(cast(string) task_buf[0..<tn2], "Continue working toward the active thread goal above.");
+  // Pausing stops the active turn and sets status to paused.
+  #assert coder_page_set_text(s, "/goal pause") && coder_page_submit(s);
+  #assert coder_page_goal_status(s) == CP_GOAL_PAUSED;
+  #assert coder_page_action(s) == CP_ASK_STOP;
+  // Resuming starts a continuation turn.
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"stopped\",\"text\":\"stopped\"}") == MWW_ENDED;
+  #assert coder_page_set_text(s, "/goal resume") && coder_page_submit(s);
+  #assert coder_page_goal_status(s) == CP_GOAL_ACTIVE;
+  #assert coder_page_action(s) == CP_ASK_SEND;
+  // Marking [GOAL_COMPLETE] ends the autonomous loop.
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"All tests pass.\\n[GOAL_COMPLETE]\"}") == MWW_ENDED;
+  #assert coder_page_goal_status(s) == CP_GOAL_COMPLETE;
+  #assert !coder_page_running(s);
+  // Goal state round-trips through save and load.
+  #assert coder_page_save_due(s);
+  kept: [4096] u8; kn := coder_page_save(s, kept[..]);
+  #assert kn > 0 && !coder_page_save_due(s);
+  #assert coder_page_new(s) && coder_page_goal_status(s) == CP_GOAL_NONE;
+  #assert coder_page_load(s, cast(string) kept[0..<kn]);
+  #assert coder_page_goal_status(s) == CP_GOAL_COMPLETE;
+  on2 := coder_page_goal_objective(s, obj[..]);
+  #assert cast(string) obj[0..<on2] == "ship the goal feature with full tests";
+  // /goal clear removes the goal.
+  #assert coder_page_set_text(s, "/goal clear") && coder_page_submit(s);
+  #assert coder_page_goal_status(s) == CP_GOAL_NONE;
+  #assert coder_page_goal_objective(s, obj[..]) == 0;
+}
