@@ -49,10 +49,10 @@ where_site :: (i: int) -> WhereSite {
   return WhereSite.{title = "Guam, west coast", lat = 13.40, lon = 144.60, boundary = 3, state = "Guam", land = "Guam", port = "Apra Harbor", depth = 1408};
 }
 
-// The timelapse's route off Texas (metaverse/slab-construction.coax): the casting yard at Ingleside, the
+// The build simulation's route off Texas (metaverse/slab-build.coax CS_YARD_AT): the casting yard at Ingleside, the
 // ship channel's mouth between the Aransas Pass jetties, and the berth, which is the texas site.
 // Freight loads at Ingleside too, at a wharf beside the yard (the construction method's decision,
-// docs/research/ocean/slab-construction-method.md; the older timelapse drew a Brownsville wharf). [lat, lon]
+// docs/research/ocean/slab-construction-method.md). [lat, lon]
 WHERE_YARD :: [2] f64.[27.82, -97.20];
 WHERE_JETTIES :: [2] f64.[27.834, -97.044];
 WHERE_FREIGHT :: [2] f64.[27.82, -97.20];   // the freight wharf, at Ingleside on Corpus Christi Bay

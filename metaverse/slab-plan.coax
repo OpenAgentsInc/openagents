@@ -58,7 +58,7 @@ SLAB_KIND_COLONNADE :: 18;
 SLAB_KIND_FOUNTAIN :: 19;
 SLAB_KIND_DESAL :: 20;
 SLAB_KIND_PIPE :: 21;      // the OTEC cold-water pipes, hanging 1,000 m down through the moonpools
-SLAB_KIND_STATUE :: 27;    // 22 to 26 are slab-construction.coax's caissons, lifts, boats, cabins and cargo
+SLAB_KIND_STATUE :: 27;    // 22 to 26 were the old construction timelapse's caissons, lifts, boats, cabins and cargo
 SLAB_KIND_DOME :: 28;      // a Silone dome module (spec 3.2)
 SLAB_KIND_BRIDGE :: 29;    // a bridge between two domes of the cluster (spec 3.3)
 SLAB_KIND_POWERSHIP :: 30; // the 160 m nuclear powership moored off the dome layouts (spec 3.4)
@@ -72,7 +72,7 @@ SLAB_GABLE_Z :: 3;
 SLAB_GROVE :: 4;
 SLAB_GLADE_GROVE :: 5;
 SLAB_DOME :: 6;
-// 7 to 10 are slab-construction.coax's hawsers: a capsule between two of the box's corners
+// 7 to 10 were the old construction timelapse's hawsers: a capsule between two of the box's corners
 SLAB_TEMPLE :: 11;         // a Greek temple: steps, peristyle, cella, entablature, pedimented roof along its longer side
 SLAB_THOLOS :: 12;         // a round temple: steps, a ring of columns, a domed cella
 SLAB_STATUES :: 13;        // a row of statues on pedestals along both long edges of the box, SLAB_STATUE_GAP apart

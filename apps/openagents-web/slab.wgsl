@@ -406,7 +406,7 @@ fn coax_p_surface_fs(p_v: coax_t12) -> coax_t21 {
   l_rel = coax_p_wg_sub_f3f3(l_v.z, coax_p_v3(coax_at_u(i32(8i)), coax_at_u(i32(9i)), coax_at_u(i32(10i))));
   l_dist = coax_p_wg_length3(l_rel);
   l_d = coax_p_wg_div_f3f(l_rel, coax_p_fmax(l_dist, 0x1.a36e2ep-14f));
-  if ((((coax_at_u(i32(1501i)) > 0x1.000000p-1f) && (abs((l_v.z.x - coax_at_u(i32(1502i)))) < 0x1.8d999ap5f)) && (abs((l_v.z.z - coax_at_u(i32(1503i)))) < 0x1.8b3334p4f)))
+  if (coax_p_slab_dry_cell(l_v.z))
   {
     discard;
   }
@@ -1723,6 +1723,34 @@ fn coax_p_wg_div_f3f(p_a: vec3f, p_b: f32) -> vec3f {
   let l_a: vec3f = p_a;
   let l_b: f32 = p_b;
   return coax_p_v3((l_a.x / l_b), (l_a.y / l_b), (l_a.z / l_b));
+}
+fn coax_p_slab_dry_cell(p_w: vec3f) -> bool {
+  let l_w: vec3f = p_w;
+  var l_dm: f32;
+  var l_turn: f32;
+  var l_rx: f32;
+  var l_rz: f32;
+  var l_along: f32;
+  var l_across: f32;
+  var l_kf: f32;
+  var l_bits: f32;
+  l_dm = coax_at_u(i32(1501i));
+  if ((l_dm < 0x1.000000p-1f))
+  {
+    return false;
+  }
+  l_turn = ((coax_p_fract(l_dm) / 0x1.ff7ceep-1f) * 0x1.921fb6p2f);
+  l_rx = (l_w.x - coax_at_u(i32(1502i)));
+  l_rz = (l_w.z - coax_at_u(i32(1503i)));
+  l_along = ((l_rx * cos(l_turn)) + (l_rz * sin(l_turn)));
+  l_across = ((l_rz * cos(l_turn)) - (l_rx * sin(l_turn)));
+  l_kf = floor(((l_along / 0x1.2c0000p7f) + 0x1.000000p-1f));
+  if (((((l_kf < 0.0f) || (l_kf > 0x1.e00000p2f)) || (abs((l_along - (l_kf * 0x1.2c0000p7f))) > 0x1.a00000p5f)) || (abs(l_across) > 0x1.b00000p4f)))
+  {
+    return false;
+  }
+  l_bits = floor((floor(l_dm) / coax_pow_bg_vs(0x1.000000p1f, l_kf)));
+  return (coax_p_fract((l_bits * 0x1.000000p-1f)) > 0x1.000000p-2f);
 }
 fn coax_p_sw_sea(p_p: vec2f) -> vec4f {
   let l_p: vec2f = p_p;
@@ -3878,6 +3906,10 @@ fn coax_p_slab_land_within(p_toward: f32) -> f32 {
 fn coax_p_slab_land_colour() -> vec3f {
   return coax_p_sb_mulv(coax_p_sb_p(12i), coax_p_v3(0x1.5c28f6p-2f, 0x1.ae147ap-2f, 0x1.51eb86p-2f));
 }
+fn coax_p_fract(p_x: f32) -> f32 {
+  let l_x: f32 = p_x;
+  return (l_x - floor(l_x));
+}
 fn coax_p_slab_coarse(p_p: vec2f) -> vec4f {
   let l_p: vec2f = p_p;
   var l_q: vec2f;
@@ -4255,10 +4287,6 @@ fn coax_p_slab_section(p_k: i32, p_w: vec3f) -> coax_t24 {
     }
   }
   return coax_t24(coax_p_sb_mul(l_c, 0x1.000000p-2f), coax_p_sb_mul(l_c, 0x1.99999ap-1f));
-}
-fn coax_p_fract(p_x: f32) -> f32 {
-  let l_x: f32 = p_x;
-  return (l_x - floor(l_x));
 }
 fn coax_p_slab_hull_plan(p_p: vec2f) -> f32 {
   let l_p: vec2f = p_p;

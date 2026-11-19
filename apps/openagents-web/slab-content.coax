@@ -8,10 +8,12 @@
 // slab-photoreal.coax owns the buffers and the drawing; nothing here reads the GPU.
 #load "slab-content-city.coax";
 #load "slab-content-life.coax";
+// the construction view's objects: apps/openagents-web/slab-build-draw.coax (loaded by slab.coax)
 
 SlabContent :: struct {
   city: SlabCity;      // windows, railings, street and works detail (slab-content-city.coax)
   life: [1] SlabLife;  // people, vehicles, ships, the helicopter, birds and flags (slab-content-life.coax)
+  build: BdParts;      // the construction view's yard, caissons, craft, cranes and lines (slab-build-draw.coax)
 }
 // What a content set may read of the world when it places things.
 SlabWorld :: struct {
@@ -20,6 +22,7 @@ SlabWorld :: struct {
   layout: int;         // LAYOUT_PRIME, LAYOUT_DOME or LAYOUT_CLUSTER (slab.coax)
   build: bool;         // the construction view is on
   build_day: f64;      // and its day
+  bd: [] BuildDraw;    // and what it draws: the run, the day's view, the drawing's origin (slab-build-draw.coax)
   reduced: bool;       // the phone's tier
   time: f32;           // the world's seconds
   hour: f32;           // the site's hour, 0 to 24
@@ -30,6 +33,7 @@ SlabWorld :: struct {
 slab_content_make :: (ph: [] SlabPhoto, pen: [] ArchPen) {
   slab_city_make(ph, pen);
   slab_life_make(ph, pen);
+  bd_make(ph, pen);
 }
 // On every rebuild, twice (photoreal-scene.coax: count, then fill): place what stands still.
 slab_content_place :: (ph: [] SlabPhoto, l: [] PrList, w: SlabWorld) {
@@ -38,5 +42,6 @@ slab_content_place :: (ph: [] SlabPhoto, l: [] PrList, w: SlabWorld) {
 }
 // Every frame, twice: place what moves. Keep it small: these records go to the GPU every frame.
 slab_content_move :: (ph: [] SlabPhoto, l: [] PrList, w: SlabWorld) {
-  slab_life_move(ph, l, w);
+  // The build view has its own craft and people; the finished platform's life is not there yet.
+  if w.build { bd_place(ph, l, w.bd, w.reduced, w.night); } else { slab_life_move(ph, l, w); }
 }

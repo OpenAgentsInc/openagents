@@ -1456,12 +1456,27 @@ slab_surface_vs :: (vid:u32,_iid2:u32,u:[]f32)->SlabS {
   o.world=w;
   return o;
 }
+// The build view's casting cells that are dry (apps/openagents-web/slab-build-draw.coax
+// bd_uniforms): P+61 holds which are dry, as bits, plus the way along the yard as a share of a
+// turn; P+62, P+63 the first cell's centre. The cells stand 150 m apart along the yard.
+slab_dry_cell :: (w:V3,u:[]f32)->bool {
+  dm:f32=u[SLAB_P+61];
+  if (dm<0.5f32) { return false; }
+  turn:f32=(fract(dm)/0.999f32)*6.2831853f32;
+  rx:f32=w.x-u[SLAB_P+62]; rz:f32=w.z-u[SLAB_P+63];
+  along:f32=(rx*cos(turn))+(rz*sin(turn));
+  across:f32=(rz*cos(turn))-(rx*sin(turn));
+  kf:f32=floor((along/150.0f32)+0.5f32);
+  if ((kf<0.0f32)||(kf>7.5f32)||(abs(along-(kf*150.0f32))>52.0f32)||(abs(across)>27.0f32)) { return false; }
+  bits:f32=floor(floor(dm)/pow(2.0f32,kf));
+  return fract(bits*0.5f32)>0.25f32;
+}
 slab_surface_fs :: (v:SlabS,u:[]f32,frame:[]f32)->PrLit {
   rel:V3=wg_sub_f3f3(v.world,v3(u[8],u[9],u[10]));
   dist:f32=wg_length3(rel);
   d:V3=wg_div_f3f(rel,fmax(dist,1e-4f32));
-  // The casting basin's open cell is watertight below its rim.
-  if ((u[SLAB_P+61]>0.5f32)&&(abs(v.world.x-u[SLAB_P+62])<49.7f32)&&(abs(v.world.z-u[SLAB_P+63])<24.7f32)) { gpu_discard(); }
+  // The build view's dry casting cells keep the sea out (slab_dry_cell).
+  if (slab_dry_cell(v.world,u)) { gpu_discard(); }
   // the section view: a slot cut out of the sea from the hull toward the eye
   sec:f32=u[SLAB_P+52];
   if (sec!=0.0f32) {

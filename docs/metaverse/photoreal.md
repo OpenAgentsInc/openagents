@@ -347,6 +347,22 @@ only, and nothing in the construction view.
 
 The lamps' lens material is `slab_city_lamp(ph)`, for the night lights to light.
 
+### The construction view
+
+`apps/openagents-web/slab-build-draw.coax` is the content set of SLAB's
+build view (`?view=build`). It draws every body of the build simulation's
+view of the day (`metaverse/slab-build-view.coax`) as moving records, with
+`pr_free` so they stand in the world's frame, not the hull's: the yard's
+apron, cells, gates, cranes, trucks and lights; caissons as far as they are
+cast; tow pieces split into their caissons; tugs and people from
+`traffic.coax`, barges, cranes, slipform decks, bars and mats from the
+engine's site kit (`metaverse-engine/arch/site.coax`); the lines as short
+segments; and the upper structure bay by bay. The city comes from the
+plan's own records as each module lands. The drawing keeps a floating
+origin, fixed for each shot of the film at its subject, so the yard 87 km
+from the berth draws at full float precision. The build view draws meshes
+whatever the realm's style.
+
 ### Things that move
 
 The engine has the kinds a living place needs, so a realm doesn't draw its

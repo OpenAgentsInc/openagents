@@ -1,6 +1,6 @@
 // SLAB's construction, simulated: a seeded run of the method in
 // docs/research/ocean/slab-construction-method.md, from the first pour to the commissioned hull.
-// It replaces the closed-form schedule of slab-construction.coax (which still draws the old view).
+// The build view (apps/openagents-web/slab-build-draw.coax) draws it day by day.
 //
 // What runs. Time moves in ticks of three hours. Each tick the yard's casting cells pour against
 // one shared concrete plant (cs_yard), floated caissons are joined into tow pieces in the basin,

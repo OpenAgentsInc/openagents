@@ -124,7 +124,7 @@ tour_go :: (s: [] Slab, stop: int) {
   if k == 2 { s[0].section = true; s[0].tz = 0; }
   if k == TOUR_UNDER { s[0].under = true; s[0].hp.tour.hour = s[0].hour; s[0].hour = 12.5; }
   if k == 4 { s[0].flow = true; }
-  if k == TOUR_BUILD { build_toggle(s); s[0].build.play = false; build_seek(s, 0); }
+  if k == TOUR_BUILD { build_toggle(s); bd_seek(s, 0); }
   // the last stop opens the chart of the place (slab-chart.coax): a press on it moves the platform
   if k == TOUR_WHERE { s[0].hp.tour.chart_was = s[0].chart.on; chart_show(s, true); s[0].chart.aside = true; }
   sb_open(s, "");
@@ -161,7 +161,7 @@ tour_camera :: (s: [] Slab, step: f32) -> TourCamera {
   t = s[0].hp.tour;
   if t.stop == TOUR_BUILD {
     // the whole film in the stop's twenty seconds
-    build_seek(s, sim_clamp(f64(t.at / hi_f32(TOUR_SECONDS[TOUR_BUILD], 1)) * 90, 0, 90));
+    bd_seek(s, f64(t.at / hi_f32(TOUR_SECONDS[TOUR_BUILD], 1)) * bd_length(s));
     s[0].build.play = false;
     return c;
   }
@@ -403,11 +403,12 @@ tour_say :: (s: [] Slab, h: [] SceneHud) {
     sh_number(h, sb_s(ts[..]), "The power it is making now, in our model", sb_s(ls[..]), SH_OURS);
     if sim_fixed_short(s[0].plant, pw) { sh_say(h, "That is less than it needs, so some of it is switched off."); }
   } else if t.stop == TOUR_BUILD {
-    a = SbText.{}; a = sb_w(a, "It is too wide for any ship channel, so it is built in "); a = sb_n(a, f64(BUILD_UNITS), 0); a = sb_w(a, " pieces: cast ashore, towed out one at a time and joined at sea."); ts[0] = a;
+    bd_ready(s); run := s[0].bdraw[0].run[..];
+    a = SbText.{}; a = sb_w(a, "It is too wide for any ship channel, so it is built from "); a = sb_n(a, f64(run[0].units), 0); a = sb_w(a, " caissons, hollow concrete boxes that float: cast ashore, towed out two at a time and joined at sea."); ts[0] = a;
     sh_lead(h, sb_s(ts[..]));
-    a = SbText.{}; a = sb_w(a, "About "); a = sb_n(a, tour_round(BUILD_DONE / 365.25, 1), 0); a = sb_w(a, " years"); ts[0] = a;
+    a = SbText.{}; a = sb_w(a, "About "); a = sb_n(a, tour_round(run[0].total.days / 365.25, 1), 0); a = sb_w(a, " years"); ts[0] = a;
     sh_number(h, sb_s(ts[..]), "From the first pour to the finished deck, in our plan", "The Channel Tunnel took six.", SH_OURS);
-    sh_say(h, sb_s(sb_build_now(s, ls[..])));
+    ls[0] = bd_now(s); sh_say(h, sb_s(ls[..]));
   } else if t.stop == 6 {
     sh_lead(h, "Where could it go? We try it in seven places, from warm water off Guam to a fjord in Norway.");
     // how far off the land this place is, and whether the wall would show from the beach: the horizon
@@ -488,7 +489,7 @@ tour_say :: (s: [] Slab, h: [] SceneHud) {
   sb_say(s);
   #assert !s[0].hp.tour.on && !s[0].build.on && !s[0].section && sb_test_has(s, 'G', "look", "Look") && s[0].dist == TOUR_OPEN.dist && s[0].ty == TOUR_OPEN.y;
 }
-#test "tour: the numbers' comparisons are worked from the numbers" {
+#test "tour: the numbers' comparisons are worked from the numbers" #steps 4000000000 #traversal 200000000 {
   xs: [1] SbTest; x := xs[..]; s := x[0].s[..];
   sb_test_open(x);
   sb_act(s, "mode.tour");
@@ -510,8 +511,8 @@ tour_say :: (s: [] Slab, h: [] SceneHud) {
   homes := tour_round(s[0].power.supply * 1000.0 / 1.2, 10000);
   #assert s[0].power.supply > 150 && homes > 120000 && homes < 200000 && sb_test_count(s, 'Q') == 1;
   sb_act(s, "tour.next"); sb_say(s);
-  // 1,783 days is 4.9 years: about 5
-  #assert sb_test_field(s, 'Q', "About 5 years", 0) == "About 5 years";
+  // the build simulation's 1,510 days are 4.1 years: about 4
+  #assert abs(s[0].bdraw[0].run[0].total.days - 1510.25) < 1 && sb_test_field(s, 'Q', "About 4 years", 0) == "About 4 years";
 }
 #test "tour: the camera flies a track to each stop, time moves it on, and a tap or a key steps it" #steps 60000000 {
   xs: [1] SbTest; x := xs[..]; s := x[0].s[..];
@@ -539,7 +540,7 @@ tour_say :: (s: [] Slab, h: [] SceneHud) {
   #assert s[0].hp.tour.stop == TOUR_UNDER && c.on && c.eye[1] < -20 && s[0].under;
   _ = slab_key(s, KEY_RIGHT, true); _ = slab_key(s, KEY_RIGHT, true);
   c = tour_camera(s, 10);
-  #assert s[0].hp.tour.stop == TOUR_BUILD && !c.on && s[0].build.on && abs(s[0].build.cursor - 45) < 1;
+  #assert s[0].hp.tour.stop == TOUR_BUILD && !c.on && s[0].build.on && abs(s[0].build.cursor - bd_length(s) * 0.5) < 1;
   // a site pressed at the last stop makes it wait
   _ = slab_key(s, KEY_RIGHT, true);
   sb_act(s, "site.4");

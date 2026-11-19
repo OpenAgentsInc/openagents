@@ -199,7 +199,7 @@ what_same :: (a: WhatIf, b: WhatIf) -> bool {
 
 // ---------------------------------------------------------------- what follows
 WHAT_CHANNEL_WIDTH :: 530.0 * 0.3048;   // the Corpus Christi ship channel: 162 m wide
-WHAT_CHANNEL_DEPTH :: 54.0 * 0.3048;    // and 16.5 m deep (slab-construction.coax's port; slab-image-feasibility.md)
+WHAT_CHANNEL_DEPTH :: 54.0 * 0.3048;    // and 16.5 m deep (the build simulation's channel; slab-image-feasibility.md)
 WHAT_KEEL :: 1.0;         // m of water a hull needs under its keel to float clear
 WHAT_OTEC_PICTURE :: 120.0;   // MW the picture's plant nets at its best (spec 6.1)
 WHAT_LIQUIDS :: 0.25;     // process liquids, as a share of the buildings' weight (prime's 0.5 of 2.0 Mt)

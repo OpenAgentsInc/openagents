@@ -1,6 +1,6 @@
 // A floating concrete hull: its shape, its mass ledger and its hydrostatics, in one place
 // (docs/research/ocean/slab-world-spec.md, section 3.1). SLAB's world (metaverse/slab-sim.coax),
-// its construction timelapse (metaverse/slab-construction.coax), its cards and its sliders all read
+// its build simulation (metaverse/slab-build.coax), its cards and its sliders all read
 // the hull from here, so no two of them can give a different depth, concrete volume, mass or ballast.
 //
 // The hull is two things, weighed apart:

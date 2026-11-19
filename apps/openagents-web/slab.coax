@@ -36,7 +36,8 @@
 
 #load "../../metaverse/water-ocean.coax";
 #load "../../metaverse/slab-plan.coax";
-#load "../../metaverse/slab-construction.coax";
+#load "../../metaverse/slab-sim.coax";
+#load "slab-build-draw.coax";   // the construction view, drawn from the build simulation (GitHub #13682)
 #load "slab-change.coax";
 #load "slab-water.coax";
 #load "../../metaverse-engine/core/loop.coax";
@@ -119,14 +120,10 @@ BTN_HALVING :: 15; BTN_HELP :: 16; BTN_MONTH :: 17; BTN_HOLE :: 18; BTN_PUMP :: 
 
 BTN_LAYOUT :: 28;
 LAYOUT_PRIME :: 0; LAYOUT_DOME :: 1; LAYOUT_CLUSTER :: 2;   // spec section 3's three layouts (?layout=, key K)
-BTN_BUILD :: 23; BTN_TIMELAPSE :: 24; BTN_FIRST_TOW :: 25; BTN_FIRST_JOIN :: 26; BTN_OUTFIT :: 27;
-BuildView :: struct {
-  on: bool; play: bool; cursor: f64; clock: FrameClock;
-  scrubbing: bool; pointer: int; left: f32; right: f32; slider_y: f32;
-  mode: int; yaw: f32; pitch: f32; dist: f32; x: f32; z: f32; intro: f32;
-}
+BTN_BUILD :: 23;
 Slab :: struct {
-  build: BuildView;
+  build: BuildView;     // the construction view (slab-build-draw.coax)
+  bdraw: [1] BuildDraw;
   started: bool;
   time: f64;            // s since the page opened (the water's clock), or the fixed moment
   fixed: f64;           // ?t= (-1: the clock runs)
@@ -263,7 +260,7 @@ slab_spectrum :: (wind: f64, from: f64) -> Spectrum {
   return sp;
 }
 
-slab_wind :: (s: [] Slab) -> f64 { if s[0].build.on { return 3.5; } return ifx s[0].wind_forced > 0 then s[0].wind_forced else sim_sea(s[0].sea).wind; }
+slab_wind :: (s: [] Slab) -> f64 { if s[0].build.on { return bd_wind(s); } return ifx s[0].wind_forced > 0 then s[0].wind_forced else sim_sea(s[0].sea).wind; }
 
 slab_build :: (s: [] Slab, phone: bool) {
   s[0].wind = slab_wind(s);
@@ -826,14 +823,7 @@ slab_frame :: (s: [] Slab, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
   frozen := still || s[0].golden;
   if s[0].fixed >= 0 { s[0].time = s[0].fixed; } else if !frozen { s[0].time += f64(step); }
   if s[0].golden && s[0].fixed < 0 { s[0].time = 12.0; }
-  if s[0].build.on && s[0].build.play && !frozen {
-    t := loop_frame(s[0].build.clock, f64(dt));
-    s[0].build.clock = t.clock;
-    s[0].build.cursor = sim_min(90, s[0].build.cursor + f64(t.steps) * f64(LOOP_STEP_NS) / f64(LOOP_SECOND));
-    if s[0].build.cursor >= 90 { s[0].build.play = false; }
-  }
-  construction: BuildState;
-  if s[0].build.on { construction = build_at(build_day(s[0].build.cursor)); }
+  if s[0].build.on { bd_frame(s, dt, frozen); }   // the build view's day (slab-build-draw.coax)
   change_frame(s, f64(step), frozen);
   // the world's clock: a day in 24 minutes at the default rate, a year in six hours
   if !frozen && !s[0].paused && s[0].fixed < 0 {
@@ -845,7 +835,7 @@ slab_frame :: (s: [] Slab, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
   site := slab_site(s);
   sp := s[0].spectrum;
   // the sea's tile at this tick (the water's clock), then the hull on it
-  tick := wsp_tick_at(sp, ifx s[0].build.on then s[0].build.cursor else s[0].time);
+  tick := wsp_tick_at(sp, s[0].time);
   fresh := !s[0].have_tick || tick != s[0].last_tick;
   folded := tick % sp.period;
   wsp_tile(s[0].synth[..], 0, folded, s[0].tile[..]);
@@ -868,7 +858,10 @@ slab_frame :: (s: [] Slab, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
   ex: f32; ey: f32; ez: f32; fx: f32; fy: f32; fz: f32;
   turn := 1.0f32 * step;
   k := s[0].held;
-  if s[0].mode == CAM_FLY {
+  if s[0].build.on {
+    c := bd_camera(s, width, height, step);
+    ex = c[0]; ey = c[1]; ez = c[2]; fx = c[3]; fy = c[4]; fz = c[5];
+  } else if s[0].mode == CAM_FLY {
     fly_step(s, step);
     cy := cos(s[0].fpitch);
     ex = s[0].fx; ey = s[0].fy; ez = s[0].fz;
@@ -918,25 +911,8 @@ slab_frame :: (s: [] Slab, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
     }
     cy := cos(pitch); sy := sin(pitch);
     fx = -sin(s[0].yaw) * cy; fz = -cos(s[0].yaw) * cy; fy = -sy;
-    // the build view aims at the highest finished level, which rises to the deck (slab-construction.coax)
-    deck_now := ifx s[0].build.on then f32(construction.deck - hull_hi(construction.draft, build_tow().draft)) else ifx s[0].layout == LAYOUT_PRIME then change_hull(s[0].change[..])[2] else SLAB_DECK;
-    tx := s[0].tx; ty := ifx s[0].build.on then deck_now else s[0].ty; tz := s[0].tz;
-    if s[0].build.on {
-      // Follow the first voyage. As the fleet repeats it, pull out to show the growing berth.
-      pos := build_position(construction);
-      blend := f32(sim_clamp((construction.day - 31) / 32, 0, 1));
-      if construction.day >= 31 { pos = build_slot(0); }
-      tx += pos.x * (1 - blend) - 180 * blend; tz += pos.z * (1 - blend);
-      dist *= 1 + 3.85f32 * blend;
-      if construction.phase == BUILD_OUTFIT {
-        // The first lighter gets a close view, then the camera returns to the growing deck.
-        ship := build_lighter_position(construction);
-        watch := f32(sim_clamp((s[0].build.cursor - 70) / 2, 0, 1) * sim_clamp((84 - s[0].build.cursor) / 2, 0, 1));
-        tx += (ship.x + 180) * watch; tz += ship.z * watch;
-        dist *= 1 - 0.73f32 * watch;
-      }
-      dist *= hi_f32(1, 0.92f32 * height / width);
-    }
+    deck_now := ifx s[0].layout == LAYOUT_PRIME then change_hull(s[0].change[..])[2] else SLAB_DECK;
+    tx := s[0].tx; ty := s[0].ty; tz := s[0].tz;
     ex = tx - fx * dist; ey = ty - fy * dist; ez = tz - fz * dist;
     over := s[0].layout == LAYOUT_PRIME && abs(ex) < change_hull(s[0].change[..])[0] + 6 && abs(ez) < change_hull(s[0].change[..])[1] + 6;
     ey = hi_f32(ey, ifx over then deck_now + 4 else 6.0f32);
@@ -965,7 +941,7 @@ slab_frame :: (s: [] Slab, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
   s[0].tanh = tanh; s[0].aspect = width / height;
   // the sun over the site, and the sky's colours from its height
   sun := sim_sun(site.latitude, s[0].month, s[0].hour);
-  if s[0].build.on { sun = sim_sun(27.8, 4.5, 15.5); }
+  if s[0].build.on { sun = bd_sun(s); }
   u[U_SUN] = f32(sun.x); u[U_SUN + 1] = f32(sun.y); u[U_SUN + 2] = f32(sun.z); u[U_SUN + 3] = 1;
   slab_sky_params(s, u, sun);
   sea_look_weather(s, u, step, frozen || s[0].fixed >= 0);
@@ -985,24 +961,7 @@ slab_frame :: (s: [] Slab, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
     u[U_PARAMS + P_COUNTS + 1] = 0; u[U_PARAMS + P_COUNTS + 2] = 0;
     u[U_PARAMS + P_SECTION] = 0; u[U_PARAMS + P_UNDER] = 0;
   }
-  if s[0].build.on {
-    buffer := u[U_BOXES..<U_GROUPS];
-    water := build_water(construction, s[0].tile[0].height[..], TILE_N, c0.patch);
-    records := build_scene(construction, water, s[0].boxes[..], s[0].box_count, buffer);
-    u[U_MODE + 2] = f32(records);
-    u[U_PARAMS + P_COUNTS] = f32(slab_groups(buffer, records, u[U_GROUPS..<U_PARAMS]));
-    u[U_PARAMS + P_COUNTS + 2] = 0; u[U_PARAMS + P_COUNTS + 3] = 0;
-    for i: 0..<12 { u[U_PARAMS + P_POSE + i] = 0; }
-    u[U_PARAMS + P_POSE] = 1; u[U_PARAMS + P_POSE + 5] = 1; u[U_PARAMS + P_POSE + 10] = 1;
-    u[U_PARAMS + P_SUNHULL] = f32(sun.x); u[U_PARAMS + P_SUNHULL + 1] = f32(sun.y); u[U_PARAMS + P_SUNHULL + 2] = f32(sun.z);
-    u[U_PARAMS + P_SECTION] = 0; u[U_PARAMS + P_UNDER] = 0;
-    u[U_PARAMS + P_GAIT + 2] = 0; u[U_PARAMS + P_PICK] = -1; u[U_PARAMS + P_PICK + 1] = -1;
-    if build_open(construction) {
-      p := build_position(construction);
-      u[U_PARAMS + 61] = 1; u[U_PARAMS + 62] = p.x; u[U_PARAMS + 63] = p.z;
-    }
-    u[U_PARAMS + 60] = 1; u[U_SIZE + 2] = f32(s[0].build.cursor);
-  }
+  if s[0].build.on { bd_uniforms(s, u, sun); }   // the city as it lands, the dry cells (slab-build-draw.coax)
   place_frame(s, u);   // the land in sight (slab-place.coax)
   // the foam on the tile
   if fresh {
@@ -1692,10 +1651,6 @@ key_bit :: (key: int) -> int {
 press :: (s: [] Slab, id: int) {
   if sea_look_press(s, id) { return; }
   if id == BTN_BUILD { build_toggle(s); }
-  else if id == BTN_TIMELAPSE { if s[0].build.cursor >= 90 { build_seek(s, 0); } s[0].build.play = !s[0].build.play; }
-  else if id == BTN_FIRST_TOW { build_seek(s, 12); }
-  else if id == BTN_FIRST_JOIN { build_seek(s, build_cursor(BUILD_SAIL + BUILD_CYCLE + 0.92)); }
-  else if id == BTN_OUTFIT { build_seek(s, 76); }
   else if id == BTN_ORBIT { set_mode(s, CAM_ORBIT); }
   else if id == BTN_FLY { set_mode(s, CAM_FLY); }
   else if id == BTN_WALK { set_mode(s, CAM_WALK); }
@@ -1737,15 +1692,7 @@ slab_key :: (s: [] Slab, key: int, down: bool) -> bool #export_c #effects(all) {
   if !s[0].started { slab_reset(s); }
   if down && sb_key(s, key) { return true; }
   if down && (key == 'b' || key == 'B') { build_toggle(s); return true; }
-  if s[0].build.on {
-    if !down { return true; }
-    if key == KEY_ESCAPE { build_toggle(s); }
-    else if key == ' ' || key == KEY_ENTER { press(s, BTN_TIMELAPSE); }
-    else if key == KEY_LEFT { build_seek(s, s[0].build.cursor - 0.5); }
-    else if key == KEY_RIGHT { build_seek(s, s[0].build.cursor + 0.5); }
-    else { return false; }
-    return true;
-  }
+  if s[0].build.on && bd_key(s, key, down) { return true; }
   if down {
     if key == KEY_ESCAPE { if s[0].selected != -1 { s[0].selected = -1; return true; } if s[0].help { s[0].help = false; return true; } if s[0].mode != CAM_ORBIT { set_mode(s, CAM_ORBIT); return true; } return false; }
     if key >= '1' && key <= '9' { travel(s, key - '1'); return true; }
@@ -1773,24 +1720,12 @@ slab_key :: (s: [] Slab, key: int, down: bool) -> bool #export_c #effects(all) {
   if down { s[0].held |= b; } else { s[0].held = s[0].held & (65535 - b); }
   return true;
 }
-slab_blur :: (s: [] Slab) #export_c #effects(all) { s[0].held = 0; s[0].dragging = false; s[0].build.scrubbing = false; s[0].touch_a = -1; s[0].touch_b = -1; }
+slab_blur :: (s: [] Slab) #export_c #effects(all) { s[0].held = 0; s[0].dragging = false; s[0].touch_a = -1; s[0].touch_b = -1; }
 slab_pointer :: (s: [] Slab, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
   if !s[0].started { slab_reset(s); }
   s[0].px = x; s[0].py = y;
   sb_touch(s, phase, kind);
   if tour_pointer(s, x, y, phase) { return true; }
-  if s[0].build.on && s[0].hud {
-    if phase == 0 && !s[0].build.scrubbing && build_over_slider(s, x, y) {
-      s[0].build.scrubbing = true; s[0].build.pointer = id; s[0].dragging = false;
-    }
-    if s[0].build.scrubbing {
-      if id == s[0].build.pointer {
-        if phase <= 2 { build_seek(s, 90 * f64(slider_value(s[0].build.left, s[0].build.right - s[0].build.left, x))); }
-        if phase >= 2 { s[0].build.scrubbing = false; }
-      }
-      return true;
-    }
-  }
   if sb_pinch(s, x, y, phase, id) { return true; }   // a second finger pinches (slab-hud.coax)
   if chart_pointer(s, x, y, phase) { return true; }      // a press on the chart moves the platform
   if phase == 0 {
@@ -1801,6 +1736,8 @@ slab_pointer :: (s: [] Slab, x: f32, y: f32, phase: int, kind: int, id: int) -> 
     if s[0].dragging {
       dx := x - s[0].last_x; dy := y - s[0].last_y;
       s[0].moved += abs(dx) + abs(dy);
+      if s[0].build.on && s[0].moved >= 6 * s[0].dpr { bd_take(s); }   // a drag takes the build view's camera
+      if s[0].build.on && !s[0].build.own { s[0].last_x = x; s[0].last_y = y; return true; }
       if s[0].mode == CAM_FLY { s[0].fyaw -= dx * 0.004; s[0].fpitch = clamp32(s[0].fpitch + dy * 0.003, -1.4, 1.4); }
       else if s[0].mode == CAM_WALK { s[0].wyaw -= dx * 0.005; s[0].wpitch = clamp32(s[0].wpitch + dy * 0.004, -0.5, 1.3); }
       else { s[0].yaw -= dx * 0.004; s[0].pitch = clamp32(s[0].pitch + dy * 0.003, -0.2, 1.45); s[0].intro = 0; }
@@ -1815,6 +1752,7 @@ slab_pointer :: (s: [] Slab, x: f32, y: f32, phase: int, kind: int, id: int) -> 
   if phase >= 2 {
     was := s[0].dragging;
     s[0].dragging = false;
+    if phase == 2 && was && s[0].build.on && s[0].moved < 6 * s[0].dpr { s[0].build.picked = bd_pick(s, x, y); return true; }
     if phase == 2 && was && !s[0].build.on && s[0].moved < 6 * s[0].dpr {
       p := life_pick(s, x, y, pick(s, x, y));   // a ship, vehicle or the helicopter in front wins (slab-content-life.coax)
       if p == -1 || p == s[0].selected { s[0].selected = -1; }
@@ -1828,13 +1766,13 @@ slab_wheel :: (s: [] Slab, dy: f32) #export_c #effects(all) {
   if !s[0].started { slab_reset(s); }
   if s[0].mode == CAM_FLY { s[0].fspeed = clamp32(s[0].fspeed * (1 - dy * 0.001), 3, 60); return; }
   if s[0].mode == CAM_WALK { s[0].wdist = clamp32(s[0].wdist * (1 + dy * 0.001), 1.5, 12); return; }
+  if s[0].build.on { bd_take(s); }
   s[0].dist = clamp32(s[0].dist * (1 + dy * 0.001), 25, 9000);
   s[0].intro = 0;
 }
 slab_golden :: (s: [] Slab, on: bool) #export_c #effects(all) { if !s[0].started { slab_reset(s); } s[0].golden = on; }
 slab_cursor :: (s: [] Slab) -> int #export_c #effects(all) {
   if !s[0].started { return 0; }
-  if s[0].build.on && s[0].hud && build_over_slider(s, s[0].px, s[0].py) { return 1; }
   return ifx s[0].hovered != -1 && !s[0].dragging then 1 else 0;
 }
 
@@ -1952,7 +1890,8 @@ slab_message :: (s: [] Slab, kind: int, text: string) #export_c #effects(all) {
   if query_word(url,"view=build") {
     build_toggle(s);
     day := query_number(url,"day", -1);
-    if day >= 0 { build_seek(s, build_cursor(day)); }
+    at := query_number(url,"film", -1);
+    if day >= 0 { bd_seek_day(s, day); } else if at >= 0 { bd_seek(s, at); }
   }
   sb_address(s, url);
   s[0].built = false;
@@ -2060,7 +1999,7 @@ card_says :: (c: [] Card, want: string) -> bool {
   }
   return false;
 }
-#test "the hull's card, the section and the timelapse give the ledger's depth, concrete, mass and ballast" {
+#test "the hull's card, and the section give the ledger's depth, concrete, mass and ballast" {
   s: [1] Slab; card: [1] Card;
   slab_reset(s[..]);
   slab_card(s[..], 0, card[..]);   // record 0 is the hull
@@ -2072,26 +2011,10 @@ card_says :: (c: [] Card, want: string) -> bool {
   #assert card_says(card[..], "DRAFT 25 M, DECK 118 M OVER THE SEA, DISPLACES 15.4 MT");
   #assert card_says(card[..], "GM 1,159 M ACROSS, 3,292 M ALONG");
   #assert !card_says(card[..], "SPEC'S") && !card_says(card[..], "NOT IN THE BUDGET");
-  // the section's ballast line and the timelapse's last day are the same ledger's
-  led := hull_ledger(hull_prime()); end := build_at(BUILD_DONE);
+  // the section's ballast line is the ledger's (the build view's last day is checked against the same
+  // ledger in slab-build-draw.coax)
+  led := hull_ledger(hull_prime());
   #assert abs(f64(slab_ballast_top()) + f64(SLAB_DRAFT) - led.ballast_top) < 1e-4 && abs(f64(slab_ballast_top()) + 17.86) < 0.01;
-  #assert abs(end.ballast * 1000.0 - led.ballast) < 1.0 && abs(end.concrete - led.concrete) < 0.01 && abs(end.deck - end.draft - f64(SLAB_DECK)) < 1e-9;
-}
-
-#test "build mode opens from the realm, seeks both ways and restores the explore camera" {
-  s: [1]Slab;
-  slab_reset(s[..]); s[0].dist = 830; s[0].tx = 20; s[0].yaw = 1.3;
-  press(s[..], BTN_BUILD);
-  #assert s[0].build.on && s[0].build.play;
-  build_seek(s[..], 70);
-  #assert !s[0].build.play && build_at(build_day(s[0].build.cursor)).joined == 120;
-  press(s[..], BTN_FIRST_JOIN);
-  joining := build_at(build_day(s[0].build.cursor));
-  #assert joining.joined == 1 && joining.phase == BUILD_JOIN && joining.approach > 0.65;
-  build_seek(s[..], 16);
-  #assert build_at(build_day(s[0].build.cursor)).joined == 0;
-  _ = slab_key(s[..], KEY_ESCAPE, true);
-  #assert !s[0].build.on && s[0].dist == 830 && s[0].tx == 20 && s[0].yaw == 1.3;
 }
 
 #test "the world opens on the picture's rough 4 m sea; Guam's own is the trade sea; the old address still works" {
@@ -2131,42 +2054,6 @@ card_says :: (c: [] Card, want: string) -> bool {
   slab_message(d[..], HOST_FACTS,"url=/worlds/slab?layout=dome&power=nuclear\n");
   #assert d[0].plant.power == POWER_NUCLEAR && has_ship(d[..]);
 }
-#test "a construction deep link pauses on its requested day" {
-  s: [1]Slab;
-  slab_message(s[..], HOST_FACTS,"url=/worlds/slab?view=build&day=31\n");
-  #assert s[0].build.on && !s[0].build.play && build_at(build_day(s[0].build.cursor)).joined == 1;
-}
-
-build_toggle :: (s: [] Slab) {
-  if s[0].build.on {
-    v := s[0].build;
-    s[0].mode = v.mode; s[0].yaw = v.yaw; s[0].pitch = v.pitch; s[0].dist = v.dist;
-    s[0].tx = v.x; s[0].tz = v.z; s[0].intro = v.intro;
-    s[0].build.on = false; s[0].build.play = false; s[0].build.scrubbing = false;
-    // the timelapse builds the platform at its berth in the Gulf: leaving it, that is where you are
-    if s[0].site != SITE_TEXAS || s[0].layout != LAYOUT_PRIME {
-      c := s[0].change[..];
-      c[0].what.layout = WHAT_PRIME; change_site(c, SITE_TEXAS); change_push(s, false);
-    }
-    sb_toast(s, "You are at the Gulf berth off Texas, where the build ended.");
-  } else {
-    sb_toast(s, "This builds the picture's platform at its berth in the Gulf, 40 nautical miles off Texas.");
-    s[0].build = BuildView.{on = true, play = true, mode = s[0].mode, yaw = s[0].yaw, pitch = s[0].pitch,
-      dist = s[0].dist, x = s[0].tx, z = s[0].tz, intro = s[0].intro};
-    s[0].mode = CAM_ORBIT; s[0].yaw = -0.30; s[0].pitch = 0.40; s[0].dist = 265;
-    s[0].tx = 0; s[0].tz = 0; s[0].intro = 0;
-  }
-  s[0].dragging = false; s[0].held = 0;
-}
-build_seek :: (s: [] Slab, cursor: f64) {
-  s[0].build.cursor = sim_clamp(cursor, 0, 90); s[0].build.play = false; s[0].build.clock = FrameClock.{};
-}
-build_over_slider :: (s: [] Slab, x: f32, y: f32) -> bool {
-  return s[0].build.right > s[0].build.left && x >= s[0].build.left - 8 * s[0].dpr && x <= s[0].build.right + 8 * s[0].dpr && abs(y - s[0].build.slider_y) <= 14 * s[0].dpr;
-}
-
-
-
 #test "what would it take: a small hull under six million tonnes sinks to its deck, and the pilot fits the channel" {
   s: [1] Slab;
   slab_message(s[..], HOST_FACTS, "url=/worlds/slab?long=400&wide=300&weight=6\n");
@@ -2188,7 +2075,7 @@ build_over_slider :: (s: [] Slab, x: f32, y: f32) -> bool {
   #assert sim_power(slab_plant(s[..]), slab_site(s[..]), s[0].month).otec_net == 0;
   for i: 0..<s[0].box_count { #assert rec_kind(s[..], i) != SLAB_KIND_PIPE; }
 }
-#test "the timelapse builds at the Gulf berth: leaving the build view, the world is off Texas" {
+#test "the build view builds at the Gulf berth: leaving the build view, the world is off Texas" {
   s: [1] Slab;
   slab_reset(s[..]);
   #assert s[0].site == SITE_GUAM;

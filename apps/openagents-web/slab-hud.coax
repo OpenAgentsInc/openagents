@@ -329,54 +329,6 @@ sb_change :: (s: [] Slab, h: [] SceneHud) {
   sb_more(s, h, HUD_CHANGE);
 }
 
-// The film's day and what is being done on it (slab-construction.coax's own names), written into ts.
-sb_build_now :: (s: [] Slab, ts: [] SbText) -> [] SbText {
-  b := build_at(build_day(s[0].build.cursor));
-  stage := BUILD_PHASES[b.phase];
-  if b.phase == BUILD_JOIN && b.approach >= 0.65 { stage = ifx b.joined == 0 then "Secure the first moorings" else "Connect and test the seam"; }
-  t: SbText; t = sb_w(t, "Day "); t = sb_n(t, floor(b.day) + 1, 0); t = sb_w(t, ". "); t = sb_w(t, stage); t = sb_w(t, "."); ts[0] = t;
-  return ts;
-}
-sb_build :: (s: [] Slab, h: [] SceneHud) {
-  ts: [1] SbText; t: SbText;
-  b := build_at(build_day(s[0].build.cursor)); tow := build_tow();
-  sh_group(h, "build", "Build it");
-  sh_lead(h, sb_s(sb_build_now(s, ts[..])));
-  sh_button(h, "build.play", ifx s[0].build.play then "Pause" else ifx s[0].build.cursor >= 90 then "Play again" else "Play", !s[0].build.play);
-  t = SbText.{}; t = sb_n(t, s[0].build.cursor, 0); t = sb_w(t, " of 90 seconds"); ts[0] = t;
-  sh_slider(h, "build.at", "Where in the film", sb_s(ts[..]), 0, 90, 1, cast(int) floor(s[0].build.cursor));
-  sh_button(h, "build.tow", "The first tow", false);
-  sh_button(h, "build.join", "The first join", false);
-  sh_button(h, "build.outfit", "Fitting out", false);
-  t = SbText.{}; t = sb_n(t, f64(b.joined), 0); t = sb_w(t, " of "); t = sb_n(t, f64(BUILD_UNITS), 0); ts[0] = t;
-  sh_fact(h, "Pieces joined", sb_s(ts[..]), SH_NONE);
-  if b.phase == BUILD_OUTFIT || b.phase == BUILD_COMPLETE {
-    t = SbText.{}; t = sb_n(t, b.cargo / 1000000, 2); t = sb_w(t, " million tonnes"); ts[0] = t;
-    sh_fact(h, "Buildings and gear on board", sb_s(ts[..]), SH_NONE);
-    t = SbText.{}; t = sb_n(t, b.draft, 1); t = sb_w(t, " m"); ts[0] = t;
-    sh_fact(h, "How deep it sits", sb_s(ts[..]), SH_NONE);
-  } else if b.phase == BUILD_HOLD {
-    sh_say(h, "A 20 m/s headwind. The tugs cannot pull against it, so the piece waits at the quay.");
-  } else {
-    t = SbText.{}; t = sb_w(t, "Number "); t = sb_n(t, f64(b.unit + 1), 0); t = sb_w(t, ", 100 by 50 m"); ts[0] = t;
-    sh_fact(h, "This piece", sb_s(ts[..]), SH_NONE);
-    t = SbText.{}; t = sb_n(t, build_lift(b).draft, 1); t = sb_w(t, " m"); ts[0] = t;
-    sh_fact(h, "How deep it sits", sb_s(ts[..]), SH_NONE);
-    if b.phase == BUILD_CHANNEL || b.phase == BUILD_GULF || b.phase == BUILD_JOIN {
-      t = SbText.{}; t = sb_n(t, b.nm, 1); t = sb_w(t, " of 48 nautical miles"); ts[0] = t;
-      sh_fact(h, "Towed so far", sb_s(ts[..]), SH_NONE);
-    }
-    if b.phase == BUILD_CHANNEL {
-      t = SbText.{}; t = sb_n(t, BUILD_PORT_DEPTH - tow.draft, 1); t = sb_w(t, " m"); ts[0] = t;
-      sh_fact(h, "Water under it in the ship channel", sb_s(ts[..]), SH_SOURCE);
-    }
-  }
-  t = SbText.{}; t = sb_w(t, "Ninety seconds show about "); t = sb_n(t, BUILD_DONE / 365.25, 0);
-  t = sb_w(t, " years. The berth off Texas is our assumption, and the route is drawn shorter than its 48 nautical miles."); ts[0] = t;
-  sh_say(h, sb_s(ts[..]));
-  sb_more(s, h, HUD_BUILD);
-}
-
 sb_help :: (s: [] Slab, h: [] SceneHud) {
   sh_group(h, "help", "Help");
   sh_say(h, "This is our reconstruction of SLAB, a floating platform that Palmer Luckey says he is building. He has published no design, so the sizes and the systems here are our assumptions, worked out from his picture.");
@@ -426,12 +378,12 @@ sb_say :: (s: [] Slab) {
     sh_mode_of(h, "mode.build", "Build it", !touring && s[0].build.on, "build");
     // the tour has the screen to itself: its caption, and the bar to leave by
     if touring { tour_say(s, h); }
-    else if s[0].build.on { sb_build(s, h); }
+    else if s[0].build.on { bd_hud(s, h); }   // the build view's group (slab-build-draw.coax)
     else { sb_look(s, h); sb_inside(s, h); sb_change(s, h); }
     lab_say(s, h);
     sb_help(s, h);
-    if !touring { sb_card(s, h); }
-    chart_tags(s, h);   // the chart's names (slab-chart.coax)
+    if !touring { if s[0].build.on { bd_card(s, h); } else { sb_card(s, h); } }
+    if s[0].build.on { bd_tags(s, h); } else { chart_tags(s, h); }   // the chart's names (slab-chart.coax)
     if !touring { place_tags(s, h); }   // the lines on the water and the dock (slab-place.coax); the tour's caption has the screen
     foot: [200] u8;
     sh_foot(h, sea_look_foot(s, foot[..]));
@@ -457,13 +409,8 @@ sb_act :: (s: [] Slab, body: string) {
   if sb_act_more(s, id, p.value) { return; }
   if id == "mode.explore" { if s[0].build.on { build_toggle(s); } sb_open(s, ""); return; }
   if id == "mode.build" { if !s[0].build.on { build_toggle(s); } sb_open(s, "build"); return; }
+  if bd_act(s, id, p.value, p.has) { return; }   // Build it (slab-build-draw.coax)
   if id == "card.x" { s[0].selected = -1; return; }
-  // Build it
-  if id == "build.play" { press(s, BTN_TIMELAPSE); return; }
-  if id == "build.at" { if p.has { build_seek(s, sim_clamp(f64(p.value), 0, 90)); } return; }
-  if id == "build.tow" { press(s, BTN_FIRST_TOW); return; }
-  if id == "build.join" { press(s, BTN_FIRST_JOIN); return; }
-  if id == "build.outfit" { press(s, BTN_OUTFIT); return; }
   if s[0].build.on { return; }
   // Look
   if id == "look.orbit" { set_mode(s, CAM_ORBIT); return; }
@@ -513,8 +460,8 @@ sb_act :: (s: [] Slab, body: string) {
 // and the construction view's own strip until it moves to the HUD.
 sb_lines :: (s: [] Slab, out: [] f32) -> int {
   s[0].hp.lab.flow_n = 0;   // the flow view's names are handed over again each frame (lab_flow)
-  // the build view's words are in the pane's sheet (sb_build): its canvas panel and slider are not drawn
-  if s[0].build.on { s[0].build.left = 0; s[0].build.right = 0; return 0; }
+  // the build view's words are in the pane's sheet (bd_hud); the canvas draws its chart
+  if s[0].build.on { return bd_lines_2d(s, out); }
   n := 0;
   n = tour_lines(s, out, n);
   if s[0].flow { n = flow_overlay(s, out, n); }

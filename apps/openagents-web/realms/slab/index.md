@@ -34,15 +34,15 @@ The hull changes the sea round it. Waves that meet the east and north walls are 
 
 ## How it is built
 
-Nothing this wide fits through a ship channel, so in our scenario it is built in 120 pieces, each 100 by 50 m.
+Nothing this wide fits through a ship channel, so in our scenario it is built from 120 caissons: hollow concrete boxes 100 by 50 m and 50 m deep that float.
 
-1. A yard at Corpus Christi, Texas casts one piece every eight days. Each starts as an 8 m shell that floats at the quay while crews raise its walls.
-2. Two tugs tow each piece 48 nautical miles to a berth in 40 m of water in the Gulf of Mexico.
-3. Crews join the pieces afloat, one seam at a time. The 120th joins on day 983.
-4. A freight barge from Brownsville brings about 26,800 tonnes a trip, 200 trips in all. The first 107 bring concrete: crews thicken the sea walls and raise the deck on columns, from 50 m to 143 m over the keel. The rest bring the towers and plant. Ballast brings the hull down to its 25 m.
-5. The deck is finished on day 1,783, a little under five years in.
+1. A yard at Ingleside, Texas, on the Corpus Christi ship channel, casts them in six dry cells. Each cell floods to float its caisson out.
+2. Two caissons are joined in the yard's basin, and tugs tow each pair down the channel, past the Aransas Pass jetties and 40 nautical miles out to a berth in 89 m of water.
+3. The first pair is moored there. Every other pair is joined to the hull at sea, in a calm, one joint at a time. The hull is closed on day 1,177.
+4. On each caisson, columns and walls climb from 50 m to 143 m over the keel and carry the deck. Barges from a wharf at Ingleside bring the city's buildings, and gantries lift them on.
+5. Ballast water brings the hull down to its 25 m draft. It is commissioned on day 1,510, about four years in.
 
-Watch it in 90 seconds: https://openagents.com/worlds/slab?view=build
+Watch it: https://openagents.com/worlds/slab?view=build
 
 The yards, dates, tugs and berth are a scenario we assumed. The numbers behind it are further down this page.
 
@@ -125,19 +125,19 @@ The cluster's domes are drawn level: their heave and drift show, their small til
 
 ## The build, step by step
 
-[Play the construction timelapse](/worlds/slab?view=build). In the world, open **Build it** or press **B**. Drag **Where in the film** in either direction. Space plays or pauses, the arrow keys step through the film, and Escape returns to the original camera. **The first tow**, **The first join** and **Fitting out** jump to the first operation of each kind. Drag the scene to orbit and use the wheel to zoom. A link with `?view=build&day=983.8` pauses on that project day.
+[Watch the build](/worlds/slab?view=build). In the world, open **Build it** or press **B**. What you see is one run of our build simulation, drawn day by day: every caisson, tug, barge and line is where the simulation has it, at its own draft. The camera follows a film plan, about three and a half minutes from the empty yard to the commissioned platform. Drag **Where in the build** to any day, pick a chapter, or change the speed. Space plays or pauses, the arrow keys step five seconds of film, and Escape returns you to the platform at its berth. Drag the scene to take the camera, and **Back to the film** gives it back. Click a caisson, a tug or a barge for its weight, its draft, its GM (its margin against rolling over) and what its towline pulls. A link with `?view=build&day=600` pauses on that day.
 
 | Follow the work | What to watch |
 | --- | --- |
-| [Corpus Christi casting yard](/worlds/slab?view=build&day=14) | An 8 m starter shell floats at the quay. As crews raise the walls, place the deck and load low ballast, the caisson draws more water. |
-| [First Gulf tow](/worlds/slab?view=build&day=30.28) | Two tugs take one 100 × 50 m caisson through an assumed 8 nautical miles of channel at 3 knots and 40 offshore at 4 knots. A 20 m/s headwind holds the first departure for two days. |
-| [Assembly berth](/worlds/slab?view=build&day=503.8) | Tugs warp each caisson along an open row. The first caisson takes the moorings. A work barge attends each subsequent joint. Only a completed connection adds that unit to the joined displacement. The 120th joins on day 983. |
-| [Brownsville freight run](/worlds/slab?view=build&day=984.6) | A separate 120 × 32 m lighter brings about 26,800 t per call, 200 calls in all. The first 107 land concrete for the lining of the sea walls and for the structure that raises the deck from 50 m to 143 m over the keel. The rest land the buildings and liquids. The route assumes 15 nautical miles of channel and 130 offshore. Watch the lighter rise as cargo transfers to the hull, its towers go up and ballast brings it to operating draft. |
-| [Commissioned deck](/worlds/slab?view=build&day=1783) | At 25 m draft the joined hull displaces 15.375 million metric tonnes. The sequence ends at the original skyline. The 40 m berth rules out the main world's kilometre-long OTEC pipes. |
+| [The casting yard](/worlds/slab?view=build&day=20) | Six dry cells at Ingleside. In each, the bottom slab is poured over its steel, the walls climb in a slipform, and the top slab closes the box. |
+| [Floating out](/worlds/slab?view=build&day=50) | The cell floods to the sea's level, its gate opens, and the caisson is warped out into the basin. |
+| [The first tow](/worlds/slab?view=build&day=59.5) | Two caissons joined in the basin leave as one tow, down the channel and past the jetties. |
+| [The first joint at sea](/worlds/slab?view=build&day=70) | The second pair waits at stand-by for a calm, then is pulled in, sealed and stressed to the first. |
+| [The deck climbs](/worlds/slab?view=build&day=330) | Columns and walls climb on the joined caissons while new pairs arrive. |
+| [The city goes up](/worlds/slab?view=build&day=900) | Barges bring the city's buildings, and gantries on the hull's edge lift them on. |
+| [Commissioned](/worlds/slab?view=build&day=1510) | At its 25 m draft, with its city standing. |
 
-**What the numbers mean.** The project assumes parallel casting positions producing one closed unit every eight days. Each needs about 22,372 m³ of reinforced concrete at 2.5 t/m³, including the separate end walls needed during tow. With 3,000 t of low ballast the tow weighs about 58,931 t, draws 11.50 m in seawater and has an initial transverse metacentric height of 2.48 m under the assumed mass distribution. At 4 knots in a 10 m/s headwind, the steady drag estimate including a 30% margin calls for 1.73 MN of the assumed 2 MN available underway. At 20 m/s it exceeds that allowance. The port’s published channel is 530 ft wide and 54 ft deep. The assumed screening margins are 10 m on each side and 2 m below the keel. The 600 m assembled beam excludes a tow of the finished city through that channel. [Corpus Christi channel dimensions](https://portofcc.com/wp-content/uploads/PCCA-Press-Release-CIP-Completion-vf.pdf) · [Brownsville port directory](https://www.portofbrownsville.com/wp-content/uploads/2026/01/Port-of-Brownsville-Directory-2025-Web-V1.pdf)
-
-**How to read the time and sea.** The 90-second playback slows down for the first tow, join and freight call. The day counter follows project time. The distance strip uses nautical miles and the 3D view compresses the space between ports and berth. Draft follows mass and immersed volume, assuming ballast is distributed to hold an even keel during outfitting. The moving hulls follow the mean sampled wave elevation beneath their waterplanes. The mass transfer, static initial stability and steady tow resistance are planning calculations. The scenario assumes a 40 m Gulf berth and prescribed tow paths. A real operation would need surveys, permission, tug performance curves, six-degree-of-freedom seakeeping, damaged stability, dynamic line loads, joint strength and weather-window analysis. The dates, yards, freight, ballast schedule and berth represent a construction scenario. [SLAB feasibility research](https://github.com/OpenAgentsInc/openagents/blob/main/docs/research/ocean/slab-image-feasibility.md)
+**What is worked out and what is placed.** Each day's weather, each tow's forces and draft, each joint's wait for a calm, each pour and each lift come from the simulation ([how it works](https://github.com/OpenAgentsInc/openagents/blob/main/docs/research/ocean/slab-construction-method.md)). Moves inside the yard, a pair's approach from stand-by to its joint, and tugs and barges coming back are placed along paths, not worked out from forces. The ballast's free surface is not modelled. The land round the yard is schematic, and the lines are drawn thicker than they are so they can be seen. The dates, the yard, the berth and the method are a scenario we assumed.
 
 ## How it is made
 

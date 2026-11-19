@@ -57,7 +57,7 @@ panel_build_done :: (s: [] Slab) { s[0].panel.running = false; s[0].panel.ran = 
 panel_build_more :: (s: [] Slab) { if cs_run_more(s[0].panel.run[..], s[0].panel.q[..], PANEL_TICKS) { panel_build_done(s); } }
 // Once a frame: runs the build again when "Building it" is open and its settings have stood still.
 panel_frame :: (s: [] Slab) {
-  if s[0].panel.part != PP_BUILD || s[0].layout != LAYOUT_PRIME { return; }
+  if s[0].panel.part != PP_BUILD || s[0].layout != LAYOUT_PRIME || s[0].build.on { return; }   // the build view borrows the run (slab-build-draw.coax)
   v := s[0].change[0].what.v;
   // a run for these settings goes on; one for settings since changed is dropped
   if s[0].panel.running && panel_build_same(s[0].panel.run_for, v) { panel_build_more(s); return; }

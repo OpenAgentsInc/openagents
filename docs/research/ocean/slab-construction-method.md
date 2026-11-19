@@ -443,7 +443,7 @@ The first module lands on day 544 and the last on day 1,414 (computed).
 This method loads modules at Ingleside, beside the casting yard: 47.6
 nautical miles from the berth, down the same channel, and
 `metaverse/slab-where.coax` and the chart say the same (`WHERE_FREIGHT`).
-The earlier timelapse loads freight at the Port of Brownsville. Brownsville is about 113 nautical miles away: 98 from the
+The first construction timelapse (since replaced by the build view) loaded freight at the Port of Brownsville. Brownsville is about 113 nautical miles away: 98 from the
 Brazos Santiago Pass jetties (near 26.07° N, 97.15° W) to the berth
 (computed), plus about 15 up its ship channel (assumed). That more than
 doubles a barge's round trip. The simulation's barge passage is a distance
@@ -505,7 +505,7 @@ storm's peak is 28.5 MN, over the 24 MN a chain may carry and under its
 | Harbor Island, where the channel bends to the pass | 27.85° N, 97.08° W | computed from the route |
 | Aransas Pass jetties | 27.834° N, 97.044° W | assumed, as in `slab-where.coax` |
 | The berth | 27.55° N, 96.367° W | decided (`slab-where.coax`, the Texas site) |
-| Port of Brownsville | 25.95° N, 97.40° W | assumed; the earlier timelapse's freight port, not used |
+| Port of Brownsville | 25.95° N, 97.40° W | assumed; the first timelapse's freight port, not used |
 
 The berth is in 89 m of water, 40 nautical miles off the jetties and beyond
 Texas's 9 nautical mile state line (decided). It is 47.6 nautical miles
@@ -592,7 +592,7 @@ moment. A renderer calls three things:
 
 ```
 cs_run(p, run);                  // once for a seed and settings
-cs_view_at(run, day, view);          // any day, with its fraction, in any order
+cs_view_at(run, day, view);      // any day, with its fraction, in any order
 run[0].total                     // the totals for a panel
 ```
 
@@ -613,9 +613,13 @@ The frame is the site's: x east, z north, metres, the finished hull's
 centre at the origin, y up from the still sea. The top of
 `slab-build-view.coax` documents every kind and state.
 
-The page's timelapse at `?view=build` still draws the earlier closed-form
-schedule in `metaverse/slab-construction.coax`. It ends on the same hull.
-Drawing this simulation in its place is phases 3 to 6 of issue #13682.
+The page's build view at `?view=build` draws this simulation
+(`apps/openagents-web/slab-build-draw.coax`, phases 3 to 6 of issue #13682).
+It reads the panel's run of the simulation rather than holding a second one,
+asks `cs_view_at` for each frame's day, and draws every body where the view
+puts it. The film plan (`metaverse/slab-build-film.coax`) chooses the days
+each second shows and where the camera flies. The earlier closed-form
+schedule, `metaverse/slab-construction.coax`, is gone.
 
 ## Sources
 

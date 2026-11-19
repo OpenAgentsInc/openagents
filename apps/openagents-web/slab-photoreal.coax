@@ -374,7 +374,7 @@ photo_field :: (ph: [] SlabPhoto, rec: [] f32, n: int) {
 }
 // What a content set reads of the world.
 photo_world :: (s: [] Slab, rec: [] f32, n: int, reduced: bool) -> SlabWorld {
-  return SlabWorld.{records = rec, count = n, layout = s[0].layout, build = s[0].build.on, build_day = ifx s[0].build.on then build_day(s[0].build.cursor) else 0.0,
+  return SlabWorld.{records = rec, count = n, layout = s[0].layout, build = s[0].build.on, build_day = s[0].bdraw[0].day, bd = s[0].bdraw[..],
     reduced = reduced, time = f32(s[0].time), hour = f32(s[0].hour), night = 0};
 }
 // The list of what stands still, made again from the frame's records.
@@ -430,7 +430,7 @@ slab_photo_frame :: (s: [] Slab, u: [] f32, sun: SimSun, phone: bool) {
   b := U_PHOTO; P := U_PARAMS;
   ph[0].draw_count = 0;
   u[U_PHOTO_ON] = 0; u[U_PHOTO_ON + 1] = 0; u[U_PHOTO_ON + 2] = 0;
-  if !ph[0].on { return; }
+  if !ph[0].on && !s[0].build.on { return; }   // the build view always draws its meshes (slab-build-draw.coax)
   if !ph[0].made { photo_make(ph); }
   u[U_PHOTO_ON] = 1;
   pr_frame_view(u, b, PrView.{eye = s[0].eye, forward = s[0].fwd, right = s[0].right, up = s[0].up, tangent = s[0].tanh, aspect = s[0].aspect, near = 0.5, time = u[U_SIZE + 2]});

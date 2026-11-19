@@ -1,0 +1,954 @@
+// SLAB's construction view (?view=build, key B; GitHub #13682 phases 3 to 6): the build drawn from
+// the simulation, not from a schedule. One run of metaverse/slab-build.coax (cs_run) is made when
+// the view opens; each frame asks its view for the day (cs_view_at in metaverse/slab-build-view.coax) and
+// draws every body where the view puts it, at the draft it gives: caissons in their casting cells and
+// afloat in the basin, tow pieces split into their caissons, tugs, barges and the hull's gantries,
+// the towlines, moorings and storm lines, the upper structure bay by bay, and the city as its
+// modules land. The film plan (metaverse/slab-build-film.coax) chooses which stretch of days each
+// second shows and where the camera flies; a drag takes the camera, "Back to the film" returns it.
+//
+// What is drawn true and what is not. Distances are true: nothing is moved closer. The drawing has
+// a floating origin, fixed for each shot at its subject, so the yard 87 km from the site and the
+// site itself are both drawn near the origin's float precision; the camera never sees both at once.
+// Bodies keep their yaw; their small roll and pitch are not drawn (records turn about y only). The
+// land round the yard is schematic: an apron, the casting cells and their gates, a far bank. Lines
+// are drawn a little thicker than they are, so they read. Small craft ride the drawn sea at their
+// own drafts; the simulation's heave is drawn, the drawn waves are the sea's own.
+//
+// The world draws all of this through the photoreal style's mesh pass (slab-photoreal.coax, the
+// content set "build" in slab-content.coax), so the build view draws photoreal whatever the realm's
+// style. Its HUD (bd_hud) is the kit HUD's "Build it" group (slab-hud.coax); its chart inset is the
+// panel's chart (slab-chart.coax chart_draw_in) with the tow's place on it.
+//
+//   coax/bin/coax test apps/openagents-web/slab.coax --only "Build view"
+#load "../../metaverse/slab-build-film.coax";
+#load "../../metaverse-engine/arch/site.coax";
+#load "../../metaverse-engine/arch/works.coax";
+#load "../../metaverse-engine/arch/traffic.coax";
+
+BD_FAR :: 9000.0;          // m: what lies farther than this from the eye is not drawn
+BD_CRANES :: 14;           // tower cranes drawn on the hull at once (the nearest active bays)
+BD_LINE_SEGS :: 14;        // pieces a line is drawn with
+BD_CELL_L :: 104.0; BD_CELL_B :: 54.0;   // a casting cell's inside (gpu/slab.coax slab_dry_cells has the same)
+BD_GROUND :: 3.0;          // the yard's apron over the still sea, m
+BD_SPEEDS :: [3] f64.[0.5, 1.0, 2.0];
+BD_SPEED_NAMES :: [3] string.["Half speed", "Normal", "Twice as fast"];
+BD_DOCS :: "https://github.com/OpenAgentsInc/openagents/blob/main/docs/research/ocean/slab-construction-method.md";
+
+// What the build view keeps: the run, the view of the moment, the film, the camera.
+BuildView :: struct {
+  on: bool; play: bool;
+  cursor: f64;               // film seconds
+  clock: FrameClock;
+  speed: int = 1;            // BD_SPEEDS
+  // the explore camera, kept while the build view is open
+  mode: int; yaw: f32; pitch: f32; dist: f32; x: f32; z: f32; intro: f32;
+  own: bool;                 // the visitor has taken the camera
+  picked: int = -1;          // a body's kind * 1000 + its id (-1: none)
+}
+BdParts :: struct {
+  made: bool;
+  box: int; drum: int; mast: int; top: int; tug: int; barge: int; deck: int; bars: int; mat: int;
+  collar: int; truck: int; worker: int; light: int; buoy: int; mound: int; plant: int; gantry: int;
+  metal: int; dark: int; glass: int; lamp: int; stone: int; paint: int; fresh: int; water: int; ground: int;
+}
+BuildDraw :: struct {
+  ready: bool;
+  run: [] CsRun;            // the panel's run of the simulation, borrowed while the view is open (slab-panel.coax)
+  view: [1] CsvView; film: [1] BuildFilm;
+  plan: [SLAB_MAX_BOXES * SLAB_RECORD] f32; plan_n: int;
+  day: f64; shot: int = -1; rate: f64;
+  ox: f64; oz: f64;          // the drawing's origin in the site's frame, fixed for a shot
+  at: BfSubject;             // what the camera looks at now (site frame)
+  ex: f64; ez: f64;          // the eye, site frame
+  yx: f64; yz: f64; ax: f64; az: f64; sx: f64; sz: f64; yard_yaw: f64;   // the yard: its origin, along, ashore
+  cells: int; dry: int;      // casting cells, and those dry now (bits)
+  band: int = -1; band_t: f64 = -100;   // the drawn sea's wind band, and when it last changed
+  time: f64;                 // the world's seconds (cranes slew, trucks drive)
+  night: f32;
+}
+
+// ---------------------------------------------------------------- the run
+bd_ready :: (s: [] Slab) {
+  d := s[0].bdraw[..];
+  if d[0].ready { return; }
+  // One run is held for the page (about 1.4 MB): the panel's. The build view runs the picture's
+  // platform into it, and the panel runs its own hull again when it next shows "Building it".
+  d[0].run = s[0].panel.run[..]; s[0].panel.ran = false; s[0].panel.running = false;   // a run it had going is dropped
+  run := d[0].run;
+  cs_run(cs_params(), run);
+  bf_plan(run, d[0].film[..]);
+  d[0].plan_n = slab_plan(d[0].plan[..]);
+  r := run[0].route;
+  y0 := cs_yard_point(r, 0, 0); y1 := cs_yard_point(r, 1, 0); y2 := cs_yard_point(r, 0, 1);
+  d[0].yx = y0.x; d[0].yz = y0.z; d[0].ax = y1.x - y0.x; d[0].az = y1.z - y0.z; d[0].sx = y2.x - y0.x; d[0].sz = y2.z - y0.z;
+  d[0].yard_yaw = afloat_angle(r.leg[0].bx - r.leg[0].ax, r.leg[0].bz - r.leg[0].az);
+  d[0].cells = cs_cells(run[0].p);
+  d[0].shot = -1; d[0].ready = true;
+}
+bd_length :: (s: [] Slab) -> f64 { return s[0].bdraw[0].film[0].length; }
+// A point of the yard (along the channel, ashore of its centreline) in the site's frame.
+bd_yard :: (d: [] BuildDraw, along: f64, ashore: f64) -> [2] f64 { return [2] f64.[d[0].yx + d[0].ax * along + d[0].sx * ashore, d[0].yz + d[0].az * along + d[0].sz * ashore]; }
+
+// The view for the film's second `t`: its day, its shot and the shot's origin.
+bd_seek_view :: (s: [] Slab) {
+  d := s[0].bdraw[..];
+  bd_ready(s);
+  f := d[0].film[..]; run := d[0].run;
+  t := fclamp(s[0].build.cursor, 0.0, f[0].length);
+  k := bf_shot(f, t);
+  if k != d[0].shot {
+    // the origin: the shot's subject on its first day
+    cs_view_at(run, f[0].shots[k].d0, d[0].view[..]);
+    o := bf_subject(run, d[0].view[..], f[0].shots[k]);
+    d[0].ox = o.x; d[0].oz = o.z; d[0].shot = k;
+  }
+  d[0].day = bf_day(f, t); d[0].rate = bf_rate(f[0].shots[k]);
+  cs_view_at(run, d[0].day, d[0].view[..]);
+  d[0].at = bf_subject(run, d[0].view[..], f[0].shots[k]);
+  d[0].time = s[0].time;
+}
+// Once a frame while the build view is open: the clock, then the view.
+bd_frame :: (s: [] Slab, dt: f32, frozen: bool) {
+  bd_ready(s);
+  if s[0].build.play && !frozen {
+    t := loop_frame(s[0].build.clock, f64(dt));
+    s[0].build.clock = t.clock;
+    speeds := BD_SPEEDS;
+    s[0].build.cursor = fmin(bd_length(s), s[0].build.cursor + speeds[s[0].build.speed] * f64(t.steps) * f64(LOOP_STEP_NS) / f64(LOOP_SECOND));
+    if s[0].build.cursor >= bd_length(s) { s[0].build.play = false; }
+  }
+  bd_seek_view(s);
+}
+bd_seek :: (s: [] Slab, cursor: f64) {
+  bd_ready(s);
+  s[0].build.cursor = fclamp(cursor, 0.0, bd_length(s)); s[0].build.play = false; s[0].build.clock = FrameClock.{};
+  bd_seek_view(s);
+}
+bd_seek_day :: (s: [] Slab, day: f64) { bd_ready(s); bd_seek(s, bf_time(s[0].bdraw[0].film[..], day)); }
+
+// ---------------------------------------------------------------- open and close
+build_toggle :: (s: [] Slab) {
+  if s[0].build.on {
+    v := s[0].build;
+    s[0].mode = v.mode; s[0].yaw = v.yaw; s[0].pitch = v.pitch; s[0].dist = v.dist;
+    s[0].tx = v.x; s[0].tz = v.z; s[0].intro = v.intro;
+    s[0].build.on = false; s[0].build.play = false; s[0].build.picked = -1;
+    s[0].bdraw[0].ready = false;   // the panel has its run back
+    // the build ends at the berth in the Gulf: leaving it, that is where you are
+    if s[0].site != SITE_TEXAS || s[0].layout != LAYOUT_PRIME {
+      c := s[0].change[..];
+      c[0].what.layout = WHAT_PRIME; change_site(c, SITE_TEXAS); change_push(s, false);
+    }
+    sb_toast(s, "You are at the berth off Texas, where the build ended.");
+  } else {
+    // the build is the picture's platform at its berth off Texas: the world goes there first, so
+    // the chart and the sea are that place's (no note on the way in: the HUD's lead says it)
+    if s[0].site != SITE_TEXAS || s[0].layout != LAYOUT_PRIME {
+      c := s[0].change[..];
+      c[0].what.layout = WHAT_PRIME; change_site(c, SITE_TEXAS); change_push(s, false);
+    }
+    s[0].build = BuildView.{on = true, play = true, mode = s[0].mode, yaw = s[0].yaw, pitch = s[0].pitch,
+      dist = s[0].dist, x = s[0].tx, z = s[0].tz, intro = s[0].intro};
+    s[0].mode = CAM_ORBIT; s[0].intro = 0; s[0].selected = -1;
+    bd_seek_view(s);
+  }
+  s[0].dragging = false; s[0].held = 0;
+}
+
+// ---------------------------------------------------------------- the camera
+// The eye and the way it looks, in the drawing's frame: the film's, or the visitor's orbit about
+// the same subject once they have taken it.
+bd_camera :: (s: [] Slab, width: f32, height: f32, step: f32) -> [6] f32 {
+  d := s[0].bdraw[..]; f := d[0].film[..];
+  at := d[0].at; k := d[0].shot;
+  tx := f32(at.x - d[0].ox); ty := f32(at.y); tz := f32(at.z - d[0].oz);
+  ex: f32; ey: f32; ez: f32;
+  portrait := hi_f32(1, 0.92f32 * height / width);   // a tall screen backs off to keep the subject's width
+  if s[0].build.own {
+    kh := s[0].held; turn := step;
+    if kh & KB_LEFT != 0 { s[0].yaw -= turn; }
+    if kh & KB_RIGHT != 0 { s[0].yaw += turn; }
+    if kh & KB_UP != 0 { s[0].pitch = clamp32(s[0].pitch + turn * 0.6f32, 0.02, 1.45); }
+    if kh & KB_DOWN != 0 { s[0].pitch = clamp32(s[0].pitch - turn * 0.6f32, 0.02, 1.45); }
+    if kh & (KB_IN | KB_E) != 0 { s[0].dist = clamp32(s[0].dist * (1 - step), 25, 9000); }
+    if kh & (KB_OUT | KB_Q) != 0 { s[0].dist = clamp32(s[0].dist * (1 + step), 25, 9000); }
+    cy := cos(s[0].pitch);
+    ex = tx + sin(s[0].yaw) * cy * s[0].dist; ey = ty + sin(s[0].pitch) * s[0].dist; ez = tz + cos(s[0].yaw) * cy * s[0].dist;
+  } else {
+    c := bf_camera(f[0].shots[k], at, s[0].build.cursor);
+    ex = tx + c.ex * portrait; ey = ty + c.ey * portrait; ez = tz + c.ez * portrait;
+  }
+  // over the water and over what stands under the eye (the hull's deck, the yard's apron)
+  ey = hi_f32(ey, bd_floor(s, f64(ex) + d[0].ox, f64(ez) + d[0].oz) + 6);
+  ax := tx - ex; ay := ty - ey; az := tz - ez;
+  al := hi_f32(sqrt(ax * ax + ay * ay + az * az), 0.01);
+  d[0].ex = f64(ex) + d[0].ox; d[0].ez = f64(ez) + d[0].oz;
+  // over a phone's sheet: the subject stands in the screen's upper half (slab-tour.coax view_lift)
+  lf := [3] f32.[ax / al, ay / al, az / al];
+  if s[0].hp.pane && s[0].hud { lf = view_lift(s, lf, tour_tall(s)); }
+  return [6] f32.[ex, ey, ez, lf[0], lf[1], lf[2]];
+}
+// The highest thing under a point of the site: the hull's top so far, the yard's apron, or the sea.
+bd_floor :: (s: [] Slab, x: f64, z: f64) -> f32 {
+  d := s[0].bdraw[..]; h := d[0].view[0].hull;
+  if h.units > 0 && abs(x - h.x - h.ox) < h.lx * 0.5 + 10 && abs(z - h.z - h.oz) < h.lz * 0.5 + 10 { return f32(h.top - h.draft + 12); }
+  dx := x - d[0].yx; dz := z - d[0].yz;
+  along := dx * d[0].ax + dz * d[0].az; ashore := dx * d[0].sx + dz * d[0].sz;
+  if ashore > 380 && ashore < 1000 && along > -300 && along < 1900 { return f32(BD_GROUND + 60); }
+  return 0;
+}
+// The visitor takes the camera: the orbit starts where the film's eye is.
+bd_take :: (s: [] Slab) {
+  if s[0].build.own { return; }
+  d := s[0].bdraw[..];
+  tx := f32(d[0].at.x - d[0].ox); ty := f32(d[0].at.y); tz := f32(d[0].at.z - d[0].oz);
+  ex := s[0].eye[0] - tx; ey := s[0].eye[1] - ty; ez := s[0].eye[2] - tz;
+  dist := hi_f32(sqrt(ex * ex + ey * ey + ez * ez), 25);
+  s[0].dist = clamp32(dist, 25, 9000); sy := f64(clamp32(ey / dist, -1, 1)); s[0].pitch = clamp32(f32(afloat_angle(sqrt(fmax(1.0 - sy * sy, 0.0)), sy)), 0.02, 1.45); s[0].yaw = f32(afloat_angle(f64(ez), f64(ex)));
+  s[0].build.own = true;
+}
+bd_mod :: (x: f64, m: f64) -> f64 { return x - floor(x / m) * m; }
+// The sun over the site for the day and the shot's hour.
+bd_sun :: (s: [] Slab) -> SimSun {
+  d := s[0].bdraw[..];
+  month := bd_mod(f64(d[0].run[0].p.start_month) + d[0].day / 30.44, 12.0);
+  return sim_sun(27.8, month, bf_hour(d[0].film[0].shots[d[0].shot], d[0].day));
+}
+// The drawn sea's wind: from the simulation's sea where the camera is (the yard's channel is
+// sheltered), in bands so a montage does not make the sea again every frame.
+BD_BANDS :: [9] f64.[2.5, 4.0, 6.0, 8.0, 10.0, 12.5, 15.0, 19.0, 24.0];
+bd_wind :: (s: [] Slab) -> f64 {
+  d := s[0].bdraw[..];
+  if !d[0].ready { return 4.0; }
+  leg := csv_leg(d[0].run, d[0].at.x, d[0].at.z);
+  hs := d[0].view[0].wx.hs * d[0].run[0].route.leg[leg].shelter;
+  want := sqrt(fmax(hs, 0.05) * 9.81 / 0.21);
+  bands := BD_BANDS; k := 0;
+  for i: 0..<9 { if want >= bands[i] { k = i; } }
+  // a band changes on a step of two, or after a second and a half of film
+  if d[0].band < 0 || abs(f64(k - d[0].band)) >= 2 || (k != d[0].band && abs(s[0].build.cursor - d[0].band_t) > 1.5) {
+    d[0].band = k; d[0].band_t = s[0].build.cursor;
+  }
+  return bands[d[0].band];
+}
+// The hour's darkness, for the work lights.
+bd_night :: (sun: SimSun) -> f32 { return 1 - smooth(-0.1, 0.12, f32(sun.y)); }
+
+// ---------------------------------------------------------------- the uniforms
+// The city's records as its modules land (the plan's own, slab-plan.coax), the hull's place, the
+// dry cells. Called where slab_frame writes the platform's records.
+bd_uniforms :: (s: [] Slab, u: [] f32, sun: SimSun) {
+  d := s[0].bdraw[..]; run := d[0].run; v := d[0].view[..]; h := v[0].hull;
+  buffer := u[U_BOXES..<U_GROUPS];
+  n := 0;
+  if h.units > 0 {
+    for i: SLAB_HULL_PIECES..<d[0].plan_n {
+      at := i * SLAB_RECORD; share := bd_record_share(d, i);
+      if share <= 0 || n >= SLAB_MAX_BOXES { continue; }
+      for k: 0..<SLAB_RECORD { buffer[n * SLAB_RECORD + k] = d[0].plan[at + k]; }
+      shape := cast(int) (d[0].plan[at + 7] + 0.5);
+      if share < 1 && (shape == SLAB_BOX || shape == SLAB_CYLINDER || shape == SLAB_GABLE_X || shape == SLAB_GABLE_Z) {
+        y0 := d[0].plan[at + 1]; y1 := d[0].plan[at + 5];
+        buffer[n * SLAB_RECORD + 5] = y0 + (y1 - y0) * f32(share);
+      }
+      n += 1;
+    }
+  }
+  u[U_MODE + 2] = f32(n);
+  u[U_PARAMS + P_COUNTS] = f32(slab_groups(buffer, n, u[U_GROUPS..<U_PARAMS]));
+  u[U_PARAMS + P_COUNTS + 2] = 0; u[U_PARAMS + P_COUNTS + 3] = 0;
+  // the plan's frame: its deck where the hull's is now, about the drawing's origin
+  for i: 0..<12 { u[U_PARAMS + P_POSE + i] = 0; }
+  u[U_PARAMS + P_POSE] = 1; u[U_PARAMS + P_POSE + 5] = 1; u[U_PARAMS + P_POSE + 10] = 1;
+  u[U_PARAMS + P_POSE + 3] = f32(h.ox - d[0].ox); u[U_PARAMS + P_POSE + 7] = f32(f64(SLAB_DRAFT) - h.draft + h.heave); u[U_PARAMS + P_POSE + 11] = f32(h.oz - d[0].oz);
+  u[U_PARAMS + P_SUNHULL] = f32(sun.x); u[U_PARAMS + P_SUNHULL + 1] = f32(sun.y); u[U_PARAMS + P_SUNHULL + 2] = f32(sun.z);
+  u[U_PARAMS + P_SECTION] = 0; u[U_PARAMS + P_UNDER] = 0;
+  u[U_PARAMS + P_GAIT + 2] = 0; u[U_PARAMS + P_PICK] = -1; u[U_PARAMS + P_PICK + 1] = -1;
+  u[U_HULL] = 0; u[U_HULL + 1] = 0;
+  // the casting cells the sea is kept out of (gpu/slab.coax slab_dry_cells): which, the first's
+  // centre, and the way along them
+  d[0].dry = bd_dry(d);
+  c0 := csv_cell(run, 0);
+  turn := afloat_angle(d[0].ax, d[0].az);
+  if turn < 0 { turn += 2.0 * PI_D; }
+  u[U_PARAMS + 60] = 1;
+  u[U_PARAMS + 61] = f32(d[0].dry) + f32(turn / (2.0 * PI_D)) * 0.999f32;
+  u[U_PARAMS + 62] = f32(c0.x - d[0].ox); u[U_PARAMS + 63] = f32(c0.z - d[0].oz);
+  if d[0].dry == 0 { u[U_PARAMS + 61] = 0; }
+  u[U_SIZE + 2] = f32(s[0].time);
+}
+// How much of plan record i stands: its module's share landed, or, for what weighs nothing in the
+// ledger (pools, the canal), whole once the deck under it is cast; the cold-water pipes go down last.
+bd_record_share :: (d: [] BuildDraw, i: int) -> f64 {
+  run := d[0].run; v := d[0].view[..];
+  for m: 0..<run[0].modules { if run[0].mod[m].record == i { return csv_module_share(run, v, m); } }
+  at := i * SLAB_RECORD; kind := cast(int) (d[0].plan[at + 3] + 0.5);
+  if kind == SLAB_KIND_PIPE { return ifx v[0].hull.outfit >= 1 then 1.0 else 0.0; }
+  sh := run[0].sh;
+  x := f64(d[0].plan[at] + d[0].plan[at + 4]) * 0.5; z := f64(d[0].plan[at + 2] + d[0].plan[at + 6]) * 0.5;
+  col := cast(int) floor((x + sh.l * 0.5) / run[0].unit.l); row := cast(int) floor((z + sh.b * 0.5) / run[0].unit.b);
+  for k: 0..<run[0].units { if run[0].u[k].col == col && run[0].u[k].row == row { return ifx v[0].bay[k].stage == CS_BAY_DONE then 1.0 else 0.0; } }
+  return 0.0;
+}
+// The casting cells that are dry now, as bits: all but one flooded to the sea's level.
+bd_dry :: (d: [] BuildDraw) -> int {
+  v := d[0].view[..]; m := 0;
+  for c: 0..<d[0].cells { m = m | (1 << c); }
+  for i: 0..<v[0].works {
+    w := v[0].work[i];
+    if w.kind == CSV_W_FLOAT && w.progress >= 0.5 { c := d[0].run[0].u[w.id].cell; if c >= 0 { if m & (1 << c) != 0 { m -= 1 << c; } } }
+  }
+  return m;
+}
+
+// ---------------------------------------------------------------- the parts
+bd_make :: (ph: [] SlabPhoto, p: [] ArchPen) {
+  b: BdParts;
+  b.metal = photo_material(ph, 0.86, 0.86, 0.84, 0.55, 0.0, PR_PATTERN_PLAIN, 0, 0);
+  b.dark = photo_material(ph, 0.07, 0.07, 0.08, 0.6, 0.2, PR_PATTERN_PLAIN, 0, 0);
+  b.glass = photo_material(ph, 0.30, 0.38, 0.42, 0.08, 0.5, PR_PATTERN_PLAIN, 0, 0);
+  b.lamp = photo_material(ph, 1.0, 0.94, 0.78, 0.4, 0.0, PR_PATTERN_PLAIN, 0, 0);
+  b.stone = photo_material(ph, 0.70, 0.69, 0.66, 0.85, 0.0, PR_PATTERN_CONCRETE, 0, 0);
+  b.paint = photo_material(ph, 0.85, 0.85, 0.85, 0.6, 0.0, PR_PATTERN_PLAIN, 0, 0);
+  b.fresh = photo_material(ph, 0.50, 0.50, 0.48, 0.7, 0.0, PR_PATTERN_CONCRETE, 0, 0);
+  b.water = photo_material(ph, 0.04, 0.10, 0.12, 0.06, 0.0, PR_PATTERN_PLAIN, 0, 0);
+  b.ground = photo_material(ph, 0.44, 0.42, 0.38, 0.95, 0.0, PR_PATTERN_CONCRETE, 0, 0);
+  look := ArchCityLook.{metal = b.metal, dark = b.dark, glass = b.glass, lamp = b.lamp, stone = b.stone, paint = b.paint};
+  b.box = ph[0].box; b.drum = ph[0].drum;
+  b.mast = photo_part(ph, arch_site_mast(p, look));
+  b.top = photo_part(ph, arch_site_crane_top(p, look));
+  traffic := TrafficLook.{paint = b.metal, glass = b.glass, dark = b.dark};
+  b.tug = photo_part(ph, traffic_ship(p, traffic, TRAFFIC_TUG));
+  b.barge = photo_part(ph, arch_site_barge(p, look, 120, 32, 8));
+  b.deck = photo_part(ph, arch_site_deck(p, look, 1.5));
+  b.bars = photo_part(ph, arch_site_bars(p, look, 3));
+  b.mat = photo_part(ph, arch_site_mat(p, look));
+  b.collar = photo_part(ph, arch_site_collar(p, look, 8));
+  b.truck = photo_part(ph, arch_site_truck(p, look));
+  b.worker = photo_part(ph, traffic_person(p, traffic, 0.6));
+  b.light = photo_part(ph, arch_site_light(p, look));
+  b.buoy = photo_part(ph, arch_site_buoy(p, look));
+  b.mound = photo_part(ph, arch_site_mound(p, look));
+  b.plant = photo_part(ph, arch_site_plant(p, look));
+  b.gantry = photo_part(ph, arch_dock_crane(p, look, 40, 60, 45));
+  b.made = !p[0].full;
+  ph[0].content.build = b;
+}
+
+// ---------------------------------------------------------------- placing
+// A part at a point of the site, turned so its +x points along `yaw` (the simulation's sense: + from
+// x toward z), free of the platform's pose.
+bd_put :: (l: [] PrList, d: [] BuildDraw, part: int, x: f64, y: f64, z: f64, yaw: f64) -> int {
+  r := pr_put(l, part, f32(x - d[0].ox), f32(y), f32(z - d[0].oz), f32(-yaw), 1);
+  pr_free(l, r);
+  return r;
+}
+// A box `lx` long along `yaw`, `lz` across and `ly` up from y.
+bd_block :: (l: [] PrList, d: [] BuildDraw, b: BdParts, x: f64, y: f64, z: f64, yaw: f64, lx: f64, ly: f64, lz: f64, material: int) -> int {
+  if lx <= 0.01 || ly <= 0.01 || lz <= 0.01 { return -1; }
+  r := bd_put(l, d, b.box, x, y, z, yaw);
+  pr_stretch(l, r, f32(lx), f32(ly), f32(lz)); pr_made_of(l, r, material);
+  return r;
+}
+// A point of a body's own frame (along its length, across it) in the site's.
+bd_at :: (x: f64, z: f64, yaw: f64, along: f64, across: f64) -> [2] f64 {
+  c := cos(yaw); sn := sin(yaw);
+  return [2] f64.[x + c * along - sn * across, z + sn * along + c * across];
+}
+bd_far :: (d: [] BuildDraw, x: f64, z: f64, size: f64) -> bool {
+  dx := x - d[0].ex; dz := z - d[0].ez;
+  return dx * dx + dz * dz > (BD_FAR + size) * (BD_FAR + size);
+}
+// A painted colour on a tinted part.
+bd_paint :: (l: [] PrList, r: int, red: f32, green: f32, blue: f32) { pr_tint(l, r, red, green, blue); }
+// Concrete that pales as it cures.
+bd_cure :: (l: [] PrList, r: int, cured: f64, id: int) {
+  k := f32(0.86 + 0.14 * fclamp(cured, 0.0, 1.0)) * (0.96f32 + 0.04f32 * f32((id * 37) % 11) / 10.0f32);
+  pr_tint(l, r, k, k, k * 0.985f32);
+}
+
+// Everything the build view draws, every frame (slab-content.coax slab_content_move, twice).
+bd_place :: (ph: [] SlabPhoto, l: [] PrList, d: [] BuildDraw, reduced: bool, night: f32) {
+  b := ph[0].content.build;
+  if !b.made || !d[0].ready { return; }
+  photo_glow(ph, b.lamp, 6.0f32 * night);
+  bd_yard_place(l, d, b, night);
+  bd_bodies(l, d, b);
+  bd_upper(l, d, b);
+  bd_lines(l, d, b);
+}
+
+// The yard: the apron, the casting cells with their gates and cranes, the basin's far bank, the
+// batching plant, trucks and lights. Schematic land round the simulation's own places.
+bd_yard_place :: (l: [] PrList, d: [] BuildDraw, b: BdParts, night: f32) {
+  mid := bd_yard(d, 800, 600);
+  if bd_far(d, mid[0], mid[1], 2500) { return; }
+  run := d[0].run; v := d[0].view[..]; yaw := d[0].yard_yaw;
+  cells := d[0].cells; pitch := CSV_CELL_PITCH; first := 250.0;
+  lo := first - BD_CELL_L * 0.5; hi := first + pitch * f64(cells - 1) + BD_CELL_L * 0.5;
+  cs0 := CSV_CELLS - BD_CELL_B * 0.5; cs1 := CSV_CELLS + BD_CELL_B * 0.5;
+  deep := -CS_CELL_FLOOR - 2.0; tall := BD_GROUND - deep;
+  // the apron ashore of the quay, round the cells: a strip in front, one behind, pieces between
+  bd_land(l, d, b, -600, 2000, cs1, 1400, deep, tall, b.ground);
+  bd_land(l, d, b, -600, lo, CSV_QUAY, cs1, deep, tall, b.ground);
+  bd_land(l, d, b, hi, 2000, CSV_QUAY, cs1, deep, tall, b.ground);
+  for c: 0..<cells {
+    a := first + pitch * f64(c);
+    if c + 1 < cells { bd_land(l, d, b, a + BD_CELL_L * 0.5, a + pitch - BD_CELL_L * 0.5, CSV_QUAY, cs1, deep, tall, b.ground); }
+    // the cell's floor, and its gate in the quay unless it is flooded to the sea
+    bd_land(l, d, b, a - BD_CELL_L * 0.5, a + BD_CELL_L * 0.5, cs0, cs1, deep, 0.5, b.stone);
+    open := d[0].dry & (1 << c) == 0;
+    if !open { bd_land(l, d, b, a - BD_CELL_L * 0.5, a + BD_CELL_L * 0.5, CSV_QUAY + 2, cs0, deep, tall + 1, b.dark); }
+    // a tower crane behind it, slewing while a caisson is being cast
+    k := bd_yard(d, a + 30, cs1 + 18);
+    busy := v[0].proc.cell_stage[c] > CS_IDLE && v[0].proc.cell_stage[c] < CS_CURE;
+    slew := yaw + PI_D * 0.5 + (ifx busy then 0.55 * sin(d[0].time * 0.25 + f64(c) * 1.7) else 0.2);
+    bd_crane(l, d, b, k[0], BD_GROUND, k[1], 66, slew);
+    // floodlights on its corners
+    for e: 0..<2 {
+      p := bd_yard(d, a + (ifx e == 0 then -BD_CELL_L * 0.5 - 6 else BD_CELL_L * 0.5 + 6), cs1 + 6);
+      r := bd_put(l, d, b.light, p[0], BD_GROUND, p[1], yaw + PI_D * 0.5);
+      pr_near(l, r, 1800);
+    }
+  }
+  // the quay's face, the far bank across the channel and the ends of the basin
+  bd_land(l, d, b, -600, 2000, CSV_QUAY - 1, CSV_QUAY + 2, deep - 1, tall + 1, b.stone);
+  bd_land(l, d, b, -2500, 3500, -1600, -260, -18, 18 + BD_GROUND, b.ground);
+  bd_land(l, d, b, -2500, -600, 110, 1400, -18, 18 + BD_GROUND, b.ground);
+  bd_land(l, d, b, 2000, 3500, 110, 1400, -18, 18 + BD_GROUND, b.ground);
+  // the batching plant and the road behind the cells, with mixer trucks on it
+  pp := bd_yard(d, lo - 90, cs1 + 70);
+  _ = bd_put(l, d, b.plant, pp[0], BD_GROUND, pp[1], yaw);
+  pr_fine(l, true);
+  for t: 0..<10 {
+    a := lo - 60 + bd_mod(d[0].time * 9.0 + f64(t) * 157.0, hi - lo + 120);
+    p := bd_yard(d, a, cs1 + 40 + f64(t % 2) * 7);
+    r := bd_put(l, d, b.truck, p[0], BD_GROUND, p[1], yaw + (ifx t % 2 == 0 then PI_D else 0.0));
+    pr_near(l, r, 900);
+  }
+  pr_fine(l, false);
+  // channel buoys down the first reach
+  rt := run[0].route; g := rt.leg[0];
+  for k: 0..<8 {
+    f := (f64(k) + 0.5) / 8.0;
+    for side: 0..<2 {
+      sgn := ifx side == 0 then -1.0 else 1.0;
+      nx := -(g.bz - g.az) / g.len; nz := (g.bx - g.ax) / g.len;
+      x := g.ax + (g.bx - g.ax) * f + nx * sgn * (g.width * 0.5 + 15); z := g.az + (g.bz - g.az) * f + nz * sgn * (g.width * 0.5 + 15);
+      r := bd_put(l, d, b.buoy, x, 0, z, 0);
+      if side == 0 { bd_paint(l, r, 0.1, 0.55, 0.2); } else { bd_paint(l, r, 0.75, 0.1, 0.08); }
+      pr_near(l, r, 2500);
+    }
+  }
+}
+// A block of the yard between two distances along it and two ashore of its centreline.
+bd_land :: (l: [] PrList, d: [] BuildDraw, b: BdParts, a0: f64, a1: f64, s0: f64, s1: f64, y0: f64, h: f64, m: int) {
+  c := bd_yard(d, (a0 + a1) * 0.5, (s0 + s1) * 0.5);
+  _ = bd_block(l, d, b, c[0], y0, c[1], d[0].yard_yaw + PI_D, a1 - a0, h, s1 - s0, m);
+}
+// A tower crane standing on y0 with its jib `tall` up, slewed to `slew`.
+bd_crane :: (l: [] PrList, d: [] BuildDraw, b: BdParts, x: f64, y0: f64, z: f64, tall: f64, slew: f64) {
+  n := cast(int) floor(tall / f64(SITE_MAST_BAY));
+  bays := ifx n > 4 then 4 else n;
+  each := tall / f64(bays);
+  for k: 0..<bays {
+    r := bd_put(l, d, b.mast, x, y0 + each * f64(k), z, 0);
+    pr_stretch(l, r, 1, f32(each / f64(SITE_MAST_BAY)), 1);
+  }
+  _ = bd_put(l, d, b.top, x, y0 + tall, z, slew);
+}
+
+// The bodies: caissons in their cells and afloat, pieces as their caissons, tugs, barges, gantries.
+bd_bodies :: (l: [] PrList, d: [] BuildDraw, b: BdParts) {
+  run := d[0].run; v := d[0].view[..]; sh := run[0].sh; u := run[0].unit;
+  for i: 0..<v[0].bodies {
+    o := v[0].body[i];
+    if bd_far(d, o.x, o.z, o.l) { continue; }
+    if o.kind == CSV_CAISSON {
+      if o.state == CSV_BASIN { bd_caisson_whole(l, d, b, o.x, o.y, o.z, o.yaw, o.l, o.b, o.h, o.id, 1.0); }
+      else { bd_casting(l, d, b, o); }
+    } else if o.kind == CSV_PIECE {
+      a := run[0].pc[o.id];
+      for c: 0..<o.nc { for r: 0..<o.nr {
+        p := bd_at(o.x, o.z, o.yaw, (f64(c) - f64(o.nc - 1) * 0.5) * u.l, (f64(r) - f64(o.nr - 1) * 0.5) * u.b);
+        bd_caisson_whole(l, d, b, p[0], o.y, p[1], o.yaw, u.l, u.b, o.h, a.first + c * o.nr + r, 1.0);
+      } }
+    } else if o.kind == CSV_TUG {
+      // the kit's tug is 32 m at its waterline; the simulation's has its own size and draft
+      g := traffic_ship_of(TRAFFIC_TUG);
+      r := bd_put(l, d, b.tug, o.x, o.y + o.draft, o.z, o.yaw);
+      pr_stretch(l, r, f32(o.l) / g.length, f32(fmax(o.draft, 1.0)) / g.draft, f32(o.b) / g.beam);
+      pr_tint(l, r, 0.78, 0.2, 0.12);
+    } else if o.kind == CSV_BARGE {
+      r := bd_put(l, d, b.barge, o.x, o.y, o.z, o.yaw);
+      pr_stretch(l, r, f32(o.l / 120.0), f32(fmax(o.h, 1.0) / 8.0), f32(o.b / 32.0));
+      // its deck load: what it carries for the city, as one block
+      if o.state == CSV_LOADING || o.state == CSV_PASSAGE || o.state == CSV_QUEUE || o.state == CSV_DOCK {
+        load := fclamp(o.ballast / 2.68e7, 0.0, 1.0);
+        rr := bd_block(l, d, b, o.x, o.y + o.h, o.z, o.yaw, o.l * 0.7, 2.0 + 6.0 * load, o.b * 0.7, b.metal);
+        bd_paint(l, rr, 0.75, 0.42, 0.12);
+      }
+    } else if o.kind == CSV_GANTRY {
+      _ = bd_put(l, d, b.gantry, o.x, o.y, o.z, o.yaw + PI_D * 0.5);
+    }
+  }
+}
+// One caisson as a closed box of concrete, its draft and number its own.
+bd_caisson_whole :: (l: [] PrList, d: [] BuildDraw, b: BdParts, x: f64, y: f64, z: f64, yaw: f64, lx: f64, lz: f64, h: f64, id: int, cured: f64) {
+  r := bd_block(l, d, b, x, y, z, yaw, lx - 0.4, h, lz - 0.4, b.stone);
+  bd_cure(l, r, cured, id);
+}
+// A caisson in its casting cell, as far as it is cast: the bottom slab along its length with the
+// mats ahead of the pour, the walls and the web to the slipform's height with the form and its deck
+// on top, the top slab's falsework and the slab itself, then the cell's water as it floods.
+bd_casting :: (l: [] PrList, d: [] BuildDraw, b: BdParts, o: CsvBody) {
+  run := d[0].run; sh := run[0].sh; v := d[0].view[..];
+  x := o.x; z := o.z; yaw := o.yaw; y := o.y; L := o.l; B := o.b; web := sh.web;
+  clear := hull_clear(sh);
+  // flooding: the water in the cell, to the level the view gives
+  if o.state == CSV_FLOAT_OUT {
+    for i: 0..<v[0].works {
+      w := v[0].work[i];
+      if w.kind != CSV_W_FLOAT || w.id != o.id { continue; }
+      level := -CS_CELL_FLOOR * (1.0 - fclamp(2.0 * w.progress, 0.0, 1.0));
+      c := csv_cell(run, run[0].u[o.id].cell);
+      if w.progress < 0.5 { _ = bd_block(l, d, b, c.x, -CS_CELL_FLOOR, c.z, yaw, BD_CELL_L, level + CS_CELL_FLOOR, BD_CELL_B, b.water); }
+    }
+  }
+  if o.top >= 1 && o.walls >= 1 && o.base >= 1 { bd_caisson_whole(l, d, b, x, y, z, yaw, L, B, o.h, o.id, o.cured); return; }
+  fresh := ifx o.state == CSV_CASTING then b.fresh else b.stone;
+  // the bottom slab, poured from the west end, and the mats where it is still to go
+  if o.base > 0 {
+    run_l := L * o.base;
+    p := bd_at(x, z, yaw, -L * 0.5 + run_l * 0.5, 0);
+    _ = bd_block(l, d, b, p[0], y, p[1], yaw, run_l, sh.bottom, B, fresh);
+  }
+  if o.base < 1 {
+    run_l := L * (1.0 - o.base);
+    p := bd_at(x, z, yaw, L * 0.5 - run_l * 0.5, 0);
+    r := bd_block(l, d, b, p[0], y, p[1], yaw, run_l, 0.25, B, b.metal); bd_paint(l, r, 0.40, 0.22, 0.12);
+    pr_fine(l, true);
+    for i: 0..<cast(int) floor(run_l / f64(SITE_MAT)) { for j: 0..<cast(int) floor(B / f64(SITE_MAT)) {
+      q := bd_at(x, z, yaw, L * 0.5 - (f64(i) + 0.5) * f64(SITE_MAT), -B * 0.5 + (f64(j) + 0.5) * f64(SITE_MAT));
+      rr := bd_put(l, d, b.mat, q[0], y + 0.25, q[1], yaw); pr_near(l, rr, 450);
+    } }
+    pr_fine(l, false);
+  }
+  if o.base < 1 { return; }
+  // the walls and the web, to the form's height
+  hw := clear * o.walls; y1 := y + sh.bottom;
+  if hw > 0.05 {
+    for k: 0..<2 {
+      sg := ifx k == 0 then -1.0 else 1.0;
+      p := bd_at(x, z, yaw, 0, sg * (B * 0.5 - web * 0.5)); _ = bd_block(l, d, b, p[0], y1, p[1], yaw, L, hw, web, fresh);
+      q := bd_at(x, z, yaw, sg * (L * 0.5 - web * 0.5), 0); _ = bd_block(l, d, b, q[0], y1, q[1], yaw, web, hw, B - 2 * web, fresh);
+    }
+    _ = bd_block(l, d, b, x, y1, z, yaw, web, hw, B - 2 * web, fresh);
+  }
+  if o.walls < 1 && o.state == CSV_CASTING {
+    // the slipform: a metre of red form at the top of every wall, the working deck round it, the bars above
+    top := y1 + hw;
+    for k: 0..<2 {
+      sg := ifx k == 0 then -1.0 else 1.0;
+      p := bd_at(x, z, yaw, 0, sg * (B * 0.5 - web * 0.5)); r := bd_block(l, d, b, p[0], top - 1.2, p[1], yaw, L + 0.6, 1.25, web + 0.5, b.metal); bd_paint(l, r, 0.6, 0.13, 0.08);
+      q := bd_at(x, z, yaw, sg * (L * 0.5 - web * 0.5), 0); rr := bd_block(l, d, b, q[0], top - 1.2, q[1], yaw, web + 0.5, 1.25, B, b.metal); bd_paint(l, rr, 0.6, 0.13, 0.08);
+      e := bd_at(x, z, yaw, 0, sg * (B * 0.5 + 1.0)); de := bd_block(l, d, b, e[0], top - 0.1, e[1], yaw, L + 4, 0.15, 2.0, b.metal); bd_paint(l, de, 0.56, 0.43, 0.28);
+      f := bd_at(x, z, yaw, sg * (L * 0.5 + 1.0), 0); df := bd_block(l, d, b, f[0], top - 0.1, f[1], yaw, 2.0, 0.15, B + 4, b.metal); bd_paint(l, df, 0.56, 0.43, 0.28);
+    }
+    pr_fine(l, true);
+    for k: 0..<10 {
+      along := -L * 0.5 + 5.0 + 10.0 * f64(k);
+      for side: 0..<2 {
+        p := bd_at(x, z, yaw, along, (ifx side == 0 then -1.0 else 1.0) * (B * 0.5 - web * 0.5));
+        r := bd_put(l, d, b.bars, p[0], top, p[1], yaw); pr_near(l, r, 400);
+      }
+      if k < 3 {
+        w := bd_at(x, z, yaw, along * 0.3, 0);
+        rw := bd_put(l, d, b.worker, w[0], top, w[1] + 0.8, yaw + f64(k)); pr_near(l, rw, 260);
+      }
+    }
+    pr_fine(l, false);
+  }
+  // the top slab's falsework, then the slab from the west end
+  if o.walls >= 1 {
+    yt := y + o.h - sh.top;
+    if o.top < 1 { r := bd_block(l, d, b, x, yt - 0.5, z, yaw, L - 2 * web, 0.4, B - 2 * web, b.metal); bd_paint(l, r, 0.56, 0.43, 0.28); }
+    if o.top > 0 {
+      run_l := L * o.top;
+      p := bd_at(x, z, yaw, -L * 0.5 + run_l * 0.5, 0);
+      _ = bd_block(l, d, b, p[0], yt, p[1], yaw, run_l, sh.top, B, fresh);
+    }
+  }
+}
+
+// The upper structure over each caisson of the hull: its columns climbing in jump forms, the outer
+// wall on the edge bays, the girders and the deck slab, and tower cranes on the bays at work.
+bd_upper :: (l: [] PrList, d: [] BuildDraw, b: BdParts) {
+  run := d[0].run; v := d[0].view[..]; sh := run[0].sh; h := v[0].hull; bp := run[0].bay;
+  if h.units < 1 || bd_far(d, h.x + h.ox, h.z + h.oz, fmax(h.lx, h.lz)) { return; }
+  hl := sh.l * 0.5; hb := sh.b * 0.5; ul := run[0].unit.l; ub := run[0].unit.b;
+  base := sh.hull - h.draft + h.heave;   // the hull's top over the sea
+  shaft := sqrt(sh.column) * 2.06;       // an 8 m square shaft for 15 m^2 of 0.5 m walls
+  cranes := 0;
+  for i: 0..<v[0].units {
+    bay := v[0].bay[i];
+    if bay.stage == CS_BAY_NONE || bay.column <= 0 { continue; }
+    a := run[0].pc[run[0].u[i].piece];
+    if !cs_reached(a.t_fast, v[0].tick) { continue; }
+    ux := v[0].unit[i].x + h.ox; uz := v[0].unit[i].z + h.oz;
+    // its columns: the bulkhead crossings on its south edge, west end and middle, off the hull's rim
+    for k: 0..<2 {
+      cx := v[0].unit[i].x - ul * 0.5 + ul * 0.5 * f64(k); cz := v[0].unit[i].z - ub * 0.5;
+      if abs(cx) > hl - 1 || abs(cz) > hb - 1 { continue; }
+      _ = bd_block(l, d, b, cx + h.ox, base, cz + h.oz, 0, shaft, bay.column, shaft, b.stone);
+      if bay.stage == CS_BAY_COLUMNS {
+        pr_fine(l, true); r := bd_put(l, d, b.collar, cx + h.ox, base + bay.column - 3, cz + h.oz, 0); pr_near(l, r, 900); pr_fine(l, false);
+      }
+    }
+    // the outer wall on the hull's rim
+    wall := sh.upper_wall;
+    if abs(v[0].unit[i].x - ul * 0.5 + hl) < 1 { _ = bd_block(l, d, b, ux - ul * 0.5 + wall * 0.5, base, uz, 0, wall, bay.column, ub, b.stone); }
+    if abs(v[0].unit[i].x + ul * 0.5 - hl) < 1 { _ = bd_block(l, d, b, ux + ul * 0.5 - wall * 0.5, base, uz, 0, wall, bay.column, ub, b.stone); }
+    if abs(v[0].unit[i].z - ub * 0.5 + hb) < 1 { _ = bd_block(l, d, b, ux, base, uz - ub * 0.5 + wall * 0.5, 0, ul, bay.column, wall, b.stone); }
+    if abs(v[0].unit[i].z + ub * 0.5 - hb) < 1 { _ = bd_block(l, d, b, ux, base, uz + ub * 0.5 - wall * 0.5, 0, ul, bay.column, wall, b.stone); }
+    // its girders, cast one after another: along its south edge, then across at its west end and its middle
+    gy := base + bp.column_h;
+    if bay.girders > 0 {
+      g := bay.girders * 3.0;
+      if g > 0 { run_l := ul * fmin(g, 1.0); _ = bd_block(l, d, b, ux - ul * 0.5 + run_l * 0.5, gy, uz - ub * 0.5, 0, run_l, bp.girder, sh.girder_w, b.stone); }
+      for k: 0..<2 {
+        part := fclamp(g - 1.0 - f64(k), 0.0, 1.0);
+        if part > 0 { run_l := ub * part; _ = bd_block(l, d, b, ux - ul * 0.5 + ul * 0.5 * f64(k), gy, uz - ub * 0.5 + run_l * 0.5, 0, sh.girder_w, bp.girder, run_l, b.stone); }
+      }
+    }
+    // the deck slab, cast from the west
+    if bay.slab > 0 {
+      run_l := ul * bay.slab;
+      _ = bd_block(l, d, b, ux - ul * 0.5 + run_l * 0.5, gy + bp.girder, uz, 0, run_l, bp.slab, ub, b.stone);
+    }
+    // a tower crane while the bay is at work, until there are enough
+    if bay.stage != CS_BAY_DONE && cranes < BD_CRANES {
+      cranes += 1;
+      bd_crane(l, d, b, ux + ul * 0.25, base, uz + ub * 0.25, sh.deck - sh.hull + 24, f64(i) * 0.9 + 0.3 * sin(d[0].time * 0.2 + f64(i)));
+    }
+  }
+}
+
+// The lines: each towline from its tug to its piece with its sag, the moorings and the storm legs
+// down to where the sea hides them. Drawn as short pieces, each from its lower end to its upper.
+bd_lines :: (l: [] PrList, d: [] BuildDraw, b: BdParts) {
+  v := d[0].view[..];
+  for i: 0..<v[0].lines {
+    w := v[0].line[i];
+    if bd_far(d, w.ax, w.az, 500) && bd_far(d, w.bx, w.bz, 500) { continue; }
+    thick := ifx w.kind == CSV_TOWLINE then 1.4 else 0.9 * f64(w.chains);   // thicker than they are, so they read
+    for k: 0..<BD_LINE_SEGS {
+      t0 := f64(k) / f64(BD_LINE_SEGS); t1 := f64(k + 1) / f64(BD_LINE_SEGS);
+      y0 := w.ay + (w.by - w.ay) * t0; y1 := w.ay + (w.by - w.ay) * t1;
+      if w.kind == CSV_TOWLINE { y0 -= 4.0 * w.sag * t0 * (1.0 - t0); y1 -= 4.0 * w.sag * t1 * (1.0 - t1); }
+      if fmax(y0, y1) < -30.0 { continue; }
+      x0 := w.ax + (w.bx - w.ax) * t0; z0 := w.az + (w.bz - w.az) * t0;
+      x1 := w.ax + (w.bx - w.ax) * t1; z1 := w.az + (w.bz - w.az) * t1;
+      span := sqrt((x1 - x0) * (x1 - x0) + (z1 - z0) * (z1 - z0));
+      r := bd_block(l, d, b, (x0 + x1) * 0.5, fmin(y0, y1) - thick * 0.5, (z0 + z1) * 0.5, afloat_angle(x1 - x0, z1 - z0), span + thick, abs(y1 - y0) + thick, thick, ifx w.kind == CSV_MOORING then b.dark else b.metal);
+      if w.kind == CSV_TOWLINE { bd_paint(l, r, 0.92, 0.88, 0.74); }   // a pale synthetic hawser
+      if w.kind == CSV_STORM_LINE { bd_paint(l, r, 0.85, 0.62, 0.12); }   // the storm legs in yellow
+    }
+  }
+}
+
+// ---------------------------------------------------------------- picking
+// The body a press at (x, y) on the canvas lands on (kind * 1000 + id), or -1.
+bd_pick :: (s: [] Slab, px: f32, py: f32) -> int {
+  d := s[0].bdraw[..]; v := d[0].view[..];
+  nx := (2 * px / s[0].width - 1) * s[0].tanh * s[0].aspect; ny := (1 - 2 * py / s[0].height) * s[0].tanh;
+  dir := [3] f64.[f64(s[0].fwd[0] + s[0].right[0] * nx + s[0].up[0] * ny), f64(s[0].fwd[1] + s[0].right[1] * nx + s[0].up[1] * ny), f64(s[0].fwd[2] + s[0].right[2] * nx + s[0].up[2] * ny)];
+  e := [3] f64.[f64(s[0].eye[0]) + d[0].ox, f64(s[0].eye[1]), f64(s[0].eye[2]) + d[0].oz];
+  best := 1.0e12; found := -1;
+  for i: 0..<v[0].bodies {
+    o := v[0].body[i];
+    t := bd_ray_box(e, dir, o.x, o.y, o.z, o.yaw, o.l, fmax(o.h, 3.0), o.b);
+    if t > 0 && t < best { best = t; found = o.kind * 1000 + o.id; }
+  }
+  return found;
+}
+// Where a ray meets a box standing on y, turned to yaw (-1: it misses).
+bd_ray_box :: (e: [3] f64, dir: [3] f64, x: f64, y: f64, z: f64, yaw: f64, lx: f64, ly: f64, lz: f64) -> f64 {
+  c := cos(yaw); sn := sin(yaw);
+  ox := e[0] - x; oz := e[2] - z;
+  o := [3] f64.[c * ox + sn * oz, e[1] - y - ly * 0.5, -sn * ox + c * oz];
+  r := [3] f64.[c * dir[0] + sn * dir[2], dir[1], -sn * dir[0] + c * dir[2]];
+  half := [3] f64.[lx * 0.5, ly * 0.5, lz * 0.5];
+  t0 := -1.0e12; t1 := 1.0e12;
+  for k: 0..<3 {
+    if abs(r[k]) < 1e-9 { if abs(o[k]) > half[k] { return -1.0; } continue; }
+    a := (-half[k] - o[k]) / r[k]; bb := (half[k] - o[k]) / r[k];
+    t0 = fmax(t0, fmin(a, bb)); t1 = fmin(t1, fmax(a, bb));
+  }
+  if t1 < t0 || t1 < 0 { return -1.0; }
+  return ifx t0 > 0 then t0 else t1;
+}
+
+// ---------------------------------------------------------------- the HUD
+// The day's work in one sentence.
+bd_now :: (s: [] Slab) -> SbText {
+  d := s[0].bdraw[..]; v := d[0].view[..]; run := d[0].run; h := v[0].hull;
+  t: SbText; casting := 0; tow := -1; moor := -1; join := -1; joinstep := 0; lifts := 0; climbs := 0; ballast := false; lining := false;
+  for i: 0..<v[0].works {
+    w := v[0].work[i];
+    if w.kind >= CSV_W_PREP && w.kind <= CSV_W_TOP { casting += 1; }
+    if w.kind == CSV_W_TOW { tow = w.id; }
+    if w.kind == CSV_W_MOOR { moor = w.id; }
+    if w.kind >= CSV_W_CONNECT && w.kind <= CSV_W_RESEAL { join = w.id; joinstep = w.kind; }
+    if w.kind == CSV_W_LIFT { lifts += 1; }
+    if w.kind >= CSV_W_COLUMNS && w.kind <= CSV_W_SLAB { climbs += 1; }
+    if w.kind == CSV_W_BALLAST { ballast = true; }
+    if w.kind == CSV_W_LINING { lining = true; }
+  }
+  if v[0].wx.storm != 0 { return sb_w(t, ifx v[0].wx.storm == 2 then "A hurricane: work has stopped, and the hull rides it out on its storm lines." else "A tropical storm: work has stopped, and the hull rides it out on its storm lines."); }
+  if v[0].phase == CS_PH_DONE { return sb_w(t, "Commissioned: the platform is at its draft and its city stands."); }
+  if v[0].phase == CS_PH_COMMISSION { return sb_w(t, "Commissioning: the plant is tested before the city moves in."); }
+  if ballast || v[0].phase == CS_PH_BALLAST { t = sb_w(t, "Ballast water brings the hull down to its 25 m draft. It draws "); t = sb_n(t, h.draft, 1); return sb_w(t, " m now."); }
+  if tow >= 0 {
+    t = sb_w(t, "Piece "); t = sb_n(t, f64(tow + 1), 0); t = sb_w(t, " is under tow to the site, two caissons long.");
+    return t;
+  }
+  if moor >= 0 { t = sb_w(t, "The first piece is moored at the site, in "); t = sb_n(t, run[0].route.site_depth, 0); return sb_w(t, " m of water: every other piece is joined to it."); }
+  if join >= 0 {
+    t = sb_w(t, "Piece "); t = sb_n(t, f64(join + 1), 0);
+    t = sb_w(t, ifx joinstep == CSV_W_CONNECT then " is brought alongside its joint." else ifx joinstep == CSV_W_PULL then " is pulled in on its fenders." else ifx joinstep == CSV_W_SEAL then ": the gasket is pressed and the joint drained." else ifx joinstep == CSV_W_BARS then " is held by temporary steel bars." else ifx joinstep == CSV_W_TENDONS then ": steel tendons are threaded through the joint and stressed." else ifx joinstep == CSV_W_GROUT then ": the joint is grouted." else ": a joint that leaked is made again.");
+    return t;
+  }
+  if lifts > 0 { t = sb_w(t, "Gantries lift the city's buildings off the barges: "); t = sb_n(t, h.outfit * 100.0, 0); return sb_w(t, "% landed."); }
+  if climbs > 0 { t = sb_w(t, "The deck climbs on columns over "); t = sb_n(t, f64(climbs), 0); return sb_w(t, " caissons at once."); }
+  if lining { return sb_w(t, "Crews thicken the sea walls from inside."); }
+  if casting > 0 { t = sb_w(t, "Concrete goes into "); t = sb_n(t, f64(casting), 0); return sb_w(t, ifx casting == 1 then " casting cell, a dry pit where a caisson is cast." else " casting cells, dry pits where caissons are cast."); }
+  if h.units > 0 { return sb_w(t, "The hull waits for its next piece."); }
+  return sb_w(t, "The yard gets ready to cast caissons, hollow concrete boxes that float.");
+}
+bd_hud :: (s: [] Slab, h: [] SceneHud) {
+  d := s[0].bdraw[..];
+  if !d[0].ready { return; }
+  ts: [1] SbText; t: SbText; ids: [SH_ID] u8;
+  v := d[0].view[..]; run := d[0].run; f := d[0].film[..]; hl := v[0].hull;
+  shot := f[0].shots[d[0].shot]; titles := BF_TITLES;
+  sh_group(h, "build", "Build it");
+  t = sb_w(t, titles[shot.chapter]); t = sb_w(t, ". Day "); t = sb_n(t, floor(d[0].day) + 1, 0); t = sb_w(t, " of "); t = sb_n(t, floor(f[0].days) + 1, 0); t = sb_w(t, "."); ts[0] = t;
+  sh_lead(h, sb_s(ts[..]));
+  ts[0] = bd_now(s); sh_say(h, sb_s(ts[..]));
+  t = SbText.{}; t = sb_w(t, "The hull is "); t = sb_n(t, f64(run[0].units), 0); t = sb_w(t, " caissons, hollow concrete boxes that float, cast ashore and joined at sea."); ts[0] = t;
+  sh_say(h, sb_s(ts[..]));
+  sh_button(h, "build.play", ifx s[0].build.play then "Pause" else ifx s[0].build.cursor >= bd_length(s) then "Play again" else "Play", !s[0].build.play);
+  t = SbText.{}; t = sb_w(t, "Day "); t = sb_n(t, floor(d[0].day) + 1, 0); ts[0] = t;
+  sh_slider(h, "build.at", "Where in the build", sb_s(ts[..]), 0, cast(int) floor(bd_length(s) + 0.999), 1, cast(int) floor(s[0].build.cursor));
+  sh_limits(h, "The first day", "Commissioned", "The film runs from the empty yard to the finished platform.");
+  sh_menu(h, "build.chapter", "Chapters", titles[shot.chapter]);
+    for c: 0..<BF_CHAPTERS { if bf_chapter(f, c) >= 0 { sh_option(h, sb_id(ids[..], "build.ch.", c), titles[c], "", c == shot.chapter); } }
+  sh_end_of(h);
+  sh_choices(h, "build.speed", "Speed");
+    names := BD_SPEED_NAMES;
+    for k: 0..<3 { sh_option(h, sb_id(ids[..], "build.sp.", k), names[k], "", s[0].build.speed == k); }
+  sh_end_of(h);
+  speeds := BD_SPEEDS;
+  t = SbText.{}; t = sb_w(t, "One second shows ");
+  days := d[0].rate * speeds[s[0].build.speed];
+  if days < 1 { t = sb_n(t, days * 24.0, 1); t = sb_w(t, " hours of the build."); } else { t = sb_n(t, days, ifx days < 10 then 1 else 0); t = sb_w(t, " days of the build."); }
+  ts[0] = t; sh_say(h, sb_s(ts[..]));
+  if s[0].build.own { sh_button(h, "build.film", "Back to the film", false); }
+  else { sh_say(h, ifx s[0].hp.touch then "Drag to take the camera. Tap a caisson, a tug or a barge to learn what holds it." else "Drag to take the camera. Click a caisson, a tug or a barge to learn what holds it."); }
+  t = SbText.{}; t = sb_n(t, f64(hl.units), 0); t = sb_w(t, " of "); t = sb_n(t, f64(run[0].units), 0); ts[0] = t;
+  sh_fact(h, "Caissons joined at sea", sb_s(ts[..]), SH_OURS);
+  placed := v[0].proc.poured_yard + v[0].proc.lining + v[0].proc.upper;
+  t = SbText.{}; t = sb_n(t, placed / 1.0e6, 2); t = sb_w(t, " of "); t = sb_n(t, run[0].total.concrete / 1.0e6, 2); t = sb_w(t, " million m³"); ts[0] = t;
+  sh_fact(h, "Concrete placed", sb_s(ts[..]), SH_OURS);
+  draft := bd_draft(s);
+  if draft > 0 { t = SbText.{}; t = sb_n(t, draft, 1); t = sb_w(t, " m"); ts[0] = t; sh_fact(h, "How deep it sits in the water", sb_s(ts[..]), SH_OURS); }
+  sh_say(h, "A run of our simulation: each day's weather, tow, joint and pour is worked out from forces, not drawn from a plan. The land at the yard is schematic and the lines are drawn thicker than they are.");
+  sh_link(h, "How the build is worked out", BD_DOCS);
+  sb_more(s, h, HUD_BUILD);
+}
+// How deep the shot's subject sits: the piece it follows, or the hull.
+bd_draft :: (s: [] Slab) -> f64 {
+  d := s[0].bdraw[..]; v := d[0].view[..]; shot := d[0].film[0].shots[d[0].shot];
+  if shot.subject == BF_PIECE || shot.subject == BF_BASIN || shot.subject == BF_JOINT {
+    i := bf_find(v, CSV_PIECE, shot.id);
+    if i >= 0 { return v[0].body[i].draft; }
+  }
+  if v[0].hull.units > 0 { return v[0].hull.draft; }
+  for i: 0..<v[0].bodies { if v[0].body[i].kind == CSV_CAISSON && v[0].body[i].afloat { return v[0].body[i].draft; } }
+  return 0.0;
+}
+// The card about what was pressed: what it is, what it weighs and what holds it.
+bd_card :: (s: [] Slab, h: [] SceneHud) {
+  d := s[0].bdraw[..]; v := d[0].view[..]; run := d[0].run;
+  pk := s[0].build.picked;
+  if pk < 0 || !d[0].ready { return; }
+  kind := pk / 1000; id := pk % 1000; i := bf_find(v, kind, id);
+  if i < 0 { s[0].build.picked = -1; return; }
+  o := v[0].body[i];
+  ts: [1] SbText; t: SbText;
+  title := ifx kind == CSV_CAISSON then "A caisson" else ifx kind == CSV_PIECE then "A tow piece" else ifx kind == CSV_TUG then "A tug" else ifx kind == CSV_BARGE then "A freight barge" else "A gantry crane";
+  sh_card(h, "card", title);
+  if kind == CSV_CAISSON { sh_lead(h, "A box of concrete 100 × 50 m and 50 m deep, cast in a dry cell, then floated out."); }
+  else if kind == CSV_PIECE { sh_lead(h, ifx o.state == CSV_JOINED then "Two caissons, now part of the hull: the hull is 60 of these, joined at sea." else "Two caissons joined in the basin, towed out as one: a single row bends too much side-on."); }
+  else if kind == CSV_TUG { sh_lead(h, "A harbour tug with about 150 tonnes of pull. Tugs tow the pieces and hold them at the joint."); }
+  else if kind == CSV_BARGE { sh_lead(h, "It brings concrete and the city's buildings from the wharf at Ingleside."); }
+  else { sh_lead(h, "It stands on the hull's edge and lifts the city's buildings off the barges."); }
+  t = sb_n(t, o.mass / 1000.0, 0); t = sb_w(t, " t"); ts[0] = t; sh_fact(h, "Weight", sb_s(ts[..]), SH_OURS);
+  if o.afloat {
+    t = SbText.{}; t = sb_n(t, o.draft, 1); t = sb_w(t, " m"); ts[0] = t; sh_fact(h, "How deep it sits", sb_s(ts[..]), SH_OURS);
+    if kind == CSV_CAISSON || kind == CSV_PIECE {
+      t = SbText.{}; t = sb_n(t, o.gm, 2); t = sb_w(t, " m"); ts[0] = t; sh_fact(h, "GM, its margin against rolling over", sb_s(ts[..]), SH_OURS);
+      sh_say(h, "GM is how far the point it tips about sits above its weight. Under zero, it would roll over.");
+    }
+  } else if kind == CSV_CAISSON {
+    t = SbText.{}; t = sb_n(t, o.mass / HULL_CONCRETE, 0); t = sb_w(t, " of "); t = sb_n(t, run[0].unit.concrete, 0); t = sb_w(t, " m³"); ts[0] = t;
+    sh_fact(h, "Concrete cast", sb_s(ts[..]), SH_OURS);
+    sh_say(h, "It stands dry on the cell's floor, 13.5 m below the sea. The cell floods to float it out.");
+  }
+  for k: 0..<v[0].lines {
+    w := v[0].line[k];
+    if w.kind != CSV_TOWLINE || (w.a != i && w.b != i) { continue; }
+    t = SbText.{}; t = sb_n(t, w.tension / 9810.0, 0); t = sb_w(t, " t of "); t = sb_n(t, w.limit / 9810.0, 0); t = sb_w(t, " t it breaks at"); ts[0] = t;
+    sh_fact(h, "Its towline pulls", sb_s(ts[..]), SH_OURS);
+    break;
+  }
+  if kind == CSV_PIECE && o.state == CSV_JOINED {
+    hl := v[0].hull;
+    t = SbText.{}; t = sb_n(t, hl.line_peak / 9810.0, 0); t = sb_w(t, " t"); ts[0] = t; sh_fact(h, "The hardest-pulling mooring line", sb_s(ts[..]), SH_OURS);
+    t = SbText.{}; t = sb_n(t, hl.bending / 1.0e6, 1); t = sb_w(t, " MPa"); ts[0] = t; sh_fact(h, "Bending stress in the hull in today's sea", sb_s(ts[..]), SH_OURS);
+  }
+  sh_end_of(h);
+}
+// The canvas's part of the build view: the chart in a corner, the yard, the route and where the
+// work is now. Its names are said with the HUD (bd_tags).
+bd_chart_view :: (s: [] Slab) -> ChartView {
+  k := s[0].dpr; w := s[0].width; narrow := w <= 600 * k;
+  side := ifx narrow then 132 * k else 230 * k;
+  x := w - side - (ifx narrow then 10.0f32 else 16.0f32) * k; y := ifx narrow then 100 * k else 66 * k;
+  mid := [2] f64.[(WHERE_YARD[0] + CS_SITE_AT[0]) * 0.5, (WHERE_YARD[1] + CS_SITE_AT[1]) * 0.5];
+  return ChartView.{x = x, y = y, w = side, h = side, lat = mid[0], lon = mid[1], miles = 72.0};
+}
+bd_lines_2d :: (s: [] Slab, out: [] f32) -> int {
+  d := s[0].bdraw[..];
+  if !d[0].ready || s[0].hp.tour.on { return 0; }
+  v := bd_chart_view(s); s[0].chart.view = v;
+  n := chart_draw_in(s, out, 0, v);
+  // where the camera is: the shot's subject
+  p := cs_lat_lon(d[0].at.x, d[0].at.z);
+  n = chart_mark(out, n, v, p[0], p[1], 4 * s[0].dpr, true);
+  return n;
+}
+bd_tags :: (s: [] Slab, h: [] SceneHud) {
+  if !s[0].bdraw[0].ready { return; }
+  v := s[0].chart.view; k := s[0].dpr;
+  chart_label(s, h, "chart.title", "Where the work is now", v.x + v.w / 2, v.y + 12 * k, false);
+  if v.w >= 200 * k { chart_route_tags(s, h); }
+}
+// A press in the build view's HUD. True when the id was the build view's.
+bd_act :: (s: [] Slab, id: string, value: int, has: bool) -> bool {
+  if !s[0].build.on { return false; }
+  if id == "build.play" { if s[0].build.cursor >= bd_length(s) { bd_seek(s, 0); } s[0].build.play = !s[0].build.play; return true; }
+  if id == "build.at" { if has { bd_seek(s, f64(value)); } return true; }
+  if id == "build.film" { s[0].build.own = false; return true; }
+  if id == "card.x" { s[0].build.picked = -1; return true; }
+  k := sb_index(id, "build.ch.");
+  if k >= 0 && k < BF_CHAPTERS { at := bf_chapter(s[0].bdraw[0].film[..], k); if at >= 0 { bd_seek(s, s[0].bdraw[0].film[0].shots[at].t0); s[0].build.play = true; s[0].build.own = false; } return true; }
+  k = sb_index(id, "build.sp.");
+  if k >= 0 && k < 3 { s[0].build.speed = k; return true; }
+  return false;
+}
+// Keys in the build view: Space plays or pauses, the arrows step five seconds of film, Esc leaves.
+bd_key :: (s: [] Slab, key: int, down: bool) -> bool {
+  if !down { return true; }
+  if key == KEY_ESCAPE { if s[0].build.picked >= 0 { s[0].build.picked = -1; } else { build_toggle(s); } }
+  else if key == ' ' || key == KEY_ENTER { _ = bd_act(s, "build.play", 0, false); }
+  else if key == KEY_LEFT && !s[0].build.own { bd_seek(s, s[0].build.cursor - 5); }
+  else if key == KEY_RIGHT && !s[0].build.own { bd_seek(s, s[0].build.cursor + 5); }
+  else if key == 'c' || key == 'C' { s[0].build.own = false; }
+  else { return false; }
+  return true;
+}
+
+// ---------------------------------------------------------------- checks
+#test "Build view: it opens on the empty yard, seeks by day, a deep link pauses there, and Esc goes back to Texas" #steps 4000000000 #traversal 200000000 {
+  s: [1] Slab;
+  slab_reset(s[..]); s[0].dist = 830; s[0].tx = 20; s[0].yaw = 1.3;
+  press(s[..], BTN_BUILD);
+  d := s[0].bdraw[..];
+  #assert s[0].build.on && s[0].build.play && d[0].ready && d[0].shot == 0 && d[0].day < 1;
+  #assert bd_length(s[..]) > 150 && d[0].film[0].days > 1000;
+  // the film's seconds and the build's days go together, both ways
+  bd_seek_day(s[..], 400);
+  #assert !s[0].build.play && abs(d[0].day - 400) < 1.0;
+  bd_seek(s[..], bd_length(s[..]));
+  #assert d[0].view[0].phase == CS_PH_DONE && d[0].view[0].hull.units == d[0].run[0].units;
+  _ = slab_key(s[..], KEY_ESCAPE, true);
+  #assert !s[0].build.on && s[0].dist == 830 && s[0].tx == 20 && s[0].yaw == 1.3 && s[0].site == SITE_TEXAS && !d[0].ready;
+  l: [1] Slab;
+  slab_message(l[..], HOST_FACTS, "url=/worlds/slab?view=build&day=600\n");
+  #assert l[0].build.on && !l[0].build.play && abs(l[0].bdraw[0].day - 600) < 1.0;
+}
+#test "Build view: every caisson is drawn where the simulation has it, and the last day is the hull's ledger" #steps 8000000000 #traversal 400000000 {
+  s: [1] Slab;
+  slab_reset(s[..]); build_toggle(s[..]);
+  d := s[0].bdraw[..]; run := d[0].run; f := d[0].film[..];
+  days := [6] f64.[5.0, 60.0, 200.0, 520.0, 900.0, f[0].days];
+  for k: 0..<6 {
+    bd_seek_day(s[..], days[k]);
+    v := d[0].view[..]; h := v[0].hull; u := run[0].unit;
+    seen := 0;
+    for i: 0..<v[0].bodies {
+      o := v[0].body[i];
+      if o.kind != CSV_PIECE || o.state != CSV_JOINED { continue; }
+      a := run[0].pc[o.id];
+      #assert o.nc * o.nr == a.count;
+      for c: 0..<o.nc { for r: 0..<o.nr {
+        p := bd_at(o.x, o.z, o.yaw, (f64(c) - f64(o.nc - 1) * 0.5) * u.l, (f64(r) - f64(o.nr - 1) * 0.5) * u.b);
+        // the caisson this box is, and where the hull's plan puts it
+        id := a.first + c * o.nr + r;
+        #assert abs(p[0] - (v[0].unit[id].x + h.ox)) < 0.5 && abs(p[1] - (v[0].unit[id].z + h.oz)) < 0.5;
+        seen += 1;
+      } }
+    }
+    #assert seen == h.units;
+  }
+  // the end: all of them joined, at the ledger's draft, and all the concrete placed
+  v := d[0].view[..]; led := hull_ledger(hull_prime());
+  #assert v[0].hull.units == 120 && abs(v[0].hull.draft - led.draft) < 0.3;
+  placed := v[0].proc.poured_yard + v[0].proc.lining + v[0].proc.upper;
+  #assert abs(placed - run[0].total.concrete) < 0.01 * run[0].total.concrete && abs(run[0].total.concrete - led.concrete) < 0.02 * led.concrete;
+}
+#test "Build view: a frame draws its meshes inside the photoreal limits, at the yard, on the tow and at the berth" #steps 20000000000 #traversal 800000000 {
+  s: [1] Slab; u: [UNIFORM_FLOATS] f32; out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  slab_reset(s[..]);
+  #assert !s[0].photo[0].on;   // the realm draws painterly; the build view draws meshes all the same
+  build_toggle(s[..]);
+  d := s[0].bdraw[..];
+  days := [5] f64.[3.0, 45.0, 330.0, 700.0, d[0].film[0].days];
+  for k: 0..<5 {
+    bd_seek_day(s[..], days[k]);
+    _ = slab_frame(s[..], out[..], u[..], 1440, 900, 1, 0.016, false);
+    ph := s[0].photo[..];
+    #assert u[U_PHOTO_ON + 1] == 1 && !ph[0].full && ph[0].content.build.made;
+    #assert ph[0].moving > 0 && ph[0].still + ph[0].moving < PHOTO_RECORDS && ph[0].draw_count <= PHOTO_DRAWS && ph[0].vertices <= PHOTO_VERTICES;
+    #assert u[U_MODE + 2] <= f32(SLAB_MAX_BOXES) && u[U_PARAMS + 60] == 1;
+  }
+  // at the end the city stands: the plan's records are all up
+  #assert cast(int) u[U_MODE + 2] >= d[0].plan_n - SLAB_HULL_PIECES - 2;
+}
+#test "Build view: the HUD has its play button, its day slider, its chapters and the three numbers" #steps 4000000000 #traversal 200000000 {
+  s: [1] Slab;
+  slab_reset(s[..]); s[0].hp.pane = true;
+  sb_act(s[..], "mode.build"); sb_say(s[..]);
+  #assert sb_test_has(s[..], 'B', "build.play", "Pause") && sb_test_has(s[..], 'R', "build.at", "") && sb_test_has(s[..], 'N', "build.chapter", "");
+  #assert sb_test_has(s[..], 'F', "Caissons joined at sea", "") && sb_test_has(s[..], 'F', "Concrete placed", "");
+  // a chapter seeks to its first shot and plays; the slider pauses
+  ch := bf_chapter(s[0].bdraw[0].film[..], 11);
+  sb_act(s[..], "build.ch.11");
+  #assert s[0].build.play && abs(s[0].build.cursor - s[0].bdraw[0].film[0].shots[ch].t0) < 1e-6;
+  sb_act(s[..], "build.at 40");
+  #assert !s[0].build.play && s[0].build.cursor == 40;
+  sb_act(s[..], "build.play"); #assert s[0].build.play;
+}

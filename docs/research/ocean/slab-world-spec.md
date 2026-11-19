@@ -13,7 +13,7 @@ against it; the section view (V) cuts the hull open and the underwater view
 overlay (L) animates the plant's water and the power lines; the section draws
 the hull's first bending mode 100 times exaggerated. One ledger,
 `metaverse/hull.coax`, weighs the hull for the world, its cards, the section
-and the construction timelapse (section 3.1). The `dome` and
+and the build simulation the build view draws (section 3.1). The `dome` and
 `cluster` layouts (K) draw the Silone domes, their bridges and, with nuclear
 power, the moored powership. The golden is still to be taken on staging. Measured numbers are in section 12. The spec was
 revised the same day with sourced OTEC figures from [otec.md](otec.md).
@@ -144,8 +144,8 @@ lighter structure that carries the city deck 93 m higher, to where the
 picture's wall ends.
 
 Every figure in this section comes from one ledger, `metaverse/hull.coax`.
-The simulation, the hull's card, the section view and the construction
-timelapse all read it, and checks fail if any of them gives a different
+The simulation, the hull's card, the section view and the build
+simulation all read it, and checks fail if any of them gives a different
 depth, concrete volume, mass or ballast. To change a figure, change the
 ledger's shape (`HullShape`) and rerun its checks.
 
@@ -183,13 +183,13 @@ buildings and liquids:
 | | A: one structural hull 143 m deep | B: a 50 m hull with a lighter structure on it |
 |---|---|---|
 | Cast in one piece | 2.41 + 0.45 (outer wall) + 1.25 (bulkheads) = 4.11 million m³, 10.3 Mt; 2.6 Mt of ballast left | — |
-| Built from 100 × 50 m caissons, as the timelapse builds | 5.40 million m³, 13.5 Mt; no ballast left; floats at 26.0 m | 3.83 million m³, 9.57 Mt; **3.31 Mt of ballast left** |
+| Built from 100 × 50 m caissons, as the build simulation builds | 5.40 million m³, 13.5 Mt; no ballast left; floats at 26.0 m | 3.83 million m³, 9.57 Mt; **3.31 Mt of ballast left** |
 | One caisson afloat with 3,000 t of tow ballast | 104,254 t, draws 20.9 m, GM −45 m: it capsizes | 58,931 t, draws 11.50 m, GM +2.48 m |
 | Transverse GM of the finished body | positive | **+1,159 m** |
 
 The world uses **B**. Nothing can cast a kilometre in one piece, and a
 caisson 143 m tall neither floats upright nor passes a 16.5 m channel. B is
-what the timelapse can build: it closes at the drawn draft with ballast to
+what the build simulation can build: it closes at the drawn draft with ballast to
 spare and positive GM, and the bulkheads' upper 93 m, which would hold out
 no water, become columns.
 
@@ -284,16 +284,14 @@ Cₐ is the added-mass coefficient. It is a parameter (section 4.2), not a
 measured value. The raised deck lifts KG from 25 m to 53.5 m, which costs
 29 m of a GM over a thousand metres: the platform is still very stiff.
 
-**The timelapse builds this hull.** `metaverse/slab-construction.coax` tows
-the ledger's caisson (58,931 t with its tow ballast, 11.50 m of draft) and
-joins the 120th on day 983. A lighter then makes 200 calls of 26,776 t over
-800 days: first 2.86 Mt of concrete for the sea-wall lining and the upper
-structure, cast at the berth while the deck rises from 50 m to 143 m, then
-the 2.5 Mt of buildings and liquids. Ballast is pumped as the load comes
-aboard. It ends on day 1,783 at the ledger's figures: 3,826,744 m³ of
-concrete, 3.31 Mt of ballast, 15.375 Mt, 25.0 m of draft and the deck 118 m
-over the water. The check "the timelapse ends on the world's hull" in that
-file fails if any of these differs from the world's.
+**The build simulation builds this hull.** `metaverse/slab-build.coax`
+casts the ledger's caissons, tows them in pairs, joins them at sea, raises
+the upper structure and lands the city; its run ends on day 1,510 at the
+ledger's hull (15,374,950 t at 24.9999 m, level). The build view draws that
+run (`apps/openagents-web/slab-build-draw.coax`), and its check "every
+caisson is drawn where the simulation has it, and the last day is the hull's
+ledger" fails if the last day's draft, caisson count or concrete differs
+from the ledger's.
 
 **Wave averaging.** At 1 km by 600 m the hull spans many wavelengths of an
 equatorial sea: an 8 s wave is about 100 m long. Wave forces largely cancel
@@ -602,7 +600,7 @@ so `guam` is the default.
 | `kona` | West of Hawaiʻi Island at NELHA, about 19.7°N | 3rd; the best research base | 24.0–27.0 °C (planning; the report says the winter margin is narrow) | Rare hurricanes |
 | `equator` | Equatorial Pacific near Baker and Howland Islands (U.S. Minor Outlying Islands), about 0.2°N | Not in the report's atlas | 28.0–29.5 °C (planning) | None: Silone's hurricane-free belt |
 | `california` | 3.5 nautical miles off California (the "three miles" framing), San Clemente Basin | Excluded for OTEC | **15.2 °C in February to 20.9 °C in September** (NOAA climatology, sourced) | Winter storms |
-| `texas` | The Gulf of Mexico, 40 nautical miles off the Port Aransas jetties (27.55°N, 96.37°W): the berth the timelapse builds at | Not in the report's atlas | **20.5 °C in February to 29.9 °C in August** (NASA JPL MUR monthly means, 2015–2024, sourced) | Hurricanes, June to November |
+| `texas` | The Gulf of Mexico, 40 nautical miles off the Port Aransas jetties (27.55°N, 96.37°W): the berth the build view builds at | Not in the report's atlas | **20.5 °C in February to 29.9 °C in August** (NASA JPL MUR monthly means, 2015–2024, sourced) | Hurricanes, June to November |
 | `fjord` | Yrkefjorden, Norway (59.42°N, 5.78°E): a sheltered fjord, a place to join a hull and not to run one | None | **5.2 °C in March to 16.3 °C in August** (the same source) | Sheltered |
 
 **Each site is a real place on a chart** (`metaverse/slab-where.coax`, on the
@@ -1115,7 +1113,7 @@ lists its choices; no control steps through values unseen.
 
 | In the bar | Holds |
 |---|---|
-| Tour, Explore, Build it | The ways to be in the world. Tour is the guided tour below. Build it is the construction timelapse, and its sheet holds the day, the step under way, play and pause, a place in the film, and the first tow, the first join and fitting out |
+| Tour, Explore, Build it | The ways to be in the world. Tour is the guided tour below. Build it is the build view, and its sheet holds the chapter and the day, the work under way, play and pause, a slider over the whole build, the chapters, the speed, and three numbers: caissons joined, concrete placed and how deep it sits |
 | Look | Orbit, walk or fly (not offered to a finger, which orbits and pinches); closer and farther; a list of the nine stations |
 | See inside | Cut it open, go underwater, water and power; "What it is doing now" holds the sea, the hull's motion and the power balance in plain words |
 | Change | Where it floats, the sea, the hour and the month, stop the clock, the power source, sea-water cooling, the shape; "Break something" holds the pipe trip, the refuelling, the holed cell and the halving |
@@ -1156,7 +1154,7 @@ back, and Escape leaves. Pressing anything inside a stop makes it wait.
 | 3 | The section view, with its parts named | 15.4 million tonnes: about 150 of the largest aircraft carriers |
 | 4 | The sea from under the hull in the survey view (section 12), the mooring lines and their anchors drawn in from the hull's own rig. The sea is drawn clearer than it is, and the caption says so | The depth the hull's moorings are laid in (1,500 m): about 4 Empire State Buildings |
 | 5 | The flow view from above | The megawatts made now: homes at 1.2 kW each |
-| 6 | The construction timelapse, the whole film in twenty seconds | About 5 years; the Channel Tunnel took six |
+| 6 | The build view, the whole film in twenty seconds | About 4 years; the Channel Tunnel took six |
 | 7 | The platform far off, the chart of the place beside the caption (a press on it moves the platform) and a menu of the seven sites | How far the place is from the nearest land, and whether the wall would show from the beach (from a source: the chart) |
 
 It ends on "Your turn", with Explore, "Watch it built" and "See the tour
@@ -1373,13 +1371,11 @@ where land is all round, as in the fjord, the rest stands on the horizon. The
 state's line and the 12 mile line are dashed on the water where they pass
 within 16 km, each with its name.
 
-**The timelapse builds the picture's platform at its Gulf berth**, the
-`texas` site, 40 nautical miles off the Port Aransas jetties. Entering the
-build view says so, and leaving it puts the world off Texas, where the
-build ended. The chart puts that berth in 89 m of water, and the old
-timelapse's `BUILD_SITE_DEPTH`, the build simulation's route and the
-`texas` site all use 89 m (it was 40 m, which is about 22 nautical miles
-out).
+**The build view builds the picture's platform at its Gulf berth**, the
+`texas` site, 40 nautical miles off the Port Aransas jetties, in 89 m of
+water (the build simulation's depth). Entering the build view moves the
+world there, and leaving it keeps the world off Texas, where the build
+ended.
 
 Measured on November 18, 2026, from the checks in `metaverse/slab-sim.coax`,
 `metaverse/slab-plan.coax` and `apps/openagents-web/slab.coax`. The targets
@@ -1842,9 +1838,11 @@ six casting cells sharing one concrete supply, pairs of caissons towed from
 Ingleside by tugs on towlines, joins at sea that wait for a calm, the
 sea-wall lining, the upper structure rising bay by bay, barges and lifts
 for the city, storm stand-downs and the final ballast. It reads the hull
-from `hull.coax`. The timelapse on the page still draws the earlier
-schedule in `slab-construction.coax`; drawing this simulation is the
-issue's later phases.
+from `hull.coax`. The page's build view (`?view=build`,
+`apps/openagents-web/slab-build-draw.coax`) draws this simulation day by
+day: every caisson, tow, tug, barge, gantry and line where the run has it,
+at its draft, the upper structure bay by bay and the city as its modules
+land. The earlier closed-form timelapse is gone.
 
 | Result (seed 1, default settings) | Value |
 | --- | --- |
@@ -1871,3 +1869,11 @@ the run stops. This agrees with "about twice the lines" above.
 **What is placed and not integrated:** moves inside the yard, a pair's
 approach from stand-by to its joint, and tugs and barges on passage. The
 method note lists the other limits.
+
+**The build view's cost.** Measured headless on a Mac (Apple, Metal 3) at
+1,440 × 900, 2026-11-18, with `coax/web/frametime.ts`: the build view at day
+40 draws in 1.17 ms of GPU time at the median and 1.64 ms at the 95th
+percentile, against 1.36 ms and 4.54 ms for the old timelapse at the same
+link. Explore costs the same before and after (2.5 to 2.8 ms median over two
+runs each). The view reuses the panel's run of the simulation, so it adds no
+second copy of it; slab.wasm went from 607,046 to 666,684 bytes (809,254 on main with the life on the deck that landed alongside it).
