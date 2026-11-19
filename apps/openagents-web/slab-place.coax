@@ -237,6 +237,11 @@ place_dock_card :: (s: [] Slab, c: [] Card) {
   l0 := line(c, ST_BODY, "The sea now comes from the "); more(c, l0, place_compass(from)); more(c, l0, ",");
   ln(c, ST_BODY, ifx place_dock_exposed(from) then "into the basin: it is exposed, and boats wait." else "past the basin: it is sheltered.");
   ln(c, ST_BODY, ifx place_dock_exposed(from) then "It is sheltered when the sea comes from the north, east or west." else "It is exposed when the sea comes from the south.");
+  // the site's usual sea (slab-bearing.coax): off Guam, Hawaii, Puerto Rico, the equator and
+  // California it passes the basin; off Texas (south-east) and in the fjord (south-west) it comes in
+  usual := slab_site_from(s[0].site);
+  lu := line(c, ST_BODY, "Here the sea usually comes from the "); more(c, lu, place_compass(usual)); more(c, lu, ",");
+  ln(c, ST_BODY, ifx place_dock_exposed(usual) then "so at this site the basin is often exposed." else "so at this site the basin is sheltered most days.");
   ln(c, ST_HEAD, "Getting up");
   l := line(c, ST_BODY, "The deck is "); num(c, l, f64(deck), 0); more(c, l, " m over the water. Lifts in the");
   ln(c, ST_BODY, "basin's walls carry people and cargo up to it.");
@@ -244,7 +249,11 @@ place_dock_card :: (s: [] Slab, c: [] Card) {
   ln(c, ST_HEAD, "What it costs the hull");
   l = line(c, ST_BODY, "The basin takes "); num(c, l, change_dock_volume(s[0].change[0].shown), 0); more(c, l, " cubic metres out of the");
   l = line(c, ST_BODY, "hull under water, about "); num(c, l, change_dock_volume(s[0].change[0].shown) * 1.025, 0); more(c, l, " tonnes of lift.");
-  _ = sh;
+  // a limit of the model: metaverse/hull.coax's ledger is a box, so its draft, ballast and steadiness
+  // are the hull's without the basin (taking it out needs a hull that is not one prism)
+  whole := sh.l * sh.b * hull_hi(s[0].change[0].shown, 0.01);
+  l = line(c, ST_BODY, "Our hull figures leave it in: it is "); num(c, l, 100.0 * change_dock_volume(s[0].change[0].shown) / whole, 1); more(c, l, "% of the water");
+  ln(c, ST_BODY, "the hull displaces, so the ballast would be that much less.");
 }
 
 #test "Place: Guam's hills stand on the horizon from the platform, and nothing shows 40 miles off Texas" {

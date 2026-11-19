@@ -717,6 +717,17 @@ wall, is exposed.
 A change of bearing (or of wind) builds the sea again and starts the walls'
 water afresh, as a world opened in that sea would have it.
 
+The panel's Weather part has a bearing slider, "Where the sea comes from", in
+5° steps; both ends are north. Moving it makes the bearing the visitor's own
+and writes `?winddir=` to the address; "Back to the sea usual here", a preset
+or the reset gives it back to the site. The dock is in the south wall, so in
+the site's usual sea it is sheltered off Guam, Puerto Rico, Kona, the equator
+and California, and exposed off Texas (135°) and in the fjord (225°). The
+dock's card says which for the site it is at, and what the sea does now. The
+basin's 48,000 m³ under water (0.3% of what the picture's hull displaces) is
+not taken out of `metaverse/hull.coax`'s ledger, which is one box; the card
+says so.
+
 The sea surface must reach the horizon with detail around the hull. The
 ocean clipmap already covers 3 km in detail and runs a skirt to 40 km, so
 the 1 km hull fits.
@@ -1365,10 +1376,10 @@ within 16 km, each with its name.
 **The timelapse builds the picture's platform at its Gulf berth**, the
 `texas` site, 40 nautical miles off the Port Aransas jetties. Entering the
 build view says so, and leaving it puts the world off Texas, where the
-build ended. For the construction work (#13682): the chart puts that berth
-in 89 m of water, not the 40 m `BUILD_SITE_DEPTH` assumes; 40 m of water is
-about 22 nautical miles out. Either the berth moves in or the depth
-changes.
+build ended. The chart puts that berth in 89 m of water, and the old
+timelapse's `BUILD_SITE_DEPTH`, the build simulation's route and the
+`texas` site all use 89 m (it was 40 m, which is about 22 nautical miles
+out).
 
 Measured on November 18, 2026, from the checks in `metaverse/slab-sim.coax`,
 `metaverse/slab-plan.coax` and `apps/openagents-web/slab.coax`. The targets

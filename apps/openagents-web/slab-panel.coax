@@ -29,8 +29,11 @@ Panel :: struct {
   action: int;
   // the build simulation's last run, what it was run for, and the settings as they stood last frame
   run: [1] CsRun; ran: bool; ran_for: [WHAT_CONTROLS] f64; seen: [WHAT_CONTROLS] f64; due: f64;
+  // a run in progress, a piece a frame: its process and the settings it is for
+  q: [1] CsProc; running: bool; run_for: [WHAT_CONTROLS] f64;
 }
 PANEL_STILL :: 0.35;      // seconds the settings stand still before the build is simulated again
+PANEL_TICKS :: 160;       // ticks of the build simulation a frame (20 days; about 4 ms in a browser on a Mac)
 
 // The settings a run of the build depends on: the hull and its load, the casting positions and the pour.
 panel_build_same :: (a: [WHAT_CONTROLS] f64, b: [WHAT_CONTROLS] f64) -> bool {
@@ -40,21 +43,29 @@ panel_build_same :: (a: [WHAT_CONTROLS] f64, b: [WHAT_CONTROLS] f64) -> bool {
   }
   return true;
 }
-panel_build_run :: (s: [] Slab) {
+// Starts a run for the settings now. A run is spread over frames (panel_build_more), so the world
+// keeps moving while it runs; `whole` runs it to the end at once (a fixed moment, a check).
+panel_build_run :: (s: [] Slab, whole: bool) {
   w := s[0].change[0].what;
   p := cs_params();
   p.shape = s[0].change[0].facts.shape; p.positions = cast(int) floor(w.v[WC_YARDS] + 0.5); p.pour_rate = w.v[WC_POUR];
-  cs_run(p, s[0].panel.run[..]);
-  s[0].panel.ran = true; s[0].panel.ran_for = w.v; s[0].panel.seen = w.v;
+  s[0].panel.run_for = w.v; s[0].panel.seen = w.v; s[0].panel.running = true;
+  if cs_run_begin(p, cs_route_gulf(), s[0].panel.run[..], s[0].panel.q[..]) { panel_build_done(s); return; }
+  if whole { while !cs_run_more(s[0].panel.run[..], s[0].panel.q[..], CS_MAX_TICKS + 1) {} panel_build_done(s); }
 }
+panel_build_done :: (s: [] Slab) { s[0].panel.running = false; s[0].panel.ran = true; s[0].panel.ran_for = s[0].panel.run_for; }
+panel_build_more :: (s: [] Slab) { if cs_run_more(s[0].panel.run[..], s[0].panel.q[..], PANEL_TICKS) { panel_build_done(s); } }
 // Once a frame: runs the build again when "Building it" is open and its settings have stood still.
 panel_frame :: (s: [] Slab) {
   if s[0].panel.part != PP_BUILD || s[0].layout != LAYOUT_PRIME { return; }
   v := s[0].change[0].what.v;
+  // a run for these settings goes on; one for settings since changed is dropped
+  if s[0].panel.running && panel_build_same(s[0].panel.run_for, v) { panel_build_more(s); return; }
+  s[0].panel.running = false;
   if s[0].panel.ran && panel_build_same(s[0].panel.ran_for, v) { return; }
-  if s[0].fixed >= 0 { panel_build_run(s); return; }   // a fixed moment has no clock to wait on
+  if s[0].fixed >= 0 { panel_build_run(s, true); return; }   // a fixed moment has no clock to wait on
   if s[0].panel.due == 0 || !panel_build_same(s[0].panel.seen, v) { s[0].panel.seen = v; s[0].panel.due = s[0].time + PANEL_STILL; return; }
-  if s[0].time >= s[0].panel.due { s[0].panel.due = 0; panel_build_run(s); }
+  if s[0].time >= s[0].panel.due { s[0].panel.due = 0; panel_build_run(s, false); }
 }
 // Why a run of the build stopped itself, in plain words.
 panel_build_fail :: (l: [] WhatLine, t: CsTotals, units: int) {
@@ -108,6 +119,21 @@ panel_slider :: (s: [] Slab, h: [] SceneHud, i: int) {
   what_words(lo[..], i, c.low); what_words(hi[..], i, c.high);
   what_put(why[..], c.low_why); if c.low_why.count > 0 && c.high_why.count > 0 { what_put(why[..], " "); } what_put(why[..], c.high_why);
   sh_limits(h, what_text(lo[..]), what_text(hi[..]), what_text(why[..]));
+}
+// Where the sea comes from, a compass bearing in steps of PANEL_DIR_STEP degrees: the site's usual
+// bearing until the visitor turns it (slab-bearing.coax's slab_from_set), then the visitor's, kept in
+// the address as ?winddir=. Both ends are north, since it goes all the way round.
+PANEL_DIR_STEP :: 5.0;
+PANEL_DIR_TICKS :: 72;
+panel_bearing :: (s: [] Slab, h: [] SceneHud) {
+  from := slab_from(s);
+  now: [1] WhatLine;
+  what_put(now[..], "From the "); what_put(now[..], place_compass(from)); what_put(now[..], ", "); what_num(now[..], from, 0); what_put(now[..], "°");
+  if s[0].from_forced < 0.0 { what_put(now[..], ", as it usually is here"); }
+  tick := cast(int) floor(from / PANEL_DIR_STEP + 0.5); if tick >= PANEL_DIR_TICKS { tick = 0; }
+  sh_slider(h, "take.dir", "Where the sea comes from", what_text(now[..]), 0, PANEL_DIR_TICKS, 1, tick);
+  sh_limits(h, "From the north, 0°", "From the north, 360°", "It goes all the way round: both ends are north.");
+  if s[0].from_forced >= 0.0 { sh_button(h, "take.dir.site", "Back to the sea usual here", false); }
 }
 // A site's storms in plain words (the sites' own strings are the old cards' capitals).
 panel_storms :: (site: int) -> string {
@@ -177,6 +203,10 @@ panel_hud :: (s: [] Slab, h: [] SceneHud, group: int) {
       what_num(l, WHAT_CHANNEL_WIDTH, 0); what_put(l, " m wide, "); what_num(l, WHAT_CHANNEL_DEPTH, 1); what_put(l, " m deep");
       panel_fact(h, "The Corpus Christi ship channel", l, WHAT_SOURCE);
       what_num(l, f.float_out, 1); what_put(l, " m"); panel_fact(h, "The empty hull draws", l, WHAT_OURS);
+      if prime && s[0].panel.running {
+        what_put(l, "Running the build simulation: day "); what_num(l, f64(s[0].panel.q[0].tick) / f64(CS_TICKS), 0); what_put(l, " so far.");
+        sh_say(h, what_text(l)); l[0].n = 0;
+      }
       if prime { sh_say(h, "The days are one run of our build simulation: the yard, the tows, the joints at sea and the weather it meets. It runs again when you let go of a slider."); }
       else { sh_say(h, "The build simulation is for the one-platform shape."); }
       sh_say(h, "The price is for concrete in place. Steel, moorings, the plant and the buildings are not in it.");
@@ -197,17 +227,16 @@ panel_hud :: (s: [] Slab, h: [] SceneHud, group: int) {
       sh_say(h, "Depths are from NOAA's ETOPO1 survey and the coast from Natural Earth. Other places are under Where it floats.");
     }
     if part == PP_WEATHER {
-      panel_slider(s, h, WC_WIND); panel_slider(s, h, WC_MONTH);
+      panel_slider(s, h, WC_WIND); panel_bearing(s, h); panel_slider(s, h, WC_MONTH);
       what_num(l, f.surface, 1); what_put(l, " °C"); panel_fact(h, "Sea surface this month", l, ifx f.sim.sourced then WHAT_SOURCE else WHAT_OURS);
       what_num(l, s[0].synth[0].significant, 1); what_put(l, " m"); panel_fact(h, "Waves now (the highest third, on average)", l, WHAT_OURS);
-      // Which way the sea comes from (place_sea_from reads the built spectrum's heading, which
-      // follows ?winddir= and the site's own bearing, slab-bearing.coax). A control for it goes
-      // here, beside the wind's: a slider of 0 to 359 degrees with sh_limits whose press calls
-      // slab_from_set(s, degrees) (a negative gives it back to the site); these facts follow it.
+      // Which way the sea comes from: place_sea_from reads the built sea's heading, so these words
+      // say what the water does (the bearing slider turns it: slab-bearing.coax).
       from := place_sea_from(s);
       what_put(l, "The "); what_put(l, place_compass(from)); what_put(l, ", "); what_num(l, from, 0); what_put(l, "°"); panel_fact(h, "The sea comes from", l, WHAT_OURS);
       place_weather_walls(l, from); panel_fact(h, "Faces the weather", l, WHAT_OURS);
       what_put(l, "The "); what_put(l, place_lee_side(from)); what_put(l, " side"); panel_fact(h, "Sheltered", l, WHAT_OURS);
+      what_put(l, ifx place_dock_exposed(from) then "Exposed: the sea reaches into it" else "Sheltered"); panel_fact(h, "The dock, in the south wall", l, WHAT_OURS);
       what_put(l, panel_storms(w.site)); panel_fact(h, "Storms here", l, WHAT_OURS);
       if !w.wind_own { sh_say(h, "The wind is the sea's own until you move it. The sea states are under The sea."); }
     }
@@ -244,6 +273,11 @@ panel_address :: (s: [] Slab) {
   tail := ifx q.count > 0 then q else "preset=picture";
   if n < cap { s[0].panel.out[n] = '?'; n += 1; }
   for c: tail { if n < cap { s[0].panel.out[n] = c; n += 1; } }
+  // the bearing, when the visitor turned it (it is the page's, not one of the panel's settings)
+  if s[0].from_forced >= 0.0 {
+    l: [1] WhatLine; what_put(l[..], "&winddir="); what_num(l[..], s[0].from_forced, 0);
+    for c: what_text(l[..]) { if n < cap { s[0].panel.out[n] = c; n += 1; } }
+  }
   s[0].panel.out_n = n; s[0].panel.action = PANEL_ADDRESS;
 }
 // The page's path, kept from the address it opened on ("/worlds/slab").
@@ -265,10 +299,12 @@ panel_moved :: (s: [] Slab) { change_push(s, true); panel_address(s); }
 panel_act :: (s: [] Slab, id: string, value: int) -> bool {
   if id.count < 5 || cast(string) id[0..<5] != "take." { return false; }
   c := s[0].change[..];
-  if id == "take.reset" { change_preset(c, WP_PICTURE); panel_moved(s); sb_toast(s, "Back to the picture."); return true; }
+  if id == "take.reset" { change_preset(c, WP_PICTURE); slab_from_set(s, -1.0); panel_moved(s); sb_toast(s, "Back to the picture."); return true; }
+  if id == "take.dir" { if value >= 0 && value <= PANEL_DIR_TICKS { slab_from_set(s, f64(value) * PANEL_DIR_STEP); panel_address(s); } return true; }
+  if id == "take.dir.site" { slab_from_set(s, -1.0); panel_address(s); return true; }
   if id == "take.chart" { chart_show(s, !s[0].chart.on); return true; }
   k := sb_index(id, "take.from.");
-  if k >= 0 && k < WHAT_PRESETS { change_preset(c, k); panel_moved(s); sb_toast(s, what_preset(k).name); return true; }
+  if k >= 0 && k < WHAT_PRESETS { change_preset(c, k); slab_from_set(s, -1.0); panel_moved(s); sb_toast(s, what_preset(k).name); return true; }
   k = sb_index(id, "take.part.");
   if k >= 0 && k < PANEL_PARTS { s[0].panel.part = k; if k != PP_WHERE { chart_show(s, false); } return true; }
   k = sb_index(id, "take.t.");
@@ -359,6 +395,13 @@ panel_act :: (s: [] Slab, id: string, value: int) -> bool {
   s[0].time = 10; panel_frame(s[..]); #assert !s[0].panel.ran && s[0].panel.due > 10;
   s[0].time = 10.2; panel_frame(s[..]); #assert !s[0].panel.ran;
   s[0].time = 10.5; panel_frame(s[..]);
+  // it runs a piece a frame, the world going on meanwhile, and says how far it has got
+  #assert s[0].panel.running && !s[0].panel.ran;
+  frames := 1; s[0].time = 10.51; panel_frame(s[..]);
+  sb_say(s[..]);
+  #assert sb_test_has(s[..], 'S', "Running the build simulation: day 20 so far.", "");
+  while s[0].panel.running { panel_frame(s[..]); frames += 1; }
+  #assert frames > 50 && frames < 100;
   // the picture: six casting positions at 3,000 cubic metres a day, 1,510 days by the simulation's seed 1
   #assert s[0].panel.ran && s[0].panel.run[0].total.failed == 0 && abs(s[0].panel.run[0].total.days - 1510) < 1;
   sb_say(s[..]);
@@ -366,11 +409,80 @@ panel_act :: (s: [] Slab, id: string, value: int) -> bool {
   // one casting position: 6,545 days. A move restarts the wait, and the old figure stays up until the run is in
   #assert panel_act(s[..], "take.s.yards", 0);
   s[0].time = 10.6; panel_frame(s[..]); #assert abs(s[0].panel.run[0].total.days - 1510) < 1 && !panel_build_same(s[0].panel.ran_for, s[0].change[0].what.v);
-  s[0].time = 11.0; panel_frame(s[..]); #assert abs(s[0].panel.run[0].total.days - 6545) < 1;
+  s[0].time = 11.0; panel_frame(s[..]);
+  // the old figure stays up while the new run goes on
+  for i: 0..<10 { panel_frame(s[..]); } #assert s[0].panel.running && abs(s[0].panel.run[0].total.days - 1510) < 1;
+  // a move in the middle drops that run and starts again once the settings stand still
+  #assert panel_act(s[..], "take.s.yards", 1);
+  s[0].time = 11.1; panel_frame(s[..]); #assert !s[0].panel.running;
+  #assert panel_act(s[..], "take.s.yards", 0);
+  s[0].time = 11.2; panel_frame(s[..]); s[0].time = 11.6; panel_frame(s[..]);
+  while s[0].panel.running { panel_frame(s[..]); }
+  #assert abs(s[0].panel.run[0].total.days - 6545) < 1 && s[0].panel.ran;
   // a hull of more caissons than the simulation takes: the panel says so first
   #assert panel_act(s[..], "take.s.long", what_ticks(WC_LENGTH)) && panel_act(s[..], "take.s.wide", what_ticks(WC_WIDTH));
   s[0].fixed = 1; panel_frame(s[..]);
   #assert s[0].panel.run[0].total.failed == CS_FAIL_TOO_MANY;
   l: [1] WhatLine; panel_build_fail(l[..], s[0].panel.run[0].total, s[0].change[0].facts.caissons);
   #assert what_text(l[..]) == "The build fails in our simulation: it takes up to 160 caissons and this hull is 400.";
+}
+
+#test "Panel: the bearing turns the sea, the address keeps it, and the dock's card is true at every site" #steps 60000000 {
+  s: [1] Slab;
+  slab_message(s[..], HOST_FACTS, "url=https://openagents.com/worlds/slab?intro=0\n");
+  #assert panel_act(s[..], "take.part.3", 0);
+  sb_say(s[..]);
+  // the site's own bearing until the visitor turns it: Guam's trades, 70 degrees, on tick 14
+  #assert sb_test_field(s[..], 'R', "take.dir", 2) == "From the east-north-east, 70°, as it usually is here";
+  #assert !sb_test_has(s[..], 'B', "take.dir.site", "");
+  // a south-westerly: the visitor's own, in the address, and a way back to the site's
+  #assert panel_act(s[..], "take.dir", 45) && slab_from(s[..]) == 225.0 && slab_outbox(s[..]) == "/worlds/slab?preset=picture&winddir=225";
+  sb_say(s[..]);
+  #assert sb_test_field(s[..], 'R', "take.dir", 2) == "From the south-west, 225°" && sb_test_has(s[..], 'B', "take.dir.site", "Back to the sea usual here");
+  // the address opens the same bearing; both ends are north
+  again: [1] Slab;
+  slab_message(again[..], HOST_FACTS, "url=https://openagents.com/worlds/slab?preset=picture&winddir=225\n");
+  #assert slab_from(again[..]) == 225.0;
+  #assert panel_act(s[..], "take.dir", PANEL_DIR_TICKS) && slab_from(s[..]) == 0.0;
+  #assert panel_act(s[..], "take.dir", PANEL_DIR_TICKS + 1) && slab_from(s[..]) == 0.0;
+  #assert panel_act(s[..], "take.dir.site", 0) && slab_from(s[..]) == 70.0 && slab_outbox(s[..]) == "/worlds/slab?preset=picture";
+  // a preset and the reset give the bearing back to the site
+  #assert panel_act(s[..], "take.dir", 36) && panel_act(s[..], "take.from.1", 0) && slab_from(s[..]) == 135.0;
+  #assert panel_act(s[..], "take.dir", 36) && panel_act(s[..], "take.reset", 0) && slab_from(s[..]) == 70.0;
+  // the dock's card at each site in its usual sea: it says what that sea does to the basin
+  for site: 0..<SITES {
+    xs: [1] SbTest; x := xs[..]; c := x[0].s[..];
+    sb_test_open(x);
+    c[0].site = site;
+    c[0].spectrum.wind = slab_heading(slab_site_from(site));   // the sea as slab_build would turn it
+    c[0].selected = -3; sb_say(c);
+    exposed := place_dock_exposed(slab_site_from(site));
+    #assert sb_test_has(c, 'K', "card", "The dock");
+    #assert sb_test_field(c, 'F', "The basin now", 1) == (ifx exposed then "Exposed: the sea reaches into it" else "Sheltered");
+    usual: [1] WhatLine; what_put(usual[..], ifx exposed then "Often exposed: the sea is from the " else "Sheltered: the sea is from the "); what_put(usual[..], place_compass(slab_site_from(site)));
+    #assert sb_test_field(c, 'F', "Usually here", 1) == what_text(usual[..]);
+    // off Texas (south-east) and in the fjord (south-west) the usual sea comes into the basin
+    #assert exposed == (site == SITE_TEXAS || site == SITE_FJORD);
+  }
+  // nowhere does the card call the wall sheltered whatever the sea
+  #assert !sb_test_has(s[..], 'K', "card", "A basin cut into the sheltered south wall, where boats come alongside.");
+}
+#test "Panel: a hull resized or stripped bare has no district names floating where the picture's stood" {
+  xs: [1] SbTest; x := xs[..]; s := x[0].s[..];
+  sb_test_open(x);
+  lab_test_view(s, TOUR_OPEN, 1440, 900);
+  sb_say(s);
+  #assert sb_test_has(s, 'W', "at.4", "Tower district");
+  // the Gulf Coast pilot: one bare caisson
+  #assert panel_act(s, "take.from.1", 0);
+  lab_test_view(s, TOUR_OPEN, 1440, 900);
+  sb_say(s);
+  #assert !sb_test_has(s, 'W', "at.4", "") && sb_test_count(s, 'W') == 0;
+  // the picture again: they are back
+  #assert panel_act(s, "take.reset", 0);
+  sb_say(s);
+  #assert sb_test_has(s, 'W', "at.4", "Tower district");
+  // and none over the chart
+  chart_show(s, true); sb_say(s);
+  #assert sb_test_count(s, 'W') == 0;
 }

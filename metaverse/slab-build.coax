@@ -1718,6 +1718,15 @@ cs_totals :: (run: [] CsRun) {
 cs_run :: (p: CsParams, run: [] CsRun) { cs_run_on(p, cs_route_gulf(), run); }
 // The same over a route of your own.
 cs_run_on :: (p: CsParams, route: CsRoute, run: [] CsRun) {
+  q: [1] CsProc;
+  if cs_run_begin(p, route, run, q[..]) { return; }
+  while !cs_run_more(run, q[..], CS_MAX_TICKS + 1) {}
+}
+// The same run a piece at a time, for a page that must keep drawing while it runs (the SLAB panel):
+// cs_run_begin, then cs_run_more each frame with as many ticks as the frame can spare, until it says
+// it is done. The caller keeps q between calls. run[0].total keeps the last run's totals until the
+// new run ends; the bits are cs_run_on's whatever the pieces.
+cs_run_begin :: (p: CsParams, route: CsRoute, run: [] CsRun, q: [] CsProc) -> bool {
   run[0].p = p; run[0].sh = p.shape;
   run[0].led = hull_ledger(p.shape); run[0].unit = hull_caisson(p.shape);
   run[0].upper_kg = cs_upper_kg(p.shape, run[0].led);
@@ -1726,25 +1735,32 @@ cs_run_on :: (p: CsParams, route: CsRoute, run: [] CsRun) {
   for i: 0..<64 { run[0].wx_at[i] = 0; }
   run[0].events = 0; run[0].checks = 0; run[0].every = 64; run[0].modules = 0; run[0].pieces = 0; run[0].units = 0;
   for i: 0..<CS_MAX_UNITS + 1 { s: CsStage; run[0].st[i] = s; }
-  q: [1] CsProc; cs_start(run, q[..]);
+  cs_start(run, q);
   if hull_units(p.shape) > CS_MAX_UNITS || hull_units(p.shape) < 1 {
-    q[0].failed = CS_FAIL_TOO_MANY; run[0].end = q[0]; run[0].chk[0] = q[0]; run[0].checks = 1; cs_totals(run); return;
+    q[0].failed = CS_FAIL_TOO_MANY; run[0].end = q[0]; run[0].chk[0] = q[0]; run[0].checks = 1; cs_totals(run); return true;
   }
   cs_plan(run); cs_manifest(run); cs_storms(run);
   run[0].ocean_tugs = cs_ocean_tugs(run);
-  every := 64; n := 0;
-  while q[0].phase != CS_PH_DONE && q[0].failed == 0 {
+  return false;
+}
+// Runs up to `ticks` more ticks. True when the run has ended (and its totals are in).
+cs_run_more :: (run: [] CsRun, q: [] CsProc, ticks: int) -> bool {
+  left := ticks;
+  while q[0].phase != CS_PH_DONE && q[0].failed == 0 && left > 0 {
     if q[0].tick >= CS_MAX_TICKS { q[0].failed = CS_FAIL_TIME; break; }
-    if q[0].tick % every == 0 {
-      if n == CS_CHECKS {
+    if q[0].tick % run[0].every == 0 {
+      if run[0].checks == CS_CHECKS {
         for i: 0..<CS_CHECKS / 2 { run[0].chk[i] = run[0].chk[i * 2]; }
-        n = CS_CHECKS / 2; every *= 2;
+        run[0].checks = CS_CHECKS / 2; run[0].every *= 2;
       }
-      if q[0].tick % every == 0 { run[0].chk[n] = q[0]; n += 1; }
+      if q[0].tick % run[0].every == 0 { run[0].chk[run[0].checks] = q[0]; run[0].checks += 1; }
     }
-    cs_tick(run, q[..], true);
+    cs_tick(run, q, true);
+    left -= 1;
   }
-  run[0].end = q[0]; run[0].checks = n; run[0].every = every;
+  if q[0].phase != CS_PH_DONE && q[0].failed == 0 && q[0].tick < CS_MAX_TICKS { return false; }
+  if q[0].phase != CS_PH_DONE && q[0].failed == 0 { q[0].failed = CS_FAIL_TIME; }
+  run[0].end = q[0];
   // the events in the order they happen (an arrival is written when its tow leaves)
   for i: 1..<run[0].events {
     e := run[0].ev[i]; j := i;
@@ -1752,6 +1768,7 @@ cs_run_on :: (p: CsParams, route: CsRoute, run: [] CsRun) {
     run[0].ev[j] = e;
   }
   cs_totals(run);
+  return true;
 }
 // The process at the start of the tick `day` falls in: the nearest checkpoint before it, played
 // forward. Any day in any order gives what playing from the start gives.
@@ -2044,4 +2061,17 @@ cs_same :: (a: CsProc, b: CsProc) -> bool {
   // a hull cut into more caissons than the tables hold is refused, not half built
   p = cs_params(); p.shape.unit_l = 25.0; cs_run(p, r[..]);
   #assert r[0].total.failed == CS_FAIL_TOO_MANY && r[0].end.tick == 0;
+}
+#test "a run a piece at a time gives the run's own bits" #steps 6000000000 {
+  a: [1] CsRun; b: [1] CsRun;
+  p := cs_params(); p.positions = 3;
+  cs_run(p, a[..]);
+  q: [1] CsProc; pieces := 0;
+  #assert !cs_run_begin(p, cs_route_gulf(), b[..], q[..]);
+  while !cs_run_more(b[..], q[..], 97) { pieces += 1; }
+  #assert pieces > 10 && cs_same(a[0].end, b[0].end) && a[0].total.days == b[0].total.days && a[0].events == b[0].events;
+  #assert a[0].checks == b[0].checks && a[0].every == b[0].every && cs_same(a[0].chk[a[0].checks - 1], b[0].chk[b[0].checks - 1]);
+  // a hull of too many caissons ends at the start
+  p.shape.l = 2000; p.shape.b = 1000;
+  #assert cs_run_begin(p, cs_route_gulf(), b[..], q[..]) && b[0].total.failed == CS_FAIL_TOO_MANY;
 }

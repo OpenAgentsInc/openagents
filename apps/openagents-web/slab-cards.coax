@@ -617,17 +617,29 @@ cd_dock :: (s: [] Slab, h: [] SceneHud) {
   deck := f64(change_hull(s[0].change[..])[2]);
   volume := change_dock_volume(s[0].change[0].shown);
   cd_open(h, "The dock",
-    "A basin cut into the sheltered south wall, where boats come alongside.",
+    "A basin cut into the south wall, where boats come alongside.",
     "It is how you get on board. Luckey's picture shows no way aboard, so the dock and its lifts are our addition.");
   cd_number(h, cd_plan(f64(CH_DOCK_LONG), f64(CH_DOCK_IN)), "The basin: along the wall, and into the hull", cd_words("A little smaller than a football pitch (105 × 68 m)."), SH_OURS);
   cd_number(h, cd_v(deck, 0, " m"), "How far up the lifts carry people and cargo", cd_p("As high as a ", cd_whole(deck / CD_STOREY), 0, "-storey building."), SH_OURS);
   cd_number(h, cd_v(volume, 0, " m³"), "Water in the basin, where hull would have been", cd_p("About ", cd_whole(volume / CD_POOL), 0, " Olympic swimming pools."), SH_OURS);
   cd_now(h);
   cd_fact(h, "Its floor is under the water by", cd_v(f64(-CH_DOCK_FLOOR), 0, " m"));
+  // shelter: the sea now (the built sea's heading, slab-place.coax) and the site's usual sea (slab-bearing.coax)
+  from := place_sea_from(s); usual := slab_site_from(s[0].site);
+  cd_fact(h, "The sea comes from", sb_w(cd_words("The "), place_compass(from)));
+  cd_fact(h, "The basin now", cd_words(ifx place_dock_exposed(from) then "Exposed: the sea reaches into it" else "Sheltered"));
+  cd_fact(h, "Usually here", sb_w(cd_words(ifx place_dock_exposed(usual) then "Often exposed: the sea is from the " else "Sheltered: the sea is from the "), place_compass(usual)));
   sh_say(h, "Crew boats and supply ships that draw up to 6 m come in here. Nothing moors yet: the boats are not simulated.");
   cd_maths(h);
     cd_say(h, sb_w(sb_n(sb_w(sb_n(cd_words("The basin takes "), volume, 0), " m³ out of the hull under the water, which costs about "), volume * SIM_RHO / 1000.0, 0), " tonnes of lift."));
-    sh_say(h, "The south wall lies 20° off the waves' path, so our model gives the basin about half the open sea's height.");
+    // a limit of the model: metaverse/hull.coax's ledger is one box, so its draft, ballast and steadiness are the hull's without the basin
+    whole := s[0].change[0].facts.shape.l * s[0].change[0].facts.shape.b * fmax(s[0].change[0].shown, 0.01);
+    cd_say(h, sb_w(sb_n(cd_words("Our hull figures leave the basin in: it is "), 100.0 * volume / whole, 1), "% of the water the hull displaces, so the ballast would be that much less."));
+    faces := place_wall_faces(from, 2);
+    apart := abs(slab_from_fold(from) - 180.0);   // degrees between the sea's bearing and the wall's face (south)
+    off := abs(90.0 - apart);
+    cd_say(h, sb_w(sb_n(cd_words("The south wall now lies "), off, 0), ifx faces > 0 then "° off the waves' path, facing them." else "° off the waves' path, on its lee side."));
+    sh_say(h, "In the opening's sea, 20° off on the lee side, our model gives the basin about half the open sea's height.");
   sh_end_of(h);
   cd_close(h, "go.8", "See the whole platform", "31-prime-the-monolith-default");
 }
