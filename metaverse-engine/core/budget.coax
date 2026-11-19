@@ -17,11 +17,13 @@ BUDGET_STEPS :: 0;      // fixed simulation steps one frame runs
 BUDGET_VERTICES :: 1;   // vertices one frame writes
 BUDGET_DRAWS :: 2;      // draw records one frame submits
 BUDGET_BYTES :: 3;      // bytes the host holds for the realm: its state and its buffers
-BUDGET_KINDS :: 4;
+BUDGET_LIGHTS :: 4;     // local lights one frame submits
+BUDGET_MATERIALS :: 5;  // materials one realm declares
+BUDGET_KINDS :: 6;
 BUDGET_NONE :: -1;
 
 // What a realm declares one frame may use.
-FrameBudget :: struct { steps: int; vertices: int; draws: int; bytes: int; }
+FrameBudget :: struct { steps: int; vertices: int; draws: int; bytes: int; lights: int; materials: int; }
 
 // The limit of one kind, or -1 for a kind that isn't one.
 budget_limit :: (b: FrameBudget, kind: int) -> int {
@@ -29,6 +31,8 @@ budget_limit :: (b: FrameBudget, kind: int) -> int {
   if kind == BUDGET_VERTICES { return b.vertices; }
   if kind == BUDGET_DRAWS { return b.draws; }
   if kind == BUDGET_BYTES { return b.bytes; }
+  if kind == BUDGET_LIGHTS { return b.lights; }
+  if kind == BUDGET_MATERIALS { return b.materials; }
   return -1;
 }
 // book:end declare
@@ -38,6 +42,8 @@ budget_kind_name :: (kind: int) -> string {
   if kind == BUDGET_VERTICES { return "vertices"; }
   if kind == BUDGET_DRAWS { return "draws"; }
   if kind == BUDGET_BYTES { return "bytes"; }
+  if kind == BUDGET_LIGHTS { return "lights"; }
+  if kind == BUDGET_MATERIALS { return "materials"; }
   return "none";
 }
 
@@ -124,6 +130,13 @@ budget_measure :: (m: [] BudgetMeter, vertices: int, draws: int, bytes: int) {
   if !budget_take(m, BUDGET_DRAWS, draws) { m[0].used[BUDGET_DRAWS] = draws; }
   if !budget_take(m, BUDGET_BYTES, bytes) { m[0].used[BUDGET_BYTES] = bytes; }
 }
+
+// Counts a frame's local lights and materials against the current measured frame.
+// When one doesn't fit, it records what the frame used, as budget_measure does.
+budget_measure_scene :: (m: [] BudgetMeter, lights: int, materials: int) {
+  if !budget_take(m, BUDGET_LIGHTS, lights) { m[0].used[BUDGET_LIGHTS] = lights; }
+  if !budget_take(m, BUDGET_MATERIALS, materials) { m[0].used[BUDGET_MATERIALS] = materials; }
+}
 // book:end measure
 
 // A kind, or BUDGET_NONE for a number that isn't one.
@@ -135,12 +148,13 @@ budget_kind_of :: (kind: int) -> int {
 // ---------------------------------------------------------------------------------------------
 // Checks.
 
-budget_small :: () -> FrameBudget { return FrameBudget.{steps = 8, vertices = 100, draws = 4, bytes = 4096}; }
+budget_small :: () -> FrameBudget { return FrameBudget.{steps = 8, vertices = 100, draws = 4, bytes = 4096, lights = 4, materials = 12}; }
 
 #test "a declaration names each limit, and one is valid only below its vertex buffer" {
   bb := budget_small();
   #assert budget_limit(bb, BUDGET_STEPS) == 8 && budget_limit(bb, BUDGET_VERTICES) == 100;
   #assert budget_limit(bb, BUDGET_DRAWS) == 4 && budget_limit(bb, BUDGET_BYTES) == 4096;
+  #assert budget_limit(bb, BUDGET_LIGHTS) == 4 && budget_limit(bb, BUDGET_MATERIALS) == 12;
   #assert budget_limit(bb, BUDGET_NONE) == -1 && budget_limit(bb, BUDGET_KINDS) == -1;
   #assert budget_declared(bb, 101) == BUDGET_NONE;
   #assert budget_declared(bb, 100) == BUDGET_VERTICES && budget_declared(bb, 99) == BUDGET_VERTICES;
@@ -150,14 +164,18 @@ budget_small :: () -> FrameBudget { return FrameBudget.{steps = 8, vertices = 10
     if bkind == BUDGET_VERTICES { bc.vertices = -1; }
     if bkind == BUDGET_DRAWS { bc.draws = -1; }
     if bkind == BUDGET_BYTES { bc.bytes = -1; }
+    if bkind == BUDGET_LIGHTS { bc.lights = -1; }
+    if bkind == BUDGET_MATERIALS { bc.materials = -1; }
     #assert budget_declared(bc, 1000) == bkind;
   }
   bzero := FrameBudget.{};
   #assert budget_declared(bzero, 1) == BUDGET_NONE && budget_declared(bzero, 0) == BUDGET_VERTICES;
   #assert budget_kind_name(BUDGET_STEPS) == "steps" && budget_kind_name(BUDGET_VERTICES) == "vertices";
   #assert budget_kind_name(BUDGET_DRAWS) == "draws" && budget_kind_name(BUDGET_BYTES) == "bytes";
+  #assert budget_kind_name(BUDGET_LIGHTS) == "lights" && budget_kind_name(BUDGET_MATERIALS) == "materials";
   #assert budget_kind_name(BUDGET_NONE) == "none" && budget_kind_name(BUDGET_KINDS) == "none";
   #assert budget_kind_of(BUDGET_NONE) == BUDGET_NONE && budget_kind_of(BUDGET_BYTES) == BUDGET_BYTES;
+  #assert budget_kind_of(BUDGET_LIGHTS) == BUDGET_LIGHTS && budget_kind_of(BUDGET_MATERIALS) == BUDGET_MATERIALS;
   #assert budget_kind_of(0) == 0 && budget_kind_of(BUDGET_KINDS) == BUDGET_NONE && budget_kind_of(-2) == BUDGET_NONE;
 }
 
@@ -245,6 +263,26 @@ budget_small :: () -> FrameBudget { return FrameBudget.{steps = 8, vertices = 10
   #assert ba.width == 1440 && ba.height == 900 && ba.dpr == 1 && budget_screen(3).width == 1440;
   #assert bb.width == 2880 && bb.height == 1800 && bb.dpr == 2;
   #assert bc.width == 1170 && bc.height == 2532 && bc.dpr == 3 && BUDGET_SCREENS == 3;
+}
+
+#test "local lights and materials join the frame budget and refuse when over" {
+  bm := [1] BudgetMeter.[budget_meter(budget_small())];
+  budget_measure(bm[..], 40, 2, 1024);
+  budget_measure_scene(bm[..], 4, 12);
+  #assert !bm[0].over && budget_ok(bm[0]);
+  #assert bm[0].used[BUDGET_LIGHTS] == 4 && bm[0].peak[BUDGET_LIGHTS] == 4 && bm[0].peak_frame[BUDGET_LIGHTS] == 1;
+  #assert bm[0].used[BUDGET_MATERIALS] == 12 && bm[0].peak[BUDGET_MATERIALS] == 12 && bm[0].peak_frame[BUDGET_MATERIALS] == 1;
+  budget_measure(bm[..], 20, 1, 1024);
+  #assert bm[0].used[BUDGET_LIGHTS] == 0 && bm[0].used[BUDGET_MATERIALS] == 0;
+  budget_measure_scene(bm[..], 5, 10);
+  #assert bm[0].over && !budget_ok(bm[0]) && bm[0].over_frames == 1 && bm[0].refused == 1;
+  #assert bm[0].first.kind == BUDGET_LIGHTS && bm[0].first.frame == 2 && bm[0].first.asked == 5 && bm[0].first.used == 0 && bm[0].first.limit == 4;
+  #assert bm[0].used[BUDGET_LIGHTS] == 5 && bm[0].peak[BUDGET_LIGHTS] == 4 && bm[0].used[BUDGET_MATERIALS] == 10;
+  budget_measure(bm[..], 20, 1, 1024);
+  budget_measure_scene(bm[..], 2, 13);
+  #assert bm[0].over && bm[0].over_frames == 2 && bm[0].refused == 2;
+  #assert bm[0].used[BUDGET_LIGHTS] == 2 && bm[0].used[BUDGET_MATERIALS] == 13 && bm[0].peak[BUDGET_MATERIALS] == 12;
+  #assert bm[0].first.kind == BUDGET_LIGHTS;
 }
 
 #test "a count below zero, an unknown kind and a sum past the largest int are refused" {

@@ -71,11 +71,7 @@ realm code can already provide a feature whose shared Metaverse Engine module is
 2. **Converge the realms and hosts.** Migrate each realm's remaining input,
    entities, spatial adapters and camera modes, then delete the replaced
    copies. Chapter 64 needs a replay per realm and a check against private
-   copies returning. Its inventory records Ice Cream Man's remaining
-   `ice_play_frame` clamp/accumulator as an open conformance gap against the
-   [one-clock invariant](../../INVARIANTS.md#a-realms-frame-time-is-what-its-clock-counts-and-no-frame-runs-past-8-steps),
-   to remove without changing the rule traces. Add chapter 68's live
-   synthesized and spatial sound to
+   copies returning. Add chapter 68's live synthesized and spatial sound to
    the existing offline audio. Bring saves, host lifecycle and accessibility
    (81, 84 and 85) into this route as their dependencies become available.
    Consolidating current gameplay profiles does not complete the advanced

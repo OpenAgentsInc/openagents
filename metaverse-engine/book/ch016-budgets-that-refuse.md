@@ -105,11 +105,13 @@ BUDGET_STEPS :: 0;      // fixed simulation steps one frame runs
 BUDGET_VERTICES :: 1;   // vertices one frame writes
 BUDGET_DRAWS :: 2;      // draw records one frame submits
 BUDGET_BYTES :: 3;      // bytes the host holds for the realm: its state and its buffers
-BUDGET_KINDS :: 4;
+BUDGET_LIGHTS :: 4;     // local lights one frame submits
+BUDGET_MATERIALS :: 5;  // materials one realm declares
+BUDGET_KINDS :: 6;
 BUDGET_NONE :: -1;
 
 // What a realm declares one frame may use.
-FrameBudget :: struct { steps: int; vertices: int; draws: int; bytes: int; }
+FrameBudget :: struct { steps: int; vertices: int; draws: int; bytes: int; lights: int; materials: int; }
 
 // The limit of one kind, or -1 for a kind that isn't one.
 budget_limit :: (b: FrameBudget, kind: int) -> int {
@@ -117,11 +119,13 @@ budget_limit :: (b: FrameBudget, kind: int) -> int {
   if kind == BUDGET_VERTICES { return b.vertices; }
   if kind == BUDGET_DRAWS { return b.draws; }
   if kind == BUDGET_BYTES { return b.bytes; }
+  if kind == BUDGET_LIGHTS { return b.lights; }
+  if kind == BUDGET_MATERIALS { return b.materials; }
   return -1;
 }
 ```
 
-`FrameBudget` holds four limits:
+`FrameBudget` holds six limits:
 
 - `steps`: the fixed simulation steps one frame runs. Every realm declares
   8, the cap of [chapter 1](ch001-a-frame-has-a-fixed-step.md)'s clock.
@@ -131,6 +135,8 @@ budget_limit :: (b: FrameBudget, kind: int) -> int {
   counts it the way [coax/web/host.js](../../coax/web/host.js) sizes its
   arena: the state, then four bytes for each float of the vertex buffer and
   the uniforms.
+- `lights`: the local lights one frame submits.
+- `materials`: the materials one realm declares.
 
 A realm's quad writers stop when its vertex buffer is full. A clipped frame
 therefore writes exactly as many vertices as the buffer holds.
@@ -192,7 +198,7 @@ budget_ok :: (m: BudgetMeter) -> bool { return m.refused == 0; }
 
 `budget_take` takes `n` of a kind for this frame or refuses all of it. It
 refuses when `used + n` would pass the limit, when `n` is below zero, and
-when the kind is not one of the four. It compares `n` with `limit - used`,
+when the kind is not one of the six. It compares `n` with `limit - used`,
 so a sum near the largest `int` can't wrap. A refusal:
 
 1. Adds one to `refused`.
@@ -228,10 +234,18 @@ budget_measure :: (m: [] BudgetMeter, vertices: int, draws: int, bytes: int) {
   if !budget_take(m, BUDGET_DRAWS, draws) { m[0].used[BUDGET_DRAWS] = draws; }
   if !budget_take(m, BUDGET_BYTES, bytes) { m[0].used[BUDGET_BYTES] = bytes; }
 }
+
+// Counts a frame's local lights and materials against the current measured frame.
+// When one doesn't fit, it records what the frame used, as budget_measure does.
+budget_measure_scene :: (m: [] BudgetMeter, lights: int, materials: int) {
+  if !budget_take(m, BUDGET_LIGHTS, lights) { m[0].used[BUDGET_LIGHTS] = lights; }
+  if !budget_take(m, BUDGET_MATERIALS, materials) { m[0].used[BUDGET_MATERIALS] = materials; }
+}
 ```
 
 `budget_measure` starts a frame and takes its vertices, draw records and
-bytes. When one doesn't fit, it records what the frame used, so a report
+bytes; `budget_measure_scene` adds the frame's local lights and materials.
+When any of them doesn't fit, it records what the frame used, so a report
 shows the over-budget number rather than the last one that fitted.
 
 Every realm's check draws its frames at the three `budget_screen` sizes:
@@ -547,10 +561,11 @@ stale completion cannot spend another owner through a copied lease.
   limit is below the buffer. The renderer's writers
   ([chapter 11](ch011-the-wgsl-renderer.md)) take from the meter directly,
   and a development build shows the report on the HUD.
-- **Lights and materials in the frame budget.** The fixed limits of
-  chapters 12 to 15 above refuse on their own; counting a realm's local
-  lights and materials in its declared budget joins them to the realm's
-  budget check.
+- **Lights and materials in the frame budget.** `FrameBudget` and
+  `BudgetMeter` now include `BUDGET_LIGHTS` and `BUDGET_MATERIALS`, and
+  `budget_measure_scene` meters them against the current frame (mutation
+  163 of 163). Per-realm declarations and budget checks still need to
+  supply their light and material counts.
 - **Frame time.** GPU time per pass is measured in the browser
   ([coax/web/frametime.ts](../../coax/web/frametime.ts)) and the 60 FPS
   walk in [coax/web/perf.ts](../../coax/web/perf.ts). A per-realm time
