@@ -2391,7 +2391,8 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
         }
       }
     }
-    if tail > 0 {
+    // the line under the list: the empty list's hint, or how many older chats are left out; none when every chat shows
+    if s[0].nchats == 0 || s[0].chats_more > 0 {
       mb: [96] u8; mn := 0;
       if s[0].nchats == 0 { mn = el_put(mb[..], 0, "Your chats show here."); }
       else { mn = el_put_i(mb[..], 0, s[0].chats_more); mn = el_put(mb[..], mn, ifx s[0].chats_more == 1 then " older chat is not shown." else " older chats are not shown."); }
@@ -3818,6 +3819,36 @@ cp_find :: (text: string, needle: string) -> int {
   s[0].moving = uiframe_moving(f[..]) || cp_running(s) || cp_side_busy(s);
   #assert uiframe_end(f[..], s[0].surface[..]);
   #assert !cp_side_busy(s) && !coder_page_moving(s);
+}
+
+// a frame wide enough for the sidebar
+cp_test_draw_side :: (s: [] CoderPage, f: [] UiFrame) -> bool {
+  uiframe_begin(f, s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0, 0.016, false, false);
+  cp_layout(s, f, 1200.0f32, 800.0f32);
+  return uiframe_end(f, s[0].surface[..]);
+}
+#test "the sidebar says how many older chats are left out only when some are" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s); s[0].d = 1.0f32; s[0].ready = true;
+  f: [1] UiFrame;
+  // one chat: no "0 older chats" line
+  coder_page_chats(s, "a1\tOnly chat\n");
+  #assert s[0].nchats == 1 && s[0].chats_more == 0;
+  #assert cp_test_draw_side(s, f[..]);
+  #assert surface_find(s[0].surface[..], "coder.chats.more") < 0;
+  // no chats: the hint shows
+  coder_page_chats(s, "");
+  #assert cp_test_draw_side(s, f[..]);
+  #assert surface_find(s[0].surface[..], "coder.chats.more") >= 0;
+  // more chats than the list holds: the count shows
+  lb: [CP_CHATS * 16 + 64] u8; ln := 0;
+  for q: 0..<CP_CHATS + 2 { ln = el_put(lb[..], ln, "c"); ln = el_put_i(lb[..], ln, q); ln = el_put(lb[..], ln, "\tChat\n"); }
+  coder_page_chats(s, cast(string) lb[0..<ln]);
+  #assert s[0].chats_more == 2;
+  s[0].side_scroll = 100000.0f32;   // the line sits under the list's last row
+  #assert cp_test_draw_side(s, f[..]);
+  #assert surface_find(s[0].surface[..], "coder.chats.more") >= 0;
+  #assert surface_say(s[0].surface[..], surface_find(s[0].surface[..], "coder.chats.more")) == "2 older chats are not shown.";
 }
 
 #test "a busy sidebar chat keeps the page moving while idle" {
