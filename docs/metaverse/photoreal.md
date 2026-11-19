@@ -59,6 +59,17 @@ The parts themselves are made with the architecture kit's pen
   the height of what stands in each cell, and `pr_field_build` turns that
   into how much sky each cell sees. Streets between towers are darker than
   open plazas, and walls take the answer of the ground at their foot.
+- **Contact.** A post pass darkens what the depth buffer shows is hidden
+  close by (`pr_post`, `pr_contact`): the sky's share of a pixel's light by
+  how much of the sky the geometry round it hides (12 taps in a disc), and
+  the sun's share by a short march toward the sun (8 steps) for the shadows
+  the shadow map is too coarse to catch. Both reach farther with distance
+  (the disc is about 1.2% of the distance across, 0.8 m to 24 m), so a
+  tower's foot sits on the deck from the opening camera and a bench's from
+  walking height. The surfaces hand the pass their normal and the sun's
+  share of their light in the second target (`pr_lit_out`,
+  `pr_sun_share`); the sky, the sea and traced views mark themselves for
+  none (`pr_lit_plain`). See [Contact](#contact).
 - **Reflections.** A smooth surface mirrors the sky (`pr_environment`). A
   realm may put more in the mirror: SLAB's glass and pools also mirror the
   platform's own buildings on a desktop.
@@ -72,14 +83,14 @@ The parts themselves are made with the architecture kit's pen
   the photo response shows it about half as bright. `film_photo_light` gives
   back the light behind a dark display grey.
 - **Exposure.** `PrSky.exposure` scales the engine's choice, which shows pale
-  level ground as a pale grey. SLAB sets 1.45 (`PHOTO_EXPOSURE`), so its
-  cream concrete in the sun sits near the top of the display, as in the
-  concept picture.
+  level ground as a pale grey. SLAB sets 1.3 (`PHOTO_EXPOSURE`), so its
+  cream wall square to a low sun sits near the top of the display without
+  losing its colour in the film's shoulder, as in the concept picture.
 - **White balance.** `PrSky.warm` is the camera's white balance: 0 leaves
   light its own colour, and a grey keeps its brightness. It is held to 0.2
-  either way. SLAB sets 0.07 under a high sun and up to 0.15 under a low
-  one, less under cloud. Keep it small: most of the golden hour comes from
-  the sun and the haze.
+  either way. SLAB sets 0.07 under a high sun and up to 0.14 under a low
+  one, less under cloud, with a haze of 0.22 (a marine morning). Keep it
+  small: most of the golden hour comes from the sun and the haze.
 
 ### Shading
 
@@ -90,7 +101,8 @@ a colour, a roughness, how much metal, a pattern and a glow.
 ### The phone tier
 
 `PrSky.reduced` (a phone) asks for four shadow taps, no clouds in the dome,
-and no fine normal detail. `pr_list_draws(l, true)` leaves out records
+no fine normal detail, and contact from six taps with no march toward the
+sun. `pr_list_draws(l, true)` leaves out records
 marked fine (`pr_fine`). The host draws a phone's shadow map at half the
 size.
 
@@ -421,20 +433,31 @@ a wall and the water at its foot share one sun, sky, air, exposure and
 film. `slab_haze` adds no air of its own over the sea in photoreal
 (`slab_photo_sea_haze`).
 
-The view from under the sea and the section's slot still cross between a
-display's colours and light with a square and a root (`slab_sea_lin`,
-`slab_sea_out`). There `slab_sky`, `slab_haze` and `slab_grade`
-(`apps/openagents-web/gpu/slab.coax`) answer with the physical sky, air
-and film, and the uniforms `P_SUNCOL`, `P_ZENITH` and `P_HORIZON` hold the
-sun's and the sky's colours through the same film. The painted golden
-grade (`P_SUNHULL + 3`) is 0. The film darkens deep shadow more than a
-display's curve does, so a display colour can't be turned back into the
-frame's light by undoing the curve alone.
+The view from under the sea and the section's slot are in the frame's light
+too. The daylight that enters the water is the frame's sun and sky
+(`slab_sea_daylight` reads `slab_sea_top_sun` and `slab_sea_top_skylight`),
+the hull under the water is handed to the water as light
+(`slab_photo_light`, not `slab_photo_lit`'s display colour), and
+`slab_sea_under_out` takes the result through the frame's film. Under the
+sea the camera meters the water's own light round the eye, as it meters
+pale ground in the air, and opens up most of the way (the 0.7 of
+`PR_ADAPT`), so the hull's bottom, the pipes and the lines read at 45 m.
+An eye above the water (the section's slot) keeps the air's exposure: the
+slot is the sea round it, seen into. Elsewhere `slab_sky`, `slab_haze` and
+`slab_grade` (`apps/openagents-web/gpu/slab.coax`) answer with the
+physical sky, air and film, and the uniforms `P_SUNCOL`, `P_ZENITH` and
+`P_HORIZON` hold the sun's and the sky's colours through the same film. The
+painted golden grade (`P_SUNHULL + 3`) is 0.
 
 The weather is the sea's (`slab-sea.coax`, `SeaWeather`). `slab_photo_frame`
 reads its cloud, its shares of sun and sky, its haze length and its
-lightning, and hands them to `pr_frame_sky`. Nothing corrects the frame
-afterwards.
+lightning, and hands them to `pr_frame_sky`. Two things it adds from storm
+light: under a full cover no sun's disc shows (the sun's share falls with
+the cover's square, to 5% of the weather's own at full cover), and rain
+cloud is deep convective cloud, which passes a third to a tenth of a stratus
+layer's light (the sky's share falls by up to 65% with the rain). A gale is
+grey; a storm or a hurricane is dim, with no lit faces and soft shadow.
+Nothing corrects the frame afterwards.
 
 Anything else that wants light's own scale reads the frame's block at
 `SLAB_PHOTO` (`apps/openagents-web/gpu/slab-photoreal.coax`):
@@ -449,6 +472,28 @@ Anything else that wants light's own scale reads the frame's block at
 | `pr_out(c, u, SLAB_PHOTO)` | light as the display's colour |
 
 `slab_photo(u)` says whether the frame is photoreal.
+
+## Contact
+
+The post pass is the host's (`coax/web/host.js`, "The post pass"): a page
+whose shader module has `post_fs` draws into two targets, and `post_fs`
+draws the screen from them, the depth buffer and the bloom.
+
+- Every fragment entry that draws the frame returns `PrLit`: `light` (the
+  display's colour, as `pr_out` gives it) and `aux` (`pr_lit_out(c, n,
+  share)` for a lit surface; `pr_lit_plain(c)` for the sky, the sea and
+  anything traced).
+- `post_fs` calls `pr_post(light, aux, x, y, u, base, depth)`.
+- The module also needs a `bloom_fs`. SLAB asks for none of the five bloom
+  passes (`coaxial_bloom_passes_v1` in `slab-face.c` answers 0), and its
+  `slab_bloom_fs` only copies its source.
+- Bind the post pass's six textures in group 1 (`post_light` to
+  `post_lin`, `apps/openagents-web/gpu/slab.bindings`).
+
+`/worlds/slab?contact=0` leaves contact out, to compare it and to cost it.
+On a laptop's GPU (Apple M-series, headless, the machine under heavy load)
+contact costs about 0.1 to 0.3 ms a frame at 1440 × 900 and about 0.1 to
+0.2 ms on the phone tier at 390 × 844 and a device pixel ratio of 3.
 
 ## A realm of its own
 
@@ -467,7 +512,8 @@ A realm that wants the style without SLAB's files:
    Each frame call `pr_frame_view`, `pr_frame_pose` (or `pr_frame_no_pose`),
    `pr_frame_sky`, `pr_frame_light` and `pr_frame_field` (or
    `pr_frame_no_field`).
-4. Build its list with `pr_list`, `pr_part`, `pr_list_count`,
+4. For contact, add the post pass ([Contact](#contact)).
+5. Build its list with `pr_list`, `pr_part`, `pr_list_count`,
    `pr_list_fill` and `pr_list_draws`, and export the draws and stores from
    its face (`apps/openagents-web/slab-face.c`).
 

@@ -18,6 +18,7 @@
 SLAB_PHOTO :: 15872;   // the photoreal frame's block in the uniforms (slab.coax U_PHOTO), then SLAB's own four:
 SLAB_PHOTO_ON :: SLAB_PHOTO + PR_FLOATS;          // 1: the realm draws photoreal
 SLAB_PHOTO_MESHES :: SLAB_PHOTO + PR_FLOATS + 1;  // 1: the meshes draw the platform this frame (0 in the section and under the sea)
+SLAB_PHOTO_CONTACT :: SLAB_PHOTO + PR_FLOATS + 2; // 1: the post pass draws contact (photoreal.coax pr_post)
 SLAB_PAINT :: 63.0f32;   // the material row that means: the plan's own paint for the record's kind (slab_paint)
 
 slab_photo :: (u:[]f32)->bool {return u[SLAB_PHOTO_ON]>0.5f32;}
@@ -34,6 +35,11 @@ slab_photo_first :: (o:V3,d:V3,u:[]f32)->SlabHit {
 // its paint under the sun, the platform's own shadow traced, and the sky's light. The section and
 // the view from under the sea draw the platform this way, and so does whoever walks the deck.
 slab_photo_lit :: (hit:SlabHit,o:V3,d:V3,u:[]f32)->V3 {
+  return slab_photo_pulse(pr_out(slab_photo_light(hit,o,d,u),u,SLAB_PHOTO),hit.id,u);
+}
+// The same in the frame's light, before the air and the film: what the sea's water takes under
+// it (gpu/slab-sea.coax slab_sea_through). The selection's pulse goes over the display's colour.
+slab_photo_light :: (hit:SlabHit,o:V3,d:V3,u:[]f32)->V3 {
   b:int=SLAB_PHOTO;
   w:V3=sb_add(o,sb_mul(d,hit.t));
   pt:SlabPaint=slab_paint(hit,w,d,u);
@@ -47,12 +53,15 @@ slab_photo_lit :: (hit:SlabHit,o:V3,d:V3,u:[]f32)->V3 {
   // a little less of the sky where a wall meets the deck
   occ:f32=ifx ((abs(hit.n.y)<0.5f32)&&(hit.kind>=0.5f32)) then 0.72f32+(0.28f32*smoothstep(0.0f32,6.0f32,w.y-u[38])) else 1.0f32;
   light:V3=add3(scale3(pr_at3(u,b+PR_SUN_LIGHT),ndl),scale3(pr_sky_light(nw,u,b),occ));
-  c:V3=add3(pr_out(mul3(pr_decode(pt.c),light),u,b),pt.emit);
-  if (hit.id>-0.5f32) {
-    if (abs(hit.id-u[SLAB_P+36])<0.5f32) {
+  return add3(mul3(pr_decode(pt.c),light),scale3(pr_decode(pt.emit),1.0f32/fmax(u[b+PR_SUN_LIGHT+3],0.001f32)));
+}
+slab_photo_pulse :: (c0:V3,id:f32,u:[]f32)->V3 {
+  c:V3=c0;
+  if (id>-0.5f32) {
+    if (abs(id-u[SLAB_P+36])<0.5f32) {
       pulse:f32=0.5f32+(0.5f32*sin(u[SLAB_P+38]*5.0f32));
       c=add3(scale3(c,1.1f32),scale3(v3(1.0f32,0.62f32,0.2f32),0.12f32+(0.12f32*pulse)));
-    } else if (abs(hit.id-u[SLAB_P+37])<0.5f32) {
+    } else if (abs(id-u[SLAB_P+37])<0.5f32) {
       c=add3(scale3(c,1.06f32),v3(0.06f32,0.05f32,0.03f32));
     }
   }
@@ -179,7 +188,7 @@ slab_deck_street :: (s0:PrSurface,d:SlabDeck,aa:f32)->PrSurface {
   s.rough=mix(s.rough,0.6f32,white);
   return s;
 }
-slab_scene_fs :: (v:PrV,u:[]f32,materials:[]f32,field:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->V4 {
+slab_scene_fs :: (v:PrV,u:[]f32,materials:[]f32,field:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->PrLit {
   b:int=SLAB_PHOTO;
   full:bool=u[b+PR_GROUND+3]<0.5f32;
   eye:V3=pr_at3(u,b+PR_EYE);
@@ -300,5 +309,22 @@ slab_scene_fs :: (v:PrV,u:[]f32,materials:[]f32,field:[]f32,shadow_map:TexDepth,
       c=add3(scale3(c,1.06f32),v3(0.06f32,0.05f32,0.03f32));
     }
   }
+  // the post pass's contact shade reads the normal and the sun's share of the light
+  return pr_lit_out(c,n,pr_sun_share(n,reach,open,u,b));
+}
+
+// ---- the post pass (coax/web/host.js): the frame's two targets come together on the screen.
+// In photoreal, contact (photoreal.coax pr_post): the screen's ambient occlusion and short
+// contact shadows, so what stands on the deck sits on it. Painterly passes through. No bloom:
+// slab-face.c asks for none of the five passes (coaxial_bloom_passes_v1), and slab_bloom_fs only
+// copies its source for the host's pipeline.
+slab_bloom_fs :: (pos:V4,bloom_src:Tex2D,bloom_lin:Sampler,bloom_step:[]f32)->V4 {
+  return gpu_load(bloom_src,cast(s32)pos.x,cast(s32)pos.y,0);
+}
+slab_post_fs :: (pos:V4,u:[]f32,post_light:Tex2D,post_quarter:Tex2D,post_eighth:Tex2D,post_aux:Tex2D,post_depth:TexDepth,post_lin:Sampler)->V4 {
+  x:s32=cast(s32)pos.x; y:s32=cast(s32)pos.y;
+  light:V4=gpu_load(post_light,x,y,0);
+  if (u[SLAB_PHOTO_CONTACT]<0.5f32) {return v4(light.x,light.y,light.z,1.0f32);}
+  c:V3=pr_post(light,gpu_load(post_aux,x,y,0),x,y,u,SLAB_PHOTO,post_depth);
   return v4(c.x,c.y,c.z,1.0f32);
 }

@@ -503,6 +503,101 @@ pr_lit :: (s:PrSurface,toward:V3,sun_reach:f32,open:f32,mirrored:V3,u:[]f32,b:in
   return add3(add3(diffuse,glint),add3(scale3(mul3(mirrored,spec_share),seen),s.glow));
 }
 
+// ---- contact: the screen's ambient occlusion and short contact shadows (a post pass)
+// A realm whose shader module has post_fs (coax/web/host.js, the post pass) draws its frame into
+// two targets: `light`, the display's colour as pr_out gives it, and `aux`, what the post pass
+// needs to know of the surface there: its normal and how much of its light came from the sun
+// (pr_sun_share), or a negative share where nothing should be shaded (the sky, the sea, a traced
+// view). pr_post then darkens each pixel by what stands round it in the depth buffer: the sky's
+// share by how much of the sky the nearby geometry hides, the sun's share by a short march toward
+// the sun. Its reach grows with distance, so a tower's foot sits on the deck from the opening
+// camera and a bench's from walking height. The reduced tier takes six taps and no march.
+PrLit :: struct {light:V4; aux:V4;}
+PR_POST_NONE :: -1.0f32;   // aux's fourth: this pixel takes no contact shade
+pr_lit_out :: (c:V3,n:V3,share:f32)->PrLit {return PrLit.{light=v4(c.x,c.y,c.z,0.0f32),aux=v4(n.x,n.y,n.z,share)};}
+pr_lit_plain :: (c:V4)->PrLit {return PrLit.{light=c,aux=v4(0.0f32,1.0f32,0.0f32,PR_POST_NONE)};}
+// The share of a surface's light that is the sun's (0 to 1), by the same terms pr_lit adds.
+pr_sun_share :: (n:V3,sun_reach:f32,open:f32,u:[]f32,b:int)->f32 {
+  sl:V3=pr_at3(u,b+PR_SUN_LIGHT);
+  direct:f32=pr_lum(sl)*sun_reach*fmax(dot3(n,pr_at3(u,b+PR_SUN)),0.0f32);
+  sky:f32=pr_lum(pr_sky_light(n,u,b))*open;
+  return saturate(direct/fmax(direct+sky,0.000001f32));
+}
+// The world point behind pixel (x, y) of a w by h target whose depth buffer holds `depth`.
+pr_post_z :: (depth:f32,u:[]f32,b:int)->f32 {return u[b+PR_FORWARD+3]/fmax(1.0f32-depth,0.0000001f32);}
+pr_post_at :: (x:f32,y:f32,z:f32,w:f32,h:f32,u:[]f32,b:int)->V3 {
+  t:f32=u[b+PR_EYE+3];
+  nx:f32=(x/w)*2.0f32-1.0f32; ny:f32=1.0f32-(y/h)*2.0f32;
+  ray:V3=add3(pr_at3(u,b+PR_FORWARD),add3(scale3(pr_at3(u,b+PR_RIGHT),nx*t*u[b+PR_RIGHT+3]),scale3(pr_at3(u,b+PR_UP),ny*t)));
+  return add3(pr_at3(u,b+PR_EYE),scale3(ray,z));
+}
+// How much light stays at pixel (x, y): 1 untouched, less where it is hidden (pr_post's factor).
+pr_contact :: (x:s32,y:s32,n:V3,share:f32,u:[]f32,b:int,depth:TexDepth)->f32 {
+  wi:s32=cast(s32)gpu_depth_width(depth); hi:s32=cast(s32)gpu_depth_height(depth);
+  w:f32=cast(f32)wi; h:f32=cast(f32)hi;
+  d0:f32=gpu_load_depth(depth,x,y,0);
+  if (d0>=0.99999f32) {return 1.0f32;}
+  z:f32=pr_post_z(d0,u,b);
+  fx:f32=cast(f32)x+0.5f32; fy:f32=cast(f32)y+0.5f32;
+  p:V3=pr_post_at(fx,fy,z,w,h,u,b);
+  reduced:bool=u[b+PR_GROUND+3]>0.5f32;
+  t:f32=u[b+PR_EYE+3];
+  focal:f32=h/(2.0f32*t);   // pixels a metre spans one metre along the view
+  // a fixed dither by pixel (interleaved gradient noise) turns the few taps into fine grain
+  noise:f32=fract(52.982919f32*fract(0.06711056f32*fx+0.00583715f32*fy));
+  // ambient occlusion: taps in a disc whose width grows with distance
+  reach:f32=clampf(z*0.012f32,0.8f32,24.0f32);
+  rpx:f32=fmin(reach*focal/z,90.0f32);
+  taps:int=ifx reduced then 6 else 12;
+  occ:f32=0.0f32;
+  if (rpx>1.5f32) {
+    for i:0..<12 {
+      if (i<taps) {
+        a:f32=(cast(f32)i+noise)*2.399963f32;
+        r:f32=sqrt((cast(f32)i+noise)/cast(f32)taps)*rpx+1.0f32;
+        qx:s32=cast(s32)clampf(fx+cos(a)*r,0.0f32,w-1.0f32); qy:s32=cast(s32)clampf(fy+sin(a)*r,0.0f32,h-1.0f32);
+        dq:f32=gpu_load_depth(depth,qx,qy,0);
+        if (dq<0.99999f32) {
+          s:V3=pr_post_at(cast(f32)qx+0.5f32,cast(f32)qy+0.5f32,pr_post_z(dq,u,b),w,h,u,b);
+          v:V3=sub3(s,p); l:f32=length3(v);
+          occ=occ+fmax(dot3(n,v)/fmax(l,0.0001f32)-0.12f32,0.0f32)*(1.0f32-smoothstep(reach*0.7f32,reach*1.8f32,l));
+        }
+      }
+    }
+  }
+  ao:f32=1.0f32-clampf((occ/cast(f32)taps)*1.5f32,0.0f32,0.8f32);
+  // contact shadows: a short march toward the sun through the depth buffer, for what the shadow map is too coarse to catch
+  shade:f32=0.0f32;
+  sun:V3=pr_at3(u,b+PR_SUN);
+  if ((!reduced)&&(share>0.02f32)&&(sun.y>0.0f32)) {
+    march:f32=clampf(z*0.008f32,0.5f32,10.0f32);
+    from:V3=add3(p,scale3(n,march*0.03f32+z*0.0004f32));
+    eye:V3=pr_at3(u,b+PR_EYE); fw:V3=pr_at3(u,b+PR_FORWARD);
+    for i:1..<9 {
+      if (shade<0.5f32) {
+        q:V3=add3(from,scale3(sun,march*(cast(f32)i-noise)/8.0f32));
+        rel:V3=sub3(q,eye);
+        zq:f32=dot3(rel,fw);
+        sx:f32=(dot3(rel,pr_at3(u,b+PR_RIGHT))/(zq*t*u[b+PR_RIGHT+3])*0.5f32+0.5f32)*w;
+        sy:f32=(0.5f32-dot3(rel,pr_at3(u,b+PR_UP))/(zq*t)*0.5f32)*h;
+        if ((zq>u[b+PR_FORWARD+3])&&(sx>=0.0f32)&&(sy>=0.0f32)&&(sx<w)&&(sy<h)) {
+          zs:f32=pr_post_z(gpu_load_depth(depth,cast(s32)sx,cast(s32)sy,0),u,b);
+          gap:f32=zq-zs;
+          if ((gap>zq*0.0012f32+0.03f32)&&(gap<march*1.5f32+zq*0.003f32)) {shade=1.0f32;}
+        }
+      }
+    }
+  }
+  return (1.0f32-share)*ao+share*(1.0f32-0.85f32*shade)*mix(1.0f32,ao,0.25f32);
+}
+// The post pass's colour at pixel (x, y): the light the surfaces drew, less what contact hides.
+pr_post :: (light:V4,aux:V4,x:s32,y:s32,u:[]f32,b:int,depth:TexDepth)->V3 {
+  c:V3=v3(light.x,light.y,light.z);
+  if (aux.w<0.0f32) {return c;}
+  k:f32=pr_contact(x,y,v3(aux.x,aux.y,aux.z),aux.w,u,b,depth);
+  return pr_encode(scale3(pr_decode(c),k));
+}
+
 // ---- the frame's way out
 // The frame's light as the display's colour: exposed, through the film response, encoded.
 pr_out :: (c:V3,u:[]f32,b:int)->V3 {
@@ -632,6 +727,34 @@ pr_test_block :: (u:[]f32) {
   #assert near>0.99f32 && far<near && far>0.5f32 && high>far;
   // a ray level with the ground goes through `dist` of the air there exactly
   #assert abs(far-exp(0.0f32-0.00004f32*exp(0.0f32-10.0f32/1200.0f32)*10000.0f32))<0.0001f32;
+}
+// A 64 by 64 depth buffer looking straight down from 10 m on open ground, with a block 0.4 m
+// high over the right half (x > 0).
+pr_test_down :: (u:[]f32,d:[]f32,block:bool) {
+  pr_test_block(u);
+  u[PR_FORWARD+1]=0.0f32-1.0f32; u[PR_FORWARD+2]=0.0f32; u[PR_RIGHT+3]=1.0f32;
+  u[PR_UP+1]=0.0f32; u[PR_UP+2]=0.0f32-1.0f32;
+  for j:0..<64 {for i:0..<64 {d[j*64+i]=1.0f32-0.5f32/(ifx (block&&(i>=32)) then 9.6f32 else 10.0f32);}}
+}
+#test "contact: open ground keeps its light; beside a block the sky and a low sun are partly hidden" {
+  u:[PR_FLOATS]f32; d:[4096]f32;
+  pr_test_down(u[..],d[..],false);
+  z:=TexDepth.{width=64,height=64,depth=d[..]};
+  up:V3=v3(0.0f32,1.0f32,0.0f32);
+  #assert abs(pr_contact(30,30,up,0.0f32,u[..],0,z)-1.0f32)<0.001f32;
+  pr_test_down(u[..],d[..],true);
+  // the sky's share: darker at the block's foot than out on the open ground
+  foot:f32=pr_contact(30,30,up,0.0f32,u[..],0,z);
+  open:f32=pr_contact(4,30,up,0.0f32,u[..],0,z);
+  #assert foot<0.95f32 && abs(open-1.0f32)<0.001f32;
+  // the sun low over the block: the foot is in its contact shadow, the far ground is not
+  u[PR_SUN]=0.894f32; u[PR_SUN+1]=0.447f32; u[PR_SUN+2]=0.0f32;
+  #assert pr_contact(30,30,up,1.0f32,u[..],0,z)<0.3f32 && pr_contact(4,30,up,1.0f32,u[..],0,z)>0.99f32;
+  // the reduced tier marches nothing, and a pixel marked for none is left as drawn
+  u[PR_GROUND+3]=1.0f32;
+  #assert pr_contact(30,30,up,1.0f32,u[..],0,z)>0.5f32;
+  c:V3=pr_post(v4(0.5f32,0.4f32,0.3f32,0.0f32),v4(0.0f32,1.0f32,0.0f32,PR_POST_NONE),30,30,u[..],0,z);
+  #assert c.x==0.5f32 && c.y==0.4f32 && c.z==0.3f32;
 }
 #test "a face's coordinates: across and up a wall, x and z on a floor" {
   a:V2=pr_face(v3(3.0f32,7.0f32,5.0f32),v3(0.0f32,1.0f32,0.0f32)); #assert a.x==3.0f32 && a.y==5.0f32;

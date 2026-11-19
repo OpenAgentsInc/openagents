@@ -23,7 +23,7 @@
 U_PHOTO :: U_WORDS + WORDS + SEAS_FLOATS;   // the photoreal frame's block, after the sea's (gpu/slab-photoreal.coax SLAB_PHOTO)
 U_PHOTO_ON :: U_PHOTO + PR_FLOATS;   // 1: the realm draws photoreal; then 1: the meshes draw the platform this frame
 PHOTO_FLOATS :: PR_FLOATS + 4;
-PHOTO_EXPOSURE :: 1.45f32;
+PHOTO_EXPOSURE :: 1.3f32;
 PHOTO_VERTICES :: 40000;             // the parts' vertices, fixed and loose
 PHOTO_RECORDS :: 16384;              // placed parts, still and moving
 PHOTO_DRAWS :: 2 * PR_PARTS;
@@ -34,6 +34,7 @@ PHOTO_NX :: 250; PHOTO_NZ :: 150;
 
 SlabPhoto :: struct {
   on: bool;                // the realm draws photoreal
+  no_contact: bool;        // ?contact=0: the post pass leaves out contact (to compare it, and cost it)
   made: bool;              // the fixed parts and the materials are made
   full: bool;              // something did not fit and was left out
   mesh: [PHOTO_VERTICES * ARCH_VERTEX_FLOATS] f32;
@@ -100,6 +101,7 @@ slab_photo_style :: (s: [] Slab, style: string, url: string) {
   s[0].photo[0].on = style == "photoreal";
   if query_word(url, "style=photoreal") { s[0].photo[0].on = true; }
   if query_word(url, "style=painterly") { s[0].photo[0].on = false; }
+  s[0].photo[0].no_contact = query_word(url, "contact=0");
 }
 
 // ---- the fixed parts
@@ -427,7 +429,7 @@ slab_photo_frame :: (s: [] Slab, u: [] f32, sun: SimSun, phone: bool) {
   ph := s[0].photo[..];
   b := U_PHOTO; P := U_PARAMS;
   ph[0].draw_count = 0;
-  u[U_PHOTO_ON] = 0; u[U_PHOTO_ON + 1] = 0;
+  u[U_PHOTO_ON] = 0; u[U_PHOTO_ON + 1] = 0; u[U_PHOTO_ON + 2] = 0;
   if !ph[0].on { return; }
   if !ph[0].made { photo_make(ph); }
   u[U_PHOTO_ON] = 1;
@@ -443,12 +445,17 @@ slab_photo_frame :: (s: [] Slab, u: [] f32, sun: SimSun, phone: bool) {
     w := s[0].look.now;
     cloud = clamp32(f32(w.cloud), 0, 1); sun_share = clamp32(f32(w.sun), 0, 1); sky_share = clamp32(f32(w.sky), 0.05, 1);
     thick = 1 / photo_max(f32(w.haze), 200); flash = clamp32(f32(w.lightning), 0, 1);
+    // storm light: under a full cover no sun's disc shows, so no lit face and no hard shadow is
+    // left; and a rain cloud is deep convective cloud, not a stratus layer: it passes a third to
+    // a tenth of a stratus's light, so a storm at sea is dim, not a pale grey day
+    sun_share *= 1 - 0.95f32 * cloud * cloud;
+    sky_share = clamp32(sky_share * (1 - 0.65f32 * clamp32(f32(w.rain), 0, 1)), 0.03, 1);
   }
   // a photographer's choices: the deck's pale concrete in the sun near the top of the display
   // (PHOTO_EXPOSURE over the engine's pale-grey ground), and a warmer balance under a low sun
   lt := clamp32((sv[1] - 0.2f32) / 0.4f32, 0, 1); low := 1 - lt * lt * (3 - 2 * lt);
   pr_frame_sky(u, b, PrSky.{sun = sv, cover = 0.3f32 + 0.6f32 * cloud, sun_share = sun_share, sky_share = sky_share, air = thick * 0.75f32, air_height = 900,
-    haze = 0.16f32 + 0.14f32 * cloud, warm = (0.07f32 + 0.08f32 * low) * (1 - cloud), sea_level = 0, ground = [3] f32.[0.26, 0.26, 0.25], exposure = PHOTO_EXPOSURE, reduced = phone});
+    haze = 0.22f32 + 0.14f32 * cloud, warm = (0.07f32 + 0.07f32 * low) * (1 - cloud), sea_level = 0, ground = [3] f32.[0.26, 0.26, 0.25], exposure = PHOTO_EXPOSURE, reduced = phone});
   // the towers' rooms lit by the hour and the daylight (the glass patterns' pr_room)
   pr_frame_rooms(u, b, pr_rooms_by_hour(f32(s[0].hour), u[b + PR_SUN + 3]));
   // the shadow map: round where the view meets the deck (or the sea), as wide as the view there
@@ -470,6 +477,8 @@ slab_photo_frame :: (s: [] Slab, u: [] f32, sun: SimSun, phone: bool) {
   // the section and the view from under the sea stay traced
   meshes := u[P + P_SECTION] == 0 && u[P + P_UNDER] < 0.5;
   if meshes { u[U_PHOTO_ON + 1] = 1; } else { ph[0].draw_count = 0; }
+  // the post pass's contact shade (gpu/slab-photoreal.coax slab_post_fs), unless the address leaves it out
+  u[U_PHOTO_ON + 2] = ifx meshes && !ph[0].no_contact then 1.0f32 else 0.0f32;
   // the sea's colours, as a display shows them: the sun on a white surface, the sky overhead
   // and at the horizon square to the sun; no painted golden grade
   sc := pr_frame_out(u, b, [3] f32.[u[b + PR_SUN_LIGHT], u[b + PR_SUN_LIGHT + 1], u[b + PR_SUN_LIGHT + 2]]);

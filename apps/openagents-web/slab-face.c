@@ -72,6 +72,8 @@ EXPORT("coaxial_particle_instances") uint32_t coaxial_particle_instances(uint32_
 EXPORT("coaxial_particle_version") uint32_t coaxial_particle_version(uint32_t state) { return (uint32_t)slab_particle_version(at(state)); }
 // The HUD's panels and strokes blend over the frame by their coverage.
 EXPORT("coaxial_fx_alpha_v1") uint32_t coaxial_fx_alpha_v1(void) { return 1; }
+// The post pass (gpu/slab-photoreal.coax slab_post_fs) draws contact; none of its five bloom passes.
+EXPORT("coaxial_bloom_passes_v1") uint32_t coaxial_bloom_passes_v1(uint32_t state) { (void)state; return 0; }
 
 EXPORT("coaxial_inbox") uint32_t coaxial_inbox(uint32_t state) { (void)state; return (uint32_t)(uintptr_t)inbox; }
 EXPORT("coaxial_inbox_cap") uint32_t coaxial_inbox_cap(void) { return sizeof inbox; }

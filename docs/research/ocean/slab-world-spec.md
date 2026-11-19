@@ -1070,17 +1070,19 @@ camera (yaw 0.802, pitch 0.438, 1,164 m out, aimed at the waterline) crops
 the towers as the picture does; it is the tour's first stop and the station
 "The view in Luckey's picture". The world opens in the `rough` sea
 (4 m; section 5.2 says why, and that Guam's own sea is `trade`), in June
-at 17:24 off Guam: the sun at about 291°, 13° up. From the opening camera
-(which looks south-west) the sun stands to the left and a little ahead: it
-lights the long north wall at a glancing angle, leaves the east end wall in
-shade so the block reads as a solid, and lays shadows about four times as
-long as things are tall across the deck toward the camera's right. June is
-the month because the sun then sets furthest north, which is what lights the
-north wall; an earlier hour lifts the sun and shortens the shadows, and a
-later one (the first choice was 17:51, 7° up) puts the whole garden in the
-towers' shadow. The painterly style's golden-hour grade lifts the exposure
-and adds sepia; the photoreal style exposes for the deck's pale concrete and
-warms the camera's white balance under a low sun (photoreal.md). The spray at the walls is computed from the waves that meet them
+at 06:12 off Guam: the sun at about 68° (east-north-east), 9° up. From the
+opening camera (which looks south-west) the sun stands behind it and to its
+left, so both walls it sees, the long north wall and the east end wall, are
+lit, and the shadows, about six times as long as things are tall, fall away
+from the camera across the deck. The concept image's lit wall is about
+(225, 197, 163); the east wall reads about (234, 220, 190). June is the month
+because the sun then rises furthest north, which is what lights the north
+wall. The evening this view first had (17:24, the sun at 291°, 13° up) lit
+the north wall only at a glancing angle and left the east wall in shade; a
+later hour lifts the sun and shortens the shadows. The painterly style's
+golden-hour grade lifts the exposure and adds sepia; the photoreal style
+exposes for the deck's pale concrete and warms the camera's white balance
+under a low sun (photoreal.md). The spray at the walls is computed from the waves that meet them
 (section 4.7), so in this 4 m sea it is small against a 118 m wall: bursts a
 few metres high, about three every two seconds round the hull. The picture's
 plumes, about 36 m, need a sea between the `gale` and the `hurricane`
@@ -1430,9 +1432,9 @@ in the dock notch in the south wall (section 3.1; the model's notch is the
 drawn one, 50 m either side of the middle and 60 m in). The south wall is only 20° off the waves' path,
 so the notch sees about half the open sea. A notch in the west wall would see
 under a third.
-- The arrival view and the default hour follow the concept image: January at
-  17:18, with the sun low in the west-south-west, seen from off the
-  north-east corner.
+- The arrival view follows the concept image, seen from off the north-east
+  corner. The default hour is a June morning, 06:12, with the sun low in the
+  east-north-east, so the walls the camera sees are lit (section 8).
 - With `otec` power at Guam, the dispatcher sheds industry, so the stacks
   don't smoke. The world therefore opens on `hybrid` (section 6.7): supply
   206.5 MW in June against 163 MW, every fixed load carried, 43 of 50

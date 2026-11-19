@@ -822,7 +822,7 @@ slab_lines :: (o:V3,d:V3,limit:f32,u:[]f32)->SlabHit {
 }
 // Sea water: what it scatters toward the eye at depth y (rgb), dimmer and bluer the deeper.
 slab_deep_colour :: (y:f32,up:f32,u:[]f32)->V3 {
-  return slab_sea_out(slab_sea_fog(y,up,u));
+  return slab_sea_under_out(slab_sea_fog(y,up,u),y,u);
 }
 // A colour seen through `path` metres of sea, the point at depth y and the eye at depth eye: red
 // goes first, then green (slab-sea.coax, by the site's water type).
@@ -1324,7 +1324,8 @@ SLAB_NEAR :: 0.5f32;
 slab_depth_of :: (d:V3,along:f32,u:[]f32)->f32 {
   return clampf(1.0f32-(SLAB_NEAR/fmax(along*wg_dot3(d,v3(u[12],u[13],u[14])),SLAB_NEAR)),0.0f32,1.0f32);
 }
-SlabOut :: struct {c:V4; depth:f32 #depth; }
+// c the display's colour, aux what the post pass reads (photoreal.coax pr_lit_plain: no contact shade on a traced view or the sky)
+SlabOut :: struct {c:V4; aux:V4; depth:f32 #depth; }
 slab_bg_fs :: (frag:V4,u:[]f32)->SlabOut {
   ndc:V2=v2(((frag.x/u[0])*2.0f32)-1.0f32,1.0f32-((frag.y/u[1])*2.0f32));
   aspect:f32=u[0]/u[1];
@@ -1342,8 +1343,9 @@ slab_bg_fs :: (frag:V4,u:[]f32)->SlabOut {
     if (ln.t<hit.t) { hit=ln; }
   }
   if (hit.t<SLAB_MISS) {
-    c:V3=slab_lit(hit,ho,hd,u);
     under:f32=ifx wet then slab_under_len(ho,hd,hit.t) else 0.0f32;
+    // under the sea the photoreal style hands the water the frame's light, not a display's colour
+    c:V3=ifx slab_photo(u)&&(under>0.0f32) then slab_photo_light(hit,ho,hd,u) else slab_lit(hit,ho,hd,u);
     // the section's cut face reads as a drawing: the water in front of it only tints it
     wy:f32=ho.y+(hd.y*hit.t);
     if ((u[SLAB_P+52]!=0.0f32)&&(abs(hit.n.z)>0.9f32)&&(abs((ho.z+(hd.z*hit.t))-u[SLAB_P+53])<0.6f32)) { under=under*0.12f32; wy=0.0f32; }
@@ -1358,7 +1360,7 @@ slab_bg_fs :: (frag:V4,u:[]f32)->SlabOut {
     c=sb_mix(c,v3(sm.x,sm.y,sm.z),sm.w);
     if (ho.y>0.0f32) { c=slab_weather_air(c,v2(frag.x,frag.y),u); }
     c=slab_grade(c,u);
-    return SlabOut.{c=v4(c.x,c.y,c.z,1.0f32),depth=slab_depth_of(d,hit.t,u)};
+    return SlabOut.{c=v4(c.x,c.y,c.z,1.0f32),aux=v4(0.0f32,1.0f32,0.0f32,PR_POST_NONE),depth=slab_depth_of(d,hit.t,u)};
   }
   // through the section's slot (where the ray meets the waterline) or from under the sea
   slot:bool=false;
@@ -1372,13 +1374,13 @@ slab_bg_fs :: (frag:V4,u:[]f32)->SlabOut {
     c:V3=ifx slot then slab_deep_colour(fmin(ho.y,0.0f32),hd.y,u) else slab_sea_open(o,d,u);
     if (ho.y<0.0f32) { c=sw_under(c,ho,hd,4000.0f32,u); }
     c=slab_grade(c,u);
-    return SlabOut.{c=v4(c.x,c.y,c.z,1.0f32),depth=1.0f32};
+    return SlabOut.{c=v4(c.x,c.y,c.z,1.0f32),aux=v4(0.0f32,1.0f32,0.0f32,PR_POST_NONE),depth=1.0f32};
   }
   c:V3=slab_land(slab_haze(slab_weather_sky(slab_sky(d,u),d,u),d,40000.0f32*(1.0f32-smoothstep(0.0f32,0.2f32,d.y)),u),d,o,u);
   sm:V4=slab_smoke(ho,hd,SLAB_MISS,u);
   c=sb_mix(c,v3(sm.x,sm.y,sm.z),sm.w);
   c=slab_grade(slab_weather_air(c,v2(frag.x,frag.y),u),u);
-  return SlabOut.{c=v4(c.x,c.y,c.z,1.0f32),depth=1.0f32};
+  return SlabOut.{c=v4(c.x,c.y,c.z,1.0f32),aux=v4(0.0f32,1.0f32,0.0f32,PR_POST_NONE),depth=1.0f32};
 }
 
 // ---- The clipmap sea: a vertex from its index, as ocean_vertex does it.
@@ -1450,7 +1452,7 @@ slab_surface_vs :: (vid:u32,_iid2:u32,u:[]f32)->SlabS {
   o.world=w;
   return o;
 }
-slab_surface_fs :: (v:SlabS,u:[]f32)->V4 {
+slab_surface_fs :: (v:SlabS,u:[]f32)->PrLit {
   rel:V3=wg_sub_f3f3(v.world,v3(u[8],u[9],u[10]));
   dist:f32=wg_length3(rel);
   d:V3=wg_div_f3f(rel,fmax(dist,1e-4f32));
@@ -1467,12 +1469,12 @@ slab_surface_fs :: (v:SlabS,u:[]f32)->V4 {
     // from under the sea: the sky through Snell's window, the water mirrored outside it
     c:V3=slab_sea_below(v.rest,v.world,d,dist,sw_sea(v.rest,u),u);
     c=slab_grade(sw_under(c,sb_to_hull(v3(u[8],u[9],u[10]),u),sb_dir_to_hull(d,u),dist,u),u);
-    return wg_make_f4_f3f(c,1.0f32);
+    return pr_lit_plain(wg_make_f4_f3f(c,1.0f32));
   }
   c:V3=slab_shore(slab_haze(slab_water(v.rest,v.world,d,dist,u[2],u),d,dist*slab_photo_sea_haze(u),u),v.world,d,u);
   sm:V4=slab_smoke(sb_to_hull(v3(u[8],u[9],u[10]),u),sb_dir_to_hull(d,u),dist,u);
   c=slab_grade(slab_weather_air(sb_mix(c,v3(sm.x,sm.y,sm.z),sm.w),slab_weather_px(d,u),u),u);
-  return wg_make_f4_f3f(c,1.0f32);
+  return pr_lit_plain(wg_make_f4_f3f(c,1.0f32));
 }
 // ---- The HUD: strokes (the stroke font's pen, as fixture.coax draws them) and rounded panels,
 // both blended over the frame by their coverage (coaxial_fx_alpha_v1).

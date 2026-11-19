@@ -37,7 +37,8 @@ slab_sea_skylight :: (u:[]f32)->V3 {return slab_sea_lin(sb_mul(sb_add(sb_p(u,8),
 // The same for the sea's surface seen from the air. In the photoreal style its light is the
 // frame's own (the sun and sky that light the platform's meshes) and its display side is the
 // frame's film (gpu/slab-photoreal.coax), so the wall and the water at its foot are one picture.
-// The view from under the sea keeps the square and the root above.
+// Under the sea the same light reaches the water (slab_sea_daylight), and slab_sea_under_out
+// takes it to the display.
 slab_sea_top_sun :: (u:[]f32)->V3 {
   if (slab_photo(u)) { return slab_photo_sun(u); }
   return slab_sea_sun(u);
@@ -260,8 +261,27 @@ slab_weather_air :: (c:V3,frag:V2,u:[]f32)->V3 {
 slab_sea_clear :: (u:[]f32)->f32 {return fmax(u[SLAB_SEA+3],1.0f32);}
 // The daylight left at `down` metres under the surface, in light's scale.
 slab_sea_daylight :: (down:f32,u:[]f32)->V3 {
-  top:V3=sb_add(sb_mul(slab_sea_sun(u),fmax(u[25],0.0f32)*(1.0f32-wo_fresnel(fmax(u[25],0.02f32)))),sb_mul(slab_sea_skylight(u),0.94f32));
+  top:V3=sb_add(sb_mul(slab_sea_top_sun(u),fmax(u[25],0.0f32)*(1.0f32-wo_fresnel(fmax(u[25],0.02f32)))),sb_mul(slab_sea_top_skylight(u),0.94f32));
   return sb_mulv(top,wo_through(slab_sea_kd(u),fmax(down,0.0f32)/slab_sea_clear(u)));
+}
+// Under the sea's light on its way to the display. The painterly style takes the square's root.
+// The photoreal style takes the frame's film (gpu/slab-photoreal.coax), with the camera opened up
+// for the water's own light round the eye most of the way (as PR_ADAPT opens it for a storm), so
+// the hull's bottom, the pipes and the lines read at 45 m as a diver's camera shows them.
+slab_sea_in :: (c:V3,u:[]f32)->V3 {
+  if (slab_photo(u)) { return c; }
+  return slab_sea_lin(c);
+}
+slab_sea_under_out :: (c:V3,eye:f32,u:[]f32)->V3 {
+  if (!slab_photo(u)) { return slab_sea_out(c); }
+  // the camera meters the water's own light round it, as it meters pale ground in the air
+  // (a quarter of the daylight at the surface), and opens most of the way (PR_ADAPT's 0.7)
+  top:V3=slab_sea_daylight(0.0f32,u);
+  round:V3=slab_sea_fog(eye,0.0f32,u);
+  k:f32=clampf(pow((0.25f32*pr_lum(top))/fmax(pr_lum(round),0.000001f32),0.7f32),1.0f32,40.0f32);
+  // an eye in the air (the section's slot) keeps the air's exposure: the slot is the sea round it, seen into
+  k=mix(1.0f32,k,smoothstep(0.0f32,-2.0f32,eye));
+  return slab_photo_show(sb_mul(c,k),u);
 }
 // What the water itself sends toward an eye at depth y looking `up` (the ray's rise): the deep
 // water's reflectance of the daylight at that depth, brighter looking up toward it.
@@ -308,7 +328,8 @@ slab_sea_shafts :: (o:V3,d:V3,limit:f32,u:[]f32)->f32 {
   toward:f32=0.35f32+(0.65f32*fmax(wg_dot3(d,ray),0.0f32));
   return (acc*toward)*(clampf(sun.y*3.0f32,0.0f32,1.0f32)*u[SLAB_SEA+20]);
 }
-// A display colour c at depth y seen through `path` metres of the sea from an eye at depth eye.
+// A colour c at depth y seen through `path` metres of the sea from an eye at depth eye: a
+// display's colour in the painterly style, the frame's light in the photoreal (slab_photo_light).
 slab_sea_through :: (c:V3,path:f32,y:f32,eye:f32,up:f32,u:[]f32)->V3 {
   tr:V3=slab_sea_beam(path,u);
   // the thing is lit by the daylight that reached it (and, in the survey, a fill light)
@@ -317,7 +338,7 @@ slab_sea_through :: (c:V3,path:f32,y:f32,eye:f32,up:f32,u:[]f32)->V3 {
   fill:f32=u[SLAB_SEA+24];
   lit:V3=v3((day.x/fmax(top.x,1e-4f32))+fill,(day.y/fmax(top.y,1e-4f32))+fill,(day.z/fmax(top.z,1e-4f32))+fill);
   fog:V3=slab_sea_fog(eye,up,u);
-  return slab_sea_out(sb_add(sb_mulv(sb_mulv(slab_sea_lin(c),lit),tr),sb_mulv(fog,v3(1.0f32-tr.x,1.0f32-tr.y,1.0f32-tr.z))));
+  return slab_sea_under_out(sb_add(sb_mulv(sb_mulv(slab_sea_in(c,u),lit),tr),sb_mulv(fog,v3(1.0f32-tr.x,1.0f32-tr.y,1.0f32-tr.z))),eye,u);
 }
 // Open water along a ray from o (world), nothing in the way: the water's own light with the sun's
 // shafts in it, and the bed where the site's water is shallow enough to draw.
@@ -344,7 +365,7 @@ slab_sea_open :: (o:V3,d:V3,u:[]f32)->V3 {
     fog=sb_add(sb_mulv(sb_mulv(sand,day),tr),sb_mulv(fog,v3(1.0f32-tr.x,1.0f32-tr.y,1.0f32-tr.z)));
   }
   shafts:f32=slab_sea_shafts(o,d,600.0f32,u);
-  return slab_sea_out(sb_mul(fog,1.0f32+(1.6f32*shafts)));
+  return slab_sea_under_out(sb_mul(fog,1.0f32+(1.6f32*shafts)),eye,u);
 }
 // The surface from under it at rest point p, along d (rising): the sky bent through Snell's
 // window overhead, the water's own colour mirrored outside it, the sun through the waves.
@@ -358,14 +379,13 @@ slab_sea_below :: (p:V2,world:V3,d:V3,dist:f32,c:V4,u:[]f32)->V3 {
   st2:f32=(WO_IOR*WO_IOR)*(1.0f32-(ci*ci));
   co:f32=sqrt(fmax(1.0f32-st2,0.0f32));
   out:V3=wg_normalize3(sb_add(sb_mul(sb_sub(d,sb_mul(n,ci)),WO_IOR),sb_mul(n,fmax(co,0.03f32))));
-  sk:V3=slab_sky(out,u);
   sun:V3=v3(u[24],u[25],u[26]);
-  sky:V3=sb_mul(slab_sea_lin(v3(fmin(sk.x,1.4f32),fmin(sk.y,1.4f32),fmin(sk.z,1.4f32))),1.0f32-back);
+  sky:V3=sb_mul(slab_sea_top_sky(out,1.4f32,u),1.0f32-back);
   glare:f32=sb_pow(fmax(wg_dot3(out,sun),0.0f32),180.0f32)*(1.0f32-back);
   mirror:V3=sb_mul(slab_sea_fog(fmin(u[9],0.0f32),-0.4f32,u),back);
-  col:V3=sb_add(sb_add(sky,mirror),sb_mul(slab_sea_sun(u),glare*6.0f32));
+  col:V3=sb_add(sb_add(sky,mirror),sb_mul(slab_sea_top_sun(u),glare*6.0f32));
   tr:V3=slab_sea_beam(dist,u);
   fog:V3=slab_sea_fog(fmin(u[9],0.0f32),d.y,u);
   shafts:f32=slab_sea_shafts(v3(u[8],u[9],u[10]),d,dist,u);
-  return slab_sea_out(sb_add(sb_mulv(col,tr),sb_mul(sb_mulv(fog,v3(1.0f32-tr.x,1.0f32-tr.y,1.0f32-tr.z)),1.0f32+(1.6f32*shafts))));
+  return slab_sea_under_out(sb_add(sb_mulv(col,tr),sb_mul(sb_mulv(fog,v3(1.0f32-tr.x,1.0f32-tr.y,1.0f32-tr.z)),1.0f32+(1.6f32*shafts))),u[9],u);
 }
