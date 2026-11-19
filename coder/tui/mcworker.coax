@@ -294,6 +294,7 @@ tool_main :: () -> int #export_c #effects(all) {
       run[0].aw = aw[..];
     }
     if req[0].agents && !mc_agents(run[0].l[..], lb[..], req[0].claude) { mw_ended(out[..], "failed", "the sub-agents' schema does not fit"); continue; }
+    if req[0].no_ask && !mc_no_ask(run[0].l[..], lb[..]) { mw_ended(out[..], "failed", "the no-ask schema does not fit"); continue; }
     context:[32768]u8;nc:=json_raw(context[..],0,"{\"profile\":\"coder-owned-v1\",\"cwd\":");nc=json_write_string(context[..],nc,cd);
     nc=json_raw(context[..],nc,",\"session\":");nc=json_write_string(context[..],nc,req[0].session);
     nc=json_raw(context[..],nc,",\"policy\":");policy:=req[0].policy;nc=json_raw(context[..],nc,ifx policy.count>0 then policy else "null");

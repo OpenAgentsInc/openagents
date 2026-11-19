@@ -8,6 +8,7 @@
 # credential is exported from here. Shift-Tab switches agent.
 #   coder/tui/coder.sh [--engine claude|codex|cursor|antigravity|microcoder|echo] [--model M] [--ask] [--cwd DIR]
 #   coder/tui/coder.sh run "TASK" [--json] | ls | status ID | log ID   (sessions in ~/.openagents/coder/sessions)
+#   coder/tui/coder.sh desktop status|ls|read|create|pin|budget|goal|send ... [--json]   (Coder Desktop's chats; coder/tui/desktop.coax)
 #   coder/tui/coder.sh host [serve|list|allow|deny|forget|key|call|execution-rpc]   (coder/tui/host.coax, a tool of its own)
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"; repo="$(cd "$here/../.." && pwd)"

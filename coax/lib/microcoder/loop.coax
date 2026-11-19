@@ -100,6 +100,7 @@ McLoop :: struct {
   finish_refused: int;           // finishes the owner refused
   agents: bool;                  // the action's delegate is read: the owner runs sub-agents (mc_agents)
   claude: bool;                  // its levels include the Claude models: the owner runs Claude Code too
+  no_ask: bool;                  // interactive ask: question is disabled; never pause with MC_END_ASKED (GitHub #13701)
   images: [] GwImage;            // multimodal images attached to the user message for this run
 }
 
@@ -143,6 +144,22 @@ mc_agents :: (l: [] McLoop, b: [] McLoopBuffers, claude: bool) -> bool {
   for c, i: schema { b[0].schema[i] = c; }
   l[0].system = cast(string) b[0].system[0..<n]; l[0].schema = cast(string) b[0].schema[0..<schema.count];
   l[0].agents = true; l[0].claude = claude;
+  return true;
+}
+
+// Interactive questioning disabled (GitHub #13701): what a run is told after MC_SYSTEM/mc_aware/mc_agents.
+MC_NO_ASK :: "\n- Interactive questions are disabled. Always keep ask set to none; never pause to ask the user a question. Make reasonable autonomous decisions and complete the task directly.";
+// Disables ask: question on a loop mc_init set up (after mc_aware/mc_agents): restricts the
+// schema's ask enum to ["none"], appends MC_NO_ASK to the system prompt, and prevents MC_END_ASKED.
+mc_no_ask :: (l: [] McLoop, b: [] McLoopBuffers) -> bool {
+  sb: [4096] u8;
+  schema := mc_schema_no_ask(l[0].schema, sb[..]);
+  n := json_raw(b[0].system[..], 0, l[0].system);
+  n = json_raw(b[0].system[..], n, MC_NO_ASK);
+  if n < 0 || schema.count == 0 || schema.count > b[0].schema.count { return false; }
+  for c, i: schema { b[0].schema[i] = c; }
+  l[0].system = cast(string) b[0].system[0..<n]; l[0].schema = cast(string) b[0].schema[0..<schema.count];
+  l[0].no_ask = true;
   return true;
 }
 
@@ -240,7 +257,16 @@ mc_take :: (l: [] McLoop, text: string) -> int {
   // with the memory the owner decides a finish (the finish rule): the step is open for its notes
   if a.finished && l[0].memory { mc_action_begin(l[0].st[..], a.rationale); return MC_FINISH; }
   if a.finished { l[0].reply = a.reply; mc_record_bare(l); return mc_end(l, MC_END_FINISHED); }
-  if a.asks { l[0].reply = a.reply; mc_record_bare(l); return mc_end(l, MC_END_ASKED); }
+  if a.asks {
+    if l[0].no_ask {
+      mc_record_bare(l);
+      l[0].idle += 1;
+      if l[0].idle >= MC_IDLE_LIMIT { l[0].reply = a.reply; return mc_end(l, MC_END_FINISHED); }
+      mc_note(l[0].st[..], "Interactive questioning is disabled (ask must stay none). Do not pause to ask a question; proceed autonomously or finish with your reply.");
+      return MC_AGAIN;
+    }
+    l[0].reply = a.reply; mc_record_bare(l); return mc_end(l, MC_END_ASKED);
+  }
   if a.nc == 0 && a.nv == 0 && a.ne == 0 && a.nq == 0 && a.nn == 0 && a.nd == 0 {
     mc_record_bare(l);
     l[0].idle += 1;
@@ -799,4 +825,20 @@ ps_count :: (text: string, needle: string) -> int {
   j := mc_state_json(l[0].st[..], lb[0].prompt[..]);
   ab: [1024] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
   #assert ps_count(cl_str(ar[..], j, "notes"), "256 KB reply buffer") == 1;
+}
+
+#test "no_ask restricts the schema enum to none, appends the rule, and prevents MC_END_ASKED" {
+  for agents: [2] bool.[false, true] {
+    l: [1] McLoop; sb: [1] McStateBuffers; lb: [1] McLoopBuffers;
+    mc_init(l[..], sb[..], lb[..], "{}", "do the work", "{}", 1.0);
+    if agents { #assert mc_agents(l[..], lb[..], true); }
+    #assert mc_no_ask(l[..], lb[..]) && l[0].no_ask;
+    #assert ps_count(l[0].system, "Interactive questions are disabled.") == 1;
+    #assert json_valid(l[0].schema) && cl_raw(l[0].schema, "properties.ask.enum") == "[\"none\"]";
+    // Even if a non-strict gateway emits ask: question, the loop nudges instead of ending as asked.
+    st0 := mc_take(l[..], "{\"rationale\":\"unsure\",\"edits\":[],\"commands\":[],\"view\":[],\"finished\":false,\"reply\":\"Which option?\",\"ask\":\"question\"}");
+    #assert st0 == MC_AGAIN && l[0].ending == MC_END_NONE;
+    st1 := mc_take(l[..], "{\"rationale\":\"decide\",\"edits\":[],\"commands\":[],\"view\":[],\"finished\":true,\"reply\":\"Done.\",\"ask\":\"none\"}");
+    #assert st1 == MC_ENDED && l[0].ending == MC_END_FINISHED && l[0].reply == "Done.";
+  }
 }

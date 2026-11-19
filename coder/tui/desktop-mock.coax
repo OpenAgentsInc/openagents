@@ -1,0 +1,129 @@
+// A stand-in for Coder Desktop's Foreman control server (apps/coder-desktop/Foreman.swift), for
+// coder/tui/desktop-smoke.sh: it listens on 127.0.0.1, checks X-Foreman-Token, answers each path
+// with a fixed reply of the app's shape and writes one line a request ("METHOD PATH BODY") to a log.
+//   coax/web/tool.sh coder/tui/desktop-mock.coax --port-file F --log F --token T [--idle-ms N]
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/args.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/net/socket_foreign.coax";
+
+DM_MAX :: 262144;
+
+dm_cat :: (out: [] u8, n: int, s: string) -> int { m := n; for c: s { if m < out.count { out[m] = c; m += 1; } } return m; }
+dm_lower :: (c: u8) -> u8 { return ifx c >= 'A' && c <= 'Z' then c + 32 else c; }
+// Where the head ends (after the blank line), or -1.
+dm_head_end :: (b: string) -> int {
+  if b.count < 4 { return -1; }
+  for i: 0..<b.count - 3 { if b[i] == 13 && b[i + 1] == 10 && b[i + 2] == 13 && b[i + 3] == 10 { return i + 4; } }
+  return -1;
+}
+// A header's value (name in lower case), or "".
+dm_header :: (head: string, name: string) -> string {
+  i := 0;
+  while i < head.count {
+    j := i; while j < head.count && head[j] != 13 { j += 1; }
+    line := head[i..<j];
+    if line.count > name.count && line[name.count] == ':' {
+      same := true; for k: 0..<name.count { if dm_lower(line[k]) != name[k] { same = false; } }
+      if same { v := name.count + 1; while v < line.count && line[v] == ' ' { v += 1; } return line[v..<line.count]; }
+    }
+    i = j + 2;
+  }
+  return "";
+}
+dm_word :: (head: string, k: int) -> string {
+  i := 0; w := 0;
+  while i < head.count && head[i] != 13 {
+    j := i; while j < head.count && head[j] != ' ' && head[j] != 13 { j += 1; }
+    if w == k { return head[i..<j]; }
+    w += 1; i = j + 1;
+  }
+  return "";
+}
+dm_atoi :: (s: string) -> int { v := 0; for c: s { if c < '0' || c > '9' { return 0; } v = v * 10 + cast(int) (c - '0'); } return v; }
+dm_itoa :: (v: int, out: [] u8) -> string {
+  if v == 0 { out[0] = '0'; return cast(string) out[0..<1]; }
+  d: [24] u8; k := 0; m := v; while m > 0 { d[k] = cast,trunc(u8) (m % 10) + '0'; m /= 10; k += 1; }
+  for i: 0..<k { out[i] = d[k - 1 - i]; }
+  return cast(string) out[0..<k];
+}
+dm_has :: (hay: string, needle: string) -> bool {
+  if needle.count > hay.count { return false; }
+  for i: 0..<hay.count - needle.count + 1 { if hay[i..<i + needle.count] == needle { return true; } }
+  return false;
+}
+
+// The app's reply to one request: status and body.
+dm_reply :: (method: string, path: string, body: string, out: [] u8, status: [] int) -> string {
+  status[0] = 200; n := 0;
+  if method == "GET" && path == "/v1/status" { n = dm_cat(out, 0, "{\"ok\":true,\"tier\":\"managed\",\"tier_level\":1,\"tier_label\":\"Managed\",\"workspace\":\"/mock\",\"chat_count\":1,\"running_count\":0,\"managed_running_count\":0,\"shown_chat\":\"\",\"event_cursor\":0}"); }
+  else if method == "GET" && path == "/v1/tier" { n = dm_cat(out, 0, "{\"tier\":\"managed\",\"tier_level\":1,\"label\":\"Managed\",\"short_label\":\"M\"}"); }
+  else if method == "POST" && path == "/v1/chats/list" { n = dm_cat(out, 0, "{\"tier\":\"managed\",\"workspace\":\"/mock\",\"running_count\":0,\"chats\":[{\"id\":\"live-1\",\"title\":\"Live chat\",\"folder\":\"/mock\",\"updated\":1,\"pinned\":true,\"managed_by\":\"\",\"status\":\"idle\",\"shown\":false,\"cost_usd_micros\":1000000,\"budget_usd_micros\":50000000,\"goal_status\":\"active\",\"goal_objective\":\"ship\"}]}"); }
+  else if method == "POST" && path == "/v1/chats/read" {
+    if !dm_has(body, "\"live-1\"") { status[0] = 404; n = dm_cat(out, 0, "{\"error\":\"chat not found\"}"); }
+    else { n = dm_cat(out, 0, "{\"chat_id\":\"live-1\",\"title\":\"Live chat\",\"folder\":\"/mock\",\"managed_by\":\"\",\"status\":\"idle\",\"total_turns\":1,\"turns\":[{\"user\":\"hi live\",\"reply\":\"hello live\",\"note\":\"\",\"state\":2}],\"cost_usd_micros\":1000000,\"budget_usd_micros\":50000000,\"goal_status\":\"active\",\"goal_objective\":\"ship\"}"); }
+  }
+  else if method == "POST" && path == "/v1/chats/create" { n = dm_cat(out, 0, "{\"ok\":true,\"chat_id\":\"live-2\",\"title\":\"Created live\",\"folder\":\"/mock\",\"status\":\"running\"}"); }
+  else if method == "POST" && path == "/v1/chats/send" { n = dm_cat(out, 0, "{\"ok\":true,\"chat_id\":\"live-1\",\"mode\":\"follow_up\",\"status\":\"running\"}"); }
+  else if method == "POST" && path == "/v1/chats/control" { n = dm_cat(out, 0, "{\"ok\":true,\"request\":"); n = dm_cat(out, n, body); n = dm_cat(out, n, "}"); }
+  else if method == "POST" && path == "/v1/chats/stop-all" { n = dm_cat(out, 0, "{\"ok\":true,\"stopped\":[\"live-1\"]}"); }
+  else if method == "POST" && path == "/v1/search/chats" { n = dm_cat(out, 0, "{\"query\":\"q\",\"results\":[{\"chat_id\":\"live-1\",\"title\":\"Live chat\"}]}"); }
+  else if method == "POST" && path == "/v1/search/repo" { n = dm_cat(out, 0, "{\"query\":\"q\",\"matches\":[{\"path\":\"README.md\",\"line\":1}]}"); }
+  else { status[0] = 404; n = dm_cat(out, 0, "{\"error\":\"unknown endpoint\"}"); }
+  return cast(string) out[0..<n];
+}
+
+dm_write :: (c: int, s: string) -> bool { for x: s { if cxsock_write(c, cast(int) x) != 0 { return false; } } return true; }
+
+tool_main :: () -> int #export_c #effects(all) {
+  args_b: [1] Args; args := args_b[..];
+  if !args_load(args) { tool_errln("desktop-mock: bad arguments"); return 2; }
+  port_file := args_value(args, "--port-file", ""); log_path := args_value(args, "--log", ""); token := args_value(args, "--token", "");
+  idle := dm_atoi(args_value(args, "--idle-ms", "60000"));
+  if port_file.count == 0 || log_path.count == 0 || token.count == 0 { tool_errln("usage: desktop-mock --port-file F --log F --token T [--idle-ms N]"); return 2; }
+  l := cxsock_listen(0);
+  if l < 0 { tool_errln("desktop-mock: could not listen"); return 1; }
+  pb: [24] u8; if !fs_write(port_file, dm_itoa(cxsock_port(l), pb[..])) { tool_errln("desktop-mock: could not write the port file"); return 1; }
+  if !fs_write(log_path, "") { return 1; }
+  req: [DM_MAX] u8; out: [DM_MAX] u8; waited := 0;
+  for guard: 0..<1000000 {
+    c := cxsock_accept(l, 1000);
+    if c < 0 { waited += 1000; if waited >= idle { return 0; } continue; }
+    waited = 0;
+    n := 0; head := -1; total := -1;
+    for reads: 0..<10000 {
+      k := cxsock_read(c, 5000);
+      if k <= 0 { break; }
+      for i: 0..<k { if n < req.count { req[n] = cast,trunc(u8) cxsock_byte(c, i); n += 1; } }
+      if head < 0 { head = dm_head_end(cast(string) req[0..<n]); if head >= 0 { total = head + dm_atoi(dm_header(cast(string) req[0..<head], "content-length")); } }
+      if total >= 0 && n >= total { break; }
+    }
+    if head < 0 || n < total { _ := cxsock_close(c); continue; }
+    h := cast(string) req[0..<head]; body := cast(string) req[head..<total];
+    method := dm_word(h, 0); path := dm_word(h, 1);
+    lb: [DM_MAX] u8; ln := dm_cat(lb[..], 0, method); ln = dm_cat(lb[..], ln, " "); ln = dm_cat(lb[..], ln, path); ln = dm_cat(lb[..], ln, " "); ln = dm_cat(lb[..], ln, body); ln = dm_cat(lb[..], ln, "\n");
+    _ := fs_append(log_path, cast(string) lb[0..<ln]);
+    st: [1] int; reply := "";
+    if dm_header(h, "x-foreman-token") != token { st[0] = 401; reply = "{\"error\":\"unauthorized\"}"; }
+    else { reply = dm_reply(method, path, body, out[..], st[..]); }
+    hb: [512] u8; tb: [24] u8;
+    hn := dm_cat(hb[..], 0, "HTTP/1.1 "); hn = dm_cat(hb[..], hn, dm_itoa(st[0], tb[..])); hn = dm_cat(hb[..], hn, ifx st[0] == 200 then " OK" else " Error");
+    hn = dm_cat(hb[..], hn, "\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: "); hn = dm_cat(hb[..], hn, dm_itoa(reply.count, tb[..])); hn = dm_cat(hb[..], hn, "\r\n\r\n");
+    _ := dm_write(c, cast(string) hb[0..<hn]) && dm_write(c, reply);
+    _ := cxsock_flush(c, 5000);
+    _ := cxsock_close(c);
+  }
+  return 0;
+}
+
+#test "desktop mock: heads, headers and replies" {
+  h := "POST /v1/chats/read HTTP/1.1\r\nHost: x\r\nX-Foreman-Token: t0k\r\nContent-Length: 12\r\n\r\n";
+  #assert dm_head_end(h) == h.count && dm_head_end("GET / HTTP/1.1\r\n") == -1;
+  #assert dm_header(h, "x-foreman-token") == "t0k" && dm_header(h, "content-length") == "12" && dm_header(h, "nope") == "";
+  #assert dm_word(h, 0) == "POST" && dm_word(h, 1) == "/v1/chats/read";
+  out: [4096] u8; st: [1] int;
+  #assert dm_has(dm_reply("POST", "/v1/chats/read", "{\"chat_id\":\"live-1\"}", out[..], st[..]), "hello live") && st[0] == 200;
+  _ := dm_reply("POST", "/v1/chats/read", "{\"chat_id\":\"x\"}", out[..], st[..]); #assert st[0] == 404;
+  #assert dm_reply("POST", "/v1/chats/control", "{\"a\":1}", out[..], st[..]) == "{\"ok\":true,\"request\":{\"a\":1}}";
+}

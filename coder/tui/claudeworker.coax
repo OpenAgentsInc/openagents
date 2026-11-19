@@ -128,6 +128,35 @@ cw_key_entry :: (key: string, out: [] u8) -> int {
   return n;
 }
 
+// Claude Code options for a Coder Desktop sub-agent: fully automatic tool execution
+// (bypassPermissions) and AskUserQuestion disabled so runs never block on question cards (GitHub #13701).
+cw_options :: (o: [] ClOptions, model: string, cwd: string) {
+  o[0].model = model;
+  o[0].persist_session = false;
+  o[0].permission_mode = ClPermissionMode.bypass_permissions;
+  cl_add_disallowed(o, "AskUserQuestion");
+  // Claude Code leaves thinking empty unless asked for its summaries
+  cl_add_extra(o, "thinking-display", "summarized");
+  if cwd.count > 0 { o[0].cwd = cwd; }
+}
+
+#test "claude worker options bypass permissions and disallow AskUserQuestion" {
+  o: [1] ClOptions;
+  cw_options(o[..], "sonnet", "/tmp/work");
+  #assert o[0].permission_mode == ClPermissionMode.bypass_permissions;
+  #assert o[0].disallowed_count == 1 && o[0].disallowed_tools[0] == "AskUserQuestion";
+  a: [1] ClArgs; abuf: [4096] u8; a[0].buf = abuf[..]; scratch: [256] u8;
+  cl_build_args(o[0], a[..], scratch[..]);
+  found_mode := false; found_disallow := false;
+  for i: 0..<a[0].count {
+    arg := cl_arg_at(a[..], i);
+    if arg == "--permission-mode=bypassPermissions" { found_mode = true; }
+    if arg == "--disallowedTools=AskUserQuestion" { found_disallow = true; }
+    if i + 1 < a[0].count && arg == "--permission-mode" && cl_arg_at(a[..], i + 1) == "bypassPermissions" { found_mode = true; }
+  }
+  #assert found_mode && found_disallow;
+}
+
 #test "a passed-in key goes to the right variable" {
   b: [256] u8;
   #assert cw_key_var("sk-ant-api03-abc") == "ANTHROPIC_API_KEY";
@@ -316,12 +345,7 @@ tool_main :: () -> int #export_c #effects(all) {
     if tn < req[0].task.count { cw_send(out[..], mww_ended(out[..], "failed", "The task is longer than 32,768 bytes.")); return 0; }
     cl_init(q[..], cline[..], carena[..], cout[..]);
     o: [1] ClOptions;
-    o[0].model = cast(string) model[0..<mn];
-    o[0].persist_session = false;
-    o[0].permission_mode = ClPermissionMode.bypass_permissions;
-    // Claude Code leaves thinking empty unless asked for its summaries
-    cl_add_extra(o[..], "thinking-display", "summarized");
-    if cn > 0 { o[0].cwd = cast(string) cwd[0..<cn]; }
+    cw_options(o[..], cast(string) model[0..<mn], cast(string) cwd[0..<cn]);
     cl_remove_env(o[..], "ANTHROPIC_API_KEY");
     cl_remove_env(o[..], "ANTHROPIC_AUTH_TOKEN");
     cl_remove_env(o[..], "ANTHROPIC_BASE_URL");

@@ -1,0 +1,543 @@
+// coder desktop: Coder Desktop's chats from the terminal (GitHub #13707).
+// Offline it reads and writes the app's store (desktop-store.coax holds the
+// rules and their checks); with a Foreman URL and token it asks the running
+// app instead, through the same control server foreman-ctl uses
+// (apps/coder-desktop/Foreman.swift). coder/tui/desktop-smoke.sh runs every
+// verb against a temporary store and a stand-in server (desktop-mock.coax).
+#load "desktop-store.coax";
+
+DK_USAGE :: "usage: coder desktop VERB [ARGS] [--json] [--desktop-dir PATH] [--foreman-url URL --foreman-token TOKEN] [--offline]\n  status                         the store (chats, pinned, goals) and, when live, the app's Foreman status\n  ls [--pinned]                  chats as the sidebar lists them\n  read ID [--full] [--tail N]    a chat: budget, goal and its last N turns (8); --full: every turn, tool call and sub-agent reply\n  create [--title T] [--folder DIR] [--budget USD] [--goal TEXT] [--pin] [--prompt TEXT]   a new chat; prints its ID (live: --prompt is sent as its first message)\n  rename ID TITLE | pin ID | unpin ID | delete ID | folder ID DIR\n  budget ID [--set-usd USD] [--override [on|off]]   show or change the chat's budget; --override is \"Continue above budget\"\n  goal ID [status | set OBJECTIVE | pause | resume | complete | clear]   the chat's /goal\n  search QUERY [--repo] [--limit N]   chats whose title, folder or text holds QUERY (--repo: the app's repository search, live)\n  live only: send ID MESSAGE [--mode follow_up|steer|interrupt] | stop ID | stop-all [--all] | tier | search-chats QUERY | search-repo QUERY [--folder DIR] [--glob G]\nThe store is ~/Library/Application Support/Coder/chats (or --desktop-dir, or CODER_DESKTOP_DIR). Live: --foreman-url/--foreman-token or\nCODER_FOREMAN_URL/CODER_FOREMAN_TOKEN (set inside Foreman chats); --offline uses the store even then. Coder Desktop rewrites its list\nwhile it runs, so change the store offline only while the app is closed, and use the live API while it is open.";
+
+DK_VALUE_FLAGS :: [16] string.["--desktop-dir", "--foreman-url", "--foreman-token", "--title", "--folder", "--budget", "--set", "--set-usd", "--prompt", "--mode", "--limit", "--tail", "--max", "--glob", "--goal", "--filter"];
+DK_FILE_MAX :: 4194304;        // Coder Desktop saves a chat into a 4,000,000-byte buffer
+DK_INDEX_MAX :: 2097152;
+DK_CHATS :: 1024;
+DK_OUT_MAX :: 8388608;
+
+DkCtx :: struct {
+  json: bool; live: bool;
+  dir: [1100] u8; dir_n: int;
+  url: [1024] u8; url_n: int;
+  tok: [512] u8; tok_n: int;
+}
+dk_dir :: (c: [] DkCtx) -> string { return cast(string) c[0].dir[0..<c[0].dir_n]; }
+
+// Positional k after the flags and their values ("desktop" is 0). --override takes on or off only when one follows.
+dk_pos :: (args: [] Args, k: int) -> string {
+  seen := 0; i := 0;
+  while i < args_count(args) {
+    v := args_at(args, i);
+    if v.count > 1 && v[0] == '-' {
+      takes := false; for f: DK_VALUE_FLAGS { if v == f { takes = true; } }
+      if v == "--override" && i + 1 < args_count(args) && (args_at(args, i + 1) == "on" || args_at(args, i + 1) == "off") { takes = true; }
+      i += ifx takes then 2 else 1;
+      continue;
+    }
+    if seen == k { return v; }
+    seen += 1; i += 1;
+  }
+  return "";
+}
+// Positionals from k on, joined by spaces (a message or an objective written without quotes).
+dk_rest :: (args: [] Args, k: int, out: [] u8) -> string {
+  n := 0;
+  for j: k..<k + 256 {
+    p := dk_pos(args, j);
+    if p.count == 0 { break; }
+    if n > 0 { n = dk_cat(out, n, " "); }
+    n = dk_cat(out, n, p);
+  }
+  return cast(string) out[0..<n];
+}
+dk_fail :: (what: string, detail: string) -> int { tool_err("coder desktop: "); tool_err(what); tool_errln(detail); return 1; }
+
+dk_ctx :: (c: [] DkCtx, args: [] Args) -> bool {
+  c[0].json = args_has(args, "--json");
+  eb: [1100] u8; hb: [1024] u8;
+  dir := args_value(args, "--desktop-dir", cl_getenv("CODER_DESKTOP_DIR", eb[..]));
+  if dir.count == 0 {
+    home := cl_getenv("HOME", hb[..]);
+    if home.count == 0 { tool_errln("coder desktop: HOME is not set; pass --desktop-dir"); return false; }
+    db: [1100] u8; n := dk_cat(db[..], 0, home); n = dk_cat(db[..], n, "/Library/Application Support/Coder/chats");
+    c[0].dir_n = dk_copy(c[0].dir[..], cast(string) db[0..<n]);
+  } else {
+    while dir.count > 1 && dir[dir.count - 1] == '/' { dir = dir[0..<dir.count - 1]; }
+    c[0].dir_n = dk_copy(c[0].dir[..], dir);
+  }
+  ub: [1024] u8; tb: [512] u8;
+  url := args_value(args, "--foreman-url", cl_getenv("CODER_FOREMAN_URL", ub[..]));
+  tok := args_value(args, "--foreman-token", cl_getenv("CODER_FOREMAN_TOKEN", tb[..]));
+  while url.count > 0 && url[url.count - 1] == '/' { url = url[0..<url.count - 1]; }
+  c[0].url_n = dk_copy(c[0].url[..], url); c[0].tok_n = dk_copy(c[0].tok[..], tok);
+  c[0].live = url.count > 0 && !args_has(args, "--offline");
+  if c[0].live && tok.count == 0 { tool_errln("coder desktop: a Foreman URL needs its token (--foreman-token or CODER_FOREMAN_TOKEN)"); return false; }
+  return true;
+}
+
+// ---- files ----
+
+dk_path :: (c: [] DkCtx, name: string, suffix: string, out: [] u8) -> string {
+  n := dk_cat(out, 0, dk_dir(c)); n = dk_cat(out, n, "/"); n = dk_cat(out, n, name); n = dk_cat(out, n, suffix);
+  return cast(string) out[0..<n];
+}
+// The store's folder and its parents.
+dk_mkdirs :: (path: string) -> bool {
+  for i: 1..<path.count + 1 {
+    if i == path.count || path[i] == '/' {
+      part := path[0..<i];
+      if !fs_exists(part) { _ := fs_mkdir(part); }
+    }
+  }
+  return fs_kind(path) > 0;
+}
+// index.json into x: false (said why) when it cannot be read; no file is an empty list.
+dk_load :: (c: [] DkCtx, x: [] DkIndex, buf: [] u8) -> bool {
+  pb: [1200] u8; path := dk_path(c, "index", ".json", pb[..]);
+  if !fs_exists(path) { x[0].n = 0; return true; }
+  n := fs_read(path, buf);
+  if n < 0 { _ := dk_fail("could not read ", path); return false; }
+  if !dk_index_parse(x, cast(string) buf[0..<n]) { _ := dk_fail("not a chat list: ", path); return false; }
+  if x[0].full { _ := dk_fail("more chats than this reads (1024): ", path); return false; }
+  return true;
+}
+dk_save :: (c: [] DkCtx, x: [] DkIndex) -> bool {
+  if !dk_mkdirs(dk_dir(c)) { _ := dk_fail("could not make ", dk_dir(c)); return false; }
+  out: [DK_INDEX_MAX] u8; o: [1] Jo; jo_start(o[..], out[..]); dk_index_write(x, o[..]);
+  if o[0].bad { _ := dk_fail("the list is too large to write", ""); return false; }
+  pb: [1200] u8; path := dk_path(c, "index", ".json", pb[..]);
+  if !fs_replace_durable(path, jo_text(o[..])) { _ := dk_fail("could not write ", path); return false; }
+  return true;
+}
+// A chat's file text into buf, or "" when it has none.
+dk_chat_text :: (c: [] DkCtx, id: string, buf: [] u8) -> string {
+  pb: [1200] u8; path := dk_path(c, id, ".json", pb[..]);
+  n := fs_read(path, buf);
+  return ifx n < 0 then "" else cast(string) buf[0..<n];
+}
+dk_chat_save :: (c: [] DkCtx, id: string, text: string) -> bool {
+  pb: [1200] u8; path := dk_path(c, id, ".json", pb[..]);
+  if !fs_replace_durable(path, text) { _ := dk_fail("could not write ", path); return false; }
+  return true;
+}
+// The chat named id in x, said when there is none.
+dk_lookup :: (x: [] DkIndex, id: string) -> int {
+  if id.count == 0 { tool_errln("coder desktop: which chat? (an ID from coder desktop ls)"); return -1; }
+  i := dk_find(x, id);
+  if i < 0 { _ := dk_fail("no chat ", id); }
+  return i;
+}
+
+// ---- the live app ----
+
+// One request to the app: its body, or "" with code[0] -1 when it could not be reached.
+dk_call :: (c: [] DkCtx, route: string, body: string, out: [] u8, code: [] int) -> string {
+  sp := 0; while sp < route.count && route[sp] != ' ' { sp += 1; }
+  method := route[0..<sp]; p := route[sp + 1..<route.count];
+  ub: [1300] u8; un := dk_cat(ub[..], 0, cast(string) c[0].url[0..<c[0].url_n]); un = dk_cat(ub[..], un, p);
+  hb: [600] u8; hn := dk_cat(hb[..], 0, "X-Foreman-Token: "); hn = dk_cat(hb[..], hn, cast(string) c[0].tok[0..<c[0].tok_n]);
+  hdr := [2] string.[cast(string) hb[0..<hn], "Content-Type: application/json"];
+  w: [1] HttpWork;
+  r := http_do(w[..], method, cast(string) ub[0..<un], hdr[..], body, 35000, 0, out);
+  if r.error != HTTP_OK { code[0] = -1; tool_err("coder desktop: Coder Desktop at "); tool_err(cast(string) ub[0..<un]); tool_err(": "); tool_errln(http_error_text(r.error)); return ""; }
+  code[0] = r.code;
+  return cast(string) out[0..<r.n];
+}
+// A live verb end to end: the request, then the app's answer printed (as it came with --json). 0 on a 2xx.
+dk_live :: (c: [] DkCtx, verb: string, body: string, done: string) -> int {
+  out: [1048576] u8; code: [1] int;
+  text := dk_call(c, dk_live_route(verb), body, out[..], code[..]);
+  if code[0] < 0 { return 1; }
+  ok := code[0] >= 200 && code[0] < 300;
+  if c[0].json { cd_outln(text); return ifx ok then 0 else 1; }
+  if !ok {
+    eb: [4096] u8; e := dk_text(dk_get(text, "error"), eb[..]);
+    tb: [24] u8; tool_err("coder desktop: Coder Desktop answered "); tool_err(dk_num(code[0], tb[..])); tool_err(": "); tool_errln(ifx e.count > 0 then e else text);
+    return 1;
+  }
+  if verb == "ls" { dk_show_list(text); return 0; }
+  if verb == "read" { dk_show_chat(text); return 0; }
+  if done.count > 0 { cd_outln(done); } else { cd_outln(text); }
+  return 0;
+}
+dk_needs_live :: (c: [] DkCtx, verb: string) -> int {
+  if c[0].live { return 0; }
+  tool_err("coder desktop: "); tool_err(verb); tool_errln(" needs the running app: pass --foreman-url and --foreman-token (or set CODER_FOREMAN_URL and CODER_FOREMAN_TOKEN)");
+  return 2;
+}
+dk_not_live :: (verb: string, why: string) -> int {
+  tool_err("coder desktop: Coder Desktop's control API has no "); tool_err(verb); tool_err("; "); tool_errln(why);
+  return 2;
+}
+
+// ---- printing ----
+
+// A list ({"chats":[...]}, from the store or the app) for people.
+dk_show_list :: (text: string) {
+  chats := dk_get(text, "chats"); n := dk_count(chats);
+  if n == 0 { cd_outln("no chats"); return; }
+  for k: 0..<n {
+    e := dk_elem(chats, k); tb: [4096] u8; lb: [8192] u8; ln := 0; mb: [64] u8;
+    ln = dk_cat(lb[..], ln, ifx dk_get(e, "pinned") == "true" then "pinned  " else "        ");
+    ln = dk_cat(lb[..], ln, dk_text(dk_get(e, "id"), tb[..])); ln = dk_cat(lb[..], ln, "  ");
+    ln = dk_cat(lb[..], ln, dk_text(dk_get(e, "title"), tb[..]));
+    f := dk_text(dk_get(e, "folder"), tb[..]); if f.count > 0 { ln = dk_cat(lb[..], ln, "  ("); ln = dk_cat(lb[..], ln, f); ln = dk_cat(lb[..], ln, ")"); }
+    st := dk_text(dk_get(e, "status"), tb[..]); if st == "running" { ln = dk_cat(lb[..], ln, "  running"); }
+    b := dk_get(e, "budget_usd_micros");
+    if b.count > 0 {
+      ln = dk_cat(lb[..], ln, "  "); ln = dk_cat(lb[..], ln, dk_usd(dk_int(dk_get(e, "cost_usd_micros"), 0), mb[..]));
+      ln = dk_cat(lb[..], ln, " of "); ln = dk_cat(lb[..], ln, dk_usd(dk_int(b, 0), mb[..]));
+    }
+    g := dk_text(dk_get(e, "goal_status"), tb[..]);
+    if g.count > 0 && g != "none" { ln = dk_cat(lb[..], ln, "  goal "); ln = dk_cat(lb[..], ln, g); }
+    cd_outln(cast(string) lb[0..<ln]);
+  }
+}
+// One chat (from the store's read or the app's) for people.
+dk_show_chat :: (text: string) {
+  tb: [262144] u8; lb: [8192] u8; mb: [64] u8; nb: [24] u8;
+  id := dk_get(text, "id"); if id.count == 0 { id = dk_get(text, "chat_id"); }
+  n := dk_cat(lb[..], 0, dk_text(dk_get(text, "title"), tb[..])); n = dk_cat(lb[..], n, "  ("); n = dk_cat(lb[..], n, dk_text(id, tb[..])); n = dk_cat(lb[..], n, ")");
+  cd_outln(cast(string) lb[0..<n]);
+  n = dk_cat(lb[..], 0, "folder "); n = dk_cat(lb[..], n, dk_text(dk_get(text, "folder"), tb[..]));
+  if dk_get(text, "pinned") == "true" { n = dk_cat(lb[..], n, "  pinned"); }
+  b := dk_get(text, "budget_usd_micros");
+  if b.count > 0 {
+    n = dk_cat(lb[..], n, "  spent "); n = dk_cat(lb[..], n, dk_usd(dk_int(dk_get(text, "cost_usd_micros"), 0), mb[..]));
+    n = dk_cat(lb[..], n, " of "); n = dk_cat(lb[..], n, dk_usd(dk_int(b, 0), mb[..]));
+    if dk_get(text, "budget_override") == "true" { n = dk_cat(lb[..], n, " (continuing above budget)"); }
+  }
+  cd_outln(cast(string) lb[0..<n]);
+  g := dk_text(dk_get(text, "goal_status"), tb[..]);
+  if g.count > 0 && g != "none" {
+    n = dk_cat(lb[..], 0, "goal "); n = dk_cat(lb[..], n, g); n = dk_cat(lb[..], n, ": ");
+    n = dk_cat(lb[..], n, dk_clip(dk_text(dk_get(text, "goal_objective"), tb[..]), 4000));
+    gt := dk_get(text, "goal_turns");
+    if gt.count > 0 { n = dk_cat(lb[..], n, "  ("); n = dk_cat(lb[..], n, gt); n = dk_cat(lb[..], n, " turns, "); n = dk_cat(lb[..], n, dk_num(dk_int(dk_get(text, "goal_time_seconds"), 0), nb[..])); n = dk_cat(lb[..], n, "s)"); }
+    cd_outln(cast(string) lb[0..<n]);
+  }
+  turns := dk_get(text, "turns");
+  for k: 0..<dk_count(turns) {
+    t := dk_elem(turns, k);
+    ask := dk_get(t, "ask"); if ask.count == 0 { ask = dk_get(t, "user"); }
+    cd_out("\n> "); cd_outln(dk_text(ask, tb[..]));
+    tools := dk_get(t, "tools");
+    tc := dk_int(dk_get(t, "tool_count"), 0);
+    if dk_count(tools) == 0 && tc > 0 { cd_out("  "); cd_out(dk_num(tc, nb[..])); cd_outln(ifx tc == 1 then " tool call (--full shows it)" else " tool calls (--full shows them)"); }
+    for j: 0..<dk_count(tools) { cd_out("  $ "); cd_out(dk_text(dk_get(dk_elem(tools, j), "text"), tb[..])); cd_outln(ifx dk_get(dk_elem(tools, j), "failed") == "true" then "  (failed)" else ""); }
+    agents := dk_get(t, "agents");
+    for j: 0..<dk_count(agents) { a := dk_elem(agents, j); cd_out("  sub-agent "); cd_out(dk_text(dk_get(a, "level"), tb[..])); cd_out(": "); cd_outln(dk_text(dk_get(a, "task"), tb[..])); }
+    cd_outln(dk_text(dk_get(t, "reply"), tb[..]));
+    note := dk_text(dk_get(t, "note"), tb[..]); if note.count > 0 { cd_out("  note: "); cd_outln(note); }
+  }
+}
+// What an offline change prints: the chat's entry and state as --json, or a line.
+dk_done :: (c: [] DkCtx, x: [] DkIndex, i: int, action: string, s: [] DkState, with_state: bool, line: string) -> int {
+  if !c[0].json { cd_outln(line); return 0; }
+  out: [65536] u8; o: [1] Jo; jo_start(o[..], out[..]);
+  jo_obj(o[..]); jo_key(o[..], "ok"); jo_bool(o[..], true); jo_key(o[..], "action"); jo_str(o[..], action);
+  jo_key(o[..], "chat_id"); jo_str(o[..], dk_id(x, i));
+  jo_key(o[..], "chat"); jo_obj(o[..]); dk_chat_fields(x, i, o[..]); if with_state { dk_state_fields(s, o[..]); } jo_end(o[..]);
+  jo_end(o[..]);
+  cd_outln(jo_text(o[..]));
+  return 0;
+}
+dk_line :: (a: string, b: string, cc: string, out: [] u8) -> string { n := dk_cat(out, 0, a); n = dk_cat(out, n, b); n = dk_cat(out, n, cc); return cast(string) out[0..<n]; }
+
+// ---- the verbs ----
+
+dk_cmd_status :: (c: [] DkCtx, args: [] Args) -> int {
+  chats: [DK_CHATS] DkChat; x := [1] DkIndex.[DkIndex.{chats = chats[..]}];
+  ib: [DK_INDEX_MAX] u8;
+  if !dk_load(c, x[..], ib[..]) { return 1; }
+  o_idx: [DK_CHATS] int; n := dk_ordered(x[..], o_idx[..], false);
+  goals: [6] int; managed := 0; fb: [DK_FILE_MAX] u8;
+  for k: 0..<n {
+    i := o_idx[k]; s: [1] DkState; dk_state_load(s[..], dk_chat_text(c, dk_id(x[..], i), fb[..]));
+    goals[s[0].goal_status] += 1;
+    if dk_managed(x[..], i) == DK_FOREMAN_ID { managed += 1; }
+  }
+  live: [1048576] u8; live_text := ""; code: [1] int;
+  if c[0].live { live_text = dk_call(c, dk_live_route("status"), "", live[..], code[..]); if code[0] < 200 || code[0] >= 300 { live_text = ""; } }
+  if c[0].json {
+    out: [65536] u8; o: [1] Jo; jo_start(o[..], out[..]);
+    jo_obj(o[..]);
+    jo_key(o[..], "store"); jo_str(o[..], dk_dir(c));
+    jo_key(o[..], "store_exists"); jo_bool(o[..], fs_exists(dk_dir(c)));
+    jo_key(o[..], "chat_count"); jo_int(o[..], n);
+    jo_key(o[..], "pinned_count"); jo_int(o[..], dk_pinned_count(x[..]));
+    jo_key(o[..], "managed_count"); jo_int(o[..], managed);
+    jo_key(o[..], "active_goals"); jo_int(o[..], goals[DK_GOAL_ACTIVE]);
+    jo_key(o[..], "goals"); jo_obj(o[..]); for st: 1..<6 { jo_key(o[..], dk_goal_name(st)); jo_int(o[..], goals[st]); } jo_end(o[..]);
+    jo_key(o[..], "foreman_url"); jo_str(o[..], ifx c[0].live then cast(string) c[0].url[0..<c[0].url_n] else "");
+    jo_key(o[..], "foreman"); if live_text.count > 0 { jo_raw(o[..], live_text); } else { jo_null(o[..]); }
+    jo_end(o[..]);
+    cd_outln(jo_text(o[..]));
+  } else {
+    nb: [24] u8;
+    cd_out("store "); cd_outln(dk_dir(c));
+    cd_out("chats "); cd_out(dk_num(n, nb[..])); cd_out(", pinned "); cd_out(dk_num(dk_pinned_count(x[..]), nb[..]));
+    cd_out(", Foreman's "); cd_out(dk_num(managed, nb[..])); cd_out(", active goals "); cd_outln(dk_num(goals[DK_GOAL_ACTIVE], nb[..]));
+    if c[0].live {
+      if live_text.count == 0 { cd_outln("Foreman: not answering"); }
+      else {
+        tb: [1024] u8; cd_out("Foreman: "); cd_out(dk_text(dk_get(live_text, "tier_label"), tb[..]));
+        cd_out(", running "); cd_out(dk_get(live_text, "running_count")); cd_out(", workspace "); cd_outln(dk_text(dk_get(live_text, "workspace"), tb[..]));
+      }
+    }
+  }
+  return ifx c[0].live && live_text.count == 0 then 1 else 0;
+}
+
+dk_cmd_ls :: (c: [] DkCtx, args: [] Args) -> int {
+  pinned := args_has(args, "--pinned");
+  if c[0].live { b: [256] u8; o: [1] Jo; jo_start(o[..], b[..]); dk_pl_list(pinned, 200, o[..]); return dk_live(c, "ls", jo_text(o[..]), ""); }
+  chats: [DK_CHATS] DkChat; x := [1] DkIndex.[DkIndex.{chats = chats[..]}];
+  ib: [DK_INDEX_MAX] u8;
+  if !dk_load(c, x[..], ib[..]) { return 1; }
+  ord: [DK_CHATS] int; n := dk_ordered(x[..], ord[..], pinned);
+  out: [DK_INDEX_MAX] u8; o: [1] Jo; jo_start(o[..], out[..]); fb: [DK_FILE_MAX] u8;
+  jo_obj(o[..]); jo_key(o[..], "store"); jo_str(o[..], dk_dir(c)); jo_key(o[..], "chats"); jo_arr(o[..]);
+  for k: 0..<n {
+    i := ord[k]; s: [1] DkState; dk_state_load(s[..], dk_chat_text(c, dk_id(x[..], i), fb[..]));
+    jo_obj(o[..]); dk_chat_fields(x[..], i, o[..]); dk_state_fields(s[..], o[..]); jo_end(o[..]);
+  }
+  jo_end(o[..]); jo_end(o[..]);
+  if c[0].json { cd_outln(jo_text(o[..])); } else { dk_show_list(jo_text(o[..])); }
+  return 0;
+}
+
+dk_cmd_read :: (c: [] DkCtx, args: [] Args) -> int {
+  id := dk_pos(args, 2); full := args_has(args, "--full");
+  tail := args_whole(args_value(args, "--tail", "8")); if tail < 1 { tail = 8; }
+  if c[0].live {
+    if id.count == 0 { return dk_lookup_none(); }
+    b: [1024] u8; o: [1] Jo; jo_start(o[..], b[..]); dk_pl_read(id, ifx full then 50 else tail, full, o[..]);
+    return dk_live(c, "read", jo_text(o[..]), "");
+  }
+  chats: [DK_CHATS] DkChat; x := [1] DkIndex.[DkIndex.{chats = chats[..]}];
+  ib: [DK_INDEX_MAX] u8;
+  if !dk_load(c, x[..], ib[..]) { return 1; }
+  i := dk_lookup(x[..], id); if i < 0 { return 1; }
+  fb: [DK_FILE_MAX] u8; text := dk_chat_text(c, id, fb[..]);
+  s: [1] DkState; dk_state_load(s[..], text);
+  out: [DK_OUT_MAX] u8; o: [1] Jo; jo_start(o[..], out[..]);
+  jo_obj(o[..]); dk_chat_fields(x[..], i, o[..]); dk_state_fields(s[..], o[..]);
+  if s[0].ok { dk_turns_write(text, tail, full, o[..]); }
+  jo_end(o[..]);
+  if o[0].bad { return dk_fail("the chat is too large to print", ""); }
+  if c[0].json { cd_outln(jo_text(o[..])); } else { dk_show_chat(jo_text(o[..])); }
+  return 0;
+}
+dk_lookup_none :: () -> int { tool_errln("coder desktop: which chat? (an ID from coder desktop ls)"); return 2; }
+
+dk_cmd_create :: (c: [] DkCtx, args: [] Args) -> int {
+  title := args_value(args, "--title", ""); goal := args_value(args, "--goal", ""); prompt := args_value(args, "--prompt", "");
+  pwd: [1100] u8; folder := args_value(args, "--folder", cl_getenv("PWD", pwd[..]));
+  budget := 0; bt := args_value(args, "--budget", "");
+  if bt.count > 0 { budget = dk_usd_micros(bt); if budget < 0 { tool_errln("coder desktop: --budget takes a positive amount of dollars, like 5 or 2.50"); return 2; } }
+  if c[0].live {
+    if prompt.count == 0 { tool_errln("coder desktop: the app starts a chat with its first message: pass --prompt TEXT (or --offline to only add it to the store)"); return 2; }
+    b: [65536] u8; o: [1] Jo; jo_start(o[..], b[..]); dk_pl_create(title, prompt, folder, budget, goal, args_has(args, "--pin"), o[..]);
+    return dk_live(c, "create", jo_text(o[..]), "");
+  }
+  if prompt.count > 0 { tool_errln("coder desktop: sending --prompt needs the running app (--foreman-url); offline, create adds an empty chat"); return 2; }
+  if folder.count == 0 { tool_errln("coder desktop: which folder? pass --folder DIR"); return 2; }
+  chats: [DK_CHATS] DkChat; x := [1] DkIndex.[DkIndex.{chats = chats[..]}];
+  ib: [DK_INDEX_MAX] u8;
+  if !dk_load(c, x[..], ib[..]) { return 1; }
+  if cxrand_fill(16) != 0 { return dk_fail("no random bytes for an ID", ""); }
+  rb: [16] u8; for k: 0..<16 { rb[k] = cast,trunc(u8) cxrand_byte(k); }
+  idb: [40] u8; id := dk_uuid(rb[..], idb[..]);
+  nb: [40] u8; now := dk_time_json(cxproc_wall_us(), nb[..]);
+  s: [1] DkState; dk_state_new(s[..], budget);
+  if goal.count > 0 && !dk_goal_set(s[..], goal) { tool_errln("coder desktop: --goal needs an objective"); return 2; }
+  if !dk_mkdirs(dk_dir(c)) { return dk_fail("could not make ", dk_dir(c)); }
+  fo: [16384] u8; o: [1] Jo; jo_start(o[..], fo[..]); dk_state_save(s[..], "{\"turns\":[]}", o[..]);
+  if !dk_chat_save(c, id, jo_text(o[..])) { return 1; }
+  if !dk_add(x[..], id, title, folder, now, "") { return dk_fail("the list is full", ""); }
+  if args_has(args, "--pin") { dk_pin(x[..], 0); }
+  if !dk_save(c, x[..]) { return 1; }
+  if !c[0].json { cd_outln(id); return 0; }
+  return dk_done(c, x[..], 0, "create", s[..], true, id);
+}
+
+// rename, pin, unpin, delete, folder: one change to the list.
+dk_cmd_list_change :: (c: [] DkCtx, args: [] Args, verb: string) -> int {
+  id := dk_pos(args, 2); arg := dk_pos(args, 3);
+  tb: [4096] u8; title := ifx verb == "rename" then dk_rest(args, 3, tb[..]) else "";
+  if id.count == 0 { return dk_lookup_none(); }
+  if verb == "rename" && title.count == 0 { tool_errln("coder desktop: rename ID TITLE"); return 2; }
+  if verb == "folder" && arg.count == 0 { tool_errln("coder desktop: folder ID DIR"); return 2; }
+  lb: [8192] u8;
+  if c[0].live {
+    if verb == "folder" { return dk_not_live("folder action", "change it with --offline while the app is closed"); }
+    b: [8192] u8; o: [1] Jo; jo_start(o[..], b[..]); dk_pl_control(id, verb, title, 0, "", o[..]);
+    return dk_live(c, verb, jo_text(o[..]), dk_line(verb, " ", id, lb[..]));
+  }
+  if !dk_id_ok(id) { return dk_fail("not a chat ID: ", id); }
+  chats: [DK_CHATS] DkChat; x := [1] DkIndex.[DkIndex.{chats = chats[..]}];
+  ib: [DK_INDEX_MAX] u8;
+  if !dk_load(c, x[..], ib[..]) { return 1; }
+  i := dk_lookup(x[..], id); if i < 0 { return 1; }
+  none: [1] DkState;
+  if verb == "delete" {
+    pb: [1200] u8; path := dk_path(c, id, ".json", pb[..]);
+    if fs_exists(path) && !fs_remove(path) { return dk_fail("could not delete ", path); }
+    dk_remove(x[..], i);
+    if !dk_save(c, x[..]) { return 1; }
+    if c[0].json { out: [2048] u8; o: [1] Jo; jo_start(o[..], out[..]); jo_obj(o[..]); jo_key(o[..], "ok"); jo_bool(o[..], true); jo_key(o[..], "action"); jo_str(o[..], "delete"); jo_key(o[..], "chat_id"); jo_str(o[..], id); jo_key(o[..], "deleted"); jo_bool(o[..], true); jo_end(o[..]); cd_outln(jo_text(o[..])); return 0; }
+    cd_outln(dk_line("deleted ", id, "", lb[..]));
+    return 0;
+  }
+  if verb == "pin" { dk_pin(x[..], i); }
+  else if verb == "unpin" { dk_unpin(x[..], i); }
+  else if verb == "rename" { if !dk_rename(x[..], i, title) { tool_errln("coder desktop: the title is empty"); return 2; } }
+  else if verb == "folder" { if !dk_set_folder(x[..], i, arg) { tool_errln("coder desktop: the folder is empty or longer than 1024 bytes"); return 2; } }
+  if !dk_save(c, x[..]) { return 1; }
+  done := "";
+  if verb == "pin" { done = dk_line("pinned ", id, "", lb[..]); }
+  else if verb == "unpin" { done = dk_line("unpinned ", id, "", lb[..]); }
+  else if verb == "rename" { done = dk_line(id, " is now ", dk_title(x[..], i), lb[..]); }
+  else { done = dk_line(id, " works in ", dk_folder(x[..], i), lb[..]); }
+  return dk_done(c, x[..], i, verb, none[..], false, done);
+}
+
+// budget and goal: a change to one chat's file (or, with nothing to change, its state).
+dk_cmd_chat_change :: (c: [] DkCtx, args: [] Args, verb: string) -> int {
+  id := dk_pos(args, 2);
+  if id.count == 0 { return dk_lookup_none(); }
+  // what to do
+  set := -1; ov := 0;          // budget: new budget; override 1 on, -1 off
+  sub := ""; ob: [8192] u8; objective := "";
+  if verb == "budget" {
+    st := args_value(args, "--set-usd", args_value(args, "--set", ""));
+    if st.count > 0 { set = dk_usd_micros(st); if set < 0 { tool_errln("coder desktop: --set-usd takes a positive amount of dollars, like 5 or 2.50"); return 2; } }
+    if args_has(args, "--override") { ov = ifx args_value(args, "--override", "on") == "off" then -1 else 1; }
+  } else {
+    sub = dk_pos(args, 3);
+    if sub.count == 0 {
+      if args_has(args, "--pause") { sub = "pause"; } else if args_has(args, "--resume") { sub = "resume"; }
+      else if args_has(args, "--complete") { sub = "complete"; } else if args_has(args, "--clear") { sub = "clear"; }
+      else if args_value(args, "--set", "").count > 0 { sub = "set"; } else { sub = "status"; }
+    }
+    if sub == "set" { objective = dk_rest(args, 4, ob[..]); if objective.count == 0 { objective = args_value(args, "--set", ""); } if objective.count == 0 { tool_errln("coder desktop: goal ID set OBJECTIVE"); return 2; } }
+    if sub != "status" && sub != "set" && sub != "pause" && sub != "resume" && sub != "complete" && sub != "clear" { tool_err("coder desktop: goal takes status, set, pause, resume, complete or clear, not "); tool_errln(sub); return 2; }
+  }
+  show := (verb == "budget" && set < 0 && ov == 0) || (verb == "goal" && sub == "status");
+  lb: [8192] u8;
+  if c[0].live {
+    if show { b: [1024] u8; o: [1] Jo; jo_start(o[..], b[..]); dk_pl_read(id, 1, false, o[..]); return dk_live(c, "read", jo_text(o[..]), ""); }
+    if verb == "budget" {
+      if ov != 0 { return dk_not_live("budget override", "approve it in the app (Continue above budget), or use --offline while it is closed"); }
+      b: [1024] u8; o: [1] Jo; jo_start(o[..], b[..]); dk_pl_control(id, "set_budget", "", set, "", o[..]);
+      ub: [64] u8; return dk_live(c, "set-budget", jo_text(o[..]), dk_line(id, " budget ", dk_usd(set, ub[..]), lb[..]));
+    }
+    action := dk_goal_action(sub);
+    if action.count == 0 { return dk_not_live("goal complete", "the goal completes when its chat says so; use --offline while the app is closed"); }
+    b: [16384] u8; o: [1] Jo; jo_start(o[..], b[..]); dk_pl_control(id, action, "", 0, objective, o[..]);
+    return dk_live(c, "goal", jo_text(o[..]), dk_line(id, " goal ", sub, lb[..]));
+  }
+  if !dk_id_ok(id) { return dk_fail("not a chat ID: ", id); }
+  chats: [DK_CHATS] DkChat; x := [1] DkIndex.[DkIndex.{chats = chats[..]}];
+  ib: [DK_INDEX_MAX] u8;
+  if !dk_load(c, x[..], ib[..]) { return 1; }
+  i := dk_lookup(x[..], id); if i < 0 { return 1; }
+  fb: [DK_FILE_MAX] u8; text := dk_chat_text(c, id, fb[..]);
+  s: [1] DkState; dk_state_load(s[..], text);
+  if !s[0].ok { return dk_fail("no chat file for ", id); }
+  done := ""; ub: [64] u8; ub2: [64] u8;
+  if !show {
+    if verb == "budget" {
+      if set > 0 { _ := dk_budget_set(s[..], set); }
+      if ov != 0 { dk_budget_override(s[..], ov > 0); }
+    } else {
+      ok := true;
+      if sub == "set" { ok = dk_goal_set(s[..], objective); }
+      else if sub == "pause" { ok = dk_goal_status_set(s[..], DK_GOAL_PAUSED); }
+      else if sub == "resume" { ok = dk_goal_status_set(s[..], DK_GOAL_ACTIVE); }
+      else if sub == "complete" { ok = dk_goal_status_set(s[..], DK_GOAL_COMPLETE); }
+      else if sub == "clear" { ok = dk_goal_clear(s[..]); }
+      if !ok { tool_errln(ifx sub == "set" then "coder desktop: the objective is empty" else "coder desktop: the chat has no goal (set one with: goal ID set OBJECTIVE)"); return 1; }
+    }
+    out: [DK_FILE_MAX + 16384] u8; o: [1] Jo; jo_start(o[..], out[..]); dk_state_save(s[..], text, o[..]);
+    if o[0].bad { return dk_fail("the chat is too large to rewrite", ""); }
+    if !dk_chat_save(c, id, jo_text(o[..])) { return 1; }
+  }
+  if verb == "budget" {
+    n := dk_cat(lb[..], 0, id); n = dk_cat(lb[..], n, " spent "); n = dk_cat(lb[..], n, dk_usd(s[0].cost, ub[..])); n = dk_cat(lb[..], n, " of "); n = dk_cat(lb[..], n, dk_usd(s[0].budget, ub2[..]));
+    if s[0].override { n = dk_cat(lb[..], n, ", continuing above budget"); }
+    done = cast(string) lb[0..<n];
+  } else {
+    n := dk_cat(lb[..], 0, id); n = dk_cat(lb[..], n, " goal "); n = dk_cat(lb[..], n, dk_goal_name(s[0].goal_status));
+    if s[0].goal_n > 0 { n = dk_cat(lb[..], n, ": "); n = dk_cat(lb[..], n, dk_clip(dk_goal_text(s[..]), 4000)); }
+    done = cast(string) lb[0..<n];
+  }
+  return dk_done(c, x[..], i, ifx show then verb else (ifx verb == "budget" then "budget" else sub), s[..], true, done);
+}
+
+dk_cmd_search :: (c: [] DkCtx, args: [] Args, verb: string) -> int {
+  qb: [4096] u8; query := dk_rest(args, 2, qb[..]);
+  if query.count == 0 { tool_err("coder desktop: "); tool_err(verb); tool_errln(" QUERY"); return 2; }
+  repo := verb == "search-repo" || (verb == "search" && args_has(args, "--repo"));
+  limit := args_whole(args_value(args, "--limit", args_value(args, "--max", "20"))); if limit < 1 { limit = 20; }
+  if repo || verb == "search-chats" || c[0].live {
+    nl := dk_needs_live(c, ifx repo then "search-repo" else "search-chats"); if nl != 0 { return nl; }
+    b: [16384] u8; o: [1] Jo; jo_start(o[..], b[..]); dk_pl_search(query, limit, args_value(args, "--folder", ""), args_value(args, "--glob", ""), o[..]);
+    return dk_live(c, ifx repo then "search-repo" else "search-chats", jo_text(o[..]), "");
+  }
+  chats: [DK_CHATS] DkChat; x := [1] DkIndex.[DkIndex.{chats = chats[..]}];
+  ib: [DK_INDEX_MAX] u8;
+  if !dk_load(c, x[..], ib[..]) { return 1; }
+  ord: [DK_CHATS] int; n := dk_ordered(x[..], ord[..], false);
+  out: [1048576] u8; o: [1] Jo; jo_start(o[..], out[..]); fb: [DK_FILE_MAX] u8; found := 0;
+  jo_obj(o[..]); jo_key(o[..], "query"); jo_str(o[..], query); jo_key(o[..], "results"); jo_arr(o[..]);
+  for k: 0..<n {
+    if found >= limit { break; }
+    i := ord[k]; where := dk_match(x[..], i, dk_chat_text(c, dk_id(x[..], i), fb[..]), query);
+    if where.count == 0 { continue; }
+    found += 1;
+    jo_obj(o[..]); jo_key(o[..], "id"); jo_str(o[..], dk_id(x[..], i)); jo_key(o[..], "title"); jo_str(o[..], dk_title(x[..], i));
+    jo_key(o[..], "folder"); jo_str(o[..], dk_folder(x[..], i)); jo_key(o[..], "matched"); jo_str(o[..], where); jo_end(o[..]);
+    if !c[0].json { lb: [4096] u8; cd_outln(dk_line(dk_id(x[..], i), "  ", dk_title(x[..], i), lb[..])); }
+  }
+  jo_end(o[..]); jo_end(o[..]);
+  if c[0].json { cd_outln(jo_text(o[..])); } else if found == 0 { cd_outln("no chats match"); }
+  return 0;
+}
+
+// Only the running app can do these.
+dk_cmd_live_only :: (c: [] DkCtx, args: [] Args, verb: string) -> int {
+  nl := dk_needs_live(c, verb); if nl != 0 { return nl; }
+  lb: [8192] u8;
+  if verb == "status-live" || verb == "tier" { return dk_live(c, verb, "", ""); }
+  if verb == "stop-all" { b: [64] u8; o: [1] Jo; jo_start(o[..], b[..]); dk_pl_stop_all(args_has(args, "--all"), o[..]); return dk_live(c, verb, jo_text(o[..]), ""); }
+  id := dk_pos(args, 2);
+  if id.count == 0 { return dk_lookup_none(); }
+  if verb == "stop" { b: [1024] u8; o: [1] Jo; jo_start(o[..], b[..]); dk_pl_control(id, "stop", "", 0, "", o[..]); return dk_live(c, verb, jo_text(o[..]), dk_line("stopped ", id, "", lb[..])); }
+  mb: [65536] u8; msg := dk_rest(args, 3, mb[..]);
+  if msg.count == 0 { msg = args_value(args, "--prompt", ""); }
+  if msg.count == 0 { tool_errln("coder desktop: send ID MESSAGE"); return 2; }
+  mode := args_value(args, "--mode", "follow_up");
+  if mode != "follow_up" && mode != "steer" && mode != "interrupt" { tool_errln("coder desktop: --mode is follow_up, steer or interrupt"); return 2; }
+  b: [131072] u8; o: [1] Jo; jo_start(o[..], b[..]); dk_pl_send(id, msg, mode, o[..]);
+  return dk_live(c, verb, jo_text(o[..]), dk_line("sent to ", id, "", lb[..]));
+}
+
+// coder desktop VERB ...: args as coder got them ("desktop" first).
+dk_main :: (args: [] Args) -> int {
+  verb := dk_pos(args, 1);
+  if verb == "help" || args_has(args, "--help") || args_has(args, "-h") { tool_errln(DK_USAGE); return 0; }
+  if verb.count == 0 { tool_errln(DK_USAGE); return 2; }
+  c: [1] DkCtx;
+  if !dk_ctx(c[..], args) { return 2; }
+  if verb == "status" { return dk_cmd_status(c[..], args); }
+  if verb == "ls" || verb == "list" { return dk_cmd_ls(c[..], args); }
+  if verb == "read" { return dk_cmd_read(c[..], args); }
+  if verb == "create" || verb == "new" { return dk_cmd_create(c[..], args); }
+  if verb == "rename" || verb == "pin" || verb == "unpin" || verb == "delete" || verb == "folder" { return dk_cmd_list_change(c[..], args, verb); }
+  if verb == "budget" || verb == "goal" { return dk_cmd_chat_change(c[..], args, verb); }
+  if verb == "search" || verb == "search-chats" || verb == "search-repo" { return dk_cmd_search(c[..], args, verb); }
+  if verb == "send" || verb == "stop" || verb == "stop-all" || verb == "tier" { return dk_cmd_live_only(c[..], args, verb); }
+  tool_err("coder desktop: unknown verb "); tool_errln(verb); tool_errln(DK_USAGE);
+  return 2;
+}
