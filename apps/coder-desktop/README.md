@@ -12,6 +12,8 @@ the typing mark and notices. The shared AppKit editor
 For the repeatable workflow used to match Claude Desktop's layout, spacing, and
 typography in Coder's monochrome palette, see
 [`docs/coder/claude-desktop-parity-process.md`](../../docs/coder/claude-desktop-parity-process.md).
+For the tiered evaluation specification and phased rollout plan for Coder
+desktop, see [`docs/coder/desktop-evals-spec.md`](../../docs/coder/desktop-evals-spec.md).
 
 ## What it does
 
