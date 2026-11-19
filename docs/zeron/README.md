@@ -21,6 +21,7 @@
 | [`features.md`](./features.md) | Exhaustive catalog of Zeron capabilities across apps, Rust crates, and edge services, with crate/file references. |
 | [`architecture.md`](./architecture.md) | Technical architecture deep dive: 33-crate workspace dependency map, apps & edge topology, storage, sync/RPC protocols, security boundaries, and CI/release pipelines. |
 | [`audit.md`](./audit.md) | Senior-advisor codebase audit: strengths, design decisions, and concrete findings across reliability, security, performance, testing/CI, and tech debt with `file:line` evidence. |
+| [`ported-components.md`](./ported-components.md) | Catalog of all Zeron-styled Coax components, skin tokens (`zeron_skin()`), desktop/web/iOS integrations, parity tests, and goldens already ported into OpenAgents. |
 
 ## Tech Stack
 

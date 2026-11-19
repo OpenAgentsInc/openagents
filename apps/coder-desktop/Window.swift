@@ -371,13 +371,17 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     }
     func show() { window.makeKeyAndOrderFront(nil); wake() }
     func windowShouldClose(_ sender: NSWindow) -> Bool { window.orderOut(nil); return false }
+    var retired = false
+
     func retire() {
+        guard !retired else { return }
+        retired = true
         updater.stop()
         foremanServer.stop()
         ForemanControlDescriptor.remove()
-        if chat != nil { keep() }
+        if chat != nil { keep(closing: true) }
         // the daemon's runs go on after Coder quits; a reopened Coder attaches to them (GitHub #13694)
-        for back in runs.values { keep(back); if back.turn != nil { back.detach() } else { back.stop() }; cd_close(back.page) }
+        for back in runs.values { keep(back, closing: true); if back.turn != nil { back.detach() } else { back.stop() }; cd_close(back.page) }
         runs = [:]
         if run.turn != nil && cd_running(page) != 0 { run.detach() } else { run.stop() }
         if let monitor { NSEvent.removeMonitor(monitor) }; monitor = nil; clock?.invalidate(); clock = nil

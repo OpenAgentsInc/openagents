@@ -11,14 +11,15 @@
   #assert coder_page_zoom(s, 0) == 7 && abs(coder_page_scale(s) - 2.4) < 0.001;
   for i: 0..<9 { _ := coder_page_zoom(s, -1); }
   #assert coder_page_zoom(s, 0) == 0 && coder_page_zoom_set(s, 2) == 2;
-  st: [14] f32; #assert coder_page_style(s, st[..]) && abs(st[0] - 14.4) < 0.01 && abs(st[1] - 21) < 0.001;
+  st: [14] f32; #assert coder_page_style(s, st[..]) && abs(st[0] - 14.0) < 0.01 && abs(st[1] - 20.0) < 0.001;
 }
 
-#test "desktop skin matches Claude sidebar proportions while keeping Coder monochrome palette" {
+#test "desktop skin matches Zeron Dark palette and Zeron composer proportions" {
   u: f32 = ARCADE_PHONE_SCALE;
   k := cp_skin();
   base := arcade_phone_skin();
-  // Structure/geometry matches Claude Desktop at 1.2x scale (280pt sidebar, 32pt rows, 26pt headers, 8pt inset/radius, 16pt pad).
+  z := zeron_skin();
+  // Sidebar proportions unchanged at 1.2x scale (280pt sidebar, 32pt rows, 26pt headers, 8pt inset/radius, 16pt pad).
   #assert CP_SIDE == 234;
   #assert k.app.side_row * u > 31.9f32 && k.app.side_row * u < 32.1f32;
   #assert k.app.side_head * u > 25.9f32 && k.app.side_head * u < 26.1f32;
@@ -28,12 +29,14 @@
   // Main-area typography is smaller than Arcade default while sidebar (k.small) stays unchanged.
   #assert k.small.face == base.small.face && k.small.size == base.small.size;
   #assert k.body.size < base.body.size && k.mono.size < base.mono.size && k.tool.size < base.tool.size && k.label.size < base.label.size;
-  // Composer geometry matches Claude Desktop card proportions.
-  #assert k.cmp.radius * u > 15.9f32 && k.cmp.radius * u < 16.1f32;
-  #assert k.cmp.send * u > 31.9f32 && k.cmp.send * u < 32.1f32;
+  // Composer geometry matches Zeron pill proportions (20pt radius, 20pt line, 28pt circular send pill at 6pt inset, 28pt chips).
+  #assert k.cmp.radius * u > 19.9f32 && k.cmp.radius * u < 20.1f32;
+  #assert k.cmp.line * u > 19.9f32 && k.cmp.line * u < 20.1f32;
+  #assert k.cmp.send * u > 27.9f32 && k.cmp.send * u < 28.1f32;
+  #assert k.cmp.action_inset * u > 5.9f32 && k.cmp.action_inset * u < 6.1f32;
   #assert k.cmp.chip_h * u > 27.9f32 && k.cmp.chip_h * u < 28.1f32;
-  // Color palette stays Coder's own Arcade monochrome.
-  #assert k.canvas.r == base.canvas.r && k.surface.r == base.surface.r && k.ink.r == base.ink.r;
+  // Color palette matches Zeron Dark tokens.
+  #assert k.canvas.r == z.canvas.r && k.surface.r == z.surface.r && k.ink.r == z.ink.r;
 }
 
 #test "sidebar footer draws demo pills stacked in the footer region" {

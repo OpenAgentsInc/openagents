@@ -338,7 +338,7 @@ app_tool :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, t: AppTool, open
   hovered := uiframe_hovered(f, id);
   flat := s.chat.enabled || t.note;
   ground := sheet_box(sh, x, y, w, head, a.tool_radius, ifx flat then 0.0f32 else s.border, ifx flat then s.clear else s.surface, ifx flat then s.clear else s.menu_divider);
-  if hovered { sheet_fill(sh, x, y, w, head, a.tool_radius, opacity(s.raised, ifx flat then 0.75 else 0.55)); }
+  if hovered { sheet_fill(sh, x, y, w, head, a.tool_radius, ifx flat then s.row_hover else opacity(s.raised, 0.55)); }
   if p > 0 { sheet_fill(sh, x, y, w, head, a.tool_radius, opacity(s.hover, p)); }
   words := ifx t.state == APP_TOOL_FAILED then "Failed" else ifx t.state == APP_TOOL_PENDING then "Waiting" else "";
   row := uiframe_semantic(f, id, EL_BUTTON, t.title, x, y, w, head,
@@ -347,8 +347,8 @@ app_tool :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, t: AppTool, open
   sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, w, head);
   // the header: icon, title, argument, state, chevron
   pen := x + a.tool_pad; mid := y + head / 2;
-  icon_ink := ifx hovered then s.ink else s.muted;
-  title_ink := ifx flat then (ifx hovered || is_open then s.ink else s.muted) else s.ink;
+  icon_ink := ifx t.state == APP_TOOL_FAILED then s.danger else ifx hovered then s.ink else s.muted;
+  title_ink := ifx t.state == APP_TOOL_FAILED then s.danger else ifx flat then (ifx hovered || is_open then s.ink else s.muted) else s.ink;
   if t.icon >= 0 { sheet_icon(sh, t.icon, pen, mid - a.tool_icon / 2, a.tool_icon, icon_ink); pen += a.tool_icon + a.gap; }
   title:=app_fit(f,s.tool.face,sheet_single_line(sh,t.title),w-a.tool_icon-2*a.tool_chevron-4*a.gap-2*a.tool_pad);
   pen += sheet_text(sh, m, -1, pen, mid - s.tool.line / 2, s.tool.line, s.tool.face, title_ink, title) + a.gap;
@@ -363,7 +363,7 @@ app_tool :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, t: AppTool, open
   if t.state == APP_TOOL_RUNNING { right -= a.tool_icon; activity(sh, s, right, mid - a.tool_icon / 2, a.tool_icon, f[0].clock, f[0].reduced_motion); right -= a.gap; }
   else if words.count > 0 {
     ww := measure_width(m, s.small.face, words); right -= ww;
-    _ := sheet_text(sh, m, -1, right, mid - s.small.line / 2, s.small.line, s.small.face, ifx t.state == APP_TOOL_FAILED then s.ink else s.faint, words);
+    _ := sheet_text(sh, m, -1, right, mid - s.small.line / 2, s.small.line, s.small.face, ifx t.state == APP_TOOL_FAILED then s.danger else s.faint, words);
     right -= a.gap;
   }
   if t.diff && t.output.count > 0 {
@@ -373,14 +373,14 @@ app_tool :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, t: AppTool, open
       db: [24] u8; dn := el_put(db[..], 0, "-"); dn = el_put_i(db[..], dn, dr[0]);
       dstr := sheet_pool(sh, cast(string) db[0..<dn]);
       dw := measure_width(m, s.mono_small.face, dstr); right -= dw;
-      _ := sheet_text(sh, m, -1, right, mid - s.mono_small.line / 2, s.mono_small.line, s.mono_small.face, s.muted, dstr);
+      _ := sheet_text(sh, m, -1, right, mid - s.mono_small.line / 2, s.mono_small.line, s.mono_small.face, s.danger, dstr);
       right -= a.gap_small;
     }
     if da[0] > 0 {
       ab: [24] u8; an := el_put(ab[..], 0, "+"); an = el_put_i(ab[..], an, da[0]);
       astr := sheet_pool(sh, cast(string) ab[0..<an]);
       aw := measure_width(m, s.mono_small.face, astr); right -= aw;
-      _ := sheet_text(sh, m, -1, right, mid - s.mono_small.line / 2, s.mono_small.line, s.mono_small.face, s.ink, astr);
+      _ := sheet_text(sh, m, -1, right, mid - s.mono_small.line / 2, s.mono_small.line, s.mono_small.face, s.success, astr);
       right -= a.gap;
     } else if dr[0] > 0 {
       right -= a.gap - a.gap_small;
@@ -430,7 +430,7 @@ app_tool :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, t: AppTool, open
   bh += a.tool_body_pad;
   if t.note && bh > 2 * a.tool_body_pad {
     rail_x := x + a.tool_pad + (ifx t.icon >= 0 then a.tool_icon / 2 - 0.75f32 else 0.0f32);
-    sheet_fill(sh, rail_x, top + a.tool_body_pad / 2, 1.5f32, bh - a.tool_body_pad, 0.75f32, s.menu_divider);
+    sheet_fill(sh, rail_x, top + a.tool_body_pad / 2, 1.5f32, bh - a.tool_body_pad, 0.75f32, s.rail);
   }
   uiframe_unclip(f);
   // the clip's bottom is where the reveal stands now
@@ -476,7 +476,7 @@ app_tool_group :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, title: str
   uiframe_open(f, row);
   for i: 0..<n { h += app_tool(f, ids[i], x + a.group_inset, y + h, w - a.group_inset, tools[i], false, action) + a.gap_small; }
   uiframe_close(f);
-  sheet_rule(sh, x + a.tool_chevron / 2, y + head, a.group_rail, h - head - a.gap_small, s.hover);
+  sheet_rule(sh, x + a.tool_chevron / 2, y + head, a.group_rail, h - head - a.gap_small, s.rail);
   return h;
 }
 

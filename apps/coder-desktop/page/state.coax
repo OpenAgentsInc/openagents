@@ -51,7 +51,7 @@ CP_SIDE_FROM :: 900;        // the window width from which the sidebar shows; a 
 CP_ZOOMS :: [8] f32.[0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0];   // the text sizes Command-plus and Command-minus step through
 CP_ZOOM_USUAL :: 2;
 CP_BOTTOM :: 8;             // under the message bar
-CP_COLUMN :: 680;           // the conversation's widest column
+CP_COLUMN :: 720;           // the conversation (Zeron zeron.prose.measure)'s widest column
 CP_FOLDER_TEXT :: 512;     // bytes of the working folder's name as shown
 CP_FOLDER_MOST :: 280;      // the working folder chip's greatest width; a longer name is cut with an ellipsis
 CP_CORNER :: 6;             // New chat from the window's top and right edges

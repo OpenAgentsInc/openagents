@@ -2,18 +2,48 @@
 
 // Device pixels to a unit of the page's layout, before the screen's own scale: the skin's, times the text size.
 cp_scale :: (s: [] CoderPage) -> f32 { return ARCADE_PHONE_SCALE * CP_ZOOMS[ifx s[0].ready then s[0].zoom else CP_ZOOM_USUAL]; }
-// Coder Desktop's skin: Coder's monochrome Arcade palette with Claude Desktop's sidebar and
-// composer geometry, and slightly smaller main-area typography (14.4pt body, 13.2pt code/tools/chips)
-// relative to the unchanged 13.2pt sidebar.
+// Coder Desktop's skin: Zeron Dark palette, typography, transcript rhythm (user bubbles,
+// markdown prose, code blocks, quiet activity/tool/thinking rows), and Zeron pill composer.
 cp_skin :: () -> UiSkin {
   u: f32 = ARCADE_PHONE_SCALE;
   k := arcade_phone_skin();
-  // Sidebar surface & divider: visibly distinct cool-dark surface with crisp 1pt divider and clear selection pill.
+  z := zeron_skin();
+  // Zeron Dark surface, ink, semantic, and syntax tokens (zeron-dark.json / ds/tokens.luau).
+  k.canvas = z.canvas;
+  k.surface = z.surface;
   k.sidebar = rgba(0.086f32, 0.090f32, 0.102f32, 1.0f32);
-  k.menu_divider = rgba(1.0f32, 1.0f32, 1.0f32, 0.14f32);
-  k.raised = rgba(0.157f32, 0.165f32, 0.184f32, 1.0f32);
-  k.hover = rgba(0.204f32, 0.212f32, 0.235f32, 1.0f32);
-  // Sidebar: Claude Desktop proportions (32pt rows, 26pt headers, 8pt inset/radius, 16pt pad, 15pt icons).
+  k.raised = z.raised;
+  k.sunk = z.sunk;
+  k.hairline = z.hairline;
+  k.field_edge = z.hairline;
+  k.hover = z.hover;
+  k.ink = z.ink;
+  k.muted = z.muted;
+  k.faint = z.faint;
+  k.accent = z.accent;
+  k.on_accent = z.on_accent;
+  k.selection = z.selection;
+  k.code_wash = z.code_wash;
+  k.quote_wash = z.quote_wash;
+  k.quote_rail = z.quote_rail;
+  k.header_wash = z.header_wash;
+  k.syntax = z.syntax;
+  k.chip = z.chip;
+  k.well = z.well;
+  k.rail = z.rail;
+  k.hunk_wash = z.hunk_wash;
+  k.add_wash = z.add_wash;
+  k.add_bar = z.add_bar;
+  k.del_wash = z.del_wash;
+  k.del_bar = z.del_bar;
+  k.danger = z.danger;
+  k.warning = z.warning;
+  k.success = z.success;
+  k.danger_muted = z.danger_muted;
+  k.warning_muted = z.warning_muted;
+  k.menu_divider = z.menu_divider;
+  k.chat.enabled = true;
+  // Sidebar: unchanged proportions (32pt rows, 26pt headers, 8pt inset/radius, 16pt pad, 15pt icons).
   k.app.side_row = 32.0f32 / u;
   k.app.side_row_two = 48.0f32 / u;
   k.app.side_head = 26.0f32 / u;
@@ -21,54 +51,63 @@ cp_skin :: () -> UiSkin {
   k.app.row_radius = 8.0f32 / u;
   k.app.side_pad = 16.0f32 / u;
   k.app.icon = 15.0f32 / u;
-  // Main-area typography (everything outside the sidebar; k.small stays FONT_SMALL for sidebar parity).
-  k.body.face = FONT_TOOL; k.body.size = 12; k.body.line = 19.0f32;
-  k.strong.face = FONT_CHIP; k.strong.size = 12; k.strong.line = 19.0f32;
-  k.code.face = FONT_MONO_12; k.code.size = 12; k.code.line = 19.0f32;
+  // Main-area typography aligned with Zeron prose (15pt/24pt rhythm, 13pt mono code, 13pt compact tools).
+  k.body.face = FONT_TOOL; k.body.size = 12; k.body.line = 20.0f32;
+  k.strong.face = FONT_CHIP; k.strong.size = 12; k.strong.line = 20.0f32;
+  k.code.face = FONT_MONO_12; k.code.size = 12; k.code.line = 20.0f32;
   k.mono.face = FONT_MONO_11; k.mono.size = 11; k.mono.line = 16.5f32;
-  k.mono_small.face = FONT_MONO_11; k.mono_small.size = 11; k.mono_small.line = 16.0f32;
-  k.tool.face = FONT_SMALL; k.tool.size = 11; k.tool.line = 16.5f32;
+  k.mono_small.face = FONT_MONO_11; k.mono_small.size = 11; k.mono_small.line = 15.5f32;
+  k.tool.face = FONT_SMALL; k.tool.size = 11; k.tool.line = 16.0f32;
   k.label.face = FONT_MENU_SMALL; k.label.size = 11; k.label.line = 16.0f32;
   k.title.face = FONT_MENU; k.title.size = 13; k.title.line = 20.0f32;
-  // Main transcript: Claude Desktop proportions (prose, user bubble, code blocks, tool & thinking rows).
-  k.md.line = 19.0f32;
+  // Main transcript: Zeron proportions (ds/markdown.luau, ds/user_message.luau, ds/activity.luau).
+  k.md.line = 20.0f32;
   k.md.block_line = 16.5f32;
-  k.md.block_gap = 12.0f32;
-  k.app.gap = 10.0f32 / u;
-  k.app.gap_small = 6.0f32 / u;
+  k.md.block_gap = 16.0f32 / u;
+  k.md.code_pad_x = 4.0f32 / u;
+  k.md.code_inset_y = 1.5f32 / u;
+  k.md.code_radius = 4.5f32 / u;
+  k.md.block_header = 32.0f32 / u;
+  k.md.block_pad_x = 14.0f32 / u;
+  k.md.block_pad_y = 12.0f32 / u;
+  k.md.block_radius = 10.0f32 / u;
+  k.md.quote_rail = 2.0f32 / u;
+  k.app.gap = 12.0f32 / u;
+  k.app.gap_small = 4.0f32 / u;
   k.app.icon_button = 28.0f32 / u;
-  k.app.bubble_pad_x = 16.0f32 / u;
+  k.app.bubble_pad_x = 14.0f32 / u;
   k.app.bubble_pad_y = 10.0f32 / u;
   k.app.bubble_radius = 16.0f32 / u;
-  k.app.bubble_share = 0.85f32;
+  k.app.bubble_share = 0.80f32;
   k.app.code_head = 32.0f32 / u;
   k.app.code_pad = 14.0f32 / u;
   k.app.code_radius = 10.0f32 / u;
   k.app.code_copy_h = 24.0f32 / u; k.app.code_copy_x = 8.0f32 / u; k.app.code_copy_icon = 12.0f32 / u; k.app.code_copy_gap = 4.0f32 / u; k.app.code_copy_edge = 5.0f32 / u;
-  k.app.tool_h = 34.0f32 / u;
-  k.app.tool_pad = 12.0f32 / u;
+  k.app.tool_h = 26.0f32 / u;
+  k.app.tool_pad = 10.0f32 / u;
   k.app.tool_body_pad = 10.0f32 / u;
-  k.app.tool_radius = 10.0f32 / u;
+  k.app.tool_radius = 8.0f32 / u;
   k.app.tool_icon = 14.0f32 / u;
   k.app.tool_chevron = 12.0f32 / u;
-  k.tr.bubble_pad_x = 16.0f32 / u;
+  k.tr.bubble_pad_x = 14.0f32 / u;
   k.tr.bubble_pad_y = 10.0f32 / u;
   k.tr.bubble_radius = 16.0f32 / u;
   // Minimal live message entrance (120ms, 3pt); non-live messages suppress enter completely.
   k.motion.enter = 0.12f32;
   k.app.rise = 3.0f32 / u;
-  // Composer: Claude Desktop card proportions (16pt radius, 21pt input line, 32pt send button, 28pt chip).
-  k.cmp.radius = 16.0f32 / u;
-  k.cmp.line = 21.0f32 / u;
-  k.cmp.text_inset = 6.0f32 / u;
+  // Composer: exact Zeron pill geometry (20pt radius, 20pt input line, 14pt side pad, 12pt top pad,
+  // 40pt action strip, 6pt concentric inset, 28pt circular send/stop pill, 10pt stop square r=3, 28pt chips).
+  k.cmp.radius = 20.0f32 / u;
+  k.cmp.line = 20.0f32 / u;
+  k.cmp.text_inset = 14.0f32 / u;
   k.cmp.pad_top = 12.0f32 / u;
-  k.cmp.pad_v = 20.0f32 / u;
-  k.cmp.actions_row = 32.0f32 / u;
-  k.cmp.actions_bottom = 10.0f32 / u;
-  k.cmp.action_inset = 10.0f32 / u;
-  k.cmp.send = 32.0f32 / u;
-  k.cmp.stop = 11.0f32 / u;
-  k.cmp.stop_radius = 2.5f32 / u;
+  k.cmp.pad_v = 12.0f32 / u;
+  k.cmp.actions_row = 28.0f32 / u;
+  k.cmp.actions_bottom = 6.0f32 / u;
+  k.cmp.action_inset = 6.0f32 / u;
+  k.cmp.send = 28.0f32 / u;
+  k.cmp.stop = 10.0f32 / u;
+  k.cmp.stop_radius = 3.0f32 / u;
   k.cmp.chip_h = 28.0f32 / u;
   k.cmp.chip_radius = 8.0f32 / u;
   k.cmp.chip_pad = 8.0f32 / u;

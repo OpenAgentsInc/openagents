@@ -231,7 +231,7 @@ coder_page_editor :: (s: [] CoderPage, out: [] f32) -> bool #export_c #effects(a
 coder_page_style :: (s: [] CoderPage, out: [] f32) -> bool #export_c #effects(all) {
   if s.count < 1 || out.count < 14 { return false; }
   k := cp_skin();
-  out[0] = k.body.size * cp_scale(s); out[1] = k.cmp.line * cp_scale(s);
+  out[0] = 14.0f32 * cp_scale(s) / ARCADE_PHONE_SCALE; out[1] = k.cmp.line * cp_scale(s);
   out[2] = k.ink.r; out[3] = k.ink.g; out[4] = k.ink.b; out[5] = k.ink.a;
   out[6] = k.faint.r; out[7] = k.faint.g; out[8] = k.faint.b; out[9] = k.faint.a;
   out[10] = k.accent.r; out[11] = k.accent.g; out[12] = k.accent.b; out[13] = k.accent.a;

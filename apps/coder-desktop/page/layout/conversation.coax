@@ -317,36 +317,60 @@ cp_corners :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, window_w: f32,
                          ifx s[0].nturns == 0 then EL_S_DISABLED else 0, CP_NEW);
   }
 }
-// The composer at the window's foot, x and cw as the conversation: its working folder, the model
-// chip beside Send and the models' popover above it.
+// The composer at the window's foot, x and cw as the conversation: Zeron pill container,
+// working folder chip on the left, model chip beside Send, and the models' popover above it.
 cp_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, h: f32, running: bool, full: bool, exceeded: bool) {
-  k := f[0].skin; a := k.app;
-  c := AppComposer.{placeholder = "Message", text = eb_text(s[0].draft[..]),
-    state = ifx running then APP_COMPOSER_RUNNING else ifx (full || exceeded) then APP_COMPOSER_OFF else APP_COMPOSER_READY,
-    editing = s[0].focused && !s[0].model_menu, editor_h = s[0].editor_h / cp_scale(s), unit = ARCADE_PHONE_SCALE};
-  s[0].box = app_composer(f, "coder.composer", "coder.composer.send", x, h - CP_BOTTOM, cw, c, CP_FIELD, CP_SEND);
-  // bottom toolbar inside the composer, matching Claude Desktop: working folder on the left,
-  // compact model selector beside the send button on the right, and its popover menu above it.
+  k := f[0].skin;
+  s[0].box = cp_zeron_composer(s, f, x, h - CP_BOTTOM, cw, running, full || exceeded);
+  // Zeron bottom toolbar inside the composer pill: working folder chip on the left,
+  // compact model selector chip beside the circular 28pt send/stop pill on the right,
+  // and Zeron-styled model picker popover above it.
+  u: f32 = ARCADE_PHONE_SCALE;
+  z_ink := rgba(0.9294f32, 0.9333f32, 0.9373f32, 1.0f32);        // #ededef ($text.primary)
+  z_sec := rgba(0.9294f32, 0.9333f32, 0.9373f32, 0.60f32);       // alpha(#ededef, 0.60) ($text.secondary)
+  z_ter := rgba(0.9294f32, 0.9333f32, 0.9373f32, 0.38f32);       // $text.tertiary
+  z_hov := rgba(1.0f32, 1.0f32, 1.0f32, 0.08f32);                // $hover (#ffffff14)
+  z_prs := rgba(1.0f32, 1.0f32, 1.0f32, 0.12f32);                // $pressed (#ffffff1f)
+  z_edge := rgba(0.7804f32, 0.8235f32, 0.8706f32, 0.0902f32);    // #c7d2de17 ($zeron.composer.edge)
+  z_menu_bg := rgba(0.1059f32, 0.1059f32, 0.1098f32, 0.96f32);   // #1b1b1c ($zeron.menu.tint)
   box_y := (h - CP_BOTTOM) - s[0].box.height;
   row_y := box_y + s[0].box.row_y;
   chip_y := row_y + (s[0].box.send - k.cmp.chip_h) / 2;
+  chip_gap := 6.0f32 / u;
   m_label := cp_model_label(s, cp_model_index(s));
   m_tw := measure_width(f[0].m, k.small.face, m_label);
-  m_chev: f32 = 12;
-  m_gap: f32 = 4;
+  m_chev := 12.0f32 / u;
+  m_gap := 4.0f32 / u;
   m_w := m_tw + m_gap + m_chev + 2 * k.cmp.chip_pad;
-  m_max := s[0].box.send_x - k.cmp.action_inset - a.gap_small;
+  m_max := s[0].box.send_x - k.cmp.action_inset - chip_gap;
   if m_w > m_max { m_w = m_max; }
-  m_x := x + s[0].box.send_x - a.gap_small - m_w;
+  m_x := x + s[0].box.send_x - chip_gap - m_w;
   if s[0].folder_n > 0 {
-    u: f32 = ARCADE_PHONE_SCALE;
     name := sheet_pool(f[0].sheet, cast(string) s[0].folder[0..<s[0].folder_n]);
-    fx := x + k.cmp.action_inset;
-    max_fw := m_x - fx - a.gap_small;
+    fx := x + 8.0f32 / u;
+    max_fw := m_x - fx - chip_gap;
     cap := cast(f32) CP_FOLDER_MOST / u;
     if max_fw > cap { max_fw = cap; }
     if max_fw > 0 {
-      _ := app_chip(f, "coder.folder", fx, chip_y, max_fw, ICON_FOLDER, "Working folder", name, ifx running then EL_S_DISABLED else 0, CP_FOLDER);
+      sh := f[0].sheet;
+      f_state := ifx running then EL_S_DISABLED else 0;
+      f_tw := measure_width(f[0].m, k.small.face, name);
+      f_w := k.cmp.chip_pad + k.cmp.chip_icon + k.cmp.chip_gap + f_tw + k.cmp.chip_pad;
+      if f_w > max_fw { f_w = max_fw; }
+      f_row := uiframe_semantic(f, "coder.folder", EL_BUTTON, "Working folder", fx, chip_y, f_w, k.cmp.chip_h, f_state, CP_FOLDER);
+      elt_value(f[0].rows, f_row, name);
+      f_hov := !running && uiframe_hovered(f, "coder.folder");
+      f_prs := !running && uiframe_pressed(f, "coder.folder");
+      if f_prs { sheet_fill(sh, fx, chip_y, f_w, k.cmp.chip_h, k.cmp.chip_radius, z_prs); }
+      else if f_hov { sheet_fill(sh, fx, chip_y, f_w, k.cmp.chip_h, k.cmp.chip_radius, z_hov); }
+      f_ink := ifx running then z_ter else ifx f_hov || f_prs then z_ink else z_sec;
+      sheet_icon(sh, ICON_FOLDER, fx + k.cmp.chip_pad, chip_y + (k.cmp.chip_h - k.cmp.chip_icon) / 2, k.cmp.chip_icon, f_ink);
+      f_text_max := f_w - 2 * k.cmp.chip_pad - k.cmp.chip_icon - k.cmp.chip_gap;
+      if f_text_max > 0 {
+        f_shown := app_fit(f, k.small.face, name, f_text_max);
+        _ := sheet_text(sh, f[0].m, -1, fx + k.cmp.chip_pad + k.cmp.chip_icon + k.cmp.chip_gap, chip_y + (k.cmp.chip_h - k.small.line) / 2, k.small.line, k.small.face, f_ink, f_shown);
+      }
+      sheet_hit(sh, UIFRAME_HIT, f_row, 0, fx, chip_y, f_w, k.cmp.chip_h);
     }
   }
   if m_w > 0 {
@@ -355,9 +379,10 @@ cp_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, h: f32, running
     m_row := uiframe_semantic(f, "coder.model", EL_BUTTON, "Model", m_x, chip_y, m_w, k.cmp.chip_h, m_state, CP_MODEL_MENU);
     elt_value(f[0].rows, m_row, m_label);
     m_hov := uiframe_hovered(f, "coder.model");
-    m_bg := ifx s[0].model_menu || m_hov then k.hover else k.raised;
-    _ := sheet_box(sh, m_x, chip_y, m_w, k.cmp.chip_h, k.cmp.chip_radius, k.border, m_bg, k.hairline);
-    m_ink := ifx s[0].model_menu || m_hov then k.ink else k.muted;
+    m_prs := uiframe_pressed(f, "coder.model");
+    if m_prs || s[0].model_menu { sheet_fill(sh, m_x, chip_y, m_w, k.cmp.chip_h, k.cmp.chip_radius, ifx m_prs then z_prs else z_hov); }
+    else if m_hov { sheet_fill(sh, m_x, chip_y, m_w, k.cmp.chip_h, k.cmp.chip_radius, z_hov); }
+    m_ink := ifx s[0].model_menu || m_hov || m_prs then z_ink else z_sec;
     shown := app_fit(f, k.small.face, m_label, m_w - 2 * k.cmp.chip_pad - m_gap - m_chev);
     _ := sheet_text(sh, f[0].m, -1, m_x + k.cmp.chip_pad, chip_y + (k.cmp.chip_h - k.small.line) / 2, k.small.line, k.small.face, m_ink, shown);
     sheet_icon(sh, ICON_CHEVRON, m_x + m_w - k.cmp.chip_pad - m_chev, chip_y + (k.cmp.chip_h - m_chev) / 2, m_chev, m_ink);
@@ -365,17 +390,19 @@ cp_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, h: f32, running
   }
   if s[0].model_menu {
     sh := f[0].sheet;
-    pw: f32 = 224;
+    pw := 240.0f32 / u;
     if pw > cw { pw = cw; }
-    pad: f32 = 6;
-    rh: f32 = 42;
+    pad := 6.0f32 / u;
+    rh := 42.0f32 / u;
     ph := pad * 2 + cast(f32) cp_models(s) * rh;
     px := m_x + m_w - pw;
     if px < x { px = x; }
-    py := box_y - ph - 6;
-    if py < 8 { py = 8; }
-    // Paint the popover card in the over list so it cleanly covers underlying transcript text.
-    sheet_over_n(sh, prim_box(sh[0].over, sh[0].no, px, py, pw, ph, k.radius, k.border, k.raised, k.hairline));
+    py := box_y - ph - 6.0f32 / u;
+    if py < 8.0f32 / u { py = 8.0f32 / u; }
+    menu_r := 12.0f32 / u;
+    // Paint the Zeron-styled popover card in the over list so it cleanly covers underlying transcript text.
+    sheet_over_n(sh, prim_box(sh[0].over, sh[0].no, px, py + 2.0f32 / u, pw, ph, menu_r, 0, rgba(0.0f32, 0.0f32, 0.0f32, 0.35f32), Rgba.{}));
+    sheet_over_n(sh, prim_box(sh[0].over, sh[0].no, px, py, pw, ph, menu_r, 1.0f32 / u, z_menu_bg, z_edge));
     card_row := uiframe_semantic(f, "coder.model.menu", EL_REGION, "Models", px, py, pw, ph, 0, 0);
     sheet_hit(sh, UIFRAME_HIT, card_row, 0, px, py, pw, ph);
     mb: [32] u8;
@@ -390,18 +417,132 @@ cp_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, h: f32, running
       mrow := uiframe_semantic(f, mid, EL_BUTTON, label, px + pad, ry, pw - 2 * pad, rh, ifx sel then EL_S_CURRENT else 0, CP_MODEL_PICK);
       elt_value(f[0].rows, mrow, desc);
       if hov || sel {
-        fill := ifx hov then k.hover else opacity(k.hover, 0.55f32);
-        sheet_over_n(sh, prim_box(sh[0].over, sh[0].no, px + pad, ry + 1, pw - 2 * pad, rh - 2, k.cmp.chip_radius, 0, fill, Rgba.{}));
+        fill := ifx hov then z_hov else rgba(1.0f32, 1.0f32, 1.0f32, 0.045f32);
+        sheet_over_n(sh, prim_box(sh[0].over, sh[0].no, px + pad, ry + 1.0f32 / u, pw - 2 * pad, rh - 2.0f32 / u, k.cmp.chip_radius, 0, fill, Rgba.{}));
       }
-      tx := px + pad + 10;
-      tw := pw - 2 * pad - 34;
-      _ := sheet_text(sh, f[0].m, -1, tx, ry + 5, k.body.line, k.body.face, k.ink, app_fit(f, k.body.face, label, tw));
-      _ := sheet_text(sh, f[0].m, -1, tx, ry + 22, k.small.line, k.small.face, k.muted, app_fit(f, k.small.face, desc, tw));
+      tx := px + pad + 10.0f32 / u;
+      tw := pw - 2 * pad - 34.0f32 / u;
+      _ := sheet_text(sh, f[0].m, -1, tx, ry + 4.0f32 / u, k.body.line, k.body.face, z_ink, app_fit(f, k.body.face, label, tw));
+      _ := sheet_text(sh, f[0].m, -1, tx, ry + 22.0f32 / u, k.small.line, k.small.face, z_sec, app_fit(f, k.small.face, desc, tw));
       if sel {
-        ck: f32 = 14;
-        sheet_over_n(sh, prim_icon(sh[0].over, sh[0].no, ICON_CHECK, px + pw - pad - 10 - ck, ry + (rh - ck) / 2, ck, ck, k.accent));
+        ck := 14.0f32 / u;
+        sheet_over_n(sh, prim_icon(sh[0].over, sh[0].no, ICON_CHECK, px + pw - pad - 10.0f32 / u - ck, ry + (rh - ck) / 2, ck, ck, z_ink));
       }
       sheet_hit(sh, UIFRAME_HIT, mrow, 0, px + pad, ry, pw - 2 * pad, rh);
     }
   }
+}
+
+// Exact pixel-perfect Zeron chat composer pill (ds/composer.luau + ds/composer_layout.luau +
+// ds/themes/zeron-dark.json): 20pt radius, #18181b fill, 1pt #c7d2de17 border, subtle depth shadow,
+// 14pt horizontal / 12pt top text padding, 20pt line height (14pt Geist), 40pt bottom action strip,
+// and concentric 28pt circular pill Send/Stop button at 6pt inset (6 + 14 = 20pt radius).
+cp_zeron_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, bottom: f32, w: f32, running: bool, off: bool) -> ComposerBox {
+  k := f[0].skin; sh := f[0].sheet; m := f[0].m;
+  u: f32 = ARCADE_PHONE_SCALE;
+  radius := 20.0f32 / u;
+  border_w := 1.0f32 / u;
+  side_pad := 14.0f32 / u;
+  top_pad := 12.0f32 / u;
+  line_h := k.cmp.line;                        // 20pt / u
+  control := 28.0f32 / u;                      // 28pt circular pill button
+  inset := 6.0f32 / u;                         // concentric: 6pt + 14pt = 20pt corner radius
+  actions_h := 40.0f32 / u;                    // 6pt top breathing + 28pt controls + 6pt bottom inset
+  max_text_h := line_h * 8.0f32;               // Zeron MAX_LINES = 8 (160pt)
+  text := eb_text(s[0].draft[..]);
+  editing := s[0].focused && !s[0].model_menu;
+  editor_h := s[0].editor_h / cp_scale(s);
+  text_w := w - 2.0f32 * side_pad;
+  if text_w < line_h { text_w = line_h; }
+  // Measure or use native editor height, clamped between 1 and 8 lines.
+  text_h := line_h;
+  if editing && editor_h > line_h {
+    text_h = editor_h;
+  } else if text.count > 0 {
+    // Estimate wrapped height when unfocused so height stays consistent with native editor.
+    nlines := 1;
+    cur_w: f32 = 0;
+    pos := 0;
+    while pos < text.count {
+      if text[pos] == 10 {
+        nlines += 1; cur_w = 0; pos += 1;
+      } else {
+        next := pos + 1;
+        while next < text.count && text[next] != 10 && text[next] != 32 { next += 1; }
+        if next < text.count && text[next] == 32 { next += 1; }
+        seg_w := measure_width(m, k.body.face, cast(string) text[pos..<next]);
+        if cur_w > 0 && cur_w + seg_w > text_w { nlines += 1; cur_w = seg_w; }
+        else { cur_w += seg_w; }
+        pos = next;
+      }
+      if nlines >= 8 { break; }
+    }
+    text_h = cast(f32) nlines * line_h;
+  }
+  if text_h < line_h { text_h = line_h; }
+  if text_h > max_text_h { text_h = max_text_h; }
+  box_h := top_pad + text_h + actions_h;
+  box_y := bottom - box_h;
+  row_y := box_h - inset - control;
+  send_x := w - inset - control;
+  // Zeron dark theme tokens (zeron-dark.json).
+  z_solid := rgba(0.0941f32, 0.0941f32, 0.1059f32, 1.0f32);          // #18181b ($zeron.composer.solid)
+  z_edge := rgba(0.7804f32, 0.8235f32, 0.8706f32, 0.0902f32);        // #c7d2de17 ($zeron.composer.edge)
+  z_edge_focus := rgba(0.7804f32, 0.8235f32, 0.8706f32, 0.18f32);    // subtle focus highlight
+  z_ink := rgba(0.9294f32, 0.9333f32, 0.9373f32, 1.0f32);            // #ededef ($text.primary)
+  z_placeholder := rgba(0.9294f32, 0.9333f32, 0.9373f32, 0.35f32);   // $text.tertiary
+  z_pri_bg := rgba(0.9294f32, 0.9333f32, 0.9373f32, 1.0f32);         // #ededef ($zeron.primary.bg)
+  z_pri_hov := rgba(1.0f32, 1.0f32, 1.0f32, 1.0f32);                 // #ffffff ($zeron.primary.hover)
+  z_pri_prs := rgba(0.8314f32, 0.8314f32, 0.8471f32, 1.0f32);        // #d4d4d8 ($zeron.primary.active)
+  z_pri_ink := rgba(0.0784f32, 0.0784f32, 0.0863f32, 1.0f32);        // #141416 ($zeron.primary.text)
+  z_dis_bg := rgba(1.0f32, 1.0f32, 1.0f32, 0.08f32);                 // disabled primary pill
+  z_dis_ink := rgba(0.9294f32, 0.9333f32, 0.9373f32, 0.35f32);       // disabled icon ink
+  // Subtle Zeron composer elevation shadow (0 12 32 0 #00000066 approximated cleanly in 2 soft passes).
+  sheet_fill(sh, x - 1.0f32 / u, box_y + 4.0f32 / u, w + 2.0f32 / u, box_h + 2.0f32 / u, radius + 2.0f32 / u, rgba(0.0f32, 0.0f32, 0.0f32, 0.16f32));
+  sheet_fill(sh, x, box_y + 2.0f32 / u, w, box_h, radius, rgba(0.0f32, 0.0f32, 0.0f32, 0.24f32));
+  // Main Zeron pill container.
+  field_state := (ifx editing then EL_S_FOCUSED else 0) | (ifx off then EL_S_DISABLED else 0);
+  field_row := uiframe_semantic(f, "coder.composer", EL_FIELD, "Message", x, box_y, w, box_h, field_state, CP_FIELD);
+  elt_value(f[0].rows, field_row, text);
+  _ := sheet_box(sh, x, box_y, w, box_h, radius, border_w, z_solid, ifx editing then z_edge_focus else z_edge);
+  sheet_hit(sh, UIFRAME_HIT, field_row, 0, x, box_y, w, box_h);
+  // Placeholder or unfocused draft text.
+  if text.count == 0 {
+    _ := sheet_text(sh, m, -1, x + side_pad, box_y + top_pad, line_h, k.body.face, z_placeholder, "Ask anything...");
+  } else if !editing {
+    // Draw unfocused draft text lines inside the text box.
+    ly := box_y + top_pad;
+    pos := 0;
+    drawn := 0;
+    while pos < text.count && drawn < 8 {
+      line_start := pos;
+      line_end := pos;
+      while line_end < text.count && text[line_end] != 10 { line_end += 1; }
+      _ := sheet_text(sh, m, -1, x + side_pad, ly, line_h, k.body.face, z_ink, app_fit(f, k.body.face, cast(string) text[line_start..<line_end], text_w));
+      ly += line_h;
+      drawn += 1;
+      pos = ifx line_end < text.count then line_end + 1 else line_end;
+    }
+  }
+  // Concentric 28pt circular pill Send / Stop button.
+  sx := x + send_x;
+  sy := box_y + row_y;
+  can_send := running || (!off && text.count > 0);
+  send_label := ifx running then "Stop" else "Send";
+  send_state := ifx !can_send then EL_S_DISABLED else 0;
+  send_row := uiframe_semantic(f, "coder.composer.send", EL_BUTTON, send_label, sx, sy, control, control, send_state, CP_SEND);
+  send_hov := can_send && uiframe_hovered(f, "coder.composer.send");
+  send_prs := can_send && uiframe_pressed(f, "coder.composer.send");
+  send_bg := ifx !can_send then z_dis_bg else ifx send_prs then z_pri_prs else ifx send_hov then z_pri_hov else z_pri_bg;
+  send_ink := ifx !can_send then z_dis_ink else z_pri_ink;
+  sheet_fill(sh, sx, sy, control, control, control / 2.0f32, send_bg);
+  if running {
+    sq := k.cmp.stop;                          // 10pt square, 3pt corner radius
+    sheet_fill(sh, sx + (control - sq) / 2.0f32, sy + (control - sq) / 2.0f32, sq, sq, k.cmp.stop_radius, send_ink);
+  } else {
+    ic := 14.0f32 / u;                         // 14pt arrow-up icon
+    sheet_icon(sh, ICON_ARROW_UP, sx + (control - ic) / 2.0f32, sy + (control - ic) / 2.0f32, ic, send_ink);
+  }
+  sheet_hit(sh, UIFRAME_HIT, send_row, 0, sx, sy, control, control);
+  return ComposerBox.{height = box_h, text_x = side_pad, text_y = top_pad, text_w = text_w, text_h = text_h, inset = 0.0f32, line = line_h, row_y = row_y, send_x = send_x, send = control};
 }

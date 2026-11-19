@@ -194,7 +194,8 @@ extension CoderWindow {
     }
     /// Keeps a chat: its file, and its entry in the list (at the top when new, in place when updated).
     /// The shown one, or one whose reply runs out of view.
-    func keep(_ which: CoderRun? = nil) {
+    func keep(_ which: CoderRun? = nil, closing: Bool = false) {
+        guard closing || !retired else { return }
         let r = which ?? run, shown = r === run
         let id = (shown ? chat : r.chat) ?? UUID().uuidString.lowercased()
         var out = [CChar](repeating: 0, count: 32_000_000)   // 24 messages with every row and every sub-agent's rows full fit
