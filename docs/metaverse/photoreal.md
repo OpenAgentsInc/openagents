@@ -158,8 +158,8 @@ nothing shimmers when the camera moves.
 | Pattern | Size (`PR_M_SCALE`) | What it draws |
 | --- | --- | --- |
 | `PR_PATTERN_CONCRETE` 1 | | cloudy pours and a fine grain |
-| `PR_PATTERN_GLASS` 2 | a floor's height (3.9 m) | unitized curtain wall: a spandrel at each floor, a mullion every 1.5 m, each pane tilted a hair, lit rooms at night |
-| `PR_PATTERN_PAVING` 3 | a slab's side (1.2 m) | slabs with joints, each its own tone, worn |
+| `PR_PATTERN_GLASS` 2 | a floor's height (3.9 m) | unitized curtain wall: a spandrel at each floor, a mullion every 1.5 m, each pane bowed a little so what it mirrors bends and breaks at the mullions, lit rooms at night |
+| `PR_PATTERN_PAVING` 3 | a slab's side (1.2 m) | slabs in mortar joints with a chamfer's shade; under 1 m laid half off row to row and 1.5 times as long, 1.5 m and over twice as long; each slab its own tone, warmth and tilt; grain, aggregate, stains and wear (`pr_paving`) |
 | `PR_PATTERN_ASPHALT` 4 | | a road's grit and wear |
 | `PR_PATTERN_STONE` 7 | a course (0.6 m); two rows | dressed stone: blocks set half along, veins, hanging streaks, grime at the foot; flutes round a column |
 | `PR_PATTERN_PANELS` 8 | a rib (0.3 m) | ribbed metal sheet |
@@ -208,7 +208,16 @@ corrugated sheet and the stacks' concrete.
 - `photo_kind_material` picks a plan record's material by its kind. Rows
   `SLAB_M_TINTED_FIRST` to `SLAB_M_TINTED_LAST` take their colour times the
   plan's paint for the kind (`slab_paint`), so a container keeps its colour
-  and a stack its red bands.
+  and a stack its red bands. A temple, a round temple and the statues are
+  the exception: their stone is untinted, since the paint fakes columns and a
+  dim cella that their real parts and the light now draw.
+- A temple's columns are `photo_shaft`: a smooth lathe with a plain base,
+  a shaft that narrows by a sixth with a slight swell, and a flared capital
+  under its slab; the fluted marble cuts the flutes, and its weather marks run
+  round a column by arc length so they don't break at the facing's diagonals.
+- A mirror on the platform (`slab_photo_mirror`) shows another tower as dark
+  glass with the sky in it and its floors' faint lines, not the plan's
+  painted pane grid, which a reflection magnifies into blocks.
 - The hull's top takes the deck's zones in the shader (`slab_deck_at`): a
   10 m carriageway on each street of the 100 m grid, kerbs from 5 to 5.3 m,
   0.6 m pavers to 10 m, 1.2 m slabs between, the 1.5 m promenade within

@@ -12,7 +12,7 @@
 //   arch_face_to        a flat face that faces a given way, whatever its corners' order
 //   arch_railing        a run of handrail: posts, a top rail, lower rails
 //   arch_street_lamp      a street lamp: a tapered pole, an arm, a head with a lens
-//   arch_sign_post      a pole with a plate in a colour, a pale band across it
+//   arch_sign_post      a pole with a plate in a colour, a pale arrow across it
 //   arch_canopy         a building's entrance: a portal, glass doors, a canopy on two posts
 //   arch_dashes         a run of a road's dashed line
 //   arch_zebra          a pedestrian crossing's stripes
@@ -113,15 +113,19 @@ arch_street_lamp :: (p: [] ArchPen, look: ArchCityLook, height: f32, reach: f32)
 }
 
 // A sign: a pole `height` tall with a plate w by h at its top, facing +z and -z, in a colour, a
-// pale band across its middle. It carries no words.
+// pale arrow across it pointing +x. It carries no words.
 arch_sign_post :: (p: [] ArchPen, look: ArchCityLook, height: f32, w: f32, h: f32, r: f32, g: f32, b: f32) -> ArchPart {
   from := p[0].n;
   arch_material(p, look.metal, 0.45, 0.46, 0.47);
   arch_bar(p, arch_v(0, 0, 0), arch_v(0, height - h, 0), 0.035);
   arch_material(p, look.paint, r, g, b);
-  arch_box(p, 0, height - h * 0.5, 0, w * 0.5, h * 0.5, 0.025);
+  y := height - h * 0.5;
+  arch_box(p, 0, y, 0, w * 0.5, h * 0.5, 0.025);
   arch_material(p, look.paint, 0.92, 0.92, 0.9);
-  arch_box(p, 0, height - h * 0.5, 0, w * 0.5 - 0.06, h * 0.12, 0.032);
+  tip := w * 0.5 - 0.1; head := h * 0.22;
+  arch_box(p, -0.03, y, 0, tip - 0.05, h * 0.05, 0.032);
+  arch_bar(p, arch_v(tip, y, 0), arch_v(tip - head, y + head, 0), 0.03);
+  arch_bar(p, arch_v(tip, y, 0), arch_v(tip - head, y - head, 0), 0.03);
   return arch_part(p, from);
 }
 

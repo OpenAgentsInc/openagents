@@ -65,7 +65,7 @@ SlabPhoto :: struct {
   keyed: bool;
   versions: [PHOTO_STORES] u32;
   span_from: int; span_bytes: int; span_whole: bool;   // the records changed since the host last took them
-  box: int; drum: int; post: int; dome: int; gable: int; cypress: int; loose: int;
+  box: int; drum: int; shaft: int; post: int; dome: int; gable: int; cypress: int; loose: int;
   glass: int; steel: int; span: int;                    // materials
   content: SlabContent;
 }
@@ -131,6 +131,22 @@ photo_cypress :: (p: [] ArchPen) -> ArchPart {
   arch_limb(p, 0, 0.3, 0, 0, 1, 0, 0.5, 0.0, 10);
   return arch_part(p, from);
 }
+// A column's shaft one metre high and one across at its foot, smooth (the fluted marble's
+// pattern cuts its flutes): a plain base, a shaft that narrows by a sixth with a slight swell,
+// a flared capital and its square slab, reaching 0.62 each way.
+photo_shaft :: (p: [] ArchPen) -> ArchPart {
+  from := p[0].n;
+  t: [12] ArchTurn;
+  t[0] = ArchTurn.{r = 0.6, y = 0}; t[1] = ArchTurn.{r = 0.6, y = 0.025}; t[2] = ArchTurn.{r = 0.5, y = 0.04};
+  for k: 0..<7 {
+    a := cast(f32) k / 6.0f32;
+    t[3 + k] = ArchTurn.{r = 0.5 * (1.0 - 0.16 * a + 0.03 * sin(a * 3.14159265)), y = 0.04 + 0.86 * a};
+  }
+  t[10] = ArchTurn.{r = 0.47, y = 0.925}; t[11] = ArchTurn.{r = 0.6, y = 0.955};
+  arch_lathe(p, t[..], 40, 0, 0);
+  arch_box(p, 0, 0.9775, 0, 0.62, 0.0225, 0.62);
+  return arch_part(p, from);
+}
 photo_make :: (ph: [] SlabPhoto) {
   pen: [1] ArchPen; p := pen[..];
   arch_pen(p, ph[0].mesh[..]);
@@ -138,6 +154,7 @@ photo_make :: (ph: [] SlabPhoto) {
   ph[0].box = photo_part(ph, pr_unit_box(p));
   ph[0].drum = photo_part(ph, pr_unit_drum(p, 40));
   ph[0].post = photo_part(ph, pr_unit_drum(p, 12));
+  ph[0].shaft = photo_part(ph, photo_shaft(p));
   ph[0].dome = photo_part(ph, pr_unit_dome(p, 32, 8));
   ph[0].gable = photo_part(ph, pr_unit_gable(p));
   ph[0].cypress = photo_part(ph, photo_cypress(p));
@@ -184,6 +201,11 @@ photo_min :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
 photo_max :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
 // One placed part of record `i`: the plan's paint, or `material`.
 photo_mark :: (l: [] PrList, r: int, i: int, material: int) { pr_value(l, r, cast(f32) (i + 1)); pr_made_of(l, r, material); }
+// A temple's column: the shaft above, `across` at its foot and `tall` to the top of its slab.
+photo_column :: (ph: [] SlabPhoto, l: [] PrList, i: int, cx: f32, y0: f32, cz: f32, across: f32, tall: f32, material: int) {
+  r := pr_put(l, ph[0].shaft, cx, y0, cz, 0, 1);
+  pr_stretch(l, r, across, tall, across); photo_mark(l, r, i, material);
+}
 photo_drum :: (ph: [] SlabPhoto, l: [] PrList, i: int, cx: f32, y0: f32, cz: f32, across: f32, tall: f32, material: int) {
   r := pr_put(l, ifx across < 3 then ph[0].post else ph[0].drum, cx, y0, cz, 0, 1);
   pr_stretch(l, r, across, tall, across); photo_mark(l, r, i, material);
@@ -211,11 +233,11 @@ photo_temple :: (ph: [] SlabPhoto, l: [] PrList, i: int, x0: f32, y0: f32, z0: f
   pr_fine(l, true);
   for k: 0..<nl + 1 { for side: 0..<2 {
     x := -cl + cast(f32) k * sl; z := ifx side == 0 then -cw else cw;
-    photo_drum(ph, l, i, ifx turned then cx + z else cx + x, y0 + st, ifx turned then cz + x else cz + z, rc * 2, hc, fluted);
+    photo_column(ph, l, i, ifx turned then cx + z else cx + x, y0 + st, ifx turned then cz + x else cz + z, rc * 2, hc, fluted);
   } }
   for k: 1..<nw { for side: 0..<2 {
     z := -cw + cast(f32) k * sw; x := ifx side == 0 then -cl else cl;
-    photo_drum(ph, l, i, ifx turned then cx + z else cx + x, y0 + st, ifx turned then cz + x else cz + z, rc * 2, hc, fluted);
+    photo_column(ph, l, i, ifx turned then cx + z else cx + x, y0 + st, ifx turned then cz + x else cz + z, rc * 2, hc, fluted);
   } }
   pr_fine(l, false);
   photo_box(ph, l, i, turned, cx, cz, 0, y0 + st, 0, cl - rc * 3.5, y0 + st + hc, cw - rc * 3.5, stone);
@@ -236,7 +258,7 @@ photo_tholos :: (ph: [] SlabPhoto, l: [] PrList, i: int, x0: f32, y0: f32, z0: f
   rr := r2 - rc * 1.6;
   n := cast(int) photo_max(floor(6.2831853f32 * rr / (rc * 5)), 6);
   pr_fine(l, true);
-  for k: 0..<n { a := 6.2831853f32 * cast(f32) k / cast(f32) n; photo_drum(ph, l, i, cx + cos(a) * rr, y0 + st, cz + sin(a) * rr, rc * 2, hc, fluted); }
+  for k: 0..<n { a := 6.2831853f32 * cast(f32) k / cast(f32) n; photo_column(ph, l, i, cx + cos(a) * rr, y0 + st, cz + sin(a) * rr, rc * 2, hc, fluted); }
   pr_fine(l, false);
   photo_drum(ph, l, i, cx, y0 + st, cz, (rr - rc * 3) * 2, hc, stone);
   ye := y0 + st + hc; he := hh * 0.12;

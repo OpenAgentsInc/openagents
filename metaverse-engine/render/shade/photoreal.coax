@@ -543,13 +543,7 @@ pr_surface :: (v:PrV,u:[]f32,b:int,materials:[]f32)->PrSurface {
   } else if (pattern==PR_PATTERN_PAINTED) {
     s=pr_painted(s,f,ax,ay,v.local,fl,seed,scale);
   } else if (pattern==PR_PATTERN_PAVING) {
-    side:f32=ifx scale>0.0f32 then scale else 1.2f32;
-    cx:f32=floor(f.x/side); cz:f32=floor(f.y/side);
-    tone:f32=render_noise2(cx,cz);
-    joint:f32=fmax(pr_line(f.x,side,0.02f32,ax),pr_line(f.y,side,0.02f32,ay));
-    wear:f32=pr_cloud2(f.x*0.08f32,f.y*0.08f32);
-    s.albedo=scale3(s.albedo,(0.9f32+0.16f32*tone)*(0.88f32+0.2f32*wear)*(1.0f32-0.35f32*joint));
-    s.rough=saturate(s.rough+0.1f32*(tone-0.5f32)+0.2f32*joint);
+    s=pr_paving(s,f,ax,ay,fl,seed,scale,full);
   } else if (pattern==PR_PATTERN_ASPHALT) {
     grit:f32=pr_noise2(f.x*14.0f32,f.y*14.0f32);
     worn:f32=pr_cloud2(f.x*0.06f32,f.y*0.06f32);

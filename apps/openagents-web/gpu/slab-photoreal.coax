@@ -127,9 +127,18 @@ slab_photo_mirror :: (ph:V3,rh:V3,sky:V3,u:[]f32,field:[]f32,materials:[]f32)->V
   pt:SlabPaint=slab_paint(hit,w,rh,u);
   nw:V3=sb_dir_to_world(hit.n,u);
   light:V3=add3(scale3(pr_at3(u,b+PR_SUN_LIGHT),fmax(dot3(nw,pr_at3(u,b+PR_SUN)),0.0f32)),pr_sky_light(nw,u,b));
+  tower:bool=wg_i32_f(hit.kind+0.5f32)==5;
   // (a tower's painted windows are not its lit rooms: those are the glass's own, pr_room)
-  emit:V3=ifx wg_i32_f(hit.kind+0.5f32)==5 then v3(0.0f32,0.0f32,0.0f32) else pr_decode(pt.emit);
+  emit:V3=ifx tower then v3(0.0f32,0.0f32,0.0f32) else pr_decode(pt.emit);
   c:V3=add3(mul3(pr_decode(pt.c),light),scale3(emit,1.0f32/fmax(u[b+PR_SUN_LIGHT+3],0.001f32)));
+  if (tower&&(abs(hit.n.y)<0.5f32)) {
+    // another tower's glass: dark, with the sky it mirrors in turn and its floors' faint lines,
+    // not the plan's painted pane grid, which a mirror magnifies into blocks
+    storey:f32=fract((w.y-u[38])/3.9f32);
+    edge:f32=smoothstep(0.0f32,0.06f32,storey)*(1.0f32-smoothstep(0.88f32,0.94f32,storey));
+    edge=mix(edge,0.85f32,smoothstep(60.0f32,200.0f32,hit.t));
+    c=add3(scale3(light,0.05f32),scale3(pr_sky(sb_dir_to_world(reflect3(rh,hit.n),u),u,b),0.3f32+0.12f32*edge));
+  }
   if (u[b+PR_LAMPS]>0.001f32) {
     s:PrSurface; s.albedo=pr_decode(pt.c); s.normal=hit.n; s.rough=1.0f32; s.metal=0.0f32;
     c=add3(c,pr_lamps(w,hit.n,sb_mul(rh,-1.0f32),s,u,b,field,materials));
@@ -218,6 +227,9 @@ slab_scene_fs :: (v:PrV,u:[]f32,materials:[]f32,field:[]f32,shadow_map:TexDepth,
     p:V4=wg_at4(u,at);
     q:V4=wg_at4(u,at+4);
     kind=wg_i32_f(p.w+0.5f32);
+    // a temple, a round temple and the statues are built in their own stone: the plan's paint
+    // fakes their columns and dims their cella, which the real parts and the light now do
+    if ((q.w>10.5f32)&&(q.w<13.5f32)&&(row<cast(f32)(SLAB_M_LIMESTONE)+1.5f32)) {tinted=false;}
     if (painted||tinted) {
       hit:SlabHit=SlabHit.{t=dist,n=gh,kind=p.w+(ifx q.w>10.5f32 then 0.25f32 else 0.0f32),top=q.y,id=cast(f32)(record),lo=v3(p.x,p.y,p.z),hi=v3(q.x,q.y,q.z)};
       pt=slab_paint(hit,wh,dh,u);

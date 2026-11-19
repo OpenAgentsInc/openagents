@@ -154,10 +154,44 @@ pr_room :: (f:V2,bay:f32,floor_h:f32,seed:f32,ax:f32,ay:f32,u:[]f32,b:int)->V3 {
   far:V3=scale3(v3(1.0f32,0.78f32,0.56f32),share*0.3f32);
   return scale3(mix3(far,near,saturate(fmin(bay,floor_h)/(fmax(fmax(ax,ay),0.0001f32)*1.2f32)-0.4f32)),0.025f32);
 }
+// ---- paving (PR_PATTERN_PAVING): stone slabs PR_M_SCALE wide (1.2 m when 0)
+// Pavers under a metre are laid half a slab off row to row and half again as long; slabs of
+// 1.5 m or more are twice as long; between, a square grid. Mortar joints with a chamfer's shade,
+// each slab its own tone, warmth and a hair's tilt, the stone's grain and aggregate, and stains
+// and wear over the whole. Fine detail fades to its average as it shrinks under a pixel.
+pr_paving :: (s0:PrSurface,f:V2,ax:f32,ay:f32,fl:V3,seed:f32,side0:f32,full:bool)->PrSurface {
+  s:PrSurface=s0;
+  side:f32=ifx side0>0.0f32 then side0 else 1.2f32;
+  slab:f32=ifx side<1.0f32 then side*1.5f32 else (ifx side>1.4f32 then side*2.0f32 else side);
+  aa:f32=fmax(ax,ay);
+  rz:f32=floor(f.y/side);
+  along:f32=f.x+(ifx slab>side+0.01f32 then fract(rz*0.5f32)*slab else 0.0f32);
+  rx:f32=floor(along/slab);
+  tone:f32=render_noise2(rx+seed*3.0f32,rz-seed);
+  warm:f32=render_noise2(rx*1.7f32+5.0f32,rz*1.3f32+seed)-0.5f32;
+  joint:f32=fmax(pr_line(along,slab,0.006f32,ax),pr_line(f.y,side,0.006f32,ay));
+  chamfer:f32=fmax(pr_line(along,slab,0.03f32,ax),pr_line(f.y,side,0.03f32,ay));
+  // the stone's own grain and the aggregate in it, gone to their average far off
+  grain:f32=mix(0.5f32,pr_noise2(f.x*7.0f32+seed,f.y*7.0f32)*0.6f32+pr_noise2(f.x*23.0f32,f.y*23.0f32-seed)*0.4f32,pr_resolve(0.05f32,aa));
+  fleck:f32=mix(0.12f32,stepf(0.82f32,pr_noise2(f.x*61.0f32-seed,f.y*61.0f32)),pr_resolve(0.016f32,aa));
+  wear:f32=pr_cloud2(f.x*0.08f32+seed,f.y*0.08f32);
+  stain:f32=smoothstep(0.64f32,0.78f32,pr_cloud2(f.x*0.37f32-seed,f.y*0.37f32+7.0f32));
+  k:f32=(0.88f32+0.22f32*tone)*(0.9f32+0.18f32*wear)*(0.9f32+0.2f32*grain)*(1.0f32-0.1f32*fleck)*(1.0f32-0.14f32*stain);
+  k=k*(1.0f32-0.12f32*chamfer)*(1.0f32-0.4f32*joint);
+  s.albedo=mul3(scale3(s.albedo,k),v3(1.0f32+0.06f32*warm,1.0f32,1.0f32-0.06f32*warm));
+  s.rough=saturate(s.rough+0.08f32*(tone-0.5f32)-0.08f32*wear*stain+0.25f32*joint);
+  if (full) {
+    // each slab bedded a hair off level, so the sky's sheen breaks from slab to slab
+    t:f32=pr_resolve(side,aa)*0.008f32;
+    s.normal=pr_tilt(s.normal,fl,(render_noise2(rx+19.0f32,rz)-0.5f32)*t,(tone-0.5f32)*t);
+  }
+  return s;
+}
 // A curtain wall. `facade` is the kind: 0 unitized glass (a spandrel band at each floor and a
 // mullion every 1.5 m), 1 ribbon windows between pale metal spandrels, 2 glass behind pale
-// vertical fins every 1.2 m. Each pane is tilted a hair, so the sky's reflection breaks from pane
-// to pane as real glazing's does, until panes are under a pixel. A roof is a membrane and gravel.
+// vertical fins every 1.2 m. Each pane bows a little and sits a hair off true, so the sky's
+// reflection bends across a pane and breaks at its mullions as real glazing's does, until panes
+// are under a pixel. A roof is a membrane and gravel.
 pr_glazing :: (s0:PrSurface,f:V2,ax:f32,ay:f32,fl:V3,seed:f32,floor0:f32,facade:int,full:bool,u:[]f32,b:int)->PrSurface {
   s:PrSurface=s0;
   if (abs(fl.y)>=0.7f32) {
@@ -170,8 +204,11 @@ pr_glazing :: (s0:PrSurface,f:V2,ax:f32,ay:f32,fl:V3,seed:f32,floor0:f32,facade:
   px:f32=floor(f.x/bay+0.5f32); py:f32=floor(f.y/floor_h);
   tone:f32=render_noise2(px+seed*13.0f32,py-seed*5.0f32);
   if (full) {
-    k:f32=pr_resolve(bay,ax)*0.012f32;
-    s.normal=pr_tilt(s.normal,fl,(render_noise2(px+31.0f32,py+seed)-0.5f32)*k,(tone-0.5f32)*k);
+    // each pane bows a little under its own weight and sits a hair off true, so what it mirrors
+    // slides smoothly across the pane and steps only at the mullions
+    k:f32=pr_resolve(bay,ax);
+    ux:f32=fract(f.x/bay+0.5f32)-0.5f32; uy:f32=fract(f.y/floor_h)-0.5f32;
+    s.normal=pr_tilt(s.normal,fl,(ux*0.006f32+(render_noise2(px+31.0f32,py+seed)-0.5f32)*0.002f32)*k,(uy*0.004f32+(tone-0.5f32)*0.002f32)*k);
   }
   s.albedo=scale3(s.albedo,0.94f32+0.12f32*tone);
   v:f32=fract(f.y/floor_h);
@@ -230,11 +267,16 @@ pr_stone :: (s0:PrSurface,f:V2,ax:f32,ay:f32,da:f32,local:V3,fl:V3,seed:f32,cour
   course:f32=ifx course0>0.0f32 then course0 else 0.6f32;
   flutes:f32=m[x]; weather:f32=m[x+1];
   row_i:f32=floor(f.y/course);
-  vein:f32=pr_cloud2(f.x*0.5f32+seed,f.y*0.5f32);
-  fine:f32=pr_noise2(f.x*3.0f32+f.y*1.3f32,f.y*3.0f32-seed);
+  // round a column the face's own across jumps where the facing turns past a diagonal; the
+  // weather's marks run round it by arc length instead, so they don't break into notches
+  round:bool=(flutes>0.0f32)&&(abs(fl.y)<0.7f32);
+  g:V2=f;
+  if (round) {g.x=wg_atan2(local.z,local.x)*sqrt(local.x*local.x+local.z*local.z);}
+  vein:f32=pr_cloud2(g.x*0.5f32+seed,f.y*0.5f32);
+  fine:f32=pr_noise2(g.x*3.0f32+f.y*1.3f32,f.y*3.0f32-seed);
   joint:f32=pr_line(f.y,course,0.008f32,ay);
   tone:f32=0.0f32;
-  if ((flutes>0.0f32)&&(abs(fl.y)<0.7f32)) {
+  if (round) {
     // round a column: the flutes' concave faces, in the normal and darker in the hollows
     a:f32=wg_atan2(fl.z,fl.x);
     ph:f32=fract(a*flutes/6.2831853f32);
@@ -245,7 +287,7 @@ pr_stone :: (s0:PrSurface,f:V2,ax:f32,ay:f32,da:f32,local:V3,fl:V3,seed:f32,cour
     }
     hollow:f32=0.5f32-0.5f32*cos(ph*6.2831853f32);
     s.albedo=scale3(s.albedo,1.0f32-(0.1f32+0.12f32*weather)*(1.0f32-hollow)*keep);
-    tone=render_noise2(row_i+seed*3.0f32,seed);
+    tone=0.5f32+0.35f32*(render_noise2(row_i+seed*3.0f32,seed)-0.5f32);
   } else if (abs(fl.y)<0.7f32) {
     along:f32=f.x+(ifx fract(row_i*0.5f32)>0.25f32 then course else 0.0f32);
     tone=render_noise2(floor(along/(course*2.0f32))+seed*3.0f32,row_i);
@@ -258,7 +300,7 @@ pr_stone :: (s0:PrSurface,f:V2,ax:f32,ay:f32,da:f32,local:V3,fl:V3,seed:f32,cour
   // a warm patina where the sun and rain have worked; dark streaks hanging down; foot grime
   s.albedo=mix3(s.albedo,mul3(s.albedo,v3(1.02f32,0.95f32,0.84f32)),weather*smoothstep(0.35f32,0.75f32,vein));
   if (abs(fl.y)<0.7f32) {
-    hang:f32=mix(0.15f32,smoothstep(0.55f32,0.9f32,pr_noise2(f.x*1.1f32+seed,f.y*0.05f32)),pr_resolve(0.9f32,ax));
+    hang:f32=mix(0.15f32,smoothstep(0.55f32,0.9f32,pr_noise2(g.x*1.1f32+seed,f.y*0.05f32)),pr_resolve(0.9f32,ax));
     s.albedo=scale3(s.albedo,1.0f32-0.22f32*weather*hang);
     foot:f32=(1.0f32-smoothstep(0.0f32,0.9f32,local.y))*(0.6f32+0.4f32*fine);
     s.albedo=mix3(s.albedo,mul3(s.albedo,v3(0.62f32,0.6f32,0.55f32)),foot*weather);
