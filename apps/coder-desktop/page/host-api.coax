@@ -76,6 +76,11 @@ coder_page_action :: (s: [] CoderPage) -> int #export_c #effects(all) {
 coder_page_task :: (s: [] CoderPage, session: string, cwd: string, out: [] u8) -> int #export_c #effects(all) {
   if s.count < 1 || !cp_running(s) { return 0; }
   i := s[0].nturns - 1;
+  return cp_task_message(s, cast(string) s[0].turns[i].ask[0..<s[0].turns[i].ask_n], s[0].turns[i].model, session, cwd, out);
+}
+// ask as the worker's task line, with the model at index model: what a message sends, and what a
+// queued follow-up carries (followups.coax).
+cp_task_message :: (s: [] CoderPage, ask: string, model: int, session: string, cwd: string, out: [] u8) -> int {
   // the note on installed skills, optional active thread goal context, then the message
   whole: [CP_SKILLS + CP_GOAL_TEXT + EB_TEXT + 2048] u8;
   n := cp_out(whole[..], cast(string) s[0].skills[0..<s[0].skills_n]);
@@ -91,9 +96,9 @@ coder_page_task :: (s: [] CoderPage, session: string, cwd: string, out: [] u8) -
       n += cp_out(whole[n..<whole.count], "Work autonomously toward the active thread goal above. Make concrete, verified progress across turns until finished. When the goal is completely achieved and verified, include [GOAL_COMPLETE] at the end of your reply. If you are truly blocked and need user input, include [GOAL_BLOCKED].\n\n");
     }
   }
-  for c: cast(string) s[0].turns[i].ask[0..<s[0].turns[i].ask_n] { if n < whole.count { whole[n] = c; n += 1; } }
+  for c: ask { if n < whole.count { whole[n] = c; n += 1; } }
   t := McTask.{task = cast(string) whole[0..<n], session = session, cwd = cwd, sandbox = "danger-full-access",
-               ceiling = 3, gated = true, edits = true, unlimited = true, no_ask = true, agents = true, claude = s[0].claude, model = cp_model_id(s, s[0].turns[i].model), effort = "low", openrouter = cp_or_sub(s)};
+               ceiling = 3, gated = true, edits = true, unlimited = true, no_ask = true, agents = true, claude = s[0].claude, model = cp_model_id(s, model), effort = "low", openrouter = cp_or_sub(s)};
   return mww_task(out, t);
 }
 // What the host found installed on this computer (skills and their files), in words for Microcoder.
@@ -130,6 +135,7 @@ coder_page_line :: (s: [] CoderPage, line: string) -> int #export_c #effects(all
   ar := [1] ClArena.[ClArena.{buf = s[0].arena[..]}];
   l: [1] MwwLine;
   kind := mww_read(ar[..], line, l[..]);
+  if cp_fu_line(s, kind, l[0]) { return kind; }
   if !cp_running(s) { return kind; }
   i := s[0].nturns - 1;
   // Each model request streams its own text. What one wrote before it ran commands is not the

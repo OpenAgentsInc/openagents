@@ -1,0 +1,302 @@
+// The follow-up queue a Microcoder worker holds (GitHub #13715, #13716; after t3code's queued
+// follow-ups): messages the person sent while a turn ran, to run as turns of their own, oldest
+// first, once the worker is idle. The worker is the queue's one owner: every owner (Coder Desktop
+// now, the phone later) sends ops (mcworker-wire.coax mww_queue) and shows the whole queue the
+// worker sends back after each change (mwq_line), so no two views disagree.
+//
+// An item is its id (the owner's, stable across a resend), the text the person wrote, and the task
+// object its turn sends (mww_task's object, as the owner built it when it was queued: model,
+// folder, skills note). An item leaves the queue the moment its turn starts, and its id is kept
+// (the last MWQ_DONE): adding it again, after a reconnect, is refused as dispatched, so no item
+// runs twice.
+//
+// Paused: the worker does not start the head on its own. A turn that fails or is stopped pauses
+// the queue (reason error or interrupted), as does the person (pause); resume, an edit of the head
+// that starts it (promote now) or clear lets it go on. A queue opened from its file whose turn was
+// running when the worker went away (active) comes back paused (restored): that turn did not end.
+//
+// The file (mwq_save, mwq_load) keeps the queue across a worker that ends (Coder quit and the
+// daemon went away, or the Mac restarted): ~/.openagents/coder/sessions/KEY.queue.json, KEY the
+// chat's id the owner opened it with. It is written whole, durably (fs_replace_durable), after
+// every change and before a head's turn starts.
+//
+// Checks: coax/bin/coax test coax/lib/agent/engine/mcworker-queue.coax --library
+#load "mcworker-wire.coax";
+#load "../../sys/fs.coax";
+
+MWQ_ITEMS :: 16;                 // follow-ups held at once (the owner says so at the limit)
+MWQ_TEXT :: 16384;               // bytes of an item's text (the composer's EB_TEXT)
+MWQ_MESSAGE :: 32768;            // bytes of an item's task object (the text, the skills note, the goal, the members)
+MWQ_ID :: 64;
+MWQ_DONE :: 64;                  // ids of items already started, kept to refuse them again
+MWQ_KEY :: 128;
+MWQ_FILE :: 1048576;             // the file's bytes, at most (MWQ_ITEMS items whole, escaped)
+
+MwqItem :: struct {
+  id: [MWQ_ID] u8; nid: int;
+  text: [MWQ_TEXT] u8; ntext: int;
+  message: [MWQ_MESSAGE] u8; nmessage: int;
+}
+MwQueue :: struct {
+  items: [MWQ_ITEMS] MwqItem; n: int;
+  paused: bool; reason: [32] u8; nreason: int;
+  active: [MWQ_ID] u8; nactive: int;           // the started item whose turn runs ("" for none)
+  done: [MWQ_DONE * MWQ_ID] u8; ndone_len: [MWQ_DONE] int; ndone: int; done_at: int;   // a ring of started ids
+  path: [4096] u8; npath: int;                 // its file once opened ("" before: nothing is written)
+}
+
+mwq_id :: (q: [] MwQueue, i: int) -> string { return cast(string) q[0].items[i].id[0..<q[0].items[i].nid]; }
+mwq_text :: (q: [] MwQueue, i: int) -> string { return cast(string) q[0].items[i].text[0..<q[0].items[i].ntext]; }
+mwq_message :: (q: [] MwQueue, i: int) -> string { return cast(string) q[0].items[i].message[0..<q[0].items[i].nmessage]; }
+mwq_reason :: (q: [] MwQueue) -> string { return cast(string) q[0].reason[0..<q[0].nreason]; }
+mwq_active :: (q: [] MwQueue) -> string { return cast(string) q[0].active[0..<q[0].nactive]; }
+mwq_done_id :: (q: [] MwQueue, k: int) -> string { return cast(string) q[0].done[k * MWQ_ID..<k * MWQ_ID + q[0].ndone_len[k]]; }
+
+mwq_find :: (q: [] MwQueue, id: string) -> int {
+  for i: 0..<q[0].n { if mwq_id(q, i) == id { return i; } }
+  return -1;
+}
+mwq_was_done :: (q: [] MwQueue, id: string) -> bool {
+  for k: 0..<q[0].ndone { if mwq_done_id(q, k) == id { return true; } }
+  return false;
+}
+mwq_put :: (dst: [] u8, s: string) -> int { for c, i: s { dst[i] = c; } return s.count; }
+
+// A message an item may carry: a JSON object whose task is a string that is not empty.
+mwq_message_ok :: (message: string) -> bool {
+  if message.count < 2 || message.count > MWQ_MESSAGE || message[0] != '{' || !json_valid(message) { return false; }
+  return cl_at(message, "task").tok == JSON_STRING && cl_raw(message, "task").count > 2;
+}
+mwq_fits :: (id: string, text: string, message: string) -> bool {
+  return id.count > 0 && id.count <= MWQ_ID && text.count <= MWQ_TEXT && mwq_message_ok(message);
+}
+mwq_set :: (q: [] MwQueue, i: int, id: string, text: string, message: string) {
+  q[0].items[i].nid = mwq_put(q[0].items[i].id[..], id);
+  q[0].items[i].ntext = mwq_put(q[0].items[i].text[..], text);
+  q[0].items[i].nmessage = mwq_put(q[0].items[i].message[..], message);
+}
+mwq_shift :: (q: [] MwQueue, from: int, to: int) {
+  // the item at from moves to to; the ones between move one place
+  if from == to { return; }
+  keep := q[0].items[from];
+  if from < to { for i: from..<to { q[0].items[i] = q[0].items[i + 1]; } }
+  else { i := from; while i > to { q[0].items[i] = q[0].items[i - 1]; i -= 1; } }
+  q[0].items[to] = keep;
+}
+
+// The ops: "" when done, else the reason (queue_refused). An add of an id already queued changes
+// nothing and is no refusal (a resend).
+mwq_add :: (q: [] MwQueue, id: string, text: string, message: string) -> string {
+  if !mwq_fits(id, text, message) { return "invalid"; }
+  if mwq_find(q, id) >= 0 { return ""; }
+  if mwq_was_done(q, id) || mwq_active(q) == id { return "dispatched"; }
+  if q[0].n >= MWQ_ITEMS { return "full"; }
+  mwq_set(q, q[0].n, id, text, message);
+  q[0].n += 1;
+  return "";
+}
+// The same at the head: what a turn did not take back (steer.coax), to run first.
+mwq_add_first :: (q: [] MwQueue, id: string, text: string, message: string) -> string {
+  why := mwq_add(q, id, text, message);
+  if why.count > 0 { return why; }
+  i := mwq_find(q, id);
+  if i > 0 { mwq_shift(q, i, 0); }
+  return "";
+}
+mwq_update :: (q: [] MwQueue, id: string, text: string, message: string) -> string {
+  i := mwq_find(q, id);
+  if i < 0 { return "unknown_id"; }
+  if !mwq_fits(id, text, message) { return "invalid"; }
+  mwq_set(q, i, id, text, message);
+  return "";
+}
+mwq_delete :: (q: [] MwQueue, id: string) -> string {
+  i := mwq_find(q, id);
+  if i < 0 { return "unknown_id"; }
+  for k: i + 1..<q[0].n { q[0].items[k - 1] = q[0].items[k]; }
+  q[0].n -= 1;
+  return "";
+}
+// The item goes to place to (0 the head); a place past the end is the end.
+mwq_move :: (q: [] MwQueue, id: string, to: int) -> string {
+  i := mwq_find(q, id);
+  if i < 0 { return "unknown_id"; }
+  t := ifx to < 0 then 0 else ifx to >= q[0].n then q[0].n - 1 else to;
+  mwq_shift(q, i, t);
+  return "";
+}
+mwq_pause :: (q: [] MwQueue, reason: string) {
+  q[0].paused = true;
+  r := ifx reason.count > q[0].reason.count then cast(string) reason[0..<q[0].reason.count] else reason;
+  q[0].nreason = mwq_put(q[0].reason[..], r);
+}
+mwq_resume :: (q: [] MwQueue) { q[0].paused = false; q[0].nreason = 0; }
+mwq_clear :: (q: [] MwQueue) { q[0].n = 0; mwq_resume(q); }
+
+// The head leaves the queue to start its turn: its id becomes active and is kept as started.
+// The caller copies its message before this. False when the queue is empty.
+mwq_start_head :: (q: [] MwQueue) -> bool {
+  if q[0].n == 0 { return false; }
+  id := mwq_id(q, 0);
+  q[0].nactive = mwq_put(q[0].active[..], id);
+  k := q[0].done_at;
+  q[0].ndone_len[k] = mwq_put(q[0].done[k * MWQ_ID..<(k + 1) * MWQ_ID], id);
+  q[0].done_at = (k + 1) % MWQ_DONE;
+  if q[0].ndone < MWQ_DONE { q[0].ndone += 1; }
+  return mwq_delete(q, id).count == 0;
+}
+// A turn ended: none of the queue's runs.
+mwq_ended :: (q: [] MwQueue) { q[0].nactive = 0; }
+
+// The queue line (mcworker-wire.coax): its length, or -1 when it does not fit o.
+mwq_line :: (q: [] MwQueue, o: [] u8) -> int {
+  n := mww_queue_begin(o, q[0].paused, mwq_reason(q), mwq_active(q));
+  for i: 0..<q[0].n { n = mww_queue_item(o, n, i, mwq_id(q, i), mwq_text(q, i)); }
+  return mww_queue_end(o, n);
+}
+
+// ---------------------------------------------------------------- the file
+
+// A key a file may be named by: letters, digits, '-', '_' and '.', not "." or "..".
+mwq_key_ok :: (key: string) -> bool {
+  if key.count == 0 || key.count > MWQ_KEY || key == "." || key == ".." { return false; }
+  for c: key { if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.') { return false; } }
+  return true;
+}
+// home/.openagents/coder/sessions/KEY.queue.json into out; "" when the key may not name a file.
+mwq_path :: (home: string, key: string, out: [] u8) -> string {
+  if home.count == 0 || !mwq_key_ok(key) { return ""; }
+  n := json_raw(out, 0, home); n = json_raw(out, n, "/.openagents/coder/sessions/"); n = json_raw(out, n, key); n = json_raw(out, n, ".queue.json");
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+
+// The queue as its file holds it: {"v":1,"paused":B,"reason":R,"active":I,"items":[{"id","text","message"}],"done":[I]}.
+mwq_json :: (q: [] MwQueue, o: [] u8) -> int {
+  n := json_raw(o, 0, ifx q[0].paused then "{\"v\":1,\"paused\":true" else "{\"v\":1,\"paused\":false");
+  n = json_raw(o, n, ",\"reason\":"); n = json_write_string(o, n, mwq_reason(q));
+  n = json_raw(o, n, ",\"active\":"); n = json_write_string(o, n, mwq_active(q));
+  n = json_raw(o, n, ",\"items\":[");
+  for i: 0..<q[0].n {
+    n = json_raw(o, n, ifx i > 0 then ",{\"id\":" else "{\"id\":"); n = json_write_string(o, n, mwq_id(q, i));
+    n = json_raw(o, n, ",\"text\":"); n = json_write_string(o, n, mwq_text(q, i));
+    n = json_raw(o, n, ",\"message\":"); n = json_raw(o, n, mwq_message(q, i)); n = json_raw(o, n, "}");
+  }
+  n = json_raw(o, n, "],\"done\":[");
+  // oldest first, so a load keeps the ring's order
+  for j: 0..<q[0].ndone {
+    k := (q[0].done_at - q[0].ndone + j + MWQ_DONE) % MWQ_DONE;
+    if j > 0 { n = json_raw(o, n, ","); }
+    n = json_write_string(o, n, mwq_done_id(q, k));
+  }
+  return json_raw(o, n, "]}");
+}
+// Its file, written whole; true when there is no file to write (not opened).
+mwq_save :: (q: [] MwQueue, buf: [] u8) -> bool {
+  if q[0].npath == 0 { return true; }
+  n := mwq_json(q, buf);
+  if n < 0 { return false; }
+  return fs_replace_durable(cast(string) q[0].path[0..<q[0].npath], cast(string) buf[0..<n]);
+}
+// The queue from text (mwq_json's); an item that does not fit is left out. A queue whose turn was
+// running comes back paused, restored. False when text is no queue.
+mwq_from :: (q: [] MwQueue, text: string, arena: [] u8) -> bool {
+  keep_path := q[0].path; keep_n := q[0].npath;
+  q[0] = MwQueue.{};
+  q[0].path = keep_path; q[0].npath = keep_n;
+  if text.count < 2 || !json_valid(text) || cl_at(text, "items").tok != JSON_ARRAY { return false; }
+  ar := [1] ClArena.[ClArena.{buf = arena}];
+  items := cl_raw(text, "items");
+  for i: 0..<cl_count(items) {
+    one := cl_json(items, cl_item(items, i));
+    ar[0].at = 0; ar[0].full = false;
+    id := cl_str(ar[..], one, "id"); t := cl_str(ar[..], one, "text");
+    x := mwq_add(q, id, t, cl_raw(one, "message"));
+  }
+  done := cl_raw(text, "done");
+  if done.count > 1 && done[0] == '[' {
+    for j: 0..<cl_count(done) {
+      ar[0].at = 0; ar[0].full = false;
+      kb: [24] u8; kn := json_write_int(kb[..], 0, j);
+      id := cl_str(ar[..], done, cast(string) kb[0..<kn]);
+      if id.count == 0 || id.count > MWQ_ID { continue; }
+      k := q[0].done_at; q[0].ndone_len[k] = mwq_put(q[0].done[k * MWQ_ID..<(k + 1) * MWQ_ID], id);
+      q[0].done_at = (k + 1) % MWQ_DONE; if q[0].ndone < MWQ_DONE { q[0].ndone += 1; }
+    }
+  }
+  ar[0].at = 0; ar[0].full = false;
+  active := cl_str(ar[..], text, "active");
+  p := cl_bool(text, "paused");
+  if active.count > 0 { mwq_pause(q, "restored"); }
+  else if p.ok && p.value { ar[0].at = 0; mwq_pause(q, cl_str(ar[..], text, "reason")); }
+  return true;
+}
+// Opens the queue at path: what its file holds, or an empty queue when there is none. False when
+// the file is there and is no queue (the queue is then empty and is not written over until it changes).
+mwq_load :: (q: [] MwQueue, path: string, buf: [] u8, arena: [] u8) -> bool {
+  q[0] = MwQueue.{};
+  q[0].npath = mwq_put(q[0].path[..], ifx path.count > q[0].path.count then "" else path);
+  if q[0].npath == 0 || !fs_exists(path) { return true; }
+  n := fs_read(path, buf);
+  if n < 0 { return false; }
+  return mwq_from(q, cast(string) buf[0..<n], arena);
+}
+
+// ---------------------------------------------------------------- checks
+
+MWQ_TEST_A :: "{\"task\":\"fix a\",\"cwd\":\"/w\"}";
+MWQ_TEST_B :: "{\"task\":\"fix b\",\"cwd\":\"/w\"}";
+
+#test "the queue: add in order, once each, then update, move, delete and clear" {
+  q: [1] MwQueue;
+  #assert mwq_add(q[..], "a", "fix a", MWQ_TEST_A) == "" && mwq_add(q[..], "b", "fix b", MWQ_TEST_B) == "" && q[0].n == 2;
+  #assert mwq_add(q[..], "a", "again", MWQ_TEST_A) == "" && q[0].n == 2 && mwq_text(q[..], 0) == "fix a";
+  #assert mwq_add(q[..], "c", "x", "{\"cwd\":\"/w\"}") == "invalid" && mwq_add(q[..], "c", "x", "not json") == "invalid" && mwq_add(q[..], "", "x", MWQ_TEST_A) == "invalid";
+  #assert mwq_add(q[..], "c", "x", "{\"task\":\"\"}") == "invalid";
+  #assert mwq_update(q[..], "b", "fix b well", MWQ_TEST_B) == "" && mwq_text(q[..], 1) == "fix b well";
+  #assert mwq_update(q[..], "z", "t", MWQ_TEST_B) == "unknown_id" && mwq_delete(q[..], "z") == "unknown_id" && mwq_move(q[..], "z", 0) == "unknown_id";
+  #assert mwq_add(q[..], "c", "fix c", MWQ_TEST_A) == "";
+  #assert mwq_move(q[..], "c", 0) == "" && mwq_id(q[..], 0) == "c" && mwq_id(q[..], 1) == "a" && mwq_id(q[..], 2) == "b";
+  #assert mwq_move(q[..], "c", 99) == "" && mwq_id(q[..], 2) == "c" && mwq_id(q[..], 0) == "a";
+  #assert mwq_move(q[..], "b", -3) == "" && mwq_id(q[..], 0) == "b";
+  #assert mwq_delete(q[..], "a") == "" && q[0].n == 2 && mwq_id(q[..], 0) == "b" && mwq_id(q[..], 1) == "c";
+  mwq_pause(q[..], "user");
+  #assert q[0].paused && mwq_reason(q[..]) == "user";
+  mwq_clear(q[..]);
+  #assert q[0].n == 0 && !q[0].paused;
+}
+
+#test "the queue: a started head leaves, its id is refused again, and a full queue says so" {
+  q: [1] MwQueue;
+  #assert mwq_add(q[..], "a", "fix a", MWQ_TEST_A) == "" && mwq_add(q[..], "b", "fix b", MWQ_TEST_B) == "";
+  #assert mwq_start_head(q[..]) && q[0].n == 1 && mwq_active(q[..]) == "a" && mwq_id(q[..], 0) == "b";
+  #assert mwq_add(q[..], "a", "fix a", MWQ_TEST_A) == "dispatched";
+  mwq_ended(q[..]);
+  #assert mwq_active(q[..]) == "" && mwq_add(q[..], "a", "fix a", MWQ_TEST_A) == "dispatched";
+  #assert mwq_add_first(q[..], "s", "steer back", MWQ_TEST_A) == "" && mwq_id(q[..], 0) == "s" && mwq_id(q[..], 1) == "b";
+  for i: 0..<MWQ_ITEMS { ib: [8] u8; ib[0] = 'x'; ib[1] = cast(u8) ('A' + i); x := mwq_add(q[..], cast(string) ib[0..<2], "t", MWQ_TEST_A); }
+  #assert q[0].n == MWQ_ITEMS && mwq_add(q[..], "zz", "t", MWQ_TEST_A) == "full";
+  for i: 0..<MWQ_DONE + 3 { #assert q[0].n == 0 || mwq_start_head(q[..]) || q[0].n == 0; ib: [8] u8; ib[0] = 'y'; ib[1] = cast(u8) ('A' + i % 26); ib[2] = cast(u8) ('A' + i / 26); x := mwq_add(q[..], cast(string) ib[0..<3], "t", MWQ_TEST_A); }
+  #assert q[0].ndone == MWQ_DONE;
+}
+
+#test "the queue line and the file: what goes out is what comes back, and a running turn comes back paused" {
+  q: [1] MwQueue;
+  #assert mwq_add(q[..], "a", "fix \"a\"", MWQ_TEST_A) == "" && mwq_add(q[..], "b", "fix b", MWQ_TEST_B) == "";
+  o: [4096] u8; n := mwq_line(q[..], o[..]);
+  #assert cast(string) o[0..<n] == "{\"kind\":\"queue\",\"paused\":false,\"reason\":\"\",\"active\":\"\",\"items\":[{\"id\":\"a\",\"text\":\"fix \\\"a\\\"\"},{\"id\":\"b\",\"text\":\"fix b\"}]}";
+  #assert mwq_start_head(q[..]);
+  f: [8192] u8; m := mwq_json(q[..], f[..]);
+  back: [1] MwQueue; ab: [MWQ_MESSAGE + MWQ_TEXT] u8;
+  #assert mwq_from(back[..], cast(string) f[0..<m], ab[..]);
+  #assert back[0].n == 1 && mwq_id(back[..], 0) == "b" && mwq_message(back[..], 0) == MWQ_TEST_B && back[0].paused && mwq_reason(back[..]) == "restored";
+  #assert mwq_add(back[..], "a", "x", MWQ_TEST_A) == "dispatched";
+  mwq_ended(q[..]); mwq_pause(q[..], "error");
+  m = mwq_json(q[..], f[..]);
+  #assert mwq_from(back[..], cast(string) f[0..<m], ab[..]) && back[0].paused && mwq_reason(back[..]) == "error";
+  mwq_resume(q[..]); m = mwq_json(q[..], f[..]);
+  #assert mwq_from(back[..], cast(string) f[0..<m], ab[..]) && !back[0].paused;
+  #assert !mwq_from(back[..], "nope", ab[..]) && back[0].n == 0;
+  #assert mwq_key_ok("chat-1.a_b") && !mwq_key_ok("a/b") && !mwq_key_ok("..") && !mwq_key_ok("");
+  pb: [256] u8;
+  #assert mwq_path("/h", "c1", pb[..]) == "/h/.openagents/coder/sessions/c1.queue.json" && mwq_path("/h", "../x", pb[..]) == "";
+}

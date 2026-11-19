@@ -18,7 +18,8 @@ fi
 need_coax=0
 if [ ! -f "$work/gallery.c" ] || [ ! -f "$work/gallery.h" ]; then
   need_coax=1
-elif [ "$repo/apps/coder-desktop/page.coax" -nt "$work/gallery.c" ] || [ "$repo/apps/coder-desktop/app.coax" -nt "$work/gallery.c" ]; then
+elif [ -n "$(find "$repo/apps/coder-desktop" "$repo/coax/lib/agent/engine" -name '*.coax' -newer "$work/gallery.c" 2>/dev/null | head -1)" ]; then
+  # the page is page.coax and its parts (page/*.coax, page/layout/*.coax) and the worker codec
   need_coax=1
 fi
 

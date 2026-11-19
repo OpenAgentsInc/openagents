@@ -623,6 +623,29 @@ mc_file_held :: (st: [] McState, path: string) {
   x := mc_result_end(st, ws[0], ws[1]);
 }
 
+// A message the person sent while the turn ran (steer.coax; GitHub #13715): a step of its own,
+// between the last step's results and the next request, whose one result is {"user":TEXT} and,
+// when the model had just finished, {"your_reply":REPLY} too, so the reply it gave is not lost.
+// The compacted copy keeps the start of both: the rationale says it was the person's.
+MC_USER_RATIONALE :: "(the loop, not you) The user sent this message while you worked. It is this step's result: read it and act on it in this turn. It changes or adds to the task; what it does not change still stands.";
+mc_action_user :: (st: [] McState, text: string, reply: string) {
+  mc_action_begin(st, MC_USER_RATIONALE);
+  at := mc_result_start(st);
+  if at < 0 { mc_action_end(st); return; }
+  room := mc_room(st);
+  n := json_raw(room, at, "{\"user\":");
+  n = mc_write_cut(room, n, text, 12000, 0);
+  if reply.count > 0 { n = json_raw(room, n, ",\"your_reply\":"); n = mc_write_cut(room, n, reply, 4000, 0); }
+  n = json_raw(room, n, "}");
+  cr := mc_croom(st);
+  c := json_raw(cr, mc_cresult_start(st), "{\"user\":");
+  c = mc_write_cut(cr, c, text, 2000, 0);
+  if reply.count > 0 { c = json_raw(cr, c, ",\"your_reply\":"); c = mc_write_cut(cr, c, reply, 300, 0); }
+  c = json_raw(cr, c, "}");
+  x := mc_result_end(st, n, c);
+  mc_action_end(st);
+}
+
 // A note for the next step (a reply that failed the schema, commands refused).
 mc_note :: (st: [] McState, text: string) {
   if st[0].nn + text.count + 2 > st[0].notes.count {

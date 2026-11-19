@@ -366,9 +366,9 @@ coder_page_agent_task :: (s: [] CoderPage, j: int, session: string, cwd: string,
   n := cp_out(whole[..], cast(string) s[0].skills[0..<s[0].skills_n]);
   n += cp_out(whole[n..<whole.count], cast(string) s[0].turns[i].agents[j].task[0..<s[0].turns[i].agents[j].task_n]);
   level := s[0].turns[i].agents[j].level;
-  if level >= CP_LEVEL_CLAUDE { return mww_task(out, McTask.{task = cast(string) s[0].turns[i].agents[j].task[0..<s[0].turns[i].agents[j].task_n], session = session, cwd = cwd, sandbox = "danger-full-access", ceiling = 3, no_ask = true, model = CP_LEVEL[level]}); }
+  if level >= CP_LEVEL_CLAUDE { return mww_task(out, McTask.{task = cast(string) s[0].turns[i].agents[j].task[0..<s[0].turns[i].agents[j].task_n], session = session, cwd = cwd, sandbox = "danger-full-access", ceiling = 3, no_ask = true, model = CP_LEVEL[level], no_steer = true}); }
   t := McTask.{task = cast(string) whole[0..<n], session = session, cwd = cwd, sandbox = "danger-full-access", ceiling = 3, gated = true, edits = true, unlimited = true, no_ask = true,
-               model = CP_MODEL_SIMPLE, effort = "low"};
+               model = CP_MODEL_SIMPLE, effort = "low", no_steer = true};
   if level == 1 { t.model = CP_MODEL_COMPLEX; t.effort = "medium"; }
   if level == 2 { t.model = CP_MODEL_NEON; t.effort = "medium"; }
   if level == CP_LEVEL_OR && s[0].or_sub_n > 0 {

@@ -15,6 +15,7 @@
 #load "tools.coax";
 #load "image.coax";
 #load "aware.coax";
+#load "steer.coax";
 #load "../gateway/plan.coax";
 
 // ---------------------------------------------------------------- the reply as it streams
@@ -170,6 +171,9 @@ McRun :: struct {
   aw: [] McAware;
   // Multimodal image attachments (from user message paths and image `view` calls).
   img: [1] McImageStore;
+  // What the person sends while the turn runs (steer.coax; GitHub #13715): the owner's storage.
+  // Empty: the run takes no steers, and is as it was.
+  steers: [] McSteers;
 }
 
 // The step a result recorded now belongs to: the open one, or the one about to open.
@@ -315,6 +319,7 @@ mc_run_call :: (r: [] McRun) {
   if r[0].journal.count>0 && !r[0].unbounded && !np_budget(true,r[0].l[0].steps,cxproc_now_ms(),r[0].deadline) {
     r[0].l[0].ending=MC_END_FAILED;r[0].l[0].why=mc_run_limit(MC_LIMIT_CALL,r[0].l[0].steps,cxproc_now_ms(),r[0].deadline);return;
   }
+  mc_run_drain(r, "");
   if r[0].aw.count > 0 && r[0].aw[0].memory { mc_aw_render(r[0].aw, r[0].l[..]); x := mc_aw_nudge(r[0].aw, r[0].l[..]); }     // the state's memory key, as the store is now; a long read with no edit is told to edit
   req := mc_request(r[0].l[..]);
   if r[0].effort.count > 0 { req.effort = r[0].effort; }
@@ -507,6 +512,40 @@ MC_RUN_EDIT :: "{\"rationale\":\"fix\",\"edits\":[{\"path\":\"a.txt\",\"old\":\"
   #assert h.k == 3 && !h.tools && out[0].kind == MR_REPLY && out[0].text == "ello there." && out[1].kind == MR_STEP && out[1].step == 1;
   #assert out[2].kind == MR_ENDED && out[2].ending == MC_END_FINISHED && out[2].text == "Hello there." && r[0].ended && !r[0].calling && r[0].nob == 0;
 }
+
+#test "steers: one held mid-turn joins the state before the next call, and a finish with one held goes on" {
+  f: [1] McRunFixture; out: [16] McRunEvent; st: [1] McSteers;
+  mc_run_fixture(f[..], "look");
+  r := f[0].r[..]; r[0].steers = st[..];
+  ev := [2] GwEvent.[GwEvent.{kind = GW_EV_TEXT, text = MC_RUN_EDIT}, GwEvent.{kind = GW_EV_DONE, reason = "stop"}];
+  r[0].gated = true;     // the edit is refused, so the step makes no change: then the next call
+  h := mc_run_heard(r, out[..], ev[..]);
+  #assert h.tools;
+  #assert mc_steer_add(st[..], "s1", "use b.txt instead") == "";
+  n := mc_run_plain(r, out[..], h.k);
+  #assert n == 2 && out[1].kind == MR_STEP && r[0].calling && !r[0].ended;
+  // the steer is a step of its own, after the edit's step, and the owner hears it was drained
+  #assert st[0].n == 0 && st[0].nd == 1 && st[0].done[0].step == 2 && mc_steer_done_id(st[..], 0) == "s1";
+  pb: [MC_PROMPT_BYTES] u8; b1: [4096] u8; b2: [4096] u8; j := mc_state_json(r[0].l[0].st[..], pb[..]);
+  #assert mc_test_str(j, "actions.1.results.0.user", b1[..]) == "use b.txt instead" && mc_test_str(j, "actions.1.rationale", b2[..]) == MC_USER_RATIONALE;
+  // the model finishes while another steer is held: the turn goes on, its reply kept with the steer
+  #assert mc_steer_add(st[..], "s2", "and say bye") == "";
+  done := [2] GwEvent.[GwEvent.{kind = GW_EV_TEXT, text = MC_RUN_HI_A}, GwEvent.{kind = GW_EV_TEXT, text = MC_RUN_HI_B}];
+  h = mc_run_heard(r, out[..], done[..]);
+  fin := [1] GwEvent.[GwEvent.{kind = GW_EV_DONE, reason = "stop"}];
+  h = mc_run_heard(r, out[..], fin[..]);
+  #assert !r[0].ended && r[0].calling && r[0].l[0].ending == MC_END_NONE && st[0].nd == 2;
+  for i: 0..<h.k { #assert out[i].kind != MR_ENDED; }
+  j = mc_state_json(r[0].l[0].st[..], pb[..]);
+  last := r[0].l[0].st[0].steps - 1;
+  kb: [64] u8; key := json_raw(kb[..], 0, "actions."); key = json_write_int(kb[..], key, last); key = json_raw(kb[..], key, ".results.0");
+  one := cl_raw(j, cast(string) kb[0..<key]);
+  #assert mc_test_str(one, "user", b1[..]) == "and say bye" && mc_test_str(one, "your_reply", b2[..]) == "Hello there.";
+  // with none held, the next finish ends the turn
+  h = mc_run_heard(r, out[..], done[..]); h = mc_run_heard(r, out[..], fin[..]);
+  #assert r[0].ended && out[h.k - 1].kind == MR_ENDED && out[h.k - 1].ending == MC_END_FINISHED;
+}
+mc_test_str :: (j: string, key: string, b: [] u8) -> string { ar := [1] ClArena.[ClArena.{buf = b}]; return cl_str(ar[..], j, key); }
 
 #test "a gated step's edit is refused for a command, and its first command waits for an answer" {
   for plain: [2] bool.[false, true] {
@@ -768,9 +807,34 @@ mc_run_after :: (r: [] McRun, out: [] McRunEvent, k0: int) -> int {
 
 mc_run_next :: (r: [] McRun, out: [] McRunEvent, k0: int, status: int) -> int {
   k := mc_run_put(out, k0, McRunEvent.{kind = MR_STEP, step = r[0].l[0].steps});
-  if status == MC_ENDED { return mc_run_end(r, out, k); }
+  if status == MC_ENDED && !mc_run_steered_on(r) { return mc_run_end(r, out, k); }
   mc_run_call(r);
   return k;
+}
+
+// Steers (steer.coax): each held one becomes a step of the state before the next request, and
+// moves to done for the owner to report. reply is the reply the model had just finished with
+// ("" mid-turn), kept in the first steer's step.
+mc_run_drain :: (r: [] McRun, reply: string) {
+  if r[0].steers.count == 0 { return; }
+  first := true;
+  while r[0].steers[0].n > 0 && r[0].steers[0].nd < MC_STEERS {
+    mc_action_user(r[0].l[0].st[..], mc_steer_text(r[0].steers, 0), ifx first then reply else "");
+    first = false;
+    if !mc_steer_take(r[0].steers, r[0].l[0].st[0].steps) { break; }
+  }
+}
+// A turn that would end with steers held goes on: finished, asked or idle, it is open again and
+// its next request carries them (with the reply it finished with). True when it goes on.
+mc_run_steered_on :: (r: [] McRun) -> bool {
+  l := r[0].l[..];
+  if r[0].steers.count == 0 || r[0].steers[0].n == 0 || r[0].steers[0].nd >= MC_STEERS { return false; }
+  if l[0].ending != MC_END_FINISHED && l[0].ending != MC_END_ASKED && l[0].ending != MC_END_IDLE { return false; }
+  reply := l[0].reply;
+  l[0].ending = MC_END_NONE; l[0].idle = 0;
+  mc_run_drain(r, reply);
+  l[0].reply = "";
+  return true;
 }
 
 // A gated run's answer for the command in its MR_ASK: allowed, it runs; refused,

@@ -1,0 +1,218 @@
+// Queued and steered follow-ups as the page holds them (GitHub #13715, #13716): the lines the host
+// writes to the worker for a steer, a queue op and an interrupt, and what the worker says back,
+// kept for the tray that shows them (#13717). The worker owns the queue (mcworker-queue.coax): the
+// page keeps the last whole queue it sent, the steers of the running turn with each one's status,
+// and the worker's turn number. Nothing here draws.
+//
+// A turn the worker starts on its own (the queue's head, or an interrupt's resubmitted steers)
+// becomes a turn of the page as its turn line arrives, as a sent message does, but with nothing to
+// send: the host hears it once (coder_page_followup_began) and keeps the chat as for a message.
+//
+// Checks: coax/bin/coax test apps/coder-desktop/page/checks/followups-checks.coax --library
+
+CP_FU_ITEMS :: 16;               // the worker's MWQ_ITEMS
+CP_FU_STEERS :: 8;               // steer.coax MC_STEERS
+CP_FU_ID :: 64;
+CP_FU_TEXT :: 256;               // bytes of an item's or a steer's text the page keeps: the tray's preview. The page sits near
+                                 // the checker's storage limit, so the whole text stays with the worker (and the host that sent it)
+
+CP_STEER_SENT :: 0; CP_STEER_ACCEPTED :: 1; CP_STEER_REJECTED :: 2; CP_STEER_APPLIED :: 3; CP_STEER_QUEUED :: 4; CP_STEER_RESUBMITTED :: 5;
+
+CpFuItem :: struct { id: [CP_FU_ID] u8; nid: int; text: [CP_FU_TEXT] u8; ntext: int; cut: bool; }
+CpFuSteer :: struct {
+  id: [CP_FU_ID] u8; nid: int; text: [CP_FU_TEXT] u8; ntext: int;
+  status: int;                   // CP_STEER_*
+  reason: [40] u8; nreason: int; // a rejected one's
+  turn: int; step: int;          // the turn it was for; the step it became (applied)
+}
+CpFollow :: struct {
+  turn: int;                     // the worker's latest turn (0: none heard)
+  items: [CP_FU_ITEMS] CpFuItem; n: int;
+  paused: bool; reason: [32] u8; nreason: int; active: [CP_FU_ID] u8; nactive: int;
+  heard: bool;                   // a queue line came: the worker holds the queue
+  steers: [CP_FU_STEERS] CpFuSteer; nsteers: int;
+  refused_op: [16] u8; nrefused_op: int; refused_id: [CP_FU_ID] u8; nrefused_id: int; refused: [32] u8; nrefused: int;
+  began: bool;                   // the worker started a turn the page did not send: owed to the host once
+}
+
+cp_fu_str :: (b: [] u8, n: int) -> string { return cast(string) b[0..<n]; }
+// text into out, cut on a character's start when it does not fit.
+cp_fu_cut :: (out: [] u8, text: string) -> int {
+  n := ifx text.count < out.count then text.count else out.count;
+  while n > 0 && n < text.count && (text[n] & 0xC0) == 0x80 { n -= 1; }
+  for i: 0..<n { out[i] = text[i]; }
+  return n;
+}
+
+// The steer with this id, or -1.
+cp_fu_steer_find :: (f: [] CpFollow, id: string) -> int {
+  for i: 0..<f[0].nsteers { if cast(string) f[0].steers[i].id[0..<f[0].steers[i].nid] == id { return i; } }
+  return -1;
+}
+// A steer the page sent (or heard of): the oldest that is done (applied, rejected, queued,
+// resubmitted) gives its place when all are taken.
+cp_fu_steer_put :: (f: [] CpFollow, id: string, text: string, status: int) -> int {
+  i := cp_fu_steer_find(f, id);
+  if i >= 0 { return i; }
+  if f[0].nsteers >= CP_FU_STEERS {
+    drop := -1;
+    for k: 0..<f[0].nsteers { if drop < 0 && f[0].steers[k].status != CP_STEER_SENT && f[0].steers[k].status != CP_STEER_ACCEPTED { drop = k; } }
+    if drop < 0 { return -1; }
+    for k: drop + 1..<f[0].nsteers { f[0].steers[k - 1] = f[0].steers[k]; }
+    f[0].nsteers -= 1;
+  }
+  i = f[0].nsteers; f[0].nsteers += 1;
+  f[0].steers[i].nid = cp_out(f[0].steers[i].id[..], id);
+  f[0].steers[i].ntext = cp_fu_cut(f[0].steers[i].text[..], text);
+  f[0].steers[i].status = status; f[0].steers[i].nreason = 0; f[0].steers[i].turn = f[0].turn; f[0].steers[i].step = 0;
+  return i;
+}
+cp_fu_status :: (name: string) -> int {
+  if name == "accepted" { return CP_STEER_ACCEPTED; }
+  if name == "rejected" { return CP_STEER_REJECTED; }
+  if name == "applied" { return CP_STEER_APPLIED; }
+  if name == "queued" { return CP_STEER_QUEUED; }
+  if name == "resubmitted" { return CP_STEER_RESUBMITTED; }
+  return -1;
+}
+
+// The whole queue as the worker sent it: each item read on its own, so a long one fits the arena.
+cp_fu_queue :: (f: [] CpFollow, l: MwwLine, arena: [] u8) {
+  f[0].heard = true;
+  f[0].paused = l.paused.ok && l.paused.value;
+  f[0].nreason = cp_out(f[0].reason[..], l.reason);
+  f[0].nactive = cp_out(f[0].active[..], l.active);
+  f[0].n = 0;
+  items := l.items;
+  if items.count < 2 || items[0] != '[' { return; }
+  for i: 0..<cl_count(items) {
+    if f[0].n >= CP_FU_ITEMS { break; }
+    one := cl_json(items, cl_item(items, i));
+    ar := [1] ClArena.[ClArena.{buf = arena}];
+    id := cl_str(ar[..], one, "id");
+    f[0].items[f[0].n].nid = cp_out(f[0].items[f[0].n].id[..], id);
+    ar[0].at = 0; ar[0].full = false;
+    t := cl_str(ar[..], one, "text");
+    f[0].items[f[0].n].ntext = cp_fu_cut(f[0].items[f[0].n].text[..], t);
+    f[0].items[f[0].n].cut = t.count > CP_FU_TEXT || ar[0].full;
+    f[0].n += 1;
+  }
+}
+
+// One of the worker's follow-up lines (turn, steer, queue, queue_refused). True when it was one.
+cp_fu_line :: (s: [] CoderPage, kind: int, l: MwwLine) -> bool {
+  f := s[0].fu[..];
+  if kind == MWW_TURN {
+    if l.turn.ok { f[0].turn = l.turn.value; }
+    // a steer of an earlier turn that never got a status is that turn's no more
+    if l.source != "message" && !cp_running(s) {
+      text := ifx l.text.count > 0 then l.text else "(follow-up)";
+      was := s[0].ask;
+      if cp_start_turn(s, text, CP_GOAL_PROMPT_NONE) { s[0].ask = was; f[0].began = true; }
+      else { s[0].ask = CP_ASK_STOP; }      // the page has no room for it (24 messages, or the budget): the worker stops it
+    }
+    return true;
+  }
+  if kind == MWW_STEERED {
+    st := cp_fu_status(l.steer_status);
+    if st < 0 { return true; }
+    i := cp_fu_steer_put(f, l.id, "", st);
+    if i < 0 { return true; }
+    f[0].steers[i].status = st;
+    f[0].steers[i].nreason = cp_out(f[0].steers[i].reason[..], l.reason);
+    if l.turn.ok { f[0].steers[i].turn = l.turn.value; }
+    if l.step.ok { f[0].steers[i].step = l.step.value; }
+    return true;
+  }
+  if kind == MWW_QUEUED { cp_fu_queue(f, l, s[0].arena[..]); return true; }
+  if kind == MWW_QUEUE_REFUSED {
+    f[0].nrefused_op = cp_out(f[0].refused_op[..], l.op); f[0].nrefused_id = cp_out(f[0].refused_id[..], l.id); f[0].nrefused = cp_out(f[0].refused[..], l.reason);
+    return true;
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------- the host's calls
+
+// A steer for the running turn, as the worker's line (mww_steer): id the host's (a UUID), text
+// what the person wrote. It is kept as sent until the worker says what became of it. 0 when no
+// turn runs here or the text is empty.
+coder_page_steer_line :: (s: [] CoderPage, id: string, text: string, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 || !cp_running(s) || id.count == 0 || id.count > CP_FU_ID || text.count == 0 { return 0; }
+  f := s[0].fu[..];
+  if cp_fu_steer_put(f, id, text, CP_STEER_SENT) < 0 { return 0; }
+  n := mww_steer(out, id, text, f[0].turn);
+  return ifx n < 0 then 0 else n;
+}
+// A follow-up for the queue (op "add"), or a new text for one (op "update"): its task object is
+// what the message would send now (coder_page_task's), with session and cwd as the host gives them.
+coder_page_queue_message_line :: (s: [] CoderPage, op: string, id: string, text: string, session: string, cwd: string, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 || (op != "add" && op != "update") || id.count == 0 || id.count > CP_FU_ID || text.count == 0 { return 0; }
+  // mww_queue's line, with the task object written in place (the page has no room for a copy)
+  n := mww_queue(out, op, id, text, "", 0, false, "");
+  if n < 2 { return 0; }
+  n = json_raw(out, n - 2, ",\"message\":");
+  if n < 0 { return 0; }
+  m := cp_task_message(s, text, s[0].model, session, cwd, out[n..<out.count]);
+  if m < 2 { return 0; }
+  n = json_raw(out, n + m - 1, "}\n");
+  return ifx n < 0 then 0 else n;
+}
+// Any other queue op: open (key the chat's id), delete, move (to), promote (now), pause, resume,
+// clear or list.
+coder_page_queue_line :: (s: [] CoderPage, op: string, id: string, to: int, now: bool, key: string, out: [] u8) -> int #export_c #effects(all) {
+  if op == "add" || op == "update" { return 0; }
+  ok := false; for name: MWW_QUEUE_OPS { if name == op { ok = true; } }
+  if !ok { return 0; }
+  n := mww_queue(out, op, id, "", "", to, now, key);
+  return ifx n < 0 then 0 else n;
+}
+// End the running turn; with resubmit its steers the worker has not taken start the next turn.
+coder_page_interrupt_line :: (s: [] CoderPage, resubmit: bool, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 || !cp_running(s) { return 0; }
+  s[0].turns[s[0].nturns - 1].stopping = true;
+  n := mww_interrupt(out, resubmit);
+  return ifx n < 0 then 0 else n;
+}
+// The worker started a turn the page did not send (a follow-up): true once, for the host to keep it.
+coder_page_followup_began :: (s: [] CoderPage) -> bool #export_c #effects(all) {
+  if s.count < 1 || !s[0].fu[0].began { return false; }
+  s[0].fu[0].began = false;
+  return true;
+}
+// Follow-ups wait to run here: the queue has items and is not paused. A host keeps such a chat's
+// worker when its turn ends, so the next one starts.
+coder_page_queue_waiting :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && s[0].fu[0].n > 0 && !s[0].fu[0].paused; }
+coder_page_queue_count :: (s: [] CoderPage) -> int #export_c #effects(all) { return ifx s.count > 0 then s[0].fu[0].n else 0; }
+coder_page_queue_paused :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && s[0].fu[0].paused; }
+// Why the queue is paused (error, interrupted, user, restored), into out: its length.
+coder_page_queue_reason :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return cp_out(out, cp_fu_str(s[0].fu[0].reason[..], s[0].fu[0].nreason)); }
+// Item i's id, or its text: the length in out, -1 when there is no item i.
+coder_page_queue_item_id :: (s: [] CoderPage, i: int, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 || i < 0 || i >= s[0].fu[0].n { return -1; }
+  return cp_out(out, cp_fu_str(s[0].fu[0].items[i].id[..], s[0].fu[0].items[i].nid));
+}
+// Item i's text as the page keeps it: its first CP_FU_TEXT bytes (coder_page_queue_item_cut says
+// when that is not all of it: the host keeps the whole text of what it queued).
+coder_page_queue_item_text :: (s: [] CoderPage, i: int, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 || i < 0 || i >= s[0].fu[0].n { return -1; }
+  return cp_out(out, cp_fu_str(s[0].fu[0].items[i].text[..], s[0].fu[0].items[i].ntext));
+}
+coder_page_queue_item_cut :: (s: [] CoderPage, i: int) -> bool #export_c #effects(all) { return s.count > 0 && i >= 0 && i < s[0].fu[0].n && s[0].fu[0].items[i].cut; }
+// The steers the page knows of, oldest first: their number, and steer i's status (CP_STEER_*, -1
+// for none), its id and its text.
+coder_page_steer_count :: (s: [] CoderPage) -> int #export_c #effects(all) { return ifx s.count > 0 then s[0].fu[0].nsteers else 0; }
+coder_page_steer_status :: (s: [] CoderPage, i: int) -> int #export_c #effects(all) {
+  if s.count < 1 || i < 0 || i >= s[0].fu[0].nsteers { return -1; }
+  return s[0].fu[0].steers[i].status;
+}
+coder_page_steer_text :: (s: [] CoderPage, i: int, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 || i < 0 || i >= s[0].fu[0].nsteers { return -1; }
+  return cp_out(out, cp_fu_str(s[0].fu[0].steers[i].text[..], s[0].fu[0].steers[i].ntext));
+}
+coder_page_steer_reason :: (s: [] CoderPage, i: int, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 || i < 0 || i >= s[0].fu[0].nsteers { return -1; }
+  return cp_out(out, cp_fu_str(s[0].fu[0].steers[i].reason[..], s[0].fu[0].steers[i].nreason));
+}
+// The worker's latest turn number (0: none heard).
+coder_page_worker_turn :: (s: [] CoderPage) -> int #export_c #effects(all) { return ifx s.count > 0 then s[0].fu[0].turn else 0; }

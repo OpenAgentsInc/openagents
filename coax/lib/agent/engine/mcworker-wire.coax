@@ -10,6 +10,9 @@
 //     {"results":[{"exit":N,"output":O}],"ticket":N}   the sub-agents' results    mww_results
 //     {"stop":true}  {"forget":true}                                               MWW_STOP_LINE, MWW_FORGET_LINE
 //     {"embed":TEXT}  {"embed":TEXT,"query":true}                                  mww_embed
+//     {"steer":T,"id":I[,"turn":N]}   input for the running turn (GitHub #13715)    mww_steer
+//     {"interrupt":true[,"resubmit":true]}   end the running turn                   mww_interrupt
+//     {"queue":OP[,"id":I][,"to":N][,"now":true][,"key":K][,"text":T,"message":{...}]}   follow-ups   mww_queue
 //   the worker writes, the owner reads (mww_read):
 //     {"kind":"journal","path":P}                                                  mww_journal
 //     {"kind":"ready"}                                                             mww_ready
@@ -22,6 +25,21 @@
 //     {"kind":"ask","command":C,"ticket":N}                                        mww_ask
 //     {"kind":"ended","ending":E,"text":T}                                         mww_ended
 //     {"kind":"embedding","values":[...]}  {"kind":"embedding","error":W}          mww_embedding, mww_embedding_error
+//     {"kind":"turn","turn":N,"source":S,"id":I,"text":T}   a turn starts          mww_turn
+//     {"kind":"steer","id":I,"status":S,"turn":N[,"reason":R][,"step":K]}          mww_steered
+//     {"kind":"queue","paused":B,"reason":R,"active":I,"items":[{"id":I,"text":T}]}   mww_queue_begin/item/end
+//     {"kind":"queue_refused","op":O,"id":I,"reason":R}                            mww_queue_refused
+//
+// Follow-ups (GitHub #13715, #13716; after Codex's turn/steer, turn/interrupt and t3code's queue):
+// the worker numbers its turns (turn) and says each one's start, with where it came from: source
+// "message" (an owner's task line), "queue" (the head of the follow-up queue, sent when the
+// worker went idle) or "resubmit" (the steers an interrupt sent again). A steer goes into the
+// running turn between its steps; its status is accepted, rejected (reason no_active_turn,
+// expected_turn_mismatch, active_turn_not_steerable, invalid or full), applied (it reached the
+// model, as step), queued (its turn ended first: it heads the paused queue) or resubmitted. The
+// queue line is the whole queue after every change, the worker's own: an owner shows it as it is.
+// A queue op that cannot be done says why (queue_refused: unknown_id, invalid, full, dispatched,
+// no_key).
 //
 // A worker's line has no newline here (the worker adds it when it sends); an owner's line ends
 // with one, as the client always wrote it. A writer gives the line's length, or -1 when it does
@@ -41,6 +59,11 @@ MWW_DELEGATE :: 10;            // {"kind":"delegate","tasks":[{"level":L,"task":
 MWW_TASK :: 11; MWW_ANSWER :: 12; MWW_STOP :: 13; MWW_FORGET :: 14; MWW_EMBED :: 15; MWW_RESULTS :: 16;
 MWW_THOUGHT :: 18;             // {"kind":"thought","text":T}: a step's thinking (GitHub #13671)
 MWW_RECALL :: 17;              // {"recall":[{"task":T,"reply":R}]}: the owner's kept turns of the conversation (GitHub #13661)
+// follow-ups (GitHub #13715): the owner's lines, then the worker's
+MWW_STEER :: 19; MWW_INTERRUPT :: 20; MWW_QUEUE :: 21;
+MWW_TURN :: 22; MWW_STEERED :: 23; MWW_QUEUED :: 24; MWW_QUEUE_REFUSED :: 25;
+// queue ops
+MWW_QUEUE_OPS :: [11] string.["open", "add", "update", "delete", "move", "promote", "pause", "resume", "clear", "list", "close"];
 
 MWW_STOP_LINE :: "{\"stop\":true}\n";
 MWW_FORGET_LINE :: "{\"forget\":true}\n";
@@ -62,6 +85,7 @@ McTask :: struct {
   unlimited: bool;               // the run has no budget: no model call, command, view or time limit ends it (GitHub #13667)
   no_ask: bool;                  // disable ask: "question" interactive prompting (GitHub #13701)
   openrouter: string;            // with agents: the OpenRouter model a task's level openrouter runs on ("" for none)
+  no_steer: bool;                // the turn takes no steers ("steerable":false): a sub-agent's, which no person watches (GitHub #13715)
 }
 mww_task :: (o: [] u8, t: McTask) -> int {
   n := json_raw(o, 0, "{\"task\":"); n = json_write_string(o, n, t.task);
@@ -82,6 +106,7 @@ mww_task :: (o: [] u8, t: McTask) -> int {
   if t.model.count > 0 { n = json_raw(o, n, ",\"model\":"); n = json_write_string(o, n, t.model); }
   if t.effort.count > 0 { n = json_raw(o, n, ",\"effort\":"); n = json_write_string(o, n, t.effort); }
   if t.openrouter.count > 0 { n = json_raw(o, n, ",\"openrouter\":"); n = json_write_string(o, n, t.openrouter); }
+  if t.no_steer { n = json_raw(o, n, ",\"steerable\":false"); }
   n = json_raw(o, n, "}\n");
   return n;
 }
@@ -98,6 +123,32 @@ mww_answer :: (o: [] u8, allow: bool, ticket: int, why: string) -> int {
 mww_results :: (o: [] u8, ticket: int, results: string) -> int {
   n := json_raw(o, 0, "{\"results\":"); n = json_raw(o, n, results);
   n = json_raw(o, n, ",\"ticket\":"); n = json_write_int(o, n, ticket);
+  return json_raw(o, n, "}\n");
+}
+// Input for the running turn: id is the owner's, stable for a resend (the worker takes it once);
+// turn the turn it is meant for (0: whichever runs).
+mww_steer :: (o: [] u8, id: string, text: string, turn: int) -> int {
+  n := json_raw(o, 0, "{\"steer\":"); n = json_write_string(o, n, text);
+  n = json_raw(o, n, ",\"id\":"); n = json_write_string(o, n, id);
+  if turn > 0 { n = json_raw(o, n, ",\"turn\":"); n = json_write_int(o, n, turn); }
+  return json_raw(o, n, "}\n");
+}
+// End the running turn; with resubmit, the steers it had not taken yet start a turn of their own.
+mww_interrupt :: (o: [] u8, resubmit: bool) -> int {
+  return json_raw(o, 0, ifx resubmit then "{\"interrupt\":true,\"resubmit\":true}\n" else "{\"interrupt\":true}\n");
+}
+// One queue op (MWW_QUEUE_OPS). open binds the queue to key (the chat's id: its file); add and
+// update carry the text shown and message, the task object the turn sends (mww_task's, no line
+// end); move takes to (the place, from 0); promote with now starts it at once. Members that are
+// "", 0 or false are left out (to is written whenever op is move).
+mww_queue :: (o: [] u8, op: string, id: string, text: string, message: string, to: int, now: bool, key: string) -> int {
+  n := json_raw(o, 0, "{\"queue\":"); n = json_write_string(o, n, op);
+  if id.count > 0 { n = json_raw(o, n, ",\"id\":"); n = json_write_string(o, n, id); }
+  if op == "move" { n = json_raw(o, n, ",\"to\":"); n = json_write_int(o, n, to); }
+  if now { n = json_raw(o, n, ",\"now\":true"); }
+  if key.count > 0 { n = json_raw(o, n, ",\"key\":"); n = json_write_string(o, n, key); }
+  if text.count > 0 { n = json_raw(o, n, ",\"text\":"); n = json_write_string(o, n, text); }
+  if message.count > 0 { n = json_raw(o, n, ",\"message\":"); n = json_raw(o, n, message); }
   return json_raw(o, n, "}\n");
 }
 // A text to embed: a query's when query is set, else a document's.
@@ -127,6 +178,14 @@ MwwRequest :: struct {
   local: bool; gated: bool; agents: bool; edits: bool; claude: bool; unlimited: bool; no_ask: bool;
   results: string;               // results: the list's JSON text
   recall: string;                // recall: the turns' JSON text
+  id: string;                    // steer, queue: the item's id
+  turn: JsonInt;                 // steer: the turn it is meant for
+  op: string;                    // queue: the op
+  message: string;               // queue add, update: the task object's JSON text
+  to: JsonInt;                   // queue move: the place
+  now: bool;                     // queue promote: start it at once
+  key: string;                   // queue open: the key its file is named by
+  resubmit: bool;                // interrupt: send the held steers again as a turn
   policy: string;                // the policy member's JSON text, "" when there is none
   policy_on: bool;               // policy.enabled is true
   ceiling: JsonInt;              // policy.ceiling
@@ -155,6 +214,21 @@ mww_request :: (ar: [] ClArena, msg: string, r: [] MwwRequest) -> int {
     r[0].ticket = cl_int(msg, "ticket");
     r[0].why = cl_str(ar, msg, "why");
     r[0].kind = MWW_ANSWER; return MWW_ANSWER;
+  }
+  if cl_at(msg, "steer").tok == JSON_STRING {
+    r[0].text = cl_str(ar, msg, "steer"); r[0].id = cl_str(ar, msg, "id"); r[0].turn = cl_int(msg, "turn");
+    r[0].kind = MWW_STEER; return MWW_STEER;
+  }
+  if cl_bool(msg, "interrupt").ok {
+    rs := cl_bool(msg, "resubmit"); r[0].resubmit = rs.ok && rs.value;
+    r[0].kind = MWW_INTERRUPT; return MWW_INTERRUPT;
+  }
+  if cl_at(msg, "queue").tok == JSON_STRING {
+    r[0].op = cl_str(ar, msg, "queue"); r[0].id = cl_str(ar, msg, "id"); r[0].text = cl_str(ar, msg, "text");
+    r[0].to = cl_int(msg, "to"); now := cl_bool(msg, "now"); r[0].now = now.ok && now.value;
+    r[0].key = cl_str(ar, msg, "key");
+    if cl_at(msg, "message").tok == JSON_OBJECT { r[0].message = cl_raw(msg, "message"); }
+    r[0].kind = MWW_QUEUE; return MWW_QUEUE;
   }
   r[0].task = cl_str(ar, msg, "task");
   if r[0].task.count == 0 { return MWW_NONE; }
@@ -198,6 +272,7 @@ mww_task_read :: (ar: [] ClArena, msg: string, t: [] McTask) -> bool {
   t[0].policy = on.value; t[0].allow = allow.value; t[0].ceiling = ceiling.value; t[0].roots = cl_str(ar, msg, "policy.roots");
   t[0].model = cl_str(ar, msg, "model"); t[0].effort = cl_str(ar, msg, "effort");
   t[0].openrouter = cl_str(ar, msg, "openrouter");
+  steerable := cl_bool(msg, "steerable"); t[0].no_steer = steerable.ok && !steerable.value;
   return !ar[0].full;
 }
 
@@ -269,6 +344,45 @@ mww_embedding_error :: (o: [] u8, why: string) -> int {
   n := json_raw(o, 0, "{\"kind\":\"embedding\",\"error\":"); n = json_write_string(o, n, why);
   return json_raw(o, n, "}");
 }
+// A turn starts: its number, source message, queue or resubmit, and for a queued or resubmitted
+// one the item's id and the text the person wrote ("" for a message: its owner has it).
+mww_turn :: (o: [] u8, turn: int, source: string, id: string, text: string) -> int {
+  n := json_raw(o, 0, "{\"kind\":\"turn\",\"turn\":"); n = json_write_int(o, n, turn);
+  n = json_raw(o, n, ",\"source\":"); n = json_write_string(o, n, source);
+  n = json_raw(o, n, ",\"id\":"); n = json_write_string(o, n, id);
+  n = json_raw(o, n, ",\"text\":"); n = json_write_string(o, n, text);
+  return json_raw(o, n, "}");
+}
+// A steer's status (accepted, rejected, applied, queued, resubmitted); reason for a rejected one,
+// step for an applied one (0: left out).
+mww_steered :: (o: [] u8, id: string, status: string, turn: int, reason: string, step: int) -> int {
+  n := json_raw(o, 0, "{\"kind\":\"steer\",\"id\":"); n = json_write_string(o, n, id);
+  n = json_raw(o, n, ",\"status\":"); n = json_write_string(o, n, status);
+  n = json_raw(o, n, ",\"turn\":"); n = json_write_int(o, n, turn);
+  if reason.count > 0 { n = json_raw(o, n, ",\"reason\":"); n = json_write_string(o, n, reason); }
+  if step > 0 { n = json_raw(o, n, ",\"step\":"); n = json_write_int(o, n, step); }
+  return json_raw(o, n, "}");
+}
+// The whole queue, in three parts: begin, each item in order (k its place), end. Each returns
+// where the line has reached, or -1 once it does not fit.
+mww_queue_begin :: (o: [] u8, paused: bool, reason: string, active: string) -> int {
+  n := json_raw(o, 0, ifx paused then "{\"kind\":\"queue\",\"paused\":true" else "{\"kind\":\"queue\",\"paused\":false");
+  n = json_raw(o, n, ",\"reason\":"); n = json_write_string(o, n, reason);
+  n = json_raw(o, n, ",\"active\":"); n = json_write_string(o, n, active);
+  return json_raw(o, n, ",\"items\":[");
+}
+mww_queue_item :: (o: [] u8, at: int, k: int, id: string, text: string) -> int {
+  n := json_raw(o, at, ifx k > 0 then ",{\"id\":" else "{\"id\":"); n = json_write_string(o, n, id);
+  n = json_raw(o, n, ",\"text\":"); n = json_write_string(o, n, text);
+  return json_raw(o, n, "}");
+}
+mww_queue_end :: (o: [] u8, at: int) -> int { return json_raw(o, at, "]}"); }
+mww_queue_refused :: (o: [] u8, op: string, id: string, reason: string) -> int {
+  n := json_raw(o, 0, "{\"kind\":\"queue_refused\",\"op\":"); n = json_write_string(o, n, op);
+  n = json_raw(o, n, ",\"id\":"); n = json_write_string(o, n, id);
+  n = json_raw(o, n, ",\"reason\":"); n = json_write_string(o, n, reason);
+  return json_raw(o, n, "}");
+}
 
 // A worker's line as its owner takes it. Only the members of the line's kind are read.
 MwwLine :: struct {
@@ -287,6 +401,16 @@ MwwLine :: struct {
   values: string;                // embedding: the list's JSON text, "" when there is none
   error: string;                 // embedding: the error member's JSON text, "" when there is none
   why: string;                   // embedding: the error's words
+  turn: JsonInt;                 // turn, steer: the turn's number
+  source: string;                // turn: message, queue or resubmit
+  id: string;                    // turn, steer, queue_refused: the item's id
+  steer_status: string;          // steer: accepted, rejected, applied, queued or resubmitted
+  reason: string;                // steer (rejected), queue (why paused), queue_refused
+  step: JsonInt;                 // steer (applied)
+  paused: ClBool;                // queue
+  active: string;                // queue: the item whose turn runs ("" for none)
+  items: string;                 // queue: the items' JSON list ([{"id","text"}]); read each with cl_item
+  op: string;                    // queue_refused
 }
 // The line's kind, MWW_NONE for a kind that is not a worker's. The strings are in line or in ar;
 // they hold until either changes. A string that does not fit in ar reads as "".
@@ -318,6 +442,14 @@ mww_read :: (ar: [] ClArena, line: string, l: [] MwwLine) -> int {
   else if kind == "ask" { k = MWW_ASK; l[0].ticket = cl_int(line, "ticket"); l[0].command = cl_str(ar, line, "command"); }
   else if kind == "ended" { k = MWW_ENDED; l[0].ending = cl_str(ar, line, "ending"); l[0].text = cl_str(ar, line, "text"); }
   else if kind == "embedding" { k = MWW_EMBEDDING; l[0].error = cl_raw(line, "error"); l[0].values = cl_raw(line, "values"); l[0].why = cl_str(ar, line, "error"); }
+  else if kind == "turn" { k = MWW_TURN; l[0].turn = cl_int(line, "turn"); l[0].source = cl_str(ar, line, "source"); l[0].id = cl_str(ar, line, "id"); l[0].text = cl_str(ar, line, "text"); }
+  else if kind == "steer" {
+    k = MWW_STEERED; l[0].id = cl_str(ar, line, "id"); l[0].steer_status = cl_str(ar, line, "status"); l[0].turn = cl_int(line, "turn");
+    l[0].reason = cl_str(ar, line, "reason"); l[0].step = cl_int(line, "step");
+  }
+  // the items are left as JSON: a long queue's text would not fit an owner's arena at once
+  else if kind == "queue" { k = MWW_QUEUED; l[0].paused = cl_bool(line, "paused"); l[0].reason = cl_str(ar, line, "reason"); l[0].active = cl_str(ar, line, "active"); l[0].items = cl_raw(line, "items"); }
+  else if kind == "queue_refused" { k = MWW_QUEUE_REFUSED; l[0].op = cl_str(ar, line, "op"); l[0].id = cl_str(ar, line, "id"); l[0].reason = cl_str(ar, line, "reason"); }
   l[0].kind = k;
   return k;
 }
@@ -461,6 +593,9 @@ mww_attempt_again :: (ar: [] ClArena, line: string, out: [] u8) -> int {
   #assert n > 0 && mww_request(ar[..], cast(string) o[0..<n - 1], r[..]) == MWW_TASK && r[0].unlimited && mww_task_read(ar[..], cast(string) o[0..<n - 1], back[..]) && back[0].unlimited;
   t.no_ask = true; n = mww_task(o[..], t);
   #assert n > 0 && mww_request(ar[..], cast(string) o[0..<n - 1], r[..]) == MWW_TASK && r[0].no_ask && mww_task_read(ar[..], cast(string) o[0..<n - 1], back[..]) && back[0].no_ask;
+  t.no_steer = true; n = mww_task(o[..], t);
+  #assert n > 0 && cl_raw(cast(string) o[0..<n - 1], "steerable") == "false" && mww_task_read(ar[..], cast(string) o[0..<n - 1], back[..]) && back[0].no_steer;
+  t.no_steer = false;
   t.unlimited = false; t.no_ask = false; n = mww_task(o[..], t);
   #assert mww_task_read(ar[..], cast(string) o[0..<n - 1], back[..]) && back[0].agents && back[0].edits;
   n = mww_task(o[..], McTask.{task = "do", cwd = "/w"});
@@ -474,4 +609,47 @@ mww_attempt_again :: (ar: [] ClArena, line: string, out: [] u8) -> int {
   n = mww_results(o[..], 4, "[{\"exit\":0,\"output\":\"ok\"}]");
   #assert cast(string) o[0..<n] == "{\"results\":[{\"exit\":0,\"output\":\"ok\"}],\"ticket\":4}\n";
   #assert mww_request(ar[..], cast(string) o[0..<n - 1], r[..]) == MWW_RESULTS && r[0].ticket.value == 4 && r[0].results == "[{\"exit\":0,\"output\":\"ok\"}]";
+}
+
+#test "follow-ups: the steer, interrupt and queue lines, each way" {
+  o: [2048] u8; ab: [2048] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  r: [1] MwwRequest; l: [1] MwwLine;
+  n := mww_steer(o[..], "s-1", "use \"b\" too", 3);
+  #assert cast(string) o[0..<n] == "{\"steer\":\"use \\\"b\\\" too\",\"id\":\"s-1\",\"turn\":3}\n";
+  #assert mww_request(ar[..], cast(string) o[0..<n - 1], r[..]) == MWW_STEER && r[0].text == "use \"b\" too" && r[0].id == "s-1" && r[0].turn.ok && r[0].turn.value == 3;
+  n = mww_steer(o[..], "s-2", "x", 0);
+  #assert cast(string) o[0..<n] == "{\"steer\":\"x\",\"id\":\"s-2\"}\n" && mww_request(ar[..], cast(string) o[0..<n - 1], r[..]) == MWW_STEER && !r[0].turn.ok;
+  n = mww_interrupt(o[..], true);
+  #assert cast(string) o[0..<n] == "{\"interrupt\":true,\"resubmit\":true}\n" && mww_request(ar[..], cast(string) o[0..<n - 1], r[..]) == MWW_INTERRUPT && r[0].resubmit;
+  n = mww_interrupt(o[..], false);
+  #assert mww_request(ar[..], cast(string) o[0..<n - 1], r[..]) == MWW_INTERRUPT && !r[0].resubmit;
+  ar[0].at = 0;
+  n = mww_queue(o[..], "add", "q-1", "fix it", "{\"task\":\"fix it\",\"cwd\":\"/w\"}", 0, false, "");
+  #assert cast(string) o[0..<n] == "{\"queue\":\"add\",\"id\":\"q-1\",\"text\":\"fix it\",\"message\":{\"task\":\"fix it\",\"cwd\":\"/w\"}}\n";
+  #assert mww_request(ar[..], cast(string) o[0..<n - 1], r[..]) == MWW_QUEUE && r[0].op == "add" && r[0].id == "q-1" && r[0].text == "fix it" && r[0].message == "{\"task\":\"fix it\",\"cwd\":\"/w\"}";
+  // the nested task is not read as a task line
+  #assert r[0].task == "";
+  n = mww_queue(o[..], "move", "q-1", "", "", 0, false, "");
+  #assert cast(string) o[0..<n] == "{\"queue\":\"move\",\"id\":\"q-1\",\"to\":0}\n" && mww_request(ar[..], cast(string) o[0..<n - 1], r[..]) == MWW_QUEUE && r[0].to.ok && r[0].to.value == 0;
+  n = mww_queue(o[..], "promote", "q-1", "", "", 0, true, "");
+  #assert mww_request(ar[..], cast(string) o[0..<n - 1], r[..]) == MWW_QUEUE && r[0].now && r[0].message == "";
+  n = mww_queue(o[..], "open", "", "", "", 0, false, "chat-7");
+  #assert cast(string) o[0..<n] == "{\"queue\":\"open\",\"key\":\"chat-7\"}\n" && mww_request(ar[..], cast(string) o[0..<n - 1], r[..]) == MWW_QUEUE && r[0].key == "chat-7";
+  // the worker's lines
+  n = mww_turn(o[..], 2, "queue", "q-1", "fix it");
+  #assert cast(string) o[0..<n] == "{\"kind\":\"turn\",\"turn\":2,\"source\":\"queue\",\"id\":\"q-1\",\"text\":\"fix it\"}";
+  #assert mww_read(ar[..], cast(string) o[0..<n], l[..]) == MWW_TURN && l[0].turn.value == 2 && l[0].source == "queue" && l[0].id == "q-1" && l[0].text == "fix it";
+  n = mww_steered(o[..], "s-1", "rejected", 2, "expected_turn_mismatch", 0);
+  #assert cast(string) o[0..<n] == "{\"kind\":\"steer\",\"id\":\"s-1\",\"status\":\"rejected\",\"turn\":2,\"reason\":\"expected_turn_mismatch\"}";
+  #assert mww_read(ar[..], cast(string) o[0..<n], l[..]) == MWW_STEERED && l[0].steer_status == "rejected" && l[0].reason == "expected_turn_mismatch" && !l[0].step.ok;
+  n = mww_steered(o[..], "s-1", "applied", 2, "", 4);
+  #assert mww_read(ar[..], cast(string) o[0..<n], l[..]) == MWW_STEERED && l[0].steer_status == "applied" && l[0].step.value == 4 && l[0].reason == "";
+  n = mww_queue_begin(o[..], true, "error", "");
+  n = mww_queue_item(o[..], n, 0, "q-1", "a"); n = mww_queue_item(o[..], n, 1, "q-2", "b"); n = mww_queue_end(o[..], n);
+  #assert cast(string) o[0..<n] == "{\"kind\":\"queue\",\"paused\":true,\"reason\":\"error\",\"active\":\"\",\"items\":[{\"id\":\"q-1\",\"text\":\"a\"},{\"id\":\"q-2\",\"text\":\"b\"}]}";
+  #assert mww_read(ar[..], cast(string) o[0..<n], l[..]) == MWW_QUEUED && l[0].paused.value && l[0].reason == "error" && cl_count(l[0].items) == 2 && cl_str(ar[..], l[0].items, "1.id") == "q-2";
+  n = mww_queue_refused(o[..], "delete", "q-9", "unknown_id");
+  #assert mww_read(ar[..], cast(string) o[0..<n], l[..]) == MWW_QUEUE_REFUSED && l[0].op == "delete" && l[0].id == "q-9" && l[0].reason == "unknown_id";
+  // a stop still comes first, and a steer that is no string is no steer
+  #assert mww_request(ar[..], "{\"stop\":true,\"steer\":\"x\"}", r[..]) == MWW_STOP && mww_request(ar[..], "{\"steer\":7}", r[..]) == MWW_NONE;
 }

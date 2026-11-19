@@ -231,6 +231,7 @@ CoderPage :: struct {
   set_claude: [48] u8; set_claude_n: int;
   set_orkey: [48] u8; set_orkey_n: int;
   set_version: [48] u8; set_version_n: int;
+  fu: [1] CpFollow;            // queued and steered follow-ups (followups.coax; GitHub #13715)
   arena: [CP_ARENA] u8;
 }
 

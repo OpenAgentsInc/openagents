@@ -292,6 +292,7 @@ if [ "$TIER" = "1" ] || [ "$TIER" = "all" ]; then
   run_case 1 "tier1_fixtures_sync" python3 evals/coder-desktop/tier1/gen_fixtures.py
   run_case 1 "tier1_replay_suite" coax/bin/coax test evals/coder-desktop/tier1/replay_test.coax --library
   run_case 1 "tier1_host_scenarios" python3 evals/coder-desktop/tier1/run_scenarios.py
+  run_case 1 "tier1_followups" python3 evals/coder-desktop/followups/run_followups.py
 fi
 
 if [ "$TIER" = "1" ] || [ "$TIER" = "compaction" ] || [ "$TIER" = "all" ]; then

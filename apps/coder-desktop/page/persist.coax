@@ -247,6 +247,7 @@ coder_page_take :: (to: [] CoderPage, from: [] CoderPage) -> bool #export_c #eff
   to[0].goal_objective_n = cp_out(to[0].goal_objective[..], cast(string) from[0].goal_objective[0..<from[0].goal_objective_n]);
   to[0].goal_notice_n = cp_out(to[0].goal_notice[..], cast(string) from[0].goal_notice[0..<from[0].goal_notice_n]);
   to[0].answer = from[0].answer; to[0].answer_due = from[0].answer_due; to[0].results_due = from[0].results_due;
+  to[0].fu[0] = from[0].fu[0]; from[0].fu[0] = CpFollow.{};     // the follow-ups go with the worker
   to[0].live_ask = -1; to[0].live_reply = -1; to[0].live_call = -1; to[0].live_pane = -1;
   from[0].live_ask = -1; from[0].live_reply = -1; from[0].live_call = -1; from[0].live_pane = -1;
   to[0].scroll = 0; to[0].stick = true; to[0].pane_open = false; to[0].pane_manual = false; to[0].copied_turn = -1; to[0].copied_kind = CP_COPIED_NONE;

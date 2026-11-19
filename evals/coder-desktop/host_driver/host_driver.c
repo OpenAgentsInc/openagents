@@ -562,6 +562,21 @@ static void print_slot_state(int si) {
          last_v, max_v, s->max_vertices_seen, last_ms, s->max_frame_ms, s->frames_rendered);
   printf("\"lines_from_main\":%d,\"lines_from_agents\":%d,\"agents_running\":%d,\"worker_exited\":%d,\"worker_exit_code\":%d,\"guard_trips\":%d,",
          s->lines_from_main, s->lines_from_agents, agents_running, s->main_w.exited, s->main_w.exit_code, s->guard_trips);
+  // follow-ups (GitHub #13715): the queue and steers as the worker last said
+  printf("\"worker_turn\":%d,\"queue_count\":%d,\"queue_paused\":%d,\"queue_waiting\":%d,\"queue_ids\":[",
+         cd_worker_turn(s->page), cd_queue_count(s->page), cd_queue_paused(s->page), cd_queue_waiting(s->page));
+  for (int i = 0; i < cd_queue_count(s->page); i++) {
+    char qid[128] = {0};
+    cd_queue_item_id(s->page, i, qid, (int)sizeof(qid));
+    if (i > 0) fputc(',', stdout);
+    json_escape(stdout, qid);
+  }
+  char qreason[64] = {0};
+  cd_queue_reason(s->page, qreason, (int)sizeof(qreason));
+  printf("],\"queue_reason\":"); json_escape(stdout, qreason);
+  printf(",\"steer_status\":[");
+  for (int i = 0; i < cd_steer_count(s->page); i++) { if (i > 0) fputc(',', stdout); printf("%d", cd_steer_status(s->page, i)); }
+  printf("],");
   printf("\"title\":"); json_escape(stdout, title);
   printf(",\"goal_objective\":"); json_escape(stdout, goal_obj);
   printf(",\"actions\":[");
@@ -767,6 +782,41 @@ int main(int argc, char **argv) {
       unescape_arg(text, p, sizeof(text));
       int ok = (si >= 0 && si < MAX_SLOTS && g_slots[si].page) ? cd_set_text(g_slots[si].page, text) : 0;
       printf("{\"ok\":%s}\n", ok ? "true" : "false");
+    } else if (strcmp(cmd, "STEER") == 0 || strcmp(cmd, "QUEUE_ADD") == 0) {
+      // STEER SLOT ID TEXT / QUEUE_ADD SLOT ID TEXT: follow-ups (GitHub #13715) written to the slot's worker.
+      int si = -1;
+      char id[128] = {0};
+      int used = 0;
+      sscanf(line, "%*s %d %127s %n", &si, id, &used);
+      static char text[32768];
+      unescape_arg(text, used > 0 ? line + used : "", sizeof(text));
+      static char out[300000];
+      int n = 0;
+      if (si >= 0 && si < MAX_SLOTS && g_slots[si].page) {
+        Slot *s = &g_slots[si];
+        n = strcmp(cmd, "STEER") == 0 ? cd_steer_line(s->page, id, text, out, (int)sizeof(out) - 1)
+                                      : cd_queue_message_line(s->page, "add", id, text, s->session[0] ? s->session : "eval", s->cwd[0] ? s->cwd : ".", out, (int)sizeof(out) - 1);
+        if (n > 0) wp_write_all(&s->main_w, out, n);
+      }
+      printf("{\"ok\":%s,\"bytes\":%d}\n", n > 0 ? "true" : "false", n);
+    } else if (strcmp(cmd, "QUEUE") == 0 || strcmp(cmd, "INTERRUPT") == 0) {
+      // QUEUE SLOT OP [ID|-] [TO] [NOW] [KEY|-] / INTERRUPT SLOT RESUBMIT
+      int si = -1, to = 0, now = 0;
+      char op[32] = {0}, id[128] = {0}, key[256] = {0};
+      static char out[4096];
+      int n = 0;
+      if (strcmp(cmd, "QUEUE") == 0) {
+        sscanf(line, "%*s %d %31s %127s %d %d %255s", &si, op, id, &to, &now, key);
+        if (strcmp(id, "-") == 0) id[0] = 0;
+        if (strcmp(key, "-") == 0) key[0] = 0;
+        if (si >= 0 && si < MAX_SLOTS && g_slots[si].page) n = cd_queue_line(g_slots[si].page, op, id, to, now, key, out, (int)sizeof(out) - 1);
+      } else {
+        int resubmit = 0;
+        sscanf(line, "%*s %d %d", &si, &resubmit);
+        if (si >= 0 && si < MAX_SLOTS && g_slots[si].page) n = cd_interrupt_line(g_slots[si].page, resubmit, out, (int)sizeof(out) - 1);
+      }
+      if (n > 0) wp_write_all(&g_slots[si].main_w, out, n);
+      printf("{\"ok\":%s,\"bytes\":%d}\n", n > 0 ? "true" : "false", n);
     } else if (strcmp(cmd, "SUBMIT") == 0) {
       int si = 0;
       sscanf(line, "%*s %d", &si);

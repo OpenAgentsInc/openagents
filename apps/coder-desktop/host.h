@@ -89,6 +89,35 @@ int cd_sides(void *page, float out[2]);
 void cd_sides_set(void *page, float left, float right);
 int cd_stop_line(char *out, int cap);
 int cd_forget_line(char *out, int cap);
+// Follow-ups (GitHub #13715, #13716). The worker owns the queue and a running turn's steers; these
+// write its lines and read back what it last said. ids are the host's (a UUID each), stable across
+// a reconnect: the same id twice changes nothing.
+// cd_steer_line: input for the running turn ({"steer"...}), 0 when no worker turn runs.
+// cd_queue_message_line: op "add" or "update" with the message's whole task line inside.
+// cd_queue_line: op open (key = the chat id), delete, move (to), promote (now: start it now),
+// pause, resume, clear, list. cd_interrupt_line: stop the turn; resubmit sends its pending steers
+// as a new turn. cd_followup_began: 1 once when the worker started a turn on its own (keep the
+// chat as for a sent message, write nothing). cd_queue_waiting: items wait and the queue is not
+// paused (keep the worker). cd_steer_status: 0 sent, 1 accepted, 2 rejected (cd_steer_reason:
+// no_active_turn, expected_turn_mismatch, active_turn_not_steerable, invalid, full), 3 applied,
+// 4 queued (moved to the queue's head), 5 resubmitted. The text reads end with a zero byte.
+int cd_steer_line(void *page, const char *id, const char *text, char *out, int cap);
+int cd_queue_message_line(void *page, const char *op, const char *id, const char *text, const char *session, const char *cwd, char *out, int cap);
+int cd_queue_line(void *page, const char *op, const char *id, int to, int now, const char *key, char *out, int cap);
+int cd_interrupt_line(void *page, int resubmit, char *out, int cap);
+int cd_followup_began(void *page);
+int cd_queue_waiting(void *page);
+int cd_queue_count(void *page);
+int cd_queue_paused(void *page);
+int cd_queue_reason(void *page, char *out, int cap);
+int cd_queue_item_id(void *page, int i, char *out, int cap);
+int cd_queue_item_text(void *page, int i, char *out, int cap);
+int cd_queue_item_cut(void *page, int i);
+int cd_steer_count(void *page);
+int cd_steer_status(void *page, int i);
+int cd_steer_text(void *page, int i, char *out, int cap);
+int cd_steer_reason(void *page, int i, char *out, int cap);
+int cd_worker_turn(void *page);
 // One line the worker wrote, without its newline.
 void cd_line(void *page, const char *line);
 // The worker could not start or went away: the running message says why.

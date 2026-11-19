@@ -25,3 +25,4 @@
 #load "layout/pane.coax";
 #load "layout/conversation.coax";
 #load "host-api.coax";
+#load "followups.coax";

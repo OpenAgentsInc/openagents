@@ -143,6 +143,31 @@ int cd_load(void *page, const char *text) { CoderHost *c = page; if (!c) return 
 int cd_recall_line(void *page, char *out, int cap) { CoderHost *c = page; return c && cap > 0 ? (int)coder_page_recall_line(cd_state(c), (coax_v_u8){(uint8_t *)out, cap}) : 0; }
 int cd_stop_line(char *out, int cap) { return cap > 0 ? (int)coder_page_stop_line((coax_v_u8){(uint8_t *)out, cap}) : 0; }
 int cd_forget_line(char *out, int cap) { return cap > 0 ? (int)coder_page_forget_line((coax_v_u8){(uint8_t *)out, cap}) : 0; }
+// Follow-ups (page/followups.coax; GitHub #13715): steer the running turn, queue messages for after
+// it, interrupt it. Each *_line is the line to write to the worker, with its newline, 0 for none.
+int cd_steer_line(void *page, const char *id, const char *text, char *out, int cap) { CoderHost *c = page; return c && cap > 0 ? (int)coder_page_steer_line(cd_state(c), cd_string(id), cd_string(text), (coax_v_u8){(uint8_t *)out, cap}) : 0; }
+int cd_queue_message_line(void *page, const char *op, const char *id, const char *text, const char *session, const char *cwd, char *out, int cap) {
+  CoderHost *c = page;
+  return c && cap > 0 ? (int)coder_page_queue_message_line(cd_state(c), cd_string(op), cd_string(id), cd_string(text), cd_string(session), cd_string(cwd), (coax_v_u8){(uint8_t *)out, cap}) : 0;
+}
+int cd_queue_line(void *page, const char *op, const char *id, int to, int now, const char *key, char *out, int cap) {
+  CoderHost *c = page;
+  return c && cap > 0 ? (int)coder_page_queue_line(cd_state(c), cd_string(op), cd_string(id), to, now != 0, cd_string(key), (coax_v_u8){(uint8_t *)out, cap}) : 0;
+}
+int cd_interrupt_line(void *page, int resubmit, char *out, int cap) { CoderHost *c = page; if (!c || cap <= 0) return 0; cd_changed(c); return (int)coder_page_interrupt_line(cd_state(c), resubmit != 0, (coax_v_u8){(uint8_t *)out, cap}); }
+int cd_followup_began(void *page) { CoderHost *c = page; return c && coder_page_followup_began(cd_state(c)); }
+int cd_queue_waiting(void *page) { CoderHost *c = page; return c && coder_page_queue_waiting(cd_state(c)); }
+int cd_queue_count(void *page) { CoderHost *c = page; return c ? (int)coder_page_queue_count(cd_state(c)) : 0; }
+int cd_queue_paused(void *page) { CoderHost *c = page; return c && coder_page_queue_paused(cd_state(c)); }
+int cd_queue_reason(void *page, char *out, int cap) { CoderHost *c = page; return c && cap > 1 ? cd_text_out((int)coder_page_queue_reason(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap) : 0; }
+int cd_queue_item_id(void *page, int i, char *out, int cap) { CoderHost *c = page; return c && cap > 1 ? cd_text_out((int)coder_page_queue_item_id(cd_state(c), i, (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap) : 0; }
+int cd_queue_item_text(void *page, int i, char *out, int cap) { CoderHost *c = page; return c && cap > 1 ? cd_text_out((int)coder_page_queue_item_text(cd_state(c), i, (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap) : 0; }
+int cd_queue_item_cut(void *page, int i) { CoderHost *c = page; return c && coder_page_queue_item_cut(cd_state(c), i); }
+int cd_steer_count(void *page) { CoderHost *c = page; return c ? (int)coder_page_steer_count(cd_state(c)) : 0; }
+int cd_steer_status(void *page, int i) { CoderHost *c = page; return c ? (int)coder_page_steer_status(cd_state(c), i) : -1; }
+int cd_steer_text(void *page, int i, char *out, int cap) { CoderHost *c = page; return c && cap > 1 ? cd_text_out((int)coder_page_steer_text(cd_state(c), i, (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap) : 0; }
+int cd_steer_reason(void *page, int i, char *out, int cap) { CoderHost *c = page; return c && cap > 1 ? cd_text_out((int)coder_page_steer_reason(cd_state(c), i, (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap) : 0; }
+int cd_worker_turn(void *page) { CoderHost *c = page; return c ? (int)coder_page_worker_turn(cd_state(c)) : 0; }
 void cd_line(void *page, const char *line) { CoderHost *c = page; if (!c) return; coder_page_line(cd_state(c), cd_string(line)); cd_changed(c); }
 void cd_failed(void *page, const char *why) { CoderHost *c = page; if (!c) return; coder_page_failed(cd_state(c), cd_string(why)); cd_changed(c); }
 int cd_running(void *page) { CoderHost *c = page; return c && coder_page_running(cd_state(c)); }

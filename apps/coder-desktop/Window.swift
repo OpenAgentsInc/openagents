@@ -15,6 +15,7 @@ final class CoderRun {
     var folder: URL                    // its working folder, once it is out of view
     var chat: String?                  // its kept chat's id, once it is out of view
     var turn: CoderTurn?               // the running message, kept so a reopened Coder attaches to it
+    var queued: [String: String] = [:] // the whole text of each message this Coder queued, by id (the page keeps previews)
     init(page: UnsafeMutableRawPointer, folder: URL) { self.page = page; self.folder = folder }
     func stop() {
         endTurn()
@@ -239,6 +240,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             let n = cd_task(page, run.session, folder.path, &out, Int32(out.count))
             run.worker.write(out, count: Int(n))
             beginTurn(run, from: from)
+            bindQueue(run)
         case 2: window.makeFirstResponder(editor)
         // The line is written into out first: Swift copies an argument before a later one's call fills it.
         case 3: stopRun(run)
@@ -302,6 +304,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
                     let n = cd_task(back.page, back.session, back.folder.path, &out, Int32(out.count))
                     back.worker.write(out, count: Int(n))
                     beginTurn(back, from: from)
+                    bindQueue(back)
                 } else {
                     cd_failed(back.page, back.worker.failure ?? "Microcoder could not start.")
                 }
@@ -309,7 +312,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
                 stopRun(back)
             }
             if cd_save_due(back.page) != 0 { keep(back) }
-            if cd_running(back.page) == 0 { finish(id) }
+            if cd_running(back.page) == 0 && cd_queue_waiting(back.page) == 0 { finish(id) }   // a waiting queue starts its next message
         }
         let what = cd_action(page)
         if what != 0 { act(what); wake() }

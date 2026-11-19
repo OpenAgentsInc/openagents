@@ -1,0 +1,109 @@
+// Steered input for a running turn (GitHub #13715, after Codex's turn/steer): what the person
+// sends while a turn runs, held here until the loop's next model call. run.coax drains it then:
+// each message becomes a step of its own in the state (state.coax mc_action_user), between the
+// last step's tool results and the next request, so the turn takes it in without starting over.
+// A turn that would end (finished, asked, idle) with steers still held goes on instead, and the
+// model answers them in the same turn.
+//
+// The run's owner keeps the storage (one McSteers, as for aware.coax's McAware) and hands it to
+// the run (McRun.steers). The owner adds with mc_steer_add, reads what was drained from done
+// (and empties it), and takes back what never reached the model when a turn ends another way
+// (mc_steer_join, mc_steer_clear).
+//
+// Checks: coax/bin/coax test coax/lib/microcoder/steer.coax --library
+
+MC_STEERS :: 8;                  // steers a turn holds at once
+MC_STEER_TEXT :: 16384;          // bytes of one steer (the composer's EB_TEXT)
+MC_STEER_ID :: 64;               // bytes of a steer's id: the owner's, stable across a reconnect
+
+McSteer :: struct {
+  id: [MC_STEER_ID] u8; nid: int;
+  text: [MC_STEER_TEXT] u8; ntext: int;
+  step: int;                     // done: the step it became (state.coax steps)
+}
+McSteers :: struct {
+  items: [MC_STEERS] McSteer; n: int;      // held, oldest first
+  done: [MC_STEERS] McSteer; nd: int;      // drained since the owner last looked
+}
+
+mc_steer_id :: (s: [] McSteers, i: int) -> string { return cast(string) s[0].items[i].id[0..<s[0].items[i].nid]; }
+mc_steer_text :: (s: [] McSteers, i: int) -> string { return cast(string) s[0].items[i].text[0..<s[0].items[i].ntext]; }
+mc_steer_done_id :: (s: [] McSteers, i: int) -> string { return cast(string) s[0].done[i].id[0..<s[0].done[i].nid]; }
+mc_steer_done_text :: (s: [] McSteers, i: int) -> string { return cast(string) s[0].done[i].text[0..<s[0].done[i].ntext]; }
+
+// The held steer with this id, or -1.
+mc_steer_find :: (s: [] McSteers, id: string) -> int {
+  for i: 0..<s[0].n { if mc_steer_id(s, i) == id { return i; } }
+  return -1;
+}
+// A drained steer with this id (since the owner last looked), or -1.
+mc_steer_found_done :: (s: [] McSteers, id: string) -> int {
+  for i: 0..<s[0].nd { if mc_steer_done_id(s, i) == id { return i; } }
+  return -1;
+}
+
+// Holds a steer. "" when it is held (or already was: the same id again changes nothing), else why
+// not: "invalid" (no id, an id over MC_STEER_ID bytes, no text or text over MC_STEER_TEXT bytes)
+// or "full" (MC_STEERS held already).
+mc_steer_add :: (s: [] McSteers, id: string, text: string) -> string {
+  if id.count == 0 || id.count > MC_STEER_ID || text.count == 0 || text.count > MC_STEER_TEXT { return "invalid"; }
+  if mc_steer_find(s, id) >= 0 || mc_steer_found_done(s, id) >= 0 { return ""; }
+  if s[0].n >= MC_STEERS { return "full"; }
+  k := s[0].n;
+  for c, i: id { s[0].items[k].id[i] = c; } s[0].items[k].nid = id.count;
+  for c, i: text { s[0].items[k].text[i] = c; } s[0].items[k].ntext = text.count;
+  s[0].items[k].step = 0;
+  s[0].n += 1;
+  return "";
+}
+
+// The oldest held steer moves to done as step `step`; false when none is held or done is full.
+mc_steer_take :: (s: [] McSteers, step: int) -> bool {
+  if s[0].n == 0 || s[0].nd >= MC_STEERS { return false; }
+  s[0].done[s[0].nd] = s[0].items[0];
+  s[0].done[s[0].nd].step = step;
+  s[0].nd += 1;
+  for i: 1..<s[0].n { s[0].items[i - 1] = s[0].items[i]; }
+  s[0].n -= 1;
+  return true;
+}
+
+// The held steers' text, oldest first, a blank line between: what a resubmitted turn is asked.
+mc_steer_join :: (s: [] McSteers, out: [] u8) -> string {
+  n := 0;
+  for i: 0..<s[0].n {
+    t := mc_steer_text(s, i);
+    if i > 0 { if n + 2 > out.count { break; } out[n] = 10; out[n + 1] = 10; n += 2; }
+    m := ifx t.count < out.count - n then t.count else out.count - n;
+    for k: 0..<m { out[n + k] = t[k]; }
+    n += m;
+  }
+  return cast(string) out[0..<n];
+}
+
+mc_steer_clear :: (s: [] McSteers) { s[0].n = 0; }
+
+#test "steers are held in order, the same id once, and refused when empty, too long or too many" {
+  s: [1] McSteers;
+  #assert mc_steer_add(s[..], "a", "first") == "" && mc_steer_add(s[..], "b", "second") == "" && s[0].n == 2;
+  #assert mc_steer_add(s[..], "a", "first again") == "" && s[0].n == 2 && mc_steer_text(s[..], 0) == "first";
+  #assert mc_steer_add(s[..], "", "x") == "invalid" && mc_steer_add(s[..], "c", "") == "invalid";
+  long: [MC_STEER_ID + 1] u8; for i: 0..<long.count { long[i] = 'x'; }
+  #assert mc_steer_add(s[..], cast(string) long[..], "t") == "invalid";
+  for i: 2..<MC_STEERS { ib: [4] u8; ib[0] = cast(u8) ('c' + i); #assert mc_steer_add(s[..], cast(string) ib[0..<1], "more") == ""; }
+  #assert mc_steer_add(s[..], "z", "one too many") == "full";
+  o: [64] u8;
+  #assert cast(string) mc_steer_join(s[..], o[..])[0..<14] == "first\n\nsecond\n";
+  mc_steer_clear(s[..]);
+  #assert s[0].n == 0 && mc_steer_join(s[..], o[..]) == "";
+}
+
+#test "a drained steer moves to done with its step, and its id stays known until the owner looks" {
+  s: [1] McSteers;
+  #assert mc_steer_add(s[..], "a", "first") == "" && mc_steer_add(s[..], "b", "second") == "";
+  #assert mc_steer_take(s[..], 4) && s[0].n == 1 && s[0].nd == 1 && s[0].done[0].step == 4 && mc_steer_done_id(s[..], 0) == "a";
+  #assert mc_steer_id(s[..], 0) == "b";
+  // the same id again, after it was drained, is not held twice
+  #assert mc_steer_add(s[..], "a", "first") == "" && s[0].n == 1;
+  #assert mc_steer_take(s[..], 5) && !mc_steer_take(s[..], 6) && s[0].nd == 2;
+}

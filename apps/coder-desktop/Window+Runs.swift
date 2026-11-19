@@ -10,7 +10,7 @@ extension CoderWindow {
     }
     /// A run's worker lines go to its page, wherever that page is now.
     func wire(_ r: CoderRun) {
-        r.worker.line = { [weak self, weak r] text in guard let self, let r else { return }; cd_line(r.page, text); self.markUnread(r); self.pump(r) }
+        r.worker.line = { [weak self, weak r] text in guard let self, let r else { return }; cd_line(r.page, text); self.followUpBegan(r); self.markUnread(r); self.pump(r) }
         r.worker.gone = { [weak self, weak r] in guard let self, let r else { return }; cd_failed(r.page, "Microcoder stopped running. Send the message again."); self.markUnread(r); self.pump(r) }
     }
     /// After any worker's line: answer what is owed, start the sub-agents the page asks for, and
@@ -90,6 +90,7 @@ extension CoderWindow {
             r.chat = t.chat; r.session = t.session; r.turn = t; r.worker.program = t.program
             r.worker.attach(t.run, from: t.offset)
             replay(r)
+            followUpBegan(r)   // the worker started a queued message while Coder was closed
             wire(r); r.worker.follow()
             runs[t.chat] = r
             if t.chat != chat { unread.insert(t.chat) }

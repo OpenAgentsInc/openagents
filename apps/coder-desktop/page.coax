@@ -21,3 +21,4 @@
 #load "page/checks/persist-checks.coax" #test;
 #load "page/checks/chats-checks.coax" #test;
 #load "page/checks/layout-checks.coax" #test;
+#load "page/checks/followups-checks.coax" #test;

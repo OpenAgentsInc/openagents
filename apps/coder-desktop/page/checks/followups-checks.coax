@@ -1,0 +1,69 @@
+// Checks for the page's followups.coax: steers, the queue and interrupts as lines each way. Example data only.
+#load "../parts.coax";
+#load "checks-kit.coax";
+
+#test "follow-ups: a steer goes out for the worker's turn and its statuses come back to the page" {
+  p: [1] CoderPage; s := p[..]; cp_init(s);
+  out: [8192] u8;
+  #assert coder_page_steer_line(s, "s1", "also b", out[..]) == 0;     // no turn runs here
+  #assert coder_page_set_text(s, "fix a") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND;
+  #assert coder_page_line(s, "{\"kind\":\"turn\",\"turn\":3,\"source\":\"message\",\"id\":\"\",\"text\":\"\"}") == MWW_TURN;
+  #assert coder_page_worker_turn(s) == 3 && s[0].nturns == 1 && !coder_page_followup_began(s);
+  n := coder_page_steer_line(s, "s1", "also b", out[..]);
+  #assert cast(string) out[0..<n] == "{\"steer\":\"also b\",\"id\":\"s1\",\"turn\":3}\n";
+  #assert coder_page_steer_count(s) == 1 && coder_page_steer_status(s, 0) == CP_STEER_SENT;
+  #assert coder_page_line(s, "{\"kind\":\"steer\",\"id\":\"s1\",\"status\":\"accepted\",\"turn\":3}") == MWW_STEERED && coder_page_steer_status(s, 0) == CP_STEER_ACCEPTED;
+  #assert coder_page_line(s, "{\"kind\":\"steer\",\"id\":\"s1\",\"status\":\"applied\",\"turn\":3,\"step\":2}") == MWW_STEERED;
+  #assert coder_page_steer_status(s, 0) == CP_STEER_APPLIED && s[0].fu[0].steers[0].step == 2 && cp_running(s);
+  t: [64] u8;
+  #assert coder_page_steer_text(s, 0, t[..]) == 6 && cast(string) t[0..<6] == "also b";
+  #assert coder_page_line(s, "{\"kind\":\"steer\",\"id\":\"s2\",\"status\":\"rejected\",\"turn\":3,\"reason\":\"active_turn_not_steerable\"}") == MWW_STEERED;
+  m := coder_page_steer_reason(s, 1, t[..]);
+  #assert coder_page_steer_status(s, 1) == CP_STEER_REJECTED && cast(string) t[0..<m] == "active_turn_not_steerable";
+  n = coder_page_interrupt_line(s, true, out[..]);
+  #assert cast(string) out[0..<n] == "{\"interrupt\":true,\"resubmit\":true}\n" && s[0].turns[0].stopping;
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"stopped\",\"text\":\"\"}") == MWW_ENDED && s[0].turns[0].state == CP_STOPPED;
+}
+
+#test "follow-ups: a queued follow-up carries the task object its message would send" {
+  p: [1] CoderPage; s := p[..]; cp_init(s);
+  out: [2048] u8;
+  n := coder_page_queue_message_line(s, "add", "q1", "then fix b", "sess", "/w", out[..]);
+  ar: [1] ClArena; ab: [2048] u8; ar[0].buf = ab[..]; req: [1] MwwRequest; back: [1] McTask;
+  #assert n > 0 && mww_request(ar[..], cast(string) out[0..<n - 1], req[..]) == MWW_QUEUE && req[0].op == "add" && req[0].id == "q1" && req[0].text == "then fix b";
+  #assert mww_task_read(ar[..], req[0].message, back[..]) && back[0].task == "then fix b" && back[0].cwd == "/w" && back[0].model == "gemini-4-neon" && !back[0].no_steer;
+  #assert coder_page_queue_message_line(s, "delete", "q1", "x", "s", "/w", out[..]) == 0;
+}
+
+#test "follow-ups: the queue's lines, its whole state as the worker sends it, and a turn the worker starts from it" {
+  p: [1] CoderPage; s := p[..]; cp_init(s);
+  out: [1024] u8;
+  #assert coder_page_queue_line(s, "add", "q1", 0, false, "", out[..]) == 0;
+  n := coder_page_queue_line(s, "move", "q1", 2, false, "", out[..]);
+  #assert cast(string) out[0..<n] == "{\"queue\":\"move\",\"id\":\"q1\",\"to\":2}\n";
+  n = coder_page_queue_line(s, "open", "", 0, false, "chat-1", out[..]);
+  #assert cast(string) out[0..<n] == "{\"queue\":\"open\",\"key\":\"chat-1\"}\n" && coder_page_queue_line(s, "explode", "", 0, false, "", out[..]) == 0;
+  #assert coder_page_line(s, "{\"kind\":\"queue\",\"paused\":false,\"reason\":\"\",\"active\":\"\",\"items\":[{\"id\":\"q1\",\"text\":\"then fix b\"},{\"id\":\"q2\",\"text\":\"and c\"}]}") == MWW_QUEUED;
+  #assert coder_page_queue_count(s) == 2 && coder_page_queue_waiting(s) && !coder_page_queue_paused(s);
+  t: [64] u8; m := coder_page_queue_item_text(s, 1, t[..]);
+  #assert cast(string) t[0..<m] == "and c" && coder_page_queue_item_id(s, 0, t[..]) == 2 && coder_page_queue_item_id(s, 2, t[..]) == -1;
+}
+
+#test "follow-ups: a turn the worker starts from the queue is a turn of the page, with nothing to send" {
+  p: [1] CoderPage; s := p[..]; cp_init(s);
+  t: [64] u8; m := 0;
+  // the worker starts the head on its own: the page has a turn for it, and nothing to send
+  #assert coder_page_line(s, "{\"kind\":\"turn\",\"turn\":1,\"source\":\"queue\",\"id\":\"q1\",\"text\":\"then fix b\"}") == MWW_TURN;
+  #assert cp_running(s) && s[0].nturns == 1 && cast(string) s[0].turns[0].ask[0..<s[0].turns[0].ask_n] == "then fix b";
+  #assert coder_page_action(s) == CP_ASK_NONE && coder_page_followup_began(s) && !coder_page_followup_began(s);
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"failed\",\"text\":\"no model\"}") == MWW_ENDED;
+  #assert !cp_running(s) && s[0].turns[0].state == CP_FAILED;
+  #assert coder_page_line(s, "{\"kind\":\"queue\",\"paused\":true,\"reason\":\"error\",\"active\":\"\",\"items\":[{\"id\":\"q2\",\"text\":\"and c\"}]}") == MWW_QUEUED;
+  m = coder_page_queue_reason(s, t[..]);
+  #assert coder_page_queue_paused(s) && !coder_page_queue_waiting(s) && cast(string) t[0..<m] == "error";
+}
+
+#test "follow-ups: a refused queue op is kept for the tray" {
+  p: [1] CoderPage; s := p[..]; cp_init(s);
+  #assert coder_page_line(s, "{\"kind\":\"queue_refused\",\"op\":\"delete\",\"id\":\"q9\",\"reason\":\"unknown_id\"}") == MWW_QUEUE_REFUSED && cp_fu_str(s[0].fu[0].refused[..], s[0].fu[0].nrefused) == "unknown_id";
+}
