@@ -28,7 +28,9 @@ CP_REPLY :: 60000;          // bytes of a reply kept (the Markdown document hold
 CP_NOTE :: 512;
 CP_SKILLS :: 4000;          // bytes of the note on installed skills that goes ahead of each message
 CP_CMD :: 400;              // bytes of a command or a tool call shown
-CP_CMD_OUT :: 2000;         // bytes of a command's or a tool call's output shown; the row says when it is cut. A thought longer than this takes more rows
+CP_CMD_OUT :: 2000;         // bytes of a command's or a tool call's output shown; the row says when it is cut
+CP_THOUGHT_MAX :: 65536;    // bytes of a single thought or sub-agent note kept in one row (matches MdDoc's 65,536-byte capacity)
+CP_LONG_POOL :: 2097152;    // page-level buffer for thoughts and sub-agent notes longer than CP_CMD_OUT
 CP_ARENA :: 131072;         // a worker line's strings
 CP_AGENTS :: 12;            // sub-agents one message may start; a task past that is answered as not run
 CP_AGENT_TASK :: 1500;      // bytes of a sub-agent's task kept (a longer task is cut, and the sub-agent gets the cut one)
@@ -56,7 +58,7 @@ CP_PAD :: 16;               // the page's margin
 CP_CHATS :: 50;             // recent chats the sidebar lists; it says how many more there are
 CP_CHAT_ID :: 48;           // bytes of a chat's row id ("chat." and the host's id)
 CP_CHAT_TITLE :: 120;       // bytes of a chat's title: its first message on one line
-CP_SIDE :: 280;             // the sidebar's width until its edge is dragged (#13670)
+CP_SIDE :: 234;             // the sidebar's width until its edge is dragged (280pt at 1.2x, matching Claude Desktop)
 CP_SIDE_LEAST :: 180; CP_SIDE_MOST :: 480;     // how narrow and wide a drag makes the sidebar
 CP_PANE_LEAST :: 320; CP_PANE_MOST :: 900;     // and a sub-agent's transcript
 CP_PANE_MARGIN :: 200;      // how far out of view a transcript's row is still drawn
@@ -87,6 +89,7 @@ CP_RUNNING :: 0; CP_DONE :: 1; CP_FAILED :: 2; CP_STOPPED :: 3;
 CpCall :: struct {
   text: [CP_CMD] u8; text_n: int;
   out: [CP_CMD_OUT + 64] u8; out_n: int;
+  long_at: int; long_n: int;  // when long_n > 0, the row's body lives in CoderPage.long_buf[long_at..<long_at + long_n]
   read: bool; failed: bool; running: bool;
   thought: bool;              // the model's thinking (#13671): text is its first line, out its words
   said: bool;                 // what a sub-agent said between its tool calls: out is its words, shown as a reply is
@@ -164,6 +167,7 @@ CoderPage :: struct {
   // the sidebars' widths as dragged (#13670), 0 until then; which edge is held (1 the chats', 2 the
   // transcript's) or under the pointer; the window's width as last drawn; the host owes keeping them
   calls: [CP_AGENT_CALLS] CpCall; calls_n: int; calls_free: int; calls_order: int;   // every sub-agent's tool calls: how many places were ever used, the first free one plus 1
+  long_buf: [CP_LONG_POOL] u8; long_n: int;
   side_w: f32; pane_user: f32; drag: int; hover: int; win_w: f32; sides_due: bool;
   clock: f32;                 // seconds the page has been drawn, for how long a tool call took
   scratch: [CP_SCRATCH] u8;
@@ -190,6 +194,24 @@ cp_init :: (s: [] CoderPage) {
 }
 // Device pixels to a unit of the page's layout, before the screen's own scale: the skin's, times the text size.
 cp_scale :: (s: [] CoderPage) -> f32 { return ARCADE_PHONE_SCALE * CP_ZOOMS[ifx s[0].ready then s[0].zoom else CP_ZOOM_USUAL]; }
+// Coder Desktop's skin: Coder's monochrome Arcade palette with Claude Desktop's sidebar geometry
+// (32pt rows, 26pt section headers, 8pt inset/radius, 16pt horizontal text padding, 15pt icons).
+cp_skin :: () -> UiSkin {
+  u: f32 = ARCADE_PHONE_SCALE;
+  k := arcade_phone_skin();
+  k.app.side_row = 32.0f32 / u;
+  k.app.side_row_two = 48.0f32 / u;
+  k.app.side_head = 26.0f32 / u;
+  k.app.row_inset = 8.0f32 / u;
+  k.app.row_radius = 8.0f32 / u;
+  k.app.side_pad = 16.0f32 / u;
+  k.app.icon = 15.0f32 / u;
+  k.cmp.chip_h = 28.0f32 / u;
+  k.cmp.chip_radius = 8.0f32 / u;
+  k.cmp.chip_pad = 10.0f32 / u;
+  k.cmp.chip_icon = 14.0f32 / u;
+  return k;
+}
 cp_out :: (out: [] u8, text: string) -> int {
   n := 0;
   for c: text { if n >= out.count { break; } out[n] = c; n += 1; }
@@ -332,6 +354,7 @@ cp_call_add :: (s: [] CoderPage, i: int, j: int, text: string, output: string, r
     } }
   }
   s[0].calls[q].text_n = cp_out(s[0].calls[q].text[..], text);
+  s[0].calls[q].long_at = 0; s[0].calls[q].long_n = 0;
   cp_call_out(s, q, output);
   s[0].calls[q].read = read; s[0].calls[q].failed = failed; s[0].calls[q].running = running; s[0].calls[q].thought = false; s[0].calls[q].said = false;
   s[0].calls[q].began = s[0].clock; s[0].calls[q].took = -1; s[0].calls[q].next = 0; s[0].calls[q].h = 0;
@@ -345,30 +368,54 @@ cp_call_add :: (s: [] CoderPage, i: int, j: int, text: string, output: string, r
   s[0].turns[i].agents[j].tail = q + 1; s[0].turns[i].agents[j].nrows += 1;
   return q;
 }
-// A model's thinking joins a list as rows marked as thoughts (GitHub #13671): one row for each
-// 2,000 bytes, cut at a line's or a word's end, so none of it is dropped. A row is named by its
-// first line, without Markdown's marks. said: what a sub-agent said between its tool calls, in
-// rows of the same size that show as a reply does.
+// A row's stored body text: from long_buf when it exceeded CP_CMD_OUT, else from calls[q].out.
+cp_call_text :: (s: [] CoderPage, q: int) -> string {
+  if s[0].calls[q].long_n > 0 {
+    at := s[0].calls[q].long_at;
+    return cast(string) s[0].long_buf[at..<at + s[0].calls[q].long_n];
+  }
+  return cast(string) s[0].calls[q].out[0..<s[0].calls[q].out_n];
+}
+// Store a thought's or sub-agent note's body on row q: inline in calls[q].out when <= CP_CMD_OUT,
+// else in the page's long_buf up to CP_THOUGHT_MAX bytes so a single thought is never split.
+cp_long_set :: (s: [] CoderPage, q: int, text: string) {
+  s[0].calls[q].long_at = 0; s[0].calls[q].long_n = 0;
+  if text.count <= CP_CMD_OUT {
+    s[0].calls[q].out_n = cp_out(s[0].calls[q].out[..], text);
+    return;
+  }
+  limit := ifx text.count > CP_THOUGHT_MAX then CP_THOUGHT_MAX else text.count;
+  if limit < text.count {
+    while limit > 1 && text[limit] >= 128 && text[limit] < 192 { limit -= 1; }
+  }
+  if s[0].long_n + limit <= CP_LONG_POOL {
+    at := s[0].long_n;
+    for k: 0..<limit { s[0].long_buf[at + k] = text[k]; }
+    s[0].long_n = at + limit;
+    s[0].calls[q].long_at = at; s[0].calls[q].long_n = limit;
+    s[0].calls[q].out_n = 0;
+    return;
+  }
+  cut := CP_CMD_OUT;
+  while cut > 1 && text[cut] >= 128 && text[cut] < 192 { cut -= 1; }
+  s[0].calls[q].out_n = cp_out(s[0].calls[q].out[..], cast(string) text[0..<cut]);
+}
+// A model's thinking joins a list as one row marked as a thought (GitHub #13671), up to
+// CP_THOUGHT_MAX bytes without splitting mid-sentence. A row is named by its first line, without
+// Markdown's marks. said: what a sub-agent said between its tool calls, shown as a reply does.
 cp_thought_add :: (s: [] CoderPage, i: int, j: int, text: string, said: bool) {
-  from := 0;
-  while from < text.count {
-    to := ifx text.count - from > CP_CMD_OUT then from + CP_CMD_OUT else text.count;
-    if to < text.count {
-      at := to;
-      while at > from + CP_CMD_OUT / 2 && text[at - 1] != 10 && text[at - 1] != 32 { at -= 1; }
-      if at > from + CP_CMD_OUT / 2 { to = at; }
-      else { while to > from + 1 && text[to] >= 128 && text[to] < 192 { to -= 1; } }   // no space to cut at: not inside a character
-    }
-    hb: [CP_CMD] u8; hn := 0; at := from;
-    while at < to && (text[at] == 10 || text[at] == 32) { at += 1; }
-    while at < to && text[at] != 10 && hn < CP_CMD {
-      c := text[at]; at += 1;
-      if c == '*' || c == '#' || c == '`' || c == 32 && hn == 0 { continue; }
-      hb[hn] = c; hn += 1;
-    }
-    q := cp_call_add(s, i, j, cast(string) hb[0..<hn], cast(string) text[from..<to], false, false, false);
-    if q >= 0 { s[0].calls[q].thought = !said; s[0].calls[q].said = said; }
-    from = to;
+  if text.count == 0 { return; }
+  hb: [CP_CMD] u8; hn := 0; at := 0;
+  while at < text.count && (text[at] == 10 || text[at] == 32) { at += 1; }
+  while at < text.count && text[at] != 10 && hn < CP_CMD {
+    c := text[at]; at += 1;
+    if c == '*' || c == '#' || c == '`' || c == 32 && hn == 0 { continue; }
+    hb[hn] = c; hn += 1;
+  }
+  q := cp_call_add(s, i, j, cast(string) hb[0..<hn], "", false, false, false);
+  if q >= 0 {
+    s[0].calls[q].thought = !said; s[0].calls[q].said = said;
+    cp_long_set(s, q, text);
   }
 }
 // Text with a new line wherever a line would pass `per` bytes, at a word's end where it has one.
@@ -392,7 +439,7 @@ cp_nth :: (s: [] CoderPage, i: int, j: int, n: int) -> int {
   return q;
 }
 // A chat's calls are all let go, as the chat is.
-cp_calls_reset :: (s: [] CoderPage) { s[0].calls_n = 0; s[0].calls_free = 0; s[0].calls_order = 0; }
+cp_calls_reset :: (s: [] CoderPage) { s[0].calls_n = 0; s[0].calls_free = 0; s[0].calls_order = 0; s[0].long_n = 0; }
 cp_call_out :: (s: [] CoderPage, q: int, output: string) {
   n := cp_out(s[0].calls[q].out[0..<CP_CMD_OUT], output);
   if n < output.count { n += cp_out(s[0].calls[q].out[n..<CP_CMD_OUT + 64], "\n[The output is cut at 2,000 bytes.]"); }
@@ -739,7 +786,7 @@ cp_save_rows :: (s: [] CoderPage, out: [] u8, from: int, head: int) -> int {
   n := from; q := head - 1; at := 0;
   while q >= 0 {
     n = json_raw(out, n, ifx at > 0 then ",{\"text\":" else "{\"text\":"); n = json_write_string(out, n, cast(string) s[0].calls[q].text[0..<s[0].calls[q].text_n]);
-    n = json_raw(out, n, ",\"out\":"); n = json_write_string(out, n, cast(string) s[0].calls[q].out[0..<s[0].calls[q].out_n]);
+    n = json_raw(out, n, ",\"out\":"); n = json_write_string(out, n, cp_call_text(s, q));
     n = json_raw(out, n, ifx s[0].calls[q].read then ",\"read\":true" else ",\"read\":false");
     n = json_raw(out, n, ifx s[0].calls[q].failed then ",\"failed\":true" else ",\"failed\":false");
     if s[0].calls[q].thought { n = json_raw(out, n, ",\"thought\":true"); }
@@ -791,7 +838,8 @@ cp_load_row :: (s: [] CoderPage, i: int, j: int, c: string) {
   read := cl_bool(c, "read"); failed := cl_bool(c, "failed"); took := cl_int(c, "took"); thought := cl_bool(c, "thought"); said := cl_bool(c, "said");
   q := cp_call_add(s, i, j, what, "", read.ok && read.value, failed.ok && failed.value, false);
   if q < 0 { return; }
-  s[0].calls[q].out_n = cp_out(s[0].calls[q].out[..], output);
+  if (thought.ok && thought.value) || (said.ok && said.value) { cp_long_set(s, q, output); }
+  else { s[0].calls[q].out_n = cp_out(s[0].calls[q].out[..], output); }
   s[0].calls[q].thought = thought.ok && thought.value; s[0].calls[q].said = said.ok && said.value;
   s[0].calls[q].began = 0; s[0].calls[q].took = ifx took.ok then cast(f32) took.value else -1.0f32;
 }
@@ -901,7 +949,8 @@ coder_page_take :: (to: [] CoderPage, from: [] CoderPage) -> bool #export_c #eff
     for j: 0..<to[0].turns[i].nagents { to[0].turns[i].agents[j].began += shift; to[0].turns[i].agents[j].heard += shift; }
   }
   for q: 0..<from[0].calls_n { to[0].calls[q] = from[0].calls[q]; to[0].calls[q].began += shift; }
-  to[0].nturns = from[0].nturns; to[0].calls_n = from[0].calls_n; to[0].calls_free = from[0].calls_free; to[0].calls_order = from[0].calls_order;
+  for k: 0..<from[0].long_n { to[0].long_buf[k] = from[0].long_buf[k]; }
+  to[0].nturns = from[0].nturns; to[0].calls_n = from[0].calls_n; to[0].calls_free = from[0].calls_free; to[0].calls_order = from[0].calls_order; to[0].long_n = from[0].long_n;
   to[0].current_n = cp_out(to[0].current[..], cast(string) from[0].current[0..<from[0].current_n]);
   to[0].kept_turns = from[0].kept_turns; to[0].kept_running = from[0].kept_running; to[0].kept_cost = from[0].kept_cost;
   to[0].cost_usd_micros = from[0].cost_usd_micros;
@@ -1009,7 +1058,7 @@ cp_pane_id :: (out: [] u8, s: [] CoderPage, part: string, q: int) -> string {
 // to the row. Returns its height.
 cp_row :: (s: [] CoderPage, f: [] UiFrame, q: int, id: string, x: f32, y: f32, w: f32, action: int) -> f32 {
   a := f[0].skin.app; sh := f[0].sheet; kb: [24] u8;
-  text := cast(string) s[0].calls[q].text[0..<s[0].calls[q].text_n]; output := cast(string) s[0].calls[q].out[0..<s[0].calls[q].out_n];
+  text := cast(string) s[0].calls[q].text[0..<s[0].calls[q].text_n]; output := cp_call_text(s, q);
   if s[0].calls[q].said {
     // what the sub-agent said reads as a reply does: its Markdown, parsed into this frame's document
     at := s[0].think_at; b0 := s[0].think[at].nb;
@@ -1019,9 +1068,9 @@ cp_row :: (s: [] CoderPage, f: [] UiFrame, q: int, id: string, x: f32, y: f32, w
                                     ifx s[0].copied_kind == CP_COPIED_SAID && s[0].copied_row == q then s[0].copied_block else -1, CP_SAID_COPY);
     }
     // the document is full: its words as they are, wrapped, a line each
-    wb: [2 * CP_CMD_OUT + 256] u8;
+    wb := s[0].scratch[..];
     per := cast(int) (w / measure_width(f[0].m, f[0].skin.small.face, "0")) - 1; if per < 8 { per = 8; }
-    wn := cp_wrap(wb[..], output, per);
+    wn := cp_wrap(wb, output, per);
     ln: f32 = 0; from := 0; li := 0;
     for k: 0..<wn + 1 {
       if k < wn && wb[k] != 10 { continue; }
@@ -1040,9 +1089,9 @@ cp_row :: (s: [] CoderPage, f: [] UiFrame, q: int, id: string, x: f32, y: f32, w
     if note.blocks > 0 { note.doc = s[0].think[at..<at + 1]; note.block0 = b0; note.output = output; }
     else {
       // the document is full: its words as they are, wrapped to the row
-      wb: [2 * CP_CMD_OUT + 256] u8;
+      wb := s[0].scratch[..];
       per := cast(int) ((w - 2 * a.tool_pad) / measure_width(f[0].m, f[0].skin.mono_small.face, "0")) - 1; if per < 8 { per = 8; }
-      wn := cp_wrap(wb[..], output, per);
+      wn := cp_wrap(wb, output, per);
       note.output = sheet_pool(sh, cast(string) wb[0..<wn]);
     }
     return app_tool(f, id, x, y, w, note, false, action);
@@ -1243,23 +1292,25 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
     }
   }
   all := s[0].copied_kind == CP_COPIED_ALL;
-  _ := app_icon_button(f, "coder.copy", w - 2 * a.icon_button - CP_CORNER, CP_CORNER, ifx all then k.icon_check else k.icon_copy, ifx all then "Copied" else "Copy chat", APP_BUTTON_QUIET,
+  copy_x := ifx left > 0 then w - a.icon_button - CP_CORNER else w - 2 * a.icon_button - CP_CORNER;
+  _ := app_icon_button(f, "coder.copy", copy_x, CP_CORNER, ifx all then k.icon_check else k.icon_copy, ifx all then "Copied" else "Copy chat", APP_BUTTON_QUIET,
                        ifx s[0].nturns == 0 then EL_S_DISABLED else 0, CP_COPY_ALL);
-  _ := app_icon_button(f, "coder.new", w - a.icon_button - CP_CORNER, CP_CORNER, ICON_COMPOSE, "New chat", APP_BUTTON_QUIET,
-                       ifx s[0].nturns == 0 then EL_S_DISABLED else 0, CP_NEW);
-  // the working folder floats in the top left corner; a press asks the host for another
-  if s[0].folder_n > 0 {
-    name := sheet_pool(f[0].sheet, cast(string) s[0].folder[0..<s[0].folder_n]);
-    fw := app_button_width(f, ICON_FOLDER, name); if fw > CP_FOLDER_MOST { fw = CP_FOLDER_MOST; }
-    if left > 0 && fw > left - 2 * CP_CORNER { fw = left - 2 * CP_CORNER; }
-    _ := app_button(f, "coder.folder", CP_CORNER, CP_CORNER + (side - k.control_h) / 2, fw, ICON_FOLDER, name, APP_BUTTON_QUIET, ifx running then EL_S_DISABLED else 0, CP_FOLDER);
+  if left == 0 {
+    _ := app_icon_button(f, "coder.new", w - a.icon_button - CP_CORNER, CP_CORNER, ICON_COMPOSE, "New chat", APP_BUTTON_QUIET,
+                         ifx s[0].nturns == 0 then EL_S_DISABLED else 0, CP_NEW);
   }
-  // the sidebar: the recent chats, most recent first. The chat that is shown is lit; one whose
-  // reply runs, shown or not, says so.
+  // the sidebar: Claude Desktop's structural hierarchy (surface separation, top primary action,
+  // section header, 32pt rows with 8pt inset/radius) in Coder's monochrome palette.
   if left > 0 {
-    sheet_fill(f[0].sheet, left - k.border, 0, k.border, h, 0, k.menu_divider);
+    u: f32 = ARCADE_PHONE_SCALE;
+    sw := left - k.border;
+    sheet_fill(f[0].sheet, 0, 0, sw, h, 0, k.surface);
+    sheet_fill(f[0].sheet, sw, 0, k.border, h, 0, k.menu_divider);
+    sy := 10.0f32 / u;
+    sy += app_side_action(f, "coder.new", 0, sy, sw, ICON_COMPOSE, "New chat", 0, CP_NEW);
+    stop := sy + 10.0f32 / u;
     rows: [CP_CHATS + 1] AppSideRow;
-    rows[0] = AppSideRow.{id = "coder.chats", title = "Chats", heading = true};
+    rows[0] = AppSideRow.{id = "coder.chats", title = "Recents", heading = true};
     cur := cast(string) s[0].current[0..<s[0].current_n];
     for q: 0..<s[0].nchats {
       id := cast(string) s[0].chats[q].id[0..<s[0].chats[q].id_n];
@@ -1267,22 +1318,36 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
       rows[q + 1] = AppSideRow.{id = id, title = cast(string) s[0].chats[q].title[0..<s[0].chats[q].title_n],
                                state = (ifx is then EL_S_CURRENT else 0) | (ifx (is && running) || s[0].chats[q].busy then EL_S_BUSY else 0)};
     }
-    stop := CP_CORNER + side + a.gap_small;
     s[0].side_view = h - stop;
     tail := ifx s[0].nchats == 0 || s[0].chats_more > 0 then k.small.line + 2 * a.gap else 0.0f32;
-    s[0].side_content = app_side_window(f, 0, stop, left - k.border, s[0].side_view, rows[0..<s[0].nchats + 1], s[0].side_scroll, tail, CP_CHAT);
+    s[0].side_content = app_side_window(f, 0, stop, sw, s[0].side_view, rows[0..<s[0].nchats + 1], s[0].side_scroll, tail, CP_CHAT);
     if tail > 0 {
       mb: [96] u8; mn := 0;
       if s[0].nchats == 0 { mn = el_put(mb[..], 0, "Your chats show here."); }
       else { mn = el_put_i(mb[..], 0, s[0].chats_more); mn = el_put(mb[..], mn, ifx s[0].chats_more == 1 then " older chat is not shown." else " older chats are not shown."); }
       my := stop + s[0].side_content - tail + a.gap - scroll_clamp(s[0].side_scroll, s[0].side_content, s[0].side_view);
-      if my + k.small.line > stop && my < h { _ := app_meta(f, "coder.chats.more", a.side_pad, my, left - 2 * a.side_pad, sheet_pool(f[0].sheet, cast(string) mb[0..<mn]), false); }
+      if my + k.small.line > stop && my < h { _ := app_meta(f, "coder.chats.more", a.side_pad, my, sw - 2 * a.side_pad, sheet_pool(f[0].sheet, cast(string) mb[0..<mn]), false); }
     }
   }
   c := AppComposer.{placeholder = "Message", text = eb_text(s[0].draft[..]),
     state = ifx running then APP_COMPOSER_RUNNING else ifx full then APP_COMPOSER_OFF else APP_COMPOSER_READY,
     editing = s[0].focused, editor_h = s[0].editor_h / cp_scale(s), unit = ARCADE_PHONE_SCALE};
   s[0].box = app_composer(f, "coder.composer", "coder.composer.send", x, h - CP_BOTTOM, cw, c, CP_FIELD, CP_SEND);
+  // the working folder sits in the composer's bottom-left toolbar, matching Claude Desktop;
+  // a press asks the host for another folder.
+  if s[0].folder_n > 0 {
+    u: f32 = ARCADE_PHONE_SCALE;
+    name := sheet_pool(f[0].sheet, cast(string) s[0].folder[0..<s[0].folder_n]);
+    box_y := (h - CP_BOTTOM) - s[0].box.height;
+    row_y := box_y + s[0].box.row_y;
+    fx := x + k.cmp.action_inset;
+    max_fw := s[0].box.send_x - k.cmp.action_inset - a.gap_small;
+    cap := cast(f32) CP_FOLDER_MOST / u;
+    if max_fw > cap { max_fw = cap; }
+    if max_fw > 0 {
+      _ := app_chip(f, "coder.folder", fx, row_y + (s[0].box.send - k.cmp.chip_h) / 2, max_fw, ICON_FOLDER, "Working folder", name, ifx running then EL_S_DISABLED else 0, CP_FOLDER);
+    }
+  }
 }
 
 // ---------------------------------------------------------------- the host's calls
@@ -1312,7 +1377,7 @@ coder_page_frame :: (s: [] CoderPage, out: [] f32, width: f32, height: f32, dpr:
   if !s[0].reduced { s[0].time += t; }
   s[0].clock += t;
   a[0].frame += 1;
-  k := arcade_phone_skin();
+  k := cp_skin();
   v := paint_quad(out, 0, d, 0, 0, w, h, 0, 0, k.canvas, k.canvas);
   if !a[0].ready { return v; }
   f: [1] UiFrame;
@@ -1524,7 +1589,7 @@ coder_page_copied :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all
     q := s[0].copied_row;
     if q < 0 || !s[0].calls[q].said { return 0; }
     s[0].pane_doc[0].n = 0; s[0].pane_doc[0].nb = 0; s[0].pane_doc[0].nr = 0; s[0].pane_doc[0].ni = 0; s[0].pane_doc[0].nlink = 0; s[0].pane_parsed = -1;
-    blocks := md_parse(s[0].pane_doc[..], cast(string) s[0].calls[q].out[0..<s[0].calls[q].out_n], 0);
+    blocks := md_parse(s[0].pane_doc[..], cp_call_text(s, q), 0);
     if s[0].copied_block < 0 || s[0].copied_block >= blocks || s[0].pane_doc[0].blocks[s[0].copied_block].kind != MB_CODE { return 0; }
     return cp_out(out, md_block_text(s[0].pane_doc[..], s[0].copied_block));
   }
@@ -1810,16 +1875,26 @@ cp_find :: (text: string, needle: string) -> int {
   #assert kn > 0 && coder_page_new(s) && s[0].calls_n == 0 && coder_page_load(s, cast(string) kept[0..<kn]);
   #assert s[0].turns[0].ncmds == 2 && s[0].calls[cp_nth(s, 0, -1, 0)].thought && !s[0].calls[cp_nth(s, 0, -1, 1)].thought && s[0].turns[0].agents[0].nrows == 1 && s[0].calls[cp_nth(s, 0, 0, 0)].thought;
   #assert cast(string) s[0].calls[cp_nth(s, 0, -1, 0)].out[0..<s[0].calls[cp_nth(s, 0, -1, 0)].out_n] == "**Reading the plan**\n\nI will list the files first.";
-  // thinking longer than a row holds takes more rows, cut at a word's end, and none of it is dropped
+  // thinking longer than CP_CMD_OUT stays a single Thought row in both sub-agent and main chat, and survives save/load
   long: [7000] u8; for k: 0..<7000 { long[k] = ifx k % 10 == 9 then cast(u8) 32 else cast(u8) 'a'; }
   cp_thought_add(s, 0, 0, cast(string) long[..], false);
-  #assert s[0].turns[0].agents[0].nrows == 5;
-  #assert s[0].calls[cp_nth(s, 0, 0, 1)].out_n == 2000 && s[0].calls[cp_nth(s, 0, 0, 3)].out_n == 2000 && s[0].calls[cp_nth(s, 0, 0, 4)].out_n == 1000 && s[0].calls[cp_nth(s, 0, 0, 4)].thought;
-  #assert s[0].calls[cp_nth(s, 0, 0, 1)].out[1999] == 32 && s[0].calls[cp_nth(s, 0, 0, 2)].out[0] == 'a';
-  // with no space to cut at, a row ends where it is full and not inside a character
-  for k: 0..<7000 { long[k] = ifx k % 2 == 1 then cast(u8) 0xC3 else cast(u8) 0xA9; }
-  cp_thought_add(s, 0, 0, cast(string) long[0..<2001], false);
-  #assert s[0].turns[0].agents[0].nrows == 7 && s[0].calls[cp_nth(s, 0, 0, 5)].out_n == 1999 && s[0].calls[cp_nth(s, 0, 0, 6)].out_n == 2 && s[0].calls[cp_nth(s, 0, 0, 6)].out[0] == 0xC3;
+  #assert s[0].turns[0].agents[0].nrows == 2;
+  q1 := cp_nth(s, 0, 0, 1);
+  #assert s[0].calls[q1].thought && cp_call_text(s, q1) == cast(string) long[..];
+  cp_thought_add(s, 0, -1, cast(string) long[..], false);
+  #assert s[0].turns[0].ncmds == 3;
+  qm := cp_nth(s, 0, -1, 2);
+  #assert s[0].calls[qm].thought && cp_call_text(s, qm) == cast(string) long[..];
+  kn = coder_page_save(s, kept[..]);
+  #assert kn > 0 && coder_page_new(s) && coder_page_load(s, cast(string) kept[0..<kn]);
+  #assert s[0].turns[0].agents[0].nrows == 2 && cp_call_text(s, cp_nth(s, 0, 0, 1)) == cast(string) long[..];
+  #assert s[0].turns[0].ncmds == 3 && cp_call_text(s, cp_nth(s, 0, -1, 2)) == cast(string) long[..];
+  // a thought past CP_THOUGHT_MAX stays one row and does not cut inside a UTF-8 character
+  huge: [CP_THOUGHT_MAX + 3] u8;
+  for k: 0..<CP_THOUGHT_MAX + 3 { huge[k] = ifx k % 2 == 1 then cast(u8) 0xC3 else cast(u8) 0xA9; }
+  cp_thought_add(s, 0, 0, cast(string) huge[..], false);
+  q2 := cp_nth(s, 0, 0, 2);
+  #assert s[0].turns[0].agents[0].nrows == 3 && s[0].calls[q2].thought && cp_call_text(s, q2).count == CP_THOUGHT_MAX - 1;
 }
 #test "what a sub-agent says between its tool calls is a row in its place, saved with the chat, left out of a copy; its code copies" {
   p: [1] CoderPage; s := p[..];
@@ -2140,4 +2215,20 @@ cp_find :: (text: string, needle: string) -> int {
   #assert mww_read(ar[..], "{\"kind\":\"attempt\",\"gateway\":\"vertex\",\"outcome\":\"done\",\"status\":200,\"usd_micros\":12500}", l[..]) == MWW_ATTEMPT && cp_attempt_cost(l[0]) == 12500;
   #assert mww_read(ar[..], "{\"kind\":\"attempt\",\"gateway\":\"openrouter\",\"outcome\":\"done\",\"status\":200,\"provider_cost_usd_micros\":7500,\"usd_micros\":9999}", l[..]) == MWW_ATTEMPT && cp_attempt_cost(l[0]) == 7500;
   #assert mww_read(ar[..], "{\"kind\":\"attempt\",\"gateway\":\"vertex\",\"outcome\":\"retried\",\"status\":429}", l[..]) == MWW_ATTEMPT && cp_attempt_cost(l[0]) == 0;
+}
+
+#test "desktop skin matches Claude sidebar proportions while keeping Coder monochrome palette" {
+  u: f32 = ARCADE_PHONE_SCALE;
+  k := cp_skin();
+  base := arcade_phone_skin();
+  // Structure/geometry matches Claude Desktop at 1.2x scale (280pt sidebar, 32pt rows, 26pt headers, 8pt inset/radius, 16pt pad).
+  #assert CP_SIDE == 234;
+  #assert k.app.side_row * u > 31.9f32 && k.app.side_row * u < 32.1f32;
+  #assert k.app.side_head * u > 25.9f32 && k.app.side_head * u < 26.1f32;
+  #assert k.app.row_inset * u > 7.9f32 && k.app.row_inset * u < 8.1f32;
+  #assert k.app.row_radius * u > 7.9f32 && k.app.row_radius * u < 8.1f32;
+  #assert k.app.side_pad * u > 15.9f32 && k.app.side_pad * u < 16.1f32;
+  #assert k.cmp.chip_h * u > 27.9f32 && k.cmp.chip_h * u < 28.1f32;
+  // Color palette stays Coder's own Arcade monochrome.
+  #assert k.canvas.r == base.canvas.r && k.surface.r == base.surface.r && k.ink.r == base.ink.r;
 }
