@@ -129,10 +129,11 @@ func coderSkillsNote() -> String {
     return "Skills installed on this computer. When a message is about one, read its file with cat first, then do what it says:\n" + rows.joined(separator: "\n") + "\n\nThe message:\n"
 }
 
-/// One kept chat in the list: its id (its file's name), its title, when it last changed and its working folder.
-struct CoderChat: Codable { var id: String; var title: String; var updated: Double; var folder: String }
+/// One kept chat in the list: its id (its file's name), its title, when it was created, when it last changed,
+/// its working folder, and whether the user gave it a custom title that should not be overwritten on subsequent saves.
+struct CoderChat: Codable { var id: String; var title: String; var created: Double? = nil; var updated: Double; var folder: String; var renamed: Bool? = nil }
 /// The chats kept on this Mac: ~/Library/Application Support/Coder/chats, one file a chat (ID.json,
-/// the page's text) and index.json, the list, most recent first.
+/// the page's text) and index.json, the list, newest created first.
 final class CoderStore {
     private let dir: URL
     private(set) var list: [CoderChat] = []
@@ -140,25 +141,63 @@ final class CoderStore {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first ?? FileManager.default.homeDirectoryForCurrentUser
         dir = base.appendingPathComponent("Coder/chats")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        if let data = try? Data(contentsOf: dir.appendingPathComponent("index.json")), let kept = try? JSONDecoder().decode([CoderChat].self, from: data) { list = kept }
+        if let data = try? Data(contentsOf: dir.appendingPathComponent("index.json")), let kept = try? JSONDecoder().decode([CoderChat].self, from: data) {
+            list = kept.enumerated().sorted { a, b in
+                let ta = a.element.created ?? a.element.updated
+                let tb = b.element.created ?? b.element.updated
+                return ta != tb ? ta > tb : a.offset < b.offset
+            }.map(\.element)
+        }
+    }
+    /// One-line title: collapses whitespace/tabs/newlines and clamps cleanly to 120 UTF-8 bytes (CP_CHAT_TITLE).
+    static func cleanTitle(_ raw: String) -> String {
+        let collapsed = raw.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }.joined(separator: " ")
+        var out = ""
+        var bytes = 0
+        for ch in collapsed {
+            let n = ch.utf8.count
+            if bytes + n > 120 { break }
+            out.append(ch)
+            bytes += n
+        }
+        return out
+    }
+    private func saveIndex() {
+        if let data = try? JSONEncoder().encode(list) { try? data.write(to: dir.appendingPathComponent("index.json"), options: .atomic) }
     }
     /// The list as the page reads it: one chat a line, its id, a tab, its title.
     var lines: String { list.map { $0.id + "\t" + $0.title }.joined(separator: "\n") }
     func text(_ id: String) -> String? { try? String(contentsOf: dir.appendingPathComponent(id + ".json"), encoding: .utf8) }
     func folder(_ id: String) -> String? { list.first { $0.id == id }?.folder }
     func title(_ id: String) -> String? { list.first { $0.id == id }?.title }
+    /// Renames a kept chat without changing its place in the list.
+    func rename(_ id: String, to title: String) {
+        let clean = Self.cleanTitle(title)
+        guard !clean.isEmpty, let i = list.firstIndex(where: { $0.id == id }) else { return }
+        list[i].title = clean
+        list[i].renamed = true
+        saveIndex()
+    }
     /// Deletes a chat: its file and its place in the list. It can't be brought back.
     func remove(_ id: String) {
         try? FileManager.default.removeItem(at: dir.appendingPathComponent(id + ".json"))
         list.removeAll { $0.id == id }
-        if let data = try? JSONEncoder().encode(list) { try? data.write(to: dir.appendingPathComponent("index.json"), options: .atomic) }
+        saveIndex()
     }
-    /// Keeps a chat's text and moves it to the top of the list.
+    /// Keeps a chat's text. A new chat joins the top of the list; an existing chat updates in place
+    /// so chats stay ordered chronologically by creation time (newest created first).
     func keep(id: String, title: String, folder: String, text: String) {
         guard (try? text.write(to: dir.appendingPathComponent(id + ".json"), atomically: true, encoding: .utf8)) != nil else { return }
-        list.removeAll { $0.id == id }
-        list.insert(CoderChat(id: id, title: title, updated: Date().timeIntervalSince1970, folder: folder), at: 0)
-        if let data = try? JSONEncoder().encode(list) { try? data.write(to: dir.appendingPathComponent("index.json"), options: .atomic) }
+        let now = Date().timeIntervalSince1970
+        if let i = list.firstIndex(where: { $0.id == id }) {
+            if list[i].created == nil { list[i].created = list[i].updated }
+            if list[i].renamed != true { list[i].title = title }
+            list[i].updated = now
+            list[i].folder = folder
+        } else {
+            list.insert(CoderChat(id: id, title: title, created: now, updated: now, folder: folder), at: 0)
+        }
+        saveIndex()
     }
 }
 
@@ -180,7 +219,7 @@ final class CoderRun {
     }
 }
 
-final class CoderWindow: NSObject {
+final class CoderWindow: NSObject, NSWindowDelegate {
     let window: NSWindow
     private let page: UnsafeMutableRawPointer
     private let canvas: NSView
@@ -214,7 +253,7 @@ final class CoderWindow: NSObject {
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: min(1500, (screen.width * 0.86).rounded()), height: min(1000, (screen.height * 0.88).rounded())),
                           styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         super.init()
-        window.title = "Coder"; window.minSize = NSSize(width: 420, height: 320); window.isReleasedWhenClosed = false
+        window.title = "Coder"; window.minSize = NSSize(width: 420, height: 320); window.isReleasedWhenClosed = false; window.delegate = self
         canvas.frame = window.contentLayoutRect; canvas.autoresizingMask = [.width, .height]
         window.contentView = canvas
         cd_on_change(page, { raw in guard let raw else { return }; Unmanaged<CoderWindow>.fromOpaque(raw).takeUnretainedValue().wake() },
@@ -419,9 +458,36 @@ final class CoderWindow: NSObject {
         window.makeFirstResponder(editor)
         wake()
     }
+    /// The chat that is shown, when it is kept: File > Rename Chat acts on it.
+    var canRename: Bool { chat != nil }
+    func renameShown() { if let id = chat { rename(id) } }
     /// The chat that is shown, when it is kept and no reply is running: File > Delete Chat acts on it.
     var canDelete: Bool { chat != nil && cd_running(page) == 0 }
     func deleteShown() { if let id = chat { delete(id) } }
+    /// Asks for a new title, then renames a kept chat.
+    func rename(_ id: String) {
+        guard let current = store.title(id) else { return }
+        let alert = NSAlert()
+        alert.messageText = "Rename Chat"
+        alert.informativeText = "Enter a new title for this chat."
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 320, height: 24))
+        field.stringValue = current
+        field.placeholderString = "Chat title"
+        alert.accessoryView = field
+        alert.addButton(withTitle: "Rename")
+        alert.addButton(withTitle: "Cancel")
+        alert.window.initialFirstResponder = field
+        alert.beginSheetModal(for: window) { [weak self] answer in
+            guard let self else { return }
+            defer { self.window.makeFirstResponder(self.editor) }
+            guard answer == .alertFirstButtonReturn else { return }
+            let title = CoderStore.cleanTitle(field.stringValue)
+            guard !title.isEmpty else { return }
+            self.store.rename(id, to: title)
+            cd_chats(self.page, self.chatLines)
+            self.wake()
+        }
+    }
     /// Whether a reply is running in a chat, shown or out of view: it can't be deleted then.
     private func busy(_ id: String) -> Bool { runs[id] != nil || (id == chat && cd_running(page) != 0) }
     /// Asks, then deletes a kept chat. Deleting the one that is shown starts a new chat. Not while a
@@ -478,8 +544,9 @@ final class CoderWindow: NSObject {
             }
         }
     }
+    @objc private func renameFromMenu(_ item: NSMenuItem) { if let id = item.representedObject as? String { rename(id) } }
     @objc private func deleteFromMenu(_ item: NSMenuItem) { if let id = item.representedObject as? String { delete(id) } }
-    /// A right-click on a chat in the sidebar: a menu with Delete Chat.
+    /// A right-click on a chat in the sidebar: a context menu with Rename Chat and Delete Chat.
     private func rightClick(_ event: NSEvent) -> Bool {
         guard event.window === window else { return false }
         let at = canvas.convert(event.locationInWindow, from: nil), scale = window.backingScaleFactor
@@ -487,17 +554,20 @@ final class CoderWindow: NSObject {
         let y = canvas.isFlipped ? at.y : canvas.bounds.height - at.y
         guard cd_chat_at(page, Float(at.x * scale), Float(y * scale), &out, Int32(out.count)) > 0 else { return false }
         let id = String(cString: out), menu = NSMenu()
-        let item = menu.addItem(withTitle: "Delete Chat…", action: #selector(deleteFromMenu(_:)), keyEquivalent: "")
-        item.target = self; item.representedObject = id
-        item.isEnabled = !busy(id)
+        let renameItem = menu.addItem(withTitle: "Rename Chat…", action: #selector(renameFromMenu(_:)), keyEquivalent: "")
+        renameItem.target = self; renameItem.representedObject = id
+        menu.addItem(.separator())
+        let deleteItem = menu.addItem(withTitle: "Delete Chat…", action: #selector(deleteFromMenu(_:)), keyEquivalent: "")
+        deleteItem.target = self; deleteItem.representedObject = id
+        deleteItem.isEnabled = !busy(id)
         menu.autoenablesItems = false
         NSMenu.popUpContextMenu(menu, with: event, for: canvas)
         return true
     }
     private var monitor: Any?
 
-    /// Keeps a chat: its file, and its place at the top of the list. The shown one, or one whose
-    /// reply runs out of view.
+    /// Keeps a chat: its file, and its entry in the list (at the top when new, in place when updated).
+    /// The shown one, or one whose reply runs out of view.
     private func keep(_ which: CoderRun? = nil) {
         let r = which ?? run, shown = r === run
         let id = (shown ? chat : r.chat) ?? UUID().uuidString.lowercased()
@@ -545,6 +615,12 @@ final class CoderWindow: NSObject {
         if editor.frame != frame { editor.frame = frame; wake() }
     }
 
+    var runningCount: Int {
+        (cd_running(page) != 0 ? 1 : 0) + runs.values.filter { cd_running($0.page) != 0 }.count
+    }
+    func show() { window.makeKeyAndOrderFront(nil); wake() }
+    func windowShouldClose(_ sender: NSWindow) -> Bool { window.orderOut(nil); return false }
+
     func retire() {
         if chat != nil { keep() }
         for back in runs.values { keep(back); back.stop(); cd_close(back.page) }
@@ -556,17 +632,51 @@ final class CoderWindow: NSObject {
 
 final class CoderDelegate: NSObject, NSApplicationDelegate {
     var main: CoderWindow?
+    private var statusItem: NSStatusItem?
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard let resources = Bundle.main.resourceURL?.appendingPathComponent("Components").path, let main = CoderWindow(resources: resources) else {
             fputs("Coder: the GPU surface could not start.\n", stderr); exit(1)
         }
         self.main = main
+        let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        if let button = statusItem.button {
+            let image = NSImage(systemSymbolName: "terminal", accessibilityDescription: "Coder")
+            image?.isTemplate = true
+            button.image = image
+        }
+        let menu = NSMenu()
+        let showItem = menu.addItem(withTitle: "Show Coder", action: #selector(showWindow), keyEquivalent: "")
+        showItem.target = self
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Quit Coder", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        statusItem.menu = menu
+        self.statusItem = statusItem
         NSApp.activate(ignoringOtherApps: true)
     }
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+    @objc private func showWindow() {
+        NSApp.activate(ignoringOtherApps: true)
+        main?.show()
+    }
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag { main?.show() }
+        return true
+    }
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard let count = main?.runningCount, count > 0 else { return .terminateNow }
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = count == 1 ? "An agent task is still running" : "\(count) agent tasks are still running"
+        alert.informativeText = "Quitting Coder will stop all running tasks. Close the window instead to keep them running in the background."
+        alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: "Quit")
+        return alert.runModal() == .alertSecondButtonReturn ? .terminateNow : .terminateCancel
+    }
     func applicationWillTerminate(_ notification: Notification) { main?.retire() }
     @objc func newChat(_ sender: Any?) { main?.newChat() }
     @objc func openFolder(_ sender: Any?) { main?.chooseFolder() }
+    @objc func renameChat(_ sender: Any?) { main?.renameShown() }
     @objc func deleteChat(_ sender: Any?) { main?.deleteShown() }
     @objc func biggerText(_ sender: Any?) { main?.zoom(1) }
     @objc func smallerText(_ sender: Any?) { main?.zoom(-1) }
@@ -576,6 +686,7 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
     // Open Folder is off while the shown chat's reply runs, as its button is. New Chat is always on:
     // a running reply goes on out of view.
     @objc func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        if item.action == #selector(renameChat(_:)) { return main?.canRename == true }
         if item.action == #selector(deleteChat(_:)) { return main?.canDelete == true }
         if item.action == #selector(openFolder(_:)) { return main?.canFolder == true }
         return true
@@ -592,6 +703,7 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         file.addItem(withTitle: "New Chat", action: #selector(CoderDelegate.newChat(_:)), keyEquivalent: "n").target = delegate
         file.addItem(withTitle: "Open Folder…", action: #selector(CoderDelegate.openFolder(_:)), keyEquivalent: "o").target = delegate
         file.addItem(.separator())
+        file.addItem(withTitle: "Rename Chat…", action: #selector(CoderDelegate.renameChat(_:)), keyEquivalent: "").target = delegate
         let del = file.addItem(withTitle: "Delete Chat…", action: #selector(CoderDelegate.deleteChat(_:)), keyEquivalent: "\u{8}")
         del.target = delegate; del.keyEquivalentModifierMask = [.command]
         fileItem.submenu = file

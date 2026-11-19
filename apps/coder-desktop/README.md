@@ -20,7 +20,7 @@ the typing mark and notices. The shared AppKit editor
 - **The copy icon under a message** copies that message: yours as you wrote it, a reply as its Markdown.
 - **The copy icon in the top right corner**, beside New chat, copies the whole chat: each message under `You:`, each command under `Ran:`, each reply under `Microcoder:`. Command output and thoughts are not included.
 - **Click a reply** to see who wrote it (Microcoder and its model), beside the reply's copy icon. Click again to hide it.
-- **The sidebar** on the left lists your chats, most recent at the top. Click one to open it, or press **Command-1** through **Command-9** to open the first nine chats from the top. See [Saved chats](#saved-chats).
+- **The sidebar** on the left lists your chats in chronological order, newest created at the top. Click one to open it, or press **Command-1** through **Command-9** to open the first nine chats from the top. See [Saved chats](#saved-chats).
 - **Sub-agents** take work Microcoder hands over. See [Sub-agents](#sub-agents).
 
 Limits, all shown on screen when you reach them:
@@ -160,8 +160,9 @@ Coder keeps every chat on this Mac (#13661). It saves a chat when you send a
 message, when a reply ends and when you quit: the messages, the replies, the commands with
 their output, the thoughts, and the sub-agents with their tool calls, the calls' output, their thoughts and their replies.
 
-The sidebar lists the chats, most recent at the top. A chat moves to the top
-when you send a message in it. Click a chat to open it:
+The sidebar lists the chats in chronological order by creation time, newest
+created at the top. Clicking or updating a chat keeps it in its place. Click
+a chat to open it:
 
 - It shows as it was. A message that was still running when Coder quit shows as stopped.
 - The working folder becomes the one the chat used, if that folder still exists.
@@ -177,13 +178,14 @@ The chats are files in `~/Library/Application Support/Coder/chats`: one
 `ID.json` for each chat and `index.json`, the list. Nothing is sent
 anywhere.
 
-To delete a chat, right-click it in the sidebar and choose Delete Chat. For
-the chat that is shown, File > Delete Chat (Command-Delete) does the same.
-Coder asks first. The chat's file is deleted and can't be brought back.
-Deleting the chat that is shown starts a new chat. You can't delete a chat
-while a reply is running in it.
+To rename or delete a chat, right-click it in the sidebar and choose Rename
+Chat or Delete Chat. For the chat that is shown, File > Rename Chat and
+File > Delete Chat (Command-Delete) do the same. Deleting asks first; the
+chat's file is deleted and can't be brought back, and deleting the chat that
+is shown starts a new chat. You can't delete a chat while a reply is running
+in it.
 
-To open the Nth most recent chat at launch (1 is the newest):
+To open the Nth chat from the top at launch (1 is the newest):
 
 ```sh
 open -n apps/coder-desktop/build/Coder.app --args --chat 1
