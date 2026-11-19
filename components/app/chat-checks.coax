@@ -121,3 +121,37 @@ APP_TEST_MD :: "## Plan\n\nRead the **composer** and *fix* [the test](https://ex
   sh := surface_sheet(t[0].sf[..]); s := arcade_phone_skin();
   #assert sh.under[0].fill.a == s.muted.a && sh.under[2].fill.a == s.muted.a && sh.under[2].w == s.app.dot;
 }
+
+#test "app chat: a person's message past five lines folds with its foot fading and Show more under it; open, Show less and the whole text" {
+  t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..]; s := arcade_phone_skin(); a := s.app; line := s.md.line;
+  long := "1\n2\n3\n4\n5\n6\n7\n8";
+  app_test_begin(t[..], "", "", true);
+  h := app_message_user_fold(f, "m.1", 0, 0, 300, long, false, 9);
+  short := app_message_user_fold(f, "m.2", 0, 400, 300, "hi", false, 9);
+  plain := app_message_user(f, "m.3", 0, 600, 300, long);
+  #assert app_test_end(t[..]);
+  #assert abs(h - (5 * line + a.bubble_more_gap + s.label.line + 2 * a.bubble_pad_y)) < 0.01 && app_test_label(t[..], "m.1.more") == "Show more";
+  #assert app_test_pressable(t[..], "m.1.more") && app_test_row(t[..], "m.1.more").action == 9 && app_test_has(t[..], "m.1.more", EL_S_EXPANDS);
+  #assert app_test_find(t[..], "m.2.more") < 0 && short == line + 2 * a.bubble_pad_y && app_test_find(t[..], "m.3.more") < 0 && abs(plain - (8 * line + 2 * a.bubble_pad_y)) < 0.01;
+  #assert app_test_texts(t[..], "6") == 1 && app_test_texts(t[..], "8") == 1 && app_test_prims(t[..], PRIM_FADE) >= 2;   // the plain one shows all; the folded one fades
+  app_test_begin(t[..], "", "", true);
+  o := app_message_user_fold(f, "m.1", 0, 0, 300, long, true, 9);
+  #assert app_test_end(t[..]) && abs(o - (h + 3 * line)) < 0.01 && app_test_label(t[..], "m.1.more") == "Show less" && app_test_has(t[..], "m.1.more", EL_S_EXPANDED);
+}
+
+#test "app chat: Jump to latest rises in when shown, says New reply with a dot while one is written, and sinks away when not" {
+  t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..]; a := arcade_phone_skin().app;
+  app_test_begin(t[..], "", "", true);
+  #assert app_jump_pill(f, "jump", 150, 500, "Jump to latest", false, true, 6);
+  #assert app_test_end(t[..]) && app_test_label(t[..], "jump") == "Jump to latest" && app_test_pressable(t[..], "jump");
+  r := app_test_row(t[..], "jump");
+  #assert r.h == a.pill_h && r.y + r.h == 500 && abs(r.x + r.w / 2 - 150) < 0.5;
+  app_test_begin(t[..], "", "", false);
+  #assert app_jump_pill(f, "jump", 150, 500, "New reply", true, true, 6) && app_test_end(t[..]) && app_test_label(t[..], "jump") == "New reply";
+  // no longer shown: it sinks and fades, then draws nothing
+  app_test_begin(t[..], "", "", false);
+  going := app_jump_pill(f, "jump", 150, 500, "Jump to latest", false, false, 6);
+  #assert app_test_end(t[..]) && going && app_test_find(t[..], "jump") < 0;
+  for q: 0..<20 { app_test_begin(t[..], "", "", false); going = app_jump_pill(f, "jump", 150, 500, "Jump to latest", false, false, 6); #assert app_test_end(t[..]); }
+  #assert !going;
+}

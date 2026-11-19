@@ -26,12 +26,15 @@ desktop, see [`docs/coder/desktop-evals-spec.md`](../../docs/coder/desktop-evals
 - **The copy icon under a message** copies that message: yours as you wrote it, a reply as its Markdown.
 - **The copy icon in the top right corner**, beside New chat, copies the whole chat: each message under `You:`, each command under `Ran:`, each reply under `Microcoder:`. Command output and thoughts are not included.
 - **Click a reply** to see who wrote it (Microcoder and its model), beside the reply's copy icon. Click again to hide it.
+- **A message of yours** longer than five lines folds; **Show more** opens it and **Show less** folds it again.
+- **Away from the end** of the chat, **Jump to latest** (or **New reply** while one is written) floats above the composer. It glides to the end, as sending does when you have scrolled up.
 - **The sidebar** on the left lists your chats in chronological order, newest created at the top. Click one to open it, or press **Command-1** through **Command-9** to open the first nine chats from the top. See [Saved chats](#saved-chats).
 - **Sub-agents** take work Microcoder hands over. See [Sub-agents](#sub-agents).
 
 Limits, all shown on screen when you reach them:
 
-- A chat holds 24 messages. Start a new chat to send more.
+- A chat holds 1,000 messages. Start a new chat to send more. Only the messages near the view are laid out, so a long chat costs what shows; a message you have not scrolled to yet stands at an estimated height until it comes near, and what you are reading does not move when it is measured.
+- The whole chat's copy (the top right copy icon) takes up to 2,000,000 bytes.
 - A reply longer than 60,000 bytes is cut.
 - One run at a time in each chat.
 - A command's or a tool call's output is shown up to 2,000 bytes, and its text up to 400 bytes.

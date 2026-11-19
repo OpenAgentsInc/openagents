@@ -53,6 +53,7 @@ coder_page_save :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) 
     n = json_raw(out, n, ifx s[0].turns[i].cut then ",\"cut\":true" else ",\"cut\":false");
     n = json_raw(out, n, ",\"state\":"); n = json_write_int(out, n, s[0].turns[i].state);
     n = json_raw(out, n, ",\"model\":"); n = json_write_string(out, n, cp_model_id(s, s[0].turns[i].model));
+    if s[0].turns[i].state != CP_RUNNING && s[0].turns[i].took >= 0 { n = json_raw(out, n, ",\"worked\":"); n = json_write_int(out, n, cp_whole(s[0].turns[i].took)); }
     n = json_raw(out, n, ",\"note\":"); n = json_write_string(out, n, cast(string) s[0].turns[i].note[0..<s[0].turns[i].note_n]);
     if s[0].turns[i].steered_n > 0 {
       n = json_raw(out, n, ",\"steers\":["); from := 0; k := 0;
@@ -106,9 +107,12 @@ coder_page_load :: (s: [] CoderPage, text: string) -> bool #export_c #effects(al
   turns := cl_raw(text, "turns");
   count := cl_count(turns); if count > CP_TURNS { count = CP_TURNS; }
   ar := [1] ClArena.[ClArena.{buf = s[0].arena[..]}];
-  s[0].nturns = 0; cp_calls_reset(s); cp_fu_reset(s);
+  s[0].nturns = 0; cp_calls_reset(s); cp_fu_reset(s); cp_docs_reset(s);
   for i: 0..<count {
     s[0].nturns = i + 1; s[0].turns[i].nagents = 0;
+    worked := cl_int(cl_json(turns, cl_item(turns, i)), "worked");
+    s[0].turns[i].took = ifx worked.ok && worked.value >= 0 then cast(f32) worked.value else -1.0f32;
+    s[0].turns[i].ask_open = false; s[0].turns[i].heard = true; s[0].turns[i].seen_h = 0;
     t := cl_json(turns, cl_item(turns, i));
     ar[0].at = 0; ar[0].full = false;
     s[0].turns[i].ask_n = cp_out(s[0].turns[i].ask[..], cl_str(ar[..], t, "ask"));
@@ -186,7 +190,7 @@ coder_page_load :: (s: [] CoderPage, text: string) -> bool #export_c #effects(al
       gturns := cl_int(text, "goal_turns"); s[0].goal_turns = ifx gturns.ok && gturns.value > 0 then gturns.value else 0;
     }
   }
-  s[0].nturns = count; s[0].scroll = 0; s[0].stick = true; s[0].copied_turn = -1; s[0].copied_kind = CP_COPIED_NONE; s[0].results_due = false; s[0].answer_due = false;
+  s[0].nturns = count; s[0].scroll = 0; s[0].stick = true; cp_glide_reset(s); s[0].copied_turn = -1; s[0].copied_kind = CP_COPIED_NONE; s[0].results_due = false; s[0].answer_due = false;
   s[0].live_ask = -1; s[0].live_reply = -1; s[0].live_call = -1; s[0].live_pane = -1;
   s[0].kept_turns = count; s[0].kept_running = false; s[0].kept_cost = s[0].cost_usd_micros; s[0].kept_budget = s[0].budget_usd_micros; s[0].kept_override = s[0].budget_override; s[0].kept_model = s[0].model;
   s[0].kept_goal_status = s[0].goal_status; s[0].kept_goal_n = s[0].goal_objective_n; s[0].kept_goal_time = s[0].goal_time_seconds; s[0].pane_open = false; s[0].pane_manual = false;
@@ -229,7 +233,7 @@ cp_new :: (s: [] CoderPage) -> bool {
   s[0].model = CP_MODEL_DEFAULT; s[0].kept_model = CP_MODEL_DEFAULT; s[0].model_menu = false;
   cp_goal_reset(s); s[0].kept_goal_status = CP_GOAL_NONE; s[0].kept_goal_n = 0; s[0].kept_goal_time = 0;
   s[0].live_ask = -1; s[0].live_reply = -1; s[0].live_call = -1; s[0].live_pane = -1;
-  s[0].scroll = 0; s[0].stick = true; s[0].copied_turn = -1; s[0].copied_kind = CP_COPIED_NONE; s[0].pane_open = false; s[0].pane_manual = false; s[0].ask = CP_ASK_NEW; return true;
+  s[0].scroll = 0; s[0].stick = true; cp_glide_reset(s); s[0].copied_turn = -1; s[0].copied_kind = CP_COPIED_NONE; s[0].pane_open = false; s[0].pane_manual = false; s[0].ask = CP_ASK_NEW; return true;
 }
 coder_page_new :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && cp_new(s); }
 // A page with no window, for a chat whose reply runs out of view.
@@ -262,7 +266,9 @@ coder_page_take :: (to: [] CoderPage, from: [] CoderPage) -> bool #export_c #eff
   to[0].fu[0] = from[0].fu[0]; from[0].fu[0] = CpFollow.{};     // the follow-ups go with the worker
   to[0].live_ask = -1; to[0].live_reply = -1; to[0].live_call = -1; to[0].live_pane = -1;
   from[0].live_ask = -1; from[0].live_reply = -1; from[0].live_call = -1; from[0].live_pane = -1;
-  to[0].scroll = 0; to[0].stick = true; to[0].pane_open = false; to[0].pane_manual = false; to[0].copied_turn = -1; to[0].copied_kind = CP_COPIED_NONE;
+  cp_docs_reset(to); cp_docs_reset(from);   // the replies' documents are parsed again where they now show
+  if from[0].rev_n > to[0].rev_n { to[0].rev_n = from[0].rev_n; }   // a reply's mark stays its own
+  to[0].scroll = 0; to[0].stick = true; cp_glide_reset(to); to[0].pane_open = false; to[0].pane_manual = false; to[0].copied_turn = -1; to[0].copied_kind = CP_COPIED_NONE;
   from[0].nturns = 0; cp_calls_reset(from); from[0].current_n = 0; from[0].answer_due = false; from[0].results_due = false;
   from[0].kept_turns = 0; from[0].kept_running = false; from[0].kept_cost = 0; from[0].cost_usd_micros = 0;
   from[0].budget_usd_micros = CP_BUDGET_DEFAULT; from[0].budget_override = false; from[0].kept_budget = CP_BUDGET_DEFAULT; from[0].kept_override = false;
@@ -270,6 +276,6 @@ coder_page_take :: (to: [] CoderPage, from: [] CoderPage) -> bool #export_c #eff
   cp_goal_reset(from); from[0].kept_goal_status = CP_GOAL_NONE; from[0].kept_goal_n = 0; from[0].kept_goal_time = 0;
   from[0].live_ask = -1; from[0].live_reply = -1; from[0].live_call = -1; from[0].live_pane = -1;
   from[0].pane_open = false; from[0].pane_manual = false; from[0].copied_turn = -1; from[0].copied_kind = CP_COPIED_NONE;
-  from[0].scroll = 0; from[0].stick = true;
+  from[0].scroll = 0; from[0].stick = true; cp_glide_reset(from);
   return true;
 }

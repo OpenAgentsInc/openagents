@@ -71,26 +71,29 @@ cp_named :: (out: [] u8, name: string, part: string, k: int) -> string {
   if k >= 0 { n = el_put_i(out, n, k); }
   return cast(string) out[0..<n];
 }
-// Turn i's activity group at (x, y), cw wide (#13731): the summary, counted in Zeron's words;
-// open while the message works or when the person opened it, its thoughts, commands, reads and
-// sub-agents in the order they came, a tree down their left. Rows out of view between top and
-// bottom keep their place and are not drawn. Returns its height, 0 when it did nothing.
+// Turn i's activity group at (x, y), cw wide (#13731): the summary, counted in Zeron's words, and
+// once the message is done "Worked for 42s · " before it (#13745); open while the message works or
+// when the person opened it, its thoughts, commands, reads and sub-agents in the order they came, a
+// tree down their left. Rows out of view between top and bottom keep their place and are not
+// drawn. Returns its height, 0 when it did nothing.
 cp_group :: (s: [] CoderPage, f: [] UiFrame, i: int, x: f32, y0: f32, cw: f32, top: f32, bottom: f32) -> f32 {
   nb: [EL_ID] u8; name := cp_named(nb[..], "t", "", i);
   live := s[0].turns[i].state == CP_RUNNING;
+  worked := ifx live || s[0].turns[i].took < 0 then -1 else cp_whole(s[0].turns[i].took);
   return cp_act_group(s, f, name, s[0].turns[i].head, s[0].turns[i].ncmds, s[0].turns[i].early_cmds, s[0].turns[i].more_cmds,
-                      i, s[0].turns[i].nagents, live, app_act_open(s[0].turns[i].fold, live), x, y0, cw, top, bottom, CP_TOOL);
+                      i, s[0].turns[i].nagents, live, app_act_open(s[0].turns[i].fold, live), worked, x, y0, cw, top, bottom, CP_TOOL);
 }
 // One activity group at (x, y0), cw wide, as the conversation and a sub-agent's pane both draw
 // it (#13731, #13744): the summary over the nrows rows from call head on (a place in the page's
 // calls plus 1, 0 for none), the early rows that went and the more that were not kept said
 // above and below them, and turn i's nagents sub-agents (0 for a sub-agent's own group) each in
-// its place among them. Its parts are named under `name`: name + ".grp" the summary (CP_GROUP),
+// its place among them; `worked`, when not negative, is the seconds it took, said before the
+// summary ("Worked for 42s · Ran 3 commands"). Its parts are named under `name`: name + ".grp" the summary (CP_GROUP),
 // name + ".x" + k each row (`row` its action), name + ".g" + j each sub-agent (CP_AGENT). Rows
 // out of view between top and bottom keep their place and are not drawn. Returns its height,
 // 0 when it did nothing.
 cp_act_group :: (s: [] CoderPage, f: [] UiFrame, name: string, head: int, nrows: int, early: int, more: int, i: int, nagents: int,
-                 live: bool, open: bool, x: f32, y0: f32, cw: f32, top: f32, bottom: f32, row: int) -> f32 {
+                 live: bool, open: bool, worked: int, x: f32, y0: f32, cw: f32, top: f32, bottom: f32, row: int) -> f32 {
   a := f[0].skin.act; sh := f[0].sheet;
   if nrows + nagents + early + more == 0 { return 0; }
   // the summary: every kind it did, counted
@@ -104,8 +107,12 @@ cp_act_group :: (s: [] CoderPage, f: [] UiFrame, name: string, head: int, nrows:
     q = s[0].calls[q].next - 1;
   }
   for j: 0..<nagents { app_act_count(c[..], APP_ACT_AGENT, s[0].turns[i].agents[j].state == CP_FAILED); }
-  sb: [256] u8; sn := app_act_summary(sb[..], c[0]);
-  if sn == 0 { sn = el_put(sb[..], 0, "Worked"); }
+  sb: [256] u8; sn := 0;
+  said := 0;   // "Worked for 42s", once done
+  if worked >= 0 { said = el_put(sb[..], 0, "Worked for "); said = el_put_i(sb[..], said, worked); said = el_put(sb[..], said, "s"); }
+  wn := ifx said > 0 then el_put(sb[..], said, " · ") else 0;
+  sn = wn + app_act_summary(sb[wn..<sb.count], c[0]);
+  if sn == wn { sn = ifx said > 0 then said else el_put(sb[..], 0, "Worked"); }   // nothing counted: "Worked for 42s" alone
   ib: [EL_ID] u8; tb: [EL_ID] u8;
   y := y0;
   y += app_act_head(f, cp_named(ib[..], name, ".grp", -1), x, y, cw, sheet_pool(sh, cast(string) sb[0..<sn]), live, open, CP_GROUP);
@@ -145,7 +152,8 @@ cp_conversation :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, x: f32, c
   bar := ifx s[0].box.height > 0 then s[0].box.height else 80.0f32;
   top: f32 = 0; bottom := h - CP_BOTTOM - bar - s[0].fu[0].tray_h;   // what scrolls runs up to the follow-ups and the bar
   s[0].view = bottom - top;
-  if s[0].stick { s[0].scroll = s[0].content - s[0].view; if s[0].scroll < 0 { s[0].scroll = 0; } }
+  s[0].frame_n += 1; s[0].anim = false;
+  cp_follow(s, f[0].dt);
   uiframe_clip(f, left, top, w, bottom);
   y := top - s[0].scroll - s[0].scr[0].stretch + a.gap;
   // where the column reaches under a corner's buttons, the first message starts below them
@@ -161,14 +169,19 @@ cp_conversation :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, x: f32, c
     }
   }
   ib: [EL_ID] u8;
+  // Every message stands at its height as last measured, or CP_ROW_ESTIMATE before that, and only
+  // the ones near the view are laid out (#13745): a long chat costs what shows. One above the view
+  // measured at a new height moves the scroll with it, so what is read stays where it is.
   for i: 0..<s[0].nturns {
-    th := s[0].turns[i].h;
-    if th > 0 && s[0].turns[i].hw == cw && (y + th < top || y > bottom) { y += th; s[0].turns[i].ah = 0; }
+    known := s[0].turns[i].h > 0 && s[0].turns[i].hw == cw;
+    th := ifx known then s[0].turns[i].h else ifx s[0].turns[i].seen_h > 0 then s[0].turns[i].seen_h else cast(f32) CP_ROW_ESTIMATE;
+    margin := ifx known then 0.0f32 else cast(f32) CP_PANE_MARGIN;
+    if y + th < top - margin || y > bottom + margin { y += th; s[0].turns[i].ah = 0; }
     else {
       y0 := y;
       enter := f[0].skin.motion.enter;
       if s[0].live_ask != i { f[0].skin.motion.enter = 0; }
-      y += app_message_user(f, cp_id(ib[..], i, ".u"), x, y, cw, cast(string) s[0].turns[i].ask[0..<s[0].turns[i].ask_n]);
+      y += app_message_user_fold(f, cp_id(ib[..], i, ".u"), x, y, cw, cast(string) s[0].turns[i].ask[0..<s[0].turns[i].ask_n], s[0].turns[i].ask_open, CP_BUBBLE_FOLD);
       f[0].skin.motion.enter = enter; if s[0].live_ask == i { s[0].live_ask = -1; }
       asked := s[0].copied_kind == CP_COPIED_ASK && s[0].copied_turn == i;
       y += app_icon_button(f, cp_id(ib[..], i, ".uc"), x + cw - side + edge, y, ifx asked then k.icon_check else k.icon_copy, ifx asked then "Copied" else "Copy message", APP_BUTTON_QUIET, 0, CP_COPY_ASK) + a.gap_small;
@@ -180,7 +193,7 @@ cp_conversation :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, x: f32, c
       if s[0].turns[i].reply_n > 0 {
         s[0].turns[i].ay = y;
         if s[0].live_reply != i { f[0].skin.motion.enter = 0; }
-        y += app_message_agent_linked(f, cp_id(ib[..], i, ".a"), x, y, cw, s[0].turns[i].doc[..], 0, s[0].turns[i].blocks,
+        y += app_message_agent_linked(f, cp_id(ib[..], i, ".a"), x, y, cw, cp_doc_drawn(s, i), 0, s[0].turns[i].blocks,
                                       ifx s[0].copied_kind == CP_COPIED_BLOCK && s[0].copied_turn == i then s[0].copied_block else -1, CP_COPY, CP_PATH);
         f[0].skin.motion.enter = enter; if s[0].live_reply == i { s[0].live_reply = -1; }
         s[0].turns[i].ah = y - s[0].turns[i].ay;
@@ -197,7 +210,12 @@ cp_conversation :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, x: f32, c
         f[0].skin.motion.enter = enter;
       }
       st := s[0].turns[i].state;
-      if st == CP_RUNNING { y += app_working(f, cp_id(ib[..], i, ".t"), x, y, cast(int) (s[0].clock - s[0].turns[i].began), i, ifx s[0].turns[i].stopping then "Stopping…" else "") + a.gap; }
+      if st == CP_RUNNING {
+        // before its worker's first line the turn has not begun: Sending…, no clock (Zeron's sending bridge)
+        sending := !s[0].turns[i].heard && !s[0].turns[i].stopping;
+        y += app_working(f, cp_id(ib[..], i, ".t"), x, y, ifx sending then -1 else cast(int) (s[0].clock - s[0].turns[i].began), i,
+                         ifx s[0].turns[i].stopping then "Stopping…" else ifx sending then "Sending…" else "") + a.gap;
+      }
       else if st == CP_FAILED {
         if s[0].live_reply != i { f[0].skin.motion.enter = 0; }
         y += app_notice(f, cp_id(ib[..], i, ".n"), x, y, cw, cast(string) s[0].turns[i].note[0..<s[0].turns[i].note_n], APP_NOTICE_ERROR) + a.gap;
@@ -205,13 +223,19 @@ cp_conversation :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, x: f32, c
       }
       else if st == CP_STOPPED { y += app_meta(f, cp_id(ib[..], i, ".s"), x, y, cw, "Stopped", false) + a.gap; }
       if i + 1 < s[0].nturns { y += a.gap; }
-      s[0].turns[i].h = ifx st == CP_RUNNING then 0.0f32 else y - y0; s[0].turns[i].hw = cw;
+      real := y - y0;
+      if abs(real - th) > 0.5 {
+        s[0].anim = true;   // the content's height changed: one more frame settles it
+        if !s[0].stick && !s[0].glide_on && y0 + th <= top { s[0].scroll += real - th; y -= real - th; }
+      }
+      s[0].turns[i].seen_h = real;
+      s[0].turns[i].h = ifx st == CP_RUNNING then 0.0f32 else real; s[0].turns[i].hw = cw;
     }
   }
   enter0 := f[0].skin.motion.enter;
   if full && !running {
     f[0].skin.motion.enter = 0;
-    y += app_notice(f, "coder.full", x, y, cw, "This chat holds 24 messages. Start a new chat to send more.", APP_NOTICE_INFO) + a.gap;
+    y += app_notice(f, "coder.full", x, y, cw, "This chat holds 1,000 messages. Start a new chat to send more.", APP_NOTICE_INFO) + a.gap;
     f[0].skin.motion.enter = enter0;
   }
   if s[0].goal_status != CP_GOAL_NONE && s[0].goal_objective_n > 0 {
@@ -267,6 +291,27 @@ cp_conversation :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, x: f32, c
   uiframe_unclip(f);
   s[0].content = y + s[0].scroll + s[0].scr[0].stretch - top;
   app_scroll_rail(f, s[0].scr[..], w, top, s[0].scroll, s[0].content, s[0].view, s[0].view, s[0].now, s[0].reduced);
+  // away from the end long enough to mean it: the way back floats over the transcript's foot,
+  // "New reply" while one is written or came meanwhile (#13745)
+  s[0].at_end = s[0].stick || s[0].glide_on || s[0].scroll >= s[0].content - s[0].view - 2;
+  if s[0].at_end { s[0].away_t = 0; s[0].unseen = false; }
+  else if s[0].away_t < CP_AWAY { s[0].away_t += f[0].dt; s[0].anim = true; }
+  writing := running || s[0].unseen;
+  _ := app_jump_pill(f, "coder.jump", x + cw / 2, bottom - a.pill_lift, ifx writing then "New reply" else "Jump to latest", writing,
+                     s[0].nturns > 0 && !s[0].at_end && s[0].away_t >= CP_AWAY, CP_JUMP);
+}
+// Where the transcript's view rests this frame (#13745): a glide toward the end under way (outQuad
+// over CP_GLIDE, toward the end as it is now, resting there once it lands), else at the end while
+// it sticks there.
+cp_follow :: (s: [] CoderPage, dt: f32) {
+  end := s[0].content - s[0].view; if end < 0 { end = 0; }
+  if s[0].glide_on {
+    s[0].glide_t += dt;
+    p := ifx s[0].reduced then 1.0f32 else s[0].glide_t / cast(f32) CP_GLIDE;
+    if p >= 1 { s[0].glide_on = false; s[0].stick = true; }
+    else { s[0].scroll = s[0].glide_from + (end - s[0].glide_from) * ar_ease(AM_OUT_QUAD, p); s[0].anim = true; }
+  }
+  if s[0].stick { s[0].scroll = end; }
 }
 // The Foreman chat's HUD at (x, y), cw wide: its tier, budget and managed chats. Returns the height it takes.
 cp_foreman_hud :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, cw: f32, running: bool, exceeded: bool) -> f32 {

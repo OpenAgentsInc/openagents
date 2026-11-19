@@ -60,10 +60,7 @@ extension CoderWindow {
         else if let back = runs[id] { targetPage = back.page }
         else { targetPage = nil }
         if let p = targetPage {
-            var out = [CChar](repeating: 0, count: 4_000_000)
-            if cd_save(p, &out, Int32(out.count)) > 0 {
-                return String(cString: out)
-            }
+            if let text = savedChat(p, from: 4_000_000) { return text }
         }
         return store.text(id)
     }
@@ -362,10 +359,9 @@ extension CoderWindow {
             } else if let saved = store.text(id), let tmp = cd_headless() {
                 if cd_load(tmp, saved) != 0 {
                     _ = cd_set_budget_usd_micros(tmp, micros)
-                    var buf = [CChar](repeating: 0, count: 4_000_000)
-                    if cd_save(tmp, &buf, Int32(buf.count)) > 0 {
+                    if let text = savedChat(tmp, from: 4_000_000) {
                         let dir = store.folder(id) ?? folder.path
-                        store.keep(id: id, title: store.title(id) ?? "Chat", folder: dir, text: String(cString: buf))
+                        store.keep(id: id, title: store.title(id) ?? "Chat", folder: dir, text: text)
                     }
                 }
                 cd_close(tmp)
@@ -402,10 +398,9 @@ extension CoderWindow {
                 if cd_load(tmp, saved) != 0 {
                     ok = applyGoal(tmp)
                     if ok {
-                        var buf = [CChar](repeating: 0, count: 4_000_000)
-                        if cd_save(tmp, &buf, Int32(buf.count)) > 0 {
+                        if let text = savedChat(tmp, from: 4_000_000) {
                             let dir = store.folder(id) ?? folder.path
-                            store.keep(id: id, title: store.title(id) ?? "Chat", folder: dir, text: String(cString: buf))
+                            store.keep(id: id, title: store.title(id) ?? "Chat", folder: dir, text: text)
                         }
                     }
                 }

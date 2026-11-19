@@ -149,6 +149,15 @@ keyed_press :: (s: [] KeyedStore, k: int, down: bool, duration: f32, easing: int
   }
   return s[0].rows[k].press[0].value;
 }
+// A value toward 1 while `on` and back toward 0 when not, eased over `duration` (a fold opening),
+// on the press motion. An id that just appeared starts where `on` says, so a row scrolled back
+// into view does not ease again. 1 or 0 at once with reduced motion or without a row.
+keyed_toward :: (s: [] KeyedStore, k: int, on: bool, duration: f32, easing: int) -> f32 {
+  if keyed_ok(s, k) && s[0].rows[k].fresh && (s[0].rows[k].ticked & KEYED_T_PRESS) == 0 {
+    s[0].rows[k].press[0].value = ifx on then 1.0f32 else 0.0f32; s[0].rows[k].press[0].phase = ifx on then AM_ENTERED else AM_EXITED;
+  }
+  return keyed_press(s, k, on, duration, easing);
+}
 // A spring following a target (core/spring.coax's defaults, clamped). An id
 // that just appeared starts at its target: a switch that is on does not
 // slide on when its screen opens. Without a row it is the target.

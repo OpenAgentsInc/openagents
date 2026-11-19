@@ -59,6 +59,8 @@ cp_start_turn :: (s: [] CoderPage, ask_text: string, prompt_kind: int) -> bool {
   s[0].turns[i].state = CP_RUNNING; s[0].turns[i].stopping = false; s[0].turns[i].fresh = false; s[0].turns[i].h = 0;
   s[0].turns[i].model = s[0].model;
   s[0].turns[i].began = s[0].clock; s[0].turns[i].fold = APP_ACT_UNCHOSEN;
+  s[0].turns[i].heard = false; s[0].turns[i].took = -1; s[0].turns[i].ask_open = false; s[0].turns[i].seen_h = 0;
+  s[0].rev_n += 1; s[0].turns[i].rev = s[0].rev_n;
   s[0].model_menu = false;
   s[0].nturns += 1; s[0].live_ask = i; s[0].live_reply = -1; s[0].pane_manual = false;
   s[0].goal_prompt_kind = prompt_kind;
@@ -66,7 +68,7 @@ cp_start_turn :: (s: [] CoderPage, ask_text: string, prompt_kind: int) -> bool {
     s[0].goal_turns += 1;
     s[0].goal_turn_began = ifx s[0].clock > 0 then s[0].clock else 0.001f32;
   }
-  s[0].stick = true; s[0].ask = CP_ASK_SEND;
+  cp_glide_end(s); s[0].ask = CP_ASK_SEND;   // the view glides to the new message (#13745)
   return true;
 }
 cp_goal_start_or_update :: (s: [] CoderPage, objective: string) -> bool {

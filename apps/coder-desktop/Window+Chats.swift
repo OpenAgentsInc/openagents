@@ -179,15 +179,24 @@ extension CoderWindow {
             self.refocus(); self.wake()
         }
     }
+    /// A page's chat as the text the store keeps (cd_save). The buffer grows until the chat fits:
+    /// a chat has no message cap (#13745), so it can outgrow any one size. Nil when it never fits.
+    func savedChat(_ p: UnsafeMutableRawPointer, from size: Int = 32_000_000) -> String? {
+        var cap = size
+        while cap <= 1_536_000_000 {
+            var out = [CChar](repeating: 0, count: cap)
+            if cd_save(p, &out, Int32(cap)) > 0 { return String(cString: out) }
+            cap *= 2
+        }
+        return nil
+    }
     /// Keeps a chat: its file, and its entry in the list (at the top when new, in place when updated).
     /// The shown one, or one whose reply runs out of view.
     func keep(_ which: CoderRun? = nil, closing: Bool = false) {
         guard closing || !retired else { return }
         let r = which ?? run, shown = r === run
         let id = (shown ? chat : r.chat) ?? UUID().uuidString.lowercased()
-        var out = [CChar](repeating: 0, count: 32_000_000)   // 24 messages with every row and every sub-agent's rows full fit
-        guard cd_save(r.page, &out, Int32(out.count)) > 0 else { return }
-        let text = String(cString: out)
+        guard let text = savedChat(r.page) else { return }
         var name = [CChar](repeating: 0, count: 256)
         let title = cd_title(r.page, &name, Int32(name.count)) > 0 ? String(cString: name) : "New chat"
         store.keep(id: id, title: title, folder: (shown ? folder : r.folder).path, text: text)

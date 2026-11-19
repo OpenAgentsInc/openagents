@@ -291,6 +291,10 @@ UiApp :: struct {
   switch_w: f32 = 48; switch_h: f32 = 28;
   ring: f32 = 22;
   bubble_radius: f32 = 18; bubble_pad_x: f32 = 14; bubble_pad_y: f32 = 9; bubble_share: f32 = 0.84;
+  bubble_fold: f32 = 5; bubble_fade: f32 = 1.5;       // a person's message folds past this many lines, its foot fading over this many (Zeron's ds/user_message)
+  bubble_ease: f32 = 0.26; bubble_more_gap: f32 = 8;   // seconds Show more and Show less ease the height over (outQuart); the text to the control
+  pill_h: f32 = 30; pill_pad: f32 = 12; pill_gap: f32 = 8; pill_icon: f32 = 14;   // Jump to latest: its height, padding, gaps and arrow (ds/transcript)
+  pill_lift: f32 = 6; pill_rise: f32 = 8; pill_in: f32 = 0.18; pill_out: f32 = 0.12;   // above what it floats over; how far it rises; seconds in and out
   code_radius: f32 = 12; code_head: f32 = 34; code_pad: f32 = 12; code_copy_pad: f32 = 10;
   code_copy_h: f32 = 24; code_copy_x: f32 = 8; code_copy_icon: f32 = 12; code_copy_gap: f32 = 4; code_copy_edge: f32 = 5;   // a code block's Copy: Zeron's 24 tall button, its padding, icon and gap, 5 from the strip's end
   dot: f32 = 6; dot_gap: f32 = 5; dot_period: f32 = 1.2; dot_dim: f32 = 0.3;
@@ -352,6 +356,8 @@ UiSkin :: struct {
   canvas: Rgba;             // the window behind everything
   surface: Rgba;            // a panel's body
   raised: Rgba;             // a control resting on a surface: a bubble, a chip's well
+  bubble: Rgba;             // a person's message's ground (alpha 0: raised)
+  float_ground: Rgba;       // a pill floating over the transcript: Jump to latest (alpha 0: surface)
   sunk: Rgba;               // a ground set into a surface: a code block, a slot
   hairline: Rgba;           // borders and dividers
   hover: Rgba;              // the wash under a hovered control

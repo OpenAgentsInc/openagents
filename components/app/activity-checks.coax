@@ -188,3 +188,10 @@ app_act_t_is :: (c: AppActCount, want: string) -> bool {
   _ = app_act_row(f, "e.0", 0, 0, 400, r, false, 9);
   #assert app_test_end(t[..]) && app_test_find(t[..], "e.0.diff") < 0 && app_test_find(t[..], "e.0.output") >= 0;
 }
+
+#test "app activity: before the turn begins the working line says Sending… with no clock" {
+  t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..];
+  app_test_begin(t[..], "", "", true);
+  _ := app_working(f, "w", 0, 0, -1, 1, "Sending…");
+  #assert app_test_end(t[..]) && app_test_value(t[..], "w") == "Sending…" && app_test_texts(t[..], "0s") == 0 && app_test_texts(t[..], "Sending…") == 1;
+}

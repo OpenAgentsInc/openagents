@@ -40,7 +40,7 @@ coder_page_frame :: (s: [] CoderPage, out: [] f32, width: f32, height: f32, dpr:
   s[0].think[s[0].think_at].n = 0; s[0].think[s[0].think_at].nb = 0; s[0].think[s[0].think_at].nr = 0; s[0].think[s[0].think_at].ni = 0; s[0].think[s[0].think_at].nlink = 0;
   uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_font(a), k, input, s[0].time, t, s[0].reduced, false);
   cp_layout(s, f[..], w, h);
-  s[0].moving = uiframe_moving(f[..]) || cp_running(s) || cp_side_busy(s) || s[0].set_due;
+  s[0].moving = uiframe_moving(f[..]) || cp_running(s) || cp_side_busy(s) || s[0].set_due || s[0].anim;
   s[0].scr_live = live;
   s[0].set_due = false;
   if cp_overlay(s, f[..], w, h, t) { s[0].moving = true; }
@@ -148,6 +148,7 @@ coder_page_line :: (s: [] CoderPage, line: string) -> int #export_c #effects(all
   if cp_fu_line(s, kind, l[0]) { return kind; }
   if !cp_running(s) { return kind; }
   i := s[0].nturns - 1;
+  if kind != 0 { s[0].turns[i].heard = true; }   // the turn has begun: no longer Sending…
   // Each model request streams its own text. What one wrote before it ran commands is not the
   // reply: the next request's text takes its place, as the ended line's whole reply does.
   if kind == MWW_REPLY { cp_reply_set(s, i, l[0].text, !s[0].turns[i].fresh); s[0].turns[i].fresh = false; }
@@ -168,7 +169,7 @@ coder_page_line :: (s: [] CoderPage, line: string) -> int #export_c #effects(all
       s[0].live_reply = i;
     }
     cp_cmds_end(s, i);
-    s[0].turns[i].h = 0;
+    s[0].turns[i].h = 0; s[0].turns[i].took = s[0].clock - s[0].turns[i].began;
     cp_goal_on_turn_end(s, i, l[0].ending, l[0].text);
   }
   return kind;
@@ -178,6 +179,7 @@ coder_page_failed :: (s: [] CoderPage, why: string) #export_c #effects(all) {
   if s.count < 1 || !cp_running(s) { return; }
   i := s[0].nturns - 1;
   s[0].turns[i].note_n = cp_out(s[0].turns[i].note[..], why); s[0].turns[i].state = CP_FAILED; s[0].live_reply = i; s[0].turns[i].h = 0;
+  s[0].turns[i].took = s[0].clock - s[0].turns[i].began;
   cp_cmds_end(s, i);
 }
 // What the last Copy took: a code block, a person's message, a reply as its Markdown, or the whole
@@ -200,7 +202,7 @@ coder_page_copied :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all
   }
   if kind == CP_COPIED_BLOCK {
     if s[0].copied_block < 0 || s[0].copied_block >= s[0].turns[i].blocks { return 0; }
-    return cp_out(out, md_block_text(s[0].turns[i].doc[..], s[0].copied_block));
+    return cp_out(out, md_block_text(cp_doc(s, i), s[0].copied_block));
   }
   if kind == CP_COPIED_ASK { return cp_out(out, cast(string) s[0].turns[i].ask[0..<s[0].turns[i].ask_n]); }
   if kind == CP_COPIED_REPLY { return cp_out(out, cast(string) s[0].turns[i].reply[0..<s[0].turns[i].reply_n]); }

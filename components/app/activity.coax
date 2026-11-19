@@ -432,7 +432,8 @@ app_act_row :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, r: AppActRow,
 
 // The working line at (x, y): the loader, a word that rolls to another every seven seconds
 // ("Scheming…") and how long the run has gone, as Zeron's (ds/working). `seed` picks where the
-// words start; `label`, when given, is said in the word's place ("Stopping…"). Its row is live and
+// words start; `label`, when given, is said in the word's place ("Stopping…"). Negative seconds:
+// the turn has not begun ("Sending…", Zeron's sending bridge), so no clock. Its row is live and
 // busy. Returns its height.
 APP_ACT_WORDS :: [20] string.["Thinking", "Pondering", "Scheming", "Brewing", "Weaving", "Tinkering", "Musing", "Composing", "Sifting", "Untangling",
                               "Distilling", "Sketching", "Plotting", "Riffing", "Combobulating", "Percolating", "Marinating", "Noodling", "Puzzling", "Conjuring"];
@@ -449,10 +450,13 @@ app_working :: (f: [] UiFrame, id: string, x: f32, y: f32, seconds: int, seed: i
   word := sheet_pool(sh, cast(string) wb[0..<wn]);
   tx := x + a.loader + a.header_gap; ly := y + (h - s.tool.line) / 2;
   ww := sheet_text(sh, m, -1, tx, ly, s.tool.line, s.tool.face, s.muted, word);
-  eb: [24] u8; en := app_act_elapsed(eb[..], seconds);
-  took := sheet_pool(sh, cast(string) eb[0..<en]);
-  tw := sheet_text(sh, m, -1, tx + ww + a.working_gap, ly, s.tool.line, s.tool.face, s.faint, took);
-  row := uiframe_semantic(f, id, EL_PROGRESS, "Working", x, y, tx + ww + a.working_gap + tw - x, h, EL_S_BUSY | EL_S_LIVE, 0);
+  right := tx + ww;
+  if seconds >= 0 {
+    eb: [24] u8; en := app_act_elapsed(eb[..], seconds);
+    took := sheet_pool(sh, cast(string) eb[0..<en]);
+    right += a.working_gap + sheet_text(sh, m, -1, tx + ww + a.working_gap, ly, s.tool.line, s.tool.face, s.faint, took);
+  }
+  row := uiframe_semantic(f, id, EL_PROGRESS, "Working", x, y, right - x, h, EL_S_BUSY | EL_S_LIVE, 0);
   elt_value(f[0].rows, row, word);
   return h;
 }

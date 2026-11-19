@@ -128,7 +128,7 @@ cp_fu_line :: (s: [] CoderPage, kind: int, l: MwwLine) -> bool {
       text := ifx l.text.count > 0 then l.text else "(follow-up)";
       was := s[0].ask;
       if cp_start_turn(s, text, CP_GOAL_PROMPT_NONE) { s[0].ask = was; f[0].began = true; }
-      else { s[0].ask = CP_ASK_STOP; }      // the page has no room for it (24 messages, or the budget): the worker stops it
+      else { s[0].ask = CP_ASK_STOP; }      // the page has no room for it (a full chat, or the budget): the worker stops it
     }
     return true;
   }

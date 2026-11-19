@@ -17,9 +17,9 @@ cp_reply_set :: (s: [] CoderPage, i: int, text: string, more: bool) {
   if was == 0 && text.count > 0 { s[0].live_reply = i; }
   for c: text { if n >= CP_REPLY { s[0].turns[i].cut = true; break; } s[0].turns[i].reply[n] = c; n += 1; }
   s[0].turns[i].reply_n = n; s[0].turns[i].h = 0;
-  // md_parse appends: the document starts empty for each whole reply
-  s[0].turns[i].doc[0].n = 0; s[0].turns[i].doc[0].nb = 0; s[0].turns[i].doc[0].nr = 0; s[0].turns[i].doc[0].ni = 0; s[0].turns[i].doc[0].nlink = 0;
-  s[0].turns[i].blocks = md_parse(s[0].turns[i].doc[..], cast(string) s[0].turns[i].reply[0..<n], 0);
+  s[0].rev_n += 1; s[0].turns[i].rev = s[0].rev_n;
+  if !s[0].at_end && text.count > 0 { s[0].unseen = true; }   // Jump to latest says New reply
+  _ := cp_doc(s, i);   // its blocks, now
 }
 // A command or a file read joins the running turn.
 cp_cmd_add :: (s: [] CoderPage, i: int, text: string, output: string, read: bool, failed: bool) { _ = cp_call_add(s, i, -1, text, output, read, failed, false); }

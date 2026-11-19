@@ -57,6 +57,8 @@ cp_skin :: () -> UiSkin {
   k.app.bubble_pad_y = 10.0f32;
   k.app.bubble_radius = 16.0f32;
   k.app.bubble_share = 0.80f32;
+  k.bubble = zeron_dark().secondary;   // Zeron's bubble ground, #ffffff14 (zeron.prose.bubble.bg)
+  k.float_ground = zeron_dark().menu;  // Jump to latest on the menus' solid ground (zeron.menu.solid)
   k.app.code_head = 32.0f32;
   k.app.code_pad = 14.0f32;
   k.app.code_radius = 12.0f32;

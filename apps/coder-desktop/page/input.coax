@@ -11,7 +11,7 @@ cp_open_file :: (s: [] CoderPage, q: int, i: int, n: int) -> bool {
 cp_open_path :: (s: [] CoderPage) -> string {
   q := s[0].open_call; i := s[0].open_turn;
   if q >= 0 && q < s[0].calls_n { t := cast(string) s[0].calls[q].text[0..<s[0].calls[q].text_n]; return cast(string) t[cp_edit_at(t)..<t.count]; }
-  if q < 0 && i >= 0 && i < s[0].nturns { return app_message_path(s[0].turns[i].doc[..], 0, s[0].turns[i].blocks, s[0].open_file); }
+  if q < 0 && i >= 0 && i < s[0].nturns { return app_message_path(cp_doc(s, i), 0, s[0].turns[i].blocks, s[0].open_file); }
   return "";
 }
 // Row k of turn i's own rows (cp_row_id's k, counted from the rows that went) as its place in the page's calls, -1 for none.
@@ -57,6 +57,13 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
     s[0].turns[turn].h = 0;
     return true;
   }
+  if act == CP_BUBBLE_FOLD {
+    turn := cp_number(surface_id(s[0].surface[..], row), "t");
+    if turn < 0 || turn >= s[0].nturns { return false; }
+    s[0].turns[turn].ask_open = !s[0].turns[turn].ask_open; s[0].turns[turn].h = 0;
+    return true;
+  }
+  if act == CP_JUMP { cp_glide_end(s); return true; }
   if act == CP_AGENT {
     id := surface_id(s[0].surface[..], row);
     turn := cp_number(id, "t"); j := cp_number(id, ".g");
@@ -345,10 +352,22 @@ cp_scroll_at :: (s: [] CoderPage, view: int, delta: f32, kind: int, time: f64) {
     if moved { s[0].pane_stick = s[0].pane_scroll >= s[0].pane_content - s[0].pane_view - 1; }
     return;
   }
+  if moved { s[0].glide_on = false; }   // a scroll takes the view from a glide
   s[0].scroll = ui_scroll_by(s[0].scr[..], s[0].scroll, delta, s[0].content, s[0].view, kind, time, r);
   if moved && delta < 0 { s[0].stick = false; }
   if moved && s[0].scroll >= s[0].content - s[0].view - 1 { s[0].stick = true; }
 }
+// The transcript goes to its end (#13745): it glides there over CP_GLIDE (outQuad), as a send
+// does in Zeron, and rests there; from more than three views up it lands at once, and with
+// Reduce Motion it is there at once.
+cp_glide_end :: (s: [] CoderPage) {
+  end := s[0].content - s[0].view; if end < 0 { end = 0; }
+  s[0].scr[0].coasting = false;
+  if s[0].reduced || s[0].view <= 0 || end - s[0].scroll <= 0.5 || end - s[0].scroll > 3 * s[0].view { s[0].stick = true; s[0].glide_on = false; return; }
+  s[0].glide_on = true; s[0].glide_from = s[0].scroll; s[0].glide_t = 0; s[0].stick = false;
+}
+// A chat shown afresh: no glide, at its end, nothing unseen.
+cp_glide_reset :: (s: [] CoderPage) { s[0].glide_on = false; s[0].away_t = 0; s[0].unseen = false; s[0].at_end = true; }
 // Each view's coast and spring for a refresh shown at `shows`; whether any still moves.
 cp_scroll_step :: (s: [] CoderPage, shows: f64) -> bool {
   r := s[0].reduced;

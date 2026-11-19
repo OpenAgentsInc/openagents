@@ -5,7 +5,11 @@
 CP_MAX_VERTICES :: 200000;
 // A generation's declared capacity: primitives, selectable lines, hits, pooled bytes, semantic rows; then keyed ids.
 CP_UNDER :: 4096; CP_OVER :: 16384; CP_LINES :: 4096; CP_HITS :: 512; CP_POOL :: 262144; CP_ROWS :: 768; CP_KEYED :: 320;
-CP_TURNS :: 24;             // messages a chat holds; the page says so when it is full
+CP_TURNS :: 1000;           // messages a chat holds (24 until #13745); the page says so when it is full
+CP_ROW_ESTIMATE :: 96;      // a message not measured yet stands at this height until it comes near the view (Zeron's ESTIMATE)
+CP_DOCS :: 48;              // replies parsed into Markdown at once: the ones drawn this frame and the frame before, and the newest
+CP_GLIDE :: 0.38;           // seconds a send, or Jump to latest, glides to the end (Zeron's GLIDE_MS, outQuad)
+CP_AWAY :: 0.15;            // seconds away from the end before Jump to latest shows (a moment's leaving isn't)
 CP_REPLY :: 60000;          // bytes of a reply kept (the Markdown document holds 65,536)
 CP_NOTE :: 512;
 CP_STEERED :: 1024;         // bytes of the steers a message took in, kept with the chat: each steer's text (as the page keeps it, CP_FU_TEXT) and a zero byte
@@ -94,6 +98,8 @@ CP_FU_MODE :: 46;          // the composer's chip that says what Return does whi
 CP_FU_DRAFT :: 47;         // the composer's Steer or Queue while a reply runs: the draft goes that way
 // the code review beside the conversation (#13696): its corner button and Close, a tab of the pane, a file's row
 CP_REVIEW :: 48; CP_PANE_TAB :: 49; CP_REVIEW_FILE :: 50;
+CP_BUBBLE_FOLD :: 61;      // a person's long message's Show more or Show less (#13745)
+CP_JUMP :: 62;             // Jump to latest (New reply): the transcript glides to its end (#13745)
 CP_TAB_AGENT :: 0; CP_TAB_CHANGES :: 1;   // which tab the pane shows when both are open
 CP_REVIEW_EDITS :: 256;     // edits the review lists, newest kept
 CP_REVIEW_FILES :: 64;      // files it lists
@@ -104,7 +110,7 @@ CP_UPD_HIDDEN :: 0; CP_UPD_AVAILABLE :: 1; CP_UPD_DOWNLOADING :: 2; CP_UPD_READY
 CP_FOREMAN_TIER_OBSERVE :: 0; CP_FOREMAN_TIER_ASSIST :: 1; CP_FOREMAN_TIER_AUTO :: 2;
 // What was copied last (its button shows a check): a code block, a person's message, a reply, the whole chat.
 CP_COPIED_NONE :: 0; CP_COPIED_BLOCK :: 1; CP_COPIED_ASK :: 2; CP_COPIED_REPLY :: 3; CP_COPIED_ALL :: 4; CP_COPIED_PANE :: 5; CP_COPIED_SAID :: 6;
-CP_ALL :: 2000000;          // bytes the whole chat's copy may take: 24 messages and replies fit
+CP_ALL :: 2000000;          // bytes the whole chat's copy may take
 // A turn's state.
 CP_RUNNING :: 0; CP_DONE :: 1; CP_FAILED :: 2; CP_STOPPED :: 3;
 
@@ -156,7 +162,11 @@ CpTurn :: struct {
   round_who: [CP_ROUND] int; round_asked: int; ticket: int; waiting: bool;   // the sub-agents Microcoder waits for: each task's sub-agent as its number (0: not run, -1: no such paused one), how many it asked for, its ticket
   ask: [EB_TEXT] u8; ask_n: int;
   reply: [CP_REPLY] u8; reply_n: int; cut: bool;
-  doc: [1] MdDoc; blocks: int;
+  blocks: int; rev: int;      // its reply's Markdown blocks; which reply that is (cp_doc parses it when drawn)
+  ask_open: bool;             // its message, folded past five lines, was opened (Show more)
+  heard: bool;                // its worker has sent a line: until then the working row says Sending…
+  took: f32;                  // seconds it worked, once it ended; -1 not known
+  seen_h: f32;                // its height when last measured, kept when that goes stale (0: never measured)
   note: [CP_NOTE] u8; note_n: int;
   steered: [CP_STEERED] u8; steered_n: int;   // the steers it took in (#13718): "Steered into the reply", kept with the chat
   state: int; stopping: bool;
@@ -224,6 +234,12 @@ CoderPage :: struct {
   zoom: int;                  // the text size, a row of CP_ZOOMS
   px: f32; py: f32; touching: bool; pressed: [EL_ID] u8; pressed_n: int;
   scroll: f32; content: f32; view: f32; stick: bool;
+  // the transcript's way back to its end (#13745): a glide under way, how long the view has been
+  // away from the end, whether a reply came meanwhile, and whether the frame needs another
+  glide_on: bool; glide_from: f32; glide_t: f32; away_t: f32; at_end: bool; unseen: bool; anim: bool;
+  // the replies' Markdown, parsed when drawn (cp_doc): each slot's turn and reply, when it was last drawn
+  docs: [CP_DOCS] MdDoc; doc_turn: [CP_DOCS] int; doc_rev: [CP_DOCS] int; doc_frame: [CP_DOCS] int; doc_use: [CP_DOCS] int;
+  frame_n: int; rev_n: int; doc_clock: int;
   scr: [1] UiScroll; side_scr: [1] UiScroll; pane_scr: [1] UiScroll; scr_at: int; scr_live: bool; now: f64; now_host: bool;   // each view's coast, stretch and rail (components/core/scroll.coax), the view a gesture holds, the host's clock (else the page's)
   box: ComposerBox;
   ask: int; refused: int; moving: bool;
@@ -259,7 +275,8 @@ cp_init :: (s: [] CoderPage) {
     Sheet.{under = g[0].under[..], over = g[0].over[..], lines = g[0].lines[..], hits = g[0].hits[..], pool = g[0].pool[..]}, g[0].rows[..],
     Sheet.{under = g[1].under[..], over = g[1].over[..], lines = g[1].lines[..], hits = g[1].hits[..], pool = g[1].pool[..]}, g[1].rows[..]);
   s[0].keyed[0] = KeyedStore.{rows = s[0].keys[..]};
-  s[0].stick = true; s[0].copied_turn = -1; s[0].copied_block = -1;
+  s[0].stick = true; s[0].at_end = true; s[0].copied_turn = -1; s[0].copied_block = -1;
+  cp_docs_reset(s);
   s[0].live_ask = -1; s[0].live_reply = -1; s[0].live_call = -1; s[0].live_pane = -1;
   s[0].zoom = CP_ZOOM_USUAL;
   s[0].budget_usd_micros = CP_BUDGET_DEFAULT; s[0].budget_override = false;
@@ -279,11 +296,40 @@ cp_row_id :: (out: [] u8, i: int, k: int) -> string {
 }
 // "t7.a": a turn's part, named by the turn's number.
 cp_id :: (out: [] u8, i: int, part: string) -> string {
-  n := 0; out[n] = 't'; n += 1;
-  if i >= 10 { out[n] = cast(u8) ('0' + i / 10); n += 1; }
-  out[n] = cast(u8) ('0' + i % 10); n += 1;
-  for c: part { if n >= out.count { break; } out[n] = c; n += 1; }
-  return cast(string) out[0..<n];
+  n := el_put(out, 0, "t"); n = el_put_i(out, n, i);
+  return cast(string) out[0..<el_put(out, n, part)];
+}
+// No reply's Markdown is parsed (a chat read back, taken from another page, or new).
+cp_docs_reset :: (s: [] CoderPage) {
+  for c: 0..<CP_DOCS { s[0].doc_turn[c] = -1; s[0].doc_frame[c] = -2; s[0].doc_use[c] = 0; }
+}
+// Turn i's reply as Markdown: parsed into a slot of the page's few when it is not in one (#13745),
+// so a long chat keeps no document per message. A slot drawn this frame or the one before is
+// kept (what was painted points into it); past those, the one used longest ago is taken.
+cp_doc :: (s: [] CoderPage, i: int) -> [] MdDoc { c := cp_doc_slot(s, i); return s[0].docs[c..<c + 1]; }
+cp_doc_slot :: (s: [] CoderPage, i: int) -> int {
+  s[0].doc_clock += 1;
+  for c: 0..<CP_DOCS {
+    if s[0].doc_turn[c] == i && s[0].doc_rev[c] == s[0].turns[i].rev { s[0].doc_use[c] = s[0].doc_clock; return c; }
+  }
+  pick := -1;
+  for c: 0..<CP_DOCS {
+    if s[0].doc_frame[c] >= s[0].frame_n - 1 { continue; }
+    if s[0].doc_turn[c] == i { pick = c; break; }   // its own older reply, as a reply streams in
+    if pick < 0 || s[0].doc_use[c] < s[0].doc_use[pick] { pick = c; }
+  }
+  if pick < 0 { pick = 0; for c: 1..<CP_DOCS { if s[0].doc_use[c] < s[0].doc_use[pick] { pick = c; } } }
+  d := s[0].docs[pick..<pick + 1];
+  // md_parse appends: the document starts empty for each whole reply
+  d[0].n = 0; d[0].nb = 0; d[0].nr = 0; d[0].ni = 0; d[0].nlink = 0;
+  s[0].turns[i].blocks = md_parse(d, cast(string) s[0].turns[i].reply[0..<s[0].turns[i].reply_n], 0);
+  s[0].doc_turn[pick] = i; s[0].doc_rev[pick] = s[0].turns[i].rev; s[0].doc_use[pick] = s[0].doc_clock;
+  return pick;
+}
+// Turn i's reply as Markdown for this frame's paint: its slot is kept until the frame after.
+cp_doc_drawn :: (s: [] CoderPage, i: int) -> [] MdDoc {
+  c := cp_doc_slot(s, i); s[0].doc_frame[c] = s[0].frame_n;
+  return s[0].docs[c..<c + 1];
 }
 // The number after `mark` in id, -1 when it has none.
 cp_number :: (id: string, mark: string) -> int {

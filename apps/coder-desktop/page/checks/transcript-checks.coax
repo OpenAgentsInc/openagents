@@ -43,9 +43,9 @@
   #assert coder_page_set_text(s, "hello world") && coder_page_submit(s);
   #assert coder_page_line(s, "{\"kind\":\"reply\",\"text\":\"2 + 2 = 4\\n\\n```python\\nprint(\\\"Hello\"}") == MWW_REPLY;
   #assert coder_page_line(s, "{\"kind\":\"reply\",\"text\":\", world!\\\")\\n```\"}") == MWW_REPLY;
-  #assert s[0].turns[0].blocks == 2 && md_block_text(s[0].turns[0].doc[..], 1) == "print(\"Hello, world!\")";
+  #assert s[0].turns[0].blocks == 2 && md_block_text(cp_doc(s, 0), 1) == "print(\"Hello, world!\")";
   #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"2 + 2 = 4\\n\\n```python\\nprint(\\\"Hello, world!\\\")\\n```\"}") == MWW_ENDED;
-  #assert s[0].turns[0].state == CP_DONE && s[0].turns[0].blocks == 2 && md_block_text(s[0].turns[0].doc[..], 1) == "print(\"Hello, world!\")";
+  #assert s[0].turns[0].state == CP_DONE && s[0].turns[0].blocks == 2 && md_block_text(cp_doc(s, 0), 1) == "print(\"Hello, world!\")";
 }
 
 #test "a command the worker ran and a file it read join the running turn, and every one is kept" {
@@ -209,22 +209,176 @@
   #assert coder_page_icon_size(ICON_COPY) == coder_page_icon_size(ICON_COMPOSE) && coder_page_icon_size(ICON_FOLDER) == CP_ICON && coder_page_icon_size(ICON_CHECK) == CP_ICON;
 }
 
-#test "turn limit caps a chat at CP_TURNS and blocks further submissions cleanly" {
+// A frame at w by h with `reduced` motion, dt seconds after the last (the page's own frame, without the GPU).
+cp_test_frame :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32, reduced: bool) -> bool {
+  s[0].reduced = reduced; s[0].clock += 0.016;
+  uiframe_begin(f, s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), s[0].clock, 0.016, reduced, false);
+  s[0].think_at = 1 - s[0].think_at; s[0].think[s[0].think_at].n = 0; s[0].think[s[0].think_at].nb = 0; s[0].think[s[0].think_at].nr = 0; s[0].think[s[0].think_at].ni = 0; s[0].think[s[0].think_at].nlink = 0;
+  cp_layout(s, f, w, h);
+  ok := uiframe_end(f, s[0].surface[..]);
+  cp_clamp(s);
+  return ok;
+}
+// n finished turns, each asking `ask` and answered "ok N".
+cp_test_turns :: (s: [] CoderPage, n: int, ask: string) -> bool {
+  for i: 0..<n {
+    if !coder_page_set_text(s, ask) || !coder_page_submit(s) || coder_page_action(s) != CP_ASK_SEND { return false; }
+    lb: [128] u8; ln := el_put(lb[..], 0, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"ok "); ln = el_put_i(lb[..], ln, i); ln = el_put(lb[..], ln, "\"}");
+    if coder_page_line(s, cast(string) lb[0..<ln]) != MWW_ENDED { return false; }
+  }
+  return true;
+}
+cp_test_row :: (s: [] CoderPage, id: string) -> El { i := surface_find(s[0].surface[..], id); tb := surface_rows(s[0].surface[..]); return ifx i >= 0 then tb.rows[i] else El.{}; }
+
+#test "a chat holds far more than 24 messages, and a frame lays out only the ones near the view" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s); s[0].d = 1.0f32; s[0].ready = true; f: [1] UiFrame;
+  #assert cp_test_turns(s, 300, "turn");
+  #assert s[0].nturns == 300 && !cp_full(s) && CP_TURNS >= 1000;
+  for q: 0..<4 { #assert cp_test_frame(s, f[..], 1200, 800, true); }
+  // resting at the end: the newest message shows, the first and the middle are not laid out
+  #assert surface_find(s[0].surface[..], "t299.u") >= 0 && surface_find(s[0].surface[..], "t0.u") < 0 && surface_find(s[0].surface[..], "t150.u") < 0;
+  #assert s[0].turns[150].h == 0 && s[0].turns[299].h > 0;
+  // scrolled to the top: the first message, measured as it comes near; the newest is not laid out
+  s[0].stick = false; s[0].scroll = 0;
+  for q: 0..<3 { #assert cp_test_frame(s, f[..], 1200, 800, true); }
+  #assert surface_find(s[0].surface[..], "t0.u") >= 0 && surface_find(s[0].surface[..], "t299.u") < 0 && s[0].turns[0].h > 0;
+  // and it still sends
+  #assert coder_page_set_text(s, "one more") && coder_page_submit(s) && s[0].nturns == 301;
+  ib: [EL_ID] u8;
+  #assert cp_id(ib[..], 300, ".u") == "t300.u" && cp_number("t300.u.more", "t") == 300;
+}
+
+#test "rows measured above the view do not move what is read" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s); s[0].d = 1.0f32; s[0].ready = true;
+  #assert cp_test_turns(s, 60, "turn");
+  out: [200000] u8; n := coder_page_save(s, out[..]);
+  // read back: no message is measured yet
+  q: [1] CoderPage; r := q[..]; cp_init(r); r[0].d = 1.0f32; r[0].ready = true; f: [1] UiFrame;
+  #assert n > 0 && coder_page_load(r, cast(string) out[0..<n]) && r[0].nturns == 60 && r[0].turns[30].seen_h == 0;
+  for k: 0..<5 { #assert cp_test_frame(r, f[..], 1200, 800, true); }
+  r[0].stick = false;
+  // scrolled up 150 at a time until a message not measured yet comes near: each time the message
+  // highest in view moves by the scroll alone, the view moving with the ones measured above it
+  ib: [EL_ID] u8; u := -1;
+  for i: 0..<60 { if r[0].turns[i].seen_h == 0 && surface_find(r[0].surface[..], cp_id(ib[..], i + 1, ".u")) < 0 { u = i; } }
+  #assert u > 0 && r[0].turns[u].seen_h == 0;
+  anchored := false;
+  for step: 0..<20 {
+    if r[0].turns[u].seen_h > 0 { break; }
+    at := -1;
+    for i: 0..<60 { if at < 0 && surface_find(r[0].surface[..], cp_id(ib[..], i, ".u")) >= 0 && cp_test_row(r, cp_id(ib[..], i, ".u")).y >= 0 { at = i; } }
+    y0 := cp_test_row(r, cp_id(ib[..], at, ".u")).y; before := r[0].scroll;
+    r[0].scroll -= 150;
+    #assert at >= 0 && cp_test_frame(r, f[..], 1200, 800, true);
+    #assert abs(cp_test_row(r, cp_id(ib[..], at, ".u")).y - (y0 + 150)) < 0.5;
+    if abs(r[0].scroll - (before - 150)) > 1 { anchored = true; }
+  }
+  #assert r[0].turns[u].seen_h > 0 && abs(r[0].turns[u].seen_h - CP_ROW_ESTIMATE) > 1 && anchored;
+}
+
+#test "a person's message past five lines folds with Show more, eases open, and Show less folds it again" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s); s[0].d = 1.0f32; s[0].ready = true; f: [1] UiFrame;
+  #assert cp_test_turns(s, 1, "1\n2\n3\n4\n5\n6\n7\n8\n9\n10") && cp_test_turns(s, 1, "hi");
+  #assert cp_test_frame(s, f[..], 1200, 800, true);
+  k := cp_skin(); line := k.md.line;
+  u := cp_test_row(s, "t0.u");
+  #assert surface_say(s[0].surface[..], surface_find(s[0].surface[..], "t0.u.more")) == "Show more" && surface_find(s[0].surface[..], "t1.u.more") < 0;
+  folded := u.h;
+  #assert abs(folded - (5 * line + k.app.bubble_more_gap + k.label.line + 2 * k.app.bubble_pad_y)) < 0.5 && u.w <= k.app.bubble_share * s[0].col_w + 0.5;
+  // opened: the whole text; Reduce Motion lands at once
+  #assert cp_press(s, surface_find(s[0].surface[..], "t0.u.more")) && s[0].turns[0].ask_open;
+  #assert cp_test_frame(s, f[..], 1200, 800, true);
+  #assert surface_say(s[0].surface[..], surface_find(s[0].surface[..], "t0.u.more")) == "Show less" && abs(cp_test_row(s, "t0.u").h - (folded + 5 * line)) < 0.5;
+  // folded again, easing over Zeron's 260 ms: partway after one frame, folded once it lands
+  #assert cp_press(s, surface_find(s[0].surface[..], "t0.u.more")) && !s[0].turns[0].ask_open;
+  #assert cp_test_frame(s, f[..], 1200, 800, false);
+  mid := cp_test_row(s, "t0.u").h;
+  #assert mid > folded + 0.5 && mid < folded + 5 * line - 0.5;
+  for q: 0..<30 { #assert cp_test_frame(s, f[..], 1200, 800, false); }
+  #assert abs(cp_test_row(s, "t0.u").h - folded) < 0.5;
+}
+
+#test "the working row says Sending… before the turn begins, and a settled group says how long it worked" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s); s[0].d = 1.0f32; s[0].ready = true; f: [1] UiFrame;
+  #assert coder_page_set_text(s, "look") && coder_page_submit(s);
+  #assert cp_test_frame(s, f[..], 1200, 800, true);
+  tb := [1] ElTable.[surface_rows(s[0].surface[..])];
+  #assert elt_value_of(tb[..], surface_find(s[0].surface[..], "t0.t")) == "Sending…";
+  #assert coder_page_line(s, "{\"kind\":\"command\",\"command\":\"ls\",\"exit\":0,\"timed_out\":false,\"output\":\"a\"}") == MWW_COMMAND;
+  s[0].clock += 41;
+  #assert cp_test_frame(s, f[..], 1200, 800, true);
+  tb[0] = surface_rows(s[0].surface[..]);
+  #assert elt_value_of(tb[..], surface_find(s[0].surface[..], "t0.t")) != "Sending…" && surface_say(s[0].surface[..], surface_find(s[0].surface[..], "t0.grp")) == "Ran 1 command";
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"ok\"}") == MWW_ENDED;
+  #assert cp_test_frame(s, f[..], 1200, 800, true);
+  #assert surface_say(s[0].surface[..], surface_find(s[0].surface[..], "t0.grp")) == "Worked for 41s · Ran 1 command";
+  // kept with the chat
+  out: [8192] u8; n := coder_page_save(s, out[..]);
+  #assert cp_find(cast(string) out[0..<n], "\"worked\":41") > 0;
+  q: [1] CoderPage; r := q[..]; cp_init(r); r[0].d = 1.0f32; r[0].ready = true;
+  #assert coder_page_load(r, cast(string) out[0..<n]) && cp_test_frame(r, f[..], 1200, 800, true);
+  #assert surface_say(r[0].surface[..], surface_find(r[0].surface[..], "t0.grp")) == "Worked for 41s · Ran 1 command";
+}
+
+#test "away from the end Jump to latest floats over the transcript's foot, New reply while one is written; a press glides to the end" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s); s[0].d = 1.0f32; s[0].ready = true; f: [1] UiFrame;
+  #assert cp_test_turns(s, 40, "turn");
+  for q: 0..<5 { #assert cp_test_frame(s, f[..], 1200, 800, false); }
+  #assert s[0].at_end && surface_find(s[0].surface[..], "coder.jump") < 0;
+  // away: not at once, a moment later
+  s[0].stick = false; s[0].scroll = 0;
+  #assert cp_test_frame(s, f[..], 1200, 800, false) && surface_find(s[0].surface[..], "coder.jump") < 0;
+  for q: 0..<12 { #assert cp_test_frame(s, f[..], 1200, 800, false); }
+  jump := surface_find(s[0].surface[..], "coder.jump");
+  #assert jump >= 0 && surface_say(s[0].surface[..], jump) == "Jump to latest";
+  pill := cp_test_row(s, "coder.jump");
+  #assert pill.h == cp_skin().app.pill_h && pill.y + pill.h <= s[0].view;
+  // pressed: it glides from far up at once, from near over 380 ms
+  far := s[0].content - s[0].view;
+  s[0].scroll = far - s[0].view;
+  for q: 0..<12 { #assert cp_test_frame(s, f[..], 1200, 800, false); }
+  #assert cp_press(s, surface_find(s[0].surface[..], "coder.jump")) && s[0].glide_on && !s[0].stick;
+  from := s[0].scroll;
+  #assert cp_test_frame(s, f[..], 1200, 800, false) && s[0].scroll > from && s[0].scroll < s[0].content - s[0].view - 1;
+  for q: 0..<30 { #assert cp_test_frame(s, f[..], 1200, 800, false); }
+  #assert s[0].stick && !s[0].glide_on && surface_find(s[0].surface[..], "coder.jump") < 0;
+  // a reply being written while away: New reply
+  #assert coder_page_set_text(s, "more") && coder_page_submit(s);
+  for q: 0..<5 { #assert cp_test_frame(s, f[..], 1200, 800, false); }
+  s[0].stick = false; s[0].scroll = 0;
+  for q: 0..<13 { #assert cp_test_frame(s, f[..], 1200, 800, false); }
+  #assert surface_say(s[0].surface[..], surface_find(s[0].surface[..], "coder.jump")) == "New reply";
+  // Reduce Motion: a press lands at once
+  #assert cp_press(s, surface_find(s[0].surface[..], "coder.jump"));
+  s[0].reduced = true; s[0].stick = false; s[0].scroll = s[0].content - 2 * s[0].view;
+  cp_glide_end(s);
+  #assert s[0].stick && !s[0].glide_on;
+}
+
+#test "a sent message glides the view to the end when it was a little way up" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s); s[0].d = 1.0f32; s[0].ready = true; f: [1] UiFrame;
+  #assert cp_test_turns(s, 30, "turn");
+  for q: 0..<5 { #assert cp_test_frame(s, f[..], 1200, 800, false); }
+  s[0].stick = false; s[0].scroll = s[0].content - 2 * s[0].view;
+  #assert cp_test_frame(s, f[..], 1200, 800, false);
+  #assert coder_page_set_text(s, "next") && coder_page_submit(s) && s[0].glide_on;
+  for q: 0..<30 { #assert cp_test_frame(s, f[..], 1200, 800, false); }
+  #assert s[0].stick && surface_find(s[0].surface[..], "t30.u") >= 0;
+}
+
+#test "a long chat keeps few reply documents: one scrolled away is parsed again when it is needed" {
   p: [1] CoderPage; s := p[..];
   cp_init(s);
-  s[0].d = 1.0f32;
-  for i: 0..<CP_TURNS {
-    #assert !cp_full(s);
-    #assert coder_page_set_text(s, "turn") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND;
-    #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"ok\"}") == MWW_ENDED;
-  }
-  #assert s[0].nturns == CP_TURNS && cp_full(s);
-  #assert coder_page_set_text(s, "one too many") && !coder_page_submit(s);
-  #assert s[0].nturns == CP_TURNS && coder_page_action(s) == 0;
-  f: [1] UiFrame;
-  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0, 0.016, true, false);
-  cp_layout(s, f[..], 1200.0f32, 800.0f32);
-  #assert uiframe_end(f[..], s[0].surface[..]);
+  #assert cp_test_turns(s, CP_DOCS + 20, "turn");
+  d := cp_doc(s, 0);
+  #assert s[0].turns[0].blocks == 1 && md_block_text(d, 0) == "ok 0";
+  #assert md_block_text(cp_doc(s, CP_DOCS + 19), 0) == "ok 67" && md_block_text(cp_doc(s, 0), 0) == "ok 0";
 }
 
 #test "malformed and truncated wire JSON lines do not corrupt a running turn" {
