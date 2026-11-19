@@ -11,11 +11,45 @@ def die(msg, code=1):
     sys.exit(code)
 
 
-def call(method, path, payload=None, timeout=35):
+def control_file():
+    custom = os.environ.get("CODER_FOREMAN_CONTROL_FILE", "")
+    if custom:
+        return custom
+    return os.path.expanduser("~/Library/Application Support/Coder/foreman-control.json")
+
+
+def endpoint():
+    """The server's URL and a token: Foreman's own from the environment inside the Foreman chat,
+    else the operator's from the file a running Coder writes (docs/coder/foreman-control-api.md)."""
     base = os.environ.get("CODER_FOREMAN_URL", "").rstrip("/")
     token = os.environ.get("CODER_FOREMAN_TOKEN", "")
+    if base and token:
+        return base, token
+    path = control_file()
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            info = json.load(fh)
+    except FileNotFoundError:
+        die(f"foreman-ctl: Coder is not running (no {path}). Open it with: open -a Coder")
+    except (OSError, ValueError) as e:
+        die(f"foreman-ctl: cannot read {path}: {e}")
+    pid = info.get("pid")
+    if isinstance(pid, int) and pid > 0:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            die(f"foreman-ctl: Coder is not running (the one that wrote {path} has ended). Open it with: open -a Coder")
+        except PermissionError:
+            pass
+    base = str(info.get("url", "")).rstrip("/")
+    token = str(info.get("token", ""))
     if not base or not token:
-        die("foreman-ctl: CODER_FOREMAN_URL/CODER_FOREMAN_TOKEN not set (only available inside Foreman chat)")
+        die(f"foreman-ctl: {path} has no url or token")
+    return base, token
+
+
+def call(method, path, payload=None, timeout=35):
+    base, token = endpoint()
     data = None
     headers = {"X-Foreman-Token": token}
     if payload is not None:
@@ -55,7 +89,8 @@ def parse_flags(args):
 
 
 def main():
-    usage = "usage: foreman-ctl <status|list-chats|read-chat|create-chat|send-chat|control-chat|wait|events|audit|stop-all|search-repo|search-chats|tier> [args...]"
+    usage = ("usage: foreman-ctl <status|list-chats|read-chat|create-chat|send-chat|control-chat|wait|events|audit|stop-all|search-repo|search-chats|tier> [args...]\n"
+             "       foreman-ctl <info|config|set-tier TIER|foreman status|open|prompt TEXT [--steer]|stop|reset|wait [--timeout S]>   (from outside the Foreman chat)")
     if len(sys.argv) < 2:
         die(usage)
     cmd = sys.argv[1]
@@ -66,6 +101,30 @@ def main():
 
     if cmd == "status" or cmd == "tier":
         call("GET", "/v1/status")
+    elif cmd == "info":
+        call("GET", "/v1")
+    elif cmd == "config":
+        call("GET", "/v1/config")
+    elif cmd == "set-tier":
+        if not pos:
+            die("usage: foreman-ctl set-tier <observe|managed|autonomous>")
+        call("POST", "/v1/tier", {"tier": pos[0]})
+    elif cmd == "foreman":
+        sub = pos[0] if pos else "status"
+        if sub == "status":
+            call("GET", "/v1/foreman")
+        elif sub in ("open", "stop", "reset"):
+            call("POST", "/v1/foreman/" + sub, {})
+        elif sub == "prompt":
+            prompt = flags.get("prompt", "") or " ".join(pos[1:])
+            if not prompt or prompt is True:
+                die("usage: foreman-ctl foreman prompt \"...\" [--steer]")
+            call("POST", "/v1/foreman/prompt", {"prompt": prompt, "steer": bool(flags.get("steer", False))})
+        elif sub == "wait":
+            timeout_s = float(flags.get("timeout", 60))
+            call("POST", "/v1/foreman/wait", {"timeout_seconds": timeout_s}, timeout=max(30, int(timeout_s) + 20))
+        else:
+            die("usage: foreman-ctl foreman <status|open|prompt|stop|reset|wait>")
     elif cmd == "list-chats":
         payload = {
             "limit": int(flags.get("limit", 50)),

@@ -96,6 +96,7 @@ enum Foreman {
 }
 
 struct ForemanRequest {
+    let principal: ForemanPrincipal
     let method: String
     let path: String
     let query: [String: String]
@@ -325,16 +326,16 @@ final class ForemanControlServer {
     private var listenFD: Int32 = -1
     private let queue = DispatchQueue(label: "coder.foreman.server", attributes: .concurrent)
     private var stopped = false
-    let token: String
+    let token: String            // the Foreman worker's credential
+    let operatorToken: String    // the credential of a program outside the Foreman chat (ForemanOperator.swift)
     private(set) var port: UInt16 = 0
     var handler: ((ForemanRequest, @escaping (ForemanResponse) -> Void) -> Void)?
 
     var baseURL: String { port > 0 ? "http://127.0.0.1:\(port)" : "" }
 
     init() {
-        var bytes = [UInt8](repeating: 0, count: 24)
-        arc4random_buf(&bytes, bytes.count)
-        token = bytes.map { String(format: "%02x", $0) }.joined()
+        token = ForemanAPI.newToken()
+        operatorToken = ForemanAPI.newToken()
     }
 
     @discardableResult
@@ -460,7 +461,7 @@ final class ForemanControlServer {
                 if k == "x-foreman-token" { suppliedToken = v }
             }
         }
-        guard suppliedToken == token else {
+        guard let principal = ForemanAPI.principal(for: suppliedToken, foremanToken: token, operatorToken: operatorToken) else {
             sendJSON(fd, status: 401, body: ["error": "unauthorized"])
             return
         }
@@ -473,14 +474,14 @@ final class ForemanControlServer {
             }
         }
 
-        let request = ForemanRequest(method: method, path: path, query: query, payload: payload)
+        let request = ForemanRequest(principal: principal, method: method, path: path, query: query, payload: payload)
         let response: ForemanResponse
         if let handler = handler {
             var result = ForemanResponse(status: 504, body: ["error": "request timed out"])
             let sem = DispatchSemaphore(value: 0)
             var done = false
             let waitCap: Double
-            if path == "/v1/wait" {
+            if path == "/v1/wait" || path == "/v1/foreman/wait" {
                 let requested = (payload["timeout_seconds"] as? Double) ?? Double((payload["timeout_seconds"] as? Int) ?? 60)
                 waitCap = min(315, max(5, requested + 15))
             } else {

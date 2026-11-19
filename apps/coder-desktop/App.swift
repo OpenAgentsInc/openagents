@@ -412,7 +412,9 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             }
             self.handleForemanAsyncRequest(request, done: done)
         }
-        _ = foremanServer.start()
+        if foremanServer.start() {
+            ForemanControlDescriptor.write(url: foremanServer.baseURL, token: foremanServer.operatorToken, auditLog: foremanAudit.fileURL.path)
+        }
         syncFromDaemon()
         // the working folder: --folder PATH for this launch, else the one chosen last, else the home folder
         var isFolder: ObjCBool = false
@@ -667,18 +669,22 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         alert.buttons[0].hasDestructiveAction = true
         alert.beginSheetModal(for: window) { [weak self] answer in
             guard let self, answer == .alertFirstButtonReturn else { return }
-            if self.chat == Foreman.chatID {
-                if cd_running(self.page) != 0 { self.stopRun(self.run) }
-                _ = cd_new(self.page)
-                self.recallDue = false
-                var out = [CChar](repeating: 0, count: 256)
-                let n = cd_forget_line(&out, Int32(out.count)); self.run.worker.write(out, count: Int(n))
-            } else if let back = self.runs.removeValue(forKey: Foreman.chatID) {
-                self.stopRun(back); back.stop(); cd_close(back.page)
-            }
-            self.store.remove(Foreman.chatID)
-            cd_chats(self.page, self.chatLines); self.syncForemanUI(); self.wake()
+            self.resetForeman()
         }
+    }
+    /// Clears the Foreman conversation with no question asked: the menu asks first, the operator API does not.
+    private func resetForeman() {
+        if chat == Foreman.chatID {
+            if cd_running(page) != 0 { stopRun(run) }
+            _ = cd_new(page)
+            recallDue = false
+            var out = [CChar](repeating: 0, count: 256)
+            let n = cd_forget_line(&out, Int32(out.count)); run.worker.write(out, count: Int(n))
+        } else if let back = runs.removeValue(forKey: Foreman.chatID) {
+            stopRun(back); back.stop(); cd_close(back.page)
+        }
+        store.remove(Foreman.chatID)
+        cd_chats(page, chatLines); syncForemanUI(); wake()
     }
     func openForemanAuditLog() {
         let url = foremanAudit.fileURL
@@ -1210,6 +1216,11 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     }
     @objc private func stopAllFromMenu(_ item: NSMenuItem) { stopAllChats() }
     @objc private func viewAuditFromMenu(_ item: NSMenuItem) { openForemanAuditLog() }
+    @objc private func toggleOperatorTierRaiseFromMenu(_ item: NSMenuItem) {
+        let on = !UserDefaults.standard.bool(forKey: ForemanAPI.operatorTierRaiseKey)
+        UserDefaults.standard.set(on, forKey: ForemanAPI.operatorTierRaiseKey)
+        foremanAudit.record(action: "operator_tier_raise", tier: foremanTier, detail: ["allowed": on, "principal": "user"])
+    }
     @objc private func clearForemanFromMenu(_ item: NSMenuItem) { clearForemanHistory() }
     /// A right-click on the Foreman row or a chat in the sidebar.
     private func rightClick(_ event: NSEvent) -> Bool {
@@ -1227,6 +1238,9 @@ final class CoderWindow: NSObject, NSWindowDelegate {
                 ti.target = self; ti.tag = tag
                 ti.state = foremanTier.rawValue == tag ? .on : .off
             }
+            let raiseItem = menu.addItem(withTitle: "Let Programs Raise the Tier", action: #selector(toggleOperatorTierRaiseFromMenu(_:)), keyEquivalent: "")
+            raiseItem.target = self
+            raiseItem.state = UserDefaults.standard.bool(forKey: ForemanAPI.operatorTierRaiseKey) ? .on : .off
             menu.addItem(.separator())
             let auditItem = menu.addItem(withTitle: "View Audit Log…", action: #selector(viewAuditFromMenu(_:)), keyEquivalent: "")
             auditItem.target = self
@@ -1346,12 +1360,138 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     // MARK: - Foreman Control Plane
 
     private func handleForemanAsyncRequest(_ request: ForemanRequest, done: @escaping (ForemanResponse) -> Void) {
+        if let denied = ForemanAPI.authorize(principal: request.principal, method: request.method, path: request.path) {
+            foremanAudit.record(tier: foremanTier, method: request.method, path: request.path, status: denied.status, summary: "principal=\(request.principal.rawValue)", error: "operator credential required")
+            done(denied)
+            return
+        }
+        if request.method == "POST" && request.path == "/v1/foreman/wait" {
+            var payload = request.payload
+            payload["chat_ids"] = [Foreman.chatID]; payload["mode"] = "all"
+            foremanWait(payload, includeForeman: true, done: done)
+            return
+        }
         if request.method == "POST" && (request.path == "/v1/wait" || request.path == "/wait") {
             foremanWait(request.payload, done: done)
             return
         }
+        if let response = handleForemanManagement(request) {
+            done(response)
+            return
+        }
         let response = handleForemanRequest(request)
         done(response)
+    }
+
+    // MARK: - Foreman Operator API (docs/coder/foreman-control-api.md)
+
+    /// Routes that manage Foreman itself: its description, configuration and lifecycle. Nil for any other route.
+    /// ForemanAPI.authorize has already refused the operator-only ones to the Foreman worker.
+    private func handleForemanManagement(_ request: ForemanRequest) -> ForemanResponse? {
+        let payload = request.payload
+        let raiseAllowed = UserDefaults.standard.bool(forKey: ForemanAPI.operatorTierRaiseKey)
+        func audited(_ action: String, _ chatID: String? = nil, _ detail: [String: Any] = [:], _ response: ForemanResponse) -> ForemanResponse {
+            var d = detail; d["principal"] = request.principal.rawValue
+            foremanAudit.record(action: "operator:" + action, tier: foremanTier, chatID: chatID, status: response.status, detail: d)
+            return response
+        }
+        switch (request.method, request.path) {
+        case ("GET", "/v1"), ("GET", "/v1/"):
+            return ForemanResponse(status: 200, body: ForemanAPI.describe(principal: request.principal))
+        case ("GET", "/v1/config"):
+            return ForemanResponse(status: 200, body: [
+                "ok": true,
+                "api_version": ForemanAPI.version,
+                "tier": foremanTier.wireName,
+                "tier_level": foremanTier.rawValue,
+                "tier_label": foremanTier.label,
+                "operator_tier_raise": raiseAllowed,
+                "workspace": folder.path,
+                "audit_log": foremanAudit.fileURL.path,
+                "control_file": ForemanControlDescriptor.defaultURL.path
+            ])
+        case ("POST", "/v1/tier"), ("PUT", "/v1/tier"), ("POST", "/tier"), ("PUT", "/tier"):
+            let name = (payload["tier"] as? String) ?? (payload["tier"] as? Int).map(String.init) ?? ""
+            guard let tier = ForemanTier.from(name: name) else {
+                return ForemanResponse(status: 400, body: ["error": "tier must be observe, managed or autonomous"])
+            }
+            let previous = foremanTier
+            if let denied = ForemanAPI.tierChange(from: previous, to: tier, raiseAllowed: raiseAllowed) {
+                return audited("set_tier", nil, ["from": previous.wireName, "to": tier.wireName], denied)
+            }
+            setForemanTier(tier)
+            return audited("set_tier", nil, ["from": previous.wireName, "to": tier.wireName], ForemanResponse(status: 200, body: [
+                "ok": true, "tier": tier.wireName, "tier_level": tier.rawValue, "tier_label": tier.label, "previous": previous.wireName
+            ]))
+        case ("GET", "/v1/foreman"):
+            return ForemanResponse(status: 200, body: foremanState())
+        case ("POST", "/v1/foreman/open"):
+            openForeman()
+            guard isForemanShown else {
+                return ForemanResponse(status: 409, body: ["error": "Coder could not switch to the Foreman chat"])
+            }
+            return ForemanResponse(status: 200, body: foremanState())
+        case ("POST", "/v1/foreman/prompt"):
+            let prompt = ((payload["prompt"] as? String) ?? (payload["message"] as? String) ?? "")
+            guard !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                return ForemanResponse(status: 400, body: ["error": "prompt is required"])
+            }
+            let mode = ((payload["mode"] as? String) ?? "").lowercased()
+            let steer = ((payload["steer"] as? Bool) ?? false) || mode == "steer" || mode == "interrupt"
+            if busy(Foreman.chatID) && !steer {
+                return ForemanResponse(status: 409, body: ["error": "Foreman is replying. Wait for it (POST /v1/foreman/wait), stop it, or pass steer=true."])
+            }
+            openForeman()
+            guard isForemanShown else {
+                return ForemanResponse(status: 409, body: ["error": "Coder could not switch to the Foreman chat"])
+            }
+            if cd_running(page) != 0 { stopRun(run) }
+            guard cd_set_text(page, "[From the operator API]\n" + prompt) != 0, cd_submit(page) != 0 else {
+                return audited("prompt", Foreman.chatID, ["steer": steer], ForemanResponse(status: 500, body: ["error": "Coder could not send the message to Foreman"]))
+            }
+            wake()
+            return audited("prompt", Foreman.chatID, ["steer": steer, "bytes": prompt.utf8.count], ForemanResponse(status: 200, body: [
+                "ok": true, "chat_id": Foreman.chatID, "status": "running", "event_cursor": foremanEvents.latestID
+            ]))
+        case ("POST", "/v1/foreman/stop"):
+            var stopped = false
+            if isForemanShown && cd_running(page) != 0 {
+                stopRun(run); stopped = true
+            } else if let back = runs.removeValue(forKey: Foreman.chatID) {
+                stopRun(back); keep(back); back.stop(); cd_close(back.page); stopped = true
+            }
+            if stopped {
+                _ = foremanEvents.emit(type: "chat.stopped", chatID: Foreman.chatID, data: ["title": Foreman.title])
+                cd_chats(page, chatLines); syncForemanUI(); wake()
+            }
+            return audited("stop", Foreman.chatID, [:], ForemanResponse(status: 200, body: ["ok": true, "chat_id": Foreman.chatID, "status": stopped ? "stopped" : "already_idle"]))
+        case ("POST", "/v1/foreman/reset"):
+            resetForeman()
+            _ = foremanEvents.emit(type: "foreman.reset", chatID: Foreman.chatID, data: ["title": Foreman.title])
+            return audited("reset", Foreman.chatID, [:], ForemanResponse(status: 200, body: foremanState()))
+        default:
+            return nil
+        }
+    }
+
+    /// The Foreman chat as the operator API reports it.
+    private func foremanState() -> [String: Any] {
+        let managed = store.orderedList.filter { $0.managedBy == Foreman.managedTag }
+        return [
+            "ok": true,
+            "chat_id": Foreman.chatID,
+            "shown": isForemanShown,
+            "busy": busy(Foreman.chatID),
+            "status": busy(Foreman.chatID) ? "running" : "idle",
+            "has_history": store.text(Foreman.chatID) != nil,
+            "folder": store.folder(Foreman.chatID) ?? folder.path,
+            "tier": foremanTier.wireName,
+            "tier_level": foremanTier.rawValue,
+            "operator_tier_raise": UserDefaults.standard.bool(forKey: ForemanAPI.operatorTierRaiseKey),
+            "managed_chats": managed.map { $0.id },
+            "managed_running": managed.filter { busy($0.id) }.map { $0.id },
+            "event_cursor": foremanEvents.latestID
+        ]
     }
 
     private func handleForemanRequest(_ request: ForemanRequest) -> ForemanResponse {
@@ -1466,12 +1606,12 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         return ForemanResponse(status: 200, body: ["ok": true, "stopped": stopped])
     }
 
-    private func foremanWait(_ payload: [String: Any], done: @escaping (ForemanResponse) -> Void) {
+    private func foremanWait(_ payload: [String: Any], includeForeman: Bool = false, done: @escaping (ForemanResponse) -> Void) {
         let mode = ((payload["mode"] as? String) ?? "any").lowercased()
         let timeoutSec = max(1.0, min(300.0, (payload["timeout_seconds"] as? Double) ?? Double((payload["timeout_seconds"] as? Int) ?? 60)))
         var targets: [String] = []
         if let ids = payload["chat_ids"] as? [String], !ids.isEmpty {
-            targets = ids.filter { !$0.isEmpty && $0 != Foreman.chatID }
+            targets = ids.filter { !$0.isEmpty && (includeForeman || $0 != Foreman.chatID) }
         } else if let single = payload["chat_id"] as? String, !single.isEmpty {
             targets = [single]
         } else {
@@ -2083,6 +2223,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     func retire() {
         updater.stop()
         foremanServer.stop()
+        ForemanControlDescriptor.remove()
         if chat != nil { keep() }
         for back in runs.values { keep(back); back.stop(); cd_close(back.page) }
         runs = [:]

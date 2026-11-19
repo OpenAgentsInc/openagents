@@ -331,6 +331,14 @@ count (`CFBundleVersion`). The log is `~/.cache/openagents/coder-release/log`.
 coax/bin/coax test apps/coder-desktop/page.coax --library
 ```
 
+The Foreman control API (`docs/coder/foreman-control-api.md`), which lets a
+script or another agent manage Foreman in a running Coder:
+
+```sh
+apps/coder-desktop/foreman-control-test.sh          # credentials, route policy, control file, server
+apps/coder-desktop/foreman-control-test.sh --live   # also drives a built Coder.app through foreman-ctl
+```
+
 ## Files
 
 | File | What |
@@ -340,5 +348,7 @@ coax/bin/coax test apps/coder-desktop/page.coax --library
 | `host.c`, `host.h` | The page on the shared GPU carrier, as calls for Swift |
 | `carrier.c` | The shared component carrier with this page |
 | `App.swift` | The AppKit lifecycle, the window, the editor's placement, the worker processes and the kept chats' files |
+| `ForemanOperator.swift` | The Foreman control API's two credentials, route policy and control file, for programs outside the Foreman chat |
+| `foreman-control-test.sh`, `foreman-control-test.swift` | The checks of that API |
 | `build.sh` | Coax to C and Metal, the two workers' images, then clang, swiftc and codesign |
 | `install.sh` | Builds `origin/main` and keeps `/Applications/Coder.app` at it, every 15 minutes with `--agent` |
