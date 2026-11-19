@@ -11,12 +11,14 @@
 //
 // A realm's shader module names its entries and calls these with the first float of the frame's
 // block in its uniforms (`b`; photoreal-layout.coax, written by photoreal-frame.coax):
-//   pr_stand         a part's vertex where its record stands it (the scene's and the shadow's vertex)
+//   pr_stand         a part's vertex where its record stands it (the scene's and the shadow's vertex):
+//                    bent by the wind, a leaf folded away with distance, a lamp's glow kept a pixel wide
 //   pr_surface       a material's surface at a point: colour, roughness, metal, normal detail
 //   pr_shadow        how much of the sun reaches a point, from the shadow map
 //   pr_field         how much of the sky a point near the ground sees (the ground's sky field)
 //   pr_environment   what a surface mirrors: the sky, the sea and ground under the horizon
 //   pr_lit           a surface under the sun and the sky
+//   pr_lamps         the lamps' light on a surface at night: the baked field, and the lights near the eye
 //   pr_air           the air between the eye and a point
 //   pr_dome          the sky a realm draws behind its world
 //   pr_out           the frame's light as the display's colour
@@ -27,6 +29,7 @@
 #load "filmic.coax";
 #load "pbr-env.coax";
 #load "character-material.coax";
+#load "water-optics.coax";
 #load "photoreal-layout.coax";
 #load "photoreal-surfaces.coax";
 
@@ -88,7 +91,7 @@ pr_unposed :: (w:V3,u:[]f32,b:int)->V3 {
 pr_sizes :: (m:PrObj)->V3 {
   if (m.d.x==0.0f32&&m.d.y==0.0f32&&m.d.z==0.0f32) {
     // (a leaning record keeps its roll where the scale is: with no stretch it is one metre a metre)
-    if (m.b.y>3.5f32) {return v3(1.0f32,1.0f32,1.0f32);}
+    if (m.b.y>3.5f32&&m.b.y<4.5f32) {return v3(1.0f32,1.0f32,1.0f32);}
     return v3(m.b.x,m.b.x,m.b.x);
   }
   return v3(m.d.x,m.d.y,m.d.z);
@@ -121,26 +124,47 @@ pr_kept :: (w:V3,m:PrObj,u:[]f32,b:int)->V3 {
 // A leaning record's lean of a vector in its part's frame (PR_LEAN): rolled about x by its
 // roll, then pitched about z by its pitch. Any other record leaves it.
 pr_leant :: (l:V3,m:PrObj)->V3 {
-  if (m.b.y<3.5f32) {return l;}
+  if (m.b.y<3.5f32||m.b.y>4.5f32) {return l;}
   cr:f32=cos(m.b.x); sr:f32=sin(m.b.x); cp:f32=cos(m.b.z); sp:f32=sin(m.b.z);
   y:f32=l.y*cr-l.z*sr; z:f32=l.y*sr+l.z*cr;
   return v3(l.x*cp-y*sp,l.x*sp+y*cp,z);
 }
-// A part's point where its record puts it, before the platform's pose: sized, moved by its
-// motion, turned about y and set down.
-pr_placed :: (p:V3,m:PrObj,time:f32)->V3 {
+// A part's point where its record puts it, before the platform's pose: sized, turned about y,
+// set down, and moved by its motion in the wind `wind` (PR_WIND: the way it blows x, z; its speed;
+// how gusty).
+//
+// A swaying part (PR_SWAY) leans downwind by the square of the wind's speed and of the height, as
+// a stem under drag does; sways about that lean at its own pace; and takes the gusts, which cross
+// a wood as waves 45 m long moving with the wind, so neighbours bend one after another. In still
+// air only a small shiver is left.
+pr_placed_in :: (p:V3,m:PrObj,time:f32,wind:V4)->V3 {
   s:V3=pr_sizes(m);
   l:V3=v3(p.x*s.x,p.y*s.y,p.z*s.z);
-  if (m.b.y>1.5f32&&m.b.y<2.5f32) {
-    // the wind: a slow lean and a quicker shiver, both growing with the square of the height
-    k:f32=l.y*l.y*0.0016f32;
-    l=v3(l.x+k*(sin(time*0.9f32+m.b.z)+0.35f32*sin(time*2.3f32+m.b.z*1.7f32)),l.y,l.z+k*0.6f32*sin(time*1.1f32+m.b.z*2.3f32));
-  }
   if (m.b.y>0.5f32&&m.b.y<1.5f32) {l=v3(l.x,l.y+0.25f32*sin(time*0.8f32+m.b.z),l.z);}
   l=pr_leant(l,m);
   c:f32=cos(m.a.w); sn:f32=sin(m.a.w);
-  return v3(l.x*c+l.z*sn+m.a.x,l.y+m.a.y,(0.0f32-l.x)*sn+l.z*c+m.a.z);
+  w:V3=v3(l.x*c+l.z*sn+m.a.x,l.y+m.a.y,(0.0f32-l.x)*sn+l.z*c+m.a.z);
+  if (m.b.y>1.5f32&&m.b.y<2.5f32) {
+    h2:f32=l.y*l.y;
+    lean:f32=fmin(h2*0.00004f32*wind.z*wind.z,l.y*0.3f32);
+    own:f32=sin(time*1.9f32+m.b.z)+0.35f32*sin(time*3.1f32+m.b.z*1.7f32);
+    gust:f32=sin((m.a.x*wind.x+m.a.z*wind.y-time*fmax(wind.z,2.0f32))*0.14f32+0.6f32*sin(time*0.23f32+m.b.z));
+    along:f32=lean*(1.0f32+wind.w*(0.7f32*gust+0.3f32*own))+h2*0.0003f32*own;
+    across:f32=(h2*0.0002f32+lean*0.25f32*wind.w)*sin(time*1.3f32+m.b.z*2.3f32);
+    w=v3(w.x+wind.x*along-wind.y*across,w.y,w.z+wind.y*along+wind.x*across);
+  }
+  return w;
 }
+// The same in a light breeze along +x (a realm that writes no wind).
+pr_placed :: (p:V3,m:PrObj,time:f32)->V3 {return pr_placed_in(p,m,time,v4(1.0f32,0.0f32,3.0f32,0.5f32));}
+// How far a leaf marked to fold from `from` metres has folded at `dist` metres from an eye whose
+// half field's tangent is `tangent`: 0 standing, 1 gone at 1.6 times the distance. A narrow view
+// (a long lens) sees leaves from farther.
+PR_FOLD_MARK :: 8.0f32;   // a vertex whose u is under minus this is a leaf: it folds from -u metres, sinking v metres into its part
+pr_fold :: (dist:f32,from:f32,tangent:f32)->f32 {return saturate((dist*tangent*2.4f32-from)/(from*0.6f32));}
+// How many times its own size a lamp's glow `radius` metres across is drawn at `dist`: 1 near, more
+// far off, where it would be under a pixel or two (0.0027 of the view's half height).
+pr_lamp_grow :: (dist:f32,radius:f32,tangent:f32)->f32 {return fmax(1.0f32,dist*tangent*0.0027f32/fmax(radius,0.001f32));}
 // A part's vertex where its record stands it: the scene's vertex.
 pr_stand :: (id:u32,instance:u32,u:[]f32,b:int,mesh:[]f32,objects:[]PrObj)->PrV {
   m:PrObj=objects[cast(int)instance];
@@ -150,10 +174,39 @@ pr_stand :: (id:u32,instance:u32,u:[]f32,b:int,mesh:[]f32,objects:[]PrObj)->PrV 
   // a normal under unequal sizes turns by their inverse
   n:V3=normalize3(v3(mesh[o+3]/fmax(s.x,0.000001f32),mesh[o+4]/fmax(s.y,0.000001f32),mesh[o+5]/fmax(s.z,0.000001f32)));
   c:f32=cos(m.a.w); sn:f32=sin(m.a.w);
-  w:V3=pr_placed(p,m,u[b+PR_UP+3]);
+  time:f32=u[b+PR_UP+3];
+  wind:V4=wg_at4(u,b+PR_WIND);
+  eye:V3=pr_at3(u,b+PR_EYE);
+  rides:bool=m.b.w<0.5f32;
+  gone:bool=false;
+  dim:f32=1.0f32;
+  if (m.b.y>4.5f32) {
+    // a lamp's glow (PR_LAMP, PR_BEACON): off by day, a beacon dark between its flashes, and far off no smaller than
+    // a pixel or two, dimmer by the area it gained
+    level:f32=u[b+PR_LAMPS];
+    at:V3=v3(m.a.x,m.a.y,m.a.z);
+    if (rides) {at=pr_posed(at,u,b);}
+    grow:f32=pr_lamp_grow(length3(sub3(at,eye)),0.5f32*s.x,u[b+PR_EYE+3]);
+    p=scale3(p,grow);
+    dim=level*fmax(1.0f32/(grow*grow),0.004f32);
+    gone=level<0.02f32||(m.b.y>5.5f32&&sin(time*2.1f32+m.b.z)<0.0f32-0.3f32);
+  }
+  w:V3=pr_placed_in(p,m,time,wind);
   ln:V3=pr_leant(n,m);
   wn:V3=v3(ln.x*c+ln.z*sn,ln.y,(0.0f32-ln.x)*sn+ln.z*c);
-  if (m.b.w<0.5f32) {w=pr_posed(w,u,b); wn=pr_posed_dir(wn,u,b);}
+  from:f32=0.0f32-mesh[o+7];
+  if (from>=PR_FOLD_MARK) {
+    // a leaf: it flutters, and with distance sinks into the mass under it and is gone
+    seen:V3=w;
+    if (rides) {seen=pr_posed(w,u,b);}
+    fold:f32=pr_fold(length3(sub3(seen,eye)),from,u[b+PR_EYE+3]);
+    if (u[b+PR_GROUND+3]>0.5f32) {fold=1.0f32;}
+    gone=fold>=1.0f32;
+    own:f32=fract(sin(p.x*12.9898f32+p.y*78.233f32+p.z*37.719f32)*43758.5453f32);
+    flutter:f32=fmin(0.012f32+0.006f32*wind.z,0.09f32)*sin(time*(4.0f32+3.0f32*own)+own*6.2831853f32)*(1.0f32-fold);
+    w=add3(w,scale3(wn,flutter-mesh[o+8]*fold*s.x));
+  }
+  if (rides) {w=pr_posed(w,u,b); wn=pr_posed_dir(wn,u,b);}
   w=pr_kept(w,m,u,b);
   v:PrV;
   v.world=w;
@@ -162,23 +215,26 @@ pr_stand :: (id:u32,instance:u32,u:[]f32,b:int,mesh:[]f32,objects:[]PrObj)->PrV 
   v.facing=n;
   tint:V3=v3(mesh[o+9],mesh[o+10],mesh[o+11]);
   if (tint.x==0.0f32&&tint.y==0.0f32&&tint.z==0.0f32) {tint=v3(1.0f32,1.0f32,1.0f32);}
-  v.tint=mul3(tint,v3(m.c.x,m.c.y,m.c.z));
+  v.tint=scale3(mul3(tint,v3(m.c.x,m.c.y,m.c.z)),dim);
   // (a leaning record's phase is its pitch: its pattern starts at the pattern's corner)
-  v.info=v4(ifx m.d.w>0.5f32 then m.d.w else mesh[o+6],m.c.w,ifx m.b.y>3.5f32 then 0.0f32 else m.b.z,m.b.w);
+  v.info=v4(ifx m.d.w>0.5f32 then m.d.w else mesh[o+6],m.c.w,ifx (m.b.y>3.5f32&&m.b.y<4.5f32) then 0.0f32 else m.b.z,m.b.w);
   v.pos=pr_clip(w,u,b);
   // what lies on a surface is drawn a few steps of the depth buffer nearer than it
-  if (m.b.y>2.5f32) {v.pos=v4(v.pos.x,v.pos.y,v.pos.z-0.0000006f32*v.pos.w,v.pos.w);}
+  if (m.b.y>2.5f32&&m.b.y<4.5f32) {v.pos=v4(v.pos.x,v.pos.y,v.pos.z-0.0000006f32*v.pos.w,v.pos.w);}
+  if (gone) {v.pos=v4(0.0f32,0.0f32,2.0f32,1.0f32);}
   return v;
 }
-// The same vertex in the shadow map's space.
+// The same vertex in the shadow map's space. Leaves and lamps' glows cast none: a tree's shadow
+// is its hearts' and its wood's.
 pr_shadow_stand :: (id:u32,instance:u32,u:[]f32,b:int,mesh:[]f32,objects:[]PrObj)->PrShade {
   m:PrObj=objects[cast(int)instance];
   o:int=cast(int)id*12;
-  w:V3=pr_placed(v3(mesh[o],mesh[o+1],mesh[o+2]),m,u[b+PR_UP+3]);
+  w:V3=pr_placed_in(v3(mesh[o],mesh[o+1],mesh[o+2]),m,u[b+PR_UP+3],wg_at4(u,b+PR_WIND));
   if (m.b.w<0.5f32) {w=pr_posed(w,u,b);}
   w=pr_kept(w,m,u,b);
   s:PrShade;
   s.pos=pr_light_clip(w,u,b);
+  if (m.b.y>4.5f32||mesh[o+7]<=0.0f32-PR_FOLD_MARK) {s.pos=v4(0.0f32,0.0f32,2.0f32,1.0f32);}
   return s;
 }
 pr_light_clip :: (w:V3,u:[]f32,b:int)->V4 {
@@ -318,8 +374,66 @@ pr_sky :: (rd:V3,u:[]f32,b:int)->V3 {
   // the horizon's own light gives way to the ground's over a few degrees
   return mix3(above,pr_at3(u,b+PR_GROUND),saturate((0.0f32-rd.y)*9.0f32));
 }
-// The sky a realm draws behind its world: the air, the sun's disc and glare, and cloud.
-// `soft` is a pixel's width in radians (the disc's edge).
+// ---- the moon and the stars
+// The moon's disc along rd: x is how much of the pixel it covers, y how bright that part of its
+// face is (0 dark to 1 full in the sun). `moon` and `sun` are the ways to each: the face is a ball
+// lit from the sun's side, so its phase is right for where the two stand. `soft` is a pixel's
+// width in radians.
+PR_MOON_RADIUS :: 0.0046f32;   // radians: a quarter of a degree, the moon's own
+pr_moon_face :: (rd:V3,moon:V3,sun:V3,soft:f32)->V2 {
+  if (dot3(rd,moon)<0.99f32) {return v2(0.0f32,0.0f32);}
+  // the disc's own two ways across the sky
+  ax:V3=cross3(v3(0.0f32,1.0f32,0.0f32),moon);
+  if (dot3(ax,ax)<0.000001f32) {ax=v3(1.0f32,0.0f32,0.0f32);}
+  ax=normalize3(ax); ay:V3=cross3(moon,ax);
+  px:f32=dot3(rd,ax)/PR_MOON_RADIUS; py:f32=dot3(rd,ay)/PR_MOON_RADIUS;
+  r2:f32=px*px+py*py;
+  edge:f32=fmax(soft,0.00002f32)/PR_MOON_RADIUS;
+  cover:f32=1.0f32-smoothstep(1.0f32-edge,1.0f32+edge,sqrt(r2));
+  if (cover<=0.0f32) {return v2(0.0f32,0.0f32);}
+  // the ball's surface there, facing back along the way to the moon
+  nz:f32=sqrt(fmax(1.0f32-r2,0.0f32));
+  nb:V3=sub3(add3(scale3(ax,px),scale3(ay,py)),scale3(moon,nz));
+  // dusty ground sends light back nearly evenly over its lit side (no dark limb), and has seas
+  lit:f32=saturate(dot3(nb,sun)*4.0f32+0.08f32);
+  seas:f32=0.72f32+0.28f32*pr_noise2(px*2.3f32+5.0f32,py*2.3f32-3.0f32);
+  return v2(cover,lit*seas);
+}
+// The stars along rd (over the horizon): points of their own colours and brightnesses, a few
+// bright and many faint, dimmer low in the air, in whites.
+pr_stars :: (rd:V3)->V3 {
+  if (rd.y<=0.02f32) {return v3(0.0f32,0.0f32,0.0f32);}
+  k:f32=260.0f32/(rd.y+0.42f32);
+  gx:f32=rd.x*k; gz:f32=rd.z*k;
+  cx:f32=floor(gx); cz:f32=floor(gz);
+  h:f32=render_noise2(cx,cz);
+  if (h<0.955f32) {return v3(0.0f32,0.0f32,0.0f32);}
+  ox:f32=0.25f32+0.5f32*render_noise2(cx+17.0f32,cz); oz:f32=0.25f32+0.5f32*render_noise2(cx,cz+31.0f32);
+  d2:f32=(gx-cx-ox)*(gx-cx-ox)+(gz-cz-oz)*(gz-cz-oz);
+  bright:f32=(h-0.955f32)/0.045f32;
+  point:f32=saturate(1.0f32-d2/0.05f32);
+  warm:f32=render_noise2(cx-9.0f32,cz+5.0f32);
+  col:V3=mix3(v3(0.7f32,0.8f32,1.0f32),v3(1.0f32,0.86f32,0.7f32),warm);
+  return scale3(col,point*point*(0.006f32+0.09f32*bright*bright*bright)*saturate(rd.y*5.0f32));
+}
+// The moon and stars over the sky `sky` along rd, as far as the day and `hide` (cloud, 0 to 1) let them show.
+pr_night_sky :: (sky:V3,rd:V3,soft:f32,hide:f32,u:[]f32,b:int)->V3 {
+  night:f32=1.0f32-u[b+PR_SUN+3];
+  show:f32=1.0f32-hide;
+  stars:V3=v3(0.0f32,0.0f32,0.0f32);
+  if (night>0.25f32) {stars=scale3(pr_stars(rd),(night-0.25f32)*1.3333f32*show);}
+  c:V3=sky;
+  if (u[b+PR_MOON+3]>0.5f32) {
+    face:V2=pr_moon_face(rd,pr_at3(u,b+PR_MOON),pr_at3(u,b+PR_SUN),soft);
+    // its lit face is a tenth as bright as a white wall in the sun; its dark side shows the
+    // earth's light, and hides the stars behind it. The air in front of it keeps its own light.
+    stars=scale3(stars,1.0f32-face.x);
+    c=add3(c,scale3(v3(0.1f32,0.097f32,0.09f32),face.x*show*(face.y+0.004f32)));
+  }
+  return add3(c,stars);
+}
+// The sky a realm draws behind its world: the air, the sun's disc and glare, cloud, and at night
+// the moon and stars. `soft` is a pixel's width in radians (the disc's edge).
 pr_dome :: (rd:V3,soft:f32,u:[]f32,b:int)->V3 {
   sun:V3=pr_at3(u,b+PR_SUN);
   night:V3=pr_night(u[b+PR_SUN+3]);
@@ -328,10 +442,10 @@ pr_dome :: (rd:V3,soft:f32,u:[]f32,b:int)->V3 {
   sky:V3=pr_under_cloud(pr_air_light(rd,sun,hz),u,b);
   dim:V3=scale3(pr_haze_through(sun.y,hz),1.0f32-0.85f32*pr_cloud_shade(u,b));
   disc:V3=mul3(atmo_sun(rd,sun,0.0048f32,soft),dim);
-  if (u[b+PR_GROUND+3]>0.5f32) {return add3(add3(sky,disc),night);}
+  if (u[b+PR_GROUND+3]>0.5f32) {return pr_night_sky(add3(add3(sky,disc),night),rd,soft,0.0f32,u,b);}
   // (atmo_dome, with the frame's haze between the sun and its clouds)
   c:AtmoCloud=atmo_clouds(rd,sun,sky,u[b+PR_HAZE+3],1.0f32,u[b+PR_UP+3]*0.004f32);
-  return add3(add3(scale3(add3(sky,disc),1.0f32-c.hide),pr_under_cloud(mul3(c.light,mix3(v3(1.0f32,1.0f32,1.0f32),dim,0.75f32)),u,b)),night);
+  return add3(add3(scale3(pr_night_sky(add3(sky,disc),rd,soft,c.hide,u,b),1.0f32-c.hide),pr_under_cloud(mul3(c.light,mix3(v3(1.0f32,1.0f32,1.0f32),dim,0.75f32)),u,b)),night);
 }
 
 // ---- the air
@@ -442,15 +556,49 @@ pr_surface :: (v:PrV,u:[]f32,b:int,materials:[]f32)->PrSurface {
     s.albedo=scale3(s.albedo,0.8f32+0.25f32*worn+0.12f32*(grit-0.5f32));
   } else if (pattern==PR_PATTERN_LEAVES) {
     // a crown: darker inside and under, lighter at its sunward tufts
-    tuft:f32=pr_noise2(v.world.x*1.3f32+seed,v.world.z*1.3f32-v.world.y*0.9f32);
-    s.albedo=scale3(s.albedo,0.62f32+0.7f32*tuft);
+    // (on the part's own frame, so the pattern rides a bending tree)
+    tuft:f32=pr_noise2(v.local.x*1.3f32+seed,v.local.z*1.3f32-v.local.y*0.9f32);
+    fine:f32=ifx full then pr_noise2(v.local.x*7.0f32-v.local.y*3.0f32+seed,v.local.z*7.0f32+v.local.y*5.0f32) else 0.5f32;
+    s.albedo=scale3(s.albedo,(0.62f32+0.7f32*tuft)*(0.8f32+0.4f32*fine));
     s.through=0.35f32;
   } else if (pattern==PR_PATTERN_WATER) {
-    t:f32=u[b+PR_UP+3];
-    if (full) {
-      rx:f32=pr_noise2(v.world.x*0.9f32+t*0.25f32,v.world.z*0.9f32)-0.5f32; rz:f32=pr_noise2(v.world.x*0.9f32,v.world.z*0.9f32-t*0.21f32)-0.5f32;
-      s.normal=normalize3(add3(s.normal,v3(rx*0.05f32,0.0f32,rz*0.05f32)));
+    if (fl.y>0.7f32) {
+      // still water over a floor `scale` metres down (water-optics.coax): the wind's ripples on
+      // its face, and under it the floor's colour after the water's own, with the sun's net on it
+      t:f32=u[b+PR_UP+3];
+      wind:V4=wg_at4(u,b+PR_WIND);
+      depth:f32=ifx scale>0.0f32 then scale else 1.2f32;
+      amp:f32=fmin(0.02f32+0.011f32*wind.z,0.16f32);
+      run:f32=t*(0.12f32+0.03f32*wind.z);
+      qx:f32=f.x-wind.x*run; qz:f32=f.y-wind.y*run;
+      rx:f32=(pr_noise2(qx*1.7f32+seed,qz*1.7f32)-0.5f32)+0.5f32*(pr_noise2(qx*5.1f32-t*0.4f32,qz*5.1f32+seed)-0.5f32);
+      rz:f32=(pr_noise2(qx*1.7f32+19.0f32,qz*1.7f32-seed)-0.5f32)+0.5f32*(pr_noise2(qx*5.1f32+7.0f32,qz*5.1f32+t*0.37f32)-0.5f32);
+      s.normal=normalize3(add3(s.normal,v3(rx*amp,0.0f32,rz*amp)));
+      toward:V3=normalize3(sub3(pr_at3(u,b+PR_EYE),v.world));
+      ci:f32=fmax(dot3(s.normal,toward),0.03f32);
+      // down to the floor along the sun's way in the water and back up along the eye's
+      sun_in:f32=wo_cos_refracted(fmax(u[b+PR_SUN+1],0.05f32));
+      body:V3=wo_through(v3(0.42f32,0.075f32,0.035f32),depth/wo_cos_refracted(ci)+depth/sun_in);
+      net:f32=ifx full then 1.0f32+0.5f32*(wo_caustic(v2(f.x*1.4f32,f.y*1.4f32),t)-0.18f32)*u[b+PR_SUN+3] else 1.0f32;
+      s.albedo=scale3(mul3(s.albedo,body),WO_LEAVING*1.6f32*net);
+      s.rough=0.04f32; s.metal=0.0f32;
     }
+  } else if (pattern==PR_PATTERN_GRAVEL) {
+    grit:f32=pr_noise2(f.x*23.0f32+seed,f.y*23.0f32);
+    stone:f32=pr_noise2(f.x*61.0f32,f.y*61.0f32-seed);
+    rake:f32=pr_cloud2(f.x*0.35f32,f.y*0.35f32);
+    s.albedo=scale3(s.albedo,(0.78f32+0.26f32*grit+0.2f32*(stone-0.5f32))*(0.9f32+0.2f32*rake));
+    if (full) {s.normal=normalize3(add3(s.normal,v3((grit-0.5f32)*0.3f32,0.0f32,(stone-0.5f32)*0.3f32)));}
+  } else if (pattern==PR_PATTERN_BLOOM) {
+    // ground cover in the material's own colour, and flowers in the record's tint where a
+    // plant stands in bloom: more of them toward a bed's middle clumps
+    row_c:V3=pr_decode(v3(materials[row],materials[row+1],materials[row+2]));
+    tuft:f32=pr_noise2(v.local.x*2.1f32+seed,v.local.z*2.1f32-v.local.y);
+    clump:f32=pr_cloud2(v.local.x*0.35f32-seed,v.local.z*0.35f32+seed);
+    cellx:f32=floor(v.local.x*6.0f32+v.local.y*2.0f32); cellz:f32=floor(v.local.z*6.0f32-v.local.y*2.0f32);
+    flower:f32=stepf(1.0f32-0.5f32*smoothstep(0.35f32,0.7f32,clump),render_noise2(cellx+seed*31.0f32,cellz));
+    s.albedo=mix3(scale3(row_c,0.6f32+0.7f32*tuft),scale3(v.tint,0.75f32+0.4f32*render_noise2(cellz,cellx)),flower);
+    s.rough=0.9f32; s.through=0.25f32;
   } else if (pattern==PR_PATTERN_STONE) {
     s=pr_stone(s,f,ax,ay,da,v.local,fl,seed,scale,full,materials,row+PR_M_MORE);
   } else if (pattern==PR_PATTERN_PANELS) {
@@ -598,6 +746,53 @@ pr_post :: (light:V4,aux:V4,x:s32,y:s32,u:[]f32,b:int,depth:TexDepth)->V3 {
   return pr_encode(scale3(pr_decode(c),k));
 }
 
+// ---- the lamps
+// The light of the lamps on a surface at night, to add to pr_lit's. q, n and `toward` are the
+// point, its normal and the way to the eye in the parts' own frame (a platform's, before its
+// pose), where the lamp field and the near lights are kept.
+//
+// The field (photoreal-lights.coax pr_lamp_field) holds every lamp's light on level ground, in
+// the sky field's cells: a pool under each lamp. Level ground takes it whole; a wall takes the
+// pool at its foot, less of it, fading up the wall over the cell's fade height. The lights near
+// the eye (PR_NEAR_LIGHTS at most, none on the reduced tier) add what a pool cannot: their
+// highlights on smooth things, a lamp's streak in a canal.
+pr_lamps :: (q:V3,n:V3,toward:V3,s:PrSurface,u:[]f32,b:int,field:[]f32,materials:[]f32)->V3 {
+  level:f32=u[b+PR_LAMPS];
+  if (level<=0.001f32) {return v3(0.0f32,0.0f32,0.0f32);}
+  out:V3=v3(0.0f32,0.0f32,0.0f32);
+  nx:int=cast(int)u[b+PR_FIELD_N]; nz:int=cast(int)u[b+PR_FIELD_N+1];
+  if (u[b+PR_LAMPS+3]>0.5f32&&nx>=2&&nz>=2) {
+    cell:f32=u[b+PR_FIELD+2];
+    base:int=nx*nz*2;
+    x:f32=(q.x+n.x*cell*0.6f32-u[b+PR_FIELD])/cell-0.5f32; z:f32=(q.z+n.z*cell*0.6f32-u[b+PR_FIELD+1])/cell-0.5f32;
+    i:int=cast(int)wg_clamp_i(cast(s32)floor(x),0,cast(s32)(nx-2)); j:int=cast(int)wg_clamp_i(cast(s32)floor(z),0,cast(s32)(nz-2));
+    tx:f32=saturate(x-cast(f32)i); tz:f32=saturate(z-cast(f32)j);
+    e:V4=mix4(mix4(wg_at4(field,base+(j*nx+i)*4),wg_at4(field,base+(j*nx+i+1)*4),tx),mix4(wg_at4(field,base+((j+1)*nx+i)*4),wg_at4(field,base+((j+1)*nx+i+1)*4),tx),tz);
+    // above the ground the light fades up a wall over the cell's height; below it (the field's
+    // ground is a deck, and this a wall under its edge) it is gone within a few metres; and
+    // outside the field there is none
+    over:f32=fmax(q.y-u[b+PR_FIELD+3],0.0f32)/fmax(e.w,1.0f32);
+    under:f32=saturate((u[b+PR_FIELD+3]-q.y)*0.5f32);
+    inside:f32=stepf(-0.5f32,x)*stepf(x,cast(f32)nx-0.5f32)*stepf(-0.5f32,z)*stepf(z,cast(f32)nz-0.5f32);
+    share:f32=mix(0.5f32,1.0f32,saturate(n.y))*saturate(1.0f32+n.y*2.0f32)*(1.0f32-under)*inside/(1.0f32+over*over);
+    out=scale3(mul3(scale3(s.albedo,1.0f32-s.metal),v3(e.x,e.y,e.z)),share);
+  }
+  count:int=cast(int)(u[b+PR_LAMPS+2]+0.5f32);
+  if (count>0&&s.rough<0.5f32) {
+    f0:V3=cm_f0(s.albedo,s.metal);
+    rough:f32=fmax(s.rough,0.16f32);   // (a lamp is no point: its highlight is never a single sparkle)
+    for k:0..<PR_NEAR_LIGHTS {
+      if (k<count) {
+        row:int=(PR_MATERIALS+k)*PR_MATERIAL_FLOATS;
+        to:V3=sub3(v3(materials[row],materials[row+1],materials[row+2]),q);
+        d2:f32=fmax(dot3(to,to),0.01f32);
+        fade:f32=saturate(1.0f32-d2/fmax(materials[row+3]*materials[row+3],1.0f32));
+        out=add3(out,scale3(mul3(cm_ggx(f0,rough,n,scale3(to,1.0f32/sqrt(d2)),toward),v3(materials[row+4],materials[row+5],materials[row+6])),fade*fade/(d2+1.0f32)));
+      }
+    }
+  }
+  return scale3(out,level);
+}
 // ---- the frame's way out
 // The frame's light as the display's colour: exposed, through the film response, encoded.
 pr_out :: (c:V3,u:[]f32,b:int)->V3 {
@@ -683,6 +878,122 @@ pr_test_block :: (u:[]f32) {
   m.b.w=1.0f32; a=pr_kept(top,m,u[..],0); #assert a.y==7.0f32 && pr_near_of(m)==0.0f32;
   m.b.w=161.0f32; a=pr_kept(v3(0.0f32,7.0f32,0.0f32),m,u[..],0); #assert a.y>5.0f32 && a.y<7.0f32 && pr_near_of(m)==160.0f32;
   #assert pr_near_keep(0.0f32,5000.0f32,false)==1.0f32 && pr_near_keep(100.0f32,80.0f32,false)==1.0f32 && pr_near_keep(100.0f32,90.0f32,false)==0.5f32;
+}
+#test "the wind leans a swaying part downwind, four times as far at twice the speed, and gusts cross a wood as a wave" {
+  m:PrObj;
+  m.a=v4(0.0f32,0.0f32,0.0f32,0.0f32); m.b=v4(1.0f32,2.0f32,0.0f32,0.0f32);
+  top:V3=v3(0.0f32,12.0f32,0.0f32);
+  // a steady wind toward +z: the mean lean over a long while is downwind, and none across
+  mean4:f32=0.0f32; mean8:f32=0.0f32; cross:f32=0.0f32;
+  for i:0..<400 {
+    t:f32=cast(f32)i*0.37f32;
+    a:V3=pr_placed_in(top,m,t,v4(0.0f32,1.0f32,4.0f32,0.0f32)); c:V3=pr_placed_in(top,m,t,v4(0.0f32,1.0f32,8.0f32,0.0f32));
+    mean4=mean4+a.z/400.0f32; mean8=mean8+c.z/400.0f32; cross=cross+a.x/400.0f32;
+    #assert a.y==12.0f32;
+  }
+  #assert mean4>0.05f32 && abs(mean8/mean4-4.0f32)<0.4f32 && abs(cross)<0.02f32;
+  // a storm does not lay a tree flat: the lean is never over a third of the height
+  g:V3=pr_placed_in(top,m,1.0f32,v4(0.0f32,1.0f32,60.0f32,0.0f32));
+  #assert g.z<=12.0f32*0.3f32+12.0f32*12.0f32*0.0003f32*1.35f32+0.001f32;
+  // gusts: two trees a quarter of a gust's length apart downwind are out of step, two abreast are in step
+  m.b.z=0.0f32;
+  n:PrObj=m; n.a=v4(0.0f32,0.0f32,11.0f32,0.0f32); e:PrObj=m; e.a=v4(11.0f32,0.0f32,0.0f32,0.0f32);
+  apart:f32=0.0f32; abreast:f32=0.0f32;
+  for i:0..<200 {
+    t:f32=cast(f32)i*0.21f32; w:V4=v4(0.0f32,1.0f32,6.0f32,1.0f32);
+    a:f32=pr_placed_in(top,m,t,w).z;
+    apart=apart+abs(pr_placed_in(top,n,t,w).z-11.0f32-a); abreast=abreast+abs(pr_placed_in(top,e,t,w).z-a);
+  }
+  #assert abreast<0.0001f32 && apart>abreast+1.0f32;
+}
+#test "a leaf folds away with distance and a lamp's glow never draws under a pixel or two" {
+  // from 60 m: standing to 60, half gone at 78, gone past 96; a long lens sees it standing farther
+  t:f32=1.0f32/2.4f32;
+  #assert pr_fold(10.0f32,60.0f32,t)==0.0f32 && pr_fold(59.9f32,60.0f32,t)==0.0f32 && abs(pr_fold(78.0f32,60.0f32,t)-0.5f32)<0.001f32 && pr_fold(96.1f32,60.0f32,t)==1.0f32 && pr_fold(400.0f32,60.0f32,t)==1.0f32;
+  #assert pr_fold(96.0f32,60.0f32,t*0.5f32)==0.0f32;
+  // a lamp 0.2 m in radius: its own size near, and at 2 km the 2.2 m that is a pixel or two there
+  #assert pr_lamp_grow(30.0f32,0.2f32,0.41f32)==1.0f32 && abs(pr_lamp_grow(2000.0f32,0.2f32,0.41f32)*0.2f32-2000.0f32*0.41f32*0.0027f32)<0.0001f32;
+  // the vertex: a leaf near the eye stands off its part, a far one is outside the view; a lamp is gone by day
+  u:[PR_FLOATS]f32; pr_test_block(u[..]);
+  mesh:[12]f32; mesh[0]=0.0f32; mesh[1]=1.0f32; mesh[2]=0.0f32; mesh[3]=1.0f32; mesh[7]=0.0f32-60.0f32; mesh[8]=1.0f32;
+  objects:[1]PrObj; objects[0].a=v4(0.0f32,9.0f32,0.0f32-20.0f32,0.0f32); objects[0].b=v4(1.0f32,0.0f32,0.0f32,0.0f32);
+  near:PrV=pr_stand(0,0,u[..],0,mesh[..],objects[..]);
+  #assert near.pos.w>0.0f32 && near.pos.z<=near.pos.w && abs(near.world.x)<0.1f32;
+  objects[0].a.z=0.0f32-500.0f32;
+  far:PrV=pr_stand(0,0,u[..],0,mesh[..],objects[..]);
+  #assert far.pos.z>far.pos.w && abs(far.world.x+1.0f32)<0.0001f32;
+  // the same leaf near the eye on a phone: gone
+  objects[0].a.z=0.0f32-20.0f32; u[PR_GROUND+3]=1.0f32;
+  #assert pr_stand(0,0,u[..],0,mesh[..],objects[..]).pos.z>1.0f32;
+  u[PR_GROUND+3]=0.0f32; mesh[7]=0.0f32; mesh[0]=0.5f32; mesh[1]=0.0f32;
+  objects[0].b.y=5.0f32; objects[0].b.x=0.4f32; objects[0].c=v4(1.0f32,1.0f32,1.0f32,0.0f32);
+  #assert pr_stand(0,0,u[..],0,mesh[..],objects[..]).pos.z>1.0f32;
+  u[PR_LAMPS]=1.0f32;
+  lit:PrV=pr_stand(0,0,u[..],0,mesh[..],objects[..]);
+  #assert lit.pos.z<=lit.pos.w && abs(lit.tint.x-1.0f32)<0.0001f32 && abs(lit.world.x-0.2f32)<0.0001f32;
+  // two kilometres off it is drawn larger and dimmer, and casts no shadow
+  objects[0].a.z=0.0f32-2000.0f32;
+  off:PrV=pr_stand(0,0,u[..],0,mesh[..],objects[..]);
+  #assert off.world.x>1.0f32 && off.tint.x<0.1f32 && off.tint.x>=0.004f32;
+  #assert pr_shadow_stand(0,0,u[..],0,mesh[..],objects[..]).pos.z>1.0f32;
+}
+#test "the moon's face follows the sun: full across from it, a dark disc beside it, half at a quarter; stars are points over the horizon" {
+  moon:V3=v3(0.0f32,0.6f32,0.8f32);
+  // full: the sun behind the eye, the way the moon faces
+  full:V2=pr_moon_face(moon,moon,scale3(moon,0.0f32-1.0f32),0.0002f32);
+  #assert full.x>0.99f32 && full.y>0.6f32;
+  // new: the sun behind the moon
+  new:V2=pr_moon_face(moon,moon,moon,0.0002f32);
+  #assert new.x>0.99f32 && new.y==0.0f32;
+  // a quarter, the sun off to +x: the limb on the sun's side is lit and the other dark
+  side:V3=v3(1.0f32,0.0f32,0.0f32);
+  lit_side:V2=pr_moon_face(normalize3(add3(moon,scale3(side,0.003f32))),moon,side,0.0002f32);
+  dark_side:V2=pr_moon_face(normalize3(sub3(moon,scale3(side,0.003f32))),moon,side,0.0002f32);
+  #assert lit_side.x>0.99f32 && lit_side.y>0.5f32 && dark_side.x>0.99f32 && dark_side.y==0.0f32;
+  // off the disc: nothing
+  #assert pr_moon_face(normalize3(add3(moon,scale3(side,0.01f32))),moon,side,0.0002f32).x==0.0f32;
+  // stars: none under the horizon, and over it most of the sky is dark with a few points
+  #assert pr_stars(v3(0.6f32,0.0f32-0.2f32,0.77f32)).x==0.0f32;
+  some:int=0;
+  for i:0..<4000 {
+    a:f32=cast(f32)i*0.731f32; y:f32=0.1f32+0.85f32*fract(cast(f32)i*0.618034f32); r:f32=sqrt(1.0f32-y*y);
+    if (pr_stars(v3(cos(a)*r,y,sin(a)*r)).y>0.0f32) {some+=1;}
+  }
+  #assert some>0 && some<400;
+}
+#test "the lamp field lights the ground under a lamp and fades up a wall" {
+  // a field of 4 by 4 cells, 5 m each, with one lit cell
+  u:[PR_FLOATS]f32; pr_test_block(u[..]);
+  u[PR_FIELD+2]=5.0f32; u[PR_FIELD_N]=4.0f32; u[PR_FIELD_N+1]=4.0f32; u[PR_FIELD_N+2]=8.0f32;
+  field:[4*4*2+4*4*4]f32;
+  at:int=4*4*2+(1*4+1)*4; field[at]=0.1f32; field[at+1]=0.08f32; field[at+2]=0.05f32; field[at+3]=6.0f32;
+  table:[PR_TABLE_FLOATS]f32;
+  s:PrSurface; s.albedo=v3(0.5f32,0.5f32,0.5f32); s.rough=0.9f32; s.normal=v3(0.0f32,1.0f32,0.0f32);
+  up:V3=v3(0.0f32,1.0f32,0.0f32); under:V3=v3(7.5f32,0.0f32,7.5f32);
+  // lamps off, or no field: nothing
+  #assert pr_lamps(under,up,up,s,u[..],0,field[..],table[..]).x==0.0f32;
+  u[PR_LAMPS]=1.0f32; u[PR_LAMPS+3]=1.0f32;
+  ground:V3=pr_lamps(under,up,up,s,u[..],0,field[..],table[..]);
+  #assert abs(ground.x-0.05f32)<0.0001f32 && abs(ground.z-0.025f32)<0.0001f32;
+  // two cells off: dark; half on: half the light; a wall there takes less and less with height
+  #assert pr_lamps(v3(17.5f32,0.0f32,17.5f32),up,up,s,u[..],0,field[..],table[..]).x==0.0f32;
+  u[PR_LAMPS]=0.5f32;
+  #assert abs(pr_lamps(under,up,up,s,u[..],0,field[..],table[..]).x-0.025f32)<0.0001f32;
+  u[PR_LAMPS]=1.0f32;
+  wall:V3=v3(1.0f32,0.0f32,0.0f32);
+  low:f32=pr_lamps(v3(4.5f32,1.0f32,7.5f32),wall,up,s,u[..],0,field[..],table[..]).x; high:f32=pr_lamps(v3(4.5f32,12.0f32,7.5f32),wall,up,s,u[..],0,field[..],table[..]).x;
+  #assert low>0.005f32 && low<ground.x && high<low*0.4f32;
+  // a near light: a highlight on a smooth floor where the light mirrors to the eye, none on a rough one
+  u[PR_LAMPS+3]=0.0f32; u[PR_LAMPS+2]=1.0f32;
+  row:int=PR_MATERIALS*PR_MATERIAL_FLOATS;
+  table[row]=0.0f32-10.0f32; table[row+1]=8.0f32; table[row+2]=0.0f32; table[row+3]=100.0f32; table[row+4]=30.0f32; table[row+5]=30.0f32; table[row+6]=30.0f32;
+  s.rough=0.1f32;
+  toward:V3=normalize3(v3(10.0f32,8.0f32,0.0f32));
+  glint:f32=pr_lamps(v3(0.0f32,0.0f32,0.0f32),up,toward,s,u[..],0,field[..],table[..]).x;
+  aside:f32=pr_lamps(v3(0.0f32,0.0f32,0.0f32),up,normalize3(v3(0.0f32,8.0f32,10.0f32)),s,u[..],0,field[..],table[..]).x;
+  #assert glint>0.01f32 && glint>aside*20.0f32;
+  s.rough=0.9f32;
+  #assert pr_lamps(v3(0.0f32,0.0f32,0.0f32),up,toward,s,u[..],0,field[..],table[..]).x==0.0f32;
 }
 #test "the display's curve and its inverse; the film keeps middle grey and never passes white" {
   for i:0..<11 {x:f32=cast(f32)i*0.1f32; #assert abs(pr_encode1(pr_decode1(x))-x)<0.0001f32;}
@@ -780,13 +1091,17 @@ pr_test_down :: (u:[]f32,d:[]f32,block:bool) {
   m.b.y=4.0f32; m.d=v4(1.0f32,1.0f32,1.0f32,0.0f32); w0:V3=pr_placed(v3(1.0f32,2.0f32,3.0f32),m,0.0f32);
   #assert abs(w0.x-(cp-y*sp))<0.0001f32 && abs(w0.y-(sp+y*cp))<0.0001f32 && abs(w0.z-z)<0.0001f32;
   m.b.y=3.4f32; q=pr_leant(v3(1.0f32,2.0f32,3.0f32),m); #assert q.x==1.0f32 && q.y==2.0f32 && q.z==3.0f32;
-  // the sway: k = height squared x 0.0016, at time 3 and phase 0.4; motions 1.5, 2.5 and 0 keep still
+  // the sway, 10 m up at time 3 and phase 0.4, in pr_placed's light breeze (3 m/s along +x, gusty
+  // 0.5): a lean downwind by the squares of speed and height, its own sway and the gusts along the
+  // wind, a little across it; motions 1.5, 2.5 and 0 keep still
   m.d=v4(0.0f32,0.0f32,0.0f32,0.0f32); m.a=v4(0.0f32,0.0f32,0.0f32,0.0f32);
   m.b=v4(1.0f32,2.0f32,0.4f32,0.0f32);
   w:V3=pr_placed(v3(0.0f32,10.0f32,0.0f32),m,3.0f32);
-  k:f32=100.0f32*0.0016f32;
-  #assert abs(w.x-k*(sin(2.7f32+0.4f32)+0.35f32*sin(6.9f32+0.68f32)))<0.0001f32 && abs(w.y-10.0f32)<0.0001f32;
-  #assert abs(w.z-k*0.6f32*sin(3.3f32+0.92f32))<0.0001f32;
+  lean:f32=100.0f32*0.00004f32*9.0f32;
+  own:f32=sin(5.7f32+0.4f32)+0.35f32*sin(9.3f32+0.68f32);
+  gust:f32=sin((0.0f32-9.0f32)*0.14f32+0.6f32*sin(0.69f32+0.4f32));
+  #assert abs(w.x-(lean*(1.0f32+0.5f32*(0.7f32*gust+0.3f32*own))+0.03f32*own))<0.0001f32 && abs(w.y-10.0f32)<0.0001f32;
+  #assert abs(w.z-(0.02f32+lean*0.125f32)*sin(3.9f32+0.92f32))<0.0001f32;
   m.b.y=1.5f32; w=pr_placed(v3(0.0f32,10.0f32,0.0f32),m,3.0f32); #assert w.x==0.0f32 && w.y==10.0f32 && w.z==0.0f32;
   m.b.y=2.5f32; w=pr_placed(v3(0.0f32,10.0f32,0.0f32),m,3.0f32); #assert w.x==0.0f32 && w.y==10.0f32 && w.z==0.0f32;
   m.b.y=0.0f32; w=pr_placed(v3(0.0f32,10.0f32,0.0f32),m,3.0f32); #assert w.x==0.0f32 && w.y==10.0f32 && w.z==0.0f32;

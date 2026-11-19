@@ -112,6 +112,8 @@ slabfx_particle_over_vs :: (v:u32,n:u32,u:[]f32,rows:[]SprayRow)->SfxP {
   thru:f32=sb_pow(fmax(wg_dot3(d,sun),0.0f32),3.0f32);
   amb:f32=u[SLAB_P+7];
   lit:V3=sb_add(sb_mul(sb_add(v3(0.5f32,0.52f32,0.54f32),sb_mul(sb_p(u,12),0.35f32)),0.3f32+(0.6f32*amb)),sb_mul(sb_p(u,4),(0.4f32+(0.55f32*thru))*(1.0f32-shade)));
+  // a fountain's jet (its stretch negative: slab-water.coax ww_jet) is lit by the lamps round it at night
+  if ((e.jet.w<0.0f32)&&(u[SLAB_PHOTO_ON]>0.5f32)) {lit=sb_add(lit,sb_mul(v3(0.62f32,0.56f32,0.46f32),u[SLAB_PHOTO+PR_LAMPS]));}
   lit=slab_grade(slab_haze(lit,d,dist,u),u);
   // a puff the eye is inside thins away
   close:f32=smoothstep(size*0.8f32,(size*2.5f32)+2.0f32,dist);

@@ -265,7 +265,7 @@ city_edge_run :: (ph: [] SlabPhoto, l: [] PrList, w: SlabWorld, d: CityDeck, ax:
   for k: 0..<lamps {
     s := (cast(f32) k + 0.5) * run / cast(f32) lamps;
     px := ax + tx * s - nx * 2.6; pz := az + tz * s - nz * 2.6;
-    if city_open(w, d, px, pz, 0.7, -1) { _ = city_put(l, c.lamp_post, px, y, pz, city_along(-nx, -nz), CITY_NEAR_LAMP); }
+    if city_open(w, d, px, pz, 0.7, -1) { _ = city_put(l, c.lamp_post, px, y, pz, city_along(-nx, -nz), CITY_NEAR_LAMP); night_post(ph, l, px, y, pz, city_along(-nx, -nz)); }
     if basin || k == 0 { continue; }
     s = cast(f32) k * run / cast(f32) lamps;
     px = ax + tx * s - nx * 2.3; pz = az + tz * s - nz * 2.3;
@@ -392,7 +392,7 @@ city_streets :: (ph: [] SlabPhoto, l: [] PrList, w: SlabWorld, d: CityDeck) {
           s := b + 30 + 20 * cast(f32) k;
           if s < lo + 22 || s > hi - 22 { continue; }
           px := city_sx(axis, s, q + e * 6.3); pz := city_sz(axis, s, q + e * 6.3);
-          if city_open(w, d, px, pz, 0.8, -1) { _ = city_put(l, c.lamp_post, px, y, pz, ifx axis == 0 then city_along(0, -e) else city_along(-e, 0), CITY_NEAR_LAMP); }
+          if city_open(w, d, px, pz, 0.8, -1) { yaw := ifx axis == 0 then city_along(0, -e) else city_along(-e, 0); _ = city_put(l, c.lamp_post, px, y, pz, yaw, CITY_NEAR_LAMP); night_post(ph, l, px, y, pz, yaw); }
         }
         s := b + 50;
         px := city_sx(axis, s, q + 8.4); pz := city_sz(axis, s, q + 8.4);

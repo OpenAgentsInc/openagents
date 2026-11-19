@@ -1,0 +1,225 @@
+// SLAB at night (docs/metaverse/photoreal.md, "Lamps"): the lamps that stand on the platform,
+// placed by rule from the plan's records (metaverse/slab-plan.coax), so a re-planned deck is lit
+// the same way. Each lamp is two things: a pool of light on the ground and up the walls near it
+// (photo_light, baked into the lamp field), and a glow a visitor sees from anywhere (a PR_LAMP
+// ball, never smaller than a pixel or two). The engine's side is
+// metaverse-engine/render/shade/photoreal-lights.coax.
+//
+//   street lamps   at content-city's posts along the streets and the wall's walk, warm white
+//   floodlights    low lamps round each temple: their light climbs the columns; four in the
+//                  fountain's basin
+//   work lights    16 m masts at the corners of the plant, the industry, the yards and the dock,
+//                  cold white
+//   data yards     low blue-white lights round each data hall's yard
+//   aviation       red lights flashing on the stacks' rims and on the towers over 60 m (ICAO
+//                  Annex 14 marks obstacles over 45 m with red lights)
+//   navigation     white lights flashing at the hull's four corners, as an offshore structure
+//                  shows them
+//
+// Lamps come on with the daylight's failing (pr_lamps_level), not at an hour. Every lamp lights the
+// ground through the field on the prime deck; the 12 nearest the view also shine on smooth
+// things (the canal, the glass) on a desktop. The field does not know what stands between a lamp
+// and the ground.
+//
+// For the other content sets:
+//   night_lamp        one lamp at a post another set placed (content-city's street lamps): a
+//                     pool and a glow, no post
+//   night_work_light  a work light on its own mast (the construction view's yards)
+//   night_post        the light of one of content-city's street lamps (arch_street_lamp, 8.5 m, its
+//                     arm 2.2 m), from the post's foot and its turn
+//   NIGHT_STREETS     true: this file stands its own street lamps on a 25 m grid of the open deck
+//                     (off: content-city's posts line the streets and the wall's walk)
+//   coax/bin/coax test apps/openagents-web/slab.coax --only night
+
+#load "../../metaverse-engine/arch/city.coax";
+
+NIGHT_STREETS :: false;     // the street lamps' posts are content-city's (slab-content-city.coax calls night_post at each)
+NIGHT_GRID :: 25.0f32;      // street lamps: one each way every 25 m
+NIGHT_EDGE :: 8.0f32;       // the first row in from the deck's edge (the promenade)
+NIGHT_CLEAR :: 2.5f32;      // how far a post stands clear of anything on the deck (m)
+NIGHT_POST :: 8.0f32;       // a street lamp's height (m)
+NIGHT_MAST :: 16.0f32;      // a work light's mast (m)
+
+SlabNight :: struct {
+  glow: int; lens: int; metal: int;   // materials: a lamp's glow (white: a record's tint colours it), a lamp's lens, its post
+  ball: int; street: int;             // parts: the glow, the street lamp
+  lamps: int;                         // lamps placed in the last list
+}
+
+night_make :: (ph: [] SlabPhoto, p: [] ArchPen) {
+  ph[0].content.night.glow = photo_material(ph, 1, 1, 1, 1, 0, PR_PATTERN_PLAIN, 0, 2.5);
+  ph[0].content.night.lens = photo_material(ph, 1, 0.86, 0.66, 0.3, 0, PR_PATTERN_PLAIN, 0, 0);
+  ph[0].content.night.metal = photo_material(ph, 0.5, 0.5, 0.5, 0.45, 0.8, PR_PATTERN_PLAIN, 0, 0);
+  look := ArchCityLook.{metal = ph[0].content.night.metal, dark = ph[0].content.night.metal, glass = ph[0].content.night.lens, lamp = ph[0].content.night.lens, stone = ph[0].content.night.metal, paint = ph[0].content.night.metal};
+  ph[0].content.night.street = photo_part(ph, arch_street_lamp(p, look, NIGHT_POST, 1.6));
+  ph[0].content.night.ball = photo_part(ph, pr_unit_ball(p));
+}
+
+// A lamp's glow: a ball `size` across at (x, y, z), coloured (r, g, b); a beacon flashes.
+night_glow :: (ph: [] SlabPhoto, l: [] PrList, x: f32, y: f32, z: f32, size: f32, r: f32, g: f32, b: f32, beacon: bool) {
+  k := pr_put(l, ph[0].content.night.ball, x, y, z, 0, size);
+  pr_made_of(l, k, ph[0].content.night.glow);
+  pr_tint(l, k, r, g, b);
+  pr_motion(l, k, ifx beacon then PR_BEACON else PR_LAMP, slab_hash(x * 0.37f32, z * 0.41f32) * 6.2831853f32);
+}
+// One lamp at a post that stands already: its pool `high` metres over the ground at (x, z), up
+// to the height `climb` on walls near it, in (r, g, b) (0.07 a well lit street), and its glow.
+night_lamp :: (ph: [] SlabPhoto, l: [] PrList, x: f32, y: f32, z: f32, high: f32, r: f32, g: f32, b: f32, climb: f32) {
+  photo_light(ph, x, y, z, high, r, g, b, climb);
+  m := green_max(r, green_max(g, b));
+  night_glow(ph, l, x, y - 0.12f32, z, 0.45, r / m, g / m, b / m, false);
+  ph[0].content.night.lamps += 1;
+}
+// The light of a street lamp content-city stood (arch_street_lamp: 8.5 m, its arm 2.2 m), its
+// foot at (x, y, z) and turned `yaw`: the lens hangs over the arm's end.
+NIGHT_CITY_HEIGHT :: 8.5f32; NIGHT_CITY_REACH :: 2.2f32;
+night_post :: (ph: [] SlabPhoto, l: [] PrList, x: f32, y: f32, z: f32, yaw: f32) {
+  out := NIGHT_CITY_REACH + 0.15f32;
+  // its own lens glows (slab_city_lamp, in night_move), so no glow ball here
+  photo_light(ph, x + cos(yaw) * out, y + NIGHT_CITY_HEIGHT + 0.1f32, z - sin(yaw) * out, NIGHT_CITY_HEIGHT, 0.062, 0.048, 0.03, NIGHT_CITY_HEIGHT);
+  ph[0].content.night.lamps += 1;
+}
+// A work light on its own mast at (x, y0, z), `mast` metres tall: cold white, lighting a yard.
+night_work_light :: (ph: [] SlabPhoto, l: [] PrList, x: f32, y0: f32, z: f32, mast: f32) {
+  k := pr_put(l, ph[0].post, x, y0, z, 0, 1);
+  pr_stretch(l, k, 0.32, mast, 0.32); pr_made_of(l, k, ph[0].content.night.metal); pr_near(l, k, 400);
+  photo_light(ph, x, y0 + mast, z, mast, 0.05, 0.056, 0.064, mast);
+  night_glow(ph, l, x, y0 + mast + 0.3f32, z, 0.8, 0.9, 0.95, 1, false);
+  ph[0].content.night.lamps += 1;
+}
+
+// Whether a post at (x, z) stands clear of everything on the deck by `clear` metres (the hull,
+// the pipes under it and the plazas' paving do not count).
+night_open :: (w: SlabWorld, x: f32, z: f32, clear: f32) -> bool {
+  for i: 0..<w.count {
+    at := i * SLAB_RECORD;
+    kind := cast(int) (w.records[at + 3] + 0.5);
+    if kind == SLAB_KIND_HULL || kind == SLAB_KIND_PIPE || kind == SLAB_KIND_PLAZA { continue; }
+    if w.records[at + 5] < SLAB_DECK - 1 || w.records[at + 1] > SLAB_DECK + 3 { continue; }
+    if x > w.records[at] - clear && x < w.records[at + 4] + clear && z > w.records[at + 2] - clear && z < w.records[at + 6] + clear { return false; }
+  }
+  return true;
+}
+night_works :: (kind: int) -> bool {
+  return kind == SLAB_KIND_PLANT || kind == SLAB_KIND_INDUSTRY || kind == SLAB_KIND_CONTAINERS || kind == SLAB_KIND_TANK || kind == SLAB_KIND_CRANE || kind == SLAB_KIND_COOLING || kind == SLAB_KIND_DESAL;
+}
+
+// What stands still: called twice a list (count, then fill), the same both times.
+night_place :: (ph: [] SlabPhoto, l: [] PrList, w: SlabWorld) {
+  ph[0].content.night.lamps = 0;
+  if w.build || w.layout != LAYOUT_PRIME { return; }
+  deck := SLAB_DECK;
+  hl := SLAB_LENGTH * 0.5f32; hb := SLAB_BEAM * 0.5f32;
+  // the streets, the plazas and the promenade: a post wherever the deck is open
+  if NIGHT_STREETS {
+    nx := cast(int) floor((SLAB_LENGTH - NIGHT_EDGE * 2) / NIGHT_GRID) + 1; nz := cast(int) floor((SLAB_BEAM - NIGHT_EDGE * 2) / NIGHT_GRID) + 1;
+    for j: 0..<nz { for i: 0..<nx {
+      x := -hl + NIGHT_EDGE + cast(f32) i * NIGHT_GRID; z := -hb + NIGHT_EDGE + cast(f32) j * NIGHT_GRID;
+      if !night_open(w, x, z, NIGHT_CLEAR) { continue; }
+      // the arm turned a quarter from cell to cell, so a row does not read as one fence
+      yaw := cast(f32) ((i + j) % 4) * 1.5707963f32;
+      k := pr_put(l, ph[0].content.night.street, x, deck, z, yaw, 1); pr_near(l, k, 260);
+      hx := x + cos(yaw) * 1.75f32; hz := z - sin(yaw) * 1.75f32;
+      night_lamp(ph, l, hx, deck + NIGHT_POST + 0.1f32, hz, NIGHT_POST, 0.062, 0.048, 0.03, NIGHT_POST);
+    } }
+  }
+  for i: 0..<w.count {
+    at := i * SLAB_RECORD;
+    x0 := w.records[at]; y0 := w.records[at + 1]; z0 := w.records[at + 2]; kind := cast(int) (w.records[at + 3] + 0.5);
+    x1 := w.records[at + 4]; y1 := w.records[at + 5]; z1 := w.records[at + 6]; shape := cast(int) (w.records[at + 7] + 0.5);
+    if x1 <= x0 || z1 <= z0 || y1 < deck + 1 || y0 > deck + 3 { continue; }
+    cx := (x0 + x1) * 0.5f32; cz := (z0 + z1) * 0.5f32;
+    if kind == SLAB_KIND_TEMPLE || shape == SLAB_TEMPLE || shape == SLAB_THOLOS {
+      // floodlights round every temple (the temples and the colonnades' halls): low lamps 4 m off
+      // each front and each corner, their light climbing the columns
+      for q: 0..<9 {
+        sx := cast(f32) (q % 3) - 1; sz := cast(f32) (q / 3) - 1;
+        if sx == 0 && sz == 0 { continue; }
+        px := cx + sx * ((x1 - x0) * 0.5f32 + 4); pz := cz + sz * ((z1 - z0) * 0.5f32 + 4);
+        photo_light(ph, px, deck + 0.6f32, pz, 6, 0.22, 0.19, 0.14, (y1 - deck) * 1.3f32);
+        night_glow(ph, l, px, deck + 0.35f32, pz, 0.4, 1, 0.88, 0.66, false);
+        ph[0].content.night.lamps += 1;
+      }
+    } else if kind == SLAB_KIND_FOUNTAIN {
+      // the fountain: four lamps low in its basin, lighting the bowls and the jet
+      for q: 0..<4 {
+        a := cast(f32) q * 1.5707963f32 + 0.785f32;
+        photo_light(ph, cx + cos(a) * 4.5f32, deck + 0.4f32, cz + sin(a) * 4.5f32, 2.5, 0.12, 0.11, 0.09, 7);
+        ph[0].content.night.lamps += 1;
+      }
+    } else if night_works(kind) {
+      // work lights: a mast at each corner, 5 m out, where the deck is clear
+      for q: 0..<4 {
+        px := ifx q & 1 == 0 then x0 - 5 else x1 + 5; pz := ifx q & 2 == 0 then z0 - 5 else z1 + 5;
+        if px < -hl + 3 || px > hl - 3 || pz < -hb + 3 || pz > hb - 3 || !night_open(w, px, pz, 1) { continue; }
+        night_work_light(ph, l, px, deck, pz, NIGHT_MAST);
+      }
+    } else if kind == SLAB_KIND_DATA {
+      // the data halls' yards: low blue-white lights along each side, every 30 m, 3 m out
+      for side: 0..<4 {
+        along_x := side < 2;
+        a0 := ifx along_x then x0 else z0; a1 := ifx along_x then x1 else z1;
+        n := cast(int) floor((a1 - a0) / 30) + 1;
+        for k: 0..<n {
+          a := a0 + (a1 - a0) * (cast(f32) k + 0.5f32) / cast(f32) n;
+          px := ifx along_x then a else (ifx side == 2 then x0 - 3 else x1 + 3);
+          pz := ifx along_x then (ifx side == 0 then z0 - 3 else z1 + 3) else a;
+          photo_light(ph, px, deck + 4, pz, 4, 0.022, 0.036, 0.055, 7);
+          night_glow(ph, l, px, deck + 4, pz, 0.35, 0.7, 0.85, 1, false);
+          ph[0].content.night.lamps += 1;
+        }
+      }
+    }
+    // aviation lights: red, flashing, on the stacks' rims and the tall towers' corners
+    if kind == SLAB_KIND_STACK {
+      r := green_min(x1 - x0, z1 - z0) * 0.5f32;
+      for q: 0..<3 { a := cast(f32) q * 2.0943951f32; night_glow(ph, l, cx + cos(a) * r, y1 - 1.5f32, cz + sin(a) * r, 1.2, 1, 0.08, 0.04, true); }
+    } else if kind == SLAB_KIND_TOWER && y1 - deck > 60 {
+      for q: 0..<4 {
+        px := ifx q & 1 == 0 then x0 + 0.6f32 else x1 - 0.6f32; pz := ifx q & 2 == 0 then z0 + 0.6f32 else z1 - 0.6f32;
+        night_glow(ph, l, px, y1 + 0.6f32, pz, 1.0, 1, 0.08, 0.04, true);
+      }
+    }
+  }
+  // navigation: white flashing lights at the hull's four corners
+  for q: 0..<4 {
+    sx := ifx q & 1 == 0 then -1.0f32 else 1.0f32; sz := ifx q & 2 == 0 then -1.0f32 else 1.0f32;
+    night_glow(ph, l, sx * (hl - 2), deck + 3, sz * (hb - 2), 1.4, 1, 1, 0.92, true);
+  }
+}
+// Every frame: the street lamps' lenses glow as the lamps come on.
+night_move :: (ph: [] SlabPhoto, l: [] PrList, w: SlabWorld) {
+  on := floor(w.lamps * 32) / 32 * 1.6f32;
+  photo_glow(ph, ph[0].content.night.lens, on);
+  photo_glow(ph, slab_city_lamp(ph), on);
+}
+
+#test "SLAB at night: lamps on the open deck and none inside a building, floodlit temples, work lights, all off at noon" #steps 4000000000 {
+  s: [1] Slab;
+  u: [UNIFORM_FLOATS] f32;
+  slab_reset(s[..]); slab_build(s[..], false);
+  u[U_MODE + 2] = f32(s[0].box_count);
+  for i: 0..<s[0].box_count * SLAB_RECORD { u[U_BOXES + i] = s[0].boxes[i]; }
+  for i: 0..<12 { u[U_PARAMS + P_POSE + i] = ifx i == 0 || i == 5 || i == 10 then 1.0f32 else 0.0f32; }
+  s[0].eye = [3] f32.[70, SLAB_DECK + 2, 230]; s[0].fwd = [3] f32.[1, 0, 0]; s[0].right = [3] f32.[0, 0, 1]; s[0].up = [3] f32.[0, 1, 0];
+  s[0].tanh = 0.41; s[0].aspect = 1.6;
+  s[0].photo[0].on = true;
+  slab_photo_frame(s[..], u[..], sim_sun(27.8, 5.5, 0.5), false);
+  ph := s[0].photo[..];
+  #assert !ph[0].full && ph[0].light_count > 150 && ph[0].light_count < PHOTO_LIGHTS && ph[0].content.night.lamps > 150;
+  w := photo_world(s[..], u[U_BOXES..<U_BOXES + s[0].box_count * SLAB_RECORD], s[0].box_count, false);
+  temples := 0; works := 0; streets := 0;
+  for k: 0..<ph[0].light_count {
+    o := k * PR_LIGHT_FLOATS; x := ph[0].lights[o]; y := ph[0].lights[o + 1]; z := ph[0].lights[o + 2];
+    #assert abs(x) < SLAB_LENGTH * 0.5f32 + 8 && abs(z) < SLAB_BEAM * 0.5f32 + 8 && y > SLAB_DECK && y < SLAB_DECK + NIGHT_MAST + 1;
+    if abs(y - SLAB_DECK - 0.6f32) < 0.01 { temples += 1; }
+    if abs(y - SLAB_DECK - NIGHT_MAST) < 0.01 { works += 1; }
+    // a street lamp's head stands over open deck
+    if abs(y - SLAB_DECK - NIGHT_CITY_HEIGHT - 0.1f32) < 0.01 { streets += 1; }
+  }
+  #assert temples >= 8 && works >= 8 && streets > 100;
+  // at night they are on; at noon off
+  #assert u[U_PHOTO + PR_LAMPS] > 0.9 && u[U_PHOTO + PR_LAMPS + 3] > 0.5;
+  slab_photo_frame(s[..], u[..], sim_sun(27.8, 5.5, 12), false);
+  #assert u[U_PHOTO + PR_LAMPS] == 0;
+}

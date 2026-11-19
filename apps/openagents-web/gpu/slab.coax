@@ -33,7 +33,7 @@
 //   params 1440 the world's light, the hull's pose, the walker, the selection (slab.coax P_*)
 //   words 1504  cascade 0, its displacement, the fine slopes
 //   sea 15840   the water's optics, the finer cascades and the weather (slab-sea.coax)
-//   water 15980 what the hull does to the water (gpu/slab-water.coax, slab-water.coax)
+//   water 15992 what the hull does to the water (gpu/slab-water.coax, slab-water.coax)
 SLAB_N :: cast(u32)64;
 SLAB_WORDS :: 1504;
 SLAB_GROUPS :: 1312;
@@ -795,7 +795,7 @@ slab_capsule :: (o:V3,d:V3,a:V3,b:V3,r:f32)->V4 {
   }
   return v4(SLAB_MISS,0.0f32,1.0f32,0.0f32);
 }
-SLAB_MOOR :: 16200;   // the mooring lines (slab-lines.coax, U_MOOR): the seabed's and the fairleads' heights, two spare, then 4 lines of 5 floats
+SLAB_MOOR :: 16212;   // the mooring lines (slab-lines.coax, U_MOOR): the seabed's and the fairleads' heights, two spare, then 4 lines of 5 floats
 // The mooring lines nearest the eye (the world's frame), seen under water, as the mooring model
 // has them now, the hull's own or its storm legs. Each line is its anchor on the seabed (x, z),
 // its fairlead (x, z) and a code (slab-lines.coax, lines_uniforms): under 0 no line; else 2,048

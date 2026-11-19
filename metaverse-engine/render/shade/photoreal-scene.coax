@@ -184,7 +184,34 @@ pr_list_triangles :: (l: [] PrList) -> int {
   return t;
 }
 
+// ---- parts made for another style, taken into this one
+// The kit's generators name their own materials (a tree's bark and leaves: ARCH_M_BARK,
+// ARCH_M_LEAF). This gives every vertex of a part made of `was` the realm's material row `now`.
+pr_part_material :: (mesh: [] f32, part: ArchPart, was: int, now: int) {
+  for i: 0..<part.count {
+    o := (part.first + i) * ARCH_VERTEX_FLOATS + 6;
+    if o < mesh.count && cast(int) (mesh[o] + 0.5) == was { mesh[o] = cast(f32) now; }
+  }
+}
+// Marks a part's vertices made of `material` as leaves that fold (photoreal.coax pr_stand, pr_fold):
+// they stand as made up to `from` metres from the eye (at least 8), sink `sink` metres along
+// their normals' way in by 1.6 times that, and are not drawn past it or on the reduced tier. Lay
+// them over a part that stands in their place from far off (the kit's arch_tree_hearts under
+// arch_tree_leaves), place them only near the eye, and nothing pops. A vertex's u and v carry the
+// mark: the photoreal style reads them for nothing else.
+pr_part_fold :: (mesh: [] f32, part: ArchPart, material: int, from: f32, sink: f32) {
+  for i: 0..<part.count {
+    o := (part.first + i) * ARCH_VERTEX_FLOATS;
+    if o + 8 < mesh.count && cast(int) (mesh[o + 6] + 0.5) == material { mesh[o + 7] = -(ifx from > 8 then from else 8.0f32); mesh[o + 8] = sink; }
+  }
+}
+// How far from the eye a part folded from `from` metres still draws, for an eye whose half
+// field's tangent is `tangent`: a realm places its leaves inside this and no farther.
+pr_fold_reach :: (from: f32, tangent: f32) -> f32 { return from * 1.6f32 / ((ifx tangent > 0.01 then tangent else 0.01f32) * 2.4f32); }
+
 // ---- parts every realm wants
+// A ball one metre across about its place: a lamp's glow (PR_LAMP, PR_BEACON).
+pr_unit_ball :: (p: [] ArchPen) -> ArchPart { from := p[0].n; arch_ellipsoid(p, 0, 0, 0, 0.5, 0.5, 0.5, 8, 5); return arch_part(p, from); }
 // A box one metre each way that stands on its place: -0.5 to 0.5 along x and z, 0 to 1 up. A
 // record's stretch makes it any upright box (pr_box).
 pr_unit_box :: (p: [] ArchPen) -> ArchPart { from := p[0].n; arch_box(p, 0, 0.5, 0, 0.5, 0.5, 0.5); return arch_part(p, from); }
@@ -350,4 +377,20 @@ pr_test_content :: (l: [] PrList, box: int, drum: int) {
     y := span * cos(roll); z := span * sin(roll);
     #assert abs(e[0] - y * sin(pitch) - e[3]) < 0.001 && abs(e[1] + y * cos(pitch) - e[4]) < 0.001 && abs(e[2] + z - e[5]) < 0.001;
   }
+}
+#test "a part's materials are renamed, its leaves marked to fold, and the fold's reach matches the shader's" {
+  out: [400 * ARCH_VERTEX_FLOATS] f32; pen: [1] ArchPen; p := pen[..]; arch_pen(p, out[..]);
+  p[0].material = 10; arch_box(p, 0, 0.5, 0, 0.5, 0.5, 0.5);
+  p[0].material = 11; arch_box(p, 0, 1.5, 0, 0.5, 0.5, 0.5);
+  part := arch_part(p, 0);
+  pr_part_material(out[..], part, 10, 20); pr_part_material(out[..], part, 11, 21);
+  pr_part_fold(out[..], part, 21, 60, 0.9);
+  for i: 0..<part.count {
+    o := i * ARCH_VERTEX_FLOATS;
+    if i < 36 { #assert out[o + 6] == 20 && out[o + 7] > -8; } else { #assert out[o + 6] == 21 && out[o + 7] == -60 && out[o + 8] == 0.9f32; }
+  }
+  // gone at 1.6 times 60 m for the view the fold is written for (a half field of 1 / 2.4), farther through a long lens
+  #assert abs(pr_fold_reach(60, 1 / 2.4f32) - 96) < 0.01 && pr_fold_reach(60, 0.2) > 190;
+  ball := arch_reach(out[..], pr_unit_ball(p));
+  #assert abs(ball.high - 0.5f32) < 0.001 && abs(ball.low + 0.5f32) < 0.001 && ball.out <= 0.5001;
 }

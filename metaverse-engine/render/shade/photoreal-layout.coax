@@ -28,7 +28,10 @@ PR_SH :: 68;         // the sky's light on a surface by its normal: nine rows of
 PR_WARM :: 71;       // the camera's white balance: 0 daylight (light keeps its own colour), 0.08 a little warm, below 0 cool
 PR_SKY_SHARE :: 75;  // the share of a clear sky's light that comes through the cloud (1 under a clear sky); the second row's fourth
 PR_ROOMS :: 79;      // the share of rooms behind glass with their lights on (0 by day; photoreal-frame.coax pr_frame_rooms); the third row's fourth
-PR_FLOATS :: 104;
+PR_WIND :: 104;      // the wind over the parts, in their own frame: the way it blows x, z (unit); its speed (m/s); how gusty (0 steady to 1)
+PR_MOON :: 108;      // toward the moon x, y, z (unit); 1 when a moon is in the sky's list (0: none drawn)
+PR_LAMPS :: 112;     // the lamps: how far on (0 by day to 1 by night); the share of rooms lit (0 to 1, PR_ROOMS's again); near lights in the table (PR_NEAR_LIGHTS at most); 1 when a lamp field follows the sky field
+PR_FLOATS :: 116;
 
 PR_TIER_FULL :: 0;     // a desktop: every effect
 PR_TIER_REDUCED :: 1;  // a phone: fewer shadow taps, no clouds in reflections, no fine normal detail
@@ -39,7 +42,7 @@ PR_RECORD_FLOATS :: 16;
 PR_R_PLACE :: 0;     // x, y, z
 PR_R_YAW :: 3;       // the turn about y: the part's +x runs along (cos yaw, 0, -sin yaw)
 PR_R_SCALE :: 4;     // one size for all three axes (a leaning record: its roll, radians)
-PR_R_MOTION :: 5;    // PR_STILL, PR_BOB, PR_SWAY, PR_LAID or PR_LEAN
+PR_R_MOTION :: 5;    // PR_STILL, PR_BOB, PR_SWAY, PR_LAID, PR_LEAN, PR_LAMP or PR_BEACON
 PR_R_PHASE :: 6;     // where in its motion it starts (radians; a leaning record: its pitch)
 PR_R_FREE :: 7;      // 1: it does not ride the platform (a ship beside it)
 PR_R_TINT :: 8;      // r, g, b: multiplies the material's colour (1, 1, 1 leaves it)
@@ -55,6 +58,8 @@ PR_SWAY :: 2;        // bends in the wind, more the higher up the part (a tree, 
 PR_LAID :: 3;        // lies flat on a surface (a lawn on a deck, a road's marking): drawn a hair nearer, so the two never flicker
 PR_LEAN :: 4;        // leans any way (a ship on a sea, a limb, a flag's cloth): rolled about its own x, then pitched about its
                      // own z (its +x end rises), then turned by its yaw. Its size is its stretch, for its scale's float holds the roll
+PR_LAMP :: 5;        // a lamp's glow (a ball about its place): off by day, and never drawn under a pixel or two across, so a far street is a row of lights
+PR_BEACON :: 6;      // the same, flashing about twenty times a minute (a red light on a mast)
 
 // ---- a material: PR_MATERIAL_FLOATS floats a row, row k the material numbered k
 PR_MATERIAL_FLOATS :: 8;
@@ -66,6 +71,13 @@ PR_M_SCALE :: 6;     // the pattern's size (m): a floor's height, a slab's side;
 PR_M_GLOW :: 7;      // light of its own, in whites (a lamp, a lit window)
 PR_M_MORE :: 8;      // a pattern that needs more numbers reads them from the next row (photoreal-surfaces.coax)
 PR_MATERIALS :: 64;  // rows a table may hold
+// After the materials, the lights near the eye (photoreal-lights.coax pr_lights_near), a row each:
+// x, y, z in the parts' frame, its reach (m); r, g, b (its light at a metre, in whites), 0.
+PR_NEAR_LIGHTS :: 12;
+PR_TABLE_FLOATS :: (PR_MATERIALS + PR_NEAR_LIGHTS) * PR_MATERIAL_FLOATS;
+// A lamp field's cell (after the sky field's cells in the same store): r, g, b of the lamps' light
+// on level ground there (over pi, in whites), and the height (m) over which it fades up a wall.
+PR_LAMP_FLOATS :: 4;
 
 PR_PATTERN_PLAIN :: 0;     // one colour
 PR_PATTERN_CONCRETE :: 1;  // cast concrete: cloudy pours and a fine grain
@@ -73,11 +85,12 @@ PR_PATTERN_GLASS :: 2;     // a curtain wall: floors, mullions, panes that mirro
 PR_PATTERN_PAVING :: 3;    // stone slabs with joints
 PR_PATTERN_ASPHALT :: 4;   // a road's surface
 PR_PATTERN_LEAVES :: 5;    // foliage: light passes through its edges
-PR_PATTERN_WATER :: 6;     // still water: a pool, a canal
+PR_PATTERN_WATER :: 6;     // still water: a pool, a canal. The colour is its floor's; the scale is its depth (m)
 PR_PATTERN_STONE :: 7;     // dressed stone in courses
 PR_PATTERN_PANELS :: 8;    // ribbed metal sheet
 PR_PATTERN_LAWN :: 9;      // mown grass or planted ground
-// (10 and 11 are kept for the lights' and gardens' patterns)
+PR_PATTERN_GRAVEL :: 10;   // raked gravel: a garden path
+PR_PATTERN_BLOOM :: 11;    // a planted bed: ground cover in the material's colour, flowers in the record's tint
 PR_PATTERN_POURED :: 12;   // a wall cast in place: lifts, form panels, tie holes, bays, a seam, streaks, a waterline (two rows)
 PR_PATTERN_RIBBON :: 13;   // ribbon windows between pale metal spandrels
 PR_PATTERN_FINS :: 14;     // glass behind pale vertical fins

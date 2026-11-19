@@ -12,7 +12,7 @@
 //   sw_under        the plume and the wake's bubbles seen from under the sea
 //   sw_pool         a moonpool looked down into
 // SLAB_WW is where the block starts in the page's uniforms (floats): slab.coax's U_WATER.
-SLAB_WW :: 15980;
+SLAB_WW :: 15992;
 SW_GRID :: SLAB_WW+44;
 SW_FOAM :: SLAB_WW+188;
 // water-lee.coax's grid (LEE_N, LEE_OUTER, LEE_INNER, LEE_FIRST, LEE_GROW): slab-water.coax checks these match

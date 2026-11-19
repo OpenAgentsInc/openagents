@@ -16,6 +16,7 @@
 // are not drawn. What stands on the platform beyond its plan joins in slab-content.coax.
 #load "../../metaverse-engine/render/shade/photoreal-frame.coax";
 #load "../../metaverse-engine/render/shade/photoreal-scene.coax";
+#load "../../metaverse-engine/render/shade/photoreal-lights.coax";
 #load "../../metaverse-engine/arch/solid.coax";
 #load "slab-content.coax";
 #load "slab-photo-rows.coax";
@@ -24,13 +25,15 @@ U_PHOTO :: U_WORDS + WORDS + SEAS_FLOATS;   // the photoreal frame's block, afte
 U_PHOTO_ON :: U_PHOTO + PR_FLOATS;   // 1: the realm draws photoreal; then 1: the meshes draw the platform this frame
 PHOTO_FLOATS :: PR_FLOATS + 4;
 PHOTO_EXPOSURE :: 1.3f32;
-PHOTO_VERTICES :: 40000;             // the parts' vertices, fixed and loose
+PHOTO_VERTICES :: 72000;             // the parts' vertices, fixed and loose
 PHOTO_RECORDS :: 16384;              // placed parts, still and moving
 PHOTO_DRAWS :: 2 * PR_PARTS;
 PHOTO_STORES :: 4;                   // the vertices, the records, the materials, the ground's sky field
 PHOTO_PAINT :: 63;                   // the material that means: the plan's own paint for the record's kind
 PHOTO_CELL :: 4.0f32;                // the sky field's cell (m) over the prime deck
 PHOTO_NX :: 250; PHOTO_NZ :: 150;
+PHOTO_FIELD_FLOATS :: PHOTO_NX * PHOTO_NZ * (PR_FIELD_FLOATS + PR_LAMP_FLOATS);   // the sky field, then the lamp field (photoreal-lights.coax)
+PHOTO_LIGHTS :: 3072;                // lamps a list may hold (photo_light)
 
 SlabPhoto :: struct {
   on: bool;                // the realm draws photoreal
@@ -48,9 +51,14 @@ SlabPhoto :: struct {
   draws: [PHOTO_DRAWS * PR_DRAW_WORDS] u32;
   still_draws: int;
   draw_count: int;         // this frame's draws (0: the trace draws the platform)
-  materials: [PR_MATERIALS * PR_MATERIAL_FLOATS] f32;
+  materials: [PR_TABLE_FLOATS] f32;   // the materials, then the lights near the eye
   material_count: int;
-  field: [PHOTO_NX * PHOTO_NZ * PR_FIELD_FLOATS] f32;
+  field: [PHOTO_FIELD_FLOATS] f32;
+  lights: [PHOTO_LIGHTS * PR_LIGHT_FLOATS] f32;   // the list's lamps (photo_light), baked into the lamp field
+  light_count: int;
+  lamps: f32;              // how far on the lamps are this frame, 0 to 1
+  latitude: f32;           // the site's, for the moon (slab.coax sets it)
+  eye: [3] f32; look: [3] f32;   // the eye and its view in the hull's frame, for content sets
   tops: [PHOTO_NX * PHOTO_NZ] f32;
   field_on: bool;
   key: u32;                // what the still list was made from
@@ -89,6 +97,17 @@ photo_material2 :: (ph: [] SlabPhoto, r: f32, g: f32, b: f32, rough: f32, metal:
   ph[0].material_count += 1;
   return k;
 }
+// A lamp for the list being made (call it from slab_content_place): at (x, y, z) in the hull's
+// frame, `high` metres over the ground it lights, its pool's light right under it (r, g, b, in
+// whites over pi: 0.07 a well lit street), and the height over which it fades up a wall. It lights
+// the ground through the lamp field (the prime deck only) and, near the eye, shines on smooth
+// things (photoreal-lights.coax). It draws nothing: place a PR_LAMP record for its glow.
+photo_light :: (ph: [] SlabPhoto, x: f32, y: f32, z: f32, high: f32, r: f32, g: f32, b: f32, climb: f32) {
+  ls: [1] PrLights; pr_lights(ls[..], ph[0].lights[..]); ls[0].n = ph[0].light_count;
+  pr_light_add(ls[..], x, y, z, high, r, g, b, climb);
+  ph[0].light_count = ls[0].n;
+  if ls[0].full { ph[0].full = true; }
+}
 // A material's glow, set again (a lamp that comes on at dusk).
 photo_glow :: (ph: [] SlabPhoto, material: int, glow: f32) {
   if material <= 0 || material >= ph[0].material_count { return; }
@@ -123,7 +142,7 @@ photo_make :: (ph: [] SlabPhoto) {
   ph[0].gable = photo_part(ph, pr_unit_gable(p));
   ph[0].cypress = photo_part(ph, photo_cypress(p));
   ph[0].loose = photo_part(ph, ArchPart.{});
-  for i: 0..<PR_MATERIALS * PR_MATERIAL_FLOATS { ph[0].materials[i] = 0; }
+  for i: 0..<PR_TABLE_FLOATS { ph[0].materials[i] = 0; }
   // row 0: what a vertex with no material of its own is made of
   _ = photo_material(ph, 0.8, 0.8, 0.78, 0.8, 0, PR_PATTERN_PLAIN, 0, 0);
   // the towers' curtain walls: four facades, each a little its own (photoreal-surfaces.coax pr_glazing)
@@ -251,6 +270,7 @@ photo_plan :: (ph: [] SlabPhoto, l: [] PrList, rec: [] f32, n: int, tripped: boo
     if kind == SLAB_KIND_PIPE && tripped && z0 < -200 { y0 = y1 - 300; }
     // wholly under the sea: the sea hides it (the view from under it is traced)
     if x1 <= x0 || y1 <= y0 || z1 <= z0 || y1 < -3 { continue; }
+    if slab_content_draws(ph, kind, shape) { continue; }   // a content set draws this record itself
     cx := (x0 + x1) * 0.5; cz := (z0 + z1) * 0.5;
     dx := x1 - x0; dy := y1 - y0; dz := z1 - z0;
     material := photo_kind_material(ph, kind, i);
@@ -270,6 +290,7 @@ photo_plan :: (ph: [] SlabPhoto, l: [] PrList, rec: [] f32, n: int, tripped: boo
       // the lawn, and the cypresses the trace and the walk know (slab_tree)
       ground := y0 + 0.3f32;
       r := pr_box(l, ph[0].box, x0, y0, z0, x1, ground, z1, PHOTO_PAINT); pr_value(l, r, cast(f32) (i + 1)); pr_laid(l, r);
+      if slab_content_trees(ph) { continue; }   // a content set stands the trees (slab-content-green.coax)
       for tz: cast(int) floor(z0 / SLAB_TREE_CELL)..<cast(int) floor(z1 / SLAB_TREE_CELL) + 1 {
         for tx: cast(int) floor(x0 / SLAB_TREE_CELL)..<cast(int) floor(x1 / SLAB_TREE_CELL) + 1 {
           t := slab_tree(cast(f32) tx, cast(f32) tz);
@@ -370,12 +391,16 @@ photo_field :: (ph: [] SlabPhoto, rec: [] f32, n: int) {
     } }
   }
   pr_field_build(ph[0].tops[..], PHOTO_NX, PHOTO_NZ, PHOTO_CELL, ph[0].field[..]);
+  // the list's lamps, as pools of light in the same cells
+  ls: [1] PrLights; pr_lights(ls[..], ph[0].lights[..]); ls[0].n = ph[0].light_count;
+  pr_lamp_field(ls[..], -SLAB_LENGTH / 2, -SLAB_BEAM / 2, PHOTO_CELL, PHOTO_NX, PHOTO_NZ, ph[0].field[..]);
   ph[0].versions[3] += 1;
 }
 // What a content set reads of the world.
 photo_world :: (s: [] Slab, rec: [] f32, n: int, reduced: bool) -> SlabWorld {
   return SlabWorld.{records = rec, count = n, layout = s[0].layout, build = s[0].build.on, build_day = s[0].bdraw[0].day, bd = s[0].bdraw[..],
-    reduced = reduced, time = f32(s[0].time), hour = f32(s[0].hour), night = 0};
+    reduced = reduced, time = f32(s[0].time), hour = f32(s[0].hour), night = 0,
+    eye = s[0].photo[0].eye, tangent = s[0].tanh, lamps = s[0].photo[0].lamps};
 }
 // The list of what stands still, made again from the frame's records.
 photo_list :: (s: [] Slab, rec: [] f32, n: int, tripped: bool, reduced: bool) {
@@ -385,7 +410,9 @@ photo_list :: (s: [] Slab, rec: [] f32, n: int, tripped: bool, reduced: bool) {
   pr_list(l, ph[0].records[..], ph[0].draws[..], 0);
   for k: 0..<ph[0].kind_count { _ = pr_part(l, ph[0].kinds[k]); }
   w := photo_world(s, rec, n, reduced);
+  ph[0].light_count = 0;
   pr_list_count(l); photo_plan(ph, l, rec, n, tripped); slab_content_place(ph, l, w);
+  ph[0].light_count = 0;
   pr_list_fill(l); photo_plan(ph, l, rec, n, tripped); slab_content_place(ph, l, w);
   ph[0].still = l[0].rn;
   ph[0].still_draws = pr_list_draws(l, reduced);
@@ -437,6 +464,10 @@ slab_photo_frame :: (s: [] Slab, u: [] f32, sun: SimSun, phone: bool) {
   pose: [12] f32;
   for i: 0..<12 { pose[i] = u[P + P_POSE + i]; }
   pr_frame_pose(u, b, pose);
+  // the eye, its view and the wind in the hull's frame, where the parts stand
+  er := [3] f32.[s[0].eye[0] - pose[3], s[0].eye[1] - pose[7], s[0].eye[2] - pose[11]];
+  for a: 0..<3 { ph[0].eye[a] = pose[a] * er[0] + pose[4 + a] * er[1] + pose[8 + a] * er[2]; ph[0].look[a] = pose[a] * s[0].fwd[0] + pose[4 + a] * s[0].fwd[1] + pose[8 + a] * s[0].fwd[2]; }
+  pr_frame_wind(u, b, pose[0] * u[U_WIND] + pose[8] * u[U_WIND + 1], pose[2] * u[U_WIND] + pose[10] * u[U_WIND + 1], u[U_WIND + 2], 0.55);
   sv := [3] f32.[f32(sun.x), f32(sun.y), f32(sun.z)];
   // the sea's weather (slab-sea.coax, water-sea.coax SeaWeather): its cloud covers the sky and
   // lets through its shares of the sun and of the sky's light, and its rain and fog thicken the air
@@ -458,6 +489,11 @@ slab_photo_frame :: (s: [] Slab, u: [] f32, sun: SimSun, phone: bool) {
     haze = 0.22f32 + 0.14f32 * cloud, warm = (0.07f32 + 0.07f32 * low) * (1 - cloud), sea_level = 0, ground = [3] f32.[0.26, 0.26, 0.25], exposure = PHOTO_EXPOSURE, reduced = phone});
   // the towers' rooms lit by the hour and the daylight (the glass patterns' pr_room)
   pr_frame_rooms(u, b, pr_rooms_by_hour(f32(s[0].hour), u[b + PR_SUN + 3]));
+  // the night: the moon for the site's date (the page has no year: 2026), its light in the
+  // sky's, and the lamps, which come on as the daylight fails
+  moon := ifx s[0].build.on then pr_moon_at(27.8, 2026, 4.5 * 30.44, 15.5) else pr_moon_at(ph[0].latitude, 2026, f32(s[0].month) * 30.44, f32(s[0].hour));
+  pr_frame_moon(u, b, moon.dir, moon.lit);
+  ph[0].lamps = pr_lamps_level(u, b);
   // the shadow map: round where the view meets the deck (or the sea), as wide as the view there
   level := ifx s[0].layout == LAYOUT_PRIME && !s[0].build.on then SLAB_DECK else 8.0f32;
   e := s[0].eye; f := s[0].fwd;
@@ -474,6 +510,14 @@ slab_photo_frame :: (s: [] Slab, u: [] f32, sun: SimSun, phone: bool) {
   if !ph[0].keyed || key != ph[0].key { photo_list(s, rec, n, tripped, phone); ph[0].key = key; ph[0].keyed = true; }
   slab_life_frame(s, photo_world(s, rec, n, phone));   // where what moves is now (slab-content-life.coax)
   photo_movers(s, rec, n, phone, u[P + P_PICK + 3]);
+  // the lamps nearest the view shine on smooth things (a desktop only); the rest are the lamp field's
+  near: PrNear;
+  if !phone && ph[0].lamps > 0 && ph[0].light_count > 0 {
+    ls: [1] PrLights; pr_lights(ls[..], ph[0].lights[..]); ls[0].n = ph[0].light_count;
+    near = pr_lights_near(ls[..], ph[0].eye, ph[0].look, 30, PR_NEAR_LIGHTS, ph[0].materials[..]);
+    if near.changed { ph[0].versions[2] += 1; }
+  }
+  pr_frame_lamps(u, b, ph[0].lamps, u[b + PR_ROOMS], near.count, ph[0].field_on && ph[0].light_count > 0);
   if ph[0].field_on { pr_frame_field(u, b, -SLAB_LENGTH / 2, -SLAB_BEAM / 2, PHOTO_CELL, SLAB_DECK, PHOTO_NX, PHOTO_NZ, 8); } else { pr_frame_no_field(u, b); }
   // the section and the view from under the sea stay traced
   meshes := u[P + P_SECTION] == 0 && u[P + P_UNDER] < 0.5;
@@ -496,8 +540,8 @@ slab_photo_draws :: (s: [] Slab) -> int #export_c #effects(all) { return ifx s[0
 slab_photo_store_cap :: (k: int) -> int #export_c #effects(all) {
   if k == 0 { return PHOTO_VERTICES * ARCH_VERTEX_FLOATS * 4; }
   if k == 1 { return PHOTO_RECORDS * PR_RECORD_FLOATS * 4; }
-  if k == 2 { return PR_MATERIALS * PR_MATERIAL_FLOATS * 4; }
-  return PHOTO_NX * PHOTO_NZ * PR_FIELD_FLOATS * 4;
+  if k == 2 { return PR_TABLE_FLOATS * 4; }
+  return PHOTO_FIELD_FLOATS * 4;
 }
 slab_photo_store_bytes :: (s: [] Slab, k: int) -> int #export_c #effects(all) {
   if k == 0 { return photo_max_i(s[0].photo[0].vertices, 1) * ARCH_VERTEX_FLOATS * 4; }
@@ -518,7 +562,7 @@ slab_photo_store_span :: (s: [] Slab, k: int, field: int) -> int #export_c #effe
 // ---- checks
 #test "the photoreal block follows the uniforms' words, where the shader reads it" {
   // gpu/slab-photoreal.coax SLAB_PHOTO follows these (the water's block follows this one: slab-water.coax)
-  #assert U_PHOTO == 15872 && U_WATER == U_PHOTO + PHOTO_FLOATS && U_WATER == 3995 * 4;
+  #assert U_PHOTO == 15872 && U_WATER == U_PHOTO + PHOTO_FLOATS && U_WATER == 3998 * 4;
   #assert PHOTO_PAINT == PR_MATERIALS - 1;
 }
 #test "a photoreal frame places the plan's parts and draws them; the section and the painterly realm draw none" #steps 4000000000 {

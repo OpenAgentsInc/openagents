@@ -1,0 +1,251 @@
+// The photoreal style's night, on the CPU (docs/metaverse/photoreal.md): the lamps a realm places,
+// and the moon. A realm fills a list of lamps when it builds its scene,
+// bakes them into a lamp field (a pool of light under each, in the sky field's cells), and each
+// frame says how far on they are and which few stand near the eye. The shaders read all of it
+// through photoreal.coax pr_lamps and pr_dome. (The rooms lit behind glass are
+// photoreal-frame.coax pr_rooms_by_hour's, PR_ROOMS.)
+//
+//   pr_light_add      a lamp: where it hangs, how high over what it lights, its pool's light
+//   pr_lamp_field     every lamp's pool, baked after a sky field's cells
+//   pr_lights_near    the lamps nearest where the eye looks, into the rows after the materials
+//   pr_lamps_level    how far on the lamps are, from the frame's own daylight (not from the hour)
+//   pr_frame_lamps    the block's lamp numbers
+//   pr_moon_at        where the moon stands and how much of its face is lit, for a date and a place
+//   pr_frame_moon     the moon in the block, and its light added to the sky's
+//   pr_frame_wind     the wind the parts bend in
+//
+// Limits a realm should state: every lamp lights the ground through the field, at no cost a
+// frame; only PR_NEAR_LIGHTS (12) of them shine on smooth surfaces, and none on the reduced tier.
+// The field does not know what stands between a lamp and the ground.
+//   coax/bin/coax test --library metaverse-engine/render/shade/photoreal-lights.coax
+#module "metaverse.engine.render.photoreal_lights";
+#load "photoreal-frame.coax";
+
+PR_LIGHT_FLOATS :: 8;   // x, y, z (the parts' frame); how high it hangs over the ground it lights (m); r, g, b: its light on level ground right under it (over pi, in whites); the height over which it fades up a wall (m)
+PrLights :: struct { rows: [] f32; n: int; full: bool; }
+pr_lights :: (l: [] PrLights, rows: [] f32) { l[0].rows = rows; l[0].n = 0; l[0].full = false; }
+// A lamp at (x, y, z), `high` metres over the ground it lights, whose pool right under it is
+// (r, g, b) (0.07 is a well lit street under a night's exposure). `climb` is the height over which
+// its light fades up a wall: about `high` for a street lamp, more for a floodlight aimed at a front.
+pr_light_add :: (l: [] PrLights, x: f32, y: f32, z: f32, high: f32, r: f32, g: f32, b: f32, climb: f32) {
+  if (l[0].n + 1) * PR_LIGHT_FLOATS > l[0].rows.count { l[0].full = true; return; }
+  o := l[0].n * PR_LIGHT_FLOATS;
+  l[0].rows[o] = x; l[0].rows[o + 1] = y; l[0].rows[o + 2] = z; l[0].rows[o + 3] = st_max(high, 0.5);
+  l[0].rows[o + 4] = r; l[0].rows[o + 5] = g; l[0].rows[o + 6] = b; l[0].rows[o + 7] = st_max(climb, 1);
+  l[0].n += 1;
+}
+// A lamp's light on level ground `d` metres from the point under it, as a share of its pool's:
+// the inverse square, and the cosine at which it strikes.
+pr_light_pool :: (high: f32, d: f32) -> f32 { k := high * high / (high * high + d * d); return k * sqrt(k); }
+// Every lamp's pool, written after the sky field's cells in `out` (nx * nz * PR_FIELD_FLOATS floats
+// in; PR_LAMP_FLOATS a cell follow). The grid is the sky field's: its corner, a cell's side.
+pr_lamp_field :: (l: [] PrLights, x0: f32, z0: f32, cell: f32, nx: int, nz: int, out: [] f32) {
+  base := nx * nz * PR_FIELD_FLOATS;
+  if nx < 1 || nz < 1 || out.count < base + nx * nz * PR_LAMP_FLOATS { return; }
+  for i: 0..<nx * nz * PR_LAMP_FLOATS { out[base + i] = 0; }
+  for k: 0..<l[0].n {
+    o := k * PR_LIGHT_FLOATS;
+    x := l[0].rows[o]; z := l[0].rows[o + 2]; high := l[0].rows[o + 3];
+    reach := high * 5;   // where a pool has fallen under a hundredth of itself
+    i0 := cast(int) st_max(floor((x - reach - x0) / cell), 0); i1 := cast(int) st_min(floor((x + reach - x0) / cell), cast(f32) (nx - 1));
+    j0 := cast(int) st_max(floor((z - reach - z0) / cell), 0); j1 := cast(int) st_min(floor((z + reach - z0) / cell), cast(f32) (nz - 1));
+    for j: j0..<j1 + 1 { for i: i0..<i1 + 1 {
+      dx := x0 + (cast(f32) i + 0.5) * cell - x; dz := z0 + (cast(f32) j + 0.5) * cell - z;
+      if dx * dx + dz * dz > reach * reach { continue; }
+      e := pr_light_pool(high, sqrt(dx * dx + dz * dz));
+      c := base + (j * nx + i) * PR_LAMP_FLOATS;
+      w := e * (l[0].rows[o + 4] + l[0].rows[o + 5] + l[0].rows[o + 6]);
+      // (the fade height is kept as its sum weighed by light until every lamp is in)
+      out[c] += e * l[0].rows[o + 4]; out[c + 1] += e * l[0].rows[o + 5]; out[c + 2] += e * l[0].rows[o + 6]; out[c + 3] += w * l[0].rows[o + 7];
+    } }
+  }
+  for i: 0..<nx * nz {
+    c := base + i * PR_LAMP_FLOATS; w := out[c] + out[c + 1] + out[c + 2];
+    out[c + 3] = ifx w > 0.000001 then out[c + 3] / w else 1.0f32;
+  }
+}
+// The lamps nearest the point `ahead` metres along the eye's view, at most `most` (and
+// PR_NEAR_LIGHTS), written into the rows after a table's materials. Answers how many; `changed`
+// is set when a row is not what the table held.
+PrNear :: struct { count: int; changed: bool; }
+pr_lights_near :: (l: [] PrLights, eye: [3] f32, forward: [3] f32, ahead: f32, most: int, table: [] f32) -> PrNear {
+  out: PrNear;
+  cap := ifx most < PR_NEAR_LIGHTS then most else PR_NEAR_LIGHTS;
+  if cap <= 0 || table.count < PR_TABLE_FLOATS { return out; }
+  fx := eye[0] + forward[0] * ahead; fy := eye[1] + forward[1] * ahead; fz := eye[2] + forward[2] * ahead;
+  best: [PR_NEAR_LIGHTS] int; score: [PR_NEAR_LIGHTS] f32;
+  for k: 0..<l[0].n {
+    o := k * PR_LIGHT_FLOATS;
+    dx := l[0].rows[o] - fx; dy := l[0].rows[o + 1] - fy; dz := l[0].rows[o + 2] - fz;
+    d := dx * dx + dy * dy + dz * dz;
+    if out.count == cap && d >= score[cap - 1] { continue; }
+    at := ifx out.count < cap then out.count else cap - 1;
+    while at > 0 && score[at - 1] > d { best[at] = best[at - 1]; score[at] = score[at - 1]; at -= 1; }
+    best[at] = k; score[at] = d;
+    if out.count < cap { out.count += 1; }
+  }
+  for i: 0..<out.count {
+    o := best[i] * PR_LIGHT_FLOATS; high := l[0].rows[o + 3];
+    // its light a metre off: what makes its pool from where it hangs; and how far its highlight carries
+    row := [8] f32.[l[0].rows[o], l[0].rows[o + 1], l[0].rows[o + 2], st_max(high * 14, 60), l[0].rows[o + 4] * high * high, l[0].rows[o + 5] * high * high, l[0].rows[o + 6] * high * high, 0];
+    t := (PR_MATERIALS + i) * PR_MATERIAL_FLOATS;
+    for a: 0..<8 { if table[t + a] != row[a] { table[t + a] = row[a]; out.changed = true; } }
+  }
+  return out;
+}
+// How far on the lamps are, 0 to 1, from the light the frame's sky and sun put on level ground:
+// they come on as the daylight fails, whatever the hour (from about sunset to the sun 4 degrees
+// down under a clear sky). Call it after pr_frame_sky.
+pr_lamps_level :: (u: [] f32, b: int) -> f32 {
+  c := pr_frame_sky_light(u, b, 0, 1, 0);
+  sun := (u[b + PR_SUN_LIGHT] * 0.2126f32 + u[b + PR_SUN_LIGHT + 1] * 0.7152f32 + u[b + PR_SUN_LIGHT + 2] * 0.0722f32) * st_max(u[b + PR_SUN + 1], 0);
+  return 1 - prf_smooth(0.012, 0.05, c[0] * 0.2126f32 + c[1] * 0.7152f32 + c[2] * 0.0722f32 + sun);
+}
+pr_frame_lamps :: (u: [] f32, b: int, level: f32, rooms: f32, near: int, field: bool) {
+  u[b + PR_LAMPS] = st_sat(level); u[b + PR_LAMPS + 1] = st_sat(rooms); u[b + PR_LAMPS + 2] = cast(f32) near; u[b + PR_LAMPS + 3] = ifx field then 1.0f32 else 0.0f32;
+}
+// The wind the parts bend in: the way it blows in their own frame (x, z; made unit here), its
+// speed (m/s) and how gusty it is (0 steady to 1).
+pr_frame_wind :: (u: [] f32, b: int, x: f32, z: f32, speed: f32, gusty: f32) {
+  l := sqrt(x * x + z * z);
+  u[b + PR_WIND] = ifx l > 0.0001 then x / l else 1.0f32; u[b + PR_WIND + 1] = ifx l > 0.0001 then z / l else 0.0f32;
+  u[b + PR_WIND + 2] = st_max(speed, 0); u[b + PR_WIND + 3] = st_sat(gusty);
+}
+
+// ---- the moon
+// Where the moon stands, east, up and north (unit), and how much of its face is lit (0 new to 1
+// full), at a latitude (degrees, north positive) on a day of a year (1 is January 1) at an hour of
+// local solar time. A short series (the Astronomical Almanac's low-precision formulae, cut to
+// their largest terms): good to a degree or two, which a sky's picture needs.
+PrMoon :: struct { dir: [3] f32; lit: f32; }
+prl_turn :: (x: f32) -> f32 { return x - 360 * floor(x / 360); }
+pr_moon_at :: (latitude: f32, year: int, day: f32, hour: f32) -> PrMoon {
+  rad := 0.017453293f32;
+  d := cast(f32) (year - 2000) * 365.25f32 + day - 1.5f32 + hour / 24;   // days from noon on 2000 January 1
+  g := rad * prl_turn(357.528f32 + 0.9856003f32 * d);
+  ls := rad * (prl_turn(280.460f32 + 0.9856474f32 * d) + 1.915f32 * sin(g) + 0.020f32 * sin(2 * g));
+  lm := rad * (prl_turn(218.316f32 + 13.176396f32 * d) + 6.289f32 * sin(rad * prl_turn(134.963f32 + 13.064993f32 * d)));
+  bm := rad * 5.128f32 * sin(rad * prl_turn(93.272f32 + 13.229350f32 * d));
+  ce := 0.917482f32; se := 0.397777f32;   // the ecliptic's tilt, 23.44 degrees
+  // on the equator's frame: toward the spring point, a quarter turn east of it, the pole
+  mx := cos(bm) * cos(lm); my := ce * cos(bm) * sin(lm) - se * sin(bm); mz := se * cos(bm) * sin(lm) + ce * sin(bm);
+  sx := cos(ls); sy := ce * sin(ls); rho := sqrt(sx * sx + sy * sy);
+  // the sky's turn: the sun's place along the equator and its hour angle
+  hs := rad * (hour - 12) * 15;
+  cl := (sx * cos(hs) - sy * sin(hs)) / rho; sl := (sy * cos(hs) + sx * sin(hs)) / rho;
+  xh := mx * cl + my * sl; yh := mx * sl - my * cl;
+  lat := rad * latitude;
+  m: PrMoon;
+  m.dir = [3] f32.[-yh, mz * sin(lat) + xh * cos(lat), mz * cos(lat) - xh * sin(lat)];
+  m.lit = (1 - cos(bm) * cos(lm - ls)) * 0.5f32;
+  return m;
+}
+// The moon's light on a surface square to it, in the scale of the sun's (over pi, in whites): a
+// full moon high up a little over three times the starlit sky's. This is a camera's night, held
+// brighter than the eye's so it reads, as the sky's own floor is (photoreal.coax pr_night).
+pr_moon_light :: (up: f32, lit: f32) -> [3] f32 {
+  k := 0.018f32 * lit * lit * prf_smooth(-0.02, 0.2, up);
+  return [3] f32.[0.8f32 * k, 0.88f32 * k, k];
+}
+// The moon in the block (toward it: x, y, z as the realm's sun is given), and its light added to
+// the sky's light on every facing. Call it after pr_frame_sky, which writes that light.
+pr_frame_moon :: (u: [] f32, b: int, dir: [3] f32, lit: f32) {
+  for a: 0..<3 { u[b + PR_MOON + a] = dir[a]; }
+  u[b + PR_MOON + 3] = 1;
+  c := pr_moon_light(dir[1], lit);
+  x := dir[0]; y := dir[1]; z := dir[2];
+  // a far light's nine numbers, each with its band's share of a surface's light (pr_frame_sky)
+  basis := [9] f32.[0.282095, 0.488603 * y, 0.488603 * z, 0.488603 * x, 1.092548 * x * y, 1.092548 * y * z, 0.315392 * (3 * z * z - 1), 1.092548 * x * z, 0.546274 * (x * x - y * y)];
+  fold := [9] f32.[0.282095, 0.488603 * 0.6666667, 0.488603 * 0.6666667, 0.488603 * 0.6666667, 1.092548 * 0.25, 1.092548 * 0.25, 0.315392 * 0.25, 1.092548 * 0.25, 0.546274 * 0.25];
+  for i: 0..<9 { for a: 0..<3 { u[b + PR_SH + i * 4 + a] += c[a] * 3.14159265f32 * basis[i] * fold[i]; } }
+}
+pr_frame_no_moon :: (u: [] f32, b: int) { for a: 0..<4 { u[b + PR_MOON + a] = 0; } }
+
+// ---- checks
+#test "a lamp's pool: whole under it, an eighth at 1.7 times its height, and the field holds each lamp's and their sum" {
+  #assert pr_light_pool(9, 0) == 1 && abs(pr_light_pool(9, 9 * 1.7320508f32) - 0.125f32) < 0.0001 && pr_light_pool(9, 45) < 0.01;
+  rows: [4 * PR_LIGHT_FLOATS] f32; ls: [1] PrLights; l := ls[..]; pr_lights(l, rows[..]);
+  pr_light_add(l, 10, 9, 10, 9, 0.07, 0.05, 0.03, 9);
+  pr_light_add(l, 50, 9, 10, 9, 0.02, 0.02, 0.02, 20);
+  out: [20 * 10 * (PR_FIELD_FLOATS + PR_LAMP_FLOATS)] f32;
+  for i: 0..<20 * 10 * PR_FIELD_FLOATS { out[i] = 7; }
+  pr_lamp_field(l, 0, 0, 4, 20, 10, out[..]);
+  base := 20 * 10 * PR_FIELD_FLOATS;
+  // the sky field's cells are left alone
+  for i: 0..<base { #assert out[i] == 7; }
+  // the cell under the first lamp (its middle is 10, 10): the pool, and its own fade height
+  under := base + (2 * 20 + 2) * PR_LAMP_FLOATS;
+  #assert abs(out[under] - 0.07f32) < 0.0005 && abs(out[under + 1] - 0.05f32) < 0.0005 && abs(out[under + 3] - 9) < 0.1;
+  // half way between the two both reach: more than either alone, and a fade height between theirs
+  mid := base + (2 * 20 + 7) * PR_LAMP_FLOATS;
+  one := 0.07f32 * pr_light_pool(9, 20); two := 0.02f32 * pr_light_pool(9, 20);
+  #assert abs(out[mid] - (one + two)) < 0.0001 && out[mid + 3] > 9 && out[mid + 3] < 20;
+  // past five times a lamp's height: dark
+  #assert out[base + (9 * 20 + 19) * PR_LAMP_FLOATS] < 0.001 && out[base + 19 * PR_LAMP_FLOATS] > 0;
+  pr_lights(l, rows[..]); pr_light_add(l, 10, 9, 10, 9, 0.07, 0.05, 0.03, 9);
+  pr_lamp_field(l, 0, 0, 4, 20, 10, out[..]);
+  #assert out[base + (2 * 20 + 19) * PR_LAMP_FLOATS] == 0 && out[base + (2 * 20 + 19) * PR_LAMP_FLOATS + 3] == 1;
+  pr_light_add(l, 50, 9, 10, 9, 0.02, 0.02, 0.02, 20);
+  // a full list says so and keeps what it has
+  for k: 0..<4 { pr_light_add(l, 0, 5, 0, 5, 1, 1, 1, 5); }
+  #assert l[0].n == 4 && l[0].full;
+}
+#test "the near lights are the ones nearest where the eye looks, nearest first, and a still eye changes nothing" {
+  rows: [40 * PR_LIGHT_FLOATS] f32; ls: [1] PrLights; l := ls[..]; pr_lights(l, rows[..]);
+  for k: 0..<40 { pr_light_add(l, cast(f32) k * 25, 9, 0, 9, 0.07, 0.05, 0.03, 9); }
+  table: [PR_TABLE_FLOATS] f32;
+  eye := [3] f32.[500, 2, 30]; fwd := [3] f32.[0, 0, -1];
+  n := pr_lights_near(l, eye, fwd, 30, 12, table[..]);
+  #assert n.count == 12 && n.changed;
+  t := PR_MATERIALS * PR_MATERIAL_FLOATS;
+  #assert table[t] == 500 && table[t + 3] == 126 && abs(table[t + 4] - 0.07f32 * 81) < 0.001;
+  for i: 0..<12 { #assert abs(table[t + i * 8] - 500) <= 150; }
+  again := pr_lights_near(l, eye, fwd, 30, 12, table[..]);
+  #assert again.count == 12 && !again.changed;
+  // the reduced tier asks for none
+  #assert pr_lights_near(l, eye, fwd, 30, 0, table[..]).count == 0;
+}
+#test "lamps come on as the daylight fails" {
+  u: [PR_FLOATS] f32;
+  pr_frame_sky(u[..], 0, PrSky.{sun = [3] f32.[0.6, 0.64, 0.48]});
+  #assert pr_lamps_level(u[..], 0) == 0;
+  pr_frame_sky(u[..], 0, PrSky.{sun = [3] f32.[0.9, -0.3, 0.316]});
+  #assert pr_lamps_level(u[..], 0) == 1;
+  // a low sun in the golden hour: still off. Just after sunset they are part way on
+  pr_frame_sky(u[..], 0, PrSky.{sun = [3] f32.[0.9987, 0.05, 0], haze = 0.15});
+  #assert pr_lamps_level(u[..], 0) == 0;
+  pr_frame_sky(u[..], 0, PrSky.{sun = [3] f32.[0.9998, -0.02, 0], haze = 0.15});
+  dusk := pr_lamps_level(u[..], 0);
+  #assert dusk > 0.2 && dusk < 0.95;
+  pr_frame_lamps(u[..], 0, 0.5, 0.3, 7, true);
+  #assert u[PR_LAMPS] == 0.5 && u[PR_LAMPS + 2] == 7 && u[PR_LAMPS + 3] == 1;
+  pr_frame_wind(u[..], 0, 3, 4, 8, 0.5);
+  #assert abs(u[PR_WIND] - 0.6f32) < 0.0001 && abs(u[PR_WIND + 1] - 0.8f32) < 0.0001 && u[PR_WIND + 2] == 8;
+}
+#test "the moon: full on 2026 January 3 and high at midnight, new on January 18 beside the sun, and its light joins the sky's" {
+  // full moon 2026 January 3, 10:03 UT; new moon January 18, 19:52 UT
+  full := pr_moon_at(28, 2026, 3, 10.05);
+  #assert full.lit > 0.985;
+  new := pr_moon_at(28, 2026, 18, 19.87);
+  #assert new.lit < 0.015;
+  // first quarter January 26, 04:47 UT
+  #assert abs(pr_moon_at(28, 2026, 26, 4.8).lit - 0.5f32) < 0.05;
+  // a full moon stands across from the sun: high in the south at midnight in a northern winter
+  night := pr_moon_at(28, 2026, 3, 0);
+  l := sqrt(night.dir[0] * night.dir[0] + night.dir[1] * night.dir[1] + night.dir[2] * night.dir[2]);
+  #assert abs(l - 1) < 0.001 && night.dir[1] > 0.7 && night.dir[2] < 0.5;
+  // and a new moon stands with the sun: at noon it is up, within a few degrees of the sun's place
+  noon := pr_moon_at(28, 2026, 18, 12);
+  #assert noon.dir[1] > 0.5 && abs(noon.dir[0]) < 0.2;
+  // its light: none when it is down or new, and it lifts the sky's light on ground that faces it
+  #assert pr_moon_light(-0.1, 1)[2] == 0 && pr_moon_light(0.8, 0)[2] == 0 && pr_moon_light(0.8, 1)[2] > 0.015;
+  u: [PR_FLOATS] f32;
+  pr_frame_sky(u[..], 0, PrSky.{sun = [3] f32.[0.9, -0.3, 0.316]});
+  before := pr_frame_sky_light(u[..], 0, 0, 1, 0);
+  pr_frame_moon(u[..], 0, night.dir, night.lit);
+  after := pr_frame_sky_light(u[..], 0, 0, 1, 0);
+  #assert u[PR_MOON + 3] == 1 && after[2] > before[2] + 0.008 && after[2] < before[2] + 0.02;
+  down := pr_frame_sky_light(u[..], 0, 0, -1, 0);
+  pr_frame_no_moon(u[..], 0);
+  #assert u[PR_MOON + 3] == 0 && down[2] < after[2];
+}

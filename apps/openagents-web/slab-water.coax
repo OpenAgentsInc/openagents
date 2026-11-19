@@ -55,6 +55,9 @@ SlabWater :: struct {
   warm: bool;                   // it has been run up to a moment once: a page opens with its spray in the air
   phone: bool;
   wind_x: f64; wind_z: f64;     // m/s
+  // a fountain's jet on the deck (slab-content-green.coax green_jet): where it leaves (world, m), and
+  // the spray clock's time of its next burst; it shares the walls' ring of bursts
+  jet_on: bool; jet_x: f64; jet_y: f64; jet_z: f64; jet_next: f64;
   drift: D2;                    // m/s
   flow: D2;                     // the water past the hull, m/s
   discharge: f64;               // of the design flow
@@ -131,6 +134,7 @@ ww_advance :: (w: [] SlabWater, tile: [] Tile, patch: f64, wind: f64, level: f64
     wall_step(w[0].spray[..], w[0].bodies[i], w[0].sea, i * w[0].each, w[0].each, w[0].heights[..], w[0].sharp[..], breaks, w[0].wind_x, w[0].wind_z, level, dt);
   }
   wall_tick(w[0].spray[..], dt);
+  ww_jet(w);
   if w[0].mode == 1 {
     // the moonpools, 111 m in from the west wall and 150 m apart (metaverse/slab-plan.coax)
     f := w[0].frame;
@@ -174,6 +178,31 @@ ww_frame :: (w: [] SlabWater, s: [] Synth, tile: [] Tile, wind: f64, current: D2
     ww_advance(w, tile, patch, wind, level, 0.2);
   }
   return true;
+}
+
+// The fountain's jet: a burst every WW_JET_EVERY seconds of the spray's clock, thrown straight up
+// at WW_JET_SPEED (it tops out about 2 m over the bowl and falls back into it), each burst a
+// little to one side of the last so the column has a width. Its drops are the walls' spray's
+// puffs (metaverse-engine/fx/spray.coax), drawn by the same pass.
+WW_JET_EVERY :: 0.25;
+WW_JET_SPEED :: 7.0;    // m/s (our assumption: a garden fountain's jet)
+ww_jet :: (w: [] SlabWater) {
+  sp := w[0].spray[..];
+  if !w[0].jet_on || w[0].mode != 1 { return; }
+  if w[0].jet_next > sp[0].time + 1.0 { w[0].jet_next = sp[0].time; }
+  while w[0].jet_next <= sp[0].time {
+    a := f64(sp[0].thrown) * 2.39996;
+    r := SPRAY_ROW * sp[0].next;
+    sp[0].rows[r] = f32(w[0].jet_x); sp[0].rows[r + 1] = f32(w[0].jet_y); sp[0].rows[r + 2] = f32(w[0].jet_z); sp[0].rows[r + 3] = f32(w[0].jet_next);
+    sp[0].rows[r + 4] = f32(0.25 * cos(a)); sp[0].rows[r + 5] = f32(WW_JET_SPEED); sp[0].rows[r + 6] = f32(0.25 * sin(a)); sp[0].rows[r + 7] = -0.3;   // (negative: the lamps light it at night, slab-fx.coax)
+    sp[0].rows[r + 8] = f32(0.3 * w[0].wind_x); sp[0].rows[r + 9] = 0; sp[0].rows[r + 10] = f32(0.3 * w[0].wind_z); sp[0].rows[r + 11] = 0.16;
+    // its "wall": a short way out to one side, so the drops leave from round the jet's mouth
+    sp[0].rows[r + 12] = f32(0.2 * cos(a)); sp[0].rows[r + 13] = f32(0.2 * sin(a));
+    sp[0].rows[r + 14] = f32(1 + (sp[0].thrown * 7 + 911) % 4093); sp[0].rows[r + 15] = 0.55;
+    sp[0].next = (sp[0].next + 1) % WALL_BURSTS;
+    sp[0].thrown += 1;
+    w[0].jet_next += WW_JET_EVERY;
+  }
 }
 
 ww_nibble :: (v: f64) -> u32 { return cast(u32) fclamp(floor(v * 15.0 + 0.5), 0.0, 15.0); }

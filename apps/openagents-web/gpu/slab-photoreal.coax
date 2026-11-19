@@ -77,16 +77,12 @@ slab_photo_skylight :: (u:[]f32)->V3 {return pr_sky_light(v3(0.0f32,1.0f32,0.0f3
 // The sky a sea mirrors along r: its air under the frame's cloud, without the sun's disc (the glint's).
 slab_photo_mirror_sky :: (r:V3,u:[]f32)->V3 {return pr_sky(r,u,SLAB_PHOTO);}
 
-// The physical sky along d as the display shows it: the air, the sun, cloud, and stars at night.
+// The physical sky along d as the display shows it: the air, the sun, cloud, and at night the
+// moon and stars (pr_dome draws them).
 slab_photo_sky :: (d:V3,u:[]f32)->V3 {
   b:int=SLAB_PHOTO;
   soft:f32=(u[b+PR_EYE+3]*2.0f32)/fmax(u[1],1.0f32);
   c:V3=pr_dome(d,soft,u,b);
-  night:f32=1.0f32-u[b+PR_SUN+3];
-  if ((night>0.3f32)&&(d.y>0.05f32)) {
-    g:V2=v2(floor((d.x/(d.y+0.3f32))*180.0f32),floor((d.z/(d.y+0.3f32))*180.0f32));
-    c=add3(c,scale3(v3(0.8f32,0.85f32,1.0f32),stepf(0.996f32,slab_hash2(g))*(night-0.3f32)*0.03f32));
-  }
   return pr_out(c,u,b);
 }
 // A display colour seen through `dist` metres of the physical air along d.
@@ -122,7 +118,8 @@ slab_photo_rough :: (k:s32,roof:bool)->f32 {
 }
 // What a mirror on the platform shows along rh from ph (hull frame): the platform's own masses
 // where the ray meets one, under the sun and sky without their shadows; else `sky`.
-slab_photo_mirror :: (ph:V3,rh:V3,sky:V3,u:[]f32)->V3 {
+// At night the lamps' pools light what it shows, as they light the platform itself.
+slab_photo_mirror :: (ph:V3,rh:V3,sky:V3,u:[]f32,field:[]f32,materials:[]f32)->V3 {
   b:int=SLAB_PHOTO;
   hit:SlabHit=slab_scene(ph,rh,true,1500.0f32,u);
   if (hit.t>=1500.0f32) {return sky;}
@@ -133,6 +130,10 @@ slab_photo_mirror :: (ph:V3,rh:V3,sky:V3,u:[]f32)->V3 {
   // (a tower's painted windows are not its lit rooms: those are the glass's own, pr_room)
   emit:V3=ifx wg_i32_f(hit.kind+0.5f32)==5 then v3(0.0f32,0.0f32,0.0f32) else pr_decode(pt.emit);
   c:V3=add3(mul3(pr_decode(pt.c),light),scale3(emit,1.0f32/fmax(u[b+PR_SUN_LIGHT+3],0.001f32)));
+  if (u[b+PR_LAMPS]>0.001f32) {
+    s:PrSurface; s.albedo=pr_decode(pt.c); s.normal=hit.n; s.rough=1.0f32; s.metal=0.0f32;
+    c=add3(c,pr_lamps(w,hit.n,sb_mul(rh,-1.0f32),s,u,b,field,materials));
+  }
   // the air between the mirror and what it shows
   t:f32=pr_air_through(hit.t,u[b+PR_EYE+1],rh.y,u,b);
   return mix3(sky,c,t);
@@ -235,11 +236,21 @@ slab_scene_fs :: (v:PrV,u:[]f32,materials:[]f32,field:[]f32,shadow_map:TexDepth,
   if (painted&&(record>=0)) {
     s.albedo=mul3(pr_decode(pt.c),v.tint);
     s.glow=scale3(pr_decode(pt.emit),1.0f32/exposure);
+    if (((kind==2)||(kind==3)||(kind==11)||(kind==20))&&(abs(nh.y)<0.5f32)) {
+      // the painter's windows at night: only the rooms whose lights are on at this hour (the
+      // frame's share of rooms lit, PR_ROOMS), and only as the daylight fails; at 0.55 of the
+      // paint's glow, so a lit room is a warm cream and not the display's white
+      along:f32=ifx abs(nh.x)>abs(nh.z) then wh.z else wh.x;
+      cell:V2=v2(floor(along/4.0f32),floor((wh.y-u[38])/3.6f32)+(cast(f32)(record)*7.0f32));
+      on:f32=stepf(slab_hash2(cell),u[b+PR_ROOMS]);
+      s.glow=scale3(s.glow,on*u[b+PR_LAMPS]*0.55f32);
+    }
     s.rough=slab_photo_rough(kind,nh.y>0.5f32);
     s.metal=0.0f32;
     if ((kind==14)&&(nh.y>0.5f32)) {
-      // water on the deck: dark, smooth, a mirror
-      s.albedo=v3(0.006f32,0.03f32,0.04f32); s.rough=0.05f32; s.glow=v3(0.0f32,0.0f32,0.0f32);
+      // the stone rim round the deck's water (the water itself is its own sheet inside it,
+      // apps/openagents-web/slab-content-green.coax green_pool); a moonpool is its shaft, below
+      s.albedo=v3(0.62f32,0.6f32,0.55f32); s.rough=0.5f32; s.glow=v3(0.0f32,0.0f32,0.0f32);
       if (abs(wh.x+389.0f32)<6.5f32) {
         // a moonpool: not water at the deck but a shaft down to the sea, whose water rises and
         // falls with the simulated surge (gpu/slab-water.coax sw_pool); the shaft's own shade is
@@ -302,9 +313,11 @@ slab_scene_fs :: (v:PrV,u:[]f32,materials:[]f32,field:[]f32,shadow_map:TexDepth,
   mirrored:V3=pr_environment(n,toward,s.rough,u,b);
   if (full&&(!free)&&(s.rough<0.16f32)) {
     r:V3=reflect3(rd,n);
-    mirrored=slab_photo_mirror(sb_add(wh,sb_mul(nh,0.15f32)),sb_dir_to_hull(r,u),mirrored,u);
+    mirrored=slab_photo_mirror(sb_add(wh,sb_mul(nh,0.15f32)),sb_dir_to_hull(r,u),mirrored,u,field,materials);
   }
-  c:V3=pr_out(pr_air(pr_lit(s,toward,reach,open,mirrored,u,b),v.world,u,b),u,b);
+  // the lamps: their pools baked in the field, and the near ones' highlights (hull frame)
+  lamp:V3=ifx free then v3(0.0f32,0.0f32,0.0f32) else pr_lamps(wh,nh,sb_dir_to_hull(toward,u),s,u,b,field,materials);
+  c:V3=pr_out(pr_air(add3(pr_lit(s,toward,reach,open,mirrored,u,b),lamp),v.world,u,b),u,b);
   // SLAB's own, over the display's colour: the stacks' smoke between the eye and the surface,
   // and a warm pulse on what is selected
   sm:V4=slab_smoke(sb_to_hull(eye,u),sb_dir_to_hull(rd,u),dist,u);

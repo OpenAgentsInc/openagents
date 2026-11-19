@@ -9,11 +9,15 @@
 #load "slab-content-city.coax";
 #load "slab-content-life.coax";
 // the construction view's objects: apps/openagents-web/slab-build-draw.coax (loaded by slab.coax)
+#load "slab-content-green.coax";   // trees, gardens, the canal's and pools' water, the fountain
+#load "slab-content-night.coax";   // the lamps: street, work, flood, aviation and navigation lights
 
 SlabContent :: struct {
   city: SlabCity;      // windows, railings, street and works detail (slab-content-city.coax)
   life: [1] SlabLife;  // people, vehicles, ships, the helicopter, birds and flags (slab-content-life.coax)
   build: BdParts;      // the construction view's yard, caissons, craft, cranes and lines (slab-build-draw.coax)
+  green: SlabGreen;    // trees, gardens, still water, the fountain (slab-content-green.coax)
+  night: SlabNight;    // the lamps (slab-content-night.coax)
 }
 // What a content set may read of the world when it places things.
 SlabWorld :: struct {
@@ -27,6 +31,9 @@ SlabWorld :: struct {
   time: f32;           // the world's seconds
   hour: f32;           // the site's hour, 0 to 24
   night: f32;          // 0 day to 1 night
+  eye: [3] f32;        // the eye in the hull's frame (the frame the records are in)
+  tangent: f32;        // the tangent of half its field of view, up and down
+  lamps: f32;          // how far on the lamps are, 0 by day to 1 at night (they follow the daylight, not the hour)
 }
 
 // Once: make parts with the architecture kit's pen and photo_part, and materials with photo_material.
@@ -34,14 +41,27 @@ slab_content_make :: (ph: [] SlabPhoto, pen: [] ArchPen) {
   slab_city_make(ph, pen);
   slab_life_make(ph, pen);
   bd_make(ph, pen);
+  green_make(ph, pen);
+  night_make(ph, pen);
 }
 // On every rebuild, twice (photoreal-scene.coax: count, then fill): place what stands still.
 slab_content_place :: (ph: [] SlabPhoto, l: [] PrList, w: SlabWorld) {
   slab_city_place(ph, l, w);
   slab_life_place(ph, l, w);
+  green_place(ph, l, w);
+  night_place(ph, l, w);
 }
 // Every frame, twice: place what moves. Keep it small: these records go to the GPU every frame.
 slab_content_move :: (ph: [] SlabPhoto, l: [] PrList, w: SlabWorld) {
   // The build view has its own craft and people; the finished platform's life is not there yet.
   if w.build { bd_place(ph, l, w.bd, w.reduced, w.night); } else { slab_life_move(ph, l, w); }
+  green_move(ph, l, w);
+  night_move(ph, l, w);
 }
+// Whether a content set draws a plan record of this kind and shape itself, so the plan's own box
+// or drum for it is left out (the fountain's jet is water, not a column).
+slab_content_draws :: (ph: [] SlabPhoto, kind: int, shape: int) -> bool {
+  return kind == SLAB_KIND_FOUNTAIN;
+}
+// Whether a content set stands the groves' trees (the plan then lays only their lawns).
+slab_content_trees :: (ph: [] SlabPhoto) -> bool { return true; }

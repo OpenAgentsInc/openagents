@@ -780,7 +780,11 @@ slab_water_bodies :: (s: [] Slab) {
   if s[0].layout == LAYOUT_PRIME {
     // the water follows the hull as drawn, turned against its lines (slab_pose)
     ww_monolith(w, f64(SLAB_LENGTH) / 2, f64(SLAB_BEAM) / 2, f64(SLAB_DRAFT), h.surge, h.sway, cos(h.yaw), sin(h.yaw));
+    // the fountain's jet (slab-content-green.coax), where the hull carries it
+    jet := green_jet(s[0].boxes[..], s[0].box_count);
+    w[0].jet_on = jet.found; at := lee_world(w[0].frame, f64(jet.x), f64(jet.z)); w[0].jet_x = at.x; w[0].jet_z = at.y; w[0].jet_y = f64(jet.y);
   } else {
+    w[0].jet_on = false;
     centres: [14] f64;
     n := ifx s[0].layout == LAYOUT_CLUSTER then 7 else 1;
     for i: 0..<n {
@@ -1007,6 +1011,7 @@ slab_frame :: (s: [] Slab, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
   s[0].mesh = ocean_vertices(clip);
   sea_look_frame(s, u, phone, tick, folded);
   sb_say(s);   // the HUD as words, for its pane
+  s[0].photo[0].latitude = f32(site.latitude);   // for the moon (slab-photoreal.coax)
   slab_photo_frame(s, u, sun, phone);
   if !s[0].hud || s[0].golden { return 0; }
   return chart_draw(s, out, place_lines(s, out, sb_lines(s, out)));   // the HUD itself is the pane's (slab-hud.coax)
@@ -1962,7 +1967,7 @@ coaxial_slab_uniform_floats :: () -> int #export_c #effects(all) { return UNIFOR
 // ---------------------------------------------------------------------------------------------
 // The frame budget (metaverse-engine/core/budget.coax, book chapter 16): what one frame of SLAB may use.
 // The photoreal scene's parts, placed records and sky field are in the state (slab-photoreal.coax).
-SLAB_BUDGET :: FrameBudget.{steps = 8, vertices = MAX_VERTICES - 1, draws = PHOTO_DRAWS, bytes = 10485760};
+SLAB_BUDGET :: FrameBudget.{steps = 8, vertices = MAX_VERTICES - 1, draws = PHOTO_DRAWS, bytes = 13631488};
 
 #test "SLAB's frames fit their declared budget" {
   #assert budget_declared(SLAB_BUDGET, MAX_VERTICES) == BUDGET_NONE;

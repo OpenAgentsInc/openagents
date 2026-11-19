@@ -1,0 +1,343 @@
+// SLAB's green and water (docs/metaverse/photoreal.md; docs/research/ocean/slab-world-spec.md):
+// the trees of the plan's groves, the gardens under them, the water in the canal and the pools,
+// and the fountain. slab-content.coax joins this file to the photoreal scene.
+//
+// Everything is placed by rule from the plan's records (metaverse/slab-plan.coax), so a deck that
+// is resized or planned again keeps its gardens:
+//   a grove record      its trees where slab_tree stands them (the walk's collisions and the trace
+//                       use the same rule): cypresses, and in a grove with a glade some stone pines
+//                       and olives; a clipped hedge round it with gaps to walk through; shrubs and
+//                       flowers between the trees; in a glade a gravel court with planted beds
+//   a pool record       still water over its floor (the engine's PR_PATTERN_WATER)
+//   the fountain record a stone fountain of two bowls in place of the plan's column
+//
+// Trees are the engine's (metaverse-engine/arch/flora.coax), in layers. On a desktop each tree's
+// wood and hearts stand in the still list, and its leaves are placed every frame for the trees
+// near the eye only; the leaves fold into the hearts between GREEN_FOLD metres and 1.6 times
+// that, so none pops. A phone draws the low tree and no leaves. All sway in the world's wind.
+#load "../../metaverse-engine/arch/flora.coax";
+
+GREEN_SPECIES :: 3;          // cypress, stone pine, olive
+GREEN_TREES :: 2048;         // trees whose leaves can be placed near the eye
+GREEN_TREE_FLOATS :: 12;     // x, y, z, yaw; across, up, species, phase; tint r, g, b; the record's number
+GREEN_FOLD :: 60.0f32;       // leaves stand to here (m) and are gone by 96
+GREEN_SHRUB_CELL :: 4.0f32;  // shrubs between the trees: one cell in two of this grid
+
+SlabGreen :: struct {
+  hearts: [GREEN_SPECIES] int; leaves: [GREEN_SPECIES] int; low: [GREEN_SPECIES] int;   // parts
+  wide: [GREEN_SPECIES] f32; tall: [GREEN_SPECIES] f32;   // each species' part: its crown's radius and its height (m)
+  shrub: int; bowl: int;
+  leaf: int; bark: int; hedge: int; gravel: int; bloom: int; stone: int;   // materials
+  water: int; shallow: int; deep: int;
+  trees: [GREEN_TREES * GREEN_TREE_FLOATS] f32;
+  tree_count: int;
+}
+
+green_species :: (k: int) -> int { if k == 1 { return ARCH_STONE_PINE; } if k == 2 { return ARCH_OLIVE; } return ARCH_CYPRESS; }
+// A layered tree's part, in this scene's materials; its leaves marked to fold.
+green_part :: (ph: [] SlabPhoto, p: [] ArchPen, part: ArchPart, fold: bool) -> int {
+  pr_part_material(ph[0].mesh[..], part, ARCH_M_BARK, ph[0].content.green.bark);
+  pr_part_material(ph[0].mesh[..], part, ARCH_M_LEAF, ph[0].content.green.leaf);
+  if fold { pr_part_fold(ph[0].mesh[..], part, ph[0].content.green.leaf, GREEN_FOLD, 0.9); }
+  return photo_part(ph, part);
+}
+green_make :: (ph: [] SlabPhoto, p: [] ArchPen) {
+  // foliage takes its colour from its part's tint and its record's: the material is a mid grey
+  ph[0].content.green.leaf = photo_material(ph, 0.56, 0.56, 0.56, 0.6, 0, PR_PATTERN_LEAVES, 0, 0);
+  ph[0].content.green.bark = photo_material(ph, 0.36, 0.3, 0.25, 0.9, 0, PR_PATTERN_CONCRETE, 0, 0);
+  ph[0].content.green.hedge = photo_material(ph, 0.19, 0.3, 0.16, 0.7, 0, PR_PATTERN_LEAVES, 0, 0);
+  ph[0].content.green.gravel = photo_material(ph, 0.8, 0.74, 0.62, 0.95, 0, PR_PATTERN_GRAVEL, 0, 0);
+  ph[0].content.green.bloom = photo_material(ph, 0.22, 0.34, 0.18, 0.9, 0, PR_PATTERN_BLOOM, 0, 0);
+  ph[0].content.green.stone = photo_material(ph, 0.82, 0.8, 0.74, 0.5, 0, PR_PATTERN_STONE, 0.5, 0);
+  // water: its floor's colour, and how deep it lies (m)
+  ph[0].content.green.water = photo_material(ph, 0.36, 0.43, 0.42, 0.04, 0, PR_PATTERN_WATER, 2.2, 0);
+  ph[0].content.green.shallow = photo_material(ph, 0.6, 0.63, 0.6, 0.04, 0, PR_PATTERN_WATER, 0.55, 0);
+  ph[0].content.green.deep = photo_material(ph, 0.3, 0.4, 0.42, 0.04, 0, PR_PATTERN_WATER, 9, 0);
+  for k: 0..<GREEN_SPECIES {
+    t := arch_tree_spec(green_species(k), ARCH_SUMMER, 3 + k * 5);
+    ph[0].content.green.wide[k] = t.crown; ph[0].content.green.tall[k] = t.height;
+    ph[0].content.green.hearts[k] = green_part(ph, p, arch_tree_hearts(p, t), false);
+    ph[0].content.green.leaves[k] = green_part(ph, p, arch_tree_leaves(p, t), true);
+    ph[0].content.green.low[k] = green_part(ph, p, arch_tree_low(p, t), false);
+  }
+  // a shrub: one mass of leaves, white so a record's tint is its colour
+  from := p[0].n;
+  p[0].material = cast(f32) ph[0].content.green.leaf; p[0].tint = [3] f32.[1, 1, 1];
+  arch_leaf_mass(p, 0, 0.36, 0, 0.6, 0.42, 0.6, arch_v(0, 0.05, 0), 0, 0.85, 9, 0.6, 77);
+  ph[0].content.green.shrub = photo_part(ph, arch_part(p, from));
+  // the fountain: a pedestal, a wide lower bowl, a stem, an upper bowl and a finial (m)
+  from = p[0].n;
+  p[0].material = cast(f32) ph[0].content.green.stone; p[0].tint = [3] f32.[1, 1, 1];
+  turn := [19] ArchTurn.[ArchTurn.{r = 1.2, y = 0, flute = 0}, ArchTurn.{r = 1.2, y = 0.5, flute = 0}, ArchTurn.{r = 0.8, y = 0.72, flute = 0}, ArchTurn.{r = 0.56, y = 2.2, flute = 1}, ArchTurn.{r = 0.95, y = 2.5, flute = 0}, ArchTurn.{r = 3.3, y = 3.0, flute = 0}, ArchTurn.{r = 3.3, y = 3.16, flute = 0}, ArchTurn.{r = 3.12, y = 3.16, flute = 0}, ArchTurn.{r = 0.95, y = 2.76, flute = 0},
+    ArchTurn.{r = 0.5, y = 2.82, flute = 0}, ArchTurn.{r = 0.45, y = 4.6, flute = 1}, ArchTurn.{r = 0.8, y = 4.86, flute = 0}, ArchTurn.{r = 1.8, y = 5.2, flute = 0}, ArchTurn.{r = 1.8, y = 5.32, flute = 0}, ArchTurn.{r = 1.66, y = 5.32, flute = 0}, ArchTurn.{r = 0.5, y = 5.02, flute = 0}, ArchTurn.{r = 0.3, y = 5.08, flute = 0}, ArchTurn.{r = 0.22, y = 5.9, flute = 0}, ArchTurn.{r = 0.1, y = 6.05, flute = 0}];
+  arch_lathe(p, turn[..], 28, 14, 0.07);
+  ph[0].content.green.bowl = photo_part(ph, arch_part(p, from));
+}
+
+green_min :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
+green_max :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
+// A tree's species by its cell: cypresses everywhere, and in a grove with a glade one tree in
+// four a stone pine and one in six an olive.
+green_pick :: (tx: f32, tz: f32, glade: bool) -> int {
+  if !glade { return 0; }
+  h := slab_hash(tx + 3, tz + 11);
+  if h < 0.25 { return 1; }
+  if h < 0.42 { return 2; }
+  return 0;
+}
+// Whether the plan stands a tree of cell (tx, tz) in the grove (x0, z0)-(x1, z1), as photo_plan
+// and the trace do: inside its edge, and out of a glade.
+green_stands :: (t: SlabTree, x0: f32, z0: f32, x1: f32, z1: f32, glade: bool) -> bool {
+  if !t.stands || t.x <= x0 + 1 || t.x >= x1 - 1 || t.z <= z0 + 1 || t.z >= z1 - 1 { return false; }
+  if glade && abs(t.x - (x0 + x1) * 0.5) < (x1 - x0) * 0.18 && abs(t.z - (z0 + z1) * 0.5) < (z1 - z0) * 0.18 { return false; }
+  return true;
+}
+// One tree part of a kept tree (its floats at `o`).
+green_tree :: (ph: [] SlabPhoto, l: [] PrList, part: int, o: int) {
+  r := pr_put(l, part, ph[0].content.green.trees[o], ph[0].content.green.trees[o + 1], ph[0].content.green.trees[o + 2], ph[0].content.green.trees[o + 3], 1);
+  pr_stretch(l, r, ph[0].content.green.trees[o + 4], ph[0].content.green.trees[o + 5], ph[0].content.green.trees[o + 4]);
+  pr_motion(l, r, PR_SWAY, ph[0].content.green.trees[o + 7]);
+  pr_tint(l, r, ph[0].content.green.trees[o + 8], ph[0].content.green.trees[o + 9], ph[0].content.green.trees[o + 10]);
+  pr_value(l, r, ph[0].content.green.trees[o + 11]);
+}
+// A hedge along one side of a grove from a to b at `across`, `high` tall: in runs with gaps to walk through.
+green_hedge :: (ph: [] SlabPhoto, l: [] PrList, i: int, along_x: bool, a: f32, b: f32, across: f32, y: f32, high: f32) {
+  span := b - a;
+  if span < 3 { return; }
+  runs := ifx span < 12 then 1 else cast(int) green_max(floor(span / 40 + 0.5), 2);
+  gap := ifx runs > 1 then 5.0f32 else 0.0f32;
+  run := (span - gap * cast(f32) (runs - 1)) / cast(f32) runs;
+  for k: 0..<runs {
+    s0 := a + cast(f32) k * (run + gap); s1 := s0 + run;
+    r := ifx along_x then pr_box(l, ph[0].box, s0, y, across - 0.45f32, s1, y + high, across + 0.45f32, ph[0].content.green.hedge)
+         else pr_box(l, ph[0].box, across - 0.45f32, y, s0, across + 0.45f32, y + high, s1, ph[0].content.green.hedge);
+    pr_value(l, r, cast(f32) (i + 1));
+  }
+}
+// A grove: its trees, its hedge, its shrubs, and in a glade a gravel court with beds.
+green_grove :: (ph: [] SlabPhoto, l: [] PrList, w: SlabWorld, i: int, x0: f32, y0: f32, z0: f32, x1: f32, z1: f32, glade: bool, kept: int) -> int {
+  n := kept;
+  ground := y0 + 0.3f32;
+  cx := (x0 + x1) * 0.5; cz := (z0 + z1) * 0.5; dx := x1 - x0; dz := z1 - z0;
+  for tz: cast(int) floor(z0 / SLAB_TREE_CELL)..<cast(int) floor(z1 / SLAB_TREE_CELL) + 1 {
+    for tx: cast(int) floor(x0 / SLAB_TREE_CELL)..<cast(int) floor(x1 / SLAB_TREE_CELL) + 1 {
+      fx := cast(f32) tx; fz := cast(f32) tz;
+      t := slab_tree(fx, fz);
+      if !green_stands(t, x0, z0, x1, z1, glade) { continue; }
+      sp := green_pick(fx, fz, glade);
+      // the plan's cypress sizes; a stone pine spreads wide over a taller trunk, an olive is half as high
+      rad := t.radius; tall := t.height;
+      if sp == 1 { rad = t.radius * 2.4f32; tall = t.height * 1.1f32 + 2; }
+      if sp == 2 { rad = t.radius * 1.6f32; tall = 3.6f32 + t.height * 0.2f32; }
+      // no two alike: each a little taller or shorter, wider or narrower than its neighbours
+      age := slab_hash(fx * 1.7f32 + 5, fz * 1.3f32 - 9);
+      tall = tall * (0.82f32 + 0.36f32 * age); rad = rad * (0.88f32 + 0.24f32 * slab_hash(fx - 31, fz + 7));
+      shade := 0.78f32 + 0.44f32 * slab_hash(fx + 41, fz - 13); warm := slab_hash(fx - 5, fz + 29);
+      if n < GREEN_TREES {
+        o := n * GREEN_TREE_FLOATS;
+        ph[0].content.green.trees[o] = t.x; ph[0].content.green.trees[o + 1] = ground - 0.05f32; ph[0].content.green.trees[o + 2] = t.z;
+        ph[0].content.green.trees[o + 3] = slab_hash(fx + 3, fz + 11) * 6.2831853f32;
+        ph[0].content.green.trees[o + 4] = rad / ph[0].content.green.wide[sp]; ph[0].content.green.trees[o + 5] = tall / ph[0].content.green.tall[sp];
+        ph[0].content.green.trees[o + 6] = cast(f32) sp; ph[0].content.green.trees[o + 7] = slab_hash(fx - 7, fz + 23) * 6.2831853f32;
+        ph[0].content.green.trees[o + 8] = shade * (0.94f32 + 0.14f32 * warm); ph[0].content.green.trees[o + 9] = shade; ph[0].content.green.trees[o + 10] = shade * (1.04f32 - 0.12f32 * warm);
+        ph[0].content.green.trees[o + 11] = cast(f32) (i + 1);
+        green_tree(ph, l, ifx w.reduced then ph[0].content.green.low[sp] else ph[0].content.green.hearts[sp], o);
+      }
+      n += 1;
+      // a tree with a bare trunk stands in a clipped round of box as wide as what the walk keeps clear of
+      if sp != 0 {
+        d := pr_put(l, ph[0].post, t.x, ground, t.z, 0, 1);
+        pr_stretch(l, d, t.radius * 1.1f32 + 0.5f32, 0.7, t.radius * 1.1f32 + 0.5f32); pr_made_of(l, d, ph[0].content.green.hedge); pr_value(l, d, cast(f32) (i + 1));
+      }
+    }
+  }
+  // the hedge: lower along a narrow strip (the canal's rows), so the water shows over it
+  narrow := green_min(dx, dz) < 12;
+  high := ifx narrow then 0.55f32 else 0.9f32;
+  if !narrow || dx >= dz { green_hedge(ph, l, i, true, x0 + 0.1f32, x1 - 0.1f32, z0 + 0.55f32, ground, high); green_hedge(ph, l, i, true, x0 + 0.1f32, x1 - 0.1f32, z1 - 0.55f32, ground, high); }
+  if !narrow || dz > dx { green_hedge(ph, l, i, false, z0 + 1.0f32, z1 - 1.0f32, x0 + 0.55f32, ground, high); green_hedge(ph, l, i, false, z0 + 1.0f32, z1 - 1.0f32, x1 - 0.55f32, ground, high); }
+  // shrubs and flowers between the trees: fine detail, left out on a phone
+  pr_fine(l, true);
+  for gz: 0..<cast(int) floor((dz - 3) / GREEN_SHRUB_CELL) {
+    for gx: 0..<cast(int) floor((dx - 3) / GREEN_SHRUB_CELL) {
+      hx := floor(x0) + cast(f32) gx; hz := floor(z0) + cast(f32) gz;
+      if slab_hash(hx * 3 + 1, hz * 3 + 2) < 0.5 { continue; }
+      px := x0 + 1.5f32 + (cast(f32) gx + 0.2f32 + 0.6f32 * slab_hash(hx + 19, hz)) * GREEN_SHRUB_CELL;
+      pz := z0 + 1.5f32 + (cast(f32) gz + 0.2f32 + 0.6f32 * slab_hash(hx, hz + 27)) * GREEN_SHRUB_CELL;
+      if glade && abs(px - cx) < dx * 0.18 + 0.5f32 && abs(pz - cz) < dz * 0.18 + 0.5f32 { continue; }
+      // clear of the trees round it
+      clear := true;
+      tcx := floor(px / SLAB_TREE_CELL); tcz := floor(pz / SLAB_TREE_CELL);
+      for az: 0..<3 { for ax: 0..<3 {
+        t := slab_tree(tcx + cast(f32) ax - 1, tcz + cast(f32) az - 1);
+        if green_stands(t, x0, z0, x1, z1, glade) && (px - t.x) * (px - t.x) + (pz - t.z) * (pz - t.z) < (t.radius + 0.7f32) * (t.radius + 0.7f32) { clear = false; }
+      } }
+      if !clear { continue; }
+      size := 0.8f32 + 0.9f32 * slab_hash(hx + 7, hz + 3);
+      r := pr_put(l, ph[0].content.green.shrub, px, ground - 0.05f32, pz, slab_hash(hx, hz) * 6.2831853f32, size);
+      pr_motion(l, r, PR_SWAY, slab_hash(hx + 1, hz + 1) * 6.2831853f32);
+      c := slab_hash(hx + 31, hz + 17);
+      // most are green; some are in flower: lavender, white, rose
+      if c < 0.66 { g := 0.8f32 + 0.5f32 * c; pr_tint(l, r, 0.15f32 * g, 0.27f32 * g, 0.12f32 * g); }
+      else if c < 0.8 { pr_tint(l, r, 0.34, 0.27, 0.58); }
+      else if c < 0.9 { pr_tint(l, r, 0.62, 0.62, 0.52); }
+      else { pr_tint(l, r, 0.6, 0.2, 0.27); }
+      pr_value(l, r, cast(f32) (i + 1));
+    }
+  }
+  pr_fine(l, false);
+  if glade {
+    // the glade: a gravel court, a round bed in a stone kerb at its middle, a bed in each corner
+    hx := dx * 0.18 - 0.8f32; hz := dz * 0.18 - 0.8f32;
+    if hx > 3 && hz > 3 {
+      r := pr_box(l, ph[0].box, cx - hx, ground, cz - hz, cx + hx, ground + 0.05f32, cz + hz, ph[0].content.green.gravel); pr_laid(l, r); pr_value(l, r, cast(f32) (i + 1));
+      rb := green_min(hx, hz) * 0.4f32;
+      k := pr_put(l, ph[0].drum, cx, ground, cz, 0, 1); pr_stretch(l, k, rb * 2, 0.45, rb * 2); pr_made_of(l, k, ph[0].content.green.stone); pr_value(l, k, cast(f32) (i + 1));
+      b := pr_put(l, ph[0].drum, cx, ground, cz, 0, 1); pr_stretch(l, b, rb * 2 - 0.7f32, 0.6, rb * 2 - 0.7f32); pr_made_of(l, b, ph[0].content.green.bloom); pr_value(l, b, cast(f32) (i + 1));
+      pr_tint(l, b, 0.5, 0.36, 0.72);
+      for q: 0..<4 {
+        sx := ifx q & 1 == 0 then -1.0f32 else 1.0f32; sz := ifx q & 2 == 0 then -1.0f32 else 1.0f32;
+        bx := cx + sx * hx * 0.66f32; bz := cz + sz * hz * 0.66f32;
+        e := pr_box(l, ph[0].box, bx - hx * 0.2f32, ground, bz - hz * 0.2f32, bx + hx * 0.2f32, ground + 0.4f32, bz + hz * 0.2f32, ph[0].content.green.bloom);
+        pr_value(l, e, cast(f32) (i + 1));
+        if q == 0 || q == 3 { pr_tint(l, e, 0.7, 0.68, 0.56); } else { pr_tint(l, e, 0.66, 0.24, 0.3); }
+      }
+    }
+  }
+  return n;
+}
+// Water over a pool record: a sheet just inside its rim. A basin on the deck is shallow, the
+// canal deeper, and a moonpool (a round pool sunk in the deck) is the sea far below.
+green_pool :: (ph: [] SlabPhoto, l: [] PrList, i: int, x0: f32, y0: f32, z0: f32, x1: f32, y1: f32, z1: f32, shape: int) {
+  inset := 0.35f32;
+  // a moonpool (111 m in from the west wall) is a shaft down to the sea, which the shader draws
+  // (gpu/slab-photoreal.coax, gpu/slab-water.coax sw_pool): no water sheet at the deck over it
+  if abs((x0 + x1) * 0.5f32 + 389) < 6.5 { return; }
+  if shape == SLAB_CYLINDER {
+    across := green_min(x1 - x0, z1 - z0) - inset * 2;
+    if across < 0.5 { return; }
+    r := pr_put(l, ph[0].drum, (x0 + x1) * 0.5, y1 - 0.03f32, (z0 + z1) * 0.5, 0, 1);
+    pr_stretch(l, r, across, 0.06, across);
+    pr_made_of(l, r, ifx y0 < SLAB_DECK - 0.2f32 then ph[0].content.green.deep else ph[0].content.green.shallow); pr_value(l, r, cast(f32) (i + 1));
+    return;
+  }
+  if x1 - x0 < 1.5 || z1 - z0 < 1.5 { return; }
+  r := pr_box(l, ph[0].box, x0 + inset, y1 - 0.03f32, z0 + inset, x1 - inset, y1 + 0.03f32, z1 - inset, ifx y1 - y0 < 1.2 then ph[0].content.green.shallow else ph[0].content.green.water);
+  pr_value(l, r, cast(f32) (i + 1));
+}
+// The fountain, where the plan has its jet: the bowls, and the water standing in them.
+green_fountain :: (ph: [] SlabPhoto, l: [] PrList, i: int, cx: f32, y0: f32, cz: f32) {
+  r := pr_put(l, ph[0].content.green.bowl, cx, y0, cz, 0, 1); pr_value(l, r, cast(f32) (i + 1));
+  a := pr_put(l, ph[0].drum, cx, y0 + 3.06f32, cz, 0, 1); pr_stretch(l, a, 6.2, 0.05, 6.2); pr_made_of(l, a, ph[0].content.green.shallow); pr_value(l, a, cast(f32) (i + 1));
+  b := pr_put(l, ph[0].drum, cx, y0 + 5.22f32, cz, 0, 1); pr_stretch(l, b, 3.3, 0.05, 3.3); pr_made_of(l, b, ph[0].content.green.shallow); pr_value(l, b, cast(f32) (i + 1));
+}
+// Where the plan's fountain throws its jet, in the hull's frame: the top of the bowls' finial over
+// the fountain record (found false when the plan has none).
+GreenJet :: struct { found: bool; x: f32; y: f32; z: f32; }
+green_jet :: (rec: [] f32, n: int) -> GreenJet {
+  out: GreenJet;
+  for i: 0..<n {
+    at := i * SLAB_RECORD;
+    if cast(int) (rec[at + 3] + 0.5) != SLAB_KIND_FOUNTAIN || rec[at + 4] <= rec[at] { continue; }
+    out = GreenJet.{found = true, x = (rec[at] + rec[at + 4]) * 0.5f32, y = rec[at + 1] + 6.05f32, z = (rec[at + 2] + rec[at + 6]) * 0.5f32};
+    return out;
+  }
+  return out;
+}
+// What stands still: called twice a list (count, then fill), the same both times.
+green_place :: (ph: [] SlabPhoto, l: [] PrList, w: SlabWorld) {
+  n := 0;
+  for i: 0..<w.count {
+    at := i * SLAB_RECORD;
+    x0 := w.records[at]; y0 := w.records[at + 1]; z0 := w.records[at + 2]; kind := cast(int) (w.records[at + 3] + 0.5);
+    x1 := w.records[at + 4]; y1 := w.records[at + 5]; z1 := w.records[at + 6]; shape := cast(int) (w.records[at + 7] + 0.5);
+    if x1 <= x0 || y1 <= y0 || z1 <= z0 || y1 < -3 { continue; }
+    if shape == SLAB_GROVE || shape == SLAB_GLADE_GROVE { n = green_grove(ph, l, w, i, x0, y0, z0, x1, z1, shape == SLAB_GLADE_GROVE, n); }
+    else if kind == SLAB_KIND_POOL { green_pool(ph, l, i, x0, y0, z0, x1, y1, z1, shape); }
+    else if kind == SLAB_KIND_FOUNTAIN { green_fountain(ph, l, i, (x0 + x1) * 0.5, y0, (z0 + z1) * 0.5); }
+  }
+  ph[0].content.green.tree_count = ifx n < GREEN_TREES then n else GREEN_TREES;
+}
+// Every frame: the leaves of the trees near enough the eye to show them (none on a phone).
+green_move :: (ph: [] SlabPhoto, l: [] PrList, w: SlabWorld) {
+  if w.reduced { return; }
+  reach := pr_fold_reach(GREEN_FOLD, w.tangent) + 3;
+  for k: 0..<ph[0].content.green.tree_count {
+    o := k * GREEN_TREE_FLOATS;
+    sp := cast(int) (ph[0].content.green.trees[o + 6] + 0.5);
+    half := ph[0].content.green.trees[o + 5] * ph[0].content.green.tall[sp] * 0.5f32;
+    dx := ph[0].content.green.trees[o] - w.eye[0]; dz := ph[0].content.green.trees[o + 2] - w.eye[2];
+    dy := green_max(abs(ph[0].content.green.trees[o + 1] + half - w.eye[1]) - half, 0);
+    far := reach + ph[0].content.green.trees[o + 4] * ph[0].content.green.wide[sp];
+    if dx * dx + dy * dy + dz * dz > far * far { continue; }
+    green_tree(ph, l, ph[0].content.green.leaves[sp], o);
+  }
+}
+
+// ---- checks
+#test "SLAB's groves: every tree the plan stands is kept, cypresses along the canal, three species in the parterres, leaves only near the eye" #steps 4000000000 {
+  s: [1] Slab;
+  u: [UNIFORM_FLOATS] f32;
+  slab_reset(s[..]); slab_build(s[..], false);
+  u[U_MODE + 2] = f32(s[0].box_count);
+  for i: 0..<s[0].box_count * SLAB_RECORD { u[U_BOXES + i] = s[0].boxes[i]; }
+  for i: 0..<12 { u[U_PARAMS + P_POSE + i] = ifx i == 0 || i == 5 || i == 10 then 1.0f32 else 0.0f32; }
+  // an eye in the long parterre, at walking height
+  s[0].eye = [3] f32.[70, SLAB_DECK + 2, 230]; s[0].fwd = [3] f32.[1, 0, 0]; s[0].right = [3] f32.[0, 0, 1]; s[0].up = [3] f32.[0, 1, 0];
+  s[0].tanh = 0.41; s[0].aspect = 1.6;
+  s[0].photo[0].on = true;
+  sun := sim_sun(27.8, 5.5, 17.85);
+  slab_photo_frame(s[..], u[..], sun, false);
+  ph := s[0].photo[..];
+  #assert !ph[0].full && ph[0].vertices <= PHOTO_VERTICES && ph[0].material_count < PHOTO_PAINT;
+  // the trees kept are the plan's: count them again from the records by the plan's own rule
+  plan := 0; pines := 0; olives := 0;
+  for i: 0..<s[0].box_count {
+    at := i * SLAB_RECORD; shape := cast(int) (s[0].boxes[at + 7] + 0.5);
+    if shape != SLAB_GROVE && shape != SLAB_GLADE_GROVE { continue; }
+    x0 := s[0].boxes[at]; z0 := s[0].boxes[at + 2]; x1 := s[0].boxes[at + 4]; z1 := s[0].boxes[at + 6];
+    for tz: cast(int) floor(z0 / SLAB_TREE_CELL)..<cast(int) floor(z1 / SLAB_TREE_CELL) + 1 { for tx: cast(int) floor(x0 / SLAB_TREE_CELL)..<cast(int) floor(x1 / SLAB_TREE_CELL) + 1 {
+      if green_stands(slab_tree(cast(f32) tx, cast(f32) tz), x0, z0, x1, z1, shape == SLAB_GLADE_GROVE) { plan += 1; }
+    } }
+  }
+  n := ph[0].content.green.tree_count;
+  #assert plan > 100 && n == plan && n < GREEN_TREES;
+  for k: 0..<n {
+    o := k * GREEN_TREE_FLOATS; sp := cast(int) ph[0].content.green.trees[o + 6];
+    if sp == 1 { pines += 1; } if sp == 2 { olives += 1; }
+    // each stands on a lawn at the deck, a real tree's size (a young olive 3 m, an old stone pine 20)
+    tall := ph[0].content.green.trees[o + 5] * ph[0].content.green.tall[sp];
+    #assert abs(ph[0].content.green.trees[o + 1] - SLAB_DECK) < 1 && tall > 2.5 && tall < 22;
+    // the canal's rows (z 126 to 175, beside the canal) are all cypresses
+    if ph[0].content.green.trees[o + 2] > 126 && ph[0].content.green.trees[o + 2] < 175 && ph[0].content.green.trees[o] > -70 && ph[0].content.green.trees[o] < 205 { #assert sp == 0; }
+  }
+  #assert pines > 5 && olives > 5 && pines + olives < n / 2;
+  // leaves: some trees near this eye have them, and far fewer than all
+  #assert ph[0].moving > 3 && ph[0].moving < n / 2;
+  // a phone draws the low trees and no leaves
+  slab_photo_frame(s[..], u[..], sun, true);
+  #assert ph[0].moving == 0 && ph[0].content.green.tree_count == n;
+  // a deck planned half as wide still gets its trees by the same rule: nothing here names a place
+  slab_photo_frame(s[..], u[..], sun, false);
+  for i: 0..<s[0].box_count { at := i * SLAB_RECORD; if cast(int) (u[U_BOXES + at + 7] + 0.5) == SLAB_GLADE_GROVE { u[U_BOXES + at + 4] = u[U_BOXES + at] + (u[U_BOXES + at + 4] - u[U_BOXES + at]) * 0.5f32; } }
+  slab_photo_frame(s[..], u[..], sun, false);
+  #assert ph[0].content.green.tree_count < n && ph[0].content.green.tree_count > 60 && !ph[0].full;
+}
+#test "the fountain's jet: found over the plan's fountain, four bursts a second into the spray's ring, none without a fountain" #steps 4000000000 {
+  s: [1] Slab;
+  slab_reset(s[..]); slab_build(s[..], false);
+  j := green_jet(s[0].boxes[..], s[0].box_count);
+  #assert j.found && abs(j.y - SLAB_DECK - 6.05f32) < 0.01;
+  w: [1] SlabWater;
+  w[0].mode = 1; w[0].jet_on = true; w[0].jet_x = 10; w[0].jet_y = f64(j.y); w[0].jet_z = 20;
+  w[0].spray[0].time = 2.0; ww_jet(w[..]);
+  first := w[0].spray[0].thrown;
+  w[0].spray[0].time = 4.0; ww_jet(w[..]);
+  #assert first >= 1 && w[0].spray[0].thrown - first == 8;
+  r := SPRAY_ROW * ((w[0].spray[0].next + WALL_BURSTS - 1) % WALL_BURSTS);
+  #assert abs(w[0].spray[0].rows[r] - 10) < 0.01 && w[0].spray[0].rows[r + 5] > 5 && w[0].spray[0].rows[r + 3] <= 4.0;
+  // it tops out about 2 m over its mouth and comes back down to the bowl
+  #assert spray_peak(f32(WW_JET_SPEED), 0, 2.5) > 1.5 && spray_peak(f32(WW_JET_SPEED), 0, 2.5) < 2.6;
+  w[0].jet_on = false; w[0].spray[0].time = 9.0; ww_jet(w[..]);
+  #assert w[0].spray[0].thrown - first == 8;
+}

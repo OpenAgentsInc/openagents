@@ -338,9 +338,9 @@ lines_test_step :: (s: [] Slab, frame: f64, settle: bool) {
 }
 
 #test "lines: the mooring block follows the sea block, where the shader reads it" {
-  // gpu/slab.coax SLAB_MOOR and gpu/slab.bindings' vec4 count (4093) follow these. A uniform block
-  // is at most 64 KiB (4,096 vec4s) on every device WebGPU promises, so 3 are left.
-  #assert U_MOOR == 16200 && LINES_FLOATS == 24 && UNIFORM_FLOATS == 16224 && UNIFORM_FLOATS == 4056 * 4 && UNIFORM_FLOATS * 4 <= 65536;
+  // gpu/slab.coax SLAB_MOOR and gpu/slab.bindings' vec4 count (4059) follow these. A uniform block
+  // is at most 64 KiB (4,096 vec4s) on every device WebGPU promises, so 37 are left.
+  #assert U_MOOR == 16212 && LINES_FLOATS == 24 && UNIFORM_FLOATS == 16236 && UNIFORM_FLOATS == 4059 * 4 && UNIFORM_FLOATS * 4 <= 65536;
   #assert LINES_ALL == 28 && LINES_ALL <= MOOR_MAX && LINES_SHOWN == 4 && LINES_EACH == 5 && STATION_PACKED == 6;
 }
 #test "lines: the hull's forces read the sea the wall and lee models draw: more at the weather walls, less in the lee" #steps 4000000000 {
