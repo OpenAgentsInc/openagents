@@ -1,0 +1,138 @@
+// OpenAgents desktop primary chat screen (Chapters 1, 2, and 3 of the OpenAgents Book).
+// Consumes apps/shared/chat/screen.coax — the same shared state, actions, and GPU
+// surfaces consumed by apps/openagents-ios/composer_screen.coax.
+//
+//   coax/bin/coax test apps/openagents-desktop/chat_screen.coax
+
+#load "../shared/chat/screen.coax";
+
+desktop_chat_init :: (s: [] ComposerScreen) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].form_factor = CHAT_FORM_DESKTOP;
+  cs_init(s);
+}
+
+desktop_chat_frame :: (s: [] ComposerScreen, out: [] f32, px_w: int, px_h: int, scale: f32, dt: f32) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  s[0].form_factor = CHAT_FORM_DESKTOP;
+  return cs_render(s, out, px_w, px_h, scale, dt, false);
+}
+
+desktop_chat_pointer :: (s: [] ComposerScreen, x: f32, y: f32, phase: int) -> bool #export_c #effects(all) {
+  return cs_pointer(s, x, y, phase);
+}
+
+desktop_chat_scroll :: (s: [] ComposerScreen, delta_y: f32) -> bool #export_c #effects(all) {
+  return cs_scroll(s, delta_y);
+}
+
+desktop_chat_type :: (s: [] ComposerScreen, text: string) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  res := cs_dispatch(s, ChatAction.{kind = CS_ACT_EDIT, text = text});
+  return res.accepted;
+}
+
+desktop_chat_send :: (s: [] ComposerScreen) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  res := cs_dispatch(s, ChatAction.{kind = CS_ACT_SEND});
+  return res.accepted;
+}
+
+desktop_chat_append :: (s: [] ComposerScreen, role: int, text: string) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  res := cs_dispatch(s, ChatAction.{kind = CS_ACT_APPEND, role = role, text = text});
+  return res.accepted;
+}
+
+desktop_chat_drive :: (s: [] ComposerScreen, op: string, out: [] u8) -> int #export_c #effects(all) {
+  return cs_drive(s, op, out);
+}
+
+#test "desktop chapter 1-2: composer input, send action, and per-surface dirty isolation" {
+  s: [1] ComposerScreen;
+  o: [1] CsOut;
+  text_test_atlas(s[0].atlas[..]);
+  desktop_chat_init(s[..]);
+
+  n1 := desktop_chat_frame(s[..], o[0].v[..], 1280, 800, 1, 0.016);
+  #assert n1 > 0;
+  #assert s[0].composer_redraws == 1 && s[0].transcript_redraws == 1;
+  #assert cs_find_composer(s[..], "composer.input") >= 0;
+  #assert cs_find_composer(s[..], "composer.send") >= 0;
+  #assert cs_trows(s[..]).n == 0;
+
+  // Idle frame does not redraw.
+  #assert desktop_chat_frame(s[..], o[0].v[..], 1280, 800, 1, 0.016) == 0;
+
+  // Typing dirties only the composer surface, never the transcript surface.
+  #assert desktop_chat_type(s[..], "hello desktop");
+  #assert s[0].dirty_composer && !s[0].dirty_transcript;
+  n2 := desktop_chat_frame(s[..], o[0].v[..], 1280, 800, 1, 0.016);
+  #assert n2 > 0;
+  #assert s[0].composer_redraws == 2 && s[0].transcript_redraws == 1;
+
+  // Sending dirties both composer and transcript.
+  #assert desktop_chat_send(s[..]);
+  n3 := desktop_chat_frame(s[..], o[0].v[..], 1280, 800, 1, 0.016);
+  #assert n3 > 0;
+  #assert s[0].composer_redraws == 3 && s[0].transcript_redraws == 2;
+  #assert cs_draft(s[..]) == "";
+  #assert cs_find_transcript(s[..], "message.1") >= 0;
+}
+
+#test "desktop chapter 3: transcript markdown rendering, scrolling, pin-to-bottom, and jump-to-bottom" {
+  s: [1] ComposerScreen;
+  o: [1] CsOut;
+  text_test_atlas(s[0].atlas[..]);
+  desktop_chat_init(s[..]);
+
+  // Render initial desktop frame (small height 240 so a few messages overflow the viewport).
+  _ := desktop_chat_frame(s[..], o[0].v[..], 900, 240, 1, 0.016);
+  #assert !s[0].state[0].unpinned;
+
+  // Send a user message and append several markdown assistant replies so content overflows viewport.
+  #assert desktop_chat_type(s[..], "hello");
+  #assert desktop_chat_send(s[..]);
+  #assert desktop_chat_append(s[..], CHAT_ROLE_ASSISTANT, "# Reply 1\n\nHere is **markdown** with `code`.");
+  #assert desktop_chat_append(s[..], CHAT_ROLE_ASSISTANT, "## Reply 2\n\nSecond paragraph with *emphasis*.");
+  #assert desktop_chat_append(s[..], CHAT_ROLE_ASSISTANT, "Reply 3\n\n- item one\n- item two\n- item three");
+  #assert desktop_chat_append(s[..], CHAT_ROLE_ASSISTANT, "Reply 4 with enough text to ensure overflow above the composer.");
+
+  n := desktop_chat_frame(s[..], o[0].v[..], 900, 240, 1, 0.016);
+  #assert n > 0;
+  #assert s[0].state[0].message_count == 5;
+  #assert s[0].state[0].content_h > s[0].state[0].viewport_h;
+  #assert !s[0].state[0].unpinned;
+  #assert s[0].state[0].scroll_y > 0;
+  // When pinned to bottom, jump_bottom button is not shown.
+  #assert cs_find_transcript(s[..], "transcript.jump_bottom") < 0;
+
+  // Scroll up: unpins from bottom, only transcript redraws, jump_bottom appears.
+  comp_before := s[0].composer_redraws;
+  tr_before := s[0].transcript_redraws;
+  #assert desktop_chat_scroll(s[..], -120);
+  #assert !s[0].dirty_composer && s[0].dirty_transcript;
+  _ := desktop_chat_frame(s[..], o[0].v[..], 900, 240, 1, 0.016);
+  #assert s[0].composer_redraws == comp_before;
+  #assert s[0].transcript_redraws == tr_before + 1;
+  #assert s[0].state[0].unpinned;
+  jb_idx := cs_find_transcript(s[..], "transcript.jump_bottom");
+  #assert jb_idx >= 0;
+
+  // Appending a new reply while scrolled up does NOT yank scroll_y to the bottom.
+  saved_scroll := s[0].state[0].scroll_y;
+  #assert desktop_chat_append(s[..], CHAT_ROLE_ASSISTANT, "Reply 5 arriving while reader is scrolled up.");
+  _ := desktop_chat_frame(s[..], o[0].v[..], 900, 240, 1, 0.016);
+  #assert s[0].state[0].unpinned;
+  #assert s[0].state[0].scroll_y == saved_scroll;
+
+  // Clicking transcript.jump_bottom re-pins to bottom and hides the button.
+  jb := cs_trows(s[..]).rows[jb_idx];
+  cx := (jb.x + jb.w / 2) * s[0].d;
+  cy := (jb.y + jb.h / 2) * s[0].d;
+  #assert desktop_chat_pointer(s[..], cx, cy, 0);
+  #assert desktop_chat_pointer(s[..], cx, cy, 2);
+  _ := desktop_chat_frame(s[..], o[0].v[..], 900, 240, 1, 0.016);
+  #assert !s[0].state[0].unpinned;
+  #assert cs_find_transcript(s[..], "transcript.jump_bottom") < 0;
+}
