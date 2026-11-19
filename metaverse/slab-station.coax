@@ -545,7 +545,10 @@ station_check_storm :: (s: [] Synth, sp: Spectrum, depth: f64, fast: bool, steps
   // the heavy hull draws more water than prime
   #assert sim_shape_of_hull(heavy, hull_ledger(heavy)).t > SIM_T + 1;
 }
-#test "9: two runs give the same hull bit for bit at tick 10,000, and a late joiner goes on the same" #steps 4000000000 {
+#test "9: two runs give the same hull bit for bit at tick 5,000, and a late joiner goes on the same" #steps 4000000000 {
+  // 5,000 ticks, not 10,000 (#13690): two runs of 10,000 took 36 s as native code on an idle
+  // build host and passed the 120 s limit on a loaded Mac; a step that differs shows in fewer
+  // ticks than that
   s: [1] Synth; sea: [1] DriftSea; scratch: [16384] f32;
   sp := station_check_spectrum(13.7);
   wsp_synth(s[..], sp, 1, 64);
@@ -553,11 +556,11 @@ station_check_storm :: (s: [] Synth, sp: Spectrum, depth: f64, fast: bool, steps
   w := wsp_direction(sp);
   start := sim_hull_settle(SimHull.{}, sea[..], 13.7, w.x, w.y);
   #assert station_check_same(start, sim_hull_settle(SimHull.{}, sea[..], 13.7, w.x, w.y));
-  // 10,000 ticks with a line lost at tick 4,000: every motion, the yaw and the lines among them
-  a := station_check_run(s[..], sp, start, 10000, 4000);
-  b := station_check_run(s[..], sp, start, 10000, 4000);
+  // 5,000 ticks with a line lost at tick 2,000: every motion, the yaw and the lines among them
+  a := station_check_run(s[..], sp, start, 5000, 2000);
+  b := station_check_run(s[..], sp, start, 5000, 2000);
   #assert station_check_same(a, b) && a.lost != 0 && a.yaw != start.yaw && a.heave != 0;
-  // a late joiner is handed the hull at tick 10,000 and steps on with everyone else
+  // a late joiner is handed the hull at tick 5,000 and steps on with everyone else
   joined := a;
   #assert station_check_same(station_check_run(s[..], sp, a, 600, -1), station_check_run(s[..], sp, joined, 600, -1));
   // and the lines it draws are the same floats
@@ -567,14 +570,18 @@ station_check_storm :: (s: [] Synth, sp: Spectrum, depth: f64, fast: bool, steps
     for k: 0..<16 { #assert p[k] == q[k]; }
   }
 }
-#test "10: over 600 s of the trade sea the forces on the hull sum to its change in momentum" #steps 4000000000 {
+#test "10: over 300 s of the trade sea the forces on the hull sum to its change in momentum" #steps 4000000000 {
+  // 300 s, not 600 (#13690): the ledger closes every step, so a longer run adds wall time, not
+  // coverage. 600 s took 38 to 83 s as native code on a loaded Mac and passed the 120 s limit on a
+  // loaded build host, and the evaluator, which runs a check that passes the limit, needs about
+  // 1.4 s for each simulated second, so it can never finish one within the check's #steps.
   s: [1] Synth; sea: [1] DriftSea; scratch: [16384] f32;
   sp := station_check_spectrum(8.4);
   wsp_synth(s[..], sp, 1, 64);
   w := wsp_direction(sp);
   // from rest on its place, not where it settles, so every force has work to do
   h := sim_rigged(SimHull.{}); sh := sim_shape(h);
-  for i: 0..<36000 {
+  for i: 0..<18000 {
     if i % STATION_CHECK_EVERY == 0 { whl_sea(s[..], wsp_tick_at(sp, h.time), 25.0, scratch[..], sea[..]); }
     h = sim_hull_step_in_on(sh, h, sea[..], 8.4, w.x, w.y, SIM_STEP);
   }
@@ -594,7 +601,7 @@ station_check_storm :: (s: [] Synth, sp: Spectrum, depth: f64, fast: bool, steps
   // every force did something: the wind and the drift push it west-south-west, the lines pull back
   #assert q.wind_x < 0 && q.wind_z < 0 && q.drift_x < 0 && q.current_x < 0 && q.moor_x > 0 && q.moor_z > 0 && q.wave_x != 0 && q.drag_x != 0;
   #assert q.yaw_wind != 0 && q.yaw_moor != 0 && q.yaw_wave != 0 && q.yaw_drag != 0 && q.current_z != 0;
-  #assert abs(q.wind_x) / 600.0 > 2.0e6 && abs(q.drift_x) / 600.0 > 1.0e5;
-  // and the hull has not run away: after ten minutes it moves slower than 0.2 m/s
+  #assert abs(q.wind_x) / 300.0 > 2.0e6 && abs(q.drift_x) / 300.0 > 1.0e5;
+  // and the hull has not run away: after five minutes it moves slower than 0.2 m/s
   #assert sqrt(h.surge_v * h.surge_v + h.sway_v * h.sway_v) < 0.2 && h.lost == 0;
 }

@@ -1060,14 +1060,16 @@ sim_same_pose :: (a: SimHull, b: SimHull) -> bool {
   #assert abs(a.heave) > 1e-4 && abs(a.surge) > 0.01 && abs(a.sway) > 0.01 && abs(a.time - 10000.0 * SIM_STEP) < 1e-6;
   #assert !sim_same_pose(a, half);
 }
-#test "10: over 600 s in a trade sea the momentum ledger balances" #steps 4000000000 {
+#test "10: over 300 s in a trade sea the momentum ledger balances" #steps 4000000000 {
+  // 300 s, not 600 (#13690): the ledger closes every step, so a longer run adds wall time, not
+  // coverage, and 600 s came near the native check's 120 s limit on a loaded build host
   start: SimHull; sh := sim_prime_shape();
-  h := sim_check_run(start, 0, 36000);
+  h := sim_check_run(start, 0, 18000);
   // up: the water's lift, the weight and the heave damping leave the hull's own change in momentum
   up := h.imp.buoyancy + h.imp.gravity + h.imp.damping;
   gross := abs(h.imp.buoyancy) + abs(h.imp.gravity);
   #assert abs(up - sim_heave_mass_of(sh) * h.heave_v) < 1e-9 * gross;
-  #assert abs(h.imp.gravity + sim_mass_of(sh) * SIM_G * 600.0) < 1e-6 * gross;      // 15.375 Mt for 600 s
+  #assert abs(h.imp.gravity + sim_mass_of(sh) * SIM_G * 300.0) < 1e-6 * gross;      // 7.6875 Mt for 300 s
   // east and north: wind, current, moorings, the sea's push and the water's drag
   east := h.imp.wind_x + h.imp.current_x + h.imp.moor_x + h.imp.wave_x + h.imp.drag_x + h.imp.push_x;
   // (the oblique wind turns the hull a little, so the current pushes on its long walls too; a
