@@ -115,6 +115,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     var folder = FileManager.default.homeDirectoryForCurrentUser
     private var monitor: Any?
     private var keyMonitor: Any?   // Esc in settings and the composer; the editing chords before the menu bar's
+    private var titleBar: CoderTitleBar?   // the transparent title bar and the traffic lights' places (Window+TitleBar.swift)
 
     init?(resources: String) {
         guard let page = cd_open(resources), let raw = cd_view(page) else { return nil }
@@ -128,11 +129,13 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         // Most of the screen, up to 1500 by 1000 points.
         let screen = NSScreen.main?.visibleFrame.size ?? NSSize(width: 1440, height: 900)
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: min(1500, (screen.width * 0.86).rounded()), height: min(1000, (screen.height * 0.88).rounded())),
-                          styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
+                          styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
         super.init()
         window.title = "Coder"; window.titleVisibility = .hidden; window.minSize = NSSize(width: 420, height: 320); window.isReleasedWhenClosed = false; window.delegate = self
-        canvas.frame = window.contentLayoutRect; canvas.autoresizingMask = [.width, .height]
+        // the page fills the window, under its transparent title bar
+        canvas.frame = NSRect(origin: .zero, size: window.contentRect(forFrameRect: window.frame).size); canvas.autoresizingMask = [.width, .height]
         window.contentView = canvas
+        titleBar = CoderTitleBar(window: window, page: page)
         cd_on_change(page, { raw in guard let raw else { return }; Unmanaged<CoderWindow>.fromOpaque(raw).takeUnretainedValue().wake() },
                      Unmanaged.passUnretained(self).toOpaque())
         cd_skills(page, coderSkillsNote())
@@ -392,6 +395,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         if run.turn != nil && cd_running(page) != 0 { run.detach() } else { run.stop() }
         if let monitor { NSEvent.removeMonitor(monitor) }; monitor = nil; link?.invalidate(); link = nil; watchdog?.invalidate(); watchdog = nil
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }; keyMonitor = nil
+        titleBar?.stop(); titleBar = nil
         cd_on_change(page, nil, nil); cd_close(page)
     }
 }

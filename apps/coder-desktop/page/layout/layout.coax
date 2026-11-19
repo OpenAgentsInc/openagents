@@ -22,7 +22,9 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
   left := ifx shell.side.persistent then shell.side.width else 0.0f32;
   right := shell.pane.w;
   s[0].side = left; s[0].pane_w = right; s[0].pane_x = shell.pane.x;
-  if shell.pane.open && shell.pane.mode == APP_PANE_FULL { s[0].col_w = 0; cp_side_pane(s, f, 0, window_w, h); return; }
+  // the sidebar's toggle on the title bar while the window has room to show the sidebar
+  toggle := left > 0 || (s[0].side_collapsed && window_w >= cast(f32) CP_SIDE_FROM);
+  if shell.pane.open && shell.pane.mode == APP_PANE_FULL { s[0].col_w = 0; cp_side_pane(s, f, 0, window_w, h); cp_title_bar(s, f, 0, toggle); return; }
   if shell.pane.open && right > 0 { cp_side_pane(s, f, shell.pane.x, right, h); }
   w := window_w - right;   // from here w is where the conversation's side ends
   cw := shell.col_w; x := shell.col_x;
@@ -31,5 +33,6 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
   cp_conversation(s, f, left, w, x, cw, h, running, full, exceeded);
   cp_corners(s, f, left, w, window_w, exceeded);
   if left > 0 { cp_sidebar(s, f, left, h, running); }
+  cp_title_bar(s, f, left, toggle);
   cp_composer(s, f, x, cw, h, running, full, exceeded);
 }

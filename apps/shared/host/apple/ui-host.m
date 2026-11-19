@@ -134,6 +134,8 @@ static int ui_ax_box(UiHost *h, NSRect *box);
 @implementation UiView
 - (void)setFrameSize:(NSSize)size { [super setFrameSize:size]; UiHost *h=self.host; if(h && h->app.changed)h->app.changed(h->app.user); }
 - (BOOL)acceptsFirstResponder { return YES; }
+// An embedded view's app owns its window and moves it itself (Coder's title bar): a press on the view is the view's.
+- (BOOL)mouseDownCanMoveWindow { return !self.host || !self.host->app.embedded; }
 - (BOOL)wantsUpdateLayer { return YES; }
 - (CALayer *)makeBackingLayer { return self.host->layer; }
 // With native views under the components, a point the app leaves goes on to them.

@@ -1,0 +1,79 @@
+// Coder Desktop page (../../page.coax): the window's title bar (GitHub #13741), drawn by the page as
+// Zeron's is (zgx ui/ds/title_bar.luau, ui/ds/island.luau). The window runs the page under a
+// transparent title bar (Window+TitleBar.swift), whose own buttons, the traffic lights, stand 14
+// points across at x 21, 44 and 67 on the bar's line 20 points down. Beside them, 88 in, the
+// sidebar's toggle, in the same place whether the sidebar is open or not; with the sidebar
+// collapsed, an island gathers behind the lights and the toggle. What lies under the bar starts
+// 38 points down. Its measures are window points, as the lights are, so the page's units (points at
+// the text size, cp_scale) divide them by the scale. No back or forward: Coder keeps no history
+// of where it was to go back to.
+
+CP_BAR_PT :: 38.0f32;          // the bar's height (Zeron's TITLE_H)
+CP_BAR_LINE_PT :: 20.0f32;     // its line: the traffic lights' middle (zgx's inset strip)
+CP_BAR_TOGGLE_PT :: 88.0f32;   // the toggle's left edge, past the lights (titlebar_cluster_start)
+CP_BAR_FULL_PT :: 12.0f32;     // in full screen the lights hide and the toggle takes the edge
+CP_BAR_LIGHTS_PT :: 14.0f32;   // the lights' left edge: Close's middle 21 less half its 14
+CP_BAR_LIGHTS_END_PT :: 74.0f32;   // their right edge: Zoom's middle 67 and half its 14
+CP_BAR_ROW_PAD_PT :: 10.0f32;  // the island's room past its last control (TITLEBAR_CLUSTER_PAD)
+// zeron.island: its corner, its inset from the window's edge, its padding round its controls and
+// their size (one control: the toggle).
+CP_ISLAND_RADIUS :: 12.0f32; CP_ISLAND_INSET :: 6.0f32; CP_ISLAND_PAD :: 4.0f32; CP_ISLAND_CONTROL :: 24.0f32;
+
+// The bar's height, its line and the toggle's left edge, in the page's units.
+cp_bar :: (s: [] CoderPage) -> f32 { return CP_BAR_PT / cp_scale(s); }
+cp_bar_line :: (s: [] CoderPage) -> f32 { return CP_BAR_LINE_PT / cp_scale(s); }
+cp_bar_toggle_x :: (s: [] CoderPage) -> f32 { return (ifx s[0].bar_full then CP_BAR_FULL_PT else CP_BAR_TOGGLE_PT) / cp_scale(s); }
+// Where the bar's controls at the left end, with the room past them: what shares the line starts past it.
+cp_bar_clear :: (s: [] CoderPage) -> f32 { return cp_bar_toggle_x(s) + CP_ISLAND_CONTROL + CP_BAR_ROW_PAD_PT / cp_scale(s); }
+// A control on the bar's line, size tall, from the top: never above the window's edge.
+cp_bar_y :: (s: [] CoderPage, size: f32) -> f32 { y := cp_bar_line(s) - size / 2; return ifx y < 0 then 0.0f32 else y; }
+
+// The island behind the bar's controls at the window's top left (zeron.island), toggle or not:
+// from its inset to the row's end, a control and its padding tall, on the bar's line. Opaque:
+// zeron.menu.solid and shadow.sm, Zeron's island with its glass turned solid (island.luau `glass`),
+// over what scrolls under the bar. Its blur (composition-v1, compose.coax) would put every frame with
+// the sidebar collapsed through the planner for a backdrop that is the plain canvas almost always.
+CpIsland :: struct { x: f32; y: f32; w: f32; h: f32; }
+cp_island :: (s: [] CoderPage, toggle: bool) -> CpIsland {
+  sc := cp_scale(s); c := CP_ISLAND_CONTROL; pad := CP_ISLAND_PAD / sc;
+  x := CP_ISLAND_INSET / sc;
+  end := ifx toggle then cp_bar_toggle_x(s) + c + CP_BAR_ROW_PAD_PT / sc
+         else ifx s[0].bar_full then x else (CP_BAR_LIGHTS_END_PT + CP_BAR_LIGHTS_PT - CP_ISLAND_INSET) / sc;   // as far past the lights as before them
+  h := c + 2 * pad;
+  return CpIsland.{x = x, y = cp_bar_y(s, h), w = end - x, h = h};
+}
+
+// The bar over the page: with the sidebar open (left its width) the toggle stands on it, and with
+// it collapsed (left 0) the island gathers behind the lights and the toggle when there is one
+// (`toggle`: the window is wide enough to show the sidebar). Drawn after the page's parts, over them.
+cp_title_bar :: (s: [] CoderPage, f: [] UiFrame, left: f32, toggle: bool) {
+  k := f[0].skin; sh := f[0].sheet;
+  if left == 0 {
+    i := cp_island(s, toggle);
+    if i.w > 0 {
+      th := zeron_dark();
+      sheet_under(sh, uiskin_shadow(sh[0].under, sh[0].nu, i.x, i.y, i.w, i.h, CP_ISLAND_RADIUS, k.shadows.sm));
+      sheet_fill(sh, i.x, i.y, i.w, i.h, CP_ISLAND_RADIUS, th.menu);
+    }
+  }
+  if !toggle && left == 0 { return; }
+  // the toggle: the app's icon button at the island's control size
+  keep := f[0].skin;
+  f[0].skin.app.icon_button = CP_ISLAND_CONTROL; f[0].skin.app.icon_well = CP_ISLAND_CONTROL;
+  _ := app_icon_button(f, "coder.side.toggle", cp_bar_toggle_x(s), cp_bar_y(s, CP_ISLAND_CONTROL), k.app.icon_nav,
+                       ifx left > 0 then "Hide sidebar" else "Show sidebar", APP_BUTTON_QUIET, 0, CP_SIDE_TOGGLE);
+  f[0].skin = keep;
+}
+
+// Whether a press at (x, y), in window points from its top left, is on the bar where nothing of the
+// page's takes it: the host then moves the window, or a double-click zooms it as the system says
+// (Window+TitleBar.swift). A dialog, a menu or a sidebar's edge keeps its press.
+coder_page_bar_drags :: (s: [] CoderPage, x: f32, y: f32) -> bool #export_c #effects(all) {
+  if s.count < 1 || !s[0].ready || cp_overlay_open(s) || s[0].model_menu { return false; }
+  sc := cp_scale(s); ux := x / sc; uy := y / sc;
+  if uy < 0 || uy >= cp_bar(s) || cp_edge(s, ux) != 0 { return false; }
+  return surface_action(s[0].surface[..], surface_hit(s[0].surface[..], ux, uy)) == 0;
+}
+// The window went into full screen (on) or came out: the lights hide there, so the toggle takes the
+// window's edge.
+coder_page_bar_full :: (s: [] CoderPage, on: bool) #export_c #effects(all) { if s.count > 0 { s[0].bar_full = on; } }

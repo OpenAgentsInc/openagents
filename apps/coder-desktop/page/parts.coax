@@ -26,6 +26,7 @@
 #load "persist.coax";
 #load "input.coax";
 #load "layout/layout.coax";
+#load "layout/titlebar.coax";
 #load "layout/sidebar.coax";
 #load "layout/pane.coax";
 #load "layout/review.coax";

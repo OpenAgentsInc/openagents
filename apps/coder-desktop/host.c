@@ -308,9 +308,11 @@ void cd_close(void *page) {
 // it shows (-1 closed); what its pages show; the tier a press chose; the search's text.
 void cd_settings_open(void *page, int which, const char *row) { CoderHost *c = page; if (c) { coder_page_settings_open(cd_state(c), which, cd_string(row)); cd_woke(c); } }
 int cd_settings_page(void *page) { CoderHost *c = page; return c ? (int)coder_page_settings_page(cd_state(c)) : -1; }
-void cd_settings_info(void *page, const char *claude, const char *openrouter, const char *version, float titlebar) { CoderHost *c = page; if (c) { coder_page_settings_info(cd_state(c), cd_string(claude), cd_string(openrouter), cd_string(version), titlebar); cd_changed(c); } }
+void cd_settings_info(void *page, const char *claude, const char *openrouter, const char *version) { CoderHost *c = page; if (c) { coder_page_settings_info(cd_state(c), cd_string(claude), cd_string(openrouter), cd_string(version)); cd_changed(c); } }
 int cd_settings_tier(void *page) { CoderHost *c = page; return c ? (int)coder_page_settings_tier(cd_state(c)) : 0; }
 void cd_search_set(void *page, const char *text) { CoderHost *c = page; if (c) { coder_page_search_set(cd_state(c), cd_string(text)); cd_woke(c); } }
+int cd_bar_drags(void *page, float x, float y) { CoderHost *c = page; return c && coder_page_bar_drags(cd_state(c), x, y); }
+void cd_bar_full(void *page, int on) { CoderHost *c = page; if (c) { coder_page_bar_full(cd_state(c), on != 0); cd_woke(c); } }
 int cd_search_submit(void *page) { CoderHost *c = page; if (!c) return 0; int ok = coder_page_search_submit(cd_state(c)); cd_woke(c); return ok; }
 // Dialogs and right-click menus over the page (page/overlay.coax, GitHub #13746).
 void cd_on_overlay(void *page, void (*fn)(void *context), void *context) { CoderHost *c = page; if (c) { c->overlay = fn; c->overlay_context = context; } }

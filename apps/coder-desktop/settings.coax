@@ -26,7 +26,6 @@ CP_SET_ORDER :: [CP_SET_PAGES] int.[CP_PG_GENERAL, CP_PG_ACCOUNT, CP_PG_MODELS, 
 CP_SET_IN :: [CP_SET_PAGES] int.[0, 0, 1, 1, 2];   // the group of each place in CP_SET_ORDER
 CP_SET_QUERY :: 64;           // bytes of a search kept
 CP_SET_HITS :: 8;             // search results shown
-CP_TITLEBAR_PT :: 28.0;       // the window's own title bar over the page until the host says (coder_page_settings_info), in points: Zeron's 38 strip less it
 CP_LOGIN_URL :: "https://openagents.com/login";
 
 // What the search finds: a page or one of its rows, its name and the words it also answers to.
@@ -136,17 +135,12 @@ cp_settings_press :: (s: [] CoderPage, act: int, id: string) -> bool {
 
 // ---------------------------------------------------------------- drawing
 
-// The window's own title bar over the page, in the page's units: Zeron's rows sit under a 38
-// point strip from the window's top, and this much of it is the window's.
-cp_titlebar :: (s: [] CoderPage) -> f32 { return (ifx s[0].set_bar > 0 then s[0].set_bar else CP_TITLEBAR_PT) / cp_scale(s); }
-
 // The list of pages from x 0, lw wide, the window's height h.
 cp_settings_list :: (s: [] CoderPage, f: [] UiFrame, lw: f32, h: f32) {
   k := f[0].skin; t := k.set; sh := f[0].sheet;
   sheet_fill(sh, 0, 0, lw, h, 0, ifx k.sidebar.a > 0 then k.sidebar else k.surface);
   x := t.list_pad; w := lw - 2 * t.list_pad;
-  y := t.strip + t.list_pad - cp_titlebar(s);
-  if y < t.list_pad { y = t.list_pad; }
+  y := cp_bar(s) + t.list_pad;   // under the window's title bar (page/layout/titlebar.coax)
   y += set_nav_row(f, "set.back", x, y, w, ICON_SET_BACK, "Back to chats", false, true, CP_SET_BACK) + t.list_gap;
   keys := [2] string.["⌘", "F"];
   q := cp_set_query(s);
@@ -217,8 +211,7 @@ cp_or_shown :: (v: string) -> string { return ifx v.count > 0 then v else "None"
 // The page that is open, from x, w wide, the window's height h.
 cp_settings_page :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
   k := f[0].skin; t := k.set; sh := f[0].sheet;
-  top := t.strip - cp_titlebar(s);   // the page's own drag strip, under the window's title bar
-  if top < 0 { top = 0; }
+  top := cp_bar(s);   // under the window's title bar (page/layout/titlebar.coax)
   view := h - top;
   s[0].set_view = view;
   c := set_column(t, px, pw);
@@ -340,10 +333,9 @@ coder_page_settings_open :: (s: [] CoderPage, page: int, row: string) #export_c 
 // Whether settings is open, and the page it shows (-1: closed).
 coder_page_settings_page :: (s: [] CoderPage) -> int #export_c #effects(all) { return ifx s.count > 0 && s[0].set_open then s[0].set_page else -1; }
 // What the pages show that the host knows: the Claude key's state ("Ends 1a2b", "" not set), the
-// OpenRouter key's, the app's version; and the window's title bar over the page, in points.
-coder_page_settings_info :: (s: [] CoderPage, claude: string, openrouter: string, version: string, titlebar: f32) #export_c #effects(all) {
+// OpenRouter key's and the app's version.
+coder_page_settings_info :: (s: [] CoderPage, claude: string, openrouter: string, version: string) #export_c #effects(all) {
   if s.count < 1 { return; }
-  s[0].set_bar = ifx titlebar >= 0 && titlebar < 200 then titlebar else 0;
   s[0].set_claude_n = cp_out(s[0].set_claude[..], claude);
   s[0].set_orkey_n = cp_out(s[0].set_orkey[..], openrouter);
   s[0].set_version_n = cp_out(s[0].set_version[..], version);
@@ -424,7 +416,7 @@ cp_set_test_row :: (s: [] CoderPage, id: string) -> El {
 #test "settings: every page draws its rows, the search opens a row's page, and Account keeps its card beside or over the rows" {
   p: [1] CoderPage; s := p[..];
   cp_init(s); s[0].d = 1.0f32;
-  coder_page_settings_info(s, "Ends 1a2b", "", "0.1.0 (1)", 28);
+  coder_page_settings_info(s, "Ends 1a2b", "", "0.1.0 (1)");
   coder_page_settings_open(s, CP_PG_MODELS, "");
   #assert coder_page_settings_page(s) == CP_PG_MODELS && cp_set_test_frame(s, 1200, 700);
   #assert cp_set_test_row(s, "set.claude.a").action == CP_SET_ACT && cp_set_test_row(s, "set.or.main").action == CP_SET_ACT;

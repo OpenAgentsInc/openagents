@@ -186,8 +186,7 @@ void cd_close(void *page);
 // Settings (settings.coax). cd_settings_open: open it on a page (0 General, 1 Models, 2 Foreman,
 // 3 Account, 4 About & updates; -1 the last one shown), scrolled to a row id ("" the top); a page
 // below -1 closes it. cd_settings_page: the page it shows, -1 while closed. cd_settings_info: the
-// Claude key's and the OpenRouter key's state as shown ("" not set), the app's version, and the
-// window's title bar over the page in points.
+// Claude key's and the OpenRouter key's state as shown ("" not set) and the app's version.
 // cd_settings_tier: the tier a press on Foreman's page chose (cd_action 18). cd_search_set: the
 // search's text. cd_search_submit: Return in it; 0 when it found nothing. cd_search_clear: Esc,
 // a search with words emptied (0 when it was empty).
@@ -196,11 +195,16 @@ void cd_close(void *page);
 // 21 log in (the web page), 22 check for updates, 23 the search field wants the keyboard.
 void cd_settings_open(void *page, int which, const char *row);
 int cd_settings_page(void *page);
-void cd_settings_info(void *page, const char *claude, const char *openrouter, const char *version, float titlebar);
+void cd_settings_info(void *page, const char *claude, const char *openrouter, const char *version);
 int cd_settings_tier(void *page);
 void cd_search_set(void *page, const char *text);
 int cd_search_submit(void *page);
 int cd_search_clear(void *page);
+// The window's title bar (page/layout/titlebar.coax, GitHub #13741). cd_bar_drags: whether a press at
+// (x, y), window points from its top left, is on the bar where nothing of the page's takes it (the
+// window moves). cd_bar_full: the window went into full screen (1) or came out (0).
+int cd_bar_drags(void *page, float x, float y);
+void cd_bar_full(void *page, int on);
 // Dialogs and right-click menus drawn over the page (page/overlay.coax, GitHub #13746).
 // A dialog: cd_dialog_begin (size 0 sm, 1 md, 2 lg), its fields (secure; lines 1 a line, more a
 // box) and buttons in the foot's order (kind 0 primary, 1 secondary, 2 destructive; aside at the

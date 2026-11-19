@@ -6,10 +6,9 @@
 cp_sidebar :: (s: [] CoderPage, f: [] UiFrame, left: f32, h: f32, running: bool) {
   k := f[0].skin; a := k.app;
   sw := app_sidebar_surface(f, 0, 0, left, h);
-  sy := 10.0f32;
-  toggle_w := a.icon_button + a.row_inset;
-  _ := app_icon_button(f, "coder.side.toggle", sw - toggle_w, sy + (a.side_row - a.icon_button) / 2, a.icon_nav, "Hide sidebar", APP_BUTTON_QUIET, 0, CP_SIDE_TOGGLE);
-  sy += app_side_action(f, "coder.new", 0, sy, sw - toggle_w, ICON_COMPOSE, "New chat", 0, CP_NEW);
+  // under the window's title bar, which holds the sidebar's toggle (titlebar.coax)
+  sy := cp_bar(s);
+  sy += app_side_action(f, "coder.new", 0, sy, sw, ICON_COMPOSE, "New chat", 0, CP_NEW);
   cur := cast(string) s[0].current[0..<s[0].current_n];
   // Persistent Foreman row pinned at the top of the sidebar above Pinned and Recents.
   sy += cp_side_foreman(s, f, sw, sy, cur, running);

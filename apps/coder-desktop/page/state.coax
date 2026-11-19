@@ -259,7 +259,7 @@ CoderPage :: struct {
   set_list_scroll: f32; set_list_content: f32; set_list_view: f32;
   set_query: [64] u8; set_query_n: int;
   set_target: [EL_ID] u8; set_target_n: int;
-  set_box: [4] f32; set_due: bool; set_bar: f32;   // set_due: the page scrolled to a row, one more frame; set_bar: the window's title bar, in points
+  set_box: [4] f32; set_due: bool; bar_full: bool;   // set_due: the page scrolled to a row, one more frame; bar_full: the window is in full screen (titlebar.coax)
   set_claude: [48] u8; set_claude_n: int;
   set_orkey: [48] u8; set_orkey_n: int;
   set_version: [48] u8; set_version_n: int;

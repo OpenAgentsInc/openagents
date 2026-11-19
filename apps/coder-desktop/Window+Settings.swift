@@ -39,6 +39,6 @@ extension CoderWindow {
         let info = Bundle.main.infoDictionary
         var version = info?["CFBundleShortVersionString"] as? String ?? ""
         if let build = info?["CFBundleVersion"] as? String { version += " (" + build + ")" }
-        cd_settings_info(page, claude, openrouter, version, Float(window.frame.height - window.contentLayoutRect.height))
+        cd_settings_info(page, claude, openrouter, version)
     }
 }

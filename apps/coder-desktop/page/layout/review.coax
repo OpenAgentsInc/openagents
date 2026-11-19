@@ -33,14 +33,16 @@ cp_review_edits :: (s: [] CoderPage, out: [] int) -> int {
 // (how long the sub-agent ran) after the title, Close for what shows. Returns where its body starts.
 cp_pane_head :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32, meta: string) -> f32 {
   changes := cp_review_shown(s);
+  // on the title bar's line beside the conversation; taking the whole window, under the bar, clear of its controls
+  top := ifx px > 0 then 0.0f32 else cp_bar(s);
   agent := ifx s[0].pane_open then CP_LEVEL_NAME[s[0].turns[s[0].pane_turn].agents[s[0].pane_agent].level] else "";
   if s[0].review && s[0].pane_open {
     tabs := [2] string.[agent, "Changes"]; icons := [2] int.[ICON_BOT, ICON_PEN];
-    return app_pane_tabs(f, px, 0, pw, h, icons[..], tabs[..], ifx changes then 1 else 0, "coder.pane.tab.", CP_PANE_TAB, "coder.pane.took", ifx changes then "" else meta,
+    return app_pane_tabs(f, px, top, pw, h, icons[..], tabs[..], ifx changes then 1 else 0, "coder.pane.tab.", CP_PANE_TAB, "coder.pane.took", ifx changes then "" else meta,
                          "coder.pane.close", ifx changes then CP_REVIEW else CP_PANE_CLOSE, CP_CORNER, 1.0f32);
   }
-  if changes { return app_pane_tab_shell(f, px, 0, pw, h, ICON_PEN, "Changes", "coder.pane.took", "", "coder.pane.close", CP_REVIEW, CP_CORNER, 1.0f32); }
-  return app_pane_tab_shell(f, px, 0, pw, h, ICON_BOT, agent, "coder.pane.took", meta, "coder.pane.close", CP_PANE_CLOSE, CP_CORNER, 1.0f32);
+  if changes { return app_pane_tab_shell(f, px, top, pw, h, ICON_PEN, "Changes", "coder.pane.took", "", "coder.pane.close", CP_REVIEW, CP_CORNER, 1.0f32); }
+  return app_pane_tab_shell(f, px, top, pw, h, ICON_BOT, agent, "coder.pane.took", meta, "coder.pane.close", CP_PANE_CLOSE, CP_CORNER, 1.0f32);
 }
 // The review from px, pw wide, the window's height: the header, then, scrolling, the card's head
 // and each changed file's row over its edits' hunks while it is open. Rows out of view are not drawn.
