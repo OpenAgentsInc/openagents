@@ -375,6 +375,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     private let foremanAudit = ForemanAuditLog()
     private var lastForegroundRunning = false
     var foremanTier: ForemanTier = ForemanTier.load()
+    private let updater = CoderUpdater()
 
     init?(resources: String) {
         guard let page = cd_open(resources), let raw = cd_view(page) else { return nil }
@@ -446,6 +447,9 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         if let at = CommandLine.arguments.firstIndex(of: "--new"), at + 1 < CommandLine.arguments.count { also = CommandLine.arguments[at + 1] }
         // Coder --agent N opens the transcript of the Nth sub-agent of the newest message that has one.
         if let at = CommandLine.arguments.firstIndex(of: "--agent"), at + 1 < CommandLine.arguments.count { showAgent = Int(CommandLine.arguments[at + 1]) }
+        updater.onStateChange = { [weak self] _ in self?.syncUpdateUI() }
+        syncUpdateUI()
+        updater.startPeriodicChecks()
         tick()
     }
 
@@ -512,6 +516,70 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     private func syncForemanUI() {
         let busy = runs[Foreman.chatID] != nil || (chat == Foreman.chatID && cd_running(page) != 0)
         cd_foreman(page, busy ? 1 : 0, Int32(foremanTier.rawValue))
+    }
+    private func syncUpdateUI() {
+        let st = updater.state
+        cd_update(page, st.coaxCode, st.pillLabel, st.pillDetail)
+        wake()
+    }
+    func checkForUpdates() {
+        updater.checkNow(userInitiated: true) { [weak self] state in
+            guard let self else { return }
+            let alert = NSAlert()
+            alert.messageText = "Coder Updates"
+            switch state {
+            case .hidden:
+                alert.informativeText = "Coder is up to date."
+                alert.beginSheetModal(for: self.window)
+            case .error(let msg, _):
+                alert.alertStyle = .warning
+                alert.informativeText = msg
+                alert.beginSheetModal(for: self.window)
+            case .available, .downloading, .ready:
+                break
+            }
+        }
+    }
+    private func performInstallAndRelaunch() {
+        switch updater.applyStagedAndRelaunch() {
+        case .success:
+            retire()
+            NSApp.terminate(nil)
+        case .failure(let err):
+            let alert = NSAlert()
+            alert.alertStyle = .warning
+            alert.messageText = "Update Failed"
+            alert.informativeText = err.localizedDescription
+            alert.beginSheetModal(for: window)
+        }
+    }
+    private func handleUpdatePillClick() {
+        switch updater.state {
+        case .available(_, let source):
+            if case .signedRelease(let manifest) = source {
+                updater.beginDownload(for: manifest)
+            }
+        case .ready:
+            let count = runningCount
+            if count > 0 {
+                let alert = NSAlert()
+                alert.alertStyle = .warning
+                alert.messageText = count == 1 ? "An agent task is still running" : "\(count) agent tasks are still running"
+                alert.informativeText = "Restarting to install the update will stop all running agent tasks."
+                alert.addButton(withTitle: "Cancel")
+                alert.addButton(withTitle: "Restart & Update")
+                alert.beginSheetModal(for: window) { [weak self] response in
+                    guard response == .alertSecondButtonReturn else { return }
+                    self?.performInstallAndRelaunch()
+                }
+                return
+            }
+            performInstallAndRelaunch()
+        case .error:
+            updater.checkNow(userInitiated: true)
+        default:
+            break
+        }
     }
     private func syncSkillsNote(for pagePtr: UnsafeMutableRawPointer, isForeman: Bool) {
         let base = coderSkillsNote()
@@ -808,6 +876,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             store.movePinned(String(cString: out), to: Int(to))
             cd_chats(page, chatLines)
         case 11: openForeman()
+        case 12: handleUpdatePillClick()
         default: break
         }
     }
@@ -1964,6 +2033,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     }
 
     func retire() {
+        updater.stop()
         foremanServer.stop()
         if chat != nil { keep() }
         for back in runs.values { keep(back); back.stop(); cd_close(back.page) }
@@ -2039,6 +2109,7 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
     @objc func clearForemanHistory(_ sender: Any?) { main?.clearForemanHistory() }
     @objc func claudeKey(_ sender: Any?) { main?.chooseKey() }
     @objc func openRouterModels(_ sender: Any?) { main?.chooseOpenRouter() }
+    @objc func checkForUpdates(_ sender: Any?) { main?.checkForUpdates() }
     // Open Folder is off while the shown chat's reply runs, as its button is. New Chat is always on:
     // a running reply goes on out of view.
     @objc func validateMenuItem(_ item: NSMenuItem) -> Bool {
@@ -2091,6 +2162,7 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         viewItem.submenu = view
         appMenu.addItem(withTitle: "Claude Key…", action: #selector(CoderDelegate.claudeKey(_:)), keyEquivalent: "").target = delegate
         appMenu.addItem(withTitle: "OpenRouter Models…", action: #selector(CoderDelegate.openRouterModels(_:)), keyEquivalent: "").target = delegate
+        appMenu.addItem(withTitle: "Check for Updates…", action: #selector(CoderDelegate.checkForUpdates(_:)), keyEquivalent: "").target = delegate
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Hide Coder", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         appMenu.addItem(.separator())
