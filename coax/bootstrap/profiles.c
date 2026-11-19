@@ -214,18 +214,26 @@ COAX_LAYOUT(offsetof(coax_t_CP_Profile, debug_info) == 25, "offset of CP_Profile
 COAX_LAYOUT(offsetof(coax_t_CP_Profile, identity) == 32, "offset of CP_Profile.identity");
 COAX_LAYOUT(offsetof(coax_t_CP_Profile, native) == 40, "offset of CP_Profile.native");
 
+static void coax_initp_t_CP_Request(coax_t_CP_Request *v);
 static coax_t_CP_Request coax_init_t_CP_Request(void);
+static void coax_initp_t_CP_Profile(coax_t_CP_Profile *v);
 static coax_t_CP_Profile coax_init_t_CP_Profile(void);
+static void coax_initp_t_CP_Request(coax_t_CP_Request *v) {
+  memset(v, 0, sizeof *v);
+  v->debug_info = INT64_C(-1);
+}
 static coax_t_CP_Request coax_init_t_CP_Request(void) {
   coax_t_CP_Request v;
-  memset(&v, 0, sizeof v);
-  v.debug_info = INT64_C(-1);
+  coax_initp_t_CP_Request(&v);
   return v;
+}
+static void coax_initp_t_CP_Profile(coax_t_CP_Profile *v) {
+  memset(v, 0, sizeof *v);
+  v->identity = INT64_C(-1);
 }
 static coax_t_CP_Profile coax_init_t_CP_Profile(void) {
   coax_t_CP_Profile v;
-  memset(&v, 0, sizeof v);
-  v.identity = INT64_C(-1);
+  coax_initp_t_CP_Profile(&v);
   return v;
 }
 

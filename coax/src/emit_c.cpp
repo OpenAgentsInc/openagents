@@ -2096,8 +2096,52 @@ struct Emitter {
     }
   }
 
+  // Large struct values are built where they are stored (#13735). A struct
+  // literal of a large type as a compound literal is a temporary as big as
+  // the type on the stack, and coax_init_T returns another copy by value: a
+  // reset of a megabyte state overflowed iOS's 1 MB main thread. Small types
+  // keep the by-value form, which reads better and costs nothing.
+  static constexpr int32_t kInPlaceBytes = 4096;
+  bool in_place_type(Type t) const {
+    return !device() && !t->physical && (t->kind == TypeKind::struct_ || t->kind == TypeKind::array) && t->size >= kInPlaceBytes;
+  }
+  bool in_place_lit(const Expr *e) const {
+    return e && e->kind == ExprKind::struct_lit && in_place_type(e->type) && !control(e);
+  }
+  // Writes t's zeros and declared defaults over *ptr.
+  std::string clear_in_place(Type t, const std::string &ptr) {
+    return needs_init(t) ? "coax_initp_" + tag(t) + "(" + ptr + ");" : "memset(" + ptr + ", 0, sizeof *(" + ptr + "));";
+  }
+  // Stores struct literal e into *ptr, a stable pointer expression. The
+  // explicit values are evaluated first, in source order, since they may
+  // read the place; then the place takes the defaults and each value. A
+  // literal or a scalar local cannot read the place, so it needs no temporary.
+  void build_in_place(const std::string &ptr, const Expr *e) {
+    const StructDecl *d = e->type->struct_decl;
+    std::vector<std::string> values;
+    for (const FieldInit &fi : e->fields) {
+      const Expr *v = fi.value;
+      Type vt = v->type;
+      bool scalar = vt && (vt->kind == TypeKind::integer || vt->kind == TypeKind::floating || vt->kind == TypeKind::bool_ ||
+                           vt->kind == TypeKind::enum_ || vt->kind == TypeKind::string_);
+      bool stable = v->kind == ExprKind::int_lit || v->kind == ExprKind::float_lit || v->kind == ExprKind::bool_lit ||
+                    v->kind == ExprKind::string_lit || v->kind == ExprKind::enum_value || (v->kind == ExprKind::ident && scalar);
+      values.push_back(stable ? ex(v) : capture(v));
+    }
+    line(clear_in_place(e->type, ptr));
+    for (size_t i = 0; i < values.size(); i++)
+      line("(" + ptr + ")->" + to_std(d->fields[e->fields[(int32_t)i].field].name) + " = " + values[i] + ";");
+  }
+
   void assign(const Stmt *s) {
     const Expr *target = s->target;
+    if (s->op == Tok::equal && in_place_lit(s->expr) && !control(target)) {
+      std::string p;
+      if (target->kind == ExprKind::ident) p = "&(" + ex(target) + ")";
+      else { p = new_temp(pointer_type(target)); line(p + " = &(" + ex(target) + ");"); }
+      build_in_place(p, s->expr);
+      return;
+    }
     if (s->op == Tok::equal) {
       bool order = control(target) || control(s->expr) || lowering_place_first(target, s->expr, policy());
       if (!order) {
@@ -2222,6 +2266,13 @@ struct Emitter {
           break;
         }
         std::string decl = (n32 && n32->narrow_vars.count(s) ? std::string("int32_t") : c_type(s->type)) + " " + local_name(s->name);
+        // A large local is built in place, not copied from a temporary (#13735).
+        if (s->expr ? in_place_lit(s->expr) : !s->uninit && in_place_type(s->type) && needs_init(s->type)) {
+          line(decl + ";");
+          if (s->expr) build_in_place("&" + local_name(s->name), s->expr);
+          else line(clear_in_place(s->type, "&" + local_name(s->name)));
+          break;
+        }
         if (s->expr) decl += " = " + ex(s->expr);
         else if (!s->uninit) decl += " = " + zero_value(s->type);  // zero or defaults, unless `---`
         line(decl + ";");
@@ -3010,18 +3061,24 @@ std::string init_functions(const File *file, Emitter &em, std::string *protos_ou
   const std::string local = em.split ? "" : "static ";  // --split: one definition (#12938)
   for (Type t : types) {
     if (!needs_init(t)) continue;
+    // coax_initp_T writes T's defaults in place over any bytes, nested
+    // fields and elements too, so no copy of T lands on a stack (#13735):
+    // a value can be megabytes and a thread's stack 512 KB. coax_init_T is
+    // the by-value form for expressions.
     std::string c = c_type(t), tg = tag(t);
+    protos += local + "void coax_initp_" + tg + "(" + c + " *v);\n";
     protos += local + c + " coax_init_" + tg + "(void);\n";
-    bodies += local + c + " coax_init_" + tg + "(void) {\n  " + c + " v;\n  memset(&v, 0, sizeof v);\n";
+    bodies += local + "void coax_initp_" + tg + "(" + c + " *v) {\n  memset(v, 0, sizeof *v);\n";
     if (t->kind == TypeKind::struct_) {
       for (const Field &f : t->struct_decl->fields) {
-        if (f.init) bodies += "  v." + to_std(f.name) + " = " + em.ex(f.init) + ";\n";
-        else if (needs_init(f.type)) bodies += "  v." + to_std(f.name) + " = coax_init_" + tag(f.type) + "();\n";
+        if (f.init) bodies += "  v->" + to_std(f.name) + " = " + em.ex(f.init) + ";\n";
+        else if (needs_init(f.type)) bodies += "  coax_initp_" + tag(f.type) + "(&v->" + to_std(f.name) + ");\n";
       }
     } else {
-      bodies += "  for (int64_t i = 0; i < " + std::to_string(t->length) + "; i++) v.e[i] = coax_init_" + tag(t->elem) + "();\n";
+      bodies += "  for (int64_t i = 0; i < " + std::to_string(t->length) + "; i++) coax_initp_" + tag(t->elem) + "(&v->e[i]);\n";
     }
-    bodies += "  return v;\n}\n";
+    bodies += "}\n";
+    bodies += local + c + " coax_init_" + tg + "(void) {\n  " + c + " v;\n  coax_initp_" + tg + "(&v);\n  return v;\n}\n";
   }
   if (protos_out) { *protos_out = protos; return bodies; }
   return protos + bodies;

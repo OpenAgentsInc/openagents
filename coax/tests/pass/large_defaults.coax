@@ -1,0 +1,46 @@
+#import "Basic";
+
+// Large struct values are built where they are stored, not as stack
+// temporaries (GitHub #13735): a struct literal of a large type assigned to
+// a place, and a large local with defaults. The literal's explicit values
+// may read the place, so they are evaluated before it is cleared.
+
+Inner :: struct { k: s64 = 11; used: bool; }
+Big :: struct {
+  tag: s64 = 7;
+  buf: [8192] u8;
+  n: s64;
+  inner: [2] Inner;
+  label: string = "big";
+}
+Plain :: struct { bytes: [5000] u8; k: s64; }
+
+show :: (name: string, b: [] Big) {
+  print("% tag=% n=% buf0=% buf9=% k=%,% label=%\n", name, b[0].tag, b[0].n, b[0].buf[0], b[0].buf[9], b[0].inner[0].k, b[0].inner[1].k, b[0].label);
+}
+
+bump :: (b: [] Big) -> s64 { b[0].buf[0] = 99; return b[0].n + 100; }
+
+main :: () {
+  a: [1] Big;
+  show("default", a[..]);
+  a[0].n = 5; a[0].tag = 3; a[0].buf[9] = 4; a[0].inner[1].k = 0;
+  a[0] = Big.{n = a[0].n + 1, tag = a[0].tag * 2};
+  show("reads the place", a[..]);
+  a[0].buf[9] = 4;
+  a[0] = Big.{};
+  show("reset", a[..]);
+  a[0].n = 2;
+  a[0] = Big.{n = bump(a[..]), label = "named"};
+  show("call first", a[..]);
+  x: Big;
+  x.n = 40;
+  x = Big.{n = x.n + 2};
+  print("local n=% tag=% k=%\n", x.n, x.tag, x.inner[1].k);
+  y := Big.{n = 3, label = "y"};
+  print("init n=% tag=% label=%\n", y.n, y.tag, y.label);
+  p: [1] Plain;
+  p[0].bytes[7] = 1; p[0].k = 8;
+  p[0] = Plain.{k = p[0].k + 1};
+  print("plain k=% byte7=%\n", p[0].k, p[0].bytes[7]);
+}

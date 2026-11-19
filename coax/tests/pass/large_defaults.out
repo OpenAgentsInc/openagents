@@ -1,0 +1,7 @@
+default tag=7 n=0 buf0=0 buf9=0 k=11,11 label=big
+reads the place tag=6 n=6 buf0=0 buf9=0 k=11,11 label=big
+reset tag=7 n=0 buf0=0 buf9=0 k=11,11 label=big
+call first tag=7 n=102 buf0=0 buf9=0 k=11,11 label=named
+local n=42 tag=7 k=11
+init n=3 tag=7 label=y
+plain k=9 byte7=0

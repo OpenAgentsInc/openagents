@@ -2328,1674 +2328,2626 @@ static coax_v_t_RP_Address coax_reslice_v_t_RP_Address(coax_v_t_RP_Address v, in
   return r;
 }
 
+static void coax_initp_t_EC_Result(coax_t_EC_Result *v);
 static coax_t_EC_Result coax_init_t_EC_Result(void);
+static void coax_initp_t_KC_Diff(coax_t_KC_Diff *v);
 static coax_t_KC_Diff coax_init_t_KC_Diff(void);
+static void coax_initp_t_CK_Node(coax_t_CK_Node *v);
 static coax_t_CK_Node coax_init_t_CK_Node(void);
+static void coax_initp_t_CK_Type(coax_t_CK_Type *v);
 static coax_t_CK_Type coax_init_t_CK_Type(void);
+static void coax_initp_t_CF_State(coax_t_CF_State *v);
 static coax_t_CF_State coax_init_t_CF_State(void);
+static void coax_initp_t_RP_Result(coax_t_RP_Result *v);
 static coax_t_RP_Result coax_init_t_RP_Result(void);
+static void coax_initp_t_SOM_Candidate(coax_t_SOM_Candidate *v);
 static coax_t_SOM_Candidate coax_init_t_SOM_Candidate(void);
+static void coax_initp_a1_t_CF_State(coax_a1_t_CF_State *v);
 static coax_a1_t_CF_State coax_init_a1_t_CF_State(void);
+static void coax_initp_a8_t_CK_Node(coax_a8_t_CK_Node *v);
 static coax_a8_t_CK_Node coax_init_a8_t_CK_Node(void);
+static void coax_initp_a20_t_CK_Type(coax_a20_t_CK_Type *v);
 static coax_a20_t_CK_Type coax_init_a20_t_CK_Type(void);
+static void coax_initp_a64_t_CK_Node(coax_a64_t_CK_Node *v);
 static coax_a64_t_CK_Node coax_init_a64_t_CK_Node(void);
+static void coax_initp_a64_t_CK_Type(coax_a64_t_CK_Type *v);
 static coax_a64_t_CK_Type coax_init_a64_t_CK_Type(void);
+static void coax_initp_a16_t_CK_Node(coax_a16_t_CK_Node *v);
 static coax_a16_t_CK_Node coax_init_a16_t_CK_Node(void);
+static void coax_initp_a16_t_CK_Type(coax_a16_t_CK_Type *v);
 static coax_a16_t_CK_Type coax_init_a16_t_CK_Type(void);
+static void coax_initp_a32_t_CK_Node(coax_a32_t_CK_Node *v);
 static coax_a32_t_CK_Node coax_init_a32_t_CK_Node(void);
+static void coax_initp_a32_t_CK_Type(coax_a32_t_CK_Type *v);
 static coax_a32_t_CK_Type coax_init_a32_t_CK_Type(void);
+static void coax_initp_a4_t_CK_Node(coax_a4_t_CK_Node *v);
 static coax_a4_t_CK_Node coax_init_a4_t_CK_Node(void);
+static void coax_initp_a12_t_CK_Node(coax_a12_t_CK_Node *v);
 static coax_a12_t_CK_Node coax_init_a12_t_CK_Node(void);
+static void coax_initp_a24_t_CK_Type(coax_a24_t_CK_Type *v);
 static coax_a24_t_CK_Type coax_init_a24_t_CK_Type(void);
+static void coax_initp_a48_t_CK_Node(coax_a48_t_CK_Node *v);
 static coax_a48_t_CK_Node coax_init_a48_t_CK_Node(void);
+static void coax_initp_a24_t_CK_Node(coax_a24_t_CK_Node *v);
 static coax_a24_t_CK_Node coax_init_a24_t_CK_Node(void);
+static void coax_initp_a17_t_CK_Type(coax_a17_t_CK_Type *v);
 static coax_a17_t_CK_Type coax_init_a17_t_CK_Type(void);
+static void coax_initp_a2_t_CK_Node(coax_a2_t_CK_Node *v);
 static coax_a2_t_CK_Node coax_init_a2_t_CK_Node(void);
+static void coax_initp_a2410_t_CK_Node(coax_a2410_t_CK_Node *v);
 static coax_a2410_t_CK_Node coax_init_a2410_t_CK_Node(void);
+static void coax_initp_a40_t_CK_Node(coax_a40_t_CK_Node *v);
 static coax_a40_t_CK_Node coax_init_a40_t_CK_Node(void);
+static void coax_initp_a19_t_CK_Type(coax_a19_t_CK_Type *v);
 static coax_a19_t_CK_Type coax_init_a19_t_CK_Type(void);
+static void coax_initp_a18_t_CK_Type(coax_a18_t_CK_Type *v);
 static coax_a18_t_CK_Type coax_init_a18_t_CK_Type(void);
+static void coax_initp_a128_t_CK_Node(coax_a128_t_CK_Node *v);
 static coax_a128_t_CK_Node coax_init_a128_t_CK_Node(void);
+static void coax_initp_a128_t_CK_Type(coax_a128_t_CK_Type *v);
 static coax_a128_t_CK_Type coax_init_a128_t_CK_Type(void);
+static void coax_initp_a21_t_CK_Type(coax_a21_t_CK_Type *v);
 static coax_a21_t_CK_Type coax_init_a21_t_CK_Type(void);
+static void coax_initp_a22_t_CK_Type(coax_a22_t_CK_Type *v);
 static coax_a22_t_CK_Type coax_init_a22_t_CK_Type(void);
+static void coax_initp_a9_t_CK_Node(coax_a9_t_CK_Node *v);
 static coax_a9_t_CK_Node coax_init_a9_t_CK_Node(void);
+static void coax_initp_a6_t_CK_Node(coax_a6_t_CK_Node *v);
 static coax_a6_t_CK_Node coax_init_a6_t_CK_Node(void);
+static void coax_initp_a3_t_CK_Node(coax_a3_t_CK_Node *v);
 static coax_a3_t_CK_Node coax_init_a3_t_CK_Node(void);
+static void coax_initp_a512_t_CK_Node(coax_a512_t_CK_Node *v);
 static coax_a512_t_CK_Node coax_init_a512_t_CK_Node(void);
+static void coax_initp_a5_t_CK_Node(coax_a5_t_CK_Node *v);
 static coax_a5_t_CK_Node coax_init_a5_t_CK_Node(void);
+static void coax_initp_a22_t_CK_Node(coax_a22_t_CK_Node *v);
 static coax_a22_t_CK_Node coax_init_a22_t_CK_Node(void);
+static void coax_initp_a28_t_CK_Node(coax_a28_t_CK_Node *v);
 static coax_a28_t_CK_Node coax_init_a28_t_CK_Node(void);
+static void coax_initp_a28_t_CK_Type(coax_a28_t_CK_Type *v);
 static coax_a28_t_CK_Type coax_init_a28_t_CK_Type(void);
+static void coax_initp_a33_t_CK_Node(coax_a33_t_CK_Node *v);
 static coax_a33_t_CK_Node coax_init_a33_t_CK_Node(void);
+static void coax_initp_a115_t_CK_Node(coax_a115_t_CK_Node *v);
 static coax_a115_t_CK_Node coax_init_a115_t_CK_Node(void);
+static void coax_initp_a115_t_CK_Type(coax_a115_t_CK_Type *v);
 static coax_a115_t_CK_Type coax_init_a115_t_CK_Type(void);
+static void coax_initp_a34_t_CK_Node(coax_a34_t_CK_Node *v);
 static coax_a34_t_CK_Node coax_init_a34_t_CK_Node(void);
+static void coax_initp_a19_t_CK_Node(coax_a19_t_CK_Node *v);
 static coax_a19_t_CK_Node coax_init_a19_t_CK_Node(void);
+static void coax_initp_a73_t_CK_Node(coax_a73_t_CK_Node *v);
 static coax_a73_t_CK_Node coax_init_a73_t_CK_Node(void);
+static void coax_initp_a73_t_CK_Type(coax_a73_t_CK_Type *v);
 static coax_a73_t_CK_Type coax_init_a73_t_CK_Type(void);
+static void coax_initp_a55_t_CK_Node(coax_a55_t_CK_Node *v);
 static coax_a55_t_CK_Node coax_init_a55_t_CK_Node(void);
+static void coax_initp_a181_t_CK_Node(coax_a181_t_CK_Node *v);
 static coax_a181_t_CK_Node coax_init_a181_t_CK_Node(void);
+static void coax_initp_a181_t_CK_Type(coax_a181_t_CK_Type *v);
 static coax_a181_t_CK_Type coax_init_a181_t_CK_Type(void);
+static void coax_initp_a56_t_CK_Node(coax_a56_t_CK_Node *v);
 static coax_a56_t_CK_Node coax_init_a56_t_CK_Node(void);
+static void coax_initp_a136_t_CK_Node(coax_a136_t_CK_Node *v);
 static coax_a136_t_CK_Node coax_init_a136_t_CK_Node(void);
+static void coax_initp_a136_t_CK_Type(coax_a136_t_CK_Type *v);
 static coax_a136_t_CK_Type coax_init_a136_t_CK_Type(void);
+static void coax_initp_a42_t_CK_Node(coax_a42_t_CK_Node *v);
 static coax_a42_t_CK_Node coax_init_a42_t_CK_Node(void);
+static void coax_initp_a26_t_CK_Node(coax_a26_t_CK_Node *v);
 static coax_a26_t_CK_Node coax_init_a26_t_CK_Node(void);
+static void coax_initp_a94_t_CK_Node(coax_a94_t_CK_Node *v);
 static coax_a94_t_CK_Node coax_init_a94_t_CK_Node(void);
+static void coax_initp_a94_t_CK_Type(coax_a94_t_CK_Type *v);
 static coax_a94_t_CK_Type coax_init_a94_t_CK_Type(void);
+static void coax_initp_a30_t_CK_Node(coax_a30_t_CK_Node *v);
 static coax_a30_t_CK_Node coax_init_a30_t_CK_Node(void);
+static void coax_initp_a106_t_CK_Node(coax_a106_t_CK_Node *v);
 static coax_a106_t_CK_Node coax_init_a106_t_CK_Node(void);
+static void coax_initp_a106_t_CK_Type(coax_a106_t_CK_Type *v);
 static coax_a106_t_CK_Type coax_init_a106_t_CK_Type(void);
+static void coax_initp_a29_t_CK_Node(coax_a29_t_CK_Node *v);
 static coax_a29_t_CK_Node coax_init_a29_t_CK_Node(void);
+static void coax_initp_a103_t_CK_Node(coax_a103_t_CK_Node *v);
 static coax_a103_t_CK_Node coax_init_a103_t_CK_Node(void);
+static void coax_initp_a103_t_CK_Type(coax_a103_t_CK_Type *v);
 static coax_a103_t_CK_Type coax_init_a103_t_CK_Type(void);
+static void coax_initp_a21_t_CK_Node(coax_a21_t_CK_Node *v);
 static coax_a21_t_CK_Node coax_init_a21_t_CK_Node(void);
+static void coax_initp_a79_t_CK_Node(coax_a79_t_CK_Node *v);
 static coax_a79_t_CK_Node coax_init_a79_t_CK_Node(void);
+static void coax_initp_a79_t_CK_Type(coax_a79_t_CK_Type *v);
 static coax_a79_t_CK_Type coax_init_a79_t_CK_Type(void);
+static void coax_initp_a15_t_CK_Node(coax_a15_t_CK_Node *v);
 static coax_a15_t_CK_Node coax_init_a15_t_CK_Node(void);
+static void coax_initp_a61_t_CK_Node(coax_a61_t_CK_Node *v);
 static coax_a61_t_CK_Node coax_init_a61_t_CK_Node(void);
+static void coax_initp_a61_t_CK_Type(coax_a61_t_CK_Type *v);
 static coax_a61_t_CK_Type coax_init_a61_t_CK_Type(void);
+static void coax_initp_a25_t_CK_Node(coax_a25_t_CK_Node *v);
 static coax_a25_t_CK_Node coax_init_a25_t_CK_Node(void);
+static void coax_initp_a91_t_CK_Node(coax_a91_t_CK_Node *v);
 static coax_a91_t_CK_Node coax_init_a91_t_CK_Node(void);
+static void coax_initp_a91_t_CK_Type(coax_a91_t_CK_Type *v);
 static coax_a91_t_CK_Type coax_init_a91_t_CK_Type(void);
+static void coax_initp_a84_t_CK_Node(coax_a84_t_CK_Node *v);
 static coax_a84_t_CK_Node coax_init_a84_t_CK_Node(void);
+static void coax_initp_a268_t_CK_Node(coax_a268_t_CK_Node *v);
 static coax_a268_t_CK_Node coax_init_a268_t_CK_Node(void);
+static void coax_initp_a268_t_CK_Type(coax_a268_t_CK_Type *v);
 static coax_a268_t_CK_Type coax_init_a268_t_CK_Type(void);
+static void coax_initp_a82_t_CK_Node(coax_a82_t_CK_Node *v);
 static coax_a82_t_CK_Node coax_init_a82_t_CK_Node(void);
+static void coax_initp_a82_t_CK_Type(coax_a82_t_CK_Type *v);
 static coax_a82_t_CK_Type coax_init_a82_t_CK_Type(void);
+static void coax_initp_a7_t_CK_Node(coax_a7_t_CK_Node *v);
 static coax_a7_t_CK_Node coax_init_a7_t_CK_Node(void);
+static void coax_initp_a37_t_CK_Node(coax_a37_t_CK_Node *v);
 static coax_a37_t_CK_Node coax_init_a37_t_CK_Node(void);
+static void coax_initp_a37_t_CK_Type(coax_a37_t_CK_Type *v);
 static coax_a37_t_CK_Type coax_init_a37_t_CK_Type(void);
+static void coax_initp_a40_t_CK_Type(coax_a40_t_CK_Type *v);
 static coax_a40_t_CK_Type coax_init_a40_t_CK_Type(void);
+static void coax_initp_a43_t_CK_Node(coax_a43_t_CK_Node *v);
 static coax_a43_t_CK_Node coax_init_a43_t_CK_Node(void);
+static void coax_initp_a43_t_CK_Type(coax_a43_t_CK_Type *v);
 static coax_a43_t_CK_Type coax_init_a43_t_CK_Type(void);
+static void coax_initp_a10_t_CK_Node(coax_a10_t_CK_Node *v);
 static coax_a10_t_CK_Node coax_init_a10_t_CK_Node(void);
+static void coax_initp_a11_t_CK_Node(coax_a11_t_CK_Node *v);
 static coax_a11_t_CK_Node coax_init_a11_t_CK_Node(void);
+static void coax_initp_a49_t_CK_Node(coax_a49_t_CK_Node *v);
 static coax_a49_t_CK_Node coax_init_a49_t_CK_Node(void);
+static void coax_initp_a49_t_CK_Type(coax_a49_t_CK_Type *v);
 static coax_a49_t_CK_Type coax_init_a49_t_CK_Type(void);
+static void coax_initp_a46_t_CK_Node(coax_a46_t_CK_Node *v);
 static coax_a46_t_CK_Node coax_init_a46_t_CK_Node(void);
+static void coax_initp_a46_t_CK_Type(coax_a46_t_CK_Type *v);
 static coax_a46_t_CK_Type coax_init_a46_t_CK_Type(void);
+static void coax_initp_a18_t_CK_Node(coax_a18_t_CK_Node *v);
 static coax_a18_t_CK_Node coax_init_a18_t_CK_Node(void);
+static void coax_initp_a70_t_CK_Node(coax_a70_t_CK_Node *v);
 static coax_a70_t_CK_Node coax_init_a70_t_CK_Node(void);
+static void coax_initp_a70_t_CK_Type(coax_a70_t_CK_Type *v);
 static coax_a70_t_CK_Type coax_init_a70_t_CK_Type(void);
+static void coax_initp_a13_t_CK_Node(coax_a13_t_CK_Node *v);
 static coax_a13_t_CK_Node coax_init_a13_t_CK_Node(void);
+static void coax_initp_a55_t_CK_Type(coax_a55_t_CK_Type *v);
 static coax_a55_t_CK_Type coax_init_a55_t_CK_Type(void);
+static void coax_initp_a52_t_CK_Node(coax_a52_t_CK_Node *v);
 static coax_a52_t_CK_Node coax_init_a52_t_CK_Node(void);
+static void coax_initp_a52_t_CK_Type(coax_a52_t_CK_Type *v);
 static coax_a52_t_CK_Type coax_init_a52_t_CK_Type(void);
+static void coax_initp_a17_t_CK_Node(coax_a17_t_CK_Node *v);
 static coax_a17_t_CK_Node coax_init_a17_t_CK_Node(void);
+static void coax_initp_a67_t_CK_Node(coax_a67_t_CK_Node *v);
 static coax_a67_t_CK_Node coax_init_a67_t_CK_Node(void);
+static void coax_initp_a67_t_CK_Type(coax_a67_t_CK_Type *v);
 static coax_a67_t_CK_Type coax_init_a67_t_CK_Type(void);
+static void coax_initp_a34_t_CK_Type(coax_a34_t_CK_Type *v);
 static coax_a34_t_CK_Type coax_init_a34_t_CK_Type(void);
+static void coax_initp_a31_t_CK_Node(coax_a31_t_CK_Node *v);
 static coax_a31_t_CK_Node coax_init_a31_t_CK_Node(void);
+static void coax_initp_a31_t_CK_Type(coax_a31_t_CK_Type *v);
 static coax_a31_t_CK_Type coax_init_a31_t_CK_Type(void);
+static void coax_initp_a14_t_CK_Node(coax_a14_t_CK_Node *v);
 static coax_a14_t_CK_Node coax_init_a14_t_CK_Node(void);
+static void coax_initp_a58_t_CK_Node(coax_a58_t_CK_Node *v);
 static coax_a58_t_CK_Node coax_init_a58_t_CK_Node(void);
+static void coax_initp_a58_t_CK_Type(coax_a58_t_CK_Type *v);
 static coax_a58_t_CK_Type coax_init_a58_t_CK_Type(void);
+static void coax_initp_a80_t_CK_Node(coax_a80_t_CK_Node *v);
 static coax_a80_t_CK_Node coax_init_a80_t_CK_Node(void);
+static void coax_initp_a80_t_CK_Type(coax_a80_t_CK_Type *v);
 static coax_a80_t_CK_Type coax_init_a80_t_CK_Type(void);
+static void coax_initp_a25_t_CK_Type(coax_a25_t_CK_Type *v);
 static coax_a25_t_CK_Type coax_init_a25_t_CK_Type(void);
+static void coax_initp_a2058_t_CK_Node(coax_a2058_t_CK_Node *v);
 static coax_a2058_t_CK_Node coax_init_a2058_t_CK_Node(void);
+static void coax_initp_a160_t_CK_Node(coax_a160_t_CK_Node *v);
 static coax_a160_t_CK_Node coax_init_a160_t_CK_Node(void);
+static void coax_initp_a140_t_CK_Node(coax_a140_t_CK_Node *v);
 static coax_a140_t_CK_Node coax_init_a140_t_CK_Node(void);
+static void coax_initp_a68_t_CK_Node(coax_a68_t_CK_Node *v);
 static coax_a68_t_CK_Node coax_init_a68_t_CK_Node(void);
+static void coax_initp_a172_t_CK_Node(coax_a172_t_CK_Node *v);
 static coax_a172_t_CK_Node coax_init_a172_t_CK_Node(void);
+static void coax_initp_a532_t_CK_Node(coax_a532_t_CK_Node *v);
 static coax_a532_t_CK_Node coax_init_a532_t_CK_Node(void);
+static void coax_initp_a532_t_CK_Type(coax_a532_t_CK_Type *v);
 static coax_a532_t_CK_Type coax_init_a532_t_CK_Type(void);
+static void coax_initp_a146_t_CK_Node(coax_a146_t_CK_Node *v);
 static coax_a146_t_CK_Node coax_init_a146_t_CK_Node(void);
+static void coax_initp_a454_t_CK_Node(coax_a454_t_CK_Node *v);
 static coax_a454_t_CK_Node coax_init_a454_t_CK_Node(void);
+static void coax_initp_a454_t_CK_Type(coax_a454_t_CK_Type *v);
 static coax_a454_t_CK_Type coax_init_a454_t_CK_Type(void);
+static void coax_initp_a145_t_CK_Node(coax_a145_t_CK_Node *v);
 static coax_a145_t_CK_Node coax_init_a145_t_CK_Node(void);
+static void coax_initp_a451_t_CK_Node(coax_a451_t_CK_Node *v);
 static coax_a451_t_CK_Node coax_init_a451_t_CK_Node(void);
+static void coax_initp_a451_t_CK_Type(coax_a451_t_CK_Type *v);
 static coax_a451_t_CK_Type coax_init_a451_t_CK_Type(void);
+static void coax_initp_a135_t_CK_Node(coax_a135_t_CK_Node *v);
 static coax_a135_t_CK_Node coax_init_a135_t_CK_Node(void);
+static void coax_initp_a421_t_CK_Node(coax_a421_t_CK_Node *v);
 static coax_a421_t_CK_Node coax_init_a421_t_CK_Node(void);
+static void coax_initp_a421_t_CK_Type(coax_a421_t_CK_Type *v);
 static coax_a421_t_CK_Type coax_init_a421_t_CK_Type(void);
+static void coax_initp_a178_t_CK_Node(coax_a178_t_CK_Node *v);
 static coax_a178_t_CK_Node coax_init_a178_t_CK_Node(void);
+static void coax_initp_a550_t_CK_Node(coax_a550_t_CK_Node *v);
 static coax_a550_t_CK_Node coax_init_a550_t_CK_Node(void);
+static void coax_initp_a550_t_CK_Type(coax_a550_t_CK_Type *v);
 static coax_a550_t_CK_Type coax_init_a550_t_CK_Type(void);
+static void coax_initp_a182_t_CK_Node(coax_a182_t_CK_Node *v);
 static coax_a182_t_CK_Node coax_init_a182_t_CK_Node(void);
+static void coax_initp_a75_t_CK_Node(coax_a75_t_CK_Node *v);
 static coax_a75_t_CK_Node coax_init_a75_t_CK_Node(void);
+static void coax_initp_a241_t_CK_Node(coax_a241_t_CK_Node *v);
 static coax_a241_t_CK_Node coax_init_a241_t_CK_Node(void);
+static void coax_initp_a241_t_CK_Type(coax_a241_t_CK_Type *v);
 static coax_a241_t_CK_Type coax_init_a241_t_CK_Type(void);
+static void coax_initp_a255_t_CK_Node(coax_a255_t_CK_Node *v);
 static coax_a255_t_CK_Node coax_init_a255_t_CK_Node(void);
+static void coax_initp_a781_t_CK_Node(coax_a781_t_CK_Node *v);
 static coax_a781_t_CK_Node coax_init_a781_t_CK_Node(void);
+static void coax_initp_a781_t_CK_Type(coax_a781_t_CK_Type *v);
 static coax_a781_t_CK_Type coax_init_a781_t_CK_Type(void);
+static void coax_initp_a23_t_CK_Node(coax_a23_t_CK_Node *v);
 static coax_a23_t_CK_Node coax_init_a23_t_CK_Node(void);
+static void coax_initp_a85_t_CK_Node(coax_a85_t_CK_Node *v);
 static coax_a85_t_CK_Node coax_init_a85_t_CK_Node(void);
+static void coax_initp_a85_t_CK_Type(coax_a85_t_CK_Type *v);
 static coax_a85_t_CK_Type coax_init_a85_t_CK_Type(void);
+static void coax_initp_a20_t_CK_Node(coax_a20_t_CK_Node *v);
 static coax_a20_t_CK_Node coax_init_a20_t_CK_Node(void);
+static void coax_initp_a76_t_CK_Node(coax_a76_t_CK_Node *v);
 static coax_a76_t_CK_Node coax_init_a76_t_CK_Node(void);
+static void coax_initp_a76_t_CK_Type(coax_a76_t_CK_Type *v);
 static coax_a76_t_CK_Type coax_init_a76_t_CK_Type(void);
+static void coax_initp_a143_t_CK_Node(coax_a143_t_CK_Node *v);
 static coax_a143_t_CK_Node coax_init_a143_t_CK_Node(void);
+static void coax_initp_a445_t_CK_Node(coax_a445_t_CK_Node *v);
 static coax_a445_t_CK_Node coax_init_a445_t_CK_Node(void);
+static void coax_initp_a445_t_CK_Type(coax_a445_t_CK_Type *v);
 static coax_a445_t_CK_Type coax_init_a445_t_CK_Type(void);
+static void coax_initp_a346_t_CK_Node(coax_a346_t_CK_Node *v);
 static coax_a346_t_CK_Node coax_init_a346_t_CK_Node(void);
+static void coax_initp_a1054_t_CK_Node(coax_a1054_t_CK_Node *v);
 static coax_a1054_t_CK_Node coax_init_a1054_t_CK_Node(void);
+static void coax_initp_a1054_t_CK_Type(coax_a1054_t_CK_Type *v);
 static coax_a1054_t_CK_Type coax_init_a1054_t_CK_Type(void);
+static void coax_initp_a401_t_CK_Node(coax_a401_t_CK_Node *v);
 static coax_a401_t_CK_Node coax_init_a401_t_CK_Node(void);
+static void coax_initp_a1219_t_CK_Node(coax_a1219_t_CK_Node *v);
 static coax_a1219_t_CK_Node coax_init_a1219_t_CK_Node(void);
+static void coax_initp_a1219_t_CK_Type(coax_a1219_t_CK_Type *v);
 static coax_a1219_t_CK_Type coax_init_a1219_t_CK_Type(void);
+static void coax_initp_a403_t_CK_Node(coax_a403_t_CK_Node *v);
 static coax_a403_t_CK_Node coax_init_a403_t_CK_Node(void);
+static void coax_initp_a88_t_CK_Node(coax_a88_t_CK_Node *v);
 static coax_a88_t_CK_Node coax_init_a88_t_CK_Node(void);
+static void coax_initp_a88_t_CK_Type(coax_a88_t_CK_Type *v);
 static coax_a88_t_CK_Type coax_init_a88_t_CK_Type(void);
+static void coax_initp_a235_t_CK_Node(coax_a235_t_CK_Node *v);
 static coax_a235_t_CK_Node coax_init_a235_t_CK_Node(void);
+static void coax_initp_a235_t_CK_Type(coax_a235_t_CK_Type *v);
 static coax_a235_t_CK_Type coax_init_a235_t_CK_Type(void);
+static void coax_initp_a154_t_CK_Node(coax_a154_t_CK_Node *v);
 static coax_a154_t_CK_Node coax_init_a154_t_CK_Node(void);
+static void coax_initp_a154_t_CK_Type(coax_a154_t_CK_Type *v);
 static coax_a154_t_CK_Type coax_init_a154_t_CK_Type(void);
+static void coax_initp_a27_t_CK_Node(coax_a27_t_CK_Node *v);
 static coax_a27_t_CK_Node coax_init_a27_t_CK_Node(void);
+static void coax_initp_a97_t_CK_Node(coax_a97_t_CK_Node *v);
 static coax_a97_t_CK_Node coax_init_a97_t_CK_Node(void);
+static void coax_initp_a97_t_CK_Type(coax_a97_t_CK_Type *v);
 static coax_a97_t_CK_Type coax_init_a97_t_CK_Type(void);
+static void coax_initp_a39_t_CK_Node(coax_a39_t_CK_Node *v);
 static coax_a39_t_CK_Node coax_init_a39_t_CK_Node(void);
+static void coax_initp_a133_t_CK_Node(coax_a133_t_CK_Node *v);
 static coax_a133_t_CK_Node coax_init_a133_t_CK_Node(void);
+static void coax_initp_a133_t_CK_Type(coax_a133_t_CK_Type *v);
 static coax_a133_t_CK_Type coax_init_a133_t_CK_Type(void);
+static void coax_initp_a54_t_CK_Node(coax_a54_t_CK_Node *v);
 static coax_a54_t_CK_Node coax_init_a54_t_CK_Node(void);
+static void coax_initp_a178_t_CK_Type(coax_a178_t_CK_Type *v);
 static coax_a178_t_CK_Type coax_init_a178_t_CK_Type(void);
+static void coax_initp_a109_t_CK_Node(coax_a109_t_CK_Node *v);
 static coax_a109_t_CK_Node coax_init_a109_t_CK_Node(void);
+static void coax_initp_a343_t_CK_Node(coax_a343_t_CK_Node *v);
 static coax_a343_t_CK_Node coax_init_a343_t_CK_Node(void);
+static void coax_initp_a343_t_CK_Type(coax_a343_t_CK_Type *v);
 static coax_a343_t_CK_Type coax_init_a343_t_CK_Type(void);
+static void coax_initp_a63_t_CK_Node(coax_a63_t_CK_Node *v);
 static coax_a63_t_CK_Node coax_init_a63_t_CK_Node(void);
+static void coax_initp_a205_t_CK_Node(coax_a205_t_CK_Node *v);
 static coax_a205_t_CK_Node coax_init_a205_t_CK_Node(void);
+static void coax_initp_a205_t_CK_Type(coax_a205_t_CK_Type *v);
 static coax_a205_t_CK_Type coax_init_a205_t_CK_Type(void);
+static void coax_initp_a127_t_CK_Node(coax_a127_t_CK_Node *v);
 static coax_a127_t_CK_Node coax_init_a127_t_CK_Node(void);
+static void coax_initp_a127_t_CK_Type(coax_a127_t_CK_Type *v);
 static coax_a127_t_CK_Type coax_init_a127_t_CK_Type(void);
+static void coax_initp_a118_t_CK_Node(coax_a118_t_CK_Node *v);
 static coax_a118_t_CK_Node coax_init_a118_t_CK_Node(void);
+static void coax_initp_a118_t_CK_Type(coax_a118_t_CK_Type *v);
 static coax_a118_t_CK_Type coax_init_a118_t_CK_Type(void);
+static void coax_initp_a142_t_CK_Node(coax_a142_t_CK_Node *v);
 static coax_a142_t_CK_Node coax_init_a142_t_CK_Node(void);
+static void coax_initp_a142_t_CK_Type(coax_a142_t_CK_Type *v);
 static coax_a142_t_CK_Type coax_init_a142_t_CK_Type(void);
+static void coax_initp_a114_t_CK_Node(coax_a114_t_CK_Node *v);
 static coax_a114_t_CK_Node coax_init_a114_t_CK_Node(void);
+static void coax_initp_a358_t_CK_Node(coax_a358_t_CK_Node *v);
 static coax_a358_t_CK_Node coax_init_a358_t_CK_Node(void);
+static void coax_initp_a358_t_CK_Type(coax_a358_t_CK_Type *v);
 static coax_a358_t_CK_Type coax_init_a358_t_CK_Type(void);
+static void coax_initp_a86_t_CK_Node(coax_a86_t_CK_Node *v);
 static coax_a86_t_CK_Node coax_init_a86_t_CK_Node(void);
+static void coax_initp_a274_t_CK_Node(coax_a274_t_CK_Node *v);
 static coax_a274_t_CK_Node coax_init_a274_t_CK_Node(void);
+static void coax_initp_a274_t_CK_Type(coax_a274_t_CK_Type *v);
 static coax_a274_t_CK_Type coax_init_a274_t_CK_Type(void);
+static void coax_initp_a256_t_CK_Node(coax_a256_t_CK_Node *v);
 static coax_a256_t_CK_Node coax_init_a256_t_CK_Node(void);
+static void coax_initp_a256_t_CK_Type(coax_a256_t_CK_Type *v);
 static coax_a256_t_CK_Type coax_init_a256_t_CK_Type(void);
+static void coax_initp_a246_t_CK_Node(coax_a246_t_CK_Node *v);
 static coax_a246_t_CK_Node coax_init_a246_t_CK_Node(void);
+static void coax_initp_a754_t_CK_Node(coax_a754_t_CK_Node *v);
 static coax_a754_t_CK_Node coax_init_a754_t_CK_Node(void);
+static void coax_initp_a754_t_CK_Type(coax_a754_t_CK_Type *v);
 static coax_a754_t_CK_Type coax_init_a754_t_CK_Type(void);
+static void coax_initp_a177_t_CK_Node(coax_a177_t_CK_Node *v);
 static coax_a177_t_CK_Node coax_init_a177_t_CK_Node(void);
+static void coax_initp_a547_t_CK_Node(coax_a547_t_CK_Node *v);
 static coax_a547_t_CK_Node coax_init_a547_t_CK_Node(void);
+static void coax_initp_a547_t_CK_Type(coax_a547_t_CK_Type *v);
 static coax_a547_t_CK_Type coax_init_a547_t_CK_Type(void);
+static void coax_initp_a190_t_CK_Node(coax_a190_t_CK_Node *v);
 static coax_a190_t_CK_Node coax_init_a190_t_CK_Node(void);
+static void coax_initp_a190_t_CK_Type(coax_a190_t_CK_Type *v);
 static coax_a190_t_CK_Type coax_init_a190_t_CK_Type(void);
+static void coax_initp_a161_t_CK_Node(coax_a161_t_CK_Node *v);
 static coax_a161_t_CK_Node coax_init_a161_t_CK_Node(void);
+static void coax_initp_a499_t_CK_Node(coax_a499_t_CK_Node *v);
 static coax_a499_t_CK_Node coax_init_a499_t_CK_Node(void);
+static void coax_initp_a499_t_CK_Type(coax_a499_t_CK_Type *v);
 static coax_a499_t_CK_Type coax_init_a499_t_CK_Type(void);
+static void coax_initp_a116_t_CK_Node(coax_a116_t_CK_Node *v);
 static coax_a116_t_CK_Node coax_init_a116_t_CK_Node(void);
+static void coax_initp_a364_t_CK_Node(coax_a364_t_CK_Node *v);
 static coax_a364_t_CK_Node coax_init_a364_t_CK_Node(void);
+static void coax_initp_a364_t_CK_Type(coax_a364_t_CK_Type *v);
 static coax_a364_t_CK_Type coax_init_a364_t_CK_Type(void);
+static void coax_initp_a271_t_CK_Node(coax_a271_t_CK_Node *v);
 static coax_a271_t_CK_Node coax_init_a271_t_CK_Node(void);
+static void coax_initp_a271_t_CK_Type(coax_a271_t_CK_Type *v);
 static coax_a271_t_CK_Type coax_init_a271_t_CK_Type(void);
+static void coax_initp_a8_t_CK_Type(coax_a8_t_CK_Type *v);
 static coax_a8_t_CK_Type coax_init_a8_t_CK_Type(void);
+static void coax_initp_a48_t_CK_Type(coax_a48_t_CK_Type *v);
 static coax_a48_t_CK_Type coax_init_a48_t_CK_Type(void);
+static void coax_initp_a96_t_CK_Type(coax_a96_t_CK_Type *v);
 static coax_a96_t_CK_Type coax_init_a96_t_CK_Type(void);
+static void coax_initp_a112_t_CK_Node(coax_a112_t_CK_Node *v);
 static coax_a112_t_CK_Node coax_init_a112_t_CK_Node(void);
+static void coax_initp_a2048_t_CK_Node(coax_a2048_t_CK_Node *v);
 static coax_a2048_t_CK_Node coax_init_a2048_t_CK_Node(void);
+static void coax_initp_a2048_t_CK_Type(coax_a2048_t_CK_Type *v);
 static coax_a2048_t_CK_Type coax_init_a2048_t_CK_Type(void);
+static void coax_initp_a44_t_CK_Node(coax_a44_t_CK_Node *v);
 static coax_a44_t_CK_Node coax_init_a44_t_CK_Node(void);
+static void coax_initp_a77_t_CK_Node(coax_a77_t_CK_Node *v);
 static coax_a77_t_CK_Node coax_init_a77_t_CK_Node(void);
+static void coax_initp_a247_t_CK_Node(coax_a247_t_CK_Node *v);
 static coax_a247_t_CK_Node coax_init_a247_t_CK_Node(void);
+static void coax_initp_a247_t_CK_Type(coax_a247_t_CK_Type *v);
 static coax_a247_t_CK_Type coax_init_a247_t_CK_Type(void);
+static void coax_initp_a280_t_CK_Node(coax_a280_t_CK_Node *v);
 static coax_a280_t_CK_Node coax_init_a280_t_CK_Node(void);
+static void coax_initp_a280_t_CK_Type(coax_a280_t_CK_Type *v);
 static coax_a280_t_CK_Type coax_init_a280_t_CK_Type(void);
+static void coax_initp_a1024_t_CK_Node(coax_a1024_t_CK_Node *v);
 static coax_a1024_t_CK_Node coax_init_a1024_t_CK_Node(void);
+static void coax_initp_a141_t_CK_Node(coax_a141_t_CK_Node *v);
 static coax_a141_t_CK_Node coax_init_a141_t_CK_Node(void);
+static void coax_initp_a90_t_CK_Node(coax_a90_t_CK_Node *v);
 static coax_a90_t_CK_Node coax_init_a90_t_CK_Node(void);
+static void coax_initp_a1_t_CK_Type(coax_a1_t_CK_Type *v);
 static coax_a1_t_CK_Type coax_init_a1_t_CK_Type(void);
+static void coax_initp_a520_t_CK_Node(coax_a520_t_CK_Node *v);
 static coax_a520_t_CK_Node coax_init_a520_t_CK_Node(void);
+static void coax_initp_a272_t_CK_Type(coax_a272_t_CK_Type *v);
 static coax_a272_t_CK_Type coax_init_a272_t_CK_Type(void);
+static void coax_initp_a96_t_CK_Node(coax_a96_t_CK_Node *v);
 static coax_a96_t_CK_Node coax_init_a96_t_CK_Node(void);
+static void coax_initp_a148_t_CK_Node(coax_a148_t_CK_Node *v);
 static coax_a148_t_CK_Node coax_init_a148_t_CK_Node(void);
+static void coax_initp_a148_t_CK_Type(coax_a148_t_CK_Type *v);
 static coax_a148_t_CK_Type coax_init_a148_t_CK_Type(void);
+static void coax_initp_a112_t_CK_Type(coax_a112_t_CK_Type *v);
 static coax_a112_t_CK_Type coax_init_a112_t_CK_Type(void);
+static void coax_initp_a157_t_CK_Node(coax_a157_t_CK_Node *v);
 static coax_a157_t_CK_Node coax_init_a157_t_CK_Node(void);
+static void coax_initp_a157_t_CK_Type(coax_a157_t_CK_Type *v);
 static coax_a157_t_CK_Type coax_init_a157_t_CK_Type(void);
+static void coax_initp_a139_t_CK_Node(coax_a139_t_CK_Node *v);
 static coax_a139_t_CK_Node coax_init_a139_t_CK_Node(void);
+static void coax_initp_a139_t_CK_Type(coax_a139_t_CK_Type *v);
 static coax_a139_t_CK_Type coax_init_a139_t_CK_Type(void);
+static void coax_initp_a175_t_CK_Node(coax_a175_t_CK_Node *v);
 static coax_a175_t_CK_Node coax_init_a175_t_CK_Node(void);
+static void coax_initp_a175_t_CK_Type(coax_a175_t_CK_Type *v);
 static coax_a175_t_CK_Type coax_init_a175_t_CK_Type(void);
+static void coax_initp_a2359_t_CK_Node(coax_a2359_t_CK_Node *v);
 static coax_a2359_t_CK_Node coax_init_a2359_t_CK_Node(void);
+static void coax_initp_a2359_t_CK_Type(coax_a2359_t_CK_Type *v);
 static coax_a2359_t_CK_Type coax_init_a2359_t_CK_Type(void);
+static void coax_initp_a72_t_CK_Node(coax_a72_t_CK_Node *v);
 static coax_a72_t_CK_Node coax_init_a72_t_CK_Node(void);
+static void coax_initp_a224_t_CK_Node(coax_a224_t_CK_Node *v);
 static coax_a224_t_CK_Node coax_init_a224_t_CK_Node(void);
+static void coax_initp_a384_t_CK_Node(coax_a384_t_CK_Node *v);
 static coax_a384_t_CK_Node coax_init_a384_t_CK_Node(void);
+static void coax_initp_a320_t_CK_Node(coax_a320_t_CK_Node *v);
 static coax_a320_t_CK_Node coax_init_a320_t_CK_Node(void);
+static void coax_initp_a400_t_CK_Node(coax_a400_t_CK_Node *v);
 static coax_a400_t_CK_Node coax_init_a400_t_CK_Node(void);
+static void coax_initp_a336_t_CK_Node(coax_a336_t_CK_Node *v);
 static coax_a336_t_CK_Node coax_init_a336_t_CK_Node(void);
+static void coax_initp_a300_t_CK_Type(coax_a300_t_CK_Type *v);
 static coax_a300_t_CK_Type coax_init_a300_t_CK_Type(void);
+static void coax_initp_a600_t_CK_Node(coax_a600_t_CK_Node *v);
 static coax_a600_t_CK_Node coax_init_a600_t_CK_Node(void);
+static void coax_initp_a23_t_CK_Type(coax_a23_t_CK_Type *v);
 static coax_a23_t_CK_Type coax_init_a23_t_CK_Type(void);
+static void coax_initp_t_EC_Result(coax_t_EC_Result *v) {
+  memset(v, 0, sizeof *v);
+  v->witness = INT64_C(-1);
+  v->terminal = INT64_C(-1);
+}
 static coax_t_EC_Result coax_init_t_EC_Result(void) {
   coax_t_EC_Result v;
-  memset(&v, 0, sizeof v);
-  v.witness = INT64_C(-1);
-  v.terminal = INT64_C(-1);
+  coax_initp_t_EC_Result(&v);
   return v;
+}
+static void coax_initp_t_KC_Diff(coax_t_KC_Diff *v) {
+  memset(v, 0, sizeof *v);
+  v->fresh = INT64_C(-1);
 }
 static coax_t_KC_Diff coax_init_t_KC_Diff(void) {
   coax_t_KC_Diff v;
-  memset(&v, 0, sizeof v);
-  v.fresh = INT64_C(-1);
+  coax_initp_t_KC_Diff(&v);
   return v;
+}
+static void coax_initp_t_CK_Node(coax_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  v->field_index = INT64_C(-1);
+  v->sum_variant = INT64_C(-1);
 }
 static coax_t_CK_Node coax_init_t_CK_Node(void) {
   coax_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  v.field_index = INT64_C(-1);
-  v.sum_variant = INT64_C(-1);
+  coax_initp_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_t_CK_Type(coax_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  v->alignment = INT64_C(1);
+  v->sum_default = INT64_C(-1);
 }
 static coax_t_CK_Type coax_init_t_CK_Type(void) {
   coax_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  v.alignment = INT64_C(1);
-  v.sum_default = INT64_C(-1);
+  coax_initp_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_t_CF_State(coax_t_CF_State *v) {
+  memset(v, 0, sizeof *v);
+  v->alive = 1;
 }
 static coax_t_CF_State coax_init_t_CF_State(void) {
   coax_t_CF_State v;
-  memset(&v, 0, sizeof v);
-  v.alive = 1;
+  coax_initp_t_CF_State(&v);
   return v;
+}
+static void coax_initp_t_RP_Result(coax_t_RP_Result *v) {
+  memset(v, 0, sizeof *v);
+  v->bad_source = INT64_C(-1);
+  v->bad_destination = INT64_C(-1);
 }
 static coax_t_RP_Result coax_init_t_RP_Result(void) {
   coax_t_RP_Result v;
-  memset(&v, 0, sizeof v);
-  v.bad_source = INT64_C(-1);
-  v.bad_destination = INT64_C(-1);
+  coax_initp_t_RP_Result(&v);
   return v;
+}
+static void coax_initp_t_SOM_Candidate(coax_t_SOM_Candidate *v) {
+  memset(v, 0, sizeof *v);
+  v->operation = ((coax_t_SP_Op)UINT64_C(255));
 }
 static coax_t_SOM_Candidate coax_init_t_SOM_Candidate(void) {
   coax_t_SOM_Candidate v;
-  memset(&v, 0, sizeof v);
-  v.operation = ((coax_t_SP_Op)UINT64_C(255));
+  coax_initp_t_SOM_Candidate(&v);
   return v;
+}
+static void coax_initp_a1_t_CF_State(coax_a1_t_CF_State *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 1; i++) coax_initp_t_CF_State(&v->e[i]);
 }
 static coax_a1_t_CF_State coax_init_a1_t_CF_State(void) {
   coax_a1_t_CF_State v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 1; i++) v.e[i] = coax_init_t_CF_State();
+  coax_initp_a1_t_CF_State(&v);
   return v;
+}
+static void coax_initp_a8_t_CK_Node(coax_a8_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 8; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a8_t_CK_Node coax_init_a8_t_CK_Node(void) {
   coax_a8_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 8; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a8_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a20_t_CK_Type(coax_a20_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 20; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a20_t_CK_Type coax_init_a20_t_CK_Type(void) {
   coax_a20_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 20; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a20_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a64_t_CK_Node(coax_a64_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 64; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a64_t_CK_Node coax_init_a64_t_CK_Node(void) {
   coax_a64_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 64; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a64_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a64_t_CK_Type(coax_a64_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 64; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a64_t_CK_Type coax_init_a64_t_CK_Type(void) {
   coax_a64_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 64; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a64_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a16_t_CK_Node(coax_a16_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 16; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a16_t_CK_Node coax_init_a16_t_CK_Node(void) {
   coax_a16_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 16; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a16_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a16_t_CK_Type(coax_a16_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 16; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a16_t_CK_Type coax_init_a16_t_CK_Type(void) {
   coax_a16_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 16; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a16_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a32_t_CK_Node(coax_a32_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 32; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a32_t_CK_Node coax_init_a32_t_CK_Node(void) {
   coax_a32_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 32; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a32_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a32_t_CK_Type(coax_a32_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 32; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a32_t_CK_Type coax_init_a32_t_CK_Type(void) {
   coax_a32_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 32; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a32_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a4_t_CK_Node(coax_a4_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 4; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a4_t_CK_Node coax_init_a4_t_CK_Node(void) {
   coax_a4_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 4; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a4_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a12_t_CK_Node(coax_a12_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 12; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a12_t_CK_Node coax_init_a12_t_CK_Node(void) {
   coax_a12_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 12; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a12_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a24_t_CK_Type(coax_a24_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 24; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a24_t_CK_Type coax_init_a24_t_CK_Type(void) {
   coax_a24_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 24; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a24_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a48_t_CK_Node(coax_a48_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 48; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a48_t_CK_Node coax_init_a48_t_CK_Node(void) {
   coax_a48_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 48; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a48_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a24_t_CK_Node(coax_a24_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 24; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a24_t_CK_Node coax_init_a24_t_CK_Node(void) {
   coax_a24_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 24; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a24_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a17_t_CK_Type(coax_a17_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 17; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a17_t_CK_Type coax_init_a17_t_CK_Type(void) {
   coax_a17_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 17; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a17_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a2_t_CK_Node(coax_a2_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 2; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a2_t_CK_Node coax_init_a2_t_CK_Node(void) {
   coax_a2_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 2; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a2_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a2410_t_CK_Node(coax_a2410_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 2410; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a2410_t_CK_Node coax_init_a2410_t_CK_Node(void) {
   coax_a2410_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 2410; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a2410_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a40_t_CK_Node(coax_a40_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 40; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a40_t_CK_Node coax_init_a40_t_CK_Node(void) {
   coax_a40_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 40; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a40_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a19_t_CK_Type(coax_a19_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 19; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a19_t_CK_Type coax_init_a19_t_CK_Type(void) {
   coax_a19_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 19; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a19_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a18_t_CK_Type(coax_a18_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 18; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a18_t_CK_Type coax_init_a18_t_CK_Type(void) {
   coax_a18_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 18; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a18_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a128_t_CK_Node(coax_a128_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 128; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a128_t_CK_Node coax_init_a128_t_CK_Node(void) {
   coax_a128_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 128; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a128_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a128_t_CK_Type(coax_a128_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 128; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a128_t_CK_Type coax_init_a128_t_CK_Type(void) {
   coax_a128_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 128; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a128_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a21_t_CK_Type(coax_a21_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 21; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a21_t_CK_Type coax_init_a21_t_CK_Type(void) {
   coax_a21_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 21; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a21_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a22_t_CK_Type(coax_a22_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 22; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a22_t_CK_Type coax_init_a22_t_CK_Type(void) {
   coax_a22_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 22; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a22_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a9_t_CK_Node(coax_a9_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 9; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a9_t_CK_Node coax_init_a9_t_CK_Node(void) {
   coax_a9_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 9; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a9_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a6_t_CK_Node(coax_a6_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 6; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a6_t_CK_Node coax_init_a6_t_CK_Node(void) {
   coax_a6_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 6; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a6_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a3_t_CK_Node(coax_a3_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 3; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a3_t_CK_Node coax_init_a3_t_CK_Node(void) {
   coax_a3_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 3; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a3_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a512_t_CK_Node(coax_a512_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 512; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a512_t_CK_Node coax_init_a512_t_CK_Node(void) {
   coax_a512_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 512; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a512_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a5_t_CK_Node(coax_a5_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 5; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a5_t_CK_Node coax_init_a5_t_CK_Node(void) {
   coax_a5_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 5; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a5_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a22_t_CK_Node(coax_a22_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 22; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a22_t_CK_Node coax_init_a22_t_CK_Node(void) {
   coax_a22_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 22; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a22_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a28_t_CK_Node(coax_a28_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 28; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a28_t_CK_Node coax_init_a28_t_CK_Node(void) {
   coax_a28_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 28; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a28_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a28_t_CK_Type(coax_a28_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 28; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a28_t_CK_Type coax_init_a28_t_CK_Type(void) {
   coax_a28_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 28; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a28_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a33_t_CK_Node(coax_a33_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 33; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a33_t_CK_Node coax_init_a33_t_CK_Node(void) {
   coax_a33_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 33; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a33_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a115_t_CK_Node(coax_a115_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 115; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a115_t_CK_Node coax_init_a115_t_CK_Node(void) {
   coax_a115_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 115; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a115_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a115_t_CK_Type(coax_a115_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 115; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a115_t_CK_Type coax_init_a115_t_CK_Type(void) {
   coax_a115_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 115; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a115_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a34_t_CK_Node(coax_a34_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 34; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a34_t_CK_Node coax_init_a34_t_CK_Node(void) {
   coax_a34_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 34; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a34_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a19_t_CK_Node(coax_a19_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 19; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a19_t_CK_Node coax_init_a19_t_CK_Node(void) {
   coax_a19_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 19; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a19_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a73_t_CK_Node(coax_a73_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 73; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a73_t_CK_Node coax_init_a73_t_CK_Node(void) {
   coax_a73_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 73; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a73_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a73_t_CK_Type(coax_a73_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 73; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a73_t_CK_Type coax_init_a73_t_CK_Type(void) {
   coax_a73_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 73; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a73_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a55_t_CK_Node(coax_a55_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 55; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a55_t_CK_Node coax_init_a55_t_CK_Node(void) {
   coax_a55_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 55; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a55_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a181_t_CK_Node(coax_a181_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 181; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a181_t_CK_Node coax_init_a181_t_CK_Node(void) {
   coax_a181_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 181; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a181_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a181_t_CK_Type(coax_a181_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 181; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a181_t_CK_Type coax_init_a181_t_CK_Type(void) {
   coax_a181_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 181; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a181_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a56_t_CK_Node(coax_a56_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 56; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a56_t_CK_Node coax_init_a56_t_CK_Node(void) {
   coax_a56_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 56; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a56_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a136_t_CK_Node(coax_a136_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 136; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a136_t_CK_Node coax_init_a136_t_CK_Node(void) {
   coax_a136_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 136; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a136_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a136_t_CK_Type(coax_a136_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 136; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a136_t_CK_Type coax_init_a136_t_CK_Type(void) {
   coax_a136_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 136; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a136_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a42_t_CK_Node(coax_a42_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 42; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a42_t_CK_Node coax_init_a42_t_CK_Node(void) {
   coax_a42_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 42; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a42_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a26_t_CK_Node(coax_a26_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 26; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a26_t_CK_Node coax_init_a26_t_CK_Node(void) {
   coax_a26_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 26; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a26_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a94_t_CK_Node(coax_a94_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 94; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a94_t_CK_Node coax_init_a94_t_CK_Node(void) {
   coax_a94_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 94; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a94_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a94_t_CK_Type(coax_a94_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 94; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a94_t_CK_Type coax_init_a94_t_CK_Type(void) {
   coax_a94_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 94; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a94_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a30_t_CK_Node(coax_a30_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 30; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a30_t_CK_Node coax_init_a30_t_CK_Node(void) {
   coax_a30_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 30; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a30_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a106_t_CK_Node(coax_a106_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 106; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a106_t_CK_Node coax_init_a106_t_CK_Node(void) {
   coax_a106_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 106; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a106_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a106_t_CK_Type(coax_a106_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 106; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a106_t_CK_Type coax_init_a106_t_CK_Type(void) {
   coax_a106_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 106; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a106_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a29_t_CK_Node(coax_a29_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 29; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a29_t_CK_Node coax_init_a29_t_CK_Node(void) {
   coax_a29_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 29; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a29_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a103_t_CK_Node(coax_a103_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 103; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a103_t_CK_Node coax_init_a103_t_CK_Node(void) {
   coax_a103_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 103; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a103_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a103_t_CK_Type(coax_a103_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 103; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a103_t_CK_Type coax_init_a103_t_CK_Type(void) {
   coax_a103_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 103; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a103_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a21_t_CK_Node(coax_a21_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 21; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a21_t_CK_Node coax_init_a21_t_CK_Node(void) {
   coax_a21_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 21; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a21_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a79_t_CK_Node(coax_a79_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 79; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a79_t_CK_Node coax_init_a79_t_CK_Node(void) {
   coax_a79_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 79; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a79_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a79_t_CK_Type(coax_a79_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 79; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a79_t_CK_Type coax_init_a79_t_CK_Type(void) {
   coax_a79_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 79; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a79_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a15_t_CK_Node(coax_a15_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 15; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a15_t_CK_Node coax_init_a15_t_CK_Node(void) {
   coax_a15_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 15; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a15_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a61_t_CK_Node(coax_a61_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 61; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a61_t_CK_Node coax_init_a61_t_CK_Node(void) {
   coax_a61_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 61; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a61_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a61_t_CK_Type(coax_a61_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 61; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a61_t_CK_Type coax_init_a61_t_CK_Type(void) {
   coax_a61_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 61; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a61_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a25_t_CK_Node(coax_a25_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 25; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a25_t_CK_Node coax_init_a25_t_CK_Node(void) {
   coax_a25_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 25; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a25_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a91_t_CK_Node(coax_a91_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 91; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a91_t_CK_Node coax_init_a91_t_CK_Node(void) {
   coax_a91_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 91; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a91_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a91_t_CK_Type(coax_a91_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 91; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a91_t_CK_Type coax_init_a91_t_CK_Type(void) {
   coax_a91_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 91; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a91_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a84_t_CK_Node(coax_a84_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 84; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a84_t_CK_Node coax_init_a84_t_CK_Node(void) {
   coax_a84_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 84; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a84_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a268_t_CK_Node(coax_a268_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 268; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a268_t_CK_Node coax_init_a268_t_CK_Node(void) {
   coax_a268_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 268; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a268_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a268_t_CK_Type(coax_a268_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 268; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a268_t_CK_Type coax_init_a268_t_CK_Type(void) {
   coax_a268_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 268; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a268_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a82_t_CK_Node(coax_a82_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 82; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a82_t_CK_Node coax_init_a82_t_CK_Node(void) {
   coax_a82_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 82; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a82_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a82_t_CK_Type(coax_a82_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 82; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a82_t_CK_Type coax_init_a82_t_CK_Type(void) {
   coax_a82_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 82; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a82_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a7_t_CK_Node(coax_a7_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 7; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a7_t_CK_Node coax_init_a7_t_CK_Node(void) {
   coax_a7_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 7; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a7_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a37_t_CK_Node(coax_a37_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 37; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a37_t_CK_Node coax_init_a37_t_CK_Node(void) {
   coax_a37_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 37; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a37_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a37_t_CK_Type(coax_a37_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 37; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a37_t_CK_Type coax_init_a37_t_CK_Type(void) {
   coax_a37_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 37; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a37_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a40_t_CK_Type(coax_a40_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 40; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a40_t_CK_Type coax_init_a40_t_CK_Type(void) {
   coax_a40_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 40; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a40_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a43_t_CK_Node(coax_a43_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 43; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a43_t_CK_Node coax_init_a43_t_CK_Node(void) {
   coax_a43_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 43; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a43_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a43_t_CK_Type(coax_a43_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 43; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a43_t_CK_Type coax_init_a43_t_CK_Type(void) {
   coax_a43_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 43; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a43_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a10_t_CK_Node(coax_a10_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 10; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a10_t_CK_Node coax_init_a10_t_CK_Node(void) {
   coax_a10_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 10; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a10_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a11_t_CK_Node(coax_a11_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 11; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a11_t_CK_Node coax_init_a11_t_CK_Node(void) {
   coax_a11_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 11; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a11_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a49_t_CK_Node(coax_a49_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 49; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a49_t_CK_Node coax_init_a49_t_CK_Node(void) {
   coax_a49_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 49; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a49_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a49_t_CK_Type(coax_a49_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 49; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a49_t_CK_Type coax_init_a49_t_CK_Type(void) {
   coax_a49_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 49; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a49_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a46_t_CK_Node(coax_a46_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 46; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a46_t_CK_Node coax_init_a46_t_CK_Node(void) {
   coax_a46_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 46; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a46_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a46_t_CK_Type(coax_a46_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 46; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a46_t_CK_Type coax_init_a46_t_CK_Type(void) {
   coax_a46_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 46; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a46_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a18_t_CK_Node(coax_a18_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 18; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a18_t_CK_Node coax_init_a18_t_CK_Node(void) {
   coax_a18_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 18; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a18_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a70_t_CK_Node(coax_a70_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 70; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a70_t_CK_Node coax_init_a70_t_CK_Node(void) {
   coax_a70_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 70; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a70_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a70_t_CK_Type(coax_a70_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 70; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a70_t_CK_Type coax_init_a70_t_CK_Type(void) {
   coax_a70_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 70; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a70_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a13_t_CK_Node(coax_a13_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 13; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a13_t_CK_Node coax_init_a13_t_CK_Node(void) {
   coax_a13_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 13; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a13_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a55_t_CK_Type(coax_a55_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 55; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a55_t_CK_Type coax_init_a55_t_CK_Type(void) {
   coax_a55_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 55; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a55_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a52_t_CK_Node(coax_a52_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 52; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a52_t_CK_Node coax_init_a52_t_CK_Node(void) {
   coax_a52_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 52; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a52_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a52_t_CK_Type(coax_a52_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 52; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a52_t_CK_Type coax_init_a52_t_CK_Type(void) {
   coax_a52_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 52; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a52_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a17_t_CK_Node(coax_a17_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 17; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a17_t_CK_Node coax_init_a17_t_CK_Node(void) {
   coax_a17_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 17; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a17_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a67_t_CK_Node(coax_a67_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 67; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a67_t_CK_Node coax_init_a67_t_CK_Node(void) {
   coax_a67_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 67; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a67_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a67_t_CK_Type(coax_a67_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 67; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a67_t_CK_Type coax_init_a67_t_CK_Type(void) {
   coax_a67_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 67; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a67_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a34_t_CK_Type(coax_a34_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 34; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a34_t_CK_Type coax_init_a34_t_CK_Type(void) {
   coax_a34_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 34; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a34_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a31_t_CK_Node(coax_a31_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 31; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a31_t_CK_Node coax_init_a31_t_CK_Node(void) {
   coax_a31_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 31; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a31_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a31_t_CK_Type(coax_a31_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 31; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a31_t_CK_Type coax_init_a31_t_CK_Type(void) {
   coax_a31_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 31; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a31_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a14_t_CK_Node(coax_a14_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 14; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a14_t_CK_Node coax_init_a14_t_CK_Node(void) {
   coax_a14_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 14; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a14_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a58_t_CK_Node(coax_a58_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 58; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a58_t_CK_Node coax_init_a58_t_CK_Node(void) {
   coax_a58_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 58; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a58_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a58_t_CK_Type(coax_a58_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 58; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a58_t_CK_Type coax_init_a58_t_CK_Type(void) {
   coax_a58_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 58; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a58_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a80_t_CK_Node(coax_a80_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 80; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a80_t_CK_Node coax_init_a80_t_CK_Node(void) {
   coax_a80_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 80; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a80_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a80_t_CK_Type(coax_a80_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 80; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a80_t_CK_Type coax_init_a80_t_CK_Type(void) {
   coax_a80_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 80; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a80_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a25_t_CK_Type(coax_a25_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 25; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a25_t_CK_Type coax_init_a25_t_CK_Type(void) {
   coax_a25_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 25; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a25_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a2058_t_CK_Node(coax_a2058_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 2058; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a2058_t_CK_Node coax_init_a2058_t_CK_Node(void) {
   coax_a2058_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 2058; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a2058_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a160_t_CK_Node(coax_a160_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 160; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a160_t_CK_Node coax_init_a160_t_CK_Node(void) {
   coax_a160_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 160; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a160_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a140_t_CK_Node(coax_a140_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 140; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a140_t_CK_Node coax_init_a140_t_CK_Node(void) {
   coax_a140_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 140; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a140_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a68_t_CK_Node(coax_a68_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 68; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a68_t_CK_Node coax_init_a68_t_CK_Node(void) {
   coax_a68_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 68; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a68_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a172_t_CK_Node(coax_a172_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 172; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a172_t_CK_Node coax_init_a172_t_CK_Node(void) {
   coax_a172_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 172; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a172_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a532_t_CK_Node(coax_a532_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 532; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a532_t_CK_Node coax_init_a532_t_CK_Node(void) {
   coax_a532_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 532; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a532_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a532_t_CK_Type(coax_a532_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 532; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a532_t_CK_Type coax_init_a532_t_CK_Type(void) {
   coax_a532_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 532; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a532_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a146_t_CK_Node(coax_a146_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 146; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a146_t_CK_Node coax_init_a146_t_CK_Node(void) {
   coax_a146_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 146; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a146_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a454_t_CK_Node(coax_a454_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 454; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a454_t_CK_Node coax_init_a454_t_CK_Node(void) {
   coax_a454_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 454; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a454_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a454_t_CK_Type(coax_a454_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 454; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a454_t_CK_Type coax_init_a454_t_CK_Type(void) {
   coax_a454_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 454; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a454_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a145_t_CK_Node(coax_a145_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 145; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a145_t_CK_Node coax_init_a145_t_CK_Node(void) {
   coax_a145_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 145; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a145_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a451_t_CK_Node(coax_a451_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 451; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a451_t_CK_Node coax_init_a451_t_CK_Node(void) {
   coax_a451_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 451; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a451_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a451_t_CK_Type(coax_a451_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 451; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a451_t_CK_Type coax_init_a451_t_CK_Type(void) {
   coax_a451_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 451; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a451_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a135_t_CK_Node(coax_a135_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 135; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a135_t_CK_Node coax_init_a135_t_CK_Node(void) {
   coax_a135_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 135; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a135_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a421_t_CK_Node(coax_a421_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 421; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a421_t_CK_Node coax_init_a421_t_CK_Node(void) {
   coax_a421_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 421; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a421_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a421_t_CK_Type(coax_a421_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 421; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a421_t_CK_Type coax_init_a421_t_CK_Type(void) {
   coax_a421_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 421; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a421_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a178_t_CK_Node(coax_a178_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 178; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a178_t_CK_Node coax_init_a178_t_CK_Node(void) {
   coax_a178_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 178; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a178_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a550_t_CK_Node(coax_a550_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 550; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a550_t_CK_Node coax_init_a550_t_CK_Node(void) {
   coax_a550_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 550; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a550_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a550_t_CK_Type(coax_a550_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 550; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a550_t_CK_Type coax_init_a550_t_CK_Type(void) {
   coax_a550_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 550; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a550_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a182_t_CK_Node(coax_a182_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 182; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a182_t_CK_Node coax_init_a182_t_CK_Node(void) {
   coax_a182_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 182; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a182_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a75_t_CK_Node(coax_a75_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 75; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a75_t_CK_Node coax_init_a75_t_CK_Node(void) {
   coax_a75_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 75; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a75_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a241_t_CK_Node(coax_a241_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 241; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a241_t_CK_Node coax_init_a241_t_CK_Node(void) {
   coax_a241_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 241; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a241_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a241_t_CK_Type(coax_a241_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 241; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a241_t_CK_Type coax_init_a241_t_CK_Type(void) {
   coax_a241_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 241; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a241_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a255_t_CK_Node(coax_a255_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 255; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a255_t_CK_Node coax_init_a255_t_CK_Node(void) {
   coax_a255_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 255; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a255_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a781_t_CK_Node(coax_a781_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 781; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a781_t_CK_Node coax_init_a781_t_CK_Node(void) {
   coax_a781_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 781; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a781_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a781_t_CK_Type(coax_a781_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 781; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a781_t_CK_Type coax_init_a781_t_CK_Type(void) {
   coax_a781_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 781; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a781_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a23_t_CK_Node(coax_a23_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 23; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a23_t_CK_Node coax_init_a23_t_CK_Node(void) {
   coax_a23_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 23; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a23_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a85_t_CK_Node(coax_a85_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 85; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a85_t_CK_Node coax_init_a85_t_CK_Node(void) {
   coax_a85_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 85; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a85_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a85_t_CK_Type(coax_a85_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 85; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a85_t_CK_Type coax_init_a85_t_CK_Type(void) {
   coax_a85_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 85; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a85_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a20_t_CK_Node(coax_a20_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 20; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a20_t_CK_Node coax_init_a20_t_CK_Node(void) {
   coax_a20_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 20; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a20_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a76_t_CK_Node(coax_a76_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 76; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a76_t_CK_Node coax_init_a76_t_CK_Node(void) {
   coax_a76_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 76; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a76_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a76_t_CK_Type(coax_a76_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 76; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a76_t_CK_Type coax_init_a76_t_CK_Type(void) {
   coax_a76_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 76; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a76_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a143_t_CK_Node(coax_a143_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 143; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a143_t_CK_Node coax_init_a143_t_CK_Node(void) {
   coax_a143_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 143; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a143_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a445_t_CK_Node(coax_a445_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 445; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a445_t_CK_Node coax_init_a445_t_CK_Node(void) {
   coax_a445_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 445; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a445_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a445_t_CK_Type(coax_a445_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 445; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a445_t_CK_Type coax_init_a445_t_CK_Type(void) {
   coax_a445_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 445; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a445_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a346_t_CK_Node(coax_a346_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 346; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a346_t_CK_Node coax_init_a346_t_CK_Node(void) {
   coax_a346_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 346; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a346_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a1054_t_CK_Node(coax_a1054_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 1054; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a1054_t_CK_Node coax_init_a1054_t_CK_Node(void) {
   coax_a1054_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 1054; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a1054_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a1054_t_CK_Type(coax_a1054_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 1054; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a1054_t_CK_Type coax_init_a1054_t_CK_Type(void) {
   coax_a1054_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 1054; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a1054_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a401_t_CK_Node(coax_a401_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 401; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a401_t_CK_Node coax_init_a401_t_CK_Node(void) {
   coax_a401_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 401; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a401_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a1219_t_CK_Node(coax_a1219_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 1219; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a1219_t_CK_Node coax_init_a1219_t_CK_Node(void) {
   coax_a1219_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 1219; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a1219_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a1219_t_CK_Type(coax_a1219_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 1219; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a1219_t_CK_Type coax_init_a1219_t_CK_Type(void) {
   coax_a1219_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 1219; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a1219_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a403_t_CK_Node(coax_a403_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 403; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a403_t_CK_Node coax_init_a403_t_CK_Node(void) {
   coax_a403_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 403; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a403_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a88_t_CK_Node(coax_a88_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 88; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a88_t_CK_Node coax_init_a88_t_CK_Node(void) {
   coax_a88_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 88; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a88_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a88_t_CK_Type(coax_a88_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 88; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a88_t_CK_Type coax_init_a88_t_CK_Type(void) {
   coax_a88_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 88; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a88_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a235_t_CK_Node(coax_a235_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 235; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a235_t_CK_Node coax_init_a235_t_CK_Node(void) {
   coax_a235_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 235; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a235_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a235_t_CK_Type(coax_a235_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 235; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a235_t_CK_Type coax_init_a235_t_CK_Type(void) {
   coax_a235_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 235; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a235_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a154_t_CK_Node(coax_a154_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 154; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a154_t_CK_Node coax_init_a154_t_CK_Node(void) {
   coax_a154_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 154; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a154_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a154_t_CK_Type(coax_a154_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 154; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a154_t_CK_Type coax_init_a154_t_CK_Type(void) {
   coax_a154_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 154; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a154_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a27_t_CK_Node(coax_a27_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 27; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a27_t_CK_Node coax_init_a27_t_CK_Node(void) {
   coax_a27_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 27; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a27_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a97_t_CK_Node(coax_a97_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 97; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a97_t_CK_Node coax_init_a97_t_CK_Node(void) {
   coax_a97_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 97; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a97_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a97_t_CK_Type(coax_a97_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 97; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a97_t_CK_Type coax_init_a97_t_CK_Type(void) {
   coax_a97_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 97; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a97_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a39_t_CK_Node(coax_a39_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 39; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a39_t_CK_Node coax_init_a39_t_CK_Node(void) {
   coax_a39_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 39; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a39_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a133_t_CK_Node(coax_a133_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 133; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a133_t_CK_Node coax_init_a133_t_CK_Node(void) {
   coax_a133_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 133; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a133_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a133_t_CK_Type(coax_a133_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 133; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a133_t_CK_Type coax_init_a133_t_CK_Type(void) {
   coax_a133_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 133; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a133_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a54_t_CK_Node(coax_a54_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 54; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a54_t_CK_Node coax_init_a54_t_CK_Node(void) {
   coax_a54_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 54; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a54_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a178_t_CK_Type(coax_a178_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 178; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a178_t_CK_Type coax_init_a178_t_CK_Type(void) {
   coax_a178_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 178; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a178_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a109_t_CK_Node(coax_a109_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 109; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a109_t_CK_Node coax_init_a109_t_CK_Node(void) {
   coax_a109_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 109; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a109_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a343_t_CK_Node(coax_a343_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 343; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a343_t_CK_Node coax_init_a343_t_CK_Node(void) {
   coax_a343_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 343; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a343_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a343_t_CK_Type(coax_a343_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 343; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a343_t_CK_Type coax_init_a343_t_CK_Type(void) {
   coax_a343_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 343; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a343_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a63_t_CK_Node(coax_a63_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 63; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a63_t_CK_Node coax_init_a63_t_CK_Node(void) {
   coax_a63_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 63; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a63_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a205_t_CK_Node(coax_a205_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 205; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a205_t_CK_Node coax_init_a205_t_CK_Node(void) {
   coax_a205_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 205; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a205_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a205_t_CK_Type(coax_a205_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 205; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a205_t_CK_Type coax_init_a205_t_CK_Type(void) {
   coax_a205_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 205; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a205_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a127_t_CK_Node(coax_a127_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 127; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a127_t_CK_Node coax_init_a127_t_CK_Node(void) {
   coax_a127_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 127; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a127_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a127_t_CK_Type(coax_a127_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 127; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a127_t_CK_Type coax_init_a127_t_CK_Type(void) {
   coax_a127_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 127; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a127_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a118_t_CK_Node(coax_a118_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 118; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a118_t_CK_Node coax_init_a118_t_CK_Node(void) {
   coax_a118_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 118; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a118_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a118_t_CK_Type(coax_a118_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 118; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a118_t_CK_Type coax_init_a118_t_CK_Type(void) {
   coax_a118_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 118; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a118_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a142_t_CK_Node(coax_a142_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 142; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a142_t_CK_Node coax_init_a142_t_CK_Node(void) {
   coax_a142_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 142; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a142_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a142_t_CK_Type(coax_a142_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 142; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a142_t_CK_Type coax_init_a142_t_CK_Type(void) {
   coax_a142_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 142; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a142_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a114_t_CK_Node(coax_a114_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 114; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a114_t_CK_Node coax_init_a114_t_CK_Node(void) {
   coax_a114_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 114; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a114_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a358_t_CK_Node(coax_a358_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 358; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a358_t_CK_Node coax_init_a358_t_CK_Node(void) {
   coax_a358_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 358; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a358_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a358_t_CK_Type(coax_a358_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 358; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a358_t_CK_Type coax_init_a358_t_CK_Type(void) {
   coax_a358_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 358; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a358_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a86_t_CK_Node(coax_a86_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 86; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a86_t_CK_Node coax_init_a86_t_CK_Node(void) {
   coax_a86_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 86; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a86_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a274_t_CK_Node(coax_a274_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 274; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a274_t_CK_Node coax_init_a274_t_CK_Node(void) {
   coax_a274_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 274; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a274_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a274_t_CK_Type(coax_a274_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 274; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a274_t_CK_Type coax_init_a274_t_CK_Type(void) {
   coax_a274_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 274; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a274_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a256_t_CK_Node(coax_a256_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 256; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a256_t_CK_Node coax_init_a256_t_CK_Node(void) {
   coax_a256_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 256; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a256_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a256_t_CK_Type(coax_a256_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 256; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a256_t_CK_Type coax_init_a256_t_CK_Type(void) {
   coax_a256_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 256; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a256_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a246_t_CK_Node(coax_a246_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 246; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a246_t_CK_Node coax_init_a246_t_CK_Node(void) {
   coax_a246_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 246; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a246_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a754_t_CK_Node(coax_a754_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 754; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a754_t_CK_Node coax_init_a754_t_CK_Node(void) {
   coax_a754_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 754; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a754_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a754_t_CK_Type(coax_a754_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 754; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a754_t_CK_Type coax_init_a754_t_CK_Type(void) {
   coax_a754_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 754; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a754_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a177_t_CK_Node(coax_a177_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 177; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a177_t_CK_Node coax_init_a177_t_CK_Node(void) {
   coax_a177_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 177; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a177_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a547_t_CK_Node(coax_a547_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 547; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a547_t_CK_Node coax_init_a547_t_CK_Node(void) {
   coax_a547_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 547; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a547_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a547_t_CK_Type(coax_a547_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 547; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a547_t_CK_Type coax_init_a547_t_CK_Type(void) {
   coax_a547_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 547; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a547_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a190_t_CK_Node(coax_a190_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 190; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a190_t_CK_Node coax_init_a190_t_CK_Node(void) {
   coax_a190_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 190; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a190_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a190_t_CK_Type(coax_a190_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 190; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a190_t_CK_Type coax_init_a190_t_CK_Type(void) {
   coax_a190_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 190; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a190_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a161_t_CK_Node(coax_a161_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 161; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a161_t_CK_Node coax_init_a161_t_CK_Node(void) {
   coax_a161_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 161; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a161_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a499_t_CK_Node(coax_a499_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 499; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a499_t_CK_Node coax_init_a499_t_CK_Node(void) {
   coax_a499_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 499; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a499_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a499_t_CK_Type(coax_a499_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 499; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a499_t_CK_Type coax_init_a499_t_CK_Type(void) {
   coax_a499_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 499; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a499_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a116_t_CK_Node(coax_a116_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 116; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a116_t_CK_Node coax_init_a116_t_CK_Node(void) {
   coax_a116_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 116; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a116_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a364_t_CK_Node(coax_a364_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 364; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a364_t_CK_Node coax_init_a364_t_CK_Node(void) {
   coax_a364_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 364; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a364_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a364_t_CK_Type(coax_a364_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 364; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a364_t_CK_Type coax_init_a364_t_CK_Type(void) {
   coax_a364_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 364; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a364_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a271_t_CK_Node(coax_a271_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 271; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a271_t_CK_Node coax_init_a271_t_CK_Node(void) {
   coax_a271_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 271; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a271_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a271_t_CK_Type(coax_a271_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 271; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a271_t_CK_Type coax_init_a271_t_CK_Type(void) {
   coax_a271_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 271; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a271_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a8_t_CK_Type(coax_a8_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 8; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a8_t_CK_Type coax_init_a8_t_CK_Type(void) {
   coax_a8_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 8; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a8_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a48_t_CK_Type(coax_a48_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 48; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a48_t_CK_Type coax_init_a48_t_CK_Type(void) {
   coax_a48_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 48; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a48_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a96_t_CK_Type(coax_a96_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 96; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a96_t_CK_Type coax_init_a96_t_CK_Type(void) {
   coax_a96_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 96; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a96_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a112_t_CK_Node(coax_a112_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 112; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a112_t_CK_Node coax_init_a112_t_CK_Node(void) {
   coax_a112_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 112; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a112_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a2048_t_CK_Node(coax_a2048_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 2048; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a2048_t_CK_Node coax_init_a2048_t_CK_Node(void) {
   coax_a2048_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 2048; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a2048_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a2048_t_CK_Type(coax_a2048_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 2048; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a2048_t_CK_Type coax_init_a2048_t_CK_Type(void) {
   coax_a2048_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 2048; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a2048_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a44_t_CK_Node(coax_a44_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 44; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a44_t_CK_Node coax_init_a44_t_CK_Node(void) {
   coax_a44_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 44; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a44_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a77_t_CK_Node(coax_a77_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 77; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a77_t_CK_Node coax_init_a77_t_CK_Node(void) {
   coax_a77_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 77; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a77_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a247_t_CK_Node(coax_a247_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 247; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a247_t_CK_Node coax_init_a247_t_CK_Node(void) {
   coax_a247_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 247; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a247_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a247_t_CK_Type(coax_a247_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 247; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a247_t_CK_Type coax_init_a247_t_CK_Type(void) {
   coax_a247_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 247; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a247_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a280_t_CK_Node(coax_a280_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 280; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a280_t_CK_Node coax_init_a280_t_CK_Node(void) {
   coax_a280_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 280; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a280_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a280_t_CK_Type(coax_a280_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 280; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a280_t_CK_Type coax_init_a280_t_CK_Type(void) {
   coax_a280_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 280; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a280_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a1024_t_CK_Node(coax_a1024_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 1024; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a1024_t_CK_Node coax_init_a1024_t_CK_Node(void) {
   coax_a1024_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 1024; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a1024_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a141_t_CK_Node(coax_a141_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 141; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a141_t_CK_Node coax_init_a141_t_CK_Node(void) {
   coax_a141_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 141; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a141_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a90_t_CK_Node(coax_a90_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 90; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a90_t_CK_Node coax_init_a90_t_CK_Node(void) {
   coax_a90_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 90; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a90_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a1_t_CK_Type(coax_a1_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 1; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a1_t_CK_Type coax_init_a1_t_CK_Type(void) {
   coax_a1_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 1; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a1_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a520_t_CK_Node(coax_a520_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 520; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a520_t_CK_Node coax_init_a520_t_CK_Node(void) {
   coax_a520_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 520; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a520_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a272_t_CK_Type(coax_a272_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 272; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a272_t_CK_Type coax_init_a272_t_CK_Type(void) {
   coax_a272_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 272; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a272_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a96_t_CK_Node(coax_a96_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 96; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a96_t_CK_Node coax_init_a96_t_CK_Node(void) {
   coax_a96_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 96; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a96_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a148_t_CK_Node(coax_a148_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 148; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a148_t_CK_Node coax_init_a148_t_CK_Node(void) {
   coax_a148_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 148; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a148_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a148_t_CK_Type(coax_a148_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 148; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a148_t_CK_Type coax_init_a148_t_CK_Type(void) {
   coax_a148_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 148; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a148_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a112_t_CK_Type(coax_a112_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 112; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a112_t_CK_Type coax_init_a112_t_CK_Type(void) {
   coax_a112_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 112; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a112_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a157_t_CK_Node(coax_a157_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 157; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a157_t_CK_Node coax_init_a157_t_CK_Node(void) {
   coax_a157_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 157; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a157_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a157_t_CK_Type(coax_a157_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 157; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a157_t_CK_Type coax_init_a157_t_CK_Type(void) {
   coax_a157_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 157; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a157_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a139_t_CK_Node(coax_a139_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 139; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a139_t_CK_Node coax_init_a139_t_CK_Node(void) {
   coax_a139_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 139; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a139_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a139_t_CK_Type(coax_a139_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 139; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a139_t_CK_Type coax_init_a139_t_CK_Type(void) {
   coax_a139_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 139; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a139_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a175_t_CK_Node(coax_a175_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 175; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a175_t_CK_Node coax_init_a175_t_CK_Node(void) {
   coax_a175_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 175; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a175_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a175_t_CK_Type(coax_a175_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 175; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a175_t_CK_Type coax_init_a175_t_CK_Type(void) {
   coax_a175_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 175; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a175_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a2359_t_CK_Node(coax_a2359_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 2359; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a2359_t_CK_Node coax_init_a2359_t_CK_Node(void) {
   coax_a2359_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 2359; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a2359_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a2359_t_CK_Type(coax_a2359_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 2359; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a2359_t_CK_Type coax_init_a2359_t_CK_Type(void) {
   coax_a2359_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 2359; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a2359_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a72_t_CK_Node(coax_a72_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 72; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a72_t_CK_Node coax_init_a72_t_CK_Node(void) {
   coax_a72_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 72; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a72_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a224_t_CK_Node(coax_a224_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 224; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a224_t_CK_Node coax_init_a224_t_CK_Node(void) {
   coax_a224_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 224; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a224_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a384_t_CK_Node(coax_a384_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 384; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a384_t_CK_Node coax_init_a384_t_CK_Node(void) {
   coax_a384_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 384; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a384_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a320_t_CK_Node(coax_a320_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 320; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a320_t_CK_Node coax_init_a320_t_CK_Node(void) {
   coax_a320_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 320; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a320_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a400_t_CK_Node(coax_a400_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 400; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a400_t_CK_Node coax_init_a400_t_CK_Node(void) {
   coax_a400_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 400; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a400_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a336_t_CK_Node(coax_a336_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 336; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a336_t_CK_Node coax_init_a336_t_CK_Node(void) {
   coax_a336_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 336; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a336_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a300_t_CK_Type(coax_a300_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 300; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a300_t_CK_Type coax_init_a300_t_CK_Type(void) {
   coax_a300_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 300; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a300_t_CK_Type(&v);
   return v;
+}
+static void coax_initp_a600_t_CK_Node(coax_a600_t_CK_Node *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 600; i++) coax_initp_t_CK_Node(&v->e[i]);
 }
 static coax_a600_t_CK_Node coax_init_a600_t_CK_Node(void) {
   coax_a600_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 600; i++) v.e[i] = coax_init_t_CK_Node();
+  coax_initp_a600_t_CK_Node(&v);
   return v;
+}
+static void coax_initp_a23_t_CK_Type(coax_a23_t_CK_Type *v) {
+  memset(v, 0, sizeof *v);
+  for (int64_t i = 0; i < 23; i++) coax_initp_t_CK_Type(&v->e[i]);
 }
 static coax_a23_t_CK_Type coax_init_a23_t_CK_Type(void) {
   coax_a23_t_CK_Type v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 23; i++) v.e[i] = coax_init_t_CK_Type();
+  coax_initp_a23_t_CK_Type(&v);
   return v;
 }
 

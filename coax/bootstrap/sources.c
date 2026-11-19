@@ -336,18 +336,26 @@ static coax_v_u8 coax_reslice_v_u8(coax_v_u8 v, int64_t lo, int64_t hi, int32_t 
 static const coax_a4_string coax_k0 = {{{"proc", 4}, {"struct", 6}, {"enum", 4}, {"const", 5}}};
 static const coax_a2_string coax_k1 = {{{"content", 7}, {"module", 6}}};
 
+static void coax_initp_t_SU_Scan(coax_t_SU_Scan *v);
 static coax_t_SU_Scan coax_init_t_SU_Scan(void);
+static void coax_initp_t_SU_Visit(coax_t_SU_Visit *v);
 static coax_t_SU_Visit coax_init_t_SU_Visit(void);
+static void coax_initp_t_SU_Scan(coax_t_SU_Scan *v) {
+  memset(v, 0, sizeof *v);
+  v->balanced = 1;
+}
 static coax_t_SU_Scan coax_init_t_SU_Scan(void) {
   coax_t_SU_Scan v;
-  memset(&v, 0, sizeof v);
-  v.balanced = 1;
+  coax_initp_t_SU_Scan(&v);
   return v;
+}
+static void coax_initp_t_SU_Visit(coax_t_SU_Visit *v) {
+  memset(v, 0, sizeof *v);
+  v->index = INT64_C(-1);
 }
 static coax_t_SU_Visit coax_init_t_SU_Visit(void) {
   coax_t_SU_Visit v;
-  memset(&v, 0, sizeof v);
-  v.index = INT64_C(-1);
+  coax_initp_t_SU_Visit(&v);
   return v;
 }
 
