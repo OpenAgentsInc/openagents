@@ -25,7 +25,7 @@ EV_ACTION :: 4;      // code: an ACT_ value; text, more: its arguments
 EV_TAKEN :: 5;       // op; flag: the host accepted (true) or refused (false) the request
 EV_DONE :: 6;        // op, generation, outcome, and the result fields of its kind (host.coax)
 
-LIFE_FOREGROUND :: 1; LIFE_BACKGROUND :: 2;
+LIFE_FOREGROUND :: 1; LIFE_BACKGROUND :: 2; LIFE_MEMORY_WARNING :: 3;
 
 ACT_DRAFT :: 1;        // text: the whole composer text of the current conversation
 ACT_SEND :: 2;         // send the draft as a new request
@@ -312,12 +312,24 @@ app_dispatch :: (c: [] AppCore, e: AppEvent) -> int {
     else if e.kind == EV_CLOCK { result = APP_OK; }
     else if e.kind == EV_LIFECYCLE {
       if e.code == LIFE_FOREGROUND {
-        c[0].foreground = true; app_mark(c, SURF_ALL); result = APP_OK;
+        c[0].foreground = true; c[0].suspended = false; app_mark(c, SURF_ALL); result = APP_OK;
         // the account may have changed while we were away, and reads resume at once
         if c[0].account_op == 0 { _ := app_account_request(c, FX_AUTH_STATE, "", ""); }
         c[0].read_at = 0; c[0].poll_at = 0; c[0].task_at = 0;
+        dl_on_foreground(c);
       }
-      else if e.code == LIFE_BACKGROUND { c[0].foreground = false; result = APP_OK; }
+      else if e.code == LIFE_BACKGROUND {
+        c[0].foreground = false; c[0].suspended = true;
+        _ := app_evict_memory(c, false);
+        dl_on_background(c);
+        result = APP_OK;
+      }
+      else if e.code == LIFE_MEMORY_WARNING {
+        c[0].low_memory_count += 1;
+        _ := app_evict_memory(c, true);
+        app_mark(c, SURF_TRANSCRIPT | SURF_TASK);
+        result = APP_OK;
+      }
     }
     else if e.kind == EV_ACTION { result = app_action(c, e); }
     else if e.kind == EV_TAKEN {

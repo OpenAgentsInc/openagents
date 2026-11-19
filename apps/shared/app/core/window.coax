@@ -1,0 +1,425 @@
+// Cursor-based pagination, windowing, delta streaming, and bandwidth/memory
+// budgets for OpenAgents Mobile & Desktop (GitHub #13711, Phase 2).
+//
+// Keeps transcript, session list, sub-agent, diff, git status, log, and file
+// preview payloads bounded in fixed-capacity storage so iOS clients never OOM
+// or saturate mobile links. Every window tracks a monotonic sequence cursor,
+// byte range, and explicit server-side truncation / "load more" state.
+//   coax/bin/coax test apps/shared/app/core/core.coax --library --traversal 1000000000 --run-steps 250000000
+
+// Client resource profiles.
+APP_PROFILE_DESKTOP :: 0;
+APP_PROFILE_MOBILE :: 1;
+
+// Bounded task buffer capacity in AppCore (256 KiB per buffer vs 4 MiB XH_LOG_MAX).
+// Reduces AppCore static footprint from ~19 MiB to ~4 MiB while staying well above
+// mobile page budgets.
+APP_TASK_BUF_MAX :: 262144;
+
+// Mobile vs desktop payload and window budgets.
+APP_BUDGET_MOBILE_PAYLOAD :: 65536;     // 64 KiB max per paged response on mobile
+APP_BUDGET_DESKTOP_PAYLOAD :: 262144;   // 256 KiB max per paged response on desktop
+APP_BUDGET_MOBILE_ITEMS :: 40;          // max rows/messages per page on mobile
+APP_BUDGET_DESKTOP_ITEMS :: 120;        // max rows/messages per page on desktop
+APP_BUDGET_MOBILE_PREVIEW :: 32768;     // 32 KiB max inline diff/file preview on mobile
+APP_BUDGET_DESKTOP_PREVIEW :: 131072;   // 128 KiB max inline diff/file preview on desktop
+APP_BUDGET_MOBILE_TOOL_ROWS :: 12;      // max inline tool/thinking rows before collapse
+APP_BUDGET_DESKTOP_TOOL_ROWS :: 48;
+
+// Window kinds covered by cursor pagination and delta streaming.
+WIN_NONE :: 0;
+WIN_SESSIONS :: 1;      // session list / recents
+WIN_MESSAGES :: 2;      // chat messages & tool/thinking rows
+WIN_SUBAGENT :: 3;      // sub-agent transcripts
+WIN_DIFF :: 4;          // workspace diffs
+WIN_GIT_STATUS :: 5;    // git status
+WIN_FILE_PREVIEW :: 6;  // file previews
+WIN_LOGS :: 7;          // task / command logs
+
+APP_WINDOWS :: 8;
+APP_WIN_KEY :: 128;
+APP_WIN_CURSOR :: 96;
+APP_WIN_PAYLOAD :: 65536;
+
+// Result of applying a delta or paged window update.
+WIN_APPLY_OK :: 1;
+WIN_APPLY_DUP :: 2;     // stale or duplicate sequence; safely ignored
+WIN_APPLY_GAP :: 3;     // sequence gap detected; caller should resync window
+WIN_APPLY_FULL :: 4;    // payload exceeds profile budget; truncated with load-more
+WIN_APPLY_BAD :: -1;
+
+AppBudget :: struct {
+  profile: int;
+  max_payload: int;
+  max_items: int;
+  max_preview: int;
+  max_tool_rows: int;
+}
+
+AppWindow :: struct {
+  used: bool;
+  active: bool;           // true when currently on-screen; false windows are eviction candidates
+  kind: int;              // WIN_*
+  key: [APP_WIN_KEY] u8; key_n: int;         // session/task/file/sub-agent identifier
+  cursor: [APP_WIN_CURSOR] u8; cursor_n: int; // opaque server cursor for next page
+  seq: int;               // highest contiguous sequence number applied
+  base_seq: int;          // earliest sequence currently held in the window
+  byte_offset: int;       // byte offset for range-fetches (diffs/files/logs)
+  total_bytes: int;       // total server-reported bytes (-1 if unknown)
+  item_count: int;        // rows currently held in the window
+  has_more: bool;         // server indicates more pages/bytes exist
+  truncated: bool;        // server or client enforced payload truncation
+  needs_resync: bool;     // sequence gap observed; next fetch should resync from seq
+  pending_more: bool;     // user/view requested explicit load-more / range-fetch
+  touched: int;           // monotonic timestamp / tick for LRU eviction
+  payload: [APP_WIN_PAYLOAD] u8; payload_n: int;
+}
+
+AppWindowTable :: struct {
+  profile: int;
+  clock: int;
+  evictions: int;
+  slots: [APP_WINDOWS] AppWindow;
+}
+
+// Decoded server page/delta header.
+AppWindowPage :: struct {
+  kind: int;
+  seq_from: int;          // first seq in this delta/page (0 for initial snapshot)
+  seq_to: int;            // last seq in this delta/page
+  byte_offset: int;
+  total_bytes: int;
+  item_count: int;
+  has_more: bool;
+  truncated: bool;
+  cursor: [APP_WIN_CURSOR] u8; cursor_n: int;
+}
+
+app_budget :: (profile: int) -> AppBudget {
+  if profile == APP_PROFILE_MOBILE {
+    return AppBudget.{
+      profile = APP_PROFILE_MOBILE,
+      max_payload = APP_BUDGET_MOBILE_PAYLOAD,
+      max_items = APP_BUDGET_MOBILE_ITEMS,
+      max_preview = APP_BUDGET_MOBILE_PREVIEW,
+      max_tool_rows = APP_BUDGET_MOBILE_TOOL_ROWS
+    };
+  }
+  return AppBudget.{
+    profile = APP_PROFILE_DESKTOP,
+    max_payload = APP_BUDGET_DESKTOP_PAYLOAD,
+    max_items = APP_BUDGET_DESKTOP_ITEMS,
+    max_preview = APP_BUDGET_DESKTOP_PREVIEW,
+    max_tool_rows = APP_BUDGET_DESKTOP_TOOL_ROWS
+  };
+}
+
+app_win_kind_valid :: (kind: int) -> bool { return kind >= WIN_SESSIONS && kind <= WIN_LOGS; }
+
+app_win_kind_name :: (kind: int) -> string {
+  if kind == WIN_SESSIONS { return "sessions"; }
+  if kind == WIN_MESSAGES { return "messages"; }
+  if kind == WIN_SUBAGENT { return "subagent"; }
+  if kind == WIN_DIFF { return "diff"; }
+  if kind == WIN_GIT_STATUS { return "git_status"; }
+  if kind == WIN_FILE_PREVIEW { return "file_preview"; }
+  if kind == WIN_LOGS { return "logs"; }
+  return "";
+}
+
+app_win_kind_from_name :: (name: string) -> int {
+  if name == "sessions" { return WIN_SESSIONS; }
+  if name == "messages" { return WIN_MESSAGES; }
+  if name == "subagent" { return WIN_SUBAGENT; }
+  if name == "diff" { return WIN_DIFF; }
+  if name == "git_status" { return WIN_GIT_STATUS; }
+  if name == "file_preview" { return WIN_FILE_PREVIEW; }
+  if name == "logs" { return WIN_LOGS; }
+  return WIN_NONE;
+}
+
+app_win_key :: (w: [] AppWindow) -> string { return cast(string) w[0].key[0..<w[0].key_n]; }
+app_win_cursor :: (w: [] AppWindow) -> string { return cast(string) w[0].cursor[0..<w[0].cursor_n]; }
+app_win_payload :: (w: [] AppWindow) -> string { return cast(string) w[0].payload[0..<w[0].payload_n]; }
+
+app_win_init :: (t: [] AppWindowTable, profile: int) {
+  t[0] = AppWindowTable.{};
+  t[0].profile = ifx profile == APP_PROFILE_MOBILE then APP_PROFILE_MOBILE else APP_PROFILE_DESKTOP;
+}
+
+app_win_find :: (t: [] AppWindowTable, kind: int, key: string) -> int {
+  if !app_win_kind_valid(kind) { return -1; }
+  for i: 0..<APP_WINDOWS {
+    if t[0].slots[i].used && t[0].slots[i].kind == kind && cast(string) t[0].slots[i].key[0..<t[0].slots[i].key_n] == key {
+      return i;
+    }
+  }
+  return -1;
+}
+
+// Opens or focuses a window. Evicts the oldest inactive slot when full.
+app_win_open :: (t: [] AppWindowTable, kind: int, key: string, active: bool) -> int {
+  if !app_win_kind_valid(kind) || key.count > APP_WIN_KEY { return -1; }
+  t[0].clock += 1;
+  at := app_win_find(t, kind, key);
+  if at >= 0 {
+    t[0].slots[at].active = active;
+    t[0].slots[at].touched = t[0].clock;
+    return at;
+  }
+  slot := -1;
+  for i: 0..<APP_WINDOWS {
+    if !t[0].slots[i].used { slot = i; break; }
+  }
+  if slot < 0 {
+    // Prefer evicting the least-recently-touched inactive window first.
+    for i: 0..<APP_WINDOWS {
+      if !t[0].slots[i].active && (slot < 0 || t[0].slots[i].touched < t[0].slots[slot].touched) { slot = i; }
+    }
+  }
+  if slot < 0 {
+    // Fallback: evict the oldest window overall.
+    slot = 0;
+    for i: 1..<APP_WINDOWS {
+      if t[0].slots[i].touched < t[0].slots[slot].touched { slot = i; }
+    }
+  }
+  if t[0].slots[slot].used { t[0].evictions += 1; }
+  t[0].slots[slot] = AppWindow.{};
+  t[0].slots[slot].used = true;
+  t[0].slots[slot].active = active;
+  t[0].slots[slot].kind = kind;
+  t[0].slots[slot].key_n = js_copy(t[0].slots[slot].key[..], key);
+  t[0].slots[slot].total_bytes = -1;
+  t[0].slots[slot].touched = t[0].clock;
+  return slot;
+}
+
+app_win_set_active :: (t: [] AppWindowTable, slot: int, active: bool) {
+  if slot < 0 || slot >= APP_WINDOWS || !t[0].slots[slot].used { return; }
+  t[0].slots[slot].active = active;
+  if active { t[0].clock += 1; t[0].slots[slot].touched = t[0].clock; }
+}
+
+// Evicts cached payloads from inactive windows (keeping cursors/seq for fast resume).
+// When `aggressive` is true (e.g. iOS memory warning), also clears payloads on active windows
+// while preserving their cursor and sequence so they can re-fetch cleanly on demand.
+app_win_evict :: (t: [] AppWindowTable, aggressive: bool) -> int {
+  freed := 0;
+  for i: 0..<APP_WINDOWS {
+    if !t[0].slots[i].used { continue; }
+    if !aggressive && t[0].slots[i].active { continue; }
+    if t[0].slots[i].payload_n > 0 {
+      freed += t[0].slots[i].payload_n;
+      for b: 0..<t[0].slots[i].payload_n { t[0].slots[i].payload[b] = 0; }
+      t[0].slots[i].payload_n = 0;
+      t[0].evictions += 1;
+    }
+  }
+  return freed;
+}
+
+// Computes the effective byte limit for a window under the current profile.
+app_win_byte_limit :: (t: [] AppWindowTable, kind: int) -> int {
+  b := app_budget(t[0].profile);
+  limit := b.max_payload;
+  if kind == WIN_DIFF || kind == WIN_FILE_PREVIEW || kind == WIN_GIT_STATUS {
+    if b.max_preview < limit { limit = b.max_preview; }
+  }
+  if limit > APP_WIN_PAYLOAD { limit = APP_WIN_PAYLOAD; }
+  return limit;
+}
+
+// Applies a sequence-based delta or paged window response.
+// Enforces monotonic sequence progression, gap detection, and payload truncation.
+app_win_apply :: (t: [] AppWindowTable, slot: int, page: AppWindowPage, body: string) -> int {
+  if slot < 0 || slot >= APP_WINDOWS || !t[0].slots[slot].used { return WIN_APPLY_BAD; }
+  if page.seq_from < 0 || page.seq_to < page.seq_from || page.byte_offset < 0 || page.item_count < 0 { return WIN_APPLY_BAD; }
+  w := t[0].slots[slot..<slot + 1];
+  if page.kind != WIN_NONE && page.kind != w[0].kind { return WIN_APPLY_BAD; }
+  t[0].clock += 1;
+  w[0].touched = t[0].clock;
+
+  // Duplicate / already-applied delta check (when not a range-fetch continuation).
+  if w[0].seq > 0 && page.seq_to > 0 && page.seq_to <= w[0].seq && page.byte_offset <= w[0].byte_offset {
+    return WIN_APPLY_DUP;
+  }
+  // Sequence gap detection for incremental deltas (seq_from > current seq + 1).
+  if w[0].seq > 0 && page.seq_from > w[0].seq + 1 {
+    w[0].needs_resync = true;
+    return WIN_APPLY_GAP;
+  }
+
+  limit := app_win_byte_limit(t, w[0].kind);
+  copy_n := body.count;
+  client_truncated := false;
+  if copy_n > limit {
+    copy_n = limit;
+    client_truncated = true;
+  }
+  for i: 0..<copy_n { w[0].payload[i] = body[i]; }
+  if copy_n < w[0].payload_n {
+    for i: copy_n..<w[0].payload_n { w[0].payload[i] = 0; }
+  }
+  w[0].payload_n = copy_n;
+
+  if w[0].base_seq == 0 && page.seq_from > 0 { w[0].base_seq = page.seq_from; }
+  if page.seq_to > w[0].seq { w[0].seq = page.seq_to; }
+  w[0].byte_offset = page.byte_offset + copy_n;
+  if page.total_bytes >= 0 { w[0].total_bytes = page.total_bytes; }
+  w[0].item_count = page.item_count;
+  w[0].truncated = page.truncated || client_truncated;
+  w[0].has_more = page.has_more || client_truncated || (w[0].total_bytes >= 0 && w[0].byte_offset < w[0].total_bytes);
+  w[0].needs_resync = false;
+  w[0].pending_more = false;
+  if page.cursor_n > 0 && page.cursor_n <= APP_WIN_CURSOR {
+    for i: 0..<page.cursor_n { w[0].cursor[i] = page.cursor[i]; }
+    w[0].cursor_n = page.cursor_n;
+  } else if !w[0].has_more {
+    w[0].cursor_n = 0;
+  }
+  return ifx client_truncated then WIN_APPLY_FULL else WIN_APPLY_OK;
+}
+
+// Marks a window as requesting the next page / byte range ("load more").
+app_win_request_more :: (t: [] AppWindowTable, slot: int) -> bool {
+  if slot < 0 || slot >= APP_WINDOWS || !t[0].slots[slot].used { return false; }
+  if !t[0].slots[slot].has_more && !t[0].slots[slot].needs_resync { return false; }
+  t[0].slots[slot].pending_more = true;
+  t[0].clock += 1;
+  t[0].slots[slot].touched = t[0].clock;
+  return true;
+}
+
+// Encodes a bounded cursor/delta/range fetch request as JSON for the daemon protocol.
+app_win_request_json :: (t: [] AppWindowTable, slot: int, out: [] u8) -> int {
+  if t.count < 1 || slot < 0 || slot >= APP_WINDOWS || !t[0].slots[slot].used { return -1; }
+  w := t[0].slots[slot..<slot + 1];
+  b := app_budget(t[0].profile);
+  o: [1] Jo; jo_start(o[..], out); jo_obj(o[..]);
+  jo_key(o[..], "kind"); jo_str(o[..], app_win_kind_name(w[0].kind));
+  jo_key(o[..], "key"); jo_str(o[..], app_win_key(w));
+  jo_key(o[..], "after_seq"); jo_int(o[..], w[0].seq);
+  jo_key(o[..], "byte_offset"); jo_int(o[..], w[0].byte_offset);
+  jo_key(o[..], "max_bytes"); jo_int(o[..], b.max_payload);
+  jo_key(o[..], "max_items"); jo_int(o[..], b.max_items);
+  if w[0].cursor_n > 0 {
+    jo_key(o[..], "cursor"); jo_str(o[..], app_win_cursor(w));
+  }
+  if w[0].needs_resync {
+    jo_key(o[..], "resync"); jo_bool(o[..], true);
+  }
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+// Decodes a server window page metadata envelope from JSON.
+app_win_page_read :: (raw: string, out: [] AppWindowPage, arena: [] u8) -> bool {
+  if out.count < 1 || raw.count < 2 || raw.count > 8192 { return false; }
+  d: [1] Jv; nodes: [128] JvNode;
+  if !jv_parse(d[..], raw, nodes[..]) { return false; }
+  v := d[0];
+  if jv_kind(v, 0) != JV_OBJECT { return false; }
+  a := [1] ExArena.[ExArena.{buf = arena}];
+  p: AppWindowPage;
+  k := jv_get(v, 0, "kind");
+  if k >= 0 {
+    if jv_kind(v, k) != JV_STRING { return false; }
+    p.kind = app_win_kind_from_name(ex_string(v, 0, "kind", a[..]));
+    if p.kind == 0 { return false; }
+  }
+  sf := jv_get(v, 0, "seq_from");
+  if sf >= 0 {
+    if jv_kind(v, sf) != JV_NUMBER { return false; }
+    p.seq_from = js_number(v, sf);
+  }
+  st := jv_get(v, 0, "seq_to");
+  if st >= 0 {
+    if jv_kind(v, st) != JV_NUMBER { return false; }
+    p.seq_to = js_number(v, st);
+  }
+  bo := jv_get(v, 0, "byte_offset");
+  if bo >= 0 {
+    if jv_kind(v, bo) != JV_NUMBER { return false; }
+    p.byte_offset = js_number(v, bo);
+  }
+  tb := jv_get(v, 0, "total_bytes");
+  if tb >= 0 {
+    if jv_kind(v, tb) != JV_NUMBER { return false; }
+    p.total_bytes = js_number(v, tb);
+  }
+  ic := jv_get(v, 0, "item_count");
+  if ic >= 0 {
+    if jv_kind(v, ic) != JV_NUMBER { return false; }
+    p.item_count = js_number(v, ic);
+  }
+  hm := jv_get(v, 0, "has_more");
+  if hm >= 0 {
+    if jv_kind(v, hm) != JV_TRUE && jv_kind(v, hm) != JV_FALSE { return false; }
+    p.has_more = jv_kind(v, hm) == JV_TRUE;
+  }
+  tr := jv_get(v, 0, "truncated");
+  if tr >= 0 {
+    if jv_kind(v, tr) != JV_TRUE && jv_kind(v, tr) != JV_FALSE { return false; }
+    p.truncated = jv_kind(v, tr) == JV_TRUE;
+  }
+  cur := jv_get(v, 0, "cursor");
+  if cur >= 0 {
+    if jv_kind(v, cur) != JV_STRING { return false; }
+    cs := ex_string(v, 0, "cursor", a[..]);
+    if cs.count > APP_WIN_CURSOR { return false; }
+    p.cursor_n = js_copy(p.cursor[..], cs);
+  }
+  if a[0].bad || p.seq_from < 0 || p.seq_to < p.seq_from || p.byte_offset < 0 || p.item_count < 0 { return false; }
+  out[0] = p;
+  return true;
+}
+
+#test "window budgets bound mobile payloads smaller than desktop" {
+  m := app_budget(APP_PROFILE_MOBILE);
+  d := app_budget(APP_PROFILE_DESKTOP);
+  #assert m.max_payload < d.max_payload && m.max_items < d.max_items && m.max_preview < d.max_preview && m.max_tool_rows < d.max_tool_rows;
+}
+
+#test "window cursor pagination, delta sequencing, gap detection, truncation, and eviction" {
+  t: [1] AppWindowTable;
+  app_win_init(t[..], APP_PROFILE_MOBILE);
+  s := app_win_open(t[..], WIN_MESSAGES, "cnv_1", true);
+  #assert s >= 0;
+  p1 := AppWindowPage.{ kind = WIN_MESSAGES, seq_from = 1, seq_to = 3, byte_offset = 0, total_bytes = 12, item_count = 3, has_more = true };
+  p1.cursor_n = js_copy(p1.cursor[..], "cur_003");
+  #assert app_win_apply(t[..], s, p1, "hello ") == WIN_APPLY_OK;
+  #assert t[0].slots[s].seq == 3 && t[0].slots[s].has_more && app_win_cursor(t[0].slots[s..<s + 1]) == "cur_003";
+  // Duplicate delta is ignored without mutating state
+  #assert app_win_apply(t[..], s, p1, "hello ") == WIN_APPLY_DUP;
+  // Sequence gap marks needs_resync
+  gap := AppWindowPage.{ kind = WIN_MESSAGES, seq_from = 6, seq_to = 7, byte_offset = 6, total_bytes = 12, item_count = 2 };
+  #assert app_win_apply(t[..], s, gap, "world!") == WIN_APPLY_GAP;
+  #assert t[0].slots[s].needs_resync;
+  #assert app_win_request_more(t[..], s);
+  req_buf: [512] u8;
+  rn := app_win_request_json(t[..], s, req_buf[..]);
+  #assert rn > 0;
+  // Contiguous delta clears needs_resync and advances seq
+  p2 := AppWindowPage.{ kind = WIN_MESSAGES, seq_from = 4, seq_to = 5, byte_offset = 6, total_bytes = 12, item_count = 2, has_more = false };
+  #assert app_win_apply(t[..], s, p2, "world!") == WIN_APPLY_OK;
+  #assert !t[0].slots[s].needs_resync && !t[0].slots[s].has_more && t[0].slots[s].seq == 5;
+  // Inactive window payload is evicted while active window payload is kept
+  d := app_win_open(t[..], WIN_DIFF, "src/main.coax", false);
+  #assert d >= 0 && d != s;
+  dp := AppWindowPage.{ kind = WIN_DIFF, seq_from = 1, seq_to = 1, byte_offset = 0, total_bytes = 100, item_count = 1, has_more = true, truncated = true };
+  #assert app_win_apply(t[..], d, dp, "@@ -1,1 +1,1 @@") == WIN_APPLY_OK;
+  #assert app_win_evict(t[..], false) == 15;
+  #assert t[0].slots[d].payload_n == 0 && t[0].slots[s].payload_n == 6;
+  // Aggressive eviction (memory warning) clears active window payload too, keeping cursor/seq
+  #assert app_win_evict(t[..], true) == 6;
+  #assert t[0].slots[s].payload_n == 0 && t[0].slots[s].seq == 5;
+}
+
+#test "window page JSON decode round-trip" {
+  raw := "{\"kind\":\"file_preview\",\"seq_from\":1,\"seq_to\":2,\"byte_offset\":0,\"total_bytes\":4096,\"item_count\":20,\"has_more\":true,\"truncated\":true,\"cursor\":\"off:2048\"}";
+  page: [1] AppWindowPage; arena: [512] u8;
+  #assert app_win_page_read(raw, page[..], arena[..]);
+  #assert page[0].kind == WIN_FILE_PREVIEW && page[0].seq_from == 1 && page[0].seq_to == 2 && page[0].total_bytes == 4096 && page[0].has_more && page[0].truncated;
+  #assert cast(string) page[0].cursor[0..<page[0].cursor_n] == "off:2048";
+}

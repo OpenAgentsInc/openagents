@@ -22,11 +22,19 @@ import UIKit
         identity.captured = { UIScreen.main.isCaptured }
         guard let runtime = AppRuntime(auth: auth, platform: device, devices: AppDeviceLink.shared, identity: identity) else { return nil }
         self.runtime = runtime; self.core = runtime.core; self.bridge = runtime.bridge; self.identity = identity
+        self.core.setProfile(AppCoreCode.profileMobile)
         device.fact = { [weak self] fact in
             guard let self else { return }
             switch fact {
-            case .foreground: self.bridge.lifecycle(foreground: true)
-            case .background: self.keepRejoin(); self.bridge.lifecycle(foreground: false)
+            case .foreground:
+                AppDeviceLink.shared.resumeFromBackground()
+                self.bridge.lifecycle(foreground: true)
+            case .background:
+                self.keepRejoin()
+                self.bridge.lifecycle(foreground: false)
+                AppDeviceLink.shared.suspendForBackground()
+            case .memoryWarning:
+                self.bridge.memoryWarning()
             default: break
             }
         }

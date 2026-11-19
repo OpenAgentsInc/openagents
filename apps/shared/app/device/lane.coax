@@ -346,6 +346,22 @@ dl_step :: (c: [] AppCore) {
 }
 // The time of the lane's next scheduled read, or -1.
 dl_wake :: (c: [] AppCore) -> int { if !app_device_on(c) { return -1; } d := dl_lane(c); return ifx d[0].wake_at > 0 && d[0].op == 0 && c[0].foreground then d[0].wake_at else -1; }
+// Lifecycle hooks for iOS suspend/resume (#13711): background clears scheduled
+// poll timers without dropping uncertain writes; foreground triggers an immediate
+// read reconcile when idle so missed updates arrive without duplicating writes.
+dl_on_background :: (c: [] AppCore) {
+  if !app_device_on(c) { return; }
+  d := dl_lane(c);
+  d[0].wake_at = 0;
+}
+dl_on_foreground :: (c: [] AppCore) {
+  if !app_device_on(c) { return; }
+  d := dl_lane(c); e := d[0].e[..];
+  d[0].wake_at = 0;
+  if d[0].op == 0 && !e[0].flight && !e[0].random && e[0].action == 0 && !e[0].uncertain {
+    eu_press(e, "env.refresh");
+  }
+}
 
 dl_put_int :: (out: [] u8, at: int, v: int) -> int {
   tmp: [24] u8; k := 0; x := ifx v < 0 then 0 else v;

@@ -141,3 +141,11 @@ app_host_keep :: (c: [] AppCore, out: [] u8) -> int #export_c #effects(all) {
   if id.count == 0 && dl_has(c) && c[0].device[0].rejoin_n > 0 { d := dl_lane(c); id = cast(string) d[0].rejoin[0..<d[0].rejoin_n]; }
   n := app_host_copy(id, out); return ifx n < 0 then 0 else n;
 }
+// Sets the client resource profile (APP_PROFILE_DESKTOP or APP_PROFILE_MOBILE).
+app_host_set_profile :: (c: [] AppCore, profile: int) -> bool #export_c #effects(all) {
+  return app_set_profile(c, profile);
+}
+// Delivers an OS memory-pressure warning to evict cached window payloads.
+app_host_memory_warning :: (c: [] AppCore, mono_ms: int, wall_ms: int) -> int #export_c #effects(all) {
+  e := app_host_event(EV_LIFECYCLE, mono_ms, wall_ms); e.code = LIFE_MEMORY_WARNING; return app_dispatch(c, e);
+}

@@ -8,12 +8,14 @@
 // chat view) read it through the accessors below and keep their dependence on
 // field names in one place.
 //
-// Size: about 19 MiB, most of it the task transcript buffers the #13620 client
-// needs (four of XH_LOG_MAX). It is too large for a stack; see INTEGRATION.md.
+// Size: bounded (~4 MiB, down from ~19 MiB in #13711) using APP_TASK_BUF_MAX
+// (256 KiB per scratch buffer) and cursor-paged AppWindowTable for mobile.
+// Still heap-allocated, never stack; see INTEGRATION.md.
 //   coax/bin/coax test apps/shared/app/core/core.coax --library --traversal 1000000000
 #load "effects.coax";
 #load "../../chat-task-protocol.coax";
 #load "../../durable-chat.coax";
+#load "window.coax";
 
 // Who may own an effect. A guest is a shared module outside the core (the
 // environment picker today): the core carries its requests and hands its
@@ -73,7 +75,10 @@ AppCore :: struct {
   want_history: bool; want_turn: bool;
   read_at: int; poll_at: int; task_at: int; idle_at: int;
   scratch: [1] CtHistory;
-  task_data: [XH_LOG_MAX] u8; task_pools: [2] [XH_LOG_MAX] u8; task_decode: [XH_LOG_MAX] u8;
+  task_data: [APP_TASK_BUF_MAX] u8; task_pools: [2] [APP_TASK_BUF_MAX] u8; task_decode: [APP_TASK_BUF_MAX] u8;
+  // cursor-paged windows and mobile/desktop bandwidth budgets (#13711)
+  windows: [1] AppWindowTable;
+  suspended: bool; low_memory_count: int;
   // what we tell the person about the last thing that went wrong ("" when nothing)
   note: [APP_NOTE] u8; note_n: int;
   dirty: int;
@@ -91,6 +96,8 @@ app_init :: (c: [] AppCore) {
   c[0].chat[0] = DurableChat.{}; c[0].chat[0].enabled = true;
   c[0].scratch[0].legacy_revision = -1; c[0].scratch[0].next = -1;
   c[0].auth = AUTH_UNKNOWN; c[0].login = LOGIN_IDLE; c[0].foreground = true;
+  app_win_init(c[0].windows[..], APP_PROFILE_DESKTOP);
+  c[0].suspended = false; c[0].low_memory_count = 0;
   c[0].dirty = SURF_ALL; c[0].ready = true;
 }
 
@@ -106,6 +113,27 @@ app_chat :: (c: [] AppCore) -> [] DurableChat { return c[0].chat[..]; }
 app_task :: (c: [] AppCore) -> [] NativeTaskApp { return c[0].chat[0].native[..]; }
 // The current conversation's ID, "" for a chat not saved yet.
 app_conversation :: (c: [] AppCore) -> string { return dca_id(c[0].chat[..]); }
+app_windows :: (c: [] AppCore) -> [] AppWindowTable { return c[0].windows[..]; }
+app_set_profile :: (c: [] AppCore, profile: int) -> bool {
+  if c.count < 1 || (profile != APP_PROFILE_DESKTOP && profile != APP_PROFILE_MOBILE) { return false; }
+  c[0].windows[0].profile = profile;
+  return true;
+}
+app_budget_current :: (c: [] AppCore) -> AppBudget {
+  if c.count < 1 { return app_budget(APP_PROFILE_DESKTOP); }
+  return app_budget(c[0].windows[0].profile);
+}
+// Evicts off-screen window payloads (and active payloads when aggressive is true
+// on memory warning), keeping cursors and sequence numbers so views can range-fetch.
+app_evict_memory :: (c: [] AppCore, aggressive: bool) -> int {
+  if c.count < 1 { return 0; }
+  freed := app_win_evict(c[0].windows[..], aggressive);
+  if aggressive {
+    // Also clear inactive draft caches? Keep drafts intact; only drop decode scratch.
+    c[0].chat[0].native[0].note_n = 0;
+  }
+  return freed;
+}
 
 // ---------------------------------------------------------------- drafts
 

@@ -51,6 +51,8 @@ int64_t oa_core_wake(void *core) { return app_host_wake(oa_core(core)); }
 int64_t oa_core_busy(void *core) { return app_host_busy(oa_core(core)); }
 int64_t oa_core_dirty_take(void *core, int64_t mask) { return app_host_dirty_take(oa_core(core), mask); }
 int64_t oa_core_keep(void *core, uint8_t *out, int64_t cap) { return app_host_keep(oa_core(core), (coax_v_u8){out, cap}); }
+int oa_core_set_profile(void *core, int64_t profile) { return app_host_set_profile(oa_core(core), profile) ? 1 : 0; }
+int64_t oa_core_memory_warning(void *core, int64_t mono, int64_t wall) { return oa_routed(core, app_host_memory_warning(oa_core(core), mono, wall)); }
 int oa_policy_http(int64_t method, const char *path, int64_t body_bytes) { return up_http(method, oa_cstr(path), body_bytes); }
 
 // ---------------------------------------------------------------- the device's seal (seal.coax dv_*)
