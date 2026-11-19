@@ -204,7 +204,7 @@ moves everything with the hull. What a record can also say:
 | `pr_laid(l, r)` | lies flat on a surface (a road marking): drawn a hair nearer so the two never flicker |
 | `pr_free(l, r)` | doesn't ride the platform (a ship beside it): its position is in the world's frame |
 | `pr_near(l, r, metres)` | a small thing: drawn only within that distance of the eye (three fifths of it on a phone) |
-| `pr_lean(l, r, pitch, roll)` | stands the part rolled about its own x, then pitched about its own z, then turned by its yaw (a ship on a wave, a bone of a walking figure); it takes the place of a motion. **Not drawn yet:** see "Things that move" |
+| `pr_lean(l, r, pitch, roll)` | stands the part rolled about its own x, then pitched about its own z, then turned by its yaw (a ship on a wave, a bone of a walking figure); it takes the place of a motion. |
 | `pr_span(l, part, ax, ay, az, bx, by, bz, across)` | a part made 1 m long along +y (a bone, a rod), stretched from a to b and `across` thick |
 | `pr_span_in(l, part, ox, oy, oz, yaw, ax, ..., bz, wide, deep)` | the same, with a and b given in a frame at o turned by `yaw` (a limb of a figure that faces some way) |
 | `pr_value(l, r, v)` | the realm's own number; SLAB's plan parts carry their record's number here |
@@ -272,13 +272,8 @@ Movers do not see each other, so space them in time.
 SLAB does not draw these yet. Its content set for them
 (`slab-content-life.coax`, issue #13687) is still to be written.
 
-**The shader does not lean a record yet.** `pr_lean` writes the record, but
-the shader's half (`pr_leant` in `photoreal.coax`) is not on `main`: its
-push waits on checks for the sway and bob code it touches (#13687). Until
-it lands, a leaning record is drawn upright and at the wrong size, so
-`pr_lean`, `pr_span`, `pr_span_in`, `pr_figure`, `pr_flag`, `pr_bird` and
-`pr_rotors` draw wrong. The parts, the timetable and `traffic_ride` do not
-depend on it.
+A leaning record is a metre a metre unless it has a stretch: its scale's
+float holds the roll. The shader leans its normal with it.
 
 ### Check it
 

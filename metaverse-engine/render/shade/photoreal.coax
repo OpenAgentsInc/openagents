@@ -85,7 +85,11 @@ pr_unposed :: (w:V3,u:[]f32,b:int)->V3 {
 // ---- the parts
 // A record's sizes along its part's axes: its stretch, or its one scale.
 pr_sizes :: (m:PrObj)->V3 {
-  if (m.d.x==0.0f32&&m.d.y==0.0f32&&m.d.z==0.0f32) {return v3(m.b.x,m.b.x,m.b.x);}
+  if (m.d.x==0.0f32&&m.d.y==0.0f32&&m.d.z==0.0f32) {
+    // (a leaning record keeps its roll where the scale is: with no stretch it is one metre a metre)
+    if (m.b.y>3.5f32) {return v3(1.0f32,1.0f32,1.0f32);}
+    return v3(m.b.x,m.b.x,m.b.x);
+  }
   return v3(m.d.x,m.d.y,m.d.z);
 }
 // How near the eye must be for a record to be drawn (PR_R_NEAR, in the float that says whether
@@ -113,6 +117,14 @@ pr_kept :: (w:V3,m:PrObj,u:[]f32,b:int)->V3 {
   k:f32=pr_near_keep(near,length3(sub3(place,pr_at3(u,b+PR_EYE))),u[b+PR_GROUND+3]>0.5f32);
   return add3(place,scale3(sub3(w,place),k));
 }
+// A leaning record's lean of a vector in its part's frame (PR_LEAN): rolled about x by its
+// roll, then pitched about z by its pitch. Any other record leaves it.
+pr_leant :: (l:V3,m:PrObj)->V3 {
+  if (m.b.y<3.5f32) {return l;}
+  cr:f32=cos(m.b.x); sr:f32=sin(m.b.x); cp:f32=cos(m.b.z); sp:f32=sin(m.b.z);
+  y:f32=l.y*cr-l.z*sr; z:f32=l.y*sr+l.z*cr;
+  return v3(l.x*cp-y*sp,l.x*sp+y*cp,z);
+}
 // A part's point where its record puts it, before the platform's pose: sized, moved by its
 // motion, turned about y and set down.
 pr_placed :: (p:V3,m:PrObj,time:f32)->V3 {
@@ -124,6 +136,7 @@ pr_placed :: (p:V3,m:PrObj,time:f32)->V3 {
     l=v3(l.x+k*(sin(time*0.9f32+m.b.z)+0.35f32*sin(time*2.3f32+m.b.z*1.7f32)),l.y,l.z+k*0.6f32*sin(time*1.1f32+m.b.z*2.3f32));
   }
   if (m.b.y>0.5f32&&m.b.y<1.5f32) {l=v3(l.x,l.y+0.25f32*sin(time*0.8f32+m.b.z),l.z);}
+  l=pr_leant(l,m);
   c:f32=cos(m.a.w); sn:f32=sin(m.a.w);
   return v3(l.x*c+l.z*sn+m.a.x,l.y+m.a.y,(0.0f32-l.x)*sn+l.z*c+m.a.z);
 }
@@ -137,7 +150,8 @@ pr_stand :: (id:u32,instance:u32,u:[]f32,b:int,mesh:[]f32,objects:[]PrObj)->PrV 
   n:V3=normalize3(v3(mesh[o+3]/fmax(s.x,0.000001f32),mesh[o+4]/fmax(s.y,0.000001f32),mesh[o+5]/fmax(s.z,0.000001f32)));
   c:f32=cos(m.a.w); sn:f32=sin(m.a.w);
   w:V3=pr_placed(p,m,u[b+PR_UP+3]);
-  wn:V3=v3(n.x*c+n.z*sn,n.y,(0.0f32-n.x)*sn+n.z*c);
+  ln:V3=pr_leant(n,m);
+  wn:V3=v3(ln.x*c+ln.z*sn,ln.y,(0.0f32-ln.x)*sn+ln.z*c);
   if (m.b.w<0.5f32) {w=pr_posed(w,u,b); wn=pr_posed_dir(wn,u,b);}
   w=pr_kept(w,m,u,b);
   v:PrV;
@@ -148,7 +162,8 @@ pr_stand :: (id:u32,instance:u32,u:[]f32,b:int,mesh:[]f32,objects:[]PrObj)->PrV 
   tint:V3=v3(mesh[o+9],mesh[o+10],mesh[o+11]);
   if (tint.x==0.0f32&&tint.y==0.0f32&&tint.z==0.0f32) {tint=v3(1.0f32,1.0f32,1.0f32);}
   v.tint=mul3(tint,v3(m.c.x,m.c.y,m.c.z));
-  v.info=v4(ifx m.d.w>0.5f32 then m.d.w else mesh[o+6],m.c.w,m.b.z,m.b.w);
+  // (a leaning record's phase is its pitch: its pattern starts at the pattern's corner)
+  v.info=v4(ifx m.d.w>0.5f32 then m.d.w else mesh[o+6],m.c.w,ifx m.b.y>3.5f32 then 0.0f32 else m.b.z,m.b.w);
   v.pos=pr_clip(w,u,b);
   // what lies on a surface is drawn a few steps of the depth buffer nearer than it
   if (m.b.y>2.5f32) {v.pos=v4(v.pos.x,v.pos.y,v.pos.z-0.0000006f32*v.pos.w,v.pos.w);}
@@ -638,4 +653,103 @@ pr_test_block :: (u:[]f32) {
   a:V2=pr_face(v3(3.0f32,7.0f32,5.0f32),v3(0.0f32,1.0f32,0.0f32)); #assert a.x==3.0f32 && a.y==5.0f32;
   c:V2=pr_face(v3(3.0f32,7.0f32,5.0f32),v3(1.0f32,0.0f32,0.0f32)); #assert c.x==5.0f32 && c.y==7.0f32;
   d:V2=pr_face(v3(3.0f32,7.0f32,5.0f32),v3(0.0f32,0.0f32,0.0f32-1.0f32)); #assert d.x==3.0f32 && d.y==7.0f32;
+}
+#test "a record's sizes, sway, bob, lean and turn, each at its edges, against numbers worked by hand" {
+  m:PrObj;
+  // a stretch with one zero is still the stretch
+  m.d=v4(0.0f32,2.0f32,3.0f32,0.0f32); s:V3=pr_sizes(m); #assert s.x==0.0f32 && s.y==2.0f32 && s.z==3.0f32;
+  m.d=v4(2.0f32,3.0f32,0.0f32,0.0f32); s=pr_sizes(m); #assert s.x==2.0f32 && s.y==3.0f32 && s.z==0.0f32;
+  m.d=v4(2.0f32,0.0f32,0.0f32,0.0f32); s=pr_sizes(m); #assert s.x==2.0f32 && s.y==0.0f32 && s.z==0.0f32;
+  // no stretch: the scale, unless the record leans (motion 4), when it is a metre a metre
+  m.d=v4(0.0f32,0.0f32,0.0f32,0.0f32); m.b=v4(2.0f32,3.5f32,0.0f32,0.0f32); s=pr_sizes(m); #assert s.x==2.0f32 && s.y==2.0f32 && s.z==2.0f32;
+  m.b.y=4.0f32; s=pr_sizes(m); #assert s.x==1.0f32 && s.y==1.0f32 && s.z==1.0f32;
+  // the lean: roll 0.3 about x, then pitch 0.5 about z; below motion 3.5 nothing leans
+  m.b=v4(0.3f32,3.5f32,0.5f32,0.0f32);
+  cr:f32=cos(0.3f32); sr:f32=sin(0.3f32); cp:f32=cos(0.5f32); sp:f32=sin(0.5f32);
+  y:f32=2.0f32*cr-3.0f32*sr; z:f32=2.0f32*sr+3.0f32*cr;
+  q:V3=pr_leant(v3(1.0f32,2.0f32,3.0f32),m);
+  #assert abs(q.x-(cp-y*sp))<0.0001f32 && abs(q.y-(sp+y*cp))<0.0001f32 && abs(q.z-z)<0.0001f32;
+  // a leaning record's part is leant where it is placed
+  m.b.y=4.0f32; m.d=v4(1.0f32,1.0f32,1.0f32,0.0f32); w0:V3=pr_placed(v3(1.0f32,2.0f32,3.0f32),m,0.0f32);
+  #assert abs(w0.x-(cp-y*sp))<0.0001f32 && abs(w0.y-(sp+y*cp))<0.0001f32 && abs(w0.z-z)<0.0001f32;
+  m.b.y=3.4f32; q=pr_leant(v3(1.0f32,2.0f32,3.0f32),m); #assert q.x==1.0f32 && q.y==2.0f32 && q.z==3.0f32;
+  // the sway: k = height squared x 0.0016, at time 3 and phase 0.4; motions 1.5, 2.5 and 0 keep still
+  m.d=v4(0.0f32,0.0f32,0.0f32,0.0f32); m.a=v4(0.0f32,0.0f32,0.0f32,0.0f32);
+  m.b=v4(1.0f32,2.0f32,0.4f32,0.0f32);
+  w:V3=pr_placed(v3(0.0f32,10.0f32,0.0f32),m,3.0f32);
+  k:f32=100.0f32*0.0016f32;
+  #assert abs(w.x-k*(sin(2.7f32+0.4f32)+0.35f32*sin(6.9f32+0.68f32)))<0.0001f32 && abs(w.y-10.0f32)<0.0001f32;
+  #assert abs(w.z-k*0.6f32*sin(3.3f32+0.92f32))<0.0001f32;
+  m.b.y=1.5f32; w=pr_placed(v3(0.0f32,10.0f32,0.0f32),m,3.0f32); #assert w.x==0.0f32 && w.y==10.0f32 && w.z==0.0f32;
+  m.b.y=2.5f32; w=pr_placed(v3(0.0f32,10.0f32,0.0f32),m,3.0f32); #assert w.x==0.0f32 && w.y==10.0f32 && w.z==0.0f32;
+  m.b.y=0.0f32; w=pr_placed(v3(0.0f32,10.0f32,0.0f32),m,3.0f32); #assert w.x==0.0f32 && w.y==10.0f32 && w.z==0.0f32;
+  // the bob: a quarter metre on sin(0.8 t + phase); motion 0.5 and 1.5 keep still
+  m.b.y=1.0f32; w=pr_placed(v3(0.0f32,0.0f32,0.0f32),m,3.0f32); #assert abs(w.y-0.25f32*sin(2.4f32+0.4f32))<0.0001f32 && w.x==0.0f32;
+  m.b.y=0.5f32; w=pr_placed(v3(0.0f32,0.0f32,0.0f32),m,3.0f32); #assert w.y==0.0f32;
+  m.b.y=1.5f32; w=pr_placed(v3(0.0f32,0.0f32,0.0f32),m,3.0f32); #assert w.y==0.0f32;
+  // the turn: a quarter turn sends (1, 0, 2) to (2, 0, -1)
+  m.b.y=0.0f32; m.a.w=1.5707963f32; w=pr_placed(v3(1.0f32,0.0f32,2.0f32),m,0.0f32);
+  #assert abs(w.x-2.0f32)<0.0001f32 && abs(w.y)<0.0001f32 && abs(w.z+1.0f32)<0.0001f32;
+}
+#test "a vertex stands where its record puts it: sized, leant, turned, posed, tinted, its facts carried" {
+  u:[PR_FLOATS]f32; pr_test_block(u[..]);
+  mesh:[36]f32;
+  // vertex 0: at (1, 0, 0), facing up, pattern 3, tinted (0.5, 0.8, 0); vertex 1: at (0, 1, 0.5), facing (1, 1, 2), tinted (0, 0.5, 0)
+  mesh[0]=1.0f32; mesh[4]=1.0f32; mesh[6]=3.0f32; mesh[9]=0.5f32; mesh[10]=0.8f32;
+  mesh[13]=1.0f32; mesh[14]=0.5f32; mesh[15]=1.0f32; mesh[16]=1.0f32; mesh[17]=2.0f32; mesh[18]=2.0f32; mesh[22]=0.5f32;
+  objects:[2]PrObj;
+  // record 0 leans: roll 0.3, pitch 0.5, stretched 2 along x, at (10, 0, 20), on its own (not on the platform)
+  objects[0].a=v4(10.0f32,0.0f32,20.0f32,0.0f32); objects[0].b=v4(0.3f32,4.0f32,0.5f32,1.0f32);
+  objects[0].c=v4(0.5f32,0.6f32,0.7f32,0.2f32); objects[0].d=v4(2.0f32,1.0f32,1.0f32,0.0f32);
+  v:PrV=pr_stand(cast(u32)0,cast(u32)0,u[..],0,mesh[..],objects[..]);
+  cr:f32=cos(0.3f32); sr:f32=sin(0.3f32); cp:f32=cos(0.5f32); sp:f32=sin(0.5f32);
+  #assert abs(v.world.x-(10.0f32+2.0f32*cp))<0.0001f32 && abs(v.world.y-2.0f32*sp)<0.0001f32 && abs(v.world.z-20.0f32)<0.0001f32;
+  #assert abs(v.local.x-2.0f32)<0.0001f32 && v.local.y==0.0f32 && v.local.z==0.0f32;
+  #assert abs(v.normal.x+cr*sp)<0.0001f32 && abs(v.normal.y-cr*cp)<0.0001f32 && abs(v.normal.z-sr)<0.0001f32;
+  #assert v.facing.x==0.0f32 && v.facing.y==1.0f32 && v.facing.z==0.0f32;
+  #assert abs(v.tint.x-0.25f32)<0.0001f32 && abs(v.tint.y-0.48f32)<0.0001f32 && v.tint.z==0.0f32;
+  #assert v.info.x==3.0f32 && abs(v.info.y-0.2f32)<0.0001f32 && v.info.z==0.0f32 && v.info.w==1.0f32;
+  c0:V4=pr_clip(v.world,u[..],0);
+  #assert abs(v.pos.x-c0.x)<0.0001f32 && abs(v.pos.w-c0.w)<0.0001f32 && abs(v.pos.z-(c0.z-0.0000006f32*c0.w))<0.0000001f32;
+  // drawn only within 5 m of the eye, 22 m away: all of it is drawn in to its record's place
+  objects[0].b.w=6.0f32;
+  v=pr_stand(cast(u32)0,cast(u32)0,u[..],0,mesh[..],objects[..]);
+  #assert abs(v.world.x-10.0f32)<0.0001f32 && abs(v.world.y)<0.0001f32 && abs(v.world.z-20.0f32)<0.0001f32;
+  // motion 3.5 lies on a surface but keeps its phase; its own pattern of 0.5 is no pattern
+  objects[0].b=v4(1.0f32,3.5f32,0.5f32,1.0f32); objects[0].d.w=0.5f32;
+  v=pr_stand(cast(u32)0,cast(u32)0,u[..],0,mesh[..],objects[..]);
+  #assert v.info.z==0.5f32 && v.info.x==3.0f32;
+  // motion 2.5 sits at its own depth
+  objects[0].b=v4(1.0f32,2.5f32,0.0f32,1.0f32); objects[0].d=v4(0.0f32,0.0f32,0.0f32,0.0f32);
+  v=pr_stand(cast(u32)0,cast(u32)0,u[..],0,mesh[..],objects[..]);
+  c0=pr_clip(v.world,u[..],0);
+  #assert abs(v.pos.z-c0.z)<0.0000001f32;
+  // record 1 bobs on a turned, moved platform at time 3: a quarter turn, stretched (2, 4, 1), its own pattern 5, phase 0.7
+  c:f32=cos(0.3f32); s:f32=sin(0.3f32);
+  u[PR_POSE]=c; u[PR_POSE+1]=0.0f32-s; u[PR_POSE+3]=4.0f32; u[PR_POSE+4]=s; u[PR_POSE+5]=c; u[PR_POSE+7]=0.0f32-2.0f32; u[PR_POSE+11]=7.0f32;
+  u[PR_UP+3]=3.0f32;
+  objects[1].a=v4(3.0f32,1.0f32,2.0f32,1.5707963f32); objects[1].b=v4(1.0f32,1.0f32,0.7f32,0.0f32);
+  objects[1].c=v4(0.4f32,0.5f32,0.6f32,0.9f32); objects[1].d=v4(2.0f32,4.0f32,0.5f32,5.0f32);
+  e:PrV=pr_stand(cast(u32)1,cast(u32)1,u[..],0,mesh[..],objects[..]);
+  // the part's (0, 4, 0.25), bobbed, turned a quarter is (0.25, 4 + bob, 0), set at (3, 1, 2), then posed
+  bob:f32=0.25f32*sin(2.4f32+0.7f32);
+  want:V3=pr_posed(v3(3.25f32,5.0f32+bob,2.0f32),u[..],0);
+  #assert abs(e.world.x-want.x)<0.0001f32 && abs(e.world.y-want.y)<0.0001f32 && abs(e.world.z-want.z)<0.0001f32;
+  #assert abs(e.local.x)<0.0001f32 && abs(e.local.y-4.0f32)<0.0001f32 && abs(e.local.z-0.25f32)<0.0001f32;
+  // the normal (1, 1, 2) under sizes (2, 4, 0.5) is (1/2, 1/4, 4), normalised, turned to (4, 1/4, -1/2), posed
+  n:V3=normalize3(v3(0.5f32,0.25f32,4.0f32));
+  wn:V3=pr_posed_dir(v3(n.z,n.y,0.0f32-n.x),u[..],0);
+  #assert abs(e.normal.x-wn.x)<0.0001f32 && abs(e.normal.y-wn.y)<0.0001f32 && abs(e.normal.z-wn.z)<0.0001f32;
+  #assert abs(e.facing.x-n.x)<0.0001f32 && abs(e.facing.y-n.y)<0.0001f32 && abs(e.facing.z-n.z)<0.0001f32;
+  #assert e.tint.x==0.0f32 && abs(e.tint.y-0.25f32)<0.0001f32 && e.tint.z==0.0f32;
+  #assert e.info.x==5.0f32 && abs(e.info.y-0.9f32)<0.0001f32 && abs(e.info.z-0.7f32)<0.0001f32 && e.info.w==0.0f32;
+  c1:V4=pr_clip(e.world,u[..],0);
+  #assert abs(e.pos.x-c1.x)<0.0001f32 && abs(e.pos.y-c1.y)<0.0001f32 && abs(e.pos.z-c1.z)<0.0000001f32 && abs(e.pos.w-c1.w)<0.0001f32;
+  // from 0.5 up a record stands on its own, off the platform
+  objects[1].b.w=0.5f32;
+  e=pr_stand(cast(u32)1,cast(u32)1,u[..],0,mesh[..],objects[..]);
+  #assert abs(e.world.x-3.25f32)<0.0001f32 && abs(e.world.z-2.0f32)<0.0001f32;
+  // a vertex with no tint of its own takes the record's whole
+  e=pr_stand(cast(u32)2,cast(u32)1,u[..],0,mesh[..],objects[..]);
+  #assert abs(e.tint.x-0.4f32)<0.0001f32 && abs(e.tint.y-0.5f32)<0.0001f32 && abs(e.tint.z-0.6f32)<0.0001f32;
 }
