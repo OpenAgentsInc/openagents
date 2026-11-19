@@ -64,6 +64,42 @@ BS_PLAIN :: 0; BS_PRIMARY :: 1; BS_DISABLED :: 2; BS_BUSY :: 3; BS_DESTRUCTIVE :
  tr_begin(t[..]);ui_begin(u[..],0,true);#assert k_message_budget(t[..],u[..],"long",true,d[..],cast(string)raw[..],16000,128)>=0;
  plain:=tr_find(t[..],"long.plain");#assert plain>=0 && tr_text_of(t[..],plain)==cast(string)raw[..] && t[0].lost==0;
 }
+#test "a message is rich at its exact reserve of bytes and of nodes, and plain one byte or one node short" {
+ t:[1]Tree;u:[1]Ui;ui_begin(u[..],0,true);d:[1]MdDoc;f:[1]MdDoc;f[0].keep_rules=true;_=md_parse(f[..],"hi",0);
+ // what the message's own div takes before its budget is weighed: its id, its class, its role
+ tr_begin(t[..]);p0:=t[0].pool_n;_=tr_open(t[..],"m",TG_DIV,"msg-ai");tr_attr(t[..],0,AT_ROLE,"article");own:=t[0].pool_n-p0;
+ need:=MD_TREE_REMAINDER_BYTES;while !md_tree_budget_fits(f[..],need,TR_NODES,MD_TREE_REMAINDER_BYTES,MD_TREE_REMAINDER_NODES) {need+=1;}
+ nodes:=MD_TREE_REMAINDER_NODES;while !md_tree_budget_fits(f[..],TR_POOL,nodes,MD_TREE_REMAINDER_BYTES,MD_TREE_REMAINDER_NODES) {nodes+=1;}
+ tr_begin(t[..]);t[0].pool_n=TR_POOL-own-need;#assert k_message(t[..],u[..],"m",true,d[..],"hi")==0 && tr_find(t[..],"m.body")>=0;
+ tr_begin(t[..]);t[0].pool_n=TR_POOL-own-need+1;#assert k_message(t[..],u[..],"m",true,d[..],"hi")==0 && tr_find(t[..],"m.body")<0 && tr_find(t[..],"m.plain")>=0;
+ // the div is a node too
+ tr_begin(t[..]);t[0].n=TR_NODES-1-nodes;#assert k_message(t[..],u[..],"m",true,d[..],"hi")>=0 && tr_find(t[..],"m.body")>=0;
+ tr_begin(t[..]);t[0].n=TR_NODES-nodes;#assert k_message(t[..],u[..],"m",true,d[..],"hi")>=0 && tr_find(t[..],"m.body")<0 && tr_find(t[..],"m.plain")>=0;
+}
+#test "a message needs room for its plain source first: its bytes, six times its id and 256 more, and 16 nodes, else it is -1" {
+ t:[1]Tree;u:[1]Ui;ui_begin(u[..],0,true);d:[1]MdDoc;room:=2+1*6+256;
+ tr_begin(t[..]);t[0].pool_n=TR_POOL-room;#assert k_message(t[..],u[..],"m",true,d[..],"hi")==0;
+ tr_begin(t[..]);t[0].pool_n=TR_POOL-room+1;#assert k_message(t[..],u[..],"m",true,d[..],"hi")== -1 && t[0].n==0;
+ tr_begin(t[..]);t[0].n=TR_NODES-16;#assert k_message(t[..],u[..],"m",true,d[..],"hi")>=0;
+ tr_begin(t[..]);t[0].n=TR_NODES-15;#assert k_message(t[..],u[..],"m",true,d[..],"hi")== -1;
+}
+#test "a message is a div with its body or its plain paragraph and a plain copy button, closed, and its document is this source's alone" {
+ t:[1]Tree;u:[1]Ui;ui_begin(u[..],0,true);d:[1]MdDoc;f:[1]MdDoc;
+ // a document an earlier message left: a heading, a link, an item, and rules omitted
+ _=md_parse(d[..],"# a\n\n[x](https://e.com)\n\n- i",0);#assert d[0].n>0 && d[0].nb>0 && d[0].nr>0 && d[0].ni>0 && d[0].nlink>0;
+ src:="---\n\nhi";f[0].keep_rules=true;_=md_parse(f[..],src,0);
+ tr_begin(t[..]);x:=k_message(t[..],u[..],"m",false,d[..],src);after:=tr_leaf(t[..],"after",TG_P,"","after");
+ #assert x==0 && t[0].nodes[x].tag==TG_DIV && tr_class(t[..],x)=="msg-user" && t[0].nodes[after].parent== -1 && t[0].depth==0;
+ #assert d[0].n==f[0].n && d[0].nb==f[0].nb && d[0].nr==f[0].nr && d[0].ni==f[0].ni && d[0].nlink==f[0].nlink && d[0].blocks[0].kind==MB_RULE && d[0].blocks[0].part==0;
+ c:=tr_find(t[..],"m.copy");#assert c>=0 && tr_attr_of(t[..],c,AT_STATE)=="" && t[0].nodes[c].parent==x;
+ tr_begin(t[..]);t[0].pool_n=TR_POOL-60020;x=k_message(t[..],u[..],"m",true,d[..],"hi");
+ p:=tr_find(t[..],"m.plain");#assert p>=0 && t[0].nodes[p].tag==TG_P && t[0].nodes[p].parent==x;
+}
+#test "a message of 65536 bytes is parsed and one of 65537 is its plain source" #steps 400000000 {
+ t:[1]Tree;u:[1]Ui;ui_begin(u[..],0,true);d:[1]MdDoc;raw:[65537]u8;for at:0..<raw.count {raw[at]='a';}
+ tr_begin(t[..]);#assert k_message(t[..],u[..],"m",true,d[..],cast(string)raw[0..<65536])==0 && tr_find(t[..],"m.body")>=0 && tr_find(t[..],"m.plain")<0;
+ tr_begin(t[..]);#assert k_message(t[..],u[..],"m",true,d[..],cast(string)raw[..])==0 && tr_find(t[..],"m.plain")>=0 && tr_find(t[..],"m.body")<0;
+}
 
 // When a node first appeared: its id's hash and the second it starts to enter.
 UiBirth :: struct { h: int; born: f32; seen: bool; }
@@ -306,6 +342,7 @@ k_meta :: (t: [] Tree, id: string, text: string) -> int { return tr_leaf(t, id, 
  t:[1]Tree;tr_begin(t[..]);_=tr_leaf(t[..],"before",TG_P,"","Before");x:=k_reading_list(t[..],"notes","query.2.page.0");tr_close(t[..]);
  #assert x==1;
  #assert tr_class(t[..],x)=="reading-list" && tr_attr_of(t[..],x,AT_STATE)=="query.2.page.0";
+ #assert t[0].nodes[x].tag==TG_SECTION && tr_attr_of(t[..],x,AT_ROLE)=="region";
 }
 k_reading_list :: (t:[]Tree,id:string,scope:string)->int {x:=tr_open(t,id,TG_SECTION,"reading-list");tr_attr(t,x,AT_ROLE,"region");tr_attr(t,x,AT_STATE,scope);return x;}
 // A compact, noninteractive state glyph with a complete accessible meaning.
@@ -582,6 +619,17 @@ k_row_content :: (t: [] Tree, u: [] Ui, id: string, title: string, meta: string,
   if busy { tr_attr(t, i, AT_STATE, "busy"); c := k_icon(t, tr_cat(idc[..], id, ".busy"), IC_CIRCLE_DASHED); }
   tr_close(t);
   return i;
+}
+#test "a row is a button: framed as a row when current, its title and a meta of one byte as spans, an icon from icon 0 up, a busy mark only when busy" {
+ t:[1]Tree;u:[1]Ui;ui_begin(u[..],0,true);tr_begin(t[..]);
+ r:=k_row_busy(t[..],u[..],"r","Title","m",true,true);
+ #assert t[0].nodes[r].tag==TG_BUTTON && t[0].nodes[r].frame==mono_kind(MF_ROW)+1 && t[0].nodes[r].frame_set==MF_ROW && t[0].depth==0;
+ #assert t[0].nodes[tr_find(t[..],"r.t")].tag==TG_SPAN && t[0].nodes[tr_find(t[..],"r.m")].tag==TG_SPAN && tr_find(t[..],"r.ic")<0;
+ h:[UI_ID]u8;n:=ic_href(IC_CIRCLE_DASHED,h[..]);
+ #assert tr_attr_of(t[..],r,AT_STATE)=="busy" && tr_attr_of(t[..],tr_find(t[..],"r.busy.use"),AT_HREF)==cast(string)h[0..<n];
+ q:=k_icon_row(t[..],u[..],"q",0,"Q",false);
+ #assert tr_find(t[..],"q.ic")>=0 && tr_find(t[..],"q.busy")<0 && tr_attr_of(t[..],q,AT_STATE)=="" && tr_find(t[..],"q.m")<0;
+ w:=k_row(t[..],u[..],"w","W","",false);#assert tr_find(t[..],"w.busy")<0 && tr_attr_of(t[..],w,AT_STATE)=="" && t[0].nodes[w].frame==0;
 }
 // Place: a row of a page's own navigation: an icon and a name, a link to where it goes. The one you are on
 // is raised.
