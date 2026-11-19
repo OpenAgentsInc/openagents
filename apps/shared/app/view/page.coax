@@ -29,6 +29,7 @@
 #load "core.coax";
 #load "list.coax";
 #load "../../../../components/app/task.coax";
+#load "../../../../components/app/activity.coax";
 #load "../../../../components/app/conversation.coax";
 #load "../../../../components/zeron/tools.coax";
 
@@ -42,6 +43,7 @@ VIEW_A_JUMP :: 7;       // back to the latest message
 VIEW_A_TOOL :: 8;       // a tool row, or its pager
 VIEW_A_COPY :: 9;       // Copy on a code block
 VIEW_A_MESSAGE_COPY :: 10;
+VIEW_A_ACT :: 11;       // a turn's activity group (the conversation look): its summary, or one of its rows
 
 // What view_press found.
 VIEW_P_NONE :: 0;       // not the page's
@@ -89,12 +91,13 @@ ChatView :: struct {
   viewport: f32;
   measure_keys:[64]Keyed;measure_store:[1]KeyedStore;
   dev: [] EnvironmentApp; dev_name: string;   // this frame's conversation on a paired computer (empty: none)
+  working_from: f32;                          // the frame clock the working line appeared at (-1: none shows)
 }
 
 view_init :: (v: [] ChatView) {
   if v[0].made { return; }
   v[0].list[0] = vlist_over(v[0].a[..], v[0].b[..], VIEW_ESTIMATE);
-  v[0].copied_block = -1; v[0].made = true;
+  v[0].copied_block = -1; v[0].working_from = -1; v[0].made = true;
 }
 
 // ---------------------------------------------------------------- text
@@ -200,6 +203,100 @@ view_device_permission :: (f: ViewFacts) -> AppPermission {
   return p;
 }
 
+// ---------------------------------------------------------------- a turn's activity
+
+// In the conversation look a turn's thoughts and tool calls are one activity group, as Coder
+// Desktop draws a message's work (components/app/activity.coax, GitHub #13713): the summary
+// ("Thought process · ran 2 commands"), then a row for each thought and call that opens onto its
+// call and output. The group is open while it works and folds to its summary once done, unless
+// the person chose otherwise; that choice is kept under the group's id (APP_TOOL_OPEN: 0 none,
+// 1 opened, 2 folded), each row's own under the row's id (view_group_key).
+
+// The activity kind of a session's tool kind (TK_*).
+view_act_kind :: (tk: int) -> int {
+  return ifx tk == TK_THOUGHT then APP_ACT_THOUGHT else ifx tk == TK_EXEC then APP_ACT_EXEC else ifx tk == TK_READ then APP_ACT_READ
+    else ifx tk == TK_EDIT then APP_ACT_EDIT else ifx tk == TK_WRITE then APP_ACT_WRITE else ifx tk == TK_SEARCH then APP_ACT_SEARCH
+    else ifx tk == TK_GLOB then APP_ACT_GLOB else ifx tk == TK_FETCH || tk == TK_WEB then APP_ACT_WEB else ifx tk == TK_TODO then APP_ACT_TODO
+    else ifx tk == TK_AGENT then APP_ACT_AGENT else -1;
+}
+// What a row says it did, by its activity kind; any other tool goes by its name.
+view_act_verb :: (kind: int, name: string) -> string {
+  return ifx kind == APP_ACT_EXEC then "Ran" else ifx kind == APP_ACT_READ then "Read" else ifx kind == APP_ACT_EDIT then "Edited"
+    else ifx kind == APP_ACT_WRITE then "Wrote" else ifx kind == APP_ACT_SEARCH then "Searched" else ifx kind == APP_ACT_GLOB then "Found files"
+    else ifx kind == APP_ACT_WEB then "Fetched" else ifx kind == APP_ACT_TODO then "Updated todos" else ifx kind == APP_ACT_AGENT then "Ran a subagent"
+    else ifx kind == APP_ACT_THOUGHT then "Thought process" else ifx name.count > 0 then name else "Used a tool";
+}
+// The first line of text.
+view_first_line :: (text: string) -> string { for c, k: text { if c == '\n' { return cast(string) text[0..<k]; } } return text; }
+// A tool of no kind of its own is APP_ACT_KINDS: the terminal's glyph, and the summary counts it as a tool.
+// Part k of the task's session as a row: a thought's words, or a call with its argument and result.
+view_act_native :: (s: [] Session, k: int, ended: bool) -> AppActRow {
+  p := s[0].parts[k];
+  if p.kind == P_THINK { return AppActRow.{kind = APP_ACT_THOUGHT, verb = "Thought process", output = s_text_of(s, k)}; }
+  t := view_app_tool(s, k, ended);
+  kind := view_act_kind(p.tk);
+  arg := ifx p.arg.count > 0 then p.arg else p.detail;
+  r := AppActRow.{kind = ifx kind < 0 then APP_ACT_KINDS else kind, verb = view_act_verb(kind, p.name), target = view_first_line(arg), output = p.output};
+  // the whole argument when the line says less; the call's input while nothing has come back
+  r.call = ifx r.target != arg then arg else ifx p.output.count == 0 && p.input.count > 0 && p.input != arg then p.input else "";
+  r.failed = t.state == APP_TOOL_FAILED; r.running = t.state == APP_TOOL_RUNNING || t.state == APP_TOOL_PENDING;
+  return r;
+}
+// Item i of the computer's view as a row: its tool's name says its kind; its text is the call
+// while it runs and the result once it is done.
+view_act_device :: (e: [] EnvironmentApp, i: int) -> AppActRow {
+  m := e[0].view[0].items[i]; text := ea_item_text(e[0].view[..], i);
+  name := ifx m.nk > 0 then cast(string) e[0].view[0].items[i].tool[0..<m.nk] else "";
+  kind := view_act_kind(tk_of_name(name));
+  r := AppActRow.{kind = ifx kind < 0 then APP_ACT_KINDS else kind, verb = view_act_verb(kind, name), target = view_first_line(text)};
+  if m.complete { r.output = text; } else { r.running = true; if r.target != text { r.call = text; } }
+  return r;
+}
+// The rows of the group that starts at model row r, into rows and ids (buf holds the ids).
+// Returns how many; live says whether any of them is still at work.
+view_act_rows :: (v: [] ChatView, d: [] DurableChat, r: ViewRow, id: string, rows: [] AppActRow, ids: [] string, buf: [][EL_ID] u8, live: [] bool) -> int {
+  n := 0; live[0] = false;
+  last := ifx r.group_count > 1 then r.group_last else r.index;
+  for k: r.index..<last + 1 {
+    if n == rows.count { break; }
+    if r.kind == VK_TOOL {
+      if !d[0].native[0].has_session { break; }
+      ses := d[0].native[0].shown[..];
+      if k < 0 || k >= ses[0].n || (ses[0].parts[k].kind != P_TOOL && ses[0].parts[k].kind != P_THINK) { continue; }
+      rows[n] = view_act_native(ses, k, xt_terminal(d[0].native[0].status[0].state));
+      if ses[0].parts[k].kind == P_THINK && k == ses[0].n - 1 && !xt_terminal(d[0].native[0].status[0].state) { live[0] = true; }
+    } else {
+      if v[0].dev.count != 1 || k < 0 || k >= v[0].dev[0].view[0].ni { continue; }
+      rows[n] = view_act_device(v[0].dev, k);
+    }
+    if rows[n].running { live[0] = true; }
+    ids[n] = view_group_key(buf[n][..], id, k); n += 1;
+  }
+  return n;
+}
+VIEW_ACT_MOST :: 16;   // rows a group holds (view_group_tools makes no longer one)
+// The group that starts at model row r, at (x, y), w wide. Returns its height.
+view_activity :: (f: [] UiFrame, v: [] ChatView, d: [] DurableChat, r: ViewRow, id: string, x: f32, y: f32, w: f32) -> f32 {
+  rows: [VIEW_ACT_MOST] AppActRow; ids: [VIEW_ACT_MOST] string; buf: [VIEW_ACT_MOST][EL_ID] u8; live: [1] bool;
+  n := view_act_rows(v, d, r, id, rows[..], ids[..], buf[..], live[..]);
+  c: [1] AppActCount;
+  for q: 0..<n { app_act_count(c[..], ifx rows[q].kind < APP_ACT_KINDS then rows[q].kind else -1, rows[q].failed); }
+  sb: [256] u8; sn := app_act_summary(sb[..], c[0]);
+  k := uiframe_key(f, id);
+  open := app_act_open(cast(int) keyed_slot(f[0].keyed, k, APP_TOOL_OPEN), live[0]);
+  h := app_act_head(f, id, x, y, w, sheet_pool(f[0].sheet, cast(string) sb[0..<sn]), live[0], open, VIEW_A_ACT);
+  if !open { return h; }
+  h += f[0].skin.app.gap_small;
+  for q: 0..<n {
+    // a thought's words wrap as Markdown, in the page's one document: what it painted is kept before the next parse
+    from := f[0].sheet[0].no;
+    if rows[q].kind == APP_ACT_THOUGHT && rows[q].output.count > 0 { rows[q].blocks = view_parse(v, rows[q].output); rows[q].doc = v[0].doc[..]; rows[q].block0 = 0; }
+    h += app_act_row(f, ids[q], x, y + h, w, rows[q], q < n - 1, VIEW_A_ACT);
+    view_keep(f[0].sheet, from);
+  }
+  return h;
+}
+
 // ---------------------------------------------------------------- one row
 
 // Whether a tool row is open, read without marking it seen (for measuring).
@@ -239,8 +336,13 @@ view_row :: (f: [] UiFrame, v: [] ChatView, d: [] DurableChat, facts: ViewFacts,
         h+=app_message_actions(f,app_id(cid[..],id,".copy"),x,y+h,v[0].copied_n>0 && cast(string)v[0].copied[0..<v[0].copied_n]==id && v[0].copied_block== -2,VIEW_A_MESSAGE_COPY);
       }
     } else { h = app_message_user(f, id, x, y, w, text); }
-  } else if r.kind == VK_TYPING { h = app_typing(f, id, x, y, VIEW_TYPING_LABEL); }
+  } else if r.kind == VK_TYPING {
+    if s.chat.enabled { secs := ifx v[0].working_from >= 0 then cast(int) (f[0].clock - v[0].working_from) else 0; h = app_working(f, id, x, y, secs, 0, ""); }
+    else { h = app_typing(f, id, x, y, VIEW_TYPING_LABEL); }
+  }
+  else if r.kind == VK_THOUGHT { gap = 0; }   // outside the conversation look a thought shows nowhere; in it, view_group_tools folds it into its group
   else if r.kind == VK_TASK_HEAD { if !s.chat.enabled {h = app_task_header(f, id, x, y, w, view_app_task(d, facts));gap=s.app.gap;}else {gap=0;} }
+  else if (r.kind == VK_TOOL || r.kind == VK_DEVICE_TOOL) && s.chat.enabled { h = view_activity(f, v, d, r, id, x, y, w); gap = s.app.gap; }
   else if r.kind == VK_TOOL {if r.group_count>1 {h=view_group_row(f,v,d,facts,r,id,x,y,w,open);}else {h = app_tool(f, id, x, y, w, view_app_tool(ses, r.index, xt_terminal(n[0].status[0].state)), open, VIEW_A_TOOL);} gap = s.app.gap_small; }
   else if r.kind == VK_PERMISSION { h = app_permission(f, id, x, y, w, view_app_permission(ses, r.index, facts, n[0].has_session), VIEW_A_ALLOW, VIEW_A_DENY); gap = s.app.gap; }
   else if r.kind == VK_TASK_STATE {task:=view_app_task(d,facts);if s.chat.enabled && !task.stopping && ((task.state==APP_TASK_RUNNING && ct_view_text(d[0].view[..]).count>0) || task.state==APP_TASK_COMPLETED) {gap=0;}else {h = app_task_state(f, id, x, y, w, task); gap = s.app.gap;} }
@@ -292,6 +394,8 @@ view_page :: (f: [] UiFrame, v: [] ChatView, c: [] AppCore, lay: ViewLayout) -> 
   view_attach_device(v, c);
   if facts.device && v[0].dev.count == 1 { view_build_device(vm, v[0].dev, facts); } else { view_build(vm, d, facts); }
   if s.chat.enabled {view_group_tools(vm);}
+  typing := false; for i: 0..<vm[0].n { if vm[0].rows[i].kind == VK_TYPING { typing = true; } }
+  if !typing { v[0].working_from = -1; } else if v[0].working_from < 0 { v[0].working_from = f[0].clock; }
   out: ViewOut;
   // the composer docks at the bottom, the chip slot over it
   look := AppComposer.{placeholder = VIEW_PLACEHOLDER, text = view_draft_of(c), state = view_composer_state(d, facts), editing = lay.editing, editor_h = lay.editor_h, unit = lay.unit};
@@ -394,6 +498,29 @@ view_press :: (v: [] ChatView, c: [] AppCore, keyed: [] KeyedStore, pressed: str
       return ViewPress.{};
     }
     return ViewPress.{kind = ifx app_tool_press(keyed, id, pressed) then VIEW_P_LOCAL else VIEW_P_NONE};
+  }
+  if action == VIEW_A_ACT {
+    i := view_owner(vm, pressed, VK_TOOL); if i < 0 { i = view_owner(vm, pressed, VK_DEVICE_TOOL); }
+    if i < 0 { return ViewPress.{}; }
+    id := view_row_id(vm, i); r := vm[0].rows[i];
+    vlist_pin(v[0].list[..], id);   // it stays where it is while it opens
+    if pressed == id {
+      // the summary: the other of what shows now
+      view_attach_device(v, c);
+      rows: [VIEW_ACT_MOST] AppActRow; ids: [VIEW_ACT_MOST] string; buf: [VIEW_ACT_MOST][EL_ID] u8; live: [1] bool;
+      _ := view_act_rows(v, view_chat_of(c), r, id, rows[..], ids[..], buf[..], live[..]);
+      k := keyed_find(keyed, id); if k < 0 { return ViewPress.{}; }
+      keyed_slot_set(keyed, k, APP_TOOL_OPEN, cast(f32) app_act_choose(cast(int) keyed_slot(keyed, k, APP_TOOL_OPEN), live[0]));
+      return ViewPress.{kind = VIEW_P_LOCAL};
+    }
+    buf: [EL_ID] u8; last := ifx r.group_count > 1 then r.group_last else r.index;
+    for k: r.index..<last + 1 {
+      child := view_group_key(buf[..], id, k);
+      if pressed.count >= child.count && cast(string) pressed[0..<child.count] == child && (pressed.count == child.count || pressed[child.count] == '.') {
+        return ViewPress.{kind = ifx app_act_press(keyed, child, pressed) then VIEW_P_LOCAL else VIEW_P_NONE};
+      }
+    }
+    return ViewPress.{};
   }
   if action == VIEW_A_MESSAGE_COPY {
     view_attach_device(v,c);i:=view_owner(vm,pressed,VK_MESSAGE);if i<0 {i=view_owner(vm,pressed,VK_REPLY);}if i<0 {i=view_owner(vm,pressed,VK_DEVICE_MESSAGE);}

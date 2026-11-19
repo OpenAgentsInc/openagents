@@ -36,6 +36,49 @@ view_pt_conversation :: (p:[]ViewPageTest,c:[]AppCore) {
  #assert app_test_has(p[0].t[..],child,EL_S_EXPANDED);view_pt_conversation(p[..],c[..]);#assert app_test_has(p[0].t[..],child,EL_S_EXPANDED);
 }
 
+#test "conversation activity is Coder Desktop's group: thoughts and calls under one summary, open while it works, folded once done" #steps 4000000000 {
+ c:[1]AppCore;p:[1]ViewPageTest;app_test_init(p[0].t[..]);view_pt_core(c[..],VIEW_PT_PAGE);view_pt_running(c[..],"");view_pt_asking(p[..],c[..]);
+ n:=c[0].chat[0].native[..];n[0].status[0].state=XT_RUNNING;ses:=n[0].shown[..];ses[0].asking= -1;ses[0].n=0;
+ s_delta(ses,P_THINK,"Look at the notes first.");
+ ses[0].parts[1]=SPart.{kind=P_TOOL,id="call_1",tk=TK_EXEC,arg="ls notes",output="notes.txt",resolved=true};
+ ses[0].parts[2]=SPart.{kind=P_TOOL,id="call_2",tk=TK_READ,arg="notes.txt",input="{\"file_path\":\"notes.txt\"}"};ses[0].n=3;
+ view_pt_conversation(p[..],c[..]);vm:=p[0].v[0].model[..];i:=0;while i<vm[0].n && vm[0].rows[i].kind!=VK_TOOL {i+=1;}
+ // one group for the thought and both calls, under the first part's id
+ #assert i<vm[0].n && vm[0].rows[i].group_count==3 && view_row_id(vm,i)=="tool.0123456789abcdef.0";
+ t:=p[0].t[..];root:="tool.0123456789abcdef.0";
+ #assert app_test_label(t,root)=="Thought process · ran 1 command · read 1 file" && app_test_has(t,root,EL_S_EXPANDED) && app_test_has(t,root,EL_S_BUSY);
+ // the rows show while it works: the thought's words, the command, the read still in flight
+ #assert app_test_label(t,"tool.0123456789abcdef.0.call.1")=="Ran ls notes" && app_test_label(t,"tool.0123456789abcdef.0.call.2")=="Read notes.txt";
+ #assert app_test_has(t,"tool.0123456789abcdef.0.call.2",EL_S_BUSY) && app_test_find(t,"tool.0123456789abcdef.0.call.0.words")>=0;
+ // a row opens onto its call and output
+ #assert view_pt_press(p[..],c[..],"tool.0123456789abcdef.0.call.1").kind==VIEW_P_LOCAL;view_pt_conversation(p[..],c[..]);
+ #assert app_test_has(t,"tool.0123456789abcdef.0.call.1",EL_S_EXPANDED) && app_test_find(t,"tool.0123456789abcdef.0.call.1.output")>=0;
+ // done: it folds to its summary, and a press on the summary opens it again
+ n[0].status[0].state=XT_COMPLETED;ses[0].parts[2].resolved=true;view_pt_conversation(p[..],c[..]);
+ #assert !app_test_has(t,root,EL_S_EXPANDED) && !app_test_has(t,root,EL_S_BUSY) && app_test_find(t,"tool.0123456789abcdef.0.call.1")<0;
+ #assert view_pt_press(p[..],c[..],root).kind==VIEW_P_LOCAL;view_pt_conversation(p[..],c[..]);
+ #assert app_test_has(t,root,EL_S_EXPANDED) && app_test_find(t,"tool.0123456789abcdef.0.call.1")>=0;
+ #assert view_pt_press(p[..],c[..],root).kind==VIEW_P_LOCAL;view_pt_conversation(p[..],c[..]);#assert !app_test_has(t,root,EL_S_EXPANDED);
+}
+
+#test "a computer's tool calls group by their tools' own names, and the turn shows the working line with its seconds" #steps 4000000000 {
+ c:[1]AppCore;p:[1]ViewPageTest;lane:[1]DeviceLane;app_test_init(p[0].t[..]);app_init(c[..]);#assert app_device_attach(c[..],lane[..]);lane[0].on=true;
+ e:=lane[0].e[..];e[0].active=true;e[0].ns=el_copy(e[0].session[..],"coder");v:=e[0].view[..];v[0].ok=true;v[0].ns=1;
+ v[0].sessions[0].ni=el_copy(v[0].sessions[0].id[..],"coder");v[0].sessions[0].managed=true;v[0].sessions[0].busy=true;
+ names:=[3]string.["Bash","Task","Bash"];texts:=[3]string.["ls -la\ntotal 0","Survey the tests","git status"];roles:=[3]string.["tool","tool","tool"];
+ for q:0..<3 {m:=v[0].items[q];m.ni=el_copy(m.id[..],ifx q==0 then "p0" else ifx q==1 then "p1" else "p2");m.nr=el_copy(m.role[..],roles[q]);m.nk=el_copy(m.tool[..],names[q]);
+  m.text_at=ea_text_put(v,texts[q]);m.nt=texts[q].count;m.complete=q<2;v[0].items[q]=m;}
+ v[0].ni=3;
+ view_pt_conversation(p[..],c[..]);t:=p[0].t[..];
+ #assert app_test_label(t,"dev.p0")=="Ran 2 commands · ran a subagent" && app_test_has(t,"dev.p0",EL_S_BUSY) && app_test_has(t,"dev.p0",EL_S_EXPANDED);
+ #assert app_test_label(t,"dev.p0.call.0")=="Ran ls -la" && app_test_label(t,"dev.p0.call.1")=="Ran a subagent Survey the tests" && app_test_has(t,"dev.p0.call.2",EL_S_BUSY);
+ // the last word was the computer's call: no working line yet; once a message of the person's is last, the line shows
+ #assert app_test_find(t,"chat.typing")<0;
+ m:=v[0].items[3];m.ni=el_copy(m.id[..],"p3");m.nr=el_copy(m.role[..],"user");m.text_at=ea_text_put(v,"And the tests?");m.nt=14;m.complete=true;v[0].items[3]=m;v[0].ni=4;
+ view_pt_conversation(p[..],c[..]);
+ #assert p[0].v[0].working_from>=0 && app_test_find(t,"chat.typing")>=0 && app_test_label(t,"chat.typing")=="Working" && app_test_has(t,"chat.typing",EL_S_BUSY);
+}
+
 VIEW_PT_CNV :: "cnv_0123456789abcdef0123456789abcdef";
 VIEW_PT_TURN :: "trn_0123456789abcdef0123456789abcdef";
 

@@ -77,9 +77,13 @@ GitHub uses that computer's existing `gh` login. No hosted runner is provisioned
 See [the protocol and safety contract](../../docs/protocol/native-workspaces-and-chat-library-v1.md).
 
 Empty-chat options open Recents or the computer picker; the drawer owns
-navigation and New chat. The centered session pill opens details and provider Usage. Adjacent
-tool calls collapse into activity summaries, with individually expandable
-inputs/results. Replies expose Copy alongside the existing fenced-code Copy.
+navigation and New chat. The centered session pill opens details and provider Usage. A turn's
+thoughts and tool calls are one activity group, drawn by the same component as
+Coder Desktop (`components/app/activity.coax`): a summary such as "Thought process ·
+ran 2 commands", open while the turn works and folded once it is done, with rows
+that open onto their call and output. A turn that is working shows the working
+line with its seconds. Calls on a connected computer take their kind from the
+tool's own name (`tk_of_name`). Replies expose Copy alongside the existing fenced-code Copy.
 Observed native sessions have a fixed read-only notice instead of a composer.
 Model/effort, attachments and microphone controls remain hidden by owner choice.
 

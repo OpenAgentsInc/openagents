@@ -22,9 +22,9 @@ conversation_fixture :: (s:[]ChatPage,c:[]AppCore,mode:int) #export_c #effects(a
  d[0].view[0].bytes=el_copy(d[0].view[0].content[..],reply);
  n:=d[0].native[..];n[0].selected=true;n[0].bound=true;n[0].has_status=true;n[0].has_session=true;n[0].available=true;
  _:=el_copy(n[0].turn[..],turn);_=el_copy(n[0].conversation[..],id);n[0].host_label_n=el_copy(n[0].host_label[..],"Studio Mac");n[0].status[0].state=XT_RUNNING;
- ses:=n[0].shown[..];s_init(ses,c[0].task_pools[0][..]);ses[0].n=3;
- ses[0].parts[0]=SPart.{kind=P_TOOL,tk=TK_READ,name="Read",arg="components/app/chat.coax",input="Read the shared chat component",output="Shared message and composer components",resolved=true};
- ses[0].parts[1]=SPart.{kind=P_TOOL,tk=TK_EXEC,name="Bash",arg="coax test components/app/chat.coax",input="coax test components/app/chat.coax",output="All checks passed",resolved=true};
- ses[0].parts[2]=SPart.{kind=P_TOOL,tk=TK_EDIT,name="Edit",arg="components/skin/conversation.coax",input="Use the shared conversation skin",output="Updated",resolved=true};
+ ses:=n[0].shown[..];s_init(ses,c[0].task_pools[0][..]);s_delta(ses,P_THINK,"The chat component is shared; read it before changing the skin.");ses[0].n=4;
+ ses[0].parts[1]=SPart.{kind=P_TOOL,tk=TK_READ,name="Read",arg="components/app/chat.coax",input="Read the shared chat component",output="Shared message and composer components",resolved=true};
+ ses[0].parts[2]=SPart.{kind=P_TOOL,tk=TK_EXEC,name="Bash",arg="coax test components/app/chat.coax",input="coax test components/app/chat.coax",output="All checks passed",resolved=true};
+ ses[0].parts[3]=SPart.{kind=P_TOOL,tk=TK_EDIT,name="Edit",arg="components/skin/conversation.coax",input="Use the shared conversation skin",output="Updated",resolved=true};
  s[0].env[0].in=true;s[0].history[0].signed_in=true;s[0].history[0].loaded=true;hi:=s[0].history[0].page[..];hi[0].n=1;_=el_copy(hi[0].items[0].id[..],id);hi[0].items[0].title_n=el_copy(hi[0].items[0].title[..],"A calmer conversation");
 }

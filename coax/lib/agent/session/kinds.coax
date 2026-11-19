@@ -17,6 +17,27 @@ TK_WRITE :: 6; TK_GLOB :: 7; TK_WEB :: 8; TK_TODO :: 9; TK_MCP :: 10; TK_AGENT :
 TK_ROUTE :: 13;
 // A model loading on the GPU before its message goes (gpu.coax): the switch's answers.
 TK_LOAD :: 14;
+TK_KINDS :: 15;
+
+// What each kind's tool calls itself (the tool's own name), by TK_*; "" for the kinds that go
+// by the part's own name (MCP, any other tool). Coder writes it in a call's label
+// ("Bash(ls -la)", log.coax); a computer's transcript names its tool calls this way.
+TK_LABELS :: [TK_KINDS] string.["Thought", "Bash", "Read", "Edit", "Grep", "WebFetch", "Write", "Glob", "WebSearch", "TodoWrite", "", "Agent", "", "Route", "Load"];
+// The kind a tool's own name is: an exact name from TK_LABELS or one of the other names the
+// engines give the same tool; any other name is TK_TOOL.
+tk_of_name :: (name: string) -> int {
+  names := TK_LABELS;
+  for i: 0..<TK_KINDS { if names[i].count > 0 && names[i] == name { return i; } }
+  if name == "Task" { return TK_AGENT; }
+  if name == "MultiEdit" || name == "NotebookEdit" { return TK_EDIT; }
+  if name == "exec_command" || name == "shell" || name == "terminal" { return TK_EXEC; }   // Codex's names for a command
+  return TK_TOOL;
+}
+#test "a tool's own name is its kind" {
+  #assert tk_of_name("Bash") == TK_EXEC && tk_of_name("Read") == TK_READ && tk_of_name("Task") == TK_AGENT && tk_of_name("Agent") == TK_AGENT;
+  #assert tk_of_name("MultiEdit") == TK_EDIT && tk_of_name("exec_command") == TK_EXEC && tk_of_name("Glob") == TK_GLOB;
+  #assert tk_of_name("mcp__openagents__realm_show") == TK_TOOL && tk_of_name("") == TK_TOOL && tk_of_name("Bas") == TK_TOOL;
+}
 
 // A notice row: Zeron's ErrorChip (notice.rs notice_chip_with_action, the
 // transcript's tile) for a failed turn, labelled as run_errors.rs reads the

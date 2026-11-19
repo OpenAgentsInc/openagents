@@ -57,6 +57,7 @@ VK_DEVICE_TOOL :: 12;       // a tool call
 VK_DEVICE_SENT :: 13;       // the person's message on its way; text: the message
 VK_DEVICE_PERMISSION :: 14; // the computer asks Allow or Deny
 VK_DEVICE_STATE :: 15;      // the turn runs (or is stopping) on the computer
+VK_THOUGHT :: 16;     // the task's thinking; index: its part in the task's session (the conversation look folds it into the activity next to it)
 
 // What a notice's action asks for.
 VIEW_DO_NONE :: 0;
@@ -108,8 +109,10 @@ ViewRow :: struct {
 view_group_tools :: (vm:[]ViewModel) {
  out:=0;i:=0;
  while i<vm[0].n {r:=vm[0].rows[i];j:=i+1;
-  if r.kind==VK_TOOL || r.kind==VK_DEVICE_TOOL {
-   while j<vm[0].n && j-i<16 && vm[0].rows[j].kind==r.kind {j+=1;}
+  if r.kind==VK_TOOL || r.kind==VK_DEVICE_TOOL || r.kind==VK_THOUGHT {
+   // a turn's thoughts and its calls are one group: it takes the tool's kind
+   native:=r.kind!=VK_DEVICE_TOOL;if r.kind==VK_THOUGHT {r.kind=VK_TOOL;}
+   while j<vm[0].n && j-i<16 && (vm[0].rows[j].kind==r.kind || (native && vm[0].rows[j].kind==VK_THOUGHT)) {j+=1;}
    if j-i>1 {r.group_count=j-i;r.group_last=vm[0].rows[j-1].index;for k:i+1..<j {r.stamp+=vm[0].rows[k].stamp;}r.stamp+=r.group_count*37;}
   }
   vm[0].rows[out]=r;out+=1;i=j;
@@ -221,6 +224,7 @@ view_task_rows :: (vm: [] ViewModel, d: [] DurableChat, turn: string, f: ViewFac
     if nta_permission(n) { asking = s[0].asking; }
     for k: 0..<s[0].n {
       p := s[0].parts[k];
+      if p.kind == P_THINK { _ := view_add(vm, VK_THOUGHT, cast(string) id[0..<view_tool_id(id[..], turn, k)], k, p.n + 1); continue; }
       if p.kind != P_TOOL { continue; }
       _ := view_add(vm, VK_TOOL, cast(string) id[0..<view_tool_id(id[..], turn, k)], k, p.output.count * 8 + p.input.count * 2 + (ifx p.resolved then 1 else 0) + (ifx p.failed then 2 else 0) + (ifx k == asking then 4 else 0));
       if k == asking && f.permit != VIEW_PERMIT_NONE { _ := view_add(vm, VK_PERMISSION, cast(string) id[0..<view_task_id(id[..], turn, "permission")], k, f.permit * 8 + p.arg.count); placed = true; }

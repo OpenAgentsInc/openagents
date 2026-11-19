@@ -63,8 +63,6 @@ SL_ARENA :: 262144;
 
 // A tool kind's name on disk, by TK_*.
 SL_TOOLS :: [15] string.["thought", "exec", "read", "edit", "search", "fetch", "write", "glob", "web", "todo", "mcp", "agent", "tool", "route", "load"];
-// What Coder's label calls it (the tool's own name), by TK_*; "" takes the part's detail.
-SL_LABELS :: [15] string.["Thought", "Bash", "Read", "Edit", "Grep", "WebFetch", "Write", "Glob", "WebSearch", "TodoWrite", "", "Agent", "", "Route", "Load"];
 // A notice kind's name on disk, by N_* (N_ASK is its own line, "ask").
 SL_NOTICES :: [10] string.["error", "signed_out", "limit", "install", "stopped", "ask", "busy", "offline", "meta", "codex_install"];
 
@@ -465,8 +463,8 @@ sl_header :: (out: [] u8, id: string, engine: string, cwd: string, started_us: i
 // A tool part as Coder labels a call: "Bash(ls -la)", "Edit(/w/notes.txt)".
 sl_label :: (s: [] Session, k: int, buf: [] u8) -> string {
   p := s[0].parts[k];
-  names := SL_LABELS;
-  name := ifx p.tk >= 0 && p.tk < 15 then names[p.tk] else "";
+  names := TK_LABELS;   // what Coder's label calls it; "" takes the part's detail
+  name := ifx p.tk >= 0 && p.tk < TK_KINDS then names[p.tk] else "";
   inside := ifx p.detail.count > 0 && name.count > 0 then p.detail else p.arg;
   if name.count == 0 { name = ifx p.detail.count > 0 then p.detail else "Tool"; inside = ""; }
   // one line, and short: the label is what a list shows
@@ -549,11 +547,7 @@ sl_from_label :: (s: [] Session, k: int, label: string) {
   for i: 0..<label.count { if label[i] == '(' { open = i; break; } }
   name := ifx open >= 0 then cast(string) label[0..<open] else label;
   inside := ifx open >= 0 && label.count > open + 1 && label[label.count - 1] == ')' then cast(string) label[open + 1..<label.count - 1] else "";
-  names := SL_LABELS;
-  tk := TK_TOOL;
-  for i: 0..<15 { if names[i].count > 0 && names[i] == name { tk = i; } }
-  if name == "Task" { tk = TK_AGENT; }
-  if name == "MultiEdit" || name == "NotebookEdit" { tk = TK_EDIT; }
+  tk := tk_of_name(name);
   s[0].parts[k].tk = tk;
   if tk == TK_TOOL { s[0].parts[k].detail = s_put(s, name); s[0].parts[k].arg = s_put(s, inside); return; }
   s[0].parts[k].arg = s_put(s, inside);
