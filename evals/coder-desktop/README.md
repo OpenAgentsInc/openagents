@@ -7,6 +7,8 @@ evals/coder-desktop/run.sh                 # Tier 0, Tier 1 and compaction (the 
 evals/coder-desktop/run.sh --tier 1        # Tier 1 only
 evals/coder-desktop/run.sh --tier 2        # Tier 2 live-agent suite: real models, costs money
 evals/coder-desktop/run.sh --tier 2 --filter a1_,e2_
+evals/coder-desktop/run.sh --tier 3        # Tier 3: build and drive the real Coder.app, compare captures
+evals/coder-desktop/run.sh --tier 3 --update-goldens   # write new goldens after a deliberate UI change
 ```
 
 Run `coax/build.sh` first in a fresh worktree. Results go to `evals/coder-desktop/results/` (gitignored).
@@ -17,6 +19,7 @@ Run `coax/build.sh` first in a fresh worktree. Results go to `evals/coder-deskto
 | 1 | Transcript replay (`tier1/replay_test.coax`) and 20 host scenarios (`tier1/scenarios/`): the real `host.c` and `page.coax` in `host_driver` against `mock_worker/mock_worker.py` | free |
 | compaction | `compaction/` C1-C12 | free |
 | 2 | 15 live tasks (`tier2/tasks/`): the real `host.c` and `page.coax` in `host_driver` against the real `mcworker` | about $0.50 a full run (Gemini 4 Neon, Hydrogen sub-agents) |
+| 3 | 7 flows (`tier3/run_ui.py`) on the real built `Coder.app`, driven with real input events on the mock worker; 15 window captures compared with `tier3/goldens/` | free (macOS only; a build plus about 75 s) |
 
 ## Tier 2 is opt-in
 
@@ -103,3 +106,57 @@ Add a fixture folder under `tier2/fixtures/` and a JSON file under `tier2/tasks/
 ```
 
 Debug one task at a time with `--filter`; keep tasks small, since each run costs money.
+
+## Tier 3: the real app
+
+`tier3/run_ui.py` (or `run.sh --tier 3`) builds `Coder.app` with `apps/coder-desktop/build.sh` into
+`results/tier3-build/` (`--no-build` reuses it), copies the bundle into the run folder, gives the copy
+its own bundle id (`com.openagents.coder.evals-t3`) and swaps its `mcworker` and `claudeworker` for
+a two-line script running `tier3/mock_router.py`. The router picks a Tier 1 mock script for every
+worker the app starts (the chat's by the task's text, each sub-agent's by its index), so no model
+is called. It never touches `/Applications/Coder.app`, your `~/Library/Application Support/Coder` or
+Coder's preferences.
+
+Each flow starts the copy's own binary with:
+
+- a temp `HOME` and `CFFIXED_USER_HOME` under `$TMPDIR/coder-t3-homes/` (chats land there), updates
+  off (`CODER_UPDATE_URL=`), `BROWSER=/usr/bin/true`;
+- `DYLD_INSERT_LIBRARIES` set to `tier3/probe/probe.m`, compiled per run. The app binary is the one
+  `build.sh` makes; the probe adds a Unix socket that drives it from inside. It keeps the app from
+  taking focus (activation is a no-op, the menu-bar item is hidden) and parks the window behind
+  every other window at the main screen's corner with one point showing, which is what WindowServer
+  needs to capture it. Clicks and drags are real `NSEvent`s to the view under the point; keys go
+  through the window, Command keys through the main menu. `state` reads the page (`cd_running`,
+  `cd_settings_page`, `cd_title`, cost) and the kept sidebar widths.
+
+Coder starts its run daemon (`coder-host serve`, #13694) in the temp `HOME`; the daemon starts the
+mock workers. After each flow the runner stops that daemon and any mock worker still running, by
+the PIDs the flow made (`daemon.json`, the record files' names), and deletes the copy's preference
+domain and the temp `HOME`.
+
+Captures use `screencapture -l` on the window, so the terminal needs Screen Recording. A capture is
+taken once the frame stops changing and compared with `tier3/goldens/NAME.png`: a pixel differs when
+a channel moves more than 24 (`--pixel-tolerance`); a capture fails when more than 0.2% of pixels
+differ (`--max-diff`). Spinners and the About page's version are masked. On a failure the run
+folder's `cases/FLOW/` holds the capture, `NAME.golden.png` and `NAME.diff.png` (changed pixels in
+red over the dimmed golden). Goldens are 2x captures from a Retina Mac; on another backing scale
+the sizes differ and the flow fails, so regenerate them there.
+
+| Flow | What it drives | Checks | Goldens |
+|---|---|---|---|
+| `idle_layouts` | launch, resize | the empty chat at 1200x800 and 820x700 | `idle_1200x800`, `narrow_820x700` |
+| `send_stream_new_chat` | type into the composer, Return, a click on New chat | the reply streams and ends, cost $0.015, title, one task line, one chat kept; New chat empties the page and focuses the composer | `replied_1200x800`, `new_chat_1200x800` |
+| `stop` | send, a click on Stop | the worker gets one stop line, the reply ends | `streaming_1200x800`, `stopped_1200x800` |
+| `subagent_pane` | send at 1440x900, `--agent 1` opens the first sub-agent's pane | both sub-agent workers start, the main worker gets its results | `subagent_pane_1440x900` |
+| `sidebar_resize` | a drag on the sidebar's edge | the width is kept (309 page units for +90 points) | `sidebar_resized_1200x800` |
+| `settings` | `--settings PAGE` for each page, Command-[ and Command-comma | each page opens; Back closes and Command-comma reopens | `settings_{general,models,foreman,account,about}_1200x800` |
+| `quit_reopen` | send, Command-Q, launch again on the same HOME, a click on the chat | clean exit, the chat kept and listed, a click loads it | `reopen_1200x800`, `reopened_chat_1200x800` |
+
+After a deliberate UI change, run `run.sh --tier 3 --update-goldens`, look at the new
+`tier3/goldens/*.png` and commit them with the change. Transcript goldens (`replied`, `streaming`,
+`stopped`, `subagent_pane`, `reopened_chat`) change whenever the transcript's look does.
+
+Not covered yet: copying a code block to the pasteboard, pin drag-reorder, switching to a
+background chat, the budget approval and `/goal` UI, and streaming frame-time telemetry (Tier 1's
+host scenarios measure frame time on the same page). The sub-agent pane opens through the app's
+`--agent N` launch flag rather than a click on the row.

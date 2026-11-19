@@ -147,6 +147,7 @@ The order below maximizes **signal-to-effort** by securing fast deterministic co
   3. Automated screenshot capture + pixel/structural diff check for 4 canonical layouts (`1200x800` idle, `1200x800` active streaming + thinking, `1440x900` with sub-agent pane, `820x700` narrow) aligned with `docs/coder/claude-desktop-parity-process.md`.
   4. Frame-time telemetry capture during the streaming stress scenario.
 - **Success criteria:** Tier 3 runs unattended on macOS in `< 5 min`, catches layout/focus/clipboard regressions, and stores before/after screenshots as artifacts on failure.
+- **Status (2026-11-19, #13704):** Built in `evals/coder-desktop/tier3/` (`run.sh --tier 3`, opt-in; see `evals/coder-desktop/README.md`). No env seams were added to `Coder.app`: the runner stages a copy of the build with its own bundle id and the mock worker in place of `mcworker`, runs it under a temp `HOME`/`CFFIXED_USER_HOME`, and drives it through a probe dylib (`DYLD_INSERT_LIBRARIES`) with real `NSEvent`s. 7 flows and 15 goldens (idle, narrow, streaming, stopped, replied, new chat, sub-agent pane at 1440x900, sidebar resize, five settings pages, quit and reopen); about 75 s after the build. Not yet: pasteboard copy, pin drag-reorder, background chat switch, budget and `/goal` UI, frame-time telemetry.
 
 ### Phase 5 — Tier 4 Golden Trajectories, Benchmark Slice & CI/Nightly Automation (Weeks 7–8)
 **Why fifth:** With all harness layers and artifact schemas proven, we scale to high-signal release gating, trend tracking, and continuous regression capture.

@@ -2,13 +2,15 @@
 # Firm reason: 5 (thin shell runner dispatching Tier 0, Tier 1, and compaction evals)
 set -eu
 
-# Coder Desktop evaluation runner (Tier 0, Tier 1, Compaction, and opt-in Tier 2).
-# Usage: evals/coder-desktop/run.sh [--tier 0|1|2|compaction|all] [--filter TEXT]
+# Coder Desktop evaluation runner (Tier 0, Tier 1, Compaction, and opt-in Tier 2 and Tier 3).
+# Usage: evals/coder-desktop/run.sh [--tier 0|1|2|3|compaction|all] [--filter TEXT] [--update-goldens] [--no-build]
 # Tier 2 calls real models and costs money: it runs only with --tier 2, never with --tier all.
+# Tier 3 builds and drives the real Coder.app on this Mac: it runs only with --tier 3.
 
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)"
 TIER="all"
 FILTER=""
+T3_ARGS=""
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -32,14 +34,25 @@ while [ "$#" -gt 0 ]; do
       FILTER="$2"
       shift 2
       ;;
+    --update-goldens)
+      T3_ARGS="$T3_ARGS --update-goldens"
+      shift
+      ;;
+    --no-build)
+      T3_ARGS="$T3_ARGS --no-build"
+      shift
+      ;;
     -h|--help)
-      echo "Usage: $0 [--tier 0|1|2|compaction|all] [--filter TEXT]"
+      echo "Usage: $0 [--tier 0|1|2|3|compaction|all] [--filter TEXT] [--update-goldens] [--no-build]"
       echo "  --tier 0           Run Tier 0 unit & wire-contract checks (page.coax, mcworker-wire.coax, tools_smoke.sh)"
       echo "  --tier 1           Run Tier 1 deterministic transcript replay + compaction suites"
       echo "  --tier compaction  Run deterministic & long-horizon compaction eval suite (C1-C12)"
       echo "  --tier 2           Run the Tier 2 live-agent suite (real mcworker, real models, costs money; opt-in only)"
-      echo "  --tier all         Run Tier 0, Tier 1, and Compaction (default; never Tier 2)"
-      echo "  --filter TEXT      Tier 2 only: run tasks whose id contains TEXT (comma-separated)"
+      echo "  --tier 3           Run the Tier 3 native suite: build Coder.app, drive it on the mock worker, compare captures (macOS; opt-in only)"
+      echo "  --tier all         Run Tier 0, Tier 1, and Compaction (default; never Tier 2 or 3)"
+      echo "  --filter TEXT      Tier 2 and 3: run tasks or flows whose name contains TEXT (comma-separated)"
+      echo "  --update-goldens   Tier 3: write the captures as the new goldens (tier3/goldens/)"
+      echo "  --no-build         Tier 3: reuse the last scratch build (results/tier3-build/)"
       exit 0
       ;;
     *)
@@ -50,9 +63,9 @@ while [ "$#" -gt 0 ]; do
 done
 
 case "$TIER" in
-  0|1|2|compaction|all) ;;
+  0|1|2|3|compaction|all) ;;
   *)
-    echo "error: unsupported tier '$TIER' (supported: 0, 1, 2, compaction, all)" >&2
+    echo "error: unsupported tier '$TIER' (supported: 0, 1, 2, 3, compaction, all)" >&2
     exit 2
     ;;
 esac
@@ -109,7 +122,7 @@ rec = {
     "run_id": run_id,
     "tier": tier,
     "case": case_name,
-    "model": "live" if tier == 2 else "deterministic",
+    "model": "live" if tier == 2 else ("mock" if tier == 3 else "deterministic"),
     "passed": rc == 0,
     "wall_ms": wall_ms,
     "cost_usd_micros": 0,
@@ -191,6 +204,26 @@ if tier == 2 and case_name == "tier2_live_suite":
             with open(out_path, "a", encoding="utf-8") as out:
                 out.write(json.dumps(trec, separators=(",", ":")) + "\n")
 
+# Also emit per-flow records when running the Tier 3 native suite
+if tier == 3 and case_name == "tier3_native_suite":
+    for ln in text.splitlines():
+        fm = re.match(r"^(ok  |FAIL) flow (\S+): (.*?) \((\d+) ms, (\d+) captures\)(?: -- (.*))?$", ln)
+        if fm:
+            ok = fm.group(1).strip() == "ok"
+            frec = {
+                "run_id": run_id,
+                "tier": 3,
+                "case": f"flow_{fm.group(2)}",
+                "model": "mock",
+                "passed": ok,
+                "wall_ms": int(fm.group(4)),
+                "cost_usd_micros": 0,
+                "metrics": {"description": fm.group(3), "captures": int(fm.group(5))},
+                "failure_reason": None if ok else (fm.group(6) or ln),
+            }
+            with open(out_path, "a", encoding="utf-8") as out:
+                out.write(json.dumps(frec, separators=(",", ":")) + "\n")
+
 # Also emit per-scenario records when running compaction_suite
 if case_name == "compaction_suite":
     for ln in text.splitlines():
@@ -253,6 +286,16 @@ if [ "$TIER" = "2" ]; then
     run_case 2 "tier2_live_suite" env BROWSER=/usr/bin/true python3 evals/coder-desktop/tier2/run_tasks.py --filter "$FILTER"
   else
     run_case 2 "tier2_live_suite" env BROWSER=/usr/bin/true python3 evals/coder-desktop/tier2/run_tasks.py
+  fi
+fi
+
+# Tier 3 is opt-in: it builds Coder.app (minutes) and opens its window, parked behind every other
+# window. It uses the mock worker, so it costs nothing. Never part of --tier all.
+if [ "$TIER" = "3" ]; then
+  if [ -n "$FILTER" ]; then
+    run_case 3 "tier3_native_suite" env BROWSER=/usr/bin/true python3 evals/coder-desktop/tier3/run_ui.py --filter "$FILTER" $T3_ARGS
+  else
+    run_case 3 "tier3_native_suite" env BROWSER=/usr/bin/true python3 evals/coder-desktop/tier3/run_ui.py $T3_ARGS
   fi
 fi
 
