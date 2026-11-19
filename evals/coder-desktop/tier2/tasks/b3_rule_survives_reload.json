@@ -1,0 +1,46 @@
+{
+  "id": "b3_rule_survives_reload",
+  "category": "multi_turn_recall",
+  "fixture": "blank",
+  "description": "A standing rule given before a reload still applies after it",
+  "steps": [
+    {
+      "send": "A rule for this chat: every Python file you create must start with the exact line `# owner: team-heron`. Now create hello.py that prints hello."
+    },
+    {
+      "reload": true
+    },
+    {
+      "send": "Create bye.py that prints bye. Follow the rule I gave you earlier."
+    }
+  ],
+  "graders": [
+    {
+      "type": "not_timed_out"
+    },
+    {
+      "type": "recall_sent",
+      "contains": [
+        "team-heron"
+      ]
+    },
+    {
+      "type": "command",
+      "name": "hello.py header",
+      "run": "head -1 hello.py | grep -qx '# owner: team-heron' && python3 hello.py | grep -qi hello"
+    },
+    {
+      "type": "command",
+      "name": "bye.py header",
+      "run": "head -1 bye.py | grep -qx '# owner: team-heron' && python3 bye.py | grep -qi bye"
+    },
+    {
+      "type": "outside_unchanged"
+    },
+    {
+      "type": "no_guard_trips"
+    }
+  ],
+  "budget_usd_micros": 100000,
+  "timeout_s": 300
+}

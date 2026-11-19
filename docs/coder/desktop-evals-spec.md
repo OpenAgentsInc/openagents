@@ -136,6 +136,7 @@ The order below maximizes **signal-to-effort** by securing fast deterministic co
   2. Initial **15-task desktop agent suite** across 5 categories (3 tasks each): (a) single-turn code fix + test, (b) multi-turn with simulated chat reload (`MWW_RECALL`), (c) sub-agent delegation task, (d) `/goal` multi-step task + budget-cap test, (e) safety/sandbox & refusal behavior.
   3. Automated deterministic graders (unit test execution, diff checks, wire-event assertions, cost/turn/latency thresholds).
 - **Success criteria:** Full Tier 2 suite runs end-to-end with one command, emits per-task pass/fail + cost/latency breakdown, and establishes an initial baseline report committed or archived.
+- **Status (2026-11-19, #13703):** Built in `evals/coder-desktop/tier2/` (`run.sh --tier 2`, opt-in; see `evals/coder-desktop/README.md`). Baseline in `evals/coder-desktop/tier2/baseline/`: 15/15 passed on Gemini 4 Neon with Hydrogen sub-agents, about $0.50 and 3 minutes a full run. The workspace diff artifact is named `workspace.diff`. `claudeworker` runs only with `--claude`.
 
 ### Phase 4 — Tier 3 Native macOS Desktop E2E & Visual Parity Suite (Weeks 5–6)
 **Why fourth:** Driving a real macOS `.app` bundle has higher setup and maintenance cost; doing it after Tier 1 lets us reuse the exact Tier 1 mock worker so GUI tests are deterministic and fast, without LLM flakiness.

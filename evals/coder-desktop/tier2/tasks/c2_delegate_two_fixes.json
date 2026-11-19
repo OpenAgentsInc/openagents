@@ -1,0 +1,51 @@
+{
+  "id": "c2_delegate_two_fixes",
+  "category": "subagents",
+  "fixture": "twobugs",
+  "timeout_s": 420,
+  "description": "Delegate two independent bug fixes, then verify",
+  "steps": [
+    {
+      "send": "Delegate the fix of mod_a.py to one sub-agent and the fix of mod_b.py to another (each has a failing test beside it). When both are done, run `python3 -m unittest` yourself and report."
+    }
+  ],
+  "graders": [
+    {
+      "type": "not_timed_out"
+    },
+    {
+      "type": "wire_count",
+      "kind": "delegate",
+      "main_only": true,
+      "min": 1
+    },
+    {
+      "type": "wire_count",
+      "dir": "to_worker",
+      "key": "results",
+      "main_only": true,
+      "min": 1
+    },
+    {
+      "type": "command",
+      "run": "python3 -m unittest -q",
+      "restore": [
+        "test_mod_a.py",
+        "test_mod_b.py"
+      ]
+    },
+    {
+      "type": "files_unchanged",
+      "paths": [
+        "test_*.py"
+      ]
+    },
+    {
+      "type": "outside_unchanged"
+    },
+    {
+      "type": "no_guard_trips"
+    }
+  ],
+  "budget_usd_micros": 100000
+}

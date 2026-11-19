@@ -1,0 +1,53 @@
+{
+  "id": "c1_parallel_files",
+  "category": "subagents",
+  "fixture": "blank",
+  "timeout_s": 420,
+  "description": "Two sub-agents each write one file",
+  "steps": [
+    {
+      "send": "Use two sub-agents in parallel (delegate; do not write the files yourself): one creates alpha.txt containing ALPHA, the other creates beta.txt containing BETA. Then confirm both files exist."
+    }
+  ],
+  "graders": [
+    {
+      "type": "not_timed_out"
+    },
+    {
+      "type": "wire_count",
+      "kind": "delegate",
+      "main_only": true,
+      "min": 1
+    },
+    {
+      "type": "wire_count",
+      "dir": "to_worker",
+      "key": "results",
+      "main_only": true,
+      "min": 1
+    },
+    {
+      "type": "wire_count",
+      "dir": "to_worker",
+      "key": "task",
+      "min": 3
+    },
+    {
+      "type": "file_contains",
+      "path": "alpha.txt",
+      "text": "ALPHA"
+    },
+    {
+      "type": "file_contains",
+      "path": "beta.txt",
+      "text": "BETA"
+    },
+    {
+      "type": "outside_unchanged"
+    },
+    {
+      "type": "no_guard_trips"
+    }
+  ],
+  "budget_usd_micros": 100000
+}

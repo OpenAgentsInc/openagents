@@ -1,0 +1,45 @@
+{
+  "id": "a2_fix_slugify",
+  "category": "single_turn",
+  "fixture": "slug",
+  "description": "Make slugify() lowercase and drop punctuation per its tests",
+  "steps": [
+    {
+      "send": "slugify() in textutil.py does not meet its docstring and the tests in test_textutil.py fail. Fix textutil.py and run the tests."
+    }
+  ],
+  "graders": [
+    {
+      "type": "not_timed_out"
+    },
+    {
+      "type": "ended"
+    },
+    {
+      "type": "command",
+      "run": "python3 -m unittest -q",
+      "restore": [
+        "test_textutil.py"
+      ]
+    },
+    {
+      "type": "command",
+      "name": "hidden case",
+      "run": "python3 -c \"from textutil import slugify; assert slugify('A  B--C?') in ('a-b-c',), slugify('A  B--C?')\""
+    },
+    {
+      "type": "files_unchanged",
+      "paths": [
+        "test_*.py"
+      ]
+    },
+    {
+      "type": "outside_unchanged"
+    },
+    {
+      "type": "no_guard_trips"
+    }
+  ],
+  "budget_usd_micros": 100000,
+  "timeout_s": 300
+}

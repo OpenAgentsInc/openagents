@@ -1,0 +1,37 @@
+{
+  "id": "d3_goal_budget_limited",
+  "category": "goal_budget",
+  "fixture": "mathlib",
+  "budget_usd_micros": 30000,
+  "timeout_s": 300,
+  "description": "An active /goal that hits the chat budget ends budget_limited",
+  "steps": [
+    {
+      "goal": "Write test_full.py with a unittest test for each of the twelve functions in lib.py, running the tests after each new test, and finish only when all twelve pass."
+    }
+  ],
+  "graders": [
+    {
+      "type": "not_timed_out"
+    },
+    {
+      "type": "state",
+      "field": "goal_status",
+      "eq": 5
+    },
+    {
+      "type": "budget_stop"
+    },
+    {
+      "type": "state",
+      "field": "running",
+      "eq": 0
+    },
+    {
+      "type": "outside_unchanged"
+    },
+    {
+      "type": "no_guard_trips"
+    }
+  ]
+}

@@ -1,0 +1,48 @@
+{
+  "id": "b2_fix_then_changelog",
+  "category": "multi_turn_recall",
+  "fixture": "geometry",
+  "description": "Fix a bug, reload, then log the earlier fix in a changelog",
+  "steps": [
+    {
+      "send": "rect_area in geometry.py is wrong and the tests fail. Fix it and run the tests."
+    },
+    {
+      "reload": true
+    },
+    {
+      "send": "Add a CHANGELOG.md with one bullet that describes the fix you made earlier in this chat and names the function you changed."
+    }
+  ],
+  "graders": [
+    {
+      "type": "not_timed_out"
+    },
+    {
+      "type": "recall_sent",
+      "contains": [
+        "rect_area"
+      ]
+    },
+    {
+      "type": "command",
+      "run": "python3 -m unittest -q",
+      "restore": [
+        "test_geometry.py"
+      ]
+    },
+    {
+      "type": "file_contains",
+      "path": "CHANGELOG.md",
+      "text": "rect_area"
+    },
+    {
+      "type": "outside_unchanged"
+    },
+    {
+      "type": "no_guard_trips"
+    }
+  ],
+  "budget_usd_micros": 100000,
+  "timeout_s": 300
+}

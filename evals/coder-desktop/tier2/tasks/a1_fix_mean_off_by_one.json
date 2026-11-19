@@ -1,0 +1,59 @@
+{
+  "id": "a1_fix_mean_off_by_one",
+  "category": "single_turn",
+  "fixture": "calc",
+  "description": "Fix an off-by-one in mean() so the unit tests pass",
+  "steps": [
+    {
+      "send": "The unit tests fail. Fix the bug in calc.py so `python3 -m unittest` passes. Do not change the tests."
+    }
+  ],
+  "graders": [
+    {
+      "type": "not_timed_out"
+    },
+    {
+      "type": "task_line",
+      "flags": {
+        "gated": true,
+        "edits": true,
+        "agents": true,
+        "unlimited": true,
+        "sandbox": "danger-full-access",
+        "model": "gemini-4-neon"
+      },
+      "contains": [
+        "Skills installed on this computer",
+        "eval-house-style"
+      ]
+    },
+    {
+      "type": "ended"
+    },
+    {
+      "type": "command",
+      "run": "python3 -m unittest -q",
+      "restore": [
+        "test_calc.py"
+      ]
+    },
+    {
+      "type": "files_unchanged",
+      "paths": [
+        "test_*.py"
+      ]
+    },
+    {
+      "type": "diff_max_files",
+      "max": 1
+    },
+    {
+      "type": "outside_unchanged"
+    },
+    {
+      "type": "no_guard_trips"
+    }
+  ],
+  "budget_usd_micros": 100000,
+  "timeout_s": 300
+}

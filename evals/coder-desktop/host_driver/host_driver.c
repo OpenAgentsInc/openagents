@@ -1,6 +1,11 @@
-// Tier 1 deterministic headless host driver.
+// Headless host driver for the Coder Desktop evals.
 // Links the real apps/coder-desktop/host.c + page.coax (via carrier.c + gallery.o)
-// against ui_host_stub.c and drives mock_worker.py processes over POSIX pipes.
+// against ui_host_stub.c and drives worker processes over POSIX pipes:
+//   Tier 1: mock_worker.py replaying a script (SPAWN_WORKER).
+//   Tier 2: the real mcworker (and claudeworker for Claude sub-agents) given with
+//           --worker BIN [--claude-worker BIN], started in the slot's folder (SPAWN_EXEC).
+// WIRE_LOG PATH tees every line each way to a JSONL file; GUARD adds a substring that,
+// found in a gated command, turns the page's yes into a no (the eval's safety net).
 #define _POSIX_C_SOURCE 200809L
 #include "host.h"
 #include "ui_host_stub.h"
@@ -32,7 +37,13 @@ typedef struct {
   size_t cap;
   int exited;
   int exit_code;
+  int slot;        // for the wire log
+  int agent;       // -1 for the main worker
+  int deny_pending; // a guarded ask is waiting: the next yes becomes a no
+  char deny_why[256];
 } WorkerProc;
+
+#define MAX_GUARDS 32
 
 typedef struct {
   void *page;
@@ -53,10 +64,18 @@ typedef struct {
   int lines_from_main;
   int lines_from_agents;
   int deny_next_ask;
+  int live;                 // Tier 2: workers are the real mcworker, started in cwd
+  char guards[MAX_GUARDS][256];
+  int n_guards;
+  int guard_trips;
 } Slot;
 
 static Slot g_slots[MAX_SLOTS];
 static char g_mock_worker_path[1024] = "evals/coder-desktop/mock_worker/mock_worker.py";
+static char g_worker_bin[1024] = "";
+static char g_claude_worker_bin[1024] = "";
+static FILE *g_wire = NULL;
+static double g_t0 = 0.0;
 
 static double now_ms(void) {
   struct timespec ts;
@@ -90,7 +109,24 @@ static void wp_init(WorkerProc *w) {
   w->pid = -1;
   w->to_child = -1;
   w->from_child = -1;
+  w->agent = -1;
 }
+
+// One wire record: {"t_ms":..,"slot":..,"agent":..,"dir":"to_worker"|"from_worker"|"guard"|"spawn"|"exit","line":"..."}
+static void wire_log_n(const WorkerProc *w, const char *dir, const char *data, int n) {
+  if (!g_wire) return;
+  char *line = malloc((size_t)n + 1);
+  if (!line) return;
+  memcpy(line, data, (size_t)n);
+  line[n] = '\0';
+  while (n > 0 && (line[n - 1] == '\n' || line[n - 1] == '\r')) line[--n] = '\0';
+  fprintf(g_wire, "{\"t_ms\":%.1f,\"slot\":%d,\"agent\":%d,\"dir\":\"%s\",\"line\":", now_ms() - g_t0, w->slot, w->agent, dir);
+  json_escape(g_wire, line);
+  fputs("}\n", g_wire);
+  fflush(g_wire);
+  free(line);
+}
+static void wire_log(const WorkerProc *w, const char *dir, const char *line) { wire_log_n(w, dir, line, (int)strlen(line)); }
 
 static void wp_close(WorkerProc *w) {
   if (w->to_child >= 0) { close(w->to_child); w->to_child = -1; }
@@ -110,9 +146,12 @@ static void wp_close(WorkerProc *w) {
   w->cap = 0;
 }
 
-static int wp_spawn(WorkerProc *w, const char *script_path, const char *record_path) {
+// exec_bin set: the real worker binary, started in cwd with no arguments (Tier 2).
+static int wp_spawn_any(WorkerProc *w, const char *script_path, const char *record_path, const char *exec_bin, const char *cwd, int slot, int agent) {
   wp_close(w);
   wp_init(w);
+  w->slot = slot;
+  w->agent = agent;
   int p_in[2], p_out[2];
   if (pipe(p_in) != 0) return -1;
   if (pipe(p_out) != 0) { close(p_in[0]); close(p_in[1]); return -1; }
@@ -126,6 +165,13 @@ static int wp_spawn(WorkerProc *w, const char *script_path, const char *record_p
     dup2(p_in[0], STDIN_FILENO);
     dup2(p_out[1], STDOUT_FILENO);
     close(p_in[0]); close(p_in[1]); close(p_out[0]); close(p_out[1]);
+    if (exec_bin && exec_bin[0]) {
+      if (cwd && cwd[0] && chdir(cwd) != 0) _exit(126);
+      int devnull = open("/dev/null", O_WRONLY);
+      if (devnull >= 0) { dup2(devnull, STDERR_FILENO); close(devnull); }
+      execl(exec_bin, exec_bin, (char *)NULL);
+      _exit(127);
+    }
     if (record_path && record_path[0]) {
       execlp("python3", "python3", g_mock_worker_path, "--script", script_path, "--record", record_path, (char *)NULL);
     } else {
@@ -145,11 +191,34 @@ static int wp_spawn(WorkerProc *w, const char *script_path, const char *record_p
   w->len = 0;
   w->exited = 0;
   w->exit_code = 0;
+  wire_log(w, "spawn", exec_bin && exec_bin[0] ? exec_bin : script_path);
   return 0;
+}
+static int wp_spawn(WorkerProc *w, const char *script_path, const char *record_path) {
+  return wp_spawn_any(w, script_path, record_path, NULL, NULL, w->slot, w->agent);
 }
 
 static int wp_write_all(WorkerProc *w, const char *data, int n) {
   if (w->to_child < 0 || n <= 0) return -1;
+  // The eval's safety net: a guarded command's yes goes out as a no.
+  char denied[1024];
+  if (w->deny_pending) {
+    const char *pos = NULL;
+    for (int i = 0; i + 13 <= n; i++) {
+      if (memcmp(data + i, "\"answer\":true", 13) == 0) { pos = data + i; break; }
+    }
+    if (pos) {
+      int prefix = (int)(pos - data);
+      const char *rest = pos + 13;
+      int rest_n = n - prefix - 13;
+      // drop the closing brace and newline; add the reason
+      while (rest_n > 0 && (rest[rest_n - 1] == '\n' || rest[rest_n - 1] == '\r' || rest[rest_n - 1] == '}')) rest_n--;
+      int dn = snprintf(denied, sizeof(denied), "%.*s\"answer\":false%.*s,\"why\":\"%s\"}\n", prefix, data, rest_n, rest, w->deny_why);
+      if (dn > 0 && dn < (int)sizeof(denied)) { data = denied; n = dn; }
+      w->deny_pending = 0;
+    }
+  }
+  wire_log_n(w, "to_worker", data, n);
   int off = 0;
   while (off < n) {
     ssize_t wr = write(w->to_child, data + off, (size_t)(n - off));
@@ -248,7 +317,19 @@ static int slot_dispatch(Slot *s) {
     if (j < 0 || j >= MAX_AGENTS) break;
     const char *sc = s->agent_scripts[j][0] ? s->agent_scripts[j] : s->default_agent_script;
     const char *rc = s->agent_records[j][0] ? s->agent_records[j] : s->default_agent_record;
-    if (sc[0]) {
+    int si_idx = (int)(s - g_slots);
+    if (s->live) {
+      const char *bin = cd_agent_claude(s->page, j) ? g_claude_worker_bin : g_worker_bin;
+      if (!bin[0] || wp_spawn_any(&s->agents[j], NULL, NULL, bin, s->cwd, si_idx, j) != 0) {
+        cd_agent_failed(s->page, j, bin[0] ? "the worker could not start" : "no Claude worker configured (--claude-worker)");
+      } else {
+        char asess[80];
+        snprintf(asess, sizeof(asess), "%s-a%d", s->session, j);
+        int n = cd_agent_task(s->page, j, asess, s->cwd, out, (int)sizeof(out) - 1);
+        if (n > 0) wp_write_all(&s->agents[j], out, n);
+      }
+    } else if (sc[0]) {
+      s->agents[j].slot = si_idx; s->agents[j].agent = j;
       wp_spawn(&s->agents[j], sc, rc);
       char asess[80];
       snprintf(asess, sizeof(asess), "%s-a%d", s->session, j);
@@ -274,6 +355,22 @@ static int slot_dispatch(Slot *s) {
   }
 
   return did;
+}
+
+// A gated command ("kind":"ask") that names a guarded substring: its answer becomes a no.
+static void slot_guard_check(Slot *s, WorkerProc *w, const char *line) {
+  if (s->n_guards == 0 || !strstr(line, "\"kind\":\"ask\"")) return;
+  const char *cmd = strstr(line, "\"command\":");
+  if (!cmd) return;
+  for (int g = 0; g < s->n_guards; g++) {
+    if (s->guards[g][0] && strstr(cmd, s->guards[g])) {
+      w->deny_pending = 1;
+      snprintf(w->deny_why, sizeof(w->deny_why), "not allowed in this workspace: the command reaches outside it");
+      s->guard_trips++;
+      wire_log(w, "guard", s->guards[g]);
+      return;
+    }
+  }
 }
 
 // Drain available bytes from a WorkerProc stdout fd and feed complete lines.
@@ -302,6 +399,8 @@ static int wp_drain(WorkerProc *w, Slot *s, int agent_idx) {
         if (w->buf[i] == '\n') {
           w->buf[i] = '\0';
           if (i > start && w->buf[i - 1] == '\r') w->buf[i - 1] = '\0';
+          wire_log(w, "from_worker", w->buf + start);
+          slot_guard_check(s, w, w->buf + start);
           if (agent_idx < 0) {
             cd_line(s->page, w->buf + start);
             s->lines_from_main++;
@@ -330,6 +429,7 @@ static int wp_drain(WorkerProc *w, Slot *s, int agent_idx) {
         if (WIFEXITED(status)) w->exit_code = WEXITSTATUS(status);
         else if (WIFSIGNALED(status)) w->exit_code = 128 + WTERMSIG(status);
       }
+      { char code[32]; snprintf(code, sizeof(code), "%d", w->exit_code); wire_log(w, "exit", code); }
       if (agent_idx < 0) {
         if (cd_running(s->page)) {
           char why[128];
@@ -460,8 +560,8 @@ static void print_slot_state(int si) {
          cd_budget_exceeded(s->page), cd_goal_status(s->page), cd_goal_time(s->page), cd_save_due(s->page));
   printf("\"last_vertices\":%d,\"max_vertices_cap\":%d,\"max_vertices_seen\":%d,\"last_frame_ms\":%.3f,\"max_frame_ms\":%.3f,\"frames\":%d,",
          last_v, max_v, s->max_vertices_seen, last_ms, s->max_frame_ms, s->frames_rendered);
-  printf("\"lines_from_main\":%d,\"lines_from_agents\":%d,\"agents_running\":%d,\"worker_exited\":%d,\"worker_exit_code\":%d,",
-         s->lines_from_main, s->lines_from_agents, agents_running, s->main_w.exited, s->main_w.exit_code);
+  printf("\"lines_from_main\":%d,\"lines_from_agents\":%d,\"agents_running\":%d,\"worker_exited\":%d,\"worker_exit_code\":%d,\"guard_trips\":%d,",
+         s->lines_from_main, s->lines_from_agents, agents_running, s->main_w.exited, s->main_w.exit_code, s->guard_trips);
   printf("\"title\":"); json_escape(stdout, title);
   printf(",\"goal_objective\":"); json_escape(stdout, goal_obj);
   printf(",\"actions\":[");
@@ -493,8 +593,13 @@ int main(int argc, char **argv) {
   for (int i = 1; i < argc; i++) {
     if (strcmp(argv[i], "--mock-worker") == 0 && i + 1 < argc) {
       snprintf(g_mock_worker_path, sizeof(g_mock_worker_path), "%s", argv[++i]);
+    } else if (strcmp(argv[i], "--worker") == 0 && i + 1 < argc) {
+      snprintf(g_worker_bin, sizeof(g_worker_bin), "%s", argv[++i]);
+    } else if (strcmp(argv[i], "--claude-worker") == 0 && i + 1 < argc) {
+      snprintf(g_claude_worker_bin, sizeof(g_claude_worker_bin), "%s", argv[++i]);
     }
   }
+  g_t0 = now_ms();
   for (int i = 0; i < MAX_SLOTS; i++) {
     wp_init(&g_slots[i].main_w);
     for (int j = 0; j < MAX_AGENTS; j++) wp_init(&g_slots[i].agents[j]);
@@ -524,6 +629,8 @@ int main(int argc, char **argv) {
         memset(s, 0, sizeof *s);
         wp_init(&s->main_w);
         for (int j = 0; j < MAX_AGENTS; j++) wp_init(&s->agents[j]);
+        s->main_w.slot = si;
+        for (int j = 0; j < MAX_AGENTS; j++) { s->agents[j].slot = si; s->agents[j].agent = j; }
         s->headless = headless;
         snprintf(s->session, sizeof(s->session), "eval-slot-%d", si);
         snprintf(s->cwd, sizeof(s->cwd), "/tmp/coder-eval");
@@ -553,8 +660,84 @@ int main(int argc, char **argv) {
       if (got < 2 || si < 0 || si >= MAX_SLOTS || !g_slots[si].page) {
         printf("{\"ok\":false,\"error\":\"bad SPAWN_WORKER\"}\n");
       } else {
+        g_slots[si].main_w.slot = si; g_slots[si].main_w.agent = -1;
         int r = wp_spawn(&g_slots[si].main_w, sc, got >= 3 ? rc : "");
         printf("{\"ok\":%s,\"pid\":%d}\n", r == 0 ? "true" : "false", (int)g_slots[si].main_w.pid);
+      }
+    } else if (strcmp(cmd, "SPAWN_EXEC") == 0) {
+      // Tier 2: the real worker (--worker) for the slot's main chat, in the slot's folder.
+      int si = 0;
+      sscanf(line, "%*s %d", &si);
+      if (si < 0 || si >= MAX_SLOTS || !g_slots[si].page || !g_worker_bin[0]) {
+        printf("{\"ok\":false,\"error\":\"bad SPAWN_EXEC (no slot or no --worker)\"}\n");
+      } else {
+        Slot *s = &g_slots[si];
+        s->live = 1;
+        int r = wp_spawn_any(&s->main_w, NULL, NULL, g_worker_bin, s->cwd, si, -1);
+        printf("{\"ok\":%s,\"pid\":%d}\n", r == 0 ? "true" : "false", (int)s->main_w.pid);
+      }
+    } else if (strcmp(cmd, "SET_CWD") == 0 || strcmp(cmd, "SET_SESSION") == 0) {
+      int si = 0;
+      char val[512] = {0};
+      int got = sscanf(line, "%*s %d %511s", &si, val);
+      if (got < 2 || si < 0 || si >= MAX_SLOTS || !g_slots[si].page) {
+        printf("{\"ok\":false}\n");
+      } else {
+        if (strcmp(cmd, "SET_CWD") == 0) {
+          snprintf(g_slots[si].cwd, sizeof(g_slots[si].cwd), "%s", val);
+          cd_folder(g_slots[si].page, val);
+        } else {
+          snprintf(g_slots[si].session, sizeof(g_slots[si].session), "%s", val);
+        }
+        printf("{\"ok\":true}\n");
+      }
+    } else if (strcmp(cmd, "SKILLS") == 0) {
+      // SKILLS si NOTE: the installed-skills note that goes ahead of each task (\n escapes), as App.swift's coderSkillsNote.
+      int si = 0;
+      const char *p = line + strlen(cmd);
+      while (*p == ' ') p++;
+      si = atoi(p);
+      while (*p && *p != ' ') p++;
+      if (*p == ' ') p++;
+      static char note[8192];
+      unescape_arg(note, p, sizeof(note));
+      if (si >= 0 && si < MAX_SLOTS && g_slots[si].page) {
+        cd_skills(g_slots[si].page, note);
+        printf("{\"ok\":true}\n");
+      } else {
+        printf("{\"ok\":false}\n");
+      }
+    } else if (strcmp(cmd, "CLAUDE") == 0) {
+      int si = 0, on = 0;
+      sscanf(line, "%*s %d %d", &si, &on);
+      if (si >= 0 && si < MAX_SLOTS && g_slots[si].page) {
+        cd_claude(g_slots[si].page, on);
+        printf("{\"ok\":true}\n");
+      } else {
+        printf("{\"ok\":false}\n");
+      }
+    } else if (strcmp(cmd, "GUARD") == 0) {
+      // GUARD si SUBSTRING: a gated command naming it is answered no (rest of line, spaces kept).
+      int si = 0;
+      const char *p = line + strlen(cmd);
+      while (*p == ' ') p++;
+      si = atoi(p);
+      while (*p && *p != ' ') p++;
+      if (*p == ' ') p++;
+      if (si >= 0 && si < MAX_SLOTS && g_slots[si].page && g_slots[si].n_guards < MAX_GUARDS && *p) {
+        snprintf(g_slots[si].guards[g_slots[si].n_guards++], 256, "%s", p);
+        printf("{\"ok\":true}\n");
+      } else {
+        printf("{\"ok\":false}\n");
+      }
+    } else if (strcmp(cmd, "WIRE_LOG") == 0) {
+      char path[1024] = {0};
+      if (sscanf(line, "%*s %1023s", path) == 1) {
+        if (g_wire) fclose(g_wire);
+        g_wire = fopen(path, "a");
+        printf("{\"ok\":%s}\n", g_wire ? "true" : "false");
+      } else {
+        printf("{\"ok\":false}\n");
       }
     } else if (strcmp(cmd, "SET_AGENT_SCRIPT") == 0) {
       int si = 0, aj = -1;

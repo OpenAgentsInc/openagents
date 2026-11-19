@@ -1,0 +1,54 @@
+{
+  "id": "b1_recall_codename",
+  "category": "multi_turn_recall",
+  "fixture": "blank",
+  "description": "A fact told before a reload is recalled after it",
+  "steps": [
+    {
+      "send": "Remember this for later: the release codename is PELICAN-7. For now just create notes.txt containing the single word ready."
+    },
+    {
+      "reload": true
+    },
+    {
+      "send": "What is the release codename I told you earlier in this chat? Write it alone into codename.txt."
+    }
+  ],
+  "graders": [
+    {
+      "type": "not_timed_out"
+    },
+    {
+      "type": "recall_sent",
+      "contains": [
+        "PELICAN-7"
+      ]
+    },
+    {
+      "type": "file_contains",
+      "path": "notes.txt",
+      "text": "ready",
+      "ci": true
+    },
+    {
+      "type": "file_contains",
+      "path": "codename.txt",
+      "text": "PELICAN-7"
+    },
+    {
+      "type": "wire_count",
+      "dir": "to_worker",
+      "key": "task",
+      "main_only": true,
+      "min": 2
+    },
+    {
+      "type": "outside_unchanged"
+    },
+    {
+      "type": "no_guard_trips"
+    }
+  ],
+  "budget_usd_micros": 100000,
+  "timeout_s": 300
+}

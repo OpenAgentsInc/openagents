@@ -1,0 +1,42 @@
+{
+  "id": "d1_goal_todo",
+  "category": "goal_budget",
+  "fixture": "todo",
+  "timeout_s": 420,
+  "budget_usd_micros": 150000,
+  "description": "/goal builds a small module with tests and marks itself complete",
+  "steps": [
+    {
+      "goal": "Create todo.py with add(items, text) that appends {'text': text, 'done': False} and returns items, and done(items, index) that sets that item's done to True and returns items; add test_todo.py with unittest tests for both; finish when python3 -m unittest passes."
+    }
+  ],
+  "graders": [
+    {
+      "type": "not_timed_out"
+    },
+    {
+      "type": "state",
+      "field": "goal_status",
+      "eq": 3
+    },
+    {
+      "type": "command",
+      "name": "own tests",
+      "run": "python3 -m unittest -q"
+    },
+    {
+      "type": "command",
+      "name": "hidden test",
+      "run": "python3 -m unittest -q test_hidden",
+      "add": {
+        "test_hidden.py": "import unittest\nfrom todo import add, done\n\nclass H(unittest.TestCase):\n    def test(self):\n        items = add([], 'a')\n        self.assertEqual(items, [{'text': 'a', 'done': False}])\n        self.assertTrue(done(add(items, 'b'), 1)[1]['done'])\n"
+      }
+    },
+    {
+      "type": "outside_unchanged"
+    },
+    {
+      "type": "no_guard_trips"
+    }
+  ]
+}

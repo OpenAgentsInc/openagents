@@ -1,0 +1,40 @@
+{
+  "id": "d2_budget_autostop",
+  "category": "goal_budget",
+  "fixture": "mathlib",
+  "budget_usd_micros": 25000,
+  "timeout_s": 240,
+  "description": "A tiny chat budget stops a long task within one attempt of the cap",
+  "steps": [
+    {
+      "send": "Add a one-line docstring to every function in lib.py, one function per step, viewing the file again before each edit, then run the tests."
+    }
+  ],
+  "graders": [
+    {
+      "type": "not_timed_out"
+    },
+    {
+      "type": "budget_stop"
+    },
+    {
+      "type": "state",
+      "field": "running",
+      "eq": 0
+    },
+    {
+      "type": "command",
+      "name": "lib still imports",
+      "run": "python3 -m unittest -q",
+      "restore": [
+        "test_lib.py"
+      ]
+    },
+    {
+      "type": "outside_unchanged"
+    },
+    {
+      "type": "no_guard_trips"
+    }
+  ]
+}

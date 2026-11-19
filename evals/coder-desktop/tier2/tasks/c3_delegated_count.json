@@ -1,0 +1,48 @@
+{
+  "id": "c3_delegated_count",
+  "category": "subagents",
+  "fixture": "data",
+  "timeout_s": 420,
+  "description": "A sub-agent counts rows and sums a column; the main agent reports",
+  "steps": [
+    {
+      "send": "Hand this to a sub-agent: count the data rows in data.csv (not the header) and sum its amount column. Then tell me both numbers."
+    }
+  ],
+  "graders": [
+    {
+      "type": "not_timed_out"
+    },
+    {
+      "type": "wire_count",
+      "kind": "delegate",
+      "main_only": true,
+      "min": 1
+    },
+    {
+      "type": "wire_count",
+      "dir": "to_worker",
+      "key": "results",
+      "main_only": true,
+      "min": 1
+    },
+    {
+      "type": "reply_contains",
+      "text": [
+        "37",
+        "450"
+      ]
+    },
+    {
+      "type": "diff_max_files",
+      "max": 0
+    },
+    {
+      "type": "outside_unchanged"
+    },
+    {
+      "type": "no_guard_trips"
+    }
+  ],
+  "budget_usd_micros": 100000
+}

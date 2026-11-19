@@ -2,11 +2,13 @@
 # Firm reason: 5 (thin shell runner dispatching Tier 0, Tier 1, and compaction evals)
 set -eu
 
-# Coder Desktop evaluation runner (Tier 0, Tier 1, and Compaction).
-# Usage: evals/coder-desktop/run.sh [--tier 0|1|compaction|all]
+# Coder Desktop evaluation runner (Tier 0, Tier 1, Compaction, and opt-in Tier 2).
+# Usage: evals/coder-desktop/run.sh [--tier 0|1|2|compaction|all] [--filter TEXT]
+# Tier 2 calls real models and costs money: it runs only with --tier 2, never with --tier all.
 
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)"
 TIER="all"
+FILTER=""
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -22,12 +24,22 @@ while [ "$#" -gt 0 ]; do
       TIER="${1#--tier=}"
       shift
       ;;
+    --filter)
+      if [ "$#" -lt 2 ]; then
+        echo "error: --filter requires an argument" >&2
+        exit 2
+      fi
+      FILTER="$2"
+      shift 2
+      ;;
     -h|--help)
-      echo "Usage: $0 [--tier 0|1|compaction|all]"
+      echo "Usage: $0 [--tier 0|1|2|compaction|all] [--filter TEXT]"
       echo "  --tier 0           Run Tier 0 unit & wire-contract checks (page.coax, mcworker-wire.coax, tools_smoke.sh)"
       echo "  --tier 1           Run Tier 1 deterministic transcript replay + compaction suites"
       echo "  --tier compaction  Run deterministic & long-horizon compaction eval suite (C1-C12)"
-      echo "  --tier all         Run Tier 0, Tier 1, and Compaction (default)"
+      echo "  --tier 2           Run the Tier 2 live-agent suite (real mcworker, real models, costs money; opt-in only)"
+      echo "  --tier all         Run Tier 0, Tier 1, and Compaction (default; never Tier 2)"
+      echo "  --filter TEXT      Tier 2 only: run tasks whose id contains TEXT (comma-separated)"
       exit 0
       ;;
     *)
@@ -38,9 +50,9 @@ while [ "$#" -gt 0 ]; do
 done
 
 case "$TIER" in
-  0|1|compaction|all) ;;
+  0|1|2|compaction|all) ;;
   *)
-    echo "error: unsupported tier '$TIER' (supported: 0, 1, compaction, all)" >&2
+    echo "error: unsupported tier '$TIER' (supported: 0, 1, 2, compaction, all)" >&2
     exit 2
     ;;
 esac
@@ -97,7 +109,7 @@ rec = {
     "run_id": run_id,
     "tier": tier,
     "case": case_name,
-    "model": "deterministic",
+    "model": "live" if tier == 2 else "deterministic",
     "passed": rc == 0,
     "wall_ms": wall_ms,
     "cost_usd_micros": 0,
@@ -158,6 +170,27 @@ if tier == 1 and case_name == "tier1_host_scenarios":
             with open(out_path, "a", encoding="utf-8") as out:
                 out.write(json.dumps(srec, separators=(",", ":")) + "\n")
 
+# Also emit per-task records when running the Tier 2 live suite
+if tier == 2 and case_name == "tier2_live_suite":
+    for ln in text.splitlines():
+        tm = re.match(r"^(ok  |FAIL|KNOWN) task (\S+): (.*?) \((\d+) ms, \$([0-9.]+), (\d+) attempts, (\d+) turns, (\d+) commands\)(?: -- (.*))?$", ln)
+        if tm:
+            ok = tm.group(1).strip() == "ok"
+            trec = {
+                "run_id": run_id,
+                "tier": 2,
+                "case": f"task_{tm.group(2)}",
+                "model": "live",
+                "passed": ok,
+                "wall_ms": int(tm.group(4)),
+                "cost_usd_micros": int(round(float(tm.group(5)) * 1e6)),
+                "metrics": {"description": tm.group(3), "attempts": int(tm.group(6)), "turns": int(tm.group(7)),
+                            "commands": int(tm.group(8)), "known_failure": tm.group(1) == "KNOWN"},
+                "failure_reason": None if ok else (tm.group(9) or ln),
+            }
+            with open(out_path, "a", encoding="utf-8") as out:
+                out.write(json.dumps(trec, separators=(",", ":")) + "\n")
+
 # Also emit per-scenario records when running compaction_suite
 if case_name == "compaction_suite":
     for ln in text.splitlines():
@@ -212,6 +245,15 @@ fi
 
 if [ "$TIER" = "1" ] || [ "$TIER" = "compaction" ] || [ "$TIER" = "all" ]; then
   run_case 1 "compaction_suite" sh evals/coder-desktop/compaction/run.sh
+fi
+
+# Tier 2 is opt-in: real models, real cost. Never part of --tier all.
+if [ "$TIER" = "2" ]; then
+  if [ -n "$FILTER" ]; then
+    run_case 2 "tier2_live_suite" env BROWSER=/usr/bin/true python3 evals/coder-desktop/tier2/run_tasks.py --filter "$FILTER"
+  else
+    run_case 2 "tier2_live_suite" env BROWSER=/usr/bin/true python3 evals/coder-desktop/tier2/run_tasks.py
+  fi
 fi
 
 echo "Results written to: $OUT_JSONL"
